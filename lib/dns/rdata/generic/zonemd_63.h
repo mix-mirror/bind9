@@ -13,6 +13,9 @@
 
 #pragma once
 
+/* Known scheme type(s). */
+#define DNS_ZONEMD_SCHEME_SIMPLE (1)
+
 /* Known digest type(s). */
 #define DNS_ZONEMD_DIGEST_SHA384 (1)
 #define DNS_ZONEMD_DIGEST_SHA512 (2)
