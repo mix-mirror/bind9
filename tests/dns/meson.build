@@ -45,6 +45,7 @@ dns_tests = [
     'unreachcache',
     'update',
     'zonefile',
+    'zonemd',
     'zonemgr',
     'zt',
 ]

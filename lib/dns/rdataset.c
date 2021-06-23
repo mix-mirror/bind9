@@ -613,3 +613,51 @@ dns_rdataset_getheader(const dns_rdataset_t *rdataset) {
 
 	return NULL;
 }
+
+static int
+rdata_compare_wrapper(const void *rdata1, const void *rdata2) {
+	return dns_rdata_compare((const dns_rdata_t *)rdata1,
+				 (const dns_rdata_t *)rdata2);
+}
+
+isc_result_t
+dns_rdataset_tosortedarray(dns_rdataset_t *set, isc_mem_t *mctx,
+			   dns_rdata_t **rdata, unsigned int *nrdata) {
+	isc_result_t ret;
+	int i = 0, n;
+	dns_rdata_t *data = NULL;
+	dns_rdataset_t rdataset;
+
+	REQUIRE(rdata != NULL && *rdata == NULL);
+	REQUIRE(nrdata != NULL);
+
+	n = dns_rdataset_count(set);
+
+	data = isc_mem_cget(mctx, n, sizeof(dns_rdata_t));
+
+	dns_rdataset_init(&rdataset);
+	dns_rdataset_clone(set, &rdataset);
+	ret = dns_rdataset_first(&rdataset);
+	if (ret != ISC_R_SUCCESS) {
+		dns_rdataset_disassociate(&rdataset);
+		isc_mem_cput(mctx, data, n, sizeof(dns_rdata_t));
+		return ret;
+	}
+
+	/*
+	 * Put them in the array.
+	 */
+	do {
+		dns_rdata_init(&data[i]);
+		dns_rdataset_current(&rdataset, &data[i++]);
+	} while (dns_rdataset_next(&rdataset) == ISC_R_SUCCESS);
+
+	/*
+	 * Sort the array.
+	 */
+	qsort(data, n, sizeof(dns_rdata_t), rdata_compare_wrapper);
+	*rdata = data;
+	*nrdata = n;
+	dns_rdataset_disassociate(&rdataset);
+	return ISC_R_SUCCESS;
+}
