@@ -50,6 +50,7 @@ dns_tests = [
     'update',
     'vecheader',
     'zonefile',
+    'zonemd',
     'zonemgr',
     'zt',
 ]
