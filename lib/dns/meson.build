@@ -167,6 +167,7 @@ dns_srcset.add(
         'view.c',
         'zone.c',
         'zonefetch.c',
+        'zonemd.c',
         'zoneverify.c',
         'zt.c',
     ),
