@@ -11,6 +11,7 @@ options {
 	allow-transfer { any; };
 	dnssec-validation @dnssec_validation@;
 	notify-cfg CDS { notify yes; };
+	check-zonemd no;
 };
 
 {% include "_common/controls.conf.j2" %}
