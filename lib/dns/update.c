@@ -53,6 +53,7 @@
 #include <dns/update.h>
 #include <dns/view.h>
 #include <dns/zone.h>
+#include <dns/zonemd.h>
 #include <dns/zt.h>
 
 /**************************************************************************/
@@ -1328,7 +1329,8 @@ struct dns_update_state {
 		sign_nsec,
 		update_nsec3,
 		process_nsec3,
-		sign_nsec3
+		sign_nsec3,
+		update_zonemd
 	} state;
 };
 
@@ -1360,6 +1362,72 @@ dns__jitter_expire(dns_zone_t *zone) {
 }
 
 isc_result_t
+dns_update_zonemd(dns_db_t *db, dns_dbversion_t *version, dns_diff_t *diff) {
+	bool found[256] = { 0 };
+	dns_dbnode_t *node = NULL;
+	dns_rdataset_t rdataset;
+	isc_result_t result;
+
+	dns_rdataset_init(&rdataset);
+	CHECK(dns_db_findnode(db, dns_db_origin(db), false, &node));
+	result = dns_db_findrdataset(db, node, version, dns_rdatatype_zonemd, 0,
+				     (isc_stdtime_t)0, &rdataset, NULL);
+	if (result == ISC_R_NOTFOUND) {
+		CLEANUP(ISC_R_SUCCESS);
+	}
+	CHECK(result);
+	result = dns_rdataset_first(&rdataset);
+	while (result == ISC_R_SUCCESS) {
+		dns_rdata_t rdata = DNS_RDATA_INIT;
+		dns_rdata_zonemd_t zonemd;
+		unsigned char buf[DNS_ZONEMD_BUFFERSIZE];
+
+		dns_rdataset_current(&rdataset, &rdata);
+		CHECK(dns_rdata_tostruct(&rdata, &zonemd, NULL));
+		if (zonemd.scheme == DNS_ZONEMD_SCHEME_SIMPLE) {
+			/*
+			 * Delete all ZONEMD simple records.  We will
+			 * regenerate those with digest types we support.
+			 */
+			CHECK(update_one_rr(db, version, diff, DNS_DIFFOP_DEL,
+					    dns_db_origin(db), rdataset.ttl,
+					    &rdata));
+			/*
+			 * Only add a single record for a given digest type
+			 * regardless of how many records of that type exist.
+			 */
+			if (dns_zonemd_supported(&rdata) &&
+			    !found[zonemd.digest_type])
+			{
+				dns_rdata_reset(&rdata);
+				CHECK(dns_zonemd_buildrdata(
+					&rdata, db, version, zonemd.scheme,
+					zonemd.digest_type, diff->mctx, buf,
+					sizeof(buf)));
+				CHECK(update_one_rr(db, version, diff,
+						    DNS_DIFFOP_ADD,
+						    dns_db_origin(db),
+						    rdataset.ttl, &rdata));
+				found[zonemd.digest_type] = true;
+			}
+		}
+		result = dns_rdataset_next(&rdataset);
+	}
+	if (result == ISC_R_NOMORE) {
+		result = ISC_R_SUCCESS;
+	}
+
+cleanup:
+	if (dns_rdataset_isassociated(&rdataset)) {
+		dns_rdataset_disassociate(&rdataset);
+	}
+	if (node != NULL) {
+		dns_db_detachnode(&node);
+	}
+	return result;
+}
+
+isc_result_t
 dns_update_signaturesinc(dns_update_log_t *log, dns_zone_t *zone, dns_db_t *db,
 			 dns_dbversion_t *oldver, dns_dbversion_t *newver,
 			 dns_diff_t *diff, uint32_t sigvalidityinterval,
@@ -1378,6 +1446,8 @@ dns_update_signaturesinc(dns_update_log_t *log, dns_zone_t *zone, dns_db_t *db,
 	dns_rdatatype_t privatetype = dns_zone_getprivatetype(zone);
 	unsigned int sigs = 0;
 	unsigned int maxsigs = dns_zone_getsignatures(zone);
+
+	dns_rdataset_init(&rdataset);
 
 	if (statep == NULL || *statep == NULL) {
 		if (statep == NULL) {
@@ -1425,7 +1495,6 @@ dns_update_signaturesinc(dns_update_log_t *log, dns_zone_t *zone, dns_db_t *db,
 		 * MINIMUM field.
 		 */
 		CHECK(dns_db_findnode(db, dns_db_origin(db), false, &node));
-		dns_rdataset_init(&rdataset);
 		CHECK(dns_db_findrdataset(db, node, newver, dns_rdatatype_soa,
 					  0, (isc_stdtime_t)0, &rdataset,
 					  NULL));
@@ -1433,6 +1502,7 @@ dns_update_signaturesinc(dns_update_log_t *log, dns_zone_t *zone, dns_db_t *db,
 		dns_rdataset_current(&rdataset, &rdata);
 		CHECK(dns_rdata_tostruct(&rdata, &soa, NULL));
 		state->nsecttl = ISC_MIN(rdataset.ttl, soa.minimum);
+		dns_rdata_reset(&rdata);
 		dns_rdataset_disassociate(&rdataset);
 		dns_db_detachnode(&node);
 
@@ -1827,7 +1897,8 @@ next_state:
 		if (!state->build_nsec3) {
 			update_log(log, zone, ISC_LOG_DEBUG(3),
 				   "no NSEC3 chains to rebuild");
-			goto cleanup;
+			state->state = update_zonemd;
+			goto next_state;
 		}
 
 		update_log(log, zone, ISC_LOG_DEBUG(3),
@@ -1991,6 +2062,41 @@ next_state:
 			dns_diff_appendminimal(diff, &t);
 		}
 
+	/* FALLTHROUGH */
+	case update_zonemd:
+		state->state = update_zonemd;
+		/*
+		 * Update apex ZONEMD RRset if present.
+		 */
+		update_log(log, zone, ISC_LOG_DEBUG(3), "Update apex ZONEMD?");
+
+		CHECK(dns_update_zonemd(db, newver, &state->work));
+		if (ISC_LIST_EMPTY(state->work.tuples)) {
+			update_log(log, zone, ISC_LOG_DEBUG(3),
+				   "No apex ZONEMD changes");
+			CLEANUP(ISC_R_SUCCESS);
+		}
+
+		update_log(log, zone, ISC_LOG_DEBUG(3),
+			   "Update apex ZONEMD RRset signatures");
+
+		CHECK(delete_if(true_p, db, newver, dns_db_origin(db),
+				dns_rdatatype_rrsig, dns_rdatatype_zonemd, NULL,
+				&state->sig_diff));
+		CHECK(add_sigs(log, zone, db, newver, dns_db_origin(db),
+			       dns_rdatatype_zonemd, &state->sig_diff,
+			       state->zone_keys, state->nkeys, state->now,
+			       state->inception, state->expire));
+
+		/* Record our changes for the journal. */
+		ISC_LIST_FOREACH(state->work.tuples, t, link) {
+			ISC_LIST_UNLINK(state->work.tuples, t, link);
+			dns_diff_appendminimal(diff, &t);
+		}
+		ISC_LIST_FOREACH(state->sig_diff.tuples, t, link) {
+			ISC_LIST_UNLINK(state->sig_diff.tuples, t, link);
+			dns_diff_appendminimal(diff, &t);
+		}
 		INSIST(ISC_LIST_EMPTY(state->sig_diff.tuples));
 		INSIST(ISC_LIST_EMPTY(state->nsec_diff.tuples));
 		INSIST(ISC_LIST_EMPTY(state->nsec_mindiff.tuples));
@@ -2000,6 +2106,9 @@ next_state:
 	}
 
 cleanup:
+	if (dns_rdataset_isassociated(&rdataset)) {
+		dns_rdataset_disassociate(&rdataset);
+	}
 	if (node != NULL) {
 		dns_db_detachnode(&node);
 	}

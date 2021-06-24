@@ -2443,6 +2443,44 @@ wait_for_log 10 "too many DNS UPDATEs queued" ns1/named.run || ret=1
   status=1
 }
 
+n=$(expr $n + 1)
+ret=0
+echo_i "check that adding a dummy ZONEMD record result updated ZONEMD record (nsec) ($n)"
+$NSUPDATE -D -C resolv.conf -p ${PORT} <<EOF >nsupdate.out-$n 2>&1 || ret=1
+server 10.53.0.3 ${PORT}
+zone zonemd.test
+update add zonemd.test 0 zonemd 0 1 1 000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+send
+EOF
+$DIG $DIGOPTS +tcp +norec zonemd.test ZONEMD +dnssec @10.53.0.3 >dig.out.test$n || ret=1
+grep "status: NOERROR," dig.out.test$n >/dev/null || ret=1
+grep "ANSWER: 2," dig.out.test$n >/dev/null || ret=1
+grep "^zonemd\.test\..*IN.ZONEMD.2 1 1" dig.out.test$n >/dev/null || ret=1
+grep "^zonemd\.test\..*IN.RRSIG.ZONEMD" dig.out.test$n >/dev/null || ret=1
+[ $ret = 0 ] || {
+  echo_i "failed"
+  status=1
+}
+
+n=$(expr $n + 1)
+ret=0
+echo_i "check that adding a dummy ZONEMD record result updated ZONEMD record (nsec3) ($n)"
+$NSUPDATE -D -C resolv.conf -p ${PORT} <<EOF >nsupdate.out-$n 2>&1 || ret=1
+server 10.53.0.3 ${PORT}
+zone zonemd-nsec3.test
+update add zonemd-nsec3.test 0 zonemd 0 1 1 000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+send
+EOF
+$DIG $DIGOPTS +tcp +norec zonemd-nsec3.test ZONEMD +dnssec @10.53.0.3 >dig.out.test$n || ret=1
+grep "status: NOERROR," dig.out.test$n >/dev/null || ret=1
+grep "ANSWER: 2," dig.out.test$n >/dev/null || ret=1
+grep "^zonemd-nsec3\.test\..*IN.ZONEMD.2 1 1" dig.out.test$n >/dev/null || ret=1
+grep "^zonemd-nsec3\.test\..*IN.RRSIG.ZONEMD" dig.out.test$n >/dev/null || ret=1
+[ $ret = 0 ] || {
+  echo_i "failed"
+  status=1
+}
+
 if ! $FEATURETEST --gssapi; then
   echo_i "SKIPPED: GSSAPI tests"
 else
