@@ -46,6 +46,7 @@ zone "split-rrsig" {
 	type primary;
 	file "split-rrsig.db.signed";
 	allow-update { any; };
+	check-zonemd no; /* signatures are expired */
 };
 
 include "trusted.conf";

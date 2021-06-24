@@ -27,4 +27,5 @@ options {
 zone "." {
 	type primary;
 	file "root.db.signed";
+	check-zonemd no;
 };
