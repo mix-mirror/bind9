@@ -42,6 +42,7 @@ zone "." {
 	allow-transfer { any; };
 	allow-update { any; };
 	allow-query { any; };
+	check-zonemd no;
 };
 
 include "trusted.conf";

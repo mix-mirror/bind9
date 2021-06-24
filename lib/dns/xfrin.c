@@ -365,6 +365,19 @@ axfr_apply(void *arg) {
 		}
 	}
 
+	if (xfr->diff_running) {
+		/* This is offloaded. */
+		result = dns_zone_checkzonemd(xfr->zone, xfr->db, xfr->ver);
+		if (result == DNS_R_BADZONE) {
+			goto cleanup;
+		} else if (result != ISC_R_SUCCESS &&
+			   dns_zone_gettype(xfr->zone) == dns_zone_mirror)
+		{
+			CHECK(dns_zone_verifydb(xfr->zone, xfr->db, xfr->ver));
+		}
+	}
+	result = ISC_R_SUCCESS;
+
 cleanup:
 	dns_diff_clear(&xfr->diff);
 	work->result = result;
@@ -385,7 +398,6 @@ axfr_apply_done(void *arg) {
 
 	if (result == ISC_R_SUCCESS) {
 		CHECK(dns_db_endload(xfr->db, &xfr->axfr));
-		CHECK(dns_zone_verifydb(xfr->zone, xfr->db, NULL));
 		CHECK(axfr_finalize(xfr));
 	} else {
 		(void)dns_db_endload(xfr->db, &xfr->axfr);
@@ -503,6 +515,7 @@ cleanup:
 static isc_result_t
 ixfr_end_transaction(dns_ixfr_t *ixfr) {
 	isc_result_t result = ISC_R_SUCCESS;
+
 	/* XXX enter ready-to-commit state here */
 	if (ixfr->journal != NULL) {
 		CHECK(dns_journal_commit(ixfr->journal));
@@ -549,7 +562,14 @@ ixfr_apply_one(dns_xfrin_t *xfr, ixfr_apply_data_t *data) {
 	 */
 	dns_db_commitupdate(xfr->db, &callbacks);
 
-	CHECK(dns_zone_verifydb(xfr->zone, xfr->db, xfr->ver));
+	result = dns_zone_checkzonemd(xfr->zone, xfr->db, xfr->ver);
+	if (result == DNS_R_BADZONE) {
+		goto cleanup;
+	} else if (result != ISC_R_SUCCESS &&
+		   dns_zone_gettype(xfr->zone) == dns_zone_mirror)
+	{
+		CHECK(dns_zone_verifydb(xfr->zone, xfr->db, xfr->ver));
+	}
 
 	result = ixfr_end_transaction(&xfr->ixfr);
 

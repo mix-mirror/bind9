@@ -243,6 +243,7 @@ view \"_bind\" chaos {\n\
 	recursion no;\n\
 	notify no;\n\
 	allow-new-zones no;\n\
+	check-zonemd no;\n\
 	max-cache-size 2M;\n\
 	provide-zoneversion no;\n\
 \n\
