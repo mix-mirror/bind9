@@ -48,3 +48,28 @@ $SIGNER -A -3 - -P -o $zone -k $keyname1 $zonefile $keyname2 >/dev/null
 
 # Just copy multisigner.db.in because it is signed with dnssec-policy.
 cp multisigner.test.db.in multisigner.test.db
+
+# test a NSEC signed zone with ZONEMD being added.
+
+zone=zonemd.test.
+infile=zonemd.test.db.in
+zonefile=zonemd.test.db
+
+keyname1=$($KEYGEN -q -a ${DEFAULT_ALGORITHM} -b 1024 -f KSK $zone)
+keyname2=$($KEYGEN -q -a ${DEFAULT_ALGORITHM} -b 1024 $zone)
+
+cat $infile $keyname1.key $keyname2.key >$zonefile
+
+$SIGNER -z -o $zone -k $keyname1 $zonefile $keyname2 >/dev/null
+
+# test a NSEC3 signed zone with ZONEMD being added.
+zone=zonemd-nsec3.test.
+infile=zonemd-nsec3.test.db.in
+zonefile=zonemd-nsec3.test.db
+
+keyname1=$($KEYGEN -q -a ${DEFAULT_ALGORITHM} -b 1024 -f KSK $zone)
+keyname2=$($KEYGEN -q -a ${DEFAULT_ALGORITHM} -b 1024 $zone)
+
+cat $infile $keyname1.key $keyname2.key >$zonefile
+
+$SIGNER -3 - -z -o $zone -k $keyname1 $zonefile $keyname2 >/dev/null

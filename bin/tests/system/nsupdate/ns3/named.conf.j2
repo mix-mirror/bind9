@@ -4,6 +4,7 @@ options {
 	{% include_indented "_common/options.conf.j2" %}
 	recursion no;
 	dnssec-validation no;
+	allow-transfer { any; };
 };
 
 
@@ -76,4 +77,16 @@ zone "multisigner.test" {
 	allow-update { any; };
 	dnssec-policy "default-dynamic";
 	file "multisigner.test.db";
+};
+
+zone "zonemd.test" {
+	type primary;
+	allow-update { any; };
+	file "zonemd.test.db.signed";
+};
+
+zone "zonemd-nsec3.test" {
+	type primary;
+	allow-update { any; };
+	file "zonemd-nsec3.test.db.signed";
 };
