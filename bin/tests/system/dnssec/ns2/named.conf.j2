@@ -198,6 +198,7 @@ zone "peer.peer-ns-spoof" {
 zone "dnskey-rrsigs-stripped" {
 	type primary;
 	file "dnskey-rrsigs-stripped.db.signed";
+	check-zonemd no;
 };
 
 zone "ds-rrsigs-stripped" {
@@ -217,6 +218,7 @@ zone "missing-dnskey" {
 
 zone "missing-ksk" {
 	type primary;
+	check-zonemd no;
 	file "missing-ksk.db.signed";
 };
 
