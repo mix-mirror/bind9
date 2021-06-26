@@ -195,6 +195,8 @@ options {\n\
 	check-sibling yes;\n\
 	check-srv-cname warn;\n\
 	check-wildcard yes;\n\
+	check-zonemd yes;\n\
+	check-zonemd-dnssec yes;\n\
 	dnssec-loadkeys-interval 60;\n\
 #	forward <none>\n\
 #	forwarders <none>\n\
@@ -220,6 +222,7 @@ options {\n\
 	notify-delay 5;\n\
 	notify-to-soa no;\n\
 	provide-zoneversion yes;\n\
+	require-zonemd no;\n\
 	send-report-channel .;\n\
 	serial-update-method increment;\n\
 	sig-signing-nodes 100;\n\

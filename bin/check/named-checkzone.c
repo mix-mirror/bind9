@@ -66,7 +66,7 @@ usage(int ret);
 static void
 usage(int ret) {
 	fprintf(stderr,
-		"usage: %s [-djqvD] [-c class] "
+		"usage: %s [-djqvDz] [-c class] "
 		"[-f inputformat] [-F outputformat] [-J filename] "
 		"[-s (full|relative)] [-t directory] [-w directory] "
 		"[-k (ignore|warn|fail)] [-m (ignore|warn|fail)] "
@@ -136,8 +136,8 @@ main(int argc, char **argv) {
 	isc_commandline_errprint = false;
 
 	while ((c = isc_commandline_parse(argc, argv,
-					  "c:df:hi:jJ:k:L:l:m:n:qr:s:t:o:vw:C:"
-					  "DF:M:R:S:T:W:")) != EOF)
+					  "c:df:hi:jJ:k:L:l:m:n:qr:s:t:o:vw:z:"
+					  "C:DF:M:R:S:T:W:")) != EOF)
 	{
 		switch (c) {
 		case 'c':
@@ -411,6 +411,18 @@ main(int argc, char **argv) {
 				zone_options |= DNS_ZONEOPT_CHECKWILDCARD;
 			} else if (ARGCMP("ignore")) {
 				zone_options &= ~DNS_ZONEOPT_CHECKWILDCARD;
+			}
+			break;
+
+		case 'z':
+			if (ARGCMP("fail")) {
+				zone_options |= DNS_ZONEOPT_ZONEMD_CHECK;
+			} else if (ARGCMP("ignore")) {
+				zone_options &= ~DNS_ZONEOPT_ZONEMD_CHECK;
+			} else {
+				fprintf(stderr, "invalid argument to -Z: %s\n",
+					isc_commandline_argument);
+				exit(EXIT_FAILURE);
 			}
 			break;
 

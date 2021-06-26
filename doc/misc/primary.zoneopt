@@ -15,6 +15,8 @@ zone <string> [ <class> ] {
 	check-srv-cname ( fail | warn | ignore );
 	check-svcb <boolean>;
 	check-wildcard <boolean>;
+	check-zonemd <boolean>;
+	check-zonemd-dnssec <boolean>;
 	checkds ( explicit | <boolean> );
 	database <string>;
 	dlz <string>;
@@ -56,6 +58,7 @@ zone <string> [ <class> ] {
 	parental-source-v6 ( <ipv6_address> | * );
 	plugin ( query ) <string> [ { <unspecified-text> } ]; // may occur multiple times
 	provide-zoneversion <boolean>;
+	require-zonemd <boolean>;
 	send-report-channel <string>;
 	serial-update-method ( date | increment | unixtime );
 	sig-signing-nodes <integer>;

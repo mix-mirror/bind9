@@ -84,6 +84,7 @@ dns_zoneopt_t zone_options = DNS_ZONEOPT_CHECKNS | DNS_ZONEOPT_CHECKMX |
 #endif /* if CHECK_SIBLING */
 			     DNS_ZONEOPT_CHECKSVCB | DNS_ZONEOPT_CHECKWILDCARD |
 			     DNS_ZONEOPT_WARNMXCNAME | DNS_ZONEOPT_WARNSRVCNAME;
+dns_zoneopt_t zonemd_options;
 
 static isc_symtab_t *symtab = NULL;
 
@@ -607,7 +608,9 @@ setup_logging(FILE *errout) {
 		logconfig, "default_stderr", ISC_LOG_TOFILEDESC,
 		ISC_LOG_DYNAMIC, ISC_LOGDESTINATION_FILE(errout), 0,
 		ISC_LOGCATEGORY_DEFAULT, ISC_LOGMODULE_DEFAULT);
-
+	if (debug > 1) {
+		isc_log_setdebuglevel(debug - 1);
+	}
 	return ISC_R_SUCCESS;
 }
 
@@ -659,6 +662,7 @@ load_zone(isc_mem_t *mctx, const char *zonename, const char *filename,
 	dns_zone_setclass(zone, rdclass);
 	dns_zone_setoption(zone, zone_options, true);
 	dns_zone_setoption(zone, DNS_ZONEOPT_NOMERGE, nomerge);
+	dns_zone_setoption(zone, zonemd_options, true);
 
 	dns_zone_setmaxttl(zone, maxttl);
 

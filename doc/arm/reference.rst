@@ -2705,6 +2705,31 @@ Boolean Options
    the ``dohpath`` parameter exists when the ``alpn`` indicates
    that it should be present.  The default is ``yes``.
 
+.. namedconf:statement:: check-zonemd
+   :tags: zone
+   :short: Specifies whether to check zone contents against the ZONEMD record.
+
+   This option indicates that a zone's contents should be checked
+   against the cryptographic hash in a ZONEMD record, if such a record
+   is present, when it is loaded or transferred. This helps to ensure
+   integrity of the zone data. The default is ``yes``.
+
+.. namedconf:statement:: check-zonemd-dnssec
+   :tags: zone
+   :short: Require DNSSEC signatures for ZONEMD records.
+
+   When this option is set to the default value of ``yes``, zones
+   containing ZONEMD records will be rejected if they are not
+   DNSSEC-signed.  (Note that this is not optional for zones of type
+   ``mirror``: if the option is disabled, it will be silently ignored.)
+
+.. namedconf:statement:: require-zonemd
+   :tags: zone
+   :short: Controls whether a ZONEMD record is required to be present in the zone.
+
+    This indicates that a ZONEMD record **must** be present in a
+    zone when it is loaded or transferred. The default is ``no``.
+
 .. namedconf:statement:: zero-no-soa-ttl
    :tags: zone, query, server
    :short: Specifies whether to set the time to live (TTL) of the SOA record to zero, when returning authoritative negative responses to SOA queries.
@@ -6827,17 +6852,18 @@ Zone Types
    :short: Contains a DNSSEC-validated duplicate of the main data for a zone.
 
    A mirror zone is similar to a zone of :any:`type secondary`, except its
-   data is subject to DNSSEC validation before being used in answers.
-   Validation is applied to the entire zone during the zone transfer
-   process, and again when the zone file is loaded from disk upon
-   restarting :iscman:`named`. If validation of a new version of a mirror zone
-   fails, a retransfer is scheduled; in the meantime, the most recent
-   correctly validated version of that zone is used until it either
-   expires or a newer version validates correctly. If no usable zone
-   data is available for a mirror zone, due to either transfer failure
-   or expiration, traditional DNS recursion is used to look up the
-   answers instead. Mirror zones cannot be used in a view that does not
-   have recursion enabled.
+   data is subject to cryptographic validation before being used in
+   answers. The zone contents must be verified by a signed and
+   validated ZONEMD record, or else DNSSEC validation must be applied
+   to the entire zone, both during the zone transfer process and again when
+   the zone file is loaded from disk upon restarting :iscman:`named`.
+   If validation of a new version of a mirror zone fails, a retransfer is
+   scheduled; in the meantime, the most recent correctly validated version
+   of that zone is used until it either expires or a newer version
+   validates correctly. If no usable zone data is available for a mirror
+   zone, due to either transfer failure or expiration, traditional DNS
+   recursion is used to look up the answers instead. Mirror zones cannot be
+   used in a view that does not have recursion enabled.
 
    Answers coming from a mirror zone look almost exactly like answers
    from a zone of :any:`type secondary`, with the notable exceptions that
@@ -7121,6 +7147,15 @@ Zone Options
 
 :any:`check-sibling`
    See the description of :any:`check-sibling` in :ref:`boolean_options`.
+
+:any:`check-zonemd`
+   See the description of :any:`check-zonemd` in :ref:`boolean_options`.
+
+:any:`check-zonemd-dnssec`
+   See the description of :any:`check-zonemd-dnssec` in :ref:`boolean_options`.
+
+:any:`require-zonemd`
+   See the description of :any:`require-zonemd` in :ref:`boolean_options`.
 
 :any:`zero-no-soa-ttl`
    See the description of :any:`zero-no-soa-ttl` in :ref:`boolean_options`.
@@ -7434,6 +7469,7 @@ Zone Options
 
 :any:`send-report-channel`
    See the description of :any:`send-report-channel` in :namedconf:ref:`options`.
+
 
 .. _zone_templates:
 
