@@ -1564,6 +1564,24 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 			}
 		}
 
+		obj = NULL;
+		result = named_config_get(maps, "check-zonemd", &obj);
+		INSIST(result == ISC_R_SUCCESS && obj != NULL);
+		dns_zone_setoption(zone, DNS_ZONEOPT_ZONEMD_CHECK,
+				   cfg_obj_asboolean(obj));
+
+		obj = NULL;
+		result = named_config_get(maps, "check-zonemd-dnssec", &obj);
+		INSIST(result == ISC_R_SUCCESS && obj != NULL);
+		dns_zone_setoption(zone, DNS_ZONEOPT_ZONEMD_DNSSEC,
+				   cfg_obj_asboolean(obj));
+
+		obj = NULL;
+		result = named_config_get(maps, "require-zonemd", &obj);
+		INSIST(result == ISC_R_SUCCESS && obj != NULL);
+		dns_zone_setoption(zone, DNS_ZONEOPT_ZONEMD_REQUIRED,
+				   cfg_obj_asboolean(obj));
+
 		process_notify_options(dns_rdatatype_soa, maps, zone, raw,
 				       false);
 		CHECK(process_notify_cfg(maps, zone, raw));

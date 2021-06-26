@@ -10,6 +10,7 @@ options {
 	recursion no;
 
 	dnssec-validation yes;
+	check-zonemd no;
 
 {% if rrset_order_none is defined %}
 	rrset-order {
