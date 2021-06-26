@@ -96,6 +96,8 @@ options {
 	check-srv-cname ( fail | warn | ignore );
 	check-svcb <boolean>;
 	check-wildcard <boolean>;
+	check-zonemd <boolean>;
+	check-zonemd-dnssec <boolean>;
 	clients-per-query <integer>;
 	cookie-algorithm ( siphash24 );
 	cookie-secret <string>; // may occur multiple times
@@ -258,6 +260,7 @@ options {
 	request-nsid <boolean>;
 	request-zoneversion <boolean>;
 	require-server-cookie <boolean>;
+	require-zonemd <boolean>;
 	resolver-query-timeout <integer>;
 	resolver-use-dns64 <boolean>;
 	response-padding { <address_match_element>; ... } block-size <integer>;
@@ -378,6 +381,8 @@ template <string> {
 	check-srv-cname ( fail | warn | ignore );
 	check-svcb <boolean>;
 	check-wildcard <boolean>;
+	check-zonemd <boolean>;
+	check-zonemd-dnssec <boolean>;
 	checkds ( explicit | <boolean> );
 	database <string>;
 	dlz <string>;
@@ -430,6 +435,7 @@ template <string> {
 	request-expire <boolean>;
 	request-ixfr <boolean>;
 	request-ixfr-max-diffs <integer>;
+	require-zonemd <boolean>;
 	send-report-channel <string>;
 	serial-update-method ( date | increment | unixtime );
 	server-addresses { ( <ipv4_address> | <ipv6_address> ); ... };
@@ -491,6 +497,8 @@ view <string> [ <class> ] {
 	check-srv-cname ( fail | warn | ignore );
 	check-svcb <boolean>;
 	check-wildcard <boolean>;
+	check-zonemd <boolean>;
+	check-zonemd-dnssec <boolean>;
 	clients-per-query <integer>;
 	deny-answer-addresses { <address_match_element>; ... } [ except-from { <string>; ... } ];
 	deny-answer-aliases { <string>; ... } [ except-from { <string>; ... } ];
@@ -629,6 +637,7 @@ view <string> [ <class> ] {
 	request-nsid <boolean>;
 	request-zoneversion <boolean>;
 	require-server-cookie <boolean>;
+	require-zonemd <boolean>;
 	resolver-query-timeout <integer>;
 	resolver-use-dns64 <boolean>;
 	response-padding { <address_match_element>; ... } block-size <integer>;

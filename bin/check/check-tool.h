@@ -24,6 +24,7 @@
 #include <dns/masterdump.h>
 #include <dns/types.h>
 #include <dns/zone.h>
+#include <dns/zonemd.h>
 
 isc_result_t
 setup_logging(FILE *errout);
@@ -45,3 +46,4 @@ extern bool docheckmx;
 extern bool docheckns;
 extern bool dochecksrv;
 extern dns_zoneopt_t zone_options;
+extern dns_zoneopt_t zonemd_options;
