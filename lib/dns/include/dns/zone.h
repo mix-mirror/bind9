@@ -96,15 +96,21 @@ typedef enum {
 	DNS_ZONEOPT_LOGREPORTS = 1 << 23,    /* Log error-reporting queries */
 	DNS_ZONEOPT_DNSKEYKSKONLY = 1 << 24, /*%< dnssec-dnskey-kskonly */
 	DNS_ZONEOPT_CHECKDUPRR = 1 << 25,    /*%< check-dup-records */
-	DNS_ZONEOPT_CHECKDUPRRFAIL = 1 << 26, /*%< fatal check-dup-records
-					       * failures */
-	DNS_ZONEOPT_CHECKSPF = 1 << 27,	      /*%< check SPF records */
-	DNS_ZONEOPT_CHECKTTL = 1 << 28,	      /*%< check max-zone-ttl */
-	DNS_ZONEOPT_AUTOEMPTY = 1 << 29,      /*%< automatic empty zone */
-	DNS_ZONEOPT_CHECKSVCB = 1 << 30,      /*%< check SVBC records */
-	DNS_ZONEOPT_ZONEVERSION = 1U << 31,   /*%< enable zoneversion */
-	DNS_ZONEOPT_FULLSIGN = 1ULL << 32,    /*%< fully sign zone */
-	DNS_ZONEOPT_FORCEKEYMGR = 1ULL << 33, /*%< force keymgr step */
+	DNS_ZONEOPT_CHECKDUPRRFAIL = 1 << 26,	   /*%< fatal check-dup-records
+						      failures */
+	DNS_ZONEOPT_CHECKSPF = 1 << 27,		   /*%< check SPF records */
+	DNS_ZONEOPT_CHECKTTL = 1 << 28,		   /*%< check max-zone-ttl */
+	DNS_ZONEOPT_AUTOEMPTY = 1 << 29,	   /*%< automatic empty zone */
+	DNS_ZONEOPT_CHECKSVCB = 1 << 30,	   /*%< check SVBC records */
+	DNS_ZONEOPT_ZONEVERSION = 1U << 31,	   /*%< enable zoneversion */
+	DNS_ZONEOPT_FULLSIGN = 1ULL << 32,	   /*%< fully sign zone */
+	DNS_ZONEOPT_FORCEKEYMGR = 1ULL << 33,	   /*%< force keymgr step */
+	DNS_ZONEOPT_ZONEMD_CHECK = 1ULL << 34,	   /*%< zonemd check */
+	DNS_ZONEOPT_ZONEMD_DNSSEC = 1ULL << 35,	   /*%< zonemd DNSSEC only */
+	DNS_ZONEOPT_ZONEMD_REQUIRED = 1ULL << 36,  /*%< zonemd required */
+	DNS_ZONEOPT_ZONEMD_NOEXPIRED = 1ULL << 37, /*%< don't allow expired
+						      RRSIG when verifying
+						      zonemd */
 	DNS_ZONEOPT___MAX = UINT64_MAX, /* trick to make the ENUM 64-bit wide */
 } dns_zoneopt_t;
 
