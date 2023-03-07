@@ -906,6 +906,17 @@ coccinelle:
     - util/check-cocci.sh
     - if test "$(git status --porcelain | grep -Ev '\?\?' | wc -l)" -gt "0"; then git status --short; exit 1; fi
 
+# Job for a GCC Static Analyzer run on Fedora 44
+
+gcc:static-analyzer:
+  <<: *build_job
+  <<: *fedora_44_amd64_image
+  stage: other-checks
+  variables:
+    CC: gcc
+    CFLAGS: "${CFLAGS_COMMON} -fanalyzer"
+    EXTRA_CONFIGURE: "-Didn=enabled"
+
 # Jobs for scan-build builds on Debian 13 "trixie" (amd64)
 
 .scan_build: &scan_build
