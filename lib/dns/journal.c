@@ -2751,15 +2751,12 @@ dns_journal_compact(isc_mem_t *mctx, char *filename, uint32_t serial,
 			j2->header.end.offset = indexend + len;
 		}
 
-		CHECK(journal_fsync(j2));
-
 		/*
 		 * Update the journal header.
 		 */
 		journal_header_encode(&j2->header, &rawheader);
 		CHECK(journal_seek(j2, 0));
 		CHECK(journal_write(j2, &rawheader, sizeof(rawheader)));
-		CHECK(journal_fsync(j2));
 
 		/*
 		 * Build new index.
@@ -2774,11 +2771,12 @@ dns_journal_compact(isc_mem_t *mctx, char *filename, uint32_t serial,
 		 * Write index.
 		 */
 		CHECK(index_to_disk(j2));
-		CHECK(journal_fsync(j2));
 
 		indexend = j2->header.end.offset;
 		POST(indexend);
 	}
+
+	CHECK(journal_fsync(j2));
 
 	/*
 	 * Close both journals before trying to rename files.
