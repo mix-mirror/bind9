@@ -28,6 +28,13 @@ isc_stdio_open(const char *filename, const char *mode, FILE **fp) {
 	if (f == NULL) {
 		return isc__errno2result(errno);
 	}
+
+	int r = setvbuf(f, NULL, _IONBF, 0);
+	if (r != 0) {
+		fclose(f);
+		return isc__errno2result(errno);
+	}
+
 	*fp = f;
 	return ISC_R_SUCCESS;
 }
@@ -105,15 +112,9 @@ isc_stdio_write(const void *ptr, size_t size, size_t nmemb, FILE *f,
 }
 
 isc_result_t
-isc_stdio_flush(FILE *f) {
-	int r;
-
-	r = fflush(f);
-	if (r == 0) {
-		return ISC_R_SUCCESS;
-	} else {
-		return isc__errno2result(errno);
-	}
+isc_stdio_flush(FILE *f ISC_ATTR_UNUSED) {
+	/* We disable buffering when opening the file */
+	return ISC_R_SUCCESS;
 }
 
 isc_result_t
