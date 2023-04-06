@@ -2488,8 +2488,6 @@ dns_journal_compact(isc_mem_t *mctx, char *filename, uint32_t serial,
 	isc_result_t result;
 	unsigned int indexend;
 	char newname[PATH_MAX];
-	char backup[PATH_MAX];
-	bool is_backup = false;
 	bool rewrite = false;
 	bool downgrade = false;
 
@@ -2504,15 +2502,7 @@ dns_journal_compact(isc_mem_t *mctx, char *filename, uint32_t serial,
 			  filename);
 	RUNTIME_CHECK(result < sizeof(newname));
 
-	result = snprintf(backup, sizeof(backup), "%.*s.jbk", (int)namelen,
-			  filename);
-	RUNTIME_CHECK(result < sizeof(backup));
-
 	result = journal_open(mctx, filename, false, false, false, &j1);
-	if (result == ISC_R_NOTFOUND) {
-		is_backup = true;
-		result = journal_open(mctx, backup, false, false, false, &j1);
-	}
 	if (result != ISC_R_SUCCESS) {
 		return result;
 	}
@@ -2797,36 +2787,13 @@ dns_journal_compact(isc_mem_t *mctx, char *filename, uint32_t serial,
 	dns_journal_destroy(&j2);
 
 	/*
-	 * With a UFS file system this should just succeed and be atomic.
+	 * With a POSIX file system this should just succeed and be atomic.
 	 * Any IXFR outs will just continue and the old journal will be
 	 * removed on final close.
-	 *
-	 * With MSDOS / NTFS we need to do a two stage rename, triggered
-	 * by EEXIST.  (If any IXFR's are running in other threads, however,
-	 * this will fail, and the journal will not be compacted.  But
-	 * if so, hopefully they'll be finished by the next time we
-	 * compact.)
 	 */
 	if (rename(newname, filename) == -1) {
-		if (errno == EEXIST && !is_backup) {
-			result = isc_file_remove(backup);
-			if (result != ISC_R_SUCCESS &&
-			    result != ISC_R_FILENOTFOUND)
-			{
-				goto failure;
-			}
-			if (rename(filename, backup) == -1) {
-				goto maperrno;
-			}
-			if (rename(newname, filename) == -1) {
-				goto maperrno;
-			}
-			(void)isc_file_remove(backup);
-		} else {
-		maperrno:
-			result = ISC_R_FAILURE;
-			goto failure;
-		}
+		result = ISC_R_FAILURE;
+		goto failure;
 	}
 
 	result = ISC_R_SUCCESS;
