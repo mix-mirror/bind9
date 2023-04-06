@@ -116,30 +116,9 @@ isc_stdio_flush(FILE *f) {
 	}
 }
 
-/*
- * OpenBSD has deprecated ENOTSUP in favor of EOPNOTSUPP.
- */
-#if defined(EOPNOTSUPP) && !defined(ENOTSUP)
-#define ENOTSUP EOPNOTSUPP
-#endif /* if defined(EOPNOTSUPP) && !defined(ENOTSUP) */
-
 isc_result_t
 isc_stdio_sync(FILE *f) {
-	struct stat buf;
-	int r;
-
-	if (fstat(fileno(f), &buf) != 0) {
-		return isc__errno2result(errno);
-	}
-
-	/*
-	 * Only call fsync() on regular files.
-	 */
-	if ((buf.st_mode & S_IFMT) != S_IFREG) {
-		return ISC_R_SUCCESS;
-	}
-
-	r = fsync(fileno(f));
+	int r = fdatasync(fileno(f));
 	if (r == 0) {
 		return ISC_R_SUCCESS;
 	} else {
