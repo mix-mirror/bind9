@@ -14,6 +14,9 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#if HAVE_SYNC_FILE_RANGE
+#include <fcntl.h>
+#endif /* HAVE_SYNC_FILE_RANGE */
 
 #include <isc/stdio.h>
 #include <isc/util.h>
@@ -120,6 +123,24 @@ isc_stdio_flush(FILE *f ISC_ATTR_UNUSED) {
 isc_result_t
 isc_stdio_sync(FILE *f) {
 	int r = fdatasync(fileno(f));
+	if (r == 0) {
+		return ISC_R_SUCCESS;
+	} else {
+		return isc__errno2result(errno);
+	}
+}
+
+isc_result_t
+isc_stdio_sync_range(FILE *f, off_t offset ISC_ATTR_UNUSED,
+		     off_t nbytes ISC_ATTR_UNUSED) {
+#if HAVE_SYNC_FILE_RANGE
+	int r = sync_file_range(fileno(f), offset, nbytes,
+				SYNC_FILE_RANGE_WAIT_BEFORE |
+					SYNC_FILE_RANGE_WRITE |
+					SYNC_FILE_RANGE_WAIT_AFTER);
+#else  /* HAVE_SYNC_FILE_RANGE */
+	int r = fsync(fileno(f));
+#endif /* HAVE_SYNC_FILE_RANGE */
 	if (r == 0) {
 		return ISC_R_SUCCESS;
 	} else {

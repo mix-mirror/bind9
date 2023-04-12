@@ -68,4 +68,7 @@ isc_stdio_sync(FILE *f);
  * direct counterpart in the stdio library.
  */
 
+isc_result_t
+isc_stdio_sync_range(FILE *f, off_t offset, off_t nbytes);
+
 ISC_LANG_ENDDECLS
