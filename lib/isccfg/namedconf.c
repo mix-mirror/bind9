@@ -134,6 +134,7 @@ static cfg_type_t cfg_type_server_key_kludge;
 static cfg_type_t cfg_type_size;
 static cfg_type_t cfg_type_sizenodefault;
 static cfg_type_t cfg_type_sizeval;
+static cfg_type_t cfg_type_sizeval_percent;
 static cfg_type_t cfg_type_sockaddr4wild;
 static cfg_type_t cfg_type_sockaddr6wild;
 static cfg_type_t cfg_type_statschannels;
@@ -1584,7 +1585,7 @@ static cfg_clausedef_t options_clauses[] = {
 	{ "statistics-file", &cfg_type_qstring, 0, NULL },
 	{ "statistics-interval", NULL, CFG_CLAUSEFLAG_ANCIENT, NULL },
 	{ "tcp-advertised-timeout", &cfg_type_uint32, 0, NULL },
-	{ "tcp-clients", &cfg_type_uint32, 0, NULL },
+	{ "tcp-clients", &cfg_type_sizeval_percent, 0, NULL },
 	{ "tcp-idle-timeout", &cfg_type_uint32, 0, NULL },
 	{ "tcp-initial-timeout", &cfg_type_uint32, 0, NULL },
 	{ "tcp-keepalive-timeout", &cfg_type_uint32, 0, NULL },
