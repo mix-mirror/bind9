@@ -17,6 +17,7 @@
 
 #include <pwd.h>
 #include <stdbool.h>
+#include <sys/resource.h>
 
 #include <isc/formatcheck.h>
 #include <isc/types.h>
@@ -48,7 +49,7 @@ named_os_restoreuser(void);
 uid_t
 named_os_uid(void);
 
-void
+rlim_t
 named_os_adjustnofile(void);
 
 void

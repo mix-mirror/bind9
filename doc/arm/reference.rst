@@ -3651,7 +3651,8 @@ system.
    :short: Specifies the maximum number of simultaneous client TCP connections accepted by the server.
 
    This is the maximum number of simultaneous client TCP connections that the
-   server accepts. The default is ``150``.
+   server accepts, in bytes of percentage of maximum allowed file descriptors.
+   The default is ``50%``.
 
 .. namedconf:statement:: clients-per-query
    :tags: server

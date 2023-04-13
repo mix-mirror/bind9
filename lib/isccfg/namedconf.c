@@ -1339,7 +1339,7 @@ static cfg_clausedef_t options_clauses[] = {
 	{ "statistics-file", &cfg_type_qstring, 0 },
 	{ "statistics-interval", NULL, CFG_CLAUSEFLAG_ANCIENT },
 	{ "tcp-advertised-timeout", &cfg_type_uint32, 0 },
-	{ "tcp-clients", &cfg_type_uint32, 0 },
+	{ "tcp-clients", &cfg_type_sizeorpercent, 0 },
 	{ "tcp-idle-timeout", &cfg_type_uint32, 0 },
 	{ "tcp-initial-timeout", &cfg_type_uint32, 0 },
 	{ "tcp-keepalive-timeout", &cfg_type_uint32, 0 },
