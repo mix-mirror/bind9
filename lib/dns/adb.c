@@ -3745,8 +3745,7 @@ dbfind_name(dns_adbname_t *adbname, isc_stdtime_t now, dns_rdatatype_t rdtype) {
 	 */
 	result =
 		dns_view_find(adb->view, &adbname->name, rdtype, now,
-			      NAME_GLUEOK(adbname) ? DNS_DBFIND_GLUEOK : 0,
-			      NAME_HINTOK(adbname),
+			      DNS_DBFIND_GLUEOK | DNS_DBFIND_ADDITIONALOK, true,
 			      ((adbname->flags & DNS_ADBFIND_STARTATZONE) != 0),
 			      NULL, NULL, fname, &rdataset, NULL);
 
