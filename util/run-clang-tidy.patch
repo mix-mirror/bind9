@@ -1,0 +1,53 @@
+--- /usr/lib/llvm-19/bin/run-clang-tidy	2024-04-22 13:24:07.000000000 +0200
++++ util/run-clang-tidy	2024-04-30 22:03:54.220794332 +0200
+@@ -2,6 +2,8 @@
+ #
+ # ===- run-clang-tidy.py - Parallel clang-tidy runner --------*- python -*--===#
+ #
++# Copyright (C) Internet Systems Consortium, Inc. ("ISC")
++#
+ # Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+ # See https://llvm.org/LICENSE.txt for license information.
+ # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+@@ -148,6 +150,27 @@ def get_tidy_invocation(
+     return start
+ 
+ 
++def fix_replacement_files(tmpdir):
++    """Merge all replacement files in a directory into a single file"""
++    # The fixes suggested by clang-tidy >= 4.0.0 are given under
++    # the top level key 'Diagnostics' in the output yaml files
++    mergekey="Diagnostics"
++    merged=[]
++    for replacefile in glob.iglob(os.path.join(tmpdir, '*.yaml')):
++        with open(replacefile, 'r') as infile:
++            content = yaml.safe_load(infile)
++        if not content:
++            continue # Skip empty files.
++        filename = content.get("MainSourceFile")
++        for diagnostic in content.get("Diagnostics"):
++            dmessage = diagnostic.get("DiagnosticMessage")
++            dmessage["FilePath"] = filename
++            for replacement in dmessage.get("Replacements"):
++                replacement["FilePath"] = filename
++        with open(replacefile, 'w') as outfile:
++            yaml.safe_dump(content, outfile)
++
++
+ def merge_replacement_files(tmpdir, mergefile):
+     """Merge all replacement files in a directory into a single file"""
+     # The fixes suggested by clang-tidy >= 4.0.0 are given under
+@@ -543,6 +566,13 @@ def main():
+             return_code = 1
+ 
+     if args.fix:
++        print('Fixing up replacement files...')
++        try:
++            fix_replacement_files(tmpdir)
++        except:
++            print('Error fixing up replacement files.\n', file=sys.stderr)
++            traceback.print_exc()
++            return_code = 1
+         print("Applying fixes ...")
+         try:
+             apply_fixes(args, clang_apply_replacements_binary, export_fixes_dir)
