@@ -121,7 +121,6 @@ struct dns_adbfind {
 	ISC_LINK(dns_adbfind_t) publink;      /*%< RW: client use */
 
 	/* Private */
-	isc_mutex_t	lock; /* locks all below */
 	in_port_t	port;
 	unsigned int	flags;
 	dns_adbname_t  *adbname;
