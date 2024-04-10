@@ -3489,6 +3489,11 @@ addrdataset(dns_db_t *db, dns_dbnode_t *node,
 		dns_qpread_destroy(qpdb->tree, &modctx.qpr);
 	}
 
+	if (cache_is_overmem) {
+		/* Trigger memory cleaning */
+		isc_loop_rcu_barrier(isc_loop());
+	}
+
 	return (result);
 }
 
