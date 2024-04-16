@@ -104,8 +104,6 @@ main(int argc, char **argv) {
 
 	isc_mem_create(&mctx);
 
-	dns_log_init();
-
 	logconfig = isc_logconfig_get();
 	isc_log_settag(logconfig, "bigkey");
 

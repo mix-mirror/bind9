@@ -11,3 +11,5 @@
 /util/bindkeys.pl		-export-ignore
 /util/check-make-install.in	-export-ignore
 /util/dtrace.sh		-export-ignore
+/util/meson.build		-export-ignore
+/util/meson-system-test-init.sh		-export-ignore

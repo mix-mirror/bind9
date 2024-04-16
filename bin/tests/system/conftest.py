@@ -25,7 +25,7 @@ import pytest
 pytest.register_assert_rewrite("isctest")
 
 import isctest
-from isctest.vars.dirs import SYSTEM_TEST_DIR_GIT_PATH
+from isctest.vars.build import SYSTEM_TEST_DIR_GIT_PATH
 
 
 # Silence warnings caused by passing a pytest fixture to another fixture.
@@ -415,7 +415,7 @@ def system_test_dir(request, system_test_name, expected_artifacts):
         ), f"Unexpected files found in test directory: {unexpected_files}"
 
     # Create a temporary directory with a copy of the original system test dir contents
-    system_test_root = Path(os.environ["builddir"])
+    system_test_root = Path(os.environ["srcdir"])
     testdir = Path(
         tempfile.mkdtemp(prefix=f"{system_test_name}_tmp_", dir=system_test_root)
     )
@@ -430,6 +430,9 @@ def system_test_dir(request, system_test_name, expected_artifacts):
     symlink_dst.symlink_to(os.path.relpath(testdir, start=system_test_root))
 
     isctest.log.init_module_logger(system_test_name, testdir)
+
+    # Log which binaries are used for the test(s)
+    isctest.log.info("testing binaries from: %s", os.environ.get("TOP_BUILDDIR"))
 
     # System tests are meant to be executed from their directory - switch to it.
     old_cwd = os.getcwd()

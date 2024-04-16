@@ -126,13 +126,6 @@ main(int argc, char **argv) {
 	} else {
 		prog_name = argv[0];
 	}
-	/*
-	 * Libtool doesn't preserve the program name prior to final
-	 * installation.  Remove the libtool prefix ("lt-").
-	 */
-	if (strncmp(prog_name, "lt-", 3) == 0) {
-		prog_name += 3;
-	}
 
 #define PROGCMP(X) \
 	(strcasecmp(prog_name, X) == 0 || strcasecmp(prog_name, X ".exe") == 0)
