@@ -12,6 +12,7 @@
 ############################################################################
 
 from pathlib import Path
+import os
 import re
 import sys
 
@@ -150,21 +151,24 @@ project = "BIND 9"
 copyright = "2023, Internet Systems Consortium"
 author = "Internet Systems Consortium"
 
-m4_vars = {}
-with open("../../configure.ac", encoding="utf-8") as configure_ac:
-    for line in configure_ac:
-        match = re.match(
-            r"m4_define\(\[(?P<key>bind_VERSION_[A-Z]+)\], (?P<val>[^)]*)\)dnl", line
-        )
-        if match:
-            m4_vars[match.group("key")] = match.group("val")
+if (version := os.getenv("BIND_MESON_PROJECT_SOURCE_ROOT")) is None:
+    m4_vars = {}
+    with open("../../configure.ac", encoding="utf-8") as configure_ac:
+        for line in configure_ac:
+            match = re.match(
+                r"m4_define\(\[(?P<key>bind_VERSION_[A-Z]+)\], (?P<val>[^)]*)\)dnl",
+                line,
+            )
+            if match:
+                m4_vars[match.group("key")] = match.group("val")
 
-version = "%s.%s.%s%s" % (
-    m4_vars["bind_VERSION_MAJOR"],
-    m4_vars["bind_VERSION_MINOR"],
-    m4_vars["bind_VERSION_PATCH"],
-    m4_vars["bind_VERSION_EXTRA"],
-)
+    version = "%s.%s.%s%s" % (
+        m4_vars["bind_VERSION_MAJOR"],
+        m4_vars["bind_VERSION_MINOR"],
+        m4_vars["bind_VERSION_PATCH"],
+        m4_vars["bind_VERSION_EXTRA"],
+    )
+
 release = version
 
 # -- General configuration ---------------------------------------------------

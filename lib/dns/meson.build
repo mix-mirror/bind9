@@ -1,0 +1,212 @@
+dns_inc = include_directories('include')
+
+# Use sourceset to add conditional files
+# https://mesonbuild.com/SourceSet-module.html
+dns_srcset = ss.source_set()
+
+dns_header_depfiles = []
+subdir('rdata')
+
+dns_gen_headers = []
+dns_header_gen = executable('gen', files('gen.c'), native: true)
+subdir('include')
+
+dnstap_dep = null_dep
+if config.has('HAVE_DNSTAP')
+    dnstap_schema_src = custom_target(
+        'dnstap-protobuf',
+        input: ['dnstap.proto'],
+        output: ['dnstap.pb-c.c', 'dnstap.pb-c.h'],
+        command: [
+            protoc,
+            '--proto_path=@CURRENT_SOURCE_DIR@',
+            '--c_out=@OUTDIR@',
+            '@INPUT@',
+        ],
+    )
+
+    dnstap = static_library(
+        'dnstap',
+        dnstap_schema_src,
+        implicit_include_directories: false,
+        dependencies: proto_dep,
+    )
+
+    dnstap_dep = declare_dependency(
+        link_with: dnstap,
+        sources: dnstap_schema_src[1],
+        dependencies: [
+            fstrm_dep,
+            proto_dep,
+        ],
+    )
+endif
+
+dns_srcset.add(dns_gen_headers)
+dns_srcset.add(when: 'HAVE_DNSTAP', if_true: [files('dnstap.c'), dnstap_dep])
+dns_srcset.add(when: 'HAVE_GEOIP2', if_true: [files('geoip2.c'), maxminddb_dep])
+dns_srcset.add(
+    when: 'HAVE_GSSAPI',
+    if_true: [files('gssapi_link.c'), gssapi_dep, krb5_dep],
+)
+
+dns_srcset.add(
+    custom_target(
+        'dns-code',
+        output: 'code.h',
+        depend_files: dns_header_depfiles,
+        capture: true,
+        command: [dns_header_gen, '-s', meson.current_source_dir()],
+    ),
+)
+
+dns_probe_target = static_library(
+    'dns-probe-target',
+    [
+        dtrace_header.process('probes.d'),
+        files('xfrin.c'),
+    ],
+    build_by_default: false,
+    sources: dns_gen_headers,
+    dependencies: urcu_dep,
+    include_directories: [isc_inc, dns_inc],
+).extract_all_objects(recursive: false)
+
+dns_srcset.add(
+    custom_target(
+        'dns-probe',
+        input: [
+            'probes.d',
+            dns_probe_target,
+        ],
+        output: 'probes.o',
+        command: [
+            dtrace,
+            '-G',
+            '-o', '@OUTPUT@',
+            '-s', '@INPUT@',
+        ],
+    ),
+)
+
+dns_srcset.add(
+    files(
+        'acl.c',
+        'adb.c',
+        'badcache.c',
+        'byaddr.c',
+        'cache.c',
+        'callbacks.c',
+        'catz.c',
+        'client.c',
+        'clientinfo.c',
+        'compress.c',
+        'db.c',
+        'dbiterator.c',
+        'diff.c',
+        'dispatch.c',
+        'dlz.c',
+        'dns64.c',
+        'dnssec.c',
+        'ds.c',
+        'dst_api.c',
+        'dst_parse.c',
+        'dyndb.c',
+        'ecs.c',
+        'fixedname.c',
+        'forward.c',
+        'gssapictx.c',
+        'hmac_link.c',
+        'ipkeylist.c',
+        'iptable.c',
+        'journal.c',
+        'kasp.c',
+        'key.c',
+        'keydata.c',
+        'keymgr.c',
+        'keystore.c',
+        'keytable.c',
+        'master.c',
+        'masterdump.c',
+        'message.c',
+        'name.c',
+        'nametree.c',
+        'ncache.c',
+        'nsec.c',
+        'nsec3.c',
+        'nta.c',
+        'openssl_link.c',
+        'opensslecdsa_link.c',
+        'openssleddsa_link.c',
+        'opensslrsa_link.c',
+        'order.c',
+        'peer.c',
+        'private.c',
+        'qp.c',
+        'qpcache.c',
+        'qpzone.c',
+        'rcode.c',
+        'rdata.c',
+        'rdatalist.c',
+        'rdataset.c',
+        'rdatasetiter.c',
+        'rdataslab.c',
+        'remote.c',
+        'request.c',
+        'resconf.c',
+        'resolver.c',
+        'result.c',
+        'rootns.c',
+        'rpz.c',
+        'rriterator.c',
+        'rrl.c',
+        'sdlz.c',
+        'skr.c',
+        'soa.c',
+        'ssu.c',
+        'ssu_external.c',
+        'stats.c',
+        'time.c',
+        'tkey.c',
+        'transport.c',
+        'tsig.c',
+        'ttl.c',
+        'update.c',
+        'validator.c',
+        'view.c',
+        'zone.c',
+        'zonekey.c',
+        'zoneverify.c',
+        'zt.c',
+    ),
+)
+
+dns_srcconf = dns_srcset.apply(config, strict: false)
+
+libdns = shared_library(
+    'dns',
+    dns_srcconf.sources(),
+    objects: dns_probe_target,
+    install: true,
+    include_directories: dns_inc,
+    dependencies: [
+        libisc_dep,
+
+        openssl_dep,
+
+        json_c_dep,
+        lmdb_dep,
+        xml2_dep,
+
+        dns_srcconf.dependencies(),
+    ],
+)
+
+libdns_dep = declare_dependency(
+    link_with: libdns,
+    include_directories: dns_inc,
+    sources: dns_gen_headers,
+    dependencies: [
+        libisc_dep,
+    ],
+)

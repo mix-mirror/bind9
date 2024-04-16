@@ -15,11 +15,14 @@ from typing import Dict
 
 def load_ac_vars_from_files() -> Dict[str, str]:
     ac_vars = {}
+
     ac_vars_dir = Path(__file__).resolve().parent / ".ac_vars"
     var_paths = [
         path
         for path in ac_vars_dir.iterdir()
-        if path.is_file() and not path.name.endswith(".in")
+        if path.is_file()
+        and not path.name.endswith(".in")
+        and path.name != "meson.build"
     ]
     for var_path in var_paths:
         ac_vars[var_path.name] = var_path.read_text(encoding="utf-8").strip()

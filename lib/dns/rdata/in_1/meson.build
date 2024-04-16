@@ -1,0 +1,18 @@
+dns_header_depfiles += files(
+    'a6_38.c',
+    'a_1.c',
+    'aaaa_28.c',
+    'apl_42.c',
+    'atma_34.c',
+    'dhcid_49.c',
+    'eid_31.c',
+    'https_65.c',
+    'kx_36.c',
+    'nimloc_32.c',
+    'nsap-ptr_23.c',
+    'nsap_22.c',
+    'px_26.c',
+    'srv_33.c',
+    'svcb_64.c',
+    'wks_11.c',
+)

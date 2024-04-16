@@ -13,15 +13,22 @@
 
 # Depends on CWD - Sphinx plugin
 
+import os
 import json
 from pathlib import Path
 
 import parsegrammar
 
+misc_path = Path("../misc/")
+if (srcroot := os.getenv("MESON_SOURCE_ROOT")) is not None:
+    misc_path = Path(srcroot) / "doc" / "misc"
+
+options_path = misc_path / "options"
+
 
 def read_zone():
     zone_grammars = {}
-    for file in Path("../misc/").glob("*.zoneopt"):
+    for file in misc_path.glob("*.zoneopt"):
         # in-view is not really a zone type
         if file.stem == "in-view":
             zone_type = "in-view"
@@ -39,7 +46,7 @@ def read_zone():
 
 
 def read_main():
-    with Path("../misc/options").open(encoding="ascii") as fp:
+    with Path(options_path).open(encoding="ascii") as fp:
         optgrammar = parsegrammar.parse_mapbody(fp)
     return optgrammar
 
