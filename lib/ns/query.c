@@ -6121,6 +6121,28 @@ fetch_callback(void *arg) {
 }
 
 /*%
+ * Compute a combined 64-bit hash of the recursion parameters.
+ * Never returns 0; that value is reserved as "unset" sentinel.
+ */
+static uint64_t
+recparam_hash(dns_rdatatype_t qtype, const dns_name_t *qname,
+	      const dns_name_t *qdomain) {
+	isc_hash64_t state;
+
+	isc_hash64_init(&state);
+	isc_hash64_hash(&state, &qtype, sizeof(qtype), true);
+	isc_hash64_hash(&state, qname->ndata, qname->length, false);
+	isc_hash64_hash(&state, qdomain->ndata, qdomain->length, false);
+
+	uint64_t hash = isc_hash64_finalize(&state);
+	if (hash == NS_QUERY_RECPARAM_UNSET) {
+		return UINT64_MAX;
+	}
+
+	return hash;
+}
+
+/*%
  * Check whether the recursion parameters in 'param' match the current query's
  * recursion parameters provided in 'qtype', 'qname', and 'qdomain'.
  */
@@ -6129,10 +6151,11 @@ recparam_match(const ns_query_recparam_t *param, dns_rdatatype_t qtype,
 	       const dns_name_t *qname, const dns_name_t *qdomain) {
 	REQUIRE(param != NULL);
 
-	return param->qtype == qtype && param->qname != NULL && qname != NULL &&
-	       param->qdomain != NULL && qdomain != NULL &&
-	       dns_name_equal(param->qname, qname) &&
-	       dns_name_equal(param->qdomain, qdomain);
+	if (*param == NS_QUERY_RECPARAM_UNSET || qname == NULL || qdomain == NULL) {
+		return false;
+	}
+
+	return *param == recparam_hash(qtype, qname, qdomain);
 }
 
 /*%
@@ -6144,21 +6167,12 @@ recparam_update(ns_query_recparam_t *param, dns_rdatatype_t qtype,
 		const dns_name_t *qname, const dns_name_t *qdomain) {
 	REQUIRE(param != NULL);
 
-	param->qtype = qtype;
-
-	if (qname == NULL) {
-		param->qname = NULL;
-	} else {
-		param->qname = dns_fixedname_initname(&param->fqname);
-		dns_name_copy(qname, param->qname);
+	if (qname == NULL || qdomain == NULL) {
+		*param = NS_QUERY_RECPARAM_UNSET;
+		return;
 	}
 
-	if (qdomain == NULL) {
-		param->qdomain = NULL;
-	} else {
-		param->qdomain = dns_fixedname_initname(&param->fqdomain);
-		dns_name_copy(qdomain, param->qdomain);
-	}
+	*param = recparam_hash(qtype, qname, qdomain);
 }
 
 static void
