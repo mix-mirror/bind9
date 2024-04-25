@@ -95,10 +95,8 @@ typedef enum {
  */
 typedef struct ns_query_recparam {
 	dns_rdatatype_t qtype;
-	dns_name_t     *qname;
-	dns_fixedname_t fqname;
-	dns_name_t     *qdomain;
-	dns_fixedname_t fqdomain;
+	dns_name_t	qname;
+	dns_name_t	qdomain;
 } ns_query_recparam_t;
 
 /*% nameserver query structure */
