@@ -573,7 +573,6 @@ loadctx_create(dns_masterformat_t format, isc_mem_t *mctx, unsigned int options,
 
 	lctx->magic = DNS_LCTX_MAGIC;
 	*lctxp = lctx;
-	return;
 }
 
 static const char *hex = "0123456789abcdef0123456789ABCDEF";
@@ -695,8 +694,7 @@ genname(char *name, int it, char *buffer, size_t length) {
 				}
 				/* Skip past closing brace. */
 				while (*name != '\0' && *name++ != '}') {
-					continue;
-				}
+									}
 			}
 			/*
 			 * 'it' is >= 0 so we don't need to check for

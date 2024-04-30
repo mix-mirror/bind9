@@ -4676,8 +4676,7 @@ again:
 	} else if (found != NULL) {
 		dns_name_copy(&name, found);
 	}
-	return;
-}
+	}
 
 static uint32_t
 dns64_ttl(dns_db_t *db, dns_dbversion_t *version) {

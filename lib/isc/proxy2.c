@@ -509,8 +509,6 @@ isc__proxy2_handler_handle_payload(isc_proxy2_handler_t *restrict handler) {
 	isc__proxy2_handler_callcb(
 		handler, ISC_R_SUCCESS, handler->cmd, handler->proxy_socktype,
 		&src_addr, &dst_addr, &handler->tlv_data, &handler->extra_data);
-
-	return;
 }
 
 static inline bool

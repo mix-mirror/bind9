@@ -113,8 +113,7 @@ recvresponse(void *arg) {
 	if (--onfly == 0) {
 		isc_loopmgr_shutdown();
 	}
-	return;
-}
+	}
 
 static isc_result_t
 sendquery(void) {
@@ -182,8 +181,7 @@ sendqueries(void *arg) {
 	if (onfly == 0) {
 		isc_loopmgr_shutdown();
 	}
-	return;
-}
+	}
 
 static void
 teardown_view(void *arg) {

@@ -754,8 +754,6 @@ isc__nm_tcp_read_stop(isc_nmhandle_t *handle) {
 	}
 	isc__nm_stop_reading(sock);
 	sock->reading = false;
-
-	return;
 }
 
 void
@@ -1058,8 +1056,6 @@ tcp_send(isc_nmhandle_t *handle, const isc_region_t *region, isc_nm_cb_t cb,
 		isc__nm_incstats(sock, STATID_SENDFAIL);
 		isc__nm_failed_send_cb(sock, uvreq, result, true);
 	}
-
-	return;
 }
 
 void

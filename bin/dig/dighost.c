@@ -3509,7 +3509,6 @@ launch_next_query(dig_query_t *query) {
 	}
 
 	lookup_detach(&l);
-	return;
 }
 
 /*%
@@ -4827,7 +4826,6 @@ dig_idnsetup(dig_lookup_t *lookup, bool active) {
 #else
 	UNUSED(lookup);
 	UNUSED(active);
-	return;
 #endif /* HAVE_LIBIDN2 */
 }
 

@@ -2086,8 +2086,6 @@ dns_zone_setmaxttl(dns_zone_t *zone, dns_ttl_t maxttl) {
 	}
 	zone->maxttl = maxttl;
 	UNLOCK_ZONE(zone);
-
-	return;
 }
 
 static void
@@ -4456,7 +4454,6 @@ set_resigntime(dns_zone_t *zone) {
 
 cleanup:
 	dns_db_detach(&db);
-	return;
 }
 
 static isc_result_t
@@ -4752,8 +4749,7 @@ failure:
 	if (sr != NULL) {
 		dns_keytable_detach(&sr);
 	}
-	return;
-}
+	}
 
 /*
  * Add a null key to the security roots for so that all queries
@@ -14762,7 +14758,6 @@ detach:
 		queue_xfrin(zone);
 	}
 	dns_zone_idetach(&zone);
-	return;
 }
 
 struct soaquery {
@@ -15292,8 +15287,7 @@ unlock:
 	if (key != NULL) {
 		dns_tsigkey_detach(&key);
 	}
-	return;
-}
+	}
 
 /*
  * Shut the zone down.

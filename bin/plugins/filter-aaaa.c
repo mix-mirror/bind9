@@ -413,8 +413,6 @@ plugin_destroy(void **instp) {
 
 	isc_mem_putanddetach(&inst->mctx, inst, sizeof(*inst));
 	*instp = NULL;
-
-	return;
 }
 
 /*

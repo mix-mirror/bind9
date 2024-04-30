@@ -890,8 +890,6 @@ isc_mem_setwater(isc_mem_t *ctx, size_t hiwater, size_t lowater) {
 
 	atomic_store_release(&ctx->hi_water, hiwater);
 	atomic_store_release(&ctx->lo_water, lowater);
-
-	return;
 }
 
 bool

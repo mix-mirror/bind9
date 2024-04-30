@@ -545,9 +545,7 @@ is_insecure(isc_prefix_t *prefix, void **data) {
 	}
 
 	/* Non-negated, non-loopback */
-	insecure_prefix_found = true; /* LOCKED */
-	return;
-}
+	insecure_prefix_found = true; }
 
 /*
  * Return true iff the acl 'a' is considered insecure, that is,

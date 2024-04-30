@@ -2590,8 +2590,7 @@ isc_nmsocket_set_max_streams(isc_nmsocket_t *listener,
 		UNUSED(max_streams);
 		break;
 	};
-	return;
-}
+	}
 
 void
 isc__nmsocket_log_tls_session_reuse(isc_nmsocket_t *sock, isc_tls_t *tls) {

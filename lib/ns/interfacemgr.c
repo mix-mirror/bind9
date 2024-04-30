@@ -242,7 +242,6 @@ route_recv(isc_nmhandle_t *handle, isc_result_t eresult, isc_region_t *region,
 	}
 
 	isc_nm_read(handle, route_recv, mgr);
-	return;
 }
 
 static void
@@ -1228,7 +1227,6 @@ do_scan(ns_interfacemgr_t *mgr, bool verbose, bool config) {
 			      ISC_LOG_ERROR, "ignoring %s interface %s: %s",
 			      (family == AF_INET) ? "IPv4" : "IPv6",
 			      interface.name, isc_result_totext(result));
-		continue;
 	}
 	if (result != ISC_R_NOMORE) {
 		UNEXPECTED_ERROR("interface iteration failed: %s",

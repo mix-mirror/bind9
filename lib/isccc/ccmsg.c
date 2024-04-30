@@ -102,8 +102,6 @@ recv_data(isc_nmhandle_t *handle, isc_result_t eresult, isc_region_t *region,
 done:
 	isc_nm_read_stop(handle);
 	ccmsg->recv_cb(handle, eresult, ccmsg->recv_cbarg);
-
-	return;
 }
 
 void

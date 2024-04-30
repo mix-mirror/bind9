@@ -441,7 +441,6 @@ rndc_recvnonce(isc_nmhandle_t *handle ISC_ATTR_UNUSED, isc_result_t result,
 
 	isccc_sexpr_free(&response);
 	isccc_sexpr_free(&request);
-	return;
 }
 
 static void

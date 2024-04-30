@@ -1051,7 +1051,6 @@ tls_send_direct(void *arg) {
 	tls_do_bio(sock, NULL, req, false);
 done:
 	isc__nm_uvreq_put(&req);
-	return;
 }
 
 static void

@@ -311,7 +311,6 @@ proxyudp_read_cb(isc_nmhandle_t *handle, isc_result_t result,
 
 failed:
 	isc__nm_proxyudp_failed_read_cb(proxysock, result, false);
-	return;
 }
 
 isc_result_t

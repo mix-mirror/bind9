@@ -327,7 +327,6 @@ currentversion(dns_db_t *db, dns_dbversion_t **versionp) {
 	REQUIRE(versionp != NULL && *versionp == NULL);
 
 	*versionp = (void *)&sdlz->dummy_version;
-	return;
 }
 
 static isc_result_t

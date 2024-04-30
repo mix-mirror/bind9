@@ -521,8 +521,7 @@ cleanup:
 	if (--onfly == 0) {
 		isc_loopmgr_shutdown();
 	}
-	return;
-}
+	}
 
 /*%
  * Add EDNS0 option record to a message.  Currently, the only supported
@@ -1610,8 +1609,7 @@ plus_option(char *option, struct query *query, bool global) {
 		fprintf(stderr, "Invalid option: +%s\n", option);
 		usage();
 	}
-	return;
-}
+	}
 
 /*%
  * #true returned if value was used

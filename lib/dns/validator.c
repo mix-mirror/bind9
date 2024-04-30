@@ -2183,7 +2183,6 @@ validate_dnskey_dsset_next_done(void *arg) {
 	}
 
 	validate_dnskey_dsset_done(val, result);
-	return;
 }
 
 static void

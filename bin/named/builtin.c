@@ -743,7 +743,6 @@ currentversion(dns_db_t *db, dns_dbversion_t **versionp) {
 	REQUIRE(VALID_BDB(bdb));
 
 	*versionp = (void *)&dummy;
-	return;
 }
 
 static void
@@ -756,7 +755,6 @@ attachversion(dns_db_t *db, dns_dbversion_t *source,
 	REQUIRE(targetp != NULL && *targetp == NULL);
 
 	*targetp = source;
-	return;
 }
 
 static void
