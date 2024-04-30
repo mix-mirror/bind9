@@ -114,7 +114,7 @@ main(int argc, char *argv[]) {
 			break;
 
 		case 'C':
-			for (t = 1; t <= 0xfeffu; t++) {
+			for (t = 1; t <= 0xfeffU; t++) {
 				if (dns_rdataclass_ismeta(t)) {
 					continue;
 				}
@@ -126,7 +126,7 @@ main(int argc, char *argv[]) {
 			exit(EXIT_SUCCESS);
 
 		case 'P':
-			for (t = 0xff00; t <= 0xfffeu; t++) {
+			for (t = 0xff00; t <= 0xfffeU; t++) {
 				if (dns_rdatatype_ismeta(t)) {
 					continue;
 				}
@@ -139,7 +139,7 @@ main(int argc, char *argv[]) {
 			break;
 
 		case 'T':
-			for (t = 1; t <= 0xfeffu; t++) {
+			for (t = 1; t <= 0xfeffU; t++) {
 				if (dns_rdatatype_ismeta(t)) {
 					continue;
 				}
@@ -208,7 +208,7 @@ main(int argc, char *argv[]) {
 		 */
 		if (token.type == isc_tokentype_number) {
 			rdclass = (dns_rdataclass_t)token.value.as_ulong;
-			if (token.value.as_ulong > 0xffffu) {
+			if (token.value.as_ulong > 0xffffU) {
 				fatal("class value too big %lu",
 				      token.value.as_ulong);
 			}
@@ -249,7 +249,7 @@ main(int argc, char *argv[]) {
 		 */
 		if (token.type == isc_tokentype_number) {
 			rdtype = (dns_rdatatype_t)token.value.as_ulong;
-			if (token.value.as_ulong > 0xffffu) {
+			if (token.value.as_ulong > 0xffffU) {
 				fatal("type value too big %lu",
 				      token.value.as_ulong);
 			}

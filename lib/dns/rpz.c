@@ -963,7 +963,7 @@ name2ipkey(int log_level, dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
 				cp += 3;
 			} else {
 				l = strtoul(cp, &cp2, 16);
-				if (l > 0xffffu ||
+				if (l > 0xffffU ||
 				    (*cp2 != '.' && *cp2 != '\0'))
 				{
 					if (*cp2 == '.') {
