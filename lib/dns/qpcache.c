@@ -923,14 +923,6 @@ bindrdataset(qpcache_t *qpdb, qpcnode_t *node, dns_slabheader_t *header,
 	bool stale = STALE(header);
 	bool ancient = ANCIENT(header);
 
-	/*
-	 * Caller must be holding the node reader lock.
-	 * XXXJT: technically, we need a writer lock, since we'll increment
-	 * the header count below.  However, since the actual counter value
-	 * doesn't matter, we prioritize performance here.  (We may want to
-	 * use atomic increment when available).
-	 */
-
 	if (rdataset == NULL) {
 		return;
 	}
@@ -1031,10 +1023,6 @@ setup_delegation(qpc_search_t *search, dns_dbnode_t **nodep,
 	REQUIRE(search->zonecut != NULL);
 	REQUIRE(search->zonecut_header != NULL);
 
-	/*
-	 * The caller MUST NOT be holding any node locks.
-	 */
-
 	node = search->zonecut;
 	type = search->zonecut_header->type;
 
@@ -1048,20 +1036,15 @@ setup_delegation(qpc_search_t *search, dns_dbnode_t **nodep,
 		search->need_cleanup = false;
 	}
 	if (rdataset != NULL) {
-		isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
-		NODE_RDLOCK(&(search->qpdb->node_locks[node->locknum].lock),
-			    &nlocktype);
 		bindrdataset(search->qpdb, node, search->zonecut_header,
-			     search->now, NULL, nlocktype,
+			     search->now, NULL, isc_rwlocktype_none,
 			     rdataset DNS__DB_FLARG_PASS);
 		if (sigrdataset != NULL && search->zonecut_sigheader != NULL) {
 			bindrdataset(search->qpdb, node,
 				     search->zonecut_sigheader, search->now,
-				     NULL, nlocktype,
+				     NULL, isc_rwlocktype_none,
 				     sigrdataset DNS__DB_FLARG_PASS);
 		}
-		NODE_UNLOCK(&(search->qpdb->node_locks[node->locknum].lock),
-			    &nlocktype);
 	}
 
 	if (type == dns_rdatatype_dname) {
@@ -3867,17 +3850,12 @@ rdatasetiter_current(dns_rdatasetiter_t *iterator,
 	qpcache_t *qpdb = (qpcache_t *)(rbtiterator->common.db);
 	qpcnode_t *qpnode = rbtiterator->common.node;
 	dns_slabheader_t *header = NULL;
-	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 
 	header = rbtiterator->current;
 	REQUIRE(header != NULL);
 
-	NODE_RDLOCK(&qpdb->node_locks[qpnode->locknum].lock, &nlocktype);
-
 	bindrdataset(qpdb, qpnode, header, rbtiterator->common.now, NULL,
-		     nlocktype, rdataset DNS__DB_FLARG_PASS);
-
-	NODE_UNLOCK(&qpdb->node_locks[qpnode->locknum].lock, &nlocktype);
+		     isc_rwlocktype_none, rdataset DNS__DB_FLARG_PASS);
 }
 
 /*
