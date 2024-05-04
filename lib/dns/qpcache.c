@@ -2579,13 +2579,9 @@ findnode(dns_db_t *db, const dns_name_t *name, bool create,
 	isc_result_t result;
 	dbmod_t modctx;
 
-	modctx = (dbmod_t){ .writing = create };
-	if (create) {
-		dns_qpmulti_write(qpdb->tree, &modctx.tree);
-	} else {
-		dns_qpmulti_query(qpdb->tree, &modctx.qpr);
-		modctx.tree = (dns_qp_t *)&modctx.qpr;
-	}
+	modctx = (dbmod_t){ .writing = false };
+	dns_qpmulti_query(qpdb->tree, &modctx.qpr);
+	modctx.tree = (dns_qp_t *)&modctx.qpr;
 
 	result = dns_qp_getname(modctx.tree, name, (void **)&node, NULL);
 	if (result != ISC_R_SUCCESS) {
@@ -2593,11 +2589,26 @@ findnode(dns_db_t *db, const dns_name_t *name, bool create,
 			goto cleanup;
 		}
 
+		/* Switch to a write transaction */
+		modctx.writing = true;
+		modctx.tree = NULL;
+		dns_qpread_destroy(qpdb->tree, &modctx.qpr);
+		dns_qpmulti_write(qpdb->tree, &modctx.tree);
+
+		/* Insert a new node, if we still need to */
 		node = new_qpcnode(qpdb, name);
 		result = dns_qp_insert(modctx.tree, node, 0);
-		INSIST(result == ISC_R_SUCCESS);
-		qpcnode_unref(node);
-		modctx.compact = true;
+		if (result == ISC_R_SUCCESS) {
+			/* Insertion succeeded; compact the DB. */
+			qpcnode_unref(node);
+			modctx.compact = true;
+		} else {
+			/* Some other thread added the node already */
+			qpcnode_detach(&node);
+			result = dns_qp_getname(modctx.tree, name,
+						(void **)&node, NULL);
+			INSIST(result == ISC_R_SUCCESS);
+		}
 	}
 
 	reactivate_node(qpdb, node, &modctx DNS__DB_FLARG_PASS);
@@ -2605,7 +2616,7 @@ findnode(dns_db_t *db, const dns_name_t *name, bool create,
 	*nodep = (dns_dbnode_t *)node;
 
 cleanup:
-	if (create) {
+	if (modctx.writing) {
 		if (modctx.compact) {
 			dns_qp_compact(modctx.tree, DNS_QPGC_MAYBE);
 		}
