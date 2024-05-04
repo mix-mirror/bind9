@@ -167,25 +167,15 @@ struct qpcnode {
 	dns_name_t name;
 	isc_mem_t *mctx;
 
-	uint8_t			: 0;
-	unsigned int delegating : 1;
-	unsigned int nsec	: 2; /*%< range is 0..3 */
-	uint8_t			: 0;
+	atomic_bool delegating;
+	atomic_uint_fast8_t nsec;
 
 	isc_refcount_t references;
 	isc_refcount_t erefs;
 	uint16_t locknum;
 	void *data;
 
-	/*%
-	 * NOTE: The 'dirty' flag is protected by the node lock, so
-	 * this bitfield has to be separated from the one above.
-	 * We don't want it to share the same qword with bits
-	 * that can be accessed without the node lock.
-	 */
-	uint8_t	      : 0;
-	uint8_t dirty : 1;
-	uint8_t	      : 0;
+	atomic_bool dirty;
 
 	/*%
 	 * Used for dead nodes cleaning.  This linked list is used to mark nodes
@@ -547,7 +537,7 @@ clean_cache_node(qpcache_t *qpdb, qpcnode_t *node) {
 			top_prev = current;
 		}
 	}
-	node->dirty = 0;
+	node->dirty = false;
 }
 
 static void
@@ -567,7 +557,7 @@ delete_node(qpcnode_t *node, dbmod_t *modctx) {
 			      printname, node->locknum);
 	}
 
-	switch (node->nsec) {
+	switch (atomic_load_relaxed(&node->nsec)) {
 	case DNS_DB_NSEC_HAS_NSEC:
 		/*
 		 * Delete the corresponding node from the auxiliary NSEC
@@ -1185,30 +1175,31 @@ check_stale_header(qpcnode_t *node, dns_slabheader_t *header,
 	return (false);
 }
 
-static isc_result_t
-check_zonecut(qpcnode_t *node, void *arg DNS__DB_FLARG) {
+static bool
+has_dname(qpcnode_t *node, void *arg DNS__DB_FLARG) {
 	qpc_search_t *search = arg;
 	dns_slabheader_t *header = NULL;
 	dns_slabheader_t *header_prev = NULL, *header_next = NULL;
 	dns_slabheader_t *dname_header = NULL, *sigdname_header = NULL;
-	isc_result_t result;
 	isc_rwlock_t *lock = NULL;
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
+	bool ret = false;
 
 	REQUIRE(search->zonecut == NULL);
 
-	lock = &(search->qpdb->node_locks[node->locknum].lock);
-	NODE_RDLOCK(lock, &nlocktype);
-
-	/* If this node didn't have the delegating flag set, move on. */
+	/*
+	 * If this node never had the delegating flag set, skip it.
+	 */
 	if (!node->delegating) {
-		result = DNS_R_CONTINUE;
-		goto unlock;
+		return (false);
 	}
 
 	/*
-	 * Look for a DNAME or RRSIG DNAME rdataset.
+	 * Otherwise, look for a cached DNAME or RRSIG(DNAME) rdataset.
 	 */
+	lock = &(search->qpdb->node_locks[node->locknum].lock);
+	NODE_RDLOCK(lock, &nlocktype);
+
 	for (header = node->data; header != NULL; header = header_next) {
 		header_next = header->next;
 		if (check_stale_header(node, header, &nlocktype, lock, search,
@@ -1243,15 +1234,12 @@ check_zonecut(qpcnode_t *node, void *arg DNS__DB_FLARG) {
 		search->zonecut_header = dname_header;
 		search->zonecut_sigheader = sigdname_header;
 		search->need_cleanup = true;
-		result = DNS_R_PARTIALMATCH;
-	} else {
-		result = DNS_R_CONTINUE;
+		ret = true;
 	}
 
-unlock:
 	NODE_UNLOCK(lock, &nlocktype);
 
-	return (result);
+	return (ret);
 }
 
 static isc_result_t
@@ -1506,7 +1494,7 @@ find(dns_db_t *db, const dns_name_t *name,
 	dns_qpmulti_query(search.qpdb->nsec, &search.nsec);
 
 	/*
-	 * Search down from the root of the tree.
+	 * Search for the node with the closest match to QNAME.
 	 */
 	result = dns_qp_lookup(&search.tree, name, NULL, NULL, &search.chain,
 			       (void **)&node, NULL);
@@ -1516,10 +1504,11 @@ find(dns_db_t *db, const dns_name_t *name,
 
 	/*
 	 * Check the QP chain to see if there's a node above us with a
-	 * active DNAME or NS rdatasets.
+	 * DNAME rdataset cached.
 	 *
 	 * We're only interested in nodes above QNAME, so if the result
-	 * was success, then we skip the last item in the chain.
+	 * was success, then we skip the last item in the chain (which
+	 * would be QNAME).
 	 */
 	unsigned int len = dns_qpchain_length(&search.chain);
 	if (result == ISC_R_SUCCESS) {
@@ -1527,15 +1516,10 @@ find(dns_db_t *db, const dns_name_t *name,
 	}
 
 	for (unsigned int i = 0; i < len; i++) {
-		isc_result_t zcresult;
 		qpcnode_t *encloser = NULL;
-
 		dns_qpchain_node(&search.chain, i, NULL, (void **)&encloser,
 				 NULL);
-
-		zcresult = check_zonecut(encloser,
-					 (void *)&search DNS__DB_FLARG_PASS);
-		if (zcresult != DNS_R_CONTINUE) {
+		if (has_dname(encloser, (void *)&search DNS__DB_FLARG_PASS)) {
 			result = DNS_R_PARTIALMATCH;
 			search.chain.len = i - 1;
 			node = encloser;
@@ -1548,8 +1532,8 @@ find(dns_db_t *db, const dns_name_t *name,
 
 	if (result == DNS_R_PARTIALMATCH) {
 		/*
-		 * If we discovered a covering DNAME skip looking for a covering
-		 * NSEC.
+		 * If we discovered a covering DNAME, skip looking for a
+		 * covering NSEC.
 		 */
 		if ((search.options & DNS_DBFIND_COVERINGNSEC) != 0 &&
 		    (search.zonecut_header == NULL ||
@@ -1942,7 +1926,7 @@ findzonecut(dns_db_t *db, const dns_name_t *name, unsigned int options,
 	}
 
 	/*
-	 * Search down from the root of the tree.
+	 * Search for the node with the closest match to QNAME.
 	 */
 	result = dns_qp_lookup(&search.tree, name, NULL, NULL, &search.chain,
 			       (void **)&node, NULL);
@@ -3130,7 +3114,7 @@ find_header:
 			newheader->next = topheader->next;
 			newheader->down = topheader;
 			topheader->next = newheader;
-			qpnode->dirty = 1;
+			qpnode->dirty = true;
 			mark_ancient(header);
 			if (sigheader != NULL) {
 				mark_ancient(sigheader);
@@ -3177,7 +3161,7 @@ find_header:
 			newheader->next = topheader->next;
 			newheader->down = topheader;
 			topheader->next = newheader;
-			qpnode->dirty = 1;
+			qpnode->dirty = true;
 		} else {
 			/*
 			 * No rdatasets of the given type exist at the node.
@@ -3406,13 +3390,11 @@ addrdataset(dns_db_t *db, dns_dbnode_t *node,
 	/*
 	 * Add to the auxiliary NSEC tree if we're adding an NSEC record.
 	 */
-	NODE_RDLOCK(&qpdb->node_locks[qpnode->locknum].lock, &nlocktype);
-	if (qpnode->nsec != DNS_DB_NSEC_HAS_NSEC &&
-	    rdataset->type == dns_rdatatype_nsec)
+	if (rdataset->type == dns_rdatatype_nsec &&
+	    atomic_load_relaxed(&qpnode->nsec) != DNS_DB_NSEC_HAS_NSEC)
 	{
 		newnsec = true;
 	}
-	NODE_UNLOCK(&qpdb->node_locks[qpnode->locknum].lock, &nlocktype);
 
 	/*
 	 * If we're adding a delegation type, adding to the auxiliary NSEC
@@ -3480,7 +3462,7 @@ addrdataset(dns_db_t *db, dns_dbnode_t *node,
 			     nlocktype DNS__DB_FLARG_PASS);
 	}
 	if (result == ISC_R_SUCCESS && delegating) {
-		qpnode->delegating = 1;
+		qpnode->delegating = true;
 	}
 
 	NODE_UNLOCK(&qpdb->node_locks[qpnode->locknum].lock, &nlocktype);
