@@ -173,7 +173,7 @@ struct qpcnode {
 	isc_refcount_t references;
 	isc_refcount_t erefs;
 	uint16_t locknum;
-	void *data;
+	atomic_ptr(void) data;
 
 	atomic_bool dirty;
 
@@ -640,16 +640,16 @@ static void
 cleanup_deadnodes(void *arg);
 
 /*
- * Caller must be holding the node lock; either the read or write lock.
- * Note that the lock must be held even when node references are
- * atomically modified; in that case the decrement operation itself does not
- * have to be protected, but we must avoid a race condition where multiple
- * threads are decreasing the reference to zero simultaneously and at least
- * one of them is going to free the node.
- *
  * This decrements both the internal and external node reference counters.
  * If the external reference count drops to zero, then the node lock
  * reference count is also decremented.
+ *
+ * The node lock is not required in the most typical case - when the
+ * node is not dirty and not being deleted, or when external references
+ * are greater than 1. When it is required, so that we can clean the
+ * node up, then we will either acquire a write lock, or upgraded an
+ * existing read lock to a write lock. If we acquire it, then we will
+ * also release it; if we upgrade it, then *nlocktypep will be updated.
  *
  * This function returns true if and only if the node reference decreases
  * to zero.  (NOTE: Decrementing the reference count of a node to zero does
@@ -661,8 +661,7 @@ decref(qpcache_t *qpdb, qpcnode_t *node, dbmod_t *modctx,
 	db_nodelock_t *nodelock = NULL;
 	int bucket = node->locknum;
 	uint_fast32_t refs;
-
-	REQUIRE(*nlocktypep != isc_rwlocktype_none);
+	bool unlock = false;
 
 	nodelock = &qpdb->node_locks[bucket];
 
@@ -697,11 +696,6 @@ decref(qpcache_t *qpdb, qpcnode_t *node, dbmod_t *modctx,
 		return (no_reference);
 	}
 
-	/* Upgrade the lock? */
-	if (*nlocktypep == isc_rwlocktype_read) {
-		NODE_FORCEUPGRADE(&nodelock->lock, nlocktypep);
-	}
-
 	refs = isc_refcount_decrement(&node->erefs);
 #if DNS_DB_NODETRACE
 	fprintf(stderr, "decr:node:%s:%s:%u:%p->erefs = %" PRIuFAST32 "\n",
@@ -714,6 +708,19 @@ decref(qpcache_t *qpdb, qpcnode_t *node, dbmod_t *modctx,
 	}
 
 	INSIST(refs == 1);
+
+	/* Get or upgrade the lock */
+	switch (*nlocktypep) {
+	case isc_rwlocktype_none:
+		NODE_WRLOCK(&nodelock->lock, nlocktypep);
+		unlock = true;
+		break;
+	case isc_rwlocktype_read:
+		NODE_FORCEUPGRADE(&nodelock->lock, nlocktypep);
+		break;
+	default:
+		break;
+	}
 
 	if (node->dirty) {
 		clean_cache_node(qpdb, node);
@@ -750,6 +757,10 @@ decref(qpcache_t *qpdb, qpcnode_t *node, dbmod_t *modctx,
 #undef KEEP_NODE
 
 	qpcnode_unref(node);
+
+	if (unlock) {
+		NODE_UNLOCK(&nodelock->lock, nlocktypep);
+	}
 	return (true);
 }
 
@@ -1864,11 +1875,7 @@ tree_exit:
 	if (search.need_cleanup) {
 		node = search.zonecut;
 		INSIST(node != NULL);
-		lock = &(search.qpdb->node_locks[node->locknum].lock);
-
-		NODE_RDLOCK(lock, &nlocktype);
 		decref(search.qpdb, node, NULL, &nlocktype DNS__DB_FLARG_PASS);
-		NODE_UNLOCK(lock, &nlocktype);
 	}
 
 	update_cachestats(search.qpdb, result);
@@ -2656,9 +2663,6 @@ detachnode(dns_db_t *db, dns_dbnode_t **targetp DNS__DB_FLARG) {
 
 	node = (qpcnode_t *)(*targetp);
 	nodelock = &qpdb->node_locks[node->locknum];
-
-	NODE_RDLOCK(&nodelock->lock, &nlocktype);
-
 	if (decref(qpdb, node, NULL, &nlocktype DNS__DB_FLARG_PASS)) {
 		if (isc_refcount_current(&nodelock->references) == 0 &&
 		    nodelock->exiting)
@@ -2666,8 +2670,6 @@ detachnode(dns_db_t *db, dns_dbnode_t **targetp DNS__DB_FLARG) {
 			inactive = true;
 		}
 	}
-
-	NODE_UNLOCK(&nodelock->lock, &nlocktype);
 
 	*targetp = NULL;
 
@@ -3889,18 +3891,13 @@ static void
 dereference_iter_node(qpc_dbit_t *qpdbiter DNS__DB_FLARG) {
 	qpcache_t *qpdb = (qpcache_t *)qpdbiter->common.db;
 	qpcnode_t *node = qpdbiter->node;
-	isc_rwlock_t *lock = NULL;
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 
 	if (node == NULL) {
 		return;
 	}
 
-	lock = &qpdb->node_locks[node->locknum].lock;
-	NODE_RDLOCK(lock, &nlocktype);
 	decref(qpdb, node, NULL, &nlocktype DNS__DB_FLARG_PASS);
-	NODE_UNLOCK(lock, &nlocktype);
-
 	qpdbiter->node = NULL;
 }
 
