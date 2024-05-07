@@ -75,7 +75,7 @@ struct dns_slabheader {
 	dns_ttl_t	      ttl;
 	dns_typepair_t	      type;
 	atomic_uint_least16_t attributes;
-	dns_trust_t	      trust;
+	atomic_uint_fast16_t  trust;
 
 	unsigned int heap_index;
 	/*%<

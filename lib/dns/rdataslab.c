@@ -1413,9 +1413,7 @@ static void
 rdataset_settrust(dns_rdataset_t *rdataset, dns_trust_t trust) {
 	dns_slabheader_t *header = dns_slabheader_fromrdataset(rdataset);
 
-	dns_db_locknode(header->db, header->node, isc_rwlocktype_write);
 	header->trust = rdataset->trust = trust;
-	dns_db_unlocknode(header->db, header->node, isc_rwlocktype_write);
 }
 
 static void
