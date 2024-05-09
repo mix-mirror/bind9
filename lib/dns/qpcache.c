@@ -1237,12 +1237,12 @@ has_dname(qpcnode_t *node, void *arg DNS__DB_FLARG) {
 }
 
 static isc_result_t
-find_deepest_zonecut(qpc_search_t *search, qpcnode_t *node,
-		     dns_dbnode_t **nodep, dns_name_t *foundname,
-		     dns_rdataset_t *rdataset,
+find_deepest_zonecut(qpc_search_t *search, dns_dbnode_t **nodep,
+		     dns_name_t *foundname, dns_rdataset_t *rdataset,
 		     dns_rdataset_t *sigrdataset DNS__DB_FLARG) {
 	isc_result_t result = ISC_R_NOTFOUND;
 	qpcache_t *qpdb = NULL;
+	qpcnode_t *node = NULL;
 
 	qpdb = search->qpdb;
 
@@ -1548,7 +1548,7 @@ find(dns_db_t *db, const dns_name_t *name,
 		} else {
 		find_ns:
 			result = find_deepest_zonecut(
-				&search, node, nodep, foundname, rdataset,
+				&search, nodep, foundname, rdataset,
 				sigrdataset DNS__DB_FLARG_PASS);
 			goto tree_exit;
 		}
@@ -1937,7 +1937,7 @@ findzonecut(dns_db_t *db, const dns_name_t *name, unsigned int options,
 	}
 
 	if (result == DNS_R_PARTIALMATCH) {
-		result = find_deepest_zonecut(&search, node, nodep, foundname,
+		result = find_deepest_zonecut(&search, nodep, foundname,
 					      rdataset,
 					      sigrdataset DNS__DB_FLARG_PASS);
 		goto tree_exit;
@@ -1971,7 +1971,7 @@ findzonecut(dns_db_t *db, const dns_name_t *name, unsigned int options,
 			 */
 			NODE_UNLOCK(lock, &nlocktype);
 			result = find_deepest_zonecut(
-				&search, node, nodep, foundname, rdataset,
+				&search, nodep, foundname, rdataset,
 				sigrdataset DNS__DB_FLARG_PASS);
 			dns_name_copy(foundname, dcname);
 			goto tree_exit;
@@ -2007,7 +2007,7 @@ findzonecut(dns_db_t *db, const dns_name_t *name, unsigned int options,
 		 * No NS records here.
 		 */
 		NODE_UNLOCK(lock, &nlocktype);
-		result = find_deepest_zonecut(&search, node, nodep, foundname,
+		result = find_deepest_zonecut(&search, nodep, foundname,
 					      rdataset,
 					      sigrdataset DNS__DB_FLARG_PASS);
 		goto tree_exit;
