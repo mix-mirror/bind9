@@ -31,14 +31,6 @@
 #include <dns/rdatastruct.h>
 #define KEEP_BEFORE
 
-/* Include the main file */
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wshadow"
-#undef CHECK
-#include "qpcache.c"
-#pragma GCC diagnostic pop
-
 #undef CHECK
 #include <tests/dns.h>
 

@@ -60,6 +60,7 @@
 #include <dns/zonekey.h>
 
 #include "db_p.h"
+#include "probes.h"
 #include "qpcache_p.h"
 
 #define CHECK(op)                            \
@@ -1559,6 +1560,8 @@ find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	REQUIRE(VALID_QPDB((qpcache_t *)db));
 	REQUIRE(version == NULL);
 
+	LIBDNS_QPCACHE_FIND_START(db, (void *)name, now, options);
+
 	if (now == 0) {
 		now = isc_stdtime_now();
 	}
@@ -1973,6 +1976,9 @@ tree_exit:
 	}
 
 	update_cachestats(search.qpdb, result);
+
+	LIBDNS_QPCACHE_FIND_DONE(db, (void *)name, now, options, result);
+
 	return (result);
 }
 
@@ -2323,11 +2329,15 @@ expiredata(dns_db_t *db, dns_dbnode_t *node, void *data) {
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 	isc_rwlocktype_t tlocktype = isc_rwlocktype_none;
 
+	LIBDNS_QPCACHE_EXPIREDATA_START(db, node, data);
+
 	NODE_WRLOCK(&qpdb->node_locks[qpnode->locknum].lock, &nlocktype);
 	expireheader(header, &nlocktype, &tlocktype,
 		     dns_expire_flush DNS__DB_FILELINE);
 	NODE_UNLOCK(&qpdb->node_locks[qpnode->locknum].lock, &nlocktype);
 	INSIST(tlocktype == isc_rwlocktype_none);
+
+	LIBDNS_QPCACHE_EXPIREDATA_DONE(db, node, data);
 }
 
 static size_t
@@ -2346,6 +2356,8 @@ expire_lru_headers(qpcache_t *qpdb, unsigned int locknum,
 		   size_t purgesize DNS__DB_FLARG) {
 	dns_slabheader_t *header = NULL;
 	size_t purged = 0;
+
+	LIBDNS_QPCACHE_EXPIRE_LRU_START(qpdb, locknum, purgesize);
 
 	for (header = ISC_LIST_TAIL(qpdb->lru[locknum]);
 	     header != NULL && header->last_used <= qpdb->last_used &&
@@ -2366,6 +2378,8 @@ expire_lru_headers(qpcache_t *qpdb, unsigned int locknum,
 			     dns_expire_lru DNS__DB_FLARG_PASS);
 		purged += header_size;
 	}
+
+	LIBDNS_QPCACHE_EXPIRE_LRU_DONE(qpdb, locknum, purgesize);
 
 	return (purged);
 }
@@ -2388,6 +2402,8 @@ overmem(qpcache_t *qpdb, dns_slabheader_t *newheader,
 	size_t purgesize, purged = 0;
 	isc_stdtime_t min_last_used = 0;
 	size_t max_passes = 8;
+
+	LIBDNS_QPCACHE_OVERMEM_START(qpdb);
 
 	/*
 	 * Maximum estimated size of the data being added: The size
@@ -2435,6 +2451,8 @@ again:
 			}
 		}
 	}
+
+	LIBDNS_QPCACHE_OVERMEM_DONE(qpdb, purged, 8 - max_passes);
 }
 
 /*%
@@ -3407,6 +3425,8 @@ addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	REQUIRE(VALID_QPDB(qpdb));
 	REQUIRE(version == NULL);
 
+	LIBDNS_QPCACHE_ADDRDATASET_START(db, node, rdataset);
+
 	if (now == 0) {
 		now = isc_stdtime_now();
 	}
@@ -3562,6 +3582,9 @@ addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	}
 	INSIST(tlocktype == isc_rwlocktype_none);
 
+	LIBDNS_QPCACHE_ADDRDATASET_DONE(db, node, rdataset, result,
+					cache_is_overmem);
+
 	return (result);
 }
 
@@ -3577,10 +3600,18 @@ deleterdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	REQUIRE(VALID_QPDB(qpdb));
 	REQUIRE(version == NULL);
 
+	LIBDNS_QPCACHE_DELETERDATASET_START(qpdb, node, version, type, covers);
+
 	if (type == dns_rdatatype_any) {
+		LIBDNS_QPCACHE_DELETERDATASET_DONE(qpdb, node, version, type,
+						   covers,
+						   ISC_R_NOTIMPLEMENTED);
 		return (ISC_R_NOTIMPLEMENTED);
 	}
 	if (type == dns_rdatatype_rrsig && covers == 0) {
+		LIBDNS_QPCACHE_DELETERDATASET_DONE(qpdb, node, version, type,
+						   covers,
+						   ISC_R_NOTIMPLEMENTED);
 		return (ISC_R_NOTIMPLEMENTED);
 	}
 
@@ -3594,6 +3625,9 @@ deleterdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 		     NULL, 0, nlocktype,
 		     isc_rwlocktype_none DNS__DB_FLARG_PASS);
 	NODE_UNLOCK(&qpdb->node_locks[qpnode->locknum].lock, &nlocktype);
+
+	LIBDNS_QPCACHE_DELETERDATASET_DONE(qpdb, node, version, type, covers,
+					   result);
 
 	return (result);
 }
@@ -3649,6 +3683,8 @@ locknode(dns_db_t *db, dns_dbnode_t *node, isc_rwlocktype_t type) {
 	qpcache_t *qpdb = (qpcache_t *)db;
 	qpcnode_t *qpnode = (qpcnode_t *)node;
 
+	LIBDNS_QPCACHE_LOCKNODE(db, node, type == isc_rwlocktype_write);
+
 	RWLOCK(&qpdb->node_locks[qpnode->locknum].lock, type);
 }
 
@@ -3658,6 +3694,8 @@ unlocknode(dns_db_t *db, dns_dbnode_t *node, isc_rwlocktype_t type) {
 	qpcnode_t *qpnode = (qpcnode_t *)node;
 
 	RWUNLOCK(&qpdb->node_locks[qpnode->locknum].lock, type);
+
+	LIBDNS_QPCACHE_UNLOCKNODE(db, node, type == isc_rwlocktype_write);
 }
 
 isc_result_t
@@ -4300,6 +4338,8 @@ deletedata(dns_db_t *db ISC_ATTR_UNUSED, dns_dbnode_t *node ISC_ATTR_UNUSED,
 	dns_slabheader_t *header = data;
 	qpcache_t *qpdb = (qpcache_t *)header->db;
 
+	LIBDNS_QPCACHE_DELETEDATA_START(qpdb, node, data);
+
 	if (header->heap != NULL && header->heap_index != 0) {
 		isc_heap_delete(header->heap, header->heap_index);
 	}
@@ -4318,6 +4358,8 @@ deletedata(dns_db_t *db ISC_ATTR_UNUSED, dns_dbnode_t *node ISC_ATTR_UNUSED,
 	if (header->closest != NULL) {
 		dns_slabheader_freeproof(db->mctx, &header->closest);
 	}
+
+	LIBDNS_QPCACHE_DELETEDATA_DONE(qpdb, node, data);
 }
 
 /*
@@ -4328,6 +4370,8 @@ expire_ttl_headers(qpcache_t *qpdb, unsigned int locknum,
 		   isc_rwlocktype_t *nlocktypep, isc_rwlocktype_t *tlocktypep,
 		   isc_stdtime_t now, bool cache_is_overmem DNS__DB_FLARG) {
 	isc_heap_t *heap = qpdb->heaps[locknum];
+
+	LIBDNS_QPCACHE_EXPIRE_TTL_START(qpdb, locknum, now);
 
 	for (size_t i = 0; i < DNS_QPDB_EXPIRE_TTL_COUNT; i++) {
 		dns_slabheader_t *header = isc_heap_element(heap, 1);
@@ -4351,12 +4395,16 @@ expire_ttl_headers(qpcache_t *qpdb, unsigned int locknum,
 			 * the same heap can be eligible for expiry, either;
 			 * exit cleaning.
 			 */
+			LIBDNS_QPCACHE_EXPIRE_TTL_DONE(qpdb, locknum, now, i);
 			return;
 		}
 
 		expireheader(header, nlocktypep, tlocktypep,
 			     dns_expire_ttl DNS__DB_FLARG_PASS);
 	}
+
+	LIBDNS_QPCACHE_EXPIRE_TTL_DONE(qpdb, locknum, now,
+				       DNS_QPDB_EXPIRE_TTL_COUNT);
 }
 
 static void
