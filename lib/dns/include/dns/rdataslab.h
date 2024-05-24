@@ -175,7 +175,8 @@ extern dns_rdatasetmethods_t dns_rdataslab_rdatasetmethods;
 
 isc_result_t
 dns_rdataslab_fromrdataset(dns_rdataset_t *rdataset, isc_mem_t *mctx,
-			   isc_region_t *region, uint32_t limit);
+			   isc_region_t *region, uint32_t limit,
+			   unsigned int name_length);
 /*%<
  * Allocate space for a slab to hold the data in rdataset, and copy the
  * data into it.  The resulting slab will be returned in 'region'.
@@ -228,9 +229,10 @@ dns_rdataslab_count(dns_slabheader_t *header);
 
 isc_result_t
 dns_rdataslab_merge(dns_slabheader_t *oheader, dns_slabheader_t *nheader,
-		    isc_mem_t *mctx, dns_rdataclass_t rdclass,
-		    dns_rdatatype_t type, unsigned int flags,
-		    uint32_t maxrrperset, dns_slabheader_t **theaderp);
+		    unsigned int name_length, isc_mem_t *mctx,
+		    dns_rdataclass_t rdclass, dns_rdatatype_t type,
+		    unsigned int flags, uint32_t maxrrperset,
+		    dns_slabheader_t **theaderp);
 /*%<
  * Merge the slabs following 'oheader' and 'nheader'.
  */
