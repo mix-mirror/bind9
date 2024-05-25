@@ -49,32 +49,8 @@
 #include "probes.h"
 #include "qp_p.h"
 
-#ifndef DNS_QP_LOG_STATS
-#define DNS_QP_LOG_STATS 1
-#endif
 #ifndef DNS_QP_TRACE
 #define DNS_QP_TRACE 0
-#endif
-
-/*
- * very basic garbage collector statistics
- *
- * XXXFANF for now we're logging GC times, but ideally we should
- * accumulate stats more quietly and report via the statschannel
- */
-static atomic_uint_fast64_t compact_time;
-static atomic_uint_fast64_t recycle_time;
-static atomic_uint_fast64_t rollback_time;
-
-/* for LOG_STATS() format strings */
-#define PRItime " %" PRIu64 " ns "
-
-#if DNS_QP_LOG_STATS
-#define LOG_STATS(...)                                            \
-	isc_log_write(DNS_LOGCATEGORY_DATABASE, DNS_LOGMODULE_QP, \
-		      ISC_LOG_DEBUG(1), __VA_ARGS__)
-#else
-#define LOG_STATS(...)
 #endif
 
 #if DNS_QP_TRACE
@@ -667,8 +643,6 @@ static void
 recycle(dns_qp_t *qp) {
 	ISC_ATTR_UNUSED uint32_t recycled = 0;
 
-	isc_nanosecs_t start = isc_time_monotonic();
-
 	LIBDNS_QP_RECYCLE_START(qp);
 
 	for (dns_qpchunk_t chunk = 0; chunk < qp->chunk_max; chunk++) {
@@ -684,17 +658,6 @@ recycle(dns_qp_t *qp) {
 
 	LIBDNS_QP_RECYCLE_DONE(qp, recycled, qp->leaf_count, qp->used_count,
 			       qp->free_count, qp->hold_count);
-
-	isc_nanosecs_t time = isc_time_monotonic() - start;
-	atomic_fetch_add_relaxed(&recycle_time, time);
-
-	if (recycled > 0) {
-		LOG_STATS("qp recycle" PRItime "free %zu chunks", time,
-			  recycled);
-		LOG_STATS("qp recycle leaf %u live %u used %u free %u hold %u",
-			  qp->leaf_count, qp->used_count - qp->free_count,
-			  qp->used_count, qp->free_count, qp->hold_count);
-	}
 }
 
 /*
@@ -714,7 +677,6 @@ reclaim_chunks_cb(struct rcu_head *arg) {
 
 	LIBDNS_QP_RECLAIM_CHUNKS_START(qp);
 
-	isc_nanosecs_t start = isc_time_monotonic();
 	ISC_ATTR_UNUSED uint32_t reclaimed = 0;
 
 	for (unsigned int i = 0; i < rcuctx->count; i++) {
@@ -733,20 +695,9 @@ reclaim_chunks_cb(struct rcu_head *arg) {
 	isc_mem_putanddetach(&rcuctx->mctx, rcuctx,
 			     STRUCT_FLEX_SIZE(rcuctx, chunk, rcuctx->count));
 
-	isc_nanosecs_t time = isc_time_monotonic() - start;
-	recycle_time += time;
-
 	LIBDNS_QP_RECLAIM_CHUNKS_DONE(qp, reclaimed, qp->leaf_count,
 				      qp->used_count, qp->free_count,
 				      qp->hold_count);
-
-	if (reclaimed > 0) {
-		LOG_STATS("qp reclaim" PRItime "free %zu chunks", time,
-			  reclaimed);
-		LOG_STATS("qp reclaim leaf %u live %u used %u free %u hold %u",
-			  qp->leaf_count, qp->used_count - qp->free_count,
-			  qp->used_count, qp->free_count, qp->hold_count);
-	}
 
 	UNLOCK(&multi->mutex);
 }
@@ -794,8 +745,6 @@ reclaim_chunks(dns_qpmulti_t *multi) {
 	}
 
 	call_rcu(&rcuctx->rcu_head, reclaim_chunks_cb);
-
-	LOG_STATS("qp will reclaim %u chunks", count);
 }
 
 /*
@@ -805,8 +754,6 @@ reclaim_chunks(dns_qpmulti_t *multi) {
 static void
 marksweep_chunks(dns_qpmulti_t *multi) {
 	ISC_ATTR_UNUSED uint32_t sweeped = 0;
-
-	isc_nanosecs_t start = isc_time_monotonic();
 
 	dns_qp_t *qpw = &multi->writer;
 
@@ -838,18 +785,6 @@ marksweep_chunks(dns_qpmulti_t *multi) {
 	LIBDNS_QPMULTI_MARKSWEEP_DONE(multi, qpw, sweeped, qpw->leaf_count,
 				      qpw->used_count, qpw->free_count,
 				      qpw->hold_count);
-
-	isc_nanosecs_t time = isc_time_monotonic() - start;
-	recycle_time += time;
-
-	if (sweeped > 0) {
-		LOG_STATS("qp marksweep" PRItime "free %zu chunks", time,
-			  sweeped);
-		LOG_STATS(
-			"qp marksweep leaf %u live %u used %u free %u hold %u",
-			qpw->leaf_count, qpw->used_count - qpw->free_count,
-			qpw->used_count, qpw->free_count, qpw->hold_count);
-	}
 }
 
 /***********************************************************************
@@ -954,14 +889,8 @@ compact_recursive(dns_qp_t *qp, dns_qpnode_t *parent) {
 
 static void
 compact(dns_qp_t *qp) {
-	LOG_STATS("qp compact before leaf %u live %u used %u free %u hold %u",
-		  qp->leaf_count, qp->used_count - qp->free_count,
-		  qp->used_count, qp->free_count, qp->hold_count);
-
 	LIBDNS_QP_COMPACT_START(qp, qp->leaf_count, qp->used_count,
 				qp->free_count, qp->hold_count);
-
-	isc_nanosecs_t start = isc_time_monotonic();
 
 	if (qp->usage[qp->bump].free > QP_MAX_FREE) {
 		alloc_reset(qp);
@@ -974,14 +903,6 @@ compact(dns_qp_t *qp) {
 
 	LIBDNS_QP_COMPACT_DONE(qp, qp->leaf_count, qp->used_count,
 			       qp->free_count, qp->hold_count);
-
-	isc_nanosecs_t time = isc_time_monotonic() - start;
-	atomic_fetch_add_relaxed(&compact_time, time);
-
-	LOG_STATS("qp compact" PRItime
-		  "leaf %u live %u used %u free %u hold %u",
-		  time, qp->leaf_count, qp->used_count - qp->free_count,
-		  qp->used_count, qp->free_count, qp->hold_count);
 }
 
 void
@@ -1100,14 +1021,6 @@ dns_qpmulti_memusage(dns_qpmulti_t *multi) {
 
 	UNLOCK(&multi->mutex);
 	return (memusage);
-}
-
-void
-dns_qp_gctime(isc_nanosecs_t *compact_p, isc_nanosecs_t *recycle_p,
-	      isc_nanosecs_t *rollback_p) {
-	*compact_p = atomic_load_relaxed(&compact_time);
-	*recycle_p = atomic_load_relaxed(&recycle_time);
-	*rollback_p = atomic_load_relaxed(&rollback_time);
 }
 
 /***********************************************************************
@@ -1342,11 +1255,6 @@ dns_qpmulti_rollback(dns_qpmulti_t *multi, dns_qp_t **qptp) {
 	INSIST(multi->rollback == NULL);
 
 	LIBDNS_QPMULTI_TXN_ROLLBACK_DONE(multi, qptp, reclaimed);
-
-	isc_nanosecs_t time = isc_time_monotonic() - start;
-	atomic_fetch_add_relaxed(&rollback_time, time);
-
-	LOG_STATS("qp rollback" PRItime "free %u chunks", time, reclaimed);
 
 	*qptp = NULL;
 	UNLOCK(&multi->mutex);
