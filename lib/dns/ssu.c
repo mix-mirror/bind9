@@ -173,6 +173,16 @@ mtypetostring(dns_ssumatchtype_t matchtype) {
 		return "local";
 	case dns_ssumatchtype_dlz:
 		return "dlz";
+	case dns_ssumatchtype_64self:
+		return "64-self";
+	case dns_ssumatchtype_60self:
+		return "60-self";
+	case dns_ssumatchtype_56self:
+		return "56-self";
+	case dns_ssumatchtype_52self:
+		return "52-self";
+	case dns_ssumatchtype_48self:
+		return "48-self";
 	}
 	return "UnknownMatchType";
 }
@@ -281,44 +291,72 @@ reverse_from_address(dns_name_t *tcpself, const isc_netaddr_t *tcpaddr) {
 	RUNTIME_CHECK(result == ISC_R_SUCCESS);
 }
 
-static void
-stf_from_address(dns_name_t *stfself, const isc_netaddr_t *tcpaddr) {
-	char buf[sizeof("X.X.X.X.Y.Y.Y.Y.2.0.0.2.IP6.ARPA.")];
+static bool
+stf_from_address(dns_name_t *stfself, dns_ssumatchtype_t matchtype,
+		 const isc_netaddr_t *tcpaddr) {
+	char buf[sizeof("1.2.3.4.5.6.7.8.1.2.3.4.5.6.7.8.IP6.ARPA.")];
 	isc_result_t result;
 	const unsigned char *ap;
 	isc_buffer_t b;
 	unsigned long l;
+	char *s = buf;
+	int n;
 
 	switch (tcpaddr->family) {
 	case AF_INET:
+		if (matchtype != dns_ssumatchtype_6to4self) {
+			return false;
+		}
 		l = ntohl(tcpaddr->type.in.s_addr);
-		result = snprintf(
+		n = snprintf(
 			buf, sizeof(buf),
 			"%lx.%lx.%lx.%lx.%lx.%lx.%lx.%lx.2.0.0.2.IP6.ARPA.",
 			l & 0xf, (l >> 4) & 0xf, (l >> 8) & 0xf,
 			(l >> 12) & 0xf, (l >> 16) & 0xf, (l >> 20) & 0xf,
 			(l >> 24) & 0xf, (l >> 28) & 0xf);
-		RUNTIME_CHECK(result < sizeof(buf));
+		RUNTIME_CHECK(n != -1 && (size_t)n < sizeof(buf));
 		break;
 	case AF_INET6:
 		ap = tcpaddr->type.in6.s6_addr;
-		result = snprintf(
+		n = snprintf(
 			buf, sizeof(buf),
-			"%x.%x.%x.%x.%x.%x.%x.%x."
-			"%x.%x.%x.%x.IP6.ARPA.",
-			ap[5] & 0x0f, (ap[5] >> 4) & 0x0f, ap[4] & 0x0f,
-			(ap[4] >> 4) & 0x0f, ap[3] & 0x0f, (ap[3] >> 4) & 0x0f,
-			ap[2] & 0x0f, (ap[2] >> 4) & 0x0f, ap[1] & 0x0f,
-			(ap[1] >> 4) & 0x0f, ap[0] & 0x0f, (ap[0] >> 4) & 0x0f);
-		RUNTIME_CHECK(result < sizeof(buf));
+			"%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.%x.IP6."
+			"ARPA.",
+			ap[7] & 0x0f, (ap[7] >> 4) & 0x0f, ap[6] & 0x0f,
+			(ap[6] >> 4) & 0x0f, ap[5] & 0x0f, (ap[5] >> 4) & 0x0f,
+			ap[4] & 0x0f, (ap[4] >> 4) & 0x0f, ap[3] & 0x0f,
+			(ap[3] >> 4) & 0x0f, ap[2] & 0x0f, (ap[2] >> 4) & 0x0f,
+			ap[1] & 0x0f, (ap[1] >> 4) & 0x0f, ap[0] & 0x0f,
+			(ap[0] >> 4) & 0x0f);
+		RUNTIME_CHECK(n != -1 && (size_t)n < sizeof(buf));
+		switch (matchtype) {
+		case dns_ssumatchtype_64self:
+			break;
+		case dns_ssumatchtype_60self:
+			s += 2;
+			break;
+		case dns_ssumatchtype_56self:
+			s += 4;
+			break;
+		case dns_ssumatchtype_52self:
+			s += 6;
+			break;
+		case dns_ssumatchtype_48self:
+		case dns_ssumatchtype_6to4self:
+			s += 8;
+			break;
+		default:
+			UNREACHABLE();
+		}
 		break;
 	default:
 		UNREACHABLE();
 	}
-	isc_buffer_init(&b, buf, strlen(buf));
-	isc_buffer_add(&b, strlen(buf));
+	isc_buffer_init(&b, s, strlen(s));
+	isc_buffer_add(&b, strlen(s));
 	result = dns_name_fromtext(stfself, &b, dns_rootname, 0);
 	RUNTIME_CHECK(result == ISC_R_SUCCESS);
+	return true;
 }
 
 bool
@@ -398,10 +436,20 @@ dns_ssutable_checkrules(dns_ssutable_t *table, const dns_name_t *signer,
 						mtypetostring(rule->matchtype),
 						namebuf);
 					break;
+				case dns_ssumatchtype_48self:
+				case dns_ssumatchtype_52self:
+				case dns_ssumatchtype_56self:
+				case dns_ssumatchtype_60self:
+				case dns_ssumatchtype_64self:
 				case dns_ssumatchtype_6to4self:
 					stfself =
 						dns_fixedname_initname(&fixed);
-					stf_from_address(stfself, addr);
+					if (!stf_from_address(stfself,
+							      rule->matchtype,
+							      addr))
+					{
+						break;
+					}
 					dns_name_format(stfself, namebuf,
 							sizeof(namebuf));
 					isc_log_write(
@@ -488,6 +536,11 @@ dns_ssutable_checkrules(dns_ssutable_t *table, const dns_name_t *signer,
 			}
 			break;
 		case dns_ssumatchtype_tcpself:
+		case dns_ssumatchtype_48self:
+		case dns_ssumatchtype_52self:
+		case dns_ssumatchtype_56self:
+		case dns_ssumatchtype_60self:
+		case dns_ssumatchtype_64self:
 		case dns_ssumatchtype_6to4self:
 			if (!tcp || addr == NULL) {
 				if (logit) {
@@ -840,9 +893,24 @@ dns_ssutable_checkrules(dns_ssutable_t *table, const dns_name_t *signer,
 				continue;
 			}
 			break;
+		case dns_ssumatchtype_48self:
+		case dns_ssumatchtype_52self:
+		case dns_ssumatchtype_56self:
+		case dns_ssumatchtype_60self:
+		case dns_ssumatchtype_64self:
 		case dns_ssumatchtype_6to4self:
 			stfself = dns_fixedname_initname(&fixed);
-			stf_from_address(stfself, addr);
+			if (!stf_from_address(stfself, rule->matchtype, addr)) {
+				if (logit) {
+					isc_log_write(
+						DNS_LOGCATEGORY_UPDATE_POLICY,
+						DNS_LOGMODULE_SSU,
+						ISC_LOG_DEBUG(99),
+						"update-policy: next "
+						"rule: not IPv6 address");
+				}
+				continue;
+			}
 			if (dns_name_iswildcard(rule->identity)) {
 				if (!dns_name_matcheswildcard(stfself,
 							      rule->identity))
@@ -1119,6 +1187,16 @@ dns_ssu_mtypefromstring(const char *str, dns_ssumatchtype_t *mtype) {
 		*mtype = dns_ssumatchtype_subdomain;
 	} else if (strcasecmp(str, "external") == 0) {
 		*mtype = dns_ssumatchtype_external;
+	} else if (strcasecmp(str, "64-self") == 0) {
+		*mtype = dns_ssumatchtype_64self;
+	} else if (strcasecmp(str, "60-self") == 0) {
+		*mtype = dns_ssumatchtype_60self;
+	} else if (strcasecmp(str, "56-self") == 0) {
+		*mtype = dns_ssumatchtype_56self;
+	} else if (strcasecmp(str, "52-self") == 0) {
+		*mtype = dns_ssumatchtype_56self;
+	} else if (strcasecmp(str, "48-self") == 0) {
+		*mtype = dns_ssumatchtype_48self;
 	} else {
 		return ISC_R_NOTFOUND;
 	}

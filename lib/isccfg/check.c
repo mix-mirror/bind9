@@ -2686,6 +2686,11 @@ check_update_policy(const cfg_obj_t *policy) {
 		case dns_ssumatchtype_selfsubkrb5:
 		case dns_ssumatchtype_selfsubms:
 		case dns_ssumatchtype_tcpself:
+		case dns_ssumatchtype_48self:
+		case dns_ssumatchtype_52self:
+		case dns_ssumatchtype_56self:
+		case dns_ssumatchtype_60self:
+		case dns_ssumatchtype_64self:
 		case dns_ssumatchtype_6to4self:
 			if (tresult == ISC_R_SUCCESS &&
 			    !dns_name_equal(dns_rootname, name))
