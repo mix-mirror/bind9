@@ -49,3 +49,9 @@ zone "2.0.0.2.ip6.arpa" {
 	file "2.0.0.2.ip6.addr.db";
 	update-policy {	grant * 6to4-self . NS(10) DS(4); };
 };
+
+zone "d.f.ip6.arpa" {
+	type primary;
+	file "ip6-addr.db";
+	update-policy {	grant * 64-self . NS(10) DS(4); };
+};

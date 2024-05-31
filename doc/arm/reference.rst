@@ -7711,7 +7711,7 @@ records are also written to the zone's filename.
            It is theoretically possible to spoof these TCP sessions.
 
        Say you have been delegated 2001:db8:abcd:0012::/64 from the
-       parent zone 8.B.D.0.1.0.0.2.IP6.ARPA you would add the
+       parent zone D.C.B.A.8.B.D.0.1.0.0.2.IP6.ARPA you would add the
        delegation like this which specifies the parent zone to be
        updated, removes any existing records at the delegation point
        and adds 2 NS records pointing to nameservers that you control
