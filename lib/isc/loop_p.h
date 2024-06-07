@@ -76,6 +76,8 @@ struct isc_loop {
 
 	/* safe memory reclamation */
 	uv_prepare_t quiescent;
+
+	bool rcu_barrier;
 };
 
 /*
