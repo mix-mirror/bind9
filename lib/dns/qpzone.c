@@ -394,10 +394,6 @@ set_index(void *what, unsigned int idx) {
 
 static void
 freeglue(dns_glue_t *glue_list) {
-	if (glue_list == (void *)-1) {
-		return;
-	}
-
 	dns_glue_t *glue = glue_list;
 	while (glue != NULL) {
 		dns_glue_t *next = glue->next;
@@ -428,9 +424,12 @@ freeglue(dns_glue_t *glue_list) {
 }
 
 static void
-free_gluelist_rcu(struct rcu_head *rcu_head) {
-	dns_glue_t *glue = caa_container_of(rcu_head, dns_glue_t, rcu_head);
+free_gluenode_rcu(struct rcu_head *rcu_head) {
+	dns_gluenode_t *gluenode = caa_container_of(rcu_head, dns_gluenode_t,
+						    rcu_head);
+	dns_glue_t *glue = gluenode->glue;
 
+	isc_mem_put(glue->mctx, gluenode, sizeof(*gluenode));
 	freeglue(glue);
 }
 
@@ -441,11 +440,12 @@ free_gluetable(struct cds_wfs_stack *glue_stack) {
 
 	rcu_read_lock();
 	cds_wfs_for_each_blocking_safe(head, node, next) {
-		dns_slabheader_t *header =
-			caa_container_of(node, dns_slabheader_t, wfs_node);
-		dns_glue_t *glue = rcu_xchg_pointer(&header->glue_list, NULL);
+		dns_gluenode_t *gluenode =
+			caa_container_of(node, dns_gluenode_t, wfs_node);
+		dns_slabheader_t *header = gluenode->header;
+		rcu_set_pointer(&header->glue_node, NULL);
 
-		call_rcu(&glue->rcu_head, free_gluelist_rcu);
+		call_rcu(&gluenode->rcu_head, free_gluenode_rcu);
 	}
 	rcu_read_unlock();
 }
@@ -4021,8 +4021,8 @@ deletedata(dns_db_t *db ISC_ATTR_UNUSED, dns_dbnode_t *node ISC_ATTR_UNUSED,
 	}
 	header->heap_index = 0;
 
-	if (header->glue_list) {
-		freeglue(header->glue_list);
+	if (header->glue_node != NULL) {
+		rcu_set_pointer(&header->glue_node, NULL);
 	}
 }
 
@@ -5229,6 +5229,7 @@ addglue(dns_db_t *db, dns_dbversion_t *dbversion, dns_rdataset_t *rdataset,
 	qpz_version_t *version = dbversion;
 	qpznode_t *node = (qpznode_t *)rdataset->slab.node;
 	dns_slabheader_t *header = dns_slabheader_fromrdataset(rdataset);
+	dns_glue_t *glue = NULL;
 
 	REQUIRE(rdataset->type == dns_rdatatype_ns);
 	REQUIRE(qpdb == (qpzonedb_t *)rdataset->slab.db);
@@ -5237,21 +5238,42 @@ addglue(dns_db_t *db, dns_dbversion_t *dbversion, dns_rdataset_t *rdataset,
 
 	rcu_read_lock();
 
-	dns_glue_t *glue = rcu_dereference(header->glue_list);
-	if (glue == NULL) {
+	dns_gluenode_t *gluenode = rcu_dereference(header->glue_node);
+	if (gluenode == NULL) {
 		/* No cached glue was found in the table. Get new glue. */
 		glue = newglue(qpdb, version, node, rdataset);
-
-		/* Cache the glue or (void *)-1 if no glue was found. */
-		dns_glue_t *old_glue = rcu_cmpxchg_pointer(
-			&header->glue_list, NULL, (glue) ? glue : (void *)-1);
-		if (old_glue != NULL) {
-			/* Somebody else was faster */
-			freeglue(glue);
-			glue = old_glue;
-		} else if (glue != NULL) {
-			cds_wfs_push(&version->glue_stack, &header->wfs_node);
+		if (glue != NULL) {
+			gluenode = isc_mem_get(glue->mctx, sizeof(*gluenode));
+			*gluenode = (dns_gluenode_t){
+				.header = header,
+				.glue = glue,
+			};
+			cds_wfs_node_init(&gluenode->wfs_node);
+		} else {
+			gluenode = empty_gluenode;
 		}
+
+		/* Cache the glue or empty_gluenode if no glue was found. */
+		dns_gluenode_t *old_gluenode =
+			rcu_cmpxchg_pointer(&header->glue_node, NULL, gluenode);
+		if (old_gluenode != NULL) {
+			/* Somebody else was faster */
+			if (gluenode != empty_gluenode) {
+				free_gluenode_rcu(&gluenode->rcu_head);
+			}
+
+			/*
+			 * (void *)-1 is a special value that means no glue is
+			 * present in the zone.
+			 */
+			if (old_gluenode != empty_gluenode) {
+				glue = old_gluenode->glue;
+			}
+		} else if (gluenode != empty_gluenode) {
+			cds_wfs_push(&version->glue_stack, &gluenode->wfs_node);
+		}
+	} else if (gluenode != empty_gluenode) {
+		glue = gluenode->glue;
 	}
 
 	/* We have a cached result. Add it to the message and return. */
@@ -5259,16 +5281,12 @@ addglue(dns_db_t *db, dns_dbversion_t *dbversion, dns_rdataset_t *rdataset,
 	if (qpdb->gluecachestats != NULL) {
 		isc_stats_increment(
 			qpdb->gluecachestats,
-			(glue == (void *)-1)
+			(gluenode == empty_gluenode)
 				? dns_gluecachestatscounter_hits_absent
 				: dns_gluecachestatscounter_hits_present);
 	}
 
-	/*
-	 * (void *)-1 is a special value that means no glue is present in the
-	 * zone.
-	 */
-	if (glue != (void *)-1) {
+	if (glue != NULL) {
 		addglue_to_message(glue, msg);
 	}
 

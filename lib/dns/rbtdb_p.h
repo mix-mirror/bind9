@@ -367,6 +367,11 @@ dns__rbtdb_nodefullname(dns_db_t *db, dns_dbnode_t *node, dns_name_t *name);
 
 void
 dns__rbtdb_freeglue(dns_glue_t *glue_list);
+void
+dns__rbtdb_freegluenode(dns_gluenode_t *gluenode);
+void
+dns__rbtdb_pushgluenode(dns_rbtdb_version_t *rbtversion,
+			dns_gluenode_t *gluenode);
 
 void
 dns__rbtdb_newref(dns_rbtdb_t *rbtdb, dns_rbtnode_t *node,

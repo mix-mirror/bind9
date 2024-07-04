@@ -4863,10 +4863,24 @@ dns__rbtdb_freeglue(dns_glue_t *glue_list) {
 }
 
 static void
-free_gluelist_rcu(struct rcu_head *rcu_head) {
-	dns_glue_t *glue = caa_container_of(rcu_head, dns_glue_t, rcu_head);
+free_gluenode_rcu(struct rcu_head *rcu_head) {
+	dns_gluenode_t *gluenode = caa_container_of(rcu_head, dns_gluenode_t,
+						    rcu_head);
+	dns_glue_t *glue = gluenode->glue;
 
+	isc_mem_put(glue->mctx, gluenode, sizeof(*gluenode));
 	dns__rbtdb_freeglue(glue);
+}
+
+void
+dns__rbtdb_freegluenode(dns_gluenode_t *gluenode) {
+	free_gluenode_rcu(&gluenode->rcu_head);
+}
+
+void
+dns__rbtdb_pushgluenode(dns_rbtdb_version_t *rbtversion,
+			dns_gluenode_t *gluenode) {
+	cds_wfs_push(&rbtversion->glue_stack, &gluenode->wfs_node);
 }
 
 static void
@@ -4876,11 +4890,12 @@ free_gluetable(dns_rbtdb_version_t *rbtversion) {
 
 	rcu_read_lock();
 	cds_wfs_for_each_blocking_safe(head, node, next) {
-		dns_slabheader_t *header =
-			caa_container_of(node, dns_slabheader_t, wfs_node);
-		dns_glue_t *glue = rcu_xchg_pointer(&header->glue_list, NULL);
+		dns_gluenode_t *gluenode =
+			caa_container_of(node, dns_gluenode_t, wfs_node);
+		dns_slabheader_t *header = gluenode->header;
+		rcu_set_pointer(&header->glue_node, NULL);
 
-		call_rcu(&glue->rcu_head, free_gluelist_rcu);
+		call_rcu(&gluenode->rcu_head, free_gluenode_rcu);
 	}
 	rcu_read_unlock();
 }
@@ -4913,8 +4928,8 @@ dns__rbtdb_deletedata(dns_db_t *db ISC_ATTR_UNUSED,
 			dns_slabheader_freeproof(db->mctx, &header->closest);
 		}
 	} else {
-		if (header->glue_list) {
-			dns__rbtdb_freeglue(header->glue_list);
+		if (header->glue_node != NULL) {
+			rcu_set_pointer(&header->glue_node, NULL);
 		}
 	}
 }

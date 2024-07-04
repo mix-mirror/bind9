@@ -127,6 +127,12 @@ struct dns_glue {
 	dns_rdataset_t sigrdataset_aaaa;
 
 	isc_mem_t *mctx;
+};
+
+struct dns_gluenode {
+	dns_slabheader_t *header;
+	dns_glue_t *glue;
+	struct cds_wfs_node wfs_node;
 	struct rcu_head rcu_head;
 };
 
@@ -136,6 +142,8 @@ typedef struct {
 	dns_dbversion_t *version;
 	dns_name_t *nodename;
 } dns_glue_additionaldata_ctx_t;
+
+#define empty_gluenode ((void *)-1)
 
 typedef struct {
 	isc_rwlock_t lock;

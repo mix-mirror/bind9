@@ -2336,6 +2336,7 @@ addglue(dns_db_t *db, dns_dbversion_t *version, dns_rdataset_t *rdataset,
 	dns_rbtdb_version_t *rbtversion = version;
 	dns_rbtnode_t *node = (dns_rbtnode_t *)rdataset->slab.node;
 	dns_slabheader_t *header = dns_slabheader_fromrdataset(rdataset);
+	dns_glue_t *glue = NULL;
 
 	REQUIRE(rdataset->type == dns_rdatatype_ns);
 	REQUIRE(rbtdb == (dns_rbtdb_t *)rdataset->slab.db);
@@ -2344,22 +2345,42 @@ addglue(dns_db_t *db, dns_dbversion_t *version, dns_rdataset_t *rdataset,
 
 	rcu_read_lock();
 
-	dns_glue_t *glue = rcu_dereference(header->glue_list);
-	if (glue == NULL) {
+	dns_gluenode_t *gluenode = rcu_dereference(header->glue_node);
+	if (gluenode == NULL) {
 		/* No cached glue was found in the table. Get new glue. */
-		glue = newglue(rbtdb, rbtversion, node, rdataset);
-
-		/* Cache the glue or (void *)-1 if no glue was found. */
-		dns_glue_t *old_glue = rcu_cmpxchg_pointer(
-			&header->glue_list, NULL, (glue) ? glue : (void *)-1);
-		if (old_glue != NULL) {
-			/* Somebody else was faster */
-			dns__rbtdb_freeglue(glue);
-			glue = old_glue;
-		} else if (glue != NULL) {
-			cds_wfs_push(&rbtversion->glue_stack,
-				     &header->wfs_node);
+		glue = newglue(rbtdb, version, node, rdataset);
+		if (glue != NULL) {
+			gluenode = isc_mem_get(glue->mctx, sizeof(*gluenode));
+			*gluenode = (dns_gluenode_t){
+				.header = header,
+				.glue = glue,
+			};
+			cds_wfs_node_init(&gluenode->wfs_node);
+		} else {
+			gluenode = empty_gluenode;
 		}
+
+		/* Cache the glue or empty_gluenode if no glue was found. */
+		dns_gluenode_t *old_gluenode =
+			rcu_cmpxchg_pointer(&header->glue_node, NULL, gluenode);
+		if (old_gluenode != NULL) {
+			/* Somebody else was faster */
+			if (gluenode != empty_gluenode) {
+				dns__rbtdb_freegluenode(gluenode);
+			}
+
+			/*
+			 * (void *)-1 is a special value that means no glue is
+			 * present in the zone.
+			 */
+			if (old_gluenode != empty_gluenode) {
+				glue = old_gluenode->glue;
+			}
+		} else if (gluenode != empty_gluenode) {
+			dns__rbtdb_pushgluenode(rbtversion, gluenode);
+		}
+	} else if (gluenode != empty_gluenode) {
+		glue = gluenode->glue;
 	}
 
 	/* We have a cached result. Add it to the message and return. */
