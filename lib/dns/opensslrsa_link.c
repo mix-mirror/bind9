@@ -161,11 +161,10 @@ opensslrsa_valid_key_alg(unsigned int key_alg) {
 }
 
 static isc_result_t
-opensslrsa_createctx(dst_key_t *key, dst_context_t *dctx) {
+opensslrsa_createctx(dst_key_t *key ISC_ATTR_UNUSED, dst_context_t *dctx) {
 	EVP_MD_CTX *evp_md_ctx;
 	const EVP_MD *type = NULL;
 
-	UNUSED(key);
 	REQUIRE(dctx != NULL && dctx->key != NULL);
 	REQUIRE(opensslrsa_valid_key_alg(dctx->key->key_alg));
 

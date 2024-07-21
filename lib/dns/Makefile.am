@@ -238,6 +238,7 @@ libdns_la_SOURCES =			\
 	sdlz.c				\
 	skr.c				\
 	soa.c				\
+	hawk_link.c			\
 	ssu.c				\
 	ssu_external.c			\
 	stats.c				\
@@ -254,7 +255,24 @@ libdns_la_SOURCES =			\
 	zone.c				\
 	zone_p.h			\
 	zoneverify.c			\
-	zt.c
+	zt.c				\
+	hawk/hawk_config.h \
+	hawk/hawk.h \
+	hawk/hawk_inner.h \
+	hawk/hawk_kgen.c \
+	hawk/hawk_sign.c \
+	hawk/hawk_vrfy.c \
+	hawk/modq.h \
+	hawk/ng_config.h \
+	hawk/ng_fxp.c \
+	hawk/ng_hawk.c \
+	hawk/ng_inner.h \
+	hawk/ng_mp31.c \
+	hawk/ng_ntru.c \
+	hawk/ng_poly.c \
+	hawk/ng_zint31.c \
+	hawk/sha3.c \
+	hawk/sha3.h
 
 if HAVE_GSSAPI
 libdns_la_SOURCES +=			\
@@ -272,7 +290,8 @@ libdns_la_CPPFLAGS =		\
 	$(LIBISC_CFLAGS)	\
 	$(LIBURCU_CFLAGS)	\
 	$(LIBUV_CFLAGS)		\
-	$(OPENSSL_CFLAGS)
+	$(OPENSSL_CFLAGS)	\
+	-Ihawk
 
 libdns_la_LDFLAGS =		\
 	$(AM_LDFLAGS)		\
