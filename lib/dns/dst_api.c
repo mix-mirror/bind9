@@ -153,6 +153,13 @@ static unsigned char oid_rsasha256[] = { 0x0b, 0x06, 0x09, 0x2a, 0x86, 0x48,
 static unsigned char oid_rsasha512[] = { 0x0b, 0x06, 0x09, 0x2a, 0x86, 0x48,
 					 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0d };
 
+/*
+ * Wire format "q." — SQIsign with NIST-I parameter set, see
+ * https://github.com/oerdnj/dnssec-algorithm-testing-registry
+ */
+static unsigned char sqisigndns_data[] = "\001q";
+static dns_name_t const sqisigndns = DNS_NAME_INITABSOLUTE(sqisigndns_data);
+
 void
 gss_log(int level, const char *fmt, ...) ISC_FORMAT_PRINTF(2, 3);
 
@@ -217,6 +224,8 @@ dst__lib_initialize(void) {
 #ifdef HAVE_OPENSSL_ED448
 	dst__openssleddsa_init(&dst_t_func[DST_ALG_ED448], DST_ALG_ED448);
 #endif /* ifdef HAVE_OPENSSL_ED448 */
+
+	dst__sqisign_init(&dst_t_func[DST_ALG_SQISIGN], DST_ALG_SQISIGN);
 
 #if HAVE_GSSAPI
 	dst__gssapi_init(&dst_t_func[DST_ALG_GSSAPI]);
@@ -1279,6 +1288,9 @@ dst_key_sigsize(const dst_key_t *key, unsigned int *n) {
 	case DST_ALG_ED448:
 		*n = DNS_SIG_ED448SIZE;
 		break;
+	case DST_ALG_SQISIGN:
+		*n = DNS_SIG_SQISIGNSIZE + sizeof(sqisigndns_data);
+		break;
 	case DST_ALG_HMACMD5:
 		*n = ISC_MD5_DIGESTLENGTH;
 		break;
@@ -1743,6 +1755,7 @@ issymmetric(const dst_key_t *key) {
 	case DST_ALG_ECDSA384:
 	case DST_ALG_ED25519:
 	case DST_ALG_ED448:
+	case DST_ALG_SQISIGN:
 		return false;
 	case DST_ALG_HMACMD5:
 	case DST_ALG_HMACSHA1:
@@ -2603,6 +2616,7 @@ dst_algorithm_tosecalg(dst_algorithm_t dst_alg) {
 	static dns_secalg_t dns_alg[DST_MAX_ALGS] = {
 		[DST_ALG_RSASHA256PRIVATEOID] = DNS_KEYALG_PRIVATEOID,
 		[DST_ALG_RSASHA512PRIVATEOID] = DNS_KEYALG_PRIVATEOID,
+		[DST_ALG_SQISIGN] = DNS_KEYALG_PRIVATEDNS,
 	};
 
 	if (dst_alg < 256) {
@@ -2642,6 +2656,11 @@ dst_algorithm_fromprivatedns(isc_buffer_t *buffer) {
 	 * Do name to dst_algorithm number mapping here.
 	 */
 	switch (name->length) {
+	case 3:
+		if (dns_name_equal(name, &sqisigndns)) {
+			return DST_ALG_SQISIGN;
+		}
+		break;
 #if TEST_PRIVATEDNS
 	case 23:
 		switch (name->ndata[7]) {

@@ -106,6 +106,9 @@ static struct parse_map map[] = { { TAG_RSA_MODULUS, "Modulus:" },
 				  { TAG_EDDSA_ENGINE, "Engine:" },
 				  { TAG_EDDSA_LABEL, "Label:" },
 
+				  { TAG_SQISIGN_PUBLICKEY, "PublicKey:" },
+				  { TAG_SQISIGN_SECRETKEY, "SecretKey:" },
+
 				  { TAG_HMACMD5_KEY, "Key:" },
 				  { TAG_HMACMD5_BITS, "Bits:" },
 
@@ -291,6 +294,41 @@ check_eddsa(const dst_private_t *priv, bool external) {
 }
 
 static isc_result_t
+check_sqisignhd(const dst_private_t *priv, bool external) {
+	int i, j;
+	bool have[SQISIGN_NTAGS];
+	bool ok;
+	unsigned int mask;
+
+	if (external) {
+		return (priv->nelements == 0) ? ISC_R_SUCCESS
+					      : DST_R_INVALIDPRIVATEKEY;
+	}
+
+	for (i = 0; i < SQISIGN_NTAGS; i++) {
+		have[i] = false;
+	}
+	for (j = 0; j < priv->nelements; j++) {
+		for (i = 0; i < SQISIGN_NTAGS; i++) {
+			if (priv->elements[j].tag == TAG(DST_ALG_SQISIGN, i)) {
+				break;
+			}
+		}
+		if (i == SQISIGN_NTAGS) {
+			return DST_R_INVALIDPRIVATEKEY;
+		}
+		have[i] = true;
+	}
+
+	mask = (1ULL << TAG_SHIFT) - 1;
+
+	ok = have[TAG_SQISIGN_PUBLICKEY & mask] &&
+	     have[TAG_SQISIGN_SECRETKEY & mask];
+
+	return ok ? ISC_R_SUCCESS : DST_R_INVALIDPRIVATEKEY;
+}
+
+static isc_result_t
 check_hmac_md5(const dst_private_t *priv, bool old) {
 	int i, j;
 
@@ -360,6 +398,8 @@ check_data(const dst_private_t *priv, const unsigned int alg, bool old,
 	case DST_ALG_ED25519:
 	case DST_ALG_ED448:
 		return check_eddsa(priv, external);
+	case DST_ALG_SQISIGN:
+		return check_sqisignhd(priv, external);
 	case DST_ALG_HMACMD5:
 		return check_hmac_md5(priv, old);
 	case DST_ALG_HMACSHA1:
@@ -674,6 +714,9 @@ dst__privstruct_writefile(const dst_key_t *key, const dst_private_t *priv,
 		break;
 	case DST_ALG_ED448:
 		fprintf(fp, "(ED448)\n");
+		break;
+	case DST_ALG_SQISIGN:
+		fprintf(fp, "(SQISIGN)\n");
 		break;
 	case DST_ALG_HMACMD5:
 		fprintf(fp, "(HMAC_MD5)\n");

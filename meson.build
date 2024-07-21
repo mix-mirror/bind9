@@ -663,6 +663,22 @@ if cc.has_header_symbol('openssl/evp.h', 'NID_ED448', dependencies: openssl_dep)
     config.set('HAVE_OPENSSL_ED448', 1)
 endif
 
+## SQIsign via liboqs (Open Quantum Safe, sqisign branch); SQIsign
+## signing support in liboqs requires the GNU MP library.
+gmp_dep = cc.find_library('gmp', has_headers: 'gmp.h')
+
+cmake = import('cmake')
+liboqs_opts = cmake.subproject_options()
+liboqs_opts.add_cmake_defines(
+    {
+        'OQS_BUILD_ONLY_LIB': true,
+        'OQS_MINIMAL_BUILD': 'SIG_sqisign_lvl1',
+        'OQS_DIST_BUILD': false,
+    },
+)
+liboqs_subproject = cmake.subproject('liboqs', options: liboqs_opts)
+liboqs_dep = liboqs_subproject.dependency('oqs')
+
 foreach fn, header : {
     'ERR_get_error_all': '#include <openssl/err.h>',
     'BIO_read_ex': '#include <openssl/bio.h>',

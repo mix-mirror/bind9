@@ -1,0 +1,5 @@
+# liboqs with SQIsign support (open-quantum-safe/liboqs, branch sqisign)
+[wrap-git]
+url = https://github.com/open-quantum-safe/liboqs.git
+revision = 9686ba3704757f8fdcc191c754d34c79ad95f5cf
+depth = 1

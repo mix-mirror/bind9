@@ -114,7 +114,7 @@
 /*
  * PRIVATEDNS subtypes we support.
  */
-#define PRIVATEDNSS /* currently empty */
+#define PRIVATEDNSS { DST_ALG_SQISIGN, "SQISIGN", 0 },
 
 /*
  * PRIVATEOID subtypes we support.

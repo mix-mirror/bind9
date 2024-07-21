@@ -101,3 +101,8 @@ TAGS
 \.dir-locals-2.el
 /emacs.desktop
 /emacs.desktop-lock
+
+# Meson subproject checkouts (managed by meson via subprojects/*.wrap)
+/subprojects/liboqs/
+/subprojects/packagecache/
+/subprojects/.wraplock
