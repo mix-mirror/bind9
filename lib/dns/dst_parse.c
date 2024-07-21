@@ -106,6 +106,9 @@ static struct parse_map map[] = { { TAG_RSA_MODULUS, "Modulus:" },
 				  { TAG_EDDSA_ENGINE, "Engine:" },
 				  { TAG_EDDSA_LABEL, "Label:" },
 
+				  { TAG_HAWK_PUBLICKEY, "PublicKey:" },
+				  { TAG_HAWK_SECRETKEY, "SecretKey:" },
+
 				  { TAG_HMACMD5_KEY, "Key:" },
 				  { TAG_HMACMD5_BITS, "Bits:" },
 
@@ -176,20 +179,24 @@ find_numericdata(const char *s) {
 	return find_metadata(s, numerictags, DST_MAX_NUMERIC);
 }
 
-static int
-check_rsa(const dst_private_t *priv, bool external) {
-	int i, j;
-	bool have[RSA_NTAGS];
-	bool ok;
-	unsigned int mask;
-
-	if (external) {
-		return (priv->nelements == 0) ? ISC_R_SUCCESS
-					      : DST_R_INVALIDPRIVATEKEY;
+static isc_result_t
+check_external(const dst_private_t *priv) {
+	if (priv->nelements == 0) {
+		return ISC_R_SUCCESS;
 	}
 
-	for (i = 0; i < RSA_NTAGS; i++) {
-		have[i] = false;
+	return DST_R_INVALIDPRIVATEKEY;
+}
+
+static isc_result_t
+check_rsa(const dst_private_t *priv, bool external) {
+	int i, j;
+	bool have[RSA_NTAGS] = { 0 };
+	bool ok;
+	unsigned int mask = (1ULL << TAG_SHIFT) - 1;
+
+	if (external) {
+		return check_external(priv);
 	}
 
 	for (j = 0; j < priv->nelements; j++) {
@@ -204,8 +211,6 @@ check_rsa(const dst_private_t *priv, bool external) {
 		have[i] = true;
 	}
 
-	mask = (1ULL << TAG_SHIFT) - 1;
-
 	if (have[TAG_RSA_LABEL & mask]) {
 		ok = have[TAG_RSA_MODULUS & mask] &&
 		     have[TAG_RSA_PUBLICEXPONENT & mask];
@@ -219,24 +224,23 @@ check_rsa(const dst_private_t *priv, bool external) {
 		     have[TAG_RSA_EXPONENT2 & mask] &&
 		     have[TAG_RSA_COEFFICIENT & mask];
 	}
-	return ok ? ISC_R_SUCCESS : DST_R_INVALIDPRIVATEKEY;
+	if (!ok) {
+		return DST_R_INVALIDPRIVATEKEY;
+	}
+
+	return ISC_R_SUCCESS;
 }
 
 static int
 check_ecdsa(const dst_private_t *priv, bool external) {
 	int i, j;
-	bool have[ECDSA_NTAGS];
-	bool ok;
-	unsigned int mask;
+	bool have[ECDSA_NTAGS] = { 0 };
+	unsigned int mask = (1ULL << TAG_SHIFT) - 1;
 
 	if (external) {
-		return (priv->nelements == 0) ? ISC_R_SUCCESS
-					      : DST_R_INVALIDPRIVATEKEY;
+		return check_external(priv);
 	}
 
-	for (i = 0; i < ECDSA_NTAGS; i++) {
-		have[i] = false;
-	}
 	for (j = 0; j < priv->nelements; j++) {
 		for (i = 0; i < ECDSA_NTAGS; i++) {
 			if (priv->elements[j].tag == TAG(DST_ALG_ECDSA256, i)) {
@@ -249,23 +253,21 @@ check_ecdsa(const dst_private_t *priv, bool external) {
 		have[i] = true;
 	}
 
-	mask = (1ULL << TAG_SHIFT) - 1;
+	if (have[TAG_ECDSA_LABEL & mask] || have[TAG_ECDSA_PRIVATEKEY & mask]) {
+		return ISC_R_SUCCESS;
+	}
 
-	ok = have[TAG_ECDSA_LABEL & mask] || have[TAG_ECDSA_PRIVATEKEY & mask];
-
-	return ok ? ISC_R_SUCCESS : DST_R_INVALIDPRIVATEKEY;
+	return DST_R_INVALIDPRIVATEKEY;
 }
 
 static isc_result_t
 check_eddsa(const dst_private_t *priv, bool external) {
 	int i, j;
 	bool have[EDDSA_NTAGS];
-	bool ok;
 	unsigned int mask;
 
 	if (external) {
-		return (priv->nelements == 0) ? ISC_R_SUCCESS
-					      : DST_R_INVALIDPRIVATEKEY;
+		return check_external(priv);
 	}
 
 	for (i = 0; i < EDDSA_NTAGS; i++) {
@@ -285,9 +287,44 @@ check_eddsa(const dst_private_t *priv, bool external) {
 
 	mask = (1ULL << TAG_SHIFT) - 1;
 
-	ok = have[TAG_EDDSA_LABEL & mask] || have[TAG_EDDSA_PRIVATEKEY & mask];
+	if (have[TAG_EDDSA_LABEL & mask] || have[TAG_EDDSA_PRIVATEKEY & mask]) {
+		return ISC_R_SUCCESS;
+	}
 
-	return ok ? ISC_R_SUCCESS : DST_R_INVALIDPRIVATEKEY;
+	return DST_R_INVALIDPRIVATEKEY;
+}
+
+static int
+check_hawk(const dst_private_t *priv, bool external) {
+	bool have[HAWK_NTAGS] = { 0 };
+	unsigned int mask;
+
+	if (external) {
+		return check_external(priv);
+	}
+
+	for (size_t j = 0; j < priv->nelements; j++) {
+		size_t i;
+		for (i = 0; i < HAWK_NTAGS; i++) {
+			if (priv->elements[j].tag == TAG(DST_ALG_HAWK, i)) {
+				break;
+			}
+		}
+		if (i == HAWK_NTAGS) {
+			return DST_R_INVALIDPRIVATEKEY;
+		}
+		have[i] = true;
+	}
+
+	mask = (1ULL << TAG_SHIFT) - 1;
+
+	if (have[TAG_HAWK_PUBLICKEY & mask] && have[TAG_HAWK_SECRETKEY & mask])
+	{
+		return ISC_R_SUCCESS;
+	}
+
+	return DST_R_INVALIDPRIVATEKEY;
+>>>>>>> 36f4ff97bf3 (WIP: Add HAWK support to BIND 9)
 }
 
 static isc_result_t
@@ -319,7 +356,7 @@ check_hmac_md5(const dst_private_t *priv, bool old) {
 			return DST_R_INVALIDPRIVATEKEY;
 		}
 	}
-	return 0;
+	return ISC_R_SUCCESS;
 }
 
 static isc_result_t
@@ -360,6 +397,8 @@ check_data(const dst_private_t *priv, const unsigned int alg, bool old,
 	case DST_ALG_ED25519:
 	case DST_ALG_ED448:
 		return check_eddsa(priv, external);
+	case DST_ALG_HAWK:
+		return check_hawk(priv, external);
 	case DST_ALG_HMACMD5:
 		return check_hmac_md5(priv, old);
 	case DST_ALG_HMACSHA1:
@@ -412,9 +451,9 @@ dst__privstruct_parse(dst_key_t *key, unsigned int alg, isc_lex_t *lex,
 	memset(priv->elements, 0, sizeof(priv->elements));
 
 #define NEXTTOKEN(lex, opt, token)                        \
-	do {                                              \
+	{                                                 \
 		CHECK(isc_lex_gettoken(lex, opt, token)); \
-	} while (0)
+	}
 
 #define READLINE(lex, opt, token)                           \
 	do {                                                \
@@ -422,7 +461,6 @@ dst__privstruct_parse(dst_key_t *key, unsigned int alg, isc_lex_t *lex,
 		if (result == ISC_R_EOF) {                  \
 			break;                              \
 		} else if (result != ISC_R_SUCCESS) {       \
-			goto cleanup;                       \
 		}                                           \
 	} while ((*token).type != isc_tokentype_eol)
 
@@ -603,15 +641,13 @@ dst__privstruct_writefile(const dst_key_t *key, const dst_private_t *priv,
 	isc_region_t r;
 	int major, minor;
 	mode_t mode;
-	int i, ret;
+	int i;
 
 	REQUIRE(priv != NULL);
 
-	ret = check_data(priv, dst_key_alg(key), false, key->external);
-	if (ret < 0) {
-		return DST_R_INVALIDPRIVATEKEY;
-	} else if (ret != ISC_R_SUCCESS) {
-		return ret;
+	result = check_data(priv, dst_key_alg(key), false, key->external);
+	if (result != ISC_R_SUCCESS) {
+		return result;
 	}
 
 	isc_buffer_init(&fileb, filename, sizeof(filename));
@@ -674,6 +710,9 @@ dst__privstruct_writefile(const dst_key_t *key, const dst_private_t *priv,
 		break;
 	case DST_ALG_ED448:
 		fprintf(fp, "(ED448)\n");
+		break;
+	case DST_ALG_HAWK:
+		fprintf(fp, "(HAWK)\n");
 		break;
 	case DST_ALG_HMACMD5:
 		fprintf(fp, "(HMAC_MD5)\n");

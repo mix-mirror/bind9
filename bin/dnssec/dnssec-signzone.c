@@ -269,7 +269,7 @@ signwithkey(dns_name_t *name, dns_rdataset_t *rdataset, dst_key_t *key,
 	isc_stdtime_t jendtime, expiry;
 	char keystr[DST_KEY_FORMATSIZE];
 	dns_rdata_t trdata = DNS_RDATA_INIT;
-	unsigned char array[BUFSIZE];
+	unsigned char array[BUFSIZE * 5];
 	isc_buffer_t b;
 	dns_difftuple_t *tuple;
 

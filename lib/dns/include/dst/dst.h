@@ -14,7 +14,6 @@
 #pragma once
 
 /*! \file dst/dst.h */
-
 #include <inttypes.h>
 #include <stdbool.h>
 
@@ -93,6 +92,7 @@ typedef enum dst_algorithm {
 	DST_ALG_ECDSA384 = 14,
 	DST_ALG_ED25519 = 15,
 	DST_ALG_ED448 = 16,
+	DST_ALG_HAWK = 123, /* FIXME */
 
 	/*
 	 * Do not renumber HMAC algorithms as they are used externally to named
