@@ -29,6 +29,7 @@
 
 #pragma once
 
+#include <hawk/hawk.h>
 #include <inttypes.h>
 #include <stdbool.h>
 
@@ -98,6 +99,10 @@ struct dst_key {
 			EVP_PKEY *pub;
 			EVP_PKEY *priv;
 		} pkeypair;
+		struct {
+			uint8_t *pub;
+			uint8_t *priv;
+		} keypair;
 	} keydata; /*%< pointer to key in crypto pkg fmt */
 
 	isc_stdtime_t times[DST_MAX_TIMES + 1]; /*%< timing metadata */
@@ -142,6 +147,7 @@ struct dst_context {
 		dst_gssapi_signverifyctx_t *gssctx;
 		isc_hmac_t *hmac_ctx;
 		EVP_MD_CTX *evp_md_ctx;
+		shake_context shake_context;
 	} ctxdata;
 };
 
@@ -202,6 +208,8 @@ dst__openssleddsa_init(struct dst_func **funcp, unsigned char algorithm);
 void
 dst__gssapi_init(struct dst_func **funcp);
 #endif /* HAVE_GSSAPI*/
+void
+dst__hawk_init(dst_func_t **funcp, unsigned char algorithm);
 
 /*%
  * Secure private file handling

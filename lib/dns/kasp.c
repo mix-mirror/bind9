@@ -13,6 +13,7 @@
 
 /*! \file */
 
+#include <hawk/hawk.h>
 #include <string.h>
 
 #include <isc/assertions.h>
@@ -454,6 +455,9 @@ dns_kasp_key_size(dns_kasp_key_t *key) {
 		break;
 	case DNS_KEYALG_ED448:
 		size = 456;
+		break;
+	case DNS_KEYALG_HAWK:
+		size = DNS_KEY_HAWKSIZE;
 		break;
 	default:
 		/* unsupported */

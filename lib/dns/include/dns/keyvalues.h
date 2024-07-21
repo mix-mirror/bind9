@@ -72,6 +72,7 @@ enum {
 	DNS_KEYALG_ECDSA384 = 14,
 	DNS_KEYALG_ED25519 = 15,
 	DNS_KEYALG_ED448 = 16,
+	DNS_KEYALG_HAWK = 121,
 	DNS_KEYALG_INDIRECT = 252,
 	DNS_KEYALG_PRIVATEDNS = 253,
 	DNS_KEYALG_PRIVATEOID = 254, /*%< Key begins with OID giving alg */
@@ -97,3 +98,26 @@ enum {
 
 #define DNS_KEY_ED448SIZE 57
 #define DNS_SIG_ED448SIZE 114
+
+/* FIXME: Copied verbatim from hawk.h */
+
+/*
+ * Private key length (in bytes).
+ */
+#define HAWK_PRIVKEY_SIZE(logn) (8u + (11u << ((logn) - 5)))
+
+/*
+ * Public key length (in bytes).
+ */
+#define HAWK_PUBKEY_SIZE(logn) \
+	(450u + 574u * (2u >> (10 - (logn))) + 842u * ((1u >> (10 - (logn)))))
+
+/*
+ * Signature length (in bytes).
+ */
+#define HAWK_SIG_SIZE(logn) \
+	(249u + 306u * (2u >> (10 - (logn))) + 360u * ((1u >> (10 - (logn)))))
+
+#define DNS_SIG_HAWKSIZE HAWK_SIG_SIZE(8)
+#define DNS_KEY_HAWKSIZE HAWK_PUBKEY_SIZE(8)
+#define DNS_SEC_HAWKSIZE HAWK_PRIVKEY_SIZE(8)
