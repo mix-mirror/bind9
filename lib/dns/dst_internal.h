@@ -98,6 +98,10 @@ struct dst_key {
 			EVP_PKEY *pub;
 			EVP_PKEY *priv;
 		} pkeypair;
+		struct {
+			uint8_t *pub;
+			uint8_t *priv;
+		} keypair;
 	} keydata; /*%< pointer to key in crypto pkg fmt */
 
 	isc_stdtime_t times[DST_MAX_TIMES + 1]; /*%< timing metadata */
@@ -202,6 +206,8 @@ dst__openssleddsa_init(struct dst_func **funcp, unsigned char algorithm);
 void
 dst__gssapi_init(struct dst_func **funcp);
 #endif /* HAVE_GSSAPI*/
+void
+dst__mayo_init(dst_func_t **funcp, unsigned char algorithm);
 
 /*%
  * Secure private file handling

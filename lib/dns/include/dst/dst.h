@@ -93,6 +93,7 @@ typedef enum dst_algorithm {
 	DST_ALG_ECDSA384 = 14,
 	DST_ALG_ED25519 = 15,
 	DST_ALG_ED448 = 16,
+	DST_ALG_MAYO = 126, /* FIXME: should be experimental */
 
 	/*
 	 * Do not renumber HMAC algorithms as they are used externally to named
@@ -115,13 +116,15 @@ typedef enum dst_algorithm {
 } dst_algorithm_t;
 
 /*% A buffer of this size is large enough to hold any key */
-#define DST_KEY_MAXSIZE 1280
+/* FIXME: This really ought to be dynamic */
+#define DST_KEY_MAXSIZE 4096
 
 /*%
  * A buffer of this size is large enough to hold the textual representation
  * of any key
  */
-#define DST_KEY_MAXTEXTSIZE 2048
+/* FIXME: This really ought to be dynamic */
+#define DST_KEY_MAXTEXTSIZE 2 * DST_KEY_MAXSIZE
 
 /*% 'Type' for dst_read_key() */
 #define DST_TYPE_KEY	  0x1000000 /* KEY key */

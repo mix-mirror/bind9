@@ -238,6 +238,7 @@ libdns_la_SOURCES =			\
 	sdlz.c				\
 	skr.c				\
 	soa.c				\
+	mayo_link.c			\
 	ssu.c				\
 	ssu_external.c			\
 	stats.c				\
@@ -272,7 +273,8 @@ libdns_la_CPPFLAGS =		\
 	$(LIBISC_CFLAGS)	\
 	$(LIBURCU_CFLAGS)	\
 	$(LIBUV_CFLAGS)		\
-	$(OPENSSL_CFLAGS)
+	$(OPENSSL_CFLAGS)	\
+	$(MAYO_CFLAGS)
 
 libdns_la_LDFLAGS =		\
 	$(AM_LDFLAGS)		\
@@ -282,7 +284,8 @@ libdns_la_LIBADD =		\
 	$(LIBISC_LIBS)		\
 	$(LIBURCU_LIBS)		\
 	$(LIBUV_LIBS)		\
-	$(OPENSSL_LIBS)
+	$(OPENSSL_LIBS)		\
+	$(MAYO_LIBS)
 
 if HAVE_JSON_C
 libdns_la_CPPFLAGS +=		\

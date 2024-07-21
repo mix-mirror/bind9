@@ -29,6 +29,7 @@
 #include <dns/keymgr.h>
 #include <dns/keyvalues.h>
 #include <dns/lib.h>
+#include <dns/mayo.h>
 #include <dns/rdataclass.h>
 #include <dns/rdatalist.h>
 #include <dns/rdataset.h>
@@ -374,6 +375,9 @@ create_key(ksr_ctx_t *ksr, dns_kasp_t *kasp, dns_kasp_key_t *kaspkey,
 		break;
 	case DST_ALG_ED448:
 		ksr->size = 456;
+		break;
+	case DST_ALG_MAYO:
+		ksr->size = PARAM_cpk_bytes(0);
 		break;
 	default:
 		show_progress = false;

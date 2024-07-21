@@ -690,6 +690,33 @@ AX_RESTORE_FLAGS([openssl])
 AC_SUBST([OPENSSL_CFLAGS])
 AC_SUBST([OPENSSL_LIBS])
 
+AC_ARG_WITH([mayo],
+	    [AS_HELP_STRING([--with-mayo=PATH],
+			    [Build with MAYO support (auto|yes|no|path) [default=auto]])],
+	    [], [with_mayo="/usr/local"])
+
+AS_CASE([$with_mayo],
+	[no],[:],
+	[auto],[AC_MSG_ERROR([not implemented yet])],
+	[yes],[AC_MSG_ERROR([not implemented yet])],
+	[ # default
+	  AX_SAVE_FLAGS([mayo])
+	  MAYO_CFLAGS="-I$with_mayo/include"
+	  MAYO_LIBS="-L$with_mayo/lib"
+	  CFLAGS="$CFLAGS $MAYO_CFLAGS"
+	  LIBS="$LIBS $MAYO_LIBS"
+	  AC_SEARCH_LIBS([pqmayo_MAYO_1_opt_mayo_keypair], [mayo_1],
+			 [
+			   MAYO_LIBS="$MAYO_LIBS $ac_cv_search_pqmayo_MAYO_1_opt_mayo_keypair"
+			 ],[
+			   AC_MSG_ERROR([MAYO libraries not found])
+			 ])
+	  AX_RESTORE_FLAGS([mayo])
+	  ])
+
+AC_SUBST([MAYO_CFLAGS])
+AC_SUBST([MAYO_LIBS])
+
 AC_CHECK_FUNCS([clock_gettime])
 
 # [pairwise: --with-gssapi=yes, --with-gssapi=auto, --without-gssapi]
