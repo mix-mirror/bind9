@@ -677,6 +677,9 @@ foreach fn, header : {
     )
 endforeach
 
+## liboqs (post-quantum signatures: MAYO)
+oqs_dep = dependency('liboqs', version: '>=0.12.0')
+
 ## libuv
 uv_dep = dependency('libuv', version: '>=1.34.0')
 if uv_dep.version().version_compare('<1.40.0')
@@ -1256,6 +1259,8 @@ libdns = library(
         json_c_dep,
         lmdb_dep,
         xml2_dep,
+
+        oqs_dep,
 
         dns_srcconf.dependencies(),
     ],

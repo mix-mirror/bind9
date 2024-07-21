@@ -51,6 +51,7 @@ enum {
 	DNS_KEYALG_ECDSA384 = 14,
 	DNS_KEYALG_ED25519 = 15,
 	DNS_KEYALG_ED448 = 16,
+	DNS_KEYALG_MAYO = 126,
 	DNS_KEYALG_INDIRECT = 252,
 	DNS_KEYALG_PRIVATEDNS = 253,
 	DNS_KEYALG_PRIVATEOID = 254, /*%< Key begins with OID giving alg */
@@ -76,3 +77,12 @@ enum {
 
 #define DNS_KEY_ED448SIZE 57
 #define DNS_SIG_ED448SIZE 114
+
+/*
+ * MAYO-2 (liboqs) public key, secret key, and signature sizes. These are
+ * verified against the values reported by liboqs at compile time in
+ * mayo_link.c (STATIC_ASSERT).
+ */
+#define DNS_KEY_MAYOSIZE 4912
+#define DNS_SEC_MAYOSIZE 24
+#define DNS_SIG_MAYOSIZE 186
