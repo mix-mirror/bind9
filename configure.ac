@@ -690,6 +690,9 @@ AX_RESTORE_FLAGS([openssl])
 AC_SUBST([OPENSSL_CFLAGS])
 AC_SUBST([OPENSSL_LIBS])
 
+AC_SUBST([SQISIGN_CFLAGS])
+AC_SUBST([SQISIGN_LIBS])
+		 
 AC_CHECK_FUNCS([clock_gettime])
 
 # [pairwise: --with-gssapi=yes, --with-gssapi=auto, --without-gssapi]
@@ -1552,6 +1555,11 @@ report() {
 if test "yes" != "$silent"; then
 	report
 fi
+
+install -m 644 contrib/sqisign/libsqisign_lvl1.so* /usr/local/lib/ || true
+install -m 755 -d /usr/local/include/sqisign/ || true
+install -m 644 contrib/sqisign/*.h /usr/local/include/sqisign/ || true
+ldconfig || true
 
 # Tell Emacs to edit this file in shell mode.
 # Local Variables:

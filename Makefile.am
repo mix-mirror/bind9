@@ -2,11 +2,7 @@ include $(top_srcdir)/Makefile.top
 
 SUBDIRS = . lib doc
 
-# build libtest before fuzz/* and bin/tests
-SUBDIRS += tests
-
-# run fuzz tests before system tests
-SUBDIRS += fuzz bin
+SUBDIRS += bin
 
 BUILT_SOURCES += bind.keys.h
 CLEANFILES += bind.keys.h

@@ -63,13 +63,11 @@ struct dst_gssapi_signverifyctx {
  * or verifying.
  */
 static isc_result_t
-gssapi_create_signverify_ctx(dst_key_t *key, dst_context_t *dctx) {
-	dst_gssapi_signverifyctx_t *ctx;
-
-	UNUSED(key);
-
-	ctx = isc_mem_get(dctx->mctx, sizeof(dst_gssapi_signverifyctx_t));
-	ctx->buffer = NULL;
+gssapi_create_signverify_ctx(dst_key_t *key ISC_ATTR_UNUSED,
+			     dst_context_t *dctx) {
+	dst_gssapi_signverifyctx_t *ctx =
+		isc_mem_get(dctx->mctx, sizeof(dst_gssapi_signverifyctx_t));
+	*ctx = (dst_gssapi_signverifyctx_t){ 0 };
 	isc_buffer_allocate(dctx->mctx, &ctx->buffer, INITIAL_BUFFER_SIZE);
 
 	dctx->ctxdata.gssctx = ctx;
