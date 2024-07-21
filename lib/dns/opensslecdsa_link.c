@@ -84,14 +84,13 @@ BN_bn2bin_fixed(const BIGNUM *bn, unsigned char *buf, int size) {
 }
 
 static isc_result_t
-opensslecdsa_createctx(dst_key_t *key, dst_context_t *dctx) {
+opensslecdsa_createctx(dst_key_t *key ISC_ATTR_UNUSED, dst_context_t *dctx) {
 	isc_result_t result = ISC_R_SUCCESS;
 	EVP_MD_CTX *evp_md_ctx;
 	EVP_PKEY_CTX *pctx = NULL;
 	const EVP_MD *type = NULL;
 	const char *md = NULL;
 
-	UNUSED(key);
 	REQUIRE(opensslecdsa_valid_key_alg(dctx->key->key_alg));
 	REQUIRE(dctx->use == DO_SIGN || dctx->use == DO_VERIFY);
 
