@@ -659,10 +659,16 @@ dns_aclenv_set(dns_aclenv_t *env, dns_acl_t *localhost, dns_acl_t *localnets) {
 	REQUIRE(DNS_ACL_VALID(localhost));
 	REQUIRE(DNS_ACL_VALID(localnets));
 
-	rcu_read_lock();
 	localhost = rcu_xchg_pointer(&env->localhost, dns_acl_ref(localhost));
 	localnets = rcu_xchg_pointer(&env->localnets, dns_acl_ref(localnets));
-	rcu_read_unlock();
+
+	/*
+	 * This function is called only during interface scanning, so blocking
+	 * a bit is acceptable. Wait until all ongoing attachments to old
+	 * 'localhost' and 'localnets' are finished before we can detach and
+	 * possibly destroy them.
+	 */
+	synchronize_rcu();
 
 	dns_acl_detach(&localhost);
 	dns_acl_detach(&localnets);
@@ -675,23 +681,29 @@ dns_aclenv_copy(dns_aclenv_t *target, dns_aclenv_t *source) {
 
 	rcu_read_lock();
 
-	dns_acl_t *localhost = rcu_dereference(source->localhost);
+	dns_acl_t *localhost = dns_acl_ref(rcu_dereference(source->localhost));
 	INSIST(DNS_ACL_VALID(localhost));
 
-	dns_acl_t *localnets = rcu_dereference(source->localnets);
+	dns_acl_t *localnets = dns_acl_ref(rcu_dereference(source->localnets));
 	INSIST(DNS_ACL_VALID(localnets));
 
-	localhost = rcu_xchg_pointer(&target->localhost,
-				     dns_acl_ref(localhost));
-	localnets = rcu_xchg_pointer(&target->localnets,
-				     dns_acl_ref(localnets));
+	rcu_read_unlock();
+
+	localhost = rcu_xchg_pointer(&target->localhost, localhost);
+	localnets = rcu_xchg_pointer(&target->localnets, localnets);
+
+	/*
+	 * This function is called only during (re)configuration, so blocking
+	 * a bit is acceptable. Wait until all ongoing attachments to old
+	 * 'localhost' and 'localnets' are finished before we can detach and
+	 * possibly destroy them.
+	 */
+	synchronize_rcu();
 
 	target->match_mapped = source->match_mapped;
 #if defined(HAVE_GEOIP2)
 	target->geoip = source->geoip;
 #endif /* if defined(HAVE_GEOIP2) */
-
-	rcu_read_unlock();
 
 	dns_acl_detach(&localhost);
 	dns_acl_detach(&localnets);
@@ -703,15 +715,21 @@ dns__aclenv_destroy(dns_aclenv_t *aclenv) {
 
 	aclenv->magic = 0;
 
-	rcu_read_lock();
 	dns_acl_t *localhost = rcu_xchg_pointer(&aclenv->localhost, NULL);
 	INSIST(DNS_ACL_VALID(localhost));
 
 	dns_acl_t *localnets = rcu_xchg_pointer(&aclenv->localnets, NULL);
 	INSIST(DNS_ACL_VALID(localnets));
 
-	rcu_read_unlock();
-
+	/*
+	 * We can detach them here without any synchronization, because:
+	 *
+	 * - If this is their last reference, 'aclenv' is now unused, so nobody
+	 *   could have attached to them in the meanwhile - they can be safely
+	 *   destroyed.
+	 * - If this is not their last reference, then detaching should be safe
+	 *   as they won't be destroyed here if they are used elsewhere.
+	 */
 	dns_acl_detach(&localhost);
 	dns_acl_detach(&localnets);
 
