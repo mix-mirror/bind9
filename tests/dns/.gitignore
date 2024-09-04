@@ -1,4 +1,6 @@
-/zone.data
+/.hypothesis
+/_*_cffi.*
+/badcache.out
 /testdata/dnstap/dnstap.file
 /testdata/master/master18.data
-/badcache.out
+/zone.data
