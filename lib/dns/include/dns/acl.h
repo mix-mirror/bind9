@@ -34,6 +34,7 @@
 #include <isc/magic.h>
 #include <isc/netaddr.h>
 #include <isc/refcount.h>
+#include <isc/urcu.h>
 
 #include <dns/geoip.h>
 #include <dns/iptable.h>
@@ -94,7 +95,8 @@ struct dns_acl {
 	char		 *name;		 /*%< Temporary use only */
 	ISC_LINK(dns_acl_t) nextincache; /*%< Ditto */
 	ISC_LIST(dns_acl_port_transports_t) ports_and_transports;
-	size_t port_proto_entries;
+	size_t		port_proto_entries;
+	struct rcu_head rcu_head;
 };
 
 struct dns_aclenv {
