@@ -28,6 +28,9 @@
 #define DNS_ACLENV_MAGIC ISC_MAGIC('a', 'c', 'n', 'v')
 #define VALID_ACLENV(a)	 ISC_MAGIC_VALID(a, DNS_ACLENV_MAGIC)
 
+static void
+dns__acl_destroy_port_transports(dns_acl_t *acl);
+
 /*
  * Create a new ACL, including an IP table and an array with room
  * for 'n' ACL elements.  The elements are uninitialized and the
@@ -459,13 +462,13 @@ dns_aclelement_match(const isc_netaddr_t *reqaddr, const dns_name_t *reqsigner,
 }
 
 static void
-dns__acl_destroy(dns_acl_t *dacl) {
-	unsigned int i;
-	dns_acl_port_transports_t *port_proto;
+dns__acl_destroy_rcu(struct rcu_head *rcu_head) {
+	dns_acl_t *dacl = caa_container_of(rcu_head, dns_acl_t, rcu_head);
 
-	INSIST(!ISC_LINK_LINKED(dacl, nextincache));
+	isc_refcount_destroy(&dacl->references);
+	dacl->magic = 0;
 
-	for (i = 0; i < dacl->length; i++) {
+	for (size_t i = 0; i < dacl->length; i++) {
 		dns_aclelement_t *de = &dacl->elements[i];
 		if (de->type == dns_aclelementtype_keyname) {
 			dns_name_free(&de->keyname, dacl->mctx);
@@ -484,19 +487,15 @@ dns__acl_destroy(dns_acl_t *dacl) {
 		dns_iptable_detach(&dacl->iptable);
 	}
 
-	port_proto = ISC_LIST_HEAD(dacl->ports_and_transports);
-	while (port_proto != NULL) {
-		dns_acl_port_transports_t *next = NULL;
+	dns__acl_destroy_port_transports(dacl);
 
-		next = ISC_LIST_NEXT(port_proto, link);
-		ISC_LIST_DEQUEUE(dacl->ports_and_transports, port_proto, link);
-		isc_mem_put(dacl->mctx, port_proto, sizeof(*port_proto));
-		port_proto = next;
-	}
-
-	isc_refcount_destroy(&dacl->references);
-	dacl->magic = 0;
 	isc_mem_putanddetach(&dacl->mctx, dacl, sizeof(*dacl));
+}
+
+static void
+dns__acl_destroy(dns_acl_t *dacl) {
+	INSIST(!ISC_LINK_LINKED(dacl, nextincache));
+	call_rcu(&dacl->rcu_head, dns__acl_destroy_rcu);
 }
 
 #if DNS_ACL_TRACE
@@ -659,10 +658,8 @@ dns_aclenv_set(dns_aclenv_t *env, dns_acl_t *localhost, dns_acl_t *localnets) {
 	REQUIRE(DNS_ACL_VALID(localhost));
 	REQUIRE(DNS_ACL_VALID(localnets));
 
-	rcu_read_lock();
 	localhost = rcu_xchg_pointer(&env->localhost, dns_acl_ref(localhost));
 	localnets = rcu_xchg_pointer(&env->localnets, dns_acl_ref(localnets));
-	rcu_read_unlock();
 
 	dns_acl_detach(&localhost);
 	dns_acl_detach(&localnets);
@@ -703,17 +700,14 @@ dns__aclenv_destroy(dns_aclenv_t *aclenv) {
 
 	aclenv->magic = 0;
 
-	rcu_read_lock();
-	dns_acl_t *localhost = rcu_xchg_pointer(&aclenv->localhost, NULL);
-	INSIST(DNS_ACL_VALID(localhost));
+	/*
+	 * The last reference to the aclenv has been detached, so nobody should
+	 * be reading from this aclenv.  We can destroy the localhost and
+	 * localnet directly without swapping the pointers.
+	 */
 
-	dns_acl_t *localnets = rcu_xchg_pointer(&aclenv->localnets, NULL);
-	INSIST(DNS_ACL_VALID(localnets));
-
-	rcu_read_unlock();
-
-	dns_acl_detach(&localhost);
-	dns_acl_detach(&localnets);
+	dns_acl_detach(&aclenv->localhost);
+	dns_acl_detach(&aclenv->localnets);
 
 	isc_mem_putanddetach(&aclenv->mctx, aclenv, sizeof(*aclenv));
 }
@@ -775,5 +769,17 @@ dns_acl_merge_ports_transports(dns_acl_t *dest, dns_acl_t *source, bool pos) {
 
 		dns_acl_add_port_transports(dest, next->port, next->transports,
 					    next->encrypted, add_negative);
+	}
+}
+
+static void
+dns__acl_destroy_port_transports(dns_acl_t *acl) {
+	dns_acl_port_transports_t *port_proto = NULL;
+	dns_acl_port_transports_t *next = NULL;
+	ISC_LIST_FOREACH_SAFE (acl->ports_and_transports, port_proto, link,
+			       next)
+	{
+		ISC_LIST_DEQUEUE(acl->ports_and_transports, port_proto, link);
+		isc_mem_put(acl->mctx, port_proto, sizeof(*port_proto));
 	}
 }

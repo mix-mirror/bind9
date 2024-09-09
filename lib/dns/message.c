@@ -21,6 +21,7 @@
 #include <inttypes.h>
 #include <stdbool.h>
 
+#include <isc/async.h>
 #include <isc/buffer.h>
 #include <isc/hash.h>
 #include <isc/hashmap.h>
@@ -186,11 +187,13 @@ msgblock_allocate(isc_mem_t *, unsigned int, unsigned int);
  * asynchronously.
  */
 typedef struct checksig_ctx {
+	isc_loop_t *loop;
 	dns_message_t *msg;
 	dns_view_t *view;
 	dns_message_cb_t cb;
 	void *cbarg;
 	isc_result_t result;
+	struct rcu_head rcu_head;
 } checksig_ctx_t;
 
 /*
@@ -3219,22 +3222,27 @@ dns_message_dumpsig(dns_message_t *msg, char *txt1) {
 #endif /* ifdef SKAN_MSG_DEBUG */
 
 static void
-checksig_run(void *arg) {
-	checksig_ctx_t *chsigctx = arg;
-
-	chsigctx->result = dns_message_checksig(chsigctx->msg, chsigctx->view);
-}
-
-static void
 checksig_cb(void *arg) {
 	checksig_ctx_t *chsigctx = arg;
 	dns_message_t *msg = chsigctx->msg;
+	isc_loop_t *loop = chsigctx->loop;
 
 	chsigctx->cb(chsigctx->cbarg, chsigctx->result);
 
 	dns_view_detach(&chsigctx->view);
 	isc_mem_put(msg->mctx, chsigctx, sizeof(*chsigctx));
 	dns_message_detach(&msg);
+	isc_loop_detach(&loop);
+}
+
+static void
+checksig_run(struct rcu_head *rcu_head) {
+	checksig_ctx_t *chsigctx = caa_container_of(rcu_head, checksig_ctx_t,
+						    rcu_head);
+
+	chsigctx->result = dns_message_checksig(chsigctx->msg, chsigctx->view);
+
+	isc_async_run(chsigctx->loop, checksig_cb, chsigctx);
 }
 
 isc_result_t
@@ -3250,11 +3258,12 @@ dns_message_checksig_async(dns_message_t *msg, dns_view_t *view,
 		.cb = cb,
 		.cbarg = cbarg,
 		.result = ISC_R_UNSET,
+		.loop = isc_loop_ref(loop),
 	};
 	dns_message_attach(msg, &chsigctx->msg);
 	dns_view_attach(view, &chsigctx->view);
 
-	isc_work_enqueue(loop, checksig_run, checksig_cb, chsigctx);
+	call_rcu(&chsigctx->rcu_head, checksig_run);
 
 	return (DNS_R_WAIT);
 }
