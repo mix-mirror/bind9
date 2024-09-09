@@ -153,6 +153,8 @@ struct dns_validator {
 	uint32_t      *nvalidations;
 	uint32_t      *nfails;
 	isc_counter_t *qc;
+
+	struct rcu_head rcu_head;
 };
 
 /*%
