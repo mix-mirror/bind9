@@ -196,7 +196,7 @@ ISC_RUN_TEST_IMPL(isc_mem_inuse) {
 
 	assert_int_equal(diff, 0);
 
-	isc_mem_destroy(&mctx2);
+	isc_mem_detach(&mctx2);
 }
 
 ISC_RUN_TEST_IMPL(isc_mem_zeroget) {
@@ -322,7 +322,7 @@ ISC_RUN_TEST_IMPL(isc_mem_overmem) {
 	isc_mem_free(omctx, data1);
 	assert_false(isc_mem_isovermem(omctx));
 
-	isc_mem_destroy(&omctx);
+	isc_mem_detach(&omctx);
 }
 
 #if ISC_MEM_TRACKLINES
@@ -344,7 +344,7 @@ ISC_RUN_TEST_IMPL(isc_mem_noflags) {
 	assert_non_null(ptr);
 	isc__mem_printactive(mctx2, f);
 	isc_mem_put(mctx2, ptr, 2048);
-	isc_mem_destroy(&mctx2);
+	isc_mem_detach(&mctx2);
 	isc_mem_debugging = ISC_MEM_DEBUGRECORD;
 	isc_stdio_close(f);
 
@@ -378,7 +378,7 @@ ISC_RUN_TEST_IMPL(isc_mem_recordflag) {
 	assert_non_null(ptr);
 	isc__mem_printactive(mctx2, f);
 	isc_mem_put(mctx2, ptr, 2048);
-	isc_mem_destroy(&mctx2);
+	isc_mem_detach(&mctx2);
 	isc_stdio_close(f);
 
 	memset(buf, 0, sizeof(buf));
@@ -418,7 +418,7 @@ ISC_RUN_TEST_IMPL(isc_mem_traceflag) {
 	assert_non_null(ptr);
 	isc__mem_printactive(mctx2, f);
 	isc_mem_put(mctx2, ptr, 2048);
-	isc_mem_destroy(&mctx2);
+	isc_mem_detach(&mctx2);
 	isc_mem_debugging = ISC_MEM_DEBUGRECORD;
 	isc_stdio_close(f);
 

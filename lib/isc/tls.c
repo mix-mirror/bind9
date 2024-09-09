@@ -187,7 +187,7 @@ void
 isc__tls_shutdown(void) {
 	OPENSSL_cleanup();
 
-	isc_mem_destroy(&isc__tls_mctx);
+	isc_mem_detach(&isc__tls_mctx);
 }
 
 void

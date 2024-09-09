@@ -563,7 +563,7 @@ main(int argc, char **argv) {
 		fprintf(errout, "OK\n");
 	}
 	destroy();
-	isc_mem_destroy(&mctx);
+	isc_mem_detach(&mctx);
 
 	return ((result == ISC_R_SUCCESS) ? 0 : 1);
 }

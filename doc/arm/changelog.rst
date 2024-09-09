@@ -103,7 +103,7 @@ Feature Changes
   been removed, there isn't a reason to keep the implementation.
   :gl:`!9135`
 
-- Call rcu_barrier() in the isc_mem_destroy() just once. ``dcee04f70cb``
+- Call rcu_barrier() in the isc_mem_detach() just once. ``dcee04f70cb``
 
   The previous work in this area was led by the belief that we might be
   calling call_rcu() from within call_rcu() callbacks.  After carefully
@@ -22547,7 +22547,7 @@ Changes prior to 9.20.0
 
 	  46.	[func]		Memory contexts are now reference counted.
 				Added isc_mem_inuse() and isc_mem_preallocate().
-				Renamed isc_mem_destroy_check() to
+				Renamed isc_mem_detach_check() to
 				isc_mem_setdestroycheck().
 
 	  45.	[bug]		The trusted-key statement incorrectly loaded keys.

@@ -231,7 +231,7 @@ dst__lib_destroy(void) {
 		}
 	}
 
-	isc_mem_destroy(&dst__mctx);
+	isc_mem_detach(&dst__mctx);
 }
 
 bool
