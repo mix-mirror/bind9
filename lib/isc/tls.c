@@ -74,13 +74,13 @@ static isc_mem_t *isc__tls_mctx = NULL;
 
 static void *
 isc__tls_malloc_ex(size_t size, const char *file, int line) {
-	return (isc__mem_allocate(isc__tls_mctx, size, 0, file,
+	return (isc__mem_allocate(isc__tls_mctx, size, 0, NULL, file,
 				  (unsigned int)line));
 }
 
 static void *
 isc__tls_realloc_ex(void *ptr, size_t size, const char *file, int line) {
-	return (isc__mem_reallocate(isc__tls_mctx, ptr, size, 0, file,
+	return (isc__mem_reallocate(isc__tls_mctx, ptr, size, 0, NULL, file,
 				    (unsigned int)line));
 }
 
@@ -90,7 +90,8 @@ isc__tls_free_ex(void *ptr, const char *file, int line) {
 		return;
 	}
 	if (isc__tls_mctx != NULL) {
-		isc__mem_free(isc__tls_mctx, ptr, 0, file, (unsigned int)line);
+		isc__mem_free(isc__tls_mctx, ptr, 0, NULL, file,
+			      (unsigned int)line);
 	}
 }
 
