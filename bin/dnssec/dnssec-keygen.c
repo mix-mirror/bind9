@@ -1308,7 +1308,7 @@ main(int argc, char **argv) {
 	if (verbose > 10) {
 		isc_mem_stats(mctx, stdout);
 	}
-	isc_mem_destroy(&mctx);
+	isc_mem_detach(&mctx);
 
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
 	if (base != NULL) {

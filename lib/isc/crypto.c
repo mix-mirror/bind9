@@ -206,7 +206,7 @@ isc__crypto_shutdown(void) {
 
 	OPENSSL_cleanup();
 
-	isc_mem_destroy(&isc__crypto_mctx);
+	isc_mem_detach(&isc__crypto_mctx);
 }
 
 #undef md_unregister_algorithm
