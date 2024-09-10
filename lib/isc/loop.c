@@ -276,6 +276,10 @@ loop_close(isc_loop_t *loop) {
 static void *
 helper_thread(void *arg) {
 	isc_loop_t *helper = (isc_loop_t *)arg;
+	isc_loopmgr_t *loopmgr = helper->loopmgr;
+	struct call_rcu_data *crdp = loopmgr->call_rcu_datas[helper->tid];
+
+	set_thread_call_rcu_data(crdp);
 
 	int r = uv_prepare_start(&helper->quiescent, quiescent_cb);
 	UV_RUNTIME_CHECK(uv_prepare_start, r);
@@ -290,6 +294,8 @@ helper_thread(void *arg) {
 
 	isc_barrier_wait(&helper->loopmgr->stopping);
 
+	set_thread_call_rcu_data(NULL);
+
 	return NULL;
 }
 
@@ -299,8 +305,9 @@ loop_thread(void *arg) {
 	isc_loopmgr_t *loopmgr = loop->loopmgr;
 	isc_loop_t *helper = &loopmgr->helpers[loop->tid];
 	char name[32];
-	/* Initialize the thread_local variables*/
+	struct call_rcu_data *crdp = loopmgr->call_rcu_datas[loop->tid];
 
+	/* Initialize the thread_local variables*/
 	REQUIRE(isc__loop_local == NULL || isc__loop_local == loop);
 	isc__loop_local = loop;
 
@@ -310,6 +317,8 @@ loop_thread(void *arg) {
 	isc_thread_create(helper_thread, helper, &helper->thread);
 	snprintf(name, sizeof(name), "isc-helper-%04" PRIu32, loop->tid);
 	isc_thread_setname(helper->thread, name);
+
+	set_thread_call_rcu_data(crdp);
 
 	int r = uv_prepare_start(&loop->quiescent, quiescent_cb);
 	UV_RUNTIME_CHECK(uv_prepare_start, r);
@@ -337,6 +346,8 @@ loop_thread(void *arg) {
 	UV_RUNTIME_CHECK(uv_async_send, r);
 
 	isc_barrier_wait(&loopmgr->stopping);
+
+	set_thread_call_rcu_data(NULL);
 
 	return NULL;
 }
@@ -390,6 +401,13 @@ isc_loopmgr_create(isc_mem_t *mctx, uint32_t nloops, isc_loopmgr_t **loopmgrp) {
 	isc_barrier_init(&loopmgr->resuming, loopmgr->nloops * 2);
 	isc_barrier_init(&loopmgr->starting, loopmgr->nloops * 2);
 	isc_barrier_init(&loopmgr->stopping, loopmgr->nloops * 2);
+
+	loopmgr->call_rcu_datas =
+		isc_mem_cget(loopmgr->mctx, loopmgr->nloops,
+			     sizeof(loopmgr->call_rcu_datas[0]));
+	for (size_t i = 0; i < loopmgr->nloops; i++) {
+		loopmgr->call_rcu_datas[i] = create_call_rcu_data(0, -1);
+	}
 
 	loopmgr->loops = isc_mem_cget(loopmgr->mctx, loopmgr->nloops,
 				      sizeof(loopmgr->loops[0]));
@@ -612,6 +630,28 @@ isc_loopmgr_destroy(isc_loopmgr_t **loopmgrp) {
 	}
 	isc_mem_cput(loopmgr->mctx, loopmgr->loops, loopmgr->nloops,
 		     sizeof(loopmgr->loops[0]));
+
+	/*
+	 * From urcu-call-rcu-impl.h:
+	 *
+	 * The caller must wait for a grace-period to pass between return from
+	 * set_cpu_call_rcu_data() and call to call_rcu_data_free() passing the
+	 * previous call rcu data as argument.
+	 */
+	synchronize_rcu();
+	/*
+	 * Now wait for the call_rcu tasks to finish to reduce the amount of the
+	 * task to be moved from the one that we are deleting and the default
+	 * call_rcu thread.
+	 */
+	rcu_barrier();
+
+	for (size_t i = 0; i < loopmgr->nloops; i++) {
+		struct call_rcu_data *crdp = loopmgr->call_rcu_datas[i];
+		call_rcu_data_free(crdp);
+	}
+	isc_mem_cput(loopmgr->mctx, loopmgr->call_rcu_datas, loopmgr->nloops,
+		     sizeof(loopmgr->call_rcu_datas[0]));
 
 	isc_barrier_destroy(&loopmgr->starting);
 	isc_barrier_destroy(&loopmgr->stopping);
