@@ -898,6 +898,25 @@ isc_tls_quic_write_level(const isc_tls_t *tls);
  */
 
 void
+isc_tls_quic_crypto_initialize(void);
+/*%<
+ * Initiliazes the internal QUIC crypto library. It is supposed to
+ * be used right after loading all required OpenSSL crypto providers.
+ *
+ * Internally it mostly pre-fetches the crypto algorithms according to
+ * OpenSSL 3.X recommendations.
+ *
+ * https://docs.openssl.org/3.0/man7/crypto/#explicit-fetching
+ */
+
+void
+isc_tls_quic_crypto_shutdown(void);
+/*%<
+ * Uninitiliazes the internal QUIC crypto library. It is supposed to
+ * be used right before unloading the used OpenSSL crypto providers.
+ */
+
+void
 isc__tls_quic_initialize(void);
 
 void
