@@ -120,6 +120,12 @@ isc_tls_get_default_quic_interface(void) {
 #ifdef HAVE_NATIVE_BORINGSSL_QUIC_API
 	return isc__tls_get_native_quic_interface();
 #endif /* HAVE_NATIVE_BORINGSSL_QUIC_API */
+
+#ifndef HAVE_LIBRESSL
+	return isc__tls_get_compat_quic_interface();
+#endif /* HAVE_LIBRESSL */
+
+	/* Unexpected - we need to investigate. */
 	UNREACHABLE();
 }
 

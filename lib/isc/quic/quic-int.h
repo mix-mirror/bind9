@@ -125,3 +125,52 @@ isc__tls_get_native_quic_interface(void);
  * Please consider using 'isc_tls_get_default_quic_interface()' instead.
  */
 #endif /* HAVE_NATIVE_BORINGSSL_QUIC_API */
+
+#ifndef HAVE_LIBRESSL
+#include <isc/buffer.h>
+
+const isc_tls_quic_interface_t *
+isc__tls_get_compat_quic_interface(void);
+/*%<
+ * Returns a set of hooks to interact wit the compatibility layer-based
+ * implementation of QUIC integration API.
+ *
+ * NOTE: this function is primarily exposed for testing and debugging purposes.
+ * Please consider using 'isc_tls_get_default_quic_interface()' instead.
+ */
+
+typedef enum isc__tls_keylog_label {
+	ISC__TLS_KL_ILLEGAL = 0,
+	/* TLSv1.3 */
+	ISC__TLS_KL_CLIENT_EARLY_TRAFFIC_SECRET,
+	ISC__TLS_KL_EARLY_EXPORTER_MASTER_SECRET,
+	ISC__TLS_KL_CLIENT_HANDSHAKE_TRAFFIC_SECRET,
+	ISC__TLS_KL_SERVER_HANDSHAKE_TRAFFIC_SECRET,
+	ISC__TLS_KL_CLIENT_TRAFFIC_SECRET_0,
+	ISC__TLS_KL_SERVER_TRAFFIC_SECRET_0,
+	ISC__TLS_KL_EXPORTER_SECRET,
+	/* TLSv1.2 */
+	ISC__TLS_KL_CLIENT_RANDOM
+} isc__tls_keylog_label_t;
+/*%<
+ * Definitions corresponding to TLS SSLKEYLOGFILE format labels.
+ *
+ * See this IETF Draft:
+ * https://datatracker.ietf.org/doc/draft-ietf-tls-keylogfile/
+ */
+
+isc_result_t
+isc__tls_parse_keylog_entry(const char *restrict line,
+			    isc__tls_keylog_label_t *restrict out_label,
+			    isc_buffer_t *restrict out_client_random,
+			    isc_buffer_t *restrict out_secret);
+/*%<
+ * Parse SSLKEYLOGFILE entry. If you are not interested in certain parts of the
+ * entry, use 'NULL' for the corresponding argument.
+ *
+ * NOTE: might alter the passed arguments even when fails.
+ *
+ * Requires:
+ *\li	'line' is a valid, non-NULL pointer.
+ */
+#endif /* HAVE_LIBRESSL */
