@@ -67,14 +67,14 @@ static void
 udp_close_cb(uv_handle_t *handle);
 
 static uv_os_sock_t
-isc__nm_udp_lb_socket(isc_nm_t *mgr, sa_family_t sa_family) {
+isc__nm_udp_lb_socket(isc_nm_t *mgr, sa_family_t sa_family, int affinity) {
 	isc_result_t result;
 	uv_os_sock_t sock = -1;
 
 	result = isc__nm_socket(sa_family, SOCK_DGRAM, 0, &sock);
 	RUNTIME_CHECK(result == ISC_R_SUCCESS);
 
-	(void)isc__nm_socket_incoming_cpu(sock);
+	(void)isc__nm_socket_incoming_cpu(sock, affinity);
 	(void)isc__nm_socket_disable_pmtud(sock, sa_family);
 	(void)isc__nm_socket_v6only(sock, sa_family);
 
@@ -191,8 +191,8 @@ start_udp_child(isc_nm_t *mgr, isc_sockaddr_t *iface, isc_nmsocket_t *sock,
 	csock->inactive_handles_max = ISC_NM_NMHANDLES_MAX;
 
 	if (mgr->load_balance_sockets) {
-		csock->fd = isc__nm_udp_lb_socket(mgr,
-						  iface->type.sa.sa_family);
+		csock->fd = isc__nm_udp_lb_socket(mgr, iface->type.sa.sa_family,
+						  tid);
 	} else {
 		csock->fd = dup(fd);
 	}
@@ -241,7 +241,7 @@ isc_nm_listenudp(isc_nm_t *mgr, uint32_t workers, isc_sockaddr_t *iface,
 	sock->recv_cbarg = cbarg;
 
 	if (!mgr->load_balance_sockets) {
-		fd = isc__nm_udp_lb_socket(mgr, iface->type.sa.sa_family);
+		fd = isc__nm_udp_lb_socket(mgr, iface->type.sa.sa_family, -1);
 	}
 
 	start_udp_child(mgr, iface, sock, fd, 0);
@@ -810,7 +810,7 @@ isc_nm_udpconnect(isc_nm_t *mgr, isc_sockaddr_t *local, isc_sockaddr_t *peer,
 	RUNTIME_CHECK(result == ISC_R_SUCCESS ||
 		      result == ISC_R_NOTIMPLEMENTED);
 
-	(void)isc__nm_socket_incoming_cpu(sock->fd);
+	(void)isc__nm_socket_incoming_cpu(sock->fd, sock->tid);
 
 	(void)isc__nm_socket_disable_pmtud(sock->fd, sa_family);
 

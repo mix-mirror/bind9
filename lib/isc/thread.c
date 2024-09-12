@@ -13,6 +13,9 @@
 
 /*! \file */
 
+#include <errno.h>
+#include <stdio.h>
+
 #if defined(HAVE_SCHED_H)
 #include <sched.h>
 #endif /* if defined(HAVE_SCHED_H) */
@@ -178,4 +181,19 @@ isc_thread_yield(void) {
 #elif defined(HAVE_PTHREAD_YIELD_NP)
 	pthread_yield_np();
 #endif /* if defined(HAVE_SCHED_YIELD) */
+}
+
+void
+isc_thread_setaffinity(isc_thread_t thread, int affinity) {
+#if HAVE_PTHREAD_SETAFFINITY_NP
+	cpu_set_t cpuset;
+
+	CPU_ZERO(&cpuset);
+	CPU_SET(affinity, &cpuset);
+
+	int r = pthread_setaffinity_np(thread, sizeof(cpuset), &cpuset);
+	if (r == -1) {
+		perror("setting affinity failed");
+	}
+#endif /* HAVE_PTHREAD_SETAFFINITY_NP */
 }

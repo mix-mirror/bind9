@@ -278,14 +278,14 @@ isc_nm_tcpconnect(isc_nm_t *mgr, isc_sockaddr_t *local, isc_sockaddr_t *peer,
 }
 
 static uv_os_sock_t
-isc__nm_tcp_lb_socket(isc_nm_t *mgr, sa_family_t sa_family) {
+isc__nm_tcp_lb_socket(isc_nm_t *mgr, sa_family_t sa_family, int affinity) {
 	isc_result_t result;
 	uv_os_sock_t sock;
 
 	result = isc__nm_socket(sa_family, SOCK_STREAM, 0, &sock);
 	RUNTIME_CHECK(result == ISC_R_SUCCESS);
 
-	(void)isc__nm_socket_incoming_cpu(sock);
+	(void)isc__nm_socket_incoming_cpu(sock, affinity);
 	(void)isc__nm_socket_v6only(sock, sa_family);
 
 	/* FIXME: set mss */
@@ -427,8 +427,8 @@ start_tcp_child(isc_nm_t *mgr, isc_sockaddr_t *iface, isc_nmsocket_t *sock,
 
 	if (mgr->load_balance_sockets) {
 		UNUSED(fd);
-		csock->fd = isc__nm_tcp_lb_socket(mgr,
-						  iface->type.sa.sa_family);
+		csock->fd = isc__nm_tcp_lb_socket(mgr, iface->type.sa.sa_family,
+						  tid);
 	} else {
 		csock->fd = dup(fd);
 	}
@@ -475,7 +475,7 @@ isc_nm_listentcp(isc_nm_t *mgr, uint32_t workers, isc_sockaddr_t *iface,
 	sock->pquota = quota;
 
 	if (!mgr->load_balance_sockets) {
-		fd = isc__nm_tcp_lb_socket(mgr, iface->type.sa.sa_family);
+		fd = isc__nm_tcp_lb_socket(mgr, iface->type.sa.sa_family, -1);
 	}
 
 	start_tcp_child(mgr, iface, sock, fd, 0);

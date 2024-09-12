@@ -1332,7 +1332,7 @@ isc__nm_socket_reuse_lb(uv_os_sock_t fd);
  */
 
 isc_result_t
-isc__nm_socket_incoming_cpu(uv_os_sock_t fd);
+isc__nm_socket_incoming_cpu(uv_os_sock_t fd, int affinity);
 /*%<
  * Set the SO_INCOMING_CPU socket option on the fd if available
  */

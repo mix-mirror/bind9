@@ -219,9 +219,11 @@ isc__nm_socket_reuse_lb(uv_os_sock_t fd) {
 }
 
 isc_result_t
-isc__nm_socket_incoming_cpu(uv_os_sock_t fd) {
+isc__nm_socket_incoming_cpu(uv_os_sock_t fd, int affinity) {
 #ifdef SO_INCOMING_CPU
-	if (setsockopt_on(fd, SOL_SOCKET, SO_INCOMING_CPU) == -1) {
+	if (setsockopt(fd, SOL_SOCKET, SO_INCOMING_CPU, &affinity,
+		       sizeof(affinity)))
+	{
 		return (ISC_R_FAILURE);
 	} else {
 		return (ISC_R_SUCCESS);

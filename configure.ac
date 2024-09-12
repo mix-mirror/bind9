@@ -552,6 +552,8 @@ AC_COMPILE_IFELSE(
 
 AC_CHECK_FUNCS([pthread_attr_getstacksize pthread_attr_setstacksize pthread_barrier_init pthread_spin_init])
 
+AC_CHECK_FUNCS([pthread_setaffinity_np])
+
 AC_CHECK_HEADERS([sched.h])
 
 AC_SEARCH_LIBS([sched_yield],[rt])
