@@ -586,6 +586,9 @@ struct isc_nmsocket {
 	 */
 	uint64_t write_timeout;
 
+	uint64_t reads;
+	uv_prepare_t udp_prepare;
+
 	/*
 	 * Reading was throttled over TCP as the peer does not read the
 	 * data we are sending back.

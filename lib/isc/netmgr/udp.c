@@ -89,6 +89,13 @@ isc__nm_udp_lb_socket(isc_nm_t *mgr, sa_family_t sa_family) {
 	return (sock);
 }
 
+static void
+reset_reads(uv_prepare_t *handle) {
+	isc_nmsocket_t *sock = uv_handle_get_data(handle);
+
+	sock->reads = 0;
+}
+
 /*
  * Asynchronous 'udplisten' call handler: start listening on a UDP socket.
  */
@@ -109,6 +116,12 @@ start_udp_child_job(void *arg) {
 	isc_loop_t *loop = sock->worker->loop;
 
 	(void)isc__nm_socket_min_mtu(sock->fd, sa_family);
+
+	r = uv_prepare_init(&loop->loop, &sock->udp_prepare);
+	UV_RUNTIME_CHECK(uv_prepare_init, r);
+	uv_handle_set_data(&sock->udp_prepare, sock);
+	r = uv_prepare_start(&sock->udp_prepare, reset_reads);
+	UV_RUNTIME_CHECK(uv_prepare_start, r);
 
 #if HAVE_DECL_UV_UDP_RECVMMSG
 	uv_init_flags |= UV_UDP_RECVMMSG;
@@ -562,6 +575,8 @@ isc__nm_udp_read_cb(uv_udp_t *handle, ssize_t nrecv, const uv_buf_t *buf,
 		sa = &sockaddr;
 	}
 
+	sock->reads++;
+
 	req = isc__nm_get_read_req(sock, sa);
 
 	/*
@@ -698,6 +713,20 @@ isc__nm_udp_send(isc_nmhandle_t *handle, const isc_region_t *region,
 		goto fail;
 	}
 
+	if (uv_udp_get_send_queue_count(&sock->uv_handle.udp) > sock->reads) {
+		/* The send queue is clogged up, just drop the response */
+
+		/* isc__netmgr_log(worker->netmgr, ISC_LOG_ERROR, */
+		/* 		"The send buffers clogged up, increase them in "
+		 */
+		/* 		"kernel and in configuration"); */
+
+		isc__nm_incstats(sock, STATID_SENDFAIL);
+		result = ISC_R_NORESOURCES;
+		goto fail;
+	}
+
+	/* Try to send synchronously */
 	r = uv_udp_send(&uvreq->uv_req.udp_send, &sock->uv_handle.udp,
 			&uvreq->uvbuf, 1, sa, udp_send_cb);
 	if (r < 0) {
@@ -975,6 +1004,12 @@ isc__nm_udp_close(isc_nmsocket_t *sock) {
 	/* 1. close the read timer */
 	isc__nmsocket_timer_stop(sock);
 	uv_close((uv_handle_t *)&sock->read_timer, NULL);
+
+	/* 0. close the prepare handle */
+	if (sock->parent != NULL) {
+		(void)uv_prepare_stop(&sock->udp_prepare); /* always succeeds */
+		uv_close((uv_handle_t *)&sock->udp_prepare, NULL);
+	}
 }
 
 void
