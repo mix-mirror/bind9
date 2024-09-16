@@ -388,8 +388,9 @@ qid_match(struct cds_lfht_node *node, const void *key0) {
 		caa_container_of(node, dns_dispentry_t, ht_node);
 	const dns_dispentry_t *key = key0;
 
-	return (dispentry->id == key->id && dispentry->port == key->port &&
-		isc_sockaddr_equal(&dispentry->peer, &key->peer));
+	return (dispentry->id == key->id 
+		&& dispentry->port == key->port 
+		&& isc_sockaddr_equal(&dispentry->peer, &key->peer));
 }
 
 static void
@@ -678,6 +679,7 @@ tcp_recv_success(dns_dispatch_t *disp, isc_region_t *region,
 	 */
 	dns_dispentry_t key = {
 		.id = id,
+		.local = disp->local,
 		.peer = *peer,
 		.port = isc_sockaddr_getport(&disp->local),
 	};
