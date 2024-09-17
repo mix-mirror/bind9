@@ -338,32 +338,13 @@ dispentry_log(dns_dispentry_t *resp, int level, const char *fmt, ...) {
 static isc_result_t
 setup_socket(dns_dispatch_t *disp, dns_dispentry_t *resp,
 	     const isc_sockaddr_t *dest, in_port_t port) {
-	dns_dispatchmgr_t *mgr = disp->mgr;
-	unsigned int nports;
-	in_port_t *ports = NULL;
-
 	if (resp->retries++ > 5) {
 		return (ISC_R_FAILURE);
 	}
 
-	if (isc_sockaddr_pf(&disp->local) == AF_INET) {
-		nports = mgr->nv4ports;
-		ports = mgr->v4ports;
-	} else {
-		nports = mgr->nv6ports;
-		ports = mgr->v6ports;
-	}
-	if (nports == 0) {
-		return (ISC_R_ADDRNOTAVAIL);
-	}
-
 	resp->local = disp->local;
 	resp->peer = *dest;
-
-	if (port == 0) {
-		port = ports[isc_random_uniform(nports)];
-	}
-	resp->port = port;
+	resp->port = isc_random_uniform(0xFFFEu) + 1u;
 
 	return (ISC_R_SUCCESS);
 }
