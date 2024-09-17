@@ -61,11 +61,6 @@ struct dns_dispatchmgr {
 	struct cds_lfht **tcps;
 
 	struct cds_lfht *qids;
-
-	in_port_t *v4ports;    /*%< available ports for IPv4 */
-	unsigned int nv4ports; /*%< # of available ports for IPv4 */
-	in_port_t *v6ports;    /*%< available ports for IPv4 */
-	unsigned int nv6ports; /*%< # of available ports for IPv4 */
 };
 
 typedef enum {
@@ -905,14 +900,6 @@ dns_dispatchmgr_create(isc_mem_t *mctx, isc_loopmgr_t *loopmgr, isc_nm_t *nm,
 			NULL);
 	}
 
-	// create_default_portset(mgr->mctx, AF_INET, &v4portset);
-	// create_default_portset(mgr->mctx, AF_INET6, &v6portset);
-	//
-	// setavailports(mgr, v4portset, v6portset);
-	//
-	// isc_portset_destroy(mgr->mctx, &v4portset);
-	// isc_portset_destroy(mgr->mctx, &v6portset);
-
 	mgr->qids = cds_lfht_new(QIDS_INIT_SIZE, QIDS_MIN_SIZE, 0,
 				 CDS_LFHT_AUTO_RESIZE | CDS_LFHT_ACCOUNTING,
 				 NULL);
@@ -944,14 +931,6 @@ dns_dispatchmgr_getblackhole(dns_dispatchmgr_t *mgr) {
 	return (mgr->blackhole);
 }
 
-isc_result_t
-dns_dispatchmgr_setavailports(dns_dispatchmgr_t *mgr, isc_portset_t *v4portset,
-			      isc_portset_t *v6portset) {
-	REQUIRE(VALID_DISPATCHMGR(mgr));
-	// return (setavailports(mgr, v4portset, v6portset));
-	return ISC_R_SUCCESS;
-}
-
 static void
 dispatchmgr_destroy(dns_dispatchmgr_t *mgr) {
 	REQUIRE(VALID_DISPATCHMGR(mgr));
@@ -973,15 +952,6 @@ dispatchmgr_destroy(dns_dispatchmgr_t *mgr) {
 
 	if (mgr->stats != NULL) {
 		isc_stats_detach(&mgr->stats);
-	}
-
-	if (mgr->v4ports != NULL) {
-		isc_mem_cput(mgr->mctx, mgr->v4ports, mgr->nv4ports,
-			     sizeof(in_port_t));
-	}
-	if (mgr->v6ports != NULL) {
-		isc_mem_cput(mgr->mctx, mgr->v6ports, mgr->nv6ports,
-			     sizeof(in_port_t));
 	}
 
 	isc_nm_detach(&mgr->nm);

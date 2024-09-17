@@ -8409,7 +8409,7 @@ load_configuration(const char *filename, named_server_t *server,
 	} else {
 		result = named_config_getport(config, "port", &listen_port);
 		if (result != ISC_R_SUCCESS) {
-			goto cleanup_v6portset;
+			goto cleanup_bindkeys_parser;
 		}
 	}
 
@@ -8475,7 +8475,7 @@ load_configuration(const char *filename, named_server_t *server,
 						       AF_INET, &listenon);
 		}
 		if (result != ISC_R_SUCCESS) {
-			goto cleanup_v6portset;
+			goto cleanup_bindkeys_parser;
 		}
 
 		if (listenon != NULL) {
@@ -8509,7 +8509,7 @@ load_configuration(const char *filename, named_server_t *server,
 						       AF_INET6, &listenon);
 		}
 		if (result != ISC_R_SUCCESS) {
-			goto cleanup_v6portset;
+			goto cleanup_bindkeys_parser;
 		}
 		if (listenon != NULL) {
 			ns_interfacemgr_setlistenon6(server->interfacemgr,
@@ -8539,7 +8539,7 @@ load_configuration(const char *filename, named_server_t *server,
 				      "unable to listen on any configured "
 				      "interfaces");
 			result = ISC_R_FAILURE;
-			goto cleanup_v6portset;
+			goto cleanup_bindkeys_parser;
 		}
 	}
 
@@ -9343,10 +9343,7 @@ cleanup_keystorelist:
 		dns_keystore_detach(&keystore);
 	}
 
-cleanup_v6portset:
-cleanup_v4portset:
 cleanup_bindkeys_parser:
-
 	if (bindkeys_parser != NULL) {
 		if (bindkeys != NULL) {
 			cfg_obj_destroy(bindkeys_parser, &bindkeys);
