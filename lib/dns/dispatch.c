@@ -336,13 +336,13 @@ dispentry_log(dns_dispentry_t *resp, int level, const char *fmt, ...) {
  * Choose a random port number for a dispatch entry.
  */
 static isc_result_t
-setup_socket(dns_dispatch_t *disp, dns_dispentry_t *resp,
-	     const isc_sockaddr_t *dest, in_port_t port) {
+setup_socket(isc_sockaddr_t *local_address, const isc_sockaddr_t *dest,
+			 dns_dispentry_t *resp) {
 	if (resp->retries++ > 5) {
 		return (ISC_R_FAILURE);
 	}
 
-	resp->local = disp->local;
+	resp->local = *local_address;
 	resp->peer = *dest;
 	resp->port = isc_random_uniform(0xFFFEu) + 1u;
 
@@ -1399,7 +1399,6 @@ dns_dispatch_add(dns_dispatch_t *disp, isc_loop_t *loop,
 		return (ISC_R_CANCELED);
 	}
 
-	in_port_t localport = isc_sockaddr_getport(&disp->local);
 	dns_dispentry_t *resp = isc_mem_get(disp->mctx, sizeof(*resp));
 	*resp = (dns_dispentry_t){
 		.timeout = timeout,
@@ -1422,8 +1421,7 @@ dns_dispatch_add(dns_dispatch_t *disp, isc_loop_t *loop,
 	isc_refcount_init(&resp->references, 1); /* DISPENTRY000 */
 
 	if (disp->socktype == isc_socktype_udp) {
-		isc_result_t result = setup_socket(disp, resp, dest,
-						   localport);
+		isc_result_t result = setup_socket(&disp->local, dest, resp);
 		if (result != ISC_R_SUCCESS) {
 			isc_mem_put(disp->mctx, resp, sizeof(*resp));
 			inc_stats(disp->mgr, dns_resstatscounter_dispsockfail);
@@ -1870,11 +1868,8 @@ udp_connected(isc_nmhandle_t *handle, isc_result_t eresult, void *arg) {
 		break;
 	case ISC_R_NOPERM:
 	case ISC_R_ADDRINUSE: {
-		in_port_t localport = isc_sockaddr_getport(&disp->local);
-		isc_result_t result;
-
 		/* probably a port collision; try a different one */
-		result = setup_socket(disp, resp, &resp->peer, localport);
+		isc_result_t result = setup_socket(&disp->local, &resp->peer, resp);
 		if (result == ISC_R_SUCCESS) {
 			udp_dispatch_connect(disp, resp);
 			goto detach;
