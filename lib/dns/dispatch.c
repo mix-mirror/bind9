@@ -362,7 +362,6 @@ setup_socket(dns_dispatch_t *disp, dns_dispentry_t *resp,
 
 	if (port == 0) {
 		port = ports[isc_random_uniform(nports)];
-		isc_sockaddr_setport(&resp->local, port);
 	}
 	resp->port = port;
 
@@ -679,7 +678,6 @@ tcp_recv_success(dns_dispatch_t *disp, isc_region_t *region,
 	 */
 	dns_dispentry_t key = {
 		.id = id,
-		.local = disp->local,
 		.peer = *peer,
 		.port = isc_sockaddr_getport(&disp->local),
 	};
