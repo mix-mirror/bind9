@@ -138,18 +138,6 @@ dns_dispatchmgr_getblackhole(dns_dispatchmgr_t *mgr);
  *\li	A pointer to the current blackhole list, or NULL.
  */
 
-isc_result_t
-dns_dispatchmgr_setavailports(dns_dispatchmgr_t *mgr, isc_portset_t *v4portset,
-			      isc_portset_t *v6portset);
-/*%<
- * Sets a list of UDP ports that can be used for outgoing UDP messages.
- *
- * Requires:
- *\li	mgr is a valid dispatchmgr
- *\li	v4portset is NULL or a valid port set
- *\li	v6portset is NULL or a valid port set
- */
-
 void
 dns_dispatchmgr_setstats(dns_dispatchmgr_t *mgr, isc_stats_t *stats);
 /*%<

@@ -20,7 +20,6 @@
 #include <isc/mem.h>
 #include <isc/mutex.h>
 #include <isc/netmgr.h>
-#include <isc/portset.h>
 #include <isc/refcount.h>
 #include <isc/result.h>
 #include <isc/safe.h>

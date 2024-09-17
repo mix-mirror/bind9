@@ -62,7 +62,6 @@ libisc_la_HEADERS =			\
 	include/isc/overflow.h		\
 	include/isc/parseint.h		\
 	include/isc/pause.h		\
-	include/isc/portset.h		\
 	include/isc/proxy2.h		\
 	include/isc/queue.h		\
 	include/isc/quota.h		\
@@ -171,7 +170,6 @@ libisc_la_SOURCES =		\
 	parseint.c		\
 	picohttpparser.c	\
 	picohttpparser.h	\
-	portset.c		\
 	probes.d		\
 	proxy2.c		\
 	quota.c			\

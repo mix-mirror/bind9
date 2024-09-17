@@ -28,7 +28,6 @@
 #include <isc/mutex.h>
 #include <isc/net.h>
 #include <isc/netmgr.h>
-#include <isc/portset.h>
 #include <isc/random.h>
 #include <isc/stats.h>
 #include <isc/string.h>
