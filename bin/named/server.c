@@ -7946,12 +7946,10 @@ load_configuration(const char *filename, named_server_t *server,
 	dns_view_t *view_next = NULL;
 	dns_viewlist_t tmpviewlist;
 	dns_viewlist_t viewlist, builtin_viewlist;
-	in_port_t listen_port, udpport_low, udpport_high;
+	in_port_t listen_port;
 	int i, backlog;
 	isc_interval_t interval;
 	isc_logconfig_t *logc = NULL;
-	isc_portset_t *v4portset = NULL;
-	isc_portset_t *v6portset = NULL;
 	isc_result_t result;
 	uint32_t interface_interval;
 	uint32_t udpsize;
@@ -8345,62 +8343,6 @@ load_configuration(const char *filename, named_server_t *server,
 			     send_udp_buffer_size);
 
 #undef CAP_IF_NOT_ZERO
-
-	/*
-	 * Configure sets of UDP query source ports.
-	 */
-	result = isc_portset_create(named_g_mctx, &v4portset);
-	if (result != ISC_R_SUCCESS) {
-		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
-			      ISC_LOG_ERROR, "creating UDP/IPv4 port set: %s",
-			      isc_result_totext(result));
-		goto cleanup_bindkeys_parser;
-	}
-	result = isc_portset_create(named_g_mctx, &v6portset);
-	if (result != ISC_R_SUCCESS) {
-		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
-			      ISC_LOG_ERROR, "creating UDP/IPv6 port set: %s",
-			      isc_result_totext(result));
-		goto cleanup_v4portset;
-	}
-
-	result = isc_net_getudpportrange(AF_INET, &udpport_low, &udpport_high);
-	if (result != ISC_R_SUCCESS) {
-		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
-			      ISC_LOG_ERROR,
-			      "get the default UDP/IPv4 port range: %s",
-			      isc_result_totext(result));
-		goto cleanup_v6portset;
-	}
-
-	isc_portset_addrange(v4portset, udpport_low, udpport_high);
-	if (!ns_server_getoption(server->sctx, NS_SERVER_DISABLE4)) {
-		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
-			      ISC_LOG_INFO,
-			      "using default UDP/IPv4 port range: "
-			      "[%d, %d]",
-			      udpport_low, udpport_high);
-	}
-
-	result = isc_net_getudpportrange(AF_INET6, &udpport_low, &udpport_high);
-	if (result != ISC_R_SUCCESS) {
-		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
-			      ISC_LOG_ERROR,
-			      "get the default UDP/IPv6 port range: %s",
-			      isc_result_totext(result));
-		goto cleanup_v6portset;
-	}
-	isc_portset_addrange(v6portset, udpport_low, udpport_high);
-	if (!ns_server_getoption(server->sctx, NS_SERVER_DISABLE6)) {
-		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
-			      ISC_LOG_INFO,
-			      "using default UDP/IPv6 port range: "
-			      "[%d, %d]",
-			      udpport_low, udpport_high);
-	}
-
-	dns_dispatchmgr_setavailports(named_g_dispatchmgr, v4portset,
-				      v6portset);
 
 	/*
 	 * Set the EDNS UDP size when we don't match a view.
@@ -9402,11 +9344,7 @@ cleanup_keystorelist:
 	}
 
 cleanup_v6portset:
-	isc_portset_destroy(named_g_mctx, &v6portset);
-
 cleanup_v4portset:
-	isc_portset_destroy(named_g_mctx, &v4portset);
-
 cleanup_bindkeys_parser:
 
 	if (bindkeys_parser != NULL) {

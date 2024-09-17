@@ -872,69 +872,6 @@ tcp_recv(isc_nmhandle_t *handle, isc_result_t result, isc_region_t *region,
 	dns_dispatch_detach(&disp); /* DISPATCH002 */
 }
 
-/*%
- * Create a temporary port list to set the initial default set of dispatch
- * ephemeral ports.  This is almost meaningless as the application will
- * normally set the ports explicitly, but is provided to fill some minor corner
- * cases.
- */
-static void
-create_default_portset(isc_mem_t *mctx, int family, isc_portset_t **portsetp) {
-	in_port_t low, high;
-
-	isc_net_getudpportrange(family, &low, &high);
-
-	isc_portset_create(mctx, portsetp);
-	isc_portset_addrange(*portsetp, low, high);
-}
-
-static isc_result_t
-setavailports(dns_dispatchmgr_t *mgr, isc_portset_t *v4portset,
-	      isc_portset_t *v6portset) {
-	in_port_t *v4ports, *v6ports, p = 0;
-	unsigned int nv4ports, nv6ports, i4 = 0, i6 = 0;
-
-	nv4ports = isc_portset_nports(v4portset);
-	nv6ports = isc_portset_nports(v6portset);
-
-	v4ports = NULL;
-	if (nv4ports != 0) {
-		v4ports = isc_mem_cget(mgr->mctx, nv4ports, sizeof(in_port_t));
-	}
-	v6ports = NULL;
-	if (nv6ports != 0) {
-		v6ports = isc_mem_cget(mgr->mctx, nv6ports, sizeof(in_port_t));
-	}
-
-	do {
-		if (isc_portset_isset(v4portset, p)) {
-			INSIST(i4 < nv4ports);
-			v4ports[i4++] = p;
-		}
-		if (isc_portset_isset(v6portset, p)) {
-			INSIST(i6 < nv6ports);
-			v6ports[i6++] = p;
-		}
-	} while (p++ < 65535);
-	INSIST(i4 == nv4ports && i6 == nv6ports);
-
-	if (mgr->v4ports != NULL) {
-		isc_mem_cput(mgr->mctx, mgr->v4ports, mgr->nv4ports,
-			     sizeof(in_port_t));
-	}
-	mgr->v4ports = v4ports;
-	mgr->nv4ports = nv4ports;
-
-	if (mgr->v6ports != NULL) {
-		isc_mem_cput(mgr->mctx, mgr->v6ports, mgr->nv6ports,
-			     sizeof(in_port_t));
-	}
-	mgr->v6ports = v6ports;
-	mgr->nv6ports = nv6ports;
-
-	return (ISC_R_SUCCESS);
-}
-
 /*
  * Publics.
  */
@@ -943,9 +880,6 @@ isc_result_t
 dns_dispatchmgr_create(isc_mem_t *mctx, isc_loopmgr_t *loopmgr, isc_nm_t *nm,
 		       dns_dispatchmgr_t **mgrp) {
 	dns_dispatchmgr_t *mgr = NULL;
-	isc_portset_t *v4portset = NULL;
-	isc_portset_t *v6portset = NULL;
-
 	REQUIRE(mctx != NULL);
 	REQUIRE(mgrp != NULL && *mgrp == NULL);
 
@@ -971,13 +905,13 @@ dns_dispatchmgr_create(isc_mem_t *mctx, isc_loopmgr_t *loopmgr, isc_nm_t *nm,
 			NULL);
 	}
 
-	create_default_portset(mgr->mctx, AF_INET, &v4portset);
-	create_default_portset(mgr->mctx, AF_INET6, &v6portset);
-
-	setavailports(mgr, v4portset, v6portset);
-
-	isc_portset_destroy(mgr->mctx, &v4portset);
-	isc_portset_destroy(mgr->mctx, &v6portset);
+	// create_default_portset(mgr->mctx, AF_INET, &v4portset);
+	// create_default_portset(mgr->mctx, AF_INET6, &v6portset);
+	//
+	// setavailports(mgr, v4portset, v6portset);
+	//
+	// isc_portset_destroy(mgr->mctx, &v4portset);
+	// isc_portset_destroy(mgr->mctx, &v6portset);
 
 	mgr->qids = cds_lfht_new(QIDS_INIT_SIZE, QIDS_MIN_SIZE, 0,
 				 CDS_LFHT_AUTO_RESIZE | CDS_LFHT_ACCOUNTING,
@@ -1014,7 +948,8 @@ isc_result_t
 dns_dispatchmgr_setavailports(dns_dispatchmgr_t *mgr, isc_portset_t *v4portset,
 			      isc_portset_t *v6portset) {
 	REQUIRE(VALID_DISPATCHMGR(mgr));
-	return (setavailports(mgr, v4portset, v6portset));
+	// return (setavailports(mgr, v4portset, v6portset));
+	return ISC_R_SUCCESS;
 }
 
 static void
