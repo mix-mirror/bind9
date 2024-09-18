@@ -286,10 +286,18 @@ isc_tlsctx_load_certificate(isc_tlsctx_t *ctx, const char *keyfile,
 
 	rv = SSL_CTX_use_certificate_chain_file(ctx, certfile);
 	if (rv != 1) {
+		isc_log_write(ISC_LOGCATEGORY_GENERAL, ISC_LOGMODULE_NETMGR,
+			      ISC_LOG_ERROR,
+			      "SSL_CTX_use_certificate_chain_file: '%s' failed",
+			      certfile);
 		return (ISC_R_TLSERROR);
 	}
 	rv = SSL_CTX_use_PrivateKey_file(ctx, keyfile, SSL_FILETYPE_PEM);
 	if (rv != 1) {
+		isc_log_write(ISC_LOGCATEGORY_GENERAL, ISC_LOGMODULE_NETMGR,
+			      ISC_LOG_ERROR,
+			      "SSL_CTX_use_PrivateKey_file: '%s' failed",
+			      keyfile);
 		return (ISC_R_TLSERROR);
 	}
 
