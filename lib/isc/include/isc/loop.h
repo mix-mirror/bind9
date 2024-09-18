@@ -225,4 +225,14 @@ isc_loop_shuttingdown(isc_loop_t *loop);
  *
  * \li 'loop' is a valid loop and the loop tid matches the current tid.
  */
+
+void
+isc_loop_rcu_barrier(isc_loop_t *loop);
+/*%<
+ * Triggers an rcu_barrier() call at the end of the current loop tick.
+ *
+ * Requires:
+ *
+ * \li 'loop' is a valid loop and the loop tid matches the current tid.
+ */
 ISC_LANG_ENDDECLS

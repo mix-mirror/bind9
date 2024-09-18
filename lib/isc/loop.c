@@ -237,7 +237,7 @@ loop_init(isc_loop_t *loop, isc_loopmgr_t *loopmgr, uint32_t tid,
 
 static void
 quiescent_cb(uv_prepare_t *handle) {
-	UNUSED(handle);
+	isc_loop_t *loop = uv_handle_get_data(handle);
 
 #if defined(RCU_QSBR)
 	/* safe memory reclamation */
@@ -248,6 +248,10 @@ quiescent_cb(uv_prepare_t *handle) {
 #else
 	INSIST(!rcu_read_ongoing());
 #endif
+
+	if (loop->rcu_barrier) {
+		rcu_barrier();
+	}
 }
 
 static void
@@ -695,4 +699,12 @@ isc_loop_shuttingdown(isc_loop_t *loop) {
 	REQUIRE(loop->tid == isc_tid());
 
 	return (loop->shuttingdown);
+}
+
+void
+isc_loop_rcu_barrier(isc_loop_t *loop) {
+	REQUIRE(VALID_LOOP(loop));
+	REQUIRE(loop->tid == isc_tid());
+
+	loop->rcu_barrier = true;
 }
