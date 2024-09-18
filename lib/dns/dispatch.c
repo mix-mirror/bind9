@@ -84,7 +84,6 @@ struct dns_dispentry {
 	isc_time_t start;
 	isc_sockaddr_t local;
 	isc_sockaddr_t peer;
-	in_port_t port;
 	dns_messageid_t id;
 	dispatch_cb_t connected;
 	dispatch_cb_t sent;
@@ -338,7 +337,6 @@ setup_socket(isc_sockaddr_t *local_address, const isc_sockaddr_t *dest,
 
 	resp->local = *local_address;
 	resp->peer = *dest;
-	resp->port = isc_random_uniform(0xFFFEu) + 1u;
 
 	return (ISC_R_SUCCESS);
 }
@@ -351,7 +349,6 @@ qid_hash(const dns_dispentry_t *dispentry) {
 
 	isc_sockaddr_hash_ex(&hash, &dispentry->peer, true);
 	isc_hash32_hash(&hash, &dispentry->id, sizeof(dispentry->id), true);
-	isc_hash32_hash(&hash, &dispentry->port, sizeof(dispentry->port), true);
 
 	return (isc_hash32_finalize(&hash));
 }
@@ -363,7 +360,6 @@ qid_match(struct cds_lfht_node *node, const void *key0) {
 	const dns_dispentry_t *key = key0;
 
 	return (dispentry->id == key->id 
-		&& dispentry->port == key->port 
 		&& isc_sockaddr_equal(&dispentry->peer, &key->peer));
 }
 
@@ -654,7 +650,6 @@ tcp_recv_success(dns_dispatch_t *disp, isc_region_t *region,
 	dns_dispentry_t key = {
 		.id = id,
 		.peer = *peer,
-		.port = isc_sockaddr_getport(&disp->local),
 	};
 	struct cds_lfht_iter iter;
 	cds_lfht_lookup(disp->mgr->qids, qid_hash(&key), qid_match, &key,
