@@ -330,7 +330,7 @@ dispentry_log(dns_dispentry_t *resp, int level, const char *fmt, ...) {
  */
 static isc_result_t
 setup_socket(isc_sockaddr_t *local_address, const isc_sockaddr_t *dest,
-			 dns_dispentry_t *resp) {
+	     dns_dispentry_t *resp) {
 	if (resp->retries++ > 5) {
 		return (ISC_R_FAILURE);
 	}
@@ -359,8 +359,8 @@ qid_match(struct cds_lfht_node *node, const void *key0) {
 		caa_container_of(node, dns_dispentry_t, ht_node);
 	const dns_dispentry_t *key = key0;
 
-	return (dispentry->id == key->id 
-		&& isc_sockaddr_equal(&dispentry->peer, &key->peer));
+	return (dispentry->id == key->id &&
+		isc_sockaddr_equal(&dispentry->peer, &key->peer));
 }
 
 static void
@@ -1768,7 +1768,8 @@ udp_connected(isc_nmhandle_t *handle, isc_result_t eresult, void *arg) {
 	case ISC_R_NOPERM:
 	case ISC_R_ADDRINUSE: {
 		/* probably a port collision; try a different one */
-		isc_result_t result = setup_socket(&disp->local, &resp->peer, resp);
+		isc_result_t result = setup_socket(&disp->local, &resp->peer,
+						   resp);
 		if (result == ISC_R_SUCCESS) {
 			udp_dispatch_connect(disp, resp);
 			goto detach;
