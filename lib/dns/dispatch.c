@@ -346,8 +346,6 @@ qid_hash(const dns_dispentry_t *dispentry) {
 	isc_hash32_t hash;
 
 	isc_hash32_init(&hash);
-
-	isc_sockaddr_hash_ex(&hash, &dispentry->peer, true);
 	isc_hash32_hash(&hash, &dispentry->id, sizeof(dispentry->id), true);
 
 	return (isc_hash32_finalize(&hash));
@@ -359,8 +357,7 @@ qid_match(struct cds_lfht_node *node, const void *key0) {
 		caa_container_of(node, dns_dispentry_t, ht_node);
 	const dns_dispentry_t *key = key0;
 
-	return (dispentry->id == key->id &&
-		isc_sockaddr_equal(&dispentry->peer, &key->peer));
+	return dispentry->id == key->id;
 }
 
 static void
