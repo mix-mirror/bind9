@@ -52,6 +52,9 @@ struct dns_peer {
 	dns_transfer_format_t transfer_format;
 	uint32_t transfers;
 	uint32_t request_ixfr_maxdiffs;
+	bool grease_dns_flags;
+	bool grease_edns_flags;
+	bool grease_edns_neg;
 	bool support_ixfr;
 	bool provide_ixfr;
 	bool request_ixfr;
@@ -83,24 +86,27 @@ struct dns_peer {
  */
 enum {
 	BOGUS_BIT = 0,
-	SERVER_TRANSFER_FORMAT_BIT,
-	TRANSFERS_BIT,
-	PROVIDE_IXFR_BIT,
-	REQUEST_IXFR_BIT,
-	REQUEST_IXFRMAXDIFFS_BIT,
-	SUPPORT_EDNS_BIT,
-	SERVER_UDPSIZE_BIT,
-	SERVER_MAXUDP_BIT,
-	REQUEST_NSID_BIT,
-	SEND_COOKIE_BIT,
-	REQUEST_EXPIRE_BIT,
 	EDNS_VERSION_BIT,
 	FORCE_TCP_BIT,
-	SERVER_PADDING_BIT,
+	GREASE_DNS_FLAGS_BIT,
+	GREASE_EDNS_FLAGS_BIT,
+	GREASE_EDNS_NEG_BIT,
+	PROVIDE_IXFR_BIT,
+	REQUEST_EXPIRE_BIT,
+	REQUEST_IXFRMAXDIFFS_BIT,
+	REQUEST_IXFR_BIT,
+	REQUEST_NSID_BIT,
 	REQUEST_TCP_KEEPALIVE_BIT,
+	REQUEST_ZONEVERSION,
 	REQUIRE_COOKIE_BIT,
-	DNS_PEER_FLAGS_COUNT,
-	REQUEST_ZONEVERSION
+	SEND_COOKIE_BIT,
+	SERVER_MAXUDP_BIT,
+	SERVER_PADDING_BIT,
+	SERVER_TRANSFER_FORMAT_BIT,
+	SERVER_UDPSIZE_BIT,
+	SUPPORT_EDNS_BIT,
+	TRANSFERS_BIT,
+	DNS_PEER_FLAGS_COUNT
 };
 
 STATIC_ASSERT(DNS_PEER_FLAGS_COUNT <= CHAR_BIT * sizeof(uint32_t),
@@ -352,6 +358,9 @@ peer_delete(dns_peer_t **peer) {
 	}
 
 ACCESS_OPTION(bogus, BOGUS_BIT, bool, bogus)
+ACCESS_OPTION(dnsflags, GREASE_DNS_FLAGS_BIT, bool, grease_dns_flags)
+ACCESS_OPTION(ednsflags, GREASE_EDNS_FLAGS_BIT, bool, grease_edns_flags)
+ACCESS_OPTION(ednsneg, GREASE_EDNS_NEG_BIT, bool, grease_edns_neg)
 ACCESS_OPTION(forcetcp, FORCE_TCP_BIT, bool, force_tcp)
 ACCESS_OPTION(maxudp, SERVER_MAXUDP_BIT, uint16_t, maxudp)
 ACCESS_OPTION(provideixfr, PROVIDE_IXFR_BIT, bool, provide_ixfr)
