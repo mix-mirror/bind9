@@ -187,6 +187,20 @@ struct dns_view {
 	uint8_t		      max_restarts;
 
 	/*
+	 * Grease the protocol by sending possible future
+	 * changes and checking the result matches defined
+	 * behaviour.
+	 */
+	bool	     grease_dns_flags;	      /* DNS flag 0x40 */
+	bool	     grease_edns_flags;	      /* EDNS Unknown flags */
+	bool	     grease_edns_neg;	      /* EDNS version negotiation */
+	bool	     grease_nsid;	      /* Request NSID */
+	uint8_t	     grease_edns_max_version; /* Currently 0 */
+	uint16_t     grease_edns_known_flags; /* Don't grease these flags */
+	unsigned int grease_rate;	      /* Grease this % of queries */
+	time_t	     grease_until; /* Turn off flags greasing at this time */
+
+	/*
 	 * Configurable data for server use only,
 	 * locked by server configuration lock.
 	 */

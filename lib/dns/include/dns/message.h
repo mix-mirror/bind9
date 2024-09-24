@@ -101,6 +101,8 @@
 /*%< EDNS0 extended message flags */
 #define DNS_MESSAGEEXTFLAG_DO 0x8000U /* DNSSEC OK */
 #define DNS_MESSAGEEXTFLAG_CO 0x4000U /* Compact denial of existence OK */
+#define DNS_MESSAGEEXTFLAG_KNOWN_FLAGS \
+	(DNS_MESSAGEEXTFLAG_DO | DNS_MESSAGEEXTFLAG_CO)
 
 /*%< EDNS0 extended OPT codes */
 #define DNS_OPT_LLQ	       1  /*%< LLQ opt code */
