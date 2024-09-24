@@ -63,6 +63,12 @@ options {\n\
 	geoip-directory \".\";\n"
 #endif /* if defined(HAVE_GEOIP2) */
 			    "\
+	grease-dns-flags yes;\n\
+	grease-edns-flags yes;\n\
+	grease-edns-negotiation yes;\n\
+	grease-nsid yes;\n\
+	grease-rate 100%;\n\
+	grease-until 2026-01-01;\n\
 	interface-interval 60;\n\
 	listen-on {any;};\n\
 	listen-on-v6 {any;};\n\
