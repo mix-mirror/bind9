@@ -24,6 +24,11 @@ options {
 	dnssec-validation yes;
 };
 
+server 10.53.0.1 {
+	/* Force EDNS(0) so priming packet counts are stable */
+	edns-version 0;
+};
+
 trust-anchors { };
 
 zone "." {
