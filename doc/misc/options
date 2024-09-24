@@ -150,6 +150,14 @@ options {
 	fstrm-set-output-queue-size <integer>; // optional (only available if configured)
 	fstrm-set-reopen-interval <duration>; // optional (only available if configured)
 	geoip-directory ( <quoted_string> | none );
+	grease-dns-flags <boolean>;
+	grease-edns-flags <boolean>;
+	grease-edns-known-flags <integer>;
+	grease-edns-max-version <integer>;
+	grease-edns-negotiation <boolean>;
+	grease-nsid <boolean>;
+	grease-rate <percentage>;
+	grease-until <string>;
 	hostname ( <quoted_string> | none );
 	http-listener-clients <integer>; // optional (only available if configured)
 	http-port <integer>; // optional (only available if configured)
@@ -335,6 +343,9 @@ server <netprefix> {
 	edns <boolean>;
 	edns-udp-size <integer>;
 	edns-version <integer>;
+	grease-dns-flags <boolean>;
+	grease-edns-flags <boolean>;
+	grease-edns-negotiation <boolean>;
 	keys <server_key>;
 	max-udp-size <integer>;
 	notify-source ( <ipv4_address> | * );
@@ -447,6 +458,14 @@ view <string> [ <class> ] {
 	fetches-per-zone <integer> [ ( drop | fail ) ];
 	forward ( first | only );
 	forwarders [ port <integer> ] [ tls <string> ] { ( <ipv4_address> | <ipv6_address> ) [ port <integer> ] [ tls <string> ]; ... };
+	grease-dns-flags <boolean>;
+	grease-edns-flags <boolean>;
+	grease-edns-known-flags <integer>;
+	grease-edns-max-version <integer>;
+	grease-edns-negotiation <boolean>;
+	grease-nsid <boolean>;
+	grease-rate <percentage>;
+	grease-until <string>;
 	ipv4only-contact <string>;
 	ipv4only-enable <boolean>;
 	ipv4only-server <string>;
@@ -557,6 +576,9 @@ view <string> [ <class> ] {
 		edns <boolean>;
 		edns-udp-size <integer>;
 		edns-version <integer>;
+		grease-dns-flags <boolean>;
+		grease-edns-flags <boolean>;
+		grease-edns-negotiation <boolean>;
 		keys <server_key>;
 		max-udp-size <integer>;
 		notify-source ( <ipv4_address> | * );
