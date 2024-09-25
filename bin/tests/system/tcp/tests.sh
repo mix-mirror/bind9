@@ -34,6 +34,8 @@ rndccmd 10.53.0.1 stats || ret=1
 rndccmd 10.53.0.2 stats || ret=1
 mv ns1/named.stats ns1/named.stats.test$n
 mv ns2/named.stats ns2/named.stats.test$n
+wait_for_log_peek 5 "--- Statistics Dump ---" ns1/named.stats.test$n || ret=1
+wait_for_log_peek 5 "--- Statistics Dump ---" ns2/named.stats.test$n || ret=1
 ntcp10="$(grep "TCP requests received" ns1/named.stats.test$n | tail -1 | awk '{print $1}')"
 ntcp20="$(grep "TCP requests received" ns2/named.stats.test$n | tail -1 | awk '{print $1}')"
 if [ $ret != 0 ]; then echo_i "failed"; fi
@@ -48,6 +50,8 @@ rndccmd 10.53.0.1 stats || ret=1
 rndccmd 10.53.0.2 stats || ret=1
 mv ns1/named.stats ns1/named.stats.test$n
 mv ns2/named.stats ns2/named.stats.test$n
+wait_for_log_peek 5 "--- Statistics Dump ---" ns1/named.stats.test$n || ret=1
+wait_for_log_peek 5 "--- Statistics Dump ---" ns2/named.stats.test$n || ret=1
 ntcp11="$(grep "TCP requests received" ns1/named.stats.test$n | tail -1 | awk '{print $1}')"
 ntcp21="$(grep "TCP requests received" ns2/named.stats.test$n | tail -1 | awk '{print $1}')"
 if [ "$ntcp10" -ge "$ntcp11" ]; then ret=1; fi
@@ -64,6 +68,8 @@ rndccmd 10.53.0.1 stats || ret=1
 rndccmd 10.53.0.2 stats || ret=1
 mv ns1/named.stats ns1/named.stats.test$n
 mv ns2/named.stats ns2/named.stats.test$n
+wait_for_log_peek 5 "--- Statistics Dump ---" ns1/named.stats.test$n || ret=1
+wait_for_log_peek 5 "--- Statistics Dump ---" ns2/named.stats.test$n || ret=1
 ntcp12="$(grep "TCP requests received" ns1/named.stats.test$n | tail -1 | awk '{print $1}')"
 ntcp22="$(grep "TCP requests received" ns2/named.stats.test$n | tail -1 | awk '{print $1}')"
 if [ "$ntcp11" -ne "$ntcp12" ]; then ret=1; fi
