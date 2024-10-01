@@ -69,7 +69,8 @@ static char domainopt[DNS_NAME_MAXTEXT];
 static char hexcookie[81];
 
 static bool short_form = false, printcmd = true, plusquest = false,
-	    pluscomm = false, ipv4only = false, ipv6only = false, digrc = true;
+	    pluscomm = false, ipv4only = false, ipv6only = false,
+	    digrc = true, color = false;
 static uint32_t splitwidth = 0xffffffff;
 
 #include <openssl/opensslv.h>
@@ -80,6 +81,14 @@ static const char *const opcodetext[] = {
 	"NOTIFY",     "UPDATE",	    "RESERVED6",  "RESERVED7",
 	"RESERVED8",  "RESERVED9",  "RESERVED10", "RESERVED11",
 	"RESERVED12", "RESERVED13", "RESERVED14", "RESERVED15"
+};
+
+/*% colors used for rcodes */
+static const char *const color_rcodetext[] = {
+        "\e[92m", "\e[91m", "\e[91m", "\e[93m", "\e[91m",
+        "\e[91m", "\e[91m", "\e[91m", "\e[91m", "\e[91m",
+        "\e[91m", "\e[93m", "\e[93m", "\e[93m", "\e[93m",
+        "\e[93m", "\e[91m"
 };
 
 static const char *
@@ -146,6 +155,7 @@ help(void) {
 	       "                 -b address[#port]   (bind to source "
 	       "address/port)\n"
 	       "                 -c class            (specify query class)\n"
+	       "                 -C                  (enable colored output)\n"
 	       "                 -f filename         (batch mode)\n"
 	       "                 -k keyfile          (specify tsig key file)\n"
 	       "                 -m                  (enable memory usage "
@@ -868,10 +878,21 @@ printmessage(dig_query_t *query, const isc_buffer_t *msgbuf, dns_message_t *msg,
 				       "testing what happens when an mDNS "
 				       "query is leaked to DNS\n");
 			}
-			printf(";; ->>HEADER<<- opcode: %s, status: %s, "
-			       "id: %u\n",
-			       opcodetext[msg->opcode],
-			       rcode_totext(msg->rcode), msg->id);
+
+			if (color && msg->rcode >= (sizeof(color_rcodetext) / sizeof(color_rcodetext[0]))) {
+				printf(";; ->>HEADER<<- opcode: %s, status: \e[103%s\e[0m, "
+				       "id: %u\n",
+				       opcodetext[msg->opcode],
+				       rcode_totext(msg->rcode), msg->id);
+			} else if (color) {
+				printf(";; ->>HEADER<<- opcode: %s, status: %s%s\e[0m, "
+			               "id: %u\n",
+				       opcodetext[msg->opcode],
+				       color_rcodetext[msg->rcode],
+				       rcode_totext(msg->rcode), msg->id);
+			}
+
+
 			printf(";; flags:");
 			if ((msg->flags & DNS_MESSAGEFLAG_QR) != 0) {
 				printf(" qr");
@@ -2619,7 +2640,7 @@ exit_or_usage:
 /*%
  * #true returned if value was used
  */
-static const char *single_dash_opts = "46dFhimnruv";
+static const char *single_dash_opts = "46dFhimnruvC";
 static const char *dash_opts = "46bcdFfhikmnpqrtvyx";
 static bool
 dash_option(char *option, char *next, dig_lookup_t **lookup,
@@ -2694,6 +2715,9 @@ dash_option(char *option, char *next, dig_lookup_t **lookup,
 		case 'r':
 			debug("digrc (late)");
 			digrc = false;
+			break;
+		case 'C':
+			color = true;
 			break;
 		case 'u':
 			(*lookup)->use_usec = true;
