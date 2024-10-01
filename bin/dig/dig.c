@@ -890,8 +890,12 @@ printmessage(dig_query_t *query, const isc_buffer_t *msgbuf, dns_message_t *msg,
 				       opcodetext[msg->opcode],
 				       color_rcodetext[msg->rcode],
 				       rcode_totext(msg->rcode), msg->id);
+			} else {
+				printf(";; ->>HEADER<<- opcode: %s, status: %s, "
+				       "id: %u\n",
+				       opcodetext[msg->opcode],
+				       rcode_totext(msg->rcode), msg->id);
 			}
-
 
 			printf(";; flags:");
 			if ((msg->flags & DNS_MESSAGEFLAG_QR) != 0) {
