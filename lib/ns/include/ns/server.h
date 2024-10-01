@@ -50,6 +50,7 @@
 #define NS_SERVER_TRANSFERSLOWLY 0x00010000U /*%< -T transferslowly */
 #define NS_SERVER_TRANSFERSTUCK	 0x00020000U /*%< -T transferstuck */
 #define NS_SERVER_LOGRESPONSES	 0x00040000U /*%< log responses */
+#define NS_SERVER_FIRSTDELTA	 0x00080000U /*%< only send first delta */
 
 /*%
  * Type for callback function to get hostname.

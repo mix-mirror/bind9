@@ -135,6 +135,7 @@ static bool dropedns = false;
 static bool ednsformerr = false;
 static bool ednsnotimp = false;
 static bool ednsrefused = false;
+static bool firstdelta = false;
 static bool fixedlocal = false;
 static bool noaa = false;
 static bool noedns = false;
@@ -703,6 +704,8 @@ parse_T_opt(char *option) {
 		ednsnotimp = true;
 	} else if (!strcmp(option, "ednsrefused")) {
 		ednsrefused = true;
+	} else if (!strcmp(option, "firstdelta")) {
+		firstdelta = true;
 	} else if (!strcmp(option, "fixedlocal")) {
 		fixedlocal = true;
 	} else if (!strcmp(option, "keepstderr")) {
@@ -1296,6 +1299,9 @@ setup(void) {
 	}
 	if (ednsrefused) {
 		ns_server_setoption(sctx, NS_SERVER_EDNSREFUSED, true);
+	}
+	if (firstdelta) {
+		ns_server_setoption(sctx, NS_SERVER_FIRSTDELTA, true);
 	}
 	if (fixedlocal) {
 		ns_server_setoption(sctx, NS_SERVER_FIXEDLOCAL, true);

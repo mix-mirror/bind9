@@ -1013,6 +1013,8 @@ got_soa:
 	if (reqtype == dns_rdatatype_ixfr) {
 		size_t jsize;
 		uint64_t dbsize;
+		bool firstdelta = ns_server_getoption(client->manager->sctx,
+						      NS_SERVER_FIRSTDELTA);
 
 		if (!have_soa) {
 			FAILC(DNS_R_FORMERR, "IXFR request missing SOA");
@@ -1067,7 +1069,7 @@ got_soa:
 			result = ixfr_rrstream_create(
 				mctx, journalfile, begin_serial,
 				&current_serial, &jsize,
-				true ? &soa_tuple : NULL, &data_stream);
+				firstdelta ? &soa_tuple : NULL, &data_stream);
 		} else {
 			result = ISC_R_NOTFOUND;
 		}
