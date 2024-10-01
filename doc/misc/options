@@ -129,10 +129,10 @@ options {
 	dnssec-secure-to-insecure <boolean>; // obsolete
 	dnssec-update-mode ( maintain | no-resign ); // obsolete
 	dnssec-validation ( yes | no | auto );
-	dnstap { ( all | auth | client | forwarder | resolver | update ) [ ( query | response ) ]; ... }; // not configured
-	dnstap-identity ( <quoted_string> | none | hostname ); // not configured
-	dnstap-output ( file | unix ) <quoted_string> [ size ( unlimited | <size> ) ] [ versions ( unlimited | <integer> ) ] [ suffix ( increment | timestamp ) ]; // not configured
-	dnstap-version ( <quoted_string> | none ); // not configured
+	dnstap { ( all | auth | client | forwarder | resolver | update ) [ ( query | response ) ]; ... };
+	dnstap-identity ( <quoted_string> | none | hostname );
+	dnstap-output ( file | unix ) <quoted_string> [ size ( unlimited | <size> ) ] [ versions ( unlimited | <integer> ) ] [ suffix ( increment | timestamp ) ];
+	dnstap-version ( <quoted_string> | none );
 	dual-stack-servers [ port <integer> ] { ( <quoted_string> [ port <integer> ] | <ipv4_address> [ port <integer> ] | <ipv6_address> [ port <integer> ] ); ... };
 	dump-file <quoted_string>;
 	edns-udp-size <integer>;
@@ -145,13 +145,13 @@ options {
 	flush-zones-on-shutdown <boolean>;
 	forward ( first | only );
 	forwarders [ port <integer> ] [ tls <string> ] { ( <ipv4_address> | <ipv6_address> ) [ port <integer> ] [ tls <string> ]; ... };
-	fstrm-set-buffer-hint <integer>; // not configured
-	fstrm-set-flush-timeout <integer>; // not configured
-	fstrm-set-input-queue-size <integer>; // not configured
-	fstrm-set-output-notify-threshold <integer>; // not configured
-	fstrm-set-output-queue-model ( mpsc | spsc ); // not configured
-	fstrm-set-output-queue-size <integer>; // not configured
-	fstrm-set-reopen-interval <duration>; // not configured
+	fstrm-set-buffer-hint <integer>;
+	fstrm-set-flush-timeout <integer>;
+	fstrm-set-input-queue-size <integer>;
+	fstrm-set-output-notify-threshold <integer>;
+	fstrm-set-output-queue-model ( mpsc | spsc );
+	fstrm-set-output-queue-size <integer>;
+	fstrm-set-reopen-interval <duration>;
 	geoip-directory ( <quoted_string> | none );
 	hostname ( <quoted_string> | none );
 	http-listener-clients <integer>;
@@ -434,7 +434,7 @@ view <string> [ <class> ] {
 	dnssec-secure-to-insecure <boolean>; // obsolete
 	dnssec-update-mode ( maintain | no-resign ); // obsolete
 	dnssec-validation ( yes | no | auto );
-	dnstap { ( all | auth | client | forwarder | resolver | update ) [ ( query | response ) ]; ... }; // not configured
+	dnstap { ( all | auth | client | forwarder | resolver | update ) [ ( query | response ) ]; ... };
 	dual-stack-servers [ port <integer> ] { ( <quoted_string> [ port <integer> ] | <ipv4_address> [ port <integer> ] | <ipv6_address> [ port <integer> ] ); ... };
 	dyndb <string> <quoted_string> { <unspecified-text> }; // may occur multiple times
 	edns-udp-size <integer>;

@@ -228,8 +228,8 @@ static rrstream_methods_t ixfr_rrstream_methods;
 
 static isc_result_t
 ixfr_rrstream_create(isc_mem_t *mctx, const char *journal_filename,
-		     uint32_t begin_serial, uint32_t end_serial, size_t *sizep,
-		     rrstream_t **sp) {
+		     uint32_t begin_serial, uint32_t *end_serial, size_t *sizep,
+		     dns_difftuple_t **soa_tuple, rrstream_t **sp) {
 	isc_result_t result;
 	ixfr_rrstream_t *s = NULL;
 
@@ -243,8 +243,40 @@ ixfr_rrstream_create(isc_mem_t *mctx, const char *journal_filename,
 
 	CHECK(dns_journal_open(mctx, journal_filename, DNS_JOURNAL_READ,
 			       &s->journal));
-	CHECK(dns_journal_iter_init(s->journal, begin_serial, end_serial,
+	CHECK(dns_journal_iter_init(s->journal, begin_serial, *end_serial,
 				    sizep));
+
+	if (soa_tuple != NULL) {
+		unsigned int n_soa = 0;
+
+		INSIST(*soa_tuple == NULL);
+
+		CHECK(dns_journal_first_rr(s->journal));
+		for (result = dns_journal_first_rr(s->journal);
+		     result == ISC_R_SUCCESS;
+		     result = dns_journal_next_rr(s->journal))
+		{
+			dns_name_t *name = NULL;
+			dns_rdata_t *rdata = NULL;
+			uint32_t ttl;
+
+			dns_journal_current_rr(s->journal, &name, &ttl, &rdata);
+			if (rdata->type == dns_rdatatype_soa) {
+				n_soa++;
+				if (n_soa == 2) {
+					dns_rdata_soa_t soa;
+					dns_rdata_tostruct(rdata, &soa, NULL);
+					*end_serial = soa.serial;
+					dns_difftuple_create(
+						mctx, DNS_DIFFOP_EXISTS, name,
+						ttl, rdata, soa_tuple);
+					break;
+				}
+			}
+		}
+		CHECK(dns_journal_iter_init(s->journal, begin_serial,
+					    *end_serial, sizep));
+	}
 
 	*sp = (rrstream_t *)s;
 	return (ISC_R_SUCCESS);
@@ -432,7 +464,7 @@ static rrstream_methods_t soa_rrstream_methods;
 
 static isc_result_t
 soa_rrstream_create(isc_mem_t *mctx, dns_db_t *db, dns_dbversion_t *ver,
-		    rrstream_t **sp) {
+		    dns_difftuple_t **soa_tuple, rrstream_t **sp) {
 	soa_rrstream_t *s;
 	isc_result_t result;
 
@@ -444,8 +476,14 @@ soa_rrstream_create(isc_mem_t *mctx, dns_db_t *db, dns_dbversion_t *ver,
 	s->common.methods = &soa_rrstream_methods;
 	s->soa_tuple = NULL;
 
-	CHECK(dns_db_createsoatuple(db, ver, mctx, DNS_DIFFOP_EXISTS,
-				    &s->soa_tuple));
+	if (soa_tuple == NULL || *soa_tuple == NULL) {
+		CHECK(dns_db_createsoatuple(db, ver, mctx, DNS_DIFFOP_EXISTS,
+					    &s->soa_tuple));
+	} else {
+		INSIST(*soa_tuple != NULL);
+		s->soa_tuple = *soa_tuple;
+		*soa_tuple = NULL;
+	}
 
 	*sp = (rrstream_t *)s;
 	return (ISC_R_SUCCESS);
@@ -753,6 +791,7 @@ ns_xfr_start(ns_client_t *client, dns_rdatatype_t reqtype) {
 	bool is_ixfr = false;
 	bool useviewacl = false;
 	uint32_t begin_serial = 0, current_serial;
+	dns_difftuple_t *soa_tuple = NULL;
 
 	switch (reqtype) {
 	case dns_rdatatype_axfr:
@@ -995,7 +1034,8 @@ got_soa:
 		if (DNS_SERIAL_GE(begin_serial, current_serial) ||
 		    (client->attributes & NS_CLIENTATTR_TCP) == 0)
 		{
-			CHECK(soa_rrstream_create(mctx, db, ver, &stream));
+			CHECK(soa_rrstream_create(mctx, db, ver, NULL,
+						  &stream));
 			is_poll = true;
 			goto have_stream;
 		}
@@ -1025,8 +1065,9 @@ got_soa:
 		journalfile = is_dlz ? NULL : dns_zone_getjournal(zone);
 		if (journalfile != NULL) {
 			result = ixfr_rrstream_create(
-				mctx, journalfile, begin_serial, current_serial,
-				&jsize, &data_stream);
+				mctx, journalfile, begin_serial,
+				&current_serial, &jsize,
+				true ? &soa_tuple : NULL, &data_stream);
 		} else {
 			result = ISC_R_NOTFOUND;
 		}
@@ -1074,7 +1115,7 @@ got_soa:
 	/*
 	 * Bracket the data stream with SOAs.
 	 */
-	CHECK(soa_rrstream_create(mctx, db, ver, &soa_stream));
+	CHECK(soa_rrstream_create(mctx, db, ver, &soa_tuple, &soa_stream));
 	CHECK(compound_rrstream_create(mctx, &soa_stream, &data_stream,
 				       &stream));
 	soa_stream = NULL;
@@ -1175,6 +1216,9 @@ have_stream:
 failure:
 	if (result == DNS_R_REFUSED) {
 		inc_stats(client, zone, ns_statscounter_xfrrej);
+	}
+	if (soa_tuple != NULL) {
+		dns_difftuple_free(&soa_tuple);
 	}
 	if (current_soa_tuple != NULL) {
 		dns_difftuple_free(&current_soa_tuple);
