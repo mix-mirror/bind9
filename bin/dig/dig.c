@@ -83,13 +83,39 @@ static const char *const opcodetext[] = {
 	"RESERVED12", "RESERVED13", "RESERVED14", "RESERVED15"
 };
 
+#define DIG_ANSI_WARN_COLOR "\e[93m"
+#define DIG_ANSI_GOOD_COLOR "\e[92m"
+#define DIG_ANSI_ERR_COLOR "\e[91m"
+#define DIG_ANSI_RST_COLOR "\e[0m"
+
 /*% colors used for rcodes */
 static const char *const color_rcodetext[] = {
-        "\e[92m", "\e[91m", "\e[91m", "\e[93m", "\e[91m",
-        "\e[91m", "\e[91m", "\e[91m", "\e[91m", "\e[91m",
-        "\e[91m", "\e[93m", "\e[93m", "\e[93m", "\e[93m",
-        "\e[93m", "\e[91m"
+		DIG_ANSI_GOOD_COLOR, // NOERROR
+		DIG_ANSI_ERR_COLOR, // FORMERR
+		DIG_ANSI_ERR_COLOR, // SERVFAIL
+		DIG_ANSI_WARN_COLOR, // NXDOMAIN
+		DIG_ANSI_ERR_COLOR, // NOTIMP
+		DIG_ANSI_ERR_COLOR, // REFUSED
+		DIG_ANSI_ERR_COLOR, // YXDOMAIN
+		DIG_ANSI_ERR_COLOR, // YXRRSET
+		DIG_ANSI_ERR_COLOR, // NXRRSET
+		DIG_ANSI_ERR_COLOR, // NOTAUTH
+		DIG_ANSI_ERR_COLOR, // NOTZONE
+		DIG_ANSI_WARN_COLOR, // RESERVED11
+		DIG_ANSI_WARN_COLOR, // RESERVED12
+		DIG_ANSI_WARN_COLOR, // RESERVED13
+		DIG_ANSI_WARN_COLOR, // RESERVED14
+		DIG_ANSI_WARN_COLOR, // RESERVED15
+		DIG_ANSI_ERR_COLOR, // BADVERS
+		DIG_ANSI_WARN_COLOR, // RESERVED17
+		DIG_ANSI_WARN_COLOR, // RESERVED18
+		DIG_ANSI_WARN_COLOR, // RESERVED19
+		DIG_ANSI_WARN_COLOR, // RESERVED20
+		DIG_ANSI_WARN_COLOR, // RESERVED21
+		DIG_ANSI_WARN_COLOR, // RESERVED22
+		DIG_ANSI_ERR_COLOR, // BADCOOKIE
 };
+
 
 static const char *
 rcode_totext(dns_rcode_t rcode) {
@@ -879,23 +905,21 @@ printmessage(dig_query_t *query, const isc_buffer_t *msgbuf, dns_message_t *msg,
 				       "query is leaked to DNS\n");
 			}
 
+			const char *color_start = "";
+			const char *color_end = "";
 			if (color && msg->rcode >= (sizeof(color_rcodetext) / sizeof(color_rcodetext[0]))) {
-				printf(";; ->>HEADER<<- opcode: %s, status: \e[103%s\e[0m, "
-				       "id: %u\n",
-				       opcodetext[msg->opcode],
-				       rcode_totext(msg->rcode), msg->id);
+				color_start = DIG_ANSI_WARN_COLOR;
+				color_end = DIG_ANSI_RST_COLOR;
 			} else if (color) {
-				printf(";; ->>HEADER<<- opcode: %s, status: %s%s\e[0m, "
-			               "id: %u\n",
-				       opcodetext[msg->opcode],
-				       color_rcodetext[msg->rcode],
-				       rcode_totext(msg->rcode), msg->id);
-			} else {
-				printf(";; ->>HEADER<<- opcode: %s, status: %s, "
-				       "id: %u\n",
-				       opcodetext[msg->opcode],
-				       rcode_totext(msg->rcode), msg->id);
+				color_start = color_rcodetext[msg->rcode];
+				color_end = DIG_ANSI_RST_COLOR;
 			}
+
+			printf(";; ->>HEADER<<- opcode: %s, status: %s%s%s, "
+			       "id: %u\n",
+			       opcodetext[msg->opcode],
+			       color_start, rcode_totext(msg->rcode),
+			       color_end, msg->id);
 
 			printf(";; flags:");
 			if ((msg->flags & DNS_MESSAGEFLAG_QR) != 0) {
