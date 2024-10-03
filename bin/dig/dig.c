@@ -69,8 +69,8 @@ static char domainopt[DNS_NAME_MAXTEXT];
 static char hexcookie[81];
 
 static bool short_form = false, printcmd = true, plusquest = false,
-	    pluscomm = false, ipv4only = false, ipv6only = false,
-	    digrc = true, color = false;
+	    pluscomm = false, ipv4only = false, ipv6only = false, digrc = true,
+	    color = false;
 static uint32_t splitwidth = 0xffffffff;
 
 #include <openssl/opensslv.h>
@@ -85,37 +85,36 @@ static const char *const opcodetext[] = {
 
 #define DIG_ANSI_WARN_COLOR "\e[93m"
 #define DIG_ANSI_GOOD_COLOR "\e[92m"
-#define DIG_ANSI_ERR_COLOR "\e[91m"
-#define DIG_ANSI_RST_COLOR "\e[0m"
+#define DIG_ANSI_ERR_COLOR  "\e[91m"
+#define DIG_ANSI_RST_COLOR  "\e[0m"
 
 /*% colors used for rcodes */
 static const char *const color_rcodetext[] = {
-		DIG_ANSI_GOOD_COLOR, // NOERROR
-		DIG_ANSI_ERR_COLOR, // FORMERR
-		DIG_ANSI_ERR_COLOR, // SERVFAIL
-		DIG_ANSI_WARN_COLOR, // NXDOMAIN
-		DIG_ANSI_ERR_COLOR, // NOTIMP
-		DIG_ANSI_ERR_COLOR, // REFUSED
-		DIG_ANSI_ERR_COLOR, // YXDOMAIN
-		DIG_ANSI_ERR_COLOR, // YXRRSET
-		DIG_ANSI_ERR_COLOR, // NXRRSET
-		DIG_ANSI_ERR_COLOR, // NOTAUTH
-		DIG_ANSI_ERR_COLOR, // NOTZONE
-		DIG_ANSI_WARN_COLOR, // RESERVED11
-		DIG_ANSI_WARN_COLOR, // RESERVED12
-		DIG_ANSI_WARN_COLOR, // RESERVED13
-		DIG_ANSI_WARN_COLOR, // RESERVED14
-		DIG_ANSI_WARN_COLOR, // RESERVED15
-		DIG_ANSI_ERR_COLOR, // BADVERS
-		DIG_ANSI_WARN_COLOR, // RESERVED17
-		DIG_ANSI_WARN_COLOR, // RESERVED18
-		DIG_ANSI_WARN_COLOR, // RESERVED19
-		DIG_ANSI_WARN_COLOR, // RESERVED20
-		DIG_ANSI_WARN_COLOR, // RESERVED21
-		DIG_ANSI_WARN_COLOR, // RESERVED22
-		DIG_ANSI_ERR_COLOR, // BADCOOKIE
+	DIG_ANSI_GOOD_COLOR, // NOERROR
+	DIG_ANSI_ERR_COLOR,  // FORMERR
+	DIG_ANSI_ERR_COLOR,  // SERVFAIL
+	DIG_ANSI_WARN_COLOR, // NXDOMAIN
+	DIG_ANSI_ERR_COLOR,  // NOTIMP
+	DIG_ANSI_ERR_COLOR,  // REFUSED
+	DIG_ANSI_ERR_COLOR,  // YXDOMAIN
+	DIG_ANSI_ERR_COLOR,  // YXRRSET
+	DIG_ANSI_ERR_COLOR,  // NXRRSET
+	DIG_ANSI_ERR_COLOR,  // NOTAUTH
+	DIG_ANSI_ERR_COLOR,  // NOTZONE
+	DIG_ANSI_WARN_COLOR, // RESERVED11
+	DIG_ANSI_WARN_COLOR, // RESERVED12
+	DIG_ANSI_WARN_COLOR, // RESERVED13
+	DIG_ANSI_WARN_COLOR, // RESERVED14
+	DIG_ANSI_WARN_COLOR, // RESERVED15
+	DIG_ANSI_ERR_COLOR,  // BADVERS
+	DIG_ANSI_WARN_COLOR, // RESERVED17
+	DIG_ANSI_WARN_COLOR, // RESERVED18
+	DIG_ANSI_WARN_COLOR, // RESERVED19
+	DIG_ANSI_WARN_COLOR, // RESERVED20
+	DIG_ANSI_WARN_COLOR, // RESERVED21
+	DIG_ANSI_WARN_COLOR, // RESERVED22
+	DIG_ANSI_ERR_COLOR,  // BADCOOKIE
 };
-
 
 static const char *
 rcode_totext(dns_rcode_t rcode) {
@@ -907,7 +906,9 @@ printmessage(dig_query_t *query, const isc_buffer_t *msgbuf, dns_message_t *msg,
 
 			const char *color_start = "";
 			const char *color_end = "";
-			if (color && msg->rcode >= (sizeof(color_rcodetext) / sizeof(color_rcodetext[0]))) {
+			if (color && msg->rcode >= (sizeof(color_rcodetext) /
+						    sizeof(color_rcodetext[0])))
+			{
 				color_start = DIG_ANSI_WARN_COLOR;
 				color_end = DIG_ANSI_RST_COLOR;
 			} else if (color) {
@@ -917,9 +918,8 @@ printmessage(dig_query_t *query, const isc_buffer_t *msgbuf, dns_message_t *msg,
 
 			printf(";; ->>HEADER<<- opcode: %s, status: %s%s%s, "
 			       "id: %u\n",
-			       opcodetext[msg->opcode],
-			       color_start, rcode_totext(msg->rcode),
-			       color_end, msg->id);
+			       opcodetext[msg->opcode], color_start,
+			       rcode_totext(msg->rcode), color_end, msg->id);
 
 			printf(";; flags:");
 			if ((msg->flags & DNS_MESSAGEFLAG_QR) != 0) {
