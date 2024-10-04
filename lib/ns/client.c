@@ -1493,8 +1493,8 @@ process_ecs(ns_client_t *client, isc_buffer_t *buf, size_t optlen) {
 	default:
 		ns_client_log(client, NS_LOGCATEGORY_CLIENT,
 			      NS_LOGMODULE_CLIENT, ISC_LOG_DEBUG(2),
-			      "EDNS client-subnet option: invalid family");
-		return (DNS_R_OPTERR);
+			      "EDNS client-subnet option: unknown family");
+		return (ISC_R_SUCCESS);
 	}
 
 	addrbytes = (addrlen + 7) / 8;
