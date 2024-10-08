@@ -261,6 +261,10 @@ isc_nm_tcpconnect(isc_nm_t *mgr, isc_sockaddr_t *local, isc_sockaddr_t *peer,
 
 	(void)isc__nm_socket_min_mtu(sock->fd, sa_family);
 	(void)isc__nm_socket_tcp_maxseg(sock->fd, NM_MAXSEG);
+	uint32_t portrange = 0xffff << 16 | 0x1;
+	REQUIRE(setsockopt(fd, IPPROTO_IP, IP_LOCAL_PORT_RANGE, (void *)&portrange,
+		       sizeof(portrange)) == 0);
+
 
 	sock->active = true;
 
