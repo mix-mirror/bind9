@@ -342,8 +342,9 @@ tcp_dispatch(bool newtcp, dns_requestmgr_t *requestmgr,
 	isc_result_t result;
 
 	if (!newtcp) {
-		result = dns_dispatch_gettcp(requestmgr->dispatchmgr, destaddr,
-					     srcaddr, dispatchp);
+		result = dns_dispatch_gettcp(
+			requestmgr->dispatchmgr, destaddr, srcaddr,
+			DNS_DISPATCH_SHARETAG_REQUEST, dispatchp);
 		if (result == ISC_R_SUCCESS) {
 			char peer[ISC_SOCKADDR_FORMATSIZE];
 
@@ -354,8 +355,9 @@ tcp_dispatch(bool newtcp, dns_requestmgr_t *requestmgr,
 		}
 	}
 
-	result = dns_dispatch_createtcp(requestmgr->dispatchmgr, srcaddr,
-					destaddr, 0, dispatchp);
+	result = dns_dispatch_createtcp(
+		requestmgr->dispatchmgr, srcaddr, destaddr, 0,
+		DNS_DISPATCH_SHARETAG_REQUEST, dispatchp);
 	return (result);
 }
 

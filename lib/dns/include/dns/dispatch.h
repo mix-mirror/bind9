@@ -77,6 +77,12 @@ typedef enum dns_dispatchopt {
 	DNS_DISPATCHOPT_UNSHARED = 1 << 1, /* Don't share this connection */
 } dns_dispatchopt_t;
 
+typedef enum dns_dispatch_sharetag {
+	DNS_DISPATCH_SHARETAG_UNSET = 0,
+	DNS_DISPATCH_SHARETAG_REQUEST = 1,
+	DNS_DISPATCH_SHARETAG_XFRIN = 2
+} dns_dispatch_sharetag_t;
+
 isc_result_t
 dns_dispatchmgr_create(isc_mem_t *mctx, isc_loopmgr_t *loopmgr, isc_nm_t *nm,
 		       dns_dispatchmgr_t **mgrp);
@@ -184,10 +190,15 @@ dns_dispatch_createudp(dns_dispatchmgr_t *mgr, const isc_sockaddr_t *localaddr,
 
 isc_result_t
 dns_dispatch_createtcp(dns_dispatchmgr_t *mgr, const isc_sockaddr_t *localaddr,
-		       const isc_sockaddr_t *destaddr,
-		       dns_dispatchopt_t options, dns_dispatch_t **dispp);
+		       const isc_sockaddr_t	    *destaddr,
+		       dns_dispatchopt_t	     options,
+		       const dns_dispatch_sharetag_t tag,
+		       dns_dispatch_t		   **dispp);
 /*%<
  * Create a new TCP dns_dispatch.
+ *
+ * If the 'DNS_DISPATCHOPT_UNSHARED' option bit is not set, 'tag' can be used
+ * to partition the sharing of the dispatch.
  *
  * Requires:
  *
@@ -255,7 +266,8 @@ dns_dispatch_resume(dns_dispentry_t *resp, uint16_t timeout);
 
 isc_result_t
 dns_dispatch_gettcp(dns_dispatchmgr_t *mgr, const isc_sockaddr_t *destaddr,
-		    const isc_sockaddr_t *localaddr, dns_dispatch_t **dispp);
+		    const isc_sockaddr_t	 *localaddr,
+		    const dns_dispatch_sharetag_t tag, dns_dispatch_t **dispp);
 /*
  * Attempt to connect to a existing TCP connection.
  */

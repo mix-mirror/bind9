@@ -113,10 +113,11 @@ struct dns_dispatch {
 	isc_socktype_t socktype;
 	isc_refcount_t references;
 	isc_mem_t *mctx;
-	dns_dispatchmgr_t *mgr; /*%< dispatch manager */
-	isc_nmhandle_t *handle; /*%< netmgr handle for TCP connection */
-	isc_sockaddr_t local;	/*%< local address */
-	isc_sockaddr_t peer;	/*%< peer address (TCP) */
+	dns_dispatchmgr_t *mgr;	     /*%< dispatch manager */
+	isc_nmhandle_t *handle;	     /*%< netmgr handle for TCP connection */
+	isc_sockaddr_t local;	     /*%< local address */
+	isc_sockaddr_t peer;	     /*%< peer address (TCP) */
+	dns_dispatch_sharetag_t tag; /*%< tag for sharing partitioning */
 
 	dns_dispatchopt_t options;
 	dns_dispatchstate_t state;
@@ -1134,6 +1135,7 @@ dispatch_allocate(dns_dispatchmgr_t *mgr, isc_socktype_t type, uint32_t tid,
 struct dispatch_key {
 	const isc_sockaddr_t *local;
 	const isc_sockaddr_t *peer;
+	const dns_dispatch_sharetag_t tag;
 };
 
 static uint32_t
@@ -1142,6 +1144,7 @@ dispatch_hash(struct dispatch_key *key) {
 	if (key->local) {
 		hashval ^= isc_sockaddr_hash(key->local, true);
 	}
+	hashval ^= isc_hash32(&key->tag, sizeof(key->tag), true);
 
 	return (hashval);
 }
@@ -1161,14 +1164,16 @@ dispatch_match(struct cds_lfht_node *node, const void *key0) {
 		peer = disp->peer;
 	}
 
-	return (isc_sockaddr_equal(&peer, key->peer) &&
+	return (disp->tag == key->tag && isc_sockaddr_equal(&peer, key->peer) &&
 		(key->local == NULL || isc_sockaddr_equal(&local, key->local)));
 }
 
 isc_result_t
 dns_dispatch_createtcp(dns_dispatchmgr_t *mgr, const isc_sockaddr_t *localaddr,
 		       const isc_sockaddr_t *destaddr,
-		       dns_dispatchopt_t options, dns_dispatch_t **dispp) {
+		       dns_dispatchopt_t options,
+		       const dns_dispatch_sharetag_t tag,
+		       dns_dispatch_t **dispp) {
 	dns_dispatch_t *disp = NULL;
 	uint32_t tid = isc_tid();
 
@@ -1179,6 +1184,7 @@ dns_dispatch_createtcp(dns_dispatchmgr_t *mgr, const isc_sockaddr_t *localaddr,
 
 	disp->options = options;
 	disp->peer = *destaddr;
+	disp->tag = tag;
 
 	if (localaddr != NULL) {
 		disp->local = *localaddr;
@@ -1195,6 +1201,7 @@ dns_dispatch_createtcp(dns_dispatchmgr_t *mgr, const isc_sockaddr_t *localaddr,
 	struct dispatch_key key = {
 		.local = &disp->local,
 		.peer = &disp->peer,
+		.tag = tag,
 	};
 
 	if ((disp->options & DNS_DISPATCHOPT_UNSHARED) == 0) {
@@ -1222,7 +1229,8 @@ dns_dispatch_createtcp(dns_dispatchmgr_t *mgr, const isc_sockaddr_t *localaddr,
 
 isc_result_t
 dns_dispatch_gettcp(dns_dispatchmgr_t *mgr, const isc_sockaddr_t *destaddr,
-		    const isc_sockaddr_t *localaddr, dns_dispatch_t **dispp) {
+		    const isc_sockaddr_t *localaddr,
+		    const dns_dispatch_sharetag_t tag, dns_dispatch_t **dispp) {
 	dns_dispatch_t *disp_connected = NULL;
 	dns_dispatch_t *disp_fallback = NULL;
 	isc_result_t result = ISC_R_NOTFOUND;
@@ -1235,6 +1243,7 @@ dns_dispatch_gettcp(dns_dispatchmgr_t *mgr, const isc_sockaddr_t *destaddr,
 	struct dispatch_key key = {
 		.local = localaddr,
 		.peer = destaddr,
+		.tag = tag,
 	};
 
 	rcu_read_lock();

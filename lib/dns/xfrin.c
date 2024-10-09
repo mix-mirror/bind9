@@ -1225,6 +1225,29 @@ xfrin_create(isc_mem_t *mctx, dns_zone_t *zone, dns_db_t *db, isc_loop_t *loop,
 }
 
 static isc_result_t
+tcp_dispatch(dns_xfrin_t *xfr, dns_dispatchmgr_t *dispmgr,
+	     const isc_sockaddr_t *srcaddr, const isc_sockaddr_t *destaddr,
+	     unsigned int options, const dns_dispatch_sharetag_t tag,
+	     dns_dispatch_t **dispatchp) {
+	isc_result_t result;
+
+	result = dns_dispatch_gettcp(dispmgr, destaddr, srcaddr, tag,
+				     dispatchp);
+	if (result == ISC_R_SUCCESS) {
+		char peer[ISC_SOCKADDR_FORMATSIZE];
+
+		isc_sockaddr_format(destaddr, peer, sizeof(peer));
+		xfrin_log(xfr, ISC_LOG_DEBUG(1),
+			  "attached to TCP connection to %s", peer);
+		return (result);
+	}
+
+	result = dns_dispatch_createtcp(dispmgr, srcaddr, destaddr, options,
+					tag, dispatchp);
+	return (result);
+}
+
+static isc_result_t
 xfrin_start(dns_xfrin_t *xfr) {
 	isc_result_t result = ISC_R_FAILURE;
 	isc_interval_t interval;
@@ -1239,9 +1262,10 @@ xfrin_start(dns_xfrin_t *xfr) {
 		result = ISC_R_SHUTTINGDOWN;
 		goto failure;
 	} else {
-		result = dns_dispatch_createtcp(
-			dispmgr, &xfr->sourceaddr, &xfr->primaryaddr,
-			DNS_DISPATCHOPT_UNSHARED, &xfr->disp);
+		result = tcp_dispatch(xfr, dispmgr, &xfr->sourceaddr,
+				      &xfr->primaryaddr,
+				      0, DNS_DISPATCH_SHARETAG_XFRIN,
+				      &xfr->disp);
 		dns_dispatchmgr_detach(&dispmgr);
 		if (result != ISC_R_SUCCESS) {
 			goto failure;
