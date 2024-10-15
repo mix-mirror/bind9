@@ -595,8 +595,8 @@ dns_request_create(dns_requestmgr_t *requestmgr, dns_message_t *message,
 	}
 
 again:
-	result = get_dispatch(tcp, false, requestmgr, srcaddr, destaddr,
-			      &request->dispatch);
+	result = get_dispatch(tcp, transport != NULL ? true : false, requestmgr,
+			      srcaddr, destaddr, &request->dispatch);
 	if (result != ISC_R_SUCCESS) {
 		goto cleanup;
 	}
