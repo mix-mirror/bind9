@@ -2029,9 +2029,12 @@ tcp_dispatch_connect(dns_dispatch_t *disp, dns_dispentry_t *resp) {
 			tcp_startrecv(disp, resp);
 		}
 
-		/* Already connected; call the connected cb asynchronously */
+		/* We must call resp_connected synchronously to avoid a race
+		 * condition with the socket being marked as ready to read
+		 * on TCP disconnect
+		 */
 		dns_dispentry_ref(resp); /* DISPENTRY005 */
-		isc_async_run(resp->loop, resp_connected, resp);
+		resp_connected(resp);
 		break;
 
 	default:
