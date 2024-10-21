@@ -90,30 +90,19 @@ static const char *const opcodetext[] = {
 
 /*% colors used for rcodes */
 static const char *const color_rcodetext[] = {
-	DIG_ANSI_GOOD_COLOR, // NOERROR
-	DIG_ANSI_ERR_COLOR,  // FORMERR
-	DIG_ANSI_ERR_COLOR,  // SERVFAIL
-	DIG_ANSI_WARN_COLOR, // NXDOMAIN
-	DIG_ANSI_ERR_COLOR,  // NOTIMP
-	DIG_ANSI_ERR_COLOR,  // REFUSED
-	DIG_ANSI_ERR_COLOR,  // YXDOMAIN
-	DIG_ANSI_ERR_COLOR,  // YXRRSET
-	DIG_ANSI_ERR_COLOR,  // NXRRSET
-	DIG_ANSI_ERR_COLOR,  // NOTAUTH
-	DIG_ANSI_ERR_COLOR,  // NOTZONE
-	DIG_ANSI_WARN_COLOR, // RESERVED11
-	DIG_ANSI_WARN_COLOR, // RESERVED12
-	DIG_ANSI_WARN_COLOR, // RESERVED13
-	DIG_ANSI_WARN_COLOR, // RESERVED14
-	DIG_ANSI_WARN_COLOR, // RESERVED15
-	DIG_ANSI_ERR_COLOR,  // BADVERS
-	DIG_ANSI_WARN_COLOR, // RESERVED17
-	DIG_ANSI_WARN_COLOR, // RESERVED18
-	DIG_ANSI_WARN_COLOR, // RESERVED19
-	DIG_ANSI_WARN_COLOR, // RESERVED20
-	DIG_ANSI_WARN_COLOR, // RESERVED21
-	DIG_ANSI_WARN_COLOR, // RESERVED22
-	DIG_ANSI_ERR_COLOR,  // BADCOOKIE
+	[dns_rcode_noerror] = DIG_ANSI_GOOD_COLOR,
+	[dns_rcode_formerr] = DIG_ANSI_ERR_COLOR,
+	[dns_rcode_servfail] = DIG_ANSI_ERR_COLOR,
+	[dns_rcode_nxdomain] = DIG_ANSI_WARN_COLOR,
+	[dns_rcode_notimp] = DIG_ANSI_ERR_COLOR,
+	[dns_rcode_refused] = DIG_ANSI_ERR_COLOR,
+	[dns_rcode_yxdomain] = DIG_ANSI_ERR_COLOR,
+	[dns_rcode_yxrrset] = DIG_ANSI_ERR_COLOR,
+	[dns_rcode_nxrrset] = DIG_ANSI_ERR_COLOR,
+	[dns_rcode_notauth] = DIG_ANSI_ERR_COLOR,
+	[dns_rcode_notzone] = DIG_ANSI_ERR_COLOR,
+	[dns_rcode_badvers] = DIG_ANSI_ERR_COLOR,
+	[dns_rcode_badcookie] = DIG_ANSI_ERR_COLOR,
 };
 
 static const char *
@@ -906,8 +895,11 @@ printmessage(dig_query_t *query, const isc_buffer_t *msgbuf, dns_message_t *msg,
 
 			const char *color_start = "";
 			const char *color_end = "";
-			if (color && msg->rcode >= (sizeof(color_rcodetext) /
-						    sizeof(color_rcodetext[0])))
+			if (color && msg->rcode >= ARRAY_SIZE(color_rcodetext))
+			{
+				color_start = DIG_ANSI_WARN_COLOR;
+				color_end = DIG_ANSI_RST_COLOR;
+			} else if (color && color_rcodetext[msg->rcode] == NULL)
 			{
 				color_start = DIG_ANSI_WARN_COLOR;
 				color_end = DIG_ANSI_RST_COLOR;
