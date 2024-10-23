@@ -14415,7 +14415,7 @@ again:
 	 * through the XFR channel instead of doing dns_request that doesn't
 	 * have DoT support yet.
 	 */
-	if (transport != NULL) {
+	if (true) {
 		DNS_ZONE_SETFLAG(zone, DNS_ZONEFLG_SOABEFOREAXFR);
 		do_queue_xfrin = true;
 		cancel = false;
