@@ -3417,7 +3417,6 @@ fctx_getaddresses(fetchctx_t *fctx, bool badcache) {
 	dns_forwarder_t *fwd;
 	dns_adbaddrinfo_t *ai;
 	bool all_bad;
-	dns_rdata_ns_t ns;
 	bool need_alternate = false;
 	bool all_spilled = false;
 	unsigned int no_addresses = 0;
@@ -3600,35 +3599,76 @@ normal_nses:
 		bool overquota = false;
 		unsigned int static_stub = 0;
 
-		dns_rdataset_current(&fctx->nameservers, &rdata);
-		/*
-		 * Extract the name from the NS record.
-		 */
-		result = dns_rdata_tostruct(&rdata, &ns, NULL);
-		if (result != ISC_R_SUCCESS) {
-			continue;
-		}
+		switch (fctx->nameservers.type) {
+		case dns_rdatatype_ns: { /**/ }
+		dns_rdata_ns_t ns;
 
-		if (STATICSTUB(&fctx->nameservers) &&
-		    dns_name_equal(&ns.name, fctx->domain))
-		{
-			static_stub = DNS_ADBFIND_STATICSTUB;
-		}
+			dns_rdataset_current(&fctx->nameservers, &rdata);
+			/*
+			 * Extract the name from the NS record.
+			 */
+			result = dns_rdata_tostruct(&rdata, &ns, NULL);
+			if (result != ISC_R_SUCCESS) {
+				continue;
+			}
 
-		if (no_addresses > NS_FAIL_LIMIT &&
-		    dns_rdataset_count(&fctx->nameservers) > NS_RR_LIMIT)
-		{
-			stdoptions |= DNS_ADBFIND_NOFETCH;
-		}
-		findname(fctx, &ns.name, 0, stdoptions | static_stub, 0, now,
-			 &overquota, &need_alternate, &no_addresses);
+			if (STATICSTUB(&fctx->nameservers) &&
+			    dns_name_equal(&ns.name, fctx->domain))
+			{
+				static_stub = DNS_ADBFIND_STATICSTUB;
+			}
 
-		if (!overquota) {
-			all_spilled = false;
-		}
+			if (no_addresses > NS_FAIL_LIMIT &&
+			    dns_rdataset_count(&fctx->nameservers) > NS_RR_LIMIT)
+			{
+				stdoptions |= DNS_ADBFIND_NOFETCH;
+			}
+			findname(fctx, &ns.name, 0, stdoptions | static_stub, 0, now,
+				 &overquota, &need_alternate, &no_addresses);
 
-		dns_rdata_reset(&rdata);
-		dns_rdata_freestruct(&ns);
+			if (!overquota) {
+				all_spilled = false;
+			}
+
+			dns_rdata_reset(&rdata);
+			dns_rdata_freestruct(&ns);
+			break;
+		case dns_rdatatype_deleg: { /**/ }
+			dns_rdata_in_deleg_t deleg;
+
+			dns_rdataset_current(&fctx->nameservers, &rdata);
+			/*
+			 * Extract the name from the NS record.
+			 */
+			result = dns_rdata_tostruct(&rdata, &deleg, NULL);
+			if (result != ISC_R_SUCCESS) {
+				continue;
+			}
+
+			if (STATICSTUB(&fctx->nameservers) &&
+			    dns_name_equal(&deleg.svcdomain, fctx->domain))
+			{
+				static_stub = DNS_ADBFIND_STATICSTUB;
+			}
+
+			if (no_addresses > NS_FAIL_LIMIT &&
+			    dns_rdataset_count(&fctx->nameservers) > NS_RR_LIMIT)
+			{
+				stdoptions |= DNS_ADBFIND_NOFETCH;
+			}
+			findname(fctx, &deleg.svcdomain, 0, stdoptions | static_stub, 0, now,
+				 &overquota, &need_alternate, &no_addresses);
+
+			if (!overquota) {
+				all_spilled = false;
+			}
+
+			dns_rdata_reset(&rdata);
+			dns_rdata_freestruct(&ns);
+			break;
+		default:
+			break;
+		}
 
 		if (++ns_processed >= NS_PROCESSING_LIMIT) {
 			result = ISC_R_NOMORE;
@@ -10511,7 +10551,7 @@ dns_resolver_createfetch(dns_resolver_t *res, const dns_name_t *name,
 	/* XXXRTH  Check for meta type */
 	if (domain != NULL) {
 		REQUIRE(DNS_RDATASET_VALID(nameservers));
-		REQUIRE(nameservers->type == dns_rdatatype_ns);
+		REQUIRE(nameservers->type == dns_rdatatype_ns || nameservers->type == dns_rdatatype_deleg);
 	} else {
 		REQUIRE(nameservers == NULL);
 	}

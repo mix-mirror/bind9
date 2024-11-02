@@ -1984,6 +1984,8 @@ findzonecut(dns_db_t *db, const dns_name_t *name, unsigned int options,
 	qpc_search_t search;
 	dns_slabheader_t *header = NULL;
 	dns_slabheader_t *header_prev = NULL, *header_next = NULL;
+	dns_slabheader_t *found_ns = NULL, *found_nssig = NULL;
+	dns_slabheader_t *found_deleg = NULL, *found_delegsig = NULL;
 	dns_slabheader_t *found = NULL, *foundsig = NULL;
 	isc_rwlocktype_t tlocktype = isc_rwlocktype_none;
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
@@ -2072,21 +2074,30 @@ findzonecut(dns_db_t *db, const dns_name_t *name, unsigned int options,
 			 * If we found a type we were looking for, remember
 			 * it.
 			 */
-			if (header->type == dns_rdatatype_ns) {
+			switch (header->type) {
+			case dns_rdatatype_ns:
 				/*
 				 * Remember a NS rdataset even if we're
 				 * not specifically looking for it, because
 				 * we might need it later.
 				 */
-				found = header;
-			} else if (header->type ==
-				   DNS_SIGTYPE(dns_rdatatype_ns))
-			{
+				found_ns = header;
+				break;
+			case DNS_SIGTYPE(dns_rdatatype_ns):
 				/*
 				 * If we need the NS rdataset, we'll also
 				 * need its signature.
 				 */
-				foundsig = header;
+				found_nssig = header;
+				break;
+			case dns_rdatatype_deleg:
+				found_deleg = header;
+				break;
+			case DNS_SIGTYPE(dns_rdatatype_deleg):
+				found_delegsig = header;
+				break;
+			default:
+				break;
 			}
 			header_prev = header;
 		} else {
@@ -2094,9 +2105,9 @@ findzonecut(dns_db_t *db, const dns_name_t *name, unsigned int options,
 		}
 	}
 
-	if (found == NULL) {
+	if (found_deleg == NULL && found_ns == NULL) {
 		/*
-		 * No NS records here.
+		 * No NS nor DELEG records here.
 		 */
 		NODE_UNLOCK(lock, &nlocktype);
 		result = find_deepest_zonecut(&search, node, nodep, foundname,
@@ -2109,6 +2120,14 @@ findzonecut(dns_db_t *db, const dns_name_t *name, unsigned int options,
 		newref(search.qpdb, node, nlocktype,
 		       tlocktype DNS__DB_FLARG_PASS);
 		*nodep = node;
+	}
+
+	if (found_deleg) {
+		found = found_deleg;
+		foundsig = found_delegsig;
+	} else if (found_ns) {
+		found = found_ns;
+		foundsig = found_nssig;
 	}
 
 	bindrdataset(search.qpdb, node, found, search.now, nlocktype, tlocktype,

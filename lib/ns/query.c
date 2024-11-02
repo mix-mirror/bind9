@@ -6296,7 +6296,7 @@ ns_query_recurse(ns_client_t *client, dns_rdatatype_t qtype, dns_name_t *qname,
 	/*
 	 * Invoke the resolver.
 	 */
-	REQUIRE(nameservers == NULL || nameservers->type == dns_rdatatype_ns);
+	REQUIRE(nameservers == NULL || (nameservers->type == dns_rdatatype_ns || nameservers->type == dns_rdatatype_deleg));
 	REQUIRE(FETCH_RECTYPE_NORMAL(client) == NULL);
 
 	rdataset = ns_client_newrdataset(client);

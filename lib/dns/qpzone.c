@@ -3153,6 +3153,7 @@ check_zonecut(qpznode_t *node, void *arg DNS__DB_FLARG) {
 	dns_slabheader_t *header = NULL, *header_next = NULL;
 	dns_slabheader_t *dname_header = NULL, *sigdname_header = NULL;
 	dns_slabheader_t *ns_header = NULL;
+	dns_slabheader_t *deleg_header = NULL, *sigdeleg_header = NULL;
 	dns_slabheader_t *found = NULL;
 	isc_result_t result = DNS_R_CONTINUE;
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
@@ -3166,6 +3167,8 @@ check_zonecut(qpznode_t *node, void *arg DNS__DB_FLARG) {
 	for (header = node->data; header != NULL; header = header_next) {
 		header_next = header->next;
 		if (header->type == dns_rdatatype_ns ||
+		    header->type == dns_rdatatype_deleg ||
+		    header->type == DNS_SIGTYPE(dns_rdatatype_deleg) ||
 		    header->type == dns_rdatatype_dname ||
 		    header->type == DNS_SIGTYPE(dns_rdatatype_dname))
 		{
@@ -3181,22 +3184,35 @@ check_zonecut(qpznode_t *node, void *arg DNS__DB_FLARG) {
 					header = header->down;
 				}
 			} while (header != NULL);
-			if (header != NULL) {
-				if (header->type == dns_rdatatype_dname) {
-					dname_header = header;
-				} else if (header->type ==
-					   DNS_SIGTYPE(dns_rdatatype_dname))
-				{
-					sigdname_header = header;
-				} else if (node != search->qpdb->origin ||
-					   IS_STUB(search->qpdb))
-				{
+			if (header == NULL) {
+				continue;
+			}
+
+			switch (header->type) {
+			case dns_rdatatype_dname:
+				dname_header = header;
+				break;
+			case DNS_SIGTYPE(dns_rdatatype_dname):
+				sigdname_header = header;
+				break;
+			case dns_rdatatype_deleg:
+				if (node != search->qpdb->origin) {
+					deleg_header = header;
+				}
+				break;
+			case DNS_SIGTYPE(dns_rdatatype_deleg):
+				sigdeleg_header = header;
+				break;
+			case dns_rdatatype_ns:
+				if (node != search->qpdb->origin || IS_STUB(search->qpdb)) {
 					/*
-					 * We've found an NS rdataset that
-					 * isn't at the origin node.
+					 * We've found an NS rdataset that isn't at the origin node.
 					 */
 					ns_header = header;
 				}
+				break;
+			default:
+				break;
 			}
 		}
 	}
@@ -3204,7 +3220,11 @@ check_zonecut(qpznode_t *node, void *arg DNS__DB_FLARG) {
 	/*
 	 * Did we find anything?
 	 */
-	if (!IS_STUB(search->qpdb) && ns_header != NULL) {
+	if (deleg_header != NULL) {
+		/* DELEG has precedence over both NS and DNAME */
+		found = deleg_header;
+		search->zonecut_sigheader = sigdeleg_header;
+	} else if (!IS_STUB(search->qpdb) && ns_header != NULL) {
 		/*
 		 * Note that NS has precedence over DNAME if both exist
 		 * in a zone.  Otherwise DNAME take precedence over NS.
