@@ -458,6 +458,9 @@ query_delegation_recurse(query_ctx_t *qctx);
 static void
 query_addds(query_ctx_t *qctx);
 
+static void
+query_adddeleg(query_ctx_t *qctx);
+
 static isc_result_t
 query_nodata(query_ctx_t *qctx, isc_result_t result);
 
@@ -5503,7 +5506,7 @@ ns__query_start(query_ctx_t *qctx) {
 			     qctx->qtype, qctx->options, &qctx->zone, &qctx->db,
 			     &qctx->version, &qctx->is_zone);
 	if ((result != ISC_R_SUCCESS || !qctx->is_zone) &&
-	    qctx->qtype == dns_rdatatype_ds && !RECURSIONOK(qctx->client) &&
+	    (qctx->qtype == dns_rdatatype_ds || qctx->qtype == dns_rdatatype_deleg) && !RECURSIONOK(qctx->client) &&
 	    qctx->options.noexact)
 	{
 		/*
@@ -8516,7 +8519,8 @@ query_prepare_delegation_response(query_ctx_t *qctx) {
 
 	/*
 	 * qctx->fname could be released in query_addrrset(), so save a copy of
-	 * it here in case we need it.
+	 * it here in case we need it.  The save name is used for both DS and
+	 * DELEG lookups.
 	 */
 	dns_fixedname_init(&qctx->dsname);
 	dns_name_copy(qctx->fname, dns_fixedname_name(&qctx->dsname));
@@ -8550,6 +8554,11 @@ query_prepare_delegation_response(query_ctx_t *qctx) {
 	 */
 	query_addds(qctx);
 
+	/*
+	 * Add DELEG/NSEC(3) record(s) if needed.
+	 */
+	query_adddeleg(qctx);
+
 	return (ns_query_done(qctx));
 
 cleanup:
@@ -8573,7 +8582,7 @@ query_zone_delegation(query_ctx_t *qctx) {
 	 * authoritative for the child zone
 	 */
 	if (!RECURSIONOK(qctx->client) &&
-	    (qctx->options.noexact && qctx->qtype == dns_rdatatype_ds))
+	    (qctx->options.noexact && (qctx->qtype == dns_rdatatype_ds || qctx->qtype == dns_rdatatype_deleg)))
 	{
 		dns_db_t *tdb = NULL;
 		dns_zone_t *tzone = NULL;
@@ -8899,6 +8908,158 @@ addnsec3:
 	}
 	/*
 	 * Add the NSEC3 which proves the DS does not exist.
+	 */
+	dbuf = ns_client_getnamebuf(client);
+	fname = ns_client_newname(client, dbuf, &b);
+	dns_fixedname_init(&fixed);
+	if (dns_rdataset_isassociated(rdataset)) {
+		dns_rdataset_disassociate(rdataset);
+	}
+	if (dns_rdataset_isassociated(sigrdataset)) {
+		dns_rdataset_disassociate(sigrdataset);
+	}
+	name = dns_fixedname_name(&qctx->dsname);
+	query_findclosestnsec3(name, qctx->db, qctx->version, client, rdataset,
+			       sigrdataset, fname, true,
+			       dns_fixedname_name(&fixed));
+	if (!dns_rdataset_isassociated(rdataset)) {
+		goto cleanup;
+	}
+	query_addrrset(qctx, &fname, &rdataset, &sigrdataset, dbuf,
+		       DNS_SECTION_AUTHORITY);
+	/*
+	 * Did we find the closest provable encloser instead?
+	 * If so add the nearest to the closest provable encloser.
+	 */
+	if (!dns_name_equal(name, dns_fixedname_name(&fixed))) {
+		count = dns_name_countlabels(dns_fixedname_name(&fixed)) + 1;
+		dns_name_getlabelsequence(name,
+					  dns_name_countlabels(name) - count,
+					  count, dns_fixedname_name(&fixed));
+		fixfname(client, &fname, &dbuf, &b);
+		fixrdataset(client, &rdataset);
+		fixrdataset(client, &sigrdataset);
+		if (fname == NULL || rdataset == NULL || sigrdataset == NULL) {
+			goto cleanup;
+		}
+		query_findclosestnsec3(dns_fixedname_name(&fixed), qctx->db,
+				       qctx->version, client, rdataset,
+				       sigrdataset, fname, false, NULL);
+		if (!dns_rdataset_isassociated(rdataset)) {
+			goto cleanup;
+		}
+		query_addrrset(qctx, &fname, &rdataset, &sigrdataset, dbuf,
+			       DNS_SECTION_AUTHORITY);
+	}
+
+cleanup:
+	if (rdataset != NULL) {
+		ns_client_putrdataset(client, &rdataset);
+	}
+	if (sigrdataset != NULL) {
+		ns_client_putrdataset(client, &sigrdataset);
+	}
+	if (fname != NULL) {
+		ns_client_releasename(client, &fname);
+	}
+}
+
+/*%
+ * Add DELEG/NSEC(3) record(s) if needed.
+ */
+static void
+query_adddeleg(query_ctx_t *qctx) {
+	ns_client_t *client = qctx->client;
+	dns_fixedname_t fixed;
+	dns_name_t *fname = NULL;
+	dns_name_t *rname = NULL;
+	dns_name_t *name;
+	dns_rdataset_t *rdataset = NULL, *sigrdataset = NULL;
+	isc_buffer_t *dbuf, b;
+	isc_result_t result;
+	unsigned int count;
+
+	CTRACE(ISC_LOG_DEBUG(3), "query_adddeleg");
+
+	/*
+	 * DELEG not needed.
+	 */
+	if (!WANTDNSSEC(client)) {
+		return;
+	}
+
+	/*
+	 * We'll need some resources...
+	 */
+	rdataset = ns_client_newrdataset(client);
+	sigrdataset = ns_client_newrdataset(client);
+
+	/*
+	 * Look for the DELEG record, which may or may not be present.
+	 */
+	result = dns_db_findrdataset(qctx->db, qctx->node, qctx->version,
+				     dns_rdatatype_deleg, 0, client->now, rdataset,
+				     sigrdataset);
+	/*
+	 * If we didn't find it, look for an NSEC.
+	 */
+	if (result == ISC_R_NOTFOUND) {
+		result = dns_db_findrdataset(
+			qctx->db, qctx->node, qctx->version, dns_rdatatype_nsec,
+			0, client->now, rdataset, sigrdataset);
+	}
+	if (result != ISC_R_SUCCESS && result != ISC_R_NOTFOUND) {
+		goto addnsec3;
+	}
+	if (!dns_rdataset_isassociated(rdataset) ||
+	    !dns_rdataset_isassociated(sigrdataset))
+	{
+		goto addnsec3;
+	}
+
+	/*
+	 * We've already added the NS record, so if the name's not there,
+	 * we have other problems.
+	 */
+	result = dns_message_firstname(client->message, DNS_SECTION_AUTHORITY);
+	if (result != ISC_R_SUCCESS) {
+		goto cleanup;
+	}
+
+	/*
+	 * Find the delegation in the response message - it is not necessarily
+	 * the first name in the AUTHORITY section when wildcard processing is
+	 * involved.
+	 */
+	while (result == ISC_R_SUCCESS) {
+		rname = NULL;
+		dns_message_currentname(client->message, DNS_SECTION_AUTHORITY,
+					&rname);
+		result = dns_message_findtype(rname, dns_rdatatype_ns, 0, NULL);
+		if (result == ISC_R_SUCCESS) {
+			break;
+		}
+		result = dns_message_nextname(client->message,
+					      DNS_SECTION_AUTHORITY);
+	}
+
+	if (result != ISC_R_SUCCESS) {
+		goto cleanup;
+	}
+
+	/*
+	 * Add the relevant RRset (DELEG or NSEC) to the delegation.
+	 */
+	query_addrrset(qctx, &rname, &rdataset, &sigrdataset, NULL,
+		       DNS_SECTION_AUTHORITY);
+	goto cleanup;
+
+addnsec3:
+	if (!dns_db_iszone(qctx->db)) {
+		goto cleanup;
+	}
+	/*
+	 * Add the NSEC3 which proves the DELEG does not exist.
 	 */
 	dbuf = ns_client_getnamebuf(client);
 	fname = ns_client_newname(client, dbuf, &b);

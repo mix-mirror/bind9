@@ -1202,6 +1202,9 @@ auth_signed(dns_namelist_t *section) {
 			case dns_rdatatype_nsec3:
 				auth_dnssec |= 0x4;
 				break;
+			case dns_rdatatype_deleg:
+				auth_dnssec |= 0x8;
+				break;
 			case dns_rdatatype_rrsig:
 				break;
 			default:
@@ -1217,6 +1220,9 @@ auth_signed(dns_namelist_t *section) {
 				break;
 			case dns_rdatatype_nsec3:
 				auth_rrsig |= 0x4;
+				break;
+			case dns_rdatatype_deleg:
+				auth_rrsig |= 0x8;
 				break;
 			default:
 				break;

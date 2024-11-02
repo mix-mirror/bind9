@@ -3713,7 +3713,8 @@ out:
 			result = isc_time_nowplusinterval(&expire, &i);
 			if (badcache &&
 			    (fctx->type == dns_rdatatype_dnskey ||
-			     fctx->type == dns_rdatatype_ds) &&
+			     fctx->type == dns_rdatatype_ds ||
+			     fctx->type == dns_rdatatype_deleg) &&
 			    result == ISC_R_SUCCESS)
 			{
 				dns_resolver_addbadcache(res, fctx->name,
@@ -5314,7 +5315,8 @@ validated(void *arg) {
 			tresult = isc_time_nowplusinterval(&expire, &i);
 			if (negative &&
 			    (fctx->type == dns_rdatatype_dnskey ||
-			     fctx->type == dns_rdatatype_ds) &&
+			     fctx->type == dns_rdatatype_ds ||
+				    fctx->type == dns_rdatatype_deleg) &&
 			    tresult == ISC_R_SUCCESS)
 			{
 				dns_resolver_addbadcache(res, fctx->name,
@@ -5337,6 +5339,7 @@ validated(void *arg) {
 
 		/*
 		 * Cache DS NXDOMAIN separately to other types.
+		 * FIXME: What to do about DELEG?
 		 */
 		if (message->rcode == dns_rcode_nxdomain &&
 		    fctx->type != dns_rdatatype_ds)
@@ -8879,7 +8882,7 @@ rctx_answer_none(respctx_t *rctx) {
 	 */
 	if (rctx->negative &&
 	    rctx->query->rmessage->rcode == dns_rcode_noerror &&
-	    fctx->type == dns_rdatatype_ds && rctx->soa_name != NULL &&
+	    (fctx->type == dns_rdatatype_ds || fctx->type == dns_rdatatype_deleg) && rctx->soa_name != NULL &&
 	    dns_name_equal(rctx->soa_name, fctx->name) &&
 	    !dns_name_equal(fctx->name, dns_rootname))
 	{
@@ -9097,6 +9100,7 @@ rctx_ncache(respctx_t *rctx) {
 
 	/*
 	 * Cache DS NXDOMAIN separately to other types.
+	 * TODO: What to do about DELEG?
 	 */
 	if (rctx->query->rmessage->rcode == dns_rcode_nxdomain &&
 	    fctx->type != dns_rdatatype_ds)
@@ -9230,6 +9234,63 @@ rctx_authority_dnssec(respctx_t *rctx) {
 				if ((fctx->options & DNS_FETCHOPT_NONTA) != 0) {
 					checknta = false;
 				}
+				if (fctx->res->view->enablevalidation) {
+					result = issecuredomain(
+						fctx->res->view, name,
+						dns_rdatatype_ds, fctx->now,
+						checknta, NULL, &secure_domain);
+					if (result != ISC_R_SUCCESS) {
+						return (result);
+					}
+				}
+				if (secure_domain) {
+					rdataset->trust =
+						dns_trust_pending_answer;
+				} else if (rctx->aa) {
+					rdataset->trust =
+						dns_trust_authauthority;
+				} else if (ISFORWARDER(fctx->addrinfo)) {
+					rdataset->trust = dns_trust_answer;
+				} else {
+					rdataset->trust = dns_trust_additional;
+				}
+				break;
+			case dns_rdatatype_deleg:
+				/*
+				 * DELEG or SIG DELEG.
+				 *
+				 * These should only be here if this is
+				 * a referral, and there should only be
+				 * one DS RRset.
+				 */
+				if (rctx->ns_name == NULL) {
+					log_formerr(fctx, "DELEG with no "
+							  "referral");
+					rctx->result = DNS_R_FORMERR;
+					return (ISC_R_COMPLETE);
+				}
+
+				if (rdataset->type == dns_rdatatype_deleg) {
+					if (rctx->ds_name != NULL &&
+					    name != rctx->ds_name)
+					{
+						log_formerr(fctx, "DS doesn't "
+								  "match "
+								  "referral "
+								  "(NS)");
+						rctx->result = DNS_R_FORMERR;
+						return (ISC_R_COMPLETE);
+					}
+					rctx->ds_name = name;
+				}
+
+				name->attributes.cache = true;
+				rdataset->attributes |= DNS_RDATASETATTR_CACHE;
+
+				/* FIXME: NTA handling? */
+				/* if ((fctx->options & DNS_FETCHOPT_NONTA) != 0) { */
+				/* 	checknta = false; */
+				/* } */
 				if (fctx->res->view->enablevalidation) {
 					result = issecuredomain(
 						fctx->res->view, name,

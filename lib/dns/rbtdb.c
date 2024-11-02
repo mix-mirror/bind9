@@ -2884,7 +2884,9 @@ find_header:
 		    (header->type == dns_rdatatype_a ||
 		     header->type == dns_rdatatype_aaaa ||
 		     header->type == dns_rdatatype_ds ||
-		     header->type == DNS_SIGTYPE(dns_rdatatype_ds)) &&
+		     header->type == DNS_SIGTYPE(dns_rdatatype_ds) ||
+		     header->type == dns_rdatatype_deleg ||
+		     header->type == DNS_SIGTYPE(dns_rdatatype_deleg)) &&
 		    !header_nx && !newheader_nx &&
 		    header->trust >= newheader->trust &&
 		    dns_rdataslab_equal((unsigned char *)header,

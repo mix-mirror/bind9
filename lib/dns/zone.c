@@ -3254,7 +3254,7 @@ integrity_checks(dns_zone_t *zone, dns_db_t *db) {
 		result = dns_db_findrdataset(db, node, NULL, dns_rdatatype_ds,
 					     0, 0, &rdataset, NULL);
 		if (result != ISC_R_SUCCESS) {
-			goto checkfordname;
+			goto checkfordeleg;
 		}
 		dns_rdataset_disassociate(&rdataset);
 
@@ -3266,6 +3266,24 @@ integrity_checks(dns_zone_t *zone, dns_db_t *db) {
 		}
 		dns_name_format(name, namebuf, sizeof(namebuf));
 		dns_zone_log(zone, level, "DS not at delegation point (%s)",
+			     namebuf);
+
+	checkfordeleg:
+		result = dns_db_findrdataset(db, node, NULL, dns_rdatatype_deleg,
+					     0, 0, &rdataset, NULL);
+		if (result != ISC_R_SUCCESS) {
+			goto checkfordname;
+		}
+		dns_rdataset_disassociate(&rdataset);
+
+		if (zone->type == dns_zone_primary) {
+			level = ISC_LOG_ERROR;
+			ok = false;
+		} else {
+			level = ISC_LOG_WARNING;
+		}
+		dns_name_format(name, namebuf, sizeof(namebuf));
+		dns_zone_log(zone, level, "DELEG not at delegation point (%s)",
 			     namebuf);
 
 	checkfordname:
@@ -7520,7 +7538,7 @@ sign_a_node(dns_db_t *db, dns_zone_t *zone, dns_name_t *name,
 	bool offlineksk = false;
 	isc_buffer_t buffer;
 	unsigned char data[1024];
-	bool seen_soa, seen_ns, seen_rr, seen_nsec, seen_nsec3, seen_ds;
+	bool seen_soa = false, seen_ns = false, seen_rr = false, seen_nsec = false, seen_nsec3 = false, seen_ds = false, seen_deleg ISC_ATTR_UNUSED = false;
 
 	if (zone->kasp != NULL) {
 		offlineksk = dns_kasp_offlineksk(zone->kasp);
@@ -7536,7 +7554,6 @@ sign_a_node(dns_db_t *db, dns_zone_t *zone, dns_name_t *name,
 
 	dns_rdataset_init(&rdataset);
 	isc_buffer_init(&buffer, data, sizeof(data));
-	seen_rr = seen_soa = seen_ns = seen_nsec = seen_nsec3 = seen_ds = false;
 	for (result = dns_rdatasetiter_first(iterator); result == ISC_R_SUCCESS;
 	     result = dns_rdatasetiter_next(iterator))
 	{
@@ -7547,6 +7564,8 @@ sign_a_node(dns_db_t *db, dns_zone_t *zone, dns_name_t *name,
 			seen_ns = true;
 		} else if (rdataset.type == dns_rdatatype_ds) {
 			seen_ds = true;
+		} else if (rdataset.type == dns_rdatatype_deleg) {
+			seen_deleg = true;
 		} else if (rdataset.type == dns_rdatatype_nsec) {
 			seen_nsec = true;
 		} else if (rdataset.type == dns_rdatatype_nsec3) {
@@ -7616,7 +7635,7 @@ sign_a_node(dns_db_t *db, dns_zone_t *zone, dns_name_t *name,
 			}
 		}
 
-		if (seen_ns && !seen_soa && rdataset.type != dns_rdatatype_ds &&
+		if (seen_ns && !seen_soa && rdataset.type != dns_rdatatype_ds && rdataset.type != dns_rdatatype_deleg &&
 		    rdataset.type != dns_rdatatype_nsec)
 		{
 			goto next_rdataset;
@@ -8318,8 +8337,8 @@ zone_nsec3chain(dns_zone_t *zone) {
 	unsigned int nkeys = 0;
 	uint32_t nodes;
 	bool unsecure = false;
-	bool seen_soa, seen_ns, seen_dname, seen_ds;
-	bool seen_nsec, seen_nsec3, seen_rr;
+	bool seen_soa = false, seen_ns = false, seen_dname = false, seen_ds = false, seen_deleg ISC_ATTR_UNUSED = false;
+	bool seen_nsec = false, seen_nsec3 = false, seen_rr = false;
 	dns_rdatasetiter_t *iterator = NULL;
 	bool buildnsecchain;
 	bool updatensec = false;
@@ -8498,7 +8517,6 @@ zone_nsec3chain(dns_zone_t *zone) {
 			goto failure;
 		}
 
-		seen_soa = seen_ns = seen_dname = seen_ds = seen_nsec = false;
 		for (result = dns_rdatasetiter_first(iterator);
 		     result == ISC_R_SUCCESS;
 		     result = dns_rdatasetiter_next(iterator))
@@ -8513,6 +8531,8 @@ zone_nsec3chain(dns_zone_t *zone) {
 				seen_dname = true;
 			} else if (rdataset.type == dns_rdatatype_ds) {
 				seen_ds = true;
+			} else if (rdataset.type == dns_rdatatype_deleg) {
+				seen_deleg = true;
 			} else if (rdataset.type == dns_rdatatype_nsec) {
 				seen_nsec = true;
 			}
@@ -20940,7 +20960,7 @@ checkds_done(void *arg) {
 		for (rdataset = ISC_LIST_HEAD(name->list); rdataset != NULL;
 		     rdataset = ISC_LIST_NEXT(rdataset, link))
 		{
-			if (rdataset->type != dns_rdatatype_ds) {
+			if (rdataset->type != dns_rdatatype_ds && rdataset->type != dns_rdatatype_deleg) {
 				goto next;
 			}
 

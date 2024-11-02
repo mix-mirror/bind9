@@ -1895,7 +1895,7 @@ load_text(dns_loadctx_t *lctx) {
 			}
 		}
 
-		if ((type == dns_rdatatype_svcb || type == dns_rdatatype_deleg) &&
+		if ((type == dns_rdatatype_svcb) &&
 		    (lctx->options & DNS_MASTER_ZONE) != 0 &&
 		    (lctx->options & DNS_MASTER_CHECKSVCB) != 0)
 		{
