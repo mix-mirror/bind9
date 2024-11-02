@@ -88,7 +88,7 @@
 #define ARGS_FROMTEXT                                           \
 	int rdclass, dns_rdatatype_t type, isc_lex_t *lexer,    \
 		const dns_name_t *origin, unsigned int options, \
-		isc_buffer_t *target, dns_rdatacallbacks_t *callbacks
+		isc_buffer_t *target, dns_rdatacallbacks_t *callbacks ISC_ATTR_UNUSED
 
 #define CALL_FROMTEXT rdclass, type, lexer, origin, options, target, callbacks
 
@@ -136,8 +136,8 @@
 #define CALL_DIGEST rdata, digest, arg
 
 #define ARGS_CHECKOWNER                                   \
-	const dns_name_t *name, dns_rdataclass_t rdclass, \
-		dns_rdatatype_t type, bool wildcard
+	const dns_name_t *name ISC_ATTR_UNUSED, dns_rdataclass_t rdclass, \
+		dns_rdatatype_t type, bool wildcard ISC_ATTR_UNUSED
 
 #define CALL_CHECKOWNER name, rdclass, type, wildcard
 
