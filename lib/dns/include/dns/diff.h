@@ -194,6 +194,9 @@ dns_diff_append(dns_diff_t *diff, dns_difftuple_t **tuple);
  *\li	The tuple has been freed, or will be freed when the diff is cleared.
  */
 
+bool
+dns_diff_is_boundary(dns_diff_t *diff, dns_name_t *new_name);
+
 void
 dns_diff_appendminimal(dns_diff_t *diff, dns_difftuple_t **tuple);
 /*%<

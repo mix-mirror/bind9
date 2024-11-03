@@ -143,6 +143,16 @@ dns_diff_append(dns_diff_t *diff, dns_difftuple_t **tuplep) {
 	*tuplep = NULL;
 }
 
+bool
+dns_diff_is_boundary(dns_diff_t *diff, dns_name_t *new_name) {
+	if (ISC_LIST_EMPTY(diff->tuples)) {
+		return false;
+	}
+
+	dns_difftuple_t *tail = ISC_LIST_TAIL(diff->tuples);
+	return !dns_name_caseequal(&tail->name, new_name);
+}
+
 /* XXX this is O(N) */
 
 void
