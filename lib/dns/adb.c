@@ -2671,7 +2671,7 @@ dbfind_name(dns_adbname_t *adbname, isc_stdtime_t now, dns_rdatatype_t rdtype) {
 		dns_view_find(adb->view, adbname->name, rdtype, now,
 			      DNS_DBFIND_GLUEOK | DNS_DBFIND_ADDITIONALOK, true,
 			      ((adbname->flags & DNS_ADBFIND_STARTATZONE) != 0),
-			      NULL, NULL, fname, &rdataset, NULL);
+			      NULL, fname, &rdataset, NULL);
 
 	switch (result) {
 	case DNS_R_GLUE:
@@ -2821,9 +2821,6 @@ fetch_callback(void *arg) {
 	/*
 	 * Cleanup things we don't care about.
 	 */
-	if (resp->node != NULL) {
-		dns_db_detachnode(resp->db, &resp->node);
-	}
 	if (resp->db != NULL) {
 		dns_db_detach(&resp->db);
 	}

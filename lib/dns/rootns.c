@@ -101,7 +101,7 @@ static struct upcoming {
 		 } };
 
 static isc_result_t
-in_rootns(dns_rdataset_t *rootns, dns_name_t *name) {
+in_rootns(dns_rdataset_t *rootns, const dns_name_t *name) {
 	isc_result_t result;
 	dns_rdata_t rdata = DNS_RDATA_INIT;
 	dns_rdata_ns_t ns;
@@ -130,7 +130,7 @@ in_rootns(dns_rdataset_t *rootns, dns_name_t *name) {
 }
 
 static isc_result_t
-check_node(dns_rdataset_t *rootns, dns_name_t *name,
+check_node(dns_rdataset_t *rootns, const dns_name_t *name,
 	   dns_rdatasetiter_t *rdsiter) {
 	isc_result_t result;
 	dns_rdataset_t rdataset;
@@ -174,28 +174,25 @@ check_hints(dns_db_t *db) {
 	isc_result_t result;
 	dns_rdataset_t rootns;
 	dns_dbiterator_t *dbiter = NULL;
-	dns_dbnode_t *node = NULL;
 	isc_stdtime_t now = isc_stdtime_now();
-	dns_fixedname_t fixname;
-	dns_name_t *name;
 	dns_rdatasetiter_t *rdsiter = NULL;
-
-	name = dns_fixedname_initname(&fixname);
+	dns_fixedname_t name_s;
+	dns_name_t *name = dns_fixedname_initname(&name_s);
 
 	dns_rdataset_init(&rootns);
-	(void)dns_db_find(db, dns_rootname, NULL, dns_rdatatype_ns, 0, now,
-			  NULL, name, &rootns, NULL);
+	(void)dns_db_find(db, NULL, dns_rootname, dns_rdatatype_ns, 0, now,
+			  NULL, &rootns, NULL);
 	result = dns_db_createiterator(db, 0, &dbiter);
 	if (result != ISC_R_SUCCESS) {
 		goto cleanup;
 	}
 	result = dns_dbiterator_first(dbiter);
 	while (result == ISC_R_SUCCESS) {
-		result = dns_dbiterator_current(dbiter, &node, name);
+		result = dns_dbiterator_current(dbiter, name);
 		if (result != ISC_R_SUCCESS) {
 			goto cleanup;
 		}
-		result = dns_db_allrdatasets(db, node, NULL, 0, now, &rdsiter);
+		result = dns_db_allrdatasets(db, NULL, name, 0, now, &rdsiter);
 		if (result != ISC_R_SUCCESS) {
 			goto cleanup;
 		}
@@ -204,7 +201,6 @@ check_hints(dns_db_t *db) {
 			goto cleanup;
 		}
 		dns_rdatasetiter_destroy(&rdsiter);
-		dns_db_detachnode(db, &node);
 		result = dns_dbiterator_next(dbiter);
 	}
 	if (result == ISC_R_NOMORE) {
@@ -217,9 +213,6 @@ cleanup:
 	}
 	if (rdsiter != NULL) {
 		dns_rdatasetiter_destroy(&rdsiter);
-	}
-	if (node != NULL) {
-		dns_db_detachnode(db, &node);
 	}
 	if (dbiter != NULL) {
 		dns_dbiterator_destroy(&dbiter);
@@ -379,18 +372,14 @@ check_address_records(dns_view_t *view, dns_db_t *hints, dns_db_t *db,
 	isc_result_t hresult, rresult, result;
 	dns_rdataset_t hintrrset, rootrrset;
 	dns_rdata_t rdata = DNS_RDATA_INIT;
-	dns_name_t *foundname;
-	dns_fixedname_t fixed;
 
 	dns_rdataset_init(&hintrrset);
 	dns_rdataset_init(&rootrrset);
-	foundname = dns_fixedname_initname(&fixed);
 
-	hresult = dns_db_find(hints, name, NULL, dns_rdatatype_a, 0, now, NULL,
-			      foundname, &hintrrset, NULL);
-	rresult = dns_db_find(db, name, NULL, dns_rdatatype_a,
-			      DNS_DBFIND_GLUEOK, now, NULL, foundname,
-			      &rootrrset, NULL);
+	hresult = dns_db_find(hints, NULL, name, dns_rdatatype_a, 0, now, NULL,
+			      &hintrrset, NULL);
+	rresult = dns_db_find(db, NULL, name, dns_rdatatype_a,
+			      DNS_DBFIND_GLUEOK, now, NULL, &rootrrset, NULL);
 	if (hresult == ISC_R_SUCCESS &&
 	    (rresult == ISC_R_SUCCESS || rresult == DNS_R_GLUE))
 	{
@@ -438,11 +427,10 @@ check_address_records(dns_view_t *view, dns_db_t *hints, dns_db_t *db,
 	/*
 	 * Check AAAA records.
 	 */
-	hresult = dns_db_find(hints, name, NULL, dns_rdatatype_aaaa, 0, now,
-			      NULL, foundname, &hintrrset, NULL);
-	rresult = dns_db_find(db, name, NULL, dns_rdatatype_aaaa,
-			      DNS_DBFIND_GLUEOK, now, NULL, foundname,
-			      &rootrrset, NULL);
+	hresult = dns_db_find(hints, NULL, name, dns_rdatatype_aaaa, 0, now,
+			      NULL, &hintrrset, NULL);
+	rresult = dns_db_find(db, NULL, name, dns_rdatatype_aaaa,
+			      DNS_DBFIND_GLUEOK, now, NULL, &rootrrset, NULL);
 	if (hresult == ISC_R_SUCCESS &&
 	    (rresult == ISC_R_SUCCESS || rresult == DNS_R_GLUE))
 	{
@@ -499,8 +487,6 @@ dns_root_checkhints(dns_view_t *view, dns_db_t *hints, dns_db_t *db) {
 	dns_rdataset_t hintns, rootns;
 	const char *viewname = "", *sep = "";
 	isc_stdtime_t now = isc_stdtime_now();
-	dns_name_t *name;
-	dns_fixedname_t fixed;
 
 	REQUIRE(hints != NULL);
 	REQUIRE(db != NULL);
@@ -515,10 +501,9 @@ dns_root_checkhints(dns_view_t *view, dns_db_t *hints, dns_db_t *db) {
 
 	dns_rdataset_init(&hintns);
 	dns_rdataset_init(&rootns);
-	name = dns_fixedname_initname(&fixed);
 
-	result = dns_db_find(hints, dns_rootname, NULL, dns_rdatatype_ns, 0,
-			     now, NULL, name, &hintns, NULL);
+	result = dns_db_find(hints, NULL, dns_rootname, dns_rdatatype_ns, 0,
+			     now, NULL, &hintns, NULL);
 	if (result != ISC_R_SUCCESS) {
 		isc_log_write(DNS_LOGCATEGORY_GENERAL, DNS_LOGMODULE_HINTS,
 			      ISC_LOG_WARNING,
@@ -528,8 +513,8 @@ dns_root_checkhints(dns_view_t *view, dns_db_t *hints, dns_db_t *db) {
 		goto cleanup;
 	}
 
-	result = dns_db_find(db, dns_rootname, NULL, dns_rdatatype_ns, 0, now,
-			     NULL, name, &rootns, NULL);
+	result = dns_db_find(db, NULL, dns_rootname, dns_rdatatype_ns, 0, now,
+			     NULL, &rootns, NULL);
 	if (result != ISC_R_SUCCESS) {
 		isc_log_write(DNS_LOGCATEGORY_GENERAL, DNS_LOGMODULE_HINTS,
 			      ISC_LOG_WARNING,

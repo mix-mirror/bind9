@@ -114,7 +114,7 @@ end:
 }
 
 isc_result_t
-dns_ds_buildrdata(dns_name_t *owner, dns_rdata_t *key,
+dns_ds_buildrdata(const dns_name_t *owner, dns_rdata_t *key,
 		  dns_dsdigest_t digest_type, unsigned char *buffer,
 		  dns_rdata_t *rdata) {
 	isc_result_t result;

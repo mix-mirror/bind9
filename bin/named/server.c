@@ -3033,7 +3033,6 @@ cleanup:
 static isc_result_t
 add_soa(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
 	const dns_name_t *origin, const dns_name_t *contact) {
-	dns_dbnode_t *node = NULL;
 	dns_rdata_t rdata = DNS_RDATA_INIT;
 	dns_rdatalist_t rdatalist;
 	dns_rdataset_t rdataset;
@@ -3051,20 +3050,15 @@ add_soa(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
 
 	dns_rdataset_init(&rdataset);
 	dns_rdatalist_tordataset(&rdatalist, &rdataset);
-	CHECK(dns_db_findnode(db, name, true, &node));
-	CHECK(dns_db_addrdataset(db, node, version, 0, &rdataset, 0, NULL));
+	CHECK(dns_db_addrdataset(db, version, name, 0, &rdataset, 0, NULL));
 
 cleanup:
-	if (node != NULL) {
-		dns_db_detachnode(db, &node);
-	}
 	return result;
 }
 
 static isc_result_t
 add_ns(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
        const dns_name_t *nsname) {
-	dns_dbnode_t *node = NULL;
 	dns_rdata_ns_t ns;
 	dns_rdata_t rdata = DNS_RDATA_INIT;
 	dns_rdatalist_t rdatalist;
@@ -3091,13 +3085,9 @@ add_ns(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
 
 	dns_rdataset_init(&rdataset);
 	dns_rdatalist_tordataset(&rdatalist, &rdataset);
-	CHECK(dns_db_findnode(db, name, true, &node));
-	CHECK(dns_db_addrdataset(db, node, version, 0, &rdataset, 0, NULL));
+	CHECK(dns_db_addrdataset(db, version, name, 0, &rdataset, 0, NULL));
 
 cleanup:
-	if (node != NULL) {
-		dns_db_detachnode(db, &node);
-	}
 	return result;
 }
 
@@ -6792,9 +6782,6 @@ tat_done(void *arg) {
 	INSIST(tat != NULL);
 
 	/* Free resources which are not of interest */
-	if (resp->node != NULL) {
-		dns_db_detachnode(resp->db, &resp->node);
-	}
 	if (resp->db != NULL) {
 		dns_db_detach(&resp->db);
 	}
@@ -14188,7 +14175,6 @@ named_server_signing(named_server_t *server, isc_lex_t *lex,
 	dns_zone_t *zone = NULL;
 	dns_name_t *origin;
 	dns_db_t *db = NULL;
-	dns_dbnode_t *node = NULL;
 	dns_dbversion_t *version = NULL;
 	dns_rdatatype_t privatetype;
 	dns_rdataset_t privset;
@@ -14332,10 +14318,9 @@ named_server_signing(named_server_t *server, isc_lex_t *lex,
 		privatetype = dns_zone_getprivatetype(zone);
 		origin = dns_zone_getorigin(zone);
 		CHECK(dns_zone_getdb(zone, &db));
-		CHECK(dns_db_findnode(db, origin, false, &node));
 		dns_db_currentversion(db, &version);
 
-		result = dns_db_findrdataset(db, node, version, privatetype,
+		result = dns_db_findrdataset(db, version, origin, privatetype,
 					     dns_rdatatype_none, 0, &privset,
 					     NULL);
 		if (result == ISC_R_NOTFOUND) {
@@ -14384,9 +14369,6 @@ named_server_signing(named_server_t *server, isc_lex_t *lex,
 cleanup:
 	if (dns_rdataset_isassociated(&privset)) {
 		dns_rdataset_disassociate(&privset);
-	}
-	if (node != NULL) {
-		dns_db_detachnode(db, &node);
 	}
 	if (version != NULL) {
 		dns_db_closeversion(db, &version, false);

@@ -1735,9 +1735,8 @@ dumptostream(dns_dumpctx_t *dctx) {
 
 	while (result == ISC_R_SUCCESS) {
 		dns_rdatasetiter_t *rdsiter = NULL;
-		dns_dbnode_t *node = NULL;
 
-		result = dns_dbiterator_current(dctx->dbiter, &node, name);
+		result = dns_dbiterator_current(dctx->dbiter, name);
 		if (result != ISC_R_SUCCESS && result != DNS_R_NEWORIGIN) {
 			break;
 		}
@@ -1757,20 +1756,17 @@ dumptostream(dns_dumpctx_t *dctx) {
 		result = dns_dbiterator_pause(dctx->dbiter);
 		RUNTIME_CHECK(result == ISC_R_SUCCESS);
 
-		result = dns_db_allrdatasets(dctx->db, node, dctx->version,
+		result = dns_db_allrdatasets(dctx->db, dctx->version, name,
 					     options, dctx->now, &rdsiter);
 		if (result != ISC_R_SUCCESS) {
-			dns_db_detachnode(dctx->db, &node);
 			goto cleanup;
 		}
 		result = (dctx->dumpsets)(dctx->mctx, name, rdsiter,
 					  &dctx->tctx, &buffer, dctx->f);
 		dns_rdatasetiter_destroy(&rdsiter);
 		if (result != ISC_R_SUCCESS) {
-			dns_db_detachnode(dctx->db, &node);
 			goto cleanup;
 		}
-		dns_db_detachnode(dctx->db, &node);
 		result = dns_dbiterator_next(dctx->dbiter);
 	}
 

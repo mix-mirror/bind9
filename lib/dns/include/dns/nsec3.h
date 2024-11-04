@@ -43,12 +43,12 @@
 #define DNS_NSEC3_UNKNOWNALG ((dns_hash_t)245U)
 
 isc_result_t
-dns_nsec3_buildrdata(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
-		     unsigned int hashalg, unsigned int optin,
-		     unsigned int iterations, const unsigned char *salt,
-		     size_t salt_length, const unsigned char *nexthash,
-		     size_t hash_length, unsigned char *buffer,
-		     dns_rdata_t *rdata);
+dns_nsec3_buildrdata(dns_db_t *db, dns_dbversion_t *version,
+		     const dns_name_t *name, unsigned int hashalg,
+		     unsigned int optin, unsigned int iterations,
+		     const unsigned char *salt, size_t salt_length,
+		     const unsigned char *nexthash, size_t hash_length,
+		     unsigned char *buffer, dns_rdata_t *rdata);
 /*%<
  * Build the rdata of a NSEC3 record for the data at 'node'.
  * Note: 'node' is not the node where the NSEC3 record will be stored.
@@ -79,8 +79,8 @@ dns_nsec3_generate_salt(unsigned char *salt, size_t saltlen);
  */
 
 isc_result_t
-dns_nsec3_hashname(dns_fixedname_t *result,
-		   unsigned char    rethash[NSEC3_MAX_HASH_LENGTH],
+dns_nsec3_hashname(dns_name_t	*hashname,
+		   unsigned char rethash[NSEC3_MAX_HASH_LENGTH],
 		   size_t *hash_length, const dns_name_t *name,
 		   const dns_name_t *origin, dns_hash_t hashalg,
 		   unsigned int iterations, const unsigned char *salt,

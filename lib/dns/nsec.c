@@ -92,9 +92,9 @@ dns_nsec_compressbitmap(unsigned char *map, const unsigned char *raw,
 }
 
 isc_result_t
-dns_nsec_buildrdata(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
-		    const dns_name_t *target, unsigned char *buffer,
-		    dns_rdata_t *rdata) {
+dns_nsec_buildrdata(dns_db_t *db, dns_dbversion_t *version,
+		    const dns_name_t *name, const dns_name_t *target,
+		    unsigned char *buffer, dns_rdata_t *rdata) {
 	isc_result_t result;
 	dns_rdataset_t rdataset;
 	isc_region_t r;
@@ -121,7 +121,7 @@ dns_nsec_buildrdata(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
 	max_type = dns_rdatatype_nsec;
 	dns_rdataset_init(&rdataset);
 	rdsiter = NULL;
-	result = dns_db_allrdatasets(db, node, version, 0, 0, &rdsiter);
+	result = dns_db_allrdatasets(db, version, name, 0, 0, &rdsiter);
 	if (result != ISC_R_SUCCESS) {
 		return result;
 	}
@@ -171,7 +171,7 @@ dns_nsec_buildrdata(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
 }
 
 isc_result_t
-dns_nsec_build(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
+dns_nsec_build(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
 	       const dns_name_t *target, dns_ttl_t ttl) {
 	isc_result_t result;
 	dns_rdata_t rdata = DNS_RDATA_INIT;
@@ -182,7 +182,7 @@ dns_nsec_build(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
 	dns_rdataset_init(&rdataset);
 	dns_rdata_init(&rdata);
 
-	result = dns_nsec_buildrdata(db, version, node, target, data, &rdata);
+	result = dns_nsec_buildrdata(db, version, name, target, data, &rdata);
 	if (result != ISC_R_SUCCESS) {
 		goto failure;
 	}
@@ -193,7 +193,7 @@ dns_nsec_build(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
 	rdatalist.ttl = ttl;
 	ISC_LIST_APPEND(rdatalist.rdata, &rdata, link);
 	dns_rdatalist_tordataset(&rdatalist, &rdataset);
-	result = dns_db_addrdataset(db, node, version, 0, &rdataset, 0, NULL);
+	result = dns_db_addrdataset(db, version, name, 0, &rdataset, 0, NULL);
 	if (result == DNS_R_UNCHANGED) {
 		result = ISC_R_SUCCESS;
 	}
@@ -246,7 +246,6 @@ dns_nsec_typepresent(dns_rdata_t *nsec, dns_rdatatype_t type) {
 isc_result_t
 dns_nsec_nseconly(dns_db_t *db, dns_dbversion_t *version, dns_diff_t *diff,
 		  bool *answer) {
-	dns_dbnode_t *node = NULL;
 	dns_rdataset_t rdataset;
 	dns_rdata_dnskey_t dnskey;
 	isc_result_t result;
@@ -255,14 +254,9 @@ dns_nsec_nseconly(dns_db_t *db, dns_dbversion_t *version, dns_diff_t *diff,
 
 	dns_rdataset_init(&rdataset);
 
-	result = dns_db_getoriginnode(db, &node);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
-
-	result = dns_db_findrdataset(db, node, version, dns_rdatatype_dnskey, 0,
-				     0, &rdataset, NULL);
-	dns_db_detachnode(db, &node);
+	result = dns_db_findrdataset(db, version, dns_db_useoriginname,
+				     dns_rdatatype_dnskey, 0, 0, &rdataset,
+				     NULL);
 
 	if (result == ISC_R_NOTFOUND) {
 		*answer = false;

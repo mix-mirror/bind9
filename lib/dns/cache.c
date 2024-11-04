@@ -367,11 +367,11 @@ dns_cache_flush(dns_cache_t *cache) {
 }
 
 static isc_result_t
-clearnode(dns_db_t *db, dns_dbnode_t *node) {
+clearname(dns_db_t *db, const dns_name_t *name) {
 	isc_result_t result;
 	dns_rdatasetiter_t *iter = NULL;
 
-	result = dns_db_allrdatasets(db, node, NULL, DNS_DB_STALEOK,
+	result = dns_db_allrdatasets(db, NULL, name, DNS_DB_STALEOK,
 				     (isc_stdtime_t)0, &iter);
 	if (result != ISC_R_SUCCESS) {
 		return result;
@@ -384,7 +384,7 @@ clearnode(dns_db_t *db, dns_dbnode_t *node) {
 		dns_rdataset_init(&rdataset);
 
 		dns_rdatasetiter_current(iter, &rdataset);
-		result = dns_db_deleterdataset(db, node, NULL, rdataset.type,
+		result = dns_db_deleterdataset(db, NULL, name, rdataset.type,
 					       rdataset.covers);
 		dns_rdataset_disassociate(&rdataset);
 		if (result != ISC_R_SUCCESS && result != DNS_R_UNCHANGED) {
@@ -404,15 +404,8 @@ static isc_result_t
 cleartree(dns_db_t *db, const dns_name_t *name) {
 	isc_result_t result, answer = ISC_R_SUCCESS;
 	dns_dbiterator_t *iter = NULL;
-	dns_dbnode_t *node = NULL, *top = NULL;
 	dns_fixedname_t fnodename;
 	dns_name_t *nodename;
-
-	/*
-	 * Create the node if it doesn't exist so dns_dbiterator_seek()
-	 * can find it.  We will continue even if this fails.
-	 */
-	(void)dns_db_findnode(db, name, true, &top);
 
 	nodename = dns_fixedname_initname(&fnodename);
 
@@ -430,7 +423,7 @@ cleartree(dns_db_t *db, const dns_name_t *name) {
 	}
 
 	while (result == ISC_R_SUCCESS) {
-		result = dns_dbiterator_current(iter, &node, nodename);
+		result = dns_dbiterator_current(iter, nodename);
 		if (result == DNS_R_NEWORIGIN) {
 			result = ISC_R_SUCCESS;
 		}
@@ -447,11 +440,10 @@ cleartree(dns_db_t *db, const dns_name_t *name) {
 		/*
 		 * If clearnode fails record and move onto the next node.
 		 */
-		result = clearnode(db, node);
+		result = clearname(db, nodename);
 		if (result != ISC_R_SUCCESS && answer == ISC_R_SUCCESS) {
 			answer = result;
 		}
-		dns_db_detachnode(db, &node);
 		result = dns_dbiterator_next(iter);
 	}
 
@@ -462,14 +454,8 @@ cleanup:
 	if (result != ISC_R_SUCCESS && answer == ISC_R_SUCCESS) {
 		answer = result;
 	}
-	if (node != NULL) {
-		dns_db_detachnode(db, &node);
-	}
 	if (iter != NULL) {
 		dns_dbiterator_destroy(&iter);
-	}
-	if (top != NULL) {
-		dns_db_detachnode(db, &top);
 	}
 
 	return answer;
@@ -483,7 +469,6 @@ dns_cache_flushname(dns_cache_t *cache, const dns_name_t *name) {
 isc_result_t
 dns_cache_flushnode(dns_cache_t *cache, const dns_name_t *name, bool tree) {
 	isc_result_t result;
-	dns_dbnode_t *node = NULL;
 	dns_db_t *db = NULL;
 
 	if (tree && dns_name_equal(name, dns_rootname)) {
@@ -502,19 +487,9 @@ dns_cache_flushnode(dns_cache_t *cache, const dns_name_t *name, bool tree) {
 	if (tree) {
 		result = cleartree(cache->db, name);
 	} else {
-		result = dns_db_findnode(cache->db, name, false, &node);
-		if (result == ISC_R_NOTFOUND) {
-			result = ISC_R_SUCCESS;
-			goto cleanup_db;
-		}
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup_db;
-		}
-		result = clearnode(cache->db, node);
-		dns_db_detachnode(cache->db, &node);
+		result = clearname(cache->db, name);
 	}
 
-cleanup_db:
 	dns_db_detach(&db);
 	return result;
 }

@@ -751,8 +751,8 @@ the `dns_db` interface is implemented in several places, including
 zones and cache data) and `lib/dns/sdlz.c` (an interface to DLZ modules).
 An object of type `dns_dbmethods_t` is created for each of these,
 containing function pointers to the local implementations of each of the
-`dns_db` API functions.  The `dns_db_findnode()` function is provided by
-static functions called `findnode()` in each file, and so on.
+`dns_db` API functions.  The `dns_db_find()` function is provided by
+static functions called `find()` in each file, and so on.
 
 #### Initialization
 

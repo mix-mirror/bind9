@@ -56,7 +56,6 @@ overmempurge_addrdataset(dns_db_t *db, isc_stdtime_t now, int idx,
 			 bool longname) {
 	isc_result_t result;
 	dns_rdata_t rdata;
-	dns_dbnode_t *node = NULL;
 	dns_rdatalist_t rdatalist;
 	dns_rdataset_t rdataset;
 	dns_fixedname_t fname;
@@ -85,10 +84,6 @@ overmempurge_addrdataset(dns_db_t *db, isc_stdtime_t now, int idx,
 	dns_test_namefromstring(namebuf, &fname);
 	name = dns_fixedname_name(&fname);
 
-	result = dns_db_findnode(db, name, true, &node);
-	assert_int_equal(result, ISC_R_SUCCESS);
-	assert_non_null(node);
-
 	dns_rdata_init(&rdata);
 	rdata.length = rdata_len;
 	rdata.data = rdatabuf;
@@ -104,10 +99,8 @@ overmempurge_addrdataset(dns_db_t *db, isc_stdtime_t now, int idx,
 	dns_rdataset_init(&rdataset);
 	dns_rdatalist_tordataset(&rdatalist, &rdataset);
 
-	result = dns_db_addrdataset(db, node, NULL, now, &rdataset, 0, NULL);
+	result = dns_db_addrdataset(db, NULL, name, now, &rdataset, 0, NULL);
 	assert_int_equal(result, ISC_R_SUCCESS);
-
-	dns_db_detachnode(db, &node);
 }
 
 ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {

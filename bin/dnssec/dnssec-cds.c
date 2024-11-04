@@ -137,11 +137,8 @@ static keyinfo_t *old_key_tbl = NULL, *new_key_tbl = NULL;
 isc_buffer_t *new_ds_buf = NULL; /* backing store for new_ds_set */
 
 static dns_db_t *child_db = NULL;
-static dns_dbnode_t *child_node = NULL;
 static dns_db_t *parent_db = NULL;
-static dns_dbnode_t *parent_node = NULL;
 static dns_db_t *update_db = NULL;
-static dns_dbnode_t *update_node = NULL;
 static dns_dbversion_t *update_version = NULL;
 static bool print_mem_stats = false;
 
@@ -183,15 +180,15 @@ initname(char *setname) {
 }
 
 static void
-findset(dns_db_t *db, dns_dbnode_t *node, dns_rdatatype_t type,
-	dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset) {
+findset(dns_db_t *db, dns_rdatatype_t type, dns_rdataset_t *rdataset,
+	dns_rdataset_t *sigrdataset) {
 	isc_result_t result;
 
 	dns_rdataset_init(rdataset);
 	if (sigrdataset != NULL) {
 		dns_rdataset_init(sigrdataset);
 	}
-	result = dns_db_findrdataset(db, node, NULL, type, 0, 0, rdataset,
+	result = dns_db_findrdataset(db, NULL, name, type, 0, 0, rdataset,
 				     sigrdataset);
 	if (result != ISC_R_NOTFOUND) {
 		check_result(result, "dns_db_findrdataset()");
@@ -242,7 +239,7 @@ free_all_sets(void) {
 }
 
 static void
-load_db(const char *filename, dns_db_t **dbp, dns_dbnode_t **nodep) {
+load_db(const char *filename, dns_db_t **dbp) {
 	isc_result_t result;
 
 	result = dns_db_create(mctx, ZONEDB_DEFAULT, name, dns_dbtype_zone,
@@ -254,19 +251,11 @@ load_db(const char *filename, dns_db_t **dbp, dns_dbnode_t **nodep) {
 	if (result != ISC_R_SUCCESS && result != DNS_R_SEENINCLUDE) {
 		fatal("can't load %s: %s", filename, isc_result_totext(result));
 	}
-
-	result = dns_db_findnode(*dbp, name, false, nodep);
-	if (result != ISC_R_SUCCESS) {
-		fatal("can't find %s node in %s", namestr, filename);
-	}
 }
 
 static void
-free_db(dns_db_t **dbp, dns_dbnode_t **nodep, dns_dbversion_t **versionp) {
+free_db(dns_db_t **dbp, dns_dbversion_t **versionp) {
 	if (*dbp != NULL) {
-		if (*nodep != NULL) {
-			dns_db_detachnode(*dbp, nodep);
-		}
 		if (versionp != NULL && *versionp != NULL) {
 			dns_db_closeversion(*dbp, versionp, false);
 		}
@@ -276,13 +265,11 @@ free_db(dns_db_t **dbp, dns_dbnode_t **nodep, dns_dbversion_t **versionp) {
 
 static void
 load_child_sets(const char *file) {
-	load_db(file, &child_db, &child_node);
-	findset(child_db, child_node, dns_rdatatype_dnskey, &dnskey_set,
-		&dnskey_sig);
-	findset(child_db, child_node, dns_rdatatype_cdnskey, &cdnskey_set,
-		&cdnskey_sig);
-	findset(child_db, child_node, dns_rdatatype_cds, &cds_set, &cds_sig);
-	free_db(&child_db, &child_node, NULL);
+	load_db(file, &child_db);
+	findset(child_db, dns_rdatatype_dnskey, &dnskey_set, &dnskey_sig);
+	findset(child_db, dns_rdatatype_cdnskey, &cdnskey_set, &cdnskey_sig);
+	findset(child_db, dns_rdatatype_cds, &cds_set, &cds_sig);
+	free_db(&child_db, NULL);
 }
 
 static void
@@ -348,15 +335,15 @@ load_parent_set(const char *path) {
 	}
 	verbose_time(1, "child records must not be signed before", notbefore);
 
-	load_db(filename, &parent_db, &parent_node);
-	findset(parent_db, parent_node, dns_rdatatype_ds, &old_ds_set, NULL);
+	load_db(filename, &parent_db);
+	findset(parent_db, dns_rdatatype_ds, &old_ds_set, NULL);
 
 	if (!dns_rdataset_isassociated(&old_ds_set)) {
 		fatal("could not find DS records for %s in %s", namestr,
 		      filename);
 	}
 
-	free_db(&parent_db, &parent_node, NULL);
+	free_db(&parent_db, NULL);
 }
 
 #define MAX_CDS_RDATA_TEXT_SIZE DNS_RDATA_MAXLENGTH * 2
@@ -984,16 +971,13 @@ update_diff(const char *cmd, uint32_t ttl, dns_rdataset_t *addset,
 	result = dns_db_newversion(update_db, &update_version);
 	check_result(result, "dns_db_newversion()");
 
-	result = dns_db_findnode(update_db, name, true, &update_node);
-	check_result(result, "dns_db_findnode()");
-
 	dns_rdataset_init(&diffset);
 
-	result = dns_db_addrdataset(update_db, update_node, update_version, 0,
-				    addset, DNS_DBADD_MERGE, NULL);
+	result = dns_db_addrdataset(update_db, update_version, name, 0, addset,
+				    DNS_DBADD_MERGE, NULL);
 	check_result(result, "dns_db_addrdataset()");
 
-	result = dns_db_subtractrdataset(update_db, update_node, update_version,
+	result = dns_db_subtractrdataset(update_db, update_version, name,
 					 delset, 0, &diffset);
 	if (result == DNS_R_UNCHANGED) {
 		save = addset->ttl;
@@ -1007,7 +991,7 @@ update_diff(const char *cmd, uint32_t ttl, dns_rdataset_t *addset,
 		dns_rdataset_disassociate(&diffset);
 	}
 
-	free_db(&update_db, &update_node, &update_version);
+	free_db(&update_db, &update_version);
 }
 
 static void
@@ -1059,9 +1043,9 @@ usage(void) {
 
 static void
 cleanup(void) {
-	free_db(&child_db, &child_node, NULL);
-	free_db(&parent_db, &parent_node, NULL);
-	free_db(&update_db, &update_node, &update_version);
+	free_db(&child_db, NULL);
+	free_db(&parent_db, NULL);
+	free_db(&update_db, &update_version);
 	if (old_key_tbl != NULL) {
 		free_keytable(&old_key_tbl);
 	}

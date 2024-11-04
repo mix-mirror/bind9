@@ -26,9 +26,6 @@
  * it, an implementation of the class is required.  This implementation is
  * supplied by the database.
  *
- * It is the client's responsibility to call dns_db_detachnode() on all
- * nodes returned.
- *
  * XXX &lt;more&gt; XXX
  *
  * MP:
@@ -73,7 +70,6 @@ typedef struct dns_dbiteratormethods {
 	isc_result_t (*prev)(dns_dbiterator_t *iterator DNS__DB_FLARG);
 	isc_result_t (*next)(dns_dbiterator_t *iterator DNS__DB_FLARG);
 	isc_result_t (*current)(dns_dbiterator_t *iterator,
-				dns_dbnode_t	**nodep,
 				dns_name_t *name  DNS__DB_FLARG);
 	isc_result_t (*pause)(dns_dbiterator_t *iterator);
 	isc_result_t (*origin)(dns_dbiterator_t *iterator, dns_name_t *name);
@@ -209,11 +205,11 @@ dns__dbiterator_next(dns_dbiterator_t *iterator DNS__DB_FLARG);
  *\li	Other results are possible, depending on the DB implementation.
  */
 
-#define dns_dbiterator_current(iterator, nodep, name) \
-	dns__dbiterator_current(iterator, nodep, name DNS__DB_FILELINE)
+#define dns_dbiterator_current(iterator, name) \
+	dns__dbiterator_current(iterator, name DNS__DB_FILELINE)
 isc_result_t
-dns__dbiterator_current(dns_dbiterator_t *iterator, dns_dbnode_t **nodep,
-			dns_name_t *name DNS__DB_FLARG);
+dns__dbiterator_current(dns_dbiterator_t *iterator,
+			dns_name_t *name  DNS__DB_FLARG);
 /*%<
  * Return the current node.
  *
@@ -223,12 +219,10 @@ dns__dbiterator_current(dns_dbiterator_t *iterator, dns_dbnode_t **nodep,
  * Requires:
  *\li	'iterator' is a valid iterator.
  *
- *\li	nodep != NULL && *nodep == NULL
+ *\li	'name' is a valid name with a dedicated buffer.
  *
  *\li	The node cursor of 'iterator' is at a valid location (i.e. the
  *	result of last call to a cursor movement command was ISC_R_SUCCESS).
- *
- *\li	'name' is NULL, or is a valid name with a dedicated buffer.
  *
  * Returns:
  *

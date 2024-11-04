@@ -471,10 +471,11 @@ static filter_data_t *
 client_state_get(const query_ctx_t *qctx, filter_instance_t *inst) {
 	filter_data_t *client_state = NULL;
 	isc_result_t result;
+	uintptr_t key = (uintptr_t)qctx->client;
 
 	LOCK(&inst->hlock);
-	result = isc_ht_find(inst->ht, (const unsigned char *)&qctx->client,
-			     sizeof(qctx->client), (void **)&client_state);
+	result = isc_ht_find(inst->ht, (void *)key, sizeof(key),
+			     (void **)&client_state);
 	UNLOCK(&inst->hlock);
 
 	return result == ISC_R_SUCCESS ? client_state : NULL;
@@ -484,6 +485,7 @@ static void
 client_state_create(const query_ctx_t *qctx, filter_instance_t *inst) {
 	filter_data_t *client_state;
 	isc_result_t result;
+	uintptr_t key = (uintptr_t)qctx->client;
 
 	client_state = isc_mem_get(inst->mctx, sizeof(*client_state));
 
@@ -491,8 +493,7 @@ client_state_create(const query_ctx_t *qctx, filter_instance_t *inst) {
 	client_state->flags = 0;
 
 	LOCK(&inst->hlock);
-	result = isc_ht_add(inst->ht, (const unsigned char *)&qctx->client,
-			    sizeof(qctx->client), client_state);
+	result = isc_ht_add(inst->ht, (void *)key, sizeof(key), client_state);
 	UNLOCK(&inst->hlock);
 	RUNTIME_CHECK(result == ISC_R_SUCCESS);
 }
@@ -501,14 +502,14 @@ static void
 client_state_destroy(const query_ctx_t *qctx, filter_instance_t *inst) {
 	filter_data_t *client_state = client_state_get(qctx, inst);
 	isc_result_t result;
+	uintptr_t key = (uintptr_t)qctx->client;
 
 	if (client_state == NULL) {
 		return;
 	}
 
 	LOCK(&inst->hlock);
-	result = isc_ht_delete(inst->ht, (const unsigned char *)&qctx->client,
-			       sizeof(qctx->client));
+	result = isc_ht_delete(inst->ht, (void *)key, sizeof(key));
 	UNLOCK(&inst->hlock);
 	RUNTIME_CHECK(result == ISC_R_SUCCESS);
 
@@ -714,8 +715,8 @@ filter_respond_begin(void *arg, void *cbdata, isc_result_t *resp) {
 		dns_rdataset_t *trdataset;
 		trdataset = ns_client_newrdataset(qctx->client);
 		result = dns_db_findrdataset(
-			qctx->db, qctx->node, qctx->version, dns_rdatatype_a, 0,
-			qctx->client->now, trdataset, NULL);
+			qctx->db, qctx->version, qctx->fname, dns_rdatatype_a,
+			0, qctx->client->now, trdataset, NULL);
 		if (dns_rdataset_isassociated(trdataset)) {
 			dns_rdataset_disassociate(trdataset);
 		}

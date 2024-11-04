@@ -51,7 +51,7 @@ atomic_getuint8(isc_buffer_t *b) {
 }
 
 static isc_result_t
-addoptout(dns_message_t *message, dns_db_t *cache, dns_dbnode_t *node,
+addoptout(dns_message_t *message, dns_db_t *cache, const dns_name_t *name,
 	  dns_rdatatype_t covers, isc_stdtime_t now, dns_ttl_t minttl,
 	  dns_ttl_t maxttl, bool optout, bool secure,
 	  dns_rdataset_t *addedrdataset);
@@ -105,24 +105,24 @@ copy_rdataset(dns_rdataset_t *rdataset, isc_buffer_t *buffer) {
 }
 
 isc_result_t
-dns_ncache_add(dns_message_t *message, dns_db_t *cache, dns_dbnode_t *node,
+dns_ncache_add(dns_message_t *message, dns_db_t *cache, const dns_name_t *name,
 	       dns_rdatatype_t covers, isc_stdtime_t now, dns_ttl_t minttl,
 	       dns_ttl_t maxttl, dns_rdataset_t *addedrdataset) {
-	return addoptout(message, cache, node, covers, now, minttl, maxttl,
+	return addoptout(message, cache, name, covers, now, minttl, maxttl,
 			 false, false, addedrdataset);
 }
 
 isc_result_t
 dns_ncache_addoptout(dns_message_t *message, dns_db_t *cache,
-		     dns_dbnode_t *node, dns_rdatatype_t covers,
+		     const dns_name_t *name, dns_rdatatype_t covers,
 		     isc_stdtime_t now, dns_ttl_t minttl, dns_ttl_t maxttl,
 		     bool optout, dns_rdataset_t *addedrdataset) {
-	return addoptout(message, cache, node, covers, now, minttl, maxttl,
+	return addoptout(message, cache, name, covers, now, minttl, maxttl,
 			 optout, true, addedrdataset);
 }
 
 static isc_result_t
-addoptout(dns_message_t *message, dns_db_t *cache, dns_dbnode_t *node,
+addoptout(dns_message_t *message, dns_db_t *cache, const dns_name_t *name,
 	  dns_rdatatype_t covers, isc_stdtime_t now, dns_ttl_t minttl,
 	  dns_ttl_t maxttl, bool optout, bool secure,
 	  dns_rdataset_t *addedrdataset) {
@@ -131,7 +131,6 @@ addoptout(dns_message_t *message, dns_db_t *cache, dns_dbnode_t *node,
 	isc_region_t r;
 	dns_rdataset_t *rdataset;
 	dns_rdatatype_t type;
-	dns_name_t *name;
 	dns_ttl_t ttl;
 	dns_trust_t trust;
 	dns_rdata_t rdata[DNS_NCACHE_RDATA];
@@ -172,10 +171,11 @@ addoptout(dns_message_t *message, dns_db_t *cache, dns_dbnode_t *node,
 		result = ISC_R_NOMORE;
 	}
 	while (result == ISC_R_SUCCESS) {
-		name = NULL;
-		dns_message_currentname(message, DNS_SECTION_AUTHORITY, &name);
-		if (name->attributes.ncache) {
-			for (rdataset = ISC_LIST_HEAD(name->list);
+		dns_name_t *current = NULL;
+		dns_message_currentname(message, DNS_SECTION_AUTHORITY,
+					&current);
+		if (current->attributes.ncache) {
+			for (rdataset = ISC_LIST_HEAD(current->list);
 			     rdataset != NULL;
 			     rdataset = ISC_LIST_NEXT(rdataset, link))
 			{
@@ -204,7 +204,7 @@ addoptout(dns_message_t *message, dns_db_t *cache, dns_dbnode_t *node,
 					/*
 					 * Copy the owner name to the buffer.
 					 */
-					dns_name_toregion(name, &r);
+					dns_name_toregion(current, &r);
 					result = isc_buffer_copyregion(&buffer,
 								       &r);
 					if (result != ISC_R_SUCCESS) {
@@ -288,7 +288,7 @@ addoptout(dns_message_t *message, dns_db_t *cache, dns_dbnode_t *node,
 		ncrdataset.attributes |= DNS_RDATASETATTR_OPTOUT;
 	}
 
-	return dns_db_addrdataset(cache, node, NULL, now, &ncrdataset, 0,
+	return dns_db_addrdataset(cache, NULL, name, now, &ncrdataset, 0,
 				  addedrdataset);
 }
 

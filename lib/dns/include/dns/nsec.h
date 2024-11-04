@@ -24,9 +24,9 @@
 #define DNS_NSEC_BUFFERSIZE (DNS_NAME_MAXWIRE + 8192 + 512)
 
 isc_result_t
-dns_nsec_buildrdata(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
-		    const dns_name_t *target, unsigned char *buffer,
-		    dns_rdata_t *rdata);
+dns_nsec_buildrdata(dns_db_t *db, dns_dbversion_t *version,
+		    const dns_name_t *name, const dns_name_t *target,
+		    unsigned char *buffer, dns_rdata_t *rdata);
 /*%<
  * Build the rdata of a NSEC record.
  *
@@ -41,7 +41,7 @@ dns_nsec_buildrdata(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
  */
 
 isc_result_t
-dns_nsec_build(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
+dns_nsec_build(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
 	       const dns_name_t *target, dns_ttl_t ttl);
 /*%<
  * Build a NSEC record and add it to a database.

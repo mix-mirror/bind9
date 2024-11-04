@@ -2229,8 +2229,8 @@ dns__catz_update_cb(void *data) {
 	dns_catz_zone_t *oldcatz = NULL, *newcatz = NULL;
 	isc_result_t result;
 	isc_region_t r;
-	dns_dbnode_t *node = NULL;
-	const dns_dbnode_t *vers_node = NULL;
+	dns_fixedname_t vers_name_s;
+	dns_name_t *vers_name = dns_fixedname_initname(&vers_name_s);
 	dns_dbiterator_t *updbit = NULL;
 	dns_fixedname_t fixname;
 	dns_name_t *name = NULL;
@@ -2350,7 +2350,7 @@ dns__catz_update_cb(void *data) {
 			break;
 		}
 
-		result = dns_dbiterator_current(updbit, &node, name);
+		result = dns_dbiterator_current(updbit, name);
 		if (result != ISC_R_SUCCESS) {
 			isc_log_write(DNS_LOGCATEGORY_GENERAL,
 				      DNS_LOGMODULE_CATZ, ISC_LOG_ERROR,
@@ -2364,22 +2364,20 @@ dns__catz_update_cb(void *data) {
 
 		if (!is_vers_processed) {
 			/* Keep the version node to skip it later in the loop */
-			vers_node = node;
-		} else if (node == vers_node) {
+			dns_name_copy(name, vers_name);
+		} else if (dns_name_equal(name, vers_name)) {
 			/* Skip the already processed version node */
-			dns_db_detachnode(updb, &node);
 			result = dns_dbiterator_next(updbit);
 			continue;
 		}
 
-		result = dns_db_allrdatasets(updb, node, oldcatz->updbversion,
+		result = dns_db_allrdatasets(updb, oldcatz->updbversion, name,
 					     0, 0, &rdsiter);
 		if (result != ISC_R_SUCCESS) {
 			isc_log_write(DNS_LOGCATEGORY_GENERAL,
 				      DNS_LOGMODULE_CATZ, ISC_LOG_ERROR,
 				      "catz: failed to fetch rrdatasets - %s",
 				      isc_result_totext(result));
-			dns_db_detachnode(updb, &node);
 			break;
 		}
 
@@ -2433,8 +2431,6 @@ dns__catz_update_cb(void *data) {
 		}
 
 		dns_rdatasetiter_destroy(&rdsiter);
-
-		dns_db_detachnode(updb, &node);
 
 		if (!is_vers_processed) {
 			is_vers_processed = true;

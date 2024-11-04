@@ -43,7 +43,7 @@ dns_rriterator_init(dns_rriterator_t *it, dns_db_t *db, dns_dbversion_t *ver,
 	it->dbit = NULL;
 	it->ver = ver;
 	it->now = now;
-	it->node = NULL;
+	it->name = dns_fixedname_initname(&it->name_s);
 	result = dns_db_createiterator(it->db, 0, &it->dbit);
 	if (result != ISC_R_SUCCESS) {
 		return result;
@@ -51,7 +51,6 @@ dns_rriterator_init(dns_rriterator_t *it, dns_db_t *db, dns_dbversion_t *ver,
 	it->rdatasetit = NULL;
 	dns_rdata_init(&it->rdata);
 	dns_rdataset_init(&it->rdataset);
-	dns_fixedname_init(&it->fixedname);
 	INSIST(!dns_rdataset_isassociated(&it->rdataset));
 	it->result = ISC_R_SUCCESS;
 	return it->result;
@@ -67,9 +66,6 @@ dns_rriterator_first(dns_rriterator_t *it) {
 	if (it->rdatasetit != NULL) {
 		dns_rdatasetiter_destroy(&it->rdatasetit);
 	}
-	if (it->node != NULL) {
-		dns_db_detachnode(it->db, &it->node);
-	}
 	it->result = dns_dbiterator_first(it->dbit);
 
 	/*
@@ -77,14 +73,12 @@ dns_rriterator_first(dns_rriterator_t *it) {
 	 * Walk the tree to find the first node with data.
 	 */
 	while (it->result == ISC_R_SUCCESS) {
-		it->result = dns_dbiterator_current(
-			it->dbit, &it->node,
-			dns_fixedname_name(&it->fixedname));
+		it->result = dns_dbiterator_current(it->dbit, it->name);
 		if (it->result != ISC_R_SUCCESS) {
 			return it->result;
 		}
 
-		it->result = dns_db_allrdatasets(it->db, it->node, it->ver, 0,
+		it->result = dns_db_allrdatasets(it->db, it->ver, it->name, 0,
 						 it->now, &it->rdatasetit);
 		if (it->result != ISC_R_SUCCESS) {
 			return it->result;
@@ -96,13 +90,11 @@ dns_rriterator_first(dns_rriterator_t *it) {
 			 * This node is empty. Try next node.
 			 */
 			dns_rdatasetiter_destroy(&it->rdatasetit);
-			dns_db_detachnode(it->db, &it->node);
 			it->result = dns_dbiterator_next(it->dbit);
 			continue;
 		}
 		dns_rdatasetiter_current(it->rdatasetit, &it->rdataset);
-		dns_rdataset_getownercase(&it->rdataset,
-					  dns_fixedname_name(&it->fixedname));
+		dns_rdataset_getownercase(&it->rdataset, it->name);
 		it->result = dns_rdataset_first(&it->rdataset);
 		return it->result;
 	}
@@ -122,7 +114,6 @@ dns_rriterator_nextrrset(dns_rriterator_t *it) {
 	 */
 	while (it->result == ISC_R_NOMORE) {
 		dns_rdatasetiter_destroy(&it->rdatasetit);
-		dns_db_detachnode(it->db, &it->node);
 		it->result = dns_dbiterator_next(it->dbit);
 		if (it->result == ISC_R_NOMORE) {
 			/* We are at the end of the entire database. */
@@ -131,13 +122,11 @@ dns_rriterator_nextrrset(dns_rriterator_t *it) {
 		if (it->result != ISC_R_SUCCESS) {
 			return it->result;
 		}
-		it->result = dns_dbiterator_current(
-			it->dbit, &it->node,
-			dns_fixedname_name(&it->fixedname));
+		it->result = dns_dbiterator_current(it->dbit, it->name);
 		if (it->result != ISC_R_SUCCESS) {
 			return it->result;
 		}
-		it->result = dns_db_allrdatasets(it->db, it->node, it->ver, 0,
+		it->result = dns_db_allrdatasets(it->db, it->ver, it->name, 0,
 						 it->now, &it->rdatasetit);
 		if (it->result != ISC_R_SUCCESS) {
 			return it->result;
@@ -148,8 +137,7 @@ dns_rriterator_nextrrset(dns_rriterator_t *it) {
 		return it->result;
 	}
 	dns_rdatasetiter_current(it->rdatasetit, &it->rdataset);
-	dns_rdataset_getownercase(&it->rdataset,
-				  dns_fixedname_name(&it->fixedname));
+	dns_rdataset_getownercase(&it->rdataset, it->name);
 	it->result = dns_rdataset_first(&it->rdataset);
 	return it->result;
 }
@@ -162,7 +150,6 @@ dns_rriterator_next(dns_rriterator_t *it) {
 	}
 
 	INSIST(it->dbit != NULL);
-	INSIST(it->node != NULL);
 	INSIST(it->rdatasetit != NULL);
 
 	it->result = dns_rdataset_next(&it->rdataset);
@@ -187,9 +174,6 @@ dns_rriterator_destroy(dns_rriterator_t *it) {
 	if (it->rdatasetit != NULL) {
 		dns_rdatasetiter_destroy(&it->rdatasetit);
 	}
-	if (it->node != NULL) {
-		dns_db_detachnode(it->db, &it->node);
-	}
 	dns_dbiterator_destroy(&it->dbit);
 }
 
@@ -202,7 +186,7 @@ dns_rriterator_current(dns_rriterator_t *it, dns_name_t **name, uint32_t *ttl,
 	REQUIRE(rdataset == NULL || *rdataset == NULL);
 	REQUIRE(rdata == NULL || *rdata == NULL);
 
-	*name = dns_fixedname_name(&it->fixedname);
+	*name = it->name;
 	*ttl = it->rdataset.ttl;
 
 	dns_rdata_reset(&it->rdata);

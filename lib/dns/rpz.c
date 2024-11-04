@@ -1751,14 +1751,13 @@ update_nodes(dns_rpz_zone_t *rpz, isc_ht_t *newnodes) {
 	while (result == ISC_R_SUCCESS) {
 		char namebuf[DNS_NAME_FORMATSIZE];
 		dns_rdatasetiter_t *rdsiter = NULL;
-		dns_dbnode_t *node = NULL;
 
 		result = dns__rpz_shuttingdown(rpz->rpzs);
 		if (result != ISC_R_SUCCESS) {
 			goto cleanup;
 		}
 
-		result = dns_dbiterator_current(updbit, &node, name);
+		result = dns_dbiterator_current(updbit, name);
 		if (result != ISC_R_SUCCESS) {
 			isc_log_write(DNS_LOGCATEGORY_GENERAL,
 				      DNS_LOGMODULE_RPZ, ISC_LOG_ERROR,
@@ -1770,7 +1769,7 @@ update_nodes(dns_rpz_zone_t *rpz, isc_ht_t *newnodes) {
 		result = dns_dbiterator_pause(updbit);
 		RUNTIME_CHECK(result == ISC_R_SUCCESS);
 
-		result = dns_db_allrdatasets(rpz->updb, node, rpz->updbversion,
+		result = dns_db_allrdatasets(rpz->updb, rpz->updbversion, name,
 					     0, 0, &rdsiter);
 		if (result != ISC_R_SUCCESS) {
 			isc_log_write(DNS_LOGCATEGORY_GENERAL,
@@ -1778,14 +1777,12 @@ update_nodes(dns_rpz_zone_t *rpz, isc_ht_t *newnodes) {
 				      "rpz: %s: failed to fetch "
 				      "rrdatasets - %s",
 				      domain, isc_result_totext(result));
-			dns_db_detachnode(rpz->updb, &node);
 			goto cleanup;
 		}
 
 		result = dns_rdatasetiter_first(rdsiter);
 
 		dns_rdatasetiter_destroy(&rdsiter);
-		dns_db_detachnode(rpz->updb, &node);
 
 		if (result != ISC_R_SUCCESS) { /* skip empty non-terminal */
 			if (result != ISC_R_NOMORE) {
