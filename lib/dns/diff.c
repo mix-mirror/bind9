@@ -15,6 +15,7 @@
 
 #include <inttypes.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdlib.h>
 
 #include <isc/buffer.h>
@@ -124,6 +125,7 @@ dns_diff_init(isc_mem_t *mctx, dns_diff_t *diff) {
 	diff->mctx = mctx;
 	ISC_LIST_INIT(diff->tuples);
 	diff->magic = DNS_DIFF_MAGIC;
+	diff->size = 0;
 }
 
 void
@@ -134,23 +136,30 @@ dns_diff_clear(dns_diff_t *diff) {
 		ISC_LIST_UNLINK(diff->tuples, t, link);
 		dns_difftuple_free(&t);
 	}
+	diff->size = 0;
 	ENSURE(ISC_LIST_EMPTY(diff->tuples));
 }
 
 void
 dns_diff_append(dns_diff_t *diff, dns_difftuple_t **tuplep) {
 	ISC_LIST_APPEND(diff->tuples, *tuplep, link);
+	diff->size += 1;
 	*tuplep = NULL;
 }
 
 bool
-dns_diff_is_boundary(dns_diff_t *diff, dns_name_t *new_name) {
+dns_diff_is_boundary(const dns_diff_t *diff, dns_name_t *new_name) {
 	if (ISC_LIST_EMPTY(diff->tuples)) {
 		return false;
 	}
 
 	dns_difftuple_t *tail = ISC_LIST_TAIL(diff->tuples);
 	return !dns_name_caseequal(&tail->name, new_name);
+}
+
+size_t
+dns_diff_size(const dns_diff_t* diff) {
+	return diff->size;
 }
 
 /* XXX this is O(N) */
@@ -181,6 +190,9 @@ dns_diff_appendminimal(dns_diff_t *diff, dns_difftuple_t **tuplep) {
 		    ot->ttl == (*tuplep)->ttl)
 		{
 			ISC_LIST_UNLINK(diff->tuples, ot, link);
+			INSIST(diff->size > 0);
+			diff->size -= 1;
+
 			if ((*tuplep)->op == ot->op) {
 				UNEXPECTED_ERROR("unexpected non-minimal diff");
 			} else {
@@ -193,6 +205,7 @@ dns_diff_appendminimal(dns_diff_t *diff, dns_difftuple_t **tuplep) {
 
 	if (*tuplep != NULL) {
 		ISC_LIST_APPEND(diff->tuples, *tuplep, link);
+		diff->size += 1;
 		*tuplep = NULL;
 	}
 }
@@ -264,7 +277,7 @@ optotext(dns_diffop_t op) {
 }
 
 static isc_result_t
-diff_apply(dns_diff_t *diff, dns_db_t *db, dns_dbversion_t *ver, bool warn) {
+diff_apply(const dns_diff_t *diff, dns_db_t *db, dns_dbversion_t *ver, bool warn) {
 	dns_difftuple_t *t;
 	dns_dbnode_t *node = NULL;
 	isc_result_t result;
@@ -504,19 +517,19 @@ failure:
 }
 
 isc_result_t
-dns_diff_apply(dns_diff_t *diff, dns_db_t *db, dns_dbversion_t *ver) {
+dns_diff_apply(const dns_diff_t *diff, dns_db_t *db, dns_dbversion_t *ver) {
 	return (diff_apply(diff, db, ver, true));
 }
 
 isc_result_t
-dns_diff_applysilently(dns_diff_t *diff, dns_db_t *db, dns_dbversion_t *ver) {
+dns_diff_applysilently(const dns_diff_t *diff, dns_db_t *db, dns_dbversion_t *ver) {
 	return (diff_apply(diff, db, ver, false));
 }
 
 /* XXX this duplicates lots of code in diff_apply(). */
 
 isc_result_t
-dns_diff_load(dns_diff_t *diff, dns_rdatacallbacks_t *callbacks) {
+dns_diff_load(const dns_diff_t *diff, dns_rdatacallbacks_t *callbacks) {
 	dns_difftuple_t *t;
 	isc_result_t result;
 
@@ -652,7 +665,7 @@ diff_tuple_tordataset(dns_difftuple_t *t, dns_rdata_t *rdata,
 }
 
 isc_result_t
-dns_diff_print(dns_diff_t *diff, FILE *file) {
+dns_diff_print(const dns_diff_t *diff, FILE *file) {
 	isc_result_t result;
 	dns_difftuple_t *t;
 	char *mem = NULL;

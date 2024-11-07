@@ -131,7 +131,6 @@ struct dns_xfrin {
 	dns_db_t *db;
 	dns_dbversion_t *ver;
 	dns_diff_t diff; /*%< Pending database changes */
-	int difflen;	 /*%< Number of pending tuples */
 
 	/* Diff queue */
 	bool diff_running;
@@ -284,7 +283,6 @@ axfr_init(dns_xfrin_t *xfr) {
 	isc_result_t result;
 
 	atomic_store(&xfr->is_ixfr, false);
-	xfr->difflen = 0;
 
 	if (xfr->db != NULL) {
 		dns_db_detach(&xfr->db);
@@ -316,7 +314,7 @@ axfr_putdata(dns_xfrin_t *xfr, dns_diffop_t op, dns_name_t *name, dns_ttl_t ttl,
 	}
 
 	CHECK(dns_zone_checknames(xfr->zone, name, rdata));
-	if (xfr->difflen > 128 && dns_diff_is_boundary(&xfr->diff, name)) {
+	if (dns_diff_size(&xfr->diff) > 128 && dns_diff_is_boundary(&xfr->diff, name)) {
 		xfrin_work_t work = (xfrin_work_t) {
 			.xfr = xfr,
 			.result = ISC_R_UNSET,
@@ -327,7 +325,6 @@ axfr_putdata(dns_xfrin_t *xfr, dns_diffop_t op, dns_name_t *name, dns_ttl_t ttl,
 
 	dns_difftuple_create(xfr->diff.mctx, op, name, ttl, rdata, &tuple);
 	dns_diff_append(&xfr->diff, &tuple);
-	xfr->difflen += 1;
 
 	result = ISC_R_SUCCESS;
 failure:
@@ -362,7 +359,6 @@ axfr_apply(void *arg) {
 
 failure:
 	dns_diff_clear(&xfr->diff);
-	xfr->difflen = 0;
 	work->result = result;
 }
 
@@ -1111,8 +1107,6 @@ xfrin_reset(dns_xfrin_t *xfr) {
 	}
 
 	dns_diff_clear(&xfr->diff);
-	xfr->difflen = 0;
-
 	xfr->ixfr.diffs = 0;
 
 	if (xfr->ixfr.journal != NULL) {
