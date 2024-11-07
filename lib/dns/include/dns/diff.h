@@ -28,6 +28,7 @@
  ***/
 
 #include <stddef.h>
+
 #include <isc/lang.h>
 #include <isc/magic.h>
 
@@ -98,7 +99,7 @@ struct dns_diff {
 	unsigned int	    magic;
 	isc_mem_t	   *mctx;
 	dns_difftuplelist_t tuples;
-	size_t              size;
+	size_t		    size;
 };
 
 /* Type of comparison function for sorting diffs. */
@@ -228,7 +229,8 @@ dns_diff_sort(dns_diff_t *diff, dns_diff_compare_func *compare);
 isc_result_t
 dns_diff_apply(const dns_diff_t *diff, dns_db_t *db, dns_dbversion_t *ver);
 isc_result_t
-dns_diff_applysilently(const dns_diff_t *diff, dns_db_t *db, dns_dbversion_t *ver);
+dns_diff_applysilently(const dns_diff_t *diff, dns_db_t *db,
+		       dns_dbversion_t *ver);
 /*%<
  * Apply 'diff' to the database 'db'.
  *

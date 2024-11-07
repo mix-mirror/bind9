@@ -158,7 +158,7 @@ dns_diff_is_boundary(const dns_diff_t *diff, dns_name_t *new_name) {
 }
 
 size_t
-dns_diff_size(const dns_diff_t* diff) {
+dns_diff_size(const dns_diff_t *diff) {
 	return diff->size;
 }
 
@@ -277,7 +277,8 @@ optotext(dns_diffop_t op) {
 }
 
 static isc_result_t
-diff_apply(const dns_diff_t *diff, dns_db_t *db, dns_dbversion_t *ver, bool warn) {
+diff_apply(const dns_diff_t *diff, dns_db_t *db, dns_dbversion_t *ver,
+	   bool warn) {
 	dns_difftuple_t *t;
 	dns_dbnode_t *node = NULL;
 	isc_result_t result;
@@ -522,7 +523,8 @@ dns_diff_apply(const dns_diff_t *diff, dns_db_t *db, dns_dbversion_t *ver) {
 }
 
 isc_result_t
-dns_diff_applysilently(const dns_diff_t *diff, dns_db_t *db, dns_dbversion_t *ver) {
+dns_diff_applysilently(const dns_diff_t *diff, dns_db_t *db,
+		       dns_dbversion_t *ver) {
 	return (diff_apply(diff, db, ver, false));
 }
 

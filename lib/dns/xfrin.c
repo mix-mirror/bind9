@@ -300,7 +300,8 @@ failure:
 	return (result);
 }
 
-static void axfr_apply(void *arg);
+static void
+axfr_apply(void *arg);
 
 static isc_result_t
 axfr_putdata(dns_xfrin_t *xfr, dns_diffop_t op, dns_name_t *name, dns_ttl_t ttl,
@@ -314,12 +315,14 @@ axfr_putdata(dns_xfrin_t *xfr, dns_diffop_t op, dns_name_t *name, dns_ttl_t ttl,
 	}
 
 	CHECK(dns_zone_checknames(xfr->zone, name, rdata));
-	if (dns_diff_size(&xfr->diff) > 128 && dns_diff_is_boundary(&xfr->diff, name)) {
-		xfrin_work_t work = (xfrin_work_t) {
+	if (dns_diff_size(&xfr->diff) > 128 &&
+	    dns_diff_is_boundary(&xfr->diff, name))
+	{
+		xfrin_work_t work = (xfrin_work_t){
 			.xfr = xfr,
 			.result = ISC_R_UNSET,
 		};
-		axfr_apply((void*) &work);
+		axfr_apply((void *)&work);
 		CHECK(work.result);
 	}
 
