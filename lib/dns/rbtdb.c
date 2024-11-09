@@ -61,6 +61,7 @@
 #include <dns/zonekey.h>
 
 #include "db_p.h"
+#include "probes.h"
 #include "rbtdb_p.h"
 
 #define CHECK(op)                            \
@@ -3274,6 +3275,8 @@ dns__rbtdb_addrdataset(dns_db_t *db, dns_dbnode_t *node,
 	REQUIRE(VALID_RBTDB(rbtdb));
 	INSIST(rbtversion == NULL || rbtversion->rbtdb == rbtdb);
 
+	LIBDNS_RBTDB_ADDRDATASET_START(db, node, rdataset);
+
 	if (!IS_CACHE(rbtdb)) {
 		/*
 		 * SOA records are only allowed at top of zone.
@@ -3478,6 +3481,8 @@ dns__rbtdb_addrdataset(dns_db_t *db, dns_dbnode_t *node,
 		TREE_UNLOCK(&rbtdb->tree_lock, &tlocktype);
 	}
 	INSIST(tlocktype == isc_rwlocktype_none);
+
+	LIBDNS_RBTDB_ADDRDATASET_DONE(db, node, rdataset, cache_is_overmem);
 
 	return (result);
 }
@@ -3707,10 +3712,16 @@ dns__rbtdb_deleterdataset(dns_db_t *db, dns_dbnode_t *node,
 	REQUIRE(VALID_RBTDB(rbtdb));
 	INSIST(rbtversion == NULL || rbtversion->rbtdb == rbtdb);
 
+	LIBDNS_RBTDB_DELETERDATASET_START(db, node, version, type, covers);
+
 	if (type == dns_rdatatype_any) {
+		LIBDNS_RBTDB_DELETERDATASET_DONE(db, node, version, type,
+						 covers, ISC_R_NOTIMPLEMENTED);
 		return (ISC_R_NOTIMPLEMENTED);
 	}
 	if (type == dns_rdatatype_rrsig && covers == 0) {
+		LIBDNS_RBTDB_DELETERDATASET_DONE(db, node, version, type,
+						 covers, ISC_R_NOTIMPLEMENTED);
 		return (ISC_R_NOTIMPLEMENTED);
 	}
 
@@ -3741,6 +3752,9 @@ dns__rbtdb_deleterdataset(dns_db_t *db, dns_dbnode_t *node,
 		dns__rbtdb_setsecure(db, rbtversion,
 				     (dns_dbnode_t *)rbtdb->origin_node);
 	}
+
+	LIBDNS_RBTDB_DELETERDATASET_DONE(db, node, version, type, covers,
+					 result);
 
 	return (result);
 }
@@ -3834,6 +3848,8 @@ dns__rbtdb_locknode(dns_db_t *db, dns_dbnode_t *node, isc_rwlocktype_t type) {
 	dns_rbtdb_t *rbtdb = (dns_rbtdb_t *)db;
 	dns_rbtnode_t *rbtnode = (dns_rbtnode_t *)node;
 
+	LIBDNS_RBTDB_LOCKNODE(db, node, type == isc_rwlocktype_write);
+
 	RWLOCK(&rbtdb->node_locks[rbtnode->locknum].lock, type);
 }
 
@@ -3843,6 +3859,8 @@ dns__rbtdb_unlocknode(dns_db_t *db, dns_dbnode_t *node, isc_rwlocktype_t type) {
 	dns_rbtnode_t *rbtnode = (dns_rbtnode_t *)node;
 
 	RWUNLOCK(&rbtdb->node_locks[rbtnode->locknum].lock, type);
+
+	LIBDNS_RBTDB_UNLOCKNODE(db, node, type == isc_rwlocktype_write);
 }
 
 isc_result_t
@@ -4918,6 +4936,8 @@ dns__rbtdb_deletedata(dns_db_t *db ISC_ATTR_UNUSED,
 	dns_slabheader_t *header = data;
 	dns_rbtdb_t *rbtdb = (dns_rbtdb_t *)header->db;
 
+	LIBDNS_RBTDB_DELETEDATA_START(db, node, data);
+
 	if (header->heap != NULL && header->heap_index != 0) {
 		isc_heap_delete(header->heap, header->heap_index);
 	}
@@ -4940,6 +4960,8 @@ dns__rbtdb_deletedata(dns_db_t *db ISC_ATTR_UNUSED,
 			dns_slabheader_freeproof(db->mctx, &header->closest);
 		}
 	}
+
+	LIBDNS_RBTDB_DELETEDATA_DONE(db, node, data);
 }
 
 /*
