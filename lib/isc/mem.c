@@ -413,6 +413,70 @@ mem_jemalloc_arena_destroy(unsigned int arenano) {
 #endif /* JEMALLOC_API_SUPPORTED */
 }
 
+#ifdef JEMALLOC_API_SUPPORTED
+
+static void
+cleanup_char_ptr(char **ptr) {
+	REQUIRE(ptr != NULL);
+	free(*ptr);
+}
+
+static isc_result_t
+jemalloc_version(unsigned int *major, unsigned int *minor,
+		 unsigned int *patch) {
+	const char *version = NULL;
+	unsigned long version_len = sizeof(version);
+	__attribute__((__cleanup__(cleanup_char_ptr))) char *tofree = NULL;
+	char *token, *string;
+
+	int r = mallctl("version", &version, &version_len, NULL, 0);
+	if (r != 0 || version == NULL) {
+		return (ISC_R_FAILURE);
+	}
+
+	tofree = string = strdup(version);
+	RUNTIME_CHECK(string != NULL);
+
+	/* Major */
+	token = strsep(&string, ".");
+	if (token == NULL) {
+		return (ISC_R_FAILURE);
+	}
+	SET_IF_NOT_NULL(major, atoi(token));
+
+	/* Minor */
+	token = strsep(&string, ".");
+	if (token == NULL) {
+		return (ISC_R_FAILURE);
+	}
+	SET_IF_NOT_NULL(minor, atoi(token));
+
+	/* Patch */
+	token = strsep(&string, ".");
+	if (token == NULL) {
+		return (ISC_R_FAILURE);
+	}
+	SET_IF_NOT_NULL(patch, atoi(token));
+
+	return (ISC_R_SUCCESS);
+}
+
+static isc_result_t
+jemalloc_set_ssize_value(const char *valname, ssize_t newval) {
+	int r = mallctl(valname, NULL, NULL, &newval, sizeof(newval));
+	if (r != 0) {
+		return (ISC_R_FAILURE);
+	}
+	return (ISC_R_SUCCESS);
+}
+
+static isc_result_t
+disable_muzzy_decay_ms(void) {
+	return (jemalloc_set_ssize_value("opt.muzzy_decay_ms", 0));
+}
+
+#endif
+
 static void
 mem_initialize(void) {
 /*
@@ -420,6 +484,15 @@ mem_initialize(void) {
  */
 #ifdef JEMALLOC_API_SUPPORTED
 	RUNTIME_CHECK(ISC__MEM_ZERO == MALLOCX_ZERO);
+
+	unsigned int major, minor, patch;
+	isc_result_t result = jemalloc_version(&major, &minor, &patch);
+	if (result != ISC_R_SUCCESS || major < 5 || (major == 5 && minor < 2)) {
+		(void)disable_muzzy_decay_ms();
+	}
+
+	/* FIXME: Try this all the time? */
+	(void)disable_muzzy_decay_ms();
 #endif /* JEMALLOC_API_SUPPORTED */
 
 	isc_mutex_init(&contextslock);
@@ -1530,13 +1603,6 @@ isc__mem_create_arena(isc_mem_t **mctxp FLARG) {
 }
 
 #ifdef JEMALLOC_API_SUPPORTED
-static bool
-jemalloc_set_ssize_value(const char *valname, ssize_t newval) {
-	int ret;
-
-	ret = mallctl(valname, NULL, NULL, &newval, sizeof(newval));
-	return (ret == 0);
-}
 #endif /* JEMALLOC_API_SUPPORTED */
 
 static isc_result_t
@@ -1544,7 +1610,6 @@ mem_set_arena_ssize_value(isc_mem_t *mctx, const char *arena_valname,
 			  const ssize_t newval) {
 	REQUIRE(VALID_CONTEXT(mctx));
 #ifdef JEMALLOC_API_SUPPORTED
-	bool ret;
 	char buf[256] = { 0 };
 
 	if (mctx->jemalloc_arena == ISC_MEM_ILLEGAL_ARENA) {
@@ -1554,13 +1619,7 @@ mem_set_arena_ssize_value(isc_mem_t *mctx, const char *arena_valname,
 	(void)snprintf(buf, sizeof(buf), "arena.%u.%s", mctx->jemalloc_arena,
 		       arena_valname);
 
-	ret = jemalloc_set_ssize_value(buf, newval);
-
-	if (!ret) {
-		return (ISC_R_FAILURE);
-	}
-
-	return (ISC_R_SUCCESS);
+	return (jemalloc_set_ssize_value(buf, newval));
 #else
 	UNUSED(arena_valname);
 	UNUSED(newval);
