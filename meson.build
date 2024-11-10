@@ -1227,6 +1227,7 @@ executable(
     install: true,
     dependencies: [
         libisc_dep,
+        libdns_dep,
     ],
 )
 
