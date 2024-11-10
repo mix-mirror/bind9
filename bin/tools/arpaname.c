@@ -15,6 +15,7 @@
 #include <stdio.h>
 
 #include <isc/buffer.h>
+#include <isc/commandline.h>
 #include <isc/hex.h>
 #include <isc/lib.h>
 #include <isc/md.h>
@@ -25,6 +26,8 @@
 #include <dns/name.h>
 
 #define UNUSED(x) (void)(x)
+
+static const char *keylabel = "_openpgpkey";
 
 /* https://www.rfc-editor.org/rfc/rfc6116.html */
 static bool
@@ -96,6 +99,7 @@ print_hashed_record(const char *email, const char *label) {
 		return result;
 	}
 	isc_buffer_init(&hex_buffer, hexbuf, sizeof(hexbuf));
+	digest_region.length = 28;
 	result = isc_hex_totext(&digest_region, 0, "", &hex_buffer);
 	if (result != ISC_R_SUCCESS) {
 		fprintf(stderr, "Failed user conversion to hex: %s!\n",
@@ -106,47 +110,80 @@ print_hashed_record(const char *email, const char *label) {
 	return result;
 }
 
+static bool
+parse_one(const char *arg) {
+	unsigned char buf[16];
+	int i;
+
+	if (inet_pton(AF_INET6, arg, buf) == 1) {
+		for (i = 15; i >= 0; i--) {
+			fprintf(stdout, "%X.%X.", buf[i] & 0xf,
+				(buf[i] >> 4) & 0xf);
+		}
+		fprintf(stdout, "IP6.ARPA\n");
+		return true;
+	}
+	if (inet_pton(AF_INET, arg, buf) == 1) {
+		fprintf(stdout, "%u.%u.%u.%u.IN-ADDR.ARPA\n", buf[3], buf[2],
+			buf[1], buf[0]);
+		return true;
+	}
+	if (is_enum(arg)) {
+		size_t len = strlen(arg);
+		for (i = len - 1; i >= 0; i--) {
+			unsigned char c = arg[i];
+			if (c >= '0' && c <= '9')
+				fprintf(stdout, "%c.", c);
+		}
+		fprintf(stdout, "E164.ARPA\n");
+		return true;
+	}
+	if (is_email(arg)) {
+		return print_hashed_record(arg, keylabel) == ISC_R_SUCCESS;
+	}
+	return false;
+}
+
+static void
+show_usage(const char *myname) {
+	printf("Usage: %s [-o] [-s] <IP address/tel. number/email>\n", myname);
+}
+
+static const char *optstring = "osh";
+
+static void
+parse_args(int argc, char **argv) {
+	int c;
+
+	isc_commandline_reset = true;
+	while ((c = isc_commandline_parse(argc, argv, optstring)) != -1) {
+		switch (c) {
+		case 'o':
+			keylabel = "_openpgpkey";
+			break;
+		case 's':
+			keylabel = "_smimecert";
+			break;
+		case 'h':
+		default:
+			show_usage(argv[0]);
+			break;
+		}
+	}
+}
+
 int
 main(int argc, char *argv[]) {
-	unsigned char buf[16];
 	int i;
 
 	UNUSED(argc);
 
-	while (argv[1]) {
-		if (inet_pton(AF_INET6, argv[1], buf) == 1) {
-			for (i = 15; i >= 0; i--) {
-				fprintf(stdout, "%X.%X.", buf[i] & 0xf,
-					(buf[i] >> 4) & 0xf);
-			}
-			fprintf(stdout, "IP6.ARPA\n");
-			argv++;
-			continue;
-		}
-		if (inet_pton(AF_INET, argv[1], buf) == 1) {
-			fprintf(stdout, "%u.%u.%u.%u.IN-ADDR.ARPA\n", buf[3],
-				buf[2], buf[1], buf[0]);
-			argv++;
-			continue;
-		}
-		if (is_enum(argv[1])) {
-			size_t len = strlen(argv[1]);
-			for (i = len - 1; i >= 0; i--) {
-				unsigned char c = argv[1][i];
-				if (c >= '0' && c <= '9')
-					fprintf(stdout, "%c.", c);
-			}
-			fprintf(stdout, "E164.ARPA\n");
-			argv++;
-			continue;
-		}
-		if (is_email(argv[1])) {
-			print_hashed_record(argv[1], "_openpgpkey");
-			argv++;
-			continue;
-		}
-		return 1;
+	parse_args(argc, argv);
+	for (i = isc_commandline_index; i < argc; i++) {
+		if (!parse_one(argv[i]))
+			return 1;
 	}
+
 	fflush(stdout);
 	return ferror(stdout);
 }
