@@ -21,13 +21,28 @@ arpaname - translate IP addresses to the corresponding ARPA names
 Synopsis
 ~~~~~~~~
 
-:program:`arpaname` {*ipaddress* ...}
+:program:`arpaname` [**-o**] [**-s**] {*ipaddress/phone number/email* ...}
+
+Options
+~~~~~~~
+
+.. option:: -o
+
+   Decode email address into RFC 7929 OPENPGPKEY record path.
+   This is the default when email address is specified.
+
+.. option:: -s
+
+   Decode email address into RFC 8162 SMIMEA record path.
 
 Description
 ~~~~~~~~~~~
 
 :program:`arpaname` translates IP addresses (IPv4 and IPv6) to the
-corresponding IN-ADDR.ARPA or IP6.ARPA names.
+corresponding IN-ADDR.ARPA or IP6.ARPA names. Can convert telephone
+number starting with `+` sign into E164.ARPA name.
+Decodes email addresses in form user@example.com into _openpgpkey
+or _smimecert owner name.
 
 See Also
 ~~~~~~~~
