@@ -110,6 +110,30 @@ isc_result_t
 dns_peer_getednsneg(dns_peer_t *peer, bool *retval);
 
 isc_result_t
+dns_peer_setrespdnsflags(dns_peer_t *peer, bool newval);
+
+isc_result_t
+dns_peer_getrespdnsflags(dns_peer_t *peer, bool *retval);
+
+isc_result_t
+dns_peer_setrespednsflags(dns_peer_t *peer, bool newval);
+
+isc_result_t
+dns_peer_getrespednsflags(dns_peer_t *peer, bool *retval);
+
+isc_result_t
+dns_peer_setrespednsoption(dns_peer_t *peer, bool newval);
+
+isc_result_t
+dns_peer_getrespednsoption(dns_peer_t *peer, bool *retval);
+
+isc_result_t
+dns_peer_setrespednsversion(dns_peer_t *peer, bool newval);
+
+isc_result_t
+dns_peer_getrespednsversion(dns_peer_t *peer, bool *retval);
+
+isc_result_t
 dns_peer_setrequestixfr(dns_peer_t *peer, bool newval);
 
 isc_result_t
