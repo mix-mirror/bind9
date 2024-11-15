@@ -157,6 +157,10 @@ options {
 	grease-edns-negotiation <boolean>;
 	grease-nsid <boolean>;
 	grease-rate <percentage>;
+	grease-response-dns-flags <boolean>;
+	grease-response-edns-flags <boolean>;
+	grease-response-edns-option <boolean>;
+	grease-response-edns-version <boolean>;
 	grease-until <string>;
 	hostname ( <quoted_string> | none );
 	http-listener-clients <integer>; // optional (only available if configured)
@@ -346,6 +350,10 @@ server <netprefix> {
 	grease-dns-flags <boolean>;
 	grease-edns-flags <boolean>;
 	grease-edns-negotiation <boolean>;
+	grease-response-dns-flags <boolean>;
+	grease-response-edns-flags <boolean>;
+	grease-response-edns-option <boolean>;
+	grease-response-edns-version <boolean>;
 	keys <server_key>;
 	max-udp-size <integer>;
 	notify-source ( <ipv4_address> | * );
@@ -465,6 +473,10 @@ view <string> [ <class> ] {
 	grease-edns-negotiation <boolean>;
 	grease-nsid <boolean>;
 	grease-rate <percentage>;
+	grease-response-dns-flags <boolean>;
+	grease-response-edns-flags <boolean>;
+	grease-response-edns-option <boolean>;
+	grease-response-edns-version <boolean>;
 	grease-until <string>;
 	ipv4only-contact <string>;
 	ipv4only-enable <boolean>;
@@ -579,6 +591,10 @@ view <string> [ <class> ] {
 		grease-dns-flags <boolean>;
 		grease-edns-flags <boolean>;
 		grease-edns-negotiation <boolean>;
+		grease-response-dns-flags <boolean>;
+		grease-response-edns-flags <boolean>;
+		grease-response-edns-option <boolean>;
+		grease-response-edns-version <boolean>;
 		keys <server_key>;
 		max-udp-size <integer>;
 		notify-source ( <ipv4_address> | * );
