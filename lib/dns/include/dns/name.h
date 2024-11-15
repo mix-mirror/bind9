@@ -114,7 +114,6 @@ struct dns_name {
 	} attributes;
 	unsigned char *ndata;
 	unsigned char *offsets;
-	isc_buffer_t  *buffer;
 	ISC_LINK(dns_name_t) link;
 	ISC_LIST(dns_rdataset_t) list;
 	isc_hashmap_t *hashmap;
@@ -246,13 +245,11 @@ dns_name_reset(dns_name_t *name) {
 	REQUIRE(DNS_NAME_VALID(name));
 	REQUIRE(DNS_NAME_BINDABLE(name));
 
+	// FIXME Free ndata?
 	name->ndata = NULL;
 	name->length = 0;
 	name->labels = 0;
 	name->attributes.absolute = false;
-	if (name->buffer != NULL) {
-		isc_buffer_clear(name->buffer);
-	}
 }
 /*%<
  * Reinitialize 'name'.
@@ -287,7 +284,6 @@ dns_name_invalidate(dns_name_t *name) {
 	name->labels = 0;
 	name->attributes = (struct dns_name_attrs){};
 	name->offsets = NULL;
-	name->buffer = NULL;
 	ISC_LINK_INIT(name, link);
 }
 /*%<
@@ -316,9 +312,9 @@ dns_name_isvalid(const dns_name_t *name);
 static inline void
 dns_name_setbuffer(dns_name_t *name, isc_buffer_t *buffer) {
 	REQUIRE(DNS_NAME_VALID(name));
-	REQUIRE((buffer != NULL && name->buffer == NULL) || (buffer == NULL));
+	REQUIRE((buffer != NULL) || (buffer == NULL));
 
-	name->buffer = buffer;
+	_Static_assert(true, "FIXME make false");
 }
 /*%<
  * Dedicate a buffer for use with 'name'.

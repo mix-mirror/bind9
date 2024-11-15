@@ -255,8 +255,10 @@ dns_qpkey_toname(const dns_qpkey_t key, size_t keylen, dns_name_t *name) {
 	size_t loc = 0, opos = 0;
 	size_t offset;
 
+	unsigned char ndata_buf[DNS_NAME_MAXWIRE] = {0};
+	size_t ndata_idx = 0;
+
 	REQUIRE(ISC_MAGIC_VALID(name, DNS_NAME_MAGIC));
-	REQUIRE(name->buffer != NULL);
 	REQUIRE(name->offsets != NULL);
 
 	dns_name_reset(name);
@@ -284,7 +286,6 @@ dns_qpkey_toname(const dns_qpkey_t key, size_t keylen, dns_name_t *name) {
 	}
 	UNREACHABLE();
 scanned:
-
 	/*
 	 * In the key the labels are encoded in reverse order, so
 	 * we step backward through the label boundaries, then forward
@@ -295,8 +296,8 @@ scanned:
 		uint8_t len = 0, *lenp = NULL;
 
 		/* Add a length byte to the name data and set an offset */
-		lenp = isc_buffer_used(name->buffer);
-		isc_buffer_putuint8(name->buffer, 0);
+		lenp = &ndata_buf[ndata_idx];
+		ndata_buf[ndata_idx++] = 0;
 		name->offsets[opos++] = name->length++;
 
 		/* Convert from escaped byte ranges to ASCII */
@@ -304,10 +305,10 @@ scanned:
 			uint8_t bit = qpkey_bit(key, keylen, offset);
 			uint8_t byte = dns_qp_byte_for_bit[bit];
 			if (qp_common_character(byte)) {
-				isc_buffer_putuint8(name->buffer, byte);
+				ndata_buf[ndata_idx++] = byte;
 			} else {
 				byte += key[++offset] - SHIFT_BITMAP;
-				isc_buffer_putuint8(name->buffer, byte);
+				ndata_buf[ndata_idx++] = byte;
 			}
 			len++;
 		}
@@ -319,11 +320,12 @@ scanned:
 	/* Add a root label for absolute names */
 	if (key[0] == SHIFT_NOBYTE) {
 		name->attributes.absolute = true;
-		isc_buffer_putuint8(name->buffer, 0);
+		ndata_buf[ndata_idx++] = 0;
 		name->offsets[opos++] = name->length++;
 		name->labels++;
 	}
 
+	// FIXME: Realloc?
 	name->ndata = isc_buffer_base(name->buffer);
 }
 

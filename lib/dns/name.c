@@ -713,9 +713,6 @@ void
 dns_name_fromregion(dns_name_t *name, const isc_region_t *r) {
 	unsigned char *offsets;
 	dns_offsets_t odata;
-	unsigned int len;
-	isc_region_t r2 = { .base = NULL, .length = 0 };
-
 	/*
 	 * Make 'name' refer to region 'r'.
 	 */
@@ -727,38 +724,13 @@ dns_name_fromregion(dns_name_t *name, const isc_region_t *r) {
 	INIT_OFFSETS(name, offsets, odata);
 
 	name->ndata = r->base;
-	if (name->buffer != NULL) {
-		isc_buffer_clear(name->buffer);
-		isc_buffer_availableregion(name->buffer, &r2);
-		len = (r->length < r2.length) ? r->length : r2.length;
-		if (len > DNS_NAME_MAXWIRE) {
-			len = DNS_NAME_MAXWIRE;
-		}
-		name->length = len;
-	} else {
-		name->length = (r->length <= DNS_NAME_MAXWIRE)
-				       ? r->length
-				       : DNS_NAME_MAXWIRE;
-	}
+	name->length = (r->length <= DNS_NAME_MAXWIRE) ? r->length : DNS_NAME_MAXWIRE;
 
 	if (r->length > 0) {
 		set_offsets(name, offsets, name);
 	} else {
 		name->labels = 0;
 		name->attributes.absolute = false;
-	}
-
-	if (name->buffer != NULL) {
-		/*
-		 * name->length has been updated by set_offsets to the actual
-		 * length of the name data so we can now copy the actual name
-		 * data and not anything after it.
-		 */
-		if (name->length > 0) {
-			memmove(r2.base, r->base, name->length);
-		}
-		name->ndata = r2.base;
-		isc_buffer_add(name->buffer, name->length);
 	}
 }
 
@@ -790,15 +762,9 @@ dns_name_fromtext(dns_name_t *name, isc_buffer_t *source,
 
 	REQUIRE(DNS_NAME_VALID(name));
 	REQUIRE(ISC_BUFFER_VALID(source));
-	REQUIRE((target != NULL && ISC_BUFFER_VALID(target)) ||
-		(target == NULL && ISC_BUFFER_VALID(name->buffer)));
+	REQUIRE(target != NULL && ISC_BUFFER_VALID(target));
 
 	downcase = ((options & DNS_NAME_DOWNCASE) != 0);
-
-	if (target == NULL && name->buffer != NULL) {
-		target = name->buffer;
-		isc_buffer_clear(target);
-	}
 
 	REQUIRE(DNS_NAME_BINDABLE(name));
 
@@ -1329,12 +1295,7 @@ dns_name_downcase(const dns_name_t *source, dns_name_t *name,
 		ndata = source->ndata;
 	} else {
 		REQUIRE(DNS_NAME_BINDABLE(name));
-		REQUIRE((target != NULL && ISC_BUFFER_VALID(target)) ||
-			(target == NULL && ISC_BUFFER_VALID(name->buffer)));
-		if (target == NULL) {
-			target = name->buffer;
-			isc_buffer_clear(name->buffer);
-		}
+		REQUIRE(target != NULL && ISC_BUFFER_VALID(target));
 		ndata = (unsigned char *)target->base + target->used;
 		name->ndata = ndata;
 	}
@@ -1455,13 +1416,7 @@ dns_name_fromwire(dns_name_t *const name, isc_buffer_t *const source,
 
 	REQUIRE(DNS_NAME_VALID(name));
 	REQUIRE(DNS_NAME_BINDABLE(name));
-	REQUIRE((target != NULL && ISC_BUFFER_VALID(target)) ||
-		(target == NULL && ISC_BUFFER_VALID(name->buffer)));
-
-	if (target == NULL && name->buffer != NULL) {
-		target = name->buffer;
-		isc_buffer_clear(target);
-	}
+	REQUIRE(target != NULL && ISC_BUFFER_VALID(target));
 
 	uint8_t *const name_buf = isc_buffer_used(target);
 	const uint32_t name_max = ISC_MIN(DNS_NAME_MAXWIRE,
@@ -1668,9 +1623,7 @@ dns_name_concatenate(const dns_name_t *prefix, const dns_name_t *suffix,
 	REQUIRE(prefix == NULL || DNS_NAME_VALID(prefix));
 	REQUIRE(suffix == NULL || DNS_NAME_VALID(suffix));
 	REQUIRE(name == NULL || DNS_NAME_VALID(name));
-	REQUIRE((target != NULL && ISC_BUFFER_VALID(target)) ||
-		(target == NULL && name != NULL &&
-		 ISC_BUFFER_VALID(name->buffer)));
+	REQUIRE(target != NULL && ISC_BUFFER_VALID(target));
 	if (prefix == NULL || prefix->labels == 0) {
 		copy_prefix = false;
 	}
@@ -1684,11 +1637,6 @@ dns_name_concatenate(const dns_name_t *prefix, const dns_name_t *suffix,
 	if (name == NULL) {
 		dns_name_init(&tmp_name, odata);
 		name = &tmp_name;
-	}
-	if (target == NULL) {
-		INSIST(name->buffer != NULL);
-		target = name->buffer;
-		isc_buffer_clear(name->buffer);
 	}
 
 	REQUIRE(DNS_NAME_BINDABLE(name));
@@ -1734,7 +1682,7 @@ dns_name_concatenate(const dns_name_t *prefix, const dns_name_t *suffix,
 	 * a dedicated buffer, and we're using it, then we don't have to
 	 * copy anything.
 	 */
-	if (copy_prefix && (prefix != name || prefix->buffer != target)) {
+	if (copy_prefix && prefix != name) {
 		memmove(ndata, prefix->ndata, prefix_length);
 	}
 
@@ -2006,11 +1954,7 @@ dns_name_fromstring(dns_name_t *target, const char *src,
 
 	isc_buffer_constinit(&buf, src, strlen(src));
 	isc_buffer_add(&buf, strlen(src));
-	if (DNS_NAME_BINDABLE(target) && target->buffer != NULL) {
-		name = target;
-	} else {
-		name = dns_fixedname_initname(&fn);
-	}
+	name = dns_fixedname_initname(&fn);
 
 	result = dns_name_fromtext(name, &buf, origin, options, NULL);
 	if (result != ISC_R_SUCCESS) {
@@ -2032,7 +1976,8 @@ dns_name_copy(const dns_name_t *source, dns_name_t *dest) {
 	REQUIRE(DNS_NAME_VALID(dest));
 	REQUIRE(DNS_NAME_BINDABLE(dest));
 
-	target = dest->buffer;
+	// FIXME: realloc?
+	// target = dest->buffer;
 
 	REQUIRE(target != NULL);
 	REQUIRE(target->length >= source->length);
