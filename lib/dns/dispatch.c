@@ -28,7 +28,6 @@
 #include <isc/mutex.h>
 #include <isc/net.h>
 #include <isc/netmgr.h>
-#include <isc/portset.h>
 #include <isc/random.h>
 #include <isc/stats.h>
 #include <isc/string.h>
@@ -61,11 +60,6 @@ struct dns_dispatchmgr {
 	struct cds_lfht **tcps;
 
 	struct cds_lfht *qids;
-
-	in_port_t *v4ports;    /*%< available ports for IPv4 */
-	unsigned int nv4ports; /*%< # of available ports for IPv4 */
-	in_port_t *v6ports;    /*%< available ports for IPv4 */
-	unsigned int nv6ports; /*%< # of available ports for IPv4 */
 };
 
 typedef enum {
@@ -90,7 +84,6 @@ struct dns_dispentry {
 	isc_time_t start;
 	isc_sockaddr_t local;
 	isc_sockaddr_t peer;
-	in_port_t port;
 	dns_messageid_t id;
 	dispatch_cb_t connected;
 	dispatch_cb_t sent;
@@ -337,37 +330,14 @@ dispentry_log(dns_dispentry_t *resp, int level, const char *fmt, ...) {
  * Choose a random port number for a dispatch entry.
  */
 static isc_result_t
-setup_socket(dns_dispatch_t *disp, dns_dispentry_t *resp,
-	     const isc_sockaddr_t *dest, in_port_t *portp) {
-	dns_dispatchmgr_t *mgr = disp->mgr;
-	unsigned int nports;
-	in_port_t *ports = NULL;
-	in_port_t port = *portp;
-
+setup_socket(isc_sockaddr_t *local_address, const isc_sockaddr_t *dest,
+	     dns_dispentry_t *resp) {
 	if (resp->retries++ > 5) {
 		return (ISC_R_FAILURE);
 	}
 
-	if (isc_sockaddr_pf(&disp->local) == AF_INET) {
-		nports = mgr->nv4ports;
-		ports = mgr->v4ports;
-	} else {
-		nports = mgr->nv6ports;
-		ports = mgr->v6ports;
-	}
-	if (nports == 0) {
-		return (ISC_R_ADDRNOTAVAIL);
-	}
-
-	resp->local = disp->local;
+	resp->local = *local_address;
 	resp->peer = *dest;
-
-	if (port == 0) {
-		port = ports[isc_random_uniform(nports)];
-		isc_sockaddr_setport(&resp->local, port);
-		*portp = port;
-	}
-	resp->port = port;
 
 	return (ISC_R_SUCCESS);
 }
@@ -377,10 +347,7 @@ qid_hash(const dns_dispentry_t *dispentry) {
 	isc_hash32_t hash;
 
 	isc_hash32_init(&hash);
-
-	isc_sockaddr_hash_ex(&hash, &dispentry->peer, true);
 	isc_hash32_hash(&hash, &dispentry->id, sizeof(dispentry->id), true);
-	isc_hash32_hash(&hash, &dispentry->port, sizeof(dispentry->port), true);
 
 	return (isc_hash32_finalize(&hash));
 }
@@ -391,8 +358,7 @@ qid_match(struct cds_lfht_node *node, const void *key0) {
 		caa_container_of(node, dns_dispentry_t, ht_node);
 	const dns_dispentry_t *key = key0;
 
-	return (dispentry->id == key->id && dispentry->port == key->port &&
-		isc_sockaddr_equal(&dispentry->peer, &key->peer));
+	return dispentry->id == key->id;
 }
 
 static void
@@ -685,7 +651,6 @@ tcp_recv_success(dns_dispatch_t *disp, isc_region_t *region,
 	dns_dispentry_t key = {
 		.id = id,
 		.peer = *peer,
-		.port = isc_sockaddr_getport(&disp->local),
 	};
 	struct cds_lfht_iter iter;
 	cds_lfht_lookup(disp->mgr->qids, qid_hash(&key), qid_match, &key,
@@ -905,69 +870,6 @@ tcp_recv(isc_nmhandle_t *handle, isc_result_t result, isc_region_t *region,
 	dns_dispatch_detach(&disp); /* DISPATCH002 */
 }
 
-/*%
- * Create a temporary port list to set the initial default set of dispatch
- * ephemeral ports.  This is almost meaningless as the application will
- * normally set the ports explicitly, but is provided to fill some minor corner
- * cases.
- */
-static void
-create_default_portset(isc_mem_t *mctx, int family, isc_portset_t **portsetp) {
-	in_port_t low, high;
-
-	isc_net_getudpportrange(family, &low, &high);
-
-	isc_portset_create(mctx, portsetp);
-	isc_portset_addrange(*portsetp, low, high);
-}
-
-static isc_result_t
-setavailports(dns_dispatchmgr_t *mgr, isc_portset_t *v4portset,
-	      isc_portset_t *v6portset) {
-	in_port_t *v4ports, *v6ports, p = 0;
-	unsigned int nv4ports, nv6ports, i4 = 0, i6 = 0;
-
-	nv4ports = isc_portset_nports(v4portset);
-	nv6ports = isc_portset_nports(v6portset);
-
-	v4ports = NULL;
-	if (nv4ports != 0) {
-		v4ports = isc_mem_cget(mgr->mctx, nv4ports, sizeof(in_port_t));
-	}
-	v6ports = NULL;
-	if (nv6ports != 0) {
-		v6ports = isc_mem_cget(mgr->mctx, nv6ports, sizeof(in_port_t));
-	}
-
-	do {
-		if (isc_portset_isset(v4portset, p)) {
-			INSIST(i4 < nv4ports);
-			v4ports[i4++] = p;
-		}
-		if (isc_portset_isset(v6portset, p)) {
-			INSIST(i6 < nv6ports);
-			v6ports[i6++] = p;
-		}
-	} while (p++ < 65535);
-	INSIST(i4 == nv4ports && i6 == nv6ports);
-
-	if (mgr->v4ports != NULL) {
-		isc_mem_cput(mgr->mctx, mgr->v4ports, mgr->nv4ports,
-			     sizeof(in_port_t));
-	}
-	mgr->v4ports = v4ports;
-	mgr->nv4ports = nv4ports;
-
-	if (mgr->v6ports != NULL) {
-		isc_mem_cput(mgr->mctx, mgr->v6ports, mgr->nv6ports,
-			     sizeof(in_port_t));
-	}
-	mgr->v6ports = v6ports;
-	mgr->nv6ports = nv6ports;
-
-	return (ISC_R_SUCCESS);
-}
-
 /*
  * Publics.
  */
@@ -976,9 +878,6 @@ isc_result_t
 dns_dispatchmgr_create(isc_mem_t *mctx, isc_loopmgr_t *loopmgr, isc_nm_t *nm,
 		       dns_dispatchmgr_t **mgrp) {
 	dns_dispatchmgr_t *mgr = NULL;
-	isc_portset_t *v4portset = NULL;
-	isc_portset_t *v6portset = NULL;
-
 	REQUIRE(mctx != NULL);
 	REQUIRE(mgrp != NULL && *mgrp == NULL);
 
@@ -1003,14 +902,6 @@ dns_dispatchmgr_create(isc_mem_t *mctx, isc_loopmgr_t *loopmgr, isc_nm_t *nm,
 			2, 2, 0, CDS_LFHT_AUTO_RESIZE | CDS_LFHT_ACCOUNTING,
 			NULL);
 	}
-
-	create_default_portset(mgr->mctx, AF_INET, &v4portset);
-	create_default_portset(mgr->mctx, AF_INET6, &v6portset);
-
-	setavailports(mgr, v4portset, v6portset);
-
-	isc_portset_destroy(mgr->mctx, &v4portset);
-	isc_portset_destroy(mgr->mctx, &v6portset);
 
 	mgr->qids = cds_lfht_new(QIDS_INIT_SIZE, QIDS_MIN_SIZE, 0,
 				 CDS_LFHT_AUTO_RESIZE | CDS_LFHT_ACCOUNTING,
@@ -1043,13 +934,6 @@ dns_dispatchmgr_getblackhole(dns_dispatchmgr_t *mgr) {
 	return (mgr->blackhole);
 }
 
-isc_result_t
-dns_dispatchmgr_setavailports(dns_dispatchmgr_t *mgr, isc_portset_t *v4portset,
-			      isc_portset_t *v6portset) {
-	REQUIRE(VALID_DISPATCHMGR(mgr));
-	return (setavailports(mgr, v4portset, v6portset));
-}
-
 static void
 dispatchmgr_destroy(dns_dispatchmgr_t *mgr) {
 	REQUIRE(VALID_DISPATCHMGR(mgr));
@@ -1071,15 +955,6 @@ dispatchmgr_destroy(dns_dispatchmgr_t *mgr) {
 
 	if (mgr->stats != NULL) {
 		isc_stats_detach(&mgr->stats);
-	}
-
-	if (mgr->v4ports != NULL) {
-		isc_mem_cput(mgr->mctx, mgr->v4ports, mgr->nv4ports,
-			     sizeof(in_port_t));
-	}
-	if (mgr->v6ports != NULL) {
-		isc_mem_cput(mgr->mctx, mgr->v6ports, mgr->nv6ports,
-			     sizeof(in_port_t));
 	}
 
 	isc_nm_detach(&mgr->nm);
@@ -1445,7 +1320,6 @@ dns_dispatch_add(dns_dispatch_t *disp, isc_loop_t *loop,
 		return (ISC_R_CANCELED);
 	}
 
-	in_port_t localport = isc_sockaddr_getport(&disp->local);
 	dns_dispentry_t *resp = isc_mem_get(disp->mctx, sizeof(*resp));
 	*resp = (dns_dispentry_t){
 		.timeout = timeout,
@@ -1469,8 +1343,7 @@ dns_dispatch_add(dns_dispatch_t *disp, isc_loop_t *loop,
 	isc_refcount_init(&resp->references, 1); /* DISPENTRY000 */
 
 	if (disp->socktype == isc_socktype_udp) {
-		isc_result_t result = setup_socket(disp, resp, dest,
-						   &localport);
+		isc_result_t result = setup_socket(&disp->local, dest, resp);
 		if (result != ISC_R_SUCCESS) {
 			isc_mem_put(disp->mctx, resp, sizeof(*resp));
 			inc_stats(disp->mgr, dns_resstatscounter_dispsockfail);
@@ -1920,11 +1793,9 @@ udp_connected(isc_nmhandle_t *handle, isc_result_t eresult, void *arg) {
 		break;
 	case ISC_R_NOPERM:
 	case ISC_R_ADDRINUSE: {
-		in_port_t localport = isc_sockaddr_getport(&disp->local);
-		isc_result_t result;
-
 		/* probably a port collision; try a different one */
-		result = setup_socket(disp, resp, &resp->peer, &localport);
+		isc_result_t result = setup_socket(&disp->local, &resp->peer,
+						   resp);
 		if (result == ISC_R_SUCCESS) {
 			udp_dispatch_connect(disp, resp);
 			goto detach;

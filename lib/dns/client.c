@@ -20,7 +20,6 @@
 #include <isc/mem.h>
 #include <isc/mutex.h>
 #include <isc/netmgr.h>
-#include <isc/portset.h>
 #include <isc/refcount.h>
 #include <isc/result.h>
 #include <isc/safe.h>
@@ -135,48 +134,6 @@ client_resfind(resctx_t *rctx, dns_fetchresponse_t *event);
 static void
 destroyrestrans(dns_clientrestrans_t **transp);
 
-/*
- * Try honoring the operating system's preferred ephemeral port range.
- */
-static isc_result_t
-setsourceports(isc_mem_t *mctx, dns_dispatchmgr_t *manager) {
-	isc_portset_t *v4portset = NULL, *v6portset = NULL;
-	in_port_t udpport_low, udpport_high;
-	isc_result_t result;
-
-	result = isc_portset_create(mctx, &v4portset);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
-	result = isc_net_getudpportrange(AF_INET, &udpport_low, &udpport_high);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
-	isc_portset_addrange(v4portset, udpport_low, udpport_high);
-
-	result = isc_portset_create(mctx, &v6portset);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
-	result = isc_net_getudpportrange(AF_INET6, &udpport_low, &udpport_high);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
-	isc_portset_addrange(v6portset, udpport_low, udpport_high);
-
-	result = dns_dispatchmgr_setavailports(manager, v4portset, v6portset);
-
-cleanup:
-	if (v4portset != NULL) {
-		isc_portset_destroy(mctx, &v4portset);
-	}
-	if (v6portset != NULL) {
-		isc_portset_destroy(mctx, &v6portset);
-	}
-
-	return (result);
-}
-
 static isc_result_t
 getudpdispatch(int family, dns_dispatchmgr_t *dispatchmgr,
 	       dns_dispatch_t **dispp, const isc_sockaddr_t *localaddr) {
@@ -258,8 +215,6 @@ dns_client_create(isc_mem_t *mctx, isc_loopmgr_t *loopmgr, isc_nm_t *nm,
 	if (result != ISC_R_SUCCESS) {
 		goto cleanup_client;
 	}
-	(void)setsourceports(mctx, client->dispatchmgr);
-
 	/*
 	 * If only one address family is specified, use it.
 	 * If neither family is specified, or if both are, use both.
