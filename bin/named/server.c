@@ -4815,12 +4815,10 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	/*
 	 * Resolver.
 	 */
-	CHECK(get_view_querysource_dispatch(
-		maps, AF_INET, &dispatch4,
-		(ISC_LIST_PREV(view, link) == NULL)));
-	CHECK(get_view_querysource_dispatch(
-		maps, AF_INET6, &dispatch6,
-		(ISC_LIST_PREV(view, link) == NULL)));
+	CHECK(get_view_querysource_dispatch(maps, AF_INET, &dispatch4,
+					    ISC_LIST_PREV(view, link) == NULL));
+	CHECK(get_view_querysource_dispatch(maps, AF_INET6, &dispatch6,
+					    ISC_LIST_PREV(view, link) == NULL));
 	if (dispatch4 == NULL && dispatch6 == NULL) {
 		UNEXPECTED_ERROR("unable to obtain either an IPv4 or"
 				 " an IPv6 dispatch");
@@ -4936,9 +4934,7 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 		cfg_obj_log(obj, named_g_lctx, ISC_LOG_WARNING,
 			    "disabling lame cache despite lame-ttl > 0 as it "
 			    "may cause performance issues");
-		lame_ttl = 0;
 	}
-	dns_resolver_setlamettl(view->resolver, lame_ttl);
 
 	/*
 	 * Set the resolver's query timeout.
@@ -10834,7 +10830,7 @@ zone_from_args(named_server_t *server, isc_lex_t *lex, const char *zonetxt,
 			}
 		} else {
 			result = dns_viewlist_findzone(&server->viewlist, name,
-						       (classtxt == NULL),
+						       classtxt == NULL,
 						       rdclass, zonep);
 			if (result == ISC_R_NOTFOUND) {
 				snprintf(problem, sizeof(problem),
@@ -11770,10 +11766,6 @@ resume:
 				dns_adb_detach(&adb);
 			}
 		}
-		if (dctx->dumpbad) {
-			dns_resolver_printbadcache(dctx->view->view->resolver,
-						   dctx->fp);
-		}
 		if (dctx->dumpfail) {
 			dns_badcache_print(dctx->view->view->failcache,
 					   "SERVFAIL cache", dctx->fp);
@@ -12599,9 +12591,8 @@ named_server_status(named_server_t *server, isc_buffer_t **text) {
 	reload_status = atomic_load(&server->reload_status);
 	if (reload_status != NAMED_RELOAD_DONE) {
 		snprintf(line, sizeof(line), "reload/reconfig %s\n",
-			 (reload_status == NAMED_RELOAD_FAILED
-				  ? "failed"
-				  : "in progress"));
+			 reload_status == NAMED_RELOAD_FAILED ? "failed"
+							      : "in progress");
 		CHECK(putstr(text, line));
 	}
 
