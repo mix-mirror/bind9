@@ -616,6 +616,14 @@ isc_tls_valid_sni_hostname(const char *hostname);
  * 'false' if it represents an IP address.
  */
 
+void
+isc_tls_sslkeylogfile_append(const char *line);
+/*%<
+ * Appends the provided line to the dedicated SSL keys log file
+ * provided via "SSLKEYLOGFILE" environmental variable (iff the variable is
+ * set).
+ */
+
 #define isc_tlserr2result(category, module, funcname, fallback)            \
 	isc__tlserr2result(category, module, funcname, fallback, __FILE__, \
 			   __LINE__)

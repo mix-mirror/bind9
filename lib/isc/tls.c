@@ -54,6 +54,8 @@
 #define COMMON_SSL_OPTIONS \
 	(SSL_OP_NO_COMPRESSION | SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION)
 
+static bool sslkeylogfile_enabled = false;
+
 void
 isc_tlsctx_free(isc_tlsctx_t **ctxp) {
 	SSL_CTX *ctx = NULL;
@@ -75,14 +77,32 @@ isc_tlsctx_attach(isc_tlsctx_t *src, isc_tlsctx_t **ptarget) {
 	*ptarget = src;
 }
 
+void
+isc__sslkeylog_init(void) __attribute__((__constructor__));
+
+void
+isc__sslkeylog_init(void) {
+	if (getenv("SSLKEYLOGFILE") != NULL) {
+		sslkeylogfile_enabled = true;
+	}
+}
+
 /*
  * Callback invoked by the SSL library whenever a new TLS pre-master secret
  * needs to be logged.
  */
+void
+isc_tls_sslkeylogfile_append(const char *line) {
+	if (sslkeylogfile_enabled) {
+		isc_log_write(ISC_LOGCATEGORY_SSLKEYLOG, ISC_LOGMODULE_CRYPTO,
+			      ISC_LOG_INFO, "%s", line);
+	}
+}
+
 static void
 sslkeylogfile_append(const SSL *ssl ISC_ATTR_UNUSED, const char *line) {
-	isc_log_write(ISC_LOGCATEGORY_SSLKEYLOG, ISC_LOGMODULE_CRYPTO,
-		      ISC_LOG_INFO, "%s", line);
+	UNUSED(ssl);
+	isc_tls_sslkeylogfile_append(line);
 }
 
 /*
@@ -92,7 +112,7 @@ sslkeylogfile_append(const SSL *ssl ISC_ATTR_UNUSED, const char *line) {
  */
 static void
 sslkeylogfile_init(isc_tlsctx_t *ctx) {
-	if (getenv("SSLKEYLOGFILE") != NULL) {
+	if (sslkeylogfile_enabled) {
 		SSL_CTX_set_keylog_callback(ctx, sslkeylogfile_append);
 	}
 }
