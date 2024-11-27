@@ -54,6 +54,9 @@ isc__lib_initialize(void) {
 	isc__mem_initialize();
 	isc__log_initialize();
 	isc__crypto_initialize();
+#ifdef HAVE_LIBNGTCP2
+	isc__tls_quic_initialize();
+#endif /* HAVE_LIBNGTCP2 */
 	isc__uv_initialize();
 	isc__xml_initialize();
 	isc__hash_initialize();
@@ -73,6 +76,9 @@ isc__lib_shutdown(void) {
 	isc__iterated_hash_shutdown();
 	isc__xml_shutdown();
 	isc__uv_shutdown();
+#ifdef HAVE_LIBNGTCP2
+	isc__tls_quic_shutdown();
+#endif /* HAVE_LIBNGTCP2 */
 	isc__crypto_shutdown();
 	isc__log_shutdown();
 	isc__mem_shutdown();

@@ -51,6 +51,10 @@
 
 #include "openssl_shim.h"
 
+#ifdef HAVE_LIBNGTCP2
+#include "quic/quic-int.h"
+#endif /* HAVE_LIBNGTCP2 */
+
 #define COMMON_SSL_OPTIONS \
 	(SSL_OP_NO_COMPRESSION | SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION)
 
@@ -669,12 +673,36 @@ isc_tls_create(isc_tlsctx_t *ctx) {
 	return newctx;
 }
 
+#ifdef HAVE_LIBNGTCP2
+isc_tls_t *
+isc_tls_create_quic(isc_tlsctx_t *ctx) {
+	isc_tls_t *newtls = NULL;
+
+	REQUIRE(ctx != NULL);
+
+	newtls = isc_tls_create(ctx);
+
+	if (newtls != NULL) {
+		isc__tls_quic_init(newtls);
+	}
+
+	return newtls;
+}
+#endif /* HAVE_LIBNGTCP2 */
+
 void
 isc_tls_free(isc_tls_t **tlsp) {
 	isc_tls_t *tls = NULL;
 	REQUIRE(tlsp != NULL && *tlsp != NULL);
 
 	tls = *tlsp;
+
+#ifdef HAVE_LIBNGTCP2
+	if (isc__tls_is_quic(tls)) {
+		isc__tls_quic_uninit(tls);
+	}
+#endif /* HAVE_LIBNGTCP2 */
+
 	*tlsp = NULL;
 	SSL_free(tls);
 }
