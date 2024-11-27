@@ -113,3 +113,15 @@ isc__tls_is_quic(isc_tls_t *tls);
  * Requires:
  *\li	'tls' is a valid pointer to a TLS object.
  */
+
+#ifdef HAVE_NATIVE_BORINGSSL_QUIC_API
+const isc_tls_quic_interface_t *
+isc__tls_get_native_quic_interface(void);
+/*%<
+ * Returns a set of hooks to interact wit the native (provided by the crypto
+ * library) implementation of QUIC integration API.
+ *
+ * NOTE: this function is primarily exposed for testing and debugging purposes.
+ * Please consider using 'isc_tls_get_default_quic_interface()' instead.
+ */
+#endif /* HAVE_NATIVE_BORINGSSL_QUIC_API */
