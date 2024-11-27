@@ -106,6 +106,9 @@ isc_tls_quic_encryption_level_text(const isc_quic_encryption_level_t level) {
 
 const isc_tls_quic_interface_t *
 isc_tls_get_default_quic_interface(void) {
+#ifdef HAVE_NATIVE_BORINGSSL_QUIC_API
+	return isc__tls_get_native_quic_interface();
+#endif /* HAVE_NATIVE_BORINGSSL_QUIC_API */
 	UNREACHABLE();
 }
 
