@@ -13,6 +13,7 @@ from collections import ChainMap
 
 # pylint: disable=import-error
 from .autoconf import AC_VARS  # type: ignore
+from .meson import MESON_VARS  # type: ignore
 
 # pylint: enable=import-error
 from .algorithms import ALG_VARS, CRYPTO_SUPPORTED_VARS
@@ -55,10 +56,11 @@ class VarLookup(ChainMap):
 
 ALL = VarLookup(
     AC_VARS,
+    ALG_VARS,
     BASIC_VARS,
+    CRYPTO_SUPPORTED_VARS,
+    DIR_VARS,
+    MESON_VARS,
     OPENSSL_VARS,
     PORT_VARS,
-    DIR_VARS,
-    ALG_VARS,
-    CRYPTO_SUPPORTED_VARS,
 )
