@@ -9,9 +9,10 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
+import os
+
 from pathlib import Path
 from typing import Dict
-
 
 def load_ac_vars_from_files() -> Dict[str, str]:
     ac_vars = {}
@@ -21,11 +22,14 @@ def load_ac_vars_from_files() -> Dict[str, str]:
         path
         for path in ac_vars_dir.iterdir()
         if path.is_file()
-        and not path.name.endswith(".in")
-        and path.name != "meson.build"
+        and path.name.endswith(".in")
     ]
     for var_path in var_paths:
-        ac_vars[var_path.name] = var_path.read_text(encoding="utf-8").strip()
+        if (mesonbin := os.getenv(var_path.stem)) is not None:
+            ac_vars[var_path.stem] = mesonbin
+        else:
+            ac_vars[var_path.stem] = var_path.with_suffix("").read_text(encoding="utf-8").strip()
+
     return ac_vars
 
 

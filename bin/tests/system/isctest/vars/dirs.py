@@ -12,7 +12,7 @@
 import os
 
 # pylint: disable=import-error
-from .autoconf import AC_VARS  # type: ignore
+from .meson import MESON_VARS  # type: ignore
 
 # pylint: enable=import-error
 
@@ -20,8 +20,8 @@ from .autoconf import AC_VARS  # type: ignore
 SYSTEM_TEST_DIR_GIT_PATH = "bin/tests/system"
 
 DIR_VARS = {
-    "builddir": f"{AC_VARS['TOP_BUILDDIR']}/{SYSTEM_TEST_DIR_GIT_PATH}",
-    "srcdir": f"{AC_VARS['TOP_SRCDIR']}/{SYSTEM_TEST_DIR_GIT_PATH}",
+    "builddir": f"{MESON_VARS['TOP_BUILDDIR']}/{SYSTEM_TEST_DIR_GIT_PATH}",
+    "srcdir": f"{MESON_VARS['TOP_SRCDIR']}/{SYSTEM_TEST_DIR_GIT_PATH}",
     "SYSTESTDIR": None,
 }
 

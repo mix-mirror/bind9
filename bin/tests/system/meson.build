@@ -48,11 +48,29 @@ executable(
     ],
 )
 
-subdir('isctest' / 'vars' / '.ac_vars')
-
 if not pytest.found()
     subdir_done()
 endif
+
+system_test_env = {
+    'TOP_BUILDDIR': meson.project_build_root(),
+    'TOP_SRCDIR': meson.project_source_root(),
+    'SHELL': sh.full_path(),
+    'PERL': perl.full_path(),
+}
+
+foreach env, prog : {
+    'CURL': curl,
+    'XSLTPROC': xsltproc,
+    'NC': nc,
+    'FSTRM_CAPTURE': fstrm_capture,
+    'PYTEST': pytest,
+    'PYTHON': python,
+}
+    if prog.found()
+        system_test_env += {env: prog.full_path()}
+    endif
+endforeach
 
 foreach system : [
     'acl',
@@ -174,9 +192,10 @@ foreach system : [
     test(
         system,
         pytest,
-        args: ['-k', system],
+        args: [system],
         suite: 'system',
         timeout: 360,
+        env: system_test_env,
         workdir: meson.current_source_dir(),
     )
 endforeach
