@@ -101,6 +101,7 @@
 #define TTL_MAX	 2147483647U /* Maximum signed 32 bit integer. */
 
 #define DNSDEFAULTPORT 53
+#define TLSDEFAULTPORT 853
 
 #define DEFAULT_EDNS_BUFSIZE 1232
 
@@ -108,6 +109,7 @@
 #define MAX_SERVERADDRS 4
 
 static uint16_t dnsport = DNSDEFAULTPORT;
+static bool setport = false;
 
 #ifndef RESOLV_CONF
 #define RESOLV_CONF "/etc/resolv.conf"
@@ -792,6 +794,15 @@ create_name(const char *str, dns_name_t *name) {
 				 DNS_NAME_DOWNCASE);
 }
 
+static uint16_t
+get_default_port(void) {
+	if (use_tls && !setport) {
+		return TLSDEFAULTPORT;
+	}
+
+	return dnsport;
+}
+
 static void
 setup_system(void *arg ISC_ATTR_UNUSED) {
 	isc_result_t result;
@@ -886,7 +897,8 @@ setup_system(void *arg ISC_ATTR_UNUSED) {
 			switch (sa->type.sa.sa_family) {
 			case AF_INET:
 				if (have_ipv4) {
-					sa->type.sin.sin_port = htons(dnsport);
+					sa->type.sin.sin_port =
+						htons(get_default_port());
 				} else {
 					continue;
 				}
@@ -894,7 +906,7 @@ setup_system(void *arg ISC_ATTR_UNUSED) {
 			case AF_INET6:
 				if (have_ipv6) {
 					sa->type.sin6.sin6_port =
-						htons(dnsport);
+						htons(get_default_port());
 				} else {
 					continue;
 				}
@@ -1179,6 +1191,7 @@ parse_args(int argc, char **argv) {
 					isc_commandline_argument);
 				exit(EXIT_FAILURE);
 			}
+			setport = true;
 			break;
 		case 'S':
 			use_tls = true;
@@ -1602,7 +1615,7 @@ evaluate_server(char *cmdline) {
 
 	word = nsu_strsep(&cmdline, " \t\r\n");
 	if (word == NULL || *word == 0) {
-		port = dnsport;
+		port = get_default_port();
 	} else {
 		char *endp;
 		port = strtol(word, &endp, 10);
@@ -2904,7 +2917,7 @@ lookforsoa:
 		primary_alloc = MAX_SERVERADDRS;
 		primary_servers = isc_mem_cget(isc_g_mctx, primary_alloc,
 					       sizeof(isc_sockaddr_t));
-		primary_total = get_addresses(serverstr, dnsport,
+		primary_total = get_addresses(serverstr, get_default_port(),
 					      primary_servers, primary_alloc);
 		if (primary_total == 0) {
 			seenerror = true;

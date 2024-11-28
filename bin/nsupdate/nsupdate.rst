@@ -165,7 +165,7 @@ Options
 .. option:: -p port
 
    This option sets the port to use for connections to a name server. The default is
-   53.
+   53 or 853 when -S is used.
 
 .. option:: -P
 
