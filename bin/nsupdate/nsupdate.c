@@ -982,6 +982,14 @@ setup_system(void *arg ISC_ATTR_UNUSED) {
 	isc_mutex_init(&answer_lock);
 }
 
+static bool
+is_ip_address(const char *host, isc_sockaddr_t *sockaddr) {
+	if (inet_pton(AF_INET, host, &sockaddr) > 0) {
+		return true;
+	}
+	return inet_pton(AF_INET6, host, &sockaddr) > 0;
+}
+
 static int
 get_addresses(char *host, in_port_t port, isc_sockaddr_t *sockaddr,
 	      int naddrs) {
@@ -1644,6 +1652,14 @@ evaluate_server(char *cmdline) {
 	ns_alloc = MAX_SERVERADDRS;
 	ns_inuse = 0;
 	servers = isc_mem_cget(isc_g_mctx, ns_alloc, sizeof(isc_sockaddr_t));
+	if (use_tls && !tls_hostname && !is_ip_address(server, servers)) {
+		INSIST(transport);
+		/*
+		 * If server is not IP address and -H were not given,
+		 * set server name as remote hostname.
+		 */
+		dns_transport_set_remote_hostname(transport, server);
+	}
 	ns_total = get_addresses(server, (in_port_t)port, servers, ns_alloc);
 	if (ns_total == 0) {
 		return STATUS_SYNTAX;
