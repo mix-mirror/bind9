@@ -193,6 +193,7 @@ libdns = shared_library(
         libisc_dep,
 
         openssl_dep,
+        urcu_dep,
 
         json_c_dep,
         lmdb_dep,

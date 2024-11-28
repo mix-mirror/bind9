@@ -561,7 +561,7 @@ endif
 # liburcu << v0.13.0 didn't add -lurcu-common and some toolchains would
 # not add it automatically - we need to add it explicitly in such case.
 
-if urcu_dep[1].version().version_compare('<=0.13.0')
+if urcu_dep[1].version().version_compare('<0.13.0')
     urcu_dep += cc.find_library('liburcu-common')
 endif
 
