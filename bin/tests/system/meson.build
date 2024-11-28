@@ -1,9 +1,9 @@
 configure_file(
+    input: 'ifconfig.sh.in',
+    output: 'ifconfig.sh',
     configuration: {
         'SYSTEM': target_machine.system(),
     },
-    input: 'ifconfig.sh.in',
-    output: 'ifconfig.sh',
 )
 
 executable(

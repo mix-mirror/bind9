@@ -88,10 +88,11 @@ sphinx_build = find_program('sphinx-build', required: false)
 ### Install information
 prefix = get_option('prefix')
 
-localstatedir = prefix / get_option('localstatedir')
-sysconfdir = prefix / get_option('sysconfdir')
 datadir = prefix / get_option('datadir')
+includedir = prefix / get_option('includedir')
+localstatedir = prefix / get_option('localstatedir')
 runstatedir = localstatedir / 'run'
+sysconfdir = prefix / get_option('sysconfdir')
 
 if git.found() and fs.is_dir('.git')
     src_id = run_command(git, 'rev-parse', '--short', 'HEAD', check: true).stdout().substring(0, 7)
@@ -784,6 +785,7 @@ bind_keys = custom_target(
 )
 
 # Order is important, do not sort alphabetically!
+subdir('util')
 subdir('lib')
 subdir('bin')
 subdir('tests')
