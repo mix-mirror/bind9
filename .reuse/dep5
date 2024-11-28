@@ -3,10 +3,6 @@ Upstream-Name: BIND 9
 Upstream-Contact: Internet Systems Consortium, Inc. ("ISC") <info@isc.org>
 Source: https://gitlab.isc.org/isc-projects/bind9/
 
-Files: **/meson.build
-Copyright: Internet Systems Consortium, Inc. ("ISC")
-License: MPL-2.0
-
 #
 # Build system, data files from tests, and misc cruft
 #
