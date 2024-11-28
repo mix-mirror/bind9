@@ -16,6 +16,8 @@ project(
     ],
 )
 
+add_test_setup('system_test_nondefault', exclude_suites: ['system'], is_default: true)
+
 fs = import('fs')
 ss = import('sourceset')
 
