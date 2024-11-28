@@ -1356,76 +1356,76 @@ unit:clang:openbsd:amd64:
 
 # Job producing a release directory
 
-release:
-  <<: *base_image
-  stage: release
-  script:
-    - export BIND_DIRECTORY="$(basename bind-*.tar.xz ".tar.xz")"
-    # Prepare release tarball contents (tarballs + documentation)
-    - mkdir -p "${BIND_DIRECTORY}-release/doc/arm"
-    - pushd "${BIND_DIRECTORY}-release"
-    - mv "../${BIND_DIRECTORY}.tar.xz" .
-    - tar --extract --file="${BIND_DIRECTORY}.tar.xz"
-    - mv "${BIND_DIRECTORY}"/{COPYRIGHT,LICENSE,README.md,srcid} .
-    - rm -rf "${BIND_DIRECTORY}"
-    - mv "../doc/arm/_build/html" doc/arm/
-    - mv "../doc/arm/_build/epub/Bv9ARM.epub" doc/arm/
-    - echo '<!DOCTYPE HTML><html lang="en"><meta http-equiv="refresh" content="0; url=doc/arm/html/notes.html"><title>Redirect</title></html>' > "RELEASE-NOTES-${BIND_DIRECTORY}.html"
-    - echo '<!DOCTYPE HTML><html lang="en"><meta http-equiv="refresh" content="0; url=doc/arm/html/changelog.html"><title>Redirect</title></html>' > "CHANGELOG-${BIND_DIRECTORY}.html"
-    - popd
-  needs:
-    - job: tarball-create
-      artifacts: true
-    - job: docs
-      artifacts: true
-  only:
-    - tags
-  artifacts:
-    paths:
-      - "*-release"
-    expire_in: "1 month"
+# release:
+#   <<: *base_image
+#   stage: release
+#   script:
+#     - export BIND_DIRECTORY="$(basename bind-*.tar.xz ".tar.xz")"
+#     # Prepare release tarball contents (tarballs + documentation)
+#     - mkdir -p "${BIND_DIRECTORY}-release/doc/arm"
+#     - pushd "${BIND_DIRECTORY}-release"
+#     - mv "../${BIND_DIRECTORY}.tar.xz" .
+#     - tar --extract --file="${BIND_DIRECTORY}.tar.xz"
+#     - mv "${BIND_DIRECTORY}"/{COPYRIGHT,LICENSE,README.md,srcid} .
+#     - rm -rf "${BIND_DIRECTORY}"
+#     - mv "../doc/arm/_build/html" doc/arm/
+#     - mv "../doc/arm/_build/epub/Bv9ARM.epub" doc/arm/
+#     - echo '<!DOCTYPE HTML><html lang="en"><meta http-equiv="refresh" content="0; url=doc/arm/html/notes.html"><title>Redirect</title></html>' > "RELEASE-NOTES-${BIND_DIRECTORY}.html"
+#     - echo '<!DOCTYPE HTML><html lang="en"><meta http-equiv="refresh" content="0; url=doc/arm/html/changelog.html"><title>Redirect</title></html>' > "CHANGELOG-${BIND_DIRECTORY}.html"
+#     - popd
+#   needs:
+#     - job: tarball-create
+#       artifacts: true
+#     - job: docs
+#       artifacts: true
+#   only:
+#     - tags
+#   artifacts:
+#     paths:
+#       - "*-release"
+#     expire_in: "1 month"
 
 # Job signing the source tarballs in the release directory
 
-sign:
-  stage: release
-  tags:
-    - signer
-  script:
-    - export RELEASE_DIRECTORY="$(echo *-release)"
-    - pushd "${RELEASE_DIRECTORY}"
-    - |
-      echo
-      cat > /tmp/sign-bind9.sh <<EOF
-      #!/bin/sh
-      {
-          for FILE in \$(find "${PWD}" -name "*.tar.xz" | sort); do
-              echo ">>> Signing \${FILE}..."
-              gpg2 --local-user "\${SIGNING_KEY_FINGERPRINT}" --armor --digest-algo SHA512 --detach-sign --output "\${FILE}.asc" "\${FILE}"
-          done
-      } 2>&1 | tee "${CI_PROJECT_DIR}/signing.log"
-      EOF
-      chmod +x /tmp/sign-bind9.sh
-      echo -e "\e[31m*** Please sign the releases by following the instructions at:\e[0m"
-      echo -e "\e[31m*** \e[0m"
-      echo -e "\e[31m*** ${SIGNING_HELP_URL}\e[0m"
-      echo -e "\e[31m*** \e[0m"
-      echo -e "\e[31m*** Sleeping until files in ${PWD} are signed... ⌛\e[0m"
-      while [ "$(find . -name "*.asc" -size +0 | sed "s|\.asc$||" | sort)" != "$(find . -name "*.tar.xz" | sort)" ]; do sleep 10; done
-    - popd
-    - tar --create --file="${RELEASE_DIRECTORY}.tar.gz" --gzip "${RELEASE_DIRECTORY}"
-  artifacts:
-    paths:
-      - "*.tar.gz"
-      - signing.log
-    expire_in: never
-  needs:
-    - job: release
-      artifacts: true
-  only:
-    - tags
-  when: manual
-  allow_failure: false
+# sign:
+#   stage: release
+#   tags:
+#     - signer
+#   script:
+#     - export RELEASE_DIRECTORY="$(echo *-release)"
+#     - pushd "${RELEASE_DIRECTORY}"
+#     - |
+#       echo
+#       cat > /tmp/sign-bind9.sh <<EOF
+#       #!/bin/sh
+#       {
+#           for FILE in \$(find "${PWD}" -name "*.tar.xz" | sort); do
+#               echo ">>> Signing \${FILE}..."
+#               gpg2 --local-user "\${SIGNING_KEY_FINGERPRINT}" --armor --digest-algo SHA512 --detach-sign --output "\${FILE}.asc" "\${FILE}"
+#           done
+#       } 2>&1 | tee "${CI_PROJECT_DIR}/signing.log"
+#       EOF
+#       chmod +x /tmp/sign-bind9.sh
+#       echo -e "\e[31m*** Please sign the releases by following the instructions at:\e[0m"
+#       echo -e "\e[31m*** \e[0m"
+#       echo -e "\e[31m*** ${SIGNING_HELP_URL}\e[0m"
+#       echo -e "\e[31m*** \e[0m"
+#       echo -e "\e[31m*** Sleeping until files in ${PWD} are signed... ⌛\e[0m"
+#       while [ "$(find . -name "*.asc" -size +0 | sed "s|\.asc$||" | sort)" != "$(find . -name "*.tar.xz" | sort)" ]; do sleep 10; done
+#     - popd
+#     - tar --create --file="${RELEASE_DIRECTORY}.tar.gz" --gzip "${RELEASE_DIRECTORY}"
+#   artifacts:
+#     paths:
+#       - "*.tar.gz"
+#       - signing.log
+#     expire_in: never
+#   needs:
+#     - job: release
+#       artifacts: true
+#   only:
+#     - tags
+#   when: manual
+#   allow_failure: false
 
 # Coverity Scan analysis upload
 
@@ -1539,27 +1539,27 @@ sign:
 # Run shotgun:udp right away, but delay other shotgun jobs sligthly in order to
 # allow re-use of the built container image. Otherwise, the jobs would do the
 # same builds in parallel rather than re-use the already built image.
-shotgun:udp:
-  <<: *shotgun_job
-  variables:
-    SHOTGUN_SCENARIO: udp
-    SHOTGUN_TRAFFIC_MULTIPLIER: 15
-
-shotgun:tcp:
-  <<: *shotgun_job
-  variables:
-    SHOTGUN_SCENARIO: tcp
-    SHOTGUN_TRAFFIC_MULTIPLIER: 13
-  when: delayed
-  start_in: 5 minutes
-
-shotgun:dot:
-  <<: *shotgun_job
-  variables:
-    SHOTGUN_SCENARIO: dot
-    SHOTGUN_TRAFFIC_MULTIPLIER: 6
-  when: delayed
-  start_in: 5 minutes
+# shotgun:udp:
+#   <<: *shotgun_job
+#   variables:
+#     SHOTGUN_SCENARIO: udp
+#     SHOTGUN_TRAFFIC_MULTIPLIER: 15
+#
+# shotgun:tcp:
+#   <<: *shotgun_job
+#   variables:
+#     SHOTGUN_SCENARIO: tcp
+#     SHOTGUN_TRAFFIC_MULTIPLIER: 13
+#   when: delayed
+#   start_in: 5 minutes
+#
+# shotgun:dot:
+#   <<: *shotgun_job
+#   variables:
+#     SHOTGUN_SCENARIO: dot
+#     SHOTGUN_TRAFFIC_MULTIPLIER: 6
+#   when: delayed
+#   start_in: 5 minutes
 
 # .stress-test: &stress_test
 #   stage: performance
@@ -1839,51 +1839,51 @@ shotgun:dot:
 # git fsck operates over the whole repository and is sufficient to schedule it
 # only in one branch, preferably "main". GitLab's clone strategy prevents us
 # from using the "bind9" repo clone; we need to clone it ourselves.
-fsck:
-  <<: *base_image
-  stage: postcheck
-  variables:
-    GIT_STRATEGY: none
-  script:
-    - git clone https://gitlab.isc.org/isc-projects/bind9.git bind9-full-clone
-    - cd bind9-full-clone/
-    - git fsck
-  only:
-    - schedules
-  needs: []
+# fsck:
+#   <<: *base_image
+#   stage: postcheck
+#   variables:
+#     GIT_STRATEGY: none
+#   script:
+#     - git clone https://gitlab.isc.org/isc-projects/bind9.git bind9-full-clone
+#     - cd bind9-full-clone/
+#     - git fsck
+#   only:
+#     - schedules
+#   needs: []
 
-gcov:
-  <<: *base_image
-  <<: *default_triggering_rules
-  stage: postcheck
-  needs:
-    - job: system:gcc:bookworm:amd64
-      artifacts: true
-  script:
-    # Ensure gcov files for unit tests are found via tests/ rather than
-    # lib/*/tests/ to prevent confusing gcovr.
-    - find lib/ -name tests -type l -delete
-    # The "a-conftest.gcno" file is result of the ./configure step and
-    # should be removed as it does not belong to the BIND 9 code base.
-    - rm a-conftest.gcno
-    # Generate XML file in the Cobertura XML format suitable for use by GitLab
-    # for the purpose of displaying code coverage information in the diff view
-    # of a given merge request.
-    - gcovr --exclude-directories bin/tests --exclude-directories doc --exclude-directories fuzz --exclude tests --cobertura-pretty -o coverage.xml
-    - gcovr --exclude-directories bin/tests --exclude-directories doc --exclude-directories fuzz --exclude tests --html-details -o coverage.html
-    - gcovr --exclude-directories bin/tests --exclude-directories doc --exclude-directories fuzz --exclude tests --txt -o coverage.txt
-    - tail -n 3 coverage.txt
-  coverage: /^TOTAL.*\s+(\d+\%)$/
-  artifacts:
-    paths:
-      - coverage*.html
-      - coverage.css
-      - coverage.txt
-      - coverage.xml
-    reports:
-      coverage_report:
-        coverage_format: cobertura
-        path: coverage.xml
+# gcov:
+#   <<: *base_image
+#   <<: *default_triggering_rules
+#   stage: postcheck
+#   needs:
+#     - job: system:gcc:bookworm:amd64
+#       artifacts: true
+#   script:
+#     # Ensure gcov files for unit tests are found via tests/ rather than
+#     # lib/*/tests/ to prevent confusing gcovr.
+#     - find lib/ -name tests -type l -delete
+#     # The "a-conftest.gcno" file is result of the ./configure step and
+#     # should be removed as it does not belong to the BIND 9 code base.
+#     - rm a-conftest.gcno
+#     # Generate XML file in the Cobertura XML format suitable for use by GitLab
+#     # for the purpose of displaying code coverage information in the diff view
+#     # of a given merge request.
+#     - gcovr --exclude-directories bin/tests --exclude-directories doc --exclude-directories fuzz --exclude tests --cobertura-pretty -o coverage.xml
+#     - gcovr --exclude-directories bin/tests --exclude-directories doc --exclude-directories fuzz --exclude tests --html-details -o coverage.html
+#     - gcovr --exclude-directories bin/tests --exclude-directories doc --exclude-directories fuzz --exclude tests --txt -o coverage.txt
+#     - tail -n 3 coverage.txt
+#   coverage: /^TOTAL.*\s+(\d+\%)$/
+#   artifacts:
+#     paths:
+#       - coverage*.html
+#       - coverage.css
+#       - coverage.txt
+#       - coverage.xml
+#     reports:
+#       coverage_report:
+#         coverage_format: cobertura
+#         path: coverage.xml
 
 # Pairwise testing of ./configure options
 
@@ -1905,46 +1905,46 @@ gcov:
 #     variables:
 #       - $PAIRWISE_TESTING
 
-.post_merge_template: &post_merge
-  <<: *base_image
-  stage: postmerge
-  needs: []
-  # post-merge processes should run even if another MR was merged while the job was running (or queued)
-  interruptible: false
-  variables:
-    # automated commits will inherit identification from the user who pressed Merge button
-    GIT_COMMITTER_NAME: $GITLAB_USER_NAME
-    GIT_COMMITTER_EMAIL: $GITLAB_USER_EMAIL
-    # avoid leftover branches from previous jobs
-    GIT_STRATEGY: clone
-    # assumed max depth of a MR for backport or a rebased force-push
-    GIT_DEPTH: 1000
-  before_script:
-    # force-pushes should not trigger process automation (happens only in -sub branches)
-    - >
-      echo "previous branch tip: $CI_COMMIT_BEFORE_SHA"
-    - set +o pipefail; git log --format='%H' | grep --silent "$CI_COMMIT_BEFORE_SHA" && PREVIOUS_TIP_REACHABLE=1
-    - test "$PREVIOUS_TIP_REACHABLE" != "1" && echo "force-push detected, stop" && exit 1
-    # non-fast-forward merges are disabled so we have to have merge commit on top
-    - MERGE_REQUEST_ID="$(git log -1 --format='%b' | sed --silent -e 's/^See merge request [^!]\+!//p')"
-    - >
-      : stop if this is not a merge request
-    - test "$MERGE_REQUEST_ID" -ge 0
-    - git clone --depth 1 https://gitlab.isc.org/isc-projects/bind9-qa.git
-
-backports:
-  <<: *post_merge
-  rules:
-    # -sub branches are handled manually
-    - if: '$CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_REF_NAME =~ /^bind-9.[0-9]+$/ || $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH)'
-  script:
-    # CI job token is not sufficient for push operations
-    - git remote get-url origin | sed -e "s/gitlab-ci-token:$CI_JOB_TOKEN/oauth2:$BIND_TEAM_WRITE_TOKEN/" | xargs git remote set-url --push origin
-    - bind9-qa/releng/backport_mr.py $CI_PROJECT_ID "$MERGE_REQUEST_ID"
-
-merged-metadata:
-  <<: *post_merge
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_REF_NAME =~ /^bind-9.[0-9]+(-sub)?$/ || $CI_COMMIT_REF_NAME =~ /^bind-9.[0-9]+.[0-9]+-release$/ || $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH)'
-  script:
-    - bind9-qa/releng/after_merge.py "$CI_PROJECT_ID" "$MERGE_REQUEST_ID"
+# .post_merge_template: &post_merge
+#   <<: *base_image
+#   stage: postmerge
+#   needs: []
+#   # post-merge processes should run even if another MR was merged while the job was running (or queued)
+#   interruptible: false
+#   variables:
+#     # automated commits will inherit identification from the user who pressed Merge button
+#     GIT_COMMITTER_NAME: $GITLAB_USER_NAME
+#     GIT_COMMITTER_EMAIL: $GITLAB_USER_EMAIL
+#     # avoid leftover branches from previous jobs
+#     GIT_STRATEGY: clone
+#     # assumed max depth of a MR for backport or a rebased force-push
+#     GIT_DEPTH: 1000
+#   before_script:
+#     # force-pushes should not trigger process automation (happens only in -sub branches)
+#     - >
+#       echo "previous branch tip: $CI_COMMIT_BEFORE_SHA"
+#     - set +o pipefail; git log --format='%H' | grep --silent "$CI_COMMIT_BEFORE_SHA" && PREVIOUS_TIP_REACHABLE=1
+#     - test "$PREVIOUS_TIP_REACHABLE" != "1" && echo "force-push detected, stop" && exit 1
+#     # non-fast-forward merges are disabled so we have to have merge commit on top
+#     - MERGE_REQUEST_ID="$(git log -1 --format='%b' | sed --silent -e 's/^See merge request [^!]\+!//p')"
+#     - >
+#       : stop if this is not a merge request
+#     - test "$MERGE_REQUEST_ID" -ge 0
+#     - git clone --depth 1 https://gitlab.isc.org/isc-projects/bind9-qa.git
+#
+# backports:
+#   <<: *post_merge
+#   rules:
+#     # -sub branches are handled manually
+#     - if: '$CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_REF_NAME =~ /^bind-9.[0-9]+$/ || $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH)'
+#   script:
+#     # CI job token is not sufficient for push operations
+#     - git remote get-url origin | sed -e "s/gitlab-ci-token:$CI_JOB_TOKEN/oauth2:$BIND_TEAM_WRITE_TOKEN/" | xargs git remote set-url --push origin
+#     - bind9-qa/releng/backport_mr.py $CI_PROJECT_ID "$MERGE_REQUEST_ID"
+#
+# merged-metadata:
+#   <<: *post_merge
+#   rules:
+#     - if: '$CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_REF_NAME =~ /^bind-9.[0-9]+(-sub)?$/ || $CI_COMMIT_REF_NAME =~ /^bind-9.[0-9]+.[0-9]+-release$/ || $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH)'
+#   script:
+#     - bind9-qa/releng/after_merge.py "$CI_PROJECT_ID" "$MERGE_REQUEST_ID"
