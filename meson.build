@@ -790,9 +790,6 @@ subdir('tests')
 subdir('fuzz')
 subdir('doc')
 
-# Change pytest to use this build directory
-run_target('system-test-scope', command: 'util' / 'system-test-scope.sh')
-
 ###
 ### Summary
 ###
