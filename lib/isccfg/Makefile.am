@@ -10,7 +10,8 @@ libisccfg_la_HEADERS =			\
 	include/isccfg/duration.h	\
 	include/isccfg/grammar.h	\
 	include/isccfg/kaspconf.h	\
-	include/isccfg/namedconf.h
+	include/isccfg/namedconf.h	\
+	include/isccfg/cfgmgr.h
 
 libisccfg_la_SOURCES =			\
 	$(libisccfg_la_HEADERS)		\
@@ -19,7 +20,8 @@ libisccfg_la_SOURCES =			\
 	duration.c			\
 	kaspconf.c			\
 	namedconf.c			\
-	parser.c
+	parser.c			\
+	cfgmgr.c
 
 libisccfg_la_CPPFLAGS =			\
 	$(AM_CPPFLAGS)			\
