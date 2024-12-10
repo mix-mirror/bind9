@@ -13,6 +13,7 @@ isc_test = [
     'ascii',
     'async',
     'buffer',
+    'cfgmgr',
     'counter',
     'dnsstream_utils',
     'errno',
@@ -82,6 +83,7 @@ foreach unit : isc_test
             libtest_dep,
 
             m_dep,
+            lmdb_dep,
             openssl_dep,
 
             cmocka_dep,

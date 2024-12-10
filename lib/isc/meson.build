@@ -27,6 +27,7 @@ isc_srcset.add(
     thread_dep,
     urcu_dep,
     uv_dep,
+    lmdb_dep,
 )
 
 isc_srcset.add(when: 'HAVE_JEMALLOC', if_true: jemalloc_dep)
@@ -69,6 +70,7 @@ isc_srcset.add(
         'backtrace.c',
         'base32.c',
         'base64.c',
+        'cfgmgr.c',
         'commandline.c',
         'counter.c',
         'crypto.c',
