@@ -2316,7 +2316,8 @@ static cfg_clausedef_t zone_clauses[] = {
 	{ "min-retry-time", &cfg_type_uint32,
 	  CFG_ZONE_SECONDARY | CFG_ZONE_MIRROR | CFG_ZONE_STUB },
 	{ "multi-master", &cfg_type_boolean,
-	  CFG_ZONE_SECONDARY | CFG_ZONE_MIRROR | CFG_ZONE_STUB },
+	  CFG_ZONE_SECONDARY | CFG_ZONE_MIRROR | CFG_ZONE_STUB |
+		  CFG_CLAUSEFLAG_OBSOLETE },
 	{ "notify", &cfg_type_notifytype,
 	  CFG_ZONE_PRIMARY | CFG_ZONE_SECONDARY | CFG_ZONE_MIRROR },
 	{ "notify-delay", &cfg_type_uint32,

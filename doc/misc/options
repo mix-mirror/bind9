@@ -204,7 +204,7 @@ options {
 	min-retry-time <integer>;
 	minimal-any <boolean>;
 	minimal-responses ( no-auth | no-auth-recursive | <boolean> );
-	multi-master <boolean>;
+	multi-master <boolean>; // obsolete
 	new-zones-directory <quoted_string>;
 	no-case-compress { <address_match_element>; ... };
 	nocookie-udp-size <integer>;
@@ -489,7 +489,7 @@ view <string> [ <class> ] {
 	min-retry-time <integer>;
 	minimal-any <boolean>;
 	minimal-responses ( no-auth | no-auth-recursive | <boolean> );
-	multi-master <boolean>;
+	multi-master <boolean>; // obsolete
 	new-zones-directory <quoted_string>;
 	no-case-compress { <address_match_element>; ... };
 	nocookie-udp-size <integer>;
