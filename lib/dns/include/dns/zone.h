@@ -73,11 +73,9 @@ typedef enum {
 	DNS_ZONEOPT_NOMERGE = 1 << 2,	    /*%< don't merge journal */
 	DNS_ZONEOPT_CHECKNS = 1 << 3,	    /*%< check if NS's are addresses */
 	DNS_ZONEOPT_FATALNS = 1 << 4,	    /*%< DNS_ZONEOPT_CHECKNS is fatal */
-	DNS_ZONEOPT_MULTIMASTER = 1 << 5,   /*%< this zone has multiple
-						 primaries */
-	DNS_ZONEOPT_USEALTXFRSRC = 1 << 6,  /*%< use alternate transfer sources.
-						 Obsoleted. */
-	DNS_ZONEOPT_CHECKNAMES = 1 << 7,    /*%< check-names */
+	/*% 5: formerly _MULTIMASTER */
+	/*%< 6: formerly _USEALTXFRSRC */
+	DNS_ZONEOPT_CHECKNAMES = 1 << 7,     /*%< check-names */
 	DNS_ZONEOPT_CHECKNAMESFAIL = 1 << 8, /*%< fatal check-name failures */
 	DNS_ZONEOPT_CHECKWILDCARD = 1 << 9, /*%< check for internal wildcards */
 	DNS_ZONEOPT_CHECKMX = 1 << 10,	    /*%< check-mx */

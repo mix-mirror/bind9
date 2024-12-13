@@ -2525,13 +2525,9 @@ Boolean Options
    :any:`ixfr-from-differences` setting is ignored for that zone.
 
 .. namedconf:statement:: multi-master
-   :tags: transfer
-   :short: Controls whether serial number mismatch errors are logged.
+   :tags: obsolete
 
-   This should be set when there are multiple primary servers for a zone and the
-   addresses refer to different machines. If ``yes``, :iscman:`named` does not
-   log when the serial number on the primary is less than what :iscman:`named`
-   currently has. The default is ``no``.
+   This option no longer has any effect.
 
 .. namedconf:statement:: dnssec-validation
    :tags: dnssec

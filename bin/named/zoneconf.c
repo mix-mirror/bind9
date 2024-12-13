@@ -897,7 +897,6 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 	const char *dupcheck;
 	dns_checkdstype_t checkdstype = dns_checkdstype_yes;
 	dns_notifytype_t notifytype = dns_notifytype_yes;
-	uint32_t count;
 	unsigned int dbargc;
 	char **dbargv;
 	static char default_dbtype[] = ZONEDB_DEFAULT;
@@ -907,7 +906,6 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 	dns_zonetype_t ztype;
 	int i;
 	int32_t journal_size;
-	bool multi;
 	dns_kasp_t *kasp = NULL;
 	bool check = false, fail = false;
 	bool warn = false, ignore = false;
@@ -1838,7 +1836,6 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 	case dns_zone_secondary:
 	case dns_zone_stub:
 	case dns_zone_redirect:
-		count = 0;
 		obj = NULL;
 		(void)cfg_map_get(zoptions, "primaries", &obj);
 		if (obj == NULL) {
@@ -1866,21 +1863,11 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 			dns_zone_setprimaries(mayberaw, ipkl.addrs,
 					      ipkl.sources, ipkl.keys,
 					      ipkl.tlss, ipkl.count);
-			count = ipkl.count;
 			dns_ipkeylist_clear(mctx, &ipkl);
 		} else {
 			dns_zone_setprimaries(mayberaw, NULL, NULL, NULL, NULL,
 					      0);
 		}
-
-		multi = false;
-		if (count > 1) {
-			obj = NULL;
-			result = named_config_get(maps, "multi-master", &obj);
-			INSIST(result == ISC_R_SUCCESS && obj != NULL);
-			multi = cfg_obj_asboolean(obj);
-		}
-		dns_zone_setoption(mayberaw, DNS_ZONEOPT_MULTIMASTER, multi);
 
 		obj = NULL;
 		result = named_config_get(maps, "max-transfer-time-in", &obj);

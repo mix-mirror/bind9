@@ -554,7 +554,7 @@ typedef enum {
 	DNS_ZONEFLG_NOIXFR = 0x00100000U, /*%< IXFR failed, force AXFR */
 	DNS_ZONEFLG_FLUSH = 0x00200000U,
 	DNS_ZONEFLG_NOEDNS = 0x00400000U,
-	DNS_ZONEFLG_USEALTXFRSRC = 0x00800000U, /*%< Obsoleted. */
+	/* 0x00800000U obsoleted. */
 	DNS_ZONEFLG_SOABEFOREAXFR = 0x01000000U,
 	DNS_ZONEFLG_NEEDCOMPACT = 0x02000000U,
 	DNS_ZONEFLG_REFRESHING = 0x04000000U, /*%< Refreshing keydata */
@@ -14395,16 +14395,13 @@ refresh_callback(void *arg) {
 		dns_remote_mark(&zone->primaries, true);
 		goto next_primary;
 	} else {
-		if (!DNS_ZONE_OPTION(zone, DNS_ZONEOPT_MULTIMASTER)) {
-			dns_zone_logc(zone, DNS_LOGCATEGORY_XFER_IN,
-				      ISC_LOG_INFO,
-				      "serial number (%u) "
-				      "received from primary %s < ours (%u)",
-				      soa.serial, primary, oldserial);
-		} else {
-			zone_debuglogc(zone, DNS_LOGCATEGORY_XFER_IN, __func__,
-				       1, "ahead");
-		}
+		int level = (dns_remote_count(&zone->primaries) == 1)
+				    ? ISC_LOG_INFO
+				    : ISC_LOG_DEBUG(1);
+		dns_zone_logc(zone, DNS_LOGCATEGORY_XFER_IN, level,
+			      "serial number (%u) received from "
+			      "primary %s < ours (%u)",
+			      soa.serial, primary, oldserial);
 		dns_remote_mark(&zone->primaries, true);
 		goto next_primary;
 	}
