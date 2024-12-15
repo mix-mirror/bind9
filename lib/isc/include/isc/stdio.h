@@ -63,9 +63,12 @@ isc_stdio_flush(FILE *f);
 isc_result_t
 isc_stdio_sync(FILE *f);
 /*%<
- * Invoke fsync() on the file descriptor underlying an stdio stream, or an
+ * Invoke fdatasync() on the file descriptor underlying an stdio stream, or an
  * equivalent system-dependent operation.  Note that this function has no
  * direct counterpart in the stdio library.
  */
+
+isc_result_t
+isc_stdio_sync_range(FILE *f, off_t offset, off_t nbytes);
 
 ISC_LANG_ENDDECLS

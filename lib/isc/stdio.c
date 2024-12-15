@@ -14,6 +14,9 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#if HAVE_SYNC_FILE_RANGE
+#include <fcntl.h>
+#endif /* HAVE_SYNC_FILE_RANGE */
 
 #include <isc/stdio.h>
 #include <isc/util.h>
@@ -28,6 +31,13 @@ isc_stdio_open(const char *filename, const char *mode, FILE **fp) {
 	if (f == NULL) {
 		return isc__errno2result(errno);
 	}
+
+	int r = setvbuf(f, NULL, _IONBF, 0);
+	if (r != 0) {
+		fclose(f);
+		return isc__errno2result(errno);
+	}
+
 	*fp = f;
 	return ISC_R_SUCCESS;
 }
@@ -105,10 +115,14 @@ isc_stdio_write(const void *ptr, size_t size, size_t nmemb, FILE *f,
 }
 
 isc_result_t
-isc_stdio_flush(FILE *f) {
-	int r;
+isc_stdio_flush(FILE *f ISC_ATTR_UNUSED) {
+	/* We disable buffering when opening the file */
+	return ISC_R_SUCCESS;
+}
 
-	r = fflush(f);
+isc_result_t
+isc_stdio_sync(FILE *f) {
+	int r = fdatasync(fileno(f));
 	if (r == 0) {
 		return ISC_R_SUCCESS;
 	} else {
@@ -116,30 +130,17 @@ isc_stdio_flush(FILE *f) {
 	}
 }
 
-/*
- * OpenBSD has deprecated ENOTSUP in favor of EOPNOTSUPP.
- */
-#if defined(EOPNOTSUPP) && !defined(ENOTSUP)
-#define ENOTSUP EOPNOTSUPP
-#endif /* if defined(EOPNOTSUPP) && !defined(ENOTSUP) */
-
 isc_result_t
-isc_stdio_sync(FILE *f) {
-	struct stat buf;
-	int r;
-
-	if (fstat(fileno(f), &buf) != 0) {
-		return isc__errno2result(errno);
-	}
-
-	/*
-	 * Only call fsync() on regular files.
-	 */
-	if ((buf.st_mode & S_IFMT) != S_IFREG) {
-		return ISC_R_SUCCESS;
-	}
-
-	r = fsync(fileno(f));
+isc_stdio_sync_range(FILE *f, off_t offset ISC_ATTR_UNUSED,
+		     off_t nbytes ISC_ATTR_UNUSED) {
+#if HAVE_SYNC_FILE_RANGE
+	int r = sync_file_range(fileno(f), offset, nbytes,
+				SYNC_FILE_RANGE_WAIT_BEFORE |
+					SYNC_FILE_RANGE_WRITE |
+					SYNC_FILE_RANGE_WAIT_AFTER);
+#else  /* HAVE_SYNC_FILE_RANGE */
+	int r = fsync(fileno(f));
+#endif /* HAVE_SYNC_FILE_RANGE */
 	if (r == 0) {
 		return ISC_R_SUCCESS;
 	} else {

@@ -417,6 +417,11 @@ AS_CASE([$host],
 
 AC_CHECK_FUNCS([sysctlbyname])
 
+#
+# Check for sync_data_range
+#
+AC_CHECK_FUNCS([sync_file_range])
+
 AC_TYPE_SIZE_T
 AC_TYPE_SSIZE_T
 AC_TYPE_UINTPTR_T
