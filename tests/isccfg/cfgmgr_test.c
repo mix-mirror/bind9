@@ -24,6 +24,7 @@
 
 #include <tests/isc.h>
 
+#define INIT		 SUCCESS(cfgmgr_init(mctx, "/tmp/named-cfgmgr-lmdb"))
 #define SUCCESS(result)	 assert_int_equal(result, ISC_R_SUCCESS)
 #define NOTFOUND(result) assert_int_equal(result, ISC_R_NOTFOUND)
 #define NOTBOUND(result) assert_int_equal(result, ISC_R_NOTBOUND)
@@ -32,8 +33,7 @@ ISC_RUN_TEST_IMPL(cfgmgr_rw) {
 	cfgmgr_val_t val1;
 	cfgmgr_val_t val2;
 
-	SUCCESS(cfgmgr_init());
-
+	INIT;
 	NOTFOUND(cfgmgr_open("foo"));
 	SUCCESS(cfgmgr_newclause("foo"));
 
@@ -177,8 +177,7 @@ ISC_RUN_TEST_IMPL(cfgmgr_parseid) {
 	 * exercise the nested clause and repeatable clauses with such
 	 * odd names
 	 */
-	SUCCESS(cfgmgr_init());
-
+	INIT;
 	SUCCESS(cfgmgr_newclause("123"));
 	val = (cfgmgr_val_t){ .type = UINT32, .data.uint32 = 666666 };
 	SUCCESS(cfgmgr_setval("123123", &val));
@@ -240,8 +239,7 @@ ISC_RUN_TEST_IMPL(cfgmgr_override) {
 	cfgmgr_val_t val1;
 	cfgmgr_val_t val2;
 
-	SUCCESS(cfgmgr_init());
-
+	INIT;
 	SUCCESS(cfgmgr_newclause("foo"));
 
 	val1 = (cfgmgr_val_t){ .type = UINT32, .data.uint32 = 4058304 };
@@ -277,8 +275,7 @@ ISC_RUN_TEST_IMPL(cfgmgr_rw_string) {
 	cfgmgr_val_t val1;
 	cfgmgr_val_t val2;
 
-	SUCCESS(cfgmgr_init());
-
+	INIT;
 	SUCCESS(cfgmgr_newclause("foo"));
 
 	val1 = (cfgmgr_val_t){ .type = STRING, .data.string = "hey there!" };
@@ -327,7 +324,7 @@ ISC_RUN_TEST_IMPL(cfgmgr_rw_string) {
 ISC_RUN_TEST_IMPL(cfgmgr_list) {
 	cfgmgr_val_t val;
 
-	SUCCESS(cfgmgr_init());
+	INIT;
 	SUCCESS(cfgmgr_newclause("foo"));
 
 	val = (cfgmgr_val_t){ .type = STRING, .data.string = "lst1" };
@@ -408,8 +405,7 @@ ISC_RUN_TEST_IMPL(cfgmgr_repeatable_clauses) {
 	cfgmgr_val_t val1;
 	cfgmgr_val_t val2;
 
-	SUCCESS(cfgmgr_init());
-
+	INIT;
 	SUCCESS(cfgmgr_newclause("view"));
 	SUCCESS(cfgmgr_setval("p1", &(cfgmgr_val_t){ .type = STRING,
 						     .data.string = "view1 p1 "
@@ -463,12 +459,11 @@ ISC_RUN_TEST_IMPL(cfgmgr_repeatable_clauses) {
 ISC_RUN_TEST_IMPL(cfgmgr_nested_clauses) {
 	cfgmgr_val_t val;
 
-	SUCCESS(cfgmgr_init());
-
 	/*
 	 * Let's start by writting then reading
 	 * foo { bar { baz { gee: none; }; }; };
 	 */
+	INIT;
 	SUCCESS(cfgmgr_newclause("foo"));
 	SUCCESS(cfgmgr_newclause("bar"));
 	SUCCESS(cfgmgr_newclause("baz"));
@@ -567,11 +562,10 @@ ISC_RUN_TEST_IMPL(cfgmgr_nested_clauses) {
 ISC_RUN_TEST_IMPL(cfgmgr_delete) {
 	cfgmgr_val_t val;
 
-	SUCCESS(cfgmgr_init());
-
 	/*
 	 * foo is not found because nothing has been written in there
 	 */
+	INIT;
 	SUCCESS(cfgmgr_newclause("foo"));
 	SUCCESS(cfgmgr_close());
 	NOTFOUND(cfgmgr_open("foo"));
@@ -690,9 +684,9 @@ ISC_RUN_TEST_IMPL(cfgmgr_threads) {
 	pthread_t thread;
 	sem_t sems[2];
 
+	INIT;
 	REQUIRE(sem_init(&sems[0], 0, 0) == 0);
 	REQUIRE(sem_init(&sems[1], 0, 0) == 0);
-	SUCCESS(cfgmgr_init());
 	SUCCESS(cfgmgr_newclause("foo"));
 	SUCCESS(cfgmgr_setval("p", &(cfgmgr_val_t){ .type = NONE }));
 	cfgmgr_close();

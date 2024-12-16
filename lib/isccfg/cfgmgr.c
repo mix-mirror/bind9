@@ -18,12 +18,13 @@
 
 #include <isc/list.h>
 #include <isc/mem.h>
+#include <isc/random.h>
 #include <isc/thread.h>
 #include <isc/util.h>
 
 #include <isccfg/cfgmgr.h>
 
-#define DBPATH "/tmp/lmdb-exp"
+#define RANDOM isc_random_uniform(UINT32_MAX);
 
 /*
  * See MDB_MAXKEYSIZE documentation, but not accessible as defined in
@@ -50,6 +51,7 @@ typedef struct {
 } context_t;
 
 static isc_mem_t *mctx = NULL;
+static const char *dbpath = NULL;
 static MDB_env *env = NULL;
 static thread_local context_t ctx =
 	(context_t){ .openedclauses = ISC_LIST_INITIALIZER,
@@ -75,14 +77,13 @@ parseid(const char *dbkey) {
 	 * start of the id (character 1) is at character index 4
 	 */
 	idstarts = strlen(ctx.buffer);
+	INSIST(idstarts > 0 && ctx.buffer[idstarts - 1] == '.');
 	idends = idstarts;
-	INSIST(idstarts > 0 && idends == idstarts);
-	INSIST(ctx.buffer[idstarts - 1] == '.');
-	keylen = strlen(dbkey);
 
 	/*
 	 * Cutting the key form the dot after the identifier
 	 */
+	keylen = strlen(dbkey);
 	REQUIRE(keylen > idends);
 	while (dbkey[idends] != '.') {
 		idends++;
@@ -100,7 +101,7 @@ parseid(const char *dbkey) {
 }
 
 isc_result_t
-cfgmgr_init(void) {
+cfgmgr_init(isc_mem_t *mctx_, const char *dbpath_) {
 	int result = ISC_R_SUCCESS;
 	char dbname[BUFLEN];
 	char dblockname[BUFLEN];
@@ -111,12 +112,16 @@ cfgmgr_init(void) {
 	REQUIRE(ctx.buffer == NULL);
 	REQUIRE(ctx.cursor == NULL);
 	REQUIRE(ctx.txn == NULL);
+	REQUIRE(dbpath == NULL);
 	REQUIRE(mctx == NULL);
 	REQUIRE(env == NULL);
+	REQUIRE(mctx_ != NULL);
+	REQUIRE(dbpath_ != NULL);
 
-	isc_mem_create(&mctx);
+	isc_mem_attach(mctx_, &mctx);
 	INSIST(mctx != NULL);
 
+	dbpath = dbpath_;
 	result = mdb_env_create(&env);
 	if (result != 0) {
 		result = ISC_R_FAILURE;
@@ -130,9 +135,9 @@ cfgmgr_init(void) {
 	 * corruption doesn't matter: as soon as the process is dead,
 	 * the disk data is dead as well)
 	 */
-	random = arc4random();
-	REQUIRE(snprintf(dbname, BUFLEN, "%s-%u", DBPATH, random) < BUFLEN);
-	REQUIRE(snprintf(dblockname, BUFLEN, "%s-%u-lock", DBPATH, random) <
+	random = RANDOM();
+	REQUIRE(snprintf(dbname, BUFLEN, "%s-%u", dbpath, random) < BUFLEN);
+	REQUIRE(snprintf(dblockname, BUFLEN, "%s-%u-lock", dbpath, random) <
 		BUFLEN);
 	result = mdb_env_open(env, dbname, MDB_NOSYNC | MDB_NOSUBDIR, 0600);
 	if (result != 0) {
@@ -173,12 +178,13 @@ cfgmgr_deinit(void) {
 	REQUIRE(ctx.buffer == NULL);
 	REQUIRE(ctx.cursor == NULL);
 	REQUIRE(ctx.txn == NULL);
-	REQUIRE(env != NULL);
 	REQUIRE(mctx != NULL);
+	REQUIRE(env != NULL);
 	mdb_env_close(env);
 	env = NULL;
-	isc_mem_destroy(&mctx);
-	ENSURE(mctx == NULL);
+	dbpath = NULL;
+	isc_mem_detach(&mctx);
+	INSIST(mctx == NULL);
 }
 
 static void
@@ -511,7 +517,7 @@ cfgmgr_newclause(const char *name) {
 		INSIST(ctx.buffer != NULL);
 		INSIST(ctx.cursor != NULL);
 		INSIST(ctx.readonly == false);
-		pushclause(name, arc4random());
+		pushclause(name, RANDOM());
 		INSIST(ctx.prefix != NULL);
 	}
 

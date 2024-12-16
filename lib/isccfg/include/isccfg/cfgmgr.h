@@ -151,7 +151,7 @@ isc_result_t
 cfgmgr_open(const char *name);
 
 isc_result_t
-cfgmgr_init(void);
+cfgmgr_init(isc_mem_t *mctx_, const char *dbpath_);
 
 void
 cfgmgr_deinit(void);
