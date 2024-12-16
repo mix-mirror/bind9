@@ -262,7 +262,9 @@ pushclause(const char *name, unsigned long id) {
 	openedclause_t *clause = isc_mem_get(mctx, sizeof(*clause));
 
 	*clause = (openedclause_t){
-		.name = isc_mem_allocate(mctx, strlen(name) + 1), .id = id
+		.name = isc_mem_allocate(mctx, strlen(name) + 1),
+		.id = id,
+		.link = ISC_LINK_INITIALIZER,
 	};
 	strcpy(clause->name, name);
 	ENSURE(clause->id > 0);
