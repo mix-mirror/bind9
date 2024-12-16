@@ -67,7 +67,7 @@ cfgmgr_setval(const char *name, const cfgmgr_val_t *value);
  * next elements in the list. When the end of the list is reached,
  * ISC_R_NOMORE is returned. Calls to cfgmgr_getnextlistval name has
  * to be made in immediate sequence (without intermediate
- * cfgmgr_{set,get}val calls) to retreive each list element.
+ * cfgmgr_{set,get}val calls) to retrieve each list element.
  */
 isc_result_t
 cfgmgr_getnextlistval(cfgmgr_val_t *value);
@@ -127,7 +127,7 @@ isc_result_t
 cfgmgr_close(void);
 
 /*
- * Open the top-level clause "name" for reading and writting and
+ * Open the top-level clause "name" for reading and writing and
  * returns ISC_R_SUCCESS. If the clause "name" is not found, returns
  * ISC_R_NOTFOUND.
  *

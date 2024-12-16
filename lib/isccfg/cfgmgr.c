@@ -90,9 +90,9 @@ parseid(const char *dbkey) {
 	}
 
 	/*
-	 * strtoul will stops as soon as it doesn't encounder a
-	 * non-digit number, so no need to get an extra buffer, copy
-	 * the dbkey and add a null byte after the last digit.
+	 * strtoul stops as soon as it doesn't encounter a non-digit
+	 * number, so no need to get an extra buffer, copy the dbkey
+	 * and add a null byte after the last digit.
 	 */
 	id = strtoul(dbkey + idstarts, NULL, 10);
 	ENSURE(id > 0);
@@ -124,7 +124,7 @@ cfgmgr_init(void) {
 	}
 
 	/*
-	 * Using MDB_NOSYNC as it avoid force disk flush after a
+	 * Using MDB_NOSYNC as it avoids force disk flush after a
 	 * transaction. It's quicker and in our case we don't need it
 	 * as we delete the only link to the inode right away (so disk
 	 * corruption doesn't matter: as soon as the process is dead,
