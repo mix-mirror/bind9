@@ -1123,7 +1123,7 @@ gcc:asan:
   variables:
     CC: gcc
     CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "-Db_sanitize=address,undefined -Didn=enabled -Djemalloc=disabled"
+    EXTRA_CONFIGURE: "-Db_sanitize=address,undefined -Didn=enabled -Djemalloc=disabled -Dtracing=disabled"
   <<: *fedora_41_amd64_image
   <<: *build_job
 
@@ -1147,7 +1147,7 @@ clang:asan:
   variables:
     CC: ${CLANG}
     CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "-Db_sanitize=address,undefined -Db_lundef=false -Didn=enabled -Djemalloc=disabled"
+    EXTRA_CONFIGURE: "-Db_sanitize=address,undefined -Db_lundef=false -Didn=enabled -Djemalloc=disabled -Dtracing=disabled"
   <<: *base_image
   <<: *build_job
 
