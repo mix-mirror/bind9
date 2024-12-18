@@ -53,9 +53,9 @@ cfgmgr_getval(const char *name, cfgmgr_val_t *value);
  * returns ISC_R_SUCCESS. If the property already exists, it is
  * overridden and even if the type is different. If "value" is NULL
  * and the property exists, it will be deleted (applies for list
- * properties as well). Changes being made can be visible only by the
- * current thread until the clause (and its parent, if nested) is
- * closed.
+ * properties as well), otherwise, it returns ISC_R_NOTFOUND. Changes
+ * being made can be visible only by the current thread until the
+ * clause (and its parent, if nested) is closed.
  */
 isc_result_t
 cfgmgr_setval(const char *name, const cfgmgr_val_t *value);
@@ -98,9 +98,10 @@ cfgmgr_nextclause(void);
  * parent or the parent, recursively) clause must have been opened
  * read-write (so using cfgmgr_openrw or cfgmgr_newclause).
  *
- * Returns ISC_R_SUCCESS. Note that in order to have the new clause
- * actually written in cfgmgr, at least one property needs to be set
- * to that clause.
+ * Returns ISC_R_SUCCESS or ISC_R_FAILURE if there is no transaction
+ * and it fails creating one. Note that in order to have the new
+ * clause actually written in cfgmgr, at least one property needs to
+ * be set to that clause.
  */
 isc_result_t
 cfgmgr_newclause(const char *name);
@@ -129,7 +130,8 @@ cfgmgr_close(void);
 /*
  * Open the top-level clause "name" for reading and writing and
  * returns ISC_R_SUCCESS. If the clause "name" is not found, returns
- * ISC_R_NOTFOUND.
+ * ISC_R_NOTFOUND. If there is an issue creating a transaction, it
+ * returns ISC_R_FAILURE.
  *
  * This call will block if another thread has already a clause opened
  * for reading and writting. Use cfgmgr_openro for reading only.
@@ -142,16 +144,29 @@ cfgmgr_openrw(const char *name);
  * is the clause is not found. Two possible cases:
  *
  * - if called at top-level, it open the top-level clause as read
- * only.
+ *   only. Returns ISC_R_FAILURE if there is an issue creating the
+ *   transaction.
  *
  * - if called form within an opened clause, it open it with the same
- * access than the already opened clause.
+ *   access than the already opened clause.
  */
 isc_result_t
 cfgmgr_open(const char *name);
 
+/*
+ * Initialize cfgmgr. Must be called before any other function. It is
+ * possible to re-initialize cfgmgr only after calling cfgmgr_deinit
+ * (this drops all the data written in cfgmgr). Returns ISC_R_SUCCESS
+ * or ISC_R_FAILURE if there is an issue initializing the internal
+ * database.
+ */
 isc_result_t
 cfgmgr_init(isc_mem_t *mctx_, const char *dbpath_);
 
+/*
+ * Destroy all cfgmgr data and free memory. Must be called only after
+ * cfgmgr_init and no function must be called after that one (except
+ * cfgmgr_init to re-initialize cfgmgr again).
+ */
 void
 cfgmgr_deinit(void);
