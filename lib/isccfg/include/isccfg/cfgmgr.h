@@ -19,7 +19,14 @@
 /*
  * Supported data types for read/write operations from/to cfgmgr.
  */
-typedef enum { STRING = 0, BOOL, NONE, SOCKADDR, UINT32 } cfgmgr_type_t;
+typedef enum {
+	ISC_CFGMGR_UNKNOWN = 0,
+	ISC_CFGMGR_STRING,
+	ISC_CFGMGR_BOOLEAN,
+	ISC_CFGMGR_NONE,
+	ISC_CFGMGR_SOCKADDR,
+	ISC_CFGMGR_UINT32
+} isc_cfgmgr_type_t;
 
 /*
  * Generic value holding the actual value and type value for
@@ -28,14 +35,14 @@ typedef enum { STRING = 0, BOOL, NONE, SOCKADDR, UINT32 } cfgmgr_type_t;
  * cfgmgr_type_t::NONE doesn't have associated value,
  */
 typedef struct {
-	cfgmgr_type_t type;
+	isc_cfgmgr_type_t type;
 	union {
 		const char    *string;
 		bool	       boolean;
 		isc_sockaddr_t sockaddr;
 		uint32_t       uint32;
-	} data;
-} cfgmgr_val_t;
+	};
+} isc_cfgmgr_val_t;
 
 /*
  * Get the property "name" in the opened clause into the caller
@@ -46,7 +53,7 @@ typedef struct {
  * head.
  */
 isc_result_t
-cfgmgr_getval(const char *name, cfgmgr_val_t *value);
+isc_cfgmgr_getval(const char *name, isc_cfgmgr_val_t *value);
 
 /*
  * Write "value" into the property "name" in the opened clause and
@@ -58,30 +65,31 @@ cfgmgr_getval(const char *name, cfgmgr_val_t *value);
  * clause (and its parent, if nested) is closed.
  */
 isc_result_t
-cfgmgr_setval(const char *name, const cfgmgr_val_t *value);
+isc_cfgmgr_setval(const char *name, const isc_cfgmgr_val_t *value);
 
 /*
- * Same as cfgmgr_getval but applies for elements after the head of a
- * list property. The head is read using cfgmgr_getval as any other
- * value, then subsequents calls to cfgmgr_getnextlistval will get the
- * next elements in the list. When the end of the list is reached,
- * ISC_R_NOMORE is returned. Calls to cfgmgr_getnextlistval name has
- * to be made in immediate sequence (without intermediate
- * cfgmgr_{set,get}val calls) to retrieve each list element.
+ * Same as isc_cfgmgr_getval but applies for elements after the head
+ * of a list property. The head is read using isc_cfgmgr_getval as any
+ * other value, then subsequents calls to isc_cfgmgr_getnextlistval
+ * will get the next elements in the list. When the end of the list is
+ * reached, ISC_R_NOMORE is returned. Calls to
+ * isc_cfgmgr_getnextlistval name has to be made in immediate sequence
+ * (without intermediate isc_cfgmgr_{set,get}val calls) to retrieve
+ * each list element.
  */
 isc_result_t
-cfgmgr_getnextlistval(cfgmgr_val_t *value);
+isc_cfgmgr_getnextlistval(isc_cfgmgr_val_t *value);
 
 /*
- * Same as cfgmgr_setval but applies for a list property. Writes by
- * appending "*value" at the end of the list property "name" in the
+ * Same as isc_cfgmgr_setval but applies for a list property. Writes
+ * by appending "*value" at the end of the list property "name" in the
  * opened clause and returns ISC_R_SUCCESS. If "name" property wasn't
  * existing before (or wasn't a list) it's overriden. It is not
  * possible to delete individual list element, only the whole list can
- * be removed using cfgmgr_setval.
+ * be removed using isc_cfgmgr_setval.
  */
 isc_result_t
-cfgmgr_setnextlistval(const char *name, const cfgmgr_val_t *value);
+isc_cfgmgr_setnextlistval(const char *name, const isc_cfgmgr_val_t *value);
 
 /*
  * If the opened clause is a repeatable clause (i.e. view, acl, etc.),
@@ -90,13 +98,13 @@ cfgmgr_setnextlistval(const char *name, const cfgmgr_val_t *value);
  * of the same type, ISC_R_NOMORE is returned.
  */
 isc_result_t
-cfgmgr_nextclause(void);
+isc_cfgmgr_nextclause(void);
 
 /*
  * If used at top-level, create and open as read-write a new clause
  * "name". If used inside an opened parent clause, then the parent (or
  * parent or the parent, recursively) clause must have been opened
- * read-write (so using cfgmgr_openrw or cfgmgr_newclause).
+ * read-write (so using isc_cfgmgr_openrw or isc_cfgmgr_newclause).
  *
  * Returns ISC_R_SUCCESS or ISC_R_FAILURE if there is no transaction
  * and it fails creating one. Note that in order to have the new
@@ -104,7 +112,7 @@ cfgmgr_nextclause(void);
  * be set to that clause.
  */
 isc_result_t
-cfgmgr_newclause(const char *name);
+isc_cfgmgr_newclause(const char *name);
 
 /*
  * Delete and close the opened clause. (And thus all its properties,
@@ -113,19 +121,20 @@ cfgmgr_newclause(const char *name);
  * opened. Returns ISC_R_SUCCESS.
  */
 isc_result_t
-cfgmgr_delclause(void);
+isc_cfgmgr_delclause(void);
 
 /*
  * Close the currently opened clause and returns ISC_R_SUCCESS. If the
  * closed clause was nested, the currently opened clause is now the
- * parent clause. Otherwise, no close is opened. If no clause was
- * opened when the function was called, ISC_R_NOTBOUND is
- * returned. Closing the top-level clause will applies all
- * modifications done inside the clause. If something is going wrong,
- * ISC_R_FAILURE is returned, and all modification made are discarded.
+ * parent clause. If top-level clause was opened with
+ * isc_cfgmgr_openrw or isc_cfgmgr_newclause, closing the top-level
+ * clause will applies all modifications done inside the clause (and
+ * inside the nested clauses). If something is going wrong while
+ * writing the modifications ISC_R_FAILURE is returned and all
+ * modification made are discarded.
  */
 isc_result_t
-cfgmgr_close(void);
+isc_cfgmgr_close(void);
 
 /*
  * Open the top-level clause "name" for reading and writing and
@@ -134,10 +143,10 @@ cfgmgr_close(void);
  * returns ISC_R_FAILURE.
  *
  * This call will block if another thread has already a clause opened
- * for reading and writting. Use cfgmgr_openro for reading only.
+ * for reading and writting. Use isc_cfgmgr_openro for reading only.
  */
 isc_result_t
-cfgmgr_openrw(const char *name);
+isc_cfgmgr_openrw(const char *name);
 
 /*
  * Open the clause "name" and returns ISC_R_SUCCES or ISC_R_NOTFOUND
@@ -151,22 +160,22 @@ cfgmgr_openrw(const char *name);
  *   access than the already opened clause.
  */
 isc_result_t
-cfgmgr_open(const char *name);
+isc_cfgmgr_open(const char *name);
 
 /*
  * Initialize cfgmgr. Must be called before any other function. It is
- * possible to re-initialize cfgmgr only after calling cfgmgr_deinit
- * (this drops all the data written in cfgmgr). Returns ISC_R_SUCCESS
- * or ISC_R_FAILURE if there is an issue initializing the internal
- * database.
+ * possible to re-initialize cfgmgr only after calling
+ * isc_cfgmgr_deinit (this drops all the data written in
+ * cfgmgr). Returns ISC_R_SUCCESS or ISC_R_FAILURE if there is an
+ * issue initializing the internal database.
  */
 isc_result_t
-cfgmgr_init(isc_mem_t *mctx_, const char *dbpath_);
+isc_cfgmgr_init(isc_mem_t *mctx, const char *dbpath);
 
 /*
  * Destroy all cfgmgr data and free memory. Must be called only after
- * cfgmgr_init and no function must be called after that one (except
- * cfgmgr_init to re-initialize cfgmgr again).
+ * isc_cfgmgr_init and no function must be called after that one
+ * (except isc_cfgmgr_init to re-initialize cfgmgr again).
  */
 void
-cfgmgr_deinit(void);
+isc_cfgmgr_deinit(void);
