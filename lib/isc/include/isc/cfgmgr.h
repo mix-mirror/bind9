@@ -19,7 +19,7 @@
 /*
  * Supported data types for read/write operations from/to cfgmgr.
  */
-typedef enum {
+typedef enum isc_cfgmgr_type {
 	ISC_CFGMGR_UNDEFINED = 0,
 	ISC_CFGMGR_STRING,
 	ISC_CFGMGR_BOOLEAN,
@@ -34,7 +34,7 @@ typedef enum {
  *
  * cfgmgr_type_t::NONE doesn't have associated value,
  */
-typedef struct {
+typedef struct isc_cfgmgr_val {
 	isc_cfgmgr_type_t type;
 	union {
 		const char    *string;
