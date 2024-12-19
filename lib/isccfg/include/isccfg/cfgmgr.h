@@ -20,7 +20,7 @@
  * Supported data types for read/write operations from/to cfgmgr.
  */
 typedef enum {
-	ISC_CFGMGR_UNKNOWN = 0,
+	ISC_CFGMGR_UNDEFINED = 0,
 	ISC_CFGMGR_STRING,
 	ISC_CFGMGR_BOOLEAN,
 	ISC_CFGMGR_NONE,

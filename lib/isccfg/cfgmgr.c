@@ -637,7 +637,7 @@ isc__cfgmgr_getval(const char *name, isc_cfgmgr_val_t *value) {
 	if (value->type == ISC_CFGMGR_STRING) {
 		value->string = ((char *)dbval.mv_data) + sizeof(value->type);
 	}
-	INSIST(value->type != ISC_CFGMGR_UNKNOWN);
+	INSIST(value->type != ISC_CFGMGR_UNDEFINED);
 
 out:
 	return result;
@@ -667,7 +667,7 @@ isc__cfgmgr_setval(const char *name, const isc_cfgmgr_val_t *value, bool list) {
 	REQUIRE(isc__cfgmgr_ctx.cursor != NULL);
 	REQUIRE(isc__cfgmgr_ctx.readonly == false);
 	REQUIRE(name != NULL);
-	REQUIRE((value != NULL && value->type != ISC_CFGMGR_UNKNOWN) ||
+	REQUIRE((value != NULL && value->type != ISC_CFGMGR_UNDEFINED) ||
 		(value == NULL && list == false));
 
 	isc__cfgmgr_buildkey(name, false);

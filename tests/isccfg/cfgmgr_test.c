@@ -29,7 +29,7 @@
 ISC_RUN_TEST_IMPL(isc_cfgmgr_rw) {
 	isc_result_t result;
 	isc_cfgmgr_val_t val1;
-	isc_cfgmgr_val_t val2 = { .type = ISC_CFGMGR_UNKNOWN };
+	isc_cfgmgr_val_t val2 = { .type = ISC_CFGMGR_UNDEFINED };
 
 	result = isc_cfgmgr_init(mctx, TEST_DBPATH);
 	assert_int_equal(result, ISC_R_SUCCESS);
@@ -73,7 +73,7 @@ ISC_RUN_TEST_IMPL(isc_cfgmgr_rw) {
 	result = isc_cfgmgr_setval("anotherprop", &val1);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	val2.type = ISC_CFGMGR_UNKNOWN;
+	val2.type = ISC_CFGMGR_UNDEFINED;
 	result = isc_cfgmgr_getval("anotherprop", &val2);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_int_equal(val2.type, ISC_CFGMGR_BOOLEAN);
@@ -378,7 +378,7 @@ ISC_RUN_TEST_IMPL(isc_cfgmgr_override) {
 	result = isc_cfgmgr_setval("prop1", &val1);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	val2.type = ISC_CFGMGR_UNKNOWN;
+	val2.type = ISC_CFGMGR_UNDEFINED;
 	result = isc_cfgmgr_getval("prop1", &val2);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_int_equal(val2.type, ISC_CFGMGR_BOOLEAN);
@@ -393,7 +393,7 @@ ISC_RUN_TEST_IMPL(isc_cfgmgr_override) {
 ISC_RUN_TEST_IMPL(isc_cfgmgr_rw_string) {
 	isc_result_t result;
 	isc_cfgmgr_val_t val1;
-	isc_cfgmgr_val_t val2 = { .type = ISC_CFGMGR_UNKNOWN };
+	isc_cfgmgr_val_t val2 = { .type = ISC_CFGMGR_UNDEFINED };
 
 	result = isc_cfgmgr_init(mctx, TEST_DBPATH);
 	assert_int_equal(result, ISC_R_SUCCESS);
@@ -571,7 +571,7 @@ ISC_RUN_TEST_IMPL(isc_cfgmgr_list) {
 ISC_RUN_TEST_IMPL(isc_cfgmgr_repeatable_clauses) {
 	isc_result_t result;
 	isc_cfgmgr_val_t val1;
-	isc_cfgmgr_val_t val2 = { .type = ISC_CFGMGR_UNKNOWN };
+	isc_cfgmgr_val_t val2 = { .type = ISC_CFGMGR_UNDEFINED };
 
 	result = isc_cfgmgr_init(mctx, TEST_DBPATH);
 	assert_int_equal(result, ISC_R_SUCCESS);
@@ -614,7 +614,7 @@ ISC_RUN_TEST_IMPL(isc_cfgmgr_repeatable_clauses) {
 	result = isc_cfgmgr_getval("p2", &val2);
 	assert_int_equal(val2.type, ISC_CFGMGR_BOOLEAN);
 
-	val1.type = ISC_CFGMGR_UNKNOWN;
+	val1.type = ISC_CFGMGR_UNDEFINED;
 	if (val2.boolean) {
 		result = isc_cfgmgr_getval("p1", &val1);
 		assert_int_equal(result, ISC_R_SUCCESS);
@@ -630,12 +630,12 @@ ISC_RUN_TEST_IMPL(isc_cfgmgr_repeatable_clauses) {
 	result = isc_cfgmgr_nextclause();
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	val2.type = ISC_CFGMGR_UNKNOWN;
+	val2.type = ISC_CFGMGR_UNDEFINED;
 	result = isc_cfgmgr_getval("p2", &val2);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_int_equal(val2.type, ISC_CFGMGR_BOOLEAN);
 
-	val1.type = ISC_CFGMGR_UNKNOWN;
+	val1.type = ISC_CFGMGR_UNDEFINED;
 	if (val2.boolean) {
 		result = isc_cfgmgr_getval("p1", &val1);
 		assert_int_equal(result, ISC_R_SUCCESS);
@@ -699,7 +699,7 @@ ISC_RUN_TEST_IMPL(isc_cfgmgr_nested_clauses) {
 	result = isc_cfgmgr_open("baz");
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	val.type = ISC_CFGMGR_UNKNOWN;
+	val.type = ISC_CFGMGR_UNDEFINED;
 	result = isc_cfgmgr_getval("gee", &val);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_int_equal(val.type, ISC_CFGMGR_NONE);
@@ -747,7 +747,7 @@ ISC_RUN_TEST_IMPL(isc_cfgmgr_nested_clauses) {
 	result = isc_cfgmgr_open("foo");
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	val.type = ISC_CFGMGR_UNKNOWN;
+	val.type = ISC_CFGMGR_UNDEFINED;
 	result = isc_cfgmgr_getval("propfoo", &val);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_int_equal(val.type, ISC_CFGMGR_STRING);
@@ -792,7 +792,7 @@ ISC_RUN_TEST_IMPL(isc_cfgmgr_nested_clauses) {
 	result = isc_cfgmgr_close();
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	val = (isc_cfgmgr_val_t){ .type = ISC_CFGMGR_UNKNOWN, .string = NULL };
+	val = (isc_cfgmgr_val_t){ .type = ISC_CFGMGR_UNDEFINED, .string = NULL };
 	result = isc_cfgmgr_open("foo");
 	assert_int_equal(result, ISC_R_SUCCESS);
 
@@ -813,7 +813,7 @@ ISC_RUN_TEST_IMPL(isc_cfgmgr_nested_clauses) {
 	result = isc_cfgmgr_nextclause();
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	val = (isc_cfgmgr_val_t){ .type = ISC_CFGMGR_UNKNOWN, .string = NULL };
+	val = (isc_cfgmgr_val_t){ .type = ISC_CFGMGR_UNDEFINED, .string = NULL };
 	result = isc_cfgmgr_getval("propsubclause", &val);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_int_equal(val.type, ISC_CFGMGR_STRING);
