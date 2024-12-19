@@ -14,6 +14,7 @@ libisc_la_HEADERS =			\
 	include/isc/base32.h		\
 	include/isc/base64.h		\
 	include/isc/buffer.h		\
+	include/isc/cfgmgr.h		\
 	include/isc/commandline.h	\
 	include/isc/condition.h		\
 	include/isc/counter.h		\
@@ -121,6 +122,7 @@ libisc_la_SOURCES =		\
 	backtrace.c		\
 	base32.c		\
 	base64.c		\
+	cfgmgr.c		\
 	commandline.c		\
 	condition.c		\
 	counter.c		\
@@ -213,6 +215,7 @@ libisc_la_CPPFLAGS =		\
 	$(AM_CPPFLAGS)		\
 	$(LIBISC_CFLAGS)	\
 	$(LIBUV_CFLAGS)		\
+	$(LMDB_CFLAGS)		\
 	$(OPENSSL_CFLAGS)	\
 	$(ZLIB_CFLAGS)
 
@@ -222,6 +225,7 @@ libisc_la_LDFLAGS =		\
 
 libisc_la_LIBADD =		\
 	$(LIBUV_LIBS)		\
+	$(LMDB_LIBS)		\
 	$(OPENSSL_LIBS)		\
 	$(ZLIB_LIBS)
 

@@ -20,9 +20,9 @@
 #define UNIT_TESTING
 #include <cmocka.h>
 
-#include <isccfg/cfgmgr.h>
+#include <isc/cfgmgr.h>
 
-#include "../../lib/isccfg/cfgmgr.c"
+#include "../../lib/isc/cfgmgr.c"
 
 #include <tests/isc.h>
 

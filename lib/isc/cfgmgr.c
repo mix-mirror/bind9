@@ -21,8 +21,7 @@
 #include <isc/random.h>
 #include <isc/thread.h>
 #include <isc/util.h>
-
-#include <isccfg/cfgmgr.h>
+#include <isc/cfgmgr.h>
 
 /*
  * See MDB_MAXKEYSIZE documentation, but not accessible as defined in

@@ -16,7 +16,6 @@ LDADD +=			\
 check_PROGRAMS =		\
 	duration_test		\
 	parser_test		\
-	grammar_test		\
-	cfgmgr_test
+	grammar_test
 
 include $(top_srcdir)/Makefile.tests
