@@ -112,6 +112,7 @@ isc_cfgmgr_init(isc_mem_t *mctx, const char *dbpath) {
 	REQUIRE(isc__cfgmgr_mctx == NULL);
 	REQUIRE(isc__cfgmgr_env == NULL);
 	REQUIRE(mctx != NULL);
+	REQUIRE(dbpath != NULL);
 
 	isc_mem_attach(mctx, &isc__cfgmgr_mctx);
 	INSIST(isc__cfgmgr_mctx != NULL);
@@ -124,6 +125,12 @@ isc_cfgmgr_init(isc_mem_t *mctx, const char *dbpath) {
 
 	INSIST(isc__cfgmgr_env != NULL);
 	random = isc_random32();
+
+	/*
+	 * Because LMDB also create a <dbname>-lock file, we also need
+	 * to build it (even if not passed to LMDB itself) so we can
+	 * immediately delete it
+	 */
 	REQUIRE(snprintf(dbname, BUFLEN, "%s-%u", dbpath, random) < BUFLEN);
 	REQUIRE(snprintf(dblockname, BUFLEN, "%s-%u-lock", dbpath, random) <
 		BUFLEN);
@@ -160,14 +167,15 @@ out:
 void
 isc_cfgmgr_deinit(void) {
 	/*
-	 * Well, I'm on the fence about those context checks... It's
-	 * good to have, but because they thread specific, it doesn't
-	 * means there isn't a thread somewhere which haven't released
-	 * its opened clauses and not the one calling cfgmgr_deinit,
-	 * then we'll leak those - even if unlikely as this function
-	 * should be call late in shutdown flow. (That said it's just
-	 * an extra clue, because destroying the context will assert
-	 * anyway, as some memory would not be released yet).
+	 * Well, I'm on the fence about those context checks for the
+	 * deinit function: it's good to have, but because the context
+	 * data is thread specific, it doesn't means there isn't a
+	 * thread somewhere which haven't released its opened clauses
+	 * and not the one calling isc_cfgmgr_deinit, then we'll leak
+	 * those - even if unlikely as this function should be call
+	 * late in shutdown flow. (That said it's just an extra clue,
+	 * because destroying the context will assert anyway, as some
+	 * memory would not be released yet).
 	 */
 	REQUIRE(ISC_LIST_EMPTY(isc__cfgmgr_ctx.openedclauses));
 	REQUIRE(isc__cfgmgr_ctx.prefix == NULL);
@@ -185,12 +193,17 @@ isc_cfgmgr_deinit(void) {
 static void
 isc__cfgmgr_buildkey(const char *name, bool trailingdot) {
 	size_t written;
-	const char *prefix = ISC_LIST_EMPTY(isc__cfgmgr_ctx.openedclauses)
-				     ? ""
-				     : isc__cfgmgr_ctx.prefix;
+	const char *prefix = "";
 	const char *dot = trailingdot ? "." : "";
 
+	REQUIRE(name != NULL);
 	REQUIRE(isc__cfgmgr_ctx.buffer != NULL);
+	REQUIRE(isc__cfgmgr_ctx.prefix != NULL);
+
+	if (ISC_LIST_EMPTY(isc__cfgmgr_ctx.openedclauses) == false) {
+		prefix = isc__cfgmgr_ctx.prefix;
+	}
+
 	written = snprintf(isc__cfgmgr_ctx.buffer, BUFLEN, "%s%s%s", prefix,
 			   name, dot);
 	INSIST(written <= BUFLEN);
@@ -203,9 +216,6 @@ isc__cfgmgr_findclause(const char *name, unsigned long *id) {
 	size_t dotpos = 0;
 
 	REQUIRE(name != NULL);
-	REQUIRE(isc__cfgmgr_ctx.buffer != NULL);
-	REQUIRE(isc__cfgmgr_ctx.txn != NULL);
-	REQUIRE(isc__cfgmgr_ctx.cursor != NULL);
 
 	isc__cfgmgr_buildkey(name, true);
 	dotpos = strlen(isc__cfgmgr_ctx.buffer) - 1;
@@ -293,12 +303,6 @@ isc__cfgmgr_freectx(void) {
 static isc_result_t
 isc__cfgmgr_starttransaction(bool readonly) {
 	MDB_dbi dbi;
-
-	REQUIRE(isc__cfgmgr_env != NULL);
-	REQUIRE(isc__cfgmgr_ctx.prefix == NULL);
-	REQUIRE(isc__cfgmgr_ctx.buffer == NULL);
-	REQUIRE(isc__cfgmgr_ctx.txn == NULL);
-	REQUIRE(isc__cfgmgr_ctx.cursor == NULL);
 
 	if (mdb_txn_begin(isc__cfgmgr_env, NULL, readonly ? MDB_RDONLY : 0,
 			  &isc__cfgmgr_ctx.txn) != 0)
@@ -423,10 +427,8 @@ isc_cfgmgr_open(const char *name) {
 
 static void
 popclause(void) {
-	REQUIRE(isc__cfgmgr_env != NULL);
-	REQUIRE(ISC_LIST_EMPTY(isc__cfgmgr_ctx.openedclauses) == false);
-
 	openedclause_t *clause = ISC_LIST_HEAD(isc__cfgmgr_ctx.openedclauses);
+
 	ISC_LIST_UNLINK(isc__cfgmgr_ctx.openedclauses, clause, link);
 	isc_mem_free(isc__cfgmgr_mctx, clause->name);
 	isc_mem_put(isc__cfgmgr_mctx, clause, sizeof(*clause));
@@ -510,6 +512,10 @@ isc_cfgmgr_newclause(const char *name) {
 	REQUIRE(isc__cfgmgr_env != NULL);
 
 	if (isc__cfgmgr_ctx.txn == NULL || isc__cfgmgr_ctx.cursor == NULL) {
+		REQUIRE(isc__cfgmgr_ctx.prefix == NULL);
+		REQUIRE(isc__cfgmgr_ctx.buffer == NULL);
+		REQUIRE(isc__cfgmgr_ctx.txn == NULL);
+		REQUIRE(isc__cfgmgr_ctx.cursor == NULL);
 		result = isc__cfgmgr_starttransaction(false);
 	}
 

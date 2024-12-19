@@ -22,9 +22,115 @@
 
 #include <isccfg/cfgmgr.h>
 
+#include "../../lib/isccfg/cfgmgr.c"
+
 #include <tests/isc.h>
 
 #define TEST_DBPATH "/tmp/named-cfgmgr-lmdb"
+
+ISC_RUN_TEST_IMPL(isc_cfgmgr_assertions) {
+	isc_cfgmgr_val_t dummyval;
+
+	/*
+	 * Invalid cfgmgr initialization
+	 */
+	expect_assert_failure(isc_cfgmgr_init(NULL, TEST_DBPATH));
+	expect_assert_failure(isc_cfgmgr_init(mctx, NULL));
+	expect_assert_failure(isc_cfgmgr_close());
+	expect_assert_failure(isc_cfgmgr_getval("foo", &dummyval));
+	expect_assert_failure(isc_cfgmgr_getnextlistval(&dummyval));
+	expect_assert_failure(isc_cfgmgr_setval("foo", &dummyval));
+	expect_assert_failure(isc_cfgmgr_setnextlistval("foo", &dummyval));
+	expect_assert_failure(isc_cfgmgr_nextclause());
+	expect_assert_failure(isc_cfgmgr_open("foo"));
+	expect_assert_failure(isc_cfgmgr_openrw("foo"));
+	expect_assert_failure(isc_cfgmgr_newclause("foo"));
+	expect_assert_failure(isc_cfgmgr_delclause());
+	expect_assert_failure(isc_cfgmgr_deinit());
+
+	/*
+	 * operations which must be used under transaction
+	 */
+	(void)isc_cfgmgr_init(mctx, TEST_DBPATH);
+	(void)isc_cfgmgr_newclause("foo");
+	(void)isc_cfgmgr_setval("bar",
+				&(isc_cfgmgr_val_t){ .type = ISC_CFGMGR_NONE });
+	(void)isc_cfgmgr_close();
+	expect_assert_failure(isc_cfgmgr_delclause());
+	expect_assert_failure(isc_cfgmgr_getval("foo", &dummyval));
+	expect_assert_failure(isc_cfgmgr_getnextlistval(&dummyval));
+	expect_assert_failure(isc_cfgmgr_setval("foo", &dummyval));
+	expect_assert_failure(isc_cfgmgr_setnextlistval("foo", &dummyval));
+	expect_assert_failure(isc_cfgmgr_nextclause());
+	isc_cfgmgr_deinit();
+
+	/*
+	 * One close for one open
+	 */
+	(void)isc_cfgmgr_init(mctx, TEST_DBPATH);
+	(void)isc_cfgmgr_newclause("foo");
+	(void)isc_cfgmgr_close();
+	expect_assert_failure(isc_cfgmgr_close());
+	isc_cfgmgr_deinit();
+
+	/*
+	 * nothing is open in case of top-level open failure
+	 */
+	(void)isc_cfgmgr_init(mctx, TEST_DBPATH);
+	(void)isc_cfgmgr_open("foo");
+	expect_assert_failure(isc_cfgmgr_close());
+	(void)isc_cfgmgr_openrw("foo");
+	expect_assert_failure(isc_cfgmgr_close());
+	isc_cfgmgr_deinit();
+
+	/*
+	 * can't write on non-write open clause nor open a subclause as write
+	 */
+	(void)isc_cfgmgr_init(mctx, TEST_DBPATH);
+	(void)isc_cfgmgr_newclause("foo");
+	(void)isc_cfgmgr_setval("bar",
+				&(isc_cfgmgr_val_t){ .type = ISC_CFGMGR_NONE });
+	(void)isc_cfgmgr_newclause("subfoo");
+	(void)isc_cfgmgr_setval("subfoobar",
+				&(isc_cfgmgr_val_t){ .type = ISC_CFGMGR_NONE });
+	(void)isc_cfgmgr_close();
+	(void)isc_cfgmgr_close();
+	(void)isc_cfgmgr_open("foo");
+	expect_assert_failure(isc_cfgmgr_setval(
+		"bar", &(isc_cfgmgr_val_t){ .type = ISC_CFGMGR_NONE }));
+	expect_assert_failure(isc_cfgmgr_setval(
+		"baz", &(isc_cfgmgr_val_t){ .type = ISC_CFGMGR_NONE }));
+	expect_assert_failure(isc_cfgmgr_newclause("gee"));
+	expect_assert_failure(isc_cfgmgr_delclause());
+	expect_assert_failure(isc_cfgmgr_openrw("subfoo"));
+	(void)isc_cfgmgr_close();
+	isc_cfgmgr_deinit();
+
+	/*
+	 * reading values parameters
+	 */
+	(void)isc_cfgmgr_init(mctx, TEST_DBPATH);
+	(void)isc_cfgmgr_newclause("foo");
+	(void)isc_cfgmgr_setval("bar",
+				&(isc_cfgmgr_val_t){ .type = ISC_CFGMGR_NONE });
+	expect_assert_failure(isc_cfgmgr_getval("bar", NULL));
+	(void)isc_cfgmgr_close();
+	isc_cfgmgr_deinit();
+
+	/*
+	 * can't de-init while having opened clause
+	 */
+	(void)isc_cfgmgr_init(mctx, TEST_DBPATH);
+	(void)isc_cfgmgr_newclause("foo");
+	expect_assert_failure(isc_cfgmgr_deinit());
+	(void)isc_cfgmgr_close();
+	(void)isc_cfgmgr_deinit();
+
+	/*
+	 * can't deinit twice
+	 */
+	expect_assert_failure(isc_cfgmgr_deinit());
+}
 
 ISC_RUN_TEST_IMPL(isc_cfgmgr_rw) {
 	isc_result_t result;
@@ -792,7 +898,8 @@ ISC_RUN_TEST_IMPL(isc_cfgmgr_nested_clauses) {
 	result = isc_cfgmgr_close();
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	val = (isc_cfgmgr_val_t){ .type = ISC_CFGMGR_UNDEFINED, .string = NULL };
+	val = (isc_cfgmgr_val_t){ .type = ISC_CFGMGR_UNDEFINED,
+				  .string = NULL };
 	result = isc_cfgmgr_open("foo");
 	assert_int_equal(result, ISC_R_SUCCESS);
 
@@ -813,7 +920,8 @@ ISC_RUN_TEST_IMPL(isc_cfgmgr_nested_clauses) {
 	result = isc_cfgmgr_nextclause();
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	val = (isc_cfgmgr_val_t){ .type = ISC_CFGMGR_UNDEFINED, .string = NULL };
+	val = (isc_cfgmgr_val_t){ .type = ISC_CFGMGR_UNDEFINED,
+				  .string = NULL };
 	result = isc_cfgmgr_getval("propsubclause", &val);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_int_equal(val.type, ISC_CFGMGR_STRING);
@@ -1102,6 +1210,7 @@ ISC_RUN_TEST_IMPL(isc_cfgmgr_threads) {
 }
 
 ISC_TEST_LIST_START
+ISC_TEST_ENTRY(isc_cfgmgr_assertions)
 ISC_TEST_ENTRY(isc_cfgmgr_rw)
 ISC_TEST_ENTRY(isc_cfgmgr_override)
 ISC_TEST_ENTRY(isc_cfgmgr_rw_string)
