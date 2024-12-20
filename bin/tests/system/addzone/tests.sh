@@ -36,8 +36,8 @@ n=$((n + 1))
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
-# When LMDB support is compiled in, this tests that migration from
-# NZF to NZD occurs during named startup
+# This tests that migration from NZF to NZD occurs during named
+# startup
 echo_i "checking previously added zone ($n)"
 ret=0
 $DIG $DIGOPTS @10.53.0.2 a.previous.example a >dig.out.ns2.$n || ret=1
@@ -47,13 +47,11 @@ n=$((n + 1))
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
-if $FEATURETEST --with-lmdb; then
-  echo_i "checking that existing NZF file was renamed after migration ($n)"
-  [ -e ns2/3bf305731dd26307.nzf~ ] || ret=1
-  n=$((n + 1))
-  if [ $ret != 0 ]; then echo_i "failed"; fi
-  status=$((status + ret))
-fi
+echo_i "checking that existing NZF file was renamed after migration ($n)"
+[ -e ns2/3bf305731dd26307.nzf~ ] || ret=1
+n=$((n + 1))
+if [ $ret != 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
 
 echo_i "adding new zone ($n)"
 ret=0
@@ -126,16 +124,6 @@ n=$((n + 1))
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
-if ! $FEATURETEST --with-lmdb; then
-  echo_i "verifying no comments in NZF file ($n)"
-  ret=0
-  hcount=$(grep "^# New zone file for view: _default" ns2/3bf305731dd26307.nzf | wc -l)
-  [ $hcount -eq 0 ] || ret=1
-  n=$((n + 1))
-  if [ $ret != 0 ]; then echo_i "failed"; fi
-  status=$((status + ret))
-fi
-
 echo_i "checking rndc showzone with previously added zone ($n)"
 ret=0
 $RNDCCMD 10.53.0.2 showzone previous.example >rndc.out.ns2.$n
@@ -145,13 +133,11 @@ n=$((n + 1))
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
-if $FEATURETEST --with-lmdb; then
-  echo_i "checking zone is present in NZD ($n)"
-  ret=0
-  $NZD2NZF ns2/_default.nzd | grep previous.example >/dev/null || ret=1
-  if [ $ret != 0 ]; then echo_i "failed"; fi
-  status=$((status + ret))
-fi
+echo_i "checking zone is present in NZD ($n)"
+ret=0
+$NZD2NZF ns2/_default.nzd | grep previous.example >/dev/null || ret=1
+if [ $ret != 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
 
 echo_i "deleting previously added zone ($n)"
 ret=0
@@ -171,22 +157,10 @@ check_nzd2nzf() (
     && ! grep previous.example nzd2nzf.out.$n >/dev/null
 )
 
-if $FEATURETEST --with-lmdb; then
-  echo_i "checking zone was deleted from NZD ($n)"
-  retry_quiet 10 check_nzd2nzf || ret=1
-  if [ $ret != 0 ]; then echo_i "failed"; fi
-  status=$((status + ret))
-fi
-
-if ! $FEATURETEST --with-lmdb; then
-  echo_i "checking NZF file now has comment ($n)"
-  ret=0
-  hcount=$(grep "^# New zone file for view: _default" ns2/3bf305731dd26307.nzf | wc -l)
-  [ $hcount -eq 1 ] || ret=1
-  n=$((n + 1))
-  if [ $ret != 0 ]; then echo_i "failed"; fi
-  status=$((status + ret))
-fi
+echo_i "checking zone was deleted from NZD ($n)"
+retry_quiet 10 check_nzd2nzf || ret=1
+if [ $ret != 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
 
 echo_i "deleting newly added zone added.example ($n)"
 ret=0
@@ -508,24 +482,12 @@ n=$((n + 1))
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
-if ! $FEATURETEST --with-lmdb; then
-  echo_i "checking new NZF file has comment ($n)"
-  ret=0
-  hcount=$(grep "^# New zone file for view: external" ns2/external.nzf | wc -l)
-  [ $hcount -eq 1 ] || ret=1
-  n=$((n + 1))
-  if [ $ret != 0 ]; then echo_i "failed"; fi
-  status=$((status + ret))
-fi
-
-if $FEATURETEST --with-lmdb; then
-  echo_i "verifying added.example in external view created an external.nzd DB ($n)"
-  ret=0
-  [ -e ns2/external.nzd ] || ret=1
-  n=$((n + 1))
-  if [ $ret != 0 ]; then echo_i "failed"; fi
-  status=$((status + ret))
-fi
+echo_i "verifying added.example in external view created an external.nzd DB ($n)"
+ret=0
+[ -e ns2/external.nzd ] || ret=1
+n=$((n + 1))
+if [ $ret != 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
 
 echo_i "checking rndc reload causes named to reload the external view's new zone config ($n)"
 ret=0
@@ -544,11 +506,7 @@ status=$((status + ret))
 
 echo_i "checking rndc showzone with newly added zone ($n)"
 _check_rndc_showzone_newly_added() (
-  if ! $FEATURETEST --with-lmdb; then
-    expected='zone "added.example" in external { type primary; file "added.db"; };'
-  else
-    expected='zone "added.example" { type primary; file "added.db"; };'
-  fi
+  expected='zone "added.example" { type primary; file "added.db"; };'
   $RNDCCMD 10.53.0.2 showzone added.example in external >rndc.out.ns2.$n 2>/dev/null \
     && [ "$(cat rndc.out.ns2.$n)" = "$expected" ]
 )
@@ -651,13 +609,8 @@ n=$((n + 1))
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
-if $FEATURETEST --with-lmdb; then
-  echo_i "checking NZD file was created in new-zones-directory ($n)"
-  expect=ns2/new-zones/directory.nzd
-else
-  echo_i "checking NZF file was created in new-zones-directory ($n)"
-  expect=ns2/new-zones/directory.nzf
-fi
+echo_i "checking NZD file was created in new-zones-directory ($n)"
+expect=ns2/new-zones/directory.nzd
 $RNDCCMD 10.53.0.2 sync 'added.example IN directory' 2>&1 | sed 's/^/I:ns2 /'
 sleep 2
 [ -e "$expect" ] || ret=1
@@ -692,19 +645,6 @@ $RNDCCMD 10.53.0.3 delzone inlinesec.example >/dev/null 2>&1 || ret=1
 n=$((n + 1))
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
-
-if ! $FEATURETEST --with-lmdb; then
-  echo_i "check that addzone is fully reversed on failure (--with-lmdb=no) ($n)"
-  ret=0
-  $RNDCCMD 10.53.0.3 addzone "test1.baz" '{ type primary; file "e.db"; };' >/dev/null 2>&1 || ret=1
-  $RNDCCMD 10.53.0.3 addzone "test2.baz" '{ type primary; file "dne.db"; };' >/dev/null 2>&1 && ret=1
-  $RNDCCMD 10.53.0.3 addzone "test3.baz" '{ type primary; file "e.db"; };' >/dev/null 2>&1 || ret=1
-  $RNDCCMD 10.53.0.3 delzone "test3.baz" >/dev/null 2>&1 || ret=1
-  grep test2.baz ns3/_default.nzf >/dev/null && ret=1
-  n=$((n + 1))
-  if [ $ret != 0 ]; then echo_i "failed"; fi
-  status=$((status + ret))
-fi
 
 _check_version_bind() (
   $DIG $DIGOPTS @10.53.0.3 version.bind txt ch >dig.out.test$n \

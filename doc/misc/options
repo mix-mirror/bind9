@@ -165,7 +165,7 @@ options {
 	lame-ttl <duration>;
 	listen-on [ port <integer> ] [ proxy <string> ] [ tls <string> ] [ http <string> ] { <address_match_element>; ... }; // may occur multiple times
 	listen-on-v6 [ port <integer> ] [ proxy <string> ] [ tls <string> ] [ http <string> ] { <address_match_element>; ... }; // may occur multiple times
-	lmdb-mapsize <sizeval>; // optional (only available if configured)
+	lmdb-mapsize <sizeval>;
 	managed-keys-directory <quoted_string>;
 	masterfile-format ( raw | text );
 	masterfile-style ( full | relative );
@@ -449,7 +449,7 @@ view <string> [ <class> ] {
 	}; // may occur multiple times
 	key-directory <quoted_string>;
 	lame-ttl <duration>;
-	lmdb-mapsize <sizeval>; // optional (only available if configured)
+	lmdb-mapsize <sizeval>;
 	masterfile-format ( raw | text );
 	masterfile-style ( full | relative );
 	match-clients { <address_match_element>; ... };

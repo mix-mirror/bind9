@@ -133,14 +133,13 @@ Currently supported commands are:
    string specified on the command line is the zone configuration text
    that would ordinarily be placed in :iscman:`named.conf`.
 
-   The configuration is saved in a file called ``viewname.nzf`` (or, if
-   :iscman:`named` is compiled with liblmdb, an LMDB database file called
-   ``viewname.nzd``). ``viewname`` is the name of the view, unless the view
-   name contains characters that are incompatible with use as a file
-   name, in which case a cryptographic hash of the view name is used
-   instead. When :iscman:`named` is restarted, the file is loaded into
-   the view configuration so that zones that were added can persist
-   after a restart.
+   The configuration is saved in an LMDB database called
+   ``viewname.nzf``. ``viewname`` is the name of the view, unless the
+   view name contains characters that are incompatible with use as a
+   file name, in which case a cryptographic hash of the view name is
+   used instead. When :iscman:`named` is restarted, the file is loaded
+   into the view configuration so that zones that were added can
+   persist after a restart.
 
    This sample ``addzone`` command adds the zone ``example.com`` to
    the default view:

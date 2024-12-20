@@ -116,11 +116,6 @@ be linked against ``zlib`` (https://zlib.net/). If this is installed in
 a nonstandard location, specify the prefix using
 ``--with-zlib=/prefix``.
 
-To support storing configuration data for runtime-added zones in an LMDB
-database, the server must be linked with ``liblmdb``
-(https://github.com/LMDB/lmdb). If this is installed in a nonstandard
-location, specify the prefix using ``--with-lmdb=/prefix``.
-
 To support MaxMind GeoIP2 location-based ACLs, the server must be linked
 with ``libmaxminddb`` (https://maxmind.github.io/libmaxminddb/). This is
 turned on by default if the library is found; if the library is

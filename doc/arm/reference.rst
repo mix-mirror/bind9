@@ -1364,12 +1364,11 @@ default is used.
    :tags: server
    :short: Sets a maximum size for the memory map of the new-zone database in LMDB database format.
 
-   When :iscman:`named` is built with liblmdb, this option sets a maximum size
-   for the memory map of the new-zone database (NZD) in LMDB database
-   format. This database is used to store configuration information for
-   zones added using :option:`rndc addzone`. Note that this is not the NZD
-   database file size, but the largest size that the database may grow
-   to.
+   This option sets a maximum size for the memory map of the new-zone
+   database (NZD) in LMDB database format. This database is used to
+   store configuration information for zones added using :option:`rndc
+   addzone`. Note that this is not the NZD database file size, but the
+   largest size that the database may grow to.
 
    Because the database file is memory-mapped, its size is limited by
    the address space of the :iscman:`named` process. The default of 32 megabytes
@@ -1998,17 +1997,15 @@ Boolean Options
 
    Newly added zones' configuration parameters are stored so that they
    can persist after the server is restarted. The configuration
-   information is saved in a file called ``viewname.nzf`` (or, if
-   :iscman:`named` is compiled with liblmdb, in an LMDB database file called
-   ``viewname.nzd``). "viewname" is the name of the view, unless the view
-   name contains characters that are incompatible with use as a file
-   name, in which case a cryptographic hash of the view name is used
-   instead.
+   information is saved in an LMDB database file called
+   ``viewname.nzf``. "viewname" is the name of the view, unless the
+   view name contains characters that are incompatible with use as a
+   file name, in which case a cryptographic hash of the view name is
+   used instead.
 
-   Configurations for zones added at runtime are stored either in
-   a new-zone file (NZF) or a new-zone database (NZD), depending on
-   whether :iscman:`named` was linked with liblmdb at compile time. See
-   :ref:`man_rndc` for further details about :option:`rndc addzone`.
+   Configurations for zones added at runtime are stored either in a
+   new-zone database (NZD). See :ref:`man_rndc` for further details
+   about :option:`rndc addzone`.
 
 .. namedconf:statement:: auth-nxdomain
    :tags: query

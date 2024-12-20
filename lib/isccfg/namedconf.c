@@ -2061,11 +2061,7 @@ static cfg_clausedef_t view_clauses[] = {
 	{ "ipv4only-server", &cfg_type_astring, 0 },
 	{ "ixfr-from-differences", &cfg_type_ixfrdifftype, 0 },
 	{ "lame-ttl", &cfg_type_duration, 0 },
-#ifdef HAVE_LMDB
-	{ "lmdb-mapsize", &cfg_type_sizeval, CFG_CLAUSEFLAG_OPTIONAL },
-#else  /* ifdef HAVE_LMDB */
-	{ "lmdb-mapsize", &cfg_type_sizeval, CFG_CLAUSEFLAG_NOTCONFIGURED },
-#endif /* ifdef HAVE_LMDB */
+	{ "lmdb-mapsize", &cfg_type_sizeval, 0 },
 	{ "max-acache-size", NULL, CFG_CLAUSEFLAG_ANCIENT },
 	{ "max-cache-size", &cfg_type_sizeorpercent, 0 },
 	{ "max-cache-ttl", &cfg_type_duration, 0 },

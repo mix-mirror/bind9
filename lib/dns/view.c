@@ -15,11 +15,8 @@
 
 #include <inttypes.h>
 #include <limits.h>
-#include <stdbool.h>
-
-#ifdef HAVE_LMDB
 #include <lmdb.h>
-#endif /* ifdef HAVE_LMDB */
+#include <stdbool.h>
 
 #include <isc/atomic.h>
 #include <isc/dir.h>
@@ -392,7 +389,6 @@ destroy(dns_view_t *view) {
 		isc_mem_free(view->mctx, view->new_zone_dir);
 		view->new_zone_dir = NULL;
 	}
-#ifdef HAVE_LMDB
 	if (view->new_zone_dbenv != NULL) {
 		mdb_env_close((MDB_env *)view->new_zone_dbenv);
 		view->new_zone_dbenv = NULL;
@@ -401,7 +397,6 @@ destroy(dns_view_t *view) {
 		isc_mem_free(view->mctx, view->new_zone_db);
 		view->new_zone_db = NULL;
 	}
-#endif /* HAVE_LMDB */
 	dns_fwdtable_destroy(&view->fwdtable);
 	dns_aclenv_detach(&view->aclenv);
 	if (view->failcache != NULL) {
@@ -1787,14 +1782,8 @@ dns_view_setnewzones(dns_view_t *view, bool allow, void *cfgctx,
 		     void (*cfg_destroy)(void **), uint64_t mapsize) {
 	isc_result_t result = ISC_R_SUCCESS;
 	char buffer[1024];
-#ifdef HAVE_LMDB
 	MDB_env *env = NULL;
 	int status;
-#endif /* ifdef HAVE_LMDB */
-
-#ifndef HAVE_LMDB
-	UNUSED(mapsize);
-#endif /* ifndef HAVE_LMDB */
 
 	REQUIRE(DNS_VIEW_VALID(view));
 	REQUIRE((cfgctx != NULL && cfg_destroy != NULL) || !allow);
@@ -1804,7 +1793,6 @@ dns_view_setnewzones(dns_view_t *view, bool allow, void *cfgctx,
 		view->new_zone_file = NULL;
 	}
 
-#ifdef HAVE_LMDB
 	if (view->new_zone_dbenv != NULL) {
 		mdb_env_close((MDB_env *)view->new_zone_dbenv);
 		view->new_zone_dbenv = NULL;
@@ -1814,7 +1802,6 @@ dns_view_setnewzones(dns_view_t *view, bool allow, void *cfgctx,
 		isc_mem_free(view->mctx, view->new_zone_db);
 		view->new_zone_db = NULL;
 	}
-#endif /* HAVE_LMDB */
 
 	if (view->new_zone_config != NULL) {
 		view->cfg_destroy(&view->new_zone_config);
@@ -1830,7 +1817,6 @@ dns_view_setnewzones(dns_view_t *view, bool allow, void *cfgctx,
 
 	view->new_zone_file = isc_mem_strdup(view->mctx, buffer);
 
-#ifdef HAVE_LMDB
 	CHECK(nz_legacy(view->new_zone_dir, view->name, "nzd", buffer,
 			sizeof(buffer)));
 
@@ -1866,7 +1852,6 @@ dns_view_setnewzones(dns_view_t *view, bool allow, void *cfgctx,
 
 	view->new_zone_dbenv = env;
 	env = NULL;
-#endif /* HAVE_LMDB */
 
 	view->new_zone_config = cfgctx;
 	view->cfg_destroy = cfg_destroy;
@@ -1878,7 +1863,6 @@ cleanup:
 			view->new_zone_file = NULL;
 		}
 
-#ifdef HAVE_LMDB
 		if (view->new_zone_db != NULL) {
 			isc_mem_free(view->mctx, view->new_zone_db);
 			view->new_zone_db = NULL;
@@ -1886,7 +1870,7 @@ cleanup:
 		if (env != NULL) {
 			mdb_env_close(env);
 		}
-#endif /* HAVE_LMDB */
+
 		view->new_zone_config = NULL;
 		view->cfg_destroy = NULL;
 	}

@@ -100,6 +100,7 @@ man_MANS =				\
 	named-checkzone.1		\
 	named-compilezone.1		\
 	named-journalprint.1		\
+	named-nzd2nzf.1			\
 	named.8				\
 	nsec3hash.1			\
 	rndc-confgen.8			\
@@ -110,11 +111,6 @@ if HAVE_DNSTAP
 man_MANS +=				\
 	dnstap-read.1
 endif HAVE_DNSTAP
-
-if HAVE_LMDB
-man_MANS +=				\
-	named-nzd2nzf.1
-endif HAVE_LMDB
 
 MANPAGES_IN =				\
 	$(man_MANS:=in)			\

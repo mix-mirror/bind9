@@ -2,18 +2,21 @@ include $(top_srcdir)/Makefile.top
 
 AM_CPPFLAGS +=			\
 	$(LIBISC_CFLAGS)	\
-	$(LIBDNS_CFLAGS)
+	$(LIBDNS_CFLAGS)	\
+	$(LMDB_CFLAGS)
 
 LDADD +=			\
 	$(LIBDNS_LIBS)		\
-	$(LIBISC_LIBS)
+	$(LIBISC_LIBS)		\
+	$(LMDB_LIBS)
 
 bin_PROGRAMS =			\
 	arpaname		\
 	mdig			\
 	named-journalprint	\
 	named-rrchecker		\
-	nsec3hash
+	nsec3hash		\
+	named-nzd2nzf
 
 arpaname_LDADD =		\
 	$(LIBISC_LIBS)
@@ -31,18 +34,4 @@ dnstap_read_LDADD =		\
 	$(LIBDNS_LIBS)		\
 	$(LIBISC_LIBS)		\
 	$(DNSTAP_LIBS)
-endif
-
-if HAVE_LMDB
-bin_PROGRAMS +=			\
-	named-nzd2nzf
-
-named_nzd2nzf_CPPFLAGS =		\
-	$(AM_CPPFLAGS)		\
-	$(LMDB_CFLAGS)
-
-named_nzd2nzf_LDADD =		\
-	$(LIBISC_LIBS)		\
-	$(LMDB_LIBS)
-
 endif

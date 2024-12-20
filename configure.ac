@@ -756,43 +756,13 @@ AC_SUBST([KRB5_CFLAGS])
 AC_SUBST([KRB5_LIBS])
 
 #
-# was --with-lmdb specified?
+# LMDB is mandatory
 #
+PKG_CHECK_MODULES([LMDB], [lmdb])
+AX_SAVE_FLAGS([lmdb])
 
-# [pairwise: --with-lmdb=auto, --with-lmdb=yes, --without-lmdb]
-AC_ARG_WITH([lmdb],
-	    [AS_HELP_STRING([--with-lmdb=@<:@PATH@:>@],
-			    [use LMDB library @<:@default=auto@:>@, optionally specify the prefix for lmdb library])],
-	    [:],
-	    [with_lmdb="auto"])
-
-ac_lib_lmdb_found=no
-AS_CASE([$with_lmdb],
-	[no],[],
-	[auto|yes], [PKG_CHECK_MODULES([LMDB], [lmdb],
-				       [ac_lib_lmdb_found=yes],
-				       [for ac_lib_lmdb_path in /usr /usr/local /opt /opt/local; do
-						AX_LIB_LMDB([$ac_lib_lmdb_path],
-							    [ac_lib_lmdb_found=yes
-							     break])
-					done
-				       ])],
-	[AX_LIB_LMDB([$with_lmdb],[ac_lib_lmdb_found=yes])])
-
-# don't fail when in automatic mode
-AS_IF([test "$with_lmdb" = "auto" && test "$ac_lib_lmdb_found" = "no"],
-      [with_lmdb=no])
-
-# hard fail when LMDB requested, but not found
-AS_IF([test "$with_lmdb" != "no" && test "$ac_lib_lmdb_found" != "yes"],
-      [AC_MSG_ERROR([LMDB requested, but not found])])
-
-AS_IF([test "$ac_lib_lmdb_found" = "yes"],
-      [AC_DEFINE([HAVE_LMDB], [1], [Use lmdb library])])
-
-AC_SUBST([LMDB_CFLAGS])
-AC_SUBST([LMDB_LIBS])
-AM_CONDITIONAL([HAVE_LMDB], [test -n "$LMDB_LIBS"])
+CFLAGS="$CFLAGS $LMDB_CFLAGS"
+LIBS="$LIBS $LMDB_LIBS"
 
 #
 # was --with-libxml2 specified?
@@ -1519,7 +1489,7 @@ report() {
 	test -z "$LIBXML2_LIBS" || echo "    XML statistics (--with-libxml2)"
 	test -z "$JSON_C_LIBS" || echo "    JSON statistics (--with-json-c): $JSON_C_CFLAGS $JSON_C_LIBS"
 	test -z "$ZLIB_LIBS" || echo "    HTTP zlib compression (--with-zlib)"
-	test -z "$LMDB_LIBS" || echo "    LMDB database to store configuration for 'addzone' zones (--with-lmdb)"
+	test -z "$LMDB_LIBS" || echo "    LMDB database"
 	test -z "$LIBIDN2_LIBS" || echo "    IDN support (--with-libidn2)"
     fi
 
@@ -1581,7 +1551,7 @@ report() {
     test -z "$LIBXML2_LIBS" && echo "    XML statistics (--with-libxml2)"
     test -z "$JSON_C_LIBS" && echo "    JSON statistics (--with-json-c)"
     test -z "$ZLIB_LIBS" && echo "    HTTP zlib compression (--with-zlib)"
-    test -z "$LMDB_LIBS" && echo "    LMDB database to store configuration for 'addzone' zones (--with-lmdb)"
+    test -z "$LMDB_LIBS" && echo "    LMDB database"
     test -z "$LIBIDN2_LIBS" && echo "    IDN support (--with-libidn2)"
 
     echo "-------------------------------------------------------------------------------"

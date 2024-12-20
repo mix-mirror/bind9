@@ -267,6 +267,7 @@ libdns_la_CPPFLAGS =		\
 	$(LIBISC_CFLAGS)	\
 	$(LIBURCU_CFLAGS)	\
 	$(LIBUV_CFLAGS)		\
+	$(LMDB_CFLAGS)		\
 	$(OPENSSL_CFLAGS)
 
 libdns_la_LDFLAGS =		\
@@ -277,6 +278,7 @@ libdns_la_LIBADD =		\
 	$(LIBISC_LIBS)		\
 	$(LIBURCU_LIBS)		\
 	$(LIBUV_LIBS)		\
+	$(LMDB_LIBS)		\
 	$(OPENSSL_LIBS)
 
 if HAVE_JSON_C
@@ -324,11 +326,6 @@ dnstap.pb-c.h dnstap.pb-c.c: dnstap.proto
 
 libdns_la_CPPFLAGS += $(DNSTAP_CFLAGS)
 libdns_la_LIBADD += $(DNSTAP_LIBS)
-endif
-
-if HAVE_LMDB
-libdns_la_CPPFLAGS += $(LMDB_CFLAGS)
-libdns_la_LIBADD += $(LMDB_LIBS)
 endif
 
 if !HAVE_SYSTEMTAP

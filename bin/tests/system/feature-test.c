@@ -54,7 +54,6 @@ usage(void) {
 	fprintf(stderr, "\t--tsan\n");
 	fprintf(stderr, "\t--with-dlz-filesystem\n");
 	fprintf(stderr, "\t--with-libidn2\n");
-	fprintf(stderr, "\t--with-lmdb\n");
 	fprintf(stderr, "\t--with-libnghttp2\n");
 	fprintf(stderr, "\t--with-zlib\n");
 }
@@ -236,14 +235,6 @@ main(int argc, char **argv) {
 #else  /* ifdef HAVE_LIBIDN2 */
 		return 1;
 #endif /* ifdef HAVE_LIBIDN2 */
-	}
-
-	if (strcmp(argv[1], "--with-lmdb") == 0) {
-#ifdef HAVE_LMDB
-		return 0;
-#else  /* ifdef HAVE_LMDB */
-		return 1;
-#endif /* ifdef HAVE_LMDB */
 	}
 
 	if (strcmp(argv[1], "--with-libnghttp2") == 0) {

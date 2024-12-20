@@ -246,7 +246,6 @@ struct dns_view {
 #define DNS_VIEWATTR_ADBSHUTDOWN 0x02
 #define DNS_VIEWATTR_REQSHUTDOWN 0x04
 
-#ifdef HAVE_LMDB
 #define DNS_LMDB_COMMON_FLAGS (MDB_CREATE | MDB_NOSUBDIR | MDB_NOLOCK)
 #ifndef __OpenBSD__
 #define DNS_LMDB_FLAGS (DNS_LMDB_COMMON_FLAGS)
@@ -257,7 +256,6 @@ struct dns_view {
  */
 #define DNS_LMDB_FLAGS (DNS_LMDB_COMMON_FLAGS | MDB_WRITEMAP)
 #endif /* __OpenBSD__ */
-#endif /* HAVE_LMDB */
 
 isc_result_t
 dns_view_create(isc_mem_t *mctx, isc_loopmgr_t *loopmgr,
