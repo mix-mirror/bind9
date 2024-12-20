@@ -378,6 +378,7 @@ isc__cfgmgr_opentoplevel(const char *name, bool readonly) {
 
 cleanup:
 	if (isc__cfgmgr_ctx.txn) {
+		mdb_cursor_close(isc__cfgmgr_ctx.cursor);
 		mdb_txn_abort(isc__cfgmgr_ctx.txn);
 		isc__cfgmgr_freectx();
 	}
