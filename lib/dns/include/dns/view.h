@@ -246,17 +246,6 @@ struct dns_view {
 #define DNS_VIEWATTR_ADBSHUTDOWN 0x02
 #define DNS_VIEWATTR_REQSHUTDOWN 0x04
 
-#define DNS_LMDB_COMMON_FLAGS (MDB_CREATE | MDB_NOSUBDIR | MDB_NOLOCK)
-#ifndef __OpenBSD__
-#define DNS_LMDB_FLAGS (DNS_LMDB_COMMON_FLAGS)
-#else /* __OpenBSD__ */
-/*
- * OpenBSD does not have a unified buffer cache, which requires both reads and
- * writes to be performed using mmap().
- */
-#define DNS_LMDB_FLAGS (DNS_LMDB_COMMON_FLAGS | MDB_WRITEMAP)
-#endif /* __OpenBSD__ */
-
 isc_result_t
 dns_view_create(isc_mem_t *mctx, isc_loopmgr_t *loopmgr,
 		dns_dispatchmgr_t *dispmgr, dns_rdataclass_t rdclass,

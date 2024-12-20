@@ -11,17 +11,17 @@
  * information regarding copyright ownership.
  */
 
-#include <lmdb.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <isc/cfgmgr.h>
 #include <isc/list.h>
+#include <isc/lmdb.h>
 #include <isc/mem.h>
 #include <isc/random.h>
 #include <isc/thread.h>
 #include <isc/util.h>
-#include <isc/cfgmgr.h>
 
 /*
  * See MDB_MAXKEYSIZE documentation, but not accessible as defined in

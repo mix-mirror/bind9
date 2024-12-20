@@ -11,9 +11,10 @@
  * information regarding copyright ownership.
  */
 
-#include <lmdb.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+#include <isc/lmdb.h>
 
 #include <dns/view.h>
 

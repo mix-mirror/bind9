@@ -45,6 +45,7 @@
 #include <isc/httpd.h>
 #include <isc/job.h>
 #include <isc/lex.h>
+#include <isc/lmdb.h>
 #include <isc/loop.h>
 #include <isc/meminfo.h>
 #include <isc/netmgr.h>
@@ -139,8 +140,6 @@
 
 #include <named/smf_globals.h>
 #endif /* ifdef HAVE_LIBSCF */
-
-#include <lmdb.h>
 
 #ifndef SIZE_MAX
 #define SIZE_MAX ((size_t)-1)

@@ -44,6 +44,7 @@ libisc_la_HEADERS =			\
 	include/isc/job.h		\
 	include/isc/lex.h		\
 	include/isc/list.h		\
+	include/isc/lmdb.h		\
 	include/isc/log.h		\
 	include/isc/loop.h		\
 	include/isc/magic.h		\

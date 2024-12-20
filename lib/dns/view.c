@@ -15,7 +15,6 @@
 
 #include <inttypes.h>
 #include <limits.h>
-#include <lmdb.h>
 #include <stdbool.h>
 
 #include <isc/atomic.h>
@@ -23,6 +22,7 @@
 #include <isc/file.h>
 #include <isc/hash.h>
 #include <isc/lex.h>
+#include <isc/lmdb.h>
 #include <isc/md.h>
 #include <isc/result.h>
 #include <isc/stats.h>
