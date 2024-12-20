@@ -33,7 +33,7 @@
 typedef struct openedclause openedclause_t;
 struct openedclause {
 	char *name;
-	unsigned long id;
+	uint32_t id;
 	ISC_LINK(openedclause_t) link;
 };
 typedef ISC_LIST(openedclause_t) openedclauses_t;
@@ -59,7 +59,7 @@ static thread_local context_t isc__cfgmgr_ctx =
 
 static unsigned long
 isc__cfgmgr_parseid(const char *dbkey) {
-	unsigned long id = 0;
+	uint32_t id = 0;
 	size_t idstarts;
 	size_t idends;
 	size_t keylen;
@@ -130,9 +130,10 @@ isc_cfgmgr_init(isc_mem_t *mctx, const char *dbpath) {
 	 * to build it (even if not passed to LMDB itself) so we can
 	 * immediately delete it
 	 */
-	REQUIRE(snprintf(dbname, BUFLEN, "%s-%u", dbpath, random) < BUFLEN);
-	REQUIRE(snprintf(dblockname, BUFLEN, "%s-%u-lock", dbpath, random) <
+	REQUIRE(snprintf(dbname, BUFLEN, "%s-%" PRIu32, dbpath, random) <
 		BUFLEN);
+	REQUIRE(snprintf(dblockname, BUFLEN, "%s-%" PRIu32 "-lock", dbpath,
+			 random) < BUFLEN);
 
 	/*
 	 * Using MDB_NOSYNC as it avoids force disk flush after a
@@ -267,8 +268,8 @@ isc__cfgmgr_updateprefix(void) {
 	     clause != NULL; clause = ISC_LIST_PREV(clause, link))
 	{
 		written += snprintf(isc__cfgmgr_ctx.prefix + written,
-				    BUFLEN - written, "%s.%zu.", clause->name,
-				    clause->id);
+				    BUFLEN - written, "%s.%" PRIu32 ".",
+				    clause->name, clause->id);
 		INSIST(written <= BUFLEN);
 	}
 }
@@ -535,7 +536,7 @@ isc_result_t
 isc_cfgmgr_nextclause(void) {
 	isc_result_t result = ISC_R_SUCCESS;
 	MDB_val dbkey;
-	unsigned long id;
+	uint32_t id;
 	size_t idstarts = 0;
 	size_t written = 0;
 
@@ -567,8 +568,8 @@ isc_cfgmgr_nextclause(void) {
 			idstarts = written + strlen(clause->name) + 1;
 		}
 		written += snprintf(isc__cfgmgr_ctx.buffer + written,
-				    BUFLEN - written, "%s.%zu.", clause->name,
-				    last ? id : clause->id);
+				    BUFLEN - written, "%s.%" PRIu32 ".",
+				    clause->name, last ? id : clause->id);
 		INSIST(written <= BUFLEN);
 	}
 	INSIST(idstarts > 0);
