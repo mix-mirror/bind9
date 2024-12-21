@@ -21,7 +21,7 @@ copy_setports ns2/named.conf.in ns2/named.conf
   cd ns2
   $SHELL setup.sh
 )
-copy_setports ns3/named.conf.in ns3/named.conf
+copy_setports ns3/named1.conf.in ns3/named.conf
 (
   cd ns3
   $SHELL setup.sh
