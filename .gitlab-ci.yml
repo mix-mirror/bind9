@@ -40,7 +40,6 @@ variables:
   WITH_READLINE_READLINE: "-Dline-flavor=readline"
 
   STRESS_CONFIGURE_FLAGS: "-Doptimization=g -Dcmocka=disabled"
-  STRESS_CONFIGURE_FLAGS_FREEBSD: "${STRESS_CONFIGURE_FLAGS} --native-file ci/freebsd.ini"
 
   INSTALL_PATH: "${CI_PROJECT_DIR}/.local"
 
@@ -1688,7 +1687,7 @@ stress:short:authoritative:freebsd13:amd64:
   variables:
     CC: clang
     CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "${STRESS_CONFIGURE_FLAGS_FREEBSD}"
+    EXTRA_CONFIGURE: "${STRESS_CONFIGURE_FLAGS}"
     FLAME: /usr/local/bin/flame
     MODE: authoritative
     RATE: 10000
@@ -1700,7 +1699,7 @@ stress:short:recursive:freebsd13:amd64:
   variables:
     CC: clang
     CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "${STRESS_CONFIGURE_FLAGS_FREEBSD}"
+    EXTRA_CONFIGURE: "${STRESS_CONFIGURE_FLAGS}"
     FLAME: /usr/local/bin/flame
     MODE: recursive
     RATE: 10000
@@ -1712,7 +1711,7 @@ stress:short:rpz:freebsd13:amd64:
   variables:
     CC: clang
     CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "${STRESS_CONFIGURE_FLAGS_FREEBSD}"
+    EXTRA_CONFIGURE: "${STRESS_CONFIGURE_FLAGS}"
     FLAME: /usr/local/bin/flame
     MODE: rpz
     RATE: 1500
@@ -1820,7 +1819,7 @@ stress:authoritative:freebsd13:amd64:
   variables:
     CC: clang
     CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "${STRESS_CONFIGURE_FLAGS_FREEBSD}"
+    EXTRA_CONFIGURE: "${STRESS_CONFIGURE_FLAGS}"
     FLAME: /usr/local/bin/flame
     MODE: authoritative
     RATE: 10000
@@ -1835,7 +1834,7 @@ stress:recursive:freebsd13:amd64:
   variables:
     CC: clang
     CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "${STRESS_CONFIGURE_FLAGS_FREEBSD}"
+    EXTRA_CONFIGURE: "${STRESS_CONFIGURE_FLAGS}"
     FLAME: /usr/local/bin/flame
     MODE: recursive
     RATE: 10000
@@ -1850,7 +1849,7 @@ stress:rpz:freebsd13:amd64:
   variables:
     CC: clang
     CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "${STRESS_CONFIGURE_FLAGS_FREEBSD}"
+    EXTRA_CONFIGURE: "${STRESS_CONFIGURE_FLAGS}"
     FLAME: /usr/local/bin/flame
     MODE: rpz
     RATE: 1500
