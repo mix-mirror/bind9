@@ -40,6 +40,7 @@ variables:
   WITH_READLINE_READLINE: "-Dline-flavor=readline"
 
   STRESS_CONFIGURE_FLAGS: "-Doptimization=g -Dcmocka=disabled"
+  STRESS_CONFIGURE_FLAGS_FREEBSD: "${STRESS_CONFIGURE_FLAGS} --native-file ci/freebsd.ini"
 
   INSTALL_PATH: "${CI_PROJECT_DIR}/.local"
 
@@ -1681,41 +1682,41 @@ stress:short:rpz:fedora:41:arm64:
     RATE: 1500
     RUN_TIME: 15
 
-# stress:short:authoritative:freebsd13:amd64:
-#   <<: *freebsd_stress_amd64
-#   <<: *stress_test_short_job
-#   variables:
-#     CC: clang
-#     CFLAGS: "${CFLAGS_COMMON}"
-#     EXTRA_CONFIGURE: -Doptimization=g
-#     FLAME: /usr/local/bin/flame
-#     MODE: authoritative
-#     RATE: 10000
-#     RUN_TIME: 15
+stress:short:authoritative:freebsd13:amd64:
+  <<: *freebsd_stress_amd64
+  <<: *stress_test_short_job
+  variables:
+    CC: clang
+    CFLAGS: "${CFLAGS_COMMON}"
+    EXTRA_CONFIGURE: "${STRESS_CONFIGURE_FLAGS_FREEBSD}"
+    FLAME: /usr/local/bin/flame
+    MODE: authoritative
+    RATE: 10000
+    RUN_TIME: 15
 
-# stress:short:recursive:freebsd13:amd64:
-#   <<: *freebsd_stress_amd64
-#   <<: *stress_test_short_job
-#   variables:
-#     CC: clang
-#     CFLAGS: "${CFLAGS_COMMON}"
-#     EXTRA_CONFIGURE: -Doptimization=g
-#     FLAME: /usr/local/bin/flame
-#     MODE: recursive
-#     RATE: 10000
-#     RUN_TIME: 15
+stress:short:recursive:freebsd13:amd64:
+  <<: *freebsd_stress_amd64
+  <<: *stress_test_short_job
+  variables:
+    CC: clang
+    CFLAGS: "${CFLAGS_COMMON}"
+    EXTRA_CONFIGURE: "${STRESS_CONFIGURE_FLAGS_FREEBSD}"
+    FLAME: /usr/local/bin/flame
+    MODE: recursive
+    RATE: 10000
+    RUN_TIME: 15
 
-# stress:short:rpz:freebsd13:amd64:
-#   <<: *freebsd_stress_amd64
-#   <<: *stress_test_short_job
-#   variables:
-#     CC: clang
-#     CFLAGS: "${CFLAGS_COMMON}"
-#     EXTRA_CONFIGURE: -Doptimization=g
-#     FLAME: /usr/local/bin/flame
-#     MODE: rpz
-#     RATE: 1500
-#     RUN_TIME: 15
+stress:short:rpz:freebsd13:amd64:
+  <<: *freebsd_stress_amd64
+  <<: *stress_test_short_job
+  variables:
+    CC: clang
+    CFLAGS: "${CFLAGS_COMMON}"
+    EXTRA_CONFIGURE: "${STRESS_CONFIGURE_FLAGS_FREEBSD}"
+    FLAME: /usr/local/bin/flame
+    MODE: rpz
+    RATE: 1500
+    RUN_TIME: 15
 
 stress:authoritative:fedora:41:amd64:
   <<: *fedora_41_amd64_image
@@ -1813,50 +1814,50 @@ stress:rpz:fedora:41:arm64:
     variables:
       - $CI_COMMIT_TAG || ($BIND_STRESS_TEST_OS =~ /linux/i && $BIND_STRESS_TEST_MODE =~ /rpz/i && $BIND_STRESS_TEST_ARCH =~ /arm64/i)
 
-# stress:authoritative:freebsd13:amd64:
-#   <<: *freebsd_stress_amd64
-#   <<: *stress_test_long_job
-#   variables:
-#     CC: clang
-#     CFLAGS: "${CFLAGS_COMMON}"
-#     EXTRA_CONFIGURE: -Doptimization=g
-#     FLAME: /usr/local/bin/flame
-#     MODE: authoritative
-#     RATE: 10000
-#     RUN_TIME: 60
-#   only:
-#     variables:
-#       - $CI_COMMIT_TAG || ($BIND_STRESS_TEST_OS =~ /freebsd/i && $BIND_STRESS_TEST_MODE =~ /authoritative/i && $BIND_STRESS_TEST_ARCH =~ /amd64/i)
+stress:authoritative:freebsd13:amd64:
+  <<: *freebsd_stress_amd64
+  <<: *stress_test_long_job
+  variables:
+    CC: clang
+    CFLAGS: "${CFLAGS_COMMON}"
+    EXTRA_CONFIGURE: "${STRESS_CONFIGURE_FLAGS_FREEBSD}"
+    FLAME: /usr/local/bin/flame
+    MODE: authoritative
+    RATE: 10000
+    RUN_TIME: 60
+  only:
+    variables:
+      - $CI_COMMIT_TAG || ($BIND_STRESS_TEST_OS =~ /freebsd/i && $BIND_STRESS_TEST_MODE =~ /authoritative/i && $BIND_STRESS_TEST_ARCH =~ /amd64/i)
 
-# stress:recursive:freebsd13:amd64:
-#   <<: *freebsd_stress_amd64
-#   <<: *stress_test_long_job
-#   variables:
-#     CC: clang
-#     CFLAGS: "${CFLAGS_COMMON}"
-#     EXTRA_CONFIGURE: -Doptimization=g
-#     FLAME: /usr/local/bin/flame
-#     MODE: recursive
-#     RATE: 10000
-#     RUN_TIME: 60
-#   only:
-#     variables:
-#       - $CI_COMMIT_TAG || ($BIND_STRESS_TEST_OS =~ /freebsd/i && $BIND_STRESS_TEST_MODE =~ /recursive/i && $BIND_STRESS_TEST_ARCH =~ /amd64/i)
+stress:recursive:freebsd13:amd64:
+  <<: *freebsd_stress_amd64
+  <<: *stress_test_long_job
+  variables:
+    CC: clang
+    CFLAGS: "${CFLAGS_COMMON}"
+    EXTRA_CONFIGURE: "${STRESS_CONFIGURE_FLAGS_FREEBSD}"
+    FLAME: /usr/local/bin/flame
+    MODE: recursive
+    RATE: 10000
+    RUN_TIME: 60
+  only:
+    variables:
+      - $CI_COMMIT_TAG || ($BIND_STRESS_TEST_OS =~ /freebsd/i && $BIND_STRESS_TEST_MODE =~ /recursive/i && $BIND_STRESS_TEST_ARCH =~ /amd64/i)
 
-# stress:rpz:freebsd13:amd64:
-#   <<: *freebsd_stress_amd64
-#   <<: *stress_test_long_job
-#   variables:
-#     CC: clang
-#     CFLAGS: "${CFLAGS_COMMON}"
-#     EXTRA_CONFIGURE: -Doptimization=g
-#     FLAME: /usr/local/bin/flame
-#     MODE: rpz
-#     RATE: 1500
-#     RUN_TIME: 60
-#   only:
-#     variables:
-#       - $CI_COMMIT_TAG || ($BIND_STRESS_TEST_OS =~ /freebsd/i && $BIND_STRESS_TEST_MODE =~ /rpz/i && $BIND_STRESS_TEST_ARCH =~ /amd64/i)
+stress:rpz:freebsd13:amd64:
+  <<: *freebsd_stress_amd64
+  <<: *stress_test_long_job
+  variables:
+    CC: clang
+    CFLAGS: "${CFLAGS_COMMON}"
+    EXTRA_CONFIGURE: "${STRESS_CONFIGURE_FLAGS_FREEBSD}"
+    FLAME: /usr/local/bin/flame
+    MODE: rpz
+    RATE: 1500
+    RUN_TIME: 60
+  only:
+    variables:
+      - $CI_COMMIT_TAG || ($BIND_STRESS_TEST_OS =~ /freebsd/i && $BIND_STRESS_TEST_MODE =~ /rpz/i && $BIND_STRESS_TEST_ARCH =~ /amd64/i)
 
 # Simple reproductibilty test, needs an image with meson >=1.6.0
 reproducible-build:
