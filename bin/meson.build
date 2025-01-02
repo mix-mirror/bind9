@@ -21,6 +21,6 @@ subdir('rndc')
 subdir('tools')
 
 # System tests
-if pytest.found()
+if developer_mode
     subdir('tests')
 endif

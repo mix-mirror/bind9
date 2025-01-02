@@ -1639,7 +1639,7 @@ foreach name, sources : system_test_binaries
     executable(
         name,
         sources,
-        build_by_default: pytest.found(),
+        build_by_default: developer_mode,
         export_dynamic: true,
         install: false,
         dependencies: [
@@ -1655,7 +1655,7 @@ foreach name, sources : system_test_libraries
     shared_library(
         name,
         sources,
-        build_by_default: pytest.found(),
+        build_by_default: developer_mode,
         install: false,
         name_prefix: 'testlib-',
         dependencies: [
