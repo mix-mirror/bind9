@@ -19,10 +19,6 @@ configure_file(
 
 subdir('isctest' / 'vars' / '.build_vars')
 
-if not developer_mode
-    subdir_done()
-endif
-
 system_test_binaries += {
     # 'bigkey': files('rsabigexponent' / 'bigkey.c'),
     'feature-test': files('feature-test.c'),
