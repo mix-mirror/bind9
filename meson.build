@@ -41,6 +41,7 @@ endif
 ### Build Options
 developer_mode = get_option('developer').enabled()
 
+c_std = get_option('c_std')
 sanitizer = get_option('b_sanitize')
 
 trace_logging = get_option('trace-logging')
@@ -118,58 +119,6 @@ if git.found() and fs.is_dir('.git')
     meson.add_dist_script('util' / 'meson-dist-package.sh', 'source-id', src_id)
 elif fs.is_file('.source-id')
     src_id = fs.read('.source-id', encoding: 'utf-8').strip()
-endif
-
-### Configuration
-config = configuration_data()
-
-config.set_quoted('PACKAGE_NAME', 'BIND')
-config.set_quoted('PACKAGE_DESCRIPTION', 'Development Release')
-config.set_quoted('PACKAGE_VERSION', meson.project_version())
-config.set_quoted('PACKAGE_STRING', 'BIND ' + meson.project_version())
-config.set_quoted('PACKAGE_BUILDER', 'meson')
-config.set_quoted('PACKAGE_SRCID', src_id)
-config.set_quoted('PACKAGE_CONFIGARGS', 'unprobed')
-
-if get_option('auto-validation').allowed()
-    config.set_quoted('VALIDATION_DEFAULT', 'yes')
-else
-    config.set_quoted('VALIDATION_DEFAULT', 'no')
-endif
-
-config.set_quoted('SESSION_KEYFILE', localstatedir / 'run' / 'named' / 'session.key')
-
-config.set_quoted('RNDC_CONFFILE', sysconfdir / 'rndc_srconf')
-config.set_quoted('RNDC_KEYFILE', sysconfdir / 'rndc.key')
-
-config.set_quoted('NAMED_PLUGINDIR', datadir / 'bind')
-config.set_quoted('NAMED_LOCALSTATEDIR', localstatedir)
-config.set_quoted('NAMED_SYSCONFDIR', sysconfdir)
-config.set_quoted('NAMED_CONFFILE', sysconfdir / 'named_srconf')
-
-config.set_quoted('CACHEDB_DEFAULT', get_option('cachedb'))
-config.set_quoted('ZONEDB_DEFAULT', get_option('zonedb'))
-
-sys_defines = [
-    '-D_BSD_SOURCE',
-    '-D_DARWIN_C_SOURCE',
-    '-D_DEFAULT_SOURCE',
-    '-D_FILE_OFFSET_BITS=64',
-    '-D_GNU_SOURCE',
-    '-D_LARGE_FILES',
-    '-D_TIME_BITS=64',
-    '-D__APPLE_USE_RFC_3542=1',
-]
-
-add_project_arguments(sys_defines, language: 'c')
-
-if developer_mode
-    config.set('ISC_MEM_DEFAULTFILL', 1)
-    config.set('ISC_MEM_TRACKLINES', 1)
-    config.set('ISC_LIST_CHECKINIT', 1)
-    config.set('ISC_STATS_CHECKUNDERFLOW', 1)
-    config.set('DNS_RBTDB_STRONG_RWLOCK_CHECK', 1)
-    config.set('ISC_MUTEX_ERROR_CHECK', 1)
 endif
 
 ### Compiler
@@ -260,6 +209,64 @@ if host_machine.system() == 'darwin'
         ),
         language: 'c',
     )
+endif
+
+sys_defines = [
+    '-D_BSD_SOURCE',
+    '-D_DARWIN_C_SOURCE',
+    '-D_DEFAULT_SOURCE',
+    '-D_FILE_OFFSET_BITS=64',
+    '-D_GNU_SOURCE',
+    '-D_LARGE_FILES',
+    '-D_TIME_BITS=64',
+    '-D__APPLE_USE_RFC_3542=1',
+]
+
+add_project_arguments(sys_defines, language: 'c')
+
+### Configuration
+config = configuration_data()
+
+config.set_quoted('PACKAGE_NAME', 'BIND')
+config.set_quoted('PACKAGE_DESCRIPTION', 'Development Release')
+config.set_quoted('PACKAGE_VERSION', meson.project_version())
+config.set_quoted('PACKAGE_STRING', 'BIND ' + meson.project_version())
+config.set_quoted('PACKAGE_BUILDER', 'meson')
+config.set_quoted('PACKAGE_SRCID', src_id)
+config.set_quoted('PACKAGE_CONFIGARGS', 'unprobed')
+
+if get_option('auto-validation').allowed()
+    config.set_quoted('VALIDATION_DEFAULT', 'yes')
+else
+    config.set_quoted('VALIDATION_DEFAULT', 'no')
+endif
+
+config.set_quoted('SESSION_KEYFILE', localstatedir / 'run' / 'named' / 'session.key')
+
+config.set_quoted('RNDC_CONFFILE', sysconfdir / 'rndc_srconf')
+config.set_quoted('RNDC_KEYFILE', sysconfdir / 'rndc.key')
+
+config.set_quoted('NAMED_PLUGINDIR', datadir / 'bind')
+config.set_quoted('NAMED_LOCALSTATEDIR', localstatedir)
+config.set_quoted('NAMED_SYSCONFDIR', sysconfdir)
+config.set_quoted('NAMED_CONFFILE', sysconfdir / 'named_srconf')
+
+config.set_quoted('CACHEDB_DEFAULT', get_option('cachedb'))
+config.set_quoted('ZONEDB_DEFAULT', get_option('zonedb'))
+
+# Shim constexpr for pre-C23
+# "ne" => "none"
+if c_std.substring(-2) in ['ne', '89', '99', '11', '17', '18']
+    config.set('constexpr', 'static const')
+endif
+
+if developer_mode
+    config.set('ISC_MEM_DEFAULTFILL', 1)
+    config.set('ISC_MEM_TRACKLINES', 1)
+    config.set('ISC_LIST_CHECKINIT', 1)
+    config.set('ISC_STATS_CHECKUNDERFLOW', 1)
+    config.set('DNS_RBTDB_STRONG_RWLOCK_CHECK', 1)
+    config.set('ISC_MUTEX_ERROR_CHECK', 1)
 endif
 
 foreach fn : [

@@ -48,7 +48,6 @@ install_headers(
         'interfaceiter.h',
         'iterated_hash.h',
         'job.h',
-        'lang.h',
         'lex.h',
         'list.h',
         'log.h',
