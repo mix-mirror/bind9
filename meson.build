@@ -802,10 +802,8 @@ endif
 systemd_dep = null_dep
 if systemd_opt.allowed()
     systemd_dep = dependency('libsystemd', required: systemd_opt)
-    if systemd_dep.found()
-        config.set('HAVE_LIBSYSTEMD', 1)
-    endif
 endif
+config.set('HAVE_LIBSYSTEMD', systemd_dep.found())
 
 ## cmocka
 cmocka_dep = null_dep
