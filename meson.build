@@ -650,10 +650,8 @@ endif
 jemalloc_dep = null_dep
 if jemalloc_opt.allowed()
     jemalloc_dep = dependency('jemalloc', required: jemalloc_opt)
-    if jemalloc_dep.found()
-        config.set('HAVE_JEMALLOC', 1)
-    endif
 endif
+config.set('HAVE_JEMALLOC', jemalloc_dep.found())
 
 ## dnstap
 dnstap_dep = null_dep # Will be filled later
@@ -1856,7 +1854,7 @@ summary(
 )
 
 ### Warn about fragmentation
-if not (config.has('HAVE_JEMALLOC') or config.has('HAVE_MALLOC_NP_H'))
+if not (config.get('HAVE_JEMALLOC') or config.has('HAVE_MALLOC_NP_H'))
     message()
     warning(
         '''
