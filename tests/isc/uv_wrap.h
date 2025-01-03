@@ -13,7 +13,7 @@
 
 #pragma once
 
-#if HAVE_CMOCKA
+#ifdef HAVE_CMOCKA
 #include <inttypes.h>
 #include <sched.h> /* IWYU pragma: keep */
 #include <setjmp.h>
