@@ -817,7 +817,7 @@ cmocka_dep = null_dep
 if cmocka_opt.allowed()
     cmocka_dep = dependency('cmocka', version: '>=1.1.3', required: cmocka_opt)
 endif
-config.set10('HAVE_CMOCKA', cmocka_dep.found())
+config.set('HAVE_CMOCKA', cmocka_dep.found())
 
 ## DTrace
 dtrace_header = generator(
