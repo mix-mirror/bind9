@@ -46,7 +46,7 @@ BASIC_VARS = {
     "SIGNER": f"{BUILD_VARS['TOP_BUILDDIR']}/dnssec-signzone",
     "TSIGKEYGEN": f"{BUILD_VARS['TOP_BUILDDIR']}/tsig-keygen",
     "VERIFY": f"{BUILD_VARS['TOP_BUILDDIR']}/dnssec-verify",
-    "WIRETEST": f"{BUILD_VARS['TOP_BUILDDIR']}/wire_test",
+    "WIRETEST": f"{BUILD_VARS['TOP_BUILDDIR']}/wire-test",
     "BIGKEY": f"{BUILD_VARS['TOP_BUILDDIR']}/bigkey",
     "GENCHECK": f"{BUILD_VARS['TOP_BUILDDIR']}/gencheck",
     "MAKEJOURNAL": f"{BUILD_VARS['TOP_BUILDDIR']}/makejournal",
