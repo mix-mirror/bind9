@@ -13,7 +13,7 @@
 
 #pragma once
 
-#if !defined(HAVE_JEMALLOC)
+#ifndef HAVE_JEMALLOC
 
 #include <stddef.h>
 #include <string.h>
@@ -81,4 +81,4 @@ rallocx(void *ptr, size_t size, int flags) {
 	return ptr;
 }
 
-#endif /* !defined(HAVE_JEMALLOC) */
+#endif /* !HAVE_JEMALLOC */

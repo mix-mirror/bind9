@@ -186,7 +186,7 @@ extern unsigned int isc_mem_defaultflags;
  * see https://github.com/jemalloc/jemalloc/issues/2566
  * for more information.
  */
-#if HAVE_JEMALLOC
+#ifdef HAVE_JEMALLOC
 
 /*
  * cmocka.h has confliction definitions with the jemalloc header but we only
@@ -203,9 +203,9 @@ extern volatile void *isc__mem_malloc;
 		isc__mem_malloc = mallocx;                            \
 		ISC_INSIST(CMM_ACCESS_ONCE(isc__mem_malloc) != NULL); \
 	}
-#else
+#else /* HAVE_JEMALLOC */
 #define isc_mem_create(cp) isc__mem_create((cp)_ISC_MEM_FILELINE)
-#endif
+#endif /* HAVE_JEMALLOC */
 void
 isc__mem_create(isc_mem_t **_ISC_MEM_FLARG);
 
