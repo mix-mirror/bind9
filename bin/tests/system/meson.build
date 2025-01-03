@@ -17,6 +17,8 @@ configure_file(
     },
 )
 
+subdir('isctest' / 'vars' / '.build_vars')
+
 if not developer_mode
     subdir_done()
 endif
@@ -42,5 +44,3 @@ system_test_libraries += {
         'dyndb' / 'driver' / 'zone.c',
     ),
 }
-
-subdir('isctest' / 'vars' / '.build_vars')

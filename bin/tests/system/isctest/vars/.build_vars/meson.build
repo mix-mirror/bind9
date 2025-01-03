@@ -9,6 +9,10 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
+if not pytest.found()
+    subdir_done()
+endif
+
 configure_file(
     configuration: {'TOP_BUILDDIR': meson.project_build_root()},
     input: 'TOP_BUILDDIR.in',
