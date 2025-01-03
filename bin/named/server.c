@@ -9342,7 +9342,7 @@ view_loaded(void *arg) {
 			      ISC_LOG_NOTICE, "FIPS mode is %s",
 			      isc_fips_mode() ? "enabled" : "disabled");
 
-#if HAVE_LIBSYSTEMD
+#ifdef HAVE_LIBSYSTEMD
 		sd_notifyf(0,
 			   "READY=1\n"
 			   "STATUS=running\n"
@@ -9487,7 +9487,7 @@ shutdown_server(void *arg) {
 	bool flush = server->flushonshutdown;
 	named_cache_t *nsc = NULL;
 
-#if HAVE_LIBSYSTEMD
+#ifdef HAVE_LIBSYSTEMD
 	sd_notify(0, "STOPPING=1\n");
 #endif /* HAVE_LIBSYSTEMD */
 
@@ -9981,7 +9981,7 @@ reload(named_server_t *server) {
 	isc_result_t result;
 
 	atomic_store(&server->reload_status, NAMED_RELOAD_IN_PROGRESS);
-#if HAVE_LIBSYSTEMD
+#ifdef HAVE_LIBSYSTEMD
 	char buf[512];
 	int n = snprintf(buf, sizeof(buf),
 			 "RELOADING=1\n"
@@ -10006,7 +10006,7 @@ reload(named_server_t *server) {
 		atomic_store(&server->reload_status, NAMED_RELOAD_FAILED);
 	}
 cleanup:
-#if HAVE_LIBSYSTEMD
+#ifdef HAVE_LIBSYSTEMD
 	sd_notifyf(0,
 		   "READY=1\n"
 		   "STATUS=reload command finished: %s\n",
@@ -10401,7 +10401,7 @@ isc_result_t
 named_server_reconfigcommand(named_server_t *server) {
 	isc_result_t result;
 	atomic_store(&server->reload_status, NAMED_RELOAD_IN_PROGRESS);
-#if HAVE_LIBSYSTEMD
+#ifdef HAVE_LIBSYSTEMD
 	char buf[512];
 	int n = snprintf(buf, sizeof(buf),
 			 "RELOADING=1\n"
@@ -10426,7 +10426,7 @@ named_server_reconfigcommand(named_server_t *server) {
 		atomic_store(&server->reload_status, NAMED_RELOAD_FAILED);
 	}
 cleanup:
-#if HAVE_LIBSYSTEMD
+#ifdef HAVE_LIBSYSTEMD
 	sd_notifyf(0,
 		   "READY=1\n"
 		   "STATUS=reconfig command finished: %s\n",
