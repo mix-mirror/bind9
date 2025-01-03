@@ -52,7 +52,7 @@ if config.has('HAVE_GEOIP2')
     dns_tests += 'geoip'
 endif
 
-if config.has('HAVE_DNSTAP')
+if config.get('HAVE_DNSTAP')
     dns_tests += 'dnstap'
 endif
 
