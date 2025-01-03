@@ -11,4 +11,7 @@
 
 subdir('system')
 
-system_test_binaries += {'wire_test': files('wire_test.c')}
+system_test_binaries += {
+    'test_client': files('test_client.c'),
+    'test_server': files('test_server.c'),
+}

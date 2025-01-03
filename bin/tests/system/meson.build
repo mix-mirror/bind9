@@ -27,6 +27,7 @@ system_test_binaries += {
     'gencheck': files('rndc' / 'gencheck.c'),
     'makejournal': files('makejournal.c'),
     'pipequeries': files('pipelined' / 'pipequeries.c'),
+    'wire_test': files('wire-test.c'),
 }
 
 system_test_libraries += {
