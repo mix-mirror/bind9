@@ -21,6 +21,4 @@ subdir('rndc')
 subdir('tools')
 
 # System tests
-if developer_mode
-    subdir('tests')
-endif
+subdir('tests')

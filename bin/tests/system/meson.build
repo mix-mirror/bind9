@@ -17,6 +17,10 @@ configure_file(
     },
 )
 
+if not developer_mode
+    subdir_done()
+endif
+
 system_test_binaries += {
     # 'bigkey': files('rsabigexponent' / 'bigkey.c'),
     'feature-test': files('feature-test.c'),

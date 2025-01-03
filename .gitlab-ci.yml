@@ -957,7 +957,7 @@ unit:gcc:ossl3:amd64:
       artifacts: true
 
 # Jobs for regular GCC builds on Debian "sid" (amd64)
-# Also tests configration option: --without-lmdb.
+# Also tests configration option: -Dlmdb=disabled
 
 gcc:sid:amd64:
   variables:
@@ -1687,7 +1687,7 @@ stress:short:authoritative:freebsd13:amd64:
   variables:
     CC: clang
     CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "${STRESS_CONFIGURE_FLAGS} -Dlmdb=disabled"
+    EXTRA_CONFIGURE: "${STRESS_CONFIGURE_FLAGS}"
     FLAME: /usr/local/bin/flame
     MODE: authoritative
     RATE: 10000
@@ -1699,7 +1699,7 @@ stress:short:recursive:freebsd13:amd64:
   variables:
     CC: clang
     CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "${STRESS_CONFIGURE_FLAGS} -Dlmdb=disabled"
+    EXTRA_CONFIGURE: "${STRESS_CONFIGURE_FLAGS}"
     FLAME: /usr/local/bin/flame
     MODE: recursive
     RATE: 10000
@@ -1711,7 +1711,7 @@ stress:short:rpz:freebsd13:amd64:
   variables:
     CC: clang
     CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "${STRESS_CONFIGURE_FLAGS} -Dlmdb=disabled"
+    EXTRA_CONFIGURE: "${STRESS_CONFIGURE_FLAGS}"
     FLAME: /usr/local/bin/flame
     MODE: rpz
     RATE: 1500
@@ -1819,7 +1819,7 @@ stress:authoritative:freebsd13:amd64:
   variables:
     CC: clang
     CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "${STRESS_CONFIGURE_FLAGS} -Dlmdb=disabled"
+    EXTRA_CONFIGURE: "${STRESS_CONFIGURE_FLAGS}"
     FLAME: /usr/local/bin/flame
     MODE: authoritative
     RATE: 10000
@@ -1834,7 +1834,7 @@ stress:recursive:freebsd13:amd64:
   variables:
     CC: clang
     CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "${STRESS_CONFIGURE_FLAGS} -Dlmdb=disabled"
+    EXTRA_CONFIGURE: "${STRESS_CONFIGURE_FLAGS}"
     FLAME: /usr/local/bin/flame
     MODE: recursive
     RATE: 10000
@@ -1849,7 +1849,7 @@ stress:rpz:freebsd13:amd64:
   variables:
     CC: clang
     CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "${STRESS_CONFIGURE_FLAGS} -Dlmdb=disabled"
+    EXTRA_CONFIGURE: "${STRESS_CONFIGURE_FLAGS}"
     FLAME: /usr/local/bin/flame
     MODE: rpz
     RATE: 1500

@@ -656,12 +656,8 @@ proto_dep = null_dep
 if dnstap_opt.allowed()
     fstrm_dep = dependency('libfstrm', required: dnstap_opt)
     proto_dep = dependency('libprotobuf-c', required: dnstap_opt)
-
-    config.set(
-        'HAVE_DNSTAP',
-        protoc.found() and fstrm_dep.found() and proto_dep.found(),
-    )
 endif
+config.set('HAVE_DNSTAP', protoc.found() and fstrm_dep.found() and proto_dep.found())
 
 ## JSON
 json_c_dep = null_dep
@@ -762,21 +758,22 @@ endif
 idn2_dep = null_dep
 if idn_opt.allowed()
     idn2_dep = dependency('libidn2', required: idn_opt)
-    config.set('HAVE_LIBIDN2', idn2_dep.found())
 endif
+config.set('HAVE_LIBIDN2', idn2_dep.found())
 
 ## LMDB
 lmdb_dep = null_dep
 if lmdb_opt.allowed()
     lmdb_dep = dependency('lmdb', required: lmdb_opt)
-    config.set('HAVE_LMDB', lmdb_dep.found())
 endif
+config.set('HAVE_LMDB', lmdb_dep.found())
 
+## zlib
 zlib_dep = null_dep
 if zlib_opt.allowed()
     zlib_dep = dependency('zlib', required: zlib_opt)
-    config.set('HAVE_ZLIB', zlib_dep.found())
 endif
+config.set('HAVE_ZLIB', zlib_dep.found())
 
 ## Line editing (libedit, editline, readline)
 line_dep = null_dep
@@ -814,8 +811,8 @@ endif
 cmocka_dep = null_dep
 if cmocka_opt.allowed()
     cmocka_dep = dependency('cmocka', version: '>=1.1.3', required: cmocka_opt)
-    config.set10('HAVE_CMOCKA', cmocka_dep.found())
 endif
+config.set10('HAVE_CMOCKA', cmocka_dep.found())
 
 ## DTrace
 dtrace_header = generator(
@@ -845,7 +842,7 @@ configure_file(output: 'config.h', configuration: config)
 add_project_arguments('-include', meson.project_build_root() / 'config.h', language: 'c')
 
 ### Build dnstap if necessary, needs configuration
-if config.has('HAVE_DNSTAP')
+if config.get('HAVE_DNSTAP')
     dnstap_schema_src = custom_target(
         'dnstap-protobuf',
         input: ['dnstap.proto'],
@@ -1352,7 +1349,7 @@ executable(
     ],
 )
 
-if config.has('HAVE_DNSTAP')
+if config.get('HAVE_DNSTAP')
     executable(
         'dnstap-read',
         dnstap_read_src,
@@ -1433,7 +1430,7 @@ executable(
     ],
 )
 
-if config.has('HAVE_LMDB')
+if config.get('HAVE_LMDB')
     executable(
         'named-nzd2nzf',
         named_nzd2nzf_src,
