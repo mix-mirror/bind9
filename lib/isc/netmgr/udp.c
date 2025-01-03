@@ -110,9 +110,9 @@ start_udp_child_job(void *arg) {
 
 	(void)isc__nm_socket_min_mtu(sock->fd, sa_family);
 
-#if HAVE_DECL_UV_UDP_RECVMMSG
+#ifdef HAVE_DECL_UV_UDP_RECVMMSG
 	uv_init_flags |= UV_UDP_RECVMMSG;
-#endif
+#endif /* HAVE_DECL_UV_UDP_RECVMMSG */
 	r = uv_udp_init_ex(&loop->loop, &sock->uv_handle.udp, uv_init_flags);
 	UV_RUNTIME_CHECK(uv_udp_init_ex, r);
 	uv_handle_set_data(&sock->uv_handle.handle, sock);
@@ -490,15 +490,15 @@ isc__nm_udp_read_cb(uv_udp_t *handle, ssize_t nrecv, const uv_buf_t *buf,
 	 * pointing at the initially allocated data with the UV_UDP_MMSG_CHUNK
 	 * flag cleared and the UV_UDP_MMSG_FREE flag set.
 	 */
-#if HAVE_DECL_UV_UDP_MMSG_FREE
+#ifdef HAVE_DECL_UV_UDP_MMSG_FREE
 	if ((flags & UV_UDP_MMSG_FREE) == UV_UDP_MMSG_FREE) {
 		INSIST(nrecv == 0);
 		INSIST(addr == NULL);
 		goto free;
 	}
-#else
+#else  /* HAVE_DECL_UV_UDP_MMSG_FREE */
 	UNUSED(flags);
-#endif
+#endif /* HAVE_DECL_UV_UDP_MMSG_FREE */
 	/*
 	 * Possible reasons to return now without processing:
 	 *
@@ -590,7 +590,7 @@ isc__nm_udp_read_cb(uv_udp_t *handle, ssize_t nrecv, const uv_buf_t *buf,
 	sock->processing = false;
 
 free:
-#if HAVE_DECL_UV_UDP_MMSG_CHUNK
+#ifdef HAVE_DECL_UV_UDP_MMSG_CHUNK
 	/*
 	 * When using recvmmsg(2), chunks will have the UV_UDP_MMSG_CHUNK flag
 	 * set, those must not be freed.
@@ -598,7 +598,7 @@ free:
 	if ((flags & UV_UDP_MMSG_CHUNK) == UV_UDP_MMSG_CHUNK) {
 		return;
 	}
-#endif
+#endif /* HAVE_DECL_UV_UDP_MMSG_CHUNK */
 
 	/*
 	 * When using recvmmsg(2), if a UDP socket error occurs, nrecv will be <
@@ -782,9 +782,9 @@ udp_connect_direct(isc_nmsocket_t *sock, isc__nm_uvreq_t *req) {
 		uv_bind_flags |= UV_UDP_IPV6ONLY;
 	}
 
-#if HAVE_DECL_UV_UDP_LINUX_RECVERR
+#ifdef HAVE_DECL_UV_UDP_LINUX_RECVERR
 	uv_bind_flags |= UV_UDP_LINUX_RECVERR;
-#endif
+#endif /* HAVE_DECL_UV_UDP_LINUX_RECVERR */
 
 	r = uv_udp_bind(&sock->uv_handle.udp, &sock->iface.type.sa,
 			uv_bind_flags);

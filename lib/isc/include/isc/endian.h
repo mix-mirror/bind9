@@ -112,7 +112,7 @@
 #endif /* !bswap_64 */
 
 #ifndef htobe16
-#if WORDS_BIGENDIAN
+#ifdef WORDS_BIGENDIAN
 
 #define htobe16(x) (x)
 #define htole16(x) bswap_16(x)
@@ -130,7 +130,7 @@
 #endif /* !htobe16 */
 
 #ifndef htobe32
-#if WORDS_BIGENDIAN
+#ifdef WORDS_BIGENDIAN
 
 #define htobe32(x) (x)
 #define htole32(x) bswap_32(x)
@@ -148,7 +148,7 @@
 #endif /* !htobe32 */
 
 #ifndef htobe64
-#if WORDS_BIGENDIAN
+#ifdef WORDS_BIGENDIAN
 
 #define htobe64(x) (x)
 #define htole64(x) bswap_64(x)

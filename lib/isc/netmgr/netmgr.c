@@ -140,17 +140,17 @@ netmgr_teardown(void *arg) {
 	}
 }
 
-#if HAVE_DECL_UV_UDP_LINUX_RECVERR
+#ifdef HAVE_DECL_UV_UDP_LINUX_RECVERR
 #define MINIMAL_UV_VERSION UV_VERSION(1, 42, 0)
-#elif HAVE_DECL_UV_UDP_MMSG_FREE
+#elif defined(HAVE_DECL_UV_UDP_MMSG_FREE)
 #define MINIMAL_UV_VERSION UV_VERSION(1, 40, 0)
-#elif HAVE_DECL_UV_UDP_RECVMMSG
+#elif defined(HAVE_DECL_UV_UDP_RECVMMSG)
 #define MAXIMAL_UV_VERSION UV_VERSION(1, 39, 99)
 #define MINIMAL_UV_VERSION UV_VERSION(1, 37, 0)
-#else
+#else /* HAVE_DECL_UV_UDP_LINUX_RECVERR */
 #define MAXIMAL_UV_VERSION UV_VERSION(1, 34, 99)
 #define MINIMAL_UV_VERSION UV_VERSION(1, 34, 0)
-#endif
+#endif /* HAVE_DECL_UV_UDP_LINUX_RECVERR */
 
 void
 isc_netmgr_create(isc_mem_t *mctx, isc_loopmgr_t *loopmgr, isc_nm_t **netmgrp) {

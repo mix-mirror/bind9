@@ -22,12 +22,12 @@
 #define isc_pause() __asm__ __volatile__("hint @pause")
 #elif defined(__aarch64__)
 #define isc_pause() __asm__ __volatile__("isb")
-#elif defined(__arm__) && HAVE_ARM_YIELD
+#elif defined(__arm__) && defined(HAVE_ARM_YIELD)
 #define isc_pause() __asm__ __volatile__("yield")
 #elif defined(sun) && (defined(__sparc) || defined(__sparc__))
 #include <synch.h>
 #define isc_pause() smt_pause()
-#elif (defined(__sparc) || defined(__sparc__)) && HAVE_SPARC_PAUSE
+#elif (defined(__sparc) || defined(__sparc__)) && defined(HAVE_SPARC_PAUSE)
 #define isc_pause() __asm__ __volatile__("pause")
 #elif defined(__ppc__) || defined(_ARCH_PPC) || defined(_ARCH_PWR) || \
 	defined(_ARCH_PWR2) || defined(_POWER)

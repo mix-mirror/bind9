@@ -324,9 +324,7 @@ if fuzz_opt != 'none'
 endif
 
 ## Architecture
-if host_machine.endian() == 'big'
-    config.set('WORDS_BIGENDIAN', 1)
-endif
+config.set('WORDS_BIGENDIAN', host_machine.endian() == 'big')
 
 instruction_test = '''
 int main(void) {
@@ -337,7 +335,7 @@ int main(void) {
 
 cpu_family = host_machine.cpu_family()
 if cpu_family in ['arm', 'aarch64']
-    config.set10(
+    config.set(
         'HAVE_SPARC_PAUSE',
         cc.compiles(
             instruction_test.format('yield'),
@@ -345,7 +343,7 @@ if cpu_family in ['arm', 'aarch64']
         ),
     )
 elif cpu_family in ['sparc', 'sparc64']
-    config.set10(
+    config.set(
         'HAVE_SPARC_PAUSE',
         cc.compiles(
             instruction_test.format('pause'),
@@ -586,17 +584,18 @@ if uv_dep.version().version_compare('<1.40.0')
 endif
 
 foreach sym : ['UV_UDP_LINUX_RECVERR', 'UV_UDP_MMSG_CHUNK', 'UV_UDP_MMSG_FREE']
-    config.set10(
+    config.set(
         'HAVE_DECL_@0@'.format(sym),
         cc.has_header_symbol('uv.h', sym, dependencies: uv_dep),
     )
 endforeach
 
-if cc.has_members('struct msghdr', '__pad1', '__pad2', prefix: '#include <sys/socket.h>')
+config.set(
+    'HAVE_DECL_UV_UDP_RECMMSG',
+    cc.has_members('struct msghdr', '__pad1', '__pad2', prefix: '#include <sys/socket.h>'),
+)
+if not config.get('HAVE_DECL_UV_UDP_RECMMSG')
     message('likely non-glibc on linux, disabling recvmmsg')
-    config.set('HAVE_DECL_UV_UDP_RECVMMSG', 0)
-elif cc.has_header_symbol('uv.h', 'UV_UDP_RECVMMSG')
-    config.set('HAVE_DECL_UV_UDP_RECVMMSG', 1)
 endif
 
 ## userspace-rcu

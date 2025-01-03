@@ -60,11 +60,11 @@
  * See the section on "packed reader nodes" for details.
  */
 struct dns_qpnode {
-#if WORDS_BIGENDIAN
+#ifdef WORDS_BIGENDIAN
 	uint32_t bighi, biglo, small;
-#else
+#else  /* WORDS_BIGENDIAN */
 	uint32_t biglo, bighi, small;
-#endif
+#endif /* WORDS_BIGENDIAN */
 };
 
 /*
