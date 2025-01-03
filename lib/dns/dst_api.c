@@ -216,7 +216,7 @@ dst__lib_init(void) {
 	dst__openssleddsa_init(&dst_t_func[DST_ALG_ED25519], DST_ALG_ED25519);
 #ifdef HAVE_OPENSSL_ED448
 	dst__openssleddsa_init(&dst_t_func[DST_ALG_ED448], DST_ALG_ED448);
-#endif /* ifdef HAVE_OPENSSL_ED448 */
+#endif /* HAVE_OPENSSL_ED448 */
 
 #if HAVE_GSSAPI
 	dst__gssapi_init(&dst_t_func[DST_ALG_GSSAPI]);

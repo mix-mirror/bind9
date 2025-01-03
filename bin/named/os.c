@@ -64,7 +64,7 @@ static int dfd[2] = { -1, -1 };
 static uid_t saved_uid = (uid_t)-1;
 static gid_t saved_gid = (gid_t)-1;
 
-#if HAVE_LIBCAP
+#ifdef HAVE_LIBCAP
 
 static bool non_root = false;
 static bool non_root_caps = false;
@@ -287,7 +287,7 @@ setup_syslog(const char *progname) {
 void
 named_os_init(const char *progname) {
 	setup_syslog(progname);
-#if HAVE_LIBCAP
+#ifdef HAVE_LIBCAP
 	linux_initialprivs();
 #endif /* HAVE_LIBCAP */
 #ifdef SIGXFSZ
@@ -503,7 +503,7 @@ named_os_changeuser(bool permanent) {
 		named_main_earlyfatal("setuid(): %s", strbuf);
 	}
 
-#if HAVE_LIBCAP
+#ifdef HAVE_LIBCAP
 	/*
 	 * Restore the ability of named to drop core after the setuid()
 	 * call has disabled it.
@@ -573,7 +573,7 @@ fail:
 
 void
 named_os_minprivs(void) {
-#if HAVE_LIBCAP
+#ifdef HAVE_LIBCAP
 	linux_keepcaps();
 	named_os_changeuser(true);
 	linux_minprivs();

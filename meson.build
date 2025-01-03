@@ -266,8 +266,8 @@ if developer_mode
     config.set('ISC_LIST_CHECKINIT', 1)
     config.set('ISC_STATS_CHECKUNDERFLOW', 1)
     config.set('DNS_RBTDB_STRONG_RWLOCK_CHECK', 1)
-    config.set('ISC_MUTEX_ERROR_CHECK', 1)
 endif
+config.set('ISC_MUTEX_ERROR_CHECK', developer_mode)
 
 foreach fn : [
     '__builtin_add_overflow',
@@ -380,9 +380,7 @@ if not cc.compiles(atomic_test, name: 'usage of atomics without -latomic')
 endif
 
 ## OS
-if locktype_opt == 'system'
-    config.set('USE_PTHREAD_RWLOCK', 1)
-endif
+config.set('USE_PTHREAD_RWLOCK', locktype_opt == 'system')
 
 if host_machine.system() == 'sunos' and cc.get_id() == 'gcc'
     add_project_link_arguments('-zrelax=transtls', language: 'c')
@@ -421,7 +419,7 @@ foreach sym : ['in6addr_any', 'in6addr_loopback']
     endif
 endforeach
 
-config.set10(
+config.set(
     'HAVE_PTHREAD_MUTEX_ADAPTIVE_NP',
     cc.has_header_symbol('pthread.h', 'PTHREAD_MUTEX_ADAPTIVE_NP'),
 )
@@ -474,9 +472,10 @@ foreach fn, header : {
 endforeach
 
 # Check for nanoseconds in file stats
-if cc.has_member('struct stat', 'st_mtim.tv_nsec', prefix: '#include <sys/stat.h>')
-    config.set('HAVE_STAT_NSEC', 1)
-endif
+config.set(
+    'HAVE_STAT_NSEC',
+    cc.has_member('struct stat', 'st_mtim.tv_nsec', prefix: '#include <sys/stat.h>'),
+)
 
 foreach h : [
     'fcntl.h',
@@ -557,13 +556,14 @@ int main(void)
 }
 '''
 
-if cc.compiles(
-    pkey_id_test.format('NID_ED448'),
-    dependencies: openssl_dep,
-    name: 'Ed448 support',
+config.set(
+    'HAVE_OPENSSL_ED448',
+    cc.compiles(
+        pkey_id_test.format('NID_ED448'),
+        dependencies: openssl_dep,
+        name: 'Ed448 support',
+    ),
 )
-    config.set('HAVE_OPENSSL_ED448', 1)
-endif
 
 foreach fn : [
     'ERR_get_error_all',
@@ -573,7 +573,7 @@ foreach fn : [
     'EVP_PKEY_eq',
     'SSL_CTX_set1_cert_store',
 ]
-    config.set10(
+    config.set(
         'HAVE_@0@'.format(fn.to_upper()),
         cc.has_function(fn, dependencies: openssl_dep),
     )
@@ -754,10 +754,8 @@ endif
 cap_dep = null_dep
 if cap_opt.allowed()
     cap_dep = dependency('libcap', required: cap_opt)
-    if cap_dep.found()
-        config.set('HAVE_LIBCAP', 1)
-    endif
 endif
+config.set('HAVE_LIBCAP', cap_dep.found())
 
 ## IDN
 idn2_dep = null_dep

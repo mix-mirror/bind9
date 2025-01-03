@@ -100,6 +100,6 @@ isc_srcset.add(
 isc_probe += files('probes.d')
 
 isc_probed_src += [dtrace_header.process('probes.d'), files('job.c')]
-if not config.has('USE_PTHREAD_RWLOCK')
+if not config.get('USE_PTHREAD_RWLOCK')
     isc_probed_src += files('rwlock.c')
 endif

@@ -27,7 +27,7 @@ typedef enum {
 	isc_rwlocktype_write
 } isc_rwlocktype_t;
 
-#if USE_PTHREAD_RWLOCK
+#ifdef USE_PTHREAD_RWLOCK
 #include <pthread.h>
 
 /*

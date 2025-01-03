@@ -25,7 +25,7 @@
 
 #include "openssl_shim.h"
 
-#if !HAVE_BIO_READ_EX
+#ifndef HAVE_BIO_READ_EX
 int
 BIO_read_ex(BIO *b, void *data, size_t dlen, size_t *readbytes) {
 	int rv = BIO_read(b, data, dlen);
@@ -38,7 +38,7 @@ BIO_read_ex(BIO *b, void *data, size_t dlen, size_t *readbytes) {
 }
 #endif /* !HAVE_BIO_READ_EX */
 
-#if !HAVE_BIO_WRITE_EX
+#ifndef HAVE_BIO_WRITE_EX
 int
 BIO_write_ex(BIO *b, const void *data, size_t dlen, size_t *written) {
 	int rv = BIO_write(b, data, dlen);
@@ -51,7 +51,7 @@ BIO_write_ex(BIO *b, const void *data, size_t dlen, size_t *written) {
 }
 #endif /* !HAVE_BIO_WRITE_EX */
 
-#if !HAVE_SSL_CTX_SET1_CERT_STORE
+#ifndef HAVE_SSL_CTX_SET1_CERT_STORE
 void
 SSL_CTX_set1_cert_store(SSL_CTX *ctx, X509_STORE *store) {
 	(void)X509_STORE_up_ref(store);
@@ -60,7 +60,7 @@ SSL_CTX_set1_cert_store(SSL_CTX *ctx, X509_STORE *store) {
 }
 #endif /* !HAVE_SSL_CTX_SET1_CERT_STORE */
 
-#if !HAVE_ERR_GET_ERROR_ALL
+#ifndef HAVE_ERR_GET_ERROR_ALL
 static const char err_empty_string = '\0';
 
 unsigned long
@@ -69,4 +69,4 @@ ERR_get_error_all(const char **file, int *line, const char **func,
 	SET_IF_NOT_NULL(func, &err_empty_string);
 	return ERR_get_error_line_data(file, line, data, flags);
 }
-#endif /* if !HAVE_ERR_GET_ERROR_ALL */
+#endif /* !HAVE_ERR_GET_ERROR_ALL */

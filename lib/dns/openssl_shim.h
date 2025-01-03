@@ -28,6 +28,6 @@
 #define RSA_MAX_PUBEXP_BITS 35
 #endif /* ifndef RSA_MAX_PUBEXP_BITS */
 
-#if !HAVE_EVP_PKEY_EQ
+#ifndef HAVE_EVP_PKEY_EQ
 #define EVP_PKEY_eq EVP_PKEY_cmp
 #endif
