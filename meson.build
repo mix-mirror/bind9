@@ -264,6 +264,7 @@ config.set('ISC_LIST_CHECKINIT', developer_mode)
 config.set('ISC_MEM_DEFAULTFILL', developer_mode)
 config.set('ISC_MEM_TRACKLINES', developer_mode)
 config.set('ISC_MUTEX_ERROR_CHECK', developer_mode)
+config.set('ISC_SOCKET_DETAILS', developer_mode)
 config.set('ISC_STATS_CHECKUNDERFLOW', developer_mode)
 
 foreach fn : [
@@ -273,7 +274,10 @@ foreach fn : [
     '__builtin_sub_overflow',
     '__builtin_unreachable',
 ]
-    config.set('HAVE_@0@'.format(fn.substring(2).to_upper()), cc.has_function(fn))
+    config.set(
+        'HAVE_@0@'.format(fn.substring(2).to_upper()),
+        cc.has_function(fn),
+    )
 endforeach
 
 foreach attr : ['constructor', 'destructor', 'malloc', 'returns_nonnull']
@@ -479,11 +483,8 @@ foreach h : [
     'net/if6.h',
     'net/route.h',
     'regex.h',
-    'sched.h',
     'sys/mman.h',
-    'sys/param.h',
     'sys/select.h',
-    'sys/socket.h',
     'sys/sockio.h',
     'sys/sysctl.h',
     'sys/time.h',
