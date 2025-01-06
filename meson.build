@@ -260,14 +260,11 @@ if c_std.substring(-2) in ['ne', '89', '99', '11', '17', '18']
     config.set('constexpr', 'static const')
 endif
 
-if developer_mode
-    config.set('ISC_MEM_DEFAULTFILL', 1)
-    config.set('ISC_MEM_TRACKLINES', 1)
-    config.set('ISC_LIST_CHECKINIT', 1)
-    config.set('ISC_STATS_CHECKUNDERFLOW', 1)
-    config.set('DNS_RBTDB_STRONG_RWLOCK_CHECK', 1)
-endif
+config.set('ISC_LIST_CHECKINIT', developer_mode)
+config.set('ISC_MEM_DEFAULTFILL', developer_mode)
+config.set('ISC_MEM_TRACKLINES', developer_mode)
 config.set('ISC_MUTEX_ERROR_CHECK', developer_mode)
+config.set('ISC_STATS_CHECKUNDERFLOW', developer_mode)
 
 foreach fn : [
     '__builtin_add_overflow',
@@ -279,10 +276,11 @@ foreach fn : [
     config.set('HAVE_@0@'.format(fn.substring(2).to_upper()), cc.has_function(fn))
 endforeach
 
-foreach attr : ['constructor', 'destructor', 'malloc', 'noreturn', 'returns_nonnull']
-    if cc.has_function_attribute(attr)
-        config.set('HAVE_FUNC_ATTRIBUTE_@0@'.format(attr.to_upper()), 1)
-    endif
+foreach attr : ['constructor', 'destructor', 'malloc', 'returns_nonnull']
+    config.set(
+        'HAVE_FUNC_ATTRIBUTE_@0@'.format(attr.to_upper()),
+        cc.has_function_attribute(attr),
+    )
 endforeach
 
 malloc_ext_test = '''
@@ -299,7 +297,7 @@ void main(void) {
 }
 '''
 
-config.set10(
+config.set(
     'HAVE_MALLOC_EXT_ATTR',
     cc.compiles(malloc_ext_test, name: 'usage of extended malloc attribute'),
 )
