@@ -276,9 +276,7 @@ foreach fn : [
     '__builtin_sub_overflow',
     '__builtin_unreachable',
 ]
-    if cc.has_function(fn)
-        config.set('HAVE_@0@'.format(fn.substring(2).to_upper()), 1)
-    endif
+    config.set('HAVE_@0@'.format(fn.substring(2).to_upper()), cc.has_function(fn))
 endforeach
 
 foreach attr : ['constructor', 'destructor', 'malloc', 'noreturn', 'returns_nonnull']
