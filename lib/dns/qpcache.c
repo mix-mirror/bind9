@@ -2803,19 +2803,14 @@ allrdatasets(dns_db_t *db, dns_dbversion_t *version ISC_ATTR_UNUSED,
 	}
 
 	iterator = isc_mem_get(qpdb->common.mctx, sizeof(*iterator));
-
-	if (now == 0) {
-		now = isc_stdtime_now();
-	}
-
-	iterator->common.magic = DNS_RDATASETITER_MAGIC;
-	iterator->common.methods = &rdatasetiter_methods;
-	iterator->common.db = db;
-	iterator->common.node = (dns_dbnode_t *)qpnode;
-	iterator->common.version = NULL;
-	iterator->common.options = options;
-	iterator->common.now = now;
-	iterator->current = NULL;
+	*iterator = (qpc_rditer_t){
+		.common.magic = DNS_RDATASETITER_MAGIC,
+		.common.methods = &rdatasetiter_methods,
+		.common.db = db,
+		.common.node = (dns_dbnode_t *)qpnode,
+		.common.options = options,
+		.common.now = (now != 0) ? now : isc_stdtime_now(),
+	};
 
 	newref(qpdb, qpnode, isc_rwlocktype_none,
 	       isc_rwlocktype_none DNS__DB_FLARG_PASS);

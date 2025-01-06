@@ -222,9 +222,9 @@ named_control_docommand(isccc_sexpr_t *message, bool readonly,
 	} else if (command_compare(command, NAMED_COMMAND_FLUSH)) {
 		result = named_server_flushcache(named_g_server, lex);
 	} else if (command_compare(command, NAMED_COMMAND_FLUSHNAME)) {
-		result = named_server_flushnode(named_g_server, lex, false);
+		result = named_server_flushname(named_g_server, lex, false);
 	} else if (command_compare(command, NAMED_COMMAND_FLUSHTREE)) {
-		result = named_server_flushnode(named_g_server, lex, true);
+		result = named_server_flushname(named_g_server, lex, true);
 	} else if (command_compare(command, NAMED_COMMAND_FREEZE)) {
 		result = named_server_freeze(named_g_server, true, lex, text);
 	} else if (command_compare(command, NAMED_COMMAND_SKR)) {

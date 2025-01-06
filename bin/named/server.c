@@ -404,10 +404,10 @@ const char *empty_zones[] = {
 	"255.255.255.255.IN-ADDR.ARPA", /* BROADCAST */
 
 	/* Local IPv6 Unicast Addresses */
-	"0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.IP6."
-	"ARPA",
-	"1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.IP6."
-	"ARPA",
+	/* clang-format off */
+	"0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.IP6.ARPA",
+	"1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.IP6.ARPA",
+	/* clang-format on */
 	/* LOCALLY ASSIGNED LOCAL ADDRESS SCOPE */
 	"D.F.IP6.ARPA", "8.E.F.IP6.ARPA", /* LINK LOCAL */
 	"9.E.F.IP6.ARPA",		  /* LINK LOCAL */
@@ -11763,7 +11763,7 @@ named_server_flushcache(named_server_t *server, isc_lex_t *lex) {
 }
 
 isc_result_t
-named_server_flushnode(named_server_t *server, isc_lex_t *lex, bool tree) {
+named_server_flushname(named_server_t *server, isc_lex_t *lex, bool tree) {
 	char *ptr, *viewname;
 	char target[DNS_NAME_FORMATSIZE];
 	dns_view_t *view;
@@ -11813,7 +11813,7 @@ named_server_flushnode(named_server_t *server, isc_lex_t *lex, bool tree) {
 		 * if some of the views share a single cache.  But since the
 		 * operation is lightweight we prefer simplicity here.
 		 */
-		result = dns_view_flushnode(view, name, tree);
+		result = dns_view_flushname(view, name, tree);
 		if (result != ISC_R_SUCCESS) {
 			flushed = false;
 			isc_log_write(NAMED_LOGCATEGORY_GENERAL,
@@ -15208,7 +15208,7 @@ named_server_nta(named_server_t *server, isc_lex_t *lex, bool readonly,
 			continue;
 		}
 
-		result = dns_view_flushnode(view, ntaname, true);
+		result = dns_view_flushname(view, ntaname, true);
 		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
 			      ISC_LOG_INFO,
 			      "flush tree '%s' in cache view '%s': %s", namebuf,

@@ -462,12 +462,7 @@ cleanup:
 }
 
 isc_result_t
-dns_cache_flushname(dns_cache_t *cache, const dns_name_t *name) {
-	return dns_cache_flushnode(cache, name, false);
-}
-
-isc_result_t
-dns_cache_flushnode(dns_cache_t *cache, const dns_name_t *name, bool tree) {
+dns_cache_flushname(dns_cache_t *cache, const dns_name_t *name, bool tree) {
 	isc_result_t result;
 	dns_db_t *db = NULL;
 

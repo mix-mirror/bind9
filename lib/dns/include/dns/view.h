@@ -872,28 +872,12 @@ dns_view_flushcache(dns_view_t *view, bool fixuponly);
  */
 
 isc_result_t
-dns_view_flushnode(dns_view_t *view, const dns_name_t *name, bool tree);
+dns_view_flushname(dns_view_t *view, const dns_name_t *name, bool tree);
 /*%<
  * Flush the given name from the view's cache (and optionally ADB/badcache).
  *
  * Flush the given name from the cache, ADB, and bad cache.  If 'tree'
  * is true, also flush all subdomains of 'name'.
- *
- * Requires:
- *\li	'view' is valid.
- *\li	'name' is valid.
- *
- * Returns:
- *\li	#ISC_R_SUCCESS
- *	other returns are failures.
- */
-
-isc_result_t
-dns_view_flushname(dns_view_t *view, const dns_name_t *name);
-/*%<
- * Flush the given name from the view's cache, ADB and badcache.
- * Equivalent to dns_view_flushnode(view, name, false).
- *
  *
  * Requires:
  *\li	'view' is valid.

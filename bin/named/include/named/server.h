@@ -247,7 +247,7 @@ named_server_flushcache(named_server_t *server, isc_lex_t *lex);
  * flush all the names under the specified name.
  */
 isc_result_t
-named_server_flushnode(named_server_t *server, isc_lex_t *lex, bool tree);
+named_server_flushname(named_server_t *server, isc_lex_t *lex, bool tree);
 
 /*%
  * Report the server's status.
