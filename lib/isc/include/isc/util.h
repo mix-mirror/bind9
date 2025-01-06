@@ -61,7 +61,8 @@
 #define ISC_NONSTRING
 #endif /* __GNUC__ */
 
-#if HAVE_FUNC_ATTRIBUTE_CONSTRUCTOR && HAVE_FUNC_ATTRIBUTE_DESTRUCTOR
+#if defined(HAVE_FUNC_ATTRIBUTE_CONSTRUCTOR) && \
+	defined(HAVE_FUNC_ATTRIBUTE_DESTRUCTOR)
 #define ISC_CONSTRUCTOR __attribute__((constructor))
 #define ISC_DESTRUCTOR	__attribute__((destructor))
 #else

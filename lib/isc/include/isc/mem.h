@@ -24,14 +24,6 @@
 #include <isc/types.h>
 #include <isc/urcu.h>
 
-/*%
- * Define ISC_MEM_TRACKLINES=1 to turn on detailed tracing of memory
- * allocation and freeing by file and line number.
- */
-#ifndef ISC_MEM_TRACKLINES
-#define ISC_MEM_TRACKLINES 0
-#endif /* ifndef ISC_MEM_TRACKLINES */
-
 extern unsigned int isc_mem_debugging;
 extern unsigned int isc_mem_defaultflags;
 
@@ -61,13 +53,13 @@ extern unsigned int isc_mem_defaultflags;
  */
 /*@}*/
 
-#if ISC_MEM_TRACKLINES
+#ifdef ISC_MEM_TRACKLINES
 #define _ISC_MEM_FILELINE , __FILE__, __LINE__
 #define _ISC_MEM_FLARG	  , const char *, unsigned int
-#else /* if ISC_MEM_TRACKLINES */
+#else /* ISC_MEM_TRACKLINES */
 #define _ISC_MEM_FILELINE
 #define _ISC_MEM_FLARG
-#endif /* if ISC_MEM_TRACKLINES */
+#endif /* ISC_MEM_TRACKLINES */
 
 /*
  * Flags for isc_mem_create() calls.
@@ -81,11 +73,11 @@ extern unsigned int isc_mem_defaultflags;
  * Define ISC_MEM_DEFAULTFILL=1 to turn filling the memory with pattern
  * after alloc and free.
  */
-#if ISC_MEM_DEFAULTFILL
+#ifdef ISC_MEM_DEFAULTFILL
 #define ISC_MEMFLAG_DEFAULT ISC_MEMFLAG_FILL
-#else /* if !ISC_MEM_USE_INTERNAL_MALLOC */
+#else /* ISC_MEM_USE_INTERNAL_MALLOC */
 #define ISC_MEMFLAG_DEFAULT 0
-#endif /* if !ISC_MEM_USE_INTERNAL_MALLOC */
+#endif /* ISC_MEM_USE_INTERNAL_MALLOC */
 
 /*%
  * isc_mem_putanddetach() is a convenience function for use where you

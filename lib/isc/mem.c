@@ -81,7 +81,7 @@ volatile void *isc__mem_malloc = mallocx;
 /*
  * Types.
  */
-#if ISC_MEM_TRACKLINES
+#ifdef ISC_MEM_TRACKLINES
 typedef struct debuglink debuglink_t;
 struct debuglink {
 	ISC_LINK(debuglink_t) link;
@@ -95,10 +95,10 @@ typedef ISC_LIST(debuglink_t) debuglist_t;
 
 #define FLARG_PASS , file, line
 #define FLARG	   , const char *file, unsigned int line
-#else /* if ISC_MEM_TRACKLINES */
+#else /* ISC_MEM_TRACKLINES */
 #define FLARG_PASS
 #define FLARG
-#endif /* if ISC_MEM_TRACKLINES */
+#endif /* ISC_MEM_TRACKLINES */
 
 typedef struct element element;
 struct element {
@@ -134,10 +134,10 @@ struct isc_mem {
 	ISC_LIST(isc_mempool_t) pools;
 	unsigned int poolcnt;
 
-#if ISC_MEM_TRACKLINES
+#ifdef ISC_MEM_TRACKLINES
 	debuglist_t *debuglist;
 	size_t debuglistcnt;
-#endif /* if ISC_MEM_TRACKLINES */
+#endif /* ISC_MEM_TRACKLINES */
 
 	ISC_LINK(isc_mem_t) link;
 };
@@ -166,11 +166,11 @@ struct isc_mempool {
  * Private Inline-able.
  */
 
-#if !ISC_MEM_TRACKLINES
+#ifndef ISC_MEM_TRACKLINES
 #define ADD_TRACE(mctx, ptr, size, file, line)
 #define DELETE_TRACE(mctx, ptr, size, file, line)
 #define ISC_MEMFUNC_SCOPE
-#else /* if !ISC_MEM_TRACKLINES */
+#else /* !ISC_MEM_TRACKLINES */
 #define TRACE_OR_RECORD (ISC_MEM_DEBUGTRACE | ISC_MEM_DEBUGRECORD)
 
 #define SHOULD_TRACE_OR_RECORD(mctx, ptr) \
@@ -188,9 +188,9 @@ struct isc_mempool {
 
 static void
 print_active(isc_mem_t *ctx, FILE *out);
-#endif /* ISC_MEM_TRACKLINES */
+#endif /* !ISC_MEM_TRACKLINES */
 
-#if ISC_MEM_TRACKLINES
+#ifdef ISC_MEM_TRACKLINES
 /*!
  * mctx must not be locked.
  */
@@ -481,7 +481,7 @@ mem_create(isc_mem_t **ctxp, unsigned int debugging, unsigned int flags,
 
 	ISC_LIST_INIT(ctx->pools);
 
-#if ISC_MEM_TRACKLINES
+#ifdef ISC_MEM_TRACKLINES
 	if ((ctx->debugging & ISC_MEM_DEBUGRECORD) != 0) {
 		unsigned int i;
 
@@ -494,7 +494,7 @@ mem_create(isc_mem_t **ctxp, unsigned int debugging, unsigned int flags,
 			ISC_LIST_INIT(ctx->debuglist[i]);
 		}
 	}
-#endif /* if ISC_MEM_TRACKLINES */
+#endif /* ISC_MEM_TRACKLINES */
 
 	LOCK(&contextslock);
 	ISC_LIST_INITANDAPPEND(contexts, ctx, link);
@@ -520,7 +520,7 @@ destroy(isc_mem_t *ctx) {
 
 	INSIST(ISC_LIST_EMPTY(ctx->pools));
 
-#if ISC_MEM_TRACKLINES
+#ifdef ISC_MEM_TRACKLINES
 	if (ctx->debuglist != NULL) {
 		debuglink_t *dl;
 		for (size_t i = 0; i < DEBUG_TABLE_COUNT; i++) {
@@ -542,7 +542,7 @@ destroy(isc_mem_t *ctx) {
 			ISC_CHECKED_MUL(DEBUG_TABLE_COUNT, sizeof(debuglist_t)),
 			ctx->jemalloc_flags);
 	}
-#endif /* if ISC_MEM_TRACKLINES */
+#endif /* ISC_MEM_TRACKLINES */
 
 	isc_mutex_destroy(&ctx->lock);
 
@@ -577,12 +577,12 @@ isc__mem_detach(isc_mem_t **ctxp FLARG) {
 
 	if (isc_refcount_decrement(&ctx->references) == 1) {
 		isc_refcount_destroy(&ctx->references);
-#if ISC_MEM_TRACKLINES
+#ifdef ISC_MEM_TRACKLINES
 		if ((ctx->debugging & ISC_MEM_DEBUGTRACE) != 0) {
 			fprintf(stderr, "destroy mctx %p file %s line %u\n",
 				ctx, file, line);
 		}
-#endif
+#endif /* ISC_MEM_TRACKLINES */
 		destroy(ctx);
 	}
 }
@@ -627,7 +627,7 @@ isc__mem_destroy(isc_mem_t **ctxp FLARG) {
 
 	rcu_barrier();
 
-#if ISC_MEM_TRACKLINES
+#ifdef ISC_MEM_TRACKLINES
 	if ((ctx->debugging & ISC_MEM_DEBUGTRACE) != 0) {
 		fprintf(stderr, "destroy mctx %p file %s line %u\n", ctx, file,
 			line);
@@ -636,9 +636,9 @@ isc__mem_destroy(isc_mem_t **ctxp FLARG) {
 	if (isc_refcount_decrement(&ctx->references) > 1) {
 		print_active(ctx, stderr);
 	}
-#else  /* if ISC_MEM_TRACKLINES */
+#else  /* ISC_MEM_TRACKLINES */
 	isc_refcount_decrementz(&ctx->references);
-#endif /* if ISC_MEM_TRACKLINES */
+#endif /* ISC_MEM_TRACKLINES */
 	isc_refcount_destroy(&ctx->references);
 	destroy(ctx);
 
@@ -669,7 +669,7 @@ isc__mem_put(isc_mem_t *ctx, void *ptr, size_t size, int flags FLARG) {
 	mem_put(ctx, ptr, size, flags);
 }
 
-#if ISC_MEM_TRACKLINES
+#ifdef ISC_MEM_TRACKLINES
 static void
 print_active(isc_mem_t *mctx, FILE *out) {
 	if (mctx->debuglist != NULL) {
@@ -705,7 +705,7 @@ print_active(isc_mem_t *mctx, FILE *out) {
 		}
 	}
 }
-#endif /* if ISC_MEM_TRACKLINES */
+#endif /* ISC_MEM_TRACKLINES */
 
 /*
  * Print the stats[] on the stream "out" with suitable formatting.
@@ -741,9 +741,9 @@ isc_mem_stats(isc_mem_t *ctx, FILE *out) {
 		pool = ISC_LIST_NEXT(pool, link);
 	}
 
-#if ISC_MEM_TRACKLINES
+#ifdef ISC_MEM_TRACKLINES
 	print_active(ctx, out);
-#endif /* if ISC_MEM_TRACKLINES */
+#endif /* ISC_MEM_TRACKLINES */
 
 	MCTXUNLOCK(ctx);
 }
@@ -1021,7 +1021,7 @@ isc__mempool_create(isc_mem_t *restrict mctx, const size_t element_size,
 		.fillcount = 1,
 	};
 
-#if ISC_MEM_TRACKLINES
+#ifdef ISC_MEM_TRACKLINES
 	if ((mctx->debugging & ISC_MEM_DEBUGTRACE) != 0) {
 		fprintf(stderr, "create pool %p file %s line %u mctx %p\n",
 			mpctx, file, line, mctx);
@@ -1061,12 +1061,12 @@ isc__mempool_destroy(isc_mempool_t **restrict mpctxp FLARG) {
 
 	mctx = mpctx->mctx;
 
-#if ISC_MEM_TRACKLINES
+#ifdef ISC_MEM_TRACKLINES
 	if ((mctx->debugging & ISC_MEM_DEBUGTRACE) != 0) {
 		fprintf(stderr, "destroy pool %p file %s line %u mctx %p\n",
 			mpctx, file, line, mctx);
 	}
-#endif
+#endif /* ISC_MEM_TRACKLINES */
 
 	if (mpctx->allocated > 0) {
 		UNEXPECTED_ERROR("mempool %s leaked memory", mpctx->name);
@@ -1231,7 +1231,7 @@ isc_mempool_getfillcount(isc_mempool_t *restrict mpctx) {
 /*
  * Requires contextslock to be held by caller.
  */
-#if ISC_MEM_TRACKLINES
+#ifdef ISC_MEM_TRACKLINES
 static void
 print_contexts(FILE *file) {
 	isc_mem_t *ctx;
@@ -1265,11 +1265,11 @@ isc__mem_checkdestroyed(void) {
 
 	LOCK(&contextslock);
 	if (!ISC_LIST_EMPTY(contexts)) {
-#if ISC_MEM_TRACKLINES
+#ifdef ISC_MEM_TRACKLINES
 		if ((isc_mem_debugging & TRACE_OR_RECORD) != 0) {
 			print_contexts(file);
 		}
-#endif /* if ISC_MEM_TRACKLINES */
+#endif /* ISC_MEM_TRACKLINES */
 		UNREACHABLE();
 	}
 	UNLOCK(&contextslock);
@@ -1493,7 +1493,7 @@ error:
 void
 isc__mem_create(isc_mem_t **mctxp FLARG) {
 	mem_create(mctxp, isc_mem_debugging, isc_mem_defaultflags, 0);
-#if ISC_MEM_TRACKLINES
+#ifdef ISC_MEM_TRACKLINES
 	if ((isc_mem_debugging & ISC_MEM_DEBUGTRACE) != 0) {
 		fprintf(stderr, "create mctx %p file %s line %u\n", *mctxp,
 			file, line);
@@ -1519,7 +1519,7 @@ isc__mem_create_arena(isc_mem_t **mctxp FLARG) {
 			   ? 0
 			   : MALLOCX_ARENA(arena_no) | MALLOCX_TCACHE_NONE);
 	(*mctxp)->jemalloc_arena = arena_no;
-#if ISC_MEM_TRACKLINES
+#ifdef ISC_MEM_TRACKLINES
 	if ((isc_mem_debugging & ISC_MEM_DEBUGTRACE) != 0) {
 		fprintf(stderr,
 			"create mctx %p file %s line %u for jemalloc arena "
@@ -1580,13 +1580,13 @@ isc_mem_arena_set_dirty_decay_ms(isc_mem_t *mctx, const ssize_t decay_ms) {
 
 void
 isc__mem_printactive(isc_mem_t *ctx, FILE *file) {
-#if ISC_MEM_TRACKLINES
+#ifdef ISC_MEM_TRACKLINES
 	REQUIRE(VALID_CONTEXT(ctx));
 	REQUIRE(file != NULL);
 
 	print_active(ctx, file);
-#else  /* if ISC_MEM_TRACKLINES */
+#else  /* ISC_MEM_TRACKLINES */
 	UNUSED(ctx);
 	UNUSED(file);
-#endif /* if ISC_MEM_TRACKLINES */
+#endif /* ISC_MEM_TRACKLINES */
 }

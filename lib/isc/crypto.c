@@ -67,7 +67,7 @@ const EVP_MD *isc__crypto_sha512 = NULL;
  * https://cvsweb.openbsd.org/src/lib/libcrypto/Attic/mem.c
  */
 
-#if ISC_MEM_TRACKLINES
+#ifdef ISC_MEM_TRACKLINES
 /*
  * We use the internal isc__mem API here, so we can pass the file and line
  * arguments passed from OpenSSL >= 1.1.0 to our memory functions for better

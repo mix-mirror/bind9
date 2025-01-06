@@ -128,10 +128,10 @@ struct dns_rdata {
 #else /* ifdef DNS_RDATA_CHECKINITIALIZED */
 #ifdef ISC_LIST_CHECKINIT
 #define DNS_RDATA_INITIALIZED(rdata) (!ISC_LINK_LINKED((rdata), link))
-#else /* ifdef ISC_LIST_CHECKINIT */
+#else /* ISC_LIST_CHECKINIT */
 #define DNS_RDATA_INITIALIZED(rdata) true
-#endif /* ifdef ISC_LIST_CHECKINIT */
-#endif /* ifdef DNS_RDATA_CHECKINITIALIZED */
+#endif /* ISC_LIST_CHECKINIT */
+#endif /* DNS_RDATA_CHECKINITIALIZED */
 
 #define DNS_RDATA_UPDATE  0x0001 /*%< update pseudo record. */
 #define DNS_RDATA_OFFLINE 0x0002 /*%< RRSIG has a offline key. */

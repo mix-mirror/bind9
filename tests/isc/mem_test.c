@@ -325,7 +325,7 @@ ISC_RUN_TEST_IMPL(isc_mem_overmem) {
 	isc_mem_destroy(&omctx);
 }
 
-#if ISC_MEM_TRACKLINES
+#ifdef ISC_MEM_TRACKLINES
 
 /* test mem with no flags */
 ISC_RUN_TEST_IMPL(isc_mem_noflags) {
@@ -450,7 +450,7 @@ ISC_RUN_TEST_IMPL(isc_mem_traceflag) {
 	assert_non_null(p);
 	assert_memory_equal(p + 1, "del ", 4);
 }
-#endif /* if ISC_MEM_TRACKLINES */
+#endif /* ISC_MEM_TRACKLINES */
 
 #if !defined(__SANITIZE_THREAD__)
 
@@ -522,7 +522,7 @@ ISC_TEST_ENTRY(isc_mem_reget)
 ISC_TEST_ENTRY(isc_mem_reallocate)
 ISC_TEST_ENTRY(isc_mem_overmem)
 
-#if ISC_MEM_TRACKLINES
+#ifdef ISC_MEM_TRACKLINES
 ISC_TEST_ENTRY(isc_mem_noflags)
 ISC_TEST_ENTRY(isc_mem_recordflag)
 /*
@@ -531,7 +531,7 @@ ISC_TEST_ENTRY(isc_mem_recordflag)
  * This test has to be the last one to avoid problems.
  */
 ISC_TEST_ENTRY(isc_mem_traceflag)
-#endif /* if ISC_MEM_TRACKLINES */
+#endif /* ISC_MEM_TRACKLINES */
 #if !defined(__SANITIZE_THREAD__)
 ISC_TEST_ENTRY(isc_mem_benchmark)
 #endif /* __SANITIZE_THREAD__ */

@@ -27,11 +27,11 @@
 #define ISC_NORETURN _Noreturn
 #endif
 
-#if HAVE_FUNC_ATTRIBUTE_RETURNS_NONNULL
+#ifdef HAVE_FUNC_ATTRIBUTE_RETURNS_NONNULL
 #define ISC_ATTR_RETURNS_NONNULL __attribute__((returns_nonnull))
-#else
+#else /* HAVE_FUNC_ATTRIBUTE_RETURNS_NONNULL */
 #define ISC_ATTR_RETURNS_NONNULL
-#endif
+#endif /* HAVE_FUNC_ATTRIBUTE_RETURNS_NONNULL */
 
 #ifdef HAVE_FUNC_ATTRIBUTE_MALLOC
 /*
@@ -40,7 +40,7 @@
  * pointer valid when the function returns.
  */
 #define ISC_ATTR_MALLOC __attribute__((malloc))
-#if HAVE_MALLOC_EXT_ATTR
+#ifdef HAVE_MALLOC_EXT_ATTR
 /*
  * Associates deallocator as a suitable deallocation function
  * for pointers returned from the function marked with the attribute.
@@ -65,7 +65,7 @@
  */
 #define ISC_ATTR_MALLOC_DEALLOCATOR_IDX(deallocator, idx) \
 	__attribute__((malloc, malloc(deallocator, idx)))
-#else /* #ifdef HAVE_MALLOC_EXT_ATTR */
+#else /* HAVE_MALLOC_EXT_ATTR */
 /*
  * There is support for malloc attribute but not for
  * extended attributes, so macros that combine attribute malloc
@@ -75,8 +75,8 @@
 #define ISC_ATTR_DEALLOCATOR_IDX(deallocator, idx)
 #define ISC_ATTR_MALLOC_DEALLOCATOR(deallocator)	  ISC_ATTR_MALLOC
 #define ISC_ATTR_MALLOC_DEALLOCATOR_IDX(deallocator, idx) ISC_ATTR_MALLOC
-#endif
-#else /* #ifdef HAVE_FUNC_ATTRIBUTE_MALLOC */
+#endif /* HAVE_MALLOC_EXT_ATTR */
+#else  /* HAVE_FUNC_ATTRIBUTE_MALLOC */
 /*
  * There is no support for malloc attribute.
  */
