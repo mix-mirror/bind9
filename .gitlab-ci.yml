@@ -304,6 +304,7 @@ stages:
     - *configure
     - *check_readline_setup
     - meson compile -C build
+    - meson compile -C build system-test-dependencies
     - test -z "${RUN_MESON_INSTALL}" || meson install -C build --destdir=$INSTALL_PATH
     - test -z "${RUN_MESON_INSTALL}" || DESTDIR="${INSTALL_PATH}" sh build/util/check-make-install
     #- test -z "${CROSS_COMPILATION}" || grep -F -A 1 "checking whether we are cross compiling" config.log | grep -q "result.*yes"

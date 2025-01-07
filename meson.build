@@ -958,6 +958,8 @@ fuzz_binaries = {}
 system_test_binaries = {}
 system_test_libraries = {}
 
+system_test_targets = []
+
 subdir('bin')
 subdir('fuzz')
 subdir('lib')
@@ -1629,7 +1631,7 @@ foreach name, sources : fuzz_binaries
 endforeach
 
 foreach name, sources : system_test_binaries
-    executable(
+    system_test_targets += executable(
         name,
         sources,
         build_by_default: developer_mode,
@@ -1645,7 +1647,7 @@ foreach name, sources : system_test_binaries
 endforeach
 
 foreach name, sources : system_test_libraries
-    shared_library(
+    system_test_targets += shared_library(
         name,
         sources,
         build_by_default: developer_mode,
@@ -1658,6 +1660,8 @@ foreach name, sources : system_test_libraries
         ],
     )
 endforeach
+
+alias_target('system-test-dependencies', system_test_targets)
 
 ### Documentation
 
