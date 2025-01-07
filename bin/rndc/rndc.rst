@@ -134,7 +134,7 @@ Currently supported commands are:
    that would ordinarily be placed in :iscman:`named.conf`.
 
    The configuration is saved in an LMDB database called
-   ``viewname.nzf``. ``viewname`` is the name of the view, unless the
+   ``viewname.nzd``. ``viewname`` is the name of the view, unless the
    view name contains characters that are incompatible with use as a
    file name, in which case a cryptographic hash of the view name is
    used instead. When :iscman:`named` is restarted, the file is loaded

@@ -109,26 +109,14 @@ for lmdb in lmdb-*.conf; do
   n=$((n + 1))
   ret=0
 
-  if $FEATURETEST --with-lmdb; then
-    echo_i "checking that named-checkconf detects no error in $lmdb ($n)"
-    {
-      $CHECKCONF $lmdb >checkconf.out$n 2>&1
-      rc=$?
-    } || true
-    if [ $rc -ne 0 ]; then
-      echo_i "failed"
-      ret=1
-    fi
-  else
-    echo_i "checking that named-checkconf detects error in $lmdb ($n)"
-    {
-      $CHECKCONF $lmdb >checkconf.out$n 2>&1
-      rc=$?
-    } || true
-    if [ $rc -eq 0 ]; then
-      echo_i "failed"
-      ret=1
-    fi
+  echo_i "checking that named-checkconf detects no error in $lmdb ($n)"
+  {
+    $CHECKCONF $lmdb >checkconf.out$n 2>&1
+    rc=$?
+  } || true
+  if [ $rc -ne 0 ]; then
+    echo_i "failed"
+    ret=1
   fi
   status=$((status + ret))
 done

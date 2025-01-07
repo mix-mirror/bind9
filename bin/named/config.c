@@ -160,8 +160,8 @@ options {\n\
 	fetches-per-server 0;\n\
 	fetches-per-zone 0;\n\
 	lame-ttl 0;\n\
-        lmdb-mapsize 32M;\n\
-        max-cache-size 90%;\n\
+	lmdb-mapsize 32M;\n\
+	max-cache-size 90%;\n\
 	max-cache-ttl 604800; /* 1 week */\n\
 	max-clients-per-query 100;\n\
 	max-ncache-ttl 10800; /* 3 hours */\n\

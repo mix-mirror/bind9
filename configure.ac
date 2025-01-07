@@ -1489,7 +1489,6 @@ report() {
 	test -z "$LIBXML2_LIBS" || echo "    XML statistics (--with-libxml2)"
 	test -z "$JSON_C_LIBS" || echo "    JSON statistics (--with-json-c): $JSON_C_CFLAGS $JSON_C_LIBS"
 	test -z "$ZLIB_LIBS" || echo "    HTTP zlib compression (--with-zlib)"
-	test -z "$LMDB_LIBS" || echo "    LMDB database"
 	test -z "$LIBIDN2_LIBS" || echo "    IDN support (--with-libidn2)"
     fi
 
@@ -1551,7 +1550,6 @@ report() {
     test -z "$LIBXML2_LIBS" && echo "    XML statistics (--with-libxml2)"
     test -z "$JSON_C_LIBS" && echo "    JSON statistics (--with-json-c)"
     test -z "$ZLIB_LIBS" && echo "    HTTP zlib compression (--with-zlib)"
-    test -z "$LMDB_LIBS" && echo "    LMDB database"
     test -z "$LIBIDN2_LIBS" && echo "    IDN support (--with-libidn2)"
 
     echo "-------------------------------------------------------------------------------"
