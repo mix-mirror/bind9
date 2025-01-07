@@ -21,6 +21,7 @@ project(
         'b_pie=true',
         'c_std=gnu11',
         'default_library=shared',
+        'localstatedir=/var',
         'strip=false',
         'warning_level=2',
         'werror=false',
