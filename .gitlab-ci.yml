@@ -612,7 +612,7 @@ danger:
   <<: *precheck_job
   needs: []
   script:
-    - pip install git+https://gitlab.isc.org/isc-projects/hazard.git
+    - pip install git+https://gitlab.isc.org/isc-projects/hazard.git@michal/make-git-fetch-depth-configurable
     - hazard
   only:
     refs:
