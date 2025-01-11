@@ -36,11 +36,12 @@
 #include <dns/rdatatype.h>
 #include <dns/time.h>
 
-#define CHECK(op)                            \
-	do {                                 \
-		result = (op);               \
-		if (result != ISC_R_SUCCESS) \
-			goto failure;        \
+#define CHECK(op)                              \
+	do {                                   \
+		result = (op);                 \
+		if (result != ISC_R_SUCCESS) { \
+			goto failure;          \
+		}                              \
 	} while (0)
 
 static dns_rdatatype_t
@@ -284,7 +285,6 @@ static isc_result_t
 diff_apply(const dns_diff_t *diff, dns_db_t *db, dns_dbversion_t *ver,
 	   bool warn) {
 	dns_difftuple_t *t;
-	dns_dbnode_t *node = NULL;
 	isc_result_t result;
 	char namebuf[DNS_NAME_FORMATSIZE];
 	char typebuf[DNS_RDATATYPE_FORMATSIZE];
@@ -297,7 +297,6 @@ diff_apply(const dns_diff_t *diff, dns_db_t *db, dns_dbversion_t *ver,
 	while (t != NULL) {
 		dns_name_t *name;
 
-		INSIST(node == NULL);
 		name = &t->name;
 		/*
 		 * Find the node.
@@ -342,16 +341,6 @@ diff_apply(const dns_diff_t *diff, dns_db_t *db, dns_dbversion_t *ver,
 			rdl.covers = covers;
 			rdl.rdclass = t->rdata.rdclass;
 			rdl.ttl = t->ttl;
-
-			node = NULL;
-			if (type != dns_rdatatype_nsec3 &&
-			    covers != dns_rdatatype_nsec3)
-			{
-				CHECK(dns_db_findnode(db, name, true, &node));
-			} else {
-				CHECK(dns_db_findnsec3node(db, name, true,
-							   &node));
-			}
 
 			while (t != NULL && dns_name_equal(&t->name, name) &&
 			       t->op == op && t->rdata.type == type &&
@@ -403,14 +392,14 @@ diff_apply(const dns_diff_t *diff, dns_db_t *db, dns_dbversion_t *ver,
 			case DNS_DIFFOP_ADDRESIGN:
 				options = DNS_DBADD_MERGE | DNS_DBADD_EXACT |
 					  DNS_DBADD_EXACTTTL;
-				result = dns_db_addrdataset(db, node, ver, 0,
+				result = dns_db_addrdataset(db, ver, name, 0,
 							    &rds, options,
 							    &ardataset);
 				break;
 			case DNS_DIFFOP_DEL:
 			case DNS_DIFFOP_DELRESIGN:
 				options = DNS_DBSUB_EXACT | DNS_DBSUB_WANTOLD;
-				result = dns_db_subtractrdataset(db, node, ver,
+				result = dns_db_subtractrdataset(db, ver, name,
 								 &rds, options,
 								 &ardataset);
 				break;
@@ -504,21 +493,16 @@ diff_apply(const dns_diff_t *diff, dns_db_t *db, dns_dbversion_t *ver,
 				if (dns_rdataset_isassociated(&ardataset)) {
 					dns_rdataset_disassociate(&ardataset);
 				}
-				CHECK(result);
+				if (result != ISC_R_SUCCESS) {
+					return result;
+				}
 			}
-			dns_db_detachnode(db, &node);
 			if (dns_rdataset_isassociated(&ardataset)) {
 				dns_rdataset_disassociate(&ardataset);
 			}
 		}
 	}
 	return ISC_R_SUCCESS;
-
-failure:
-	if (node != NULL) {
-		dns_db_detachnode(db, &node);
-	}
-	return result;
 }
 
 isc_result_t
@@ -547,9 +531,8 @@ dns_diff_load(const dns_diff_t *diff, dns_rdatacallbacks_t *callbacks) {
 
 	t = ISC_LIST_HEAD(diff->tuples);
 	while (t != NULL) {
-		dns_name_t *name;
+		dns_name_t *name = &t->name;
 
-		name = &t->name;
 		while (t != NULL && dns_name_caseequal(&t->name, name)) {
 			dns_rdatatype_t type, covers;
 			dns_diffop_t op;
@@ -585,20 +568,20 @@ dns_diff_load(const dns_diff_t *diff, dns_rdatacallbacks_t *callbacks) {
 			INSIST(op == DNS_DIFFOP_ADD);
 			result = callbacks->add(callbacks->add_private, name,
 						&rds DNS__DB_FILELINE);
-			if (result == DNS_R_UNCHANGED) {
+			switch (result) {
+			case DNS_R_UNCHANGED:
 				isc_log_write(DNS_LOGCATEGORY_GENERAL,
 					      DNS_LOGMODULE_DIFF,
 					      ISC_LOG_WARNING,
 					      "dns_diff_load: "
 					      "update with no effect");
-			} else if (result == ISC_R_SUCCESS ||
-				   result == DNS_R_NXRRSET)
-			{
-				/*
-				 * OK.
-				 */
-			} else {
-				CHECK(result);
+				break;
+			case ISC_R_SUCCESS:
+			case DNS_R_NXRRSET:
+				/* OK */
+				break;
+			default:
+				goto failure;
 			}
 		}
 	}

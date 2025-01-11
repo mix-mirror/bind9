@@ -38,29 +38,6 @@
  * Individual unit tests
  */
 
-/* test multiple calls to dns_db_getoriginnode */
-ISC_LOOP_TEST_IMPL(getoriginnode) {
-	dns_db_t *db = NULL;
-	dns_dbnode_t *node = NULL;
-	isc_result_t result;
-
-	result = dns_db_create(mctx, ZONEDB_DEFAULT, dns_rootname,
-			       dns_dbtype_zone, dns_rdataclass_in, 0, NULL,
-			       &db);
-	assert_int_equal(result, ISC_R_SUCCESS);
-
-	result = dns_db_getoriginnode(db, &node);
-	assert_int_equal(result, ISC_R_SUCCESS);
-	dns_db_detachnode(db, &node);
-
-	result = dns_db_getoriginnode(db, &node);
-	assert_int_equal(result, ISC_R_SUCCESS);
-	dns_db_detachnode(db, &node);
-
-	dns_db_detach(&db);
-	isc_loopmgr_shutdown(loopmgr);
-}
-
 /* test getservestalettl and setservestalettl */
 ISC_LOOP_TEST_IMPL(getsetservestalettl) {
 	dns_db_t *db = NULL;
@@ -93,7 +70,6 @@ ISC_LOOP_TEST_IMPL(getsetservestalettl) {
 /* check DNS_DBFIND_STALEOK works */
 ISC_LOOP_TEST_IMPL(dns_dbfind_staleok) {
 	dns_db_t *db = NULL;
-	dns_dbnode_t *node = NULL;
 	dns_fixedname_t example_fixed;
 	dns_fixedname_t found_fixed;
 	dns_name_t *example;
@@ -155,18 +131,14 @@ ISC_LOOP_TEST_IMPL(dns_dbfind_staleok) {
 		dns_rdataset_init(&rdataset);
 		dns_rdatalist_tordataset(&rdatalist, &rdataset);
 
-		result = dns_db_findnode(db, example, true, &node);
-		assert_int_equal(result, ISC_R_SUCCESS);
-
-		result = dns_db_addrdataset(db, node, NULL, 0, &rdataset, 0,
+		result = dns_db_addrdataset(db, NULL, example, 0, &rdataset, 0,
 					    NULL);
 		assert_int_equal(result, ISC_R_SUCCESS);
 
-		dns_db_detachnode(db, &node);
 		dns_rdataset_disassociate(&rdataset);
 
-		result = dns_db_find(db, example, NULL, dns_rdatatype_a, 0, 0,
-				     &node, found, &rdataset, NULL);
+		result = dns_db_find(db, NULL, example, dns_rdatatype_a, 0, 0,
+				     found, &rdataset, NULL);
 		assert_int_equal(result, ISC_R_SUCCESS);
 
 		/*
@@ -180,14 +152,12 @@ ISC_LOOP_TEST_IMPL(dns_dbfind_staleok) {
 						 DNS_RDATASETATTR_STALE,
 					 0);
 			assert_true(rdataset.ttl > 0);
-			dns_db_detachnode(db, &node);
 			dns_rdataset_disassociate(&rdataset);
 
 			usleep(100000); /* 100 ms */
 
-			result = dns_db_find(db, example, NULL, dns_rdatatype_a,
-					     0, 0, &node, found, &rdataset,
-					     NULL);
+			result = dns_db_find(db, NULL, example, dns_rdatatype_a,
+					     0, 0, found, &rdataset, NULL);
 		} while (result == ISC_R_SUCCESS);
 
 		assert_int_equal(result, ISC_R_NOTFOUND);
@@ -195,9 +165,9 @@ ISC_LOOP_TEST_IMPL(dns_dbfind_staleok) {
 		/*
 		 * Check whether we can get stale data.
 		 */
-		result = dns_db_find(db, example, NULL, dns_rdatatype_a,
-				     DNS_DBFIND_STALEOK, 0, &node, found,
-				     &rdataset, NULL);
+		result = dns_db_find(db, NULL, example, dns_rdatatype_a,
+				     DNS_DBFIND_STALEOK, 0, found, &rdataset,
+				     NULL);
 		switch (pass) {
 		case 0:
 			assert_int_equal(result, ISC_R_NOTFOUND);
@@ -215,15 +185,14 @@ ISC_LOOP_TEST_IMPL(dns_dbfind_staleok) {
 				assert_int_equal(rdataset.attributes &
 							 DNS_RDATASETATTR_STALE,
 						 DNS_RDATASETATTR_STALE);
-				dns_db_detachnode(db, &node);
 				dns_rdataset_disassociate(&rdataset);
 
 				usleep(100000); /* 100 ms */
 
-				result = dns_db_find(
-					db, example, NULL, dns_rdatatype_a,
-					DNS_DBFIND_STALEOK, 0, &node, found,
-					&rdataset, NULL);
+				result = dns_db_find(db, NULL, example,
+						     dns_rdatatype_a,
+						     DNS_DBFIND_STALEOK, 0,
+						     found, &rdataset, NULL);
 			} while (result == ISC_R_SUCCESS);
 			/*
 			 * usleep(100000) can be slightly less than 10ms so
@@ -297,7 +266,6 @@ ISC_LOOP_TEST_IMPL(version) {
 	dns_name_t *name, *foundname;
 	dns_db_t *db = NULL;
 	dns_dbversion_t *ver = NULL, *new = NULL;
-	dns_dbnode_t *node = NULL;
 	dns_rdataset_t rdataset;
 
 	result = dns_test_loaddb(&db, dns_dbtype_zone, "test.test",
@@ -310,11 +278,10 @@ ISC_LOOP_TEST_IMPL(version) {
 	name = dns_fixedname_name(&fname);
 	foundname = dns_fixedname_initname(&ffound);
 	dns_rdataset_init(&rdataset);
-	result = dns_db_find(db, name, ver, dns_rdatatype_a, 0, 0, &node,
-			     foundname, &rdataset, NULL);
+	result = dns_db_find(db, ver, name, dns_rdatatype_a, 0, 0, foundname,
+			     &rdataset, NULL);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	dns_rdataset_disassociate(&rdataset);
-	dns_db_detachnode(db, &node);
 	dns_db_closeversion(db, &ver, false);
 
 	/* Open new version for writing */
@@ -323,33 +290,31 @@ ISC_LOOP_TEST_IMPL(version) {
 	name = dns_fixedname_name(&fname);
 	foundname = dns_fixedname_initname(&ffound);
 	dns_rdataset_init(&rdataset);
-	result = dns_db_find(db, name, ver, dns_rdatatype_a, 0, 0, &node,
-			     foundname, &rdataset, NULL);
+	result = dns_db_find(db, ver, name, dns_rdatatype_a, 0, 0, foundname,
+			     &rdataset, NULL);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	result = dns_db_newversion(db, &new);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	/* Delete the rdataset from the new version */
-	result = dns_db_deleterdataset(db, node, new, dns_rdatatype_a, 0);
+	result = dns_db_deleterdataset(db, new, name, dns_rdatatype_a, 0);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	dns_rdataset_disassociate(&rdataset);
-	dns_db_detachnode(db, &node);
 
 	/* This should fail now */
-	result = dns_db_find(db, name, new, dns_rdatatype_a, 0, 0, &node,
-			     foundname, &rdataset, NULL);
+	result = dns_db_find(db, new, name, dns_rdatatype_a, 0, 0, foundname,
+			     &rdataset, NULL);
 	assert_int_equal(result, DNS_R_NXDOMAIN);
 
 	dns_db_closeversion(db, &new, true);
 
 	/* But this should still succeed */
-	result = dns_db_find(db, name, ver, dns_rdatatype_a, 0, 0, &node,
-			     foundname, &rdataset, NULL);
+	result = dns_db_find(db, ver, name, dns_rdatatype_a, 0, 0, foundname,
+			     &rdataset, NULL);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	dns_rdataset_disassociate(&rdataset);
-	dns_db_detachnode(db, &node);
 	dns_db_closeversion(db, &ver, false);
 
 	dns_db_detach(&db);
@@ -357,7 +322,6 @@ ISC_LOOP_TEST_IMPL(version) {
 }
 
 ISC_TEST_LIST_START
-ISC_TEST_ENTRY_CUSTOM(getoriginnode, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(getsetservestalettl, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(dns_dbfind_staleok, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(class, setup_managers, teardown_managers)

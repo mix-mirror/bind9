@@ -391,9 +391,6 @@ fetch_callback_dnskey(void *arg) {
 	isc_result_t result;
 
 	/* Free resources which are not of interest. */
-	if (resp->node != NULL) {
-		dns_db_detachnode(resp->db, &resp->node);
-	}
 	if (resp->db != NULL) {
 		dns_db_detach(&resp->db);
 	}
@@ -465,9 +462,6 @@ fetch_callback_ds(void *arg) {
 	trustchain = ((val->attributes & VALATTR_INSECURITY) == 0);
 
 	/* Free resources which are not of interest. */
-	if (resp->node != NULL) {
-		dns_db_detachnode(resp->db, &resp->node);
-	}
 	if (resp->db != NULL) {
 		dns_db_detach(&resp->db);
 	}
@@ -846,7 +840,7 @@ view_find(dns_validator_t *val, dns_name_t *name, dns_rdatatype_t type) {
 	options = DNS_DBFIND_PENDINGOK;
 	foundname = dns_fixedname_initname(&fixedname);
 	result = dns_view_find(val->view, name, type, 0, options, false, false,
-			       NULL, NULL, foundname, &val->frdataset,
+			       NULL, foundname, &val->frdataset,
 			       &val->fsigrdataset);
 
 	if (result == DNS_R_NXDOMAIN) {

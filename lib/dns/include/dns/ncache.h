@@ -52,12 +52,12 @@
 #define DNS_NCACHETOWIRE_OMITDNSSEC 0x0001
 
 isc_result_t
-dns_ncache_add(dns_message_t *message, dns_db_t *cache, dns_dbnode_t *node,
+dns_ncache_add(dns_message_t *message, dns_db_t *cache, const dns_name_t *name,
 	       dns_rdatatype_t covers, isc_stdtime_t now, dns_ttl_t minttl,
 	       dns_ttl_t maxttl, dns_rdataset_t *addedrdataset);
 isc_result_t
 dns_ncache_addoptout(dns_message_t *message, dns_db_t *cache,
-		     dns_dbnode_t *node, dns_rdatatype_t covers,
+		     const dns_name_t *name, dns_rdatatype_t covers,
 		     isc_stdtime_t now, dns_ttl_t minttl, dns_ttl_t maxttl,
 		     bool optout, dns_rdataset_t *addedrdataset);
 /*%<

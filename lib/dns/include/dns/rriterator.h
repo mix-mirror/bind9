@@ -56,8 +56,8 @@ typedef struct dns_rriterator {
 	dns_dbiterator_t   *dbit;
 	dns_dbversion_t	   *ver;
 	isc_stdtime_t	    now;
-	dns_dbnode_t	   *node;
-	dns_fixedname_t	    fixedname;
+	dns_fixedname_t	    name_s;
+	dns_name_t	   *name;
 	dns_rdatasetiter_t *rdatasetit;
 	dns_rdataset_t	    rdataset;
 	dns_rdata_t	    rdata;

@@ -559,8 +559,8 @@ configure_staticstub(const cfg_obj_t *zconfig, dns_zone_t *zone,
 	isc_mem_t *mctx = dns_zone_getmctx(zone);
 	dns_db_t *db = NULL;
 	dns_dbversion_t *dbversion = NULL;
-	dns_dbnode_t *apexnode = NULL;
-	dns_name_t apexname;
+	dns_fixedname_t apexname_s;
+	dns_name_t *apexname = dns_fixedname_initname(&apexname_s);
 	isc_result_t result;
 	dns_rdataset_t rdataset;
 	dns_rdatalist_t rdatalist_ns, rdatalist_a, rdatalist_aaaa;
@@ -633,20 +633,18 @@ configure_staticstub(const cfg_obj_t *zconfig, dns_zone_t *zone,
 	 */
 	CHECK(dns_db_newversion(db, &dbversion));
 
-	dns_name_init(&apexname, NULL);
-	dns_name_clone(dns_zone_getorigin(zone), &apexname);
-	CHECK(dns_db_findnode(db, &apexname, false, &apexnode));
+	dns_name_copy(dns_zone_getorigin(zone), apexname);
 
 	/* Add NS RRset */
 	dns_rdatalist_tordataset(&rdatalist_ns, &rdataset);
-	CHECK(dns_db_addrdataset(db, apexnode, dbversion, 0, &rdataset, 0,
+	CHECK(dns_db_addrdataset(db, dbversion, apexname, 0, &rdataset, 0,
 				 NULL));
 	dns_rdataset_disassociate(&rdataset);
 
 	/* Add glue A RRset, if any */
 	if (!ISC_LIST_EMPTY(rdatalist_a.rdata)) {
 		dns_rdatalist_tordataset(&rdatalist_a, &rdataset);
-		CHECK(dns_db_addrdataset(db, apexnode, dbversion, 0, &rdataset,
+		CHECK(dns_db_addrdataset(db, dbversion, apexname, 0, &rdataset,
 					 0, NULL));
 		dns_rdataset_disassociate(&rdataset);
 	}
@@ -654,7 +652,7 @@ configure_staticstub(const cfg_obj_t *zconfig, dns_zone_t *zone,
 	/* Add glue AAAA RRset, if any */
 	if (!ISC_LIST_EMPTY(rdatalist_aaaa.rdata)) {
 		dns_rdatalist_tordataset(&rdatalist_aaaa, &rdataset);
-		CHECK(dns_db_addrdataset(db, apexnode, dbversion, 0, &rdataset,
+		CHECK(dns_db_addrdataset(db, dbversion, apexname, 0, &rdataset,
 					 0, NULL));
 		dns_rdataset_disassociate(&rdataset);
 	}
@@ -667,9 +665,6 @@ configure_staticstub(const cfg_obj_t *zconfig, dns_zone_t *zone,
 cleanup:
 	if (dns_rdataset_isassociated(&rdataset)) {
 		dns_rdataset_disassociate(&rdataset);
-	}
-	if (apexnode != NULL) {
-		dns_db_detachnode(db, &apexnode);
 	}
 	if (dbversion != NULL) {
 		dns_db_closeversion(db, &dbversion, false);

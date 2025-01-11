@@ -91,18 +91,16 @@ dns__dbiterator_next(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 }
 
 isc_result_t
-dns__dbiterator_current(dns_dbiterator_t *iterator, dns_dbnode_t **nodep,
+dns__dbiterator_current(dns_dbiterator_t *iterator,
 			dns_name_t *name DNS__DB_FLARG) {
 	/*
 	 * Return the current node.
 	 */
 
 	REQUIRE(DNS_DBITERATOR_VALID(iterator));
-	REQUIRE(nodep != NULL && *nodep == NULL);
-	REQUIRE(name == NULL || dns_name_hasbuffer(name));
+	REQUIRE(name != NULL && dns_name_hasbuffer(name));
 
-	return iterator->methods->current(iterator, nodep,
-					  name DNS__DB_FLARG_PASS);
+	return iterator->methods->current(iterator, name DNS__DB_FLARG_PASS);
 }
 
 isc_result_t

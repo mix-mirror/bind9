@@ -534,9 +534,8 @@ dns_view_thaw(dns_view_t *view);
 isc_result_t
 dns_view_find(dns_view_t *view, const dns_name_t *name, dns_rdatatype_t type,
 	      isc_stdtime_t now, unsigned int options, bool use_hints,
-	      bool use_static_stub, dns_db_t **dbp, dns_dbnode_t **nodep,
-	      dns_name_t *foundname, dns_rdataset_t *rdataset,
-	      dns_rdataset_t *sigrdataset);
+	      bool use_static_stub, dns_db_t **dbp, dns_name_t *foundname,
+	      dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset);
 /*%<
  * Find an rdataset whose owner name is 'name', and whose type is
  * 'type'.
@@ -873,28 +872,12 @@ dns_view_flushcache(dns_view_t *view, bool fixuponly);
  */
 
 isc_result_t
-dns_view_flushnode(dns_view_t *view, const dns_name_t *name, bool tree);
+dns_view_flushname(dns_view_t *view, const dns_name_t *name, bool tree);
 /*%<
  * Flush the given name from the view's cache (and optionally ADB/badcache).
  *
  * Flush the given name from the cache, ADB, and bad cache.  If 'tree'
  * is true, also flush all subdomains of 'name'.
- *
- * Requires:
- *\li	'view' is valid.
- *\li	'name' is valid.
- *
- * Returns:
- *\li	#ISC_R_SUCCESS
- *	other returns are failures.
- */
-
-isc_result_t
-dns_view_flushname(dns_view_t *view, const dns_name_t *name);
-/*%<
- * Flush the given name from the view's cache, ADB and badcache.
- * Equivalent to dns_view_flushnode(view, name, false).
- *
  *
  * Requires:
  *\li	'view' is valid.

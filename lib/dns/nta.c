@@ -171,9 +171,6 @@ fetch_done(void *arg) {
 	}
 	dns_resolver_destroyfetch(&resp->fetch);
 
-	if (resp->node != NULL) {
-		dns_db_detachnode(resp->db, &resp->node);
-	}
 	if (resp->db != NULL) {
 		dns_db_detach(&resp->db);
 	}

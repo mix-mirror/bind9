@@ -168,8 +168,8 @@ ISC_RUN_TEST_IMPL(find) {
 	name = dns_fixedname_initname(&fixed);
 
 	dns_rdataset_init(&rdataset);
-	res = dns_db_find(db1, dns_rootname, v1, dns_rdatatype_soa, 0, 0, NULL,
-			  name, &rdataset, NULL);
+	res = dns_db_find(db1, v1, dns_rootname, dns_rdatatype_soa, 0, 0, name,
+			  &rdataset, NULL);
 	assert_int_equal(res, DNS_R_NXDOMAIN);
 
 	if (dns_rdataset_isassociated(&rdataset)) {
@@ -177,8 +177,8 @@ ISC_RUN_TEST_IMPL(find) {
 	}
 
 	dns_rdataset_init(&rdataset);
-	check_assertion((void)dns_db_find(db1, dns_rootname, v2,
-					  dns_rdatatype_soa, 0, 0, NULL, name,
+	check_assertion((void)dns_db_find(db1, v2, dns_rootname,
+					  dns_rdatatype_soa, 0, 0, name,
 					  &rdataset, NULL));
 }
 
@@ -188,24 +188,16 @@ ISC_RUN_TEST_IMPL(find) {
  */
 ISC_RUN_TEST_IMPL(allrdatasets) {
 	isc_result_t res;
-	dns_dbnode_t *node = NULL;
 	dns_rdatasetiter_t *iterator = NULL;
 
-	UNUSED(state);
-
-	res = dns_db_findnode(db1, dns_rootname, false, &node);
+	res = dns_db_allrdatasets(db1, v1, dns_rootname, 0, 0, &iterator);
 	assert_int_equal(res, ISC_R_SUCCESS);
 
-	res = dns_db_allrdatasets(db1, node, v1, 0, 0, &iterator);
-	assert_int_equal(res, ISC_R_SUCCESS);
-
-	check_assertion(dns_db_allrdatasets(db1, node, v2, 0, 0, &iterator));
+	check_assertion(
+		dns_db_allrdatasets(db1, v2, dns_rootname, 0, 0, &iterator));
 
 	dns_rdatasetiter_destroy(&iterator);
 	assert_null(iterator);
-
-	dns_db_detachnode(db1, &node);
-	assert_null(node);
 }
 
 /*
@@ -215,16 +207,10 @@ ISC_RUN_TEST_IMPL(allrdatasets) {
 ISC_RUN_TEST_IMPL(findrdataset) {
 	isc_result_t res;
 	dns_rdataset_t rdataset;
-	dns_dbnode_t *node = NULL;
-
-	UNUSED(state);
-
-	res = dns_db_findnode(db1, dns_rootname, false, &node);
-	assert_int_equal(res, ISC_R_SUCCESS);
 
 	dns_rdataset_init(&rdataset);
-	res = dns_db_findrdataset(db1, node, v1, dns_rdatatype_soa, 0, 0,
-				  &rdataset, NULL);
+	res = dns_db_findrdataset(db1, v1, dns_rootname, dns_rdatatype_soa, 0,
+				  0, &rdataset, NULL);
 	assert_int_equal(res, ISC_R_NOTFOUND);
 
 	if (dns_rdataset_isassociated(&rdataset)) {
@@ -232,11 +218,9 @@ ISC_RUN_TEST_IMPL(findrdataset) {
 	}
 
 	dns_rdataset_init(&rdataset);
-	check_assertion(dns_db_findrdataset(db1, node, v2, dns_rdatatype_soa, 0,
-					    0, &rdataset, NULL));
-
-	dns_db_detachnode(db1, &node);
-	assert_null(node);
+	check_assertion(dns_db_findrdataset(db1, v2, dns_rootname,
+					    dns_rdatatype_soa, 0, 0, &rdataset,
+					    NULL));
 }
 
 /*
@@ -245,20 +229,13 @@ ISC_RUN_TEST_IMPL(findrdataset) {
  */
 ISC_RUN_TEST_IMPL(deleterdataset) {
 	isc_result_t res;
-	dns_dbnode_t *node = NULL;
 
-	UNUSED(state);
-
-	res = dns_db_findnode(db1, dns_rootname, false, &node);
-	assert_int_equal(res, ISC_R_SUCCESS);
-
-	res = dns_db_deleterdataset(db1, node, v1, dns_rdatatype_soa, 0);
+	res = dns_db_deleterdataset(db1, v1, dns_rootname, dns_rdatatype_soa,
+				    0);
 	assert_int_equal(res, DNS_R_UNCHANGED);
 
-	check_assertion(
-		dns_db_deleterdataset(db1, node, v2, dns_rdatatype_soa, 0));
-	dns_db_detachnode(db1, &node);
-	assert_null(node);
+	check_assertion(dns_db_deleterdataset(db1, v2, dns_rootname,
+					      dns_rdatatype_soa, 0));
 }
 
 /*
@@ -269,9 +246,6 @@ ISC_RUN_TEST_IMPL(subtract) {
 	isc_result_t res;
 	dns_rdataset_t rdataset;
 	dns_rdatalist_t rdatalist;
-	dns_dbnode_t *node = NULL;
-
-	UNUSED(state);
 
 	dns_rdataset_init(&rdataset);
 	dns_rdatalist_init(&rdatalist);
@@ -280,10 +254,8 @@ ISC_RUN_TEST_IMPL(subtract) {
 
 	dns_rdatalist_tordataset(&rdatalist, &rdataset);
 
-	res = dns_db_findnode(db1, dns_rootname, false, &node);
-	assert_int_equal(res, ISC_R_SUCCESS);
-
-	res = dns_db_subtractrdataset(db1, node, v1, &rdataset, 0, NULL);
+	res = dns_db_subtractrdataset(db1, v1, dns_rootname, &rdataset, 0,
+				      NULL);
 	assert_int_equal(res, DNS_R_UNCHANGED);
 
 	if (dns_rdataset_isassociated(&rdataset)) {
@@ -293,11 +265,8 @@ ISC_RUN_TEST_IMPL(subtract) {
 	dns_rdataset_init(&rdataset);
 	dns_rdatalist_tordataset(&rdatalist, &rdataset);
 
-	check_assertion(
-		dns_db_subtractrdataset(db1, node, v2, &rdataset, 0, NULL));
-
-	dns_db_detachnode(db1, &node);
-	assert_null(node);
+	check_assertion(dns_db_subtractrdataset(db1, v2, dns_rootname,
+						&rdataset, 0, NULL));
 }
 
 /*
@@ -307,10 +276,7 @@ ISC_RUN_TEST_IMPL(subtract) {
 ISC_RUN_TEST_IMPL(addrdataset) {
 	isc_result_t res;
 	dns_rdataset_t rdataset;
-	dns_dbnode_t *node = NULL;
 	dns_rdatalist_t rdatalist;
-
-	UNUSED(state);
 
 	dns_rdataset_init(&rdataset);
 	dns_rdatalist_init(&rdatalist);
@@ -319,17 +285,11 @@ ISC_RUN_TEST_IMPL(addrdataset) {
 
 	dns_rdatalist_tordataset(&rdatalist, &rdataset);
 
-	res = dns_db_findnode(db1, dns_rootname, false, &node);
+	res = dns_db_addrdataset(db1, v1, dns_rootname, 0, &rdataset, 0, NULL);
 	assert_int_equal(res, ISC_R_SUCCESS);
 
-	res = dns_db_addrdataset(db1, node, v1, 0, &rdataset, 0, NULL);
-	assert_int_equal(res, ISC_R_SUCCESS);
-
-	check_assertion(
-		dns_db_addrdataset(db1, node, v2, 0, &rdataset, 0, NULL));
-
-	dns_db_detachnode(db1, &node);
-	assert_null(node);
+	check_assertion(dns_db_addrdataset(db1, v2, dns_rootname, 0, &rdataset,
+					   0, NULL));
 }
 
 /*

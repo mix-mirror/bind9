@@ -107,7 +107,6 @@ isc_result_t
 dns_private_chains(dns_db_t *db, dns_dbversion_t *ver,
 		   dns_rdatatype_t privatetype, bool *build_nsec,
 		   bool *build_nsec3) {
-	dns_dbnode_t *node;
 	dns_rdataset_t nsecset, nsec3paramset, privateset;
 	bool nsec3chain;
 	bool signing;
@@ -115,21 +114,20 @@ dns_private_chains(dns_db_t *db, dns_dbversion_t *ver,
 	unsigned char buf[DNS_NSEC3PARAM_BUFFERSIZE];
 	unsigned int count;
 
-	node = NULL;
 	dns_rdataset_init(&nsecset);
 	dns_rdataset_init(&nsec3paramset);
 	dns_rdataset_init(&privateset);
 
-	CHECK(dns_db_getoriginnode(db, &node));
-
-	result = dns_db_findrdataset(db, node, ver, dns_rdatatype_nsec, 0,
-				     (isc_stdtime_t)0, &nsecset, NULL);
+	result = dns_db_findrdataset(db, ver, dns_db_useoriginname,
+				     dns_rdatatype_nsec, 0, (isc_stdtime_t)0,
+				     &nsecset, NULL);
 
 	if (result != ISC_R_SUCCESS && result != ISC_R_NOTFOUND) {
 		goto failure;
 	}
 
-	result = dns_db_findrdataset(db, node, ver, dns_rdatatype_nsec3param, 0,
+	result = dns_db_findrdataset(db, ver, dns_db_useoriginname,
+				     dns_rdatatype_nsec3param, 0,
 				     (isc_stdtime_t)0, &nsec3paramset, NULL);
 	if (result != ISC_R_SUCCESS && result != ISC_R_NOTFOUND) {
 		goto failure;
@@ -144,9 +142,9 @@ dns_private_chains(dns_db_t *db, dns_dbversion_t *ver,
 	}
 
 	if (privatetype != (dns_rdatatype_t)0) {
-		result = dns_db_findrdataset(db, node, ver, privatetype, 0,
-					     (isc_stdtime_t)0, &privateset,
-					     NULL);
+		result = dns_db_findrdataset(db, ver, dns_db_useoriginname,
+					     privatetype, 0, (isc_stdtime_t)0,
+					     &privateset, NULL);
 		if (result != ISC_R_SUCCESS && result != ISC_R_NOTFOUND) {
 			goto failure;
 		}
@@ -310,9 +308,6 @@ failure:
 	}
 	if (dns_rdataset_isassociated(&privateset)) {
 		dns_rdataset_disassociate(&privateset);
-	}
-	if (node != NULL) {
-		dns_db_detachnode(db, &node);
 	}
 	return result;
 }

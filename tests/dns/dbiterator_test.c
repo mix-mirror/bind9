@@ -78,7 +78,6 @@ test_walk(const char *filename, int flags, int nodes) {
 	isc_result_t result;
 	dns_db_t *db = NULL;
 	dns_dbiterator_t *iter = NULL;
-	dns_dbnode_t *node = NULL;
 	dns_name_t *name;
 	dns_fixedname_t f;
 	int i = 0;
@@ -94,9 +93,8 @@ test_walk(const char *filename, int flags, int nodes) {
 	for (result = dns_dbiterator_first(iter); result == ISC_R_SUCCESS;
 	     result = dns_dbiterator_next(iter))
 	{
-		result = dns_dbiterator_current(iter, &node, name);
+		result = dns_dbiterator_current(iter, name);
 		assert_int_equal(result, ISC_R_SUCCESS);
-		dns_db_detachnode(db, &node);
 		i++;
 	}
 
@@ -107,8 +105,6 @@ test_walk(const char *filename, int flags, int nodes) {
 }
 
 ISC_RUN_TEST_IMPL(walk) {
-	UNUSED(state);
-
 	test_walk(TESTS_DIR "/testdata/dbiterator/zone1.data", 0, 12);
 	test_walk(TESTS_DIR "/testdata/dbiterator/zone1.data", DNS_DB_NONSEC3,
 		  12);
@@ -132,7 +128,6 @@ test_reverse(const char *filename, int flags, int nodes) {
 	isc_result_t result;
 	dns_db_t *db = NULL;
 	dns_dbiterator_t *iter = NULL;
-	dns_dbnode_t *node = NULL;
 	dns_name_t *name;
 	dns_fixedname_t f;
 	int i = 0;
@@ -148,9 +143,8 @@ test_reverse(const char *filename, int flags, int nodes) {
 	for (result = dns_dbiterator_last(iter); result == ISC_R_SUCCESS;
 	     result = dns_dbiterator_prev(iter))
 	{
-		result = dns_dbiterator_current(iter, &node, name);
+		result = dns_dbiterator_current(iter, name);
 		assert_int_equal(result, ISC_R_SUCCESS);
-		dns_db_detachnode(db, &node);
 		i++;
 	}
 
@@ -186,7 +180,6 @@ test_seek_node(const char *filename, int flags, int nodes) {
 	isc_result_t result;
 	dns_db_t *db = NULL;
 	dns_dbiterator_t *iter = NULL;
-	dns_dbnode_t *node = NULL;
 	dns_name_t *name, *seekname;
 	dns_fixedname_t f1, f2;
 	int i = 0;
@@ -212,9 +205,8 @@ test_seek_node(const char *filename, int flags, int nodes) {
 	}
 
 	while (result == ISC_R_SUCCESS) {
-		result = dns_dbiterator_current(iter, &node, name);
+		result = dns_dbiterator_current(iter, name);
 		assert_int_equal(result, ISC_R_SUCCESS);
-		dns_db_detachnode(db, &node);
 		result = dns_dbiterator_next(iter);
 		i++;
 	}
@@ -234,9 +226,8 @@ test_seek_node(const char *filename, int flags, int nodes) {
 	}
 
 	while (result == ISC_R_SUCCESS) {
-		result = dns_dbiterator_current(iter, &node, name);
+		result = dns_dbiterator_current(iter, name);
 		assert_int_equal(result, ISC_R_SUCCESS);
-		dns_db_detachnode(db, &node);
 		result = dns_dbiterator_prev(iter);
 		i++;
 	}

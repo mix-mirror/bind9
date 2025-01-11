@@ -98,7 +98,6 @@ static isc_result_t
 loadset(const char *filename, dns_rdataset_t *rdataset) {
 	isc_result_t result;
 	dns_db_t *db = NULL;
-	dns_dbnode_t *node = NULL;
 	char setname[DNS_NAME_FORMATSIZE];
 
 	dns_name_format(name, setname, sizeof(setname));
@@ -121,12 +120,7 @@ loadset(const char *filename, dns_rdataset_t *rdataset) {
 		}
 	}
 
-	result = dns_db_findnode(db, name, false, &node);
-	if (result != ISC_R_SUCCESS) {
-		fatal("can't find %s node in %s", setname, filename);
-	}
-
-	result = dns_db_findrdataset(db, node, NULL, dns_rdatatype_dnskey, 0, 0,
+	result = dns_db_findrdataset(db, NULL, name, dns_rdatatype_dnskey, 0, 0,
 				     rdataset, NULL);
 
 	if (result == ISC_R_NOTFOUND) {
@@ -135,9 +129,6 @@ loadset(const char *filename, dns_rdataset_t *rdataset) {
 		fatal("dns_db_findrdataset");
 	}
 
-	if (node != NULL) {
-		dns_db_detachnode(db, &node);
-	}
 	if (db != NULL) {
 		dns_db_detach(&db);
 	}

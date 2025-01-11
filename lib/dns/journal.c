@@ -122,7 +122,6 @@ isc_result_t
 dns_db_createsoatuple(dns_db_t *db, dns_dbversion_t *ver, isc_mem_t *mctx,
 		      dns_diffop_t op, dns_difftuple_t **tp) {
 	isc_result_t result;
-	dns_dbnode_t *node;
 	dns_rdataset_t rdataset;
 	dns_rdata_t rdata = DNS_RDATA_INIT;
 	dns_fixedname_t fixed;
@@ -131,22 +130,16 @@ dns_db_createsoatuple(dns_db_t *db, dns_dbversion_t *ver, isc_mem_t *mctx,
 	zonename = dns_fixedname_initname(&fixed);
 	dns_name_copy(dns_db_origin(db), zonename);
 
-	node = NULL;
-	result = dns_db_findnode(db, zonename, false, &node);
+	dns_rdataset_init(&rdataset);
+	result = dns_db_findrdataset(db, ver, zonename, dns_rdatatype_soa, 0,
+				     (isc_stdtime_t)0, &rdataset, NULL);
 	if (result != ISC_R_SUCCESS) {
 		goto nonode;
 	}
 
-	dns_rdataset_init(&rdataset);
-	result = dns_db_findrdataset(db, node, ver, dns_rdatatype_soa, 0,
-				     (isc_stdtime_t)0, &rdataset, NULL);
-	if (result != ISC_R_SUCCESS) {
-		goto freenode;
-	}
-
 	result = dns_rdataset_first(&rdataset);
 	if (result != ISC_R_SUCCESS) {
-		goto freenode;
+		goto nonode;
 	}
 
 	dns_rdataset_current(&rdataset, &rdata);
@@ -155,11 +148,8 @@ dns_db_createsoatuple(dns_db_t *db, dns_dbversion_t *ver, isc_mem_t *mctx,
 	dns_difftuple_create(mctx, op, zonename, rdataset.ttl, &rdata, tp);
 
 	dns_rdataset_disassociate(&rdataset);
-	dns_db_detachnode(db, &node);
 	return result;
 
-freenode:
-	dns_db_detachnode(db, &node);
 nonode:
 	UNEXPECTED_ERROR("missing SOA");
 	return result;
@@ -2135,18 +2125,17 @@ get_name_diff(dns_db_t *db, dns_dbversion_t *ver, isc_stdtime_t now,
 	      dns_dbiterator_t *dbit, dns_name_t *name, dns_diffop_t op,
 	      dns_diff_t *diff) {
 	isc_result_t result;
-	dns_dbnode_t *node = NULL;
 	dns_rdatasetiter_t *rdsiter = NULL;
 	dns_difftuple_t *tuple = NULL;
 
-	result = dns_dbiterator_current(dbit, &node, name);
+	result = dns_dbiterator_current(dbit, name);
 	if (result != ISC_R_SUCCESS) {
 		return result;
 	}
 
-	result = dns_db_allrdatasets(db, node, ver, 0, now, &rdsiter);
+	result = dns_db_allrdatasets(db, ver, name, 0, now, &rdsiter);
 	if (result != ISC_R_SUCCESS) {
-		goto cleanup_node;
+		return result;
 	}
 
 	for (result = dns_rdatasetiter_first(rdsiter); result == ISC_R_SUCCESS;
@@ -2168,21 +2157,12 @@ get_name_diff(dns_db_t *db, dns_dbversion_t *ver, isc_stdtime_t now,
 			dns_diff_append(diff, &tuple);
 		}
 		dns_rdataset_disassociate(&rdataset);
-		if (result != ISC_R_NOMORE) {
-			goto cleanup_iterator;
-		}
 	}
-	if (result != ISC_R_NOMORE) {
-		goto cleanup_iterator;
+	if (result == ISC_R_NOMORE) {
+		result = ISC_R_SUCCESS;
 	}
 
-	result = ISC_R_SUCCESS;
-
-cleanup_iterator:
 	dns_rdatasetiter_destroy(&rdsiter);
-
-cleanup_node:
-	dns_db_detachnode(db, &node);
 
 	return result;
 }
