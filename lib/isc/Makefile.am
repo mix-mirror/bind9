@@ -216,6 +216,7 @@ libisc_la_CPPFLAGS =		\
 	$(AM_CPPFLAGS)		\
 	$(LIBISC_CFLAGS)	\
 	$(LIBUV_CFLAGS)		\
+	$(LMDB_CFLAGS)		\
 	$(OPENSSL_CFLAGS)	\
 	$(ZLIB_CFLAGS)
 
@@ -225,6 +226,7 @@ libisc_la_LDFLAGS =		\
 
 libisc_la_LIBADD =		\
 	$(LIBUV_LIBS)		\
+	$(LMDB_LIBS)		\
 	$(OPENSSL_LIBS)		\
 	$(ZLIB_LIBS)
 
@@ -262,18 +264,6 @@ libisc_la_CPPFLAGS +=		\
 libisc_la_LIBADD +=		\
 	$(LIBXML2_LIBS)
 endif HAVE_LIBXML2
-
-if HAVE_LMDB
-libisc_la_CPPFLAGS +=		\
-	$(LMDB_CFLAGS)
-libisc_la_LDFLAGS +=		\
-	$(LMDB_LIBS)
-else
-libisc_la_SOURCES +=		\
-	openldap-lmdb/mdb.c
-libisc_la_SOURCES +=		\
-	openldap-lmdb/midl.c
-endif
 
 if !HAVE_SYSTEMTAP
 DTRACE_DEPS = libisc_la-rwlock.lo libisc_la-job.lo
