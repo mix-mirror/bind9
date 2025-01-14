@@ -13,7 +13,11 @@
 
 #pragma once
 
+#ifdef HAVE_LMDB
 #include <lmdb.h>
+#else
+#include "../../openldap-lmdb/lmdb.h"
+#endif
 
 #define DNS_LMDB_COMMON_FLAGS (MDB_NOSUBDIR | MDB_NOLOCK)
 #ifndef __OpenBSD__

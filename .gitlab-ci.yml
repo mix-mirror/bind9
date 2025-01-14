@@ -1029,12 +1029,13 @@ unit:gcc:ossl3:amd64:
       artifacts: true
 
 # Jobs for regular GCC builds on Debian "sid" (amd64)
+# Also tests configration option: --without-lmdb.
 
 gcc:sid:amd64:
   variables:
     CC: gcc
     CFLAGS: "${CFLAGS_COMMON} -O3"
-    EXTRA_CONFIGURE: "--with-libidn2 ${WITH_READLINE}"
+    EXTRA_CONFIGURE: "--with-libidn2 --without-lmdb ${WITH_READLINE}"
     RUN_MAKE_INSTALL: 1
   <<: *debian_sid_amd64_image
   <<: *build_job
@@ -1055,13 +1056,14 @@ unit:gcc:sid:amd64:
       artifacts: true
 
 # Job for out-of-tree GCC build on Debian 12 "bookworm" (amd64)
+# Also tests configration option: --with-lmdb.
 
 gcc:out-of-tree:
   variables:
     CC: gcc
     CFLAGS: "${CFLAGS_COMMON} -Og"
     CONFIGURE: "${CI_PROJECT_DIR}/configure"
-    EXTRA_CONFIGURE: "--with-libidn2"
+    EXTRA_CONFIGURE: "--with-libidn2 --with-lmdb"
     RUN_MAKE_INSTALL: 1
     OUT_OF_TREE_WORKSPACE: workspace
   <<: *base_image
