@@ -1302,43 +1302,49 @@ dns__rbtdb_decref(dns_rbtdb_t *rbtdb, dns_rbtnode_t *node,
 	isc_result_t result;
 	bool locked = *tlocktypep != isc_rwlocktype_none;
 	bool write_locked = false;
-	db_nodelock_t *nodelock = NULL;
 	int bucket = node->locknum;
 	bool no_reference = true;
 	uint_fast32_t refs;
+	db_nodelock_t *nodelock = &rbtdb->node_locks[bucket];
 
 	REQUIRE(*nlocktypep != isc_rwlocktype_none);
 
-	nodelock = &rbtdb->node_locks[bucket];
+	/*
+	 * Handle easy and/or typical case first:
+	 * - If there are more than 1 refs, we can return here without locking.
+	 * - Otherwise, if there's no need to clean up, we can return now.
+	 * - Otherwise, we need to acquire a write lock of the node and see if
+	 *   we can clean/delete the node. We need to regain the ref before
+	 *   locking.
+	 */
+
+	refs = isc_refcount_decrement(&node->references);
+#if DNS_DB_NODETRACE
+	fprintf(stderr, "decr:node:%s:%s:%u:%p->references = %" PRIuFAST32 "\n",
+		func, file, line, node, refs - 1);
+#else
+	UNUSED(refs);
+#endif
+	if (refs > 1) {
+		return false;
+	}
+
+	refs = isc_refcount_decrement(&nodelock->references);
+#if DNS_DB_NODETRACE
+	fprintf(stderr,
+		"decr:nodelock:%s:%s:%u:%p:%p->references = "
+		"%" PRIuFAST32 "\n",
+		func, file, line, node, nodelock, refs - 1);
+#else
+	UNUSED(refs);
+#endif
 
 #define KEEP_NODE(n, r, l)                                  \
 	((n)->data != NULL || ((l) && (n)->down != NULL) || \
 	 (n) == (r)->origin_node || (n) == (r)->nsec3_origin_node)
 
-	/* Handle easy and typical case first. */
 	if (!node->dirty && KEEP_NODE(node, rbtdb, locked)) {
-		refs = isc_refcount_decrement(&node->references);
-#if DNS_DB_NODETRACE
-		fprintf(stderr,
-			"decr:node:%s:%s:%u:%p->references = %" PRIuFAST32 "\n",
-			func, file, line, node, refs - 1);
-#else
-		UNUSED(refs);
-#endif
-		if (refs == 1) {
-			refs = isc_refcount_decrement(&nodelock->references);
-#if DNS_DB_NODETRACE
-			fprintf(stderr,
-				"decr:nodelock:%s:%s:%u:%p:%p->references = "
-				"%" PRIuFAST32 "\n",
-				func, file, line, node, nodelock, refs - 1);
-#else
-			UNUSED(refs);
-#endif
-			return true;
-		} else {
-			return false;
-		}
+		return true;
 	}
 
 	/* Upgrade the lock? */
@@ -1346,6 +1352,7 @@ dns__rbtdb_decref(dns_rbtdb_t *rbtdb, dns_rbtnode_t *node,
 		NODE_FORCEUPGRADE(&nodelock->lock, nlocktypep);
 	}
 
+	/* We need to re-test whether this is still the last reference */
 	refs = isc_refcount_decrement(&node->references);
 #if DNS_DB_NODETRACE
 	fprintf(stderr, "decr:node:%s:%s:%u:%p->references = %" PRIuFAST32 "\n",

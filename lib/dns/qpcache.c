@@ -688,54 +688,61 @@ decref(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t *nlocktypep,
 
 	nodelock = &qpdb->node_locks[bucket];
 
-#define KEEP_NODE(n, r) ((n)->data != NULL || (n) == (r)->origin_node)
+	/*
+	 * Handle easy and/or typical case first:
+	 * - If there are more than 1 refs, we can return here without locking.
+	 * - Otherwise, if there's no need to clean up, we can return now.
+	 * - Otherwise, we need to acquire a write lock of the node and see if
+	 *   we can clean/delete the node. We need to regain the ref before
+	 *   locking.
+	 */
 
-	/* Handle easy and typical case first. */
-	if (!node->dirty && KEEP_NODE(node, qpdb)) {
-		bool no_reference = false;
-
-		refs = isc_refcount_decrement(&node->erefs);
+	refs = isc_refcount_decrement(&node->erefs);
 #if DNS_DB_NODETRACE
-		fprintf(stderr,
-			"decr:node:%s:%s:%u:%p->erefs = %" PRIuFAST32 "\n",
-			func, file, line, node, refs - 1);
+	fprintf(stderr, "decr:node:%s:%s:%u:%p->erefs = %" PRIuFAST32 "\n",
+		func, file, line, node, refs - 1);
 #else
-		UNUSED(refs);
+	UNUSED(refs);
 #endif
-		if (refs == 1) {
-			refs = isc_refcount_decrement(&nodelock->references);
-#if DNS_DB_NODETRACE
-			fprintf(stderr,
-				"decr:nodelock:%s:%s:%u:%p:%p->references = "
-				"%" PRIuFAST32 "\n",
-				func, file, line, node, nodelock, refs - 1);
-#else
-			UNUSED(refs);
-#endif
-			no_reference = true;
-		}
-
+	if (refs > 1) {
 		qpcnode_unref(node);
-		return no_reference;
+		return false;
 	}
+
+	refs = isc_refcount_decrement(&nodelock->references);
+#if DNS_DB_NODETRACE
+	fprintf(stderr,
+		"decr:nodelock:%s:%s:%u:%p:%p->references = "
+		"%" PRIuFAST32 "\n",
+		func, file, line, node, nodelock, refs - 1);
+#else
+	UNUSED(refs);
+#endif
+
+	if (!node->dirty && (node->data != NULL || node == qpdb->origin_node)) {
+		qpcnode_unref(node);
+		return true;
+	}
+
+	newref(qpdb, node, *nlocktypep, *tlocktypep DNS__DB_FLARG_PASS);
 
 	/* Upgrade the lock? */
 	if (*nlocktypep == isc_rwlocktype_read) {
 		NODE_FORCEUPGRADE(&nodelock->lock, nlocktypep);
 	}
 
+	/* We need to re-test whether this is still the last reference */
 	refs = isc_refcount_decrement(&node->erefs);
 #if DNS_DB_NODETRACE
 	fprintf(stderr, "decr:node:%s:%s:%u:%p->erefs = %" PRIuFAST32 "\n",
 		func, file, line, node, refs - 1);
+#else
+	UNUSED(refs);
 #endif
-
 	if (refs > 1) {
 		qpcnode_unref(node);
 		return false;
 	}
-
-	INSIST(refs == 1);
 
 	if (node->dirty) {
 		clean_cache_node(qpdb, node);
@@ -783,7 +790,7 @@ decref(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t *nlocktypep,
 	UNUSED(refs);
 #endif
 
-	if (KEEP_NODE(node, qpdb)) {
+	if (node->data != NULL || node == qpdb->origin_node) {
 		goto restore_locks;
 	}
 
