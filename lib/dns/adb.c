@@ -334,7 +334,7 @@ expire_entry(dns_adbentry_t *adbentry);
 static isc_result_t
 dbfind_name(dns_adbname_t *, isc_stdtime_t, dns_rdatatype_t);
 static isc_result_t
-fetch_name(dns_adbname_t *, bool, unsigned int, isc_counter_t *qc,
+fetch_name(dns_adbname_t *, bool, bool, unsigned int, isc_counter_t *qc,
 	   isc_counter_t *gqc, dns_rdatatype_t);
 static void
 destroy(dns_adb_t *);
@@ -412,10 +412,13 @@ enum {
 #define FIND_AVOIDFETCHES(fn)	(((fn)->options & DNS_ADBFIND_AVOIDFETCHES) != 0)
 #define FIND_STARTATZONE(fn)	(((fn)->options & DNS_ADBFIND_STARTATZONE) != 0)
 #define FIND_STATICSTUB(fn)	(((fn)->options & DNS_ADBFIND_STATICSTUB) != 0)
+#define FIND_NOVALIDATE(fn)	(((fn)->options & DNS_ADBFIND_NOVALIDATE) != 0)
 #define FIND_HAS_ADDRS(fn)	(!ISC_LIST_EMPTY((fn)->list))
 #define FIND_NOFETCH(fn)	(((fn)->options & DNS_ADBFIND_NOFETCH) != 0)
 
-#define ADBNAME_FLAGS_MASK (DNS_ADBFIND_STARTATZONE | DNS_ADBFIND_STATICSTUB)
+#define ADBNAME_FLAGS_MASK                                  \
+	(DNS_ADBFIND_STARTATZONE | DNS_ADBFIND_STATICSTUB | \
+	 DNS_ADBFIND_NOVALIDATE)
 
 /*
  * These are currently used on simple unsigned ints, so they are
@@ -557,6 +560,8 @@ import_rdataset(dns_adbname_t *adbname, dns_rdataset_t *rdataset,
 	switch (rdataset->trust) {
 	case dns_trust_glue:
 	case dns_trust_additional:
+	case dns_trust_pending_answer:
+	case dns_trust_pending_additional:
 		rdataset->ttl = ADB_CACHE_MINIMUM;
 		break;
 	case dns_trust_ultimate:
@@ -2121,6 +2126,8 @@ fetch:
 	if (wanted_fetches != 0 && !(FIND_AVOIDFETCHES(find) && have_address) &&
 	    !FIND_NOFETCH(find))
 	{
+		bool no_validate = FIND_NOVALIDATE(find);
+
 		/*
 		 * We're missing at least one address family.  Either the
 		 * caller hasn't instructed us to avoid fetches, or we don't
@@ -2136,8 +2143,8 @@ fetch:
 		 * Start V4.
 		 */
 		if (WANT_INET(wanted_fetches) &&
-		    fetch_name(adbname, start_at_zone, depth, qc, gqc,
-			       dns_rdatatype_a) == ISC_R_SUCCESS)
+		    fetch_name(adbname, start_at_zone, no_validate, depth, qc,
+			       gqc, dns_rdatatype_a) == ISC_R_SUCCESS)
 		{
 			DP(DEF_LEVEL,
 			   "dns_adb_createfind: "
@@ -2149,8 +2156,8 @@ fetch:
 		 * Start V6.
 		 */
 		if (WANT_INET6(wanted_fetches) &&
-		    fetch_name(adbname, start_at_zone, depth, qc, gqc,
-			       dns_rdatatype_aaaa) == ISC_R_SUCCESS)
+		    fetch_name(adbname, start_at_zone, no_validate, depth, qc,
+			       gqc, dns_rdatatype_aaaa) == ISC_R_SUCCESS)
 		{
 			DP(DEF_LEVEL,
 			   "dns_adb_createfind: "
@@ -2954,8 +2961,9 @@ out:
 }
 
 static isc_result_t
-fetch_name(dns_adbname_t *adbname, bool start_at_zone, unsigned int depth,
-	   isc_counter_t *qc, isc_counter_t *gqc, dns_rdatatype_t type) {
+fetch_name(dns_adbname_t *adbname, bool start_at_zone, bool no_validation,
+	   unsigned int depth, isc_counter_t *qc, isc_counter_t *gqc,
+	   dns_rdatatype_t type) {
 	isc_result_t result;
 	dns_adbfetch_t *fetch = NULL;
 	dns_adb_t *adb = NULL;
@@ -2963,7 +2971,7 @@ fetch_name(dns_adbname_t *adbname, bool start_at_zone, unsigned int depth,
 	dns_name_t *name = NULL;
 	dns_rdataset_t rdataset;
 	dns_rdataset_t *nameservers = NULL;
-	unsigned int options;
+	unsigned int options = no_validation ? DNS_FETCHOPT_NOVALIDATE : 0;
 
 	REQUIRE(DNS_ADBNAME_VALID(adbname));
 
@@ -2977,8 +2985,6 @@ fetch_name(dns_adbname_t *adbname, bool start_at_zone, unsigned int depth,
 	adbname->fetch_err = FIND_ERR_NOTFOUND;
 
 	dns_rdataset_init(&rdataset);
-
-	options = DNS_FETCHOPT_NOVALIDATE;
 
 	if (start_at_zone) {
 		DP(ENTER_LEVEL, "fetch_name: starting at zone for name %p",
@@ -3414,6 +3420,7 @@ dns_adb_flushname(dns_adb_t *adb, const dns_name_t *name) {
 	isc_result_t result;
 	bool start_at_zone = false;
 	bool static_stub = false;
+	bool novalidate = false;
 	dns_adbname_t key = { .name = UNCONST(name) };
 
 	REQUIRE(DNS_ADB_VALID(adb));
@@ -3427,10 +3434,12 @@ dns_adb_flushname(dns_adb_t *adb, const dns_name_t *name) {
 again:
 	/*
 	 * Delete all entries - with and without DNS_ADBFIND_STARTATZONE set
-	 * and with and without DNS_ADBFIND_STATICSTUB set.
+	 * with and without DNS_ADBFIND_STATICSTUB set and with and without
+	 * DNS_ADBFIND_NOVALIDATE set.
 	 */
 	key.flags = ((static_stub) ? DNS_ADBFIND_STATICSTUB : 0) |
-		    ((start_at_zone) ? DNS_ADBFIND_STARTATZONE : 0);
+		    ((start_at_zone) ? DNS_ADBFIND_STARTATZONE : 0) |
+		    ((novalidate) ? DNS_ADBFIND_NOVALIDATE : 0);
 
 	result = isc_hashmap_find(adb->names, hash_adbname(&key), match_adbname,
 				  (void *)&key, (void **)&adbname);
@@ -3449,6 +3458,12 @@ again:
 	}
 	if (!static_stub) {
 		static_stub = true;
+		goto again;
+	}
+	if (!novalidate) {
+		start_at_zone = false;
+		static_stub = false;
+		novalidate = true;
 		goto again;
 	}
 	RWUNLOCK(&adb->names_lock, isc_rwlocktype_write);
