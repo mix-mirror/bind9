@@ -342,7 +342,7 @@ cancel_fetches_at_name(dns_adbname_t *);
 static isc_result_t
 dbfind_name(dns_adbname_t *, isc_stdtime_t, dns_rdatatype_t);
 static isc_result_t
-fetch_name(dns_adbname_t *, bool, unsigned int, isc_counter_t *qc,
+fetch_name(dns_adbname_t *, bool, bool, unsigned int, isc_counter_t *qc,
 	   isc_counter_t *gqc, dns_rdatatype_t);
 static void
 check_exit(dns_adb_t *);
@@ -441,6 +441,7 @@ enum {
 #define FIND_STATICSTUB(fn)	(((fn)->options & DNS_ADBFIND_STATICSTUB) != 0)
 #define FIND_HINTOK(fn)		(((fn)->options & DNS_ADBFIND_HINTOK) != 0)
 #define FIND_GLUEOK(fn)		(((fn)->options & DNS_ADBFIND_GLUEOK) != 0)
+#define FIND_NOVALIDATE(fn)	(((fn)->options & DNS_ADBFIND_NOVALIDATE) != 0)
 #define FIND_HAS_ADDRS(fn)	(!ISC_LIST_EMPTY((fn)->list))
 #define FIND_RETURNLAME(fn)	(((fn)->options & DNS_ADBFIND_RETURNLAME) != 0)
 #define FIND_NOFETCH(fn)	(((fn)->options & DNS_ADBFIND_NOFETCH) != 0)
@@ -468,6 +469,9 @@ enum {
 #define STATICSTUB_MATCHES(nf, o)                  \
 	(((nf)->flags & DNS_ADBFIND_STATICSTUB) == \
 	 ((o) & DNS_ADBFIND_STATICSTUB))
+#define NOVALIDATE_MATCHES(nf, o)                  \
+	(((nf)->flags & DNS_ADBFIND_NOVALIDATE) == \
+	 ((o) & DNS_ADBFIND_NOVALIDATE))
 
 #define ENTER_LEVEL  ISC_LOG_DEBUG(50)
 #define EXIT_LEVEL   ENTER_LEVEL
@@ -1004,7 +1008,9 @@ import_rdataset(dns_adbname_t *adbname, dns_rdataset_t *rdataset,
 	}
 
 	if (rdataset->trust == dns_trust_glue ||
-	    rdataset->trust == dns_trust_additional)
+	    rdataset->trust == dns_trust_additional ||
+	    rdataset->trust == dns_trust_pending_additional ||
+	    rdataset->trust == dns_trust_pending_answer)
 	{
 		rdataset->ttl = ADB_CACHE_MINIMUM;
 	} else if (rdataset->trust == dns_trust_ultimate) {
@@ -2084,6 +2090,7 @@ find_name_and_lock(dns_adb_t *adb, const dns_name_t *name, unsigned int options,
 		if (!NAME_DEAD(adbname)) {
 			if (dns_name_equal(name, &adbname->name) &&
 			    GLUEHINT_OK(adbname, options) &&
+			    NOVALIDATE_MATCHES(adbname, options) &&
 			    STARTATZONE_MATCHES(adbname, options) &&
 			    STATICSTUB_MATCHES(adbname, options))
 			{
@@ -3027,6 +3034,9 @@ dns_adb_createfind(dns_adb_t *adb, isc_task_t *task, isc_taskaction_t action,
 		if (FIND_STATICSTUB(find)) {
 			adbname->flags |= DNS_ADBFIND_STATICSTUB;
 		}
+		if (FIND_NOVALIDATE(find)) {
+			adbname->flags |= DNS_ADBFIND_NOVALIDATE;
+		}
 	} else {
 		/* Move this name forward in the LRU list */
 		ISC_LIST_UNLINK(adb->names[bucket], adbname, plink);
@@ -3147,6 +3157,8 @@ fetch:
 	if (wanted_fetches != 0 && !(FIND_AVOIDFETCHES(find) && have_address) &&
 	    !FIND_NOFETCH(find))
 	{
+		bool no_validate = FIND_NOVALIDATE(find);
+
 		/*
 		 * We're missing at least one address family.  Either the
 		 * caller hasn't instructed us to avoid fetches, or we don't
@@ -3162,8 +3174,8 @@ fetch:
 		 * Start V4.
 		 */
 		if (WANT_INET(wanted_fetches) &&
-		    fetch_name(adbname, start_at_zone, depth, qc, gqc,
-			       dns_rdatatype_a) == ISC_R_SUCCESS)
+		    fetch_name(adbname, start_at_zone, no_validate, depth, qc,
+			       gqc, dns_rdatatype_a) == ISC_R_SUCCESS)
 		{
 			DP(DEF_LEVEL,
 			   "dns_adb_createfind: "
@@ -3175,8 +3187,8 @@ fetch:
 		 * Start V6.
 		 */
 		if (WANT_INET6(wanted_fetches) &&
-		    fetch_name(adbname, start_at_zone, depth, qc, gqc,
-			       dns_rdatatype_aaaa) == ISC_R_SUCCESS)
+		    fetch_name(adbname, start_at_zone, no_validate, depth, qc,
+			       gqc, dns_rdatatype_aaaa) == ISC_R_SUCCESS)
 		{
 			DP(DEF_LEVEL,
 			   "dns_adb_createfind: "
@@ -4053,16 +4065,17 @@ out:
 }
 
 static isc_result_t
-fetch_name(dns_adbname_t *adbname, bool start_at_zone, unsigned int depth,
-	   isc_counter_t *qc, isc_counter_t *gqc, dns_rdatatype_t type) {
+fetch_name(dns_adbname_t *adbname, bool start_at_zone, bool no_validation,
+	   unsigned int depth, isc_counter_t *qc, isc_counter_t *gqc,
+	   dns_rdatatype_t type) {
 	isc_result_t result;
 	dns_adbfetch_t *fetch = NULL;
 	dns_adb_t *adb;
 	dns_fixedname_t fixed;
 	dns_name_t *name;
 	dns_rdataset_t rdataset;
-	dns_rdataset_t *nameservers;
-	unsigned int options;
+	dns_rdataset_t *nameservers = NULL;
+	unsigned int options = no_validation ? DNS_FETCHOPT_NOVALIDATE : 0;
 
 	INSIST(DNS_ADBNAME_VALID(adbname));
 	adb = adbname->adb;
@@ -4077,7 +4090,6 @@ fetch_name(dns_adbname_t *adbname, bool start_at_zone, unsigned int depth,
 	nameservers = NULL;
 	dns_rdataset_init(&rdataset);
 
-	options = DNS_FETCHOPT_NOVALIDATE;
 	if (start_at_zone) {
 		DP(ENTER_LEVEL, "fetch_name: starting at zone for name %p",
 		   adbname);
