@@ -685,6 +685,13 @@ struct isc_nmsocket {
 	size_t active_handles_max;
 
 	/*%
+	 * 'pending' UDP sends
+	 */
+	ISC_LIST(isc__nm_uvreq_t) pending_uvreqs;
+	size_t pending_uvreqs_cur;
+	uv_check_t pending_uvreqs_check;
+
+	/*%
 	 * Used to pass a result back from listen or connect events.
 	 */
 	isc_result_t result;

@@ -110,6 +110,9 @@ start_udp_child_job(void *arg) {
 
 	(void)isc__nm_socket_min_mtu(sock->fd, sa_family);
 
+	(void)uv_check_init(&loop->loop, &sock->pending_uvreqs_check);
+	uv_handle_set_data(&sock->pending_uvreqs_check, sock);
+
 #if HAVE_DECL_UV_UDP_RECVMMSG
 	uv_init_flags |= UV_UDP_RECVMMSG;
 #endif
@@ -424,7 +427,12 @@ stop_udp_child_job(void *arg) {
 
 	sock->active = false;
 
+	/* See isc__nm_udp_close() for correct ordering */
 	isc__nm_udp_close(sock);
+
+	/* 0. close the check callback */
+	(void)uv_check_stop(&sock->pending_uvreqs_check);
+	uv_close((uv_handle_t *)&sock->pending_uvreqs_check, NULL);
 
 	REQUIRE(!sock->worker->loop->paused);
 	isc_barrier_wait(&sock->parent->stop_barrier);
@@ -654,6 +662,124 @@ can_log_udp_sends(void) {
 	return false;
 }
 
+static void
+send_direct(isc_nmsocket_t *sock, isc__nm_uvreq_t *uvreq) {
+	const isc_sockaddr_t *peer = &uvreq->handle->peer;
+	const struct sockaddr *addr = sock->connected ? NULL : &peer->type.sa;
+	isc__networker_t *worker = sock->worker;
+	isc_result_t result;
+
+	if (uv_udp_get_send_queue_size(&sock->uv_handle.udp) >
+	    ISC_NETMGR_UDP_SENDBUF_SIZE)
+	{
+		/*
+		 * The kernel UDP send queue is full, try sending the
+		 * UDP response synchronously instead of just failing.
+		 */
+		int r = uv_udp_try_send(&sock->uv_handle.udp, &uvreq->uvbuf, 1,
+					addr);
+		if (r < 0) {
+			if (can_log_udp_sends()) {
+				isc__netmgr_log(
+					worker->netmgr, ISC_LOG_ERROR,
+					"Sending UDP messages failed: "
+					"%s",
+					isc_result_totext(isc_uverr2result(r)));
+			}
+
+			isc__nm_incstats(sock, STATID_SENDFAIL);
+			result = isc_uverr2result(r);
+			goto fail;
+		}
+
+		isc__nm_sendcb(sock, uvreq, ISC_R_SUCCESS, true);
+
+	} else {
+		/* Send the message asynchronously */
+		int r = uv_udp_send(&uvreq->uv_req.udp_send,
+				    &sock->uv_handle.udp, &uvreq->uvbuf, 1,
+				    addr, udp_send_cb);
+		if (r < 0) {
+			isc__nm_incstats(sock, STATID_SENDFAIL);
+			result = isc_uverr2result(r);
+			goto fail;
+		}
+	}
+	return;
+fail:
+	isc__nm_failed_send_cb(sock, uvreq, result, true);
+}
+
+static void
+udp_flush_pending(uv_check_t *handle) {
+	isc_nmsocket_t *sock = uv_handle_get_data(handle);
+	isc__nm_uvreq_t *uvreq = NULL, *next = NULL;
+	isc__networker_t *worker = sock->worker;
+	size_t i;
+
+	/* FIXME: Perhaps static per-socket buffer here */
+	uv_buf_t **bufs = isc_mem_cget(worker->mctx, sock->pending_uvreqs_cur,
+				       sizeof(bufs[0]));
+	unsigned int *nbufs = isc_mem_cget(
+		worker->mctx, sock->pending_uvreqs_cur, sizeof(nbufs[0]));
+	struct sockaddr **addrs = isc_mem_cget(
+		worker->mctx, sock->pending_uvreqs_cur, sizeof(addrs[0]));
+	isc__nm_uvreq_t **uvreqs = isc_mem_cget(
+		worker->mctx, sock->pending_uvreqs_cur, sizeof(uvreqs[0]));
+
+	for (i = 0, uvreq = ISC_LIST_HEAD(sock->pending_uvreqs),
+	    next = (uvreq != NULL) ? ISC_LIST_NEXT(uvreq, link) : NULL;
+	     i < sock->pending_uvreqs_cur && uvreq != NULL; i++, uvreq = next,
+	    next = (uvreq != NULL) ? ISC_LIST_NEXT(uvreq, link) : NULL)
+	{
+		const isc_sockaddr_t *peer = &uvreq->handle->peer;
+		struct sockaddr *addr = sock->connected
+						? NULL
+						: UNCONST(&peer->type.sa);
+
+		uvreqs[i] = uvreq;
+		bufs[i] = &uvreq->uvbuf;
+		nbufs[i] = 1;
+		addrs[i] = addr;
+
+		ISC_LIST_UNLINK(sock->pending_uvreqs, uvreq, link);
+	}
+
+	size_t sent = 0;
+
+	int r = uv_udp_try_send2(&sock->uv_handle.udp, sock->pending_uvreqs_cur,
+				 bufs, nbufs, addrs, 0);
+
+	if (r < 0) {
+		goto fallback;
+	}
+
+	sent = r;
+
+	for (i = 0; i < sent; i++) {
+		isc__nm_sendcb(sock, uvreqs[i], ISC_R_SUCCESS, true);
+	}
+
+fallback:
+	for (i = sent; i < sock->pending_uvreqs_cur; i++) {
+		send_direct(sock, uvreqs[i]);
+	}
+
+	isc_mem_cput(worker->mctx, uvreqs, sock->pending_uvreqs_cur,
+		     sizeof(uvreqs[0]));
+	isc_mem_cput(worker->mctx, addrs, sock->pending_uvreqs_cur,
+		     sizeof(addrs[0]));
+	isc_mem_cput(worker->mctx, nbufs, sock->pending_uvreqs_cur,
+		     sizeof(nbufs[0]));
+	isc_mem_cput(worker->mctx, bufs, sock->pending_uvreqs_cur,
+		     sizeof(bufs[0]));
+
+	(void)uv_check_stop(&sock->pending_uvreqs_check);
+	sock->pending_uvreqs_cur = 0;
+
+	return;
+}
+
 /*
  * Send the data in 'region' to a peer via a UDP socket. We try to find
  * a proper sibling/child socket so that we won't have to jump to
@@ -663,12 +789,9 @@ void
 isc__nm_udp_send(isc_nmhandle_t *handle, const isc_region_t *region,
 		 isc_nm_cb_t cb, void *cbarg) {
 	isc_nmsocket_t *sock = handle->sock;
-	const isc_sockaddr_t *peer = &handle->peer;
-	const struct sockaddr *sa = NULL;
 	isc__nm_uvreq_t *uvreq = NULL;
 	isc__networker_t *worker = NULL;
 	uint32_t maxudp;
-	int r;
 	isc_result_t result;
 
 	REQUIRE(VALID_NMSOCK(sock));
@@ -677,7 +800,6 @@ isc__nm_udp_send(isc_nmhandle_t *handle, const isc_region_t *region,
 
 	worker = sock->worker;
 	maxudp = atomic_load(&worker->netmgr->maxudp);
-	sa = sock->connected ? NULL : &peer->type.sa;
 
 	/*
 	 * We're simulating a firewall blocking UDP packets bigger than
@@ -711,40 +833,17 @@ isc__nm_udp_send(isc_nmhandle_t *handle, const isc_region_t *region,
 		goto fail;
 	}
 
-	if (uv_udp_get_send_queue_size(&sock->uv_handle.udp) >
-	    ISC_NETMGR_UDP_SENDBUF_SIZE)
-	{
-		/*
-		 * The kernel UDP send queue is full, try sending the UDP
-		 * response synchronously instead of just failing.
-		 */
-		r = uv_udp_try_send(&sock->uv_handle.udp, &uvreq->uvbuf, 1, sa);
-		if (r < 0) {
-			if (can_log_udp_sends()) {
-				isc__netmgr_log(
-					worker->netmgr, ISC_LOG_ERROR,
-					"Sending UDP messages failed: %s",
-					isc_result_totext(isc_uverr2result(r)));
-			}
-
-			isc__nm_incstats(sock, STATID_SENDFAIL);
-			result = isc_uverr2result(r);
-			goto fail;
-		}
-
-		RUNTIME_CHECK(r == (int)region->length);
-		isc__nm_sendcb(sock, uvreq, ISC_R_SUCCESS, true);
-
+	if (sock->connected) {
+		send_direct(sock, uvreq);
 	} else {
-		/* Send the message asynchronously */
-		r = uv_udp_send(&uvreq->uv_req.udp_send, &sock->uv_handle.udp,
-				&uvreq->uvbuf, 1, sa, udp_send_cb);
-		if (r < 0) {
-			isc__nm_incstats(sock, STATID_SENDFAIL);
-			result = isc_uverr2result(r);
-			goto fail;
-		}
+		ISC_LIST_APPEND(sock->pending_uvreqs, uvreq, link);
+		sock->pending_uvreqs_cur++;
+
+		int r = uv_check_start(&sock->pending_uvreqs_check,
+				       udp_flush_pending);
+		UV_RUNTIME_CHECK(uv_check_start, r);
 	}
+
 	return;
 fail:
 	isc__nm_failed_send_cb(sock, uvreq, result, true);

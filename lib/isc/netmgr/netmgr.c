@@ -689,8 +689,10 @@ isc___nmsocket_init(isc_nmsocket_t *sock, isc__networker_t *worker,
 		.result = ISC_R_UNSET,
 		.active_handles = ISC_LIST_INITIALIZER,
 		.active_handles_max = ISC_NETMGR_MAX_STREAM_CLIENTS_PER_CONN,
+		.active_uvreqs = ISC_LIST_INITIALIZER,
 		.active_link = ISC_LINK_INITIALIZER,
 		.active = true,
+		.pending_uvreqs = ISC_LIST_INITIALIZER,
 	};
 
 	if (iface != NULL) {
