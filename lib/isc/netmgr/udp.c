@@ -757,7 +757,7 @@ udp_flush_pending(uv_check_t *handle) {
 	sent = r;
 
 	for (i = 0; i < sent; i++) {
-		isc__nm_sendcb(sock, uvreqs[i], ISC_R_SUCCESS, true);
+		isc__nm_sendcb(sock, uvreqs[i], ISC_R_SUCCESS, false);
 	}
 
 fallback:
