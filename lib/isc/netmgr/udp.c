@@ -415,6 +415,9 @@ isc_nm_routeconnect(isc_nm_t *mgr, isc_nm_cb_t cb, void *cbarg) {
 #endif /* USE_ROUTE_SOCKET */
 }
 
+static void
+udp_flush_pending(uv_check_t *handle);
+
 /*
  * Asynchronous 'udpstop' call handler: stop listening on a UDP socket.
  */
@@ -424,6 +427,10 @@ stop_udp_child_job(void *arg) {
 	REQUIRE(VALID_NMSOCK(sock));
 	REQUIRE(sock->tid == isc_tid());
 	REQUIRE(sock->parent != NULL);
+
+	if (sock->sends.count > 0) {
+		udp_flush_pending(&sock->sends.flush);
+	}
 
 	sock->active = false;
 
@@ -664,8 +671,8 @@ can_log_udp_sends(void) {
 
 static void
 send_direct(isc_nmsocket_t *sock, isc__nm_uvreq_t *uvreq) {
-	const isc_sockaddr_t *peer = &uvreq->handle->peer;
-	const struct sockaddr *addr = sock->connected ? NULL : &peer->type.sa;
+	REQUIRE(sock->connected);
+
 	isc__networker_t *worker = sock->worker;
 	isc_result_t result;
 
@@ -677,18 +684,17 @@ send_direct(isc_nmsocket_t *sock, isc__nm_uvreq_t *uvreq) {
 		 * UDP response synchronously instead of just failing.
 		 */
 		int r = uv_udp_try_send(&sock->uv_handle.udp, &uvreq->uvbuf, 1,
-					addr);
+					NULL);
 		if (r < 0) {
+			result = isc_uverr2result(r);
 			if (can_log_udp_sends()) {
 				isc__netmgr_log(
 					worker->netmgr, ISC_LOG_ERROR,
-					"Sending UDP messages failed: "
-					"%s",
-					isc_result_totext(isc_uverr2result(r)));
+					"Sending UDP messages failed: %s",
+					isc_result_totext(result));
 			}
 
 			isc__nm_incstats(sock, STATID_SENDFAIL);
-			result = isc_uverr2result(r);
 			goto fail;
 		}
 
@@ -698,7 +704,7 @@ send_direct(isc_nmsocket_t *sock, isc__nm_uvreq_t *uvreq) {
 		/* Send the message asynchronously */
 		int r = uv_udp_send(&uvreq->uv_req.udp_send,
 				    &sock->uv_handle.udp, &uvreq->uvbuf, 1,
-				    addr, udp_send_cb);
+				    NULL, udp_send_cb);
 		if (r < 0) {
 			isc__nm_incstats(sock, STATID_SENDFAIL);
 			result = isc_uverr2result(r);
@@ -714,6 +720,11 @@ static void
 udp_flush_pending(uv_check_t *handle) {
 	isc_nmsocket_t *sock = uv_handle_get_data(handle);
 	size_t sent = 0;
+	isc_result_t result = ISC_R_FAILURE;
+
+	if (sock->sends.count == 0) {
+		return;
+	}
 
 	INSIST(sock->sends.bufs[0] == &sock->sends.bufs_s[0]);
 
@@ -721,7 +732,15 @@ udp_flush_pending(uv_check_t *handle) {
 				 sock->sends.bufs, sock->sends.nbufs,
 				 sock->sends.addrs, 0);
 
-	if (r > 0) {
+	if (r < 0) {
+		result = isc_uverr2result(r);
+
+		if (can_log_udp_sends()) {
+			isc__netmgr_log(sock->worker->netmgr, ISC_LOG_ERROR,
+					"Sending UDP messages failed: %s",
+					isc_result_totext(result));
+		}
+	} else {
 		sent = r;
 		for (size_t i = 0; i < sent; i++) {
 			sock->sends.cbs[i](sock->sends.handles[i],
@@ -732,9 +751,10 @@ udp_flush_pending(uv_check_t *handle) {
 	}
 
 	for (size_t i = sent; i < sock->sends.count; i++) {
-		sock->sends.cbs[i](sock->sends.handles[i], ISC_R_FAILURE,
+		sock->sends.cbs[i](sock->sends.handles[i], result,
 				   sock->sends.cbargs[i]);
 		isc_nmhandle_detach(&sock->sends.handles[i]);
+		isc__nm_incstats(sock, STATID_SENDFAIL);
 	}
 
 	(void)uv_check_stop(&sock->sends.flush);
