@@ -687,9 +687,14 @@ struct isc_nmsocket {
 	/*%
 	 * 'pending' UDP sends
 	 */
-	ISC_LIST(isc__nm_uvreq_t) pending_uvreqs;
-	size_t pending_uvreqs_cur;
-	uv_check_t pending_uvreqs_check;
+	struct {
+		size_t count;
+		isc__nm_uvreq_t *uvreqs[20];
+		uv_buf_t *bufs[20];
+		unsigned int nbufs[20];
+		struct sockaddr *addrs[20];
+		uv_check_t flush;
+	} sends;
 
 	/*%
 	 * Used to pass a result back from listen or connect events.

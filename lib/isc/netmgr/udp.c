@@ -110,8 +110,8 @@ start_udp_child_job(void *arg) {
 
 	(void)isc__nm_socket_min_mtu(sock->fd, sa_family);
 
-	(void)uv_check_init(&loop->loop, &sock->pending_uvreqs_check);
-	uv_handle_set_data(&sock->pending_uvreqs_check, sock);
+	(void)uv_check_init(&loop->loop, &sock->sends.flush);
+	uv_handle_set_data(&sock->sends.flush, sock);
 
 #if HAVE_DECL_UV_UDP_RECVMMSG
 	uv_init_flags |= UV_UDP_RECVMMSG;
@@ -431,8 +431,8 @@ stop_udp_child_job(void *arg) {
 	isc__nm_udp_close(sock);
 
 	/* 0. close the check callback */
-	(void)uv_check_stop(&sock->pending_uvreqs_check);
-	uv_close((uv_handle_t *)&sock->pending_uvreqs_check, NULL);
+	(void)uv_check_stop(&sock->sends.flush);
+	uv_close((uv_handle_t *)&sock->sends.flush, NULL);
 
 	REQUIRE(!sock->worker->loop->paused);
 	isc_barrier_wait(&sock->parent->stop_barrier);
@@ -713,69 +713,29 @@ fail:
 static void
 udp_flush_pending(uv_check_t *handle) {
 	isc_nmsocket_t *sock = uv_handle_get_data(handle);
-	isc__nm_uvreq_t *uvreq = NULL, *next = NULL;
-	isc__networker_t *worker = sock->worker;
-	size_t i;
-
-	/* FIXME: Perhaps static per-socket buffer here */
-	uv_buf_t **bufs = isc_mem_cget(worker->mctx, sock->pending_uvreqs_cur,
-				       sizeof(bufs[0]));
-	unsigned int *nbufs = isc_mem_cget(
-		worker->mctx, sock->pending_uvreqs_cur, sizeof(nbufs[0]));
-	struct sockaddr **addrs = isc_mem_cget(
-		worker->mctx, sock->pending_uvreqs_cur, sizeof(addrs[0]));
-	isc__nm_uvreq_t **uvreqs = isc_mem_cget(
-		worker->mctx, sock->pending_uvreqs_cur, sizeof(uvreqs[0]));
-
-	for (i = 0, uvreq = ISC_LIST_HEAD(sock->pending_uvreqs),
-	    next = (uvreq != NULL) ? ISC_LIST_NEXT(uvreq, link) : NULL;
-	     i < sock->pending_uvreqs_cur && uvreq != NULL; i++, uvreq = next,
-	    next = (uvreq != NULL) ? ISC_LIST_NEXT(uvreq, link) : NULL)
-	{
-		const isc_sockaddr_t *peer = &uvreq->handle->peer;
-		struct sockaddr *addr = sock->connected
-						? NULL
-						: UNCONST(&peer->type.sa);
-
-		uvreqs[i] = uvreq;
-		bufs[i] = &uvreq->uvbuf;
-		nbufs[i] = 1;
-		addrs[i] = addr;
-
-		ISC_LIST_UNLINK(sock->pending_uvreqs, uvreq, link);
-	}
-
 	size_t sent = 0;
 
-	int r = uv_udp_try_send2(&sock->uv_handle.udp, sock->pending_uvreqs_cur,
-				 bufs, nbufs, addrs, 0);
+	fprintf(stderr, "%s(%p): %zu\n", __func__, sock, sock->sends.count);
 
-	if (r < 0) {
-		goto fallback;
+	int r = uv_udp_try_send2(&sock->uv_handle.udp, sock->sends.count,
+				 sock->sends.bufs, sock->sends.nbufs,
+				 sock->sends.addrs, 0);
+
+	if (r > 0) {
+		sent = r;
+		for (size_t i = 0; i < sent; i++) {
+			isc__nm_sendcb(sock, sock->sends.uvreqs[i],
+				       ISC_R_SUCCESS, false);
+		}
 	}
 
-	sent = r;
-
-	for (i = 0; i < sent; i++) {
-		isc__nm_sendcb(sock, uvreqs[i], ISC_R_SUCCESS, false);
+	for (size_t i = sent; i < sock->sends.count; i++) {
+		isc__nm_failed_send_cb(sock, sock->sends.uvreqs[i],
+				       ISC_R_FAILURE, false);
 	}
 
-fallback:
-	for (i = sent; i < sock->pending_uvreqs_cur; i++) {
-		send_direct(sock, uvreqs[i]);
-	}
-
-	isc_mem_cput(worker->mctx, uvreqs, sock->pending_uvreqs_cur,
-		     sizeof(uvreqs[0]));
-	isc_mem_cput(worker->mctx, addrs, sock->pending_uvreqs_cur,
-		     sizeof(addrs[0]));
-	isc_mem_cput(worker->mctx, nbufs, sock->pending_uvreqs_cur,
-		     sizeof(nbufs[0]));
-	isc_mem_cput(worker->mctx, bufs, sock->pending_uvreqs_cur,
-		     sizeof(bufs[0]));
-
-	(void)uv_check_stop(&sock->pending_uvreqs_check);
-	sock->pending_uvreqs_cur = 0;
+	(void)uv_check_stop(&sock->sends.flush);
+	sock->sends.count = 0;
 
 	return;
 }
@@ -835,13 +795,27 @@ isc__nm_udp_send(isc_nmhandle_t *handle, const isc_region_t *region,
 
 	if (sock->connected) {
 		send_direct(sock, uvreq);
-	} else {
-		ISC_LIST_APPEND(sock->pending_uvreqs, uvreq, link);
-		sock->pending_uvreqs_cur++;
+		return;
+	}
 
-		int r = uv_check_start(&sock->pending_uvreqs_check,
-				       udp_flush_pending);
-		UV_RUNTIME_CHECK(uv_check_start, r);
+	fprintf(stderr, "%s(%p): %zu\n", __func__, sock, sock->sends.count);
+
+	const isc_sockaddr_t *peer = &handle->peer;
+
+	INSIST(sock->sends.count < ARRAY_SIZE(sock->sends.uvreqs));
+
+	sock->sends.uvreqs[sock->sends.count] = uvreq;
+	sock->sends.bufs[sock->sends.count] = &uvreq->uvbuf;
+	sock->sends.nbufs[sock->sends.count] = 1;
+	sock->sends.addrs[sock->sends.count] = UNCONST(&peer->type.sa);
+
+	sock->sends.count++;
+	if (sock->sends.count == 20) {
+		udp_flush_pending(&sock->sends.flush);
+	}
+
+	if (sock->sends.count > 0) {
+		uv_check_start(&sock->sends.flush, udp_flush_pending);
 	}
 
 	return;
