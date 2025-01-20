@@ -694,6 +694,11 @@ isc___nmsocket_init(isc_nmsocket_t *sock, isc__networker_t *worker,
 		.active = true,
 	};
 
+	for (size_t i = 0; i < ARRAY_SIZE(sock->sends.bufs); i++) {
+		sock->sends.bufs[i] = &sock->sends.bufs_s[i];
+		sock->sends.nbufs[i] = 1;
+	}
+
 	if (iface != NULL) {
 		family = iface->type.sa.sa_family;
 		sock->iface = *iface;

@@ -689,10 +689,13 @@ struct isc_nmsocket {
 	 */
 	struct {
 		size_t count;
-		isc__nm_uvreq_t *uvreqs[20];
+		isc_nmhandle_t *handles[20];
 		uv_buf_t *bufs[20];
+		uv_buf_t bufs_s[20];
 		unsigned int nbufs[20];
 		struct sockaddr *addrs[20];
+		isc_nm_cb_t cbs[20];
+		void *cbargs[20];
 		uv_check_t flush;
 	} sends;
 

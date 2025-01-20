@@ -715,7 +715,7 @@ udp_flush_pending(uv_check_t *handle) {
 	isc_nmsocket_t *sock = uv_handle_get_data(handle);
 	size_t sent = 0;
 
-	fprintf(stderr, "%s(%p): %zu\n", __func__, sock, sock->sends.count);
+	INSIST(sock->sends.bufs[0] == &sock->sends.bufs_s[0]);
 
 	int r = uv_udp_try_send2(&sock->uv_handle.udp, sock->sends.count,
 				 sock->sends.bufs, sock->sends.nbufs,
@@ -724,14 +724,17 @@ udp_flush_pending(uv_check_t *handle) {
 	if (r > 0) {
 		sent = r;
 		for (size_t i = 0; i < sent; i++) {
-			isc__nm_sendcb(sock, sock->sends.uvreqs[i],
-				       ISC_R_SUCCESS, false);
+			sock->sends.cbs[i](sock->sends.handles[i],
+					   ISC_R_SUCCESS,
+					   sock->sends.cbargs[i]);
+			isc_nmhandle_detach(&sock->sends.handles[i]);
 		}
 	}
 
 	for (size_t i = sent; i < sock->sends.count; i++) {
-		isc__nm_failed_send_cb(sock, sock->sends.uvreqs[i],
-				       ISC_R_FAILURE, false);
+		sock->sends.cbs[i](sock->sends.handles[i], ISC_R_FAILURE,
+				   sock->sends.cbargs[i]);
+		isc_nmhandle_detach(&sock->sends.handles[i]);
 	}
 
 	(void)uv_check_stop(&sock->sends.flush);
@@ -752,7 +755,6 @@ isc__nm_udp_send(isc_nmhandle_t *handle, const isc_region_t *region,
 	isc__nm_uvreq_t *uvreq = NULL;
 	isc__networker_t *worker = NULL;
 	uint32_t maxudp;
-	isc_result_t result;
 
 	REQUIRE(VALID_NMSOCK(sock));
 	REQUIRE(sock->type == isc_nm_udpsocket);
@@ -774,40 +776,43 @@ isc__nm_udp_send(isc_nmhandle_t *handle, const isc_region_t *region,
 		return;
 	}
 
-	uvreq = isc__nm_uvreq_get(sock);
-	uvreq->uvbuf.base = (char *)region->base;
-	uvreq->uvbuf.len = region->length;
-
-	isc_nmhandle_attach(handle, &uvreq->handle);
-
-	uvreq->cb.send = cb;
-	uvreq->cbarg = cbarg;
-
-	if (isc__nm_closing(worker)) {
-		result = ISC_R_SHUTTINGDOWN;
-		goto fail;
-	}
-
-	if (isc__nmsocket_closing(sock)) {
-		result = ISC_R_CANCELED;
-		goto fail;
-	}
-
 	if (sock->connected) {
+		uvreq = isc__nm_uvreq_get(sock);
+		uvreq->uvbuf.base = (char *)region->base;
+		uvreq->uvbuf.len = region->length;
+
+		isc_nmhandle_attach(handle, &uvreq->handle);
+
+		uvreq->cb.send = cb;
+		uvreq->cbarg = cbarg;
+
+		if (isc__nm_closing(worker)) {
+			isc__nm_failed_send_cb(sock, uvreq, ISC_R_SHUTTINGDOWN,
+					       true);
+			return;
+		}
+
+		if (isc__nmsocket_closing(sock)) {
+			isc__nm_failed_send_cb(sock, uvreq, ISC_R_CANCELED,
+					       true);
+			return;
+		}
+
 		send_direct(sock, uvreq);
 		return;
 	}
 
-	fprintf(stderr, "%s(%p): %zu\n", __func__, sock, sock->sends.count);
-
 	const isc_sockaddr_t *peer = &handle->peer;
+	size_t i = sock->sends.count;
 
-	INSIST(sock->sends.count < ARRAY_SIZE(sock->sends.uvreqs));
+	INSIST(i < ARRAY_SIZE(sock->sends.cbs));
 
-	sock->sends.uvreqs[sock->sends.count] = uvreq;
-	sock->sends.bufs[sock->sends.count] = &uvreq->uvbuf;
-	sock->sends.nbufs[sock->sends.count] = 1;
-	sock->sends.addrs[sock->sends.count] = UNCONST(&peer->type.sa);
+	isc_nmhandle_attach(handle, &sock->sends.handles[i]);
+	sock->sends.cbs[i] = cb;
+	sock->sends.cbargs[i] = cbarg;
+	sock->sends.bufs_s[i].base = (char *)region->base;
+	sock->sends.bufs_s[i].len = region->length;
+	sock->sends.addrs[i] = UNCONST(&peer->type.sa);
 
 	sock->sends.count++;
 	if (sock->sends.count == 20) {
@@ -815,12 +820,11 @@ isc__nm_udp_send(isc_nmhandle_t *handle, const isc_region_t *region,
 	}
 
 	if (sock->sends.count > 0) {
+		/* FIXME: We need to flush the udp when shutting down */
 		uv_check_start(&sock->sends.flush, udp_flush_pending);
 	}
 
 	return;
-fail:
-	isc__nm_failed_send_cb(sock, uvreq, result, true);
 }
 
 static isc_result_t
