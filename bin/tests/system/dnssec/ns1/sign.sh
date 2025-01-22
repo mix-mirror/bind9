@@ -30,6 +30,7 @@ cp "../ns2/dsset-example." .
 cp "../ns2/dsset-in-addr.arpa." .
 cp "../ns2/dsset-too-many-iterations." .
 cp "../ns2/dsset-lazy-ksk." .
+cp "../ns2/dsset-peer-ns-spoof." .
 cp "../ns2/dsset-dnskey-rrsigs-stripped." .
 cp "../ns2/dsset-ds-rrsigs-stripped." .
 
