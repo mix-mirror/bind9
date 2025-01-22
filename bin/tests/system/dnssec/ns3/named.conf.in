@@ -378,6 +378,11 @@ zone "too-many-iterations" {
 	file "too-many-iterations.bk";
 };
 
+zone "target.peer-ns-spoof" {
+	type primary;
+	file "target.peer-ns-spoof.db.signed";
+};
+
 include "siginterval.conf";
 
 include "trusted.conf";

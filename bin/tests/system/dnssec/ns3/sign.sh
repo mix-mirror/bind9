@@ -673,3 +673,14 @@ $DSFROMKEY "$dnskeyname.key" >"dsset-delegation.${zone}."
 cat "$infile" "${kskname}.key" "${zskname}.key" "${keyname}.key" \
   "${dnskeyname}.key" "dsset-delegation.${zone}." >"$zonefile"
 "$SIGNER" -P -o "$zone" "$zonefile" >/dev/null
+
+#
+#
+#
+zone=target.peer-ns-spoof
+infile=target.peer-ns-spoof.db.in
+zonefile=target.peer-ns-spoof.db
+ksk=$("$KEYGEN" -q -a "$DEFAULT_ALGORITHM" -b "$DEFAULT_BITS" -n zone -f KSK "$zone")
+zsk=$("$KEYGEN" -q -a "$DEFAULT_ALGORITHM" -b "$DEFAULT_BITS" -n zone "$zone")
+cat "$infile" "$ksk.key" "$zsk.key" >"$zonefile"
+"$SIGNER" -g -o "$zone" "$zonefile" >/dev/null 2>&1

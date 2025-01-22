@@ -221,6 +221,16 @@ zone "lazy-ksk" {
 	allow-update { any; };
 };
 
+zone "peer-ns-spoof" {
+	type primary;
+	file "peer-ns-spoof.db.signed";
+};
+
+zone "peer.peer-ns-spoof" {
+	type primary;
+	file "peer.peer-ns-spoof.db.signed";
+};
+
 zone "dnskey-rrsigs-stripped" {
 	type primary;
 	file "dnskey-rrsigs-stripped.db.signed";
