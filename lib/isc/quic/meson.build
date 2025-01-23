@@ -14,7 +14,9 @@ isc_srcset.add(
     if_true: files(
         'ngtcp2_crypto.c',
         'ngtcp2_utils.c',
+        'quic_cid_map.c',
         'quic_crypto.c',
+        'quic_session_manager.c',
         'tls_quic.c',
     ),
 )
