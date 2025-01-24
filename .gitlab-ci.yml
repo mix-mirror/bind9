@@ -326,26 +326,26 @@ stages:
     - awk '/^=+ FAILURES =+/{flag=1;next}/^=+.*=+$/{flag=0}flag' bin/tests/system/pytest.out.txt || true
     - awk '/^=+ ERRORS =+/{flag=1;next}/^=+.*=+$/{flag=0}flag' bin/tests/system/pytest.out.txt || true
 
-.shotgun: &shotgun_job
-  <<: *base_image
-  <<: *api_pipelines_schedules_tags_triggers_web_triggering_rules
-  stage: performance
-  script:
-    - if [ -z "$CI_COMMIT_TAG" ]; then export SHOTGUN_ROUNDS=1; else export SHOTGUN_ROUNDS=3; fi
-    - PIPELINE_ID=$(curl -s -X POST --fail
-        -F "token=$CI_JOB_TOKEN"
-        -F ref=main
-        -F "variables[SHOTGUN_TEST_VERSION]=['$CI_COMMIT_REF_NAME', '$BIND_BASELINE_VERSION']"
-        -F "variables[SHOTGUN_DURATION]=300"
-        -F "variables[SHOTGUN_ROUNDS]=$SHOTGUN_ROUNDS"
-        -F "variables[SHOTGUN_TRAFFIC_MULTIPLIER]=$SHOTGUN_TRAFFIC_MULTIPLIER"
-        -F "variables[SHOTGUN_SCENARIO]=$SHOTGUN_SCENARIO"
-        https://gitlab.isc.org/api/v4/projects/188/trigger/pipeline | jq .id)
-    - util/ci-wait-shotgun.py $PIPELINE_ID
-  needs:
-    - job: ci-variables
-      artifacts: true
-  timeout: 2h
+# .shotgun: &shotgun_job
+#   <<: *base_image
+#   <<: *api_pipelines_schedules_tags_triggers_web_triggering_rules
+#   stage: performance
+#   script:
+#     - if [ -z "$CI_COMMIT_TAG" ]; then export SHOTGUN_ROUNDS=1; else export SHOTGUN_ROUNDS=3; fi
+#     - PIPELINE_ID=$(curl -s -X POST --fail
+#         -F "token=$CI_JOB_TOKEN"
+#         -F ref=main
+#         -F "variables[SHOTGUN_TEST_VERSION]=['$CI_COMMIT_REF_NAME', '$BIND_BASELINE_VERSION']"
+#         -F "variables[SHOTGUN_DURATION]=300"
+#         -F "variables[SHOTGUN_ROUNDS]=$SHOTGUN_ROUNDS"
+#         -F "variables[SHOTGUN_TRAFFIC_MULTIPLIER]=$SHOTGUN_TRAFFIC_MULTIPLIER"
+#         -F "variables[SHOTGUN_SCENARIO]=$SHOTGUN_SCENARIO"
+#         https://gitlab.isc.org/api/v4/projects/188/trigger/pipeline | jq .id)
+#     - util/ci-wait-shotgun.py $PIPELINE_ID
+#   needs:
+#     - job: ci-variables
+#       artifacts: true
+#   timeout: 2h
 
 .system_test_common: &system_test_common
   <<: *default_triggering_rules
@@ -1915,39 +1915,28 @@ fsck:
     - schedules
   needs: []
 
-# gcov:
-#   <<: *base_image
-#   <<: *default_triggering_rules
-#   stage: postcheck
-#   needs:
-#     - job: system:gcc:bookworm:amd64
-#       artifacts: true
-#   script:
-#     # Ensure gcov files for unit tests are found via tests/ rather than
-#     # lib/*/tests/ to prevent confusing gcovr.
-#     - find lib/ -name tests -type l -delete
-#     # The "a-conftest.gcno" file is result of the ./configure step and
-#     # should be removed as it does not belong to the BIND 9 code base.
-#     - rm a-conftest.gcno
-#     # Generate XML file in the Cobertura XML format suitable for use by GitLab
-#     # for the purpose of displaying code coverage information in the diff view
-#     # of a given merge request.
-#     - gcovr --exclude-directories bin/tests --exclude-directories doc --exclude-directories fuzz --exclude tests --cobertura-pretty -o coverage.xml
-#     - gcovr --exclude-directories bin/tests --exclude-directories doc --exclude-directories fuzz --exclude tests --html-details -o coverage.html
-#     - gcovr --exclude-directories bin/tests --exclude-directories doc --exclude-directories fuzz --exclude tests --txt -o coverage.txt
-#     - tail -n 3 coverage.txt
-#   coverage: /^TOTAL.*\s+(\d+\%)$/
-#   artifacts:
-#     paths:
-#       - coverage*.html
-#       - coverage.css
-#       - coverage.txt
-#       - coverage.xml
-#     reports:
-#       coverage_report:
-#         coverage_format: cobertura
-#         path: coverage.xml
-#
+gcov:
+  <<: *base_image
+  <<: *default_triggering_rules
+  stage: postcheck
+  needs:
+    - job: system:gcc:bookworm:amd64
+      artifacts: true
+  script:
+    # Ensure gcov files for unit tests are found via tests/ rather than
+    # lib/*/tests/ to prevent confusing gcovr.
+    # - find lib/ -name tests -type l -delete
+    - ninja -C build-cov coverage
+    - tail -n 3 build/meson-logs/coverage.txt
+  coverage: /^TOTAL.*\s+(\d+\%)$/
+  artifacts:
+    paths:
+      - build/meson-logs/
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: build/meson-logs/coverage.xml
+
 # # Pairwise testing of ./configure options
 #
 # pairwise:
