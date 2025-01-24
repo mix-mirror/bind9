@@ -443,6 +443,7 @@ stages:
     - *setup_interfaces
     - git clone --depth 1 https://gitlab.isc.org/isc-projects/bind9-qa.git
     - cd bind9-qa/respdiff
+    - sed -i -e 's|bin/named/named|build/named|g' respdiff.sh
   needs: []
   artifacts:
     paths:
@@ -491,22 +492,18 @@ vulture:
   script:
     - vulture --exclude "*/ans*/ans.py,conftest.py,isctest" --ignore-names "pytestmark" bin/tests/system/
 
-# ci-variables:
-#   stage: precheck
-#   <<: *precheck_job
-#   script:
-#     - export BIND_BASELINE_BRANCH="$(sed -n -E "s|^m4_define\(\[bind_VERSION_MINOR\], ([0-9]+)\)dnl$|\1|p" configure.ac)"
-#     # When testing a .0 release, compare it against the previous development
-#     # release (e.g., 9.19.0 and 9.18.0 should both be compared against 9.17.22).
-#     - if [ "$(sed -n -E "s|^m4_define\(\[bind_VERSION_PATCH\], ([0-9]+)\)dnl$|\1|p" configure.ac)" = "0" ]; then export BIND_BASELINE_BRANCH=$((BIND_BASELINE_BRANCH - 1 - (BIND_BASELINE_BRANCH % 2))); fi
-#     - BIND_BASELINE_VERSION="$(curl -s "https://gitlab.isc.org/api/v4/projects/1/repository/tags?search=^v9.${BIND_BASELINE_BRANCH}&order_by=version" | jq -r ".[0].name")"
-#     - echo "BIND_BASELINE_VERSION=$BIND_BASELINE_VERSION" >> ci_vars.env
-#   needs:
-#     - job: autoreconf
-#       artifacts: true
-#   artifacts:
-#     reports:
-#       dotenv: ci_vars.env
+ci-variables:
+  stage: precheck
+  <<: *precheck_job
+  script:
+    # When testing a .0 release, compare it against the previous development
+    # release (e.g., 9.19.0 and 9.18.0 should both be compared against 9.17.22).
+    - export BIND_BASELINE_BRANCH_URI=$(meson introspect meson.build --projectinfo | ./ci/baseline-branch-uri.jq)
+    - BIND_BASELINE_VERSION="$(curl -s "{BIND_BASELINE_BRANCH_URI}" | jq -r '.[0].name')"
+    - echo "BIND_BASELINE_VERSION=$BIND_BASELINE_VERSION" >> ci_vars.env
+  artifacts:
+    reports:
+      dotenv: ci_vars.env
 
 clang-format:
   <<: *precheck_job
@@ -1926,7 +1923,7 @@ gcov:
     # Ensure gcov files for unit tests are found via tests/ rather than
     # lib/*/tests/ to prevent confusing gcovr.
     # - find lib/ -name tests -type l -delete
-    - ninja -C build-cov coverage
+    - ninja -C build coverage
     - tail -n 3 build/meson-logs/coverage.txt
   coverage: /^TOTAL.*\s+(\d+\%)$/
   artifacts:
