@@ -1479,16 +1479,17 @@ unit:clang:openbsd:amd64:
 
 # Respdiff tests
 
-# respdiff:
-#   <<: *respdiff_job
-#   <<: *default_triggering_rules
-#   <<: *debian_bookworm_amd64_image
-#   variables:
-#     CC: gcc
-#     CFLAGS: "${CFLAGS_COMMON} -Og -DISC_TRACK_PTHREADS_OBJECTS"
-#     MAX_DISAGREEMENTS_PERCENTAGE: "0.15"
-#   script:
-#     - bash respdiff.sh -m /usr/lib/x86_64-linux-gnu/libjemalloc.so.2 -s named -q "${PWD}/100k_mixed.txt" -c 3 -w "${PWD}/rspworkdir" "${CI_PROJECT_DIR}" "/usr/local/respdiff-reference-bind/sbin/named"
+respdiff:
+  <<: *respdiff_job
+  <<: *default_triggering_rules
+  <<: *debian_bookworm_amd64_image
+  variables:
+    CC: gcc
+    CFLAGS: "${CFLAGS_COMMON} -DISC_TRACK_PTHREADS_OBJECTS"
+    EXTRA_CONFIGURE: "-Doptimization=g"
+    MAX_DISAGREEMENTS_PERCENTAGE: "0.15"
+  script:
+    - bash respdiff.sh -m /usr/lib/x86_64-linux-gnu/libjemalloc.so.2 -s named -q "${PWD}/100k_mixed.txt" -c 3 -w "${PWD}/rspworkdir" "${CI_PROJECT_DIR}" "/usr/local/respdiff-reference-bind/sbin/named"
 
 # respdiff:asan:
 #   <<: *respdiff_job
