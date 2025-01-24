@@ -181,7 +181,6 @@ if not (get_option('optimization') == '0' or get_option('buildtype') == 'plain')
         add_project_arguments('-U_FORTIFY_SOURCE', '-D_FORTIFY_SOURCE=3', language: 'c')
     else
         add_project_arguments('-U_FORTIFY_SOURCE', '-D_FORTIFY_SOURCE=2', language: 'c')
-
     endif
 endif
 
