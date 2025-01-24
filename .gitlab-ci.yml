@@ -443,7 +443,7 @@ stages:
     - *setup_interfaces
     - git clone --depth 1 https://gitlab.isc.org/isc-projects/bind9-qa.git
     - cd bind9-qa/respdiff
-    - sed -i -e 's|bin/named/named|build/named|g' respdiff.sh
+    - sed -i -e 's|bin/named/|build/|g' -e 's|awk "/\\/bin\\/named\\/|awk "/build|g' respdiff.sh
   needs: []
   artifacts:
     paths:
@@ -1509,46 +1509,45 @@ respdiff:
   script:
     - bash respdiff.sh -m /usr/lib/x86_64-linux-gnu/libjemalloc.so.2 -s named -q "${PWD}/100k_mixed.txt" -c 3 -w "${PWD}/rspworkdir" "${CI_PROJECT_DIR}" "/usr/local/respdiff-reference-bind/sbin/named"
 
-# respdiff:asan:
-#   <<: *respdiff_job
-#   <<: *default_triggering_rules
-#   <<: *debian_bookworm_amd64_image
-#   variables:
-#     CC: gcc
-#     CFLAGS: "${CFLAGS_COMMON} -Og -fsanitize=address,undefined"
-#     LDFLAGS: "-fsanitize=address,undefined"
-#     EXTRA_CONFIGURE: "--without-jemalloc"
-#     MAX_DISAGREEMENTS_PERCENTAGE: "0.15"
-#   script:
-#     - bash respdiff.sh -s named -q "${PWD}/100k_mixed.txt" -c 3 -w "${PWD}/rspworkdir" "${CI_PROJECT_DIR}" "/usr/local/respdiff-reference-bind/sbin/named"
+respdiff:asan:
+  <<: *respdiff_job
+  <<: *default_triggering_rules
+  <<: *debian_bookworm_amd64_image
+  variables:
+    CC: gcc
+    CFLAGS: "${CFLAGS_COMMON}"
+    EXTRA_CONFIGURE: "-Doptimization=g -Db_sanitize=address,undefined, -Djemalloc=disabled"
+    MAX_DISAGREEMENTS_PERCENTAGE: "0.15"
+  script:
+    - bash respdiff.sh -s named -q "${PWD}/100k_mixed.txt" -c 3 -w "${PWD}/rspworkdir" "${CI_PROJECT_DIR}" "/usr/local/respdiff-reference-bind/sbin/named"
 
-# respdiff:tsan:
-#   <<: *respdiff_job
-#   <<: *default_triggering_rules
-#   <<: *tsan_debian_bookworm_amd64_image
-#   variables:
-#     CC: gcc
-#     CFLAGS: "${CFLAGS_COMMON} -Og -fsanitize=thread"
-#     LDFLAGS: "-fsanitize=thread"
-#     EXTRA_CONFIGURE: "--enable-pthread-rwlock --without-jemalloc PKG_CONFIG_PATH=/opt/tsan/lib/pkgconfig"
-#     MAX_DISAGREEMENTS_PERCENTAGE: "0.15"
-#     TSAN_OPTIONS: "${TSAN_OPTIONS_DEBIAN}"
-#   script:
-#     - bash respdiff.sh -s named -q "${PWD}/100k_mixed.txt" -c 3 -w "${PWD}/rspworkdir" "${CI_PROJECT_DIR}" "/usr/local/respdiff-reference-bind/sbin/named"
-#   after_script:
-#     - *find_python
-#     - *parse_tsan
-#
-# respdiff-third-party:
-#   <<: *respdiff_job
-#   <<: *default_triggering_rules
-#   <<: *debian_bookworm_amd64_image
-#   variables:
-#     CC: gcc
-#     CFLAGS: "${CFLAGS_COMMON} -Og"
-#     MAX_DISAGREEMENTS_PERCENTAGE: "0.2"
-#   script:
-#     - bash respdiff.sh -s third_party -q "${PWD}/100k_mixed.txt" -c 1 -w "${PWD}/rspworkdir" "${CI_PROJECT_DIR}"
+respdiff:tsan:
+  <<: *respdiff_job
+  <<: *default_triggering_rules
+  <<: *tsan_debian_bookworm_amd64_image
+  variables:
+    CC: gcc
+    CFLAGS: "${CFLAGS_COMMON}"
+    EXTRA_CONFIGURE: "-Doptimization=g -Db_sanitize=thread -Dlocktype=system -Djemalloc=disabled --pkg-config-path=/opt/tsan/lib/pkgconfig"
+    MAX_DISAGREEMENTS_PERCENTAGE: "0.15"
+    TSAN_OPTIONS: "${TSAN_OPTIONS_DEBIAN}"
+  script:
+    - bash respdiff.sh -s named -q "${PWD}/100k_mixed.txt" -c 3 -w "${PWD}/rspworkdir" "${CI_PROJECT_DIR}" "/usr/local/respdiff-reference-bind/sbin/named"
+  after_script:
+    - *find_python
+    - *parse_tsan
+
+respdiff-third-party:
+  <<: *respdiff_job
+  <<: *default_triggering_rules
+  <<: *debian_bookworm_amd64_image
+  variables:
+    CC: gcc
+    CFLAGS: "${CFLAGS_COMMON}"
+    EXTRA_CONFIGURE: "-Doptimization=g"
+    MAX_DISAGREEMENTS_PERCENTAGE: "0.2"
+  script:
+    - bash respdiff.sh -s third_party -q "${PWD}/100k_mixed.txt" -c 1 -w "${PWD}/rspworkdir" "${CI_PROJECT_DIR}"
 
 # Performance tests
 
