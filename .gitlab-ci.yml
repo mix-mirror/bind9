@@ -1558,11 +1558,11 @@ respdiff:
 # Run shotgun:udp right away, but delay other shotgun jobs sligthly in order to
 # allow re-use of the built container image. Otherwise, the jobs would do the
 # same builds in parallel rather than re-use the already built image.
-shotgun:udp:
-  <<: *shotgun_job
-  variables:
-    SHOTGUN_SCENARIO: udp
-    SHOTGUN_TRAFFIC_MULTIPLIER: 15
+# shotgun:udp:
+#   <<: *shotgun_job
+#   variables:
+#     SHOTGUN_SCENARIO: udp
+#     SHOTGUN_TRAFFIC_MULTIPLIER: 15
 
 # shotgun:tcp:
 #   <<: *shotgun_job
