@@ -1,4 +1,4 @@
-#!/usr/bin/env -S jq -f
+#!/usr/bin/env -S jq -rf
 
 # Copyright (C) Internet Systems Consortium, Inc. ("ISC")
 #
@@ -11,6 +11,8 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
+# Select baseline tag version for testing
+
 .version
     | rtrimstr("-dev")
     | split(".")
@@ -19,4 +21,4 @@
     # When testing a .0 release, compare it against the previous development
     # release (e.g., 9.19.0 and 9.18.0 should both be compared against 9.17.22).
     | if .patch == 0 then .minor - 1 - (.minor % 2) else .minor end
-    | @uri "https://gitlab.isc.org/api/v4/projects/1/repository/tags?search=^v9.\(.)&order_by=version"
+    | "v9.\(.)"
