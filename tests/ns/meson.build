@@ -13,6 +13,7 @@ foreach unit : [
     'notify',
     'plugin',
     'query',
+    'client',
 ]
     test_bin = executable(
         unit,
