@@ -1516,7 +1516,7 @@ respdiff:asan:
   variables:
     CC: gcc
     CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "-Doptimization=g -Db_sanitize=address,undefined, -Djemalloc=disabled"
+    EXTRA_CONFIGURE: "-Doptimization=g -Db_sanitize=address,undefined -Djemalloc=disabled"
     MAX_DISAGREEMENTS_PERCENTAGE: "0.15"
   script:
     - bash respdiff.sh -s named -q "${PWD}/100k_mixed.txt" -c 3 -w "${PWD}/rspworkdir" "${CI_PROJECT_DIR}" "/usr/local/respdiff-reference-bind/sbin/named"
