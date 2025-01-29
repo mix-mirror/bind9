@@ -48,51 +48,58 @@ ISC_RUN_TEST_IMPL(qpkey_name) {
 	} testcases[] = {
 		{
 			.namestr = "",
-			.key = { 0x02 },
-			.len = 0,
+			.key = { 0x03, 0x03, 0x03, 0x03, 0x02 },
+			.len = 0 + QPKEYTYPELEN,
 		},
 		{
 			.namestr = ".",
-			.key = { 0x02, 0x02 },
-			.len = 1,
+			.key = { 0x02, 0x03, 0x03, 0x03, 0x03, 0x02 },
+			.len = 1 + QPKEYTYPELEN,
 		},
 		{
 			.namestr = "\\000",
-			.key = { 0x03, 0x03, 0x02 },
-			.len = 3,
+			.key = { 0x04, 0x04, 0x02, 0x03, 0x03, 0x03, 0x03,
+				 0x02 },
+			.len = 3 + QPKEYTYPELEN,
 		},
 		{
 			.namestr = "\\000\\009",
-			.key = { 0x03, 0x03, 0x03, 0x0c, 0x02 },
-			.len = 5,
+			.key = { 0x04, 0x04, 0x04, 0x0d, 0x02, 0x03, 0x03, 0x03,
+				 0x03, 0x02 },
+			.len = 5 + QPKEYTYPELEN,
 		},
 		{
 			.namestr = "com",
-			.key = { 0x16, 0x22, 0x20, 0x02 },
-			.len = 4,
+			.key = { 0x17, 0x23, 0x21, 0x02, 0x03, 0x03, 0x03, 0x03,
+				 0x02 },
+			.len = 4 + QPKEYTYPELEN,
 		},
 		{
 			.namestr = "com.",
-			.key = { 0x02, 0x16, 0x22, 0x20, 0x02 },
-			.len = 5,
+			.key = { 0x02, 0x17, 0x23, 0x21, 0x02, 0x03, 0x03, 0x03,
+				 0x03, 0x02 },
+			.len = 5 + QPKEYTYPELEN,
 		},
 		{
 			.namestr = "example.com.",
-			.key = { 0x02, 0x16, 0x22, 0x20, 0x02, 0x18, 0x2b, 0x14,
-				 0x20, 0x23, 0x1f, 0x18, 0x02 },
-			.len = 13,
+			.key = { 0x02, 0x17, 0x23, 0x21, 0x02, 0x19, 0x2c, 0x15,
+				 0x21, 0x24, 0x20, 0x19, 0x02, 0x03, 0x03, 0x03,
+				 0x03, 0x02 },
+			.len = 13 + QPKEYTYPELEN,
 		},
 		{
 			.namestr = "example.com",
-			.key = { 0x16, 0x22, 0x20, 0x02, 0x18, 0x2b, 0x14, 0x20,
-				 0x23, 0x1f, 0x18, 0x02 },
-			.len = 12,
+			.key = { 0x17, 0x23, 0x21, 0x02, 0x19, 0x2c, 0x15, 0x21,
+				 0x24, 0x20, 0x19, 0x02, 0x03, 0x03, 0x03, 0x03,
+				 0x02 },
+			.len = 12 + QPKEYTYPELEN,
 		},
 		{
 			.namestr = "EXAMPLE.COM",
-			.key = { 0x16, 0x22, 0x20, 0x02, 0x18, 0x2b, 0x14, 0x20,
-				 0x23, 0x1f, 0x18, 0x02 },
-			.len = 12,
+			.key = { 0x17, 0x23, 0x21, 0x02, 0x19, 0x2c, 0x15, 0x21,
+				 0x24, 0x20, 0x19, 0x02, 0x03, 0x03, 0x03, 0x03,
+				 0x02 },
+			.len = 12 + QPKEYTYPELEN,
 		},
 	};
 
@@ -104,7 +111,7 @@ ISC_RUN_TEST_IMPL(qpkey_name) {
 		char namebuf[DNS_NAME_FORMATSIZE];
 
 		in = dns_fixedname_initname(&fn1);
-		if (testcases[i].len != 0) {
+		if ((testcases[i].len - QPKEYTYPELEN) != 0) {
 			dns_test_namefromstring(testcases[i].namestr, &fn1);
 		}
 		len = dns_qpkey_fromname(key, in);
@@ -114,10 +121,6 @@ ISC_RUN_TEST_IMPL(qpkey_name) {
 
 		assert_int_equal(testcases[i].len, len);
 		assert_memory_equal(testcases[i].key, key, len);
-		/* also check key correctness for empty name */
-		if (len == 0) {
-			assert_int_equal(testcases[i].key[0], ((char *)key)[0]);
-		}
 
 		out = dns_fixedname_initname(&fn2);
 		dns_qpkey_toname(key, len, out);
@@ -353,7 +356,13 @@ qpkey_fromstring(dns_qpkey_t key, void *uctx, void *pval, uint32_t ival) {
 	UNUSED(uctx);
 	UNUSED(ival);
 	if (*(char *)pval == '\0') {
-		return 0;
+		size_t i = 0;
+		key[i++] = SHIFT_RRTYPE;
+		key[i++] = SHIFT_RRTYPE;
+		key[i++] = SHIFT_RRTYPE;
+		key[i++] = SHIFT_RRTYPE;
+		key[i] = SHIFT_NOBYTE;
+		return i;
 	}
 	dns_test_namefromstring(pval, &fixed);
 	return dns_qpkey_fromname(key, dns_fixedname_name(&fixed));
@@ -386,10 +395,10 @@ check_partialmatch(dns_qp_t *qp, struct check_partialmatch check[]) {
 				       NULL);
 
 #if 0
-		fprintf(stderr, "%s %s (expected %s) "
+		fprintf(stderr,
+			"%s %s (expected %s) "
 			"value \"%s\" (expected \"%s\")\n",
-			check[i].query,
-			isc_result_totext(result),
+			check[i].query, isc_result_totext(result),
 			isc_result_totext(check[i].result), (char *)pval,
 			check[i].found);
 #endif
@@ -485,27 +494,21 @@ ISC_RUN_TEST_IMPL(partialmatch) {
 		{ "bar", ISC_R_NOTFOUND, NULL },
 		{ NULL, 0, NULL },
 	};
+
 	check_partialmatch(qp, check2);
 
 	/*
 	 * what if entries in the trie are relative to the zone apex
 	 * and there's no root node?
 	 */
-	dns_qpkey_t rootkey = { SHIFT_NOBYTE };
-	result = dns_qp_deletekey(qp, rootkey, 1, NULL, NULL);
+	dns_qpkey_t rootkey = { SHIFT_NOBYTE, SHIFT_RRTYPE, SHIFT_RRTYPE,
+				SHIFT_RRTYPE, SHIFT_RRTYPE, SHIFT_NOBYTE };
+	result = dns_qp_deletekey(qp, rootkey, 5, NULL, NULL);
 	assert_int_equal(result, ISC_R_SUCCESS);
+
 	check_partialmatch(qp, (struct check_partialmatch[]){
 				       { "bar", ISC_R_NOTFOUND, NULL },
 				       { "bar.", ISC_R_NOTFOUND, NULL },
-				       { NULL, 0, NULL },
-			       });
-
-	/* what if there's a root node with an empty key? */
-	INSIST(insert[i][0] == '\0');
-	insert_str(qp, insert[i++]);
-	check_partialmatch(qp, (struct check_partialmatch[]){
-				       { "bar", DNS_R_PARTIALMATCH, "" },
-				       { "bar.", DNS_R_PARTIALMATCH, "" },
 				       { NULL, 0, NULL },
 			       });
 
@@ -533,9 +536,10 @@ check_qpchainiter(dns_qp_t *qp, struct check_qpchain check[],
 		result = dns_qp_lookup(qp, name, NULL, iter, &chain, NULL,
 				       NULL);
 #if 0
-		fprintf(stderr, "%s %s (expected %s), "
-			"len %d (expected %d)\n", check[i].query,
-			isc_result_totext(result),
+		fprintf(stderr,
+			"%s %s (expected %s), "
+			"len %d (expected %d)\n",
+			check[i].query, isc_result_totext(result),
 			isc_result_totext(check[i].result),
 			dns_qpchain_length(&chain), check[i].length);
 #endif
@@ -681,8 +685,8 @@ check_predecessors_withchain(dns_qp_t *qp, struct check_predecessors check[],
 
 		result = dns_name_tostring(pred, &namestr, mctx);
 #if 0
-		fprintf(stderr, "... expected predecessor %s got %s\n",
-			predstr, namestr);
+		fprintf(stderr, "... expected predecessor %s got %s\n", predstr,
+			namestr);
 #endif
 		assert_int_equal(result, ISC_R_SUCCESS);
 		assert_string_equal(namestr, predstr);
@@ -705,8 +709,8 @@ check_predecessors_withchain(dns_qp_t *qp, struct check_predecessors check[],
 			j++;
 		}
 #if 0
-		fprintf(stderr, "\n...expected %d got %d\n",
-			check[i].remaining, j);
+		fprintf(stderr, "\n...expected %d got %d\n", check[i].remaining,
+			j);
 #endif
 		assert_int_equal(j, check[i].remaining);
 	}

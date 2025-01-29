@@ -107,8 +107,14 @@ static atomic_uint_fast64_t rollback_time;
 #define BYTE_VALUES (UINT8_MAX + 1)
 
 /*
+ * Number of distinct RRtype values, i.e. 65536
+ */
+#define RRTYPE_VALUES (UINT16_MAX + 1)
+
+/*
  * Lookup table mapping bytes in DNS names to bit positions, used
- * by dns_qpkey_fromname() to convert DNS names to qp-trie keys.
+ * by dns_qpkey_fromnametype() to convert DNS names and types to
+ * qp-trie keys.
  *
  * Each element holds one or two bit positions, bit_one in the
  * lower half and bit_two in the upper half.
@@ -120,6 +126,19 @@ static atomic_uint_fast64_t rollback_time;
  * position of the character within the escaped range.
  */
 uint16_t dns_qp_bits_for_byte[BYTE_VALUES] = { 0 };
+
+/*
+ * Lookup table mapping RRtype values to bit positions, used
+ * by dns_qpkey_fromnametype() to convert DNS names and types to
+ * qp-trie keys.
+ *
+ * Each element holds four bit positions, bit_one in the
+ * lower half and bit_four in the upper half.
+ *
+ * bit_one is always SHIFT_RRTYPE, the other bits translate to
+ * the actual RRtype value.
+ */
+uint32_t dns_qp_bits_for_rrtype[RRTYPE_VALUES] = { 0 };
 
 /*
  * And the reverse, mapping bit positions to characters, so the tests
@@ -137,6 +156,9 @@ uint8_t dns_qp_byte_for_bit[SHIFT_OFFSET] = { 0 };
  */
 static void
 initialize_bits_for_byte(void) ISC_CONSTRUCTOR;
+
+static void
+initialize_bits_for_rrtype(void);
 
 /*
  * The bit positions for bytes inside labels have to be between
@@ -191,10 +213,44 @@ initialize_bits_for_byte(void) {
 		}
 	}
 	ENSURE(bit_one < SHIFT_OFFSET);
+
+	initialize_bits_for_rrtype();
 }
 
 /*
- * Convert a DNS name into a trie lookup key.
+ * The bit positions for types have to be between SHIFT_BITMAP and
+ * SHIFT_OFFSET.
+ *
+ * After filling the table we ensure that the bit positions for
+ * RRtypes all fit.
+ */
+static void
+initialize_bits_for_rrtype(void) {
+	dns_qpshift_t bit_two = SHIFT_RRTYPE;
+	dns_qpshift_t bit_three = SHIFT_RRTYPE;
+	dns_qpshift_t bit_four = SHIFT_RRTYPE;
+
+	dns_qp_byte_for_bit[SHIFT_RRTYPE] = SHIFT_RRTYPE;
+
+	for (unsigned int type = 0; type < RRTYPE_VALUES; type++) {
+		if (bit_four >= SHIFT_OFFSET) {
+			bit_three++;
+			bit_four = SHIFT_RRTYPE;
+		}
+		if (bit_three >= SHIFT_OFFSET) {
+			bit_two++;
+			bit_three = SHIFT_RRTYPE;
+		}
+		dns_qp_bits_for_rrtype[type] = bit_four << 24 |
+					       bit_three << 16 | bit_two << 8 |
+					       SHIFT_RRTYPE;
+		bit_four++;
+	}
+	ENSURE(bit_two < SHIFT_OFFSET);
+}
+
+/*
+ * Convert a DNS name and RR type into a trie lookup key.
  *
  * Returns the length of the key.
  *
@@ -211,15 +267,15 @@ initialize_bits_for_byte(void) {
  * dot in a zone file).
  */
 size_t
-dns_qpkey_fromname(dns_qpkey_t key, const dns_name_t *name) {
-	size_t len, label;
+dns_qpkey_fromnametype(dns_qpkey_t key, const dns_name_t *name, uint16_t type) {
+	size_t len = 0, label;
 	dns_fixedname_t fixed;
 
 	REQUIRE(ISC_MAGIC_VALID(name, DNS_NAME_MAGIC));
 
+	/* name */
 	if (name->labels == 0) {
-		key[0] = SHIFT_NOBYTE;
-		return 0;
+		goto key_fromtype;
 	}
 
 	if (name->offsets == NULL) {
@@ -228,7 +284,6 @@ dns_qpkey_fromname(dns_qpkey_t key, const dns_name_t *name) {
 		name = clone;
 	}
 
-	len = 0;
 	label = name->labels;
 	while (label-- > 0) {
 		const uint8_t *ldata = name->ndata + name->offsets[label];
@@ -243,17 +298,34 @@ dns_qpkey_fromname(dns_qpkey_t key, const dns_name_t *name) {
 		/* label terminator */
 		key[len++] = SHIFT_NOBYTE;
 	}
-	/* mark end with a double NOBYTE */
+
+key_fromtype:
+	/* type */
+	uint32_t tbits = dns_qp_bits_for_rrtype[type];
+	ENSURE((tbits & 0xFF) == SHIFT_RRTYPE);
+	key[len++] = tbits & 0xFF; /* bit_one */
+	key[len++] = tbits >> 8;	  /* bit_two */
+	key[len++] = tbits >> 16;  /* bit_three */
+	key[len++] = tbits >> 24;  /* bit_four */
+	/* mark end with a NOBYTE */
 	key[len] = SHIFT_NOBYTE;
+	ENSURE(len > 0);
 	ENSURE(len < sizeof(dns_qpkey_t));
 	return len;
 }
 
+size_t
+dns_qpkey_fromname(dns_qpkey_t key, const dns_name_t *name) {
+	return dns_qpkey_fromnametype(key, name, 0);
+}
+
 void
-dns_qpkey_toname(const dns_qpkey_t key, size_t keylen, dns_name_t *name) {
+dns_qpkey_tonametype(const dns_qpkey_t key, size_t keylen, dns_name_t *name,
+		     uint16_t *type) {
 	size_t locs[DNS_NAME_MAXLABELS];
 	size_t loc = 0, opos = 0;
-	size_t offset;
+	size_t offset = 0;
+	size_t rpos = 0;
 
 	REQUIRE(ISC_MAGIC_VALID(name, DNS_NAME_MAGIC));
 	REQUIRE(name->buffer != NULL);
@@ -265,15 +337,20 @@ dns_qpkey_toname(const dns_qpkey_t key, size_t keylen, dns_name_t *name) {
 		return;
 	}
 
+	if (qpkey_bit(key, keylen, 0) == SHIFT_RRTYPE) {
+		goto scanned;
+	}
+
 	/* Scan the key looking for label boundaries */
 	for (offset = 0; offset <= keylen; offset++) {
 		INSIST(key[offset] >= SHIFT_NOBYTE &&
 		       key[offset] < SHIFT_OFFSET);
 		INSIST(loc < DNS_NAME_MAXLABELS);
 		if (qpkey_bit(key, keylen, offset) == SHIFT_NOBYTE) {
-			if (qpkey_bit(key, keylen, offset + 1) == SHIFT_NOBYTE)
+			if (qpkey_bit(key, keylen, offset + 1) == SHIFT_RRTYPE)
 			{
 				locs[loc] = offset + 1;
+				rpos = offset + 1;
 				goto scanned;
 			}
 			locs[loc++] = offset + 1;
@@ -283,7 +360,16 @@ dns_qpkey_toname(const dns_qpkey_t key, size_t keylen, dns_name_t *name) {
 		}
 	}
 	UNREACHABLE();
+
 scanned:
+	uint16_t rrtype = 0;
+	uint8_t b2 = qpkey_bit(key, keylen, rpos + 1);
+	uint8_t b3 = qpkey_bit(key, keylen, rpos + 2);
+	uint8_t b4 = qpkey_bit(key, keylen, rpos + 3);
+	rrtype += (b2 - SHIFT_RRTYPE) * QPKEYBASE * QPKEYBASE;
+	rrtype += (b3 - SHIFT_RRTYPE) * QPKEYBASE;
+	rrtype += (b4 - SHIFT_RRTYPE);
+	ENSURE(qpkey_bit(key, keylen, rpos + 4) == SHIFT_NOBYTE);
 
 	/*
 	 * In the key the labels are encoded in reverse order, so
@@ -325,6 +411,16 @@ scanned:
 	}
 
 	name->ndata = isc_buffer_base(name->buffer);
+
+	/* Store the type */
+	if (type != NULL) {
+		*type = rrtype;
+	}
+}
+
+void
+dns_qpkey_toname(const dns_qpkey_t key, size_t keylen, dns_name_t *name) {
+	dns_qpkey_tonametype(key, keylen, name, NULL);
 }
 
 /*
@@ -1759,11 +1855,17 @@ dns_qp_deletekey(dns_qp_t *qp, const dns_qpkey_t search_key,
 }
 
 isc_result_t
+dns_qp_deletenametype(dns_qp_t *qp, const dns_name_t *name, uint16_t type,
+		      void **pval_r, uint32_t *ival_r) {
+	dns_qpkey_t key;
+	size_t keylen = dns_qpkey_fromnametype(key, name, type);
+	return dns_qp_deletekey(qp, key, keylen, pval_r, ival_r);
+}
+
+isc_result_t
 dns_qp_deletename(dns_qp_t *qp, const dns_name_t *name, void **pval_r,
 		  uint32_t *ival_r) {
-	dns_qpkey_t key;
-	size_t keylen = dns_qpkey_fromname(key, name);
-	return dns_qp_deletekey(qp, key, keylen, pval_r, ival_r);
+	return dns_qp_deletenametype(qp, name, 0, pval_r, ival_r);
 }
 
 /***********************************************************************
@@ -2009,11 +2111,17 @@ dns_qp_getkey(dns_qpreadable_t qpr, const dns_qpkey_t search_key,
 }
 
 isc_result_t
+dns_qp_getnametype(dns_qpreadable_t qpr, const dns_name_t *name, uint16_t type,
+		   void **pval_r, uint32_t *ival_r) {
+	dns_qpkey_t key;
+	size_t keylen = dns_qpkey_fromnametype(key, name, type);
+	return dns_qp_getkey(qpr, key, keylen, pval_r, ival_r);
+}
+
+isc_result_t
 dns_qp_getname(dns_qpreadable_t qpr, const dns_name_t *name, void **pval_r,
 	       uint32_t *ival_r) {
-	dns_qpkey_t key;
-	size_t keylen = dns_qpkey_fromname(key, name);
-	return dns_qp_getkey(qpr, key, keylen, pval_r, ival_r);
+	return dns_qp_getnametype(qpr, name, 0, pval_r, ival_r);
 }
 
 static inline void
@@ -2233,28 +2341,27 @@ dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
 		prefetch_twigs(qp, n);
 
 		offset = branch_key_offset(n);
+
 		bit = qpkey_bit(search, searchlen, offset);
 		dns_qpnode_t *twigs = branch_twigs(qp, n);
 
 		/*
 		 * A shorter key that can be a parent domain always has a
-		 * leaf node at SHIFT_NOBYTE (indicating end of its key)
-		 * where our search key has a normal character immediately
-		 * after a label separator.
+		 * leaf node at SHIFT_RRTYPE (indicating end of the name
+		 * part of the key) where our search key has a normal
+		 * character immediately after a label separator.
 		 *
-		 * Note 1: It is OK if `off - 1` underflows: it will
+		 * Note: It is OK if `off - 1` underflows: it will
 		 * become SIZE_MAX, which is greater than `searchlen`, so
 		 * `qpkey_bit()` will return SHIFT_NOBYTE, which is what we
 		 * want when `off == 0`.
 		 *
-		 * Note 2: If SHIFT_NOBYTE twig is present, it will always
-		 * be in position 0, the first location in 'twigs'.
 		 */
-		if (bit != SHIFT_NOBYTE && branch_has_twig(n, SHIFT_NOBYTE) &&
-		    qpkey_bit(search, searchlen, offset - 1) == SHIFT_NOBYTE &&
-		    !is_branch(twigs))
+		if (bit != SHIFT_NOBYTE && bit != SHIFT_RRTYPE &&
+		    branch_has_twig(n, SHIFT_RRTYPE) &&
+		    qpkey_bit(search, searchlen, offset - 1) == SHIFT_NOBYTE)
 		{
-			add_link(chain, twigs, offset);
+			add_link(chain, anyleaf(qp, twigs), offset);
 		}
 
 		matched = branch_has_twig(n, bit);
@@ -2294,13 +2401,14 @@ dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
 	offset = qpkey_compare(search, searchlen, found, foundlen);
 
 	/* the search ended with an exact or partial match */
-	if (offset == QPKEY_EQUAL || offset == foundlen) {
+	if (offset == QPKEY_EQUAL || (offset + QPKEYTYPELEN) == foundlen) {
 		isc_result_t result = ISC_R_SUCCESS;
 
-		if (offset == foundlen) {
+		if ((offset + QPKEYTYPELEN) == foundlen) {
 			fix_chain(chain, offset);
 			result = DNS_R_PARTIALMATCH;
 		}
+
 		add_link(chain, n, offset);
 
 		SET_IF_NOT_NULL(pval_r, leaf_pval(n));

@@ -136,7 +136,12 @@ const dns_qpmethods_t test_methods = {
 
 static uint8_t
 random_byte(void) {
-	return isc_random_uniform(SHIFT_OFFSET - SHIFT_NOBYTE) + SHIFT_NOBYTE;
+	uint8_t ret = SHIFT_RRTYPE;
+	while (ret == SHIFT_RRTYPE) {
+		ret = isc_random_uniform(SHIFT_OFFSET - SHIFT_NOBYTE) +
+		      SHIFT_NOBYTE;
+	}
+	return ret;
 }
 
 static void
@@ -147,10 +152,15 @@ setup_items(void) {
 	for (size_t i = 0; i < ARRAY_SIZE(item); i++) {
 		do {
 			size_t len = isc_random_uniform(16) + 4;
-			item[i].len = len;
 			for (size_t off = 0; off < len; off++) {
 				item[i].key[off] = random_byte();
 			}
+			item[i].key[len++] = SHIFT_RRTYPE; /* bit_one */
+			item[i].key[len++] = SHIFT_RRTYPE; /* bit_two */
+			item[i].key[len++] = SHIFT_RRTYPE; /* bit_three */
+			item[i].key[len++] = SHIFT_RRTYPE; /* bit_four */
+			item[i].key[len] = SHIFT_NOBYTE;
+			item[i].len = len;
 			memmove(item[i].ascii, item[i].key, len);
 			qp_test_keytoascii(item[i].ascii, len);
 		} while (dns_qp_getkey(qp, item[i].key, item[i].len, &pval,

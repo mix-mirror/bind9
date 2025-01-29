@@ -42,6 +42,8 @@ qp_test_bittoascii(dns_qpshift_t bit) {
 	uint8_t byte = dns_qp_byte_for_bit[bit];
 	if (bit == SHIFT_NOBYTE) {
 		return '.';
+	} else if (bit == SHIFT_RRTYPE) {
+		return '!';
 	} else if (qp_common_character(byte)) {
 		return byte;
 	} else if (byte < '-') {

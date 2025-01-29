@@ -119,7 +119,12 @@ const dns_qpmethods_t item_methods = {
 
 static uint8_t
 random_byte(void) {
-	return isc_random_uniform(SHIFT_OFFSET - SHIFT_NOBYTE) + SHIFT_NOBYTE;
+	uint8_t ret = SHIFT_RRTYPE;
+	while (ret == SHIFT_RRTYPE) {
+		ret = isc_random_uniform(SHIFT_OFFSET - SHIFT_NOBYTE) +
+		      SHIFT_NOBYTE;
+	}
+	return ret;
 }
 
 static void
@@ -139,6 +144,10 @@ init_items(isc_mem_t *mctx) {
 			for (size_t off = 0; off < len; off++) {
 				item[i].key[off] = random_byte();
 			}
+			item[i].key[len++] = SHIFT_RRTYPE; /* bit_one */
+			item[i].key[len++] = SHIFT_RRTYPE; /* bit_two */
+			item[i].key[len++] = SHIFT_RRTYPE; /* bit_three */
+			item[i].key[len++] = SHIFT_RRTYPE; /* bit_four */
 			item[i].key[len] = SHIFT_NOBYTE;
 		} while (dns_qp_getkey(qp, item[i].key, item[i].len, NULL,
 				       NULL) == ISC_R_SUCCESS);
