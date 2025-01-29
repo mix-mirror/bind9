@@ -1785,6 +1785,28 @@ if doc_opt.allowed()
         )
 
         custom_target(
+            'arm-pdf',
+            build_by_default: false,
+            depend_files: arm_srcconf.sources(),
+            depends: doc_misc_targets,
+            output: 'arm-pdf',
+            env: {
+                'BIND_PROJECT_VERSION': meson.project_version(),
+                'MESON_BUILD_ROOT': meson.project_build_root(),
+                'MESON_SOURCE_ROOT': meson.project_source_root(),
+            },
+            command: [
+                sphinx_build,
+                sphinx_common_options,
+                '-b', 'latex',
+                '-d', '@PRIVATE_DIR@',
+                '-c', '@CURRENT_SOURCE_DIR@' / 'doc' / 'arm',
+                '@CURRENT_SOURCE_DIR@' / 'doc' / 'arm',
+                '@OUTPUT@',
+            ],
+        )
+
+        custom_target(
             'arm-epub',
             build_by_default: false,
             depend_files: arm_srcconf.sources(),

@@ -144,12 +144,12 @@ be viewed at [https://bind9.readthedocs.io/en/latest/index.html](https://bind9.r
 
 The PDF version can be built by running:
 
-    cd doc/arm/
-    sphinx-build -b latex . pdf/
-    make -C pdf/ all-pdf
+    meson configure build
+    ninja -C build arm-pdf
+    make -C build/arm-pdf/ all-pdf
 
 The above requires TeX Live in order to work. The PDF will be written to
-`doc/arm/pdf/Bv9ARM.pdf`.
+`build/arm-pdf/Bv9ARM.pdf`.
 
 Man pages for some of the programs in the BIND 9 distribution
 are also included in the BIND ARM.
