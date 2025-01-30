@@ -188,8 +188,6 @@ struct isc_nm_http_session {
 	isc__nm_http_pending_callbacks_t pending_write_callbacks;
 	isc_buffer_t *pending_write_data;
 
-	bool async_bio_in_flight;
-
 	/*
 	 * The statistical values below are for usage on server-side
 	 * only. They are meant to detect clients that are taking too many
@@ -1641,8 +1639,6 @@ http_do_bio_async_cb(void *arg) {
 
 	REQUIRE(VALID_HTTP2_SESSION(session));
 
-	session->async_bio_in_flight = false;
-
 	if (session->handle != NULL &&
 	    !isc__nmsocket_closing(session->handle->sock))
 	{
@@ -1659,13 +1655,10 @@ http_do_bio_async(isc_nm_http_session_t *session) {
 	REQUIRE(VALID_HTTP2_SESSION(session));
 
 	if (session->handle == NULL ||
-	    isc__nmsocket_closing(session->handle->sock) ||
-	    session->async_bio_in_flight)
+	    isc__nmsocket_closing(session->handle->sock))
 	{
 		return;
 	}
-
-	session->async_bio_in_flight = true;
 	isc__nm_httpsession_attach(session, &tmpsess);
 	isc__nm_async_run(
 		&session->handle->sock->mgr->workers[session->handle->sock->tid],
