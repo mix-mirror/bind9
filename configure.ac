@@ -624,7 +624,7 @@ AC_CHECK_FUNCS([sched_getaffinity cpuset_getaffinity])
 AC_ARG_ENABLE([pthread_rwlock],
 	      [AS_HELP_STRING([--enable-pthread-rwlock],
 			      [use pthread rwlock instead of internal rwlock implementation])],
-	      [], [enable_pthread_rwlock=no])
+	      [], [enable_pthread_rwlock=yes])
 
 AS_IF([test "$enable_pthread_rwlock" = "yes"],
       [AC_CHECK_FUNCS([pthread_rwlock_rdlock], [],
