@@ -1598,11 +1598,17 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		now = isc_stdtime_now();
 	}
 
-	search = (qpc_search_t){
-		.qpdb = (qpcache_t *)db,
-		.options = options,
-		.now = now,
-	};
+	search.qpdb = (qpcache_t *)db;
+	search.options = options;
+	/*
+	 * qpchain - Init by dns_qp_lookup
+	 * qpiter - Init by dns_qp_lookup
+	 */
+	search.need_cleanup = false;
+	search.now = now;
+	search.zonecut = NULL;
+	search.zonecut_header = NULL;
+	search.zonecut_sigheader = NULL;
 
 	TREE_RDLOCK(&search.qpdb->tree_lock, &tlocktype);
 

@@ -3379,13 +3379,23 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		close_version = true;
 	}
 
-	search = (qpz_search_t){
-		.qpdb = (qpzonedb_t *)db,
-		.version = (qpz_version_t *)version,
-		.serial = ((qpz_version_t *)version)->serial,
-		.options = options,
-	};
+	search.qpdb = (qpzonedb_t *)db;
+	search.version = (qpz_version_t *)version;
+	search.qpr = (dns_qpread_t) {};
+	search.serial = ((qpz_version_t *)version)->serial;
+	search.options = options;
+	/*
+	 * qpchain -- init in dns_qp_lookup
+	 * qpiter -- init in dns_qp_lookup
+	 */
+	search.copy_name = false;
+	search.need_cleanup = false;
+	search.wild = false;
+	search.zonecut = NULL;
+	search.zonecut_header = NULL;
+	search.zonecut_sigheader = NULL;
 	dns_fixedname_init(&search.zonecut_name);
+	search.now = 0;
 
 	if ((options & DNS_DBFIND_FORCENSEC3) != 0) {
 		dns_qpmulti_query(qpdb->nsec3, &search.qpr);
