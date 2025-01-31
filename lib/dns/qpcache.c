@@ -3133,7 +3133,7 @@ find_header:
 			} else {
 				qpnode->data = newheader;
 			}
-			newheader->next = topheader->next;
+			newheader->next = header->next;
 			dns_slabheader_destroy(&header);
 		} else {
 			idx = HEADERNODE(newheader)->locknum;
@@ -3152,9 +3152,9 @@ find_header:
 			} else {
 				qpnode->data = newheader;
 			}
-			newheader->next = topheader->next;
-			newheader->down = topheader;
-			topheader->next = newheader;
+			newheader->next = header->next;
+			newheader->down = header;
+			header->up = newheader;
 			mark_ancient(header);
 			if (sigheader != NULL) {
 				mark_ancient(sigheader);
@@ -3202,14 +3202,12 @@ find_header:
 			}
 			newheader->next = topheader->next;
 			newheader->down = topheader;
-			topheader->next = newheader;
+			topheader->up = newheader;
 			qpnode->dirty = 1;
 		} else {
 			/*
 			 * No rdatasets of the given type exist at the node.
 			 */
-			INSIST(newheader->down == NULL);
-
 			if (prio_header(newheader)) {
 				/* This is a priority type, prepend it */
 				newheader->next = qpnode->data;
@@ -3779,9 +3777,8 @@ rdatasetiter_next(dns_rdatasetiter_t *it DNS__DB_FLARG) {
 	qpc_rditer_t *iterator = (qpc_rditer_t *)it;
 	qpcache_t *qpdb = (qpcache_t *)(iterator->common.db);
 	qpcnode_t *qpnode = (qpcnode_t *)iterator->common.node;
-	dns_slabheader_t *header = NULL, *top_next = NULL;
-	dns_typepair_t type, negtype;
-	dns_rdatatype_t rdtype, covers;
+	dns_slabheader_t *header = NULL;
+	dns_slabheader_t *topheader = NULL, *topheader_next = NULL;
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 	isc_rwlock_t *nlock = &qpdb->buckets[qpnode->locknum].lock;
 	bool expiredok = EXPIREDOK(iterator);
@@ -3793,36 +3790,23 @@ rdatasetiter_next(dns_rdatasetiter_t *it DNS__DB_FLARG) {
 
 	NODE_RDLOCK(nlock, &nlocktype);
 
-	type = header->type;
-	rdtype = DNS_TYPEPAIR_TYPE(header->type);
-	if (NEGATIVE(header)) {
-		covers = DNS_TYPEPAIR_COVERS(header->type);
-		negtype = DNS_TYPEPAIR_VALUE(covers, 0);
-	} else {
-		negtype = DNS_TYPEPAIR_VALUE(0, rdtype);
-	}
-
 	/*
-	 * Find the start of the header chain for the next type
-	 * by walking back up the list.
+	 * Find the start of the header chain for the next type.
 	 */
-	top_next = header->next;
-	while (top_next != NULL &&
-	       (top_next->type == type || top_next->type == negtype))
-	{
-		top_next = top_next->next;
-	}
-	if (expiredok) {
+	topheader = dns_slabheader_top(header);
+	topheader_next = topheader->next;
+
+	if (expiredok && header->down != NULL) {
 		/*
 		 * Keep walking down the list if possible or
 		 * start the next type.
 		 */
-		header = header->down != NULL ? header->down : top_next;
+		header = header->down;
 	} else {
-		header = top_next;
+		header = topheader->next;
 	}
-	for (; header != NULL; header = top_next) {
-		top_next = header->next;
+	for (; header != NULL; header = topheader_next) {
+		topheader_next = header->next;
 		do {
 			if (expiredok) {
 				if (!NONEXISTENT(header)) {
@@ -3842,14 +3826,10 @@ rdatasetiter_next(dns_rdatasetiter_t *it DNS__DB_FLARG) {
 			break;
 		}
 		/*
-		 * Find the start of the header chain for the next type
-		 * by walking back up the list.
+		 * Find the start of the header chain for the next type.
 		 */
-		while (top_next != NULL &&
-		       (top_next->type == type || top_next->type == negtype))
-		{
-			top_next = top_next->next;
-		}
+		topheader = dns_slabheader_top(header);
+		topheader_next = topheader->next;
 	}
 
 	NODE_UNLOCK(nlock, &nlocktype);
