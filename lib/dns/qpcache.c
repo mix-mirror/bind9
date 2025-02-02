@@ -1316,29 +1316,32 @@ check_stale_header(qpcnode_t *node, dns_slabheader_t *header,
 }
 
 static bool
-found_both_headers_ex(dns_slabheader_t *header, dns_typepair_t type,
-		      dns_typepair_t sigtype, dns_typepair_t negtype,
-		      dns_slabheader_t **foundp, dns_slabheader_t **foundsigp) {
+related_headers(dns_slabheader_t *header, dns_typepair_t type,
+		dns_typepair_t sigtype, dns_typepair_t negtype,
+		dns_slabheader_t **foundp, dns_slabheader_t **foundsigp,
+		bool *matchp) {
 	if (!EXISTS(header) || ANCIENT(header)) {
 		return false;
 	}
 
 	if (header->type == type) {
 		*foundp = header;
+		SET_IF_NOT_NULL(matchp, true);
 		if (*foundsigp != NULL) {
 			return true;
 		}
 	} else if (header->type == sigtype) {
 		*foundsigp = header;
+		SET_IF_NOT_NULL(matchp, true);
 		if (*foundp != NULL) {
 			return true;
 		}
-
-	} else if (header->type == RDATATYPE_NCACHEANY ||
-		   header->type == negtype)
+	} else if (negtype != 0 && (header->type == RDATATYPE_NCACHEANY ||
+				    header->type == negtype))
 	{
 		*foundp = header;
 		*foundsigp = NULL;
+		SET_IF_NOT_NULL(matchp, true);
 		return true;
 	}
 
@@ -1346,28 +1349,13 @@ found_both_headers_ex(dns_slabheader_t *header, dns_typepair_t type,
 }
 
 static bool
-found_both_headers(dns_slabheader_t *header, dns_rdatatype_t type,
-		   dns_slabheader_t **foundp, dns_slabheader_t **foundsigp) {
+both_headers(dns_slabheader_t *header, dns_rdatatype_t type,
+	     dns_slabheader_t **foundp, dns_slabheader_t **foundsigp) {
 	dns_typepair_t matchtype = DNS_TYPEPAIR_VALUE(type, 0);
 	dns_typepair_t sigmatchtype = DNS_SIGTYPE(type);
 
-	if (!EXISTS(header) || ANCIENT(header)) {
-		return false;
-	}
-
-	if (header->type == matchtype) {
-		*foundp = header;
-		if (*foundsigp != NULL) {
-			return true;
-		}
-	} else if (header->type == sigmatchtype) {
-		*foundsigp = header;
-		if (*foundp != NULL) {
-			return true;
-		}
-	}
-
-	return false;
+	return related_headers(header, matchtype, sigmatchtype, 0, foundp,
+			       foundsigp, NULL);
 }
 
 static isc_result_t
@@ -1396,8 +1384,8 @@ check_zonecut(qpcnode_t *node, void *arg DNS__DB_FLARG) {
 			continue;
 		}
 
-		if (found_both_headers(header, dns_rdatatype_dname,
-				       &dname_header, &sigdname_header))
+		if (both_headers(header, dns_rdatatype_dname, &dname_header,
+				 &sigdname_header))
 		{
 			break;
 		}
@@ -1465,8 +1453,8 @@ find_deepest_zonecut(qpc_search_t *search, qpcnode_t *node,
 				continue;
 			}
 
-			if (found_both_headers(header, dns_rdatatype_ns, &found,
-					       &foundsig))
+			if (both_headers(header, dns_rdatatype_ns, &found,
+					 &foundsig))
 			{
 				break;
 			}
@@ -1573,8 +1561,7 @@ find_coveringnsec(qpc_search_t *search, const dns_name_t *name,
 			continue;
 		}
 
-		if (found_both_headers(header, dns_rdatatype_nsec, &found,
-				       &foundsig))
+		if (both_headers(header, dns_rdatatype_nsec, &found, &foundsig))
 		{
 			break;
 		}
@@ -1599,6 +1586,15 @@ find_coveringnsec(qpc_search_t *search, const dns_name_t *name,
 	NODE_UNLOCK(nlock, &nlocktype);
 	return result;
 }
+
+#define MISSING_ANSWER(found, options)                     \
+	((found) == NULL ||                                \
+	 (DNS_TRUST_ADDITIONAL((found)->trust) &&          \
+	  (((options) & DNS_DBFIND_ADDITIONALOK) == 0)) || \
+	 ((found)->trust == dns_trust_glue &&              \
+	  (((options) & DNS_DBFIND_GLUEOK) == 0)) ||       \
+	 (DNS_TRUST_PENDING((found)->trust) &&             \
+	  (((options) & DNS_DBFIND_PENDINGOK) == 0)))
 
 static isc_result_t
 qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
@@ -1754,91 +1750,92 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 			continue;
 		}
 
-		if (EXISTS(header) && !ANCIENT(header)) {
+		if (!EXISTS(header) || ANCIENT(header)) {
+			continue;
+		}
+
+		/*
+		 * We now know that there is at least one active
+		 * non-stale rdataset at this node.
+		 */
+		empty_node = false;
+
+		if (header->noqname != NULL &&
+		    header->trust == dns_trust_secure)
+		{
+			found_noqname = true;
+		}
+
+		if (!NEGATIVE(header)) {
+			all_negative = false;
+		}
+
+		bool match = false;
+		if (related_headers(header, type, sigtype, negtype, &found,
+				    &foundsig, &match) &&
+		    !MISSING_ANSWER(found, options))
+		{
 			/*
-			 * We now know that there is at least one active
-			 * non-stale rdataset at this node.
+			 * We can't exit early until we have an answer with
+			 * sufficient trust level, see MISSING_ANSWER() macro
+			 * for details, because we might need NS or NSEC
+			 * records.
 			 */
-			empty_node = false;
-			if (header->noqname != NULL &&
-			    header->trust == dns_trust_secure)
-			{
-				found_noqname = true;
-			}
-			if (!NEGATIVE(header)) {
-				all_negative = false;
+
+			break;
+		}
+
+		if (match) {
+			/* We found something, continue with next header */
+			continue;
+		}
+
+		switch (header->type) {
+		case dns_rdatatype_cname:
+			if (!cname_ok) {
+				break;
 			}
 
-			/*
-			 * If we found a type we were looking for, remember
-			 * it.
-			 */
-			if (header->type == type ||
-			    (type == dns_rdatatype_any &&
-			     DNS_TYPEPAIR_TYPE(header->type) != 0) ||
-			    (cname_ok && header->type == dns_rdatatype_cname))
+			found = header;
+			if (cnamesig != NULL) {
+				/* We already have CNAME signature */
+				foundsig = cnamesig;
+			} else {
+				/* Look for CNAME signature instead */
+				sigtype = DNS_SIGTYPE(dns_rdatatype_cname);
+				foundsig = NULL;
+			}
+			break;
+		case DNS_SIGTYPE(dns_rdatatype_cname):
+			if (!cname_ok) {
+				break;
+			}
+
+			cnamesig = header;
+			break;
+		case dns_rdatatype_ns:
+			/* Remember the NS rdataset */
+			nsheader = header;
+			break;
+		case DNS_SIGTYPE(dns_rdatatype_ns):
+			/* ...and its signature */
+			nssig = header;
+			break;
+
+		case dns_rdatatype_nsec:
+			nsecheader = header;
+			break;
+		case DNS_SIGTYPE(dns_rdatatype_nsec):
+			nsecsig = header;
+			break;
+
+		default:
+			if (type == dns_rdatatype_any &&
+			    DNS_TYPEPAIR_TYPE(header->type) != 0)
 			{
-				/*
-				 * We've found the answer.
-				 */
+				/* QTYPE==ANY, so any anwers will do */
 				found = header;
-				if (header->type == dns_rdatatype_cname &&
-				    cname_ok)
-				{
-					/*
-					 * If we've already got the
-					 * CNAME RRSIG, use it.
-					 */
-					if (cnamesig != NULL) {
-						foundsig = cnamesig;
-					} else {
-						sigtype = DNS_SIGTYPE(
-							dns_rdatatype_cname);
-					}
-				}
-			} else if (header->type == sigtype) {
-				/*
-				 * We've found the RRSIG rdataset for our
-				 * target type.  Remember it.
-				 */
-				foundsig = header;
-			} else if (header->type == RDATATYPE_NCACHEANY ||
-				   header->type == negtype)
-			{
-				/*
-				 * We've found a negative cache entry.
-				 */
-				found = header;
-			} else if (header->type == dns_rdatatype_ns) {
-				/*
-				 * Remember a NS rdataset even if we're
-				 * not specifically looking for it, because
-				 * we might need it later.
-				 */
-				nsheader = header;
-			} else if (header->type ==
-				   DNS_SIGTYPE(dns_rdatatype_ns))
-			{
-				/*
-				 * If we need the NS rdataset, we'll also
-				 * need its signature.
-				 */
-				nssig = header;
-			} else if (header->type == dns_rdatatype_nsec) {
-				nsecheader = header;
-			} else if (header->type ==
-				   DNS_SIGTYPE(dns_rdatatype_nsec))
-			{
-				nsecsig = header;
-			} else if (cname_ok &&
-				   header->type ==
-					   DNS_SIGTYPE(dns_rdatatype_cname))
-			{
-				/*
-				 * If we get a CNAME match, we'll also need
-				 * its signature.
-				 */
-				cnamesig = header;
+				break;
 			}
 		}
 	}
@@ -1864,14 +1861,7 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	/*
 	 * If we didn't find what we were looking for...
 	 */
-	if (found == NULL ||
-	    (DNS_TRUST_ADDITIONAL(found->trust) &&
-	     ((options & DNS_DBFIND_ADDITIONALOK) == 0)) ||
-	    (found->trust == dns_trust_glue &&
-	     ((options & DNS_DBFIND_GLUEOK) == 0)) ||
-	    (DNS_TRUST_PENDING(found->trust) &&
-	     ((options & DNS_DBFIND_PENDINGOK) == 0)))
-	{
+	if (MISSING_ANSWER(found, options)) {
 		/*
 		 * Return covering NODATA NSEC record.
 		 */
@@ -2100,9 +2090,7 @@ qpcache_findzonecut(dns_db_t *db, const dns_name_t *name, unsigned int options,
 			continue;
 		}
 
-		if (found_both_headers(header, dns_rdatatype_ns, &found,
-				       &foundsig))
-		{
+		if (both_headers(header, dns_rdatatype_ns, &found, &foundsig)) {
 			break;
 		}
 	}
@@ -2197,8 +2185,8 @@ qpcache_findrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 			continue;
 		}
 
-		if (found_both_headers_ex(header, matchtype, sigmatchtype,
-					  negtype, &found, &foundsig))
+		if (related_headers(header, matchtype, sigmatchtype, negtype,
+				    &found, &foundsig, NULL))
 		{
 			break;
 		}
@@ -3032,11 +3020,11 @@ find_header:
 		newheader->heap = qpdb->buckets[idx].heap;
 		if (ZEROTTL(newheader)) {
 			newheader->last_used = qpdb->last_used + 1;
-			ISC_LIST_APPEND(qpdb->buckets[idx].lru,
-					newheader, link);
+			ISC_LIST_APPEND(qpdb->buckets[idx].lru, newheader,
+					link);
 		} else {
-			ISC_LIST_PREPEND(qpdb->buckets[idx].lru,
-					 newheader, link);
+			ISC_LIST_PREPEND(qpdb->buckets[idx].lru, newheader,
+					 link);
 		}
 		if (topheader_prev != NULL) {
 			topheader_prev->next = newheader;
