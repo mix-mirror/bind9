@@ -391,8 +391,8 @@ check_partialmatch(dns_qp_t *qp, struct check_partialmatch check[]) {
 		void *pval = NULL;
 
 		dns_test_namefromstring(check[i].query, &fn1);
-		result = dns_qp_lookup(qp, name, foundname, NULL, NULL, &pval,
-				       NULL);
+		result = dns_qp_lookup(qp, name, 0, foundname, NULL, NULL,
+				       &pval, NULL);
 
 #if 0
 		fprintf(stderr,
@@ -533,7 +533,7 @@ check_qpchainiter(dns_qp_t *qp, struct check_qpchain check[],
 
 		dns_qpchain_init(qp, &chain);
 		dns_test_namefromstring(check[i].query, &fn1);
-		result = dns_qp_lookup(qp, name, NULL, iter, &chain, NULL,
+		result = dns_qp_lookup(qp, name, 0, NULL, iter, &chain, NULL,
 				       NULL);
 #if 0
 		fprintf(stderr,
@@ -657,7 +657,8 @@ check_predecessors_withchain(dns_qp_t *qp, struct check_predecessors check[],
 		result = dns_name_tostring(expred, &predstr, mctx);
 		assert_int_equal(result, ISC_R_SUCCESS);
 
-		result = dns_qp_lookup(qp, name, NULL, &it, chain, NULL, NULL);
+		result = dns_qp_lookup(qp, name, 0, NULL, &it, chain, NULL,
+				       NULL);
 #if 0
 		fprintf(stderr, "%s: expected %s got %s\n", check[i].query,
 			isc_result_totext(check[i].result),

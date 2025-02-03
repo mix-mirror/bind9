@@ -2898,8 +2898,9 @@ find_wildcard(qpz_search_t *search, qpznode_t **nodep,
 				break;
 			}
 
-			result = dns_qp_lookup(&search->qpr, wname, NULL, &wit,
-					       NULL, (void **)&wnode, NULL);
+			result = dns_qp_lookup(&search->qpr, wname, 0, NULL,
+					       &wit, NULL, (void **)&wnode,
+					       NULL);
 			if (result == ISC_R_SUCCESS) {
 				/*
 				 * We have found the wildcard node.  If it
@@ -2989,7 +2990,7 @@ previous_closest_nsec(dns_rdatatype_t type, qpz_search_t *search,
 			 * It is the first node sought in the NSEC tree.
 			 */
 			*firstp = false;
-			result = dns_qp_lookup(&qpr, name, NULL, nit, NULL,
+			result = dns_qp_lookup(&qpr, name, 0, NULL, nit, NULL,
 					       NULL, NULL);
 			INSIST(result != ISC_R_NOTFOUND);
 			if (result == ISC_R_SUCCESS) {
@@ -3023,8 +3024,9 @@ previous_closest_nsec(dns_rdatatype_t type, qpz_search_t *search,
 		}
 
 		*nodep = NULL;
-		result = dns_qp_lookup(&search->qpr, name, NULL, &search->iter,
-				       &search->chain, (void **)nodep, NULL);
+		result = dns_qp_lookup(&search->qpr, name, 0, NULL,
+				       &search->iter, &search->chain,
+				       (void **)nodep, NULL);
 		if (result == ISC_R_SUCCESS) {
 			break;
 		}
@@ -3403,7 +3405,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	/*
 	 * Search down from the root of the tree.
 	 */
-	result = dns_qp_lookup(&search.qpr, name, NULL, &search.iter,
+	result = dns_qp_lookup(&search.qpr, name, 0, NULL, &search.iter,
 			       &search.chain, (void **)&node, NULL);
 	if (result != ISC_R_NOTFOUND) {
 		dns_name_copy(&node->name, foundname);
@@ -4404,13 +4406,13 @@ dbiterator_seek(dns_dbiterator_t *iterator,
 	switch (qpdbiter->nsec3mode) {
 	case nsec3only:
 		qpdbiter->current = &qpdbiter->nsec3iter;
-		result = dns_qp_lookup(qpdbiter->nsnap, name, NULL,
+		result = dns_qp_lookup(qpdbiter->nsnap, name, 0, NULL,
 				       qpdbiter->current, NULL,
 				       (void **)&qpdbiter->node, NULL);
 		break;
 	case nonsec3:
 		qpdbiter->current = &qpdbiter->mainiter;
-		result = dns_qp_lookup(qpdbiter->tsnap, name, NULL,
+		result = dns_qp_lookup(qpdbiter->tsnap, name, 0, NULL,
 				       qpdbiter->current, NULL,
 				       (void **)&qpdbiter->node, NULL);
 		break;
@@ -4420,11 +4422,11 @@ dbiterator_seek(dns_dbiterator_t *iterator,
 		 * either iterator.
 		 */
 		qpdbiter->current = &qpdbiter->mainiter;
-		result = dns_qp_lookup(qpdbiter->tsnap, name, NULL,
+		result = dns_qp_lookup(qpdbiter->tsnap, name, 0, NULL,
 				       qpdbiter->current, NULL,
 				       (void **)&qpdbiter->node, NULL);
 		if (result == DNS_R_PARTIALMATCH) {
-			tresult = dns_qp_lookup(qpdbiter->nsnap, name, NULL,
+			tresult = dns_qp_lookup(qpdbiter->nsnap, name, 0, NULL,
 						&qpdbiter->nsec3iter, NULL,
 						NULL, NULL);
 			if (tresult == ISC_R_SUCCESS) {

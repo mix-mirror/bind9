@@ -537,7 +537,7 @@ dns_qp_getnametype(dns_qpreadable_t qpr, const dns_name_t *name, uint16_t type,
  */
 
 isc_result_t
-dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
+dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name, uint16_t type,
 	      dns_name_t *foundname, dns_qpiter_t *iter, dns_qpchain_t *chain,
 	      void **pval_r, uint32_t *ival_r);
 /*%<

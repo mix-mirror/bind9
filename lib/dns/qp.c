@@ -2295,7 +2295,7 @@ fix_chain(dns_qpchain_t *chain, size_t offset) {
 }
 
 isc_result_t
-dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
+dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name, uint16_t type,
 	      dns_name_t *foundname, dns_qpiter_t *iter, dns_qpchain_t *chain,
 	      void **pval_r, uint32_t *ival_r) {
 	dns_qpreader_t *qp = dns_qpreader(qpr);
@@ -2312,7 +2312,7 @@ dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
 	REQUIRE(QP_VALID(qp));
 	REQUIRE(foundname == NULL || ISC_MAGIC_VALID(name, DNS_NAME_MAGIC));
 
-	searchlen = dns_qpkey_fromname(search, name);
+	searchlen = dns_qpkey_fromnametype(search, name, type);
 
 	if (chain == NULL) {
 		chain = &oc;
