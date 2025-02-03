@@ -110,6 +110,7 @@ dns_srcset.add(
         'keystore.c',
         'keytable.c',
         'lib.c',
+        'lhashmap.c',
         'master.c',
         'masterdump.c',
         'message.c',

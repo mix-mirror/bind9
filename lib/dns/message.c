@@ -36,6 +36,7 @@
 
 #include <dns/dnssec.h>
 #include <dns/keyvalues.h>
+#include <dns/lhashmap.h>
 #include <dns/masterdump.h>
 #include <dns/message.h>
 #include <dns/opcode.h>
@@ -749,11 +750,6 @@ ISC_REFCOUNT_TRACE_IMPL(dns_message, dns__message_destroy);
 ISC_REFCOUNT_IMPL(dns_message, dns__message_destroy);
 #endif
 
-static bool
-name_match(void *node, const void *key) {
-	return dns_name_equal(node, key);
-}
-
 static isc_result_t
 findname(dns_name_t **foundname, const dns_name_t *target,
 	 dns_namelist_t *section) {
@@ -767,27 +763,6 @@ findname(dns_name_t **foundname, const dns_name_t *target,
 	}
 
 	return ISC_R_NOTFOUND;
-}
-
-static uint32_t
-rds_hash(dns_rdataset_t *rds) {
-	isc_hash32_t state;
-
-	isc_hash32_init(&state);
-	isc_hash32_hash(&state, &rds->rdclass, sizeof(rds->rdclass), true);
-	isc_hash32_hash(&state, &rds->type, sizeof(rds->type), true);
-	isc_hash32_hash(&state, &rds->covers, sizeof(rds->covers), true);
-
-	return isc_hash32_finalize(&state);
-}
-
-static bool
-rds_match(void *node, const void *key0) {
-	const dns_rdataset_t *rds = node;
-	const dns_rdataset_t *key = key0;
-
-	return rds->rdclass == key->rdclass && rds->type == key->type &&
-	       rds->covers == key->covers;
 }
 
 isc_result_t
@@ -908,13 +883,74 @@ getrdata(isc_buffer_t *source, dns_message_t *msg, dns_decompress_t dctx,
 		}                            \
 	} while (0)
 
-static void
-cleanup_name_hashmaps(dns_namelist_t *section) {
-	ISC_LIST_FOREACH (*section, name, link) {
-		if (name->hashmap != NULL) {
-			isc_hashmap_destroy(&name->hashmap);
-		}
+static size_t
+name_hash(const void *elem) {
+	const dns_name_t *as_name_ptr = *((dns_name_t **)elem);
+	return dns_name_hash(as_name_ptr);
+}
+
+static bool
+name_match(const void *lhs, const void *rhs) {
+	const dns_name_t *as_name_lhs = *((dns_name_t **)lhs);
+	const dns_name_t *as_name_rhs = *((dns_name_t **)rhs);
+	return dns_name_equal(as_name_lhs, as_name_rhs);
+}
+
+typedef struct name_and_rdtype {
+	dns_name_t *name;
+	dns_rdataset_t *rdataset;
+} name_and_rdtype_t;
+
+static size_t
+name_and_rdtype_hash(const void *elem_as_void) {
+	name_and_rdtype_t *elem = (name_and_rdtype_t *)elem_as_void;
+	isc_hash64_t state;
+
+	isc_hash64_init(&state);
+	isc_hash64_hash(&state, elem->name->ndata, elem->name->length, false);
+	isc_hash64_hash(&state, &elem->rdataset->rdclass,
+			sizeof(elem->rdataset->rdclass), true);
+	isc_hash64_hash(&state, &elem->rdataset->type,
+			sizeof(elem->rdataset->type), true);
+	isc_hash64_hash(&state, &elem->rdataset->covers,
+			sizeof(elem->rdataset->covers), true);
+
+	return isc_hash64_finalize(&state);
+}
+
+static bool
+name_and_rdtype_match(const void *lhs_as_void, const void *rhs_as_void) {
+	const name_and_rdtype_t *lhs = ((name_and_rdtype_t *)lhs_as_void);
+	const name_and_rdtype_t *rhs = ((name_and_rdtype_t *)rhs_as_void);
+
+	return lhs->rdataset->rdclass == rhs->rdataset->rdclass &&
+	       lhs->rdataset->type == rhs->rdataset->type &&
+	       lhs->rdataset->covers == rhs->rdataset->covers &&
+	       dns_name_equal(lhs->name, rhs->name);
+}
+
+enum {
+	NAME_BUFFER_SIZE = 131072 * (sizeof(size_t) + sizeof(dns_name_t *)),
+	NAME_RDTYPE_BUFFER_SIZE = 131072 *
+				  (sizeof(size_t) + sizeof(name_and_rdtype_t)),
+};
+
+static char *
+thread_local_name_buffer(void) {
+	static _Thread_local char *name_buffer = NULL;
+	if (name_buffer == NULL) {
+		name_buffer = mallocx(NAME_BUFFER_SIZE, 0);
 	}
+	return name_buffer;
+}
+
+static char *
+thread_local_rd_buffer(void) {
+	static _Thread_local char *rd_buffer = NULL;
+	if (rd_buffer == NULL) {
+		rd_buffer = mallocx(NAME_RDTYPE_BUFFER_SIZE, 0);
+	}
+	return rd_buffer;
 }
 
 static isc_result_t
@@ -951,7 +987,6 @@ getquestions(isc_buffer_t *source, dns_message_t *msg, dns_decompress_t dctx,
 		}
 
 		ISC_LIST_APPEND(*section, name, link);
-
 		free_name = false;
 
 		/*
@@ -999,7 +1034,6 @@ getquestions(isc_buffer_t *source, dns_message_t *msg, dns_decompress_t dctx,
 		dns_rdatalist_tordataset(rdatalist, rdataset);
 
 		rdataset->attributes.question = true;
-
 		ISC_LIST_APPEND(name->list, rdataset, link);
 
 		rdataset = NULL;
@@ -1043,7 +1077,6 @@ getsection(isc_buffer_t *source, dns_message_t *msg, dns_decompress_t dctx,
 	isc_region_t r;
 	unsigned int count, rdatalen;
 	dns_name_t *name = NULL;
-	dns_name_t *found_name = NULL;
 	dns_rdataset_t *rdataset = NULL;
 	dns_rdataset_t *found_rdataset = NULL;
 	dns_rdatalist_t *rdatalist = NULL;
@@ -1054,17 +1087,30 @@ getsection(isc_buffer_t *source, dns_message_t *msg, dns_decompress_t dctx,
 	dns_ttl_t ttl;
 	dns_namelist_t *section = &msg->sections[sectionid];
 	bool free_name = false, seen_problem = false;
-	bool free_hashmaps = false;
 	bool preserve_order = ((options & DNS_MESSAGEPARSE_PRESERVEORDER) != 0);
 	bool best_effort = ((options & DNS_MESSAGEPARSE_BESTEFFORT) != 0);
 	bool isedns, issigzero, istsig;
-	isc_hashmap_t *name_map = NULL;
 
-	if (msg->counts[sectionid] > 1) {
-		isc_hashmap_create(msg->mctx, 1, &name_map);
+	isc_lhashmap_t name_map;
+	isc_lhashmap_t name_rdtype_map;
+
+	size_t section_count = msg->counts[sectionid];
+	if (section_count == 0) {
+		return ISC_R_SUCCESS;
+	} else if (section_count >= 2) {
+		char *lhashmap_buffer = thread_local_name_buffer();
+		name_map = isc_lhashmap_init(
+			section_count, sizeof(dns_name_t *), lhashmap_buffer,
+			name_hash, name_match);
+
+		char *lhashmap_rd_buffer = thread_local_rd_buffer();
+		name_rdtype_map = isc_lhashmap_init(
+			section_count, sizeof(name_and_rdtype_t),
+			lhashmap_rd_buffer, name_and_rdtype_hash,
+			name_and_rdtype_match);
 	}
 
-	for (count = 0; count < msg->counts[sectionid]; count++) {
+	for (count = 0; count < section_count; count++) {
 		int recstart = source->current;
 		bool skip_name_search, skip_type_search;
 
@@ -1299,43 +1345,29 @@ getsection(isc_buffer_t *source, dns_message_t *msg, dns_decompress_t dctx,
 		 * to the end of the message.
 		 */
 		if (preserve_order || msg->opcode == dns_opcode_update ||
-		    skip_name_search)
+		    skip_name_search || section_count <= 1)
 		{
 			if (!isedns && !istsig && !issigzero) {
 				ISC_LIST_APPEND(*section, name, link);
 				free_name = false;
 			}
 		} else {
-			if (name_map == NULL) {
-				result = ISC_R_SUCCESS;
-				goto skip_name_check;
-			}
-
-			/*
-			 * Run through the section, looking to see if this name
-			 * is already there.  If it is found, put back the
-			 * allocated name since we no longer need it, and set
-			 * our name pointer to point to the name we found.
-			 */
-			result = isc_hashmap_add(name_map, dns_name_hash(name),
-						 name_match, name, name,
-						 (void **)&found_name);
+			isc_lhashmap_entry_t *entry =
+				isc_lhashmap_entry(&name_map, &name);
+			// TODO NULL check
 
 			/*
 			 * If it is a new name, append to the section.
 			 */
-		skip_name_check:
-			switch (result) {
-			case ISC_R_SUCCESS:
-				ISC_LIST_APPEND(*section, name, link);
-				break;
-			case ISC_R_EXISTS:
+			if (!isc_lhashmap_entry_is_empty(entry)) {
 				dns_message_puttempname(msg, &name);
-				name = found_name;
-				found_name = NULL;
-				break;
-			default:
-				UNREACHABLE();
+				name = *((dns_name_t **)entry->data);
+				result = ISC_R_EXISTS;
+			} else {
+				isc_lhashmap_entry_put_data(&name_map, entry,
+							    &name);
+				ISC_LIST_APPEND(*section, name, link);
+				result = ISC_R_SUCCESS;
 			}
 			free_name = false;
 		}
@@ -1363,7 +1395,7 @@ getsection(isc_buffer_t *source, dns_message_t *msg, dns_decompress_t dctx,
 			result = ISC_R_SUCCESS;
 
 			ISC_LIST_APPEND(name->list, rdataset, link);
-		} else {
+		} else if (section_count <= 1) {
 			/*
 			 * If this is a type that can only occur in
 			 * the question section, fail.
@@ -1372,33 +1404,17 @@ getsection(isc_buffer_t *source, dns_message_t *msg, dns_decompress_t dctx,
 				DO_ERROR(DNS_R_FORMERR);
 			}
 
-			if (ISC_LIST_EMPTY(name->list)) {
-				result = ISC_R_SUCCESS;
-				goto skip_rds_check;
+			result = ISC_R_SUCCESS;
+
+			ISC_LIST_APPEND(name->list, rdataset, link);
+		} else {
+			/*
+			 * If this is a type that can only occur in
+			 * the question section, fail.
+			 */
+			if (dns_rdatatype_questiononly(rdtype)) {
+				DO_ERROR(DNS_R_FORMERR);
 			}
-
-			if (name->hashmap == NULL) {
-				isc_hashmap_create(msg->mctx, 1,
-						   &name->hashmap);
-				free_hashmaps = true;
-
-				INSIST(ISC_LIST_HEAD(name->list) ==
-				       ISC_LIST_TAIL(name->list));
-
-				dns_rdataset_t *old_rdataset =
-					ISC_LIST_HEAD(name->list);
-
-				result = isc_hashmap_add(
-					name->hashmap, rds_hash(old_rdataset),
-					rds_match, old_rdataset, old_rdataset,
-					NULL);
-
-				INSIST(result == ISC_R_SUCCESS);
-			}
-
-			result = isc_hashmap_add(
-				name->hashmap, rds_hash(rdataset), rds_match,
-				rdataset, rdataset, (void **)&found_rdataset);
 
 			/*
 			 * If we found an rdataset that matches, we need to
@@ -1413,33 +1429,43 @@ getsection(isc_buffer_t *source, dns_message_t *msg, dns_decompress_t dctx,
 			 * order, the opcode is an update, or the type search is
 			 * skipped.
 			 */
-		skip_rds_check:
-			switch (result) {
-			case ISC_R_EXISTS:
+			name_and_rdtype_t key = {
+				.name = name,
+				.rdataset = rdataset,
+			};
+			isc_lhashmap_entry_t *rdtype_entry =
+				isc_lhashmap_entry(&name_rdtype_map, &key);
+			// TODO NULL check
+			if (!isc_lhashmap_entry_is_empty(rdtype_entry)) {
 				/* Free the rdataset we used as the key */
 				dns__message_putassociatedrdataset(msg,
 								   &rdataset);
 				result = ISC_R_SUCCESS;
-				rdataset = found_rdataset;
+				rdataset = ((name_and_rdtype_t *)
+						    isc_lhashmap_entry_get_data(
+							    &name_rdtype_map,
+							    rdtype_entry, &key))
+						   ->rdataset;
+				found_rdataset = rdataset;
+				REQUIRE(DNS_RDATASET_VALID(rdataset));
 
-				if (!dns_rdatatype_issingleton(rdtype)) {
-					break;
+				if (dns_rdatatype_issingleton(rdtype)) {
+					dns_rdatalist_fromrdataset(rdataset,
+								   &rdatalist);
+					dns_rdata_t *first =
+						ISC_LIST_HEAD(rdatalist->rdata);
+					INSIST(first != NULL);
+					if (dns_rdata_compare(rdata, first) !=
+					    0)
+					{
+						DO_ERROR(DNS_R_FORMERR);
+					}
 				}
-
-				dns_rdatalist_fromrdataset(rdataset,
-							   &rdatalist);
-				dns_rdata_t *first =
-					ISC_LIST_HEAD(rdatalist->rdata);
-				INSIST(first != NULL);
-				if (dns_rdata_compare(rdata, first) != 0) {
-					DO_ERROR(DNS_R_FORMERR);
-				}
-				break;
-			case ISC_R_SUCCESS:
+			} else {
+				result = ISC_R_SUCCESS;
+				isc_lhashmap_entry_put_data(&name_rdtype_map,
+							    rdtype_entry, &key);
 				ISC_LIST_APPEND(name->list, rdataset, link);
-				break;
-			default:
-				UNREACHABLE();
 			}
 		}
 
@@ -1517,14 +1543,6 @@ cleanup:
 	}
 	if (free_name) {
 		dns_message_puttempname(msg, &name);
-	}
-
-	if (free_hashmaps) {
-		cleanup_name_hashmaps(section);
-	}
-
-	if (name_map != NULL) {
-		isc_hashmap_destroy(&name_map);
 	}
 
 	return result;
@@ -2456,10 +2474,6 @@ dns_message_puttempname(dns_message_t *msg, dns_name_t **itemp) {
 
 	REQUIRE(!ISC_LINK_LINKED(item, link));
 	REQUIRE(ISC_LIST_HEAD(item->list) == NULL);
-
-	if (item->hashmap != NULL) {
-		isc_hashmap_destroy(&item->hashmap);
-	}
 
 	/*
 	 * we need to check this in case dns_name_dup() was used.
