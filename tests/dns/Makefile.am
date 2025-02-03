@@ -36,8 +36,9 @@ check_PROGRAMS =		\
 	nsec3param_test		\
 	private_test		\
 	qp_test			\
-	qpmulti_test		\
 	qpdb_test		\
+	qpmulti_test		\
+	qpnametype_test		\
 	qpzone_test		\
 	rdata_test		\
 	rdataset_test		\

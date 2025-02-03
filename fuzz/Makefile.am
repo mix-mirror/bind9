@@ -35,6 +35,7 @@ check_PROGRAMS =			\
 	dns_name_fromwire		\
 	dns_qp				\
 	dns_qpkey_name			\
+	dns_qpkey_nametype		\
 	dns_rdata_fromtext		\
 	dns_rdata_fromwire_text		\
 	isc_lex_getmastertoken		\
@@ -48,6 +49,7 @@ EXTRA_DIST =				\
 	dns_name_fromwire.in		\
 	dns_qp.in			\
 	dns_qpkey_name.in		\
+	dns_qpkey_nametype.in		\
 	dns_rdata_fromtext.in		\
 	dns_rdata_fromwire_text.in	\
 	isc_lex_getmastertoken.in	\

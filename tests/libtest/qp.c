@@ -345,11 +345,12 @@ void
 qp_test_printkey(const dns_qpkey_t key, size_t keylen) {
 	dns_fixedname_t fn;
 	dns_name_t *n = dns_fixedname_initname(&fn);
+	uint16_t type = 0;
 	char txt[DNS_NAME_FORMATSIZE];
 
-	dns_qpkey_toname(key, keylen, n);
+	dns_qpkey_tonametype(key, keylen, n, &type);
 	dns_name_format(n, txt, sizeof(txt));
-	printf("%s%s\n", txt, dns_name_isabsolute(n) ? "." : "");
+	printf("%s%s %u\n", txt, dns_name_isabsolute(n) ? "." : "", type);
 }
 
 /**********************************************************************/
