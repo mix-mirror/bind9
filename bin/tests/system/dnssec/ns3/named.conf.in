@@ -213,6 +213,12 @@ zone "ds-unsupported.example" {
 	allow-update { any; };
 };
 
+zone "algorithm-disabled.example" {
+	type primary;
+	file "algorithm-disabled.example.db.signed";
+	allow-update { any; };
+};
+
 zone "dnskey-unsupported.example" {
 	type primary;
 	file "dnskey-unsupported.example.db.signed";

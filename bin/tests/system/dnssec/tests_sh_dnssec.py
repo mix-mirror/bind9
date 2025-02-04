@@ -80,6 +80,7 @@ pytestmark = pytest.mark.extra_artifacts(
         "ns2/updatecheck-kskonly.secure.zsk.key",
         "ns3/NSEC",
         "ns3/NSEC3",
+        "ns3/algorithm-disabled.example.db",
         "ns3/auto-nsec.example.db",
         "ns3/auto-nsec3.example.db",
         "ns3/badds.example.db",

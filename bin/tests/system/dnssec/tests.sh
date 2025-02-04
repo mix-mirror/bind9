@@ -3854,19 +3854,25 @@ n=$((n + 1))
 test "$ret" -eq 0 || echo_i "failed"
 status=$((status + ret))
 
-echo_i "checking EDE code 2 for unsupported DS digest ($n)"
+echo_i "checking EDE code 2 for unsupported DS digest (disable-ds-digests) ($n)"
 ret=0
+dig_with_opts @10.53.0.3 a.ds-unsupported.example >dig.out.ns3.test$n || ret=1
 dig_with_opts @10.53.0.4 a.ds-unsupported.example >dig.out.ns4.test$n || ret=1
+grep "status: NOERROR," dig.out.ns3.test$n >/dev/null || ret=1
+grep "status: NOERROR," dig.out.ns4.test$n >/dev/null || ret=1
 grep "; EDE: 2 (Unsupported DS Digest Type): (SHA-256 ds-unsupported.example/DNSKEY)" dig.out.ns4.test$n >/dev/null || ret=1
 grep "flags:.*ad.*QUERY" dig.out.ns4.test$n >/dev/null && ret=1
 n=$((n + 1))
 test "$ret" -eq 0 || echo_i "failed"
 status=$((status + ret))
 
-echo_i "checking EDE code 1 for bad alg mnemonic ($n)"
+echo_i "checking EDE code 1 for unsupported algorithm (disabled-algorithms) ($n)"
 ret=0
-dig_with_opts @10.53.0.4 badalg.secure.example >dig.out.ns4.test$n || ret=1
-grep "; EDE: 1 (Unsupported DNSKEY Algorithm): (ECDSAP256SHA256 badalg.secure.example/NSEC)" dig.out.ns4.test$n >/dev/null || ret=1
+dig_with_opts @10.53.0.3 a.algorithm-disabled.example >dig.out.ns3.test$n || ret=1
+dig_with_opts @10.53.0.4 a.algorithm-disabled.example >dig.out.ns4.test$n || ret=1
+grep "status: NOERROR," dig.out.ns3.test$n >/dev/null || ret=1
+grep "status: NOERROR," dig.out.ns4.test$n >/dev/null || ret=1
+grep "; EDE: 1 (Unsupported DNSKEY Algorithm): (ECDSAP256SHA256 algorithm-disabled.example/SOA)" dig.out.ns4.test$n >/dev/null || ret=1
 grep "flags:.*ad.*QUERY" dig.out.ns4.test$n >/dev/null && ret=1
 n=$((n + 1))
 test "$ret" -eq 0 || echo_i "failed"
@@ -3874,7 +3880,10 @@ status=$((status + ret))
 
 echo_i "checking both EDE code 1 and 2 for unsupported digest on one DNSKEY and alg on the other ($n)"
 ret=0
+dig_with_opts @10.53.0.3 a.digest-alg-unsupported.example >dig.out.ns3.test$n || ret=1
 dig_with_opts @10.53.0.4 a.digest-alg-unsupported.example >dig.out.ns4.test$n || ret=1
+grep "status: NOERROR," dig.out.ns3.test$n >/dev/null || ret=1
+grep "status: NOERROR," dig.out.ns4.test$n >/dev/null || ret=1
 grep "; EDE: 1 (Unsupported DNSKEY Algorithm): (ECDSAP384SHA384 digest-alg-unsupported.example/DNSKEY)" dig.out.ns4.test$n >/dev/null || ret=1
 grep "; EDE: 2 (Unsupported DS Digest Type): (SHA-384 digest-alg-unsupported.example/DNSKEY)" dig.out.ns4.test$n >/dev/null || ret=1
 grep "flags:.*ad.*QUERY" dig.out.ns4.test$n >/dev/null && ret=1
