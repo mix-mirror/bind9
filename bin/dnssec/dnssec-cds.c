@@ -29,6 +29,8 @@
 #include <isc/dir.h>
 #include <isc/file.h>
 #include <isc/hash.h>
+#include <isc/lib.h>
+/* TODO: #include <isc/log.h> */
 #include <isc/mem.h>
 #include <isc/result.h>
 #include <isc/serial.h>
@@ -43,6 +45,7 @@
 #include <dns/ds.h>
 #include <dns/fixedname.h>
 #include <dns/keyvalues.h>
+#include <dns/lib.h>
 #include <dns/log.h>
 #include <dns/master.h>
 #include <dns/name.h>

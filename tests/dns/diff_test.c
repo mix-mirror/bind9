@@ -22,7 +22,10 @@
 #define UNIT_TESTING
 #include <cmocka.h>
 
+#include <isc/lib.h>
+
 #include <dns/diff.h>
+#include <dns/lib.h>
 
 /* isc/list.h must be imported after cmocka to avoid redefinition errors */
 #include <isc/list.h>

@@ -222,4 +222,12 @@ dns__db_addglue(dns_db_t *db, dns_dbversion_t *dbversion,
 dns_glue_t *
 dns__db_new_glue(isc_mem_t *mctx, const dns_name_t *name);
 
+/*%
+ * Internal dns_db constructor and destructor.
+ */
+void
+dns__db_initialize(void);
+void
+dns__db_shutdown(void);
+
 ISC_LANG_ENDDECLS

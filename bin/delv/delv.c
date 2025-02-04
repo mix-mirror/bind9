@@ -30,6 +30,7 @@
 #include <isc/base64.h>
 #include <isc/buffer.h>
 #include <isc/hex.h>
+#include <isc/lib.h>
 #include <isc/log.h>
 #include <isc/managers.h>
 #include <isc/md.h>
@@ -52,6 +53,7 @@
 #include <dns/fixedname.h>
 #include <dns/keytable.h>
 #include <dns/keyvalues.h>
+#include <dns/lib.h>
 #include <dns/log.h>
 #include <dns/masterdump.h>
 #include <dns/message.h>

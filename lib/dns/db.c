@@ -23,7 +23,6 @@
 #include <isc/buffer.h>
 #include <isc/hash.h>
 #include <isc/mem.h>
-#include <isc/once.h>
 #include <isc/result.h>
 #include <isc/rwlock.h>
 #include <isc/string.h>
@@ -73,14 +72,13 @@ unsigned int dns_pps = 0U;
 
 static ISC_LIST(dns_dbimplementation_t) implementations;
 static isc_rwlock_t implock;
-static isc_once_t once = ISC_ONCE_INIT;
 
 static dns_dbimplementation_t rbtimp;
 static dns_dbimplementation_t qpimp;
 static dns_dbimplementation_t qpzoneimp;
 
-static void
-initialize(void) {
+void
+dns__db_initialize(void) {
 	isc_rwlock_init(&implock);
 
 	ISC_LIST_INIT(implementations);
@@ -106,6 +104,11 @@ initialize(void) {
 	ISC_LIST_APPEND(implementations, &rbtimp, link);
 	ISC_LIST_APPEND(implementations, &qpimp, link);
 	ISC_LIST_APPEND(implementations, &qpzoneimp, link);
+}
+
+void
+dns__db_shutdown(void) {
+	isc_rwlock_destroy(&implock);
 }
 
 static dns_dbimplementation_t *
@@ -134,8 +137,6 @@ dns_db_create(isc_mem_t *mctx, const char *db_type, const dns_name_t *origin,
 	      dns_dbtype_t type, dns_rdataclass_t rdclass, unsigned int argc,
 	      char *argv[], dns_db_t **dbp) {
 	dns_dbimplementation_t *impinfo = NULL;
-
-	isc_once_do(&once, initialize);
 
 	/*
 	 * Create a new database using implementation 'db_type'.
@@ -843,8 +844,6 @@ dns_db_register(const char *name, dns_dbcreatefunc_t create, void *driverarg,
 	REQUIRE(name != NULL);
 	REQUIRE(dbimp != NULL && *dbimp == NULL);
 
-	isc_once_do(&once, initialize);
-
 	RWLOCK(&implock, isc_rwlocktype_write);
 	imp = impfind(name);
 	if (imp != NULL) {
@@ -872,8 +871,6 @@ dns_db_unregister(dns_dbimplementation_t **dbimp) {
 	dns_dbimplementation_t *imp;
 
 	REQUIRE(dbimp != NULL && *dbimp != NULL);
-
-	isc_once_do(&once, initialize);
 
 	imp = *dbimp;
 	*dbimp = NULL;

@@ -45,6 +45,8 @@
 #include <isc/fips.h>
 #include <isc/hash.h>
 #include <isc/hex.h>
+#include <isc/lib.h>
+/* TODO: #include <isc/log.h> */
 #include <isc/loop.h>
 #include <isc/managers.h>
 #include <isc/md.h>
@@ -70,6 +72,7 @@
 #include <dns/fixedname.h>
 #include <dns/kasp.h>
 #include <dns/keyvalues.h>
+#include <dns/lib.h>
 #include <dns/log.h>
 #include <dns/master.h>
 #include <dns/masterdump.h>

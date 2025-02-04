@@ -18,6 +18,7 @@
 #include <isc/file.h>
 #include <isc/hashmap.h>
 #include <isc/ht.h>
+#include <isc/lib.h>
 #include <isc/list.h>
 #include <isc/rwlock.h>
 #include <isc/thread.h>
@@ -25,6 +26,7 @@
 #include <isc/util.h>
 
 #include <dns/fixedname.h>
+#include <dns/lib.h>
 #include <dns/qp.h>
 #include <dns/rbt.h>
 #include <dns/types.h>
