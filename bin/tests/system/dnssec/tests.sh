@@ -3891,6 +3891,19 @@ n=$((n + 1))
 test "$ret" -eq 0 || echo_i "failed"
 status=$((status + ret))
 
+echo_i "checking no EDE code 1 and 2 are added if there are other usable records are available ($n)"
+ret=0
+dig_with_opts @10.53.0.3 a.ede-not-only.example >dig.out.ns3.test$n || ret=1
+dig_with_opts @10.53.0.4 a.ede-not-only.example >dig.out.ns4.test$n || ret=1
+grep "status: NOERROR," dig.out.ns3.test$n >/dev/null || ret=1
+grep "status: NOERROR," dig.out.ns4.test$n >/dev/null || ret=1
+grep "; EDE: 1 (Unsupported DNSKEY Algorithm)" dig.out.ns4.test$n >/dev/null && ret=1
+grep "; EDE: 2 (Unsupported DS Digest Type)" dig.out.ns4.test$n >/dev/null && ret=1
+grep "flags:.*ad.*QUERY" dig.out.ns4.test$n >/dev/null || ret=1
+n=$((n + 1))
+test "$ret" -eq 0 || echo_i "failed"
+status=$((status + ret))
+
 echo_i "checking that unsupported DNSKEY algorithm is in DNSKEY RRset ($n)"
 ret=0
 dig_with_opts +noauth +noadd +nodnssec +adflag @10.53.0.3 dnskey-unsupported-2.example DNSKEY >dig.out.test$n

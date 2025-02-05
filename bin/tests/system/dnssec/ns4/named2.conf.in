@@ -25,8 +25,13 @@ options {
 	dnssec-validation auto;
 	bindkeys-file "managed.conf";
 	minimal-responses no;
+
 	disable-algorithms "digest-alg-unsupported.example." { ECDSAP384SHA384; };
 	disable-ds-digests "digest-alg-unsupported.example." { "SHA384"; "SHA-384";  };
+
+	disable-algorithms "ede-not-only.example." { ECDSAP384SHA384; };
+	disable-ds-digests "ede-not-only.example." { "SHA384"; "SHA-384";  };
+
 	disable-ds-digests "ds-unsupported.example." { "SHA256"; "SHA-256"; "SHA384"; "SHA-384"; };
 	disable-algorithms "algorithm-disabled.example." { ECDSAP256SHA256; };
 };

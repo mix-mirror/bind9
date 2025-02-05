@@ -98,6 +98,7 @@ pytestmark = pytest.mark.extra_artifacts(
         "ns3/dnskey-unsupported.example.db.tmp",
         "ns3/ds-unsupported.example.db",
         "ns3/dynamic.example.db",
+        "ns3/ede-not-only.example.db",
         "ns3/enabled.managed.db",
         "ns3/enabled.trusted.db",
         "ns3/example.bk",

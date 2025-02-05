@@ -366,6 +366,29 @@ cat "$zonefile" "$zonefile".signed >"$zonefile".tmp
 mv "$zonefile".tmp "$zonefile".signed
 
 #
+# A zone which uses an unsupported and supported algorithm for DNSKEY,
+# and an unsupported and supported digest for those keys. Since there are
+# available supported digests and algorithms, there should be no DNSSEC related
+# EDE on responses for this zone.
+#
+zone=ede-not-only.example.
+infile=ede-not-only.example.db.in
+zonefile=ede-not-only.example.db
+
+key1=$("$KEYGEN" -f KSK -q -a "$DEFAULT_ALGORITHM" -b "$DEFAULT_BITS" "$zone")
+key2=$("$KEYGEN" -f KSK -q -a ECDSAP384SHA384 -b "$DEFAULT_BITS" "$zone")
+cat "$infile" "$key1.key" "$key2.key" >"$zonefile"
+
+"$SIGNER" -z -D -o "$zone" "$zonefile" >/dev/null
+cat "$zonefile" "$zonefile".signed >"$zonefile".tmp
+mv "$zonefile".tmp "$zonefile".signed
+
+# override generated DS record file so we can set multiple digests.
+DSFILE="dsset-${zone}"
+$DSFROMKEY -a SHA-384 -A -f ${zonefile}.signed "$zone" >"$DSFILE"
+$DSFROMKEY -2 -A -f ${zonefile}.signed "$zone" >>"$DSFILE"
+
+#
 # A zone with a unknown DNSKEY algorithm + unknown NSEC3 hash algorithm (-U).
 # Algorithm 7 is replaced by 100 in the zone and dsset.
 #

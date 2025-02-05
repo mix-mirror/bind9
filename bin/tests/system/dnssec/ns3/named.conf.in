@@ -235,6 +235,11 @@ zone "dnskey-nsec3-unknown.example" {
 	file "dnskey-nsec3-unknown.example.db.signed";
 };
 
+zone "ede-not-only.example" {
+	type primary;
+	file "ede-not-only.example.db.signed";
+};
+
 zone "multiple.example" {
 	type primary;
 	file "multiple.example.db.signed";
