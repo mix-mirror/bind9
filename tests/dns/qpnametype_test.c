@@ -1120,6 +1120,155 @@ ISC_RUN_TEST_IMPL(fixiterator) {
 	dns_qp_destroy(&qp);
 }
 
+struct check_delete {
+	const char *name;
+	uint16_t type;
+	isc_result_t result;
+};
+
+static void
+check_delete(dns_qp_t *qp, struct check_delete check[]) {
+	for (int i = 0; check[i].name != NULL; i++) {
+		isc_result_t result;
+		dns_fixedname_t fn1;
+		dns_name_t *name = dns_fixedname_initname(&fn1);
+		uint16_t type = check[i].type;
+		dns_qpchain_t chain;
+
+		dns_qpchain_init(qp, &chain);
+		dns_test_namefromstring(check[i].name, &fn1);
+		result = dns_qp_deletenametype(qp, name, type, NULL, NULL);
+#if 0
+		fprintf(stderr,
+			"%s %u %s (expected %s)",
+			check[i].name, check[i].type, isc_result_totext(result),
+			isc_result_totext(check[i].result));
+#endif
+		assert_int_equal(result, check[i].result);
+	}
+}
+
+ISC_RUN_TEST_IMPL(qpkey_delete) {
+	int i = 0;
+	dns_qp_t *qp = NULL;
+	static struct inserting insert1[] = {
+		{ "a.", 53 },	     { "b.", 1 },      { "b.", 2 },
+		{ "b.", 65000 },     { "c.b.a.", 53 }, { "e.d.c.b.a.", 1 },
+		{ "c.b.b.", 2 },     { "c.d.", 3 },    { "a.b.c.d.", 1 },
+		{ "a.b.c.d.e.", 1 }, { "b.a.", 1 },    { "", 0 },
+	};
+
+	dns_qp_create(mctx, &string_methods, NULL, &qp);
+
+	while (insert1[i].name[0] != '\0') {
+		insert_nametype(qp, insert1[i].name, insert1[i].type);
+		i++;
+	}
+
+	/* lookup checks before deleting */
+	static struct check_qpchain chain1[] = {
+		{ ".", 1, ISC_R_NOTFOUND, 0, { NULL } },
+		{ "a.", 53, ISC_R_SUCCESS, 1, { "a." } },
+		{ "b.", 1, ISC_R_SUCCESS, 1, { "b." } },
+		{ "b.", 249, DNS_R_NODATA, 1, { "b." } },
+		{ "b.a.", 1, ISC_R_SUCCESS, 2, { "a.", "b.a." } },
+		{ "c.b.a.", 53, ISC_R_SUCCESS, 3, { "a.", "b.a.", "c.b.a." } },
+		{ "c.", 1, ISC_R_NOTFOUND, 0, { NULL } },
+		{ "e.d.c.b.a.",
+		  1,
+		  ISC_R_SUCCESS,
+		  4,
+		  { "a.", "b.a.", "c.b.a.", "e.d.c.b.a." } },
+		{ "a.b.c.d.", 1, ISC_R_SUCCESS, 2, { "c.d.", "a.b.c.d." } },
+		{ "b.c.d.", 1, DNS_R_PARTIALMATCH, 1, { "c.d." } },
+		{ "f.b.b.d.", 1, ISC_R_NOTFOUND, 0, { NULL } },
+		{ NULL, 0, 0, 0, { NULL } },
+	};
+	check_qpchain(qp, chain1);
+
+	static struct check_predecessors pred1[] = {
+		{ ".", 1, "a.b.c.d.e.", ISC_R_NOTFOUND, 0 },
+		{ "a.", 53, "a.b.c.d.e.", ISC_R_SUCCESS, 0 },
+		{ "b.", 1, "e.d.c.b.a.", ISC_R_SUCCESS, 7 },
+		{ "b.", 249, "b.", DNS_R_NODATA, 5 },
+		{ "b.a.", 1, "a.", ISC_R_SUCCESS, 10 },
+		{ "c.b.a.", 53, "b.a.", ISC_R_SUCCESS, 9 },
+		{ "c.", 1, "c.b.b.", ISC_R_NOTFOUND, 3 },
+		{ "e.d.c.b.a.", 1, "c.b.a.", ISC_R_SUCCESS, 8 },
+		{ "a.b.c.d.", 1, "c.d.", ISC_R_SUCCESS, 2 },
+		{ "b.c.d.", 1, "c.d.", DNS_R_PARTIALMATCH, 2 },
+		{ "f.b.b.d.", 1, "c.b.b.", ISC_R_NOTFOUND, 3 },
+		{ NULL, 0, NULL, 0, 0 },
+	};
+	check_predecessors(qp, pred1);
+
+	/* delete checks */
+	static struct check_delete del1[] = {
+		{ ".", 1, ISC_R_NOTFOUND },
+		{ "a.", 1, ISC_R_NOTFOUND },
+		{ "a.", 53, ISC_R_SUCCESS },
+		{ "b.", 2, ISC_R_SUCCESS },
+		{ "b.", 65000, ISC_R_SUCCESS },
+		{ "b.a.", 1, ISC_R_SUCCESS },
+		{ "c.d.", 3, ISC_R_SUCCESS },
+		{ "c.b.b.", 2, ISC_R_SUCCESS },
+		{ NULL, 0, 0 },
+	};
+	check_delete(qp, del1);
+
+	/* again */
+	static struct check_delete del2[] = {
+		{ "a.", 53, ISC_R_NOTFOUND },
+		{ "b.", 2, ISC_R_NOTFOUND },
+		{ "b.", 65000, ISC_R_NOTFOUND },
+		{ "b.a.", 1, ISC_R_NOTFOUND },
+		{ "c.d.", 3, ISC_R_NOTFOUND },
+		{ "c.b.b.", 2, ISC_R_NOTFOUND },
+		{ NULL, 0, 0 },
+	};
+	check_delete(qp, del2);
+
+	/* lookup checks after deleting */
+	static struct check_qpchain chain2[] = {
+		{ ".", 1, ISC_R_NOTFOUND, 0, { NULL } },
+		{ "a.", 53, ISC_R_NOTFOUND, 0, { NULL } },
+		{ "b.", 1, ISC_R_SUCCESS, 1, { "b." } },
+		{ "b.", 2, DNS_R_NODATA, 1, { "b." } },
+		{ "b.", 249, DNS_R_NODATA, 1, { "b." } },
+		{ "b.a.", 1, ISC_R_NOTFOUND, 0, { NULL } },
+		{ "c.b.a.", 53, ISC_R_SUCCESS, 1, { "c.b.a." } },
+		{ "c.", 1, ISC_R_NOTFOUND, 0, { NULL } },
+		{ "e.d.c.b.a.",
+		  1,
+		  ISC_R_SUCCESS,
+		  2,
+		  { "c.b.a.", "e.d.c.b.a." } },
+		{ "a.b.c.d.", 1, ISC_R_SUCCESS, 1, { "a.b.c.d." } },
+		{ "b.c.d.", 1, ISC_R_NOTFOUND, 0, { NULL } },
+		{ "f.b.b.d.", 1, ISC_R_NOTFOUND, 0, { NULL } },
+		{ NULL, 0, 0, 0, { NULL } },
+	};
+	check_qpchain(qp, chain2);
+
+	static struct check_predecessors pred2[] = {
+		{ ".", 1, "a.b.c.d.e.", ISC_R_NOTFOUND, 0 },
+		{ "a.", 53, "a.b.c.d.e.", ISC_R_NOTFOUND, 0 },
+		{ "b.", 1, "e.d.c.b.a.", ISC_R_SUCCESS, 3 },
+		{ "b.", 249, "b.", DNS_R_NODATA, 2 },
+		{ "b.a.", 1, "a.b.c.d.e.", ISC_R_NOTFOUND, 0 },
+		{ "c.b.a.", 53, "a.b.c.d.e.", ISC_R_SUCCESS, 0 },
+		{ "c.", 1, "b.", ISC_R_NOTFOUND, 2 },
+		{ "e.d.c.b.a.", 1, "c.b.a.", ISC_R_SUCCESS, 4 },
+		{ "a.b.c.d.", 1, "b.", ISC_R_SUCCESS, 2 },
+		{ "b.c.d.", 1, "b.", ISC_R_NOTFOUND, 2 },
+		{ "f.b.b.d.", 1, "b.", ISC_R_NOTFOUND, 2 },
+		{ NULL, 0, NULL, 0, 0 },
+	};
+	check_predecessors(qp, pred2);
+
+	dns_qp_destroy(&qp);
+}
+
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY(qpkey_nametype)
 ISC_TEST_ENTRY(qpkey_sort)
@@ -1127,6 +1276,7 @@ ISC_TEST_ENTRY(partialmatch)
 ISC_TEST_ENTRY(qpchain)
 ISC_TEST_ENTRY(predecessors)
 ISC_TEST_ENTRY(fixiterator)
+ISC_TEST_ENTRY(qpkey_delete)
 ISC_TEST_LIST_END
 
 ISC_TEST_MAIN
