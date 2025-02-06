@@ -322,7 +322,7 @@ infile=digest-alg-unsupported.example.db.in
 zonefile=digest-alg-unsupported.example.db
 
 key1=$("$KEYGEN" -f KSK -q -a "$DEFAULT_ALGORITHM" -b "$DEFAULT_BITS" "$zone")
-key2=$("$KEYGEN" -f KSK -q -a ECDSAP384SHA384 -b "$DEFAULT_BITS" "$zone")
+key2=$("$KEYGEN" -f KSK -q -a "$ALTERNATIVE_ALGORITHM" -b "$ALTERNATIVE_BITS" "$zone")
 cat "$infile" "$key1.key" "$key2.key" >"$zonefile"
 
 "$SIGNER" -z -D -o "$zone" "$zonefile" >/dev/null
@@ -376,7 +376,7 @@ infile=ede-not-only.example.db.in
 zonefile=ede-not-only.example.db
 
 key1=$("$KEYGEN" -f KSK -q -a "$DEFAULT_ALGORITHM" -b "$DEFAULT_BITS" "$zone")
-key2=$("$KEYGEN" -f KSK -q -a ECDSAP384SHA384 -b "$DEFAULT_BITS" "$zone")
+key2=$("$KEYGEN" -f KSK -q -a "$ALTERNATIVE_ALGORITHM" -b "$ALTERNATIVE_BITS" "$zone")
 cat "$infile" "$key1.key" "$key2.key" >"$zonefile"
 
 "$SIGNER" -z -D -o "$zone" "$zonefile" >/dev/null

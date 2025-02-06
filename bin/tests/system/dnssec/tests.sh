@@ -3872,7 +3872,7 @@ dig_with_opts @10.53.0.3 a.algorithm-disabled.example >dig.out.ns3.test$n || ret
 dig_with_opts @10.53.0.4 a.algorithm-disabled.example >dig.out.ns4.test$n || ret=1
 grep "status: NOERROR," dig.out.ns3.test$n >/dev/null || ret=1
 grep "status: NOERROR," dig.out.ns4.test$n >/dev/null || ret=1
-grep "; EDE: 1 (Unsupported DNSKEY Algorithm): (ECDSAP256SHA256 algorithm-disabled.example/SOA)" dig.out.ns4.test$n >/dev/null || ret=1
+grep "; EDE: 1 (Unsupported DNSKEY Algorithm): (${DEFAULT_ALGORITHM} algorithm-disabled.example/SOA)" dig.out.ns4.test$n >/dev/null || ret=1
 grep "flags:.*ad.*QUERY" dig.out.ns4.test$n >/dev/null && ret=1
 n=$((n + 1))
 test "$ret" -eq 0 || echo_i "failed"
@@ -3884,7 +3884,7 @@ dig_with_opts @10.53.0.3 a.digest-alg-unsupported.example >dig.out.ns3.test$n ||
 dig_with_opts @10.53.0.4 a.digest-alg-unsupported.example >dig.out.ns4.test$n || ret=1
 grep "status: NOERROR," dig.out.ns3.test$n >/dev/null || ret=1
 grep "status: NOERROR," dig.out.ns4.test$n >/dev/null || ret=1
-grep "; EDE: 1 (Unsupported DNSKEY Algorithm): (ECDSAP384SHA384 digest-alg-unsupported.example/DNSKEY)" dig.out.ns4.test$n >/dev/null || ret=1
+grep "; EDE: 1 (Unsupported DNSKEY Algorithm): (${DEFAULT_ALGORITHM} digest-alg-unsupported.example/DNSKEY)" dig.out.ns4.test$n >/dev/null || ret=1
 grep "; EDE: 2 (Unsupported DS Digest Type): (SHA-384 digest-alg-unsupported.example/DNSKEY)" dig.out.ns4.test$n >/dev/null || ret=1
 grep "flags:.*ad.*QUERY" dig.out.ns4.test$n >/dev/null && ret=1
 n=$((n + 1))
