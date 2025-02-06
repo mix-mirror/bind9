@@ -469,7 +469,8 @@ dns_qpmulti_memusage(dns_qpmulti_t *multi);
 size_t
 dns_qpkey_fromname(dns_qpkey_t key, const dns_name_t *name);
 size_t
-dns_qpkey_fromnametype(dns_qpkey_t key, const dns_name_t *name, uint16_t type);
+dns_qpkey_fromnametype(dns_qpkey_t key, const dns_name_t *name,
+		       dns_rdatatype_t type);
 /*%<
  * Convert a DNS name and RR type into a trie lookup key.
  *
@@ -519,8 +520,8 @@ isc_result_t
 dns_qp_getname(dns_qpreadable_t qpr, const dns_name_t *name, void **pval_r,
 	       uint32_t *ival_r);
 isc_result_t
-dns_qp_getnametype(dns_qpreadable_t qpr, const dns_name_t *name, uint16_t type,
-		   void **pval_r, uint32_t *ival_r);
+dns_qp_getnametype(dns_qpreadable_t qpr, const dns_name_t *name,
+		   dns_rdatatype_t type, void **pval_r, uint32_t *ival_r);
 /*%<
  * Find a leaf in a qp-trie that matches the given DNS name and RR type.
  *
@@ -537,9 +538,9 @@ dns_qp_getnametype(dns_qpreadable_t qpr, const dns_name_t *name, uint16_t type,
  */
 
 isc_result_t
-dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name, uint16_t type,
-	      dns_name_t *foundname, dns_qpiter_t *iter, dns_qpchain_t *chain,
-	      void **pval_r, uint32_t *ival_r);
+dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
+	      dns_rdatatype_t type, dns_name_t *foundname, dns_qpiter_t *iter,
+	      dns_qpchain_t *chain, void **pval_r, uint32_t *ival_r);
 /*%<
  * Look up a leaf in a qp-trie that is equal to, or an ancestor domain of,
  * 'name', matching 'type'.
@@ -619,8 +620,8 @@ isc_result_t
 dns_qp_deletename(dns_qp_t *qp, const dns_name_t *name, void **pval_r,
 		  uint32_t *ival_r);
 isc_result_t
-dns_qp_deletenametype(dns_qp_t *qp, const dns_name_t *name, uint16_t type,
-		      void **pval_r, uint32_t *ival_r);
+dns_qp_deletenametype(dns_qp_t *qp, const dns_name_t *name,
+		      dns_rdatatype_t type, void **pval_r, uint32_t *ival_r);
 /*%<
  * Delete a leaf from a qp-trie that matches the given DNS name and RR type
  *

@@ -267,7 +267,8 @@ initialize_bits_for_rrtype(void) {
  * dot in a zone file).
  */
 size_t
-dns_qpkey_fromnametype(dns_qpkey_t key, const dns_name_t *name, uint16_t type) {
+dns_qpkey_fromnametype(dns_qpkey_t key, const dns_name_t *name,
+		       dns_rdatatype_t type) {
 	size_t len = 0, label;
 	dns_fixedname_t fixed;
 
@@ -1855,8 +1856,8 @@ dns_qp_deletekey(dns_qp_t *qp, const dns_qpkey_t search_key,
 }
 
 isc_result_t
-dns_qp_deletenametype(dns_qp_t *qp, const dns_name_t *name, uint16_t type,
-		      void **pval_r, uint32_t *ival_r) {
+dns_qp_deletenametype(dns_qp_t *qp, const dns_name_t *name,
+		      dns_rdatatype_t type, void **pval_r, uint32_t *ival_r) {
 	dns_qpkey_t key;
 	size_t keylen = dns_qpkey_fromnametype(key, name, type);
 	return dns_qp_deletekey(qp, key, keylen, pval_r, ival_r);
@@ -2111,8 +2112,8 @@ dns_qp_getkey(dns_qpreadable_t qpr, const dns_qpkey_t search_key,
 }
 
 isc_result_t
-dns_qp_getnametype(dns_qpreadable_t qpr, const dns_name_t *name, uint16_t type,
-		   void **pval_r, uint32_t *ival_r) {
+dns_qp_getnametype(dns_qpreadable_t qpr, const dns_name_t *name,
+		   dns_rdatatype_t type, void **pval_r, uint32_t *ival_r) {
 	dns_qpkey_t key;
 	size_t keylen = dns_qpkey_fromnametype(key, name, type);
 	return dns_qp_getkey(qpr, key, keylen, pval_r, ival_r);
@@ -2295,9 +2296,9 @@ fix_chain(dns_qpchain_t *chain, size_t offset) {
 }
 
 isc_result_t
-dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name, uint16_t type,
-	      dns_name_t *foundname, dns_qpiter_t *iter, dns_qpchain_t *chain,
-	      void **pval_r, uint32_t *ival_r) {
+dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
+	      dns_rdatatype_t type, dns_name_t *foundname, dns_qpiter_t *iter,
+	      dns_qpchain_t *chain, void **pval_r, uint32_t *ival_r) {
 	dns_qpreader_t *qp = dns_qpreader(qpr);
 	dns_qpkey_t search, found;
 	size_t searchlen, foundlen;
