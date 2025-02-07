@@ -261,6 +261,7 @@ dns_qpkey_toname(const dns_qpkey_t key, size_t keylen, dns_name_t *name) {
 	REQUIRE(ISC_MAGIC_VALID(name, DNS_NAME_MAGIC));
 	REQUIRE(name->offsets != NULL);
 
+	// XXX: This requires BINDABLE, which in turn (I hope) implies fixedname
 	dns_name_reset(name);
 
 	if (keylen == 0) {
@@ -326,7 +327,11 @@ scanned:
 	}
 
 	// FIXME: Realloc?
-	name->ndata = isc_buffer_base(name->buffer);
+	// name->ndata = isc_buffer_base(name->buffer);
+	
+	// XXX: We are assuming that BINDABLE == fixedname
+	REQUIRE(DNS_NAME_BINDABLE(name));
+	memcpy(name->ndata, ndata_buf, ndata_idx);
 }
 
 /*

@@ -153,10 +153,12 @@ dns_name_hasbuffer(const dns_name_t *name) {
 
 	REQUIRE(DNS_NAME_VALID(name));
 
-	if (name->buffer != NULL) {
+	// XXX: we are assuming that bindable names come from fixed names.
+	if(DNS_NAME_BINDABLE(name)) {
 		return true;
 	}
 
+	_Static_assert(true, "FIXME make false or make IS_BINDABLE");
 	return false;
 }
 
