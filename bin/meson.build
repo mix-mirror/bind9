@@ -19,6 +19,3 @@ subdir('nsupdate')
 subdir('plugins')
 subdir('rndc')
 subdir('tools')
-
-# System tests
-subdir('tests')
