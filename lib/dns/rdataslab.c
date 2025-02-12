@@ -449,7 +449,7 @@ dns_rdataslab_merge(unsigned char *oslab, unsigned char *nslab,
 	 * Add in the length of rdata in the new slab that aren't in
 	 * the old slab.
 	 */
-	do {
+	for (size_t i = 0; i < ncount; i++) {
 		dns_rdata_init(&nrdata);
 		rdata_from_slab(&ncurrent, rdclass, type, &nrdata);
 		if (!rdata_in_slab(oslab, reservelen, rdclass, type, &nrdata)) {
@@ -464,12 +464,9 @@ dns_rdataslab_merge(unsigned char *oslab, unsigned char *nslab,
 			nncount++;
 			added_something = true;
 		}
-		ncount--;
-	} while (ncount > 0);
-	ncount = nncount;
+	}
 
-	if (((flags & DNS_RDATASLAB_EXACT) != 0) && (tcount != ncount + ocount))
-	{
+	if (((flags & DNS_RDATASLAB_EXACT) != 0) && (nncount != ncount)) {
 		return DNS_R_NOTEXACT;
 	}
 
@@ -514,7 +511,7 @@ dns_rdataslab_merge(unsigned char *oslab, unsigned char *nslab,
 
 	ncurrent = nslab + reservelen + 2;
 
-	if (ncount > 0) {
+	if (nncount > 0) {
 		do {
 			dns_rdata_reset(&nrdata);
 			rdata_from_slab(&ncurrent, rdclass, type, &nrdata);
@@ -522,11 +519,11 @@ dns_rdataslab_merge(unsigned char *oslab, unsigned char *nslab,
 				       &nrdata));
 	}
 
-	while (oadded < ocount || nadded < ncount) {
+	while (oadded < ocount || nadded < nncount) {
 		bool fromold;
 		if (oadded == ocount) {
 			fromold = false;
-		} else if (nadded == ncount) {
+		} else if (nadded == nncount) {
 			fromold = true;
 		} else {
 			fromold = (dns_rdata_compare(&ordata, &nrdata) < 0);
@@ -560,7 +557,7 @@ dns_rdataslab_merge(unsigned char *oslab, unsigned char *nslab,
 			memmove(tcurrent, data, length);
 			tcurrent += length;
 			nadded++;
-			if (nadded < ncount) {
+			if (nadded < nncount) {
 				do {
 					dns_rdata_reset(&nrdata);
 					rdata_from_slab(&ncurrent, rdclass,
