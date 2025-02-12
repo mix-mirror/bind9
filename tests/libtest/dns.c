@@ -375,8 +375,8 @@ dns_test_rdatafromstring(dns_rdata_t *rdata, dns_rdataclass_t rdclass,
 	/*
 	 * Set up callbacks so warnings and errors are not printed.
 	 */
+	dns_rdatacallbacks_init(&callbacks);
 	if (!warnings) {
-		dns_rdatacallbacks_init(&callbacks);
 		callbacks.warn = callbacks.error = nullmsg;
 	}
 
