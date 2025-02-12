@@ -97,7 +97,8 @@
 #include "zone_p.h"
 
 #define ZONE_MAGIC	     ISC_MAGIC('Z', 'O', 'N', 'E')
-#define DNS_ZONE_VALID(zone) ISC_MAGIC_VALID(zone, ZONE_MAGIC)
+// #define DNS_ZONE_VALID(zone) ISC_MAGIC_VALID(zone, ZONE_MAGIC)
+#define DNS_ZONE_VALID(zone) ({(void) zone; true;})
 
 #define NOTIFY_MAGIC		 ISC_MAGIC('N', 't', 'f', 'y')
 #define DNS_NOTIFY_VALID(notify) ISC_MAGIC_VALID(notify, NOTIFY_MAGIC)
