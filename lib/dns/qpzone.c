@@ -5040,8 +5040,8 @@ qpzone_deleterdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 
 	nlock = qpzone_get_lock(node);
 	NODE_WRLOCK(nlock, &nlocktype);
-	result = add(qpdb, node, nodename, version, newheader, DNS_DBADD_FORCE,
-		     false, NULL, 0 DNS__DB_FLARG_PASS);
+	result = add(qpdb, node, nodename, version, newheader, 0, false, NULL,
+		     0 DNS__DB_FLARG_PASS);
 	NODE_UNLOCK(nlock, &nlocktype);
 	return result;
 }
