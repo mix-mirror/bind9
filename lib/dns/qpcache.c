@@ -3053,22 +3053,24 @@ static unsigned int
 nodecount(dns_db_t *db, dns_dbtree_t tree) {
 	qpcache_t *qpdb = (qpcache_t *)db;
 	dns_qp_memusage_t mu;
-	dns_qpread_t qpr;
+	dns_qpsnap_t *qps;
 
 	REQUIRE(VALID_QPDB(qpdb));
 
 	switch (tree) {
 	case dns_dbtree_main:
-		dns_qpmulti_query(qpdb->tree, &qpr);
+		dns_qpmulti_snapshot(qpdb->tree, &qps);
+		mu = dns_qp_memusage((dns_qp_t *)&qps);
+		dns_qpsnap_destroy(qpdb->tree, &qps);
 		break;
 	case dns_dbtree_nsec:
-		dns_qpmulti_query(qpdb->nsec, &qpr);
+		dns_qpmulti_snapshot(qpdb->nsec, &qps);
+		mu = dns_qp_memusage((dns_qp_t *)&qps);
+		dns_qpsnap_destroy(qpdb->nsec, &qps);
 		break;
 	default:
 		UNREACHABLE();
 	}
-
-	mu = dns_qp_memusage((dns_qp_t *)&qpr);
 
 	return mu.leaves;
 }
