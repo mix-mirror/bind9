@@ -64,6 +64,14 @@ struct dns_slabheader_proof {
 	dns_rdatatype_t type;
 };
 
+typedef struct dns_slabheader_list {
+	isc_mem_t	    *mctx;
+	struct cds_list_head nnode;
+	struct cds_list_head versions;
+	struct rcu_head	     rcu_head;
+	dns_typepair_t	     type;
+} dns_slabheader_list_t;
+
 struct dns_slabheader {
 	_Atomic(uint16_t) attributes;
 
@@ -102,21 +110,29 @@ struct dns_slabheader {
 	 * both head and tail pointers, and is doubly linked.
 	 */
 
-	struct dns_slabheader *next;
+	union {
+		struct dns_slabheader *next;
+		struct cds_list_head   nnode;
+	};
 	/*%<
 	 * If this is the top header for an rdataset, 'next' points
 	 * to the top header for the next rdataset (i.e., the next type).
 	 * Otherwise, it points up to the header whose down pointer points
 	 * at this header.
 	 */
-
-	struct dns_slabheader *down;
+	union {
+		struct dns_slabheader *down;
+		struct cds_list_head   dnode;
+	};
 	/*%<
 	 * Points to the header for the next older version of
 	 * this rdataset.
 	 */
 
-	dns_db_t     *db;
+	union {
+		dns_db_t  *db;
+		isc_mem_t *mctx; /* FIXME: Experiment */
+	};
 	dns_dbnode_t *node;
 	/*%<
 	 * The database and database node objects containing
@@ -135,6 +151,8 @@ struct dns_slabheader {
 	isc_heap_t *heap;
 
 	dns_gluelist_t *gluelist;
+
+	struct rcu_head rcu_head;
 };
 
 enum {
@@ -311,8 +329,11 @@ dns_slabheader_new(dns_db_t *db, dns_dbnode_t *node);
  * in database 'db'/node 'node'.
  */
 
+#define dns_slabheader_destroy(headerp) dns__slabheader_destroy(headerp, false)
+#define dns_slabheader_destroy_rcu(headerp) \
+	dns__slabheader_destroy(headerp, true)
 void
-dns_slabheader_destroy(dns_slabheader_t **headerp);
+dns__slabheader_destroy(dns_slabheader_t **headerp, bool rcu);
 /*%<
  * Free all memory associated with '*headerp'.
  */
@@ -322,3 +343,9 @@ dns_slabheader_freeproof(isc_mem_t *mctx, dns_slabheader_proof_t **proof);
 /*%<
  * Free all memory associated with a nonexistence proof.
  */
+
+void
+dns_slabheader_createlist(isc_mem_t *mctx, dns_slabheader_list_t **headp);
+
+void
+dns_slabheader_destroylist(dns_slabheader_list_t **headp);
