@@ -1329,13 +1329,17 @@ find_coveringnsec(qpc_search_t *search, const dns_name_t *name,
 	isc_result_t result;
 	dns_slabheader_t *found = NULL, *foundsig = NULL;
 	dns_slabheader_t *header = NULL;
+	dns_qpread_t nsec;
+
+	dns_qpmulti_query(search->qpdb->nsec, &nsec);
 
 	/*
 	 * Look for the node in the auxilary tree.
 	 */
-	result = dns_qp_lookup(&search->qpr, name, NULL, &iter, NULL,
-			       (void **)&node, NULL);
+	result = dns_qp_lookup(&nsec, name, NULL, &iter, NULL, (void **)&node,
+			       NULL);
 	if (result != DNS_R_PARTIALMATCH) {
+		dns_qpread_destroy(search->qpdb->nsec, &nsec);
 		return ISC_R_NOTFOUND;
 	}
 
@@ -1347,8 +1351,11 @@ find_coveringnsec(qpc_search_t *search, const dns_name_t *name,
 	 */
 	result = dns_qpiter_current(&iter, predecessor, NULL, NULL);
 	if (result != ISC_R_SUCCESS) {
+		dns_qpread_destroy(search->qpdb->nsec, &nsec);
 		return ISC_R_NOTFOUND;
 	}
+
+	dns_qpread_destroy(search->qpdb->nsec, &nsec);
 
 	/*
 	 * Lookup the predecessor in the main tree.
@@ -1360,8 +1367,6 @@ find_coveringnsec(qpc_search_t *search, const dns_name_t *name,
 		return result;
 	}
 	dns_name_copy(&node->name, fname);
-
-	rcu_read_lock();
 
 	cds_list_for_each_entry_rcu(header, &node->headers, nnode) {
 		if (check_stale_header(node, header, search)) {
@@ -1392,7 +1397,6 @@ find_coveringnsec(qpc_search_t *search, const dns_name_t *name,
 	} else {
 		result = ISC_R_NOTFOUND;
 	}
-	rcu_read_unlock();
 	return result;
 }
 
@@ -3053,20 +3057,15 @@ static unsigned int
 nodecount(dns_db_t *db, dns_dbtree_t tree) {
 	qpcache_t *qpdb = (qpcache_t *)db;
 	dns_qp_memusage_t mu;
-	dns_qpsnap_t *qps;
 
 	REQUIRE(VALID_QPDB(qpdb));
 
 	switch (tree) {
 	case dns_dbtree_main:
-		dns_qpmulti_snapshot(qpdb->tree, &qps);
-		mu = dns_qp_memusage((dns_qp_t *)&qps);
-		dns_qpsnap_destroy(qpdb->tree, &qps);
+		mu = dns_qpmulti_memusage(qpdb->tree);
 		break;
 	case dns_dbtree_nsec:
-		dns_qpmulti_snapshot(qpdb->nsec, &qps);
-		mu = dns_qp_memusage((dns_qp_t *)&qps);
-		dns_qpsnap_destroy(qpdb->nsec, &qps);
+		mu = dns_qpmulti_memusage(qpdb->nsec);
 		break;
 	default:
 		UNREACHABLE();
@@ -3182,6 +3181,8 @@ rdatasetiter_destroy(dns_rdatasetiter_t **iteratorp DNS__DB_FLARG) {
 	dns__db_detachnode(iterator->common.db,
 			   &iterator->common.node DNS__DB_FLARG_PASS);
 	isc_mem_put(iterator->common.db->mctx, iterator, sizeof(*iterator));
+
+	rcu_read_unlock();
 
 	*iteratorp = NULL;
 }

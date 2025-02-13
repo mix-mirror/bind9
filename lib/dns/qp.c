@@ -1061,7 +1061,7 @@ dns_qpmulti_memusage(dns_qpmulti_t *multi) {
 
 	dns_qp_memusage_t memusage = dns_qp_memusage(qp);
 
-	if (qp->transaction_mode == QP_UPDATE) {
+	if (qp->transaction_mode == QP_UPDATE && qp->usage != NULL) {
 		memusage.bytes -= QP_CHUNK_BYTES;
 		memusage.bytes += qp->usage[qp->bump].used *
 				  sizeof(dns_qpnode_t);
