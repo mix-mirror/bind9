@@ -129,10 +129,8 @@ struct dns_slabheader {
 	 * this rdataset.
 	 */
 
-	union {
-		dns_db_t  *db;
-		isc_mem_t *mctx; /* FIXME: Experiment */
-	};
+	dns_db_t     *db;
+	isc_mem_t    *mctx; /* FIXME: Experiment */
 	dns_dbnode_t *node;
 	/*%<
 	 * The database and database node objects containing

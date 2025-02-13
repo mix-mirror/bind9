@@ -17,6 +17,8 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
+#include <urcu/system.h>
+
 #include <isc/ascii.h>
 #include <isc/mem.h>
 #include <isc/region.h>
@@ -875,7 +877,6 @@ dns__slabheader_destroy(dns_slabheader_t **headerp, bool rcu) {
 	dns_db_deletedata(header->db, header->node, header);
 
 	header->mctx = NULL;
-
 	isc_mem_attach(mctx, &header->mctx);
 
 	if (rcu) {
@@ -1143,9 +1144,8 @@ static void
 rdataset_settrust(dns_rdataset_t *rdataset, dns_trust_t trust) {
 	dns_slabheader_t *header = dns_slabheader_fromrdataset(rdataset);
 
-	dns_db_locknode(header->db, header->node, isc_rwlocktype_write);
-	header->trust = rdataset->trust = trust;
-	dns_db_unlocknode(header->db, header->node, isc_rwlocktype_write);
+	rdataset->trust = trust;
+	CMM_STORE_SHARED(header->trust, rdataset->trust);
 }
 
 static void
@@ -1159,9 +1159,7 @@ static void
 rdataset_clearprefetch(dns_rdataset_t *rdataset) {
 	dns_slabheader_t *header = dns_slabheader_fromrdataset(rdataset);
 
-	dns_db_locknode(header->db, header->node, isc_rwlocktype_write);
 	DNS_SLABHEADER_CLRATTR(header, DNS_SLABHEADERATTR_PREFETCH);
-	dns_db_unlocknode(header->db, header->node, isc_rwlocktype_write);
 }
 
 static void

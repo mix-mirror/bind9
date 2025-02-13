@@ -105,9 +105,9 @@
 #define STALE_TTL(header, qpdb) \
 	(NXDOMAIN(header) ? 0 : qpdb->common.serve_stale_ttl)
 
-#define ACTIVE(header, now)            \
-	(((header)->expire > (now)) || \
-	 ((header)->expire == (now) && ZEROTTL(header)))
+#define ACTIVE(header, now)                             \
+	((CMM_LOAD_SHARED((header)->expire) > (now)) || \
+	 (CMM_LOAD_SHARED((header)->expire) == (now) && ZEROTTL(header)))
 
 #define EXPIREDOK(iterator) \
 	(((iterator)->common.options & DNS_DB_EXPIREDOK) != 0)
@@ -605,7 +605,7 @@ clean_cache_node(qpcache_t *qpdb, qpcnode_t *node) {
 		    (STALE(header) && !KEEPSTALE(qpdb)))
 		{
 			cds_list_del_rcu(&header->nnode);
-			dns_slabheader_destroy(&header);
+			dns_slabheader_destroy_rcu(&header);
 		} else {
 			empty = false;
 		}
@@ -840,9 +840,9 @@ mark(dns_slabheader_t *header, uint_least16_t flag) {
 
 static void
 setttl(dns_slabheader_t *header, isc_stdtime_t newts) {
-	isc_stdtime_t oldts = header->expire;
+	isc_stdtime_t oldts = CMM_LOAD_SHARED(header->expire);
 
-	header->expire = newts;
+	CMM_STORE_SHARED(header->expire, newts);
 
 	if (header->db == NULL || !dns_db_iscache(header->db)) {
 		return;
@@ -1094,12 +1094,14 @@ setup_delegation(qpc_search_t *search, dns_dbnode_t **nodep,
 }
 
 static bool
-check_stale_header(dns_slabheader_t *header, qpc_search_t *search) {
+check_stale_header(qpcnode_t *qpcnode, dns_slabheader_t *header,
+		   qpc_search_t *search) {
 	if (ACTIVE(header, search->now)) {
 		return false;
 	}
 
-	isc_stdtime_t stale = header->expire + STALE_TTL(header, search->qpdb);
+	isc_stdtime_t stale = CMM_LOAD_SHARED(header->expire) +
+			      STALE_TTL(header, search->qpdb);
 	/*
 	 * If this data is in the stale window keep it and if
 	 * DNS_DBFIND_STALEOK is not set we tell the caller to
@@ -1149,12 +1151,12 @@ check_stale_header(dns_slabheader_t *header, qpc_search_t *search) {
 	 * This rdataset is stale.  We mark it as ancient,
 	 * and the node as dirty, so it will get cleaned up later.
 	 */
-	if (header->expire < search->now - QPDB_VIRTUAL) {
+	if (CMM_LOAD_SHARED(header->expire) < search->now - QPDB_VIRTUAL) {
+		isc_spinlock_lock(&qpcnode->spinlock);
 		mark_ancient(header);
-
-		/* FIXME: This needs node level locking */
-		/* cds_list_del_rcu(&header->nnode); */
-		/* dns_slabheader_destroy(&header); */
+		cds_list_del_rcu(&header->nnode);
+		dns_slabheader_destroy_rcu(&header);
+		isc_spinlock_unlock(&qpcnode->spinlock);
 	}
 	return true;
 }
@@ -1211,13 +1213,11 @@ check_zonecut(qpcnode_t *node, void *arg DNS__DB_FLARG) {
 
 	REQUIRE(search->zonecut == NULL);
 
-	rcu_read_lock();
-
 	/*
 	 * Look for a DNAME or RRSIG DNAME rdataset.
 	 */
 	cds_list_for_each_entry_rcu(header, &node->headers, nnode) {
-		if (check_stale_header(header, search)) {
+		if (check_stale_header(node, header, search)) {
 			continue;
 		}
 
@@ -1246,8 +1246,6 @@ check_zonecut(qpcnode_t *node, void *arg DNS__DB_FLARG) {
 		result = DNS_R_CONTINUE;
 	}
 
-	rcu_read_unlock();
-
 	return result;
 }
 
@@ -1270,7 +1268,7 @@ find_deepest_zonecut(qpc_search_t *search, qpcnode_t *node,
 
 		rcu_read_lock();
 		cds_list_for_each_entry_rcu(header, &node->headers, nnode) {
-			if (check_stale_header(header, search)) {
+			if (check_stale_header(node, header, search)) {
 				continue;
 			}
 
@@ -1366,7 +1364,7 @@ find_coveringnsec(qpc_search_t *search, const dns_name_t *name,
 	rcu_read_lock();
 
 	cds_list_for_each_entry_rcu(header, &node->headers, nnode) {
-		if (check_stale_header(header, search)) {
+		if (check_stale_header(node, header, search)) {
 			continue;
 		}
 
@@ -1398,13 +1396,13 @@ find_coveringnsec(qpc_search_t *search, const dns_name_t *name,
 	return result;
 }
 
-#define MISSING_ANSWER(found, options)                     \
-	((found) == NULL ||                                \
-	 (DNS_TRUST_ADDITIONAL((found)->trust) &&          \
-	  (((options) & DNS_DBFIND_ADDITIONALOK) == 0)) || \
-	 ((found)->trust == dns_trust_glue &&              \
-	  (((options) & DNS_DBFIND_GLUEOK) == 0)) ||       \
-	 (DNS_TRUST_PENDING((found)->trust) &&             \
+#define MISSING_ANSWER(found, options)                             \
+	((found) == NULL ||                                        \
+	 (DNS_TRUST_ADDITIONAL(CMM_LOAD_SHARED((found)->trust)) && \
+	  (((options) & DNS_DBFIND_ADDITIONALOK) == 0)) ||         \
+	 (CMM_LOAD_SHARED((found)->trust) == dns_trust_glue &&     \
+	  (((options) & DNS_DBFIND_GLUEOK) == 0)) ||               \
+	 (DNS_TRUST_PENDING(CMM_LOAD_SHARED((found)->trust)) &&    \
 	  (((options) & DNS_DBFIND_PENDINGOK) == 0)))
 
 static isc_result_t
@@ -1540,7 +1538,7 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	 */
 
 	cds_list_for_each_entry_rcu(header, &node->headers, nnode) {
-		if (check_stale_header(header, &search)) {
+		if (check_stale_header(node, header, &search)) {
 			continue;
 		}
 
@@ -1842,7 +1840,7 @@ qpcache_findzonecut(dns_db_t *db, const dns_name_t *name, unsigned int options,
 	cds_list_for_each_entry_rcu(header, &node->headers, nnode) {
 		bool ns = (header->type == dns_rdatatype_ns ||
 			   header->type == DNS_SIGTYPE(dns_rdatatype_ns));
-		if (check_stale_header(header, &search)) {
+		if (check_stale_header(node, header, &search)) {
 			if (ns) {
 				/*
 				 * We found a cached NS, but was either
@@ -1929,7 +1927,7 @@ qpcache_findrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	rcu_read_lock();
 
 	cds_list_for_each_entry_rcu(header, &qpnode->headers, nnode) {
-		if (check_stale_header(header, &search)) {
+		if (check_stale_header(qpnode, header, &search)) {
 			continue;
 		}
 
@@ -2160,7 +2158,7 @@ ttl_sooner(void *v1, void *v2) {
 	dns_slabheader_t *h1 = v1;
 	dns_slabheader_t *h2 = v2;
 
-	return h1->expire < h2->expire;
+	return CMM_LOAD_SHARED(h1->expire) < CMM_LOAD_SHARED(h2->expire);
 }
 
 /*%
@@ -2446,7 +2444,7 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode,
 				{
 					mark_ancient(header);
 					cds_list_del_rcu(&header->nnode);
-					dns_slabheader_destroy(&header);
+					dns_slabheader_destroy_rcu(&header);
 				}
 				isc_spinlock_unlock(&qpnode->spinlock);
 
@@ -2509,9 +2507,11 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode,
 				 * The new rdataset is better.  Expire the
 				 * ncache entry.
 				 */
+				isc_spinlock_lock(&qpnode->spinlock);
 				mark_ancient(found);
 				cds_list_del_rcu(&found->nnode);
-				dns_slabheader_destroy(&found);
+				dns_slabheader_destroy_rcu(&found);
+				isc_spinlock_unlock(&qpnode->spinlock);
 				goto find_header;
 			}
 			negtype = DNS_TYPEPAIR_VALUE(0, rdtype);
@@ -2581,7 +2581,9 @@ find_header:
 			 * Honour the new ttl if it is less than the
 			 * older one.
 			 */
-			if (found->expire > newheader->expire) {
+			if (CMM_LOAD_SHARED(found->expire) >
+			    CMM_LOAD_SHARED(newheader->expire))
+			{
 				setttl(found, newheader->expire);
 			}
 			if (found->last_used != now) {
@@ -2622,8 +2624,12 @@ find_header:
 		    EXISTS(found) && EXISTS(newheader) &&
 		    found->trust <= newheader->trust)
 		{
-			if (newheader->expire > found->expire) {
-				newheader->expire = found->expire;
+			if (CMM_LOAD_SHARED(newheader->expire) >
+			    CMM_LOAD_SHARED(found->expire))
+			{
+				CMM_STORE_SHARED(
+					newheader->expire,
+					CMM_LOAD_SHARED(found->expire));
 			}
 		}
 		if (ACTIVE(found, now) && (options & DNS_DBADD_PREFETCH) == 0 &&
@@ -2641,7 +2647,9 @@ find_header:
 			 * Honour the new ttl if it is less than the
 			 * older one.
 			 */
-			if (found->expire > newheader->expire) {
+			if (CMM_LOAD_SHARED(found->expire) >
+			    CMM_LOAD_SHARED(newheader->expire))
+			{
 				setttl(found, newheader->expire);
 			}
 			if (found->last_used != now) {
@@ -2695,16 +2703,17 @@ find_header:
 
 		isc_spinlock_lock(&qpnode->spinlock);
 		cds_list_add_rcu(&newheader->nnode, &qpnode->headers);
-		isc_spinlock_unlock(&qpnode->spinlock);
 
 		mark_ancient(found);
 		cds_list_del_rcu(&found->nnode);
-		dns_slabheader_destroy(&found);
+		dns_slabheader_destroy_rcu(&found);
+
 		if (foundsig != NULL) {
 			mark_ancient(foundsig);
 			cds_list_del_rcu(&foundsig->nnode);
-			dns_slabheader_destroy(&foundsig);
+			dns_slabheader_destroy_rcu(&foundsig);
 		}
+		isc_spinlock_unlock(&qpnode->spinlock);
 	} else if (!EXISTS(newheader)) {
 		/*
 		 * The type already doesn't exist; no point trying
@@ -3178,7 +3187,8 @@ rdatasetiter_destroy(dns_rdatasetiter_t **iteratorp DNS__DB_FLARG) {
 static bool
 iterator_active(qpcache_t *qpdb, qpc_rditer_t *iterator,
 		dns_slabheader_t *header) {
-	dns_ttl_t stale_ttl = header->expire + STALE_TTL(header, qpdb);
+	dns_ttl_t stale_ttl = CMM_LOAD_SHARED(header->expire) +
+			      STALE_TTL(header, qpdb);
 
 	/*
 	 * Is this a "this rdataset doesn't exist" record?
@@ -3637,7 +3647,7 @@ expire_ttl_headers(qpcache_t *qpdb, unsigned int locknum, isc_stdtime_t now,
 			break;
 		}
 
-		dns_ttl_t ttl = header->expire;
+		dns_ttl_t ttl = CMM_LOAD_SHARED(header->expire);
 
 		if (!cache_is_overmem) {
 			/* Only account for stale TTL if cache is not overmem */
