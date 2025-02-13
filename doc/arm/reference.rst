@@ -7680,6 +7680,9 @@ records are also written to the zone's filename.
            It is theoretically possible to spoof these TCP sessions.
 
    ``6to4-self``
+       ``6to4-self`` has been deprecated and ``48-self`` should be used
+       to replace it.
+
        This allows the name matching a 6to4 IPv6 prefix, as specified in :rfc:`3056`, to be updated by any TCP connection from either the 6to4 network or from the corresponding IPv4 address. This is intended to allow NS or DNAME RRsets to be added to the ``ip6.arpa`` reverse tree.
 
        The ``identity`` field must match the 6to4 prefix in ``ip6.arpa``. The ``name`` field should be set to ".". Note that, since identity is based on the client's IP address, it is not necessary for update request messages to be signed.

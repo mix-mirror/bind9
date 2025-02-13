@@ -2624,6 +2624,9 @@ check_update_policy(const cfg_obj_t *policy) {
 		if (tresult != ISC_R_SUCCESS) {
 			cfg_obj_log(identity, ISC_LOG_ERROR,
 				    "has a bad match-type");
+		} else if (mtype == dns_ssumatchtype_6to4self) {
+			cfg_obj_log(matchtype, ISC_LOG_WARNING,
+				    "6to4-self is deprecated, use 64-self");
 		}
 
 		str = cfg_obj_asstring(identity);
