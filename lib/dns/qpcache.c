@@ -3825,11 +3825,12 @@ rdatasetiter_next(dns_rdatasetiter_t *it DNS__DB_FLARG) {
 		if (header != NULL) {
 			break;
 		}
+
 		/*
 		 * Find the start of the header chain for the next type.
 		 */
-		topheader = dns_slabheader_top(header);
-		topheader_next = topheader->next;
+		topheader = topheader->next;
+		header = topheader;
 	}
 
 	NODE_UNLOCK(nlock, &nlocktype);
