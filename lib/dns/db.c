@@ -484,6 +484,7 @@ dns__db_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	 */
 
 	REQUIRE(DNS_DB_VALID(db));
+	REQUIRE(name != NULL && name != foundname);
 	REQUIRE(type != dns_rdatatype_rrsig);
 	REQUIRE(nodep == NULL || *nodep == NULL);
 	REQUIRE(dns_name_hasbuffer(foundname));
@@ -517,6 +518,7 @@ dns__db_findext(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	 */
 
 	REQUIRE(DNS_DB_VALID(db));
+	REQUIRE(name != NULL && name != foundname);
 	REQUIRE(type != dns_rdatatype_rrsig);
 	REQUIRE(nodep == NULL || *nodep == NULL);
 	REQUIRE(dns_name_hasbuffer(foundname));
