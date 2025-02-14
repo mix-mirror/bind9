@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#include "dns/enumtype.h"
 #include "isc/result.h"
 
 #define UNIT_TESTING
@@ -742,6 +743,125 @@ ISC_LOOP_TEST_IMPL(addrdataset_ent) {
 	isc_loopmgr_shutdown(loopmgr);
 }
 
+ISC_LOOP_TEST_IMPL(cname_and_others) {
+	dns_db_t *db = NULL;
+	dns_dbversion_t *version = NULL;
+	isc_result_t result;
+	dns_fixedname_t forigin;
+	dns_name_t *origin = dns_fixedname_initname(&forigin);
+	unsigned int options = 0;
+
+	dns_test_namefromstring("test.", &forigin);
+
+	result = dns_db_create(mctx, ZONEDB_DEFAULT, origin, dns_dbtype_zone,
+			       dns_rdataclass_in, 0, NULL, &db);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	{
+		dns_test_vector_t vectors[] = {
+			{ "a.test.", 3600, dns_rdatatype_a, "192.0.2.1",
+			  ISC_R_SUCCESS },
+			{ "a.test.", 3600, dns_rdatatype_cname, "b.test.",
+			  DNS_R_CNAMEANDOTHER },
+			{ "b.test.", 3600, dns_rdatatype_cname, "a.test.",
+			  ISC_R_SUCCESS },
+			{ "b.test.", 3600, dns_rdatatype_a, "192.0.2.2",
+			  DNS_R_CNAMEANDOTHER },
+			/*
+			 * The KEY, SIG, NSEC and RRSIG can co-exist with the
+			 * CNAME in the same node.
+			 */
+			{ "c.test.", 3600, dns_rdatatype_cname, "a.test.",
+			  ISC_R_SUCCESS },
+			{ "c.test.", 3600, dns_rdatatype_nsec, "a.test. CNAME",
+			  ISC_R_SUCCESS },
+			{ "c.test.", 3600, dns_rdatatype_rrsig,
+			  "NSEC 13 2 600 20250304053636 20250202052633 906 "
+			  "test. "
+			  "+whsJNg8KTjTAxlf9hXwKgRnbcwuyKY2+"
+			  "Rcmf2UPI4tjMUuiacyw3USF "
+			  "3ZkAs0vfZB+m0vk4kUyMbBHp46kGZQ==",
+			  ISC_R_SUCCESS },
+			{ "c.test.", 3600, dns_rdatatype_key,
+			  "0 3 157 mGcDSCx/fF121GOVJlITLg==", ISC_R_SUCCESS },
+			{ "c.test.", 3600, dns_rdatatype_sig,
+			  "NXT 1 3 3600 20000102030405 19961211100908 2143 "
+			  "foo.example.nil. "
+			  "MxFcby9k/yvedMfQgKzhH5er0Mu/vILz45IkskceFGgiWCn/"
+			  "GxHhai6V "
+			  "AuHAoNUz4YoU1tVfSCSqQYn6//"
+			  "11U6Nld80jEeC8aTrO+KKmCaY=",
+			  ISC_R_SUCCESS },
+		};
+
+		dns_db_newversion(db, &version);
+
+		for (size_t i = 0; i < ARRAY_SIZE(vectors); i++) {
+			result = dns_test_addrr(db, version, vectors[i].name,
+						vectors[i].ttl, vectors[i].type,
+						vectors[i].rdatastr, options);
+			assert_int_equal(result, vectors[i].result);
+		}
+
+		dns_db_closeversion(db, &version, true);
+	}
+
+	{
+		/*
+		 * This deserves an explanation.  If there's a CNAME at the node
+		 * added after the A record, it will trump the A and return the
+		 * CNAME.  If the order is different, the CNAME will happily
+		 * coexist with the A record, because the A record will be
+		 * returned first.
+		 */
+		dns_test_vector_t vectors[] = {
+			{ "a.test.", 0, dns_rdatatype_a, "192.168.2.1",
+			  ISC_R_NOTFOUND },
+			{ "a.test.", 3600, dns_rdatatype_cname, "b.test.",
+			  ISC_R_SUCCESS },
+			{ "b.test.", 3600, dns_rdatatype_cname, "a.test.",
+			  ISC_R_SUCCESS },
+			{ "b.test.", 3600, dns_rdatatype_a, "192.0.2.2",
+			  ISC_R_SUCCESS },
+			{ "c.test.", 3600, dns_rdatatype_cname, "a.test.",
+			  ISC_R_SUCCESS },
+			{ "c.test.", 3600, dns_rdatatype_nsec, "a.test. CNAME",
+			  ISC_R_SUCCESS },
+			{ "c.test.", 3600, dns_rdatatype_rrsig,
+			  "NSEC 13 2 600 20250304053636 20250202052633 906 "
+			  "test. "
+			  "+whsJNg8KTjTAxlf9hXwKgRnbcwuyKY2+"
+			  "Rcmf2UPI4tjMUuiacyw3USF "
+			  "3ZkAs0vfZB+m0vk4kUyMbBHp46kGZQ==",
+			  ISC_R_SUCCESS },
+			{ "c.test.", 3600, dns_rdatatype_key,
+			  "0 3 157 mGcDSCx/fF121GOVJlITLg==", ISC_R_SUCCESS },
+			{ "c.test.", 3600, dns_rdatatype_sig,
+			  "NXT 1 3 3600 20000102030405 19961211100908 2143 "
+			  "foo.example.nil. "
+			  "MxFcby9k/yvedMfQgKzhH5er0Mu/vILz45IkskceFGgiWCn/"
+			  "GxHhai6V "
+			  "AuHAoNUz4YoU1tVfSCSqQYn6//"
+			  "11U6Nld80jEeC8aTrO+KKmCaY=",
+			  ISC_R_SUCCESS },
+		};
+
+		dns_db_currentversion(db, &version);
+
+		for (size_t i = 0; i < ARRAY_SIZE(vectors); i++) {
+			result = dns_test_existrr(db, version, vectors[i].name,
+						  vectors[i].type,
+						  vectors[i].rdatastr);
+			assert_int_equal(result, vectors[i].result);
+		}
+
+		dns_db_closeversion(db, &version, false);
+	}
+
+	dns_db_detach(&db);
+	isc_loopmgr_shutdown(loopmgr);
+}
+
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY_CUSTOM(addrdataset, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(addrdataset_merge, setup_managers, teardown_managers)
@@ -749,6 +869,7 @@ ISC_TEST_ENTRY_CUSTOM(addrdataset_exact, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(addrdataset_exactttl, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(addrdataset_rollback, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(addrdataset_ent, setup_managers, teardown_managers)
+ISC_TEST_ENTRY_CUSTOM(cname_and_others, setup_managers, teardown_managers)
 ISC_TEST_LIST_END
 
 ISC_TEST_MAIN
