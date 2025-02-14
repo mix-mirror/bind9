@@ -21,6 +21,7 @@
 
 #include "dns/enumtype.h"
 #include "isc/result.h"
+#include "tests/isc.h"
 
 #define UNIT_TESTING
 #include <cmocka.h>
@@ -862,6 +863,106 @@ ISC_LOOP_TEST_IMPL(cname_and_others) {
 	isc_loopmgr_shutdown(loopmgr);
 }
 
+ISC_LOOP_TEST_IMPL(wildcard) {
+	dns_db_t *db = NULL;
+	dns_dbversion_t *version = NULL;
+	isc_result_t result;
+	dns_fixedname_t forigin;
+	dns_name_t *origin = dns_fixedname_initname(&forigin);
+	unsigned int options = 0;
+
+	/*
+	 * Only following options are applicable for qpzonedb:
+	 * - DNS_DBFIND_FORCENSEC3
+	 * - DNS_DBFIND_NOWILD
+	 * - DNS_DBFIND_GLUEOK
+	 */
+
+	dns_test_namefromstring("test.", &forigin);
+
+	result = dns_db_create(mctx, ZONEDB_DEFAULT, origin, dns_dbtype_zone,
+			       dns_rdataclass_in, 0, NULL, &db);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	{
+		dns_test_vector_t vectors[] = {
+			{ "test.", 3600, dns_rdatatype_soa, ". . 0 0 0 0 0",
+			  ISC_R_SUCCESS },
+			{ "test.", 3600, dns_rdatatype_ns, "ns1.test.",
+			  ISC_R_SUCCESS },
+			{ "test.", 3600, dns_rdatatype_ns, "ns2.test.",
+			  ISC_R_SUCCESS },
+			{ "ns1.test.", 3600, dns_rdatatype_ns, "203.0.113.1",
+			  ISC_R_SUCCESS },
+			{ "ns2.test.", 3600, dns_rdatatype_ns, "203.0.113.2",
+			  ISC_R_SUCCESS },
+		};
+
+		dns_db_newversion(db, &version);
+
+		for (size_t i = 0; i < ARRAY_SIZE(vectors); i++) {
+			result = dns_test_addrr(db, version, vectors[i].name,
+						vectors[i].ttl, vectors[i].type,
+						vectors[i].rdatastr, options);
+			assert_int_equal(result, vectors[i].result);
+		}
+
+		dns_db_closeversion(db, &version, true);
+	}
+
+	{
+		dns_test_vector_t vectors[] = {
+			{ "*.test.", 3600, dns_rdatatype_a, "192.0.2.1",
+			  ISC_R_SUCCESS },
+		};
+
+		dns_db_newversion(db, &version);
+
+		for (size_t i = 0; i < ARRAY_SIZE(vectors); i++) {
+			result = dns_test_addrr(db, version, vectors[i].name,
+						vectors[i].ttl, vectors[i].type,
+						vectors[i].rdatastr, options);
+			assert_int_equal(result, vectors[i].result);
+		}
+
+		dns_db_closeversion(db, &version, true);
+	}
+
+	fprintf(stderr, "SEARCH\n");
+
+	{
+		dns_test_vector_t vectors[] = {
+			{ "www.a.test.", 0, dns_rdatatype_a, "192.168.2.1",
+			  ISC_R_SUCCESS },
+		};
+
+		dns_db_currentversion(db, &version);
+
+		for (size_t i = 0; i < ARRAY_SIZE(vectors); i++) {
+			dns_fixedname_t fixed;
+			dns_name_t *name = dns_fixedname_initname(&fixed);
+			dns_rdataset_t rdataset, sigrdataset;
+			dns_dbnode_t *node = NULL;
+
+			dns_rdataset_init(&rdataset);
+			dns_rdataset_init(&sigrdataset);
+
+			dns_test_namefromstring(vectors[i].name, &fixed);
+
+			result = dns_db_find(db, name, version, vectors[i].type,
+					     options, 0, &node, name, &rdataset,
+					     &sigrdataset);
+
+			assert_int_equal(result, vectors[i].result);
+		}
+
+		dns_db_closeversion(db, &version, false);
+	}
+
+	dns_db_detach(&db);
+	isc_loopmgr_shutdown(loopmgr);
+}
+
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY_CUSTOM(addrdataset, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(addrdataset_merge, setup_managers, teardown_managers)
@@ -870,6 +971,7 @@ ISC_TEST_ENTRY_CUSTOM(addrdataset_exactttl, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(addrdataset_rollback, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(addrdataset_ent, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(cname_and_others, setup_managers, teardown_managers)
+ISC_TEST_ENTRY_CUSTOM(wildcard, setup_managers, teardown_managers)
 ISC_TEST_LIST_END
 
 ISC_TEST_MAIN

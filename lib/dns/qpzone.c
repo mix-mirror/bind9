@@ -2104,17 +2104,32 @@ wildcardmagic(qpzonedb_t *qpdb, dns_qp_t *qp, const dns_name_t *name) {
 
 static void
 addwildcards(qpzonedb_t *qpdb, dns_qp_t *qp, const dns_name_t *name) {
-	dns_name_t foundname;
-	dns_offsets_t offsets;
 	unsigned int n, l, i;
+	char namebuf[DNS_NAME_FORMATSIZE];
+	dns_name_format(name, namebuf, sizeof(namebuf));
 
-	dns_name_init(&foundname, offsets);
 	n = dns_name_countlabels(name);
 	l = dns_name_countlabels(&qpdb->common.origin);
 	i = l + 1;
+
+	fprintf(stderr, "%s: %s, n = %u, l = %u, i = %u!\n", __func__, namebuf,
+		n, l, i);
+
 	while (i < n) {
+		dns_name_t foundname;
+		dns_offsets_t offsets;
+		char foundnamebuf[DNS_NAME_FORMATSIZE];
+
+		dns_name_init(&foundname, offsets);
 		dns_name_getlabelsequence(name, n - i, i, &foundname);
+
+		dns_name_format(&foundname, foundnamebuf, sizeof(foundnamebuf));
+		fprintf(stderr, "%s: %s?\n", __func__, foundnamebuf);
+
 		if (dns_name_iswildcard(&foundname)) {
+			fprintf(stderr, "%s: %s -> %s\n", __func__, namebuf,
+				foundnamebuf);
+
 			wildcardmagic(qpdb, qp, &foundname);
 		}
 
@@ -2543,6 +2558,7 @@ findnodeintree(qpzonedb_t *qpdb, const dns_name_t *name, bool create,
 			if (nsec3) {
 				node->nsec = DNS_DB_NSEC_NSEC3;
 			} else {
+				fprintf(stderr, "TU!\n");
 				addwildcards(qpdb, qp, name);
 				if (dns_name_iswildcard(name)) {
 					wildcardmagic(qpdb, qp, name);
