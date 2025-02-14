@@ -928,10 +928,14 @@ ISC_LOOP_TEST_IMPL(wildcard) {
 		dns_db_closeversion(db, &version, true);
 	}
 
-	fprintf(stderr, "SEARCH\n");
-
 	{
 		dns_test_vector_t vectors[] = {
+			{ "test.", 0, dns_rdatatype_a, "192.168.2.1",
+			  DNS_R_NXRRSET },
+			{ "*.test.", 0, dns_rdatatype_a, "192.168.2.1",
+			  ISC_R_SUCCESS },
+			{ "a.test.", 0, dns_rdatatype_a, "192.168.2.1",
+			  ISC_R_SUCCESS },
 			{ "www.a.test.", 0, dns_rdatatype_a, "192.168.2.1",
 			  ISC_R_SUCCESS },
 		};
@@ -939,19 +943,29 @@ ISC_LOOP_TEST_IMPL(wildcard) {
 		dns_db_currentversion(db, &version);
 
 		for (size_t i = 0; i < ARRAY_SIZE(vectors); i++) {
-			dns_fixedname_t fixed;
-			dns_name_t *name = dns_fixedname_initname(&fixed);
+			dns_fixedname_t fname, ffound;
+			dns_name_t *name = dns_fixedname_initname(&fname);
+			dns_name_t *found = dns_fixedname_initname(&ffound);
 			dns_rdataset_t rdataset, sigrdataset;
 			dns_dbnode_t *node = NULL;
 
 			dns_rdataset_init(&rdataset);
 			dns_rdataset_init(&sigrdataset);
 
-			dns_test_namefromstring(vectors[i].name, &fixed);
+			dns_test_namefromstring(vectors[i].name, &fname);
 
 			result = dns_db_find(db, name, version, vectors[i].type,
-					     options, 0, &node, name, &rdataset,
-					     &sigrdataset);
+					     options, 0, &node, found,
+					     &rdataset, &sigrdataset);
+			if (node != NULL) {
+				dns_db_detachnode(db, &node);
+			}
+			if (dns_rdataset_isassociated(&rdataset)) {
+				dns_rdataset_disassociate(&rdataset);
+			}
+			if (dns_rdataset_isassociated(&sigrdataset)) {
+				dns_rdataset_disassociate(&sigrdataset);
+			}
 
 			assert_int_equal(result, vectors[i].result);
 		}
