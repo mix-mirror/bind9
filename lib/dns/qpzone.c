@@ -3953,10 +3953,8 @@ detachnode(dns_db_t *db, dns_dbnode_t **nodep DNS__DB_FLARG) {
 
 static unsigned int
 nodecount(dns_db_t *db, dns_dbtree_t tree) {
-	qpzonedb_t *qpdb = NULL;
+	qpzonedb_t *qpdb = (qpzonedb_t *)db;
 	dns_qp_memusage_t mu;
-
-	qpdb = (qpzonedb_t *)db;
 
 	REQUIRE(VALID_QPZONE(qpdb));
 
