@@ -35,9 +35,8 @@
 #include <tests/dns.h>
 
 static isc_result_t
-dns_test_addrr(dns_db_t *db, dns_dbversion_t *version, const char *rname,
-	       dns_ttl_t ttl, dns_rdatatype_t rtype, const char *rdatastr,
-	       unsigned int options) {
+addrr(dns_db_t *db, dns_dbversion_t *version, const char *rname, dns_ttl_t ttl,
+      dns_rdatatype_t rtype, const char *rdatastr, unsigned int options) {
 	isc_result_t result;
 	dns_rdata_t rdata;
 	dns_rdatalist_t rdatalist;
@@ -177,9 +176,9 @@ ISC_LOOP_TEST_IMPL(addrdataset) {
 		dns_db_newversion(db, &version);
 
 		for (size_t i = 0; i < ARRAY_SIZE(vectors); i++) {
-			result = dns_test_addrr(db, version, vectors[i].name,
-						vectors[i].ttl, vectors[i].type,
-						vectors[i].rdatastr, options);
+			result = addrr(db, version, vectors[i].name,
+				       vectors[i].ttl, vectors[i].type,
+				       vectors[i].rdatastr, options);
 			assert_int_equal(result, vectors[i].result);
 		}
 
@@ -215,9 +214,9 @@ ISC_LOOP_TEST_IMPL(addrdataset) {
 		dns_db_newversion(db, &version);
 
 		for (size_t i = 0; i < ARRAY_SIZE(vectors); i++) {
-			result = dns_test_addrr(db, version, vectors[i].name,
-						vectors[i].ttl, vectors[i].type,
-						vectors[i].rdatastr, options);
+			result = addrr(db, version, vectors[i].name,
+				       vectors[i].ttl, vectors[i].type,
+				       vectors[i].rdatastr, options);
 			assert_int_equal(result, vectors[i].result);
 		}
 
@@ -277,9 +276,9 @@ ISC_LOOP_TEST_IMPL(addrdataset_exact) {
 		dns_db_newversion(db, &version);
 
 		for (size_t i = 0; i < ARRAY_SIZE(vectors); i++) {
-			result = dns_test_addrr(db, version, vectors[i].name,
-						vectors[i].ttl, vectors[i].type,
-						vectors[i].rdatastr, options);
+			result = addrr(db, version, vectors[i].name,
+				       vectors[i].ttl, vectors[i].type,
+				       vectors[i].rdatastr, options);
 			assert_int_equal(result, vectors[i].result);
 		}
 
@@ -315,9 +314,9 @@ ISC_LOOP_TEST_IMPL(addrdataset_exact) {
 		dns_db_newversion(db, &version);
 
 		for (size_t i = 0; i < ARRAY_SIZE(vectors); i++) {
-			result = dns_test_addrr(db, version, vectors[i].name,
-						vectors[i].ttl, vectors[i].type,
-						vectors[i].rdatastr, options);
+			result = addrr(db, version, vectors[i].name,
+				       vectors[i].ttl, vectors[i].type,
+				       vectors[i].rdatastr, options);
 			assert_int_equal(result, vectors[i].result);
 		}
 
@@ -377,9 +376,9 @@ ISC_LOOP_TEST_IMPL(addrdataset_exactttl) {
 		dns_db_newversion(db, &version);
 
 		for (size_t i = 0; i < ARRAY_SIZE(vectors); i++) {
-			result = dns_test_addrr(db, version, vectors[i].name,
-						vectors[i].ttl, vectors[i].type,
-						vectors[i].rdatastr, options);
+			result = addrr(db, version, vectors[i].name,
+				       vectors[i].ttl, vectors[i].type,
+				       vectors[i].rdatastr, options);
 			assert_int_equal(result, vectors[i].result);
 		}
 
@@ -415,9 +414,9 @@ ISC_LOOP_TEST_IMPL(addrdataset_exactttl) {
 		dns_db_newversion(db, &version);
 
 		for (size_t i = 0; i < ARRAY_SIZE(vectors); i++) {
-			result = dns_test_addrr(db, version, vectors[i].name,
-						vectors[i].ttl, vectors[i].type,
-						vectors[i].rdatastr, options);
+			result = addrr(db, version, vectors[i].name,
+				       vectors[i].ttl, vectors[i].type,
+				       vectors[i].rdatastr, options);
 			assert_int_equal(result, vectors[i].result);
 		}
 
@@ -503,10 +502,9 @@ ISC_LOOP_TEST_IMPL(addrdataset_merge) {
 		dns_db_newversion(db, &version);
 
 		for (size_t i = 0; i < ARRAY_SIZE(vectors); i++) {
-			result = dns_test_addrr(db, version, vectors[i].name,
-						vectors[i].ttl, vectors[i].type,
-						vectors[i].rdatastr,
-						DNS_DBADD_MERGE);
+			result = addrr(db, version, vectors[i].name,
+				       vectors[i].ttl, vectors[i].type,
+				       vectors[i].rdatastr, DNS_DBADD_MERGE);
 			assert_int_equal(result, vectors[i].result);
 		}
 
@@ -578,9 +576,9 @@ ISC_LOOP_TEST_IMPL(addrdataset_rollback) {
 		dns_db_newversion(db, &version);
 
 		for (size_t i = 0; i < ARRAY_SIZE(vectors); i++) {
-			result = dns_test_addrr(db, version, vectors[i].name,
-						vectors[i].ttl, vectors[i].type,
-						vectors[i].rdatastr, options);
+			result = addrr(db, version, vectors[i].name,
+				       vectors[i].ttl, vectors[i].type,
+				       vectors[i].rdatastr, options);
 			assert_int_equal(result, vectors[i].result);
 		}
 
@@ -616,9 +614,9 @@ ISC_LOOP_TEST_IMPL(addrdataset_rollback) {
 		dns_db_newversion(db, &version);
 
 		for (size_t i = 0; i < ARRAY_SIZE(vectors); i++) {
-			result = dns_test_addrr(db, version, vectors[i].name,
-						vectors[i].ttl, vectors[i].type,
-						vectors[i].rdatastr, options);
+			result = addrr(db, version, vectors[i].name,
+				       vectors[i].ttl, vectors[i].type,
+				       vectors[i].rdatastr, options);
 			assert_int_equal(result, vectors[i].result);
 		}
 
@@ -674,9 +672,9 @@ ISC_LOOP_TEST_IMPL(addrdataset_ent) {
 		dns_db_newversion(db, &version);
 
 		for (size_t i = 0; i < ARRAY_SIZE(vectors); i++) {
-			result = dns_test_addrr(db, version, vectors[i].name,
-						vectors[i].ttl, vectors[i].type,
-						vectors[i].rdatastr, options);
+			result = addrr(db, version, vectors[i].name,
+				       vectors[i].ttl, vectors[i].type,
+				       vectors[i].rdatastr, options);
 			assert_int_equal(result, vectors[i].result);
 		}
 
@@ -711,9 +709,9 @@ ISC_LOOP_TEST_IMPL(addrdataset_ent) {
 		dns_db_newversion(db, &version);
 
 		for (size_t i = 0; i < ARRAY_SIZE(vectors); i++) {
-			result = dns_test_addrr(db, version, vectors[i].name,
-						vectors[i].ttl, vectors[i].type,
-						vectors[i].rdatastr, options);
+			result = addrr(db, version, vectors[i].name,
+				       vectors[i].ttl, vectors[i].type,
+				       vectors[i].rdatastr, options);
 			assert_int_equal(result, vectors[i].result);
 		}
 
@@ -798,9 +796,9 @@ ISC_LOOP_TEST_IMPL(cname_and_others) {
 		dns_db_newversion(db, &version);
 
 		for (size_t i = 0; i < ARRAY_SIZE(vectors); i++) {
-			result = dns_test_addrr(db, version, vectors[i].name,
-						vectors[i].ttl, vectors[i].type,
-						vectors[i].rdatastr, options);
+			result = addrr(db, version, vectors[i].name,
+				       vectors[i].ttl, vectors[i].type,
+				       vectors[i].rdatastr, options);
 			assert_int_equal(result, vectors[i].result);
 		}
 
@@ -863,6 +861,31 @@ ISC_LOOP_TEST_IMPL(cname_and_others) {
 	isc_loopmgr_shutdown(loopmgr);
 }
 
+static void
+check_rdata_eq(dns_rdataset_t *rdataset, const char *str) {
+	isc_result_t result;
+	isc_buffer_t b;
+	dns_rdata_t rdata = DNS_RDATA_INIT;
+	char buf[4096];
+
+	result = dns_rdataset_first(rdataset);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	dns_rdataset_current(rdataset, &rdata);
+	isc_buffer_init(&b, buf, sizeof(buf));
+	result = dns_rdata_totext(&rdata, NULL, &b);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	isc_buffer_putuint8(&b, 0);
+
+#if 0
+	fprintf(stderr, "found %s expected %s\n",
+		(char*)isc_buffer_base(&b), str);
+#endif
+
+	assert_string_equal((char *)isc_buffer_base(&b), str);
+}
+
 ISC_LOOP_TEST_IMPL(wildcard) {
 	dns_db_t *db = NULL;
 	dns_dbversion_t *version = NULL;
@@ -901,9 +924,9 @@ ISC_LOOP_TEST_IMPL(wildcard) {
 		dns_db_newversion(db, &version);
 
 		for (size_t i = 0; i < ARRAY_SIZE(vectors); i++) {
-			result = dns_test_addrr(db, version, vectors[i].name,
-						vectors[i].ttl, vectors[i].type,
-						vectors[i].rdatastr, options);
+			result = addrr(db, version, vectors[i].name,
+				       vectors[i].ttl, vectors[i].type,
+				       vectors[i].rdatastr, options);
 			assert_int_equal(result, vectors[i].result);
 		}
 
@@ -914,14 +937,20 @@ ISC_LOOP_TEST_IMPL(wildcard) {
 		dns_test_vector_t vectors[] = {
 			{ "*.test.", 3600, dns_rdatatype_a, "192.0.2.1",
 			  ISC_R_SUCCESS },
+			{ "b.*.test.", 3600, dns_rdatatype_a, "192.0.2.2",
+			  ISC_R_SUCCESS },
+			{ "*.c.test.", 3600, dns_rdatatype_a, "192.0.2.3",
+			  ISC_R_SUCCESS },
+			{ "e.*.d.c.test.", 3600, dns_rdatatype_a, "192.0.2.4",
+			  ISC_R_SUCCESS },
 		};
 
 		dns_db_newversion(db, &version);
 
 		for (size_t i = 0; i < ARRAY_SIZE(vectors); i++) {
-			result = dns_test_addrr(db, version, vectors[i].name,
-						vectors[i].ttl, vectors[i].type,
-						vectors[i].rdatastr, options);
+			result = addrr(db, version, vectors[i].name,
+				       vectors[i].ttl, vectors[i].type,
+				       vectors[i].rdatastr, options);
 			assert_int_equal(result, vectors[i].result);
 		}
 
@@ -930,14 +959,47 @@ ISC_LOOP_TEST_IMPL(wildcard) {
 
 	{
 		dns_test_vector_t vectors[] = {
-			{ "test.", 0, dns_rdatatype_a, "192.168.2.1",
+			{ "test.", 0, dns_rdatatype_a, NULL, DNS_R_NXRRSET },
+			{ "*.test.", 0, dns_rdatatype_a, "192.0.2.1",
+			  ISC_R_SUCCESS },
+			{ "*.test.", 0, dns_rdatatype_aaaa, NULL,
 			  DNS_R_NXRRSET },
-			{ "*.test.", 0, dns_rdatatype_a, "192.168.2.1",
+			{ "b.*.test.", 0, dns_rdatatype_a, "192.0.2.2",
 			  ISC_R_SUCCESS },
-			{ "a.test.", 0, dns_rdatatype_a, "192.168.2.1",
+			{ "d.b.*.test.", 0, dns_rdatatype_a, NULL,
+			  DNS_R_NXDOMAIN },
+			{ "c.*.test.", 0, dns_rdatatype_a, NULL,
+			  DNS_R_NXDOMAIN },
+			{ "a.test.", 0, dns_rdatatype_a, "192.0.2.1",
 			  ISC_R_SUCCESS },
-			{ "www.a.test.", 0, dns_rdatatype_a, "192.168.2.1",
+			{ "b.test.", 0, dns_rdatatype_a, "192.0.2.1",
 			  ISC_R_SUCCESS },
+			{ "b.test.", 0, dns_rdatatype_aaaa, NULL,
+			  DNS_R_NXRRSET },
+			{ "c.test.", 0, dns_rdatatype_a, NULL,
+			  DNS_R_EMPTYNAME },
+			{ "a.c.test.", 0, dns_rdatatype_a, "192.0.2.3",
+			  ISC_R_SUCCESS },
+			{ "b.c.test.", 0, dns_rdatatype_a, "192.0.2.3",
+			  ISC_R_SUCCESS },
+			{ "c.c.test.", 0, dns_rdatatype_a, "192.0.2.3",
+			  ISC_R_SUCCESS },
+			{ "d.c.test.", 0, dns_rdatatype_a, NULL,
+			  DNS_R_EMPTYNAME },
+			{ "e.c.test.", 0, dns_rdatatype_a, "192.0.2.3",
+			  ISC_R_SUCCESS },
+			{ "b.foo.test.", 0, dns_rdatatype_a, "192.0.2.1",
+			  ISC_R_SUCCESS },
+			{ "www.a.test.", 0, dns_rdatatype_a, "192.0.2.1",
+			  ISC_R_SUCCESS },
+			{ "d.foo.test.", 0, dns_rdatatype_a, "192.0.2.1",
+			  ISC_R_SUCCESS },
+			{ "e.d.c.test.", 0, dns_rdatatype_a, NULL,
+			  DNS_R_NXDOMAIN },
+			{ "*.d.c.test.", 0, dns_rdatatype_a, NULL,
+			  DNS_R_EMPTYNAME },
+			{ "f.*.d.c.test.", 0, dns_rdatatype_a, NULL,
+			  DNS_R_NXDOMAIN },
 		};
 
 		dns_db_currentversion(db, &version);
@@ -957,10 +1019,16 @@ ISC_LOOP_TEST_IMPL(wildcard) {
 			result = dns_db_find(db, name, version, vectors[i].type,
 					     options, 0, &node, found,
 					     &rdataset, &sigrdataset);
+#if 0
+			fprintf(stderr, "%s: %s (expected %s)\n",
+				vectors[i].name, isc_result_totext(result),
+				isc_result_totext(vectors[i].result));
+#endif
 			if (node != NULL) {
 				dns_db_detachnode(db, &node);
 			}
 			if (dns_rdataset_isassociated(&rdataset)) {
+				check_rdata_eq(&rdataset, vectors[i].rdatastr);
 				dns_rdataset_disassociate(&rdataset);
 			}
 			if (dns_rdataset_isassociated(&sigrdataset)) {

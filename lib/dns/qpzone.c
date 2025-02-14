@@ -3755,6 +3755,7 @@ found:
 				sigrdataset, false,
 				search.version->secure DNS__DB_FLARG_PASS);
 			if (result == ISC_R_SUCCESS) {
+INSIST(0);
 				result = DNS_R_EMPTYWILD;
 			}
 			goto tree_exit;
