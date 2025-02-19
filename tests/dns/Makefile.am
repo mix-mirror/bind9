@@ -24,6 +24,7 @@ check_PROGRAMS =		\
 	dbdiff_test		\
 	dbiterator_test		\
 	dbversion_test		\
+	dbzone_test		\
 	diff_test		\
 	dispatch_test		\
 	dns64_test		\
