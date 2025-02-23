@@ -639,7 +639,7 @@ nibbles(char *numbuf, size_t length, unsigned int width, char mode,
 }
 
 static isc_result_t
-genname(char *name, int it, char *buffer, size_t length) {
+genname(char *name, int it, bool *generated, char *buffer, size_t length) {
 	char fmt[sizeof("%04000000000d")];
 	char numbuf[128];
 	char *cp;
@@ -652,6 +652,8 @@ genname(char *name, int it, char *buffer, size_t length) {
 	unsigned int n;
 	unsigned int width;
 	bool nibblemode;
+
+	REQUIRE(generated != NULL);
 
 	r.base = buffer;
 	r.length = (unsigned int)length;
@@ -731,6 +733,7 @@ genname(char *name, int it, char *buffer, size_t length) {
 				r.base[0] = *cp++;
 				isc_textregion_consume(&r, 1);
 			}
+			*generated = true;
 		} else if (*name == '\\') {
 			if (r.length == 0) {
 				return ISC_R_NOSPACE;
@@ -832,11 +835,12 @@ generate(dns_loadctx_t *lctx, char *range, char *lhs, char *gtype, char *rhs,
 	}
 
 	for (i = start; i <= (unsigned int)stop; i += step) {
-		result = genname(lhs, i, lhsbuf, DNS_MASTER_LHS);
+		bool generated = false;
+		result = genname(lhs, i, &generated, lhsbuf, DNS_MASTER_LHS);
 		if (result != ISC_R_SUCCESS) {
 			goto error_cleanup;
 		}
-		result = genname(rhs, i, rhsbuf, DNS_MASTER_RHS);
+		result = genname(rhs, i, &generated, rhsbuf, DNS_MASTER_RHS);
 		if (result != ISC_R_SUCCESS) {
 			goto error_cleanup;
 		}
@@ -895,7 +899,12 @@ generate(dns_loadctx_t *lctx, char *range, char *lhs, char *gtype, char *rhs,
 			goto error_cleanup;
 		}
 		dns_rdata_reset(&rdata);
-		if (count != 0 && --count == 0) {
+		/*
+		 * The fuzzer can generate large counts and/or
+		 * LHS and RHS that don't vary.  Exit the loop
+		 * early under these circumstances.
+		 */
+		if (!generated || (count != 0 && --count == 0)) {
 			break;
 		}
 	}
