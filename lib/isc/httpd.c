@@ -1116,3 +1116,20 @@ const isc_time_t *
 isc_httpd_if_modified_since(const isc_httpd_t *httpd) {
 	return (const isc_time_t *)&httpd->if_modified_since;
 }
+
+isc_result_t
+isc_httpd_geturlfield(const isc_httpd_t *httpd, isc_url_field_t field,
+		      char const **base, uint16_t *len) {
+	REQUIRE(httpd != NULL);
+	REQUIRE(base != NULL);
+	REQUIRE(len != NULL);
+
+	if (httpd->up.field_set & (1 << field))  {
+		*base = httpd->path + httpd->up.field_data[field].off;
+		*len = httpd->up.field_data[field].len;
+
+		return ISC_R_SUCCESS;
+	}
+
+	return ISC_R_NOTFOUND;
+}
