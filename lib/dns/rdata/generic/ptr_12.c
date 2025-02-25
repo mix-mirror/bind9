@@ -41,8 +41,21 @@ fromtext_ptr(ARGS_FROMTEXT) {
 	    (options & DNS_RDATA_CHECKNAMES) != 0 &&
 	    (options & DNS_RDATA_CHECKREVERSE) != 0)
 	{
-		bool ok;
-		ok = dns_name_ishostname(&name, false);
+		bool ok = false;
+		unsigned int labels = dns_name_countlabels(&name);
+		if (labels > 2U) {
+			dns_name_t prefix, suffix;
+			dns_name_init(&prefix, NULL);
+			dns_name_init(&suffix, NULL);
+			dns_name_split(&name, labels - 2, &prefix, &suffix);
+			if (dns_name_equal(&gc_msdcs, &prefix) &&
+			    dns_name_ishostname(&suffix, false)) {
+				ok = true;
+			}
+		}
+		if (!ok) {
+			ok = dns_name_ishostname(&name, false);
+		}
 		if (!ok && (options & DNS_RDATA_CHECKNAMESFAIL) != 0) {
 			RETTOK(DNS_R_BADNAME);
 		}
@@ -259,9 +272,24 @@ checknames_ptr(ARGS_CHECKNAMES) {
 	    dns_name_issubdomain(owner, &ip6_arpa) ||
 	    dns_name_issubdomain(owner, &ip6_int))
 	{
+		unsigned int labels;
+
 		dns_rdata_toregion(rdata, &region);
 		dns_name_init(&name, NULL);
 		dns_name_fromregion(&name, &region);
+
+		labels = dns_name_countlabels(&name);
+		if (labels > 2U) {
+			dns_name_t prefix, suffix;
+			dns_name_init(&prefix, NULL);
+			dns_name_init(&suffix, NULL);
+			dns_name_split(&name, labels - 2, &prefix, &suffix);
+			if (dns_name_equal(&gc_msdcs, &prefix) &&
+			    dns_name_ishostname(&suffix, false)) {
+				return (true);
+			}
+		}
+
 		if (!dns_name_ishostname(&name, false)) {
 			if (bad != NULL) {
 				dns_name_clone(&name, bad);
