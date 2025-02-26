@@ -567,6 +567,14 @@ import_rdataset(dns_adbname_t *adbname, dns_rdataset_t *rdataset,
 		rdataset->ttl = ttlclamp(rdataset->ttl);
 	}
 
+if (rdtype != dns_rdatatype_a && rdtype != dns_rdatatype_aaaa) {
+char rb[DNS_RDATATYPE_FORMATSIZE];
+char nb[DNS_NAME_FORMATSIZE];
+dns_rdatatype_format(rdtype, rb, sizeof(rb));
+dns_name_format(adbname->name, nb, sizeof(nb));
+isc_log_write(DNS_LOGCATEGORY_RESOLVER, DNS_LOGMODULE_RESOLVER, ISC_LOG_NOTICE,
+	      "%s has %s", nb, rb);
+}
 	REQUIRE(rdtype == dns_rdatatype_a || rdtype == dns_rdatatype_aaaa);
 
 	for (result = dns_rdataset_first(rdataset); result == ISC_R_SUCCESS;
