@@ -5263,7 +5263,7 @@ validated(void *arg) {
 	 * is returned, and that the rdatasets are bound.
 	 */
 	if (val->result == ISC_R_SUCCESS && !negative &&
-	    val->rdataset != NULL && CHAINING(val->rdataset))
+	    CHAINING(val->rdataset))
 	{
 		if (val->rdataset->type == dns_rdatatype_cname) {
 			eresult = DNS_R_CNAME;
@@ -5357,18 +5357,14 @@ validated(void *arg) {
 		nextval = ISC_LIST_HEAD(fctx->validators);
 		if (nextval != NULL) {
 			dns_validator_send(nextval);
-			goto cleanup_fetchctx;
 		} else if (sentresponse) {
 			done = true;
-			goto cleanup_fetchctx;
 		} else if (result == DNS_R_BROKENCHAIN) {
 			done = true;
-			goto cleanup_fetchctx;
 		} else {
 			fctx_try(fctx, true);
-			goto cleanup_fetchctx;
 		}
-		UNREACHABLE();
+		goto cleanup_fetchctx;
 	}
 
 	if (negative) {
