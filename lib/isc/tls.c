@@ -885,7 +885,7 @@ isc_tlsctx_enable_peer_verification(isc_tlsctx_t *tlsctx, const bool is_server,
 
 isc_result_t
 isc_tlsctx_load_client_ca_names(isc_tlsctx_t *ctx, const char *ca_bundle_file) {
-	STACK_OF(X509_NAME) * cert_names;
+	STACK_OF(X509_NAME) *cert_names;
 	REQUIRE(ctx != NULL);
 	REQUIRE(ca_bundle_file != NULL);
 
@@ -1528,6 +1528,68 @@ isc_tlsctx_set_random_session_id_context(isc_tlsctx_t *ctx) {
 
 	RUNTIME_CHECK(
 		SSL_CTX_set_session_id_context(ctx, session_id_ctx, len) == 1);
+}
+
+static int
+transparency_cb(const CT_POLICY_EVAL_CTX *ctx, const STACK_OF(SCT) *scts,
+		void *arg) {
+	size_t trusted, needed;
+	int daydiff;
+	X509 *x509;
+	SCT *sct;
+
+	REQUIRE(arg == NULL);
+
+	if (scts == NULL) {
+		goto failure;
+	}
+
+	x509 = CT_POLICY_EVAL_CTX_get0_cert(ctx);
+	INSIST(x509 != NULL);
+
+	if (ASN1_TIME_diff(&daydiff, NULL, X509_get0_notBefore(x509),
+			   X509_get0_notAfter(x509)) != 1)
+	{
+		goto failure;
+	}
+
+	needed = daydiff >= 180 ? 3 : 2;
+
+	trusted = 0;
+	for (int i = 0; i < sk_SCT_num(scts); i++) {
+		sct = sk_SCT_value(scts, i);
+		switch (SCT_get_validation_status(sct)) {
+		case SCT_VALIDATION_STATUS_INVALID:
+			goto failure;
+		case SCT_VALIDATION_STATUS_VALID:
+			trusted++;
+			FALLTHROUGH;
+		default:
+			break;
+		}
+	}
+
+	if (trusted >= needed) {
+		return 1;
+	}
+
+failure:
+	ERR_raise(ERR_LIB_SSL, SSL_R_NO_VALID_SCTS);
+	return 0;
+}
+
+isc_result_t
+isc_tlsctx_require_certificate_transparency(isc_tlsctx_t *ctx) {
+	REQUIRE(ctx != NULL);
+
+	if (SSL_CTX_set_ct_validation_callback(ctx, transparency_cb, NULL) != 1)
+	{
+		return isc_tlserr2result(
+			ISC_LOGCATEGORY_GENERAL, ISC_LOGMODULE_CRYPTO,
+			"SSL_CTX_set_ct_validation_callback", ISC_R_TLSERROR);
+	}
+
+	return ISC_R_SUCCESS;
 }
 
 static isc_result_t

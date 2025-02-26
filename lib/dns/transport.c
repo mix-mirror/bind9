@@ -61,6 +61,7 @@ struct dns_transport {
 		uint32_t protocol_versions;
 		ternary_t prefer_server_ciphers;
 		bool always_verify_remote;
+		bool certificate_transparency;
 	} tls;
 	struct {
 		char *endpoint;
@@ -380,6 +381,25 @@ dns_transport_get_always_verify_remote(dns_transport_t *transport) {
 	return transport->tls.always_verify_remote;
 }
 
+void
+dns_transport_set_certificate_transparency(
+	dns_transport_t *transport, const bool certificate_transparency) {
+	REQUIRE(VALID_TRANSPORT(transport));
+	REQUIRE(transport->type == DNS_TRANSPORT_TLS ||
+		transport->type == DNS_TRANSPORT_HTTP);
+
+	transport->tls.certificate_transparency = certificate_transparency;
+}
+
+bool
+dns_transport_get_certificate_transparency(dns_transport_t *transport) {
+	REQUIRE(VALID_TRANSPORT(transport));
+	REQUIRE(transport->type == DNS_TRANSPORT_TLS ||
+		transport->type == DNS_TRANSPORT_HTTP);
+
+	return transport->tls.certificate_transparency;
+}
+
 isc_result_t
 dns_transport_get_tlsctx(dns_transport_t *transport, const isc_sockaddr_t *peer,
 			 isc_tlsctx_cache_t *tlsctx_cache, isc_mem_t *mctx,
@@ -427,6 +447,8 @@ dns_transport_get_tlsctx(dns_transport_t *transport, const isc_sockaddr_t *peer,
 		const char *key_file = dns_transport_get_keyfile(transport);
 		const bool always_verify_remote =
 			dns_transport_get_always_verify_remote(transport);
+		const bool certificate_transparency =
+			dns_transport_get_certificate_transparency(transport);
 		char peer_addr_str[INET6_ADDRSTRLEN] = { 0 };
 		isc_netaddr_t peer_netaddr = { 0 };
 		bool hostname_ignore_subject;
@@ -528,6 +550,14 @@ dns_transport_get_tlsctx(dns_transport_t *transport, const isc_sockaddr_t *peer,
 		}
 
 		isc_tlsctx_enable_dot_client_alpn(tlsctx);
+
+		if (certificate_transparency) {
+			result = isc_tlsctx_require_certificate_transparency(
+				tlsctx);
+			if (result != ISC_R_SUCCESS) {
+				goto failure;
+			}
+		}
 
 		isc_tlsctx_client_session_cache_create(
 			mctx, tlsctx,

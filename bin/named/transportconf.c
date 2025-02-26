@@ -128,6 +128,9 @@ add_doh_transports(const cfg_obj_t *transportlist, dns_transport_list_t *list) {
 				       dns_transport_set_cafile);
 		parse_transport_option(doh, transport, "remote-hostname",
 				       dns_transport_set_remote_hostname);
+		parse_transport_option(
+			doh, transport, "certificate-transparency",
+			dns_transport_set_certificate_transparency);
 	}
 
 	return ISC_R_SUCCESS;
@@ -180,6 +183,9 @@ add_tls_transports(const cfg_obj_t *transportlist, dns_transport_list_t *list) {
 				       dns_transport_set_cafile);
 		parse_transport_option(tls, transport, "remote-hostname",
 				       dns_transport_set_remote_hostname);
+		parse_transport_option(
+			tls, transport, "certificate-transparency",
+			dns_transport_set_certificate_transparency);
 	}
 
 	return ISC_R_SUCCESS;

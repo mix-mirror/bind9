@@ -608,6 +608,9 @@ isc_tlsctx_set_random_session_id_context(isc_tlsctx_t *ctx);
  *\li   'ctx' - a valid non-NULL pointer;
  */
 
+isc_result_t
+isc_tlsctx_require_certificate_transparency(isc_tlsctx_t *ctx);
+
 #define isc_tlserr2result(category, module, funcname, fallback)            \
 	isc__tlserr2result(category, module, funcname, fallback, __FILE__, \
 			   __LINE__)

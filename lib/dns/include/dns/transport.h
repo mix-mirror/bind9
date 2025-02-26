@@ -66,6 +66,8 @@ dns_transport_get_prefer_server_ciphers(const dns_transport_t *transport,
 					bool		      *preferp);
 bool
 dns_transport_get_always_verify_remote(dns_transport_t *transport);
+bool
+dns_transport_get_certificate_transparency(dns_transport_t *transport);
 /*%<
  * Getter functions: return the type, cert file, key file, CA file,
  * hostname, HTTP endpoint, HTTP mode (GET or POST), ciphers, cipher suites,
@@ -132,6 +134,10 @@ dns_transport_set_prefer_server_ciphers(dns_transport_t *transport,
 void
 dns_transport_set_always_verify_remote(dns_transport_t *transport,
 				       const bool	always_verify_remote);
+
+void
+dns_transport_set_certificate_transparency(dns_transport_t *transport,
+					   const bool certificate_transparency);
 /*%<
  * Setter functions: set the type, cert file, key file, CA file,
  * hostname, HTTP endpoint, HTTP mode (GET or POST), ciphers, cipher suites, TLS

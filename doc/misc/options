@@ -360,6 +360,7 @@ statistics-channels {
 tls <string> {
 	ca-file <quoted_string>;
 	cert-file <quoted_string>;
+	certificate-transparency <boolean>;
 	cipher-suites <string>;
 	ciphers <string>;
 	dhparam-file <quoted_string>;

@@ -3959,6 +3959,7 @@ static cfg_clausedef_t tls_clauses[] = {
 	{ "cipher-suites", &cfg_type_astring, 0 },
 	{ "prefer-server-ciphers", &cfg_type_boolean, 0 },
 	{ "session-tickets", &cfg_type_boolean, 0 },
+	{ "certificate-transparency", &cfg_type_boolean, 0 },
 	{ NULL, NULL, 0 }
 };
 
