@@ -51,12 +51,6 @@ atomic_getuint8(isc_buffer_t *b) {
 }
 
 static isc_result_t
-addoptout(dns_message_t *message, dns_db_t *cache, dns_dbnode_t *node,
-	  dns_rdatatype_t covers, isc_stdtime_t now, dns_ttl_t minttl,
-	  dns_ttl_t maxttl, bool optout, bool secure,
-	  dns_rdataset_t *addedrdataset);
-
-static isc_result_t
 copy_rdataset(dns_rdataset_t *rdataset, isc_buffer_t *buffer) {
 	isc_result_t result;
 	unsigned int count;
@@ -107,25 +101,8 @@ copy_rdataset(dns_rdataset_t *rdataset, isc_buffer_t *buffer) {
 isc_result_t
 dns_ncache_add(dns_message_t *message, dns_db_t *cache, dns_dbnode_t *node,
 	       dns_rdatatype_t covers, isc_stdtime_t now, dns_ttl_t minttl,
-	       dns_ttl_t maxttl, dns_rdataset_t *addedrdataset) {
-	return addoptout(message, cache, node, covers, now, minttl, maxttl,
-			 false, false, addedrdataset);
-}
-
-isc_result_t
-dns_ncache_addoptout(dns_message_t *message, dns_db_t *cache,
-		     dns_dbnode_t *node, dns_rdatatype_t covers,
-		     isc_stdtime_t now, dns_ttl_t minttl, dns_ttl_t maxttl,
-		     bool optout, dns_rdataset_t *addedrdataset) {
-	return addoptout(message, cache, node, covers, now, minttl, maxttl,
-			 optout, true, addedrdataset);
-}
-
-static isc_result_t
-addoptout(dns_message_t *message, dns_db_t *cache, dns_dbnode_t *node,
-	  dns_rdatatype_t covers, isc_stdtime_t now, dns_ttl_t minttl,
-	  dns_ttl_t maxttl, bool optout, bool secure,
-	  dns_rdataset_t *addedrdataset) {
+	       dns_ttl_t maxttl, bool optout, bool secure,
+	       dns_rdataset_t *addedrdataset) {
 	isc_result_t result;
 	isc_buffer_t buffer;
 	isc_region_t r;
