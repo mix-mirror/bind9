@@ -5655,11 +5655,22 @@ answer_response:
 		 * Negative results must be indicated in val->result.
 		 */
 		INSIST(hresp->rdataset != NULL);
-		if (dns_rdataset_isassociated(hresp->rdataset) &&
-		    NEGATIVE(hresp->rdataset))
-		{
-			INSIST(eresult == DNS_R_NCACHENXDOMAIN ||
-			       eresult == DNS_R_NCACHENXRRSET);
+		if (dns_rdataset_isassociated(hresp->rdataset)) {
+			if (NEGATIVE(hresp->rdataset)) {
+				INSIST(eresult == DNS_R_NCACHENXDOMAIN ||
+				       eresult == DNS_R_NCACHENXRRSET);
+			} else if (eresult == ISC_R_SUCCESS) {
+				switch (hresp->rdataset->type) {
+				case dns_rdatatype_cname:
+					eresult = DNS_R_CNAME;
+					break;
+				case dns_rdatatype_dname:
+					eresult = DNS_R_DNAME;
+					break;
+				default:
+					break;
+				}
+			}
 		}
 
 		hresp->result = eresult;
@@ -6309,11 +6320,22 @@ cache_name(fetchctx_t *fctx, dns_name_t *name, dns_message_t *message,
 			 * Negative results must be indicated in
 			 * resp->result.
 			 */
-			if (dns_rdataset_isassociated(resp->rdataset) &&
-			    NEGATIVE(resp->rdataset))
-			{
-				INSIST(eresult == DNS_R_NCACHENXDOMAIN ||
-				       eresult == DNS_R_NCACHENXRRSET);
+			if (dns_rdataset_isassociated(resp->rdataset)) {
+				if (NEGATIVE(resp->rdataset)) {
+					INSIST(eresult == DNS_R_NCACHENXDOMAIN ||
+					       eresult == DNS_R_NCACHENXRRSET);
+				} else if (eresult == ISC_R_SUCCESS) {
+					switch (resp->rdataset->type) {
+					case dns_rdatatype_cname:
+						eresult = DNS_R_CNAME;
+						break;
+					case dns_rdatatype_dname:
+						eresult = DNS_R_DNAME;
+						break;
+					default:
+						break;
+					}
+				}
 			}
 			resp->result = eresult;
 			if (adbp != NULL && *adbp != NULL) {
