@@ -144,15 +144,11 @@ elt_hash(elt_t *elt, bool case_sensitive) {
 	uint32_t hash = HASH_INIT_DJB2;
 	size_t len = elt->size;
 
-	if (case_sensitive) {
-		while (len-- > 0) {
-			hash = hash * 33 + *ptr++;
-		}
-	} else {
-		/* using the autovectorize-friendly tolower() */
-		while (len-- > 0) {
-			hash = hash * 33 + isc__ascii_tolower1(*ptr++);
-		}
+	uint8_t case_mask = case_sensitive ? 0b11011111 : (uint8_t) -1;
+
+	while (len-- > 0) {
+		hash = hash * 33 + (*ptr & case_mask);
+		++ptr;
 	}
 
 	return hash;
