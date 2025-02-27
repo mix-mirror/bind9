@@ -136,14 +136,26 @@ elt_match_nocase(void *node, const void *key) {
 	return elt__match(node, key, false);
 }
 
+#define HASH_INIT_DJB2 5381
+
 static uint32_t
 elt_hash(elt_t *elt, bool case_sensitive) {
-	isc_hash32_t hash;
+	const uint8_t *ptr = elt->key;
+	uint32_t hash = HASH_INIT_DJB2;
+	size_t len = elt->size;
 
-	isc_hash32_init(&hash);
-	isc_hash32_hash(&hash, elt->key, elt->size, case_sensitive);
-	isc_hash32_hash(&hash, &elt->type, sizeof(elt->type), false);
-	return isc_hash32_finalize(&hash);
+	if (case_sensitive) {
+		while (len-- > 0) {
+			hash = hash * 33 + *ptr++;
+		}
+	} else {
+		/* using the autovectorize-friendly tolower() */
+		while (len-- > 0) {
+			hash = hash * 33 + isc__ascii_tolower1(*ptr++);
+		}
+	}
+
+	return hash;
 }
 
 isc_result_t
