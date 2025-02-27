@@ -141,10 +141,10 @@ elt_match_nocase(void *node, const void *key) {
 static uint32_t
 elt_hash(elt_t *elt, bool case_sensitive) {
 	const uint8_t *ptr = elt->key;
-	uint32_t hash = HASH_INIT_DJB2;
+	size_t hash = HASH_INIT_DJB2;
 	size_t len = elt->size;
 
-	uint8_t case_mask = case_sensitive ? 0b11011111 : (uint8_t) -1;
+	uint8_t case_mask = case_sensitive ? (uint8_t) -1 : 0b11011111;
 
 	while (len-- > 0) {
 		hash = hash * 33 + (*ptr & case_mask);
