@@ -33,7 +33,7 @@ typedef struct elt {
 
 /* 7 bits means 128 entries at creation, which matches the common use of
  * symtab */
-#define ISC_SYMTAB_INIT_HASH_BITS 7
+#define ISC_SYMTAB_INIT_HASH_BITS 4
 #define SYMTAB_MAGIC		  ISC_MAGIC('S', 'y', 'm', 'T')
 #define VALID_SYMTAB(st)	  ISC_MAGIC_VALID(st, SYMTAB_MAGIC)
 
