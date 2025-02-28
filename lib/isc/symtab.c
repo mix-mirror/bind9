@@ -138,10 +138,8 @@ elt_match_nocase(void *node, const void *key) {
 
 #define HASH_INIT_DJB2 5381
 
-// 	uint8_t case_mask = case_sensitive ? (uint8_t) -1 : 0b11011111;
-
 /* The constant K from Rust's fxhash */
-#define K 0x9e3779b97f4a7c15ULL
+#define K 0x9e3779b97f4a7c15ull
 
 static inline size_t
 rotate_left(size_t x, unsigned int n) {
@@ -154,14 +152,16 @@ fx_add_to_hash(size_t hash, size_t i) {
 }
 
 static size_t
-fx_hash_bytes(const uint8_t *bytes, size_t len, size_t initial_hash) {
+fx_hash_bytes(size_t initial_hash, const uint8_t *bytes, size_t len, bool case_sensitive) {
 	size_t hash = initial_hash;
+	size_t case_mask = case_sensitive ? -1ull : (0b11011111 * 0x0101010101010101ull);
+
 
 	/* TODO sizeof(size_t) != 8? */
 	while (len >= sizeof(size_t)) {
 		size_t value;
 		memcpy(&value, bytes, sizeof(size_t));
-		hash = fx_add_to_hash(hash, value);
+		hash = fx_add_to_hash(hash, value & case_mask);
 		bytes += sizeof(size_t);
 		len -= sizeof(size_t);
 	}
@@ -169,7 +169,7 @@ fx_hash_bytes(const uint8_t *bytes, size_t len, size_t initial_hash) {
 	if (len >= 4) {
 		uint32_t value;
 		memcpy(&value, bytes, sizeof(uint32_t));
-		hash = fx_add_to_hash(hash, value);
+		hash = fx_add_to_hash(hash, value & case_mask);
 		bytes += 4;
 		len -= 4;
 	}
@@ -177,13 +177,13 @@ fx_hash_bytes(const uint8_t *bytes, size_t len, size_t initial_hash) {
 	if (len >= 2) {
 		uint16_t value;
 		memcpy(&value, bytes, sizeof(uint16_t));
-		hash = fx_add_to_hash(hash, value);
+		hash = fx_add_to_hash(hash, value & case_mask);
 		bytes += 2;
 		len -= 2;
 	}
 
 	if (len >= 1) {
-		hash = fx_add_to_hash(hash, bytes[0]);
+		hash = fx_add_to_hash(hash, bytes[0] & case_mask);
 	}
 
 	return hash;
@@ -191,10 +191,9 @@ fx_hash_bytes(const uint8_t *bytes, size_t len, size_t initial_hash) {
 
 static uint32_t
 elt_hash(elt_t *elt, bool case_sensitive) {
-	(void) case_sensitive;
 	const uint8_t *ptr = elt->key;
 	size_t len = elt->size;
-	return fx_hash_bytes(ptr, len, 0);
+	return fx_hash_bytes(0, ptr, len, case_sensitive);
 }
 
 isc_result_t
