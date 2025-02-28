@@ -122,7 +122,7 @@ elt__match(void *node, const void *key0, bool case_sensitive) {
 	if (case_sensitive) {
 		return memcmp(elt->key, key->key, key->size) == 0;
 	} else {
-		return isc_ascii_lowercmp(elt->key, key->key, key->size) == 0;
+		return isc_ascii_lowerequal(elt->key, key->key, key->size);
 	}
 }
 
