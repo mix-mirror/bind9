@@ -138,20 +138,63 @@ elt_match_nocase(void *node, const void *key) {
 
 #define HASH_INIT_DJB2 5381
 
-static uint32_t
-elt_hash(elt_t *elt, bool case_sensitive) {
-	const uint8_t *ptr = elt->key;
-	size_t hash = HASH_INIT_DJB2;
-	size_t len = elt->size;
+// 	uint8_t case_mask = case_sensitive ? (uint8_t) -1 : 0b11011111;
 
-	uint8_t case_mask = case_sensitive ? (uint8_t) -1 : 0b11011111;
+/* The constant K from Rust's fxhash */
+#define K 0x9e3779b97f4a7c15ULL
 
-	while (len-- > 0) {
-		hash = hash * 33 + (*ptr & case_mask);
-		++ptr;
+static inline size_t
+rotate_left(size_t x, unsigned int n) {
+	return (x << n) | (x >> (sizeof(size_t) * 8 - n));
+}
+
+static inline size_t
+fx_add_to_hash(size_t hash, size_t i) {
+	return rotate_left(hash, 5) ^ i * K;
+}
+
+static size_t
+fx_hash_bytes(const uint8_t *bytes, size_t len, size_t initial_hash) {
+	size_t hash = initial_hash;
+
+	/* TODO sizeof(size_t) != 8? */
+	while (len >= sizeof(size_t)) {
+		size_t value;
+		memcpy(&value, bytes, sizeof(size_t));
+		hash = fx_add_to_hash(hash, value);
+		bytes += sizeof(size_t);
+		len -= sizeof(size_t);
+	}
+
+	if (len >= 4) {
+		uint32_t value;
+		memcpy(&value, bytes, sizeof(uint32_t));
+		hash = fx_add_to_hash(hash, value);
+		bytes += 4;
+		len -= 4;
+	}
+
+	if (len >= 2) {
+		uint16_t value;
+		memcpy(&value, bytes, sizeof(uint16_t));
+		hash = fx_add_to_hash(hash, value);
+		bytes += 2;
+		len -= 2;
+	}
+
+	if (len >= 1) {
+		hash = fx_add_to_hash(hash, bytes[0]);
 	}
 
 	return hash;
+}
+
+static uint32_t
+elt_hash(elt_t *elt, bool case_sensitive) {
+	(void) case_sensitive;
+	const uint8_t *ptr = elt->key;
+	size_t len = elt->size;
+	return fx_hash_bytes(ptr, len, 0);
 }
 
 isc_result_t
