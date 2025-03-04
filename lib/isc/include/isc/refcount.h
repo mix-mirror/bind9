@@ -116,16 +116,20 @@ typedef atomic_uint_fast32_t isc_refcount_t;
 		ISC_INSIST(_refs > 0);                                \
 	} while (0)
 
-#define ISC__REFCOUNT_TRACE_DECL(name, stat)                               \
-	stat name##_t *name##__ref(name##_t *ptr, const char *func,        \
-				   const char *file, unsigned int line);   \
-	stat void      name##__unref(name##_t *ptr, const char *func,      \
-				     const char *file, unsigned int line); \
-	stat void      name##__attach(name##_t *ptr, name##_t **ptrp,      \
-				      const char *func, const char *file,  \
-				      unsigned int line);                  \
-	stat void      name##__detach(name##_t **ptrp, const char *func,   \
-				      const char *file, unsigned int line)
+#define ISC__REFCOUNT_TRACE_DECL(name, stat)                            \
+	stat name##_t *name##__ref(name##_t *ptr, const char *func,     \
+				   const char *file, unsigned int line) \
+		__attribute__((__unused__));                            \
+	stat void name##__unref(name##_t *ptr, const char *func,        \
+				const char *file, unsigned int line)    \
+		__attribute__((__unused__));                            \
+	stat void name##__attach(name##_t *ptr, name##_t **ptrp,        \
+				 const char *func, const char *file,    \
+				 unsigned int line)                     \
+		__attribute__((__unused__));                            \
+	stat void name##__detach(name##_t **ptrp, const char *func,     \
+				 const char *file, unsigned int line)   \
+		__attribute__((__unused__))
 
 #define ISC_REFCOUNT_BLANK
 #define ISC_REFCOUNT_TRACE_DECL(name) \
@@ -191,12 +195,12 @@ typedef atomic_uint_fast32_t isc_refcount_t;
 #define ISC_REFCOUNT_STATIC_TRACE_IMPL(name, destroy) \
 	ISC__REFCOUNT_TRACE_IMPL(name, destroy, static inline)
 
-#define ISC__REFCOUNT_DECL(name, stat)                                      \
-	stat name##_t *name##_ref(name##_t *ptr) __attribute__((unused));   \
-	stat void      name##_unref(name##_t *ptr) __attribute__((unused)); \
-	stat void      name##_attach(name##_t *ptr, name##_t **ptrp)        \
-		__attribute__((unused));                                    \
-	stat void name##_detach(name##_t **ptrp) __attribute__((unused))
+#define ISC__REFCOUNT_DECL(name, stat)                                          \
+	stat name##_t *name##_ref(name##_t *ptr) __attribute__((__unused__));   \
+	stat void      name##_unref(name##_t *ptr) __attribute__((__unused__)); \
+	stat void      name##_attach(name##_t *ptr, name##_t **ptrp)            \
+		__attribute__((__unused__));                                    \
+	stat void name##_detach(name##_t **ptrp) __attribute__((__unused__))
 
 #define ISC_REFCOUNT_DECL(name)	       ISC__REFCOUNT_DECL(name, ISC_REFCOUNT_BLANK)
 #define ISC_REFCOUNT_STATIC_DECL(name) ISC__REFCOUNT_DECL(name, static inline)
