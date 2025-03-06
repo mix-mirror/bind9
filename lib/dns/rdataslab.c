@@ -882,7 +882,6 @@ dns_slabheader_new(dns_db_t *db, dns_dbnode_t *node) {
 	h = isc_mem_get(db->mctx, sizeof(*h));
 	*h = (dns_slabheader_t){
 		.link = ISC_LINK_INITIALIZER,
-		.dnode = CDS_LIST_HEAD_INIT(h->dnode),
 	};
 	dns_slabheader_reset(h, db, node);
 	return h;

@@ -16,7 +16,6 @@
 #include <inttypes.h>
 #include <stdalign.h>
 #include <stdbool.h>
-#include <sys/mman.h>
 
 #include <isc/ascii.h>
 #include <isc/async.h>
@@ -24,6 +23,7 @@
 #include <isc/file.h>
 #include <isc/heap.h>
 #include <isc/hex.h>
+#include <isc/list.h>
 #include <isc/log.h>
 #include <isc/loop.h>
 #include <isc/mem.h>
@@ -62,7 +62,6 @@
 #include <dns/zonekey.h>
 
 #include "db_p.h"
-#include "isc/list.h"
 #include "qpzone_p.h"
 
 /*
@@ -574,6 +573,8 @@ qpzonedb_destroy(dns_db_t *arg) {
 	}
 
 	qpzonedb_detach(&qpdb);
+
+	rcu_barrier();
 }
 
 #define qpznode_create(qpdb, name, qpznodep) \
@@ -926,7 +927,6 @@ bindrdataset(qpzonedb_t *qpdb, qpznode_t *node, dns_slabheader_t *header,
 	rdataset->type = DNS_TYPEPAIR_TYPE(header->type);
 	rdataset->covers = DNS_TYPEPAIR_COVERS(header->type);
 	rdataset->ttl = header->ttl;
-	rdataset->trust = header->trust;
 
 	if (OPTOUT(header)) {
 		rdataset->attributes |= DNS_RDATASETATTR_OPTOUT;
@@ -2045,7 +2045,6 @@ loading_addrdataset(void *arg, const dns_name_t *name,
 	dns_slabheader_reset(newheader, (dns_db_t *)qpdb, (dns_dbnode_t *)node);
 
 	newheader->ttl = rdataset->ttl;
-	newheader->trust = rdataset->trust;
 	newheader->serial = 1;
 	newheader->count = 1;
 
@@ -4625,6 +4624,7 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 			dns_slabheader_destroy(&newheader);
 			newheader = dns_slabheader_new((dns_db_t *)qpdb,
 						       (dns_dbnode_t *)node);
+			CDS_INIT_LIST_HEAD(&newheader->dnode);
 			newheader->ttl = 0;
 			newheader->type = hlist->type;
 			atomic_init(&newheader->attributes,
@@ -4706,6 +4706,7 @@ qpzone_deleterdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 	}
 
 	newheader = dns_slabheader_new(db, (dns_dbnode_t *)node);
+	CDS_INIT_LIST_HEAD(&newheader->dnode);
 	newheader->type = DNS_TYPEPAIR_VALUE(type, covers);
 	newheader->ttl = 0;
 	atomic_init(&newheader->attributes, DNS_SLABHEADERATTR_NONEXISTENT);

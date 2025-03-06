@@ -2047,7 +2047,7 @@ seek_ns_headers(qpc_search_t *search, qpcnode_t *node, dns_dbnode_t **nodep,
 		NODE_UNLOCK(nlock, &nlocktype);
 		result = find_deepest_zonecut(search, node, nodep, foundname,
 					      rdataset,
-					      sigrdataset DNS__DB_FLARG_PASS);
+					      sigrdataset DNS__DB_FILELINE);
 		if (dcname != NULL) {
 			dns_name_copy(foundname, dcname);
 		}
@@ -2056,13 +2056,13 @@ seek_ns_headers(qpc_search_t *search, qpcnode_t *node, dns_dbnode_t **nodep,
 
 	if (nodep != NULL) {
 		qpcnode_acquire(search->qpdb, node, nlocktype,
-				*tlocktype DNS__DB_FLARG_PASS);
+				*tlocktype DNS__DB_FILELINE);
 		*nodep = (dns_dbnode_t *)node;
 	}
 
 	bindrdatasets(search->qpdb, node, found, foundsig, search->now,
 		      nlocktype, *tlocktype, rdataset,
-		      sigrdataset DNS__DB_FLARG_PASS);
+		      sigrdataset DNS__DB_FILELINE);
 	maybe_update_headers(search->qpdb, found, foundsig, nlock, &nlocktype,
 			     search->now);
 

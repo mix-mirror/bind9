@@ -100,42 +100,46 @@ struct dns_slabheader {
 	 * Used for TTL-based cache cleaning.
 	 */
 
-	isc_stdtime_t	  last_used;
-	_Atomic(uint32_t) last_refresh_fail_ts;
+	union {
+		struct { /* qpcache */
+			isc_stdtime_t	  last_used;
+			_Atomic(uint32_t) last_refresh_fail_ts;
+
+			union {
+				/*%<
+				 * If this is the top header for an rdataset,
+				 * 'next' points to the top header for the next
+				 * rdataset (i.e., the next type).
+				 *
+				 * Otherwise 'up' points up to the header whose
+				 * down pointer points at this header.
+				 */
+
+				struct dns_slabheader *next;
+				struct dns_slabheader *up;
+			};
+			/*%<
+			 * Points to the header for the next older version of
+			 * this rdataset.
+			 */
+			struct dns_slabheader *down;
+			/*%<
+			 * The database and database node objects containing
+			 * this rdataset, if any.
+			 */
+		};
+		struct { /* qpzone */
+			struct cds_list_head dnode;
+			dns_gluelist_t	    *gluelist;
+		};
+	};
 
 	dns_slabheader_proof_t *noqname;
 	dns_slabheader_proof_t *closest;
-	/*%<
-	 * We don't use the LIST macros, because the LIST structure has
-	 * both head and tail pointers, and is doubly linked.
-	 */
-
-	union {
-		struct dns_slabheader *next;
-		struct dns_slabheader *up;
-	};
-	/*%<
-	 * If this is the top header for an rdataset, 'next' points
-	 * to the top header for the next rdataset (i.e., the next type).
-	 *
-	 * Otherwise 'up' points up to the header whose down pointer points at
-	 * this header.
-	 */
-
-	struct dns_slabheader *down;
-	struct cds_list_head   dnode;
-	/*%<
-	 * Points to the header for the next older version of
-	 * this rdataset.
-	 */
 
 	dns_db_t     *db;
-	isc_mem_t    *mctx; /* FIXME: Experiment */
+	isc_mem_t    *mctx;
 	dns_dbnode_t *node;
-	/*%<
-	 * The database and database node objects containing
-	 * this rdataset, if any.
-	 */
 
 	ISC_LINK(struct dns_slabheader) link;
 
@@ -147,8 +151,6 @@ struct dns_slabheader {
 	unsigned char upper[32];
 
 	isc_heap_t *heap;
-
-	dns_gluelist_t *gluelist;
 
 	struct rcu_head rcu_head;
 };
