@@ -2663,7 +2663,7 @@ find__wildcard(qpz_search_t *search, qpznode_t *snode, qpznode_t **nodep,
 
 	result = dns_qp_lookup(&search->qpr, name, NULL, &it, NULL,
 			       (void **)&node, NULL);
-	if (result != ISC_R_NOTFOUND && result != DNS_R_PARTIALMATCH) {
+	if (result != ISC_R_SUCCESS) {
 		return result;
 	}
 
