@@ -16,6 +16,7 @@
 #include <inttypes.h>
 #include <stdalign.h>
 #include <stdbool.h>
+#include <zconf.h>
 
 #include <isc/ascii.h>
 #include <isc/async.h>
@@ -998,7 +999,8 @@ setnsec3parameters(dns_db_t *db, qpz_version_t *version) {
 
 	if (found == NULL || NONEXISTENT(found)) {
 		/* There is no extant NSEC3PARAM header */
-		goto unlock;
+		rcu_read_unlock();
+		return;
 	}
 
 	/*
@@ -1043,7 +1045,7 @@ setnsec3parameters(dns_db_t *db, qpz_version_t *version) {
 			break;
 		}
 	}
-unlock:
+
 	rcu_read_unlock();
 }
 
@@ -1225,8 +1227,7 @@ static void
 make_least_version(qpzonedb_t *qpdb, qpz_version_t *version,
 		   qpz_changedlist_t *cleanup_list) {
 	CMM_STORE_SHARED(qpdb->least_serial, version->serial);
-	*cleanup_list = version->changed_list;
-	ISC_LIST_INIT(version->changed_list);
+	ISC_LIST_MOVE(*cleanup_list, version->changed_list);
 }
 
 static void
@@ -1234,9 +1235,9 @@ rollback_node(qpznode_t *node, uint32_t serial) {
 	bool make_dirty = false;
 
 	/*
-	 * We set the IGNORE attribute on rdatasets with serial number
-	 * 'serial'.  When the reference count goes to zero, these rdatasets
-	 * will be cleaned up; until that time, they will be ignored.
+	 * As we are using RCU lists, we can simply delete the headers that has
+	 * been rolled back.  This is safe because only the caller using the
+	 * future version could be using the matching serial.
 	 */
 	rcu_read_lock();
 	isc_spinlock_lock(&node->spinlock);
@@ -1256,12 +1257,145 @@ rollback_node(qpznode_t *node, uint32_t serial) {
 			}
 		}
 	}
+
 	isc_spinlock_unlock(&node->spinlock);
 	rcu_read_unlock();
 
 	if (make_dirty) {
+		/*
+		 * We make the node dirty as it might be possible that the
+		 * transaction has created a new node that needs to be cleaned
+		 * up as whole because they are empty now.
+		 */
 		CMM_STORE_SHARED(node->dirty, true);
 	}
+}
+
+static qpz_version_t *
+commitversion(qpzonedb_t *qpdb, qpz_version_t *version,
+	      qpz_changedlist_t *cleanup_list,
+	      dns_slabheaderlist_t *resigned_list DNS__DB_FLARG) {
+	qpz_version_t *cleanup_version = NULL;
+	uint32_t cur_refs;
+	qpz_version_t *cur_version = NULL;
+
+	INSIST(version == qpdb->future_version);
+
+	/*
+	 * The current version is going to be replaced.
+	 * Release the (likely last) reference to it from the
+	 * DB itself and unlink it from the open list.
+	 */
+	cur_version = qpdb->current_version;
+	cur_refs = isc_refcount_decrement(&cur_version->references);
+	if (cur_refs == 1) {
+		if (cur_version->serial == CMM_LOAD_SHARED(qpdb->least_serial))
+		{
+			INSIST(ISC_LIST_EMPTY(cur_version->changed_list));
+		}
+		ISC_LIST_UNLINK(qpdb->open_versions, cur_version, link);
+
+		if (ISC_LIST_EMPTY(qpdb->open_versions)) {
+			/*
+			 * We're going to become the least open version.
+			 */
+			make_least_version(qpdb, version, cleanup_list);
+		}
+	} else {
+		/*
+		 * Some other open version is the least version.  We can't
+		 * cleanup records that were changed in this version because the
+		 * older versions may still be in use by an open version.
+		 *
+		 * We can, however, discard the changed records for things that
+		 * we've added that didn't exist in prior versions.
+		 */
+		cleanup_nondirty(version, cleanup_list);
+	}
+	/*
+	 * If the (soon to be former) current version isn't being used by
+	 * anyone, we can clean it up.
+	 */
+	if (cur_refs == 1) {
+		cleanup_version = cur_version;
+		ISC_LIST_APPENDLIST(version->changed_list,
+				    cleanup_version->changed_list, link);
+	}
+	/*
+	 * Become the current version.
+	 */
+	version->writer = false;
+	qpdb->current_version = version;
+	qpdb->current_serial = version->serial;
+	qpdb->future_version = NULL;
+
+	/*
+	 * Keep the current version in the open list, and
+	 * gain a reference for the DB itself (see the DB
+	 * creation function below).  This must be the only
+	 * case where we need to increment the counter from
+	 * zero and need to use isc_refcount_increment0().
+	 */
+	INSIST(isc_refcount_increment0(&version->references) == 0);
+	ISC_LIST_PREPEND(qpdb->open_versions, qpdb->current_version, link);
+	ISC_LIST_MOVE(*resigned_list, version->resigned_list);
+
+	return cleanup_version;
+}
+
+static qpz_version_t *
+rollbackversion(qpzonedb_t *qpdb, qpz_version_t *version,
+		qpz_changedlist_t *cleanup_list,
+		dns_slabheaderlist_t *resigned_list DNS__DB_FLARG) {
+	/*
+	 * We're rolling back this transaction.
+	 */
+	ISC_LIST_MOVE(*cleanup_list, version->changed_list);
+	ISC_LIST_MOVE(*resigned_list, version->resigned_list);
+
+	qpdb->future_version = NULL;
+
+	return version;
+}
+
+static qpz_version_t *
+sweepversion(qpzonedb_t *qpdb, qpz_version_t *version,
+	     qpz_changedlist_t *cleanup_list DNS__DB_FLARG) {
+	qpz_version_t *least_greater = NULL;
+
+	/*
+	 * There are no external or internal references to this version and it
+	 * can be cleaned up.
+	 */
+
+	/*
+	 * Find the version with the least serial number greater than ours.
+	 */
+	least_greater = ISC_LIST_PREV(version, link);
+	if (least_greater == NULL) {
+		least_greater = qpdb->current_version;
+	}
+
+	INSIST(version->serial < least_greater->serial);
+
+	/*
+	 * Is this the least open version?
+	 */
+	if (version->serial == qpdb->least_serial) {
+		/*
+		 * Yes.  Install the new least open version.
+		 */
+		make_least_version(qpdb, least_greater, cleanup_list);
+	} else {
+		/*
+		 * Add any unexecuted cleanups to those of the least greater
+		 * version.
+		 */
+		ISC_LIST_APPENDLIST(least_greater->changed_list,
+				    version->changed_list, link);
+	}
+
+	return version;
 }
 
 static void
@@ -1269,9 +1403,7 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 	     bool commit DNS__DB_FLARG) {
 	qpzonedb_t *qpdb = (qpzonedb_t *)db;
 	qpz_version_t *version = NULL, *cleanup_version = NULL;
-	qpz_version_t *least_greater = NULL;
 	qpznode_t *node = NULL;
-	bool rollback = false;
 	qpz_changed_t *changed = NULL, *next_changed = NULL;
 	qpz_changedlist_t cleanup_list;
 	dns_slabheaderlist_t resigned_list;
@@ -1300,128 +1432,24 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 
 	RWLOCK(&qpdb->lock, isc_rwlocktype_write);
 	serial = version->serial;
-	if (version->writer && commit) {
-		uint32_t cur_refs;
-		qpz_version_t *cur_version = NULL;
-
-		INSIST(version == qpdb->future_version);
-		/*
-		 * The current version is going to be replaced.
-		 * Release the (likely last) reference to it from the
-		 * DB itself and unlink it from the open list.
-		 */
-		cur_version = qpdb->current_version;
-		cur_refs = isc_refcount_decrement(&cur_version->references);
-		if (cur_refs == 1) {
-			if (cur_version->serial ==
-			    CMM_LOAD_SHARED(qpdb->least_serial))
-			{
-				INSIST(ISC_LIST_EMPTY(
-					cur_version->changed_list));
-			}
-			ISC_LIST_UNLINK(qpdb->open_versions, cur_version, link);
-		}
-		if (ISC_LIST_EMPTY(qpdb->open_versions)) {
-			/*
-			 * We're going to become the least open
-			 * version.
-			 */
-			make_least_version(qpdb, version, &cleanup_list);
+	if (version->writer) {
+		if (commit) {
+			cleanup_version = commitversion(
+				qpdb, version, &cleanup_list,
+				&resigned_list DNS__DB_FLARG_PASS);
 		} else {
-			/*
-			 * Some other open version is the
-			 * least version.  We can't cleanup
-			 * records that were changed in this
-			 * version because the older versions
-			 * may still be in use by an open
-			 * version.
-			 *
-			 * We can, however, discard the
-			 * changed records for things that
-			 * we've added that didn't exist in
-			 * prior versions.
-			 */
-			cleanup_nondirty(version, &cleanup_list);
+			cleanup_version = rollbackversion(
+				qpdb, version, &cleanup_list,
+				&resigned_list DNS__DB_FLARG_PASS);
 		}
-		/*
-		 * If the (soon to be former) current version
-		 * isn't being used by anyone, we can clean
-		 * it up.
-		 */
-		if (cur_refs == 1) {
-			cleanup_version = cur_version;
-			ISC_LIST_APPENDLIST(version->changed_list,
-					    cleanup_version->changed_list,
-					    link);
+	} else {
+		if (version != qpdb->current_version) {
+			cleanup_version =
+				sweepversion(qpdb, version,
+					     &cleanup_list DNS__DB_FLARG_PASS);
+		} else if (version->serial == qpdb->least_serial) {
+			INSIST(ISC_LIST_EMPTY(version->changed_list));
 		}
-		/*
-		 * Become the current version.
-		 */
-		version->writer = false;
-		qpdb->current_version = version;
-		qpdb->current_serial = version->serial;
-		qpdb->future_version = NULL;
-
-		/*
-		 * Keep the current version in the open list, and
-		 * gain a reference for the DB itself (see the DB
-		 * creation function below).  This must be the only
-		 * case where we need to increment the counter from
-		 * zero and need to use isc_refcount_increment0().
-		 */
-		INSIST(isc_refcount_increment0(&version->references) == 0);
-		ISC_LIST_PREPEND(qpdb->open_versions, qpdb->current_version,
-				 link);
-		ISC_LIST_MOVE(resigned_list, version->resigned_list);
-	} else if (version->writer && !commit) {
-		/*
-		 * We're rolling back this transaction.
-		 */
-		ISC_LIST_MOVE(cleanup_list, version->changed_list);
-		ISC_LIST_MOVE(resigned_list, version->resigned_list);
-
-		rollback = true;
-		cleanup_version = version;
-		qpdb->future_version = NULL;
-	} else if (version != qpdb->current_version) {
-		/*
-		 * There are no external or internal references
-		 * to this version and it can be cleaned up.
-		 */
-		cleanup_version = version;
-
-		/*
-		 * Find the version with the least serial
-		 * number greater than ours.
-		 */
-		least_greater = ISC_LIST_PREV(version, link);
-		if (least_greater == NULL) {
-			least_greater = qpdb->current_version;
-		}
-
-		INSIST(version->serial < least_greater->serial);
-		/*
-		 * Is this the least open version?
-		 */
-		if (version->serial == qpdb->least_serial) {
-			/*
-			 * Yes.  Install the new least open
-			 * version.
-			 */
-			make_least_version(qpdb, least_greater, &cleanup_list);
-		} else {
-			/*
-			 * Add any unexecuted cleanups to
-			 * those of the least greater version.
-			 */
-			ISC_LIST_APPENDLIST(least_greater->changed_list,
-					    version->changed_list, link);
-		}
-	} else if (version->serial == qpdb->least_serial) {
-		INSIST(ISC_LIST_EMPTY(version->changed_list));
-	}
-
-	if (!version->writer && version != qpdb->current_version) {
 		ISC_LIST_UNLINK(qpdb->open_versions, version, link);
 	}
 
@@ -1445,7 +1473,7 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 	{
 		ISC_LIST_UNLINK(resigned_list, header, link);
 
-		if (rollback) {
+		if (version->writer && !commit) {
 			resigninsert(qpdb, header);
 		}
 		qpznode_release(qpdb, HEADERNODE(header) DNS__DB_FLARG_PASS);
@@ -1457,7 +1485,7 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 		next_changed = ISC_LIST_NEXT(changed, link);
 		node = changed->node;
 
-		if (rollback) {
+		if (version->writer && !commit) {
 			rollback_node(node, serial);
 		}
 
@@ -3829,10 +3857,8 @@ rdatasetiter_destroy(dns_rdatasetiter_t **iteratorp DNS__DB_FLARG) {
 	qpdb_rdatasetiter_t *qrditer = (qpdb_rdatasetiter_t *)(*iteratorp);
 	*iteratorp = NULL;
 
-	if (qrditer->common.version != NULL) {
-		closeversion(qrditer->common.db, &qrditer->common.version,
-			     false DNS__DB_FLARG_PASS);
-	}
+	closeversion(qrditer->common.db, &qrditer->common.version,
+		     false DNS__DB_FLARG_PASS);
 	dns__db_detachnode(qrditer->common.db,
 			   &qrditer->common.node DNS__DB_FLARG_PASS);
 	isc_mem_put(qrditer->common.db->mctx, qrditer, sizeof(*qrditer));
