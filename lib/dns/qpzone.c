@@ -993,10 +993,12 @@ setnsec3parameters(dns_db_t *db, qpz_version_t *version) {
 			}
 		}
 
-		if (found == NULL || NONEXISTENT(found)) {
-			/* There is no extant NSEC3PARAM header */
-			goto unlock;
-		}
+		break;
+	}
+
+	if (found == NULL || NONEXISTENT(found)) {
+		/* There is no extant NSEC3PARAM header */
+		goto unlock;
 	}
 
 	/*
@@ -1229,7 +1231,6 @@ make_least_version(qpzonedb_t *qpdb, qpz_version_t *version,
 
 static void
 rollback_node(qpznode_t *node, uint32_t serial) {
-	dns_slabheader_list_t *hlist = NULL;
 	bool make_dirty = false;
 
 	/*
@@ -1239,14 +1240,18 @@ rollback_node(qpznode_t *node, uint32_t serial) {
 	 */
 	rcu_read_lock();
 	isc_spinlock_lock(&node->spinlock);
-	cds_list_for_each_entry_rcu (hlist, &node->headers, nnode) {
-		dns_slabheader_t *current = NULL;
-		cds_list_for_each_entry_rcu (current, &hlist->versions, dnode) {
-			if (current->serial == serial) {
-				cds_list_del_rcu(&current->dnode);
-				dns_slabheader_destroy(&current);
+
+	dns_slabheader_list_t *hlist = NULL, *hnext = NULL;
+	cds_list_for_each_entry_safe (hlist, hnext, &node->headers, nnode) {
+		dns_slabheader_t *header = NULL, *next = NULL;
+		cds_list_for_each_entry_safe (header, next, &hlist->versions,
+					      dnode)
+		{
+			if (header->serial == serial) {
+				cds_list_del_rcu(&header->dnode);
+				dns_slabheader_destroy(&header);
 				make_dirty = true;
-			} else if (current->serial < serial) {
+			} else if (header->serial < serial) {
 				break;
 			}
 		}
