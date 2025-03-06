@@ -163,30 +163,7 @@ struct qpznode {
 	dns_name_t name;
 	isc_mem_t *mctx;
 
-	/*
-	 * 'erefs' counts external references held by a caller: for
-	 * example, it could be incremented by dns_db_findnode(),
-	 * and decremented by dns_db_detachnode().
-	 *
-	 * 'references' counts internal references to the node object,
-	 * including the one held by the QP trie so the node won't be
-	 * deleted while it's quiescently stored in the database - even
-	 * though 'erefs' may be zero because no external caller is
-	 * using it at the time.
-	 *
-	 * Generally when 'erefs' is incremented or decremented,
-	 * 'references' is too. When both go to zero (meaning callers
-	 * and the database have both released the object) the object
-	 * is freed.
-	 *
-	 * Whenever 'erefs' is incremented from zero, we also aquire a
-	 * node use reference (see 'qpzonedb->references' below), and
-	 * release it when 'erefs' goes back to zero. This prevents the
-	 * database from being shut down until every caller has released
-	 * all nodes.
-	 */
 	isc_refcount_t references;
-	isc_refcount_t erefs;
 
 	atomic_uint_fast8_t nsec;
 
@@ -722,6 +699,7 @@ static bool
 clean_zone_node(qpznode_t *node, uint32_t least_serial) {
 	REQUIRE(least_serial != 0);
 
+	bool still_dirty = false;
 	bool node_empty = true;
 
 	/*
@@ -757,6 +735,10 @@ clean_zone_node(qpznode_t *node, uint32_t least_serial) {
 				cds_list_del_rcu(&header->dnode);
 				dns_slabheader_destroy(&header);
 			} else {
+				if (parent != NULL) {
+					still_dirty = true;
+				}
+
 				parent = header;
 				empty = false;
 			}
@@ -771,63 +753,18 @@ clean_zone_node(qpznode_t *node, uint32_t least_serial) {
 	}
 
 	/*
-	 * The code above has cleaned everything it could.
+	 * The code above has cleaned everything it could.  If there are still
+	 * multiple headers for any of the types, mark the node as still_dirty.
 	 */
-	CMM_STORE_SHARED(node->dirty, false);
+	CMM_STORE_SHARED(node->dirty, still_dirty);
 
 	return node_empty;
 }
 
-/*
- * If incrementing erefs from zero, we also increment the node use counter
- * in the qpzonedb object.
- *
- * This function is called from qpznode_acquire(), so that internal
- * and external references are acquired at the same time, and from
- * qpznode_release() when we only need to increase the internal references.
- */
 static void
-qpznode_erefs_increment(qpzonedb_t *qpdb, qpznode_t *node DNS__DB_FLARG) {
-	uint_fast32_t erefs = atomic_fetch_add_release(&node->erefs, 1);
-	INSIST(erefs < UINT32_MAX);
-#if DNS_DB_NODETRACE
-	fprintf(stderr, "incr:node:%s:%s:%u:%p->erefs = %" PRIuFAST32 "\n",
-		func, file, line, node, erefs + 1);
-#endif
-
-	if (erefs > 0) {
-		return;
-	}
-
-	qpzonedb_ref(qpdb);
-}
-
-static void
-qpznode_acquire(qpzonedb_t *qpdb, qpznode_t *node DNS__DB_FLARG) {
+qpznode_acquire(qpzonedb_t *qpdb ISC_ATTR_UNUSED,
+		qpznode_t *node DNS__DB_FLARG) {
 	qpznode_ref(node);
-	qpznode_erefs_increment(qpdb, node DNS__DB_FLARG_PASS);
-}
-
-/*
- * Decrement the external references to a node. If the counter
- * goes to zero, decrement the node use counter in the qpzonedb object
- * as well, and return true. Otherwise return false.
- */
-static bool
-qpznode_erefs_decrement(qpzonedb_t *qpdb, qpznode_t *node DNS__DB_FLARG) {
-	uint_fast32_t refs = isc_refcount_decrement(&node->erefs);
-
-#if DNS_DB_NODETRACE
-	fprintf(stderr, "decr:node:%s:%s:%u:%p->erefs = %" PRIuFAST32 "\n",
-		func, file, line, node, refs - 1);
-#endif
-	if (refs > 1) {
-		return false;
-	}
-
-	qpzonedb_unref(qpdb);
-
-	return true;
 }
 
 /*
@@ -846,9 +783,7 @@ static void
 qpznode_release(qpzonedb_t *qpdb, qpznode_t *node DNS__DB_FLARG) {
 	bool empty = false;
 
-	if (qpznode_erefs_decrement(qpdb, node DNS__DB_FLARG_PASS) &&
-	    CMM_LOAD_SHARED(node->dirty))
-	{
+	if (CMM_LOAD_SHARED(node->dirty)) {
 		/*
 		 * We don't really have to care if the least_serial might lag
 		 * behind due to imperfect thread synchronization.
@@ -868,15 +803,23 @@ qpznode_release(qpzonedb_t *qpdb, qpznode_t *node DNS__DB_FLARG) {
 
 	/* If the node is now empty, we can delete it. */
 
+	if (1) {
+		/* Disabled for now */
+		return;
+	}
+
+	/*
+	 * FIXME: I think there's an ABA problem hidden in the cleanup here if
+	 * the a node for the same name gets deleted and then re-added very
+	 * quickly and something holds the reference meanwhile.  But perhaps the
+	 * least version comes to the rescue?
+	 */
+
 	/*
 	 * FIXME: This is very inefficient as it opens a write transaction for
 	 * each deleted node.  We need to gather nodes to clean into a list and
 	 * then asynchronously clean the list in a single transaction.
 	 */
-	if (1) {
-		return;
-	}
-
 	dns_qp_t *tree = NULL, *nsec = NULL, *nsec3 = NULL;
 	switch (node->nsec) {
 	case DNS_DB_NSEC_HAS_NSEC:
