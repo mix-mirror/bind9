@@ -699,7 +699,6 @@ static bool
 clean_zone_node(qpznode_t *node, uint32_t least_serial) {
 	REQUIRE(least_serial != 0);
 
-	bool still_dirty = false;
 	bool node_empty = true;
 
 	/*
@@ -735,10 +734,6 @@ clean_zone_node(qpznode_t *node, uint32_t least_serial) {
 				cds_list_del_rcu(&header->dnode);
 				dns_slabheader_destroy(&header);
 			} else {
-				if (parent != NULL) {
-					still_dirty = true;
-				}
-
 				parent = header;
 				empty = false;
 			}
@@ -753,10 +748,9 @@ clean_zone_node(qpznode_t *node, uint32_t least_serial) {
 	}
 
 	/*
-	 * The code above has cleaned everything it could.  If there are still
-	 * multiple headers for any of the types, mark the node as still_dirty.
+	 * The code above has cleaned everything it could.
 	 */
-	CMM_STORE_SHARED(node->dirty, still_dirty);
+	CMM_STORE_SHARED(node->dirty, false);
 
 	return node_empty;
 }
