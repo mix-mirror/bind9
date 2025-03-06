@@ -912,11 +912,7 @@ dns_slabheader_destroy(dns_slabheader_t **headerp) {
 	/* FIXME: bleh, this is so ugly */
 	isc_mem_attach(mctx, &header->mctx);
 
-	if (rcu_read_ongoing()) {
-		call_rcu(&header->rcu_head, dns__slabheader_destroy_rcu);
-	} else {
-		dns__slabheader_destroy_rcu(&header->rcu_head);
-	}
+	call_rcu(&header->rcu_head, dns__slabheader_destroy_rcu);
 }
 
 void

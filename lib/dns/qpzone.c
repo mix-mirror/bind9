@@ -1349,6 +1349,7 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 	dns_slabheaderlist_t resigned_list;
 	dns_slabheader_t *header = NULL;
 	uint32_t serial;
+	bool rollback = false;
 
 	REQUIRE(VALID_QPZONE(qpdb));
 	version = (qpz_version_t *)*versionp;
@@ -1381,6 +1382,7 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 			cleanup_version = rollbackversion(
 				qpdb, version, &cleanup_list,
 				&resigned_list DNS__DB_FLARG_PASS);
+			rollback = true;
 		}
 	} else {
 		if (version != qpdb->current_version) {
@@ -1413,7 +1415,7 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 	{
 		ISC_LIST_UNLINK(resigned_list, header, link);
 
-		if (version->writer && !commit) {
+		if (rollback) {
 			resigninsert(qpdb, header);
 		}
 		qpznode_release(qpdb, HEADERNODE(header) DNS__DB_FLARG_PASS);
@@ -1425,7 +1427,7 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 		next_changed = ISC_LIST_NEXT(changed, link);
 		node = changed->node;
 
-		if (version->writer && !commit) {
+		if (rollback) {
 			rollback_node(node, serial);
 		}
 
