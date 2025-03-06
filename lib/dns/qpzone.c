@@ -3257,11 +3257,11 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	 * We're only interested in nodes above QNAME, so if the result
 	 * was success, then we skip the last item in the chain.
 	 */
-	unsigned int clen = dns_qpchain_length(&search.chain);
+	size_t clen = dns_qpchain_length(&search.chain);
 	if (result == ISC_R_SUCCESS) {
 		clen--;
 	}
-	for (unsigned int i = 0; i < clen && search.zonecut == NULL; i++) {
+	for (size_t i = 0; i < clen && search.zonecut == NULL; i++) {
 		qpznode_t *n = NULL;
 		isc_result_t tresult;
 
@@ -3868,6 +3868,7 @@ rdatasetiter_first(dns_rdatasetiter_t *iterator DNS__DB_FLARG) {
 	qpznode_t *node = (qpznode_t *)qrditer->common.node;
 	qpz_version_t *version = (qpz_version_t *)qrditer->common.version;
 	dns_slabheader_list_t *hcurrent = NULL;
+	isc_result_t result = ISC_R_NOMORE;
 
 	/*
 	 * The following code will find a first slabheader that will not be
@@ -3882,23 +3883,28 @@ rdatasetiter_first(dns_rdatasetiter_t *iterator DNS__DB_FLARG) {
 
 	rcu_read_lock();
 	cds_list_for_each_entry_rcu (hcurrent, &node->headers, nnode) {
-		dns_slabheader_t *current = NULL;
+		dns_slabheader_t *header = NULL, *current = NULL;
 		cds_list_for_each_entry_rcu (current, &hcurrent->versions,
 					     dnode)
 		{
-			if (current->serial <= version->serial &&
-			    !NONEXISTENT(current))
-			{
-				qrditer->hlist = hcurrent;
-				qrditer->header = current;
-				rcu_read_unlock();
-				return ISC_R_SUCCESS;
+			if (current->serial <= version->serial) {
+				header = current;
+				break;
 			}
 		}
+
+		if (header == NULL || NONEXISTENT(header)) {
+			continue;
+		}
+
+		qrditer->hlist = hcurrent;
+		qrditer->header = header;
+		result = ISC_R_SUCCESS;
+		break;
 	}
 	rcu_read_unlock();
 
-	return ISC_R_NOMORE;
+	return result;
 }
 
 /*
@@ -3920,6 +3926,7 @@ rdatasetiter_next(dns_rdatasetiter_t *iterator DNS__DB_FLARG) {
 	qpznode_t *node = (qpznode_t *)qrditer->common.node;
 	qpz_version_t *version = (qpz_version_t *)qrditer->common.version;
 	dns_slabheader_list_t *hcurrent = NULL;
+	isc_result_t result = ISC_R_NOMORE;
 
 	if (qrditer->hlist == NULL || qrditer->header == NULL) {
 		return ISC_R_NOMORE;
@@ -3937,23 +3944,27 @@ rdatasetiter_next(dns_rdatasetiter_t *iterator DNS__DB_FLARG) {
 	rcu_read_lock();
 	hcurrent = qrditer->hlist;
 	cds_list_for_each_entry_next_rcu(hcurrent, &node->headers, nnode) {
-		dns_slabheader_t *current = NULL;
+		dns_slabheader_t *header = NULL, *current = NULL;
 		cds_list_for_each_entry_rcu (current, &hcurrent->versions,
 					     dnode)
 		{
-			if (current->serial <= version->serial &&
-			    !NONEXISTENT(current))
-			{
-				qrditer->hlist = hcurrent;
-				qrditer->header = current;
-				rcu_read_unlock();
-				return ISC_R_SUCCESS;
+			if (current->serial <= version->serial) {
+				header = current;
+				break;
 			}
 		}
+		if (header == NULL || NONEXISTENT(header)) {
+			continue;
+		}
+
+		qrditer->hlist = hcurrent;
+		qrditer->header = current;
+		result = ISC_R_SUCCESS;
+		break;
 	}
 	rcu_read_unlock();
 
-	return ISC_R_NOMORE;
+	return result;
 }
 
 static void
