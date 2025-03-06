@@ -574,8 +574,6 @@ qpzonedb_destroy(dns_db_t *arg) {
 	}
 
 	qpzonedb_detach(&qpdb);
-
-	rcu_barrier();
 }
 
 #define qpznode_create(qpdb, name, qpznodep) \
