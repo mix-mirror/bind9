@@ -939,7 +939,7 @@ setnsec3parameters(dns_db_t *db, qpz_version_t *version) {
 	}
 
 	if (found == NULL || NONEXISTENT(found)) {
-		/* There is no extant NSEC3PARAM header */
+		/* NSEC3PARAM header doesn't exist */
 		rcu_read_unlock();
 		return;
 	}
@@ -1242,6 +1242,14 @@ commitversion(qpzonedb_t *qpdb, qpz_version_t *version,
 			 */
 			make_least_version(qpdb, version, cleanup_list);
 		}
+
+		/*
+		 * If the (soon to be former) current version isn't being used
+		 * by anyone, we can clean it up.
+		 */
+		cleanup_version = cur_version;
+		ISC_LIST_APPENDLIST(version->changed_list,
+				    cleanup_version->changed_list, link);
 	} else {
 		/*
 		 * Some other open version is the least version.  We can't
@@ -1253,19 +1261,10 @@ commitversion(qpzonedb_t *qpdb, qpz_version_t *version,
 		 */
 		cleanup_nondirty(version, cleanup_list);
 	}
-	/*
-	 * If the (soon to be former) current version isn't being used by
-	 * anyone, we can clean it up.
-	 */
-	if (cur_refs == 1) {
-		cleanup_version = cur_version;
-		ISC_LIST_APPENDLIST(version->changed_list,
-				    cleanup_version->changed_list, link);
-	}
+
 	/*
 	 * Become the current version.
 	 */
-	version->writer = false;
 	qpdb->current_version = version;
 	qpdb->current_serial = version->serial;
 	qpdb->future_version = NULL;
@@ -1278,7 +1277,7 @@ commitversion(qpzonedb_t *qpdb, qpz_version_t *version,
 	 * zero and need to use isc_refcount_increment0().
 	 */
 	INSIST(isc_refcount_increment0(&version->references) == 0);
-	ISC_LIST_PREPEND(qpdb->open_versions, qpdb->current_version, link);
+	ISC_LIST_PREPEND(qpdb->open_versions, version, link);
 	ISC_LIST_MOVE(*resigned_list, version->resigned_list);
 
 	return cleanup_version;
