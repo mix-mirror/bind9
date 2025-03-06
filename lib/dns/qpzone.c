@@ -3033,7 +3033,7 @@ qpzone_check_zonecut(qpznode_t *node, void *arg DNS__DB_FLARG) {
 	cds_list_for_each_entry_rcu (hlist, &node->headers, nnode) {
 		if (hlist->type != dns_rdatatype_ns &&
 		    hlist->type != dns_rdatatype_dname &&
-		    hlist->type == DNS_SIGTYPE(dns_rdatatype_dname))
+		    hlist->type != DNS_SIGTYPE(dns_rdatatype_dname))
 		{
 			continue;
 		}

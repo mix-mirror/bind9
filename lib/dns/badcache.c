@@ -237,7 +237,7 @@ bcentry_purge(struct cds_lfht *ht, struct cds_list_head *lru,
 	      isc_stdtime_t now) {
 	size_t count = 10;
 	dns_bcentry_t *bad;
-	cds_list_for_each_entry_rcu(bad, lru, lru_head) {
+	cds_list_for_each_entry_rcu (bad, lru, lru_head) {
 		if (bcentry_alive(ht, bad, now)) {
 			break;
 		}
