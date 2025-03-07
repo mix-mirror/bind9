@@ -905,6 +905,8 @@ dns_slabheader_destroy(dns_slabheader_t **headerp) {
 
 	isc_mem_t *mctx = header->db->mctx;
 
+	INSIST(!ISC_LINK_LINKED(header, link));
+
 	dns_db_deletedata(header->db, header->node, header);
 
 	header->mctx = NULL;

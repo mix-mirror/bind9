@@ -1411,8 +1411,8 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 	} else {
 		if (version != qpdb->current_version) {
 			cleanup_version = sweepversion(
-				qpdb, version, &cleanup_list DNS__DB_FLARG_PASS,
-				&least_serial);
+				qpdb, version, &cleanup_list,
+				&least_serial DNS__DB_FLARG_PASS);
 		} else if (version->serial == qpdb->least_serial) {
 			INSIST(ISC_LIST_EMPTY(version->changed_list));
 		}
@@ -1447,7 +1447,7 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 			rollback_node(node, serial);
 		}
 
-		qpznode_release(qpdb, node DNS__DB_FILELINE, least_serial);
+		qpznode_release(qpdb, node, least_serial DNS__DB_FILELINE);
 
 		isc_mem_put(qpdb->common.mctx, changed, sizeof(*changed));
 	}
