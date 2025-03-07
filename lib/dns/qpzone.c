@@ -551,6 +551,8 @@ qpzonedb_destroy(dns_db_t *arg) {
 	}
 
 	qpzonedb_detach(&qpdb);
+
+	synchronize_rcu();
 }
 
 #define qpznode_create(qpdb, name, qpznodep) \
@@ -696,15 +698,16 @@ dns__qpzone_create(isc_mem_t *mctx, const dns_name_t *origin, dns_dbtype_t type,
 }
 
 static bool
-clean_zone_node(qpznode_t *node, uint32_t least_serial) {
+clean_zone_node(qpznode_t *node, uint32_t least_serial,
+		uint32_t current_serial) {
 	REQUIRE(least_serial != 0);
 
 	bool node_empty = true;
 
 	/*
 	 * When cleaning up the node headers, we need to keep all the active
-	 * (non-IGNORE) headers with the serial larger or equal to the
-	 * `least_serial`.
+	 * headers with the serial larger or equal to the `least_serial` and
+	 * smaller or equal to `current_serial`.
 	 *
 	 * If no such header exists we need to keep a single header with the
 	 * serial smaller than least_version.
@@ -718,6 +721,11 @@ clean_zone_node(qpznode_t *node, uint32_t least_serial) {
 		cds_list_for_each_entry_safe (header, next, &hlist->versions,
 					      dnode)
 		{
+			if (header->serial > current_serial) {
+				/* Skip not-yet active headers */
+				continue;
+			}
+
 			if (parent != NULL && header->serial == parent->serial)
 			{
 				/* with the same serial number */
@@ -774,18 +782,25 @@ qpznode_acquire(qpzonedb_t *qpdb ISC_ATTR_UNUSED,
  * if necessary, then decrements the internal reference counter as well.
  */
 static void
-qpznode_release(qpzonedb_t *qpdb, qpznode_t *node DNS__DB_FLARG) {
+qpznode_release(qpzonedb_t *qpdb, qpznode_t *node,
+		uint32_t least_serial DNS__DB_FLARG) {
 	bool empty = false;
+	uint32_t current_serial;
 
 	if (CMM_LOAD_SHARED(node->dirty)) {
 		/*
 		 * We don't really have to care if the least_serial might lag
 		 * behind due to imperfect thread synchronization.
 		 */
-		uint32_t least_serial = CMM_LOAD_SHARED(qpdb->least_serial);
+		RWLOCK(&qpdb->lock, isc_rwlocktype_read);
+		current_serial = qpdb->current_serial;
+		if (least_serial == 0) {
+			least_serial = qpdb->least_serial;
+		}
+		RWUNLOCK(&qpdb->lock, isc_rwlocktype_read);
 
 		isc_spinlock_lock(&node->spinlock);
-		empty = clean_zone_node(node, least_serial);
+		empty = clean_zone_node(node, least_serial, current_serial);
 		isc_spinlock_unlock(&node->spinlock);
 	}
 
@@ -1154,15 +1169,15 @@ resigndelete(qpzonedb_t *qpdb, qpz_version_t *version,
 	RWUNLOCK(&qpdb->lock, isc_rwlocktype_write);
 
 	header->heap_index = 0;
-	qpznode_acquire(qpdb, HEADERNODE(header) DNS__DB_FLARG_PASS);
+	/* qpznode_acquire(qpdb, HEADERNODE(header) DNS__DB_FLARG_PASS); */
 	ISC_LIST_APPEND(version->resigned_list, header, link);
 }
 
 static void
-make_least_version(qpzonedb_t *qpdb, qpz_version_t *version,
-		   qpz_changedlist_t *cleanup_list) {
-	CMM_STORE_SHARED(qpdb->least_serial, version->serial);
+make_least_version(qpzonedb_t *qpdb ISC_ATTR_UNUSED, qpz_version_t *version,
+		   qpz_changedlist_t *cleanup_list, uint32_t *least_serial) {
 	ISC_LIST_MOVE(*cleanup_list, version->changed_list);
+	*least_serial = version->serial;
 }
 
 static void
@@ -1209,7 +1224,7 @@ rollback_node(qpznode_t *node, uint32_t serial) {
 static qpz_version_t *
 commitversion(qpzonedb_t *qpdb, qpz_version_t *version,
 	      qpz_changedlist_t *cleanup_list,
-	      dns_slabheaderlist_t *resigned_list DNS__DB_FLARG) {
+	      uint32_t *least_serial DNS__DB_FLARG) {
 	qpz_version_t *cleanup_version = NULL;
 	uint32_t cur_refs;
 	qpz_version_t *cur_version = NULL;
@@ -1224,8 +1239,7 @@ commitversion(qpzonedb_t *qpdb, qpz_version_t *version,
 	cur_version = qpdb->current_version;
 	cur_refs = isc_refcount_decrement(&cur_version->references);
 	if (cur_refs == 1) {
-		if (cur_version->serial == CMM_LOAD_SHARED(qpdb->least_serial))
-		{
+		if (cur_version->serial == qpdb->least_serial) {
 			INSIST(ISC_LIST_EMPTY(cur_version->changed_list));
 		}
 		ISC_LIST_UNLINK(qpdb->open_versions, cur_version, link);
@@ -1234,7 +1248,8 @@ commitversion(qpzonedb_t *qpdb, qpz_version_t *version,
 			/*
 			 * We're going to become the least open version.
 			 */
-			make_least_version(qpdb, version, cleanup_list);
+			make_least_version(qpdb, version, cleanup_list,
+					   least_serial);
 		}
 
 		/*
@@ -1273,20 +1288,33 @@ commitversion(qpzonedb_t *qpdb, qpz_version_t *version,
 	 */
 	INSIST(isc_refcount_increment0(&version->references) == 0);
 	ISC_LIST_PREPEND(qpdb->open_versions, version, link);
-	ISC_LIST_MOVE(*resigned_list, version->resigned_list);
+
+	dns_slabheader_t *header = NULL, *next = NULL;
+	ISC_LIST_FOREACH_SAFE (version->resigned_list, header, link, next) {
+		ISC_LIST_UNLINK(version->resigned_list, header, link);
+	}
 
 	return cleanup_version;
 }
 
 static qpz_version_t *
 rollbackversion(qpzonedb_t *qpdb, qpz_version_t *version,
-		qpz_changedlist_t *cleanup_list,
-		dns_slabheaderlist_t *resigned_list DNS__DB_FLARG) {
+		qpz_changedlist_t *cleanup_list DNS__DB_FLARG) {
 	/*
 	 * We're rolling back this transaction.
 	 */
 	ISC_LIST_MOVE(*cleanup_list, version->changed_list);
-	ISC_LIST_MOVE(*resigned_list, version->resigned_list);
+
+	dns_slabheader_t *header = NULL, *next = NULL;
+	ISC_LIST_FOREACH_SAFE (version->resigned_list, header, link, next) {
+		ISC_LIST_UNLINK(version->resigned_list, header, link);
+
+		REQUIRE(header->heap_index == 0);
+		REQUIRE(!ISC_LINK_LINKED(header, link));
+
+		isc_heap_insert(qpdb->heap, header);
+		header->heap = qpdb->heap;
+	}
 
 	qpdb->future_version = NULL;
 
@@ -1295,7 +1323,8 @@ rollbackversion(qpzonedb_t *qpdb, qpz_version_t *version,
 
 static qpz_version_t *
 sweepversion(qpzonedb_t *qpdb, qpz_version_t *version,
-	     qpz_changedlist_t *cleanup_list DNS__DB_FLARG) {
+	     qpz_changedlist_t *cleanup_list,
+	     uint32_t *least_serial DNS__DB_FLARG) {
 	qpz_version_t *least_greater = NULL;
 
 	/*
@@ -1320,7 +1349,8 @@ sweepversion(qpzonedb_t *qpdb, qpz_version_t *version,
 		/*
 		 * Yes.  Install the new least open version.
 		 */
-		make_least_version(qpdb, least_greater, cleanup_list);
+		make_least_version(qpdb, least_greater, cleanup_list,
+				   least_serial);
 	} else {
 		/*
 		 * Add any unexecuted cleanups to those of the least greater
@@ -1341,10 +1371,9 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 	qpznode_t *node = NULL;
 	qpz_changed_t *changed = NULL, *next_changed = NULL;
 	qpz_changedlist_t cleanup_list;
-	dns_slabheaderlist_t resigned_list;
-	dns_slabheader_t *header = NULL;
 	uint32_t serial;
 	bool rollback = false;
+	uint32_t least_serial = 0;
 
 	REQUIRE(VALID_QPZONE(qpdb));
 	version = (qpz_version_t *)*versionp;
@@ -1356,7 +1385,6 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 	}
 
 	ISC_LIST_INIT(cleanup_list);
-	ISC_LIST_INIT(resigned_list);
 
 	/*
 	 * Update the zone's secure status in version before making
@@ -1366,31 +1394,40 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 		setsecure(db, version, (dns_dbnode_t *)qpdb->origin);
 	}
 
+	rcu_read_lock();
 	RWLOCK(&qpdb->lock, isc_rwlocktype_write);
 	serial = version->serial;
 	if (version->writer) {
 		if (commit) {
-			cleanup_version = commitversion(
-				qpdb, version, &cleanup_list,
-				&resigned_list DNS__DB_FLARG_PASS);
+			cleanup_version =
+				commitversion(qpdb, version, &cleanup_list,
+					      &least_serial DNS__DB_FLARG_PASS);
 		} else {
 			cleanup_version = rollbackversion(
-				qpdb, version, &cleanup_list,
-				&resigned_list DNS__DB_FLARG_PASS);
+				qpdb, version,
+				&cleanup_list DNS__DB_FLARG_PASS);
 			rollback = true;
 		}
 	} else {
 		if (version != qpdb->current_version) {
-			cleanup_version =
-				sweepversion(qpdb, version,
-					     &cleanup_list DNS__DB_FLARG_PASS);
+			cleanup_version = sweepversion(
+				qpdb, version, &cleanup_list DNS__DB_FLARG_PASS,
+				&least_serial);
 		} else if (version->serial == qpdb->least_serial) {
 			INSIST(ISC_LIST_EMPTY(version->changed_list));
 		}
 		ISC_LIST_UNLINK(qpdb->open_versions, version, link);
 	}
 
+	if (least_serial != 0) {
+		qpdb->least_serial = least_serial;
+	} else {
+		least_serial = qpdb->least_serial;
+	}
 	RWUNLOCK(&qpdb->lock, isc_rwlocktype_write);
+	rcu_read_unlock();
+
+	synchronize_rcu();
 
 	if (cleanup_version != NULL) {
 		INSIST(!ISC_LINK_LINKED(cleanup_version, link));
@@ -1403,31 +1440,14 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 			    sizeof(*cleanup_version));
 	}
 
-	/*
-	 * Commit/rollback re-signed headers.
-	 */
-	for (header = ISC_LIST_HEAD(resigned_list); header != NULL;
-	     header = ISC_LIST_HEAD(resigned_list))
-	{
-		ISC_LIST_UNLINK(resigned_list, header, link);
-
-		if (rollback) {
-			resigninsert(qpdb, header);
-		}
-		qpznode_release(qpdb, HEADERNODE(header) DNS__DB_FLARG_PASS);
-	}
-
-	for (changed = ISC_LIST_HEAD(cleanup_list); changed != NULL;
-	     changed = next_changed)
-	{
-		next_changed = ISC_LIST_NEXT(changed, link);
+	ISC_LIST_FOREACH_SAFE (cleanup_list, changed, link, next_changed) {
 		node = changed->node;
 
 		if (rollback) {
 			rollback_node(node, serial);
 		}
 
-		qpznode_release(qpdb, node DNS__DB_FILELINE);
+		qpznode_release(qpdb, node DNS__DB_FILELINE, least_serial);
 
 		isc_mem_put(qpdb->common.mctx, changed, sizeof(*changed));
 	}
@@ -1807,36 +1827,18 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 		maybe_update_recordsandsize(true, version, newheader,
 					    nodename->length);
 
+		if (RESIGN(newheader)) {
+			resigninsert(qpdb, newheader);
+			resigndelete(qpdb, version, header DNS__DB_FLARG_PASS);
+		}
+
 		/* Add the new header to the list */
 		cds_list_add_rcu(&newheader->dnode, &hlist->versions);
 
-		if (loading) {
-			if (RESIGN(newheader)) {
-				resigninsert(qpdb, newheader);
-				/* resigndelete not needed here */
-			}
+		CMM_STORE_SHARED(node->dirty, true);
 
-			/*
-			 * There are no other references to 'header' when
-			 * loading, so we MAY clean up 'header' now.
-			 * Since we don't generate changed records when
-			 * loading, we MUST clean up 'header' now.
-			 */
-			cds_list_del_rcu(&header->dnode);
-			dns_slabheader_destroy(&header);
-
-		} else {
-			if (RESIGN(newheader)) {
-				resigninsert(qpdb, newheader);
-				resigndelete(qpdb, version,
-					     header DNS__DB_FLARG_PASS);
-			}
-
-			CMM_STORE_SHARED(node->dirty, true);
-
-			if (changed != NULL) {
-				changed->dirty = true;
-			}
+		if (changed != NULL) {
+			changed->dirty = true;
 		}
 	} else {
 		/*
@@ -1883,14 +1885,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 					    nodename->length);
 		cds_list_add_rcu(&newheader->dnode, &hlist->versions);
 
-		/* FIXME: If we are adding a new node then the node is not
-		 * dirty? */
-
-		CMM_STORE_SHARED(node->dirty, true);
-
-		if (changed != NULL) {
-			changed->dirty = true;
-		}
+		/* If we are adding a new header then the node is not dirty. */
 
 		/*
 		 * Check if the node now contains CNAME and other data.
@@ -3626,7 +3621,7 @@ tree_exit:
 	if (search.need_cleanup) {
 		node = search.zonecut;
 		INSIST(node != NULL);
-		qpznode_release(search.qpdb, node DNS__DB_FLARG_PASS);
+		qpznode_release(search.qpdb, node, 0 DNS__DB_FLARG_PASS);
 	}
 
 	if (close_version) {
@@ -3694,7 +3689,7 @@ qpzone_detachnode(dns_db_t *db, dns_dbnode_t **nodep DNS__DB_FLARG) {
 	qpznode_t *node = (qpznode_t *)(*nodep);
 	*nodep = NULL;
 
-	qpznode_release(qpdb, node DNS__DB_FLARG_PASS);
+	qpznode_release(qpdb, node, 0 DNS__DB_FLARG_PASS);
 }
 
 static unsigned int
@@ -3951,7 +3946,7 @@ dereference_iter_node(qpdb_dbiterator_t *iter DNS__DB_FLARG) {
 	}
 
 	iter->node = NULL;
-	qpznode_release(qpdb, node DNS__DB_FLARG_PASS);
+	qpznode_release(qpdb, node, 0 DNS__DB_FLARG_PASS);
 }
 
 static void
@@ -4494,7 +4489,7 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 	dns_slabheader_list_t *hlist = NULL, *hcurrent = NULL;
 	dns_slabheader_t *header = NULL, *current = NULL;
 	dns_slabheader_t *newheader = NULL;
-	dns_slabheader_t *subresult = NULL;
+	dns_slabheader_t *subheader = NULL;
 	isc_region_t region;
 	isc_result_t result;
 	qpz_changed_t *changed = NULL;
@@ -4531,8 +4526,8 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 		newheader->resign_lsb = rdataset->resign & 0x1;
 	}
 
-	isc_spinlock_lock(&node->spinlock);
 	rcu_read_lock();
+	isc_spinlock_lock(&node->spinlock);
 
 	changed = add_changed(newheader, version DNS__DB_FLARG_PASS);
 	cds_list_for_each_entry_rcu (hcurrent, &node->headers, nnode) {
@@ -4555,7 +4550,6 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 
 	if (header != NULL && !NONEXISTENT(header)) {
 		unsigned int flags = 0;
-		subresult = NULL;
 		result = ISC_R_SUCCESS;
 		if ((options & DNS_DBSUB_EXACT) != 0) {
 			flags |= DNS_RDATASLAB_EXACT;
@@ -4568,11 +4562,11 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 				header, newheader, qpdb->common.mctx,
 				qpdb->common.rdclass,
 				(dns_rdatatype_t)header->type, flags,
-				&subresult);
+				&subheader);
 		}
 		if (result == ISC_R_SUCCESS) {
 			dns_slabheader_destroy(&newheader);
-			newheader = subresult;
+			newheader = subheader;
 			dns_slabheader_reset(newheader, db,
 					     (dns_dbnode_t *)node);
 			dns_slabheader_copycase(newheader, header);
@@ -4623,14 +4617,14 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 		maybe_update_recordsandsize(false, version, header,
 					    nodename->length);
 
+		resigndelete(qpdb, version, header DNS__DB_FLARG_PASS);
+
 		cds_list_add_rcu(&newheader->dnode, &hlist->versions);
 
 		CMM_STORE_SHARED(node->dirty, true);
 		if (changed != NULL) {
 			changed->dirty = true;
 		}
-
-		resigndelete(qpdb, version, header DNS__DB_FLARG_PASS);
 	} else {
 		/*
 		 * The rdataset doesn't exist, so we don't need to do anything
@@ -4657,8 +4651,8 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 	}
 
 unlock:
-	rcu_read_unlock();
 	isc_spinlock_unlock(&node->spinlock);
+	rcu_read_unlock();
 
 	return result;
 }
@@ -4694,12 +4688,12 @@ qpzone_deleterdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 
 	dns_name_copy(&node->name, nodename);
 
-	isc_spinlock_lock(&node->spinlock);
 	rcu_read_lock();
+	isc_spinlock_lock(&node->spinlock);
 	result = add(qpdb, node, nodename, version, newheader, DNS_DBADD_FORCE,
 		     false, NULL, 0 DNS__DB_FLARG_PASS);
-	rcu_read_unlock();
 	isc_spinlock_unlock(&node->spinlock);
+	rcu_read_unlock();
 	return result;
 }
 
