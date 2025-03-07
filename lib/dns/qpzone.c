@@ -1262,6 +1262,7 @@ commitversion(qpzonedb_t *qpdb, qpz_version_t *version,
 	qpdb->current_version = version;
 	qpdb->current_serial = version->serial;
 	qpdb->future_version = NULL;
+	version->writer = false;
 
 	/*
 	 * Keep the current version in the open list, and
@@ -1392,6 +1393,7 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 	RWUNLOCK(&qpdb->lock, isc_rwlocktype_write);
 
 	if (cleanup_version != NULL) {
+		INSIST(!ISC_LINK_LINKED(cleanup_version, link));
 		isc_refcount_destroy(&cleanup_version->references);
 		INSIST(ISC_LIST_EMPTY(cleanup_version->changed_list));
 		cleanup_gluelists(&cleanup_version->glue_stack);
