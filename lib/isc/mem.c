@@ -439,6 +439,8 @@ isc__mem_shutdown(void) {
 	/* should be called after an rcu_barrier() */
 	bool empty;
 
+	rcu_barrier();
+
 	isc__mem_checkdestroyed();
 
 	LOCK(&contextslock);
