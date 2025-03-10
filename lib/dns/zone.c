@@ -5483,7 +5483,7 @@ dns_zone_checkzonemd(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *version) {
 		}
 	}
 
-	dns_zone_log(zone, ISC_LOG_DEBUG(3), "in zone_checkzonemd");
+	dns_zone_log(zone, ISC_LOG_INFO, "in zone_checkzonemd");
 
 	CHECK(dns_db_findnode(db, &zone->origin, false, &node));
 
@@ -5767,7 +5767,7 @@ failure:
 	if (secroots != NULL) {
 		dns_keytable_detach(&secroots);
 	}
-	dns_zone_log(zone, ISC_LOG_DEBUG(3), "dns_zone_checkzonemd -> %s",
+	dns_zone_log(zone, ISC_LOG_INFO, "dns_zone_checkzonemd -> %s",
 		     isc_result_totext(result));
 	return result;
 }
