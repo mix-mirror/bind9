@@ -5431,6 +5431,37 @@ dns_zone_checkzonemd(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *version) {
 		if (result == ISC_R_SUCCESS) {
 			if (dns_keynode_dsset(keynode, &dsset)) {
 				dssetp = &dsset;
+				dns_zone_log(
+					zone, ISC_LOG_INFO,
+					"checking ZONEMD with trust anchor");
+			}
+		}
+
+		/*
+		 * There's no trust anchor for the zone apex. When
+		 * the zone is being transferred in, the caller should
+		 * fetch the DS RRset before calling dns_zone_checkzonemd(),
+		 * so we'll be able to retrieve it from the cache now.
+		 */
+		if (dssetp == NULL && !dns_name_equal(origin, dns_rootname)) {
+			result = dns_view_simplefind(zone->view, origin,
+						     dns_rdatatype_ds, 0, 0,
+						     false, &dsset, NULL);
+			if (result == ISC_R_SUCCESS) {
+				dssetp = &dsset;
+				if (dssetp->trust < dns_trust_secure) {
+					dns_zone_log(zone, ISC_LOG_WARNING,
+						     "checking ZONEMD with "
+						     "insecure DS");
+				} else {
+					dns_zone_log(zone, ISC_LOG_INFO,
+						     "checking ZONEMD with "
+						     "secure DS");
+				}
+			} else {
+				dns_zone_log(zone, ISC_LOG_WARNING,
+					     "checking ZONEMD without DS: %s",
+					     isc_result_totext(result));
 			}
 		}
 	}

@@ -538,8 +538,7 @@ dns_view_find(dns_view_t *view, const dns_name_t *name, dns_rdatatype_t type,
 	      dns_name_t *foundname, dns_rdataset_t *rdataset,
 	      dns_rdataset_t *sigrdataset);
 /*%<
- * Find an rdataset whose owner name is 'name', and whose type is
- * 'type'.
+ * Find an rdataset whose owner name is 'name', and whose type is 'type'.
  * In general, this function first searches view's zone and cache DBs for the
  * best match data against 'name'.  If nothing found there, and if 'use_hints'
  * is true, the view's hint DB (if configured) is searched.
@@ -649,7 +648,7 @@ dns_view_simplefind(dns_view_t *view, const dns_name_t *name,
  *	in the hints database but not the type, the result code will be
  *	DNS_R_HINTNXRRSET.
  *
- *\li	If 'sigrdataset' is not NULL, and there is a SIG rdataset which
+ *\li	If 'sigrdataset' is not NULL, and there is an RRSIG rdataset which
  *	covers 'type', then 'sigrdataset' will be bound to it.
  *
  * Requires:

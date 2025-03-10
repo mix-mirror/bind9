@@ -366,7 +366,10 @@ axfr_apply(void *arg) {
 	}
 
 	if (xfr->diff_running) {
-		/* This is offloaded. */
+		/*
+		 * We're in an offloaded work thread, so running this
+		 * shouldn't impact query performance.
+		 */
 		result = dns_zone_checkzonemd(xfr->zone, xfr->db, xfr->ver);
 		if (result == DNS_R_BADZONE) {
 			goto cleanup;
@@ -520,6 +523,7 @@ ixfr_end_transaction(dns_ixfr_t *ixfr) {
 	if (ixfr->journal != NULL) {
 		CHECK(dns_journal_commit(ixfr->journal));
 	}
+
 cleanup:
 	return result;
 }
@@ -562,6 +566,10 @@ ixfr_apply_one(dns_xfrin_t *xfr, ixfr_apply_data_t *data) {
 	 */
 	dns_db_commitupdate(xfr->db, &callbacks);
 
+	/*
+	 * We're in an offloaded work thread, so running this
+	 * shouldn't impact query performance.
+	 */
 	result = dns_zone_checkzonemd(xfr->zone, xfr->db, xfr->ver);
 	if (result == DNS_R_BADZONE) {
 		goto cleanup;
