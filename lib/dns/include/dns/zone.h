@@ -909,11 +909,13 @@ dns_zone_isloaded(dns_zone_t *zone);
  */
 
 isc_result_t
-dns_zone_checkzonemd(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *ver);
+dns_zone_validatezonemd(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *ver,
+			dns_rdataset_t *dsset);
 /*%<
  * Check that version 'ver' of a zone's database 'db' either contains a
- * ZONEMD record which is a valid hash of contents of the database, or
- * is not required to contain one.
+ * validly signed ZONEMD record, or is not required to contain one.
+ * 'dsset' is either a trust anchor matching the zone's origin name,
+ * or a DS RRset retrieved from the zone's parent.
  *
  * Returns:
  *
@@ -927,6 +929,25 @@ dns_zone_checkzonemd(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *ver);
  * 				was not present, was not validly
  * 				signed, was not signed by a trusted
  * 				key, etc.
+ */
+
+isc_result_t
+dns_zone_checkzonemd(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *ver);
+/*%<
+ * Check that, if version 'ver' of a zone's database 'db' contains a
+ * ZONEMD record, it is a valid hash of contents of the database.
+ *
+ * Returns:
+ *
+ * \li	#ISC_R_SUCCESS		a ZONEMD is present at the zone apex,
+ * 				and matches the zone contents.
+ *
+ * \li	#ISC_R_NOTFOUND		a ZONEMD record was not found at
+ * 				the zone apex.
+ *
+ * \li	#DNS_R_BADZONE		a ZONEMD record is required but
+ * 				is not present, is not a valid hash
+ * 				of the zone contents, etc.
  */
 
 isc_result_t
