@@ -4244,21 +4244,44 @@ cleanup:
 	return result;
 }
 
+static void
+zonemd_trustanchor(dns_zone_t *zone, dns_rdataset_t *dsset) {
+	isc_result_t result;
+	dns_keytable_t *secroots = NULL;
+	dns_keynode_t *keynode = NULL;
+
+	if (zone->view == NULL) {
+		return;
+	}
+
+	result = dns_view_getsecroots(zone->view, &secroots);
+	if (result == ISC_R_SUCCESS) {
+		result = dns_keytable_find(secroots, &zone->origin, &keynode);
+	}
+	if (result == ISC_R_SUCCESS) {
+		if (dns_keynode_dsset(keynode, dsset)) {
+			dns_zone_log(zone, ISC_LOG_INFO,
+				     "ZONEMD with trust anchor");
+		}
+	}
+
+	if (keynode != NULL) {
+		dns_keynode_detach(&keynode);
+	}
+	if (secroots != NULL) {
+		dns_keytable_detach(&secroots);
+	}
+}
+
 isc_result_t
-dns_zone_checkzonemd(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *version) {
-	enum { unknown = 0, good = 1, bad = 2 } found[256] = { unknown };
+dns_zone_validatezonemd(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *ver,
+			dns_rdataset_t *dsset) {
 	bool nsec3paramflagsok = false;
 	isc_result_t result;
-	dns_keynode_t *keynode = NULL;
-	dns_keytable_t *secroots = NULL;
 	dns_dbnode_t *node = NULL;
 	dns_dbnode_t *nsec3node = NULL;
 	dns_fixedname_t fnsec3name;
-	dns_name_t *origin;
 	dns_name_t *nsec3name = dns_fixedname_initname(&fnsec3name);
-	dns_rdata_soa_t soa;
-	dns_rdata_t soardata = DNS_RDATA_INIT;
-	dns_rdataset_t dsset = DNS_RDATASET_INIT, *dssetp = NULL;
 	dns_rdataset_t dnskeyset = DNS_RDATASET_INIT,
 		       sigdnskeyset = DNS_RDATASET_INIT;
 	dns_rdataset_t nsec3paramset = DNS_RDATASET_INIT,
@@ -4275,36 +4298,31 @@ dns_zone_checkzonemd(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *version) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 	REQUIRE(db != NULL);
 
+	dns_name_t *origin = &zone->origin;
+
 	if (!DNS_ZONE_OPTION(zone, DNS_ZONEOPT_ZONEMD_CHECK)) {
 		return ISC_R_NOTFOUND;
 	}
 
-	origin = &zone->origin;
-
-	if (zone->view != NULL) {
-		result = dns_view_getsecroots(zone->view, &secroots);
-		if (result == ISC_R_SUCCESS) {
-			result = dns_keytable_find(secroots, origin, &keynode);
-		}
-		if (result == ISC_R_SUCCESS) {
-			if (dns_keynode_dsset(keynode, &dsset)) {
-				dssetp = &dsset;
-			}
-		}
+	/*
+	 * If the RRset isn't associated, treat it as NULL.
+	 */
+	if (dsset != NULL && !dns_rdataset_isassociated(dsset)) {
+		dsset = NULL;
 	}
 
-	dns_zone_log(zone, ISC_LOG_DEBUG(3), "in zone_checkzonemd");
+	dns_zone_log(zone, ISC_LOG_DEBUG(3), "in zone_validatezonemd");
 
-	CHECK(dns_db_findnode(db, &zone->origin, false, &node));
+	CHECK(dns_db_getoriginnode(db, &node));
 
-	result = dns_db_findrdataset(db, node, version, dns_rdatatype_soa,
+	result = dns_db_findrdataset(db, node, ver, dns_rdatatype_soa,
 				     dns_rdatatype_none, 0, &soaset,
 				     &sigsoaset);
 	dns_zone_log(zone, ISC_LOG_DEBUG(3), "dns_db_findrdataset(%u) -> %s",
 		     dns_rdatatype_soa, isc_result_totext(result));
 	CHECK((result == ISC_R_NOTFOUND) ? DNS_R_BADZONE : result);
 
-	result = dns_db_findrdataset(db, node, version, dns_rdatatype_dnskey,
+	result = dns_db_findrdataset(db, node, ver, dns_rdatatype_dnskey,
 				     dns_rdatatype_none, 0, &dnskeyset,
 				     &sigdnskeyset);
 	dns_zone_log(zone, ISC_LOG_DEBUG(3), "dns_db_findrdataset(%u) -> %s",
@@ -4313,7 +4331,7 @@ dns_zone_checkzonemd(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *version) {
 		CHECK(result);
 	}
 
-	result = dns_db_findrdataset(db, node, version, dns_rdatatype_zonemd,
+	result = dns_db_findrdataset(db, node, ver, dns_rdatatype_zonemd,
 				     dns_rdatatype_none, 0, &zonemdset,
 				     &sigzonemdset);
 	dns_zone_log(zone, ISC_LOG_DEBUG(3), "dns_db_findrdataset(%u) -> %s",
@@ -4326,13 +4344,13 @@ dns_zone_checkzonemd(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *version) {
 	 * Look for proofs that the zone is fully signed (NSEC or NSEC3PARAM)
 	 * at apex and that ZONEMD does not exist (apex NSEC/NSEC3),
 	 */
-	result = dns_db_findrdataset(db, node, version, dns_rdatatype_nsec,
+	result = dns_db_findrdataset(db, node, ver, dns_rdatatype_nsec,
 				     dns_rdatatype_none, 0, &nsecset,
 				     &signsecset);
 	dns_zone_log(zone, ISC_LOG_DEBUG(3), "dns_db_findrdataset(%u) -> %s",
 		     dns_rdatatype_nsec, isc_result_totext(result));
 	if (result == ISC_R_NOTFOUND) {
-		result = find_origin_nsec3(zone, db, node, version,
+		result = find_origin_nsec3(zone, db, node, ver,
 					   &nsec3paramflagsok, &nsec3paramset,
 					   &signsec3paramset, &fnsec3name,
 					   &nsec3node, &nsec3set, &signsec3set);
@@ -4353,7 +4371,7 @@ dns_zone_checkzonemd(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *version) {
 	    (dns_rdataset_isassociated(&nsecset) ||
 	     (dns_rdataset_isassociated(&nsec3paramset) && nsec3paramflagsok)))
 	{
-		if (!self_signed(zone, origin, dssetp, &dnskeyset,
+		if (!self_signed(zone, origin, dsset, &dnskeyset,
 				 &sigdnskeyset))
 		{
 			dns_zone_log(zone, ISC_LOG_INFO,
@@ -4407,13 +4425,6 @@ dns_zone_checkzonemd(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *version) {
 			CHECK(DNS_R_BADZONE);
 		}
 	} else {
-		if (dssetp != NULL) {
-			dns_zone_log(zone, ISC_LOG_INFO,
-				     "zone at a trust anchor should be signed "
-				     "but isn't");
-			CHECK(DNS_R_BADZONE);
-		}
-
 		if (dns_rdataset_isassociated(&zonemdset)) {
 			if (DNS_ZONE_OPTION(zone, DNS_ZONEOPT_ZONEMD_DNSSEC)) {
 				dns_zone_log(zone, ISC_LOG_INFO,
@@ -4434,12 +4445,71 @@ dns_zone_checkzonemd(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *version) {
 		}
 	}
 
+cleanup:
+	dns_rdataset_cleanup(&soaset);
+	dns_rdataset_cleanup(&sigsoaset);
+	dns_rdataset_cleanup(&nsecset);
+	dns_rdataset_cleanup(&signsecset);
+	dns_rdataset_cleanup(&nsec3set);
+	dns_rdataset_cleanup(&signsec3set);
+	dns_rdataset_cleanup(&dnskeyset);
+	dns_rdataset_cleanup(&sigdnskeyset);
+	dns_rdataset_cleanup(&zonemdset);
+	dns_rdataset_cleanup(&sigzonemdset);
+	dns_rdataset_cleanup(&nsec3paramset);
+	dns_rdataset_cleanup(&signsec3paramset);
+
+	if (node != NULL) {
+		dns_db_detachnode(&node);
+	}
+	if (nsec3node != NULL) {
+		dns_db_detachnode(&nsec3node);
+	}
+
+	dns_zone_log(zone, ISC_LOG_INFO, "dns_zone_validatezonemd -> %s",
+		     isc_result_totext(result));
+	return result;
+}
+
+isc_result_t
+dns_zone_checkzonemd(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *ver) {
+	isc_result_t result;
+	dns_rdataset_t zonemdset = DNS_RDATASET_INIT;
+	dns_rdataset_t sigzonemdset = DNS_RDATASET_INIT;
+	dns_rdataset_t soaset = DNS_RDATASET_INIT;
+	dns_rdata_t soa = DNS_RDATA_INIT;
+	dns_dbnode_t *node = NULL;
+	enum { unknown = 0, good = 1, bad = 2 } found[256] = { unknown };
+	dns_fixedname_t fn;
+	dns_name_t *fname = dns_fixedname_initname(&fn);
+	uint32_t serial;
+
+	REQUIRE(DNS_ZONE_VALID(zone));
+	REQUIRE(db != NULL);
+
+	if (!DNS_ZONE_OPTION(zone, DNS_ZONEOPT_ZONEMD_CHECK)) {
+		return ISC_R_NOTFOUND;
+	}
+
+	dns_zone_log(zone, ISC_LOG_INFO, "in zone_checkzonemd");
+
 	/*
 	 * Check the ZONEMD records.
 	 */
+	CHECK(dns_db_getoriginnode(db, &node));
+	result = dns_db_find(db, &zone->origin, ver, dns_rdatatype_zonemd, 0, 0,
+			     fname, &zonemdset, &sigzonemdset);
+	dns_zone_log(zone, ISC_LOG_DEBUG(3), "dns_db_find(zonemd) -> %s",
+		     isc_result_totext(result));
+	if (result != ISC_R_SUCCESS) {
+		CLEANUP(ISC_R_NOTFOUND);
+	}
+
+	CHECK(dns_db_findrdataset(db, node, ver, dns_rdatatype_soa,
+				  dns_rdatatype_none, 0, &soaset, NULL));
 	CHECK(dns_rdataset_first(&soaset));
-	dns_rdataset_current(&soaset, &soardata);
-	CHECK(dns_rdata_tostruct(&soardata, &soa, NULL));
+	dns_rdataset_current(&soaset, &soa);
+	serial = dns_soa_getserial(&soa);
 
 	uint32_t max_digest = 0;
 	DNS_RDATASET_FOREACH(&zonemdset) {
@@ -4457,11 +4527,11 @@ dns_zone_checkzonemd(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *version) {
 				max_digest = zonemd.digest_type;
 			}
 
-			if (soa.serial != zonemd.serial) {
+			if (serial != zonemd.serial) {
 				dns_zone_log(zone, ISC_LOG_DEBUG(3),
 					     "zonemd serial mismatch: soa=%u "
 					     "zonemd=%u",
-					     soa.serial, zonemd.serial);
+					     serial, zonemd.serial);
 				found[zonemd.digest_type] = bad;
 				continue;
 			}
@@ -4476,7 +4546,7 @@ dns_zone_checkzonemd(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *version) {
 				}
 			} else {
 				CHECK(dns_zonemd_buildrdata(
-					&check, db, version, zonemd.scheme,
+					&check, db, ver, zonemd.scheme,
 					zonemd.digest_type, zone->mctx, buf,
 					sizeof(buf)));
 				if (dns_rdata_compare(&check, &rdata) != 0) {
@@ -4523,30 +4593,11 @@ dns_zone_checkzonemd(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *version) {
 	}
 
 cleanup:
-	dns_rdataset_cleanup(&dsset);
 	dns_rdataset_cleanup(&soaset);
-	dns_rdataset_cleanup(&sigsoaset);
-	dns_rdataset_cleanup(&nsecset);
-	dns_rdataset_cleanup(&signsecset);
-	dns_rdataset_cleanup(&nsec3set);
-	dns_rdataset_cleanup(&signsec3set);
-	dns_rdataset_cleanup(&dnskeyset);
-	dns_rdataset_cleanup(&sigdnskeyset);
 	dns_rdataset_cleanup(&zonemdset);
 	dns_rdataset_cleanup(&sigzonemdset);
-	dns_rdataset_cleanup(&nsec3paramset);
-	dns_rdataset_cleanup(&signsec3paramset);
 	if (node != NULL) {
 		dns_db_detachnode(&node);
-	}
-	if (nsec3node != NULL) {
-		dns_db_detachnode(&nsec3node);
-	}
-	if (keynode != NULL) {
-		dns_keynode_detach(&keynode);
-	}
-	if (secroots != NULL) {
-		dns_keytable_detach(&secroots);
 	}
 	dns_zone_log(zone, ISC_LOG_DEBUG(3), "dns_zone_checkzonemd -> %s",
 		     isc_result_totext(result));
@@ -4571,6 +4622,7 @@ zone_postload(dns_zone_t *zone, dns_db_t *db, isc_time_t loadtime,
 	bool noprimary = false;
 	bool had_db = false;
 	bool is_dynamic = false;
+	dns_rdataset_t dsset = DNS_RDATASET_INIT;
 
 	INSIST(LOCKED_ZONE(zone));
 	if (dns__zone_inline_raw(zone)) {
@@ -4788,11 +4840,38 @@ zone_postload(dns_zone_t *zone, dns_db_t *db, isc_time_t loadtime,
 			CLEANUP(DNS_R_BADZONE);
 		}
 
+		/*
+		 * Here, a result of ISC_R_NOTFOUND from the funtions
+		 * below mean ZONEMD is validly absent, or that we're
+		 * not checking for it.
+		 */
 		result = dns_zone_checkzonemd(zone, db, NULL);
-		if (result == DNS_R_BADZONE) {
-			goto cleanup;
+		if (result != ISC_R_NOTFOUND) {
+			CHECK(result);
 		}
 
+		/*
+		 * If the zone has a trust anchor, we'll use it to
+		 * check the ZONEMD. If not, we verify the zone is
+		 * self-consistent, but we don't fetch a parent DS RRset
+		 * to check the chain of trust. We do that in the xfrin
+		 * case, not when loading from disk.
+		 *
+		 * ISC_R_NOTFOUND means that ZONEMD is absent and
+		 * that's provably correct, or that we aren't checking
+		 * for it.
+		 */
+		zonemd_trustanchor(zone, &dsset);
+		result = dns_zone_validatezonemd(zone, db, NULL, &dsset);
+		dns_rdataset_cleanup(&dsset);
+		if (result != ISC_R_NOTFOUND) {
+			CHECK(result);
+		}
+
+		/*
+		 * Mirror zones must be verified unless ZONEMD is
+		 * both present and valid.
+		 */
 		if (result != ISC_R_SUCCESS && zone->type == dns_zone_mirror) {
 			CHECK(dns_zone_verifydb(zone, db, NULL));
 		}

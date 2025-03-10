@@ -351,7 +351,10 @@ axfr_apply(void *arg) {
 	}
 
 	if (xfr->diff_running) {
-		/* This is offloaded. */
+		/*
+		 * We're in an offloaded work thread, so running this
+		 * shouldn't impact query performance.
+		 */
 		result = dns_zone_checkzonemd(xfr->zone, xfr->db, xfr->ver);
 		if (result == DNS_R_BADZONE) {
 			goto cleanup;
@@ -380,6 +383,12 @@ axfr_apply_done(void *arg, isc_result_t result) {
 	}
 
 	if (result == ISC_R_SUCCESS) {
+		result = dns_zone_validatezonemd(xfr->zone, xfr->db, xfr->ver,
+						 NULL);
+		if (result != ISC_R_NOTFOUND) {
+			CHECK(result);
+		}
+
 		CHECK(dns_db_endload(xfr->db, &xfr->axfr));
 		CHECK(axfr_finalize(xfr));
 	} else {
@@ -497,6 +506,7 @@ ixfr_end_transaction(dns_ixfr_t *ixfr) {
 	if (ixfr->journal != NULL) {
 		CHECK(dns_journal_commit(ixfr->journal));
 	}
+
 cleanup:
 	return result;
 }
@@ -539,6 +549,10 @@ ixfr_apply_one(dns_xfrin_t *xfr, ixfr_apply_data_t *data) {
 	 */
 	dns_db_commitupdate(xfr->db, &callbacks);
 
+	/*
+	 * We're in an offloaded work thread, so running this
+	 * shouldn't impact query performance.
+	 */
 	result = dns_zone_checkzonemd(xfr->zone, xfr->db, xfr->ver);
 	if (result == DNS_R_BADZONE) {
 		goto cleanup;
@@ -608,7 +622,12 @@ ixfr_apply_done(void *arg, isc_result_t result) {
 	if (atomic_load(&xfr->shuttingdown)) {
 		result = ISC_R_SHUTTINGDOWN;
 	}
+	CHECK(result);
 
+	result = dns_zone_validatezonemd(xfr->zone, xfr->db, xfr->ver, NULL);
+	if (result == ISC_R_NOTFOUND) {
+		result = ISC_R_SUCCESS;
+	}
 	CHECK(result);
 
 	/* Reschedule */
