@@ -809,6 +809,7 @@ typedef struct respctx {
 	bool truncated;	      /* response was truncated */
 	bool no_response;     /* no response was received */
 	bool negative;	      /* is this a negative response? */
+	bool force_edns_0;
 
 	isc_stdtime_t now; /* time info */
 	isc_time_t tnow;
@@ -8375,6 +8376,10 @@ rctx_edns(respctx_t *rctx) {
 				   "EDNS version negotiation: rcode != "
 				   "BADVERS(16): %u" GREASE_NSID_FMT,
 				   query->rmessage->rcode, GREASE_NSID_INFO);
+			if (query->rmessage->rcode != dns_rcode_nxdomain &&
+			    query->rmessage->rcode != dns_rcode_noerror) {
+				rctx->force_edns_0 = true;
+			}
 		}
 
 		/*
@@ -9942,6 +9947,12 @@ rctx_badserver(respctx_t *rctx, isc_result_t result) {
 		 * CD=0; try again with CD=1.
 		 */
 		rctx->retryopts |= DNS_FETCHOPT_TRYCD;
+		rctx->resend = true;
+	} else if (rctx->force_edns_0) {
+		unsigned int flags = DNS_FETCHOPT_EDNSVERSIONSET;
+		unsigned int mask = DNS_FETCHOPT_EDNSVERSIONMASK |
+				    DNS_FETCHOPT_EDNSVERSIONSET;
+		dns_adb_changeflags(fctx->adb, query->addrinfo, flags, mask);
 		rctx->resend = true;
 	} else {
 		rctx->broken_server = DNS_R_UNEXPECTEDRCODE;
