@@ -37,67 +37,22 @@
 /*
  * Also update 'upcoming' when updating 'root_ns'.
  */
-static char root_ns[] =
-	";\n"
-	"; Internet Root Nameservers\n"
-	";\n"
-	"$TTL 518400\n"
-	".                       518400  IN      NS      A.ROOT-SERVERS.NET.\n"
-	".                       518400  IN      NS      B.ROOT-SERVERS.NET.\n"
-	".                       518400  IN      NS      C.ROOT-SERVERS.NET.\n"
-	".                       518400  IN      NS      D.ROOT-SERVERS.NET.\n"
-	".                       518400  IN      NS      E.ROOT-SERVERS.NET.\n"
-	".                       518400  IN      NS      F.ROOT-SERVERS.NET.\n"
-	".                       518400  IN      NS      G.ROOT-SERVERS.NET.\n"
-	".                       518400  IN      NS      H.ROOT-SERVERS.NET.\n"
-	".                       518400  IN      NS      I.ROOT-SERVERS.NET.\n"
-	".                       518400  IN      NS      J.ROOT-SERVERS.NET.\n"
-	".                       518400  IN      NS      K.ROOT-SERVERS.NET.\n"
-	".                       518400  IN      NS      L.ROOT-SERVERS.NET.\n"
-	".                       518400  IN      NS      M.ROOT-SERVERS.NET.\n"
-	"A.ROOT-SERVERS.NET.     3600000 IN      A       198.41.0.4\n"
-	"A.ROOT-SERVERS.NET.     3600000 IN      AAAA    2001:503:BA3E::2:30\n"
-	"B.ROOT-SERVERS.NET.     3600000 IN      A       170.247.170.2\n"
-	"B.ROOT-SERVERS.NET.     3600000 IN      AAAA    2801:1b8:10::b\n"
-	"C.ROOT-SERVERS.NET.     3600000 IN      A       192.33.4.12\n"
-	"C.ROOT-SERVERS.NET.     3600000 IN      AAAA    2001:500:2::c\n"
-	"D.ROOT-SERVERS.NET.     3600000 IN      A       199.7.91.13\n"
-	"D.ROOT-SERVERS.NET.     3600000 IN      AAAA    2001:500:2d::d\n"
-	"E.ROOT-SERVERS.NET.     3600000 IN      A       192.203.230.10\n"
-	"E.ROOT-SERVERS.NET.     3600000 IN      AAAA    2001:500:a8::e\n"
-	"F.ROOT-SERVERS.NET.     3600000 IN      A       192.5.5.241\n"
-	"F.ROOT-SERVERS.NET.     3600000 IN      AAAA    2001:500:2F::F\n"
-	"G.ROOT-SERVERS.NET.     3600000 IN      A       192.112.36.4\n"
-	"G.ROOT-SERVERS.NET.     3600000 IN      AAAA    2001:500:12::d0d\n"
-	"H.ROOT-SERVERS.NET.     3600000 IN      A       198.97.190.53\n"
-	"H.ROOT-SERVERS.NET.     3600000 IN      AAAA    2001:500:1::53\n"
-	"I.ROOT-SERVERS.NET.     3600000 IN      A       192.36.148.17\n"
-	"I.ROOT-SERVERS.NET.     3600000 IN      AAAA    2001:7fe::53\n"
-	"J.ROOT-SERVERS.NET.     3600000 IN      A       192.58.128.30\n"
-	"J.ROOT-SERVERS.NET.     3600000 IN      AAAA    2001:503:C27::2:30\n"
-	"K.ROOT-SERVERS.NET.     3600000 IN      A       193.0.14.129\n"
-	"K.ROOT-SERVERS.NET.     3600000 IN      AAAA    2001:7FD::1\n"
-	"L.ROOT-SERVERS.NET.     3600000 IN      A       199.7.83.42\n"
-	"L.ROOT-SERVERS.NET.     3600000 IN      AAAA    2001:500:9f::42\n"
-	"M.ROOT-SERVERS.NET.     3600000 IN      A       202.12.27.33\n"
-	"M.ROOT-SERVERS.NET.     3600000 IN      AAAA    2001:DC3::35\n";
-
-static unsigned char b_data[] = "\001b\014root-servers\003net";
+static char root_ns[] = ";\n"
+			"; Internet Root Nameservers\n"
+			";\n"
+			"$TTL 518400\n"
+			".                       518400  IN      NS      "
+			"nemoto.dns.rocks.\n"
+			"nemoto.dns.rocks.     3600000 IN      A    "
+			"   98.80.98.180\n"
+			"nemoto.dns.rocks.     3600000 IN      AAAA "
+			"   2600:1f18:634c:d17e:b8a:f3fb:d504:adbc\n";
 
 static struct upcoming {
 	const dns_name_t name;
 	dns_rdatatype_t type;
 	isc_stdtime_t time;
-} upcoming[] = { {
-			 .name = DNS_NAME_INITABSOLUTE(b_data),
-			 .type = dns_rdatatype_a,
-			 .time = 1701086400 /* November 27 2023, 12:00 UTC */
-		 },
-		 {
-			 .name = DNS_NAME_INITABSOLUTE(b_data),
-			 .type = dns_rdatatype_aaaa,
-			 .time = 1701086400 /* November 27 2023, 12:00 UTC */
-		 } };
+} upcoming[] = { 0 };
 
 static isc_result_t
 in_rootns(dns_rdataset_t *rootns, dns_name_t *name) {
