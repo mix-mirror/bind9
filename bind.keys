@@ -40,4 +40,8 @@ builtin-trust-anchors {
         # seamlessly to this new one via RFC 5011 rollover.
         . initial-ds 38696 8 2 "683D2D0ACB8C9B712A1948B27F741219298D0A450D612C483AF444A
         4C0FB2B16";
+        # SQIsign root zone key (PRIVATEDNS "q.", see
+        # https://github.com/oerdnj/dnssec-algorithm-testing-registry)
+        . initial-key 257 3 253 "AXEAHC93QFY+XuGhE+gHrUv0gFoK/CsjtLDUnyOAAYWI6ALE/SGO24Kw
+                Jt/101zCkDjd26LiqYmwHizJHQ0xhf1dAQs=";
 };
