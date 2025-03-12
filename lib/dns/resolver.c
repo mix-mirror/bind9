@@ -5058,6 +5058,11 @@ same_question(fetchctx_t *fctx, dns_message_t *message) {
 			log_formerr(fctx, "empty question section, "
 					  "accepting it anyway as TC=1");
 			return ISC_R_SUCCESS;
+		} else if (message->rcode == dns_rcode_badvers) {
+			log_formerr(fctx,
+				    "empty question section, "
+				    "accepting it anyway as rcode=BADVERS");
+			return ISC_R_SUCCESS;
 		} else {
 			log_formerr(fctx, "empty question section");
 			return DNS_R_FORMERR;
