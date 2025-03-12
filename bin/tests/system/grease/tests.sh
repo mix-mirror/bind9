@@ -27,8 +27,8 @@ ret=0
 $DIG $DIGOPTS example @10.53.0.1 >dig.out.$n || ret=1
 grep "status: NOERROR" dig.out.$n >/dev/null || ret=1
 p1="grease-dns-flags: 10.53.0.2#[0-9]* example/A: DNS header flag 0x40 not zero"
-p2="grease-edns-flags: 10.53.0.2#[0-9]* example/A: Unspecified EDNS flags not zero: [0248]*"
-p3="grease-edns-negotiation: 10.53.0.2#[0-9]* example/A: EDNS version negotiation: rcode != BADVERS(16): 0"
+p2="grease-edns-flags: 10.53.0.2#[0-9]* example/A: Unspecified EDNS flags not zero: 0x[0248]*"
+p3="grease-edns-negotiation: 10.53.0.2#[0-9]* example/A: EDNS version negotiation: unexpected rcode: NOERROR"
 grep "$p1" ns1/named.run >/dev/null || ret=1
 grep "$p2" ns1/named.run >/dev/null || ret=1
 grep "$p3" ns1/named.run >/dev/null || ret=1
@@ -43,8 +43,8 @@ ret=0
 $DIG $DIGOPTS nxdomain.example @10.53.0.1 >dig.out.$n || ret=1
 grep "status: NXDOMAIN" dig.out.$n >/dev/null || ret=1
 p1="grease-dns-flags: 10.53.0.2#[0-9]* nxdomain.example/A: DNS header flag 0x40 not zero"
-p2="grease-edns-flags: 10.53.0.2#[0-9]* nxdomain.example/A: Unspecified EDNS flags not zero: [0248]*"
-p3="grease-edns-negotiation: 10.53.0.2#[0-9]* nxdomain.example/A: EDNS version negotiation: rcode != BADVERS(16): 3"
+p2="grease-edns-flags: 10.53.0.2#[0-9]* nxdomain.example/A: Unspecified EDNS flags not zero: 0x[0248]*"
+p3="grease-edns-negotiation: 10.53.0.2#[0-9]* nxdomain.example/A: EDNS version negotiation: unexpected rcode: NXDOMAIN"
 grep "$p1" ns1/named.run >/dev/null || ret=1
 grep "$p2" ns1/named.run >/dev/null || ret=1
 grep "$p3" ns1/named.run >/dev/null || ret=1

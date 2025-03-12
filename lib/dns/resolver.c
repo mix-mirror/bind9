@@ -8358,7 +8358,7 @@ rctx_edns(respctx_t *rctx) {
 		if ((ednsflags & query->grease_ednsflags) != 0) {
 			log_grease(fctx, "grease-edns-flags",
 				   "Unspecified EDNS flags not zero: "
-				   "%04x" GREASE_NSID_FMT,
+				   "%#04x" GREASE_NSID_FMT,
 				   ednsflags, GREASE_NSID_INFO);
 		}
 	}
@@ -8373,18 +8373,34 @@ rctx_edns(respctx_t *rctx) {
 		uint8_t version = (rctx->opt->ttl >> 16) & 0xff;
 
 		/*
+		 * Some nameservers fail to return the question section
+		 * when returning BADVERS
+		 */
+		if (query->rmessage->counts[DNS_SECTION_QUESTION] == 0 &&
+		    query->rmessage->rcode == dns_rcode_badvers)
+		{
+			log_grease(fctx, "grease-edns-negotiation",
+				   "EDNS version negotiation: question count"
+				   " is zero" GREASE_NSID_FMT,
+				   GREASE_NSID_INFO);
+			rctx->force_edns_0 = true;
+		}
+
+		/*
 		 * We expect the rcode to be BADVERS because we sent EDNS
 		 * version 100.
 		 */
 		if (query->rmessage->rcode != dns_rcode_badvers) {
+			char code[64];
+			isc_buffer_t b;
+			isc_buffer_init(&b, code, sizeof(code) - 1);
+			dns_rcode_totext(query->rmessage->rcode, &b);
+			code[isc_buffer_usedlength(&b)] = '\0';
 			log_grease(fctx, "grease-edns-negotiation",
-				   "EDNS version negotiation: rcode != "
-				   "BADVERS(16): %u" GREASE_NSID_FMT,
-				   query->rmessage->rcode, GREASE_NSID_INFO);
-			if (query->rmessage->rcode != dns_rcode_nxdomain &&
-			    query->rmessage->rcode != dns_rcode_noerror) {
-				rctx->force_edns_0 = true;
-			}
+				   "EDNS version negotiation: unexpected "
+				   "rcode: %s" GREASE_NSID_FMT,
+				   code, GREASE_NSID_INFO);
+			rctx->force_edns_0 = true;
 		}
 
 		/*
