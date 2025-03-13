@@ -18,3 +18,4 @@
 
 #include <mayo/mayo.h>
 #include <mayo/mem.h>
+#include <mayo/randombytes.h>

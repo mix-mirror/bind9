@@ -274,7 +274,7 @@ libdns_la_CPPFLAGS =		\
 	$(LIBURCU_CFLAGS)	\
 	$(LIBUV_CFLAGS)		\
 	$(OPENSSL_CFLAGS)	\
-	$(MAYO_CFLAGS)
+	-I/usr/local/include/mayo
 
 libdns_la_LDFLAGS =		\
 	$(AM_LDFLAGS)		\
@@ -285,7 +285,7 @@ libdns_la_LIBADD =		\
 	$(LIBURCU_LIBS)		\
 	$(LIBUV_LIBS)		\
 	$(OPENSSL_LIBS)		\
-	$(MAYO_LIBS)
+	-L/usr/local/lib -lmayo_1
 
 if HAVE_JSON_C
 libdns_la_CPPFLAGS +=		\
