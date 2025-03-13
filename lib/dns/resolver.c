@@ -301,6 +301,7 @@ struct tried {
 #define RESQUERY_ATTR_DNS_FLAGS	 (1U << 1)
 #define RESQUERY_ATTR_EDNS_FLAGS (1U << 2)
 #define RESQUERY_ATTR_EDNS_NEG	 (1U << 3)
+#define RESQUERY_ATTR_NOGREASE	 (1U << 4)
 
 #define RESQUERY_CONNECTING(q) ((q)->connects > 0)
 #define RESQUERY_CANCELED(q)   (((q)->attributes & RESQUERY_ATTR_CANCELED) != 0)
@@ -2379,7 +2380,9 @@ resquery_send(resquery_t *query) {
 	 * GREASE: Set the final reserved DNS header bit.
 	 */
 	query->attributes &= ~RESQUERY_ATTR_DNS_FLAGS;
-	if (grease_dns_flags && now < grease_until && GREASE) {
+	if ((query->attributes & RESQUERY_ATTR_NOGREASE) == 0 &&
+	    grease_dns_flags && now < grease_until && GREASE)
+	{
 		fctx->qmessage->flags |= 0x40;
 		query->attributes |= RESQUERY_ATTR_DNS_FLAGS;
 		grease_nsid = res->view->grease_nsid;
@@ -2461,7 +2464,9 @@ resquery_send(resquery_t *query) {
 			 * set to 0 as EDNS(1) is currently undefined.
 			 */
 			query->attributes &= ~RESQUERY_ATTR_EDNS_NEG;
-			if (grease_edns_neg && GREASE) {
+			if ((query->attributes & RESQUERY_ATTR_NOGREASE) == 0 &&
+			    grease_edns_neg && GREASE)
+			{
 				version = 100;
 				query->attributes |= RESQUERY_ATTR_EDNS_NEG;
 				grease_nsid = res->view->grease_nsid;
@@ -2474,7 +2479,9 @@ resquery_send(resquery_t *query) {
 			 * Disable test Jan 1, 2026.
 			 */
 			query->attributes &= ~RESQUERY_ATTR_EDNS_FLAGS;
-			if (grease_edns_flags && now < grease_until && GREASE) {
+			if ((query->attributes & RESQUERY_ATTR_NOGREASE) == 0 &&
+			    grease_edns_flags && now < grease_until && GREASE)
+			{
 				/*
 				 * Set one of the reserved EDNS flag bits.
 				 */
@@ -8056,6 +8063,7 @@ rctx_dispfail(respctx_t *rctx) {
 static isc_result_t
 rctx_timedout(respctx_t *rctx) {
 	fetchctx_t *fctx = rctx->fctx;
+	resquery_t *query = rctx->query;
 
 	if (rctx->result == ISC_R_TIMEDOUT) {
 		isc_time_t now;
@@ -8075,6 +8083,14 @@ rctx_timedout(respctx_t *rctx) {
 				  "fetch happen");
 			dns_ede_add(&fctx->edectx, DNS_EDE_NOREACHABLEAUTH,
 				    NULL);
+		}
+		if ((query->attributes &
+		     (RESQUERY_ATTR_DNS_FLAGS | RESQUERY_ATTR_EDNS_FLAGS |
+		      RESQUERY_ATTR_EDNS_NEG)) != 0 &&
+		    (query->attributes & RESQUERY_ATTR_NOGREASE) == 0)
+		{
+			query->attributes |= RESQUERY_ATTR_NOGREASE;
+			rctx->resend = true;
 		} else {
 			FCTXTRACE("query timed out; trying next server");
 			/* try next server */
