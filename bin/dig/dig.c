@@ -223,6 +223,8 @@ help(void) {
 	       "                 +[no]expire         (Request time to expire)\n"
 	       "                 +[no]fail           (Don't try next server on "
 	       "SERVFAIL)\n"
+	       "                 +grease             (Simulate named's grease "
+	       "options)\n"
 	       "                 +[no]header-only    (Send query without a "
 	       "question section)\n"
 	       "                 +[no]https[=###]    (DNS-over-HTTPS mode) "
@@ -1889,6 +1891,17 @@ plus_option(char *option, bool is_batchfile, bool *need_clone,
 			break;
 		default:
 			goto invalid_option;
+		}
+		break;
+	case 'g':
+		FULLCHECK("grease");
+		if (state) {
+			lookup->edns = 100;
+			lookup->original_edns = 100;
+			lookup->zflag = true;
+			lookup->showbadvers = true;
+			lookup->ednsflags = 0x40;
+			lookup->nsid = true;
 		}
 		break;
 	case 'h':

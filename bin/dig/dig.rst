@@ -401,6 +401,12 @@ abbreviation is unambiguous; for example, :option:`+cd` is equivalent to
    is specified 1646972129 (Fri 11 Mar 2022 04:15:29 UTC) is used.
    The default is ``+nofuzztime`` and the current time is used.
 
+.. option:: +grease
+
+   This options simulates what named does with all the grease options
+   enabled and is equivalent to setting: ``+edns=100 +zflag
+   +ednsflags=0x40 +nsid +showbadvers``
+
 .. option:: +header-only, +noheader-only
 
    This option sends a query with a DNS header without a question section. The
