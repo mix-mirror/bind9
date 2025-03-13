@@ -351,6 +351,7 @@ dns_rdataslab_fromrdataset(dns_rdataset_t *rdataset, isc_mem_t *mctx,
 			.trust = rdataset->trust,
 			.ttl = rdataset->ttl,
 			.link = ISC_LINK_INITIALIZER,
+			.dnode = CDS_LIST_HEAD_INIT(new->dnode),
 		};
 	}
 
@@ -886,24 +887,34 @@ dns_slabheader_new(dns_db_t *db, dns_dbnode_t *node) {
 	return h;
 }
 
+static void
+dns__slabheader_destroy_rcu(struct rcu_head *rcu_head) {
+	dns_slabheader_t *header = caa_container_of(rcu_head, dns_slabheader_t,
+						    rcu_head);
+	size_t size = NONEXISTENT(header) ? sizeof(*header)
+					  : dns_rdataslab_size(header);
+
+	isc_mem_putanddetach(&header->mctx, header, size);
+}
+
 void
 dns_slabheader_destroy(dns_slabheader_t **headerp) {
-	unsigned int size;
 	dns_slabheader_t *header = *headerp;
 
 	*headerp = NULL;
 
 	isc_mem_t *mctx = header->db->mctx;
 
+	INSIST(!ISC_LINK_LINKED(header, link));
+
 	dns_db_deletedata(header->db, header->node, header);
 
-	if (NONEXISTENT(header)) {
-		size = sizeof(*header);
-	} else {
-		size = dns_rdataslab_size(header);
-	}
+	header->mctx = NULL;
 
-	isc_mem_put(mctx, header, size);
+	/* FIXME: bleh, this is so ugly */
+	isc_mem_attach(mctx, &header->mctx);
+
+	call_rcu(&header->rcu_head, dns__slabheader_destroy_rcu);
 }
 
 void
@@ -1264,4 +1275,32 @@ rdataset_equals(const dns_rdataset_t *rdataset1,
 
 	return dns_rdataslab_equalx(header1, header2, rdataset1->rdclass,
 				    rdataset2->type);
+}
+
+void
+dns_slabheader_createlist(isc_mem_t *mctx, dns_slabheader_list_t **headp) {
+	dns_slabheader_list_t *head = isc_mem_get(mctx, sizeof(*head));
+	*head = (dns_slabheader_list_t){
+		.nnode = CDS_LIST_HEAD_INIT(head->nnode),
+		.versions = CDS_LIST_HEAD_INIT(head->versions),
+	};
+
+	isc_mem_attach(mctx, &head->mctx);
+
+	*headp = head;
+}
+
+static void
+dns__slabheader_destroylist_rcu(struct rcu_head *rcu_head) {
+	dns_slabheader_list_t *head =
+		caa_container_of(rcu_head, dns_slabheader_list_t, rcu_head);
+	isc_mem_putanddetach(&head->mctx, head, sizeof(*head));
+}
+
+void
+dns_slabheader_destroylist(dns_slabheader_list_t **headp) {
+	dns_slabheader_list_t *head = *headp;
+	*headp = NULL;
+
+	call_rcu(&head->rcu_head, dns__slabheader_destroylist_rcu);
 }

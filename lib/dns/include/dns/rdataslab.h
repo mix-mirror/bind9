@@ -64,6 +64,14 @@ struct dns_slabheader_proof {
 	dns_rdatatype_t type;
 };
 
+typedef struct dns_slabheader_list {
+	isc_mem_t	    *mctx;
+	struct cds_list_head nnode;
+	struct cds_list_head versions;
+	struct rcu_head	     rcu_head;
+	dns_typepair_t	     type;
+} dns_slabheader_list_t;
+
 struct dns_slabheader {
 	_Atomic(uint16_t) attributes;
 
@@ -92,40 +100,46 @@ struct dns_slabheader {
 	 * Used for TTL-based cache cleaning.
 	 */
 
-	isc_stdtime_t	  last_used;
-	_Atomic(uint32_t) last_refresh_fail_ts;
+	union {
+		struct { /* qpcache */
+			isc_stdtime_t	  last_used;
+			_Atomic(uint32_t) last_refresh_fail_ts;
+
+			union {
+				/*%<
+				 * If this is the top header for an rdataset,
+				 * 'next' points to the top header for the next
+				 * rdataset (i.e., the next type).
+				 *
+				 * Otherwise 'up' points up to the header whose
+				 * down pointer points at this header.
+				 */
+
+				struct dns_slabheader *next;
+				struct dns_slabheader *up;
+			};
+			/*%<
+			 * Points to the header for the next older version of
+			 * this rdataset.
+			 */
+			struct dns_slabheader *down;
+			/*%<
+			 * The database and database node objects containing
+			 * this rdataset, if any.
+			 */
+		};
+		struct { /* qpzone */
+			struct cds_list_head dnode;
+			dns_gluelist_t	    *gluelist;
+		};
+	};
 
 	dns_slabheader_proof_t *noqname;
 	dns_slabheader_proof_t *closest;
-	/*%<
-	 * We don't use the LIST macros, because the LIST structure has
-	 * both head and tail pointers, and is doubly linked.
-	 */
-
-	union {
-		struct dns_slabheader *next;
-		struct dns_slabheader *up;
-	};
-	/*%<
-	 * If this is the top header for an rdataset, 'next' points
-	 * to the top header for the next rdataset (i.e., the next type).
-	 *
-	 * Otherwise 'up' points up to the header whose down pointer points at
-	 * this header.
-	 */
-
-	struct dns_slabheader *down;
-	/*%<
-	 * Points to the header for the next older version of
-	 * this rdataset.
-	 */
 
 	dns_db_t     *db;
+	isc_mem_t    *mctx;
 	dns_dbnode_t *node;
-	/*%<
-	 * The database and database node objects containing
-	 * this rdataset, if any.
-	 */
 
 	ISC_LINK(struct dns_slabheader) link;
 
@@ -138,13 +152,13 @@ struct dns_slabheader {
 
 	isc_heap_t *heap;
 
-	dns_gluelist_t *gluelist;
+	struct rcu_head rcu_head;
 };
 
 enum {
 	DNS_SLABHEADERATTR_NONEXISTENT = 1 << 0,
 	DNS_SLABHEADERATTR_STALE = 1 << 1,
-	DNS_SLABHEADERATTR_IGNORE = 1 << 2,
+	/* DNS_SLABHEADERATTR_IGNORE = 1 << 2, */
 	DNS_SLABHEADERATTR_NXDOMAIN = 1 << 3,
 	DNS_SLABHEADERATTR_RESIGN = 1 << 4,
 	DNS_SLABHEADERATTR_STATCOUNT = 1 << 5,
@@ -307,7 +321,7 @@ dns_slabheader_new(dns_db_t *db, dns_dbnode_t *node);
 void
 dns_slabheader_destroy(dns_slabheader_t **headerp);
 /*%<
- * Free all memory associated with '*headerp'.
+ * Free all memory associated with '*headerp', either directly or with RCU.
  */
 
 void
@@ -321,3 +335,9 @@ dns_slabheader_top(dns_slabheader_t *header);
 /*%<
  * Return the top header for the type or the negtype
  */
+
+void
+dns_slabheader_createlist(isc_mem_t *mctx, dns_slabheader_list_t **headp);
+
+void
+dns_slabheader_destroylist(dns_slabheader_list_t **headp);

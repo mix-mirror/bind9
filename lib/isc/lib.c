@@ -68,6 +68,11 @@ isc__lib_shutdown(void) {
 		return;
 	}
 
+	/* FIXME: I know this is lame */
+	rcu_barrier();
+	rcu_barrier();
+	rcu_barrier();
+
 	isc__iterated_hash_shutdown();
 	isc__xml_shutdown();
 	isc__uv_shutdown();
