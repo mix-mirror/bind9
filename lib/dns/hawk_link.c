@@ -68,7 +68,7 @@ dst__hawk_sign(dst_context_t *dctx, isc_buffer_t *sig) {
 	isc_result_t result = ISC_R_SUCCESS;
 	dst_key_t *key = dctx->key;
 	isc_region_t sigreg;
-	uint8_t tmp[HAWK_TMPSIZE_SIGN(8)];
+	uint8_t tmp[HAWK_TMPSIZE_SIGN(HAWK_LOGN)];
 
 	isc_buffer_availableregion(sig, &sigreg);
 	if (sigreg.length < DNS_SIG_HAWKSIZE) {
@@ -76,9 +76,10 @@ dst__hawk_sign(dst_context_t *dctx, isc_buffer_t *sig) {
 		goto done;
 	}
 
-	int status = hawk_sign_finish(
-		8, dst__hawk_rng, NULL, sig->base, &dctx->ctxdata.shake_context,
-		key->keydata.keypair.priv, tmp, sizeof(tmp));
+	int status = hawk_sign_finish(HAWK_LOGN, dst__hawk_rng, NULL, sig->base,
+				      &dctx->ctxdata.shake_context,
+				      key->keydata.keypair.priv, tmp,
+				      sizeof(tmp));
 	if (status == 0) {
 		result = DST_R_SIGNFAILURE;
 		isc_log_write(dctx->category, DNS_LOGMODULE_CRYPTO,
@@ -101,7 +102,7 @@ dst__hawk_verify(dst_context_t *dctx, const isc_region_t *sig) {
 
 	isc_result_t result = ISC_R_SUCCESS;
 	dst_key_t *key = dctx->key;
-	uint8_t tmp[HAWK_TMPSIZE_VERIFY_FAST(8)];
+	uint8_t tmp[HAWK_TMPSIZE_VERIFY_FAST(HAWK_LOGN)];
 
 	if (sig->length != DNS_SIG_HAWKSIZE) {
 		result = DST_R_VERIFYFAILURE;
@@ -109,7 +110,7 @@ dst__hawk_verify(dst_context_t *dctx, const isc_region_t *sig) {
 	}
 
 	int status = hawk_verify_finish(
-		8, sig->base, sig->length, &dctx->ctxdata.shake_context,
+		HAWK_LOGN, sig->base, sig->length, &dctx->ctxdata.shake_context,
 		key->keydata.keypair.pub, DNS_KEY_HAWKSIZE, tmp, sizeof(tmp));
 	if (status == 0) {
 		result = DST_R_VERIFYFAILURE;
@@ -168,9 +169,9 @@ dst__hawk_generate(dst_key_t *key, int unused ISC_ATTR_UNUSED,
 	isc_result_t result = ISC_R_UNSET;
 	uint8_t *pk = isc_mem_get(key->mctx, DNS_KEY_HAWKSIZE);
 	uint8_t *sk = isc_mem_get(key->mctx, DNS_SEC_HAWKSIZE);
-	uint8_t tmp[HAWK_TMPSIZE_KEYGEN(8)];
+	uint8_t tmp[HAWK_TMPSIZE_KEYGEN(HAWK_LOGN)];
 
-	int status = hawk_keygen(8, sk, pk, dst__hawk_rng, NULL, tmp,
+	int status = hawk_keygen(HAWK_LOGN, sk, pk, dst__hawk_rng, NULL, tmp,
 				 sizeof(tmp));
 	if (status == 0) {
 		result = DST_R_CRYPTOFAILURE;
