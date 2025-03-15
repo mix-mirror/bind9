@@ -182,6 +182,7 @@ libdns_la_SOURCES =			\
 	dyndb_p.h			\
 	ecs.c				\
 	ede.c				\
+	falcon_link.c			\
 	fixedname.c			\
 	forward.c			\
 	gssapictx.c			\
@@ -272,7 +273,23 @@ libdns_la_SOURCES =			\
 	hawk/ng_poly.c \
 	hawk/ng_zint31.c \
 	hawk/sha3.c \
-	hawk/sha3.h
+	hawk/sha3.h \
+	falcon-512/api.h \
+	falcon-512/codec.c \
+	falcon-512/common.c \
+	falcon-512/fft.c \
+	falcon-512/fpr.c \
+	falcon-512/fpr.h \
+	falcon-512/inner.h \
+	falcon-512/keygen.c \
+	falcon-512/pqclean.c \
+	falcon-512/rng.c \
+	falcon-512/sign.c \
+	falcon-512/vrfy.c \
+	falcon-512/fips202.h \
+	falcon-512/fips202.c \
+	falcon-512/randombytes.h \
+	falcon-512/randombytes.c
 
 if HAVE_GSSAPI
 libdns_la_SOURCES +=			\
@@ -291,7 +308,8 @@ libdns_la_CPPFLAGS =		\
 	$(LIBURCU_CFLAGS)	\
 	$(LIBUV_CFLAGS)		\
 	$(OPENSSL_CFLAGS)	\
-	-Ihawk
+	-Ihawk			\
+	-Ifalcon-512
 
 libdns_la_LDFLAGS =		\
 	$(AM_LDFLAGS)		\

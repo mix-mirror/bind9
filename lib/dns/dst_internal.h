@@ -210,6 +210,8 @@ dst__gssapi_init(struct dst_func **funcp);
 #endif /* HAVE_GSSAPI*/
 void
 dst__hawk_init(dst_func_t **funcp, unsigned char algorithm);
+void
+dst__falcon_init(dst_func_t **funcp, unsigned char algorithm);
 
 /*%
  * Secure private file handling

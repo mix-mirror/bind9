@@ -93,6 +93,9 @@ static struct parse_map map[] = { { TAG_RSA_MODULUS, "Modulus:" },
 				  { TAG_HAWK_PUBLICKEY, "PublicKey:" },
 				  { TAG_HAWK_SECRETKEY, "SecretKey:" },
 
+				  { TAG_FALCON_PUBLICKEY, "PublicKey:" },
+				  { TAG_FALCON_SECRETKEY, "SecretKey:" },
+
 				  { TAG_HMACMD5_KEY, "Key:" },
 				  { TAG_HMACMD5_BITS, "Bits:" },
 
@@ -311,6 +314,39 @@ check_hawk(const dst_private_t *priv, bool external) {
 }
 
 static int
+check_falcon(const dst_private_t *priv, bool external) {
+	bool have[FALCON_NTAGS] = { 0 };
+	unsigned int mask;
+
+	if (external) {
+		return check_external(priv);
+	}
+
+	for (size_t j = 0; j < priv->nelements; j++) {
+		size_t i;
+		for (i = 0; i < FALCON_NTAGS; i++) {
+			if (priv->elements[j].tag == TAG(DST_ALG_FALCON, i)) {
+				break;
+			}
+		}
+		if (i == FALCON_NTAGS) {
+			return DST_R_INVALIDPRIVATEKEY;
+		}
+		have[i] = true;
+	}
+
+	mask = (1ULL << TAG_SHIFT) - 1;
+
+	if (have[TAG_FALCON_PUBLICKEY & mask] &&
+	    have[TAG_FALCON_SECRETKEY & mask])
+	{
+		return ISC_R_SUCCESS;
+	}
+
+	return DST_R_INVALIDPRIVATEKEY;
+}
+
+static int
 check_hmac_md5(const dst_private_t *priv, bool old) {
 	int i, j;
 
@@ -380,6 +416,8 @@ check_data(const dst_private_t *priv, const unsigned int alg, bool old,
 		return check_eddsa(priv, external);
 	case DST_ALG_HAWK:
 		return check_hawk(priv, external);
+	case DST_ALG_FALCON:
+		return check_falcon(priv, external);
 	case DST_ALG_HMACMD5:
 		return check_hmac_md5(priv, old);
 	case DST_ALG_HMACSHA1:
@@ -716,6 +754,9 @@ dst__privstruct_writefile(const dst_key_t *key, const dst_private_t *priv,
 		break;
 	case DST_ALG_HAWK:
 		fprintf(fp, "(HAWK)\n");
+		break;
+	case DST_ALG_FALCON:
+		fprintf(fp, "(FALCON)\n");
 		break;
 	case DST_ALG_HMACMD5:
 		fprintf(fp, "(HMAC_MD5)\n");

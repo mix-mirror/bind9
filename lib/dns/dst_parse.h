@@ -32,7 +32,7 @@
 
 #include <dst/dst.h>
 
-#define MAXFIELDSIZE 1025
+#define MAXFIELDSIZE 4096
 
 /*
  * Maximum number of fields in a private file is 18 (12 algorithm-
@@ -70,6 +70,10 @@
 #define HAWK_NTAGS	   3
 #define TAG_HAWK_PUBLICKEY ((DST_ALG_HAWK << TAG_SHIFT) + 0)
 #define TAG_HAWK_SECRETKEY ((DST_ALG_HAWK << TAG_SHIFT) + 1)
+
+#define FALCON_NTAGS	     3
+#define TAG_FALCON_PUBLICKEY ((DST_ALG_FALCON << TAG_SHIFT) + 0)
+#define TAG_FALCON_SECRETKEY ((DST_ALG_FALCON << TAG_SHIFT) + 1)
 
 #define OLD_HMACMD5_NTAGS 1
 #define HMACMD5_NTAGS	  2

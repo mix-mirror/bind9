@@ -213,6 +213,7 @@ dst__lib_initialize(void) {
 #endif /* ifdef HAVE_OPENSSL_ED448 */
 
 	dst__hawk_init(&dst_t_func[DST_ALG_HAWK], DST_ALG_HAWK);
+	dst__falcon_init(&dst_t_func[DST_ALG_FALCON], DST_ALG_FALCON);
 
 #if HAVE_GSSAPI
 	dst__gssapi_init(&dst_t_func[DST_ALG_GSSAPI]);
@@ -579,7 +580,7 @@ dst_key_fromnamedfile(const char *filename, const char *dirname, int type,
 			   ".private");
 	INSIST(result == ISC_R_SUCCESS);
 
-	isc_lex_create(mctx, 1500, &lex);
+	isc_lex_create(mctx, DST_KEY_MAXTEXTSIZE, &lex);
 	RETERR(isc_lex_openfile(lex, newfilename));
 	isc_mem_put(mctx, newfilename, newfilenamelen);
 
@@ -1321,6 +1322,9 @@ dst_key_sigsize(const dst_key_t *key, unsigned int *n) {
 	case DST_ALG_HAWK:
 		*n = DNS_SIG_HAWKSIZE;
 		break;
+	case DST_ALG_FALCON:
+		*n = DNS_SIG_FALCONSIZE;
+		break;
 	case DST_ALG_HMACMD5:
 		*n = isc_md_type_get_size(ISC_MD_MD5);
 		break;
@@ -1489,7 +1493,7 @@ dst_key_read_public(const char *filename, int type, isc_mem_t *mctx,
 	 */
 
 	/* 1500 should be large enough for any key */
-	isc_lex_create(mctx, 1500, &lex);
+	isc_lex_create(mctx, DST_KEY_MAXTEXTSIZE, &lex);
 
 	memset(specials, 0, sizeof(specials));
 	specials['('] = 1;
@@ -1638,7 +1642,7 @@ dst_key_read_state(const char *filename, isc_mem_t *mctx, dst_key_t **keyp) {
 	isc_result_t ret;
 	unsigned int opt = ISC_LEXOPT_EOL;
 
-	isc_lex_create(mctx, 1500, &lex);
+	isc_lex_create(mctx, DST_KEY_MAXTEXTSIZE, &lex);
 	isc_lex_setcomments(lex, ISC_LEXCOMMENT_DNSMASTERFILE);
 
 	ret = isc_lex_openfile(lex, filename);
@@ -1807,6 +1811,7 @@ issymmetric(const dst_key_t *key) {
 	case DST_ALG_ED25519:
 	case DST_ALG_ED448:
 	case DST_ALG_HAWK:
+	case DST_ALG_FALCON:
 		return false;
 	case DST_ALG_HMACMD5:
 	case DST_ALG_HMACSHA1:

@@ -378,6 +378,9 @@ create_key(ksr_ctx_t *ksr, dns_kasp_t *kasp, dns_kasp_key_t *kaspkey,
 	case DST_ALG_HAWK:
 		ksr->size = DNS_KEY_HAWKSIZE;
 		break;
+	case DST_ALG_FALCON:
+		ksr->size = DNS_KEY_FALCONSIZE;
+		break;
 	default:
 		show_progress = false;
 		break;

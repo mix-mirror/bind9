@@ -459,6 +459,9 @@ dns_kasp_key_size(dns_kasp_key_t *key) {
 	case DNS_KEYALG_HAWK:
 		size = DNS_KEY_HAWKSIZE;
 		break;
+	case DNS_KEYALG_FALCON:
+		size = DNS_KEY_FALCONSIZE;
+		break;
 	default:
 		/* unsupported */
 		break;

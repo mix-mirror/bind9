@@ -43,7 +43,7 @@ Options
 
    This option selects the cryptographic algorithm. The value of ``algorithm`` must
    be one of RSASHA1, NSEC3RSASHA1, RSASHA256, RSASHA512,
-   ECDSAP256SHA256, ECDSAP384SHA384, ED25519, ED448, or HAWK.
+   ECDSAP256SHA256, ECDSAP384SHA384, ED25519, ED448, HAWK, or FALCON.
 
    These values are case-insensitive. In some cases, abbreviations are
    supported, such as ECDSA256 for ECDSAP256SHA256 and ECDSA384 for
