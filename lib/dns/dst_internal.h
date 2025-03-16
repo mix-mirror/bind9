@@ -50,6 +50,8 @@
 
 #include <dst/dst.h>
 
+#include "antrag/antrag/api.h"
+
 #define KEY_MAGIC ISC_MAGIC('D', 'S', 'T', 'K')
 #define CTX_MAGIC ISC_MAGIC('D', 'S', 'T', 'C')
 
@@ -98,6 +100,10 @@ struct dst_key {
 			EVP_PKEY *pub;
 			EVP_PKEY *priv;
 		} pkeypair;
+		struct {
+			public_key *pub;
+			secret_key *priv;
+		} antrag;
 	} keydata; /*%< pointer to key in crypto pkg fmt */
 
 	isc_stdtime_t times[DST_MAX_TIMES + 1]; /*%< timing metadata */
@@ -202,6 +208,8 @@ dst__openssleddsa_init(struct dst_func **funcp, unsigned char algorithm);
 void
 dst__gssapi_init(struct dst_func **funcp);
 #endif /* HAVE_GSSAPI*/
+void
+dst__antrag_init(dst_func_t **funcp, unsigned char algorithm);
 
 /*%
  * Secure private file handling

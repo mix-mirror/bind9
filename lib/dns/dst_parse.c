@@ -90,6 +90,9 @@ static struct parse_map map[] = { { TAG_RSA_MODULUS, "Modulus:" },
 				  { TAG_EDDSA_ENGINE, "Engine:" },
 				  { TAG_EDDSA_LABEL, "Label:" },
 
+				  { TAG_ANTRAG_PUBLICKEY, "PublicKey:" },
+				  { TAG_ANTRAG_SECRETKEY, "SecretKey:" },
+
 				  { TAG_HMACMD5_KEY, "Key:" },
 				  { TAG_HMACMD5_BITS, "Bits:" },
 
@@ -272,6 +275,39 @@ check_eddsa(const dst_private_t *priv, bool external) {
 }
 
 static int
+check_antrag(const dst_private_t *priv, bool external) {
+	bool have[ANTRAG_NTAGS] = { 0 };
+	unsigned int mask;
+
+	if (external) {
+		return (priv->nelements == 0) ? 0 : -1;
+	}
+
+	for (size_t j = 0; j < priv->nelements; j++) {
+		size_t i;
+		for (i = 0; i < ANTRAG_NTAGS; i++) {
+			if (priv->elements[j].tag == TAG(DST_ALG_ANTRAG, i)) {
+				break;
+			}
+		}
+		if (i == ANTRAG_NTAGS) {
+			return DST_R_INVALIDPRIVATEKEY;
+		}
+		have[i] = true;
+	}
+
+	mask = (1ULL << TAG_SHIFT) - 1;
+
+	if (have[TAG_ANTRAG_PUBLICKEY & mask] &&
+	    have[TAG_ANTRAG_SECRETKEY & mask])
+	{
+		return ISC_R_SUCCESS;
+	}
+
+	return DST_R_INVALIDPRIVATEKEY;
+}
+
+static int
 check_hmac_md5(const dst_private_t *priv, bool old) {
 	int i, j;
 
@@ -339,6 +375,8 @@ check_data(const dst_private_t *priv, const unsigned int alg, bool old,
 	case DST_ALG_ED25519:
 	case DST_ALG_ED448:
 		return check_eddsa(priv, external);
+	case DST_ALG_ANTRAG:
+		return check_antrag(priv, external);
 	case DST_ALG_HMACMD5:
 		return check_hmac_md5(priv, old);
 	case DST_ALG_HMACSHA1:
@@ -675,6 +713,9 @@ dst__privstruct_writefile(const dst_key_t *key, const dst_private_t *priv,
 		break;
 	case DST_ALG_ED448:
 		fprintf(fp, "(ED448)\n");
+		break;
+	case DST_ALG_ANTRAG:
+		fprintf(fp, "(ANTRAG)\n");
 		break;
 	case DST_ALG_HMACMD5:
 		fprintf(fp, "(HMAC_MD5)\n");

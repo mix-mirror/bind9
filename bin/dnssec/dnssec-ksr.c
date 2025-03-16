@@ -375,6 +375,9 @@ create_key(ksr_ctx_t *ksr, dns_kasp_t *kasp, dns_kasp_key_t *kaspkey,
 	case DST_ALG_ED448:
 		ksr->size = 456;
 		break;
+	case DST_ALG_ANTRAG:
+		ksr->size = DNS_KEY_ANTRAGSIZE;
+		break;
 	default:
 		show_progress = false;
 		break;

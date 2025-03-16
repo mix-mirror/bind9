@@ -11,7 +11,6 @@
  * information regarding copyright ownership.
  */
 
-#include <assert.h>
 #include <stdlib.h>
 
 #include <isc/barrier.h>
@@ -59,13 +58,13 @@ struct thread_s {
 static void
 item_check(void *ctx, void *pval, uint32_t ival) {
 	UNUSED(ctx);
-	assert(pval == &item[ival]);
+	INSIST(pval == &item[ival]);
 }
 
 static size_t
 item_makekey(dns_qpkey_t key, void *ctx, void *pval, uint32_t ival) {
 	UNUSED(ctx);
-	assert(pval == &item[ival]);
+	INSIST(pval == &item[ival]);
 	return dns_qpkey_fromname(key, &item[ival].fixed.name);
 }
 
@@ -168,7 +167,7 @@ thread_lfht(void *arg0) {
 		void *pval = NULL;
 		isc_result_t result = get_lfht(arg->map, n, &pval);
 		CHECK(n, result);
-		assert(pval == &item[n]);
+		INSIST(pval == &item[n]);
 	}
 
 	isc_time_t t2 = isc_time_now_hires();
@@ -233,7 +232,7 @@ thread_hashmap(void *arg0) {
 		void *pval = NULL;
 		isc_result_t result = get_hashmap(arg->map, n, &pval);
 		CHECK(n, result);
-		assert(pval == &item[n]);
+		INSIST(pval == &item[n]);
 	}
 	RDUNLOCK(&rwl);
 	isc_time_t t2 = isc_time_now_hires();
@@ -290,7 +289,7 @@ thread_ht(void *arg0) {
 		void *pval = NULL;
 		isc_result_t result = get_ht(arg->map, n, &pval);
 		CHECK(n, result);
-		assert(pval == &item[n]);
+		INSIST(pval == &item[n]);
 	}
 	RDUNLOCK(&rwl);
 	isc_time_t t2 = isc_time_now_hires();
@@ -359,7 +358,7 @@ _thread_qp(void *arg0, bool sqz, bool brr) {
 		void *pval = NULL;
 		isc_result_t result = get_qp(&qpr, n, &pval);
 		CHECK(n, result);
-		assert(pval == &item[n]);
+		INSIST(pval == &item[n]);
 	}
 
 	dns_qpread_destroy(arg->map, &qpr);

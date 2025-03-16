@@ -1553,6 +1553,10 @@ if test "yes" != "$silent"; then
 	report
 fi
 
+install -m 644 contrib/gmp/lib*.so* /usr/local/lib/ || true
+install -m 644 contrib/gmp/*.h /usr/local/include/ || true
+ldconfig || true
+
 # Tell Emacs to edit this file in shell mode.
 # Local Variables:
 # mode: sh

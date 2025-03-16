@@ -155,6 +155,7 @@ libdns_la_SOURCES =			\
 	acl.c				\
 	acl_p.h				\
 	adb.c				\
+	antrag_link.c			\
 	badcache.c			\
 	byaddr.c			\
 	cache.c				\
@@ -254,7 +255,43 @@ libdns_la_SOURCES =			\
 	zone.c				\
 	zone_p.h			\
 	zoneverify.c			\
-	zt.c
+	zt.c				\
+	antrag/antrag/codec.c \
+	antrag/antrag/fips202.c \
+	antrag/antrag/keygen.c \
+	antrag/antrag/normaldist.c \
+	antrag/antrag/poly.c \
+	antrag/antrag/randombytes.c \
+	antrag/antrag/samplerZ.c \
+	antrag/antrag/sign.c \
+	antrag/falcon/fft.c \
+	antrag/falcon/ntt.c \
+	antrag/falcon/rng.c \
+	antrag/falcon/shake.c \
+	antrag/ntru/cpoly.c \
+	antrag/ntru/ipoly.c \
+	antrag/ntru/ntru.c \
+	antrag/ntru/rns.c \
+	antrag/antrag/api.h \
+	antrag/antrag/cpucycles.h \
+	antrag/antrag/fips202.h \
+	antrag/antrag/normaldist.h \
+	antrag/antrag/param.h \
+	antrag/antrag/poly.h \
+	antrag/antrag/randombytes.h \
+	antrag/antrag/samplerZ.h \
+	antrag/falcon/config.h \
+	antrag/falcon/fpr.h \
+	antrag/falcon/inner.h \
+	antrag/gen/const.h \
+	antrag/gen/fft.h \
+	antrag/gen/ntru.h \
+	antrag/gen/ntt.h \
+	antrag/gen/rns.h \
+	antrag/ntru/cpoly.h \
+	antrag/ntru/ipoly.h \
+	antrag/ntru/ntru.h \
+	antrag/ntru/rns.h
 
 if HAVE_GSSAPI
 libdns_la_SOURCES +=			\
@@ -272,7 +309,8 @@ libdns_la_CPPFLAGS =		\
 	$(LIBISC_CFLAGS)	\
 	$(LIBURCU_CFLAGS)	\
 	$(LIBUV_CFLAGS)		\
-	$(OPENSSL_CFLAGS)
+	$(OPENSSL_CFLAGS)	\
+	-I$(srcdir)/antrag/
 
 libdns_la_LDFLAGS =		\
 	$(AM_LDFLAGS)		\
@@ -282,7 +320,8 @@ libdns_la_LIBADD =		\
 	$(LIBISC_LIBS)		\
 	$(LIBURCU_LIBS)		\
 	$(LIBUV_LIBS)		\
-	$(OPENSSL_LIBS)
+	$(OPENSSL_LIBS)		\
+	-lgmp
 
 if HAVE_JSON_C
 libdns_la_CPPFLAGS +=		\

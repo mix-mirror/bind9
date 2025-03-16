@@ -32,7 +32,7 @@
 
 #include <dst/dst.h>
 
-#define MAXFIELDSIZE 512
+#define MAXFIELDSIZE 65536 * 2
 
 /*
  * Maximum number of fields in a private file is 18 (12 algorithm-
@@ -66,6 +66,10 @@
 #define TAG_EDDSA_PRIVATEKEY ((DST_ALG_ED25519 << TAG_SHIFT) + 0)
 #define TAG_EDDSA_ENGINE     ((DST_ALG_ED25519 << TAG_SHIFT) + 1)
 #define TAG_EDDSA_LABEL	     ((DST_ALG_ED25519 << TAG_SHIFT) + 2)
+
+#define ANTRAG_NTAGS	     2
+#define TAG_ANTRAG_PUBLICKEY ((DST_ALG_ANTRAG << TAG_SHIFT) + 0)
+#define TAG_ANTRAG_SECRETKEY ((DST_ALG_ANTRAG << TAG_SHIFT) + 1)
 
 #define OLD_HMACMD5_NTAGS 1
 #define HMACMD5_NTAGS	  2
