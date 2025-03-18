@@ -613,7 +613,7 @@ sendquery(struct query *query) {
 		unsigned char cookie[40];
 
 		if (query->udpsize == 0) {
-			query->udpsize = 1232;
+			query->udpsize = 1452;
 		}
 		if (query->edns < 0) {
 			query->edns = 0;
