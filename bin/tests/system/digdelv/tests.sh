@@ -1244,9 +1244,9 @@ if [ -x "$DIG" ]; then
   ret=0
   dig_with_opts @10.53.0.3 a.example +bufsize=0 +bufsize +qr >dig.out.test$n 2>&1 || ret=1
   lines=$(grep "EDNS:.* udp:" dig.out.test$n | wc -l)
-  lines1232=$(grep "EDNS:.* udp: 1232" dig.out.test$n | wc -l)
+  lines1452=$(grep "EDNS:.* udp: 1452" dig.out.test$n | wc -l)
   test $lines -eq 2 || ret=1
-  test $lines1232 -eq 2 || ret=1
+  test $lines1452 -eq 2 || ret=1
   if [ $ret -ne 0 ]; then echo_i "failed"; fi
   status=$((status + ret))
 
@@ -1388,16 +1388,16 @@ if [ -x "$DIG" ]; then
   n=$((n + 1))
   echo_i "check that dig +noedns +ednsflags=<nonzero> re-enables EDNS ($n)"
   dig_with_opts @10.53.0.3 +qr +noedns +ednsflags=0x70 a.example >dig.out.test$n 2>&1 || ret=1
-  grep "; EDNS: version: 0, flags:; MBZ: 0x0070, udp: 1232" dig.out.test$n >/dev/null || ret=1
-  grep "; EDNS: version: 0, flags:; udp: 1232" dig.out.test$n >/dev/null || ret=1
+  grep "; EDNS: version: 0, flags:; MBZ: 0x0070, udp: 1452" dig.out.test$n >/dev/null || ret=1
+  grep "; EDNS: version: 0, flags:; udp: 1452" dig.out.test$n >/dev/null || ret=1
   if [ $ret -ne 0 ]; then echo_i "failed"; fi
   status=$((status + ret))
 
   n=$((n + 1))
   echo_i "check that dig +showbadvers works ($n)"
   dig_with_opts @10.53.0.3 +edns=1 +qr +showbadvers a.example >dig.out.test$n 2>&1 || ret=1
-  grep "; EDNS: version: 1, flags:; udp: 1232" dig.out.test$n >/dev/null || ret=1
-  grep "; EDNS: version: 0, flags:; udp: 1232" dig.out.test$n >/dev/null || ret=1
+  grep "; EDNS: version: 1, flags:; udp: 1452" dig.out.test$n >/dev/null || ret=1
+  grep "; EDNS: version: 0, flags:; udp: 1452" dig.out.test$n >/dev/null || ret=1
   grep -F "status: BADVERS" dig.out.test$n >/dev/null || ret=1
   grep -F "status: NOERROR" dig.out.test$n >/dev/null || ret=1
   if [ $ret -ne 0 ]; then echo_i "failed"; fi
