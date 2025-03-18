@@ -82,7 +82,7 @@
 /*%
  * Default EDNS0 buffer size
  */
-#define DEFAULT_EDNS_BUFSIZE 1232
+#define DEFAULT_EDNS_BUFSIZE 1452
 
 void
 dns_view_create(isc_mem_t *mctx, isc_loopmgr_t *loopmgr,
