@@ -11,7 +11,7 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
-from typing import List
+from typing import List, Optional
 from warnings import warn
 
 from hypothesis.strategies import (
@@ -19,15 +19,25 @@ from hypothesis.strategies import (
     builds,
     composite,
     integers,
+    ip_addresses,
     just,
+    lists,
     nothing,
     permutations,
+    sampled_from,
+    SearchStrategy,
 )
 
 import dns.name
 import dns.message
 import dns.rdataclass
 import dns.rdatatype
+import dns.rdataset
+import dns.rdtypes.IN.A
+import dns.rdtypes.IN.AAAA
+import dns.rdtypes.ANY.TXT
+import dns.rdtypes.ANY.NS
+import dns.rrset
 
 import isctest.name
 
@@ -168,3 +178,169 @@ def _partition_bytes_to_labels(
     # NOTE: Some of the remaining bytes will usually not be assigned to any label, but we don't care.
 
     return draw(permutations(partition))
+
+
+a_rdata = builds(
+    dns.rdtypes.IN.A.A,
+    just(dns.rdataclass.IN),
+    just(dns.rdatatype.A),
+    builds(str, ip_addresses(v=4)),
+)
+
+aaaa_rdata = builds(
+    dns.rdtypes.IN.AAAA.AAAA,
+    just(dns.rdataclass.IN),
+    just(dns.rdatatype.AAAA),
+    builds(str, ip_addresses(v=6)),
+)
+
+txt_rdata = builds(
+    dns.rdtypes.ANY.TXT.TXT,
+    just(dns.rdataclass.IN),
+    just(dns.rdatatype.TXT),
+    binary(),
+)
+
+ns_rdata = builds(
+    dns.rdtypes.ANY.NS.NS,
+    just(dns.rdataclass.IN),
+    just(dns.rdatatype.NS),
+    dns_names(),
+)
+
+_rdata_strategies = {
+    dns.rdatatype.A: a_rdata,
+    dns.rdatatype.AAAA: aaaa_rdata,
+    dns.rdatatype.TXT: txt_rdata,
+    dns.rdatatype.NS: ns_rdata,
+}
+
+_supported_rdata_types = list(_rdata_strategies.keys())
+
+
+@composite
+def rdata(draw, type_: Optional[dns.rdatatype.RdataType] = None):
+    if type_ is None:
+        type_ = draw(sampled_from(_supported_rdata_types))
+    try:
+        return draw(_rdata_strategies[type_])
+    except KeyError:
+        raise ValueError(f"Unsupported RdataType {type_}")
+
+
+@composite
+def rdataset(
+    draw,
+    rdatatype: Optional[dns.rdatatype.RdataType] = None,
+    rdataclass: dns.rdataclass.RdataClass = dns.rdataclass.IN,
+    ttl: Optional[int] = None,
+):
+    if rdatatype is None:
+        rdatatype = draw(sampled_from(_supported_rdata_types))
+
+    if ttl is None:
+        ttl = draw(integers(0, 0xFFFFFFFF))
+
+    rdataset = dns.rdataset.Rdataset(rdataclass, rdatatype)
+
+    rdatas = draw(lists(rdata(rdatatype), min_size=1))
+
+    for rdata_ in rdatas:
+        rdataset.add(rdata_)
+
+    return rdataset
+
+
+@composite
+def rrset(
+    draw,
+    origin: dns.name.Name = dns.name.root,
+    rdatatype: Optional[dns.rdatatype.RdataType] = None,
+    rdataclass: dns.rdataclass.RdataClass = dns.rdataclass.IN,
+    ttl: Optional[int] = None,
+    name_strategy: Optional[SearchStrategy[dns.name.Name]] = None,
+):
+    if name_strategy is None:
+        name_strategy = dns_names(suffix=origin)
+    name = draw(name_strategy).relativize(origin)
+    rdataset_ = draw(rdataset(rdatatype, rdataclass, ttl))
+    return dns.rrset.from_rdata_list(name, rdataset_.ttl, rdatas=rdataset_)
+
+
+@composite
+def zones(
+    draw,
+    auth_ip: str,
+    origin: Optional[dns.name.Name] = None,
+    auth_name: Optional[dns.name.Name] = None,
+    primary_name: Optional[dns.name.Name] = None,
+    hostmaster_name: Optional[dns.name.Name] = None,
+    serial: Optional[int] = None,
+    refresh: Optional[int] = None,
+    retry: Optional[int] = None,
+    expire: Optional[int] = None,
+    minimum: Optional[int] = None,
+) -> dns.zone.Zone:
+    if origin is None:
+        origin = draw(dns_names(max_labels=125))
+
+    zone_names = dns_names(suffix=origin)
+
+    if auth_name is None:
+        auth_name = draw(zone_names).relativize(origin)
+
+    if primary_name is None:
+        primary_name = draw(zone_names).relativize(origin)
+
+    if hostmaster_name is None:
+        hostmaster_name = draw(zone_names).relativize(origin)
+
+    if serial is None:
+        serial = draw(integers(0, 0xFFFFFFFF))
+
+    if refresh is None:
+        refresh = draw(integers(0, 0xFFFFFFFF))
+
+    if retry is None:
+        retry = draw(integers(0, 0xFFFFFFFF))
+
+    if expire is None:
+        expire = draw(integers(0, 0xFFFFFFFF))
+
+    if minimum is None:
+        minimum = draw(integers(0, 0xFFFFFFFF))
+
+    zone = dns.zone.Zone(origin)
+
+    soa = dns.rdataset.Rdataset(dns.rdataclass.IN, dns.rdatatype.SOA)
+    soa.add(
+        dns.rdtypes.ANY.SOA.SOA(
+            dns.rdataclass.IN,
+            dns.rdatatype.SOA,
+            auth_name,
+            hostmaster_name,
+            serial,
+            refresh,
+            retry,
+            expire,
+            minimum,
+        ),
+    )
+
+    ns = dns.rdataset.Rdataset(dns.rdataclass.IN, dns.rdatatype.NS, ttl=3600)
+    ns.add(dns.rdtypes.ANY.NS.NS(dns.rdataclass.IN, dns.rdatatype.NS, auth_name))
+
+    ns = dns.rdataset.Rdataset(dns.rdataclass.IN, dns.rdatatype.NS, ttl=3600)
+    a = dns.rdataset.Rdataset(dns.rdataclass.IN, dns.rdatatype.A)
+    a.add(dns.rdtypes.IN.A.A(dns.rdataclass.IN, dns.rdatatype.A, auth_ip))
+
+    rrsets = draw(lists(rrset(origin=origin, name_strategy=zone_names), min_size=1))
+
+    with zone.writer() as txn:
+        txn.add(dns.name.empty, soa)
+        txn.add(dns.name.empty, ns)
+        txn.add(auth_name, a)
+        for rrset_ in rrsets:
+            txn.add(rrset_)
+
+    return zone
