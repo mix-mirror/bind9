@@ -1796,6 +1796,11 @@ static void
 resume_answer(void *arg) {
 	dns_validator_t *val = arg;
 
+	if (CANCELED(val) || CANCELING(val)) {
+		validate_async_done(val, ISC_R_CANCELED);
+		return;
+	}
+
 	val->resume = true;
 	validate_answer_iter_start(val);
 }
