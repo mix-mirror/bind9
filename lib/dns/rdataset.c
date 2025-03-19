@@ -55,11 +55,25 @@ dns_rdataset_init(dns_rdataset_t *rdataset) {
 
 	REQUIRE(rdataset != NULL);
 
-	*rdataset = (dns_rdataset_t){
-		.magic = DNS_RDATASET_MAGIC,
-		.link = ISC_LINK_INITIALIZER,
-		.count = DNS_RDATASET_COUNT_UNDEFINED,
-	};
+	/*
+	 * We don't use designated initializers to reduce the amount of time
+	 * spent in zero initialization.
+	 */
+
+	rdataset->magic = DNS_RDATASET_MAGIC;
+	ISC_LINK_INIT(rdataset, link);
+	rdataset->count = DNS_RDATASET_COUNT_UNDEFINED;
+
+	rdataset->methods = NULL;
+
+	rdataset->rdclass = 0;
+	rdataset->type = 0;
+	rdataset->ttl = 0;
+	rdataset->trust = 0;
+	rdataset->covers = 0;
+	rdataset->attributes = 0;
+	/* TODO should rdataset->count be initialized to zero? */
+	rdataset->resign = 0;
 }
 
 void
@@ -71,11 +85,23 @@ dns_rdataset_invalidate(dns_rdataset_t *rdataset) {
 	REQUIRE(DNS_RDATASET_VALID(rdataset));
 	REQUIRE(rdataset->methods == NULL);
 
-	*rdataset = (dns_rdataset_t){
-		.magic = 0,
-		.link = ISC_LINK_INITIALIZER,
-		.count = DNS_RDATASET_COUNT_UNDEFINED,
-	};
+	/*
+	 * We don't use designated initializers to reduce the amount of time
+	 * spent in zero initialization.
+	 */
+
+	rdataset->magic = 0;
+	ISC_LINK_INIT(rdataset, link);
+	rdataset->count = DNS_RDATASET_COUNT_UNDEFINED;
+
+	rdataset->rdclass = 0;
+	rdataset->type = 0;
+	rdataset->ttl = 0;
+	rdataset->trust = 0;
+	rdataset->covers = 0;
+	rdataset->attributes = 0;
+	/* TODO should rdataset->count be initialized to zero? */
+	rdataset->resign = 0;
 }
 
 void
@@ -90,11 +116,7 @@ dns__rdataset_disassociate(dns_rdataset_t *rdataset DNS__DB_FLARG) {
 	if (rdataset->methods->disassociate != NULL) {
 		(rdataset->methods->disassociate)(rdataset DNS__DB_FLARG_PASS);
 	}
-	*rdataset = (dns_rdataset_t){
-		.magic = DNS_RDATASET_MAGIC,
-		.link = ISC_LINK_INITIALIZER,
-		.count = DNS_RDATASET_COUNT_UNDEFINED,
-	};
+	dns_rdataset_init(rdataset);
 }
 
 bool
