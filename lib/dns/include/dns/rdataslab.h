@@ -43,6 +43,8 @@
 
 #include <stdbool.h>
 
+#include <urcu/rculfhash.h>
+
 #include <isc/atomic.h>
 #include <isc/heap.h>
 #include <isc/stdtime.h>
@@ -103,22 +105,31 @@ struct dns_slabheader {
 	 */
 
 	union {
-		struct dns_slabheader *next;
-		struct dns_slabheader *up;
-	};
-	/*%<
-	 * If this is the top header for an rdataset, 'next' points
-	 * to the top header for the next rdataset (i.e., the next type).
-	 *
-	 * Otherwise 'up' points up to the header whose down pointer points at
-	 * this header.
-	 */
+		struct {
+			struct cds_lfht_node ht_node;
+			struct rcu_head	     rcu_head;
+		};
+		struct {
+			union {
+				struct dns_slabheader *next;
+				struct dns_slabheader *up;
+			};
+			/*%<
+			 * If this is the top header for an rdataset, 'next'
+			 * points to the top header for the next rdataset (i.e.,
+			 * the next type).
+			 *
+			 * Otherwise 'up' points up to the header whose down
+			 * pointer points at this header.
+			 */
 
-	struct dns_slabheader *down;
-	/*%<
-	 * Points to the header for the next older version of
-	 * this rdataset.
-	 */
+			struct dns_slabheader *down;
+			/*%<
+			 * Points to the header for the next older version of
+			 * this rdataset.
+			 */
+		};
+	};
 
 	dns_db_t     *db;
 	dns_dbnode_t *node;

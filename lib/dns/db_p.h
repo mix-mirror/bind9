@@ -32,6 +32,7 @@
 #define NODE_LOCK(l, t, tp)                                      \
 	{                                                        \
 		STRONG_RWLOCK_CHECK(*tp == isc_rwlocktype_none); \
+		rcu_read_lock();                                 \
 		RWLOCK((l), (t));                                \
 		*tp = t;                                         \
 	}
@@ -39,6 +40,7 @@
 	{                                                        \
 		STRONG_RWLOCK_CHECK(*tp != isc_rwlocktype_none); \
 		RWUNLOCK(l, *tp);                                \
+		rcu_read_unlock();                               \
 		*tp = isc_rwlocktype_none;                       \
 	}
 #define NODE_RDLOCK(l, tp) NODE_LOCK(l, isc_rwlocktype_read, tp);
@@ -46,10 +48,13 @@
 #define NODE_TRYLOCK(l, t, tp)                                   \
 	({                                                       \
 		STRONG_RWLOCK_CHECK(*tp == isc_rwlocktype_none); \
+		rcu_read_lock();                                 \
 		isc_result_t _result = isc_rwlock_trylock(l, t); \
 		if (_result == ISC_R_SUCCESS) {                  \
 			*tp = t;                                 \
-		};                                               \
+		} else {                                         \
+			rcu_read_unlock();                       \
+		}                                                \
 		_result;                                         \
 	})
 #define NODE_TRYRDLOCK(l, tp) NODE_TRYLOCK(l, isc_rwlocktype_read, tp)
