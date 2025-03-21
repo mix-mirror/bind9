@@ -2534,7 +2534,7 @@ new_qpcnode(qpcache_t *qpdb, const dns_name_t *name) {
 	isc_mem_attach(qpdb->common.mctx, &newdata->mctx);
 	dns_name_dup(name, newdata->mctx, &newdata->name);
 
-	newdata->data = cds_lfht_new(1 << 2, 1 << 1, 0,
+	newdata->data = cds_lfht_new(1 << 4, 1 << 2, 0,
 				     CDS_LFHT_AUTO_RESIZE | CDS_LFHT_ACCOUNTING,
 				     NULL);
 
