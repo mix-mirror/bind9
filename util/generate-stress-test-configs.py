@@ -151,6 +151,12 @@ for mode, protocol, platform in itertools.product(modes, protocols, platforms):
             "GIT_CLONE_PATH"
         ]
         job_definition["variables"]["GIT_CLONE_PATH"] = git_clone_path
+    # Unless we set the "image" keyword for Fedora images explicitly in the
+    # child pipeline, it won't set the CI_REGISTRY_IMAGE variable with whatever
+    # we put into it manually in a web-triggered pipeline but will stick to the
+    # "registry.gitlab.isc.org/isc-projects/images/bind9" default.
+    if "fedora" in platform:
+        job_definition["image"] = anchors["variables"]["CI_REGISTRY_IMAGE"]
 
     job_definition |= anchors[platform]
 
