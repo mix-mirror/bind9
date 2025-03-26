@@ -140,6 +140,7 @@
 			}                                                     \
 		}                                                             \
                                                                               \
+		(sieve).hand = __hand;                                        \
 		__hand;                                                       \
 	})
 
