@@ -31,6 +31,7 @@ variables:
   TSAN_SUPPRESSIONS: "suppressions=${CI_PROJECT_DIR}/.tsan-suppress"
   TSAN_OPTIONS_DEBIAN: "${TSAN_OPTIONS_COMMON} ${TSAN_SUPPRESSIONS} external_symbolizer_path=${LLVM_SYMBOLIZER}"
   TSAN_OPTIONS_FEDORA: "${TSAN_OPTIONS_COMMON} ${TSAN_SUPPRESSIONS} external_symbolizer_path=/usr/bin/llvm-symbolizer"
+  TSAN_OPTIONS_FREEBSD: "${TSAN_OPTIONS_COMMON} ${TSAN_SUPPRESSIONS} external_symbolizer_path=/usr/bin/llvm-symbolizer"
 
   UBSAN_OPTIONS: "halt_on_error=1:abort_on_error=1:disable_coredump=0"
 
@@ -62,6 +63,8 @@ variables:
   SHOTGUN_EVAL_THRESHOLD_RCODE_MAX: '+inf'
   SHOTGUN_EVAL_THRESHOLD_LATENCY_PCTL_MIN: '-inf'
   SHOTGUN_EVAL_THRESHOLD_LATENCY_PCTL_DRIFT_MIN: '-inf'
+
+  GIT_CLONE_PATH_FREEBSD: "/home/ec2-user/builds/${CI_PROJECT_PATH}/"
 
 default:
   # Allow all running CI jobs to be automatically canceled when a new
@@ -131,38 +134,6 @@ stages:
     - bsd-stress-test-2
     - shell
     - stress-test
-
-.freebsd-autoscaler-amd64: &freebsd_autoscaler_amd64
-  variables:
-    CC: clang
-    CFLAGS: "${CFLAGS_COMMON} -Og"
-    # Even though there's only one job per runtime environment, the GitLab
-    # "instance" executor insists on cloning the Git repository to a path that
-    # contains a variable number from zero to the "maximum concurrent instances
-    # count" allowed on the GitLab Runner. See the "0" directory in this
-    # example path: /home/ec2-user/builds/t1_4FZzvz/0/isc-projects/bind9/.git/.
-    #
-    # This is not a problem for isolated jobs like "stress" tests that depend
-    # on no other jobs. However, it is a problem for jobs that need other jobs'
-    # artifacts. For example, a system test job that has its Git repo cloned to
-    # the "/1/" sub-path will fail if it downloads build job artifacts that
-    # have ./configure output files with "/0/" in its sub-path recorded.
-    GIT_CLONE_PATH: "/home/ec2-user/builds/${CI_PROJECT_PATH}/"
-    # Use MIT Kerberos5 for BIND 9 GSS-API support because of FreeBSD Heimdal
-    # incompatibility; see https://bugs.freebsd.org/275241.
-    EXTRA_CONFIGURE: "${WITH_LIBEDIT} --with-gssapi=/usr/local/bin/krb5-config"
-
-# Autoscaling GitLab Runner on AWS EC2 (FreeBSD 13)
-
-.freebsd-autoscaler-13-amd64: &freebsd_autoscaler_13_amd64
-  <<: *freebsd_autoscaler_amd64
-  <<: *freebsd_autoscaler_13_amd64_tags
-
-# Autoscaling GitLab Runner on AWS EC2 (FreeBSD 14)
-
-.freebsd-autoscaler-14-amd64: &freebsd_autoscaler_14_amd64
-  <<: *freebsd_autoscaler_amd64
-  <<: *freebsd_autoscaler_14_amd64_tags
 
 ### Docker Image Templates
 
@@ -1441,44 +1412,89 @@ unit:clang:bookworm:amd64:
     - job: clang:bookworm:amd64
       artifacts: true
 
-# Jobs for Clang builds on FreeBSD 13 (amd64)
+# Jobs for Clang TSAN builds on FreeBSD 13 (amd64)
 
-clang:freebsd13:amd64:
+clang:tsan:freebsd13:amd64:
   <<: *build_job
-  <<: *freebsd_autoscaler_13_amd64
+  <<: *freebsd_autoscaler_13_amd64_tags
+  variables:
+    CC: clang
+    CFLAGS: "${CFLAGS_COMMON} -ggdb -O2 -fsanitize=thread"
+    # -Wl,--disable-new-dtags ensures that Clang creates valid TSAN reports
+    LDFLAGS: "-fsanitize=thread -Wl,--disable-new-dtags"
+    # Even though there's only one job per runtime environment, the GitLab
+    # "instance" executor insists on cloning the Git repository to a path that
+    # contains a variable number from zero to the "maximum concurrent instances
+    # count" allowed on the GitLab Runner. See the "0" directory in this
+    # example path: /home/ec2-user/builds/t1_4FZzvz/0/isc-projects/bind9/.git/.
+    #
+    # This is not a problem for isolated jobs like "stress" tests that depend
+    # on no other jobs. However, it is a problem for jobs that need other jobs'
+    # artifacts. For example, a system test job that has its Git repo cloned to
+    # the "/1/" sub-path will fail if it downloads build job artifacts that
+    # have ./configure output files with "/0/" in its sub-path recorded.
+    GIT_CLONE_PATH: "${GIT_CLONE_PATH_FREEBSD}"
+    # Use MIT Kerberos5 for BIND 9 GSS-API support because of FreeBSD Heimdal
+    # incompatibility; see https://bugs.freebsd.org/275241.
+    #
+    # XXX: After isc-projects/bind9#5261 is solved add --enable-pthread-rwlock
+    EXTRA_CONFIGURE: "--with-libidn2 PKG_CONFIG_PATH=/opt/tsan/lib/pkgconfig ${WITH_LIBEDIT} --with-gssapi=/usr/local/bin/krb5-config"
 
-system:clang:freebsd13:amd64:
+system:clang:tsan:freebsd13:amd64:
   <<: *system_test_job
-  <<: *freebsd_autoscaler_13_amd64
+  <<: *freebsd_autoscaler_13_amd64_tags
+  variables:
+    GIT_CLONE_PATH: "${GIT_CLONE_PATH_FREEBSD}"
+    TSAN_OPTIONS: "${TSAN_OPTIONS_FREEBSD}"
   needs:
-    - job: clang:freebsd13:amd64
+    - job: clang:tsan:freebsd13:amd64
       artifacts: true
 
-unit:clang:freebsd13:amd64:
+unit:clang:tsan:freebsd13:amd64:
   <<: *unit_test_job
-  <<: *freebsd_autoscaler_13_amd64
+  <<: *freebsd_autoscaler_13_amd64_tags
+  variables:
+    GIT_CLONE_PATH: "${GIT_CLONE_PATH_FREEBSD}"
+    TSAN_OPTIONS: "${TSAN_OPTIONS_FREEBSD}"
   needs:
-    - job: clang:freebsd13:amd64
+    - job: clang:tsan:freebsd13:amd64
       artifacts: true
 
-# Jobs for Clang builds on FreeBSD 14 (amd64)
+# Jobs for Clang TSAN builds on FreeBSD 14 (amd64)
 
-clang:freebsd14:amd64:
+clang:tsan:freebsd14:amd64:
   <<: *build_job
-  <<: *freebsd_autoscaler_14_amd64
+  <<: *freebsd_autoscaler_14_amd64_tags
+  variables:
+    CC: clang
+    CFLAGS: "${CFLAGS_COMMON} -ggdb -O2 -fsanitize=thread"
+    # -Wl,--disable-new-dtags ensures that Clang creates valid TSAN reports
+    LDFLAGS: "-fsanitize=thread -Wl,--disable-new-dtags"
+    GIT_CLONE_PATH: "${GIT_CLONE_PATH_FREEBSD}"
+    # Use MIT Kerberos5 for BIND 9 GSS-API support because of FreeBSD Heimdal
+    # incompatibility; see https://bugs.freebsd.org/275241.
+    #
+    # XXX: After isc-projects/bind9#5261 is solved add --enable-pthread-rwlock
+    EXTRA_CONFIGURE: "--with-libidn2 PKG_CONFIG_PATH=/opt/tsan/lib/pkgconfig ${WITH_LIBEDIT} --with-gssapi=/usr/local/bin/krb5-config"
 
-system:clang:freebsd14:amd64:
+system:clang:tsan:freebsd14:amd64:
   <<: *system_test_job
-  <<: *freebsd_autoscaler_14_amd64
+  <<: *freebsd_autoscaler_14_amd64_tags
+  variables:
+    GIT_CLONE_PATH: "${GIT_CLONE_PATH_FREEBSD}"
+    TSAN_OPTIONS: "${TSAN_OPTIONS_FREEBSD}"
   needs:
-    - job: clang:freebsd14:amd64
+    - job: clang:tsan:freebsd14:amd64
       artifacts: true
 
-unit:clang:freebsd14:amd64:
+unit:clang:tsan:freebsd14:amd64:
   <<: *unit_test_job
-  <<: *freebsd_autoscaler_14_amd64
+  <<: *freebsd_autoscaler_14_amd64_tags
+  variables:
+    GIT_CLONE_PATH: "${GIT_CLONE_PATH_FREEBSD}"
+    TSAN_OPTIONS: "${TSAN_OPTIONS_FREEBSD}"
   needs:
-    - job: clang:freebsd14:amd64
+    - job: clang:tsan:freebsd14:amd64
       artifacts: true
   retry: 1  # GL #4924
 
