@@ -11,8 +11,9 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
+from itertools import groupby
 from typing import List, Optional
-from warnings import warn
+from hypothesis import assume
 
 from hypothesis.strategies import (
     binary,
@@ -42,102 +43,60 @@ import dns.rrset
 import isctest.name
 
 
+MAX_LABEL_BYTES = 63
+
+
 @composite
 def dns_names(
     draw,
-    *,
-    prefix: dns.name.Name = dns.name.empty,
     suffix: dns.name.Name = dns.name.root,
-    min_labels: int = 1,
-    max_labels: int = 128,
+    min_labels: int = None,
+    max_labels: int = 127,
+    max_bytes: int = 255,
 ) -> dns.name.Name:
-    """
-    This is a hypothesis strategy to be used for generating DNS names with given `prefix`, `suffix`
-    and with total number of labels specified by `min_labels` and `max labels`.
+    if min_labels is None:
+        min_labels = len(suffix.labels) + 1
+    number_of_labels_in_suffix = len(suffix.labels)
+    number_of_bytes_in_suffix = sum(len(label) + 1 for label in suffix.labels)
 
-    For example, calling
-    ```
-    dns_names(
-        prefix=dns.name.from_text("test"),
-        suffix=dns.name.from_text("isc.org"),
-        max_labels=6
-    ).example()
-    ```
-    will result in names like `test.abc.isc.org.` or `test.abc.def.isc.org`.
+    assert (
+        number_of_labels_in_suffix < min_labels
+    ), "min_labels must be greater than the number of labels in the suffix"
 
-    There is no attempt to make the distribution of the generated names uniform in any way.
-    The strategy however minimizes towards shorter names with shorter labels.
+    two_bytes_reserved_for_label = 2
 
-    It can be used with to build compound strategies, like this one which generates random DNS queries.
+    remaining_bytes = max_bytes - number_of_bytes_in_suffix
+    remaining_labels = min(remaining_bytes // two_bytes_reserved_for_label, max_labels)
 
-    ```
-    dns_queries = builds(
-        dns.message.make_query,
-        qname=dns_names(),
-        rdtype=dns_rdatatypes,
-        rdclass=dns_rdataclasses,
-    )
-    ```
-    """
+    assert remaining_labels > 0, "Not enough space to generate any additional labels"
 
-    prefix = prefix.relativize(dns.name.root)
-    suffix = suffix.derelativize(dns.name.root)
-
-    try:
-        outer_name = prefix + suffix
-        remaining_bytes = 255 - isctest.name.len_wire_uncompressed(outer_name)
-        assert remaining_bytes >= 0
-    except dns.name.NameTooLong:
-        warn(
-            "Maximal length name of name execeeded by prefix and suffix. Strategy won't generate any names.",
-            RuntimeWarning,
-        )
-        return draw(nothing())
-
-    minimum_number_of_labels_to_generate = max(0, min_labels - len(outer_name.labels))
-    maximum_number_of_labels_to_generate = max_labels - len(outer_name.labels)
-    if maximum_number_of_labels_to_generate < 0:
-        warn(
-            "Maximal number of labels execeeded by prefix and suffix. Strategy won't generate any names.",
-            RuntimeWarning,
-        )
-        return draw(nothing())
-
-    maximum_number_of_labels_to_generate = min(
-        maximum_number_of_labels_to_generate, remaining_bytes // 2
-    )
-    if maximum_number_of_labels_to_generate < minimum_number_of_labels_to_generate:
-        warn(
-            f"Minimal number set to {minimum_number_of_labels_to_generate}, but in {remaining_bytes} bytes there is only space for maximum of {maximum_number_of_labels_to_generate} labels.",
-            RuntimeWarning,
-        )
-        return draw(nothing())
-
-    if remaining_bytes == 0 or maximum_number_of_labels_to_generate == 0:
-        warn(
-            f"Strategy will return only one name ({outer_name}) as it exactly matches byte or label length limit.",
-            RuntimeWarning,
-        )
-        return draw(just(outer_name))
-
-    chosen_number_of_labels_to_generate = draw(
-        integers(
-            minimum_number_of_labels_to_generate, maximum_number_of_labels_to_generate
-        )
-    )
-    chosen_number_of_bytes_to_partion = draw(
-        integers(2 * chosen_number_of_labels_to_generate, remaining_bytes)
-    )
-    chosen_lengths_of_labels = draw(
-        _partition_bytes_to_labels(
-            chosen_number_of_bytes_to_partion, chosen_number_of_labels_to_generate
-        )
-    )
-    generated_labels = tuple(
-        draw(binary(min_size=l - 1, max_size=l - 1)) for l in chosen_lengths_of_labels
+    labels_to_generate = draw(
+        integers(min_labels - number_of_labels_in_suffix, remaining_labels)
     )
 
-    return dns.name.Name(prefix.labels + generated_labels + suffix.labels)
+    remaining_bytes -= labels_to_generate * two_bytes_reserved_for_label
+
+    maximum_bytes_to_assign = min(
+        remaining_bytes, (MAX_LABEL_BYTES - 1) * labels_to_generate
+    )
+
+    bytes_to_assign_to_labels = draw(integers(0, maximum_bytes_to_assign))
+    bytes_to_generate = bytes_to_assign_to_labels + labels_to_generate
+    data = draw(binary(min_size=bytes_to_generate, max_size=bytes_to_generate))
+
+    labels = []
+    i = 0
+    for _ in range(labels_to_generate):
+        added_length = draw(
+            integers(0, max(0, min(MAX_LABEL_BYTES - 1, bytes_to_assign_to_labels)))
+        )
+        label_length = 1 + added_length
+        labels.append(data[i : i + label_length])
+        i += label_length
+        bytes_to_assign_to_labels -= added_length
+
+    labels.extend(suffix.labels)
+    return dns.name.Name(labels)
 
 
 RDATACLASS_MAX = RDATATYPE_MAX = 65535
@@ -153,31 +112,6 @@ dns_rdataclasses_without_meta = dns_rdataclasses.filter(dns.rdataclass.is_metacl
 # NOTE: This should really be `dns_rdatatypes_without_meta = dns_rdatatypes_without_meta.filter(dns.rdatatype.is_metatype()`,
 #       but hypothesis then complains about the filter being too strict, so it is done in a “constructive” way.
 dns_rdatatypes_without_meta = integers(0, dns.rdatatype.OPT - 1) | integers(dns.rdatatype.OPT + 1, 127) | integers(256, RDATATYPE_MAX)  # type: ignore
-
-
-@composite
-def _partition_bytes_to_labels(
-    draw, remaining_bytes: int, number_of_labels: int
-) -> List[int]:
-    two_bytes_reserved_for_label = 2
-
-    # Reserve two bytes for each label
-    partition = [two_bytes_reserved_for_label] * number_of_labels
-    remaining_bytes -= two_bytes_reserved_for_label * number_of_labels
-
-    assert remaining_bytes >= 0
-
-    # Add a random number between 0 and the remainder to each partition
-    for i in range(number_of_labels):
-        added = draw(
-            integers(0, min(remaining_bytes, 64 - two_bytes_reserved_for_label))
-        )
-        partition[i] += added
-        remaining_bytes -= added
-
-    # NOTE: Some of the remaining bytes will usually not be assigned to any label, but we don't care.
-
-    return draw(permutations(partition))
 
 
 a_rdata = builds(
@@ -281,19 +215,21 @@ def zones(
     expire: Optional[int] = None,
     minimum: Optional[int] = None,
 ) -> dns.zone.Zone:
-    if origin is None:
-        origin = draw(dns_names(max_labels=125))
+    origin = draw(dns_names(max_labels=126, max_bytes=253))
 
     zone_names = dns_names(suffix=origin)
 
     if auth_name is None:
-        auth_name = draw(zone_names).relativize(origin)
+        auth_name = draw(zone_names)
+    auth_name = auth_name.relativize(origin)
 
     if primary_name is None:
-        primary_name = draw(zone_names).relativize(origin)
+        primary_name = draw(zone_names)
+    primary_name = primary_name.relativize(origin)
 
     if hostmaster_name is None:
-        hostmaster_name = draw(zone_names).relativize(origin)
+        hostmaster_name = draw(zone_names)
+    hostmaster_name.relativize(origin)
 
     if serial is None:
         serial = draw(integers(0, 0xFFFFFFFF))
@@ -330,7 +266,6 @@ def zones(
     ns = dns.rdataset.Rdataset(dns.rdataclass.IN, dns.rdatatype.NS, ttl=3600)
     ns.add(dns.rdtypes.ANY.NS.NS(dns.rdataclass.IN, dns.rdatatype.NS, auth_name))
 
-    ns = dns.rdataset.Rdataset(dns.rdataclass.IN, dns.rdatatype.NS, ttl=3600)
     a = dns.rdataset.Rdataset(dns.rdataclass.IN, dns.rdatatype.A)
     a.add(dns.rdtypes.IN.A.A(dns.rdataclass.IN, dns.rdatatype.A, auth_ip))
 
