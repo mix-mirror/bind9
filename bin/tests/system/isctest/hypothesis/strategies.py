@@ -113,29 +113,30 @@ dns_rdataclasses_without_meta = dns_rdataclasses.filter(dns.rdataclass.is_metacl
 #       but hypothesis then complains about the filter being too strict, so it is done in a “constructive” way.
 dns_rdatatypes_without_meta = integers(0, dns.rdatatype.OPT - 1) | integers(dns.rdatatype.OPT + 1, 127) | integers(256, RDATATYPE_MAX)  # type: ignore
 
+ttls = integers(0, 0xFFFFFFFF)
 
-a_rdata = builds(
+a_rdatas = builds(
     dns.rdtypes.IN.A.A,
     just(dns.rdataclass.IN),
     just(dns.rdatatype.A),
     builds(str, ip_addresses(v=4)),
 )
 
-aaaa_rdata = builds(
+aaaa_rdatas = builds(
     dns.rdtypes.IN.AAAA.AAAA,
     just(dns.rdataclass.IN),
     just(dns.rdatatype.AAAA),
     builds(str, ip_addresses(v=6)),
 )
 
-txt_rdata = builds(
+txt_rdatas = builds(
     dns.rdtypes.ANY.TXT.TXT,
     just(dns.rdataclass.IN),
     just(dns.rdatatype.TXT),
     binary(),
 )
 
-ns_rdata = builds(
+ns_rdatas = builds(
     dns.rdtypes.ANY.NS.NS,
     just(dns.rdataclass.IN),
     just(dns.rdatatype.NS),
@@ -143,17 +144,17 @@ ns_rdata = builds(
 )
 
 _rdata_strategies = {
-    dns.rdatatype.A: a_rdata,
-    dns.rdatatype.AAAA: aaaa_rdata,
-    dns.rdatatype.TXT: txt_rdata,
-    dns.rdatatype.NS: ns_rdata,
+    dns.rdatatype.A: a_rdatas,
+    dns.rdatatype.AAAA: aaaa_rdatas,
+    dns.rdatatype.TXT: txt_rdatas,
+    dns.rdatatype.NS: ns_rdatas,
 }
 
 _supported_rdata_types = list(_rdata_strategies.keys())
 
 
 @composite
-def rdata(draw, type_: Optional[dns.rdatatype.RdataType] = None):
+def rdatas(draw, type_: Optional[dns.rdatatype.RdataType] = None):
     if type_ is None:
         type_ = draw(sampled_from(_supported_rdata_types))
     try:
@@ -163,7 +164,7 @@ def rdata(draw, type_: Optional[dns.rdatatype.RdataType] = None):
 
 
 @composite
-def rdataset(
+def rdatasets(
     draw,
     rdatatype: Optional[dns.rdatatype.RdataType] = None,
     rdataclass: dns.rdataclass.RdataClass = dns.rdataclass.IN,
@@ -173,20 +174,20 @@ def rdataset(
         rdatatype = draw(sampled_from(_supported_rdata_types))
 
     if ttl is None:
-        ttl = draw(integers(0, 0xFFFFFFFF))
+        ttl = draw(ttls)
 
     rdataset = dns.rdataset.Rdataset(rdataclass, rdatatype)
 
-    rdatas = draw(lists(rdata(rdatatype), min_size=1))
+    rdatas_ = draw(lists(rdatas(rdatatype), min_size=1))
 
-    for rdata_ in rdatas:
-        rdataset.add(rdata_)
+    for rdata in rdatas_:
+        rdataset.add(rdata)
 
     return rdataset
 
 
 @composite
-def rrset(
+def rrsets(
     draw,
     origin: dns.name.Name = dns.name.root,
     rdatatype: Optional[dns.rdatatype.RdataType] = None,
@@ -197,7 +198,7 @@ def rrset(
     if name_strategy is None:
         name_strategy = dns_names(suffix=origin)
     name = draw(name_strategy).relativize(origin)
-    rdataset_ = draw(rdataset(rdatatype, rdataclass, ttl))
+    rdataset_ = draw(rdatasets(rdatatype, rdataclass, ttl))
     return dns.rrset.from_rdata_list(name, rdataset_.ttl, rdatas=rdataset_)
 
 
@@ -215,7 +216,8 @@ def zones(
     expire: Optional[int] = None,
     minimum: Optional[int] = None,
 ) -> dns.zone.Zone:
-    origin = draw(dns_names(max_labels=126, max_bytes=253))
+    if origin is None:
+        origin = draw(dns_names(max_labels=126, max_bytes=253))
 
     zone_names = dns_names(suffix=origin)
 
@@ -232,23 +234,23 @@ def zones(
     hostmaster_name.relativize(origin)
 
     if serial is None:
-        serial = draw(integers(0, 0xFFFFFFFF))
+        serial = draw(ttls)
 
     if refresh is None:
-        refresh = draw(integers(0, 0xFFFFFFFF))
+        refresh = draw(ttls)
 
     if retry is None:
-        retry = draw(integers(0, 0xFFFFFFFF))
+        retry = draw(ttls)
 
     if expire is None:
-        expire = draw(integers(0, 0xFFFFFFFF))
+        expire = draw(ttls)
 
     if minimum is None:
-        minimum = draw(integers(0, 0xFFFFFFFF))
+        minimum = draw(ttls)
 
     zone = dns.zone.Zone(origin)
 
-    soa = dns.rdataset.Rdataset(dns.rdataclass.IN, dns.rdatatype.SOA)
+    soa = dns.rdataset.Rdataset(dns.rdataclass.IN, dns.rdatatype.SOA, ttl=draw(ttls))
     soa.add(
         dns.rdtypes.ANY.SOA.SOA(
             dns.rdataclass.IN,
@@ -263,19 +265,19 @@ def zones(
         ),
     )
 
-    ns = dns.rdataset.Rdataset(dns.rdataclass.IN, dns.rdatatype.NS, ttl=3600)
+    ns = dns.rdataset.Rdataset(dns.rdataclass.IN, dns.rdatatype.NS, ttl=draw(ttls))
     ns.add(dns.rdtypes.ANY.NS.NS(dns.rdataclass.IN, dns.rdatatype.NS, auth_name))
 
-    a = dns.rdataset.Rdataset(dns.rdataclass.IN, dns.rdatatype.A)
+    a = dns.rdataset.Rdataset(dns.rdataclass.IN, dns.rdatatype.A, ttl=draw(ttls))
     a.add(dns.rdtypes.IN.A.A(dns.rdataclass.IN, dns.rdatatype.A, auth_ip))
 
-    rrsets = draw(lists(rrset(origin=origin, name_strategy=zone_names), min_size=1))
+    rrsets_ = draw(lists(rrsets(origin=origin, name_strategy=zone_names), min_size=1))
 
     with zone.writer() as txn:
         txn.add(dns.name.empty, soa)
         txn.add(dns.name.empty, ns)
         txn.add(auth_name, a)
-        for rrset_ in rrsets:
-            txn.add(rrset_)
+        for rrset in rrsets_:
+            txn.add(rrset)
 
     return zone
