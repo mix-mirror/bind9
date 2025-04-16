@@ -119,6 +119,7 @@ isc_srcset.add(
         'safe.c',
         'serial.c',
         'signal.c',
+        'skiplist.c',
         'sockaddr.c',
         'stats.c',
         'stdio.c',

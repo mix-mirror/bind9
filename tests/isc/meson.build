@@ -43,6 +43,7 @@ isc_test = [
     'rwlock',
     'safe',
     'siphash',
+    'skiplist',
     'sockaddr',
     'spinlock',
     'stats',
