@@ -79,9 +79,17 @@ struct dns_validator {
 	uint32_t       tid;
 	isc_refcount_t references;
 
-	/* Name and type of the response to be validated. */
+	/*
+	 * Name and type of the response to be validated.
+	 */
+	dns_name_t	s_name;
 	dns_name_t     *name;
 	dns_rdatatype_t type;
+
+	/*
+	 * The caller's name pointer.
+	 */
+	dns_name_t *cbarg;
 
 	/*
 	 * Callback and argument to use to inform the caller
@@ -238,20 +246,6 @@ dns_validator_cancel(dns_validator_t *validator);
  * Ensures:
  *\li	It the validator has not already sent its completion
  *	event, it will send it with result code ISC_R_CANCELED.
- */
-
-void
-dns_validator_shutdown(dns_validator_t *val);
-/*%<
- * Release the name associated with the DNSSEC validator.
- *
- * Requires:
- * \li	'val' points to a valid DNSSEC validator.
- * \li	The validator must have completed and sent its completion
- *	event.
- *
- * Ensures:
- *\li	The name associated with the DNSSEC validator is released.
  */
 
 #if DNS_VALIDATOR_TRACE

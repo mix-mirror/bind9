@@ -5435,7 +5435,7 @@ validated(void *arg) {
 	{
 		isc_result_t tresult;
 		dns_name_t *noqname = NULL;
-		tresult = findnoqname(fctx, message, val->name,
+		tresult = findnoqname(fctx, message, val->cbarg,
 				      val->rdataset->type, &noqname);
 		if (tresult == ISC_R_SUCCESS && noqname != NULL) {
 			tresult = dns_rdataset_addnoqname(val->rdataset,
@@ -5676,12 +5676,6 @@ cleanup_fetchctx:
 		fctx_done_unref(fctx, result);
 	}
 
-	/*
-	 * val->name points to name on a message on one of the
-	 * queries on the fetch context so the name has to be
-	 * released first with a dns_validator_shutdown() call.
-	 */
-	dns_validator_shutdown(val);
 	dns_validator_detach(&val);
 	fetchctx_detach(&fctx);
 	INSIST(node == NULL);

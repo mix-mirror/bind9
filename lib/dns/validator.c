@@ -597,7 +597,6 @@ validator_callback_dnskey(void *arg) {
 	dns_validator_t *val = subvalidator->parent;
 	isc_result_t result = subvalidator->result;
 
-	dns_validator_shutdown(subvalidator);
 	dns_validator_detach(&val->subvalidator);
 
 	if (CANCELED(val) || CANCELING(val)) {
@@ -649,7 +648,6 @@ validator_callback_ds(void *arg) {
 	dns_validator_t *val = subvalidator->parent;
 	isc_result_t result = subvalidator->result;
 
-	dns_validator_shutdown(val->subvalidator);
 	dns_validator_detach(&val->subvalidator);
 
 	if (CANCELED(val) || CANCELING(val)) {
@@ -711,7 +709,6 @@ validator_callback_cname(void *arg) {
 
 	INSIST((val->attributes & VALATTR_INSECURITY) != 0);
 
-	dns_validator_shutdown(val->subvalidator);
 	dns_validator_detach(&val->subvalidator);
 
 	if (CANCELED(val) || CANCELING(val)) {
@@ -749,12 +746,11 @@ static void
 validator_callback_nsec(void *arg) {
 	dns_validator_t *subvalidator = (dns_validator_t *)arg;
 	dns_validator_t *val = subvalidator->parent;
-	dns_name_t *name = subvalidator->name;
+	dns_name_t *name = subvalidator->cbarg;
 	dns_rdataset_t *rdataset = subvalidator->rdataset;
 	isc_result_t result = subvalidator->result;
 	bool exists, data;
 
-	dns_validator_shutdown(subvalidator);
 	dns_validator_detach(&val->subvalidator);
 
 	if (CANCELED(val) || CANCELING(val)) {
@@ -3398,7 +3394,9 @@ dns_validator_create(dns_view_t *view, dns_name_t *name, dns_rdatatype_t type,
 		.result = DNS_R_NOVALIDSIG,
 		.rdataset = rdataset,
 		.sigrdataset = sigrdataset,
-		.name = name,
+		.s_name = DNS_NAME_INITEMPTY,
+		.name = &val->s_name,
+		.cbarg = name,
 		.type = type,
 		.options = options,
 		.keytable = kt,
@@ -3411,6 +3409,7 @@ dns_validator_create(dns_view_t *view, dns_name_t *name, dns_rdatatype_t type,
 	};
 
 	dns_ede_init(view->mctx, &val->edectx);
+	dns_name_dup(name, view->mctx, val->name);
 
 	isc_refcount_init(&val->references, 1);
 	dns_view_attach(view, &val->view);
@@ -3538,26 +3537,8 @@ destroy_validator(dns_validator_t *val) {
 
 	dns_view_detach(&val->view);
 	isc_loop_detach(&val->loop);
-
+	dns_name_free(val->name, mctx);
 	isc_mem_put(mctx, val, sizeof(*val));
-}
-
-void
-dns_validator_shutdown(dns_validator_t *val) {
-	REQUIRE(VALID_VALIDATOR(val));
-	REQUIRE(COMPLETE(val));
-	REQUIRE(val->tid == isc_tid());
-
-	validator_log(val, ISC_LOG_DEBUG(4), "dns_validator_shutdown");
-
-	/*
-	 * The validation is now complete and the owner is no longer interested
-	 * in any further results. If there are still callback events queued up
-	 * which hold a validator reference, they should not be allowed to use
-	 * val->name during logging, because the owner may destroy it after this
-	 * function is called.
-	 */
-	val->name = NULL;
 }
 
 static void
@@ -3592,20 +3573,14 @@ validator_logv(dns_validator_t *val, isc_logcategory_t category,
 		sep2 = ": ";
 	}
 
-	if (val->name != NULL) {
-		char namebuf[DNS_NAME_FORMATSIZE];
-		char typebuf[DNS_RDATATYPE_FORMATSIZE];
+	char namebuf[DNS_NAME_FORMATSIZE];
+	char typebuf[DNS_RDATATYPE_FORMATSIZE];
 
-		dns_name_format(val->name, namebuf, sizeof(namebuf));
-		dns_rdatatype_format(val->type, typebuf, sizeof(typebuf));
-		isc_log_write(category, module, level,
-			      "%s%s%s%.*svalidating %s/%s: %s", sep1, viewname,
-			      sep2, depth, spaces, namebuf, typebuf, msgbuf);
-	} else {
-		isc_log_write(category, module, level,
-			      "%s%s%s%.*svalidator @%p: %s", sep1, viewname,
-			      sep2, depth, spaces, val, msgbuf);
-	}
+	dns_name_format(val->name, namebuf, sizeof(namebuf));
+	dns_rdatatype_format(val->type, typebuf, sizeof(typebuf));
+	isc_log_write(category, module, level, "%s%s%s%.*svalidating %s/%s: %s",
+		      sep1, viewname, sep2, depth, spaces, namebuf, typebuf,
+		      msgbuf);
 }
 
 static void
