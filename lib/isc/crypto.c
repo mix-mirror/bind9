@@ -33,12 +33,12 @@ static isc_mem_t *isc__crypto_mctx = NULL;
 static OSSL_PROVIDER *base = NULL, *fips = NULL;
 #endif /* OPENSSL_VERSION_NUMBER >= 0x30000000L */
 
-const EVP_MD *isc__crypto_md5 = NULL;
-const EVP_MD *isc__crypto_sha1 = NULL;
-const EVP_MD *isc__crypto_sha224 = NULL;
-const EVP_MD *isc__crypto_sha256 = NULL;
-const EVP_MD *isc__crypto_sha384 = NULL;
-const EVP_MD *isc__crypto_sha512 = NULL;
+EVP_MD *isc__crypto_md5 = NULL;
+EVP_MD *isc__crypto_sha1 = NULL;
+EVP_MD *isc__crypto_sha224 = NULL;
+EVP_MD *isc__crypto_sha256 = NULL;
+EVP_MD *isc__crypto_sha384 = NULL;
+EVP_MD *isc__crypto_sha512 = NULL;
 
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
 #define md_register_algorithm(alg, algname)                            \
@@ -50,12 +50,12 @@ const EVP_MD *isc__crypto_sha512 = NULL;
 		}                                                      \
 	}
 
-#define md_unregister_algorithm(alg)                             \
-	{                                                        \
-		if (isc__crypto_##alg != NULL) {                 \
-			EVP_MD_free(UNCONST(isc__crypto_##alg)); \
-			isc__crypto_##alg = NULL;                \
-		}                                                \
+#define md_unregister_algorithm(alg)                    \
+	{                                               \
+		if (isc__crypto_##alg != NULL) {        \
+			EVP_MD_free(isc__crypto_##alg); \
+			isc__crypto_##alg = NULL;       \
+		}                                       \
 	}
 #else /* OPENSSL_VERSION_NUMBER >= 0x30000000L */
 #define md_register_algorithm(alg, algname)      \
