@@ -81,6 +81,9 @@ void *isc__crypto_hkdf = NULL;
 #define kdf_register_algorithm(alg, algname) \
 	register_algorithm(alg, algname, EVP_KDF_fetch)
 
+#define signature_register_algorithm(alg, algname) \
+	register_algorithm(alg, algname, EVP_SIGNATURE_fetch)
+
 #else /* OPENSSL_VERSION_NUMBER >= 0x30000000L */
 
 #define register_algorithm(alg, algname, fetch_fn)  \
@@ -95,14 +98,12 @@ void *isc__crypto_hkdf = NULL;
 	} while (0)
 
 #define kdf_register_algorithm(alg, algname)
+#define signature_register_algorithm(alg, algname)
 
 #endif /* OPENSSL_VERSION_NUMBER >= 0x30000000L */
 
 #define md_register_algorithm(alg, algname) \
 	register_algorithm(alg, algname, EVP_MD_fetch)
-
-#define signature_register_algorithm(alg, algname) \
-	register_algorithm(alg, algname, EVP_SIGNATURE_fetch)
 
 #define cipher_register_algorithm(alg, algname) \
 	register_algorithm(alg, algname, EVP_CIPHER_fetch)
