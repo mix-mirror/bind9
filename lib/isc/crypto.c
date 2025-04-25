@@ -86,15 +86,15 @@ void *isc__crypto_hkdf = NULL;
 
 #else /* OPENSSL_VERSION_NUMBER >= 0x30000000L */
 
-#define register_algorithm(alg, algname, fetch_fn)  \
-	do {                                        \
-		REQUIRE(isc__crypto_##alg == NULL); \
-		isc__crypto_##alg = EVP_##alg;      \
+#define register_algorithm(alg, algname, fetch_fn)        \
+	do {                                              \
+		REQUIRE(isc__crypto_##alg == NULL);       \
+		isc__crypto_##alg = UNCONST(EVP_##alg()); \
 	} while (0)
 
-#define unregister_algorithm(alg)         \
-	do {                              \
-		isc__crypto_##alg = NULL; \
+#define unregister_algorithm(alg, free_fn) \
+	do {                               \
+		isc__crypto_##alg = NULL;  \
 	} while (0)
 
 #define kdf_register_algorithm(alg, algname)
