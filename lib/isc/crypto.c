@@ -18,6 +18,7 @@
 #include <openssl/ssl.h>
 
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
+#include <openssl/kdf.h>
 #include <openssl/provider.h>
 #endif /* OPENSSL_VERSION_NUMBER >= 0x30000000L */
 
@@ -40,39 +41,93 @@ EVP_MD *isc__crypto_sha256 = NULL;
 EVP_MD *isc__crypto_sha384 = NULL;
 EVP_MD *isc__crypto_sha512 = NULL;
 
-#if OPENSSL_VERSION_NUMBER >= 0x30000000L
-#define md_register_algorithm(alg, algname)                            \
-	{                                                              \
-		REQUIRE(isc__crypto_##alg == NULL);                    \
-		isc__crypto_##alg = EVP_MD_fetch(NULL, algname, NULL); \
-		if (isc__crypto_##alg == NULL) {                       \
-			ERR_clear_error();                             \
-		}                                                      \
-	}
+isc_crypto_signature_type_t *isc__crypto_rsa_pkcs1_v1_5_sha1 = NULL;
+isc_crypto_signature_type_t *isc__crypto_rsa_pkcs1_v1_5_sha2_256 = NULL;
+isc_crypto_signature_type_t *isc__crypto_rsa_pkcs1_v1_5_sha2_512 = NULL;
+isc_crypto_signature_type_t *isc__crypto_ecdsa_p256 = NULL;
+isc_crypto_signature_type_t *isc__crypto_ecdsa_p384 = NULL;
+isc_crypto_signature_type_t *isc__crypto_ed448 = NULL;
+isc_crypto_signature_type_t *isc__crypto_ed25519 = NULL;
 
-#define md_unregister_algorithm(alg)                    \
-	{                                               \
-		if (isc__crypto_##alg != NULL) {        \
-			EVP_MD_free(isc__crypto_##alg); \
-			isc__crypto_##alg = NULL;       \
-		}                                       \
-	}
+isc_crypto_cipher_type_t *isc__crypto_aes_128_gcm = NULL;
+isc_crypto_cipher_type_t *isc__crypto_aes_256_gcm = NULL;
+isc_crypto_cipher_type_t *isc__crypto_aes_128_ccm = NULL;
+isc_crypto_cipher_type_t *isc__crypto_chacha20_poly1305 = NULL;
+isc_crypto_cipher_type_t *isc__crypto_aes_128_ctr = NULL;
+isc_crypto_cipher_type_t *isc__crypto_aes_256_ctr = NULL;
+isc_crypto_cipher_type_t *isc__crypto_chacha20 = NULL;
+
+void *isc__crypto_hkdf = NULL;
+
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+
+#define register_algorithm(alg, algname, fetch_fn)                 \
+	do {                                                       \
+		REQUIRE(isc__crypto_##alg == NULL);                \
+		isc__crypto_##alg = fetch_fn(NULL, algname, NULL); \
+		if (isc__crypto_##alg == NULL) {                   \
+			ERR_clear_error();                         \
+		}                                                  \
+	} while (0)
+
+#define unregister_algorithm(alg, free_fn)          \
+	do {                                        \
+		if (isc__crypto_##alg != NULL) {    \
+			free_fn(isc__crypto_##alg); \
+			isc__crypto_##alg = NULL;   \
+		}                                   \
+	} while (0)
+
+#define kdf_register_algorithm(alg, algname) \
+	register_algorithm(alg, algname, EVP_KDF_fetch)
+
 #else /* OPENSSL_VERSION_NUMBER >= 0x30000000L */
-#define md_register_algorithm(alg, algname)      \
-	{                                        \
-		isc__crypto_##alg = EVP_##alg(); \
-		if (isc__crypto_##alg == NULL) { \
-			ERR_clear_error();       \
-		}                                \
-	}
-#define md_unregister_algorithm(alg)
+
+#define register_algorithm(alg, algname, fetch_fn)  \
+	do {                                        \
+		REQUIRE(isc__crypto_##alg == NULL); \
+		isc__crypto_##alg = EVP_##alg;      \
+	} while (0)
+
+#define unregister_algorithm(alg)         \
+	do {                              \
+		isc__crypto_##alg = NULL; \
+	} while (0)
+
+#define kdf_register_algorithm(alg, algname)
+
 #endif /* OPENSSL_VERSION_NUMBER >= 0x30000000L */
+
+#define md_register_algorithm(alg, algname) \
+	register_algorithm(alg, algname, EVP_MD_fetch)
+
+#define signature_register_algorithm(alg, algname) \
+	register_algorithm(alg, algname, EVP_SIGNATURE_fetch)
+
+#define cipher_register_algorithm(alg, algname) \
+	register_algorithm(alg, algname, EVP_CIPHER_fetch)
+
+#define kdf_unregister_algorithm(alg) unregister_algorithm(alg, EVP_KDF_free)
+
+#define md_unregister_algorithm(alg) unregister_algorithm(alg, EVP_MD_free)
+
+#define signature_unregister_algorithm(alg) \
+	unregister_algorithm(alg, EVP_SIGNATURE_free)
+
+#define cipher_unregister_algorithm(alg) \
+	unregister_algorithm(alg, EVP_CIPHER_free)
 
 static isc_result_t
 register_algorithms(void) {
 	if (!isc_crypto_fips_mode()) {
 		md_register_algorithm(md5, "MD5");
+		signature_register_algorithm(ed448, "Ed448");
+		cipher_register_algorithm(chacha20, "ChaCha20");
+		cipher_register_algorithm(chacha20_poly1305,
+					  "ChaCha20-Poly1305");
 	}
+
+	kdf_register_algorithm(hkdf, "HKDF");
 
 	md_register_algorithm(sha1, "SHA1");
 	md_register_algorithm(sha224, "SHA224");
@@ -80,21 +135,60 @@ register_algorithms(void) {
 	md_register_algorithm(sha384, "SHA384");
 	md_register_algorithm(sha512, "SHA512");
 
+	signature_register_algorithm(rsa_pkcs1_v1_5_sha1, "RSA-SHA1");
+	signature_register_algorithm(rsa_pkcs1_v1_5_sha2_256, "RSA-SHA2-256");
+	signature_register_algorithm(rsa_pkcs1_v1_5_sha2_512, "RSA-SHA2-512");
+	signature_register_algorithm(ecdsa_p256, "ECDSA-SHA2-256");
+	signature_register_algorithm(ecdsa_p384, "ECDSA-SHA2-384");
+	signature_register_algorithm(ed25519, "Ed25519");
+
+	cipher_register_algorithm(aes_128_gcm, "AES-128-GCM");
+	cipher_register_algorithm(aes_256_gcm, "AES-256-GCM");
+	cipher_register_algorithm(aes_128_ccm, "AES-128-CCM");
+	cipher_register_algorithm(aes_128_ctr, "AES-128-CTR");
+	cipher_register_algorithm(aes_256_ctr, "AES-256-CTR");
+
 	return ISC_R_SUCCESS;
 }
 
 static void
 unregister_algorithms(void) {
+	cipher_unregister_algorithm(aes_256_ctr);
+	cipher_unregister_algorithm(aes_128_ctr);
+	cipher_unregister_algorithm(aes_128_ccm);
+	cipher_unregister_algorithm(aes_256_gcm);
+	cipher_unregister_algorithm(aes_128_gcm);
+	cipher_unregister_algorithm(chacha20_poly1305);
+	cipher_unregister_algorithm(chacha20);
+
+	signature_unregister_algorithm(ed448);
+	signature_unregister_algorithm(ed25519);
+	signature_unregister_algorithm(ecdsa_p384);
+	signature_unregister_algorithm(ecdsa_p256);
+	signature_unregister_algorithm(rsa_pkcs1_v1_5_sha2_512);
+	signature_unregister_algorithm(rsa_pkcs1_v1_5_sha2_256);
+	signature_unregister_algorithm(rsa_pkcs1_v1_5_sha1);
+
 	md_unregister_algorithm(sha512);
 	md_unregister_algorithm(sha384);
 	md_unregister_algorithm(sha256);
 	md_unregister_algorithm(sha224);
 	md_unregister_algorithm(sha1);
 	md_unregister_algorithm(md5);
+
+	kdf_unregister_algorithm(hkdf);
 }
 
+#undef cipher_unregister_algorithm
+#undef signature_unregister_algorithm
 #undef md_unregister_algorithm
+#undef kdf_unregister_algorithm
+#undef cipher_register_algorithm
+#undef signature_register_algorithm
 #undef md_register_algorithm
+#undef kdf_register_algorithm
+#undef unregister_algorithm
+#undef register_algorithm
 
 #if !defined(LIBRESSL_VERSION_NUMBER) && OPENSSL_VERSION_NUMBER >= 0x30000000L
 /*
