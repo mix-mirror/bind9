@@ -436,6 +436,7 @@ isc__mem_initialize(void) {
 
 void
 isc__mem_shutdown(void) {
+	/* should be called after an rcu_barrier() */
 	bool empty;
 
 	isc__mem_checkdestroyed();
