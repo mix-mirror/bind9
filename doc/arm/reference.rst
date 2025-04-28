@@ -4474,12 +4474,11 @@ Tuning
    controlled by :any:`notify-rate`.
 
 .. namedconf:statement:: max-rsa-exponent-size
-   :tags: dnssec, query
+   :tags: deprecated
    :short: Sets the maximum RSA exponent size (in bits) when validating.
 
-   This sets the maximum RSA exponent size, in bits, that is accepted when
-   validating. Valid values are 35 to 4096 bits. The default, zero, is
-   also accepted and is equivalent to 4096.
+   The maximum RSA exponent size is now always 4096.  This option is
+   deprecated, and will be rendered non-operational in a future release.
 
 .. namedconf:statement:: prefetch
    :tags: query
