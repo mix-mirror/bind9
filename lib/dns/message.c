@@ -1352,9 +1352,8 @@ getsection(isc_buffer_t *source, dns_message_t *msg, dns_decompress_t dctx,
 				free_name = false;
 			}
 		} else {
-			isc_lhashmap_entry_t *entry =
-				isc_lhashmap_entry(&name_map, &name);
-			// TODO NULL check
+			isc_lhashmap_entry_t *entry = NULL;
+			INSIST(isc_lhashmap_entry(&name_map, &name, &entry) == ISC_R_SUCCESS);
 
 			/*
 			 * If it is a new name, append to the section.
@@ -1433,9 +1432,9 @@ getsection(isc_buffer_t *source, dns_message_t *msg, dns_decompress_t dctx,
 				.name = name,
 				.rdataset = rdataset,
 			};
-			isc_lhashmap_entry_t *rdtype_entry =
-				isc_lhashmap_entry(&name_rdtype_map, &key);
-			// TODO NULL check
+			isc_lhashmap_entry_t *rdtype_entry = NULL;
+			INSIST(isc_lhashmap_entry(&name_rdtype_map, &key, &rdtype_entry) == ISC_R_SUCCESS);
+
 			if (!isc_lhashmap_entry_is_empty(rdtype_entry)) {
 				/* Free the rdataset we used as the key */
 				dns__message_putassociatedrdataset(msg,

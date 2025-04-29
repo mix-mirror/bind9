@@ -76,8 +76,10 @@ isc_lhashmap_init(size_t size, size_t elem_size, char *array,
 	return map;
 }
 
-isc_lhashmap_entry_t *
-isc_lhashmap_entry(const isc_lhashmap_t *map, void *elem) {
+isc_result_t
+isc_lhashmap_entry(const isc_lhashmap_t *map, void *elem, isc_lhashmap_entry_t** output) {
+	REQUIRE(output != NULL && *output == NULL);
+
 	size_t elem_hash = map->hash_func(elem);
 	size_t saturated_hash = inc_and_saturate(elem_hash);
 	for (size_t i = 0; i < map->size; i++) {
@@ -87,20 +89,22 @@ isc_lhashmap_entry(const isc_lhashmap_t *map, void *elem) {
 		if (entry->hash == saturated_hash &&
 		    map->match_func(entry->data, elem))
 		{
-			return entry;
+			*output = entry;
+			return ISC_R_SUCCESS;
 		} else if (entry->hash == 0ul) {
-			return entry;
+			*output = entry;
+			return ISC_R_SUCCESS;
 		}
 	}
-	return NULL;
+	return ISC_R_NOSPACE;
 }
 
 isc_result_t
 isc_lhashmap_put(isc_lhashmap_t *map, void *elem) {
-	isc_lhashmap_entry_t *entry = isc_lhashmap_entry(map, elem);
-	if (entry) {
+	isc_lhashmap_entry_t* entry = NULL;
+	isc_result_t res = isc_lhashmap_entry(map, elem, &entry);
+	if (res == ISC_R_SUCCESS) {
 		isc_lhashmap_entry_put_data(map, entry, elem);
-		return ISC_R_SUCCESS;
 	}
-	return ISC_R_FAILURE;
+	return res;
 }
