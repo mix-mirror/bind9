@@ -1443,8 +1443,7 @@ getsection(isc_buffer_t *source, dns_message_t *msg, dns_decompress_t dctx,
 				result = ISC_R_SUCCESS;
 				rdataset = ((name_and_rdtype_t *)
 						    isc_lhashmap_entry_get_data(
-							    &name_rdtype_map,
-							    rdtype_entry, &key))
+							    rdtype_entry))
 						   ->rdataset;
 				found_rdataset = rdataset;
 				REQUIRE(DNS_RDATASET_VALID(rdataset));

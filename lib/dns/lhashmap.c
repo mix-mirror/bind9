@@ -12,10 +12,6 @@
 
 #include <dns/lhashmap.h>
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-function"
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-
 static inline size_t
 inc_and_saturate(size_t hash) {
 	size_t result;
@@ -39,8 +35,7 @@ isc_lhashmap_entry_put_data(isc_lhashmap_t *map, isc_lhashmap_entry_t *entry,
 }
 
 void *
-isc_lhashmap_entry_get_data(isc_lhashmap_t *map, isc_lhashmap_entry_t *entry,
-			    void *elem) {
+isc_lhashmap_entry_get_data(isc_lhashmap_entry_t *entry) {
 	REQUIRE(entry != NULL);
 	return entry->data;
 }
@@ -109,5 +104,3 @@ isc_lhashmap_put(isc_lhashmap_t *map, void *elem) {
 	}
 	return ISC_R_FAILURE;
 }
-
-#pragma GCC diagnostic pop
