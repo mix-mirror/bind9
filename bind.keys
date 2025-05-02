@@ -37,23 +37,5 @@
 # anchor information for the root zone.
 
 trust-anchors {
-        # This key (20326) was published in the root zone in 2017, and
-        # is scheduled to be phased out starting in 2025. It will remain
-        # in the root zone until some time after its successor key has
-        # been activated. It will remain this file until it is removed
-        # from the root zone.
-
-        . initial-key 257 3 8 "AwEAAaz/tAm8yTn4Mfeh5eyI96WSVexTBAvkMgJzkKTOiW1vkIbzxeF3
-                +/4RgWOq7HrxRixHlFlExOLAJr5emLvN7SWXgnLh4+B5xQlNVz8Og8kv
-                ArMtNROxVQuCaSnIDdD5LKyWbRd2n9WGe2R8PzgCmr3EgVLrjyBxWezF
-                0jLHwVN8efS3rCj/EWgvIWgb9tarpVUDK/b58Da+sqqls3eNbuv7pr+e
-                oZG+SrDK6nWeL3c6H5Apxz7LjVc1uTIdsIXxuOLYA4/ilBmSVIzuDWfd
-                RUfhHdY6+cn8HFRm+2hM8AnXGXws9555KrUB5qihylGa8subX2Nn6UwN
-                R1AkUTV74bU=";
-        # This key (38696) will be pre-published in the root zone in 2025
-        # and is scheduled to begin signing in late 2026. At that time,
-        # servers which were already using the old key (20326) should roll
-        # seamlessly to this new one via RFC 5011 rollover.
-        . initial-ds 38696 8 2 "683D2D0ACB8C9B712A1948B27F741219298D0A450D612C483AF444A
-        4C0FB2B16";
+        . initial-key 257 3 123 "RuVWW/9qZW4wtDuS9nJiWsSYlqBtQj2X0gGCAWb2enrXG4b1jRQU2iac 7UtnxNfFo9RoyCBU3zLrARY0TFARi8YAaZX0zs1zatXcyAOwpRRjpTWO WIQ0M/JixxfvkngR//9t3///9/b99e3nf////vv/YQvM9mIV38dk8ofY ghZSL2pvH6u0cSdz2loZ+nmBAZ9skhiA5wVlTFZeHBYApAElo408Y7qV vDLtA/RhwqShIi45KEI5z2RUaaiCBkXHgfwMKbwoe4q5cJBV1q2AdRy0 D1QLezurEgF3HSi9fmkvaVPpxZKZd7d/LYT1nxy+Y1knCSyNKwq+ewn+ cX9/fnPjrgayPZ1YAw/GcxIAHwJZfKmi8T834vH4YGOA+XKzSy0ooB5M JS1HFErr3RBNB5+CnXxDhotAnGQp15Gr1ZPkh5+Tedv6TRKuIfF2AQoT Bn0dHaaJ21erAWD3JboLL1YGcg6Is0zBj0Y1vJ0bVdMZpUW3QWN9rRc1 bLxeVEuWADXtfE7bVRqLItGvB6EC/h0S6H9/2+/v77//333f+/W/1/f/ /uv/d7d+f+//u3X3+/b/vff+/v4+AAAAAAAAAAAA";
 };
