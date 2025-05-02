@@ -17,6 +17,7 @@
 
 #include <isc/ascii.h>
 #include <isc/buffer.h>
+#include <isc/fxhash.h>
 #include <isc/hash.h>
 #include <isc/mem.h>
 #include <isc/util.h>
@@ -115,20 +116,7 @@ dns_compress_getpermitted(dns_compress_t *cctx) {
 static uint16_t
 hash_label(uint16_t init, uint8_t *ptr, bool sensitive) {
 	unsigned int len = ptr[0] + 1;
-	uint32_t hash = init;
-
-	if (sensitive) {
-		while (len-- > 0) {
-			hash = hash * 33 + *ptr++;
-		}
-	} else {
-		/* using the autovectorize-friendly tolower() */
-		while (len-- > 0) {
-			hash = hash * 33 + isc__ascii_tolower1(*ptr++);
-		}
-	}
-
-	return isc_hash_bits32(hash, 16);
+	return fx_hash_bytes(init, ptr, len, sensitive);
 }
 
 static bool
@@ -312,7 +300,7 @@ dns_compress_name(dns_compress_t *cctx, isc_buffer_t *buffer,
 
 	bool sensitive = (cctx->flags & DNS_COMPRESS_CASE) != 0;
 
-	uint16_t hash = HASH_INIT_DJB2;
+	uint16_t hash = 42;
 	size_t label = labels - 1; /* skip the root label */
 
 	/*
