@@ -32,6 +32,17 @@ extern const uint8_t isc__ascii_toupper[256];
 #define isc_ascii_toupper(c) isc__ascii_toupper[(uint8_t)(c)]
 
 /*
+ * Word sized tolower.
+ */
+#if __SIZEOF_SIZE_T__ == 8
+#define isc_ascii_tolower_size_t isc_ascii_tolower8
+#elif __SIZEOF_SIZE_T__ == 4
+#define isc_ascii_tolower_size_t isc_ascii_tolower4
+#else
+#error "Unsupported platform: sizeof(size_t) must be 4 or 8 bytes"
+#endif
+
+/*
  * A variant tolower() implementation with no memory accesses,
  * for use when the compiler is able to autovectorize.
  */

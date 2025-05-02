@@ -29,8 +29,11 @@
 #include <stdint.h>
 #include <string.h>
 
+#include <isc/ascii.h>
+
 /* The constant K from Rust's fxhash */
 #define K 0x9e3779b97f4a7c15ull
+
 
 static inline size_t
 rotate_left(size_t x, unsigned int n) {
@@ -42,23 +45,16 @@ fx_add_to_hash(size_t hash, size_t i) {
 	return rotate_left(hash, 5) ^ i * K;
 }
 
-/*
- * Beware: this implementation will use an approximate conversion to lowercase.
- * This is ok as fxhash is already not hash-flooding resistant and we use it
- * only for config parsing.
- */
 static inline size_t
 fx_hash_bytes(size_t initial_hash, const uint8_t *restrict bytes, size_t len,
 	      bool case_sensitive) {
 	size_t hash = initial_hash;
-	size_t case_mask = case_sensitive
-				   ? -1ull
-				   : (0b11011111 * 0x0101010101010101ull);
 
 	while (len >= sizeof(size_t)) {
 		size_t value;
 		memmove(&value, bytes, sizeof(size_t));
-		hash = fx_add_to_hash(hash, value & case_mask);
+		size_t maybe_lower = case_sensitive ? value : isc_ascii_tolower_size_t(value);
+		hash = fx_add_to_hash(hash, maybe_lower);
 		bytes += sizeof(size_t);
 		len -= sizeof(size_t);
 	}
@@ -67,7 +63,8 @@ fx_hash_bytes(size_t initial_hash, const uint8_t *restrict bytes, size_t len,
 	if (len >= 4) {
 		uint32_t value;
 		memmove(&value, bytes, sizeof(uint32_t));
-		hash = fx_add_to_hash(hash, value & case_mask);
+		size_t maybe_lower = case_sensitive ? value : isc_ascii_tolower_size_t(value);
+		hash = fx_add_to_hash(hash, maybe_lower);
 		bytes += 4;
 		len -= 4;
 	}
@@ -76,13 +73,15 @@ fx_hash_bytes(size_t initial_hash, const uint8_t *restrict bytes, size_t len,
 	if (len >= 2) {
 		uint16_t value;
 		memmove(&value, bytes, sizeof(uint16_t));
-		hash = fx_add_to_hash(hash, value & case_mask);
+		size_t maybe_lower = case_sensitive ? value : isc_ascii_tolower_size_t(value);
+		hash = fx_add_to_hash(hash, maybe_lower);
 		bytes += 2;
 		len -= 2;
 	}
 
 	if (len >= 1) {
-		hash = fx_add_to_hash(hash, bytes[0] & case_mask);
+		size_t value = case_sensitive ? bytes[0] : isc__ascii_tolower1(bytes[0]);
+		hash = fx_add_to_hash(hash, value);
 	}
 
 	return hash;
