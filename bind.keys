@@ -37,23 +37,7 @@
 # anchor information for the root zone.
 
 trust-anchors {
-        # This key (20326) was published in the root zone in 2017, and
-        # is scheduled to be phased out starting in 2025. It will remain
-        # in the root zone until some time after its successor key has
-        # been activated. It will remain this file until it is removed
-        # from the root zone.
-
-        . initial-key 257 3 8 "AwEAAaz/tAm8yTn4Mfeh5eyI96WSVexTBAvkMgJzkKTOiW1vkIbzxeF3
-                +/4RgWOq7HrxRixHlFlExOLAJr5emLvN7SWXgnLh4+B5xQlNVz8Og8kv
-                ArMtNROxVQuCaSnIDdD5LKyWbRd2n9WGe2R8PzgCmr3EgVLrjyBxWezF
-                0jLHwVN8efS3rCj/EWgvIWgb9tarpVUDK/b58Da+sqqls3eNbuv7pr+e
-                oZG+SrDK6nWeL3c6H5Apxz7LjVc1uTIdsIXxuOLYA4/ilBmSVIzuDWfd
-                RUfhHdY6+cn8HFRm+2hM8AnXGXws9555KrUB5qihylGa8subX2Nn6UwN
-                R1AkUTV74bU=";
-        # This key (38696) will be pre-published in the root zone in 2025
-        # and is scheduled to begin signing in late 2026. At that time,
-        # servers which were already using the old key (20326) should roll
-        # seamlessly to this new one via RFC 5011 rollover.
-        . initial-ds 38696 8 2 "683D2D0ACB8C9B712A1948B27F741219298D0A450D612C483AF444A
-        4C0FB2B16";
+        . initial-key 257 3 8 "AwEAAaz/tAm8yTn4Mfeh5eyI96WSVexTBAvkMgJzkKTOiW1vkIbzxeF3 +/4RgWOq7HrxRixHlFlExOLAJr5emLvN7SWXgnLh4+B5xQlNVz8Og8kv ArMtNROxVQuCaSnIDdD5LKyWbRd2n9WGe2R8PzgCmr3EgVLrjyBxWezF 0jLHwVN8efS3rCj/EWgvIWgb9tarpVUDK/b58Da+sqqls3eNbuv7pr+e oZG+SrDK6nWeL3c6H5Apxz7LjVc1uTIdsIXxuOLYA4/ilBmSVIzuDWfd RUfhHdY6+cn8HFRm+2hM8AnXGXws9555KrUB5qihylGa8subX2Nn6UwN R1AkUTV74bU=";
+        . initial-ds 38696 8 2 "683D2D0ACB8C9B712A1948B27F741219298D0A450D612C483AF444A 4C0FB2B16";
+        . initial-key 257 3 126 "0HpzYLnsgIHA9QMpVLlCJcLH5lJuVPclAYr/BDOWLRnOVJVwsJ1cAjd6 ILP5K0xKGtYMnXR+IZ546E1JnAWpP4QdMW2Svsl0LEdJaFXTB/EqSVVD cgywK+h8GAWNqeXdEW5OLcq2ndPWUB3vlOuxgvPot5Jt+UbGVlFz5Y9o 5xDf35i5h7Zu99TmJ14GihI619toMacXZgJyzyH9fPghFKixWte+vYB1 jaqoq95xWnQbnJqVp/uOpgdcYDNKZgjaLXJSxCZqXi0Sc9tc/aSkyhw9 iTnmdNYJrYxoLn59PjGSVcnL82DENOVWuqA7kbKzdVi6lhRIHBz4Ez6m PaI30MCmeoB5U6u56OfUP7xICC8Jn02EMxtlQ5LSh3KQL4MSBsiPiw53 5ZQRIE7kLZD5ow8+VkB3s3HutB6943e2cBXAaSvaP2muRiBl5Bj4dos5 2aFxpuNnvqDArwm7Z6NBJKV6MIiwprPNH4y8KtkdF40j9gJTWFkidnon 7DtIppz0IbFF9ksvpnBmel3OXqLI0i1QIrqd+BYUCNNlJsXJ+mI/qzEg UjpYY3p2y844lQ2+C1y8VlxwW28uKkzo375DUuWPak2n6L787OJhfLYU 4gX82UgUc3Kve7DlQsaFhbKpvX87o9ow0WQsJIRExJFeLhKmGLndqgWw Q3zsqO9+FXRGqICBqKwr7tabnfKz/rFSQofGkSbxFA5Wkn7BDkVQlBtd vZwh8n+Aox3eGmK6SvZ12QDqMgJPCtoH/B/a1jDQQN5sc0FrAfJBQsC4 AJOSQxwCnzFIDGv3mqXkKvI1ONFY/PLv7GmKN2LbmKmZw29wyWkzgjoI 5lRUlRoq0ycappAQ+KoJVi1d0ZbsPCnc0319CMepPwzvppTTbQtI89QG PXQlLcLH1yUA9WlxxuuYqCJkyzf6MqSLzOR+OIZ33olw2j/Tj9Uz92XJ eKPSQXLVt3s5xA8PdtYCcG+dlvmj5NOkJtbhKzM1ylBNNTH4t7gx++D0 vODkuwud096D74wERhOgfBVoA38/nj0c3iK+84YqOdfY2EB2oo16peX1 3GNim2mONF5hPQyRBESt6op7rbvmxX4IHRza6jkJGR2RS5mNPjKh3D2P P4EraaWhG0a6AEg2jrVnt2jCYX8hE5FgNgSEOCTw9Cg3N7/eeNsTs4GV /duEoU6JKbhJApmqX0BY1ZdPvm4VRpvwYWuH9UzrS9bJvMpy+rJGAhM/ 53JRAOPWH6jtzFSbqrKDTXiM9TbFPTT7GC1XTWpVIv4uJL6BmqU5HAXj 3Na+FycWyEWx6+7148iiDJHvdCD2Uqq/oEp2V5sgX7dE+t8Efta9/xrP nppIHs7hWJCfZ5JiJ81icuMmM1n/t+DpcN1yTJ2gdoMEBYc5YITt8g2T YJlZxNKCfdfx4yXOlDx/IYJBNh6dnB43/eYC05NvuFmD9VkVUARGpgqW bxrjfzSQkGsqdmqQBUVIUYQHwkjL/ORcMxWy3xrHWgX14MvnjpZeyAtr N01y2U2orpA0oMS/H1RQoktj1EmiImbC5mm7WqzccsjNHFKRnUzpkoyo ++HeezhbA+S02clW0mnFj3jrE9rFVFJh+P9usTdb8pDrz9oCl9o/+aNn /ClK5bCrVM3KlYX0hQYIgvx22nq5PPSW5NFGPNoEOM7PHN5qXDPRoeol 5pf+u3VP5yF38SOYdP2rb3DxisaIAVgKNasAB3nAGfUmzL8J/dJN/+IF xqwc0fI0ZRo8mE/A5xunG/v7dHKKbZEosj/Ehv9iXjoYqTVaQQ/tuZIC HOLjcA7M/1uw91aS/Ui6B/Ydrzw083hHPVgaNOI9ZqN2xUWLPOJGJdAi riralKyjZnOgJEGSpD9KUQCQ6AbDMzesE+iPTK6k406nLw==";
 };
