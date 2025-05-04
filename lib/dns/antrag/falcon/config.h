@@ -118,8 +118,9 @@
  * and 64-bit modes), and run only on systems that offer the AVX2
  * opcodes. Some operations leverage AVX2 for better performance.
  *
- */
 #define FALCON_AVX2   1
+ */
+#undef FALCON_AVX2
 
 /*
  * Enable use of FMA intrinsics. This setting has any effect only if
@@ -131,8 +132,9 @@
  * and signatures might theoretically change, but only with low probability,
  * less than 2^(-40); produced signatures are still safe and interoperable).
  *
+#define FALCON_FMA 1
  */
-#define FALCON_FMA   1
+#undef FALCON_FMA
 
 /*
  * Assert that the platform uses little-endian encoding. If enabled,
@@ -169,7 +171,7 @@
  * setting is not enabled by default.
  *
  */
-#define FALCON_KG_CHACHA20   1
+#define FALCON_KG_CHACHA20 1
 
 /*
  * Use an explicit OS-provided source of randomness for seeding (for the
@@ -199,5 +201,6 @@
 #define FALCON_RAND_URANDOM      1
 #define FALCON_RAND_WIN32        1
  */
+#define FALCON_RAND_GETENTROPY 1
 
 #endif
