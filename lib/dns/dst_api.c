@@ -29,6 +29,7 @@
 
 /*! \file */
 
+#include <antrag/antrag/randombytes.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
@@ -190,6 +191,7 @@ static isc_mem_t *dst__mctx = NULL;
 
 void
 dst__lib_initialize(void) {
+	seed_rng();
 	isc_mem_create(&dst__mctx);
 
 	dst__hmacmd5_init(&dst_t_func[DST_ALG_HMACMD5]);
