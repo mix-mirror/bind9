@@ -77,7 +77,8 @@ isc_lhashmap_init(size_t size, size_t elem_size, char *array,
 }
 
 isc_result_t
-isc_lhashmap_entry(const isc_lhashmap_t *map, void *elem, isc_lhashmap_entry_t** output) {
+isc_lhashmap_entry(const isc_lhashmap_t *map, void *elem,
+		   isc_lhashmap_entry_t **output) {
 	REQUIRE(output != NULL && *output == NULL);
 
 	size_t elem_hash = map->hash_func(elem);
@@ -101,7 +102,7 @@ isc_lhashmap_entry(const isc_lhashmap_t *map, void *elem, isc_lhashmap_entry_t**
 
 isc_result_t
 isc_lhashmap_put(isc_lhashmap_t *map, void *elem) {
-	isc_lhashmap_entry_t* entry = NULL;
+	isc_lhashmap_entry_t *entry = NULL;
 	isc_result_t res = isc_lhashmap_entry(map, elem, &entry);
 	if (res == ISC_R_SUCCESS) {
 		isc_lhashmap_entry_put_data(map, entry, elem);

@@ -1353,7 +1353,8 @@ getsection(isc_buffer_t *source, dns_message_t *msg, dns_decompress_t dctx,
 			}
 		} else {
 			isc_lhashmap_entry_t *entry = NULL;
-			INSIST(isc_lhashmap_entry(&name_map, &name, &entry) == ISC_R_SUCCESS);
+			INSIST(isc_lhashmap_entry(&name_map, &name, &entry) ==
+			       ISC_R_SUCCESS);
 
 			/*
 			 * If it is a new name, append to the section.
@@ -1433,7 +1434,9 @@ getsection(isc_buffer_t *source, dns_message_t *msg, dns_decompress_t dctx,
 				.rdataset = rdataset,
 			};
 			isc_lhashmap_entry_t *rdtype_entry = NULL;
-			INSIST(isc_lhashmap_entry(&name_rdtype_map, &key, &rdtype_entry) == ISC_R_SUCCESS);
+			INSIST(isc_lhashmap_entry(&name_rdtype_map, &key,
+						  &rdtype_entry) ==
+			       ISC_R_SUCCESS);
 
 			if (!isc_lhashmap_entry_is_empty(rdtype_entry)) {
 				/* Free the rdataset we used as the key */

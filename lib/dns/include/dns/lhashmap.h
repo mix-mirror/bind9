@@ -30,10 +30,12 @@ isc_lhashmap_entry_put_data(isc_lhashmap_t *map, isc_lhashmap_entry_t *entry,
 			    void *elem);
 void *
 isc_lhashmap_entry_get_data(isc_lhashmap_entry_t *entry);
+
 isc_lhashmap_t
 isc_lhashmap_init(size_t size, size_t elem_size, char *array,
 		  hash_func_t hash_func, match_func_t match_func);
 isc_result_t
-isc_lhashmap_entry(const isc_lhashmap_t *map, void *elem, isc_lhashmap_entry_t** output);
+isc_lhashmap_entry(const isc_lhashmap_t *map, void *elem,
+		   isc_lhashmap_entry_t **output);
 isc_result_t
 isc_lhashmap_put(isc_lhashmap_t *map, void *elem);
