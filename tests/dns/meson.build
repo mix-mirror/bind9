@@ -21,6 +21,7 @@ dns_tests = [
     'dst',
     'ede',
     'keytable',
+    'lhashmap',
     'master',
     'name',
     'nametree',
