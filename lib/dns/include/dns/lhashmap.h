@@ -39,3 +39,6 @@ isc_lhashmap_entry(const isc_lhashmap_t *map, void *elem,
 		   isc_lhashmap_entry_t **output);
 isc_result_t
 isc_lhashmap_put(isc_lhashmap_t *map, void *elem);
+
+size_t
+isc_lhashmap_count(isc_lhashmap_t *map);

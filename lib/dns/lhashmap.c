@@ -109,3 +109,14 @@ isc_lhashmap_put(isc_lhashmap_t *map, void *elem) {
 	}
 	return res;
 }
+
+size_t
+isc_lhashmap_count(isc_lhashmap_t *map) {
+	size_t count = 0;
+	for (size_t idx = 0; idx < map->size; idx++) {
+		isc_lhashmap_entry_t *entry =
+			lhashmap_entry_pointer(map, idx, 0);
+		count += entry->hash != 0;
+	}
+	return count;
+}

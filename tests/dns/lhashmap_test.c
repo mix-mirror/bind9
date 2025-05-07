@@ -46,9 +46,9 @@ static isc_lhashmap_t init_fxhash(size_t size, char buffer[]) {
     return isc_lhashmap_init(size, sizeof(char*), buffer, cstar_hash, cstar_match);
 }
 
-static void ensure_exists(const void* map, char* elem) {
+static void ensure_exists(const isc_lhashmap_t* map, char* elem) {
     isc_lhashmap_entry_t* entry_ptr = NULL;
-    isc_result_t res = isc_lhashmap_entry((const isc_lhashmap_t*) map, (void*) &elem, &entry_ptr);
+    isc_result_t res = isc_lhashmap_entry(map, (void*) &elem, &entry_ptr);
     assert_non_null(entry_ptr);
     assert_true(entry_ptr->hash != 0ul);
 
@@ -64,9 +64,13 @@ static void ensure_exists(const void* map, char* elem) {
     // printf("strcmp: %s\n", strcmp(value, elem) ? "false" : "true");
 }
 
-static void put(void* map, char* elem) {
-    isc_result_t res = isc_lhashmap_put((isc_lhashmap_t*) map, (void*) &elem);
+static void put(isc_lhashmap_t* map, char* elem) {
+    isc_result_t res = isc_lhashmap_put(map, (void*) &elem);
     assert_true(res == ISC_R_SUCCESS);
+}
+
+static void check_integrity(isc_lhashmap_t* map, size_t expected_size) {
+    assert_true(isc_lhashmap_count(map) == expected_size);
 }
 
 static void prepare_seed_bytes(uint16_t seed, unsigned char bytes[4]) {
@@ -112,6 +116,7 @@ ISC_RUN_TEST_IMPL(dns_lhashmap_cstar) {
 
     char buffer[BUFFER_SIZE_BYTES];
     isc_lhashmap_t ht = init_fxhash(1024, buffer); 
+    check_integrity(&ht, 0ull);
 
     for (size_t idx = 0; idx < 1024; ++idx) {
 	put(&ht, keys[idx]);
@@ -119,6 +124,8 @@ ISC_RUN_TEST_IMPL(dns_lhashmap_cstar) {
 	for (size_t prev = 0; prev <= idx; ++prev) {
 	    ensure_exists(&ht, keys[prev]);
 	}
+
+	check_integrity(&ht, idx + 1ull);
     }
 
     for (size_t idx = 0; idx < 1024; ++idx) {
