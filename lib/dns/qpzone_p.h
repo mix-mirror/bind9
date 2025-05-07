@@ -14,6 +14,7 @@
 #pragma once
 
 #include <isc/heap.h>
+#include <isc/rwlock.h>
 #include <isc/urcu.h>
 
 #include <dns/nsec3.h>
@@ -45,3 +46,17 @@ dns__qpzone_create(isc_mem_t *mctx, const dns_name_t *base, dns_dbtype_t type,
  *
  * \li argc == 0 or argv[0] is a valid memory context.
  */
+
+typedef struct qpzone_bucket {
+	/* Per-bucket lock. */
+	isc_rwlock_t lock;
+
+	/* Padding to prevent false sharing between locks. */
+	uint8_t __padding[ISC_OS_CACHELINE_SIZE -
+			  (sizeof(isc_rwlock_t)) % ISC_OS_CACHELINE_SIZE];
+} qpzone_bucket_t;
+
+void
+dns__qpzone_initialize(void);
+void
+dns__qpzone_shutdown(void);
