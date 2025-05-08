@@ -2660,12 +2660,9 @@ step(qpz_search_t *search, dns_qpiter_t *it, direction_t direction,
      dns_name_t *nextname) {
 	dns_fixedname_t fnodename;
 	dns_name_t *nodename = dns_fixedname_initname(&fnodename);
-	qpzonedb_t *qpdb = NULL;
 	qpznode_t *node = NULL;
 	isc_result_t result = ISC_R_SUCCESS;
 	dns_slabheader_t *header = NULL;
-
-	qpdb = search->qpdb;
 
 	result = dns_qpiter_current(it, nodename, (void **)&node, NULL);
 	while (result == ISC_R_SUCCESS) {
@@ -2815,7 +2812,6 @@ find_wildcard(qpz_search_t *search, qpznode_t **nodep,
 	      const dns_name_t *qname) {
 	dns_slabheader_t *header = NULL;
 	isc_result_t result = ISC_R_NOTFOUND;
-	qpzonedb_t *qpdb = search->qpdb;
 
 	/*
 	 * Examine each ancestor level.  If the level's wild bit
@@ -4012,16 +4008,14 @@ getoriginnode(dns_db_t *db, dns_dbnode_t **nodep DNS__DB_FLARG) {
 }
 
 static void
-locknode(dns_db_t *db, dns_dbnode_t *dbnode, isc_rwlocktype_t type) {
-	qpzonedb_t *qpdb = (qpzonedb_t *)db;
+locknode(dns_db_t *db ISC_ATTR_UNUSED, dns_dbnode_t *dbnode, isc_rwlocktype_t type) {
 	qpznode_t *node = (qpznode_t *)dbnode;
 
 	RWLOCK(qpzone_get_lock(node), type);
 }
 
 static void
-unlocknode(dns_db_t *db, dns_dbnode_t *dbnode, isc_rwlocktype_t type) {
-	qpzonedb_t *qpdb = (qpzonedb_t *)db;
+unlocknode(dns_db_t *db ISC_ATTR_UNUSED, dns_dbnode_t *dbnode, isc_rwlocktype_t type) {
 	qpznode_t *node = (qpznode_t *)dbnode;
 
 	RWUNLOCK(qpzone_get_lock(node), type);
@@ -4065,7 +4059,6 @@ rdatasetiter_destroy(dns_rdatasetiter_t **iteratorp DNS__DB_FLARG) {
 static isc_result_t
 rdatasetiter_first(dns_rdatasetiter_t *iterator DNS__DB_FLARG) {
 	qpdb_rdatasetiter_t *qrditer = (qpdb_rdatasetiter_t *)iterator;
-	qpzonedb_t *qpdb = (qpzonedb_t *)(qrditer->common.db);
 	qpznode_t *node = (qpznode_t *)qrditer->common.node;
 	qpz_version_t *version = (qpz_version_t *)qrditer->common.version;
 	dns_slabheader_t *header = NULL, *top_next = NULL;
@@ -4107,7 +4100,6 @@ rdatasetiter_first(dns_rdatasetiter_t *iterator DNS__DB_FLARG) {
 static isc_result_t
 rdatasetiter_next(dns_rdatasetiter_t *iterator DNS__DB_FLARG) {
 	qpdb_rdatasetiter_t *qrditer = (qpdb_rdatasetiter_t *)iterator;
-	qpzonedb_t *qpdb = (qpzonedb_t *)(qrditer->common.db);
 	qpznode_t *node = (qpznode_t *)qrditer->common.node;
 	qpz_version_t *version = (qpz_version_t *)qrditer->common.version;
 	dns_slabheader_t *header = NULL;
