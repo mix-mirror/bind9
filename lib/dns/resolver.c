@@ -2375,7 +2375,6 @@ resquery_send(resquery_t *query) {
 		dns_peer_getednsneg(peer, &grease_edns_neg);
 	}
 
-fprintf(stderr,"%s: query->options=%#08x NOGREASE=%u\n", __func__, query->options, (query->options & DNS_FETCHOPT_NOGREASE) != 0);
 	/*
 	 * GREASE: Set the final reserved DNS header bit.
 	 */
@@ -8089,7 +8088,6 @@ rctx_timedout(respctx_t *rctx) {
 		      RESQUERY_ATTR_EDNS_NEG)) != 0 &&
 		    (query->options & DNS_FETCHOPT_NOGREASE) == 0)
 		{
-fprintf(stderr, "%s: Set NOGREASE\n", __func__);
 			rctx->retryopts |= DNS_FETCHOPT_NOGREASE;
 			rctx->resend = true;
 		} else {
