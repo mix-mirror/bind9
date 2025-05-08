@@ -301,7 +301,6 @@ struct tried {
 #define RESQUERY_ATTR_DNS_FLAGS	 (1U << 1)
 #define RESQUERY_ATTR_EDNS_FLAGS (1U << 2)
 #define RESQUERY_ATTR_EDNS_NEG	 (1U << 3)
-#define RESQUERY_ATTR_NOGREASE	 (1U << 4)
 
 #define RESQUERY_CONNECTING(q) ((q)->connects > 0)
 #define RESQUERY_CANCELED(q)   (((q)->attributes & RESQUERY_ATTR_CANCELED) != 0)
@@ -2376,11 +2375,12 @@ resquery_send(resquery_t *query) {
 		dns_peer_getednsneg(peer, &grease_edns_neg);
 	}
 
+fprintf(stderr,"%s: query->options=%#08x NOGREASE=%u\n", __func__, query->options, (query->options & DNS_FETCHOPT_NOGREASE) != 0);
 	/*
 	 * GREASE: Set the final reserved DNS header bit.
 	 */
 	query->attributes &= ~RESQUERY_ATTR_DNS_FLAGS;
-	if ((query->attributes & RESQUERY_ATTR_NOGREASE) == 0 &&
+	if ((query->options & DNS_FETCHOPT_NOGREASE) == 0 &&
 	    grease_dns_flags && now < grease_until && GREASE)
 	{
 		fctx->qmessage->flags |= 0x40;
@@ -2464,7 +2464,7 @@ resquery_send(resquery_t *query) {
 			 * set to 0 as EDNS(1) is currently undefined.
 			 */
 			query->attributes &= ~RESQUERY_ATTR_EDNS_NEG;
-			if ((query->attributes & RESQUERY_ATTR_NOGREASE) == 0 &&
+			if ((query->options & DNS_FETCHOPT_NOGREASE) == 0 &&
 			    grease_edns_neg && GREASE)
 			{
 				version = 100;
@@ -2479,7 +2479,7 @@ resquery_send(resquery_t *query) {
 			 * Disable test Jan 1, 2026.
 			 */
 			query->attributes &= ~RESQUERY_ATTR_EDNS_FLAGS;
-			if ((query->attributes & RESQUERY_ATTR_NOGREASE) == 0 &&
+			if ((query->options & DNS_FETCHOPT_NOGREASE) == 0 &&
 			    grease_edns_flags && now < grease_until && GREASE)
 			{
 				/*
@@ -8087,9 +8087,10 @@ rctx_timedout(respctx_t *rctx) {
 		if ((query->attributes &
 		     (RESQUERY_ATTR_DNS_FLAGS | RESQUERY_ATTR_EDNS_FLAGS |
 		      RESQUERY_ATTR_EDNS_NEG)) != 0 &&
-		    (query->attributes & RESQUERY_ATTR_NOGREASE) == 0)
+		    (query->options & DNS_FETCHOPT_NOGREASE) == 0)
 		{
-			query->attributes |= RESQUERY_ATTR_NOGREASE;
+fprintf(stderr, "%s: Set NOGREASE\n", __func__);
+			rctx->retryopts |= DNS_FETCHOPT_NOGREASE;
 			rctx->resend = true;
 		} else {
 			FCTXTRACE("query timed out; trying next server");
