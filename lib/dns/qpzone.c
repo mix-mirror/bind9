@@ -390,6 +390,15 @@ static atomic_uint_fast16_t init_count = 0;
  * Failure to follow this hierarchy can result in deadlock.
  */
 
+typedef struct qpzone_bucket {
+	/* Per-bucket lock. */
+	isc_rwlock_t lock;
+
+	/* Padding to prevent false sharing between locks. */
+	uint8_t __padding[ISC_OS_CACHELINE_SIZE -
+			  (sizeof(isc_rwlock_t)) % ISC_OS_CACHELINE_SIZE];
+} qpzone_bucket_t;
+
 static qpzone_bucket_t qpzone_buckets_g[1024];
 
 void
