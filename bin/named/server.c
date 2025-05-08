@@ -4718,7 +4718,7 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	(void)named_config_get(maps, "grease-rate", &obj);
 	if (obj != NULL) {
 		uint32_t rate = cfg_obj_aspercentage(obj);
-		rate = ISC_MAX(rate, 100);
+		rate = ISC_MIN(rate, 100);
 		view->grease_rate = rate;
 	} else {
 		view->grease_rate = 100;
