@@ -415,11 +415,13 @@ dns__qpzone_shutdown(void) {
 	}
 }
 
-static isc_rwlock_t* qpzone_get_lock(qpznode_t* node) {
+static isc_rwlock_t *
+qpzone_get_lock(qpznode_t *node) {
 	return &qpzone_buckets_g[node->locknum].lock;
 }
 
-static uint16_t qpzone_get_locknum(void) {
+static uint16_t
+qpzone_get_locknum(void) {
 	return isc_random16() % ARRAY_SIZE(qpzone_buckets_g);
 }
 
@@ -2637,8 +2639,7 @@ qpzone_setup_delegation(qpz_search_t *search, dns_dbnode_t **nodep,
 	}
 	if (rdataset != NULL) {
 		isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
-		isc_rwlock_t *nlock =
-			qpzone_get_lock(node);
+		isc_rwlock_t *nlock = qpzone_get_lock(node);
 		NODE_RDLOCK(nlock, &nlocktype);
 		bindrdataset(search->qpdb, node, search->zonecut_header,
 			     rdataset DNS__DB_FLARG_PASS);
@@ -3066,8 +3067,7 @@ again:
 	do {
 		dns_slabheader_t *found = NULL, *foundsig = NULL;
 		isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
-		isc_rwlock_t *nlock =
-			qpzone_get_lock(node);
+		isc_rwlock_t *nlock = qpzone_get_lock(node);
 		NODE_RDLOCK(nlock, &nlocktype);
 		empty_node = true;
 		for (header = node->data; header != NULL; header = header_next)
@@ -4017,14 +4017,16 @@ getoriginnode(dns_db_t *db, dns_dbnode_t **nodep DNS__DB_FLARG) {
 }
 
 static void
-locknode(dns_db_t *db ISC_ATTR_UNUSED, dns_dbnode_t *dbnode, isc_rwlocktype_t type) {
+locknode(dns_db_t *db ISC_ATTR_UNUSED, dns_dbnode_t *dbnode,
+	 isc_rwlocktype_t type) {
 	qpznode_t *node = (qpznode_t *)dbnode;
 
 	RWLOCK(qpzone_get_lock(node), type);
 }
 
 static void
-unlocknode(dns_db_t *db ISC_ATTR_UNUSED, dns_dbnode_t *dbnode, isc_rwlocktype_t type) {
+unlocknode(dns_db_t *db ISC_ATTR_UNUSED, dns_dbnode_t *dbnode,
+	   isc_rwlocktype_t type) {
 	qpznode_t *node = (qpznode_t *)dbnode;
 
 	RWUNLOCK(qpzone_get_lock(node), type);
