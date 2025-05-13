@@ -20,6 +20,7 @@
 #pragma once
 
 #include <isc/bit.h>
+#include <isc/ascii.h>
 #include <isc/refcount.h>
 
 #include <dns/qp.h>
@@ -639,6 +640,73 @@ make_leaf(const void *pval, uint32_t ival) {
 	return leaf;
 }
 
+/* qpkey functions ****************************************************/
+
+/*
+ * These functions are here instead of qp.c to help with tests
+ */
+
+/*
+ * Sentinel value for equal keys
+ */
+#define QPKEY_EQUAL (~(size_t)0)
+
+/*
+ * Bit positions in the bitmap come directly from the key. DNS names are
+ * converted to keys using the tables declared at the end of this file.
+ */
+static inline dns_qpshift_t
+qpkey_bit(const dns_qpkey_t key, size_t len, size_t offset) {
+	if (offset < len) {
+		return key[offset];
+	} else {
+		return SHIFT_NOBYTE;
+	}
+}
+
+/*
+ * Compare two keys and return the offset where they differ.
+ *
+ * This offset is used to work out where a trie search diverged: when one
+ * of the keys is in the trie and one is not, the common prefix (up to the
+ * offset) is the part of the unknown key that exists in the trie. This
+ * matters for adding new keys or finding neighbours of missing keys.
+ *
+ * When the keys are different lengths it is possible (but unwise) for
+ * the longer key to be the same as the shorter key but with superfluous
+ * trailing SHIFT_NOBYTE elements. This makes the keys equal for the
+ * purpose of traversing the trie.
+ */
+static inline size_t
+qpkey_compare(const dns_qpkey_t key_a, const size_t keylen_a,
+	      const dns_qpkey_t key_b, const size_t keylen_b) {
+	size_t keylen = ISC_MAX(keylen_a, keylen_b);
+	size_t common = ISC_MIN(keylen_a, keylen_b);
+	ssize_t remaining_a = keylen_a, remaining_b = keylen_b;
+
+	size_t offset = 0;
+	uint64_t cmp = isc__ascii_load8(key_a + offset) ^
+		       isc__ascii_load8(key_b + offset);
+	while (!cmp && remaining_a >= 8 && remaining_b >= 8) {
+		offset += 8;
+		remaining_a -= 8;
+		remaining_b -= 8;
+		cmp = isc__ascii_load8(key_a + offset) ^
+		      isc__ascii_load8(key_b + offset);
+	}
+	offset += (cmp ? (uint64_t)__builtin_ctzll(cmp) : 64ul) / 8ul;
+	offset = ISC_MIN(offset, common);
+
+	for (; offset < keylen; offset++) {
+		if (qpkey_bit(key_a, keylen_a, offset) !=
+		    qpkey_bit(key_b, keylen_b, offset))
+		{
+			return offset;
+		}
+	}
+	return QPKEY_EQUAL;
+}
+
 /* branch nodes *******************************************************/
 
 /*
@@ -661,19 +729,6 @@ branch_index(dns_qpnode_t *n) {
 static inline dns_qpref_t
 branch_twigs_ref(dns_qpnode_t *n) {
 	return node32(n);
-}
-
-/*
- * Bit positions in the bitmap come directly from the key. DNS names are
- * converted to keys using the tables declared at the end of this file.
- */
-static inline dns_qpshift_t
-qpkey_bit(const dns_qpkey_t key, size_t len, size_t offset) {
-	if (offset < len) {
-		return key[offset];
-	} else {
-		return SHIFT_NOBYTE;
-	}
 }
 
 /*

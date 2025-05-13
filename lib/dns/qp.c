@@ -358,38 +358,6 @@ scanned:
 	name->ndata = isc_buffer_base(name->buffer);
 }
 
-/*
- * Sentinel value for equal keys
- */
-#define QPKEY_EQUAL (~(size_t)0)
-
-/*
- * Compare two keys and return the offset where they differ.
- *
- * This offset is used to work out where a trie search diverged: when one
- * of the keys is in the trie and one is not, the common prefix (up to the
- * offset) is the part of the unknown key that exists in the trie. This
- * matters for adding new keys or finding neighbours of missing keys.
- *
- * When the keys are different lengths it is possible (but unwise) for
- * the longer key to be the same as the shorter key but with superfluous
- * trailing SHIFT_NOBYTE elements. This makes the keys equal for the
- * purpose of traversing the trie.
- */
-static size_t
-qpkey_compare(const dns_qpkey_t key_a, const size_t keylen_a,
-	      const dns_qpkey_t key_b, const size_t keylen_b) {
-	size_t keylen = ISC_MAX(keylen_a, keylen_b);
-	for (size_t offset = 0; offset < keylen; offset++) {
-		if (qpkey_bit(key_a, keylen_a, offset) !=
-		    qpkey_bit(key_b, keylen_b, offset))
-		{
-			return offset;
-		}
-	}
-	return QPKEY_EQUAL;
-}
-
 /***********************************************************************
  *
  *  allocator wrappers

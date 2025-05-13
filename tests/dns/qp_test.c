@@ -42,6 +42,43 @@
 
 bool verbose = false;
 
+#define QPKEY_CMP_ITEM_COUNT 4096
+
+static uint8_t
+random_byte(void) {
+	return isc_random_uniform(SHIFT_OFFSET - SHIFT_NOBYTE) + SHIFT_NOBYTE;
+}
+
+static size_t
+reference_qpkey_compare(const dns_qpkey_t key_a, const size_t keylen_a,
+			const dns_qpkey_t key_b, const size_t keylen_b) {
+	size_t keylen = ISC_MAX(keylen_a, keylen_b);
+	for (size_t offset = 0; offset < keylen; offset++) {
+		if (qpkey_bit(key_a, keylen_a, offset) !=
+		    qpkey_bit(key_b, keylen_b, offset))
+		{
+			return offset;
+		}
+	}
+	return QPKEY_EQUAL;
+}
+
+typedef struct {
+	uint8_t len;
+	dns_qpkey_t key;
+	dns_qpkey_t ascii;
+} cmp_items_t;
+
+static cmp_items_t cmp_items[QPKEY_CMP_ITEM_COUNT];
+static cmp_items_t cmp_items_shortened[QPKEY_CMP_ITEM_COUNT];
+
+static size_t
+same_cmp(const dns_qpkey_t key_a, const size_t len_a, const dns_qpkey_t key_b,
+	 const size_t len_b) {
+	return reference_qpkey_compare(key_a, len_a, key_b, len_b) ==
+	       qpkey_compare(key_a, len_a, key_b, len_b);
+}
+
 ISC_RUN_TEST_IMPL(qpkey_name) {
 	struct {
 		const char *namestr;
@@ -2059,6 +2096,42 @@ ISC_RUN_TEST_IMPL(qpkey_delete) {
 	dns_qp_destroy(&qp);
 }
 
+ISC_RUN_TEST_IMPL(qpkey_cmp) {
+	for (size_t idx = 0; idx < ARRAY_SIZE(cmp_items); idx += 2) {
+		size_t len = isc_random_uniform(16) + 4;
+		cmp_items[idx].len = len;
+		memset(cmp_items[idx].key, 0, sizeof(dns_qpkey_t));
+
+		for (size_t off = 0; off < len; ++off) {
+			cmp_items[idx].key[off] = random_byte();
+		}
+		memmove(cmp_items[idx].ascii, cmp_items[idx].key, len);
+		qp_test_keytoascii(cmp_items[idx].ascii, len);
+	}
+
+	for (size_t idx = 0; idx < ARRAY_SIZE(cmp_items); idx += 2) {
+		cmp_items_shortened[idx] = cmp_items[idx];
+		cmp_items_shortened[idx].len = cmp_items[idx].len -
+					       isc_random_uniform(16);
+	}
+
+	for (size_t i = 0; i < ARRAY_SIZE(cmp_items); ++i) {
+		for (size_t j = i; j < ARRAY_SIZE(cmp_items); ++j) {
+			assert_true(same_cmp(cmp_items[i].key, cmp_items[i].len,
+					     cmp_items[j].key,
+					     cmp_items[j].len));
+		}
+	}
+
+	for (size_t i = 0; i < ARRAY_SIZE(cmp_items); ++i) {
+		for (size_t j = 0; j < ARRAY_SIZE(cmp_items); ++j) {
+			assert_true(same_cmp(cmp_items[i].key, cmp_items[i].len,
+					     cmp_items_shortened[j].key,
+					     cmp_items_shortened[j].len));
+		}
+	}
+}
+
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY(qpkey_name)
 ISC_TEST_ENTRY(qpkey_sort)
@@ -2068,6 +2141,7 @@ ISC_TEST_ENTRY(qpchain)
 ISC_TEST_ENTRY(predecessors)
 ISC_TEST_ENTRY(fixiterator)
 ISC_TEST_ENTRY(qpkey_delete)
+ISC_TEST_ENTRY(qpkey_cmp)
 ISC_TEST_LIST_END
 
 ISC_TEST_MAIN
