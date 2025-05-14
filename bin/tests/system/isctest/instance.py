@@ -166,6 +166,15 @@ class NamedInstance:
             watcher.wait_for_line("any newly configured zones are now loaded")
         return cmd
 
+    def reload(self, **kwargs) -> CmdResult:
+        """
+        Reload this named `instance` and wait until reload is finished.
+        """
+        with self.watch_log_from_here() as watcher:
+            cmd = self.rndc("reload", **kwargs)
+            watcher.wait_for_line("all zones loaded")
+        return cmd
+
     def stop(self, args: Optional[List[str]] = None) -> None:
         """Stop the instance."""
         args = args or []
