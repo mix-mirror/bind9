@@ -186,7 +186,6 @@ struct ns_client {
 	int16_t		ednsversion; /* -1 noedns */
 	uint16_t	additionaldepth;
 	void (*cleanup)(ns_client_t *);
-	ns_query_t    query;
 	isc_time_t    requesttime;
 	isc_stdtime_t now;
 	isc_time_t    tnow;
@@ -237,6 +236,7 @@ struct ns_client {
 	 */
 	int32_t rcode_override;
 
+	ns_query_t    query;
 	uint8_t sendbuf[NS_CLIENT_SEND_BUFFER_SIZE];
 };
 
