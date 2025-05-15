@@ -165,6 +165,16 @@ enum {
 #define DNS_SLABHEADER_CLRATTR(header, attribute) \
 	atomic_fetch_and_release(&(header)->attributes, ~(attribute))
 
+
+/* clang-format off */
+#define SLABHEADER_FOREACH_SAFE(header, elt, link)         \
+    for (dns_slabheader_t *elt = (header),                 \
+         *elt##_next = (elt != NULL) ? (elt)->link : NULL;   \
+	 elt != NULL;                                      \
+	 elt = elt##_next,                                 \
+         elt##_next = (elt != NULL) ? (elt)->link : NULL)
+/* clang-format on */
+
 extern dns_rdatasetmethods_t dns_rdataslab_rdatasetmethods;
 
 /***
