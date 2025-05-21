@@ -237,7 +237,7 @@ struct ns_client {
 	int32_t rcode_override;
 
 	ns_query_t *query;
-	uint8_t	   sendbuf[NS_CLIENT_SEND_BUFFER_SIZE];
+	uint8_t	   *sendbuf;
 };
 
 #define NS_CLIENT_MAGIC	   ISC_MAGIC('N', 'S', 'C', 'c')

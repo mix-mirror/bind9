@@ -1791,6 +1791,7 @@ ns__client_put_cb(void *client0) {
 	dns_message_detach(&client->message);
 
 	ns_query_free(client);
+	isc_mem_put(manager->mctx, client->sendbuf, NS_CLIENT_SEND_BUFFER_SIZE);
 	isc_mem_put(manager->mctx, client, sizeof(*client));
 
 	ns_clientmgr_detach(&manager);
@@ -2566,6 +2567,7 @@ ns__client_setup(ns_client_t *client, ns_clientmgr_t *mgr, bool new) {
 		 * and the functions it calls will require it.
 		 */
 		client->magic = NS_CLIENT_MAGIC;
+		client->sendbuf = isc_mem_get(client->manager->mctx, NS_CLIENT_SEND_BUFFER_SIZE);
 		ns_query_init(client);
 
 		dns_ede_init(client->manager->mctx, &client->edectx);
