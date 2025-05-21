@@ -99,7 +99,7 @@ typedef struct filter_instance {
  * Client attribute tests.
  */
 #define WANTDNSSEC(c)  (((c)->attributes & NS_CLIENTATTR_WANTDNSSEC) != 0)
-#define RECURSIONOK(c) (((c)->query.attributes & NS_QUERYATTR_RECURSIONOK) != 0)
+#define RECURSIONOK(c) (((c)->query->attributes & NS_QUERYATTR_RECURSIONOK) != 0)
 
 /*
  * Forward declarations of functions referenced in install_hooks().
@@ -744,11 +744,11 @@ filter_respond_begin(void *arg, void *cbdata, isc_result_t *resp) {
 			 */
 			result = ns_query_recurse(qctx->client,
 						  dns_rdatatype_aaaa,
-						  qctx->client->query.qname,
+						  qctx->client->query->qname,
 						  NULL, NULL, qctx->resuming);
 			if (result == ISC_R_SUCCESS) {
 				client_state->flags |= FILTER_A_RECURSING;
-				qctx->client->query.attributes |=
+				qctx->client->query->attributes |=
 					NS_QUERYATTR_RECURSING;
 			}
 		}

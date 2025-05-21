@@ -64,30 +64,30 @@ typedef enum {
  * a given client is associated with.
  */
 #define HANDLE_RECTYPE_NORMAL(client) \
-	((client)->query.recursions[RECTYPE_NORMAL].handle)
+	((client)->query->recursions[RECTYPE_NORMAL].handle)
 #define HANDLE_RECTYPE_PREFETCH(client) \
-	((client)->query.recursions[RECTYPE_PREFETCH].handle)
+	((client)->query->recursions[RECTYPE_PREFETCH].handle)
 #define HANDLE_RECTYPE_RPZ(client) \
-	((client)->query.recursions[RECTYPE_RPZ].handle)
+	((client)->query->recursions[RECTYPE_RPZ].handle)
 #define HANDLE_RECTYPE_STALE_REFRESH(client) \
-	((client)->query.recursions[RECTYPE_STALE_REFRESH].handle)
+	((client)->query->recursions[RECTYPE_STALE_REFRESH].handle)
 #define HANDLE_RECTYPE_HOOK(client) \
-	((client)->query.recursions[RECTYPE_HOOK].handle)
+	((client)->query->recursions[RECTYPE_HOOK].handle)
 
 /*%
  * Helper macros for accessing dns_fetch_t pointers for a specific recursion a
  * given client is associated with.
  */
 #define FETCH_RECTYPE_NORMAL(client) \
-	((client)->query.recursions[RECTYPE_NORMAL].fetch)
+	((client)->query->recursions[RECTYPE_NORMAL].fetch)
 #define FETCH_RECTYPE_PREFETCH(client) \
-	((client)->query.recursions[RECTYPE_PREFETCH].fetch)
+	((client)->query->recursions[RECTYPE_PREFETCH].fetch)
 #define FETCH_RECTYPE_RPZ(client) \
-	((client)->query.recursions[RECTYPE_RPZ].fetch)
+	((client)->query->recursions[RECTYPE_RPZ].fetch)
 #define FETCH_RECTYPE_STALE_REFRESH(client) \
-	((client)->query.recursions[RECTYPE_STALE_REFRESH].fetch)
+	((client)->query->recursions[RECTYPE_STALE_REFRESH].fetch)
 #define FETCH_RECTYPE_HOOK(client) \
-	((client)->query.recursions[RECTYPE_HOOK].fetch)
+	((client)->query->recursions[RECTYPE_HOOK].fetch)
 
 /*%
  * nameserver recursion parameters, to uniquely identify a recursion
@@ -300,6 +300,9 @@ ns_query_hookasync(query_ctx_t *qctx, ns_query_starthookasync_t runasync,
 
 void
 ns_query_init(ns_client_t *client);
+
+void
+ns_query_reset(ns_client_t *client);
 
 void
 ns_query_free(ns_client_t *client);

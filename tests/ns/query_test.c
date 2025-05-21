@@ -948,7 +948,7 @@ run_hookasync_test(const ns__query_hookasync_test_params_t *test) {
 		asdata.rev->cb(asdata.rev);
 
 		/* Confirm necessary cleanup has been performed. */
-		INSIST(qctx->client->query.hookactx == NULL);
+		INSIST(qctx->client->query->hookactx == NULL);
 		INSIST(qctx->client->state == NS_CLIENTSTATE_WORKING);
 		INSIST(ns_stats_get_counter(
 			       qctx->client->manager->sctx->nsstats,
@@ -964,7 +964,7 @@ run_hookasync_test(const ns__query_hookasync_test_params_t *test) {
 			INSIST(asdata.lasthookpoint == test->hookpoint2);
 		}
 	} else {
-		INSIST(qctx->client->query.hookactx == NULL);
+		INSIST(qctx->client->query->hookactx == NULL);
 	}
 
 	/*

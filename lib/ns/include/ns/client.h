@@ -236,7 +236,7 @@ struct ns_client {
 	 */
 	int32_t rcode_override;
 
-	ns_query_t query;
+	ns_query_t *query;
 	uint8_t	   sendbuf[NS_CLIENT_SEND_BUFFER_SIZE];
 };
 

@@ -333,7 +333,7 @@ client_senddone(isc_nmhandle_t *handle, isc_result_t result, void *cbarg) {
 			ns_client_log(client, DNS_LOGCATEGORY_SECURITY,
 				      NS_LOGMODULE_CLIENT, ISC_LOG_DEBUG(3),
 				      "send exceeded maximum size: truncating");
-			client->query.attributes &= ~NS_QUERYATTR_ANSWERED;
+			client->query->attributes &= ~NS_QUERYATTR_ANSWERED;
 			client->rcode_override = dns_rcode_noerror;
 			ns_client_error(client, ISC_R_MAXSIZE);
 		} else {
@@ -564,7 +564,7 @@ ns_client_send(ns_client_t *client) {
 
 	REQUIRE(NS_CLIENT_VALID(client));
 
-	if ((client->query.attributes & NS_QUERYATTR_ANSWERED) != 0) {
+	if ((client->query->attributes & NS_QUERYATTR_ANSWERED) != 0) {
 		return;
 	}
 
@@ -704,11 +704,11 @@ renderend:
 #ifdef HAVE_DNSTAP
 	memset(&zr, 0, sizeof(zr));
 	if (((client->message->flags & DNS_MESSAGEFLAG_AA) != 0) &&
-	    (client->query.authzone != NULL))
+	    (client->query->authzone != NULL))
 	{
 		isc_result_t eresult;
 		isc_buffer_t b;
-		dns_name_t *zo = dns_zone_getorigin(client->query.authzone);
+		dns_name_t *zo = dns_zone_getorigin(client->query->authzone);
 
 		isc_buffer_init(&b, zone, sizeof(zone));
 		dns_compress_setpermitted(&cctx, false);
@@ -815,7 +815,7 @@ renderend:
 				   ns_statscounter_truncatedresp);
 	}
 
-	client->query.attributes |= NS_QUERYATTR_ANSWERED;
+	client->query->attributes |= NS_QUERYATTR_ANSWERED;
 
 	return;
 
@@ -1012,7 +1012,7 @@ ns_client_error(ns_client_t *client, isc_result_t result) {
 		client->formerrcache.time =
 			isc_time_seconds(&client->requesttime);
 		client->formerrcache.id = message->id;
-	} else if (rcode == dns_rcode_servfail && client->query.qname != NULL &&
+	} else if (rcode == dns_rcode_servfail && client->query->qname != NULL &&
 		   client->view != NULL && client->view->fail_ttl != 0 &&
 		   ((client->attributes & NS_CLIENTATTR_NOSETFC) == 0))
 	{
@@ -1031,8 +1031,8 @@ ns_client_error(ns_client_t *client, isc_result_t result) {
 		result = isc_time_nowplusinterval(&expire, &i);
 		if (result == ISC_R_SUCCESS) {
 			dns_badcache_add(client->view->failcache,
-					 client->query.qname,
-					 client->query.qtype, flags,
+					 client->query->qname,
+					 client->query->qtype, flags,
 					 isc_time_seconds(&expire));
 		}
 	}
@@ -1774,7 +1774,7 @@ ns__client_put_cb(void *client0) {
 	/*
 	 * Call this first because it requires a valid client.
 	 */
-	ns_query_free(client);
+	ns_query_reset(client);
 	dns_ede_invalidate(&client->edectx);
 	client_zoneversion_reset(client);
 
@@ -1790,12 +1790,7 @@ ns__client_put_cb(void *client0) {
 
 	dns_message_detach(&client->message);
 
-	/*
-	 * Destroy the fetchlock mutex that was created in
-	 * ns_query_init().
-	 */
-	isc_mutex_destroy(&client->query.fetchlock);
-
+	ns_query_free(client);
 	isc_mem_put(manager->mctx, client, sizeof(*client));
 
 	ns_clientmgr_detach(&manager);
@@ -2624,7 +2619,7 @@ ns__client_setup(ns_client_t *client, ns_clientmgr_t *mgr, bool new) {
 		dns_ede_init(edectx_mctx, &client->edectx);
 	}
 
-	client->query.attributes &= ~NS_QUERYATTR_ANSWERED;
+	client->query->attributes &= ~NS_QUERYATTR_ANSWERED;
 	client->state = NS_CLIENTSTATE_INACTIVE;
 	client->udpsize = 512;
 	client->ednsversion = -1;
@@ -2832,8 +2827,8 @@ ns_client_logv(ns_client_t *client, isc_logcategory_t category,
 		signer = signerbuf;
 	}
 
-	q = client->query.origqname != NULL ? client->query.origqname
-					    : client->query.qname;
+	q = client->query->origqname != NULL ? client->query->origqname
+					    : client->query->qname;
 	if (q != NULL) {
 		dns_name_format(q, qnamebuf, sizeof(qnamebuf));
 		sep2 = " (";
@@ -2955,22 +2950,22 @@ ns_client_dumprecursing(FILE *f, ns_clientmgr_t *manager) {
 			sep = "";
 		}
 
-		LOCK(&client->query.fetchlock);
-		INSIST(client->query.qname != NULL);
-		dns_name_format(client->query.qname, namebuf, sizeof(namebuf));
-		if (client->query.qname != client->query.origqname &&
-		    client->query.origqname != NULL)
+		LOCK(&client->query->fetchlock);
+		INSIST(client->query->qname != NULL);
+		dns_name_format(client->query->qname, namebuf, sizeof(namebuf));
+		if (client->query->qname != client->query->origqname &&
+		    client->query->origqname != NULL)
 		{
 			origfor = " for ";
-			dns_name_format(client->query.origqname, original,
+			dns_name_format(client->query->origqname, original,
 					sizeof(original));
 		} else {
 			origfor = "";
 			original[0] = '\0';
 		}
-		rdataset = ISC_LIST_HEAD(client->query.qname->list);
-		if (rdataset == NULL && client->query.origqname != NULL) {
-			rdataset = ISC_LIST_HEAD(client->query.origqname->list);
+		rdataset = ISC_LIST_HEAD(client->query->qname->list);
+		if (rdataset == NULL && client->query->origqname != NULL) {
+			rdataset = ISC_LIST_HEAD(client->query->origqname->list);
 		}
 		if (rdataset != NULL) {
 			dns_rdatatype_format(rdataset->type, typebuf,
@@ -2981,7 +2976,7 @@ ns_client_dumprecursing(FILE *f, ns_clientmgr_t *manager) {
 			strlcpy(typebuf, "-", sizeof(typebuf));
 			strlcpy(classbuf, "-", sizeof(classbuf));
 		}
-		UNLOCK(&client->query.fetchlock);
+		UNLOCK(&client->query->fetchlock);
 		fprintf(f,
 			"; client %s (%s)%s%s: id %u '%s/%s/%s'%s%s "
 			"requesttime %u\n",
@@ -2996,16 +2991,16 @@ ns_client_dumprecursing(FILE *f, ns_clientmgr_t *manager) {
 
 void
 ns_client_qnamereplace(ns_client_t *client, dns_name_t *name) {
-	LOCK(&client->query.fetchlock);
-	if (client->query.restarts > 0) {
+	LOCK(&client->query->fetchlock);
+	if (client->query->restarts > 0) {
 		/*
-		 * client->query.qname was dynamically allocated.
+		 * client->query->qname was dynamically allocated.
 		 */
-		dns_message_puttempname(client->message, &client->query.qname);
+		dns_message_puttempname(client->message, &client->query->qname);
 	}
-	client->query.qname = name;
-	client->query.attributes &= ~NS_QUERYATTR_REDIRECT;
-	UNLOCK(&client->query.fetchlock);
+	client->query->qname = name;
+	client->query->attributes &= ~NS_QUERYATTR_REDIRECT;
+	UNLOCK(&client->query->fetchlock);
 }
 
 isc_result_t
@@ -3055,7 +3050,7 @@ ns_client_newnamebuf(ns_client_t *client) {
 	CTRACE("ns_client_newnamebuf");
 
 	isc_buffer_allocate(client->manager->mctx, &dbuf, 1024);
-	ISC_LIST_APPEND(client->query.namebufs, dbuf, link);
+	ISC_LIST_APPEND(client->query->namebufs, dbuf, link);
 
 	CTRACE("ns_client_newnamebuf: done");
 	return ISC_R_SUCCESS;
@@ -3066,7 +3061,7 @@ ns_client_newname(ns_client_t *client, isc_buffer_t *dbuf, isc_buffer_t *nbuf) {
 	dns_name_t *name = NULL;
 	isc_region_t r;
 
-	REQUIRE((client->query.attributes & NS_QUERYATTR_NAMEBUFUSED) == 0);
+	REQUIRE((client->query->attributes & NS_QUERYATTR_NAMEBUFUSED) == 0);
 
 	CTRACE("ns_client_newname");
 
@@ -3075,7 +3070,7 @@ ns_client_newname(ns_client_t *client, isc_buffer_t *dbuf, isc_buffer_t *nbuf) {
 	isc_buffer_init(nbuf, r.base, r.length);
 	dns_name_setbuffer(name, NULL);
 	dns_name_setbuffer(name, nbuf);
-	client->query.attributes |= NS_QUERYATTR_NAMEBUFUSED;
+	client->query->attributes |= NS_QUERYATTR_NAMEBUFUSED;
 
 	CTRACE("ns_client_newname: done");
 	return name;
@@ -3092,16 +3087,16 @@ ns_client_getnamebuf(ns_client_t *client) {
 	 * Return a name buffer with space for a maximal name, allocating
 	 * a new one if necessary.
 	 */
-	if (ISC_LIST_EMPTY(client->query.namebufs)) {
+	if (ISC_LIST_EMPTY(client->query->namebufs)) {
 		ns_client_newnamebuf(client);
 	}
 
-	dbuf = ISC_LIST_TAIL(client->query.namebufs);
+	dbuf = ISC_LIST_TAIL(client->query->namebufs);
 	INSIST(dbuf != NULL);
 	isc_buffer_availableregion(dbuf, &r);
 	if (r.length < DNS_NAME_MAXWIRE) {
 		ns_client_newnamebuf(client);
-		dbuf = ISC_LIST_TAIL(client->query.namebufs);
+		dbuf = ISC_LIST_TAIL(client->query->namebufs);
 		isc_buffer_availableregion(dbuf, &r);
 		INSIST(r.length >= 255);
 	}
@@ -3119,12 +3114,12 @@ ns_client_keepname(ns_client_t *client, dns_name_t *name, isc_buffer_t *dbuf) {
 	 * 'name' is using space in 'dbuf', but 'dbuf' has not yet been
 	 * adjusted to take account of that.  We do the adjustment.
 	 */
-	REQUIRE((client->query.attributes & NS_QUERYATTR_NAMEBUFUSED) != 0);
+	REQUIRE((client->query->attributes & NS_QUERYATTR_NAMEBUFUSED) != 0);
 
 	dns_name_toregion(name, &r);
 	isc_buffer_add(dbuf, r.length);
 	dns_name_setbuffer(name, NULL);
-	client->query.attributes &= ~NS_QUERYATTR_NAMEBUFUSED;
+	client->query->attributes &= ~NS_QUERYATTR_NAMEBUFUSED;
 }
 
 void
@@ -3136,7 +3131,7 @@ ns_client_releasename(ns_client_t *client, dns_name_t **namep) {
 	 */
 
 	CTRACE("ns_client_releasename");
-	client->query.attributes &= ~NS_QUERYATTR_NAMEBUFUSED;
+	client->query->attributes &= ~NS_QUERYATTR_NAMEBUFUSED;
 	dns_message_puttempname(client->message, namep);
 	CTRACE("ns_client_releasename: done");
 }
@@ -3150,7 +3145,7 @@ ns_client_newdbversion(ns_client_t *client, unsigned int n) {
 		dbversion = isc_mem_get(client->manager->mctx,
 					sizeof(*dbversion));
 		*dbversion = (ns_dbversion_t){ 0 };
-		ISC_LIST_INITANDAPPEND(client->query.freeversions, dbversion,
+		ISC_LIST_INITANDAPPEND(client->query->freeversions, dbversion,
 				       link);
 	}
 
@@ -3161,19 +3156,19 @@ static ns_dbversion_t *
 client_getdbversion(ns_client_t *client) {
 	ns_dbversion_t *dbversion = NULL;
 
-	if (ISC_LIST_EMPTY(client->query.freeversions)) {
+	if (ISC_LIST_EMPTY(client->query->freeversions)) {
 		ns_client_newdbversion(client, 1);
 	}
-	dbversion = ISC_LIST_HEAD(client->query.freeversions);
+	dbversion = ISC_LIST_HEAD(client->query->freeversions);
 	INSIST(dbversion != NULL);
-	ISC_LIST_UNLINK(client->query.freeversions, dbversion, link);
+	ISC_LIST_UNLINK(client->query->freeversions, dbversion, link);
 
 	return dbversion;
 }
 
 ns_dbversion_t *
 ns_client_findversion(ns_client_t *client, dns_db_t *db) {
-	ISC_LIST_FOREACH (client->query.activeversions, dbversion, link) {
+	ISC_LIST_FOREACH (client->query->activeversions, dbversion, link) {
 		if (dbversion->db == db) {
 			return dbversion;
 		}
@@ -3188,6 +3183,6 @@ ns_client_findversion(ns_client_t *client, dns_db_t *db) {
 	dns_db_currentversion(db, &dbversion->version);
 	dbversion->acl_checked = false;
 	dbversion->queryok = false;
-	ISC_LIST_APPEND(client->query.activeversions, dbversion, link);
+	ISC_LIST_APPEND(client->query->activeversions, dbversion, link);
 	return dbversion;
 }
