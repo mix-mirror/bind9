@@ -1933,8 +1933,8 @@ keymgr_key_rollover(dns_kasp_key_t *kaspkey, dns_dnsseckey_t *active_key,
 	return ISC_R_SUCCESS;
 }
 
-static bool
-keymgr_key_may_be_purged(dst_key_t *key, uint32_t after, isc_stdtime_t now) {
+bool
+dns_keymgr_key_may_be_purged(dst_key_t *key, uint32_t after, isc_stdtime_t now) {
 	bool ksk = false;
 	bool zsk = false;
 	dst_key_state_t hidden[NUM_KEYSTATES] = { HIDDEN, NA, NA, NA };
@@ -2117,7 +2117,7 @@ dns_keymgr_run(const dns_name_t *origin, dns_rdataclass_t rdclass,
 		}
 
 		/* Check purge-keys interval. */
-		if (keymgr_key_may_be_purged(dkey->key,
+		if (dns_keymgr_key_may_be_purged(dkey->key,
 					     dns_kasp_purgekeys(kasp), now))
 		{
 			dst_key_format(dkey->key, keystr, sizeof(keystr));
