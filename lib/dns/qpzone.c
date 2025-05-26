@@ -166,6 +166,9 @@ ISC_REFCOUNT_STATIC_DECL(qpz_heap);
 struct qpznode {
 	DBNODE_FIELDS;
 
+	size_t qpkey_size;
+	uint8_t *qpkey;
+
 	qpz_heap_t *heap;
 	/*
 	 * 'erefs' counts external references held by a caller: for
@@ -641,6 +644,12 @@ qpz_heap_destroy(qpz_heap_t *qpheap) {
 static qpznode_t *
 new_qpznode(qpzonedb_t *qpdb, const dns_name_t *name, dns_namespace_t nspace) {
 	qpznode_t *newdata = isc_mem_get(qpdb->common.mctx, sizeof(*newdata));
+
+	dns_qpkey_t fixed_key;
+	size_t qpkey_size = dns_qpkey_fromname(fixed_key, name, nspace) + 1ul;
+	uint8_t *qpkey = isc_mem_get(qpdb->common.mctx, qpkey_size);
+	memmove(qpkey, fixed_key, qpkey_size);
+
 	*newdata = (qpznode_t){
 		.methods = &qpznode_methods,
 		.name = DNS_NAME_INITEMPTY,
@@ -648,6 +657,8 @@ new_qpznode(qpzonedb_t *qpdb, const dns_name_t *name, dns_namespace_t nspace) {
 		.heap = qpdb->heap,
 		.references = ISC_REFCOUNT_INITIALIZER(1),
 		.locknum = qpzone_get_locknum(),
+		.qpkey_size = qpkey_size,
+		.qpkey = qpkey,
 	};
 
 	isc_mem_attach(qpdb->common.mctx, &newdata->mctx);
@@ -5453,6 +5464,7 @@ destroy_qpznode(qpznode_t *node) {
 
 	qpz_heap_unref(node->heap);
 	dns_name_free(&node->name, node->mctx);
+	isc_mem_put(node->mctx, node->qpkey, node->qpkey_size);
 	isc_mem_putanddetach(&node->mctx, node, sizeof(qpznode_t));
 }
 
@@ -5482,7 +5494,10 @@ static size_t
 qp_makekey(dns_qpkey_t key, void *uctx ISC_ATTR_UNUSED, void *pval,
 	   uint32_t ival ISC_ATTR_UNUSED) {
 	qpznode_t *data = pval;
-	return dns_qpkey_fromname(key, &data->name, data->nspace);
+	// return dns_qpkey_fromname(key, &data->name, data->nspace);
+
+	memmove(key, data->qpkey, data->qpkey_size);
+	return data->qpkey_size - 1ul;
 }
 
 static void
