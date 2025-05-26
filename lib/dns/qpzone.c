@@ -150,6 +150,8 @@ typedef ISC_LIST(qpz_version_t) qpz_versionlist_t;
 
 struct qpznode {
 	dns_name_t name;
+	size_t qpkey_size;
+	uint8_t *qpkey;
 	isc_mem_t *mctx;
 
 	/*
@@ -592,10 +594,18 @@ qpdb_destroy(dns_db_t *arg) {
 static qpznode_t *
 new_qpznode(qpzonedb_t *qpdb, const dns_name_t *name) {
 	qpznode_t *newdata = isc_mem_get(qpdb->common.mctx, sizeof(*newdata));
+
+	dns_qpkey_t fixed_key;
+	size_t qpkey_size = dns_qpkey_fromname(fixed_key, name) + 1ul;
+	uint8_t *qpkey = isc_mem_get(qpdb->common.mctx, qpkey_size);
+	memmove(qpkey, fixed_key, qpkey_size);
+
 	*newdata = (qpznode_t){
 		.name = DNS_NAME_INITEMPTY,
 		.references = ISC_REFCOUNT_INITIALIZER(1),
 		.locknum = isc_random_uniform(qpdb->buckets_count),
+		.qpkey_size = qpkey_size,
+		.qpkey = qpkey,
 	};
 
 	isc_mem_attach(qpdb->common.mctx, &newdata->mctx);
@@ -5390,6 +5400,7 @@ destroy_qpznode(qpznode_t *node) {
 	}
 
 	dns_name_free(&node->name, node->mctx);
+	isc_mem_put(node->mctx, node->qpkey, node->qpkey_size);
 	isc_mem_putanddetach(&node->mctx, node, sizeof(qpznode_t));
 }
 
@@ -5423,7 +5434,17 @@ static size_t
 qp_makekey(dns_qpkey_t key, void *uctx ISC_ATTR_UNUSED, void *pval,
 	   uint32_t ival ISC_ATTR_UNUSED) {
 	qpznode_t *data = pval;
-	return dns_qpkey_fromname(key, &data->name);
+	// return dns_qpkey_fromname(key, &data->name);
+	
+	dns_qpkey_t debug_key;
+	size_t debug_size = dns_qpkey_fromname(debug_key, &data->name);
+
+	INSIST(debug_size == data->qpkey_size - 1ul);
+	INSIST(memcmp(debug_key, data->qpkey, debug_size) == 0);
+	INSIST(memcmp(debug_key, data->qpkey, data->qpkey_size) == 0);
+
+	memmove(key, data->qpkey, data->qpkey_size);
+	return data->qpkey_size - 1ul;
 }
 
 static void
