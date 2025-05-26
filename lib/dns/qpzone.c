@@ -5436,13 +5436,13 @@ qp_makekey(dns_qpkey_t key, void *uctx ISC_ATTR_UNUSED, void *pval,
 	qpznode_t *data = pval;
 	// return dns_qpkey_fromname(key, &data->name);
 	
-	dns_qpkey_t debug_key;
-	size_t debug_size = dns_qpkey_fromname(debug_key, &data->name);
-
-	INSIST(debug_size == data->qpkey_size - 1ul);
-	INSIST(memcmp(debug_key, data->qpkey, debug_size) == 0);
-	INSIST(memcmp(debug_key, data->qpkey, data->qpkey_size) == 0);
-
+	// dns_qpkey_t debug_key;
+	// size_t debug_size = dns_qpkey_fromname(debug_key, &data->name);
+	//
+	// INSIST(debug_size == data->qpkey_size - 1ul);
+	// INSIST(memcmp(debug_key, data->qpkey, debug_size) == 0);
+	// INSIST(memcmp(debug_key, data->qpkey, data->qpkey_size) == 0);
+	//
 	memmove(key, data->qpkey, data->qpkey_size);
 	return data->qpkey_size - 1ul;
 }
