@@ -55,6 +55,7 @@
 #include <isc/string.h>
 #include <isc/time.h>
 #include <isc/timer.h>
+#include <isc/tm.h>
 #include <isc/util.h>
 
 #include <dns/adb.h>
@@ -154,11 +155,11 @@
 #endif /* HAVE_LMDB */
 
 #ifndef SIZE_MAX
-#define SIZE_MAX ((size_t)-1)
+#define SIZE_MAX ((size_t)(-1))
 #endif /* ifndef SIZE_MAX */
 
 #ifndef SIZE_AS_PERCENT
-#define SIZE_AS_PERCENT ((size_t)-2)
+#define SIZE_AS_PERCENT ((size_t)(-2))
 #endif /* ifndef SIZE_AS_PERCENT */
 
 /* RFC7828 defines timeout as 16-bit value specified in units of 100
@@ -1356,6 +1357,24 @@ configure_peer(const cfg_obj_t *cpeer, isc_mem_t *mctx, dns_peer_t **peerp) {
 	(void)cfg_map_get(cpeer, "bogus", &obj);
 	if (obj != NULL) {
 		CHECK(dns_peer_setbogus(peer, cfg_obj_asboolean(obj)));
+	}
+
+	obj = NULL;
+	(void)cfg_map_get(cpeer, "grease-dns-flags", &obj);
+	if (obj != NULL) {
+		CHECK(dns_peer_setdnsflags(peer, cfg_obj_asboolean(obj)));
+	}
+
+	obj = NULL;
+	(void)cfg_map_get(cpeer, "grease-edns-flags", &obj);
+	if (obj != NULL) {
+		CHECK(dns_peer_setednsflags(peer, cfg_obj_asboolean(obj)));
+	}
+
+	obj = NULL;
+	(void)cfg_map_get(cpeer, "grease-edns-negotiation", &obj);
+	if (obj != NULL) {
+		CHECK(dns_peer_setednsneg(peer, cfg_obj_asboolean(obj)));
 	}
 
 	obj = NULL;
@@ -4641,6 +4660,79 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	if (forwarders != NULL) {
 		CHECK(configure_forward(config, view, dns_rootname, forwarders,
 					forwardtype));
+	}
+
+	/*
+	 * Grease configurations.
+	 */
+	obj = NULL;
+	(void)named_config_get(maps, "grease-dns-flags", &obj);
+	if (obj != NULL) {
+		view->grease_dns_flags = cfg_obj_asboolean(obj);
+	} else {
+		view->grease_dns_flags = true;
+	}
+
+	obj = NULL;
+	(void)named_config_get(maps, "grease-edns-known-flags", &obj);
+	if (obj != NULL) {
+		view->grease_edns_known_flags = cfg_obj_asuint32(obj) |
+						DNS_MESSAGEEXTFLAG_KNOWN_FLAGS;
+	} else {
+		view->grease_edns_known_flags = DNS_MESSAGEEXTFLAG_KNOWN_FLAGS;
+	}
+
+	obj = NULL;
+	(void)named_config_get(maps, "grease-edns-max-version", &obj);
+	if (obj != NULL) {
+		view->grease_edns_max_version = cfg_obj_asuint32(obj);
+	} else {
+		view->grease_edns_max_version = 0;
+	}
+
+	obj = NULL;
+	(void)named_config_get(maps, "grease-edns-flags", &obj);
+	if (obj != NULL) {
+		view->grease_edns_flags = cfg_obj_asboolean(obj);
+	} else {
+		view->grease_edns_flags = true;
+	}
+
+	obj = NULL;
+	(void)named_config_get(maps, "grease-edns-negotiation", &obj);
+	if (obj != NULL) {
+		view->grease_edns_neg = cfg_obj_asboolean(obj);
+	} else {
+		view->grease_edns_neg = true;
+	}
+
+	obj = NULL;
+	(void)named_config_get(maps, "grease-nsid", &obj);
+	if (obj != NULL) {
+		view->grease_nsid = cfg_obj_asboolean(obj);
+	} else {
+		view->grease_nsid = true;
+	}
+
+	obj = NULL;
+	(void)named_config_get(maps, "grease-rate", &obj);
+	if (obj != NULL) {
+		uint32_t rate = cfg_obj_aspercentage(obj);
+		rate = ISC_MIN(rate, 100);
+		view->grease_rate = rate;
+	} else {
+		view->grease_rate = 100;
+	}
+
+	obj = NULL;
+	(void)named_config_get(maps, "grease-until", &obj);
+	if (obj != NULL) {
+		struct tm timeptr = { 0 };
+		strptime(cfg_obj_asstring(obj), "%Y-%m-%d", &timeptr);
+		view->grease_until = isc_tm_timegm(&timeptr);
+	} else {
+		/* 2026-01-01 UTC */
+		view->grease_until = 1767225600;
 	}
 
 	/*

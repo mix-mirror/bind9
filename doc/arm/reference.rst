@@ -1350,6 +1350,40 @@ default is used.
    default :any:`geoip-directory` is ``/usr/local/share/GeoIP``. See :any:`acl`
    for details about ``geoip`` ACLs.
 
+.. namedconf:statement:: grease-edns-known-flags
+   :tags: server, view
+   :short: Specifies known EDNS flags.
+
+   This defaults to DO (32768/0x8000) and can be used to exclude
+   particular EDNS flags from being set in the grease-edns-flags tests.
+
+.. namedconf:statement:: grease-edns-max-version
+   :tags: server, view
+   :short: Specifies the probability that a grease action will occur.
+
+   This defaults to 0 and can be used to exclude false positives
+   in grease-edns-negotiation tests if an updated EDNS version is specified.
+
+.. namedconf:statement:: grease-rate
+   :tags: server, view
+   :short: Specifies the probability that a grease action will occur.
+
+   This is specified as a percentage and each grease action is
+   independently selected at this rate.  Grease actions are intended
+   to exercise parts of the DNS protocol that are not normally
+   exercised so that implementations don't misbehave when they are.
+   This includes setting currently reserved protocol elements and
+   observing if the remote server behaves in the specified manner.
+   Observed failures are logged with the category ``grease``.  The
+   default is 100%.
+
+.. namedconf:statement:: grease-until
+   :tags: server, view
+   :short: Specifies the date (UTC) when time base grease testing ceases
+
+   The default is 2026-01-01 and can be set up to a year in the future.
+   This applies to grease-edn-flags and grease-edns-flags.
+
 .. namedconf:statement:: key-directory
    :tags: dnssec
    :short: Indicates the directory where public and private DNSSEC key files are found.
@@ -2017,6 +2051,41 @@ Boolean Options
    If ``yes``, then the ``AA`` bit is always set on NXDOMAIN responses,
    even if the server is not actually authoritative. The default is
    ``no``.
+
+.. namedconf:statement:: grease-dns-flags
+   :tags: query, view
+   :short: Controls whether named sets the final reserved DNS flag bit when making queries.
+
+   This bit should be ignored by remote servers, as it is yet to
+   be specified, and not echoed back.  If it is echoed back this
+   is logged with the category set to ``grease``.
+
+.. namedconf:statement:: grease-edns-flags
+   :tags: query, view
+   :short: Controls whether named sets a reserved EDNS flag bits when making queries.
+
+   The bit is choosen at random and should be ignored by remote
+   servers, as it is yet to be specified, and not be echoed back.
+   If it is echoed back is logged with the category set to ``grease``.
+
+.. namedconf:statement:: grease-edns-negotiation
+   :tags: query, view
+   :short: Controls whether named attempts EDNS version negotiation when making queries.
+
+   Named sets the EDNS version to 100 and expects for it to be
+   negotiated back to EDNS version 0 by replying with rcode BADVER
+   and version set to 0 as EDNS(0) is the only currently defined
+   version.  If either of these behaviors are not observed it is
+   logged with the category set to ``grease``.
+
+.. namedconf:statement:: grease-nsid
+   :tags: query, view
+   :short: Controls whether named adds an EDNS NSID to greased queries.
+
+   When sending grease queries it is useful to send a EDNS NSID
+   option to identify broken servers.  This overrides the request-nsid
+   option at the option and view levels but is overridden by the
+   request-nsid at the peer level.
 
 .. namedconf:statement:: memstatistics
    :tags: server, logging
@@ -5596,8 +5665,8 @@ any top-level :namedconf:ref:`server` statements are used as defaults.
    option is intended to be used when a remote server reacts badly to a
    given EDNS version or higher; it should be set to the highest version
    the remote server is known to support. Valid values are 0 to 255; higher
-   values are silently adjusted. This option is not needed until
-   higher EDNS versions than 0 are in use.
+   values are silently adjusted.  This option can be used to override
+   :any:`grease-edns-negotiation`
 
 .. namedconf:statement:: padding
    :tags: server
@@ -5659,6 +5728,9 @@ It is possible to override the following values defined in :namedconf:ref:`view`
 and :namedconf:ref:`options` blocks:
 
    - :namedconf:ref:`edns-udp-size`
+   - :namedconf:ref:`grease-dns-flags`
+   - :namedconf:ref:`grease-edns-flags`
+   - :namedconf:ref:`grease-edns-negotiation`
    - :namedconf:ref:`max-udp-size`
    - :namedconf:ref:`notify-source-v6`
    - :namedconf:ref:`notify-source`

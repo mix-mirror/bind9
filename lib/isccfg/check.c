@@ -40,6 +40,7 @@
 #include <isc/sockaddr.h>
 #include <isc/string.h>
 #include <isc/symtab.h>
+#include <isc/tm.h>
 #include <isc/util.h>
 
 #include <dns/acl.h>
@@ -676,6 +677,75 @@ check_dns64(cfg_aclconfctx_t *actx, const cfg_obj_t *voptions,
 		}
 	}
 
+	return result;
+}
+
+static isc_result_t
+check_grease(const cfg_obj_t *voptions, const cfg_obj_t *config) {
+	isc_result_t result = ISC_R_SUCCESS;
+	const cfg_obj_t *until = NULL;
+	const cfg_obj_t *dns_flags = NULL;
+	const cfg_obj_t *edns_flags = NULL;
+	const cfg_obj_t *options;
+	struct tm timeptr = { 0 };
+	const char *end = NULL;
+	time_t when, now;
+	bool flags = false;
+
+	if (voptions != NULL) {
+		cfg_map_get(voptions, "grease-until", &until);
+		cfg_map_get(voptions, "grease-dns-flags", &dns_flags);
+		cfg_map_get(voptions, "grease-edns-flags", &edns_flags);
+	}
+	if (config != NULL) {
+		options = NULL;
+		cfg_map_get(config, "options", &options);
+		if (options != NULL) {
+			if (until == NULL) {
+				cfg_map_get(options, "grease-until", &until);
+			}
+			if (dns_flags == NULL) {
+				cfg_map_get(options, "grease-dns-flags",
+					    &dns_flags);
+			}
+			if (edns_flags == NULL) {
+				cfg_map_get(options, "grease-edns-flags",
+					    &edns_flags);
+			}
+		}
+	}
+
+	if (until == NULL) {
+		return ISC_R_SUCCESS;
+	}
+
+	if (dns_flags != NULL) {
+		flags = flags || cfg_obj_asboolean(dns_flags);
+	} else {
+		flags = true;
+	}
+
+	if (edns_flags != NULL) {
+		flags = flags || cfg_obj_asboolean(edns_flags);
+	} else {
+		flags = true;
+	}
+
+	end = strptime(cfg_obj_asstring(until), "%Y-%m-%d", &timeptr);
+	if (end == NULL || *end != 0) {
+		cfg_obj_log(until, ISC_LOG_ERROR, "Bad date");
+		return ISC_R_FAILURE;
+	}
+	when = isc_tm_timegm(&timeptr);
+	time(&now);
+	if (when > now + 366 * 24 * 3600 && when != 1767225600) {
+		cfg_obj_log(until, ISC_LOG_ERROR,
+			    "grease-until too far in the future");
+		return ISC_R_FAILURE;
+	} else if (flags && when < now) {
+		cfg_obj_log(until, ISC_LOG_ERROR,
+			    "grease-until has passed, check grease options");
+	}
 	return result;
 }
 
@@ -5552,6 +5622,11 @@ check_viewconf(const cfg_obj_t *config, const cfg_obj_t *voptions,
 	}
 
 	tresult = check_dns64(actx, voptions, config, mctx);
+	if (tresult != ISC_R_SUCCESS) {
+		result = tresult;
+	}
+
+	tresult = check_grease(voptions, config);
 	if (tresult != ISC_R_SUCCESS) {
 		result = tresult;
 	}

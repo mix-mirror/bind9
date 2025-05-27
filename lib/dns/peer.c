@@ -52,18 +52,25 @@ struct dns_peer {
 	dns_transfer_format_t transfer_format;
 	uint32_t transfers;
 	uint32_t request_ixfr_maxdiffs;
-	bool support_ixfr;
+	bool check_axfr_id;
+	bool force_tcp;
+	bool grease_dns_flags;
+	bool grease_edns_flags;
+	bool grease_edns_neg;
+	bool grease_resp_dns_flags;
+	bool grease_resp_edns_flags;
+	bool grease_resp_edns_option;
+	bool grease_resp_edns_version;
 	bool provide_ixfr;
+	bool request_expire;
 	bool request_ixfr;
-	bool support_edns;
 	bool request_nsid;
 	bool request_zoneversion;
-	bool send_cookie;
 	bool require_cookie;
-	bool request_expire;
-	bool force_tcp;
+	bool send_cookie;
+	bool support_edns;
+	bool support_ixfr;
 	bool tcp_keepalive;
-	bool check_axfr_id;
 	dns_name_t *key;
 	isc_sockaddr_t *transfer_source;
 	isc_sockaddr_t *notify_source;
@@ -83,24 +90,31 @@ struct dns_peer {
  */
 enum {
 	BOGUS_BIT = 0,
-	SERVER_TRANSFER_FORMAT_BIT,
-	TRANSFERS_BIT,
-	PROVIDE_IXFR_BIT,
-	REQUEST_IXFR_BIT,
-	REQUEST_IXFRMAXDIFFS_BIT,
-	SUPPORT_EDNS_BIT,
-	SERVER_UDPSIZE_BIT,
-	SERVER_MAXUDP_BIT,
-	REQUEST_NSID_BIT,
-	SEND_COOKIE_BIT,
-	REQUEST_EXPIRE_BIT,
 	EDNS_VERSION_BIT,
 	FORCE_TCP_BIT,
-	SERVER_PADDING_BIT,
+	GREASE_DNS_FLAGS_BIT,
+	GREASE_EDNS_FLAGS_BIT,
+	GREASE_EDNS_NEG_BIT,
+	GREASE_RESP_DNS_FLAGS_BIT,
+	GREASE_RESP_EDNS_FLAGS_BIT,
+	GREASE_RESP_EDNS_OPTION_BIT,
+	GREASE_RESP_EDNS_VERSION_BIT,
+	PROVIDE_IXFR_BIT,
+	REQUEST_EXPIRE_BIT,
+	REQUEST_IXFRMAXDIFFS_BIT,
+	REQUEST_IXFR_BIT,
+	REQUEST_NSID_BIT,
 	REQUEST_TCP_KEEPALIVE_BIT,
+	REQUEST_ZONEVERSION,
 	REQUIRE_COOKIE_BIT,
-	DNS_PEER_FLAGS_COUNT,
-	REQUEST_ZONEVERSION
+	SEND_COOKIE_BIT,
+	SERVER_MAXUDP_BIT,
+	SERVER_PADDING_BIT,
+	SERVER_TRANSFER_FORMAT_BIT,
+	SERVER_UDPSIZE_BIT,
+	SUPPORT_EDNS_BIT,
+	TRANSFERS_BIT,
+	DNS_PEER_FLAGS_COUNT
 };
 
 STATIC_ASSERT(DNS_PEER_FLAGS_COUNT <= CHAR_BIT * sizeof(uint32_t),
@@ -352,9 +366,20 @@ peer_delete(dns_peer_t **peer) {
 	}
 
 ACCESS_OPTION(bogus, BOGUS_BIT, bool, bogus)
+ACCESS_OPTION(dnsflags, GREASE_DNS_FLAGS_BIT, bool, grease_dns_flags)
+ACCESS_OPTION(ednsflags, GREASE_EDNS_FLAGS_BIT, bool, grease_edns_flags)
+ACCESS_OPTION(ednsneg, GREASE_EDNS_NEG_BIT, bool, grease_edns_neg)
 ACCESS_OPTION(forcetcp, FORCE_TCP_BIT, bool, force_tcp)
 ACCESS_OPTION(maxudp, SERVER_MAXUDP_BIT, uint16_t, maxudp)
 ACCESS_OPTION(provideixfr, PROVIDE_IXFR_BIT, bool, provide_ixfr)
+ACCESS_OPTION(respdnsflags, GREASE_RESP_DNS_FLAGS_BIT, bool,
+	      grease_resp_dns_flags)
+ACCESS_OPTION(respednsflags, GREASE_RESP_EDNS_FLAGS_BIT, bool,
+	      grease_resp_edns_flags)
+ACCESS_OPTION(respednsoption, GREASE_RESP_EDNS_OPTION_BIT, bool,
+	      grease_resp_edns_option)
+ACCESS_OPTION(respednsversion, GREASE_RESP_EDNS_VERSION_BIT, bool,
+	      grease_resp_edns_version)
 ACCESS_OPTION(requestexpire, REQUEST_EXPIRE_BIT, bool, request_expire)
 ACCESS_OPTION(requestixfr, REQUEST_IXFR_BIT, bool, request_ixfr)
 ACCESS_OPTION(requestixfrmaxdiffs, REQUEST_IXFRMAXDIFFS_BIT, uint32_t,

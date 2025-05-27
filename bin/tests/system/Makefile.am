@@ -103,6 +103,7 @@ TESTS =				\
 	forward			\
 	geoip2			\
 	glue			\
+	grease			\
 	idna			\
 	include-multiplecfg	\
 	inline			\

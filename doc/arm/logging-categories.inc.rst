@@ -27,6 +27,9 @@
 ``dispatch``
     Dispatching of incoming packets to the server modules where they are to be processed.
 
+``dns-reporting-agent``
+    Reports from clients indicating that there is an error in our responses.
+
 ``dnssec``
     DNSSEC and TSIG protocol processing.
 
@@ -43,8 +46,8 @@
 ``general``
     A catch-all for many things that still are not classified into categories.
 
-``dns-reporting-agent``
-    Reports from clients indicating that there is an error in our responses.
+``grease``
+   Log protocol failures detected while exercising otherwise unexercised parts of the DNS protocol.
 
 ``lame-servers``
     Misconfigurations in remote servers, discovered by BIND 9 when trying to query those servers during resolution.

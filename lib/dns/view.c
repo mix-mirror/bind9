@@ -120,6 +120,7 @@ dns_view_create(isc_mem_t *mctx, isc_loopmgr_t *loopmgr,
 		.root_key_sentinel = true,
 		.udpsize = DEFAULT_EDNS_BUFSIZE,
 		.max_restarts = DEFAULT_MAX_RESTARTS,
+		.grease_edns_known_flags = DNS_MESSAGEEXTFLAG_KNOWN_FLAGS,
 	};
 
 	isc_refcount_init(&view->references, 1);

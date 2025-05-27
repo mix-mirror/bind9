@@ -19,29 +19,11 @@ options {
 	pid-file "named.pid";
 	listen-on { 10.53.0.1; };
 	listen-on-v6 { none; };
-	recursion no;
+	recursion yes;
 	notify yes;
-	statistics-file "named.stats";
-	dnstap-identity "ns1";
-	dnstap-version "xxx";
-	dnstap-output file "dnstap.out" size 30k versions 10;
-	dnstap { all; };
-	send-cookie no;
-	require-server-cookie no;
-	dnssec-validation yes;
-	qname-minimization disabled;
-	grease-edns-negotiation no;
-};
-
-trust-anchors { };
-
-key rndc_key {
-	secret "1234abcd8765";
-	algorithm @DEFAULT_HMAC@;
-};
-
-controls {
-	inet 10.53.0.1 port @CONTROLPORT@ allow { any; } keys { rndc_key; };
+	ixfr-from-differences yes;
+	check-integrity no;
+	dnssec-validation no;
 };
 
 zone "." {

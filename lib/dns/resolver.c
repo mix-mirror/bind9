@@ -266,10 +266,13 @@ typedef struct query {
 	isc_buffer_t buffer;
 	isc_buffer_t *tsig;
 	dns_tsigkey_t *tsigkey;
+	unsigned char *nsid;
 	int ednsversion;
 	unsigned int options;
 	unsigned int attributes;
 	unsigned int udpsize;
+	uint16_t nsid_len;
+	uint16_t grease_ednsflags;
 	unsigned char data[512];
 } resquery_t;
 
@@ -294,7 +297,10 @@ struct tried {
 #define QUERY_MAGIC	   ISC_MAGIC('Q', '!', '!', '!')
 #define VALID_QUERY(query) ISC_MAGIC_VALID(query, QUERY_MAGIC)
 
-#define RESQUERY_ATTR_CANCELED 0x02
+#define RESQUERY_ATTR_CANCELED	 (1U << 0)
+#define RESQUERY_ATTR_DNS_FLAGS	 (1U << 1)
+#define RESQUERY_ATTR_EDNS_FLAGS (1U << 2)
+#define RESQUERY_ATTR_EDNS_NEG	 (1U << 3)
 
 #define RESQUERY_CONNECTING(q) ((q)->connects > 0)
 #define RESQUERY_CANCELED(q)   (((q)->attributes & RESQUERY_ATTR_CANCELED) != 0)
@@ -803,6 +809,7 @@ typedef struct respctx {
 	bool truncated;	      /* response was truncated */
 	bool no_response;     /* no response was received */
 	bool negative;	      /* is this a negative response? */
+	bool force_edns_0;
 
 	isc_stdtime_t now; /* time info */
 	isc_time_t tnow;
@@ -1770,12 +1777,13 @@ detach:
 
 static isc_result_t
 fctx_addopt(dns_message_t *message, unsigned int version, uint16_t udpsize,
-	    dns_ednsopt_t *ednsopts, size_t count) {
+	    unsigned int flags, dns_ednsopt_t *ednsopts, size_t count) {
 	dns_rdataset_t *rdataset = NULL;
 	isc_result_t result;
 
 	result = dns_message_buildopt(message, &rdataset, version, udpsize,
-				      DNS_MESSAGEEXTFLAG_DO, ednsopts, count);
+				      flags | DNS_MESSAGEEXTFLAG_DO, ednsopts,
+				      count);
 	if (result != ISC_R_SUCCESS) {
 		return result;
 	}
@@ -2278,6 +2286,16 @@ resquery_send(resquery_t *query) {
 	isc_region_t zr;
 	isc_buffer_t zb;
 #endif /* HAVE_DNSTAP */
+	bool grease_dns_flags = res->view->grease_dns_flags;
+	bool grease_edns_flags = res->view->grease_edns_flags;
+	bool grease_edns_neg = res->view->grease_edns_neg;
+	bool grease_nsid = false;
+	bool reqnsid = res->view->requestnsid;
+	unsigned int grease_rate = res->view->grease_rate;
+	time_t grease_until = res->view->grease_until;
+#define GREASE \
+	(grease_rate > 0 ? (grease_rate >= isc_random_uniform(99) + 1) : false)
+	time_t now = time(NULL);
 
 	QTRACE("send");
 
@@ -2351,6 +2369,24 @@ resquery_send(resquery_t *query) {
 	isc_netaddr_fromsockaddr(&ipaddr, &query->addrinfo->sockaddr);
 	(void)dns_peerlist_peerbyaddr(fctx->res->view->peers, &ipaddr, &peer);
 
+	if (peer != NULL) {
+		dns_peer_getdnsflags(peer, &grease_dns_flags);
+		dns_peer_getednsflags(peer, &grease_edns_flags);
+		dns_peer_getednsneg(peer, &grease_edns_neg);
+	}
+
+	/*
+	 * GREASE: Set the final reserved DNS header bit.
+	 */
+	query->attributes &= ~RESQUERY_ATTR_DNS_FLAGS;
+	if ((query->options & DNS_FETCHOPT_NOGREASE) == 0 &&
+	    grease_dns_flags && now < grease_until && GREASE)
+	{
+		fctx->qmessage->flags |= 0x40;
+		query->attributes |= RESQUERY_ATTR_DNS_FLAGS;
+		grease_nsid = res->view->grease_nsid;
+	}
+
 	/*
 	 * The ADB does not know about servers with "edns no".  Check
 	 * this, and then inform the ADB for future use.
@@ -2413,12 +2449,51 @@ resquery_send(resquery_t *query) {
 			uint16_t peerudpsize = 0;
 			unsigned int version = DNS_EDNS_VERSION;
 			unsigned int flags = query->addrinfo->flags;
-			bool reqnsid = res->view->requestnsid;
 			bool sendcookie = res->view->sendcookie;
 			bool reqzoneversion = res->view->requestzoneversion;
 			bool tcpkeepalive = false;
 			unsigned char cookie[COOKIE_BUFFER_SIZE];
 			uint16_t padding = 0;
+			uint16_t ednsflags = 0;
+
+			/*
+			 * GREASE: EDNS version negotiation by sending a
+			 * large EDNS version.  We should get back BADVERS
+			 * if there is an OPT record present with the version
+			 * set to 0 as EDNS(1) is currently undefined.
+			 */
+			query->attributes &= ~RESQUERY_ATTR_EDNS_NEG;
+			if ((query->options & DNS_FETCHOPT_NOGREASE) == 0 &&
+			    grease_edns_neg && GREASE)
+			{
+				version = 100;
+				query->attributes |= RESQUERY_ATTR_EDNS_NEG;
+				grease_nsid = res->view->grease_nsid;
+			}
+
+			/*
+			 * GREASE: Unknown EDNS flags must be zero on
+			 * transmission and be ignored on reception.
+			 * Choose a random unallocated flag bit.
+			 * Disable test Jan 1, 2026.
+			 */
+			query->attributes &= ~RESQUERY_ATTR_EDNS_FLAGS;
+			if ((query->options & DNS_FETCHOPT_NOGREASE) == 0 &&
+			    grease_edns_flags && now < grease_until && GREASE)
+			{
+				/*
+				 * Set one of the reserved EDNS flag bits.
+				 */
+				ednsflags = 1 << isc_random_uniform(14);
+				ednsflags &=
+					~res->view->grease_edns_known_flags;
+				if (ednsflags != 0) {
+					query->attributes |=
+						RESQUERY_ATTR_EDNS_FLAGS;
+					query->grease_ednsflags = ednsflags;
+					grease_nsid = res->view->grease_nsid;
+				}
+			}
 
 			/*
 			 * Set the default UDP size to what was
@@ -2452,6 +2527,7 @@ resquery_send(resquery_t *query) {
 			if ((flags & DNS_FETCHOPT_EDNSVERSIONSET) != 0) {
 				version = flags & DNS_FETCHOPT_EDNSVERSIONMASK;
 				version >>= DNS_FETCHOPT_EDNSVERSIONSHIFT;
+				query->attributes &= ~RESQUERY_ATTR_EDNS_NEG;
 			}
 
 			/* Request NSID/COOKIE/VERSION for current peer?
@@ -2464,16 +2540,20 @@ resquery_send(resquery_t *query) {
 				    ednsversion < version)
 				{
 					version = ednsversion;
+					query->attributes &=
+						~RESQUERY_ATTR_EDNS_NEG;
 				}
+				(void)dns_peer_getrequestnsid(peer,
+							      &grease_nsid);
 				(void)dns_peer_getrequestnsid(peer, &reqnsid);
+				(void)dns_peer_getsendcookie(peer, &sendcookie);
 				(void)dns_peer_getrequestzoneversion(
 					peer, &reqzoneversion);
-				(void)dns_peer_getsendcookie(peer, &sendcookie);
 			}
 			if (NOCOOKIE(query->addrinfo)) {
 				sendcookie = false;
 			}
-			if (reqnsid) {
+			if (reqnsid || grease_nsid) {
 				INSIST(ednsopt < DNS_EDNSOPTIONS);
 				ednsopts[ednsopt].code = DNS_OPT_NSID;
 				ednsopts[ednsopt].length = 0;
@@ -2540,7 +2620,7 @@ resquery_send(resquery_t *query) {
 
 			query->ednsversion = version;
 			result = fctx_addopt(fctx->qmessage, version, udpsize,
-					     ednsopts, ednsopt);
+					     ednsflags, ednsopts, ednsopt);
 			if (result == ISC_R_SUCCESS) {
 				if (reqnsid) {
 					query->options |= DNS_FETCHOPT_WANTNSID;
@@ -4911,6 +4991,9 @@ log_lame(fetchctx_t *fctx, dns_adbaddrinfo_t *addrinfo) {
 }
 
 static void
+log_formerr(fetchctx_t *fctx, const char *format, ...) ISC_FORMAT_PRINTF(2, 3);
+
+static void
 log_formerr(fetchctx_t *fctx, const char *format, ...) {
 	char nsbuf[ISC_SOCKADDR_FORMATSIZE];
 	char msgbuf[2048];
@@ -4926,6 +5009,27 @@ log_formerr(fetchctx_t *fctx, const char *format, ...) {
 		      ISC_LOG_NOTICE,
 		      "DNS format error from %s resolving %s for %s: %s", nsbuf,
 		      fctx->info, fctx->clientstr, msgbuf);
+}
+
+static void
+log_grease(fetchctx_t *fctx, const char *test, const char *format, ...)
+	ISC_FORMAT_PRINTF(3, 4);
+
+static void
+log_grease(fetchctx_t *fctx, const char *test, const char *format, ...) {
+	char nsbuf[ISC_SOCKADDR_FORMATSIZE];
+	char msgbuf[2048];
+	va_list args;
+
+	va_start(args, format);
+	vsnprintf(msgbuf, sizeof(msgbuf), format, args);
+	va_end(args);
+
+	isc_sockaddr_format(&fctx->addrinfo->sockaddr, nsbuf, sizeof(nsbuf));
+
+	isc_log_write(DNS_LOGCATEGORY_GREASE, DNS_LOGMODULE_RESOLVER,
+		      ISC_LOG_NOTICE, "%s: %s %s: %s", test, nsbuf, fctx->info,
+		      msgbuf);
 }
 
 static isc_result_t
@@ -4959,6 +5063,11 @@ same_question(fetchctx_t *fctx, dns_message_t *message) {
 			 */
 			log_formerr(fctx, "empty question section, "
 					  "accepting it anyway as TC=1");
+			return ISC_R_SUCCESS;
+		} else if (message->rcode == dns_rcode_badvers) {
+			log_formerr(fctx,
+				    "empty question section, "
+				    "accepting it anyway as rcode=BADVERS");
 			return ISC_R_SUCCESS;
 		} else {
 			log_formerr(fctx, "empty question section");
@@ -7231,9 +7340,8 @@ log_nsid(isc_buffer_t *opt, size_t nsid_len, resquery_t *query, int level,
 }
 
 static void
-log_zoneversion(unsigned char *version, size_t version_len, unsigned char *nsid,
-		size_t nsid_len, resquery_t *query, int level,
-		isc_mem_t *mctx) {
+log_zoneversion(unsigned char *version, size_t version_len, resquery_t *query,
+		int level, isc_mem_t *mctx) {
 	char addrbuf[ISC_SOCKADDR_FORMATSIZE];
 	char namebuf[DNS_NAME_FORMATSIZE];
 	size_t nsid_buflen = 0;
@@ -7246,6 +7354,8 @@ log_zoneversion(unsigned char *version, size_t version_len, unsigned char *nsid,
 	const char *sep_3 = "";
 	dns_name_t suffix = DNS_NAME_INITEMPTY;
 	unsigned int labels;
+	unsigned char *nsid = query->nsid;
+	size_t nsid_len = query->nsid_len;
 
 	REQUIRE(version_len <= UINT16_MAX);
 
@@ -7952,6 +8062,7 @@ rctx_dispfail(respctx_t *rctx) {
 static isc_result_t
 rctx_timedout(respctx_t *rctx) {
 	fetchctx_t *fctx = rctx->fctx;
+	resquery_t *query = rctx->query;
 
 	if (rctx->result == ISC_R_TIMEDOUT) {
 		isc_time_t now;
@@ -7971,6 +8082,14 @@ rctx_timedout(respctx_t *rctx) {
 				  "fetch happen");
 			dns_ede_add(&fctx->edectx, DNS_EDE_NOREACHABLEAUTH,
 				    NULL);
+		}
+		if ((query->attributes &
+		     (RESQUERY_ATTR_DNS_FLAGS | RESQUERY_ATTR_EDNS_FLAGS |
+		      RESQUERY_ATTR_EDNS_NEG)) != 0 &&
+		    (query->options & DNS_FETCHOPT_NOGREASE) == 0)
+		{
+			rctx->retryopts |= DNS_FETCHOPT_NOGREASE;
+			rctx->resend = true;
 		} else {
 			FCTXTRACE("query timed out; trying next server");
 			/* try next server */
@@ -8082,8 +8201,6 @@ rctx_opt(respctx_t *rctx) {
 	bool seen_cookie = false;
 	bool seen_nsid = false;
 	bool seen_zoneversion = false;
-	unsigned char *nsid = NULL;
-	uint16_t nsidlen = 0;
 	unsigned char *zoneversion = NULL;
 	uint16_t zoneversionlen = 0;
 
@@ -8111,8 +8228,11 @@ rctx_opt(respctx_t *rctx) {
 				break;
 			}
 			seen_nsid = true;
-			nsid = isc_buffer_current(&optbuf);
-			nsidlen = optlen;
+
+			/* Save pointer to the NSID for log_grease. */
+			query->nsid = isc_buffer_current(&optbuf);
+			query->nsid_len = optlen;
+
 			if ((query->options & DNS_FETCHOPT_WANTNSID) != 0) {
 				log_nsid(&optbuf, optlen, query, ISC_LOG_INFO,
 					 fctx->mctx);
@@ -8168,8 +8288,8 @@ rctx_opt(respctx_t *rctx) {
 	if ((query->options & DNS_FETCHOPT_WANTZONEVERSION) != 0 &&
 	    zoneversion != NULL)
 	{
-		log_zoneversion(zoneversion, zoneversionlen, nsid, nsidlen,
-				query, ISC_LOG_INFO, fctx->mctx);
+		log_zoneversion(zoneversion, zoneversionlen, query,
+				ISC_LOG_INFO, fctx->mctx);
 	}
 }
 
@@ -8180,8 +8300,149 @@ rctx_opt(respctx_t *rctx) {
  */
 static void
 rctx_edns(respctx_t *rctx) {
-	resquery_t *query = rctx->query;
 	fetchctx_t *fctx = rctx->fctx;
+	resquery_t *query = rctx->query;
+	char *nsid_buf = NULL;
+	char *nsid_pbuf = NULL;
+	const char *grease_sep_1 = "";
+	const char *grease_sep_2 = "";
+	const char *grease_sep_3 = "";
+	const char *nsid_hex = "";
+	const char *nsid_print = "";
+	size_t nsid_buflen = 0;
+
+#define GREASE_NSID_FMT "%s%s%s%s%s"
+#define GREASE_NSID_INFO \
+	grease_sep_1, nsid_hex, grease_sep_2, nsid_print, grease_sep_3
+
+	/*
+	 * Turn NSID into printable forms.
+	 */
+	if (query->nsid != NULL && query->nsid_len != 0) {
+		nsid_buflen = query->nsid_len * 2 + 1;
+		nsid_hex = nsid_buf = isc_mem_get(fctx->mctx, nsid_buflen);
+		nsid_print = nsid_pbuf = isc_mem_get(fctx->mctx,
+						     query->nsid_len + 1);
+
+		/* Convert to hex */
+		make_hex(query->nsid, query->nsid_len, nsid_buf, nsid_buflen);
+
+		/* Convert to printable */
+		make_printable(query->nsid, query->nsid_len, nsid_pbuf,
+			       query->nsid_len + 1);
+
+		grease_sep_1 = " (NSID ";
+		grease_sep_2 = " (";
+		grease_sep_3 = "))";
+	}
+
+	/*
+	 * GREASE: Check that the final DNS header flag is not
+	 * echoed back.
+	 */
+	if ((query->attributes & RESQUERY_ATTR_DNS_FLAGS) != 0) {
+		/*
+		 * The last DNS header flag should be ignored
+		 * by the received and be zero when transmitted.
+		 */
+		if ((query->rmessage->flags & 0x40) != 0) {
+			log_grease(
+				fctx, "grease-dns-flags",
+				"DNS header flag 0x40 not zero" GREASE_NSID_FMT,
+				GREASE_NSID_INFO);
+		}
+	}
+
+	/*
+	 * GREASE: Check that the unknown EDNS flags bit are not
+	 * echoed back.
+	 */
+	if ((query->attributes & RESQUERY_ATTR_EDNS_FLAGS) != 0 &&
+	    rctx->opt != NULL)
+	{
+		uint16_t ednsflags = rctx->opt->ttl & 0xffff;
+
+		/*
+		 * Ignore known flags.
+		 */
+		ednsflags &= ~fctx->res->view->grease_edns_known_flags;
+
+		/*
+		 * Was our unspecified EDNS flag echoed back?
+		 */
+		if ((ednsflags & query->grease_ednsflags) != 0) {
+			log_grease(fctx, "grease-edns-flags",
+				   "Unspecified EDNS flags not zero: "
+				   "%#04x" GREASE_NSID_FMT,
+				   ednsflags, GREASE_NSID_INFO);
+		}
+	}
+
+	/*
+	 * GREASE: Check that we have the expected rcode (BADVERS)
+	 * and version(s) (0).
+	 */
+	if ((query->attributes & RESQUERY_ATTR_EDNS_NEG) != 0 &&
+	    rctx->opt != NULL)
+	{
+		uint8_t version = (rctx->opt->ttl >> 16) & 0xff;
+
+		/*
+		 * Some nameservers fail to return the question section
+		 * when returning BADVERS
+		 */
+		if (query->rmessage->counts[DNS_SECTION_QUESTION] == 0 &&
+		    query->rmessage->rcode == dns_rcode_badvers)
+		{
+			log_grease(fctx, "grease-edns-negotiation",
+				   "EDNS version negotiation: question count"
+				   " is zero" GREASE_NSID_FMT,
+				   GREASE_NSID_INFO);
+			rctx->force_edns_0 = true;
+		}
+
+		/*
+		 * We expect the rcode to be BADVERS because we sent EDNS
+		 * version 100.
+		 */
+		if (query->rmessage->rcode != dns_rcode_badvers) {
+			char code[64];
+			isc_buffer_t b;
+			isc_buffer_init(&b, code, sizeof(code) - 1);
+			dns_rcode_totext(query->rmessage->rcode, &b);
+			code[isc_buffer_usedlength(&b)] = '\0';
+			log_grease(fctx, "grease-edns-negotiation",
+				   "EDNS version negotiation: unexpected "
+				   "rcode: %s" GREASE_NSID_FMT,
+				   code, GREASE_NSID_INFO);
+			rctx->force_edns_0 = true;
+		}
+
+		/*
+		 * Only EDNS(0) is currently specified.
+		 */
+		if (version > fctx->res->view->grease_edns_max_version) {
+			log_grease(fctx, "grease-edns-negotiation",
+				   "EDNS version negotiation: version > %u: "
+				   "%u" GREASE_NSID_FMT,
+				   fctx->res->view->grease_edns_max_version,
+				   version, GREASE_NSID_INFO);
+		}
+	}
+
+	/*
+	 * Cleanup NSID buffers.
+	 */
+	if (nsid_pbuf != NULL) {
+		isc_mem_put(fctx->mctx, nsid_pbuf, query->nsid_len + 1);
+	}
+
+	if (nsid_buf != NULL) {
+		isc_mem_put(fctx->mctx, nsid_buf, nsid_buflen);
+	}
+
+#undef GREASE_NSID_FMT
+#undef GREASE_NSID_INFO
 
 	/*
 	 * If we get a non error EDNS response record the fact so we
@@ -9667,18 +9928,14 @@ rctx_badserver(respctx_t *rctx, isc_result_t result) {
 		}
 	} else if (rcode == dns_rcode_badvers) {
 		unsigned int version;
-#if DNS_EDNS_VERSION > 0
 		unsigned int flags, mask;
-#endif /* if DNS_EDNS_VERSION > 0 */
 
 		INSIST(rctx->opt != NULL);
 		version = (rctx->opt->ttl >> 16) & 0xff;
-#if DNS_EDNS_VERSION > 0
 		flags = (version << DNS_FETCHOPT_EDNSVERSIONSHIFT) |
 			DNS_FETCHOPT_EDNSVERSIONSET;
 		mask = DNS_FETCHOPT_EDNSVERSIONMASK |
 		       DNS_FETCHOPT_EDNSVERSIONSET;
-#endif /* if DNS_EDNS_VERSION > 0 */
 
 		/*
 		 * Record that we got a good EDNS response.
@@ -9699,7 +9956,6 @@ rctx_badserver(respctx_t *rctx, isc_result_t result) {
 		 * version checking of badvers responses.  We won't
 		 * be sending COOKIE etc. in that case.
 		 */
-#if DNS_EDNS_VERSION > 0
 		if ((int)version < query->ednsversion) {
 			dns_adb_changeflags(fctx->adb, query->addrinfo, flags,
 					    mask);
@@ -9708,10 +9964,6 @@ rctx_badserver(respctx_t *rctx, isc_result_t result) {
 			rctx->broken_server = DNS_R_BADVERS;
 			rctx->next_server = true;
 		}
-#else  /* if DNS_EDNS_VERSION > 0 */
-		rctx->broken_server = DNS_R_BADVERS;
-		rctx->next_server = true;
-#endif /* if DNS_EDNS_VERSION > 0 */
 	} else if (rcode == dns_rcode_badcookie && rctx->query->rmessage->cc_ok)
 	{
 		/*
@@ -9732,15 +9984,23 @@ rctx_badserver(respctx_t *rctx, isc_result_t result) {
 		 */
 		rctx->retryopts |= DNS_FETCHOPT_TRYCD;
 		rctx->resend = true;
+	} else if (rctx->force_edns_0) {
+		unsigned int flags = DNS_FETCHOPT_EDNSVERSIONSET;
+		unsigned int mask = DNS_FETCHOPT_EDNSVERSIONMASK |
+				    DNS_FETCHOPT_EDNSVERSIONSET;
+		dns_adb_changeflags(fctx->adb, query->addrinfo, flags, mask);
+		rctx->resend = true;
 	} else {
 		rctx->broken_server = DNS_R_UNEXPECTEDRCODE;
 		rctx->next_server = true;
 	}
 
-	isc_buffer_init(&b, code, sizeof(code) - 1);
-	dns_rcode_totext(rcode, &b);
-	code[isc_buffer_usedlength(&b)] = '\0';
-	FCTXTRACE2("remote server broken: returned ", code);
+	if (rctx->broken_server != ISC_R_SUCCESS) {
+		isc_buffer_init(&b, code, sizeof(code) - 1);
+		dns_rcode_totext(rcode, &b);
+		code[isc_buffer_usedlength(&b)] = '\0';
+		FCTXTRACE2("remote server broken: returned ", code);
+	}
 	rctx_done(rctx, result);
 
 	return ISC_R_COMPLETE;

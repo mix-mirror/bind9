@@ -1056,6 +1056,17 @@ ns_client_addopt(ns_client_t *client, dns_message_t *message,
 	unsigned char expire[4];
 	unsigned char advtimo[2];
 	dns_aclenv_t *env = NULL;
+	unsigned char version = 0;
+	unsigned int grease_rate = 0;
+	time_t grease_until = 0;
+	bool grease_response_edns_flags = false;
+	bool grease_response_edns_option = false;
+	bool grease_response_edns_version = false;
+	uint32_t grease_edns_known_flags = ~0;
+	time_t tnow = time(NULL);
+
+#define GREASE \
+	(grease_rate > 0 ? (grease_rate >= isc_random_uniform(99) + 1) : false)
 
 	REQUIRE(NS_CLIENT_VALID(client));
 	REQUIRE(opt != NULL && *opt == NULL);
@@ -1063,6 +1074,38 @@ ns_client_addopt(ns_client_t *client, dns_message_t *message,
 
 	env = client->manager->aclenv;
 	view = client->view;
+
+	/*
+	 * Grease normal QUERY responses.
+	 */
+	if (view != NULL && message->opcode == dns_opcode_query &&
+	    (message->rcode == dns_rcode_noerror ||
+	     message->rcode == dns_rcode_nxdomain))
+	{
+		dns_peer_t *peer = NULL;
+		isc_netaddr_t srcip;
+
+		grease_rate = view->grease_rate;
+		grease_until = view->grease_until;
+		grease_edns_known_flags = view->grease_edns_known_flags;
+
+		grease_response_edns_flags = view->grease_response_edns_flags;
+		grease_response_edns_option = view->grease_response_edns_option;
+		grease_response_edns_version =
+			view->grease_response_edns_version;
+
+		isc_netaddr_fromsockaddr(&srcip, &client->peeraddr);
+		result = dns_peerlist_peerbyaddr(view->peers, &srcip, &peer);
+		if (result == ISC_R_SUCCESS && peer != NULL) {
+			dns_peer_getrespednsflags(peer,
+						  &grease_response_edns_flags);
+			dns_peer_getrespednsoption(
+				peer, &grease_response_edns_option);
+			dns_peer_getrespednsversion(
+				peer, &grease_response_edns_version);
+		}
+	}
+
 	if (view != NULL) {
 		udpsize = dns_view_getudpsize(view);
 	} else {
@@ -1070,6 +1113,32 @@ ns_client_addopt(ns_client_t *client, dns_message_t *message,
 	}
 
 	flags = client->extflags & DNS_MESSAGEEXTFLAG_REPLYPRESERVE;
+
+	/*
+	 * Don't grease EDNS flags if there is an unknown flag in the request.
+	 */
+	if ((client->extflags & ~grease_edns_known_flags & 0xffff) != 0) {
+		grease_response_edns_flags = false;
+	}
+
+	if (grease_response_edns_flags && tnow < grease_until && GREASE) {
+		uint16_t ednsflags = 1 << isc_random_uniform(14);
+		ednsflags &= ~grease_edns_known_flags;
+		flags |= ednsflags;
+	}
+
+	if (grease_response_edns_option && tnow < grease_until && GREASE) {
+		uint16_t code = 100 + isc_random_uniform(65000 - 100);
+		INSIST(count < DNS_EDNSOPTIONS);
+		ednsopts[count].code = code;
+		ednsopts[count].length = 0;
+		ednsopts[count].value = NULL;
+		count++;
+	}
+
+	if (grease_response_edns_version && tnow < grease_until && GREASE) {
+		version = 1 + isc_random_uniform(254);
+	}
 
 	/* Set EDNS options if applicable */
 	if (WANTNSID(client)) {
@@ -1250,8 +1319,8 @@ no_nsid:
 		}
 	}
 
-	result = dns_message_buildopt(message, opt, 0, udpsize, flags, ednsopts,
-				      count);
+	result = dns_message_buildopt(message, opt, version, udpsize, flags,
+				      ednsopts, count);
 	return result;
 }
 

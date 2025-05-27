@@ -176,6 +176,7 @@ static const char *categories_description[] = {
 	[DNS_LOGCATEGORY_DNSSEC] = "dnssec",
 	[DNS_LOGCATEGORY_DNSTAP] = "dnstap",
 	[DNS_LOGCATEGORY_EDNS_DISABLED] = "edns-disabled",
+	[DNS_LOGCATEGORY_GREASE] = "grease",
 	[DNS_LOGCATEGORY_LAME_SERVERS] = "lame-servers",
 	[DNS_LOGCATEGORY_NOTIFY] = "notify",
 	[DNS_LOGCATEGORY_NSID] = "nsid",

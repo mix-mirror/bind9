@@ -136,6 +136,7 @@ enum {
 						 * CD=0, but retry with CD=1
 						 * if it returns SERVFAIL.
 						 */
+	DNS_FETCHOPT_NOGREASE = 1 << 19,
 
 	/*% EDNS version bits: */
 	DNS_FETCHOPT_EDNSVERSIONSET = 1 << 23,
