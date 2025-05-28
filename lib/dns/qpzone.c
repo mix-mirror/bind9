@@ -146,9 +146,22 @@ struct qpz_version {
 
 typedef ISC_LIST(qpz_version_t) qpz_versionlist_t;
 
+// Resigning heap indirection to allow ref counting
+typedef struct qpz_heap {
+	isc_mem_t *mctx;
+	isc_refcount_t references;
+	/* Locks the data in this struct */
+	isc_rwlock_t lock;
+	isc_heap_t *heap;
+} qpz_heap_t;
+
+ISC_REFCOUNT_STATIC_DECL(qpz_heap);
+
 struct qpznode {
 	dns_name_t name;
 	isc_mem_t *mctx;
+
+	qpz_heap_t *heap;
 
 	/*
 	 * 'erefs' counts external references held by a caller: for
@@ -182,17 +195,6 @@ struct qpznode {
 	atomic_bool dirty;
 	void *data;
 };
-
-// Resigning heap indirection to allow ref counting
-typedef struct qpz_heap {
-	isc_mem_t *mctx;
-	isc_refcount_t references;
-	/* Locks the data in this struct */
-	isc_rwlock_t lock;
-	isc_heap_t *heap;
-} qpz_heap_t;
-
-ISC_REFCOUNT_STATIC_DECL(qpz_heap);
 
 struct qpzonedb {
 	/* Unlocked. */
@@ -642,12 +644,14 @@ new_qpznode(qpzonedb_t *qpdb, const dns_name_t *name) {
 	qpznode_t *newdata = isc_mem_get(qpdb->common.mctx, sizeof(*newdata));
 	*newdata = (qpznode_t){
 		.name = DNS_NAME_INITEMPTY,
+		.heap = qpdb->heap,
 		.references = ISC_REFCOUNT_INITIALIZER(1),
 		.locknum = qpzone_get_locknum(),
 	};
 
 	isc_mem_attach(qpdb->common.mctx, &newdata->mctx);
 	dns_name_dup(name, qpdb->common.mctx, &newdata->name);
+	qpz_heap_ref(newdata->heap);
 
 #if DNS_DB_NODETRACE
 	fprintf(stderr, "new_qpznode:%s:%s:%d:%p->references = 1\n", __func__,
@@ -5422,6 +5426,7 @@ destroy_qpznode(qpznode_t *node) {
 		dns_slabheader_destroy(&current);
 	}
 
+	qpz_heap_unref(node->heap);
 	dns_name_free(&node->name, node->mctx);
 	isc_mem_putanddetach(&node->mctx, node, sizeof(qpznode_t));
 }
