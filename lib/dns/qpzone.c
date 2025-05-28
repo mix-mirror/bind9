@@ -1289,9 +1289,9 @@ resigninsert(qpzonedb_t *qpdb, dns_slabheader_t *newheader) {
 	REQUIRE(newheader->heap_index == 0);
 	REQUIRE(!ISC_LINK_LINKED(newheader, link));
 
-	RWLOCK(&qpdb->lock, isc_rwlocktype_write);
+	RWLOCK(&qpdb->heap->lock, isc_rwlocktype_write);
 	isc_heap_insert(qpdb->heap->heap, newheader);
-	RWUNLOCK(&qpdb->lock, isc_rwlocktype_write);
+	RWUNLOCK(&qpdb->heap->lock, isc_rwlocktype_write);
 
 	// newheader->heap = qpdb->heap;
 }
@@ -1303,9 +1303,9 @@ resigndelete(qpzonedb_t *qpdb, qpz_version_t *version,
 		return;
 	}
 
-	RWLOCK(&qpdb->lock, isc_rwlocktype_write);
+	RWLOCK(&qpdb->heap->lock, isc_rwlocktype_write);
 	isc_heap_delete(qpdb->heap->heap, header->heap_index);
-	RWUNLOCK(&qpdb->lock, isc_rwlocktype_write);
+	RWUNLOCK(&qpdb->heap->lock, isc_rwlocktype_write);
 
 	header->heap_index = 0;
 	qpznode_acquire(qpdb, HEADERNODE(header) DNS__DB_FLARG_PASS);
@@ -2436,7 +2436,7 @@ setsigningtime(dns_db_t *db, dns_rdataset_t *rdataset, isc_stdtime_t resign) {
 	}
 	if (header->heap_index != 0) {
 		INSIST(RESIGN(header));
-		RWLOCK(&qpdb->lock, isc_rwlocktype_write);
+		RWLOCK(&qpdb->heap->lock, isc_rwlocktype_write);
 		if (resign == 0) {
 			isc_heap_delete(qpdb->heap->heap, header->heap_index);
 			header->heap_index = 0;
@@ -2446,7 +2446,7 @@ setsigningtime(dns_db_t *db, dns_rdataset_t *rdataset, isc_stdtime_t resign) {
 		} else if (resign_sooner(&oldheader, header)) {
 			isc_heap_decreased(qpdb->heap->heap, header->heap_index);
 		}
-		RWUNLOCK(&qpdb->lock, isc_rwlocktype_write);
+		RWUNLOCK(&qpdb->heap->lock, isc_rwlocktype_write);
 	} else if (resign != 0) {
 		DNS_SLABHEADER_SETATTR(header, DNS_SLABHEADERATTR_RESIGN);
 		resigninsert(qpdb, header);
@@ -2469,22 +2469,22 @@ getsigningtime(dns_db_t *db, isc_stdtime_t *resign, dns_name_t *foundname,
 	REQUIRE(foundname != NULL);
 	REQUIRE(typepair != NULL);
 
-	RWLOCK(&qpdb->lock, isc_rwlocktype_read);
+	RWLOCK(&qpdb->heap->lock, isc_rwlocktype_read);
 	header = isc_heap_element(qpdb->heap->heap, 1);
 	if (header == NULL) {
-		RWUNLOCK(&qpdb->lock, isc_rwlocktype_read);
+		RWUNLOCK(&qpdb->heap->lock, isc_rwlocktype_read);
 		return ISC_R_NOTFOUND;
 	}
 	nlock = qpzone_get_lock(HEADERNODE(header));
-	RWUNLOCK(&qpdb->lock, isc_rwlocktype_read);
+	RWUNLOCK(&qpdb->heap->lock, isc_rwlocktype_read);
 
 again:
 	NODE_RDLOCK(nlock, &nlocktype);
 
-	RWLOCK(&qpdb->lock, isc_rwlocktype_read);
+	RWLOCK(&qpdb->heap->lock, isc_rwlocktype_read);
 	header = isc_heap_element(qpdb->heap->heap, 1);
 	if (header != NULL && qpzone_get_lock(HEADERNODE(header)) != nlock) {
-		RWUNLOCK(&qpdb->lock, isc_rwlocktype_read);
+		RWUNLOCK(&qpdb->heap->lock, isc_rwlocktype_read);
 		NODE_UNLOCK(nlock, &nlocktype);
 
 		nlock = qpzone_get_lock(HEADERNODE(header));
@@ -2499,7 +2499,7 @@ again:
 		*typepair = header->type;
 		result = ISC_R_SUCCESS;
 	}
-	RWUNLOCK(&qpdb->lock, isc_rwlocktype_read);
+	RWUNLOCK(&qpdb->heap->lock, isc_rwlocktype_read);
 	NODE_UNLOCK(nlock, &nlocktype);
 
 	return result;
@@ -4072,10 +4072,10 @@ deletedata(dns_db_t *db ISC_ATTR_UNUSED, dns_dbnode_t *node ISC_ATTR_UNUSED,
 	dns_slabheader_t *header = data;
 
 	if (header->heap_index != 0) {
-		RWLOCK(&qpdb->lock, isc_rwlocktype_write);
+		RWLOCK(&qpdb->heap->lock, isc_rwlocktype_write);
 		// TODO node heap?
 		isc_heap_delete(qpdb->heap->heap, header->heap_index);
-		RWUNLOCK(&qpdb->lock, isc_rwlocktype_write);
+		RWUNLOCK(&qpdb->heap->lock, isc_rwlocktype_write);
 	}
 	header->heap_index = 0;
 }
