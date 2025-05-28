@@ -217,7 +217,7 @@ struct qpzonedb {
 	 * reference is released. When in turn 'references' goes to zero,
 	 * the database is shut down and freed.
 	 */
-	isc_refcount_t references;
+	// isc_refcount_t references;
 
 	qpznode_t *origin;
 	qpznode_t *nsec3_origin;
@@ -242,17 +242,17 @@ struct qpzonedb {
 	dns_qpmulti_t *nsec3; /* NSEC3 nodes only */
 };
 
-#ifdef DNS_DB_NODETRACE
-#define qpzonedb_ref(ptr)   qpzonedb__ref(ptr, __func__, __FILE__, __LINE__)
-#define qpzonedb_unref(ptr) qpzonedb__unref(ptr, __func__, __FILE__, __LINE__)
-#define qpzonedb_attach(ptr, ptrp) \
-	qpzonedb__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define qpzonedb_detach(ptrp) \
-	qpzonedb__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_STATIC_TRACE_DECL(qpzonedb);
-#else
-ISC_REFCOUNT_STATIC_DECL(qpzonedb);
-#endif
+// #ifdef DNS_DB_NODETRACE
+// #define qpzonedb_ref(ptr)   qpzonedb__ref(ptr, __func__, __FILE__, __LINE__)
+// #define qpzonedb_unref(ptr) qpzonedb__unref(ptr, __func__, __FILE__, __LINE__)
+// #define qpzonedb_attach(ptr, ptrp) \
+// 	qpzonedb__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
+// #define qpzonedb_detach(ptrp) \
+// 	qpzonedb__detach(ptrp, __func__, __FILE__, __LINE__)
+// ISC_REFCOUNT_STATIC_TRACE_DECL(qpzonedb);
+// #else
+// ISC_REFCOUNT_STATIC_DECL(qpzonedb);
+// #endif
 
 /*%
  * Search Context
@@ -553,7 +553,7 @@ free_db_rcu(struct rcu_head *rcu_head) {
 	}
 
 	isc_rwlock_destroy(&qpdb->lock);
-	isc_refcount_destroy(&qpdb->references);
+	// isc_refcount_destroy(&qpdb->references);
 	isc_refcount_destroy(&qpdb->common.references);
 
 	qpdb->common.magic = 0;
@@ -615,7 +615,8 @@ qpdb_destroy(dns_db_t *arg) {
 		cleanup_gluelists(&qpdb->current_version->glue_stack);
 	}
 
-	qpzonedb_detach(&qpdb);
+	// qpzonedb_detach(&qpdb);
+	qpzone_destroy(qpdb);
 }
 
 static qpz_heap_t*
@@ -697,7 +698,7 @@ dns__qpzone_create(isc_mem_t *mctx, const dns_name_t *origin, dns_dbtype_t type,
 		.least_serial = 1,
 		.next_serial = 2,
 		.open_versions = ISC_LIST_INITIALIZER,
-		.references = ISC_REFCOUNT_INITIALIZER(1),
+		// .references = ISC_REFCOUNT_INITIALIZER(1),
 	};
 
 	qpdb->common.methods = &qpdb_zonemethods;
@@ -799,7 +800,7 @@ qpznode_erefs_increment(qpzonedb_t *qpdb, qpznode_t *node DNS__DB_FLARG) {
 		return;
 	}
 
-	qpzonedb_ref(qpdb);
+	// qpzonedb_ref(qpdb);
 }
 
 static void
@@ -943,9 +944,9 @@ qpznode_erefs_decrement(qpzonedb_t *qpdb, qpznode_t *node DNS__DB_FLARG) {
 		return false;
 	}
 
-	qpzonedb_unref(qpdb);
+	// qpzonedb_unref(qpdb);
 
-	return true;
+	// return true;
 }
 
 /*
@@ -3983,7 +3984,7 @@ qpzone_detachnode(dns_db_t *db, dns_dbnode_t **nodep DNS__DB_FLARG) {
 	 * NODE_LOCK is locked.
 	 */
 
-	qpzonedb_ref(qpdb);
+	// qpzonedb_ref(qpdb);
 
 	rcu_read_lock();
 	NODE_RDLOCK(nlock, &nlocktype);
@@ -3991,7 +3992,7 @@ qpzone_detachnode(dns_db_t *db, dns_dbnode_t **nodep DNS__DB_FLARG) {
 	NODE_UNLOCK(nlock, &nlocktype);
 	rcu_read_unlock();
 
-	qpzonedb_unref(qpdb);
+	// qpzonedb_unref(qpdb);
 }
 
 static unsigned int
@@ -5436,11 +5437,11 @@ ISC_REFCOUNT_STATIC_TRACE_IMPL(qpznode, destroy_qpznode);
 ISC_REFCOUNT_STATIC_IMPL(qpznode, destroy_qpznode);
 #endif
 
-#ifdef DNS_DB_NODETRACE
-ISC_REFCOUNT_STATIC_TRACE_IMPL(qpzonedb, qpzone_destroy);
-#else
-ISC_REFCOUNT_STATIC_IMPL(qpzonedb, qpzone_destroy);
-#endif
+// #ifdef DNS_DB_NODETRACE
+// ISC_REFCOUNT_STATIC_TRACE_IMPL(qpzonedb, qpzone_destroy);
+// #else
+// ISC_REFCOUNT_STATIC_IMPL(qpzonedb, qpzone_destroy);
+// #endif
 
 ISC_REFCOUNT_STATIC_IMPL(qpz_heap, qpz_heap_destroy);
 
