@@ -183,6 +183,16 @@ struct qpznode {
 	void *data;
 };
 
+// Resigning heap indirection to allow ref counting
+typedef struct qpz_heap {
+	isc_refcount_t references;
+	/* Locks the data in this struct */
+	isc_rwlock_t lock;
+	isc_heap_t *heap;
+} qpz_heap_t;
+
+ISC_REFCOUNT_STATIC_DECL(qpz_heap);
+
 struct qpzonedb {
 	/* Unlocked. */
 	dns_db_t common;
