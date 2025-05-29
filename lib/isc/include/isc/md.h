@@ -95,6 +95,10 @@ isc_md_new(void);
 void
 isc_md_free(isc_md_t *);
 
+/* Automatic-cleanup version of isc_md_t: */
+ISC_AUTO_DECL(isc_md_t, isc_md_free)
+#define auto_isc_md_t ISC_AUTO(isc_md_t)
+
 /**
  * isc_md_init:
  * @md: message digest context
