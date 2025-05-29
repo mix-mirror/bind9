@@ -1073,7 +1073,7 @@ select_signing_key(dns_validator_t *val, dns_rdataset_t *rdataset) {
 		isc_region_t r;
 
 		dns_rdataset_current(rdataset, &rdata);
-		dns_rdata_tostruct(&rdata, &key, NULL); /* can't fail */
+		(void)dns_rdata_tostruct(&rdata, &key, NULL);
 
 		if (key.algorithm != siginfo->algorithm ||
 		    (key.flags & DNS_KEYFLAG_REVOKE) != 0 ||
@@ -2119,7 +2119,7 @@ validate_dnskey_dsset(dns_validator_t *val) {
 	 * Figure out if the private algorithm is supported now that we have
 	 * found a matching dnskey.
 	 */
-	dns_rdata_tostruct(&keyrdata, &key, NULL);
+	(void)dns_rdata_tostruct(&keyrdata, &key, NULL);
 	if (data == NULL && (ds.algorithm == DNS_KEYALG_PRIVATEDNS ||
 			     ds.algorithm == DNS_KEYALG_PRIVATEOID))
 	{

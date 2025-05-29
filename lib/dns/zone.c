@@ -10703,7 +10703,7 @@ keyfetch_done(dns_zonefetch_t *fetch, isc_result_t eresult) {
 			dns_rdata_t sigrr = DNS_RDATA_INIT;
 
 			dns_rdataset_current(dnskeysigs, &sigrr);
-			dns_rdata_tostruct(&sigrr, &sig, NULL);
+			(void)dns_rdata_tostruct(&sigrr, &sig, NULL);
 
 			DNS_RDATASET_FOREACH(&dsset) {
 				dns_rdata_t dsrdata = DNS_RDATA_INIT;
@@ -10711,7 +10711,7 @@ keyfetch_done(dns_zonefetch_t *fetch, isc_result_t eresult) {
 
 				dns_rdata_reset(&dsrdata);
 				dns_rdataset_current(&dsset, &dsrdata);
-				dns_rdata_tostruct(&dsrdata, &ds, NULL);
+				(void)dns_rdata_tostruct(&dsrdata, &ds, NULL);
 
 				if (ds.key_tag != sig.keyid ||
 				    ds.algorithm != sig.algorithm)
@@ -20022,7 +20022,7 @@ signed_with_alg(dns_rdataset_t *rdataset, dst_algorithm_t alg) {
 		dns_rdata_rrsig_t rrsig;
 
 		dns_rdataset_current(rdataset, &rdata);
-		dns_rdata_tostruct(&rdata, &rrsig, NULL);
+		(void)dns_rdata_tostruct(&rdata, &rrsig, NULL);
 		sigalg = dst_algorithm_fromdata(rrsig.algorithm,
 						rrsig.signature, rrsig.siglen);
 		if (sigalg == alg) {
@@ -22287,8 +22287,8 @@ dns_zone_cdscheck(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *version) {
 					dns_rdata_dnskey_t structdnskey;
 
 					dns_rdataset_current(&dnskey, &rdata);
-					dns_rdata_tostruct(&rdata,
-							   &structdnskey, NULL);
+					(void)dns_rdata_tostruct(
+						&rdata, &structdnskey, NULL);
 
 					if (structdnskey.algorithm ==
 					    structcds.algorithm)
@@ -23196,7 +23196,7 @@ dns__zone_lookup_nsec3param(dns_zone_t *zone, dns_rdata_nsec3param_t *lookup,
 	DNS_RDATASET_FOREACH(&rdataset) {
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		dns_rdataset_current(&rdataset, &rdata);
-		dns_rdata_tostruct(&rdata, &nsec3param, NULL);
+		(void)dns_rdata_tostruct(&rdata, &nsec3param, NULL);
 
 		/* Check parameters. */
 		if (nsec3param.hash != lookup->hash) {

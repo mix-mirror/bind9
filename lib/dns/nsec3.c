@@ -487,7 +487,7 @@ find_nsec3(dns_rdata_nsec3_t *nsec3, dns_rdataset_t *rdataset,
 	DNS_RDATASET_FOREACH(rdataset) {
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		dns_rdataset_current(rdataset, &rdata);
-		dns_rdata_tostruct(&rdata, nsec3, NULL);
+		(void)dns_rdata_tostruct(&rdata, nsec3, NULL);
 
 		if (match_nsec3param(nsec3, nsec3param)) {
 			return ISC_R_SUCCESS;
@@ -1714,7 +1714,7 @@ dns_nsec3_activex(dns_db_t *db, dns_dbversion_t *version, bool complete,
 	DNS_RDATASET_FOREACH(&rdataset) {
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		dns_rdataset_current(&rdataset, &rdata);
-		dns_rdata_tostruct(&rdata, &nsec3param, NULL);
+		(void)dns_rdata_tostruct(&rdata, &nsec3param, NULL);
 
 		if (nsec3param.flags == 0) {
 			found = true;
@@ -1755,7 +1755,7 @@ try_private:
 			continue;
 		}
 
-		dns_rdata_tostruct(&rdata2, &nsec3param, NULL);
+		(void)dns_rdata_tostruct(&rdata2, &nsec3param, NULL);
 		if (!complete && CREATE(nsec3param.flags)) {
 			found = true;
 			break;

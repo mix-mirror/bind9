@@ -529,7 +529,7 @@ dns_rdata_fromstruct(dns_rdata_t *rdata, dns_rdataclass_t rdclass,
  *\li	Resource Limit: Not enough space
  */
 
-isc_result_t
+ISC_ATTR_NODISCARD isc_result_t
 dns_rdata_tostruct(const dns_rdata_t *rdata, void *target, isc_mem_t *mctx);
 /*%<
  * Convert an rdata into its C structure representation.

@@ -2479,7 +2479,7 @@ get_key(ns_client_t *client, dns_db_t *db, dns_rdata_rrsig_t *rrsig,
 		isc_region_t r;
 
 		dns_rdataset_current(keyrdataset, &rdata);
-		dns_rdata_tostruct(&rdata, &key, NULL); /* can't fail */
+		(void)dns_rdata_tostruct(&rdata, &key, NULL);
 		keyalg = dst_algorithm_fromdata(key.algorithm, key.data,
 						key.datalen);
 

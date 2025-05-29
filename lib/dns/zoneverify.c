@@ -433,7 +433,7 @@ find_nsec3_match(const dns_rdata_nsec3param_t *nsec3param,
 	DNS_RDATASET_FOREACH(rdataset) {
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		dns_rdataset_current(rdataset, &rdata);
-		dns_rdata_tostruct(&rdata, nsec3_match, NULL);
+		(void)dns_rdata_tostruct(&rdata, nsec3_match, NULL);
 		if (nsec3_match->hash == nsec3param->hash &&
 		    nsec3_match->next_length == rhsize &&
 		    nsec3_match->iterations == nsec3param->iterations &&

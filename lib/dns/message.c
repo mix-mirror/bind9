@@ -3133,7 +3133,7 @@ dns_message_checksig(dns_message_t *msg, dns_view_t *view) {
 			isc_region_t r;
 
 			dns_rdataset_current(&keyset, &keyrdata);
-			dns_rdata_tostruct(&keyrdata, &ks, NULL);
+			(void)dns_rdata_tostruct(&keyrdata, &ks, NULL);
 
 			if (sig.algorithm != ks.algorithm ||
 			    (ks.protocol != DNS_KEYPROTO_DNSSEC &&

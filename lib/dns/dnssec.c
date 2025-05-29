@@ -1067,7 +1067,7 @@ dns_dnssec_haszonekey(dns_rdataset_t *keyset) {
 		dns_rdata_dnskey_t key;
 
 		dns_rdataset_current(keyset, &rdata);
-		dns_rdata_tostruct(&rdata, &key, NULL); /* can't fail */
+		(void)dns_rdata_tostruct(&rdata, &key, NULL);
 
 		if (dns_dnssec_iszonekey(&key)) {
 			return true;
