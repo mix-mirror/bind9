@@ -134,27 +134,11 @@ isc_md_type_get_block_size(isc_md_type_t type) {
 isc_result_t
 isc_md(isc_md_type_t type, const unsigned char *buf, const size_t len,
        unsigned char *digest, unsigned int *digestlen) {
-	isc_md_t *md;
-	isc_result_t res;
+	auto_isc_md_t *md = isc_md_new();
 
-	md = isc_md_new();
+	RETERR(isc_md_init(md, type));
+	RETERR(isc_md_update(md, buf, len));
+	RETERR(isc_md_final(md, digest, digestlen));
 
-	res = isc_md_init(md, type);
-	if (res != ISC_R_SUCCESS) {
-		goto end;
-	}
-
-	res = isc_md_update(md, buf, len);
-	if (res != ISC_R_SUCCESS) {
-		goto end;
-	}
-
-	res = isc_md_final(md, digest, digestlen);
-	if (res != ISC_R_SUCCESS) {
-		goto end;
-	}
-end:
-	isc_md_free(md);
-
-	return res;
+	return ISC_R_SUCCESS;
 }

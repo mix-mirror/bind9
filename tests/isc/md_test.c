@@ -74,6 +74,12 @@ ISC_RUN_TEST_IMPL(isc_md_new) {
 	isc_md_free(md); /* Cleanup */
 }
 
+ISC_RUN_TEST_IMPL(auto_isc_md_free) {
+	auto_isc_md_t *md = isc_md_new();
+	assert_non_null(md);
+	/* This should not leak memory */
+}
+
 ISC_RUN_TEST_IMPL(isc_md_free) {
 	isc_md_t *md = isc_md_new();
 	assert_non_null(md);
@@ -562,6 +568,7 @@ ISC_TEST_ENTRY_CUSTOM(isc_md_update, _reset, _reset)
 ISC_TEST_ENTRY_CUSTOM(isc_md_final, _reset, _reset)
 
 ISC_TEST_ENTRY(isc_md_free)
+ISC_TEST_ENTRY(auto_isc_md_free)
 
 ISC_TEST_LIST_END
 

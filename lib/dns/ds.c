@@ -34,13 +34,12 @@ isc_result_t
 dns_ds_fromkeyrdata(const dns_name_t *owner, dns_rdata_t *key,
 		    dns_dsdigest_t digest_type, unsigned char *digest,
 		    size_t len, dns_rdata_ds_t *dsrdata) {
-	isc_result_t result;
 	dns_fixedname_t fname;
 	dns_name_t *name;
 	unsigned int digestlen = 0;
 	unsigned int privatelen = 0;
 	isc_region_t r;
-	isc_md_t *md;
+	auto_isc_md_t *md = NULL;
 	isc_md_type_t md_type = ISC_MD_UNKNOWN;
 
 	REQUIRE(key != NULL);
@@ -80,25 +79,16 @@ dns_ds_fromkeyrdata(const dns_name_t *owner, dns_rdata_t *key,
 
 	md = isc_md_new();
 
-	result = isc_md_init(md, md_type);
-	if (result != ISC_R_SUCCESS) {
-		goto end;
-	}
+	RETERR(isc_md_init(md, md_type));
 
 	dns_name_toregion(name, &r);
 
-	result = isc_md_update(md, r.base, r.length);
-	if (result != ISC_R_SUCCESS) {
-		goto end;
-	}
+	RETERR(isc_md_update(md, r.base, r.length));
 
 	dns_rdata_toregion(key, &r);
 	INSIST(r.length >= 4);
 
-	result = isc_md_update(md, r.base, r.length);
-	if (result != ISC_R_SUCCESS) {
-		goto end;
-	}
+	RETERR(isc_md_update(md, r.base, r.length));
 
 #if defined(DNS_DSDIGEST_SHA256PRIVATE) && defined(DNS_DSDIGEST_SHA384PRIVATE)
 	/*
@@ -120,8 +110,7 @@ dns_ds_fromkeyrdata(const dns_name_t *owner, dns_rdata_t *key,
 			dns_name_toregion(name, &r2);
 			privatelen = r2.length;
 			if (r2.length > len) {
-				result = ISC_R_NOSPACE;
-				goto end;
+				return ISC_R_NOSPACE;
 			}
 			memmove(digest, r2.base, privatelen);
 			digest += privatelen;
@@ -134,8 +123,7 @@ dns_ds_fromkeyrdata(const dns_name_t *owner, dns_rdata_t *key,
 			isc_region_consume(&r2, 4);
 			privatelen = r2.base[0] + 1;
 			if (r2.base[0] > len) {
-				result = ISC_R_NOSPACE;
-				goto end;
+				return ISC_R_NOSPACE;
 			}
 			INSIST(r2.length >= privatelen);
 			memmove(digest, r2.base, privatelen);
@@ -154,14 +142,10 @@ dns_ds_fromkeyrdata(const dns_name_t *owner, dns_rdata_t *key,
 
 	size_t mdsize = isc_md_get_size(md);
 	if (mdsize > len) {
-		result = ISC_R_NOSPACE;
-		goto end;
+		return ISC_R_NOSPACE;
 	}
 
-	result = isc_md_final(md, digest, &digestlen);
-	if (result != ISC_R_SUCCESS) {
-		goto end;
-	}
+	RETERR(isc_md_final(md, digest, &digestlen));
 
 	dsrdata->mctx = NULL;
 	dsrdata->common.rdclass = key->rdclass;
@@ -172,9 +156,7 @@ dns_ds_fromkeyrdata(const dns_name_t *owner, dns_rdata_t *key,
 	dsrdata->digest = digest - privatelen;
 	dsrdata->length = digestlen + privatelen;
 
-end:
-	isc_md_free(md);
-	return result;
+	return ISC_R_SUCCESS;
 }
 
 isc_result_t
