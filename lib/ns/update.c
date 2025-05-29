@@ -896,7 +896,6 @@ ssu_checkrule(void *data, dns_rdataset_t *rrset) {
 		dns_rdata_ptr_t ptr;
 		dns_rdata_in_srv_t srv;
 		dns_rdataset_t rdataset;
-		isc_result_t result;
 
 		dns_rdataset_init(&rdataset);
 		dns_rdataset_clone(rrset, &rdataset);
@@ -905,13 +904,11 @@ ssu_checkrule(void *data, dns_rdataset_t *rrset) {
 			dns_rdata_t rdata = DNS_RDATA_INIT;
 			dns_rdataset_current(&rdataset, &rdata);
 			if (rrset->type == dns_rdatatype_ptr) {
-				result = dns_rdata_tostruct(&rdata, &ptr, NULL);
-				RUNTIME_CHECK(result == ISC_R_SUCCESS);
+				(void)dns_rdata_tostruct(&rdata, &ptr, NULL);
 				target = &ptr.ptr;
 			}
 			if (rrset->type == dns_rdatatype_srv) {
-				result = dns_rdata_tostruct(&rdata, &srv, NULL);
-				RUNTIME_CHECK(result == ISC_R_SUCCESS);
+				(void)dns_rdata_tostruct(&rdata, &srv, NULL);
 				target = &srv.target;
 			}
 			rule_ok = dns_ssutable_checkrules(
@@ -952,7 +949,6 @@ ssu_checkall(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 
 static isc_result_t
 ssu_checkrr(void *data, rr_t *rr) {
-	isc_result_t result;
 	ssu_check_t *ssuinfo = data;
 	dns_name_t *target = NULL;
 	dns_rdata_ptr_t ptr;
@@ -960,13 +956,11 @@ ssu_checkrr(void *data, rr_t *rr) {
 	bool answer;
 
 	if (rr->rdata.type == dns_rdatatype_ptr) {
-		result = dns_rdata_tostruct(&rr->rdata, &ptr, NULL);
-		RUNTIME_CHECK(result == ISC_R_SUCCESS);
+		(void)dns_rdata_tostruct(&rr->rdata, &ptr, NULL);
 		target = &ptr.ptr;
 	}
 	if (rr->rdata.type == dns_rdatatype_srv) {
-		result = dns_rdata_tostruct(&rr->rdata, &srv, NULL);
-		RUNTIME_CHECK(result == ISC_R_SUCCESS);
+		(void)dns_rdata_tostruct(&rr->rdata, &srv, NULL);
 		target = &srv.target;
 	}
 
@@ -1276,7 +1270,6 @@ rr_equal_p(dns_rdata_t *update_rr, dns_rdata_t *db_rr) {
 static bool
 replaces_p(dns_rdata_t *update_rr, dns_rdata_t *db_rr) {
 	dns_rdata_rrsig_t updatesig, dbsig;
-	isc_result_t result;
 
 	if (db_rr->type != update_rr->type) {
 		return false;
@@ -1298,10 +1291,8 @@ replaces_p(dns_rdata_t *update_rr, dns_rdata_t *db_rr) {
 		 * Replace existing RRSIG with the same keyid,
 		 * covered and algorithm.
 		 */
-		result = dns_rdata_tostruct(db_rr, &dbsig, NULL);
-		RUNTIME_CHECK(result == ISC_R_SUCCESS);
-		result = dns_rdata_tostruct(update_rr, &updatesig, NULL);
-		RUNTIME_CHECK(result == ISC_R_SUCCESS);
+		(void)dns_rdata_tostruct(db_rr, &dbsig, NULL);
+		(void)dns_rdata_tostruct(update_rr, &updatesig, NULL);
 		if (dbsig.keyid == updatesig.keyid &&
 		    dbsig.covered == updatesig.covered &&
 		    dbsig.algorithm == updatesig.algorithm)
@@ -1708,8 +1699,7 @@ send_update(ns_client_t *client, dns_zone_t *zone) {
 			     update_class == dns_rdataclass_none) &&
 			    rdata.type == dns_rdatatype_ptr)
 			{
-				result = dns_rdata_tostruct(&rdata, &ptr, NULL);
-				RUNTIME_CHECK(result == ISC_R_SUCCESS);
+				(void)dns_rdata_tostruct(&rdata, &ptr, NULL);
 				target = &ptr.ptr;
 			}
 
@@ -1717,8 +1707,7 @@ send_update(ns_client_t *client, dns_zone_t *zone) {
 			     update_class == dns_rdataclass_none) &&
 			    rdata.type == dns_rdatatype_srv)
 			{
-				result = dns_rdata_tostruct(&rdata, &srv, NULL);
-				RUNTIME_CHECK(result == ISC_R_SUCCESS);
+				(void)dns_rdata_tostruct(&rdata, &srv, NULL);
 				target = &srv.target;
 			}
 
@@ -2027,8 +2016,7 @@ check_mx(ns_client_t *client, dns_zone_t *zone, dns_db_t *db,
 			continue;
 		}
 
-		result = dns_rdata_tostruct(&t->rdata, &mx, NULL);
-		RUNTIME_CHECK(result == ISC_R_SUCCESS);
+		(void)dns_rdata_tostruct(&t->rdata, &mx, NULL);
 		/*
 		 * Check if we will error out if we attempt to reload the
 		 * zone.
@@ -2173,7 +2161,7 @@ get_iterations(dns_db_t *db, dns_dbversion_t *ver, dns_rdatatype_t privatetype,
 	DNS_RDATASET_FOREACH(&rdataset) {
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		dns_rdataset_current(&rdataset, &rdata);
-		CHECK(dns_rdata_tostruct(&rdata, &nsec3param, NULL));
+		(void)dns_rdata_tostruct(&rdata, &nsec3param, NULL);
 		if ((nsec3param.flags & DNS_NSEC3FLAG_REMOVE) != 0) {
 			continue;
 		}
@@ -2207,7 +2195,7 @@ try_private:
 		{
 			continue;
 		}
-		CHECK(dns_rdata_tostruct(&rdata, &nsec3param, NULL));
+		(void)dns_rdata_tostruct(&rdata, &nsec3param, NULL);
 		if ((nsec3param.flags & DNS_NSEC3FLAG_REMOVE) != 0) {
 			continue;
 		}

@@ -3543,8 +3543,7 @@ integrity_checks(dns_zone_t *zone, dns_db_t *db) {
 			dns_rdata_t rdata = DNS_RDATA_INIT;
 			dns_rdataset_current(&rdataset, &rdata);
 
-			result = dns_rdata_tostruct(&rdata, &ns, NULL);
-			RUNTIME_CHECK(result == ISC_R_SUCCESS);
+			(void)dns_rdata_tostruct(&rdata, &ns, NULL);
 			if (!zone_check_glue(zone, db, &has_a, &has_aaaa,
 					     &ns.name, name))
 			{
@@ -3658,8 +3657,7 @@ integrity_checks(dns_zone_t *zone, dns_db_t *db) {
 			dns_rdata_t rdata = DNS_RDATA_INIT;
 			dns_rdataset_current(&rdataset, &rdata);
 
-			result = dns_rdata_tostruct(&rdata, &mx, NULL);
-			RUNTIME_CHECK(result == ISC_R_SUCCESS);
+			(void)dns_rdata_tostruct(&rdata, &mx, NULL);
 			if (!zone_check_mx(zone, db, &mx.mx, name)) {
 				ok = false;
 			}
@@ -3679,8 +3677,7 @@ integrity_checks(dns_zone_t *zone, dns_db_t *db) {
 			dns_rdata_t rdata = DNS_RDATA_INIT;
 			dns_rdataset_current(&rdataset, &rdata);
 
-			result = dns_rdata_tostruct(&rdata, &srv, NULL);
-			RUNTIME_CHECK(result == ISC_R_SUCCESS);
+			(void)dns_rdata_tostruct(&rdata, &srv, NULL);
 			if (!zone_check_srv(zone, db, &srv.target, name)) {
 				ok = false;
 			}
@@ -3772,8 +3769,7 @@ integrity_checks(dns_zone_t *zone, dns_db_t *db) {
 			dns_rdata_t rdata = DNS_RDATA_INIT;
 			dns_rdataset_current(&rdataset, &rdata);
 
-			result = dns_rdata_tostruct(&rdata, &ns, NULL);
-			RUNTIME_CHECK(result == ISC_R_SUCCESS);
+			(void)dns_rdata_tostruct(&rdata, &ns, NULL);
 			if (zone_is_served_by(zone, db, dns_rdatatype_a,
 					      &ns.name))
 			{
@@ -3804,8 +3800,7 @@ integrity_checks(dns_zone_t *zone, dns_db_t *db) {
 			dns_rdata_t rdata = DNS_RDATA_INIT;
 			dns_rdataset_current(&rdataset, &rdata);
 
-			result = dns_rdata_tostruct(&rdata, &ns, NULL);
-			RUNTIME_CHECK(result == ISC_R_SUCCESS);
+			(void)dns_rdata_tostruct(&rdata, &ns, NULL);
 			if (zone_is_served_by(zone, db, dns_rdatatype_aaaa,
 					      &ns.name))
 			{
@@ -3856,8 +3851,7 @@ zone_check_dnskeys(dns_zone_t *zone, dns_db_t *db) {
 		char algbuf[DNS_SECALG_FORMATSIZE];
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		dns_rdataset_current(&rdataset, &rdata);
-		result = dns_rdata_tostruct(&rdata, &dnskey, NULL);
-		INSIST(result == ISC_R_SUCCESS);
+		(void)dns_rdata_tostruct(&rdata, &dnskey, NULL);
 
 		/*
 		 * RFC 3110, section 4: Performance Considerations:
@@ -4257,8 +4251,7 @@ resume_addnsec3chain(dns_zone_t *zone) {
 		{
 			continue;
 		}
-		result = dns_rdata_tostruct(&rdata, &nsec3param, NULL);
-		RUNTIME_CHECK(result == ISC_R_SUCCESS);
+		(void)dns_rdata_tostruct(&rdata, &nsec3param, NULL);
 		if (((nsec3param.flags & DNS_NSEC3FLAG_REMOVE) != 0) ||
 		    ((nsec3param.flags & DNS_NSEC3FLAG_CREATE) != 0 && nsec3ok))
 		{
@@ -4379,8 +4372,7 @@ check_nsec3param(dns_zone_t *zone, dns_db_t *db) {
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 
 		dns_rdataset_current(&rdataset, &rdata);
-		result = dns_rdata_tostruct(&rdata, &nsec3param, NULL);
-		RUNTIME_CHECK(result == ISC_R_SUCCESS);
+		(void)dns_rdata_tostruct(&rdata, &nsec3param, NULL);
 
 		/*
 		 * For dynamic zones we must support every algorithm so we
@@ -5915,8 +5907,7 @@ zone_count_ns_rr(dns_zone_t *zone, dns_db_t *db, dns_dbnode_t *node,
 			dns_rdata_t rdata = DNS_RDATA_INIT;
 			dns_rdataset_current(&rdataset, &rdata);
 
-			result = dns_rdata_tostruct(&rdata, &ns, NULL);
-			RUNTIME_CHECK(result == ISC_R_SUCCESS);
+			(void)dns_rdata_tostruct(&rdata, &ns, NULL);
 			if (dns_name_issubdomain(&ns.name, &zone->origin) &&
 			    !zone_check_ns(zone, db, version, &ns.name, logit))
 			{
@@ -5984,10 +5975,9 @@ zone_load_soa_rr(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 		count++;
 		if (count == 1) {
 			dns_rdata_soa_t soa;
-			result = dns_rdata_tostruct(&rdata, &soa, NULL);
+			(void)dns_rdata_tostruct(&rdata, &soa, NULL);
 			SET_SOA_VALUES(rdataset.ttl, soa.serial, soa.refresh,
 				       soa.retry, soa.expire, soa.minimum);
-			RUNTIME_CHECK(result == ISC_R_SUCCESS);
 		}
 	}
 	dns_rdataset_disassociate(&rdataset);
@@ -7114,8 +7104,7 @@ del_sigs(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 		dst_algorithm_t algorithm;
 
 		dns_rdataset_current(&rdataset, &rdata);
-		result = dns_rdata_tostruct(&rdata, &rrsig, NULL);
-		RUNTIME_CHECK(result == ISC_R_SUCCESS);
+		(void)dns_rdata_tostruct(&rdata, &rrsig, NULL);
 		algorithm = dst_algorithm_fromdata(
 			rrsig.algorithm, rrsig.signature, rrsig.siglen);
 
@@ -7789,8 +7778,7 @@ signed_with_good_key(dns_zone_t *zone, dns_db_t *db, dns_dbnode_t *node,
 	DNS_RDATASET_FOREACH(&rdataset) {
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		dns_rdataset_current(&rdataset, &rdata);
-		result = dns_rdata_tostruct(&rdata, &rrsig, NULL);
-		INSIST(result == ISC_R_SUCCESS);
+		(void)dns_rdata_tostruct(&rdata, &rrsig, NULL);
 		dst_algorithm_t algorithm;
 		algorithm = dst_algorithm_fromdata(
 			rrsig.algorithm, rrsig.signature, rrsig.siglen);
@@ -8280,7 +8268,7 @@ fixup_nsec3param(dns_db_t *db, dns_dbversion_t *ver, dns_nsec3chain_t *chain,
 	if (result == ISC_R_SUCCESS) {
 		CHECK(dns_rdataset_first(&rdataset));
 		dns_rdataset_current(&rdataset, &rdata);
-		CHECK(dns_rdata_tostruct(&rdata, &soa, NULL));
+		(void)dns_rdata_tostruct(&rdata, &soa, NULL);
 		ttl = soa.minimum;
 		dns_rdata_reset(&rdata);
 	}
@@ -8302,7 +8290,7 @@ fixup_nsec3param(dns_db_t *db, dns_dbversion_t *ver, dns_nsec3chain_t *chain,
 	 */
 	DNS_RDATASET_FOREACH(&rdataset) {
 		dns_rdataset_current(&rdataset, &rdata);
-		CHECK(dns_rdata_tostruct(&rdata, &nsec3param, NULL));
+		(void)dns_rdata_tostruct(&rdata, &nsec3param, NULL);
 
 		if (nsec3param.hash != chain->nsec3param.hash ||
 		    (active && nsec3param.flags != 0) ||
@@ -8336,7 +8324,7 @@ fixup_nsec3param(dns_db_t *db, dns_dbversion_t *ver, dns_nsec3chain_t *chain,
 	if (rdataset.ttl != ttl) {
 		DNS_RDATASET_FOREACH(&rdataset) {
 			dns_rdataset_current(&rdataset, &rdata);
-			CHECK(dns_rdata_tostruct(&rdata, &nsec3param, NULL));
+			(void)dns_rdata_tostruct(&rdata, &nsec3param, NULL);
 
 			if (nsec3param.hash != chain->nsec3param.hash ||
 			    (active && nsec3param.flags != 0) ||
@@ -8386,7 +8374,7 @@ try_private:
 		{
 			continue;
 		}
-		CHECK(dns_rdata_tostruct(&rdata, &nsec3param, NULL));
+		(void)dns_rdata_tostruct(&rdata, &nsec3param, NULL);
 		dns_rdata_reset(&rdata);
 
 		if ((!nsec3ok &&
@@ -8484,7 +8472,7 @@ deletematchingnsec3(dns_db_t *db, dns_dbversion_t *ver, dns_dbnode_t *node,
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 
 		dns_rdataset_current(&rdataset, &rdata);
-		CHECK(dns_rdata_tostruct(&rdata, &nsec3, NULL));
+		(void)dns_rdata_tostruct(&rdata, &nsec3, NULL);
 		if (nsec3.hash != param->hash ||
 		    nsec3.iterations != param->iterations ||
 		    nsec3.salt_length != param->salt_length ||
@@ -8544,7 +8532,7 @@ need_nsec_chain(dns_db_t *db, dns_dbversion_t *ver,
 	DNS_RDATASET_FOREACH(&rdataset) {
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		dns_rdataset_current(&rdataset, &rdata);
-		CHECK(dns_rdata_tostruct(&rdata, &myparam, NULL));
+		(void)dns_rdata_tostruct(&rdata, &myparam, NULL);
 
 		/*
 		 * Ignore any NSEC3PARAM removals.
@@ -8572,10 +8560,8 @@ need_nsec_chain(dns_db_t *db, dns_dbversion_t *ver,
 
 	*answer = !active;
 
-cleanup:
-	if (dns_rdataset_isassociated(&rdataset)) {
-		dns_rdataset_disassociate(&rdataset);
-	}
+	dns_rdataset_disassociate(&rdataset);
+
 	dns_db_detachnode(&node);
 	return result;
 }
@@ -9569,7 +9555,7 @@ del_sig(dns_db_t *db, dns_dbversion_t *version, dns_name_t *name,
 			dst_algorithm_t sigalg;
 
 			dns_rdataset_current(&rdataset, &rdata);
-			CHECK(dns_rdata_tostruct(&rdata, &rrsig, NULL));
+			(void)dns_rdata_tostruct(&rdata, &rrsig, NULL);
 
 			sigalg = dst_algorithm_fromdata(
 				rrsig.algorithm, rrsig.signature, rrsig.siglen);
@@ -10275,8 +10261,7 @@ normalize_key(dns_rdata_t *rr, dns_rdata_t *target, unsigned char *data,
 
 	switch (rr->type) {
 	case dns_rdatatype_dnskey:
-		result = dns_rdata_tostruct(rr, &dnskey, NULL);
-		RUNTIME_CHECK(result == ISC_R_SUCCESS);
+		(void)dns_rdata_tostruct(rr, &dnskey, NULL);
 		dnskey.flags &= ~DNS_KEYFLAG_REVOKE;
 		dns_rdata_fromstruct(target, rr->rdclass, dns_rdatatype_dnskey,
 				     &dnskey, &buf);
@@ -10373,8 +10358,7 @@ refresh_time(dns_zonefetch_t *fetch, bool retry) {
 	}
 
 	dns_rdataset_current(sigset, &sigrr);
-	result = dns_rdata_tostruct(&sigrr, &sig, NULL);
-	RUNTIME_CHECK(result == ISC_R_SUCCESS);
+	(void)dns_rdata_tostruct(&sigrr, &sig, NULL);
 
 	if (!retry) {
 		t = sig.originalttl / 2;
@@ -10512,8 +10496,7 @@ revocable(dns_zonefetch_t *fetch, dns_rdata_keydata_t *keydata) {
 		dns_fixedname_init(&fixed);
 
 		dns_rdataset_current(&fetch->sigset, &sigrr);
-		result = dns_rdata_tostruct(&sigrr, &sig, NULL);
-		RUNTIME_CHECK(result == ISC_R_SUCCESS);
+		(void)dns_rdata_tostruct(&sigrr, &sig, NULL);
 
 		algorithm = dst_algorithm_fromdata(sig.algorithm, sig.signature,
 						   sig.siglen);
@@ -10914,8 +10897,7 @@ anchors_done:
 		dns_keytag_t keytag;
 
 		dns_rdataset_current(dnskeys, &dnskeyrr);
-		result = dns_rdata_tostruct(&dnskeyrr, &dnskey, NULL);
-		RUNTIME_CHECK(result == ISC_R_SUCCESS);
+		(void)dns_rdata_tostruct(&dnskeyrr, &dnskey, NULL);
 
 		/* Skip ZSK's */
 		if ((dnskey.flags & DNS_KEYFLAG_KSK) == 0) {
@@ -11114,8 +11096,7 @@ anchors_done:
 					    &keydatarr));
 		} else if (newkey) {
 			/* Convert DNSKEY to KEYDATA */
-			result = dns_rdata_tostruct(&dnskeyrr, &dnskey, NULL);
-			RUNTIME_CHECK(result == ISC_R_SUCCESS);
+			(void)dns_rdata_tostruct(&dnskeyrr, &dnskey, NULL);
 			dns_keydata_fromdnskey(&keydata, &dnskey, 0, 0, 0,
 					       NULL);
 			keydata.addhd = initializing
@@ -11136,8 +11117,7 @@ anchors_done:
 
 		if (trustkey) {
 			/* Trust this key. */
-			result = dns_rdata_tostruct(&dnskeyrr, &dnskey, NULL);
-			RUNTIME_CHECK(result == ISC_R_SUCCESS);
+			(void)dns_rdata_tostruct(&dnskeyrr, &dnskey, NULL);
 			trust_key(zone, keyname, &dnskey, false);
 		}
 
@@ -12571,8 +12551,7 @@ zone_notify(dns_zone_t *zone, isc_time_t *now) {
 		goto cleanup3;
 	}
 	dns_rdataset_current(&soardset, &soardata);
-	result = dns_rdata_tostruct(&soardata, &soa, NULL);
-	RUNTIME_CHECK(result == ISC_R_SUCCESS);
+	(void)dns_rdata_tostruct(&soardata, &soa, NULL);
 	dns_name_dup(&soa.origin, zone->mctx, &primary);
 	serial = soa.serial;
 	dns_rdataset_disassociate(&soardset);
@@ -12696,8 +12675,7 @@ zone_notify(dns_zone_t *zone, isc_time_t *now) {
 
 		dns_notify_t *notify = NULL;
 
-		result = dns_rdata_tostruct(&rdata, &ns, NULL);
-		RUNTIME_CHECK(result == ISC_R_SUCCESS);
+		(void)dns_rdata_tostruct(&rdata, &ns, NULL);
 
 		/*
 		 * Don't notify the primary server unless explicitly
@@ -13163,8 +13141,7 @@ save_nsrrset(dns_message_t *message, dns_name_t *name,
 	DNS_RDATASET_FOREACH(nsrdataset) {
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		dns_rdataset_current(nsrdataset, &rdata);
-		result = dns_rdata_tostruct(&rdata, &ns, NULL);
-		RUNTIME_CHECK(result == ISC_R_SUCCESS);
+		(void)dns_rdata_tostruct(&rdata, &ns, NULL);
 
 		if (!dns_name_issubdomain(&ns.name, name)) {
 			continue;
@@ -13886,8 +13863,7 @@ refresh_callback(void *arg) {
 	}
 
 	dns_rdataset_current(rdataset, &rdata);
-	result = dns_rdata_tostruct(&rdata, &soa, NULL);
-	RUNTIME_CHECK(result == ISC_R_SUCCESS);
+	(void)dns_rdata_tostruct(&rdata, &soa, NULL);
 
 	serial = soa.serial;
 	if (DNS_ZONE_FLAG(zone, DNS_ZONEFLG_LOADED)) {
@@ -15084,8 +15060,7 @@ dns_zone_notifyreceive(dns_zone_t *zone, isc_sockaddr_t *from,
 			unsigned int soacount;
 
 			dns_rdataset_current(rdataset, &rdata);
-			result = dns_rdata_tostruct(&rdata, &soa, NULL);
-			RUNTIME_CHECK(result == ISC_R_SUCCESS);
+			(void)dns_rdata_tostruct(&rdata, &soa, NULL);
 			serial = soa.serial;
 			have_serial = true;
 			/*
@@ -15828,13 +15803,7 @@ cdnskey_inuse(dns_zone_t *zone, dns_rdata_t *rdata,
 	isc_result_t result;
 	dns_rdata_cdnskey_t cdnskey;
 
-	result = dns_rdata_tostruct(rdata, &cdnskey, NULL);
-	if (result != ISC_R_SUCCESS) {
-		dns_zone_log(zone, ISC_LOG_ERROR,
-			     "dns_rdata_tostruct(cdnskey) failed: %s",
-			     isc_result_totext(result));
-		return result;
-	}
+	(void)dns_rdata_tostruct(rdata, &cdnskey, NULL);
 
 	ISC_LIST_FOREACH(*keylist, k, link) {
 		dns_rdata_t cdnskeyrdata = DNS_RDATA_INIT;
@@ -15865,13 +15834,7 @@ cds_inuse(dns_zone_t *zone, dns_rdata_t *rdata, dns_dnsseckeylist_t *keylist,
 	isc_result_t result;
 	dns_rdata_ds_t cds;
 
-	result = dns_rdata_tostruct(rdata, &cds, NULL);
-	if (result != ISC_R_SUCCESS) {
-		dns_zone_log(zone, ISC_LOG_ERROR,
-			     "dns_rdata_tostruct(cds) failed: %s",
-			     isc_result_totext(result));
-		return result;
-	}
+	(void)dns_rdata_tostruct(rdata, &cds, NULL);
 
 	ISC_LIST_FOREACH(*keylist, k, link) {
 		dns_rdata_t dnskey = DNS_RDATA_INIT;
@@ -16299,12 +16262,8 @@ sync_secure_db(dns_zone_t *seczone, dns_zone_t *raw, dns_db_t *secdb,
 	}
 
 	if (oldtuple != NULL && newtuple != NULL) {
-		result = dns_rdata_tostruct(&oldtuple->rdata, &oldsoa, NULL);
-		RUNTIME_CHECK(result == ISC_R_SUCCESS);
-
-		result = dns_rdata_tostruct(&newtuple->rdata, &newsoa, NULL);
-		RUNTIME_CHECK(result == ISC_R_SUCCESS);
-
+		(void)dns_rdata_tostruct(&oldtuple->rdata, &oldsoa, NULL);
+		(void)dns_rdata_tostruct(&newtuple->rdata, &newsoa, NULL);
 		/*
 		 * If the SOA records are the same except for the serial
 		 * remove them from the diff.
@@ -16641,8 +16600,7 @@ checkandaddsoa(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	result = dns_rdataset_first(rdataset);
 	RUNTIME_CHECK(result == ISC_R_SUCCESS);
 	dns_rdataset_current(rdataset, &rdata);
-	result = dns_rdata_tostruct(&rdata, &soa, NULL);
-	RUNTIME_CHECK(result == ISC_R_SUCCESS);
+	(void)dns_rdata_tostruct(&rdata, &soa, NULL);
 
 	if (isc_serial_gt(soa.serial, oldserial)) {
 		return dns_db_addrdataset(db, node, version, 0, rdataset, 0,
@@ -19757,8 +19715,7 @@ add_signing_records(dns_db_t *db, dns_rdatatype_t privatetype,
 			continue;
 		}
 
-		result = dns_rdata_tostruct(&tuple->rdata, &dnskey, NULL);
-		RUNTIME_CHECK(result == ISC_R_SUCCESS);
+		(void)dns_rdata_tostruct(&tuple->rdata, &dnskey, NULL);
 		if ((dnskey.flags & DNS_KEYFLAG_OWNERMASK) != DNS_KEYOWNER_ZONE)
 		{
 			ISC_LIST_UNLINK(diff->tuples, tuple, link);
@@ -20359,10 +20316,7 @@ checkds_done(void *arg) {
 			unsigned char keybuf[DST_KEY_MAXSIZE];
 
 			dns_rdataset_current(ds_rrset, &rdata);
-			r = dns_rdata_tostruct(&rdata, &ds, NULL);
-			if (r != ISC_R_SUCCESS) {
-				continue;
-			}
+			(void)dns_rdata_tostruct(&rdata, &ds, NULL);
 			/* Check key tag and algorithm. */
 			if (dst_key_id(key->key) != ds.key_tag) {
 				continue;
@@ -21031,8 +20985,7 @@ nsfetch_done(dns_zonefetch_t *fetch, isc_result_t eresult) {
 		bool isqueued;
 
 		dns_rdataset_current(nsrrset, &rdata);
-		result = dns_rdata_tostruct(&rdata, &ns, NULL);
-		RUNTIME_CHECK(result == ISC_R_SUCCESS);
+		(void)dns_rdata_tostruct(&rdata, &ns, NULL);
 
 		dns_rdata_reset(&rdata);
 
@@ -21925,8 +21878,7 @@ zone_rekey(dns_zone_t *zone) {
 				continue;
 			}
 
-			result = dns_rdata_tostruct(&rdata, &nsec3param, NULL);
-			RUNTIME_CHECK(result == ISC_R_SUCCESS);
+			(void)dns_rdata_tostruct(&rdata, &nsec3param, NULL);
 			if (nsec3param.flags == 0) {
 				continue;
 			}
@@ -22250,7 +22202,7 @@ dns_zone_cdscheck(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *version) {
 				CLEANUP(DNS_R_BADCDS);
 			}
 
-			CHECK(dns_rdata_tostruct(&crdata, &structcds, NULL));
+			(void)dns_rdata_tostruct(&crdata, &structcds, NULL);
 
 			/*
 			 * Log deprecated CDS digest types.
@@ -22361,8 +22313,7 @@ dns_zone_cdscheck(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *version) {
 				CLEANUP(DNS_R_BADCDNSKEY);
 			}
 
-			CHECK(dns_rdata_tostruct(&crdata, &structcdnskey,
-						 NULL));
+			(void)dns_rdata_tostruct(&crdata, &structcdnskey, NULL);
 			cdnskeyalg = dst_algorithm_fromdata(
 				structcdnskey.algorithm, structcdnskey.data,
 				structcdnskey.datalen);
@@ -22375,8 +22326,8 @@ dns_zone_cdscheck(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *version) {
 				dst_algorithm_t dnskeyalg;
 
 				dns_rdataset_current(&dnskey, &rdata);
-				CHECK(dns_rdata_tostruct(&rdata, &structdnskey,
-							 NULL));
+				(void)dns_rdata_tostruct(&rdata, &structdnskey,
+							 NULL);
 				dnskeyalg = dst_algorithm_fromdata(
 					structdnskey.algorithm,
 					structdnskey.data,

@@ -5340,13 +5340,11 @@ is_minimal_nsec(dns_rdataset_t *nsecset) {
 	dns_rdataset_clone(nsecset, &rdataset);
 
 	DNS_RDATASET_FOREACH(&rdataset) {
-		isc_result_t result;
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		dns_rdata_nsec_t nsec;
 
 		dns_rdataset_current(&rdataset, &rdata);
-		result = dns_rdata_tostruct(&rdata, &nsec, NULL);
-		RUNTIME_CHECK(result == ISC_R_SUCCESS);
+		(void)dns_rdata_tostruct(&rdata, &nsec, NULL);
 
 		if (nsec.len == sizeof(minimal_typemap) &&
 		    memcmp(nsec.typebits, minimal_typemap, nsec.len) == 0)
@@ -5897,8 +5895,7 @@ findnoqname(fetchctx_t *fctx, dns_message_t *message, dns_name_t *name,
 	DNS_RDATASET_FOREACH(sigrdataset) {
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		dns_rdataset_current(sigrdataset, &rdata);
-		result = dns_rdata_tostruct(&rdata, &rrsig, NULL);
-		RUNTIME_CHECK(result == ISC_R_SUCCESS);
+		(void)dns_rdata_tostruct(&rdata, &rrsig, NULL);
 		/* Wildcard has rrsig.labels < labels - 1. */
 		if (rrsig.labels + 1U >= labels) {
 			continue;
@@ -6767,8 +6764,7 @@ is_answertarget_allowed(fetchctx_t *fctx, dns_name_t *qname, dns_name_t *rname,
 	dns_rdataset_current(rdataset, &rdata);
 	switch (rdataset->type) {
 	case dns_rdatatype_cname:
-		result = dns_rdata_tostruct(&rdata, &cname, NULL);
-		RUNTIME_CHECK(result == ISC_R_SUCCESS);
+		(void)dns_rdata_tostruct(&rdata, &cname, NULL);
 		tname = &cname.cname;
 		break;
 	case dns_rdatatype_dname:
@@ -6777,8 +6773,7 @@ is_answertarget_allowed(fetchctx_t *fctx, dns_name_t *qname, dns_name_t *rname,
 		{
 			return true;
 		}
-		result = dns_rdata_tostruct(&rdata, &dname, NULL);
-		RUNTIME_CHECK(result == ISC_R_SUCCESS);
+		(void)dns_rdata_tostruct(&rdata, &dname, NULL);
 		dns_name_init(&prefix);
 		tname = dns_fixedname_initname(&fixed);
 		nlabels = dns_name_countlabels(rname);

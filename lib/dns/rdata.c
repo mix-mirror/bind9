@@ -2474,15 +2474,13 @@ svcb_hashttp(isc_textregion_t *alpn) {
 isc_result_t
 dns_rdata_checksvcb(const dns_name_t *owner, const dns_rdata_t *rdata) {
 	dns_rdata_in_svcb_t svcb;
-	isc_result_t result;
 
 	REQUIRE(owner != NULL);
 	REQUIRE(rdata != NULL);
 	REQUIRE(rdata->type == dns_rdatatype_svcb);
 	REQUIRE(DNS_RDATA_VALIDFLAGS(rdata));
 
-	result = dns_rdata_tostruct(rdata, &svcb, NULL);
-	RUNTIME_CHECK(result == ISC_R_SUCCESS);
+	(void)dns_rdata_tostruct(rdata, &svcb, NULL);
 
 	/*
 	 * Check that Alias Mode records don't have SvcParamKeys.

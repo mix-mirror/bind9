@@ -192,7 +192,6 @@ cleanup:
 bool
 dns_nsec_typepresent(dns_rdata_t *nsec, dns_rdatatype_t type) {
 	dns_rdata_nsec_t nsecstruct;
-	isc_result_t result;
 	bool present;
 	unsigned int i, len, window;
 
@@ -200,8 +199,7 @@ dns_nsec_typepresent(dns_rdata_t *nsec, dns_rdatatype_t type) {
 	REQUIRE(nsec->type == dns_rdatatype_nsec);
 
 	/* This should never fail */
-	result = dns_rdata_tostruct(nsec, &nsecstruct, NULL);
-	INSIST(result == ISC_R_SUCCESS);
+	(void)dns_rdata_tostruct(nsec, &nsecstruct, NULL);
 
 	present = false;
 	for (i = 0; i < nsecstruct.len; i += len) {
@@ -256,8 +254,7 @@ dns_nsec_nseconly(dns_db_t *db, dns_dbversion_t *version, dns_diff_t *diff,
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 
 		dns_rdataset_current(&rdataset, &rdata);
-		result = dns_rdata_tostruct(&rdata, &dnskey, NULL);
-		RUNTIME_CHECK(result == ISC_R_SUCCESS);
+		(void)dns_rdata_tostruct(&rdata, &dnskey, NULL);
 
 		if (dnskey.algorithm == DST_ALG_RSAMD5 ||
 		    dnskey.algorithm == DST_ALG_DSA ||
@@ -412,7 +409,7 @@ dns_nsec_noexistnodata(dns_rdatatype_t type, const dns_name_t *name,
 		return DNS_R_DNAME;
 	}
 
-	RETERR(dns_rdata_tostruct(&rdata, &nsec, NULL));
+	(void)dns_rdata_tostruct(&rdata, &nsec, NULL);
 	relation = dns_name_fullcompare(&nsec.next, name, &order, &nlabels);
 	if (order == 0) {
 		dns_rdata_freestruct(&nsec);

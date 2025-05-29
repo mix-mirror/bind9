@@ -1205,7 +1205,7 @@ catz_process_coo(dns_catz_zone_t *catz, dns_label_t *mhash,
 	dns_rdata_init(&rdata);
 	dns_rdataset_current(value, &rdata);
 
-	RETERR(dns_rdata_tostruct(&rdata, &ptr, NULL));
+	(void)dns_rdata_tostruct(&rdata, &ptr, NULL);
 
 	if (dns_name_countlabels(&ptr.ptr) == 0) {
 		CLEANUP(ISC_R_FAILURE);
@@ -1252,7 +1252,7 @@ catz_process_zones_entry(dns_catz_zone_t *catz, dns_rdataset_t *value,
 	dns_rdata_init(&rdata);
 	dns_rdataset_current(value, &rdata);
 
-	RETERR(dns_rdata_tostruct(&rdata, &ptr, NULL));
+	(void)dns_rdata_tostruct(&rdata, &ptr, NULL);
 
 	result = isc_ht_find(catz->entries, mhash->base, mhash->length,
 			     (void **)&entry);
@@ -1307,7 +1307,7 @@ catz_process_version(dns_catz_zone_t *catz, dns_rdataset_t *value) {
 	dns_rdata_init(&rdata);
 	dns_rdataset_current(value, &rdata);
 
-	RETERR(dns_rdata_tostruct(&rdata, &rdatatxt, NULL));
+	(void)dns_rdata_tostruct(&rdata, &rdatatxt, NULL);
 
 	CHECK(dns_rdata_txt_first(&rdatatxt));
 
@@ -1384,21 +1384,18 @@ catz_process_primaries(dns_catz_zone_t *catz, dns_ipkeylist_t *ipkl,
 		dns_rdataset_current(value, &rdata);
 		switch (value->type) {
 		case dns_rdatatype_a:
-			result = dns_rdata_tostruct(&rdata, &rdata_a, NULL);
-			RUNTIME_CHECK(result == ISC_R_SUCCESS);
+			(void)dns_rdata_tostruct(&rdata, &rdata_a, NULL);
 			isc_sockaddr_fromin(&sockaddr, &rdata_a.in_addr, 0);
 			dns_rdata_freestruct(&rdata_a);
 			break;
 		case dns_rdatatype_aaaa:
-			result = dns_rdata_tostruct(&rdata, &rdata_aaaa, NULL);
-			RUNTIME_CHECK(result == ISC_R_SUCCESS);
+			(void)dns_rdata_tostruct(&rdata, &rdata_aaaa, NULL);
 			isc_sockaddr_fromin6(&sockaddr, &rdata_aaaa.in6_addr,
 					     0);
 			dns_rdata_freestruct(&rdata_aaaa);
 			break;
 		case dns_rdatatype_txt:
-			result = dns_rdata_tostruct(&rdata, &rdata_txt, NULL);
-			RUNTIME_CHECK(result == ISC_R_SUCCESS);
+			(void)dns_rdata_tostruct(&rdata, &rdata_txt, NULL);
 
 			result = dns_rdata_txt_first(&rdata_txt);
 			if (result != ISC_R_SUCCESS) {
@@ -1491,14 +1488,12 @@ catz_process_primaries(dns_catz_zone_t *catz, dns_ipkeylist_t *ipkl,
 		 * port 0 == take the default
 		 */
 		if (value->type == dns_rdatatype_a) {
-			result = dns_rdata_tostruct(&rdata, &rdata_a, NULL);
-			RUNTIME_CHECK(result == ISC_R_SUCCESS);
+			(void)dns_rdata_tostruct(&rdata, &rdata_a, NULL);
 			isc_sockaddr_fromin(&ipkl->addrs[ipkl->count],
 					    &rdata_a.in_addr, 0);
 			dns_rdata_freestruct(&rdata_a);
 		} else {
-			result = dns_rdata_tostruct(&rdata, &rdata_aaaa, NULL);
-			RUNTIME_CHECK(result == ISC_R_SUCCESS);
+			(void)dns_rdata_tostruct(&rdata, &rdata_aaaa, NULL);
 			isc_sockaddr_fromin6(&ipkl->addrs[ipkl->count],
 					     &rdata_aaaa.in6_addr, 0);
 			dns_rdata_freestruct(&rdata_aaaa);
@@ -1784,14 +1779,13 @@ dns__catz_update_process(dns_catz_zone_t *catz, const dns_name_t *src_name,
 			RETERR(dns_rdataset_first(rdataset));
 
 			dns_rdataset_current(rdataset, &rdata);
-			result = dns_rdata_tostruct(&rdata, &soa, NULL);
-			RUNTIME_CHECK(result == ISC_R_SUCCESS);
+			(void)dns_rdata_tostruct(&rdata, &soa, NULL);
 
 			/*
 			 * xxxwpk TODO do we want to save something from SOA?
 			 */
 			dns_rdata_freestruct(&soa);
-			return result;
+			return ISC_R_SUCCESS;
 		} else if (rdataset->type == dns_rdatatype_ns) {
 			return ISC_R_SUCCESS;
 		} else {

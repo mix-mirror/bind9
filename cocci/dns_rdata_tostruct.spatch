@@ -1,0 +1,3035 @@
+@@
+dns_rdata_t rdata;
+dns_rdata_in_a_t in_a;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &in_a, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(&rdata, &in_a, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_in_a_t in_a;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &in_a, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(&rdata, &in_a, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_in_a_t in_a;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &in_a, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &in_a, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_in_a_t in_a;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &in_a, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &in_a, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t in_a;
+@@
+
+-       CHECK(dns_rdata_tostruct(&rdata, &in_a, NULL));
++       (void)dns_rdata_tostruct(&rdata, &in_a, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t in_a;
+@@
+
+-       RETERR(dns_rdata_tostruct(&rdata, &in_a, NULL));
++       (void)dns_rdata_tostruct(&rdata, &in_a, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t in_a;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(&rdata, &in_a, NULL));
++       (void)dns_rdata_tostruct(&rdata, &in_a, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_in_a_t in_a;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &in_a, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(rdata, &in_a, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_in_a_t in_a;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &in_a, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(rdata, &in_a, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_in_a_t in_a;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &in_a, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &in_a, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_in_a_t in_a;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &in_a, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &in_a, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t in_a;
+@@
+
+-       CHECK(dns_rdata_tostruct(rdata, &in_a, NULL));
++       (void)dns_rdata_tostruct(rdata, &in_a, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t in_a;
+@@
+
+-       RETERR(dns_rdata_tostruct(rdata, &in_a, NULL));
++       (void)dns_rdata_tostruct(rdata, &in_a, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t in_a;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(rdata, &in_a, NULL));
++       (void)dns_rdata_tostruct(rdata, &in_a, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_in_aaaa_t in_aaaa;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &in_aaaa, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(&rdata, &in_aaaa, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_in_aaaa_t in_aaaa;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &in_aaaa, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(&rdata, &in_aaaa, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_in_aaaa_t in_aaaa;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &in_aaaa, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &in_aaaa, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_in_aaaa_t in_aaaa;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &in_aaaa, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &in_aaaa, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t in_aaaa;
+@@
+
+-       CHECK(dns_rdata_tostruct(&rdata, &in_aaaa, NULL));
++       (void)dns_rdata_tostruct(&rdata, &in_aaaa, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t in_aaaa;
+@@
+
+-       RETERR(dns_rdata_tostruct(&rdata, &in_aaaa, NULL));
++       (void)dns_rdata_tostruct(&rdata, &in_aaaa, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t in_aaaa;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(&rdata, &in_aaaa, NULL));
++       (void)dns_rdata_tostruct(&rdata, &in_aaaa, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_in_aaaa_t in_aaaa;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &in_aaaa, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(rdata, &in_aaaa, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_in_aaaa_t in_aaaa;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &in_aaaa, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(rdata, &in_aaaa, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_in_aaaa_t in_aaaa;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &in_aaaa, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &in_aaaa, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_in_aaaa_t in_aaaa;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &in_aaaa, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &in_aaaa, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t in_aaaa;
+@@
+
+-       CHECK(dns_rdata_tostruct(rdata, &in_aaaa, NULL));
++       (void)dns_rdata_tostruct(rdata, &in_aaaa, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t in_aaaa;
+@@
+
+-       RETERR(dns_rdata_tostruct(rdata, &in_aaaa, NULL));
++       (void)dns_rdata_tostruct(rdata, &in_aaaa, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t in_aaaa;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(rdata, &in_aaaa, NULL));
++       (void)dns_rdata_tostruct(rdata, &in_aaaa, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_cdnskey_t cdnskey;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &cdnskey, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(&rdata, &cdnskey, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_cdnskey_t cdnskey;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &cdnskey, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(&rdata, &cdnskey, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_cdnskey_t cdnskey;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &cdnskey, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &cdnskey, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_cdnskey_t cdnskey;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &cdnskey, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &cdnskey, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t cdnskey;
+@@
+
+-       CHECK(dns_rdata_tostruct(&rdata, &cdnskey, NULL));
++       (void)dns_rdata_tostruct(&rdata, &cdnskey, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t cdnskey;
+@@
+
+-       RETERR(dns_rdata_tostruct(&rdata, &cdnskey, NULL));
++       (void)dns_rdata_tostruct(&rdata, &cdnskey, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t cdnskey;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(&rdata, &cdnskey, NULL));
++       (void)dns_rdata_tostruct(&rdata, &cdnskey, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_cdnskey_t cdnskey;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &cdnskey, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(rdata, &cdnskey, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_cdnskey_t cdnskey;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &cdnskey, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(rdata, &cdnskey, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_cdnskey_t cdnskey;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &cdnskey, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &cdnskey, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_cdnskey_t cdnskey;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &cdnskey, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &cdnskey, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t cdnskey;
+@@
+
+-       CHECK(dns_rdata_tostruct(rdata, &cdnskey, NULL));
++       (void)dns_rdata_tostruct(rdata, &cdnskey, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t cdnskey;
+@@
+
+-       RETERR(dns_rdata_tostruct(rdata, &cdnskey, NULL));
++       (void)dns_rdata_tostruct(rdata, &cdnskey, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t cdnskey;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(rdata, &cdnskey, NULL));
++       (void)dns_rdata_tostruct(rdata, &cdnskey, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_cds_t cds;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &cds, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(&rdata, &cds, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_cds_t cds;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &cds, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(&rdata, &cds, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_cds_t cds;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &cds, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &cds, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_cds_t cds;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &cds, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &cds, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t cds;
+@@
+
+-       CHECK(dns_rdata_tostruct(&rdata, &cds, NULL));
++       (void)dns_rdata_tostruct(&rdata, &cds, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t cds;
+@@
+
+-       RETERR(dns_rdata_tostruct(&rdata, &cds, NULL));
++       (void)dns_rdata_tostruct(&rdata, &cds, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t cds;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(&rdata, &cds, NULL));
++       (void)dns_rdata_tostruct(&rdata, &cds, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_cds_t cds;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &cds, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(rdata, &cds, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_cds_t cds;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &cds, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(rdata, &cds, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_cds_t cds;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &cds, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &cds, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_cds_t cds;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &cds, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &cds, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t cds;
+@@
+
+-       CHECK(dns_rdata_tostruct(rdata, &cds, NULL));
++       (void)dns_rdata_tostruct(rdata, &cds, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t cds;
+@@
+
+-       RETERR(dns_rdata_tostruct(rdata, &cds, NULL));
++       (void)dns_rdata_tostruct(rdata, &cds, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t cds;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(rdata, &cds, NULL));
++       (void)dns_rdata_tostruct(rdata, &cds, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_cname_t cname;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &cname, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(&rdata, &cname, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_cname_t cname;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &cname, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(&rdata, &cname, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_cname_t cname;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &cname, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &cname, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_cname_t cname;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &cname, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &cname, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t cname;
+@@
+
+-       CHECK(dns_rdata_tostruct(&rdata, &cname, NULL));
++       (void)dns_rdata_tostruct(&rdata, &cname, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t cname;
+@@
+
+-       RETERR(dns_rdata_tostruct(&rdata, &cname, NULL));
++       (void)dns_rdata_tostruct(&rdata, &cname, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t cname;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(&rdata, &cname, NULL));
++       (void)dns_rdata_tostruct(&rdata, &cname, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_cname_t cname;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &cname, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(rdata, &cname, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_cname_t cname;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &cname, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(rdata, &cname, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_cname_t cname;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &cname, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &cname, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_cname_t cname;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &cname, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &cname, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t cname;
+@@
+
+-       CHECK(dns_rdata_tostruct(rdata, &cname, NULL));
++       (void)dns_rdata_tostruct(rdata, &cname, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t cname;
+@@
+
+-       RETERR(dns_rdata_tostruct(rdata, &cname, NULL));
++       (void)dns_rdata_tostruct(rdata, &cname, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t cname;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(rdata, &cname, NULL));
++       (void)dns_rdata_tostruct(rdata, &cname, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_dname_t dname;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &dname, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(&rdata, &dname, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_dname_t dname;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &dname, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(&rdata, &dname, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_dname_t dname;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &dname, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &dname, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_dname_t dname;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &dname, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &dname, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t dname;
+@@
+
+-       CHECK(dns_rdata_tostruct(&rdata, &dname, NULL));
++       (void)dns_rdata_tostruct(&rdata, &dname, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t dname;
+@@
+
+-       RETERR(dns_rdata_tostruct(&rdata, &dname, NULL));
++       (void)dns_rdata_tostruct(&rdata, &dname, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t dname;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(&rdata, &dname, NULL));
++       (void)dns_rdata_tostruct(&rdata, &dname, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_dname_t dname;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &dname, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(rdata, &dname, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_dname_t dname;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &dname, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(rdata, &dname, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_dname_t dname;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &dname, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &dname, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_dname_t dname;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &dname, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &dname, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t dname;
+@@
+
+-       CHECK(dns_rdata_tostruct(rdata, &dname, NULL));
++       (void)dns_rdata_tostruct(rdata, &dname, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t dname;
+@@
+
+-       RETERR(dns_rdata_tostruct(rdata, &dname, NULL));
++       (void)dns_rdata_tostruct(rdata, &dname, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t dname;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(rdata, &dname, NULL));
++       (void)dns_rdata_tostruct(rdata, &dname, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_dnskey_t dnskey;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &dnskey, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(&rdata, &dnskey, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_dnskey_t dnskey;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &dnskey, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(&rdata, &dnskey, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_dnskey_t dnskey;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &dnskey, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &dnskey, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_dnskey_t dnskey;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &dnskey, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &dnskey, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t dnskey;
+@@
+
+-       CHECK(dns_rdata_tostruct(&rdata, &dnskey, NULL));
++       (void)dns_rdata_tostruct(&rdata, &dnskey, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t dnskey;
+@@
+
+-       RETERR(dns_rdata_tostruct(&rdata, &dnskey, NULL));
++       (void)dns_rdata_tostruct(&rdata, &dnskey, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t dnskey;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(&rdata, &dnskey, NULL));
++       (void)dns_rdata_tostruct(&rdata, &dnskey, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_dnskey_t dnskey;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &dnskey, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(rdata, &dnskey, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_dnskey_t dnskey;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &dnskey, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(rdata, &dnskey, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_dnskey_t dnskey;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &dnskey, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &dnskey, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_dnskey_t dnskey;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &dnskey, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &dnskey, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t dnskey;
+@@
+
+-       CHECK(dns_rdata_tostruct(rdata, &dnskey, NULL));
++       (void)dns_rdata_tostruct(rdata, &dnskey, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t dnskey;
+@@
+
+-       RETERR(dns_rdata_tostruct(rdata, &dnskey, NULL));
++       (void)dns_rdata_tostruct(rdata, &dnskey, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t dnskey;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(rdata, &dnskey, NULL));
++       (void)dns_rdata_tostruct(rdata, &dnskey, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ds_t ds;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &ds, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(&rdata, &ds, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ds_t ds;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &ds, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(&rdata, &ds, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ds_t ds;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &ds, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &ds, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ds_t ds;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &ds, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &ds, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t ds;
+@@
+
+-       CHECK(dns_rdata_tostruct(&rdata, &ds, NULL));
++       (void)dns_rdata_tostruct(&rdata, &ds, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t ds;
+@@
+
+-       RETERR(dns_rdata_tostruct(&rdata, &ds, NULL));
++       (void)dns_rdata_tostruct(&rdata, &ds, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t ds;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(&rdata, &ds, NULL));
++       (void)dns_rdata_tostruct(&rdata, &ds, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ds_t ds;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &ds, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(rdata, &ds, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ds_t ds;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &ds, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(rdata, &ds, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ds_t ds;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &ds, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &ds, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ds_t ds;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &ds, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &ds, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t ds;
+@@
+
+-       CHECK(dns_rdata_tostruct(rdata, &ds, NULL));
++       (void)dns_rdata_tostruct(rdata, &ds, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t ds;
+@@
+
+-       RETERR(dns_rdata_tostruct(rdata, &ds, NULL));
++       (void)dns_rdata_tostruct(rdata, &ds, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t ds;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(rdata, &ds, NULL));
++       (void)dns_rdata_tostruct(rdata, &ds, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_key_t key;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &key, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(&rdata, &key, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_key_t key;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &key, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(&rdata, &key, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_key_t key;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &key, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &key, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_key_t key;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &key, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &key, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t key;
+@@
+
+-       CHECK(dns_rdata_tostruct(&rdata, &key, NULL));
++       (void)dns_rdata_tostruct(&rdata, &key, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t key;
+@@
+
+-       RETERR(dns_rdata_tostruct(&rdata, &key, NULL));
++       (void)dns_rdata_tostruct(&rdata, &key, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t key;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(&rdata, &key, NULL));
++       (void)dns_rdata_tostruct(&rdata, &key, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_key_t key;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &key, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(rdata, &key, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_key_t key;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &key, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(rdata, &key, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_key_t key;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &key, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &key, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_key_t key;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &key, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &key, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t key;
+@@
+
+-       CHECK(dns_rdata_tostruct(rdata, &key, NULL));
++       (void)dns_rdata_tostruct(rdata, &key, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t key;
+@@
+
+-       RETERR(dns_rdata_tostruct(rdata, &key, NULL));
++       (void)dns_rdata_tostruct(rdata, &key, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t key;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(rdata, &key, NULL));
++       (void)dns_rdata_tostruct(rdata, &key, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_mx_t mx;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &mx, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(&rdata, &mx, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_mx_t mx;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &mx, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(&rdata, &mx, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_mx_t mx;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &mx, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &mx, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_mx_t mx;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &mx, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &mx, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t mx;
+@@
+
+-       CHECK(dns_rdata_tostruct(&rdata, &mx, NULL));
++       (void)dns_rdata_tostruct(&rdata, &mx, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t mx;
+@@
+
+-       RETERR(dns_rdata_tostruct(&rdata, &mx, NULL));
++       (void)dns_rdata_tostruct(&rdata, &mx, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t mx;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(&rdata, &mx, NULL));
++       (void)dns_rdata_tostruct(&rdata, &mx, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_mx_t mx;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &mx, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(rdata, &mx, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_mx_t mx;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &mx, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(rdata, &mx, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_mx_t mx;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &mx, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &mx, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_mx_t mx;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &mx, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &mx, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t mx;
+@@
+
+-       CHECK(dns_rdata_tostruct(rdata, &mx, NULL));
++       (void)dns_rdata_tostruct(rdata, &mx, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t mx;
+@@
+
+-       RETERR(dns_rdata_tostruct(rdata, &mx, NULL));
++       (void)dns_rdata_tostruct(rdata, &mx, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t mx;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(rdata, &mx, NULL));
++       (void)dns_rdata_tostruct(rdata, &mx, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ns_t ns;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &ns, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(&rdata, &ns, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ns_t ns;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &ns, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(&rdata, &ns, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ns_t ns;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &ns, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &ns, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ns_t ns;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &ns, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &ns, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t ns;
+@@
+
+-       CHECK(dns_rdata_tostruct(&rdata, &ns, NULL));
++       (void)dns_rdata_tostruct(&rdata, &ns, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t ns;
+@@
+
+-       RETERR(dns_rdata_tostruct(&rdata, &ns, NULL));
++       (void)dns_rdata_tostruct(&rdata, &ns, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t ns;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(&rdata, &ns, NULL));
++       (void)dns_rdata_tostruct(&rdata, &ns, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ns_t ns;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &ns, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(rdata, &ns, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ns_t ns;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &ns, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(rdata, &ns, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ns_t ns;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &ns, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &ns, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ns_t ns;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &ns, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &ns, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t ns;
+@@
+
+-       CHECK(dns_rdata_tostruct(rdata, &ns, NULL));
++       (void)dns_rdata_tostruct(rdata, &ns, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t ns;
+@@
+
+-       RETERR(dns_rdata_tostruct(rdata, &ns, NULL));
++       (void)dns_rdata_tostruct(rdata, &ns, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t ns;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(rdata, &ns, NULL));
++       (void)dns_rdata_tostruct(rdata, &ns, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_nsec_t nsec;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &nsec, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(&rdata, &nsec, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_nsec_t nsec;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &nsec, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(&rdata, &nsec, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_nsec_t nsec;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &nsec, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &nsec, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_nsec_t nsec;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &nsec, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &nsec, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t nsec;
+@@
+
+-       CHECK(dns_rdata_tostruct(&rdata, &nsec, NULL));
++       (void)dns_rdata_tostruct(&rdata, &nsec, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t nsec;
+@@
+
+-       RETERR(dns_rdata_tostruct(&rdata, &nsec, NULL));
++       (void)dns_rdata_tostruct(&rdata, &nsec, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t nsec;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(&rdata, &nsec, NULL));
++       (void)dns_rdata_tostruct(&rdata, &nsec, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_nsec_t nsec;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &nsec, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(rdata, &nsec, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_nsec_t nsec;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &nsec, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(rdata, &nsec, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_nsec_t nsec;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &nsec, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &nsec, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_nsec_t nsec;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &nsec, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &nsec, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t nsec;
+@@
+
+-       CHECK(dns_rdata_tostruct(rdata, &nsec, NULL));
++       (void)dns_rdata_tostruct(rdata, &nsec, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t nsec;
+@@
+
+-       RETERR(dns_rdata_tostruct(rdata, &nsec, NULL));
++       (void)dns_rdata_tostruct(rdata, &nsec, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t nsec;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(rdata, &nsec, NULL));
++       (void)dns_rdata_tostruct(rdata, &nsec, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_nsec3_t nsec3;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &nsec3, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(&rdata, &nsec3, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_nsec3_t nsec3;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &nsec3, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(&rdata, &nsec3, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_nsec3_t nsec3;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &nsec3, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &nsec3, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_nsec3_t nsec3;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &nsec3, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &nsec3, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t nsec3;
+@@
+
+-       CHECK(dns_rdata_tostruct(&rdata, &nsec3, NULL));
++       (void)dns_rdata_tostruct(&rdata, &nsec3, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t nsec3;
+@@
+
+-       RETERR(dns_rdata_tostruct(&rdata, &nsec3, NULL));
++       (void)dns_rdata_tostruct(&rdata, &nsec3, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t nsec3;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(&rdata, &nsec3, NULL));
++       (void)dns_rdata_tostruct(&rdata, &nsec3, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_nsec3_t nsec3;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &nsec3, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(rdata, &nsec3, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_nsec3_t nsec3;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &nsec3, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(rdata, &nsec3, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_nsec3_t nsec3;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &nsec3, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &nsec3, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_nsec3_t nsec3;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &nsec3, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &nsec3, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t nsec3;
+@@
+
+-       CHECK(dns_rdata_tostruct(rdata, &nsec3, NULL));
++       (void)dns_rdata_tostruct(rdata, &nsec3, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t nsec3;
+@@
+
+-       RETERR(dns_rdata_tostruct(rdata, &nsec3, NULL));
++       (void)dns_rdata_tostruct(rdata, &nsec3, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t nsec3;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(rdata, &nsec3, NULL));
++       (void)dns_rdata_tostruct(rdata, &nsec3, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_nsec3param_t nsec3param;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &nsec3param, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(&rdata, &nsec3param, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_nsec3param_t nsec3param;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &nsec3param, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(&rdata, &nsec3param, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_nsec3param_t nsec3param;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &nsec3param, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &nsec3param, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_nsec3param_t nsec3param;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &nsec3param, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &nsec3param, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t nsec3param;
+@@
+
+-       CHECK(dns_rdata_tostruct(&rdata, &nsec3param, NULL));
++       (void)dns_rdata_tostruct(&rdata, &nsec3param, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t nsec3param;
+@@
+
+-       RETERR(dns_rdata_tostruct(&rdata, &nsec3param, NULL));
++       (void)dns_rdata_tostruct(&rdata, &nsec3param, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t nsec3param;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(&rdata, &nsec3param, NULL));
++       (void)dns_rdata_tostruct(&rdata, &nsec3param, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_nsec3param_t nsec3param;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &nsec3param, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(rdata, &nsec3param, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_nsec3param_t nsec3param;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &nsec3param, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(rdata, &nsec3param, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_nsec3param_t nsec3param;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &nsec3param, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &nsec3param, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_nsec3param_t nsec3param;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &nsec3param, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &nsec3param, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t nsec3param;
+@@
+
+-       CHECK(dns_rdata_tostruct(rdata, &nsec3param, NULL));
++       (void)dns_rdata_tostruct(rdata, &nsec3param, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t nsec3param;
+@@
+
+-       RETERR(dns_rdata_tostruct(rdata, &nsec3param, NULL));
++       (void)dns_rdata_tostruct(rdata, &nsec3param, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t nsec3param;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(rdata, &nsec3param, NULL));
++       (void)dns_rdata_tostruct(rdata, &nsec3param, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t ptr;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &ptr, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(&rdata, &ptr, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t ptr;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &ptr, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(&rdata, &ptr, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t ptr;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &ptr, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &ptr, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t ptr;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &ptr, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &ptr, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t ptr;
+@@
+
+-       CHECK(dns_rdata_tostruct(&rdata, &ptr, NULL));
++       (void)dns_rdata_tostruct(&rdata, &ptr, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t ptr;
+@@
+
+-       RETERR(dns_rdata_tostruct(&rdata, &ptr, NULL));
++       (void)dns_rdata_tostruct(&rdata, &ptr, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t ptr;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(&rdata, &ptr, NULL));
++       (void)dns_rdata_tostruct(&rdata, &ptr, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t ptr;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &ptr, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(rdata, &ptr, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t ptr;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &ptr, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(rdata, &ptr, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t ptr;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &ptr, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &ptr, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t ptr;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &ptr, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &ptr, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t ptr;
+@@
+
+-       CHECK(dns_rdata_tostruct(rdata, &ptr, NULL));
++       (void)dns_rdata_tostruct(rdata, &ptr, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t ptr;
+@@
+
+-       RETERR(dns_rdata_tostruct(rdata, &ptr, NULL));
++       (void)dns_rdata_tostruct(rdata, &ptr, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t ptr;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(rdata, &ptr, NULL));
++       (void)dns_rdata_tostruct(rdata, &ptr, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_rrsig_t rrsig;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &rrsig, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(&rdata, &rrsig, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_rrsig_t rrsig;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &rrsig, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(&rdata, &rrsig, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_rrsig_t rrsig;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &rrsig, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &rrsig, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_rrsig_t rrsig;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &rrsig, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &rrsig, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t rrsig;
+@@
+
+-       CHECK(dns_rdata_tostruct(&rdata, &rrsig, NULL));
++       (void)dns_rdata_tostruct(&rdata, &rrsig, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t rrsig;
+@@
+
+-       RETERR(dns_rdata_tostruct(&rdata, &rrsig, NULL));
++       (void)dns_rdata_tostruct(&rdata, &rrsig, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t rrsig;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(&rdata, &rrsig, NULL));
++       (void)dns_rdata_tostruct(&rdata, &rrsig, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_rrsig_t rrsig;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &rrsig, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(rdata, &rrsig, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_rrsig_t rrsig;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &rrsig, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(rdata, &rrsig, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_rrsig_t rrsig;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &rrsig, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &rrsig, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_rrsig_t rrsig;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &rrsig, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &rrsig, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t rrsig;
+@@
+
+-       CHECK(dns_rdata_tostruct(rdata, &rrsig, NULL));
++       (void)dns_rdata_tostruct(rdata, &rrsig, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t rrsig;
+@@
+
+-       RETERR(dns_rdata_tostruct(rdata, &rrsig, NULL));
++       (void)dns_rdata_tostruct(rdata, &rrsig, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t rrsig;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(rdata, &rrsig, NULL));
++       (void)dns_rdata_tostruct(rdata, &rrsig, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_sig_t sig;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &sig, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(&rdata, &sig, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_sig_t sig;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &sig, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(&rdata, &sig, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_sig_t sig;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &sig, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &sig, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_sig_t sig;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &sig, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &sig, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t sig;
+@@
+
+-       CHECK(dns_rdata_tostruct(&rdata, &sig, NULL));
++       (void)dns_rdata_tostruct(&rdata, &sig, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t sig;
+@@
+
+-       RETERR(dns_rdata_tostruct(&rdata, &sig, NULL));
++       (void)dns_rdata_tostruct(&rdata, &sig, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t sig;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(&rdata, &sig, NULL));
++       (void)dns_rdata_tostruct(&rdata, &sig, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_sig_t sig;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &sig, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(rdata, &sig, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_sig_t sig;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &sig, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(rdata, &sig, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_sig_t sig;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &sig, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &sig, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_sig_t sig;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &sig, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &sig, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t sig;
+@@
+
+-       CHECK(dns_rdata_tostruct(rdata, &sig, NULL));
++       (void)dns_rdata_tostruct(rdata, &sig, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t sig;
+@@
+
+-       RETERR(dns_rdata_tostruct(rdata, &sig, NULL));
++       (void)dns_rdata_tostruct(rdata, &sig, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t sig;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(rdata, &sig, NULL));
++       (void)dns_rdata_tostruct(rdata, &sig, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_tkey_t tkey;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &tkey, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(&rdata, &tkey, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_tkey_t tkey;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &tkey, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(&rdata, &tkey, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_tkey_t tkey;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &tkey, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &tkey, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_tkey_t tkey;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &tkey, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &tkey, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t tkey;
+@@
+
+-       CHECK(dns_rdata_tostruct(&rdata, &tkey, NULL));
++       (void)dns_rdata_tostruct(&rdata, &tkey, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t tkey;
+@@
+
+-       RETERR(dns_rdata_tostruct(&rdata, &tkey, NULL));
++       (void)dns_rdata_tostruct(&rdata, &tkey, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t tkey;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(&rdata, &tkey, NULL));
++       (void)dns_rdata_tostruct(&rdata, &tkey, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_tkey_t tkey;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &tkey, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(rdata, &tkey, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_tkey_t tkey;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &tkey, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(rdata, &tkey, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_tkey_t tkey;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &tkey, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &tkey, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_tkey_t tkey;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &tkey, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &tkey, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t tkey;
+@@
+
+-       CHECK(dns_rdata_tostruct(rdata, &tkey, NULL));
++       (void)dns_rdata_tostruct(rdata, &tkey, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t tkey;
+@@
+
+-       RETERR(dns_rdata_tostruct(rdata, &tkey, NULL));
++       (void)dns_rdata_tostruct(rdata, &tkey, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t tkey;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(rdata, &tkey, NULL));
++       (void)dns_rdata_tostruct(rdata, &tkey, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_any_tsig_t any_tsig;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &any_tsig, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(&rdata, &any_tsig, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_any_tsig_t any_tsig;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &any_tsig, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(&rdata, &any_tsig, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_any_tsig_t any_tsig;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &any_tsig, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &any_tsig, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_any_tsig_t any_tsig;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &any_tsig, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &any_tsig, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t any_tsig;
+@@
+
+-       CHECK(dns_rdata_tostruct(&rdata, &any_tsig, NULL));
++       (void)dns_rdata_tostruct(&rdata, &any_tsig, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t any_tsig;
+@@
+
+-       RETERR(dns_rdata_tostruct(&rdata, &any_tsig, NULL));
++       (void)dns_rdata_tostruct(&rdata, &any_tsig, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t any_tsig;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(&rdata, &any_tsig, NULL));
++       (void)dns_rdata_tostruct(&rdata, &any_tsig, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_any_tsig_t any_tsig;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &any_tsig, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(rdata, &any_tsig, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_any_tsig_t any_tsig;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &any_tsig, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(rdata, &any_tsig, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_any_tsig_t any_tsig;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &any_tsig, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &any_tsig, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_any_tsig_t any_tsig;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &any_tsig, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &any_tsig, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t any_tsig;
+@@
+
+-       CHECK(dns_rdata_tostruct(rdata, &any_tsig, NULL));
++       (void)dns_rdata_tostruct(rdata, &any_tsig, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t any_tsig;
+@@
+
+-       RETERR(dns_rdata_tostruct(rdata, &any_tsig, NULL));
++       (void)dns_rdata_tostruct(rdata, &any_tsig, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t any_tsig;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(rdata, &any_tsig, NULL));
++       (void)dns_rdata_tostruct(rdata, &any_tsig, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_txt_t txt;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &txt, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(&rdata, &txt, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_txt_t txt;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &txt, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(&rdata, &txt, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_txt_t txt;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &txt, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &txt, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_txt_t txt;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &txt, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &txt, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t txt;
+@@
+
+-       CHECK(dns_rdata_tostruct(&rdata, &txt, NULL));
++       (void)dns_rdata_tostruct(&rdata, &txt, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t txt;
+@@
+
+-       RETERR(dns_rdata_tostruct(&rdata, &txt, NULL));
++       (void)dns_rdata_tostruct(&rdata, &txt, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t txt;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(&rdata, &txt, NULL));
++       (void)dns_rdata_tostruct(&rdata, &txt, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_txt_t txt;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &txt, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(rdata, &txt, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_txt_t txt;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &txt, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(rdata, &txt, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_txt_t txt;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &txt, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &txt, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_txt_t txt;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &txt, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &txt, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t txt;
+@@
+
+-       CHECK(dns_rdata_tostruct(rdata, &txt, NULL));
++       (void)dns_rdata_tostruct(rdata, &txt, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t txt;
+@@
+
+-       RETERR(dns_rdata_tostruct(rdata, &txt, NULL));
++       (void)dns_rdata_tostruct(rdata, &txt, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t txt;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(rdata, &txt, NULL));
++       (void)dns_rdata_tostruct(rdata, &txt, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_soa_t soa;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &soa, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(&rdata, &soa, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_soa_t soa;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &soa, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(&rdata, &soa, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_soa_t soa;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &soa, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &soa, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_soa_t soa;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &soa, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &soa, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t soa;
+@@
+
+-       CHECK(dns_rdata_tostruct(&rdata, &soa, NULL));
++       (void)dns_rdata_tostruct(&rdata, &soa, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t soa;
+@@
+
+-       RETERR(dns_rdata_tostruct(&rdata, &soa, NULL));
++       (void)dns_rdata_tostruct(&rdata, &soa, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t soa;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(&rdata, &soa, NULL));
++       (void)dns_rdata_tostruct(&rdata, &soa, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_soa_t soa;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &soa, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(rdata, &soa, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_soa_t soa;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &soa, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(rdata, &soa, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_soa_t soa;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &soa, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &soa, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_soa_t soa;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &soa, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &soa, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t soa;
+@@
+
+-       CHECK(dns_rdata_tostruct(rdata, &soa, NULL));
++       (void)dns_rdata_tostruct(rdata, &soa, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t soa;
+@@
+
+-       RETERR(dns_rdata_tostruct(rdata, &soa, NULL));
++       (void)dns_rdata_tostruct(rdata, &soa, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t soa;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(rdata, &soa, NULL));
++       (void)dns_rdata_tostruct(rdata, &soa, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_in_srv_t in_srv;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &in_srv, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(&rdata, &in_srv, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_in_srv_t in_srv;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &in_srv, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(&rdata, &in_srv, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_in_srv_t in_srv;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &in_srv, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &in_srv, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_in_srv_t in_srv;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &in_srv, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &in_srv, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t in_srv;
+@@
+
+-       CHECK(dns_rdata_tostruct(&rdata, &in_srv, NULL));
++       (void)dns_rdata_tostruct(&rdata, &in_srv, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t in_srv;
+@@
+
+-       RETERR(dns_rdata_tostruct(&rdata, &in_srv, NULL));
++       (void)dns_rdata_tostruct(&rdata, &in_srv, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t in_srv;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(&rdata, &in_srv, NULL));
++       (void)dns_rdata_tostruct(&rdata, &in_srv, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_in_srv_t in_srv;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &in_srv, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(rdata, &in_srv, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_in_srv_t in_srv;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &in_srv, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(rdata, &in_srv, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_in_srv_t in_srv;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &in_srv, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &in_srv, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_in_srv_t in_srv;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &in_srv, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &in_srv, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t in_srv;
+@@
+
+-       CHECK(dns_rdata_tostruct(rdata, &in_srv, NULL));
++       (void)dns_rdata_tostruct(rdata, &in_srv, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t in_srv;
+@@
+
+-       RETERR(dns_rdata_tostruct(rdata, &in_srv, NULL));
++       (void)dns_rdata_tostruct(rdata, &in_srv, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t in_srv;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(rdata, &in_srv, NULL));
++       (void)dns_rdata_tostruct(rdata, &in_srv, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_in_svcb_t in_svcb;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &in_svcb, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(&rdata, &in_svcb, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_in_svcb_t in_svcb;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &in_svcb, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(&rdata, &in_svcb, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_in_svcb_t in_svcb;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &in_svcb, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &in_svcb, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_in_svcb_t in_svcb;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(&rdata, &in_svcb, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(&rdata, &in_svcb, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t in_svcb;
+@@
+
+-       CHECK(dns_rdata_tostruct(&rdata, &in_svcb, NULL));
++       (void)dns_rdata_tostruct(&rdata, &in_svcb, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t in_svcb;
+@@
+
+-       RETERR(dns_rdata_tostruct(&rdata, &in_svcb, NULL));
++       (void)dns_rdata_tostruct(&rdata, &in_svcb, NULL);
+
+@@
+dns_rdata_t rdata;
+dns_rdata_ptr_t in_svcb;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(&rdata, &in_svcb, NULL));
++       (void)dns_rdata_tostruct(&rdata, &in_svcb, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_in_svcb_t in_svcb;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &in_svcb, NULL);
+-       check_result(result, ...);
++       (void)dns_rdata_tostruct(rdata, &in_svcb, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_in_svcb_t in_svcb;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &in_svcb, NULL);
+-       if (result != ISC_R_SUCCESS) {
+-               ...
+-       }
++       (void)dns_rdata_tostruct(rdata, &in_svcb, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_in_svcb_t in_svcb;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &in_svcb, NULL);
+-       RUNTIME_CHECK(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &in_svcb, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_in_svcb_t in_svcb;
+isc_result_t result;
+@@
+
+-       result = dns_rdata_tostruct(rdata, &in_svcb, NULL);
+-       INSIST(result == ISC_R_SUCCESS);
++       (void)dns_rdata_tostruct(rdata, &in_svcb, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t in_svcb;
+@@
+
+-       CHECK(dns_rdata_tostruct(rdata, &in_svcb, NULL));
++       (void)dns_rdata_tostruct(rdata, &in_svcb, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t in_svcb;
+@@
+
+-       RETERR(dns_rdata_tostruct(rdata, &in_svcb, NULL));
++       (void)dns_rdata_tostruct(rdata, &in_svcb, NULL);
+
+@@
+dns_rdata_t *rdata;
+dns_rdata_ptr_t in_svcb;
+@@
+
+-       RUNTIME_CHECK(dns_rdata_tostruct(rdata, &in_svcb, NULL));
++       (void)dns_rdata_tostruct(rdata, &in_svcb, NULL);

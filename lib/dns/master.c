@@ -1963,9 +1963,7 @@ load_text(dns_loadctx_t *lctx) {
 
 		if (type == dns_rdatatype_rrsig && lctx->warn_sigexpired) {
 			dns_rdata_rrsig_t sig;
-			result = dns_rdata_tostruct(&rdata[rdcount], &sig,
-						    NULL);
-			RUNTIME_CHECK(result == ISC_R_SUCCESS);
+			(void)dns_rdata_tostruct(&rdata[rdcount], &sig, NULL);
 			if (isc_serial_lt(sig.timeexpire, lctx->now)) {
 				(*callbacks->warn)(callbacks,
 						   "%s:%lu: "

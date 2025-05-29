@@ -6523,16 +6523,13 @@ get_tat_qname(dns_name_t *target, dns_name_t *keyname, dns_keynode_t *keynode) {
 
 	dns_rdataset_init(&dsset);
 	if (dns_keynode_dsset(keynode, &dsset)) {
-		isc_result_t result;
-
 		DNS_RDATASET_FOREACH(&dsset) {
 			dns_rdata_t rdata = DNS_RDATA_INIT;
 			dns_rdata_ds_t ds;
 
 			dns_rdata_reset(&rdata);
 			dns_rdataset_current(&dsset, &rdata);
-			result = dns_rdata_tostruct(&rdata, &ds, NULL);
-			RUNTIME_CHECK(result == ISC_R_SUCCESS);
+			(void)dns_rdata_tostruct(&rdata, &ds, NULL);
 			if (n < (sizeof(ids) / sizeof(ids[0]))) {
 				ids[n] = ds.key_tag;
 				n++;
