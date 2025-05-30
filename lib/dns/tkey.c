@@ -367,7 +367,7 @@ dns_tkey_processquery(dns_message_t *msg, dns_tkeyctx_t *tctx,
 	}
 
 	dns_rdataset_current(tkeyset, &rdata);
-	(void)dns_rdata_tostruct(&rdata, &tkeyin, NULL);
+	dns_rdata_tostruct(&rdata, &tkeyin, NULL);
 
 	if (tkeyin.error != dns_rcode_noerror) {
 		CLEANUP(DNS_R_FORMERR);
@@ -609,10 +609,10 @@ dns_tkey_gssnegotiate(dns_message_t *qmsg, dns_message_t *rmsg,
 	}
 
 	CHECK(find_tkey(rmsg, &tkeyname, &rtkeyrdata, DNS_SECTION_ANSWER));
-	(void)dns_rdata_tostruct(&rtkeyrdata, &rtkey, NULL);
+	dns_rdata_tostruct(&rtkeyrdata, &rtkey, NULL);
 
 	CHECK(find_tkey(qmsg, &tkeyname, &qtkeyrdata, DNS_SECTION_ADDITIONAL));
-	(void)dns_rdata_tostruct(&qtkeyrdata, &qtkey, NULL);
+	dns_rdata_tostruct(&qtkeyrdata, &qtkey, NULL);
 
 	if (rtkey.error != dns_rcode_noerror ||
 	    rtkey.mode != DNS_TKEYMODE_GSSAPI ||

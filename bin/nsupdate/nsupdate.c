@@ -2043,7 +2043,7 @@ parseclass:
 	if (!isdelete && rdata->type == dns_rdatatype_nsec3param) {
 		dns_rdata_nsec3param_t nsec3param;
 
-		(void)dns_rdata_tostruct(rdata, &nsec3param, NULL);
+		dns_rdata_tostruct(rdata, &nsec3param, NULL);
 		if (nsec3param.iterations > dns_nsec3_maxiterations()) {
 			fprintf(stderr,
 				"NSEC3PARAM has excessive iterations (> %u)\n",
@@ -2449,7 +2449,7 @@ check_tsig_error(dns_rdataset_t *rdataset, isc_buffer_t *b) {
 	result = dns_rdataset_first(rdataset);
 	check_result(result, "dns_rdataset_first");
 	dns_rdataset_current(rdataset, &rdata);
-	(void)dns_rdata_tostruct(&rdata, &tsig, NULL);
+	dns_rdata_tostruct(&rdata, &tsig, NULL);
 	if (tsig.error != 0) {
 		if (isc_buffer_remaininglength(b) < 1) {
 			check_result(ISC_R_NOSPACE, "isc_buffer_"
@@ -2838,7 +2838,7 @@ lookforsoa:
 
 	dns_rdata_init(&soarr);
 	dns_rdataset_current(soaset, &soarr);
-	(void)dns_rdata_tostruct(&soarr, &soa, NULL);
+	dns_rdata_tostruct(&soarr, &soa, NULL);
 
 	dns_name_init(&primary);
 	dns_name_clone(&soa.origin, &primary);

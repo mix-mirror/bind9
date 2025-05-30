@@ -1818,7 +1818,7 @@ followup_lookup(dns_message_t *msg, dig_query_t *query, dns_section_t section) {
 			dns_rdataset_current(rdataset, &rdata);
 
 			query->lookup->nsfound++;
-			(void)dns_rdata_tostruct(&rdata, &ns, NULL);
+			dns_rdata_tostruct(&rdata, &ns, NULL);
 			dns_name_format(&ns.name, namestr, sizeof(namestr));
 			dns_rdata_freestruct(&ns);
 
@@ -3655,7 +3655,7 @@ check_for_more_data(dig_lookup_t *lookup, dig_query_t *query,
 
 				/* Now we have an SOA.  Work with it. */
 				debug("got an SOA");
-				(void)dns_rdata_tostruct(&rdata, &soa, NULL);
+				dns_rdata_tostruct(&rdata, &soa, NULL);
 				serial = soa.serial;
 				dns_rdata_freestruct(&soa);
 				if (!query->first_soa_rcvd) {

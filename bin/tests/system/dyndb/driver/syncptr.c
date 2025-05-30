@@ -137,12 +137,12 @@ syncptr_find_zone(sample_instance_t *inst, dns_rdata_t *rdata, dns_name_t *name,
 
 	switch (rdata->type) {
 	case dns_rdatatype_a:
-		CHECK(dns_rdata_tostruct(rdata, &ipv4, inst->mctx));
+		dns_rdata_tostruct(rdata, &ipv4, inst->mctx);
 		isc_netaddr_fromin(&isc_ip, &ipv4.in_addr);
 		break;
 
 	case dns_rdatatype_aaaa:
-		CHECK(dns_rdata_tostruct(rdata, &ipv6, inst->mctx));
+		dns_rdata_tostruct(rdata, &ipv6, inst->mctx);
 		isc_netaddr_fromin6(&isc_ip, &ipv6.in6_addr);
 		break;
 

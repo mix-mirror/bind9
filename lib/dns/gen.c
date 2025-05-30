@@ -69,7 +69,7 @@
 #define TOSTRUCTARGS  "rdata, target, mctx"
 #define TOSTRUCTCLASS "rdata->rdclass"
 #define TOSTRUCTTYPE  "rdata->type"
-#define TOSTRUCTDEF   "use_default = true"
+#define TOSTRUCTDEF   ""
 
 #define FREESTRUCTARGS	"source"
 #define FREESTRUCTCLASS "common->rdclass"

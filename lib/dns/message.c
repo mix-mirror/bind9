@@ -2895,7 +2895,7 @@ dns_message_signer(dns_message_t *msg, dns_name_t *signer) {
 		INSIST(result == ISC_R_SUCCESS);
 		dns_rdataset_current(msg->sig0, &rdata);
 
-		(void)dns_rdata_tostruct(&rdata, &sig, NULL);
+		dns_rdata_tostruct(&rdata, &sig, NULL);
 
 		if (msg->verified_sig && msg->sig0status == dns_rcode_noerror) {
 			result = ISC_R_SUCCESS;
@@ -2912,7 +2912,7 @@ dns_message_signer(dns_message_t *msg, dns_name_t *signer) {
 		INSIST(result == ISC_R_SUCCESS);
 		dns_rdataset_current(msg->tsig, &rdata);
 
-		(void)dns_rdata_tostruct(&rdata, &tsig, NULL);
+		dns_rdata_tostruct(&rdata, &tsig, NULL);
 		if (msg->verified_sig && msg->tsigstatus == dns_rcode_noerror &&
 		    tsig.error == dns_rcode_noerror)
 		{
@@ -2975,7 +2975,7 @@ dns_message_dumpsig(dns_message_t *msg, char *txt1) {
 		result = dns_rdataset_first(msg->tsig);
 		RUNTIME_CHECK(result == ISC_R_SUCCESS);
 		dns_rdataset_current(msg->tsig, &querytsigrdata);
-		(void)dns_rdata_tostruct(&querytsigrdata, &querytsig, NULL);
+		dns_rdata_tostruct(&querytsigrdata, &querytsig, NULL);
 		hexdump(txt1, "TSIG", querytsig.signature, querytsig.siglen);
 	}
 
@@ -2983,7 +2983,7 @@ dns_message_dumpsig(dns_message_t *msg, char *txt1) {
 		result = dns_rdataset_first(msg->querytsig);
 		RUNTIME_CHECK(result == ISC_R_SUCCESS);
 		dns_rdataset_current(msg->querytsig, &querytsigrdata);
-		(void)dns_rdata_tostruct(&querytsigrdata, &querytsig, NULL);
+		dns_rdata_tostruct(&querytsigrdata, &querytsig, NULL);
 		hexdump(txt1, "QUERYTSIG", querytsig.signature,
 			querytsig.siglen);
 	}
@@ -3083,7 +3083,7 @@ dns_message_checksig(dns_message_t *msg, dns_view_t *view) {
 			return ISC_R_UNEXPECTEDEND;
 		}
 
-		(void)dns_rdata_tostruct(&sigrdata, &sig, NULL);
+		dns_rdata_tostruct(&sigrdata, &sig, NULL);
 
 		dns_rdataset_init(&keyset);
 		if (view == NULL) {
@@ -3130,7 +3130,7 @@ dns_message_checksig(dns_message_t *msg, dns_view_t *view) {
 			isc_region_t r;
 
 			dns_rdataset_current(&keyset, &keyrdata);
-			(void)dns_rdata_tostruct(&keyrdata, &ks, NULL);
+			dns_rdata_tostruct(&keyrdata, &ks, NULL);
 
 			if (sig.algorithm != ks.algorithm ||
 			    (ks.protocol != DNS_KEYPROTO_DNSSEC &&

@@ -616,8 +616,7 @@ dns_tsig_sign(dns_message_t *msg) {
 				goto cleanup_context;
 			}
 			dns_rdataset_current(msg->querytsig, &querytsigrdata);
-			(void)dns_rdata_tostruct(&querytsigrdata, &querytsig,
-						 NULL);
+			dns_rdata_tostruct(&querytsigrdata, &querytsig, NULL);
 			isc_buffer_putuint16(&databuf, querytsig.siglen);
 			if (isc_buffer_availablelength(&databuf) <
 			    querytsig.siglen)
@@ -861,12 +860,12 @@ dns_tsig_verify(isc_buffer_t *source, dns_message_t *msg,
 	keyname = msg->tsigname;
 	RETERR(dns_rdataset_first(msg->tsig));
 	dns_rdataset_current(msg->tsig, &rdata);
-	(void)dns_rdata_tostruct(&rdata, &tsig, NULL);
+	dns_rdata_tostruct(&rdata, &tsig, NULL);
 	dns_rdata_reset(&rdata);
 	if (response) {
 		RETERR(dns_rdataset_first(msg->querytsig));
 		dns_rdataset_current(msg->querytsig, &rdata);
-		(void)dns_rdata_tostruct(&rdata, &querytsig, NULL);
+		dns_rdata_tostruct(&rdata, &querytsig, NULL);
 	}
 
 	/*
@@ -1180,7 +1179,7 @@ tsig_verify_tcp(isc_buffer_t *source, dns_message_t *msg) {
 	 */
 	RETERR(dns_rdataset_first(msg->querytsig));
 	dns_rdataset_current(msg->querytsig, &rdata);
-	(void)dns_rdata_tostruct(&rdata, &querytsig, NULL);
+	dns_rdata_tostruct(&rdata, &querytsig, NULL);
 	dns_rdata_reset(&rdata);
 
 	/*
@@ -1195,7 +1194,7 @@ tsig_verify_tcp(isc_buffer_t *source, dns_message_t *msg) {
 			goto cleanup_querystruct;
 		}
 		dns_rdataset_current(msg->tsig, &rdata);
-		(void)dns_rdata_tostruct(&rdata, &tsig, NULL);
+		dns_rdata_tostruct(&rdata, &tsig, NULL);
 
 		/*
 		 * Do the key name and algorithm match that of the query?

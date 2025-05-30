@@ -338,7 +338,7 @@ chase_cnamechain(dns_message_t *msg, dns_name_t *qname) {
 		check_result(result, "dns_rdataset_first");
 		dns_rdata_reset(&rdata);
 		dns_rdataset_current(rdataset, &rdata);
-		(void)dns_rdata_tostruct(&rdata, &cname, NULL);
+		dns_rdata_tostruct(&rdata, &cname, NULL);
 		dns_name_copy(&cname.cname, qname);
 		dns_rdata_freestruct(&cname);
 	}

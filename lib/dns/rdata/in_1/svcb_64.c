@@ -1126,8 +1126,7 @@ generic_additionaldata_in_svcb(ARGS_ADDLDATA) {
 
 				dns_rdataset_current(&rdataset, &current);
 
-				(void)dns_rdata_tostruct(&current, &cname,
-							 NULL);
+				dns_rdata_tostruct(&current, &cname, NULL);
 				dns_name_copy(&cname.cname, fname);
 				dns_name_clone(fname, &name);
 			} else {

@@ -1410,10 +1410,9 @@ dns_rdata_fromstruct(dns_rdata_t *rdata, dns_rdataclass_t rdclass,
 	return result;
 }
 
-isc_result_t
+void
 dns_rdata_tostruct(const dns_rdata_t *rdata, void *target, isc_mem_t *mctx) {
 	isc_result_t result = ISC_R_NOTIMPLEMENTED;
-	bool use_default = false;
 
 	REQUIRE(rdata != NULL);
 	REQUIRE(DNS_RDATA_VALIDFLAGS(rdata));
@@ -1421,11 +1420,7 @@ dns_rdata_tostruct(const dns_rdata_t *rdata, void *target, isc_mem_t *mctx) {
 
 	TOSTRUCTSWITCH
 
-	if (use_default) {
-		(void)NULL;
-	}
-
-	return result;
+	ENSURE(result == ISC_R_SUCCESS);
 }
 
 void
@@ -2480,7 +2475,7 @@ dns_rdata_checksvcb(const dns_name_t *owner, const dns_rdata_t *rdata) {
 	REQUIRE(rdata->type == dns_rdatatype_svcb);
 	REQUIRE(DNS_RDATA_VALIDFLAGS(rdata));
 
-	(void)dns_rdata_tostruct(rdata, &svcb, NULL);
+	dns_rdata_tostruct(rdata, &svcb, NULL);
 
 	/*
 	 * Check that Alias Mode records don't have SvcParamKeys.

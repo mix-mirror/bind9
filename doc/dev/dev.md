@@ -1227,7 +1227,7 @@ wrapper around `memcmp()`.
 "fromstruct" takes a C structure (as described in
 `tostruct()`, below) and turns it into a record in wire format.
 
-        static isc_result_t
+        static void
         tostruct[_<class>]_<type>(dns_rdata_t *rdata, void *target,
                                   isc_mem_t *mctx);
 

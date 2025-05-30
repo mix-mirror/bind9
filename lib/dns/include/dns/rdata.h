@@ -529,7 +529,7 @@ dns_rdata_fromstruct(dns_rdata_t *rdata, dns_rdataclass_t rdclass,
  *\li	Resource Limit: Not enough space
  */
 
-ISC_ATTR_NODISCARD isc_result_t
+void
 dns_rdata_tostruct(const dns_rdata_t *rdata, void *target, isc_mem_t *mctx);
 /*%<
  * Convert an rdata into its C structure representation.
@@ -543,10 +543,6 @@ dns_rdata_tostruct(const dns_rdata_t *rdata, void *target, isc_mem_t *mctx);
  *\li	'rdata' is a valid, non-empty, non-pseudo rdata.
  *
  *\li	'target' to point to a valid pointer for the type and class.
- *
- * Result:
- *\li	Success
- *\li	Not Implemented
  */
 
 void

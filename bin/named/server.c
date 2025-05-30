@@ -6529,7 +6529,7 @@ get_tat_qname(dns_name_t *target, dns_name_t *keyname, dns_keynode_t *keynode) {
 
 			dns_rdata_reset(&rdata);
 			dns_rdataset_current(&dsset, &rdata);
-			(void)dns_rdata_tostruct(&rdata, &ds, NULL);
+			dns_rdata_tostruct(&rdata, &ds, NULL);
 			if (n < (sizeof(ids) / sizeof(ids[0]))) {
 				ids[n] = ds.key_tag;
 				n++;
@@ -15022,8 +15022,7 @@ mkey_dumpzone(dns_view_t *view, isc_buffer_t *text) {
 
 			dns_rdata_reset(&rdata);
 			dns_rdataset_current(kdset, &rdata);
-			result = dns_rdata_tostruct(&rdata, &kd, NULL);
-			RUNTIME_CHECK(result == ISC_R_SUCCESS);
+			dns_rdata_tostruct(&rdata, &kd, NULL);
 
 			dns_rdata_toregion(&rdata, &r);
 			isc_region_consume(&r, 12);

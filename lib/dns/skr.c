@@ -153,7 +153,7 @@ dns_skrbundle_getsig(dns_skrbundle_t *bundle, dst_key_t *key,
 		}
 		INSIST(tuple->rdata.type == dns_rdatatype_rrsig);
 
-		(void)dns_rdata_tostruct(&tuple->rdata, &rrsig, NULL);
+		dns_rdata_tostruct(&tuple->rdata, &rrsig, NULL);
 
 		/*
 		 * Check if covering type matches, and if the signature is

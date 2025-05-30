@@ -362,7 +362,7 @@ dns_dnssec_verify(const dns_name_t *name, dns_rdataset_t *set, dst_key_t *key,
 	REQUIRE(mctx != NULL);
 	REQUIRE(sigrdata != NULL && sigrdata->type == dns_rdatatype_rrsig);
 
-	(void)dns_rdata_tostruct(sigrdata, &sig, NULL);
+	dns_rdata_tostruct(sigrdata, &sig, NULL);
 
 	if (set->type != sig.covered) {
 		return DNS_R_SIGINVALID;
@@ -881,7 +881,7 @@ dns_dnssec_verifymessage(isc_buffer_t *source, dns_message_t *msg,
 	CHECK(dns_rdataset_first(msg->sig0));
 	dns_rdataset_current(msg->sig0, &rdata);
 
-	(void)dns_rdata_tostruct(&rdata, &sig, NULL);
+	dns_rdata_tostruct(&rdata, &sig, NULL);
 	signeedsfree = true;
 
 	if (sig.labels != 0) {
@@ -1023,13 +1023,13 @@ dns_dnssec_signs(dns_rdata_t *rdata, const dns_name_t *name,
 	if (result != ISC_R_SUCCESS) {
 		return false;
 	}
-	(void)dns_rdata_tostruct(rdata, &key, NULL);
+	dns_rdata_tostruct(rdata, &key, NULL);
 
 	keytag = dst_key_id(dstkey);
 	DNS_RDATASET_FOREACH(sigrdataset) {
 		dns_rdata_t sigrdata = DNS_RDATA_INIT;
 		dns_rdataset_current(sigrdataset, &sigrdata);
-		(void)dns_rdata_tostruct(&sigrdata, &sig, NULL);
+		dns_rdata_tostruct(&sigrdata, &sig, NULL);
 
 		if (sig.algorithm == key.algorithm && sig.keyid == keytag) {
 			result = dns_dnssec_verify(name, rdataset, dstkey,
@@ -1065,7 +1065,7 @@ dns_dnssec_haszonekey(dns_rdataset_t *keyset) {
 		dns_rdata_dnskey_t key;
 
 		dns_rdataset_current(keyset, &rdata);
-		(void)dns_rdata_tostruct(&rdata, &key, NULL);
+		dns_rdata_tostruct(&rdata, &key, NULL);
 
 		if (dns_dnssec_iszonekey(&key)) {
 			return true;
@@ -1445,8 +1445,7 @@ mark_active_keys(dns_dnsseckeylist_t *keylist, dns_rdataset_t *rrsigs) {
 
 			dns_rdata_reset(&rdata);
 			dns_rdataset_current(&sigs, &rdata);
-			(void)dns_rdata_tostruct(&rdata, &sig, NULL);
-			RUNTIME_CHECK(result == ISC_R_SUCCESS);
+			dns_rdata_tostruct(&rdata, &sig, NULL);
 			sigalg = dst_algorithm_fromdata(
 				sig.algorithm, sig.signature, sig.siglen);
 			sigid = sig.keyid;
@@ -1521,7 +1520,7 @@ dns_dnssec_keylistfromrdataset(const dns_name_t *origin, dns_kasp_t *kasp,
 			rdata.type == dns_rdatatype_dnskey);
 		REQUIRE(rdata.length > 3);
 
-		(void)dns_rdata_tostruct(&rdata, &keystruct, NULL);
+		dns_rdata_tostruct(&rdata, &keystruct, NULL);
 
 		algorithm = dst_algorithm_fromdata(
 			keystruct.algorithm, keystruct.data, keystruct.datalen);
@@ -2303,7 +2302,7 @@ dns_dnssec_matchdskey(dns_name_t *name, dns_rdata_t *dsrdata,
 	dns_rdata_ds_t ds;
 	isc_region_t r;
 
-	(void)dns_rdata_tostruct(dsrdata, &ds, NULL);
+	dns_rdata_tostruct(dsrdata, &ds, NULL);
 
 	DNS_RDATASET_FOREACH(keyset) {
 		dns_rdata_t newdsrdata = DNS_RDATA_INIT;
@@ -2311,7 +2310,7 @@ dns_dnssec_matchdskey(dns_name_t *name, dns_rdata_t *dsrdata,
 		dns_rdata_reset(keyrdata);
 		dns_rdataset_current(keyset, keyrdata);
 
-		(void)dns_rdata_tostruct(keyrdata, &key, NULL);
+		dns_rdata_tostruct(keyrdata, &key, NULL);
 
 		dns_rdata_toregion(keyrdata, &r);
 		keytag = dst_region_computeid(&r);

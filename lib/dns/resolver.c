@@ -3601,7 +3601,6 @@ fctx_getaddresses_nameservers(fetchctx_t *fctx, isc_stdtime_t now,
 	unsigned int ns_processed = 0;
 
 	DNS_RDATASET_FOREACH(&fctx->nameservers) {
-		isc_result_t result = ISC_R_SUCCESS;
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		bool overquota = false;
 		unsigned int static_stub = 0;
@@ -3611,10 +3610,7 @@ fctx_getaddresses_nameservers(fetchctx_t *fctx, isc_stdtime_t now,
 		/*
 		 * Extract the name from the NS record.
 		 */
-		result = dns_rdata_tostruct(&rdata, &ns, NULL);
-		if (result != ISC_R_SUCCESS) {
-			continue;
-		}
+		dns_rdata_tostruct(&rdata, &ns, NULL);
 
 		if (STATICSTUB(&fctx->nameservers) &&
 		    dns_name_equal(&ns.name, fctx->domain))
@@ -5344,7 +5340,7 @@ is_minimal_nsec(dns_rdataset_t *nsecset) {
 		dns_rdata_nsec_t nsec;
 
 		dns_rdataset_current(&rdataset, &rdata);
-		(void)dns_rdata_tostruct(&rdata, &nsec, NULL);
+		dns_rdata_tostruct(&rdata, &nsec, NULL);
 
 		if (nsec.len == sizeof(minimal_typemap) &&
 		    memcmp(nsec.typebits, minimal_typemap, nsec.len) == 0)
@@ -5895,7 +5891,7 @@ findnoqname(fetchctx_t *fctx, dns_message_t *message, dns_name_t *name,
 	DNS_RDATASET_FOREACH(sigrdataset) {
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		dns_rdataset_current(sigrdataset, &rdata);
-		(void)dns_rdata_tostruct(&rdata, &rrsig, NULL);
+		dns_rdata_tostruct(&rdata, &rrsig, NULL);
 		/* Wildcard has rrsig.labels < labels - 1. */
 		if (rrsig.labels + 1U >= labels) {
 			continue;
@@ -6764,7 +6760,7 @@ is_answertarget_allowed(fetchctx_t *fctx, dns_name_t *qname, dns_name_t *rname,
 	dns_rdataset_current(rdataset, &rdata);
 	switch (rdataset->type) {
 	case dns_rdatatype_cname:
-		(void)dns_rdata_tostruct(&rdata, &cname, NULL);
+		dns_rdata_tostruct(&rdata, &cname, NULL);
 		tname = &cname.cname;
 		break;
 	case dns_rdatatype_dname:
@@ -6773,7 +6769,7 @@ is_answertarget_allowed(fetchctx_t *fctx, dns_name_t *qname, dns_name_t *rname,
 		{
 			return true;
 		}
-		(void)dns_rdata_tostruct(&rdata, &dname, NULL);
+		dns_rdata_tostruct(&rdata, &dname, NULL);
 		dns_name_init(&prefix);
 		tname = dns_fixedname_initname(&fixed);
 		nlabels = dns_name_countlabels(rname);
