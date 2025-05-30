@@ -24,6 +24,13 @@
 #include <isc/result.h>
 #include <isc/tls.h>
 
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+#include <openssl/param_build.h>
+#include <openssl/store.h>
+#endif /* OPENSSL_VERSION_NUMBER >= 0x30000000L */
+
+#include "dst_internal.h"
+
 #define dst__openssl_toresult(fallback)                                    \
 	isc__tlserr2result(ISC_LOGCATEGORY_INVALID, ISC_LOGMODULE_INVALID, \
 			   NULL, fallback, __FILE__, __LINE__)
@@ -46,3 +53,48 @@ dst__openssl_keypair_isprivate(const dst_key_t *key);
 
 void
 dst__openssl_keypair_destroy(dst_key_t *key);
+
+ISC_AUTO_DECL(EVP_PKEY, EVP_PKEY_free)
+#define auto_EVP_PKEY ISC_AUTO(EVP_PKEY)
+
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+
+ISC_AUTO_DECL(OSSL_STORE_CTX, OSSL_STORE_close)
+#define auto_OSSL_STORE_CTX ISC_AUTO(OSSL_STORE_CTX)
+
+ISC_AUTO_DECL(OSSL_STORE_INFO, OSSL_STORE_INFO_free)
+#define auto_OSSL_STORE_INFO ISC_AUTO(OSSL_STORE_INFO)
+
+ISC_AUTO_DECL(OSSL_PARAM, OSSL_PARAM_free)
+#define auto_OSSL_PARAM ISC_AUTO(OSSL_PARAM)
+
+ISC_AUTO_DECL(OSSL_PARAM_BLD, OSSL_PARAM_BLD_free)
+#define auto_OSSL_PARAM_BLD ISC_AUTO(OSSL_PARAM_BLD)
+
+#else /* OPENSSL_VERSION_NUMBER >= 0x30000000L */
+
+ISC_AUTO_DECL(EC_KEY, EC_KEY_free)
+#define auto_EC_KEY ISC_AUTO(EC_KEY)
+
+#endif
+
+ISC_AUTO_DECL(EVP_PKEY_CTX, EVP_PKEY_CTX_free)
+#define auto_EVP_PKEY_CTX ISC_AUTO(EVP_PKEY_CTX)
+
+ISC_AUTO_DECL(BIGNUM, BN_clear_free)
+#define auto_BIGNUM ISC_AUTO(BIGNUM)
+
+ISC_AUTO_DECL(EC_POINT, EC_POINT_free)
+#define auto_EC_POINT ISC_AUTO(EC_POINT)
+
+ISC_AUTO_DECL(EC_GROUP, EC_GROUP_free)
+#define auto_EC_GROUP ISC_AUTO(EC_GROUP)
+
+ISC_AUTO_DECL(EVP_MD_CTX, EVP_MD_CTX_free)
+#define auto_EVP_MD_CTX ISC_AUTO(EVP_MD_CTX)
+
+ISC_AUTO_DECL(ECDSA_SIG, ECDSA_SIG_free)
+#define auto_ECDSA_SIG ISC_AUTO(ECDSA_SIG)
+
+typedef void OPENSSL_void;
+ISC_AUTO_DECL(OPENSSL_void, OPENSSL_free)

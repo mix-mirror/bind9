@@ -96,6 +96,9 @@
 		*(obj) = (val);   \
 	}
 
+#define COPY_INTO(dst, val) (dst) = (val)
+#define MOVE_INTO(dst, val) (dst) = (val), (val) = NULL
+
 /*%
  * Get the allocation size for a struct with a flexible array member
  * containing `count` elements. The struct is identified by a pointer,
