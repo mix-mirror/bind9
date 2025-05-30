@@ -3610,7 +3610,7 @@ fctx_getaddresses_nameservers(fetchctx_t *fctx, isc_stdtime_t now,
 		/*
 		 * Extract the name from the NS record.
 		 */
-		dns_rdata_tostruct(&rdata, &ns, NULL);
+		dns_rdata_tostruct(&rdata, &ns);
 
 		if (STATICSTUB(&fctx->nameservers) &&
 		    dns_name_equal(&ns.name, fctx->domain))
@@ -3634,7 +3634,6 @@ fctx_getaddresses_nameservers(fetchctx_t *fctx, isc_stdtime_t now,
 		}
 
 		dns_rdata_reset(&rdata);
-		dns_rdata_freestruct(&ns);
 
 		if (++ns_processed >= NS_PROCESSING_LIMIT) {
 			break;
@@ -5340,7 +5339,7 @@ is_minimal_nsec(dns_rdataset_t *nsecset) {
 		dns_rdata_nsec_t nsec;
 
 		dns_rdataset_current(&rdataset, &rdata);
-		dns_rdata_tostruct(&rdata, &nsec, NULL);
+		dns_rdata_tostruct(&rdata, &nsec);
 
 		if (nsec.len == sizeof(minimal_typemap) &&
 		    memcmp(nsec.typebits, minimal_typemap, nsec.len) == 0)
@@ -5891,7 +5890,7 @@ findnoqname(fetchctx_t *fctx, dns_message_t *message, dns_name_t *name,
 	DNS_RDATASET_FOREACH(sigrdataset) {
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		dns_rdataset_current(sigrdataset, &rdata);
-		dns_rdata_tostruct(&rdata, &rrsig, NULL);
+		dns_rdata_tostruct(&rdata, &rrsig);
 		/* Wildcard has rrsig.labels < labels - 1. */
 		if (rrsig.labels + 1U >= labels) {
 			continue;
@@ -6760,7 +6759,7 @@ is_answertarget_allowed(fetchctx_t *fctx, dns_name_t *qname, dns_name_t *rname,
 	dns_rdataset_current(rdataset, &rdata);
 	switch (rdataset->type) {
 	case dns_rdatatype_cname:
-		dns_rdata_tostruct(&rdata, &cname, NULL);
+		dns_rdata_tostruct(&rdata, &cname);
 		tname = &cname.cname;
 		break;
 	case dns_rdatatype_dname:
@@ -6769,7 +6768,7 @@ is_answertarget_allowed(fetchctx_t *fctx, dns_name_t *qname, dns_name_t *rname,
 		{
 			return true;
 		}
-		dns_rdata_tostruct(&rdata, &dname, NULL);
+		dns_rdata_tostruct(&rdata, &dname);
 		dns_name_init(&prefix);
 		tname = dns_fixedname_initname(&fixed);
 		nlabels = dns_name_countlabels(rname);

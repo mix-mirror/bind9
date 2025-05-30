@@ -81,7 +81,7 @@ nsec3param_salttotext_test(const nsec3param_salttotext_test_params_t *params) {
 		&rdata, dns_rdataclass_in, dns_rdatatype_nsec3param, buf,
 		sizeof(buf), params->nsec3param_text, false);
 	assert_int_equal(result, ISC_R_SUCCESS);
-	dns_rdata_tostruct(&rdata, &nsec3param, NULL);
+	dns_rdata_tostruct(&rdata, &nsec3param);
 
 	/*
 	 * Check typical use.

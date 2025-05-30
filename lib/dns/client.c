@@ -585,7 +585,7 @@ client_resfind(resctx_t *rctx, dns_fetchresponse_t *resp) {
 				goto done;
 			}
 			dns_rdataset_current(trdataset, &rdata);
-			dns_rdata_tostruct(&rdata, &cname, NULL);
+			dns_rdata_tostruct(&rdata, &cname);
 			dns_rdata_reset(&rdata);
 			dns_name_copy(&cname.cname, name);
 			want_restart = true;
@@ -617,7 +617,7 @@ client_resfind(resctx_t *rctx, dns_fetchresponse_t *resp) {
 				goto done;
 			}
 			dns_rdataset_current(trdataset, &rdata);
-			dns_rdata_tostruct(&rdata, &dname, NULL);
+			dns_rdata_tostruct(&rdata, &dname);
 			dns_rdata_reset(&rdata);
 			/*
 			 * Construct the new query name and start over.

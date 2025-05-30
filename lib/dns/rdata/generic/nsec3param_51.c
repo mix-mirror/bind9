@@ -238,29 +238,10 @@ tostruct_nsec3param(ARGS_TOSTRUCT) {
 
 	nsec3param->salt_length = uint8_consume_fromregion(&region);
 	INSIST(nsec3param->salt_length == region.length);
-	nsec3param->salt = mem_maybedup(mctx, region.base,
-					nsec3param->salt_length);
+	nsec3param->salt = region.base;
 	isc_region_consume(&region, nsec3param->salt_length);
 
-	nsec3param->mctx = mctx;
 	return ISC_R_SUCCESS;
-}
-
-static void
-freestruct_nsec3param(ARGS_FREESTRUCT) {
-	dns_rdata_nsec3param_t *nsec3param = source;
-
-	REQUIRE(nsec3param != NULL);
-	REQUIRE(nsec3param->common.rdtype == dns_rdatatype_nsec3param);
-
-	if (nsec3param->mctx == NULL) {
-		return;
-	}
-
-	if (nsec3param->salt != NULL) {
-		isc_mem_free(nsec3param->mctx, nsec3param->salt);
-	}
-	nsec3param->mctx = NULL;
 }
 
 static isc_result_t

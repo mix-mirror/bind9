@@ -199,7 +199,7 @@ dns_nsec_typepresent(dns_rdata_t *nsec, dns_rdatatype_t type) {
 	REQUIRE(nsec->type == dns_rdatatype_nsec);
 
 	/* This should never fail */
-	dns_rdata_tostruct(nsec, &nsecstruct, NULL);
+	dns_rdata_tostruct(nsec, &nsecstruct);
 
 	present = false;
 	for (i = 0; i < nsecstruct.len; i += len) {
@@ -253,7 +253,7 @@ dns_nsec_nseconly(dns_db_t *db, dns_dbversion_t *version, dns_diff_t *diff,
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 
 		dns_rdataset_current(&rdataset, &rdata);
-		dns_rdata_tostruct(&rdata, &dnskey, NULL);
+		dns_rdata_tostruct(&rdata, &dnskey);
 
 		if (dnskey.algorithm == DST_ALG_RSAMD5 ||
 		    dnskey.algorithm == DST_ALG_DSA ||
@@ -408,7 +408,7 @@ dns_nsec_noexistnodata(dns_rdatatype_t type, const dns_name_t *name,
 		return DNS_R_DNAME;
 	}
 
-	dns_rdata_tostruct(&rdata, &nsec, NULL);
+	dns_rdata_tostruct(&rdata, &nsec);
 	relation = dns_name_fullcompare(&nsec.next, name, &order, &nlabels);
 	if (order == 0) {
 		(*logit)(arg, ISC_LOG_DEBUG(3),

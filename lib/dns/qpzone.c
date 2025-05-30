@@ -1082,7 +1082,7 @@ setnsec3parameters(dns_db_t *db, qpz_version_t *version) {
 			dns_rdata_t rdata = DNS_RDATA_INIT;
 			vecheader_current(&iter, &rdata);
 
-			dns_rdata_tostruct(&rdata, &nsec3param, NULL);
+			dns_rdata_tostruct(&rdata, &nsec3param);
 
 			if (nsec3param.hash != DNS_NSEC3_UNKNOWNALG &&
 			    !dns_nsec3_supportedhash(nsec3param.hash))
@@ -2572,7 +2572,7 @@ matchparams(dns_vecheader_t *header, qpz_search_t *search) {
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		vecheader_current(&iter, &rdata);
 
-		dns_rdata_tostruct(&rdata, &nsec3, NULL);
+		dns_rdata_tostruct(&rdata, &nsec3);
 
 		if (nsec3.hash == search->version->hash &&
 		    nsec3.iterations == search->version->iterations &&

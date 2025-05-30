@@ -18,7 +18,6 @@
 
 typedef struct dns_rdata_isdn {
 	dns_rdatacommon_t common;
-	isc_mem_t *mctx;
 	char *isdn;
 	char *subaddress;
 	uint8_t isdn_len;

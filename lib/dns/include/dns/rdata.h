@@ -530,30 +530,16 @@ dns_rdata_fromstruct(dns_rdata_t *rdata, dns_rdataclass_t rdclass,
  */
 
 void
-dns_rdata_tostruct(const dns_rdata_t *rdata, void *target, isc_mem_t *mctx);
+dns_rdata_tostruct(const dns_rdata_t *rdata, void *target);
 /*%<
  * Convert an rdata into its C structure representation.
- *
- * If 'mctx' is NULL then 'rdata' must persist while 'target' is being used.
- *
- * If 'mctx' is non NULL then memory will be allocated if required.
+ * 'rdata' must persist while 'target' is being used.
  *
  * Requires:
  *
  *\li	'rdata' is a valid, non-empty, non-pseudo rdata.
  *
  *\li	'target' to point to a valid pointer for the type and class.
- */
-
-void
-dns_rdata_freestruct(void *source);
-/*%<
- * Free dynamic memory attached to 'source' (if any).
- *
- * Requires:
- *
- *\li	'source' to point to the structure previously filled in by
- *	dns_rdata_tostruct().
  */
 
 unsigned int

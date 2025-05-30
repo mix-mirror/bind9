@@ -145,24 +145,12 @@ tostruct_l64(ARGS_TOSTRUCT) {
 	REQUIRE(l64 != NULL);
 	REQUIRE(rdata->length == 10);
 
-	UNUSED(mctx);
-
 	DNS_RDATACOMMON_INIT(l64, rdata->type, rdata->rdclass);
 
 	dns_rdata_toregion(rdata, &region);
 	l64->pref = uint16_fromregion(&region);
 	memmove(l64->l64, region.base, region.length);
 	return ISC_R_SUCCESS;
-}
-
-static void
-freestruct_l64(ARGS_FREESTRUCT) {
-	dns_rdata_l64_t *l64 = source;
-
-	REQUIRE(l64 != NULL);
-	REQUIRE(l64->common.rdtype == dns_rdatatype_l64);
-
-	return;
 }
 
 static isc_result_t

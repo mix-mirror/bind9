@@ -302,41 +302,18 @@ tostruct_nsec3(ARGS_TOSTRUCT) {
 
 	nsec3->salt_length = uint8_consume_fromregion(&region);
 	INSIST(nsec3->salt_length <= region.length);
-	nsec3->salt = mem_maybedup(mctx, region.base, nsec3->salt_length);
+	nsec3->salt = region.base;
 	isc_region_consume(&region, nsec3->salt_length);
 
 	nsec3->next_length = uint8_consume_fromregion(&region);
 	INSIST(nsec3->next_length <= region.length);
-	nsec3->next = mem_maybedup(mctx, region.base, nsec3->next_length);
+	nsec3->next = region.base;
 	isc_region_consume(&region, nsec3->next_length);
 
 	nsec3->len = region.length;
-	nsec3->typebits = mem_maybedup(mctx, region.base, region.length);
-	nsec3->mctx = mctx;
+	nsec3->typebits = region.base;
+
 	return ISC_R_SUCCESS;
-}
-
-static void
-freestruct_nsec3(ARGS_FREESTRUCT) {
-	dns_rdata_nsec3_t *nsec3 = source;
-
-	REQUIRE(nsec3 != NULL);
-	REQUIRE(nsec3->common.rdtype == dns_rdatatype_nsec3);
-
-	if (nsec3->mctx == NULL) {
-		return;
-	}
-
-	if (nsec3->salt != NULL) {
-		isc_mem_free(nsec3->mctx, nsec3->salt);
-	}
-	if (nsec3->next != NULL) {
-		isc_mem_free(nsec3->mctx, nsec3->next);
-	}
-	if (nsec3->typebits != NULL) {
-		isc_mem_free(nsec3->mctx, nsec3->typebits);
-	}
-	nsec3->mctx = NULL;
 }
 
 static isc_result_t

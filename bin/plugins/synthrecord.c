@@ -359,9 +359,7 @@ synthrecord_reverse(synthrecord_t *inst, query_ctx_t *qctx,
 		return NS_HOOK_CONTINUE;
 	}
 
-	synthptrdata = (dns_rdata_ptr_t){
-		.mctx = qctx->client->inner.view->mctx, .ptr = aname
-	};
+	synthptrdata = (dns_rdata_ptr_t){ .ptr = aname };
 	DNS_RDATACOMMON_INIT(&synthptrdata, dns_rdatatype_ptr,
 			     dns_rdataclass_in);
 	result = synthrecord_respond(inst, qctx, &synthptrdata,
