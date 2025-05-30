@@ -1820,7 +1820,6 @@ followup_lookup(dns_message_t *msg, dig_query_t *query, dns_section_t section) {
 			query->lookup->nsfound++;
 			dns_rdata_tostruct(&rdata, &ns, NULL);
 			dns_name_format(&ns.name, namestr, sizeof(namestr));
-			dns_rdata_freestruct(&ns);
 
 			/* Initialize lookup if we've not yet */
 			debug("found NS %s", namestr);
@@ -3657,7 +3656,6 @@ check_for_more_data(dig_lookup_t *lookup, dig_query_t *query,
 				debug("got an SOA");
 				dns_rdata_tostruct(&rdata, &soa, NULL);
 				serial = soa.serial;
-				dns_rdata_freestruct(&soa);
 				if (!query->first_soa_rcvd) {
 					query->first_soa_rcvd = true;
 					query->first_rr_serial = serial;

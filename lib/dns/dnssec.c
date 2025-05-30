@@ -533,8 +533,6 @@ cleanup_context:
 		goto again;
 	}
 cleanup_struct:
-	dns_rdata_freestruct(&sig);
-
 	if (result == DST_R_VERIFYFAILURE) {
 		result = DNS_R_SIGINVALID;
 	}
@@ -858,7 +856,6 @@ dns_dnssec_verifymessage(isc_buffer_t *source, dns_message_t *msg,
 	isc_mem_t *mctx;
 	isc_result_t result;
 	uint16_t addcount, addcount_n;
-	bool signeedsfree = false;
 
 	REQUIRE(source != NULL);
 	REQUIRE(msg != NULL);
@@ -882,7 +879,6 @@ dns_dnssec_verifymessage(isc_buffer_t *source, dns_message_t *msg,
 	dns_rdataset_current(msg->sig0, &rdata);
 
 	dns_rdata_tostruct(&rdata, &sig, NULL);
-	signeedsfree = true;
 
 	if (sig.labels != 0) {
 		CLEANUP(DNS_R_SIGINVALID);
@@ -968,14 +964,10 @@ dns_dnssec_verifymessage(isc_buffer_t *source, dns_message_t *msg,
 	msg->sig0status = dns_rcode_noerror;
 
 	dst_context_destroy(&ctx);
-	dns_rdata_freestruct(&sig);
 
 	return ISC_R_SUCCESS;
 
 cleanup:
-	if (signeedsfree) {
-		dns_rdata_freestruct(&sig);
-	}
 	if (ctx != NULL) {
 		dst_context_destroy(&ctx);
 	}

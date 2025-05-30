@@ -2903,7 +2903,6 @@ dns_message_signer(dns_message_t *msg, dns_name_t *signer) {
 			result = DNS_R_SIGINVALID;
 		}
 		dns_name_clone(&sig.signer, signer);
-		dns_rdata_freestruct(&sig);
 	} else {
 		const dns_name_t *identity;
 		dns_rdata_any_tsig_t tsig;
@@ -2925,7 +2924,6 @@ dns_message_signer(dns_message_t *msg, dns_name_t *signer) {
 			INSIST(tsig.error != dns_rcode_noerror);
 			result = DNS_R_TSIGERRORSET;
 		}
-		dns_rdata_freestruct(&tsig);
 
 		if (msg->tsigkey == NULL) {
 			/*
@@ -3177,7 +3175,6 @@ dns_message_checksig(dns_message_t *msg, dns_view_t *view) {
 		if (dns_rdataset_isassociated(&keyset)) {
 			dns_rdataset_disassociate(&keyset);
 		}
-		dns_rdata_freestruct(&sig);
 		return result;
 	}
 }

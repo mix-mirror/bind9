@@ -2880,7 +2880,6 @@ lookforsoa:
 					      primary_servers, primary_alloc);
 		if (primary_total == 0) {
 			seenerror = true;
-			dns_rdata_freestruct(&soa);
 			dns_message_detach(&soaquery);
 			dns_request_destroy(&request);
 			dns_message_detach(&rcvmsg);
@@ -2892,7 +2891,6 @@ lookforsoa:
 	} else {
 		primary_from_servers();
 	}
-	dns_rdata_freestruct(&soa);
 
 #if HAVE_GSSAPI
 	if (usegsstsig) {

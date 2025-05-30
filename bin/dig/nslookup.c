@@ -148,7 +148,6 @@ printsoa(dns_rdata_t *rdata) {
 	printf("\tretry = %u\n", soa.retry);
 	printf("\texpire = %u\n", soa.expire);
 	printf("\tminimum = %u\n", soa.minimum);
-	dns_rdata_freestruct(&soa);
 }
 
 static void
@@ -336,7 +335,6 @@ chase_cnamechain(dns_message_t *msg, dns_name_t *qname) {
 		dns_rdataset_current(rdataset, &rdata);
 		dns_rdata_tostruct(&rdata, &cname, NULL);
 		dns_name_copy(&cname.cname, qname);
-		dns_rdata_freestruct(&cname);
 	}
 }
 

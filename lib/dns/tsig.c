@@ -1189,10 +1189,7 @@ tsig_verify_tcp(isc_buffer_t *source, dns_message_t *msg) {
 		has_tsig = true;
 
 		keyname = msg->tsigname;
-		result = dns_rdataset_first(msg->tsig);
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup_querystruct;
-		}
+		RETERR(dns_rdataset_first(msg->tsig));
 		dns_rdataset_current(msg->tsig, &rdata);
 		dns_rdata_tostruct(&rdata, &tsig, NULL);
 
@@ -1206,23 +1203,19 @@ tsig_verify_tcp(isc_buffer_t *source, dns_message_t *msg) {
 			result = DNS_R_TSIGVERIFYFAILURE;
 			tsig_log(msg->tsigkey, 2,
 				 "key name and algorithm do not match");
-			goto cleanup_querystruct;
+			return result;
 		}
 
 		/*
 		 * Check digest length.
 		 */
 		alg = dst_key_alg(key);
-		result = dst_key_sigsize(key, &siglen);
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup_querystruct;
-		}
+		RETERR(dst_key_sigsize(key, &siglen));
 		if (dns__tsig_algvalid(alg)) {
 			if (tsig.siglen > siglen) {
 				tsig_log(tsigkey, 2,
 					 "signature length too big");
-				result = DNS_R_FORMERR;
-				goto cleanup_querystruct;
+				return DNS_R_FORMERR;
 			}
 			if (tsig.siglen > 0 &&
 			    (tsig.siglen < 10 ||
@@ -1230,19 +1223,14 @@ tsig_verify_tcp(isc_buffer_t *source, dns_message_t *msg) {
 			{
 				tsig_log(tsigkey, 2,
 					 "signature length below minimum");
-				result = DNS_R_FORMERR;
-				goto cleanup_querystruct;
+				return DNS_R_FORMERR;
 			}
 		}
 	}
 
 	if (msg->tsigctx == NULL) {
-		result = dst_context_create(key, mctx, DNS_LOGCATEGORY_DNSSEC,
-					    false, &msg->tsigctx);
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup_querystruct;
-		}
-
+		RETERR(dst_context_create(key, mctx, DNS_LOGCATEGORY_DNSSEC,
+					  false, &msg->tsigctx));
 		/*
 		 * Digest the length of the query signature
 		 */
@@ -1442,9 +1430,6 @@ cleanup_context:
 	if ((result != ISC_R_SUCCESS || has_tsig) && msg->tsigctx != NULL) {
 		dst_context_destroy(&msg->tsigctx);
 	}
-
-cleanup_querystruct:
-	dns_rdata_freestruct(&querytsig);
 
 	return result;
 }

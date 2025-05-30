@@ -221,7 +221,6 @@ dns_nsec_typepresent(dns_rdata_t *nsec, dns_rdatatype_t type) {
 		}
 		break;
 	}
-	dns_rdata_freestruct(&nsecstruct);
 	return present;
 }
 
@@ -412,7 +411,6 @@ dns_nsec_noexistnodata(dns_rdatatype_t type, const dns_name_t *name,
 	dns_rdata_tostruct(&rdata, &nsec, NULL);
 	relation = dns_name_fullcompare(&nsec.next, name, &order, &nlabels);
 	if (order == 0) {
-		dns_rdata_freestruct(&nsec);
 		(*logit)(arg, ISC_LOG_DEBUG(3),
 			 "ignoring nsec matches next name");
 		return ISC_R_IGNORE;
@@ -422,7 +420,6 @@ dns_nsec_noexistnodata(dns_rdatatype_t type, const dns_name_t *name,
 		/*
 		 * The name is not within the NSEC range.
 		 */
-		dns_rdata_freestruct(&nsec);
 		(*logit)(arg, ISC_LOG_DEBUG(3),
 			 "ignoring nsec because name is past end of range");
 		return ISC_R_IGNORE;
@@ -431,7 +428,6 @@ dns_nsec_noexistnodata(dns_rdatatype_t type, const dns_name_t *name,
 	if (order > 0 && relation == dns_namereln_subdomain) {
 		(*logit)(arg, ISC_LOG_DEBUG(3),
 			 "nsec proves name exist (empty)");
-		dns_rdata_freestruct(&nsec);
 		*exists = true;
 		*data = false;
 		return ISC_R_SUCCESS;
@@ -450,13 +446,11 @@ dns_nsec_noexistnodata(dns_rdatatype_t type, const dns_name_t *name,
 		}
 		result = dns_name_concatenate(dns_wildcardname, &common, wild);
 		if (result != ISC_R_SUCCESS) {
-			dns_rdata_freestruct(&nsec);
 			(*logit)(arg, ISC_LOG_DEBUG(3),
 				 "failure generating wildcard name");
 			return result;
 		}
 	}
-	dns_rdata_freestruct(&nsec);
 	(*logit)(arg, ISC_LOG_DEBUG(3), "nsec range ok");
 	*exists = false;
 	return ISC_R_SUCCESS;
