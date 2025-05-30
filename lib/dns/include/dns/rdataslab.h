@@ -307,7 +307,7 @@ dns_slabheader_new(dns_db_t *db, dns_dbnode_t *node);
  */
 
 void
-dns_slabheader_destroy(dns_slabheader_t **headerp);
+dns_slabheader_destroy(isc_mem_t *mctx, dns_slabheader_t **headerp);
 /*%<
  * Free all memory associated with '*headerp'.
  */

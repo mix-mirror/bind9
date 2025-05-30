@@ -570,7 +570,6 @@ dns__db_attachnode(dns_db_t *db, dns_dbnode_t *source,
 	 * Attach *targetp to source.
 	 */
 
-	REQUIRE(DNS_DB_VALID(db));
 	REQUIRE(source != NULL);
 	REQUIRE(targetp != NULL && *targetp == NULL);
 

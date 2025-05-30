@@ -842,7 +842,7 @@ clean_zone_node(qpznode_t *node, uint32_t least_serial) {
 					dcurrent_down->up = dparent;
 				}
 				dparent->down = dcurrent_down;
-				dns_slabheader_destroy(&dcurrent);
+				dns_slabheader_destroy(HEADERNODE(dcurrent)->mctx, &dcurrent);
 			} else {
 				dparent = dcurrent;
 			}
@@ -861,7 +861,7 @@ clean_zone_node(qpznode_t *node, uint32_t least_serial) {
 				} else {
 					node->data = current->next;
 				}
-				dns_slabheader_destroy(&current);
+				dns_slabheader_destroy(HEADERNODE(current)->mctx, &current);
 				/*
 				 * current no longer exists, so we can
 				 * just continue with the loop.
@@ -878,7 +878,7 @@ clean_zone_node(qpznode_t *node, uint32_t least_serial) {
 					node->data = dcurrent_down;
 				}
 				dcurrent_down->next = top_next;
-				dns_slabheader_destroy(&current);
+				dns_slabheader_destroy(HEADERNODE(current)->mctx, &current);
 				current = dcurrent_down;
 			}
 		}
@@ -906,7 +906,7 @@ clean_zone_node(qpznode_t *node, uint32_t least_serial) {
 			do {
 				dcurrent_down = dcurrent->down;
 				INSIST(dcurrent->serial <= least_serial);
-				dns_slabheader_destroy(&dcurrent);
+				dns_slabheader_destroy(HEADERNODE(dcurrent)->mctx, &dcurrent);
 				dcurrent = dcurrent_down;
 			} while (dcurrent != NULL);
 			dparent->down = NULL;
@@ -962,7 +962,7 @@ qpznode_erefs_decrement(qpzonedb_t *qpdb, qpznode_t *node DNS__DB_FLARG) {
  * if necessary, then decrements the internal reference counter as well.
  */
 static void
-qpznode_release(qpzonedb_t *qpdb, qpznode_t *node, uint32_t least_serial,
+qpznode_release(qpznode_t *node, uint32_t least_serial,
 		isc_rwlocktype_t *nlocktypep DNS__DB_FLARG) {
 	REQUIRE(*nlocktypep != isc_rwlocktype_none);
 
@@ -971,8 +971,7 @@ qpznode_release(qpzonedb_t *qpdb, qpznode_t *node, uint32_t least_serial,
 	}
 
 	/* Handle easy and typical case first. */
-	if (!node->dirty && (node->data != NULL || node == qpdb->origin ||
-			     node == qpdb->nsec3_origin))
+	if (!node->dirty && node->data != NULL)
 	{
 		goto unref;
 	}
@@ -1552,7 +1551,7 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 		if (rollback && !IGNORE(header)) {
 			resigninsert(header);
 		}
-		qpznode_release(qpdb, HEADERNODE(header), least_serial,
+		qpznode_release(HEADERNODE(header), least_serial,
 				&nlocktype DNS__DB_FLARG_PASS);
 		NODE_UNLOCK(nlock, &nlocktype);
 	}
@@ -1573,7 +1572,7 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 		if (rollback) {
 			rollback_node(node, serial);
 		}
-		qpznode_release(qpdb, node, least_serial,
+		qpznode_release(node, least_serial,
 				&nlocktype DNS__DB_FILELINE);
 
 		NODE_UNLOCK(nlock, &nlocktype);
@@ -1938,7 +1937,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 				 * alone.  It will get cleaned up when
 				 * clean_zone_node() runs.
 				 */
-				dns_slabheader_destroy(&newheader);
+				dns_slabheader_destroy(HEADERNODE(newheader)->mctx, &newheader);
 				newheader = merged;
 				dns_slabheader_reset(newheader,
 						     (dns_db_t *)qpdb,
@@ -1959,7 +1958,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 						(dns_rdatatype_t)header->type,
 						"updating", qpdb->maxrrperset);
 				}
-				dns_slabheader_destroy(&newheader);
+				dns_slabheader_destroy(HEADERNODE(newheader)->mctx, &newheader);
 				return result;
 			}
 		}
@@ -1986,7 +1985,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 			newheader->next = topheader->next;
 			maybe_update_recordsandsize(false, version, header,
 						    nodename->length);
-			dns_slabheader_destroy(&header);
+			dns_slabheader_destroy(HEADERNODE(header)->mctx, &header);
 		} else {
 			if (RESIGN(newheader)) {
 				resigninsert(newheader);
@@ -2016,7 +2015,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 		 * If we're trying to delete the type, don't bother.
 		 */
 		if (NONEXISTENT(newheader)) {
-			dns_slabheader_destroy(&newheader);
+			dns_slabheader_destroy(HEADERNODE(newheader)->mctx, &newheader);
 			return DNS_R_UNCHANGED;
 		}
 
@@ -2056,7 +2055,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 			if (qpdb->maxtypepername > 0 &&
 			    ntypes >= qpdb->maxtypepername)
 			{
-				dns_slabheader_destroy(&newheader);
+				dns_slabheader_destroy(HEADERNODE(newheader)->mctx, &newheader);
 				return DNS_R_TOOMANYRECORDS;
 			}
 
@@ -3904,8 +3903,7 @@ tree_exit:
 		nlock = qpzone_get_lock(node);
 
 		NODE_RDLOCK(nlock, &nlocktype);
-		qpznode_release(search.qpdb, node, 0,
-				&nlocktype DNS__DB_FLARG_PASS);
+		qpznode_release(node, 0, &nlocktype DNS__DB_FLARG_PASS);
 		NODE_UNLOCK(nlock, &nlocktype);
 	}
 
@@ -3952,12 +3950,11 @@ qpzone_allrdatasets(dns_db_t *db, dns_dbnode_t *dbnode,
 }
 
 static void
-qpzone_attachnode(dns_db_t *db, dns_dbnode_t *source,
+qpzone_attachnode(dns_db_t *db ISC_ATTR_UNUSED, dns_dbnode_t *source,
 		  dns_dbnode_t **targetp DNS__DB_FLARG) {
 	qpzonedb_t *qpdb = (qpzonedb_t *)db;
 	qpznode_t *node = (qpznode_t *)source;
 
-	REQUIRE(VALID_QPZONE(qpdb));
 	REQUIRE(targetp != NULL && *targetp == NULL);
 
 	qpznode_acquire(qpdb, node DNS__DB_FLARG_PASS);
@@ -3966,13 +3963,11 @@ qpzone_attachnode(dns_db_t *db, dns_dbnode_t *source,
 }
 
 static void
-qpzone_detachnode(dns_db_t *db, dns_dbnode_t **nodep DNS__DB_FLARG) {
-	qpzonedb_t *qpdb = (qpzonedb_t *)db;
+qpzone_detachnode(dns_db_t *db ISC_ATTR_UNUSED, dns_dbnode_t **nodep DNS__DB_FLARG) {
 	qpznode_t *node = NULL;
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 	isc_rwlock_t *nlock = NULL;
 
-	REQUIRE(VALID_QPZONE(qpdb));
 	REQUIRE(nodep != NULL && *nodep != NULL);
 
 	node = (qpznode_t *)(*nodep);
@@ -3990,7 +3985,7 @@ qpzone_detachnode(dns_db_t *db, dns_dbnode_t **nodep DNS__DB_FLARG) {
 
 	rcu_read_lock();
 	NODE_RDLOCK(nlock, &nlocktype);
-	qpznode_release(qpdb, node, 0, &nlocktype DNS__DB_FLARG_PASS);
+	qpznode_release(node, 0, &nlocktype DNS__DB_FLARG_PASS);
 	NODE_UNLOCK(nlock, &nlocktype);
 	rcu_read_unlock();
 
@@ -4243,7 +4238,6 @@ reference_iter_node(qpdb_dbiterator_t *iter DNS__DB_FLARG) {
 
 static void
 dereference_iter_node(qpdb_dbiterator_t *iter DNS__DB_FLARG) {
-	qpzonedb_t *qpdb = (qpzonedb_t *)iter->common.db;
 	qpznode_t *node = iter->node;
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 	isc_rwlock_t *nlock = NULL;
@@ -4256,7 +4250,7 @@ dereference_iter_node(qpdb_dbiterator_t *iter DNS__DB_FLARG) {
 	nlock = qpzone_get_lock(node);
 
 	NODE_RDLOCK(nlock, &nlocktype);
-	qpznode_release(qpdb, node, 0, &nlocktype DNS__DB_FLARG_PASS);
+	qpznode_release(node, 0, &nlocktype DNS__DB_FLARG_PASS);
 	NODE_UNLOCK(nlock, &nlocktype);
 }
 
@@ -4882,7 +4876,7 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 				&subresult);
 		}
 		if (result == ISC_R_SUCCESS) {
-			dns_slabheader_destroy(&newheader);
+			dns_slabheader_destroy(HEADERNODE(newheader)->mctx, &newheader);
 			newheader = subresult;
 			dns_slabheader_reset(newheader, db,
 					     (dns_dbnode_t *)node);
@@ -4912,7 +4906,7 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 			 * This subtraction would remove all of the rdata;
 			 * add a nonexistent header instead.
 			 */
-			dns_slabheader_destroy(&newheader);
+			dns_slabheader_destroy(HEADERNODE(newheader)->mctx, &newheader);
 			newheader = dns_slabheader_new((dns_db_t *)qpdb,
 						       (dns_dbnode_t *)node);
 			newheader->ttl = 0;
@@ -4921,7 +4915,7 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 				    DNS_SLABHEADERATTR_NONEXISTENT);
 			newheader->serial = version->serial;
 		} else {
-			dns_slabheader_destroy(&newheader);
+			dns_slabheader_destroy(HEADERNODE(newheader)->mctx, &newheader);
 			goto unlock;
 		}
 
@@ -4948,7 +4942,7 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 		 * The rdataset doesn't exist, so we don't need to do anything
 		 * to satisfy the deletion request.
 		 */
-		dns_slabheader_destroy(&newheader);
+		dns_slabheader_destroy(HEADERNODE(newheader)->mctx, &newheader);
 		if ((options & DNS_DBSUB_EXACT) != 0) {
 			result = DNS_R_NOTEXACT;
 		} else {
@@ -5422,10 +5416,10 @@ destroy_qpznode(qpznode_t *node) {
 
 		for (down = current->down; down != NULL; down = down_next) {
 			down_next = down->down;
-			dns_slabheader_destroy(&down);
+			dns_slabheader_destroy(HEADERNODE(down)->mctx, &down);
 		}
 
-		dns_slabheader_destroy(&current);
+		dns_slabheader_destroy(HEADERNODE(current)->mctx, &current);
 	}
 
 	qpz_heap_unref(node->heap);

@@ -888,13 +888,11 @@ dns_slabheader_new(dns_db_t *db, dns_dbnode_t *node) {
 }
 
 void
-dns_slabheader_destroy(dns_slabheader_t **headerp) {
+dns_slabheader_destroy(isc_mem_t *mctx, dns_slabheader_t **headerp) {
 	unsigned int size;
 	dns_slabheader_t *header = *headerp;
 
 	*headerp = NULL;
-
-	isc_mem_t *mctx = header->db->mctx;
 
 	// FIXME: we don't need no db!
 	// (and this method is only used here. Get rid of it.)

@@ -550,7 +550,7 @@ clean_stale_headers(dns_slabheader_t *top) {
 
 	for (d = top->down; d != NULL; d = down_next) {
 		down_next = d->down;
-		dns_slabheader_destroy(&d);
+		dns_slabheader_destroy(HEADERNODE(d)->mctx, &d);
 	}
 	top->down = NULL;
 }
@@ -578,7 +578,7 @@ clean_cache_node(qpcache_t *qpdb, qpcnode_t *node) {
 			} else {
 				node->data = current->next;
 			}
-			dns_slabheader_destroy(&current);
+			dns_slabheader_destroy(HEADERNODE(current)->mctx, &current);
 		} else {
 			top_prev = current;
 		}
@@ -2580,7 +2580,7 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode,
 					 * The NXDOMAIN/NODATA(QTYPE=ANY)
 					 * is more trusted.
 					 */
-					dns_slabheader_destroy(&newheader);
+					dns_slabheader_destroy(HEADERNODE(newheader)->mctx, &newheader);
 					if (addedrdataset != NULL) {
 						bindrdataset(
 							qpdb, qpnode, topheader,
@@ -2632,7 +2632,7 @@ find_header:
 		 * Deleting an already non-existent rdataset has no effect.
 		 */
 		if (!EXISTS(header) && !EXISTS(newheader)) {
-			dns_slabheader_destroy(&newheader);
+			dns_slabheader_destroy(HEADERNODE(newheader)->mctx, &newheader);
 			return DNS_R_UNCHANGED;
 		}
 
@@ -2646,7 +2646,7 @@ find_header:
 		if (trust < header->trust &&
 		    (ACTIVE(header, now) || !EXISTS(header)))
 		{
-			dns_slabheader_destroy(&newheader);
+			dns_slabheader_destroy(HEADERNODE(newheader)->mctx, &newheader);
 			if (addedrdataset != NULL) {
 				bindrdataset(qpdb, qpnode, header, now,
 					     nlocktype, tlocktype,
@@ -2692,7 +2692,7 @@ find_header:
 				header->closest = newheader->closest;
 				newheader->closest = NULL;
 			}
-			dns_slabheader_destroy(&newheader);
+			dns_slabheader_destroy(HEADERNODE(newheader)->mctx, &newheader);
 			if (addedrdataset != NULL) {
 				bindrdataset(qpdb, qpnode, header, now,
 					     nlocktype, tlocktype,
@@ -2746,7 +2746,7 @@ find_header:
 				header->closest = newheader->closest;
 				newheader->closest = NULL;
 			}
-			dns_slabheader_destroy(&newheader);
+			dns_slabheader_destroy(HEADERNODE(newheader)->mctx, &newheader);
 			if (addedrdataset != NULL) {
 				bindrdataset(qpdb, qpnode, header, now,
 					     nlocktype, tlocktype,
@@ -2775,7 +2775,7 @@ find_header:
 		 * The type already doesn't exist; no point trying
 		 * to delete it.
 		 */
-		dns_slabheader_destroy(&newheader);
+		dns_slabheader_destroy(HEADERNODE(newheader)->mctx, &newheader);
 		return DNS_R_UNCHANGED;
 	} else {
 		/* No rdatasets of the given type exist at the node. */
@@ -2978,7 +2978,7 @@ qpcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 		result = addnoqname(qpdb->common.mctx, newheader,
 				    qpdb->maxrrperset, rdataset);
 		if (result != ISC_R_SUCCESS) {
-			dns_slabheader_destroy(&newheader);
+			dns_slabheader_destroy(HEADERNODE(newheader)->mctx, &newheader);
 			return result;
 		}
 	}
@@ -2986,7 +2986,7 @@ qpcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 		result = addclosest(qpdb->common.mctx, newheader,
 				    qpdb->maxrrperset, rdataset);
 		if (result != ISC_R_SUCCESS) {
-			dns_slabheader_destroy(&newheader);
+			dns_slabheader_destroy(HEADERNODE(newheader)->mctx, &newheader);
 			return result;
 		}
 	}
@@ -3805,10 +3805,10 @@ qpcnode_destroy(qpcnode_t *data) {
 
 		for (down = current->down; down != NULL; down = down_next) {
 			down_next = down->down;
-			dns_slabheader_destroy(&down);
+			dns_slabheader_destroy(HEADERNODE(down)->mctx, &down);
 		}
 
-		dns_slabheader_destroy(&current);
+		dns_slabheader_destroy(HEADERNODE(current)->mctx, &current);
 	}
 
 	dns_name_free(&data->name, data->mctx);
