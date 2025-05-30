@@ -16,6 +16,8 @@
 #include <openssl/bn.h>
 #include <openssl/conf.h>
 #include <openssl/crypto.h>
+#include <openssl/ec.h>
+#include <openssl/ecdsa.h>
 #include <openssl/err.h>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
@@ -98,3 +100,4 @@ ISC_AUTO_DECL(ECDSA_SIG, ECDSA_SIG_free)
 
 typedef void OPENSSL_void;
 ISC_AUTO_DECL(OPENSSL_void, OPENSSL_free)
+#define auto_OPENSSL_void ISC_AUTO(OPENSSL_void)
