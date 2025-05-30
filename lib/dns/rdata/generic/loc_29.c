@@ -748,9 +748,6 @@ tostruct_loc(ARGS_TOSTRUCT) {
 
 	dns_rdata_toregion(rdata, &r);
 	version = uint8_fromregion(&r);
-	if (version != 0) {
-		return ISC_R_NOTIMPLEMENTED;
-	}
 
 	DNS_RDATACOMMON_INIT(loc, rdata->type, rdata->rdclass);
 
