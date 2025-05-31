@@ -854,21 +854,6 @@ dns_rdata_checknames(dns_rdata_t *rdata, const dns_name_t *owner,
  *	'bad'	to be NULL or valid.
  */
 
-void
-dns_rdata_exists(dns_rdata_t *rdata, dns_rdatatype_t type);
-
-void
-dns_rdata_notexist(dns_rdata_t *rdata, dns_rdatatype_t type);
-
-void
-dns_rdata_deleterrset(dns_rdata_t *rdata, dns_rdatatype_t type);
-
-void
-dns_rdata_makedelete(dns_rdata_t *rdata);
-
-const char *
-dns_rdata_updateop(dns_rdata_t *rdata, dns_section_t section);
-
 isc_result_t
 dns_rdata_checksvcb(const dns_name_t *owner, const dns_rdata_t *rdata);
 /*%<
