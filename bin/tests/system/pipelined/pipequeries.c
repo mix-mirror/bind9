@@ -32,6 +32,7 @@
 #include <isc/sockaddr.h>
 #include <isc/util.h>
 
+#include <dns/cfgmgr.h>
 #include <dns/dispatch.h>
 #include <dns/fixedname.h>
 #include <dns/lib.h>
@@ -211,6 +212,23 @@ teardown_dispatchmgr(void *arg) {
 	dns_dispatchmgr_detach(&dispatchmgr);
 }
 
+static void
+init_cfgmgr(void) {
+	/*
+	 * TODO temporary quick fix
+	 */
+	dns_cfgmgr_init(isc_g_mctx);
+	dns_cfgmgr_mode(DNS_CFGMGR_MODEBUILTIN);
+	dns_cfgmgr_rwtxn();
+	dns_cfgmgr_commit();
+
+	dns_cfgmgr_mode(DNS_CFGMGR_MODEUSER);
+	dns_cfgmgr_rwtxn();
+	dns_cfgmgr_commit();
+
+	dns_cfgmgr_mode(DNS_CFGMGR_MODERUNNING);
+}
+
 int
 main(int argc, char *argv[]) {
 	isc_sockaddr_t bind_any;
@@ -269,6 +287,7 @@ main(int argc, char *argv[]) {
 	isc_sockaddr_fromin(&dstaddr, &inaddr, port);
 
 	isc_managers_create(1);
+	init_cfgmgr();
 
 	RUNCHECK(dns_dispatchmgr_create(isc_g_mctx, &dispatchmgr));
 
@@ -287,6 +306,7 @@ main(int argc, char *argv[]) {
 
 	isc_loopmgr_run();
 
+	dns_cfgmgr_deinit();
 	isc_managers_destroy();
 
 	return 0;

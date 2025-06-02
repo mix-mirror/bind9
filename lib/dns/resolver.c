@@ -6480,9 +6480,10 @@ is_answeraddress_allowed(dns_view_t *view, dns_name_t *name,
 	char classbuf[64];
 	char typebuf[64];
 	int match;
+	dns_acl_t *denyansweracl = dns_view_getacl(view, "deny-answer-addresses");
 
 	/* By default, we allow any addresses. */
-	if (view->denyansweracl == NULL) {
+	if (denyansweracl == NULL) {
 		return true;
 	}
 
@@ -6512,7 +6513,7 @@ is_answeraddress_allowed(dns_view_t *view, dns_name_t *name,
 			isc_netaddr_fromin6(&netaddr, &in6a);
 		}
 
-		result = dns_acl_match(&netaddr, NULL, view->denyansweracl,
+		result = dns_acl_match(&netaddr, NULL, denyansweracl,
 				       view->aclenv, &match, NULL);
 		if (result == ISC_R_SUCCESS && match > 0) {
 			isc_netaddr_format(&netaddr, addrbuf, sizeof(addrbuf));
@@ -7056,6 +7057,8 @@ resquery_response(isc_result_t eresult, isc_region_t *region, void *arg) {
 		return;
 	}
 
+	dns_cfgmgr_txn();
+
 	REQUIRE(VALID_QUERY(query));
 	fctx = query->fctx;
 	REQUIRE(VALID_FCTX(fctx));
@@ -7227,10 +7230,13 @@ resquery_response(isc_result_t eresult, isc_region_t *region, void *arg) {
 		resquery_response_continue(rctx, result);
 	}
 
+	dns_cfgmgr_closetxn();
 	return;
 
 cleanup:
 	isc_mem_putanddetach(&rctx->mctx, rctx, sizeof(*rctx));
+
+	dns_cfgmgr_closetxn();
 }
 
 static isc_result_t

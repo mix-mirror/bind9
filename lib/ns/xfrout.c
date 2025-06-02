@@ -915,9 +915,9 @@ got_soa:
 		ns_client_aclmsg("zone transfer", question_name, reqtype,
 				 client->inner.view->rdclass, msg, sizeof(msg));
 		if (useviewacl) {
-			acl = client->inner.view->transferacl;
+			acl = dns_view_getacl(client->inner.view, "allow-transfer");
 		} else {
-			acl = dns_zone_getxfracl(zone);
+			acl = dns_zone_getacl(zone, "allow-transfer");
 		}
 		CHECK(ns_client_checkacl(client, NULL, msg, acl, true,
 					 ISC_LOG_ERROR));

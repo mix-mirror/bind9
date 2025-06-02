@@ -39,6 +39,7 @@
 #include <dns/badcache.h>
 #include <dns/byaddr.h>
 #include <dns/cache.h>
+#include <dns/cfgmgr.h>
 #include <dns/db.h>
 #include <dns/dlz.h>
 #include <dns/dns64.h>
@@ -943,13 +944,19 @@ query_checkcacheaccess(ns_client_t *client, const dns_name_t *name,
 		char msg[NS_CLIENT_ACLMSGSIZE("query (cache)")];
 
 		enum refusal_reasons refusal_reason = ALLOW_QUERY_CACHE;
+
 		result = ns_client_checkaclsilent(
-			client, NULL, client->inner.view->cacheacl, true);
+			client, NULL,
+			dns_view_getacl(client->inner.view,
+					"allow-query-cache"),
+			true);
 		if (result == ISC_R_SUCCESS) {
 			refusal_reason = ALLOW_QUERY_CACHE_ON;
 			result = ns_client_checkaclsilent(
 				client, &client->inner.destaddr,
-				client->inner.view->cacheonacl, true);
+				dns_view_getacl(client->inner.view,
+						"allow-query-cache-on"),
+				true);
 		}
 		if (result == ISC_R_SUCCESS) {
 			/*
@@ -1005,7 +1012,9 @@ query_validatezonedb(ns_client_t *client, const dns_name_t *name,
 		     dns_zone_t *zone, dns_db_t *db,
 		     dns_dbversion_t **versionp) {
 	isc_result_t result;
-	dns_acl_t *queryacl, *queryonacl;
+	dns_acl_t *queryacl;
+	dns_acl_t *queryonacl;
+	dns_acl_t *vqueryacl;
 	ns_dbversion_t *dbversion;
 
 	REQUIRE(zone != NULL);
@@ -1070,9 +1079,11 @@ query_validatezonedb(ns_client_t *client, const dns_name_t *name,
 		goto approved;
 	}
 
-	queryacl = dns_zone_getqueryacl(zone);
+	queryacl = dns_zone_getacl(zone, "allow-query");
 	if (queryacl == NULL) {
-		queryacl = client->inner.view->queryacl;
+		// not needed: if the acl isn't set at zone level it will
+		// internally lookup for the view one.
+		// queryacl = client->view->queryacl;
 		if ((client->query.attributes & NS_QUERYATTR_QUERYOKVALID) != 0)
 		{
 			/*
@@ -1117,7 +1128,8 @@ query_validatezonedb(ns_client_t *client, const dns_name_t *name,
 		}
 	}
 
-	if (queryacl == client->inner.view->queryacl) {
+	vqueryacl = dns_view_getacl(client->inner.view, "allow-query");
+        if (queryacl == vqueryacl) {
 		if (result == ISC_R_SUCCESS) {
 			/*
 			 * We were allowed by the default
@@ -1135,13 +1147,10 @@ query_validatezonedb(ns_client_t *client, const dns_name_t *name,
 
 	/* If and only if we've gotten this far, check allow-query-on too */
 	if (result == ISC_R_SUCCESS) {
-		queryonacl = dns_zone_getqueryonacl(zone);
-		if (queryonacl == NULL) {
-			queryonacl = client->inner.view->queryonacl;
-		}
 
-		result = ns_client_checkaclsilent(
-			client, &client->inner.destaddr, queryonacl, true);
+		queryonacl = dns_zone_getacl(zone, "allow-query-on");
+		result = ns_client_checkaclsilent(client, &client->inner.destaddr,
+						  queryonacl, true);
 		if (result != ISC_R_SUCCESS) {
 			dns_ede_add(&client->edectx, DNS_EDE_PROHIBITED, NULL);
 		}
@@ -4777,7 +4786,8 @@ redirect(ns_client_t *client, dns_name_t *name, dns_rdataset_t *rdataset,
 
 	result = ns_client_checkaclsilent(
 		client, NULL,
-		dns_zone_getqueryacl(client->inner.view->redirect), true);
+		dns_zone_getacl(client->inner.view->redirect, "allow-query"),
+		true);
 	if (result != ISC_R_SUCCESS) {
 		return ISC_R_NOTFOUND;
 	}
@@ -5714,6 +5724,7 @@ async_restart(void *arg) {
 	ns_client_t *client = qctx->client;
 	isc_nmhandle_t *handle = client->inner.restarthandle;
 
+	dns_cfgmgr_txn();
 	client->inner.restarthandle = NULL;
 
 	ns__query_start(qctx);
@@ -5723,6 +5734,7 @@ async_restart(void *arg) {
 	qctx_destroy(qctx);
 	isc_mem_put(client->manager->mctx, qctx, sizeof(*qctx));
 	isc_nmhandle_detach(&handle);
+	dns_cfgmgr_closetxn();
 }
 
 /*
@@ -6037,6 +6049,8 @@ fetch_callback(void *arg) {
 	int errorloglevel;
 	query_ctx_t qctx;
 
+	dns_cfgmgr_txn();
+
 	REQUIRE(NS_CLIENT_VALID(client));
 	REQUIRE(RECURSING(client));
 
@@ -6142,6 +6156,7 @@ fetch_callback(void *arg) {
 	}
 
 	dns_resolver_destroyfetch(&fetch);
+	dns_cfgmgr_closetxn();
 }
 
 /*%
@@ -6531,6 +6546,8 @@ query_hookresume(void *arg) {
 	query_ctx_t *qctx = rev->saved_qctx;
 	bool canceled;
 
+	dns_cfgmgr_txn();
+
 	CTRACE(ISC_LOG_DEBUG(3), "query_hookresume");
 
 	REQUIRE(NS_CLIENT_VALID(client));
@@ -6657,6 +6674,8 @@ query_hookresume(void *arg) {
 	hctx->destroy(&hctx);
 	qctx_destroy(qctx);
 	isc_mem_put(client->manager->mctx, qctx, sizeof(*qctx));
+
+	dns_cfgmgr_closetxn();
 }
 
 isc_result_t

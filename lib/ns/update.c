@@ -22,6 +22,7 @@
 #include <isc/string.h>
 #include <isc/util.h>
 
+#include <dns/cfgmgr.h>
 #include <dns/db.h>
 #include <dns/dbiterator.h>
 #include <dns/diff.h>
@@ -1624,17 +1625,17 @@ send_update(ns_client_t *client, dns_zone_t *zone) {
 	 * so check that we are allowed to query this zone.  Additionally,
 	 * if we would refuse all updates for this zone, we bail out here.
 	 */
-	CHECK(checkqueryacl(client, dns_zone_getqueryacl(zone),
+	CHECK(checkqueryacl(client, dns_zone_getacl(zone, "allow-query"),
 			    dns_zone_getorigin(zone),
-			    dns_zone_getupdateacl(zone), ssutable));
+			    dns_zone_getacl(zone, "allow-update"), ssutable));
 
 	/*
 	 * Check requestor's permissions.
 	 */
 	if (ssutable == NULL) {
-		CHECK(checkupdateacl(client, dns_zone_getupdateacl(zone),
-				     "update", dns_zone_getorigin(zone), false,
-				     false));
+		CHECK(checkupdateacl(
+			client, dns_zone_getacl(zone, "allow-update"), "update",
+			dns_zone_getorigin(zone), false, false));
 	} else if (client->inner.signer == NULL && !TCPCLIENT(client)) {
 		CHECK(checkupdateacl(client, NULL, "update",
 				     dns_zone_getorigin(zone), false, true));
@@ -2688,6 +2689,8 @@ update_action(void *arg) {
 	uint64_t records;
 	bool is_inline, is_maintain, is_signing;
 
+	dns_cfgmgr_txn();
+
 	dns_diff_init(mctx, &diff);
 	dns_diff_init(mctx, &temp);
 
@@ -3377,6 +3380,8 @@ common:
 
 	isc_async_run(client->manager->loop, updatedone_action, uev);
 	INSIST(ver == NULL);
+
+	dns_cfgmgr_closetxn();
 }
 
 static void
@@ -3384,6 +3389,7 @@ updatedone_action(void *arg) {
 	update_t *uev = (update_t *)arg;
 	ns_client_t *client = uev->client;
 
+	dns_cfgmgr_txn();
 	REQUIRE(client->inner.updatehandle == client->inner.handle);
 
 	switch (uev->result) {
@@ -3406,6 +3412,8 @@ updatedone_action(void *arg) {
 	}
 	isc_mem_put(client->manager->mctx, uev, sizeof(*uev));
 	isc_nmhandle_detach(&client->inner.updatehandle);
+
+	dns_cfgmgr_closetxn();
 }
 
 /*%
@@ -3481,9 +3489,9 @@ send_forward(ns_client_t *client, dns_zone_t *zone) {
 	char classbuf[DNS_RDATACLASS_FORMATSIZE];
 	update_t *uev = NULL;
 
-	result = checkupdateacl(client, dns_zone_getforwardacl(zone),
-				"update forwarding", dns_zone_getorigin(zone),
-				true, false);
+	result = checkupdateacl(
+		client, dns_zone_getacl(zone, "allow-update-forwarding"),
+		"update forwarding", dns_zone_getorigin(zone), true, false);
 	if (result != ISC_R_SUCCESS) {
 		return result;
 	}

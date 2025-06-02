@@ -38,6 +38,7 @@
 #include <dns/adb.h>
 #include <dns/badcache.h>
 #include <dns/cache.h>
+#include <dns/cfgmgr.h>
 #include <dns/db.h>
 #include <dns/dispatch.h>
 #include <dns/dlz.h>
@@ -260,57 +261,26 @@ destroy(dns_view_t *view) {
 	if (view->cache != NULL) {
 		dns_cache_detach(&view->cache);
 	}
-	if (view->nocasecompress != NULL) {
-		dns_acl_detach(&view->nocasecompress);
-	}
-	if (view->matchclients != NULL) {
-		dns_acl_detach(&view->matchclients);
-	}
-	if (view->matchdestinations != NULL) {
-		dns_acl_detach(&view->matchdestinations);
-	}
-	if (view->cacheacl != NULL) {
-		dns_acl_detach(&view->cacheacl);
-	}
-	if (view->cacheonacl != NULL) {
-		dns_acl_detach(&view->cacheonacl);
-	}
-	if (view->queryacl != NULL) {
-		dns_acl_detach(&view->queryacl);
-	}
-	if (view->queryonacl != NULL) {
-		dns_acl_detach(&view->queryonacl);
-	}
-	if (view->recursionacl != NULL) {
-		dns_acl_detach(&view->recursionacl);
-	}
-	if (view->recursiononacl != NULL) {
-		dns_acl_detach(&view->recursiononacl);
-	}
-	if (view->transferacl != NULL) {
-		dns_acl_detach(&view->transferacl);
-	}
-	if (view->notifyacl != NULL) {
-		dns_acl_detach(&view->notifyacl);
-	}
-	if (view->updateacl != NULL) {
-		dns_acl_detach(&view->updateacl);
-	}
-	if (view->upfwdacl != NULL) {
-		dns_acl_detach(&view->upfwdacl);
-	}
-	if (view->denyansweracl != NULL) {
-		dns_acl_detach(&view->denyansweracl);
-	}
-	if (view->pad_acl != NULL) {
-		dns_acl_detach(&view->pad_acl);
-	}
-	if (view->proxyacl != NULL) {
-		dns_acl_detach(&view->proxyacl);
-	}
-	if (view->proxyonacl != NULL) {
-		dns_acl_detach(&view->proxyonacl);
-	}
+
+	dns_view_setacl(view, "match-clients", NULL);
+	dns_view_setacl(view, "match-destinations", NULL);
+	dns_view_setacl(view, "allow-proxy", NULL);
+	dns_view_setacl(view, "allow-proxy-on", NULL);
+	dns_view_setacl(view, "allow-query", NULL);
+	dns_view_setacl(view, "allow-query-on", NULL);
+	dns_view_setacl(view, "allow-query-cache", NULL);
+	dns_view_setacl(view, "allow-query-cache-on", NULL);
+	dns_view_setacl(view, "allow-recursion", NULL);
+	dns_view_setacl(view, "allow-recursion-on", NULL);
+	dns_view_setacl(view, "allow-update-forwarding", NULL);
+	dns_view_setacl(view, "allow-notify", NULL);
+	dns_view_setacl(view, "allow-update", NULL);
+	dns_view_setacl(view, "allow-transfer", NULL);
+	dns_view_setacl(view, "deny-answer-addresses", NULL);
+	dns_view_setacl(view, "no-case-compress", NULL);
+	dns_view_setacl(view, "allow-query-on", NULL);
+	dns_view_setacl(view, "response-padding", NULL);
+
 	if (view->answeracl_exclude != NULL) {
 		dns_nametree_detach(&view->answeracl_exclude);
 	}
@@ -2387,4 +2357,27 @@ dns_view_setmaxqueries(dns_view_t *view, uint16_t max_queries) {
 	REQUIRE(max_queries > 0);
 
 	view->max_queries = max_queries;
+}
+
+dns_acl_t *
+dns_view_getacl(dns_view_t *view, const char *name) {
+	return dns_acl_get(view, name);
+}
+
+
+void
+dns_view_setacl(dns_view_t *view, const char *name, const dns_acl_t *acl) {
+	/*
+	 * View pointer is part of the key because when named is
+	 * reload/reconfigured the old view instance are removed _after_ the new
+	 * ones (in order to revert the reload/reconfigure if someething goes
+	 * wrong), so we need to be able to differentiate them
+	 *
+	 * Note that the zone ACL keys also needs to do that (otherwise
+	 * inheritance won't work)... And there might be something fishy here,
+	 * for instance a zone ACL for an old view which remain around or
+	 * something like that. I can't put my finger on it exactly yet, but
+	 * let's keep this in mind...
+	 */
+	dns_acl_set(view, name, acl);
 }

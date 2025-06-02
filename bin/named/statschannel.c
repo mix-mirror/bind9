@@ -17,7 +17,6 @@
 #include <stdbool.h>
 
 #include <isc/buffer.h>
-#include <isc/cfgmgr.h>
 #include <isc/httpd.h>
 #include <isc/mem.h>
 #include <isc/once.h>
@@ -27,6 +26,7 @@
 
 #include <dns/adb.h>
 #include <dns/cache.h>
+#include <dns/cfgmgr.h>
 #include <dns/db.h>
 #include <dns/opcode.h>
 #include <dns/rcode.h>
@@ -3504,7 +3504,7 @@ struct cfgmgr_dumpctx {
 
 static void
 statschannel__cfgmgr_dumpprop(void *state, const char *name,
-			      const isc_cfgmgr_val_t *val) {
+			      const dns_cfgmgr_val_t *val) {
 	cfgmgr_dumpctx_t *ctx = state;
 
 	for (size_t i = 0; i < ctx->lvl * ctx->indent; i++) {
@@ -3513,13 +3513,13 @@ statschannel__cfgmgr_dumpprop(void *state, const char *name,
 
 	isc_buffer_printf(ctx->buffer, "%s ", name);
 	switch (val->type) {
-	case ISC_CFGMGR_UINT32:
+	case DNS_CFGMGR_UINT32:
 		isc_buffer_printf(ctx->buffer, "%u", val->uint32);
 		break;
-	case ISC_CFGMGR_STRING:
+	case DNS_CFGMGR_STRING:
 		isc_buffer_printf(ctx->buffer, "%s", val->string);
 		break;
-	case ISC_CFGMGR_REF:
+	case DNS_CFGMGR_REF:
 		isc_buffer_printf(ctx->buffer, "%p", val->ptr);
 		break;
 	default:
@@ -3554,15 +3554,15 @@ statschannel__cfgmgr_dumplabelup(void *state) {
 }
 
 static void
-statschannel__cfgmgr_dump(isc_cfgmgr_mode_t mode, isc_buffer_t *buffer) {
+statschannel__cfgmgr_dump(dns_cfgmgr_mode_t mode, isc_buffer_t *buffer) {
 	cfgmgr_dumpctx_t ctx = { .lvl = 0, .indent = 8, .buffer = buffer };
 
-	isc_cfgmgr_mode(mode);
-	isc_cfgmgr_txn();
-	isc_cfgmgr_foreach("/", 0, &ctx, statschannel__cfgmgr_dumpprop,
+	dns_cfgmgr_mode(mode);
+	dns_cfgmgr_txn();
+	dns_cfgmgr_foreach("/", 0, &ctx, statschannel__cfgmgr_dumpprop,
 			   statschannel__cfgmgr_dumplabeldown,
 			   statschannel__cfgmgr_dumplabelup);
-	isc_cfgmgr_closetxn();
+	dns_cfgmgr_closetxn();
 }
 
 static void
@@ -3597,13 +3597,13 @@ render_cfgmgr_dump(const isc_httpd_t *httpd, const isc_httpdurl_t *urlinfo,
 	isc_buffer_putstr(b, "<pre>");
 
 	isc_buffer_putstr(b, "# Builtin config dump\n\n");
-	statschannel__cfgmgr_dump(ISC_CFGMGR_MODEBUILTIN, b);
+	statschannel__cfgmgr_dump(DNS_CFGMGR_MODEBUILTIN, b);
 
 	isc_buffer_putstr(b, "\n\n\n\n# User/named.conf config dump\n\n");
-        statschannel__cfgmgr_dump(ISC_CFGMGR_MODEUSER, b);
+        statschannel__cfgmgr_dump(DNS_CFGMGR_MODEUSER, b);
 
 	isc_buffer_putstr(b, "\n\n\n\n# Running config dump\n\n");
-	statschannel__cfgmgr_dump(ISC_CFGMGR_MODERUNNING, b);
+	statschannel__cfgmgr_dump(DNS_CFGMGR_MODERUNNING, b);
 
 	isc_buffer_putstr(b, "</pre>");
 
@@ -3614,7 +3614,7 @@ static isc_result_t
 cfgmgr_write(const isc_httpd_t *httpd, const isc_httpdurl_t *urlinfo, void *arg,
 	     unsigned int *retcode, const char **retmsg, const char **mimetype,
 	     isc_buffer_t *b, isc_httpdfree_t **freecb, void **freecb_args) {
-	isc_cfgmgr_val_t val;
+	dns_cfgmgr_val_t val;
 	const char *base;
 	uint16_t len;
 
@@ -3651,14 +3651,14 @@ cfgmgr_write(const isc_httpd_t *httpd, const isc_httpdurl_t *urlinfo, void *arg,
 		value = strtok(NULL, "&"); 
 		REQUIRE(name != NULL);
 
-		REQUIRE(isc_cfgmgr_rwtxn() == ISC_R_SUCCESS);
+		dns_cfgmgr_rwtxn();
 
 		if (value != NULL) {
-			val.type = ISC_CFGMGR_STRING;
+			val.type = DNS_CFGMGR_STRING;
 			val.string = value;
-			REQUIRE(isc_cfgmgr_write(name, &val) == ISC_R_SUCCESS);
+			dns_cfgmgr_write(name, &val); 
 		} else {
-                        isc_cfgmgr_write(name, NULL);
+                        dns_cfgmgr_write(name, NULL);
                 }
 
 		if (strcmp(name, "/options/allow-query") == 0) {
@@ -3669,13 +3669,14 @@ cfgmgr_write(const isc_httpd_t *httpd, const isc_httpdurl_t *urlinfo, void *arg,
 						  "_default", dns_rdataclass_in,
 						  &view) == ISC_R_SUCCESS);
 
-			REQUIRE(dns_acl_configure(view->mctx, name,
-						  &newacl) == ISC_R_SUCCESS);
+			/*
+			 * TODO: run code to re-compute all ACLs
+			 */
 
 			dns_view_setacl(view, "allow-query", newacl);
 		}
 
-		REQUIRE(isc_cfgmgr_commit() == ISC_R_SUCCESS);
+		REQUIRE(dns_cfgmgr_commit() == ISC_R_SUCCESS);
 	}
 
 	return ISC_R_SUCCESS;

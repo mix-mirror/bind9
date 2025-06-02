@@ -628,15 +628,16 @@ ns_client_send(ns_client_t *client) {
 	if (client->inner.peeraddr_valid && client->inner.view != NULL) {
 		isc_netaddr_t netaddr;
 		dns_name_t *name = NULL;
+		dns_acl_t *nocasecompress = dns_view_getacl(client->inner.view,
+							    "no-case-compress");
 
 		isc_netaddr_fromsockaddr(&netaddr, &client->inner.peeraddr);
 		if (client->message->tsigkey != NULL) {
 			name = client->message->tsigkey->name;
 		}
 
-		if (client->inner.view->nocasecompress == NULL ||
-		    !dns_acl_allowed(&netaddr, name,
-				     client->inner.view->nocasecompress, env))
+		if (nocasecompress == NULL ||
+		    !dns_acl_allowed(&netaddr, name, nocasecompress, env))
 		{
 			compflags |= DNS_COMPRESS_CASE;
 		}
@@ -1244,10 +1245,11 @@ no_nsid:
 	{
 		isc_netaddr_t netaddr;
 		int match;
+		dns_acl_t *acl = dns_view_getacl(view, "response-padding");
 
+		REQUIRE(acl != NULL);
 		isc_netaddr_fromsockaddr(&netaddr, &client->inner.peeraddr);
-		result = dns_acl_match(&netaddr, NULL, view->pad_acl, env,
-				       &match, NULL);
+		result = dns_acl_match(&netaddr, NULL, acl, env, &match, NULL);
 		if (result == ISC_R_SUCCESS && match > 0) {
 			INSIST(count < DNS_EDNSOPTIONS);
 
@@ -1875,6 +1877,8 @@ ns_client_request(isc_nmhandle_t *handle, isc_result_t eresult,
 		return;
 	}
 
+	dns_cfgmgr_txn();
+
 	client = isc_nmhandle_getdata(handle);
 	if (client == NULL) {
 		ns_interface_t *ifp = (ns_interface_t *)arg;
@@ -1936,6 +1940,7 @@ ns_client_request(isc_nmhandle_t *handle, isc_result_t eresult,
 			      NS_LOGMODULE_CLIENT, ISC_LOG_DEBUG(10),
 			      "dropped request: suspicious port");
 		isc_nm_bad_request(handle);
+		dns_cfgmgr_closetxn();
 		return;
 	}
 #endif /* if NS_CLIENT_DROPPORT */
@@ -1950,6 +1955,7 @@ ns_client_request(isc_nmhandle_t *handle, isc_result_t eresult,
 			      NS_LOGMODULE_CLIENT, ISC_LOG_DEBUG(10),
 			      "dropped request: blackholed peer");
 		isc_nm_bad_request(handle);
+		dns_cfgmgr_closetxn();
 		return;
 	}
 
@@ -1967,6 +1973,7 @@ ns_client_request(isc_nmhandle_t *handle, isc_result_t eresult,
 			      NS_LOGMODULE_CLIENT, ISC_LOG_DEBUG(10),
 			      "dropped request: invalid message header");
 		isc_nm_bad_request(handle);
+		dns_cfgmgr_closetxn();
 		return;
 	}
 
@@ -1986,6 +1993,7 @@ ns_client_request(isc_nmhandle_t *handle, isc_result_t eresult,
 			      NS_LOGMODULE_CLIENT, ISC_LOG_DEBUG(10),
 			      "dropped request: unexpected response");
 		isc_nm_bad_request(handle);
+		dns_cfgmgr_closetxn();
 		return;
 	}
 
@@ -2051,6 +2059,7 @@ ns_client_request(isc_nmhandle_t *handle, isc_result_t eresult,
 			result = DNS_R_FORMERR;
 		}
 		ns_client_error(client, result);
+		dns_cfgmgr_closetxn();
 		return;
 	}
 
@@ -2091,6 +2100,7 @@ ns_client_request(isc_nmhandle_t *handle, isc_result_t eresult,
 		    0)
 		{
 			ns_client_error(client, DNS_R_FORMERR);
+			dns_cfgmgr_closetxn();
 			return;
 		}
 
@@ -2101,6 +2111,7 @@ ns_client_request(isc_nmhandle_t *handle, isc_result_t eresult,
 		    0)
 		{
 			ns_client_error(client, DNS_R_NOTIMP);
+			dns_cfgmgr_closetxn();
 			return;
 		}
 
@@ -2111,6 +2122,7 @@ ns_client_request(isc_nmhandle_t *handle, isc_result_t eresult,
 		    0)
 		{
 			ns_client_error(client, DNS_R_REFUSED);
+			dns_cfgmgr_closetxn();
 			return;
 		}
 
@@ -2120,11 +2132,13 @@ ns_client_request(isc_nmhandle_t *handle, isc_result_t eresult,
 		if ((client->manager->sctx->options & NS_SERVER_DROPEDNS) != 0)
 		{
 			ns_client_drop(client, ISC_R_SUCCESS);
+			dns_cfgmgr_closetxn();
 			return;
 		}
 
 		result = process_opt(client, opt);
 		if (result != ISC_R_SUCCESS) {
+			dns_cfgmgr_closetxn();
 			return;
 		}
 	}
@@ -2138,6 +2152,7 @@ ns_client_request(isc_nmhandle_t *handle, isc_result_t eresult,
 			result = dns_message_reply(client->message, true);
 			if (result != ISC_R_SUCCESS) {
 				ns_client_error(client, result);
+				dns_cfgmgr_closetxn();
 				return;
 			}
 
@@ -2146,6 +2161,7 @@ ns_client_request(isc_nmhandle_t *handle, isc_result_t eresult,
 			}
 
 			ns_client_send(client);
+			dns_cfgmgr_closetxn();
 			return;
 		}
 
@@ -2155,6 +2171,7 @@ ns_client_request(isc_nmhandle_t *handle, isc_result_t eresult,
 		ns_client_dumpmessage(client, "message class could not be "
 					      "determined");
 		ns_client_error(client, notimp ? DNS_R_NOTIMP : DNS_R_FORMERR);
+		dns_cfgmgr_closetxn();
 		return;
 	}
 
@@ -2172,10 +2189,12 @@ ns_client_request(isc_nmhandle_t *handle, isc_result_t eresult,
 
 	result = ns_client_setup_view(client, &netaddr);
 	if (result == DNS_R_WAIT) {
+		dns_cfgmgr_closetxn();
 		return;
 	}
 
 	ns_client_request_continue(client);
+	dns_cfgmgr_closetxn();
 }
 
 static void
@@ -2277,9 +2296,10 @@ ns_client_request_continue(void *arg) {
 		isc_netaddr_fromsockaddr(&real_local_addr, &real_local);
 
 		/* do not allow by default */
-		if (ns_client_checkaclsilent(client, &real_peer_addr,
-					     client->inner.view->proxyacl,
-					     false) != ISC_R_SUCCESS)
+		if (ns_client_checkaclsilent(
+			    client, &real_peer_addr,
+			    dns_view_getacl(client->inner.view, "allow-proxy"),
+			    false) != ISC_R_SUCCESS)
 		{
 			if (isc_log_wouldlog(log_level)) {
 				isc_sockaddr_format(&real_peer, fmtbuf,
@@ -2298,9 +2318,10 @@ ns_client_request_continue(void *arg) {
 		}
 
 		/* allow by default */
-		if (ns_client_checkaclsilent(client, &real_local_addr,
-					     client->inner.view->proxyonacl,
-					     true) != ISC_R_SUCCESS)
+		if (ns_client_checkaclsilent(
+			    client, &real_local_addr,
+			    dns_view_getacl(client->inner.view, "allow-proxy-on"),
+			    true) != ISC_R_SUCCESS)
 		{
 			if (isc_log_wouldlog(log_level)) {
 				isc_sockaddr_format(&real_local, fmtbuf,
@@ -2430,22 +2451,29 @@ ns_client_request_continue(void *arg) {
 	} else if (!client->inner.view->recursion) {
 		ra_refusal_reason = RECURSION_DISABLED;
 	} else if (ns_client_checkaclsilent(client, NULL,
-					    client->inner.view->recursionacl,
+					    dns_view_getacl(client->inner.view,
+							    "allow-recursion"),
 					    true) != ISC_R_SUCCESS)
 	{
 		ra_refusal_reason = ALLOW_RECURSION;
 	} else if (ns_client_checkaclsilent(client, NULL,
-					    client->inner.view->cacheacl,
+					    dns_view_getacl(client->inner.view,
+							    "allow-query-"
+							    "cache"),
 					    true) != ISC_R_SUCCESS)
 	{
 		ra_refusal_reason = ALLOW_QUERY_CACHE;
 	} else if (ns_client_checkaclsilent(client, &client->inner.destaddr,
-					    client->inner.view->recursiononacl,
+					    dns_view_getacl(client->inner.view,
+							    "allow-"
+							    "recursion-on"),
 					    true) != ISC_R_SUCCESS)
 	{
 		ra_refusal_reason = ALLOW_RECURSION_ON;
 	} else if (ns_client_checkaclsilent(client, &client->inner.destaddr,
-					    client->inner.view->cacheonacl,
+					    dns_view_getacl(client->inner.view,
+							    "allow-query-cache-"
+							    "on"),
 					    true) != ISC_R_SUCCESS)
 	{
 		ra_refusal_reason = ALLOW_QUERY_CACHE_ON;

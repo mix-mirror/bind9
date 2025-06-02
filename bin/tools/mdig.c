@@ -39,6 +39,7 @@
 #include <isc/time.h>
 #include <isc/util.h>
 
+#include <dns/cfgmgr.h>
 #include <dns/byaddr.h>
 #include <dns/dispatch.h>
 #include <dns/fixedname.h>
@@ -2075,6 +2076,27 @@ setup(void *arg ISC_ATTR_UNUSED) {
 	dns_view_create(isc_g_mctx, NULL, 0, "_mdig", &view);
 }
 
+static void
+init_cfgmgr(void) {
+	/*
+	 * TODO this another temporary fix - and mdig likely doesn't need cfgmgr
+	 * at all but it would crash otherwise as it seems there are view
+	 * unloading flow which run at some point (so it uses cfgmgr to reset
+	 * properties, and it crashes it cfgmgr is not initialized)
+	 */
+	dns_cfgmgr_init(isc_g_mctx);
+
+	dns_cfgmgr_mode(DNS_CFGMGR_MODEBUILTIN);
+	dns_cfgmgr_rwtxn();
+	dns_cfgmgr_commit();
+
+	dns_cfgmgr_mode(DNS_CFGMGR_MODEUSER);
+	dns_cfgmgr_rwtxn();
+	dns_cfgmgr_commit();
+
+	dns_cfgmgr_mode(DNS_CFGMGR_MODERUNNING);
+}
+
 /*% Main processing routine for mdig */
 int
 main(int argc, char *argv[]) {
@@ -2095,6 +2117,7 @@ main(int argc, char *argv[]) {
 	preparse_args(argc, argv);
 
 	isc_managers_create(1);
+	init_cfgmgr();
 
 	isc_nonce_buf(cookie_secret, sizeof(cookie_secret));
 
@@ -2174,6 +2197,7 @@ main(int argc, char *argv[]) {
 		isc_mem_free(isc_g_mctx, default_query.ecs_addr);
 	}
 
+	dns_cfgmgr_deinit();
 	isc_managers_destroy();
 	return 0;
 }
