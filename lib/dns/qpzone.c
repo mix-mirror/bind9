@@ -946,7 +946,7 @@ qpznode_erefs_decrement(qpzonedb_t *qpdb, qpznode_t *node DNS__DB_FLARG) {
 
 	// qpzonedb_unref(qpdb);
 
-	// return true;
+	return true;
 }
 
 /*
@@ -977,39 +977,41 @@ qpznode_release(qpzonedb_t *qpdb, qpznode_t *node, uint32_t least_serial,
 		goto unref;
 	}
 
-	if (*nlocktypep == isc_rwlocktype_read) {
-		/*
-		 * The external reference count went to zero and the node
-		 * is dirty or has no data, so we might want to delete it.
-		 * To do that, we'll need a write lock. If we don't already
-		 * have one, we have to make sure nobody else has
-		 * acquired a reference in the meantime, so we increment
-		 * erefs (but NOT references!), upgrade the node lock,
-		 * decrement erefs again, and see if it's still zero.
-		 *
-		 * We can't really assume anything about the result code of
-		 * erefs_increment.  If another thread acquires reference it
-		 * will be larger than 0, if it doesn't it is going to be 0.
-		 */
-		isc_rwlock_t *nlock = qpzone_get_lock(node);
-		qpznode_erefs_increment(qpdb, node DNS__DB_FLARG_PASS);
-		NODE_FORCEUPGRADE(nlock, nlocktypep);
-		if (!qpznode_erefs_decrement(qpdb, node DNS__DB_FLARG_PASS)) {
-			goto unref;
-		}
-	}
+	// if (*nlocktypep == isc_rwlocktype_read) {
+	// 	/*
+	// 	 * The external reference count went to zero and the node
+	// 	 * is dirty or has no data, so we might want to delete it.
+	// 	 * To do that, we'll need a write lock. If we don't already
+	// 	 * have one, we have to make sure nobody else has
+	// 	 * acquired a reference in the meantime, so we increment
+	// 	 * erefs (but NOT references!), upgrade the node lock,
+	// 	 * decrement erefs again, and see if it's still zero.
+	// 	 *
+	// 	 * We can't really assume anything about the result code of
+	// 	 * erefs_increment.  If another thread acquires reference it
+	// 	 * will be larger than 0, if it doesn't it is going to be 0.
+	// 	 */
+	// 	isc_rwlock_t *nlock = qpzone_get_lock(node);
+	// 	qpznode_erefs_increment(qpdb, node DNS__DB_FLARG_PASS);
+	// 	NODE_FORCEUPGRADE(nlock, nlocktypep);
+	// 	if (!qpznode_erefs_decrement(qpdb, node DNS__DB_FLARG_PASS)) {
+	// 		goto unref;
+	// 	}
+	// }
 
 	if (node->dirty) {
-		if (least_serial == 0) {
-			/*
-			 * Caller doesn't know the least serial.
-			 * Get it.
-			 */
-			RWLOCK(&qpdb->lock, isc_rwlocktype_read);
-			least_serial = qpdb->least_serial;
-			RWUNLOCK(&qpdb->lock, isc_rwlocktype_read);
+		// if (least_serial == 0) {
+		// 	/*
+		// 	 * Caller doesn't know the least serial.
+		// 	 * Get it.
+		// 	 */
+		// 	RWLOCK(&qpdb->lock, isc_rwlocktype_read);
+		// 	least_serial = qpdb->least_serial;
+		// 	RWUNLOCK(&qpdb->lock, isc_rwlocktype_read);
+		// }
+		if (least_serial > 0) {
+			clean_zone_node(node, least_serial);
 		}
-		clean_zone_node(node, least_serial);
 	}
 
 unref:
