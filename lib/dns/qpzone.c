@@ -789,7 +789,7 @@ dns__qpzone_create(isc_mem_t *mctx, const dns_name_t *origin, dns_dbtype_t type,
  * qpznode_release() when we only need to increase the internal references.
  */
 static void
-qpznode_erefs_increment(qpzonedb_t *qpdb, qpznode_t *node DNS__DB_FLARG) {
+qpznode_erefs_increment(qpznode_t *node DNS__DB_FLARG) {
 	uint_fast32_t refs = isc_refcount_increment0(&node->erefs);
 #if DNS_DB_NODETRACE
 	fprintf(stderr, "incr:node:%s:%s:%u:%p->erefs = %" PRIuFAST32 "\n",
@@ -806,7 +806,7 @@ qpznode_erefs_increment(qpzonedb_t *qpdb, qpznode_t *node DNS__DB_FLARG) {
 static void
 qpznode_acquire(qpzonedb_t *qpdb, qpznode_t *node DNS__DB_FLARG) {
 	qpznode_ref(node);
-	qpznode_erefs_increment(qpdb, node DNS__DB_FLARG_PASS);
+	qpznode_erefs_increment(node DNS__DB_FLARG_PASS);
 }
 
 static void
@@ -933,7 +933,7 @@ clean_zone_node(qpznode_t *node, uint32_t least_serial) {
  * as well, and return true. Otherwise return false.
  */
 static bool
-qpznode_erefs_decrement(qpzonedb_t *qpdb, qpznode_t *node DNS__DB_FLARG) {
+qpznode_erefs_decrement(qpznode_t *node DNS__DB_FLARG) {
 	uint_fast32_t refs = isc_refcount_decrement(&node->erefs);
 
 #if DNS_DB_NODETRACE
@@ -966,7 +966,7 @@ qpznode_release(qpznode_t *node, uint32_t least_serial,
 		isc_rwlocktype_t *nlocktypep DNS__DB_FLARG) {
 	REQUIRE(*nlocktypep != isc_rwlocktype_none);
 
-	if (!qpznode_erefs_decrement(qpdb, node DNS__DB_FLARG_PASS)) {
+	if (!qpznode_erefs_decrement(node DNS__DB_FLARG_PASS)) {
 		goto unref;
 	}
 
