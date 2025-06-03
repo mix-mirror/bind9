@@ -225,7 +225,7 @@ dns_keystore_keygen(dns_keystore_t *keystore, const dns_name_t *origin,
 		}
 
 		/* Generate the key */
-		result = dst_key_generate(origin, alg, size, 0, flags,
+		result = dst_key_generate(origin, alg, size, flags,
 					  DNS_KEYPROTO_DNSSEC, rdclass, label,
 					  mctx, &newkey, NULL);
 
@@ -242,7 +242,7 @@ dns_keystore_keygen(dns_keystore_t *keystore, const dns_name_t *origin,
 			      ISC_LOG_ERROR,
 			      "keystore: generated PKCS#11 object %s", label);
 	} else {
-		result = dst_key_generate(origin, alg, size, 0, flags,
+		result = dst_key_generate(origin, alg, size, flags,
 					  DNS_KEYPROTO_DNSSEC, rdclass, NULL,
 					  mctx, &newkey, NULL);
 	}

@@ -218,8 +218,7 @@ openssleddsa_verify(dst_context_t *dctx, const isc_region_t *sig) {
 }
 
 static isc_result_t
-openssleddsa_generate(dst_key_t *key, int unused ISC_ATTR_UNUSED,
-		      void (*callback)(int)) {
+openssleddsa_generate(dst_key_t *key, void (*callback)(int)) {
 	const eddsa_alginfo_t *alginfo = openssleddsa_alg_info(key->key_alg);
 	auto_EVP_PKEY *pkey = NULL;
 	auto_EVP_PKEY_CTX *ctx = NULL;

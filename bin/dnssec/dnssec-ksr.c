@@ -428,14 +428,14 @@ create_key(ksr_ctx_t *ksr, dns_kasp_t *kasp, dns_kasp_key_t *kaspkey,
 				dns_rdataclass_in, isc_g_mctx, ksr->alg,
 				ksr->size, flags, &key);
 		} else if (show_progress) {
-			ret = dst_key_generate(name, ksr->alg, ksr->size, 0,
-					       flags, DNS_KEYPROTO_DNSSEC,
+			ret = dst_key_generate(name, ksr->alg, ksr->size, flags,
+					       DNS_KEYPROTO_DNSSEC,
 					       dns_rdataclass_in, NULL,
 					       isc_g_mctx, &key, &progress);
 			fflush(stderr);
 		} else {
-			ret = dst_key_generate(name, ksr->alg, ksr->size, 0,
-					       flags, DNS_KEYPROTO_DNSSEC,
+			ret = dst_key_generate(name, ksr->alg, ksr->size, flags,
+					       DNS_KEYPROTO_DNSSEC,
 					       dns_rdataclass_in, NULL,
 					       isc_g_mctx, &key, NULL);
 		}

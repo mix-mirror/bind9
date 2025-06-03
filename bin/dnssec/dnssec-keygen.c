@@ -562,13 +562,13 @@ keygen(keygen_ctx_t *ctx, int argc, char **argv) {
 				ctx->keystore, name, ctx->policy, ctx->rdclass,
 				isc_g_mctx, ctx->alg, ctx->size, flags, &key);
 		} else if (!ctx->quiet && show_progress) {
-			ret = dst_key_generate(name, ctx->alg, ctx->size, 0,
-					       flags, DNS_KEYPROTO_DNSSEC,
+			ret = dst_key_generate(name, ctx->alg, ctx->size, flags,
+					       DNS_KEYPROTO_DNSSEC,
 					       ctx->rdclass, NULL, isc_g_mctx,
 					       &key, &progress);
 		} else {
-			ret = dst_key_generate(name, ctx->alg, ctx->size, 0,
-					       flags, DNS_KEYPROTO_DNSSEC,
+			ret = dst_key_generate(name, ctx->alg, ctx->size, flags,
+					       DNS_KEYPROTO_DNSSEC,
 					       ctx->rdclass, NULL, isc_g_mctx,
 					       &key, NULL);
 		}

@@ -76,9 +76,8 @@
 					const dst_key_t *key2) {               \
 		return (hmac_compare(ISC_MD_##alg, key1, key2));               \
 	}                                                                      \
-	static isc_result_t hmac##alg##_generate(                              \
-		dst_key_t *key, int pseudorandom_ok, void (*callback)(int)) {  \
-		UNUSED(pseudorandom_ok);                                       \
+	static isc_result_t hmac##alg##_generate(dst_key_t *key,               \
+						 void (*callback)(int)) {      \
 		UNUSED(callback);                                              \
 		return (hmac_generate(ISC_MD_##alg, key));                     \
 	}                                                                      \

@@ -723,8 +723,7 @@ opensslrsa_build_pkey(bool private, rsa_components_t *c, EVP_PKEY **retpkey) {
 #endif /* OPENSSL_VERSION_NUMBER < 0x30000000L */
 
 static isc_result_t
-opensslrsa_generate(dst_key_t *key, int unused ISC_ATTR_UNUSED,
-		    void (*callback)(int)) {
+opensslrsa_generate(dst_key_t *key, void (*callback)(int)) {
 	isc_result_t result;
 	auto_BIGNUM *e = BN_new();
 	auto_EVP_PKEY *pkey = NULL;

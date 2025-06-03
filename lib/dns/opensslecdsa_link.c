@@ -837,8 +837,7 @@ opensslecdsa_verify(dst_context_t *dctx, const isc_region_t *sig) {
 }
 
 static isc_result_t
-opensslecdsa_generate(dst_key_t *key, int unused ISC_ATTR_UNUSED,
-		      void (*callback)(int)) {
+opensslecdsa_generate(dst_key_t *key, void (*callback)(int)) {
 	REQUIRE(opensslecdsa_valid_key_alg(key->key_alg));
 	UNUSED(callback);
 
