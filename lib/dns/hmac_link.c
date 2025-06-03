@@ -159,15 +159,15 @@ getkeybits(dst_key_t *key, struct dst_private_element *element) {
 static isc_result_t
 hmac_createctx(const dst_key_t *key, dst_context_t *dctx) {
 	isc_result_t result;
-	isc_hmac_t *ctx = isc_hmac_new(); /* Either returns or abort()s */
+	auto_isc_hmac_t *ctx = isc_hmac_new();
 
 	result = isc_hmac_init(ctx, key->keydata.hmac_key);
 	if (result != ISC_R_SUCCESS) {
-		isc_hmac_free(ctx);
 		return DST_R_UNSUPPORTEDALG;
 	}
 
-	dctx->ctxdata.hmac_ctx = ctx;
+	MOVE_INTO(dctx->ctxdata.hmac_ctx, ctx);
+
 	return ISC_R_SUCCESS;
 }
 
@@ -412,39 +412,27 @@ hmac__to_dst_alg(isc_md_type_t type) {
 }
 
 static isc_result_t
-hmac_parse(isc_md_type_t type, dst_key_t *key, isc_lex_t *lexer,
-	   dst_key_t *pub) {
-	dst_private_t priv;
-	isc_result_t result = ISC_R_SUCCESS, tresult;
+hmac_parse_priv(isc_md_type_t type, dst_key_t *key,
+		dst_key_t *pub ISC_ATTR_UNUSED, dst_private_t *priv) {
 	isc_buffer_t b;
-	isc_mem_t *mctx = key->mctx;
-	unsigned int i;
-
-	UNUSED(pub);
-	/* read private key file */
-	RETERR(dst__privstruct_parse(key, hmac__to_dst_alg(type), lexer, mctx,
-				     &priv));
 
 	if (key->external) {
-		result = DST_R_EXTERNALKEY;
+		return DST_R_EXTERNALKEY;
 	}
 
 	key->key_bits = 0;
-	for (i = 0; i < priv.nelements && result == ISC_R_SUCCESS; i++) {
-		switch (priv.elements[i].tag) {
+	for (size_t i = 0; i < priv->nelements; i++) {
+		switch (priv->elements[i].tag) {
 		case TAG_HMACMD5_KEY:
 		case TAG_HMACSHA1_KEY:
 		case TAG_HMACSHA224_KEY:
 		case TAG_HMACSHA256_KEY:
 		case TAG_HMACSHA384_KEY:
 		case TAG_HMACSHA512_KEY:
-			isc_buffer_init(&b, priv.elements[i].data,
-					priv.elements[i].length);
-			isc_buffer_add(&b, priv.elements[i].length);
-			tresult = hmac_fromdns(type, key, &b);
-			if (tresult != ISC_R_SUCCESS) {
-				result = tresult;
-			}
+			isc_buffer_init(&b, priv->elements[i].data,
+					priv->elements[i].length);
+			isc_buffer_add(&b, priv->elements[i].length);
+			RETERR(hmac_fromdns(type, key, &b));
 			break;
 		case TAG_HMACMD5_BITS:
 		case TAG_HMACSHA1_BITS:
@@ -452,18 +440,32 @@ hmac_parse(isc_md_type_t type, dst_key_t *key, isc_lex_t *lexer,
 		case TAG_HMACSHA256_BITS:
 		case TAG_HMACSHA384_BITS:
 		case TAG_HMACSHA512_BITS:
-			tresult = getkeybits(key, &priv.elements[i]);
-			if (tresult != ISC_R_SUCCESS) {
-				result = tresult;
-			}
+			RETERR(getkeybits(key, &priv->elements[i]));
 			break;
 		default:
-			result = DST_R_INVALIDPRIVATEKEY;
+			return DST_R_INVALIDPRIVATEKEY;
 			break;
 		}
 	}
+	return ISC_R_SUCCESS;
+}
+
+static isc_result_t
+hmac_parse(isc_md_type_t type, dst_key_t *key, isc_lex_t *lexer,
+	   dst_key_t *pub) {
+	dst_private_t priv;
+	isc_result_t result;
+	isc_mem_t *mctx = key->mctx;
+
+	/* read private key file */
+	RETERR(dst__privstruct_parse(key, hmac__to_dst_alg(type), lexer, mctx,
+				     &priv));
+
+	result = hmac_parse_priv(type, key, pub, &priv);
+
 	dst__privstruct_free(&priv, mctx);
 	isc_safe_memwipe(&priv, sizeof(priv));
+
 	return result;
 }
 
