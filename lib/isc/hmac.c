@@ -23,7 +23,11 @@
 #include <isc/types.h>
 #include <isc/util.h>
 
+#include "isc/result.h"
 #include "openssl_shim.h"
+
+ISC_AUTO_DECL(EVP_PKEY, EVP_PKEY_free)
+#define auto_EVP_PKEY ISC_AUTO(EVP_PKEY)
 
 isc_hmac_t *
 isc_hmac_new(void) {
@@ -44,7 +48,7 @@ isc_hmac_free(isc_hmac_t *hmac_st) {
 isc_result_t
 isc_hmac_init(isc_hmac_t *hmac_st, const void *key, const size_t keylen,
 	      const isc_md_type_t *md_type) {
-	EVP_PKEY *pkey;
+	auto_EVP_PKEY *pkey = NULL;
 
 	REQUIRE(hmac_st != NULL);
 	REQUIRE(key != NULL);
@@ -61,12 +65,9 @@ isc_hmac_init(isc_hmac_t *hmac_st, const void *key, const size_t keylen,
 	}
 
 	if (EVP_DigestSignInit(hmac_st, NULL, md_type, NULL, pkey) != 1) {
-		EVP_PKEY_free(pkey);
 		ERR_clear_error();
 		return ISC_R_CRYPTOFAILURE;
 	}
-
-	EVP_PKEY_free(pkey);
 
 	return ISC_R_SUCCESS;
 }
@@ -144,25 +145,23 @@ isc_result_t
 isc_hmac(const isc_md_type_t *type, const void *key, const size_t keylen,
 	 const unsigned char *buf, const size_t len, unsigned char *digest,
 	 unsigned int *digestlen) {
-	isc_result_t res;
-	isc_hmac_t *hmac_st = isc_hmac_new();
+	isc_result_t result;
+	auto_isc_hmac_t *hmac_st = isc_hmac_new();
 
-	res = isc_hmac_init(hmac_st, key, keylen, type);
-	if (res != ISC_R_SUCCESS) {
-		goto end;
+	result = isc_hmac_init(hmac_st, key, keylen, type);
+	if (result != ISC_R_SUCCESS) {
+		return result;
 	}
 
-	res = isc_hmac_update(hmac_st, buf, len);
-	if (res != ISC_R_SUCCESS) {
-		goto end;
+	result = isc_hmac_update(hmac_st, buf, len);
+	if (result != ISC_R_SUCCESS) {
+		return result;
 	}
 
-	res = isc_hmac_final(hmac_st, digest, digestlen);
-	if (res != ISC_R_SUCCESS) {
-		goto end;
+	result = isc_hmac_final(hmac_st, digest, digestlen);
+	if (result != ISC_R_SUCCESS) {
+		return result;
 	}
-end:
-	isc_hmac_free(hmac_st);
 
-	return res;
+	return ISC_R_SUCCESS;
 }

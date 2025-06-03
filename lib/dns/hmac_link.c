@@ -164,16 +164,16 @@ hmac_createctx(const isc_md_type_t *type, const dst_key_t *key,
 	       dst_context_t *dctx) {
 	isc_result_t result;
 	const dst_hmac_key_t *hkey = key->keydata.hmac_key;
-	isc_hmac_t *ctx = isc_hmac_new(); /* Either returns or abort()s */
+	auto_isc_hmac_t *ctx = isc_hmac_new();
 
 	result = isc_hmac_init(ctx, hkey->key, isc_md_type_get_block_size(type),
 			       type);
 	if (result != ISC_R_SUCCESS) {
-		isc_hmac_free(ctx);
 		return DST_R_UNSUPPORTEDALG;
 	}
 
-	dctx->ctxdata.hmac_ctx = ctx;
+	MOVE_INTO(dctx->ctxdata.hmac_ctx, ctx);
+
 	return ISC_R_SUCCESS;
 }
 
@@ -452,41 +452,30 @@ hmac__to_dst_alg(const isc_md_type_t *type) {
 }
 
 static isc_result_t
-hmac_parse(const isc_md_type_t *type, dst_key_t *key, isc_lex_t *lexer,
-	   dst_key_t *pub) {
-	dst_private_t priv;
-	isc_result_t result, tresult;
+hmac_parse_priv(const isc_md_type_t *type, dst_key_t *key,
+		dst_key_t *pub ISC_ATTR_UNUSED, dst_private_t *priv) {
+	isc_result_t result;
 	isc_buffer_t b;
-	isc_mem_t *mctx = key->mctx;
-	unsigned int i;
-
-	UNUSED(pub);
-	/* read private key file */
-	result = dst__privstruct_parse(key, hmac__to_dst_alg(type), lexer, mctx,
-				       &priv);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
 
 	if (key->external) {
-		result = DST_R_EXTERNALKEY;
+		return DST_R_EXTERNALKEY;
 	}
 
 	key->key_bits = 0;
-	for (i = 0; i < priv.nelements && result == ISC_R_SUCCESS; i++) {
-		switch (priv.elements[i].tag) {
+	for (size_t i = 0; i < priv->nelements; i++) {
+		switch (priv->elements[i].tag) {
 		case TAG_HMACMD5_KEY:
 		case TAG_HMACSHA1_KEY:
 		case TAG_HMACSHA224_KEY:
 		case TAG_HMACSHA256_KEY:
 		case TAG_HMACSHA384_KEY:
 		case TAG_HMACSHA512_KEY:
-			isc_buffer_init(&b, priv.elements[i].data,
-					priv.elements[i].length);
-			isc_buffer_add(&b, priv.elements[i].length);
-			tresult = hmac_fromdns(type, key, &b);
-			if (tresult != ISC_R_SUCCESS) {
-				result = tresult;
+			isc_buffer_init(&b, priv->elements[i].data,
+					priv->elements[i].length);
+			isc_buffer_add(&b, priv->elements[i].length);
+			result = hmac_fromdns(type, key, &b);
+			if (result != ISC_R_SUCCESS) {
+				return result;
 			}
 			break;
 		case TAG_HMACMD5_BITS:
@@ -495,18 +484,38 @@ hmac_parse(const isc_md_type_t *type, dst_key_t *key, isc_lex_t *lexer,
 		case TAG_HMACSHA256_BITS:
 		case TAG_HMACSHA384_BITS:
 		case TAG_HMACSHA512_BITS:
-			tresult = getkeybits(key, &priv.elements[i]);
-			if (tresult != ISC_R_SUCCESS) {
-				result = tresult;
+			result = getkeybits(key, &priv->elements[i]);
+			if (result != ISC_R_SUCCESS) {
+				return result;
 			}
 			break;
 		default:
-			result = DST_R_INVALIDPRIVATEKEY;
+			return DST_R_INVALIDPRIVATEKEY;
 			break;
 		}
 	}
+	return ISC_R_SUCCESS;
+}
+
+static isc_result_t
+hmac_parse(const isc_md_type_t *type, dst_key_t *key, isc_lex_t *lexer,
+	   dst_key_t *pub) {
+	dst_private_t priv;
+	isc_result_t result;
+	isc_mem_t *mctx = key->mctx;
+
+	/* read private key file */
+	result = dst__privstruct_parse(key, hmac__to_dst_alg(type), lexer, mctx,
+				       &priv);
+	if (result != ISC_R_SUCCESS) {
+		return result;
+	}
+
+	result = hmac_parse_priv(type, key, pub, &priv);
+
 	dst__privstruct_free(&priv, mctx);
 	isc_safe_memwipe(&priv, sizeof(priv));
+
 	return result;
 }
 
