@@ -369,7 +369,7 @@ ISC_LOOP_TEST_IMPL(find_zone_keys_overflow) {
 		bool dup = false;
 
 		result = dst_key_generate(
-			name, DST_ALG_ECDSA256, 256, 0, DNS_KEYOWNER_ZONE,
+			name, DST_ALG_ECDSA256, 256, DNS_KEYOWNER_ZONE,
 			DNS_KEYPROTO_DNSSEC, dns_rdataclass_in, NULL,
 			isc_g_mctx, &key, NULL);
 		assert_int_equal(result, ISC_R_SUCCESS);

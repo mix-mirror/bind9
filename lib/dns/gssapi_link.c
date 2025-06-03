@@ -238,9 +238,7 @@ gssapi_compare(const dst_key_t *key1, const dst_key_t *key2) {
 }
 
 static isc_result_t
-gssapi_generate(dst_key_t *key, int unused, void (*callback)(int)) {
-	UNUSED(key);
-	UNUSED(unused);
+gssapi_generate(dst_key_t *key ISC_ATTR_UNUSED, void (*callback)(int)) {
 	UNUSED(callback);
 
 	/* No idea */

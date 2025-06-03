@@ -519,7 +519,7 @@ keymgr_createkey(dns_kasp_key_t *kkey, const dns_name_t *origin,
 
 	do {
 		if (keystore == NULL) {
-			CHECK(dst_key_generate(origin, alg, size, 0, flags,
+			CHECK(dst_key_generate(origin, alg, size, flags,
 					       DNS_KEYPROTO_DNSSEC, rdclass,
 					       NULL, mctx, &newkey, NULL));
 		} else {

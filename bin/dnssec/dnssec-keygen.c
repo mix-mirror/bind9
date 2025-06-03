@@ -543,12 +543,12 @@ keygen(keygen_ctx_t *ctx, const char *keyname) {
 				ctx->keystore, name, ctx->policy, ctx->rdclass,
 				isc_g_mctx, ctx->alg, ctx->size, flags, &key);
 		} else if (!ctx->quiet && show_progress) {
-			result = dst_key_generate(name, ctx->alg, ctx->size, 0,
+			result = dst_key_generate(name, ctx->alg, ctx->size,
 						  flags, DNS_KEYPROTO_DNSSEC,
 						  ctx->rdclass, NULL,
 						  isc_g_mctx, &key, &progress);
 		} else {
-			result = dst_key_generate(name, ctx->alg, ctx->size, 0,
+			result = dst_key_generate(name, ctx->alg, ctx->size,
 						  flags, DNS_KEYPROTO_DNSSEC,
 						  ctx->rdclass, NULL,
 						  isc_g_mctx, &key, NULL);

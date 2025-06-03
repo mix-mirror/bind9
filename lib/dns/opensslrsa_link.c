@@ -300,8 +300,7 @@ opensslrsa_verify(dst_context_t *dctx, const isc_region_t *sig) {
 }
 
 static isc_result_t
-opensslrsa_generate(dst_key_t *key, int unused ISC_ATTR_UNUSED,
-		    void (*callback)(int)) {
+opensslrsa_generate(dst_key_t *key, void (*callback)(int)) {
 	auto_EVP_PKEY *pkey = NULL;
 
 	/*
