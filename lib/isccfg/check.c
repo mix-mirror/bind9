@@ -4724,6 +4724,14 @@ check_trust_anchor(const cfg_obj_t *key, unsigned int *flagsp) {
 			break;
 		}
 
+		switch (rdata3) {
+		case DNS_DSDIGEST_SHA1:
+			cfg_obj_log(key, ISC_LOG_WARNING,
+				    "DS digest type out dated (dropped): %u",
+				    rdata3);
+			break;
+		}
+
 		isc_buffer_init(&b, data, sizeof(data));
 
 		str = cfg_obj_asstring(cfg_tuple_get(key, "data"));

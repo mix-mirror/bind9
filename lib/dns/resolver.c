@@ -10679,6 +10679,11 @@ dns_resolver_ds_digest_supported(dns_resolver_t *resolver,
 				 unsigned int digest_type) {
 	REQUIRE(VALID_RESOLVER(resolver));
 
+	/* Deprecated digest type, not to be used for validation. */
+	if (digest_type == DNS_DSDIGEST_SHA1) {
+		return false;
+	}
+
 	if (dns_nametree_covered(resolver->digests, name, NULL, digest_type)) {
 		return false;
 	}

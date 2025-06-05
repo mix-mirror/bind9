@@ -833,6 +833,10 @@ ta_fromconfig(const cfg_obj_t *key, bool *initialp, const char **namestrp,
 		ds->algorithm = (uint8_t)rdata2;
 		ds->digest_type = (uint8_t)rdata3;
 
+		if (ds->digest_type == DNS_DSDIGEST_SHA1) {
+			CHECK(DST_R_UNSUPPORTEDALG);
+		}
+
 		datastr = cfg_obj_asstring(cfg_tuple_get(key, "data"));
 		CHECK(isc_hex_decodestring(datastr, &databuf));
 		isc_buffer_usedregion(&databuf, &r);

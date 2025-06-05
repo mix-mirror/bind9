@@ -147,7 +147,6 @@ struct dns_validator {
 	unsigned int  authfail;
 	isc_stdtime_t start;
 
-	bool	       digest_sha1;
 	uint8_t	       unsupported_algorithm;
 	uint8_t	       unsupported_digest;
 	dns_rdata_t    rdata;

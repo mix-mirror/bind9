@@ -2038,10 +2038,6 @@ validate_dnskey_dsset(dns_validator_t *val) {
 	result = dns_rdata_tostruct(&dsrdata, &ds, NULL);
 	RUNTIME_CHECK(result == ISC_R_SUCCESS);
 
-	if (ds.digest_type == DNS_DSDIGEST_SHA1 && val->digest_sha1 == false) {
-		return DNS_R_BADALG;
-	}
-
 	if (!dns_resolver_ds_digest_supported(val->view->resolver, val->name,
 					      ds.digest_type))
 	{
@@ -2209,7 +2205,6 @@ validate_dnskey(void *arg) {
 	dns_validator_t *val = arg;
 	isc_result_t result = ISC_R_SUCCESS;
 	dns_keynode_t *keynode = NULL;
-	dns_rdata_ds_t ds;
 
 	if (CANCELED(val) || CANCELING(val)) {
 		result = ISC_R_CANCELED;
@@ -2279,43 +2274,6 @@ validate_dnskey(void *arg) {
 	 */
 	val->unsupported_algorithm = 0;
 	val->unsupported_digest = 0;
-
-	/*
-	 * If DNS_DSDIGEST_SHA256 or DNS_DSDIGEST_SHA384 is present we
-	 * are required to prefer it over DNS_DSDIGEST_SHA1.  This in
-	 * practice means that we need to ignore DNS_DSDIGEST_SHA1 if a
-	 * DNS_DSDIGEST_SHA256 or DNS_DSDIGEST_SHA384 is present.
-	 */
-	val->digest_sha1 = true;
-	DNS_RDATASET_FOREACH (val->dsset) {
-		dns_rdata_t dsrdata = DNS_RDATA_INIT;
-		dns_rdataset_current(val->dsset, &dsrdata);
-		result = dns_rdata_tostruct(&dsrdata, &ds, NULL);
-		RUNTIME_CHECK(result == ISC_R_SUCCESS);
-
-		if (!dns_resolver_ds_digest_supported(
-			    val->view->resolver, val->name, ds.digest_type))
-		{
-			continue;
-		}
-
-		if (!dns_resolver_algorithm_supported(val->view->resolver,
-						      val->name, ds.algorithm,
-						      NULL, 0))
-		{
-			continue;
-		}
-
-		if ((ds.digest_type == DNS_DSDIGEST_SHA256 &&
-		     ds.length == ISC_SHA256_DIGESTLENGTH) ||
-		    (ds.digest_type == DNS_DSDIGEST_SHA384 &&
-		     ds.length == ISC_SHA384_DIGESTLENGTH))
-		{
-			val->digest_sha1 = false;
-			break;
-		}
-	}
-
 	validate_dnskey_dsset_first(val);
 	return;
 
