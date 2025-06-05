@@ -325,3 +325,25 @@ mock_assert(const int result, const char *const expression,
 #define ISC_FIXED_ENUM(name, type) __attribute__((__packed__)) name
 #endif
 /* clang-format on */
+
+/*%
+ * Automatic cleanup for variables going out of scope.
+ *
+ * (Note: When using ISC_AUTO_DECL or ISC_AUTO_PTR_DECL, it is recommended
+ * to add a macro #define auto_<type> ISC_AUTO(<type>), so that syntax-aware
+ * editors won't think a variable declaration looks like a function.)
+ */
+#define ISC_AUTOFREE_FUNC(t) auto__##t##_free
+#define ISC_AUTO_DECL(t, func)                              \
+	static inline void ISC_AUTOFREE_FUNC(t)(t * *arg) { \
+		if (*arg != NULL) {                         \
+			func(*arg);                         \
+		}                                           \
+	}
+#define ISC_AUTO_PTR_DECL(t, func)                          \
+	static inline void ISC_AUTOFREE_FUNC(t)(t * *arg) { \
+		if (*arg != NULL) {                         \
+			func(arg);                          \
+		}                                           \
+	}
+#define ISC_AUTO(t) __attribute__((cleanup(ISC_AUTOFREE_FUNC(t)))) t
