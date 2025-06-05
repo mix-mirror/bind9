@@ -86,6 +86,8 @@ typedef struct dns_dbnode_methods {
         // lock/unlock
         void (*locknode)(dns_db_t *db, dns_dbnode_t *node, isc_rwlocktype_t t);
         void (*unlocknode)(dns_db_t *db, dns_dbnode_t *node, isc_rwlocktype_t t);
+	
+	void (*deletedata)(dns_db_t *db, dns_dbnode_t *node, void *data);
 } dns_dbnode_methods_t;
 
 typedef struct dns_db_methods {
@@ -187,6 +189,7 @@ typedef struct dns_db_methods {
 	void (*setmaxtypepername)(dns_db_t *db, uint32_t value);
 	isc_result_t (*getzoneversion)(dns_db_t *db, isc_buffer_t *b);
 
+	// Maybe replaced by node methods?
 	void (*attachnode)(dns_db_t *db, dns_dbnode_t *source, dns_dbnode_t **targetp  DNS__DB_FLARG);
 	void (*detachnode)(dns_db_t *db, dns_dbnode_t **targetp DNS__DB_FLARG);
 

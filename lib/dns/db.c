@@ -576,6 +576,7 @@ dns__db_attachnode(dns_db_t *db, dns_dbnode_t *source,
 	if (source->methods != NULL && source->methods->attachnode != NULL) {
 		(source->methods->attachnode)(source, targetp DNS__DB_FLARG_PASS);
 	} else {
+		REQUIRE(DNS_DB_VALID(db));
 		(db->methods->attachnode)(db, source, targetp DNS__DB_FLARG_PASS);
 	}
 }
@@ -586,13 +587,13 @@ dns__db_detachnode(dns_db_t *db, dns_dbnode_t **nodep DNS__DB_FLARG) {
 	 * Detach *nodep from its node.
 	 */
 
-	REQUIRE(DNS_DB_VALID(db));
 	REQUIRE(nodep != NULL && *nodep != NULL);
 	dns_dbnode_t *node = *nodep;
 
 	if (node->methods != NULL && node->methods->attachnode != NULL) {
 		(node->methods->detachnode)(nodep DNS__DB_FLARG_PASS);
 	} else {
+		REQUIRE(DNS_DB_VALID(db));
 		(db->methods->detachnode)(db, nodep DNS__DB_FLARG_PASS);
 	}
 
@@ -1127,14 +1128,20 @@ dns_db_addglue(dns_db_t *db, dns_dbversion_t *version, dns_rdataset_t *rdataset,
 
 void
 dns_db_locknode(dns_db_t *db, dns_dbnode_t *node, isc_rwlocktype_t type) {
-	if (db->methods->locknode != NULL) {
+	if (node->methods != NULL && node->methods->locknode != NULL) {
+		(node->methods->locknode)(db, node, type);
+	} else if (db->methods->locknode != NULL) {
+		REQUIRE(DNS_DB_VALID(db));
 		(db->methods->locknode)(db, node, type);
 	}
 }
 
 void
 dns_db_unlocknode(dns_db_t *db, dns_dbnode_t *node, isc_rwlocktype_t type) {
-	if (db->methods->unlocknode != NULL) {
+	if (node->methods != NULL && node->methods->unlocknode != NULL) {
+		(node->methods->unlocknode)(db, node, type);
+	} else if (db->methods->unlocknode != NULL) {
+		REQUIRE(DNS_DB_VALID(db));
 		(db->methods->unlocknode)(db, node, type);
 	}
 }
@@ -1148,7 +1155,10 @@ dns_db_expiredata(dns_db_t *db, dns_dbnode_t *node, void *data) {
 
 void
 dns_db_deletedata(dns_db_t *db, dns_dbnode_t *node, void *data) {
-	if (db->methods->deletedata != NULL) {
+	if (node->methods != NULL && node->methods->deletedata != NULL) {
+		(node->methods->deletedata)(db, node, data);
+	} else if (db->methods->deletedata != NULL) {
+		REQUIRE(DNS_DB_VALID(db));
 		(db->methods->deletedata)(db, node, data);
 	}
 }

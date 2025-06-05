@@ -1307,7 +1307,7 @@ resigninsert(dns_slabheader_t *newheader) {
 }
 
 static void
-resigndelete(qpzonedb_t *qpdb, qpz_version_t *version,
+resigndelete(qpzonedb_t *qpdb ISC_ATTR_UNUSED, qpz_version_t *version,
 	     dns_slabheader_t *header DNS__DB_FLARG) {
 	if (header == NULL || header->heap_index == 0) {
 		return;
@@ -4227,7 +4227,6 @@ rdatasetiter_current(dns_rdatasetiter_t *iterator,
  */
 static void
 reference_iter_node(qpdb_dbiterator_t *iter DNS__DB_FLARG) {
-	qpzonedb_t *qpdb = (qpzonedb_t *)iter->common.db;
 	qpznode_t *node = iter->node;
 
 	if (node == NULL) {
@@ -4584,7 +4583,6 @@ dbiterator_next(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 static isc_result_t
 dbiterator_current(dns_dbiterator_t *iterator, dns_dbnode_t **nodep,
 		   dns_name_t *name DNS__DB_FLARG) {
-	qpzonedb_t *qpdb = (qpzonedb_t *)iterator->db;
 	qpdb_dbiterator_t *qpdbiter = (qpdb_dbiterator_t *)iterator;
 	qpznode_t *node = qpdbiter->node;
 
@@ -5403,15 +5401,18 @@ static dns_dbmethods_t qpdb_zonemethods = {
 	// .detachnode = qpzone_detachnode,
 
 	.nodefullname = nodefullname,
-	.locknode = locknode,
-	.unlocknode = unlocknode,
+	// .locknode = locknode,
+	// .unlocknode = unlocknode,
 	// .expiredata
-	.deletedata = deletedata,
+	// .deletedata = deletedata,
 };
 
 static dns_dbnode_methods_t qpznode_methods = (dns_dbnode_methods_t) {
 	.attachnode = qpzone_attachnode,
-	.detachnode = qpzone_detachnode
+	.detachnode = qpzone_detachnode,
+	.locknode = locknode,
+	.unlocknode = unlocknode,
+	.deletedata = deletedata,
 };
 
 static void
