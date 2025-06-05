@@ -573,7 +573,11 @@ dns__db_attachnode(dns_db_t *db, dns_dbnode_t *source,
 	REQUIRE(source != NULL);
 	REQUIRE(targetp != NULL && *targetp == NULL);
 
-	(db->methods->attachnode)(db, source, targetp DNS__DB_FLARG_PASS);
+	if (source->methods != NULL && source->methods->attachnode != NULL) {
+		(source->methods->attachnode)(source, targetp DNS__DB_FLARG_PASS);
+	} else {
+		(db->methods->attachnode)(db, source, targetp DNS__DB_FLARG_PASS);
+	}
 }
 
 void
@@ -584,8 +588,13 @@ dns__db_detachnode(dns_db_t *db, dns_dbnode_t **nodep DNS__DB_FLARG) {
 
 	REQUIRE(DNS_DB_VALID(db));
 	REQUIRE(nodep != NULL && *nodep != NULL);
+	dns_dbnode_t *node = *nodep;
 
-	(db->methods->detachnode)(db, nodep DNS__DB_FLARG_PASS);
+	if (node->methods != NULL && node->methods->attachnode != NULL) {
+		(node->methods->detachnode)(nodep DNS__DB_FLARG_PASS);
+	} else {
+		(db->methods->detachnode)(db, nodep DNS__DB_FLARG_PASS);
+	}
 
 	ENSURE(*nodep == NULL);
 }

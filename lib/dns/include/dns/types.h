@@ -57,12 +57,11 @@ typedef uint16_t		       dns_cert_t;
 typedef struct dns_compress	       dns_compress_t;
 typedef enum dns_compress_flags	       dns_compress_flags_t;
 typedef struct dns_compress_slot       dns_compress_slot_t;
+typedef struct dns_dbnode	       dns_dbnode_t;
 typedef struct dns_db		       dns_db_t;
 typedef struct dns_dbimplementation    dns_dbimplementation_t;
 typedef struct dns_dbiterator	       dns_dbiterator_t;
 typedef void			       dns_dbload_t;
-typedef struct dns_dbnode dns_dbnode_t; /* this is dummy struct for proper type
-					   checking */
 typedef struct dns_dbonupdatelistener dns_dbonupdatelistener_t;
 typedef struct dns_dbversion	      dns_dbversion_t;
 typedef struct dns_dlzimplementation  dns_dlzimplementation_t;

@@ -106,10 +106,14 @@ struct dns_sdlz_db {
 struct dns_sdlzlookup {
 	/* Unlocked */
 	unsigned int magic;
+	dns_dbnode_methods_t *methods;
+	dns_name_t name;
+	isc_mem_t *mctx;
+	uint16_t locknum; // Unused
+
 	dns_sdlz_db_t *sdlz;
 	ISC_LIST(dns_rdatalist_t) lists;
 	ISC_LIST(isc_buffer_t) buffers;
-	dns_name_t *name;
 	ISC_LINK(dns_sdlzlookup_t) link;
 	dns_rdatacallbacks_t callbacks;
 
@@ -395,13 +399,14 @@ createnode(dns_sdlz_db_t *sdlz, dns_sdlznode_t **nodep) {
 	dns_sdlznode_t *node;
 
 	node = isc_mem_get(sdlz->common.mctx, sizeof(dns_sdlznode_t));
-
+	
+	node->methods = NULL;
 	node->sdlz = NULL;
 	dns_db_attach((dns_db_t *)sdlz, (dns_db_t **)&node->sdlz);
 	ISC_LIST_INIT(node->lists);
 	ISC_LIST_INIT(node->buffers);
 	ISC_LINK_INIT(node, link);
-	node->name = NULL;
+	dns_name_init(&node->name);
 	dns_rdatacallbacks_init(&node->callbacks);
 
 	isc_refcount_init(&node->references, 1);
@@ -442,9 +447,8 @@ destroynode(dns_sdlznode_t *node) {
 		isc_buffer_free(&b);
 	}
 
-	if (node->name != NULL) {
-		dns_name_free(node->name, mctx);
-		isc_mem_put(mctx, node->name, sizeof(dns_name_t));
+	if (dns_name_dynamic(&node->name)) {
+		dns_name_free(&node->name, mctx);
 	}
 
 	node->magic = 0;
@@ -601,10 +605,8 @@ getnodedata(dns_db_t *db, const dns_name_t *name, bool create,
 		}
 	}
 
-	if (node->name == NULL) {
-		node->name = isc_mem_get(sdlz->common.mctx, sizeof(dns_name_t));
-		dns_name_init(node->name);
-		dns_name_dup(name, sdlz->common.mctx, node->name);
+	if (!dns_name_dynamic(&node->name)) {
+		dns_name_dup(name, sdlz->common.mctx, &node->name);
 	}
 
 	*nodep = (dns_dbnode_t *)node;
@@ -1000,7 +1002,7 @@ modrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 
 	UNUSED(options);
 
-	dns_name_format(sdlznode->name, name, sizeof(name));
+	dns_name_format(&sdlznode->name, name, sizeof(name));
 
 	mctx = sdlz->common.mctx;
 
@@ -1012,7 +1014,7 @@ modrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 		goto cleanup;
 	}
 
-	result = dns_master_rdatasettotext(sdlznode->name, rdataset, style,
+	result = dns_master_rdatasettotext(&sdlznode->name, rdataset, style,
 					   NULL, buffer);
 	if (result != ISC_R_SUCCESS) {
 		goto cleanup;
@@ -1097,7 +1099,7 @@ deleterdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	}
 
 	sdlznode = (dns_sdlznode_t *)node;
-	dns_name_format(sdlznode->name, name, sizeof(name));
+	dns_name_format(&sdlznode->name, name, sizeof(name));
 	dns_rdatatype_format(type, b_type, sizeof(b_type));
 
 	MAYBE_LOCK(sdlz->dlzimp);
@@ -1231,7 +1233,7 @@ dbiterator_seek(dns_dbiterator_t *iterator,
 
 	sdlziter->current = ISC_LIST_HEAD(sdlziter->nodelist);
 	while (sdlziter->current != NULL) {
-		if (dns_name_equal(sdlziter->current->name, name)) {
+		if (dns_name_equal(&sdlziter->current->name, name)) {
 			return ISC_R_SUCCESS;
 		}
 		sdlziter->current = ISC_LIST_NEXT(sdlziter->current, link);
@@ -1271,7 +1273,7 @@ dbiterator_current(dns_dbiterator_t *iterator, dns_dbnode_t **nodep,
 	attachnode(iterator->db, (dns_dbnode_t *)sdlziter->current,
 		   nodep DNS__DB_FLARG_PASS);
 	if (name != NULL) {
-		dns_name_copy(sdlziter->current->name, name);
+		dns_name_copy(&sdlziter->current->name, name);
 		return ISC_R_SUCCESS;
 	}
 	return ISC_R_SUCCESS;
@@ -1810,15 +1812,13 @@ dns_sdlz_putnamedrr(dns_sdlzallnodes_t *allnodes, const char *name,
 	}
 
 	sdlznode = ISC_LIST_HEAD(allnodes->nodelist);
-	if (sdlznode == NULL || !dns_name_equal(sdlznode->name, newname)) {
+	if (sdlznode == NULL || !dns_name_equal(&sdlznode->name, newname)) {
 		sdlznode = NULL;
 		result = createnode(sdlz, &sdlznode);
 		if (result != ISC_R_SUCCESS) {
 			return result;
 		}
-		sdlznode->name = isc_mem_get(mctx, sizeof(dns_name_t));
-		dns_name_init(sdlznode->name);
-		dns_name_dup(newname, mctx, sdlznode->name);
+		dns_name_dup(newname, mctx, &sdlznode->name);
 		ISC_LIST_PREPEND(allnodes->nodelist, sdlznode, link);
 		if (allnodes->origin == NULL &&
 		    dns_name_equal(newname, &sdlz->common.origin))

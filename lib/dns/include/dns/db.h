@@ -75,7 +75,20 @@ extern unsigned int dns_pps;
 ***** Types
 *****/
 
-typedef struct dns_dbmethods {
+typedef struct dns_dbnode_methods {
+	// getters (returns name from node, could omit db...)
+        isc_result_t (*nodefullname)(dns_db_t *db, dns_dbnode_t *node, dns_name_t *name);
+
+        // attach/detach
+        void (*attachnode)(dns_dbnode_t *source, dns_dbnode_t **targetp DNS__DB_FLARG);
+        void (*detachnode)(dns_dbnode_t **targetp DNS__DB_FLARG);
+
+        // lock/unlock
+        void (*locknode)(dns_db_t *db, dns_dbnode_t *node, isc_rwlocktype_t t);
+        void (*unlocknode)(dns_db_t *db, dns_dbnode_t *node, isc_rwlocktype_t t);
+} dns_dbnode_methods_t;
+
+typedef struct dns_db_methods {
 	void (*destroy)(dns_db_t *db);
 	isc_result_t (*beginload)(dns_db_t	       *db,
 				  dns_rdatacallbacks_t *callbacks);
@@ -101,9 +114,6 @@ typedef struct dns_dbmethods {
 				    dns_name_t		       *dcname,
 				    dns_rdataset_t	       *rdataset,
 				    dns_rdataset_t *sigrdataset DNS__DB_FLARG);
-	void (*attachnode)(dns_db_t *db, dns_dbnode_t *source,
-			   dns_dbnode_t **targetp DNS__DB_FLARG);
-	void (*detachnode)(dns_db_t *db, dns_dbnode_t **targetp DNS__DB_FLARG);
 	isc_result_t (*createiterator)(dns_db_t *db, unsigned int options,
 				       dns_dbiterator_t **iteratorp);
 	isc_result_t (*findrdataset)(dns_db_t *db, dns_dbnode_t *node,
@@ -171,18 +181,23 @@ typedef struct dns_dbmethods {
 	isc_result_t (*setservestalerefresh)(dns_db_t *db, uint32_t interval);
 	isc_result_t (*getservestalerefresh)(dns_db_t *db, uint32_t *interval);
 	isc_result_t (*setgluecachestats)(dns_db_t *db, isc_stats_t *stats);
-	void (*locknode)(dns_db_t *db, dns_dbnode_t *node, isc_rwlocktype_t t);
-	void (*unlocknode)(dns_db_t *db, dns_dbnode_t *node,
-			   isc_rwlocktype_t t);
 	void (*addglue)(dns_db_t *db, dns_dbversion_t *version,
 			dns_rdataset_t *rdataset, dns_message_t *msg);
-	void (*expiredata)(dns_db_t *db, dns_dbnode_t *node, void *data);
-	void (*deletedata)(dns_db_t *db, dns_dbnode_t *node, void *data);
-	isc_result_t (*nodefullname)(dns_db_t *db, dns_dbnode_t *node,
-				     dns_name_t *name);
 	void (*setmaxrrperset)(dns_db_t *db, uint32_t value);
 	void (*setmaxtypepername)(dns_db_t *db, uint32_t value);
 	isc_result_t (*getzoneversion)(dns_db_t *db, isc_buffer_t *b);
+
+	void (*attachnode)(dns_db_t *db, dns_dbnode_t *source, dns_dbnode_t **targetp  DNS__DB_FLARG);
+	void (*detachnode)(dns_db_t *db, dns_dbnode_t **targetp DNS__DB_FLARG);
+
+	// To be replaced by node methods
+	isc_result_t (*nodefullname)(dns_db_t *db, dns_dbnode_t *node,
+				     dns_name_t *name);
+	void (*locknode)(dns_db_t *db, dns_dbnode_t *node, isc_rwlocktype_t t);
+	void (*unlocknode)(dns_db_t *db, dns_dbnode_t *node,
+			   isc_rwlocktype_t t);
+	void (*expiredata)(dns_db_t *db, dns_dbnode_t *node, void *data);
+	void (*deletedata)(dns_db_t *db, dns_dbnode_t *node, void *data);
 } dns_dbmethods_t;
 
 typedef isc_result_t (*dns_dbcreatefunc_t)(isc_mem_t	    *mctx,
@@ -196,6 +211,14 @@ typedef isc_result_t (*dns_dbupdate_callback_t)(dns_db_t *db, void *fn_arg);
 
 #define DNS_DB_MAGIC	 ISC_MAGIC('D', 'N', 'S', 'D')
 #define DNS_DB_VALID(db) ISC_MAGIC_VALID(db, DNS_DB_MAGIC)
+
+struct dns_dbnode {
+	int magic;
+	dns_dbnode_methods_t *methods;
+	dns_name_t name;
+	isc_mem_t *mctx;
+	uint16_t locknum;
+};
 
 /*%
  * This structure is actually just the common prefix of a DNS db

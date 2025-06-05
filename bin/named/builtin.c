@@ -62,12 +62,17 @@ typedef struct bdb {
 } bdb_t;
 
 struct bdbnode {
+	// Common to dns_dbnode
 	unsigned int magic;
+	dns_dbnode_methods_t *methods;
+	dns_name_t name;
+	isc_mem_t *mctx; // Unused
+	uint16_t locknum; // Unused
+
 	isc_refcount_t references;
 	bdb_t *bdb;
 	ISC_LIST(dns_rdatalist_t) lists;
 	ISC_LIST(isc_buffer_t) buffers;
-	dns_name_t *name;
 	ISC_LINK(bdbnode_t) link;
 	dns_rdatacallbacks_t callbacks;
 };
@@ -810,11 +815,6 @@ destroynode(bdbnode_t *node) {
 	ISC_LIST_FOREACH (node->buffers, b, link) {
 		ISC_LIST_UNLINK(node->buffers, b, link);
 		isc_buffer_free(&b);
-	}
-
-	if (node->name != NULL) {
-		dns_name_free(node->name, mctx);
-		isc_mem_put(mctx, node->name, sizeof(dns_name_t));
 	}
 
 	node->magic = 0;

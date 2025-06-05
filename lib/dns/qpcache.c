@@ -145,15 +145,16 @@
  */
 typedef struct qpcnode qpcnode_t;
 struct qpcnode {
+	int magic;
+	dns_dbnode_methods_t *methods;
 	dns_name_t name;
 	isc_mem_t *mctx;
+	uint16_t locknum;
 
 	uint8_t			: 0;
 	unsigned int delegating : 1;
 	unsigned int nsec	: 2; /*%< range is 0..3 */
 	uint8_t			: 0;
-
-	uint16_t locknum;
 
 	/*
 	 * 'erefs' counts external references held by a caller: for
