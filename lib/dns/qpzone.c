@@ -244,17 +244,17 @@ struct qpzonedb {
 	dns_qpmulti_t *nsec3; /* NSEC3 nodes only */
 };
 
-// #ifdef DNS_DB_NODETRACE
-// #define qpzonedb_ref(ptr)   qpzonedb__ref(ptr, __func__, __FILE__, __LINE__)
-// #define qpzonedb_unref(ptr) qpzonedb__unref(ptr, __func__, __FILE__, __LINE__)
-// #define qpzonedb_attach(ptr, ptrp) \
-// 	qpzonedb__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-// #define qpzonedb_detach(ptrp) \
-// 	qpzonedb__detach(ptrp, __func__, __FILE__, __LINE__)
-// ISC_REFCOUNT_STATIC_TRACE_DECL(qpzonedb);
-// #else
-// ISC_REFCOUNT_STATIC_DECL(qpzonedb);
-// #endif
+/* #ifdef DNS_DB_NODETRACE
+#define qpzonedb_ref(ptr)   qpzonedb__ref(ptr, __func__, __FILE__, __LINE__)
+#define qpzonedb_unref(ptr) qpzonedb__unref(ptr, __func__, __FILE__, __LINE__)
+#define qpzonedb_attach(ptr, ptrp) \
+	qpzonedb__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
+#define qpzonedb_detach(ptrp) \
+	qpzonedb__detach(ptrp, __func__, __FILE__, __LINE__)
+ISC_REFCOUNT_STATIC_TRACE_DECL(qpzonedb);
+#else
+ISC_REFCOUNT_STATIC_DECL(qpzonedb);
+#endif */
 
 /*%
  * Search Context
