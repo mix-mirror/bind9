@@ -4638,6 +4638,15 @@ check_trust_anchor(const cfg_obj_t *key, unsigned int *flagsp) {
 			result = ISC_R_RANGE;
 		}
 
+		switch (rdata3) {
+		case DNS_KEYALG_RSASHA1:
+		case DNS_KEYALG_NSEC3RSASHA1:
+			cfg_obj_log(key, ISC_LOG_WARNING,
+				    "DNSKEY algorithm out dated (dropped): %u",
+				    rdata3);
+			break;
+		}
+
 		isc_buffer_init(&b, data, sizeof(data));
 
 		str = cfg_obj_asstring(cfg_tuple_get(key, "data"));
@@ -4704,6 +4713,15 @@ check_trust_anchor(const cfg_obj_t *key, unsigned int *flagsp) {
 			cfg_obj_log(key, ISC_LOG_ERROR,
 				    "digest type too big: %u", rdata3);
 			result = ISC_R_RANGE;
+		}
+
+		switch (rdata2) {
+		case DNS_KEYALG_RSASHA1:
+		case DNS_KEYALG_NSEC3RSASHA1:
+			cfg_obj_log(key, ISC_LOG_WARNING,
+				    "DNSKEY algorithm out dated (dropped): %u",
+				    rdata2);
+			break;
 		}
 
 		isc_buffer_init(&b, data, sizeof(data));

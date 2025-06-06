@@ -1261,7 +1261,7 @@ if $FEATURETEST --rsasha1; then
   dig_with_opts +noauth a.rsasha1.example. @10.53.0.3 a >dig.out.ns3.test$n || ret=1
   dig_with_opts +noauth a.rsasha1.example. @10.53.0.4 a >dig.out.ns4.test$n || ret=1
   digcomp dig.out.ns3.test$n dig.out.ns4.test$n || ret=1
-  grep "flags:.*ad.*QUERY" dig.out.ns4.test$n >/dev/null || ret=1
+  grep "flags:.*ad.*QUERY" dig.out.ns4.test$n >/dev/null && ret=1
 else
   echo_i "skip: RSASHA1 not supported by OS"
 fi
@@ -1276,7 +1276,7 @@ if $FEATURETEST --rsasha1; then
   dig_with_opts +noauth a.rsasha1-1024.example. @10.53.0.3 a >dig.out.ns3.test$n || ret=1
   dig_with_opts +noauth a.rsasha1-1024.example. @10.53.0.4 a >dig.out.ns4.test$n || ret=1
   digcomp dig.out.ns3.test$n dig.out.ns4.test$n || ret=1
-  grep "flags:.*ad.*QUERY" dig.out.ns4.test$n >/dev/null || ret=1
+  grep "flags:.*ad.*QUERY" dig.out.ns4.test$n >/dev/null && ret=1
 else
   echo_i "skip: RSASHA1 not supported by OS"
 fi

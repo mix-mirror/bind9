@@ -10631,7 +10631,15 @@ dns_resolver_algorithm_supported(dns_resolver_t *resolver,
 				 unsigned char *private, size_t len) {
 	REQUIRE(VALID_RESOLVER(resolver));
 
-	if ((alg == DST_ALG_DH) || (alg == DST_ALG_INDIRECT)) {
+	switch (alg) {
+	/* Not signing algorithms. */
+	case DST_ALG_DH:
+	case DST_ALG_INDIRECT:
+		return false;
+
+	/* Deprecated signing algorithms, not to be used for validation. */
+	case DST_ALG_RSASHA1:
+	case DST_ALG_NSEC3RSASHA1:
 		return false;
 	}
 
