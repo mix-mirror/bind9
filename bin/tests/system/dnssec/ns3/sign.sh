@@ -279,7 +279,7 @@ keyname=$("$KEYGEN" -q -a "$DEFAULT_ALGORITHM" -b "$DEFAULT_BITS" "$zone")
 
 cat "$infile" "$keyname.key" >"$zonefile"
 
-"$SIGNER" -z -3 - -PU -o "$zone" "$zonefile" >/dev/null
+"$SIGNER" -z -3 - -P -U unknownalg -o "$zone" "$zonefile" >/dev/null
 
 #
 # A optout nsec3 zone with a unknown nsec3 hash algorithm (-U).
@@ -292,7 +292,7 @@ keyname=$("$KEYGEN" -q -a "$DEFAULT_ALGORITHM" -b "$DEFAULT_BITS" "$zone")
 
 cat "$infile" "$keyname.key" >"$zonefile"
 
-"$SIGNER" -z -3 - -PU -A -o "$zone" "$zonefile" >/dev/null
+"$SIGNER" -z -3 - -P -U unknownalg -A -o "$zone" "$zonefile" >/dev/null
 
 #
 # A zone that is signed with an unknown DNSKEY algorithm.
@@ -401,7 +401,7 @@ keyname=$("$KEYGEN" -q -a "$DEFAULT_ALGORITHM" -b "$DEFAULT_BITS" "$zone")
 
 cat "$infile" "$keyname.key" >"$zonefile"
 
-"$SIGNER" -z -3 - -o "$zone" -PU -O full -f ${zonefile}.tmp "$zonefile" >/dev/null
+"$SIGNER" -z -3 - -o "$zone" -P -U unknownalg -O full -f ${zonefile}.tmp "$zonefile" >/dev/null
 
 awk '$4 == "DNSKEY" { $7 = 100; print } $4 == "RRSIG" { $6 = 100; print } { print }' ${zonefile}.tmp >${zonefile}.signed
 
