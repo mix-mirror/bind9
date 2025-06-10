@@ -173,6 +173,7 @@ static bool set_maxttl = false;
 static dns_ttl_t maxttl = 0;
 static bool no_max_check = false;
 static const char *sync_records = "cdnskey,cds:sha-256";
+static bool add_zonemd = false;
 
 #define INCSTAT(counter)                               \
 	if (printstats) {                              \
@@ -1213,6 +1214,8 @@ signname(dns_dbnode_t *node, bool apex, dns_name_t *name) {
 			char namebuf[DNS_NAME_FORMATSIZE];
 			dns_name_format(name, namebuf, sizeof(namebuf));
 			fatal("'%s': Non-apex DNSKEY RRset\n", namebuf);
+		} else if (rdataset.type == dns_rdatatype_zonemd && apex) {
+			goto skip;
 		}
 
 		signset(&del, &add, node, name, &rdataset);
@@ -1470,10 +1473,42 @@ presign(void) {
 
 /*%
  * Clean up the iterator and global state after the tasks complete.
+ *
+ * Update ZONEMD if present.
  */
 static void
 postsign(void) {
+	isc_result_t result;
+	dns_diff_t diff;
+	dns_dbnode_t *node = NULL;
+	dns_rdataset_t rdataset = DNS_RDATASET_INIT;
+
 	dns_dbiterator_destroy(&gdbiter);
+
+	dns_diff_init(isc_g_mctx, &diff);
+
+	result = dns_update_zonemd(gdb, gversion, &diff);
+	check_result(result, "dns_update_zonemd");
+	dns_diff_clear(&diff);
+
+	result = dns_db_getoriginnode(gdb, &node);
+	check_result(result, "dns_db_findnode");
+
+	result = dns_db_findrdataset(gdb, node, gversion, dns_rdatatype_zonemd,
+				     0, (isc_stdtime_t)0, &rdataset, NULL);
+	if (result == ISC_R_SUCCESS) {
+		signset(&diff, &diff, node, gorigin, &rdataset);
+	}
+
+	result = dns_diff_applysilently(&diff, gdb, gversion);
+	check_result(result, "dns_diff_applysilently");
+
+	if (dns_rdataset_isassociated(&rdataset)) {
+		dns_rdataset_disassociate(&rdataset);
+	}
+
+	dns_db_detachnode(&node);
+	dns_diff_clear(&diff);
 }
 
 /*%
@@ -2096,6 +2131,88 @@ nsec3clean(dns_name_t *name, dns_dbnode_t *node, unsigned int hashalg,
 	if (result != ISC_R_SUCCESS && result != DNS_R_UNCHANGED) {
 		check_result(result, "dns_db_deleterdataset(RRSIG(NSEC3))");
 	}
+}
+
+static void
+addzonemd(uint8_t scheme, uint8_t digest_type) {
+	dns_dbnode_t *node = NULL;
+	dns_rdata_zonemd_t zonemd;
+	dns_rdatalist_t zmlist;
+	dns_rdataset_t zmset = DNS_RDATASET_INIT;
+	dns_rdata_t rdata = DNS_RDATA_INIT;
+	unsigned char digest[64] = { 0 };
+	unsigned char zmbuf[6 + sizeof(digest)];
+	isc_buffer_t b;
+	isc_result_t result;
+	dns_ttl_t ttl = 0;
+
+	/* Is there already a ZONEMD? */
+	result = dns_db_getoriginnode(gdb, &node);
+	check_result(result, "dns_db_getoriginnode()");
+	result = dns_db_findrdataset(gdb, node, gversion, dns_rdatatype_zonemd,
+				     0, 0, &zmset, NULL);
+	if (result == ISC_R_SUCCESS) {
+		DNS_RDATASET_FOREACH(&zmset) {
+			dns_rdataset_current(&zmset, &rdata);
+			(void)dns_rdata_tostruct(&rdata, &zonemd, NULL);
+			/*
+			 * Does the scheme/digest_type pair already exist?
+			 */
+			if (zonemd.scheme == scheme &&
+			    zonemd.digest_type == digest_type)
+			{
+				dns_rdataset_disassociate(&zmset);
+				dns_db_detachnode(&node);
+				return;
+			}
+			dns_rdata_init(&rdata);
+		}
+		/*
+		 * Remember the rdataset's ttl.
+		 */
+		ttl = zmset.ttl;
+		dns_rdataset_disassociate(&zmset);
+	}
+
+	/* No, so add a dummy */
+	zonemd.common.rdclass = gclass;
+	zonemd.common.rdtype = dns_rdatatype_zonemd;
+	zonemd.mctx = NULL;
+	zonemd.serial = 0;
+	zonemd.scheme = scheme;
+	zonemd.digest_type = digest_type;
+	zonemd.digest = digest;
+
+	switch (digest_type) {
+	case DNS_ZONEMD_DIGEST_SHA384:
+		zonemd.length = ISC_SHA384_DIGESTLENGTH;
+		break;
+	case DNS_ZONEMD_DIGEST_SHA512:
+		zonemd.length = ISC_SHA512_DIGESTLENGTH;
+		break;
+	default:
+		UNREACHABLE();
+	}
+
+	isc_buffer_init(&b, zmbuf, sizeof(zmbuf));
+	result = dns_rdata_fromstruct(&rdata, gclass, dns_rdatatype_zonemd,
+				      &zonemd, &b);
+	check_result(result, "dns_rdata_fromstruct()");
+
+	dns_rdatalist_init(&zmlist);
+	zmlist.rdclass = rdata.rdclass;
+	zmlist.type = rdata.type;
+	zmlist.ttl = ttl;
+	ISC_LIST_APPEND(zmlist.rdata, &rdata, link);
+	dns_rdatalist_tordataset(&zmlist, &zmset);
+
+	result = dns_db_addrdataset(gdb, node, gversion, 0, &zmset,
+				    DNS_DBADD_MERGE, NULL);
+	if (result == DNS_R_UNCHANGED) {
+		result = ISC_R_SUCCESS;
+	}
+	check_result(result, "addnsec3param: dns_db_addrdataset()");
+	dns_db_detachnode(&node);
 }
 
 static void
@@ -3275,6 +3392,7 @@ main(int argc, char *argv[]) {
 	bool set_optout = false;
 	bool set_iter = false;
 	bool nonsecify = false;
+	uint8_t zonemd_scheme[2] = { 0 }, zonemd_digest[2] = { 0 };
 
 	atomic_init(&shuttingdown, false);
 	atomic_init(&finished, false);
@@ -3285,8 +3403,8 @@ main(int argc, char *argv[]) {
 	 * Unused letters: Bb G J l q Yy (and F is reserved).
 	 * l was previously used for DLV lookaside.
 	 */
-#define CMDLINE_FLAGS                                                        \
-	"3:AaCc:Dd:E:e:f:FgG:hH:i:I:j:J:K:k:L:m:M:n:N:o:O:PpQqRr:s:ST:tuUv:" \
+#define CMDLINE_FLAGS                                                         \
+	"3:AaCc:Dd:E:e:f:FgG:hH:i:I:j:J:K:k:L:m:M:n:N:o:O:PpQqRr:s:ST:tuU:v:" \
 	"VX:xzZ:"
 
 	/*
@@ -3532,8 +3650,13 @@ main(int argc, char *argv[]) {
 			printstats = true;
 			break;
 
-		case 'U': /* Undocumented for testing only. */
-			unknownalg = true;
+		case 'U': /* Undocumented test options */
+			if (!strcmp(isc_commandline_argument, "nonsecify")) {
+				nonsecify = true;
+			}
+			if (!strcmp(isc_commandline_argument, "unknownalg")) {
+				unknownalg = true;
+			}
 			break;
 
 		case 'u':
@@ -3564,6 +3687,57 @@ main(int argc, char *argv[]) {
 			ignore_kskflag = true;
 			break;
 
+		case 'Z':
+			add_zonemd = true;
+			if (strcasecmp(isc_commandline_argument,
+				       "simple-sha384") == 0 ||
+			    strcasecmp(isc_commandline_argument, "sha384") ==
+				    0 ||
+			    strcmp(isc_commandline_argument, "-") == 0)
+			{
+				for (size_t i = 0;
+				     i < ARRAY_SIZE(zonemd_scheme); i++)
+				{
+					if (zonemd_scheme[i] ==
+						    DNS_ZONEMD_SCHEME_SIMPLE &&
+					    zonemd_digest[i] ==
+						    DNS_ZONEMD_DIGEST_SHA384)
+					{
+						break;
+					} else if (zonemd_scheme[i] == 0) {
+						zonemd_scheme[i] =
+							DNS_ZONEMD_SCHEME_SIMPLE;
+						zonemd_digest[i] =
+							DNS_ZONEMD_DIGEST_SHA384;
+					}
+				}
+			} else if (strcasecmp(isc_commandline_argument,
+					      "simple-sha512") == 0 ||
+				   strcasecmp(isc_commandline_argument,
+					      "sha512") == 0)
+			{
+				for (size_t i = 0;
+				     i < ARRAY_SIZE(zonemd_scheme); i++)
+				{
+					if (zonemd_scheme[i] ==
+						    DNS_ZONEMD_SCHEME_SIMPLE &&
+					    zonemd_digest[i] ==
+						    DNS_ZONEMD_DIGEST_SHA512)
+					{
+						break;
+					} else if (zonemd_scheme[i] == 0) {
+						zonemd_scheme[i] =
+							DNS_ZONEMD_SCHEME_SIMPLE;
+						zonemd_digest[i] =
+							DNS_ZONEMD_DIGEST_SHA512;
+					}
+				}
+			} else {
+				fatal("unknown ZONEMD scheme/digest");
+			}
+
+			break;
+
 		case 'F':
 			if (isc_crypto_fips_enable() != ISC_R_SUCCESS) {
 				fatal("setting FIPS mode failed");
@@ -3586,12 +3760,6 @@ main(int argc, char *argv[]) {
 		case 'V':
 			/* Does not return. */
 			version(isc_commandline_progname);
-
-		case 'Z': /* Undocumented test options */
-			if (!strcmp(isc_commandline_argument, "nonsecify")) {
-				nonsecify = true;
-			}
-			break;
 
 		default:
 			fprintf(stderr, "%s: unhandled option -%c\n",
@@ -3878,6 +4046,14 @@ main(int argc, char *argv[]) {
 
 	/* Remove duplicates and cap TTLs at maxttl */
 	cleanup_zone();
+
+	if (add_zonemd) {
+		for (size_t i = 0; i < ARRAY_SIZE(zonemd_scheme); i++) {
+			if (zonemd_scheme[i] != 0) {
+				addzonemd(zonemd_scheme[i], zonemd_digest[i]);
+			}
+		}
+	}
 
 	if (!nonsecify) {
 		if (IS_NSEC3) {

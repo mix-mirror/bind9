@@ -169,7 +169,7 @@ ksk=$($KEYGEN -a ${DEFAULT_ALGORITHM} -fK ${zone} 2>kg2.out$n) || dumpit kg2.out
 cat unsigned.db $ksk.key $zsk.key >$file
 $SIGNER -P -O full -o ${zone} -f ${file} ${file} $ksk >s.out$n || dumpit s.out$n
 awk '$4 == "NSEC" { $5 = "'$zone'."; print } { print }' ${file} >${file}.tmp
-$SIGNER -Px -Z nonsecify -o ${zone} -f ${file} ${file}.tmp $zsk >s.out$n || dumpit s.out$n
+$SIGNER -Px -U nonsecify -o ${zone} -f ${file} ${file}.tmp $zsk >s.out$n || dumpit s.out$n
 
 # bad nsec bitmap
 setup ksk+zsk.nsec.bad-bitmap bad
@@ -178,7 +178,7 @@ ksk=$($KEYGEN -a ${DEFAULT_ALGORITHM} -fK ${zone} 2>kg2.out$n) || dumpit kg2.out
 cat unsigned.db $ksk.key $zsk.key >$file
 $SIGNER -P -O full -o ${zone} -f ${file} ${file} $ksk >s.out$n || dumpit s.out$n
 awk '$4 == "NSEC" && /SOA/ { $6=""; print } { print }' ${file} >${file}.tmp
-$SIGNER -Px -Z nonsecify -o ${zone} -f ${file} ${file}.tmp $zsk >s.out$n || dumpit s.out$n
+$SIGNER -Px -U nonsecify -o ${zone} -f ${file} ${file}.tmp $zsk >s.out$n || dumpit s.out$n
 
 # extra NSEC record out side of zone
 setup ksk+zsk.nsec.out-of-zone-nsec bad
@@ -187,7 +187,7 @@ ksk=$($KEYGEN -a ${DEFAULT_ALGORITHM} -fK ${zone} 2>kg2.out$n) || dumpit kg2.out
 cat unsigned.db $ksk.key $zsk.key >$file
 $SIGNER -P -O full -o ${zone} -f ${file} ${file} $ksk >s.out$n || dumpit s.out$n
 echo "out-of-zone. 3600 IN NSEC ${zone}. A" >>${file}
-$SIGNER -Px -Z nonsecify -O full -o ${zone} -f ${file} ${file} $zsk >s.out$n || dumpit s.out$n
+$SIGNER -Px -U nonsecify -O full -o ${zone} -f ${file} ${file} $zsk >s.out$n || dumpit s.out$n
 
 # extra NSEC record below bottom of zone
 setup ksk+zsk.nsec.below-bottom-of-zone-nsec bad
@@ -196,7 +196,7 @@ ksk=$($KEYGEN -a ${DEFAULT_ALGORITHM} -fK ${zone} 2>kg2.out$n) || dumpit kg2.out
 cat unsigned.db $ksk.key $zsk.key >$file
 $SIGNER -P -O full -o ${zone} -f ${file} ${file} $ksk >s.out$n || dumpit s.out$n
 echo "ns.sub.${zone}. 3600 IN NSEC ${zone}. A AAAA" >>${file}
-$SIGNER -Px -Z nonsecify -O full -o ${zone} -f ${file}.tmp ${file} $zsk >s.out$n || dumpit s.out$n
+$SIGNER -Px -U nonsecify -O full -o ${zone} -f ${file}.tmp ${file} $zsk >s.out$n || dumpit s.out$n
 # dnssec-signzone signs any node with a NSEC record.
 awk '$1 ~ /^ns.sub/ && $4 == "RRSIG" && $5 != "NSEC" { next; } { print; }' ${file}.tmp >${file}
 
@@ -207,7 +207,7 @@ ksk=$($KEYGEN -a ${DEFAULT_ALGORITHM} -fK ${zone} 2>kg2.out$n) || dumpit kg2.out
 cat unsigned.db $ksk.key $zsk.key >$file
 $SIGNER -P -O full -o ${zone} -f ${file} ${file} $ksk >s.out$n || dumpit s.out$n
 echo "sub.dname.${zone}. 3600 IN NSEC ${zone}. TXT" >>${file}
-$SIGNER -Px -Z nonsecify -O full -o ${zone} -f ${file} ${file} $zsk >s.out$n || dumpit s.out$n
+$SIGNER -Px -U nonsecify -O full -o ${zone} -f ${file} ${file} $zsk >s.out$n || dumpit s.out$n
 
 # missing NSEC3 record at empty node
 # extract the hash fields from the empty node's NSEC 3 record then fix up
@@ -223,7 +223,7 @@ awk '
 $4 == "NSEC3" && $9 == "'$a'" { $9 = "'$b'"; print; next; }
 $4 == "NSEC3" && NF == 9 { next; }
 { print; }' ${file} >${file}.tmp
-$SIGNER -3 - -Px -Z nonsecify -O full -o ${zone} -f ${file} ${file}.tmp $zsk >s.out$n || dumpit s.out$n
+$SIGNER -3 - -Px -U nonsecify -O full -o ${zone} -f ${file} ${file}.tmp $zsk >s.out$n || dumpit s.out$n
 
 # extra NSEC3 record
 setup ksk+zsk.nsec3.extra-nsec3 bad
@@ -242,7 +242,7 @@ $4 == "NSEC3" && NF == 9 {
 }' ${file} >${file}.tmp
 cat ${file}.tmp >>${file}
 rm -f ${file}.tmp
-$SIGNER -3 - -Px -Z nonsecify -O full -o ${zone} -f ${file} ${file} $zsk >s.out$n || dumpit s.out$n
+$SIGNER -3 - -Px -U nonsecify -O full -o ${zone} -f ${file} ${file} $zsk >s.out$n || dumpit s.out$n
 
 # sign and verify with journal file
 setup updated other
@@ -254,3 +254,15 @@ sed -e '/serial/s/0/1/' $file >${file}.update
 echo "extra 3600 IN A 4.3.2.1" >>${file}.update
 $SIGNER -SPx -o ${zone} -f ${file}.update ${file}.update >s.out$n || dumpit s.out$n
 $MAKEJOURNAL updated ${file} ${file}.update ${file}.jnl >mj.out$n 2>&1 || dumpit mj.out$n
+
+# NSEC zone with ZONEMD.
+setup ksk+zsk.zonemd.nsec good
+$KEYGEN -a ${DEFAULT_ALGORITHM} ${zone} >kg1.out$n 2>&1 || dumpit kg1.out$n
+$KEYGEN -a ${DEFAULT_ALGORITHM} -fK ${zone} >kg2.out$n 2>&1 || dumpit kg2.out$n
+$SIGNER -Z simple-sha384 -SPx -o ${zone} -f ${file} unsigned.db >s.out$n || dumpit s.out$n
+
+# NSEC3 zone with ZONEMD.
+setup ksk+zsk.zonemd.nsec3 good
+$KEYGEN -a ${DEFAULT_ALGORITHM} ${zone} >kg1.out$n 2>&1 || dumpit kg1.out$n
+$KEYGEN -a ${DEFAULT_ALGORITHM} -fK ${zone} >kg2.out$n 2>&1 || dumpit kg2.out$n
+$SIGNER -3 - -Z simple-sha512 -SPx -o ${zone} -f ${file} unsigned.db >s.out$n || dumpit s.out$n

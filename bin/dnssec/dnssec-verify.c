@@ -57,6 +57,7 @@
 #include <dns/rdatatype.h>
 #include <dns/soa.h>
 #include <dns/time.h>
+#include <dns/zone.h>
 #include <dns/zoneverify.h>
 
 #include <dst/dst.h>
@@ -134,6 +135,37 @@ loadzone(char *file, char *origin, dns_rdataclass_t rdclass, dns_db_t **db) {
 	}
 }
 
+static isc_result_t
+check_zonemd(const char *file, const char *jfile, const dns_name_t *origin,
+	     dns_rdataclass_t rdclass, bool required) {
+	dns_zone_t *zone = NULL;
+	dns_zoneopt_t options = DNS_ZONEOPT_ZONEMD_CHECK |
+				DNS_ZONEOPT_ZONEMD_DNSSEC;
+	isc_result_t result;
+
+	if (required) {
+		options |= DNS_ZONEOPT_ZONEMD_REQUIRED;
+	}
+
+	dns_zone_create(&zone, isc_g_mctx, 0);
+	dns_zone_settype(zone, dns_zone_primary);
+	dns_zone_setoption(zone, options, true);
+	dns_zone_setorigin(zone, origin);
+	dns_zone_setclass(zone, rdclass);
+
+	const char *dbtype[] = { ZONEDB_DEFAULT };
+	dns_zone_setdbtype(zone, 1, (const char *const *)dbtype);
+
+	dns_zone_setfile(zone, file, NULL, inputformat,
+			 &dns_master_style_default);
+	dns_zone_setjournal(zone, jfile);
+
+	result = dns_zone_load(zone, false);
+	dns_zone_detach(&zone);
+
+	return result;
+}
+
 ISC_NORETURN static void
 usage(int ret);
 
@@ -167,14 +199,15 @@ main(int argc, char *argv[]) {
 	char *origin = NULL, *file = NULL;
 	char *inputformatstr = NULL;
 	isc_result_t result;
-	char *classname = NULL;
-	dns_rdataclass_t rdclass;
-	char *endp;
+	dns_rdataclass_t rdclass = dns_rdataclass_in;
+	bool zonemd = false, require_zonemd = false;
+	dns_dbnode_t *node = NULL;
+	char *endp = NULL;
 	int ch;
 
 	isc_commandline_init(argc, argv);
 
-#define CMDLINE_FLAGS "c:E:hJ:m:o:I:qv:Vxz"
+#define CMDLINE_FLAGS "c:E:hJ:m:o:I:qv:VxzZ"
 
 	/*
 	 * Process memory debugging argument first.
@@ -206,7 +239,7 @@ main(int argc, char *argv[]) {
 	while ((ch = isc_commandline_parse(argc, argv, CMDLINE_FLAGS)) != -1) {
 		switch (ch) {
 		case 'c':
-			classname = isc_commandline_argument;
+			rdclass = strtoclass(isc_commandline_argument);
 			break;
 
 		case 'E':
@@ -248,6 +281,10 @@ main(int argc, char *argv[]) {
 			ignore_kskflag = true;
 			break;
 
+		case 'Z':
+			require_zonemd = true;
+			break;
+
 		case '?':
 			if (isc_commandline_option != '?') {
 				fprintf(stderr, "%s: invalid argument -%c\n",
@@ -274,8 +311,6 @@ main(int argc, char *argv[]) {
 	}
 
 	now = isc_stdtime_now();
-
-	rdclass = strtoclass(classname);
 
 	setup_logging();
 
@@ -321,12 +356,31 @@ main(int argc, char *argv[]) {
 	result = dns_db_newversion(gdb, &gversion);
 	check_result(result, "dns_db_newversion()");
 
+	dns_rdataset_t zmset = DNS_RDATASET_INIT;
+	result = dns_db_getoriginnode(gdb, &node);
+	check_result(result, "dns_db_getoriginnode()");
+	result = dns_db_findrdataset(gdb, node, gversion, dns_rdatatype_zonemd,
+				     0, 0, &zmset, NULL);
+	if (result == ISC_R_SUCCESS) {
+		zonemd = true;
+		dns_rdataset_disassociate(&zmset);
+	}
+	dns_db_detachnode(&node);
+
 	result = dns_zoneverify_dnssec(NULL, gdb, gversion, gorigin, NULL,
 				       isc_g_mctx, ignore_kskflag,
 				       keyset_kskonly, report);
 
 	dns_db_closeversion(gdb, &gversion, false);
 	dns_db_detach(&gdb);
+
+	if (zonemd && result == ISC_R_SUCCESS) {
+		result = check_zonemd(file, journal, gorigin, gclass,
+				      require_zonemd);
+		report("ZONEMD verification: %s", isc_result_totext(result));
+	} else if (!zonemd && require_zonemd) {
+		fatal("Valid ZONEMD required but not present");
+	}
 
 	if (verbose > 10) {
 		isc_mem_stats(isc_g_mctx, stdout);

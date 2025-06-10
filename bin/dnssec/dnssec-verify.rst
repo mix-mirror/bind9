@@ -27,8 +27,9 @@ Description
 ~~~~~~~~~~~
 
 :program:`dnssec-verify` verifies that a zone is fully signed for each
-algorithm found in the DNSKEY RRset for the zone, and that the
-NSEC/NSEC3 chains are complete.
+algorithm found in the DNSKEY RRset for the zone, that the
+NSEC/NSEC3 chains are complete, and, if a ZONEMD record is present,
+that it is valid.
 
 Options
 ~~~~~~~
@@ -93,6 +94,11 @@ Options
    non-revoked key for the same algorithm that includes the self-signed
    key; the same key may be used for both purposes. This corresponds to
    the :option:`-z option in dnssec-signzone <dnssec-signzone -z>`.
+
+.. option:: -Z
+
+   This option indicates that a valid ZONEMD record must be present
+   in the zone.
 
 .. option:: zonefile
 
