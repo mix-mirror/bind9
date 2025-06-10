@@ -21,7 +21,7 @@ dnssec-signzone - DNSSEC zone signing tool
 Synopsis
 ~~~~~~~~
 
-:program:`dnssec-signzone` [**-a**] [**-c** class] [**-d** directory] [**-D**] [**-e** end-time] [**-f** output-file] [**-F**] [**-g**] [**-G sync-records**] [**-h**] [**-i** interval] [**-I** input-format] [**-j** jitter] [**-J** filename] [**-K** directory] [**-k** key] [**-L** serial] [**-M** maxttl] [**-N** soa-serial-format] [**-o** origin] [**-O** output-format] [**-P**] [**-Q**] [**-q**] [**-R**] [**-S**] [**-s** start-time] [**-T** ttl] [**-t**] [**-u**] [**-v** level] [**-V**] [**-X** extended end-time] [**-x**] [**-z**] [**-3** salt] [**-H** iterations] [**-A**] {zonefile} [key...]
+:program:`dnssec-signzone` [**-a**] [**-c** class] [**-d** directory] [**-D**] [**-e** end-time] [**-f** output-file] [**-F**] [**-g**] [**-G sync-records**] [**-h**] [**-i** interval] [**-I** input-format] [**-j** jitter] [**-J** filename] [**-K** directory] [**-k** key] [**-L** serial] [**-M** maxttl] [**-N** soa-serial-format] [**-o** origin] [**-O** output-format] [**-P**] [**-Q**] [**-q**] [**-R**] [**-S**] [**-s** start-time] [**-T** ttl] [**-t**] [**-u**] [**-v** level] [**-V**] [**-X** extended end-time] [**-x**] [**-z**] [**-Z**] [**-3** salt] [**-H** iterations] [**-A**] {zonefile} [key...]
 
 Description
 ~~~~~~~~~~~
@@ -400,6 +400,16 @@ Options
    This option turns the OPTOUT flag off for
    all records. This is useful when using the :option:`-u` option to modify an
    NSEC3 chain which previously had OPTOUT set.
+
+.. option:: -Z method
+
+   This option causes a ZONEMD record to be added to the signed zone,
+   if there wasn't a ZONEMD already present. The ``method`` parameter
+   indicates the scheme and digest type to use: valid options are
+   ``simple-sha384`` (or ``sha384``, or ``-``) for scheme SIMPLE
+   and digest type SHA384, and ``simple-sha512`` (or ``sha512``)
+   for scheme SIMPLE and digest type SHA512. Multiple ``-Z`` options
+   can be used simultaneously to add multiple ZONEMD records.
 
 .. option:: zonefile
 

@@ -59,8 +59,13 @@ for variant in addzone axfr ixfr load reconfig untrusted; do
 
   cat $infile $keyname1.key $keyname2.key >$zonefile
 
+  # for axfr and ixfr variants, add a ZONEMD record
+  if [ "$variant" = "axfr" -o "$variant" = "ixfr" ]; then
+    zopt="-Z-"
+  fi
+
   # Prepare a properly signed version of the zone ("*.original.signed").
-  $SIGNER -P -o $zone $zonefile >/dev/null
+  $SIGNER $zopt -P -o $zone $zonefile >/dev/null
   cp $zonefile.signed $zonefile.original.signed
   # Prepare a version of the zone with a bogus SOA RRSIG ("*.bad.signed").
   sed "s/${ORIGINAL_SERIAL}/${UPDATED_SERIAL_BAD}/;" $zonefile.signed >$zonefile.bad.signed

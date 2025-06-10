@@ -397,3 +397,37 @@ def test_verify_rejects_nsec3param_with_nsec_only_key():
     assert cmd.rc != 0
     isctest.log.debug(cmd.err)
     assert "cannot use NSEC3 with key algorithm" in cmd.out
+
+
+@pytest.mark.parametrize(
+    "zone",
+    [
+        "ksk+zsk.zonemd.nsec",
+        "ksk+zsk.zonemd.nsec3",
+    ],
+)
+def test_verify_zonemd(zone):
+    cmd = isctest.run.cmd(
+        [VERIFY, "-o", zone, f"zones/{zone}.good"],
+        raise_on_exception=False,
+        log_stdout=True,
+    )
+    stream = (cmd.out + cmd.err).replace("\n", "")
+    assert "ZONEMD verification: success" in stream
+
+
+@pytest.mark.parametrize(
+    "zone",
+    [
+        "ksk+zsk.nsec",
+        "ksk+zsk.nsec3",
+    ],
+)
+def test_verify_no_zonemd(zone):
+    cmd = isctest.run.cmd(
+        [VERIFY, "-Zo", zone, f"zones/{zone}.good"],
+        raise_on_exception=False,
+        log_stdout=True,
+    )
+    stream = (cmd.out + cmd.err).replace("\n", "")
+    assert "Valid ZONEMD required but not present" in stream
