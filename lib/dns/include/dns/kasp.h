@@ -32,7 +32,9 @@
 #include <dns/dnssec.h>
 #include <dns/keystore.h>
 #include <dns/name.h>
+#include <dns/rdatastruct.h>
 #include <dns/types.h>
+#include <dns/zonemd.h>
 
 /* Add -DDNS_KASP_TRACE=1 to CFLAGS for detailed reference tracing */
 
@@ -124,6 +126,10 @@ struct dns_kasp {
 	uint32_t  zone_propagation_delay;
 	bool	  inline_signing;
 	bool	  manual_mode;
+
+	/* ZONEMD settings */
+	uint8_t zonemd_scheme[DNS_ZONEMD_MAX];
+	uint8_t zonemd_digest[DNS_ZONEMD_MAX];
 
 	/* Parent settings */
 	dns_ttl_t parent_ds_ttl;
@@ -895,4 +901,31 @@ dns_kasp_adddigest(dns_kasp_t *kasp, dns_dsdigest_t alg);
  * Requires:
  *
  *\li   'kasp' is a valid, thawed kasp.
+ */
+
+void
+dns_kasp_setzonemd(dns_kasp_t *kasp, uint8_t scheme, uint8_t digest);
+/*%<
+ * Set the scheme and digest type for a ZONEMD record. If 'scheme' and
+ * 'digest' are nonzero, then if no ZONEMD already exists in the zone,
+ * one will be added after signing.
+ *
+ * Requires:
+ *
+ *\li   'kasp' is a valid, thawed kasp.
+ *
+ *\li	'scheme' and 'digest' are both 0, or else 'scheme' and 'digest'
+ *	are valid ZONEMD scheme/digest values.
+ */
+
+uint8_t *
+dns_kasp_zonemd_scheme(dns_kasp_t *kasp);
+uint8_t *
+dns_kasp_zonemd_digest(dns_kasp_t *kasp);
+/*%<
+ * Get the ZONEMD scheme/digest settings for the zone.
+ *
+ * Requires:
+ *
+ *\li   'kasp' is a valid, frozen kasp.
  */

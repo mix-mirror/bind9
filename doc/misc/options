@@ -30,6 +30,7 @@ dnssec-policy <string> {
 	signatures-validity <duration>;
 	signatures-validity-dnskey <duration>;
 	zone-propagation-delay <duration>;
+	zonemd ( simple | <boolean> ) [ ( sha384 | sha512 ) ]; // may occur multiple times
 }; // may occur multiple times
 
 dyndb <string> <quoted_string> { <unspecified-text> }; // may occur multiple times
