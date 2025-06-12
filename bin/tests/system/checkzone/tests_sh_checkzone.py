@@ -14,6 +14,8 @@ import pytest
 pytestmark = pytest.mark.extra_artifacts(
     [
         "good1.db.raw",
+        "zones/good.zonemd.db",
+        "zones/bad.zonemd.db",
         "named-compilezone",
         "test.*",
         "zones/bad-tsig.db",
