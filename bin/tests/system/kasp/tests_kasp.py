@@ -1849,3 +1849,10 @@ def test_root_case(ns1):
     expected = isctest.kasp.policy_to_properties(ttl=ttl, keys=keyprops)
     keys = isctest.kasp.keydir_to_keylist(zone, keydir)
     isctest.kasp.check_keys(zone, keys, expected)
+
+
+def test_kasp_zonemd(ns3):
+    msg = isctest.query.create("zonemd.kasp", "zonemd")
+    res = isctest.query.tcp(msg, ns3.ip)
+    isctest.check.noerror(res)
+    isctest.check.rr_count_eq(res.answer, 2)
