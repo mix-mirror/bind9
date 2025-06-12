@@ -10317,6 +10317,132 @@ failure:
 	return false;
 }
 
+static isc_result_t
+setup_zonemd(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *version,
+	     dns_diff_t *diff) {
+	isc_result_t result;
+	dns_dbnode_t *node = NULL;
+	dns_rdata_zonemd_t zonemd;
+	dns_rdataset_t zmset = DNS_RDATASET_INIT;
+	unsigned char digest[64] = { 0 };
+	unsigned char zmbuf[6 + sizeof(digest)];
+	uint8_t *scheme, *digest_type;
+	dns_ttl_t ttl = 0;
+	isc_buffer_t b;
+
+	scheme = dns_kasp_zonemd_scheme(zone->kasp);
+	digest_type = dns_kasp_zonemd_digest(zone->kasp);
+
+	/*
+	 * No zonemd processing specified.
+	 */
+	if (scheme[0] == 0) {
+		return ISC_R_SUCCESS;
+	}
+
+	CHECK(dns_db_getoriginnode(db, &node));
+
+	/* Is there already a ZONEMD? */
+	result = dns_db_findrdataset(db, node, version, dns_rdatatype_zonemd, 0,
+				     0, &zmset, NULL);
+	if (result == ISC_R_SUCCESS) {
+		ttl = zmset.ttl;
+	}
+
+	/*
+	 * Delete existing ZONEMD records that don't meet policy.
+	 */
+	if (result == ISC_R_SUCCESS && scheme[0] != 0) {
+		DNS_RDATASET_FOREACH(&zmset) {
+			dns_rdata_t zr = DNS_RDATA_INIT;
+			bool found = false;
+
+			/*
+			 * DNS_ZONEMD_SCHEME_MAX => delete everything.
+			 */
+			if (scheme[0] != DNS_ZONEMD_SCHEME_MAX) {
+				dns_rdataset_current(&zmset, &zr);
+				(void)dns_rdata_tostruct(&zr, &zonemd, NULL);
+
+				for (size_t i = 0; scheme[i] != 0; i++) {
+					if (zonemd.scheme == scheme[i] &&
+					    zonemd.digest_type == digest[i])
+					{
+						found = true;
+					}
+				}
+			}
+
+			/*
+			 * Is there a scheme/digest_type mismatch, or ZONEMD is
+			 * being removed?
+			 */
+			if (!found) {
+				CHECK(update_one_rr(db, version, diff,
+						    DNS_DIFFOP_DEL,
+						    &zone->origin, ttl, &zr));
+			}
+		}
+	} else if (result == ISC_R_NOTFOUND) {
+		result = ISC_R_SUCCESS;
+	}
+
+	if (result != ISC_R_SUCCESS || scheme[0] == DNS_ZONEMD_SCHEME_MAX) {
+		goto failure;
+	}
+
+	if (!dns_rdataset_isassociated(&zmset)) {
+		/* Get the SOA TTL */
+		dns_rdataset_t soaset = DNS_RDATASET_INIT;
+		CHECK(dns_db_findrdataset(db, node, version, dns_rdatatype_soa,
+					  0, 0, &soaset, NULL));
+		ttl = soaset.ttl;
+		dns_rdataset_disassociate(&soaset);
+	}
+
+	/* ZONEMD was either not present or has been deleted: add a dummy */
+	zonemd.common.rdclass = zone->rdclass;
+	zonemd.common.rdtype = dns_rdatatype_zonemd;
+	zonemd.mctx = NULL;
+	zonemd.serial = 0;
+	zonemd.digest = digest;
+
+	for (size_t i = 0; scheme[i] != 0; i++) {
+		dns_rdata_t rdata = DNS_RDATA_INIT;
+
+		zonemd.scheme = scheme[i];
+		zonemd.digest_type = digest_type[i];
+
+		switch (zonemd.digest_type) {
+		case DNS_ZONEMD_DIGEST_SHA384:
+			zonemd.length = ISC_SHA384_DIGESTLENGTH;
+			break;
+		case DNS_ZONEMD_DIGEST_SHA512:
+			zonemd.length = ISC_SHA512_DIGESTLENGTH;
+			break;
+		default:
+			UNREACHABLE();
+		}
+
+		isc_buffer_init(&b, zmbuf, sizeof(zmbuf));
+		CHECK(dns_rdata_fromstruct(&rdata, zone->rdclass,
+					   dns_rdatatype_zonemd, &zonemd, &b));
+
+		CHECK(update_one_rr(db, version, diff, DNS_DIFFOP_ADD,
+				    &zone->origin, ttl, &rdata));
+	}
+
+failure:
+	if (dns_rdataset_isassociated(&zmset)) {
+		dns_rdataset_disassociate(&zmset);
+	}
+	if (node != NULL) {
+		dns_db_detachnode(&node);
+	}
+
+	return result;
+}
+
 /*
  * Incrementally sign the zone using the keys requested.
  * Builds the NSEC chain if required.
@@ -10395,6 +10521,23 @@ zone_sign(dns_zone_t *zone) {
 	if (result != ISC_R_SUCCESS) {
 		dnssec_log(zone, ISC_LOG_ERROR,
 			   "zone_sign:dns_zone_findkeys -> %s",
+			   isc_result_totext(result));
+		goto cleanup;
+	}
+
+	if (zone->kasp != NULL) {
+		result = setup_zonemd(zone, db, version, &_sig_diff);
+		if (result != ISC_R_SUCCESS) {
+			dnssec_log(zone, ISC_LOG_ERROR,
+				   "zone_sign:setup_zonemd -> %s",
+				   isc_result_totext(result));
+			goto cleanup;
+		}
+	}
+	result = dns_update_zonemd(db, version, &_sig_diff);
+	if (result != ISC_R_SUCCESS) {
+		dnssec_log(zone, ISC_LOG_ERROR,
+			   "zone_sign:dns_update_zonemd -> %s",
 			   isc_result_totext(result));
 		goto cleanup;
 	}
@@ -16663,7 +16806,8 @@ sync_secure_journal(dns_zone_t *zone, dns_zone_t *raw, dns_journal_t *journal,
 		if (rdata->type == dns_rdatatype_nsec ||
 		    rdata->type == dns_rdatatype_rrsig ||
 		    rdata->type == dns_rdatatype_nsec3 ||
-		    rdata->type == dns_rdatatype_nsec3param)
+		    rdata->type == dns_rdatatype_nsec3param ||
+		    rdata->type == dns_rdatatype_zonemd)
 		{
 			continue;
 		}
@@ -16852,7 +16996,8 @@ sync_secure_db(dns_zone_t *seczone, dns_zone_t *raw, dns_db_t *secdb,
 		if (tuple->rdata.type == dns_rdatatype_nsec ||
 		    tuple->rdata.type == dns_rdatatype_rrsig ||
 		    tuple->rdata.type == dns_rdatatype_nsec3 ||
-		    tuple->rdata.type == dns_rdatatype_nsec3param)
+		    tuple->rdata.type == dns_rdatatype_nsec3param ||
+		    tuple->rdata.type == dns_rdatatype_zonemd)
 		{
 			ISC_LIST_UNLINK(diff->tuples, tuple, link);
 			dns_difftuple_free(&tuple);
@@ -17073,6 +17218,14 @@ receive_secure_serial(void *arg) {
 
 		dns_db_currentversion(zone->rss_db, &zone->rss_oldver);
 		CHECK(dns_db_newversion(zone->rss_db, &zone->rss_newver));
+
+		/*
+		 * Set up the ZONEMD as specified in the policy.
+		 */
+		CHECK(setup_zonemd(zone, zone->rss_db, zone->rss_newver,
+				   &zone->rss_diff));
+		CHECK(dns_update_zonemd(zone->rss_db, zone->rss_newver,
+					&zone->rss_diff));
 
 		/*
 		 * Try to apply diffs from the raw zone's journal to the secure
@@ -17516,7 +17669,8 @@ copy_non_dnssec_records(dns_db_t *db, dns_dbversion_t *version, dns_db_t *rawdb,
 		if (rdataset.type == dns_rdatatype_nsec ||
 		    rdataset.type == dns_rdatatype_rrsig ||
 		    rdataset.type == dns_rdatatype_nsec3 ||
-		    rdataset.type == dns_rdatatype_nsec3param)
+		    rdataset.type == dns_rdatatype_nsec3param ||
+		    rdataset.type == dns_rdatatype_zonemd)
 		{
 			dns_rdataset_disassociate(&rdataset);
 			continue;
@@ -17616,11 +17770,8 @@ receive_secure_db(void *arg) {
 	}
 
 	DNS_DBITERATOR_FOREACH(dbiterator) {
-		result = copy_non_dnssec_records(db, version, rawdb, dbiterator,
-						 oldserialp);
-		if (result != ISC_R_SUCCESS) {
-			goto failure;
-		}
+		CHECK(copy_non_dnssec_records(db, version, rawdb, dbiterator,
+					      oldserialp));
 	}
 	dns_dbiterator_destroy(&dbiterator);
 

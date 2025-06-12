@@ -30,6 +30,7 @@
 #include <dns/nsec3.h>
 #include <dns/secalg.h>
 #include <dns/ttl.h>
+#include <dns/zonemd.h>
 
 #include <dst/dst.h>
 
@@ -520,6 +521,7 @@ cfg_kasp_fromconfig(const cfg_obj_t *config, dns_kasp_t *default_kasp,
 	const cfg_obj_t *inlinesigning = NULL;
 	const cfg_obj_t *cds = NULL;
 	const cfg_obj_t *obj = NULL;
+	const cfg_obj_t *zonemd = NULL;
 	const char *kaspname = NULL;
 	dns_kasp_t *kasp = NULL;
 	size_t i = 0;
@@ -668,6 +670,58 @@ cfg_kasp_fromconfig(const cfg_obj_t *config, dns_kasp_t *default_kasp,
 	parentpropdelay = get_duration(maps, "parent-propagation-delay",
 				       DNS_KASP_PARENT_PROPDELAY);
 	dns_kasp_setparentpropagationdelay(kasp, parentpropdelay);
+
+	(void)confget(maps, "zonemd", &zonemd);
+	if (zonemd != NULL) {
+		CFG_LIST_FOREACH(zonemd, element) {
+			obj = cfg_listelt_value(element);
+			const cfg_obj_t *sobj = cfg_tuple_get(obj, "scheme");
+			if (cfg_obj_isboolean(sobj)) {
+				if (!cfg_obj_asboolean(sobj)) {
+					dns_kasp_setzonemd(
+						kasp, DNS_ZONEMD_SCHEME_MAX,
+						DNS_ZONEMD_DIGEST_MAX);
+				} else {
+					dns_kasp_setzonemd(
+						kasp, DNS_ZONEMD_SCHEME_SIMPLE,
+						DNS_ZONEMD_DIGEST_SHA384);
+				}
+			} else if (strcasecmp(cfg_obj_asstring(sobj),
+					      "simple") != 0)
+			{
+				cfg_obj_log(
+					config, ISC_LOG_ERROR,
+					"dnssec-policy: policy '%s' unknown "
+					"ZONEMD scheme %s",
+					kaspname, cfg_obj_asstring(sobj));
+				result = ISC_R_FAILURE;
+			} else {
+				const cfg_obj_t *dobj = cfg_tuple_get(obj,
+								      "digest");
+				if (strcasecmp(cfg_obj_asstring(dobj),
+					       "sha384"))
+				{
+					dns_kasp_setzonemd(
+						kasp, DNS_ZONEMD_SCHEME_SIMPLE,
+						DNS_ZONEMD_DIGEST_SHA384);
+				} else if (strcasecmp(cfg_obj_asstring(dobj),
+						      "sha512"))
+				{
+					dns_kasp_setzonemd(
+						kasp, DNS_ZONEMD_SCHEME_SIMPLE,
+						DNS_ZONEMD_DIGEST_SHA512);
+				} else {
+					cfg_obj_log(config, ISC_LOG_ERROR,
+						    "dnssec-policy: policy "
+						    "'%s' unknown "
+						    "ZONEMD digest %s",
+						    kaspname,
+						    cfg_obj_asstring(dobj));
+					result = ISC_R_FAILURE;
+				}
+			}
+		}
+	}
 
 	/* Configuration: Keys */
 	obj = NULL;

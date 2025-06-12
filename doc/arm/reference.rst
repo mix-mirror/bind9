@@ -6570,6 +6570,16 @@ max-zone-ttl
     zone is updated to the time when the new version is served by all of
     the parent zone's name servers. The default is ``PT1H`` (1 hour).
 
+.. namedconf:statement:: zonemd
+   :tags: dnssec
+   :short: Specifies whether a ZONEMD record should be published in an inline-signing zone.
+
+    This option controls whether to publish a ZONEMD record in the
+    signed version of an :any:`inline-signing` zone. If set to ``no``,
+    no ZONEMD is published. If set to ``simple sha384`` or ``simple sha512``,
+    a ZONEMD will be published using the SIMPLE scheme and either the
+    SHA384 and SHA512 digest type. ``yes`` is a synonym for ``simple sha384``.
+
 Automated KSK Rollovers
 ^^^^^^^^^^^^^^^^^^^^^^^
 

@@ -696,3 +696,64 @@ dns_kasp_adddigest(dns_kasp_t *kasp, dns_dsdigest_t alg) {
 	ISC_LINK_INIT(digest, link);
 	ISC_LIST_APPEND(kasp->digests, digest, link);
 }
+
+void
+dns_kasp_setzonemd(dns_kasp_t *kasp, uint8_t scheme, uint8_t digest) {
+	REQUIRE(kasp != NULL);
+	REQUIRE(!kasp->frozen);
+	REQUIRE((scheme == 0 && digest == 0) ||
+		(scheme == DNS_ZONEMD_SCHEME_MAX &&
+		 digest == DNS_ZONEMD_DIGEST_MAX) ||
+		(scheme != 0 && digest != 0 && scheme < DNS_ZONEMD_SCHEME_MAX &&
+		 digest < DNS_ZONEMD_DIGEST_MAX));
+
+	/*
+	 * Delete zonemds.
+	 */
+	if (scheme == DNS_ZONEMD_SCHEME_MAX) {
+		kasp->zonemd_scheme[0] = scheme;
+		kasp->zonemd_digest[0] = digest;
+		return;
+	}
+
+	/*
+	 * Maintain zonemds.
+	 */
+	if (scheme == 0) {
+		kasp->zonemd_scheme[0] = scheme;
+		kasp->zonemd_digest[0] = digest;
+		return;
+	}
+
+	/*
+	 * Set to this set.
+	 */
+	for (size_t i = 0; i < ARRAY_SIZE(kasp->zonemd_scheme) - 1; i++) {
+		if (kasp->zonemd_scheme[i] == scheme &&
+		    kasp->zonemd_digest[i] == digest)
+		{
+			return;
+		}
+		if (kasp->zonemd_scheme[i] == 0) {
+			kasp->zonemd_scheme[i] = scheme;
+			kasp->zonemd_digest[i] = digest;
+			return;
+		}
+	}
+}
+
+uint8_t *
+dns_kasp_zonemd_scheme(dns_kasp_t *kasp) {
+	REQUIRE(kasp != NULL);
+	REQUIRE(kasp->frozen);
+
+	return kasp->zonemd_scheme;
+}
+
+uint8_t *
+dns_kasp_zonemd_digest(dns_kasp_t *kasp) {
+	REQUIRE(kasp != NULL);
+	REQUIRE(kasp->frozen);
+
+	return kasp->zonemd_digest;
+}
