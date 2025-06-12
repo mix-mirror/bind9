@@ -2516,6 +2516,38 @@ static cfg_type_t cfg_type_checkdstype = {
 };
 
 /*%
+ * Zonemd type.
+ */
+static const char *zonemd_schemes[] = { "simple", NULL };
+static const char *zonemd_digests[] = { "sha384", "sha512", NULL };
+
+static isc_result_t
+parse_zscheme(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
+	return cfg_parse_enum_or_other(pctx, type, &cfg_type_boolean, ret);
+}
+static void
+doc_zscheme(cfg_printer_t *pctx, const cfg_type_t *type) {
+	cfg_doc_enum_or_other(pctx, type, &cfg_type_boolean);
+}
+
+static cfg_type_t cfg_type_zscheme = { "zscheme",	  parse_zscheme,
+				       cfg_print_ustring, doc_zscheme,
+				       &cfg_rep_string,	  zonemd_schemes };
+static cfg_type_t cfg_type_zdigest = { "zdigest",	  parse_optional_enum,
+				       cfg_print_ustring, doc_optional_enum,
+				       &cfg_rep_string,	  zonemd_digests };
+
+static cfg_tuplefielddef_t zonemd_fields[] = {
+	{ "scheme", &cfg_type_zscheme, 0 },
+	{ "digest", &cfg_type_zdigest, 0 },
+	{ NULL, NULL, 0 }
+};
+
+static cfg_type_t cfg_type_zonemd = { "zonemd",	       cfg_parse_tuple,
+				      cfg_print_tuple, cfg_doc_tuple,
+				      &cfg_rep_tuple,  zonemd_fields };
+
+/*%
  * Clauses that can be found in a 'dnssec-policy' statement.
  */
 static cfg_clausedef_t dnssecpolicy_clauses[] = {
@@ -2539,6 +2571,7 @@ static cfg_clausedef_t dnssecpolicy_clauses[] = {
 	{ "signatures-validity", &cfg_type_duration, 0, NULL },
 	{ "signatures-validity-dnskey", &cfg_type_duration, 0, NULL },
 	{ "zone-propagation-delay", &cfg_type_duration, 0, NULL },
+	{ "zonemd", &cfg_type_zonemd, CFG_CLAUSEFLAG_MULTI, NULL },
 	{ NULL, NULL, 0, NULL }
 };
 

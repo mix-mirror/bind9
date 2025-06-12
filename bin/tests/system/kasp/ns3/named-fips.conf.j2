@@ -204,6 +204,16 @@ zone "max-zone-ttl.kasp" {
 	dnssec-policy "ttl";
 };
 
+
+/*
+ * Zone that uses ZONEMD.
+ */
+zone "zonemd.kasp" {
+	type primary;
+	file "zonemd.kasp.db";
+	dnssec-policy "zonemd";
+};
+
 /*
  * Zones in different signing states.
  */

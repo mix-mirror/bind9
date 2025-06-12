@@ -119,3 +119,13 @@ dnssec-policy "keystore" {
 		zsk key-store "zsk" lifetime unlimited algorithm @DEFAULT_ALGORITHM@;
 	};
 };
+
+dnssec-policy "zonemd" {
+	dnskey-ttl 305;
+        zonemd yes;
+
+	keys {
+		ksk key-store "ksk" lifetime unlimited algorithm @DEFAULT_ALGORITHM@;
+		zsk key-store "zsk" lifetime unlimited algorithm @DEFAULT_ALGORITHM@;
+	};
+};
