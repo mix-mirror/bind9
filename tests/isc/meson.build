@@ -13,7 +13,6 @@ isc_test = [
     'ascii',
     'async',
     'buffer',
-    'cfgmgr',
     'counter',
     'dnsstream_utils',
     'errno',

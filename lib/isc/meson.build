@@ -70,7 +70,6 @@ isc_srcset.add(
         'backtrace.c',
         'base32.c',
         'base64.c',
-        'cfgmgr.c',
         'commandline.c',
         'counter.c',
         'crypto.c',

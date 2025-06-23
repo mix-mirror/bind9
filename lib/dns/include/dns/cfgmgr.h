@@ -16,28 +16,30 @@
 #include <isc/sockaddr.h>
 #include <isc/types.h>
 
+#define DNS_CFGMGR_MAXKEYLEN 512
+
 /*
- * See isc_cfgmgr_mode() comment below.
+ * See dns_cfgmgr_mode() comment below.
  */
-typedef enum isc_cfgmgr_mode isc_cfgmgr_mode_t;
-enum isc_cfgmgr_mode {
-	ISC_CFGMGR_MODERUNNING = 0,
-	ISC_CFGMGR_MODEUSER,
-	ISC_CFGMGR_MODEBUILTIN,
+typedef enum dns_cfgmgr_mode dns_cfgmgr_mode_t;
+enum dns_cfgmgr_mode {
+	DNS_CFGMGR_MODERUNNING = 0,
+	DNS_CFGMGR_MODEUSER,
+	DNS_CFGMGR_MODEBUILTIN,
 } __attribute__((__packed__));
 
 /*
  * Supported data types for read/write operations from/to cfgmgr.
  */
-typedef enum isc_cfgmgr_type isc_cfgmgr_type_t;
-enum isc_cfgmgr_type {
-	ISC_CFGMGR_UNDEFINED = 0,
-	ISC_CFGMGR_STRING,
-	ISC_CFGMGR_BOOLEAN,
-	ISC_CFGMGR_NONE,
-	ISC_CFGMGR_SOCKADDR,
-	ISC_CFGMGR_UINT32,
-	ISC_CFGMGR_REF,
+typedef enum dns_cfgmgr_type dns_cfgmgr_type_t;
+enum dns_cfgmgr_type {
+	DNS_CFGMGR_UNDEFINED = 0,
+	DNS_CFGMGR_STRING,
+	DNS_CFGMGR_BOOLEAN,
+	DNS_CFGMGR_NONE,
+	DNS_CFGMGR_SOCKADDR,
+	DNS_CFGMGR_UINT32,
+	DNS_CFGMGR_REF,
 } __attribute__((__packed__));
 
 /*
@@ -47,11 +49,11 @@ enum isc_cfgmgr_type {
  * cfgmgr_type_t::NONE doesn't have associated value.
  *
  * attach and detach callbacks are used (if non-NULL) to reference and
- * de-reference a ISC_CFGMGR_REF object when getting added and removed from
+ * de-reference a DNS_CFGMGR_REF object when getting added and removed from
  * cfgmgr, after a write transaction succesfully commits.
  */
-typedef struct isc_cfgmgr_val {
-	isc_cfgmgr_type_t type;
+typedef struct dns_cfgmgr_val {
+	dns_cfgmgr_type_t type;
 	union {
 		const char    *string;
 		bool	       boolean;
@@ -61,7 +63,7 @@ typedef struct isc_cfgmgr_val {
 	};
 	void (*attach)(void *ptr);
 	void (*detach)(void *ptr);
-} isc_cfgmgr_val_t;
+} dns_cfgmgr_val_t;
 
 /*
  * cfgmgr have 3 modes:
@@ -79,11 +81,11 @@ typedef struct isc_cfgmgr_val {
  *   on the top of the "merge" of the buitin and user configuration.
  *
  * When cfgmgr is initialized, the only mode which can be used is the builtin.
- * For this, the consumer must call "isc_cfgmgr_mode(ISC_CFGMGR_MODEBUILTIN)",
+ * For this, the consumer must call "dns_cfgmgr_mode(DNS_CFGMGR_MODEBUILTIN)",
  * then open a write transaction and set the builtin values.
  *
  * Then, the next step is to set the user mode. The consumer must call
- * "isc_cfgmgr_mode(ISC_CFGMGR_MODEUSER)" then open a write transaction and set
+ * "dns_cfgmgr_mode(DNS_CFGMGR_MODEUSER)" then open a write transaction and set
  * the user config values.
  *
  * From that point, the running mode is ready to be used, and any other
@@ -98,7 +100,7 @@ typedef struct isc_cfgmgr_val {
  * re-built, and so on.
  */
 void
-isc_cfgmgr_mode(isc_cfgmgr_mode_t mode);
+dns_cfgmgr_mode(dns_cfgmgr_mode_t mode);
 
 /*
  * Read the property at "path" in the caller "value" and returns ISC_R_SUCCESS.
@@ -114,31 +116,59 @@ isc_cfgmgr_mode(isc_cfgmgr_mode_t mode);
  * If the path format is "/view/<viewname>/zones/<zonename>/<tail> and if the
  * value is not found, the function callback itself with the path
  * "/view/<viewname>/<tail>"
- */
-isc_result_t
-isc_cfgmgr_read(const char *path, isc_cfgmgr_val_t *value);
-
-/*
- * Write "value" into the property at "path" and returns ISC_R_SUCCESS. If the
- * property already exists, it is overridden and even if the type is different.
- * If "value" is NULL and the property exists, it will be deleted,  otherwise it
- * returns ISC_R_NOTFOUND. Must be called under a write transaction.
  *
- * The path must be a valid NULL-terminated string starting with "/" not ending
- * with "/"
+ * Non scalar values are read-only and _must not_ be modified. If consumer needs
+ * to "hold" those values, they must be copied. (As they can be removed from
+ * cfgmgr at any moment once the current transaction is done).
  */
 isc_result_t
-isc_cfgmgr_write(const char *path, const isc_cfgmgr_val_t *value);
+dns_cfgmgr_read(const char *path, dns_cfgmgr_val_t *value);
 
 /*
- * Delete everything under the given path. Return ISC_R_SUCCESS or
- * ISC_R_NOTFOUND if the path is not found. Must be called under a
- * write transaction.
+ * Sames as dns_cfgmgr_read() but specific for DNS_CFGMGR_REF type. Also,
+ * there is no inheritance. If a value exists at `path` but is not of a
+ * DNS_CFGMGR_REF type, ISC_R_NOTFOUND is returned.
+ *
+ * As for _setref version, `owner` is the live object pointer which "holds" this
+ * reference, i.e. which create the object, adds in the DB then remove it from
+ * the DB when the object is deinitialized. The reason we need its pointer is to
+ * create a unique path (i.e. "%p/%s", owner, path) so we're sure the object in
+ * the DB is never overriden, typically in the flows when the owner is a view or
+ * a zone, and when reloading the server, the new view and zones are first
+ * created before the old ones gets deleted (to support rollback). It is
+ * possible to have multiples "owners", i.e. a zone re-using its view ACL,
+ * because when the zone will add the ACL pointer to the DB, it will be done as
+ * a different "owner" and the reference count of the pointer will be incemented
+ * when added in the DB.
+ */
+isc_result_t
+dns_cfgmgr_getref(const void *owner, const char *path, void **ptr);
+
+/*
+ * Write "value" into the property at "path". If the property already exists, it
+ * is overridden and even if the type is different. If "value" is NULL and the
+ * property exists, it is deleted. Must be called under a write transaction.
+ */
+void
+dns_cfgmgr_write(const char *path, const dns_cfgmgr_val_t *value);
+
+/*
+ * Same as dns_cfgmgr_write() but specific for DNS_CFGMGR_REF type. When `ptr`
+ * is NULL, `attach` and `detach` must be NULL as well. Otherwise, `attach` can
+ * be NULL. If `attach` is not NULL, `detach` must not be NULL.
+ */
+void
+dns_cfgmgr_setref(const void *owner, const char *path, void *ptr,
+		  void (*attach)(void *ptr), void (*detach)(void *ptr));
+
+/*
+ * Delete everything under a given path. Must be called under a write
+ * transaction.
  *
  * The path must be a valid NULL-terminated string starting and ending with "/".
  */
-isc_result_t
-isc_cfgmgr_delete(const char *path);
+void
+dns_cfgmgr_delete(const char *path);
 
 /*
  * Iterate over all properties as well as all nested properties from "path",
@@ -164,39 +194,36 @@ isc_cfgmgr_delete(const char *path);
  *
  * The function is not re-entrant: it can't be called from one of its callbacks.
  *
- * The ISC_CFGMGR_PTR types are excluded from this listing.
+ * The DNS_CFGMGR_PTR types are excluded from this listing.
  */
 void
-isc_cfgmgr_foreach(const char *path, size_t maxdepth, void *state,
+dns_cfgmgr_foreach(const char *path, size_t maxdepth, void *state,
 		   void (*property)(void *state, const char *name,
-				    const isc_cfgmgr_val_t *value),
+				    const dns_cfgmgr_val_t *value),
 		   void (*labeldown)(void *state, const char *label),
 		   void (*labelup)(void *state));
 
 /*
- * Open a read-only transaction and returns ISC_R_SUCCESS. If there is an
- * issue creating a transaction, ISC_R_FAILURE is returned. There must not be
- * any opened transaction from the current thread.
+ * Open a read-only transaction. There must not be any opened transaction from
+ * the current thread.
  */
-isc_result_t
-isc_cfgmgr_txn(void);
+void
+dns_cfgmgr_txn(void);
 
 /*
  * Close a read-only transaction. A read-only transaction must be opened in the
  * current thread.
  */
 void
-isc_cfgmgr_closetxn(void);
+dns_cfgmgr_closetxn(void);
 
 /*
- * Open read-write transaction and returns ISC_R_SUCCESS. If there is an
- * issue creating a transaction, ISC_R_FAILURE is returned. There must not be
- * any opened transaction from the current thread. If another thread has an
- * opened read-write transaction, this call will block until the other
- * transaction is terminated.
+ * Open read-write transaction. There must not be any opened transaction from
+ * the current thread. If another thread has an opened read-write transaction,
+ * this call will block until the other transaction is terminated.
  */
-isc_result_t
-isc_cfgmgr_rwtxn(void);
+void
+dns_cfgmgr_rwtxn(void);
 
 /*
  * Atomically make visible all the changes made during this transaction to any
@@ -205,18 +232,18 @@ isc_cfgmgr_rwtxn(void);
  * goes wrong, ISC_R_FAILURE is returned and the changes made during the
  * transaction are discarded.
  *
- * Details about the error are provided by "isc_cfgmgr_lasterror()".
+ * Details about the error are provided by "dns_cfgmgr_lasterror()".
  *
  */
 isc_result_t
-isc_cfgmgr_commit(void);
+dns_cfgmgr_commit(void);
 
 /*
  * Discard all the changes made during the read-write transaction and close it.
  * A read-write transaction must be opened from the current thread.
  */
 void
-isc_cfgmgr_rollback(void);
+dns_cfgmgr_rollback(void);
 
 /*
  * Return a NULL-terminated string explaining why the last commit fails. If no
@@ -226,22 +253,21 @@ isc_cfgmgr_rollback(void);
  * transaction on this thread.
  */
 const char *
-isc_cfgmgr_lasterror(void);
+dns_cfgmgr_lasterror(void);
 
 /*
  * Initialize cfgmgr. Must be called before any other function. It is
  * possible to re-initialize cfgmgr only after calling
- * isc_cfgmgr_deinit (this drops all the data written in
- * cfgmgr). Returns ISC_R_SUCCESS or ISC_R_FAILURE if there is an
- * issue initializing the internal database.
+ * dns_cfgmgr_deinit (this drops all the data written in
+ * cfgmgr).
  */
-isc_result_t
-isc_cfgmgr_init(isc_mem_t *mctx, const char *dbpath);
+void
+dns_cfgmgr_init(isc_mem_t *mctx);
 
 /*
  * Destroy all cfgmgr data and free memory. Must be called only after
- * isc_cfgmgr_init and no function must be called after that one
- * (except isc_cfgmgr_init to re-initialize cfgmgr again).
+ * dns_cfgmgr_init and no function must be called after that one
+ * (except dns_cfgmgr_init to re-initialize cfgmgr again).
  */
 void
-isc_cfgmgr_deinit(void);
+dns_cfgmgr_deinit(void);

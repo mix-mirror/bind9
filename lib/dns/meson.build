@@ -80,6 +80,7 @@ dns_srcset.add(
         'cache.c',
         'callbacks.c',
         'catz.c',
+        'cfgmgr.c',
         'client.c',
         'clientinfo.c',
         'compress.c',
