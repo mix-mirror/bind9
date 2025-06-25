@@ -158,7 +158,6 @@ typedef struct qpzone_bucket {
 
 #define DEFAULT_BUCKETS_COUNT 17 /*%< Should be prime. */
 
-// Resigning heap indirection to allow ref counting
 typedef struct qpz_heap {
 	isc_mem_t *mctx;
 	isc_refcount_t references;
@@ -234,7 +233,6 @@ struct qpzonedb {
 	 * reference is released. When in turn 'references' goes to zero,
 	 * the database is shut down and freed.
 	 */
-	// isc_refcount_t references;
 
 	qpznode_t *origin;
 	qpznode_t *nsec3_origin;
@@ -554,7 +552,6 @@ free_db_rcu(struct rcu_head *rcu_head) {
 	}
 
 	isc_rwlock_destroy(&qpdb->lock);
-	// isc_refcount_destroy(&qpdb->references);
 	isc_refcount_destroy(&qpdb->common.references);
 
 	qpdb->common.magic = 0;
@@ -616,7 +613,6 @@ qpdb_destroy(dns_db_t *arg) {
 		cleanup_gluelists(&qpdb->current_version->glue_stack);
 	}
 
-	// qpzonedb_detach(&qpdb);
 	qpzone_destroy(qpdb);
 }
 
@@ -708,7 +704,6 @@ dns__qpzone_create(isc_mem_t *mctx, const dns_name_t *origin, dns_dbtype_t type,
 		.least_serial = 1,
 		.next_serial = 2,
 		.open_versions = ISC_LIST_INITIALIZER,
-		// .references = ISC_REFCOUNT_INITIALIZER(1),
 	};
 
 	qpdb->common.methods = &qpdb_zonemethods;
@@ -720,7 +715,6 @@ dns__qpzone_create(isc_mem_t *mctx, const dns_name_t *origin, dns_dbtype_t type,
 
 	qpdb->common.update_listeners = cds_lfht_new(16, 16, 0, 0, NULL);
 
-	// isc_heap_create(mctx, resign_sooner, set_index, 0, &qpdb->heap);
 	qpdb->heap = new_qpz_heap(mctx);
 
 	/*
@@ -809,8 +803,6 @@ qpznode_erefs_increment(qpznode_t *node DNS__DB_FLARG) {
 	if (refs > 0) {
 		return;
 	}
-
-	// qpzonedb_ref(qpdb);
 }
 
 static void
@@ -954,8 +946,6 @@ qpznode_erefs_decrement(qpznode_t *node DNS__DB_FLARG) {
 		return false;
 	}
 
-	// qpzonedb_unref(qpdb);
-
 	return true;
 }
 
@@ -986,41 +976,9 @@ qpznode_release(qpznode_t *node, uint32_t least_serial,
 		goto unref;
 	}
 
-	// if (*nlocktypep == isc_rwlocktype_read) {
-	// 	/*
-	// 	 * The external reference count went to zero and the node
-	// 	 * is dirty or has no data, so we might want to delete it.
-	// 	 * To do that, we'll need a write lock. If we don't already
-	// 	 * have one, we have to make sure nobody else has
-	// 	 * acquired a reference in the meantime, so we increment
-	// 	 * erefs (but NOT references!), upgrade the node lock,
-	// 	 * decrement erefs again, and see if it's still zero.
-	// 	 *
-	// 	 * We can't really assume anything about the result code of
-	// 	 * erefs_increment.  If another thread acquires reference it
-	// 	 * will be larger than 0, if it doesn't it is going to be 0.
-	// 	 */
-	// 	isc_rwlock_t *nlock = qpzone_get_lock(node);
-	// 	qpznode_erefs_increment(qpdb, node DNS__DB_FLARG_PASS);
-	// 	NODE_FORCEUPGRADE(nlock, nlocktypep);
-	// 	if (!qpznode_erefs_decrement(qpdb, node DNS__DB_FLARG_PASS)) {
-	// 		goto unref;
-	// 	}
-	// }
 
-	if (node->dirty) {
-		// if (least_serial == 0) {
-		// 	/*
-		// 	 * Caller doesn't know the least serial.
-		// 	 * Get it.
-		// 	 */
-		// 	RWLOCK(&qpdb->lock, isc_rwlocktype_read);
-		// 	least_serial = qpdb->least_serial;
-		// 	RWUNLOCK(&qpdb->lock, isc_rwlocktype_read);
-		// }
-		if (least_serial > 0) {
+	if (node->dirty && least_serial > 0) {
 			clean_zone_node(node, least_serial);
-		}
 	}
 
 unref:
@@ -1308,8 +1266,6 @@ resigninsert(dns_slabheader_t *newheader) {
 	RWLOCK(&HEADERNODE(newheader)->heap->lock, isc_rwlocktype_write);
 	isc_heap_insert(HEADERNODE(newheader)->heap->heap, newheader);
 	RWUNLOCK(&HEADERNODE(newheader)->heap->lock, isc_rwlocktype_write);
-
-	// newheader->heap = qpdb->heap;
 }
 
 static void
@@ -2456,7 +2412,6 @@ setsigningtime(dns_db_t *db, dns_rdataset_t *rdataset, isc_stdtime_t resign) {
 		if (resign == 0) {
 			isc_heap_delete(HEADERNODE(header)->heap->heap, header->heap_index);
 			header->heap_index = 0;
-			// header->heap = NULL;
 		} else if (resign_sooner(header, &oldheader)) {
 			isc_heap_increased(HEADERNODE(header)->heap->heap, header->heap_index);
 		} else if (resign_sooner(&oldheader, header)) {
@@ -3988,15 +3943,11 @@ qpzone_detachnode(dns_dbnode_t **nodep DNS__DB_FLARG) {
 	 * NODE_LOCK is locked.
 	 */
 
-	// qpzonedb_ref(qpdb);
-
 	rcu_read_lock();
 	NODE_RDLOCK(nlock, &nlocktype);
 	qpznode_release(node, 0, &nlocktype DNS__DB_FLARG_PASS);
 	NODE_UNLOCK(nlock, &nlocktype);
 	rcu_read_unlock();
-
-	// qpzonedb_unref(qpdb);
 }
 
 static unsigned int
@@ -5403,14 +5354,7 @@ static dns_dbmethods_t qpdb_zonemethods = {
 	.setmaxrrperset = setmaxrrperset,
 	.setmaxtypepername = setmaxtypepername,
 	
-	// .attachnode = qpzone_attachnode,
-	// .detachnode = qpzone_detachnode,
-
 	.nodefullname = nodefullname,
-	// .locknode = locknode,
-	// .unlocknode = unlocknode,
-	// .expiredata
-	// .deletedata = deletedata,
 };
 
 static dns_dbnode_methods_t qpznode_methods = (dns_dbnode_methods_t) {
@@ -5448,12 +5392,6 @@ ISC_REFCOUNT_STATIC_TRACE_IMPL(qpznode, destroy_qpznode);
 #else
 ISC_REFCOUNT_STATIC_IMPL(qpznode, destroy_qpznode);
 #endif
-
-// #ifdef DNS_DB_NODETRACE
-// ISC_REFCOUNT_STATIC_TRACE_IMPL(qpzonedb, qpzone_destroy);
-// #else
-// ISC_REFCOUNT_STATIC_IMPL(qpzonedb, qpzone_destroy);
-// #endif
 
 ISC_REFCOUNT_STATIC_IMPL(qpz_heap, qpz_heap_destroy);
 

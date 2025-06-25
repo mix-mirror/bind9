@@ -894,8 +894,10 @@ dns_slabheader_destroy(isc_mem_t *mctx, dns_slabheader_t **headerp) {
 
 	*headerp = NULL;
 
-	// FIXME: we don't need no db!
-	// (and this method is only used here. Get rid of it.)
+	/* 
+	 * FIXME: we don't need no db!
+	 * (and this method is only used here. Get rid of it.)
+	 */
 	dns_db_deletedata(header->db, header->node, header);
 
 	if (NONEXISTENT(header)) {
