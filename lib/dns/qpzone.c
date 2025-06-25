@@ -146,6 +146,18 @@ struct qpz_version {
 
 typedef ISC_LIST(qpz_version_t) qpz_versionlist_t;
 
+
+typedef struct qpzone_bucket {
+	/* Per-bucket lock. */
+	isc_rwlock_t lock;
+
+	/* Padding to prevent false sharing between locks. */
+	uint8_t __padding[ISC_OS_CACHELINE_SIZE -
+			  (sizeof(isc_rwlock_t)) % ISC_OS_CACHELINE_SIZE];
+} qpzone_bucket_t;
+
+#define DEFAULT_BUCKETS_COUNT 17 /*%< Should be prime. */
+
 // Resigning heap indirection to allow ref counting
 typedef struct qpz_heap {
 	isc_mem_t *mctx;
@@ -153,6 +165,9 @@ typedef struct qpz_heap {
 	/* Locks the data in this struct */
 	isc_rwlock_t lock;
 	isc_heap_t *heap;
+
+	/* Locks the qpznode */
+	qpzone_bucket_t node_locks[DEFAULT_BUCKETS_COUNT];
 } qpz_heap_t;
 
 ISC_REFCOUNT_STATIC_DECL(qpz_heap);
@@ -406,39 +421,22 @@ static atomic_uint_fast16_t init_count = 0;
  * Failure to follow this hierarchy can result in deadlock.
  */
 
-typedef struct qpzone_bucket {
-	/* Per-bucket lock. */
-	isc_rwlock_t lock;
-
-	/* Padding to prevent false sharing between locks. */
-	uint8_t __padding[ISC_OS_CACHELINE_SIZE -
-			  (sizeof(isc_rwlock_t)) % ISC_OS_CACHELINE_SIZE];
-} qpzone_bucket_t;
-
-static qpzone_bucket_t qpzone_buckets_g[1024];
-
 void
 dns__qpzone_initialize(void) {
-	for (size_t idx = 0; idx < ARRAY_SIZE(qpzone_buckets_g); ++idx) {
-		NODE_INITLOCK(&qpzone_buckets_g[idx].lock);
-	}
 }
 
 void
 dns__qpzone_shutdown(void) {
-	for (size_t idx = 0; idx < ARRAY_SIZE(qpzone_buckets_g); ++idx) {
-		NODE_DESTROYLOCK(&qpzone_buckets_g[idx].lock);
-	}
 }
 
 static isc_rwlock_t *
 qpzone_get_lock(qpznode_t *node) {
-	return &qpzone_buckets_g[node->locknum].lock;
+	return &node->heap->node_locks[node->locknum].lock;
 }
 
 static uint16_t
 qpzone_get_locknum(void) {
-	return isc_random16() % ARRAY_SIZE(qpzone_buckets_g);
+	return isc_random16() % DEFAULT_BUCKETS_COUNT;
 }
 
 /*%
@@ -632,15 +630,23 @@ new_qpz_heap(isc_mem_t *mctx) {
 	isc_rwlock_init(&new_heap->lock);
 	isc_heap_create(mctx, resign_sooner, set_index, 0, &new_heap->heap);
 	isc_mem_attach(mctx, &new_heap->mctx);
-	
+
+	for (size_t idx = 0; idx < ARRAY_SIZE(new_heap->node_locks); ++idx) {
+		NODE_INITLOCK(&new_heap->node_locks[idx].lock);
+	}
+
 	return new_heap;
 }
-
+ 
 static void
 qpz_heap_destroy(qpz_heap_t *qpheap) {
 	isc_rwlock_destroy(&qpheap->lock);
 	isc_heap_destroy(&qpheap->heap);
 	isc_mem_putanddetach(&qpheap->mctx, qpheap, sizeof(*qpheap));
+
+       for (size_t idx = 0; idx < ARRAY_SIZE(qpheap->node_locks); ++idx) {
+               NODE_DESTROYLOCK(&qpheap->node_locks[idx].lock);
+       }
 }
 
 static qpznode_t *
