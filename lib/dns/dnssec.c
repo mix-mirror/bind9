@@ -1923,12 +1923,27 @@ dns_dnssec_syncupdate(dns_dnsseckeylist_t *keys, dns_dnsseckeylist_t *rmkeys,
 	ISC_LIST_FOREACH (*keys, key, link) {
 		dns_rdata_t cdnskeyrdata = DNS_RDATA_INIT;
 		dns_name_t *origin = dst_key_name(key->key);
+		bool publish = syncpublish(key->key, now);
+		bool delete = syncdelete(key->key, now);
 
 		RETERR(dns_dnssec_make_dnskey(key->key, keybuf, sizeof(keybuf),
 					      &cdnskeyrdata));
 		cdnskeyrdata.type = dns_rdatatype_cdnskey;
 
-		if (syncpublish(key->key, now)) {
+		/*
+		 * Do not publish CDS or CDNSKEY records for globally no longer
+		 * supported DNSSEC algorithms.
+		 */
+		switch (dst_key_alg(key->key)) {
+		case DST_ALG_RSASHA1:
+		case DST_ALG_NSEC3RSASHA1:
+			delete = true;
+			publish = false;
+		default:
+			break;
+		}
+
+		if (publish) {
 			char keystr[DST_KEY_FORMATSIZE];
 			dst_key_format(key->key, keystr, sizeof(keystr));
 
@@ -1953,7 +1968,7 @@ dns_dnssec_syncupdate(dns_dnsseckeylist_t *keys, dns_dnsseckeylist_t *rmkeys,
 			}
 		}
 
-		if (syncdelete(key->key, now)) {
+		if (delete) {
 			char keystr[DST_KEY_FORMATSIZE];
 			dst_key_format(key->key, keystr, sizeof(keystr));
 
