@@ -1947,7 +1947,22 @@ dns_dnssec_syncupdate(dns_dnsseckeylist_t *keys, dns_dnsseckeylist_t *rmkeys,
 			char keystr[DST_KEY_FORMATSIZE];
 			dst_key_format(key->key, keystr, sizeof(keystr));
 
+			/*
+			 * Stop publishing SHA1 digests.
+			 */
+			if (dns_rdataset_isassociated(cds)) {
+				delete_cds(key, &cdnskeyrdata,
+					   (const char *)keystr, cds,
+					   DNS_DSDIGEST_SHA1, diff, mctx);
+			}
+
 			ISC_LIST_FOREACH (*digests, alg, link) {
+				switch (alg->digest) {
+				case DNS_DSDIGEST_SHA1:
+					continue;
+				default:
+					break;
+				}
 				RETERR(add_cds(key, &cdnskeyrdata,
 					       (const char *)keystr, cds,
 					       alg->digest, cdsttl, diff,
