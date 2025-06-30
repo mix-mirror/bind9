@@ -2582,35 +2582,8 @@ ns__client_setup(ns_client_t *client, ns_clientmgr_t *mgr, bool new) {
 		 * Retain these values from the existing client, but
 		 * zero every thing else.
 		 */
-
-		ns_clientmgr_t *manager = client->manager;
-		dns_message_t *message = client->message;
-		isc_mem_t *edectx_mctx = client->edectx.mctx;
-
-		/*
-		 * EDE handling allocates. We need to free out the child
-		 * pointers before zero-ing out the struct.
-		 */
+		client->inner = (struct ns_client_inner) {};
 		dns_ede_reset(&client->edectx);
-
-		/*
-		 * We want to preserve the following fields except:
-		 *  - manager
-		 *  - message
-		 *  - query
-		 * We also don't want to zero out sendbuf for performance
-		 * reasons.
-		 * Therefore we place query and sendbuf at the end of the
-		 * struct, and zero out everything up to query.
-		 */
-		memset(client, 0, offsetof(ns_client_t, query));
-		client->manager = manager;
-		client->message = message;
-
-		/*
-		 * Restore the mem context and magic on edectx
-		 */
-		dns_ede_init(edectx_mctx, &client->edectx);
 	}
 
 	client->query.attributes &= ~NS_QUERYATTR_ANSWERED;
