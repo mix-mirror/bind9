@@ -802,8 +802,8 @@ query_reset(ns_client_t *client, bool everything) {
 	if (client->query->dns64_sigaaaa != NULL) {
 		ns_client_putrdataset(client, &client->query->dns64_sigaaaa);
 	}
-	if (client->query.dns64_aaaaok != NULL) {
-		isc_mem_cput(client->manager->mctx, client->query.dns64_aaaaok,
+	if (client->query->dns64_aaaaok != NULL) {
+		isc_mem_cput(client->manager->mctx, client->query->dns64_aaaaok,
 			     client->query->dns64_aaaaoklen, sizeof(bool));
 		client->query->dns64_aaaaoklen = 0;
 	}
