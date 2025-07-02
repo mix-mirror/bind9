@@ -2179,7 +2179,7 @@ twig_offset(dns_qpnode_t *n, dns_qpshift_t sbit, dns_qpshift_t kbit,
  * Requires the iterator to be pointing at a leaf node.
  */
 static void
-fix_iterator(dns_qpreader_t *qp, dns_qpiter_t *it, dns_qpkey_t key,
+fix_iterator(dns_qpreader_t *qp, dns_qpiter_t *it, const dns_qpkey_t key,
 	     size_t len) {
 	dns_qpnode_t *n = it->stack[it->sp];
 
@@ -2285,6 +2285,162 @@ fix_chain(dns_qpchain_t *chain, size_t offset) {
 	}
 }
 
+isc_result_t
+dns_qp_lookupkey(dns_qpreadable_t qpr, const dns_qpkey_t key, size_t klen,
+		 dns_qpkey_t foundkey, size_t *foundklen, dns_qpiter_t *iter,
+		 dns_qpchain_t *chain, void **pval_r, uint32_t *ival_r) {
+	dns_qpreader_t *qp = dns_qpreader(qpr);
+	dns_qpkey_t found;
+	size_t foundlen;
+	size_t offset = 0;
+	dns_qpnode_t *n = NULL;
+	dns_qpshift_t bit = SHIFT_NOBYTE;
+	dns_qpchain_t oc;
+	dns_qpiter_t it;
+	bool matched = false;
+	bool setiter = true;
+
+	REQUIRE(QP_VALID(qp));
+	REQUIRE(foundkey == NULL || foundklen != NULL);
+
+	if (chain == NULL) {
+		chain = &oc;
+	}
+	if (iter == NULL) {
+		iter = &it;
+		setiter = false;
+	}
+	dns_qpchain_init(qp, chain);
+	dns_qpiter_init(qp, iter);
+
+	n = get_root(qp);
+	if (n == NULL) {
+		return ISC_R_NOTFOUND;
+	}
+	iter->stack[0] = n;
+
+	/*
+	 * Like `isc_qp_insert()`, we must find a leaf. However, we don't make a
+	 * second pass: instead, we keep track of any leaves with shorter keys
+	 * that we discover along the way. (In general, qp-trie searches can be
+	 * one-pass, by recording their traversal, or two-pass, for less stack
+	 * memory usage.)
+	 */
+	while (is_branch(n)) {
+		prefetch_twigs(qp, n);
+
+		offset = branch_key_offset(n);
+		bit = qpkey_bit(key, klen, offset);
+		dns_qpnode_t *twigs = branch_twigs(qp, n);
+
+		/*
+		 * A shorter key that can be a parent domain always has a
+		 * leaf node at SHIFT_NOBYTE (indicating end of its key)
+		 * where our search key has a normal character immediately
+		 * after a label separator.
+		 *
+		 * Note 1: It is OK if `off - 1` underflows: it will
+		 * become SIZE_MAX, which is greater than `keylen`, so
+		 * `qpkey_bit()` will return SHIFT_NOBYTE, which is what we
+		 * want when `off == 0`.
+		 *
+		 * Note 2: If SHIFT_NOBYTE twig is present, it will always
+		 * be in position 0, the first location in 'twigs'.
+		 */
+		if (bit != SHIFT_NOBYTE && branch_has_twig(n, SHIFT_NOBYTE) &&
+		    qpkey_bit(key, klen, offset - 1) == SHIFT_NOBYTE &&
+		    !is_branch(twigs))
+		{
+			add_link(chain, twigs, offset);
+		}
+
+		matched = branch_has_twig(n, bit);
+		if (matched) {
+			/*
+			 * found a match: if it's a branch, we keep
+			 * searching, and if it's a leaf, we drop out of
+			 * the loop.
+			 */
+			n = branch_twig_ptr(qp, n, bit);
+		} else {
+			/*
+			 * this branch is a dead end, and the predecessor
+			 * doesn't matter. now we just need to find a leaf
+			 * to end on so that qpkey_leaf() will work below.
+			 */
+			n = anyleaf(qp, twigs);
+		}
+
+		iter->stack[++iter->sp] = n;
+	}
+
+	if (setiter) {
+		/*
+		 * we found a leaf, but it might not be the leaf we wanted.
+		 * if it isn't, and if the caller passed us an iterator,
+		 * then we might need to reposition it.
+		 */
+		fix_iterator(qp, iter, key, klen);
+		n = iter->stack[iter->sp];
+	}
+
+	/* at this point, n can only be a leaf node */
+	INSIST(!is_branch(n));
+
+	foundlen = leaf_qpkey(qp, n, found);
+	offset = qpkey_compare(key, klen, found, foundlen);
+
+	/* the search ended with an exact or partial match */
+	if (offset == QPKEY_EQUAL || offset == foundlen) {
+		isc_result_t result = ISC_R_SUCCESS;
+
+		if (offset == foundlen) {
+			fix_chain(chain, offset);
+			result = DNS_R_PARTIALMATCH;
+		}
+		add_link(chain, n, offset);
+
+		SET_IF_NOT_NULL(pval_r, leaf_pval(n));
+		SET_IF_NOT_NULL(ival_r, leaf_ival(n));
+		if (foundkey != NULL && foundklen != NULL) {
+			*foundklen = leaf_qpkey(qp, n, foundkey);
+		}
+		return result;
+	}
+
+	/*
+	 * the requested name was not found, but if an ancestor
+	 * was, we can retrieve that from the chain.
+	 */
+	int len = chain->len;
+	while (len-- > 0) {
+		if (offset >= chain->chain[len].offset) {
+			n = chain->chain[len].node;
+			SET_IF_NOT_NULL(pval_r, leaf_pval(n));
+			SET_IF_NOT_NULL(ival_r, leaf_ival(n));
+			if (foundkey != NULL && foundklen != NULL) {
+				*foundklen = leaf_qpkey(qp, n, foundkey);
+			}
+			return DNS_R_PARTIALMATCH;
+		} else {
+			/*
+			 * oops, during the search we found and added
+			 * a leaf that's longer than the requested
+			 * name; remove it from the chain.
+			 */
+			chain->len--;
+		}
+	}
+
+	/* nothing was found at all */
+	return ISC_R_NOTFOUND;
+}
+
+/*
+ * TODO: this is a dup of dns_qp_lookupkey but wrapping around dns_name_t. Just
+ * needs to keep the dns_name_t <-> dns_qpkey_t conversion calls as wrapper over
+ * dns_qp_lookupkey.
+ */
 isc_result_t
 dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
 	      dns_namespace_t space, dns_name_t *foundname, dns_qpiter_t *iter,
