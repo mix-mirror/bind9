@@ -399,7 +399,7 @@ typedef struct qpzone_bucket {
 			  (sizeof(isc_rwlock_t)) % ISC_OS_CACHELINE_SIZE];
 } qpzone_bucket_t;
 
-static qpzone_bucket_t qpzone_buckets_g[1024];
+static qpzone_bucket_t qpzone_buckets_g[4096];
 
 void
 dns__qpzone_initialize(void) {
