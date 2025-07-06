@@ -1573,7 +1573,6 @@ shared_library(
     ],
 )
 
-subdir('doc')
 subdir('tests')
 
 foreach name, sources : fuzz_binaries
@@ -1630,9 +1629,11 @@ alias_target('system-test-dependencies', system_test_targets)
 
 ### Documentation
 
-alias_target('doc-misc', doc_misc_targets)
-
 if doc_opt.allowed()
+    subdir('doc')
+
+    alias_target('doc-misc', doc_misc_targets)
+
     man_srcconf = man_srcset.apply(config, strict: false)
     foreach man : man_srcconf.sources()
         man_pages += configure_file(
