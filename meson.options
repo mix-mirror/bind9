@@ -74,6 +74,13 @@ option(
 )
 
 option(
+    'quic',
+    type: 'feature',
+    value: 'auto',
+    description: 'Enable QUIC/DNS over QUIC, requires libngtcp2',
+)
+
+option(
     'stats-json',
     type: 'feature',
     value: 'auto',
