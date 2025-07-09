@@ -13,6 +13,7 @@ isc_srcset.add(
     when: ngtcp2_dep,
     if_true: files(
         'ngtcp2_crypto.c',
+        'ngtcp2_utils.c',
         'quic_crypto.c',
         'tls_quic.c',
     ),
