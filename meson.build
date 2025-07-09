@@ -628,6 +628,7 @@ foreach fn, header : {
     'ERR_get_error_all': '#include <openssl/err.h>',
     'BIO_read_ex': '#include <openssl/bio.h>',
     'BIO_write_ex': '#include <openssl/bio.h>',
+    'CRYPTO_free_ex_index': '#include <openssl/crypto.h>',
     'EVP_MD_CTX_get0_md': '#include <openssl/evp.h>',
     'EVP_PKEY_eq': '#include <openssl/evp.h>',
     'SSL_CTX_set1_cert_store': '#include <openssl/ssl.h>',

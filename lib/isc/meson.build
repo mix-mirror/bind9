@@ -21,6 +21,7 @@ endif
 isc_inc_p += include_directories('.')
 
 subdir('netmgr')
+subdir('quic')
 
 isc_srcset.add(
     m_dep,
