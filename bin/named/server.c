@@ -129,6 +129,8 @@
 #include <named/transportconf.h>
 #include <named/tsigconf.h>
 #include <named/zoneconf.h>
+#include <named/namedconf2json.h>
+#include <json_object.h>
 #ifdef HAVE_LIBSCF
 #include <stdlib.h>
 
@@ -7802,6 +7804,13 @@ cleanup:
 static isc_result_t
 apply_configuration(cfg_parser_t *configparser, cfg_obj_t *config,
 		    named_server_t *server, bool first_time) {
+
+	json_object *jconfig = NULL;
+	REQUIRE(isc_namedconf2json(named_g_defaultconfig, &jconfig) == ISC_R_SUCCESS);
+	printf("\n\n%s\n\n",
+	       json_object_to_json_string(jconfig));
+
+	exit(0);
 	cfg_obj_t *bindkeys = NULL;
 	cfg_parser_t *bindkeys_parser = NULL;
 	const cfg_obj_t *builtin_views = NULL;

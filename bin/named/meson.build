@@ -32,6 +32,7 @@ named_srcset.add(
         'log.c',
         'logconf.c',
         'main.c',
+        'namedconf2json.c',
         'os.c',
         'server.c',
         'statschannel.c',
