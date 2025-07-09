@@ -33,20 +33,18 @@
  * Negotiation packet.
  */
 isc_result_t
-isc_quic_route_pkt(const isc_region_t *restrict pkt,
-		   const isc_quic_cid_map_t *map,
-		   const isc_region_t *restrict server_secret,
-		   const uint32_t *available_versions,
-		   const size_t available_versions_len,
-		   const isc_sockaddr_t *restrict local,
-		   const isc_sockaddr_t *restrict peer,
-		   const isc_region_t *restrict pkt_dcid,
-		   const isc_region_t *restrict pkt_scid,
-		   const uint32_t version, const bool is_server,
-		   const uint64_t retry_token_timeout_ns,
-		   const uint64_t timestamp, isc_quic_session_t **sessionp,
-		   isc_tid_t *tidp, isc_buffer_t *token_odcid_buf,
-		   isc_quic_out_pkt_t *restrict out_pkt) {
+isc_quic_route_pkt(
+	const isc_region_t *restrict pkt, const isc_quic_cid_map_t *map,
+	const isc_region_t *restrict server_secret,
+	const uint32_t *available_versions, const size_t available_versions_len,
+	const isc_sockaddr_t *restrict local,
+	const isc_sockaddr_t *restrict peer,
+	const isc_region_t *restrict pkt_dcid,
+	const isc_region_t *restrict pkt_scid, const uint32_t version,
+	const bool is_server, const bool server_over_quota,
+	const uint64_t retry_token_timeout_ns, const uint64_t timestamp,
+	isc_quic_session_t **sessionp, isc_tid_t *tidp,
+	isc_buffer_t *token_odcid_buf, isc_quic_out_pkt_t *restrict out_pkt) {
 	REQUIRE(pkt != NULL && pkt->length > 0 && pkt->base != NULL);
 	REQUIRE(map != NULL);
 	REQUIRE(!is_server ||
@@ -147,8 +145,11 @@ isc_quic_route_pkt(const isc_region_t *restrict pkt,
 	/*
 	 * Check for a token. The token is a critical part of QUIC's
 	 * anti-spoofing mechanism.
+	 *
+	 * Also, in the QUIC world we react with a stateless Retry packet to
+	 * over quota cases.
 	 */
-	if (hd.tokenlen == 0) {
+	if (server_over_quota || hd.tokenlen == 0) {
 		/*
 		 * No token provided. This is likely the client's first packet.
 		 * We must send a Retry packet to validate the client's address.
