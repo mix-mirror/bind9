@@ -69,8 +69,11 @@ endif
 if config.has('HAVE_LIBNGTCP2')
     isc_test += [
         'ngtcp2_integration',
+        'quic_session',
         'quic_tls',
     ]
+
+    flaky_isc_test += 'quic_session'
 endif
 
 foreach unit : isc_test
