@@ -24,3 +24,15 @@ if config.has('HAVE_NATIVE_BORINGSSL_QUIC_API')
         ),
     )
 endif
+
+# The QUIC compatibility layer will not work on LibreSSL
+# due to purposefully broken key logging functionality
+if not config.has('HAVE_LIBRESSL')
+    isc_srcset.add(
+        when: ngtcp2_dep,
+        if_true: files(
+            'quic_interface_compat.c',
+            'tls_keylog_parser.c',
+        ),
+    )
+endif

@@ -639,6 +639,23 @@ foreach fn, header : {
     )
 endforeach
 
+# Check if the SSL library is LibreSSL
+have_libressl = cc.compiles(
+    '''
+        #include <openssl/opensslv.h>
+        #ifndef LIBRESSL_VERSION_NUMBER
+        #error "Not LibreSSL"
+        #endif
+        int main(void) { return 0; }
+    ''',
+    dependencies: openssl_dep,
+    name: 'whether LibreSSL is used',
+)
+
+if have_libressl
+    config.set('HAVE_LIBRESSL', 1)
+endif
+
 ## libuv
 uv_dep = dependency('libuv', version: '>=1.34.0')
 if uv_dep.version().version_compare('<1.40.0')
