@@ -68,6 +68,7 @@ endif
 
 if config.has('HAVE_LIBNGTCP2')
     isc_test += [
+        'ngtcp2_integration',
         'quic_tls',
     ]
 endif
