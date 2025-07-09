@@ -15,3 +15,11 @@ isc_srcset.add(
         'tls_quic.c',
     ),
 )
+
+if config.has('HAVE_NATIVE_BORINGSSL_QUIC_API')
+    isc_srcset.add(
+        files(
+            'quic_interface_native.c',
+        ),
+    )
+endif
