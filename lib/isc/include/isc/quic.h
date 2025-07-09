@@ -1286,20 +1286,18 @@ isc_quic_cid_map_remove(isc_quic_cid_map_t *restrict map,
  */
 
 isc_result_t
-isc_quic_route_pkt(const isc_region_t *restrict pkt,
-		   const isc_quic_cid_map_t *map,
-		   const isc_region_t *restrict server_secret,
-		   const uint32_t *available_versions,
-		   const size_t	   available_versions_len,
-		   const isc_sockaddr_t *restrict local,
-		   const isc_sockaddr_t *restrict peer,
-		   const isc_region_t *restrict pkt_dcid,
-		   const isc_region_t *restrict pkt_scid,
-		   const uint32_t version, const bool is_server,
-		   const uint64_t retry_token_timeout_ns,
-		   const uint64_t timestamp, isc_quic_session_t **sessionp,
-		   isc_tid_t *tidp, isc_buffer_t *token_odcid_buf,
-		   isc_quic_out_pkt_t *restrict out_pkt);
+isc_quic_route_pkt(
+	const isc_region_t *restrict pkt, const isc_quic_cid_map_t *map,
+	const isc_region_t *restrict server_secret,
+	const uint32_t *available_versions, const size_t available_versions_len,
+	const isc_sockaddr_t *restrict local,
+	const isc_sockaddr_t *restrict peer,
+	const isc_region_t *restrict pkt_dcid,
+	const isc_region_t *restrict pkt_scid, const uint32_t version,
+	const bool is_server, const bool server_over_quota,
+	const uint64_t retry_token_timeout_ns, const uint64_t timestamp,
+	isc_quic_session_t **sessionp, isc_tid_t *tidp,
+	isc_buffer_t *token_odcid_buf, isc_quic_out_pkt_t *restrict out_pkt);
 /*!<
  * \brief Routes an incoming QUIC packet to an existing session or handles
  * initial connection logic for a server.
@@ -1354,6 +1352,8 @@ isc_quic_route_pkt(const isc_region_t *restrict pkt,
  *\li	'pkt_scid' is the Source CID from the packet header;
  *\li	'version' is the QUIC protocol version from the packet header;
  *\li	'is_server' is true if running in server mode, false for client mode;
+ *\li	'server_over_quota' is true when the server is over the QUIC connections
+ * quota (it should respond with a Stateless Retry in that case);
  *\li	'retry_token_timeout_ns' is the validity period for Retry tokens
  *	(server only);
  *\li	'timestamp' is the current monotonic timestamp in nanoseconds;
