@@ -105,7 +105,6 @@ struct ns_server {
 	uint16_t       transfer_tcp_message_size;
 	bool	       interface_auto;
 	dns_tkeyctx_t *tkeyctx;
-	uint8_t	       max_restarts;
 
 	/*% Server id for NSID */
 	char *server_id;
