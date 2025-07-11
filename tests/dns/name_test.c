@@ -406,6 +406,7 @@ ISC_RUN_TEST_IMPL(collision) {
 	uint8_t msgbuf[65536];
 	dns_name_t name;
 	char namebuf[256];
+	dns_name_t *heap_names[NAME_HI - NAME_LO];
 
 	dns_compress_init(&cctx, isc_g_mctx, DNS_COMPRESS_LARGE);
 	isc_buffer_init(&message, msgbuf, sizeof(msgbuf));
@@ -424,6 +425,7 @@ ISC_RUN_TEST_IMPL(collision) {
 	for (int i = NAME_LO; i < NAME_HI; i++) {
 		unsigned int prefix_len, suffix_coff;
 		unsigned int coff = isc_buffer_usedlength(&message);
+		int idx = i - NAME_LO;
 
 		int len = snprintf(namebuf, sizeof(namebuf), ".%d%c%s", i,
 				   zonelen, zone);
@@ -432,13 +434,18 @@ ISC_RUN_TEST_IMPL(collision) {
 				    .length = len + 1 };
 		dns_name_fromregion(&name, &r);
 
+		/* Create a heap-allocated copy of the name */
+		heap_names[idx] = isc_mem_get(isc_g_mctx, sizeof(dns_name_t));
+		dns_name_init(heap_names[idx]);
+		dns_name_dup(&name, isc_g_mctx, heap_names[idx]);
+
 		/* the name we are about to add must partially match */
-		prefix_len = name.length;
+		prefix_len = heap_names[idx]->length;
 		suffix_coff = 0;
-		dns_compress_name(&cctx, &message, &name, &prefix_len,
+		dns_compress_name(&cctx, &message, heap_names[idx], &prefix_len,
 				  &suffix_coff);
 		if (i == NAME_LO) {
-			assert_int_equal(prefix_len, name.length);
+			assert_int_equal(prefix_len, heap_names[idx]->length);
 			assert_int_equal(suffix_coff, 0);
 			zone_coff = 2 + len - zonelen - 1;
 		} else {
@@ -448,13 +455,13 @@ ISC_RUN_TEST_IMPL(collision) {
 		dns_compress_rollback(&cctx, coff);
 
 		dns_compress_setmultiuse(&cctx, true);
-		result = dns_name_towire(&name, &cctx, &message);
+		result = dns_name_towire(heap_names[idx], &cctx, &message);
 		assert_int_equal(result, ISC_R_SUCCESS);
 
 		/* we must be able to find the name we just added */
-		prefix_len = name.length;
+		prefix_len = heap_names[idx]->length;
 		suffix_coff = 0;
-		dns_compress_name(&cctx, &message, &name, &prefix_len,
+		dns_compress_name(&cctx, &message, heap_names[idx], &prefix_len,
 				  &suffix_coff);
 		assert_int_equal(prefix_len, 0);
 		assert_int_equal(suffix_coff, coff);
@@ -468,6 +475,13 @@ ISC_RUN_TEST_IMPL(collision) {
 	}
 
 	dns_compress_invalidate(&cctx);
+
+	/* Free all heap-allocated names */
+	for (int i = NAME_LO; i < NAME_HI; i++) {
+		int idx = i - NAME_LO;
+		dns_name_free(heap_names[idx], isc_g_mctx);
+		isc_mem_put(isc_g_mctx, heap_names[idx], sizeof(dns_name_t));
+	}
 }
 
 ISC_RUN_TEST_IMPL(fromregion) {
