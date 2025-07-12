@@ -172,7 +172,6 @@ process_gsstkey(dns_message_t *msg, dns_name_t *name, dns_rdata_tkey_t *tkeyin,
 		dns_tkeyctx_t *tctx, dns_rdata_tkey_t *tkeyout,
 		dns_tsigkeyring_t *ring) {
 	isc_result_t result = ISC_R_SUCCESS;
-	dst_key_t *dstkey = NULL;
 	dns_tsigkey_t *tsigkey = NULL;
 	dns_fixedname_t fprincipal;
 	dns_name_t *principal = dns_fixedname_initname(&fprincipal);
@@ -238,6 +237,7 @@ process_gsstkey(dns_message_t *msg, dns_name_t *name, dns_rdata_tkey_t *tkeyin,
 #if HAVE_GSSAPI
 		OM_uint32 gret, minor, lifetime;
 #endif /* HAVE_GSSAPI */
+		auto_dst_key_t *dstkey = NULL;
 		uint32_t expire;
 
 		RETERR(dst_key_fromgssapi(name, gss_ctx, ring->mctx, &dstkey,
@@ -258,7 +258,6 @@ process_gsstkey(dns_message_t *msg, dns_name_t *name, dns_rdata_tkey_t *tkeyin,
 			true, false, principal, now, expire, ring->mctx,
 			&tsigkey));
 		RETERR(dns_tsigkeyring_add(ring, tsigkey));
-		dst_key_free(&dstkey);
 		tkeyout->inception = now;
 		tkeyout->expire = expire;
 	} else {
@@ -295,9 +294,6 @@ process_gsstkey(dns_message_t *msg, dns_name_t *name, dns_rdata_tkey_t *tkeyin,
 failure:
 	if (tsigkey != NULL) {
 		dns_tsigkey_detach(&tsigkey);
-	}
-	if (dstkey != NULL) {
-		dst_key_free(&dstkey);
 	}
 
 	tkey_log("process_gsstkey(): %s", isc_result_totext(result));
@@ -635,7 +631,7 @@ dns_tkey_gssnegotiate(dns_message_t *qmsg, dns_message_t *rmsg,
 	dns_name_t *tkeyname = NULL;
 	dns_rdata_tkey_t rtkey, qtkey, tkey;
 	isc_buffer_t intoken, outtoken;
-	dst_key_t *dstkey = NULL;
+	auto_dst_key_t *dstkey = NULL;
 	unsigned char array[TEMP_BUFFER_SZ];
 	dns_tsigkey_t *tsigkey = NULL;
 
@@ -710,15 +706,11 @@ dns_tkey_gssnegotiate(dns_message_t *qmsg, dns_message_t *rmsg,
 		*outkey = tsigkey;
 	}
 
-	dst_key_free(&dstkey);
 	return result;
 
 failure:
 	if (tsigkey != NULL) {
 		dns_tsigkey_detach(&tsigkey);
-	}
-	if (dstkey != NULL) {
-		dst_key_free(&dstkey);
 	}
 	return result;
 }

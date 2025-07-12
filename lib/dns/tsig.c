@@ -320,7 +320,7 @@ dns__tsig_algfromname(const dns_name_t *algorithm) {
 
 static isc_result_t
 restore_key(dns_tsigkeyring_t *ring, isc_stdtime_t now, FILE *fp) {
-	dst_key_t *dstkey = NULL;
+	auto_dst_key_t *dstkey = NULL;
 	char namestr[1024];
 	char creatorstr[1024];
 	char algorithmstr[1024];
@@ -390,9 +390,6 @@ restore_key(dns_tsigkeyring_t *ring, isc_stdtime_t now, FILE *fp) {
 		result = dns_tsigkeyring_add(ring, tkey);
 	}
 	dns_tsigkey_detach(&tkey);
-	if (dstkey != NULL) {
-		dst_key_free(&dstkey);
-	}
 	return result;
 }
 
@@ -469,7 +466,7 @@ isc_result_t
 dns_tsigkey_create(const dns_name_t *name, dst_algorithm_t algorithm,
 		   unsigned char *secret, int length, isc_mem_t *mctx,
 		   dns_tsigkey_t **key) {
-	dst_key_t *dstkey = NULL;
+	auto_dst_key_t *dstkey = NULL;
 	isc_result_t result;
 
 	REQUIRE(length >= 0);
@@ -497,9 +494,6 @@ dns_tsigkey_create(const dns_name_t *name, dst_algorithm_t algorithm,
 
 	result = dns_tsigkey_createfromkey(name, algorithm, dstkey, false,
 					   false, NULL, 0, 0, mctx, key);
-	if (dstkey != NULL) {
-		dst_key_free(&dstkey);
-	}
 	return result;
 }
 

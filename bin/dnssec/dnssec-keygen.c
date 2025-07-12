@@ -242,8 +242,7 @@ keygen(keygen_ctx_t *ctx, int argc, char **argv) {
 	dns_name_t *name;
 	dns_fixedname_t fname;
 	isc_result_t ret;
-	dst_key_t *key = NULL;
-	dst_key_t *prevkey = NULL;
+	auto_dst_key_t *key = NULL, *prevkey = NULL;
 
 	UNUSED(argc);
 
@@ -709,9 +708,10 @@ keygen(keygen_ctx_t *ctx, int argc, char **argv) {
 		{
 			conflict = true;
 			if (null_key) {
-				dst_key_free(&key);
 				break;
 			}
+
+			dst_key_free(&key);
 
 			if (verbose > 0) {
 				isc_buffer_clear(&buf);
@@ -727,8 +727,6 @@ keygen(keygen_ctx_t *ctx, int argc, char **argv) {
 						filename);
 				}
 			}
-
-			dst_key_free(&key);
 		}
 	} while (conflict);
 
@@ -765,11 +763,6 @@ keygen(keygen_ctx_t *ctx, int argc, char **argv) {
 		      isc_result_totext(ret));
 	}
 	printf("%s\n", filename);
-
-	dst_key_free(&key);
-	if (prevkey != NULL) {
-		dst_key_free(&prevkey);
-	}
 }
 
 static void

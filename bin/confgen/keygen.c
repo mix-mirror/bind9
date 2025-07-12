@@ -97,7 +97,7 @@ generate_key(isc_mem_t *mctx, dns_secalg_t alg, int keysize,
 	isc_buffer_t key_rawbuffer;
 	isc_region_t key_rawregion;
 	char key_rawsecret[64];
-	dst_key_t *key = NULL;
+	auto_dst_key_t *key = NULL;
 
 	switch (alg) {
 	case DST_ALG_HMACMD5:
@@ -132,10 +132,6 @@ generate_key(isc_mem_t *mctx, dns_secalg_t alg, int keysize,
 
 	DO("base64 encode secret",
 	   isc_base64_totext(&key_rawregion, -1, "", key_txtbuffer));
-
-	if (key != NULL) {
-		dst_key_free(&key);
-	}
 }
 
 /*%

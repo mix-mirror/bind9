@@ -1130,7 +1130,7 @@ cleanup:
 void
 setup_file_key(void) {
 	isc_result_t result;
-	dst_key_t *dstkey = NULL;
+	auto_dst_key_t *dstkey = NULL;
 
 	debug("setup_file_key()");
 
@@ -1154,7 +1154,7 @@ setup_file_key(void) {
 	if (result != ISC_R_SUCCESS) {
 		fprintf(stderr, "Couldn't read key from %s: %s\n", keyfile,
 			isc_result_totext(result));
-		goto failure;
+		return;
 	}
 
 	switch (dst_key_alg(dstkey)) {
@@ -1168,7 +1168,6 @@ setup_file_key(void) {
 		break;
 	default:
 		dst_key_attach(dstkey, &sig0key);
-		dst_key_free(&dstkey);
 		return;
 	}
 
@@ -1180,11 +1179,6 @@ setup_file_key(void) {
 			printf(";; Couldn't create key %s: %s\n", keynametext,
 			       isc_result_totext(result));
 		}
-	}
-
-failure:
-	if (dstkey != NULL) {
-		dst_key_free(&dstkey);
 	}
 }
 

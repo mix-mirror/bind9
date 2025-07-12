@@ -618,7 +618,7 @@ cleanup:
 
 static void
 setup_keyfile(isc_mem_t *mctx) {
-	dst_key_t *dstkey = NULL;
+	auto_dst_key_t *dstkey = NULL;
 	isc_result_t result;
 	dst_algorithm_t hmac_alg = DST_ALG_UNKNOWN;
 
@@ -660,14 +660,13 @@ setup_keyfile(isc_mem_t *mctx) {
 		break;
 	default:
 		dst_key_attach(dstkey, &sig0key);
-		dst_key_free(&dstkey);
+		dstkey = NULL;
 		return;
 	}
 
 	result = dns_tsigkey_createfromkey(dst_key_name(dstkey), hmac_alg,
 					   dstkey, false, false, NULL, 0, 0,
 					   mctx, &tsigkey);
-	dst_key_free(&dstkey);
 	if (result != ISC_R_SUCCESS) {
 		fprintf(stderr, "could not create key from %s: %s\n", keyfile,
 			isc_result_totext(result));

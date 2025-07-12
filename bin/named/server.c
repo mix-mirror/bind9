@@ -7103,7 +7103,7 @@ generate_session_key(const char *filename, const char *keynamestr,
 		     uint16_t bits, isc_mem_t *mctx, bool first_time,
 		     dst_key_t **keyp) {
 	isc_result_t result = ISC_R_SUCCESS;
-	dst_key_t *key = NULL;
+	auto_dst_key_t *key = NULL;
 	isc_buffer_t key_txtbuffer;
 	isc_buffer_t key_rawbuffer;
 	char key_txtsecret[256];
@@ -7149,12 +7149,11 @@ generate_session_key(const char *filename, const char *keynamestr,
 		(char *)isc_buffer_base(&key_txtbuffer));
 
 	CHECK(isc_stdio_flush(fp));
-	result = isc_stdio_close(fp);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(isc_stdio_close(fp));
 
 	*keyp = key;
+	key = NULL;
+
 	return ISC_R_SUCCESS;
 
 cleanup:
@@ -7166,9 +7165,6 @@ cleanup:
 	if (fp != NULL) {
 		(void)isc_stdio_close(fp);
 		(void)isc_file_remove(filename);
-	}
-	if (key != NULL) {
-		dst_key_free(&key);
 	}
 
 	return result;

@@ -661,6 +661,8 @@ dst_key_free(dst_key_t **keyp);
  *\li	All memory associated with "*keyp" will be freed.
  *\li	*keyp == NULL
  */
+ISC_AUTO_PTR_DECL(dst_key_t, dst_key_free)
+#define auto_dst_key_t ISC_AUTO(dst_key_t)
 
 /*%<
  * Accessor functions to obtain key fields.

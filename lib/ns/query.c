@@ -2460,7 +2460,6 @@ validate(ns_client_t *client, dns_db_t *db, dns_name_t *name,
 	 dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset) {
 	isc_result_t result;
 	dns_rdata_rrsig_t rrsig;
-	dst_key_t *key = NULL;
 	dns_rdataset_t keyrdataset;
 
 	if (sigrdataset == NULL || !dns_rdataset_isassociated(sigrdataset)) {
@@ -2498,17 +2497,16 @@ validate(ns_client_t *client, dns_db_t *db, dns_name_t *name,
 		}
 		dns_rdataset_init(&keyrdataset);
 		do {
+			auto_dst_key_t *key = NULL;
 			if (!get_key(client, db, &rrsig, &keyrdataset, &key)) {
 				break;
 			}
 			if (verify(key, name, rdataset, &rdata, client)) {
-				dst_key_free(&key);
 				dns_rdataset_disassociate(&keyrdataset);
 				mark_secure(client, db, name, &rrsig, rdataset,
 					    sigrdataset);
 				return true;
 			}
-			dst_key_free(&key);
 		} while (1);
 		if (dns_rdataset_isassociated(&keyrdataset)) {
 			dns_rdataset_disassociate(&keyrdataset);

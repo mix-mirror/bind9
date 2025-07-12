@@ -1329,7 +1329,7 @@ selfsigned_dnskey(dns_validator_t *val) {
 
 		DNS_RDATASET_FOREACH (sigrdataset) {
 			dns_rdata_t sigrdata = DNS_RDATA_INIT;
-			dst_key_t *dstkey = NULL;
+			auto_dst_key_t *dstkey = NULL;
 
 			dns_rdataset_current(sigrdataset, &sigrdata);
 			result = dns_rdata_tostruct(&sigrdata, &sig, NULL);
@@ -1365,7 +1365,6 @@ selfsigned_dnskey(dns_validator_t *val) {
 			    dns_view_istrusted(val->view, name, &key))
 			{
 				if (over_max_validations(val)) {
-					dst_key_free(&dstkey);
 					return ISC_R_QUOTA;
 				}
 				result = dns_dnssec_verify(name, rdataset,
@@ -1391,7 +1390,6 @@ selfsigned_dnskey(dns_validator_t *val) {
 				default:
 					consume_validation(val);
 					if (over_max_fails(val)) {
-						dst_key_free(&dstkey);
 						return ISC_R_QUOTA;
 					}
 					consume_validation_fail(val);
@@ -1404,8 +1402,6 @@ selfsigned_dnskey(dns_validator_t *val) {
 				 */
 				dns_view_untrust(val->view, name, &key);
 			}
-
-			dst_key_free(&dstkey);
 		}
 	}
 
@@ -1872,7 +1868,7 @@ static isc_result_t
 check_signer(dns_validator_t *val, dns_rdata_t *keyrdata, uint16_t keyid,
 	     dns_secalg_t algorithm) {
 	dns_rdata_rrsig_t sig;
-	dst_key_t *dstkey = NULL;
+	auto_dst_key_t *dstkey = NULL;
 	isc_result_t result = ISC_R_NOMORE;
 	dns_rdataset_t rdataset = DNS_RDATASET_INIT;
 
@@ -1903,9 +1899,6 @@ check_signer(dns_validator_t *val, dns_rdata_t *keyrdata, uint16_t keyid,
 		}
 	}
 
-	if (dstkey != NULL) {
-		dst_key_free(&dstkey);
-	}
 	dns_rdataset_disassociate(&rdataset);
 
 	return result;
