@@ -178,7 +178,7 @@ dns_dnssec_sign(const dns_name_t *name, dns_rdataset_t *set, dst_key_t *key,
 	isc_region_t r;
 	dst_context_t *ctx = NULL;
 	isc_result_t result;
-	isc_buffer_t *databuf = NULL;
+	auto_isc_buffer_t *databuf = NULL;
 	char data[256 + 8];
 	unsigned int labels;
 	unsigned int sigsize;
@@ -237,13 +237,13 @@ dns_dnssec_sign(const dns_name_t *name, dns_rdataset_t *set, dst_key_t *key,
 	result = dns_rdata_fromstruct(&tmpsigrdata, sig.common.rdclass,
 				      sig.common.rdtype, &sig, databuf);
 	if (result != ISC_R_SUCCESS) {
-		goto cleanup_databuf;
+		goto cleanup_sig;
 	}
 
 	result = dst_context_create(key, mctx, DNS_LOGCATEGORY_DNSSEC, true,
 				    &ctx);
 	if (result != ISC_R_SUCCESS) {
-		goto cleanup_databuf;
+		goto cleanup_sig;
 	}
 
 	/*
@@ -334,8 +334,7 @@ cleanup_array:
 	isc_mem_cput(mctx, rdatas, nrdatas, sizeof(dns_rdata_t));
 cleanup_context:
 	dst_context_destroy(&ctx);
-cleanup_databuf:
-	isc_buffer_free(&databuf);
+cleanup_sig:
 	isc_mem_put(mctx, sig.signature, sig.siglen);
 
 	return result;
@@ -766,7 +765,7 @@ dns_dnssec_signmessage(dns_message_t *msg, dst_key_t *key) {
 	unsigned char header[DNS_MESSAGE_HEADERLEN];
 	isc_buffer_t headerbuf, databuf, sigbuf;
 	unsigned int sigsize;
-	isc_buffer_t *dynbuf = NULL;
+	auto_isc_buffer_t *dynbuf = NULL;
 	dns_rdata_t *rdata;
 	dns_rdatalist_t *datalist;
 	dns_rdataset_t *dataset;
@@ -882,9 +881,6 @@ dns_dnssec_signmessage(dns_message_t *msg, dst_key_t *key) {
 	return ISC_R_SUCCESS;
 
 cleanup:
-	if (dynbuf != NULL) {
-		isc_buffer_free(&dynbuf);
-	}
 	if (sig.signature != NULL) {
 		isc_mem_put(mctx, sig.signature, sig.siglen);
 	}

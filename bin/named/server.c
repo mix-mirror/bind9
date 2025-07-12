@@ -2183,7 +2183,7 @@ catz_addmodzone_cb(void *arg) {
 	dns_forwarders_t *dnsforwarders = NULL;
 	dns_name_t *name = NULL;
 	isc_buffer_t namebuf;
-	isc_buffer_t *confbuf = NULL;
+	auto_isc_buffer_t *confbuf = NULL;
 	char nameb[DNS_NAME_FORMATSIZE];
 	const cfg_obj_t *zlist = NULL;
 	cfg_obj_t *zoneconf = NULL;
@@ -2551,7 +2551,7 @@ catz_reconfigure(dns_catz_entry_t *entry, void *arg1, void *arg2) {
 	dns_view_t *view = arg1;
 	catz_reconfig_data_t *data = arg2;
 	isc_buffer_t namebuf;
-	isc_buffer_t *confbuf = NULL;
+	auto_isc_buffer_t *confbuf = NULL;
 	const cfg_obj_t *zlist = NULL;
 	char nameb[DNS_NAME_FORMATSIZE];
 	cfg_obj_t *zoneconf = NULL;
@@ -2574,7 +2574,6 @@ catz_reconfigure(dns_catz_entry_t *entry, void *arg1, void *arg2) {
 	if (result == ISC_R_SUCCESS) {
 		result = cfg_parse_buffer(confbuf, "catz", 0,
 					  &cfg_type_addzoneconf, 0, &zoneconf);
-		isc_buffer_free(&confbuf);
 	}
 	/*
 	 * Fail if either dns_catz_generate_zonecfg() or cfg_parse_buffer()
@@ -7360,7 +7359,7 @@ for_all_newzone_cfgs(newzone_cfg_cb_t callback, cfg_obj_t *config,
 	const cfg_obj_t *zconfig, *zlist;
 	isc_result_t result = ISC_R_SUCCESS;
 	cfg_obj_t *zconfigobj = NULL;
-	isc_buffer_t *text = NULL;
+	auto_isc_buffer_t *text = NULL;
 	MDB_cursor *cursor = NULL;
 	MDB_val data, key;
 	int status;

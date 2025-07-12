@@ -100,26 +100,21 @@ usage(void) {
 static void
 print_dtdata(dns_dtdata_t *dt) {
 	isc_result_t result;
-	isc_buffer_t *b = NULL;
+	auto_isc_buffer_t *b = NULL;
 
 	isc_buffer_allocate(isc_g_mctx, &b, 2048);
-	if (b == NULL) {
-		fatal("out of memory");
-	}
 
 	CHECKM(dns_dt_datatotext(dt, &b), "dns_dt_datatotext");
 	printf("%.*s\n", (int)isc_buffer_usedlength(b),
 	       (char *)isc_buffer_base(b));
 
 cleanup:
-	if (b != NULL) {
-		isc_buffer_free(&b);
-	}
+	return;
 }
 
 static void
 print_hex(dns_dtdata_t *dt) {
-	isc_buffer_t *b = NULL;
+	auto_isc_buffer_t *b = NULL;
 	isc_result_t result;
 	size_t textlen;
 
@@ -129,9 +124,6 @@ print_hex(dns_dtdata_t *dt) {
 
 	textlen = (dt->msgdata.length * 2) + 1;
 	isc_buffer_allocate(isc_g_mctx, &b, textlen);
-	if (b == NULL) {
-		fatal("out of memory");
-	}
 
 	result = isc_hex_totext(&dt->msgdata, 0, "", b);
 	CHECKM(result, "isc_hex_totext");
@@ -140,30 +132,21 @@ print_hex(dns_dtdata_t *dt) {
 	       (char *)isc_buffer_base(b));
 
 cleanup:
-	if (b != NULL) {
-		isc_buffer_free(&b);
-	}
+	return;
 }
 
 static void
 print_packet(dns_dtdata_t *dt, const dns_master_style_t *style) {
-	isc_buffer_t *b = NULL;
+	auto_isc_buffer_t *b = NULL;
 	isc_result_t result;
 
 	if (dt->msg != NULL) {
 		size_t textlen = 2048;
 
 		isc_buffer_allocate(isc_g_mctx, &b, textlen);
-		if (b == NULL) {
-			fatal("out of memory");
-		}
 
 		for (;;) {
 			isc_buffer_reserve(b, textlen);
-			if (b == NULL) {
-				fatal("out of memory");
-			}
-
 			result = dns_message_totext(dt->msg, style, 0, b);
 			if (result == ISC_R_NOSPACE) {
 				isc_buffer_clear(b);
@@ -172,9 +155,7 @@ print_packet(dns_dtdata_t *dt, const dns_master_style_t *style) {
 			} else if (result == ISC_R_SUCCESS) {
 				printf("%.*s", (int)isc_buffer_usedlength(b),
 				       (char *)isc_buffer_base(b));
-				isc_buffer_free(&b);
 			} else {
-				isc_buffer_free(&b);
 				CHECKM(result, "dns_message_totext");
 			}
 			break;
@@ -182,9 +163,7 @@ print_packet(dns_dtdata_t *dt, const dns_master_style_t *style) {
 	}
 
 cleanup:
-	if (b != NULL) {
-		isc_buffer_free(&b);
-	}
+	return;
 }
 
 static void

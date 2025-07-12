@@ -622,8 +622,7 @@ done:
 static isc_result_t
 req_render(dns_message_t *message, isc_buffer_t **bufferp, unsigned int options,
 	   isc_mem_t *mctx) {
-	isc_buffer_t *buf1 = NULL;
-	isc_buffer_t *buf2 = NULL;
+	auto_isc_buffer_t *buf1 = NULL, *buf2 = NULL;
 	isc_result_t result;
 	isc_region_t r;
 	dns_compress_t cctx;
@@ -671,19 +670,15 @@ req_render(dns_message_t *message, isc_buffer_t **bufferp, unsigned int options,
 	 * Cleanup and return.
 	 */
 	dns_compress_invalidate(&cctx);
-	isc_buffer_free(&buf1);
+
 	*bufferp = buf2;
+	buf2 = NULL;
+
 	return ISC_R_SUCCESS;
 
 cleanup:
 	dns_message_renderreset(message);
 	dns_compress_invalidate(&cctx);
-	if (buf1 != NULL) {
-		isc_buffer_free(&buf1);
-	}
-	if (buf2 != NULL) {
-		isc_buffer_free(&buf2);
-	}
 	return result;
 }
 

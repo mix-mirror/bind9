@@ -953,7 +953,7 @@ modrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	dns_sdlz_db_t *sdlz = (dns_sdlz_db_t *)db;
 	dns_master_style_t *style = NULL;
 	isc_result_t result;
-	isc_buffer_t *buffer = NULL;
+	auto_isc_buffer_t *buffer = NULL;
 	isc_mem_t *mctx;
 	dns_sdlznode_t *sdlznode;
 	char *rdatastr = NULL;
@@ -994,7 +994,6 @@ modrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	MAYBE_UNLOCK(sdlz->dlzimp);
 
 cleanup:
-	isc_buffer_free(&buffer);
 	if (style != NULL) {
 		dns_master_styledestroy(&style, mctx);
 	}
@@ -1567,7 +1566,7 @@ dns_sdlz_putrr(dns_sdlzlookup_t *lookup, const char *type, dns_ttl_t ttl,
 	dns_rdatatype_t typeval;
 	isc_consttextregion_t r;
 	isc_buffer_t b;
-	isc_buffer_t *rdatabuf = NULL;
+	auto_isc_buffer_t *rdatabuf = NULL;
 	isc_lex_t *lex;
 	isc_result_t result;
 	unsigned int size;
@@ -1629,15 +1628,14 @@ dns_sdlz_putrr(dns_sdlzlookup_t *lookup, const char *type, dns_ttl_t ttl,
 
 		CHECK(isc_lex_openbuffer(lex, &b));
 
-		rdatabuf = NULL;
+		if (rdatabuf != NULL) {
+			isc_buffer_free(&rdatabuf);
+		}
 		isc_buffer_allocate(mctx, &rdatabuf, size);
 
 		result = dns_rdata_fromtext(rdata, rdatalist->rdclass,
 					    rdatalist->type, lex, origin, false,
 					    mctx, rdatabuf, &lookup->callbacks);
-		if (result != ISC_R_SUCCESS) {
-			isc_buffer_free(&rdatabuf);
-		}
 		if (size >= 65535) {
 			break;
 		}
@@ -1653,6 +1651,7 @@ dns_sdlz_putrr(dns_sdlzlookup_t *lookup, const char *type, dns_ttl_t ttl,
 
 	ISC_LIST_APPEND(rdatalist->rdata, rdata, link);
 	ISC_LIST_APPEND(lookup->buffers, rdatabuf, link);
+	rdatabuf = NULL;
 
 	if (lex != NULL) {
 		isc_lex_destroy(&lex);
@@ -1661,9 +1660,6 @@ dns_sdlz_putrr(dns_sdlzlookup_t *lookup, const char *type, dns_ttl_t ttl,
 	return ISC_R_SUCCESS;
 
 cleanup:
-	if (rdatabuf != NULL) {
-		isc_buffer_free(&rdatabuf);
-	}
 	if (lex != NULL) {
 		isc_lex_destroy(&lex);
 	}

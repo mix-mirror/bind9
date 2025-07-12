@@ -159,9 +159,6 @@ dns_catz_options_init(dns_catz_options_t *options) {
 	options->allow_query = NULL;
 	options->allow_transfer = NULL;
 
-	options->allow_query = NULL;
-	options->allow_transfer = NULL;
-
 	options->in_memory = false;
 	options->min_update_interval = 5;
 	options->zonedir = NULL;
@@ -1597,7 +1594,7 @@ catz_process_apl(dns_catz_zone_t *catz, isc_buffer_t **aclbp,
 	dns_rdata_in_apl_t rdata_apl;
 	dns_rdata_apl_ent_t apl_ent;
 	isc_netaddr_t addr;
-	isc_buffer_t *aclb = NULL;
+	auto_isc_buffer_t *aclb = NULL;
 	unsigned char buf[256]; /* larger than INET6_ADDRSTRLEN */
 
 	if (dns_rdataset_count(value) > 1) {
@@ -1649,10 +1646,8 @@ catz_process_apl(dns_catz_zone_t *catz, isc_buffer_t **aclbp,
 	}
 	*aclbp = aclb;
 	aclb = NULL;
+
 cleanup:
-	if (aclb != NULL) {
-		isc_buffer_free(&aclb);
-	}
 	dns_rdata_freestruct(&rdata_apl);
 	return result;
 }
@@ -1895,7 +1890,7 @@ digest2hex(unsigned char *digest, unsigned int digestlen, char *hash,
 isc_result_t
 dns_catz_generate_masterfilename(dns_catz_zone_t *catz, dns_catz_entry_t *entry,
 				 isc_buffer_t **buffer) {
-	isc_buffer_t *tbuf = NULL;
+	auto_isc_buffer_t *tbuf = NULL;
 	isc_region_t r;
 	isc_result_t result;
 	size_t rlen;
@@ -1962,7 +1957,6 @@ dns_catz_generate_masterfilename(dns_catz_zone_t *catz, dns_catz_entry_t *entry,
 	result = ISC_R_SUCCESS;
 
 cleanup:
-	isc_buffer_free(&tbuf);
 	return result;
 }
 
@@ -1976,7 +1970,7 @@ cleanup:
 isc_result_t
 dns_catz_generate_zonecfg(dns_catz_zone_t *catz, dns_catz_entry_t *entry,
 			  isc_buffer_t **buf) {
-	isc_buffer_t *buffer = NULL;
+	auto_isc_buffer_t *buffer = NULL;
 	isc_region_t region;
 	isc_result_t result;
 	uint32_t i;
@@ -2015,7 +2009,7 @@ dns_catz_generate_zonecfg(dns_catz_zone_t *catz, dns_catz_entry_t *entry,
 				      "catz: zone '%s' uses an invalid primary "
 				      "(no IP address assigned)",
 				      namebuf);
-			CLEANUP(ISC_R_FAILURE);
+			return ISC_R_FAILURE;
 		}
 		isc_netaddr_fromsockaddr(&netaddr,
 					 &entry->opts.masters.addrs[i]);
@@ -2046,7 +2040,7 @@ dns_catz_generate_zonecfg(dns_catz_zone_t *catz, dns_catz_entry_t *entry,
 	isc_buffer_putstr(buffer, "}; ");
 	if (!entry->opts.in_memory) {
 		isc_buffer_putstr(buffer, "file \"");
-		CHECK(dns_catz_generate_masterfilename(catz, entry, &buffer));
+		RETERR(dns_catz_generate_masterfilename(catz, entry, &buffer));
 		isc_buffer_putstr(buffer, "\"; ");
 	}
 	if (entry->opts.allow_query != NULL) {
@@ -2064,12 +2058,9 @@ dns_catz_generate_zonecfg(dns_catz_zone_t *catz, dns_catz_entry_t *entry,
 
 	isc_buffer_putstr(buffer, "};");
 	*buf = buffer;
+	buffer = NULL;
 
 	return ISC_R_SUCCESS;
-
-cleanup:
-	isc_buffer_free(&buffer);
-	return result;
 }
 
 static void

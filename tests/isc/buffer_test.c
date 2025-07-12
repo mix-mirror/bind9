@@ -38,7 +38,7 @@
 /* reserve space in dynamic buffers */
 ISC_RUN_TEST_IMPL(isc_buffer_reserve) {
 	isc_result_t result;
-	isc_buffer_t *b;
+	auto_isc_buffer_t *b;
 
 	UNUSED(state);
 
@@ -92,13 +92,11 @@ ISC_RUN_TEST_IMPL(isc_buffer_reserve) {
 	assert_int_equal(result, ISC_R_NOMEMORY);
 	assert_non_null(b);
 	assert_int_equal(b->length, 8 * ISC_BUFFER_INCR);
-
-	isc_buffer_free(&b);
 }
 
 /* dynamic buffer automatic reallocation */
 ISC_RUN_TEST_IMPL(isc_buffer_dynamic) {
-	isc_buffer_t *b;
+	auto_isc_buffer_t *b;
 	size_t last_length = 10;
 	int i;
 
@@ -134,14 +132,12 @@ ISC_RUN_TEST_IMPL(isc_buffer_dynamic) {
 		isc_buffer_putuint32(b, 1);
 	}
 	assert_true(b->length - last_length >= 10000 * 4);
-
-	isc_buffer_free(&b);
 }
 
 /* copy a region into a buffer */
 ISC_RUN_TEST_IMPL(isc_buffer_copyregion) {
 	unsigned char data[] = { 0x11, 0x22, 0x33, 0x44 };
-	isc_buffer_t *b = NULL;
+	auto_isc_buffer_t *b = NULL;
 	isc_result_t result;
 
 	isc_region_t r = {
@@ -164,8 +160,6 @@ ISC_RUN_TEST_IMPL(isc_buffer_copyregion) {
 	 */
 	result = isc_buffer_copyregion(b, &r);
 	assert_int_equal(result, ISC_R_SUCCESS);
-
-	isc_buffer_free(&b);
 }
 
 /* sprintf() into a buffer */
