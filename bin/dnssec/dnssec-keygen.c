@@ -238,8 +238,7 @@ keygen(keygen_ctx_t *ctx, const char *keyname) {
 	dns_name_t *name;
 	dns_fixedname_t fname;
 	isc_result_t result;
-	dst_key_t *key = NULL;
-	dst_key_t *prevkey = NULL;
+	auto_dst_key_t *key = NULL, *prevkey = NULL;
 
 	dst_algorithm_format(ctx->alg, algstr, sizeof(algstr));
 
@@ -706,11 +705,6 @@ keygen(keygen_ctx_t *ctx, const char *keyname) {
 		      isc_result_totext(result));
 	}
 	printf("%s\n", filename);
-
-	dst_key_free(&key);
-	if (prevkey != NULL) {
-		dst_key_free(&prevkey);
-	}
 }
 
 static void

@@ -3431,7 +3431,7 @@ compute_tag(dns_name_t *name, dns_rdata_dnskey_t *dnskey, isc_mem_t *mctx,
 	dns_rdata_t rdata = DNS_RDATA_INIT;
 	unsigned char data[DNS_RDATA_MAXLENGTH];
 	isc_buffer_t buffer;
-	dst_key_t *dstkey = NULL;
+	auto_dst_key_t *dstkey = NULL;
 
 	isc_buffer_init(&buffer, data, sizeof(data));
 
@@ -3440,7 +3440,6 @@ compute_tag(dns_name_t *name, dns_rdata_dnskey_t *dnskey, isc_mem_t *mctx,
 	CHECK(dns_dnssec_keyfromrdata(name, &rdata, mctx, &dstkey));
 
 	*tag = dst_key_id(dstkey);
-	dst_key_free(&dstkey);
 
 cleanup:
 	return result;
@@ -5112,7 +5111,6 @@ findzonekeys(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *ver,
 	dns_rdataset_t rdataset;
 	dns_rdata_t rdata = DNS_RDATA_INIT;
 	isc_result_t result;
-	dst_key_t *pubkey = NULL;
 	unsigned int count = 0;
 
 	*nkeys = 0;
@@ -5122,7 +5120,8 @@ findzonekeys(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *ver,
 				  &rdataset, NULL));
 	CHECK(dns_rdataset_first(&rdataset));
 	while (result == ISC_R_SUCCESS && count < maxkeys) {
-		pubkey = NULL;
+		auto_dst_key_t *pubkey = NULL;
+
 		dns_rdataset_current(&rdataset, &rdata);
 		CHECK(dns_dnssec_keyfromrdata(name, &rdata, mctx, &pubkey));
 		dst_key_setttl(pubkey, rdataset.ttl);
@@ -5221,9 +5220,6 @@ findzonekeys(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *ver,
 		dst_key_setttl(keys[count], rdataset.ttl);
 		count++;
 	next:
-		if (pubkey != NULL) {
-			dst_key_free(&pubkey);
-		}
 		dns_rdata_reset(&rdata);
 		result = dns_rdataset_next(&rdataset);
 	}
@@ -5238,9 +5234,6 @@ findzonekeys(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *ver,
 
 cleanup:
 	dns_rdataset_cleanup(&rdataset);
-	if (pubkey != NULL) {
-		dst_key_free(&pubkey);
-	}
 	if (result != ISC_R_SUCCESS) {
 		while (count > 0) {
 			dst_key_free(&keys[--count]);
@@ -8915,12 +8908,12 @@ cleanup:
 static bool
 revocable(dns_zonefetch_t *fetch, dns_rdata_keydata_t *keydata) {
 	isc_result_t result;
-	dns_name_t *keyname;
-	isc_mem_t *mctx;
+	dns_name_t *keyname = NULL;
+	isc_mem_t *mctx = NULL;
 	dns_rdata_t rr = DNS_RDATA_INIT;
 	dns_rdata_rrsig_t sig;
 	dns_rdata_dnskey_t dnskey;
-	dst_key_t *dstkey = NULL;
+	auto_dst_key_t *dstkey = NULL;
 	unsigned char key_buf[4096];
 	isc_buffer_t keyb;
 	bool answer = false;
@@ -8976,7 +8969,6 @@ revocable(dns_zonefetch_t *fetch, dns_rdata_keydata_t *keydata) {
 		}
 	}
 
-	dst_key_free(&dstkey);
 	return answer;
 }
 
@@ -9074,7 +9066,6 @@ keyfetch_done(dns_zonefetch_t *fetch, isc_result_t eresult) {
 	char namebuf[DNS_NAME_FORMATSIZE];
 	unsigned char key_buf[4096];
 	isc_buffer_t keyb;
-	dst_key_t *dstkey = NULL;
 	isc_stdtime_t now;
 	int pending = 0;
 	bool secure = false, initial = false;
@@ -9144,6 +9135,7 @@ keyfetch_done(dns_zonefetch_t *fetch, isc_result_t eresult) {
 			isc_result_t tresult = ISC_R_NOTFOUND;
 			dns_rdata_t keyrdata = DNS_RDATA_INIT;
 			dns_rdata_t sigrr = DNS_RDATA_INIT;
+			auto_dst_key_t *dstkey = NULL;
 
 			dns_rdataset_current(dnskeysigs, &sigrr);
 			dns_rdata_tostruct(&sigrr, &sig, NULL);
@@ -9182,7 +9174,6 @@ keyfetch_done(dns_zonefetch_t *fetch, isc_result_t eresult) {
 			result = dns_dnssec_verify(keyname, dnskeys, dstkey,
 						   false, mctx, &sigrr, NULL,
 						   NULL);
-			dst_key_free(&dstkey);
 
 			dnssec_log(zone, ISC_LOG_DEBUG(3),
 				   "Verifying DNSKEY set for zone "
@@ -13804,7 +13795,7 @@ static isc_result_t
 dnskey_inuse(dns_zone_t *zone, dns_rdata_t *rdata, isc_mem_t *mctx,
 	     dns_dnsseckeylist_t *keylist, bool *inuse) {
 	isc_result_t result;
-	dst_key_t *dstkey = NULL;
+	auto_dst_key_t *dstkey = NULL;
 
 	result = dns_dnssec_keyfromrdata(dns_zone_getorigin(zone), rdata, mctx,
 					 &dstkey);
@@ -13822,7 +13813,6 @@ dnskey_inuse(dns_zone_t *zone, dns_rdata_t *rdata, isc_mem_t *mctx,
 		}
 	}
 
-	dst_key_free(&dstkey);
 	return ISC_R_SUCCESS;
 }
 

@@ -147,7 +147,7 @@ static void
 loadkey(char *filename, unsigned char *key_buf, unsigned int key_buf_size,
 	dns_rdata_t *rdata) {
 	isc_result_t result;
-	dst_key_t *key = NULL;
+	auto_dst_key_t *key = NULL;
 	isc_buffer_t keyb;
 	isc_region_t r;
 
@@ -182,8 +182,6 @@ loadkey(char *filename, unsigned char *key_buf, unsigned int key_buf_size,
 
 	name = dns_fixedname_initname(&fixed);
 	dns_name_copy(dst_key_name(key), name);
-
-	dst_key_free(&key);
 }
 
 static void
@@ -193,7 +191,7 @@ emit(const char *dir, dns_rdata_t *rdata) {
 	char pubname[1024];
 	char priname[1024];
 	isc_buffer_t buf;
-	dst_key_t *key = NULL, *tmp = NULL;
+	auto_dst_key_t *key = NULL, *tmp = NULL;
 
 	isc_buffer_init(&buf, rdata->data, rdata->length);
 	isc_buffer_add(&buf, rdata->length);
@@ -222,7 +220,6 @@ emit(const char *dir, dns_rdata_t *rdata) {
 		if (dst_key_isprivate(tmp) && !dst_key_isexternal(tmp)) {
 			fatal("Private key already exists in %s", priname);
 		}
-		dst_key_free(&tmp);
 	}
 
 	dst_key_setexternal(key, true);
@@ -258,7 +255,6 @@ emit(const char *dir, dns_rdata_t *rdata) {
 		      isc_result_totext(result));
 	}
 	printf("%s\n", priname);
-	dst_key_free(&key);
 }
 
 ISC_NORETURN static void

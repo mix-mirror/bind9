@@ -154,13 +154,13 @@ process_gsstkey(dns_message_t *msg, dns_name_t *name, dns_rdata_tkey_t *tkeyin,
 		dns_tkeyctx_t *tctx, dns_rdata_tkey_t *tkeyout,
 		dns_tsigkeyring_t *ring) {
 	isc_result_t result = ISC_R_SUCCESS;
-	dst_key_t *dstkey = NULL;
 	dns_tsigkey_t *tsigkey = NULL;
 	dns_fixedname_t fprincipal;
 	dns_name_t *principal = dns_fixedname_initname(&fprincipal);
 	isc_stdtime_t now = isc_stdtime_now();
 	isc_region_t intoken;
 	auto_isc_buffer_t *outtoken = NULL;
+	auto_dst_key_t *dstkey = NULL;
 	dns_gss_ctx_id_t gss_ctx = NULL;
 
 	/*
@@ -221,7 +221,6 @@ process_gsstkey(dns_message_t *msg, dns_name_t *name, dns_rdata_tkey_t *tkeyin,
 			true, false, principal, now, expire, ring->mctx,
 			&tsigkey));
 		CHECK(dns_tsigkeyring_add(ring, tsigkey));
-		dst_key_free(&dstkey);
 		tkeyout->inception = now;
 		tkeyout->expire = expire;
 	} else {
@@ -266,9 +265,6 @@ cleanup:
 	}
 	if (tsigkey != NULL) {
 		dns_tsigkey_detach(&tsigkey);
-	}
-	if (dstkey != NULL) {
-		dst_key_free(&dstkey);
 	}
 
 	if (result != ISC_R_SUCCESS) {
@@ -607,7 +603,7 @@ dns_tkey_gssnegotiate(dns_message_t *qmsg, dns_message_t *rmsg,
 	dns_name_t *tkeyname = NULL;
 	dns_rdata_tkey_t rtkey, qtkey, tkey;
 	isc_buffer_t intoken, outtoken;
-	dst_key_t *dstkey = NULL;
+	auto_dst_key_t *dstkey = NULL;
 	unsigned char array[TEMP_BUFFER_SZ];
 	dns_tsigkey_t *tsigkey = NULL;
 
@@ -680,15 +676,11 @@ dns_tkey_gssnegotiate(dns_message_t *qmsg, dns_message_t *rmsg,
 		*outkey = tsigkey;
 	}
 
-	dst_key_free(&dstkey);
 	return result;
 
 cleanup:
 	if (tsigkey != NULL) {
 		dns_tsigkey_detach(&tsigkey);
-	}
-	if (dstkey != NULL) {
-		dst_key_free(&dstkey);
 	}
 	return result;
 }

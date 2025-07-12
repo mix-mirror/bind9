@@ -179,7 +179,7 @@ static void
 loadkey(char *filename, unsigned char *key_buf, unsigned int key_buf_size,
 	dns_rdata_t *rdata) {
 	isc_result_t result;
-	dst_key_t *key = NULL;
+	auto_dst_key_t *key = NULL;
 	isc_buffer_t keyb;
 	isc_region_t r;
 
@@ -214,14 +214,12 @@ loadkey(char *filename, unsigned char *key_buf, unsigned int key_buf_size,
 
 	name = dns_fixedname_initname(&fixed);
 	dns_name_copy(dst_key_name(key), name);
-
-	dst_key_free(&key);
 }
 
 static void
 logkey(dns_rdata_t *rdata) {
 	isc_result_t result;
-	dst_key_t *key = NULL;
+	auto_dst_key_t *key = NULL;
 	isc_buffer_t buf;
 	char keystr[DST_KEY_FORMATSIZE];
 
@@ -234,8 +232,6 @@ logkey(dns_rdata_t *rdata) {
 
 	dst_key_format(key, keystr, sizeof(keystr));
 	fprintf(stderr, "%s: %s\n", isc_commandline_progname, keystr);
-
-	dst_key_free(&key);
 }
 
 static void
