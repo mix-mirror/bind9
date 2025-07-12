@@ -195,7 +195,7 @@ savezonecut(dns_fixedname_t *fzonecut, dns_name_t *name) {
 static void
 dumpnode(dns_name_t *name, dns_dbnode_t *node) {
 	dns_rdatasetiter_t *iter = NULL;
-	isc_buffer_t *buffer = NULL;
+	auto_isc_buffer_t *buffer = NULL;
 	isc_region_t r;
 	isc_result_t result;
 	unsigned int bufsize = 4096;
@@ -243,9 +243,6 @@ dumpnode(dns_name_t *name, dns_dbnode_t *node) {
 
 		dns_rdataset_disassociate(&rds);
 	}
-
-	isc_buffer_free(&buffer);
-	dns_rdatasetiter_destroy(&iter);
 }
 
 static void

@@ -191,7 +191,8 @@ recvresponse(void *arg) {
 	isc_result_t result;
 	dns_message_t *query = NULL, *response = NULL;
 	unsigned int parseflags = 0;
-	isc_buffer_t *msgbuf = NULL, *buf = NULL;
+	isc_buffer_t *msgbuf = NULL;
+	auto_isc_buffer_t *buf = NULL;
 	unsigned int len = OUTPUTBUF;
 	dns_master_style_t *style = NULL;
 	unsigned int styleflags = 0;
@@ -503,7 +504,6 @@ repopulate_buffer:
 
 	printf("%.*s", (int)isc_buffer_usedlength(buf),
 	       (char *)isc_buffer_base(buf));
-	isc_buffer_free(&buf);
 
 cleanup:
 	fflush(stdout);

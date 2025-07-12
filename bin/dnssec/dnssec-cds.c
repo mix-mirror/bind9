@@ -392,7 +392,7 @@ static void
 write_parent_set(const char *path, const char *inplace, bool nsupdate,
 		 dns_rdataset_t *rdataset) {
 	isc_result_t result;
-	isc_buffer_t *buf = NULL;
+	auto_isc_buffer_t *buf = NULL;
 	isc_region_t r;
 	isc_time_t filetime;
 	char backname[PATH_MAX + 1];
@@ -412,7 +412,6 @@ write_parent_set(const char *path, const char *inplace, bool nsupdate,
 	 */
 	if (inplace == NULL) {
 		printf("%s", (char *)r.base);
-		isc_buffer_free(&buf);
 		if (fflush(stdout) == EOF) {
 			fatal("error writing to stdout: %s", strerror(errno));
 		}
@@ -427,11 +426,9 @@ write_parent_set(const char *path, const char *inplace, bool nsupdate,
 
 	result = isc_file_openunique(tmpname, &fp);
 	if (result != ISC_R_SUCCESS) {
-		isc_buffer_free(&buf);
 		fatal("open %s: %s", tmpname, isc_result_totext(result));
 	}
 	fprintf(fp, "%s", (char *)r.base);
-	isc_buffer_free(&buf);
 	if (fclose(fp) == EOF) {
 		int err = errno;
 		isc_file_remove(tmpname);
@@ -936,7 +933,7 @@ consistent_digests(dns_rdataset_t *dsset) {
 
 static void
 print_diff(const char *cmd, dns_rdataset_t *rdataset) {
-	isc_buffer_t *buf;
+	auto_isc_buffer_t *buf;
 	isc_region_t r;
 	unsigned char *nl;
 	size_t len;
@@ -949,8 +946,6 @@ print_diff(const char *cmd, dns_rdataset_t *rdataset) {
 		printf("update %s %.*s", cmd, (int)len, (char *)r.base);
 		isc_region_consume(&r, len);
 	}
-
-	isc_buffer_free(&buf);
 }
 
 static void

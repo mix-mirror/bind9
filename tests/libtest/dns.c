@@ -407,7 +407,7 @@ destroy_lexer:
 void
 dns_test_namefromstring(const char *namestr, dns_fixedname_t *fname) {
 	size_t length;
-	isc_buffer_t *b = NULL;
+	auto_isc_buffer_t *b = NULL;
 	isc_result_t result;
 	dns_name_t *name;
 
@@ -420,8 +420,6 @@ dns_test_namefromstring(const char *namestr, dns_fixedname_t *fname) {
 	isc_buffer_putmem(b, (const unsigned char *)namestr, length);
 	result = dns_name_fromtext(name, b, NULL, 0);
 	INSIST(result == ISC_R_SUCCESS);
-
-	isc_buffer_free(&b);
 }
 
 isc_result_t

@@ -427,7 +427,7 @@ ISC_RUN_TEST_IMPL(cmp_test) {
 
 ISC_RUN_TEST_IMPL(ecdsa_determinism_test) {
 	isc_result_t result;
-	isc_buffer_t *sigbuf1 = NULL, *sigbuf2 = NULL;
+	auto_isc_buffer_t *sigbuf1 = NULL, *sigbuf2 = NULL;
 	isc_buffer_t databuf, keybuf;
 	isc_region_t datareg;
 	dns_fixedname_t fname;
@@ -479,9 +479,6 @@ ISC_RUN_TEST_IMPL(ecdsa_determinism_test) {
 #else
 	assert_memory_not_equal(sigbuf1->base, sigbuf2->base, siglen);
 #endif
-
-	isc_buffer_free(&sigbuf1);
-	isc_buffer_free(&sigbuf2);
 
 	dst_key_free(&key);
 }

@@ -146,7 +146,7 @@ putrr(bdbnode_t *node, const char *type, dns_ttl_t ttl, const char *data) {
 	isc_lex_t *lex = NULL;
 	isc_mem_t *mctx = NULL;
 	const dns_name_t *origin = NULL;
-	isc_buffer_t *rb = NULL;
+	auto_isc_buffer_t *rb = NULL;
 	isc_buffer_t b;
 
 	REQUIRE(VALID_BDBNODE(node));
@@ -182,8 +182,6 @@ putrr(bdbnode_t *node, const char *type, dns_ttl_t ttl, const char *data) {
 		result = putrdata(node, typeval, ttl, isc_buffer_base(rb),
 				  isc_buffer_usedlength(rb));
 	}
-
-	isc_buffer_free(&rb);
 
 	return result;
 }

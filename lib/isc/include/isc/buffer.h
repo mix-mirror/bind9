@@ -245,6 +245,9 @@ isc_buffer_free(isc_buffer_t **restrict dynbuffer);
  *	isc_buffer_allocate().
  */
 
+ISC_AUTO_PTR_DECL(isc_buffer_t, isc_buffer_free)
+#define auto_isc_buffer_t ISC_AUTO(isc_buffer_t)
+
 static inline void
 isc_buffer_initnull(isc_buffer_t *restrict b);
 

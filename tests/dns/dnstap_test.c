@@ -317,7 +317,7 @@ ISC_LOOP_TEST_IMPL(dns_dt_totext) {
 
 	while (dns_dt_getframe(handle, &data, &dsize) == ISC_R_SUCCESS) {
 		dns_dtdata_t *dtdata = NULL;
-		isc_buffer_t *b = NULL;
+		auto_isc_buffer_t *b = NULL;
 		isc_region_t r;
 		char s[BUFSIZ], *p;
 
@@ -356,7 +356,6 @@ ISC_LOOP_TEST_IMPL(dns_dt_totext) {
 		assert_string_equal((char *)isc_buffer_base(b), s);
 
 		dns_dtdata_free(&dtdata);
-		isc_buffer_free(&b);
 	}
 
 	if (handle != NULL) {

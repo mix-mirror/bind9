@@ -427,7 +427,7 @@ named_config_parsefile(cfg_parser_t *parser, cfg_obj_t **conf) {
 	isc_result_t result;
 
 	REQUIRE(parser);
-	REQUIRE(conf && *conf == NULL);
+	REQUIRE(conf != NULL && *conf == NULL);
 
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
 		      ISC_LOG_INFO, "parsing user configuration from '%s'",

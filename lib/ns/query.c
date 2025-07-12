@@ -8193,7 +8193,7 @@ query_filter64(query_ctx_t *qctx) {
 	dns_name_t *name = NULL, *mname = NULL;
 	dns_rdatalist_t *myrdatalist = NULL;
 	dns_rdataset_t *myrdataset = NULL;
-	isc_buffer_t *buffer = NULL;
+	auto_isc_buffer_t *buffer = NULL;
 	isc_result_t result;
 	unsigned int i;
 	const dns_section_t section = DNS_SECTION_ANSWER;
@@ -8279,9 +8279,6 @@ query_filter64(query_ctx_t *qctx) {
 	query_setorder(qctx, mname, myrdataset);
 
 	dns_message_takebuffer(client->message, &buffer);
-	if (buffer != NULL) {
-		isc_buffer_free(&buffer);
-	}
 
 	if (qctx->dbuf != NULL) {
 		ns_client_releasename(client, &name);

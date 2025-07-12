@@ -262,7 +262,7 @@ static isc_result_t
 gssapi_restore(dst_key_t *key, const char *keystr) {
 	OM_uint32 major, minor;
 	unsigned int len;
-	isc_buffer_t *b = NULL;
+	auto_isc_buffer_t *b = NULL;
 	isc_region_t r;
 	gss_buffer_desc gssbuffer;
 	isc_result_t result;
@@ -278,7 +278,6 @@ gssapi_restore(dst_key_t *key, const char *keystr) {
 
 	result = isc_base64_decodestring(keystr, b);
 	if (result != ISC_R_SUCCESS) {
-		isc_buffer_free(&b);
 		return result;
 	}
 
@@ -287,11 +286,9 @@ gssapi_restore(dst_key_t *key, const char *keystr) {
 	major = gss_import_sec_context(&minor, &gssbuffer,
 				       (gss_ctx_id_t *)&key->keydata.gssctx);
 	if (major != GSS_S_COMPLETE) {
-		isc_buffer_free(&b);
 		return ISC_R_FAILURE;
 	}
 
-	isc_buffer_free(&b);
 	return ISC_R_SUCCESS;
 }
 

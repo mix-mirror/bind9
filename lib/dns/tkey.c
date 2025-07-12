@@ -178,7 +178,7 @@ process_gsstkey(dns_message_t *msg, dns_name_t *name, dns_rdata_tkey_t *tkeyin,
 	dns_name_t *principal = dns_fixedname_initname(&fprincipal);
 	isc_stdtime_t now = isc_stdtime_now();
 	isc_region_t intoken;
-	isc_buffer_t *outtoken = NULL;
+	auto_isc_buffer_t *outtoken = NULL;
 	dns_gss_ctx_id_t gss_ctx = NULL;
 
 	/*
@@ -272,7 +272,6 @@ process_gsstkey(dns_message_t *msg, dns_name_t *name, dns_rdata_tkey_t *tkeyin,
 		tkeyout->keylen = isc_buffer_usedlength(outtoken);
 		memmove(tkeyout->key, isc_buffer_base(outtoken),
 			isc_buffer_usedlength(outtoken));
-		isc_buffer_free(&outtoken);
 	} else {
 		tkeyout->key = isc_mem_get(tkeyout->mctx, tkeyin->keylen);
 		tkeyout->keylen = tkeyin->keylen;
@@ -299,9 +298,6 @@ failure:
 	}
 	if (dstkey != NULL) {
 		dst_key_free(&dstkey);
-	}
-	if (outtoken != NULL) {
-		isc_buffer_free(&outtoken);
 	}
 
 	tkey_log("process_gsstkey(): %s", isc_result_totext(result));
@@ -520,7 +516,7 @@ buildquery(dns_message_t *msg, const dns_name_t *name, dns_rdata_tkey_t *tkey) {
 	dns_rdataset_t *question = NULL, *tkeyset = NULL;
 	dns_rdatalist_t *tkeylist = NULL;
 	dns_rdata_t *rdata = NULL;
-	isc_buffer_t *dynbuf = NULL;
+	auto_isc_buffer_t *dynbuf = NULL;
 	isc_result_t result;
 	unsigned int len;
 
@@ -535,7 +531,6 @@ buildquery(dns_message_t *msg, const dns_name_t *name, dns_rdata_tkey_t *tkey) {
 				      dns_rdatatype_tkey, tkey, dynbuf);
 	if (result != ISC_R_SUCCESS) {
 		dns_message_puttemprdata(msg, &rdata);
-		isc_buffer_free(&dynbuf);
 		return result;
 	}
 	dns_message_takebuffer(msg, &dynbuf);
