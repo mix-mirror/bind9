@@ -3021,6 +3021,18 @@ writeset(const char *prefix, dns_rdatatype_t type) {
 		if (REVOKE(key->key)) {
 			continue;
 		}
+
+		/*
+		 * Do not add globally no longer supported algorithms.
+		 */
+		switch (dst_key_alg(key->key)) {
+		case DST_ALG_RSASHA1:
+		case DST_ALG_NSEC3RSASHA1:
+			continue;
+		default:
+			break;
+		}
+
 		if (isksk(key)) {
 			have_ksk = true;
 			have_non_ksk = false;
