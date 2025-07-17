@@ -1593,7 +1593,6 @@ dns_adb_destroy(dns_adb_t *adb) {
 
 	isc_stats_detach(&adb->stats);
 	dns_resolver_detach(&adb->res);
-	dns_view_weakdetach(&adb->view);
 	isc_mem_putanddetach(&adb->mctx, adb, sizeof(dns_adb_t));
 }
 
@@ -1620,6 +1619,7 @@ dns_adb_create(isc_mem_t *mem, isc_loopmgr_t *loopmgr, dns_view_t *view,
 		.references = 1,
 		.nloops = nloops,
 		.loopmgr = loopmgr,
+		.view = view,
 		.magic = DNS_ADB_MAGIC,
 	};
 
@@ -1631,7 +1631,6 @@ dns_adb_create(isc_mem_t *mem, isc_loopmgr_t *loopmgr, dns_view_t *view,
 	fprintf(stderr, "dns_adb__init:%s:%s:%d:%p->references = 1\n", __func__,
 		__FILE__, __LINE__ + 1, adb);
 #endif
-	dns_view_weakattach(view, &adb->view);
 	dns_resolver_attach(view->resolver, &adb->res);
 	isc_mem_attach(mem, &adb->mctx);
 

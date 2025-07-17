@@ -82,7 +82,6 @@ ISC_LOOP_TEST_IMPL(filename) {
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	dns_zone_setview(zone, view);
-	dns_view_detach(&view);
 
 	for (size_t i = 0; i < ARRAY_SIZE(tests); i++) {
 		dns_zone_setfile(zone, tests[i].input, NULL,
@@ -110,6 +109,8 @@ ISC_LOOP_TEST_IMPL(filename) {
 	memmove(longname, "example.com", 11);
 	assert_string_equal(dns_zone_getfile(zone), longname);
 
+	dns_view_shutdown(view, false);
+	dns_view_detach(&view);
 	dns_zone_detach(&zone);
 	isc_loopmgr_shutdown(loopmgr);
 }

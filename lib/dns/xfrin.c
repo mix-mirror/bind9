@@ -1250,7 +1250,7 @@ xfrin_create(isc_mem_t *mctx, dns_zone_t *zone, dns_db_t *db, isc_loop_t *loop,
 	isc_loop_attach(loop, &xfr->loop);
 	isc_mem_attach(mctx, &xfr->mctx);
 	dns_zone_iattach(zone, &xfr->zone);
-	dns_view_weakattach(dns_zone_getview(zone), &xfr->view);
+	dns_view_attach(dns_zone_getview(zone), &xfr->view);
 	dns_name_init(&xfr->name);
 
 	__cds_wfcq_init(&xfr->diff_head, &xfr->diff_tail);
@@ -2205,7 +2205,7 @@ xfrin_destroy(dns_xfrin_t *xfr) {
 	}
 
 	if (xfr->view != NULL) {
-		dns_view_weakdetach(&xfr->view);
+		dns_view_detach(&xfr->view);
 	}
 
 	if (xfr->firstsoa_data != NULL) {

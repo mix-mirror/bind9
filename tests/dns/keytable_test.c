@@ -214,6 +214,7 @@ destroy_tables(void) {
 		dns_keytable_detach(&keytable);
 	}
 
+	dns_view_shutdown(view, false);
 	dns_view_detach(&view);
 }
 
@@ -693,11 +694,17 @@ ISC_LOOP_TEST_IMPL(nta) {
 	assert_false(covered);
 	assert_true(issecure);
 
+	/* Clean up */
+	dns_ntatable_shutdown(ntatable);
+	dns_view_shutdown(myview, false);
 	isc_loopmgr_shutdown(loopmgr);
 
-	/* Clean up */
+	synchronize_rcu();
+	rcu_barrier();
+
 	dns_ntatable_detach(&ntatable);
 	dns_keytable_detach(&keytable);
+
 	dns_view_detach(&myview);
 }
 

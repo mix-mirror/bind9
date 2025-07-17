@@ -425,11 +425,12 @@ const char *empty_zones[] = {
 	"113.0.203.IN-ADDR.ARPA",	/* TEST NET 3 */
 	"255.255.255.255.IN-ADDR.ARPA", /* BROADCAST */
 
+	/* clang-format off */
 	/* Local IPv6 Unicast Addresses */
-	"0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.IP6."
-	"ARPA",
-	"1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.IP6."
-	"ARPA",
+	"0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.IP6.ARPA",
+	"1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.IP6.ARPA",
+	/* clang-format on */
+
 	/* LOCALLY ASSIGNED LOCAL ADDRESS SCOPE */
 	"D.F.IP6.ARPA", "8.E.F.IP6.ARPA", /* LINK LOCAL */
 	"9.E.F.IP6.ARPA",		  /* LINK LOCAL */
@@ -2529,7 +2530,7 @@ cleanup:
 	}
 	dns_catz_entry_detach(cz->origin, &cz->entry);
 	dns_catz_zone_detach(&cz->origin);
-	dns_view_weakdetach(&cz->view);
+	dns_view_detach(&cz->view);
 	isc_mem_putanddetach(&cz->mctx, cz, sizeof(*cz));
 }
 
@@ -2610,7 +2611,7 @@ cleanup:
 	}
 	dns_catz_entry_detach(cz->origin, &cz->entry);
 	dns_catz_zone_detach(&cz->origin);
-	dns_view_weakdetach(&cz->view);
+	dns_view_detach(&cz->view);
 	isc_mem_putanddetach(&cz->mctx, cz, sizeof(*cz));
 }
 
@@ -2642,7 +2643,7 @@ catz_run(dns_catz_entry_t *entry, dns_catz_zone_t *origin, dns_view_t *view,
 
 	dns_catz_entry_attach(entry, &cz->entry);
 	dns_catz_zone_attach(origin, &cz->origin);
-	dns_view_weakattach(view, &cz->view);
+	dns_view_attach(view, &cz->view);
 
 	isc_async_run(named_g_mainloop, action, cz);
 
@@ -9491,7 +9492,7 @@ shutdown_server(void *arg) {
 	ISC_LIST_FOREACH (server->viewlist, view, link) {
 		view_next = ISC_LIST_NEXT(view, link);
 		ISC_LIST_UNLINK(server->viewlist, view, link);
-		dns_view_flushonshutdown(view, flush);
+		dns_view_shutdown(view, flush);
 		dns_view_detach(&view);
 	}
 

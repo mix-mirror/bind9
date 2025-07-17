@@ -9808,7 +9808,7 @@ dns_resolver__destroy(dns_resolver_t *res) {
 		isc_mem_put(res->mctx, a, sizeof(*a));
 	}
 
-	dns_view_weakdetach(&res->view);
+	res->view = NULL;
 
 	for (size_t i = 0; i < res->nloops; i++) {
 		dns_message_destroypools(&res->namepools[i], &res->rdspools[i]);
@@ -9867,7 +9867,9 @@ dns_resolver_create(dns_view_t *view, isc_loopmgr_t *loopmgr, isc_nm_t *nm,
 
 	res = isc_mem_get(view->mctx, sizeof(*res));
 	*res = (dns_resolver_t){
+		.mctx = isc_mem_ref(view->mctx),
 		.loopmgr = loopmgr,
+		.view = view,
 		.rdclass = view->rdclass,
 		.nm = nm,
 		.options = options,
@@ -9887,9 +9889,6 @@ dns_resolver_create(dns_view_t *view, isc_loopmgr_t *loopmgr, isc_nm_t *nm,
 	};
 
 	RTRACE("create");
-
-	dns_view_weakattach(view, &res->view);
-	isc_mem_attach(view->mctx, &res->mctx);
 
 	res->quotaresp[dns_quotatype_zone] = DNS_R_DROP;
 	res->quotaresp[dns_quotatype_server] = DNS_R_SERVFAIL;

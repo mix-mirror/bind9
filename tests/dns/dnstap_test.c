@@ -262,7 +262,6 @@ ISC_LOOP_TEST_IMPL(dns_dt_send) {
 
 	dns_dt_detach(&view->dtenv);
 	dns_dt_detach(&dtenv);
-	dns_view_detach(&view);
 
 	result = dns_dt_open(TAPFILE, dns_dtmode_file, mctx, &handle);
 	assert_int_equal(result, ISC_R_SUCCESS);
@@ -297,6 +296,9 @@ ISC_LOOP_TEST_IMPL(dns_dt_send) {
 	if (handle != NULL) {
 		dns_dt_close(&handle);
 	}
+
+	dns_view_shutdown(view, false);
+	dns_view_detach(&view);
 
 	isc_loopmgr_shutdown(loopmgr);
 }

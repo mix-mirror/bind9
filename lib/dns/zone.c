@@ -1659,15 +1659,15 @@ dns_zone_setview_helper(dns_zone_t *zone, dns_view_t *view) {
 	char namebuf[1024];
 
 	if (zone->prev_view == NULL && zone->view != NULL) {
-		dns_view_weakattach(zone->view, &zone->prev_view);
+		zone->prev_view = zone->view;
 	}
 
 	INSIST(zone != zone->raw);
 	if (zone->view != NULL) {
 		dns_view_sfd_del(zone->view, &zone->origin);
-		dns_view_weakdetach(&zone->view);
+		zone->view = NULL;
 	}
-	dns_view_weakattach(view, &zone->view);
+	zone->view = view;
 	dns_view_sfd_add(view, &zone->origin);
 
 	if (zone->strviewname != NULL) {
@@ -1709,7 +1709,7 @@ dns_zone_setviewcommit(dns_zone_t *zone) {
 
 	LOCK_ZONE(zone);
 	if (zone->prev_view != NULL) {
-		dns_view_weakdetach(&zone->prev_view);
+		zone->prev_view = NULL;
 	}
 	if (inline_secure(zone)) {
 		dns_zone_setviewcommit(zone->raw);
@@ -1724,7 +1724,7 @@ dns_zone_setviewrevert(dns_zone_t *zone) {
 	LOCK_ZONE(zone);
 	if (zone->prev_view != NULL) {
 		dns_zone_setview_helper(zone, zone->prev_view);
-		dns_view_weakdetach(&zone->prev_view);
+		zone->prev_view = NULL;
 	}
 	if (zone->catzs != NULL) {
 		zone_catz_enable(zone, zone->catzs);
@@ -15182,7 +15182,6 @@ zone_shutdown(void *arg) {
 	dns_zone_t *zone = (dns_zone_t *)arg;
 	bool free_needed, linked = false;
 	dns_zone_t *raw = NULL, *secure = NULL;
-	dns_view_t *view = NULL, *prev_view = NULL;
 
 	REQUIRE(DNS_ZONE_VALID(zone));
 	INSIST(isc_refcount_current(&zone->references) == 0);
@@ -15229,13 +15228,9 @@ zone_shutdown(void *arg) {
 	INSIST(zone != zone->raw);
 
 	/*
-	 * Detach the views early, we don't need them anymore.  However, we need
-	 * to detach them outside of the zone lock to break the lock loop
-	 * between view, adb and zone locks.
+	 * Detach the views early, we don't need them anymore.
 	 */
-	view = zone->view;
 	zone->view = NULL;
-	prev_view = zone->prev_view;
 	zone->prev_view = NULL;
 
 	if (linked) {
@@ -15290,13 +15285,6 @@ zone_shutdown(void *arg) {
 		zone->secure = NULL;
 	}
 	UNLOCK_ZONE(zone);
-
-	if (view != NULL) {
-		dns_view_weakdetach(&view);
-	}
-	if (prev_view != NULL) {
-		dns_view_weakdetach(&prev_view);
-	}
 
 	if (raw != NULL) {
 		dns_zone_detach(&raw);
