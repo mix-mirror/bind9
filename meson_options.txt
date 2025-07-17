@@ -188,3 +188,11 @@ option(
     value: 'disabled',
     description: 'enable the memory leak detection in external libraries (libxml2, libuv, OpenSSL)',
 )
+
+option(
+    'named-lto',
+    type: 'combo',
+    choices: ['off', 'yes', 'thin'],
+    value: 'yes',
+    description: 'Enable Link Time Optimization for named.',
+)

@@ -64,6 +64,7 @@ leak_opt = get_option('leak-detection')
 line_opt = get_option('line')
 lmdb_opt = get_option('lmdb')
 locktype_opt = get_option('locktype')
+named_lto_opt = get_option('named-lto')
 stats_json_opt = get_option('stats-json')
 stats_xml_opt = get_option('stats-xml')
 tracing_opt = get_option('tracing')
@@ -1157,6 +1158,147 @@ libisccfg_dep = declare_dependency(
     include_directories: isccfg_inc,
 )
 
+static_lto_c_args = []
+static_lto_link_args = []
+
+if named_lto_opt == 'thin'
+    if cc.get_id() != 'clang'
+        error('ThinLTO (named-lto=thin) requires Clang compiler')
+    endif
+    static_lto_c_args = ['-flto=thin']
+    static_lto_link_args = ['-flto=thin', '-fuse-ld=lld']
+elif named_lto_opt == 'yes'
+    static_lto_c_args = ['-flto']
+    static_lto_link_args = ['-flto']
+endif
+
+libisc_static = static_library(
+    'isc-static',
+    isc_srcconf.sources(),
+    c_args: static_lto_c_args,
+    link_args: static_lto_c_args,
+    objects: isc_probe_objects,
+    implicit_include_directories: false,
+    include_directories: [isc_inc, isc_inc_p],
+    dependencies: isc_srcconf.dependencies(),
+)
+
+libisc_static_dep = declare_dependency(
+    link_with: libisc_static,
+    include_directories: isc_inc,
+    dependencies: [
+        openssl_dep,
+        thread_dep,
+        urcu_dep,
+        uv_dep,
+
+        jemalloc_dep,
+    ],
+)
+
+libdns_static = static_library(
+    'dns-static',
+    dns_srcconf.sources(),
+    c_args: static_lto_c_args,
+    link_args: static_lto_c_args,
+    include_directories: dns_inc,
+    objects: dns_probe_objects,
+    dependencies: [
+        libisc_static_dep,
+
+        openssl_dep,
+        urcu_dep,
+
+        json_c_dep,
+        lmdb_dep,
+        xml2_dep,
+
+        dns_srcconf.dependencies(),
+    ],
+)
+
+libdns_static_dep = declare_dependency(
+    link_with: libdns_static,
+    include_directories: dns_inc,
+    sources: dns_gen_headers,
+    dependencies: [
+        libisc_static_dep,
+    ],
+)
+
+libns_static = static_library(
+    'ns-static',
+    ns_srcconf.sources(),
+    c_args: static_lto_c_args,
+    link_args: static_lto_c_args,
+    objects: ns_probe_objects,
+    implicit_include_directories: false,
+    include_directories: ns_inc,
+    dependencies: [
+        libisc_static_dep,
+        libdns_static_dep,
+    ],
+)
+
+libns_static_dep = declare_dependency(
+    link_with: libns_static,
+    include_directories: ns_inc,
+    dependencies: [
+        libisc_static_dep,
+        libdns_static_dep,
+    ],
+)
+
+libisccc_static = static_library(
+    'isccc-static',
+    isccc_srcconf.sources(),
+    c_args: static_lto_c_args,
+    link_args: static_lto_c_args,
+    implicit_include_directories: false,
+    include_directories: isccc_inc,
+    dependencies: [
+        libdns_static_dep,
+        libisc_static_dep,
+    ],
+)
+
+libisccc_static_dep = declare_dependency(
+    link_with: libisccc_static,
+    include_directories: isccc_inc,
+    dependencies: [
+        libdns_static_dep,
+        libisc_static_dep,
+    ],
+)
+
+libisccfg_static = static_library(
+    'isccfg-static',
+    isccfg_srcconf.sources(),
+    c_args: static_lto_c_args,
+    link_args: static_lto_c_args,
+    implicit_include_directories: false,
+    include_directories: isccfg_inc,
+    dependencies: [
+        libdns_static_dep,
+        libisc_static_dep,
+        libns_static_dep,
+
+        dnstap_dep,
+    ],
+)
+
+libisccfg_static_dep = declare_dependency(
+    link_with: libisccfg_static,
+    include_directories: isccfg_inc,
+    dependencies: [
+        libdns_static_dep,
+        libisc_static_dep,
+        libns_static_dep,
+
+        dnstap_dep,
+    ],
+)
+
 named_srcconf = named_srcset.apply(config, strict: false)
 
 executable(
@@ -1458,22 +1600,48 @@ executable(
 
 )
 
+named_c_args = []
+named_link_args = []
+named_deps = []
+
+if named_lto_opt == 'off'
+    named_deps = [
+        libdns_dep,
+        libisc_dep,
+        libisccc_dep,
+        libisccfg_dep,
+        libns_dep,
+    ]
+else
+    named_deps = [
+        libdns_static_dep,
+        libisc_static_dep,
+        libisccc_static_dep,
+        libisccfg_static_dep,
+        libns_static_dep,
+    ]
+    
+    if named_lto_opt == 'thin'
+        named_c_args += ['-flto=thin']
+        named_link_args += ['-flto=thin', '-fuse-ld=lld']
+    elif named_lto_opt == 'yes'
+        named_c_args += ['-flto']
+        named_link_args += ['-flto']
+    endif
+endif
+
 executable(
     'named',
     named_srcconf.sources(),
+    c_args: named_c_args,
+    link_args: named_link_args,
     export_dynamic: true,
     implicit_include_directories: true,
     include_directories: named_inc_p,
     install: true,
     install_dir: sbindir,
     sources: bind_keys,
-    dependencies: [
-        libdns_dep,
-        libisc_dep,
-        libisccc_dep,
-        libisccfg_dep,
-        libns_dep,
-
+    dependencies: named_deps + [
         openssl_dep,
 
         cap_dep,
