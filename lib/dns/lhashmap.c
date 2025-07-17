@@ -23,7 +23,7 @@ inc_and_saturate(size_t hash) {
 
 bool
 isc_lhashmap_entry_is_empty(isc_lhashmap_entry_t *entry) {
-	return entry->hash == 0ul;
+	return entry == NULL || entry->hash == 0ul;
 }
 
 void
@@ -56,22 +56,14 @@ isc_lhashmap_init(size_t size, size_t elem_size, char *array,
 
 	isc_lhashmap_t map;
 
-	// Calculate actual size to satisfy load factor > 1.3
-	size_t actual_size = ceil(size / 0.7);
-
-	// Ensure size is at least the original size and doesn't exceed max
-	if (actual_size < size) {
-		actual_size = size;
-	}
-
-	map.size = actual_size;
+	map.size = size;
 	map.elem_size = elem_size;
 	map.array = array;
 	map.hash_func = hash_func;
 	map.match_func = match_func;
 
 	// Zero out the entire hashmap
-	memset(array, 0, actual_size * (sizeof(size_t) + elem_size));
+	memset(array, 0, size * (sizeof(size_t) + elem_size));
 
 	return map;
 }

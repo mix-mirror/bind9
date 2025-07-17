@@ -59,24 +59,31 @@ static isc_lhashmap_t init_bad_hash(size_t size, char buffer[]) {
 static void ensure_exists(const isc_lhashmap_t* map, const char* elem) {
     isc_lhashmap_entry_t* entry_ptr = NULL;
     isc_result_t res = isc_lhashmap_entry(map, (void*) &elem, &entry_ptr);
+    assert_true(res == ISC_R_SUCCESS);
     assert_non_null(entry_ptr);
     assert_true(entry_ptr->hash != 0ul);
 
     char* value = *(char**) isc_lhashmap_entry_get_data(entry_ptr);
 
     assert_non_null(value);
-    assert_true(res == ISC_R_SUCCESS);
     assert_true(strcmp(value, elem) == 0);
+}
 
-    // printf("elem:   %s\n", elem);
-    // printf("value:  %s\n", value);
-    // printf("res:    %s\n", isc_result_totext(res));
-    // printf("strcmp: %s\n", strcmp(value, elem) ? "false" : "true");
+static void ensure_not_found(const isc_lhashmap_t* map, const char* elem) {
+    isc_lhashmap_entry_t* entry_ptr = NULL;
+    isc_result_t res = isc_lhashmap_entry(map, (void*) &elem, &entry_ptr);
+    assert_true(res == ISC_R_SUCCESS);
+    assert_true(isc_lhashmap_entry_is_empty(entry_ptr));
 }
 
 static void put(isc_lhashmap_t* map, const char* elem) {
     isc_result_t res = isc_lhashmap_put(map, (void*) &elem);
     assert_true(res == ISC_R_SUCCESS);
+}
+
+static void put_when_full(isc_lhashmap_t* map, const char* elem) {
+    isc_result_t res = isc_lhashmap_put(map, (void*) &elem);
+    assert_true(res == ISC_R_NOSPACE);
 }
 
 static void check_integrity(isc_lhashmap_t* map, size_t expected_size) {
@@ -174,8 +181,13 @@ enum {
 
 ISC_RUN_TEST_IMPL(dns_lhashmap_cstar) {
     char* keys[1024];
+    char* overflow_keys[128];
+
     for (size_t idx = 0; idx < 1024; ++idx) {
 	keys[idx] = generate_random_string(63, (uint16_t) idx);
+    }
+    for (size_t idx = 0; idx < 128; ++idx) {
+	overflow_keys[idx] = generate_random_string(63, (uint16_t) (idx + 1024));
     }
     
     char buffer[BUFFER_SIZE_BYTES];
@@ -188,8 +200,16 @@ ISC_RUN_TEST_IMPL(dns_lhashmap_cstar) {
 	for (size_t prev = 0; prev <= idx; ++prev) {
 	    ensure_exists(&ht, keys[prev]);
 	}
+	for (size_t idx_2 = 0; idx_2 < ARRAY_SIZE(overflow_keys); ++idx_2) {
+	    ensure_not_found(&ht, overflow_keys[idx_2]);
+	}
 
 	check_integrity(&ht, idx + 1ull);
+    }
+    
+    for (size_t idx = 0; idx < 128; ++idx) {
+	put_when_full(&ht, overflow_keys[idx]);
+	ensure_not_found(&ht, overflow_keys[idx]);
     }
 
     for (size_t idx = 0; idx < 1024; ++idx) {
@@ -199,8 +219,13 @@ ISC_RUN_TEST_IMPL(dns_lhashmap_cstar) {
 
 ISC_RUN_TEST_IMPL(dns_lhashmap_cstar_noseed) {
     char* keys[1024];
+    char* overflow_keys[128];
+
     for (size_t idx = 0; idx < 1024; ++idx) {
 	keys[idx] = generate_random_string_with_common_suffix((uint16_t) idx);
+    }
+    for (size_t idx = 0; idx < 128; ++idx) {
+	overflow_keys[idx] = generate_random_string_with_common_suffix((uint16_t) (idx + 1024));
     }
 
     char buffer[BUFFER_SIZE_BYTES];
@@ -215,8 +240,16 @@ ISC_RUN_TEST_IMPL(dns_lhashmap_cstar_noseed) {
 	for (size_t prev = 0; prev <= idx; ++prev) {
 	    ensure_exists(&ht, keys[prev]);
 	}
+	for (size_t idx_2 = 0; idx_2 < ARRAY_SIZE(overflow_keys); ++idx_2) {
+	    ensure_not_found(&ht, overflow_keys[idx_2]);
+	}
 
 	check_integrity(&ht, idx + 1ull);
+    }
+
+    for (size_t idx = 0; idx < 128; ++idx) {
+	put_when_full(&ht, overflow_keys[idx]);
+	ensure_not_found(&ht, overflow_keys[idx]);
     }
 
     for (size_t idx = 0; idx < 1024; ++idx) {

@@ -1071,6 +1071,12 @@ update(dns_section_t section, dns_rdataclass_t rdclass) {
 	return false;
 }
 
+static size_t
+ensure_load_factor(size_t size) {
+	return 1 + size + size / 4 + size / 16;
+}
+
+
 static isc_result_t
 getsection(isc_buffer_t *source, dns_message_t *msg, dns_decompress_t dctx,
 	   dns_section_t sectionid, unsigned int options) {
@@ -1098,14 +1104,16 @@ getsection(isc_buffer_t *source, dns_message_t *msg, dns_decompress_t dctx,
 	if (section_count == 0) {
 		return ISC_R_SUCCESS;
 	} else if (section_count >= 2) {
+		size_t hashmap_size = ensure_load_factor(section_count);
+
 		char *lhashmap_buffer = thread_local_name_buffer();
 		name_map = isc_lhashmap_init(
-			section_count, sizeof(dns_name_t *), lhashmap_buffer,
+			hashmap_size, sizeof(dns_name_t *), lhashmap_buffer,
 			name_hash, name_match);
 
 		char *lhashmap_rd_buffer = thread_local_rd_buffer();
 		name_rdtype_map = isc_lhashmap_init(
-			section_count, sizeof(name_and_rdtype_t),
+			hashmap_size, sizeof(name_and_rdtype_t),
 			lhashmap_rd_buffer, name_and_rdtype_hash,
 			name_and_rdtype_match);
 	}
