@@ -20,7 +20,7 @@ project(
         'b_pch=false',
         'b_pie=true',
         'c_std=gnu11',
-        'default_library=shared',
+        'default_library=static',
         'localstatedir=/var',
         'strip=false',
         'warning_level=2',
@@ -956,7 +956,7 @@ subdir('util')
 
 isc_srcconf = isc_srcset.apply(config, strict: false)
 
-libisc = library(
+libisc = static_library(
     'isc',
     isc_srcconf.sources(),
     objects: isc_probe_objects,
@@ -983,7 +983,7 @@ libisc_dep = declare_dependency(
 # libdns
 dns_srcconf = dns_srcset.apply(config, strict: false)
 
-libdns = library(
+libdns = static_library(
     'dns',
     dns_srcconf.sources(),
     include_directories: dns_inc,
@@ -1017,7 +1017,7 @@ libdns_dep = declare_dependency(
 
 ns_srcconf = ns_srcset.apply(config, strict: false)
 
-libns = library(
+libns = static_library(
     'ns',
     ns_srcconf.sources(),
     objects: ns_probe_objects,
@@ -1043,7 +1043,7 @@ libns_dep = declare_dependency(
 # libisccc
 isccc_srcconf = isccc_srcset.apply(config, strict: false)
 
-libisccc = library(
+libisccc = static_library(
     'isccc',
     isccc_srcconf.sources(),
     implicit_include_directories: false,
@@ -1064,7 +1064,7 @@ libisccc_dep = declare_dependency(
 # libisccfg
 isccfg_srcconf = isccfg_srcset.apply(config, strict: false)
 
-libisccfg = library(
+libisccfg = static_library(
     'isccfg',
     isccfg_srcconf.sources(),
     implicit_include_directories: false,
@@ -1541,40 +1541,7 @@ install_symlink(
     install_dir: sbindir,
 )
 
-shared_library(
-    'filter-a',
-    filter_a_src,
-    implicit_include_directories: false,
-    install: true,
-    install_rpath: libdir,
-    install_dir: libdir / 'bind',
-    name_prefix: '',
-    dependencies: [
-        libdns_dep,
-        libisc_dep,
-        libisccfg_dep,
-        libns_dep,
-    ],
-)
-
-shared_library(
-    'filter-aaaa',
-    filter_aaaa_src,
-    implicit_include_directories: false,
-    install: true,
-    install_rpath: libdir,
-    install_dir: libdir / 'bind',
-    name_prefix: '',
-    dependencies: [
-        libdns_dep,
-        libisc_dep,
-        libisccfg_dep,
-        libns_dep,
-    ],
-)
-
 subdir('doc')
-subdir('tests')
 
 foreach name, sources : fuzz_binaries
     executable(
