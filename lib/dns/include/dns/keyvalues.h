@@ -15,8 +15,6 @@
 
 /*! \file dns/keyvalues.h */
 
-#include <dns/mayo.h>
-
 /*
  * Flags field of the DNSKEY rdata. Also used by KEY, CDNSKEY, RKEY,
  * and KEYDATA, which share DNSKEY's wire format.
@@ -53,7 +51,7 @@ enum {
 	DNS_KEYALG_ECDSA384 = 14,
 	DNS_KEYALG_ED25519 = 15,
 	DNS_KEYALG_ED448 = 16,
-	DNS_KEYALG_MAYO = 126,
+	DNS_KEYALG_MTL = 126,
 	DNS_KEYALG_INDIRECT = 252,
 	DNS_KEYALG_PRIVATEDNS = 253,
 	DNS_KEYALG_PRIVATEOID = 254, /*%< Key begins with OID giving alg */
@@ -79,7 +77,3 @@ enum {
 
 #define DNS_KEY_ED448SIZE 57
 #define DNS_SIG_ED448SIZE 114
-
-#define DNS_SIG_MAYOSIZE PARAM_sig_bytes(0)
-#define DNS_KEY_MAYOSIZE PARAM_cpk_bytes(0)
-#define DNS_SEC_MAYOSIZE PARAM_csk_bytes(0)

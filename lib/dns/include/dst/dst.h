@@ -93,7 +93,7 @@ typedef enum dst_algorithm {
 	DST_ALG_ECDSA384 = 14,
 	DST_ALG_ED25519 = 15,
 	DST_ALG_ED448 = 16,
-	DST_ALG_MAYO = 126, /* FIXME: should be experimental */
+	DST_ALG_MTL = 126, /* FIXME: should be experimental */
 
 	/*
 	 * Do not renumber HMAC algorithms as they are used externally to named

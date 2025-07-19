@@ -598,33 +598,15 @@ null_dep = dependency('', required: false)
 
 m_dep = cc.find_library('m', required: false)
 
-## Threads
-thread_dep = dependency('threads')
-
-foreach fn : [
-    'pthread_attr_getstacksize',
-    'pthread_attr_setstacksize',
-    'pthread_barrier_init',
-    'pthread_set_name_np',
-    'pthread_setname_np',
-    'pthread_spin_init',
-    'pthread_yield',
-    'pthread_yield_np',
+## MTLLIB
+mtllib_dep = [
+    dependency('mtllib'),
 ]
-    if cc.has_function(
-        fn,
-        prefix: '#include <pthread.h>',
-        args: sys_defines,
-        dependencies: thread_dep,
-    )
-        config.set('HAVE_@0@'.format(fn.to_upper()), 1)
-    endif
-endforeach
 
 ## OpenSSL
 openssl_dep = [
-    dependency('libcrypto', version: '>=1.1.1'),
-    dependency('libssl', version: '>=1.1.1'),
+    dependency('libcrypto', version: '>=3.1.0'),
+    dependency('libssl', version: '>=3.1.0'),
 ]
 
 # OpenSSL-forks usually set their own version number which can be greater than 3.0.0.
@@ -1260,6 +1242,8 @@ libdns = library(
 
         openssl_dep,
         urcu_dep,
+
+        mtllib_dep,
 
         json_c_dep,
         lmdb_dep,
