@@ -160,12 +160,15 @@ validator_log(void *val, int level, const char *fmt, ...)
 
 static void
 validator_logcreate(dns_validator_t *val, dns_name_t *name,
-		    dns_rdatatype_t type, const char *caller,
-		    const char *operation);
+		    dns_rdatatype_t type, const char *func, const char *file,
+		    const unsigned int line, const char *operation);
 
+#define create_fetch(val, name, type, callback) \
+	create__fetch(val, name, type, callback, __func__, __FILE__, __LINE__)
 static isc_result_t
-create_fetch(dns_validator_t *val, dns_name_t *name, dns_rdatatype_t type,
-	     isc_job_cb callback, const char *caller);
+create__fetch(dns_validator_t *val, dns_name_t *name, dns_rdatatype_t type,
+	      isc_job_cb callback, const char *func, const char *file,
+	      const unsigned int line);
 
 /*%
  * Ensure the validator's rdatasets are marked as expired.
@@ -652,8 +655,7 @@ validator_callback_dnskey(void *arg) {
 			expire_rdatasets(val);
 			result = create_fetch(val, &val->siginfo->signer,
 					      dns_rdatatype_dnskey,
-					      fetch_callback_dnskey,
-					      "validator_callback_dnskey");
+					      fetch_callback_dnskey);
 			if (result == ISC_R_SUCCESS) {
 				result = DNS_R_WAIT;
 			}
@@ -714,8 +716,7 @@ validator_callback_ds(void *arg) {
 		if (result != DNS_R_BROKENCHAIN) {
 			expire_rdatasets(val);
 			result = create_fetch(val, val->name, dns_rdatatype_ds,
-					      fetch_callback_ds,
-					      "validator_callback_ds");
+					      fetch_callback_ds);
 			if (result == ISC_R_SUCCESS) {
 				result = DNS_R_WAIT;
 			}
@@ -888,14 +889,13 @@ cleanup:
 static isc_result_t
 view_find(dns_validator_t *val, dns_name_t *name, dns_rdatatype_t type) {
 	dns_fixedname_t fixedname;
-	dns_name_t *foundname;
+	dns_name_t *foundname = dns_fixedname_initname(&fixedname);
+	;
 	isc_result_t result;
-	unsigned int options;
+	unsigned int options = DNS_DBFIND_PENDINGOK;
 
 	disassociate_rdatasets(val);
 
-	options = DNS_DBFIND_PENDINGOK;
-	foundname = dns_fixedname_initname(&fixedname);
 	result = dns_view_find(val->view, name, type, 0, options, false, false,
 			       NULL, NULL, foundname, &val->frdataset,
 			       &val->fsigrdataset);
@@ -952,8 +952,9 @@ check_deadlock(dns_validator_t *val, dns_name_t *name, dns_rdatatype_t type,
  * Start a fetch for the requested name and type.
  */
 static isc_result_t
-create_fetch(dns_validator_t *val, dns_name_t *name, dns_rdatatype_t type,
-	     isc_job_cb callback, const char *caller) {
+create__fetch(dns_validator_t *val, dns_name_t *name, dns_rdatatype_t type,
+	      isc_job_cb callback, const char *func, const char *file,
+	      const unsigned int line) {
 	unsigned int fopts = 0;
 	isc_result_t result;
 
@@ -973,7 +974,7 @@ create_fetch(dns_validator_t *val, dns_name_t *name, dns_rdatatype_t type,
 		fopts |= DNS_FETCHOPT_NONTA;
 	}
 
-	validator_logcreate(val, name, type, caller, "fetch");
+	validator_logcreate(val, name, type, func, file, line, "fetch");
 
 	dns_validator_ref(val);
 	result = dns_resolver_createfetch(
@@ -990,10 +991,14 @@ create_fetch(dns_validator_t *val, dns_name_t *name, dns_rdatatype_t type,
 /*%
  * Start a subvalidation process.
  */
+#define create_validator(val, name, type, rdataset, sigrdataset, cb)  \
+	create__validator(val, name, type, rdataset, sigrdataset, cb, \
+			  __func__, __FILE__, __LINE__)
 static isc_result_t
-create_validator(dns_validator_t *val, dns_name_t *name, dns_rdatatype_t type,
-		 dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset,
-		 isc_job_cb cb, const char *caller) {
+create__validator(dns_validator_t *val, dns_name_t *name, dns_rdatatype_t type,
+		  dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset,
+		  isc_job_cb cb, const char *func, const char *file,
+		  const unsigned int line) {
 	isc_result_t result;
 	unsigned int vopts = 0;
 	dns_rdataset_t *sig = NULL;
@@ -1012,7 +1017,7 @@ create_validator(dns_validator_t *val, dns_name_t *name, dns_rdatatype_t type,
 	vopts |= (val->options &
 		  (DNS_VALIDATOR_NOCDFLAG | DNS_VALIDATOR_NONTA));
 
-	validator_logcreate(val, name, type, caller, "validator");
+	validator_logcreate(val, name, type, func, file, line, "validator");
 	result = dns_validator_create(
 		val->view, name, type, rdataset, sig, NULL, vopts, val->loop,
 		cb, val, val->nvalidations, val->nfails, val->qc, val->gqc,
@@ -1169,7 +1174,7 @@ seek_dnskey(dns_validator_t *val) {
 			result = create_validator(
 				val, &siginfo->signer, dns_rdatatype_dnskey,
 				&val->frdataset, &val->fsigrdataset,
-				validator_callback_dnskey, "seek_dnskey");
+				validator_callback_dnskey);
 			if (result != ISC_R_SUCCESS) {
 				return result;
 			}
@@ -1211,7 +1216,7 @@ seek_dnskey(dns_validator_t *val) {
 		 */
 		result = create_fetch(val, &siginfo->signer,
 				      dns_rdatatype_dnskey,
-				      fetch_callback_dnskey, "seek_dnskey");
+				      fetch_callback_dnskey);
 		if (result != ISC_R_SUCCESS) {
 			return result;
 		}
@@ -1939,8 +1944,7 @@ get_dsset(dns_validator_t *val, dns_name_t *tname, isc_result_t *resp) {
 			 */
 			result = create_validator(
 				val, tname, dns_rdatatype_ds, &val->frdataset,
-				&val->fsigrdataset, validator_callback_ds,
-				"get_dsset");
+				&val->fsigrdataset, validator_callback_ds);
 			*resp = DNS_R_WAIT;
 			if (result != ISC_R_SUCCESS) {
 				*resp = result;
@@ -1954,7 +1958,7 @@ get_dsset(dns_validator_t *val, dns_name_t *tname, isc_result_t *resp) {
 		 * We don't have the DS.  Find it.
 		 */
 		result = create_fetch(val, tname, dns_rdatatype_ds,
-				      fetch_callback_ds, "validate_dnskey");
+				      fetch_callback_ds);
 		*resp = DNS_R_WAIT;
 		if (result != ISC_R_SUCCESS) {
 			*resp = result;
@@ -2746,8 +2750,7 @@ validate_neg_rrset(dns_validator_t *val, dns_name_t *name,
 
 	val->nxset = rdataset;
 	result = create_validator(val, name, rdataset->type, rdataset,
-				  sigrdataset, validator_callback_nsec,
-				  "validate_neg_rrset");
+				  sigrdataset, validator_callback_nsec);
 	if (result != ISC_R_SUCCESS) {
 		return result;
 	}
@@ -3181,8 +3184,7 @@ seek_ds(dns_validator_t *val, isc_result_t *resp) {
 					result = create_fetch(
 						val, tname,
 						dns_rdatatype_dnskey,
-						fetch_callback_dnskey,
-						"seek_ds");
+						fetch_callback_dnskey);
 					if (result != ISC_R_SUCCESS) {
 						*resp = result;
 					}
@@ -3212,7 +3214,7 @@ seek_ds(dns_validator_t *val, isc_result_t *resp) {
 		 */
 		result = create_validator(val, tname, dns_rdatatype_ds,
 					  &val->frdataset, &val->fsigrdataset,
-					  validator_callback_ds, "seek_ds");
+					  validator_callback_ds);
 		*resp = DNS_R_WAIT;
 		if (result != ISC_R_SUCCESS) {
 			*resp = result;
@@ -3226,7 +3228,7 @@ seek_ds(dns_validator_t *val, isc_result_t *resp) {
 		 */
 		*resp = DNS_R_WAIT;
 		result = create_fetch(val, tname, dns_rdatatype_ds,
-				      fetch_callback_ds, "seek_ds");
+				      fetch_callback_ds);
 		if (result != ISC_R_SUCCESS) {
 			*resp = result;
 		}
@@ -3246,8 +3248,7 @@ seek_ds(dns_validator_t *val, isc_result_t *resp) {
 		{
 			result = create_validator(
 				val, tname, dns_rdatatype_ds, &val->frdataset,
-				&val->fsigrdataset, validator_callback_ds,
-				"seek_ds");
+				&val->fsigrdataset, validator_callback_ds);
 			*resp = DNS_R_WAIT;
 			if (result != ISC_R_SUCCESS) {
 				*resp = result;
@@ -3316,8 +3317,7 @@ seek_ds(dns_validator_t *val, isc_result_t *resp) {
 			*resp = DNS_R_WAIT;
 			result = create_validator(
 				val, tname, dns_rdatatype_ds, &val->frdataset,
-				&val->fsigrdataset, validator_callback_ds,
-				"seek_ds");
+				&val->fsigrdataset, validator_callback_ds);
 			if (result != ISC_R_SUCCESS) {
 				*resp = result;
 			}
@@ -3346,7 +3346,7 @@ seek_ds(dns_validator_t *val, isc_result_t *resp) {
 			result = create_validator(
 				val, tname, dns_rdatatype_cname,
 				&val->frdataset, &val->fsigrdataset,
-				validator_callback_cname, "seek_ds (cname)");
+				validator_callback_cname);
 			*resp = DNS_R_WAIT;
 			if (result != ISC_R_SUCCESS) {
 				*resp = result;
@@ -3469,8 +3469,7 @@ proveunsecure(dns_validator_t *val, bool have_ds, bool have_dnskey,
 					result = create_fetch(
 						val, fname,
 						dns_rdatatype_dnskey,
-						fetch_callback_dnskey,
-						"seek_ds");
+						fetch_callback_dnskey);
 					if (result == ISC_R_SUCCESS) {
 						result = DNS_R_WAIT;
 					}
@@ -3885,15 +3884,15 @@ validator_log(void *val, int level, const char *fmt, ...) {
 
 static void
 validator_logcreate(dns_validator_t *val, dns_name_t *name,
-		    dns_rdatatype_t type, const char *caller,
-		    const char *operation) {
+		    dns_rdatatype_t type, const char *func, const char *file,
+		    const unsigned int line, const char *operation) {
 	char namestr[DNS_NAME_FORMATSIZE];
 	char typestr[DNS_RDATATYPE_FORMATSIZE];
 
 	dns_name_format(name, namestr, sizeof(namestr));
 	dns_rdatatype_format(type, typestr, sizeof(typestr));
-	validator_log(val, ISC_LOG_DEBUG(9), "%s: creating %s for %s %s",
-		      caller, operation, namestr, typestr);
+	validator_log(val, ISC_LOG_DEBUG(9), "%s:%s:%u: creating %s for %s %s",
+		      func, file, line, operation, namestr, typestr);
 }
 
 static void

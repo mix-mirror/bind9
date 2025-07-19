@@ -519,6 +519,11 @@ null_dep = dependency('', required: false)
 thread_dep = dependency('threads')
 m_dep = cc.find_library('m', required: false)
 
+## MTLLIB
+mtllib_dep = [
+    dependency('mtllib'),
+]
+
 ## OpenSSL
 openssl_dep = [
     dependency('libcrypto', version: '>=1.1.1'),
@@ -995,6 +1000,8 @@ libdns = library(
 
         openssl_dep,
         urcu_dep,
+
+        mtllib_dep,
 
         json_c_dep,
         lmdb_dep,

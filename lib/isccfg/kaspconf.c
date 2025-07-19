@@ -293,7 +293,7 @@ cfg_kaspkey_fromconfig(const cfg_obj_t *config, dns_kasp_t *kasp,
 			case DST_ALG_ECDSA384:
 			case DST_ALG_ED25519:
 			case DST_ALG_ED448:
-			case DNS_KEYALG_MAYO:
+			case DST_ALG_MTL:
 				cfg_obj_log(obj, ISC_LOG_WARNING,
 					    "dnssec-policy: key algorithm %s "
 					    "has predefined length; ignoring "

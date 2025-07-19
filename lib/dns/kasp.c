@@ -25,7 +25,7 @@
 
 #include <dns/kasp.h>
 #include <dns/keyvalues.h>
-#include <dns/mayo.h>
+#include <dns/mtl.h>
 
 #include <dst/dst.h>
 
@@ -458,8 +458,8 @@ dns_kasp_key_size(dns_kasp_key_t *key) {
 	case DST_ALG_ED448:
 		size = 456;
 		break;
-	case DNS_KEYALG_MAYO:
-		size = PARAM_cpk_bytes(0);
+	case DNS_KEYALG_MTL:
+		size = 0 /* FIXME */;
 		break;
 	default:
 		/* unsupported */

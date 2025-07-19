@@ -90,8 +90,7 @@ static struct parse_map map[] = { { TAG_RSA_MODULUS, "Modulus:" },
 				  { TAG_EDDSA_ENGINE, "Engine:" },
 				  { TAG_EDDSA_LABEL, "Label:" },
 
-				  { TAG_MAYO_PUBLICKEY, "PublicKey:" },
-				  { TAG_MAYO_SECRETKEY, "SecretKey:" },
+				  { TAG_MTL_PRIVATEKEY, "PublicKey:" },
 
 				  { TAG_HMACMD5_KEY, "Key:" },
 				  { TAG_HMACMD5_BITS, "Bits:" },
@@ -279,8 +278,8 @@ check_eddsa(const dst_private_t *priv, bool external) {
 }
 
 static int
-check_mayo(const dst_private_t *priv, bool external) {
-	bool have[MAYO_NTAGS] = { 0 };
+check_mtl(const dst_private_t *priv, bool external) {
+	bool have[MTL_NTAGS] = { 0 };
 	unsigned int mask;
 
 	if (external) {
@@ -289,12 +288,13 @@ check_mayo(const dst_private_t *priv, bool external) {
 
 	for (size_t j = 0; j < priv->nelements; j++) {
 		size_t i;
-		for (i = 0; i < MAYO_NTAGS; i++) {
-			if (priv->elements[j].tag == TAG(DST_ALG_MAYO, i)) {
+		for (i = 0; i < MTL_NTAGS; i++) {
+			INSIST(priv->elements[j].tag != 0);
+			if (priv->elements[j].tag == TAG(DST_ALG_MTL, i)) {
 				break;
 			}
 		}
-		if (i == MAYO_NTAGS) {
+		if (i == MTL_NTAGS) {
 			return DST_R_INVALIDPRIVATEKEY;
 		}
 		have[i] = true;
@@ -302,8 +302,7 @@ check_mayo(const dst_private_t *priv, bool external) {
 
 	mask = (1ULL << TAG_SHIFT) - 1;
 
-	if (have[TAG_MAYO_PUBLICKEY & mask] && have[TAG_MAYO_SECRETKEY & mask])
-	{
+	if (have[TAG_MTL_PRIVATEKEY & mask]) {
 		return ISC_R_SUCCESS;
 	}
 
@@ -380,8 +379,8 @@ check_data(const dst_private_t *priv, const unsigned int alg, bool old,
 	case DST_ALG_ED25519:
 	case DST_ALG_ED448:
 		return check_eddsa(priv, external);
-	case DST_ALG_MAYO:
-		return check_mayo(priv, external);
+	case DST_ALG_MTL:
+		return check_mtl(priv, external);
 	case DST_ALG_HMACMD5:
 		return check_hmac_md5(priv, old);
 	case DST_ALG_HMACSHA1:
@@ -716,8 +715,8 @@ dst__privstruct_writefile(const dst_key_t *key, const dst_private_t *priv,
 	case DST_ALG_ED448:
 		fprintf(fp, "(ED448)\n");
 		break;
-	case DST_ALG_MAYO:
-		fprintf(fp, "(MAYO)\n");
+	case DST_ALG_MTL:
+		fprintf(fp, "(MTL)\n");
 		break;
 	case DST_ALG_HMACMD5:
 		fprintf(fp, "(HMAC_MD5)\n");

@@ -46,6 +46,7 @@
 #include <isc/stdtime.h>
 #include <isc/types.h>
 
+#include <dns/mtl.h>
 #include <dns/time.h>
 
 #include <dst/dst.h>
@@ -102,6 +103,7 @@ struct dst_key {
 			uint8_t *pub;
 			uint8_t *priv;
 		} keypair;
+		MTLLIB_CTX *mtl_ctx;
 	} keydata; /*%< pointer to key in crypto pkg fmt */
 
 	isc_stdtime_t times[DST_MAX_TIMES + 1]; /*%< timing metadata */
@@ -207,7 +209,7 @@ void
 dst__gssapi_init(struct dst_func **funcp);
 #endif /* HAVE_GSSAPI*/
 void
-dst__mayo_init(dst_func_t **funcp, unsigned char algorithm);
+dst__mtl_init(dst_func_t **funcp, unsigned char algorithm);
 
 /*%
  * Secure private file handling

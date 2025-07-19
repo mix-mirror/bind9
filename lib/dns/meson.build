@@ -113,6 +113,7 @@ dns_srcset.add(
         'master.c',
         'masterdump.c',
         'message.c',
+        'mtl_link.c',
         'name.c',
         'nametree.c',
         'ncache.c',
