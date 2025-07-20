@@ -330,7 +330,8 @@ dst_context_adddata(dst_context_t *dctx, const isc_region_t *data) {
 }
 
 isc_result_t
-dst_context_sign(dst_context_t *dctx, isc_buffer_t *sig) {
+dst_context_sign(dst_context_t *dctx, isc_buffer_t *sig, bool final,
+		 bool full) {
 	dst_key_t *key;
 
 	REQUIRE(VALID_CTX(dctx));
@@ -349,11 +350,12 @@ dst_context_sign(dst_context_t *dctx, isc_buffer_t *sig) {
 		return DST_R_NOTPRIVATEKEY;
 	}
 
-	return key->func->sign(dctx, sig);
+	return key->func->sign(dctx, sig, final, full);
 }
 
 isc_result_t
-dst_context_verify(dst_context_t *dctx, isc_region_t *sig) {
+dst_context_verify(dst_context_t *dctx, isc_region_t *sig,
+		   const isc_region_t *ladder) {
 	REQUIRE(VALID_CTX(dctx));
 	REQUIRE(sig != NULL);
 
@@ -366,7 +368,7 @@ dst_context_verify(dst_context_t *dctx, isc_region_t *sig) {
 		return DST_R_NOTPUBLICKEY;
 	}
 
-	return dctx->key->func->verify(dctx, sig);
+	return dctx->key->func->verify(dctx, sig, ladder);
 }
 
 isc_result_t
@@ -1322,7 +1324,7 @@ dst_key_buildfilename(const dst_key_t *key, int type, const char *directory,
 }
 
 isc_result_t
-dst_key_sigsize(const dst_key_t *key, unsigned int *n) {
+dst_key_sigsize(const dst_key_t *key, unsigned int *n, bool full) {
 	REQUIRE(VALID_KEY(key));
 	REQUIRE(n != NULL);
 
@@ -1352,7 +1354,11 @@ dst_key_sigsize(const dst_key_t *key, unsigned int *n) {
 		*n = DNS_SIG_ED448SIZE;
 		break;
 	case DST_ALG_MTL:
-		*n = 0 /* FIXME */;
+		if (full) {
+			*n = 8256;
+		} else {
+			*n = 216;
+		}
 		break;
 	case DST_ALG_HMACMD5:
 		*n = isc_md_type_get_size(ISC_MD_MD5);
@@ -1522,7 +1528,7 @@ dst_key_read_public(const char *filename, int type, isc_mem_t *mctx,
 	 */
 
 	/* 1500 should be large enough for any key */
-	isc_lex_create(mctx, 1500, &lex);
+	isc_lex_create(mctx, DST_KEY_MAXTEXTSIZE, &lex);
 
 	memset(specials, 0, sizeof(specials));
 	specials['('] = 1;
@@ -1671,7 +1677,7 @@ dst_key_read_state(const char *filename, isc_mem_t *mctx, dst_key_t **keyp) {
 	isc_result_t ret;
 	unsigned int opt = ISC_LEXOPT_EOL;
 
-	isc_lex_create(mctx, 1500, &lex);
+	isc_lex_create(mctx, DST_KEY_MAXTEXTSIZE, &lex);
 	isc_lex_setcomments(lex, ISC_LEXCOMMENT_DNSMASTERFILE);
 
 	ret = isc_lex_openfile(lex, filename);

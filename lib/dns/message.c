@@ -662,7 +662,7 @@ spacefortsig(dns_tsigkey_t *key, int otherlen) {
 		dns_name_toregion(dns_tsigkey_algorithm(key), &r2);
 	}
 	if (key->key != NULL) {
-		isc_result_t result = dst_key_sigsize(key->key, &x);
+		isc_result_t result = dst_key_sigsize(key->key, &x, true);
 		if (result != ISC_R_SUCCESS) {
 			x = 0;
 		}
@@ -2850,7 +2850,7 @@ dns_message_setsig0key(dns_message_t *msg, dst_key_t *key) {
 	if (key != NULL) {
 		REQUIRE(msg->sig0key == NULL && msg->tsigkey == NULL);
 		dns_name_toregion(dst_key_name(key), &r);
-		result = dst_key_sigsize(key, &x);
+		result = dst_key_sigsize(key, &x, true);
 		if (result != ISC_R_SUCCESS) {
 			msg->sig_reserved = 0;
 			return result;

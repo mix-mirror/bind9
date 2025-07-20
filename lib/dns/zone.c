@@ -7427,7 +7427,7 @@ add_sigs(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name, dns_zone_t *zone,
 		} else {
 			CHECK(dns_dnssec_sign(name, &rdataset, keys[i],
 					      &inception, &expire, mctx,
-					      &buffer, &sig_rdata));
+					      &buffer, &sig_rdata, true, true));
 		}
 
 		/* Update the database and journal with the RRSIG. */
@@ -8032,7 +8032,8 @@ sign_a_node(dns_db_t *db, dns_zone_t *zone, dns_name_t *name,
 						   &rdata));
 		} else {
 			CHECK(dns_dnssec_sign(name, &rdataset, key, &inception,
-					      &expire, mctx, &buffer, &rdata));
+					      &expire, mctx, &buffer, &rdata,
+					      true, true));
 		}
 
 		/* Update the database and journal with the RRSIG. */
@@ -10519,9 +10520,9 @@ revocable(dns_keyfetch_t *kfetch, dns_rdata_keydata_t *keydata) {
 		if (dst_key_alg(dstkey) == algorithm &&
 		    dst_key_rid(dstkey) == sig.keyid)
 		{
-			result = dns_dnssec_verify(keyname, &kfetch->dnskeyset,
-						   dstkey, false, mctx, &sigrr,
-						   dns_fixedname_name(&fixed));
+			result = dns_dnssec_verify(
+				keyname, &kfetch->dnskeyset, dstkey, false,
+				mctx, &sigrr, dns_fixedname_name(&fixed), NULL);
 
 			dnssec_log(kfetch->zone, ISC_LOG_DEBUG(3),
 				   "Confirm revoked DNSKEY is self-signed: %s",
@@ -10699,7 +10700,8 @@ keyfetch_done(void *arg) {
 			}
 
 			result = dns_dnssec_verify(keyname, dnskeys, dstkey,
-						   false, mctx, &sigrr, NULL);
+						   false, mctx, &sigrr, NULL,
+						   NULL);
 			dst_key_free(&dstkey);
 
 			dnssec_log(zone, ISC_LOG_DEBUG(3),

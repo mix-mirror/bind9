@@ -103,7 +103,10 @@ struct dst_key {
 			uint8_t *pub;
 			uint8_t *priv;
 		} keypair;
-		MTLLIB_CTX *mtl_ctx;
+		struct {
+			MTLLIB_CTX *ctx;
+			isc_hashmap_t *hashmap;
+		} mtl;
 	} keydata; /*%< pointer to key in crypto pkg fmt */
 
 	isc_stdtime_t times[DST_MAX_TIMES + 1]; /*%< timing metadata */
@@ -162,8 +165,10 @@ struct dst_func {
 	/*
 	 * Key operations
 	 */
-	isc_result_t (*sign)(dst_context_t *dctx, isc_buffer_t *sig);
-	isc_result_t (*verify)(dst_context_t *dctx, const isc_region_t *sig);
+	isc_result_t (*sign)(dst_context_t *dctx, isc_buffer_t *sig, bool final,
+			     bool full);
+	isc_result_t (*verify)(dst_context_t *dctx, const isc_region_t *sig,
+			       const isc_region_t *ladder);
 	bool (*compare)(const dst_key_t *key1, const dst_key_t *key2);
 	isc_result_t (*generate)(dst_key_t *key, int parms,
 				 void (*callback)(int));

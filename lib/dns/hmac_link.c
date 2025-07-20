@@ -64,12 +64,14 @@
 						const isc_region_t *data) {    \
 		return (hmac_adddata(dctx, data));                             \
 	}                                                                      \
-	static isc_result_t hmac##alg##_sign(dst_context_t *dctx,              \
-					     isc_buffer_t *sig) {              \
+	static isc_result_t hmac##alg##_sign(                                  \
+		dst_context_t *dctx, isc_buffer_t *sig,                        \
+		bool final ISC_ATTR_UNUSED, bool full ISC_ATTR_UNUSED) {       \
 		return (hmac_sign(dctx, sig));                                 \
 	}                                                                      \
-	static isc_result_t hmac##alg##_verify(dst_context_t *dctx,            \
-					       const isc_region_t *sig) {      \
+	static isc_result_t hmac##alg##_verify(                                \
+		dst_context_t *dctx, const isc_region_t *sig,                  \
+		const isc_region_t *ladder ISC_ATTR_UNUSED) {                  \
 		return (hmac_verify(dctx, sig));                               \
 	}                                                                      \
 	static bool hmac##alg##_compare(const dst_key_t *key1,                 \

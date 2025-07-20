@@ -642,7 +642,7 @@ matching_sigs(keyinfo_t *keytbl, dns_rdataset_t *rdataset,
 			}
 
 			result = dns_dnssec_verify(name, rdataset, ki->dst,
-						   false, mctx, &sigrdata,
+						   false, mctx, &sigrdata, NULL,
 						   NULL);
 
 			if (result != ISC_R_SUCCESS &&

@@ -742,14 +742,14 @@ dns_tsig_sign(dns_message_t *msg) {
 			}
 		}
 
-		result = dst_key_sigsize(key->key, &sigsize);
+		result = dst_key_sigsize(key->key, &sigsize, true);
 		if (result != ISC_R_SUCCESS) {
 			goto cleanup_context;
 		}
 		tsig.signature = isc_mem_get(mctx, sigsize);
 
 		isc_buffer_init(&sigbuf, tsig.signature, sigsize);
-		result = dst_context_sign(ctx, &sigbuf);
+		result = dst_context_sign(ctx, &sigbuf, true, true);
 		if (result != ISC_R_SUCCESS) {
 			goto cleanup_signature;
 		}
@@ -962,7 +962,7 @@ dns_tsig_verify(isc_buffer_t *source, dns_message_t *msg,
 	 * Check digest length.
 	 */
 	alg = dst_key_alg(key);
-	result = dst_key_sigsize(key, &siglen);
+	result = dst_key_sigsize(key, &siglen, true);
 	if (result != ISC_R_SUCCESS) {
 		return result;
 	}
@@ -1099,7 +1099,7 @@ dns_tsig_verify(isc_buffer_t *source, dns_message_t *msg,
 			}
 		}
 
-		result = dst_context_verify(ctx, &sig_r);
+		result = dst_context_verify(ctx, &sig_r, NULL);
 		if (result == DST_R_VERIFYFAILURE) {
 			result = DNS_R_TSIGVERIFYFAILURE;
 			tsig_log(msg->tsigkey, 2,
@@ -1265,7 +1265,7 @@ tsig_verify_tcp(isc_buffer_t *source, dns_message_t *msg) {
 		 * Check digest length.
 		 */
 		alg = dst_key_alg(key);
-		result = dst_key_sigsize(key, &siglen);
+		result = dst_key_sigsize(key, &siglen, true);
 		if (result != ISC_R_SUCCESS) {
 			goto cleanup_querystruct;
 		}
@@ -1402,7 +1402,7 @@ tsig_verify_tcp(isc_buffer_t *source, dns_message_t *msg) {
 			goto cleanup_context;
 		}
 
-		result = dst_context_verify(msg->tsigctx, &sig_r);
+		result = dst_context_verify(msg->tsigctx, &sig_r, NULL);
 		if (result == DST_R_VERIFYFAILURE) {
 			tsig_log(msg->tsigkey, 2,
 				 "signature failed to verify(2)");
@@ -1443,7 +1443,7 @@ tsig_verify_tcp(isc_buffer_t *source, dns_message_t *msg) {
 		}
 
 		alg = dst_key_alg(key);
-		result = dst_key_sigsize(key, &siglen);
+		result = dst_key_sigsize(key, &siglen, true);
 		if (result != ISC_R_SUCCESS) {
 			goto cleanup_context;
 		}

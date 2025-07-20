@@ -193,7 +193,7 @@ check_sig(const char *datapath, const char *sigpath, const char *keyname,
 
 	result = dst_context_adddata(ctx, &datareg);
 	assert_int_equal(result, ISC_R_SUCCESS);
-	result = dst_context_verify(ctx, &sigreg);
+	result = dst_context_verify(ctx, &sigreg, NULL);
 
 	/*
 	 * Compute the expected signature and emit it
@@ -216,7 +216,7 @@ check_sig(const char *datapath, const char *sigpath, const char *keyname,
 		isc_buffer_t sigb;
 		isc_buffer_init(&sigb, sigbuf2, sizeof(sigbuf2));
 
-		result2 = dst_context_sign(ctx, &sigb);
+		result2 = dst_context_sign(ctx, &sigb, true, true);
 		assert_int_equal(result2, ISC_R_SUCCESS);
 
 		isc_region_t r;
@@ -451,14 +451,14 @@ ISC_RUN_TEST_IMPL(ecdsa_determinism_test) {
 				  DST_TYPE_PUBLIC | DST_TYPE_PRIVATE,
 				  TESTS_DIR "/comparekeys", mctx, &key);
 	assert_int_equal(result, ISC_R_SUCCESS);
-	result = dst_key_sigsize(key, &siglen);
+	result = dst_key_sigsize(key, &siglen, true);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	isc_buffer_allocate(mctx, &sigbuf1, siglen);
 	result = dst_context_create(key, mctx, DNS_LOGCATEGORY_GENERAL, true,
 				    &ctx);
 	assert_int_equal(result, ISC_R_SUCCESS);
-	result = dst_context_sign(ctx, sigbuf1);
+	result = dst_context_sign(ctx, sigbuf1, true, true);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	dst_context_destroy(&ctx);
 
@@ -466,7 +466,7 @@ ISC_RUN_TEST_IMPL(ecdsa_determinism_test) {
 	result = dst_context_create(key, mctx, DNS_LOGCATEGORY_GENERAL, true,
 				    &ctx);
 	assert_int_equal(result, ISC_R_SUCCESS);
-	result = dst_context_sign(ctx, sigbuf2);
+	result = dst_context_sign(ctx, sigbuf2, true, true);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	dst_context_destroy(&ctx);
 

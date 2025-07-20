@@ -271,7 +271,8 @@ opensslrsa_adddata(dst_context_t *dctx, const isc_region_t *data) {
 }
 
 static isc_result_t
-opensslrsa_sign(dst_context_t *dctx, isc_buffer_t *sig) {
+opensslrsa_sign(dst_context_t *dctx, isc_buffer_t *sig,
+		bool final ISC_ATTR_UNUSED, bool full ISC_ATTR_UNUSED) {
 	dst_key_t *key = NULL;
 	isc_region_t r;
 	unsigned int siglen = 0;
@@ -351,7 +352,8 @@ opensslrsa_check_exponent_bits(EVP_PKEY *pkey, int maxbits) {
 }
 
 static isc_result_t
-opensslrsa_verify(dst_context_t *dctx, const isc_region_t *sig) {
+opensslrsa_verify(dst_context_t *dctx, const isc_region_t *sig,
+		  const isc_region_t *ladder ISC_ATTR_UNUSED) {
 	dst_key_t *key = NULL;
 	int status = 0;
 	EVP_MD_CTX *evp_md_ctx = NULL;

@@ -110,10 +110,10 @@ add_tsig(dst_context_t *tsigctx, dns_tsigkey_t *key, isc_buffer_t *target,
 	isc_buffer_usedregion(&databuf, &r);
 	CHECK(dst_context_adddata(tsigctx, &r));
 
-	CHECK(dst_key_sigsize(key->key, &sigsize));
+	CHECK(dst_key_sigsize(key->key, &sigsize, true));
 	tsig.signature = isc_mem_get(mctx, sigsize);
 	isc_buffer_init(&sigbuf, tsig.signature, sigsize);
-	CHECK(dst_context_sign(tsigctx, &sigbuf));
+	CHECK(dst_context_sign(tsigctx, &sigbuf, true, true));
 	tsig.siglen = isc_buffer_usedlength(&sigbuf);
 	assert_int_equal(sigsize, tsig.siglen);
 	if (mangle_sig) {

@@ -707,7 +707,8 @@ sign_rrset(ksr_ctx_t *ksr, isc_stdtime_t inception, isc_stdtime_t expiration,
 		dns_rdata_init(rrsig);
 		isc_buffer_init(&buf, rdatabuf, sizeof(rdatabuf));
 		ret = dns_dnssec_sign(name, rrset, dk->key, &clockskew,
-				      &expiration, mctx, &buf, &rdata);
+				      &expiration, mctx, &buf, &rdata, true,
+				      true);
 		if (ret != ISC_R_SUCCESS) {
 			fatal("failed to sign KSR");
 		}

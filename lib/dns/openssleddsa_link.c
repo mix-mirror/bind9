@@ -150,7 +150,8 @@ openssleddsa_adddata(dst_context_t *dctx, const isc_region_t *data) {
 }
 
 static isc_result_t
-openssleddsa_sign(dst_context_t *dctx, isc_buffer_t *sig) {
+openssleddsa_sign(dst_context_t *dctx, isc_buffer_t *sig,
+		  bool final ISC_ATTR_UNUSED, bool full ISC_ATTR_UNUSED) {
 	isc_result_t ret;
 	dst_key_t *key = dctx->key;
 	isc_region_t tbsreg;
@@ -197,7 +198,8 @@ err:
 }
 
 static isc_result_t
-openssleddsa_verify(dst_context_t *dctx, const isc_region_t *sig) {
+openssleddsa_verify(dst_context_t *dctx, const isc_region_t *sig,
+		    const isc_region_t *ladder ISC_ATTR_UNUSED) {
 	isc_result_t ret;
 	dst_key_t *key = dctx->key;
 	int status;

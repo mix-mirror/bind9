@@ -52,6 +52,8 @@
 #include <dns/time.h>
 #include <dns/ttl.h>
 
+#include "isc/buffer.h"
+
 #define RETERR(x)                        \
 	do {                             \
 		isc_result_t _r = (x);   \
@@ -2222,6 +2224,8 @@ mem_tobuffer(isc_buffer_t *target, void *base, unsigned int length) {
 
 	isc_buffer_availableregion(target, &tr);
 	if (length > tr.length) {
+		fprintf(stderr, "%s: length = %u, tr.length = %u\n", __func__,
+			length, tr.length);
 		return ISC_R_NOSPACE;
 	}
 	if (tr.base != base) {

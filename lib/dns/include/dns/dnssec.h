@@ -71,6 +71,8 @@ struct dns_dnsseckey {
 	bool	     pubkey;	     /*% public key only */
 	unsigned int index;	     /*% position in list */
 	ISC_LINK(dns_dnsseckey_t) link;
+	uint8_t ladder[8040];
+	size_t	ladder_len;
 };
 
 isc_result_t
@@ -113,7 +115,8 @@ dns_dnssec_make_dnskey(dst_key_t *key, unsigned char *buf, int bufsize,
 isc_result_t
 dns_dnssec_sign(const dns_name_t *name, dns_rdataset_t *set, dst_key_t *key,
 		isc_stdtime_t *inception, isc_stdtime_t *expire,
-		isc_mem_t *mctx, isc_buffer_t *buffer, dns_rdata_t *sigrdata);
+		isc_mem_t *mctx, isc_buffer_t *buffer, dns_rdata_t *sigrdata,
+		bool final, bool full);
 /*%<
  *	Generates a RRSIG record covering this rdataset.  This has no effect
  *	on existing RRSIG records.
@@ -141,7 +144,7 @@ dns_dnssec_sign(const dns_name_t *name, dns_rdataset_t *set, dst_key_t *key,
 isc_result_t
 dns_dnssec_verify(const dns_name_t *name, dns_rdataset_t *set, dst_key_t *key,
 		  bool ignoretime, isc_mem_t *mctx, dns_rdata_t *sigrdata,
-		  dns_name_t *wild);
+		  dns_name_t *wild, isc_region_t *ladder);
 /*%<
  *	Verifies the RRSIG record covering this rdataset signed by a specific
  *	key.  This does not determine if the key's owner is authorized to sign
@@ -228,12 +231,12 @@ dns_dnssec_verifymessage(isc_buffer_t *source, dns_message_t *msg,
 bool
 dns_dnssec_selfsigns(dns_rdata_t *rdata, const dns_name_t *name,
 		     dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset,
-		     bool ignoretime, isc_mem_t *mctx);
+		     bool ignoretime, isc_mem_t *mctx, isc_region_t *ladder);
 
 bool
 dns_dnssec_signs(dns_rdata_t *rdata, const dns_name_t *name,
 		 dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset,
-		 bool ignoretime, isc_mem_t *mctx);
+		 bool ignoretime, isc_mem_t *mctx, isc_region_t *signs);
 /*%<
  * Verify that 'rdataset' is validly signed in 'sigrdataset' by
  * the key in 'rdata'.

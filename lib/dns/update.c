@@ -1228,7 +1228,7 @@ add_sigs(dns_update_log_t *log, dns_zone_t *zone, dns_db_t *db,
 		} else {
 			CHECK(dns_dnssec_sign(name, &rdataset, keys[i],
 					      &inception, &expire, mctx,
-					      &buffer, &sig_rdata));
+					      &buffer, &sig_rdata, true, true));
 		}
 
 		/* Update the database and journal with the RRSIG. */
