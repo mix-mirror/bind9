@@ -188,7 +188,8 @@ cleanup:
 }
 
 static isc_result_t
-opensslecdsa_sign(dst_context_t *dctx, isc_buffer_t *sig) {
+opensslecdsa_sign(dst_context_t *dctx, isc_buffer_t *sig,
+		  bool final ISC_ATTR_UNUSED, bool full ISC_ATTR_UNUSED) {
 	isc_result_t result;
 	dst_key_t *key = dctx->key;
 	isc_region_t region;
@@ -250,7 +251,8 @@ cleanup:
 }
 
 static isc_result_t
-opensslecdsa_verify(dst_context_t *dctx, const isc_region_t *sig) {
+opensslecdsa_verify(dst_context_t *dctx, const isc_region_t *sig,
+		    const isc_region_t *ladder ISC_ATTR_UNUSED) {
 	isc_result_t result;
 	dst_key_t *key = dctx->key;
 	int status;

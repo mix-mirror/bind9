@@ -169,7 +169,8 @@ digest_sig(dst_context_t *ctx, bool downcase, dns_rdata_t *sigrdata,
 isc_result_t
 dns_dnssec_sign(const dns_name_t *name, dns_rdataset_t *set, dst_key_t *key,
 		isc_stdtime_t *inception, isc_stdtime_t *expire,
-		isc_mem_t *mctx, isc_buffer_t *buffer, dns_rdata_t *sigrdata) {
+		isc_mem_t *mctx, isc_buffer_t *buffer, dns_rdata_t *sigrdata,
+		bool final, bool full) {
 	dns_rdata_rrsig_t sig;
 	dns_rdata_t tmpsigrdata;
 	dns_rdata_t *rdatas;
@@ -221,8 +222,9 @@ dns_dnssec_sign(const dns_name_t *name, dns_rdataset_t *set, dst_key_t *key,
 	sig.timesigned = *inception;
 	sig.timeexpire = *expire;
 	sig.keyid = dst_key_id(key);
-	RETERR(dst_key_sigsize(key, &sigsize));
+	RETERR(dst_key_sigsize(key, &sigsize, full));
 	sig.siglen = sigsize;
+
 	/*
 	 * The actual contents of sig.signature are not important yet, since
 	 * they're not used in digest_sig().
@@ -315,7 +317,7 @@ dns_dnssec_sign(const dns_name_t *name, dns_rdataset_t *set, dst_key_t *key,
 	}
 
 	isc_buffer_init(&sigbuf, sig.signature, sig.siglen);
-	result = dst_context_sign(ctx, &sigbuf);
+	result = dst_context_sign(ctx, &sigbuf, full, true);
 	if (result != ISC_R_SUCCESS) {
 		goto cleanup_array;
 	}
@@ -325,8 +327,19 @@ dns_dnssec_sign(const dns_name_t *name, dns_rdataset_t *set, dst_key_t *key,
 		goto cleanup_array;
 	}
 
-	result = dns_rdata_fromstruct(sigrdata, sig.common.rdclass,
-				      sig.common.rdtype, &sig, buffer);
+	if (final) {
+		isc_buffer_usedregion(&sigbuf, &r);
+
+		sig.siglen = r.length;
+
+		if (r.length != sig.siglen) {
+			result = ISC_R_NOSPACE;
+			goto cleanup_array;
+		}
+
+		result = dns_rdata_fromstruct(sigrdata, sig.common.rdclass,
+					      sig.common.rdtype, &sig, buffer);
+	}
 
 cleanup_array:
 	isc_mem_cput(mctx, rdatas, nrdatas, sizeof(dns_rdata_t));
@@ -334,7 +347,7 @@ cleanup_context:
 	dst_context_destroy(&ctx);
 cleanup_databuf:
 	isc_buffer_free(&databuf);
-	isc_mem_put(mctx, sig.signature, sig.siglen);
+	isc_mem_put(mctx, sig.signature, sigsize);
 
 	return result;
 }
@@ -342,7 +355,8 @@ cleanup_databuf:
 isc_result_t
 dns_dnssec_verify(const dns_name_t *name, dns_rdataset_t *set, dst_key_t *key,
 		  bool ignoretime, isc_mem_t *mctx, dns_rdata_t *sigrdata,
-		  dns_name_t *wild, dns_name_t *wildsigner) {
+		  dns_name_t *wild, dns_name_t *wildsigner,
+		  isc_region_t *ladder) {
 	dns_rdata_rrsig_t sig;
 	dns_fixedname_t fnewname;
 	isc_region_t r;
@@ -510,7 +524,7 @@ again:
 
 	r.base = sig.signature;
 	r.length = sig.siglen;
-	result = dst_context_verify(ctx, &r);
+	result = dst_context_verify(ctx, &r, ladder);
 	if (result == ISC_R_SUCCESS && downcase) {
 		char namebuf[DNS_NAME_FORMATSIZE];
 		dns_name_format(&sig.signer, namebuf, sizeof(namebuf));
@@ -803,12 +817,12 @@ dns_dnssec_signmessage(dns_message_t *msg, dst_key_t *key) {
 	isc_region_consume(&r, DNS_MESSAGE_HEADERLEN);
 	CHECK(dst_context_adddata(ctx, &r));
 
-	CHECK(dst_key_sigsize(key, &sigsize));
+	CHECK(dst_key_sigsize(key, &sigsize, true));
 	sig.siglen = sigsize;
 	sig.signature = isc_mem_get(mctx, sig.siglen);
 
 	isc_buffer_init(&sigbuf, sig.signature, sig.siglen);
-	CHECK(dst_context_sign(ctx, &sigbuf));
+	CHECK(dst_context_sign(ctx, &sigbuf, true, true));
 	dst_context_destroy(&ctx);
 
 	rdata = NULL;
@@ -960,7 +974,7 @@ dns_dnssec_verifymessage(isc_buffer_t *source, dns_message_t *msg,
 
 	sig_r.base = sig.signature;
 	sig_r.length = sig.siglen;
-	result = dst_context_verify(ctx, &sig_r);
+	result = dst_context_verify(ctx, &sig_r, NULL);
 	if (result != ISC_R_SUCCESS) {
 		msg->sig0status = dns_tsigerror_badsig;
 		goto cleanup;
@@ -991,7 +1005,7 @@ cleanup:
 bool
 dns_dnssec_selfsigns(dns_rdata_t *rdata, const dns_name_t *name,
 		     dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset,
-		     bool ignoretime, isc_mem_t *mctx) {
+		     bool ignoretime, isc_mem_t *mctx, isc_region_t *ladder) {
 	INSIST(rdataset->type == dns_rdatatype_key ||
 	       rdataset->type == dns_rdatatype_dnskey);
 	if (rdataset->type == dns_rdatatype_key) {
@@ -1003,13 +1017,13 @@ dns_dnssec_selfsigns(dns_rdata_t *rdata, const dns_name_t *name,
 	}
 
 	return dns_dnssec_signs(rdata, name, rdataset, sigrdataset, ignoretime,
-				mctx);
+				mctx, ladder);
 }
 
 bool
 dns_dnssec_signs(dns_rdata_t *rdata, const dns_name_t *name,
 		 dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset,
-		 bool ignoretime, isc_mem_t *mctx) {
+		 bool ignoretime, isc_mem_t *mctx, isc_region_t *ladder) {
 	dst_key_t *dstkey = NULL;
 	dns_keytag_t keytag;
 	dns_rdata_dnskey_t key;
@@ -1038,7 +1052,7 @@ dns_dnssec_signs(dns_rdata_t *rdata, const dns_name_t *name,
 		if (sig.algorithm == key.algorithm && sig.keyid == keytag) {
 			result = dns_dnssec_verify(name, rdataset, dstkey,
 						   ignoretime, mctx, &sigrdata,
-						   NULL, NULL);
+						   NULL, NULL, ladder);
 			if (result == ISC_R_SUCCESS) {
 				dst_key_free(&dstkey);
 				return true;
@@ -1104,6 +1118,9 @@ dns_dnsseckey_create(isc_mem_t *mctx, dst_key_t **dstkey,
 	dk->prepublish = 0;
 	dk->source = dns_keysource_unknown;
 	dk->index = 0;
+
+	memset(dk->ladder, 0, sizeof(dk->ladder));
+	dk->ladder_len = 0;
 
 	/* KSK or ZSK? */
 	result = dst_key_getbool(dk->key, DST_BOOL_KSK, &dk->ksk);

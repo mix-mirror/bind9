@@ -38,6 +38,7 @@
 #include <isc/async.h>
 #include <isc/atomic.h>
 #include <isc/attributes.h>
+#include <isc/barrier.h>
 #include <isc/base32.h>
 #include <isc/commandline.h>
 #include <isc/crypto.h>
@@ -106,7 +107,7 @@ static int nsec_datatype = dns_rdatatype_nsec;
 
 #define REVOKE(x) ((dst_key_flags(x) & DNS_KEYFLAG_REVOKE) != 0)
 
-#define BUFSIZE	  2048
+#define BUFSIZE	  8256 + 256
 #define MAXDSKEYS 8
 
 #define SIGNER_EVENTCLASS  ISC_EVENTCLASS(0x4453)
@@ -118,6 +119,7 @@ static int nsec_datatype = dns_rdatatype_nsec;
 #define SOA_SERIAL_UNIXTIME  2
 #define SOA_SERIAL_DATE	     3
 
+static isc_barrier_t barrier;
 static dns_dnsseckeylist_t keylist;
 static unsigned int keycount = 0;
 static isc_rwlock_t keylist_lock;
@@ -139,11 +141,11 @@ static atomic_uint_fast32_t nsigned = 0, nretained = 0, ndropped = 0;
 static atomic_uint_fast32_t nverified = 0, nverifyfailed = 0;
 static const char *directory = NULL, *dsdir = NULL;
 static isc_mutex_t namelock;
-static dns_db_t *gdb;		  /* The database */
-static dns_dbversion_t *gversion; /* The database version */
-static dns_dbiterator_t *gdbiter; /* The database iterator */
-static dns_rdataclass_t gclass;	  /* The class */
-static dns_name_t *gorigin;	  /* The database origin */
+static dns_db_t *gdb = NULL;		 /* The database */
+static dns_dbversion_t *gversion = NULL; /* The database version */
+static dns_dbiterator_t *gdbiter = NULL; /* The database iterator */
+static dns_rdataclass_t gclass;		 /* The class */
+static dns_name_t *gorigin = NULL;	 /* The database origin */
 static int nsec3flags = 0;
 static dns_iterations_t nsec3iter = 0U;
 static unsigned char saltbuf[255];
@@ -151,6 +153,7 @@ static unsigned char *gsalt = saltbuf;
 static size_t salt_length = 0;
 static unsigned int nloops = 0;
 static atomic_bool shuttingdown;
+static atomic_bool final = false;
 static atomic_bool finished;
 static bool nokeys = false;
 static bool removefile = false;
@@ -264,7 +267,7 @@ lock_and_dumpnode(dns_name_t *name, dns_dbnode_t *node) {
  * given tuple.
  */
 static void
-signwithkey(dns_name_t *name, dns_rdataset_t *rdataset, dst_key_t *key,
+signwithkey(dns_name_t *name, dns_rdataset_t *rdataset, dns_dnsseckey_t *key,
 	    dns_ttl_t ttl, dns_diff_t *add, const char *logmsg) {
 	isc_result_t result;
 	isc_stdtime_t jendtime, expiry;
@@ -272,9 +275,8 @@ signwithkey(dns_name_t *name, dns_rdataset_t *rdataset, dst_key_t *key,
 	dns_rdata_t trdata = DNS_RDATA_INIT;
 	unsigned char array[BUFSIZE];
 	isc_buffer_t b;
-	dns_difftuple_t *tuple;
 
-	dst_key_format(key, keystr, sizeof(keystr));
+	dst_key_format(key->key, keystr, sizeof(keystr));
 	vbprintf(1, "\t%s %s\n", logmsg, keystr);
 
 	if (rdataset->type == dns_rdatatype_dnskey) {
@@ -283,32 +285,67 @@ signwithkey(dns_name_t *name, dns_rdataset_t *rdataset, dst_key_t *key,
 		expiry = endtime;
 	}
 
+	bool full = (rdataset->type == dns_rdatatype_soa ||
+		     rdataset->type == dns_rdatatype_dnskey);
+
 	jendtime = (jitter != 0) ? expiry - isc_random_uniform(jitter) : expiry;
 	isc_buffer_init(&b, array, sizeof(array));
-	result = dns_dnssec_sign(name, rdataset, key, &starttime, &jendtime,
-				 isc_g_mctx, &b, &trdata);
+	result = dns_dnssec_sign(name, rdataset, key->key, &starttime,
+				 &jendtime, isc_g_mctx, &b, &trdata,
+				 atomic_load(&final), full);
 	if (result != ISC_R_SUCCESS) {
 		fatal("dnskey '%s' failed to sign data: %s", keystr,
 		      isc_result_totext(result));
 	}
 	INCSTAT(nsigned);
 
-	if (tryverify) {
-		result = dns_dnssec_verify(name, rdataset, key, true,
-					   isc_g_mctx, &trdata, NULL, NULL);
-		if (result == ISC_R_SUCCESS || result == DNS_R_FROMWILDCARD) {
-			vbprintf(3, "\tsignature verified\n");
-			INCSTAT(nverified);
-		} else {
-			vbprintf(3, "\tsignature failed to verify\n");
-			INCSTAT(nverifyfailed);
-		}
-	}
+	if (atomic_load(&final)) {
+		isc_region_t *ladreg = NULL;
+		isc_region_t ladreg_s = { 0 };
 
-	tuple = NULL;
-	dns_difftuple_create(isc_g_mctx, DNS_DIFFOP_ADDRESIGN, name, ttl,
-			     &trdata, &tuple);
-	dns_diff_append(add, &tuple);
+		if (full) {
+			dns_rdata_rrsig_t sig;
+			dns_rdata_tostruct(&trdata, &sig, isc_g_mctx);
+
+			unsigned int csize = 0;
+			result = dst_key_sigsize(key->key, &csize, false);
+			RUNTIME_CHECK(result == ISC_R_SUCCESS);
+
+			INSIST(csize <= sig.siglen);
+			INSIST(csize == 216);
+
+			key->ladder_len = sig.siglen - csize;
+			memmove(key->ladder, sig.signature + csize,
+				key->ladder_len);
+
+			dns_rdata_freestruct(&sig);
+
+		} else {
+			ladreg = &ladreg_s;
+			ladreg->base = key->ladder;
+			ladreg->length = key->ladder_len;
+		}
+
+		if (tryverify) {
+			result = dns_dnssec_verify(name, rdataset, key->key,
+						   true, isc_g_mctx, &trdata,
+						   NULL, NULL, ladreg);
+			if (result == ISC_R_SUCCESS ||
+			    result == DNS_R_FROMWILDCARD)
+			{
+				vbprintf(3, "\tsignature verified\n");
+				INCSTAT(nverified);
+			} else {
+				vbprintf(3, "\tsignature failed to verify\n");
+				INCSTAT(nverifyfailed);
+			}
+		}
+
+		dns_difftuple_t *tuple = NULL;
+		dns_difftuple_create(isc_g_mctx, DNS_DIFFOP_ADDRESIGN, name,
+				     ttl, &trdata, &tuple);
+		dns_diff_append(add, &tuple);
+	}
 }
 
 static bool
@@ -456,7 +493,7 @@ setverifies(dns_name_t *name, dns_rdataset_t *set, dst_key_t *key,
 	    dns_rdata_t *rrsig) {
 	isc_result_t result;
 	result = dns_dnssec_verify(name, set, key, false, isc_g_mctx, rrsig,
-				   NULL, NULL);
+				   NULL, NULL, NULL);
 	if (result == ISC_R_SUCCESS || result == DNS_R_FROMWILDCARD) {
 		INCSTAT(nverified);
 		return true;
@@ -667,7 +704,7 @@ signset(dns_diff_t *del, dns_diff_t *add, dns_dbnode_t *node, dns_name_t *name,
 			if (resign) {
 				INSIST(!keep);
 
-				signwithkey(name, set, key->key, ttl, add,
+				signwithkey(name, set, key, ttl, add,
 					    "resigning with dnskey");
 				nowsignedby[key->index] = true;
 			}
@@ -716,7 +753,7 @@ signset(dns_diff_t *del, dns_diff_t *add, dns_dbnode_t *node, dns_name_t *name,
 			if (isksk(key) || !have_ksk ||
 			    (iszsk(key) && !keyset_kskonly))
 			{
-				signwithkey(name, set, key->key, ttl, add,
+				signwithkey(name, set, key, ttl, add,
 					    "signing with dnskey");
 			}
 		} else if (iszsk(key)) {
@@ -773,7 +810,7 @@ signset(dns_diff_t *del, dns_diff_t *add, dns_dbnode_t *node, dns_name_t *name,
 			 * skip signing with this key.
 			 */
 			if (!have_pre_sig) {
-				signwithkey(name, set, key->key, ttl, add,
+				signwithkey(name, set, key, ttl, add,
 					    "signing with dnskey");
 			}
 		}
@@ -1177,6 +1214,23 @@ signname(dns_dbnode_t *node, bool apex, dns_name_t *name) {
 	 */
 	dns_diff_init(isc_g_mctx, &del);
 	dns_diff_init(isc_g_mctx, &add);
+
+	rdsiter = NULL;
+	result = dns_db_allrdatasets(gdb, node, gversion, 0, 0, &rdsiter);
+	check_result(result, "dns_db_allrdatasets()");
+	DNS_RDATASETITER_FOREACH(rdsiter) {
+		dns_rdatasetiter_current(rdsiter, &rdataset);
+
+		/* If this is a RRSIG set, skip it. */
+		if (rdataset.type == dns_rdatatype_soa) {
+			signset(&del, &add, node, name, &rdataset);
+		}
+
+		dns_rdataset_disassociate(&rdataset);
+	}
+
+	dns_rdatasetiter_destroy(&rdsiter);
+
 	rdsiter = NULL;
 	result = dns_db_allrdatasets(gdb, node, gversion, 0, 0, &rdsiter);
 	check_result(result, "dns_db_allrdatasets()");
@@ -1185,6 +1239,11 @@ signname(dns_dbnode_t *node, bool apex, dns_name_t *name) {
 
 		/* If this is a RRSIG set, skip it. */
 		if (rdataset.type == dns_rdatatype_rrsig) {
+			goto skip;
+		}
+
+		/* If this is a SOA set, it was already signed */
+		if (rdataset.type == dns_rdatatype_soa) {
 			goto skip;
 		}
 
@@ -1446,26 +1505,6 @@ cleanup:
 }
 
 /*%
- * Set up the iterator and global state before starting the tasks.
- */
-static void
-presign(void) {
-	isc_result_t result;
-
-	gdbiter = NULL;
-	result = dns_db_createiterator(gdb, 0, &gdbiter);
-	check_result(result, "dns_db_createiterator()");
-}
-
-/*%
- * Clean up the iterator and global state after the tasks complete.
- */
-static void
-postsign(void) {
-	dns_dbiterator_destroy(&gdbiter);
-}
-
-/*%
  * Sign the apex of the zone.
  * Note the origin may not be the first node if there are out of zone
  * records.
@@ -1486,12 +1525,7 @@ signapex(void) {
 	dumpnode(name, node);
 	dns_db_detachnode(&node);
 	result = dns_dbiterator_first(gdbiter);
-	if (result == ISC_R_NOMORE) {
-		atomic_store(&finished, true);
-	} else if (result != ISC_R_SUCCESS) {
-		fatal("failure iterating database: %s",
-		      isc_result_totext(result));
-	}
+	check_result(result, "dns_dbiterator_first()");
 }
 
 static void
@@ -1506,7 +1540,7 @@ abortwork(void *arg) {
  * lock.
  */
 static void
-assignwork(void *arg) {
+assignwork(void *arg ISC_ATTR_UNUSED) {
 	dns_fixedname_t fname;
 	dns_name_t *name = NULL;
 	dns_dbnode_t *node = NULL;
@@ -1516,8 +1550,6 @@ assignwork(void *arg) {
 	static dns_name_t *zonecut = NULL; /* Protected by namelock. */
 	static dns_fixedname_t fzonecut;   /* Protected by namelock. */
 	static unsigned int ended = 0;	   /* Protected by namelock. */
-
-	UNUSED(arg);
 
 	if (atomic_load(&shuttingdown)) {
 		return;
@@ -1591,7 +1623,15 @@ assignwork(void *arg) {
 	next:
 		result = dns_dbiterator_next(gdbiter);
 		if (result == ISC_R_NOMORE) {
-			atomic_store(&finished, true);
+			if (atomic_load(&final)) {
+				atomic_store(&finished, true);
+			} else {
+				atomic_store(&final, true);
+				signapex();
+				result = dns_dbiterator_first(gdbiter);
+				check_result(result, "dns_dbiterator_first()");
+				continue;
+			}
 			break;
 		} else if (result != ISC_R_SUCCESS) {
 			fatal("failure iterating database: %s",
@@ -3599,6 +3639,8 @@ main(int argc, char *argv[]) {
 
 	isc_managers_create(nloops);
 
+	isc_barrier_init(&barrier, nloops);
+
 	setup_logging();
 
 	argc -= isc_commandline_index;
@@ -3879,7 +3921,9 @@ main(int argc, char *argv[]) {
 
 	isc_mutex_init(&namelock);
 
-	presign();
+	result = dns_db_createiterator(gdb, 0, &gdbiter);
+	check_result(result, "dns_db_createiterator()");
+
 	sign_start = isc_time_now();
 	signapex();
 	if (!atomic_load(&finished)) {
@@ -3895,7 +3939,8 @@ main(int argc, char *argv[]) {
 			fatal("process aborted by user");
 		}
 	}
-	postsign();
+	dns_dbiterator_destroy(&gdbiter);
+
 	sign_finish = isc_time_now();
 
 	if (disable_zone_check) {
@@ -3966,6 +4011,8 @@ main(int argc, char *argv[]) {
 	if (verbose > 10) {
 		isc_mem_stats(isc_g_mctx, stdout);
 	}
+
+	isc_barrier_destroy(&barrier);
 
 	isc_managers_destroy();
 

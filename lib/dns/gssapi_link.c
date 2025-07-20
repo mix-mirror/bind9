@@ -129,7 +129,8 @@ gssapi_adddata(dst_context_t *dctx, const isc_region_t *data) {
  * Sign.
  */
 static isc_result_t
-gssapi_sign(dst_context_t *dctx, isc_buffer_t *sig) {
+gssapi_sign(dst_context_t *dctx, isc_buffer_t *sig, bool final ISC_ATTR_UNUSED,
+	    bool full ISC_ATTR_UNUSED) {
 	dst_gssapi_signverifyctx_t *ctx = dctx->ctxdata.gssctx;
 	isc_region_t message;
 	gss_buffer_desc gmessage, gsig;
@@ -184,7 +185,8 @@ gssapi_sign(dst_context_t *dctx, isc_buffer_t *sig) {
  * Verify.
  */
 static isc_result_t
-gssapi_verify(dst_context_t *dctx, const isc_region_t *sig) {
+gssapi_verify(dst_context_t *dctx, const isc_region_t *sig,
+	      const isc_region_t *ladder ISC_ATTR_UNUSED) {
 	dst_gssapi_signverifyctx_t *ctx = dctx->ctxdata.gssctx;
 	isc_region_t message;
 	gss_buffer_desc gmessage, gsig;

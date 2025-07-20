@@ -202,7 +202,8 @@ dst_key_setbits(dst_key_t *key, uint16_t bits) {
 	unsigned int maxbits;
 	REQUIRE(VALID_KEY(key));
 	if (bits != 0) {
-		RUNTIME_CHECK(dst_key_sigsize(key, &maxbits) == ISC_R_SUCCESS);
+		RUNTIME_CHECK(dst_key_sigsize(key, &maxbits, true) ==
+			      ISC_R_SUCCESS);
 		maxbits *= 8;
 		REQUIRE(bits <= maxbits);
 	}

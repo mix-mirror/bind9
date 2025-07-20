@@ -685,9 +685,20 @@ sign_rrset(ksr_ctx_t *ksr, isc_stdtime_t inception, isc_stdtime_t expiration,
 		rrsig = isc_mem_get(isc_g_mctx, sizeof(*rrsig));
 		dns_rdata_init(rrsig);
 		isc_buffer_init(&buf, rdatabuf, sizeof(rdatabuf));
+<<<<<<< HEAD
 		result = dns_dnssec_sign(name, rrset, dk->key, &clockskew,
 					 &expiration, isc_g_mctx, &buf, &rdata);
 		if (result != ISC_R_SUCCESS) {
+||||||| parent of 5132cb61bf (WIP: Add initial MTL support (keygen and signing works))
+		ret = dns_dnssec_sign(name, rrset, dk->key, &clockskew,
+				      &expiration, mctx, &buf, &rdata);
+		if (ret != ISC_R_SUCCESS) {
+=======
+		ret = dns_dnssec_sign(name, rrset, dk->key, &clockskew,
+				      &expiration, mctx, &buf, &rdata, true,
+				      true);
+		if (ret != ISC_R_SUCCESS) {
+>>>>>>> 5132cb61bf (WIP: Add initial MTL support (keygen and signing works))
 			fatal("failed to sign KSR");
 		}
 		isc_buffer_usedregion(&buf, &rs);

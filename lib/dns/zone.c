@@ -5888,7 +5888,7 @@ add_sigs(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name, dns_zone_t *zone,
 		} else {
 			CHECK(dns_dnssec_sign(name, &rdataset, keys[i],
 					      &inception, &expire, mctx,
-					      &buffer, &sig_rdata));
+					      &buffer, &sig_rdata, true, true));
 		}
 
 		/* Update the database and journal with the RRSIG. */
@@ -6518,7 +6518,8 @@ sign_a_node(dns_db_t *db, dns_zone_t *zone, dns_name_t *name,
 						   &rdata));
 		} else {
 			CHECK(dns_dnssec_sign(name, &rdataset, key, &inception,
-					      &expire, mctx, &buffer, &rdata));
+					      &expire, mctx, &buffer, &rdata,
+					      true, true));
 		}
 
 		/* Update the database and journal with the RRSIG. */

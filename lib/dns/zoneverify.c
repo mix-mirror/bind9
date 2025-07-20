@@ -1397,11 +1397,11 @@ check_dnskey_sigs(vctx_t *vctx, const dns_rdata_dnskey_t *dnskey,
 	 * First, does this key sign the DNSKEY rrset?
 	 */
 	if (!dns_dnssec_selfsigns(keyrdata, vctx->origin, &vctx->keyset,
-				  &vctx->keysigs, false, vctx->mctx))
+				  &vctx->keysigs, false, vctx->mctx, NULL))
 	{
 		if (!is_ksk &&
 		    dns_dnssec_signs(keyrdata, vctx->origin, &vctx->soaset,
-				     &vctx->soasigs, false, vctx->mctx))
+				     &vctx->soasigs, false, vctx->mctx, NULL))
 		{
 			if (active_keys[algorithm] != DNS_KEYALG_MAX) {
 				active_keys[algorithm]++;
@@ -1522,7 +1522,7 @@ check_dnskey(vctx_t *vctx) {
 			if ((dnskey.flags & DNS_KEYFLAG_KSK) != 0 &&
 			    !dns_dnssec_selfsigns(&rdata, vctx->origin,
 						  &vctx->keyset, &vctx->keysigs,
-						  false, vctx->mctx))
+						  false, vctx->mctx, NULL))
 			{
 				char namebuf[DNS_NAME_FORMATSIZE];
 				char buffer[1024];
