@@ -70,6 +70,7 @@ if config.has('HAVE_LIBNGTCP2')
     isc_test += [
         'ngtcp2_integration',
         'quic_session',
+        'quic_sm',
         'quic_tls',
     ]
 
