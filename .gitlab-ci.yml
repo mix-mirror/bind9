@@ -157,9 +157,8 @@ stages:
     - amd64
     - autoscaler
     - aws
-    - bsd-stress-test-2
     - shell
-    - stress-test
+    - test
 
 .freebsd-autoscaler-amd64: &freebsd_autoscaler_amd64
   variables:
