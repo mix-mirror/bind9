@@ -321,22 +321,6 @@ typedef enum {
 	badns_forwarder,
 } badnstype_t;
 
-#define FCTXCOUNT_MAGIC		 ISC_MAGIC('F', 'C', 'n', 't')
-#define VALID_FCTXCOUNT(counter) ISC_MAGIC_VALID(counter, FCTXCOUNT_MAGIC)
-
-typedef struct fctxcount fctxcount_t;
-struct fctxcount {
-	unsigned int magic;
-	isc_mem_t *mctx;
-	isc_mutex_t lock;
-	dns_fixedname_t dfname;
-	dns_name_t *domain;
-	uint_fast32_t count;
-	uint_fast32_t allowed;
-	uint_fast32_t dropped;
-	isc_stdtime_t logged;
-};
-
 struct fetchctx {
 	/*% Not locked. */
 	unsigned int magic;
@@ -345,7 +329,6 @@ struct fetchctx {
 	dns_name_t *name;
 	dns_rdatatype_t type;
 	unsigned int options;
-	fctxcount_t *counter;
 	char *info;
 	isc_mem_t *mctx;
 	isc_stdtime_t now;
@@ -563,9 +546,6 @@ struct dns_resolver {
 	isc_hashmap_t *fctxs;
 	isc_rwlock_t fctxs_lock;
 
-	isc_hashmap_t *counters;
-	isc_rwlock_t counters_lock;
-
 	uint32_t lame_ttl;
 	ISC_LIST(alternate_t) alternates;
 	dns_nametree_t *algorithms;
@@ -577,7 +557,7 @@ struct dns_resolver {
 	unsigned int query_timeout;
 	unsigned int maxdepth;
 	unsigned int maxqueries;
-	isc_result_t quotaresp[2];
+	isc_result_t quotaresp[dns_quotatype_max];
 	isc_stats_t *stats;
 	dns_stats_t *querystats;
 
@@ -587,7 +567,6 @@ struct dns_resolver {
 
 	/* Atomic */
 	isc_refcount_t references;
-	atomic_uint_fast32_t zspill; /* fetches-per-zone */
 	atomic_bool exiting;
 	atomic_bool priming;
 
@@ -1326,178 +1305,9 @@ fctx_cancelqueries(fetchctx_t *fctx, bool no_response, bool age_untried) {
 	}
 }
 
-static void
-fcount_logspill(fetchctx_t *fctx, fctxcount_t *counter, bool final) {
-	char dbuf[DNS_NAME_FORMATSIZE];
-	isc_stdtime_t now;
-
-	if (!isc_log_wouldlog(ISC_LOG_INFO)) {
-		return;
-	}
-
-	/* Do not log a message if there were no dropped fetches. */
-	if (counter->dropped == 0) {
-		return;
-	}
-
-	/* Do not log the cumulative message if the previous log is recent. */
-	now = isc_stdtime_now();
-	if (!final && counter->logged > now - 60) {
-		return;
-	}
-
-	dns_name_format(fctx->domain, dbuf, sizeof(dbuf));
-
-	if (!final) {
-		isc_log_write(DNS_LOGCATEGORY_SPILL, DNS_LOGMODULE_RESOLVER,
-			      ISC_LOG_INFO,
-			      "too many simultaneous fetches for %s "
-			      "(allowed %" PRIuFAST32 " spilled %" PRIuFAST32
-			      "; %s)",
-			      dbuf, counter->allowed, counter->dropped,
-			      counter->dropped == 1 ? "initial trigger event"
-						    : "cumulative since "
-						      "initial trigger event");
-	} else {
-		isc_log_write(DNS_LOGCATEGORY_SPILL, DNS_LOGMODULE_RESOLVER,
-			      ISC_LOG_INFO,
-			      "fetch counters for %s now being discarded "
-			      "(allowed %" PRIuFAST32 " spilled %" PRIuFAST32
-			      "; cumulative since initial trigger event)",
-			      dbuf, counter->allowed, counter->dropped);
-	}
-
-	counter->logged = now;
-}
-
-static bool
-fcount_match(void *node, const void *key) {
-	const fctxcount_t *counter = node;
-	const dns_name_t *domain = key;
-
-	return dns_name_equal(counter->domain, domain);
-}
-
-static isc_result_t
-fcount_incr(fetchctx_t *fctx, bool force) {
-	isc_result_t result = ISC_R_SUCCESS;
-	dns_resolver_t *res = NULL;
-	fctxcount_t *counter = NULL;
-	uint32_t hashval;
-	uint_fast32_t spill;
-	isc_rwlocktype_t locktype = isc_rwlocktype_read;
-
-	REQUIRE(fctx != NULL);
-	res = fctx->res;
-	REQUIRE(res != NULL);
-	INSIST(fctx->counter == NULL);
-
-	/* Skip any counting if fetches-per-zone is disabled */
-	spill = atomic_load_acquire(&res->zspill);
-	if (spill == 0) {
-		return ISC_R_SUCCESS;
-	}
-
-	hashval = dns_name_hash(fctx->domain);
-
-	RWLOCK(&res->counters_lock, locktype);
-	result = isc_hashmap_find(res->counters, hashval, fcount_match,
-				  fctx->domain, (void **)&counter);
-	switch (result) {
-	case ISC_R_SUCCESS:
-		break;
-	case ISC_R_NOTFOUND:
-		counter = isc_mem_get(fctx->mctx, sizeof(*counter));
-		*counter = (fctxcount_t){
-			.magic = FCTXCOUNT_MAGIC,
-		};
-		isc_mem_attach(fctx->mctx, &counter->mctx);
-		isc_mutex_init(&counter->lock);
-		counter->domain = dns_fixedname_initname(&counter->dfname);
-		dns_name_copy(fctx->domain, counter->domain);
-
-		UPGRADELOCK(&res->counters_lock, locktype);
-
-		void *found = NULL;
-		result = isc_hashmap_add(res->counters, hashval, fcount_match,
-					 counter->domain, counter, &found);
-		if (result == ISC_R_EXISTS) {
-			isc_mutex_destroy(&counter->lock);
-			isc_mem_putanddetach(&counter->mctx, counter,
-					     sizeof(*counter));
-			counter = found;
-			result = ISC_R_SUCCESS;
-		}
-
-		INSIST(result == ISC_R_SUCCESS);
-		break;
-	default:
-		UNREACHABLE();
-	}
-	INSIST(VALID_FCTXCOUNT(counter));
-
-	INSIST(spill > 0);
-	LOCK(&counter->lock);
-	if (++counter->count > spill && !force) {
-		counter->count--;
-		INSIST(counter->count > 0);
-		counter->dropped++;
-		fcount_logspill(fctx, counter, false);
-		result = ISC_R_QUOTA;
-	} else {
-		counter->allowed++;
-		fctx->counter = counter;
-	}
-	UNLOCK(&counter->lock);
-	RWUNLOCK(&res->counters_lock, locktype);
-
-	return result;
-}
-
 static bool
 match_ptr(void *node, const void *key) {
 	return node == key;
-}
-
-static void
-fcount_decr(fetchctx_t *fctx) {
-	REQUIRE(fctx != NULL);
-
-	fctxcount_t *counter = fctx->counter;
-	if (counter == NULL) {
-		return;
-	}
-	fctx->counter = NULL;
-
-	/*
-	 * FIXME: This should not require a write lock, but should be
-	 * implemented using reference counting later, otherwise we would could
-	 * encounter ABA problem here - the count could go up and down when we
-	 * switch from read to write lock.
-	 */
-	RWLOCK(&fctx->res->counters_lock, isc_rwlocktype_write);
-
-	LOCK(&counter->lock);
-	INSIST(VALID_FCTXCOUNT(counter));
-	INSIST(counter->count > 0);
-	if (--counter->count > 0) {
-		UNLOCK(&counter->lock);
-		RWUNLOCK(&fctx->res->counters_lock, isc_rwlocktype_write);
-		return;
-	}
-
-	isc_result_t result = isc_hashmap_delete(fctx->res->counters,
-						 dns_name_hash(counter->domain),
-						 match_ptr, counter);
-	INSIST(result == ISC_R_SUCCESS);
-
-	fcount_logspill(fctx, counter, true);
-	UNLOCK(&counter->lock);
-
-	isc_mutex_destroy(&counter->lock);
-	isc_mem_putanddetach(&counter->mctx, counter, sizeof(*counter));
-
-	RWUNLOCK(&fctx->res->counters_lock, isc_rwlocktype_write);
 }
 
 static void
@@ -3439,13 +3249,7 @@ fctx_getaddresses(fetchctx_t *fctx) {
 			if (fctx->fwdpolicy == dns_fwdpolicy_only &&
 			    isstrictsubdomain(&forwarders->name, fctx->domain))
 			{
-				fcount_decr(fctx);
 				dns_name_copy(&forwarders->name, fctx->domain);
-				result = fcount_incr(fctx, true);
-				if (result != ISC_R_SUCCESS) {
-					dns_forwarders_detach(&forwarders);
-					return result;
-				}
 			}
 			dns_forwarders_detach(&forwarders);
 		}
@@ -4308,14 +4112,8 @@ resume_qmin(void *arg) {
 	if (result != ISC_R_SUCCESS) {
 		goto cleanup;
 	}
-	fcount_decr(fctx);
 
 	dns_name_copy(fname, fctx->domain);
-
-	result = fcount_incr(fctx, false);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
 
 	dns_name_copy(dcname, fctx->qmindcname);
 	fctx->ns_ttl = fctx->nameservers.ttl;
@@ -4398,7 +4196,6 @@ fctx_destroy(fetchctx_t *fctx) {
 	if (fctx->gqc != NULL) {
 		isc_counter_detach(&fctx->gqc);
 	}
-	fcount_decr(fctx);
 	dns_message_detach(&fctx->qmessage);
 	if (dns_rdataset_isassociated(&fctx->nameservers)) {
 		dns_rdataset_disassociate(&fctx->nameservers);
@@ -4751,25 +4548,6 @@ fctx_create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 		fctx->ns_ttl_ok = true;
 	}
 
-	/*
-	 * Exempt prefetch queries from the fetches-per-zone quota check
-	 * also exempt QMIN fetches as the calling fetch has already
-	 * successfully called fcount_incr for this zone.
-	 */
-	if ((fctx->options & DNS_FETCHOPT_PREFETCH) == 0 &&
-	    (fctx->options & DNS_FETCHOPT_QMINFETCH) == 0)
-	{
-		/*
-		 * Are there too many simultaneous queries for this domain?
-		 */
-		result = fcount_incr(fctx, false);
-		if (result != ISC_R_SUCCESS) {
-			result = fctx->res->quotaresp[dns_quotatype_zone];
-			inc_stats(res, dns_resstatscounter_zonequota);
-			goto cleanup_nameservers;
-		}
-	}
-
 	log_ns_ttl(fctx, "fctx_create");
 
 	if (!dns_name_issubdomain(fctx->name, fctx->domain)) {
@@ -4777,7 +4555,7 @@ fctx_create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 		UNEXPECTED_ERROR("'%s' is not subdomain of '%s'", fctx->info,
 				 buf);
 		result = ISC_R_UNEXPECTED;
-		goto cleanup_fcount;
+		goto cleanup_nameservers;
 	}
 
 	dns_message_create(fctx->mctx, fctx->res->namepools[fctx->tid],
@@ -4834,9 +4612,6 @@ fctx_create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 
 cleanup_qmessage:
 	dns_message_detach(&fctx->qmessage);
-
-cleanup_fcount:
-	fcount_decr(fctx);
 
 cleanup_nameservers:
 	if (dns_rdataset_isassociated(&fctx->nameservers)) {
@@ -7057,12 +6832,7 @@ resume_dslookup(void *arg) {
 		fctx->ns_ttl_ok = true;
 		log_ns_ttl(fctx, "resume_dslookup");
 
-		fcount_decr(fctx);
 		dns_name_copy(fctx->nsname, fctx->domain);
-		result = fcount_incr(fctx, false);
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup;
-		}
 
 		/* Try again. */
 		fctx_try(fctx, true);
@@ -9137,7 +8907,6 @@ rctx_authority_dnssec(respctx_t *rctx) {
  */
 static isc_result_t
 rctx_referral(respctx_t *rctx) {
-	isc_result_t result;
 	fetchctx_t *fctx = rctx->fctx;
 
 	if (rctx->negative || rctx->ns_name == NULL) {
@@ -9213,7 +8982,6 @@ rctx_referral(respctx_t *rctx) {
 	 *		if so we should bail out.
 	 */
 	INSIST(dns_name_countlabels(fctx->domain) > 0);
-	fcount_decr(fctx);
 
 	if (dns_rdataset_isassociated(&fctx->nameservers)) {
 		dns_rdataset_disassociate(&fctx->nameservers);
@@ -9225,12 +8993,6 @@ rctx_referral(respctx_t *rctx) {
 		dns_name_copy(rctx->ns_name, fctx->qmindcname);
 
 		fctx_minimize_qname(fctx);
-	}
-
-	result = fcount_incr(fctx, false);
-	if (result != ISC_R_SUCCESS) {
-		rctx->result = result;
-		return ISC_R_COMPLETE;
 	}
 
 	FCTX_ATTR_SET(fctx, FCTX_ATTR_WANTCACHE);
@@ -9356,16 +9118,9 @@ rctx_nextserver(respctx_t *rctx, dns_message_t *message,
 			return;
 		}
 
-		fcount_decr(fctx);
-
 		dns_name_copy(fname, fctx->domain);
 		dns_name_copy(dcname, fctx->qmindcname);
 
-		result = fcount_incr(fctx, true);
-		if (result != ISC_R_SUCCESS) {
-			fctx_done_detach(&rctx->fctx, DNS_R_SERVFAIL);
-			return;
-		}
 		fctx->ns_ttl = fctx->nameservers.ttl;
 		fctx->ns_ttl_ok = true;
 		fctx_cancelqueries(fctx, true, false);
@@ -9790,10 +9545,6 @@ dns_resolver__destroy(dns_resolver_t *res) {
 	isc_hashmap_destroy(&res->fctxs);
 	isc_rwlock_destroy(&res->fctxs_lock);
 
-	INSIST(isc_hashmap_count(res->counters) == 0);
-	isc_hashmap_destroy(&res->counters);
-	isc_rwlock_destroy(&res->counters_lock);
-
 	if (res->dispatches4 != NULL) {
 		dns_dispatchset_destroy(&res->dispatches4);
 	}
@@ -9891,7 +9642,6 @@ dns_resolver_create(dns_view_t *view, isc_loopmgr_t *loopmgr, isc_nm_t *nm,
 	dns_view_weakattach(view, &res->view);
 	isc_mem_attach(view->mctx, &res->mctx);
 
-	res->quotaresp[dns_quotatype_zone] = DNS_R_DROP;
 	res->quotaresp[dns_quotatype_server] = DNS_R_SERVFAIL;
 
 #if DNS_RESOLVER_TRACE
@@ -9902,9 +9652,6 @@ dns_resolver_create(dns_view_t *view, isc_loopmgr_t *loopmgr, isc_nm_t *nm,
 
 	isc_hashmap_create(view->mctx, RES_DOMAIN_HASH_BITS, &res->fctxs);
 	isc_rwlock_init(&res->fctxs_lock);
-
-	isc_hashmap_create(view->mctx, RES_DOMAIN_HASH_BITS, &res->counters);
-	isc_rwlock_init(&res->counters_lock);
 
 	if (dispatchv4 != NULL) {
 		dns_dispatchset_create(res->mctx, dispatchv4, &res->dispatches4,
@@ -10701,20 +10448,6 @@ dns_resolver_setclientsperquery(dns_resolver_t *resolver, uint32_t min,
 	UNLOCK(&resolver->lock);
 }
 
-void
-dns_resolver_setfetchesperzone(dns_resolver_t *resolver, uint32_t clients) {
-	REQUIRE(VALID_RESOLVER(resolver));
-
-	atomic_store_release(&resolver->zspill, clients);
-}
-
-uint32_t
-dns_resolver_getfetchesperzone(dns_resolver_t *resolver) {
-	REQUIRE(VALID_RESOLVER(resolver));
-
-	return atomic_load_relaxed(&resolver->zspill);
-}
-
 bool
 dns_resolver_getzeronosoattl(dns_resolver_t *resolver) {
 	REQUIRE(VALID_RESOLVER(resolver));
@@ -10868,68 +10601,11 @@ dns_resolver_dumpfetches(dns_resolver_t *res, isc_statsformat_t format,
 	RWUNLOCK(&res->fctxs_lock, isc_rwlocktype_read);
 }
 
-isc_result_t
-dns_resolver_dumpquota(dns_resolver_t *res, isc_buffer_t **buf) {
-	isc_result_t result;
-	isc_hashmap_iter_t *it = NULL;
-	uint_fast32_t spill;
-
-	REQUIRE(VALID_RESOLVER(res));
-
-	spill = atomic_load_acquire(&res->zspill);
-	if (spill == 0) {
-		return ISC_R_SUCCESS;
-	}
-
-	RWLOCK(&res->counters_lock, isc_rwlocktype_read);
-	isc_hashmap_iter_create(res->counters, &it);
-	for (result = isc_hashmap_iter_first(it); result == ISC_R_SUCCESS;
-	     result = isc_hashmap_iter_next(it))
-	{
-		fctxcount_t *counter = NULL;
-		uint_fast32_t count, dropped, allowed;
-		char nb[DNS_NAME_FORMATSIZE];
-		char text[DNS_NAME_FORMATSIZE + BUFSIZ];
-
-		isc_hashmap_iter_current(it, (void **)&counter);
-
-		LOCK(&counter->lock);
-		count = counter->count;
-		dropped = counter->dropped;
-		allowed = counter->allowed;
-		UNLOCK(&counter->lock);
-
-		if (count < spill) {
-			continue;
-		}
-
-		dns_name_format(counter->domain, nb, sizeof(nb));
-		snprintf(text, sizeof(text),
-			 "\n- %s: %" PRIuFAST32 " active (allowed %" PRIuFAST32
-			 " spilled %" PRIuFAST32 ")",
-			 nb, count, allowed, dropped);
-
-		result = isc_buffer_reserve(*buf, strlen(text));
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup;
-		}
-		isc_buffer_putstr(*buf, text);
-	}
-	if (result == ISC_R_NOMORE) {
-		result = ISC_R_SUCCESS;
-	}
-
-cleanup:
-	isc_hashmap_iter_destroy(&it);
-	RWUNLOCK(&res->counters_lock, isc_rwlocktype_read);
-	return result;
-}
-
 void
 dns_resolver_setquotaresponse(dns_resolver_t *resolver, dns_quotatype_t which,
 			      isc_result_t resp) {
 	REQUIRE(VALID_RESOLVER(resolver));
-	REQUIRE(which == dns_quotatype_zone || which == dns_quotatype_server);
+	REQUIRE(which < dns_quotatype_max);
 	REQUIRE(resp == DNS_R_DROP || resp == DNS_R_SERVFAIL);
 
 	resolver->quotaresp[which] = resp;
@@ -10938,7 +10614,7 @@ dns_resolver_setquotaresponse(dns_resolver_t *resolver, dns_quotatype_t which,
 isc_result_t
 dns_resolver_getquotaresponse(dns_resolver_t *resolver, dns_quotatype_t which) {
 	REQUIRE(VALID_RESOLVER(resolver));
-	REQUIRE(which == dns_quotatype_zone || which == dns_quotatype_server);
+	REQUIRE(which < dns_quotatype_max);
 
 	return resolver->quotaresp[which];
 }

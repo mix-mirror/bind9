@@ -5263,28 +5263,6 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	}
 
 	obj = NULL;
-	result = named_config_get(maps, "fetches-per-zone", &obj);
-	INSIST(result == ISC_R_SUCCESS);
-	obj2 = cfg_tuple_get(obj, "fetches");
-	dns_resolver_setfetchesperzone(view->resolver, cfg_obj_asuint32(obj2));
-	obj2 = cfg_tuple_get(obj, "response");
-	if (!cfg_obj_isvoid(obj2)) {
-		const char *resp = cfg_obj_asstring(obj2);
-		isc_result_t r = DNS_R_SERVFAIL;
-
-		if (strcasecmp(resp, "drop") == 0) {
-			r = DNS_R_DROP;
-		} else if (strcasecmp(resp, "fail") == 0) {
-			r = DNS_R_SERVFAIL;
-		} else {
-			UNREACHABLE();
-		}
-
-		dns_resolver_setquotaresponse(view->resolver,
-					      dns_quotatype_zone, r);
-	}
-
-	obj = NULL;
 	result = named_config_get(maps, "prefetch", &obj);
 	INSIST(result == ISC_R_SUCCESS);
 	prefetch_trigger = cfg_tuple_get(obj, "trigger");
@@ -16022,20 +16000,6 @@ named_server_fetchlimit(named_server_t *server, isc_lex_t *lex,
 			CHECK(putstr(text, "\n  None."));
 		}
 
-		CHECK(putstr(text, "\nRate limited servers, view "));
-		CHECK(putstr(text, view->name));
-		val = dns_resolver_getfetchesperzone(view->resolver);
-		s = snprintf(tbuf, sizeof(tbuf),
-			     " (fetches-per-zone %u):", val);
-		if (s < 0 || (unsigned int)s > sizeof(tbuf)) {
-			CHECK(ISC_R_NOSPACE);
-		}
-		CHECK(putstr(text, tbuf));
-		used = isc_buffer_usedlength(*text);
-		CHECK(dns_resolver_dumpquota(view->resolver, text));
-		if (used == isc_buffer_usedlength(*text)) {
-			CHECK(putstr(text, "\n  None."));
-		}
 		dns_adb_detach(&adb);
 	}
 cleanup:

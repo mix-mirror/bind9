@@ -166,49 +166,6 @@ quota=$2
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
-copy_setports ns3/named2.conf.in ns3/named.conf
-rndc_reconfig ns3 10.53.0.3
-
-n=$((n + 1))
-echo_i "checking lame server clients are dropped at the per-domain limit ($n)"
-ret=0
-fail=0
-success=0
-sendcmd 10.53.0.4 send-responses "disable"
-for try in 1 2 3 4 5; do
-  burst 10.53.0.3 d $try 300
-  $DIGCMD a ${try}.example >dig.out.ns3.$n.$try
-  grep "status: NOERROR" dig.out.ns3.$n.$try >/dev/null 2>&1 \
-    && success=$((success + 1))
-  grep "status: SERVFAIL" dig.out.ns3.$n.$try >/dev/null 2>&1 \
-    && fail=$(($fail + 1))
-  stat 10.53.0.3 40 40 || ret=1
-  allowed=$(rndccmd 10.53.0.3 fetchlimit | awk '/lamesub/ { print $6 }')
-  [ "${allowed:-0}" -eq 40 ] || ret=1
-  [ $ret -eq 1 ] && break
-  sleep 1
-done
-echo_i "$success successful valid queries, $fail SERVFAIL"
-if [ $ret != 0 ]; then echo_i "failed"; fi
-status=$((status + ret))
-
-n=$((n + 1))
-echo_i "checking drop statistics ($n)"
-ret=0
-rm -f ns3/named.stats
-rndccmd 10.53.0.3 stats
-for try in 1 2 3 4 5; do
-  [ -f ns3/named.stats ] && break
-  sleep 1
-done
-zspill=$(grep 'spilled due to zone' ns3/named.stats | sed 's/\([0-9][0-9]*\) spilled.*/\1/')
-[ -z "$zspill" ] && zspill=0
-drops=$(grep 'queries dropped' ns3/named.stats | sed 's/\([0-9][0-9]*\) queries.*/\1/')
-[ -z "$drops" ] && drops=0
-[ "$drops" -ge "$zspill" ] || ret=1
-if [ $ret != 0 ]; then echo_i "failed"; fi
-status=$((status + ret))
-
 copy_setports ns3/named3.conf.in ns3/named.conf
 rndc_reconfig ns3 10.53.0.3
 

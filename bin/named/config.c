@@ -165,7 +165,6 @@ options {\n\
 			    "\
 	fetch-quota-params 100 0.1 0.3 0.7;\n\
 	fetches-per-server 0;\n\
-	fetches-per-zone 0;\n\
 	lame-ttl 0;\n"
 #ifdef HAVE_LMDB
 			    "	lmdb-mapsize 32M;\n"
