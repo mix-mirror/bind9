@@ -53,9 +53,10 @@
  *\li	None.
  */
 
+/* Add -DDNS_VIEW_TRACE=1 to CFLAGS for detailed reference tracing */
+
 #include <inttypes.h>
 #include <stdbool.h>
-#include <stdio.h>
 
 #include <isc/magic.h>
 #include <isc/mutex.h>
@@ -67,6 +68,7 @@
 #include <dns/acl.h>
 #include <dns/catz.h>
 #include <dns/clientinfo.h>
+#include <dns/dns64.h>
 #include <dns/dnstap.h>
 #include <dns/fixedname.h>
 #include <dns/nta.h>
@@ -102,6 +104,8 @@ struct dns_view {
 	isc_mutex_t lock;
 	bool	    frozen;
 	bool	    cacheshared;
+
+	atomic_bool shuttingdown;
 
 	/* Configurable data. */
 	dns_transport_list_t *transports;
@@ -159,7 +163,6 @@ struct dns_view {
 	in_port_t	      dstport;
 	dns_aclenv_t	     *aclenv;
 	dns_rdatatype_t	      preferred_glue;
-	bool		      flush;
 	bool		      checknames;
 	uint16_t	      maxudp;
 	dns_ttl_t	      staleanswerttl;
@@ -197,7 +200,6 @@ struct dns_view {
 
 	/* Locked by themselves. */
 	isc_refcount_t references;
-	isc_refcount_t weakrefs;
 
 	/* Under owner's locking control. */
 	ISC_LINK(struct dns_view) link;
@@ -305,62 +307,28 @@ dns_view_attach(dns_view_t *source, dns_view_t **targetp);
  */
 
 void
-dns_view_detach(dns_view_t **viewp);
+dns_view_shutdown(dns_view_t *view, bool flush);
 /*%<
- * Detach '*viewp' and decrement the view's reference counter.  If this was
- * the last reference, then the associated resolver, requestmgr, ADB and
- * zones will be shut down; if dns_view_flushonshutdown() has been called
- * with 'true', uncommitted changed in zones will also be flushed to disk.
- * The view will not be fully destroyed, however, until the weak references
- * (see below) reach zero as well.
+ * Initiate the shutdown of 'view'.  The associated resolver, requestmgr, ADB
+ * and zones will be shutdown; if 'flush' is 'true', uncommitted changes in
+ * zones will also be flushed to disk.
  *
  * Requires:
  *
- *\li	'viewp' points to a valid dns_view_t *
- *
- * Ensures:
- *
- *\li	*viewp is NULL.
+ *\li	'view' points to a valid dns_view_t *
  */
 
-void
-dns_view_weakattach(dns_view_t *source, dns_view_t **targetp);
-/*%<
- * Attach '*targetp' to 'source', incrementing the view's weak reference
- * counter.
- *
- * Weak references are used by objects such as the resolver, requestmgr,
- * ADB, and zones, which are subsidiary to the view; they need the view
- * object to remain in existence as long as they persist, but they do
- * not need to prevent it from being shut down.
- *
- * Requires:
- *
- *\li	'source' is a valid, frozen view.
- *
- *\li	'targetp' points to a NULL dns_view_t *.
- *
- * Ensures:
- *
- *\li	*targetp is attached to source.
- *
- * \li	While *targetp is attached, the view will not be freed.
- */
-
-void
-dns_view_weakdetach(dns_view_t **targetp);
-/*%<
- * Detach '*viewp' from its view. If this is the last weak reference,
- * the view will be destroyed.
- *
- * Requires:
- *
- *\li	'viewp' points to a valid dns_view_t *.
- *
- * Ensures:
- *
- *\li	*viewp is NULL.
- */
+#if DNS_VIEW_TRACE
+#define dns_view_ref(ptr)   dns_view__ref(ptr, __func__, __FILE__, __LINE__)
+#define dns_view_unref(ptr) dns_view__unref(ptr, __func__, __FILE__, __LINE__)
+#define dns_view_attach(ptr, ptrp) \
+	dns_view__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
+#define dns_view_detach(ptrp) \
+	dns_view__detach(ptrp, __func__, __FILE__, __LINE__)
+ISC_REFCOUNT_TRACE_DECL(dns_view);
+#else
+ISC_REFCOUNT_DECL(dns_view);
+#endif
 
 isc_result_t
 dns_view_createresolver(dns_view_t *view, isc_nm_t *netmgr,
@@ -1176,16 +1144,6 @@ bool
 dns_view_staleanswerenabled(dns_view_t *view);
 /*%<
  * Check if stale answers are enabled for this view.
- *
- * Requires:
- *\li	'view' to be valid.
- */
-
-void
-dns_view_flushonshutdown(dns_view_t *view, bool flush);
-/*%<
- * Inform the view that the zones should (or should not) be flushed to
- * disk on shutdown.
  *
  * Requires:
  *\li	'view' to be valid.

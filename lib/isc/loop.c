@@ -144,13 +144,22 @@ shutdown_trigger_close_cb(uv_handle_t *handle) {
 }
 
 static void
+isc__rcu_barrier(uv_handle_t *handle ISC_ATTR_UNUSED) {
+	/*
+	 * Make sure that all async jobs and call_rcu callbacks are done before
+	 * returning from the uv_close()
+	 */
+	rcu_barrier();
+}
+
+static void
 destroy_cb(uv_async_t *handle) {
 	isc_loop_t *loop = uv_handle_get_data(handle);
 
 	/* Again, the first close callback here is called last */
 	uv_close(&loop->async_trigger, isc__async_close);
 	uv_close(&loop->run_trigger, isc__job_close);
-	uv_close(&loop->destroy_trigger, NULL);
+	uv_close(&loop->destroy_trigger, isc__rcu_barrier);
 	uv_close(&loop->pause_trigger, NULL);
 	uv_close(&loop->quiescent, NULL);
 

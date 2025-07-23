@@ -27,29 +27,6 @@
 #include <dns/rdatalist.h>
 #include <dns/rdataset.h>
 
-struct dns_dns64 {
-	unsigned char bits[16]; /*
-				 * Prefix + suffix bits.
-				 */
-	dns_acl_t *clients;	/*
-				 * Which clients get mapped
-				 * addresses.
-				 */
-	dns_acl_t *mapped;	/*
-				 * IPv4 addresses to be mapped.
-				 */
-	dns_acl_t *excluded;	/*
-				 * IPv6 addresses that are
-				 * treated as not existing.
-				 */
-	unsigned int prefixlen; /*
-				 * Start of mapped address.
-				 */
-	unsigned int flags;
-	isc_mem_t *mctx;
-	ISC_LINK(dns_dns64_t) link;
-};
-
 void
 dns_dns64_create(isc_mem_t *mctx, const isc_netaddr_t *prefix,
 		 unsigned int prefixlen, const isc_netaddr_t *suffix,

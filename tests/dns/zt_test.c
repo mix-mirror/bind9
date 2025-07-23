@@ -85,6 +85,7 @@ ISC_LOOP_TEST_IMPL(apply) {
 	dns_test_closezonemgr();
 
 	/* The view was left attached in dns_test_makezone() */
+	dns_view_shutdown(view, false);
 	dns_view_detach(&view);
 	dns_zone_detach(&zone);
 	isc_loopmgr_shutdown(loopmgr);
@@ -94,6 +95,8 @@ static isc_result_t
 load_done_last(void *uap) {
 	dns_zone_t *zone = uap;
 	isc_result_t result;
+
+	fprintf(stderr, "%s\n", __func__);
 
 	/* The zone should now be loaded; test it */
 	result = dns_zone_getdb(zone, &db);
@@ -107,8 +110,9 @@ load_done_last(void *uap) {
 	dns_test_releasezone(zone);
 	dns_test_closezonemgr();
 
-	dns_zone_detach(&zone);
+	dns_view_shutdown(view, false);
 	dns_view_detach(&view);
+	dns_zone_detach(&zone);
 
 	isc_loopmgr_shutdown(loopmgr);
 
@@ -125,6 +129,7 @@ load_done_new_only(void *uap) {
 	assert_int_equal(result, ISC_R_SUCCESS);
 	dns_db_detach(&db);
 
+	fprintf(stderr, "%s\n", __func__);
 	dns_zone_asyncload(zone, true, load_done_last, zone);
 
 	return ISC_R_SUCCESS;
@@ -148,6 +153,7 @@ load_done_first(void *uap) {
 	fflush(zonefile);
 	fclose(zonefile);
 
+	fprintf(stderr, "%s\n", __func__);
 	dns_zone_asyncload(zone, true, load_done_new_only, zone);
 
 	return ISC_R_SUCCESS;
@@ -187,6 +193,7 @@ ISC_LOOP_TEST_IMPL(asyncload_zone) {
 	dns_zone_setfile(zone, "./zone.data", NULL, dns_masterformat_text,
 			 &dns_master_style_default);
 
+	fprintf(stderr, "%s\n", __func__);
 	dns_zone_asyncload(zone, false, load_done_first, zone);
 }
 
@@ -219,6 +226,7 @@ all_done(void *arg ISC_ATTR_UNUSED) {
 	dns_zone_detach(&zone1);
 	dns_zone_detach(&zone2);
 	dns_zone_detach(&zone3);
+	dns_view_shutdown(view, false);
 	dns_view_detach(&view);
 
 	isc_loopmgr_shutdown(loopmgr);

@@ -16,7 +16,7 @@ foreach unit : [
 ]
     test_bin = executable(
         unit,
-        files(f'@unit@_test.c', 'netmgr_wrap.c'),
+        files(f'@unit@_test.c'),
         build_by_default: false,
         export_dynamic: true,
         install: false,

@@ -16,6 +16,8 @@
 #include <inttypes.h>
 #include <stdbool.h>
 
+#include <urcu/compiler.h>
+
 #include <isc/async.h>
 #include <isc/buffer.h>
 #include <isc/log.h>
@@ -45,7 +47,7 @@ struct dns_ntatable {
 	isc_loopmgr_t *loopmgr;
 	isc_refcount_t references;
 	dns_qpmulti_t *table;
-	atomic_bool shuttingdown;
+	bool shuttingdown;
 };
 
 struct dns__nta {
@@ -61,7 +63,7 @@ struct dns__nta {
 	dns_rdataset_t sigrdataset;
 	dns_name_t name;
 	isc_stdtime_t expiry;
-	bool shuttingdown;
+	struct rcu_head rcu_head;
 };
 
 #define NTA_MAGIC     ISC_MAGIC('N', 'T', 'A', 'n')
@@ -87,6 +89,12 @@ static dns_qpmethods_t qpmethods = {
 };
 
 static void
+dns__nta_destroy_rcu(struct rcu_head *rcu_head) {
+	dns__nta_t *nta = caa_container_of(rcu_head, dns__nta_t, rcu_head);
+	isc_mem_putanddetach(&nta->mctx, nta, sizeof(*nta));
+}
+
+static void
 dns__nta_destroy(dns__nta_t *nta) {
 	REQUIRE(nta->timer == NULL);
 
@@ -103,7 +111,8 @@ dns__nta_destroy(dns__nta_t *nta) {
 	}
 	isc_loop_detach(&nta->loop);
 	dns_name_free(&nta->name, nta->mctx);
-	isc_mem_putanddetach(&nta->mctx, nta, sizeof(*nta));
+
+	call_rcu(&nta->rcu_head, dns__nta_destroy_rcu);
 }
 
 #if DNS_NTA_TRACE
@@ -122,10 +131,10 @@ dns_ntatable_create(dns_view_t *view, isc_loopmgr_t *loopmgr,
 	ntatable = isc_mem_get(view->mctx, sizeof(*ntatable));
 	*ntatable = (dns_ntatable_t){
 		.loopmgr = loopmgr,
+		.view = view,
 	};
 
 	isc_mem_attach(view->mctx, &ntatable->mctx);
-	dns_view_weakattach(view, &ntatable->view);
 
 	isc_rwlock_init(&ntatable->rwlock);
 	dns_qpmulti_create(view->mctx, &qpmethods, view, &ntatable->table);
@@ -138,6 +147,8 @@ dns_ntatable_create(dns_view_t *view, isc_loopmgr_t *loopmgr,
 
 static void
 dns__ntatable_destroy(dns_ntatable_t *ntatable) {
+	INSIST(ntatable->shuttingdown);
+
 	ntatable->magic = 0;
 	isc_rwlock_destroy(&ntatable->rwlock);
 	dns_qpmulti_destroy(&ntatable->table);
@@ -227,10 +238,13 @@ checkbogus(void *arg) {
 		dns_rdataset_disassociate(&nta->sigrdataset);
 	}
 
-	if (atomic_load(&ntatable->shuttingdown)) {
+	RWLOCK(&ntatable->rwlock, isc_rwlocktype_read);
+	if (ntatable->shuttingdown) {
+		RWUNLOCK(&ntatable->rwlock, isc_rwlocktype_read);
 		isc_timer_stop(nta->timer);
 		return;
 	}
+	RWUNLOCK(&ntatable->rwlock, isc_rwlocktype_read);
 
 	result = dns_view_getresolver(ntatable->view, &resolver);
 	if (result != ISC_R_SUCCESS) {
@@ -304,11 +318,12 @@ dns_ntatable_add(dns_ntatable_t *ntatable, const dns_name_t *name, bool force,
 
 	REQUIRE(VALID_NTATABLE(ntatable));
 
-	if (atomic_load(&ntatable->shuttingdown)) {
-		return ISC_R_SUCCESS;
+	RWLOCK(&ntatable->rwlock, isc_rwlocktype_write);
+	if (ntatable->shuttingdown) {
+		RWUNLOCK(&ntatable->rwlock, isc_rwlocktype_write);
+		return ISC_R_SHUTTINGDOWN;
 	}
 
-	RWLOCK(&ntatable->rwlock, isc_rwlocktype_write);
 	dns_qpmulti_write(ntatable->table, &qp);
 	nta_create(ntatable, name, &nta);
 	nta->forced = force;
@@ -384,7 +399,8 @@ delete_expired(void *arg) {
 	result = dns_qp_getname(qp, &nta->name, DNS_DBNAMESPACE_NORMAL, &pval,
 				NULL);
 	if (result == ISC_R_SUCCESS &&
-	    ((dns__nta_t *)pval)->expiry == nta->expiry && !nta->shuttingdown)
+	    ((dns__nta_t *)pval)->expiry == nta->expiry &&
+	    !ntatable->shuttingdown)
 	{
 		char nb[DNS_NAME_FORMATSIZE];
 		dns_name_format(&nta->name, nb, sizeof(nb));
@@ -609,7 +625,6 @@ dns__nta_shutdown(dns__nta_t *nta) {
 
 	dns__nta_ref(nta);
 	isc_async_run(nta->loop, dns__nta_shutdown_cb, nta);
-	nta->shuttingdown = true;
 }
 
 void
@@ -621,6 +636,10 @@ dns_ntatable_shutdown(dns_ntatable_t *ntatable) {
 	REQUIRE(VALID_NTATABLE(ntatable));
 
 	RWLOCK(&ntatable->rwlock, isc_rwlocktype_write);
+	if (ntatable->shuttingdown) {
+		RWUNLOCK(&ntatable->rwlock, isc_rwlocktype_write);
+		return;
+	}
 	dns_qpmulti_query(ntatable->table, &qpr);
 	ntatable->shuttingdown = true;
 
@@ -632,7 +651,7 @@ dns_ntatable_shutdown(dns_ntatable_t *ntatable) {
 	}
 
 	dns_qpread_destroy(ntatable->table, &qpr);
-	dns_view_weakdetach(&ntatable->view);
+	ntatable->view = NULL; /* not attached */
 	RWUNLOCK(&ntatable->rwlock, isc_rwlocktype_write);
 }
 
@@ -640,6 +659,7 @@ static void
 qp_attach(void *uctx ISC_ATTR_UNUSED, void *pval,
 	  uint32_t ival ISC_ATTR_UNUSED) {
 	dns__nta_t *nta = pval;
+	fprintf(stderr, "%s:%p\n", __func__, nta);
 	dns__nta_ref(nta);
 }
 
@@ -647,6 +667,7 @@ static void
 qp_detach(void *uctx ISC_ATTR_UNUSED, void *pval,
 	  uint32_t ival ISC_ATTR_UNUSED) {
 	dns__nta_t *nta = pval;
+	fprintf(stderr, "%s:%p\n", __func__, nta);
 	dns__nta_detach(&nta);
 }
 
