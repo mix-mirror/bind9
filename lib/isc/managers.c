@@ -19,9 +19,17 @@
 
 void
 isc_managers_create(uint32_t workers) {
+	in_port_t port_low, port_high;
+
 	isc_loopmgr_create(isc_g_mctx, workers);
 	isc_netmgr_create(isc_g_mctx);
 	isc_rwlock_setworkers(workers);
+
+	isc_net_getudpportrange(AF_INET, &port_low, &port_high);
+	isc_netmgr_portrange(AF_INET, port_low, port_high);
+
+	isc_net_getudpportrange(AF_INET6, &port_low, &port_high);
+	isc_netmgr_portrange(AF_INET6, port_low, port_high);
 }
 
 void

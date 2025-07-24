@@ -11,10 +11,13 @@
  * information regarding copyright ownership.
  */
 
+#include <ctype.h>
 #include <inttypes.h>
 #include <sys/stat.h>
+#include <sys/utsname.h>
 
 #include <isc/os.h>
+#include <isc/string.h>
 #include <isc/types.h>
 #include <isc/util.h>
 #include <isc/uv.h>
@@ -25,6 +28,8 @@
 static unsigned int isc__os_ncpus = 0;
 static unsigned long isc__os_cacheline = ISC_OS_CACHELINE_SIZE;
 static mode_t isc__os_umask = 0;
+static int kernel_major = -1, kernel_minor = -1, kernel_patch = -1;
+static char kernel_name[64];
 
 /*
  * The affinity support for non-Linux is in the review in the upstream
@@ -177,6 +182,19 @@ umask_initialize(void) {
 	(void)umask(isc__os_umask);
 }
 
+static void
+kernel_initialize(void) {
+	struct utsname buffer;
+
+	if (uname(&buffer) == -1) {
+		return;
+	}
+
+	(void)sscanf(buffer.release, "%d.%d.%d", &kernel_major, &kernel_minor,
+		     &kernel_patch);
+	(void)strlcpy(kernel_name, buffer.sysname, sizeof(kernel_name));
+}
+
 unsigned int
 isc_os_ncpus(void) {
 	return isc__os_ncpus;
@@ -193,9 +211,18 @@ isc_os_umask(void) {
 }
 
 void
+isc_os_kernel(char **name, int *major, int *minor, int *patch) {
+	SET_IF_NOT_NULL(name, kernel_name)
+	SET_IF_NOT_NULL(major, kernel_major);
+	SET_IF_NOT_NULL(minor, kernel_minor);
+	SET_IF_NOT_NULL(patch, kernel_patch);
+}
+
+void
 isc__os_initialize(void) {
 	umask_initialize();
 	ncpus_initialize();
+	kernel_initialize();
 #if defined(_SC_LEVEL1_DCACHE_LINESIZE)
 	long s = sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
 	if (s > 0 && (unsigned long)s > isc__os_cacheline) {

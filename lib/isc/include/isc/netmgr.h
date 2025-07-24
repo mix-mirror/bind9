@@ -946,3 +946,9 @@ isc_nmsocket_getaddr(isc_nmsocket_t *sock);
 /*%<
  * Return the local address of 'sock'.
  */
+
+void
+isc_netmgr_portrange(sa_family_t af, in_port_t low, in_port_t high);
+/*%<
+ * Set the ephemeral port range <low, high> for 'af' family.
+ */

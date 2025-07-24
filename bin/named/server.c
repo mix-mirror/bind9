@@ -7704,7 +7704,7 @@ apply_configuration(cfg_obj_t *effectiveconfig, cfg_obj_t *bindkeys,
 	dns_kasplist_t tmpkasplist, kasplist;
 	dns_keystorelist_t tmpkeystorelist, keystorelist;
 	dns_viewlist_t viewlist;
-	in_port_t listen_port, udpport_low, udpport_high;
+	in_port_t listen_port, port_low, port_high;
 	int i, backlog;
 	isc_interval_t interval;
 	isc_logconfig_t *logc = NULL;
@@ -8048,39 +8048,26 @@ apply_configuration(cfg_obj_t *effectiveconfig, cfg_obj_t *bindkeys,
 	isc_portset_create(isc_g_mctx, &v4portset);
 	isc_portset_create(isc_g_mctx, &v6portset);
 
-	result = isc_net_getudpportrange(AF_INET, &udpport_low, &udpport_high);
-	if (result != ISC_R_SUCCESS) {
-		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
-			      ISC_LOG_ERROR,
-			      "get the default UDP/IPv4 port range: %s",
-			      isc_result_totext(result));
-		goto cleanup_portsets;
-	}
-
-	isc_portset_addrange(v4portset, udpport_low, udpport_high);
+	isc_net_getudpportrange(AF_INET, &port_low, &port_high);
+	isc_netmgr_portrange(AF_INET, port_low, port_high);
+	isc_portset_addrange(v4portset, port_low, port_high);
 	if (!ns_server_getoption(server->sctx, NS_SERVER_DISABLE4)) {
 		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
 			      ISC_LOG_INFO,
 			      "using default UDP/IPv4 port range: "
 			      "[%d, %d]",
-			      udpport_low, udpport_high);
+			      port_low, port_high);
 	}
 
-	result = isc_net_getudpportrange(AF_INET6, &udpport_low, &udpport_high);
-	if (result != ISC_R_SUCCESS) {
-		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
-			      ISC_LOG_ERROR,
-			      "get the default UDP/IPv6 port range: %s",
-			      isc_result_totext(result));
-		goto cleanup_portsets;
-	}
-	isc_portset_addrange(v6portset, udpport_low, udpport_high);
+	isc_net_getudpportrange(AF_INET6, &port_low, &port_high);
+	isc_netmgr_portrange(AF_INET6, port_low, port_high);
+	isc_portset_addrange(v6portset, port_low, port_high);
 	if (!ns_server_getoption(server->sctx, NS_SERVER_DISABLE6)) {
 		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
 			      ISC_LOG_INFO,
 			      "using default UDP/IPv6 port range: "
 			      "[%d, %d]",
-			      udpport_low, udpport_high);
+			      port_low, port_high);
 	}
 
 	dns_dispatchmgr_setavailports(named_g_dispatchmgr, v4portset,

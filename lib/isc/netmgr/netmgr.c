@@ -155,6 +155,7 @@ netmgr_teardown(void *arg ISC_ATTR_UNUSED) {
 void
 isc_netmgr_create(isc_mem_t *mctx) {
 	isc__netmgr_t *netmgr = NULL;
+	in_port_t port_low, port_high;
 
 #ifdef MAXIMAL_UV_VERSION
 	if (uv_version() > MAXIMAL_UV_VERSION) {
@@ -185,6 +186,11 @@ isc_netmgr_create(isc_mem_t *mctx) {
 	atomic_init(&netmgr->send_tcp_buffer_size, 0);
 	atomic_init(&netmgr->recv_udp_buffer_size, 0);
 	atomic_init(&netmgr->send_udp_buffer_size, 0);
+	atomic_init(&netmgr->port_low4, 0);
+	atomic_init(&netmgr->port_high4, 65535);
+	atomic_init(&netmgr->port_low6, 0);
+	atomic_init(&netmgr->port_high6, 65535);
+
 #if HAVE_SO_REUSEPORT_LB
 	netmgr->load_balance_sockets = true;
 #else
@@ -237,6 +243,15 @@ isc_netmgr_create(isc_mem_t *mctx) {
 	}
 
 	isc__netmgr = netmgr;
+
+	/*
+	 * Set the initial port range for IP_LOCAL_PORT_RANGE.
+	 */
+	isc_net_getudpportrange(AF_INET, &port_low, &port_high);
+	isc_netmgr_portrange(AF_INET, port_low, port_high);
+
+	isc_net_getudpportrange(AF_INET6, &port_low, &port_high);
+	isc_netmgr_portrange(AF_INET6, port_low, port_high);
 }
 
 /*
@@ -2896,6 +2911,23 @@ isc__networker_t *
 isc__networker_get(uint32_t tid) {
 	REQUIRE(VALID_NM(isc__netmgr));
 	return &isc__netmgr->workers[tid];
+}
+
+void
+isc_netmgr_portrange(sa_family_t af, in_port_t low, in_port_t high) {
+	REQUIRE(VALID_NM(isc__netmgr));
+	switch (af) {
+	case AF_INET:
+		atomic_store_relaxed(&isc__netmgr->port_low4, low);
+		atomic_store_relaxed(&isc__netmgr->port_high4, high);
+		break;
+	case AF_INET6:
+		atomic_store_relaxed(&isc__netmgr->port_low6, low);
+		atomic_store_relaxed(&isc__netmgr->port_high6, high);
+		break;
+	default:
+		INSIST(0);
+	}
 }
 
 #if ISC_NETMGR_TRACE

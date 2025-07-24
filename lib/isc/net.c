@@ -175,7 +175,7 @@ getudpportrange_sysctl(int af, in_port_t *low, in_port_t *high) {
 #endif /* HAVE_SYSCTLBYNAME */
 #endif /* USE_SYSCTL_PORTRANGE */
 
-isc_result_t
+void
 isc_net_getudpportrange(int af, in_port_t *low, in_port_t *high) {
 	int result = ISC_R_FAILURE;
 #if !defined(USE_SYSCTL_PORTRANGE) && defined(__linux)
@@ -214,8 +214,6 @@ isc_net_getudpportrange(int af, in_port_t *low, in_port_t *high) {
 		*low = ISC_NET_PORTRANGELOW;
 		*high = ISC_NET_PORTRANGEHIGH;
 	}
-
-	return ISC_R_SUCCESS; /* we currently never fail in this function */
 }
 
 void

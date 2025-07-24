@@ -12,6 +12,7 @@
  */
 
 #include <libgen.h>
+#include <string.h>
 #include <unistd.h>
 
 #include <isc/async.h>
@@ -140,8 +141,6 @@ tcp_connect_direct(isc_nmsocket_t *sock, isc__nm_uvreq_t *req) {
 		return isc_uverr2result(r);
 	}
 	isc__nm_incstats(sock, STATID_OPEN);
-
-	isc__nm_tcp_bind_no_port(&sock->uv_handle.tcp);
 
 	if (req->local.length != 0) {
 		r = uv_tcp_bind(&sock->uv_handle.tcp, &req->local.type.sa, 0);
@@ -291,6 +290,15 @@ isc_nm_tcpconnect(isc_sockaddr_t *local, isc_sockaddr_t *peer,
 
 	(void)isc__nm_socket_min_mtu(sock->fd, sa_family);
 	(void)isc__nm_socket_tcp_maxseg(sock->fd, NM_MAXSEG);
+	result = isc__nm_socket_max_port_range(sock->fd, sa_family);
+	if (result != ISC_R_SUCCESS) {
+		isc__nmsocket_log(sock, ISC_LOG_DEBUG(99),
+				  "setting up IP_BIND_ADDRESS_NO_PORT or "
+				  "IP_LOCAL_PORT_RANGE failed: %s\n",
+				  result == ISC_R_RANGE
+					  ? isc_result_totext(result)
+					  : strerror(errno));
+	}
 
 	sock->active = true;
 

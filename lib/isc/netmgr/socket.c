@@ -11,7 +11,10 @@
  * information regarding copyright ownership.
  */
 
+#include <netinet/in.h>
+
 #include <isc/errno.h>
+#include <isc/result.h>
 #include <isc/uv.h>
 
 #include "netmgr-int.h"
@@ -370,17 +373,81 @@ isc__nm_socket_min_mtu(uv_os_sock_t fd, sa_family_t sa_family) {
 	return ISC_R_SUCCESS;
 }
 
-isc_result_t
-isc__nm_tcp_bind_no_port(uv_tcp_t *handle ISC_ATTR_UNUSED) {
-#ifdef IP_BIND_ADDRESS_NO_PORT
-	uv_os_sock_t fd = -1;
+/*
+ * See
+ * https://blog.cloudflare.com/linux-transport-protocol-port-selection-performance/#kernel
+ * for rationalle.
+ */
+#define PORT_RANGE 1000
 
-	int r = uv_fileno((const uv_handle_t *)handle, (uv_os_fd_t *)&fd);
-	if (r < 0) {
+isc_result_t
+isc__nm_socket_max_port_range(uv_os_sock_t fd ISC_ATTR_UNUSED,
+			      sa_family_t af ISC_ATTR_UNUSED) {
+#ifdef IP_BIND_ADDRESS_NO_PORT
+	if (setsockopt_on(fd, IPPROTO_IP, IP_BIND_ADDRESS_NO_PORT) == -1) {
 		return ISC_R_FAILURE;
 	}
+#endif
 
-	if (setsockopt_on(fd, IPPROTO_IP, IP_BIND_ADDRESS_NO_PORT) == -1) {
+#if defined(IP_LOCAL_PORT_RANGE) && defined(__linux__)
+	/*
+	 * The option takes an uint32_t value with the high 16 bits
+	 * set to the upper range bound, and the low 16 bits set to
+	 * the lower range bound.  Range bounds are inclusive.  The
+	 * 16-bit values should be in host byte order.
+	 */
+	uint32_t port_range;
+	int major, minor;
+	isc_os_kernel(NULL, &major, &minor, NULL);
+
+	in_port_t port_low, port_high;
+	switch (af) {
+	case AF_INET:
+		port_low = isc__netmgr->port_low4;
+		port_high = isc__netmgr->port_high4;
+		break;
+	case AF_INET6:
+		port_low = isc__netmgr->port_low6;
+		port_high = isc__netmgr->port_high6;
+		break;
+	default:
+		INSIST(0);
+	}
+
+	/*
+	 * Linux 6.8 implemented a following patch:
+	 *
+	 * If IP_LOCAL_PORT_RANGE is set on a socket before accept(),
+	 * port selection no longer favors even ports.
+	 *
+	 * This means that connect() can find a suitable source port
+	 * faster, and applications can use a different split between
+	 * connect() and bind() users.
+	 */
+	if (major < 6 || (major == 6 && minor < 8)) {
+		/*
+		 * On Linux << 6.8, use IP_LOCAL_PORT_RANGE to
+		 * partition ephemeral port range randomly to help
+		 * with the port selection.
+		 */
+		if (port_high - port_low <= PORT_RANGE) {
+			return ISC_R_RANGE;
+		}
+
+		/*
+		 * port_low <= N < port_high - PORT_RANGE
+		 */
+		port_high -= PORT_RANGE;
+		port_low += isc_random_uniform(port_high - port_low);
+		port_high = port_low + PORT_RANGE;
+	}
+	INSIST(port_low > 0);
+	INSIST(port_low < port_high);
+
+	port_range = (uint32_t)port_low | ((uint32_t)port_high << 16);
+	if (setsockopt(fd, IPPROTO_IP, IP_LOCAL_PORT_RANGE, &port_range,
+		       sizeof(port_range)) == -1)
+	{
 		return ISC_R_FAILURE;
 	}
 #endif

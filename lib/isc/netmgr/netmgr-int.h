@@ -358,6 +358,12 @@ typedef struct isc__netmgr {
 	atomic_int_fast32_t send_udp_buffer_size;
 	atomic_int_fast32_t recv_tcp_buffer_size;
 	atomic_int_fast32_t send_tcp_buffer_size;
+
+	_Atomic(in_port_t) port_low4;
+	_Atomic(in_port_t) port_high4;
+	_Atomic(in_port_t) port_low6;
+	_Atomic(in_port_t) port_high6;
+
 } isc__netmgr_t;
 
 extern isc__netmgr_t *isc__netmgr;
@@ -1387,9 +1393,11 @@ isc__nm_socket_min_mtu(uv_os_sock_t fd, sa_family_t sa_family);
  */
 
 isc_result_t
-isc__nm_tcp_bind_no_port(uv_tcp_t *handle);
+isc__nm_socket_max_port_range(uv_os_sock_t fd ISC_ATTR_UNUSED,
+			      sa_family_t sa_family ISC_ATTR_UNUSED);
 /*%<
- * Set IP_BIND_ADDRESS_NO_PORT on the socket (Linux only).
+ * Set IP_BIND_ADDRESS_NO_PORT and IP_LOCAL_PORT_RANGE on the socket
+ * (Linux only).
  */
 
 void

@@ -216,7 +216,7 @@ isc_net_enableipv4(void);
 void
 isc_net_enableipv6(void);
 
-isc_result_t
+void
 isc_net_getudpportrange(int af, in_port_t *low, in_port_t *high);
 /*%<
  * Returns system's default range of ephemeral UDP ports, if defined.
