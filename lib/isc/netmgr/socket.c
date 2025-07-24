@@ -369,3 +369,20 @@ isc__nm_socket_min_mtu(uv_os_sock_t fd, sa_family_t sa_family) {
 
 	return ISC_R_SUCCESS;
 }
+
+isc_result_t
+isc__nm_tcp_bind_no_port(uv_tcp_t *handle ISC_ATTR_UNUSED) {
+#ifdef IP_BIND_ADDRESS_NO_PORT
+	uv_os_sock_t fd = -1;
+
+	int r = uv_fileno((const uv_handle_t *)handle, (uv_os_fd_t *)&fd);
+	if (r < 0) {
+		return ISC_R_FAILURE;
+	}
+
+	if (setsockopt_on(fd, IPPROTO_IP, IP_BIND_ADDRESS_NO_PORT) == -1) {
+		return ISC_R_FAILURE;
+	}
+#endif
+	return ISC_R_SUCCESS;
+}

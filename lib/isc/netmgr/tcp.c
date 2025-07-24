@@ -141,6 +141,8 @@ tcp_connect_direct(isc_nmsocket_t *sock, isc__nm_uvreq_t *req) {
 	}
 	isc__nm_incstats(sock, STATID_OPEN);
 
+	isc__nm_tcp_bind_no_port(&sock->uv_handle.tcp);
+
 	if (req->local.length != 0) {
 		r = uv_tcp_bind(&sock->uv_handle.tcp, &req->local.type.sa, 0);
 		if (r != 0) {

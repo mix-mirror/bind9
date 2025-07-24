@@ -1386,6 +1386,12 @@ isc__nm_socket_min_mtu(uv_os_sock_t fd, sa_family_t sa_family);
  * Use minimum MTU on IPv6 sockets
  */
 
+isc_result_t
+isc__nm_tcp_bind_no_port(uv_tcp_t *handle);
+/*%<
+ * Set IP_BIND_ADDRESS_NO_PORT on the socket (Linux only).
+ */
+
 void
 isc__nm_set_network_buffers(uv_handle_t *handle);
 /*%>
