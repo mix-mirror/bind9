@@ -404,10 +404,10 @@ freezezones(dns_zone_t *zone, void *uap) {
 	isc_result_t result = ISC_R_SUCCESS;
 	char classstr[DNS_RDATACLASS_FORMATSIZE];
 	char zonename[DNS_NAME_FORMATSIZE];
-	dns_zone_t *raw = NULL;
-	dns_view_t *view;
-	const char *vname;
-	const char *sep;
+	auto_dns_zone_t *raw = NULL;
+	dns_view_t *view = NULL;
+	const char *vname = NULL;
+	const char *sep = NULL;
 	int level;
 
 	dns_zone_getraw(zone, &raw);
@@ -415,21 +415,12 @@ freezezones(dns_zone_t *zone, void *uap) {
 		zone = raw;
 	}
 	if (params->view != dns_zone_getview(zone)) {
-		if (raw != NULL) {
-			dns_zone_detach(&raw);
-		}
 		return ISC_R_SUCCESS;
 	}
 	if (dns_zone_gettype(zone) != dns_zone_primary) {
-		if (raw != NULL) {
-			dns_zone_detach(&raw);
-		}
 		return ISC_R_SUCCESS;
 	}
 	if (!dns_zone_isdynamic(zone, true)) {
-		if (raw != NULL) {
-			dns_zone_detach(&raw);
-		}
 		return ISC_R_SUCCESS;
 	}
 
@@ -472,9 +463,6 @@ freezezones(dns_zone_t *zone, void *uap) {
 		      "%s zone '%s/%s'%s%s: %s",
 		      params->freeze ? "freezing" : "thawing", zonename,
 		      classstr, sep, vname, isc_result_totext(result));
-	if (raw != NULL) {
-		dns_zone_detach(&raw);
-	}
 	return result;
 }
 

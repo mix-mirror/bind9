@@ -50,7 +50,7 @@ teardown_test(void **state) {
 
 ISC_LOOP_TEST_IMPL(filename) {
 	isc_result_t result;
-	dns_zone_t *zone = NULL;
+	auto_dns_zone_t *zone = NULL;
 	const zonefile_test_params_t tests[] = {
 		{ "$name", "example.com" },
 		{ "$name.db", "example.com.db" },
@@ -110,7 +110,6 @@ ISC_LOOP_TEST_IMPL(filename) {
 	memmove(longname, "example.com", 11);
 	assert_string_equal(dns_zone_getfile(zone), longname);
 
-	dns_zone_detach(&zone);
 	isc_loopmgr_shutdown();
 }
 

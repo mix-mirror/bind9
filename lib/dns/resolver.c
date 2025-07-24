@@ -6600,7 +6600,7 @@ name_external(const dns_name_t *name, dns_rdatatype_t type, fetchctx_t *fctx) {
 	dns_forwarders_t *forwarders = NULL;
 	dns_name_t *apex = NULL;
 	dns_name_t suffix;
-	dns_zone_t *zone = NULL;
+	auto_dns_zone_t *zone = NULL;
 	unsigned int labels;
 	dns_namereln_t rel;
 
@@ -6641,7 +6641,6 @@ name_external(const dns_name_t *name, dns_rdatatype_t type, fetchctx_t *fctx) {
 		dns_name_t *zname = dns_zone_getorigin(zone);
 		dns_namereln_t reln = dns_name_fullcompare(
 			zname, apex, &(int){ 0 }, &(unsigned int){ 0U });
-		dns_zone_detach(&zone);
 		if (reln == dns_namereln_subdomain) {
 			return true;
 		}

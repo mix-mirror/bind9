@@ -541,7 +541,7 @@ dns__catz_zones_merge(dns_catz_zone_t *catz, dns_catz_zone_t *newcatz) {
 		dns_catz_zone_t *parentcatz = NULL;
 		dns_catz_entry_t *nentry = NULL;
 		dns_catz_entry_t *oentry = NULL;
-		dns_zone_t *zone = NULL;
+		auto_dns_zone_t *zone = NULL;
 		unsigned char *key = NULL;
 		size_t keysize;
 		delcur = false;
@@ -616,7 +616,6 @@ dns__catz_zones_merge(dns_catz_zone_t *catz, dns_catz_zone_t *newcatz) {
 				UNLOCK(&parentcatz->lock);
 				LOCK(&catz->lock);
 			}
-			dns_zone_detach(&zone);
 		}
 
 		/* Try to find the zone in the old catalog zone */
