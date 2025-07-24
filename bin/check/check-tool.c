@@ -626,7 +626,7 @@ load_zone(isc_mem_t *mctx, const char *zonename, const char *filename,
 	isc_buffer_t buffer;
 	dns_fixedname_t fixorigin;
 	dns_name_t *origin;
-	dns_zone_t *zone = NULL;
+	auto_dns_zone_t *zone = NULL;
 
 	REQUIRE(zonep == NULL || *zonep == NULL);
 
@@ -693,9 +693,6 @@ load_zone(isc_mem_t *mctx, const char *zonename, const char *filename,
 	}
 
 cleanup:
-	if (zone != NULL) {
-		dns_zone_detach(&zone);
-	}
 	return result;
 }
 

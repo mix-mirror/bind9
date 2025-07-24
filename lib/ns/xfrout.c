@@ -714,7 +714,7 @@ ns_xfr_start(ns_client_t *client, dns_rdatatype_t reqtype) {
 	isc_result_t result;
 	dns_name_t *question_name;
 	dns_rdataset_t *question_rdataset;
-	dns_zone_t *zone = NULL, *raw = NULL, *mayberaw;
+	auto_dns_zone_t *zone = NULL;
 	dns_db_t *db = NULL;
 	dns_dbversion_t *ver = NULL;
 	dns_rdataclass_t question_class;
@@ -1112,6 +1112,9 @@ have_stream:
 	}
 
 	if (zone != NULL) {
+		auto_dns_zone_t *raw = NULL;
+		dns_zone_t *mayberaw = NULL;
+
 		dns_zone_getraw(zone, &raw);
 		mayberaw = (raw != NULL) ? raw : zone;
 		if (client->inner.wantexpire &&
@@ -1128,9 +1131,6 @@ have_stream:
 				client->inner.haveexpire = true;
 				client->inner.expire = secs - client->inner.now;
 			}
-		}
-		if (raw != NULL) {
-			dns_zone_detach(&raw);
 		}
 	}
 
@@ -1173,9 +1173,6 @@ cleanup:
 	}
 	if (db != NULL) {
 		dns_db_detach(&db);
-	}
-	if (zone != NULL) {
-		dns_zone_detach(&zone);
 	}
 
 	if (xfr != NULL) {

@@ -386,8 +386,7 @@ dns_dlzunregister(dns_dlzimplementation_t **dlzimp) {
 isc_result_t
 dns_dlz_writeablezone(dns_view_t *view, dns_dlzdb_t *dlzdb,
 		      const char *zone_name) {
-	dns_zone_t *zone = NULL;
-	dns_zone_t *dupzone = NULL;
+	auto_dns_zone_t *zone = NULL, *dupzone = NULL;
 	isc_result_t result;
 	isc_buffer_t buffer;
 	dns_fixedname_t fixorigin;
@@ -417,7 +416,6 @@ dns_dlz_writeablezone(dns_view_t *view, dns_dlzdb_t *dlzdb,
 	/* See if the zone already exists */
 	result = dns_view_findzone(view, origin, DNS_ZTFIND_EXACT, &dupzone);
 	if (result == ISC_R_SUCCESS) {
-		dns_zone_detach(&dupzone);
 		CLEANUP(ISC_R_EXISTS);
 	}
 	INSIST(dupzone == NULL);
@@ -439,10 +437,6 @@ dns_dlz_writeablezone(dns_view_t *view, dns_dlzdb_t *dlzdb,
 	result = dns_view_addzone(view, zone);
 
 cleanup:
-	if (zone != NULL) {
-		dns_zone_detach(&zone);
-	}
-
 	return result;
 }
 
