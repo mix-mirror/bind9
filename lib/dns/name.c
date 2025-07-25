@@ -706,6 +706,13 @@ dns_name_fromregion(dns_name_t *name, const isc_region_t *r) {
 	}
 }
 
+void
+dns_name_fromregion_nocheck(dns_name_t *name, const isc_region_t *r) {
+	name->ndata = r->base;
+	name->attributes.absolute = r->base[r->length-1] == 0;
+	name->length = r->length;
+}
+
 static isc_result_t
 convert_text(isc_buffer_t *source, const dns_name_t *origin,
 	     unsigned int options, dns_name_t *name, isc_buffer_t *target) {

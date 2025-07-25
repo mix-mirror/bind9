@@ -686,6 +686,9 @@ dns_name_clone(const dns_name_t *source, dns_name_t *target);
 
 void
 dns_name_fromregion(dns_name_t *name, const isc_region_t *r);
+
+void
+dns_name_fromregion_nocheck(dns_name_t *name, const isc_region_t *r);
 /*%<
  * Make 'name' refer to region 'r'.
  *

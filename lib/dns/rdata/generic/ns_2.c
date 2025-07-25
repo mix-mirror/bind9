@@ -100,7 +100,7 @@ towire_ns(ARGS_TOWIRE) {
 
 	dns_name_init(&name);
 	dns_rdata_toregion(rdata, &region);
-	dns_name_fromregion(&name, &region);
+	dns_name_fromregion_nocheck(&name, &region);
 
 	return dns_name_towire(&name, cctx, target);
 }
