@@ -825,6 +825,8 @@ dns_slabheader_raw(dns_slabheader_t *header) {
 
 void
 dns_slabheader_setownercase(dns_slabheader_t *header, const dns_name_t *name) {
+	return;
+
 	unsigned int i;
 	bool fully_lower;
 
@@ -1210,6 +1212,8 @@ rdataset_clearprefetch(dns_rdataset_t *rdataset) {
 
 static void
 rdataset_setownercase(dns_rdataset_t *rdataset, const dns_name_t *name) {
+	return;
+
 	dns_slabheader_t *header = dns_rdataset_getheader(rdataset);
 
 	DNS_SLABHEADER_CLRATTR(header, DNS_SLABHEADERATTR_CASEFULLYLOWER);
@@ -1221,6 +1225,8 @@ rdataset_setownercase(dns_rdataset_t *rdataset, const dns_name_t *name) {
 
 static void
 rdataset_getownercase(const dns_rdataset_t *rdataset, dns_name_t *name) {
+	return;
+
 	dns_slabheader_t *header = dns_rdataset_getheader(rdataset);
 	uint8_t mask = (1 << 7);
 	uint8_t bits = 0;
