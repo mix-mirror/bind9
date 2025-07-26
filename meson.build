@@ -150,8 +150,6 @@ add_project_arguments(
         '-Werror=vla',
 
         '-fdiagnostics-show-option',
-        '-fno-delete-null-pointer-checks',
-        '-fno-strict-aliasing',
         '-fstrict-flex-arrays=3',
     ),
     language: 'c',
