@@ -90,11 +90,11 @@ bool cconnects_shutdown;
 bool creads_shutdown;
 bool ctimeouts_shutdown;
 
-isc_refcount_t active_cconnects = 0;
-isc_refcount_t active_csends = 0;
-isc_refcount_t active_creads = 0;
-isc_refcount_t active_ssends = 0;
-isc_refcount_t active_sreads = 0;
+isc_refcount_t active_cconnects = ISC_REFCOUNT_INITIALIZER(0);
+isc_refcount_t active_csends = ISC_REFCOUNT_INITIALIZER(0);
+isc_refcount_t active_creads = ISC_REFCOUNT_INITIALIZER(0);
+isc_refcount_t active_ssends = ISC_REFCOUNT_INITIALIZER(0);
+isc_refcount_t active_sreads = ISC_REFCOUNT_INITIALIZER(0);
 
 isc_nmsocket_t *listen_sock = NULL;
 
