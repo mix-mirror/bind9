@@ -239,7 +239,7 @@ isc__nm_dump_active_manager(void);
 #define NMHANDLE_MAGIC ISC_MAGIC('N', 'M', 'H', 'D')
 #define VALID_NMHANDLE(t)                      \
 	(ISC_MAGIC_VALID(t, NMHANDLE_MAGIC) && \
-	 atomic_load(&(t)->references) > 0)
+	 atomic_load(&(t)->references.inner) > 0)
 
 typedef void (*isc__nm_closecb)(isc_nmhandle_t *);
 typedef struct isc_nm_http_session isc_nm_http_session_t;

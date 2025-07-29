@@ -41,7 +41,7 @@ isc_counter_create(isc_mem_t *mctx, int limit, isc_counter_t **counterp) {
 	isc_counter_t *counter = isc_mem_get(mctx, sizeof(*counter));
 	*counter = (isc_counter_t){
 		.magic = COUNTER_MAGIC,
-		.references = 1,
+		.references = { .inner = 1 },
 		.limit = limit,
 	};
 

@@ -35,7 +35,7 @@
  *** Functions
  ***/
 
-static isc_refcount_t isc__lib_references = 0;
+static isc_refcount_t isc__lib_references = { .inner = 0 };
 
 void
 isc__lib_initialize(void);

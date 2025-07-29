@@ -28,7 +28,7 @@
  *** Functions
  ***/
 
-static isc_refcount_t dns__lib_references = 0;
+static isc_refcount_t dns__lib_references = { .inner = 0 };
 
 void
 dns__lib_initialize(void);

@@ -29,9 +29,11 @@
  * counting.  The isc_refcount_t type must not be accessed directly.
  */
 
-typedef atomic_uint_fast32_t isc_refcount_t;
+typedef struct {
+	atomic_uint_fast32_t inner;
+} __attribute__ ((aligned(64))) isc_refcount_t;
 
-#define ISC_REFCOUNT_INITIALIZER(a) (a)
+#define ISC_REFCOUNT_INITIALIZER(a) { .inner = (a) }
 
 /** \def isc_refcount_init(ref, n)
  *  \brief Initialize the reference counter.
@@ -41,7 +43,11 @@ typedef atomic_uint_fast32_t isc_refcount_t;
  *
  *  \warning No memory barrier are being imposed here.
  */
-#define isc_refcount_init(target, value) atomic_init(target, value)
+#define isc_refcount_init(target, value) \
+	({ \
+		atomic_uint_fast32_t *__tmp = &(target)->inner; \
+		atomic_init(__tmp, (value)); \
+	})
 
 /** \def isc_refcount_current(ref)
  *  \brief Returns current number of references.
@@ -49,7 +55,7 @@ typedef atomic_uint_fast32_t isc_refcount_t;
  *  \returns current value of reference counter.
  */
 
-#define isc_refcount_current(target) atomic_load_acquire(target)
+#define isc_refcount_current(target) atomic_load_acquire(&(target)->inner)
 
 /** \def isc_refcount_destroy(ref)
  *  \brief a destructor that makes sure that all references were cleared.
@@ -67,7 +73,7 @@ typedef atomic_uint_fast32_t isc_refcount_t;
 #define isc_refcount_increment0(target)                    \
 	({                                                 \
 		uint_fast32_t __v;                         \
-		__v = atomic_fetch_add_release(target, 1); \
+		__v = atomic_fetch_add_release(&(target)->inner, 1); \
 		INSIST(__v < UINT32_MAX);                  \
 		__v;                                       \
 	})
@@ -80,7 +86,7 @@ typedef atomic_uint_fast32_t isc_refcount_t;
 #define isc_refcount_increment(target)                     \
 	({                                                 \
 		uint_fast32_t __v;                         \
-		__v = atomic_fetch_add_release(target, 1); \
+		__v = atomic_fetch_add_release(&(target)->inner, 1); \
 		INSIST(__v > 0 && __v < UINT32_MAX);       \
 		__v;                                       \
 	})
@@ -93,7 +99,7 @@ typedef atomic_uint_fast32_t isc_refcount_t;
 #define isc_refcount_decrement(target)                     \
 	({                                                 \
 		uint_fast32_t __v;                         \
-		__v = atomic_fetch_sub_acq_rel(target, 1); \
+		__v = atomic_fetch_sub_acq_rel(&(target)->inner, 1); \
 		INSIST(__v > 0);                           \
 		__v;                                       \
 	})
