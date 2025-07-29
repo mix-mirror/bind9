@@ -203,7 +203,7 @@ STATIC_ASSERT(ISC_OS_CACHELINE_SIZE >= sizeof(atomic_uint_fast32_t),
 STATIC_ASSERT(ISC_OS_CACHELINE_SIZE >= sizeof(atomic_int_fast32_t),
 	      "ISC_OS_CACHELINE_SIZE smaller than sizeof(atomic_int_fast32_t)");
 
-struct isc_rwlock {
+struct __attribute__ ((aligned(64))) isc_rwlock {
 	atomic_uint_fast32_t readers_ingress;
 	uint8_t __padding1[ISC_OS_CACHELINE_SIZE - sizeof(atomic_uint_fast32_t)];
 	atomic_uint_fast32_t readers_egress;
