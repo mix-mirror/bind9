@@ -551,7 +551,6 @@ qpzone_destroy(qpzonedb_t *qpdb) {
 		    sizeof(*qpdb->current_version));
 
 	dns_qpmulti_destroy(&qpdb->tree);
-	dns_qpmulti_destroy(&qpdb->nsec);
 	dns_qpmulti_destroy(&qpdb->nsec3);
 
 	char buf[DNS_NAME_FORMATSIZE];
@@ -678,8 +677,11 @@ dns__qpzone_create(isc_mem_t *mctx, const dns_name_t *origin, dns_dbtype_t type,
 	 */
 	dns_name_dupwithoffsets(origin, mctx, &qpdb->common.origin);
 
+	/*
+	 * Note: We want to keep the zone contents in a single tree so
+	 * we can have a single snapshot of the zone.
+	 */
 	dns_qpmulti_create(mctx, &qpmethods, qpdb, &qpdb->tree);
-	dns_qpmulti_create(mctx, &qpmethods, qpdb, &qpdb->nsec);
 	dns_qpmulti_create(mctx, &qpmethods, qpdb, &qpdb->nsec3);
 
 	/*

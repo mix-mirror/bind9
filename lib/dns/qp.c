@@ -2362,7 +2362,9 @@ dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
 		    branch_has_twig(n, SHIFT_RRTYPE) &&
 		    qpkey_bit(search, searchlen, offset - 1) == SHIFT_NOBYTE)
 		{
-			add_link(chain, anyleaf(qp, twigs), offset);
+			uint8_t asterisk = dns_qp_bits_for_byte['*'];
+			bool wild = branch_has_twig(n, asterisk);
+			add_link(chain, anyleaf(qp, twigs), offset, wild);
 		}
 
 		matched = branch_has_twig(n, bit);
