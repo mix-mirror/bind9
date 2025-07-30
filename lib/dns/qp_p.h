@@ -51,8 +51,8 @@
  * In a branch node:
  * - The 64-bit word is subdivided into three portions: the least
  *   significant bits are the node type (for a branch, 0x1); the
- *   most sigificant 15 bits are an offset value into the key, and
- *   the 47 bits in the middle are a bitmap; see the documentation
+ *   most significant 14 bits are an offset value into the key, and
+ *   the 48 bits in the middle are a bitmap; see the documentation
  *   for the SHIFT_* enum below.
  * - The 32-bit word is a reference (dns_qpref_t) to the packed sparse
  *   vector of "twigs", i.e. child nodes. A branch node has at least
@@ -83,6 +83,14 @@ enum {
 };
 
 /*
+ * The RRtype part of a qpkey is always 4 bytes long.
+ * RRtypes values are expressed in a base numeral system between
+ * SHIFT_RRTYPE and SHIFT_OFFSET.
+ */
+#define QPKEYTYPELEN 4
+#define QPKEYBASE    (SHIFT_OFFSET - SHIFT_RRTYPE)
+
+/*
  * This code does not work on CPUs with large pointers, e.g. CHERI capability
  * architectures. When porting to that kind of machine, a `dns_qpnode` should
  * be just a `uintptr_t`; a leaf node will contain a single pointer, and a
@@ -111,13 +119,14 @@ STATIC_ASSERT(sizeof(void *) <= sizeof(uint64_t),
  *
  * These values are relatively fixed in practice: SHIFT_NOBYTE needs
  * to leave space for the type tag, and the implementation of
- * `dns_qpkey_fromname()` depends on the bitmap being large enough.
+ * `dns_qpkey_fromnametype()` depends on the bitmap being large enough.
  * The symbolic names avoid mystery numbers in the code.
  */
 enum {
 	SHIFT_NOBYTE = 2,  /* label separator has no byte value */
+	SHIFT_RRTYPE = 3,  /* rrtype indicator */
 	SHIFT_BITMAP,	   /* many bits here */
-	SHIFT_OFFSET = 49, /* offset of byte in key */
+	SHIFT_OFFSET = 50, /* offset of byte in key */
 };
 
 /***********************************************************************
@@ -663,8 +672,9 @@ branch_twigs_ref(dns_qpnode_t *n) {
 }
 
 /*
- * Bit positions in the bitmap come directly from the key. DNS names are
- * converted to keys using the tables declared at the end of this file.
+ * Bit positions in the bitmap come directly from the key. DNS names plus
+ * RRtype are converted to keys using the tables declared at the end of this
+ * file.
  */
 static inline dns_qpshift_t
 qpkey_bit(const dns_qpkey_t key, size_t len, size_t offset) {
@@ -932,9 +942,15 @@ qp_common_character(uint8_t byte) {
 
 /*
  * Lookup table mapping bytes in DNS names to bit positions, used
- * by dns_qpkey_fromname() to convert DNS names to qp-trie keys.
+ * by dns_qpkey_fromnametype() to convert DNS names to qp-trie keys.
  */
 extern uint16_t dns_qp_bits_for_byte[];
+
+/*
+ * Lookup table mapping RR type values to bit positions, used
+ * by dns_qpkey_fromnametype() to convert RR types to qp-trie keys.
+ */
+extern uint32_t dns_qp_bits_for_rrtype[];
 
 /*
  * And the reverse, mapping bit positions to characters, so the tests

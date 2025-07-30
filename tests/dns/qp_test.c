@@ -52,71 +52,80 @@ ISC_RUN_TEST_IMPL(qpkey_name) {
 		{
 			.namestr = "",
 			.space = DNS_DBNAMESPACE_NORMAL,
-			.key = { 0x07, 0x02 },
-			.len = 1,
+			.key = { 0x08, 0x03, 0x03, 0x03, 0x03, 0x02 },
+			.len = 1 + QPKEYTYPELEN,
 		},
 		{
 			.namestr = ".",
 			.space = DNS_DBNAMESPACE_NORMAL,
-			.key = { 0x07, 0x02, 0x02 },
-			.len = 2,
+			.key = { 0x08, 0x02, 0x03, 0x03, 0x03, 0x03, 0x02 },
+			.len = 2 + QPKEYTYPELEN,
 		},
 		{
 			.namestr = "\\000",
 			.space = DNS_DBNAMESPACE_NORMAL,
-			.key = { 0x07, 0x03, 0x03, 0x02 },
-			.len = 4,
+			.key = { 0x08, 0x04, 0x04, 0x02, 0x03, 0x03, 0x03, 0x03,
+				 0x02 },
+			.len = 4 + QPKEYTYPELEN,
 		},
 		{
 			.namestr = "\\000\\009",
 			.space = DNS_DBNAMESPACE_NORMAL,
-			.key = { 0x07, 0x03, 0x03, 0x03, 0x0c, 0x02 },
-			.len = 6,
+			.key = { 0x08, 0x04, 0x04, 0x04, 0x0d, 0x02, 0x03, 0x03,
+				 0x03, 0x03, 0x02 },
+			.len = 6 + QPKEYTYPELEN,
 		},
 		{
 			.namestr = "com",
 			.space = DNS_DBNAMESPACE_NORMAL,
-			.key = { 0x07, 0x16, 0x22, 0x20, 0x02 },
-			.len = 5,
+			.key = { 0x08, 0x17, 0x23, 0x21, 0x02, 0x03, 0x03, 0x03,
+				 0x03, 0x02 },
+			.len = 5 + QPKEYTYPELEN,
 		},
 		{
 			.namestr = "com.",
 			.space = DNS_DBNAMESPACE_NSEC,
-			.key = { 0x08, 0x02, 0x16, 0x22, 0x20, 0x02 },
-			.len = 6,
+			.key = { 0x09, 0x02, 0x17, 0x23, 0x21, 0x02, 0x03, 0x03,
+				 0x03, 0x03, 0x02 },
+			.len = 6 + QPKEYTYPELEN,
 		},
 		{
 			.namestr = "com.",
 			.space = DNS_DBNAMESPACE_NSEC3,
-			.key = { 0x09, 0x02, 0x16, 0x22, 0x20, 0x02 },
-			.len = 6,
+			.key = { 0x0a, 0x02, 0x17, 0x23, 0x21, 0x02, 0x03, 0x03,
+				 0x03, 0x03, 0x02 },
+			.len = 6 + QPKEYTYPELEN,
 		},
 		{
 			.namestr = "com.",
 			.space = DNS_DBNAMESPACE_NORMAL,
-			.key = { 0x07, 0x02, 0x16, 0x22, 0x20, 0x02 },
-			.len = 6,
+			.key = { 0x08, 0x02, 0x17, 0x23, 0x21, 0x02, 0x03, 0x03,
+				 0x03, 0x03, 0x02 },
+			.len = 6 + QPKEYTYPELEN,
 		},
 		{
 			.namestr = "example.com.",
 			.space = DNS_DBNAMESPACE_NORMAL,
-			.key = { 0x07, 0x02, 0x16, 0x22, 0x20, 0x02, 0x18, 0x2b,
-				 0x14, 0x20, 0x23, 0x1f, 0x18, 0x02 },
-			.len = 14,
+			.key = { 0x08, 0x02, 0x17, 0x23, 0x21, 0x02, 0x19, 0x2c,
+				 0x15, 0x21, 0x24, 0x20, 0x19, 0x02, 0x03, 0x03,
+				 0x03, 0x03, 0x02 },
+			.len = 14 + QPKEYTYPELEN,
 		},
 		{
 			.namestr = "example.com",
 			.space = DNS_DBNAMESPACE_NORMAL,
-			.key = { 0x07, 0x16, 0x22, 0x20, 0x02, 0x18, 0x2b, 0x14,
-				 0x20, 0x23, 0x1f, 0x18, 0x02 },
-			.len = 13,
+			.key = { 0x08, 0x17, 0x23, 0x21, 0x02, 0x19, 0x2c, 0x15,
+				 0x21, 0x24, 0x20, 0x19, 0x02, 0x03, 0x03, 0x03,
+				 0x03, 0x02 },
+			.len = 13 + QPKEYTYPELEN,
 		},
 		{
 			.namestr = "EXAMPLE.COM",
 			.space = DNS_DBNAMESPACE_NORMAL,
-			.key = { 0x07, 0x16, 0x22, 0x20, 0x02, 0x18, 0x2b, 0x14,
-				 0x20, 0x23, 0x1f, 0x18, 0x02 },
-			.len = 13,
+			.key = { 0x08, 0x17, 0x23, 0x21, 0x02, 0x19, 0x2c, 0x15,
+				 0x21, 0x24, 0x20, 0x19, 0x02, 0x03, 0x03, 0x03,
+				 0x03, 0x02 },
+			.len = 13 + QPKEYTYPELEN,
 		},
 	};
 
@@ -129,7 +138,7 @@ ISC_RUN_TEST_IMPL(qpkey_name) {
 		dns_namespace_t space;
 
 		in = dns_fixedname_initname(&fn1);
-		if (testcases[i].len > 1) {
+		if (testcases[i].len > 1 + QPKEYTYPELEN) {
 			dns_test_namefromstring(testcases[i].namestr, &fn1);
 		}
 		len = dns_qpkey_fromname(key, in, testcases[i].space);
@@ -421,11 +430,14 @@ check_partialmatch(dns_qp_t *qp, struct check_partialmatch check[],
 				       &pval, NULL);
 
 #if 0
-		fprintf(stderr, "%s%s %s (expected %s) "
+		fprintf(stderr,
+			"%s%s %s (expected %s) "
 			"value \"%s\" (expected \"%s\")\n",
-			space == DNS_DBNAMESPACE_NSEC3 ? "NSEC3:" : (space == DNS_DBNAMESPACE_NSEC ? "NSEC:" : ""),
-			check[i].query,
-			isc_result_totext(result),
+			space == DNS_DBNAMESPACE_NSEC3
+				? "NSEC3:"
+				: (space == DNS_DBNAMESPACE_NSEC ? "NSEC:"
+								 : ""),
+			check[i].query, isc_result_totext(result),
 			isc_result_totext(check[i].result), (char *)pval,
 			check[i].found);
 #endif
@@ -474,8 +486,14 @@ insert_name(dns_qp_t *qp, const char *str, dns_namespace_t space) {
 static void
 delete_rootkey(dns_qp_t *qp, dns_namespace_t space) {
 	uint8_t d = dns_qp_bits_for_byte[space + 48];
-	dns_qpkey_t rootkey = { d, SHIFT_NOBYTE };
-	isc_result_t result = dns_qp_deletekey(qp, rootkey, 1, NULL, NULL);
+	dns_qpkey_t rootkey = { d,
+				SHIFT_NOBYTE,
+				SHIFT_RRTYPE,
+				SHIFT_RRTYPE,
+				SHIFT_RRTYPE,
+				SHIFT_RRTYPE,
+				SHIFT_NOBYTE };
+	isc_result_t result = dns_qp_deletekey(qp, rootkey, 6, NULL, NULL);
 	assert_int_equal(result, ISC_R_SUCCESS);
 }
 
