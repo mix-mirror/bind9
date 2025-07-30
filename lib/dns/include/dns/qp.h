@@ -558,11 +558,12 @@ dns_qp_getnametype(dns_qpreadable_t qpr, const dns_name_t *name,
 
 isc_result_t
 dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
-	      dns_namespace_t space, dns_name_t *foundname, dns_qpiter_t *iter,
-	      dns_qpchain_t *chain, void **pval_r, uint32_t *ival_r);
+	      dns_rdatatype_t type, dns_namespace_t space,
+	      dns_name_t *foundname, dns_qpiter_t *iter, dns_qpchain_t *chain,
+	      void **pval_r, uint32_t *ival_r);
 /*%<
  * Look up a leaf in a qp-trie that is equal to, or an ancestor domain of,
- * 'name' in the namespace 'space'.
+ * 'name', matching 'type', in the namespace 'space'.
  *
  * If 'foundname' is not NULL, it will be updated to contain the name
  * that was found (if any). The return code, ISC_R_SUCCESS or

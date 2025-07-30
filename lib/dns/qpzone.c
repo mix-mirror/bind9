@@ -2813,7 +2813,7 @@ find_wildcard(qpz_search_t *search, qpznode_t **nodep, const dns_name_t *qname,
 				break;
 			}
 
-			result = dns_qp_lookup(&search->qpr, wname, nspace,
+			result = dns_qp_lookup(&search->qpr, wname, 0, nspace,
 					       NULL, &wit, NULL,
 					       (void **)&wnode, NULL);
 			if (result == ISC_R_SUCCESS) {
@@ -2895,8 +2895,9 @@ previous_closest_nsec(dns_rdatatype_t type, qpz_search_t *search,
 			 * NSEC namespace.
 			 */
 			*firstp = false;
-			result = dns_qp_lookup(&qpr, name, DNS_DBNAMESPACE_NSEC,
-					       NULL, nit, NULL, NULL, NULL);
+			result = dns_qp_lookup(&qpr, name, 0,
+					       DNS_DBNAMESPACE_NSEC, NULL, nit,
+					       NULL, NULL, NULL);
 			INSIST(result != ISC_R_NOTFOUND);
 			if (result == ISC_R_SUCCESS) {
 				/*
@@ -2934,7 +2935,7 @@ previous_closest_nsec(dns_rdatatype_t type, qpz_search_t *search,
 
 		*nodep = NULL;
 		result = dns_qp_lookup(
-			&search->qpr, name, DNS_DBNAMESPACE_NORMAL, NULL,
+			&search->qpr, name, 0, DNS_DBNAMESPACE_NORMAL, NULL,
 			&search->iter, &search->chain, (void **)nodep, NULL);
 		if (result == ISC_R_SUCCESS) {
 			break;
@@ -3316,7 +3317,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	/*
 	 * Search down from the root of the tree.
 	 */
-	result = dns_qp_lookup(&search.qpr, name, nspace, NULL, &search.iter,
+	result = dns_qp_lookup(&search.qpr, name, 0, nspace, NULL, &search.iter,
 			       &search.chain, (void **)&node, NULL);
 	if (result != ISC_R_NOTFOUND) {
 		dns_name_copy(&node->name, foundname);
@@ -4120,7 +4121,7 @@ dbiterator_first(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 		 * NSEC3 follows after all non-nsec3 nodes, seek the NSEC3
 		 * origin node.
 		 */
-		result = dns_qp_lookup(qpdbiter->snap, &qpdb->common.origin,
+		result = dns_qp_lookup(qpdbiter->snap, &qpdb->common.origin, 0,
 				       DNS_DBNAMESPACE_NSEC3, NULL,
 				       &qpdbiter->iter, NULL,
 				       (void **)&qpdbiter->node, NULL);
@@ -4210,7 +4211,7 @@ dbiterator_last(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 		/*
 		 * The final non-nsec node is before the the NSEC origin node.
 		 */
-		result = dns_qp_lookup(qpdbiter->snap, &qpdb->common.origin,
+		result = dns_qp_lookup(qpdbiter->snap, &qpdb->common.origin, 0,
 				       DNS_DBNAMESPACE_NSEC, NULL,
 				       &qpdbiter->iter, NULL,
 				       (void **)&qpdbiter->node, NULL);
@@ -4266,20 +4267,20 @@ dbiterator_seek(dns_dbiterator_t *iterator,
 	switch (qpdbiter->nsec3mode) {
 	case nsec3only:
 		result = dns_qp_lookup(
-			qpdbiter->snap, name, DNS_DBNAMESPACE_NSEC3, NULL,
+			qpdbiter->snap, name, 0, DNS_DBNAMESPACE_NSEC3, NULL,
 			&qpdbiter->iter, NULL, (void **)&qpdbiter->node, NULL);
 		break;
 	case nonsec3:
 		result = dns_qp_lookup(
-			qpdbiter->snap, name, DNS_DBNAMESPACE_NORMAL, NULL,
+			qpdbiter->snap, name, 0, DNS_DBNAMESPACE_NORMAL, NULL,
 			&qpdbiter->iter, NULL, (void **)&qpdbiter->node, NULL);
 		break;
 	case full:
 		result = dns_qp_lookup(
-			qpdbiter->snap, name, DNS_DBNAMESPACE_NORMAL, NULL,
+			qpdbiter->snap, name, 0, DNS_DBNAMESPACE_NORMAL, NULL,
 			&qpdbiter->iter, NULL, (void **)&qpdbiter->node, NULL);
 		if (result != ISC_R_SUCCESS) {
-			tresult = dns_qp_lookup(qpdbiter->snap, name,
+			tresult = dns_qp_lookup(qpdbiter->snap, name, 0,
 						DNS_DBNAMESPACE_NSEC3, NULL,
 						&qpdbiter->iter, NULL,
 						(void **)&qpdbiter->node, NULL);
@@ -4359,7 +4360,7 @@ dbiterator_prev(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 		}
 
 		INSIST(qpdbiter->node->nspace == DNS_DBNAMESPACE_NSEC);
-		result = dns_qp_lookup(qpdbiter->snap, &qpdb->common.origin,
+		result = dns_qp_lookup(qpdbiter->snap, &qpdb->common.origin, 0,
 				       DNS_DBNAMESPACE_NSEC, NULL,
 				       &qpdbiter->iter, NULL,
 				       (void **)&qpdbiter->node, NULL);
@@ -4450,7 +4451,7 @@ dbiterator_next(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 		}
 		INSIST(qpdbiter->node->nspace == DNS_DBNAMESPACE_NSEC);
 
-		result = dns_qp_lookup(qpdbiter->snap, &qpdb->common.origin,
+		result = dns_qp_lookup(qpdbiter->snap, &qpdb->common.origin, 0,
 				       DNS_DBNAMESPACE_NSEC3, NULL,
 				       &qpdbiter->iter, NULL,
 				       (void **)&qpdbiter->node, NULL);
@@ -4555,7 +4556,7 @@ qpzone_createiterator(dns_db_t *db, unsigned int options,
 		 * NSEC3 follows after all non-nsec3 nodes,
 		 * seek the NSEC3 origin node.
 		 */
-		result = dns_qp_lookup(iter->snap, &qpdb->common.origin,
+		result = dns_qp_lookup(iter->snap, &qpdb->common.origin, 0,
 				       DNS_DBNAMESPACE_NSEC3, NULL, &iter->iter,
 				       NULL, NULL, NULL);
 		INSIST(result == ISC_R_SUCCESS);
