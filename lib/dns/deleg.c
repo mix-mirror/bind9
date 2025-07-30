@@ -290,8 +290,8 @@ deleg_lookup(dns_delegdb_t *delegdb, dns_qpread_t *qpr, const dns_name_t *name,
 	REQUIRE(zonecut == NULL || dns_name_hasbuffer(zonecut));
 	REQUIRE(deepestzonecut == NULL || dns_name_hasbuffer(deepestzonecut));
 
-	result = dns_qp_lookup(qpr, name, DNS_DBNAMESPACE_NORMAL, NULL, &chain,
-			       (void **)&node, NULL);
+	result = dns_qp_lookup(qpr, name, 0, DNS_DBNAMESPACE_NORMAL, NULL,
+			       &chain, (void **)&node, NULL);
 
 	if (result != ISC_R_SUCCESS && result != DNS_R_PARTIALMATCH) {
 		return ISC_R_NOTFOUND;
@@ -665,7 +665,7 @@ dns_delegset_insert(dns_delegdb_t *delegdb, const dns_name_t *zonecut,
 	 * still valid.
 	 */
 	dns_qpmulti_query(delegdb->qplru->nodes, &qpr);
-	result = dns_qp_lookup(&qpr, zonecut, DNS_DBNAMESPACE_NORMAL, NULL,
+	result = dns_qp_lookup(&qpr, zonecut, 0, DNS_DBNAMESPACE_NORMAL, NULL,
 			       NULL, (void **)&node, NULL);
 	if (result == ISC_R_SUCCESS) {
 		INSIST(VALID_DELEGDB_NODE(node));
@@ -986,7 +986,7 @@ deleg_deletetree(qplru_t *qplru, dns_qp_t *qp, const dns_name_t *name) {
 	dns_qpiter_t it;
 	ISC_LIST(delegdb_node_t) deadnodes = ISC_LIST_INITIALIZER;
 
-	result = dns_qp_lookup(qp, name, DNS_DBNAMESPACE_NORMAL, &it, NULL,
+	result = dns_qp_lookup(qp, name, 0, DNS_DBNAMESPACE_NORMAL, &it, NULL,
 			       (void **)&node, NULL);
 	if (result != ISC_R_SUCCESS) {
 		goto out;
