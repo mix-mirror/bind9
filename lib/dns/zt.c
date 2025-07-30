@@ -183,8 +183,8 @@ dns_zt_find(dns_zt_t *zt, const dns_name_t *name, dns_ztfind_t options,
 		result = dns_qp_getname(&qpr, name, DNS_DBNAMESPACE_NORMAL,
 					&pval, NULL);
 	} else {
-		result = dns_qp_lookup(&qpr, name, DNS_DBNAMESPACE_NORMAL, NULL,
-				       NULL, &chain, &pval, NULL);
+		result = dns_qp_lookup(&qpr, name, 0, DNS_DBNAMESPACE_NORMAL,
+				       NULL, NULL, &chain, &pval, NULL);
 		if (exactopts == DNS_ZTFIND_NOEXACT && result == ISC_R_SUCCESS)
 		{
 			/* get pval from the previous chain link */
