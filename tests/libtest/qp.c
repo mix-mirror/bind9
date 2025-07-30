@@ -43,6 +43,8 @@ qp_test_bittoascii(dns_qpshift_t bit) {
 	uint8_t byte = dns_qp_byte_for_bit[bit];
 	if (bit == SHIFT_NOBYTE) {
 		return '.';
+	} else if (bit == SHIFT_RRTYPE) {
+		return '!';
 	} else if (qp_common_character(byte)) {
 		return byte;
 	} else if (byte < '-') {
@@ -345,15 +347,16 @@ qp_test_printkey(const dns_qpkey_t key, size_t keylen) {
 	dns_fixedname_t fn;
 	dns_name_t *n = dns_fixedname_initname(&fn);
 	dns_namespace_t s;
+	dns_rdatatype_t t;
 	char txt[DNS_NAME_FORMATSIZE];
 
-	dns_qpkey_toname(key, keylen, n, &s);
+	dns_qpkey_tonametype(key, keylen, n, &t, &s);
 	dns_name_format(n, txt, sizeof(txt));
-	printf("%s%s%s\n", txt,
+	printf("%s%s%s %u\n", txt,
 	       s == DNS_DBNAMESPACE_NSEC3
 		       ? "NSEC3:"
 		       : (s == DNS_DBNAMESPACE_NSEC ? "NSEC" : ""),
-	       dns_name_isabsolute(n) ? "." : "");
+	       dns_name_isabsolute(n) ? "." : "", t);
 }
 
 /**********************************************************************/

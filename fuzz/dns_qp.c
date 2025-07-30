@@ -94,7 +94,12 @@ const dns_qpmethods_t fuzz_methods = {
 
 static uint8_t
 random_byte(void) {
-	return isc_random_uniform(SHIFT_OFFSET - SHIFT_NOBYTE) + SHIFT_NOBYTE;
+	uint8_t ret = SHIFT_RRTYPE;
+	while (ret == SHIFT_RRTYPE) {
+		ret = isc_random_uniform(SHIFT_OFFSET - SHIFT_NOBYTE) +
+		      SHIFT_NOBYTE;
+	}
+	return ret;
 }
 
 int
