@@ -17,21 +17,23 @@ from isctest.kasp import KeyTimingMetadata, Ipub, Iret
 
 from rollover.common import pytestmark  # pylint: disable=unused-import
 
+CONFIG = {
+    "dnskey-ttl": timedelta(hours=1),
+    "ds-ttl": timedelta(days=1),
+    "max-zone-ttl": timedelta(days=1),
+    "parent-propagation-delay": timedelta(hours=1),
+    "publish-safety": timedelta(hours=1),
+    "retire-safety": timedelta(hours=1),
+    "signatures-refresh": timedelta(days=7),
+    "signatures-validity": timedelta(days=14),
+    "zone-propagation-delay": timedelta(minutes=5),
+}
+
+POLICY = "manual-rollover"
+
 
 def test_rollover_manual(ns3):
-    policy = "manual-rollover"
-    config = {
-        "dnskey-ttl": timedelta(hours=1),
-        "ds-ttl": timedelta(days=1),
-        "max-zone-ttl": timedelta(days=1),
-        "parent-propagation-delay": timedelta(hours=1),
-        "publish-safety": timedelta(hours=1),
-        "retire-safety": timedelta(hours=1),
-        "signatures-refresh": timedelta(days=7),
-        "signatures-validity": timedelta(days=14),
-        "zone-propagation-delay": timedelta(minutes=5),
-    }
-    ttl = int(config["dnskey-ttl"].total_seconds())
+    ttl = int(CONFIG["dnskey-ttl"].total_seconds())
     alg = os.environ["DEFAULT_ALGORITHM_NUMBER"]
     size = os.environ["DEFAULT_BITS"]
     zone = "manual-rollover.kasp"
@@ -53,10 +55,10 @@ def test_rollover_manual(ns3):
 
     offset = -timedelta(days=7)
     for kp in expected:
-        kp.set_expected_keytimes(config, offset=offset)
+        kp.set_expected_keytimes(CONFIG, offset=offset)
 
     isctest.kasp.check_keytimes(keys, expected)
-    isctest.kasp.check_dnssecstatus(ns3, zone, keys, policy=policy)
+    isctest.kasp.check_dnssecstatus(ns3, zone, keys, policy=POLICY)
     isctest.kasp.check_apex(ns3, zone, ksks, zsks)
     isctest.kasp.check_subdomain(ns3, zone, ksks, zsks)
 
@@ -64,9 +66,9 @@ def test_rollover_manual(ns3):
     assert len(ksks) == 1
     ksk = ksks[0]
     startroll = expected[0].timing["Active"] + timedelta(days=30 * 6)
-    expected[0].timing["Retired"] = startroll + Ipub(config)
+    expected[0].timing["Retired"] = startroll + Ipub(CONFIG)
     expected[0].timing["Removed"] = expected[0].timing["Retired"] + Iret(
-        config, zsk=False, ksk=True
+        CONFIG, zsk=False, ksk=True
     )
 
     with ns3.watch_log_from_here() as watcher:
@@ -76,7 +78,7 @@ def test_rollover_manual(ns3):
     isctest.kasp.check_dnssec_verify(ns3, zone)
     isctest.kasp.check_keys(zone, keys, expected)
     isctest.kasp.check_keytimes(keys, expected)
-    isctest.kasp.check_dnssecstatus(ns3, zone, keys, policy=policy)
+    isctest.kasp.check_dnssecstatus(ns3, zone, keys, policy=POLICY)
     isctest.kasp.check_apex(ns3, zone, ksks, zsks)
     isctest.kasp.check_subdomain(ns3, zone, ksks, zsks)
 
@@ -108,15 +110,15 @@ def test_rollover_manual(ns3):
         off = offset
         if "Predecessor" in kp.metadata:
             off = 0
-        kp.set_expected_keytimes(config, offset=off)
+        kp.set_expected_keytimes(CONFIG, offset=off)
 
-    expected[0].timing["Retired"] = now + Ipub(config)
+    expected[0].timing["Retired"] = now + Ipub(CONFIG)
     expected[0].timing["Removed"] = expected[0].timing["Retired"] + Iret(
-        config, zsk=False, ksk=True
+        CONFIG, zsk=False, ksk=True
     )
 
     isctest.kasp.check_keytimes(keys, expected)
-    isctest.kasp.check_dnssecstatus(ns3, zone, keys, policy=policy)
+    isctest.kasp.check_dnssecstatus(ns3, zone, keys, policy=POLICY)
     isctest.kasp.check_apex(ns3, zone, ksks, zsks)
     isctest.kasp.check_subdomain(ns3, zone, ksks, zsks)
 
@@ -153,3 +155,62 @@ def test_rollover_manual(ns3):
     zsk = expected[3].key
     response = ns3.rndc(f"dnssec -rollover -key {zsk.tag} {zone}")
     assert "key is not actively signing" in response
+
+
+def test_rollover_manual_zrrsig_rumoured(ns3):
+    ttl = int(CONFIG["dnskey-ttl"].total_seconds())
+    alg = os.environ["DEFAULT_ALGORITHM_NUMBER"]
+    size = os.environ["DEFAULT_BITS"]
+    zone = "manual-rollover-zrrsig-rumoured.kasp"
+
+    isctest.kasp.wait_keymgr_done(ns3, zone)
+
+    isctest.kasp.check_dnssec_verify(ns3, zone)
+
+    koffset = -int(timedelta(days=7).total_seconds())
+    zoffset = -int(timedelta(hours=2).total_seconds())
+    key_properties = [
+        f"ksk unlimited {alg} {size} goal:omnipresent dnskey:omnipresent krrsig:omnipresent ds:omnipresent offset:{koffset}",
+        f"zsk unlimited {alg} {size} goal:omnipresent dnskey:omnipresent zrrsig:rumoured offset:{zoffset}",
+    ]
+    expected = isctest.kasp.policy_to_properties(ttl, key_properties)
+    keys = isctest.kasp.keydir_to_keylist(zone, ns3.identifier)
+    ksks = [k for k in keys if k.is_ksk()]
+    zsks = [k for k in keys if not k.is_ksk()]
+
+    isctest.kasp.check_keys(zone, keys, expected)
+
+    for kp in expected:
+        kp.set_expected_keytimes(CONFIG)
+
+    isctest.kasp.check_keytimes(keys, expected)
+    isctest.kasp.check_dnssecstatus(ns3, zone, keys, policy=POLICY)
+    isctest.kasp.check_apex(ns3, zone, ksks, zsks)
+    isctest.kasp.check_subdomain(ns3, zone, ksks, zsks)
+
+    # Schedule ZSK rollover now.
+    assert len(zsks) == 1
+    zsk = zsks[0]
+    now = KeyTimingMetadata.now()
+    with ns3.watch_log_from_here() as watcher:
+        ns3.rndc(f"dnssec -rollover -key {zsk.tag} -when {now} {zone}")
+        watcher.wait_for_line(f"keymgr: {zone} done")
+
+    isctest.kasp.check_dnssec_verify(ns3, zone)
+
+    key_properties = [
+        f"ksk unlimited {alg} {size} goal:omnipresent dnskey:omnipresent krrsig:omnipresent ds:omnipresent offset:{koffset}",
+        # Predecessor DNSKEY must stay until successor ZSK is fully omnipresent.
+        f"zsk unlimited {alg} {size} goal:hidden dnskey:omnipresent zrrsig:rumoured offset:{zoffset}",
+        f"zsk unlimited {alg} {size} goal:omnipresent dnskey:rumoured zrrsig:hidden offset:0",
+    ]
+    expected = isctest.kasp.policy_to_properties(ttl, key_properties)
+    keys = isctest.kasp.keydir_to_keylist(zone, ns3.identifier)
+    ksks = [k for k in keys if k.is_ksk()]
+    zsks = [k for k in keys if not k.is_ksk()]
+
+    isctest.kasp.check_keys(zone, keys, expected)
+
+    expected[1].metadata["Successor"] = expected[2].key.tag
+    expected[2].metadata["Predecessor"] = expected[1].key.tag
+    isctest.kasp.check_keyrelationships(keys, expected)

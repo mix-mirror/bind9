@@ -43,3 +43,17 @@ private_type_record $zone $DEFAULT_ALGORITHM_NUMBER "$KSK" >>"$infile"
 private_type_record $zone $DEFAULT_ALGORITHM_NUMBER "$ZSK" >>"$infile"
 cp $infile $zonefile
 $SIGNER -PS -x -o $zone -O raw -f "${zonefile}.signed" $infile >signer.out.$zone.1 2>&1
+
+# Zone to test manual rollover.
+setup manual-rollover-zrrsig-rumoured.kasp
+T2="now-2h"
+zsktimes="-P $T2 -A $T2"
+KSK=$($KEYGEN -a $DEFAULT_ALGORITHM -L 3600 -f KSK $keytimes $zone 2>keygen.out.$zone.1)
+ZSK=$($KEYGEN -a $DEFAULT_ALGORITHM -L 3600 $zsktimes $zone 2>keygen.out.$zone.2)
+$SETTIME -s -g $O -d $O $T -k $O $T -r $O $T "$KSK" >settime.out.$zone.1 2>&1
+$SETTIME -s -g $O -k $O $T2 -z $R $T2 "$ZSK" >settime.out.$zone.2 2>&1
+cat template.db.in "${KSK}.key" "${ZSK}.key" >"$infile"
+private_type_record $zone $DEFAULT_ALGORITHM_NUMBER "$KSK" >>"$infile"
+private_type_record $zone $DEFAULT_ALGORITHM_NUMBER "$ZSK" >>"$infile"
+cp $infile $zonefile
+$SIGNER -PS -x -o $zone -O raw -f "${zonefile}.signed" $infile >signer.out.$zone.1 2>&1
