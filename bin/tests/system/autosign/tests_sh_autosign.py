@@ -114,6 +114,7 @@ pytestmark = pytest.mark.extra_artifacts(
         "ns3/kskonly.example.db.jbk",
         "ns3/noksk.example.db",
         "ns3/nozsk.example.db",
+        "ns3/nsec-only.conf",
         "ns3/nsec-only.example.db",
         "ns3/nsec3-to-nsec.example.db",
         "ns3/nsec3-to-nsec3.example.db",
