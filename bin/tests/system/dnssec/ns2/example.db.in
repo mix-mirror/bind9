@@ -106,14 +106,20 @@ ns.dnskey-unknown	A	10.53.0.3
 dnskey-unsupported	NS	ns.dnskey-unsupported
 ns.dnskey-unsupported	A	10.53.0.3
 
-ds-unsupported	NS	ns.ds-unsupported
+algorithm-disabled	NS	ns.algorithm-disabled
+ns.algorithm-disabled	A	10.53.0.3
+
+ds-unsupported		NS	ns.ds-unsupported
 ns.ds-unsupported	A	10.53.0.3
 
-digest-alg-unsupported    NS 	ns.digest-alg-unsupported
+digest-alg-unsupported	NS	ns.digest-alg-unsupported
 ns.digest-alg-unsupported A	10.53.0.3
 
 dnskey-nsec3-unknown	NS	ns.dnskey-nsec3-unknown
 ns.dnskey-nsec3-unknown	A	10.53.0.3
+
+ede-not-only		NS	ns.ede-not-only
+ns.ede-not-only		A	10.53.0.3
 
 multiple		NS	ns.multiple
 ns.multiple		A	10.53.0.3

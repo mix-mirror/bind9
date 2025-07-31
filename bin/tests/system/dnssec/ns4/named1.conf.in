@@ -29,10 +29,18 @@ options {
 	nta-recheck 9s;
 	validate-except { corp; };
 
-	disable-algorithms "digest-alg-unsupported.example." { ECDSAP384SHA384; };
+	# "example" is signed with the alterative algorithm so use default algorithm here
+	disable-algorithms "digest-alg-unsupported.example." { @DEFAULT_ALGORITHM@; };
 	disable-ds-digests "digest-alg-unsupported.example." { "SHA384"; "SHA-384"; };
+
+	# "example" is signed with the alterative algorithm so use default algorithm here
+	disable-algorithms "ede-not-only.example." { @DEFAULT_ALGORITHM@; };
+	disable-ds-digests "ede-not-only.example." { "SHA384"; "SHA-384"; };
+
 	disable-ds-digests "ds-unsupported.example." {"SHA256"; "SHA-256"; "SHA384"; "SHA-384"; };
-	disable-algorithms "badalg.secure.example." { ECDSAP256SHA256; };
+
+	# "example" is signed with the alterative algorithm so use default algorithm here
+	disable-algorithms "algorithm-disabled.example." { @DEFAULT_ALGORITHM@; };
 
 	# Note: We only reference the bind.keys file here to confirm that it
 	# is *not* being used.  It contains the real root key, and we're
