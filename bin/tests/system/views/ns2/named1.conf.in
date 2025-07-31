@@ -37,7 +37,7 @@ controls {
 dnssec-policy "views" {
 	keys {
 		ksk key-directory lifetime unlimited algorithm @DEFAULT_ALGORITHM@;
-		csk key-directory lifetime unlimited algorithm @DEFAULT_ALGORITHM@;
+		zsk key-directory lifetime unlimited algorithm @DEFAULT_ALGORITHM@;
 	};
 };
 
