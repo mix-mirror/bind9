@@ -785,6 +785,7 @@ ta_fromconfig(const cfg_obj_t *key, bool *initialp, const char **namestrp,
 		keystruct.flags = (uint16_t)rdata1;
 		keystruct.protocol = (uint8_t)rdata2;
 		keystruct.algorithm = (uint8_t)rdata3;
+
 		datastr = cfg_obj_asstring(cfg_tuple_get(key, "data"));
 		CHECK(isc_base64_decodestring(datastr, &databuf));
 		isc_buffer_usedregion(&databuf, &r);
@@ -794,8 +795,16 @@ ta_fromconfig(const cfg_obj_t *key, bool *initialp, const char **namestrp,
 		algorithm = dst_algorithm_fromdata(
 			keystruct.algorithm, keystruct.data, keystruct.datalen);
 
-		if (!dst_algorithm_supported(algorithm)) {
+		switch (algorithm) {
+		case DST_ALG_RSASHA1:
+		case DST_ALG_NSEC3RSASHA1:
 			CHECK(DST_R_UNSUPPORTEDALG);
+			break;
+		default:
+			if (!dst_algorithm_supported(algorithm)) {
+				CHECK(DST_R_UNSUPPORTEDALG);
+			}
+			break;
 		}
 
 		CHECK(dns_rdata_fromstruct(&rdata, keystruct.common.rdclass,
@@ -820,6 +829,10 @@ ta_fromconfig(const cfg_obj_t *key, bool *initialp, const char **namestrp,
 		ds->key_tag = (uint16_t)rdata1;
 		ds->algorithm = (uint8_t)rdata2;
 		ds->digest_type = (uint8_t)rdata3;
+
+		if (ds->digest_type == DNS_DSDIGEST_SHA1) {
+			CHECK(DST_R_UNSUPPORTEDALG);
+		}
 
 		datastr = cfg_obj_asstring(cfg_tuple_get(key, "data"));
 		CHECK(isc_hex_decodestring(datastr, &databuf));
@@ -904,8 +917,17 @@ ta_fromconfig(const cfg_obj_t *key, bool *initialp, const char **namestrp,
 			break;
 		}
 #endif
-		if (!dst_algorithm_supported(algorithm)) {
+
+		switch (algorithm) {
+		case DST_ALG_RSASHA1:
+		case DST_ALG_NSEC3RSASHA1:
 			CHECK(DST_R_UNSUPPORTEDALG);
+			break;
+		default:
+			if (!dst_algorithm_supported(algorithm)) {
+				CHECK(DST_R_UNSUPPORTEDALG);
+			}
+			break;
 		}
 
 		break;
