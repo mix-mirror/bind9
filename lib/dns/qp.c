@@ -2388,7 +2388,7 @@ dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
 	dns_qpreader_t *qp = dns_qpreader(qpr);
 	dns_qpkey_t search, found;
 	size_t searchlen, foundlen;
-	size_t offset = 0;
+	size_t offset = 0, noffset = 0;
 	dns_qpnode_t *n = NULL;
 	dns_qpshift_t bit = SHIFT_NOBYTE;
 	dns_qpchain_t oc;
@@ -2474,6 +2474,21 @@ dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
 		iter->stack[++iter->sp] = n;
 	}
 
+	/* n must still be a leaf node */
+	INSIST(!is_branch(n));
+
+	/* save this node for generating the chain */
+	dns_qpnode_t *nc = n;
+
+	/*
+	 * if the searched key is equal to the found key up to the part where
+	 * the name ends, then the name exists but there was no data for the
+	 * given type.
+	 */
+	foundlen = leaf_qpkey(qp, n, found);
+	noffset = qpkey_compare(search, searchlen - QPKEYTYPELEN, found,
+				foundlen - QPKEYTYPELEN);
+
 	if (setiter) {
 		/*
 		 * we found a leaf, but it might not be the leaf we wanted.
@@ -2491,10 +2506,18 @@ dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
 	offset = qpkey_compare(search, searchlen, found, foundlen);
 
 	/* the search ended with an exact or partial match */
-	if (offset == QPKEY_EQUAL || (offset + QPKEYTYPELEN) == foundlen) {
+	if (offset == QPKEY_EQUAL || noffset == QPKEY_EQUAL ||
+	    (offset + QPKEYTYPELEN) >= foundlen)
+	{
 		isc_result_t result = ISC_R_SUCCESS;
 
-		if ((offset + QPKEYTYPELEN) == foundlen) {
+		if (offset == QPKEY_EQUAL) {
+			result = ISC_R_SUCCESS;
+		} else if (noffset == QPKEY_EQUAL) {
+			/* name exists, but there is no data for the type */
+			result = DNS_R_NODATA;
+			n = nc;
+		} else if ((offset + QPKEYTYPELEN) >= foundlen) {
 			fix_chain(chain, offset);
 			result = DNS_R_PARTIALMATCH;
 		}

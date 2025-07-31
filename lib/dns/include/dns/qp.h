@@ -566,8 +566,8 @@ dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
  * 'name', matching 'type', in the namespace 'space'.
  *
  * If 'foundname' is not NULL, it will be updated to contain the name
- * that was found (if any). The return code, ISC_R_SUCCESS or
- * DNS_R_PARTIALMATCH, indicates whether the name found is the name
+ * that was found (if any). The return code, ISC_R_SUCCESS, DNS_R_NODATA,
+ * or DNS_R_PARTIALMATCH, indicates whether the name found is the name
  * that was requested, or an ancestor. If the result is ISC_R_NOTFOUND,
  * 'foundname' will not be updated. (NOTE: the name will be constructed
  * from the QP key of the found node, and this can be time-consuming.
@@ -578,12 +578,14 @@ dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
  * references to the populated nodes in the tree between the root and
  * the name that was found. If the return code is DNS_R_PARTIALMATCH
  * then the chain terminates at the closest ancestor found; if it is
- * ISC_R_SUCCESS then it terminates at the name that was requested.
- * If the result is ISC_R_NOTFOUND, 'chain' will not be updated.
+ * ISC_R_SUCCESS or DNS_R_NODATA then it terminates at the name that
+ * was requested. If the result is ISC_R_NOTFOUND, 'chain' will not be
+ * updated.
  *
  * If 'iter' is not NULL, it will be updated to point to a QP iterator
  * which is pointed at the searched-for name if it exists in the trie,
- * or the closest predecessor if it doesn't.
+ * or the closest predecessor if it doesn't. Note that the closest
+ * predecessor can be a node with the same name but a different type.
  *
  * The leaf data for the node that was found will be assigned to
  * whichever of `*pval_r` and `*ival_r` are not NULL, unless the
