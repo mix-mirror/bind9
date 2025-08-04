@@ -392,22 +392,22 @@ ksk13_id=$(cat ns2/$zone.ksk13.id)
 zsk13_id=$(cat ns2/$zone.zsk13.id)
 ksk14_id=$(cat ns2/$zone.ksk14.id)
 zsk14_id=$(cat ns2/$zone.zsk14.id)
-# The dnssec zone has 10 RRsets to sign (including NSEC) with the ZSKs and one
-# RRset (DNSKEY) with the KSKs. So starting named with signatures that expire
-# almost right away, this should trigger 10 zsk and 1 ksk sign operations per
-# key.
+# The dnssec zone has 10 RRsets to sign (including NSEC) with the ZSKs and the
+# DNSKEY, CDS, and CDNSKEY RRsets with the KSKs. So starting named with
+# signatures that expire almost right away, this should trigger 10 zsk and 3
+# ksk sign operations per key.
 echo "${refresh_prefix} ${zsk8_id}: 10" >zones.expect
 echo "${refresh_prefix} ${zsk13_id}: 10" >>zones.expect
 echo "${refresh_prefix} ${zsk14_id}: 10" >>zones.expect
-echo "${refresh_prefix} ${ksk8_id}: 1" >>zones.expect
-echo "${refresh_prefix} ${ksk13_id}: 1" >>zones.expect
-echo "${refresh_prefix} ${ksk14_id}: 1" >>zones.expect
+echo "${refresh_prefix} ${ksk8_id}: 3" >>zones.expect
+echo "${refresh_prefix} ${ksk13_id}: 3" >>zones.expect
+echo "${refresh_prefix} ${ksk14_id}: 3" >>zones.expect
 echo "${sign_prefix} ${zsk8_id}: 10" >>zones.expect
 echo "${sign_prefix} ${zsk13_id}: 10" >>zones.expect
 echo "${sign_prefix} ${zsk14_id}: 10" >>zones.expect
-echo "${sign_prefix} ${ksk8_id}: 1" >>zones.expect
-echo "${sign_prefix} ${ksk13_id}: 1" >>zones.expect
-echo "${sign_prefix} ${ksk14_id}: 1" >>zones.expect
+echo "${sign_prefix} ${ksk8_id}: 3" >>zones.expect
+echo "${sign_prefix} ${ksk13_id}: 3" >>zones.expect
+echo "${sign_prefix} ${ksk14_id}: 3" >>zones.expect
 cat zones.expect | sort >zones.expect.$n
 rm -f zones.expect
 # Fetch and check the dnssec sign statistics.
@@ -437,15 +437,15 @@ ret=0
 echo "${refresh_prefix} ${zsk8_id}: 10" >zones.expect
 echo "${refresh_prefix} ${zsk13_id}: 10" >>zones.expect
 echo "${refresh_prefix} ${zsk14_id}: 10" >>zones.expect
-echo "${refresh_prefix} ${ksk8_id}: 1" >>zones.expect
-echo "${refresh_prefix} ${ksk13_id}: 1" >>zones.expect
-echo "${refresh_prefix} ${ksk14_id}: 1" >>zones.expect
+echo "${refresh_prefix} ${ksk8_id}: 3" >>zones.expect
+echo "${refresh_prefix} ${ksk13_id}: 3" >>zones.expect
+echo "${refresh_prefix} ${ksk14_id}: 3" >>zones.expect
 echo "${sign_prefix} ${zsk8_id}: 13" >>zones.expect
 echo "${sign_prefix} ${zsk13_id}: 13" >>zones.expect
 echo "${sign_prefix} ${zsk14_id}: 13" >>zones.expect
-echo "${sign_prefix} ${ksk8_id}: 1" >>zones.expect
-echo "${sign_prefix} ${ksk13_id}: 1" >>zones.expect
-echo "${sign_prefix} ${ksk14_id}: 1" >>zones.expect
+echo "${sign_prefix} ${ksk8_id}: 3" >>zones.expect
+echo "${sign_prefix} ${ksk13_id}: 3" >>zones.expect
+echo "${sign_prefix} ${ksk14_id}: 3" >>zones.expect
 cat zones.expect | sort >zones.expect.$n
 rm -f zones.expect
 # Fetch and check the dnssec sign statistics.
@@ -466,15 +466,15 @@ n=$((n + 1))
 ret=0
 copy_setports ns2/named2.conf.in ns2/named.conf
 $RNDCCMD 10.53.0.2 reload 2>&1 | sed 's/^/I:ns2 /'
-# This should trigger the resign of DNSKEY (+1 ksk), and SOA, NSEC,
-# TYPE65534 (+3 zsk). The dnssec-sign statistics for the removed keys should
-# be cleared and thus no longer visible. But NSEC and SOA are (mistakenly)
-# counted double, one time because of zone_resigninc and one time because of
-# zone_nsec3chain. So +5 zsk in total.
+# This should trigger the resign of DNSKEY, CDS, and CDNSKEY (+3 ksk),
+# and SOA, NSEC, TYPE65534 (+3 zsk). The dnssec-sign statistics for the
+# removed keys should be cleared and thus no longer visible. But NSEC and SOA
+# are (mistakenly) counted double, one time because of zone_resigninc and one
+# time because of zone_nsec3chain. So +5 zsk in total.
 echo "${refresh_prefix} ${zsk8_id}: 15" >zones.expect
-echo "${refresh_prefix} ${ksk8_id}: 2" >>zones.expect
+echo "${refresh_prefix} ${ksk8_id}: 6" >>zones.expect
 echo "${sign_prefix} ${zsk8_id}: 18" >>zones.expect
-echo "${sign_prefix} ${ksk8_id}: 2" >>zones.expect
+echo "${sign_prefix} ${ksk8_id}: 6" >>zones.expect
 cat zones.expect | sort >zones.expect.$n
 rm -f zones.expect
 # Fetch and check the dnssec sign statistics.
