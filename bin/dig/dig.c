@@ -83,10 +83,10 @@ static const char *const opcodetext[] = {
 	"RESERVED12", "RESERVED13", "RESERVED14", "RESERVED15"
 };
 
-#define DIG_ANSI_WARN_COLOR "\e[93m"
-#define DIG_ANSI_GOOD_COLOR "\e[92m"
-#define DIG_ANSI_ERR_COLOR  "\e[91m"
-#define DIG_ANSI_RST_COLOR  "\e[0m"
+static const char DIG_ANSI_WARN_COLOR[] = "\e[93m";
+static const char DIG_ANSI_GOOD_COLOR[] = "\e[92m";
+static const char DIG_ANSI_ERR_COLOR[] = "\e[91m";
+static const char DIG_ANSI_RST_COLOR[] = "\e[0m";
 
 /*% colors used for rcodes */
 static const char *const color_rcodetext[] = {
