@@ -146,7 +146,7 @@ enum {
 #define QP_CHUNK_LOG_MIN 7
 #define QP_CHUNK_LOG_MAX 7
 #else
-#define QP_CHUNK_LOG_MIN 6
+#define QP_CHUNK_LOG_MIN 3
 #define QP_CHUNK_LOG_MAX 12
 #endif
 
