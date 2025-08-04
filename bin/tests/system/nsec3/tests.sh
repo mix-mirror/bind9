@@ -64,12 +64,6 @@ set_key_default_values() {
   set_keyalgorithm $1 "13" "ECDSAP256SHA256" "256"
   set_keysigning $1 "yes"
   set_zonesigning $1 "yes"
-
-  set_keystate $1 "GOAL" "omnipresent"
-  set_keystate $1 "STATE_DNSKEY" "rumoured"
-  set_keystate $1 "STATE_KRRSIG" "rumoured"
-  set_keystate $1 "STATE_ZRRSIG" "rumoured"
-  set_keystate $1 "STATE_DS" "hidden"
 }
 
 # Set expected rsasha1 dnssec-policy keys values.
@@ -81,12 +75,6 @@ set_key_rsasha1_values() {
   set_keyalgorithm $1 "5" "RSASHA1" "2048"
   set_keysigning $1 "yes"
   set_zonesigning $1 "yes"
-
-  set_keystate $1 "GOAL" "omnipresent"
-  set_keystate $1 "STATE_DNSKEY" "rumoured"
-  set_keystate $1 "STATE_KRRSIG" "rumoured"
-  set_keystate $1 "STATE_ZRRSIG" "rumoured"
-  set_keystate $1 "STATE_DS" "hidden"
 }
 
 # Update the key states.
@@ -239,6 +227,7 @@ key_clear "KEY4"
 set_zone_policy "nsec-to-nsec3.kasp" "nsec" 1 3600
 set_server "ns3" "10.53.0.3"
 set_key_default_values "KEY1"
+set_key_states "KEY1" "omnipresent" "rumoured" "rumoured" "rumoured" "hidden"
 echo_i "initial check zone ${ZONE}"
 check_nsec
 
@@ -247,6 +236,7 @@ if [ $RSASHA1_SUPPORTED = 1 ]; then
   set_zone_policy "rsasha1-to-nsec3.kasp" "rsasha1" 1 3600
   set_server "ns3" "10.53.0.3"
   set_key_rsasha1_values "KEY1"
+  set_key_states "KEY1" "omnipresent" "omnipresent" "omnipresent" "omnipresent" "omnipresent"
   echo_i "initial check zone ${ZONE}"
   check_nsec
 
@@ -261,14 +251,15 @@ if [ $RSASHA1_SUPPORTED = 1 ]; then
   # Zone: nsec3-to-rsasha1.kasp.
   set_zone_policy "nsec3-to-rsasha1.kasp" "nsec3" 1 3600
   set_server "ns3" "10.53.0.3"
-  set_key_rsasha1_values "KEY1"
+  set_key_default_values "KEY1"
+  set_key_states "KEY1" "omnipresent" "omnipresent" "omnipresent" "omnipresent" "omnipresent"
   echo_i "initial check zone ${ZONE}"
   check_nsec3
 
   # Zone: nsec3-to-rsasha1-ds.kasp.
   set_zone_policy "nsec3-to-rsasha1-ds.kasp" "nsec3" 1 3600
   set_server "ns3" "10.53.0.3"
-  set_key_rsasha1_values "KEY1"
+  set_key_default_values "KEY1"
   set_key_states "KEY1" "omnipresent" "omnipresent" "omnipresent" "omnipresent" "omnipresent"
   echo_i "initial check zone ${ZONE}"
   check_nsec3
@@ -278,6 +269,7 @@ fi
 set_zone_policy "nsec3.kasp" "nsec3" 1 3600
 set_nsec3param "0" "0"
 set_key_default_values "KEY1"
+set_key_states "KEY1" "omnipresent" "rumoured" "rumoured" "rumoured" "hidden"
 echo_i "initial check zone ${ZONE}"
 check_nsec3
 
@@ -285,6 +277,7 @@ check_nsec3
 set_zone_policy "nsec3-dynamic.kasp" "nsec3" 1 3600
 set_nsec3param "0" "0"
 set_key_default_values "KEY1"
+set_key_states "KEY1" "omnipresent" "rumoured" "rumoured" "rumoured" "hidden"
 echo_i "initial check zone ${ZONE}"
 check_nsec3
 
@@ -292,6 +285,7 @@ check_nsec3
 set_zone_policy "nsec3-change.kasp" "nsec3" 1 3600
 set_nsec3param "0" "0"
 set_key_default_values "KEY1"
+set_key_states "KEY1" "omnipresent" "rumoured" "rumoured" "rumoured" "hidden"
 echo_i "initial check zone ${ZONE}"
 check_nsec3
 
@@ -317,6 +311,7 @@ retry_quiet 10 _wait_for_new_soa || log_error "failed to update SOA record in zo
 set_zone_policy "nsec3-dynamic-change.kasp" "nsec3" 1 3600
 set_nsec3param "0" "0"
 set_key_default_values "KEY1"
+set_key_states "KEY1" "omnipresent" "rumoured" "rumoured" "rumoured" "hidden"
 echo_i "initial check zone ${ZONE}"
 check_nsec3
 
@@ -324,6 +319,7 @@ check_nsec3
 set_zone_policy "nsec3-dynamic-to-inline.kasp" "nsec3" 1 3600
 set_nsec3param "0" "0"
 set_key_default_values "KEY1"
+set_key_states "KEY1" "omnipresent" "rumoured" "rumoured" "rumoured" "hidden"
 echo_i "initial check zone ${ZONE}"
 check_nsec3
 
@@ -331,6 +327,7 @@ check_nsec3
 set_zone_policy "nsec3-inline-to-dynamic.kasp" "nsec3" 1 3600
 set_nsec3param "0" "0"
 set_key_default_values "KEY1"
+set_key_states "KEY1" "omnipresent" "rumoured" "rumoured" "rumoured" "hidden"
 echo_i "initial check zone ${ZONE}"
 check_nsec3
 
@@ -338,6 +335,7 @@ check_nsec3
 set_zone_policy "nsec3-to-nsec.kasp" "nsec3" 1 3600
 set_nsec3param "0" "0"
 set_key_default_values "KEY1"
+set_key_states "KEY1" "omnipresent" "rumoured" "rumoured" "rumoured" "hidden"
 echo_i "initial check zone ${ZONE}"
 check_nsec3
 
@@ -345,6 +343,7 @@ check_nsec3
 set_zone_policy "nsec3-to-optout.kasp" "nsec3" 1 3600
 set_nsec3param "0" "0"
 set_key_default_values "KEY1"
+set_key_states "KEY1" "omnipresent" "rumoured" "rumoured" "rumoured" "hidden"
 echo_i "initial check zone ${ZONE}"
 check_nsec3
 
@@ -352,6 +351,7 @@ check_nsec3
 set_zone_policy "nsec3-from-optout.kasp" "optout" 1 3600
 set_nsec3param "1" "0"
 set_key_default_values "KEY1"
+set_key_states "KEY1" "omnipresent" "rumoured" "rumoured" "rumoured" "hidden"
 echo_i "initial check zone ${ZONE}"
 check_nsec3
 
@@ -359,6 +359,7 @@ check_nsec3
 set_zone_policy "nsec3-other.kasp" "nsec3-other" 1 3600
 set_nsec3param "1" "8"
 set_key_default_values "KEY1"
+set_key_states "KEY1" "omnipresent" "rumoured" "rumoured" "rumoured" "hidden"
 echo_i "initial check zone ${ZONE}"
 check_nsec3
 
@@ -367,12 +368,14 @@ check_nsec3
 # the dnssec-policy dictates NSEC.
 set_zone_policy "nsec3-xfr-inline.kasp" "nsec" 1 3600
 set_key_default_values "KEY1"
+set_key_states "KEY1" "omnipresent" "rumoured" "rumoured" "rumoured" "hidden"
 echo_i "initial check zone ${ZONE}"
 check_nsec
 
 # Zone: nsec3-dynamic-update-inline.kasp.
 set_zone_policy "nsec3-dynamic-update-inline.kasp" "nsec" 1 3600
 set_key_default_values "KEY1"
+set_key_states "KEY1" "omnipresent" "rumoured" "rumoured" "rumoured" "hidden"
 echo_i "initial check zone ${ZONE}"
 check_nsec
 
@@ -404,6 +407,7 @@ rndc_reconfig ns3 10.53.0.3
 set_zone_policy "nsec-to-nsec3.kasp" "nsec3" 1 3600
 set_nsec3param "0" "0"
 set_key_default_values "KEY1"
+set_key_states "KEY1" "omnipresent" "rumoured" "rumoured" "rumoured" "hidden"
 echo_i "check zone ${ZONE} after reconfig"
 check_nsec3
 
@@ -412,12 +416,11 @@ if [ $RSASHA1_SUPPORTED = 1 ]; then
   set_zone_policy "rsasha1-to-nsec3.kasp" "nsec3" 2 3600
   set_server "ns3" "10.53.0.3"
   set_key_rsasha1_values "KEY1"
-  set_key_states "KEY1" "hidden" "unretentive" "unretentive" "unretentive" "hidden"
-  set_keysigning "KEY1" "no"
-  set_zonesigning "KEY1" "no"
+  set_key_states "KEY1" "hidden" "omnipresent" "omnipresent" "omnipresent" "omnipresent"
   set_key_default_values "KEY2"
+  set_key_states "KEY2" "omnipresent" "rumoured" "rumoured" "rumoured" "hidden"
   echo_i "check zone ${ZONE} after reconfig"
-  check_nsec3
+  check_nsec
 
   # Zone: rsasha1-to-nsec3-wait.kasp.
   set_zone_policy "rsasha1-to-nsec3-wait.kasp" "nsec3" 2 3600
@@ -425,6 +428,7 @@ if [ $RSASHA1_SUPPORTED = 1 ]; then
   set_key_rsasha1_values "KEY1"
   set_key_states "KEY1" "hidden" "omnipresent" "omnipresent" "omnipresent" "omnipresent"
   set_key_default_values "KEY2"
+  set_key_states "KEY2" "omnipresent" "rumoured" "rumoured" "rumoured" "hidden"
   echo_i "check zone ${ZONE} after reconfig"
   check_nsec
 
@@ -433,10 +437,9 @@ if [ $RSASHA1_SUPPORTED = 1 ]; then
   set_nsec3param "1" "0"
   set_server "ns3" "10.53.0.3"
   set_key_default_values "KEY1"
-  set_key_states "KEY1" "hidden" "unretentive" "unretentive" "unretentive" "hidden"
-  set_keysigning "KEY1" "no"
-  set_zonesigning "KEY1" "no"
+  set_key_states "KEY1" "hidden" "omnipresent" "omnipresent" "omnipresent" "omnipresent"
   set_key_rsasha1_values "KEY2"
+  set_key_states "KEY2" "omnipresent" "rumoured" "rumoured" "rumoured" "hidden"
   echo_i "check zone ${ZONE} after reconfig"
   check_nsec
 
@@ -447,6 +450,7 @@ if [ $RSASHA1_SUPPORTED = 1 ]; then
   set_key_default_values "KEY1"
   set_key_states "KEY1" "hidden" "omnipresent" "omnipresent" "omnipresent" "omnipresent"
   set_key_rsasha1_values "KEY2"
+  set_key_states "KEY2" "omnipresent" "rumoured" "rumoured" "rumoured" "hidden"
   echo_i "check zone ${ZONE} after reconfig"
   check_nsec
 
@@ -458,6 +462,7 @@ fi
 set_zone_policy "nsec3.kasp" "nsec3" 1 3600
 set_nsec3param "0" "0"
 set_key_default_values "KEY1"
+set_key_states "KEY1" "omnipresent" "rumoured" "rumoured" "rumoured" "hidden"
 echo_i "check zone ${ZONE} after reconfig"
 check_nsec3
 
@@ -465,6 +470,7 @@ check_nsec3
 set_zone_policy "nsec3-dynamic.kasp" "nsec3" 1 3600
 set_nsec3param "0" "0"
 set_key_default_values "KEY1"
+set_key_states "KEY1" "omnipresent" "rumoured" "rumoured" "rumoured" "hidden"
 echo_i "check zone ${ZONE} after reconfig"
 check_nsec3
 
@@ -472,6 +478,7 @@ check_nsec3
 set_zone_policy "nsec3-change.kasp" "nsec3-other" 1 3600
 set_nsec3param "1" "8"
 set_key_default_values "KEY1"
+set_key_states "KEY1" "omnipresent" "rumoured" "rumoured" "rumoured" "hidden"
 echo_i "check zone ${ZONE} after reconfig"
 check_nsec3
 
@@ -495,6 +502,7 @@ check_nsec3
 set_zone_policy "nsec3-dynamic-change.kasp" "nsec3-other" 1 3600
 set_nsec3param "1" "8"
 set_key_default_values "KEY1"
+set_key_states "KEY1" "omnipresent" "rumoured" "rumoured" "rumoured" "hidden"
 echo_i "check zone ${ZONE} after reconfig"
 check_nsec3
 
@@ -502,6 +510,7 @@ check_nsec3
 set_zone_policy "nsec3-dynamic-to-inline.kasp" "nsec3" 1 3600
 set_nsec3param "0" "0"
 set_key_default_values "KEY1"
+set_key_states "KEY1" "omnipresent" "rumoured" "rumoured" "rumoured" "hidden"
 echo_i "check zone ${ZONE} after reconfig"
 check_nsec3
 
@@ -509,6 +518,7 @@ check_nsec3
 set_zone_policy "nsec3-inline-to-dynamic.kasp" "nsec3" 1 3600
 set_nsec3param "0" "0"
 set_key_default_values "KEY1"
+set_key_states "KEY1" "omnipresent" "rumoured" "rumoured" "rumoured" "hidden"
 echo_i "initial check zone ${ZONE}"
 check_nsec3
 
@@ -516,6 +526,7 @@ check_nsec3
 set_zone_policy "nsec3-to-nsec.kasp" "nsec" 1 3600
 set_nsec3param "1" "8"
 set_key_default_values "KEY1"
+set_key_states "KEY1" "omnipresent" "rumoured" "rumoured" "rumoured" "hidden"
 echo_i "check zone ${ZONE} after reconfig"
 check_nsec
 
@@ -526,6 +537,7 @@ check_nsec
 #set_zone_policy "nsec3-to-optout.kasp" "optout" 1 3600
 #set_nsec3param "1" "0"
 #set_key_default_values "KEY1"
+#set_key_states "KEY1" "omnipresent" "rumoured" "rumoured" "rumoured" "hidden"
 #echo_i "check zone ${ZONE} after reconfig"
 #check_nsec3
 
@@ -536,6 +548,7 @@ check_nsec
 #set_zone_policy "nsec3-from-optout.kasp" "nsec3" 1 3600
 #set_nsec3param "0" "0"
 #set_key_default_values "KEY1"
+#set_key_states "KEY1" "omnipresent" "rumoured" "rumoured" "rumoured" "hidden"
 #echo_i "check zone ${ZONE} after reconfig"
 #check_nsec3
 
@@ -543,6 +556,7 @@ check_nsec
 set_zone_policy "nsec3-other.kasp" "nsec3-other" 1 3600
 set_nsec3param "1" "8"
 set_key_default_values "KEY1"
+set_key_states "KEY1" "omnipresent" "rumoured" "rumoured" "rumoured" "hidden"
 echo_i "check zone ${ZONE} after reconfig"
 check_nsec3
 
@@ -550,6 +564,7 @@ check_nsec3
 set_zone_policy "nsec3.kasp" "nsec3" 1 3600
 set_nsec3param "0" "0"
 set_key_default_values "KEY1"
+set_key_states "KEY1" "omnipresent" "rumoured" "rumoured" "rumoured" "hidden"
 echo_i "check zone ${ZONE} before restart"
 check_nsec3
 
@@ -570,6 +585,7 @@ prevsalt="${SALT}"
 set_zone_policy "nsec3.kasp" "nsec3" 1 3600
 set_nsec3param "0" "0"
 set_key_default_values "KEY1"
+set_key_states "KEY1" "omnipresent" "rumoured" "rumoured" "rumoured" "hidden"
 SALT="${prevsalt}"
 echo_i "check zone ${ZONE} after restart has salt ${SALT}"
 check_nsec3
@@ -581,6 +597,7 @@ rndc_reload ns3 10.53.0.3
 set_zone_policy "nsec3-fails-to-load.kasp" "nsec3" 1 3600
 set_nsec3param "0" "0"
 set_key_default_values "KEY1"
+set_key_states "KEY1" "omnipresent" "rumoured" "rumoured" "rumoured" "hidden"
 echo_i "check zone ${ZONE} after reload"
 check_nsec3
 
