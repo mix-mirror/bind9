@@ -44,6 +44,22 @@
 	  DNS_SLABHEADERATTR_NEGATIVE) != 0)
 
 /*
+ * Record overhead:
+ * compression pointer (2), type (2), class (2), ttl (4), length (2).
+ */
+#define RECORD_OVERHEAD 12
+
+/*
+ * Minimum EDNS query overhead with a DNS COOKIE.
+ * DNS message header (12), question type (2), question class (2),
+ * minimal OPT (11), our DNS COOKIE option size (28).
+ */
+#define MESSAGE_HEADER_SIZE (12)
+#define QUESTION_SIZE(x)    ((x) + 2 + 2)
+#define COOKIE_SIZE	    (11 + 28)
+#define OVERHEAD(x)	    (MESSAGE_HEADER_SIZE + QUESTION_SIZE(x) + COOKIE_SIZE)
+
+/*
  * The rdataslab structure allows iteration to occur in both load order
  * and DNSSEC order.  The structure is as follows:
  *
@@ -145,7 +161,7 @@ compare_rdata(const void *p1, const void *p2) {
 
 static isc_result_t
 makeslab(dns_rdataset_t *rdataset, isc_mem_t *mctx, isc_region_t *region,
-	 uint32_t maxrrperset) {
+	 uint32_t maxrrperset, unsigned int name_length) {
 	/*
 	 * Use &removed as a sentinel pointer for duplicate
 	 * rdata as rdata.data == NULL is valid.
@@ -161,6 +177,7 @@ makeslab(dns_rdataset_t *rdataset, isc_mem_t *mctx, isc_region_t *region,
 	unsigned int length;
 	size_t i;
 	size_t rdatasize;
+	unsigned int datalen = 0;
 
 	/*
 	 * If the source rdataset is also a slab, we don't need
@@ -259,6 +276,7 @@ makeslab(dns_rdataset_t *rdataset, isc_mem_t *mctx, isc_region_t *region,
 			nitems--;
 		} else {
 			buflen += (2 + rdata[i - 1].length);
+			datalen += RECORD_OVERHEAD + rdata[i - 1].length;
 			/*
 			 * Provide space to store the per RR meta data.
 			 */
@@ -272,6 +290,7 @@ makeslab(dns_rdataset_t *rdataset, isc_mem_t *mctx, isc_region_t *region,
 	 * Don't forget the last item!
 	 */
 	buflen += (2 + rdata[i - 1].length);
+	datalen += RECORD_OVERHEAD + rdata[i - 1].length;
 
 	/*
 	 * Provide space to store the per RR meta data.
@@ -289,6 +308,16 @@ makeslab(dns_rdataset_t *rdataset, isc_mem_t *mctx, isc_region_t *region,
 		 * RR in the rdataset.
 		 */
 		result = DNS_R_SINGLETON;
+		goto free_rdatas;
+	}
+
+	/*
+	 * Can this RRset fit into a DNS message with space for a
+	 * EDNS DNS COOKIE? Allow for 2x name_length for case
+	 * preservation.  Correct for extra compression pointer.
+	 */
+	if ((datalen - 2) > (0xffff - OVERHEAD(name_length * 2))) {
+		result = ISC_R_NOSPACE;
 		goto free_rdatas;
 	}
 
@@ -338,10 +367,11 @@ free_rdatas:
 
 isc_result_t
 dns_rdataslab_fromrdataset(dns_rdataset_t *rdataset, isc_mem_t *mctx,
-			   isc_region_t *region, uint32_t maxrrperset) {
+			   isc_region_t *region, uint32_t maxrrperset,
+			   unsigned int name_length) {
 	isc_result_t result;
 
-	result = makeslab(rdataset, mctx, region, maxrrperset);
+	result = makeslab(rdataset, mctx, region, maxrrperset, name_length);
 	if (result == ISC_R_SUCCESS) {
 		dns_slabheader_t *new = (dns_slabheader_t *)region->base;
 
@@ -444,14 +474,16 @@ typedef struct slabinfo {
 
 isc_result_t
 dns_rdataslab_merge(dns_slabheader_t *oheader, dns_slabheader_t *nheader,
-		    isc_mem_t *mctx, dns_rdataclass_t rdclass,
-		    dns_rdatatype_t type, unsigned int flags,
-		    uint32_t maxrrperset, dns_slabheader_t **theaderp) {
+		    unsigned int name_length, isc_mem_t *mctx,
+		    dns_rdataclass_t rdclass, dns_rdatatype_t type,
+		    unsigned int flags, uint32_t maxrrperset,
+		    dns_slabheader_t **theaderp) {
 	isc_result_t result = ISC_R_SUCCESS;
 	unsigned char *ocurrent = NULL, *ncurrent = NULL, *tcurrent = NULL;
 	unsigned int ocount, ncount, tlength, tcount = 0;
 	slabinfo_t *oinfo = NULL, *ninfo = NULL;
 	size_t o = 0, n = 0;
+	unsigned int datalen = 0;
 
 	REQUIRE(theaderp != NULL && *theaderp == NULL);
 	REQUIRE(oheader != NULL && nheader != NULL);
@@ -484,6 +516,7 @@ dns_rdataslab_merge(dns_slabheader_t *oheader, dns_slabheader_t *nheader,
 		dns_rdata_init(&oinfo[i].rdata);
 		rdata_from_slabitem(&ocurrent, rdclass, type, &oinfo[i].rdata);
 		tlength += ocurrent - oinfo[i].pos;
+		datalen += RECORD_OVERHEAD + oinfo[i].rdata.length;
 	}
 
 	/*
@@ -529,6 +562,7 @@ dns_rdataslab_merge(dns_slabheader_t *oheader, dns_slabheader_t *nheader,
 		 * add its length to tlength and increment tcount.
 		 */
 		tlength += ncurrent - ninfo[i].pos;
+		datalen += RECORD_OVERHEAD + ninfo[i].rdata.length;
 		tcount++;
 	}
 
@@ -566,6 +600,15 @@ dns_rdataslab_merge(dns_slabheader_t *oheader, dns_slabheader_t *nheader,
 	if (tcount > 0xffff) {
 		result = ISC_R_NOSPACE;
 		goto cleanup;
+	}
+
+	/*
+	 * Can this RRset fit into a DNS message with space for a
+	 * EDNS DNS COOKIE?  Allow for 2x name_length for case
+	 * preservation.  Correct for extra compression pointer.
+	 */
+	if ((datalen - 2) > (0xffff - OVERHEAD(name_length * 2))) {
+		return ISC_R_NOSPACE;
 	}
 
 	/* Allocate the target buffer and copy the new slab's header */

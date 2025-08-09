@@ -157,9 +157,14 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 	 * 'overmem purge' should keep the total cache size from exceeding
 	 * the 'hiwater' mark too much. So we should be able to assume the
 	 * cache size doesn't reach the "max".
+	 *
+	 * 65434 is the maximum sized rdata we can fit in allowing for overhead.
+	 * 0xffff - DNS message (12) - name_length(18) - qtype (2) - qclass (2)
+	 * - name_length(18) - type (2) - class (2) - ttl (4) - rdata length (2)
+	 * - minimal opt (11) - dns cookie (28).
 	 */
 	while (i-- > 0) {
-		overmempurge_addrdataset(db, now, i, 50054, 65535, false);
+		overmempurge_addrdataset(db, now, i, 50054, 65434, false);
 		cleanup_all_deadnodes(db);
 		if (verbose) {
 			print_message("# inuse: %zd max: %zd\n",
