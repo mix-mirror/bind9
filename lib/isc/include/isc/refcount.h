@@ -208,16 +208,11 @@ typedef atomic_uint_fast32_t isc_refcount_t;
 #define ISC__REFCOUNT_IMPL(name, destroy, stat)                      \
 	stat name##_t *name##_ref(name##_t *ptr) {                   \
 		REQUIRE(ptr != NULL);                                \
-		isc_refcount_increment(&ptr->references);            \
 		return (ptr);                                        \
 	}                                                            \
                                                                      \
 	stat void name##_unref(name##_t *ptr) {                      \
 		REQUIRE(ptr != NULL);                                \
-		if (isc_refcount_decrement(&ptr->references) == 1) { \
-			isc_refcount_destroy(&ptr->references);      \
-			destroy(ptr);                                \
-		}                                                    \
 	}                                                            \
 	stat void name##_attach(name##_t *ptr, name##_t **ptrp) {    \
 		REQUIRE(ptrp != NULL && *ptrp == NULL);              \
