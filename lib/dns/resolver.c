@@ -7250,7 +7250,7 @@ static isc_result_t
 rctx_cookiecheck(respctx_t *rctx) {
 	fetchctx_t *fctx = rctx->fctx;
 	resquery_t *query = rctx->query;
-	bool required = true;
+	bool required = dns_name_countlabels(fctx->domain) <= 2; /* root and TLD servers */
 
 	/*
 	 * If the message was secured or TCP is already in the
