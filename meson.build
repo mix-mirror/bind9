@@ -588,18 +588,31 @@ openssl_dep = [
     dependency('libssl', version: '>=1.1.1'),
 ]
 
-foreach fn, header : {
-    'EVP_default_properties_enable_fips': '#include <openssl/evp.h>',
-    'FIPS_mode': '#include <openssl/crypto.h>',
-}
-    if cc.has_function(fn, prefix: header, dependencies: openssl_dep)
-        config.set('HAVE_OPENSSL_FIPS_TOGGLE', 1)
-        config.set('HAVE_@0@'.format(fn.to_upper()), 1)
+config.set('OPENSSL_NO_DEPRECATED', true)
+
+have_fips_toggle = false
+
+# Forks such as LibreSSL do not care about keeping pkg-config version compatibility
+# with OpenSSL. Thus, we need to probe the provider header so see if it is before or
+# after OpenSSL 3.0.
+if cc.has_header('openssl/provider.h', dependencies: openssl_dep)
+    have_fips_toggle = true
+    config.set('OPENSSL_API_COMPAT', 30000)
+    config.set('HAVE_OPENSSL_3_API', true)
+else
+    config.set('OPENSSL_API_COMPAT', 10100)
+    if cc.has_function(
+        'FIPS_mode',
+        prefix: '#include <openssl/crypto.h>',
+        dependencies: openssl_dep,
+    )
+        have_fips_toggle = true
+        config.set('HAVE_FIPS_MODE', 1)
     endif
-endforeach
+endif
 
 fips_opt.require(
-    config.has('HAVE_OPENSSL_FIPS_TOGGLE'),
+    have_fips_toggle,
     error_message: 'OpenSSL FIPS mode requested but not available',
 )
 
