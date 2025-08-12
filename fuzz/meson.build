@@ -21,6 +21,7 @@ fuzz_binaries += {
     'fuzz_dns_name_fromwire': files('dns_name_fromwire.c', 'main.c', 'old.c'),
     'fuzz_dns_qp': files('dns_qp.c', 'main.c'),
     'fuzz_dns_qpkey_name': files('dns_qpkey_name.c', 'main.c'),
+    'fuzz_dns_qpkey_nametype': files('dns_qpkey_nametype.c', 'main.c'),
     'fuzz_dns_rdata_fromtext': files('dns_rdata_fromtext.c', 'main.c'),
     'fuzz_dns_rdata_fromwire_text': files('dns_rdata_fromwire_text.c', 'main.c'),
     'fuzz_isc_lex_getmastertoken': files('isc_lex_getmastertoken.c', 'main.c'),
