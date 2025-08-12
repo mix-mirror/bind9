@@ -7250,6 +7250,7 @@ static isc_result_t
 rctx_cookiecheck(respctx_t *rctx) {
 	fetchctx_t *fctx = rctx->fctx;
 	resquery_t *query = rctx->query;
+	bool required = true;
 
 	/*
 	 * If the message was secured or TCP is already in the
@@ -7281,12 +7282,11 @@ rctx_cookiecheck(respctx_t *rctx) {
 	}
 
 	/*
-	 * Retry over TCP if require-cookie is true.
+	 * Turn off retry over TCP if require-cookie is false.
 	 */
 	if (fctx->res->view->peers != NULL) {
 		isc_result_t result;
 		dns_peer_t *peer = NULL;
-		bool required = false;
 		isc_netaddr_t netaddr;
 
 		isc_netaddr_fromsockaddr(&netaddr, &query->addrinfo->sockaddr);
@@ -7295,27 +7295,25 @@ rctx_cookiecheck(respctx_t *rctx) {
 		if (result == ISC_R_SUCCESS) {
 			dns_peer_getrequirecookie(peer, &required);
 		}
-		if (!required) {
-			return ISC_R_SUCCESS;
-		}
-
-		if (isc_log_wouldlog(ISC_LOG_INFO)) {
-			char addrbuf[ISC_SOCKADDR_FORMATSIZE];
-			isc_sockaddr_format(&query->addrinfo->sockaddr, addrbuf,
-					    sizeof(addrbuf));
-			isc_log_write(DNS_LOGCATEGORY_RESOLVER,
-				      DNS_LOGMODULE_RESOLVER, ISC_LOG_INFO,
-				      "missing required cookie from %s",
-				      addrbuf);
-		}
-
-		rctx->retryopts |= DNS_FETCHOPT_TCP;
-		rctx->resend = true;
-		rctx_done(rctx, ISC_R_SUCCESS);
-		return ISC_R_COMPLETE;
 	}
 
-	return ISC_R_SUCCESS;
+	if (!required) {
+		return ISC_R_SUCCESS;
+	}
+
+	if (isc_log_wouldlog(ISC_LOG_INFO)) {
+		char addrbuf[ISC_SOCKADDR_FORMATSIZE];
+		isc_sockaddr_format(&query->addrinfo->sockaddr, addrbuf,
+				    sizeof(addrbuf));
+		isc_log_write(DNS_LOGCATEGORY_RESOLVER, DNS_LOGMODULE_RESOLVER,
+			      ISC_LOG_INFO, "missing required cookie from %s",
+			      addrbuf);
+	}
+
+	rctx->retryopts |= DNS_FETCHOPT_TCP;
+	rctx->resend = true;
+	rctx_done(rctx, ISC_R_SUCCESS);
+	return ISC_R_COMPLETE;
 }
 
 static bool
