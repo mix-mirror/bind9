@@ -30,6 +30,7 @@ dns_tests = [
     'qp',
     'qpdb',
     'qpmulti',
+    'qpnametype',
     'qpzone',
     'rdata',
     'rdataset',

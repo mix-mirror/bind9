@@ -7,6 +7,7 @@
 /dns_name_fromwire
 /dns_qp
 /dns_qpkey_name
+/dns_qpkey_nametype
 /dns_rdata_fromtext
 /dns_rdata_fromwire_text
 /isc_lex_getmastertoken
