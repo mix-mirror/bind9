@@ -7246,11 +7246,45 @@ cleanup:
 	isc_mem_putanddetach(&rctx->mctx, rctx, sizeof(*rctx));
 }
 
+static bool
+all_rrsets_in_section_signed(dns_message_t *msg, dns_section_t section) {
+	MSG_SECTION_FOREACH (msg, section, name) {
+		bool type[0x10000] = { false };
+		bool covers[0x10000] = { false };
+		ISC_LIST_FOREACH (name->list, rdataset, link) {
+			if (rdataset->type == dns_rdatatype_opt ||
+			    rdataset->type == dns_rdatatype_tsig ||
+			    rdataset->type == dns_rdatatype_sig)
+			{
+				continue;
+			}
+			if (rdataset->type != dns_rdatatype_rrsig) {
+				type[rdataset->type] = true;
+			} else {
+				covers[rdataset->covers] = true;
+			}
+		}
+		if (memcmp(type, covers, sizeof(type)) != 0) {
+			return false;
+		}
+	}
+	return true;
+}
+
+static bool
+all_rrsets_signed(respctx_t *rctx) {
+	dns_message_t *msg = rctx->query->rmessage;
+	return all_rrsets_in_section_signed(msg, DNS_SECTION_ANSWER) &&
+	       all_rrsets_in_section_signed(msg, DNS_SECTION_AUTHORITY) &&
+	       all_rrsets_in_section_signed(msg, DNS_SECTION_ADDITIONAL);
+}
+
 static isc_result_t
 rctx_cookiecheck(respctx_t *rctx) {
 	fetchctx_t *fctx = rctx->fctx;
 	resquery_t *query = rctx->query;
-	bool required = dns_name_countlabels(fctx->domain) <= 2; /* root and TLD servers */
+	bool required = dns_name_countlabels(fctx->domain) <= 2 &&
+			!all_rrsets_signed(rctx); /* root and TLD servers */
 
 	/*
 	 * If the message was secured or TCP is already in the
