@@ -2084,10 +2084,18 @@ fctx_query(fetchctx_t *fctx, dns_adbaddrinfo_t *addrinfo,
 		}
 		isc_sockaddr_setport(&addr, 0);
 
-		result = dns_dispatch_createtcp(fctx->dispatchmgr, &addr,
-						&sockaddr, addrinfo->transport,
-						DNS_DISPATCHOPT_UNSHARED,
-						&query->dispatch);
+		result = ISC_R_NOTFOUND;
+		if (dns_name_countlabels(fctx->domain) <= 2) {
+			result = dns_dispatch_gettcp(
+				fctx->dispatchmgr, &addr, &sockaddr,
+				addrinfo->transport, &query->dispatch);
+		}
+		if (result != ISC_R_SUCCESS) {
+			result = dns_dispatch_createtcp(
+				fctx->dispatchmgr, &addr, &sockaddr,
+				addrinfo->transport, DNS_DISPATCHOPT_UNSHARED,
+				&query->dispatch);
+		}
 		if (result != ISC_R_SUCCESS) {
 			goto cleanup_query;
 		}
