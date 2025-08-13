@@ -523,7 +523,7 @@ stages:
     - *configure
     - meson compile -C build
     - *setup_interfaces
-    - git clone --depth 1 https://gitlab.isc.org/isc-projects/bind9-qa.git
+    - git clone --depth 1 --branch mnowak/respdiff-gather-backtraces-earlier https://gitlab.isc.org/isc-projects/bind9-qa.git
     - cd bind9-qa/respdiff
     - sed -i -e 's|bin/named/|build/|g' -e 's|awk "/\\/bin\\/named\\/|awk "/build|g' respdiff.sh
   needs: []
