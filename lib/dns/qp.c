@@ -288,6 +288,7 @@ dns_qpkey_fromnametype(dns_qpkey_t key, const dns_name_t *name,
 	dns_offsets_t offsets;
 	size_t labels = dns_name_offsets(name, offsets);
 	size_t len = 0;
+	uint32_t tbits;
 
 	/* namespace */
 	key[len++] = ENCODE_NAMESPACE(space);
@@ -313,7 +314,7 @@ dns_qpkey_fromnametype(dns_qpkey_t key, const dns_name_t *name,
 
 	/* type */
 key_fromtype:
-	uint32_t tbits = dns_qp_bits_for_rrtype[type];
+	tbits = dns_qp_bits_for_rrtype[type];
 	ENSURE((tbits & 0xFF) == SHIFT_RRTYPE);
 	key[len++] = tbits & 0xFF; /* bit_one */
 	key[len++] = tbits >> 8;   /* bit_two */
@@ -338,6 +339,8 @@ dns_qpkey_tonametype(const dns_qpkey_t key, size_t keylen, dns_name_t *name,
 	size_t loc = 0;
 	size_t offset = 0;
 	size_t tpos = 0;
+	uint16_t rrtype;
+	uint8_t b2, b3, b4;
 
 	REQUIRE(ISC_MAGIC_VALID(name, DNS_NAME_MAGIC));
 	REQUIRE(name->buffer != NULL);
@@ -373,10 +376,10 @@ dns_qpkey_tonametype(const dns_qpkey_t key, size_t keylen, dns_name_t *name,
 	UNREACHABLE();
 
 scanned:
-	uint16_t rrtype = 0;
-	uint8_t b2 = qpkey_bit(key, keylen, tpos + 1);
-	uint8_t b3 = qpkey_bit(key, keylen, tpos + 2);
-	uint8_t b4 = qpkey_bit(key, keylen, tpos + 3);
+	rrtype = 0;
+	b2 = qpkey_bit(key, keylen, tpos + 1);
+	b3 = qpkey_bit(key, keylen, tpos + 2);
+	b4 = qpkey_bit(key, keylen, tpos + 3);
 	rrtype += (b2 - SHIFT_RRTYPE) * QPKEYBASE * QPKEYBASE;
 	rrtype += (b3 - SHIFT_RRTYPE) * QPKEYBASE;
 	rrtype += (b4 - SHIFT_RRTYPE);
