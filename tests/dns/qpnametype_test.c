@@ -387,8 +387,8 @@ insert_nametype(dns_qp_t *qp, const char *str, dns_rdatatype_t type,
 	uint32_t ival = (uint32_t)(type << 16) | space;
 
 	if (verbose) {
-		fprintf(stderr, "INSERT: %lx name %s type %u space %u\n", pval,
-			str, type, space);
+		fprintf(stderr, "INSERT: %p name %s type %u space %u\n",
+			(void *)pval, str, type, space);
 	}
 	INSIST((pval & 3) == 0);
 	result = dns_qp_insert(qp, (void *)pval, ival);
