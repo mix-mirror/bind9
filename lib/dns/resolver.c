@@ -5531,7 +5531,7 @@ validated(void *arg) {
 	 */
 	result = cache_rrset(fctx, now, val->name, val->rdataset,
 			     val->sigrdataset, &node, ardataset, asigrdataset);
-	if (result != ISC_R_SUCCESS) {
+	if (result != ISC_R_SUCCESS && result != DNS_R_UNCHANGED) {
 		done = true;
 		goto cleanup;
 	}
