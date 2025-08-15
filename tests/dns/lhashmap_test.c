@@ -1,0 +1,265 @@
+/*
+ * Copyright (C) Internet Systems Consortium, Inc. ("ISC")
+ *
+ * SPDX-License-Identifier: MPL-2.0
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, you can obtain one at https://mozilla.org/MPL/2.0/.
+ *
+ * See the COPYRIGHT file distributed with this work for additional
+ * information regarding copyright ownership.
+ */
+
+
+/* Required by cmocka */
+#include <setjmp.h>
+#include <stdarg.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+#include <string.h> /* strlen, strcmp */
+
+#define UNIT_TESTING
+#include <cmocka.h>
+
+#include <isc/result.h>
+#include <isc/fxhash.h>
+#include <isc/random.h>
+#include <dns/lhashmap.h>
+
+/* Test macros */
+#include <tests/dns.h>
+
+static uint64_t cstar_hash(const void* value) {
+    const char* as_cstar = *(const char**) value;
+    const uint8_t* as_bytes = *(const uint8_t**) value;
+    return fx_hash_bytes(0, as_bytes, strlen(as_cstar), true);
+}
+
+static uint64_t cstar_hash_noseed(const void* value) {
+    const char* as_cstar = *(const char**) value;
+    const uint8_t* as_bytes = *(const uint8_t**) value;
+    return fx_hash_bytes(0, as_bytes + 4, strlen(as_cstar) - 4, true);
+}
+
+static bool cstar_match(const void* lhs, const void* rhs) {
+    return strcmp(*(const char**) lhs, *(const char**) rhs) == 0;
+}
+
+static isc_lhashmap_t init_fxhash(size_t size, char buffer[]) {
+    return isc_lhashmap_init(size, sizeof(char*), buffer, cstar_hash, cstar_match);
+}
+
+static isc_lhashmap_t init_bad_hash(size_t size, char buffer[]) {
+    return isc_lhashmap_init(size, sizeof(char*), buffer, cstar_hash_noseed, cstar_match);
+}
+
+static void ensure_exists(const isc_lhashmap_t* map, const char* elem) {
+    isc_lhashmap_entry_t* entry_ptr = NULL;
+    isc_result_t res = isc_lhashmap_entry(map, (void*) &elem, &entry_ptr);
+    assert_true(res == ISC_R_SUCCESS);
+    assert_non_null(entry_ptr);
+    assert_true(entry_ptr->hash != 0ul);
+
+    char* value = *(char**) isc_lhashmap_entry_get_data(entry_ptr);
+
+    assert_non_null(value);
+    assert_true(strcmp(value, elem) == 0);
+}
+
+static void ensure_not_found(const isc_lhashmap_t* map, const char* elem) {
+    isc_lhashmap_entry_t* entry_ptr = NULL;
+    isc_result_t res = isc_lhashmap_entry(map, (void*) &elem, &entry_ptr);
+    assert_true(res == ISC_R_SUCCESS);
+    assert_true(isc_lhashmap_entry_is_empty(entry_ptr));
+}
+
+static void put(isc_lhashmap_t* map, const char* elem) {
+    isc_result_t res = isc_lhashmap_put(map, (void*) &elem);
+    assert_true(res == ISC_R_SUCCESS);
+}
+
+static void put_when_full(isc_lhashmap_t* map, const char* elem) {
+    isc_result_t res = isc_lhashmap_put(map, (void*) &elem);
+    assert_true(res == ISC_R_NOSPACE);
+}
+
+static void check_integrity(isc_lhashmap_t* map, size_t expected_size) {
+    assert_true(isc_lhashmap_count(map) == expected_size);
+}
+
+static void prepare_seed_bytes(uint16_t seed, unsigned char bytes[4]) {
+    bytes[0] = ((seed >> 12) & 0x0F) | 0xF0;  // Highest nibble
+    bytes[1] = ((seed >> 8) & 0x0F) | 0xF0;   // Second nibble
+    bytes[2] = ((seed >> 4) & 0x0F) | 0xF0;   // Third nibble
+    bytes[3] = (seed & 0x0F) | 0xF0;          // Lowest nibble
+}
+
+static char* generate_random_string(size_t max_length, uint16_t seed) {
+    const char charset[] = "abcdefghijklmnopqrstuvwxyz0123456789";
+    const size_t charset_length = sizeof(charset) - 1; // -1 to exclude the null terminator of charset
+    
+    size_t random_length = isc_random32() % (max_length + 1);
+    
+    size_t total_length = 4 /* seed */ + random_length + 1 /* null terminator */;
+    
+    char *str = (char *)calloc(total_length, sizeof(char));
+    
+    unsigned char seed_bytes[4];
+    prepare_seed_bytes(seed, seed_bytes);
+    memmove(str, seed_bytes, 4);
+    
+    for (size_t i = 0; i < random_length; i++) {
+        str[4 + i] = charset[rand() % charset_length];
+    }
+    
+    return str;
+}
+
+static char*
+generate_random_string_with_common_suffix(uint16_t seed) {
+    static const char* STRINGS[16] = {
+	"String0", "String1", "String2", "String3",
+	"String4", "String5", "String6", "String7",
+	"String8", "String9", "StringA", "StringB",
+	"StringC", "StringD", "StringE", "StringF"
+    };
+
+    unsigned char seed_bytes[4];
+    prepare_seed_bytes(seed, seed_bytes);
+    
+    const char* selected_str = STRINGS[isc_random32() % ARRAY_SIZE(STRINGS)];
+    
+    // Calculate total length (4 seed bytes + string length + null terminator)
+    size_t str_len = strlen(selected_str);
+    size_t total_len = 4 + str_len + 1;
+    
+    char* result = calloc(total_len, sizeof(char));
+    memmove(result, seed_bytes, 4);
+    memmove(result + 4, selected_str, str_len);
+    
+    return result;
+}
+
+static
+int compare_uint64(const void* lhs, const void* rhs) {
+    uint64_t x = *(const uint64_t*)lhs;
+    uint64_t y = *(const uint64_t*)rhs;
+    return (x > y) - (x < y);
+}
+
+static
+size_t unique_hashes(
+    char* keys[], 
+    size_t num_keys, 
+    uint64_t (*hash_func)(const void*)
+) {
+    uint64_t* hashes = malloc(num_keys * sizeof(uint64_t));
+
+    for (size_t i = 0; i < num_keys; i++) {
+        hashes[i] = hash_func(&keys[i]);
+    }
+
+    qsort(hashes, num_keys, sizeof(uint64_t), compare_uint64);
+
+    size_t unique = (num_keys > 0) ? 1 : 0;
+    for (size_t i = 1; i < num_keys; i++) {
+        if (hashes[i] != hashes[i - 1]) {
+            unique++;
+        }
+    }
+
+    free(hashes);
+    return unique;
+}
+
+enum {
+    BUFFER_SIZE_BYTES = (2048 * (sizeof(size_t) + sizeof(char*)))
+};
+
+ISC_RUN_TEST_IMPL(dns_lhashmap_cstar) {
+    char* keys[1024];
+    char* overflow_keys[128];
+
+    for (size_t idx = 0; idx < 1024; ++idx) {
+	keys[idx] = generate_random_string(63, (uint16_t) idx);
+    }
+    for (size_t idx = 0; idx < 128; ++idx) {
+	overflow_keys[idx] = generate_random_string(63, (uint16_t) (idx + 1024));
+    }
+    
+    char buffer[BUFFER_SIZE_BYTES];
+    isc_lhashmap_t ht = init_fxhash(1024, buffer); 
+    check_integrity(&ht, 0ull);
+
+    for (size_t idx = 0; idx < 1024; ++idx) {
+	put(&ht, keys[idx]);
+
+	for (size_t prev = 0; prev <= idx; ++prev) {
+	    ensure_exists(&ht, keys[prev]);
+	}
+	for (size_t idx_2 = 0; idx_2 < ARRAY_SIZE(overflow_keys); ++idx_2) {
+	    ensure_not_found(&ht, overflow_keys[idx_2]);
+	}
+
+	check_integrity(&ht, idx + 1ull);
+    }
+    
+    for (size_t idx = 0; idx < 128; ++idx) {
+	put_when_full(&ht, overflow_keys[idx]);
+	ensure_not_found(&ht, overflow_keys[idx]);
+    }
+
+    for (size_t idx = 0; idx < 1024; ++idx) {
+	free(keys[idx]);
+    }
+}
+
+ISC_RUN_TEST_IMPL(dns_lhashmap_cstar_noseed) {
+    char* keys[1024];
+    char* overflow_keys[128];
+
+    for (size_t idx = 0; idx < 1024; ++idx) {
+	keys[idx] = generate_random_string_with_common_suffix((uint16_t) idx);
+    }
+    for (size_t idx = 0; idx < 128; ++idx) {
+	overflow_keys[idx] = generate_random_string_with_common_suffix((uint16_t) (idx + 1024));
+    }
+
+    char buffer[BUFFER_SIZE_BYTES];
+    isc_lhashmap_t ht = init_bad_hash(1024, buffer); 
+    check_integrity(&ht, 0ull);
+
+    assert_true(unique_hashes(keys, ARRAY_SIZE(keys), cstar_hash_noseed) <= 16);
+
+    for (size_t idx = 0; idx < 1024; ++idx) {
+	put(&ht, keys[idx]);
+
+	for (size_t prev = 0; prev <= idx; ++prev) {
+	    ensure_exists(&ht, keys[prev]);
+	}
+	for (size_t idx_2 = 0; idx_2 < ARRAY_SIZE(overflow_keys); ++idx_2) {
+	    ensure_not_found(&ht, overflow_keys[idx_2]);
+	}
+
+	check_integrity(&ht, idx + 1ull);
+    }
+
+    for (size_t idx = 0; idx < 128; ++idx) {
+	put_when_full(&ht, overflow_keys[idx]);
+	ensure_not_found(&ht, overflow_keys[idx]);
+    }
+
+    for (size_t idx = 0; idx < 1024; ++idx) {
+	free(keys[idx]);
+    }
+}
+
+ISC_TEST_LIST_START
+ISC_TEST_ENTRY(dns_lhashmap_cstar)
+ISC_TEST_ENTRY(dns_lhashmap_cstar_noseed)
+ISC_TEST_LIST_END
+
+ISC_TEST_MAIN

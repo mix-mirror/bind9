@@ -115,7 +115,6 @@ struct dns_name {
 	isc_buffer_t  *buffer;
 	ISC_LINK(dns_name_t) link;
 	ISC_LIST(dns_rdataset_t) list;
-	isc_hashmap_t *hashmap;
 };
 
 #define DNS_NAME_MAGIC	  ISC_MAGIC('D', 'N', 'S', 'n')
