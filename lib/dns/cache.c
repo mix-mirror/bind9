@@ -68,7 +68,6 @@ struct dns_cache {
 	/* Locked by 'lock'. */
 	dns_rdataclass_t rdclass;
 	dns_db_t *db;
-	size_t size;
 	dns_ttl_t serve_stale_ttl;
 	dns_ttl_t serve_stale_refresh;
 	isc_stats_t *stats;
@@ -173,7 +172,6 @@ cache_cleanup(dns_cache_t *cache) {
 	isc_refcount_destroy(&cache->references);
 	cache->magic = 0;
 
-	isc_mem_clearwater(cache->tmctx);
 	dns_db_detach(&cache->db);
 
 	cache_destroy(cache);
@@ -203,13 +201,6 @@ dns_cache_getname(dns_cache_t *cache) {
 	return cache->name;
 }
 
-static void
-updatewater(dns_cache_t *cache) {
-	size_t hi = cache->size - (cache->size >> 3); /* ~ 7/8ths. */
-	size_t lo = cache->size - (cache->size >> 2); /* ~ 3/4ths. */
-	isc_mem_setwater(cache->tmctx, hi, lo);
-}
-
 void
 dns_cache_setcachesize(dns_cache_t *cache, size_t size) {
 	REQUIRE(VALID_CACHE(cache));
@@ -223,21 +214,17 @@ dns_cache_setcachesize(dns_cache_t *cache, size_t size) {
 	}
 
 	LOCK(&cache->lock);
-	cache->size = size;
-	updatewater(cache);
+	dns_db_setcachesize(cache->db, size);
 	UNLOCK(&cache->lock);
 }
 
 size_t
 dns_cache_getcachesize(dns_cache_t *cache) {
-	size_t size;
-
 	REQUIRE(VALID_CACHE(cache));
 
 	LOCK(&cache->lock);
-	size = cache->size;
+	size_t size = dns_db_getcachesize(cache->db);
 	UNLOCK(&cache->lock);
-
 	return size;
 }
 
@@ -297,12 +284,13 @@ dns_cache_flush(dns_cache_t *cache) {
 	RETERR(cache_create_db(cache, &db, &tmctx));
 
 	LOCK(&cache->lock);
-	isc_mem_clearwater(cache->tmctx);
+	size_t size = dns_db_getcachesize(cache->db);
 	oldtmctx = cache->tmctx;
 	cache->tmctx = tmctx;
-	updatewater(cache);
 	olddb = cache->db;
+	dns_db_setcachesize(olddb, 0);
 	cache->db = db;
+	dns_db_setcachesize(cache->db, size);
 	UNLOCK(&cache->lock);
 
 	dns_db_detach(&olddb);
@@ -566,7 +554,7 @@ dns_cache_dumpstats(dns_cache_t *cache, FILE *fp) {
 	fprintf(fp, "%20u %s\n", dns_db_nodecount(cache->db),
 		"cache database nodes");
 
-	fprintf(fp, "%20" PRIu64 " %s\n", (uint64_t)isc_mem_inuse(cache->tmctx),
+	fprintf(fp, "%20" PRIu64 " %s\n", (uint64_t)dns_db_getinuse(cache->db),
 		"cache tree memory in use");
 }
 
@@ -617,7 +605,7 @@ dns_cache_renderxml(dns_cache_t *cache, void *writer0) {
 
 	TRY0(renderstat("CacheNodes", dns_db_nodecount(cache->db), writer));
 
-	TRY0(renderstat("TreeMemInUse", isc_mem_inuse(cache->tmctx), writer));
+	TRY0(renderstat("TreeMemInUse", dns_db_getinuse(cache->db), writer));
 error:
 	return xmlrc;
 }

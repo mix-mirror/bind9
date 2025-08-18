@@ -315,8 +315,7 @@ ISC_LOOP_TEST_IMPL(allrdatasets_expiredok_skips_deleted_header) {
 
 ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 	size_t maxcache = 2097152U; /* 2MB - same as DNS_CACHE_MINSIZE */
-	size_t hiwater = maxcache - (maxcache >> 3); /* borrowed from cache.c */
-	size_t lowater = maxcache - (maxcache >> 2); /* ditto */
+	size_t hiwater = maxcache - (maxcache >> 3);
 	isc_result_t result;
 	dns_db_t *db = NULL;
 	isc_mem_t *mctx = NULL;
@@ -330,7 +329,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 			       &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	isc_mem_setwater(mctx, hiwater, lowater);
+	dns_db_setcachesize(db, maxcache);
 
 	/*
 	 * Add a lot of data entries sufficient to push the context
@@ -367,8 +366,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 
 ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 	size_t maxcache = 2097152U; /* 2MB - same as DNS_CACHE_MINSIZE */
-	size_t hiwater = maxcache - (maxcache >> 3); /* borrowed from cache.c */
-	size_t lowater = maxcache - (maxcache >> 2); /* ditto */
+	size_t hiwater = maxcache - (maxcache >> 3);
 	isc_result_t result;
 	dns_db_t *db = NULL;
 	isc_mem_t *mctx = NULL;
@@ -382,7 +380,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 			       &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	isc_mem_setwater(mctx, hiwater, lowater);
+	dns_db_setcachesize(db, maxcache);
 
 	/*
 	 * Add a lot of data entries sufficient to push the context

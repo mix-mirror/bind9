@@ -13,6 +13,7 @@
 #include <isc/magic.h>
 #include <isc/mem.h>
 #include <isc/netaddr.h>
+#include <isc/random.h>
 #include <isc/sieve.h>
 #include <isc/stdtime.h>
 #include <isc/urcu.h>
@@ -73,6 +74,8 @@ struct dns_delegdb {
 	qplru_t *qplru;
 
 	dns_delegdb_config_t config;
+	atomic_size_t hiwater;
+	atomic_size_t lowater;
 };
 
 static void
@@ -490,12 +493,35 @@ dns_delegset_addns(dns_delegset_t *delegset, dns_deleg_t *deleg,
 static size_t
 delegset_size(dns_delegset_t *delegset);
 
+static bool
+delegdb_isovermem(dns_delegdb_t *delegdb) {
+	size_t hiwater = atomic_load_relaxed(&delegdb->hiwater);
+	if (hiwater == 0) {
+		return false;
+	}
+
+	size_t inuse = isc_mem_inuse(delegdb->mctx);
+	if (inuse >= hiwater) {
+		return true;
+	}
+
+	size_t lowater = atomic_load_relaxed(&delegdb->lowater);
+	if (inuse <= lowater) {
+		return false;
+	}
+
+	/* Spread cleaning across inserts between the watermarks. */
+	uint32_t prob = (uint32_t)(((uint64_t)(inuse - lowater) * 256) /
+				   (hiwater - lowater));
+	return isc_random8() < prob;
+}
+
 static void
 delegdb_cleanup(dns_delegdb_t *delegdb, dns_qp_t *qp, size_t requested) {
 	delegdb_node_t *node = NULL;
 	size_t reclaimed = 0;
 
-	if (!isc_mem_isovermem(delegdb->mctx)) {
+	if (!delegdb_isovermem(delegdb)) {
 		return;
 	}
 
@@ -1114,16 +1140,8 @@ delegdb_setsize(dns_delegdb_t *delegdb, size_t size) {
 	hiwater = size - (size >> 3); /* Approximately 7/8ths. */
 	lowater = size - (size >> 2); /* Approximately 3/4ths. */
 
-	if (size == 0 || hiwater == 0 || lowater == 0) {
-		isc_mem_clearwater(delegdb->mctx);
-
-		/*
-		 * TODO: Is it worth a warning if size > 0? Sounds like
-		 * implicit overmem bypass, so the user should be warned...
-		 */
-	} else {
-		isc_mem_setwater(delegdb->mctx, hiwater, lowater);
-	}
+	atomic_store(&delegdb->hiwater, hiwater);
+	atomic_store(&delegdb->lowater, lowater);
 }
 
 dns_delegdb_config_t
