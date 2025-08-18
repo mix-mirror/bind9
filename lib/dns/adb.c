@@ -47,6 +47,8 @@
 #include <dns/transport.h>
 #include <dns/types.h>
 
+#include "isc/mem.h"
+
 #define DNS_ADB_MAGIC		 ISC_MAGIC('D', 'a', 'd', 'b')
 #define DNS_ADB_VALID(x)	 ISC_MAGIC_VALID(x, DNS_ADB_MAGIC)
 #define DNS_ADBNAME_MAGIC	 ISC_MAGIC('a', 'd', 'b', 'N')
@@ -129,6 +131,13 @@ struct dns_adb {
 	double atr_discount;
 
 	struct rcu_head rcu_head;
+
+	struct {
+		atomic_size_t hiwater;
+		atomic_size_t lowater;
+		atomic_size_t inuse;
+		atomic_bool is_overmem;
+	} overmem;
 };
 
 /*%
@@ -495,6 +504,54 @@ DP(int level, const char *format, ...) {
 	isc_log_vwrite(DNS_LOGCATEGORY_DATABASE, DNS_LOGMODULE_ADB, level,
 		       format, args);
 	va_end(args);
+}
+
+static void
+dns__adb_overmem(void *data, ssize_t diff) {
+	dns_adb_t *adb = data;
+	atomic_fetch_add_relaxed(&adb->overmem.inuse, diff);
+}
+
+static bool
+dns__adb_isovermem(dns_adb_t *adb) {
+	bool is_overmem = atomic_load_relaxed(&adb->overmem.is_overmem);
+
+	if (is_overmem) {
+		/* We are overmem, check whether we should not be? */
+		size_t lowater = atomic_load_relaxed(&adb->overmem.lowater);
+		if (lowater == 0) {
+			return false;
+		}
+
+		size_t inuse = atomic_load_relaxed(&adb->overmem.inuse);
+		if (inuse > lowater) {
+			return true;
+		}
+
+		fprintf(stderr, "%s - leaving overmem %zu <= %zu\n", __func__,
+			inuse, lowater);
+
+		atomic_store_relaxed(&adb->overmem.is_overmem, false);
+		return false;
+	} else {
+		/* We are not overmem, check whether we should be? */
+		size_t hiwater = atomic_load_relaxed(&adb->overmem.hiwater);
+
+		if (hiwater == 0) {
+			return false;
+		}
+
+		size_t inuse = atomic_load_relaxed(&adb->overmem.inuse);
+		if (inuse <= hiwater) {
+			return true;
+		}
+
+		fprintf(stderr, "%s - going overmem %zu > %zu\n", __func__,
+			inuse, hiwater);
+
+		atomic_store_relaxed(&adb->overmem.is_overmem, true);
+		return true;
+	}
 }
 
 /*%
@@ -1190,7 +1247,7 @@ get_attached_and_locked_name(dns_adb_t *adb, const dns_name_t *name,
 		.type = type,
 	};
 	uint32_t hashval = hash_adbname(&key);
-	if (isc_mem_isovermem(adb->mctx)) {
+	if (dns__adb_isovermem(adb)) {
 		purge_names_overmem(adb, 2 * sizeof(*adbname));
 	}
 
@@ -1272,7 +1329,7 @@ get_attached_and_locked_entry(dns_adb_t *adb, isc_stdtime_t now,
 	dns_adbentry_t *adbentry = NULL;
 	uint32_t hashval = isc_sockaddr_hash(addr, true);
 
-	if (isc_mem_isovermem(adb->mctx)) {
+	if (dns__adb_isovermem(adb)) {
 		purge_entries_overmem(adb, 2 * sizeof(*adbentry));
 	}
 
@@ -1586,14 +1643,14 @@ dns_adb_destroy(dns_adb_t *adb) {
 
 	isc_mem_cput(adb->hmctx, adb->lru, adb->nloops, sizeof(adb->lru[0]));
 
-	isc_mem_detach(&adb->hmctx);
-
 	isc_mutex_destroy(&adb->lock);
 
 	isc_stats_detach(&adb->stats);
 	dns_resolver_detach(&adb->res);
 	dns_view_weakdetach(&adb->view);
-	isc_mem_putanddetach(&adb->mctx, adb, sizeof(dns_adb_t));
+
+	isc_mem_detach(&adb->mctx);
+	isc_mem_putanddetach(&adb->hmctx, adb, sizeof(dns_adb_t));
 }
 
 #if DNS_ADB_TRACE
@@ -1607,18 +1664,26 @@ ISC_REFCOUNT_IMPL(dns_adb, dns_adb_destroy);
  */
 
 void
-dns_adb_create(isc_mem_t *mem, dns_view_t *view, dns_adb_t **adbp) {
-	REQUIRE(mem != NULL);
+dns_adb_create(isc_mem_t *mctx, dns_view_t *view, dns_adb_t **adbp) {
+	REQUIRE(mctx != NULL);
 	REQUIRE(view != NULL);
 	REQUIRE(adbp != NULL && *adbp == NULL);
 
+	isc_mem_t *hmctx = NULL;
+
+	isc_mem_create("ADB_dynamic", &hmctx);
+
 	uint32_t nloops = isc_loopmgr_nloops();
-	dns_adb_t *adb = isc_mem_get(mem, sizeof(dns_adb_t));
+	dns_adb_t *adb = isc_mem_get(hmctx, sizeof(dns_adb_t));
 	*adb = (dns_adb_t){
 		.references = 1,
 		.nloops = nloops,
 		.magic = DNS_ADB_MAGIC,
+		.mctx = isc_mem_ref(mctx),
+		.hmctx = hmctx,
 	};
+
+	isc_mem_setovermem(mctx, dns__adb_overmem, adb);
 
 	/*
 	 * Initialize things here that cannot fail, and especially things
@@ -1630,9 +1695,6 @@ dns_adb_create(isc_mem_t *mem, dns_view_t *view, dns_adb_t **adbp) {
 #endif
 	dns_view_weakattach(view, &adb->view);
 	dns_resolver_attach(view->resolver, &adb->res);
-	isc_mem_attach(mem, &adb->mctx);
-
-	isc_mem_create("ADB_dynamic", &adb->hmctx);
 
 	adb->names_ht = cds_lfht_new(ADB_HASH_SIZE, ADB_HASH_SIZE, 0,
 				     CDS_LFHT_AUTO_RESIZE | CDS_LFHT_ACCOUNTING,
@@ -1684,8 +1746,6 @@ dns_adb_shutdown(dns_adb_t *adb) {
 	}
 
 	DP(DEF_LEVEL, "shutting down ADB %p", adb);
-
-	isc_mem_clearwater(adb->mctx);
 
 	/*
 	 * dns_adb_shutdown() can get called from call_rcu thread, so we need to
@@ -3272,11 +3332,8 @@ dns_adb_setadbsize(dns_adb_t *adb, size_t size) {
 	hiwater = size - (size >> 3); /* Approximately 7/8ths. */
 	lowater = size - (size >> 2); /* Approximately 3/4ths. */
 
-	if (size == 0U || hiwater == 0U || lowater == 0U) {
-		isc_mem_clearwater(adb->mctx);
-	} else {
-		isc_mem_setwater(adb->mctx, hiwater, lowater);
-	}
+	atomic_store(&adb->overmem.hiwater, hiwater);
+	atomic_store(&adb->overmem.lowater, lowater);
 }
 
 void

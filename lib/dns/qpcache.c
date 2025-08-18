@@ -16,6 +16,7 @@
 #include <inttypes.h>
 #include <stdalign.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 #include <isc/ascii.h>
 #include <isc/async.h>
@@ -256,6 +257,14 @@ struct qpcache {
 
 	isc_mem_t *hmctx; /* Memory context for the heaps */
 
+	struct {
+		atomic_size_t size;
+		atomic_size_t hiwater;
+		atomic_size_t lowater;
+		atomic_size_t inuse;
+		atomic_bool is_overmem;
+	} overmem;
+
 	size_t buckets_count;
 	qpcache_bucket_t buckets[]; /* attribute((counted_by(buckets_count))) */
 };
@@ -466,6 +475,90 @@ static atomic_uint_fast16_t init_count = 0;
  * Cache-eviction routines.
  */
 
+/*
+ * DNS_CACHE_MINSIZE is how many bytes is the floor for
+ * dns_cache_setcachesize().
+ */
+#define DNS_CACHE_MINSIZE (2U * 1024 * 1024)
+
+static void
+qpcache_setcachesize(dns_db_t *db, size_t size) {
+	REQUIRE(VALID_QPDB((qpcache_t *)db));
+
+	size_t hiwater, lowater;
+	qpcache_t *qpdb = (qpcache_t *)db;
+
+	atomic_store(&qpdb->overmem.size, size);
+
+	if (size != 0U && size < DNS_CACHE_MINSIZE) {
+		size = DNS_CACHE_MINSIZE;
+	}
+
+	hiwater = size - (size >> 3); /* Approximately 7/8ths. */
+	lowater = size - (size >> 2); /* Approximately 3/4ths. */
+
+	atomic_store(&qpdb->overmem.hiwater, hiwater);
+	atomic_store(&qpdb->overmem.lowater, lowater);
+}
+
+static size_t
+qpcache_getinuse(dns_db_t *db) {
+	REQUIRE(VALID_QPDB((qpcache_t *)db));
+	qpcache_t *qpdb = (qpcache_t *)db;
+
+	return atomic_load(&qpdb->overmem.inuse);
+}
+
+static size_t
+qpcache_getcachesize(dns_db_t *db) {
+	REQUIRE(VALID_QPDB((qpcache_t *)db));
+	qpcache_t *qpdb = (qpcache_t *)db;
+
+	return atomic_load(&qpdb->overmem.size);
+}
+
+static void
+qpcache_overmem(void *arg, ssize_t diff) {
+	qpcache_t *qpdb = arg;
+	atomic_fetch_add_relaxed(&qpdb->overmem.inuse, diff);
+}
+
+static bool
+qpcache_isovermem(qpcache_t *qpdb) {
+	bool is_overmem = atomic_load_relaxed(&qpdb->overmem.is_overmem);
+
+	if (is_overmem) {
+		/* We are overmem, check whether we should not be? */
+		size_t lowater = atomic_load_relaxed(&qpdb->overmem.lowater);
+		if (lowater == 0) {
+			return false;
+		}
+
+		size_t inuse = atomic_load_relaxed(&qpdb->overmem.inuse);
+		if (inuse > lowater) {
+			return true;
+		}
+
+		atomic_store_relaxed(&qpdb->overmem.is_overmem, false);
+		return false;
+	} else {
+		/* We are not overmem, check whether we should be? */
+		size_t hiwater = atomic_load_relaxed(&qpdb->overmem.hiwater);
+
+		if (hiwater == 0) {
+			return false;
+		}
+
+		size_t inuse = atomic_load_relaxed(&qpdb->overmem.inuse);
+		if (inuse <= hiwater) {
+			return false;
+		}
+
+		atomic_store_relaxed(&qpdb->overmem.is_overmem, true);
+		return true;
+	}
+}
+
 static void
 expireheader(dns_slabheader_t *header, isc_rwlocktype_t *nlocktypep,
 	     isc_rwlocktype_t *tlocktypep, dns_expire_t reason DNS__DB_FLARG);
@@ -512,7 +605,7 @@ qpcache_miss(qpcache_t *qpdb, dns_slabheader_t *newheader,
 	isc_heap_insert(qpdb->buckets[idx].heap, newheader);
 	newheader->heap = qpdb->buckets[idx].heap;
 
-	if (isc_mem_isovermem(qpdb->common.mctx)) {
+	if (qpcache_isovermem(qpdb)) {
 		/*
 		 * Maximum estimated size of the data being added: The size
 		 * of the rdataset, plus a new QP database node and nodename,
@@ -2293,9 +2386,9 @@ qpcache__destroy(qpcache_t *qpdb) {
 	isc_rwlock_destroy(&qpdb->lock);
 	qpdb->common.magic = 0;
 	qpdb->common.impmagic = 0;
-	isc_mem_detach(&qpdb->hmctx);
+	isc_mem_detach(&qpdb->common.mctx);
 
-	isc_mem_putanddetach(&qpdb->common.mctx, qpdb,
+	isc_mem_putanddetach(&qpdb->hmctx, qpdb,
 			     sizeof(*qpdb) + qpdb->buckets_count *
 						     sizeof(qpdb->buckets[0]));
 }
@@ -3219,10 +3312,11 @@ qpcnode_unlocknode(dns_dbnode_t *node, isc_rwlocktype_t type) {
 isc_result_t
 dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 		    dns_dbtype_t type, dns_rdataclass_t rdclass,
-		    unsigned int argc, char *argv[],
+		    unsigned int argc ISC_ATTR_UNUSED,
+		    char *argv ISC_ATTR_UNUSED[],
 		    void *driverarg ISC_ATTR_UNUSED, dns_db_t **dbp) {
 	qpcache_t *qpdb = NULL;
-	isc_mem_t *hmctx = mctx;
+	isc_mem_t *hmctx = NULL;
 	isc_loop_t *loop = isc_loop();
 	int i;
 	size_t nloops = isc_loopmgr_nloops();
@@ -3231,7 +3325,14 @@ dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 	REQUIRE(type == dns_dbtype_cache);
 	REQUIRE(loop != NULL);
 
-	qpdb = isc_mem_get(mctx,
+	/*
+	 * Memory context to be used for heaps. This is separate from the main
+	 * cache memory because it can grow quite large under heavy load and
+	 * could otherwise cause the cache to be cleaned too aggressively.
+	 */
+	isc_mem_create("cache_heap", &hmctx);
+
+	qpdb = isc_mem_get(hmctx,
 			   sizeof(*qpdb) + nloops * sizeof(qpdb->buckets[0]));
 	*qpdb = (qpcache_t){
 		.common.methods = &qpdb_cachemethods,
@@ -3239,16 +3340,13 @@ dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 		.common.rdclass = rdclass,
 		.common.attributes = DNS_DBATTR_CACHE,
 		.common.references = 1,
+		.common.mctx = isc_mem_ref(mctx),
 		.references = 1,
 		.buckets_count = nloops,
+		.hmctx = hmctx,
 	};
 
-	/*
-	 * If argv[0] exists, it points to a memory context to use for heap
-	 */
-	if (argc != 0) {
-		hmctx = (isc_mem_t *)argv[0];
-	}
+	isc_mem_setovermem(mctx, qpcache_overmem, qpdb);
 
 	isc_rwlock_init(&qpdb->lock);
 	TREE_INITLOCK(&qpdb->tree_lock);
@@ -3267,14 +3365,6 @@ dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 
 		NODE_INITLOCK(&qpdb->buckets[i].lock);
 	}
-
-	/*
-	 * Attach to the mctx.  The database will persist so long as there
-	 * are references to it, and attaching to the mctx ensures that our
-	 * mctx won't disappear out from under us.
-	 */
-	isc_mem_attach(mctx, &qpdb->common.mctx);
-	isc_mem_attach(hmctx, &qpdb->hmctx);
 
 	/*
 	 * Make a copy of the origin name.
@@ -3851,6 +3941,9 @@ static dns_dbmethods_t qpdb_cachemethods = {
 	.getservestalerefresh = getservestalerefresh,
 	.setmaxrrperset = setmaxrrperset,
 	.setmaxtypepername = setmaxtypepername,
+	.setcachesize = qpcache_setcachesize,
+	.getcachesize = qpcache_getcachesize,
+	.getinuse = qpcache_getinuse,
 };
 
 static void

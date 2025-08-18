@@ -124,8 +124,6 @@ cleanup_all_deadnodes(dns_db_t *db) {
 
 ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 	size_t maxcache = 2097152U; /* 2MB - same as DNS_CACHE_MINSIZE */
-	size_t hiwater = maxcache - (maxcache >> 3); /* borrowed from cache.c */
-	size_t lowater = maxcache - (maxcache >> 2); /* ditto */
 	isc_result_t result;
 	dns_db_t *db = NULL;
 	isc_mem_t *mctx = NULL;
@@ -139,7 +137,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 			       &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	isc_mem_setwater(mctx, hiwater, lowater);
+	dns_db_setcachesize(db, maxcache);
 
 	/*
 	 * Add cache entries with minimum size of data until 'overmem'
@@ -147,10 +145,12 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 	 * This should eventually happen, but we also limit the number of
 	 * iteration to avoid an infinite loop in case something gets wrong.
 	 */
-	for (i = 0; !isc_mem_isovermem(mctx) && i < (maxcache / 10); i++) {
+	for (i = 0; !qpcache_isovermem((qpcache_t *)db) && i < (maxcache / 10);
+	     i++)
+	{
 		overmempurge_addrdataset(db, now, i, 50053, 0, false);
 	}
-	assert_true(isc_mem_isovermem(mctx));
+	assert_true(qpcache_isovermem((qpcache_t *)db));
 
 	/*
 	 * Then try to add the same number of entries, each has very large data.
@@ -175,8 +175,6 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 
 ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 	size_t maxcache = 2097152U; /* 2MB - same as DNS_CACHE_MINSIZE */
-	size_t hiwater = maxcache - (maxcache >> 3); /* borrowed from cache.c */
-	size_t lowater = maxcache - (maxcache >> 2); /* ditto */
 	isc_result_t result;
 	dns_db_t *db = NULL;
 	isc_mem_t *mctx = NULL;
@@ -190,7 +188,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 			       &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	isc_mem_setwater(mctx, hiwater, lowater);
+	dns_db_setcachesize(db, maxcache);
 
 	/*
 	 * Add cache entries with minimum size of data until 'overmem'
@@ -198,10 +196,12 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 	 * This should eventually happen, but we also limit the number of
 	 * iteration to avoid an infinite loop in case something gets wrong.
 	 */
-	for (i = 0; !isc_mem_isovermem(mctx) && i < (maxcache / 10); i++) {
+	for (i = 0; !qpcache_isovermem((qpcache_t *)db) && i < (maxcache / 10);
+	     i++)
+	{
 		overmempurge_addrdataset(db, now, i, 50053, 0, false);
 	}
-	assert_true(isc_mem_isovermem(mctx));
+	assert_true(qpcache_isovermem((qpcache_t *)db));
 
 	/*
 	 * Then try to add the same number of entries, each has very long name.
