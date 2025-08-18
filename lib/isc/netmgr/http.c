@@ -2022,7 +2022,7 @@ client_send(isc_nmhandle_t *handle, const isc_region_t *region) {
 		size_t path_size = 0;
 		char *base64url_data = NULL;
 		size_t base64url_data_len = 0;
-		isc_buffer_t *buf = NULL;
+		auto_isc_buffer_t *buf = NULL;
 		isc_region_t data = *region;
 		isc_region_t base64_region;
 		size_t base64_len = ((4 * data.length / 3) + 3) & ~3;
@@ -2031,7 +2031,6 @@ client_send(isc_nmhandle_t *handle, const isc_region_t *region) {
 
 		result = isc_base64_totext(&data, -1, "", buf);
 		if (result != ISC_R_SUCCESS) {
-			isc_buffer_free(&buf);
 			goto error;
 		}
 
@@ -2041,7 +2040,6 @@ client_send(isc_nmhandle_t *handle, const isc_region_t *region) {
 		base64url_data = isc__nm_base64_to_base64url(
 			mctx, (const char *)base64_region.base,
 			base64_region.length, &base64url_data_len);
-		isc_buffer_free(&buf);
 		if (base64url_data == NULL) {
 			goto error;
 		}

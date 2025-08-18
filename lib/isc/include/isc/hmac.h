@@ -64,6 +64,9 @@ isc_hmac_new(void);
 void
 isc_hmac_free(isc_hmac_t *hmac);
 
+ISC_AUTO_DECL(isc_hmac_t, isc_hmac_free)
+#define auto_isc_hmac_t ISC_AUTO(isc_hmac_t)
+
 /**
  * isc_hmac_init:
  * @md: HMAC context

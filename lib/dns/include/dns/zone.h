@@ -2766,3 +2766,7 @@ ISC_REFCOUNT_TRACE_DECL(dns_zone);
 #else
 ISC_REFCOUNT_DECL(dns_zone);
 #endif
+
+ISC_AUTO_PTR_DECL(dns_zone_t, dns_zone_detach)
+#define auto_dns_zone_t ISC_AUTO(dns_zone_t)
+

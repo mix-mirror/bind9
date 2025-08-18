@@ -1160,7 +1160,7 @@ query_getzonedb(ns_client_t *client, const dns_name_t *name,
 		dns_dbversion_t **versionp) {
 	isc_result_t result;
 	unsigned int ztoptions;
-	dns_zone_t *zone = NULL;
+	auto_dns_zone_t *zone = NULL;
 	dns_db_t *db = NULL;
 	bool partial = false;
 
@@ -1197,6 +1197,8 @@ query_getzonedb(ns_client_t *client, const dns_name_t *name,
 
 	/* Transfer ownership. */
 	*zonep = zone;
+	zone = NULL;
+
 	*dbp = db;
 
 	if (partial && options.partial) {
@@ -1205,9 +1207,6 @@ query_getzonedb(ns_client_t *client, const dns_name_t *name,
 	return ISC_R_SUCCESS;
 
 fail:
-	if (zone != NULL) {
-		dns_zone_detach(&zone);
-	}
 	if (db != NULL) {
 		dns_db_detach(&db);
 	}
@@ -1424,7 +1423,7 @@ query_getdb(ns_client_t *client, dns_name_t *name, dns_rdatatype_t qtype,
 	isc_result_t tresult;
 	unsigned int namelabels;
 	unsigned int zonelabels;
-	dns_zone_t *zone = NULL;
+	auto_dns_zone_t *zone = NULL;
 
 	REQUIRE(zonep != NULL && *zonep == NULL);
 
@@ -1450,7 +1449,7 @@ query_getdb(ns_client_t *client, dns_name_t *name, dns_rdatatype_t qtype,
 	{
 		dns_clientinfomethods_t cm;
 		dns_clientinfo_t ci;
-		dns_db_t *tdbp;
+		dns_db_t *tdbp = NULL;
 
 		dns_clientinfomethods_init(&cm, ns_client_sourceip);
 		dns_clientinfo_init(&ci, client, NULL);
@@ -1459,9 +1458,9 @@ query_getdb(ns_client_t *client, dns_name_t *name, dns_rdatatype_t qtype,
 		tdbp = NULL;
 		tresult = dns_view_searchdlz(client->inner.view, name,
 					     zonelabels, &cm, &ci, &tdbp);
-		/* If we successful, we found a better match. */
+		/* If successful, we found a better match. */
 		if (tresult == ISC_R_SUCCESS) {
-			ns_dbversion_t *dbversion;
+			ns_dbversion_t *dbversion = NULL;
 
 			/*
 			 * If the previous search returned a zone, detach it.
@@ -1494,7 +1493,6 @@ query_getdb(ns_client_t *client, dns_name_t *name, dns_rdatatype_t qtype,
 			/*
 			 * We return a null zone, No stats for DLZ zones.
 			 */
-			zone = NULL;
 			result = tresult;
 		}
 	}
@@ -1502,6 +1500,8 @@ query_getdb(ns_client_t *client, dns_name_t *name, dns_rdatatype_t qtype,
 	/* If successful, Transfer ownership of zone. */
 	if (result == ISC_R_SUCCESS) {
 		*zonep = zone;
+		zone = NULL;
+
 		/*
 		 * If neither attempt above succeeded, return the cache instead
 		 */
@@ -1662,7 +1662,6 @@ query_additionalauth(query_ctx_t *qctx, const dns_name_t *name,
 	ns_dbversion_t *dbversion = NULL;
 	dns_dbversion_t *version = NULL;
 	dns_dbnode_t *node = NULL;
-	dns_zone_t *zone = NULL;
 	dns_db_t *db = NULL;
 	isc_result_t result;
 
@@ -1690,6 +1689,8 @@ query_additionalauth(query_ctx_t *qctx, const dns_name_t *name,
 	    qctx->view->minimalresponses == dns_minimal_no &&
 	    RECURSIONOK(client))
 	{
+		auto_dns_zone_t *zone = NULL;
+
 		/*
 		 * If we aren't doing response minimization and recursion is
 		 * allowed, we can try and see if any other zone matches.
@@ -1702,7 +1703,6 @@ query_additionalauth(query_ctx_t *qctx, const dns_name_t *name,
 		if (result != ISC_R_SUCCESS) {
 			return result;
 		}
-		dns_zone_detach(&zone);
 
 		CTRACE(ISC_LOG_DEBUG(3), "query_additionalauth: other zone");
 
@@ -2459,7 +2459,6 @@ validate(ns_client_t *client, dns_db_t *db, dns_name_t *name,
 	 dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset) {
 	isc_result_t result;
 	dns_rdata_rrsig_t rrsig;
-	dst_key_t *key = NULL;
 	dns_rdataset_t keyrdataset;
 
 	if (sigrdataset == NULL || !dns_rdataset_isassociated(sigrdataset)) {
@@ -2497,17 +2496,16 @@ validate(ns_client_t *client, dns_db_t *db, dns_name_t *name,
 		}
 		dns_rdataset_init(&keyrdataset);
 		do {
+			auto_dst_key_t *key = NULL;
 			if (!get_key(client, db, &rrsig, &keyrdataset, &key)) {
 				break;
 			}
 			if (verify(key, name, rdataset, &rdata, client)) {
-				dst_key_free(&key);
 				dns_rdataset_disassociate(&keyrdataset);
 				mark_secure(client, db, name, &rrsig, rdataset,
 					    sigrdataset);
 				return true;
 			}
-			dst_key_free(&key);
 		} while (1);
 		if (dns_rdataset_isassociated(&keyrdataset)) {
 			dns_rdataset_disassociate(&keyrdataset);
@@ -3044,11 +3042,11 @@ rpz_rrset_find(ns_client_t *client, dns_name_t *name, dns_rdatatype_t type,
 	       unsigned int options, dns_rpz_type_t rpz_type, dns_db_t **dbp,
 	       dns_dbversion_t *version, dns_rdataset_t **rdatasetp,
 	       bool resuming) {
-	dns_rpz_st_t *st;
+	dns_rpz_st_t *st = NULL;
 	bool is_zone;
-	dns_dbnode_t *node;
+	dns_dbnode_t *node = NULL;
 	dns_fixedname_t fixed;
-	dns_name_t *found;
+	dns_name_t *found = NULL;
 	isc_result_t result;
 	dns_clientinfomethods_t cm;
 	dns_clientinfo_t ci;
@@ -3086,10 +3084,9 @@ rpz_rrset_find(ns_client_t *client, dns_name_t *name, dns_rdatatype_t type,
 	if (*dbp != NULL) {
 		is_zone = false;
 	} else {
-		dns_zone_t *zone;
+		auto_dns_zone_t *zone = NULL;
 
 		version = NULL;
-		zone = NULL;
 		result = query_getdb(client, name, type,
 				     (dns_getdb_options_t){ 0 }, &zone, dbp,
 				     &version, &is_zone);
@@ -3097,17 +3094,10 @@ rpz_rrset_find(ns_client_t *client, dns_name_t *name, dns_rdatatype_t type,
 			rpz_log_fail(client, DNS_RPZ_ERROR_LEVEL, name,
 				     rpz_type, "rpz_rrset_find(2)", result);
 			st->m.policy = DNS_RPZ_POLICY_ERROR;
-			if (zone != NULL) {
-				dns_zone_detach(&zone);
-			}
 			return result;
-		}
-		if (zone != NULL) {
-			dns_zone_detach(&zone);
 		}
 	}
 
-	node = NULL;
 	found = dns_fixedname_initname(&fixed);
 	dns_clientinfomethods_init(&cm, ns_client_sourceip);
 	dns_clientinfo_init(&ci, client, NULL);
@@ -4831,7 +4821,7 @@ redirect2(ns_client_t *client, dns_name_t *name, dns_rdataset_t *rdataset,
 	dns_clientinfomethods_t cm;
 	dns_clientinfo_t ci;
 	dns_dbversion_t *version = NULL;
-	dns_zone_t *zone = NULL;
+	auto_dns_zone_t *zone = NULL;
 	bool is_zone;
 	unsigned int labels;
 
@@ -4902,9 +4892,6 @@ redirect2(ns_client_t *client, dns_name_t *name, dns_rdataset_t *rdataset,
 			     &is_zone);
 	if (result != ISC_R_SUCCESS) {
 		return ISC_R_NOTFOUND;
-	}
-	if (zone != NULL) {
-		dns_zone_detach(&zone);
 	}
 
 	/*
@@ -5464,7 +5451,7 @@ ns__query_start(query_ctx_t *qctx) {
 		 * "no data" response as required by RFC 4035, section 3.1.4.1.
 		 */
 		dns_db_t *tdb = NULL;
-		dns_zone_t *tzone = NULL;
+		auto_dns_zone_t *tzone = NULL;
 		dns_dbversion_t *tversion = NULL;
 		isc_result_t tresult;
 
@@ -5498,9 +5485,6 @@ ns__query_start(query_ctx_t *qctx) {
 			 */
 			if (tdb != NULL) {
 				dns_db_detach(&tdb);
-			}
-			if (tzone != NULL) {
-				dns_zone_detach(&tzone);
 			}
 		}
 	}
@@ -7805,7 +7789,8 @@ cleanup:
  */
 static void
 query_getexpire(query_ctx_t *qctx) {
-	dns_zone_t *raw = NULL, *mayberaw;
+	auto_dns_zone_t *raw = NULL;
+	dns_zone_t *mayberaw = NULL;
 
 	CCTRACE(ISC_LOG_DEBUG(3), "query_getexpire");
 
@@ -7849,10 +7834,6 @@ query_getexpire(query_ctx_t *qctx) {
 
 		qctx->client->inner.expire = soa.expire;
 		qctx->client->inner.attributes |= NS_CLIENTATTR_HAVEEXPIRE;
-	}
-
-	if (raw != NULL) {
-		dns_zone_detach(&raw);
 	}
 }
 
@@ -8195,7 +8176,7 @@ query_filter64(query_ctx_t *qctx) {
 	dns_name_t *name = NULL, *mname = NULL;
 	dns_rdatalist_t *myrdatalist = NULL;
 	dns_rdataset_t *myrdataset = NULL;
-	isc_buffer_t *buffer = NULL;
+	auto_isc_buffer_t *buffer = NULL;
 	isc_result_t result;
 	unsigned int i;
 	const dns_section_t section = DNS_SECTION_ANSWER;
@@ -8281,9 +8262,6 @@ query_filter64(query_ctx_t *qctx) {
 	query_setorder(qctx, mname, myrdataset);
 
 	dns_message_takebuffer(client->message, &buffer);
-	if (buffer != NULL) {
-		isc_buffer_free(&buffer);
-	}
 
 	if (qctx->dbuf != NULL) {
 		ns_client_releasename(client, &name);
@@ -8460,7 +8438,7 @@ query_zone_delegation(query_ctx_t *qctx) {
 	    (qctx->options.noexact && qctx->qtype == dns_rdatatype_ds))
 	{
 		dns_db_t *tdb = NULL;
-		dns_zone_t *tzone = NULL;
+		auto_dns_zone_t *tzone = NULL;
 		dns_dbversion_t *tversion = NULL;
 		dns_getdb_options_t options = { .partial = true };
 		result = query_getzonedb(qctx->client,
@@ -8469,9 +8447,6 @@ query_zone_delegation(query_ctx_t *qctx) {
 		if (result != ISC_R_SUCCESS) {
 			if (tdb != NULL) {
 				dns_db_detach(&tdb);
-			}
-			if (tzone != NULL) {
-				dns_zone_detach(&tzone);
 			}
 		} else {
 			qctx->options.noexact = false;
@@ -10608,7 +10583,6 @@ query_addbestns(query_ctx_t *qctx) {
 	isc_buffer_t *dbuf = NULL;
 	isc_result_t result;
 	dns_dbversion_t *version = NULL;
-	dns_zone_t *zone = NULL;
 	isc_buffer_t b;
 	dns_clientinfomethods_t cm;
 	dns_clientinfo_t ci;
@@ -10626,6 +10600,7 @@ query_addbestns(query_ctx_t *qctx) {
 	 * Find the right database.
 	 */
 	do {
+		auto_dns_zone_t *zone = NULL;
 		result = query_getdb(client, &qname, dns_rdatatype_ns,
 				     (dns_getdb_options_t){ 0 }, &zone, &db,
 				     &version, &is_zone);
@@ -10641,7 +10616,6 @@ query_addbestns(query_ctx_t *qctx) {
 		{
 			unsigned int labels = dns_name_countlabels(&qname);
 			dns_db_detach(&db);
-			dns_zone_detach(&zone);
 			version = NULL;
 			if (labels != 1) {
 				dns_name_split(&qname, labels - 1, NULL,
@@ -10803,9 +10777,6 @@ cleanup:
 	}
 	if (db != NULL) {
 		dns_db_detach(&db);
-	}
-	if (zone != NULL) {
-		dns_zone_detach(&zone);
 	}
 	if (zdb != NULL) {
 		ns_client_putrdataset(client, &zrdataset);

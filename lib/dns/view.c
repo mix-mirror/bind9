@@ -770,7 +770,7 @@ dns_view_find(dns_view_t *view, const dns_name_t *name, dns_rdatatype_t type,
 	dns_dbnode_t *node = NULL, *znode = NULL;
 	bool is_cache, is_staticstub_zone;
 	dns_rdataset_t zrdataset, zsigrdataset;
-	dns_zone_t *zone = NULL;
+	auto_dns_zone_t *zone = NULL;
 	dns_zt_t *zonetable = NULL;
 
 	/*
@@ -973,10 +973,6 @@ cleanup:
 		INSIST(node == NULL);
 	}
 
-	if (zone != NULL) {
-		dns_zone_detach(&zone);
-	}
-
 	return result;
 }
 
@@ -1034,7 +1030,7 @@ dns_view_findzonecut(dns_view_t *view, const dns_name_t *name,
 	isc_result_t result;
 	dns_db_t *db = NULL;
 	bool is_cache, use_zone = false, try_hints = false;
-	dns_zone_t *zone = NULL;
+	auto_dns_zone_t *zone = NULL;
 	dns_name_t *zfname = NULL;
 	dns_zt_t *zonetable = NULL;
 	dns_rdataset_t zrdataset, zsigrdataset;
@@ -1228,9 +1224,6 @@ cleanup:
 	if (db != NULL) {
 		dns_db_detach(&db);
 	}
-	if (zone != NULL) {
-		dns_zone_detach(&zone);
-	}
 
 	return result;
 }
@@ -1255,13 +1248,15 @@ dns_viewlist_findzone(dns_viewlist_t *list, const dns_name_t *name,
 		      bool allclasses, dns_rdataclass_t rdclass,
 		      dns_zone_t **zonep) {
 	isc_result_t result;
-	dns_zone_t *zone1 = NULL, *zone2 = NULL;
+	auto_dns_zone_t *zone = NULL;
 
 	REQUIRE(list != NULL);
 	REQUIRE(zonep != NULL && *zonep == NULL);
 
 	ISC_LIST_FOREACH (*list, view, link) {
 		dns_zt_t *zonetable = NULL;
+		auto_dns_zone_t *dup = NULL;
+
 		if (!allclasses && view->rdclass != rdclass) {
 			continue;
 		}
@@ -1269,22 +1264,20 @@ dns_viewlist_findzone(dns_viewlist_t *list, const dns_name_t *name,
 		zonetable = rcu_dereference(view->zonetable);
 		if (zonetable != NULL) {
 			result = dns_zt_find(zonetable, name, DNS_ZTFIND_EXACT,
-					     (zone1 == NULL) ? &zone1 : &zone2);
+					     (zone == NULL) ? &zone : &dup);
 		} else {
 			result = ISC_R_NOTFOUND;
 		}
 		rcu_read_unlock();
 		INSIST(result == ISC_R_SUCCESS || result == ISC_R_NOTFOUND);
-		if (zone2 != NULL) {
-			dns_zone_detach(&zone1);
-			dns_zone_detach(&zone2);
+		if (dup != NULL) {
 			return ISC_R_MULTIPLE;
 		}
 	}
 
-	if (zone1 != NULL) {
-		dns_zone_attach(zone1, zonep);
-		dns_zone_detach(&zone1);
+	if (zone != NULL) {
+		*zonep = zone;
+		zone = NULL;
 		return ISC_R_SUCCESS;
 	}
 

@@ -69,7 +69,7 @@ ISC_LOOP_TEST_IMPL(zonemgr_create) {
 /* manage and release a zone */
 ISC_LOOP_TEST_IMPL(zonemgr_managezone) {
 	dns_zonemgr_t *myzonemgr = NULL;
-	dns_zone_t *zone = NULL;
+	auto_dns_zone_t *zone = NULL;
 	isc_result_t result;
 
 	UNUSED(arg);
@@ -88,7 +88,6 @@ ISC_LOOP_TEST_IMPL(zonemgr_managezone) {
 	assert_int_equal(dns_zonemgr_getcount(myzonemgr, DNS_ZONESTATE_ANY), 1);
 
 	dns_zonemgr_releasezone(myzonemgr, zone);
-	dns_zone_detach(&zone);
 
 	assert_int_equal(dns_zonemgr_getcount(myzonemgr, DNS_ZONESTATE_ANY), 0);
 
@@ -102,7 +101,7 @@ ISC_LOOP_TEST_IMPL(zonemgr_managezone) {
 /* create and release a zone */
 ISC_LOOP_TEST_IMPL(zonemgr_createzone) {
 	dns_zonemgr_t *myzonemgr = NULL;
-	dns_zone_t *zone = NULL;
+	auto_dns_zone_t *zone = NULL;
 	isc_result_t result;
 
 	UNUSED(arg);
@@ -115,8 +114,6 @@ ISC_LOOP_TEST_IMPL(zonemgr_createzone) {
 
 	result = dns_zonemgr_managezone(myzonemgr, zone);
 	assert_int_equal(result, ISC_R_SUCCESS);
-
-	dns_zone_detach(&zone);
 
 	dns_zonemgr_shutdown(myzonemgr);
 	dns_zonemgr_detach(&myzonemgr);

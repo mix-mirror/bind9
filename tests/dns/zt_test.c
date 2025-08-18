@@ -58,7 +58,7 @@ count_zone(dns_zone_t *zone, void *uap) {
 /* apply a function to a zone table */
 ISC_LOOP_TEST_IMPL(apply) {
 	isc_result_t result;
-	dns_zone_t *zone = NULL;
+	auto_dns_zone_t *zone = NULL;
 	dns_zt_t *zt = NULL;
 	int nzones = 0;
 
@@ -86,7 +86,6 @@ ISC_LOOP_TEST_IMPL(apply) {
 
 	/* The view was left attached in dns_test_makezone() */
 	dns_view_detach(&view);
-	dns_zone_detach(&zone);
 	isc_loopmgr_shutdown();
 }
 

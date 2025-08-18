@@ -131,7 +131,7 @@ LLVMFuzzerInitialize(int *argc ISC_ATTR_UNUSED, char ***argv ISC_ATTR_UNUSED) {
 	unsigned char secret[16] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
 				     0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
 				     0xff, 0xff, 0xff, 0xff };
-	dns_zone_t *zone = NULL;
+	auto_dns_zone_t *zone = NULL;
 	char pathbuf[PATH_MAX];
 	FILE *fd;
 
@@ -230,8 +230,6 @@ LLVMFuzzerInitialize(int *argc ISC_ATTR_UNUSED, char ***argv ISC_ATTR_UNUSED) {
 
 	dns_zone_setview(zone, view);
 	dns_view_freeze(view);
-
-	dns_zone_detach(&zone);
 
 	return 0;
 }

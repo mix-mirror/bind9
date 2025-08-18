@@ -123,8 +123,8 @@ ISC_RUN_TEST_IMPL(isc_rsa_verify) {
 	isc_result_t ret;
 	dns_fixedname_t fname;
 	isc_buffer_t buf;
-	dns_name_t *name;
-	dst_key_t *key = NULL;
+	dns_name_t *name = NULL;
+	auto_dst_key_t *key = NULL;
 	dst_context_t *ctx = NULL;
 	isc_region_t r;
 
@@ -200,8 +200,6 @@ ISC_RUN_TEST_IMPL(isc_rsa_verify) {
 	assert_int_equal(ret, ISC_R_SUCCESS);
 
 	dst_context_destroy(&ctx);
-
-	dst_key_free(&key);
 }
 
 ISC_TEST_LIST_START

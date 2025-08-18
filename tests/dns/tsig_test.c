@@ -79,7 +79,7 @@ add_tsig(dst_context_t *tsigctx, dns_tsigkey_t *key, isc_buffer_t *target,
 	dns_rdata_t rdata = DNS_RDATA_INIT;
 	dns_rdatalist_t rdatalist;
 	dns_rdataset_t rdataset;
-	isc_buffer_t *dynbuf = NULL;
+	auto_isc_buffer_t *dynbuf = NULL;
 	isc_buffer_t databuf;
 	isc_buffer_t sigbuf;
 	isc_region_t r;
@@ -142,9 +142,6 @@ add_tsig(dst_context_t *tsigctx, dns_tsigkey_t *key, isc_buffer_t *target,
 cleanup:
 	if (tsig.signature != NULL) {
 		isc_mem_put(isc_g_mctx, tsig.signature, sigsize);
-	}
-	if (dynbuf != NULL) {
-		isc_buffer_free(&dynbuf);
 	}
 	dns_compress_invalidate(&cctx);
 

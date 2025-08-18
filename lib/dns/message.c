@@ -3158,7 +3158,7 @@ dns_message_checksig(dns_message_t *msg, dns_view_t *view) {
 		{
 			dns_rdata_t keyrdata = DNS_RDATA_INIT;
 			dns_rdata_key_t ks;
-			dst_key_t *key = NULL;
+			auto_dst_key_t *key = NULL;
 			isc_region_t r;
 
 			dns_rdataset_current(&keyset, &keyrdata);
@@ -3183,7 +3183,6 @@ dns_message_checksig(dns_message_t *msg, dns_view_t *view) {
 			}
 
 			result = dns_dnssec_verifymessage(&msgb, msg, key);
-			dst_key_free(&key);
 			if (result == ISC_R_SUCCESS) {
 				break;
 			}

@@ -572,7 +572,7 @@ putstr(isc_buffer_t **b, const char *str) {
 isc_result_t
 dns_keytable_dump(dns_keytable_t *keytable, FILE *fp) {
 	isc_result_t result;
-	isc_buffer_t *text = NULL;
+	auto_isc_buffer_t *text = NULL;
 
 	REQUIRE(VALID_KEYTABLE(keytable));
 	REQUIRE(fp != NULL);
@@ -593,7 +593,6 @@ dns_keytable_dump(dns_keytable_t *keytable, FILE *fp) {
 	fprintf(fp, "%.*s", (int)isc_buffer_usedlength(text),
 		(char *)isc_buffer_base(text));
 
-	isc_buffer_free(&text);
 	return result;
 }
 

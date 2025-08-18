@@ -645,7 +645,7 @@ printmessage(dig_query_t *query, const isc_buffer_t *msgbuf, dns_message_t *msg,
 	     bool headers) {
 	isc_result_t result;
 	dns_messagetextflag_t flags;
-	isc_buffer_t *buf = NULL;
+	auto_isc_buffer_t *buf = NULL;
 	unsigned int len = OUTPUTBUF;
 	dns_master_style_t *style = NULL;
 	unsigned int styleflags = 0;
@@ -1025,7 +1025,6 @@ repopulate_buffer:
 
 	printf("%.*s", (int)isc_buffer_usedlength(buf),
 	       (char *)isc_buffer_base(buf));
-	isc_buffer_free(&buf);
 
 	if (style != NULL) {
 		dns_master_styledestroy(&style, isc_g_mctx);

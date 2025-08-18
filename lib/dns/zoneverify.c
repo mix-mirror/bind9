@@ -1429,7 +1429,7 @@ check_dnskey_sigs(vctx_t *vctx, const dns_rdata_dnskey_t *dnskey,
 	unsigned char *active_keys = NULL, *standby_keys = NULL;
 	dns_keynode_t *keynode = NULL;
 	bool *goodkey = NULL;
-	dst_key_t *key = NULL;
+	auto_dst_key_t *key = NULL;
 	isc_result_t result;
 	dns_rdataset_t dsset;
 	dst_algorithm_t algorithm;
@@ -1543,9 +1543,6 @@ check_dnskey_sigs(vctx_t *vctx, const dns_rdata_dnskey_t *dnskey,
 cleanup:
 	if (keynode != NULL) {
 		dns_keynode_detach(&keynode);
-	}
-	if (key != NULL) {
-		dst_key_free(&key);
 	}
 }
 

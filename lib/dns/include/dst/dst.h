@@ -582,21 +582,11 @@ dst_key_fromlabel(const dns_name_t *name, int alg, unsigned int flags,
 
 isc_result_t
 dst_key_generate(const dns_name_t *name, unsigned int alg, unsigned int bits,
-		 unsigned int param, unsigned int flags, unsigned int protocol,
+		 unsigned int flags, unsigned int protocol,
 		 dns_rdataclass_t rdclass, const char *label, isc_mem_t *mctx,
 		 dst_key_t **keyp, void (*callback)(int));
 
 /*%<
- * Generate a DST key (or keypair) with the supplied parameters.  The
- * interpretation of the "param" field depends on the algorithm:
- * \code
- * 	RSA:	unused
- * 	ECDSA:	unused
- * 	HMACMD5: entropy
- *		0	default - require good entropy
- *		!0	lack of good entropy is ok
- *\endcode
- *
  * Requires:
  *\li	"name" is a valid absolute dns name.
  *\li	"keyp" is not NULL and "*keyp" is NULL.
@@ -671,6 +661,8 @@ dst_key_free(dst_key_t **keyp);
  *\li	All memory associated with "*keyp" will be freed.
  *\li	*keyp == NULL
  */
+ISC_AUTO_PTR_DECL(dst_key_t, dst_key_free)
+#define auto_dst_key_t ISC_AUTO(dst_key_t)
 
 /*%<
  * Accessor functions to obtain key fields.

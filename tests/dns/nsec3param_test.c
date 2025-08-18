@@ -106,7 +106,7 @@ rdata_fromparams(uint8_t hash, uint8_t flags, uint16_t iter, uint8_t saltlen,
  */
 static void
 nsec3param_change_test(const nsec3param_change_test_params_t *test) {
-	dns_zone_t *zone = NULL;
+	auto_dns_zone_t *zone = NULL;
 	dns_rdata_nsec3param_t param, lookup, expect;
 	isc_result_t result;
 	unsigned char lookupsalt[255];
@@ -157,11 +157,6 @@ nsec3param_change_test(const nsec3param_change_test_params_t *test) {
 		ret = memcmp(param.salt, salt, SALTLEN);
 		assert_false(ret == 0);
 	}
-
-	/*
-	 * Detach.
-	 */
-	dns_zone_detach(&zone);
 }
 
 ISC_RUN_TEST_IMPL(nsec3param_change) {

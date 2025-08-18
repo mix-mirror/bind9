@@ -618,7 +618,7 @@ cleanup:
 
 static void
 setup_keyfile(isc_mem_t *mctx) {
-	dst_key_t *dstkey = NULL;
+	auto_dst_key_t *dstkey = NULL;
 	isc_result_t result;
 	dst_algorithm_t hmac_alg = DST_ALG_UNKNOWN;
 
@@ -660,14 +660,13 @@ setup_keyfile(isc_mem_t *mctx) {
 		break;
 	default:
 		dst_key_attach(dstkey, &sig0key);
-		dst_key_free(&dstkey);
+		dstkey = NULL;
 		return;
 	}
 
 	result = dns_tsigkey_createfromkey(dst_key_name(dstkey), hmac_alg,
 					   dstkey, false, false, NULL, 0, 0,
 					   mctx, &tsigkey);
-	dst_key_free(&dstkey);
 	if (result != ISC_R_SUCCESS) {
 		fprintf(stderr, "could not create key from %s: %s\n", keyfile,
 			isc_result_totext(result));
@@ -1314,7 +1313,6 @@ static uint16_t
 parse_rdata(char **cmdlinep, dns_rdataclass_t rdataclass,
 	    dns_rdatatype_t rdatatype, dns_message_t *msg, dns_rdata_t *rdata) {
 	char *cmdline = *cmdlinep;
-	isc_buffer_t source, *buf = NULL, *newbuf = NULL;
 	isc_region_t r;
 	isc_lex_t *lex = NULL;
 	dns_rdatacallbacks_t callbacks;
@@ -1330,6 +1328,10 @@ parse_rdata(char **cmdlinep, dns_rdataclass_t rdataclass,
 	}
 
 	if (*cmdline != 0) {
+		isc_buffer_t source;
+		auto_isc_buffer_t *buf = NULL;
+		auto_isc_buffer_t *newbuf = NULL;
+
 		dns_rdatacallbacks_init(&callbacks);
 		isc_lex_create(isc_g_mctx, strlen(cmdline), &lex);
 		isc_buffer_init(&source, cmdline, strlen(cmdline));
@@ -1347,12 +1349,10 @@ parse_rdata(char **cmdlinep, dns_rdataclass_t rdataclass,
 			isc_buffer_putmem(newbuf, r.base, r.length);
 			isc_buffer_usedregion(newbuf, &r);
 			dns_rdata_fromregion(rdata, rdataclass, rdatatype, &r);
-			isc_buffer_free(&buf);
 			dns_message_takebuffer(msg, &newbuf);
 		} else {
 			fprintf(stderr, "invalid rdata format: %s\n",
 				isc_result_totext(result));
-			isc_buffer_free(&buf);
 			return STATUS_SYNTAX;
 		}
 	} else {
@@ -2213,7 +2213,7 @@ setzone(dns_name_t *zonename) {
 static void
 show_message(FILE *stream, dns_message_t *msg, const char *description) {
 	isc_result_t result;
-	isc_buffer_t *buf = NULL;
+	auto_isc_buffer_t *buf = NULL;
 	int bufsz;
 
 	ddebug("show_message()");
@@ -2236,13 +2236,11 @@ show_message(FILE *stream, dns_message_t *msg, const char *description) {
 	} while (result == ISC_R_NOSPACE);
 	if (result != ISC_R_SUCCESS) {
 		fprintf(stderr, "could not convert message to text format.\n");
-		isc_buffer_free(&buf);
 		return;
 	}
 	fprintf(stream, "%s\n%.*s", description,
 		(int)isc_buffer_usedlength(buf), (char *)isc_buffer_base(buf));
 	fflush(stream);
-	isc_buffer_free(&buf);
 }
 
 static uint16_t

@@ -122,17 +122,17 @@ check_sig(const char *datapath, const char *sigpath, const char *keyname,
 	  dns_keytag_t id, dns_secalg_t alg, int type, bool expect) {
 	isc_result_t result;
 	size_t rval, len;
-	FILE *fp;
-	dst_key_t *key = NULL;
+	FILE *fp = NULL;
+	auto_dst_key_t *key = NULL;
 	unsigned char sig[512];
-	unsigned char *p;
-	unsigned char *data;
+	unsigned char *p = NULL;
+	unsigned char *data = NULL;
 	off_t size;
 	isc_buffer_t b;
 	isc_buffer_t databuf, sigbuf;
 	isc_region_t datareg, sigreg;
 	dns_fixedname_t fname;
-	dns_name_t *name;
+	dns_name_t *name = NULL;
 	dst_context_t *ctx = NULL;
 
 	/*
@@ -233,7 +233,6 @@ check_sig(const char *datapath, const char *sigpath, const char *keyname,
 
 	isc_mem_put(isc_g_mctx, data, size + 1);
 	dst_context_destroy(&ctx);
-	dst_key_free(&key);
 
 	assert_true((expect && (result == ISC_R_SUCCESS)) ||
 		    (!expect && (result != ISC_R_SUCCESS)));
@@ -283,19 +282,17 @@ static void
 check_cmp(const char *key1_name, dns_keytag_t key1_id, const char *key2_name,
 	  dns_keytag_t key2_id, dns_secalg_t alg, int type, bool expect) {
 	isc_result_t result;
-	dst_key_t *key1 = NULL;
-	dst_key_t *key2 = NULL;
+	auto_dst_key_t *key1 = NULL, *key2 = NULL;
 	isc_buffer_t b1;
 	isc_buffer_t b2;
 	dns_fixedname_t fname1;
 	dns_fixedname_t fname2;
-	dns_name_t *name1;
-	dns_name_t *name2;
+	dns_name_t *name1 = dns_fixedname_initname(&fname1);
+	dns_name_t *name2 = dns_fixedname_initname(&fname2);
 
 	/*
 	 * Read key1 from the file.
 	 */
-	name1 = dns_fixedname_initname(&fname1);
 	isc_buffer_constinit(&b1, key1_name, strlen(key1_name));
 	isc_buffer_add(&b1, strlen(key1_name));
 	result = dns_name_fromtext(name1, &b1, dns_rootname, 0);
@@ -307,7 +304,6 @@ check_cmp(const char *key1_name, dns_keytag_t key1_id, const char *key2_name,
 	/*
 	 * Read key2 from the file.
 	 */
-	name2 = dns_fixedname_initname(&fname2);
 	isc_buffer_constinit(&b2, key2_name, strlen(key2_name));
 	isc_buffer_add(&b2, strlen(key2_name));
 	result = dns_name_fromtext(name2, &b2, dns_rootname, 0);
@@ -327,12 +323,6 @@ check_cmp(const char *key1_name, dns_keytag_t key1_id, const char *key2_name,
 	 * Compare the keys (for both public-only keys and keypairs).
 	 */
 	assert_true(dst_key_compare(key1, key2) == expect);
-
-	/*
-	 * Free the keys
-	 */
-	dst_key_free(&key2);
-	dst_key_free(&key1);
 
 	return;
 }
@@ -427,12 +417,12 @@ ISC_RUN_TEST_IMPL(cmp_test) {
 
 ISC_RUN_TEST_IMPL(ecdsa_determinism_test) {
 	isc_result_t result;
-	isc_buffer_t *sigbuf1 = NULL, *sigbuf2 = NULL;
+	auto_isc_buffer_t *sigbuf1 = NULL, *sigbuf2 = NULL;
 	isc_buffer_t databuf, keybuf;
 	isc_region_t datareg;
 	dns_fixedname_t fname;
 	dns_name_t *name = NULL;
-	dst_key_t *key = NULL;
+	auto_dst_key_t *key = NULL;
 	dst_context_t *ctx = NULL;
 	unsigned int siglen;
 
@@ -479,11 +469,6 @@ ISC_RUN_TEST_IMPL(ecdsa_determinism_test) {
 #else
 	assert_memory_not_equal(sigbuf1->base, sigbuf2->base, siglen);
 #endif
-
-	isc_buffer_free(&sigbuf1);
-	isc_buffer_free(&sigbuf2);
-
-	dst_key_free(&key);
 }
 
 ISC_TEST_LIST_START

@@ -75,7 +75,7 @@ ns_notify_start(ns_client_t *client, isc_nmhandle_t *handle) {
 	isc_result_t result;
 	dns_name_t *zonename;
 	dns_rdataset_t *zone_rdataset;
-	dns_zone_t *zone = NULL;
+	auto_dns_zone_t *zone = NULL;
 	char namebuf[DNS_NAME_FORMATSIZE];
 	char tsigbuf[DNS_NAME_FORMATSIZE * 2 + sizeof(": TSIG '' ()")];
 	dns_tsigkey_t *tsigkey;
@@ -169,8 +169,5 @@ ns_notify_start(ns_client_t *client, isc_nmhandle_t *handle) {
 		   isc_result_totext(result));
 
 done:
-	if (zone != NULL) {
-		dns_zone_detach(&zone);
-	}
 	respond(client, result);
 }

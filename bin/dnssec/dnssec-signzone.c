@@ -195,7 +195,7 @@ savezonecut(dns_fixedname_t *fzonecut, dns_name_t *name) {
 static void
 dumpnode(dns_name_t *name, dns_dbnode_t *node) {
 	dns_rdatasetiter_t *iter = NULL;
-	isc_buffer_t *buffer = NULL;
+	auto_isc_buffer_t *buffer = NULL;
 	isc_region_t r;
 	isc_result_t result;
 	unsigned int bufsize = 4096;
@@ -242,9 +242,6 @@ dumpnode(dns_name_t *name, dns_dbnode_t *node) {
 
 		dns_rdataset_disassociate(&rds);
 	}
-
-	isc_buffer_free(&buffer);
-	dns_rdatasetiter_destroy(&iter);
 }
 
 static void
@@ -365,7 +362,7 @@ keythatsigned_unlocked(dns_rdata_rrsig_t *rrsig) {
 static dns_dnsseckey_t *
 keythatsigned(dns_rdata_rrsig_t *rrsig) {
 	isc_result_t result;
-	dst_key_t *pubkey = NULL, *privkey = NULL;
+	auto_dst_key_t *pubkey = NULL, *privkey = NULL;
 	dns_dnsseckey_t *key = NULL;
 
 	RWLOCK(&keylist_lock, isc_rwlocktype_read);
@@ -402,7 +399,6 @@ keythatsigned(dns_rdata_rrsig_t *rrsig) {
 				  DST_TYPE_PUBLIC | DST_TYPE_PRIVATE, directory,
 				  isc_g_mctx, &privkey);
 	if (result == ISC_R_SUCCESS) {
-		dst_key_free(&pubkey);
 		dns_dnsseckey_create(isc_g_mctx, &privkey, &key);
 	} else {
 		dns_dnsseckey_create(isc_g_mctx, &pubkey, &key);
