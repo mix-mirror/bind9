@@ -287,32 +287,10 @@ isc_mem_inuse(isc_mem_t *mctx);
  * allocated from the system but not yet used.
  */
 
-bool
-isc_mem_isovermem(isc_mem_t *mctx);
-/*%<
- * Return true iff the memory context is in "over memory" state, i.e.,
- * a hiwater mark has been set and the used amount of memory has exceeds
- * the mark.
- */
+typedef void (*isc_mem_overmem_t)(void *data, ssize_t diff);
 
 void
-isc_mem_clearwater(isc_mem_t *mctx);
-void
-isc_mem_setwater(isc_mem_t *mctx, size_t hiwater, size_t lowater);
-/*%<
- * Set high and low water marks for this memory context.
- *
- * When the memory usage of 'mctx' exceeds 'hiwater', the overmem condition
- * will be met and isc_mem_isovermem() will return true.
- *
- * If the 'hiwater' and 'lowater' is set to 0, the high- and low-water
- * processing are disabled for this memory context.
- *
- * There's a convenient function isc_mem_clearwater().
- *
- * Requires:
- *\li	'hiwater' >= 'lowater'
- */
+isc_mem_setovermem(isc_mem_t *mctx, isc_mem_overmem_t cb, void *data);
 
 void
 isc_mem_checkdestroyed(FILE *file);

@@ -15,6 +15,7 @@
 
 #include <inttypes.h>
 #include <limits.h>
+#include <stdalign.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -118,10 +119,7 @@ static ISC_LIST(isc_mem_t) contexts;
 static isc_mutex_t contextslock;
 
 typedef union {
-	struct {
-		atomic_int_fast64_t inuse;
-		atomic_bool is_overmem;
-	};
+	atomic_int_fast64_t inuse;
 	char padding[ISC_OS_CACHELINE_SIZE];
 } isc__mem_stat_t;
 
@@ -146,8 +144,13 @@ struct isc_mem {
 
 	ISC_LINK(isc_mem_t) link;
 
+	struct {
+		isc_mem_overmem_t cb;
+		void *data;
+	} overmem;
+
 	isc__mem_stat_t *stat;
-	isc__mem_stat_t stat_s[ISC_TID_MAX + 1];
+	alignas(ISC_OS_CACHELINE_SIZE) isc__mem_stat_t stat_s[ISC_TID_MAX + 1];
 };
 
 #define MEMPOOL_MAGIC	 ISC_MAGIC('M', 'E', 'M', 'p')
@@ -371,7 +374,12 @@ mem_realloc(isc_mem_t *ctx, void *old_ptr, size_t old_size, size_t new_size,
  */
 static void
 mem_getstats(isc_mem_t *ctx, size_t size) {
-	atomic_fetch_add_relaxed(&ctx->stat[isc_tid()].inuse, size);
+	isc_tid_t tid = isc_tid();
+
+	atomic_fetch_add_relaxed(&ctx->stat[tid].inuse, size);
+	if (ctx->overmem.cb != NULL) {
+		ctx->overmem.cb(ctx->overmem.data, size);
+	}
 }
 
 /*!
@@ -379,7 +387,12 @@ mem_getstats(isc_mem_t *ctx, size_t size) {
  */
 static void
 mem_putstats(isc_mem_t *ctx, size_t size) {
-	atomic_fetch_sub_relaxed(&ctx->stat[isc_tid()].inuse, size);
+	isc_tid_t tid = isc_tid();
+
+	atomic_fetch_sub_relaxed(&ctx->stat[tid].inuse, size);
+	if (ctx->overmem.cb != NULL) {
+		ctx->overmem.cb(ctx->overmem.data, -size);
+	}
 }
 
 /*
@@ -508,7 +521,6 @@ mem_create(const char *name, isc_mem_t **ctxp, unsigned int debugging,
 
 	for (size_t i = 0; i < ARRAY_SIZE(ctx->stat_s); i++) {
 		atomic_init(&ctx->stat_s[i].inuse, 0);
-		atomic_init(&ctx->stat_s[i].is_overmem, false);
 	}
 
 	/* Reserve the [-1] index for ISC_TID_UNKNOWN */
@@ -879,69 +891,12 @@ isc_mem_inuse(isc_mem_t *ctx) {
 }
 
 void
-isc_mem_clearwater(isc_mem_t *mctx) {
-	isc_mem_setwater(mctx, 0, 0);
-}
-
-void
-isc_mem_setwater(isc_mem_t *ctx, size_t hiwater, size_t lowater) {
+isc_mem_setovermem(isc_mem_t *ctx, isc_mem_overmem_t cb, void *data) {
 	REQUIRE(VALID_CONTEXT(ctx));
-	REQUIRE(hiwater >= lowater);
+	REQUIRE(isc_mem_inuse(ctx) == 0);
 
-	atomic_store_release(&ctx->hi_water, hiwater);
-	atomic_store_release(&ctx->lo_water, lowater);
-
-	return;
-}
-
-bool
-isc_mem_isovermem(isc_mem_t *ctx) {
-	REQUIRE(VALID_CONTEXT(ctx));
-
-	int32_t tid = isc_tid();
-
-	bool is_overmem = atomic_load_relaxed(&ctx->stat[tid].is_overmem);
-
-	if (!is_overmem) {
-		/* We are not overmem, check whether we should be? */
-		size_t hiwater = atomic_load_relaxed(&ctx->hi_water);
-		if (hiwater == 0) {
-			return false;
-		}
-
-		size_t inuse = isc_mem_inuse(ctx);
-		if (inuse <= hiwater) {
-			return false;
-		}
-
-		if ((ctx->debugging & ISC_MEM_DEBUGUSAGE) != 0) {
-			fprintf(stderr,
-				"overmem %s mctx %p inuse %zu hi_water %zu\n",
-				ctx->name, ctx, inuse, hiwater);
-		}
-
-		atomic_store_relaxed(&ctx->stat[tid].is_overmem, true);
-		return true;
-	} else {
-		/* We are overmem, check whether we should not be? */
-		size_t lowater = atomic_load_relaxed(&ctx->lo_water);
-		if (lowater == 0) {
-			return false;
-		}
-
-		size_t inuse = isc_mem_inuse(ctx);
-		if (inuse >= lowater) {
-			return true;
-		}
-
-		if ((ctx->debugging & ISC_MEM_DEBUGUSAGE) != 0) {
-			fprintf(stderr,
-				"overmem %s mctx %p inuse %zu lo_water %zu\n",
-				ctx->name, ctx, inuse, lowater);
-		}
-		atomic_store_relaxed(&ctx->stat[tid].is_overmem, false);
-		return false;
-	}
+	ctx->overmem.cb = cb;
+	ctx->overmem.data = data;
 }
 
 const char *
