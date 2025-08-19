@@ -20,8 +20,6 @@ variables:
   LLVM_SYMBOLIZER: "/usr/lib/llvm-${CLANG_VERSION}/bin/llvm-symbolizer"
   CLANG_FORMAT: "clang-format-${CLANG_VERSION}"
 
-  CFLAGS_COMMON: -fno-omit-frame-pointer -fno-optimize-sibling-calls
-
   UBASAN_CONFIGURE_FLAGS_COMMON: "-Db_sanitize=address,undefined -Didn=enabled -Djemalloc=disabled -Dtracing=disabled"
   TSAN_CONFIGURE_FLAGS_COMMON: "-Db_sanitize=thread -Doptimization=2 -Ddebug=true -Didn=enabled -Dlocktype=system -Djemalloc=disabled --pkg-config-path /opt/tsan/lib/pkgconfig"
 
@@ -173,11 +171,10 @@ stages:
 .freebsd-autoscaler-amd64: &freebsd_autoscaler_amd64
   variables:
     CC: clang
-    CFLAGS: "${CFLAGS_COMMON}"
     GIT_CLONE_PATH: "${GIT_CLONE_PATH_INSTANCE_EXECUTOR}"
     # Use MIT Kerberos5 for BIND 9 GSS-API support because of FreeBSD Heimdal
     # incompatibility; see https://bugs.freebsd.org/275241.
-    EXTRA_CONFIGURE: "${WITH_LIBEDIT} -Doptimization=g --native-file ci/freebsd.ini"
+    EXTRA_CONFIGURE: "${WITH_LIBEDIT} -Doptimization=g --native-file ci/common.ini --native-file ci/freebsd.ini"
 
 # Autoscaling GitLab Runner on AWS EC2 (FreeBSD 13)
 
@@ -310,6 +307,7 @@ stages:
     - *find_python
     - find -name 'tsan.*' -exec "$PYTHON" util/parse_tsan.py {} \;
 
+# TODO what's the purpose of this and how does it work?
 .check_readline_setup: &check_readline_setup
     - if [[ -n "${WITHOUT_LIBEDIT}" ]]; then
         ! grep "^#define HAVE_LIBEDIT" build/config.h;
@@ -800,8 +798,7 @@ cross-version-config-tests:
   <<: *base_image
   <<: *default_triggering_rules
   variables:
-    CC: gcc
-    CFLAGS: "${CFLAGS_COMMON}"
+    EXTRA_CONFIGURE: "--native-file ci/common.ini"
   script:
     - *configure
     - *setup_interfaces
@@ -842,9 +839,7 @@ cross-version-config-tests:
 
 gcc:alpine3.22:amd64:
   variables:
-    CC: gcc
-    CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "${WITHOUT_LIBEDIT}"
+    EXTRA_CONFIGURE: "${WITHOUT_LIBEDIT} --native-file ci/common.ini"
   <<: *alpine_3_22_amd64_image
   <<: *build_job
 
@@ -866,9 +861,7 @@ unit:gcc:alpine3.22:amd64:
 
 gcc:almalinux8:amd64:
   variables:
-    CC: gcc
-    CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "-Didn=enabled"
+    EXTRA_CONFIGURE: "-Didn=enabled --native-file ci/common.ini"
   <<: *almalinux_8_amd64_image
   <<: *build_job
 
@@ -893,9 +886,7 @@ unit:gcc:almalinux8:amd64:
 
 gcc:almalinux9:amd64:
   variables:
-    CC: gcc
-    CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "-Didn=enabled -Ddeveloper=disabled"
+    EXTRA_CONFIGURE: "-Didn=enabled -Ddeveloper=disabled --native-file ci/common.ini"
   <<: *almalinux_9_amd64_image
   <<: *build_job
 
@@ -917,9 +908,7 @@ unit:gcc:almalinux9:amd64:
 
 gcc:almalinux10:amd64:
   variables:
-    CC: gcc
-    CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "-Didn=enabled"
+    EXTRA_CONFIGURE: "-Didn=enabled --native-file ci/common.ini"
   <<: *almalinux_10_amd64_image
   <<: *build_job
 
@@ -942,9 +931,7 @@ unit:gcc:almalinux10:amd64:
 
 gcc:8fips:amd64:
   variables:
-    CC: gcc
-    CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "-Didn=enabled -Dfips=enabled -Dtracing=disabled"
+    EXTRA_CONFIGURE: "-Didn=enabled -Dfips=enabled -Dtracing=disabled --native-file ci/common.ini"
     GIT_CLONE_PATH: "${GIT_CLONE_PATH_INSTANCE_EXECUTOR}"
   <<: *almalinux_8fips_amd64_image
   <<: *build_job
@@ -971,9 +958,7 @@ unit:gcc:8fips:amd64:
 
 gcc:9fips:amd64:
   variables:
-    CC: gcc
-    CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "-Didn=enabled -Dfips=enabled -Dleak-detection=disabled"
+    EXTRA_CONFIGURE: "-Didn=enabled -Dfips=enabled -Dleak-detection=disabled --native-file ci/common.ini"
     GIT_CLONE_PATH: "${GIT_CLONE_PATH_INSTANCE_EXECUTOR}"
   <<: *almalinux_9fips_amd64_image
   <<: *build_job
@@ -1000,9 +985,7 @@ unit:gcc:9fips:amd64:
 
 gcc:10fips:amd64:
   variables:
-    CC: gcc
-    CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "-Didn=enabled -Dfips=enabled -Dleak-detection=disabled"
+    EXTRA_CONFIGURE: "-Didn=enabled -Dfips=enabled -Dleak-detection=disabled --native-file ci/common.ini"
     GIT_CLONE_PATH: "${GIT_CLONE_PATH_INSTANCE_EXECUTOR}"
   <<: *almalinux_10fips_amd64_image
   <<: *build_job
@@ -1027,9 +1010,7 @@ unit:gcc:10fips:amd64:
 
 gcc:tarball:nosphinx:
   variables:
-    CC: gcc
-    CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "-Didn=enabled -Ddeveloper=disabled"
+    EXTRA_CONFIGURE: "-Didn=enabled -Ddeveloper=disabled --native-file ci/common.ini"
     RUN_MESON_INSTALL: 1
   <<: *almalinux_9_amd64_image
   <<: *build_job
@@ -1045,10 +1026,8 @@ gcc:tarball:nosphinx:
 
 gcc:bookworm:amd64:
   variables:
-    CC: gcc
-    CFLAGS: "${CFLAGS_COMMON}"
     # Tracing needs to be disabled otherwise gcovr fails
-    EXTRA_CONFIGURE: "-Doptimization=0 -Db_coverage=true -Dtracing=disabled -Didn=enabled ${WITH_LIBEDIT}"
+    EXTRA_CONFIGURE: "-Doptimization=0 -Db_coverage=true -Dtracing=disabled -Didn=enabled ${WITH_LIBEDIT} --native-file ci/common.ini"
     RUN_MESON_INSTALL: 1
   <<: *debian_bookworm_amd64_image
   <<: *build_job
@@ -1084,9 +1063,8 @@ unit:gcc:bookworm:amd64:
 
 gcc:bookworm:amd64cross32:
   variables:
-    CFLAGS: "${CFLAGS_COMMON}"
     CROSS_COMPILATION: 1
-    EXTRA_CONFIGURE: "--cross-file ci/amd64cross32.ini -Didn=enabled -Dgssapi=disabled -Dtracing=disabled ${WITH_LIBEDIT}"
+    EXTRA_CONFIGURE: "--native-file ci/common.ini --cross-file ci/amd64cross32.ini -Didn=enabled -Dgssapi=disabled -Dtracing=disabled ${WITH_LIBEDIT}"
   <<: *debian_bookworm_amd64cross32_image
   <<: *build_job
 
@@ -1105,8 +1083,7 @@ scan-build:
   stage: postcheck
   variables:
     CC: "${CLANG}"
-    CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "-Didn=enabled"
+    EXTRA_CONFIGURE: "--native-file ci/common.ini -Didn=enabled"
     SCANBUILD: "${CI_PROJECT_DIR}/scan-build.sh"
   before_script:
     - *list_installed_package_versions
@@ -1125,10 +1102,7 @@ gcc:ossl3:sid:amd64:
   <<: *debian_sid_amd64_image
   <<: *build_job
   variables:
-    CC: gcc
-    CFLAGS: "${CFLAGS_COMMON} -DOPENSSL_NO_DEPRECATED=1 -DOPENSSL_API_COMPAT=30000"
-    # See https://gitlab.isc.org/isc-projects/bind9/-/issues/3444
-    EXTRA_CONFIGURE: "-Doptimization=3 -Djemalloc=disabled -Dleak-detection=disabled"
+    EXTRA_CONFIGURE: "--native-file ci/common.ini --native-file ci/openssl3.ini"
     RUN_MESON_INSTALL: 1
 
 system:gcc:ossl3:sid:amd64:
@@ -1156,9 +1130,7 @@ gcc:sid:amd64:
   <<: *debian_sid_amd64_image
   <<: *build_job
   variables:
-    CC: gcc
-    CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "-Doptimization=3 -Didn=enabled -Dlmdb=disabled ${WITH_LIBEDIT}"
+    EXTRA_CONFIGURE: "--native-file ci/common.ini -Doptimization=3 -Didn=enabled -Dlmdb=disabled ${WITH_LIBEDIT}"
     RUN_MESON_INSTALL: 1
 
 system:gcc:sid:amd64:
@@ -1221,9 +1193,7 @@ gcc:tumbleweed:amd64:
   <<: *tumbleweed_latest_amd64_image
   <<: *build_job
   variables:
-    CC: gcc
-    CFLAGS: "${CFLAGS_COMMON} -DDEBUG"
-    EXTRA_CONFIGURE: "-Didn=enabled -Dgssapi=disabled ${WITH_LIBEDIT}"
+    EXTRA_CONFIGURE: "--native-file ci/common.ini --native-file ci/tumbleweed.ini"
 
 system:gcc:tumbleweed:amd64:
   <<: *tumbleweed_latest_amd64_image
@@ -1243,9 +1213,7 @@ unit:gcc:tumbleweed:amd64:
 
 gcc:jammy:amd64:
   variables:
-    CC: gcc
-    CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "-Dgeoip=disabled -Didn=enabled -Ddoh=disabled -Dcmocka=disabled -Ddnstap=disabled -Dgssapi=disabled"
+    EXTRA_CONFIGURE: "--native-file ci/common.ini -Dgeoip=disabled -Didn=enabled -Ddoh=disabled -Dcmocka=disabled -Ddnstap=disabled -Dgssapi=disabled"
     NO_BUILD_TEST_PREREQ: 1  # remove this variable after removing this particular distro
   <<: *ubuntu_jammy_amd64_image
   <<: *build_job
@@ -1270,9 +1238,7 @@ unit:gcc:jammy:amd64:
 
 gcc:noble:amd64:
   variables:
-    CC: gcc
-    CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "-Didn=enabled"
+    EXTRA_CONFIGURE: "--native-file ci/common.ini -Didn=enabled"
   <<: *ubuntu_noble_amd64_image
   <<: *build_job
 
@@ -1294,9 +1260,7 @@ unit:gcc:noble:amd64:
 
 gcc:asan:
   variables:
-    CC: gcc
-    CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "-Db_sanitize=address,undefined -Didn=enabled -Djemalloc=disabled -Dtracing=disabled"
+    EXTRA_CONFIGURE: "--native-file ci/common.ini -Db_sanitize=address,undefined -Didn=enabled -Djemalloc=disabled -Dtracing=disabled"
   <<: *fedora_42_amd64_image
   <<: *build_job
 
@@ -1319,8 +1283,7 @@ unit:gcc:asan:
 clang:asan:
   variables:
     CC: ${CLANG}
-    CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "-Db_sanitize=address,undefined -Db_lundef=false -Didn=enabled -Djemalloc=disabled -Dtracing=disabled"
+    EXTRA_CONFIGURE: "--native-file ci/common.ini -Db_sanitize=address,undefined -Db_lundef=false -Didn=enabled -Djemalloc=disabled -Dtracing=disabled"
   <<: *base_image
   <<: *build_job
 
@@ -1348,7 +1311,7 @@ gcc:tsan:
   variables:
     CC: gcc
     CFLAGS: "${CFLAGS_COMMON}"
-    LDFLAGS: "-Wl,--disable-new-dtags"
+    LDFLAGS: "-Wl,--disable-new-dtags"  # TODO tsan
     EXTRA_CONFIGURE: "${TSAN_CONFIGURE_FLAGS_COMMON}"
   <<: *tsan_fedora_42_amd64_image
   <<: *build_job
@@ -1378,9 +1341,8 @@ clang:tsan:
   <<: *build_job
   variables:
     CC: "${CLANG}"
-    CFLAGS: "${CFLAGS_COMMON}"
     LDFLAGS: "-Wl,--disable-new-dtags"
-    EXTRA_CONFIGURE: "${TSAN_CONFIGURE_FLAGS_COMMON} -Db_lundef=false"
+    EXTRA_CONFIGURE: "--native-file ci/common.ini ${TSAN_CONFIGURE_FLAGS_COMMON} -Db_lundef=false"
 
 system:clang:tsan:
   variables:
@@ -1644,9 +1606,7 @@ coverity:
   <<: *base_image
   stage: postcheck
   variables:
-    CC: gcc
-    CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "-Doptimization=g -Ddoc=disabled -Didn=enabled"
+    EXTRA_CONFIGURE: "--native-file ci/common.ini -Doptimization=g -Ddoc=disabled -Didn=enabled"
   script:
     - *coverity_prep
     - *configure
@@ -1670,9 +1630,7 @@ respdiff:
   <<: *default_triggering_rules
   <<: *debian_bookworm_amd64_image
   variables:
-    CC: gcc
-    CFLAGS: "${CFLAGS_COMMON} -DISC_TRACK_PTHREADS_OBJECTS"
-    EXTRA_CONFIGURE: "-Doptimization=g"
+    EXTRA_CONFIGURE: "--native-file ci/common.ini --native-file ci/respdiff.ini"
     MAX_DISAGREEMENTS_PERCENTAGE: "0.3"
   script:
     - bash respdiff.sh -m /usr/lib/x86_64-linux-gnu/libjemalloc.so.2 -s named -q "${PWD}/100k_mixed.txt" -c 3 -w "${PWD}/rspworkdir" "${CI_PROJECT_DIR}" "/usr/local/respdiff-reference-bind/sbin/named"
@@ -1683,9 +1641,7 @@ respdiff:asan:
   <<: *default_triggering_rules
   <<: *debian_bookworm_amd64_image
   variables:
-    CC: gcc
-    CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "-Doptimization=g -Db_sanitize=address,undefined -Djemalloc=disabled"
+    EXTRA_CONFIGURE: "--native-file ci/common.ini -Doptimization=g -Db_sanitize=address,undefined -Djemalloc=disabled"
     MAX_DISAGREEMENTS_PERCENTAGE: "0.3"
   script:
     - bash respdiff.sh -s named -q "${PWD}/100k_mixed.txt" -c 3 -w "${PWD}/rspworkdir" "${CI_PROJECT_DIR}" "/usr/local/respdiff-reference-bind/sbin/named"
@@ -1697,9 +1653,8 @@ respdiff:tsan:
   <<: *tsan_debian_bookworm_amd64_image
   variables:
     CC: "${CLANG}"
-    CFLAGS: "${CFLAGS_COMMON}"
     LDFLAGS: "-Wl,--disable-new-dtags"
-    EXTRA_CONFIGURE: "${TSAN_CONFIGURE_FLAGS_COMMON} -Db_lundef=false"
+    EXTRA_CONFIGURE: "--native-file ci/common.ini ${TSAN_CONFIGURE_FLAGS_COMMON} -Db_lundef=false"
     MAX_DISAGREEMENTS_PERCENTAGE: "0.3"
     TSAN_OPTIONS: "${TSAN_OPTIONS_DEBIAN}"
   script:
@@ -1713,9 +1668,7 @@ respdiff-third-party:
   <<: *default_triggering_rules
   <<: *debian_bookworm_amd64_image
   variables:
-    CC: gcc
-    CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "-Doptimization=g"
+    EXTRA_CONFIGURE: "--native-file ci/common.ini --native-file ci/respdiff.ini"
     MAX_DISAGREEMENTS_PERCENTAGE: "0.3"
   script:
     - bash respdiff.sh -s third_party -q "${PWD}/100k_mixed.txt" -c 1 -w "${PWD}/rspworkdir" "${CI_PROJECT_DIR}"
@@ -1743,9 +1696,8 @@ respdiff-third-party:
 respdiff:recent-named:
   <<: *respdiff_recent_named
   variables:
-    CC: gcc
     CFLAGS: "${CFLAGS_COMMON} -DISC_TRACK_PTHREADS_OBJECTS"
-    EXTRA_CONFIGURE: "-Doptimization=g"
+    EXTRA_CONFIGURE: "--native-file ci/common.ini --native-file ci/respdiff.ini"
     MAX_DISAGREEMENTS_PERCENTAGE: "0.3"
 
 # Performance tests
@@ -1814,8 +1766,7 @@ reproducible-build:
   stage: postcheck
   needs: []
   variables:
-    CC: gcc
-    CFLAGS: "${CFLAGS_COMMON}"
+    EXTRA_CONFIGURE: "--native-file ci/common.ini"
   before_script:
     - *list_installed_package_versions
   script:
