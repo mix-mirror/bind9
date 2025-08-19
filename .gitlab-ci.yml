@@ -1347,7 +1347,7 @@ unit:clang:asan:
 gcc:tsan:
   variables:
     CC: gcc
-    CFLAGS: "${CFLAGS_COMMON} -Wno-stringop-overread"
+    CFLAGS: "${CFLAGS_COMMON}"
     LDFLAGS: "-Wl,--disable-new-dtags"
     EXTRA_CONFIGURE: "${TSAN_CONFIGURE_FLAGS_COMMON}"
   <<: *tsan_fedora_42_amd64_image
