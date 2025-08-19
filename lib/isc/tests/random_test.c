@@ -347,7 +347,9 @@ random_test(pvalue_func_t *func, isc_random_func test_func) {
 			}
 			break;
 		case ISC_RANDOM_BYTES:
-			isc_random_buf(values, sizeof(values));
+			for (i = 0; i < ARRAY_SIZE(values); i++) {
+				values[i] = isc_random32();
+			}
 			break;
 		case ISC_RANDOM_UNIFORM:
 			uniform_values = (uint16_t *)values;

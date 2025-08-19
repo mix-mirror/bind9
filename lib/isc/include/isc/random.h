@@ -20,7 +20,7 @@
 #include <isc/types.h>
 
 /*! \file isc/random.h
- * \brief Implements wrapper around a non-cryptographically secure
+ * \brief Implements wrapper around a cryptographically secure
  * pseudo-random number generator.
  *
  */

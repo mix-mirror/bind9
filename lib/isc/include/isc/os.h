@@ -20,6 +20,11 @@
 
 ISC_LANG_BEGINDECLS
 
+/*%<
+ * Hardcode the L1 cacheline size of the CPU to 64.
+ */
+#define ISC_OS_CACHELINE_SIZE 64
+
 unsigned int
 isc_os_ncpus(void);
 /*%<
