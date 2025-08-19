@@ -71,7 +71,7 @@ dns_rdataset_init(dns_rdataset_t *rdataset) {
 	rdataset->ttl = 0;
 	rdataset->trust = 0;
 	rdataset->covers = 0;
-	rdataset->attributes = 0;
+	rdataset->attributes = (typeof(rdataset->attributes)) {};
 	/* TODO should rdataset->count be initialized to zero? */
 	rdataset->resign = 0;
 }
@@ -99,7 +99,7 @@ dns_rdataset_invalidate(dns_rdataset_t *rdataset) {
 	rdataset->ttl = 0;
 	rdataset->trust = 0;
 	rdataset->covers = 0;
-	rdataset->attributes = 0;
+	rdataset->attributes = (typeof(rdataset->attributes)) {};
 	/* TODO should rdataset->count be initialized to zero? */
 	rdataset->resign = 0;
 }
