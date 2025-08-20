@@ -214,6 +214,10 @@ struct dns_view {
 	dns_zone_t     *redirect;
 	dns_name_t     *redirectzone; /* points to redirectfixed when valid */
 	dns_fixedname_t redirectfixed;
+	/*
+	 * Public Suffix List database.
+	 */
+	dns_db_t *psl;
 
 	/*
 	 * File and configuration data for zones added at runtime.
