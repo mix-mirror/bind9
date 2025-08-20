@@ -7256,10 +7256,10 @@ cleanup:
 
 static bool
 all_rrsets_in_section_signed(dns_message_t *msg, dns_section_t section) {
-	MSG_SECTION_FOREACH (msg, section, name) {
+	MSG_SECTION_FOREACH(msg, section, name) {
 		bool type[0x10000] = { false };
 		bool covers[0x10000] = { false };
-		ISC_LIST_FOREACH (name->list, rdataset, link) {
+		ISC_LIST_FOREACH(name->list, rdataset, link) {
 			if (rdataset->type == dns_rdatatype_opt ||
 			    rdataset->type == dns_rdatatype_tsig ||
 			    rdataset->type == dns_rdatatype_sig)
@@ -7287,12 +7287,62 @@ all_rrsets_signed(respctx_t *rctx) {
 	       all_rrsets_in_section_signed(msg, DNS_SECTION_ADDITIONAL);
 }
 
+static bool
+inpsl(fetchctx_t *fctx) {
+	bool answer = false;
+	dns_db_t *psl = NULL;
+	dns_dbnode_t *node = NULL;
+	isc_result_t result;
+	dns_rdataset_t rdataset = DNS_RDATASET_INIT;
+
+	LOCK(&fctx->res->view->lock);
+	if (fctx->res->view->psl != NULL) {
+		dns_db_attach(fctx->res->view->psl, &psl);
+	}
+	UNLOCK(&fctx->res->view->lock);
+	if (psl == NULL) {
+		return false;
+	}
+	result = dns_db_findnode(psl, fctx->domain, false, &node);
+	if (result != ISC_R_SUCCESS) {
+		goto cleanup;
+	}
+	result = dns_db_findrdataset(psl, node, NULL, dns_rdatatype_a, 0,
+				     (isc_stdtime_t)0, &rdataset, NULL);
+	if (result != ISC_R_SUCCESS) {
+		goto cleanup;
+	}
+
+	/*
+	 * Check the 4th octet of the address record for the expected label
+	 * count.
+	 */
+	DNS_RDATASET_FOREACH(&rdataset) {
+		dns_rdata_t rdata = DNS_RDATA_INIT;
+		dns_rdataset_current(&rdataset, &rdata);
+		answer = rdata.data[3] == dns_name_countlabels(fctx->domain);
+	}
+
+cleanup:
+	if (dns_rdataset_isassociated(&rdataset)) {
+		dns_rdataset_disassociate(&rdataset);
+	}
+	if (node != NULL) {
+		dns_db_detachnode(&node);
+	}
+	if (psl != NULL) {
+		dns_db_detach(&psl);
+	}
+	return answer;
+}
+
 static isc_result_t
 rctx_cookiecheck(respctx_t *rctx) {
 	fetchctx_t *fctx = rctx->fctx;
 	resquery_t *query = rctx->query;
-	bool required = dns_name_countlabels(fctx->domain) <= 2 &&
-			!all_rrsets_signed(rctx); /* root and TLD servers */
+	bool required = (dns_name_countlabels(fctx->domain) <= 2 ||
+			 inpsl(fctx)) &&
+			!all_rrsets_signed(rctx);
 
 	/*
 	 * If the message was secured or TCP is already in the
