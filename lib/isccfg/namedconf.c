@@ -2425,6 +2425,7 @@ static cfg_clausedef_t view_clauses[] = {
 	{ "preferred-glue", &cfg_type_astring, 0, NULL },
 	{ "prefetch", &cfg_type_prefetch, 0, prefetch_merge },
 	{ "provide-ixfr", &cfg_type_boolean, 0, NULL },
+	{ "public-suffix-list", &cfg_type_astring, 0, NULL },
 	{ "qname-minimization", &cfg_type_qminmethod, 0, NULL },
 	/*
 	 * Note that the query-source option syntax is different
