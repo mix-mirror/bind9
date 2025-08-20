@@ -84,6 +84,7 @@
 #include <dns/order.h>
 #include <dns/peer.h>
 #include <dns/private.h>
+#include <dns/psl.h>
 #include <dns/rdataclass.h>
 #include <dns/rdatalist.h>
 #include <dns/rdataset.h>
@@ -5472,6 +5473,18 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 						   mctx, server, contact));
 			if (zone != NULL) {
 				dns_zone_detach(&zone);
+			}
+		}
+	}
+
+	if (view->rdclass == dns_rdataclass_in) {
+		obj = NULL;
+		result = named_config_get(maps, "public-suffix-list", &obj);
+		if (result == ISC_R_SUCCESS) {
+			result = dns_psl_fromfile(cfg_obj_asstring(obj), mctx,
+						  &view->psl);
+			if (result != ISC_R_SUCCESS) {
+				goto cleanup;
 			}
 		}
 	}
