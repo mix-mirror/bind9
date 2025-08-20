@@ -131,6 +131,7 @@ dns_srcset.add(
         'order.c',
         'peer.c',
         'private.c',
+        'psl.c',
         'qp.c',
         'qpcache.c',
         'qpzone.c',
