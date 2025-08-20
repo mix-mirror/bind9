@@ -389,6 +389,7 @@ struct fetchctx {
 	uint32_t ns_ttl;
 	isc_counter_t *qc;
 	isc_counter_t *gqc;
+	bool inpsl;
 	bool minimized;
 	unsigned int qmin_labels;
 	isc_result_t qmin_warning;
@@ -4821,6 +4822,7 @@ fctx__create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 		.qminrrset = DNS_RDATASET_INIT,
 		.qminsigrrset = DNS_RDATASET_INIT,
 		.nsrrset = DNS_RDATASET_INIT,
+		.inpsl = true,
 	};
 
 	isc_mem_attach(mctx, &fctx->mctx);
@@ -7443,6 +7445,9 @@ inpsl(fetchctx_t *fctx) {
 	isc_result_t result;
 	dns_rdataset_t rdataset = DNS_RDATASET_INIT;
 
+	if (!fctx->inpsl) {
+		return false;
+	}
 	LOCK(&fctx->res->view->lock);
 	if (fctx->res->view->psl != NULL) {
 		dns_db_attach(fctx->res->view->psl, &psl);
@@ -7481,6 +7486,7 @@ cleanup:
 	if (psl != NULL) {
 		dns_db_detach(&psl);
 	}
+	fctx->inpsl = answer;
 	return answer;
 }
 
