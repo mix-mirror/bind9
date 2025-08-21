@@ -82,6 +82,20 @@ def test_load_transfer(qname, qtype):
     isctest.check.noerror(res1)
 
 
+def test_insecure_rrsig():
+    # check that for a rrsig query against a validating resolver where the
+    # authoritative zone is unsigned (insecure delegation), noerror is
+    # returned.
+    msg = isctest.query.create("a.insecure.example", "RRSIG")
+    res = isctest.query.tcp(msg, "10.53.0.4")
+    isctest.check.noerror(res)
+    isctest.check.rr_count_eq(res.answer, 0)
+    isctest.check.rr_count_eq(res.authority, 1)
+    isctest.check.rr_count_eq(res.additional, 0)
+    assert str(res.authority[0].name) == "insecure.example."
+    assert res.authority[0].rdtype == rdatatype.SOA
+
+
 def test_insecure_glue():
     # check that for a query against a validating resolver where the
     # authoritative zone is unsigned (insecure delegation), glue is returned
