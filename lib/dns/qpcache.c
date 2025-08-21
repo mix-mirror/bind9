@@ -565,8 +565,7 @@ clean_cache_node(qpcache_t *qpdb, qpcnode_t *node) {
 	 * Caller must be holding the node lock.
 	 */
 
-	for (top = node->data; top != NULL; top = top_next) {
-		top_next = top->next;
+	DNS_SLABTOP_FOREACH_SAFE(node, top, top_next) {
 		clean_stale_headers(top->header);
 
 		/*
@@ -1289,7 +1288,7 @@ check_zonecut(qpcnode_t *node, void *arg DNS__DB_FLARG) {
 	/*
 	 * Look for a DNAME or RRSIG DNAME rdataset.
 	 */
-	for (top = node->data; top != NULL; top = top->next) {
+	DNS_SLABTOP_FOREACH(node, top) {
 		if (check_stale_header(top->header, search)) {
 			continue;
 		}
@@ -1352,7 +1351,7 @@ find_deepest_zonecut(qpc_search_t *search, qpcnode_t *node,
 		/*
 		 * Look for NS and RRSIG NS rdatasets.
 		 */
-		for (top = node->data; top != NULL; top = top->next) {
+		DNS_SLABTOP_FOREACH(node, top) {
 			if (check_stale_header(top->header, search)) {
 				continue;
 			}
@@ -1456,7 +1455,7 @@ find_coveringnsec(qpc_search_t *search, const dns_name_t *name,
 
 	nlock = &search->qpdb->buckets[node->locknum].lock;
 	NODE_RDLOCK(nlock, &nlocktype);
-	for (top = node->data; top != NULL; top = top->next) {
+	DNS_SLABTOP_FOREACH(node, top) {
 		if (check_stale_header(top->header, search)) {
 			continue;
 		}
@@ -1657,7 +1656,7 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	nsecsig = NULL;
 	cnamesig = NULL;
 	empty_node = true;
-	for (top = node->data; top != NULL; top = top->next) {
+	DNS_SLABTOP_FOREACH(node, top) {
 		if (check_stale_header(top->header, &search)) {
 			continue;
 		}
@@ -1924,7 +1923,7 @@ seek_ns_headers(qpc_search_t *search, qpcnode_t *node, dns_dbnode_t **nodep,
 
 	NODE_RDLOCK(nlock, &nlocktype);
 
-	for (top = node->data; top != NULL; top = top->next) {
+	DNS_SLABTOP_FOREACH(node, top) {
 		bool ns = top->typepair == DNS_TYPEPAIR(dns_rdatatype_ns) ||
 			  top->typepair == DNS_SIGTYPEPAIR(dns_rdatatype_ns);
 		if (check_stale_header(top->header, search)) {
@@ -2095,7 +2094,7 @@ qpcache_findrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	sigpair = (type != dns_rdatatype_rrsig) ? DNS_SIGTYPEPAIR(type)
 						: dns_typepair_none;
 
-	for (top = qpnode->data; top != NULL; top = top->next) {
+	DNS_SLABTOP_FOREACH(qpnode, top) {
 		if (check_stale_header(top->header, &search)) {
 			continue;
 		}
@@ -2586,9 +2585,7 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 				 * only rdataset that can be found at this
 				 * node is the negative cache entry.
 				 */
-				for (top = qpnode->data; top != NULL;
-				     top = top->next)
-				{
+				DNS_SLABTOP_FOREACH(qpnode, top) {
 					mark_ancient(top->header);
 				}
 				goto find_header;
@@ -2602,9 +2599,7 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 				 * above, but just for RRSIGs.
 				 */
 
-				for (top = qpnode->data; top != NULL;
-				     top = top->next)
-				{
+				DNS_SLABTOP_FOREACH(qpnode, top) {
 					if (DNS_TYPEPAIR_TYPE(top->typepair) ==
 					    dns_rdatatype_rrsig)
 					{
@@ -2618,7 +2613,7 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 			 * Otherwise look for any RRSIGs of the given
 			 * type so they can be marked ancient later.
 			 */
-			for (top = qpnode->data; top != NULL; top = top->next) {
+			DNS_SLABTOP_FOREACH(qpnode, top) {
 				if (top->typepair == sigpair) {
 					sigheader = top->header;
 					break;
@@ -2629,7 +2624,7 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 			 * We're adding something that isn't a
 			 * negative cache entry.
 			 */
-			for (top = qpnode->data; top != NULL; top = top->next) {
+			DNS_SLABTOP_FOREACH(qpnode, top) {
 				/*
 				 * Look for any existing negative cache
 				 * entries.
@@ -2685,7 +2680,7 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 		}
 	}
 
-	for (top = qpnode->data; top != NULL; top = top->next) {
+	DNS_SLABTOP_FOREACH(qpnode, top) {
 		if (ACTIVE(top->header, now)) {
 			++ntypes;
 			expiretop = top;
@@ -3349,7 +3344,7 @@ rdatasetiter_first(dns_rdatasetiter_t *it DNS__DB_FLARG) {
 
 	NODE_RDLOCK(nlock, &nlocktype);
 
-	for (top = qpnode->data; top != NULL; top = top->next) {
+	DNS_SLABTOP_FOREACH(qpnode, top) {
 		if (EXISTS(top->header) &&
 		    (EXPIREDOK(iterator) ||
 		     iterator_active(qpdb, iterator, top->header)))
@@ -3385,7 +3380,7 @@ rdatasetiter_next(dns_rdatasetiter_t *it DNS__DB_FLARG) {
 
 	NODE_RDLOCK(nlock, &nlocktype);
 
-	for (top = top->next; top != NULL; top = top->next) {
+	DNS_SLABTOP_FOREACH_NEXT(top, top->next) {
 		if (EXISTS(top->header) &&
 		    (EXPIREDOK(iterator) ||
 		     iterator_active(qpdb, iterator, top->header)))
@@ -3863,9 +3858,7 @@ qpcnode_destroy(qpcnode_t *qpnode) {
 	dns_slabtop_t *top = NULL, *top_next = NULL;
 	qpcache_t *qpdb = qpnode->qpdb;
 
-	for (top = qpnode->data; top != NULL; top = top_next) {
-		top_next = top->next;
-
+	DNS_SLABTOP_FOREACH_SAFE(qpnode, top, top_next) {
 		dns_slabheader_t *down = NULL, *down_next = NULL;
 		for (down = top->header; down != NULL; down = down_next) {
 			down_next = down->down;
