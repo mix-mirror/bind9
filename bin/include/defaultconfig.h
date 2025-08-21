@@ -162,7 +162,7 @@ options {\n\
 	parental-source *;\n\
 	parental-source-v6 *;\n\
 	provide-ixfr true;\n\
-	response-padding { none; } block-size 0;\n\
+	public-suffix-list \"/usr/share/publicsuffix/public_suffix_list.dat\";\n\
 	qname-minimization relaxed;\n\
 	query-source address *;\n\
 	query-source-v6 address *;\n\
@@ -171,6 +171,7 @@ options {\n\
 	request-ixfr true;\n\
 	request-ixfr-max-diffs 0;\n\
 	require-server-cookie no;\n\
+	response-padding { none; } block-size 0;\n\
 	root-key-sentinel yes;\n\
 	servfail-ttl 1;\n\
 	stale-answer-client-timeout off;\n\
