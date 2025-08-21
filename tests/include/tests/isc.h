@@ -117,8 +117,8 @@ teardown_managers(void **state);
 		isc_mem_debugging |= ISC_MEM_DEBUGRECORD;                               \
 		isc_mem_create(&mctx);                                                  \
                                                                                         \
-		while ((c = isc_commandline_parse(argc, argv, "dlt:")) != -1)           \
-		{                                                                       \
+		while ((c = isc_commandline_parse(argc, argv, "dlt:")) !=               \
+		       -1) {                                                            \
 			switch (c) {                                                    \
 			case 'd':                                                       \
 				debug = true;                                           \
