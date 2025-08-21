@@ -112,11 +112,11 @@ struct dns_rrl_entry {
 	unsigned int log_qname : DNS_RRL_QNAMES_BITS;
 
 #define DNS_RRL_TS_GEN_BITS 2
-	unsigned int ts_gen : DNS_RRL_TS_GEN_BITS;
+	unsigned int ts_gen   : DNS_RRL_TS_GEN_BITS;
 	unsigned int ts_valid : 1;
 #define DNS_RRL_HASH_GEN_BITS 1
 	unsigned int hash_gen : DNS_RRL_HASH_GEN_BITS;
-	unsigned int logged : 1;
+	unsigned int logged   : 1;
 #define DNS_RRL_LOG_BITS 11
 	unsigned int log_secs : DNS_RRL_LOG_BITS;
 

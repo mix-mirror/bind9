@@ -171,7 +171,7 @@ typedef struct librpz_result {
 	librpz_dznum_t	   dznum;   /* dnsrpzd zone number */
 	librpz_cznum_t	   cznum;   /* librpz client zone number */
 	librpz_trig_t	   trig : LIBRPZ_TRIG_SIZE;
-	bool		   log : 1; /* log rewrite at given log level */
+	bool		   log	: 1; /* log rewrite at given log level */
 } librpz_result_t;
 
 /**

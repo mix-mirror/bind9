@@ -184,8 +184,8 @@ teardown_managers(void **state);
 		setup_mctx(NULL);                                                       \
 		setup_workers(NULL);                                                    \
                                                                                         \
-		while ((c = isc_commandline_parse(argc, argv, "dlt:")) != -1)           \
-		{                                                                       \
+		while ((c = isc_commandline_parse(argc, argv, "dlt:")) !=               \
+		       -1) {                                                            \
 			switch (c) {                                                    \
 			case 'd':                                                       \
 				debug = true;                                           \
