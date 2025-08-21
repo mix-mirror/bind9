@@ -5483,9 +5483,11 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 		if (result == ISC_R_SUCCESS) {
 			result = dns_psl_fromfile(cfg_obj_asstring(obj), mctx,
 						  &view->psl);
+#if 0
 			if (result != ISC_R_SUCCESS) {
 				goto cleanup;
 			}
+#endif
 		}
 	}
 
