@@ -2667,14 +2667,11 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 					 * The NXDOMAIN/NODATA(QTYPE=ANY)
 					 * is more trusted.
 					 */
-					if (addedrdataset != NULL) {
-						bindrdataset(
-							qpdb, qpnode,
-							top->header, now,
-							nlocktype, tlocktype,
-							addedrdataset
-								DNS__DB_FLARG_PASS);
-					}
+					bindrdataset(
+						qpdb, qpnode, top->header, now,
+						nlocktype, tlocktype,
+						addedrdataset
+							DNS__DB_FLARG_PASS);
 					return DNS_R_UNCHANGED;
 				}
 				/*
@@ -2725,11 +2722,9 @@ find_header:
 		if (trust < header->trust &&
 		    (ACTIVE(header, now) || !EXISTS(header)))
 		{
-			if (addedrdataset != NULL) {
-				bindrdataset(qpdb, qpnode, header, now,
-					     nlocktype, tlocktype,
-					     addedrdataset DNS__DB_FLARG_PASS);
-			}
+			bindrdataset(qpdb, qpnode, header, now, nlocktype,
+				     tlocktype,
+				     addedrdataset DNS__DB_FLARG_PASS);
 			return DNS_R_UNCHANGED;
 		}
 
@@ -2771,11 +2766,9 @@ find_header:
 				header->closest = newheader->closest;
 				newheader->closest = NULL;
 			}
-			if (addedrdataset != NULL) {
-				bindrdataset(qpdb, qpnode, header, now,
-					     nlocktype, tlocktype,
-					     addedrdataset DNS__DB_FLARG_PASS);
-			}
+			bindrdataset(qpdb, qpnode, header, now, nlocktype,
+				     tlocktype,
+				     addedrdataset DNS__DB_FLARG_PASS);
 			return DNS_R_UNCHANGED;
 		}
 
@@ -2825,11 +2818,9 @@ find_header:
 				header->closest = newheader->closest;
 				newheader->closest = NULL;
 			}
-			if (addedrdataset != NULL) {
-				bindrdataset(qpdb, qpnode, header, now,
-					     nlocktype, tlocktype,
-					     addedrdataset DNS__DB_FLARG_PASS);
-			}
+			bindrdataset(qpdb, qpnode, header, now, nlocktype,
+				     tlocktype,
+				     addedrdataset DNS__DB_FLARG_PASS);
 			return DNS_R_UNCHANGED;
 		}
 
@@ -2902,10 +2893,8 @@ find_header:
 		}
 	}
 
-	if (addedrdataset != NULL) {
-		bindrdataset(qpdb, qpnode, newheader, now, nlocktype, tlocktype,
-			     addedrdataset DNS__DB_FLARG_PASS);
-	}
+	bindrdataset(qpdb, qpnode, newheader, now, nlocktype, tlocktype,
+		     addedrdataset DNS__DB_FLARG_PASS);
 
 	return ISC_R_SUCCESS;
 }

@@ -2053,10 +2053,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 		return DNS_R_CNAMEANDOTHER;
 	}
 
-	if (addedrdataset != NULL) {
-		bindrdataset(qpdb, node, newheader,
-			     addedrdataset DNS__DB_FLARG_PASS);
-	}
+	bindrdataset(qpdb, node, newheader, addedrdataset DNS__DB_FLARG_PASS);
 
 	return ISC_R_SUCCESS;
 }
