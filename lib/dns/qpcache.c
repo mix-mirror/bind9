@@ -1540,6 +1540,11 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	dns_slabheader_t *nsecheader = NULL, *nsecsig = NULL;
 	dns_typepair_t typepair, sigpair;
 
+	if (type == dns_rdatatype_none) {
+		/* We can't search negative cache directly */
+		return ISC_R_NOTFOUND;
+	}
+
 	qpc_search_t search;
 	qpc_search_init(&search, (qpcache_t *)db, options, __now);
 
@@ -1624,11 +1629,10 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	/*
 	 * Certain DNSSEC types are not subject to CNAME matching
 	 * (RFC4035, section 2.5 and RFC3007).
-	 *
-	 * We don't check for RRSIG, because we don't store RRSIG records
-	 * directly.
 	 */
-	if (type == dns_rdatatype_key || type == dns_rdatatype_nsec) {
+	if (type == dns_rdatatype_key || type == dns_rdatatype_nsec ||
+	    type == dns_rdatatype_rrsig)
+	{
 		cname_ok = false;
 	}
 
@@ -1646,7 +1650,7 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	found = NULL;
 	foundsig = NULL;
 	typepair = DNS_TYPEPAIR(type);
-	sigpair = DNS_SIGTYPEPAIR(type);
+	sigpair = (type != dns_rdatatype_rrsig) ? DNS_SIGTYPEPAIR(type) : 0;
 	nsheader = NULL;
 	nsecheader = NULL;
 	nssig = NULL;
@@ -2083,16 +2087,13 @@ qpcache_findrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 		/* We can't search negative cache directly */
 		return ISC_R_NOTFOUND;
 	}
-	if (dns_rdatatype_issig(type) && covers == dns_rdatatype_none) {
-		return ISC_R_NOTFOUND;
-	}
 
 	nlock = &qpdb->buckets[qpnode->locknum].lock;
 	NODE_RDLOCK(nlock, &nlocktype);
 
 	typepair = DNS_TYPEPAIR_VALUE(type, covers);
-	sigpair = !dns_rdatatype_issig(type) ? DNS_SIGTYPEPAIR(type)
-					     : dns_typepair_none;
+	sigpair = (type != dns_rdatatype_rrsig) ? DNS_SIGTYPEPAIR(type)
+						: dns_typepair_none;
 
 	for (top = qpnode->data; top != NULL; top = top->next) {
 		if (check_stale_header(top->header, &search)) {
@@ -2555,9 +2556,8 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 
 	REQUIRE(rdtype != dns_rdatatype_none);
 	if (dns_rdatatype_issig(rdtype)) {
-		/* signature must be positive, and cover a type */
-		REQUIRE(!NEGATIVE(newheader));
-		REQUIRE(covers != dns_rdatatype_none);
+		/* signature must be either negative or cover something */
+		REQUIRE(NEGATIVE(newheader) || covers != dns_rdatatype_none);
 	} else {
 		/* otherwise, it must cover nothing */
 		REQUIRE(covers == dns_rdatatype_none);
@@ -2593,6 +2593,27 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 				}
 				goto find_header;
 			}
+
+			if (rdtype == dns_rdatatype_rrsig) {
+				/*
+				 * If we're adding a proof that a signature
+				 * doesn't exist, mark all signatures as
+				 * ancient.  This is basically the same as
+				 * above, but just for RRSIGs.
+				 */
+
+				for (top = qpnode->data; top != NULL;
+				     top = top->next)
+				{
+					if (DNS_TYPEPAIR_TYPE(top->typepair) ==
+					    dns_rdatatype_rrsig)
+					{
+						mark_ancient(top->header);
+					}
+				}
+				goto find_header;
+			}
+
 			/*
 			 * Otherwise look for any RRSIGs of the given
 			 * type so they can be marked ancient later.
@@ -3152,11 +3173,6 @@ qpcache_deleterdataset(dns_db_t *db, dns_dbnode_t *node,
 		type = covers;
 		covers = dns_rdatatype_none;
 		attributes |= DNS_SLABHEADERATTR_NEGATIVE;
-	}
-
-	/* RRSIG must have covered type */
-	if (type == dns_rdatatype_rrsig && covers == dns_rdatatype_none) {
-		return ISC_R_NOTIMPLEMENTED;
 	}
 
 	newheader = dns_slabheader_new(db->mctx, node);
