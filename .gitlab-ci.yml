@@ -4,7 +4,7 @@ variables:
   # Locale settings do not affect the build, but might affect tests.
   LC_ALL: C
 
-  CI_REGISTRY_IMAGE: registry.gitlab.isc.org/isc-projects/images/bind9
+  CI_REGISTRY_IMAGE: registry.gitlab.isc.org/isc-projects/images/bind9-staging
   CCACHE_DIR: "/ccache"
 
   GIT_DEPTH: 1
