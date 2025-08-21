@@ -190,12 +190,12 @@ ret=0
   echo_i "ns1 $tcp1 expected 6"
   ret=1
 }
-[ $tcp2 -eq 2 ] || {
-  echo_i "ns2 $tcp2 expected 2"
+[ $tcp2 -eq 4 ] || {
+  echo_i "ns2 $tcp2 expected 4"
   ret=1
 }
-[ $tcp3 -eq 6 ] || {
-  echo_i "ns3 $tcp3 expected 6"
+[ $tcp3 -eq 8 ] || {
+  echo_i "ns3 $tcp3 expected 8"
   ret=1
 }
 if [ $ret != 0 ]; then echo_i "failed"; fi
@@ -207,8 +207,8 @@ ret=0
   echo_i "ns1 $aq1 exepcted 3"
   ret=1
 }
-[ $aq2 -eq 2 ] || {
-  echo_i "ns2 $aq2 expected 2"
+[ $aq2 -eq 3 ] || {
+  echo_i "ns2 $aq2 expected 3"
   ret=1
 }
 [ $aq3 -eq 1 ] || {
@@ -224,8 +224,8 @@ ret=0
   echo_i "ns1 $ar1 expected 2"
   ret=1
 }
-[ $ar2 -eq 1 ] || {
-  echo_i "ns2 $ar2 expected 1"
+[ $ar2 -eq 2 ] || {
+  echo_i "ns2 $ar2 expected 2"
   ret=1
 }
 [ $ar3 -eq 0 ] || {
@@ -279,8 +279,8 @@ ret=0
   echo_i "ns2 $rq2 expected 0"
   ret=1
 }
-[ $rq3 -eq 3 ] || {
-  echo_i "ns3 $rq3 expected 3"
+[ $rq3 -eq 4 ] || {
+  echo_i "ns3 $rq3 expected 4"
   ret=1
 }
 if [ $ret != 0 ]; then echo_i "failed"; fi
@@ -296,8 +296,8 @@ ret=0
   echo_i "ns2 $rr2 expected 0"
   ret=1
 }
-[ $rr3 -eq 3 ] || {
-  echo_i "ns3 $rr3 expected 3"
+[ $rr3 -eq 4 ] || {
+  echo_i "ns3 $rr3 expected 4"
   ret=1
 }
 if [ $ret != 0 ]; then echo_i "failed"; fi
