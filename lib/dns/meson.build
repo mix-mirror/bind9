@@ -81,6 +81,7 @@ dns_srcset.add(
         'callbacks.c',
         'catz.c',
         'cfgmgr.c',
+        'cfgmgr-lmdb.c',
         'client.c',
         'clientinfo.c',
         'compress.c',

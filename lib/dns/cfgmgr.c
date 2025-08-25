@@ -26,6 +26,7 @@
 #include <isc/util.h>
 
 #include "qp_p.h"
+#include "cfgmgr_p.h"
 
 /*
  * List of keys, used when deleting a cfgmgr sub-tree.
@@ -233,6 +234,11 @@ static dns_qpmethods_t cfgmgr_qpmethods = { .attach = cfgmgr_attach,
 
 void
 dns_cfgmgr_init(isc_mem_t *mctx) {
+	if (CFGMGR_LMDB_ENABLED) {
+		dns_cfgmgr_lmdb_init(mctx);
+		return;
+	}
+
 	REQUIRE(mctx != NULL);
 	REQUIRE(!cfgmgr_builtininitialized);
 	REQUIRE(!cfgmgr_userinitialized);
@@ -267,6 +273,11 @@ dns_cfgmgr_init(isc_mem_t *mctx) {
 
 void
 dns_cfgmgr_deinit(void) {
+	if (CFGMGR_LMDB_ENABLED) {
+		dns_cfgmgr_lmdb_deinit();
+		return;
+	}
+
 	REQUIRE(cfgmgr_mctx != NULL);
 	REQUIRE(cfgmgr_builtindb != NULL);
 	REQUIRE(cfgmgr_userdb != NULL);
@@ -298,6 +309,11 @@ dns_cfgmgr_deinit(void) {
 
 void
 dns_cfgmgr_mode(dns_cfgmgr_mode_t mode) {
+	if (CFGMGR_LMDB_ENABLED) {
+		dns_cfgmgr_lmdb_mode(mode);
+		return;
+	}
+
 	REQUIRE_NO_TXN();
 
 	REQUIRE(cfgmgr_builtininitialized || mode == DNS_CFGMGR_MODEBUILTIN);
@@ -336,6 +352,11 @@ cfgmgr_setdbtxn(void) {
 
 void
 dns_cfgmgr_txn(void) {
+	if (CFGMGR_LMDB_ENABLED) {
+		dns_cfgmgr_lmdb_txn();
+		return;
+	}
+
 	/*
 	 * Question: qp doc says that an isc_qpread_t must be on the stack,
 	 * though the way I understand it, it doesn't matter as soon as the
@@ -355,6 +376,11 @@ dns_cfgmgr_txn(void) {
 
 void
 dns_cfgmgr_rwtxn(void) {
+	if (CFGMGR_LMDB_ENABLED) {
+		dns_cfgmgr_lmdb_rwtxn();
+		return;
+	}
+
 	REQUIRE_NO_TXN();
 
 	if (!cfgmgr_builtininitialized) {
@@ -374,6 +400,11 @@ dns_cfgmgr_rwtxn(void) {
 
 void
 dns_cfgmgr_closetxn(void) {
+	if (CFGMGR_LMDB_ENABLED) {
+		dns_cfgmgr_lmdb_closetxn();
+		return;
+	}
+
 	REQUIRE_TXN();
 	REQUIRE(cfgmgr_txn.read.magic != 0);
 	REQUIRE(cfgmgr_txn.write == NULL);
@@ -424,6 +455,10 @@ cfgmgr_materialize(void) {
 
 isc_result_t
 dns_cfgmgr_commit(void) {
+	if (CFGMGR_LMDB_ENABLED) {
+		return dns_cfgmgr_lmdb_commit();
+	}
+
 	isc_result_t result = ISC_R_SUCCESS;
 
 	REQUIRE_RWTXN();
@@ -454,6 +489,11 @@ dns_cfgmgr_commit(void) {
 
 void
 dns_cfgmgr_rollback(void) {
+	if (CFGMGR_LMDB_ENABLED) {
+		dns_cfgmgr_lmdb_rollback();
+		return;
+	}
+
 	REQUIRE_RWTXN();
 
 	dns_qpmulti_rollback(cfgmgr_txn.db, &cfgmgr_txn.write);
@@ -509,6 +549,11 @@ cfgmgr_keyfrompath(const char *path, size_t pathlen, bool hastrailing,
 
 void
 dns_cfgmgr_delete(const char *path) {
+	if (CFGMGR_LMDB_ENABLED) {
+		dns_cfgmgr_lmdb_delete(path);
+		return;
+	}
+
 	dns_qpiter_t it;
 	isc_result_t result;
 	dns_qpkey_t key;
@@ -582,6 +627,11 @@ cfgmgr_delete_singlevalue(const char *path) {
 
 void
 dns_cfgmgr_write(const char *path, const dns_cfgmgr_val_t *value) {
+	if (CFGMGR_LMDB_ENABLED) {
+		dns_cfgmgr_lmdb_write(path, value);
+		return;
+	}
+
 	cfgmgr_qpnode_t *node = NULL;
 
 	REQUIRE_RWTXN();
@@ -735,6 +785,10 @@ cfgmgr_valuefromnode(const cfgmgr_qpnode_t *node, dns_cfgmgr_val_t *value) {
 
 isc_result_t
 dns_cfgmgr_read(const char *path, dns_cfgmgr_val_t *value) {
+	if (CFGMGR_LMDB_ENABLED) {
+		return dns_cfgmgr_lmdb_read(path, value);
+	}
+
 	isc_result_t result;
 	dns_qpkey_t key;
 	size_t klen;
@@ -781,6 +835,11 @@ cfgmgr_refkey(const void *owner, const char *path, dns_qpkey_t key,
 void
 dns_cfgmgr_setref(const void *owner, const char *path, void *ptr,
 		  void (*attach)(void *ptr), void (*detach)(void *ptr)) {
+	if (CFGMGR_LMDB_ENABLED) {
+		dns_cfgmgr_lmdb_setref(owner, path, ptr, attach, detach);
+		return;
+	}
+
 	cfgmgr_qpnode_t *node = NULL;
 	dns_cfgmgr_val_t val = {
 		.type = DNS_CFGMGR_REF,
@@ -818,6 +877,10 @@ dns_cfgmgr_setref(const void *owner, const char *path, void *ptr,
 
 isc_result_t
 dns_cfgmgr_getref(const void *owner, const char *path, void **ptr) {
+	if (CFGMGR_LMDB_ENABLED) {
+		return dns_cfgmgr_lmdb_getref(owner, path, ptr);
+	}
+
 	isc_result_t result;
 	dns_qpkey_t key;
 	size_t klen;
@@ -1002,6 +1065,12 @@ dns_cfgmgr_foreach(const char *path, size_t maxdepth, void *state,
 				    const dns_cfgmgr_val_t *value),
 		   void (*labeldown)(void *state, const char *label),
 		   void (*labelup)(void *state)) {
+	if (CFGMGR_LMDB_ENABLED) {
+		dns_cfgmgr_lmdb_foreach(path, maxdepth, state, property,
+					labeldown, labelup);
+		return;
+	}
+
 	dns_qpiter_t it;
 	void *vnode = NULL;
 	cfgmgr_foreach_ctx_t ctx = {
@@ -1055,5 +1124,8 @@ dns_cfgmgr_foreach(const char *path, size_t maxdepth, void *state,
 
 const char *
 dns_cfgmgr_lasterror(void) {
+	if (CFGMGR_LMDB_ENABLED) {
+		return dns_cfgmgr_lmdb_lasterror();
+	}
 	return cfgmgr_lasterror;
 }
