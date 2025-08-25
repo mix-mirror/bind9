@@ -1210,3 +1210,32 @@ dns_db_getzoneversion(dns_db_t *db, isc_buffer_t *b) {
 	}
 	return ISC_R_NOTIMPLEMENTED;
 }
+
+void
+dns_db_setcachesize(dns_db_t *db, size_t size) {
+	REQUIRE(db != NULL);
+
+	if (db->methods->setcachesize != NULL) {
+		return (db->methods->setcachesize)(db, size);
+	}
+}
+
+size_t
+dns_db_getcachesize(dns_db_t *db) {
+	REQUIRE(db != NULL);
+
+	if (db->methods->getcachesize != NULL) {
+		return (db->methods->getcachesize)(db);
+	}
+	return 0;
+}
+
+size_t
+dns_db_getinuse(dns_db_t *db) {
+	REQUIRE(db != NULL);
+
+	if (db->methods->getinuse != NULL) {
+		return (db->methods->getinuse)(db);
+	}
+	return 0;
+}

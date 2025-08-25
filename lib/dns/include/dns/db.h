@@ -187,6 +187,9 @@ typedef struct dns_db_methods {
 	void (*setmaxrrperset)(dns_db_t *db, uint32_t value);
 	void (*setmaxtypepername)(dns_db_t *db, uint32_t value);
 	isc_result_t (*getzoneversion)(dns_db_t *db, isc_buffer_t *b);
+	void (*setcachesize)(dns_db_t *db, size_t);
+	size_t (*getcachesize)(dns_db_t *db);
+	size_t (*getinuse)(dns_db_t *db);
 } dns_dbmethods_t;
 
 typedef isc_result_t (*dns_dbcreatefunc_t)(isc_mem_t	    *mctx,
@@ -1837,3 +1840,10 @@ dns_db_getzoneversion(dns_db_t *db, isc_buffer_t *b);
  *     ZONEVERSION
  * \li ISC_R_FAILURE other failures
  */
+
+size_t
+dns_db_getinuse(dns_db_t *db);
+size_t
+dns_db_getcachesize(dns_db_t *db);
+void
+dns_db_setcachesize(dns_db_t *db, size_t size);
