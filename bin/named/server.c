@@ -7841,11 +7841,170 @@ cleanup:
 #endif /* HAVE_LMDB */
 
 static isc_result_t
+create_views(cfg_obj_t *config, cfg_parser_t *parser,
+	     cfg_aclconfctx_t *aclconfctx, dns_viewlist_t *viewlist) {
+	isc_result_t result = ISC_R_SUCCESS;
+	const cfg_obj_t *views = NULL;
+
+	(void)cfg_map_get(config, "view", &views);
+	CFG_LIST_FOREACH(views, element) {
+		cfg_obj_t *vconfig = cfg_listelt_value(element);
+		dns_view_t *view = NULL;
+
+		result = create_view(vconfig, viewlist, &view);
+		if (result != ISC_R_SUCCESS) {
+			return result;
+		}
+		INSIST(view != NULL);
+
+		result = setup_newzones(view, config, vconfig, parser,
+					aclconfctx);
+		dns_view_detach(&view);
+
+		if (result != ISC_R_SUCCESS) {
+			return result;
+		}
+	}
+
+	/*
+	 * If there were no explicit views then we do the default
+	 * view here.
+	 */
+	if (views == NULL) {
+		dns_view_t *view = NULL;
+
+		result = create_view(NULL, viewlist, &view);
+		if (result != ISC_R_SUCCESS) {
+			return result;
+		}
+		INSIST(view != NULL);
+
+		result = setup_newzones(view, config, NULL, parser, aclconfctx);
+
+		dns_view_detach(&view);
+	}
+
+	return result;
+}
+
+static isc_result_t
+configure_views(cfg_obj_t *config, const cfg_obj_t *bindkeys,
+		cfg_aclconfctx_t *aclconfctx, dns_viewlist_t *viewlist,
+		dns_viewlist_t *builtin_viewlist, named_cachelist_t *cachelist,
+		named_server_t *server, bool first_time) {
+	isc_result_t result = ISC_R_SUCCESS;
+	const cfg_obj_t *views = NULL;
+	dns_viewlist_t tmpviewlist;
+
+	/*
+	 * Configure and freeze all explicit views.  Explicit
+	 * views that have zones were already created at parsing
+	 * time, but views with no zones must be created here.
+	 */
+	(void)cfg_map_get(config, "view", &views);
+	CFG_LIST_FOREACH(views, element) {
+		cfg_obj_t *vconfig = cfg_listelt_value(element);
+		dns_view_t *view = NULL;
+
+		view = NULL;
+		result = find_view(vconfig, viewlist, &view);
+		if (result != ISC_R_SUCCESS) {
+			return result;
+		}
+
+		result = configure_view(view, viewlist, config, vconfig,
+					cachelist, &server->cachelist,
+					&server->kasplist, bindkeys, isc_g_mctx,
+					aclconfctx, true, first_time);
+		if (result != ISC_R_SUCCESS) {
+			dns_view_detach(&view);
+			return result;
+		}
+		dns_view_freeze(view);
+		dns_view_detach(&view);
+	}
+
+	/*
+	 * Make sure we have a default view if and only if there
+	 * were no explicit views.
+	 */
+	if (views == NULL) {
+		dns_view_t *view = NULL;
+		result = find_view(NULL, viewlist, &view);
+		if (result != ISC_R_SUCCESS) {
+			return result;
+		}
+		result = configure_view(view, viewlist, config, NULL, cachelist,
+					&server->cachelist, &server->kasplist,
+					bindkeys, isc_g_mctx, aclconfctx, true,
+					first_time);
+		if (result != ISC_R_SUCCESS) {
+			dns_view_detach(&view);
+			return result;
+		}
+		dns_view_freeze(view);
+		dns_view_detach(&view);
+	}
+
+	/*
+	 * Create (or recreate) the built-in views.
+	 */
+	views = NULL;
+	RUNTIME_CHECK(cfg_map_get(named_g_defaultconfig, "view", &views) ==
+		      ISC_R_SUCCESS);
+	CFG_LIST_FOREACH(views, element) {
+		cfg_obj_t *vconfig = cfg_listelt_value(element);
+		dns_view_t *view = NULL;
+
+		result = create_view(vconfig, builtin_viewlist, &view);
+		if (result != ISC_R_SUCCESS) {
+			return result;
+		}
+
+		result = configure_view(view, viewlist, config, vconfig,
+					cachelist, &server->cachelist,
+					&server->kasplist, bindkeys, isc_g_mctx,
+					aclconfctx, false, first_time);
+		if (result != ISC_R_SUCCESS) {
+			dns_view_detach(&view);
+			return result;
+		}
+		dns_view_freeze(view);
+		dns_view_detach(&view);
+	}
+
+	/* Now combine the two viewlists into one */
+	ISC_LIST_APPENDLIST(*viewlist, *builtin_viewlist, link);
+
+	/*
+	 * Commit any dns_zone_setview() calls on all zones in the new
+	 * view.
+	 */
+	ISC_LIST_FOREACH(*viewlist, view, link) {
+		dns_view_setviewcommit(view);
+	}
+
+	/*
+	 * Save the new view list. The old "production" one will be cleared by
+	 * the caller
+	 */
+	tmpviewlist = server->viewlist;
+	server->viewlist = *viewlist;
+	*viewlist = tmpviewlist;
+
+	/* Make the view list available to each of the views */
+	ISC_LIST_FOREACH(server->viewlist, view, link) {
+		view->viewlist = &server->viewlist;
+	}
+
+	return result;
+}
+
+static isc_result_t
 apply_configuration(cfg_parser_t *configparser, cfg_obj_t *config,
 		    named_server_t *server, bool first_time) {
 	cfg_obj_t *bindkeys = NULL;
 	cfg_parser_t *bindkeys_parser = NULL;
-	const cfg_obj_t *builtin_views = NULL;
 	const cfg_obj_t *maps[3];
 	const cfg_obj_t *obj = NULL;
 	const cfg_obj_t *options = NULL;
@@ -7854,8 +8013,6 @@ apply_configuration(cfg_parser_t *configparser, cfg_obj_t *config,
 	dns_kasp_t *default_kasp = NULL;
 	dns_kasplist_t tmpkasplist, kasplist;
 	dns_keystorelist_t tmpkeystorelist, keystorelist;
-	const cfg_obj_t *views = NULL;
-	dns_viewlist_t tmpviewlist;
 	dns_viewlist_t viewlist, builtin_viewlist;
 	in_port_t listen_port, udpport_low, udpport_high;
 	int i, backlog;
@@ -8607,151 +8764,17 @@ apply_configuration(cfg_parser_t *configparser, cfg_obj_t *config,
 	server->kasplist = kasplist;
 	kasplist = tmpkasplist;
 
-	/*
-	 * Configure the views.
-	 */
-	views = NULL;
-	(void)cfg_map_get(config, "view", &views);
-
-	/*
-	 * Create the views.
-	 */
-	CFG_LIST_FOREACH(views, element) {
-		cfg_obj_t *vconfig = cfg_listelt_value(element);
-		dns_view_t *view = NULL;
-
-		result = create_view(vconfig, &viewlist, &view);
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup_viewlist;
-		}
-		INSIST(view != NULL);
-
-		result = setup_newzones(view, config, vconfig, configparser,
-					named_g_aclconfctx);
-		dns_view_detach(&view);
-
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup_viewlist;
-		}
+	result = create_views(config, configparser, named_g_aclconfctx,
+			      &viewlist);
+	if (result != ISC_R_SUCCESS) {
+		goto cleanup_viewlist;
 	}
 
-	/*
-	 * If there were no explicit views then we do the default
-	 * view here.
-	 */
-	if (views == NULL) {
-		dns_view_t *view = NULL;
-
-		result = create_view(NULL, &viewlist, &view);
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup_viewlist;
-		}
-		INSIST(view != NULL);
-
-		result = setup_newzones(view, config, NULL, configparser,
-					named_g_aclconfctx);
-
-		dns_view_detach(&view);
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup_viewlist;
-		}
-	}
-
-	/*
-	 * Configure and freeze all explicit views.  Explicit
-	 * views that have zones were already created at parsing
-	 * time, but views with no zones must be created here.
-	 */
-	CFG_LIST_FOREACH(views, element) {
-		cfg_obj_t *vconfig = cfg_listelt_value(element);
-		dns_view_t *view = NULL;
-
-		view = NULL;
-		result = find_view(vconfig, &viewlist, &view);
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup_cachelist;
-		}
-
-		result = configure_view(view, &viewlist, config, vconfig,
-					&cachelist, &server->cachelist,
-					&server->kasplist, bindkeys, isc_g_mctx,
-					named_g_aclconfctx, true, first_time);
-		if (result != ISC_R_SUCCESS) {
-			dns_view_detach(&view);
-			goto cleanup_cachelist;
-		}
-		dns_view_freeze(view);
-		dns_view_detach(&view);
-	}
-
-	/*
-	 * Make sure we have a default view if and only if there
-	 * were no explicit views.
-	 */
-	if (views == NULL) {
-		dns_view_t *view = NULL;
-		result = find_view(NULL, &viewlist, &view);
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup_cachelist;
-		}
-		result = configure_view(view, &viewlist, config, NULL,
-					&cachelist, &server->cachelist,
-					&server->kasplist, bindkeys, isc_g_mctx,
-					named_g_aclconfctx, true, first_time);
-		if (result != ISC_R_SUCCESS) {
-			dns_view_detach(&view);
-			goto cleanup_cachelist;
-		}
-		dns_view_freeze(view);
-		dns_view_detach(&view);
-	}
-
-	/*
-	 * Create (or recreate) the built-in views.
-	 */
-	builtin_views = NULL;
-	RUNTIME_CHECK(cfg_map_get(named_g_defaultconfig, "view",
-				  &builtin_views) == ISC_R_SUCCESS);
-	CFG_LIST_FOREACH(builtin_views, element) {
-		cfg_obj_t *vconfig = cfg_listelt_value(element);
-		dns_view_t *view = NULL;
-
-		result = create_view(vconfig, &builtin_viewlist, &view);
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup_cachelist;
-		}
-
-		result = configure_view(view, &viewlist, config, vconfig,
-					&cachelist, &server->cachelist,
-					&server->kasplist, bindkeys, isc_g_mctx,
-					named_g_aclconfctx, false, first_time);
-		if (result != ISC_R_SUCCESS) {
-			dns_view_detach(&view);
-			goto cleanup_cachelist;
-		}
-		dns_view_freeze(view);
-		dns_view_detach(&view);
-	}
-
-	/* Now combine the two viewlists into one */
-	ISC_LIST_APPENDLIST(viewlist, builtin_viewlist, link);
-
-	/*
-	 * Commit any dns_zone_setview() calls on all zones in the new
-	 * view.
-	 */
-	ISC_LIST_FOREACH(viewlist, view, link) {
-		dns_view_setviewcommit(view);
-	}
-
-	/* Swap our new view list with the production one. */
-	tmpviewlist = server->viewlist;
-	server->viewlist = viewlist;
-	viewlist = tmpviewlist;
-
-	/* Make the view list available to each of the views */
-	ISC_LIST_FOREACH(server->viewlist, view, link) {
-		view->viewlist = &server->viewlist;
+	result = configure_views(config, bindkeys, named_g_aclconfctx,
+				 &viewlist, &builtin_viewlist, &cachelist,
+				 server, first_time);
+	if (result != ISC_R_SUCCESS) {
+		goto cleanup_cachelist;
 	}
 
 	/* Swap our new cache list with the production one. */
