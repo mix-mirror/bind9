@@ -250,7 +250,7 @@ ret=0
 (
   cd signer/general || exit 1
   rm -f signed.zone
-  $SIGNER -f signed.zone -o example.com. test14.zone >signer.out.$n
+  $SIGNER -f signed.zone -o example.com. test14.db >signer.out.$n
   count=$(grep -c "ZONEMD.90000 1 1 " signed.zone)
   test $count -eq 1 || exit 1
   count=$(grep -c "RRSIG.ZONEMD" signed.zone)
@@ -266,11 +266,47 @@ ret=0
 (
   cd signer/general || exit 1
   rm -f signed.zone
-  $SIGNER -f signed.zone -o example.com. test15.zone >signer.out.$n
+  $SIGNER -f signed.zone -o example.com. test15.db >signer.out.$n
   count=$(grep -c "ZONEMD.90000 1 1 " signed.zone)
   test $count -eq 1 || exit 1
   count=$(grep -c "ZONEMD.90000 1 2 " signed.zone)
   test $count -eq 1 || exit 1
+  count=$(grep -c "RRSIG.ZONEMD" signed.zone)
+  test $count -eq 1 || exit 1
+  test -f signed.zone
+) || ret=1
+n=$((n + 1))
+test "$ret" -eq 0 || echo_i "failed"
+status=$((status + ret))
+
+echo_ic "check that dnssec-signzone -Z none removes ZONEMD records ($n)"
+ret=0
+(
+  cd signer/general || exit 1
+  rm -f signed.zone
+  $SIGNER -Z none -f signed.zone -o example.com. test14.db >signer.out.$n
+  count=$(grep -c "ZONEMD.90000 1 1 " signed.zone)
+  test $count -eq 1 && exit 1
+  count=$(grep -c "ZONEMD.90000 1 2 " signed.zone)
+  test $count -eq 1 && exit 1
+  count=$(grep -c "RRSIG.ZONEMD" signed.zone)
+  test $count -eq 1 && exit 1
+  test -f signed.zone
+) || ret=1
+n=$((n + 1))
+test "$ret" -eq 0 || echo_i "failed"
+status=$((status + ret))
+
+echo_ic "check that dnssec-signzone -Z none -Z - keeps one ZONEMD record ($n)"
+ret=0
+(
+  cd signer/general || exit 1
+  rm -f signed.zone
+  $SIGNER -Z none -Z - -f signed.zone -o example.com. test14.db >signer.out.$n
+  count=$(grep -c "ZONEMD.90000 1 1 " signed.zone)
+  test $count -eq 1 || exit 1
+  count=$(grep -c "ZONEMD.90000 1 2 " signed.zone)
+  test $count -eq 1 && exit 1
   count=$(grep -c "RRSIG.ZONEMD" signed.zone)
   test $count -eq 1 || exit 1
   test -f signed.zone

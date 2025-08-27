@@ -403,13 +403,17 @@ Options
 
 .. option:: -Z method
 
-   This option causes a ZONEMD record to be added to the signed zone,
-   if there wasn't a ZONEMD already present. The ``method`` parameter
-   indicates the scheme and digest type to use: valid options are
-   ``simple-sha384`` (or ``sha384``, or ``-``) for scheme SIMPLE
-   and digest type SHA384, and ``simple-sha512`` (or ``sha512``)
-   for scheme SIMPLE and digest type SHA512. Multiple ``-Z`` options
-   can be used simultaneously to add multiple ZONEMD records.
+   This option causes a ZONEMD record to be added to, or removed from,
+   the signed zone. The ``method`` parameter indicates the scheme and
+   digest type to use: valid options are ``simple-sha384`` (or
+   ``sha384``, or ``-``) for scheme SIMPLE and digest type SHA384,
+   and ``simple-sha512`` (or ``sha512``) for scheme SIMPLE and digest
+   type SHA512. ``-Z none`` removes all ZONEMD records.
+
+   Multiple ``-Z`` options can be used simultaneously, and are processed
+   in order. This allows multiple ZONEMD records to be added with a single
+   command, or (by specifying ``none`` first) existing ZONEMD records to
+   be removed and replaced.
 
 .. option:: zonefile
 

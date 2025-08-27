@@ -190,7 +190,7 @@ zsk=$($KEYGEN -a ${DEFAULT_ALGORITHM} ${zone} 2>kg1.out$n) || dumpit kg1.out$n
 ksk=$($KEYGEN -a ${DEFAULT_ALGORITHM} -fK ${zone} 2>kg2.out$n) || dumpit kg2.out$n
 cat unsigned.db $ksk.key $zsk.key >$file
 $SIGNER -P -O full -o ${zone} -f ${file} ${file} $ksk >s.out$n || dumpit s.out$n
-$SIGNER -Px -Z nonsecify -O full -o ${zone} -f ${file} ${file} $zsk >s.out$n || dumpit s.out$n
+$SIGNER -Px -U nonsecify -O full -o ${zone} -f ${file} ${file} $zsk >s.out$n || dumpit s.out$n
 echo "out-of-zone. 3600 IN NSEC ${zone}. A" >>${file}
 
 # extra NSEC record below bottom of zone
