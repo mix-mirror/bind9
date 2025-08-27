@@ -173,7 +173,9 @@ static bool set_maxttl = false;
 static dns_ttl_t maxttl = 0;
 static bool no_max_check = false;
 static const char *sync_records = "cdnskey,cds:sha-256";
+uint8_t zonemd_scheme[2] = { 0 }, zonemd_digest[2] = { 0 };
 static bool add_zonemd = false;
+static bool del_zonemd = false;
 
 #define INCSTAT(counter)                               \
 	if (printstats) {                              \
@@ -1945,7 +1947,7 @@ addnsec3param(const unsigned char *salt, size_t salt_len,
 	if (result == DNS_R_UNCHANGED) {
 		result = ISC_R_SUCCESS;
 	}
-	check_result(result, "dddnsec3param: dns_db_deleterdataset()");
+	check_result(result, "addnsec3param: dns_db_deleterdataset()");
 
 	result = dns_db_addrdataset(gdb, node, gversion, 0, &rdataset,
 				    DNS_DBADD_MERGE, NULL);
@@ -2197,6 +2199,35 @@ addzonemd(uint8_t scheme, uint8_t digest_type) {
 	}
 	check_result(result, "addnsec3param: dns_db_addrdataset()");
 	dns_db_detachnode(&node);
+}
+
+static void
+setup_zonemd(void) {
+	if (del_zonemd) {
+		/* Delete any current ZONEMD records.*/
+		isc_result_t result;
+		dns_dbnode_t *node = NULL;
+
+		result = dns_db_getoriginnode(gdb, &node);
+		check_result(result, "dns_db_getoriginnode()");
+
+		result = dns_db_deleterdataset(gdb, node, gversion,
+					       dns_rdatatype_zonemd, 0);
+		dns_db_detachnode(&node);
+
+		if (result == DNS_R_UNCHANGED) {
+			result = ISC_R_SUCCESS;
+		}
+		check_result(result, "dns_db_deleterdataset()");
+	}
+
+	if (add_zonemd) {
+		for (size_t i = 0; i < ARRAY_SIZE(zonemd_scheme); i++) {
+			if (zonemd_scheme[i] != 0) {
+				addzonemd(zonemd_scheme[i], zonemd_digest[i]);
+			}
+		}
+	}
 }
 
 static void
@@ -3346,7 +3377,6 @@ main(int argc, char *argv[]) {
 	bool set_optout = false;
 	bool set_iter = false;
 	bool nonsecify = false;
-	uint8_t zonemd_scheme[2] = { 0 }, zonemd_digest[2] = { 0 };
 
 	atomic_init(&shuttingdown, false);
 	atomic_init(&finished, false);
@@ -3642,13 +3672,17 @@ main(int argc, char *argv[]) {
 			break;
 
 		case 'Z':
-			add_zonemd = true;
-			if (strcasecmp(isc_commandline_argument,
-				       "simple-sha384") == 0 ||
-			    strcasecmp(isc_commandline_argument, "sha384") ==
-				    0 ||
-			    strcmp(isc_commandline_argument, "-") == 0)
+			if (strcasecmp(isc_commandline_argument, "none") == 0) {
+				del_zonemd = true;
+				memset(zonemd_scheme, 0, sizeof(zonemd_scheme));
+				memset(zonemd_digest, 0, sizeof(zonemd_digest));
+			} else if (strcasecmp(isc_commandline_argument,
+					      "simple-sha384") == 0 ||
+				   strcasecmp(isc_commandline_argument,
+					      "sha384") == 0 ||
+				   strcmp(isc_commandline_argument, "-") == 0)
 			{
+				add_zonemd = true;
 				for (size_t i = 0;
 				     i < ARRAY_SIZE(zonemd_scheme); i++)
 				{
@@ -3670,6 +3704,7 @@ main(int argc, char *argv[]) {
 				   strcasecmp(isc_commandline_argument,
 					      "sha512") == 0)
 			{
+				add_zonemd = true;
 				for (size_t i = 0;
 				     i < ARRAY_SIZE(zonemd_scheme); i++)
 				{
@@ -4001,13 +4036,8 @@ main(int argc, char *argv[]) {
 	/* Remove duplicates and cap TTLs at maxttl */
 	cleanup_zone();
 
-	if (add_zonemd) {
-		for (size_t i = 0; i < ARRAY_SIZE(zonemd_scheme); i++) {
-			if (zonemd_scheme[i] != 0) {
-				addzonemd(zonemd_scheme[i], zonemd_digest[i]);
-			}
-		}
-	}
+	/* Set up ZONEMD records */
+	setup_zonemd();
 
 	if (!nonsecify) {
 		if (IS_NSEC3) {
