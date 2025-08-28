@@ -873,8 +873,7 @@ get_attached_fctx(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
  *
  * 5. rctx_done():
  *    - Set up chasing of DS records if needed (rctx_chaseds()).
- *    - If the response wasn't intended for us, wait for another response
- *      from the dispatcher (rctx_next()).
+ *    - If the response wasn't intended for us, fallbackt to TCP.
  *    - If there is a problem with the responding server, set up another
  *      query to a different server (rctx_nextserver()).
  *    - If there is a problem that might be temporary or dependent on
@@ -908,8 +907,6 @@ typedef struct respctx {
 			       * zone cut? */
 	bool resend;	      /* resend this query? */
 	bool secured;	      /* message was signed or had a valid cookie */
-	bool nextitem;	      /* invalid response; keep
-			       * listening for the correct one */
 	bool truncated;	      /* response was truncated */
 	bool no_response;     /* no response was received */
 	bool negative;	      /* is this a negative response? */
@@ -1000,7 +997,7 @@ static void
 rctx_resend(respctx_t *rctx, dns_adbaddrinfo_t *addrinfo);
 
 static isc_result_t
-rctx_next(respctx_t *rctx);
+rctx_tcpretry(respctx_t *rctx);
 
 static void
 rctx_chaseds(respctx_t *rctx, dns_message_t *message,
@@ -7378,9 +7375,8 @@ resquery_response(isc_result_t eresult, isc_region_t *region, void *arg) {
 	{
 		/*
 		 * If the COOKIE is bad, assume it is an attack and
-		 * keep listening for a good answer.
+		 * fallback to TCP.
 		 */
-		rctx->nextitem = true;
 		if (isc_log_wouldlog(ISC_LOG_INFO)) {
 			char addrbuf[ISC_SOCKADDR_FORMATSIZE];
 			isc_sockaddr_format(&query->addrinfo->sockaddr, addrbuf,
@@ -7389,6 +7385,11 @@ resquery_response(isc_result_t eresult, isc_region_t *region, void *arg) {
 				      DNS_LOGMODULE_RESOLVER, ISC_LOG_INFO,
 				      "bad cookie from %s", addrbuf);
 		}
+		result = rctx_tcpretry(rctx);
+		if (result == ISC_R_COMPLETE) {
+			goto cleanup;
+		}
+		result = DNS_R_BADCOOKIE;
 		rctx_done(rctx, result);
 		goto cleanup;
 	}
@@ -7417,7 +7418,10 @@ resquery_response(isc_result_t eresult, isc_region_t *region, void *arg) {
 		result = same_question(fctx, query->rmessage);
 		if (result != ISC_R_SUCCESS) {
 			FCTXTRACE3("question section invalid", result);
-			rctx->nextitem = true;
+			isc_result_t tcpresult = rctx_tcpretry(rctx);
+			if (tcpresult == ISC_R_COMPLETE) {
+				goto cleanup;
+			}
 			rctx_done(rctx, result);
 			goto cleanup;
 		}
@@ -7575,9 +7579,13 @@ resquery_response_continue(void *arg, isc_result_t result) {
 	if (result != ISC_R_SUCCESS) {
 		FCTXTRACE3("signature check failed", result);
 		if (result == DNS_R_UNEXPECTEDTSIG ||
-		    result == DNS_R_EXPECTEDTSIG)
+		    result == DNS_R_EXPECTEDTSIG ||
+		    result == DNS_R_UNEXPECTEDID)
 		{
-			rctx->nextitem = true;
+			isc_result_t tcpresult = rctx_tcpretry(rctx);
+			if (tcpresult == ISC_R_COMPLETE) {
+				goto cleanup;
+			}
 		}
 		rctx_done(rctx, result);
 		goto cleanup;
@@ -9341,26 +9349,6 @@ rctx_resend(respctx_t *rctx, dns_adbaddrinfo_t *addrinfo) {
 }
 
 /*
- * rctx_next():
- * We got what appeared to be a response but it didn't match the
- * question or the cookie; it may have been meant for someone else, or
- * it may be a spoofing attack. Drop it and continue listening for the
- * response we wanted.
- */
-static isc_result_t
-rctx_next(respctx_t *rctx) {
-	fetchctx_t *fctx = rctx->fctx;
-	isc_result_t result;
-
-	FCTXTRACE("nextitem");
-	inc_stats(rctx->fctx->res, dns_resstatscounter_nextitem);
-	INSIST(rctx->query->dispentry != NULL);
-	dns_message_reset(rctx->query->rmessage, DNS_MESSAGE_INTENTPARSE);
-	result = dns_dispatch_getnext(rctx->query->dispentry);
-	return result;
-}
-
-/*
  * rctx_chaseds():
  * Look up the parent zone's NS records so that DS records can be
  * fetched.
@@ -9433,16 +9421,6 @@ rctx_done(respctx_t *rctx, isc_result_t result) {
 	}
 #endif /* ifdef ENABLE_AFL */
 
-	if (rctx->nextitem) {
-		REQUIRE(!rctx->next_server);
-		REQUIRE(!rctx->resend);
-
-		result = rctx_next(rctx);
-		if (result == ISC_R_SUCCESS) {
-			goto detach;
-		}
-	}
-
 	/* Cancel the query */
 	fctx_cancelquery(&query, rctx->finish, rctx->no_response, false);
 
@@ -9481,7 +9459,6 @@ rctx_done(respctx_t *rctx, isc_result_t result) {
 		fctx_failure_detach(&rctx->fctx, result);
 	}
 
-detach:
 	dns_message_detach(&message);
 }
 

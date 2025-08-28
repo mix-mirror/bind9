@@ -752,7 +752,7 @@ if ${FEATURETEST} --enable-querytrace; then
     grep 'resolving tcpalso.no-questions/A for [^:]*: empty question section, accepting it anyway as TC=1' nextpart.out.${n} >/dev/null || return 1
     grep '(tcpalso.no-questions/A): connecting via TCP' nextpart.out.${n} >/dev/null || return 1
     grep 'resolving tcpalso.no-questions/A for [^:]*: empty question section$' nextpart.out.${n} >/dev/null || return 1
-    grep '(tcpalso.no-questions/A): nextitem' nextpart.out.${n} >/dev/null || return 1
+    grep '(tcpalso.no-questions/A): cancelquery' nextpart.out.${n} >/dev/null || return 1
     return 0
   }
   retry_quiet 12 check_namedrun || ret=1
