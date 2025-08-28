@@ -503,7 +503,7 @@ configure_zone_setviewcommit(isc_result_t result, const cfg_obj_t *zconfig,
 
 static isc_result_t
 configure_newzones(dns_view_t *view, cfg_obj_t *config, cfg_obj_t *vconfig,
-		   cfg_aclconfctx_t *actx);
+		   cfg_aclconfctx_t *actx, dns_kasplist_t *kasplist);
 
 static const cfg_obj_t *
 find_maplist(const cfg_obj_t *config, const char *listname, const char *name);
@@ -3972,7 +3972,7 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	 * from the newzone file for zones that were added during previous
 	 * runs.
 	 */
-	CHECK(configure_newzones(view, config, vconfig, actx));
+	CHECK(configure_newzones(view, config, vconfig, actx, kasplist));
 
 	/*
 	 * Create Dynamically Loadable Zone driver.
@@ -7505,7 +7505,7 @@ configure_zone_setviewcommit(isc_result_t result, const cfg_obj_t *zconfig,
 
 static isc_result_t
 configure_newzones(dns_view_t *view, cfg_obj_t *config, cfg_obj_t *vconfig,
-		   cfg_aclconfctx_t *actx) {
+		   cfg_aclconfctx_t *actx, dns_kasplist_t *kasplist) {
 	isc_result_t result;
 	ns_cfgctx_t *nzctx = NULL;
 	const cfg_obj_t *zonelist = NULL;
@@ -7525,9 +7525,8 @@ configure_newzones(dns_view_t *view, cfg_obj_t *config, cfg_obj_t *vconfig,
 	CFG_LIST_FOREACH(zonelist, element) {
 		const cfg_obj_t *zconfig = cfg_listelt_value(element);
 		CHECK(configure_zone(config, zconfig, vconfig, view,
-				     &named_g_server->viewlist,
-				     &named_g_server->kasplist, actx, true,
-				     false, false, false));
+				     &named_g_server->viewlist, kasplist, actx,
+				     true, false, false, false));
 	}
 
 	result = ISC_R_SUCCESS;
@@ -7620,7 +7619,8 @@ cleanup:
 typedef isc_result_t (*newzone_cfg_cb_t)(const cfg_obj_t *zconfig,
 					 cfg_obj_t *config, cfg_obj_t *vconfig,
 					 dns_view_t *view,
-					 cfg_aclconfctx_t *actx);
+					 cfg_aclconfctx_t *actx,
+					 dns_kasplist_t *kasplist);
 
 /*%
  * For each zone found in a NZD opened by the caller, create an object
@@ -7636,7 +7636,8 @@ typedef isc_result_t (*newzone_cfg_cb_t)(const cfg_obj_t *zconfig,
 static isc_result_t
 for_all_newzone_cfgs(newzone_cfg_cb_t callback, cfg_obj_t *config,
 		     cfg_obj_t *vconfig, dns_view_t *view,
-		     cfg_aclconfctx_t *actx, MDB_txn *txn, MDB_dbi dbi) {
+		     cfg_aclconfctx_t *actx, dns_kasplist_t *kasplist,
+		     MDB_txn *txn, MDB_dbi dbi) {
 	const cfg_obj_t *zconfig, *zlist;
 	isc_result_t result = ISC_R_SUCCESS;
 	cfg_obj_t *zconfigobj = NULL;
@@ -7678,7 +7679,8 @@ for_all_newzone_cfgs(newzone_cfg_cb_t callback, cfg_obj_t *config,
 		/*
 		 * Invoke callback.
 		 */
-		result = callback(zconfig, config, vconfig, view, actx);
+		result = callback(zconfig, config, vconfig, view, actx,
+				  kasplist);
 		if (result != ISC_R_SUCCESS) {
 			break;
 		}
@@ -7705,11 +7707,11 @@ for_all_newzone_cfgs(newzone_cfg_cb_t callback, cfg_obj_t *config,
  */
 static isc_result_t
 configure_newzone(const cfg_obj_t *zconfig, cfg_obj_t *config,
-		  cfg_obj_t *vconfig, dns_view_t *view,
-		  cfg_aclconfctx_t *actx) {
-	return configure_zone(
-		config, zconfig, vconfig, view, &named_g_server->viewlist,
-		&named_g_server->kasplist, actx, true, false, false, false);
+		  cfg_obj_t *vconfig, dns_view_t *view, cfg_aclconfctx_t *actx,
+		  dns_kasplist_t *kasplist) {
+	return configure_zone(config, zconfig, vconfig, view,
+			      &named_g_server->viewlist, kasplist, actx, true,
+			      false, false, false);
 }
 
 /*%
@@ -7718,10 +7720,11 @@ configure_newzone(const cfg_obj_t *zconfig, cfg_obj_t *config,
 static isc_result_t
 configure_newzone_revert(const cfg_obj_t *zconfig, cfg_obj_t *config,
 			 cfg_obj_t *vconfig, dns_view_t *view,
-			 cfg_aclconfctx_t *actx) {
+			 cfg_aclconfctx_t *actx, dns_kasplist_t *kasplist) {
 	UNUSED(config);
 	UNUSED(vconfig);
 	UNUSED(actx);
+	UNUSED(kasplist);
 
 	configure_zone_setviewcommit(ISC_R_FAILURE, zconfig, view);
 
@@ -7730,7 +7733,7 @@ configure_newzone_revert(const cfg_obj_t *zconfig, cfg_obj_t *config,
 
 static isc_result_t
 configure_newzones(dns_view_t *view, cfg_obj_t *config, cfg_obj_t *vconfig,
-		   cfg_aclconfctx_t *actx) {
+		   cfg_aclconfctx_t *actx, dns_kasplist_t *kasplist) {
 	isc_result_t result;
 	MDB_txn *txn = NULL;
 	MDB_dbi dbi;
@@ -7754,7 +7757,7 @@ configure_newzones(dns_view_t *view, cfg_obj_t *config, cfg_obj_t *vconfig,
 		      view->new_zone_db, view->name);
 
 	result = for_all_newzone_cfgs(configure_newzone, config, vconfig, view,
-				      actx, txn, dbi);
+				      actx, kasplist, txn, dbi);
 	if (result != ISC_R_SUCCESS) {
 		/*
 		 * An error was encountered while attempting to configure zones
@@ -7765,7 +7768,8 @@ configure_newzones(dns_view_t *view, cfg_obj_t *config, cfg_obj_t *vconfig,
 		 * terms of trying to make things right.
 		 */
 		(void)for_all_newzone_cfgs(configure_newzone_revert, config,
-					   vconfig, view, actx, txn, dbi);
+					   vconfig, view, actx, kasplist, txn,
+					   dbi);
 	}
 
 	(void)nzd_close(&txn, false);
@@ -7890,8 +7894,8 @@ create_views(cfg_obj_t *config, cfg_parser_t *parser,
 static isc_result_t
 configure_views(cfg_obj_t *config, const cfg_obj_t *bindkeys,
 		cfg_aclconfctx_t *aclconfctx, dns_viewlist_t *viewlist,
-		named_cachelist_t *cachelist, named_server_t *server,
-		bool first_time) {
+		named_cachelist_t *cachelist, dns_kasplist_t *kasplist,
+		named_server_t *server, bool first_time) {
 	isc_result_t result = ISC_R_SUCCESS;
 	const cfg_obj_t *views = NULL;
 	dns_viewlist_t tmpviewlist;
@@ -7913,9 +7917,9 @@ configure_views(cfg_obj_t *config, const cfg_obj_t *bindkeys,
 		}
 
 		result = configure_view(view, viewlist, config, vconfig,
-					cachelist, &server->cachelist,
-					&server->kasplist, bindkeys, isc_g_mctx,
-					aclconfctx, true, first_time);
+					cachelist, &server->cachelist, kasplist,
+					bindkeys, isc_g_mctx, aclconfctx, true,
+					first_time);
 		if (result != ISC_R_SUCCESS) {
 			dns_view_detach(&view);
 			return result;
@@ -7935,8 +7939,8 @@ configure_views(cfg_obj_t *config, const cfg_obj_t *bindkeys,
 			return result;
 		}
 		result = configure_view(view, viewlist, config, NULL, cachelist,
-					&server->cachelist, &server->kasplist,
-					bindkeys, isc_g_mctx, aclconfctx, true,
+					&server->cachelist, kasplist, bindkeys,
+					isc_g_mctx, aclconfctx, true,
 					first_time);
 		if (result != ISC_R_SUCCESS) {
 			dns_view_detach(&view);
@@ -7962,9 +7966,9 @@ configure_views(cfg_obj_t *config, const cfg_obj_t *bindkeys,
 		}
 
 		result = configure_view(view, viewlist, config, vconfig,
-					cachelist, &server->cachelist,
-					&server->kasplist, bindkeys, isc_g_mctx,
-					aclconfctx, false, first_time);
+					cachelist, &server->cachelist, kasplist,
+					bindkeys, isc_g_mctx, aclconfctx, false,
+					first_time);
 		if (result != ISC_R_SUCCESS) {
 			dns_view_detach(&view);
 			return result;
@@ -7998,6 +8002,64 @@ configure_views(cfg_obj_t *config, const cfg_obj_t *bindkeys,
 }
 
 static isc_result_t
+configure_kasplist(const cfg_obj_t *config, dns_kasplist_t *kasplist,
+		   dns_keystorelist_t *keystorelist) {
+	isc_result_t result = ISC_R_SUCCESS;
+	dns_kasp_t *default_kasp = NULL;
+	const cfg_obj_t *kasps = NULL;
+
+	/*
+	 * Create the built-in kasp policies ("default", "insecure").
+	 */
+	(void)cfg_map_get(named_g_defaultconfig, "dnssec-policy", &kasps);
+	CFG_LIST_FOREACH(kasps, element) {
+		cfg_obj_t *kconfig = cfg_listelt_value(element);
+		dns_kasp_t *kasp = NULL;
+
+		result = cfg_kasp_fromconfig(kconfig, default_kasp, true,
+					     isc_g_mctx, keystorelist, kasplist,
+					     &kasp);
+		if (result != ISC_R_SUCCESS) {
+			return result;
+		}
+		INSIST(kasp != NULL);
+		dns_kasp_freeze(kasp);
+
+		/* Insist that the first built-in policy is the default one. */
+		if (default_kasp == NULL) {
+			INSIST(strcmp(dns_kasp_getname(kasp), "default") == 0);
+			dns_kasp_attach(kasp, &default_kasp);
+		}
+
+		dns_kasp_detach(&kasp);
+	}
+	INSIST(default_kasp != NULL);
+
+	/*
+	 * Create the DNSSEC key and signing policies (KASP).
+	 */
+	kasps = NULL;
+	(void)cfg_map_get(config, "dnssec-policy", &kasps);
+	CFG_LIST_FOREACH(kasps, element) {
+		cfg_obj_t *kconfig = cfg_listelt_value(element);
+		dns_kasp_t *kasp = NULL;
+
+		result = cfg_kasp_fromconfig(kconfig, default_kasp, true,
+					     isc_g_mctx, keystorelist, kasplist,
+					     &kasp);
+		if (result != ISC_R_SUCCESS) {
+			return result;
+		}
+		INSIST(kasp != NULL);
+		dns_kasp_freeze(kasp);
+		dns_kasp_detach(&kasp);
+	}
+	dns_kasp_detach(&default_kasp);
+
+	return result;
+}
+
+static isc_result_t
 apply_configuration(cfg_parser_t *configparser, cfg_obj_t *config,
 		    named_server_t *server, bool first_time) {
 	cfg_obj_t *bindkeys = NULL;
@@ -8005,9 +8067,7 @@ apply_configuration(cfg_parser_t *configparser, cfg_obj_t *config,
 	const cfg_obj_t *maps[3];
 	const cfg_obj_t *obj = NULL;
 	const cfg_obj_t *options = NULL;
-	const cfg_obj_t *kasps = NULL;
 	const cfg_obj_t *keystores = NULL;
-	dns_kasp_t *default_kasp = NULL;
 	dns_kasplist_t tmpkasplist, kasplist;
 	dns_keystorelist_t tmpkeystorelist, keystorelist;
 	dns_viewlist_t viewlist;
@@ -8704,61 +8764,10 @@ apply_configuration(cfg_parser_t *configparser, cfg_obj_t *config,
 		}
 	}
 
-	/*
-	 * Create the built-in kasp policies ("default", "insecure").
-	 */
-	kasps = NULL;
-	(void)cfg_map_get(named_g_defaultconfig, "dnssec-policy", &kasps);
-	CFG_LIST_FOREACH(kasps, element) {
-		cfg_obj_t *kconfig = cfg_listelt_value(element);
-		dns_kasp_t *kasp = NULL;
-
-		result = cfg_kasp_fromconfig(kconfig, default_kasp, true,
-					     isc_g_mctx, &keystorelist,
-					     &kasplist, &kasp);
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup_kasplist;
-		}
-		INSIST(kasp != NULL);
-		dns_kasp_freeze(kasp);
-
-		/* Insist that the first built-in policy is the default one. */
-		if (default_kasp == NULL) {
-			INSIST(strcmp(dns_kasp_getname(kasp), "default") == 0);
-			dns_kasp_attach(kasp, &default_kasp);
-		}
-
-		dns_kasp_detach(&kasp);
+	result = configure_kasplist(config, &kasplist, &keystorelist);
+	if (result != ISC_R_SUCCESS) {
+		goto cleanup_kasplist;
 	}
-	INSIST(default_kasp != NULL);
-
-	/*
-	 * Create the DNSSEC key and signing policies (KASP).
-	 */
-	kasps = NULL;
-	(void)cfg_map_get(config, "dnssec-policy", &kasps);
-	CFG_LIST_FOREACH(kasps, element) {
-		cfg_obj_t *kconfig = cfg_listelt_value(element);
-		dns_kasp_t *kasp = NULL;
-
-		result = cfg_kasp_fromconfig(kconfig, default_kasp, true,
-					     isc_g_mctx, &keystorelist,
-					     &kasplist, &kasp);
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup_kasplist;
-		}
-		INSIST(kasp != NULL);
-		dns_kasp_freeze(kasp);
-		dns_kasp_detach(&kasp);
-	}
-	dns_kasp_detach(&default_kasp);
-
-	/*
-	 * Save kasp list.
-	 */
-	tmpkasplist = server->kasplist;
-	server->kasplist = kasplist;
-	kasplist = tmpkasplist;
 
 	result = create_views(config, configparser, named_g_aclconfctx,
 			      &viewlist);
@@ -8767,7 +8776,8 @@ apply_configuration(cfg_parser_t *configparser, cfg_obj_t *config,
 	}
 
 	result = configure_views(config, bindkeys, named_g_aclconfctx,
-				 &viewlist, &cachelist, server, first_time);
+				 &viewlist, &cachelist, &kasplist, server,
+				 first_time);
 	if (result != ISC_R_SUCCESS) {
 		goto cleanup_cachelist;
 	}
@@ -9147,6 +9157,14 @@ apply_configuration(cfg_parser_t *configparser, cfg_obj_t *config,
 		dns_zonemgr_setkeystores(server->zonemgr,
 					 &server->keystorelist);
 	}
+
+	/*
+	 * Save the new kasp list with the old one (so the new one will be used
+	 * and the old one will be cleared).
+	 */
+	tmpkasplist = server->kasplist;
+	server->kasplist = kasplist;
+	kasplist = tmpkasplist;
 
 	(void)named_server_loadnta(server);
 
