@@ -77,6 +77,7 @@ foreach unit : isc_test
         build_by_default: false,
         export_dynamic: true,
         install: false,
+        sources: default_sanitize_options,
         dependencies: [
             libisc_dep,
             libtest_dep,
@@ -96,6 +97,7 @@ foreach unit : isc_test
     test(
         unit,
         test_bin,
+        env: test_env,
         suite: suites,
         timeout: 300,
         workdir: meson.current_source_dir(),

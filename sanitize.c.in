@@ -1,0 +1,93 @@
+/*
+ * Copyright (C) Internet Systems Consortium, Inc. ("ISC")
+ *
+ * SPDX-License-Identifier: MPL-2.0
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, you can obtain one at https://mozilla.org/MPL/2.0/.
+ *
+ * See the COPYRIGHT file distributed with this work for additional
+ * information regarding copyright ownership.
+ */
+
+/*
+ * We do not use `__SANITIZE_XXXX__` or `__has_feature` for the following
+ * reasons:
+ *
+ * - `__SANITIZE_UNDEFINED__` doesn't exist at all (currently GCC 15 & clang 21)
+ * - Other `__SANITIZE_XXXX__` macros don't exist in clang <23 [1]
+ * - `__has_feature` doesn't exist in GCC <14 [2]
+ *
+ * [1]: https://github.com/llvm/llvm-project/pull/153888
+ * [2]: https://gcc.gnu.org/gcc-14/changes.html#c-family
+ */
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-prototypes"
+
+#if @BIND_ASAN_ENABLED@
+__attribute__((no_sanitize("address", "leak", "thread", "undefined")))
+const char *
+__asan_default_options(void) {
+	return "@BIND_ASAN_OPTIONS@";
+}
+#endif
+
+/* ASAN will usually also enable LSAN */
+#if @BIND_ASAN_ENABLED@ || @BIND_LSAN_ENABLED@
+__attribute__((no_sanitize("address", "leak", "thread", "undefined")))
+const char *
+__lsan_default_suppressions(void) {
+    return
+        /* These are known leaks in libp11 */
+        "leak:BN_MONT_CTX_new\n"
+        "leak:C_LoadModule\n"
+        "leak:ctx_new\n"
+        "leak:ctx_try_load_object\n"
+        "leak:dlfcn_name_converter\n"
+        "leak:EC_GROUP_set_seed\n"
+        "leak:CRYPTO_strdup\n"
+        "leak:CRYPTO_zalloc\n"
+        "leak:pkcs11_check_token\n"
+        "leak:pkcs11_CTX_new\n"
+        "leak:pkcs11_enumerate_slots\n"
+        "leak:pkcs11_getattr_alloc\n"
+        "leak:pkcs11_init_key\n"
+        "leak:pkcs11_strdup\n"
+        "leak:xmlGetGlobalState\n"
+        "leak:xmlNewGlobalState\n"
+        "leak:__xmlDefaultBufferSize\n";
+}
+#endif
+
+#if @BIND_TSAN_ENABLED@
+__attribute__((no_sanitize("address", "leak", "thread", "undefined")))
+const char *
+__tsan_default_options(void) {
+	return "@BIND_TSAN_OPTIONS@";
+}
+
+__attribute__((no_sanitize("address", "leak", "thread", "undefined")))
+const char *
+__tsan_default_suppressions(void) {
+	return
+		/* Uninstrumented libraries */
+		"called_from_lib:libfstrm.so\n"
+		"race:dummyrpz\n"
+		/* FreeBSD false-positive, see GL#5267 */
+		"race:libexec/rtld-elf/rtld_malloc.c\n"
+		/* FreeBSD false-positive, see GL#5266 */
+		"deadlock:add_trace_entry";
+}
+#endif
+
+#if @BIND_UBSAN_ENABLED@
+__attribute__((no_sanitize("address", "leak", "thread", "undefined")))
+const char *
+__ubsan_default_options(void) {
+	return "@BIND_UBSAN_OPTIONS@";
+}
+#endif
+
+#pragma GCC diagnostic pop

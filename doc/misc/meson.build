@@ -15,6 +15,7 @@ cfg_test = executable(
     'cfg_test',
     files('cfg_test.c'),
     install: false,
+    sources: default_sanitize_options,
     dependencies: [
         libisc_dep,
         libisccfg_dep,

@@ -19,6 +19,7 @@ foreach unit : [
         build_by_default: false,
         export_dynamic: true,
         install: false,
+        sources: default_sanitize_options,
         dependencies: [
             libisc_dep,
             libisccfg_dep,
@@ -31,6 +32,7 @@ foreach unit : [
     test(
         unit,
         test_bin,
+        env: test_env,
         suite: 'isccfg',
         timeout: 300,
         workdir: meson.current_source_dir(),

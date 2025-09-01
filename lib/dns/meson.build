@@ -23,6 +23,7 @@ dns_gen_headers = []
 dns_header_gen = executable(
     'gen',
     files('gen.c'),
+    sources: default_sanitize_options,
     install: false,
     native: true,
 )
