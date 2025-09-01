@@ -130,7 +130,9 @@ def test_csk_roll1_step2(tld, alg, size, ns3):
         # Force step.
         with ns3.watch_log_from_here() as watcher:
             ns3.rndc(f"dnssec -step {zone}")
-            watcher.wait_for_line(f"keymgr: {zone} done")
+            watcher.wait_for_line(
+                f"zone {zone}/IN (signed): zone_rekey done: key {tag}/ECDSAP256SHA256"
+            )
 
     step = {
         # Successor CSK is prepublished (signs DNSKEY RRset, but not yet
@@ -188,7 +190,9 @@ def test_csk_roll1_step3(tld, alg, size, ns3):
         # Force step.
         with ns3.watch_log_from_here() as watcher:
             ns3.rndc(f"dnssec -step {zone}")
-            watcher.wait_for_line(f"keymgr: {zone} done")
+            watcher.wait_for_line(
+                f"zone {zone}/IN (signed): zone_rekey done: key {tag}/ECDSAP256SHA256"
+            )
 
         # Check logs.
         tag = keys[0].key.tag
@@ -200,7 +204,9 @@ def test_csk_roll1_step3(tld, alg, size, ns3):
             )
             with ns3.watch_log_from_here() as watcher:
                 ns3.rndc(f"dnssec -step {zone}")
-                watcher.wait_for_line(f"keymgr: {zone} done")
+                watcher.wait_for_line(
+                    f"zone {zone}/IN (signed): zone_rekey done: key {tag}/ECDSAP256SHA256"
+                )
 
     step = {
         # Successor CSK becomes omnipresent, meaning we can start signing
@@ -272,9 +278,12 @@ def test_csk_roll1_step4(tld, alg, size, ns3):
         ns3.log.expect(msg)
 
         # Force step.
+        tag = keys[1].key.tag
         with ns3.watch_log_from_here() as watcher:
             ns3.rndc(f"dnssec -step {zone}")
-            watcher.wait_for_line(f"keymgr: {zone} done")
+            watcher.wait_for_line(
+                f"zone {zone}/IN (signed): zone_rekey done: key {tag}/ECDSAP256SHA256"
+            )
 
     step = {
         "zone": zone,

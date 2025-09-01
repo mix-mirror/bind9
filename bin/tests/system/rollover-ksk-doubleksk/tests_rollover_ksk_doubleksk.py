@@ -115,7 +115,9 @@ def test_ksk_doubleksk_step2(tld, alg, size, ns3):
         # Force step.
         with ns3.watch_log_from_here() as watcher:
             ns3.rndc(f"dnssec -step {zone}")
-            watcher.wait_for_line(f"keymgr: {zone} done")
+            watcher.wait_for_line(
+                f"zone {zone}/IN (signed): zone_rekey done: key {tag}/ECDSAP256SHA256"
+            )
 
     step = {
         # Successor KSK is prepublished (and signs DNSKEY RRset).
@@ -174,7 +176,9 @@ def test_ksk_doubleksk_step3(tld, alg, size, ns3):
         # Force step.
         with ns3.watch_log_from_here() as watcher:
             ns3.rndc(f"dnssec -step {zone}")
-            watcher.wait_for_line(f"keymgr: {zone} done")
+            watcher.wait_for_line(
+                f"zone {zone}/IN (signed): zone_rekey done: key {tag}/ECDSAP256SHA256"
+            )
 
         # Check logs.
         tag = keys[1].key.tag
@@ -186,7 +190,9 @@ def test_ksk_doubleksk_step3(tld, alg, size, ns3):
             )
             with ns3.watch_log_from_here() as watcher:
                 ns3.rndc(f"dnssec -step {zone}")
-                watcher.wait_for_line(f"keymgr: {zone} done")
+                watcher.wait_for_line(
+                    f"zone {zone}/IN (signed): zone_rekey done: key {tag}/ECDSAP256SHA256"
+                )
 
     step = {
         # The successor DNSKEY RRset has become omnipresent.  The
@@ -250,9 +256,12 @@ def test_ksk_doubleksk_step4(tld, alg, size, ns3):
         ns3.log.expect(msg2)
 
         # Force step.
+        tag = keys[2].key.tag
         with ns3.watch_log_from_here() as watcher:
             ns3.rndc(f"dnssec -step {zone}")
-            watcher.wait_for_line(f"keymgr: {zone} done")
+            watcher.wait_for_line(
+                f"zone {zone}/IN (signed): zone_rekey done: key {tag}/ECDSAP256SHA256"
+            )
 
     step = {
         # The predecessor DNSKEY may be removed, the successor DS is

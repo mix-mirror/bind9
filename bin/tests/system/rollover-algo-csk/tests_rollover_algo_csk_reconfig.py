@@ -88,7 +88,9 @@ def test_algoroll_csk_reconfig_step1(tld, ns6, alg, size):
         # Force step.
         with ns6.watch_log_from_here() as watcher:
             ns6.rndc(f"dnssec -step {zone}")
-            watcher.wait_for_line(f"keymgr: {zone} done")
+            watcher.wait_for_line(
+                f"zone {zone}/IN (signed): zone_rekey done: key {tag}/RSASHA256"
+            )
 
     # Check state after step.
     step = {
@@ -178,7 +180,9 @@ def test_algoroll_csk_reconfig_step3(tld, ns6, alg, size):
         # Force step.
         with ns6.watch_log_from_here() as watcher:
             ns6.rndc(f"dnssec -step {zone}")
-            watcher.wait_for_line(f"keymgr: {zone} done")
+            watcher.wait_for_line(
+                f"zone {zone}/IN (signed): zone_rekey done: key {tag}/ECDSAP256SHA256"
+            )
 
         # Check logs.
         tag = keys[0].key.tag
@@ -188,9 +192,12 @@ def test_algoroll_csk_reconfig_step3(tld, ns6, alg, size):
             isctest.log.debug(
                 f"keymgr-manual-mode blocking transition CSK {zone}/RSASHA256/{tag} type DS state OMNIPRESENT to state UNRETENTIVE, step again"
             )
+            tag = keys[1].key.tag
             with ns6.watch_log_from_here() as watcher:
                 ns6.rndc(f"dnssec -step {zone}")
-                watcher.wait_for_line(f"keymgr: {zone} done")
+                watcher.wait_for_line(
+                    f"zone {zone}/IN (signed): zone_rekey done: key {tag}/ECDSAP256SHA256"
+                )
 
     step = {
         "zone": zone,
@@ -240,9 +247,12 @@ def test_algoroll_csk_reconfig_step4(tld, ns6, alg, size):
         ns6.log.expect(msg)
 
         # Force step.
+        tag = keys[1].key.tag
         with ns6.watch_log_from_here() as watcher:
             ns6.rndc(f"dnssec -step {zone}")
-            watcher.wait_for_line(f"keymgr: {zone} done")
+            watcher.wait_for_line(
+                f"zone {zone}/IN (signed): zone_rekey done: key {tag}/ECDSAP256SHA256"
+            )
 
     step = {
         "zone": zone,

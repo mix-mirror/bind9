@@ -122,7 +122,9 @@ def test_zsk_prepub_step2(tld, alg, size, ns3):
         # Force step.
         with ns3.watch_log_from_here() as watcher:
             ns3.rndc(f"dnssec -step {zone}")
-            watcher.wait_for_line(f"keymgr: {zone} done")
+            watcher.wait_for_line(
+                f"zone {zone}/IN (signed): zone_rekey done: key {tag}/ECDSAP256SHA256"
+            )
 
     step = {
         # it is time to pre-publish the successor zsk.
@@ -179,7 +181,9 @@ def test_zsk_prepub_step3(tld, alg, size, ns3):
         # Force step.
         with ns3.watch_log_from_here() as watcher:
             ns3.rndc(f"dnssec -step {zone}")
-            watcher.wait_for_line(f"keymgr: {zone} done")
+            watcher.wait_for_line(
+                f"zone {zone}/IN (signed): zone_rekey done: key {tag}/ECDSAP256SHA256"
+            )
 
         # Check logs.
         tag = keys[1].key.tag
@@ -191,7 +195,9 @@ def test_zsk_prepub_step3(tld, alg, size, ns3):
             )
             with ns3.watch_log_from_here() as watcher:
                 ns3.rndc(f"dnssec -step {zone}")
-                watcher.wait_for_line(f"keymgr: {zone} done")
+                watcher.wait_for_line(
+                    f"zone {zone}/IN (signed): zone_rekey done: key {tag}/ECDSAP256SHA256"
+                )
 
     step = {
         # predecessor zsk is no longer actively signing. successor zsk is
@@ -251,9 +257,12 @@ def test_zsk_prepub_step4(tld, alg, size, ns3):
         ns3.log.expect(msg)
 
         # Force step.
+        tag = keys[2].key.tag
         with ns3.watch_log_from_here() as watcher:
             ns3.rndc(f"dnssec -step {zone}")
-            watcher.wait_for_line(f"keymgr: {zone} done")
+            watcher.wait_for_line(
+                f"zone {zone}/IN (signed): zone_rekey done: key {tag}/ECDSAP256SHA256"
+            )
 
     step = {
         # predecessor zsk is no longer needed. all rrsets are signed with

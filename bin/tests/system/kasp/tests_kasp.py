@@ -1753,7 +1753,9 @@ def test_kasp_manual_mode(ns3):
     # Force step.
     with ns3.watch_log_from_here() as watcher:
         ns3.rndc(f"dnssec -step {zone}", log=False)
-        watcher.wait_for_line(f"keymgr: {zone} done")
+        watcher.wait_for_line(
+            f"zone {zone}/IN (signed): zone_rekey done: key {tag}/ECDSAP256SHA256"
+        )
 
     # Check keys again, make sure the rollover has started.
     keyprops = [

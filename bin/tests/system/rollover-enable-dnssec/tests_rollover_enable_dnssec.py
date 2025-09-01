@@ -160,7 +160,9 @@ def test_rollover_enable_dnssec_step3(tld, alg, size, ns3):
         # Force step.
         with ns3.watch_log_from_here() as watcher:
             ns3.rndc(f"dnssec -step {zone}")
-            watcher.wait_for_line(f"keymgr: {zone} done")
+            watcher.wait_for_line(
+                f"zone {zone}/IN (signed): zone_rekey done: key {tag}/ECDSAP256SHA256"
+            )
 
     step = {
         "zone": zone,
