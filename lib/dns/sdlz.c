@@ -619,14 +619,16 @@ getnodedata(dns_db_t *db, const dns_name_t *name, bool create,
 }
 
 static isc_result_t
-findnodeext(dns_db_t *db, const dns_name_t *name, bool create,
+findnodeext(dns_db_t *db, dns_dbversion_t *version ISC_ATTR_UNUSED,
+	    const dns_name_t *name, bool create,
 	    dns_clientinfomethods_t *methods, dns_clientinfo_t *clientinfo,
 	    dns_dbnode_t **nodep DNS__DB_FLARG) {
 	return getnodedata(db, name, create, 0, methods, clientinfo, nodep);
 }
 
 static isc_result_t
-findnode(dns_db_t *db, const dns_name_t *name, bool create,
+findnode(dns_db_t *db, dns_dbversion_t *version ISC_ATTR_UNUSED,
+	 const dns_name_t *name, bool create,
 	 dns_dbnode_t **nodep DNS__DB_FLARG) {
 	return getnodedata(db, name, create, 0, NULL, NULL, nodep);
 }

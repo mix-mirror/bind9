@@ -628,7 +628,7 @@ configure_staticstub(const cfg_obj_t *zconfig, const cfg_obj_t *tconfig,
 
 	dns_name_init(&apexname);
 	dns_name_clone(dns_zone_getorigin(zone), &apexname);
-	CHECK(dns_db_findnode(db, &apexname, false, &apexnode));
+	CHECK(dns_db_findnode(db, dbversion, &apexname, false, &apexnode));
 
 	/* Add NS RRset */
 	dns_rdatalist_tordataset(&rdatalist_ns, &rdataset);

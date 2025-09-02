@@ -414,26 +414,8 @@ dns__db_closeversion(dns_db_t *db, dns_dbversion_t **versionp,
  ***/
 
 isc_result_t
-dns__db_findnode(dns_db_t *db, const dns_name_t *name, bool create,
-		 dns_dbnode_t **nodep DNS__DB_FLARG) {
-	/*
-	 * Find the node with name 'name'.
-	 */
-
-	REQUIRE(DNS_DB_VALID(db));
-	REQUIRE(nodep != NULL && *nodep == NULL);
-
-	if (db->methods->findnode != NULL) {
-		return (db->methods->findnode)(db, name, create,
-					       nodep DNS__DB_FLARG_PASS);
-	} else {
-		return (db->methods->findnodeext)(db, name, create, NULL, NULL,
-						  nodep DNS__DB_FLARG_PASS);
-	}
-}
-
-isc_result_t
-dns__db_findnodeext(dns_db_t *db, const dns_name_t *name, bool create,
+dns__db_findnodeext(dns_db_t *db, dns_dbversion_t *version,
+		    const dns_name_t *name, bool create,
 		    dns_clientinfomethods_t *methods,
 		    dns_clientinfo_t *clientinfo,
 		    dns_dbnode_t **nodep DNS__DB_FLARG) {
@@ -446,17 +428,18 @@ dns__db_findnodeext(dns_db_t *db, const dns_name_t *name, bool create,
 	REQUIRE(nodep != NULL && *nodep == NULL);
 
 	if (db->methods->findnodeext != NULL) {
-		return (db->methods->findnodeext)(db, name, create, methods,
-						  clientinfo,
+		return (db->methods->findnodeext)(db, version, name, create,
+						  methods, clientinfo,
 						  nodep DNS__DB_FLARG_PASS);
 	} else {
-		return (db->methods->findnode)(db, name, create,
+		return (db->methods->findnode)(db, version, name, create,
 					       nodep DNS__DB_FLARG_PASS);
 	}
 }
 
 isc_result_t
-dns__db_findnsec3node(dns_db_t *db, const dns_name_t *name, bool create,
+dns__db_findnsec3node(dns_db_t *db, dns_dbversion_t *version,
+		      const dns_name_t *name, bool create,
 		      dns_dbnode_t **nodep DNS__DB_FLARG) {
 	/*
 	 * Find the node with name 'name'.
@@ -465,7 +448,7 @@ dns__db_findnsec3node(dns_db_t *db, const dns_name_t *name, bool create,
 	REQUIRE(DNS_DB_VALID(db));
 	REQUIRE(nodep != NULL && *nodep == NULL);
 
-	return (db->methods->findnsec3node)(db, name, create,
+	return (db->methods->findnsec3node)(db, version, name, create,
 					    nodep DNS__DB_FLARG_PASS);
 }
 
@@ -745,7 +728,7 @@ dns__db_deleterdataset(dns_db_t *db, dns_dbnode_t *node,
 }
 
 isc_result_t
-dns_db_getsoaserial(dns_db_t *db, dns_dbversion_t *ver, uint32_t *serialp) {
+dns_db_getsoaserial(dns_db_t *db, dns_dbversion_t *version, uint32_t *serialp) {
 	isc_result_t result;
 	dns_dbnode_t *node = NULL;
 	dns_rdataset_t rdataset;
@@ -754,13 +737,13 @@ dns_db_getsoaserial(dns_db_t *db, dns_dbversion_t *ver, uint32_t *serialp) {
 
 	REQUIRE(dns_db_iszone(db) || dns_db_isstub(db));
 
-	result = dns_db_findnode(db, dns_db_origin(db), false, &node);
+	result = dns_db_findnode(db, version, dns_db_origin(db), false, &node);
 	if (result != ISC_R_SUCCESS) {
 		return result;
 	}
 
 	dns_rdataset_init(&rdataset);
-	result = dns_db_findrdataset(db, node, ver, dns_rdatatype_soa, 0,
+	result = dns_db_findrdataset(db, node, version, dns_rdatatype_soa, 0,
 				     (isc_stdtime_t)0, &rdataset, NULL);
 	if (result != ISC_R_SUCCESS) {
 		goto freenode;

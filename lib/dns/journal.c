@@ -119,7 +119,7 @@ encode_uint32(uint32_t val, unsigned char *p) {
 }
 
 isc_result_t
-dns_db_createsoatuple(dns_db_t *db, dns_dbversion_t *ver, isc_mem_t *mctx,
+dns_db_createsoatuple(dns_db_t *db, dns_dbversion_t *version, isc_mem_t *mctx,
 		      dns_diffop_t op, dns_difftuple_t **tp) {
 	isc_result_t result;
 	dns_dbnode_t *node;
@@ -132,13 +132,13 @@ dns_db_createsoatuple(dns_db_t *db, dns_dbversion_t *ver, isc_mem_t *mctx,
 	dns_name_copy(dns_db_origin(db), zonename);
 
 	node = NULL;
-	result = dns_db_findnode(db, zonename, false, &node);
+	result = dns_db_findnode(db, version, zonename, false, &node);
 	if (result != ISC_R_SUCCESS) {
 		goto nonode;
 	}
 
 	dns_rdataset_init(&rdataset);
-	result = dns_db_findrdataset(db, node, ver, dns_rdatatype_soa, 0,
+	result = dns_db_findrdataset(db, node, version, dns_rdatatype_soa, 0,
 				     (isc_stdtime_t)0, &rdataset, NULL);
 	if (result != ISC_R_SUCCESS) {
 		goto freenode;

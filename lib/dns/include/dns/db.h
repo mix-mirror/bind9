@@ -100,8 +100,8 @@ typedef struct dns_db_methods {
 			      dns_dbversion_t **targetp);
 	void (*closeversion)(dns_db_t *db, dns_dbversion_t **versionp,
 			     bool commit DNS__DB_FLARG);
-	isc_result_t (*findnode)(dns_db_t *db, const dns_name_t *name,
-				 bool		      create,
+	isc_result_t (*findnode)(dns_db_t *db, dns_dbversion_t *version,
+				 const dns_name_t *name, bool create,
 				 dns_dbnode_t **nodep DNS__DB_FLARG);
 	isc_result_t (*find)(dns_db_t *db, const dns_name_t *name,
 			     dns_dbversion_t *version, dns_rdatatype_t type,
@@ -151,8 +151,8 @@ typedef struct dns_db_methods {
 					   uint16_t	 *iterations,
 					   unsigned char *salt,
 					   size_t	 *salt_len);
-	isc_result_t (*findnsec3node)(dns_db_t *db, const dns_name_t *name,
-				      bool		   create,
+	isc_result_t (*findnsec3node)(dns_db_t *db, dns_dbversion_t *version,
+				      const dns_name_t *name, bool create,
 				      dns_dbnode_t **nodep DNS__DB_FLARG);
 	isc_result_t (*setsigningtime)(dns_db_t *db, dns_rdataset_t *rdataset,
 				       isc_stdtime_t resign);
@@ -160,8 +160,8 @@ typedef struct dns_db_methods {
 				       dns_name_t     *name,
 				       dns_typepair_t *typepair);
 	dns_stats_t *(*getrrsetstats)(dns_db_t *db);
-	isc_result_t (*findnodeext)(dns_db_t *db, const dns_name_t *name,
-				    bool		     create,
+	isc_result_t (*findnodeext)(dns_db_t *db, dns_dbversion_t *version,
+				    const dns_name_t *name, bool create,
 				    dns_clientinfomethods_t *methods,
 				    dns_clientinfo_t	    *clientinfo,
 				    dns_dbnode_t **nodep     DNS__DB_FLARG);
@@ -695,17 +695,17 @@ dns__db_closeversion(dns_db_t *db, dns_dbversion_t **versionp,
  *** Node Methods
  ***/
 
-#define dns_db_findnode(db, name, create, nodep) \
-	dns__db_findnode(db, name, create, nodep DNS__DB_FILELINE)
-isc_result_t
-dns__db_findnode(dns_db_t *db, const dns_name_t *name, bool create,
-		 dns_dbnode_t **nodep DNS__DB_FLARG);
+#define dns_db_findnode(db, version, name, create, nodep)          \
+	dns__db_findnodeext(db, version, name, create, NULL, NULL, \
+			    nodep DNS__DB_FILELINE)
 
-#define dns_db_findnodeext(db, name, create, methods, clientinfo, nodep) \
-	dns__db_findnodeext(db, name, create, methods, clientinfo,       \
+#define dns_db_findnodeext(db, version, name, create, methods, clientinfo,  \
+			   nodep)                                           \
+	dns__db_findnodeext(db, version, name, create, methods, clientinfo, \
 			    nodep DNS__DB_FILELINE)
 isc_result_t
-dns__db_findnodeext(dns_db_t *db, const dns_name_t *name, bool create,
+dns__db_findnodeext(dns_db_t *db, dns_dbversion_t *version,
+		    const dns_name_t *name, bool create,
 		    dns_clientinfomethods_t *methods,
 		    dns_clientinfo_t	    *clientinfo,
 		    dns_dbnode_t **nodep     DNS__DB_FLARG);
@@ -1551,10 +1551,11 @@ dns_db_getsize(dns_db_t *db, dns_dbversion_t *version, uint64_t *records,
  * \li	#ISC_R_NOTIMPLEMENTED
  */
 
-#define dns_db_findnsec3node(db, name, create, nodep) \
-	dns__db_findnsec3node(db, name, create, nodep DNS__DB_FILELINE)
+#define dns_db_findnsec3node(db, version, name, create, nodep) \
+	dns__db_findnsec3node(db, version, name, create, nodep DNS__DB_FILELINE)
 isc_result_t
-dns__db_findnsec3node(dns_db_t *db, const dns_name_t *name, bool create,
+dns__db_findnsec3node(dns_db_t *db, dns_dbversion_t *version,
+		      const dns_name_t *name, bool create,
 		      dns_dbnode_t **nodep DNS__DB_FLARG);
 /*%<
  * Find the NSEC3 node with name 'name'.

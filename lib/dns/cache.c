@@ -400,7 +400,7 @@ cleartree(dns_db_t *db, const dns_name_t *name) {
 	 * Create the node if it doesn't exist so dns_dbiterator_seek()
 	 * can find it.  We will continue even if this fails.
 	 */
-	(void)dns_db_findnode(db, name, true, &top);
+	(void)dns_db_findnode(db, NULL, name, true, &top);
 
 	nodename = dns_fixedname_initname(&fnodename);
 
@@ -490,7 +490,7 @@ dns_cache_flushnode(dns_cache_t *cache, const dns_name_t *name, bool tree) {
 	if (tree) {
 		result = cleartree(cache->db, name);
 	} else {
-		result = dns_db_findnode(cache->db, name, false, &node);
+		result = dns_db_findnode(cache->db, NULL, name, false, &node);
 		if (result == ISC_R_NOTFOUND) {
 			result = ISC_R_SUCCESS;
 			goto cleanup_db;

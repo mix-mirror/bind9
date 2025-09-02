@@ -2405,7 +2405,7 @@ mark_secure(ns_client_t *client, dns_db_t *db, dns_name_t *name,
 	/*
 	 * Save the updated secure state.  Ignore failures.
 	 */
-	result = dns_db_findnodeext(db, name, true, &cm, &ci, &node);
+	result = dns_db_findnodeext(db, NULL, name, true, &cm, &ci, &node);
 	if (result != ISC_R_SUCCESS) {
 		return;
 	}
@@ -2441,8 +2441,8 @@ get_key(ns_client_t *client, dns_db_t *db, dns_rdata_rrsig_t *rrsig,
 	dns_clientinfo_init(&ci, client, NULL);
 
 	if (!dns_rdataset_isassociated(keyrdataset)) {
-		result = dns_db_findnodeext(db, &rrsig->signer, false, &cm, &ci,
-					    &node);
+		result = dns_db_findnodeext(db, NULL, &rrsig->signer, false,
+					    &cm, &ci, &node);
 		if (result != ISC_R_SUCCESS) {
 			return false;
 		}

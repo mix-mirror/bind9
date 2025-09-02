@@ -304,7 +304,7 @@ dns_nsec3_supportedhash(dns_hash_t hash) {
  *      ownership has been transferred to the diff.
  */
 static isc_result_t
-do_one_tuple(dns_difftuple_t **tuple, dns_db_t *db, dns_dbversion_t *ver,
+do_one_tuple(dns_difftuple_t **tuple, dns_db_t *db, dns_dbversion_t *version,
 	     dns_diff_t *diff) {
 	dns_diff_t temp_diff;
 	isc_result_t result;
@@ -318,7 +318,7 @@ do_one_tuple(dns_difftuple_t **tuple, dns_db_t *db, dns_dbversion_t *ver,
 	/*
 	 * Apply it to the database.
 	 */
-	result = dns_diff_apply(&temp_diff, db, ver);
+	result = dns_diff_apply(&temp_diff, db, version);
 	ISC_LIST_UNLINK(temp_diff.tuples, *tuple, link);
 	if (result != ISC_R_SUCCESS) {
 		dns_difftuple_free(tuple);
@@ -346,7 +346,7 @@ name_exists(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
 	dns_dbnode_t *node = NULL;
 	dns_rdatasetiter_t *iter = NULL;
 
-	result = dns_db_findnode(db, name, false, &node);
+	result = dns_db_findnode(db, version, name, false, &node);
 	if (result == ISC_R_NOTFOUND) {
 		*exists = false;
 		return ISC_R_SUCCESS;
@@ -403,7 +403,7 @@ delnsec3(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
 	dns_rdataset_t rdataset;
 	isc_result_t result;
 
-	result = dns_db_findnsec3node(db, name, false, &node);
+	result = dns_db_findnsec3node(db, version, name, false, &node);
 	if (result == ISC_R_NOTFOUND) {
 		return ISC_R_SUCCESS;
 	}
@@ -579,7 +579,7 @@ dns_nsec3_addnsec3(dns_db_t *db, dns_dbversion_t *version,
 	 * Create the node if it doesn't exist and hold
 	 * a reference to it until we have added the NSEC3.
 	 */
-	CHECK(dns_db_findnsec3node(db, hashname, true, &newnode));
+	CHECK(dns_db_findnsec3node(db, version, hashname, true, &newnode));
 
 	/*
 	 * Seek the iterator to the 'newnode'.
@@ -708,7 +708,7 @@ addnsec3:
 	/*
 	 * Create the NSEC3 RDATA.
 	 */
-	CHECK(dns_db_findnode(db, name, false, &node));
+	CHECK(dns_db_findnode(db, version, name, false, &node));
 	CHECK(dns_nsec3_buildrdata(db, version, node, hash, flags, iterations,
 				   salt, salt_length, nexthash, next_length,
 				   nsec3buf, &rdata));
@@ -752,7 +752,8 @@ addnsec3:
 		 * a reference to it until we have added the NSEC3
 		 * or we discover we don't need to make a change.
 		 */
-		CHECK(dns_db_findnsec3node(db, hashname, true, &newnode));
+		CHECK(dns_db_findnsec3node(db, version, hashname, true,
+					   &newnode));
 		result = dns_db_findrdataset(db, newnode, version,
 					     dns_rdatatype_nsec3, 0,
 					     (isc_stdtime_t)0, &rdataset, NULL);
@@ -984,7 +985,7 @@ dns_nsec3param_toprivate(dns_rdata_t *src, dns_rdata_t *target,
 }
 
 static isc_result_t
-rr_exists(dns_db_t *db, dns_dbversion_t *ver, const dns_name_t *name,
+rr_exists(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
 	  const dns_rdata_t *rdata, bool *flag) {
 	dns_rdataset_t rdataset;
 	dns_dbnode_t *node = NULL;
@@ -992,11 +993,11 @@ rr_exists(dns_db_t *db, dns_dbversion_t *ver, const dns_name_t *name,
 
 	dns_rdataset_init(&rdataset);
 	if (rdata->type == dns_rdatatype_nsec3) {
-		CHECK(dns_db_findnsec3node(db, name, false, &node));
+		CHECK(dns_db_findnsec3node(db, version, name, false, &node));
 	} else {
-		CHECK(dns_db_findnode(db, name, false, &node));
+		CHECK(dns_db_findnode(db, version, name, false, &node));
 	}
-	result = dns_db_findrdataset(db, node, ver, rdata->type, 0,
+	result = dns_db_findrdataset(db, node, version, rdata->type, 0,
 				     (isc_stdtime_t)0, &rdataset, NULL);
 	if (result == ISC_R_NOTFOUND) {
 		*flag = false;
@@ -1059,7 +1060,7 @@ dns_nsec3param_salttotext(dns_rdata_nsec3param_t *nsec3param, char *dst,
 }
 
 isc_result_t
-dns_nsec3param_deletechains(dns_db_t *db, dns_dbversion_t *ver,
+dns_nsec3param_deletechains(dns_db_t *db, dns_dbversion_t *version,
 			    dns_zone_t *zone, bool nonsec, dns_diff_t *diff) {
 	dns_dbnode_t *node = NULL;
 	dns_difftuple_t *tuple = NULL;
@@ -1082,7 +1083,8 @@ dns_nsec3param_deletechains(dns_db_t *db, dns_dbversion_t *ver,
 	/*
 	 * Cause all NSEC3 chains to be deleted.
 	 */
-	result = dns_db_findrdataset(db, node, ver, dns_rdatatype_nsec3param, 0,
+	result = dns_db_findrdataset(db, node, version,
+				     dns_rdatatype_nsec3param, 0,
 				     (isc_stdtime_t)0, &rdataset, NULL);
 	if (result == ISC_R_NOTFOUND) {
 		goto try_private;
@@ -1103,12 +1105,12 @@ dns_nsec3param_deletechains(dns_db_t *db, dns_dbversion_t *ver,
 			buf[2] |= DNS_NSEC3FLAG_NONSEC;
 		}
 
-		CHECK(rr_exists(db, ver, origin, &private, &flag));
+		CHECK(rr_exists(db, version, origin, &private, &flag));
 
 		if (!flag) {
 			dns_difftuple_create(diff->mctx, DNS_DIFFOP_ADD, origin,
 					     0, &private, &tuple);
-			CHECK(do_one_tuple(&tuple, db, ver, diff));
+			CHECK(do_one_tuple(&tuple, db, version, diff));
 			INSIST(tuple == NULL);
 		}
 	}
@@ -1119,7 +1121,7 @@ try_private:
 	if (privatetype == 0) {
 		goto success;
 	}
-	result = dns_db_findrdataset(db, node, ver, privatetype, 0,
+	result = dns_db_findrdataset(db, node, version, privatetype, 0,
 				     (isc_stdtime_t)0, &rdataset, NULL);
 	if (result == ISC_R_NOTFOUND) {
 		goto success;
@@ -1147,7 +1149,7 @@ try_private:
 
 		dns_difftuple_create(diff->mctx, DNS_DIFFOP_DEL, origin, 0,
 				     &rdata, &tuple);
-		CHECK(do_one_tuple(&tuple, db, ver, diff));
+		CHECK(do_one_tuple(&tuple, db, version, diff));
 		INSIST(tuple == NULL);
 
 		rdata.data = buf;
@@ -1156,12 +1158,12 @@ try_private:
 			buf[2] |= DNS_NSEC3FLAG_NONSEC;
 		}
 
-		CHECK(rr_exists(db, ver, origin, &rdata, &flag));
+		CHECK(rr_exists(db, version, origin, &rdata, &flag));
 
 		if (!flag) {
 			dns_difftuple_create(diff->mctx, DNS_DIFFOP_ADD, origin,
 					     0, &rdata, &tuple);
-			CHECK(do_one_tuple(&tuple, db, ver, diff));
+			CHECK(do_one_tuple(&tuple, db, version, diff));
 			INSIST(tuple == NULL);
 		}
 	}
@@ -1293,13 +1295,13 @@ failure:
  * false indicates they should be retained.
  */
 static isc_result_t
-deleteit(dns_db_t *db, dns_dbversion_t *ver, const dns_name_t *name,
+deleteit(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
 	 bool *yesno) {
 	isc_result_t result;
 	dns_fixedname_t foundname;
 	dns_fixedname_init(&foundname);
 
-	result = dns_db_find(db, name, ver, dns_rdatatype_any,
+	result = dns_db_find(db, name, version, dns_rdatatype_any,
 			     DNS_DBFIND_GLUEOK | DNS_DBFIND_NOWILD,
 			     (isc_stdtime_t)0, NULL,
 			     dns_fixedname_name(&foundname), NULL, NULL);

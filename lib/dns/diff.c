@@ -277,7 +277,7 @@ optotext(dns_diffop_t op) {
 }
 
 static isc_result_t
-diff_apply(const dns_diff_t *diff, dns_db_t *db, dns_dbversion_t *ver,
+diff_apply(const dns_diff_t *diff, dns_db_t *db, dns_dbversion_t *version,
 	   bool warn) {
 	dns_difftuple_t *t;
 	dns_dbnode_t *node = NULL;
@@ -343,10 +343,11 @@ diff_apply(const dns_diff_t *diff, dns_db_t *db, dns_dbversion_t *ver,
 			if (type != dns_rdatatype_nsec3 &&
 			    covers != dns_rdatatype_nsec3)
 			{
-				CHECK(dns_db_findnode(db, name, true, &node));
+				CHECK(dns_db_findnode(db, version, name, true,
+						      &node));
 			} else {
-				CHECK(dns_db_findnsec3node(db, name, true,
-							   &node));
+				CHECK(dns_db_findnsec3node(db, version, name,
+							   true, &node));
 			}
 
 			while (t != NULL && dns_name_equal(&t->name, name) &&
@@ -399,16 +400,16 @@ diff_apply(const dns_diff_t *diff, dns_db_t *db, dns_dbversion_t *ver,
 			case DNS_DIFFOP_ADDRESIGN:
 				options = DNS_DBADD_MERGE | DNS_DBADD_EXACT |
 					  DNS_DBADD_EXACTTTL;
-				result = dns_db_addrdataset(db, node, ver, 0,
-							    &rds, options,
+				result = dns_db_addrdataset(db, node, version,
+							    0, &rds, options,
 							    &ardataset);
 				break;
 			case DNS_DIFFOP_DEL:
 			case DNS_DIFFOP_DELRESIGN:
 				options = DNS_DBSUB_EXACT | DNS_DBSUB_WANTOLD;
-				result = dns_db_subtractrdataset(db, node, ver,
-								 &rds, options,
-								 &ardataset);
+				result = dns_db_subtractrdataset(
+					db, node, version, &rds, options,
+					&ardataset);
 				break;
 			default:
 				UNREACHABLE();

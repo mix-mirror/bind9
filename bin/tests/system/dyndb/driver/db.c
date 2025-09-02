@@ -126,14 +126,14 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 }
 
 static isc_result_t
-findnode(dns_db_t *db, const dns_name_t *name, bool create,
-	 dns_dbnode_t **nodep DNS__DB_FLARG) {
+findnode(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
+	 bool create, dns_dbnode_t **nodep DNS__DB_FLARG) {
 	sampledb_t *sampledb = (sampledb_t *)db;
 
 	REQUIRE(VALID_SAMPLEDB(sampledb));
 
-	return dns__db_findnode(sampledb->db, name, create,
-				nodep DNS__DB_FLARG_PASS);
+	return dns__db_findnodeext(sampledb->db, version, name, create, NULL,
+				   NULL, nodep DNS__DB_FLARG_PASS);
 }
 
 static isc_result_t
@@ -315,13 +315,13 @@ getnsec3parameters(dns_db_t *db, dns_dbversion_t *version, dns_hash_t *hash,
 }
 
 static isc_result_t
-findnsec3node(dns_db_t *db, const dns_name_t *name, bool create,
-	      dns_dbnode_t **nodep DNS__DB_FLARG) {
+findnsec3node(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
+	      bool create, dns_dbnode_t **nodep DNS__DB_FLARG) {
 	sampledb_t *sampledb = (sampledb_t *)db;
 
 	REQUIRE(VALID_SAMPLEDB(sampledb));
 
-	return dns__db_findnsec3node(sampledb->db, name, create,
+	return dns__db_findnsec3node(sampledb->db, version, name, create,
 				     nodep DNS__DB_FLARG_PASS);
 }
 
@@ -354,14 +354,14 @@ getrrsetstats(dns_db_t *db) {
 }
 
 static isc_result_t
-findnodeext(dns_db_t *db, const dns_name_t *name, bool create,
-	    dns_clientinfomethods_t *methods, dns_clientinfo_t *clientinfo,
-	    dns_dbnode_t **nodep DNS__DB_FLARG) {
+findnodeext(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
+	    bool create, dns_clientinfomethods_t *methods,
+	    dns_clientinfo_t *clientinfo, dns_dbnode_t **nodep DNS__DB_FLARG) {
 	sampledb_t *sampledb = (sampledb_t *)db;
 
 	REQUIRE(VALID_SAMPLEDB(sampledb));
 
-	return dns__db_findnodeext(sampledb->db, name, create, methods,
+	return dns__db_findnodeext(sampledb->db, version, name, create, methods,
 				   clientinfo, nodep DNS__DB_FLARG_PASS);
 }
 
@@ -453,7 +453,7 @@ add_soa(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
 	rdatalist.ttl = 86400;
 	ISC_LIST_APPEND(rdatalist.rdata, &rdata, link);
 	dns_rdatalist_tordataset(&rdatalist, &rdataset);
-	CHECK(dns_db_findnode(db, name, true, &node));
+	CHECK(dns_db_findnode(db, version, name, true, &node));
 	CHECK(dns_db_addrdataset(db, node, version, 0, &rdataset, 0, NULL));
 cleanup:
 	if (node != NULL) {
@@ -491,7 +491,7 @@ add_ns(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
 	rdatalist.ttl = 86400;
 	ISC_LIST_APPEND(rdatalist.rdata, &rdata, link);
 	dns_rdatalist_tordataset(&rdatalist, &rdataset);
-	CHECK(dns_db_findnode(db, name, true, &node));
+	CHECK(dns_db_findnode(db, version, name, true, &node));
 	CHECK(dns_db_addrdataset(db, node, version, 0, &rdataset, 0, NULL));
 cleanup:
 	if (node != NULL) {
@@ -527,7 +527,7 @@ add_a(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
 	rdatalist.ttl = 86400;
 	ISC_LIST_APPEND(rdatalist.rdata, &rdata, link);
 	dns_rdatalist_tordataset(&rdatalist, &rdataset);
-	CHECK(dns_db_findnode(db, name, true, &node));
+	CHECK(dns_db_findnode(db, version, name, true, &node));
 	CHECK(dns_db_addrdataset(db, node, version, 0, &rdataset, 0, NULL));
 cleanup:
 	if (node != NULL) {

@@ -264,6 +264,7 @@ ISC_RUN_TEST_IMPL(updatesigs_next) {
 	dst_key_t *zone_keys[DNS_MAXZONEKEYS];
 	dns_zone_t *zone = NULL;
 	dns_db_t *db = NULL;
+	dns_dbversion_t *dbversion = NULL;
 	isc_result_t result;
 	unsigned int nkeys;
 	isc_stdtime_t now = isc_stdtime_now();
@@ -284,10 +285,14 @@ ISC_RUN_TEST_IMPL(updatesigs_next) {
 
 	dns_zone_setkeydirectory(zone, TESTS_DIR "/testkeys");
 
-	result = dns_zone_findkeys(zone, db, NULL, now, isc_g_mctx,
+	dns_db_currentversion(db, &dbversion);
+
+	result = dns_zone_findkeys(zone, db, dbversion, now, isc_g_mctx,
 				   DNS_MAXZONEKEYS, zone_keys, &nkeys);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_int_equal(nkeys, 2);
+
+	dns__db_closeversion(db, &dbversion, false);
 
 	/*
 	 * Define the tests to be run.  Note that changes to zone database

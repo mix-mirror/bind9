@@ -272,7 +272,7 @@ forward_done(void *arg);
 static isc_result_t
 add_rr_prepare_action(void *data, rr_t *rr);
 static isc_result_t
-rr_exists(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
+rr_exists(dns_db_t *db, dns_dbversion_t *version, dns_name_t *name,
 	  const dns_rdata_t *rdata, bool *flag);
 
 /**************************************************************************/
@@ -442,7 +442,7 @@ checkupdateacl(ns_client_t *client, dns_acl_t *acl, const char *message,
  *	ownership has been transferred to the diff.
  */
 static isc_result_t
-do_one_tuple(dns_difftuple_t **tuple, dns_db_t *db, dns_dbversion_t *ver,
+do_one_tuple(dns_difftuple_t **tuple, dns_db_t *db, dns_dbversion_t *version,
 	     dns_diff_t *diff) {
 	dns_diff_t temp_diff;
 	isc_result_t result;
@@ -456,7 +456,7 @@ do_one_tuple(dns_difftuple_t **tuple, dns_db_t *db, dns_dbversion_t *ver,
 	/*
 	 * Apply it to the database.
 	 */
-	result = dns_diff_apply(&temp_diff, db, ver);
+	result = dns_diff_apply(&temp_diff, db, version);
 	ISC_LIST_UNLINK(temp_diff.tuples, *tuple, link);
 	if (result != ISC_R_SUCCESS) {
 		dns_difftuple_free(tuple);
@@ -482,12 +482,12 @@ do_one_tuple(dns_difftuple_t **tuple, dns_db_t *db, dns_dbversion_t *ver,
  * \li	'updates' is empty.
  */
 static isc_result_t
-do_diff(dns_diff_t *updates, dns_db_t *db, dns_dbversion_t *ver,
+do_diff(dns_diff_t *updates, dns_db_t *db, dns_dbversion_t *version,
 	dns_diff_t *diff) {
 	isc_result_t result;
 	ISC_LIST_FOREACH(updates->tuples, t, link) {
 		ISC_LIST_UNLINK(updates->tuples, t, link);
-		CHECK(do_one_tuple(&t, db, ver, diff));
+		CHECK(do_one_tuple(&t, db, version, diff));
 	}
 	return ISC_R_SUCCESS;
 
@@ -497,13 +497,13 @@ failure:
 }
 
 static isc_result_t
-update_one_rr(dns_db_t *db, dns_dbversion_t *ver, dns_diff_t *diff,
+update_one_rr(dns_db_t *db, dns_dbversion_t *version, dns_diff_t *diff,
 	      dns_diffop_t op, dns_name_t *name, dns_ttl_t ttl,
 	      dns_rdata_t *rdata) {
 	dns_difftuple_t *tuple = NULL;
 
 	dns_difftuple_create(diff->mctx, op, name, ttl, rdata, &tuple);
-	return do_one_tuple(&tuple, db, ver, diff);
+	return do_one_tuple(&tuple, db, version, diff);
 }
 
 /**************************************************************************/
@@ -574,7 +574,7 @@ foreach_node_rr_action(void *data, dns_rdataset_t *rdataset) {
  * If 'action' returns an error, abort iteration and return the error.
  */
 static isc_result_t
-foreach_rrset(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
+foreach_rrset(dns_db_t *db, dns_dbversion_t *version, dns_name_t *name,
 	      rrset_func *action, void *action_data) {
 	isc_result_t result;
 	dns_dbnode_t *node;
@@ -590,11 +590,11 @@ foreach_rrset(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 	 * different from the current version
 	 */
 	dns_db_currentversion(db, &oldver);
-	dns_clientinfo_init(&ci, NULL, (ver != oldver) ? ver : NULL);
+	dns_clientinfo_init(&ci, NULL, (version != oldver) ? version : NULL);
 	dns_db_closeversion(db, &oldver, false);
 
 	node = NULL;
-	result = dns_db_findnodeext(db, name, false, &cm, &ci, &node);
+	result = dns_db_findnodeext(db, version, name, false, &cm, &ci, &node);
 	if (result == ISC_R_NOTFOUND) {
 		return ISC_R_SUCCESS;
 	}
@@ -603,7 +603,8 @@ foreach_rrset(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 	}
 
 	iter = NULL;
-	result = dns_db_allrdatasets(db, node, ver, 0, (isc_stdtime_t)0, &iter);
+	result = dns_db_allrdatasets(db, node, version, 0, (isc_stdtime_t)0,
+				     &iter);
 	if (result != ISC_R_SUCCESS) {
 		goto cleanup_node;
 	}
@@ -636,12 +637,12 @@ cleanup_node:
  * and return the error.
  */
 static isc_result_t
-foreach_node_rr(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
+foreach_node_rr(dns_db_t *db, dns_dbversion_t *version, dns_name_t *name,
 		rr_func *rr_action, void *rr_action_data) {
 	foreach_node_rr_ctx_t ctx;
 	ctx.rr_action = rr_action;
 	ctx.rr_action_data = rr_action_data;
-	return foreach_rrset(db, ver, name, foreach_node_rr_action, &ctx);
+	return foreach_rrset(db, version, name, foreach_node_rr_action, &ctx);
 }
 
 /*%
@@ -654,7 +655,7 @@ foreach_node_rr(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
  * If 'action' returns an error, abort iteration and return the error.
  */
 static isc_result_t
-foreach_rr(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
+foreach_rr(dns_db_t *db, dns_dbversion_t *version, dns_name_t *name,
 	   dns_rdatatype_t type, dns_rdatatype_t covers, rr_func *rr_action,
 	   void *rr_action_data) {
 	isc_result_t result;
@@ -672,11 +673,11 @@ foreach_rr(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 	 * different from the current version
 	 */
 	dns_db_currentversion(db, &oldver);
-	dns_clientinfo_init(&ci, NULL, (ver != oldver) ? ver : NULL);
+	dns_clientinfo_init(&ci, NULL, (version != oldver) ? version : NULL);
 	dns_db_closeversion(db, &oldver, false);
 
 	if (type == dns_rdatatype_any) {
-		return foreach_node_rr(db, ver, name, rr_action,
+		return foreach_node_rr(db, version, name, rr_action,
 				       rr_action_data);
 	}
 
@@ -684,9 +685,10 @@ foreach_rr(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 	if (type == dns_rdatatype_nsec3 ||
 	    (type == dns_rdatatype_rrsig && covers == dns_rdatatype_nsec3))
 	{
-		result = dns_db_findnsec3node(db, name, false, &node);
+		result = dns_db_findnsec3node(db, version, name, false, &node);
 	} else {
-		result = dns_db_findnodeext(db, name, false, &cm, &ci, &node);
+		result = dns_db_findnodeext(db, version, name, false, &cm, &ci,
+					    &node);
 	}
 	if (result == ISC_R_NOTFOUND) {
 		return ISC_R_SUCCESS;
@@ -696,7 +698,7 @@ foreach_rr(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 	}
 
 	dns_rdataset_init(&rdataset);
-	result = dns_db_findrdataset(db, node, ver, type, covers,
+	result = dns_db_findrdataset(db, node, version, type, covers,
 				     (isc_stdtime_t)0, &rdataset, NULL);
 	if (result == ISC_R_NOTFOUND) {
 		result = ISC_R_SUCCESS;
@@ -791,11 +793,11 @@ rrset_exists_action(void *data, rr_t *rr) {
  * to false otherwise.
  */
 static isc_result_t
-rrset_exists(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
+rrset_exists(dns_db_t *db, dns_dbversion_t *version, dns_name_t *name,
 	     dns_rdatatype_t type, dns_rdatatype_t covers, bool *exists) {
 	isc_result_t result;
-	result = foreach_rr(db, ver, name, type, covers, rrset_exists_action,
-			    NULL);
+	result = foreach_rr(db, version, name, type, covers,
+			    rrset_exists_action, NULL);
 	RETURN_EXISTENCE_FLAG;
 }
 
@@ -822,10 +824,11 @@ cname_compatibility_action(void *data, dns_rdataset_t *rrset) {
  * Otherwise, set it to false.
  */
 static isc_result_t
-cname_incompatible_rrset_exists(dns_db_t *db, dns_dbversion_t *ver,
+cname_incompatible_rrset_exists(dns_db_t *db, dns_dbversion_t *version,
 				dns_name_t *name, bool *exists) {
 	isc_result_t result;
-	result = foreach_rrset(db, ver, name, cname_compatibility_action, NULL);
+	result = foreach_rrset(db, version, name, cname_compatibility_action,
+			       NULL);
 	RETURN_EXISTENCE_FLAG;
 }
 
@@ -844,10 +847,11 @@ count_rr_action(void *data, rr_t *rr) {
  * Count the number of RRs of 'type' belonging to 'name' in 'ver' of 'db'.
  */
 static isc_result_t
-rr_count(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
+rr_count(dns_db_t *db, dns_dbversion_t *version, dns_name_t *name,
 	 dns_rdatatype_t type, dns_rdatatype_t covers, int *countp) {
 	*countp = 0;
-	return foreach_rr(db, ver, name, type, covers, count_rr_action, countp);
+	return foreach_rr(db, version, name, type, covers, count_rr_action,
+			  countp);
 }
 
 /*%
@@ -865,10 +869,10 @@ name_exists_action(void *data, dns_rdataset_t *rrset) {
  * Set '*exists' to true iff the given name exists, to false otherwise.
  */
 static isc_result_t
-name_exists(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
+name_exists(dns_db_t *db, dns_dbversion_t *version, dns_name_t *name,
 	    bool *exists) {
 	isc_result_t result;
-	result = foreach_rrset(db, ver, name, name_exists_action, NULL);
+	result = foreach_rrset(db, version, name, name_exists_action, NULL);
 	RETURN_EXISTENCE_FLAG;
 }
 
@@ -965,7 +969,7 @@ ssu_checkrule(void *data, dns_rdataset_t *rrset) {
 }
 
 static bool
-ssu_checkall(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
+ssu_checkall(dns_db_t *db, dns_dbversion_t *version, dns_name_t *name,
 	     dns_ssutable_t *ssutable, dns_name_t *signer, isc_netaddr_t *addr,
 	     dns_aclenv_t *aclenv, bool tcp, dst_key_t *key) {
 	isc_result_t result;
@@ -978,7 +982,7 @@ ssu_checkall(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 	ssuinfo.aclenv = aclenv;
 	ssuinfo.tcp = tcp;
 	ssuinfo.key = key;
-	result = foreach_rrset(db, ver, name, ssu_checkrule, &ssuinfo);
+	result = foreach_rrset(db, version, name, ssu_checkrule, &ssuinfo);
 	return result == ISC_R_SUCCESS;
 }
 
@@ -1098,7 +1102,8 @@ temp_order(const void *av, const void *bv) {
 
 static isc_result_t
 temp_check(isc_mem_t *mctx, dns_diff_t *temp, dns_db_t *db,
-	   dns_dbversion_t *ver, dns_name_t *tmpname, dns_rdatatype_t *typep) {
+	   dns_dbversion_t *version, dns_name_t *tmpname,
+	   dns_rdatatype_t *typep) {
 	isc_result_t result;
 	dns_name_t *name;
 	dns_dbnode_t *node;
@@ -1120,7 +1125,7 @@ temp_check(isc_mem_t *mctx, dns_diff_t *temp, dns_db_t *db,
 
 		/* A new unique name begins here. */
 		node = NULL;
-		result = dns_db_findnode(db, name, false, &node);
+		result = dns_db_findnode(db, version, name, false, &node);
 		if (result == ISC_R_NOTFOUND) {
 			dns_diff_clear(&trash);
 			return DNS_R_NXRRSET;
@@ -1155,7 +1160,7 @@ temp_check(isc_mem_t *mctx, dns_diff_t *temp, dns_db_t *db,
 			 * onto d_rrs and sort them.
 			 */
 			dns_rdataset_init(&rdataset);
-			result = dns_db_findrdataset(db, node, ver, type,
+			result = dns_db_findrdataset(db, node, version, type,
 						     covers, (isc_stdtime_t)0,
 						     &rdataset, NULL);
 			if (result != ISC_R_SUCCESS) {
@@ -1403,17 +1408,18 @@ delete_if_action(void *data, rr_t *rr) {
  * deletions in 'diff'.
  */
 static isc_result_t
-delete_if(rr_predicate *predicate, dns_db_t *db, dns_dbversion_t *ver,
+delete_if(rr_predicate *predicate, dns_db_t *db, dns_dbversion_t *version,
 	  dns_name_t *name, dns_rdatatype_t type, dns_rdatatype_t covers,
 	  dns_rdata_t *update_rr, dns_diff_t *diff) {
 	conditional_delete_ctx_t ctx;
 	ctx.predicate = predicate;
 	ctx.db = db;
-	ctx.ver = ver;
+	ctx.ver = version;
 	ctx.diff = diff;
 	ctx.name = name;
 	ctx.update_rr = update_rr;
-	return foreach_rr(db, ver, name, type, covers, delete_if_action, &ctx);
+	return foreach_rr(db, version, name, type, covers, delete_if_action,
+			  &ctx);
 }
 
 /**************************************************************************/
@@ -1518,22 +1524,23 @@ get_current_rr(dns_rdataclass_t zoneclass, dns_name_t *name, dns_rdata_t *rdata,
  */
 
 static isc_result_t
-update_soa_serial(dns_db_t *db, dns_dbversion_t *ver, dns_diff_t *diff,
+update_soa_serial(dns_db_t *db, dns_dbversion_t *version, dns_diff_t *diff,
 		  isc_mem_t *mctx, dns_updatemethod_t method) {
 	dns_difftuple_t *deltuple = NULL;
 	dns_difftuple_t *addtuple = NULL;
 	uint32_t serial;
 	isc_result_t result;
 
-	CHECK(dns_db_createsoatuple(db, ver, mctx, DNS_DIFFOP_DEL, &deltuple));
+	CHECK(dns_db_createsoatuple(db, version, mctx, DNS_DIFFOP_DEL,
+				    &deltuple));
 	dns_difftuple_copy(deltuple, &addtuple);
 	addtuple->op = DNS_DIFFOP_ADD;
 
 	serial = dns_soa_getserial(&addtuple->rdata);
 	serial = dns_update_soaserial(serial, method, NULL);
 	dns_soa_setserial(serial, &addtuple->rdata);
-	CHECK(do_one_tuple(&deltuple, db, ver, diff));
-	CHECK(do_one_tuple(&addtuple, db, ver, diff));
+	CHECK(do_one_tuple(&deltuple, db, version, diff));
+	CHECK(do_one_tuple(&addtuple, db, version, diff));
 	result = ISC_R_SUCCESS;
 
 failure:
@@ -1567,7 +1574,7 @@ failure:
  *
  */
 static isc_result_t
-check_soa_increment(dns_db_t *db, dns_dbversion_t *ver,
+check_soa_increment(dns_db_t *db, dns_dbversion_t *version,
 		    dns_rdata_t *update_rdata, bool *ok) {
 	uint32_t db_serial;
 	uint32_t update_serial;
@@ -1575,7 +1582,7 @@ check_soa_increment(dns_db_t *db, dns_dbversion_t *ver,
 
 	update_serial = dns_soa_getserial(update_rdata);
 
-	result = dns_db_getsoaserial(db, ver, &db_serial);
+	result = dns_db_getsoaserial(db, version, &db_serial);
 	if (result != ISC_R_SUCCESS) {
 		return result;
 	}
@@ -1609,7 +1616,7 @@ send_update(ns_client_t *client, dns_zone_t *zone) {
 	size_t update = 0, maxbytypelen = 0;
 	dns_zoneopt_t options;
 	dns_db_t *db = NULL;
-	dns_dbversion_t *ver = NULL;
+	dns_dbversion_t *version = NULL;
 	update_t *uev = NULL;
 
 	CHECK(dns_zone_getdb(zone, &db));
@@ -1617,7 +1624,7 @@ send_update(ns_client_t *client, dns_zone_t *zone) {
 	zoneclass = dns_db_class(db);
 	dns_zone_getssutable(zone, &ssutable);
 	options = dns_zone_getoptions(zone);
-	dns_db_currentversion(db, &ver);
+	dns_db_currentversion(db, &version);
 
 	/*
 	 * Update message processing can leak record existence information
@@ -1779,7 +1786,8 @@ send_update(ns_client_t *client, dns_zone_t *zone) {
 				ssuinfo.tcp = TCPCLIENT(client);
 				ssuinfo.key = tsigkey;
 
-				result = foreach_rr(db, ver, name, rdata.type,
+				result = foreach_rr(db, version, name,
+						    rdata.type,
 						    dns_rdatatype_none,
 						    ssu_checkrr, &ssuinfo);
 				if (result != ISC_R_SUCCESS) {
@@ -1790,7 +1798,8 @@ send_update(ns_client_t *client, dns_zone_t *zone) {
 				   update_class == dns_rdataclass_none)
 			{
 				bool flag;
-				CHECK(rr_exists(db, ver, name, &rdata, &flag));
+				CHECK(rr_exists(db, version, name, &rdata,
+						&flag));
 				if (flag &&
 				    !dns_ssutable_checkrules(
 					    ssutable, client->inner.signer,
@@ -1815,7 +1824,7 @@ send_update(ns_client_t *client, dns_zone_t *zone) {
 				maxbytype[update] = dns_ssurule_max(ssurule,
 								    rdata.type);
 			} else {
-				if (!ssu_checkall(db, ver, name, ssutable,
+				if (!ssu_checkall(db, version, name, ssutable,
 						  client->inner.signer,
 						  &netaddr, env,
 						  TCPCLIENT(client), tsigkey))
@@ -1855,7 +1864,7 @@ send_update(ns_client_t *client, dns_zone_t *zone) {
 
 failure:
 	if (db != NULL) {
-		dns_db_closeversion(db, &ver, false);
+		dns_db_closeversion(db, &version, false);
 		dns_db_detach(&db);
 	}
 
@@ -2149,7 +2158,7 @@ check_mx(ns_client_t *client, dns_zone_t *zone, dns_db_t *db,
 }
 
 static isc_result_t
-rr_exists(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
+rr_exists(dns_db_t *db, dns_dbversion_t *version, dns_name_t *name,
 	  const dns_rdata_t *rdata, bool *flag) {
 	dns_rdataset_t rdataset;
 	dns_dbnode_t *node = NULL;
@@ -2157,9 +2166,9 @@ rr_exists(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 
 	dns_rdataset_init(&rdataset);
 	if (rdata->type == dns_rdatatype_nsec3) {
-		result = dns_db_findnsec3node(db, name, false, &node);
+		result = dns_db_findnsec3node(db, version, name, false, &node);
 	} else {
-		result = dns_db_findnode(db, name, false, &node);
+		result = dns_db_findnode(db, version, name, false, &node);
 	}
 	if (result == ISC_R_NOTFOUND) {
 		*flag = false;
@@ -2168,7 +2177,7 @@ rr_exists(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 	} else {
 		CHECK(result);
 	}
-	result = dns_db_findrdataset(db, node, ver, rdata->type, 0,
+	result = dns_db_findrdataset(db, node, version, rdata->type, 0,
 				     (isc_stdtime_t)0, &rdataset, NULL);
 	if (result == ISC_R_NOTFOUND) {
 		*flag = false;
@@ -2196,8 +2205,8 @@ failure:
 }
 
 static isc_result_t
-get_iterations(dns_db_t *db, dns_dbversion_t *ver, dns_rdatatype_t privatetype,
-	       unsigned int *iterationsp) {
+get_iterations(dns_db_t *db, dns_dbversion_t *version,
+	       dns_rdatatype_t privatetype, unsigned int *iterationsp) {
 	dns_dbnode_t *node = NULL;
 	dns_rdata_nsec3param_t nsec3param;
 	dns_rdataset_t rdataset;
@@ -2210,7 +2219,8 @@ get_iterations(dns_db_t *db, dns_dbversion_t *ver, dns_rdatatype_t privatetype,
 	if (result != ISC_R_SUCCESS) {
 		return result;
 	}
-	result = dns_db_findrdataset(db, node, ver, dns_rdatatype_nsec3param, 0,
+	result = dns_db_findrdataset(db, node, version,
+				     dns_rdatatype_nsec3param, 0,
 				     (isc_stdtime_t)0, &rdataset, NULL);
 	if (result == ISC_R_NOTFOUND) {
 		goto try_private;
@@ -2238,7 +2248,7 @@ try_private:
 		goto success;
 	}
 
-	result = dns_db_findrdataset(db, node, ver, privatetype, 0,
+	result = dns_db_findrdataset(db, node, version, privatetype, 0,
 				     (isc_stdtime_t)0, &rdataset, NULL);
 	if (result == ISC_R_NOTFOUND) {
 		goto success;
@@ -2287,13 +2297,13 @@ failure:
  */
 static isc_result_t
 check_dnssec(ns_client_t *client, dns_zone_t *zone, dns_db_t *db,
-	     dns_dbversion_t *ver, dns_diff_t *diff) {
+	     dns_dbversion_t *version, dns_diff_t *diff) {
 	isc_result_t result;
 	unsigned int iterations = 0;
 	dns_rdatatype_t privatetype = dns_zone_getprivatetype(zone);
 
 	/* Refuse to allow NSEC3 with NSEC-only keys */
-	if (!dns_zone_check_dnskey_nsec3(zone, db, ver, diff, NULL, 0)) {
+	if (!dns_zone_check_dnskey_nsec3(zone, db, version, diff, NULL, 0)) {
 		update_log(client, zone, ISC_LOG_ERROR,
 			   "NSEC only DNSKEYs and NSEC3 chains not allowed");
 		result = DNS_R_REFUSED;
@@ -2301,7 +2311,7 @@ check_dnssec(ns_client_t *client, dns_zone_t *zone, dns_db_t *db,
 	}
 
 	/* Verify NSEC3 params */
-	CHECK(get_iterations(db, ver, privatetype, &iterations));
+	CHECK(get_iterations(db, version, privatetype, &iterations));
 	if (iterations > dns_nsec3_maxiterations()) {
 		update_log(client, zone, ISC_LOG_ERROR,
 			   "too many NSEC3 iterations (%u)", iterations);
@@ -2318,7 +2328,7 @@ failure:
  */
 static isc_result_t
 add_nsec3param_records(ns_client_t *client, dns_zone_t *zone, dns_db_t *db,
-		       dns_dbversion_t *ver, dns_diff_t *diff) {
+		       dns_dbversion_t *version, dns_diff_t *diff) {
 	isc_result_t result = ISC_R_SUCCESS;
 	dns_difftuple_t *newtuple = NULL;
 	dns_rdata_t rdata = DNS_RDATA_INIT;
@@ -2429,7 +2439,7 @@ add_nsec3param_records(ns_client_t *client, dns_zone_t *zone, dns_db_t *db,
 							   : DNS_DIFFOP_DEL;
 			dns_difftuple_create(diff->mctx, op, name, ttl,
 					     &tuple->rdata, &newtuple);
-			CHECK(do_one_tuple(&newtuple, db, ver, diff));
+			CHECK(do_one_tuple(&newtuple, db, version, diff));
 			ISC_LIST_UNLINK(temp_diff.tuples, tuple, link);
 			dns_diff_appendminimal(diff, &tuple);
 		}
@@ -2498,7 +2508,8 @@ add_nsec3param_records(ns_client_t *client, dns_zone_t *zone, dns_db_t *db,
 			 * Don't provide a 'diff' here because we want to
 			 * know the capability of the current database.
 			 */
-			result = dns_nsec_nseconly(db, ver, NULL, &nseconly);
+			result = dns_nsec_nseconly(db, version, NULL,
+						   &nseconly);
 			if (result == ISC_R_NOTFOUND || nseconly) {
 				buf[2] |= DNS_NSEC3FLAG_INITIAL;
 			}
@@ -2506,13 +2517,14 @@ add_nsec3param_records(ns_client_t *client, dns_zone_t *zone, dns_db_t *db,
 			/*
 			 * See if this CREATE request already exists.
 			 */
-			CHECK(rr_exists(db, ver, name, &rdata, &flag));
+			CHECK(rr_exists(db, version, name, &rdata, &flag));
 
 			if (!flag) {
 				dns_difftuple_create(diff->mctx, DNS_DIFFOP_ADD,
 						     name, 0, &rdata,
 						     &newtuple);
-				CHECK(do_one_tuple(&newtuple, db, ver, diff));
+				CHECK(do_one_tuple(&newtuple, db, version,
+						   diff));
 			}
 
 			/*
@@ -2521,13 +2533,14 @@ add_nsec3param_records(ns_client_t *client, dns_zone_t *zone, dns_db_t *db,
 			 * OPTOUT state.
 			 */
 			buf[2] ^= DNS_NSEC3FLAG_OPTOUT;
-			CHECK(rr_exists(db, ver, name, &rdata, &flag));
+			CHECK(rr_exists(db, version, name, &rdata, &flag));
 
 			if (flag) {
 				dns_difftuple_create(diff->mctx, DNS_DIFFOP_DEL,
 						     name, 0, &rdata,
 						     &newtuple);
-				CHECK(do_one_tuple(&newtuple, db, ver, diff));
+				CHECK(do_one_tuple(&newtuple, db, version,
+						   diff));
 			}
 
 			/*
@@ -2537,7 +2550,7 @@ add_nsec3param_records(ns_client_t *client, dns_zone_t *zone, dns_db_t *db,
 			next = ISC_LIST_NEXT(tuple, link);
 			dns_difftuple_create(diff->mctx, DNS_DIFFOP_DEL, name,
 					     ttl, &tuple->rdata, &newtuple);
-			CHECK(do_one_tuple(&newtuple, db, ver, diff));
+			CHECK(do_one_tuple(&newtuple, db, version, diff));
 			ISC_LIST_UNLINK(temp_diff.tuples, tuple, link);
 			dns_diff_appendminimal(diff, &tuple);
 			dns_rdata_reset(&rdata);
@@ -2561,20 +2574,20 @@ add_nsec3param_records(ns_client_t *client, dns_zone_t *zone, dns_db_t *db,
 
 		buf[2] |= DNS_NSEC3FLAG_REMOVE | DNS_NSEC3FLAG_NONSEC;
 
-		CHECK(rr_exists(db, ver, name, &rdata, &flag));
+		CHECK(rr_exists(db, version, name, &rdata, &flag));
 		if (!flag) {
 			buf[2] &= ~DNS_NSEC3FLAG_NONSEC;
-			CHECK(rr_exists(db, ver, name, &rdata, &flag));
+			CHECK(rr_exists(db, version, name, &rdata, &flag));
 		}
 
 		if (!flag) {
 			dns_difftuple_create(diff->mctx, DNS_DIFFOP_ADD, name,
 					     0, &rdata, &newtuple);
-			CHECK(do_one_tuple(&newtuple, db, ver, diff));
+			CHECK(do_one_tuple(&newtuple, db, version, diff));
 		}
 		dns_difftuple_create(diff->mctx, DNS_DIFFOP_ADD, name, ttl,
 				     &tuple->rdata, &newtuple);
-		CHECK(do_one_tuple(&newtuple, db, ver, diff));
+		CHECK(do_one_tuple(&newtuple, db, version, diff));
 		ISC_LIST_UNLINK(temp_diff.tuples, tuple, link);
 		dns_diff_appendminimal(diff, &tuple);
 		dns_rdata_reset(&rdata);
@@ -2588,7 +2601,7 @@ failure:
 
 static isc_result_t
 rollback_private(dns_db_t *db, dns_rdatatype_t privatetype,
-		 dns_dbversion_t *ver, dns_diff_t *diff) {
+		 dns_dbversion_t *version, dns_diff_t *diff) {
 	dns_diff_t temp_diff;
 	dns_diffop_t op;
 	dns_difftuple_t *newtuple = NULL;
@@ -2634,7 +2647,7 @@ rollback_private(dns_db_t *db, dns_rdatatype_t privatetype,
 						   : DNS_DIFFOP_DEL;
 		dns_difftuple_create(mctx, op, name, tuple->ttl, &tuple->rdata,
 				     &newtuple);
-		CHECK(do_one_tuple(&newtuple, db, ver, &temp_diff));
+		CHECK(do_one_tuple(&newtuple, db, version, &temp_diff));
 	}
 	result = ISC_R_SUCCESS;
 
@@ -2644,7 +2657,7 @@ failure:
 }
 
 static bool
-isdnssec(dns_db_t *db, dns_dbversion_t *ver, dns_rdatatype_t privatetype) {
+isdnssec(dns_db_t *db, dns_dbversion_t *version, dns_rdatatype_t privatetype) {
 	isc_result_t result;
 	bool build_nsec, build_nsec3;
 
@@ -2652,7 +2665,7 @@ isdnssec(dns_db_t *db, dns_dbversion_t *ver, dns_rdatatype_t privatetype) {
 		return true;
 	}
 
-	result = dns_private_chains(db, ver, privatetype, &build_nsec,
+	result = dns_private_chains(db, version, privatetype, &build_nsec,
 				    &build_nsec3);
 	RUNTIME_CHECK(result == ISC_R_SUCCESS);
 	return build_nsec || build_nsec3;
@@ -2667,8 +2680,8 @@ update_action(void *arg) {
 	size_t update = 0, maxbytypelen = uev->maxbytypelen;
 	isc_result_t result;
 	dns_db_t *db = NULL;
-	dns_dbversion_t *oldver = NULL;
-	dns_dbversion_t *ver = NULL;
+	dns_dbversion_t *oldversion = NULL;
+	dns_dbversion_t *version = NULL;
 	dns_diff_t diff; /* Pending updates. */
 	dns_diff_t temp; /* Pending RR existence assertions. */
 	bool soa_serial_changed = false;
@@ -2704,8 +2717,8 @@ update_action(void *arg) {
 	/*
 	 * Get old and new versions now that queryacl has been checked.
 	 */
-	dns_db_currentversion(db, &oldver);
-	CHECK(dns_db_newversion(db, &ver));
+	dns_db_currentversion(db, &oldversion);
+	CHECK(dns_db_newversion(db, &version));
 
 	/*
 	 * Check prerequisites.
@@ -2737,7 +2750,7 @@ update_action(void *arg) {
 					    "not empty");
 			}
 			if (rdata.type == dns_rdatatype_any) {
-				CHECK(name_exists(db, ver, name, &flag));
+				CHECK(name_exists(db, version, name, &flag));
 				if (!flag) {
 					PREREQFAILN(
 						DNS_R_NXDOMAIN, name,
@@ -2745,8 +2758,8 @@ update_action(void *arg) {
 						"not satisfied");
 				}
 			} else {
-				CHECK(rrset_exists(db, ver, name, rdata.type,
-						   covers, &flag));
+				CHECK(rrset_exists(db, version, name,
+						   rdata.type, covers, &flag));
 				if (!flag) {
 					/* RRset does not exist. */
 					PREREQFAILNT(
@@ -2763,7 +2776,7 @@ update_action(void *arg) {
 					    "not empty");
 			}
 			if (rdata.type == dns_rdatatype_any) {
-				CHECK(name_exists(db, ver, name, &flag));
+				CHECK(name_exists(db, version, name, &flag));
 				if (flag) {
 					PREREQFAILN(
 						DNS_R_YXDOMAIN, name,
@@ -2771,8 +2784,8 @@ update_action(void *arg) {
 						"prerequisite not satisfied");
 				}
 			} else {
-				CHECK(rrset_exists(db, ver, name, rdata.type,
-						   covers, &flag));
+				CHECK(rrset_exists(db, version, name,
+						   rdata.type, covers, &flag));
 				if (flag) {
 					/* RRset exists. */
 					PREREQFAILNT(
@@ -2807,7 +2820,7 @@ update_action(void *arg) {
 		}
 
 		tmpname = dns_fixedname_initname(&tmpnamefixed);
-		result = temp_check(mctx, &temp, db, ver, tmpname, &type);
+		result = temp_check(mctx, &temp, db, version, tmpname, &type);
 		if (result != ISC_R_SUCCESS) {
 			FAILNT(result, tmpname, type,
 			       "'RRset exists (value dependent)' prerequisite "
@@ -2866,7 +2879,7 @@ update_action(void *arg) {
 			}
 			if (rdata.type == dns_rdatatype_cname) {
 				CHECK(cname_incompatible_rrset_exists(
-					db, ver, name, &flag));
+					db, version, name, &flag));
 				if (flag) {
 					update_log(
 						client, zone, LOGLEVEL_PROTOCOL,
@@ -2875,7 +2888,7 @@ update_action(void *arg) {
 					continue;
 				}
 			} else {
-				CHECK(rrset_exists(db, ver, name,
+				CHECK(rrset_exists(db, version, name,
 						   dns_rdatatype_cname,
 						   dns_rdatatype_none, &flag));
 				if (flag && !dns_rdatatype_atcname(rdata.type))
@@ -2889,7 +2902,7 @@ update_action(void *arg) {
 			}
 			if (rdata.type == dns_rdatatype_soa) {
 				bool ok;
-				CHECK(rrset_exists(db, ver, name,
+				CHECK(rrset_exists(db, version, name,
 						   dns_rdatatype_soa,
 						   dns_rdatatype_none, &flag));
 				if (!flag) {
@@ -2899,7 +2912,7 @@ update_action(void *arg) {
 						   "ignored");
 					continue;
 				}
-				CHECK(check_soa_increment(db, ver, &rdata,
+				CHECK(check_soa_increment(db, version, &rdata,
 							  &ok));
 				if (!ok) {
 					update_log(client, zone,
@@ -2975,7 +2988,7 @@ update_action(void *arg) {
 
 			if (maxbytype != NULL && maxbytype[update] != 0) {
 				unsigned int count = 0;
-				CHECK(foreach_rr(db, ver, name, rdata.type,
+				CHECK(foreach_rr(db, version, name, rdata.type,
 						 covers, count_action, &count));
 				if (count >= maxbytype[update]) {
 					update_log(client, zone,
@@ -3023,7 +3036,7 @@ update_action(void *arg) {
 			{
 				add_rr_prepare_ctx_t ctx;
 				ctx.db = db;
-				ctx.ver = ver;
+				ctx.ver = version;
 				ctx.diff = &diff;
 				ctx.name = name;
 				ctx.oldname = name;
@@ -3032,7 +3045,7 @@ update_action(void *arg) {
 				ctx.ignore_add = false;
 				dns_diff_init(mctx, &ctx.del_diff);
 				dns_diff_init(mctx, &ctx.add_diff);
-				CHECK(foreach_rr(db, ver, name, rdata.type,
+				CHECK(foreach_rr(db, version, name, rdata.type,
 						 covers, add_rr_prepare_action,
 						 &ctx));
 
@@ -3040,11 +3053,11 @@ update_action(void *arg) {
 					dns_diff_clear(&ctx.del_diff);
 					dns_diff_clear(&ctx.add_diff);
 				} else {
-					result = do_diff(&ctx.del_diff, db, ver,
-							 &diff);
+					result = do_diff(&ctx.del_diff, db,
+							 version, &diff);
 					if (result == ISC_R_SUCCESS) {
 						result = do_diff(&ctx.add_diff,
-								 db, ver,
+								 db, version,
 								 &diff);
 					}
 					if (result != ISC_R_SUCCESS) {
@@ -3053,8 +3066,9 @@ update_action(void *arg) {
 						goto failure;
 					}
 					result = update_one_rr(
-						db, ver, &diff, DNS_DIFFOP_ADD,
-						name, ttl, &rdata);
+						db, version, &diff,
+						DNS_DIFFOP_ADD, name, ttl,
+						&rdata);
 					if (result != ISC_R_SUCCESS) {
 						update_log(client, zone,
 							   LOGLEVEL_PROTOCOL,
@@ -3080,13 +3094,13 @@ update_action(void *arg) {
 				}
 				if (dns_name_equal(name, zonename)) {
 					CHECK(delete_if(type_not_soa_nor_ns_p,
-							db, ver, name,
+							db, version, name,
 							dns_rdatatype_any,
 							dns_rdatatype_none,
 							&rdata, &diff));
 				} else {
 					CHECK(delete_if(type_not_dnssec, db,
-							ver, name,
+							version, name,
 							dns_rdatatype_any,
 							dns_rdatatype_none,
 							&rdata, &diff));
@@ -3113,7 +3127,7 @@ update_action(void *arg) {
 						   "deleting rrset at '%s' %s",
 						   namestr, typestr);
 				}
-				CHECK(delete_if(true_p, db, ver, name,
+				CHECK(delete_if(true_p, db, version, name,
 						rdata.type, covers, &rdata,
 						&diff));
 			}
@@ -3135,9 +3149,10 @@ update_action(void *arg) {
 				}
 				if (rdata.type == dns_rdatatype_ns) {
 					int count;
-					CHECK(rr_count(
-						db, ver, name, dns_rdatatype_ns,
-						dns_rdatatype_none, &count));
+					CHECK(rr_count(db, version, name,
+						       dns_rdatatype_ns,
+						       dns_rdatatype_none,
+						       &count));
 					if (count == 1) {
 						update_log(client, zone,
 							   LOGLEVEL_PROTOCOL,
@@ -3179,8 +3194,8 @@ update_action(void *arg) {
 					     sizeof(typestr));
 			update_log(client, zone, LOGLEVEL_PROTOCOL,
 				   "deleting an RR at %s %s", namestr, typestr);
-			CHECK(delete_if(rr_equal_p, db, ver, name, rdata.type,
-					covers, &rdata, &diff));
+			CHECK(delete_if(rr_equal_p, db, version, name,
+					rdata.type, covers, &rdata, &diff));
 		}
 
 		++update;
@@ -3192,12 +3207,12 @@ update_action(void *arg) {
 	 * records.
 	 */
 	if (!ISC_LIST_EMPTY(diff.tuples)) {
-		CHECK(check_dnssec(client, zone, db, ver, &diff));
+		CHECK(check_dnssec(client, zone, db, version, &diff));
 	}
 
 	if (!ISC_LIST_EMPTY(diff.tuples)) {
 		unsigned int errors = 0;
-		CHECK(dns_zone_nscheck(zone, db, ver, &errors));
+		CHECK(dns_zone_nscheck(zone, db, version, &errors));
 		if (errors != 0) {
 			update_log(client, zone, LOGLEVEL_PROTOCOL,
 				   "update rejected: post update name server "
@@ -3207,7 +3222,7 @@ update_action(void *arg) {
 		}
 	}
 	if (!ISC_LIST_EMPTY(diff.tuples) && is_signing) {
-		result = dns_zone_cdscheck(zone, db, ver);
+		result = dns_zone_cdscheck(zone, db, version);
 		if (result == DNS_R_BADCDS || result == DNS_R_BADCDNSKEY) {
 			update_log(client, zone, LOGLEVEL_PROTOCOL,
 				   "update rejected: bad %s RRset",
@@ -3236,23 +3251,24 @@ update_action(void *arg) {
 		 */
 		if (!soa_serial_changed) {
 			CHECK(update_soa_serial(
-				db, ver, &diff, mctx,
+				db, version, &diff, mctx,
 				dns_zone_getserialupdatemethod(zone)));
 		}
 
-		CHECK(check_mx(client, zone, db, ver, &diff));
+		CHECK(check_mx(client, zone, db, version, &diff));
 
-		CHECK(remove_orphaned_ds(db, ver, &diff));
+		CHECK(remove_orphaned_ds(db, version, &diff));
 
-		CHECK(rrset_exists(db, ver, zonename, dns_rdatatype_dnskey,
+		CHECK(rrset_exists(db, version, zonename, dns_rdatatype_dnskey,
 				   dns_rdatatype_none, &has_dnskey));
 
-		CHECK(rrset_exists(db, oldver, zonename, dns_rdatatype_dnskey,
-				   dns_rdatatype_none, &had_dnskey));
+		CHECK(rrset_exists(db, oldversion, zonename,
+				   dns_rdatatype_dnskey, dns_rdatatype_none,
+				   &had_dnskey));
 
-		CHECK(rollback_private(db, privatetype, ver, &diff));
+		CHECK(rollback_private(db, privatetype, version, &diff));
 
-		CHECK(add_nsec3param_records(client, zone, db, ver, &diff));
+		CHECK(add_nsec3param_records(client, zone, db, version, &diff));
 
 		if (is_signing && had_dnskey && !has_dnskey) {
 			/*
@@ -3261,17 +3277,18 @@ update_action(void *arg) {
 			 * the last signature for the DNSKEY records are
 			 * remove any NSEC chain present will also be removed.
 			 */
-			CHECK(dns_nsec3param_deletechains(db, ver, zone, true,
-							  &diff));
-		} else if (has_dnskey && isdnssec(db, ver, privatetype)) {
+			CHECK(dns_nsec3param_deletechains(db, version, zone,
+							  true, &diff));
+		} else if (has_dnskey && isdnssec(db, version, privatetype)) {
 			dns_update_log_t log;
 			uint32_t interval =
 				dns_zone_getsigvalidityinterval(zone);
 
 			log.func = update_log_cb;
 			log.arg = client;
-			result = dns_update_signatures(&log, zone, db, oldver,
-						       ver, &diff, interval);
+			result = dns_update_signatures(&log, zone, db,
+						       oldversion, version,
+						       &diff, interval);
 
 			if (result != ISC_R_SUCCESS) {
 				update_log(client, zone, ISC_LOG_ERROR,
@@ -3283,7 +3300,7 @@ update_action(void *arg) {
 
 		maxrecords = dns_zone_getmaxrecords(zone);
 		if (maxrecords != 0U) {
-			result = dns_db_getsize(db, ver, &records, NULL);
+			result = dns_db_getsize(db, version, &records, NULL);
 			if (result == ISC_R_SUCCESS && records > maxrecords) {
 				update_log(client, zone, ISC_LOG_ERROR,
 					   "records in zone (%" PRIu64
@@ -3323,7 +3340,7 @@ update_action(void *arg) {
 		update_log(client, zone, LOGLEVEL_DEBUG,
 			   "committing update transaction");
 
-		dns_db_closeversion(db, &ver, true);
+		dns_db_closeversion(db, &version, true);
 
 		/*
 		 * Mark the zone as dirty so that it will be written to disk.
@@ -3336,7 +3353,7 @@ update_action(void *arg) {
 		dns_zone_notify(zone, false);
 	} else {
 		update_log(client, zone, LOGLEVEL_DEBUG, "redundant request");
-		dns_db_closeversion(db, &ver, true);
+		dns_db_closeversion(db, &version, true);
 	}
 	result = ISC_R_SUCCESS;
 	goto common;
@@ -3345,17 +3362,17 @@ failure:
 	/*
 	 * The reason for failure should have been logged at this point.
 	 */
-	if (ver != NULL) {
+	if (version != NULL) {
 		update_log(client, zone, LOGLEVEL_DEBUG, "rolling back");
-		dns_db_closeversion(db, &ver, false);
+		dns_db_closeversion(db, &version, false);
 	}
 
 common:
 	dns_diff_clear(&temp);
 	dns_diff_clear(&diff);
 
-	if (oldver != NULL) {
-		dns_db_closeversion(db, &oldver, false);
+	if (oldversion != NULL) {
+		dns_db_closeversion(db, &oldversion, false);
 	}
 
 	if (db != NULL) {
@@ -3376,7 +3393,7 @@ common:
 	}
 
 	isc_async_run(client->manager->loop, updatedone_action, uev);
-	INSIST(ver == NULL);
+	INSIST(version == NULL);
 }
 
 static void

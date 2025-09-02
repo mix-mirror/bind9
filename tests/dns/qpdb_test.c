@@ -87,7 +87,7 @@ overmempurge_addrdataset(dns_db_t *db, isc_stdtime_t now, int idx,
 	dns_test_namefromstring(namebuf, &fname);
 	name = dns_fixedname_name(&fname);
 
-	result = dns_db_findnode(db, name, true, &node);
+	result = dns_db_findnode(db, NULL, name, true, &node);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_non_null(node);
 

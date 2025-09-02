@@ -3139,7 +3139,7 @@ add_soa(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
 
 	dns_rdataset_init(&rdataset);
 	dns_rdatalist_tordataset(&rdatalist, &rdataset);
-	CHECK(dns_db_findnode(db, name, true, &node));
+	CHECK(dns_db_findnode(db, version, name, true, &node));
 	CHECK(dns_db_addrdataset(db, node, version, 0, &rdataset, 0, NULL));
 
 cleanup:
@@ -3179,7 +3179,7 @@ add_ns(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
 
 	dns_rdataset_init(&rdataset);
 	dns_rdatalist_tordataset(&rdatalist, &rdataset);
-	CHECK(dns_db_findnode(db, name, true, &node));
+	CHECK(dns_db_findnode(db, version, name, true, &node));
 	CHECK(dns_db_addrdataset(db, node, version, 0, &rdataset, 0, NULL));
 
 cleanup:
@@ -14320,8 +14320,9 @@ named_server_signing(named_server_t *server, isc_lex_t *lex,
 		privatetype = dns_zone_getprivatetype(zone);
 		origin = dns_zone_getorigin(zone);
 		CHECK(dns_zone_getdb(zone, &db));
-		CHECK(dns_db_findnode(db, origin, false, &node));
+
 		dns_db_currentversion(db, &version);
+		CHECK(dns_db_findnode(db, version, origin, false, &node));
 
 		result = dns_db_findrdataset(db, node, version, privatetype,
 					     dns_rdatatype_none, 0, &privset,

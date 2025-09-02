@@ -635,7 +635,8 @@ isoptout(const vctx_t *vctx, const dns_rdata_nsec3param_t *nsec3param,
 
 	dns_rdataset_init(&rdataset);
 	hashname = dns_fixedname_name(&fixed);
-	result = dns_db_findnsec3node(vctx->db, hashname, false, &node);
+	result = dns_db_findnsec3node(vctx->db, vctx->ver, hashname, false,
+				      &node);
 	if (result == ISC_R_SUCCESS) {
 		result = dns_db_findrdataset(vctx->db, node, vctx->ver,
 					     dns_rdatatype_nsec3, 0, 0,
@@ -729,7 +730,8 @@ verifynsec3(const vctx_t *vctx, const dns_name_t *name,
 	 */
 	dns_rdataset_init(&rdataset);
 	hashname = dns_fixedname_name(&fixed);
-	result = dns_db_findnsec3node(vctx->db, hashname, false, &node);
+	result = dns_db_findnsec3node(vctx->db, vctx->ver, hashname, false,
+				      &node);
 	if (result == ISC_R_SUCCESS) {
 		result = dns_db_findrdataset(vctx->db, node, vctx->ver,
 					     dns_rdatatype_nsec3, 0, 0,
@@ -1324,7 +1326,8 @@ check_apex_rrsets(vctx_t *vctx) {
 	dns_dbnode_t *node = NULL;
 	isc_result_t result;
 
-	result = dns_db_findnode(vctx->db, vctx->origin, false, &node);
+	result = dns_db_findnode(vctx->db, vctx->ver, vctx->origin, false,
+				 &node);
 	if (result != ISC_R_SUCCESS) {
 		zoneverify_log_error(vctx,
 				     "failed to find the zone's origin: %s",

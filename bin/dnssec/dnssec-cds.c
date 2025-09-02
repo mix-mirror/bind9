@@ -236,6 +236,7 @@ free_all_sets(void) {
 static void
 load_db(const char *filename, dns_db_t **dbp, dns_dbnode_t **nodep) {
 	isc_result_t result;
+	dns_dbversion_t *version = NULL;
 
 	result = dns_db_create(isc_g_mctx, ZONEDB_DEFAULT, name,
 			       dns_dbtype_zone, rdclass, 0, NULL, dbp);
@@ -247,10 +248,12 @@ load_db(const char *filename, dns_db_t **dbp, dns_dbnode_t **nodep) {
 		fatal("can't load %s: %s", filename, isc_result_totext(result));
 	}
 
-	result = dns_db_findnode(*dbp, name, false, nodep);
+	dns_db_currentversion(*dbp, &version);
+	result = dns_db_findnode(*dbp, version, name, false, nodep);
 	if (result != ISC_R_SUCCESS) {
 		fatal("can't find %s node in %s", namestr, filename);
 	}
+	dns_db_closeversion(*dbp, &version, false);
 }
 
 static void
@@ -967,7 +970,8 @@ update_diff(const char *cmd, uint32_t ttl, dns_rdataset_t *addset,
 	result = dns_db_newversion(update_db, &update_version);
 	check_result(result, "dns_db_newversion()");
 
-	result = dns_db_findnode(update_db, name, true, &update_node);
+	result = dns_db_findnode(update_db, update_version, name, true,
+				 &update_node);
 	check_result(result, "dns_db_findnode()");
 
 	dns_rdataset_init(&diffset);

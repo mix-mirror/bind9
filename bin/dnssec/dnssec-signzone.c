@@ -950,7 +950,7 @@ addnowildcardhash(hashlist_t *l,
 	}
 	check_result(result, "addnowildcardhash: dns_name_concatenate()");
 
-	result = dns_db_findnode(gdb, wild, false, &node);
+	result = dns_db_findnode(gdb, gversion, wild, false, &node);
 	if (result == ISC_R_SUCCESS) {
 		dns_db_detachnode(&node);
 		return;
@@ -1014,7 +1014,8 @@ opendb(const char *prefix, dns_name_t *name, dns_rdataclass_t rdclass,
 static isc_result_t
 loadds(dns_name_t *name, uint32_t ttl, dns_rdataset_t *dsset) {
 	dns_db_t *db = NULL;
-	dns_dbversion_t *ver = NULL;
+	dns_dbversion_t *currentversion = NULL;
+	dns_dbversion_t *newversion = NULL;
 	dns_dbnode_t *node = NULL;
 	isc_result_t result;
 	dns_rdataset_t keyset;
@@ -1024,7 +1025,10 @@ loadds(dns_name_t *name, uint32_t ttl, dns_rdataset_t *dsset) {
 
 	opendb("dsset-", name, gclass, &db);
 	if (db != NULL) {
-		result = dns_db_findnode(db, name, false, &node);
+		dns_db_currentversion(db, &currentversion);
+		result = dns_db_findnode(db, currentversion, name, false,
+					 &node);
+		dns_db_closeversion(db, &currentversion, false);
 		if (result == ISC_R_SUCCESS) {
 			dns_rdataset_init(dsset);
 			result = dns_db_findrdataset(db, node, NULL,
@@ -1047,15 +1051,18 @@ loadds(dns_name_t *name, uint32_t ttl, dns_rdataset_t *dsset) {
 		return ISC_R_NOTFOUND;
 	}
 
-	result = dns_db_findnode(db, name, false, &node);
+	dns_db_currentversion(db, &currentversion);
+
+	result = dns_db_findnode(db, currentversion, name, false, &node);
 	if (result != ISC_R_SUCCESS) {
 		dns_db_detach(&db);
 		return result;
 	}
 
 	dns_rdataset_init(&keyset);
-	result = dns_db_findrdataset(db, node, NULL, dns_rdatatype_dnskey, 0, 0,
-				     &keyset, NULL);
+	result = dns_db_findrdataset(db, node, currentversion,
+				     dns_rdatatype_dnskey, 0, 0, &keyset, NULL);
+	dns_db_closeversion(db, &currentversion, false);
 	if (result != ISC_R_SUCCESS) {
 		dns_db_detachnode(&node);
 		dns_db_detach(&db);
@@ -1063,7 +1070,7 @@ loadds(dns_name_t *name, uint32_t ttl, dns_rdataset_t *dsset) {
 	}
 	vbprintf(2, "found DNSKEY records\n");
 
-	result = dns_db_newversion(db, &ver);
+	result = dns_db_newversion(db, &newversion);
 	check_result(result, "dns_db_newversion");
 	dns_diff_init(isc_g_mctx, &diff);
 
@@ -1080,11 +1087,11 @@ loadds(dns_name_t *name, uint32_t ttl, dns_rdataset_t *dsset) {
 		dns_diff_append(&diff, &tuple);
 	}
 
-	result = dns_diff_apply(&diff, db, ver);
+	result = dns_diff_apply(&diff, db, newversion);
 	check_result(result, "dns_diff_apply");
 	dns_diff_clear(&diff);
 
-	dns_db_closeversion(db, &ver, true);
+	dns_db_closeversion(db, &newversion, true);
 
 	result = dns_db_findrdataset(db, node, NULL, dns_rdatatype_ds, 0, 0,
 				     dsset, NULL);
@@ -1917,7 +1924,7 @@ addnsec3param(const unsigned char *salt, size_t salt_len,
 	ISC_LIST_APPEND(rdatalist.rdata, &rdata, link);
 	dns_rdatalist_tordataset(&rdatalist, &rdataset);
 
-	result = dns_db_findnode(gdb, gorigin, true, &node);
+	result = dns_db_findnode(gdb, gversion, gorigin, true, &node);
 	check_result(result, "dns_db_findnode(gorigin)");
 
 	/*
@@ -1977,8 +1984,8 @@ addnsec3(dns_name_t *name, dns_dbnode_t *node, const unsigned char *salt,
 	rdatalist.ttl = ttl;
 	ISC_LIST_APPEND(rdatalist.rdata, &rdata, link);
 	dns_rdatalist_tordataset(&rdatalist, &rdataset);
-	result = dns_db_findnsec3node(gdb, dns_fixedname_name(&hashname), true,
-				      &nsec3node);
+	result = dns_db_findnsec3node(
+		gdb, gversion, dns_fixedname_name(&hashname), true, &nsec3node);
 	check_result(result, "addnsec3: dns_db_findnode()");
 	result = dns_db_addrdataset(gdb, nsec3node, gversion, 0, &rdataset, 0,
 				    NULL);
@@ -2508,14 +2515,14 @@ loadzonekeys(bool preserve_keys, bool load_public) {
 	isc_result_t result;
 	dns_rdataset_t rdataset, keysigs, soasigs;
 
+	dns_db_currentversion(gdb, &currentversion);
+
 	node = NULL;
-	result = dns_db_findnode(gdb, gorigin, false, &node);
+	result = dns_db_findnode(gdb, currentversion, gorigin, false, &node);
 	if (result != ISC_R_SUCCESS) {
 		fatal("failed to find the zone's origin: %s",
 		      isc_result_totext(result));
 	}
-
-	dns_db_currentversion(gdb, &currentversion);
 
 	dns_rdataset_init(&rdataset);
 	dns_rdataset_init(&soasigs);
@@ -2822,7 +2829,7 @@ warnifallksk(dns_db_t *db) {
 
 	dns_db_currentversion(db, &currentversion);
 
-	result = dns_db_findnode(db, gorigin, false, &node);
+	result = dns_db_findnode(db, currentversion, gorigin, false, &node);
 	if (result != ISC_R_SUCCESS) {
 		fatal("failed to find the zone's origin: %s",
 		      isc_result_totext(result));
@@ -2929,7 +2936,7 @@ set_nsec3params(bool update, bool set_salt, bool set_optout, bool set_iter) {
 				    orig_saltlen);
 	check_result(result, "dns_nsec3_hashname");
 
-	result = dns_db_findnsec3node(gdb, hashname, false, &node);
+	result = dns_db_findnsec3node(gdb, gversion, hashname, false, &node);
 	if (result != ISC_R_SUCCESS) {
 		goto cleanup;
 	}
