@@ -16,9 +16,22 @@ import json
 import os
 from pathlib import Path
 
-# Heuristic to filter out non-behavioral flags (warnings, library linking, etc.)
-COMPILER_FILTER = ("-I", "-W", "-include", "/", "-fdiagnostics")
-LINKER_FILTER = ("/", "lib", "-Wl,-rpath,$ORIGIN/:XXXXXX", "-Wl,--start", "-Wl,--end")
+# Heuristic to filter out non-behavioral flags (warnings, object linking, etc.)
+COMPILER_FILTER = (
+    "-I",
+    "-W",
+    "-fdiagnostics",
+    "-include",
+    "/",
+)
+
+LINKER_FILTER = (
+    "-Wl,--end",
+    "-Wl,--start",
+    "-Wl,-rpath",
+    "/",
+    "lib",
+)
 
 build_root = os.getenv("BIND_BUILD_ROOT")
 if build_root is None:

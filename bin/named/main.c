@@ -1091,6 +1091,12 @@ setup(void) {
 		      __SUNPRO_C);
 #endif /* ifdef __SUNPRO_C */
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
+		      ISC_LOG_NOTICE, "compiled using flags: %s",
+		      named_compiler_args);
+	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
+		      ISC_LOG_NOTICE, "linked using flags: %s",
+		      named_linker_args);
+	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
 		      ISC_LOG_NOTICE, "compiled with OpenSSL version: %s",
 		      OPENSSL_VERSION_TEXT);
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
