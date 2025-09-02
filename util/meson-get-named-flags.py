@@ -16,24 +16,31 @@ import json
 import os
 from pathlib import Path
 
-# Heuristic to filter out non-behavioral flags (warnings, object linking, etc.)
-COMPILER_FILTER = (
-    "-W",
-    "-fdiagnostics",
-    "-include",
-    "/",
-)
-
-LINKER_FILTER = (
-    "-Wl,--end",
-    "-Wl,--start",
-    "-Wl,-rpath",
-    "lib",
-)
-
 build_root = os.getenv("BIND_BUILD_ROOT")
 if build_root is None:
     raise Exception("running outside meson?")  # pylint: disable=broad-exception-raised
+
+source_root = os.getenv("BIND_SOURCE_ROOT")
+if source_root is None:
+    raise Exception("running outside meson?")  # pylint: disable=broad-exception-raised
+
+
+# Heuristic to filter out non-behavioral flags (warnings, object linking, etc.)
+compiler_filter = (
+    "-W",
+    "-fdiagnostics",
+    "-include",
+    "/",  # Absolute path is used for `config.h`
+    f"-I{source_root}",  # In-project includes don't carry meaningful information
+)
+
+linker_filter = (
+    "-Wl,--end",
+    "-Wl,--start",
+    "-Wl,-rpath",  # RPATH is stripped on install, making it useless
+    "lib",  # Used by in-project libraries, not shared
+)
+
 
 # https://mesonbuild.com/IDE-integration.html#the-targets-section
 intro_dependencies = Path(build_root) / "meson-info" / "intro-targets.json"
@@ -45,7 +52,7 @@ named = next(x for x in build_targets if x["name"] == "named")["target_sources"]
 
 assert "compiler" in named[0]
 compiler_args = " ".join(
-    [x for x in named[0]["parameters"] if not x.startswith(COMPILER_FILTER)],
+    [x for x in named[0]["parameters"] if not x.startswith(compiler_filter)],
 )
 
 # https://mesonbuild.com/Release-notes-for-1-2-0.html#more-data-in-introspection-files
@@ -54,7 +61,7 @@ linker_args = "unprobed"
 if len(named) > 1:
     assert "linker" in named[1]
     linker_args = " ".join(
-        [x for x in named[1]["parameters"] if not x.startswith(LINKER_FILTER)],
+        [x for x in named[1]["parameters"] if not x.startswith(linker_filter)],
     )
 
 print(
