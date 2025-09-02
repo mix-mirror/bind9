@@ -18,7 +18,6 @@ from pathlib import Path
 
 # Heuristic to filter out non-behavioral flags (warnings, object linking, etc.)
 COMPILER_FILTER = (
-    "-I",
     "-W",
     "-fdiagnostics",
     "-include",
@@ -29,7 +28,6 @@ LINKER_FILTER = (
     "-Wl,--end",
     "-Wl,--start",
     "-Wl,-rpath",
-    "/",
     "lib",
 )
 
