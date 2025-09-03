@@ -842,32 +842,6 @@ clean_zone_node(qpznode_t *node, uint32_t least_serial) {
 		}
 
 		if (top->header == NULL) {
-			goto empty;
-		}
-
-		/*
-		 * We now try to find the first down node less than the least
-		 * serial, and if there are such rdatasets, delete it and any
-		 * older versions.
-		 */
-		dns_slabheader_t *dcurrent = NULL;
-		dns_slabheader_t *dcurrent_down = NULL, *dparent = NULL;
-
-		dparent = top->header;
-		for (dcurrent = dparent->down; dcurrent != NULL;
-		     dcurrent = dcurrent_down)
-		{
-			dcurrent_down = dcurrent->down;
-			if (dcurrent->serial < least_serial) {
-				dparent->down = dcurrent_down;
-				dns_slabheader_destroy(&dcurrent);
-			} else {
-				dparent = dcurrent;
-			}
-		}
-
-		if (top->header == NULL) {
-		empty:
 			if (top_prev != NULL) {
 				top_prev->next = top->next;
 			} else {
@@ -875,6 +849,28 @@ clean_zone_node(qpznode_t *node, uint32_t least_serial) {
 			}
 			dns_slabtop_destroy(node->mctx, &top);
 		} else {
+
+			/*
+			 * We now try to find the first down node less than the least
+			 * serial, and if there are such rdatasets, delete it and any
+			 * older versions.
+			 */
+			dns_slabheader_t *dcurrent = NULL;
+			dns_slabheader_t *dcurrent_down = NULL, *dparent = NULL;
+
+			dparent = top->header;
+			for (dcurrent = dparent->down; dcurrent != NULL;
+			     dcurrent = dcurrent_down)
+			{
+				dcurrent_down = dcurrent->down;
+				if (dcurrent->serial < least_serial) {
+					dparent->down = dcurrent_down;
+					dns_slabheader_destroy(&dcurrent);
+				} else {
+					dparent = dcurrent;
+				}
+			}
+
 			/*
 			 * Note.  The serial number of 'current' might be less
 			 * than least_serial too, but we cannot delete it
