@@ -1552,7 +1552,6 @@ qpzone_findrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 	qpzonedb_t *qpdb = (qpzonedb_t *)db;
 	qpznode_t *node = (qpznode_t *)dbnode;
 	dns_slabheader_t *found = NULL, *foundsig = NULL;
-	uint32_t serial;
 	qpz_version_t *version = (qpz_version_t *)dbversion;
 	bool close_version = false;
 	dns_typepair_t typepair, sigpair;
@@ -1571,7 +1570,6 @@ qpzone_findrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 		currentversion(db, (dns_dbversion_t **)&version);
 		close_version = true;
 	}
-	serial = version->serial;
 
 	nlock = qpzone_get_lock(node);
 	NODE_RDLOCK(nlock, &nlocktype);
@@ -1584,29 +1582,31 @@ qpzone_findrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 	}
 
 	DNS_SLABTOP_FOREACH(top, node->data) {
-		dns_slabheader_t *header = top->header;
-		do {
-			if (header->serial <= serial && !IGNORE(header)) {
-				if (!EXISTS(header)) {
-					header = NULL;
+		dns_slabheader_t * candidate = NULL;
+
+		SLABHEADER_FOREACH_SAFE(top->header, inner, down) {
+			if (inner->serial <= version->serial &&
+			    !IGNORE(inner))
+			{
+				if (EXISTS(inner)) {
+					candidate = inner;
 				}
 				break;
-			} else {
-				header = header->down;
-			}
-		} while (header != NULL);
-		if (header != NULL) {
+			} 
+		} 
+
+		if (candidate != NULL) {
 			/*
 			 * We have an active, extant rdataset.  If it's a
 			 * type we're looking for, remember it.
 			 */
-			if (top->typepair == typepair) {
-				found = header;
+			if (candidate->typepair == typepair) {
+				found = candidate;
 				if (foundsig != NULL) {
 					break;
 				}
-			} else if (top->typepair == sigpair) {
-				foundsig = header;
+			} else if (candidate->typepair == sigpair) {
+				foundsig = candidate;
 				if (found != NULL) {
 					break;
 				}

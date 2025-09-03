@@ -70,6 +70,16 @@ struct dns_slabheader_proof {
 	     elt != NULL;                                                  \
 	     elt = elt##_next, elt##_next = (elt != NULL) ? elt->next : NULL)
 
+
+/* clang-format off */
+#define SLABHEADER_FOREACH_SAFE(header, elt, link)         \
+    for (dns_slabheader_t *elt = (header),                 \
+         *elt##_next = (elt != NULL) ? (elt)->link : NULL;   \
+	 elt != NULL;                                      \
+	 elt = elt##_next,                                 \
+         elt##_next = (elt != NULL) ? (elt)->link : NULL)
+/* clang-format on */
+
 typedef struct dns_slabtop dns_slabtop_t;
 struct dns_slabtop {
 	dns_slabtop_t	 *next;
