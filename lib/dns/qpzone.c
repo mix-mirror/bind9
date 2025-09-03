@@ -825,38 +825,20 @@ clean_zone_node(qpznode_t *node, uint32_t least_serial) {
 	DNS_SLABTOP_FOREACH(top, node->data) {
 		INSIST(top->header != NULL);
 
-		/*
-		 * First, we clean up any instances of multiple rdatasets
-		 * with the same serial number, or that have the IGNORE
-		 * attribute.
-		 */
-		dns_slabheader_t *dcurrent = NULL;
-		dns_slabheader_t *dcurrent_down = NULL, *dparent = NULL;
+		/* Torvalds style */
+		uint32_t parent_serial = -1; /* Maybe should be bigger than uint32 max? */
+		dns_slabheader_t **parent_p = &top->header;
 
-		dparent = top->header;
-		for (dcurrent = dparent->down; dcurrent != NULL;
-		     dcurrent = dcurrent_down)
-		{
-			dcurrent_down = dcurrent->down;
-			INSIST(dcurrent->serial <= dparent->serial);
-			if (dcurrent->serial == dparent->serial ||
-			    IGNORE(dcurrent))
-			{
-				dparent->down = dcurrent_down;
-				dns_slabheader_destroy(&dcurrent);
+		while (*parent_p != NULL) {
+			dns_slabheader_t *child = *parent_p;
+			
+			if (child->serial == parent_serial || IGNORE(child)) {
+				*parent_p = child->down;
+				dns_slabheader_destroy(&child);
 			} else {
-				dparent = dcurrent;
+				parent_p = &(child->down);
+				parent_serial = child->serial;
 			}
-		}
-
-		/*
-		 * We've now eliminated all IGNORE datasets with the possible
-		 * exception of current, which we now check.
-		 */
-		dcurrent = top->header;
-		if (IGNORE(dcurrent)) {
-			top->header = dcurrent->down;
-			dns_slabheader_destroy(&dcurrent);
 		}
 
 		if (top->header == NULL) {
@@ -868,6 +850,9 @@ clean_zone_node(qpznode_t *node, uint32_t least_serial) {
 		 * serial, and if there are such rdatasets, delete it and any
 		 * older versions.
 		 */
+		dns_slabheader_t *dcurrent = NULL;
+		dns_slabheader_t *dcurrent_down = NULL, *dparent = NULL;
+
 		dparent = top->header;
 		for (dcurrent = dparent->down; dcurrent != NULL;
 		     dcurrent = dcurrent_down)
