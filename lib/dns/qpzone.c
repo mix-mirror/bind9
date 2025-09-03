@@ -1046,16 +1046,17 @@ setnsec3parameters(dns_db_t *db, qpz_version_t *version) {
 	while (top != NULL && top->typepair != dns_rdatatype_nsec3param) {
 		top = top->next;
 	}
-	if (top != NULL) {
-		dns_slabheader_t *header = top->header;
-		while (header != NULL &&
-		       (IGNORE(header) || header->serial > version->serial))
-		{
-			header = header->down;
-		}
 
-		if (header != NULL && EXISTS(header)) {
-			found = header;
+	if (top != NULL) {
+		SLABHEADER_FOREACH_SAFE(top->header, inner, down) {
+			if (inner->serial <= version->serial &&
+			    !IGNORE(inner))
+			{
+				if (EXISTS(inner)) {
+					found = inner;
+				}
+				break;
+			} 
 		}
 	}
 
