@@ -2662,19 +2662,22 @@ step(qpz_search_t *search, dns_qpiter_t *it, direction_t direction,
 	while (result == ISC_R_SUCCESS) {
 		isc_rwlock_t *nlock = qpzone_get_lock(node);
 		isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
-		dns_slabheader_t *found = NULL;
 
 		NODE_RDLOCK(nlock, &nlocktype);
+
+		dns_slabheader_t *found = NULL;
 		DNS_SLABTOP_FOREACH(top, node->data) {
-			dns_slabheader_t *header = top->header;
-			while (header != NULL &&
-			       (IGNORE(header) ||
-				header->serial > search->serial))
-			{
-				header = header->down;
+			SLABHEADER_FOREACH_SAFE(top->header, inner, down) {
+				if (inner->serial <= search->serial &&
+				    !IGNORE(inner))
+				{
+					if (EXISTS(inner)) {
+						found = inner;
+					}
+					break;
+				}
 			}
-			if (header != NULL && EXISTS(header)) {
-				found = header;
+			if (found != NULL) {
 				break;
 			}
 		}
@@ -3046,35 +3049,34 @@ again:
 		NODE_RDLOCK(nlock, &nlocktype);
 		empty_node = true;
 		DNS_SLABTOP_FOREACH(top, node->data) {
-			dns_slabheader_t *header = top->header;
+
 			/*
 			 * Look for an active, extant NSEC or RRSIG NSEC.
 			 */
-			do {
-				if (header->serial <= search->serial &&
-				    !IGNORE(header))
+			dns_slabheader_t *candidate = NULL;
+			SLABHEADER_FOREACH_SAFE(top->header, inner, down) {
+				if (inner->serial <= search->serial &&
+				    !IGNORE(inner))
 				{
-					if (!EXISTS(header)) {
-						header = NULL;
+					if (EXISTS(inner)) {
+						candidate = inner;
 					}
 					break;
-				} else {
-					header = header->down;
 				}
-			} while (header != NULL);
-			if (header != NULL) {
+			}
+			if (candidate != NULL) {
 				/*
 				 * We now know that there is at least one
 				 * active rdataset at this node.
 				 */
 				empty_node = false;
 				if (top->typepair == typepair) {
-					found = header;
+					found = candidate;
 					if (foundsig != NULL) {
 						break;
 					}
 				} else if (top->typepair == sigpair) {
-					foundsig = header;
+					foundsig = candidate;
 					if (found != NULL) {
 						break;
 					}
