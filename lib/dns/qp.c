@@ -2381,13 +2381,12 @@ fix_chain(dns_qpchain_t *chain, size_t offset) {
 }
 
 isc_result_t
-dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
-	      dns_rdatatype_t type, dns_namespace_t space,
-	      dns_name_t *foundname, dns_qpiter_t *iter, dns_qpchain_t *chain,
-	      void **pval_r, uint32_t *ival_r) {
+dns_qp_lookupkey(dns_qpreadable_t qpr, dns_qpkey_t search, size_t searchlen,
+		 dns_name_t *foundname, dns_qpiter_t *iter,
+		 dns_qpchain_t *chain, void **pval_r, uint32_t *ival_r) {
 	dns_qpreader_t *qp = dns_qpreader(qpr);
-	dns_qpkey_t search, found;
-	size_t searchlen, foundlen;
+	dns_qpkey_t found;
+	size_t foundlen;
 	size_t offset = 0, noffset = 0;
 	dns_qpnode_t *n = NULL;
 	dns_qpshift_t bit = SHIFT_NOBYTE;
@@ -2397,9 +2396,6 @@ dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
 	bool setiter = true;
 
 	REQUIRE(QP_VALID(qp));
-	REQUIRE(foundname == NULL || ISC_MAGIC_VALID(name, DNS_NAME_MAGIC));
-
-	searchlen = dns_qpkey_fromnametype(search, name, type, space);
 
 	if (chain == NULL) {
 		chain = &oc;
@@ -2553,6 +2549,19 @@ dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
 
 	/* nothing was found at all */
 	return ISC_R_NOTFOUND;
+}
+
+isc_result_t
+dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
+	      dns_rdatatype_t type, dns_namespace_t space,
+	      dns_name_t *foundname, dns_qpiter_t *iter, dns_qpchain_t *chain,
+	      void **pval_r, uint32_t *ival_r) {
+	REQUIRE(foundname == NULL || ISC_MAGIC_VALID(name, DNS_NAME_MAGIC));
+
+	dns_qpkey_t key;
+	size_t keylen = dns_qpkey_fromnametype(key, name, type, space);
+	return dns_qp_lookupkey(qpr, key, keylen, foundname, iter, chain,
+				pval_r, ival_r);
 }
 
 /**********************************************************************/

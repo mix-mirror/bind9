@@ -557,6 +557,16 @@ dns_qp_getnametype(dns_qpreadable_t qpr, const dns_name_t *name,
  */
 
 isc_result_t
+dns_qp_lookupkey(dns_qpreadable_t qpr, dns_qpkey_t search, size_t searchlen,
+		 dns_name_t *foundname, dns_qpiter_t *iter,
+		 dns_qpchain_t *chain, void **pval_r, uint32_t *ival_r);
+/*%<
+ * Look up a leaf in a qp-trie given the 'search' key.
+ *
+ * See dns_qp_lookup().
+ */
+
+isc_result_t
 dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
 	      dns_rdatatype_t type, dns_namespace_t space,
 	      dns_name_t *foundname, dns_qpiter_t *iter, dns_qpchain_t *chain,
