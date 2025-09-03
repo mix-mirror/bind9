@@ -452,7 +452,6 @@ ISC_RUN_TEST_IMPL(loadraw) {
 ISC_RUN_TEST_IMPL(dumpraw) {
 	isc_result_t result;
 	dns_db_t *db = NULL;
-	dns_dbversion_t *version = NULL;
 
 	UNUSED(state);
 
@@ -474,11 +473,8 @@ ISC_RUN_TEST_IMPL(dumpraw) {
 	result = isc_dir_chdir(BUILDDIR);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	dns_db_currentversion(db, &version);
-
-	result = dns_master_dump(isc_g_mctx, db, version,
-				 &dns_master_style_default, "test.dump",
-				 dns_masterformat_raw, NULL);
+	result = dns_master_dump(isc_g_mctx, db, &dns_master_style_default,
+				 "test.dump", dns_masterformat_raw, NULL);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	result = test_master(NULL, "test.dump", dns_masterformat_raw, nullmsg,
@@ -492,9 +488,8 @@ ISC_RUN_TEST_IMPL(dumpraw) {
 	header.flags |= DNS_MASTERRAW_SOURCESERIALSET;
 
 	unlink("test.dump");
-	result = dns_master_dump(isc_g_mctx, db, version,
-				 &dns_master_style_default, "test.dump",
-				 dns_masterformat_raw, &header);
+	result = dns_master_dump(isc_g_mctx, db, &dns_master_style_default,
+				 "test.dump", dns_masterformat_raw, &header);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	result = test_master(NULL, "test.dump", dns_masterformat_raw, nullmsg,
@@ -505,7 +500,6 @@ ISC_RUN_TEST_IMPL(dumpraw) {
 	assert_int_equal(header.sourceserial, 12345);
 
 	unlink("test.dump");
-	dns_db_closeversion(db, &version, false);
 	dns_db_detach(&db);
 }
 

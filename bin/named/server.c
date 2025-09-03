@@ -267,7 +267,6 @@ struct dumpcontext {
 	dns_db_t *db;
 	dns_db_t *cache;
 	isc_loop_t *loop;
-	dns_dbversion_t *version;
 };
 
 struct viewlistentry {
@@ -11096,9 +11095,6 @@ dumpcontext_destroy(struct dumpcontext *dctx) {
 		dns_view_detach(&vle->view);
 		isc_mem_put(dctx->mctx, vle, sizeof *vle);
 	}
-	if (dctx->version != NULL) {
-		dns_db_closeversion(dctx->db, &dctx->version, false);
-	}
 	if (dctx->db != NULL) {
 		dns_db_detach(&dctx->db);
 	}
@@ -11159,7 +11155,7 @@ resume:
 				dctx->view->view->name,
 				dns_cache_getname(dctx->view->view->cache));
 			result = dns_master_dumptostreamasync(
-				dctx->mctx, dctx->cache, NULL, style, dctx->fp,
+				dctx->mctx, dctx->cache, style, dctx->fp,
 				isc_loop_main(), dumpdone, dctx, &dctx->mdctx);
 			if (result == ISC_R_SUCCESS) {
 				return;
@@ -11197,9 +11193,6 @@ resume:
 	if (dctx->dumpzones) {
 		style = &dns_master_style_full;
 	nextzone:
-		if (dctx->version != NULL) {
-			dns_db_closeversion(dctx->db, &dctx->version, false);
-		}
 		if (dctx->db != NULL) {
 			dns_db_detach(&dctx->db);
 		}
@@ -11218,11 +11211,10 @@ resume:
 					isc_result_totext(result));
 				goto nextzone;
 			}
-			dns_db_currentversion(dctx->db, &dctx->version);
 			result = dns_master_dumptostreamasync(
-				dctx->mctx, dctx->db, dctx->version, style,
-				dctx->fp, dns_zone_getloop(dctx->zone->zone),
-				dumpdone, dctx, &dctx->mdctx);
+				dctx->mctx, dctx->db, style, dctx->fp,
+				dns_zone_getloop(dctx->zone->zone), dumpdone,
+				dctx, &dctx->mdctx);
 			if (result == ISC_R_SUCCESS) {
 				return;
 			}

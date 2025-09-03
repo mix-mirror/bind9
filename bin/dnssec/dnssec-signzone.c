@@ -3075,13 +3075,14 @@ writeset(const char *prefix, dns_rdatatype_t type) {
 	check_result(result, "dns_diff_apply");
 	dns_diff_clear(&diff);
 
-	result = dns_master_dump(isc_g_mctx, db, dbversion, style, filename,
+	dns_db_closeversion(db, &dbversion, true);
+
+	result = dns_master_dump(isc_g_mctx, db, style, filename,
 				 dns_masterformat_text, NULL);
 	check_result(result, "dns_master_dump");
 
 	isc_mem_put(isc_g_mctx, filename, filenamelen);
 
-	dns_db_closeversion(db, &dbversion, false);
 	dns_db_detach(&db);
 }
 
@@ -3954,6 +3955,8 @@ main(int argc, char *argv[]) {
 		}
 	}
 
+	dns_db_closeversion(gdb, &gversion, true);
+
 	if (!output_dnssec_only) {
 		dns_masterrawheader_t header;
 		dns_master_initrawheader(&header);
@@ -3963,9 +3966,8 @@ main(int argc, char *argv[]) {
 			header.flags = DNS_MASTERRAW_SOURCESERIALSET;
 			header.sourceserial = serialnum;
 		}
-		result = dns_master_dumptostream(isc_g_mctx, gdb, gversion,
-						 masterstyle, outputformat,
-						 &header, outfp);
+		result = dns_master_dumptostream(isc_g_mctx, gdb, masterstyle,
+						 outputformat, &header, outfp);
 		check_result(result, "dns_master_dumptostream");
 	}
 
@@ -3986,7 +3988,6 @@ main(int argc, char *argv[]) {
 		}
 	}
 
-	dns_db_closeversion(gdb, &gversion, false);
 	dns_db_detach(&gdb);
 
 	hashlist_free(&hashlist);

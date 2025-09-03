@@ -1189,20 +1189,6 @@ currentversion(dns_db_t *db, dns_dbversion_t **versionp) {
 	*versionp = (dns_dbversion_t *)version;
 }
 
-static void
-attachversion(dns_db_t *db, dns_dbversion_t *source,
-	      dns_dbversion_t **targetp) {
-	qpzonedb_t *qpdb = (qpzonedb_t *)db;
-	qpz_version_t *version = (qpz_version_t *)source;
-
-	REQUIRE(VALID_QPZONE(qpdb));
-	INSIST(version != NULL && version->qpdb == qpdb);
-
-	isc_refcount_increment(&version->references);
-
-	*targetp = source;
-}
-
 static isc_result_t
 newversion(dns_db_t *db, dns_dbversion_t **versionp) {
 	qpzonedb_t *qpdb = (qpzonedb_t *)db;
@@ -5386,7 +5372,6 @@ static dns_dbmethods_t qpdb_zonemethods = {
 	.endload = endload,
 	.currentversion = currentversion,
 	.newversion = newversion,
-	.attachversion = attachversion,
 	.closeversion = closeversion,
 	.findnode = qpzone_findnode,
 	.find = qpzone_find,

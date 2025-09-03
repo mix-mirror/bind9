@@ -359,17 +359,6 @@ newversion(dns_db_t *db, dns_dbversion_t **versionp) {
 }
 
 static void
-attachversion(dns_db_t *db, dns_dbversion_t *source,
-	      dns_dbversion_t **targetp) {
-	dns_sdlz_db_t *sdlz = (dns_sdlz_db_t *)db;
-
-	REQUIRE(VALID_SDLZDB(sdlz));
-	REQUIRE(source != NULL && source == (void *)&sdlz->dummy_version);
-
-	*targetp = source;
-}
-
-static void
 closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 	     bool commit DNS__DB_FLARG) {
 	dns_sdlz_db_t *sdlz = (dns_sdlz_db_t *)db;
@@ -1155,7 +1144,6 @@ static dns_dbmethods_t sdlzdb_methods = {
 	.destroy = destroy,
 	.currentversion = currentversion,
 	.newversion = newversion,
-	.attachversion = attachversion,
 	.closeversion = closeversion,
 	.findnode = findnode,
 	.find = find,

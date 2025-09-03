@@ -747,19 +747,6 @@ currentversion(dns_db_t *db, dns_dbversion_t **versionp) {
 }
 
 static void
-attachversion(dns_db_t *db, dns_dbversion_t *source,
-	      dns_dbversion_t **targetp) {
-	bdb_t *bdb = (bdb_t *)db;
-
-	REQUIRE(VALID_BDB(bdb));
-	REQUIRE(source != NULL && source == (void *)&dummy);
-	REQUIRE(targetp != NULL && *targetp == NULL);
-
-	*targetp = source;
-	return;
-}
-
-static void
 closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 	     bool commit DNS__DB_FLARG) {
 	bdb_t *bdb = (bdb_t *)db;
@@ -1145,7 +1132,6 @@ allrdatasets(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 static dns_dbmethods_t bdb_methods = {
 	.destroy = destroy,
 	.currentversion = currentversion,
-	.attachversion = attachversion,
 	.closeversion = closeversion,
 	.findrdataset = findrdataset,
 	.allrdatasets = allrdatasets,

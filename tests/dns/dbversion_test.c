@@ -125,23 +125,6 @@ teardown_test(void **state) {
 }
 
 /*
- * Check dns_db_attachversion() passes with matching db and version, and
- * asserts with mis-matching db and version.
- */
-ISC_RUN_TEST_IMPL(attachversion) {
-	dns_dbversion_t *v = NULL;
-
-	UNUSED(state);
-
-	dns_db_attachversion(db1, v1, &v);
-	assert_ptr_equal(v, v1);
-	dns_db_closeversion(db1, &v, false);
-	assert_null(v);
-
-	check_assertion(dns_db_attachversion(db1, v2, &v));
-}
-
-/*
  * Check dns_db_closeversion() passes with matching db and version, and
  * asserts with mis-matching db and version.
  */
@@ -539,7 +522,6 @@ ISC_TEST_ENTRY_CUSTOM(deleterdataset, setup_test, teardown_test)
 ISC_TEST_ENTRY_CUSTOM(subtract, setup_test, teardown_test)
 ISC_TEST_ENTRY_CUSTOM(addrdataset, setup_test, teardown_test)
 ISC_TEST_ENTRY_CUSTOM(getnsec3parameters, setup_test, teardown_test)
-ISC_TEST_ENTRY_CUSTOM(attachversion, setup_test, teardown_test)
 ISC_TEST_ENTRY_CUSTOM(closeversion, setup_test, teardown_test)
 ISC_TEST_ENTRY_CUSTOM(rollback, setup_test, teardown_test)
 ISC_TEST_LIST_END

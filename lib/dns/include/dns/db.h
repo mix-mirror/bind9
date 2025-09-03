@@ -96,8 +96,6 @@ typedef struct dns_db_methods {
 	isc_result_t (*endload)(dns_db_t *db, dns_rdatacallbacks_t *callbacks);
 	void (*currentversion)(dns_db_t *db, dns_dbversion_t **versionp);
 	isc_result_t (*newversion)(dns_db_t *db, dns_dbversion_t **versionp);
-	void (*attachversion)(dns_db_t *db, dns_dbversion_t *source,
-			      dns_dbversion_t **targetp);
 	void (*closeversion)(dns_db_t *db, dns_dbversion_t **versionp,
 			     bool commit DNS__DB_FLARG);
 	isc_result_t (*findnode)(dns_db_t *db, const dns_name_t *name,
@@ -636,25 +634,6 @@ dns_db_newversion(dns_db_t *db, dns_dbversion_t **versionp);
  *
  * \li	Other results are possible, depending upon the database
  *	implementation used.
- */
-
-void
-dns_db_attachversion(dns_db_t *db, dns_dbversion_t *source,
-		     dns_dbversion_t **targetp);
-/*%<
- * Attach '*targetp' to 'source'.
- *
- * Requires:
- *
- * \li	'db' is a valid database with zone semantics.
- *
- * \li	source is a valid open version
- *
- * \li	targetp != NULL && *targetp == NULL
- *
- * Ensures:
- *
- * \li	'*targetp' is attached to source.
  */
 
 #define dns_db_closeversion(db, versionp, commit) \

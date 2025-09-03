@@ -106,16 +106,6 @@ newversion(dns_db_t *db, dns_dbversion_t **versionp) {
 }
 
 static void
-attachversion(dns_db_t *db, dns_dbversion_t *source,
-	      dns_dbversion_t **targetp) {
-	sampledb_t *sampledb = (sampledb_t *)db;
-
-	REQUIRE(VALID_SAMPLEDB(sampledb));
-
-	dns_db_attachversion(sampledb->db, source, targetp);
-}
-
-static void
 closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 	     bool commit DNS__DB_FLARG) {
 	sampledb_t *sampledb = (sampledb_t *)db;
@@ -397,7 +387,6 @@ static dns_dbmethods_t sampledb_methods = {
 	.destroy = destroy,
 	.currentversion = currentversion,
 	.newversion = newversion,
-	.attachversion = attachversion,
 	.closeversion = closeversion,
 	.findnode = findnode,
 	.find = find,

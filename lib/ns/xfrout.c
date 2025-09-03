@@ -647,7 +647,6 @@ typedef struct {
 	dns_rdataclass_t qclass;
 	dns_zone_t *zone; /* (necessary for stats) */
 	dns_db_t *db;
-	dns_dbversion_t *ver;
 	rrstream_t *stream;  /* The XFR RR stream */
 	bool question_added; /* QUESTION section sent? */
 	bool end_of_stream;  /* EOS has been reached */
@@ -682,11 +681,10 @@ static void
 xfrout_ctx_create(isc_mem_t *mctx, ns_client_t *client, unsigned int id,
 		  dns_name_t *qname, dns_rdatatype_t qtype,
 		  dns_rdataclass_t qclass, dns_zone_t *zone, dns_db_t *db,
-		  dns_dbversion_t *ver, rrstream_t *stream,
-		  dns_tsigkey_t *tsigkey, isc_buffer_t *lasttsig,
-		  bool verified_tsig, unsigned int maxtime,
-		  unsigned int idletime, bool many_answers,
-		  xfrout_ctx_t **xfrp);
+		  rrstream_t *stream, dns_tsigkey_t *tsigkey,
+		  isc_buffer_t *lasttsig, bool verified_tsig,
+		  unsigned int maxtime, unsigned int idletime,
+		  bool many_answers, xfrout_ctx_t **xfrp);
 
 static void
 sendstream(xfrout_ctx_t *xfr);
@@ -1074,15 +1072,15 @@ have_stream:
 
 	if (is_dlz) {
 		xfrout_ctx_create(mctx, client, request->id, question_name,
-				  reqtype, question_class, zone, db, ver,
-				  stream, dns_message_gettsigkey(request),
-				  tsigbuf, request->verified_sig, 3600, 3600,
+				  reqtype, question_class, zone, db, stream,
+				  dns_message_gettsigkey(request), tsigbuf,
+				  request->verified_sig, 3600, 3600,
 				  (format == dns_many_answers) ? true : false,
 				  &xfr);
 	} else {
 		xfrout_ctx_create(
 			mctx, client, request->id, question_name, reqtype,
-			question_class, zone, db, ver, stream,
+			question_class, zone, db, stream,
 			dns_message_gettsigkey(request), tsigbuf,
 			request->verified_sig, dns_zone_getmaxxfrout(zone),
 			dns_zone_getidleout(zone),
@@ -1204,11 +1202,10 @@ static void
 xfrout_ctx_create(isc_mem_t *mctx, ns_client_t *client, unsigned int id,
 		  dns_name_t *qname, dns_rdatatype_t qtype,
 		  dns_rdataclass_t qclass, dns_zone_t *zone, dns_db_t *db,
-		  dns_dbversion_t *ver, rrstream_t *stream,
-		  dns_tsigkey_t *tsigkey, isc_buffer_t *lasttsig,
-		  bool verified_tsig, unsigned int maxtime,
-		  unsigned int idletime, bool many_answers,
-		  xfrout_ctx_t **xfrp) {
+		  rrstream_t *stream, dns_tsigkey_t *tsigkey,
+		  isc_buffer_t *lasttsig, bool verified_tsig,
+		  unsigned int maxtime, unsigned int idletime,
+		  bool many_answers, xfrout_ctx_t **xfrp) {
 	xfrout_ctx_t *xfr = NULL;
 	unsigned int len = NS_CLIENT_TCP_BUFFER_SIZE;
 	void *mem = NULL;
@@ -1236,7 +1233,6 @@ xfrout_ctx_create(isc_mem_t *mctx, ns_client_t *client, unsigned int id,
 		dns_zone_attach(zone, &xfr->zone);
 	}
 	dns_db_attach(db, &xfr->db);
-	dns_db_attachversion(db, ver, &xfr->ver);
 
 	xfr->stats.start = isc_time_now();
 
@@ -1660,9 +1656,6 @@ xfrout_ctx_destroy(xfrout_ctx_t **xfrp) {
 
 	isc_quota_release(&xfr->client->manager->sctx->xfroutquota);
 
-	if (xfr->ver != NULL) {
-		dns_db_closeversion(xfr->db, &xfr->ver, false);
-	}
 	if (xfr->zone != NULL) {
 		dns_zone_detach(&xfr->zone);
 	}

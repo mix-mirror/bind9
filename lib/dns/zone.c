@@ -12082,7 +12082,6 @@ dump_done(void *arg, isc_result_t result) {
 	dns_zone_t *zone = arg;
 	dns_zone_t *secure = NULL;
 	dns_db_t *db;
-	dns_dbversion_t *version;
 	bool again = false;
 	bool compact = false;
 	uint32_t serial;
@@ -12117,6 +12116,7 @@ dump_done(void *arg, isc_result_t result) {
 		/*
 		 * We don't own these, zone->dctx must stay valid.
 		 */
+		dns_dbversion_t *version = NULL;
 		db = dns_dumpctx_db(zone->dumpctx);
 		version = dns_dumpctx_version(zone->dumpctx);
 		tresult = dns_db_getsoaserial(db, version, &serial);
@@ -12225,7 +12225,6 @@ dump_done(void *arg, isc_result_t result) {
 static isc_result_t
 zone_dump(dns_zone_t *zone, bool compact) {
 	isc_result_t result;
-	dns_dbversion_t *version = NULL;
 	bool again = false;
 	dns_db_t *db = NULL;
 	char *masterfile = NULL;
@@ -12268,8 +12267,6 @@ redo:
 		goto fail;
 	}
 
-	dns_db_currentversion(db, &version);
-
 	dns_master_initrawheader(&rawdata);
 
 	if (inline_secure(zone)) {
@@ -12282,10 +12279,10 @@ redo:
 
 		INSIST(zone != zone->raw);
 
-		result = dns_master_dumpasync(
-			zone->mctx, db, version, masterstyle, masterfile,
-			zone->loop, dump_done, zone, &zone->dumpctx,
-			masterformat, &rawdata);
+		result = dns_master_dumpasync(zone->mctx, db, masterstyle,
+					      masterfile, zone->loop, dump_done,
+					      zone, &zone->dumpctx,
+					      masterformat, &rawdata);
 
 		UNLOCK_ZONE(zone);
 		if (result != ISC_R_SUCCESS) {
@@ -12294,7 +12291,7 @@ redo:
 		}
 		result = DNS_R_CONTINUE;
 	} else {
-		result = dns_master_dump(zone->mctx, db, version, masterstyle,
+		result = dns_master_dump(zone->mctx, db, masterstyle,
 					 masterfile, masterformat, &rawdata);
 		if ((zone->type == dns_zone_secondary ||
 		     zone->type == dns_zone_mirror ||
@@ -12314,9 +12311,6 @@ redo:
 		}
 	}
 fail:
-	if (version != NULL) {
-		dns_db_closeversion(db, &version, false);
-	}
 	if (db != NULL) {
 		dns_db_detach(&db);
 	}
@@ -12363,7 +12357,6 @@ static isc_result_t
 dumptostream(dns_zone_t *zone, FILE *fd, const dns_master_style_t *style,
 	     dns_masterformat_t format, const uint32_t rawversion) {
 	isc_result_t result;
-	dns_dbversion_t *version = NULL;
 	dns_db_t *db = NULL;
 	dns_masterrawheader_t rawdata;
 
@@ -12378,7 +12371,6 @@ dumptostream(dns_zone_t *zone, FILE *fd, const dns_master_style_t *style,
 		return DNS_R_NOTLOADED;
 	}
 
-	dns_db_currentversion(db, &version);
 	dns_master_initrawheader(&rawdata);
 	if (rawversion == 0) {
 		rawdata.flags |= DNS_MASTERRAW_COMPAT;
@@ -12388,9 +12380,8 @@ dumptostream(dns_zone_t *zone, FILE *fd, const dns_master_style_t *style,
 		rawdata.flags = DNS_MASTERRAW_SOURCESERIALSET;
 		rawdata.sourceserial = zone->sourceserial;
 	}
-	result = dns_master_dumptostream(zone->mctx, db, version, style, format,
+	result = dns_master_dumptostream(zone->mctx, db, style, format,
 					 &rawdata, fd);
-	dns_db_closeversion(db, &version, false);
 	dns_db_detach(&db);
 	return result;
 }
