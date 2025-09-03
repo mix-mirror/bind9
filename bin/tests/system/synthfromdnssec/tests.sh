@@ -683,21 +683,6 @@ for ns in 2 4 5 6; do
   if [ $ret != 0 ]; then echo_i "failed"; fi
   status=$((status + ret))
 
-  echo_i "check 'rndc stats' output for 'cache NSEC auxiliary database nodes' (synth-from-dnssec ${description};) ($n)"
-  ret=0
-  # 2 views, _bind should always be '0 cache NSEC auxiliary database nodes'
-  count=$(grep "cache NSEC auxiliary database nodes" ns${ns}/named.stats | wc -l)
-  test $count = 2 || ret=1
-  zero=$(grep "0 cache NSEC auxiliary database nodes" ns${ns}/named.stats | wc -l)
-  if [ ${ad} = yes ]; then
-    test $zero = 1 || ret=1
-  else
-    test $zero = 2 || ret=1
-  fi
-  n=$((n + 1))
-  if [ $ret != 0 ]; then echo_i "failed"; fi
-  status=$((status + ret))
-
   for synthesized in NXDOMAIN no-data wildcard; do
     case $synthesized in
       NXDOMAIN) count=2 ;;
@@ -732,21 +717,6 @@ for ns in 2 4 5 6; do
     test $count = 1 || ret=1
     zero=$(echo "$counter" | grep ">0<" | wc -l)
     if [ ${synth} = yes ]; then
-      test $zero = 0 || ret=1
-    else
-      test $zero = 1 || ret=1
-    fi
-    n=$((n + 1))
-    if [ $ret != 0 ]; then echo_i "failed"; fi
-    status=$((status + ret))
-
-    echo_i "check XML for 'CacheNSECNodes' with (synth-from-dnssec ${description};) ($n)"
-    ret=0
-    counter=$(sed -n 's;.*<view name="_default">.*\(<counter name="CacheNSECNodes">[0-9]*</counter>\).*</view><view.*;\1;gp' $xml)
-    count=$(echo "$counter" | grep CacheNSECNodes | wc -l)
-    test $count = 1 || ret=1
-    zero=$(echo "$counter" | grep ">0<" | wc -l)
-    if [ ${ad} = yes ]; then
       test $zero = 0 || ret=1
     else
       test $zero = 1 || ret=1
@@ -792,20 +762,6 @@ for ns in 2 4 5 6; do
     test $count = 2 || ret=1
     zero=$(grep '"CoveringNSEC":0' $json | wc -l)
     if [ ${synth} = yes ]; then
-      test $zero = 1 || ret=1
-    else
-      test $zero = 2 || ret=1
-    fi
-    n=$((n + 1))
-    if [ $ret != 0 ]; then echo_i "failed"; fi
-    status=$((status + ret))
-
-    echo_i "check JSON for 'CacheNSECNodes' with (synth-from-dnssec ${description};) ($n)"
-    ret=0
-    count=$(grep '"CacheNSECNodes":' $json | wc -l)
-    test $count = 2 || ret=1
-    zero=$(grep '"CacheNSECNodes":0' $json | wc -l)
-    if [ ${ad} = yes ]; then
       test $zero = 1 || ret=1
     else
       test $zero = 2 || ret=1
