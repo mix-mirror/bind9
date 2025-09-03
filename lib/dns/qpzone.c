@@ -1292,20 +1292,10 @@ rollback_node(qpznode_t *node, uint32_t serial) {
 	 * will be cleaned up; until that time, they will be ignored.
 	 */
 	DNS_SLABTOP_FOREACH(top, node->data) {
-		dns_slabheader_t *header = top->header;
-
-		if (header->serial == serial) {
-			DNS_SLABHEADER_SETATTR(header,
-					       DNS_SLABHEADERATTR_IGNORE);
-			make_dirty = true;
-		}
-
-		for (header = header->down; header != NULL;
-		     header = header->down)
-		{
-			if (header->serial == serial) {
+		SLABHEADER_FOREACH_SAFE(top->header, dcurrent, down) {
+			if (dcurrent->serial == serial) {
 				DNS_SLABHEADER_SETATTR(
-					header, DNS_SLABHEADERATTR_IGNORE);
+					dcurrent, DNS_SLABHEADERATTR_IGNORE);
 				make_dirty = true;
 			}
 		}
