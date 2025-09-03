@@ -1706,17 +1706,18 @@ cname_and_other(qpznode_t *node, uint32_t serial) {
 
 		rdtype = DNS_TYPEPAIR_TYPE(top->typepair);
 		if (rdtype == dns_rdatatype_cname) {
-			do {
-				if (header->serial <= serial && !IGNORE(header))
+			dns_slabheader_t *found = NULL;
+			SLABHEADER_FOREACH_SAFE(header, by_version, down) {
+				if (by_version->serial <= serial && !IGNORE(by_version))
 				{
-					if (!EXISTS(header)) {
-						header = NULL;
+					found = by_version;
+					if (!EXISTS(by_version)) {
+						found = NULL;
 					}
 					break;
 				}
-				header = header->down;
-			} while (header != NULL);
-			if (header != NULL) {
+			}
+			if (found != NULL) {
 				cname = true;
 			}
 		} else if (rdtype != dns_rdatatype_key &&
@@ -1724,17 +1725,18 @@ cname_and_other(qpznode_t *node, uint32_t serial) {
 			   rdtype != dns_rdatatype_nsec &&
 			   rdtype != dns_rdatatype_rrsig)
 		{
-			do {
-				if (header->serial <= serial && !IGNORE(header))
+			dns_slabheader_t *found = NULL;
+			SLABHEADER_FOREACH_SAFE(header, by_version, down) {
+				if (by_version->serial <= serial && !IGNORE(by_version))
 				{
-					if (!EXISTS(header)) {
-						header = NULL;
+					found = by_version;
+					if (!EXISTS(by_version)) {
+						found = NULL;
 					}
 					break;
 				}
-				header = header->down;
-			} while (header != NULL);
-			if (header != NULL) {
+			}
+			if (found != NULL) {
 				if (!prio_type(rdtype)) {
 					/*
 					 * CNAME is in the priority list, so if
