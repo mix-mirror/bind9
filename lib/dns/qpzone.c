@@ -4029,26 +4029,26 @@ rdatasetiter_first(dns_rdatasetiter_t *iterator DNS__DB_FLARG) {
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 	isc_rwlock_t *nlock = qpzone_get_lock(node);
 
-	qrditer->currenttop = NULL;
-	qrditer->current = NULL;
-
 	NODE_RDLOCK(nlock, &nlocktype);
 
-	DNS_SLABTOP_FOREACH(top, node->data) {
-		dns_slabheader_t *header = top->header;
-		while (header != NULL &&
-		       (IGNORE(header) || header->serial > version->serial))
-		{
-			header = header->down;
-		}
+        qrditer->currenttop = NULL;
+        qrditer->current = NULL;
 
-		if (header != NULL && EXISTS(header)) {
-			qrditer->currenttop = top;
-			qrditer->current = header;
-			break;
+	DNS_SLABTOP_FOREACH(top, node->data) {
+		SLABHEADER_FOREACH_SAFE(top->header, header, down) {
+			if (header->serial <= version->serial && !IGNORE(header)) {
+				if (EXISTS(header)) {
+					qrditer->currenttop = top;
+					qrditer->current = header;
+					goto exit;
+				} else {
+					break;
+				}
+			}
 		}
 	}
 
+exit:
 	NODE_UNLOCK(nlock, &nlocktype);
 
 	if (qrditer->currenttop == NULL) {
