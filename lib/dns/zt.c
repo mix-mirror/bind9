@@ -69,7 +69,10 @@ static void
 ztqpdetach(void *uctx ISC_ATTR_UNUSED, void *pval,
 	   uint32_t ival ISC_ATTR_UNUSED) {
 	dns_zone_t *zone = pval;
+
+	dns_cfgmgr_rwtxn();
 	dns_zone_detach(&zone);
+	INSIST(dns_cfgmgr_commit() == ISC_R_SUCCESS);
 }
 
 static size_t

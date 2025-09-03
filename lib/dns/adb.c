@@ -1017,8 +1017,10 @@ destroy_adbentry_rcu(struct rcu_head *rcu_head) {
 	isc_mem_put(adb->mctx, adbentry, sizeof(*adbentry));
 
 	dec_adbstats(adb, dns_adbstats_entriescnt);
-
+	
+	dns_cfgmgr_rwtxn();
 	dns_adb_detach(&adb);
+	INSIST(dns_cfgmgr_commit() == ISC_R_SUCCESS);
 }
 
 static void
