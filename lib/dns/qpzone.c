@@ -4080,20 +4080,20 @@ rdatasetiter_next(dns_rdatasetiter_t *iterator DNS__DB_FLARG) {
 	 * Find the start of the header chain for the next type.
 	 */
 	DNS_SLABTOP_FOREACH(top, next) {
-		dns_slabheader_t *header = top->header;
-		while (header != NULL &&
-		       (IGNORE(header) || header->serial > version->serial))
-		{
-			header = header->down;
-		}
-
-		if (header != NULL && EXISTS(header)) {
-			qrditer->currenttop = top;
-			qrditer->current = header;
-			break;
+		SLABHEADER_FOREACH_SAFE(top->header, header, down) {
+			if (header->serial <= version->serial && !IGNORE(header)) {
+				if (EXISTS(header)) {
+					qrditer->currenttop = top;
+					qrditer->current = header;
+					goto exit;
+				} else {
+					break;
+				}
+			}
 		}
 	}
 
+exit:
 	NODE_UNLOCK(nlock, &nlocktype);
 
 	if (qrditer->currenttop == NULL) {
@@ -5418,11 +5418,10 @@ static dns_dbnode_methods_t qpznode_methods = (dns_dbnode_methods_t){
 static void
 destroy_qpznode(qpznode_t *node) {
 	DNS_SLABTOP_FOREACH(top, node->data) {
-		dns_slabheader_t *down = NULL, *down_next = NULL;
-		for (down = top->header; down != NULL; down = down_next) {
-			down_next = down->down;
-			dns_slabheader_destroy(&down);
+		SLABHEADER_FOREACH_SAFE(top->header, header, down) {
+			dns_slabheader_destroy(&header);
 		}
+
 		top->header = NULL;
 
 		dns_slabtop_destroy(node->mctx, &top);
