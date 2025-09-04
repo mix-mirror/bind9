@@ -848,16 +848,11 @@ clean_zone_node(qpznode_t *node, uint32_t least_serial) {
 			 * serial, and if there are such rdatasets, delete it and any
 			 * older versions.
 			 */
-			dns_slabheader_t *dcurrent = NULL;
-			dns_slabheader_t *dcurrent_down = NULL, *dparent = NULL;
 
-			dparent = top->header;
-			for (dcurrent = dparent->down; dcurrent != NULL;
-			     dcurrent = dcurrent_down)
-			{
-				dcurrent_down = dcurrent->down;
+			dns_slabheader_t *dparent = top->header;
+			SLABHEADER_FOREACH_SAFE(top->header->down, dcurrent, down) {
 				if (dcurrent->serial < least_serial) {
-					dparent->down = dcurrent_down;
+					dparent->down = dcurrent->down;
 					dns_slabheader_destroy(&dcurrent);
 				} else {
 					dparent = dcurrent;
