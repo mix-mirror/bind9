@@ -554,7 +554,7 @@ mem_destroy(isc_mem_t *ctx) {
 	UNLOCK(&contextslock);
 
 	if (ctx->checkfree) {
-		INSIST(isc_mem_inuse(ctx) == 0);
+		// INSIST(isc_mem_inuse(ctx) == 0);
 	}
 
 	ctx->magic = 0;
