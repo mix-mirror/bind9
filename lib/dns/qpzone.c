@@ -181,21 +181,21 @@ typedef struct slabtop_array slabtop_array_t;
  * Inits the array, allocates data with `reserved` elements.
  */
 static void
-slabtop_array_init(slabtop_array_t *arr, size_t reserved);
+slabtop_array_init(isc_mem_t *mctx, slabtop_array_t *arr, size_t reserved);
 
 /*
  * Adds an element at the end, growning `data` if necessary.
  * Grow data to the next power of two.
  */
 static void
-slabtop_array_push(slabtop_array_t *arr, compact_slabtop_t type_and_header);
+slabtop_array_push(isc_mem_t *mctx, slabtop_array_t *arr, compact_slabtop_t type_and_header);
 
 /*
  * Swaps the element at index idx with the last one, decreases size by one.
  * Zeroes out header of the last element.
  */
 static void
-slabtop_array_erase(slabtop_array_t *arr, size_t idx);
+slabtop_array_erase(isc_mem_t *mctx, slabtop_array_t *arr, size_t idx);
 
 /*
  * Finds the first element with typepair equals to `needle`
@@ -209,13 +209,13 @@ slabtop_array_find(slabtop_array_t *arr, dns_typepair_t needle);
  * typepair equals to `needle` and header equals to NULL.
  */
 static compact_slabtop_t*
-slabtop_array_find_or_create(slabtop_array_t *arr, dns_typepair_t needle);
+slabtop_array_find_or_create(isc_mem_t *mctx, slabtop_array_t *arr, dns_typepair_t needle);
 
 /*
  * Resizes capacity to the next power of two bigger or equal to size.
  */
 static void
-slabtop_shrink_to_fit(slabtop_array_t *arr);
+slabtop_shrink_to_fit(isc_mem_t *mctx, slabtop_array_t *arr);
 
 struct qpznode {
 	DBNODE_FIELDS;
@@ -441,6 +441,141 @@ static atomic_uint_fast16_t init_count = 0;
  *
  * Failure to follow this hierarchy can result in deadlock.
  */
+
+static uint32_t
+next_power_of_two(uint32_t n) {
+	if (n == 0) {
+		return 1;
+	}
+	n--;
+	n |= n >> 1;
+	n |= n >> 2;
+	n |= n >> 4;
+	n |= n >> 8;
+	n |= n >> 16;
+	return n + 1;
+}
+
+static void
+slabtop_array_init(isc_mem_t *mctx, slabtop_array_t *arr, size_t reserved) {
+	REQUIRE(mctx != NULL);
+	REQUIRE(arr != NULL);
+	
+	arr->size = 0;
+	arr->capacity = reserved > 0 ? next_power_of_two(reserved) : 1;
+	arr->data = isc_mem_cget(mctx, arr->capacity, sizeof(compact_slabtop_t));
+}
+
+static void
+slabtop_array_push(isc_mem_t *mctx, slabtop_array_t *arr, compact_slabtop_t type_and_header) {
+	REQUIRE(mctx != NULL);
+	REQUIRE(arr != NULL);
+	REQUIRE(arr->data != NULL);
+	
+	if (arr->size >= arr->capacity) {
+		uint32_t new_capacity = next_power_of_two(arr->capacity + 1);
+		compact_slabtop_t *new_data = isc_mem_cget(mctx, new_capacity,
+							   sizeof(compact_slabtop_t));
+		
+		for (uint32_t i = 0; i < arr->size; i++) {
+			new_data[i] = arr->data[i];
+		}
+		
+		isc_mem_cput(mctx, arr->data, arr->capacity, sizeof(compact_slabtop_t));
+		arr->data = new_data;
+		arr->capacity = new_capacity;
+	}
+	
+	arr->data[arr->size++] = type_and_header;
+}
+
+static void
+slabtop_array_erase(isc_mem_t *mctx, slabtop_array_t *arr, size_t idx) {
+	REQUIRE(mctx != NULL);
+	REQUIRE(arr != NULL);
+	REQUIRE(arr->data != NULL);
+	REQUIRE(idx < arr->size);
+	
+	/* Swap with last element */
+	if (idx < arr->size - 1) {
+		arr->data[idx] = arr->data[arr->size - 1];
+	}
+	
+	/* Zero out the last element's header */
+	memset(&arr->data[arr->size - 1].header, 0, sizeof(dns_slabheader_t));
+	arr->size--;
+
+	/* Note: mctx parameter for potential future cleanup needs */
+	UNUSED(mctx);
+}
+
+static compact_slabtop_t
+slabtop_array_find(slabtop_array_t *arr, dns_typepair_t needle) {
+	compact_slabtop_t result = { 0, { 0 } };
+	
+	REQUIRE(arr != NULL);
+	
+	if (arr->data == NULL) {
+		return result;
+	}
+	
+	for (uint32_t i = 0; i < arr->size; i++) {
+		if (arr->data[i].typepair == needle) {
+			return arr->data[i];
+		}
+	}
+	
+	return result;
+}
+
+static compact_slabtop_t *
+slabtop_array_find_or_create(isc_mem_t *mctx, slabtop_array_t *arr, dns_typepair_t needle) {
+	REQUIRE(mctx != NULL);
+	REQUIRE(arr != NULL);
+	
+	/* First try to find existing element */
+	if (arr->data != NULL) {
+		for (uint32_t i = 0; i < arr->size; i++) {
+			if (arr->data[i].typepair == needle) {
+				return &arr->data[i];
+			}
+		}
+	}
+	
+	/* Element not found, create new one */
+	compact_slabtop_t new_element = {
+		.typepair = needle,
+		.header = { 0 }
+	};
+	
+	slabtop_array_push(mctx, arr, new_element);
+	return &arr->data[arr->size - 1];
+}
+
+static void
+slabtop_shrink_to_fit(isc_mem_t *mctx, slabtop_array_t *arr) {
+	REQUIRE(mctx != NULL);
+	REQUIRE(arr != NULL);
+	
+	if (arr->data == NULL || arr->size == 0) {
+		return;
+	}
+	
+	uint32_t new_capacity = next_power_of_two(arr->size);
+	
+	if (new_capacity < arr->capacity) {
+		compact_slabtop_t *new_data = isc_mem_cget(mctx, new_capacity,
+							   sizeof(compact_slabtop_t));
+		
+		for (uint32_t i = 0; i < arr->size; i++) {
+			new_data[i] = arr->data[i];
+		}
+		
+		isc_mem_cput(mctx, arr->data, arr->capacity, sizeof(compact_slabtop_t));
+		arr->data = new_data;
+		arr->capacity = new_capacity;
+	}
+}
 
 void
 dns__qpzone_initialize(void) {
