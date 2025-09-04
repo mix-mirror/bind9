@@ -814,7 +814,6 @@ qpznode_acquire(qpznode_t *node DNS__DB_FLARG) {
 
 static void
 clean_zone_node(qpznode_t *node, uint32_t least_serial) {
-	dns_slabtop_t *top_prev = NULL;
 	bool still_dirty = false;
 
 	/*
@@ -840,16 +839,10 @@ clean_zone_node(qpznode_t *node, uint32_t least_serial) {
 				parent_serial = child->serial;
 			}
 		}
+	}
 
-		if (top->header == NULL) {
-			if (top_prev != NULL) {
-				top_prev->next = top->next;
-			} else {
-				node->data = top->next;
-			}
-			dns_slabtop_destroy(node->mctx, &top);
-		} else {
-
+	DNS_SLABTOP_FOREACH(top, node->data) {
+		if (top->header != NULL) {
 			/*
 			 * We now try to find the first down node less than the least
 			 * serial, and if there are such rdatasets, delete it and any
@@ -877,9 +870,23 @@ clean_zone_node(qpznode_t *node, uint32_t least_serial) {
 			 * because it is the most recent version.
 			 */
 			still_dirty = true;
+		}
+	}
+	
+	dns_slabtop_t *top_prev = NULL;
+	DNS_SLABTOP_FOREACH(top, node->data) {
+		if (top->header == NULL) {
+			if (top_prev != NULL) {
+				top_prev->next = top->next;
+			} else {
+				node->data = top->next;
+			}
+			dns_slabtop_destroy(node->mctx, &top);
+		} else {
 			top_prev = top;
 		}
 	}
+
 	if (!still_dirty) {
 		node->dirty = false;
 	}
