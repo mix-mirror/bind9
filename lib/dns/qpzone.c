@@ -163,6 +163,60 @@ typedef struct qpz_heap {
 
 ISC_REFCOUNT_STATIC_DECL(qpz_heap);
 
+struct compact_slabtop {
+	dns_typepair_t typepair;
+	dns_slabheader_t header;
+};
+
+struct slabtop_array {
+	uint32_t size;
+	uint32_t capacity;
+	struct compact_slabtop *data;
+};
+
+typedef struct compact_slabtop compact_slabtop_t;
+typedef struct slabtop_array slabtop_array_t;
+
+/*
+ * Inits the array, allocates data with `reserved` elements.
+ */
+static void
+slabtop_array_init(slabtop_array_t *arr, size_t reserved);
+
+/*
+ * Adds an element at the end, growning `data` if necessary.
+ * Grow data to the next power of two.
+ */
+static void
+slabtop_array_push(slabtop_array_t *arr, compact_slabtop_t type_and_header);
+
+/*
+ * Swaps the element at index idx with the last one, decreases size by one.
+ * Zeroes out header of the last element.
+ */
+static void
+slabtop_array_erase(slabtop_array_t *arr, size_t idx);
+
+/*
+ * Finds the first element with typepair equals to `needle`
+ */
+static compact_slabtop_t
+slabtop_array_find(slabtop_array_t *arr, dns_typepair_t needle);
+
+/*
+ * Finds the first element with typepair equals to `needle` and returns a
+ * pointer to it. If such element is not present, it pushes a new element with
+ * typepair equals to `needle` and header equals to NULL.
+ */
+static compact_slabtop_t*
+slabtop_array_find_or_create(slabtop_array_t *arr, dns_typepair_t needle);
+
+/*
+ * Resizes capacity to the next power of two bigger or equal to size.
+ */
+static void
+slabtop_shrink_to_fit(slabtop_array_t *arr);
+
 struct qpznode {
 	DBNODE_FIELDS;
 
@@ -1005,6 +1059,15 @@ bindrdataset(qpzonedb_t *qpdb, qpznode_t *node, dns_slabheader_t *header,
 	}
 }
 
+static dns_slabtop_t *
+find_slabtop_by_typepair(dns_slabtop_t *head, dns_typepair_t typepair) {
+	dns_slabtop_t *top = head;
+	while (top != NULL && top->typepair != typepair) {
+		top = top->next;
+	}
+	return top;
+}
+
 static void
 setnsec3parameters(dns_db_t *db, qpz_version_t *version) {
 	qpznode_t *node = NULL;
@@ -1025,10 +1088,7 @@ setnsec3parameters(dns_db_t *db, qpz_version_t *version) {
 
 	NODE_RDLOCK(nlock, &nlocktype);
 
-	top = node->data;
-	while (top != NULL && top->typepair != dns_rdatatype_nsec3param) {
-		top = top->next;
-	}
+	top = find_slabtop_by_typepair(node->data, dns_rdatatype_nsec3param);
 
 	if (top != NULL) {
 		SLABHEADER_FOREACH_SAFE(top->header, inner, down) {
