@@ -24,6 +24,7 @@
 #include <isc/refcount.h>
 #include <isc/stats.h>
 #include <isc/statsmulti.h>
+#include <isc/tid.h>
 #include <isc/util.h>
 
 #define ISC_STATSMULTI_MAGIC	   ISC_MAGIC('S', 'M', 'u', 'l')
@@ -103,18 +104,27 @@ isc_statsmulti_increment(isc_statsmulti_t *stats, isc_statscounter_t counter) {
 	REQUIRE(ISC_STATSMULTI_VALID(stats));
 	REQUIRE(counter < stats->ncounters);
 
-	return atomic_fetch_add_relaxed(&stats->counters[counter], 1);
+	isc_tid_t tid = isc_tid();
+	int thread_id = ISC_MAX(tid, 0);
+	if (thread_id >= stats->num_threads) {
+		thread_id = 0;
+	}
+	int index = thread_id * stats->per_thread_capacity + counter;
+	return atomic_fetch_add_relaxed(&stats->counters[index], 1);
 }
 
 void
 isc_statsmulti_decrement(isc_statsmulti_t *stats, isc_statscounter_t counter) {
 	REQUIRE(ISC_STATSMULTI_VALID(stats));
 	REQUIRE(counter < stats->ncounters);
-#if ISC_STATS_CHECKUNDERFLOW
-	REQUIRE(atomic_fetch_sub_release(&stats->counters[counter], 1) > 0);
-#else
-	atomic_fetch_sub_release(&stats->counters[counter], 1);
-#endif
+
+	isc_tid_t tid = isc_tid();
+	int thread_id = ISC_MAX(tid, 0);
+	if (thread_id >= stats->num_threads) {
+		thread_id = 0;
+	}
+	int index = thread_id * stats->per_thread_capacity + counter;
+	atomic_fetch_sub_release(&stats->counters[index], 1);
 }
 
 void
