@@ -39,6 +39,7 @@ struct isc_statsmulti {
 	isc_mem_t *mctx;
 	isc_refcount_t references;
 	int ncounters;
+	int capacity;
 	isc_atomic_statscounter_t *counters;
 };
 
@@ -47,16 +48,20 @@ isc_statsmulti_create(isc_mem_t *mctx, isc_statsmulti_t **statsp, int ncounters)
 	REQUIRE(statsp != NULL && *statsp == NULL);
 
 	isc_statsmulti_t *stats = isc_mem_get(mctx, sizeof(*stats));
-	size_t counters_alloc_size = sizeof(isc_atomic_statscounter_t) *
-				     ncounters;
+	
+	size_t counters_size = sizeof(isc_atomic_statscounter_t) * ncounters;
+	size_t counters_alloc_size = (counters_size + 63) & ~63; /* Round up to next multiple of 64 */
+	int capacity = counters_alloc_size / sizeof(isc_atomic_statscounter_t);
+	
 	stats->counters = isc_mem_get(mctx, counters_alloc_size);
 	isc_refcount_init(&stats->references, 1);
-	for (int i = 0; i < ncounters; i++) {
+	for (int i = 0; i < capacity; i++) {
 		atomic_init(&stats->counters[i], 0);
 	}
 	stats->mctx = NULL;
 	isc_mem_attach(mctx, &stats->mctx);
 	stats->ncounters = ncounters;
+	stats->capacity = capacity;
 	stats->magic = ISC_STATSMULTI_MAGIC;
 	*statsp = stats;
 }
@@ -81,7 +86,7 @@ isc_statsmulti_detach(isc_statsmulti_t **statsp) {
 
 	if (isc_refcount_decrement(&stats->references) == 1) {
 		isc_refcount_destroy(&stats->references);
-		isc_mem_cput(stats->mctx, stats->counters, stats->ncounters,
+		isc_mem_cput(stats->mctx, stats->counters, stats->capacity,
 			     sizeof(isc_atomic_statscounter_t));
 		isc_mem_putanddetach(&stats->mctx, stats, sizeof(*stats));
 	}
