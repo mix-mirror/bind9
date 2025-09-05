@@ -125,6 +125,7 @@ isc_srcset.add(
         'signal.c',
         'sockaddr.c',
         'stats.c',
+        'statsmulti.c',
         'stdio.c',
         'stdtime.c',
         'string.c',
