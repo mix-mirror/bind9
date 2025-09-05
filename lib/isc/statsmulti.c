@@ -20,6 +20,7 @@
 #include <isc/buffer.h>
 #include <isc/magic.h>
 #include <isc/mem.h>
+#include <isc/os.h>
 #include <isc/refcount.h>
 #include <isc/stats.h>
 #include <isc/statsmulti.h>
@@ -39,7 +40,8 @@ struct isc_statsmulti {
 	isc_mem_t *mctx;
 	isc_refcount_t references;
 	int ncounters;
-	int capacity;
+	int per_thread_capacity;
+	int num_threads;
 	isc_atomic_statscounter_t *counters;
 };
 
@@ -51,17 +53,21 @@ isc_statsmulti_create(isc_mem_t *mctx, isc_statsmulti_t **statsp, int ncounters)
 	
 	size_t counters_size = sizeof(isc_atomic_statscounter_t) * ncounters;
 	size_t counters_alloc_size = (counters_size + 63) & ~63; /* Round up to next multiple of 64 */
-	int capacity = counters_alloc_size / sizeof(isc_atomic_statscounter_t);
+	int per_thread_capacity = counters_alloc_size / sizeof(isc_atomic_statscounter_t);
+	int num_threads = isc_os_ncpus();
 	
-	stats->counters = isc_mem_get(mctx, counters_alloc_size);
+	/* Allocate per_thread_capacity * num_threads total counters */
+	size_t total_alloc_size = counters_alloc_size * num_threads;
+	stats->counters = isc_mem_get(mctx, total_alloc_size);
 	isc_refcount_init(&stats->references, 1);
-	for (int i = 0; i < capacity; i++) {
+	for (int i = 0; i < per_thread_capacity * num_threads; i++) {
 		atomic_init(&stats->counters[i], 0);
 	}
 	stats->mctx = NULL;
 	isc_mem_attach(mctx, &stats->mctx);
 	stats->ncounters = ncounters;
-	stats->capacity = capacity;
+	stats->per_thread_capacity = per_thread_capacity;
+	stats->num_threads = num_threads;
 	stats->magic = ISC_STATSMULTI_MAGIC;
 	*statsp = stats;
 }
@@ -86,7 +92,7 @@ isc_statsmulti_detach(isc_statsmulti_t **statsp) {
 
 	if (isc_refcount_decrement(&stats->references) == 1) {
 		isc_refcount_destroy(&stats->references);
-		isc_mem_cput(stats->mctx, stats->counters, stats->capacity,
+		isc_mem_cput(stats->mctx, stats->counters, stats->per_thread_capacity * stats->num_threads,
 			     sizeof(isc_atomic_statscounter_t));
 		isc_mem_putanddetach(&stats->mctx, stats, sizeof(*stats));
 	}
@@ -119,12 +125,16 @@ isc_statsmulti_dump(isc_statsmulti_t *stats, isc_statsmulti_dumper_t dump_fn, vo
 	REQUIRE(ISC_STATSMULTI_VALID(stats));
 
 	for (i = 0; i < stats->ncounters; i++) {
-		isc_statscounter_t counter =
-			atomic_load_acquire(&stats->counters[i]);
-		if ((options & ISC_STATSMULTIDUMP_VERBOSE) == 0 && counter == 0) {
+		isc_statscounter_t total = 0;
+		/* Accumulate across all threads */
+		for (int thread = 0; thread < stats->num_threads; thread++) {
+			int index = thread * stats->per_thread_capacity + i;
+			total += atomic_load_acquire(&stats->counters[index]);
+		}
+		if ((options & ISC_STATSMULTIDUMP_VERBOSE) == 0 && total == 0) {
 			continue;
 		}
-		dump_fn((isc_statscounter_t)i, counter, arg);
+		dump_fn((isc_statscounter_t)i, total, arg);
 	}
 }
 
@@ -133,5 +143,11 @@ isc_statsmulti_get_counter(isc_statsmulti_t *stats, isc_statscounter_t counter) 
 	REQUIRE(ISC_STATSMULTI_VALID(stats));
 	REQUIRE(counter < stats->ncounters);
 
-	return atomic_load_acquire(&stats->counters[counter]);
+	isc_statscounter_t total = 0;
+	/* Accumulate across all threads */
+	for (int thread = 0; thread < stats->num_threads; thread++) {
+		int index = thread * stats->per_thread_capacity + counter;
+		total += atomic_load_acquire(&stats->counters[index]);
+	}
+	return total;
 }
