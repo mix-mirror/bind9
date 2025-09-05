@@ -52,6 +52,7 @@
 #include <isc/loop.h>
 #include <isc/refcount.h>
 #include <isc/stats.h>
+#include <isc/statsmulti.h>
 #include <isc/tls.h>
 #include <isc/types.h>
 
@@ -615,7 +616,7 @@ dns_resolver_incstats(dns_resolver_t *res, isc_statscounter_t counter);
  */
 
 void
-dns_resolver_setquerystats(dns_resolver_t *res, dns_stats_t *stats);
+dns_resolver_setquerystats(dns_resolver_t *res, isc_statsmulti_t *stats);
 /*%<
  * Set a statistics counter set of rdata type, 'stats', for 'res'.  Once the
  * statistic set is installed, the resolver will count outgoing queries
@@ -628,7 +629,7 @@ dns_resolver_setquerystats(dns_resolver_t *res, dns_stats_t *stats);
  */
 
 void
-dns_resolver_getquerystats(dns_resolver_t *res, dns_stats_t **statsp);
+dns_resolver_getquerystats(dns_resolver_t *res, isc_statsmulti_t **statsp);
 /*%<
  * Get the rdatatype statistics counter set for 'res'.  If a statistics set is
  * set '*statsp' will be attached to the set; otherwise, '*statsp' will be

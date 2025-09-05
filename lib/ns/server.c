@@ -70,7 +70,7 @@ ns_server_create(isc_mem_t *mctx, ns_matchview_t matchingview,
 	ISC_LIST_INIT(sctx->http_quotas);
 	isc_mutex_init(&sctx->http_quotas_lock);
 
-	ns_stats_create(mctx, ns_statscounter_max, &sctx->nsstats);
+	ns_stats_create(mctx, &sctx->nsstats);
 
 	dns_rdatatypestats_create(mctx, &sctx->rcvquerystats);
 
@@ -162,17 +162,17 @@ ns_server_detach(ns_server_t **sctxp) {
 		}
 
 		if (sctx->nsstats != NULL) {
-			ns_stats_detach(&sctx->nsstats);
+			isc_statsmulti_detach(&sctx->nsstats);
 		}
 
 		if (sctx->rcvquerystats != NULL) {
-			dns_stats_detach(&sctx->rcvquerystats);
+			isc_statsmulti_detach(&sctx->rcvquerystats);
 		}
 		if (sctx->opcodestats != NULL) {
-			dns_stats_detach(&sctx->opcodestats);
+			isc_statsmulti_detach(&sctx->opcodestats);
 		}
 		if (sctx->rcodestats != NULL) {
-			dns_stats_detach(&sctx->rcodestats);
+			isc_statsmulti_detach(&sctx->rcodestats);
 		}
 
 		if (sctx->udpinstats4 != NULL) {
