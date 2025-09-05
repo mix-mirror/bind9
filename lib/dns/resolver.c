@@ -1544,6 +1544,30 @@ fctx_sendevents(fetchctx_t *fctx, isc_result_t result) {
 			resp->result = result;
 		}
 
+		if (!(resp->result != ISC_R_SUCCESS ||
+		      dns_rdataset_isassociated(resp->rdataset) ||
+		      dns_rdatatype_ismulti(fctx->type)))
+		{
+			char namebuf[DNS_NAME_FORMATSIZE + 1];
+			dns_name_format(fctx->name, namebuf,
+					sizeof(namebuf) - 1);
+			fprintf(stderr, "%s:fctx->name is %s\n", __func__,
+				namebuf);
+
+			char typebuf[DNS_RDATATYPE_FORMATSIZE];
+			dns_rdatatype_format(fctx->type, typebuf,
+					     sizeof(typebuf));
+			fprintf(stderr, "%s:fctx->type is %s\n", __func__,
+				typebuf);
+
+			fprintf(stderr, "%s:result = %s\n", __func__,
+				isc_result_totext(resp->result));
+			fprintf(stderr, "%s:rdataset is %sassociated", __func__,
+				dns_rdataset_isassociated(resp->rdataset)
+					? ""
+					: "not ");
+		}
+
 		INSIST(resp->result != ISC_R_SUCCESS ||
 		       dns_rdataset_isassociated(resp->rdataset) ||
 		       dns_rdatatype_ismulti(fctx->type));
