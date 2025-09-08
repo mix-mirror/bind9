@@ -2101,7 +2101,8 @@ named_zone_templateopts(const cfg_obj_t *config, const cfg_obj_t *zoptions) {
 
 isc_result_t
 named_zone_loadplugins(dns_zone_t *zone, const cfg_obj_t *config,
-		       const cfg_obj_t *toptions, const cfg_obj_t *zoptions) {
+		       const cfg_obj_t *toptions, const cfg_obj_t *zoptions,
+		       cfg_aclconfctx_t *actx) {
 	isc_result_t result = ISC_R_SUCCESS;
 	const cfg_obj_t *zpluginlist = NULL;
 	const cfg_obj_t *tpluginlist = NULL;
@@ -2135,14 +2136,14 @@ named_zone_loadplugins(dns_zone_t *zone, const cfg_obj_t *config,
 		ns_plugins_create(zmctx, &hookdata.plugins);
 		dns_zone_setplugins(zone, hookdata.plugins, ns_plugins_free);
 
-		result = cfg_pluginlist_foreach(config, tpluginlist,
+		result = cfg_pluginlist_foreach(config, tpluginlist, actx,
 						named_register_one_plugin,
 						&hookdata);
 		if (result != ISC_R_SUCCESS) {
 			return result;
 		}
 
-		result = cfg_pluginlist_foreach(config, zpluginlist,
+		result = cfg_pluginlist_foreach(config, zpluginlist, actx,
 						named_register_one_plugin,
 						&hookdata);
 	}

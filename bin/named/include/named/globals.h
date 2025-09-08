@@ -93,8 +93,7 @@ EXTERN const char *named_g_conffile	   INIT(NAMED_SYSCONFDIR "/named.conf");
 EXTERN const char *named_g_defaultbindkeys INIT(NULL);
 EXTERN const char *named_g_keyfile	   INIT(NAMED_SYSCONFDIR "/rndc.key");
 
-EXTERN bool named_g_conffileset		    INIT(false);
-EXTERN cfg_aclconfctx_t *named_g_aclconfctx INIT(NULL);
+EXTERN bool named_g_conffileset INIT(false);
 
 /*
  * Misc.

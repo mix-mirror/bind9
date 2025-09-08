@@ -2940,11 +2940,13 @@ struct check_one_plugin_data {
  */
 static isc_result_t
 check_one_plugin(const cfg_obj_t *config, const cfg_obj_t *obj,
-		 const char *plugin_path, const char *parameters,
-		 void *callback_data) {
+		 cfg_aclconfctx_t *actx, const char *plugin_path,
+		 const char *parameters, void *callback_data) {
 	struct check_one_plugin_data *data = callback_data;
 	char full_path[PATH_MAX];
 	isc_result_t result = ISC_R_SUCCESS;
+
+	UNUSED(actx);
 
 	result = ns_plugin_expandpath(plugin_path, full_path,
 				      sizeof(full_path));
@@ -2978,7 +2980,7 @@ check_plugins(const cfg_obj_t *plugins, const cfg_obj_t *config,
 		.check_result = &result,
 	};
 
-	(void)cfg_pluginlist_foreach(config, plugins, check_one_plugin,
+	(void)cfg_pluginlist_foreach(config, plugins, actx, check_one_plugin,
 				     &check_one_plugin_data);
 
 	return result;

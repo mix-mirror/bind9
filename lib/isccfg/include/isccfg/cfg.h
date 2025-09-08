@@ -39,6 +39,8 @@
  *** Types
  ***/
 
+typedef struct cfg_aclconfctx cfg_aclconfctx_t;
+
 /*%
  * A configuration parser.
  */
@@ -586,11 +588,9 @@ const char *
 cfg_map_nextclause(const cfg_type_t *map, const void **clauses,
 		   unsigned int *idx);
 
-typedef isc_result_t(pluginlist_cb_t)(const cfg_obj_t *config,
-				      const cfg_obj_t *obj,
-				      const char      *plugin_path,
-				      const char      *parameters,
-				      void	      *callback_data);
+typedef isc_result_t(pluginlist_cb_t)(
+	const cfg_obj_t *config, const cfg_obj_t *obj, cfg_aclconfctx_t *actx,
+	const char *plugin_path, const char *parameters, void *callback_data);
 /*%<
  * Function prototype for the callback used with cfg_pluginlist_foreach().
  * Called once for each element of the list passed to cfg_pluginlist_foreach().
@@ -606,7 +606,8 @@ typedef isc_result_t(pluginlist_cb_t)(const cfg_obj_t *config,
 
 isc_result_t
 cfg_pluginlist_foreach(const cfg_obj_t *config, const cfg_obj_t *list,
-		       pluginlist_cb_t *callback, void *callback_data);
+		       cfg_aclconfctx_t *actx, pluginlist_cb_t *callback,
+		       void *callback_data);
 /*%<
  * For every "plugin" stanza present in 'list' (which in turn is a part of
  * 'config'), invoke the given 'callback', passing 'callback_data' to it along

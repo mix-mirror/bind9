@@ -40,6 +40,9 @@
 
 #include <named/types.h>
 
+struct cfg_aclconfctx;
+typedef struct cfg_aclconfctx cfg_aclconfctx_t;
+
 /*%
  * Name server state.  Better here than in lots of separate global variables.
  */
@@ -106,6 +109,8 @@ struct named_server {
 
 	isc_signal_t *sighup;
 	isc_signal_t *sigusr1;
+
+	cfg_aclconfctx_t *aclconfctx;
 };
 
 #define NAMED_SERVER_MAGIC    ISC_MAGIC('S', 'V', 'E', 'R')
@@ -416,5 +421,5 @@ named_server_getmemprof(void);
  */
 isc_result_t
 named_register_one_plugin(const cfg_obj_t *config, const cfg_obj_t *obj,
-			  const char *plugin_path, const char *parameters,
-			  void *callback_data);
+			  cfg_aclconfctx_t *actx, const char *plugin_path,
+			  const char *parameters, void *callback_data);
