@@ -8002,6 +8002,37 @@ configure_views(cfg_obj_t *config, const cfg_obj_t *bindkeys,
 }
 
 static isc_result_t
+configure_keystores(const cfg_obj_t *config, dns_keystorelist_t *keystorelist) {
+	isc_result_t result = ISC_R_SUCCESS;
+	const cfg_obj_t *keystores = NULL;
+
+	/*
+	 * Create the built-in key store ("key-directory").
+	 */
+	result = cfg_keystore_fromconfig(NULL, isc_g_mctx, keystorelist, NULL);
+	if (result != ISC_R_SUCCESS) {
+		return result;
+	}
+
+	/*
+	 * Create the DNSSEC key stores.
+	 */
+	keystores = NULL;
+	(void)cfg_map_get(config, "key-store", &keystores);
+	CFG_LIST_FOREACH(keystores, element) {
+		cfg_obj_t *kconfig = cfg_listelt_value(element);
+
+		result = cfg_keystore_fromconfig(kconfig, isc_g_mctx,
+						 keystorelist, NULL);
+		if (result != ISC_R_SUCCESS) {
+			return result;
+		}
+	}
+
+	return result;
+}
+
+static isc_result_t
 configure_kasplist(const cfg_obj_t *config, dns_kasplist_t *kasplist,
 		   dns_keystorelist_t *keystorelist) {
 	isc_result_t result = ISC_R_SUCCESS;
@@ -8067,7 +8098,6 @@ apply_configuration(cfg_parser_t *configparser, cfg_obj_t *config,
 	const cfg_obj_t *maps[3];
 	const cfg_obj_t *obj = NULL;
 	const cfg_obj_t *options = NULL;
-	const cfg_obj_t *keystores = NULL;
 	dns_kasplist_t tmpkasplist, kasplist;
 	dns_keystorelist_t tmpkeystorelist, keystorelist;
 	dns_viewlist_t viewlist;
@@ -8741,27 +8771,9 @@ apply_configuration(cfg_parser_t *configparser, cfg_obj_t *config,
 	 */
 	(void)configure_session_key(maps, server, isc_g_mctx, first_time);
 
-	/*
-	 * Create the built-in key store ("key-directory").
-	 */
-	result = cfg_keystore_fromconfig(NULL, isc_g_mctx, &keystorelist, NULL);
+	result = configure_keystores(config, &keystorelist);
 	if (result != ISC_R_SUCCESS) {
 		goto cleanup_keystorelist;
-	}
-
-	/*
-	 * Create the DNSSEC key stores.
-	 */
-	keystores = NULL;
-	(void)cfg_map_get(config, "key-store", &keystores);
-	CFG_LIST_FOREACH(keystores, element) {
-		cfg_obj_t *kconfig = cfg_listelt_value(element);
-
-		result = cfg_keystore_fromconfig(kconfig, isc_g_mctx,
-						 &keystorelist, NULL);
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup_keystorelist;
-		}
 	}
 
 	result = configure_kasplist(config, &kasplist, &keystorelist);
@@ -9149,6 +9161,10 @@ apply_configuration(cfg_parser_t *configparser, cfg_obj_t *config,
 	/*
 	 * Swap the new keystores list with the old one (so the new one will be
 	 * used and old one will be cleared).
+	 *
+	 * If this is the initial server setup, store the address
+	 * `&server->keystorelist` in the zone manager, so the zones can reach
+	 * the list during runtime whenever needed.
 	 */
 	tmpkeystorelist = server->keystorelist;
 	server->keystorelist = keystorelist;
