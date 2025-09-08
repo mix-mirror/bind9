@@ -189,7 +189,6 @@ struct qpznode {
 	atomic_bool havensec;
 	atomic_bool wild;
 	atomic_bool delegating;
-	atomic_bool dirty;
 
 	struct cds_list_head types_list;
 	struct cds_list_head *data;
@@ -855,14 +854,13 @@ check_top_header(dns_slabtop_t *top) {
 	}
 }
 
-static bool
+static void
 clean_multiple_versions(dns_slabtop_t *top, uint32_t least_serial) {
 	dns_slabheader_t *parent = first_header(top);
 	if (parent == NULL) {
-		return false;
+		return;
 	}
 
-	bool multiple = false;
 	dns_slabheader_t *header = next_header(parent), *header_next = NULL;
 	cds_list_for_each_entry_safe_from(header, header_next, &top->headers,
 					  headers_link) {
@@ -870,17 +868,13 @@ clean_multiple_versions(dns_slabtop_t *top, uint32_t least_serial) {
 			cds_list_del(&header->headers_link);
 			dns_slabheader_destroy(&header);
 		} else {
-			multiple = true;
 			parent = header;
 		}
 	}
-	return multiple;
 }
 
 static void
 clean_zone_node(qpznode_t *node, uint32_t least_serial) {
-	bool still_dirty = false;
-
 	/*
 	 * Caller must be holding the node lock.
 	 */
@@ -913,12 +907,8 @@ clean_zone_node(qpznode_t *node, uint32_t least_serial) {
 			 * less than least_serial too, but we cannot delete it
 			 * because it is the most recent version.
 			 */
-			still_dirty = clean_multiple_versions(top,
-							      least_serial);
+			clean_multiple_versions(top, least_serial);
 		}
-	}
-	if (!still_dirty) {
-		node->dirty = false;
 	}
 }
 
@@ -963,12 +953,7 @@ qpznode_release(qpznode_t *node, uint32_t least_serial,
 		goto unref;
 	}
 
-	/* Handle easy and typical case first. */
-	if (!node->dirty && !cds_list_empty(node->data)) {
-		goto unref;
-	}
-
-	if (node->dirty && least_serial > 0) {
+	if (least_serial > 0 && cds_list_empty(node->data)) {
 		/*
 		 * Only do node cleanup when called from closeversion.
 		 * Closeversion, unlike other call sites, will provide the
@@ -1288,8 +1273,6 @@ make_least_version(qpzonedb_t *qpdb, qpz_version_t *version,
 
 static void
 rollback_node(qpznode_t *node, uint32_t serial) {
-	bool make_dirty = false;
-
 	/*
 	 * We set the IGNORE attribute on rdatasets with serial number
 	 * 'serial'.  When the reference count goes to zero, these rdatasets
@@ -1301,12 +1284,8 @@ rollback_node(qpznode_t *node, uint32_t serial) {
 			if (header->serial == serial) {
 				DNS_SLABHEADER_SETATTR(
 					header, DNS_SLABHEADERATTR_IGNORE);
-				make_dirty = true;
 			}
 		}
-	}
-	if (make_dirty) {
-		node->dirty = true;
 	}
 }
 
@@ -1925,7 +1904,6 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 			cds_list_add(&newheader->headers_link,
 				     &foundtop->headers);
 
-			node->dirty = true;
 			if (changed != NULL) {
 				changed->dirty = true;
 			}
@@ -1967,7 +1945,6 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 			if (changed != NULL) {
 				changed->dirty = true;
 			}
-			node->dirty = true;
 		} else {
 			/*
 			 * No rdatasets of the given type exist at the node.
@@ -4828,7 +4805,6 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 		newheader->top = foundtop;
 		cds_list_add(&newheader->headers_link, &foundtop->headers);
 
-		node->dirty = true;
 		changed->dirty = true;
 		resigndelete(qpdb, version, header DNS__DB_FLARG_PASS);
 	} else {
