@@ -167,6 +167,8 @@ ISC_REFCOUNT_STATIC_DECL(qpz_heap);
 struct qpznode {
 	DBNODE_FIELDS;
 
+	dns_name_t	      name;
+
 	qpz_heap_t *heap;
 	/*
 	 * 'erefs' counts external references held by a caller: for
@@ -276,6 +278,9 @@ typedef struct {
 
 static dns_dbmethods_t qpdb_zonemethods;
 static dns_dbnode_methods_t qpznode_methods;
+
+static isc_result_t
+nodefullname(dns_dbnode_t *node, dns_name_t *name);
 
 #if DNS_DB_NODETRACE
 #define qpznode_ref(ptr)   qpznode__ref(ptr, __func__, __FILE__, __LINE__)
@@ -3221,7 +3226,7 @@ qpzone_check_zonecut(qpznode_t *node, void *arg DNS__DB_FLARG) {
 			 * is, we need to remember the node name.
 			 */
 			zcname = dns_fixedname_name(&search->zonecut_name);
-			dns_name_copy(&node->name, zcname);
+			nodefullname((dns_dbnode_t *)node, zcname);
 			search->copy_name = true;
 		}
 	} else {
@@ -3327,7 +3332,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	result = dns_qp_lookup(&search.qpr, name, nspace, NULL, &search.iter,
 			       &search.chain, (void **)&node, NULL);
 	if (result != ISC_R_NOTFOUND) {
-		dns_name_copy(&node->name, foundname);
+		nodefullname((dns_dbnode_t *)node, foundname);
 	}
 
 	/*
@@ -3629,7 +3634,7 @@ found:
 				NODE_UNLOCK(nlock, &nlocktype);
 				dns_qpchain_node(&search.chain, len - 1, NULL,
 						 (void **)&node, NULL);
-				dns_name_copy(&node->name, foundname);
+				nodefullname((dns_dbnode_t *)node, foundname);
 				goto partial_match;
 			}
 		}
@@ -4497,7 +4502,7 @@ dbiterator_current(dns_dbiterator_t *iterator, dns_dbnode_t **nodep,
 	REQUIRE(qpdbiter->node != NULL);
 
 	if (name != NULL) {
-		dns_name_copy(&qpdbiter->node->name, name);
+		nodefullname((dns_dbnode_t *)qpdbiter->node, name);
 	}
 
 	qpznode_acquire(node DNS__DB_FLARG_PASS);
@@ -4622,7 +4627,7 @@ qpzone_addrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 		return result;
 	}
 
-	dns_name_copy(&node->name, name);
+	nodefullname((dns_dbnode_t *)node, name);
 	dns_rdataset_getownercase(rdataset, name);
 
 	newheader = (dns_slabheader_t *)region.base;
@@ -4731,7 +4736,7 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 		 rdataset->type != dns_rdatatype_nsec3 &&
 		 rdataset->covers != dns_rdatatype_nsec3));
 
-	dns_name_copy(&node->name, nodename);
+	nodefullname((dns_dbnode_t *)node, nodename);
 	result = dns_rdataslab_fromrdataset(rdataset, node->mctx, &region, 0);
 	if (result != ISC_R_SUCCESS) {
 		return result;
@@ -4907,7 +4912,7 @@ qpzone_deleterdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 	atomic_init(&newheader->attributes, DNS_SLABHEADERATTR_NONEXISTENT);
 	newheader->serial = version->serial;
 
-	dns_name_copy(&node->name, nodename);
+	nodefullname((dns_dbnode_t *)node, nodename);
 
 	nlock = qpzone_get_lock(node);
 	NODE_WRLOCK(nlock, &nlocktype);

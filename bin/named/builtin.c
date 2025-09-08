@@ -63,6 +63,7 @@ typedef struct bdb {
 
 struct bdbnode {
 	DBNODE_FIELDS;
+	dns_name_t	      name;
 
 	isc_refcount_t references;
 	bdb_t *bdb;

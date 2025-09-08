@@ -188,8 +188,7 @@ typedef isc_result_t (*dns_dbupdate_callback_t)(dns_db_t *db, void *fn_arg);
 	unsigned int	      magic;   \
 	uint16_t	      locknum; \
 	dns_dbnode_methods_t *methods; \
-	isc_mem_t	     *mctx;    \
-	dns_name_t	      name;
+	isc_mem_t	     *mctx;
 
 struct dns_dbnode {
 	DBNODE_FIELDS;

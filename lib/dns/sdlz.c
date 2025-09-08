@@ -106,6 +106,7 @@ struct dns_sdlz_db {
 struct dns_sdlzlookup {
 	/* Unlocked */
 	DBNODE_FIELDS;
+	dns_name_t	      name;
 
 	dns_sdlz_db_t *sdlz;
 	ISC_LIST(dns_rdatalist_t) lists;
