@@ -2826,6 +2826,7 @@ find_wildcard(qpz_search_t *search, qpznode_t **nodep, const dns_name_t *qname,
 				.magic = DNS_NAME_MAGIC,
 				.length = node->length,
 				.ndata = node->namebuf,
+				.attributes.absolute = true,
 			};
 			result = dns_name_concatenate(dns_wildcardname,
 						      &as_name, wname);
@@ -5061,6 +5062,7 @@ glue_nsdname_cb(void *arg, const dns_name_t *name, dns_rdatatype_t qtype,
 		.magic = DNS_NAME_MAGIC,
 		.length = node->length,
 		.ndata = node->namebuf,
+		.attributes.absolute = true,
 	};
 	if (glue != NULL && dns_name_issubdomain(name, &as_name)) {
 		if (dns_rdataset_isassociated(&glue->rdataset_a)) {
@@ -5372,6 +5374,7 @@ qp_makekey(dns_qpkey_t key, void *uctx ISC_ATTR_UNUSED, void *pval,
 		.magic = DNS_NAME_MAGIC,
 		.length = data->length,
 		.ndata = data->namebuf,
+		.attributes.absolute = true,
 	};
 	return dns_qpkey_fromname(key, &as_name, data->nspace);
 }
