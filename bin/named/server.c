@@ -8160,6 +8160,21 @@ apply_configuration(cfg_parser_t *configparser, cfg_obj_t *config,
 		goto cleanup_aclconfctx;
 	}
 
+	result = configure_keystores(config, &keystorelist);
+	if (result != ISC_R_SUCCESS) {
+		goto cleanup_keystorelist;
+	}
+
+	result = configure_kasplist(config, &kasplist, &keystorelist);
+	if (result != ISC_R_SUCCESS) {
+		goto cleanup_kasplist;
+	}
+
+	result = create_views(config, configparser, aclconfctx, &viewlist);
+	if (result != ISC_R_SUCCESS) {
+		goto cleanup_viewlist;
+	}
+
 	/* Ensure exclusive access to configuration data. */
 	isc_loopmgr_pause();
 
@@ -8770,21 +8785,6 @@ apply_configuration(cfg_parser_t *configparser, cfg_obj_t *config,
 	 */
 	(void)configure_session_key(maps, server, isc_g_mctx, first_time);
 
-	result = configure_keystores(config, &keystorelist);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup_keystorelist;
-	}
-
-	result = configure_kasplist(config, &kasplist, &keystorelist);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup_kasplist;
-	}
-
-	result = create_views(config, configparser, aclconfctx, &viewlist);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup_viewlist;
-	}
-
 	result = configure_views(config, bindkeys, aclconfctx, &viewlist,
 				 &cachelist, &kasplist, server, first_time);
 	if (result != ISC_R_SUCCESS) {
@@ -9257,6 +9257,22 @@ cleanup_cachelist:
 		isc_mem_put(server->mctx, nsc, sizeof(*nsc));
 	}
 
+cleanup_portsets:
+	isc_portset_destroy(isc_g_mctx, &v6portset);
+	isc_portset_destroy(isc_g_mctx, &v4portset);
+
+cleanup_bindkeys_parser:
+	if (bindkeys_parser != NULL) {
+		if (bindkeys != NULL) {
+			cfg_obj_destroy(bindkeys_parser, &bindkeys);
+		}
+		cfg_parser_destroy(&bindkeys_parser);
+	}
+
+	if (exclusive) {
+		isc_loopmgr_resume();
+	}
+
 cleanup_viewlist:
 	ISC_LIST_FOREACH(viewlist, view, link) {
 		ISC_LIST_UNLINK(viewlist, view, link);
@@ -9278,22 +9294,6 @@ cleanup_keystorelist:
 	ISC_LIST_FOREACH(keystorelist, keystore, link) {
 		ISC_LIST_UNLINK(keystorelist, keystore, link);
 		dns_keystore_detach(&keystore);
-	}
-
-cleanup_portsets:
-	isc_portset_destroy(isc_g_mctx, &v6portset);
-	isc_portset_destroy(isc_g_mctx, &v4portset);
-
-cleanup_bindkeys_parser:
-	if (bindkeys_parser != NULL) {
-		if (bindkeys != NULL) {
-			cfg_obj_destroy(bindkeys_parser, &bindkeys);
-		}
-		cfg_parser_destroy(&bindkeys_parser);
-	}
-
-	if (exclusive) {
-		isc_loopmgr_resume();
 	}
 
 cleanup_aclconfctx:
