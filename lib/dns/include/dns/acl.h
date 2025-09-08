@@ -34,6 +34,7 @@
 #include <isc/netaddr.h>
 #include <isc/refcount.h>
 
+#include <dns/cfgmgr.h>
 #include <dns/geoip.h>
 #include <dns/iptable.h>
 #include <dns/name.h>
@@ -309,3 +310,9 @@ dns_acl_merge_ports_transports(dns_acl_t *dest, dns_acl_t *source, bool pos);
  *\li		'dest' is a valid ACL object;
  *\li		'source' is a valid ACL object.
  */
+
+void 
+dns_acl_set(const void *owner, const char *path, const dns_acl_t *acl);
+
+dns_acl_t *
+dns_acl_get(const void *owner, const char *path);

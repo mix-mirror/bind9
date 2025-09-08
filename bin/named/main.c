@@ -45,6 +45,7 @@
 #include <isc/uv.h>
 #include <isc/xml.h>
 
+#include <dns/cfgmgr.h>
 #include <dns/dispatch.h>
 #include <dns/dyndb.h>
 #include <dns/lib.h>
@@ -1228,6 +1229,7 @@ setup(void) {
 				      isc_result_totext(result));
 	}
 
+	dns_cfgmgr_init(isc_g_mctx);
 	named_server_create(isc_g_mctx, &named_g_server);
 	ENSURE(named_g_server != NULL);
 	sctx = named_g_server->sctx;
@@ -1300,7 +1302,7 @@ cleanup(void) {
 	}
 
 	named_server_destroy(&named_g_server);
-
+	dns_cfgmgr_deinit();
 	named_builtin_deinit();
 
 	/*

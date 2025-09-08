@@ -148,6 +148,7 @@ named_control_docommand(isccc_sexpr_t *message, bool readonly,
 		      log_level, "received control channel command '%s'",
 		      cmdline);
 
+	dns_cfgmgr_rwtxn();
 	/*
 	 * After the lengthy "halt" and "stop", the commands are
 	 * handled in alphabetical order of the NAMED_COMMAND_ macros.
@@ -305,6 +306,7 @@ named_control_docommand(isccc_sexpr_t *message, bool readonly,
 		result = DNS_R_UNKNOWNCOMMAND;
 	}
 
+	INSIST(dns_cfgmgr_commit() == ISC_R_SUCCESS);
 cleanup:
 	if (lex != NULL) {
 		isc_lex_destroy(&lex);

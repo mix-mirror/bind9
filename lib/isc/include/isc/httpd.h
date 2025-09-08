@@ -47,6 +47,10 @@ isc_result_t
 isc_httpdmgr_addurl(isc_httpdmgr_t *httpdmgr, const char *url, bool isstatic,
 		    isc_httpdaction_t *func, void *arg);
 
+isc_result_t
+isc_httpd_geturlfield(const isc_httpd_t *httpd, isc_url_field_t field,
+		      const char **base, uint16_t *len);
+
 void
 isc_httpd_setfinishhook(void (*fn)(void));
 

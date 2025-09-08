@@ -123,20 +123,6 @@ struct dns_view {
 	bool		      trust_anchor_telemetry;
 	bool		      root_key_sentinel;
 	dns_transfer_format_t transfer_format;
-	dns_acl_t	     *cacheacl;
-	dns_acl_t	     *cacheonacl;
-	dns_acl_t	     *queryacl;
-	dns_acl_t	     *queryonacl;
-	dns_acl_t	     *recursionacl;
-	dns_acl_t	     *recursiononacl;
-	dns_acl_t	     *notifyacl;
-	dns_acl_t	     *transferacl;
-	dns_acl_t	     *updateacl;
-	dns_acl_t	     *upfwdacl;
-	dns_acl_t	     *denyansweracl;
-	dns_acl_t	     *nocasecompress;
-	dns_acl_t	     *proxyacl;
-	dns_acl_t	     *proxyonacl;
 	bool		      msgcompression;
 	dns_nametree_t	     *answeracl_exclude;
 	dns_nametree_t	     *denyanswernames;
@@ -168,7 +154,6 @@ struct dns_view {
 	uint32_t	      staleanswerclienttimeout;
 	uint16_t	      nocookieudp;
 	uint16_t	      padding;
-	dns_acl_t	     *pad_acl;
 	dns_dns64list_t	      dns64;
 	unsigned int	      dns64cnt;
 	bool		      usedns64;
@@ -191,8 +176,6 @@ struct dns_view {
 	 * Configurable data for server use only,
 	 * locked by server configuration lock.
 	 */
-	dns_acl_t *matchclients;
-	dns_acl_t *matchdestinations;
 	bool	   matchrecursiveonly;
 
 	/* Locked by themselves. */
@@ -1332,3 +1315,9 @@ dns_view_setmaxqueries(dns_view_t *view, uint16_t max_queries);
  *\li	'view' is valid;
  *\li	'max_queries' is greater than 0.
  */
+
+dns_acl_t *
+dns_view_getacl(dns_view_t *view, const char *name);
+
+void
+dns_view_setacl(dns_view_t *view, const char *name, const dns_acl_t *acl);

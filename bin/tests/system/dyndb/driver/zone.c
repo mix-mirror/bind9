@@ -58,7 +58,6 @@ create_zone(sample_instance_t *const inst, dns_name_t *const name,
 	dns_zone_t *raw = NULL;
 	const char *zone_argv[1];
 	char zone_name[DNS_NAME_FORMATSIZE];
-	dns_acl_t *acl_any = NULL;
 
 	REQUIRE(inst != NULL);
 	REQUIRE(name != NULL);
@@ -81,17 +80,6 @@ create_zone(sample_instance_t *const inst, dns_name_t *const name,
 		goto cleanup;
 	}
 
-	/* This is completely insecure - use some sensible values instead! */
-	result = dns_acl_any(inst->mctx, &acl_any);
-	if (result != ISC_R_SUCCESS) {
-		log_write(ISC_LOG_ERROR, "create_zone: dns_acl_any -> %s\n",
-			  isc_result_totext(result));
-		goto cleanup;
-	}
-	dns_zone_setupdateacl(raw, acl_any);
-	dns_zone_setqueryacl(raw, acl_any);
-	dns_zone_setxfracl(raw, acl_any);
-	dns_acl_detach(&acl_any);
 
 	*rawp = raw;
 	return ISC_R_SUCCESS;
@@ -105,9 +93,6 @@ cleanup:
 			dns_zonemgr_releasezone(inst->zmgr, raw);
 		}
 		dns_zone_detach(&raw);
-	}
-	if (acl_any != NULL) {
-		dns_acl_detach(&acl_any);
 	}
 
 	return result;
@@ -123,6 +108,7 @@ publish_zone(sample_instance_t *inst, dns_zone_t *zone) {
 	bool freeze = false;
 	dns_zone_t *zone_in_view = NULL;
 	dns_view_t *view_in_zone = NULL;
+	dns_acl_t *acl_any = NULL;
 
 	REQUIRE(inst != NULL);
 	REQUIRE(zone != NULL);
@@ -166,6 +152,24 @@ publish_zone(sample_instance_t *inst, dns_zone_t *zone) {
 	}
 
 	dns_zone_setview(zone, inst->view);
+
+	/*
+	 * Add zone ACL in the publish flow as we need (for now...) the zone
+	 * being attached to a view to set references using cfgmgr
+	 */
+
+	/* This is completely insecure - use some sensible values instead! */
+	result = dns_acl_any(inst->mctx, &acl_any);
+	if (result != ISC_R_SUCCESS) {
+		log_write(ISC_LOG_ERROR, "publish_zone: dns_acl_any -> %s\n",
+			  isc_result_totext(result));
+		goto cleanup;
+	}
+	dns_zone_setacl(zone, "allow-update", acl_any);
+	dns_zone_setacl(zone, "allow-query", acl_any);
+	dns_zone_setacl(zone, "allow-transfer", acl_any);
+	dns_acl_detach(&acl_any);
+
 	result = dns_view_addzone(inst->view, zone);
 	if (result != ISC_R_SUCCESS) {
 		log_write(ISC_LOG_ERROR,
@@ -175,6 +179,9 @@ publish_zone(sample_instance_t *inst, dns_zone_t *zone) {
 	}
 
 cleanup:
+	if (acl_any != NULL) {
+		dns_acl_detach(&acl_any);
+	}
 	if (zone_in_view != NULL) {
 		dns_zone_detach(&zone_in_view);
 	}

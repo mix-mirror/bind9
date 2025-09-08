@@ -255,9 +255,12 @@ ISC_RUN_TEST_IMPL(nsec3param_change) {
 	/*
 	 * Run tests.
 	 */
+	
+	setup_cfgmgr(NULL);
 	for (i = 0; i < sizeof(tests) / sizeof(tests[0]); i++) {
 		nsec3param_change_test(&tests[i]);
 	}
+	teardown_cfgmgr(NULL);
 }
 
 ISC_TEST_LIST_START

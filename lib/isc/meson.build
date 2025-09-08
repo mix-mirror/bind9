@@ -27,6 +27,7 @@ isc_srcset.add(
     thread_dep,
     urcu_dep,
     uv_dep,
+    lmdb_dep,
 )
 
 isc_srcset.add(when: 'HAVE_JEMALLOC', if_true: jemalloc_dep)

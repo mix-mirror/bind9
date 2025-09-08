@@ -49,6 +49,7 @@
 #include <dns/adb.h>
 #include <dns/callbacks.h>
 #include <dns/catz.h>
+#include <dns/cfgmgr.h>
 #include <dns/db.h>
 #include <dns/dbiterator.h>
 #include <dns/dlz.h>
@@ -366,13 +367,6 @@ struct dns_zone {
 	isc_sockaddr_t sourceaddr;
 	dns_tsigkey_t *tsigkey;	    /* key used for xfr */
 	dns_transport_t *transport; /* transport used for xfr */
-	/* Access Control Lists */
-	dns_acl_t *update_acl;
-	dns_acl_t *forward_acl;
-	dns_acl_t *notify_acl;
-	dns_acl_t *query_acl;
-	dns_acl_t *queryon_acl;
-	dns_acl_t *xfr_acl;
 	bool update_disabled;
 	bool zero_no_soa_ttl;
 	dns_severity_t check_names;
@@ -1334,24 +1328,6 @@ zone_free(dns_zone_t *zone) {
 	dns_zone_setalsonotify(zone, NULL, NULL, NULL, NULL, 0);
 
 	zone->check_names = dns_severity_ignore;
-	if (zone->update_acl != NULL) {
-		dns_acl_detach(&zone->update_acl);
-	}
-	if (zone->forward_acl != NULL) {
-		dns_acl_detach(&zone->forward_acl);
-	}
-	if (zone->notify_acl != NULL) {
-		dns_acl_detach(&zone->notify_acl);
-	}
-	if (zone->query_acl != NULL) {
-		dns_acl_detach(&zone->query_acl);
-	}
-	if (zone->queryon_acl != NULL) {
-		dns_acl_detach(&zone->queryon_acl);
-	}
-	if (zone->xfr_acl != NULL) {
-		dns_acl_detach(&zone->xfr_acl);
-	}
 	if (dns_name_dynamic(&zone->origin)) {
 		dns_name_free(&zone->origin, zone->mctx);
 	}
@@ -2001,6 +1977,8 @@ bool
 dns_zone_isdynamic(dns_zone_t *zone, bool ignore_freeze) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 
+	dns_acl_t *updateacl = dns_zone_getacl(zone, "allow-update");
+
 	if (zone->type == dns_zone_secondary || zone->type == dns_zone_mirror ||
 	    zone->type == dns_zone_stub || zone->type == dns_zone_key ||
 	    (zone->type == dns_zone_redirect &&
@@ -2018,7 +1996,7 @@ dns_zone_isdynamic(dns_zone_t *zone, bool ignore_freeze) {
 	if (zone->type == dns_zone_primary &&
 	    (!zone->update_disabled || ignore_freeze) &&
 	    ((zone->ssutable != NULL) ||
-	     (zone->update_acl != NULL && !dns_acl_isnone(zone->update_acl))))
+	     (updateacl != NULL && !dns_acl_isnone(updateacl))))
 	{
 		return true;
 	}
@@ -2560,6 +2538,7 @@ zone_asyncload(void *arg) {
 	dns_zone_t *zone = asl->zone;
 	isc_result_t result;
 
+	dns_cfgmgr_txn();
 	REQUIRE(DNS_ZONE_VALID(zone));
 
 	LOCK_ZONE(zone);
@@ -2576,6 +2555,7 @@ zone_asyncload(void *arg) {
 
 	isc_mem_put(zone->mctx, asl, sizeof(*asl));
 	dns_zone_idetach(&zone);
+	dns_cfgmgr_closetxn();
 }
 
 isc_result_t
@@ -5517,7 +5497,8 @@ zone_postload(dns_zone_t *zone, dns_db_t *db, isc_time_t loadtime,
 		}
 
 		if (zone->type == dns_zone_primary &&
-		    (zone->update_acl != NULL || zone->ssutable != NULL) &&
+		    (dns_zone_getacl(zone, "allow-update") != NULL ||
+		     zone->ssutable != NULL) &&
 		    dns_zone_getsigresigninginterval(zone) < (3 * refresh) &&
 		    dns_db_issecure(db))
 		{
@@ -6068,6 +6049,13 @@ closeversion:
 }
 
 static void
+zone_shutdown_inloop(void *zone) {
+	dns_cfgmgr_rwtxn();
+	zone_shutdown(zone);
+	INSIST(dns_cfgmgr_commit() == ISC_R_SUCCESS);
+}
+
+static void
 zone_destroy(dns_zone_t *zone) {
 	/*
 	 * Stop things being restarted after we cancel them below.
@@ -6087,7 +6075,7 @@ zone_destroy(dns_zone_t *zone) {
 		 * This zone has a loop; it can clean
 		 * itself up asynchronously.
 		 */
-		isc_async_run(zone->loop, zone_shutdown, zone);
+		isc_async_run(zone->loop, zone_shutdown_inloop, zone);
 	}
 }
 
@@ -10572,6 +10560,8 @@ keyfetch_done(void *arg) {
 	dns_rdataset_t *dnskeys = NULL, *dnskeysigs = NULL;
 	dns_rdataset_t *keydataset = NULL, dsset;
 
+	dns_cfgmgr_rwtxn();
+
 	INSIST(resp != NULL);
 
 	kfetch = resp->arg;
@@ -11187,6 +11177,8 @@ cleanup:
 	}
 
 	INSIST(ver == NULL);
+
+	INSIST(dns_cfgmgr_commit() == ISC_R_SUCCESS);
 }
 
 static void
@@ -11879,7 +11871,8 @@ zone_journal_rollforward(dns_zone_t *zone, dns_db_t *db, bool *needdump,
 
 	if (zone->type == dns_zone_primary &&
 	    (inline_secure(zone) ||
-	     (zone->update_acl != NULL || zone->ssutable != NULL)))
+	     (dns_zone_getacl(zone, "allow-update") != NULL ||
+	      zone->ssutable != NULL)))
 	{
 		options = DNS_JOURNALOPT_RESIGN;
 	} else {
@@ -15179,7 +15172,7 @@ zone_shutdown(void *arg) {
 	dns_zone_t *zone = (dns_zone_t *)arg;
 	bool free_needed, linked = false;
 	dns_zone_t *raw = NULL, *secure = NULL;
-	dns_view_t *view = NULL, *prev_view = NULL;
+	dns_view_t *prev_view = NULL;
 
 	REQUIRE(DNS_ZONE_VALID(zone));
 	INSIST(isc_refcount_current(&zone->references) == 0);
@@ -15230,8 +15223,6 @@ zone_shutdown(void *arg) {
 	 * to detach them outside of the zone lock to break the lock loop
 	 * between view, adb and zone locks.
 	 */
-	view = zone->view;
-	zone->view = NULL;
 	prev_view = zone->prev_view;
 	zone->prev_view = NULL;
 
@@ -15288,8 +15279,19 @@ zone_shutdown(void *arg) {
 	}
 	UNLOCK_ZONE(zone);
 
-	if (view != NULL) {
-		dns_view_weakdetach(&view);
+	/*
+	 * This needs to be inside zone_free(), though we don't have 
+	 * the view name anymore at this stage, so this needs to be figured out
+	 */
+	dns_zone_setacl(zone, "allow-query", NULL);
+	dns_zone_setacl(zone, "allow-update", NULL);
+	dns_zone_setacl(zone, "allow-transfer", NULL);
+	dns_zone_setacl(zone, "allow-update-forwarding", NULL);
+	dns_zone_setacl(zone, "allow-notify", NULL);
+	dns_zone_setacl(zone, "allow-query-on", NULL);
+
+	if (zone->view != NULL) {
+		dns_view_weakdetach(&zone->view);
 	}
 	if (prev_view != NULL) {
 		dns_view_weakdetach(&prev_view);
@@ -15312,7 +15314,9 @@ zone_timer(void *arg) {
 
 	REQUIRE(DNS_ZONE_VALID(zone));
 
+	dns_cfgmgr_txn();
 	zone_maintenance(zone);
+	dns_cfgmgr_closetxn();
 }
 
 static void
@@ -15685,6 +15689,7 @@ dns_zone_notifyreceive(dns_zone_t *zone, isc_sockaddr_t *from,
 	bool have_serial = false;
 	dns_tsigkey_t *tsigkey;
 	const dns_name_t *tsig;
+	dns_acl_t *allownotify = NULL;
 
 	REQUIRE(DNS_ZONE_VALID(zone));
 
@@ -15780,9 +15785,9 @@ dns_zone_notifyreceive(dns_zone_t *zone, isc_sockaddr_t *from,
 	 */
 	tsigkey = dns_message_gettsigkey(msg);
 	tsig = dns_tsigkey_identity(tsigkey);
-	if (i >= dns_remote_count(&zone->primaries) &&
-	    zone->notify_acl != NULL &&
-	    (dns_acl_match(&netaddr, tsig, zone->notify_acl, zone->view->aclenv,
+	allownotify = dns_zone_getacl(zone, "allow-notify");
+	if (i >= dns_remote_count(&zone->primaries) && allownotify != NULL &&
+	    (dns_acl_match(&netaddr, tsig, allownotify, zone->view->aclenv,
 			   &match, NULL) == ISC_R_SUCCESS) &&
 	    match > 0)
 	{
@@ -15879,186 +15884,6 @@ dns_zone_notifyreceive(dns_zone_t *zone, isc_sockaddr_t *from,
 	}
 	dns_zone_refresh(zone);
 	return ISC_R_SUCCESS;
-}
-
-void
-dns_zone_setnotifyacl(dns_zone_t *zone, dns_acl_t *acl) {
-	REQUIRE(DNS_ZONE_VALID(zone));
-
-	LOCK_ZONE(zone);
-	if (zone->notify_acl != NULL) {
-		dns_acl_detach(&zone->notify_acl);
-	}
-	dns_acl_attach(acl, &zone->notify_acl);
-	UNLOCK_ZONE(zone);
-}
-
-void
-dns_zone_setqueryacl(dns_zone_t *zone, dns_acl_t *acl) {
-	REQUIRE(DNS_ZONE_VALID(zone));
-
-	LOCK_ZONE(zone);
-	if (zone->query_acl != NULL) {
-		dns_acl_detach(&zone->query_acl);
-	}
-	dns_acl_attach(acl, &zone->query_acl);
-	UNLOCK_ZONE(zone);
-}
-
-void
-dns_zone_setqueryonacl(dns_zone_t *zone, dns_acl_t *acl) {
-	REQUIRE(DNS_ZONE_VALID(zone));
-
-	LOCK_ZONE(zone);
-	if (zone->queryon_acl != NULL) {
-		dns_acl_detach(&zone->queryon_acl);
-	}
-	dns_acl_attach(acl, &zone->queryon_acl);
-	UNLOCK_ZONE(zone);
-}
-
-void
-dns_zone_setupdateacl(dns_zone_t *zone, dns_acl_t *acl) {
-	REQUIRE(DNS_ZONE_VALID(zone));
-
-	LOCK_ZONE(zone);
-	if (zone->update_acl != NULL) {
-		dns_acl_detach(&zone->update_acl);
-	}
-	dns_acl_attach(acl, &zone->update_acl);
-	UNLOCK_ZONE(zone);
-}
-
-void
-dns_zone_setforwardacl(dns_zone_t *zone, dns_acl_t *acl) {
-	REQUIRE(DNS_ZONE_VALID(zone));
-
-	LOCK_ZONE(zone);
-	if (zone->forward_acl != NULL) {
-		dns_acl_detach(&zone->forward_acl);
-	}
-	dns_acl_attach(acl, &zone->forward_acl);
-	UNLOCK_ZONE(zone);
-}
-
-void
-dns_zone_setxfracl(dns_zone_t *zone, dns_acl_t *acl) {
-	REQUIRE(DNS_ZONE_VALID(zone));
-
-	LOCK_ZONE(zone);
-	if (zone->xfr_acl != NULL) {
-		dns_acl_detach(&zone->xfr_acl);
-	}
-	dns_acl_attach(acl, &zone->xfr_acl);
-	UNLOCK_ZONE(zone);
-}
-
-dns_acl_t *
-dns_zone_getnotifyacl(dns_zone_t *zone) {
-	REQUIRE(DNS_ZONE_VALID(zone));
-
-	return zone->notify_acl;
-}
-
-dns_acl_t *
-dns_zone_getqueryacl(dns_zone_t *zone) {
-	REQUIRE(DNS_ZONE_VALID(zone));
-
-	return zone->query_acl;
-}
-
-dns_acl_t *
-dns_zone_getqueryonacl(dns_zone_t *zone) {
-	REQUIRE(DNS_ZONE_VALID(zone));
-
-	return zone->queryon_acl;
-}
-
-dns_acl_t *
-dns_zone_getupdateacl(dns_zone_t *zone) {
-	REQUIRE(DNS_ZONE_VALID(zone));
-
-	return zone->update_acl;
-}
-
-dns_acl_t *
-dns_zone_getforwardacl(dns_zone_t *zone) {
-	REQUIRE(DNS_ZONE_VALID(zone));
-
-	return zone->forward_acl;
-}
-
-dns_acl_t *
-dns_zone_getxfracl(dns_zone_t *zone) {
-	REQUIRE(DNS_ZONE_VALID(zone));
-
-	return zone->xfr_acl;
-}
-
-void
-dns_zone_clearupdateacl(dns_zone_t *zone) {
-	REQUIRE(DNS_ZONE_VALID(zone));
-
-	LOCK_ZONE(zone);
-	if (zone->update_acl != NULL) {
-		dns_acl_detach(&zone->update_acl);
-	}
-	UNLOCK_ZONE(zone);
-}
-
-void
-dns_zone_clearforwardacl(dns_zone_t *zone) {
-	REQUIRE(DNS_ZONE_VALID(zone));
-
-	LOCK_ZONE(zone);
-	if (zone->forward_acl != NULL) {
-		dns_acl_detach(&zone->forward_acl);
-	}
-	UNLOCK_ZONE(zone);
-}
-
-void
-dns_zone_clearnotifyacl(dns_zone_t *zone) {
-	REQUIRE(DNS_ZONE_VALID(zone));
-
-	LOCK_ZONE(zone);
-	if (zone->notify_acl != NULL) {
-		dns_acl_detach(&zone->notify_acl);
-	}
-	UNLOCK_ZONE(zone);
-}
-
-void
-dns_zone_clearqueryacl(dns_zone_t *zone) {
-	REQUIRE(DNS_ZONE_VALID(zone));
-
-	LOCK_ZONE(zone);
-	if (zone->query_acl != NULL) {
-		dns_acl_detach(&zone->query_acl);
-	}
-	UNLOCK_ZONE(zone);
-}
-
-void
-dns_zone_clearqueryonacl(dns_zone_t *zone) {
-	REQUIRE(DNS_ZONE_VALID(zone));
-
-	LOCK_ZONE(zone);
-	if (zone->queryon_acl != NULL) {
-		dns_acl_detach(&zone->queryon_acl);
-	}
-	UNLOCK_ZONE(zone);
-}
-
-void
-dns_zone_clearxfracl(dns_zone_t *zone) {
-	REQUIRE(DNS_ZONE_VALID(zone));
-
-	LOCK_ZONE(zone);
-	if (zone->xfr_acl != NULL) {
-		dns_acl_detach(&zone->xfr_acl);
-	}
-	UNLOCK_ZONE(zone);
 }
 
 bool
@@ -17124,6 +16949,7 @@ receive_secure_serial(void *arg) {
 	isc_time_t timenow;
 	int level = ISC_LOG_ERROR;
 
+	dns_cfgmgr_txn();
 	ENTER;
 
 	LOCK_ZONE(zone);
@@ -17259,6 +17085,7 @@ receive_secure_serial(void *arg) {
 			dns_journal_destroy(&rjournal);
 		}
 		isc_async_run(zone->loop, receive_secure_serial, rss);
+		dns_cfgmgr_closetxn();
 		return;
 	}
 
@@ -17353,6 +17180,7 @@ failure:
 	dns_diff_clear(&zone->rss_diff);
 
 	dns_zone_idetach(&zone);
+	dns_cfgmgr_closetxn();
 }
 
 static isc_result_t
@@ -17696,6 +17524,7 @@ receive_secure_db(void *arg) {
 	unsigned int oldserial = 0, *oldserialp = NULL;
 	nsec3paramlist_t nsec3list;
 
+	dns_cfgmgr_txn();
 	ISC_LIST_INIT(nsec3list);
 
 	LOCK_ZONE(zone);
@@ -17811,6 +17640,7 @@ failure:
 	dns_zone_idetach(&zone);
 
 	INSIST(version == NULL);
+	dns_cfgmgr_closetxn();
 }
 
 static isc_result_t
@@ -18386,6 +18216,7 @@ zone_loaddone(void *arg, isc_result_t result) {
 
 	zone = load->zone;
 
+	dns_cfgmgr_txn();
 	ENTER;
 
 	/*
@@ -18448,6 +18279,8 @@ again:
 	isc_mem_put(zone->mctx, load, sizeof(*load));
 
 	dns_zone_idetach(&zone);
+
+	dns_cfgmgr_closetxn();
 }
 
 void
@@ -24733,4 +24566,22 @@ dns_zone_setrad(dns_zone_t *zone, dns_name_t *name) {
 		call_rcu(&xchg_rad->rcu_head, free_rad_rcu);
 	}
 	rcu_read_unlock();
+}
+
+void
+dns_zone_setacl(dns_zone_t *zone, const char *name, const dns_acl_t *acl) {
+	if (zone->view == NULL) {
+		return;
+	}
+
+	dns_acl_set(zone, name, acl);
+}
+
+dns_acl_t *
+dns_zone_getacl(dns_zone_t *zone, const char *name) {
+	if (zone->view == NULL) {
+		return NULL;
+	}
+
+	return dns_acl_get(zone, name);
 }

@@ -64,6 +64,7 @@ setup(void **state) {
 	 */
 	setenv("TZ", "PDT8", 1);
 
+	setup_cfgmgr(state);
 	setup_loopmgr(state);
 
 	return 0;
@@ -74,6 +75,7 @@ teardown(void **state) {
 	cleanup(state);
 
 	teardown_loopmgr(state);
+	teardown_cfgmgr(state);
 
 	return 0;
 }

@@ -26,6 +26,7 @@
 
 #include <dns/adb.h>
 #include <dns/cache.h>
+#include <dns/cfgmgr.h>
 #include <dns/db.h>
 #include <dns/opcode.h>
 #include <dns/rcode.h>
@@ -3494,6 +3495,193 @@ render_json_traffic(const isc_httpd_t *httpd, const isc_httpdurl_t *urlinfo,
 			   b, freecb, freecb_args);
 }
 
+typedef struct cfgmgr_dumpctx cfgmgr_dumpctx_t;
+struct cfgmgr_dumpctx {
+	size_t indent;
+	size_t lvl;
+	isc_buffer_t *buffer;
+};
+
+static void
+statschannel__cfgmgr_dumpprop(void *state, const char *name,
+			      const dns_cfgmgr_val_t *val) {
+	cfgmgr_dumpctx_t *ctx = state;
+
+	for (size_t i = 0; i < ctx->lvl * ctx->indent; i++) {
+		isc_buffer_putstr(ctx->buffer, " ");
+	}
+
+	isc_buffer_printf(ctx->buffer, "%s ", name);
+	switch (val->type) {
+	case DNS_CFGMGR_UINT32:
+		isc_buffer_printf(ctx->buffer, "%u", val->uint32);
+		break;
+	case DNS_CFGMGR_STRING:
+		isc_buffer_printf(ctx->buffer, "%s", val->string);
+		break;
+	case DNS_CFGMGR_REF:
+		isc_buffer_printf(ctx->buffer, "%p", val->ptr);
+		break;
+	default:
+		UNREACHABLE();
+	}
+	isc_buffer_putstr(ctx->buffer, ";\n");
+}
+
+static void
+statschannel__cfgmgr_dumplabeldown(void *state, const char *name) {
+	cfgmgr_dumpctx_t *ctx = state;
+
+	for (size_t i = 0; i < ctx->lvl * ctx->indent; i++) {
+		isc_buffer_putstr(ctx->buffer, " ");
+	}
+
+	isc_buffer_printf(ctx->buffer, "%s {\n", name);
+
+	ctx->lvl++;
+}
+
+static void
+statschannel__cfgmgr_dumplabelup(void *state) {
+        cfgmgr_dumpctx_t *dump = state;
+
+	dump->lvl--;
+
+	for (size_t i = 0; i < dump->lvl * dump->indent; i++) {
+		isc_buffer_putstr(dump->buffer, " ");
+	}
+	isc_buffer_printf(dump->buffer, "};\n");
+}
+
+static void
+statschannel__cfgmgr_dump(dns_cfgmgr_mode_t mode, isc_buffer_t *buffer) {
+	cfgmgr_dumpctx_t ctx = { .lvl = 0, .indent = 8, .buffer = buffer };
+
+	dns_cfgmgr_mode(mode);
+	dns_cfgmgr_txn();
+	dns_cfgmgr_foreach("/", 0, &ctx, statschannel__cfgmgr_dumpprop,
+			   statschannel__cfgmgr_dumplabeldown,
+			   statschannel__cfgmgr_dumplabelup);
+	dns_cfgmgr_closetxn();
+}
+
+static void
+statschannel__cfgmgr_dumpfree(isc_buffer_t *buffer, void *arg) {
+	isc_mem_t *mctx = arg;
+	void *data = isc_buffer_base(buffer);
+
+	isc_buffer_initnull(buffer);
+	isc_mem_free(mctx, data);
+}
+
+static isc_result_t
+render_cfgmgr_dump(const isc_httpd_t *httpd, const isc_httpdurl_t *urlinfo,
+		    void *arg, unsigned int *retcode, const char **retmsg,
+		    const char **mimetype, isc_buffer_t *b,
+		    isc_httpdfree_t **freecb, void **freecb_args) {
+	const size_t bufsz = 16360008;
+	named_server_t *server = arg;
+	char *bufdata = isc_mem_allocate(server->mctx, bufsz);
+
+	UNUSED(httpd);
+	UNUSED(urlinfo);
+	UNUSED(retmsg);
+
+	*retcode = 200;
+	*retmsg = "OK";
+	*mimetype = "text/html";
+	*freecb = statschannel__cfgmgr_dumpfree;
+	*freecb_args = server->mctx;
+	isc_buffer_reinit(b, bufdata, bufsz);
+
+	isc_buffer_putstr(b, "<pre>");
+
+	isc_buffer_putstr(b, "# Builtin config dump\n\n");
+	statschannel__cfgmgr_dump(DNS_CFGMGR_MODEBUILTIN, b);
+
+	isc_buffer_putstr(b, "\n\n\n\n# User/named.conf config dump\n\n");
+        statschannel__cfgmgr_dump(DNS_CFGMGR_MODEUSER, b);
+
+	isc_buffer_putstr(b, "\n\n\n\n# Running config dump\n\n");
+	statschannel__cfgmgr_dump(DNS_CFGMGR_MODERUNNING, b);
+
+	isc_buffer_putstr(b, "</pre>");
+
+	return ISC_R_SUCCESS;
+}
+
+static isc_result_t
+cfgmgr_write(const isc_httpd_t *httpd, const isc_httpdurl_t *urlinfo, void *arg,
+	     unsigned int *retcode, const char **retmsg, const char **mimetype,
+	     isc_buffer_t *b, isc_httpdfree_t **freecb, void **freecb_args) {
+	dns_cfgmgr_val_t val;
+	const char *base;
+	uint16_t len;
+
+	UNUSED(httpd);
+	UNUSED(urlinfo);
+	UNUSED(retmsg);
+	UNUSED(retcode);
+	UNUSED(b);
+	UNUSED(freecb);
+	UNUSED(freecb_args);
+	UNUSED(mimetype);
+	UNUSED(arg);
+
+	*retcode = 200;
+	*retmsg = "OK";
+
+	base = NULL;
+	if (isc_httpd_geturlfield(httpd, ISC_UF_QUERY, &base, &len) ==
+	    ISC_R_SUCCESS)
+	{
+		char query[512];
+		char *name;
+		char *value;
+
+		REQUIRE(len < 511);
+		memset(query, 0, sizeof(query));
+		strncpy(query, base, len);
+
+		/*
+		 * if there is several queries options, let's pick only the
+		 * first one and ignore the other
+		 */
+		name = strtok(query, "=");
+		value = strtok(NULL, "&"); 
+		REQUIRE(name != NULL);
+
+		dns_cfgmgr_rwtxn();
+
+		if (value != NULL) {
+			val.type = DNS_CFGMGR_STRING;
+			val.string = value;
+			dns_cfgmgr_write(name, &val); 
+		} else {
+                        dns_cfgmgr_write(name, NULL);
+                }
+
+		if (strcmp(name, "/options/allow-query") == 0) {
+			dns_view_t *view = NULL;
+			dns_acl_t *newacl = NULL;
+
+			REQUIRE(dns_viewlist_find(&named_g_server->viewlist,
+						  "_default", dns_rdataclass_in,
+						  &view) == ISC_R_SUCCESS);
+
+			/*
+			 * TODO: run code to re-compute all ACLs
+			 */
+
+			dns_view_setacl(view, "allow-query", newacl);
+		}
+
+		REQUIRE(dns_cfgmgr_commit() == ISC_R_SUCCESS);
+	}
+
+	return ISC_R_SUCCESS;
+}
+
 #endif /* HAVE_JSON_C */
 
 #if HAVE_LIBXML2
@@ -3728,6 +3916,10 @@ add_listener(named_server_t *server, named_statschannel_t **listenerp,
 	isc_httpdmgr_addurl(listener->httpdmgr,
 			    "/json/v" STATS_JSON_VERSION_MAJOR "/traffic",
 			    false, render_json_traffic, server);
+	isc_httpdmgr_addurl(listener->httpdmgr, "/cfgmgrdump", false,
+			    render_cfgmgr_dump, server);
+	isc_httpdmgr_addurl(listener->httpdmgr, "/cfgmgrwrite", false,
+			    cfgmgr_write, server);
 #endif /* ifdef HAVE_JSON_C */
 
 	*listenerp = listener;

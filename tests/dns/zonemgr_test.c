@@ -37,6 +37,7 @@
 
 static int
 setup_test(void **state) {
+	setup_cfgmgr(state);
 	setup_loopmgr(state);
 	setup_netmgr(state);
 
@@ -47,6 +48,7 @@ static int
 teardown_test(void **state) {
 	teardown_netmgr(state);
 	teardown_loopmgr(state);
+	teardown_cfgmgr(state);
 
 	return 0;
 }

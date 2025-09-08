@@ -50,16 +50,6 @@
 #include <named/server.h>
 #include <named/zoneconf.h>
 
-/* ACLs associated with zone */
-typedef enum {
-	allow_notify,
-	allow_query,
-	allow_query_on,
-	allow_transfer,
-	allow_update,
-	allow_update_forwarding
-} acl_type_t;
-
 #define CHECK(x)                             \
 	do {                                 \
 		result = (x);                \
@@ -72,121 +62,100 @@ typedef enum {
  */
 static isc_result_t
 configure_zone_acl(const cfg_obj_t *zconfig, const cfg_obj_t *vconfig,
-		   const cfg_obj_t *config, acl_type_t acltype,
-		   cfg_aclconfctx_t *actx, dns_zone_t *zone,
-		   void (*setzacl)(dns_zone_t *, dns_acl_t *),
-		   void (*clearzacl)(dns_zone_t *)) {
+		   const cfg_obj_t *config, const char *aclname,
+		   cfg_aclconfctx_t *actx, dns_zone_t *zone) {
 	isc_result_t result;
-	const cfg_obj_t *maps[6] = { 0 };
+	const cfg_obj_t *zoptions = NULL;
+	const cfg_obj_t *toptions = NULL;
 	const cfg_obj_t *aclobj = NULL;
-	int i = 0;
-	dns_acl_t **aclp = NULL, *acl = NULL;
-	const char *aclname;
-	dns_view_t *view = NULL;
+	dns_acl_t  *acl = NULL;
+	dns_view_t *view = dns_zone_getview(zone);
 
-	view = dns_zone_getview(zone);
+	/*
+	 * Remove possible old zone config values
+	 */
+	dns_zone_setacl(zone, aclname, NULL);
 
-	switch (acltype) {
-	case allow_notify:
-		if (view != NULL) {
-			aclp = &view->notifyacl;
-		}
-		aclname = "allow-notify";
-		break;
-	case allow_query:
-		if (view != NULL) {
-			aclp = &view->queryacl;
-		}
-		aclname = "allow-query";
-		break;
-	case allow_query_on:
-		if (view != NULL) {
-			aclp = &view->queryonacl;
-		}
-		aclname = "allow-query-on";
-		break;
-	case allow_transfer:
-		if (view != NULL) {
-			aclp = &view->transferacl;
-		}
-		aclname = "allow-transfer";
-		break;
-	case allow_update:
-		if (view != NULL) {
-			aclp = &view->updateacl;
-		}
-		aclname = "allow-update";
-		break;
-	case allow_update_forwarding:
-		if (view != NULL) {
-			aclp = &view->upfwdacl;
-		}
-		aclname = "allow-update-forwarding";
-		break;
-	default:
-		UNREACHABLE();
-	}
-
-	/* First check to see if ACL is defined within the zone */
-	if (zconfig != NULL) {
-		maps[i] = cfg_tuple_get(zconfig, "options");
-		(void)named_config_get(maps, aclname, &aclobj);
-		if (aclobj != NULL) {
-			aclp = NULL;
-			goto parse_acl;
-		}
-	}
-
-	if (config != NULL && maps[i] != NULL) {
-		const cfg_obj_t *toptions = named_zone_templateopts(config,
-								    maps[i]);
-		if (toptions != NULL) {
-			maps[i++] = toptions;
-		}
-	}
-
-	/* Failing that, see if there's a default ACL already in the view */
-	if (aclp != NULL && *aclp != NULL) {
-		(*setzacl)(zone, *aclp);
+	if (zconfig == NULL) {
+		/*
+		 * If an ACL is defined in the view or at options level,
+		 * cfgmgr lookup will find it
+		 */
 		return ISC_R_SUCCESS;
 	}
 
-	/* Check for default ACLs that haven't been parsed yet */
-	if (vconfig != NULL) {
-		const cfg_obj_t *options = cfg_tuple_get(vconfig, "options");
-		if (options != NULL) {
-			maps[i++] = options;
-		}
-	}
-	if (config != NULL) {
-		const cfg_obj_t *options = NULL;
-		(void)cfg_map_get(config, "options", &options);
-		if (options != NULL) {
-			maps[i++] = options;
-		}
-	}
-	maps[i++] = named_g_defaultoptions;
-	maps[i] = NULL;
+	/*
+	 * Checks if the ACL is defined at the zone level
+	 */
+	zoptions = cfg_tuple_get(zconfig, "options");
+	(void)cfg_map_get(zoptions, aclname, &aclobj);
 
-	(void)named_config_get(maps, aclname, &aclobj);
+	/*
+	 * Failing that, checks if the ACL is defined at the template level
+	 */
 	if (aclobj == NULL) {
-		(*clearzacl)(zone);
-		return ISC_R_SUCCESS;
+		/*
+		 * This version would create a new ACL instance per-zone when
+		 * the ACL is defined in the template, this is sub-optimal (this
+		 * could be the same ACL re-used in all the zone using this
+		 * template, as before those cfgmgr changes.
+		 */
+		toptions = named_zone_templateopts(config, zoptions);
+		if (toptions != NULL) {
+			(void)cfg_map_get(toptions, aclname, &aclobj);
+		}
 	}
 
-parse_acl:
+	/*
+	 * Failing that, let's grab the view ACL
+	 */
+	if (aclobj == NULL) {
+		acl = dns_view_getacl(view, aclname);
+		if (acl != NULL) {
+			dns_zone_setacl(zone, aclname, acl);
+			return ISC_R_SUCCESS;
+		}
+	}
+
+	/* Falling that, check for default ACLs that haven't been parsed
+	 * yet 
+	 */
+	if (aclobj == NULL) {
+		const cfg_obj_t *maps[4] = { 0 };
+		size_t i = 0;
+	 
+		if (vconfig != NULL) {
+			const cfg_obj_t *options = cfg_tuple_get(vconfig,
+								 "options");
+			if (options != NULL) {
+				maps[i++] = options;
+			}
+		}
+
+		if (config != NULL) {
+			const cfg_obj_t *options = NULL;
+			(void)cfg_map_get(config, "options", &options);
+			if (options != NULL) {
+				maps[i++] = options;
+			}
+		}
+		maps[i++] = named_g_defaultoptions;
+		maps[i] = NULL;
+
+		(void)named_config_get(maps, aclname, &aclobj);
+
+		if (aclobj == NULL) {
+			return ISC_R_SUCCESS;
+		}
+	}
+
 	result = cfg_acl_fromconfig(aclobj, config, actx, isc_g_mctx, 0, &acl);
 	if (result != ISC_R_SUCCESS) {
 		return result;
 	}
-	(*setzacl)(zone, acl);
-
-	/* Set the view default now */
-	if (aclp != NULL) {
-		dns_acl_attach(acl, aclp);
-	}
-
+	dns_zone_setacl(zone, aclname, acl);
 	dns_acl_detach(&acl);
+
 	return ISC_R_SUCCESS;
 }
 
@@ -824,8 +793,11 @@ isself(dns_view_t *myview, dns_tsigkey_t *mykey, const isc_sockaddr_t *srcaddr,
 			tsig = dns_tsigkey_identity(mykey);
 		}
 
-		if (dns_acl_allowed(&netsrc, tsig, view->matchclients, env) &&
-		    dns_acl_allowed(&netdst, tsig, view->matchdestinations,
+		if (dns_acl_allowed(&netsrc, tsig,
+				    dns_view_getacl(view, "match-clients"),
+				    env) &&
+		    dns_acl_allowed(&netdst, tsig,
+				    dns_view_getacl(view, "match-destinations"),
 				    env))
 		{
 			return view == myview;
@@ -1100,21 +1072,21 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 	 * Notify messages are processed by the raw zone if it exists.
 	 */
 	if (ztype == dns_zone_secondary || ztype == dns_zone_mirror) {
-		CHECK(configure_zone_acl(zconfig, vconfig, config, allow_notify,
-					 ac, mayberaw, dns_zone_setnotifyacl,
-					 dns_zone_clearnotifyacl));
+		CHECK(configure_zone_acl(zconfig, vconfig, config,
+					 "allow-notify", ac, mayberaw));
 	}
 
 	/*
 	 * XXXAG This probably does not make sense for stubs.
 	 */
-	CHECK(configure_zone_acl(zconfig, vconfig, config, allow_query, ac,
-				 zone, dns_zone_setqueryacl,
-				 dns_zone_clearqueryacl));
+	CHECK(configure_zone_acl(zconfig, vconfig, config, "allow-query", ac,
+				 zone));
 
-	CHECK(configure_zone_acl(zconfig, vconfig, config, allow_query_on, ac,
-				 zone, dns_zone_setqueryonacl,
-				 dns_zone_clearqueryonacl));
+	/*
+	 * XXXAG This probably does not make sense for stubs.
+	 */
+	CHECK(configure_zone_acl(zconfig, vconfig, config, "allow-query-on", ac,
+				 zone));
 
 	obj = NULL;
 	result = named_config_get(maps, "zone-statistics", &obj);
@@ -1284,9 +1256,8 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 
 		dns_zone_setisself(zone, isself, NULL);
 
-		CHECK(configure_zone_acl(
-			zconfig, vconfig, config, allow_transfer, ac, zone,
-			dns_zone_setxfracl, dns_zone_clearxfracl));
+		CHECK(configure_zone_acl(zconfig, vconfig, config,
+					 "allow-transfer", ac, zone));
 
 		obj = NULL;
 		result = named_config_get(maps, "max-transfer-time-out", &obj);
@@ -1538,11 +1509,10 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 	if (ztype == dns_zone_primary) {
 		dns_acl_t *updateacl;
 
-		CHECK(configure_zone_acl(zconfig, vconfig, config, allow_update,
-					 ac, mayberaw, dns_zone_setupdateacl,
-					 dns_zone_clearupdateacl));
+		CHECK(configure_zone_acl(zconfig, vconfig, config,
+					 "allow-update", ac, mayberaw));
 
-		updateacl = dns_zone_getupdateacl(mayberaw);
+		updateacl = dns_zone_getacl(mayberaw, "allow-update");
 		if (updateacl != NULL && dns_acl_isinsecure(updateacl)) {
 			isc_log_write(DNS_LOGCATEGORY_SECURITY,
 				      NAMED_LOGMODULE_SERVER, ISC_LOG_WARNING,
@@ -1617,9 +1587,8 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 
 	if (ztype == dns_zone_secondary || ztype == dns_zone_mirror) {
 		CHECK(configure_zone_acl(zconfig, vconfig, config,
-					 allow_update_forwarding, ac, mayberaw,
-					 dns_zone_setforwardacl,
-					 dns_zone_clearforwardacl));
+					 "allow-update-forwarding", ac,
+					 mayberaw));
 	}
 
 	/*%
@@ -1783,7 +1752,7 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 		if (obj == NULL) {
 			dns_acl_t *none;
 			CHECK(dns_acl_none(mctx, &none));
-			dns_zone_setxfracl(zone, none);
+			dns_zone_setacl(zone, "allow-transfer", none);
 			dns_acl_detach(&none);
 		}
 		FALLTHROUGH;

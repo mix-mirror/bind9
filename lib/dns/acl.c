@@ -23,6 +23,7 @@
 #include <isc/util.h>
 
 #include <dns/acl.h>
+#include <dns/cfgmgr.h>
 #include <dns/iptable.h>
 
 #include "acl_p.h"
@@ -786,4 +787,30 @@ dns_acl_merge_ports_transports(dns_acl_t *dest, dns_acl_t *source, bool pos) {
 		dns_acl_add_port_transports(dest, next->port, next->transports,
 					    next->encrypted, add_negative);
 	}
+}
+
+static void
+acl_cfgmgrattach(void *ptr) {
+	dns_acl_ref((dns_acl_t *)ptr);
+}
+
+static void
+acl_cfgmgrdetach(void *ptr) {
+	dns_acl_unref((dns_acl_t *)ptr);
+}
+
+void
+dns_acl_set(const void *owner, const char *path, const dns_acl_t *acl) {
+	REQUIRE(acl == NULL || DNS_ACL_VALID(acl));
+
+	dns_cfgmgr_setref(owner, path, (void *)acl, acl_cfgmgrattach,
+			  acl_cfgmgrdetach);
+}
+
+dns_acl_t *
+dns_acl_get(const void *owner, const char *path) {
+	dns_acl_t *acl = NULL;
+
+	(void)dns_cfgmgr_getref(owner, path, (void **)&acl);
+	return acl;
 }

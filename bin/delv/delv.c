@@ -52,6 +52,7 @@
 #include <dns/acl.h>
 #include <dns/byaddr.h>
 #include <dns/cache.h>
+#include <dns/cfgmgr.h>
 #include <dns/client.h>
 #include <dns/dispatch.h>
 #include <dns/fixedname.h>
@@ -2204,6 +2205,27 @@ cleanup:
 	shutdown_server();
 }
 
+static void
+init_cfgmgr(void) {
+	/*
+	 * TODO this is really temporary quick fix to avoid system test
+	 * crashing. It possible that we need to use cfgmgr to put some settings
+	 * here depending on param args (as the code run by delv is the same
+	 * than named one).
+	 */
+	dns_cfgmgr_init(isc_g_mctx);
+
+	dns_cfgmgr_mode(DNS_CFGMGR_MODEBUILTIN);
+	dns_cfgmgr_rwtxn();
+	dns_cfgmgr_commit();
+
+	dns_cfgmgr_mode(DNS_CFGMGR_MODEUSER);
+	dns_cfgmgr_rwtxn();
+	dns_cfgmgr_commit();
+
+	dns_cfgmgr_mode(DNS_CFGMGR_MODERUNNING);
+}
+
 int
 main(int argc, char *argv[]) {
 	isc_result_t result;
@@ -2219,6 +2241,7 @@ main(int argc, char *argv[]) {
 	argv++;
 
 	isc_managers_create(1);
+	init_cfgmgr();
 	loop = isc_loop_main();
 
 	parse_args(argc, argv);
@@ -2262,6 +2285,7 @@ cleanup:
 		dns_master_styledestroy(&style, isc_g_mctx);
 	}
 
+	dns_cfgmgr_deinit();
 	isc_managers_destroy();
 
 	return 0;

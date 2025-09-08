@@ -30,6 +30,8 @@
 #include <isc/timer.h>
 #include <isc/util.h>
 
+#include <dns/cfgmgr.h>
+
 #include <tests/isc.h>
 
 unsigned int workers = 0;
@@ -112,7 +114,35 @@ teardown_netmgr(void **state ISC_ATTR_UNUSED) {
 }
 
 int
+setup_cfgmgr(void **state ISC_ATTR_UNUSED) {
+	/*
+	 * TODO: there is probably a working directory that can be used instead
+	 * of /tmp
+	 */
+	dns_cfgmgr_init(isc_g_mctx); 
+	dns_cfgmgr_mode(DNS_CFGMGR_MODEBUILTIN);
+	dns_cfgmgr_rwtxn();
+	dns_cfgmgr_commit();
+
+	dns_cfgmgr_mode(DNS_CFGMGR_MODEUSER);
+	dns_cfgmgr_rwtxn();
+	dns_cfgmgr_commit();
+
+	dns_cfgmgr_mode(DNS_CFGMGR_MODERUNNING);
+
+	return 0;
+}
+
+int
+teardown_cfgmgr(void **state ISC_ATTR_UNUSED) {
+	dns_cfgmgr_deinit();
+
+	return 0;
+}
+
+int
 setup_managers(void **state) {
+	setup_cfgmgr(state);
 	setup_loopmgr(state);
 	setup_netmgr(state);
 
@@ -123,6 +153,7 @@ int
 teardown_managers(void **state) {
 	teardown_netmgr(state);
 	teardown_loopmgr(state);
+	teardown_cfgmgr(state);
 
 	return 0;
 }

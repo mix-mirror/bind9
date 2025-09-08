@@ -53,6 +53,11 @@ int
 teardown_netmgr(void **state);
 
 int
+setup_cfgmgr(void **state);
+int
+teardown_cfgmgr(void **state);
+
+int
 setup_managers(void **state);
 int
 teardown_managers(void **state);
