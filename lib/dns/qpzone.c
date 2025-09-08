@@ -167,8 +167,6 @@ ISC_REFCOUNT_STATIC_DECL(qpz_heap);
 struct qpznode {
 	DBNODE_FIELDS;
 
-	dns_name_t	      name;
-
 	qpz_heap_t *heap;
 	/*
 	 * 'erefs' counts external references held by a caller: for
@@ -203,6 +201,9 @@ struct qpznode {
 
 	struct cds_list_head types_list;
 	struct cds_list_head *data;
+
+	uint8_t	length;
+	unsigned char namebuf[];
 };
 
 struct qpzonedb {
@@ -636,21 +637,22 @@ qpz_heap_destroy(qpz_heap_t *qpheap) {
 
 static qpznode_t *
 new_qpznode(qpzonedb_t *qpdb, const dns_name_t *name, dns_namespace_t nspace) {
-	qpznode_t *newdata = isc_mem_get(qpdb->common.mctx, sizeof(*newdata));
+	qpznode_t *newdata = isc_mem_get(qpdb->common.mctx, sizeof(*newdata) + name->length);
 	*newdata = (qpznode_t){
 		.types_list = CDS_LIST_HEAD_INIT(newdata->types_list),
 		.data = &newdata->types_list,
 		.methods = &qpznode_methods,
-		.name = DNS_NAME_INITEMPTY,
 		.nspace = nspace,
 		.heap = qpdb->heap,
 		.references = ISC_REFCOUNT_INITIALIZER(1),
 		.locknum = qpzone_get_locknum(),
+
+		.length = name->length,
 	};
 
 	isc_mem_attach(qpdb->common.mctx, &newdata->mctx);
-	dns_name_dup(name, qpdb->common.mctx, &newdata->name);
 	qpz_heap_ref(newdata->heap);
+	memmove(newdata->namebuf, name->ndata, name->length);
 
 #if DNS_DB_NODETRACE
 	fprintf(stderr, "new_qpznode:%s:%s:%d:%p->references = 1\n", __func__,
@@ -2820,8 +2822,13 @@ find_wildcard(qpz_search_t *search, qpznode_t **nodep, const dns_name_t *qname,
 			/*
 			 * Construct the wildcard name for this level.
 			 */
+			dns_name_t as_name = (dns_name_t) {
+				.magic = DNS_NAME_MAGIC,
+				.length = node->length,
+				.ndata = node->namebuf,
+			};
 			result = dns_name_concatenate(dns_wildcardname,
-						      &node->name, wname);
+						      &as_name, wname);
 			if (result != ISC_R_SUCCESS) {
 				break;
 			}
@@ -4618,17 +4625,20 @@ qpzone_addrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 
 	result = dns_rdataslab_fromrdataset(rdataset, node->mctx, &region,
 					    qpdb->maxrrperset);
+	
+	/* We need the name for logging, might as well compute it here. */
+	nodefullname((dns_dbnode_t *)node, name);
+	dns_rdataset_getownercase(rdataset, name);
+
 	if (result != ISC_R_SUCCESS) {
 		if (result == DNS_R_TOOMANYRECORDS) {
-			dns__db_logtoomanyrecords((dns_db_t *)qpdb, &node->name,
+			dns__db_logtoomanyrecords((dns_db_t *)qpdb, name,
 						  rdataset->type, "adding",
 						  qpdb->maxrrperset);
 		}
 		return result;
 	}
 
-	nodefullname((dns_dbnode_t *)node, name);
-	dns_rdataset_getownercase(rdataset, name);
 
 	newheader = (dns_slabheader_t *)region.base;
 	dns_slabheader_reset(newheader, (dns_dbnode_t *)node);
@@ -4922,6 +4932,19 @@ qpzone_deleterdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 	return result;
 }
 
+static isc_result_t
+nodefullname(dns_dbnode_t *node, dns_name_t *name) {
+	REQUIRE(node != NULL);
+	REQUIRE(name != NULL);
+
+	qpznode_t *qpnode = (qpznode_t *)node;
+
+
+	dns_name_fromregion(name, &(isc_region_t){ .base = qpnode->namebuf,  .length = qpnode->length });
+
+	return ISC_R_SUCCESS;
+}
+
 static dns_glue_t *
 new_glue(isc_mem_t *mctx, const dns_name_t *name) {
 	dns_glue_t *glue = isc_mem_get(mctx, sizeof(*glue));
@@ -5034,7 +5057,12 @@ glue_nsdname_cb(void *arg, const dns_name_t *name, dns_rdatatype_t qtype,
 	 * attributes for the first rdataset associated with the first name
 	 * added to the ADDITIONAL section.
 	 */
-	if (glue != NULL && dns_name_issubdomain(name, &node->name)) {
+	dns_name_t as_name = (dns_name_t) {
+		.magic = DNS_NAME_MAGIC,
+		.length = node->length,
+		.ndata = node->namebuf,
+	};
+	if (glue != NULL && dns_name_issubdomain(name, &as_name)) {
 		if (dns_rdataset_isassociated(&glue->rdataset_a)) {
 			glue->rdataset_a.attributes.required = true;
 		}
@@ -5310,8 +5338,7 @@ destroy_qpznode(qpznode_t *node) {
 	}
 
 	qpz_heap_unref(node->heap);
-	dns_name_free(&node->name, node->mctx);
-	isc_mem_putanddetach(&node->mctx, node, sizeof(qpznode_t));
+	isc_mem_putanddetach(&node->mctx, node, sizeof(qpznode_t) + node->length);
 }
 
 #if DNS_DB_NODETRACE
@@ -5340,7 +5367,13 @@ static size_t
 qp_makekey(dns_qpkey_t key, void *uctx ISC_ATTR_UNUSED, void *pval,
 	   uint32_t ival ISC_ATTR_UNUSED) {
 	qpznode_t *data = pval;
-	return dns_qpkey_fromname(key, &data->name, data->nspace);
+
+	dns_name_t as_name = (dns_name_t) {
+		.magic = DNS_NAME_MAGIC,
+		.length = data->length,
+		.ndata = data->namebuf,
+	};
+	return dns_qpkey_fromname(key, &as_name, data->nspace);
 }
 
 static void
