@@ -2429,7 +2429,7 @@ again:
 		*resign = RESIGN(header)
 				  ? (header->resign << 1) | header->resign_lsb
 				  : 0;
-		dns_name_copy(&HEADERNODE(header)->name, foundname);
+		nodefullname((dns_dbnode_t *)HEADERNODE(header), foundname);
 		*typepair = header->typepair;
 		result = ISC_R_SUCCESS;
 	}
@@ -3355,7 +3355,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		if (tresult != DNS_R_CONTINUE) {
 			result = tresult;
 			search.chain.len = i - 1;
-			dns_name_copy(&n->name, foundname);
+			nodefullname((dns_dbnode_t *)n, foundname);
 			node = n;
 		}
 	}
