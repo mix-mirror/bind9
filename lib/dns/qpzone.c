@@ -953,7 +953,7 @@ qpznode_erefs_decrement(qpznode_t *node DNS__DB_FLARG) {
  * if necessary, then decrements the internal reference counter as well.
  */
 static void
-qpznode_release(qpznode_t *node, uint32_t least_serial,
+qpznode_release(qpzonedb_t *qpdb, qpznode_t *node, uint32_t least_serial,
 		isc_rwlocktype_t *nlocktypep DNS__DB_FLARG) {
 	REQUIRE(*nlocktypep != isc_rwlocktype_none);
 
@@ -974,6 +974,22 @@ qpznode_release(qpznode_t *node, uint32_t least_serial,
 		 */
 		REQUIRE(*nlocktypep == isc_rwlocktype_write);
 		clean_zone_node(node, least_serial);
+
+		/* Delete the empty node */
+		if (node->data == NULL && !node->wild && node != qpdb->origin &&
+		    node != qpdb->nsec_origin && node != qpdb->nsec3_origin)
+		{
+			dns_qp_t *qp = NULL;
+			isc_result_t result;
+			dns_qpmulti_write(qpdb->tree, &qp);
+
+			result = dns_qp_deletename(qp, &node->name,
+						   node->nspace, NULL, NULL);
+			RUNTIME_CHECK(result == ISC_R_SUCCESS);
+
+			dns_qp_compact(qp, DNS_QPGC_MAYBE);
+			dns_qpmulti_commit(qpdb->tree, &qp);
+		}
 	}
 
 unref:
@@ -1494,7 +1510,7 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 		if (rollback && !IGNORE(header)) {
 			resigninsert(header);
 		}
-		qpznode_release(HEADERNODE(header), least_serial,
+		qpznode_release(qpdb, HEADERNODE(header), least_serial,
 				&nlocktype DNS__DB_FLARG_PASS);
 		NODE_UNLOCK(nlock, &nlocktype);
 	}
@@ -1515,7 +1531,7 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 		if (rollback) {
 			rollback_node(node, serial);
 		}
-		qpznode_release(node, least_serial,
+		qpznode_release(qpdb, node, least_serial,
 				&nlocktype DNS__DB_FILELINE);
 
 		NODE_UNLOCK(nlock, &nlocktype);
@@ -3755,7 +3771,7 @@ tree_exit:
 		nlock = qpzone_get_lock(node);
 
 		NODE_RDLOCK(nlock, &nlocktype);
-		qpznode_release(node, 0, &nlocktype DNS__DB_FLARG_PASS);
+		qpznode_release(NULL, node, 0, &nlocktype DNS__DB_FLARG_PASS);
 		NODE_UNLOCK(nlock, &nlocktype);
 	}
 
@@ -3834,7 +3850,7 @@ qpzone_detachnode(dns_dbnode_t **nodep DNS__DB_FLARG) {
 
 	rcu_read_lock();
 	NODE_RDLOCK(nlock, &nlocktype);
-	qpznode_release(node, 0, &nlocktype DNS__DB_FLARG_PASS);
+	qpznode_release(NULL, node, 0, &nlocktype DNS__DB_FLARG_PASS);
 	NODE_UNLOCK(nlock, &nlocktype);
 	rcu_read_unlock();
 }
@@ -4020,7 +4036,7 @@ dereference_iter_node(qpdb_dbiterator_t *iter DNS__DB_FLARG) {
 	nlock = qpzone_get_lock(node);
 
 	NODE_RDLOCK(nlock, &nlocktype);
-	qpznode_release(node, 0, &nlocktype DNS__DB_FLARG_PASS);
+	qpznode_release(NULL, node, 0, &nlocktype DNS__DB_FLARG_PASS);
 	NODE_UNLOCK(nlock, &nlocktype);
 }
 
