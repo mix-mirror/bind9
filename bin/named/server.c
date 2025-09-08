@@ -8140,6 +8140,18 @@ apply_configuration(cfg_parser_t *configparser, cfg_obj_t *config,
 	ISC_LIST_INIT(cachelist);
 	ISC_LIST_INIT(altsecrets);
 
+	/*
+	 * Fill in the maps array, used for resolving defaults.
+	 */
+	i = 0;
+	options = NULL;
+	result = cfg_map_get(config, "options", &options);
+	if (result == ISC_R_SUCCESS) {
+		maps[i++] = options;
+	}
+	maps[i++] = named_g_defaultoptions;
+	maps[i] = NULL;
+
 	/* Ensure exclusive access to configuration data. */
 	isc_loopmgr_pause();
 
@@ -8185,18 +8197,6 @@ apply_configuration(cfg_parser_t *configparser, cfg_obj_t *config,
 
 	dns_zonemgr_set_tlsctx_cache(server->zonemgr,
 				     server->tlsctx_client_cache);
-
-	/*
-	 * Fill in the maps array, used for resolving defaults.
-	 */
-	i = 0;
-	options = NULL;
-	result = cfg_map_get(config, "options", &options);
-	if (result == ISC_R_SUCCESS) {
-		maps[i++] = options;
-	}
-	maps[i++] = named_g_defaultoptions;
-	maps[i] = NULL;
 
 #if HAVE_LIBNGHTTP2
 	obj = NULL;
