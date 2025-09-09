@@ -41,15 +41,18 @@ struct isc_statsmulti {
 	isc_mem_t *mctx;
 	isc_refcount_t references;
 	int ncounters;
+	int n_additive;
+	int n_max;
 	int per_thread_capacity;
 	int num_threads;
 	isc_atomic_statscounter_t *counters;
 };
 
 void
-isc_statsmulti_create(isc_mem_t *mctx, isc_statsmulti_t **statsp, int ncounters) {
+isc_statsmulti_create(isc_mem_t *mctx, isc_statsmulti_t **statsp, int n_additive, int n_max) {
 	REQUIRE(statsp != NULL && *statsp == NULL);
 
+	int ncounters = n_additive + n_max;
 	isc_statsmulti_t *stats = isc_mem_get(mctx, sizeof(*stats));
 	
 	size_t counters_size = sizeof(isc_atomic_statscounter_t) * ncounters;
@@ -67,6 +70,8 @@ isc_statsmulti_create(isc_mem_t *mctx, isc_statsmulti_t **statsp, int ncounters)
 	stats->mctx = NULL;
 	isc_mem_attach(mctx, &stats->mctx);
 	stats->ncounters = ncounters;
+	stats->n_additive = n_additive;
+	stats->n_max = n_max;
 	stats->per_thread_capacity = per_thread_capacity;
 	stats->num_threads = num_threads;
 	stats->magic = ISC_STATSMULTI_MAGIC;
@@ -102,7 +107,7 @@ isc_statsmulti_detach(isc_statsmulti_t **statsp) {
 isc_statscounter_t
 isc_statsmulti_increment(isc_statsmulti_t *stats, isc_statscounter_t counter) {
 	REQUIRE(ISC_STATSMULTI_VALID(stats));
-	REQUIRE(counter < stats->ncounters);
+	REQUIRE(counter < stats->n_additive);
 
 	isc_tid_t tid = isc_tid();
 	int thread_id = ISC_MAX(tid, 0);
@@ -116,7 +121,7 @@ isc_statsmulti_increment(isc_statsmulti_t *stats, isc_statscounter_t counter) {
 void
 isc_statsmulti_decrement(isc_statsmulti_t *stats, isc_statscounter_t counter) {
 	REQUIRE(ISC_STATSMULTI_VALID(stats));
-	REQUIRE(counter < stats->ncounters);
+	REQUIRE(counter < stats->n_additive);
 
 	isc_tid_t tid = isc_tid();
 	int thread_id = ISC_MAX(tid, 0);
@@ -151,7 +156,7 @@ isc_statsmulti_dump(isc_statsmulti_t *stats, isc_statsmulti_dumper_t dump_fn, vo
 isc_statscounter_t
 isc_statsmulti_get_counter(isc_statsmulti_t *stats, isc_statscounter_t counter) {
 	REQUIRE(ISC_STATSMULTI_VALID(stats));
-	REQUIRE(counter < stats->ncounters);
+	REQUIRE(counter < stats->n_additive);
 
 	isc_statscounter_t total = 0;
 	/* Accumulate across all threads */
@@ -170,4 +175,45 @@ isc_statsmulti_clear(isc_statsmulti_t *stats) {
 	for (int i = 0; i < stats->per_thread_capacity * stats->num_threads; i++) {
 		atomic_store_relaxed(&stats->counters[i], 0);
 	}
+}
+
+void
+isc_statsmulti_update_if_greater(isc_statsmulti_t *stats, isc_statscounter_t counter, isc_statscounter_t value) {
+	REQUIRE(ISC_STATSMULTI_VALID(stats));
+	REQUIRE(counter >= stats->n_additive);
+	REQUIRE(counter < stats->ncounters);
+
+	isc_tid_t tid = isc_tid();
+	int thread_id = ISC_MAX(tid, 0);
+	if (thread_id >= stats->num_threads) {
+		thread_id = 0;
+	}
+	int index = thread_id * stats->per_thread_capacity + counter;
+	
+	/* Atomically update if the new value is greater than current */
+	isc_statscounter_t current = atomic_load_relaxed(&stats->counters[index]);
+	while (value > current) {
+		if (atomic_compare_exchange_weak_relaxed(&stats->counters[index], &current, value)) {
+			break;
+		}
+		/* current was updated by the failed compare_exchange, try again */
+	}
+}
+
+isc_statscounter_t
+isc_statsmulti_get_highwater(isc_statsmulti_t *stats, isc_statscounter_t counter) {
+	REQUIRE(ISC_STATSMULTI_VALID(stats));
+	REQUIRE(counter >= stats->n_additive);
+	REQUIRE(counter < stats->ncounters);
+
+	isc_statscounter_t max_value = 0;
+	/* Find maximum value across all threads */
+	for (int thread = 0; thread < stats->num_threads; thread++) {
+		int index = thread * stats->per_thread_capacity + counter;
+		isc_statscounter_t value = atomic_load_acquire(&stats->counters[index]);
+		if (value > max_value) {
+			max_value = value;
+		}
+	}
+	return max_value;
 }

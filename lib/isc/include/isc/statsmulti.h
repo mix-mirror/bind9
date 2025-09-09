@@ -32,10 +32,11 @@ typedef struct isc_statsmulti isc_statsmulti_t; /*%< Statistics Multi */
 typedef void (*isc_statsmulti_dumper_t)(isc_statscounter_t, uint64_t, void *);
 
 void
-isc_statsmulti_create(isc_mem_t *mctx, isc_statsmulti_t **statsp, int ncounters);
+isc_statsmulti_create(isc_mem_t *mctx, isc_statsmulti_t **statsp, int n_additive, int n_max);
 /*%<
- * Create a statistics counter structure of general type.  It counts a general
- * set of counters indexed by an ID between 0 and ncounters -1.
+ * Create a statistics counter structure with both additive and highwater counters.
+ * Counters [0, n_additive) are additive (sum across threads).
+ * Counters [n_additive, n_additive + n_max) are highwater (maximum across threads).
  *
  * Requires:
  *\li	'mctx' must be a valid memory context.
@@ -116,4 +117,28 @@ isc_statsmulti_clear(isc_statsmulti_t *stats);
  *
  * Requires:
  *\li	'stats' is a valid isc_statsmulti_t.
+ */
+
+void
+isc_statsmulti_update_if_greater(isc_statsmulti_t *stats, isc_statscounter_t counter, isc_statscounter_t value);
+/*%<
+ * Update a highwater counter if the provided value is greater than the current per-thread value.
+ * Only works on counters in the range [n_additive, n_additive + n_max).
+ *
+ * Requires:
+ *\li	'stats' is a valid isc_statsmulti_t.
+ *
+ *\li	counter is in the highwater range for the stats specified on creation.
+ */
+
+isc_statscounter_t
+isc_statsmulti_get_highwater(isc_statsmulti_t *stats, isc_statscounter_t counter);
+/*%<
+ * Returns the maximum value across all threads for a highwater counter.
+ * Only works on counters in the range [n_additive, n_additive + n_max).
+ *
+ * Requires:
+ *\li	'stats' is a valid isc_statsmulti_t.
+ *
+ *\li	counter is in the highwater range for the stats specified on creation.
  */
