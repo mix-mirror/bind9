@@ -161,3 +161,13 @@ isc_statsmulti_get_counter(isc_statsmulti_t *stats, isc_statscounter_t counter) 
 	}
 	return total;
 }
+
+void
+isc_statsmulti_clear(isc_statsmulti_t *stats) {
+	REQUIRE(ISC_STATSMULTI_VALID(stats));
+
+	/* Clear all counters across all threads */
+	for (int i = 0; i < stats->per_thread_capacity * stats->num_threads; i++) {
+		atomic_store_relaxed(&stats->counters[i], 0);
+	}
+}

@@ -108,3 +108,12 @@ isc_statsmulti_get_counter(isc_statsmulti_t *stats, isc_statscounter_t counter);
  *\li	counter is less than the maximum available ID for the stats specified
  *	on creation.
  */
+
+void
+isc_statsmulti_clear(isc_statsmulti_t *stats);
+/*%<
+ * Set all counters to zero.
+ *
+ * Requires:
+ *\li	'stats' is a valid isc_statsmulti_t.
+ */
