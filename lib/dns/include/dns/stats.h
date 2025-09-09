@@ -295,9 +295,9 @@ dns_rdatasetstats_create(isc_mem_t *mctx, dns_stats_t **statsp);
  */
 
 void
-dns_opcodestats_create(isc_mem_t *mctx, dns_stats_t **statsp);
+dns_opcodestats_create(isc_mem_t *mctx, isc_statsmulti_t **statsp);
 /*%<
- * Create a statistics counter structure per opcode.
+ * Create a statistics counter structure per opcode using statsmulti.
  *
  * Requires:
  *\li	'mctx' must be a valid memory context.
@@ -391,12 +391,12 @@ dns_rdatasetstats_decrement(dns_stats_t *stats, dns_rdatastatstype_t rrsettype);
  */
 
 void
-dns_opcodestats_increment(dns_stats_t *stats, dns_opcode_t code);
+dns_opcodestats_increment(isc_statsmulti_t *stats, dns_opcode_t code);
 /*%<
  * Increment the statistics counter for 'code'.
  *
  * Requires:
- *\li	'stats' is a valid dns_stats_t created by dns_opcodestats_create().
+ *\li	'stats' is a valid isc_statsmulti_t created by dns_opcodestats_create().
  */
 
 void
@@ -488,7 +488,7 @@ dns_dnssecsignstats_dump(dns_stats_t *stats, dnssecsignstats_type_t operation,
  */
 
 void
-dns_opcodestats_dump(dns_stats_t *stats, dns_opcodestats_dumper_t dump_fn,
+dns_opcodestats_dump(isc_statsmulti_t *stats, dns_opcodestats_dumper_t dump_fn,
 		     void *arg, unsigned int options);
 /*%<
  * Dump the current statistics counters in a specified way.  For each counter
@@ -498,7 +498,7 @@ dns_opcodestats_dump(dns_stats_t *stats, dns_opcodestats_dumper_t dump_fn,
  * such counters are dumped.
  *
  * Requires:
- *\li	'stats' is a valid dns_stats_t created by dns_generalstats_create().
+ *\li	'stats' is a valid isc_statsmulti_t created by dns_opcodestats_create().
  */
 
 void

@@ -169,7 +169,7 @@ ns_server_detach(ns_server_t **sctxp) {
 			isc_statsmulti_detach(&sctx->rcvquerystats);
 		}
 		if (sctx->opcodestats != NULL) {
-			dns_stats_detach(&sctx->opcodestats);
+			isc_statsmulti_detach(&sctx->opcodestats);
 		}
 		if (sctx->rcodestats != NULL) {
 			dns_stats_detach(&sctx->rcodestats);

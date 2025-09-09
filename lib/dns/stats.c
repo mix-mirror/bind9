@@ -210,10 +210,14 @@ dns_rdatasetstats_create(isc_mem_t *mctx, dns_stats_t **statsp) {
 }
 
 void
-dns_opcodestats_create(isc_mem_t *mctx, dns_stats_t **statsp) {
+dns_opcodestats_create(isc_mem_t *mctx, isc_statsmulti_t **statsp) {
 	REQUIRE(statsp != NULL && *statsp == NULL);
 
-	create_stats(mctx, dns_statstype_opcode, 16, statsp);
+	/*
+	 * Create opcode statistics using statsmulti for better multithreading performance.
+	 * We need 16 counters for DNS opcodes (0-15), all are additive.
+	 */
+	isc_statsmulti_create(mctx, statsp, 16, 0);
 }
 
 void
@@ -333,10 +337,10 @@ dns_rdatasetstats_decrement(dns_stats_t *stats,
 }
 
 void
-dns_opcodestats_increment(dns_stats_t *stats, dns_opcode_t code) {
-	REQUIRE(DNS_STATS_VALID(stats) && stats->type == dns_statstype_opcode);
+dns_opcodestats_increment(isc_statsmulti_t *stats, dns_opcode_t code) {
+	REQUIRE(stats != NULL);
 
-	isc_stats_increment(stats->counters, (isc_statscounter_t)code);
+	isc_statsmulti_increment(stats, (isc_statscounter_t)code);
 }
 
 void
@@ -585,15 +589,15 @@ rcode_dumpcb(isc_statscounter_t counter, uint64_t value, void *arg) {
 }
 
 void
-dns_opcodestats_dump(dns_stats_t *stats, dns_opcodestats_dumper_t dump_fn,
+dns_opcodestats_dump(isc_statsmulti_t *stats, dns_opcodestats_dumper_t dump_fn,
 		     void *arg0, unsigned int options) {
 	opcodedumparg_t arg;
 
-	REQUIRE(DNS_STATS_VALID(stats) && stats->type == dns_statstype_opcode);
+	REQUIRE(stats != NULL);
 
 	arg.fn = dump_fn;
 	arg.arg = arg0;
-	isc_stats_dump(stats->counters, opcode_dumpcb, &arg, options);
+	isc_statsmulti_dump(stats, opcode_dumpcb, &arg, options);
 }
 
 void

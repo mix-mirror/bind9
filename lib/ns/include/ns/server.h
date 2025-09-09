@@ -123,7 +123,7 @@ struct ns_server {
 	/*% Stats counters */
 	isc_statsmulti_t *nsstats;
 	isc_statsmulti_t *rcvquerystats;
-	dns_stats_t      *opcodestats;
+	isc_statsmulti_t *opcodestats;
 	dns_stats_t      *rcodestats;
 
 	isc_histomulti_t *udpinstats4;
