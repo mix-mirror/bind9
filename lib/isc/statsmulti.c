@@ -180,15 +180,17 @@ isc_statsmulti_clear(isc_statsmulti_t *stats) {
 void
 isc_statsmulti_update_if_greater(isc_statsmulti_t *stats, isc_statscounter_t counter, isc_statscounter_t value) {
 	REQUIRE(ISC_STATSMULTI_VALID(stats));
-	REQUIRE(counter >= stats->n_additive);
-	REQUIRE(counter < stats->ncounters);
+	REQUIRE(counter < stats->n_max);
+
+	/* Map counter to internal highwater position */
+	isc_statscounter_t internal_counter = stats->n_additive + counter;
 
 	isc_tid_t tid = isc_tid();
 	int thread_id = ISC_MAX(tid, 0);
 	if (thread_id >= stats->num_threads) {
 		thread_id = 0;
 	}
-	int index = thread_id * stats->per_thread_capacity + counter;
+	int index = thread_id * stats->per_thread_capacity + internal_counter;
 	
 	/* Atomically update if the new value is greater than current */
 	isc_statscounter_t current = atomic_load_relaxed(&stats->counters[index]);
@@ -203,13 +205,15 @@ isc_statsmulti_update_if_greater(isc_statsmulti_t *stats, isc_statscounter_t cou
 isc_statscounter_t
 isc_statsmulti_get_highwater(isc_statsmulti_t *stats, isc_statscounter_t counter) {
 	REQUIRE(ISC_STATSMULTI_VALID(stats));
-	REQUIRE(counter >= stats->n_additive);
-	REQUIRE(counter < stats->ncounters);
+	REQUIRE(counter < stats->n_max);
+
+	/* Map counter to internal highwater position */
+	isc_statscounter_t internal_counter = stats->n_additive + counter;
 
 	isc_statscounter_t max_value = 0;
 	/* Find maximum value across all threads */
 	for (int thread = 0; thread < stats->num_threads; thread++) {
-		int index = thread * stats->per_thread_capacity + counter;
+		int index = thread * stats->per_thread_capacity + internal_counter;
 		isc_statscounter_t value = atomic_load_acquire(&stats->counters[index]);
 		if (value > max_value) {
 			max_value = value;

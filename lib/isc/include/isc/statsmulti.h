@@ -123,22 +123,22 @@ void
 isc_statsmulti_update_if_greater(isc_statsmulti_t *stats, isc_statscounter_t counter, isc_statscounter_t value);
 /*%<
  * Update a highwater counter if the provided value is greater than the current per-thread value.
- * Only works on counters in the range [n_additive, n_additive + n_max).
+ * Takes counter values from 0 to n_max-1 and internally maps to the highwater range.
  *
  * Requires:
  *\li	'stats' is a valid isc_statsmulti_t.
  *
- *\li	counter is in the highwater range for the stats specified on creation.
+ *\li	counter is less than n_max specified on creation.
  */
 
 isc_statscounter_t
 isc_statsmulti_get_highwater(isc_statsmulti_t *stats, isc_statscounter_t counter);
 /*%<
  * Returns the maximum value across all threads for a highwater counter.
- * Only works on counters in the range [n_additive, n_additive + n_max).
+ * Takes counter values from 0 to n_max-1 and internally maps to the highwater range.
  *
  * Requires:
  *\li	'stats' is a valid isc_statsmulti_t.
  *
- *\li	counter is in the highwater range for the stats specified on creation.
+ *\li	counter is less than n_max specified on creation.
  */
