@@ -3795,7 +3795,8 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	       cfg_obj_t *vconfig, named_cachelist_t *cachelist,
 	       named_cachelist_t *oldcachelist, dns_kasplist_t *kasplist,
 	       const cfg_obj_t *bindkeys, isc_mem_t *mctx,
-	       cfg_aclconfctx_t *actx, bool need_hints, bool first_time) {
+	       cfg_aclconfctx_t *actx, isc_tlsctx_cache_t *tlsctx_client_cache,
+	       bool need_hints, bool first_time) {
 	const cfg_obj_t *maps[4];
 	const cfg_obj_t *cfgmaps[3];
 	const cfg_obj_t *optionmaps[3];
@@ -4504,8 +4505,7 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 		goto cleanup;
 	}
 
-	CHECK(dns_view_createresolver(view, resopts,
-				      named_g_server->tlsctx_client_cache,
+	CHECK(dns_view_createresolver(view, resopts, tlsctx_client_cache,
 				      dispatch4, dispatch6));
 
 	if (resstats == NULL) {
@@ -7894,9 +7894,11 @@ create_views(cfg_obj_t *config, cfg_parser_t *parser,
 
 static isc_result_t
 configure_views(cfg_obj_t *config, const cfg_obj_t *bindkeys,
-		cfg_aclconfctx_t *aclconfctx, dns_viewlist_t *viewlist,
-		named_cachelist_t *cachelist, dns_kasplist_t *kasplist,
-		named_server_t *server, bool first_time) {
+		cfg_aclconfctx_t *aclconfctx,
+		isc_tlsctx_cache_t *tlsctx_client_cache,
+		dns_viewlist_t *viewlist, named_cachelist_t *cachelist,
+		dns_kasplist_t *kasplist, named_server_t *server,
+		bool first_time) {
 	isc_result_t result = ISC_R_SUCCESS;
 	const cfg_obj_t *views = NULL;
 	dns_viewlist_t tmpviewlist;
@@ -7919,8 +7921,8 @@ configure_views(cfg_obj_t *config, const cfg_obj_t *bindkeys,
 
 		result = configure_view(view, viewlist, config, vconfig,
 					cachelist, &server->cachelist, kasplist,
-					bindkeys, isc_g_mctx, aclconfctx, true,
-					first_time);
+					bindkeys, isc_g_mctx, aclconfctx,
+					tlsctx_client_cache, true, first_time);
 		if (result != ISC_R_SUCCESS) {
 			dns_view_detach(&view);
 			return result;
@@ -7941,8 +7943,8 @@ configure_views(cfg_obj_t *config, const cfg_obj_t *bindkeys,
 		}
 		result = configure_view(view, viewlist, config, NULL, cachelist,
 					&server->cachelist, kasplist, bindkeys,
-					isc_g_mctx, aclconfctx, true,
-					first_time);
+					isc_g_mctx, aclconfctx,
+					tlsctx_client_cache, true, first_time);
 		if (result != ISC_R_SUCCESS) {
 			dns_view_detach(&view);
 			return result;
@@ -7968,8 +7970,8 @@ configure_views(cfg_obj_t *config, const cfg_obj_t *bindkeys,
 
 		result = configure_view(view, viewlist, config, vconfig,
 					cachelist, &server->cachelist, kasplist,
-					bindkeys, isc_g_mctx, aclconfctx, false,
-					first_time);
+					bindkeys, isc_g_mctx, aclconfctx,
+					tlsctx_client_cache, false, first_time);
 		if (result != ISC_R_SUCCESS) {
 			dns_view_detach(&view);
 			return result;
@@ -8127,6 +8129,7 @@ apply_configuration(cfg_parser_t *configparser, cfg_obj_t *config,
 	dns_aclenv_t *env =
 		ns_interfacemgr_getaclenv(named_g_server->interfacemgr);
 	cfg_aclconfctx_t *tmpaclconfctx, *aclconfctx = NULL;
+	isc_tlsctx_cache_t *tlsctx_client_cache = NULL;
 
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
 		      ISC_LOG_DEBUG(1), "apply_configuration");
@@ -8175,6 +8178,9 @@ apply_configuration(cfg_parser_t *configparser, cfg_obj_t *config,
 		goto cleanup_viewlist;
 	}
 
+	/* Create a new client TLS context cache */
+	isc_tlsctx_cache_create(isc_g_mctx, &tlsctx_client_cache);
+
 	/* Ensure exclusive access to configuration data. */
 	isc_loopmgr_pause();
 
@@ -8196,21 +8202,12 @@ apply_configuration(cfg_parser_t *configparser, cfg_obj_t *config,
 		}
 	}
 
-	/* Let's recreate the TLS context cache */
+	/* Let's recreate the server TLS context cache */
 	if (server->tlsctx_server_cache != NULL) {
 		isc_tlsctx_cache_detach(&server->tlsctx_server_cache);
 	}
 
 	isc_tlsctx_cache_create(isc_g_mctx, &server->tlsctx_server_cache);
-
-	if (server->tlsctx_client_cache != NULL) {
-		isc_tlsctx_cache_detach(&server->tlsctx_client_cache);
-	}
-
-	isc_tlsctx_cache_create(isc_g_mctx, &server->tlsctx_client_cache);
-
-	dns_zonemgr_set_tlsctx_cache(server->zonemgr,
-				     server->tlsctx_client_cache);
 
 #if HAVE_LIBNGHTTP2
 	obj = NULL;
@@ -8785,8 +8782,9 @@ apply_configuration(cfg_parser_t *configparser, cfg_obj_t *config,
 	 */
 	(void)configure_session_key(maps, server, isc_g_mctx, first_time);
 
-	result = configure_views(config, bindkeys, aclconfctx, &viewlist,
-				 &cachelist, &kasplist, server, first_time);
+	result = configure_views(config, bindkeys, aclconfctx,
+				 tlsctx_client_cache, &viewlist, &cachelist,
+				 &kasplist, server, first_time);
 	if (result != ISC_R_SUCCESS) {
 		goto cleanup_cachelist;
 	}
@@ -9186,6 +9184,17 @@ apply_configuration(cfg_parser_t *configparser, cfg_obj_t *config,
 	server->aclconfctx = aclconfctx;
 	aclconfctx = tmpaclconfctx;
 
+	/*
+	 * Swap client TLS context
+	 */
+	if (server->tlsctx_client_cache != NULL) {
+		isc_tlsctx_cache_detach(&server->tlsctx_client_cache);
+	}
+
+	isc_tlsctx_cache_attach(tlsctx_client_cache,
+				&server->tlsctx_client_cache);
+	dns_zonemgr_set_tlsctx_cache(server->zonemgr, tlsctx_client_cache);
+
 	(void)named_server_loadnta(server);
 
 	/*
@@ -9223,7 +9232,6 @@ apply_configuration(cfg_parser_t *configparser, cfg_obj_t *config,
 			      isc_result_totext(result));
 		goto cleanup_altsecrets;
 	}
-
 
 	(void)ns_interfacemgr_scan(server->interfacemgr, true, true);
 
@@ -9272,6 +9280,12 @@ cleanup_bindkeys_parser:
 	if (exclusive) {
 		isc_loopmgr_resume();
 	}
+
+	/*
+	 * Detach the TLS client context (whether the one created at the
+	 * begining of this function, or the previous running one)
+	 */
+	isc_tlsctx_cache_detach(&tlsctx_client_cache);
 
 cleanup_viewlist:
 	ISC_LIST_FOREACH(viewlist, view, link) {
