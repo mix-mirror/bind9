@@ -21,6 +21,7 @@
 #include <isc/mem.h>
 #include <isc/refcount.h>
 #include <isc/stats.h>
+#include <isc/statsmulti.h>
 #include <isc/util.h>
 
 #include <dns/opcode.h>
@@ -189,15 +190,14 @@ dns_generalstats_create(isc_mem_t *mctx, dns_stats_t **statsp, int ncounters) {
 }
 
 void
-dns_rdatatypestats_create(isc_mem_t *mctx, dns_stats_t **statsp) {
+dns_rdatatypestats_create(isc_mem_t *mctx, isc_statsmulti_t **statsp) {
 	REQUIRE(statsp != NULL && *statsp == NULL);
 
 	/*
-	 * Create rdtype statistics for the first 255 RRtypes,
-	 * plus one additional for other RRtypes.
+	 * Create rdtype statistics using statsmulti for better multithreading performance.
+	 * We need RDTYPECOUNTER_MAXVAL + 1 counters (0x0602 + 1 = 1539 counters).
 	 */
-	create_stats(mctx, dns_statstype_rdtype, RDTYPECOUNTER_MAXTYPE + 1,
-		     statsp);
+	isc_statsmulti_create(mctx, statsp, RDTYPECOUNTER_MAXVAL + 1);
 }
 
 void
@@ -254,13 +254,13 @@ rdatatype2counter(dns_rdatatype_t type) {
 }
 
 void
-dns_rdatatypestats_increment(dns_stats_t *stats, dns_rdatatype_t type) {
+dns_rdatatypestats_increment(isc_statsmulti_t *stats, dns_rdatatype_t type) {
 	isc_statscounter_t counter;
 
-	REQUIRE(DNS_STATS_VALID(stats) && stats->type == dns_statstype_rdtype);
+	REQUIRE(stats != NULL);
 
 	counter = rdatatype2counter(type);
-	isc_stats_increment(stats->counters, counter);
+	isc_statsmulti_increment(stats, counter);
 }
 
 static void
@@ -460,14 +460,14 @@ rdatatype_dumpcb(isc_statscounter_t counter, uint64_t value, void *arg) {
 }
 
 void
-dns_rdatatypestats_dump(dns_stats_t *stats, dns_rdatatypestats_dumper_t dump_fn,
+dns_rdatatypestats_dump(isc_statsmulti_t *stats, dns_rdatatypestats_dumper_t dump_fn,
 			void *arg0, unsigned int options) {
 	rdatadumparg_t arg;
-	REQUIRE(DNS_STATS_VALID(stats) && stats->type == dns_statstype_rdtype);
+	REQUIRE(stats != NULL);
 
 	arg.fn = dump_fn;
 	arg.arg = arg0;
-	isc_stats_dump(stats->counters, rdatatype_dumpcb, &arg, options);
+	isc_statsmulti_dump(stats, rdatatype_dumpcb, &arg, options);
 }
 
 static void

@@ -25,6 +25,7 @@
 
 #include <isc/formatcheck.h>
 #include <isc/rwlock.h>
+#include <isc/statsmulti.h>
 #include <isc/tls.h>
 
 #include <dns/catz.h>
@@ -1974,7 +1975,7 @@ void
 dns_zone_setrequeststats(dns_zone_t *zone, isc_stats_t *stats);
 
 void
-dns_zone_setrcvquerystats(dns_zone_t *zone, dns_stats_t *stats);
+dns_zone_setrcvquerystats(dns_zone_t *zone, isc_statsmulti_t *stats);
 
 void
 dns_zone_setdnssecsignstats(dns_zone_t *zone, dns_stats_t *stats);
@@ -1992,7 +1993,7 @@ dns_zone_setdnssecsignstats(dns_zone_t *zone, dns_stats_t *stats);
 isc_stats_t *
 dns_zone_getrequeststats(dns_zone_t *zone);
 
-dns_stats_t *
+isc_statsmulti_t *
 dns_zone_getrcvquerystats(dns_zone_t *zone);
 
 dns_stats_t *

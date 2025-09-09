@@ -3844,7 +3844,7 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	bool empty_zones_enable;
 	const cfg_obj_t *disablelist = NULL;
 	isc_stats_t *resstats = NULL;
-	dns_stats_t *resquerystats = NULL;
+	isc_statsmulti_t *resquerystats = NULL;
 	bool auto_root = false;
 	named_cache_t *nsc = NULL;
 	bool zero_no_soattl;
@@ -5868,7 +5868,7 @@ cleanup:
 		isc_stats_detach(&resstats);
 	}
 	if (resquerystats != NULL) {
-		dns_stats_detach(&resquerystats);
+		isc_statsmulti_detach(&resquerystats);
 	}
 	if (order != NULL) {
 		dns_order_detach(&order);

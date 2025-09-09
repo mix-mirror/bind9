@@ -909,7 +909,7 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 	dns_masterformat_t masterformat;
 	const dns_master_style_t *masterstyle = &dns_master_style_default;
 	isc_stats_t *zoneqrystats;
-	dns_stats_t *rcvquerystats;
+	isc_statsmulti_t *rcvquerystats;
 	dns_stats_t *dnssecsignstats;
 	dns_zonestat_level_t statlevel = dns_zonestat_none;
 	dns_ttl_t maxttl = 0; /* unlimited */
@@ -1157,7 +1157,7 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 	}
 
 	if (rcvquerystats != NULL) {
-		dns_stats_detach(&rcvquerystats);
+		isc_statsmulti_detach(&rcvquerystats);
 	}
 
 	if (dnssecsignstats != NULL) {

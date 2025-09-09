@@ -18,6 +18,7 @@
 #include <inttypes.h>
 
 #include <isc/histo.h>
+#include <isc/statsmulti.h>
 
 #include <dns/types.h>
 
@@ -272,7 +273,7 @@ dns_generalstats_create(isc_mem_t *mctx, dns_stats_t **statsp, int ncounters);
  */
 
 void
-dns_rdatatypestats_create(isc_mem_t *mctx, dns_stats_t **statsp);
+dns_rdatatypestats_create(isc_mem_t *mctx, isc_statsmulti_t **statsp);
 /*%<
  * Create a statistics counter structure per rdatatype.
  *
@@ -360,12 +361,12 @@ dns_generalstats_increment(dns_stats_t *stats, isc_statscounter_t counter);
  */
 
 void
-dns_rdatatypestats_increment(dns_stats_t *stats, dns_rdatatype_t type);
+dns_rdatatypestats_increment(isc_statsmulti_t *stats, dns_rdatatype_t type);
 /*%<
  * Increment the statistics counter for 'type'.
  *
  * Requires:
- *\li	'stats' is a valid dns_stats_t created by dns_rdatatypestats_create().
+ *\li	'stats' is a valid isc_statsmulti_t created by dns_rdatatypestats_create().
  */
 
 void
@@ -444,7 +445,7 @@ dns_generalstats_dump(dns_stats_t *stats, dns_generalstats_dumper_t dump_fn,
  */
 
 void
-dns_rdatatypestats_dump(dns_stats_t *stats, dns_rdatatypestats_dumper_t dump_fn,
+dns_rdatatypestats_dump(isc_statsmulti_t *stats, dns_rdatatypestats_dumper_t dump_fn,
 			void *arg, unsigned int options);
 /*%<
  * Dump the current statistics counters in a specified way.  For each counter
@@ -454,7 +455,7 @@ dns_rdatatypestats_dump(dns_stats_t *stats, dns_rdatatypestats_dumper_t dump_fn,
  * the ISC_STATSDUMP_VERBOSE flag, even such counters are dumped.
  *
  * Requires:
- *\li	'stats' is a valid dns_stats_t created by dns_generalstats_create().
+ *\li	'stats' is a valid isc_statsmulti_t created by dns_rdatatypestats_create().
  */
 
 void

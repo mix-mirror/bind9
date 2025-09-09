@@ -420,7 +420,7 @@ struct dns_zone {
 	dns_zonestat_level_t statlevel;
 	bool requeststats_on;
 	isc_stats_t *requeststats;
-	dns_stats_t *rcvquerystats;
+	isc_statsmulti_t *rcvquerystats;
 	dns_stats_t *dnssecsignstats;
 	uint32_t notifydelay;
 	uint32_t notifydefer;
@@ -1319,7 +1319,7 @@ zone_free(dns_zone_t *zone) {
 		isc_stats_detach(&zone->requeststats);
 	}
 	if (zone->rcvquerystats != NULL) {
-		dns_stats_detach(&zone->rcvquerystats);
+		isc_statsmulti_detach(&zone->rcvquerystats);
 	}
 	if (zone->dnssecsignstats != NULL) {
 		dns_stats_detach(&zone->dnssecsignstats);
@@ -20074,13 +20074,13 @@ dns_zone_setrequeststats(dns_zone_t *zone, isc_stats_t *stats) {
 }
 
 void
-dns_zone_setrcvquerystats(dns_zone_t *zone, dns_stats_t *stats) {
+dns_zone_setrcvquerystats(dns_zone_t *zone, isc_statsmulti_t *stats) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 
 	LOCK_ZONE(zone);
 	if (zone->requeststats_on && stats != NULL) {
 		if (zone->rcvquerystats == NULL) {
-			dns_stats_attach(stats, &zone->rcvquerystats);
+			isc_statsmulti_attach(stats, &zone->rcvquerystats);
 			zone->requeststats_on = true;
 		}
 	}
@@ -20126,7 +20126,7 @@ dns_zone_getrequeststats(dns_zone_t *zone) {
  * Return the received query stats bucket
  * see note from dns_zone_getrequeststats()
  */
-dns_stats_t *
+isc_statsmulti_t *
 dns_zone_getrcvquerystats(dns_zone_t *zone) {
 	if (zone->requeststats_on) {
 		return zone->rcvquerystats;

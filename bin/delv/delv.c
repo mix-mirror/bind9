@@ -104,7 +104,7 @@ static dns_dispatch_t *dispatch4 = NULL;
 static dns_dispatch_t *dispatch6 = NULL;
 static dns_db_t *roothints = NULL;
 static isc_stats_t *resstats = NULL;
-static dns_stats_t *resquerystats = NULL;
+static isc_statsmulti_t *resquerystats = NULL;
 static FILE *logfp = NULL;
 
 /* Managers */
@@ -2183,7 +2183,7 @@ run_server(void *arg) {
 
 	dns_rdatatypestats_create(isc_g_mctx, &resquerystats);
 	dns_resolver_setquerystats(view->resolver, resquerystats);
-	dns_stats_detach(&resquerystats);
+	isc_statsmulti_detach(&resquerystats);
 
 	dns_view_freeze(view);
 

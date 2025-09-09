@@ -562,7 +562,7 @@ inc_stats(ns_client_t *client, isc_statscounter_t counter) {
 	dns_rdatatype_t qtype;
 	dns_rdataset_t *rdataset;
 	isc_stats_t *zonestats;
-	dns_stats_t *querystats = NULL;
+	isc_statsmulti_t *querystats = NULL;
 
 	ns_stats_increment(client->manager->sctx->nsstats, counter);
 
@@ -11687,8 +11687,8 @@ ns_query_start(ns_client_t *client, isc_nmhandle_t *handle) {
 	rdataset = ISC_LIST_HEAD(client->query.qname->list);
 	INSIST(rdataset != NULL);
 	client->query.qtype = qtype = rdataset->type;
-	isc_statscounter_t counter = (qtype > 0xff) ? 0 : (isc_statscounter_t)qtype;
-	isc_statsmulti_increment(client->manager->sctx->rcvquerystats, counter);
+	dns_rdatatypestats_increment(client->manager->sctx->rcvquerystats,
+				     qtype);
 
 	log_tat(client);
 
