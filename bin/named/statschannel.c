@@ -21,6 +21,7 @@
 #include <isc/mem.h>
 #include <isc/once.h>
 #include <isc/stats.h>
+#include <isc/statsmulti.h>
 #include <isc/string.h>
 #include <isc/util.h>
 
@@ -961,6 +962,24 @@ cleanup:
 #endif /* ifdef HAVE_LIBXML2 */
 }
 
+static void rdtypestat_dump(dns_rdatastatstype_t type, uint64_t val, void *arg);
+
+static void
+rdtypestat_dumpcb(isc_statscounter_t counter, uint64_t value, void *arg) {
+	dns_rdatastatstype_t type;
+	dns_rdatatype_t rdtype = dns_rdatatype_none;
+	unsigned int attributes = 0;
+
+	/* Convert counter back to dns_rdatastatstype_t, based on rdatatype_dumpcb */
+	if ((counter & 0xff) == 0) {
+		attributes |= DNS_RDATASTATSTYPE_ATTR_OTHERTYPE;
+	} else {
+		rdtype = (dns_rdatatype_t)(counter & 0xff);
+	}
+	type = DNS_RDATASTATSTYPE_VALUE((dns_rdatastatstype_t)rdtype, attributes);
+	rdtypestat_dump(type, value, arg);
+}
+
 static void
 rdtypestat_dump(dns_rdatastatstype_t type, uint64_t val, void *arg) {
 	char typebuf[64];
@@ -1842,8 +1861,8 @@ generatexml(named_server_t *server, uint32_t flags, int *buflen,
 						 ISC_XMLCHAR "qtype"));
 
 		dumparg.result = ISC_R_SUCCESS;
-		dns_rdatatypestats_dump(server->sctx->rcvquerystats,
-					rdtypestat_dump, &dumparg, 0);
+		isc_statsmulti_dump(server->sctx->rcvquerystats,
+				    rdtypestat_dumpcb, &dumparg, 0);
 		CHECK(dumparg.result);
 
 		TRY0(xmlTextWriterEndElement(writer)); /* counters */
@@ -2921,8 +2940,8 @@ generatejson(named_server_t *server, size_t *msglen, const char **msg,
 		dumparg.result = ISC_R_SUCCESS;
 		dumparg.arg = counters;
 
-		dns_rdatatypestats_dump(server->sctx->rcvquerystats,
-					rdtypestat_dump, &dumparg, 0);
+		isc_statsmulti_dump(server->sctx->rcvquerystats,
+				    rdtypestat_dumpcb, &dumparg, 0);
 		if (dumparg.result != ISC_R_SUCCESS) {
 			json_object_put(counters);
 			goto cleanup;
@@ -3964,8 +3983,8 @@ named_stats_dump(named_server_t *server, FILE *fp) {
 			     &dumparg, 0);
 
 	fprintf(fp, "++ Incoming Queries ++\n");
-	dns_rdatatypestats_dump(server->sctx->rcvquerystats, rdtypestat_dump,
-				&dumparg, 0);
+	isc_statsmulti_dump(server->sctx->rcvquerystats, rdtypestat_dumpcb,
+			    &dumparg, 0);
 
 	fprintf(fp, "++ Outgoing Rcodes ++\n");
 	dns_rcodestats_dump(server->sctx->rcodestats, rcodestat_dump, &dumparg,

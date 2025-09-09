@@ -25,6 +25,7 @@
 #include <isc/quota.h>
 #include <isc/random.h>
 #include <isc/sockaddr.h>
+#include <isc/statsmulti.h>
 #include <isc/types.h>
 
 #include <dns/acl.h>
@@ -120,10 +121,10 @@ struct ns_server {
 	ns_matchview_t matchingview;
 
 	/*% Stats counters */
-	ns_stats_t  *nsstats;
-	dns_stats_t *rcvquerystats;
-	dns_stats_t *opcodestats;
-	dns_stats_t *rcodestats;
+	ns_stats_t       *nsstats;
+	isc_statsmulti_t *rcvquerystats;
+	dns_stats_t      *opcodestats;
+	dns_stats_t      *rcodestats;
 
 	isc_histomulti_t *udpinstats4;
 	isc_histomulti_t *udpoutstats4;

@@ -11687,8 +11687,8 @@ ns_query_start(ns_client_t *client, isc_nmhandle_t *handle) {
 	rdataset = ISC_LIST_HEAD(client->query.qname->list);
 	INSIST(rdataset != NULL);
 	client->query.qtype = qtype = rdataset->type;
-	dns_rdatatypestats_increment(client->manager->sctx->rcvquerystats,
-				     qtype);
+	isc_statscounter_t counter = (qtype > 0xff) ? 0 : (isc_statscounter_t)qtype;
+	isc_statsmulti_increment(client->manager->sctx->rcvquerystats, counter);
 
 	log_tat(client);
 

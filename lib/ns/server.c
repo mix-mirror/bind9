@@ -22,6 +22,8 @@
 #include <dns/stats.h>
 #include <dns/tkey.h>
 
+#include <isc/statsmulti.h>
+
 #include <ns/query.h>
 #include <ns/server.h>
 #include <ns/stats.h>
@@ -72,7 +74,7 @@ ns_server_create(isc_mem_t *mctx, ns_matchview_t matchingview,
 
 	ns_stats_create(mctx, ns_statscounter_max, &sctx->nsstats);
 
-	dns_rdatatypestats_create(mctx, &sctx->rcvquerystats);
+	isc_statsmulti_create(mctx, &sctx->rcvquerystats, 0x0602 + 1);
 
 	dns_opcodestats_create(mctx, &sctx->opcodestats);
 
@@ -166,7 +168,7 @@ ns_server_detach(ns_server_t **sctxp) {
 		}
 
 		if (sctx->rcvquerystats != NULL) {
-			dns_stats_detach(&sctx->rcvquerystats);
+			isc_statsmulti_detach(&sctx->rcvquerystats);
 		}
 		if (sctx->opcodestats != NULL) {
 			dns_stats_detach(&sctx->opcodestats);
