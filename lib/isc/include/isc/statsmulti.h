@@ -142,3 +142,15 @@ isc_statsmulti_get_highwater(isc_statsmulti_t *stats, isc_statscounter_t counter
  *
  *\li	counter is less than n_max specified on creation.
  */
+
+void
+isc_statsmulti_reset_highwater(isc_statsmulti_t *stats, isc_statscounter_t counter);
+/*%<
+ * Reset a highwater counter to zero across all threads.
+ * Takes counter values from 0 to n_max-1 and internally maps to the highwater range.
+ *
+ * Requires:
+ *\li	'stats' is a valid isc_statsmulti_t.
+ *
+ *\li	counter is less than n_max specified on creation.
+ */

@@ -121,7 +121,7 @@ struct ns_server {
 	ns_matchview_t matchingview;
 
 	/*% Stats counters */
-	ns_stats_t       *nsstats;
+	isc_statsmulti_t *nsstats;
 	isc_statsmulti_t *rcvquerystats;
 	dns_stats_t      *opcodestats;
 	dns_stats_t      *rcodestats;

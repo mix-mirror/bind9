@@ -180,7 +180,8 @@ isc_statsmulti_clear(isc_statsmulti_t *stats) {
 void
 isc_statsmulti_update_if_greater(isc_statsmulti_t *stats, isc_statscounter_t counter, isc_statscounter_t value) {
 	REQUIRE(ISC_STATSMULTI_VALID(stats));
-	REQUIRE(counter < stats->n_max);
+	REQUIRE(counter >= stats->n_additive);
+	REQUIRE(counter < stats->ncounters);
 
 	/* Map counter to internal highwater position */
 	isc_statscounter_t internal_counter = stats->n_additive + counter;
@@ -205,7 +206,8 @@ isc_statsmulti_update_if_greater(isc_statsmulti_t *stats, isc_statscounter_t cou
 isc_statscounter_t
 isc_statsmulti_get_highwater(isc_statsmulti_t *stats, isc_statscounter_t counter) {
 	REQUIRE(ISC_STATSMULTI_VALID(stats));
-	REQUIRE(counter < stats->n_max);
+	REQUIRE(counter >= stats->n_additive);
+	REQUIRE(counter < stats->ncounters);
 
 	/* Map counter to internal highwater position */
 	isc_statscounter_t internal_counter = stats->n_additive + counter;
@@ -220,4 +222,20 @@ isc_statsmulti_get_highwater(isc_statsmulti_t *stats, isc_statscounter_t counter
 		}
 	}
 	return max_value;
+}
+
+void
+isc_statsmulti_reset_highwater(isc_statsmulti_t *stats, isc_statscounter_t counter) {
+	REQUIRE(ISC_STATSMULTI_VALID(stats));
+	REQUIRE(counter >= stats->n_additive);
+	REQUIRE(counter < stats->ncounters);
+
+	/* Map counter to internal highwater position */
+	isc_statscounter_t internal_counter = stats->n_additive + counter;
+
+	/* Reset highwater counter to 0 across all threads */
+	for (int thread = 0; thread < stats->num_threads; thread++) {
+		int index = thread * stats->per_thread_capacity + internal_counter;
+		atomic_store_relaxed(&stats->counters[index], 0);
+	}
 }

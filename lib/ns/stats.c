@@ -13,103 +13,70 @@
 
 /*! \file */
 
-#include <isc/magic.h>
 #include <isc/mem.h>
-#include <isc/refcount.h>
-#include <isc/stats.h>
+#include <isc/statsmulti.h>
 #include <isc/util.h>
 
 #include <ns/stats.h>
 
-#define NS_STATS_MAGIC	  ISC_MAGIC('N', 's', 't', 't')
-#define NS_STATS_VALID(x) ISC_MAGIC_VALID(x, NS_STATS_MAGIC)
-
-struct ns_stats {
-	/*% Unlocked */
-	unsigned int magic;
-	isc_mem_t *mctx;
-	isc_stats_t *counters;
-	isc_refcount_t references;
-};
-
 void
-ns_stats_attach(ns_stats_t *stats, ns_stats_t **statsp) {
-	REQUIRE(NS_STATS_VALID(stats));
+ns_stats_create(isc_mem_t *mctx, isc_statsmulti_t **statsp) {
 	REQUIRE(statsp != NULL && *statsp == NULL);
 
-	isc_refcount_increment(&stats->references);
-
-	*statsp = stats;
-}
-
-void
-ns_stats_detach(ns_stats_t **statsp) {
-	ns_stats_t *stats;
-
-	REQUIRE(statsp != NULL && NS_STATS_VALID(*statsp));
-
-	stats = *statsp;
-	*statsp = NULL;
-
-	if (isc_refcount_decrement(&stats->references) == 1) {
-		isc_stats_detach(&stats->counters);
-		isc_refcount_destroy(&stats->references);
-		isc_mem_putanddetach(&stats->mctx, stats, sizeof(*stats));
-	}
-}
-
-void
-ns_stats_create(isc_mem_t *mctx, int ncounters, ns_stats_t **statsp) {
-	REQUIRE(statsp != NULL && *statsp == NULL);
-
-	ns_stats_t *stats = isc_mem_get(mctx, sizeof(*stats));
-	stats->counters = NULL;
-
-	isc_refcount_init(&stats->references, 1);
-
-	isc_stats_create(mctx, &stats->counters, ncounters);
-
-	stats->magic = NS_STATS_MAGIC;
-	stats->mctx = NULL;
-	isc_mem_attach(mctx, &stats->mctx);
-	*statsp = stats;
+	/*
+	 * Create ns statistics using statsmulti for better multithreading performance.
+	 * We have 78 additive counters and ns_highwater_max highwater counters.
+	 */
+	isc_statsmulti_create(mctx, statsp, 78, 2);
 }
 
 /*%
  * Increment/Decrement methods
  */
 isc_statscounter_t
-ns_stats_increment(ns_stats_t *stats, isc_statscounter_t counter) {
-	REQUIRE(NS_STATS_VALID(stats));
+ns_stats_increment(isc_statsmulti_t *stats, isc_statscounter_t counter) {
+	REQUIRE(stats != NULL);
 
-	return isc_stats_increment(stats->counters, counter);
+	return isc_statsmulti_increment(stats, counter);
 }
 
 void
-ns_stats_decrement(ns_stats_t *stats, isc_statscounter_t counter) {
-	REQUIRE(NS_STATS_VALID(stats));
+ns_stats_decrement(isc_statsmulti_t *stats, isc_statscounter_t counter) {
+	REQUIRE(stats != NULL);
 
-	isc_stats_decrement(stats->counters, counter);
-}
-
-isc_stats_t *
-ns_stats_get(ns_stats_t *stats) {
-	REQUIRE(NS_STATS_VALID(stats));
-
-	return stats->counters;
+	isc_statsmulti_decrement(stats, counter);
 }
 
 void
-ns_stats_update_if_greater(ns_stats_t *stats, isc_statscounter_t counter,
+ns_stats_update_if_greater(isc_statsmulti_t *stats, isc_statscounter_t counter,
 			   isc_statscounter_t value) {
-	REQUIRE(NS_STATS_VALID(stats));
+	REQUIRE(stats != NULL);
 
-	isc_stats_update_if_greater(stats->counters, counter, value);
+	isc_statsmulti_update_if_greater(stats, counter, value);
 }
 
 isc_statscounter_t
-ns_stats_get_counter(ns_stats_t *stats, isc_statscounter_t counter) {
-	REQUIRE(NS_STATS_VALID(stats));
+ns_stats_get_counter(isc_statsmulti_t *stats, isc_statscounter_t counter) {
+	REQUIRE(stats != NULL);
 
-	return isc_stats_get_counter(stats->counters, counter);
+	/* Check if this is a highwater counter */
+	if (counter == ns_statscounter_tcphighwater || counter == ns_statscounter_recurshighwater) {
+		return ns_stats_get_highwater(stats, counter);
+	}
+
+	return isc_statsmulti_get_counter(stats, counter);
+}
+
+isc_statscounter_t
+ns_stats_get_highwater(isc_statsmulti_t *stats, isc_statscounter_t counter) {
+	REQUIRE(stats != NULL);
+
+	return isc_statsmulti_get_highwater(stats, counter);
+}
+
+void
+ns_stats_reset_highwater(isc_statsmulti_t *stats, isc_statscounter_t counter) {
+	REQUIRE(stats != NULL);
+
+	isc_statsmulti_reset_highwater(stats, counter);
 }

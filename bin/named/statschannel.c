@@ -837,6 +837,30 @@ dump_stats(isc_stats_t *stats, isc_statsformat_t type, void *arg,
 			     values, options);
 }
 
+static isc_result_t
+dump_statsmulti(isc_statsmulti_t *stats, isc_statsformat_t type, void *arg,
+		const char *category, const char **desc, int ncounters,
+		int *indices, uint64_t *values, int options) {
+	stats_dumparg_t dumparg;
+	unsigned int multioptions = 0;
+
+	dumparg.type = type;
+	dumparg.ncounters = ncounters;
+	dumparg.counterindices = indices;
+	dumparg.countervalues = values;
+
+	/* Convert ISC_STATSDUMP_VERBOSE to ISC_STATSMULTIDUMP_VERBOSE */
+	if ((options & ISC_STATSDUMP_VERBOSE) != 0) {
+		multioptions |= ISC_STATSMULTIDUMP_VERBOSE;
+	}
+
+	memset(values, 0, sizeof(values[0]) * ncounters);
+	isc_statsmulti_dump(stats, generalstat_dump, &dumparg, multioptions);
+
+	return dump_counters(type, arg, category, desc, ncounters, indices,
+			     values, options);
+}
+
 #if defined(EXTENDED_STATS)
 static isc_result_t
 dump_histo(isc_histomulti_t *hm, isc_statsformat_t type, void *arg,
@@ -1852,11 +1876,11 @@ generatexml(named_server_t *server, uint32_t flags, int *buflen,
 		TRY0(xmlTextWriterWriteAttribute(writer, ISC_XMLCHAR "type",
 						 ISC_XMLCHAR "nsstat"));
 
-		CHECK(dump_stats(ns_stats_get(server->sctx->nsstats),
-				 isc_statsformat_xml, writer, NULL,
-				 nsstats_xmldesc, ns_statscounter_max,
-				 nsstats_index, nsstat_values,
-				 ISC_STATSDUMP_VERBOSE));
+		CHECK(dump_statsmulti(server->sctx->nsstats,
+				      isc_statsformat_xml, writer, NULL,
+				      nsstats_xmldesc, ns_statscounter_max,
+				      nsstats_index, nsstat_values,
+				      ISC_STATSDUMP_VERBOSE));
 
 		TRY0(xmlTextWriterEndElement(writer)); /* /nsstat */
 
@@ -2940,10 +2964,10 @@ generatejson(named_server_t *server, size_t *msglen, const char **msg,
 		dumparg.result = ISC_R_SUCCESS;
 		dumparg.arg = counters;
 
-		result = dump_stats(ns_stats_get(server->sctx->nsstats),
-				    isc_statsformat_json, counters, NULL,
-				    nsstats_xmldesc, ns_statscounter_max,
-				    nsstats_index, nsstat_values, 0);
+		result = dump_statsmulti(server->sctx->nsstats,
+					 isc_statsformat_json, counters, NULL,
+					 nsstats_xmldesc, ns_statscounter_max,
+					 nsstats_index, nsstat_values, 0);
 		if (result != ISC_R_SUCCESS) {
 			json_object_put(counters);
 			goto cleanup;
@@ -3988,9 +4012,10 @@ named_stats_dump(named_server_t *server, FILE *fp) {
 	}
 
 	fprintf(fp, "++ Name Server Statistics ++\n");
-	(void)dump_stats(ns_stats_get(server->sctx->nsstats),
-			 isc_statsformat_file, fp, NULL, nsstats_desc,
-			 ns_statscounter_max, nsstats_index, nsstat_values, 0);
+	(void)dump_statsmulti(server->sctx->nsstats,
+			      isc_statsformat_file, fp, NULL, nsstats_desc,
+			      ns_statscounter_max, nsstats_index,
+			      nsstat_values, 0);
 
 	fprintf(fp, "++ Zone Maintenance Statistics ++\n");
 	(void)dump_stats(server->zonestats, isc_statsformat_file, fp, NULL,

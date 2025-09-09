@@ -10546,12 +10546,12 @@ named_server_resetstatscommand(named_server_t *server, isc_lex_t *lex,
 	}
 
 	if (recursive_high_water) {
-		isc_stats_set(ns_stats_get(server->sctx->nsstats), 0,
-			      ns_statscounter_recurshighwater);
+		ns_stats_reset_highwater(server->sctx->nsstats,
+					  ns_statscounter_recurshighwater);
 	}
 	if (tcp_high_water) {
-		isc_stats_set(ns_stats_get(server->sctx->nsstats), 0,
-			      ns_statscounter_tcphighwater);
+		ns_stats_reset_highwater(server->sctx->nsstats,
+					  ns_statscounter_tcphighwater);
 	}
 
 	return ISC_R_SUCCESS;
