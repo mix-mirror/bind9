@@ -198,7 +198,7 @@ dns_rdatatypestats_create(isc_mem_t *mctx, isc_statsmulti_t **statsp) {
 	 * We need RDTYPECOUNTER_MAXVAL + 1 counters (0x0602 + 1 = 1539 counters).
 	 */
 	// XXX(ap): Fix this, this is wrong!
-	isc_statsmulti_create(mctx, statsp, RDTYPECOUNTER_MAXVAL + 1, 0);
+	isc_statsmulti_create(mctx, statsp, RDTYPECOUNTER_MAXTYPE + 1, 0);
 }
 
 void
