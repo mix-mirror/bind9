@@ -172,7 +172,7 @@ ns_server_detach(ns_server_t **sctxp) {
 			isc_statsmulti_detach(&sctx->opcodestats);
 		}
 		if (sctx->rcodestats != NULL) {
-			dns_stats_detach(&sctx->rcodestats);
+			isc_statsmulti_detach(&sctx->rcodestats);
 		}
 
 		if (sctx->udpinstats4 != NULL) {

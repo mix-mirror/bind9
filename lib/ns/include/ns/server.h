@@ -124,7 +124,7 @@ struct ns_server {
 	isc_statsmulti_t *nsstats;
 	isc_statsmulti_t *rcvquerystats;
 	isc_statsmulti_t *opcodestats;
-	dns_stats_t      *rcodestats;
+	isc_statsmulti_t *rcodestats;
 
 	isc_histomulti_t *udpinstats4;
 	isc_histomulti_t *udpoutstats4;

@@ -221,11 +221,14 @@ dns_opcodestats_create(isc_mem_t *mctx, isc_statsmulti_t **statsp) {
 }
 
 void
-dns_rcodestats_create(isc_mem_t *mctx, dns_stats_t **statsp) {
+dns_rcodestats_create(isc_mem_t *mctx, isc_statsmulti_t **statsp) {
 	REQUIRE(statsp != NULL && *statsp == NULL);
 
-	create_stats(mctx, dns_statstype_rcode, dns_rcode_badcookie + 1,
-		     statsp);
+	/*
+	 * Create rcode statistics using statsmulti for better multithreading performance.
+	 * We need dns_rcode_badcookie + 1 counters (0-23, so 24 counters), all are additive.
+	 */
+	isc_statsmulti_create(mctx, statsp, dns_rcode_badcookie + 1, 0);
 }
 
 void
@@ -344,11 +347,11 @@ dns_opcodestats_increment(isc_statsmulti_t *stats, dns_opcode_t code) {
 }
 
 void
-dns_rcodestats_increment(dns_stats_t *stats, dns_rcode_t code) {
-	REQUIRE(DNS_STATS_VALID(stats) && stats->type == dns_statstype_rcode);
+dns_rcodestats_increment(isc_statsmulti_t *stats, dns_rcode_t code) {
+	REQUIRE(stats != NULL);
 
 	if (code <= dns_rcode_badcookie) {
-		isc_stats_increment(stats->counters, (isc_statscounter_t)code);
+		isc_statsmulti_increment(stats, (isc_statscounter_t)code);
 	}
 }
 
@@ -601,13 +604,13 @@ dns_opcodestats_dump(isc_statsmulti_t *stats, dns_opcodestats_dumper_t dump_fn,
 }
 
 void
-dns_rcodestats_dump(dns_stats_t *stats, dns_rcodestats_dumper_t dump_fn,
+dns_rcodestats_dump(isc_statsmulti_t *stats, dns_rcodestats_dumper_t dump_fn,
 		    void *arg0, unsigned int options) {
 	rcodedumparg_t arg;
 
-	REQUIRE(DNS_STATS_VALID(stats) && stats->type == dns_statstype_rcode);
+	REQUIRE(stats != NULL);
 
 	arg.fn = dump_fn;
 	arg.arg = arg0;
-	isc_stats_dump(stats->counters, rcode_dumpcb, &arg, options);
+	isc_statsmulti_dump(stats, rcode_dumpcb, &arg, options);
 }
