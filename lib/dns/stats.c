@@ -193,11 +193,6 @@ void
 dns_rdatatypestats_create(isc_mem_t *mctx, isc_statsmulti_t **statsp) {
 	REQUIRE(statsp != NULL && *statsp == NULL);
 
-	/*
-	 * Create rdtype statistics using statsmulti for better multithreading performance.
-	 * We need RDTYPECOUNTER_MAXVAL + 1 counters (0x0602 + 1 = 1539 counters).
-	 */
-	// XXX(ap): Fix this, this is wrong!
 	isc_statsmulti_create(mctx, statsp, RDTYPECOUNTER_MAXTYPE + 1, 0);
 }
 
@@ -213,10 +208,6 @@ void
 dns_opcodestats_create(isc_mem_t *mctx, isc_statsmulti_t **statsp) {
 	REQUIRE(statsp != NULL && *statsp == NULL);
 
-	/*
-	 * Create opcode statistics using statsmulti for better multithreading performance.
-	 * We need 16 counters for DNS opcodes (0-15), all are additive.
-	 */
 	isc_statsmulti_create(mctx, statsp, 16, 0);
 }
 
@@ -224,10 +215,6 @@ void
 dns_rcodestats_create(isc_mem_t *mctx, isc_statsmulti_t **statsp) {
 	REQUIRE(statsp != NULL && *statsp == NULL);
 
-	/*
-	 * Create rcode statistics using statsmulti for better multithreading performance.
-	 * We need dns_rcode_badcookie + 1 counters (0-23, so 24 counters), all are additive.
-	 */
 	isc_statsmulti_create(mctx, statsp, dns_rcode_badcookie + 1, 0);
 }
 
