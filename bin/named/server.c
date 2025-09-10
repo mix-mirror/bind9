@@ -7845,11 +7845,17 @@ cleanup:
 
 #endif /* HAVE_LMDB */
 
+#define APPLY_CONFIGURATION_SUBROUTINE_LOG                               \
+	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER, \
+		      ISC_LOG_DEBUG(1), "apply_configuration: %s", __func__);
+
 static isc_result_t
 create_views(cfg_obj_t *config, cfg_parser_t *parser,
 	     cfg_aclconfctx_t *aclconfctx, dns_viewlist_t *viewlist) {
 	isc_result_t result = ISC_R_SUCCESS;
 	const cfg_obj_t *views = NULL;
+
+	APPLY_CONFIGURATION_SUBROUTINE_LOG;
 
 	(void)cfg_map_get(config, "view", &views);
 	CFG_LIST_FOREACH(views, element) {
@@ -7902,6 +7908,8 @@ configure_views(cfg_obj_t *config, const cfg_obj_t *bindkeys,
 	isc_result_t result = ISC_R_SUCCESS;
 	const cfg_obj_t *views = NULL;
 	dns_viewlist_t tmpviewlist;
+
+	APPLY_CONFIGURATION_SUBROUTINE_LOG;
 
 	/*
 	 * Configure and freeze all explicit views.  Explicit
@@ -8009,6 +8017,8 @@ configure_keystores(const cfg_obj_t *config, dns_keystorelist_t *keystorelist) {
 	isc_result_t result = ISC_R_SUCCESS;
 	const cfg_obj_t *keystores = NULL;
 
+	APPLY_CONFIGURATION_SUBROUTINE_LOG;
+
 	/*
 	 * Create the built-in key store ("key-directory").
 	 */
@@ -8041,6 +8051,8 @@ configure_kasplist(const cfg_obj_t *config, dns_kasplist_t *kasplist,
 	isc_result_t result = ISC_R_SUCCESS;
 	dns_kasp_t *default_kasp = NULL;
 	const cfg_obj_t *kasps = NULL;
+
+	APPLY_CONFIGURATION_SUBROUTINE_LOG;
 
 	/*
 	 * Create the built-in kasp policies ("default", "insecure").

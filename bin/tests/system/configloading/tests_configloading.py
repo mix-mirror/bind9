@@ -13,8 +13,9 @@
 def test_configloading_log(ns1):
     """
     This test is a "guard/warning" to make sure the named.conf loading
-    (parsing) is done outside of the exclusive mode (so, named is still able to
-    answer queries and operating normally in case of configuration reload). It
+    (parsing), keystore building, kasplist building and view creation is done
+    outside of the exclusive mode (so, named is still able to answer queries
+    and operating normally in case of configuration reload). It
     is currently based on logging, so it's quite brittle.
     """
 
@@ -22,6 +23,9 @@ def test_configloading_log(ns1):
         "load_configuration",
         "parsing user configuration from ",
         "apply_configuration",
+        "apply_configuration: configure_keystores",
+        "apply_configuration: configure_kasplist",
+        "apply_configuration: create_views",
         "loop exclusive mode: starting",
     ]
 
