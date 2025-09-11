@@ -1664,7 +1664,9 @@ fctx__done(fetchctx_t *fctx, isc_result_t result, const char *func,
 	UNUSED(func);
 #endif
 
-	LOCK(&fctx->lock);
+	if (result != ISC_R_SUCCESS) {
+		LOCK(&fctx->lock);
+	}
 	/* We need to do this under the lock for intra-thread synchronization */
 	if (fctx->state == fetchstate_done) {
 		UNLOCK(&fctx->lock);
@@ -2899,10 +2901,7 @@ fctx_finddone(void *arg) {
 			}
 		}
 	}
-
 	UNLOCK(&fctx->lock);
-
-	dns_adb_destroyfind(&find);
 
 	if (want_done) {
 		FCTXTRACE("fetch failed in finddone(); return "
@@ -2912,6 +2911,8 @@ fctx_finddone(void *arg) {
 	} else if (want_try) {
 		fctx_try(fctx, true);
 	}
+
+	dns_adb_destroyfind(&find);
 
 	fetchctx_detach(&fctx);
 }
@@ -4108,7 +4109,6 @@ resume_qmin(void *arg) {
 	dns_rdataset_t sigrdataset;
 	dns_db_t *db = NULL;
 	dns_dbnode_t *node = NULL;
-	bool fixup_result = false;
 
 	REQUIRE(VALID_FCTX(fctx));
 
@@ -4265,14 +4265,16 @@ resume_qmin(void *arg) {
 					dns_db_attachnode(node, &resp->node);
 				}
 				dns_name_copy(fname, resp->foundname);
+				clone_results(fctx);
 				if (result == DNS_R_CNAME &&
 				    dns_rdataset_isassociated(&rdataset) &&
 				    fctx->type == dns_rdatatype_cname)
 				{
-					fixup_result = true;
+					fctx_success_unref(fctx);
+					result = ISC_R_SUCCESS;
+				} else {
+					UNLOCK(&fctx->lock);
 				}
-				clone_results(fctx);
-				UNLOCK(&fctx->lock);
 				goto cleanup;
 			}
 			UNLOCK(&fctx->lock);
@@ -4370,7 +4372,7 @@ cleanup:
 	}
 	if (result != ISC_R_SUCCESS) {
 		/* An error occurred, tear down whole fctx */
-		fctx_failure_unref(fctx, fixup_result ? ISC_R_SUCCESS : result);
+		fctx_failure_unref(fctx, result);
 	}
 	fetchctx_detach(&fctx);
 }
@@ -5603,21 +5605,23 @@ answer_response:
 	done = true;
 
 cleanup:
-	UNLOCK(&fctx->lock);
-cleanup_unlocked:
-
-	if (node != NULL) {
-		dns_db_detachnode(&node);
-	}
-
-	if (nextval != NULL) {
-		dns_validator_send(nextval);
+	if (!done || result != ISC_R_SUCCESS) {
+		UNLOCK(&fctx->lock);
 	}
 
 	if (done && result == ISC_R_SUCCESS) {
 		fctx_success_unref(fctx);
 	} else if (done) {
 		fctx_failure_unref(fctx, result);
+	}
+
+cleanup_unlocked:
+	if (node != NULL) {
+		dns_db_detachnode(&node);
+	}
+
+	if (nextval != NULL) {
+		dns_validator_send(nextval);
 	}
 
 	/*
@@ -5628,7 +5632,6 @@ cleanup_unlocked:
 	dns_validator_shutdown(val);
 	dns_validator_detach(&val);
 	fetchctx_detach(&fctx);
-	INSIST(node == NULL);
 }
 
 static void
@@ -9204,15 +9207,18 @@ rctx_done(respctx_t *rctx, isc_result_t result) {
 		rctx->next_server = false;
 		rctx->resend = false;
 	}
-	UNLOCK(&fctx->lock);
 
 	if (rctx->next_server) {
+		UNLOCK(&fctx->lock);
 		rctx_nextserver(rctx, message, addrinfo, result);
 	} else if (rctx->resend) {
+		UNLOCK(&fctx->lock);
 		rctx_resend(rctx, addrinfo);
 	} else if (result == DNS_R_CHASEDSSERVERS) {
+		UNLOCK(&fctx->lock);
 		rctx_chaseds(rctx, message, addrinfo, result);
 	} else if (result == ISC_R_SUCCESS && !HAVE_ANSWER(fctx)) {
+		UNLOCK(&fctx->lock);
 		/*
 		 * All has gone well so far, but we are waiting for the DNSSEC
 		 * validator to validate the answer.
@@ -9220,10 +9226,11 @@ rctx_done(respctx_t *rctx, isc_result_t result) {
 		FCTXTRACE("wait for validator");
 		fctx_cancelqueries(fctx, true, false);
 	} else if (result == ISC_R_SUCCESS) {
-		/* We are done. */
+		/* Ended successfully. */
 		fctx_success_detach(&rctx->fctx);
 	} else {
-		/* Done with an error. */
+		UNLOCK(&fctx->lock);
+		/* Ended with failure. */
 		fctx_failure_detach(&rctx->fctx, result);
 	}
 
