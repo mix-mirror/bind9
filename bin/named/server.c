@@ -3783,6 +3783,184 @@ minimal_cache_allowed(const cfg_obj_t *maps[4],
 
 static const char *const response_synonyms[] = { "response", NULL };
 
+static isc_result_t
+configure_view_cache(const cfg_obj_t **maps, dns_view_t *view,
+		     named_cachelist_t *cachelist,
+		     named_cachelist_t *oldcachelist, named_cache_t **nscp,
+		     isc_mem_t *mctx, bool zero_no_soattl,
+		     size_t max_cache_size, isc_stats_t **resstatsp,
+		     dns_stats_t **resquerystatsp) {
+	isc_result_t result;
+	const char *cachename = NULL;
+	const cfg_obj_t *obj = NULL;
+	dns_cache_t *cache = NULL;
+	named_cache_t *nsc = NULL;
+	bool oldcache = false;
+	bool shared = false;
+	uint32_t max_stale_ttl = 0;
+	uint32_t stale_refresh_time = 0;
+
+	REQUIRE(nscp != NULL && *nscp == NULL);
+	REQUIRE(resstatsp != NULL && *resstatsp == NULL);
+	REQUIRE(resquerystatsp != NULL && *resquerystatsp == NULL);
+
+	obj = NULL;
+	result = named_config_get(maps, "stale-cache-enable", &obj);
+	INSIST(result == ISC_R_SUCCESS);
+	if (cfg_obj_asboolean(obj)) {
+		obj = NULL;
+		result = named_config_get(maps, "max-stale-ttl", &obj);
+		INSIST(result == ISC_R_SUCCESS);
+		max_stale_ttl = ISC_MAX(cfg_obj_asduration(obj), 1);
+	}
+
+	obj = NULL;
+	result = named_config_get(maps, "stale-refresh-time", &obj);
+	INSIST(result == ISC_R_SUCCESS);
+	stale_refresh_time = cfg_obj_asduration(obj);
+
+	/*
+	 * If 'stale-cache-enable' is false, max_stale_ttl is set to 0,
+	 * meaning keeping stale RRsets in cache is disabled.
+	 */
+
+	/*
+	 * Configure the view's cache.
+	 *
+	 * First, check to see if there are any attach-cache options.  If yes,
+	 * attempt to lookup an existing cache at attach it to the view.  If
+	 * there is not one, then try to reuse an existing cache if possible;
+	 * otherwise create a new cache.
+	 *
+	 * Note that the ADB is not preserved or shared in either case.
+	 *
+	 * When a matching view is found, the associated statistics are also
+	 * retrieved and reused.
+	 *
+	 * XXX Determining when it is safe to reuse or share a cache is tricky.
+	 * When the view's configuration changes, the cached data may become
+	 * invalid because it reflects our old view of the world.  We check
+	 * some of the configuration parameters that could invalidate the cache
+	 * or otherwise make it unshareable, but there are other configuration
+	 * options that should be checked.  For example, if a view uses a
+	 * forwarder, changes in the forwarder configuration may invalidate
+	 * the cache.  At the moment, it's the administrator's responsibility to
+	 * ensure these configuration options don't invalidate reusing/sharing.
+	 */
+	obj = NULL;
+	result = named_config_get(maps, "attach-cache", &obj);
+	if (result == ISC_R_SUCCESS) {
+		cachename = cfg_obj_asstring(obj);
+	} else {
+		cachename = view->name;
+	}
+
+	nsc = cachelist_find(cachelist, cachename, view->rdclass);
+	if (result == ISC_R_SUCCESS && nsc == NULL) {
+		/*
+		 * If we're using 'attach-cache' but didn't find the
+		 * specified cache in the cache list already, check
+		 * the old list.
+		 */
+		nsc = cachelist_find(oldcachelist, cachename, view->rdclass);
+		oldcache = true;
+	}
+	if (nsc != NULL) {
+		if (!cache_sharable(nsc->primaryview, view, zero_no_soattl,
+				    max_cache_size, max_stale_ttl,
+				    stale_refresh_time))
+		{
+			isc_log_write(NAMED_LOGCATEGORY_GENERAL,
+				      NAMED_LOGMODULE_SERVER, ISC_LOG_WARNING,
+				      "view %s can't use existing cache %s due "
+				      "to configuration parameter mismatch",
+				      view->name,
+				      dns_cache_getname(nsc->cache));
+			nsc = NULL;
+		} else {
+			if (oldcache) {
+				ISC_LIST_UNLINK(*oldcachelist, nsc, link);
+				ISC_LIST_APPEND(*cachelist, nsc, link);
+				nsc->primaryview = view;
+			}
+			dns_cache_attach(nsc->cache, &cache);
+			shared = true;
+		}
+	} else if (strcmp(cachename, view->name) == 0) {
+		dns_view_t *pview = NULL;
+
+		result = dns_viewlist_find(&named_g_server->viewlist, cachename,
+					   view->rdclass, &pview);
+		if (result != ISC_R_NOTFOUND && result != ISC_R_SUCCESS) {
+			return result;
+		}
+		if (pview != NULL) {
+			if (!cache_reusable(pview, view, zero_no_soattl)) {
+				isc_log_write(NAMED_LOGCATEGORY_GENERAL,
+					      NAMED_LOGMODULE_SERVER,
+					      ISC_LOG_DEBUG(1),
+					      "cache cannot be reused "
+					      "for view %s due to "
+					      "configuration parameter "
+					      "mismatch",
+					      view->name);
+			} else {
+				INSIST(pview->cache != NULL);
+				isc_log_write(NAMED_LOGCATEGORY_GENERAL,
+					      NAMED_LOGMODULE_SERVER,
+					      ISC_LOG_DEBUG(3),
+					      "reusing existing cache");
+				dns_cache_attach(pview->cache, &cache);
+			}
+			dns_resolver_getstats(pview->resolver, resstatsp);
+			dns_resolver_getquerystats(pview->resolver,
+						   resquerystatsp);
+			dns_view_detach(&pview);
+		}
+	}
+
+	if (nsc == NULL) {
+		/*
+		 * Create a cache with the desired name.  This normally
+		 * equals the view name, but may also be a forward
+		 * reference to a view that share the cache with this
+		 * view but is not yet configured.  If it is not the
+		 * view name but not a forward reference either, then it
+		 * is simply a named cache that is not shared.
+		 */
+		if (cache == NULL) {
+			result = dns_cache_create(view->rdclass, cachename,
+						  mctx, &cache);
+			if (result != ISC_R_SUCCESS) {
+				dns_cache_detach(&cache);
+				return result;
+			}
+		}
+
+		nsc = isc_mem_get(mctx, sizeof(*nsc));
+		*nsc = (named_cache_t){
+			.primaryview = view,
+			.rdclass = view->rdclass,
+			.link = ISC_LINK_INITIALIZER,
+		};
+
+		dns_cache_attach(cache, &nsc->cache);
+		ISC_LIST_APPEND(*cachelist, nsc, link);
+	}
+
+	dns_view_setcache(view, cache, shared);
+
+	dns_cache_setcachesize(cache, max_cache_size);
+	dns_cache_setservestalettl(cache, max_stale_ttl);
+	dns_cache_setservestalerefresh(cache, stale_refresh_time);
+
+	dns_cache_detach(&cache);
+
+	*nscp = nsc;
+
+	return result;
+}
+
 /*
  * Configure 'view' according to 'vconfig', taking defaults from
  * 'config' where values are missing in 'vconfig'.
@@ -3817,14 +3995,11 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	const cfg_obj_t *obj = NULL, *obj2 = NULL;
 	const cfg_listelt_t *zone_element_latest = NULL;
 	in_port_t port;
-	dns_cache_t *cache = NULL;
 	isc_result_t result;
 	size_t max_cache_size;
 	uint32_t max_cache_size_percent = 0;
 	size_t max_adb_size;
 	uint32_t lame_ttl, fail_ttl;
-	uint32_t max_stale_ttl = 0;
-	uint32_t stale_refresh_time = 0;
 	dns_tsigkeyring_t *ring = NULL;
 	dns_transport_list_t *transports = NULL;
 	dns_view_t *pview = NULL; /* Production view */
@@ -3832,10 +4007,8 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	dns_dispatch_t *dispatch6 = NULL;
 	bool rpz_configured = false;
 	bool catz_configured = false;
-	bool shared_cache = false;
 	int i = 0, j = 0, k = 0;
 	const char *str = NULL;
-	const char *cachename = NULL;
 	dns_order_t *order = NULL;
 	uint32_t udpsize;
 	unsigned int resopts = 0;
@@ -3855,7 +4028,6 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	dns_ntatable_t *ntatable = NULL;
 	const char *qminmode = NULL;
 	dns_adb_t *adb = NULL;
-	bool oldcache = false;
 
 	REQUIRE(DNS_VIEW_VALID(view));
 
@@ -4300,20 +4472,6 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	view->synthfromdnssec = cfg_obj_asboolean(obj);
 
 	obj = NULL;
-	result = named_config_get(maps, "stale-cache-enable", &obj);
-	INSIST(result == ISC_R_SUCCESS);
-	if (cfg_obj_asboolean(obj)) {
-		obj = NULL;
-		result = named_config_get(maps, "max-stale-ttl", &obj);
-		INSIST(result == ISC_R_SUCCESS);
-		max_stale_ttl = ISC_MAX(cfg_obj_asduration(obj), 1);
-	}
-	/*
-	 * If 'stale-cache-enable' is false, max_stale_ttl is set to 0,
-	 * meaning keeping stale RRsets in cache is disabled.
-	 */
-
-	obj = NULL;
 	result = named_config_get(maps, "stale-answer-enable", &obj);
 	INSIST(result == ISC_R_SUCCESS);
 	view->staleanswersenable = cfg_obj_asboolean(obj);
@@ -4357,136 +4515,9 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 		}
 	}
 
-	obj = NULL;
-	result = named_config_get(maps, "stale-refresh-time", &obj);
-	INSIST(result == ISC_R_SUCCESS);
-	stale_refresh_time = cfg_obj_asduration(obj);
-
-	/*
-	 * Configure the view's cache.
-	 *
-	 * First, check to see if there are any attach-cache options.  If yes,
-	 * attempt to lookup an existing cache at attach it to the view.  If
-	 * there is not one, then try to reuse an existing cache if possible;
-	 * otherwise create a new cache.
-	 *
-	 * Note that the ADB is not preserved or shared in either case.
-	 *
-	 * When a matching view is found, the associated statistics are also
-	 * retrieved and reused.
-	 *
-	 * XXX Determining when it is safe to reuse or share a cache is tricky.
-	 * When the view's configuration changes, the cached data may become
-	 * invalid because it reflects our old view of the world.  We check
-	 * some of the configuration parameters that could invalidate the cache
-	 * or otherwise make it unshareable, but there are other configuration
-	 * options that should be checked.  For example, if a view uses a
-	 * forwarder, changes in the forwarder configuration may invalidate
-	 * the cache.  At the moment, it's the administrator's responsibility to
-	 * ensure these configuration options don't invalidate reusing/sharing.
-	 */
-	obj = NULL;
-	result = named_config_get(maps, "attach-cache", &obj);
-	if (result == ISC_R_SUCCESS) {
-		cachename = cfg_obj_asstring(obj);
-	} else {
-		cachename = view->name;
-	}
-
-	nsc = cachelist_find(cachelist, cachename, view->rdclass);
-	if (result == ISC_R_SUCCESS && nsc == NULL) {
-		/*
-		 * If we're using 'attach-cache' but didn't find the
-		 * specified cache in the cache list already, check
-		 * the old list.
-		 */
-		nsc = cachelist_find(oldcachelist, cachename, view->rdclass);
-		oldcache = true;
-	}
-	if (nsc != NULL) {
-		if (!cache_sharable(nsc->primaryview, view, zero_no_soattl,
-				    max_cache_size, max_stale_ttl,
-				    stale_refresh_time))
-		{
-			isc_log_write(NAMED_LOGCATEGORY_GENERAL,
-				      NAMED_LOGMODULE_SERVER, ISC_LOG_WARNING,
-				      "view %s can't use existing cache %s due "
-				      "to configuration parameter mismatch",
-				      view->name,
-				      dns_cache_getname(nsc->cache));
-			nsc = NULL;
-		} else {
-			if (oldcache) {
-				ISC_LIST_UNLINK(*oldcachelist, nsc, link);
-				ISC_LIST_APPEND(*cachelist, nsc, link);
-				nsc->primaryview = view;
-			}
-			dns_cache_attach(nsc->cache, &cache);
-			shared_cache = true;
-		}
-	} else if (strcmp(cachename, view->name) == 0) {
-		result = dns_viewlist_find(&named_g_server->viewlist, cachename,
-					   view->rdclass, &pview);
-		if (result != ISC_R_NOTFOUND && result != ISC_R_SUCCESS) {
-			goto cleanup;
-		}
-		if (pview != NULL) {
-			if (!cache_reusable(pview, view, zero_no_soattl)) {
-				isc_log_write(NAMED_LOGCATEGORY_GENERAL,
-					      NAMED_LOGMODULE_SERVER,
-					      ISC_LOG_DEBUG(1),
-					      "cache cannot be reused "
-					      "for view %s due to "
-					      "configuration parameter "
-					      "mismatch",
-					      view->name);
-			} else {
-				INSIST(pview->cache != NULL);
-				isc_log_write(NAMED_LOGCATEGORY_GENERAL,
-					      NAMED_LOGMODULE_SERVER,
-					      ISC_LOG_DEBUG(3),
-					      "reusing existing cache");
-				dns_cache_attach(pview->cache, &cache);
-			}
-			dns_resolver_getstats(pview->resolver, &resstats);
-			dns_resolver_getquerystats(pview->resolver,
-						   &resquerystats);
-			dns_view_detach(&pview);
-		}
-	}
-
-	if (nsc == NULL) {
-		/*
-		 * Create a cache with the desired name.  This normally
-		 * equals the view name, but may also be a forward
-		 * reference to a view that share the cache with this
-		 * view but is not yet configured.  If it is not the
-		 * view name but not a forward reference either, then it
-		 * is simply a named cache that is not shared.
-		 */
-		if (cache == NULL) {
-			CHECK(dns_cache_create(view->rdclass, cachename, mctx,
-					       &cache));
-		}
-
-		nsc = isc_mem_get(mctx, sizeof(*nsc));
-		*nsc = (named_cache_t){
-			.primaryview = view,
-			.rdclass = view->rdclass,
-			.link = ISC_LINK_INITIALIZER,
-		};
-
-		dns_cache_attach(cache, &nsc->cache);
-		ISC_LIST_APPEND(*cachelist, nsc, link);
-	}
-
-	dns_view_setcache(view, cache, shared_cache);
-
-	dns_cache_setcachesize(cache, max_cache_size);
-	dns_cache_setservestalettl(cache, max_stale_ttl);
-	dns_cache_setservestalerefresh(cache, stale_refresh_time);
-
-	dns_cache_detach(&cache);
+	CHECK(configure_view_cache(maps, view, cachelist, oldcachelist, &nsc,
+				   mctx, zero_no_soattl, max_cache_size,
+				   &resstats, &resquerystats));
 
 	obj = NULL;
 	result = named_config_get(maps, "stale-answer-ttl", &obj);
@@ -5870,9 +5901,6 @@ cleanup:
 	}
 	if (order != NULL) {
 		dns_order_detach(&order);
-	}
-	if (cache != NULL) {
-		dns_cache_detach(&cache);
 	}
 	if (dctx != NULL) {
 		dns_dyndb_destroyctx(&dctx);
