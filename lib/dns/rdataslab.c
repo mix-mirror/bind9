@@ -1185,7 +1185,6 @@ dns_slabtop_t *
 dns_slabtop_new(isc_mem_t *mctx, dns_typepair_t typepair) {
 	dns_slabtop_t *top = isc_mem_get(mctx, sizeof(*top));
 	*top = (dns_slabtop_t){
-		.types_link = CDS_LIST_HEAD_INIT(top->types_link),
 		.headers = CDS_LIST_HEAD_INIT(top->headers),
 		.typepair = typepair,
 		.link = ISC_LINK_INITIALIZER,
@@ -1201,3 +1200,16 @@ dns_slabtop_destroy(isc_mem_t *mctx, dns_slabtop_t **topp) {
 	*topp = NULL;
 	isc_mem_put(mctx, top, sizeof(*top));
 }
+
+int
+dns_slabtop_compare(const dns_slabtop_t *left, const dns_slabtop_t *right) {
+	if (left->typepair < right->typepair) {
+		return -1;
+	} else if (left->typepair > right->typepair) {
+		return 1;
+	} else {
+		return 0;
+	}
+}
+
+RB_GENERATE(slabtop, dns_slabtop, entry, dns_slabtop_compare);

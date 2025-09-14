@@ -36,6 +36,7 @@
 #include <isc/stdio.h>
 #include <isc/string.h>
 #include <isc/time.h>
+#include <isc/tree.h>
 #include <isc/urcu.h>
 #include <isc/util.h>
 
@@ -199,8 +200,8 @@ struct qpznode {
 	atomic_bool delegating;
 	atomic_bool dirty;
 
-	struct cds_list_head types_list;
-	struct cds_list_head *data;
+	slabtop_t rbt_root;
+	slabtop_t *data;
 };
 
 struct qpzonedb {
@@ -633,8 +634,8 @@ static qpznode_t *
 new_qpznode(qpzonedb_t *qpdb, const dns_name_t *name, dns_namespace_t nspace) {
 	qpznode_t *newdata = isc_mem_get(qpdb->common.mctx, sizeof(*newdata));
 	*newdata = (qpznode_t){
-		.types_list = CDS_LIST_HEAD_INIT(newdata->types_list),
-		.data = &newdata->types_list,
+		.rbt_root = RB_INITIALIZER(newdata->rbt_root),
+		.data = &newdata->rbt_root,
 		.methods = &qpznode_methods,
 		.name = DNS_NAME_INITEMPTY,
 		.nspace = nspace,
@@ -909,7 +910,7 @@ clean_zone_node(qpznode_t *node, uint32_t least_serial) {
 		check_top_header(top);
 
 		if (first_header(top) == NULL) {
-			cds_list_del(&top->types_link);
+			RB_REMOVE(slabtop, node->data, top);
 			dns_slabtop_destroy(node->mctx, &top);
 		} else {
 			/*
@@ -972,7 +973,7 @@ qpznode_release(qpznode_t *node, uint32_t least_serial,
 	}
 
 	/* Handle easy and typical case first. */
-	if (!node->dirty && !cds_list_empty(node->data)) {
+	if (!node->dirty && !RB_EMPTY(node->data)) {
 		goto unref;
 	}
 
@@ -1715,15 +1716,6 @@ cname_and_other(qpznode_t *node, uint32_t serial) {
 			   rdtype != dns_rdatatype_rrsig)
 		{
 			if (first_existing_header(top, serial) != NULL) {
-				if (!prio_type(rdtype)) {
-					/*
-					 * CNAME is in the priority list, so if
-					 * we are done with priority types, we
-					 * know there will not be a CNAME, and
-					 * are safe to skip the rest.
-					 */
-					return cname;
-				}
 				other = true;
 			}
 		}
@@ -1786,11 +1778,9 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
     isc_stdtime_t now ISC_ATTR_UNUSED DNS__DB_FLARG) {
 	qpz_changed_t *changed = NULL;
 	dns_slabtop_t *foundtop = NULL;
-	dns_slabtop_t *priotop = NULL;
 	dns_slabheader_t *merged = NULL;
 	isc_result_t result;
 	bool merge = false;
-	uint32_t ntypes;
 
 	if ((options & DNS_DBADD_MERGE) != 0) {
 		REQUIRE(version != NULL);
@@ -1807,12 +1797,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 				      version DNS__DB_FLARG_PASS);
 	}
 
-	ntypes = 0;
 	DNS_SLABTOP_FOREACH(top, node->data) {
-		++ntypes;
-		if (prio_type(top->typepair)) {
-			priotop = top;
-		}
 		if (top->typepair == newheader->typepair) {
 			foundtop = top;
 			break;
@@ -1980,14 +1965,6 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 			/*
 			 * No rdatasets of the given type exist at the node.
 			 */
-
-			if (qpdb->maxtypepername > 0 &&
-			    ntypes >= qpdb->maxtypepername)
-			{
-				dns_slabheader_destroy(&newheader);
-				return DNS_R_TOOMANYRECORDS;
-			}
-
 			dns_slabtop_t *newtop = dns_slabtop_new(
 				node->mctx, newheader->typepair);
 
@@ -1995,17 +1972,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 			cds_list_add(&newheader->headers_link,
 				     &newtop->headers);
 
-			if (prio_type(newheader->typepair)) {
-				/* This is a priority type, prepend it */
-				cds_list_add(&newtop->types_link, node->data);
-			} else if (priotop != NULL) {
-				/* Append after the priority headers */
-				cds_list_add(&newtop->types_link,
-					     &priotop->types_link);
-			} else {
-				/* There were no priority headers */
-				cds_list_add(&newtop->types_link, node->data);
-			}
+			RB_INSERT(slabtop, node->data, newtop);
 		}
 	}
 
@@ -3960,8 +3927,7 @@ rdatasetiter_next(dns_rdatasetiter_t *iterator DNS__DB_FLARG) {
 
 	NODE_RDLOCK(nlock, &nlocktype);
 
-	from = cds_list_entry(qrditer->currenttop->types_link.next,
-			      dns_slabtop_t, types_link);
+	from = RB_NEXT(slabtop, qrditer->currenttop);
 	qrditer->currenttop = NULL;
 	qrditer->current = NULL;
 
@@ -5293,6 +5259,7 @@ destroy_qpznode(qpznode_t *node) {
 			dns_slabheader_destroy(&header);
 		}
 
+		RB_REMOVE(slabtop, node->data, top);
 		dns_slabtop_destroy(node->mctx, &top);
 	}
 

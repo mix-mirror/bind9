@@ -46,6 +46,7 @@
 #include <isc/atomic.h>
 #include <isc/heap.h>
 #include <isc/stdtime.h>
+#include <isc/tree.h>
 #include <isc/urcu.h>
 
 #include <dns/name.h>
@@ -66,15 +67,15 @@ struct dns_slabheader_proof {
 
 #define DNS_SLABTOP_FOREACH(pos, head)                 \
 	dns_slabtop_t *pos = NULL, *pos##_next = NULL; \
-	cds_list_for_each_entry_safe(pos, pos##_next, head, types_link)
+	RB_FOREACH_SAFE(pos, slabtop, (head), pos##_next)
 
 #define DNS_SLABTOP_FOREACH_FROM(pos, head, first)      \
-	dns_slabtop_t *pos = first, *pos##_next = NULL; \
-	cds_list_for_each_entry_safe_from(pos, pos##_next, head, types_link)
+	dns_slabtop_t *pos = NULL, *pos##_next = first; \
+	RB_FOREACH_FROM(pos, slabtop, pos##_next)
 
 typedef struct dns_slabtop dns_slabtop_t;
 struct dns_slabtop {
-	struct cds_list_head types_link;
+	RB_ENTRY(dns_slabtop) entry;
 	struct cds_list_head headers;
 
 	dns_typepair_t typepair;
@@ -86,6 +87,8 @@ struct dns_slabtop {
 	/*% Used for SIEVE-LRU */
 	bool visited;
 };
+
+typedef RB_HEAD(slabtop, dns_slabtop) slabtop_t;
 
 struct dns_slabheader {
 	_Atomic(uint16_t)    attributes;
@@ -335,3 +338,8 @@ dns_slabtop_destroy(isc_mem_t *mctx, dns_slabtop_t **topp);
 /*%<
  * Free all memory associated with '*slabtopp'.
  */
+
+int
+dns_slabtop_compare(const dns_slabtop_t *left, const dns_slabtop_t *right);
+
+RB_PROTOTYPE(slabtop, dns_slabtop, entry, dns_slabtop_compare);

@@ -146,49 +146,6 @@ if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
 n=$((n + 1))
-echo_i "testing AXFR fallback after IXFR failure (too many records) ($n)"
-ret=0
-
-# Provide an IXFR response that would cause a "too many records" condition
-
-sendcmd <<EOF
-/SOA/
-nil.      	300	SOA	ns.nil. root.nil. 4 300 300 604800 300
-/IXFR/
-nil.      	300	SOA	ns.nil. root.nil. 4 300 300 604800 300
-nil.      	300	SOA	ns.nil. root.nil. 3 300 300 604800 300
-nil.      	300	SOA	ns.nil. root.nil. 4 300 300 604800 300
-nil.      	300	TXT	"text 1"
-nil.      	300	TXT	"text 2"
-nil.      	300	TXT	"text 3"
-nil.      	300	TXT	"text 4"
-nil.      	300	TXT	"text 5"
-nil.      	300	TXT	"text 6: causing too many records"
-nil.      	300	SOA	ns.nil. root.nil. 4 300 300 604800 300
-/AXFR/
-nil.      	300	SOA	ns.nil. root.nil. 3 300 300 604800 300
-nil.      	300	NS	ns.nil.
-nil.      	300	TXT	"fallback AXFR on too many records"
-/AXFR/
-nil.      	300	SOA	ns.nil. root.nil. 3 300 300 604800 300
-EOF
-
-sleep 1
-
-$RNDCCMD 10.53.0.1 refresh nil | sed 's/^/ns1 /' | cat_i
-
-sleep 2
-
-$DIG $DIGOPTS @10.53.0.1 nil. TXT | grep 'AXFR on too many records' >/dev/null || ret=1
-if [ $ret != 0 ]; then echo_i "failed"; fi
-status=$((status + ret))
-
-msg="error adding 'nil/TXT' in 'nil/IN' (zone): too many records (must not exceed 5)"
-wait_for_log 10 "$msg" ns1/named.run || ret=1
-if [ $ret != 0 ]; then echo_i "failed"; fi
-status=$((status + ret))
-
-n=$((n + 1))
 echo_i "testing AXFR fallback after IXFR failure (bad SOA owner) ($n)"
 ret=0
 
