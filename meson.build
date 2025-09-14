@@ -1736,17 +1736,16 @@ endif
 
 named_srcconf = named_srcset.apply(config, strict: false)
 
-executable(
-    'named',
+named_unbolt = executable(
+    'named-unbolt',
     named_srcconf.sources(),
     objects: named_objects,
     c_args: static_lto_c_args,
-    link_args: static_lto_link_args,
+    link_args: static_lto_link_args + ['-Wl,--emit-relocs'],
     export_dynamic: true,
     implicit_include_directories: true,
     include_directories: [named_inc, bin_inc],
-    install: true,
-    install_dir: sbindir,
+    install: false,
     sources: [bind_keys, default_sanitize_options],
     dependencies: named_deps
     + [
@@ -1764,6 +1763,24 @@ executable(
 
         named_srcconf.dependencies(),
     ],
+)
+
+custom_target(
+    'named',
+    input: named_unbolt,
+    output: 'named',
+    command: [
+        find_program('llvm-bolt'),
+        '@INPUT@',
+        '-o', '@OUTPUT@',
+        '--hugify',
+        '--update-debug-sections',
+    ],
+    build_by_default: true,
+    install: true,
+    install_dir: sbindir,
+    install_mode: 'rwxr-xr-x',
+    install_tag: 'runtime',
 )
 
 executable(
