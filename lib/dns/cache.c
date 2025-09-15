@@ -679,8 +679,6 @@ dns_cache_renderxml(dns_cache_t *cache, void *writer0) {
 
 	TRY0(renderstat("CacheNodes",
 			dns_db_nodecount(cache->db, dns_dbtree_main), writer));
-	TRY0(renderstat("CacheNSECNodes",
-			dns_db_nodecount(cache->db, dns_dbtree_nsec), writer));
 
 	TRY0(renderstat("TreeMemInUse", isc_mem_inuse(cache->tmctx), writer));
 
@@ -744,11 +742,6 @@ dns_cache_renderjson(dns_cache_t *cache, void *cstats0) {
 		dns_db_nodecount(cache->db, dns_dbtree_main));
 	CHECKMEM(obj);
 	json_object_object_add(cstats, "CacheNodes", obj);
-
-	obj = json_object_new_int64(
-		dns_db_nodecount(cache->db, dns_dbtree_nsec));
-	CHECKMEM(obj);
-	json_object_object_add(cstats, "CacheNSECNodes", obj);
 
 	obj = json_object_new_int64(isc_mem_inuse(cache->tmctx));
 	CHECKMEM(obj);
