@@ -252,7 +252,6 @@ struct qpcache {
 
 	/* Locked by tree_lock. */
 	dns_qp_t *tree;
-	dns_qp_t *nsec;
 
 	isc_mem_t *hmctx; /* Memory context for the heaps */
 
@@ -629,7 +628,7 @@ delete_node(qpcache_t *qpdb, qpcnode_t *node) {
 			 * Delete the corresponding node from the auxiliary NSEC
 			 * tree before deleting from the main tree.
 			 */
-			result = dns_qp_deletename(qpdb->nsec, &node->name,
+			result = dns_qp_deletename(qpdb->tree, &node->name,
 						   DNS_DBNAMESPACE_NSEC, NULL,
 						   NULL);
 			if (result != ISC_R_SUCCESS) {
@@ -645,7 +644,7 @@ delete_node(qpcache_t *qpdb, qpcnode_t *node) {
 					   node->nspace, NULL, NULL);
 		break;
 	case DNS_DBNAMESPACE_NSEC:
-		result = dns_qp_deletename(qpdb->nsec, &node->name,
+		result = dns_qp_deletename(qpdb->tree, &node->name,
 					   node->nspace, NULL, NULL);
 		break;
 	}
@@ -1429,7 +1428,7 @@ find_coveringnsec(qpc_search_t *search, const dns_name_t *name,
 	/*
 	 * Look for the node in the auxilary tree.
 	 */
-	result = dns_qp_lookup(search->qpdb->nsec, name, DNS_DBNAMESPACE_NSEC,
+	result = dns_qp_lookup(search->qpdb->tree, name, DNS_DBNAMESPACE_NSEC,
 			       NULL, &iter, NULL, (void **)&node, NULL);
 	/*
 	 * When DNS_R_PARTIALMATCH or ISC_R_NOTFOUND is returned from
@@ -2269,23 +2268,8 @@ static void
 qpcache__destroy(qpcache_t *qpdb) {
 	unsigned int i;
 	char buf[DNS_NAME_FORMATSIZE];
-	dns_qp_t **treep = NULL;
 
-	for (;;) {
-		/*
-		 * pick the next tree to (start to) destroy
-		 */
-		treep = &qpdb->tree;
-		if (*treep == NULL) {
-			treep = &qpdb->nsec;
-			if (*treep == NULL) {
-				break;
-			}
-		}
-
-		dns_qp_destroy(treep);
-		INSIST(*treep == NULL);
-	}
+	dns_qp_destroy(&qpdb->tree);
 
 	if (dns_name_dynamic(&qpdb->common.origin)) {
 		dns_name_format(&qpdb->common.origin, buf, sizeof(buf));
@@ -3147,13 +3131,13 @@ qpcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	if (newnsec && !qpnode->havensec) {
 		qpcnode_t *nsecnode = NULL;
 
-		result = dns_qp_getname(qpdb->nsec, name, DNS_DBNAMESPACE_NSEC,
+		result = dns_qp_getname(qpdb->tree, name, DNS_DBNAMESPACE_NSEC,
 					(void **)&nsecnode, NULL);
 		if (result != ISC_R_SUCCESS) {
 			INSIST(nsecnode == NULL);
 			nsecnode = new_qpcnode(qpdb, name,
 					       DNS_DBNAMESPACE_NSEC);
-			result = dns_qp_insert(qpdb->nsec, nsecnode, 0);
+			result = dns_qp_insert(qpdb->tree, nsecnode, 0);
 			INSIST(result == ISC_R_SUCCESS);
 			qpcnode_detach(&nsecnode);
 		}
@@ -3235,7 +3219,7 @@ qpcache_deleterdataset(dns_db_t *db, dns_dbnode_t *node,
 }
 
 static unsigned int
-nodecount(dns_db_t *db, dns_dbtree_t tree) {
+nodecount(dns_db_t *db, dns_dbtree_t tree ISC_ATTR_UNUSED) {
 	qpcache_t *qpdb = (qpcache_t *)db;
 	dns_qp_memusage_t mu;
 	isc_rwlocktype_t tlocktype = isc_rwlocktype_none;
@@ -3243,16 +3227,7 @@ nodecount(dns_db_t *db, dns_dbtree_t tree) {
 	REQUIRE(VALID_QPDB(qpdb));
 
 	TREE_RDLOCK(&qpdb->tree_lock, &tlocktype);
-	switch (tree) {
-	case dns_dbtree_main:
-		mu = dns_qp_memusage(qpdb->tree);
-		break;
-	case dns_dbtree_nsec:
-		mu = dns_qp_memusage(qpdb->nsec);
-		break;
-	default:
-		UNREACHABLE();
-	}
+	mu = dns_qp_memusage(qpdb->tree);
 	TREE_UNLOCK(&qpdb->tree_lock, &tlocktype);
 
 	return mu.leaves;
@@ -3327,7 +3302,6 @@ dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 	 * Make the qp tries.
 	 */
 	dns_qp_create(mctx, &qpmethods, qpdb, &qpdb->tree);
-	dns_qp_create(mctx, &qpmethods, qpdb, &qpdb->nsec);
 
 	qpdb->common.magic = DNS_DB_MAGIC;
 	qpdb->common.impmagic = QPDB_MAGIC;
