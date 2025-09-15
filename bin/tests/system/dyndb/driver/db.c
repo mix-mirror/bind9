@@ -249,12 +249,12 @@ issecure(dns_db_t *db) {
 }
 
 static unsigned int
-nodecount(dns_db_t *db, dns_dbtree_t tree) {
+nodecount(dns_db_t *db) {
 	sampledb_t *sampledb = (sampledb_t *)db;
 
 	REQUIRE(VALID_SAMPLEDB(sampledb));
 
-	return dns_db_nodecount(sampledb->db, tree);
+	return dns_db_nodecount(sampledb->db);
 }
 
 static isc_result_t

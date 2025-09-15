@@ -3219,7 +3219,7 @@ qpcache_deleterdataset(dns_db_t *db, dns_dbnode_t *node,
 }
 
 static unsigned int
-nodecount(dns_db_t *db, dns_dbtree_t tree ISC_ATTR_UNUSED) {
+nodecount(dns_db_t *db) {
 	qpcache_t *qpdb = (qpcache_t *)db;
 	dns_qp_memusage_t mu;
 	isc_rwlocktype_t tlocktype = isc_rwlocktype_none;

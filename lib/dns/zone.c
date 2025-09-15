@@ -5413,8 +5413,7 @@ zone_postload(dns_zone_t *zone, dns_db_t *db, isc_time_t loadtime,
 	}
 
 	dns_zone_logc(zone, DNS_LOGCATEGORY_ZONELOAD, ISC_LOG_DEBUG(2),
-		      "number of nodes in database: %u",
-		      dns_db_nodecount(db, dns_dbtree_main));
+		      "number of nodes in database: %u", dns_db_nodecount(db));
 
 	if (result == DNS_R_SEENINCLUDE) {
 		DNS_ZONE_SETFLAG(zone, DNS_ZONEFLG_HASINCLUDE);

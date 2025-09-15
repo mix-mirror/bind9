@@ -618,10 +618,8 @@ dns_cache_dumpstats(dns_cache_t *cache, FILE *fp) {
 	fprintf(fp, "%20" PRIu64 " %s\n",
 		values[dns_cachestatscounter_coveringnsec],
 		"covering nsec returned");
-	fprintf(fp, "%20u %s\n", dns_db_nodecount(cache->db, dns_dbtree_main),
+	fprintf(fp, "%20u %s\n", dns_db_nodecount(cache->db),
 		"cache database nodes");
-	fprintf(fp, "%20u %s\n", dns_db_nodecount(cache->db, dns_dbtree_nsec),
-		"cache NSEC auxiliary database nodes");
 
 	fprintf(fp, "%20" PRIu64 " %s\n", (uint64_t)isc_mem_inuse(cache->tmctx),
 		"cache tree memory in use");
@@ -677,8 +675,7 @@ dns_cache_renderxml(dns_cache_t *cache, void *writer0) {
 	TRY0(renderstat("CoveringNSEC",
 			values[dns_cachestatscounter_coveringnsec], writer));
 
-	TRY0(renderstat("CacheNodes",
-			dns_db_nodecount(cache->db, dns_dbtree_main), writer));
+	TRY0(renderstat("CacheNodes", dns_db_nodecount(cache->db), writer));
 
 	TRY0(renderstat("TreeMemInUse", isc_mem_inuse(cache->tmctx), writer));
 
@@ -738,8 +735,7 @@ dns_cache_renderjson(dns_cache_t *cache, void *cstats0) {
 	CHECKMEM(obj);
 	json_object_object_add(cstats, "CoveringNSEC", obj);
 
-	obj = json_object_new_int64(
-		dns_db_nodecount(cache->db, dns_dbtree_main));
+	obj = json_object_new_int64(dns_db_nodecount(cache->db));
 	CHECKMEM(obj);
 	json_object_object_add(cstats, "CacheNodes", obj);
 

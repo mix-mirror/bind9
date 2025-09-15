@@ -127,7 +127,7 @@ typedef struct dns_db_methods {
 				       dns_rdatatype_t	      type,
 				       dns_rdatatype_t covers DNS__DB_FLARG);
 	bool (*issecure)(dns_db_t *db);
-	unsigned int (*nodecount)(dns_db_t *db, dns_dbtree_t);
+	unsigned int (*nodecount)(dns_db_t *db);
 	isc_result_t (*getoriginnode)(dns_db_t		  *db,
 				      dns_dbnode_t **nodep DNS__DB_FLARG);
 	isc_result_t (*getnsec3parameters)(dns_db_t	   *db,
@@ -1366,9 +1366,9 @@ dns_db_getsoaserial(dns_db_t *db, dns_dbversion_t *ver, uint32_t *serialp);
  */
 
 unsigned int
-dns_db_nodecount(dns_db_t *db, dns_dbtree_t tree);
+dns_db_nodecount(dns_db_t *db);
 /*%<
- * Count the number of nodes in 'db' or its auxiliary trees.
+ * Count the number of nodes in 'db'.
  *
  * Requires:
  *

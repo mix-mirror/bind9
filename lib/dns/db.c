@@ -734,11 +734,11 @@ freenode:
 }
 
 unsigned int
-dns_db_nodecount(dns_db_t *db, dns_dbtree_t tree) {
+dns_db_nodecount(dns_db_t *db) {
 	REQUIRE(DNS_DB_VALID(db));
 
 	if (db->methods->nodecount != NULL) {
-		return (db->methods->nodecount)(db, tree);
+		return (db->methods->nodecount)(db);
 	}
 	return 0;
 }
