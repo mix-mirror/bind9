@@ -4040,14 +4040,11 @@ dereference_iter_node(qpdb_dbiterator_t *iter DNS__DB_FLARG) {
 static void
 dbiterator_destroy(dns_dbiterator_t **iteratorp DNS__DB_FLARG) {
 	qpdb_dbiterator_t *iter = (qpdb_dbiterator_t *)(*iteratorp);
-	dns_db_t *db = NULL;
+	dns_db_t *db = iter->common.db;
+	qpzonedb_t *qpdb = (qpzonedb_t *)db;
 
 	dereference_iter_node(iter DNS__DB_FLARG_PASS);
 
-	dns_db_attach(iter->common.db, &db);
-	dns_db_detach(&iter->common.db);
-
-	qpzonedb_t *qpdb = (qpzonedb_t *)db;
 	dns_qpsnap_destroy(qpdb->tree, &iter->snap);
 
 	isc_mem_put(db->mctx, iter, sizeof(*iter));
