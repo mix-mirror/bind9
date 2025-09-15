@@ -3858,11 +3858,9 @@ qpzone_detachnode(dns_dbnode_t **nodep DNS__DB_FLARG) {
 }
 
 static unsigned int
-nodecount(dns_db_t *db, dns_dbtree_t tree ISC_ATTR_UNUSED) {
-	qpzonedb_t *qpdb = NULL;
+nodecount(dns_db_t *db) {
+	qpzonedb_t *qpdb = qpdb = (qpzonedb_t *)db;
 	dns_qp_memusage_t mu;
-
-	qpdb = (qpzonedb_t *)db;
 
 	REQUIRE(VALID_QPZONE(qpdb));
 

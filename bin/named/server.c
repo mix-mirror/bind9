@@ -14824,7 +14824,7 @@ named_server_zonestatus(named_server_t *server, isc_lex_t *lex,
 	}
 
 	/* Database node count */
-	nodes = dns_db_nodecount(hasraw ? rawdb : db, dns_dbtree_main);
+	nodes = dns_db_nodecount(hasraw ? rawdb : db);
 	snprintf(nodebuf, sizeof(nodebuf), "%u", nodes);
 
 	/* Security */
