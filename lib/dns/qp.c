@@ -1494,6 +1494,8 @@ dns_qpsnap_destroy(dns_qpmulti_t *multi, dns_qpsnap_t **qpsp) {
 void
 dns_qp_create(isc_mem_t *mctx, const dns_qpmethods_t *methods, void *uctx,
 	      dns_qp_t **qptp) {
+	REQUIRE(mctx != NULL);
+	REQUIRE(methods != NULL);
 	REQUIRE(qptp != NULL && *qptp == NULL);
 
 	dns_qp_t *qp = isc_mem_get(mctx, sizeof(*qp));
