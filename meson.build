@@ -602,20 +602,36 @@ openssl_dep = [
     dependency('libssl', version: '>=1.1.1'),
 ]
 
-foreach fn, header : {
-    'EVP_default_properties_enable_fips': '#include <openssl/evp.h>',
-    'FIPS_mode': '#include <openssl/crypto.h>',
-}
-    if cc.has_function(fn, prefix: header, dependencies: openssl_dep)
-        config.set('HAVE_OPENSSL_FIPS_TOGGLE', 1)
-        config.set('HAVE_@0@'.format(fn.to_upper()), 1)
-    endif
-endforeach
-
-fips_opt.require(
-    config.has('HAVE_OPENSSL_FIPS_TOGGLE'),
-    error_message: 'OpenSSL FIPS mode requested but not available',
+# OpenSSL-forks usually set their own version number which can be greater than 3.0.0.
+# To understand if the library is pre or post-3.0, use the OPENSSL_VERSION_NUMBER value.
+openssl_version_number = cc.get_define(
+    'OPENSSL_VERSION_NUMBER',
+    dependencies: openssl_dep,
+    prefix: '#include <openssl/opensslv.h>',
 )
+
+config.set('OPENSSL_NO_DEPRECATED', true)
+if openssl_version_number.version_compare('>=3.0.0')
+    config.set('HAVE_OPENSSL_3', true)
+    config.set('OPENSSL_API_COMPAT', 30000)
+else
+    config.set('HAVE_OPENSSL_3', false)
+    config.set('OPENSSL_API_COMPAT', 11000)
+
+    config.set(
+        'HAVE_FIPS_MODE',
+        cc.has_function(
+            'FIPS_mode',
+            prefix: '#include <openssl/crypto.h>',
+            dependencies: openssl_dep,
+        ),
+    )
+
+    fips_opt.require(
+        config.get('HAVE_FIPS_MODE'),
+        error_message: 'OpenSSL FIPS mode requested but not available',
+    )
+endif
 
 # Hash and curve probe
 if cc.has_header_symbol('openssl/evp.h', 'NID_ED448', dependencies: openssl_dep)

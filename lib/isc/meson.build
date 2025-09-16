@@ -20,6 +20,7 @@ endif
 # isc_inc += include_directories('include')
 isc_inc_p += include_directories('.')
 
+subdir('crypto')
 subdir('netmgr')
 
 isc_srcset.add(
@@ -75,7 +76,6 @@ isc_srcset.add(
         'base64.c',
         'commandline.c',
         'counter.c',
-        'crypto.c',
         'dir.c',
         'errno.c',
         'errno2result.c',
