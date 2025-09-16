@@ -3299,7 +3299,7 @@ dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 	dns_name_dup(origin, mctx, &qpdb->common.origin);
 
 	/*
-	 * Make the qp tries.
+	 * Make the qp trie.
 	 */
 	dns_qp_create(mctx, &qpmethods, qpdb, &qpdb->tree);
 
@@ -3560,11 +3560,17 @@ dbiterator_first(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 	result = dns_qpiter_next(&qpdbiter->iter, NULL,
 				 (void **)&qpdbiter->node, NULL);
 
-	if (result == ISC_R_SUCCESS) {
+	if (result == ISC_R_SUCCESS &&
+	    qpdbiter->node->nspace == DNS_DBNAMESPACE_NORMAL)
+	{
 		dns_name_copy(&qpdbiter->node->name, qpdbiter->name);
 		reference_iter_node(qpdbiter DNS__DB_FLARG_PASS);
+	} else if (result == ISC_R_SUCCESS) {
+		result = ISC_R_NOMORE;
+		qpdbiter->node = NULL;
 	} else {
-		INSIST(result == ISC_R_NOMORE); /* The tree is empty. */
+		/* The tree is empty. */
+		INSIST(result == ISC_R_NOMORE);
 		qpdbiter->node = NULL;
 	}
 
@@ -3644,9 +3650,14 @@ dbiterator_next(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 	result = dns_qpiter_next(&qpdbiter->iter, NULL,
 				 (void **)&qpdbiter->node, NULL);
 
-	if (result == ISC_R_SUCCESS) {
+	if (result == ISC_R_SUCCESS &&
+	    qpdbiter->node->nspace == DNS_DBNAMESPACE_NORMAL)
+	{
 		dns_name_copy(&qpdbiter->node->name, qpdbiter->name);
 		reference_iter_node(qpdbiter DNS__DB_FLARG_PASS);
+	} else if (result == ISC_R_SUCCESS) {
+		result = ISC_R_NOMORE;
+		qpdbiter->node = NULL;
 	} else {
 		INSIST(result == ISC_R_NOMORE);
 		qpdbiter->node = NULL;
