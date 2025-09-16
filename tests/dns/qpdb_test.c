@@ -20,6 +20,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "dns/db.h"
+
 #define UNIT_TESTING
 #include <cmocka.h>
 
@@ -42,9 +44,6 @@
 
 #undef CHECK
 #include <tests/dns.h>
-
-/* Set to true (or use -v option) for verbose output */
-static bool verbose = false;
 
 /*
  * Add to a cache DB 'db' an rdataset of type 'rtype' at a name
@@ -161,9 +160,12 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 	while (i-- > 0) {
 		overmempurge_addrdataset(db, now, i, 50054, 65535, false);
 		cleanup_all_deadnodes(db);
-		if (verbose) {
+		if (debug) {
 			print_message("# inuse: %zd max: %zd\n",
 				      isc_mem_inuse(mctx), maxcache);
+		}
+		if (isc_mem_inuse(mctx) >= maxcache) {
+			rcu_barrier();
 		}
 		assert_true(isc_mem_inuse(mctx) < maxcache);
 	}
@@ -212,9 +214,12 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 	while (i-- > 0) {
 		overmempurge_addrdataset(db, now, i, 50054, 0, true);
 		cleanup_all_deadnodes(db);
-		if (verbose) {
+		if (debug) {
 			print_message("# inuse: %zd max: %zd\n",
 				      isc_mem_inuse(mctx), maxcache);
+		}
+		if (isc_mem_inuse(mctx) >= maxcache) {
+			rcu_barrier();
 		}
 		assert_true(isc_mem_inuse(mctx) < maxcache);
 	}
