@@ -8695,6 +8695,12 @@ apply_configuration(cfg_parser_t *configparser, cfg_obj_t *config,
 		 * Rescan the interface list to pick up changes in the
 		 * listen-on option. This requires the loopmgr to be
 		 * temporarily resumed.
+		 *
+		 * The reason we're doing this the first time (instead of having
+		 * only one scan later) is because we're are dropping root
+		 * privileges shortly after and FreeBSD doesn't have Linux
+		 * capabilities so can't listen to a privileged port without
+		 * being root.
 		 */
 		isc_loopmgr_resume();
 		result = ns_interfacemgr_scan(server->interfacemgr, true, true);
