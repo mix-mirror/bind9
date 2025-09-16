@@ -406,12 +406,8 @@ static dns_dbiteratormethods_t dbiterator_methods = {
 };
 
 /*
- * Note that the QP cache database only needs a single QP iterator, because
- * unlike the QP zone database, NSEC3 records are cached in the main tree.
- *
  * If we ever implement synth-from-dnssec using NSEC3 records, we'll need
- * to have a separate tree for NSEC3 records, and to copy in the more complex
- * iterator implementation from qpzone.c.
+ * to copy in the more complex iterator implementation from qpzone.c.
  */
 typedef struct qpc_dbit {
 	dns_dbiterator_t common;
