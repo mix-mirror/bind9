@@ -40,6 +40,10 @@
 #include <tests/dns.h>
 #include <tests/qp.h>
 
+#define DONT_REORDER
+
+#include "../qp.c"
+
 bool verbose = false;
 
 ISC_RUN_TEST_IMPL(qpkey_name) {
@@ -2059,7 +2063,39 @@ ISC_RUN_TEST_IMPL(qpkey_delete) {
 	dns_qp_destroy(&qp);
 }
 
+ISC_RUN_TEST_IMPL(qp_basics) {
+	dns_qp_t *qp = NULL;
+	expect_assert_failure(
+		dns_qp_create(isc_g_mctx, &string_methods, NULL, NULL));
+	expect_assert_failure(dns_qp_create(NULL, &string_methods, NULL, &qp));
+	expect_assert_failure(dns_qp_create(isc_g_mctx, NULL, NULL, &qp));
+
+	qp = NULL;
+	dns_qp_create(isc_g_mctx, &string_methods, NULL, &qp);
+	assert_non_null(qp);
+
+	dns_qp_destroy(&qp);
+	assert_null(qp);
+}
+
+ISC_RUN_TEST_IMPL(qp_memusage) {
+	dns_qp_t *qp = NULL;
+	dns_qp_memusage_t mu;
+
+	dns_qp_create(isc_g_mctx, &string_methods, NULL, &qp);
+	assert_non_null(qp);
+
+	mu = dns_qp_memusage(qp);
+	assert_int_equal(mu.leaves, 0);
+	assert_int_equal(mu.used, 0);
+
+	dns_qp_destroy(&qp);
+	assert_null(qp);
+}
+
 ISC_TEST_LIST_START
+ISC_TEST_ENTRY(qp_basics)
+ISC_TEST_ENTRY(qp_memusage)
 ISC_TEST_ENTRY(qpkey_name)
 ISC_TEST_ENTRY(qpkey_sort)
 ISC_TEST_ENTRY(qpiter)
