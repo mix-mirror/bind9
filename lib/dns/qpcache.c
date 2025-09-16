@@ -3604,39 +3604,8 @@ dbiterator_first(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 }
 
 static isc_result_t
-dbiterator_last(dns_dbiterator_t *iterator DNS__DB_FLARG) {
-	isc_result_t result;
-	qpc_dbit_t *qpdbiter = (qpc_dbit_t *)iterator;
-	qpcache_t *qpdb = (qpcache_t *)iterator->db;
-
-	if (qpdbiter->result != ISC_R_SUCCESS &&
-	    qpdbiter->result != ISC_R_NOTFOUND &&
-	    qpdbiter->result != DNS_R_PARTIALMATCH &&
-	    qpdbiter->result != ISC_R_NOMORE)
-	{
-		return qpdbiter->result;
-	}
-
-	if (qpdbiter->paused) {
-		resume_iteration(qpdbiter, false);
-	}
-
-	dereference_iter_node(qpdbiter DNS__DB_FLARG_PASS);
-
-	dns_qpiter_init(qpdb->tree, &qpdbiter->iter);
-	result = dns_qpiter_prev(&qpdbiter->iter, NULL,
-				 (void **)&qpdbiter->node, NULL);
-
-	if (result == ISC_R_SUCCESS) {
-		dns_name_copy(&qpdbiter->node->name, qpdbiter->name);
-		reference_iter_node(qpdbiter DNS__DB_FLARG_PASS);
-	} else {
-		INSIST(result == ISC_R_NOMORE); /* The tree is empty. */
-		qpdbiter->node = NULL;
-	}
-
-	qpdbiter->result = result;
-	return result;
+dbiterator_last(dns_dbiterator_t *iterator ISC_ATTR_UNUSED DNS__DB_FLARG) {
+	return ISC_R_NOTIMPLEMENTED;
 }
 
 static isc_result_t
@@ -3677,35 +3646,8 @@ dbiterator_seek(dns_dbiterator_t *iterator,
 }
 
 static isc_result_t
-dbiterator_prev(dns_dbiterator_t *iterator DNS__DB_FLARG) {
-	isc_result_t result;
-	qpc_dbit_t *qpdbiter = (qpc_dbit_t *)iterator;
-
-	REQUIRE(qpdbiter->node != NULL);
-
-	if (qpdbiter->result != ISC_R_SUCCESS) {
-		return qpdbiter->result;
-	}
-
-	if (qpdbiter->paused) {
-		resume_iteration(qpdbiter, true);
-	}
-
-	dereference_iter_node(qpdbiter DNS__DB_FLARG_PASS);
-
-	result = dns_qpiter_prev(&qpdbiter->iter, NULL,
-				 (void **)&qpdbiter->node, NULL);
-
-	if (result == ISC_R_SUCCESS) {
-		dns_name_copy(&qpdbiter->node->name, qpdbiter->name);
-		reference_iter_node(qpdbiter DNS__DB_FLARG_PASS);
-	} else {
-		INSIST(result == ISC_R_NOMORE);
-		qpdbiter->node = NULL;
-	}
-
-	qpdbiter->result = result;
-	return result;
+dbiterator_prev(dns_dbiterator_t *iterator ISC_ATTR_UNUSED DNS__DB_FLARG) {
+	return ISC_R_NOTIMPLEMENTED;
 }
 
 static isc_result_t
