@@ -94,7 +94,7 @@ ISC_RUN_TEST_IMPL(isc_hmac_free) {
 
 static void
 isc_hmac_test(isc_hmac_t *hmac_st, const void *key, size_t keylen,
-	      const isc_md_type_t *type, const char *buf, size_t buflen,
+	      isc_md_type_t type, const char *buf, size_t buflen,
 	      const char *result, const size_t repeats) {
 	isc_result_t res;
 
@@ -131,7 +131,7 @@ ISC_RUN_TEST_IMPL(isc_hmac_init) {
 	isc_hmac_t *hmac_st = *state;
 	assert_non_null(hmac_st);
 
-	assert_int_equal(isc_hmac_init(hmac_st, "", 0, NULL),
+	assert_int_equal(isc_hmac_init(hmac_st, "", 0, ISC_MD_UNKNOWN),
 			 ISC_R_NOTIMPLEMENTED);
 
 	if (!isc_crypto_fips_mode()) {

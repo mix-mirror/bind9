@@ -20,57 +20,51 @@
 
 #include <isc/crypto.h>
 #include <isc/log.h>
+#include <isc/md.h>
 #include <isc/mem.h>
 #include <isc/tls.h>
 #include <isc/util.h>
+
+#include "crypto_p.h"
 
 static isc_mem_t *isc__crypto_mctx = NULL;
 
 static OSSL_PROVIDER *base = NULL, *fips = NULL;
 
-#define md_register_algorithm(alg, algname)                            \
-	{                                                              \
-		REQUIRE(isc__crypto_##alg == NULL);                    \
-		isc__crypto_##alg = EVP_MD_fetch(NULL, algname, NULL); \
-		if (isc__crypto_##alg == NULL) {                       \
-			ERR_clear_error();                             \
-		}                                                      \
-	}
-
-#define md_unregister_algorithm(alg)                    \
-	{                                               \
-		if (isc__crypto_##alg != NULL) {        \
-			EVP_MD_free(isc__crypto_##alg); \
-			isc__crypto_##alg = NULL;       \
-		}                                       \
+#define md_register_algorithm(alg)                                             \
+	{                                                                      \
+		REQUIRE(isc__crypto_md[ISC_MD_##alg] == NULL);                 \
+		isc__crypto_md[ISC_MD_##alg] = EVP_MD_fetch(NULL, #alg, NULL); \
+		if (isc__crypto_md[ISC_MD_##alg] == NULL) {                    \
+			ERR_clear_error();                                     \
+		}                                                              \
 	}
 
 static isc_result_t
 register_algorithms(void) {
 	if (!isc_crypto_fips_mode()) {
-		md_register_algorithm(md5, "MD5");
+		md_register_algorithm(MD5);
 	}
 
-	md_register_algorithm(sha1, "SHA1");
-	md_register_algorithm(sha224, "SHA224");
-	md_register_algorithm(sha256, "SHA256");
-	md_register_algorithm(sha384, "SHA384");
-	md_register_algorithm(sha512, "SHA512");
+	md_register_algorithm(SHA1);
+	md_register_algorithm(SHA224);
+	md_register_algorithm(SHA256);
+	md_register_algorithm(SHA384);
+	md_register_algorithm(SHA512);
 
 	return ISC_R_SUCCESS;
 }
 
 static void
 unregister_algorithms(void) {
-	md_unregister_algorithm(sha512);
-	md_unregister_algorithm(sha384);
-	md_unregister_algorithm(sha256);
-	md_unregister_algorithm(sha224);
-	md_unregister_algorithm(sha1);
-	md_unregister_algorithm(md5);
+	for (size_t i = 0; i < ISC_MD_MAX; i++) {
+		if (isc__crypto_md[i] != NULL) {
+			EVP_MD_free(isc__crypto_md[i]);
+			isc__crypto_md[i] = NULL;
+		}
+	}
 }
 
-#undef md_unregister_algorithm
 #undef md_register_algorithm
 
 #if ISC_MEM_TRACKLINES

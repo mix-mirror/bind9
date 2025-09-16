@@ -19,31 +19,34 @@
 
 #include <isc/crypto.h>
 #include <isc/log.h>
+#include <isc/md.h>
 #include <isc/mem.h>
 #include <isc/tls.h>
 #include <isc/util.h>
 
+#include "crypto_p.h"
+
 static isc_mem_t *isc__crypto_mctx = NULL;
 
-#define md_register_algorithm(alg)                        \
-	{                                                 \
-		isc__crypto_##alg = UNCONST(EVP_##alg()); \
-		if (isc__crypto_##alg == NULL) {          \
-			ERR_clear_error();                \
-		}                                         \
+#define md_register_algorithm(alg, upperalg)                              \
+	{                                                                 \
+		isc__crypto_md[ISC_MD_##upperalg] = UNCONST(EVP_##alg()); \
+		if (isc__crypto_md[ISC_MD_##upperalg] == NULL) {          \
+			ERR_clear_error();                                \
+		}                                                         \
 	}
 
 static isc_result_t
 register_algorithms(void) {
 	if (!isc_crypto_fips_mode()) {
-		md_register_algorithm(md5);
+		md_register_algorithm(md5, MD5);
 	}
 
-	md_register_algorithm(sha1);
-	md_register_algorithm(sha224);
-	md_register_algorithm(sha256);
-	md_register_algorithm(sha384);
-	md_register_algorithm(sha512);
+	md_register_algorithm(sha1, SHA1);
+	md_register_algorithm(sha224, SHA224);
+	md_register_algorithm(sha256, SHA256);
+	md_register_algorithm(sha384, SHA384);
+	md_register_algorithm(sha512, SHA512);
 
 	return ISC_R_SUCCESS;
 }

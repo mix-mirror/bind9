@@ -23,6 +23,7 @@
 #include <isc/types.h>
 #include <isc/util.h>
 
+#include "crypto/crypto_p.h"
 #include "openssl_shim.h"
 
 isc_hmac_t *
@@ -43,14 +44,17 @@ isc_hmac_free(isc_hmac_t *hmac_st) {
 
 isc_result_t
 isc_hmac_init(isc_hmac_t *hmac_st, const void *key, const size_t keylen,
-	      const isc_md_type_t *md_type) {
+	      isc_md_type_t type) {
 	EVP_PKEY *pkey;
+	EVP_MD *md;
 
 	REQUIRE(hmac_st != NULL);
 	REQUIRE(key != NULL);
 	REQUIRE(keylen <= INT_MAX);
+	REQUIRE(type < ISC_MD_MAX);
 
-	if (md_type == NULL) {
+	md = isc__crypto_md[type];
+	if (md == NULL) {
 		return ISC_R_NOTIMPLEMENTED;
 	}
 
@@ -60,7 +64,7 @@ isc_hmac_init(isc_hmac_t *hmac_st, const void *key, const size_t keylen,
 		return ISC_R_CRYPTOFAILURE;
 	}
 
-	if (EVP_DigestSignInit(hmac_st, NULL, md_type, NULL, pkey) != 1) {
+	if (EVP_DigestSignInit(hmac_st, NULL, md, NULL, pkey) != 1) {
 		EVP_PKEY_free(pkey);
 		ERR_clear_error();
 		return ISC_R_CRYPTOFAILURE;
@@ -119,13 +123,6 @@ isc_hmac_final(isc_hmac_t *hmac_st, unsigned char *digest,
 	return ISC_R_SUCCESS;
 }
 
-const isc_md_type_t *
-isc_hmac_get_md_type(isc_hmac_t *hmac_st) {
-	REQUIRE(hmac_st != NULL);
-
-	return EVP_MD_CTX_get0_md(hmac_st);
-}
-
 size_t
 isc_hmac_get_size(isc_hmac_t *hmac_st) {
 	REQUIRE(hmac_st != NULL);
@@ -141,7 +138,7 @@ isc_hmac_get_block_size(isc_hmac_t *hmac_st) {
 }
 
 isc_result_t
-isc_hmac(const isc_md_type_t *type, const void *key, const size_t keylen,
+isc_hmac(isc_md_type_t type, const void *key, const size_t keylen,
 	 const unsigned char *buf, const size_t len, unsigned char *digest,
 	 unsigned int *digestlen) {
 	isc_result_t res;

@@ -38,6 +38,7 @@
 #include <isc/ht.h>
 #include <isc/log.h>
 #include <isc/magic.h>
+#include <isc/md.h>
 #include <isc/mem.h>
 #include <isc/mutex.h>
 #include <isc/once.h>
@@ -50,6 +51,9 @@
 #include <isc/util.h>
 
 #include "openssl_shim.h"
+
+/* TODO(aydin): remove this crap */
+extern EVP_MD *isc__crypto_md[];
 
 #define COMMON_SSL_OPTIONS \
 	(SSL_OP_NO_COMPRESSION | SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION)
@@ -315,7 +319,7 @@ isc_tlsctx_createserver(const char *keyfile, const char *certfile,
 					   -1, -1, 0);
 
 		X509_set_issuer_name(cert, name);
-		X509_sign(cert, pkey, isc__crypto_sha256);
+		X509_sign(cert, pkey, isc__crypto_md[ISC_MD_SHA256]);
 		rv = SSL_CTX_use_certificate(ctx, cert);
 		if (rv != 1) {
 			goto ssl_error;

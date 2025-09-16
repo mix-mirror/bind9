@@ -20,6 +20,7 @@
 #include <isc/md.h>
 #include <isc/util.h>
 
+#include "crypto/crypto_p.h"
 #include "openssl_shim.h"
 
 isc_md_t *
@@ -39,14 +40,18 @@ isc_md_free(isc_md_t *md) {
 }
 
 isc_result_t
-isc_md_init(isc_md_t *md, const isc_md_type_t *md_type) {
-	REQUIRE(md != NULL);
+isc_md_init(isc_md_t *md, isc_md_type_t type) {
+	EVP_MD *evp;
 
-	if (md_type == NULL) {
+	REQUIRE(md != NULL);
+	REQUIRE(type < ISC_MD_MAX);
+
+	evp = isc__crypto_md[type];
+	if (evp == NULL) {
 		return ISC_R_NOTIMPLEMENTED;
 	}
 
-	if (EVP_DigestInit_ex(md, md_type, NULL) != 1) {
+	if (EVP_DigestInit_ex(md, evp, NULL) != 1) {
 		ERR_clear_error();
 		return ISC_R_CRYPTOFAILURE;
 	}
@@ -95,13 +100,6 @@ isc_md_final(isc_md_t *md, unsigned char *digest, unsigned int *digestlen) {
 	return ISC_R_SUCCESS;
 }
 
-const isc_md_type_t *
-isc_md_get_md_type(isc_md_t *md) {
-	REQUIRE(md != NULL);
-
-	return EVP_MD_CTX_get0_md(md);
-}
-
 size_t
 isc_md_get_size(isc_md_t *md) {
 	REQUIRE(md != NULL);
@@ -117,38 +115,31 @@ isc_md_get_block_size(isc_md_t *md) {
 }
 
 size_t
-isc_md_type_get_size(const isc_md_type_t *md_type) {
+isc_md_type_get_block_size(isc_md_type_t type) {
+	EVP_MD *evp;
+
+	REQUIRE(type < ISC_MD_MAX);
 	STATIC_ASSERT(ISC_MAX_MD_SIZE >= EVP_MAX_MD_SIZE,
 		      "Change ISC_MAX_MD_SIZE to be greater than or equal to "
 		      "EVP_MAX_MD_SIZE");
-	if (md_type != NULL) {
-		return (size_t)EVP_MD_size(md_type);
-	}
 
-	return ISC_MAX_MD_SIZE;
-}
-
-size_t
-isc_md_type_get_block_size(const isc_md_type_t *md_type) {
-	STATIC_ASSERT(ISC_MAX_MD_SIZE >= EVP_MAX_MD_SIZE,
-		      "Change ISC_MAX_MD_SIZE to be greater than or equal to "
-		      "EVP_MAX_MD_SIZE");
-	if (md_type != NULL) {
-		return (size_t)EVP_MD_block_size(md_type);
+	evp = isc__crypto_md[type];
+	if (evp != NULL) {
+		return (size_t)EVP_MD_block_size(evp);
 	}
 
 	return ISC_MAX_MD_SIZE;
 }
 
 isc_result_t
-isc_md(const isc_md_type_t *md_type, const unsigned char *buf, const size_t len,
+isc_md(isc_md_type_t type, const unsigned char *buf, const size_t len,
        unsigned char *digest, unsigned int *digestlen) {
 	isc_md_t *md;
 	isc_result_t res;
 
 	md = isc_md_new();
 
-	res = isc_md_init(md, md_type);
+	res = isc_md_init(md, type);
 	if (res != ISC_R_SUCCESS) {
 		goto end;
 	}

@@ -82,8 +82,8 @@ ISC_RUN_TEST_IMPL(isc_md_free) {
 }
 
 static void
-isc_md_test(isc_md_t *md, const isc_md_type_t *type, const char *buf,
-	    size_t buflen, const char *result, const size_t repeats) {
+isc_md_test(isc_md_t *md, isc_md_type_t type, const char *buf, size_t buflen,
+	    const char *result, const size_t repeats) {
 	isc_result_t res;
 
 	assert_non_null(md);
@@ -118,7 +118,7 @@ ISC_RUN_TEST_IMPL(isc_md_init) {
 
 	expect_assert_failure(isc_md_init(NULL, ISC_MD_MD5));
 
-	assert_int_equal(isc_md_init(md, NULL), ISC_R_NOTIMPLEMENTED);
+	assert_int_equal(isc_md_init(md, ISC_MD_UNKNOWN), ISC_R_NOTIMPLEMENTED);
 
 	if (isc_crypto_fips_mode()) {
 		assert_int_equal(isc_md_init(md, ISC_MD_MD5),

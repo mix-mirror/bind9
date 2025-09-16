@@ -43,7 +43,7 @@ typedef void isc_hmac_t;
  * of digest written to @digest.
  */
 isc_result_t
-isc_hmac(const isc_md_type_t *type, const void *key, const size_t keylen,
+isc_hmac(isc_md_type_t type, const void *key, const size_t keylen,
 	 const unsigned char *buf, const size_t len, unsigned char *digest,
 	 unsigned int *digestlen);
 
@@ -77,7 +77,7 @@ isc_hmac_free(isc_hmac_t *hmac);
 
 isc_result_t
 isc_hmac_init(isc_hmac_t *hmac, const void *key, const size_t keylen,
-	      const isc_md_type_t *type);
+	      isc_md_type_t type);
 
 /**
  * isc_hmac_reset:
@@ -117,16 +117,6 @@ isc_hmac_update(isc_hmac_t *hmac, const unsigned char *buf, const size_t len);
 isc_result_t
 isc_hmac_final(isc_hmac_t *hmac, unsigned char *digest,
 	       unsigned int *digestlen);
-
-/**
- * isc_hmac_md_type:
- * @hmac: HMAC context
- *
- * This function return the isc_md_type_t previously set for the supplied
- * HMAC context or NULL if no isc_md_type_t has been set.
- */
-const isc_md_type_t *
-isc_hmac_get_md_type(isc_hmac_t *hmac);
 
 /**
  * isc_hmac_get_size:

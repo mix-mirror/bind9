@@ -13,16 +13,7 @@
 
 #pragma once
 
-#include <openssl/evp.h>
-
 #include <isc/types.h>
-
-extern EVP_MD *isc__crypto_md5;
-extern EVP_MD *isc__crypto_sha1;
-extern EVP_MD *isc__crypto_sha224;
-extern EVP_MD *isc__crypto_sha256;
-extern EVP_MD *isc__crypto_sha384;
-extern EVP_MD *isc__crypto_sha512;
 
 bool
 isc_crypto_fips_mode(void);

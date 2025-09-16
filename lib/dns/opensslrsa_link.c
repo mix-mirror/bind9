@@ -39,6 +39,9 @@
 
 #define OPENSSLRSA_MAX_MODULUS_BITS 4096
 
+/* TODO(aydin): remove this crap */
+extern EVP_MD *isc__crypto_md[];
+
 typedef struct rsa_components {
 	bool bnfree;
 	const BIGNUM *e, *n, *d, *p, *q, *dmp1, *dmq1, *iqmp;
@@ -210,15 +213,15 @@ opensslrsa_createctx(dst_key_t *key, dst_context_t *dctx) {
 	switch (dctx->key->key_alg) {
 	case DST_ALG_RSASHA1:
 	case DST_ALG_NSEC3RSASHA1:
-		type = isc__crypto_sha1; /* SHA1 + RSA */
+		type = isc__crypto_md[ISC_MD_SHA1]; /* SHA1 + RSA */
 		break;
 	case DST_ALG_RSASHA256:
 	case DST_ALG_RSASHA256PRIVATEOID:
-		type = isc__crypto_sha256; /* SHA256 + RSA */
+		type = isc__crypto_md[ISC_MD_SHA256]; /* SHA256 + RSA */
 		break;
 	case DST_ALG_RSASHA512:
 	case DST_ALG_RSASHA512PRIVATEOID:
-		type = isc__crypto_sha512;
+		type = isc__crypto_md[ISC_MD_SHA512];
 		break;
 	default:
 		UNREACHABLE();
@@ -1312,19 +1315,19 @@ check_algorithm(unsigned short algorithm) {
 	switch (algorithm) {
 	case DST_ALG_RSASHA1:
 	case DST_ALG_NSEC3RSASHA1:
-		type = isc__crypto_sha1; /* SHA1 + RSA */
+		type = isc__crypto_md[ISC_MD_SHA1]; /* SHA1 + RSA */
 		sig = sha1_sig;
 		len = sizeof(sha1_sig) - 1;
 		break;
 	case DST_ALG_RSASHA256:
 	case DST_ALG_RSASHA256PRIVATEOID:
-		type = isc__crypto_sha256; /* SHA256 + RSA */
+		type = isc__crypto_md[ISC_MD_SHA256]; /* SHA256 + RSA */
 		sig = sha256_sig;
 		len = sizeof(sha256_sig) - 1;
 		break;
 	case DST_ALG_RSASHA512:
 	case DST_ALG_RSASHA512PRIVATEOID:
-		type = isc__crypto_sha512;
+		type = isc__crypto_md[ISC_MD_SHA512];
 		sig = sha512_sig;
 		len = sizeof(sha512_sig) - 1;
 		break;

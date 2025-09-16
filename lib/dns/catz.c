@@ -1859,7 +1859,7 @@ dns_catz_generate_masterfilename(dns_catz_zone_t *catz, dns_catz_entry_t *entry,
 	isc_buffer_subtract(tbuf, 1);
 
 	/* __catz__<digest>.db */
-	rlen = (isc_md_type_get_size(ISC_MD_SHA256) * 2 + 1) + 12;
+	rlen = (ISC_SHA256_DIGESTLENGTH * 2 + 1) + 12;
 
 	/* optionally prepend with <zonedir>/ */
 	if (entry->opts.zonedir != NULL) {
