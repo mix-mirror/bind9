@@ -18,10 +18,6 @@
 #include <openssl/opensslv.h>
 #include <openssl/ssl.h>
 
-#if !HAVE_EVP_MD_CTX_GET0_MD
-#define EVP_MD_CTX_get0_md EVP_MD_CTX_md
-#endif /* if !HAVE_EVP_MD_CTX_GET0_MD */
-
 #if !HAVE_BIO_READ_EX
 int
 BIO_read_ex(BIO *b, void *data, size_t dlen, size_t *readbytes);

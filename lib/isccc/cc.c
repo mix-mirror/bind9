@@ -242,7 +242,7 @@ list_towire(isccc_sexpr_t *list, isc_buffer_t **buffer) {
 static isc_result_t
 sign(unsigned char *data, unsigned int length, unsigned char *out,
      uint32_t algorithm, isccc_region_t *secret) {
-	const isc_md_type_t *md_type;
+	isc_md_type_t md_type;
 	isccc_region_t source, target;
 	unsigned char digest[ISC_MAX_MD_SIZE];
 	unsigned int digestlen = sizeof(digest);
@@ -353,7 +353,7 @@ isccc_cc_towire(isccc_sexpr_t *alist, isc_buffer_t **buffer, uint32_t algorithm,
 static isc_result_t
 verify(isccc_sexpr_t *alist, unsigned char *data, unsigned int length,
        uint32_t algorithm, isccc_region_t *secret) {
-	const isc_md_type_t *md_type;
+	isc_md_type_t md_type;
 	isccc_region_t source;
 	isccc_region_t target;
 	isccc_sexpr_t *_auth, *hmacvalue;

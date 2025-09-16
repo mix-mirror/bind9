@@ -26,6 +26,7 @@
 #include <openssl/param_build.h>
 #endif
 
+#include <isc/md.h>
 #include <isc/mem.h>
 #include <isc/result.h>
 #include <isc/safe.h>
@@ -38,6 +39,9 @@
 #include "dst_openssl.h"
 #include "dst_parse.h"
 #include "openssl_shim.h"
+
+/* TODO(aydin): remove this crap */
+extern EVP_MD *isc__crypto_md[];
 
 #ifndef NID_X9_62_prime256v1
 #error "P-256 group is not known (NID_X9_62_prime256v1)"
@@ -684,9 +688,9 @@ opensslecdsa_createctx(dst_key_t *key, dst_context_t *dctx) {
 		CLEANUP(dst__openssl_toresult(ISC_R_NOMEMORY));
 	}
 	if (dctx->key->key_alg == DST_ALG_ECDSA256) {
-		type = isc__crypto_sha256;
+		type = isc__crypto_md[ISC_MD_SHA256];
 	} else {
-		type = isc__crypto_sha384;
+		type = isc__crypto_md[ISC_MD_SHA384];
 	}
 
 	if (dctx->use == DO_SIGN) {

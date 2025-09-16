@@ -11,16 +11,8 @@
  * information regarding copyright ownership.
  */
 
-#include <openssl/err.h>
+#pragma once
+
 #include <openssl/evp.h>
 
-#include <isc/crypto.h>
-#include <isc/md.h>
-
-#include "crypto_p.h"
-
-EVP_MD *isc__crypto_md[] = {
-	[ISC_MD_UNKNOWN] = NULL, [ISC_MD_MD5] = NULL,	 [ISC_MD_SHA1] = NULL,
-	[ISC_MD_SHA224] = NULL,	 [ISC_MD_SHA256] = NULL, [ISC_MD_SHA384] = NULL,
-	[ISC_MD_SHA512] = NULL,
-};
+extern EVP_MD *isc__crypto_md[];

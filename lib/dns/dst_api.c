@@ -1321,22 +1321,22 @@ dst_key_sigsize(const dst_key_t *key, unsigned int *n) {
 		*n = DNS_SIG_ED448SIZE;
 		break;
 	case DST_ALG_HMACMD5:
-		*n = isc_md_type_get_size(ISC_MD_MD5);
+		*n = ISC_MD5_DIGESTLENGTH;
 		break;
 	case DST_ALG_HMACSHA1:
-		*n = isc_md_type_get_size(ISC_MD_SHA1);
+		*n = ISC_SHA1_DIGESTLENGTH;
 		break;
 	case DST_ALG_HMACSHA224:
-		*n = isc_md_type_get_size(ISC_MD_SHA224);
+		*n = ISC_SHA224_DIGESTLENGTH;
 		break;
 	case DST_ALG_HMACSHA256:
-		*n = isc_md_type_get_size(ISC_MD_SHA256);
+		*n = ISC_SHA256_DIGESTLENGTH;
 		break;
 	case DST_ALG_HMACSHA384:
-		*n = isc_md_type_get_size(ISC_MD_SHA384);
+		*n = ISC_SHA384_DIGESTLENGTH;
 		break;
 	case DST_ALG_HMACSHA512:
-		*n = isc_md_type_get_size(ISC_MD_SHA512);
+		*n = ISC_SHA512_DIGESTLENGTH;
 		break;
 	case DST_ALG_GSSAPI:
 		*n = 128; /*%< XXX */
