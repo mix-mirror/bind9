@@ -47,8 +47,9 @@ enum {
 	DNS_KEYFLAG_RESERVED11 = 1 << 4, /* reserved: must be zero. */
 
 	DNS_KEYFLAG_RESERVED12 = 1 << 3, /* reserved: must be zero. */
-	DNS_KEYFLAG_RESERVED13 = 1 << 4, /* reserved: must be zero. */
-	DNS_KEYFLAG_RESERVED14 = 1 << 2, /* reserved: must be zero. */
+	DNS_KEYFLAG_RESERVED13 = 1 << 2, /* reserved: must be zero. */
+	DNS_KEYFLAG_ADT = 1 << 1,	 /* authoritative delegation types:
+					    zone may contain DELEG. */
 
 	DNS_KEYFLAG_KSK = 1 << 0, /* key signing key */
 };

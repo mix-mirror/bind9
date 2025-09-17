@@ -93,8 +93,8 @@ Options
 .. option:: -f flag
 
    This option sets the specified flag in the flag field of the KEY/DNSKEY record.
-   The only recognized flags are ZSK (Zone-Signing Key), KSK (Key-Signing Key)
-   and REVOKE.
+   The only recognized flags are ZSK (Zone-Signing Key), KSK (Key-Signing Key),
+   ADT (Authoritative Delegation Types), and REVOKE.
 
    Note that ZSK is not a physical flag in the DNSKEY record, it is merely used
    to explicitly tell that you want to create a ZSK. Setting :option:`-f` in

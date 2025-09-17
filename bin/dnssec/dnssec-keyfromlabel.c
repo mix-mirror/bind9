@@ -175,6 +175,8 @@ main(int argc, char **argv) {
 				kskflag = DNS_KEYFLAG_KSK;
 			} else if (toupper(c) == 'R') {
 				revflag = DNS_KEYFLAG_REVOKE;
+			} else if (toupper(c) == 'A') {
+				revflag = DNS_KEYFLAG_ADT;
 			} else {
 				fatal("unknown flag '%s'",
 				      isc_commandline_argument);

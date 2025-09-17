@@ -135,8 +135,8 @@ lifetime = {
                 "config": standard_config,
                 "offset": 0,
                 "key-properties": [
-                    f"ksk 0 {os.environ['DEFAULT_ALGORITHM_NUMBER']} {os.environ['DEFAULT_BITS']} goal:omnipresent dnskey:rumoured krrsig:rumoured ds:rumoured",
-                    f"zsk {lifetime['P60D']} {os.environ['DEFAULT_ALGORITHM_NUMBER']} {os.environ['DEFAULT_BITS']} goal:omnipresent dnskey:rumoured zrrsig:rumoured",
+                    f"ksk 0 {os.environ['DEFAULT_ALGORITHM_NUMBER']} {os.environ['DEFAULT_BITS']} goal:omnipresent dnskey:rumoured krrsig:rumoured ds:rumoured noadt",
+                    f"zsk {lifetime['P60D']} {os.environ['DEFAULT_ALGORITHM_NUMBER']} {os.environ['DEFAULT_BITS']} goal:omnipresent dnskey:rumoured zrrsig:rumoured noadt",
                 ],
             },
             id="migrate.kasp",
@@ -150,7 +150,7 @@ lifetime = {
                 "config": default_config,
                 "offset": 0,
                 "key-properties": [
-                    f"csk 0 {os.environ['DEFAULT_ALGORITHM_NUMBER']} {os.environ['DEFAULT_BITS']} goal:omnipresent dnskey:rumoured krrsig:rumoured zrrsig:rumoured ds:rumoured",
+                    f"csk 0 {os.environ['DEFAULT_ALGORITHM_NUMBER']} {os.environ['DEFAULT_BITS']} goal:omnipresent dnskey:rumoured krrsig:rumoured zrrsig:rumoured ds:rumoured noadt",
                 ],
             },
             id="csk.kasp",
@@ -178,8 +178,8 @@ lifetime = {
                 "config": timing_config,
                 "offset": -timedelta(seconds=300),
                 "key-properties": [
-                    f"ksk {lifetime['P60D']} {os.environ['DEFAULT_ALGORITHM_NUMBER']} {os.environ['DEFAULT_BITS']} goal:omnipresent dnskey:rumoured krrsig:rumoured ds:rumoured",
-                    f"zsk {lifetime['P60D']} {os.environ['DEFAULT_ALGORITHM_NUMBER']} {os.environ['DEFAULT_BITS']} goal:omnipresent dnskey:rumoured zrrsig:rumoured",
+                    f"ksk {lifetime['P60D']} {os.environ['DEFAULT_ALGORITHM_NUMBER']} {os.environ['DEFAULT_BITS']} goal:omnipresent dnskey:rumoured krrsig:rumoured ds:rumoured noadt",
+                    f"zsk {lifetime['P60D']} {os.environ['DEFAULT_ALGORITHM_NUMBER']} {os.environ['DEFAULT_BITS']} goal:omnipresent dnskey:rumoured zrrsig:rumoured noadt",
                 ],
             },
             id="rumoured.kasp",
@@ -193,8 +193,8 @@ lifetime = {
                 "config": timing_config,
                 "offset": -timedelta(seconds=3900),
                 "key-properties": [
-                    f"ksk {lifetime['P60D']} {os.environ['DEFAULT_ALGORITHM_NUMBER']} {os.environ['DEFAULT_BITS']} goal:omnipresent dnskey:omnipresent krrsig:omnipresent ds:omnipresent",
-                    f"zsk {lifetime['P60D']} {os.environ['DEFAULT_ALGORITHM_NUMBER']} {os.environ['DEFAULT_BITS']} goal:omnipresent dnskey:omnipresent zrrsig:omnipresent",
+                    f"ksk {lifetime['P60D']} {os.environ['DEFAULT_ALGORITHM_NUMBER']} {os.environ['DEFAULT_BITS']} goal:omnipresent dnskey:omnipresent krrsig:omnipresent ds:omnipresent noadt",
+                    f"zsk {lifetime['P60D']} {os.environ['DEFAULT_ALGORITHM_NUMBER']} {os.environ['DEFAULT_BITS']} goal:omnipresent dnskey:omnipresent zrrsig:omnipresent noadt",
                 ],
             },
             id="omnipresent.kasp",
@@ -208,8 +208,8 @@ lifetime = {
                 "config": timing_config,
                 "offset": -timedelta(hours=12),
                 "key-properties": [
-                    f"ksk {lifetime['P60D']} {os.environ['DEFAULT_ALGORITHM_NUMBER']} {os.environ['DEFAULT_BITS']} goal:omnipresent dnskey:omnipresent krrsig:omnipresent ds:rumoured",
-                    f"zsk {lifetime['P60D']} {os.environ['DEFAULT_ALGORITHM_NUMBER']} {os.environ['DEFAULT_BITS']} goal:omnipresent dnskey:omnipresent zrrsig:omnipresent",
+                    f"ksk {lifetime['P60D']} {os.environ['DEFAULT_ALGORITHM_NUMBER']} {os.environ['DEFAULT_BITS']} goal:omnipresent dnskey:omnipresent krrsig:omnipresent ds:rumoured noadt",
+                    f"zsk {lifetime['P60D']} {os.environ['DEFAULT_ALGORITHM_NUMBER']} {os.environ['DEFAULT_BITS']} goal:omnipresent dnskey:omnipresent zrrsig:omnipresent noadt",
                 ],
             },
             id="no-syncpublish.kasp",
@@ -223,8 +223,8 @@ lifetime = {
                 "config": migrate_config,
                 "offset": -timedelta(seconds=3900),
                 "key-properties": [
-                    "ksk - 8 2048 goal:hidden dnskey:omnipresent krrsig:omnipresent ds:omnipresent",
-                    "zsk - 8 2048 goal:hidden dnskey:omnipresent zrrsig:omnipresent",
+                    "ksk - 8 2048 goal:hidden dnskey:omnipresent krrsig:omnipresent ds:omnipresent noadt",
+                    "zsk - 8 2048 goal:hidden dnskey:omnipresent zrrsig:omnipresent noadt",
                     f"ksk 0 {os.environ['DEFAULT_ALGORITHM_NUMBER']} {os.environ['DEFAULT_BITS']} goal:omnipresent dnskey:rumoured krrsig:rumoured ds:hidden",
                     f"zsk {lifetime['P60D']} {os.environ['DEFAULT_ALGORITHM_NUMBER']} {os.environ['DEFAULT_BITS']} goal:omnipresent dnskey:rumoured zrrsig:rumoured",
                 ],
@@ -240,8 +240,8 @@ lifetime = {
                 "config": migrate_config,
                 "offset": -timedelta(seconds=3900),
                 "key-properties": [
-                    "ksk - 8 2048 goal:hidden dnskey:omnipresent krrsig:omnipresent ds:omnipresent",
-                    "zsk - 8 2048 goal:hidden dnskey:omnipresent zrrsig:omnipresent",
+                    "ksk - 8 2048 goal:hidden dnskey:omnipresent krrsig:omnipresent ds:omnipresent noadt",
+                    "zsk - 8 2048 goal:hidden dnskey:omnipresent zrrsig:omnipresent noadt",
                     "ksk 0 8 3072 goal:omnipresent dnskey:rumoured krrsig:rumoured ds:hidden",
                     # This key is considered to be prepublished, so it is not yet signing.
                     f"zsk {lifetime['P60D']} 8 3072 goal:omnipresent dnskey:rumoured zrrsig:hidden",
@@ -258,8 +258,8 @@ lifetime = {
                 "config": migrate_config,
                 "offset": -timedelta(seconds=3900),
                 "key-properties": [
-                    f"ksk - {os.environ['DEFAULT_ALGORITHM_NUMBER']} {os.environ['DEFAULT_BITS']} goal:hidden dnskey:omnipresent krrsig:omnipresent ds:omnipresent",
-                    f"zsk - {os.environ['DEFAULT_ALGORITHM_NUMBER']} {os.environ['DEFAULT_BITS']} goal:hidden dnskey:omnipresent zrrsig:omnipresent",
+                    f"ksk - {os.environ['DEFAULT_ALGORITHM_NUMBER']} {os.environ['DEFAULT_BITS']} goal:hidden dnskey:omnipresent krrsig:omnipresent ds:omnipresent noadt",
+                    f"zsk - {os.environ['DEFAULT_ALGORITHM_NUMBER']} {os.environ['DEFAULT_BITS']} goal:hidden dnskey:omnipresent zrrsig:omnipresent noadt",
                     # This key is considered to be prepublished, so it is not yet signing, nor is the DS introduced.
                     f"csk 0 {os.environ['DEFAULT_ALGORITHM_NUMBER']} {os.environ['DEFAULT_BITS']} goal:omnipresent dnskey:rumoured krrsig:rumoured zrrsig:hidden ds:hidden",
                 ],
@@ -275,9 +275,9 @@ lifetime = {
                 "config": view_config,
                 "offset": -timedelta(days=31 * 3),
                 "key-properties": [
-                    f"zsk {lifetime['P3M']} 8 2048 goal:hidden dnskey:omnipresent zrrsig:omnipresent",
+                    f"zsk {lifetime['P3M']} 8 2048 goal:hidden dnskey:omnipresent zrrsig:omnipresent noadt",
                     f"zsk {lifetime['P3M']} 8 2048 goal:omnipresent dnskey:rumoured zrrsig:hidden",
-                    f"ksk {lifetime['P1Y']} 8 2048 goal:omnipresent dnskey:omnipresent krrsig:omnipresent ds:omnipresent",
+                    f"ksk {lifetime['P1Y']} 8 2048 goal:omnipresent dnskey:omnipresent krrsig:omnipresent ds:omnipresent noadt",
                 ],
                 "view": "ext",
                 "tsig": "external:YPfMoAk6h+3iN8MDRQC004iSNHY=",
@@ -292,9 +292,9 @@ lifetime = {
                 "config": view_config,
                 "offset": -timedelta(days=31 * 3),
                 "key-properties": [
-                    f"zsk {lifetime['P3M']} 8 2048 goal:hidden dnskey:omnipresent zrrsig:omnipresent",
+                    f"zsk {lifetime['P3M']} 8 2048 goal:hidden dnskey:omnipresent zrrsig:omnipresent noadt",
                     f"zsk {lifetime['P3M']} 8 2048 goal:omnipresent dnskey:rumoured zrrsig:hidden",
-                    f"ksk {lifetime['P1Y']} 8 2048 goal:omnipresent dnskey:omnipresent krrsig:omnipresent ds:omnipresent",
+                    f"ksk {lifetime['P1Y']} 8 2048 goal:omnipresent dnskey:omnipresent krrsig:omnipresent ds:omnipresent noadt",
                 ],
                 "view": "int",
                 "tsig": "internal:4xILSZQnuO1UKubXHkYUsvBRPu8=",

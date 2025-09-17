@@ -73,8 +73,8 @@ def test_going_insecure_reconfig_step1(zone, alg, size, ns3):
         "zone": szone,
         "cdss": CDSS,
         "keyprops": [
-            f"ksk 0 {alg} {size} goal:hidden dnskey:omnipresent krrsig:omnipresent ds:unretentive offset:{-DURATION['P10D']}",
-            f"zsk {DURATION['P60D']} {alg} {size} goal:hidden dnskey:omnipresent zrrsig:omnipresent offset:{-DURATION['P10D']}",
+            f"ksk 0 {alg} {size} goal:hidden dnskey:omnipresent krrsig:omnipresent ds:unretentive offset:{-DURATION['P10D']} noadt",
+            f"zsk {DURATION['P60D']} {alg} {size} goal:hidden dnskey:omnipresent zrrsig:omnipresent offset:{-DURATION['P10D']} noadt",
         ],
         # Next key event is when the DS becomes HIDDEN. This
         # happens after the# parent propagation delay plus DS TTL.
@@ -117,8 +117,8 @@ def test_going_insecure_reconfig_step2(zone, alg, size, ns3):
         "zone": zone,
         "cdss": CDSS,
         "keyprops": [
-            f"ksk 0 {alg} {size} goal:hidden dnskey:unretentive krrsig:unretentive ds:hidden offset:{-DURATION['P10D']}",
-            f"zsk {DURATION['P60D']} {alg} {size} goal:hidden dnskey:unretentive zrrsig:unretentive offset:{-DURATION['P10D']}",
+            f"ksk 0 {alg} {size} goal:hidden dnskey:unretentive krrsig:unretentive ds:hidden offset:{-DURATION['P10D']} noadt",
+            f"zsk {DURATION['P60D']} {alg} {size} goal:hidden dnskey:unretentive zrrsig:unretentive offset:{-DURATION['P10D']} noadt",
         ],
         # Next key event is when the DNSKEY becomes HIDDEN.
         # This happens after the propagation delay, plus DNSKEY TTL.

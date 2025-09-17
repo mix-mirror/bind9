@@ -138,12 +138,12 @@ def test_rollover_multisigner(ns3, alg, size):
     isctest.kasp.check_dnssec_verify(ns3, zone)
 
     key_properties = [
-        f"ksk unlimited {alg} {size} goal:omnipresent dnskey:rumoured krrsig:rumoured ds:hidden tag-range:32768-65535",
-        f"zsk unlimited {alg} {size} goal:omnipresent dnskey:rumoured zrrsig:rumoured tag-range:32768-65535",
+        f"ksk unlimited {alg} {size} goal:omnipresent dnskey:rumoured krrsig:rumoured ds:hidden tag-range:32768-65535 noadt",
+        f"zsk unlimited {alg} {size} goal:omnipresent dnskey:rumoured zrrsig:rumoured tag-range:32768-65535 noadt",
     ]
     expected = isctest.kasp.policy_to_properties(ttl, key_properties)
 
-    newprops = [f"zsk unlimited {alg} {size} tag-range:0-32767"]
+    newprops = [f"zsk unlimited {alg} {size} tag-range:0-32767 noadt"]
     expected2 = isctest.kasp.policy_to_properties(ttl, newprops)
     expected2[0].private = False  # noqa
     expected2[0].legacy = True  # noqa
@@ -167,7 +167,7 @@ def test_rollover_multisigner(ns3, alg, size):
     # Update zone with ZSK from another provider for zone.
     out = keygen(zone)
     newkeys = isctest.kasp.keystr_to_keylist(out)
-    newprops = [f"zsk unlimited {alg} {size} tag-range:0-32767"]
+    newprops = [f"zsk unlimited {alg} {size} tag-range:0-32767 noadt"]
     expected2 = isctest.kasp.policy_to_properties(ttl, newprops)
     expected2[0].private = False  # noqa
     expected2[0].legacy = True  # noqa
@@ -216,8 +216,8 @@ def test_rollover_multisigner(ns3, alg, size):
     key_properties = [
         f"ksk unlimited {alg} {size} goal:omnipresent dnskey:rumoured krrsig:rumoured ds:hidden tag-range:32768-65535",
         f"zsk unlimited {alg} {size} goal:omnipresent dnskey:rumoured zrrsig:hidden tag-range:32768-65535",
-        f"ksk unlimited {alg} {size} goal:hidden dnskey:omnipresent krrsig:omnipresent ds:omnipresent tag-range:0-32767 offset:{offval}",
-        f"zsk unlimited {alg} {size} goal:hidden dnskey:omnipresent zrrsig:omnipresent tag-range:0-32767 offset:{offval}",
+        f"ksk unlimited {alg} {size} goal:hidden dnskey:omnipresent krrsig:omnipresent ds:omnipresent tag-range:0-32767 offset:{offval} noadt",
+        f"zsk unlimited {alg} {size} goal:hidden dnskey:omnipresent zrrsig:omnipresent tag-range:0-32767 offset:{offval} noadt",
     ]
     expected = isctest.kasp.policy_to_properties(ttl, key_properties)
     keys = isctest.kasp.keydir_to_keylist(zone, ns3.identifier)

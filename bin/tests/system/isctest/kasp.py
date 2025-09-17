@@ -11,6 +11,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from enum import IntFlag
 from functools import total_ordering
 import glob
 import os
@@ -172,6 +173,13 @@ class KeyTimingMetadata:
         return result
 
 
+class KeyFlags(IntFlag):
+    SEP = 0x0001
+    ADT = 0x0002
+    REVOKE = 0x0080
+    ZONE = 0x0100
+
+
 class KeyProperties:
     """
     Represent the (expected) properties a key should have.
@@ -186,7 +194,7 @@ class KeyProperties:
         legacy: bool = False,
         role: str = "csk",
         ttl: int = 3600,
-        flags: int = 257,
+        flags: int = KeyFlags.SEP | KeyFlags.ZONE | KeyFlags.ADT,
         keytag_min: int = 0,
         keytag_max: int = 65535,
         offset: Union[timedelta, int] = 0,
@@ -235,7 +243,7 @@ class KeyProperties:
         return result
 
     def role_full(self) -> str:
-        if self.flags == 256:
+        if not self.flags & KeyFlags.SEP:
             return "zone-signing"
         return "key-signing"
 
@@ -1626,6 +1634,7 @@ def policy_to_properties(ttl, keys: List[str]) -> List[KeyProperties]:
     - "missing", set if the private key file for this key is not available.
     - "offset", an offset for testing key rollover timings
     - "tag-range", followed by <min>-<max> to test key tag ranges
+    - "noadt", set if the key does not have the ADT flag
     """
     proplist = []
     count = 0
@@ -1644,11 +1653,11 @@ def policy_to_properties(ttl, keys: List[str]) -> List[KeyProperties]:
 
         role = line[0]
         if role == "zsk":
-            flags = 256
+            flags = KeyFlags.ZONE | KeyFlags.ADT
             metadata["ZSK"] = "yes"
             metadata["KSK"] = "no"
         else:
-            flags = 257
+            flags = KeyFlags.SEP | KeyFlags.ZONE | KeyFlags.ADT
             metadata["ZSK"] = "yes" if role == "csk" else "no"
             metadata["KSK"] = "yes"
 
@@ -1685,6 +1694,8 @@ def policy_to_properties(ttl, keys: List[str]) -> List[KeyProperties]:
                 keytag_max = int(tagrange[1])
             elif line[i] == "missing":
                 private = False
+            elif line[i] == "noadt":
+                flags &= ~KeyFlags.ADT
             else:
                 assert False, f"undefined optional data {line[i]}"
 
