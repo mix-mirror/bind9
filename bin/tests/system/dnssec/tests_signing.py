@@ -242,7 +242,7 @@ def test_cds_signing():
     res = isctest.query.tcp(msg, "10.53.0.2")
     isctest.check.noerror(res)
     dnskeys, sigs = res.answer
-    ksk = [a for a in dnskeys if a.flags == 257][0]
+    ksk = [a for a in dnskeys if a.flags == 259][0]
     ds = dnssec.make_ds("cds-update.secure.", ksk, 2)
     up.add("cds-update.secure.", 1, "CDS", str(ds))
     res = isctest.query.tcp(up, "10.53.0.2")
@@ -323,7 +323,7 @@ def test_cdnskey_signing():
     res = isctest.query.tcp(msg, "10.53.0.2")
     isctest.check.noerror(res)
     dnskeys, sigs = res.answer
-    ksk = [a for a in dnskeys if a.flags == 257][0]
+    ksk = [a for a in dnskeys if a.flags == 259][0]
     up.add("cdnskey-update.secure.", 1, "CDNSKEY", str(ksk))
     res = isctest.query.tcp(up, "10.53.0.2")
     isctest.check.noerror(res)
@@ -451,7 +451,7 @@ def test_offline_ksk_signing(ns2, default_algorithm):
         msg = isctest.query.create(zone, "DNSKEY")
         res = isctest.query.tcp(msg, "10.53.0.2")
         dnskeys, _ = res.answer
-        zskcount = len([rr for rr in dnskeys if rr.flags == 256])
+        zskcount = len([rr for rr in dnskeys if rr.flags == 258])
         assert zskcount == 2, str(res)
         return True
 
