@@ -1687,12 +1687,13 @@ plus_option(char *option, bool is_batchfile, bool *need_clone,
 		break;
 	case 'd':
 		switch (cmd[1]) {
-		case 'e': /* defname */
-			FULLCHECK("defname");
-			fprintf(stderr, ";; +[no]defname option is "
-					"deprecated; use +[no]search\n");
-			if (!lookup->trace) {
-				usesearch = state;
+		case 'e': /* deflag */
+			switch (cmd[2]) {
+			case 'f':
+			case '\0': /* +de is a synonym for +deflag */
+				FULLCHECK("deflag");
+				lookup->deflag = state;
+				break;
 			}
 			break;
 		case 'n':
