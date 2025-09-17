@@ -11,20 +11,36 @@
  * information regarding copyright ownership.
  */
 
+#include <stdint.h>
+
 #include <openssl/crypto.h>
 #include <openssl/err.h>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <openssl/ssl.h>
 
+#include <isc/buffer.h>
 #include <isc/crypto.h>
+#include <isc/hmac.h>
 #include <isc/log.h>
+#include <isc/magic.h>
 #include <isc/md.h>
 #include <isc/mem.h>
+#include <isc/safe.h>
 #include <isc/tls.h>
 #include <isc/util.h>
 
 #include "crypto_p.h"
+
+#define HMAC_KEY_MAGIC ISC_MAGIC('H', 'M', 'A', 'C')
+
+struct isc_hmac_key {
+	uint32_t magic;
+	uint32_t len;
+	isc_mem_t *mctx;
+	EVP_MD *md;
+	uint8_t secret[];
+};
 
 static isc_mem_t *isc__crypto_mctx = NULL;
 
@@ -52,6 +68,175 @@ register_algorithms(void) {
 }
 
 #undef md_unregister_algorithm
+
+/*
+ * HMAC Notes
+ *
+ * For pre-3.0 libcrypto, we use HMAC_CTX instead of the EVP_PKEY API.
+ *
+ * EVP_PKEY will call HMAC_* functions internally so there is no need to add
+ * even more vtables.
+ */
+
+isc_result_t
+isc_hmac(isc_md_type_t type, const void *key, const size_t keylen,
+	 const unsigned char *buf, const size_t len, unsigned char *digest,
+	 unsigned int *digestlen) {
+	EVP_MD *md;
+
+	REQUIRE(type < ISC_MD_MAX);
+
+	md = isc__crypto_md[type];
+	if (md == NULL) {
+		return ISC_R_NOTIMPLEMENTED;
+	}
+
+	if (HMAC(md, key, keylen, buf, len, digest, digestlen) == NULL) {
+		ERR_clear_error();
+		return ISC_R_CRYPTOFAILURE;
+	}
+
+	return ISC_R_SUCCESS;
+}
+
+isc_result_t
+isc_hmac_key_create(isc_md_type_t type, const void *secret, const size_t len,
+		    isc_mem_t *mctx, isc_hmac_key_t **keyp) {
+	isc_hmac_key_t *key;
+	EVP_MD *md;
+
+	REQUIRE(keyp != NULL && *keyp == NULL);
+	REQUIRE(type < ISC_MD_MAX);
+
+	md = isc__crypto_md[type];
+	if (md == NULL) {
+		return ISC_R_NOTIMPLEMENTED;
+	}
+
+	key = isc_mem_get(mctx, STRUCT_FLEX_SIZE(key, secret, len));
+	*key = (isc_hmac_key_t){
+		.magic = HMAC_KEY_MAGIC,
+		.len = len,
+		.md = md,
+	};
+	memmove(key->secret, secret, len);
+	isc_mem_attach(mctx, &key->mctx);
+
+	*keyp = key;
+
+	return ISC_R_SUCCESS;
+}
+
+void
+isc_hmac_key_destroy(isc_hmac_key_t **keyp) {
+	isc_hmac_key_t *key;
+
+	REQUIRE(keyp != NULL && *keyp != NULL);
+	REQUIRE((*keyp)->magic == HMAC_KEY_MAGIC);
+
+	key = *keyp;
+	*keyp = NULL;
+
+	key->magic = 0x00;
+
+	isc_safe_memwipe(key->secret, sizeof(key->len));
+
+	isc_mem_putanddetach(&key->mctx, key,
+			     STRUCT_FLEX_SIZE(key, secret, key->len));
+}
+
+isc_region_t
+isc_hmac_key_expose(isc_hmac_key_t *key) {
+	REQUIRE(key != NULL && key->magic == HMAC_KEY_MAGIC);
+
+	return (isc_region_t){ .base = key->secret, .length = key->len };
+}
+
+bool
+isc_hmac_key_equal(isc_hmac_key_t *a, isc_hmac_key_t *b) {
+	REQUIRE(a != NULL && a->magic == HMAC_KEY_MAGIC);
+	REQUIRE(b != NULL && b->magic == HMAC_KEY_MAGIC);
+
+	if (a->md != b->md) {
+		return false;
+	}
+
+	if (a->len != b->len) {
+		return false;
+	}
+
+	return isc_safe_memequal(a->secret, b->secret, a->len);
+}
+
+isc_hmac_t *
+isc_hmac_new(void) {
+	HMAC_CTX *ctx = HMAC_CTX_new();
+	RUNTIME_CHECK(ctx != NULL);
+	return ctx;
+}
+
+void
+isc_hmac_free(isc_hmac_t *hmac) {
+	if (hmac != NULL) {
+		HMAC_CTX_free(hmac);
+	}
+}
+
+isc_result_t
+isc_hmac_init(isc_hmac_t *hmac, isc_hmac_key_t *key) {
+	REQUIRE(hmac != NULL);
+	REQUIRE(key != NULL && key->magic == HMAC_KEY_MAGIC);
+
+	if (HMAC_Init_ex(hmac, key->secret, key->len, key->md, NULL) != 1) {
+		ERR_clear_error();
+		return ISC_R_CRYPTOFAILURE;
+	}
+
+	return ISC_R_SUCCESS;
+}
+
+isc_result_t
+isc_hmac_update(isc_hmac_t *hmac, const unsigned char *buf, const size_t len) {
+	REQUIRE(hmac != NULL);
+
+	if (buf == NULL || len == 0) {
+		return ISC_R_SUCCESS;
+	}
+
+	if (HMAC_Update(hmac, buf, len) != 1) {
+		ERR_clear_error();
+		return ISC_R_CRYPTOFAILURE;
+	}
+
+	return ISC_R_SUCCESS;
+}
+
+isc_result_t
+isc_hmac_final(isc_hmac_t *hmac, isc_buffer_t *out) {
+	unsigned int len;
+
+	REQUIRE(hmac != NULL);
+	REQUIRE(out != NULL);
+
+	/*
+	 * LibreSSL changes HMAC_size's return from size_t to int but keeps the
+	 * size_t signature in its manpage.
+	 *
+	 * Cast it instead of accepting LibreSSL's man(page)splaining.
+	 */
+	len = isc_buffer_availablelength(out);
+	if (len < (unsigned int)HMAC_size(hmac)) {
+		return ISC_R_NOSPACE;
+	}
+
+	if (HMAC_Final(hmac, isc_buffer_used(out), &len) != 1) {
+		return ISC_R_CRYPTOFAILURE;
+	}
+
+	isc_buffer_add(out, len);
+
+	return ISC_R_SUCCESS;
+}
 
 #ifndef LIBRESSL_VERSION_NUMBER
 /*

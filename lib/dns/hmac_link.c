@@ -55,7 +55,7 @@
 #define hmac_register_algorithm(alg)                                           \
 	static isc_result_t hmac##alg##_createctx(dst_key_t *key,              \
 						  dst_context_t *dctx) {       \
-		return (hmac_createctx(ISC_MD_##alg, key, dctx));              \
+		return (hmac_createctx(key, dctx));                            \
 	}                                                                      \
 	static void hmac##alg##_destroyctx(dst_context_t *dctx) {              \
 		hmac_destroyctx(dctx);                                         \
@@ -74,7 +74,7 @@
 	}                                                                      \
 	static bool hmac##alg##_compare(const dst_key_t *key1,                 \
 					const dst_key_t *key2) {               \
-		return (hmac_compare(ISC_MD_##alg, key1, key2));               \
+		return (hmac_compare(key1, key2));                             \
 	}                                                                      \
 	static isc_result_t hmac##alg##_generate(                              \
 		dst_key_t *key, int pseudorandom_ok, void (*callback)(int)) {  \
@@ -130,22 +130,19 @@
 	void dst__hmac##alg##_init(dst_func_t **funcp) {                       \
 		REQUIRE(funcp != NULL);                                        \
 		if (*funcp == NULL) {                                          \
-			isc_hmac_t *ctx = isc_hmac_new();                      \
-			if (isc_hmac_init(ctx, "test", 4, ISC_MD_##alg) ==     \
-			    ISC_R_SUCCESS)                                     \
+			uint8_t data[] = "data";                               \
+			uint8_t mac_buffer[ISC_MAX_MD_SIZE];                   \
+			unsigned int mac_len = sizeof(mac_buffer);             \
+			if (isc_hmac(ISC_MD_##alg, "test", 4, data, 4,         \
+				     mac_buffer, &mac_len) == ISC_R_SUCCESS)   \
 			{                                                      \
 				*funcp = &hmac##alg##_functions;               \
 			}                                                      \
-			isc_hmac_free(ctx);                                    \
 		}                                                              \
 	}
 
 static isc_result_t
 hmac_fromdns(isc_md_type_t type, dst_key_t *key, isc_buffer_t *data);
-
-struct dst_hmac_key {
-	uint8_t key[ISC_MAX_BLOCK_SIZE];
-};
 
 static isc_result_t
 getkeybits(dst_key_t *key, struct dst_private_element *element) {
@@ -161,13 +158,11 @@ getkeybits(dst_key_t *key, struct dst_private_element *element) {
 }
 
 static isc_result_t
-hmac_createctx(isc_md_type_t type, const dst_key_t *key, dst_context_t *dctx) {
+hmac_createctx(const dst_key_t *key, dst_context_t *dctx) {
 	isc_result_t result;
-	const dst_hmac_key_t *hkey = key->keydata.hmac_key;
 	isc_hmac_t *ctx = isc_hmac_new(); /* Either returns or abort()s */
 
-	result = isc_hmac_init(ctx, hkey->key, isc_md_type_get_block_size(type),
-			       type);
+	result = isc_hmac_init(ctx, key->keydata.hmac_key);
 	if (result != ISC_R_SUCCESS) {
 		isc_hmac_free(ctx);
 		return DST_R_UNSUPPORTEDALG;
@@ -204,44 +199,35 @@ hmac_adddata(const dst_context_t *dctx, const isc_region_t *data) {
 static isc_result_t
 hmac_sign(const dst_context_t *dctx, isc_buffer_t *sig) {
 	isc_hmac_t *ctx = dctx->ctxdata.hmac_ctx;
+	isc_result_t r;
+
 	REQUIRE(ctx != NULL);
-	unsigned char digest[ISC_MAX_MD_SIZE];
-	unsigned int digestlen = sizeof(digest);
 
-	if (isc_hmac_final(ctx, digest, &digestlen) != ISC_R_SUCCESS) {
-		return DST_R_OPENSSLFAILURE;
+	r = isc_hmac_final(ctx, sig);
+
+	/* Turn CRYPTOFAILURE into OPENSSLFAILURE */
+	if (r == ISC_R_CRYPTOFAILURE) {
+		r = DST_R_OPENSSLFAILURE;
 	}
 
-	if (isc_hmac_reset(ctx) != ISC_R_SUCCESS) {
-		return DST_R_OPENSSLFAILURE;
-	}
-
-	if (isc_buffer_availablelength(sig) < digestlen) {
-		return ISC_R_NOSPACE;
-	}
-
-	isc_buffer_putmem(sig, digest, digestlen);
-
-	return ISC_R_SUCCESS;
+	return r;
 }
 
 static isc_result_t
 hmac_verify(const dst_context_t *dctx, const isc_region_t *sig) {
 	isc_hmac_t *ctx = dctx->ctxdata.hmac_ctx;
 	unsigned char digest[ISC_MAX_MD_SIZE];
-	unsigned int digestlen = sizeof(digest);
+	isc_buffer_t hmac;
 
 	REQUIRE(ctx != NULL);
 
-	if (isc_hmac_final(ctx, digest, &digestlen) != ISC_R_SUCCESS) {
+	isc_buffer_init(&hmac, digest, sizeof(digest));
+
+	if (isc_hmac_final(ctx, &hmac) != ISC_R_SUCCESS) {
 		return DST_R_OPENSSLFAILURE;
 	}
 
-	if (isc_hmac_reset(ctx) != ISC_R_SUCCESS) {
-		return DST_R_OPENSSLFAILURE;
-	}
-
-	if (sig->length > digestlen) {
+	if (sig->length > isc_buffer_usedlength(&hmac)) {
 		return DST_R_VERIFYFAILURE;
 	}
 
@@ -251,8 +237,8 @@ hmac_verify(const dst_context_t *dctx, const isc_region_t *sig) {
 }
 
 static bool
-hmac_compare(isc_md_type_t type, const dst_key_t *key1, const dst_key_t *key2) {
-	dst_hmac_key_t *hkey1, *hkey2;
+hmac_compare(const dst_key_t *key1, const dst_key_t *key2) {
+	isc_hmac_key_t *hkey1, *hkey2;
 
 	hkey1 = key1->keydata.hmac_key;
 	hkey2 = key2->keydata.hmac_key;
@@ -263,8 +249,7 @@ hmac_compare(isc_md_type_t type, const dst_key_t *key1, const dst_key_t *key2) {
 		return false;
 	}
 
-	return isc_safe_memequal(hkey1->key, hkey2->key,
-				 isc_md_type_get_block_size(type));
+	return isc_hmac_key_equal(hkey1, hkey2);
 }
 
 static isc_result_t
@@ -303,31 +288,28 @@ hmac_isprivate(const dst_key_t *key) {
 
 static void
 hmac_destroy(dst_key_t *key) {
-	dst_hmac_key_t *hkey = key->keydata.hmac_key;
-	isc_safe_memwipe(hkey, sizeof(*hkey));
-	isc_mem_put(key->mctx, hkey, sizeof(*hkey));
-	key->keydata.hmac_key = NULL;
+	isc_hmac_key_destroy(&key->keydata.hmac_key);
 }
 
 static isc_result_t
 hmac_todns(const dst_key_t *key, isc_buffer_t *data) {
-	REQUIRE(key != NULL && key->keydata.hmac_key != NULL);
-	dst_hmac_key_t *hkey = key->keydata.hmac_key;
-	unsigned int bytes;
+	isc_region_t raw_key;
 
-	bytes = (key->key_size + 7) / 8;
-	if (isc_buffer_availablelength(data) < bytes) {
+	REQUIRE(key != NULL && key->keydata.hmac_key != NULL);
+
+	raw_key = isc_hmac_key_expose(key->keydata.hmac_key);
+
+	if (isc_buffer_availablelength(data) < raw_key.length) {
 		return ISC_R_NOSPACE;
 	}
-	isc_buffer_putmem(data, hkey->key, bytes);
 
-	return ISC_R_SUCCESS;
+	return isc_buffer_copyregion(data, &raw_key);
 }
 
 static isc_result_t
 hmac_fromdns(isc_md_type_t type, dst_key_t *key, isc_buffer_t *data) {
-	dst_hmac_key_t *hkey;
-	unsigned int keylen;
+	isc_hmac_key_t *hkey = NULL;
+	isc_result_t result;
 	isc_region_t r;
 
 	isc_buffer_remainingregion(data, &r);
@@ -335,24 +317,12 @@ hmac_fromdns(isc_md_type_t type, dst_key_t *key, isc_buffer_t *data) {
 		return ISC_R_SUCCESS;
 	}
 
-	hkey = isc_mem_get(key->mctx, sizeof(dst_hmac_key_t));
-
-	memset(hkey->key, 0, sizeof(hkey->key));
-
-	/* Hash the key if the key is longer then chosen MD block size */
-	if (r.length > (unsigned int)isc_md_type_get_block_size(type)) {
-		if (isc_md(type, r.base, r.length, hkey->key, &keylen) !=
-		    ISC_R_SUCCESS)
-		{
-			isc_mem_put(key->mctx, hkey, sizeof(dst_hmac_key_t));
-			return DST_R_OPENSSLFAILURE;
-		}
-	} else {
-		memmove(hkey->key, r.base, r.length);
-		keylen = r.length;
+	result = isc_hmac_key_create(type, r.base, r.length, key->mctx, &hkey);
+	if (result != ISC_R_SUCCESS) {
+		return DST_R_OPENSSLFAILURE;
 	}
 
-	key->key_size = keylen * 8;
+	key->key_size = isc_hmac_key_expose(hkey).length * 8;
 	key->keydata.hmac_key = hkey;
 
 	isc_buffer_forward(data, r.length);
@@ -362,47 +332,48 @@ hmac_fromdns(isc_md_type_t type, dst_key_t *key, isc_buffer_t *data) {
 
 static int
 hmac__get_tag_key(isc_md_type_t type) {
-	if (type == ISC_MD_MD5) {
+	switch (type) {
+	case ISC_MD_MD5:
 		return TAG_HMACMD5_KEY;
-	} else if (type == ISC_MD_SHA1) {
+	case ISC_MD_SHA1:
 		return TAG_HMACSHA1_KEY;
-	} else if (type == ISC_MD_SHA224) {
+	case ISC_MD_SHA224:
 		return TAG_HMACSHA224_KEY;
-	} else if (type == ISC_MD_SHA256) {
+	case ISC_MD_SHA256:
 		return TAG_HMACSHA256_KEY;
-	} else if (type == ISC_MD_SHA384) {
+	case ISC_MD_SHA384:
 		return TAG_HMACSHA384_KEY;
-	} else if (type == ISC_MD_SHA512) {
+	case ISC_MD_SHA512:
 		return TAG_HMACSHA512_KEY;
-	} else {
+	default:
 		UNREACHABLE();
 	}
 }
 
 static int
 hmac__get_tag_bits(isc_md_type_t type) {
-	if (type == ISC_MD_MD5) {
+	switch (type) {
+	case ISC_MD_MD5:
 		return TAG_HMACMD5_BITS;
-	} else if (type == ISC_MD_SHA1) {
+	case ISC_MD_SHA1:
 		return TAG_HMACSHA1_BITS;
-	} else if (type == ISC_MD_SHA224) {
+	case ISC_MD_SHA224:
 		return TAG_HMACSHA224_BITS;
-	} else if (type == ISC_MD_SHA256) {
+	case ISC_MD_SHA256:
 		return TAG_HMACSHA256_BITS;
-	} else if (type == ISC_MD_SHA384) {
+	case ISC_MD_SHA384:
 		return TAG_HMACSHA384_BITS;
-	} else if (type == ISC_MD_SHA512) {
+	case ISC_MD_SHA512:
 		return TAG_HMACSHA512_BITS;
-	} else {
+	default:
 		UNREACHABLE();
 	}
 }
 
 static isc_result_t
 hmac_tofile(isc_md_type_t type, const dst_key_t *key, const char *directory) {
-	dst_hmac_key_t *hkey;
+	isc_region_t raw_key;
 	dst_private_t priv;
-	int bytes = (key->key_size + 7) / 8;
 	uint16_t bits;
 
 	if (key->keydata.hmac_key == NULL) {
@@ -413,11 +384,11 @@ hmac_tofile(isc_md_type_t type, const dst_key_t *key, const char *directory) {
 		return DST_R_EXTERNALKEY;
 	}
 
-	hkey = key->keydata.hmac_key;
+	raw_key = isc_hmac_key_expose(key->keydata.hmac_key);
 
 	priv.elements[0].tag = hmac__get_tag_key(type);
-	priv.elements[0].length = bytes;
-	priv.elements[0].data = hkey->key;
+	priv.elements[0].length = raw_key.length;
+	priv.elements[0].data = raw_key.base;
 
 	bits = htons(key->key_bits);
 

@@ -88,7 +88,6 @@ isc_srcset.add(
         'helper.c',
         'hex.c',
         'histo.c',
-        'hmac.c',
         'ht.c',
         'httpd.c',
         'interfaceiter.c',
