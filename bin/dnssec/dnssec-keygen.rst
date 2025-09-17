@@ -81,16 +81,26 @@ Options
    This option indicates that the DNS record containing the key should have the
    specified class. If not specified, class IN is used.
 
-.. option:: -f flag
+.. option:: -f [-]flag
 
-   This option sets the specified flag in the flag field of the KEY/DNSKEY record.
-   The only recognized flags are ZSK (Zone-Signing Key), KSK (Key-Signing Key)
-   and REVOKE.
+   This option sets (or unsets) the specified flag in the flag field of the
+   KEY/DNSKEY record.  The only recognized flags are ZSK (Zone-Signing
+   Key), KSK (Key-Signing Key), ADT (Authoritative Delegation Types), and
+   REVOKE.
 
-   Note that ZSK is not a physical flag in the DNSKEY record, it is merely used
-   to explicitly tell that you want to create a ZSK. Setting :option:`-f` in
-   conjunction with :option:`-k` will result in generating keys that only
-   match the given role set with this option.
+   Prepending a flag with a minus sign (``-``) negates the flag. This can
+   be used to turn off the ADT flag, which is on by default.
+
+   Flags are case-insensitive and can be abbreviated to a single letter.
+   Note that only one flag can be specified per ``-f`` option. For example,
+   ``-f-a -fk`` sets KSK and unsets ADT, but ``-fk-a`` only sets KSK and
+   has no effect on ADT.
+
+   ZSK is not a physical flag in the DNSKEY record, it is merely used
+   to explicitly tell that you want to create a ZSK.
+
+   Setting :option:`-f` in conjunction with :option:`-k` will result in
+   generating keys that only match the given role set with this option.
 
 .. option:: -F
 

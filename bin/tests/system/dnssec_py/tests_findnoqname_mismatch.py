@@ -36,7 +36,7 @@ def _make_key():
     dnskey = dns.dnssec.make_dnskey(
         private_key.public_key(),
         algorithm="ECDSAP256SHA256",
-        flags=257,
+        flags=259,
     )
     private_pem = private_key.private_bytes(
         encoding=serialization.Encoding.PEM,

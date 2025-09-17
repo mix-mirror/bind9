@@ -47,7 +47,7 @@ def _make_key(zone: str):
     dnskey = dns.dnssec.make_dnskey(
         private_key.public_key(),
         algorithm="ECDSAP256SHA256",
-        flags=257,
+        flags=259,
     )
     ds = dns.dnssec.make_ds(dns.name.from_text(zone), dnskey, "SHA256")
     private_pem = private_key.private_bytes(
