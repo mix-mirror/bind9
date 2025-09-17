@@ -485,7 +485,8 @@ mv "$zonefile.stripped" "$zonefile.signed"
 
 #
 # The KSK gets removed from the signed zone, but the ZSK is still there.
-# 257 is the flag value indicating the key is the KSK
+# 259 is the flag value indicating the key is the KSK. (257 if the ADT flag
+# was off.)
 #
 zone=missing-ksk
 infile=missing-ksk.db.in
@@ -494,7 +495,7 @@ key1=$("$KEYGEN" -q -a "$DEFAULT_ALGORITHM" -b "$DEFAULT_BITS" "$zone")
 key2=$("$KEYGEN" -q -a "$DEFAULT_ALGORITHM" -b "$DEFAULT_BITS" -f KSK "$zone")
 cat "$infile" "$key1.key" "$key2.key" >"$zonefile"
 "$SIGNER" -o "$zone" "$zonefile" >/dev/null 2>&1
-"$CHECKZONE" -D -q -i local "$zone" "$zonefile.signed" | awk '$4 == "DNSKEY" && $5 == "257" { next } { print }' >"$zonefile.stripped"
+"$CHECKZONE" -D -q -i local "$zone" "$zonefile.signed" | awk '$4 == "DNSKEY" && $5 == "259" { next } { print }' >"$zonefile.stripped"
 mv "$zonefile.stripped" "$zonefile.signed"
 
 zone=wrong-dnskey

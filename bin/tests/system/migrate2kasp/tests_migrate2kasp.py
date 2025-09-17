@@ -333,7 +333,7 @@ def test_migrate2kasp_case(servers, params):
 
     # Special case: CSK without SEP bit set.
     if zone == "csk-nosep.kasp":
-        expected[0].flags = 256
+        expected[0].flags = 258
 
     # Key files.
     keys = isctest.kasp.keydir_to_keylist(zone, params["config"]["key-directory"])
