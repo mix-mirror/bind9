@@ -89,6 +89,7 @@ struct keygen_ctx {
 	bool wantzsk;
 	bool wantksk;
 	bool wantrev;
+	bool wantadt;
 	dst_algorithm_t alg;
 	/* timing data */
 	int prepub;
@@ -164,7 +165,8 @@ usage(int ret) {
 			"        algorithm and usage (ZSK or KSK)\n");
 	fprintf(stderr, "    -c <class>: (default: IN)\n");
 	fprintf(stderr, "    -d <digest bits> (0 => max, default)\n");
-	fprintf(stderr, "    -f <keyflag>: ZSK | KSK | REVOKE\n");
+	fprintf(stderr, "    -f <keyflag>: [-]ZSK | [-]KSK | [-]ADT | "
+			"[-]REVOKE\n");
 	fprintf(stderr, "    -F: FIPS mode\n");
 	fprintf(stderr, "    -L <ttl>: default key TTL\n");
 	fprintf(stderr, "    -M <min>:<max>: allowed Key ID range\n");
@@ -509,6 +511,9 @@ keygen(keygen_ctx_t *ctx, const char *keyname) {
 		if (ctx->wantrev) {
 			flags |= DNS_KEYFLAG_REVOKE;
 		}
+		if (ctx->wantadt) {
+			flags |= DNS_KEYFLAG_ADT;
+		}
 	}
 
 	switch (ctx->alg) {
@@ -729,16 +734,17 @@ int
 main(int argc, char **argv) {
 	char *algname = NULL, *freeit = NULL;
 	char *classname = NULL;
-	char *endp;
+	char *endp = NULL;
 	isc_result_t result;
 	isc_textregion_t r;
-	unsigned char c;
+	uint8_t c;
 	int ch;
 
 	keygen_ctx_t ctx = {
 		.options = DST_TYPE_PRIVATE | DST_TYPE_PUBLIC,
 		.prepub = -1,
 		.size = -1,
+		.wantadt = true,
 		.now = isc_stdtime_now(),
 	};
 
@@ -779,6 +785,7 @@ main(int argc, char **argv) {
 	isc_commandline_reset = true;
 
 	while ((ch = isc_commandline_parse(argc, argv, CMDLINE_FLAGS)) != -1) {
+		bool val = true;
 		switch (ch) {
 		case '3':
 			ctx.use_nsec3 = true;
@@ -805,13 +812,19 @@ main(int argc, char **argv) {
 			fatal("%s", isc_result_totext(DST_R_NOENGINE));
 			break;
 		case 'f':
-			c = (unsigned char)(isc_commandline_argument[0]);
+			c = (uint8_t)(isc_commandline_argument[0]);
+			if (c == '-') {
+				val = false;
+				c = (uint8_t)(isc_commandline_argument[1]);
+			}
 			if (toupper(c) == 'K') {
-				ctx.wantksk = true;
+				ctx.wantksk = val;
 			} else if (toupper(c) == 'Z') {
-				ctx.wantzsk = true;
+				ctx.wantzsk = val;
 			} else if (toupper(c) == 'R') {
-				ctx.wantrev = true;
+				ctx.wantrev = val;
+			} else if (toupper(c) == 'A') {
+				ctx.wantadt = val;
 			} else {
 				fatal("unknown flag '%s'",
 				      isc_commandline_argument);
@@ -827,6 +840,8 @@ main(int argc, char **argv) {
 			break;
 		case 'k':
 			ctx.policy = isc_commandline_argument;
+			/* KASP keys always use the ADT flag */
+			ctx.wantadt = true;
 			break;
 		case 'L':
 			ctx.ttl = strtottl(isc_commandline_argument);

@@ -67,7 +67,7 @@ def bootstrap():
         dnskey = dns.dnssec.make_dnskey(
             public_key=private_key.public_key(),
             algorithm=dns.dnssec.Algorithm.ECDSAP256SHA256,
-            flags=257,
+            flags=259,
         )
 
         # Sign zone.

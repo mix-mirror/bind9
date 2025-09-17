@@ -162,15 +162,15 @@ def rsa1_properties(alg):
     ]
 
 
-def fips_properties(alg, bits=None):
+def fips_properties(alg, bits=None, extra=""):
     sizes = [2048, 2048, 3072]
     if bits is not None:
         sizes = [bits, bits, bits]
 
     return [
-        f"ksk {lifetime['P10Y']} {alg} {sizes[0]} goal:omnipresent dnskey:rumoured krrsig:rumoured ds:hidden",
-        f"zsk {lifetime['P5Y']} {alg} {sizes[1]} goal:omnipresent dnskey:rumoured zrrsig:rumoured",
-        f"zsk {lifetime['P1Y']} {alg} {sizes[2]} goal:omnipresent dnskey:rumoured zrrsig:rumoured",
+        f"ksk {lifetime['P10Y']} {alg} {sizes[0]} goal:omnipresent dnskey:rumoured krrsig:rumoured ds:hidden {extra}",
+        f"zsk {lifetime['P5Y']} {alg} {sizes[1]} goal:omnipresent dnskey:rumoured zrrsig:rumoured {extra}",
+        f"zsk {lifetime['P1Y']} {alg} {sizes[2]} goal:omnipresent dnskey:rumoured zrrsig:rumoured {extra}",
     ]
 
 
@@ -236,6 +236,7 @@ def cb_ixfr_is_signed(expected_updates, params, ksks=None, zsks=None):
             servers["ns3"], zone, qname, qtype, rdata, ksks, zsks
         )
 
+    update = None
     for update in expected_updates:
         isctest.run.retry_with_timeout(update_is_signed, timeout=10)
 
@@ -620,7 +621,11 @@ def cb_remove_keyfiles(params, ksks=None, zsks=None):
                 "policy": "rsasha256",
                 "config": kasp_config,
                 "pregenerated": True,
-                "key-properties": fips_properties(8),
+                "key-properties": [
+                    f"ksk {lifetime['P10Y']} 8 2048  goal:omnipresent dnskey:rumoured krrsig:rumoured ds:hidden",
+                    f"zsk {lifetime['P5Y']} 8 2048 goal:omnipresent dnskey:rumoured zrrsig:rumoured",
+                    f"zsk {lifetime['P1Y']} 8 3072 goal:omnipresent dnskey:rumoured zrrsig:rumoured",
+                ],
             },
             id="some-keys.kasp",
         ),
@@ -1099,6 +1104,7 @@ def test_kasp_dynamic(ns3):
 
     # Key properties.
     key1 = KeyProperties.default()
+
     # The ns3/setup.sh script sets all states to omnipresent.
     key1.metadata["DNSKEYState"] = "omnipresent"
     key1.metadata["KRRSIGState"] = "omnipresent"

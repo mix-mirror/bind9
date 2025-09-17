@@ -28,18 +28,18 @@ def bootstrap():
     root = configure_root([revoked_zone, active_zone], signed=False)
 
     # The trust anchor key tag must match the revoked truncated self-signed key
-    # in the zone (key tag 33167). The flags differ here (257 vs 385) because
+    # in the zone (key tag 33167). The flags differ here (259 vs 387) because
     # the revoked bit is not part of the trust anchor, but it is part of the key
     # tag calculation.
     revoked_ta = TrustAnchor(
-        "truncated-revoked.selfsigned", "static-key", '257 3 14 "fYA="'
+        "truncated-revoked.selfsigned", "static-key", '259 3 14 "fYA="'
     )
 
     # The active truncated key is too short for the ECDSA curve but passes the
     # parser's minimum-length check; trusting it directly exercises the
     # key-construction failure path.
     active_ta = TrustAnchor(
-        "truncated-active.selfsigned", "static-key", '257 3 14 "fYA="'
+        "truncated-active.selfsigned", "static-key", '259 3 14 "fYA="'
     )
 
     return {

@@ -18,7 +18,7 @@ zone "f045.test" {
 };
 
 trust-anchors {
-	f045.test. static-key 257 3 13 "@PARENT_DNSKEY@";
+	f045.test. static-key 259 3 13 "@PARENT_DNSKEY@";
 };
 {% else %}
 zone "f043.test" {
@@ -27,6 +27,6 @@ zone "f043.test" {
 };
 
 trust-anchors {
-	f043.test. static-key 257 3 13 "@TESTZONE_DNSKEY@";
+	f043.test. static-key 259 3 13 "@TESTZONE_DNSKEY@";
 };
 {% endif %}

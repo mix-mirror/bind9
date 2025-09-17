@@ -975,7 +975,7 @@ for alg in ${DEFAULT_ALGORITHM_NUMBER} ${ALTERNATIVE_ALGORITHM_NUMBER}; do
     *) echo_i "checking $alg" ;;
   esac
 
-  dnskeys=$(grep "IN.DNSKEY.25[67] [0-9]* $alg " dig.out.ns3.test$n | wc -l)
+  dnskeys=$(grep "IN.DNSKEY.25[89] [0-9]* $alg " dig.out.ns3.test$n | wc -l)
   rrsigs=$(grep "RRSIG.DNSKEY $alg " dig.out.ns3.test$n | wc -l)
   test ${dnskeys:-0} -eq 4 || {
     echo_i "failed $alg (dnskeys ${dnskeys:-0})"
