@@ -103,6 +103,7 @@ enum {
 enum {
 	DNS_MESSAGEEXTFLAG_DO = 0x8000U, /* DNSSEC OK */
 	DNS_MESSAGEEXTFLAG_CO = 0x4000U, /* Compact denial of existence OK */
+	DNS_MESSAGEEXTFLAG_DE = 0x2000U, /* DELEG OK */
 };
 
 /*%< EDNS0 extended OPT codes */

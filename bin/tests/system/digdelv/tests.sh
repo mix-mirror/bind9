@@ -291,6 +291,14 @@ if [ -x "$DIG" ]; then
   if [ $ret -ne 0 ]; then echo_i "failed"; fi
   status=$((status + ret))
 
+  n=$((n + 1))
+  echo_i "checking dig +deflag works ($n)"
+  ret=0
+  dig_with_opts +tcp @10.53.0.3 +deflag +qr example >dig.out.test$n || ret=1
+  grep "^; EDNS: version: 0, flags: de;" <dig.out.test$n >/dev/null || ret=1
+  if [ $ret -ne 0 ]; then echo_i "failed"; fi
+  status=$((status + ret))
+
   if [ $HAS_PYYAML -ne 0 ]; then
     n=$((n + 1))
     echo_i "checking dig +coflag +yaml works ($n)"
