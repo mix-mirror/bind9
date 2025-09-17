@@ -41,8 +41,8 @@ def test_rollover_manual(ns3):
     isctest.kasp.check_dnssec_verify(ns3, zone)
 
     key_properties = [
-        f"ksk unlimited {alg} {size} goal:omnipresent dnskey:omnipresent krrsig:omnipresent ds:omnipresent",
-        f"zsk unlimited {alg} {size} goal:omnipresent dnskey:omnipresent zrrsig:omnipresent",
+        f"ksk unlimited {alg} {size} goal:omnipresent dnskey:omnipresent krrsig:omnipresent ds:omnipresent noadt",
+        f"zsk unlimited {alg} {size} goal:omnipresent dnskey:omnipresent zrrsig:omnipresent noadt",
     ]
     expected = isctest.kasp.policy_to_properties(ttl, key_properties)
     keys = isctest.kasp.keydir_to_keylist(zone, ns3.identifier)
@@ -89,9 +89,9 @@ def test_rollover_manual(ns3):
     isctest.kasp.check_dnssec_verify(ns3, zone)
 
     key_properties = [
-        f"ksk unlimited {alg} {size} goal:hidden dnskey:omnipresent krrsig:omnipresent ds:omnipresent",
+        f"ksk unlimited {alg} {size} goal:hidden dnskey:omnipresent krrsig:omnipresent ds:omnipresent noadt",
         f"ksk unlimited {alg} {size} goal:omnipresent dnskey:rumoured krrsig:rumoured ds:hidden",
-        f"zsk unlimited {alg} {size} goal:omnipresent dnskey:omnipresent zrrsig:omnipresent",
+        f"zsk unlimited {alg} {size} goal:omnipresent dnskey:omnipresent zrrsig:omnipresent noadt",
     ]
     expected = isctest.kasp.policy_to_properties(ttl, key_properties)
     keys = isctest.kasp.keydir_to_keylist(zone, ns3.identifier)
@@ -131,9 +131,9 @@ def test_rollover_manual(ns3):
     isctest.kasp.check_dnssec_verify(ns3, zone)
 
     key_properties = [
-        f"ksk unlimited {alg} {size} goal:hidden dnskey:omnipresent krrsig:omnipresent ds:omnipresent",
+        f"ksk unlimited {alg} {size} goal:hidden dnskey:omnipresent krrsig:omnipresent ds:omnipresent noadt",
         f"ksk unlimited {alg} {size} goal:omnipresent dnskey:rumoured krrsig:rumoured ds:hidden",
-        f"zsk unlimited {alg} {size} goal:hidden dnskey:omnipresent zrrsig:omnipresent",
+        f"zsk unlimited {alg} {size} goal:hidden dnskey:omnipresent zrrsig:omnipresent noadt",
         f"zsk unlimited {alg} {size} goal:omnipresent dnskey:rumoured zrrsig:hidden",
     ]
     expected = isctest.kasp.policy_to_properties(ttl, key_properties)

@@ -89,6 +89,7 @@ struct keygen_ctx {
 	bool wantzsk;
 	bool wantksk;
 	bool wantrev;
+	bool wantadt;
 	dst_algorithm_t alg;
 	/* timing data */
 	int prepub;
@@ -522,6 +523,9 @@ keygen(keygen_ctx_t *ctx, int argc, char **argv) {
 		if (ctx->wantrev) {
 			flags |= DNS_KEYFLAG_REVOKE;
 		}
+		if (ctx->wantadt) {
+			flags |= DNS_KEYFLAG_ADT;
+		}
 	}
 
 	switch (ctx->alg) {
@@ -871,6 +875,8 @@ main(int argc, char **argv) {
 				ctx.wantzsk = true;
 			} else if (toupper(c) == 'R') {
 				ctx.wantrev = true;
+			} else if (toupper(c) == 'A') {
+				ctx.wantadt = true;
 			} else {
 				fatal("unknown flag '%s'",
 				      isc_commandline_argument);
@@ -886,6 +892,8 @@ main(int argc, char **argv) {
 			break;
 		case 'k':
 			ctx.policy = isc_commandline_argument;
+			/* KASP keys always use the ADT flag */
+			ctx.wantadt = true;
 			break;
 		case 'L':
 			ctx.ttl = strtottl(isc_commandline_argument);
