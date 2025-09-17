@@ -21,13 +21,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-/*
- * As a workaround, include an OpenSSL header file before including cmocka.h,
- * because OpenSSL 3.1.0 uses __attribute__(malloc), conflicting with a
- * redefined malloc in cmocka.h.
- */
-#include <openssl/err.h>
-
 #define UNIT_TESTING
 #include <cmocka.h>
 
@@ -39,14 +32,11 @@
 #include <isc/region.h>
 #include <isc/result.h>
 
-#include "hmac.c"
-
 #include <tests/isc.h>
 
 #define TEST_INPUT(x) (x), sizeof(x) - 1
 
-static int
-_setup(void **state) {
+ISC_SETUP_TEST_IMPL(hmac_state) {
 	isc_hmac_t *hmac_st = isc_hmac_new();
 	if (hmac_st == NULL) {
 		return -1;
@@ -69,9 +59,7 @@ _reset(void **state) {
 	if (*state == NULL) {
 		return -1;
 	}
-	if (isc_hmac_reset(*state) != ISC_R_SUCCESS) {
-		return -1;
-	}
+
 	return 0;
 }
 
@@ -96,11 +84,16 @@ static void
 isc_hmac_test(isc_hmac_t *hmac_st, const void *key, size_t keylen,
 	      isc_md_type_t type, const char *buf, size_t buflen,
 	      const char *result, const size_t repeats) {
+	isc_hmac_key_t *hkey = NULL;
 	isc_result_t res;
 
+	assert_int_equal(
+		isc_hmac_key_create(type, key, keylen, isc_g_mctx, &hkey),
+		ISC_R_SUCCESS);
 	assert_non_null(hmac_st);
-	assert_int_equal(isc_hmac_init(hmac_st, key, keylen, type),
-			 ISC_R_SUCCESS);
+
+	res = isc_hmac_init(hmac_st, hkey);
+	assert_return_code(res, ISC_R_SUCCESS);
 
 	for (size_t i = 0; i < repeats; i++) {
 		assert_int_equal(isc_hmac_update(hmac_st,
@@ -109,14 +102,16 @@ isc_hmac_test(isc_hmac_t *hmac_st, const void *key, size_t keylen,
 				 ISC_R_SUCCESS);
 	}
 
-	unsigned char digest[ISC_MAX_MD_SIZE];
-	unsigned int digestlen = sizeof(digest);
-	assert_int_equal(isc_hmac_final(hmac_st, digest, &digestlen),
-			 ISC_R_SUCCESS);
+	unsigned char raw_digest[ISC_MAX_MD_SIZE];
+	isc_buffer_t digest;
+
+	isc_buffer_init(&digest, raw_digest, sizeof(raw_digest));
+	assert_int_equal(isc_hmac_final(hmac_st, &digest), ISC_R_SUCCESS);
 
 	char hexdigest[ISC_MAX_MD_SIZE * 2 + 3];
-	isc_region_t r = { .base = digest, .length = digestlen };
+	isc_region_t r;
 	isc_buffer_t b;
+	isc_buffer_usedregion(&digest, &r);
 	isc_buffer_init(&b, hexdigest, sizeof(hexdigest));
 
 	res = isc_hex_totext(&r, 0, "", &b);
@@ -124,106 +119,86 @@ isc_hmac_test(isc_hmac_t *hmac_st, const void *key, size_t keylen,
 	assert_return_code(res, ISC_R_SUCCESS);
 
 	assert_memory_equal(hexdigest, result, result ? strlen(result) : 0);
-	assert_int_equal(isc_hmac_reset(hmac_st), ISC_R_SUCCESS);
+
+	isc_hmac_key_destroy(&hkey);
 }
 
-ISC_RUN_TEST_IMPL(isc_hmac_init) {
-	isc_hmac_t *hmac_st = *state;
-	assert_non_null(hmac_st);
+ISC_RUN_TEST_IMPL(isc_hmac_key_create) {
+	isc_hmac_key_t *key = NULL;
 
-	assert_int_equal(isc_hmac_init(hmac_st, "", 0, ISC_MD_UNKNOWN),
-			 ISC_R_NOTIMPLEMENTED);
+	assert_int_equal(
+		isc_hmac_key_create(ISC_MD_UNKNOWN, "", 0, isc_g_mctx, &key),
+		ISC_R_NOTIMPLEMENTED);
 
 	if (!isc_crypto_fips_mode()) {
-		expect_assert_failure(isc_hmac_init(NULL, "", 0, ISC_MD_MD5));
+		/*
+		expect_assert_failure(isc_hmac_key_create(ISC_MD_MD5, NULL, 0,
+							  isc_g_mctx, &key));
+		*/
 
-		expect_assert_failure(
-			isc_hmac_init(hmac_st, NULL, 0, ISC_MD_MD5));
-
-		assert_int_equal(isc_hmac_init(hmac_st, "", 0, ISC_MD_MD5),
+		assert_int_equal(isc_hmac_key_create(ISC_MD_MD5, "", 0,
+						     isc_g_mctx, &key),
 				 ISC_R_SUCCESS);
-		assert_int_equal(isc_hmac_reset(hmac_st), ISC_R_SUCCESS);
+		isc_hmac_key_destroy(&key);
 	}
 
-	assert_int_equal(isc_hmac_init(hmac_st, "", 0, ISC_MD_SHA1),
-			 ISC_R_SUCCESS);
-	assert_int_equal(isc_hmac_reset(hmac_st), ISC_R_SUCCESS);
+	assert_int_equal(
+		isc_hmac_key_create(ISC_MD_SHA1, "", 0, isc_g_mctx, &key),
+		ISC_R_SUCCESS);
+	isc_hmac_key_destroy(&key);
 
-	assert_int_equal(isc_hmac_init(hmac_st, "", 0, ISC_MD_SHA224),
-			 ISC_R_SUCCESS);
-	assert_int_equal(isc_hmac_reset(hmac_st), ISC_R_SUCCESS);
+	assert_int_equal(
+		isc_hmac_key_create(ISC_MD_SHA224, "", 0, isc_g_mctx, &key),
+		ISC_R_SUCCESS);
+	isc_hmac_key_destroy(&key);
 
-	assert_int_equal(isc_hmac_init(hmac_st, "", 0, ISC_MD_SHA256),
-			 ISC_R_SUCCESS);
-	assert_int_equal(isc_hmac_reset(hmac_st), ISC_R_SUCCESS);
+	assert_int_equal(
+		isc_hmac_key_create(ISC_MD_SHA256, "", 0, isc_g_mctx, &key),
+		ISC_R_SUCCESS);
+	isc_hmac_key_destroy(&key);
 
-	assert_int_equal(isc_hmac_init(hmac_st, "", 0, ISC_MD_SHA384),
-			 ISC_R_SUCCESS);
-	assert_int_equal(isc_hmac_reset(hmac_st), ISC_R_SUCCESS);
+	assert_int_equal(
+		isc_hmac_key_create(ISC_MD_SHA384, "", 0, isc_g_mctx, &key),
+		ISC_R_SUCCESS);
+	isc_hmac_key_destroy(&key);
 
-	assert_int_equal(isc_hmac_init(hmac_st, "", 0, ISC_MD_SHA512),
-			 ISC_R_SUCCESS);
-	assert_int_equal(isc_hmac_reset(hmac_st), ISC_R_SUCCESS);
+	assert_int_equal(
+		isc_hmac_key_create(ISC_MD_SHA512, "", 0, isc_g_mctx, &key),
+		ISC_R_SUCCESS);
+	isc_hmac_key_destroy(&key);
 }
 
 ISC_RUN_TEST_IMPL(isc_hmac_update) {
 	isc_hmac_t *hmac_st = *state;
 	assert_non_null(hmac_st);
 
-	/* Uses message digest context initialized in isc_hmac_init_test() */
-	expect_assert_failure(isc_hmac_update(NULL, NULL, 0));
-
 	assert_int_equal(isc_hmac_update(hmac_st, NULL, 100), ISC_R_SUCCESS);
 	assert_int_equal(isc_hmac_update(hmac_st, (const unsigned char *)"", 0),
 			 ISC_R_SUCCESS);
 }
 
-ISC_RUN_TEST_IMPL(isc_hmac_reset) {
-	isc_hmac_t *hmac_st = *state;
-#if 0
-	unsigned char digest[ISC_MAX_MD_SIZE] ISC_ATTR_UNUSED;
-	unsigned int digestlen ISC_ATTR_UNUSED;
-#endif /* if 0 */
-
-	assert_non_null(hmac_st);
-
-	assert_int_equal(isc_hmac_init(hmac_st, "", 0, ISC_MD_SHA512),
-			 ISC_R_SUCCESS);
-	assert_int_equal(
-		isc_hmac_update(hmac_st, (const unsigned char *)"a", 1),
-		ISC_R_SUCCESS);
-	assert_int_equal(
-		isc_hmac_update(hmac_st, (const unsigned char *)"b", 1),
-		ISC_R_SUCCESS);
-
-	assert_int_equal(isc_hmac_reset(hmac_st), ISC_R_SUCCESS);
-
-#if 0
-	/*
-	 * This test would require OpenSSL compiled with mock_assert(),
-	 * so this could be only manually checked that the test will
-	 * segfault when called by hand
-	 */
-	expect_assert_failure(isc_hmac_final(hmac_st, digest, &digestlen));
-#endif /* if 0 */
-}
-
 ISC_RUN_TEST_IMPL(isc_hmac_final) {
+	isc_hmac_key_t *key = NULL;
 	isc_hmac_t *hmac_st = *state;
 	assert_non_null(hmac_st);
+
+	assert_int_equal(
+		isc_hmac_key_create(ISC_MD_SHA512, "", 0, isc_g_mctx, &key),
+		ISC_R_SUCCESS);
 
 	unsigned char digest[ISC_MAX_MD_SIZE];
-	unsigned int digestlen = sizeof(digest);
+	isc_buffer_t digestbuf;
 
-	/* Fail when message digest context is empty */
-	expect_assert_failure(isc_hmac_final(NULL, digest, &digestlen));
 	/* Fail when output buffer is empty */
-	expect_assert_failure(isc_hmac_final(hmac_st, NULL, &digestlen));
+	isc_buffer_init(&digestbuf, NULL, 0);
+	assert_int_equal(isc_hmac_final(hmac_st, &digestbuf), ISC_R_NOSPACE);
 
-	assert_int_equal(isc_hmac_init(hmac_st, "", 0, ISC_MD_SHA512),
-			 ISC_R_SUCCESS);
-	/* Fail when the digest length pointer is empty */
-	expect_assert_failure(isc_hmac_final(hmac_st, digest, NULL));
+	/* Fail when the digest length is empty */
+	assert_int_equal(isc_hmac_init(hmac_st, key), ISC_R_SUCCESS);
+	isc_buffer_init(&digestbuf, digest, 0);
+	assert_int_equal(isc_hmac_final(hmac_st, &digestbuf), ISC_R_NOSPACE);
+
+	isc_hmac_key_destroy(&key);
 }
 
 ISC_RUN_TEST_IMPL(isc_hmac_md5) {
@@ -919,10 +894,7 @@ ISC_RUN_TEST_IMPL(isc_hmac_sha512) {
 ISC_TEST_LIST_START
 
 ISC_TEST_ENTRY(isc_hmac_new)
-ISC_TEST_ENTRY_CUSTOM(isc_hmac_init, _reset, _reset)
-
-ISC_TEST_ENTRY_CUSTOM(isc_hmac_reset, _reset, _reset)
-
+ISC_TEST_ENTRY(isc_hmac_key_create)
 ISC_TEST_ENTRY(isc_hmac_md5)
 ISC_TEST_ENTRY(isc_hmac_sha1)
 ISC_TEST_ENTRY(isc_hmac_sha224)
@@ -937,4 +909,4 @@ ISC_TEST_ENTRY(isc_hmac_free)
 
 ISC_TEST_LIST_END
 
-ISC_TEST_MAIN_CUSTOM(_setup, _teardown)
+ISC_TEST_MAIN_CUSTOM(setup_test_hmac_state, _teardown)

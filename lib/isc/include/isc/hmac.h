@@ -18,11 +18,15 @@
 
 #pragma once
 
+#include <stdbool.h>
+
 #include <isc/md.h>
 #include <isc/result.h>
 #include <isc/types.h>
 
 typedef void isc_hmac_t;
+
+typedef struct isc_hmac_key isc_hmac_key_t;
 
 /**
  * isc_hmac:
@@ -47,6 +51,46 @@ isc_hmac(isc_md_type_t type, const void *key, const size_t keylen,
 	 const unsigned char *buf, const size_t len, unsigned char *digest,
 	 unsigned int *digestlen);
 
+/*
+ * isc_hmac_key_create:
+ * @type: the digest type
+ * @secret: the secret key
+ * @len: length of the secret key
+ * @mctx: memory context
+ * @keyp: pointer to the key pointer
+ *
+ * This initializes the an HMAC key bound to a specific digest.
+ */
+isc_result_t
+isc_hmac_key_create(isc_md_type_t type, const void *secret, const size_t len,
+		    isc_mem_t *mctx, isc_hmac_key_t **keyp);
+
+void
+isc_hmac_key_destroy(isc_hmac_key_t **keyp);
+
+/**
+ * isc_hmac_key_expose:
+ * @key: The key to be exposed
+ *
+ * This function exposes the raw bytes of the HMAC key.
+ *
+ * The region is bound to the lifetime of the @key and MUST NOT be used after
+ * calling isc_hmac_key_destroy.
+ */
+isc_region_t
+isc_hmac_key_expose(isc_hmac_key_t *key);
+
+/**
+ * isc_hmac_key_equal:
+ * @key1: The first key to be compared
+ * @key2: The second key to be compared
+ *
+ * Returns true is the two HMAC keys have the same contents and use the same
+ * digest function.
+ */
+bool
+isc_hmac_key_equal(isc_hmac_key_t *key1, isc_hmac_key_t *key2);
+
 /**
  * isc_hmac_new:
  *
@@ -68,26 +112,11 @@ isc_hmac_free(isc_hmac_t *hmac);
  * isc_hmac_init:
  * @md: HMAC context
  * @key: HMAC key
- * @keylen: HMAC key length
- * @type: digest type
  *
- * This function sets up HMAC context to use a hash function of @type and key
- * @key which is @keylen bytes long.
- */
-
-isc_result_t
-isc_hmac_init(isc_hmac_t *hmac, const void *key, const size_t keylen,
-	      isc_md_type_t type);
-
-/**
- * isc_hmac_reset:
- * @hmac: HMAC context
- *
- * This function resets the HMAC context.  This can be used to reuse an already
- * existing context.
+ * This function sets up HMAC context to use the secret specified in @key.
  */
 isc_result_t
-isc_hmac_reset(isc_hmac_t *hmac);
+isc_hmac_init(isc_hmac_t *hmac, isc_hmac_key_t *key);
 
 /**
  * isc_hmac_update:
@@ -104,34 +133,13 @@ isc_hmac_update(isc_hmac_t *hmac, const unsigned char *buf, const size_t len);
 /**
  * isc_hmac_final:
  * @hmac: HMAC context
- * @digest: the output buffer
- * @digestlen: in: the length of @digest
- *             out: the length of the data written to @digest
+ * @out: the output buffer
  *
  * This function retrieves the message authentication code from @hmac and places
- * it in @digest, which must have space for the hash function output. @digestlen
- * is used to pass in the length of the digest buffer and returns the length
- * of digest written to @digest.  After calling this function no additional
- * calls to isc_hmac_update() can be made.
+ * it in @out, which must have space for the hash function output.
+ *
+ * After calling this function no additional calls to isc_hmac_update() can be
+ * made. Use isc_hmac_init() to reset/re-initialize the context.
  */
 isc_result_t
-isc_hmac_final(isc_hmac_t *hmac, unsigned char *digest,
-	       unsigned int *digestlen);
-
-/**
- * isc_hmac_get_size:
- *
- * This function return the size of the message digest when passed an isc_hmac_t
- * structure, i.e. the size of the hash.
- */
-size_t
-isc_hmac_get_size(isc_hmac_t *hmac);
-
-/**
- * isc_hmac_get_block_size:
- *
- * This function return the block size of the message digest when passed an
- * isc_hmac_t structure.
- */
-int
-isc_hmac_get_block_size(isc_hmac_t *hmac);
+isc_hmac_final(isc_hmac_t *hmac, isc_buffer_t *out);
