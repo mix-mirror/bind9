@@ -32,6 +32,7 @@
 #include <urcu/compiler.h>
 #include <urcu/rculfhash.h>
 #include <urcu/rculist.h>
+#include <urcu/ref.h>
 #include <urcu/wfstack.h>
 
 #pragma GCC diagnostic pop

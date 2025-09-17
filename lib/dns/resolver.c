@@ -38,6 +38,7 @@
 #include <isc/tid.h>
 #include <isc/time.h>
 #include <isc/timer.h>
+#include <isc/urcu.h>
 #include <isc/util.h>
 
 #include <dns/acl.h>
@@ -246,6 +247,8 @@ STATIC_ASSERT(NS_PROCESSING_LIMIT > NS_RR_LIMIT,
 #define RES_DOMAIN_HASH_BITS 12
 #endif /* ifndef RES_DOMAIN_HASH_BITS */
 
+#define RES_DOMAIN_HASH_SIZE (1 << RES_DOMAIN_HASH_BITS)
+
 /*%
  * Maximum EDNS0 input packet size.
  */
@@ -356,7 +359,7 @@ struct fetchctx {
 	dns_edectx_t edectx;
 
 	/* Atomic */
-	isc_refcount_t references;
+	struct urcu_ref ref;
 
 	/*% Locked by lock. */
 	isc_mutex_t lock;
@@ -482,6 +485,9 @@ struct fetchctx {
 
 	isc_counter_t *nvalidations;
 	isc_counter_t *nfails;
+
+	struct cds_lfht_node ht_node;
+	struct rcu_head rcu_head;
 };
 
 #define FCTX_MAGIC	 ISC_MAGIC('F', '!', '!', '!')
@@ -560,8 +566,7 @@ struct dns_resolver {
 	dns_dispatchset_t *dispatches4;
 	dns_dispatchset_t *dispatches6;
 
-	isc_hashmap_t *fctxs;
-	isc_rwlock_t fctxs_lock;
+	struct cds_lfht *fctxs_ht;
 
 	isc_hashmap_t *counters;
 	isc_rwlock_t counters_lock;
@@ -679,37 +684,66 @@ findnoqname(fetchctx_t *fctx, dns_message_t *message, dns_name_t *name,
 
 #define fctx_failure_detach(fctxp, result)                              \
 	REQUIRE(result != ISC_R_SUCCESS);                               \
+	rcu_read_lock();                                                \
 	if (fctx__done(*fctxp, result, __func__, __FILE__, __LINE__)) { \
 		fetchctx_detach(fctxp);                                 \
-	}
+	};                                                              \
+	rcu_read_unlock()
 
 #define fctx_failure_unref(fctx, result)                              \
 	REQUIRE(result != ISC_R_SUCCESS);                             \
+	rcu_read_lock();                                              \
 	if (fctx__done(fctx, result, __func__, __FILE__, __LINE__)) { \
 		fetchctx_unref(fctx);                                 \
-	}
+	};                                                            \
+	rcu_read_unlock()
 
 #define fctx_success_detach(fctxp)                                             \
+	rcu_read_lock();                                                       \
 	if (fctx__done(*fctxp, ISC_R_SUCCESS, __func__, __FILE__, __LINE__)) { \
 		fetchctx_detach(fctxp);                                        \
-	}
+	};                                                                     \
+	rcu_read_unlock()
 
 #define fctx_success_unref(fctx)                                             \
+	rcu_read_lock();                                                     \
 	if (fctx__done(fctx, ISC_R_SUCCESS, __func__, __FILE__, __LINE__)) { \
 		fetchctx_unref(fctx);                                        \
-	}
+	};                                                                   \
+	rcu_read_unlock()
 
-#if DNS_RESOLVER_TRACE
-#define fetchctx_ref(ptr)   fetchctx__ref(ptr, __func__, __FILE__, __LINE__)
-#define fetchctx_unref(ptr) fetchctx__unref(ptr, __func__, __FILE__, __LINE__)
-#define fetchctx_attach(ptr, ptrp) \
-	fetchctx__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define fetchctx_detach(ptrp) \
-	fetchctx__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_TRACE_DECL(fetchctx);
-#else
-ISC_REFCOUNT_DECL(fetchctx);
-#endif
+static bool
+fetchctx_attach(fetchctx_t *fctx, fetchctx_t **fctxp) {
+	if (urcu_ref_get_unless_zero(&fctx->ref)) {
+		*fctxp = fctx;
+		return true;
+	}
+	return false;
+}
+
+static bool
+fetchctx_ref(fetchctx_t *fctx) {
+	return urcu_ref_get_unless_zero(&fctx->ref);
+}
+
+static void
+fetchctx_destroy(struct urcu_ref *ref) {
+	fetchctx_t *fctx = caa_container_of(ref, fetchctx_t, ref);
+	fctx_destroy(fctx);
+}
+
+static void
+fetchctx_detach(fetchctx_t **fctxp) {
+	fetchctx_t *fctx = *fctxp;
+	*fctxp = NULL;
+
+	urcu_ref_put(&fctx->ref, fetchctx_destroy);
+}
+
+static void
+fetchctx_unref(fetchctx_t *fctx) {
+	urcu_ref_put(&fctx->ref, fetchctx_destroy);
+}
 
 static bool
 fctx__done(fetchctx_t *fctx, isc_result_t result, const char *func,
@@ -1635,9 +1669,10 @@ fctx_hash(fetchctx_t *fctx) {
 	return isc_hash32_finalize(&hash32);
 }
 
-static bool
-fctx_match(void *node, const void *key) {
-	const fetchctx_t *fctx0 = node;
+static int
+fctx_match(struct cds_lfht_node *ht_node, const void *key) {
+	const fetchctx_t *fctx0 = caa_container_of(ht_node, fetchctx_t,
+						   ht_node);
 	const fetchctx_t *fctx1 = key;
 
 	return fctx0->options == fctx1->options && fctx0->type == fctx1->type &&
@@ -1674,13 +1709,11 @@ fctx__done(fetchctx_t *fctx, isc_result_t result, const char *func,
 	}
 	fctx->state = fetchstate_done;
 	FCTX_ATTR_CLR(fctx, FCTX_ATTR_ADDRWAIT);
-	UNLOCK(&fctx->lock);
 
 	/* The fctx will get deleted either here or in get_attached_fctx() */
-	RWLOCK(&fctx->res->fctxs_lock, isc_rwlocktype_write);
-	(void)isc_hashmap_delete(fctx->res->fctxs, fctx_hash(fctx), match_ptr,
-				 fctx);
-	RWUNLOCK(&fctx->res->fctxs_lock, isc_rwlocktype_write);
+	cds_lfht_del(fctx->res->fctxs_ht, &fctx->ht_node);
+
+	UNLOCK(&fctx->lock);
 
 	if (result == ISC_R_SUCCESS) {
 		if (fctx->qmin_warning != ISC_R_SUCCESS) {
@@ -4378,6 +4411,15 @@ cleanup:
 }
 
 static void
+fctx_destroy_rcu(struct rcu_head *rcu_head) {
+	fetchctx_t *fctx = caa_container_of(rcu_head, fetchctx_t, rcu_head);
+
+	isc_mutex_destroy(&fctx->lock);
+
+	isc_mem_putanddetach(&fctx->mctx, fctx, sizeof(*fctx));
+}
+
+static void
 fctx_destroy(fetchctx_t *fctx) {
 	dns_resolver_t *res = NULL;
 
@@ -4431,10 +4473,9 @@ fctx_destroy(fetchctx_t *fctx) {
 
 	dns_ede_invalidate(&fctx->edectx);
 
-	isc_mutex_destroy(&fctx->lock);
-
 	isc_mem_free(fctx->mctx, fctx->info);
-	isc_mem_putanddetach(&fctx->mctx, fctx, sizeof(*fctx));
+
+	call_rcu(&fctx->rcu_head, fctx_destroy_rcu);
 }
 
 static void
@@ -4659,7 +4700,7 @@ fctx_create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 	fprintf(stderr, "fetchctx__init:%s:%s:%d:%p:%p->references = 1\n",
 		__func__, __FILE__, __LINE__, fctx, fctx);
 #endif
-	isc_refcount_init(&fctx->references, 1);
+	urcu_ref_set(&fctx->ref, 1);
 
 	ISC_LIST_INIT(fctx->queries);
 	ISC_LIST_INIT(fctx->finds);
@@ -6700,12 +6741,6 @@ validinanswer(dns_rdataset_t *rdataset, fetchctx_t *fctx) {
 	}
 	return true;
 }
-
-#if DNS_RESOLVER_TRACE
-ISC_REFCOUNT_TRACE_IMPL(fetchctx, fctx_destroy);
-#else
-ISC_REFCOUNT_IMPL(fetchctx, fctx_destroy);
-#endif
 
 static void
 resume_dslookup(void *arg) {
@@ -9484,9 +9519,7 @@ dns_resolver__destroy(dns_resolver_t *res) {
 	isc_mutex_destroy(&res->primelock);
 	isc_mutex_destroy(&res->lock);
 
-	INSIST(isc_hashmap_count(res->fctxs) == 0);
-	isc_hashmap_destroy(&res->fctxs);
-	isc_rwlock_destroy(&res->fctxs_lock);
+	RUNTIME_CHECK(cds_lfht_destroy(res->fctxs_ht, NULL) == 0);
 
 	INSIST(isc_hashmap_count(res->counters) == 0);
 	isc_hashmap_destroy(&res->counters);
@@ -9596,8 +9629,10 @@ dns_resolver_create(dns_view_t *view, unsigned int options,
 #endif
 	isc_refcount_init(&res->references, 1);
 
-	isc_hashmap_create(view->mctx, RES_DOMAIN_HASH_BITS, &res->fctxs);
-	isc_rwlock_init(&res->fctxs_lock);
+	res->fctxs_ht =
+		cds_lfht_new(RES_DOMAIN_HASH_SIZE, RES_DOMAIN_HASH_SIZE, 0,
+			     CDS_LFHT_AUTO_RESIZE | CDS_LFHT_ACCOUNTING, NULL);
+	RUNTIME_CHECK(res->fctxs_ht != NULL);
 
 	isc_hashmap_create(view->mctx, RES_DOMAIN_HASH_BITS, &res->counters);
 	isc_rwlock_init(&res->counters_lock);
@@ -9746,7 +9781,6 @@ dns_resolver_freeze(dns_resolver_t *res) {
 
 void
 dns_resolver_shutdown(dns_resolver_t *res) {
-	isc_result_t result;
 	bool is_false = false;
 
 	REQUIRE(VALID_RESOLVER(res));
@@ -9754,26 +9788,14 @@ dns_resolver_shutdown(dns_resolver_t *res) {
 	RTRACE("shutdown");
 
 	if (atomic_compare_exchange_strong(&res->exiting, &is_false, true)) {
-		isc_hashmap_iter_t *it = NULL;
-
 		RTRACE("exiting");
 
-		RWLOCK(&res->fctxs_lock, isc_rwlocktype_write);
-		isc_hashmap_iter_create(res->fctxs, &it);
-		for (result = isc_hashmap_iter_first(it);
-		     result == ISC_R_SUCCESS;
-		     result = isc_hashmap_iter_next(it))
-		{
-			fetchctx_t *fctx = NULL;
-
-			isc_hashmap_iter_current(it, (void **)&fctx);
-			INSIST(fctx != NULL);
-
+		fetchctx_t *fctx = NULL;
+		struct cds_lfht_iter iter;
+		cds_lfht_for_each_entry(res->fctxs_ht, &iter, fctx, ht_node) {
 			fetchctx_ref(fctx);
 			isc_async_run(fctx->loop, fctx_shutdown, fctx);
 		}
-		isc_hashmap_iter_destroy(&it);
-		RWUNLOCK(&res->fctxs_lock, isc_rwlocktype_write);
 
 		LOCK(&res->lock);
 		if (res->spillattimer != NULL) {
@@ -9935,32 +9957,36 @@ get_attached_fctx(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 		.type = type,
 	};
 	fetchctx_t *fctx = NULL;
-	isc_rwlocktype_t locktype = isc_rwlocktype_read;
 	uint32_t hashval = fctx_hash(&key);
 
-again:
-	RWLOCK(&res->fctxs_lock, locktype);
-	result = isc_hashmap_find(res->fctxs, hashval, fctx_match, &key,
-				  (void **)&fctx);
-	switch (result) {
-	case ISC_R_SUCCESS:
-		break;
-	case ISC_R_NOTFOUND:
+	rcu_read_lock();
+
+	struct cds_lfht_iter iter;
+	cds_lfht_lookup(res->fctxs_ht, hashval, fctx_match, &key, &iter);
+
+	fctx = cds_lfht_entry(cds_lfht_iter_get_node(&iter), fetchctx_t,
+			      ht_node);
+
+	if (fctx == NULL) {
+	create:
 		result = fctx_create(res, loop, name, type, domain, nameservers,
 				     client, options, depth, qc, gqc, &fctx);
 		if (result != ISC_R_SUCCESS) {
-			RWUNLOCK(&res->fctxs_lock, locktype);
+			rcu_read_unlock();
 			return result;
 		}
 
-		UPGRADELOCK(&res->fctxs_lock, locktype);
+		LOCK(&fctx->lock);
 
-		void *found = NULL;
-		result = isc_hashmap_add(res->fctxs, hashval, fctx_match, fctx,
-					 fctx, &found);
-		if (result == ISC_R_SUCCESS) {
+		struct cds_lfht_node *ht_node =
+			cds_lfht_add_unique(res->fctxs_ht, hashval, fctx_match,
+					    &key, &fctx->ht_node);
+
+		if (ht_node == &fctx->ht_node) {
+			/* Success */
 			*new_fctx = true;
 		} else {
+			UNLOCK(&fctx->lock);
 			/*
 			 * The fctx_done() tries to acquire the fctxs_lock.
 			 * Destroy the newly created fetchctx directly.
@@ -9969,25 +9995,29 @@ again:
 			isc_timer_destroy(&fctx->timer);
 
 			fetchctx_detach(&fctx);
-			fctx = found;
-			result = ISC_R_SUCCESS;
+			fctx = caa_container_of(ht_node, fetchctx_t, ht_node);
+			LOCK(&fctx->lock);
 		}
-		break;
-	default:
-		UNREACHABLE();
+	} else {
+		LOCK(&fctx->lock);
 	}
-	INSIST(result == ISC_R_SUCCESS);
-	fetchctx_ref(fctx);
 
-	/*
-	 * We need to lock the fetch context before unlocking the hash table to
-	 * prevent other threads from looking up this thread before it has been
-	 * properly initialized and started.
-	 */
-	LOCK(&fctx->lock);
-	RWUNLOCK(&res->fctxs_lock, locktype);
+	if (!fetchctx_ref(fctx)) {
+		UNLOCK(&fctx->lock);
+		fctx = NULL;
+		goto create;
+	}
+
+	if (cds_lfht_is_node_deleted(&fctx->ht_node)) {
+		UNLOCK(&fctx->lock);
+		fetchctx_detach(&fctx);
+		goto create;
+	}
 
 	if (SHUTTINGDOWN(fctx) || fctx->cloned) {
+		/* The fctx will get deleted either here or in fctx__done() */
+		cds_lfht_del(res->fctxs_ht, &fctx->ht_node);
+
 		/*
 		 * This is the single place where fctx might get
 		 * accesses from a different thread, so we need to
@@ -9995,15 +10025,8 @@ again:
 		 * help with the release if the fctx has been cloned.
 		 */
 		UNLOCK(&fctx->lock);
-
-		/* The fctx will get deleted either here or in fctx__done() */
-		RWLOCK(&res->fctxs_lock, isc_rwlocktype_write);
-		(void)isc_hashmap_delete(res->fctxs, fctx_hash(fctx), match_ptr,
-					 fctx);
-		RWUNLOCK(&res->fctxs_lock, isc_rwlocktype_write);
-
 		fetchctx_detach(&fctx);
-		goto again;
+		goto create;
 	}
 
 	/*
@@ -10011,7 +10034,9 @@ again:
 	 */
 	*fctxp = fctx;
 
-	return result;
+	rcu_read_unlock();
+
+	return ISC_R_SUCCESS;
 }
 
 isc_result_t
@@ -10499,9 +10524,6 @@ dns_resolver_getmaxqueries(dns_resolver_t *resolver) {
 void
 dns_resolver_dumpfetches(dns_resolver_t *res, isc_statsformat_t format,
 			 FILE *fp) {
-	isc_result_t result;
-	isc_hashmap_iter_t *it = NULL;
-
 	REQUIRE(VALID_RESOLVER(res));
 	REQUIRE(fp != NULL);
 	REQUIRE(format == isc_statsformat_file);
@@ -10511,17 +10533,14 @@ dns_resolver_dumpfetches(dns_resolver_t *res, isc_statsformat_t format,
 		res->spillat, res->spillatmax);
 	UNLOCK(&res->lock);
 
-	RWLOCK(&res->fctxs_lock, isc_rwlocktype_read);
-	isc_hashmap_iter_create(res->fctxs, &it);
-	for (result = isc_hashmap_iter_first(it); result == ISC_R_SUCCESS;
-	     result = isc_hashmap_iter_next(it))
-	{
+	rcu_read_lock();
+
+	fetchctx_t *fctx = NULL;
+	struct cds_lfht_iter iter;
+	cds_lfht_for_each_entry(res->fctxs_ht, &iter, fctx, ht_node) {
 		char typebuf[DNS_RDATATYPE_FORMATSIZE];
 		char timebuf[1024];
-		fetchctx_t *fctx = NULL;
 		unsigned int resp_count = 0, query_count = 0;
-
-		isc_hashmap_iter_current(it, (void **)&fctx);
 
 		LOCK(&fctx->lock);
 		dns_name_print(fctx->name, fp);
@@ -10560,8 +10579,8 @@ dns_resolver_dumpfetches(dns_resolver_t *res, isc_statsformat_t format,
 
 		UNLOCK(&fctx->lock);
 	}
-	isc_hashmap_iter_destroy(&it);
-	RWUNLOCK(&res->fctxs_lock, isc_rwlocktype_read);
+
+	rcu_read_unlock();
 }
 
 isc_result_t
