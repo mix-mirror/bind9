@@ -747,7 +747,9 @@ n=$((n + 1))
 echo_i "testing XoT server functionality (using dig, client certificate used) ($n)"
 ret=0
 dig_with_tls_opts +tls-ca="$ca_file" +tls-certfile="./CA/certs/srv01.client01.example.com.pem" +tls-keyfile="./CA/certs/srv01.client01.example.com.key" -p "${EXTRAPORT5}" example8. -b 10.53.0.10 @10.53.0.1 axfr >dig.out.ns1.test$n || ret=1
+echo $ret
 digcomp dig.out.ns1.test$n example8.axfr.good >/dev/null || ret=1
+echo $ret
 if test $ret != 0; then echo_i "failed"; fi
 status=$((status + ret))
 
