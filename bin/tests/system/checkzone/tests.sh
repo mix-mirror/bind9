@@ -28,6 +28,9 @@ for db in zones/good*.db; do
     zones/good-dns-sd-reverse.db)
       $CHECKZONE -k fail -i local 0.0.0.0.in-addr.arpa $db >test.out.$n 2>&1 || ret=1
       ;;
+    zones/good-deleg-root.db)
+      $CHECKZONE -i local . $db >test.out.$n 2>&1 || ret=1
+      ;;
     *)
       $CHECKZONE -i local example $db >test.out.$n 2>&1 || ret=1
       ;;

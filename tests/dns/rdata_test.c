@@ -3322,6 +3322,7 @@ ISC_RUN_TEST_IMPL(atparent) {
 		bool tf = dns_rdatatype_atparent((dns_rdatatype_t)i);
 		switch (i) {
 		case dns_rdatatype_ds:
+		case dns_rdatatype_deleg:
 			if (!tf) {
 				print_message(UNR, i);
 			}

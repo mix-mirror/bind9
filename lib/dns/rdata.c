@@ -89,7 +89,8 @@
 #define ARGS_FROMTEXT                                           \
 	int rdclass, dns_rdatatype_t type, isc_lex_t *lexer,    \
 		const dns_name_t *origin, unsigned int options, \
-		isc_buffer_t *target, dns_rdatacallbacks_t *callbacks
+		isc_buffer_t *target,                           \
+		dns_rdatacallbacks_t *callbacks ISC_ATTR_UNUSED
 
 #define CALL_FROMTEXT rdclass, type, lexer, origin, options, target, callbacks
 
@@ -136,9 +137,9 @@
 
 #define CALL_DIGEST rdata, digest, arg
 
-#define ARGS_CHECKOWNER                                   \
-	const dns_name_t *name, dns_rdataclass_t rdclass, \
-		dns_rdatatype_t type, bool wildcard
+#define ARGS_CHECKOWNER                                                   \
+	const dns_name_t *name ISC_ATTR_UNUSED, dns_rdataclass_t rdclass, \
+		dns_rdatatype_t type, bool wildcard ISC_ATTR_UNUSED
 
 #define CALL_CHECKOWNER name, rdclass, type, wildcard
 
@@ -176,7 +177,7 @@ commatxt_totext(isc_region_t *source, bool quote, bool comma,
 		isc_buffer_t *target);
 
 static isc_result_t
-multitxt_totext(isc_region_t *source, isc_buffer_t *target);
+multitxt_totext(isc_region_t *source, bool quote, isc_buffer_t *target);
 
 static isc_result_t
 multitxt_fromtext(isc_textregion_t *source, isc_buffer_t *target);
@@ -1895,7 +1896,7 @@ txt_fromwire(isc_buffer_t *source, isc_buffer_t *target) {
  * Conversion of TXT-like rdata fields without length limits.
  */
 static isc_result_t
-multitxt_totext(isc_region_t *source, isc_buffer_t *target) {
+multitxt_totext(isc_region_t *source, bool quote, isc_buffer_t *target) {
 	unsigned int tl;
 	unsigned int n0, n;
 	unsigned char *sp;
@@ -1910,8 +1911,10 @@ multitxt_totext(isc_region_t *source, isc_buffer_t *target) {
 	if (tl < 1) {
 		return ISC_R_NOSPACE;
 	}
-	*tp++ = '"';
-	tl--;
+	if (quote) {
+		*tp++ = '"';
+		tl--;
+	}
 	do {
 		n = source->length;
 		n0 = source->length - 1;
@@ -1948,8 +1951,10 @@ multitxt_totext(isc_region_t *source, isc_buffer_t *target) {
 	if (tl < 1) {
 		return ISC_R_NOSPACE;
 	}
-	*tp++ = '"';
-	tl--;
+	if (quote) {
+		*tp++ = '"';
+		tl--;
+	}
 	POST(tl);
 	isc_buffer_add(target, (unsigned int)(tp - (char *)region.base));
 	return ISC_R_SUCCESS;
