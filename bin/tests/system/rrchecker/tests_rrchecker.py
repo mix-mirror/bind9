@@ -44,6 +44,7 @@ pytestmark = pytest.mark.extra_artifacts(
                 "CERT",
                 "CNAME",
                 "CSYNC",
+                "DELEG",
                 "DHCID",
                 "DLV",
                 "DNAME",
@@ -117,7 +118,7 @@ pytestmark = pytest.mark.extra_artifacts(
                 "ZONEMD",
             ],
         ),
-        ("-P", []),
+        ("-P", ["DELEGI"]),
     ],
 )
 def test_rrchecker_list_standard_names(option, expected_result):
@@ -137,7 +138,7 @@ def run_rrchecker(option, rr_class, rr_type, rr_rest):
 
 @pytest.mark.parametrize(
     "option",
-    ["-p", "-u", "multi-line at class", " multi-line at type", "multi-line at data"],
+    ["-p", "-u", "multi-line at class", "multi-line at type", "multi-line at data"],
 )
 def test_rrchecker_conversions(option):
     tempzone_file = "tempzone"

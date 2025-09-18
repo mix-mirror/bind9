@@ -699,7 +699,7 @@ generic_totext_in_svcb(ARGS_TOTEXT) {
 		switch (encoding) {
 		case sbpr_text:
 		case sbpr_dohpath:
-			RETERR(multitxt_totext(&r, target));
+			RETERR(multitxt_totext(&r, true, target));
 			break;
 		case sbpr_port:
 			num = uint16_fromregion(&r);
