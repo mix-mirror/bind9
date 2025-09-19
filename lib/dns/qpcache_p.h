@@ -45,3 +45,8 @@ dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *base, dns_dbtype_t type,
  *
  * \li argc == 0 or argv[0] is a valid memory context.
  */
+
+void
+dns__qpcache_initialize(void);
+void
+dns__qpcache_shutdown(void);

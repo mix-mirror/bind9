@@ -43,9 +43,6 @@
 #undef CHECK
 #include <tests/dns.h>
 
-/* Set to true (or use -v option) for verbose output */
-static bool verbose = false;
-
 /*
  * Add to a cache DB 'db' an rdataset of type 'rtype' at a name
  * <idx>.example.com. The rdataset would contain one data, and rdata_len is
@@ -116,6 +113,7 @@ static void
 cleanup_all_deadnodes(dns_db_t *db) {
 	qpcache_t *qpdb = (qpcache_t *)db;
 	qpcache_ref(qpdb);
+	fprintf(stderr, "cleaning %zu buckets\n", qpdb->buckets_count);
 	for (uint16_t locknum = 0; locknum < qpdb->buckets_count; locknum++) {
 		cleanup_deadnodes(qpdb, locknum);
 	}
@@ -161,7 +159,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 	while (i-- > 0) {
 		overmempurge_addrdataset(db, now, i, 50054, 65535, false);
 		cleanup_all_deadnodes(db);
-		if (verbose) {
+		if (debug) {
 			print_message("# inuse: %zd max: %zd\n",
 				      isc_mem_inuse(mctx), maxcache);
 		}
@@ -212,7 +210,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 	while (i-- > 0) {
 		overmempurge_addrdataset(db, now, i, 50054, 0, true);
 		cleanup_all_deadnodes(db);
-		if (verbose) {
+		if (debug) {
 			print_message("# inuse: %zd max: %zd\n",
 				      isc_mem_inuse(mctx), maxcache);
 		}

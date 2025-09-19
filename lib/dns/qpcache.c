@@ -126,6 +126,8 @@ struct qpcnode {
 
 	qpcache_t *qpdb;
 
+	uint16_t sievenum;
+
 	uint8_t			: 0;
 	unsigned int delegating : 1;
 	unsigned int nspace	: 2; /*%< range is 0..3 */
@@ -184,15 +186,12 @@ struct qpcnode {
  * nodes in the database will evenly distributed among buckets
  * to reduce contention between threads.
  */
-typedef struct qpcache_bucket {
+typedef struct qpcache_heap_bucket {
 	/*%
 	 * Temporary storage for stale cache nodes and dynamically
 	 * deleted nodes that await being cleaned up.
 	 */
 	isc_queue_t deadnodes;
-
-	/* Per-bucket lock. */
-	isc_rwlock_t lock;
 
 	/*
 	 * The heap is used for TTL based expiry.  Note that qpcache->hmctx
@@ -206,12 +205,12 @@ typedef struct qpcache_bucket {
 
 	/* Padding to prevent false sharing between locks. */
 	uint8_t __padding[ISC_OS_CACHELINE_SIZE -
-			  (sizeof(isc_queue_t) + sizeof(isc_rwlock_t) +
+			  (sizeof(isc_queue_t) +
 			   sizeof(isc_heap_t *) +
 			   sizeof(ISC_SIEVE(dns_slabtop_t))) %
 				  ISC_OS_CACHELINE_SIZE];
 
-} qpcache_bucket_t;
+} qpcache_heap_bucket_t;
 
 struct qpcache {
 	/* Unlocked. */
@@ -257,7 +256,7 @@ struct qpcache {
 	isc_mem_t *hmctx; /* Memory context for the heaps */
 
 	size_t buckets_count;
-	qpcache_bucket_t buckets[]; /* attribute((counted_by(buckets_count))) */
+	qpcache_heap_bucket_t buckets[]; /* attribute((counted_by(buckets_count))) */
 };
 
 #ifdef DNS_DB_NODETRACE
@@ -447,6 +446,18 @@ cleanup_deadnodes_cb(void *arg);
  *
  * Failure to follow this hierarchy can result in deadlock.
  */
+
+typedef struct qpcache_bucket {
+	/* Per-bucket lock. */
+	isc_rwlock_t lock;
+} qpcache_bucket_t;
+
+static qpcache_bucket_t qpcache_buckets_g[1024];
+
+static isc_rwlock_t *
+qpcache_get_lock(qpcnode_t *node) {
+        return &qpcache_buckets_g[node->locknum].lock;
+}
 
 /*
  * Cache-eviction routines.
@@ -791,7 +802,7 @@ qpcnode_release(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t *nlocktypep,
 		 * erefs_increment.  If another thread acquires reference it
 		 * will be larger than 0, if it doesn't it is going to be 0.
 		 */
-		isc_rwlock_t *nlock = &qpdb->buckets[node->locknum].lock;
+		isc_rwlock_t *nlock = qpcache_get_lock(node);
 		qpcnode_erefs_increment(qpdb, node, *nlocktypep,
 					*tlocktypep DNS__DB_FLARG_PASS);
 		NODE_FORCEUPGRADE(nlock, nlocktypep);
@@ -1162,7 +1173,7 @@ setup_delegation(qpc_search_t *search, dns_dbnode_t **nodep,
 	if (rdataset != NULL) {
 		isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 		isc_rwlock_t *nlock =
-			&search->qpdb->buckets[node->locknum].lock;
+			qpcache_get_lock(node);
 		NODE_RDLOCK(nlock, &nlocktype);
 		bindrdatasets(search->qpdb, node, search->zonecut_header,
 			      search->zonecut_sigheader, search->now, nlocktype,
@@ -1372,7 +1383,7 @@ check_zonecut(qpcnode_t *node, void *arg DNS__DB_FLARG) {
 
 	REQUIRE(search->zonecut == NULL);
 
-	nlock = &search->qpdb->buckets[node->locknum].lock;
+	nlock = qpcache_get_lock(node);
 	NODE_RDLOCK(nlock, &nlocktype);
 
 	/*
@@ -1423,7 +1434,7 @@ find_deepest_zonecut(qpc_search_t *search, qpcnode_t *node,
 		isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 
 		dns_qpchain_node(&search->chain, i, NULL, (void **)&node, NULL);
-		nlock = &qpdb->buckets[node->locknum].lock;
+		nlock = qpcache_get_lock(node);
 
 		NODE_RDLOCK(nlock, &nlocktype);
 
@@ -1521,7 +1532,7 @@ find_coveringnsec(qpc_search_t *search, const dns_name_t *name,
 	}
 	dns_name_copy(&node->name, fname);
 
-	nlock = &search->qpdb->buckets[node->locknum].lock;
+	nlock = qpcache_get_lock(node);
 	NODE_RDLOCK(nlock, &nlocktype);
 
 	find_headers(node, search, dns_rdatatype_nsec, &found, &foundsig);
@@ -1704,7 +1715,7 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	 * We now go looking for rdata...
 	 */
 
-	nlock = &search.qpdb->buckets[node->locknum].lock;
+	nlock = qpcache_get_lock(node);
 	NODE_RDLOCK(nlock, &nlocktype);
 
 	/*
@@ -1963,7 +1974,7 @@ tree_exit:
 	if (search.need_cleanup) {
 		node = search.zonecut;
 		INSIST(node != NULL);
-		nlock = &search.qpdb->buckets[node->locknum].lock;
+		nlock = qpcache_get_lock(node);
 
 		NODE_RDLOCK(nlock, &nlocktype);
 		qpcnode_release(search.qpdb, node, &nlocktype,
@@ -1982,7 +1993,7 @@ seek_ns_headers(qpc_search_t *search, qpcnode_t *node, dns_dbnode_t **nodep,
 		dns_name_t *foundname, dns_name_t *dcname,
 		isc_rwlocktype_t *tlocktype) {
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
-	isc_rwlock_t *nlock = &search->qpdb->buckets[node->locknum].lock;
+	isc_rwlock_t *nlock = qpcache_get_lock(node);
 	dns_slabheader_t *found = NULL, *foundsig = NULL;
 
 	NODE_RDLOCK(nlock, &nlocktype);
@@ -2127,7 +2138,7 @@ qpcache_findrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 		return ISC_R_NOTFOUND;
 	}
 
-	nlock = &qpdb->buckets[qpnode->locknum].lock;
+	nlock = qpcache_get_lock(qpnode);
 	NODE_RDLOCK(nlock, &nlocktype);
 
 	typepair = DNS_TYPEPAIR_VALUE(type, covers);
@@ -2268,7 +2279,7 @@ qpcnode_expiredata(dns_dbnode_t *node, void *data) {
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 	isc_rwlocktype_t tlocktype = isc_rwlocktype_none;
 
-	isc_rwlock_t *nlock = &qpdb->buckets[qpnode->locknum].lock;
+	isc_rwlock_t *nlock = qpcache_get_lock(qpnode);
 	NODE_WRLOCK(nlock, &nlocktype);
 	related = header->top->related;
 
@@ -2326,8 +2337,6 @@ qpcache__destroy(qpcache_t *qpdb) {
 		dns_name_free(&qpdb->common.origin, qpdb->common.mctx);
 	}
 	for (i = 0; i < qpdb->buckets_count; i++) {
-		NODE_DESTROYLOCK(&qpdb->buckets[i].lock);
-
 		INSIST(ISC_SIEVE_EMPTY(qpdb->buckets[i].sieve));
 
 		INSIST(isc_queue_empty(&qpdb->buckets[i].deadnodes));
@@ -2370,27 +2379,28 @@ qpcache_destroy(dns_db_t *arg) {
  * to wait for the tree write lock.
  */
 static void
-cleanup_deadnodes(qpcache_t *qpdb, uint16_t locknum) {
+cleanup_deadnodes(qpcache_t *qpdb, uint16_t sievenum) {
 	isc_rwlocktype_t tlocktype = isc_rwlocktype_none;
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
-	isc_rwlock_t *nlock = &qpdb->buckets[locknum].lock;
 	qpcnode_t *qpnode = NULL, *qpnext = NULL;
 	isc_queue_t deadnodes;
 
-	INSIST(locknum < qpdb->buckets_count);
+	INSIST(sievenum < qpdb->buckets_count);
 
 	isc_queue_init(&deadnodes);
 
 	TREE_WRLOCK(&qpdb->tree_lock, &tlocktype);
-	NODE_WRLOCK(nlock, &nlocktype);
 
-	isc_queue_splice(&deadnodes, &qpdb->buckets[locknum].deadnodes);
+	isc_queue_splice(&deadnodes, &qpdb->buckets[sievenum].deadnodes);
 	isc_queue_for_each_entry_safe(&deadnodes, qpnode, qpnext, deadlink) {
+		isc_rwlock_t *nlock = qpcache_get_lock(qpnode);
+
+		NODE_WRLOCK(nlock, &nlocktype);
 		qpcnode_release(qpdb, qpnode, &nlocktype,
 				&tlocktype DNS__DB_FILELINE);
+		NODE_UNLOCK(nlock, &nlocktype);
 	}
 
-	NODE_UNLOCK(nlock, &nlocktype);
 	TREE_UNLOCK(&qpdb->tree_lock, &tlocktype);
 }
 
@@ -2415,7 +2425,7 @@ static void
 reactivate_node(qpcache_t *qpdb, qpcnode_t *node,
 		isc_rwlocktype_t tlocktype ISC_ATTR_UNUSED DNS__DB_FLARG) {
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
-	isc_rwlock_t *nlock = &qpdb->buckets[node->locknum].lock;
+	isc_rwlock_t *nlock = qpcache_get_lock(node);
 
 	NODE_RDLOCK(nlock, &nlocktype);
 	qpcnode_acquire(qpdb, node, nlocktype, tlocktype DNS__DB_FLARG_PASS);
@@ -2433,7 +2443,8 @@ new_qpcnode(qpcache_t *qpdb, const dns_name_t *name, dns_namespace_t nspace) {
 		.name = DNS_NAME_INITEMPTY,
 		.nspace = nspace,
 		.references = ISC_REFCOUNT_INITIALIZER(1),
-		.locknum = isc_random_uniform(qpdb->buckets_count),
+		.locknum = isc_random_uniform(1024),
+		.sievenum = isc_random_uniform(qpdb->buckets_count)
 	};
 
 	isc_mem_attach(qpdb->common.mctx, &newdata->mctx);
@@ -2577,7 +2588,7 @@ qpcnode_detachnode(dns_dbnode_t **nodep DNS__DB_FLARG) {
 	node = (qpcnode_t *)(*nodep);
 	qpcache_t *qpdb = (qpcache_t *)node->qpdb;
 	*nodep = NULL;
-	nlock = &qpdb->buckets[node->locknum].lock;
+	nlock = qpcache_get_lock(node);
 
 	REQUIRE(VALID_QPDB(qpdb));
 
@@ -3137,7 +3148,7 @@ qpcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 		}
 	}
 
-	nlock = &qpdb->buckets[qpnode->locknum].lock;
+	nlock = qpcache_get_lock(qpnode);
 
 	/*
 	 * If we're adding a delegation type (which would be an NS or DNAME
@@ -3250,7 +3261,7 @@ qpcache_deleterdataset(dns_db_t *db, dns_dbnode_t *node,
 	setttl(newheader, 0);
 	atomic_init(&newheader->attributes, attributes);
 
-	nlock = &qpdb->buckets[qpnode->locknum].lock;
+	nlock = qpcache_get_lock(qpnode);
 	NODE_WRLOCK(nlock, &nlocktype);
 	result = add(qpdb, qpnode, newheader, DNS_DBADD_FORCE, NULL, 0,
 		     nlocktype, isc_rwlocktype_none DNS__DB_FLARG_PASS);
@@ -3325,8 +3336,6 @@ dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 				&qpdb->buckets[i].heap);
 
 		isc_queue_init(&qpdb->buckets[i].deadnodes);
-
-		NODE_INITLOCK(&qpdb->buckets[i].lock);
 	}
 
 	/*
@@ -3399,7 +3408,7 @@ rdatasetiter_first(dns_rdatasetiter_t *it DNS__DB_FLARG) {
 	qpcache_t *qpdb = (qpcache_t *)(iterator->common.db);
 	qpcnode_t *qpnode = (qpcnode_t *)iterator->common.node;
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
-	isc_rwlock_t *nlock = &qpdb->buckets[qpnode->locknum].lock;
+	isc_rwlock_t *nlock = qpcache_get_lock(qpnode);
 
 	iterator->current = NULL;
 
@@ -3431,7 +3440,8 @@ rdatasetiter_next(dns_rdatasetiter_t *it DNS__DB_FLARG) {
 	qpcache_t *qpdb = (qpcache_t *)(iterator->common.db);
 	qpcnode_t *qpnode = (qpcnode_t *)iterator->common.node;
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
-	isc_rwlock_t *nlock = &qpdb->buckets[qpnode->locknum].lock;
+
+	isc_rwlock_t *nlock = qpcache_get_lock(qpnode);
 	dns_slabtop_t *from = NULL;
 
 	if (iterator->current == NULL) {
@@ -3475,7 +3485,7 @@ rdatasetiter_current(dns_rdatasetiter_t *it,
 	qpcnode_t *qpnode = (qpcnode_t *)iterator->common.node;
 	dns_slabtop_t *top = NULL;
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
-	isc_rwlock_t *nlock = &qpdb->buckets[qpnode->locknum].lock;
+	isc_rwlock_t *nlock = qpcache_get_lock(qpnode);
 
 	top = iterator->current;
 	REQUIRE(top != NULL);
@@ -3522,7 +3532,7 @@ dereference_iter_node(qpc_dbit_t *qpdbiter DNS__DB_FLARG) {
 
 	REQUIRE(tlocktype != isc_rwlocktype_write);
 
-	nlock = &qpdb->buckets[node->locknum].lock;
+	nlock = qpcache_get_lock(node);
 	NODE_RDLOCK(nlock, &nlocktype);
 	qpcnode_release(qpdb, node, &nlocktype,
 			&qpdbiter->tree_locked DNS__DB_FLARG_PASS);
