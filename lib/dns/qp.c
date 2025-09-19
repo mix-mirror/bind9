@@ -429,9 +429,7 @@ scanned:
 	name->ndata = isc_buffer_base(name->buffer);
 
 	/* Store the type */
-	if (type != NULL) {
-		*type = rrtype;
-	}
+	SET_IF_NOT_NULL(type, rrtype);
 }
 
 void
