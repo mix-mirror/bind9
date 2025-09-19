@@ -2317,10 +2317,12 @@ query_zone_delegation_rrset(query_ctx_t *qctx, dns_name_t **namep,
 		return;
 	}
 
-	dns_clientinfomethods_init(&cm, ns_client_sourceip);
-	dns_clientinfo_init(&ci, client, NULL);
-	dns_db_addglue(qctx->db, qctx->version, mname, rdataset,
-		       client->message, &cm, &ci);
+	if (rdataset->type == dns_rdatatype_ns) {
+		dns_clientinfomethods_init(&cm, ns_client_sourceip);
+		dns_clientinfo_init(&ci, client, NULL);
+		dns_db_addglue(qctx->db, qctx->version, mname, rdataset,
+			       client->message, &cm, &ci);
+	}
 
 	CTRACE(ISC_LOG_DEBUG(3), "query_zone_delegation_rrset: done");
 }
@@ -5224,7 +5226,7 @@ ns__query_start(query_ctx_t *qctx) {
 			     qctx->qtype, qctx->options, &qctx->zone, &qctx->db,
 			     &qctx->version, &qctx->is_zone);
 	if ((result != ISC_R_SUCCESS || !qctx->is_zone) &&
-	    qctx->qtype == dns_rdatatype_ds &&
+	    dns_rdatatype_atparent(qctx->qtype) &&
 	    !qctx->client->query.recursionok && qctx->options.noexact)
 	{
 		/*
@@ -5601,6 +5603,13 @@ query_lookup(query_ctx_t *qctx) {
 	    (qctx->type != dns_rdatatype_null || !dns_name_istat(rpzqname)))
 	{
 		dboptions |= DNS_DBFIND_COVERINGNSEC;
+	}
+
+	/*
+	 * Client used the DE flag.
+	 */
+	if (qctx->client->inner.wantdeleg) {
+		dboptions |= DNS_DBFIND_DELEGOK;
 	}
 
 	foundname = dns_fixedname_initname(&qctx->foundname);
@@ -8485,6 +8494,10 @@ query_addds(query_ctx_t *qctx) {
 	 */
 	MSG_SECTION_FOREACH(client->message, DNS_SECTION_AUTHORITY, rname) {
 		result = dns_message_findtype(rname, dns_rdatatype_ns, 0, NULL);
+		if (result != ISC_R_SUCCESS) {
+			result = dns_message_findtype(
+				rname, dns_rdatatype_deleg, 0, NULL);
+		}
 		if (result == ISC_R_SUCCESS) {
 			/*
 			 * Add the relevant RRset (DS or NSEC) to the
@@ -11208,6 +11221,10 @@ ns_query_start(ns_client_t *client, isc_nmhandle_t *handle) {
 
 	if ((client->inner.extflags & DNS_MESSAGEEXTFLAG_DO) != 0) {
 		client->inner.wantdnssec = true;
+	}
+
+	if ((client->inner.extflags & DNS_MESSAGEEXTFLAG_DE) != 0) {
+		client->inner.wantdeleg = true;
 	}
 
 	switch (client->inner.view->minimalresponses) {
