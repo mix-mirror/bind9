@@ -1257,8 +1257,8 @@ add_exposed_sigs(dns_update_log_t *log, dns_zone_t *zone, dns_db_t *db,
 		dns_rdataset_disassociate(&rdataset);
 
 		/*
-		 * We don't need to sign unsigned NSEC records at the cut
-		 * as they are handled elsewhere.
+		 * We don't need to sign unsigned DS records at the
+		 * zone cut as they are handled elsewhere.
 		 */
 		if ((type == dns_rdatatype_rrsig) ||
 		    (cut && type != dns_rdatatype_ds))
