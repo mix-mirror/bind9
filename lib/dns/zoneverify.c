@@ -733,6 +733,7 @@ verifynsec3(const vctx_t *vctx, const dns_name_t *name,
 					     dns_rdatatype_nsec3, 0, 0,
 					     &rdataset, NULL);
 	}
+	/* FIXME: WTH does this do? */
 	if (result != ISC_R_SUCCESS &&
 	    (!delegation || (empty && !optout) ||
 	     (!empty && dns_nsec_isset(types, dns_rdatatype_ds))))
@@ -927,6 +928,7 @@ verifynode(vctx_t *vctx, const dns_name_t *name, dns_dbnode_t *node,
 		 */
 		if (rdataset.type != dns_rdatatype_rrsig &&
 		    (!delegation || rdataset.type == dns_rdatatype_ds ||
+		     rdataset.type == dns_rdatatype_deleg ||
 		     rdataset.type == dns_rdatatype_nsec))
 		{
 			result = verifyset(vctx, &rdataset, name, node, dstkeys,

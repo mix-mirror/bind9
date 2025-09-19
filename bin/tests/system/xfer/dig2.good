@@ -40,6 +40,12 @@ csync02.example.	3600	IN	CSYNC	0 0
 dhcid01.example.	3600	IN	DHCID	AAIBY2/AuCccgoJbsaxcQc9TUapptP69lOjxfNuVAA2kjEA=
 dhcid02.example.	3600	IN	DHCID	AAEBOSD+XR3Os/0LozeXVqcNc7FwCfQdWL3b/NaiUDlW2No=
 dhcid03.example.	3600	IN	DHCID	AAABxLmlskllE0MVjd57zHcWmEH3pCQ6VytcKD//7es/deY=
+deleg.example.          3600    IN      DELEG   server-ipv4=192.0.2.1 server-ipv6=2001:db8::1
+deleg.example.          3600    IN      DELEG   server-name=ns1.example.net.,ns2.example.org.
+deleg.example.          3600    IN      DELEG   key12345=abc
+delegi.example.         3600    IN      DELEGI  server-ipv4=192.0.2.1 server-ipv6=2001:db8::1
+delegi.example.         3600    IN      DELEGI  server-name=ns1.example.net.,ns2.example.org.
+delegi.example.         3600    IN      DELEGI  key321=xyz
 dlv.example.		3600	IN	DLV	30795 1 1 310D27F4D82C1FC2400704EA9939FE6E1CEAA3B9
 dname01.example.	3600	IN	DNAME	dname-target.
 dname02.example.	3600	IN	DNAME	dname-target.example.
