@@ -536,7 +536,7 @@ static void
 qpcache_miss(qpcache_t *qpdb, dns_slabheader_t *newheader,
 	     isc_rwlocktype_t *nlocktypep,
 	     isc_rwlocktype_t *tlocktypep DNS__DB_FLARG) {
-	uint32_t idx = HEADERNODE(newheader)->locknum;
+	uint32_t idx = HEADERNODE(newheader)->sievenum;
 
 	isc_heap_insert(qpdb->buckets[idx].heap, newheader);
 	newheader->heap = qpdb->buckets[idx].heap;
@@ -628,7 +628,7 @@ clean_cache_node(qpcache_t *qpdb, qpcnode_t *node) {
 
 			if (ISC_LINK_LINKED(top, link)) {
 				ISC_SIEVE_UNLINK(
-					qpdb->buckets[node->locknum].sieve, top,
+					qpdb->buckets[node->sievenum].sieve, top,
 					link);
 			}
 			dns_slabtop_destroy(((dns_db_t *)qpdb)->mctx, &top);
@@ -651,7 +651,7 @@ delete_node(qpcache_t *qpdb, qpcnode_t *node) {
 		isc_log_write(DNS_LOGCATEGORY_DATABASE, DNS_LOGMODULE_CACHE,
 			      ISC_LOG_DEBUG(DNS_QPCACHE_LOG_STATS_LEVEL),
 			      "delete_node(): %p %s (bucket %d)", node,
-			      printname, node->locknum);
+			      printname, node->sievenum);
 	}
 
 	switch (node->nspace) {
@@ -835,11 +835,11 @@ qpcnode_release(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t *nlocktypep,
 
 		isc_queue_node_init(&node->deadlink);
 		if (!isc_queue_enqueue_entry(
-			    &qpdb->buckets[node->locknum].deadnodes, node,
+			    &qpdb->buckets[node->sievenum].deadnodes, node,
 			    deadlink))
 		{
 			/* Queue was empty, trigger new cleaning */
-			isc_loop_t *loop = isc_loop_get(node->locknum);
+			isc_loop_t *loop = isc_loop_get(node->sievenum);
 
 			qpcache_ref(qpdb);
 			isc_async_run(loop, cleanup_deadnodes_cb, qpdb);
@@ -2407,9 +2407,9 @@ cleanup_deadnodes(qpcache_t *qpdb, uint16_t sievenum) {
 static void
 cleanup_deadnodes_cb(void *arg) {
 	qpcache_t *qpdb = arg;
-	uint16_t locknum = isc_tid();
+	uint16_t sievenum = isc_tid();
 
-	cleanup_deadnodes(qpdb, locknum);
+	cleanup_deadnodes(qpdb, sievenum);
 	qpcache_unref(qpdb);
 }
 /*
@@ -2912,7 +2912,7 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 		cds_list_add(&newheader->headers_link,
 			     &oldheader->top->headers);
 
-		ISC_SIEVE_UNLINK(qpdb->buckets[qpnode->locknum].sieve,
+		ISC_SIEVE_UNLINK(qpdb->buckets[qpnode->sievenum].sieve,
 				 oldheader->top, link);
 
 		qpcache_miss(qpdb, newheader, &nlocktype,
@@ -3180,7 +3180,7 @@ qpcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 
 	NODE_WRLOCK(nlock, &nlocktype);
 
-	expire_ttl_headers(qpdb, qpnode->locknum, &nlocktype, &tlocktype,
+	expire_ttl_headers(qpdb, qpnode->sievenum, &nlocktype, &tlocktype,
 			   now DNS__DB_FLARG_PASS);
 
 	if (newnsec && !qpnode->havensec) {
@@ -3817,10 +3817,10 @@ qpcnode_deletedata(dns_dbnode_t *node ISC_ATTR_UNUSED, void *data) {
  * Caller must be holding the node write lock.
  */
 static void
-expire_ttl_headers(qpcache_t *qpdb, unsigned int locknum,
+expire_ttl_headers(qpcache_t *qpdb, unsigned int sievenum,
 		   isc_rwlocktype_t *nlocktypep, isc_rwlocktype_t *tlocktypep,
 		   isc_stdtime_t now DNS__DB_FLARG) {
-	isc_heap_t *heap = qpdb->buckets[locknum].heap;
+	isc_heap_t *heap = qpdb->buckets[sievenum].heap;
 
 	for (size_t i = 0; i < DNS_QPDB_EXPIRE_TTL_COUNT; i++) {
 		dns_slabheader_t *header = isc_heap_element(heap, 1);
@@ -3900,7 +3900,7 @@ qpcnode_destroy(qpcnode_t *qpnode) {
 		}
 
 		if (ISC_LINK_LINKED(top, link)) {
-			ISC_SIEVE_UNLINK(qpdb->buckets[qpnode->locknum].sieve,
+			ISC_SIEVE_UNLINK(qpdb->buckets[qpnode->sievenum].sieve,
 					 top, link);
 		}
 		dns_slabtop_destroy(((dns_db_t *)qpdb)->mctx, &top);
