@@ -3680,6 +3680,11 @@ system.
    This is an **experimental** setting that defines the maximum number of DNSSEC
    validations that can happen in a single resolver fetch. The default is 16.
 
+.. namedconf:statement:: fetches-per-zone
+   :tags: obsolete
+
+   This option no longer has any effect.
+
 .. namedconf:statement:: max-validation-failures-per-fetch
    :tags: server
    :short: Sets the maximum number of DNSSEC validation failures that can happen in a single fetch.
@@ -3687,48 +3692,6 @@ system.
    This is an **experimental** setting that defines the maximum number of DNSSEC
    validation failures that can happen in a single resolver fetch. The default
    is 1.
-
-.. namedconf:statement:: fetches-per-zone
-   :tags: server, query
-   :short: Sets the maximum number of simultaneous iterative queries allowed to any one domain before the server blocks new queries for data in or beneath that zone.
-
-   This sets the maximum number of simultaneous iterative queries to any one
-   domain that the server permits before blocking new queries for
-   data in or beneath that zone. This value should reflect how many
-   fetches would normally be sent to any one zone in the time it would
-   take to resolve them. It should be smaller than
-   :any:`recursive-clients`.
-
-   When many clients simultaneously query for the same name and type,
-   the clients are all attached to the same fetch, up to the
-   :any:`max-clients-per-query` limit, and only one iterative query is
-   sent. However, when clients are simultaneously querying for
-   *different* names or types, multiple queries are sent and
-   :any:`max-clients-per-query` is not effective as a limit.
-
-   Optionally, this value may be followed by the keyword ``drop`` or
-   ``fail``, indicating whether queries which exceed the fetch quota for
-   a zone are dropped with no response, or answered with SERVFAIL.
-   The default is ``drop``.
-
-   If :any:`fetches-per-zone` is set to zero, there is no limit on the
-   number of fetches per query and no queries are dropped. The
-   default is zero.
-
-   The current list of active fetches can be dumped by running
-   :option:`rndc recursing`. The list includes the number of active fetches
-   for each domain and the number of queries that have been passed
-   (allowed) or dropped (spilled) as a result of the :any:`fetches-per-zone`
-   limit. (Note: these counters are not cumulative over time;
-   whenever the number of active fetches for a domain drops to zero,
-   the counter for that domain is deleted, and the next time a fetch
-   is sent to that domain, it is recreated with the counters set
-   to zero.)
-
-   .. note::
-
-       Fetches generated automatically in the result of :any:`prefetch` are
-       exempt from this quota.
 
 .. namedconf:statement:: fetches-per-server
    :tags: server, query
@@ -8256,7 +8219,7 @@ Name Server Statistics Counters
     This indicates the number of queries which the server attempted to recurse but for which it discovered an existing query with the same IP address, port, query ID, name, type, and class already being processed. This corresponds to the ``duplicate`` counter of previous versions of BIND 9.
 
 ``QryDropped``
-    This indicates the number of recursive queries dropped by the server as a result of configured limits. These limits include the settings of the :any:`fetches-per-zone`, :any:`fetches-per-server`, :any:`clients-per-query`, and :any:`max-clients-per-query` options, as well as the :any:`rate-limit` option. This corresponds to the ``dropped`` counter of previous versions of BIND 9.
+    This indicates the number of recursive queries dropped by the server as a result of configured limits. These limits include the settings of the :any:`fetches-per-server`, :any:`clients-per-query`, and :any:`max-clients-per-query` options, as well as the :any:`rate-limit` option. This corresponds to the ``dropped`` counter of previous versions of BIND 9.
 
 ``QryFailure``
     This indicates the number of query failures. This corresponds to the ``failure`` counter of previous versions of BIND 9. Note: this counter is provided mainly for backward compatibility with previous versions; normally, more fine-grained counters such as ``AuthQryRej`` and ``RecQryRej`` that would also fall into this counter are provided, so this counter is not of much interest in practice.
@@ -8491,9 +8454,6 @@ Resolver Statistics Counters
 
 ``BadCookieRcode``
     This indicates the number of BADCOOKIE response codes received from an authoritative server.
-
-``ZoneQuota``
-    This indicates the number of queries spilled for exceeding the :any:`fetches-per-zone` quota.
 
 ``ServerQuota``
     This indicates the number of queries spilled for exceeding the :any:`fetches-per-server` quota.

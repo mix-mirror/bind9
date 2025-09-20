@@ -233,9 +233,7 @@ Currently supported commands are:
 .. option:: fetchlimit [view]
 
    This command dumps a list of servers that are currently being
-   rate-limited as a result of ``fetches-per-server`` settings, and
-   a list of domain names that are currently being rate-limited as
-   a result of ``fetches-per-zone`` settings.
+   rate-limited as a result of ``fetches-per-server`` settings.
 
 .. option:: flush
 
@@ -447,22 +445,12 @@ Currently supported commands are:
    recursing on, and the list of domains to which iterative queries
    are currently being sent.
 
-   The first list includes all unique clients that are waiting for
+   The list includes all unique clients that are waiting for
    recursion to complete, including the query that is awaiting a
    response, the timestamp (seconds since the Unix epoch) of
    when named started processing this client query, the client's
    address, and the transport over which the the query was received
    (UDP, TCP, TLS, or HTTP).
-
-   The second list comprises of domains for which there are active
-   (or recently active) fetches in progress.  It reports the number
-   of active fetches for each domain and the number of queries that
-   have been passed (allowed) or dropped (spilled) as a result of
-   the ``fetches-per-zone`` limit.  (Note: these counters are not
-   cumulative over time; whenever the number of active fetches for
-   a domain drops to zero, the counter for that domain is deleted,
-   and the next time a fetch is sent to that domain, it is recreated
-   with the counters set to zero).
 
 .. option:: refresh zone [class [view]]
 

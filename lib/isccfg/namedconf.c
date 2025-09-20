@@ -1116,7 +1116,7 @@ static cfg_type_t cfg_type_fetchquota = { "fetchquota",	   cfg_parse_tuple,
 					  &cfg_rep_tuple,  fetchquota_fields };
 
 /*%
- * fetches-per-server or fetches-per-zone
+ * fetches-per-server
  */
 
 static const char *response_enums[] = { "drop", "fail", NULL };
@@ -2069,7 +2069,7 @@ static cfg_clausedef_t view_clauses[] = {
 	{ "fetch-glue", NULL, CFG_CLAUSEFLAG_ANCIENT },
 	{ "fetch-quota-params", &cfg_type_fetchquota, 0 },
 	{ "fetches-per-server", &cfg_type_fetchesper, 0 },
-	{ "fetches-per-zone", &cfg_type_fetchesper, 0 },
+	{ "fetches-per-zone", &cfg_type_fetchesper, CFG_CLAUSEFLAG_OBSOLETE },
 	{ "filter-aaaa", NULL, CFG_CLAUSEFLAG_ANCIENT },
 	{ "filter-aaaa-on-v4", NULL, CFG_CLAUSEFLAG_ANCIENT },
 	{ "filter-aaaa-on-v6", NULL, CFG_CLAUSEFLAG_ANCIENT },

@@ -97,9 +97,12 @@ struct dns_fetchresponse {
 };
 
 /*%
- * The two quota types (fetches-per-zone and fetches-per-server)
+ * The (now one) quota types (fetches-per-server)
  */
-typedef enum { dns_quotatype_zone = 0, dns_quotatype_server } dns_quotatype_t;
+typedef enum {
+	dns_quotatype_server = 0,
+	dns_quotatype_max,
+} dns_quotatype_t;
 
 /*
  * Options that modify how a 'fetch' is done.
@@ -486,11 +489,6 @@ dns_resolver_gettimeout(dns_resolver_t *resolver);
 void
 dns_resolver_setclientsperquery(dns_resolver_t *resolver, uint32_t min,
 				uint32_t max);
-void
-dns_resolver_setfetchesperzone(dns_resolver_t *resolver, uint32_t clients);
-
-uint32_t
-dns_resolver_getfetchesperzone(dns_resolver_t *resolver);
 
 void
 dns_resolver_getclientsperquery(dns_resolver_t *resolver, uint32_t *cur,
@@ -549,26 +547,23 @@ dns_resolver_setquotaresponse(dns_resolver_t *resolver, dns_quotatype_t which,
 isc_result_t
 dns_resolver_getquotaresponse(dns_resolver_t *resolver, dns_quotatype_t which);
 /*%
- * Get and set the result code that will be used when quotas
- * are exceeded. If 'which' is set to quotatype "zone", then the
- * result specified in 'resp' will be used when the fetches-per-zone
- * quota is exceeded by a fetch.  If 'which' is set to quotatype "server",
- * then the result specified in 'resp' will be used when the
- * fetches-per-server quota has been exceeded for all the
- * authoritative servers for a zone.  Valid choices are
- * DNS_R_DROP or DNS_R_SERVFAIL.
+ * Get and set the result code that will be used when quota is exceeded.
+ *
+ * If 'which' is set to quotatype "server", then the result specified in 'resp'
+ * will be used when the fetches-per-server quota has been exceeded for all the
+ * authoritative servers for a zone.
+ *
+ * Valid choices are DNS_R_DROP or DNS_R_SERVFAIL.
  *
  * Requires:
  * \li	'resolver' to be valid.
- * \li	'which' to be dns_quotatype_zone or dns_quotatype_server
+ * \li	'which' to be dns_quotatype_server
  * \li	'resp' to be DNS_R_DROP or DNS_R_SERVFAIL.
  */
 
 void
 dns_resolver_dumpfetches(dns_resolver_t *resolver, isc_statsformat_t format,
 			 FILE *fp);
-isc_result_t
-dns_resolver_dumpquota(dns_resolver_t *res, isc_buffer_t **buf);
 
 #ifdef ENABLE_AFL
 /*%

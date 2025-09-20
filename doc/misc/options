@@ -139,7 +139,7 @@ options {
 	empty-zones-enable <boolean>;
 	fetch-quota-params <integer> <fixedpoint> <fixedpoint> <fixedpoint>;
 	fetches-per-server <integer> [ ( drop | fail ) ];
-	fetches-per-zone <integer> [ ( drop | fail ) ];
+	fetches-per-zone <integer> [ ( drop | fail ) ]; // obsolete
 	flush-zones-on-shutdown <boolean>;
 	forward ( first | only );
 	forwarders [ port <integer> ] [ tls <string> ] { ( <ipv4_address> | <ipv6_address> ) [ port <integer> ] [ tls <string> ]; ... };
@@ -533,7 +533,7 @@ view <string> [ <class> ] {
 	empty-zones-enable <boolean>;
 	fetch-quota-params <integer> <fixedpoint> <fixedpoint> <fixedpoint>;
 	fetches-per-server <integer> [ ( drop | fail ) ];
-	fetches-per-zone <integer> [ ( drop | fail ) ];
+	fetches-per-zone <integer> [ ( drop | fail ) ]; // obsolete
 	forward ( first | only );
 	forwarders [ port <integer> ] [ tls <string> ] { ( <ipv4_address> | <ipv6_address> ) [ port <integer> ] [ tls <string> ]; ... };
 	ipv4only-contact <string>;
