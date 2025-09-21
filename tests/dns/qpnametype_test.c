@@ -420,7 +420,7 @@ ISC_RUN_TEST_IMPL(partialmatch) {
 	dns_qp_t *qp = NULL;
 	int i = 0;
 
-	dns_qp_create(mctx, &string_methods, NULL, &qp);
+	dns_qp_create(isc_g_mctx, &string_methods, NULL, &qp);
 
 	static struct inserting insert[] = {
 		INSERTING("a.b.", 1),
@@ -620,7 +620,7 @@ ISC_RUN_TEST_IMPL(qpchain) {
 		INSERTING(".", 65000),	    INSERTING("", 0),
 	};
 
-	dns_qp_create(mctx, &string_methods, NULL, &qp);
+	dns_qp_create(isc_g_mctx, &string_methods, NULL, &qp);
 
 	while (insert1[i].name[0] != '\0') {
 		insert_nametype(qp, insert1[i].name, insert1[i].type,
@@ -830,7 +830,7 @@ ISC_RUN_TEST_IMPL(qpchain) {
 	};
 
 	i = 0;
-	dns_qp_create(mctx, &string_methods, NULL, &qp);
+	dns_qp_create(isc_g_mctx, &string_methods, NULL, &qp);
 
 	while (insert2[i].name[0] != '\0') {
 		insert_nametype(qp, insert2[i].name, insert2[i].type,
@@ -884,7 +884,7 @@ check_predecessors_withchain(dns_qp_t *qp, struct check_predecessors check[],
 		dns_name_t *expred = dns_fixedname_initname(&fn3);
 		char *predstr = NULL;
 		dns_test_namefromstring(check[i].predecessor, &fn3);
-		result = dns_name_tostring(expred, &predstr, mctx);
+		result = dns_name_tostring(expred, &predstr, isc_g_mctx);
 		assert_int_equal(result, ISC_R_SUCCESS);
 
 		result = dns_qp_lookup(qp, name, check[i].type, check[i].space,
@@ -916,7 +916,7 @@ check_predecessors_withchain(dns_qp_t *qp, struct check_predecessors check[],
 		}
 		assert_int_equal(result, ISC_R_SUCCESS);
 
-		result = dns_name_tostring(pred, &namestr, mctx);
+		result = dns_name_tostring(pred, &namestr, isc_g_mctx);
 #if 0
 		fprintf(stderr,
 			"... expected predecessor %s%s type %u, got %s%s type "
@@ -932,20 +932,20 @@ check_predecessors_withchain(dns_qp_t *qp, struct check_predecessors check[],
 #if 0
 		fprintf(stderr, "%d: remaining names after %s:\n", i, namestr);
 #endif
-		isc_mem_free(mctx, namestr);
-		isc_mem_free(mctx, predstr);
+		isc_mem_free(isc_g_mctx, namestr);
+		isc_mem_free(isc_g_mctx, predstr);
 
 		int j = 0;
 		while (dns_qpiter_next(&it, name, NULL, &ival) == ISC_R_SUCCESS)
 		{
 #if 0
-			result = dns_name_tostring(name, &namestr, mctx);
+			result = dns_name_tostring(name, &namestr, isc_g_mctx);
 			assert_int_equal(result, ISC_R_SUCCESS);
 			fprintf(stderr, "%s[%d]%s%s:%u", j > 0 ? "->\n  " : "",
 				j + 1, NAMESPACESTR(ival & 0x0f), namestr,
 				(ival >> 16));
 
-			isc_mem_free(mctx, namestr);
+			isc_mem_free(isc_g_mctx, namestr);
 #endif
 			j++;
 		}
@@ -1019,7 +1019,7 @@ ISC_RUN_TEST_IMPL(predecessors) {
 					      INSERTING(".", 70),
 					      INSERTING("", 0) };
 
-	dns_qp_create(mctx, &string_methods, NULL, &qp);
+	dns_qp_create(isc_g_mctx, &string_methods, NULL, &qp);
 	while (insert1[i].name[0] != '.') {
 		insert_nametype(qp, insert1[i].name, insert1[i].type,
 				insert1[i].space, false);
@@ -1722,7 +1722,7 @@ ISC_RUN_TEST_IMPL(fixiterator) {
 		INSERTING("", 0)
 	};
 
-	dns_qp_create(mctx, &string_methods, NULL, &qp);
+	dns_qp_create(isc_g_mctx, &string_methods, NULL, &qp);
 	while (insert1[i].name[0] != '\0') {
 		insert_nametype(qp, insert1[i].name, insert1[i].type,
 				insert1[i].space, false);
@@ -1793,7 +1793,7 @@ ISC_RUN_TEST_IMPL(fixiterator) {
 		INSERTING("", 0)
 	};
 
-	dns_qp_create(mctx, &string_methods, NULL, &qp);
+	dns_qp_create(isc_g_mctx, &string_methods, NULL, &qp);
 	while (insert2[i].name[0] != '\0') {
 		insert_nametype(qp, insert2[i].name, insert2[i].type,
 				insert2[i].space, false);
@@ -1858,7 +1858,7 @@ ISC_RUN_TEST_IMPL(fixiterator) {
 	};
 
 	i = 0;
-	dns_qp_create(mctx, &string_methods, NULL, &qp);
+	dns_qp_create(isc_g_mctx, &string_methods, NULL, &qp);
 	while (insert3[i].name[0] != '\0') {
 		insert_nametype(qp, insert3[i].name, insert3[i].type,
 				insert3[i].space, false);
@@ -1896,7 +1896,7 @@ ISC_RUN_TEST_IMPL(fixiterator) {
 					      INSERTING("", 0) };
 
 	i = 0;
-	dns_qp_create(mctx, &string_methods, NULL, &qp);
+	dns_qp_create(isc_g_mctx, &string_methods, NULL, &qp);
 	while (insert4[i].name[0] != '\0') {
 		insert_nametype(qp, insert4[i].name, insert4[i].type,
 				insert4[i].space, false);
@@ -2014,7 +2014,7 @@ ISC_RUN_TEST_IMPL(qpkey_delete) {
 	 * NSEC3:        c.d. 3
 	 */
 
-	dns_qp_create(mctx, &string_methods, NULL, &qp);
+	dns_qp_create(isc_g_mctx, &string_methods, NULL, &qp);
 
 	while (insert1[i].name[0] != '\0') {
 		insert_nametype(qp, insert1[i].name, insert1[i].type,
