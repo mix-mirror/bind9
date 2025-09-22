@@ -49,7 +49,7 @@ struct isc_statsmulti {
 	int n_highwater;
 	int per_thread_capacity;
 	int num_threads_plus_one;
-	isc_atomic_statscounter_t *counters;
+	isc_atomic_statscounter_t counters[];
 };
 
 static isc_statscounter_t
@@ -76,12 +76,16 @@ to_index(isc_statsmulti_t *stats, isc_tid_t tid, isc_statscounter_t internal_cou
 	return thread_id * stats->per_thread_capacity + internal_counter;
 }
 
+static isc_atomic_statscounter_t *
+get_atomic_counter_from_index(isc_statsmulti_t *stats, int index) {
+	return &stats->counters[index];
+}
+
 void
 isc_statsmulti_create(isc_mem_t *mctx, isc_statsmulti_t **statsp, int n_additive, int n_highwater) {
 	REQUIRE(statsp != NULL && *statsp == NULL);
 
 	int ncounters = n_additive + n_highwater;
-	isc_statsmulti_t *stats = isc_mem_get(mctx, sizeof(*stats));
 	
 	size_t size_in_bytes = sizeof(isc_atomic_statscounter_t) * ncounters;
 	size_t rounded_up = (size_in_bytes + 63) & ~63; /* Round up to next multiple of 64 */
@@ -90,7 +94,7 @@ isc_statsmulti_create(isc_mem_t *mctx, isc_statsmulti_t **statsp, int n_additive
 	
 	/* Allocate per_thread_capacity * num_threads total counters */
 	size_t alloc_size = rounded_up * num_threads_plus_one;
-	stats->counters = isc_mem_get(mctx, alloc_size);
+	isc_statsmulti_t *stats = isc_mem_get(mctx, sizeof(*stats) + alloc_size);
 	isc_refcount_init(&stats->references, 1);
 	for (int i = 0; i < per_thread_capacity * num_threads_plus_one; i++) {
 		atomic_init(&stats->counters[i], 0);
@@ -127,9 +131,8 @@ isc_statsmulti_detach(isc_statsmulti_t **statsp) {
 
 	if (isc_refcount_decrement(&stats->references) == 1) {
 		isc_refcount_destroy(&stats->references);
-		isc_mem_cput(stats->mctx, stats->counters, stats->per_thread_capacity * stats->num_threads_plus_one,
-			     sizeof(isc_atomic_statscounter_t));
-		isc_mem_putanddetach(&stats->mctx, stats, sizeof(*stats));
+		size_t alloc_size = stats->per_thread_capacity * stats->num_threads_plus_one * sizeof(isc_atomic_statscounter_t);
+		isc_mem_putanddetach(&stats->mctx, stats, sizeof(*stats) + alloc_size);
 	}
 }
 
@@ -139,7 +142,7 @@ isc_statsmulti_increment(isc_statsmulti_t *stats, isc_statscounter_t counter) {
 	counter = additive_counter(stats, counter);
 
 	int index = to_index(stats, isc_tid(), counter);
-	return atomic_fetch_add_relaxed(&stats->counters[index], 1);
+	return atomic_fetch_add_relaxed(get_atomic_counter_from_index(stats, index), 1);
 }
 
 void
@@ -148,7 +151,7 @@ isc_statsmulti_decrement(isc_statsmulti_t *stats, isc_statscounter_t counter) {
 	counter = additive_counter(stats, counter);
 
 	int index = to_index(stats, isc_tid(), counter);
-	atomic_fetch_sub_relaxed(&stats->counters[index], 1);
+	atomic_fetch_sub_relaxed(get_atomic_counter_from_index(stats, index), 1);
 }
 
 void
@@ -163,7 +166,7 @@ isc_statsmulti_dump(isc_statsmulti_t *stats, isc_statsmulti_dumper_t dump_fn, vo
 		/* Accumulate across all threads */
 		for (int thread = 0; thread < stats->num_threads_plus_one; thread++) {
 			int index = to_index(stats, thread, i);
-			total += atomic_load_acquire(&stats->counters[index]);
+			total += atomic_load_acquire(get_atomic_counter_from_index(stats, index));
 		}
 		if ((options & ISC_STATSMULTIDUMP_VERBOSE) == 0 && total == 0) {
 			continue;
@@ -181,7 +184,7 @@ isc_statsmulti_get_counter(isc_statsmulti_t *stats, isc_statscounter_t counter) 
 	/* Accumulate across all threads */
 	for (int thread = 0; thread < stats->num_threads_plus_one; thread++) {
 		int index = to_index(stats, thread, counter);
-		total += atomic_load_acquire(&stats->counters[index]);
+		total += atomic_load_acquire(get_atomic_counter_from_index(stats, index));
 	}
 	return total;
 }
@@ -192,7 +195,7 @@ isc_statsmulti_clear(isc_statsmulti_t *stats) {
 
 	/* Clear all counters across all threads */
 	for (int i = 0; i < stats->per_thread_capacity * stats->num_threads_plus_one; i++) {
-		atomic_store_relaxed(&stats->counters[i], 0);
+		atomic_store_relaxed(get_atomic_counter_from_index(stats, i), 0);
 	}
 }
 
@@ -205,9 +208,9 @@ isc_statsmulti_update_if_greater(isc_statsmulti_t *stats, isc_statscounter_t cou
 	int index = to_index(stats, isc_tid(), internal_counter);
 	
 	/* Atomically update if the new value is greater than current */
-	isc_statscounter_t current = atomic_load_relaxed(&stats->counters[index]);
+	isc_statscounter_t current = atomic_load_relaxed(get_atomic_counter_from_index(stats, index));
 	while (value > current) {
-		if (atomic_compare_exchange_weak_relaxed(&stats->counters[index], &current, value)) {
+		if (atomic_compare_exchange_weak_relaxed(get_atomic_counter_from_index(stats, index), &current, value)) {
 			break;
 		}
 		/* current was updated by the failed compare_exchange, try again */
@@ -224,7 +227,7 @@ isc_statsmulti_get_highwater(isc_statsmulti_t *stats, isc_statscounter_t counter
 	/* Find maximum value across all threads */
 	for (int thread = 0; thread < stats->num_threads_plus_one; thread++) {
 		int index = to_index(stats, thread, internal_counter);
-		isc_statscounter_t value = atomic_load_acquire(&stats->counters[index]);
+		isc_statscounter_t value = atomic_load_acquire(get_atomic_counter_from_index(stats, index));
 		if (value > max_value) {
 			max_value = value;
 		}
@@ -241,6 +244,6 @@ isc_statsmulti_reset_highwater(isc_statsmulti_t *stats, isc_statscounter_t count
 	/* Reset highwater counter to 0 across all threads */
 	for (int thread = 0; thread < stats->num_threads_plus_one; thread++) {
 		int index = to_index(stats, thread, internal_counter);
-		atomic_store_relaxed(&stats->counters[index], 0);
+		atomic_store_relaxed(get_atomic_counter_from_index(stats, index), 0);
 	}
 }
