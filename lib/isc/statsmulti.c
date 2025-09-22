@@ -81,6 +81,18 @@ get_atomic_counter_from_index(isc_statsmulti_t *stats, int index) {
 	return &stats->counters[index];
 }
 
+static void
+atomic_update_if_greater(isc_atomic_statscounter_t *counter, isc_statscounter_t value) {
+	/* Atomically update if the new value is greater than current */
+	isc_statscounter_t current = atomic_load_relaxed(counter);
+	while (value > current) {
+		if (atomic_compare_exchange_weak_relaxed(counter, &current, value)) {
+			break;
+		}
+		/* current was updated by the failed compare_exchange, try again */
+	}
+}
+
 void
 isc_statsmulti_create(isc_mem_t *mctx, isc_statsmulti_t **statsp, int n_additive, int n_highwater) {
 	REQUIRE(statsp != NULL && *statsp == NULL);
@@ -91,6 +103,7 @@ isc_statsmulti_create(isc_mem_t *mctx, isc_statsmulti_t **statsp, int n_additive
 	size_t rounded_up = (size_in_bytes + 63) & ~63; /* Round up to next multiple of 64 */
 	int per_thread_capacity = rounded_up / sizeof(isc_atomic_statscounter_t);
 	int num_threads_plus_one = isc_tid_count() + 1;
+	REQUIRE(num_threads_plus_one >= 1);
 	
 	/* Allocate per_thread_capacity * num_threads total counters */
 	size_t alloc_size = rounded_up * num_threads_plus_one;
@@ -164,7 +177,11 @@ isc_statsmulti_dump(isc_statsmulti_t *stats, isc_statsmulti_dumper_t dump_fn, vo
 	for (i = 0; i < stats->n_counters; i++) {
 		isc_statscounter_t total = 0;
 		/* Accumulate across all threads */
-		for (int thread = 0; thread < stats->num_threads_plus_one; thread++) {
+		/* First thread (tid 0) uses atomic operations */
+		int index0 = to_index(stats, 0, i);
+		total += atomic_load_acquire(get_atomic_counter_from_index(stats, index0));
+		/* Other threads (tid >= 1) can use atomic operations for now */
+		for (int thread = 1; thread < stats->num_threads_plus_one; thread++) {
 			int index = to_index(stats, thread, i);
 			total += atomic_load_acquire(get_atomic_counter_from_index(stats, index));
 		}
@@ -182,7 +199,11 @@ isc_statsmulti_get_counter(isc_statsmulti_t *stats, isc_statscounter_t counter) 
 
 	isc_statscounter_t total = 0;
 	/* Accumulate across all threads */
-	for (int thread = 0; thread < stats->num_threads_plus_one; thread++) {
+	/* First thread (tid 0) uses atomic operations */
+	int index0 = to_index(stats, 0, counter);
+	total += atomic_load_acquire(get_atomic_counter_from_index(stats, index0));
+	/* Other threads (tid >= 1) can use atomic operations for now */
+	for (int thread = 1; thread < stats->num_threads_plus_one; thread++) {
 		int index = to_index(stats, thread, counter);
 		total += atomic_load_acquire(get_atomic_counter_from_index(stats, index));
 	}
@@ -207,14 +228,7 @@ isc_statsmulti_update_if_greater(isc_statsmulti_t *stats, isc_statscounter_t cou
 
 	int index = to_index(stats, isc_tid(), internal_counter);
 	
-	/* Atomically update if the new value is greater than current */
-	isc_statscounter_t current = atomic_load_relaxed(get_atomic_counter_from_index(stats, index));
-	while (value > current) {
-		if (atomic_compare_exchange_weak_relaxed(get_atomic_counter_from_index(stats, index), &current, value)) {
-			break;
-		}
-		/* current was updated by the failed compare_exchange, try again */
-	}
+	atomic_update_if_greater(get_atomic_counter_from_index(stats, index), value);
 }
 
 isc_statscounter_t
@@ -223,9 +237,12 @@ isc_statsmulti_get_highwater(isc_statsmulti_t *stats, isc_statscounter_t counter
 
 	isc_statscounter_t internal_counter = highwater_counter(stats, counter);
 
-	isc_statscounter_t max_value = 0;
 	/* Find maximum value across all threads */
-	for (int thread = 0; thread < stats->num_threads_plus_one; thread++) {
+	/* First thread (tid 0) uses atomic operations */
+	int index0 = to_index(stats, 0, internal_counter);
+	isc_statscounter_t max_value = atomic_load_acquire(get_atomic_counter_from_index(stats, index0));
+	/* Other threads (tid >= 1) can use atomic operations for now */
+	for (int thread = 1; thread < stats->num_threads_plus_one; thread++) {
 		int index = to_index(stats, thread, internal_counter);
 		isc_statscounter_t value = atomic_load_acquire(get_atomic_counter_from_index(stats, index));
 		if (value > max_value) {
