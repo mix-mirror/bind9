@@ -30,11 +30,16 @@
 #define ISC_STATSMULTI_MAGIC	   ISC_MAGIC('S', 'M', 'u', 'l')
 #define ISC_STATSMULTI_VALID(x) ISC_MAGIC_VALID(x, ISC_STATSMULTI_MAGIC)
 
+typedef int_fast64_t isc_internal_statscounter_t;
+
 /*
  * Same constraint as stats.c
  */
 STATIC_ASSERT(sizeof(isc_statscounter_t) <= sizeof(uint64_t),
 	      "Exported statistics must fit into the statistic counter size");
+
+STATIC_ASSERT(sizeof(isc_internal_statscounter_t) == sizeof(isc_statscounter_t),
+	      "Internal and external counter types must be the same size");
 
 enum {
 	COUNTERS_PER_CACHELINE = 64 / sizeof(isc_statscounter_t),
@@ -49,7 +54,7 @@ struct isc_statsmulti {
 	int n_highwater;
 	int per_thread_capacity;
 	int num_threads_plus_one;
-	isc_atomic_statscounter_t counters[];
+	char counters[];
 };
 
 static isc_statscounter_t
@@ -78,7 +83,12 @@ to_index(isc_statsmulti_t *stats, isc_tid_t tid, isc_statscounter_t internal_cou
 
 static isc_atomic_statscounter_t *
 get_atomic_counter_from_index(isc_statsmulti_t *stats, int index) {
-	return &stats->counters[index];
+	return (isc_atomic_statscounter_t *)&stats->counters[index * sizeof(isc_atomic_statscounter_t)];
+}
+
+static isc_internal_statscounter_t *
+get_internal_counter(isc_statsmulti_t *stats, int index) {
+	return (isc_internal_statscounter_t *)&stats->counters[index * sizeof(isc_atomic_statscounter_t)];
 }
 
 static void
@@ -110,7 +120,7 @@ isc_statsmulti_create(isc_mem_t *mctx, isc_statsmulti_t **statsp, int n_additive
 	isc_statsmulti_t *stats = isc_mem_get(mctx, sizeof(*stats) + alloc_size);
 	isc_refcount_init(&stats->references, 1);
 	for (int i = 0; i < per_thread_capacity * num_threads_plus_one; i++) {
-		atomic_init(&stats->counters[i], 0);
+		atomic_init(get_atomic_counter_from_index(stats, i), 0);
 	}
 
 	stats->mctx = NULL;
@@ -155,7 +165,12 @@ isc_statsmulti_increment(isc_statsmulti_t *stats, isc_statscounter_t counter) {
 	counter = additive_counter(stats, counter);
 
 	int index = to_index(stats, isc_tid(), counter);
-	return atomic_fetch_add_relaxed(get_atomic_counter_from_index(stats, index), 1);
+	if (isc_tid() == 0) {
+		return atomic_fetch_add_relaxed(get_atomic_counter_from_index(stats, index), 1);
+	} else {
+		isc_internal_statscounter_t *ptr = get_internal_counter(stats, index);
+		return (*ptr)++;
+	}
 }
 
 void
@@ -164,7 +179,12 @@ isc_statsmulti_decrement(isc_statsmulti_t *stats, isc_statscounter_t counter) {
 	counter = additive_counter(stats, counter);
 
 	int index = to_index(stats, isc_tid(), counter);
-	atomic_fetch_sub_relaxed(get_atomic_counter_from_index(stats, index), 1);
+	if (isc_tid() == 0) {
+		atomic_fetch_sub_relaxed(get_atomic_counter_from_index(stats, index), 1);
+	} else {
+		isc_internal_statscounter_t *ptr = get_internal_counter(stats, index);
+		*ptr -= 1;
+	}
 }
 
 void
@@ -179,10 +199,10 @@ isc_statsmulti_dump(isc_statsmulti_t *stats, isc_statsmulti_dumper_t dump_fn, vo
 		/* First thread (tid 0) uses atomic operations */
 		int index0 = to_index(stats, 0, i);
 		isc_statscounter_t total = atomic_load_acquire(get_atomic_counter_from_index(stats, index0));
-		/* Other threads (tid >= 1) can use atomic operations for now */
+		/* Other threads (tid >= 1) use normal operations */
 		for (int thread = 1; thread < stats->num_threads_plus_one; thread++) {
 			int index = to_index(stats, thread, i);
-			total += atomic_load_acquire(get_atomic_counter_from_index(stats, index));
+			total += *get_internal_counter(stats, index);
 		}
 		if ((options & ISC_STATSMULTIDUMP_VERBOSE) == 0 && total == 0) {
 			continue;
@@ -200,10 +220,10 @@ isc_statsmulti_get_counter(isc_statsmulti_t *stats, isc_statscounter_t counter) 
 	/* First thread (tid 0) uses atomic operations */
 	int index0 = to_index(stats, 0, counter);
 	isc_statscounter_t total = atomic_load_acquire(get_atomic_counter_from_index(stats, index0));
-	/* Other threads (tid >= 1) can use atomic operations for now */
+	/* Other threads (tid >= 1) use normal operations */
 	for (int thread = 1; thread < stats->num_threads_plus_one; thread++) {
 		int index = to_index(stats, thread, counter);
-		total += atomic_load_acquire(get_atomic_counter_from_index(stats, index));
+		total += *get_internal_counter(stats, index);
 	}
 	return total;
 }
