@@ -175,11 +175,10 @@ isc_statsmulti_dump(isc_statsmulti_t *stats, isc_statsmulti_dumper_t dump_fn, vo
 	REQUIRE(ISC_STATSMULTI_VALID(stats));
 
 	for (i = 0; i < stats->n_counters; i++) {
-		isc_statscounter_t total = 0;
 		/* Accumulate across all threads */
 		/* First thread (tid 0) uses atomic operations */
 		int index0 = to_index(stats, 0, i);
-		total += atomic_load_acquire(get_atomic_counter_from_index(stats, index0));
+		isc_statscounter_t total = atomic_load_acquire(get_atomic_counter_from_index(stats, index0));
 		/* Other threads (tid >= 1) can use atomic operations for now */
 		for (int thread = 1; thread < stats->num_threads_plus_one; thread++) {
 			int index = to_index(stats, thread, i);
@@ -197,11 +196,10 @@ isc_statsmulti_get_counter(isc_statsmulti_t *stats, isc_statscounter_t counter) 
 	REQUIRE(ISC_STATSMULTI_VALID(stats));
 	counter = additive_counter(stats, counter);
 
-	isc_statscounter_t total = 0;
 	/* Accumulate across all threads */
 	/* First thread (tid 0) uses atomic operations */
 	int index0 = to_index(stats, 0, counter);
-	total += atomic_load_acquire(get_atomic_counter_from_index(stats, index0));
+	isc_statscounter_t total = atomic_load_acquire(get_atomic_counter_from_index(stats, index0));
 	/* Other threads (tid >= 1) can use atomic operations for now */
 	for (int thread = 1; thread < stats->num_threads_plus_one; thread++) {
 		int index = to_index(stats, thread, counter);
