@@ -54,7 +54,7 @@ struct isc_statsmulti {
 	int n_highwater;
 	int per_thread_capacity;
 	int num_threads_plus_one;
-	char counters[];
+	char *counters;
 };
 
 static isc_statscounter_t
@@ -117,7 +117,8 @@ isc_statsmulti_create(isc_mem_t *mctx, isc_statsmulti_t **statsp, int n_additive
 	
 	/* Allocate per_thread_capacity * num_threads total counters */
 	size_t alloc_size = rounded_up * num_threads_plus_one;
-	isc_statsmulti_t *stats = isc_mem_get(mctx, sizeof(*stats) + alloc_size);
+	isc_statsmulti_t *stats = isc_mem_get(mctx, sizeof(*stats));
+	stats->counters = isc_mem_get(mctx, alloc_size);
 	isc_refcount_init(&stats->references, 1);
 	for (int i = 0; i < per_thread_capacity * num_threads_plus_one; i++) {
 		atomic_init(get_atomic_counter_from_index(stats, i), 0);
@@ -155,7 +156,8 @@ isc_statsmulti_detach(isc_statsmulti_t **statsp) {
 	if (isc_refcount_decrement(&stats->references) == 1) {
 		isc_refcount_destroy(&stats->references);
 		size_t alloc_size = stats->per_thread_capacity * stats->num_threads_plus_one * sizeof(isc_atomic_statscounter_t);
-		isc_mem_putanddetach(&stats->mctx, stats, sizeof(*stats) + alloc_size);
+		isc_mem_put(stats->mctx, stats->counters, alloc_size);
+		isc_mem_putanddetach(&stats->mctx, stats, sizeof(*stats));
 	}
 }
 
