@@ -677,14 +677,19 @@ static void
 findnoqname(fetchctx_t *fctx, dns_message_t *message, dns_name_t *name,
 	    dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset);
 
-#define fctx_done_detach(fctxp, result)                                 \
-	if (fctx__done(*fctxp, result, __func__, __FILE__, __LINE__)) { \
-		fetchctx_detach(fctxp);                                 \
+#define fctx_done_detach(fctxp, result)                                        \
+	if (fctx__done(*fctxp, result, false, __func__, __FILE__, __LINE__)) { \
+		fetchctx_detach(fctxp);                                        \
 	}
 
-#define fctx_done_unref(fctx, result)                                 \
-	if (fctx__done(fctx, result, __func__, __FILE__, __LINE__)) { \
-		fetchctx_unref(fctx);                                 \
+#define fctx_done_unref(fctx, result)                                        \
+	if (fctx__done(fctx, result, false, __func__, __FILE__, __LINE__)) { \
+		fetchctx_unref(fctx);                                        \
+	}
+
+#define fctx_done_unlock(fctx, result)                                      \
+	if (fctx__done(fctx, result, true, __func__, __FILE__, __LINE__)) { \
+		fetchctx_unref(fctx);                                       \
 	}
 
 #if DNS_RESOLVER_TRACE
@@ -700,7 +705,7 @@ ISC_REFCOUNT_DECL(fetchctx);
 #endif
 
 static bool
-fctx__done(fetchctx_t *fctx, isc_result_t result, const char *func,
+fctx__done(fetchctx_t *fctx, isc_result_t result, bool unlock, const char *func,
 	   const char *file, unsigned int line);
 
 static void
@@ -1633,7 +1638,7 @@ fctx_match(void *node, const void *key) {
 }
 
 static bool
-fctx__done(fetchctx_t *fctx, isc_result_t result, const char *func,
+fctx__done(fetchctx_t *fctx, isc_result_t result, bool unlock, const char *func,
 	   const char *file, unsigned int line) {
 	bool no_response = false;
 	bool age_untried = false;
@@ -1652,7 +1657,9 @@ fctx__done(fetchctx_t *fctx, isc_result_t result, const char *func,
 	UNUSED(func);
 #endif
 
-	LOCK(&fctx->lock);
+	if (!unlock) {
+		LOCK(&fctx->lock);
+	}
 	/* We need to do this under the lock for intra-thread synchronization */
 	if (fctx->state == fetchstate_done) {
 		UNLOCK(&fctx->lock);
@@ -2887,19 +2894,20 @@ fctx_finddone(void *arg) {
 			}
 		}
 	}
-
-	UNLOCK(&fctx->lock);
-
-	dns_adb_destroyfind(&find);
+	if (!want_done) {
+		UNLOCK(&fctx->lock);
+	}
 
 	if (want_done) {
 		FCTXTRACE("fetch failed in finddone(); return "
 			  "ISC_R_FAILURE");
 
-		fctx_done_unref(fctx, ISC_R_FAILURE);
+		fctx_done_unlock(fctx, ISC_R_FAILURE);
 	} else if (want_try) {
 		fctx_try(fctx, true);
 	}
+
+	dns_adb_destroyfind(&find);
 
 	fetchctx_detach(&fctx);
 }
@@ -5591,19 +5599,19 @@ answer_response:
 	done = true;
 
 cleanup:
-	UNLOCK(&fctx->lock);
-cleanup_unlocked:
+	if (!done) {
+		UNLOCK(&fctx->lock);
+	} else {
+		fctx_done_unlock(fctx, result);
+	}
 
+cleanup_unlocked:
 	if (node != NULL) {
 		dns_db_detachnode(&node);
 	}
 
 	if (nextval != NULL) {
 		dns_validator_send(nextval);
-	}
-
-	if (done) {
-		fctx_done_unref(fctx, result);
 	}
 
 	/*
@@ -5614,7 +5622,6 @@ cleanup_unlocked:
 	dns_validator_shutdown(val);
 	dns_validator_detach(&val);
 	fetchctx_detach(&fctx);
-	INSIST(node == NULL);
 }
 
 static void
@@ -9190,15 +9197,18 @@ rctx_done(respctx_t *rctx, isc_result_t result) {
 		rctx->next_server = false;
 		rctx->resend = false;
 	}
-	UNLOCK(&fctx->lock);
 
 	if (rctx->next_server) {
+		UNLOCK(&fctx->lock);
 		rctx_nextserver(rctx, message, addrinfo, result);
 	} else if (rctx->resend) {
+		UNLOCK(&fctx->lock);
 		rctx_resend(rctx, addrinfo);
 	} else if (result == DNS_R_CHASEDSSERVERS) {
+		UNLOCK(&fctx->lock);
 		rctx_chaseds(rctx, message, addrinfo, result);
 	} else if (result == ISC_R_SUCCESS && !HAVE_ANSWER(fctx)) {
+		UNLOCK(&fctx->lock);
 		/*
 		 * All has gone well so far, but we are waiting for the DNSSEC
 		 * validator to validate the answer.
@@ -9206,10 +9216,9 @@ rctx_done(respctx_t *rctx, isc_result_t result) {
 		FCTXTRACE("wait for validator");
 		fctx_cancelqueries(fctx, true, false);
 	} else {
-		/*
-		 * We're done.
-		 */
-		fctx_done_detach(&rctx->fctx, result);
+		/* We're done. */
+		rctx->fctx = NULL;
+		fctx_done_unlock(fctx, result);
 	}
 
 detach:

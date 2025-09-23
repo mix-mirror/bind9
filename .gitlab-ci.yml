@@ -351,6 +351,7 @@ stages:
       -Dcmocka=enabled
       -Ddeveloper=enabled
       -Dleak-detection=enabled
+      -Dbuildtype=debug
       -Doptimization=1
       $EXTRA_CONFIGURE
       build
@@ -1887,9 +1888,16 @@ generate-stress-test-configs:
   <<: *base_image
   <<: *default_triggering_rules
   stage: precheck
+  variables:
+    BIND_STRESS_TESTS_MODE: recursive
+    BIND_STRESS_TESTS_PLATFORM: linux-amd64
+    BIND_STRESS_TESTS_PARALLEL: 50
+    BIND_STRESS_TESTS_RUN_TIME: 5
+    BIND_STRESS_TEST_DISABLE_POSTPROC: true
+    EXPECTED_TCP_RESPONSE_RATE: 20
   script:
     - git clone --depth 1 https://gitlab.isc.org/isc-projects/bind9-qa.git
-    - bind9-qa/stress/generate-stress-test-configs.py > stress-test-configs.yml
+    - CI_PIPELINE_SOURCE=schedule bind9-qa/stress/generate-stress-test-configs.py > stress-test-configs.yml
   artifacts:
     paths:
       - stress-test-configs.yml
