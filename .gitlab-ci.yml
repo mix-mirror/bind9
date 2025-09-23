@@ -1590,11 +1590,11 @@ mergetag:
   before_script:
     - git clone --depth 1 https://gitlab.isc.org/isc-projects/bind9-qa.git
   script:
-    - bind9-qa/releng/merge_tag.py --tag "$CI_COMMIT_TAG"
+    - bind9-qa/releng/merge_tag.py --tag v9.20.13 --project Andoni/bind9
   rules:
-    - if: '$CI_COMMIT_TAG != null'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
   when: manual
-  allow_failure: false
+
 
 .customer-git: &customer_git
   <<: *base_image
