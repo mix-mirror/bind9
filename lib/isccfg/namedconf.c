@@ -138,7 +138,7 @@ static cfg_type_t cfg_type_server;
 static cfg_type_t cfg_type_server_key_kludge;
 static cfg_type_t cfg_type_size;
 static cfg_type_t cfg_type_sizenodefault;
-static cfg_type_t cfg_type_sizeorpercent;
+static cfg_type_t cfg_type_sizenodefaultorpercent;
 static cfg_type_t cfg_type_sizeval;
 static cfg_type_t cfg_type_sockaddr4wild;
 static cfg_type_t cfg_type_sockaddr6wild;
@@ -2085,7 +2085,7 @@ static cfg_clausedef_t view_clauses[] = {
 	{ "lmdb-mapsize", &cfg_type_sizeval, CFG_CLAUSEFLAG_NOTCONFIGURED },
 #endif /* ifdef HAVE_LMDB */
 	{ "max-acache-size", NULL, CFG_CLAUSEFLAG_ANCIENT },
-	{ "max-cache-size", &cfg_type_sizeorpercent, 0 },
+	{ "max-cache-size", &cfg_type_sizenodefaultorpercent, 0 },
 	{ "max-cache-ttl", &cfg_type_duration, 0 },
 	{ "max-clients-per-query", &cfg_type_uint32, 0 },
 	{ "max-ncache-ttl", &cfg_type_duration, 0 },
@@ -2919,30 +2919,35 @@ static cfg_type_t cfg_type_sizeval_percent = {
 };
 
 /*%
- * A size in absolute values or percents, or "unlimited", or "default"
+ * A size in absolute values or percents, or "unlimited".
  */
 
 static isc_result_t
-parse_size_or_percent(cfg_parser_t *pctx, const cfg_type_t *type,
-		      cfg_obj_t **ret) {
+parse_size_nodefault_or_percent(cfg_parser_t *pctx, const cfg_type_t *type,
+				cfg_obj_t **ret) {
 	return cfg_parse_enum_or_other(pctx, type, &cfg_type_sizeval_percent,
 				       ret);
 }
 
 static void
-doc_parse_size_or_percent(cfg_printer_t *pctx, const cfg_type_t *type) {
+doc_parse_size_nodefault_or_percent(cfg_printer_t *pctx,
+				    const cfg_type_t *type) {
 	UNUSED(type);
-	cfg_print_cstr(pctx, "( default | unlimited | ");
+	cfg_print_cstr(pctx, "( unlimited | ");
 	cfg_doc_terminal(pctx, &cfg_type_sizeval);
 	cfg_print_cstr(pctx, " | ");
 	cfg_doc_terminal(pctx, &cfg_type_percentage);
 	cfg_print_cstr(pctx, " )");
 }
 
-static const char *sizeorpercent_enums[] = { "default", "unlimited", NULL };
-static cfg_type_t cfg_type_sizeorpercent = {
-	"size_or_percent",	   parse_size_or_percent, cfg_print_ustring,
-	doc_parse_size_or_percent, &cfg_rep_string,	  sizeorpercent_enums
+static const char *sizenodefaultorpercent_enums[] = { "unlimited", NULL };
+static cfg_type_t cfg_type_sizenodefaultorpercent = {
+	"size_no_default_or_percent",
+	parse_size_nodefault_or_percent,
+	cfg_print_ustring,
+	doc_parse_size_nodefault_or_percent,
+	&cfg_rep_string,
+	sizenodefaultorpercent_enums
 };
 
 /*%
