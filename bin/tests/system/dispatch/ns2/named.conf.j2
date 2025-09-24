@@ -37,6 +37,12 @@ options {
 	recursion yes;
 	servfail-ttl 0;
 	dnssec-validation no;
+
+{% set dnstap_supported = dnstap_supported | default(False) %}
+{% if dnstap_supported %}
+	dnstap { all; };
+	dnstap-output file "dnstap.log";
+{% endif %}
 };
 
 zone "." {
