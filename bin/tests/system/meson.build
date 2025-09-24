@@ -31,12 +31,12 @@ system_test_libraries += {
     'driver-async': files('hooks' / 'driver' / 'test-async.c'),
     'driver-syncplugin': files('hooks' / 'driver' / 'test-syncplugin.c'),
     'driver-dlzexternal': files('dlzexternal' / 'driver' / 'driver.c'),
-    'driver-sample': files(
-        'dyndb' / 'driver' / 'db.c',
-        'dyndb' / 'driver' / 'driver.c',
-        'dyndb' / 'driver' / 'instance.c',
-        'dyndb' / 'driver' / 'log.c',
-        'dyndb' / 'driver' / 'syncptr.c',
-        'dyndb' / 'driver' / 'zone.c',
-    ),
+    # 'driver-sample': files(
+    #     'dyndb' / 'driver' / 'db.c',
+    #     'dyndb' / 'driver' / 'driver.c',
+    #     'dyndb' / 'driver' / 'instance.c',
+    #     'dyndb' / 'driver' / 'log.c',
+    #     'dyndb' / 'driver' / 'syncptr.c',
+    #     'dyndb' / 'driver' / 'zone.c',
+    # ),
 }

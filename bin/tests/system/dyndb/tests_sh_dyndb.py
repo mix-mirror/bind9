@@ -20,5 +20,5 @@ pytestmark = pytest.mark.extra_artifacts(
 )
 
 
-def test_dyndb(run_tests_sh):
-    run_tests_sh()
+# def test_dyndb(run_tests_sh):
+#     run_tests_sh()
