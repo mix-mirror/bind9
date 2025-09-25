@@ -18,6 +18,7 @@ information regarding copyright ownership.
 1. [Access to source code](#access)
 1. [Reporting bugs](#bugs)
 1. [Contributing code](#contrib)
+1. [Use of Generative AI](#noai)
 
 ### Introduction
 
@@ -181,3 +182,26 @@ for more information.
 
 Thank you for your interest in contributing to the ongoing development
 of BIND 9.
+
+### <a name="noai"></a>Use of Generative AI
+
+Content created by large language models or other probabilistic tools, such as
+Copilot or ChatGPT, is not permitted in contributions. Code, documentation, pull
+requests, issues, comments, and any other contributions to the BIND 9 project
+are all covered by this policy.
+
+Due to their effects on project health and maintenance burden, both known and
+unknown, we are currently approaching these tools cautiously. Since this field
+is developing quickly, we are amenable to changing this policy in the future in
+response to suggestions for specific tools that lessen these effects.
+
+### Use of Generative AI for Bug Reports
+
+If you actually find a problem in BIND 9 using generative AI tools and you have verified it
+yourself to be true: write the report yourself and explain the problem as you
+have learned it. This makes sure the AI-generated inaccuracies and invented
+issues are filtered out early before they waste more people's time.  Even if you
+write the report yourself, you must make sure to reveal the fact that
+generative AI was used in your report.
+
+We ban users immediately who submit fake reports to the project.
