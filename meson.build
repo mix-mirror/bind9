@@ -1218,304 +1218,304 @@ libisccfg_dep = declare_dependency(
     include_directories: isccfg_inc,
 )
 
-executable(
-    'arpaname',
-    arpaname_src,
-    export_dynamic: true,
-    implicit_include_directories: false,
-    install: true,
-    dependencies: [
-        libisc_dep,
-    ],
-)
+# executable(
+#     'arpaname',
+#     arpaname_src,
+#     export_dynamic: true,
+#     implicit_include_directories: false,
+#     install: true,
+#     dependencies: [
+#         libisc_dep,
+#     ],
+# )
 
-executable(
-    'delv',
-    delv_src,
-    export_dynamic: true,
-    implicit_include_directories: true,
-    install: true,
-    sources: bind_keys,
-    dependencies: [
-        libisc_dep,
-        libisccfg_dep,
-        libns_dep,
-    ],
-)
+# executable(
+#     'delv',
+#     delv_src,
+#     export_dynamic: true,
+#     implicit_include_directories: true,
+#     install: true,
+#     sources: bind_keys,
+#     dependencies: [
+#         libisc_dep,
+#         libisccfg_dep,
+#         libns_dep,
+#     ],
+# )
 
-executable(
-    'dig',
-    dig_src,
-    export_dynamic: true,
-    implicit_include_directories: false,
-    install: true,
-    dependencies: [
-        libdns_dep,
-        libisc_dep,
-        libisccfg_dep,
+# executable(
+#     'dig',
+#     dig_src,
+#     export_dynamic: true,
+#     implicit_include_directories: false,
+#     install: true,
+#     dependencies: [
+#         libdns_dep,
+#         libisc_dep,
+#         libisccfg_dep,
+# 
+#         idn2_dep,
+#     ],
+# )
 
-        idn2_dep,
-    ],
-)
+# executable(
+#     'dnssec-cds',
+#     dnssec_cds_src,
+#     export_dynamic: true,
+#     implicit_include_directories: false,
+#     install: true,
+#     dependencies: [
+#         libdns_dep,
+#         libisc_dep,
+#         libisccfg_dep,
+#     ],
+# )
 
-executable(
-    'dnssec-cds',
-    dnssec_cds_src,
-    export_dynamic: true,
-    implicit_include_directories: false,
-    install: true,
-    dependencies: [
-        libdns_dep,
-        libisc_dep,
-        libisccfg_dep,
-    ],
-)
+# executable(
+#     'dnssec-dsfromkey',
+#     dnssec_dsfromkey_src,
+#     export_dynamic: true,
+#     implicit_include_directories: false,
+#     install: true,
+#     dependencies: [
+#         libdns_dep,
+#         libisc_dep,
+#         libisccfg_dep,
+#     ],
+# )
 
-executable(
-    'dnssec-dsfromkey',
-    dnssec_dsfromkey_src,
-    export_dynamic: true,
-    implicit_include_directories: false,
-    install: true,
-    dependencies: [
-        libdns_dep,
-        libisc_dep,
-        libisccfg_dep,
-    ],
-)
+# executable(
+#     'dnssec-importkey',
+#     dnssec_importkey_src,
+#     export_dynamic: true,
+#     implicit_include_directories: false,
+#     install: true,
+#     dependencies: [
+#         libdns_dep,
+#         libisc_dep,
+#         libisccfg_dep,
+#     ],
+# )
 
-executable(
-    'dnssec-importkey',
-    dnssec_importkey_src,
-    export_dynamic: true,
-    implicit_include_directories: false,
-    install: true,
-    dependencies: [
-        libdns_dep,
-        libisc_dep,
-        libisccfg_dep,
-    ],
-)
+# executable(
+#     'dnssec-keyfromlabel',
+#     dnssec_keyfromlabel_src,
+#     export_dynamic: true,
+#     implicit_include_directories: false,
+#     install: true,
+#     dependencies: [
+#         libdns_dep,
+#         libisc_dep,
+#         libisccfg_dep,
+#     ],
+# )
 
-executable(
-    'dnssec-keyfromlabel',
-    dnssec_keyfromlabel_src,
-    export_dynamic: true,
-    implicit_include_directories: false,
-    install: true,
-    dependencies: [
-        libdns_dep,
-        libisc_dep,
-        libisccfg_dep,
-    ],
-)
+# executable(
+#     'dnssec-keygen',
+#     dnssec_keygen_src,
+#     export_dynamic: true,
+#     implicit_include_directories: false,
+#     install: true,
+#     dependencies: [
+#         libdns_dep,
+#         libisc_dep,
+#         libisccfg_dep,
+#     ],
+# )
 
-executable(
-    'dnssec-keygen',
-    dnssec_keygen_src,
-    export_dynamic: true,
-    implicit_include_directories: false,
-    install: true,
-    dependencies: [
-        libdns_dep,
-        libisc_dep,
-        libisccfg_dep,
-    ],
-)
+# executable(
+#     'dnssec-ksr',
+#     dnssec_ksr_src,
+#     export_dynamic: true,
+#     implicit_include_directories: false,
+#     install: true,
+#     dependencies: [
+#         libdns_dep,
+#         libisc_dep,
+#         libisccfg_dep,
+#     ],
+# )
 
-executable(
-    'dnssec-ksr',
-    dnssec_ksr_src,
-    export_dynamic: true,
-    implicit_include_directories: false,
-    install: true,
-    dependencies: [
-        libdns_dep,
-        libisc_dep,
-        libisccfg_dep,
-    ],
-)
+# executable(
+#     'dnssec-revoke',
+#     dnssec_revoke_src,
+#     export_dynamic: true,
+#     implicit_include_directories: false,
+#     install: true,
+#     dependencies: [
+#         libdns_dep,
+#         libisc_dep,
+#         libisccfg_dep,
+#     ],
+# )
 
-executable(
-    'dnssec-revoke',
-    dnssec_revoke_src,
-    export_dynamic: true,
-    implicit_include_directories: false,
-    install: true,
-    dependencies: [
-        libdns_dep,
-        libisc_dep,
-        libisccfg_dep,
-    ],
-)
+# executable(
+#     'dnssec-settime',
+#     dnssec_settime_src,
+#     export_dynamic: true,
+#     implicit_include_directories: false,
+#     install: true,
+#     dependencies: [
+#         libdns_dep,
+#         libisc_dep,
+#         libisccfg_dep,
+#     ],
+# )
 
-executable(
-    'dnssec-settime',
-    dnssec_settime_src,
-    export_dynamic: true,
-    implicit_include_directories: false,
-    install: true,
-    dependencies: [
-        libdns_dep,
-        libisc_dep,
-        libisccfg_dep,
-    ],
-)
+# executable(
+#     'dnssec-signzone',
+#     dnssec_signzone_src,
+#     export_dynamic: true,
+#     implicit_include_directories: false,
+#     install: true,
+#     dependencies: [
+#         libdns_dep,
+#         libisc_dep,
+#         libisccfg_dep,
+#     ],
+# )
 
-executable(
-    'dnssec-signzone',
-    dnssec_signzone_src,
-    export_dynamic: true,
-    implicit_include_directories: false,
-    install: true,
-    dependencies: [
-        libdns_dep,
-        libisc_dep,
-        libisccfg_dep,
-    ],
-)
+# executable(
+#     'dnssec-verify',
+#     dnssec_verify_src,
+#     export_dynamic: true,
+#     implicit_include_directories: false,
+#     install: true,
+#     dependencies: [
+#         libdns_dep,
+#         libisc_dep,
+#         libisccfg_dep,
+#     ],
+# )
 
-executable(
-    'dnssec-verify',
-    dnssec_verify_src,
-    export_dynamic: true,
-    implicit_include_directories: false,
-    install: true,
-    dependencies: [
-        libdns_dep,
-        libisc_dep,
-        libisccfg_dep,
-    ],
-)
+# if config.has('HAVE_DNSTAP')
+#     executable(
+#         'dnstap-read',
+#         dnstap_read_src,
+#         export_dynamic: true,
+#         implicit_include_directories: true,
+#         install: true,
+#         dependencies: [
+#             libdns_dep,
+#             libisc_dep,
+# 
+#             dnstap_dep,
+#         ],
+#     )
+# endif
 
-if config.has('HAVE_DNSTAP')
-    executable(
-        'dnstap-read',
-        dnstap_read_src,
-        export_dynamic: true,
-        implicit_include_directories: true,
-        install: true,
-        dependencies: [
-            libdns_dep,
-            libisc_dep,
+# executable(
+#     'host',
+#     host_src,
+#     export_dynamic: true,
+#     implicit_include_directories: false,
+#     install: true,
+#     dependencies: [
+#         libdns_dep,
+#         libisc_dep,
+#         libisccfg_dep,
+# 
+#         idn2_dep,
+#     ],
+# )
 
-            dnstap_dep,
-        ],
-    )
-endif
+# executable(
+#     'mdig',
+#     mdig_src,
+#     export_dynamic: true,
+#     implicit_include_directories: false,
+#     install: true,
+#     dependencies: [
+#         libdns_dep,
+#         libisc_dep,
+#     ],
+# )
 
-executable(
-    'host',
-    host_src,
-    export_dynamic: true,
-    implicit_include_directories: false,
-    install: true,
-    dependencies: [
-        libdns_dep,
-        libisc_dep,
-        libisccfg_dep,
+# executable(
+#     'named-checkconf',
+#     named_checkconf_src,
+#     export_dynamic: true,
+#     implicit_include_directories: false,
+#     install: true,
+#     dependencies: [
+#         libisc_dep,
+#         libdns_dep,
+#         libisccfg_dep,
+#     ],
+# )
 
-        idn2_dep,
-    ],
-)
+# executable(
+#     'named-checkzone',
+#     named_checkzone_src,
+#     export_dynamic: true,
+#     implicit_include_directories: false,
+#     install: true,
+#     dependencies: [
+#         libisc_dep,
+#         libdns_dep,
+#         libisccfg_dep,
+#         libns_dep,
+#     ],
+# )
 
-executable(
-    'mdig',
-    mdig_src,
-    export_dynamic: true,
-    implicit_include_directories: false,
-    install: true,
-    dependencies: [
-        libdns_dep,
-        libisc_dep,
-    ],
-)
+# install_symlink(
+#     'named-compilezone',
+#     pointing_to: 'named-checkzone',
+#     install_dir: bindir,
+# )
 
-executable(
-    'named-checkconf',
-    named_checkconf_src,
-    export_dynamic: true,
-    implicit_include_directories: false,
-    install: true,
-    dependencies: [
-        libisc_dep,
-        libdns_dep,
-        libisccfg_dep,
-    ],
-)
+# executable(
+#     'named-journalprint',
+#     named_journalprint_src,
+#     export_dynamic: true,
+#     implicit_include_directories: false,
+#     install: true,
+#     dependencies: [
+#         libdns_dep,
+#         libisc_dep,
+#     ],
+# )
 
-executable(
-    'named-checkzone',
-    named_checkzone_src,
-    export_dynamic: true,
-    implicit_include_directories: false,
-    install: true,
-    dependencies: [
-        libisc_dep,
-        libdns_dep,
-        libisccfg_dep,
-        libns_dep,
-    ],
-)
+# executable(
+#     'named-makejournal',
+#     named_makejournal_src,
+#     export_dynamic: true,
+#     implicit_include_directories: false,
+#     install: true,
+#     dependencies: [
+#         libdns_dep,
+#         libisc_dep,
+#     ],
+# )
 
-install_symlink(
-    'named-compilezone',
-    pointing_to: 'named-checkzone',
-    install_dir: bindir,
-)
+# if config.has('HAVE_LMDB')
+#     executable(
+#         'named-nzd2nzf',
+#         named_nzd2nzf_src,
+#         export_dynamic: true,
+#         implicit_include_directories: false,
+#         install: true,
+#         dependencies: [
+#             libdns_dep,
+#             libisc_dep,
+# 
+#             lmdb_dep,
+#         ],
+#     )
+# endif
 
-executable(
-    'named-journalprint',
-    named_journalprint_src,
-    export_dynamic: true,
-    implicit_include_directories: false,
-    install: true,
-    dependencies: [
-        libdns_dep,
-        libisc_dep,
-    ],
-)
-
-executable(
-    'named-makejournal',
-    named_makejournal_src,
-    export_dynamic: true,
-    implicit_include_directories: false,
-    install: true,
-    dependencies: [
-        libdns_dep,
-        libisc_dep,
-    ],
-)
-
-if config.has('HAVE_LMDB')
-    executable(
-        'named-nzd2nzf',
-        named_nzd2nzf_src,
-        export_dynamic: true,
-        implicit_include_directories: false,
-        install: true,
-        dependencies: [
-            libdns_dep,
-            libisc_dep,
-
-            lmdb_dep,
-        ],
-    )
-endif
-
-executable(
-    'named-rrchecker',
-    named_rrchecker_src,
-    export_dynamic: true,
-    implicit_include_directories: false,
-    install: true,
-    dependencies: [
-        libdns_dep,
-        libisc_dep,
-    ],
-
-)
+# executable(
+#     'named-rrchecker',
+#     named_rrchecker_src,
+#     export_dynamic: true,
+#     implicit_include_directories: false,
+#     install: true,
+#     dependencies: [
+#         libdns_dep,
+#         libisc_dep,
+#     ],
+# 
+# )
 
 named_c_args = []
 named_link_args = []
@@ -1583,101 +1583,101 @@ executable(
     ],
 )
 
-executable(
-    'nsec3hash',
-    nsec3hash_src,
-    export_dynamic: true,
-    implicit_include_directories: false,
-    install: true,
-    dependencies: [
-        libdns_dep,
-        libisc_dep,
-    ],
-)
+# executable(
+#     'nsec3hash',
+#     nsec3hash_src,
+#     export_dynamic: true,
+#     implicit_include_directories: false,
+#     install: true,
+#     dependencies: [
+#         libdns_dep,
+#         libisc_dep,
+#     ],
+# )
 
-executable(
-    'nslookup',
-    nslookup_src,
-    export_dynamic: true,
-    implicit_include_directories: false,
-    install: true,
-    dependencies: [
-        libdns_dep,
-        libisc_dep,
-        libisccfg_dep,
+# executable(
+#     'nslookup',
+#     nslookup_src,
+#     export_dynamic: true,
+#     implicit_include_directories: false,
+#     install: true,
+#     dependencies: [
+#         libdns_dep,
+#         libisc_dep,
+#         libisccfg_dep,
+# 
+#         idn2_dep,
+#         edit_dep,
+#     ],
+# )
 
-        idn2_dep,
-        edit_dep,
-    ],
-)
+# executable(
+#     'nsupdate',
+#     nsupdate_src,
+#     export_dynamic: true,
+#     implicit_include_directories: false,
+#     install: true,
+#     dependencies: [
+#         libdns_dep,
+#         libisc_dep,
+#         libisccfg_dep,
+# 
+#         gssapi_dep,
+#         krb5_dep,
+#         edit_dep,
+#     ],
+# )
 
-executable(
-    'nsupdate',
-    nsupdate_src,
-    export_dynamic: true,
-    implicit_include_directories: false,
-    install: true,
-    dependencies: [
-        libdns_dep,
-        libisc_dep,
-        libisccfg_dep,
+# executable(
+#     'rndc-confgen',
+#     rndc_confgen_src,
+#     export_dynamic: true,
+#     implicit_include_directories: false,
+#     include_directories: confgen_inc_p,
+#     install: true,
+#     install_dir: sbindir,
+#     dependencies: [
+#         libdns_dep,
+#         libisc_dep,
+#     ],
+# )
 
-        gssapi_dep,
-        krb5_dep,
-        edit_dep,
-    ],
-)
+# executable(
+#     'rndc',
+#     rndc_src,
+#     export_dynamic: true,
+#     implicit_include_directories: false,
+#     install: true,
+#     install_dir: sbindir,
+#     dependencies: [
+#         libdns_dep,
+#         libisc_dep,
+#         libisccc_dep,
+#         libisccfg_dep,
+#     ],
+# )
 
-executable(
-    'rndc-confgen',
-    rndc_confgen_src,
-    export_dynamic: true,
-    implicit_include_directories: false,
-    include_directories: confgen_inc_p,
-    install: true,
-    install_dir: sbindir,
-    dependencies: [
-        libdns_dep,
-        libisc_dep,
-    ],
-)
+# executable(
+#     'tsig-keygen',
+#     tsig_keygen_src,
+#     export_dynamic: true,
+#     implicit_include_directories: false,
+#     include_directories: confgen_inc_p,
+#     install: true,
+#     install_dir: sbindir,
+#     dependencies: [
+#         libdns_dep,
+#         libisc_dep,
+#         libisccc_dep,
+#         libisccfg_dep,
+#     ],
+# )
 
-executable(
-    'rndc',
-    rndc_src,
-    export_dynamic: true,
-    implicit_include_directories: false,
-    install: true,
-    install_dir: sbindir,
-    dependencies: [
-        libdns_dep,
-        libisc_dep,
-        libisccc_dep,
-        libisccfg_dep,
-    ],
-)
-
-executable(
-    'tsig-keygen',
-    tsig_keygen_src,
-    export_dynamic: true,
-    implicit_include_directories: false,
-    include_directories: confgen_inc_p,
-    install: true,
-    install_dir: sbindir,
-    dependencies: [
-        libdns_dep,
-        libisc_dep,
-        libisccc_dep,
-        libisccfg_dep,
-    ],
-)
-
-install_symlink(
-    'ddns-confgen',
-    pointing_to: 'tsig-keygen',
-    install_dir: sbindir,
-)
+# install_symlink(
+#     'ddns-confgen',
+#     pointing_to: 'tsig-keygen',
+#     install_dir: sbindir,
+# )
 
 shared_library(
     'filter-a',
@@ -1798,7 +1798,7 @@ if doc_opt.allowed()
     install_man(man_pages)
 
     if sphinx_build.found()
-        alias_target('doc-misc', doc_misc_targets)
+        # alias_target('doc-misc', doc_misc_targets)
 
         meson.add_dist_script(
             'util' / 'meson-dist-package.sh',
