@@ -58,6 +58,8 @@ Makefile.in
 Makefile.user
 ans.run
 gen.dSYM/
+managed-keys.bind
+managed-keys.bind.jnl
 named.memstats
 named.run
 timestamp
