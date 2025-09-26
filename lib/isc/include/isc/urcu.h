@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <isc/mem.h>
 #include <isc/util.h>
 
 /* when urcu is not installed in a system header location */
@@ -141,3 +142,28 @@
 
 #endif /* !defined(caa_container_of_check_null) */
 /* clang-format on */
+
+#if HAVE_CDS_LFHT_ALLOC
+
+extern isc_mem_t	     *isc__urcu_mctx;
+extern struct cds_lfht_alloc *isc__urcu_alloc;
+
+void *
+isc_urcu_malloc(void *state, size_t size);
+void *
+isc_urcu_calloc(void *state, size_t nmemb, size_t size);
+void *
+isc_urcu_realloc(void *state, void *ptr, size_t size);
+void *
+isc_urcu_aligned_alloc(void *state, size_t alignment, size_t size);
+void
+isc_urcu_free(void *state, void *ptr);
+/*%<
+ * Custom allocation functions for isc_urcu_new_with_flavor_alloc.
+ */
+#endif /* HAVE_ISC_URCU_ALLOC */
+
+void
+isc__urcu_initialize(void);
+void
+isc__urcu_shutdown(void);

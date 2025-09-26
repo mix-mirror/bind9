@@ -88,18 +88,24 @@ dns_badcache_new(isc_mem_t *mctx) {
 	*bc = (dns_badcache_t){
 		.magic = BADCACHE_MAGIC,
 		.nloops = nloops,
+		.mctx = isc_mem_ref(mctx),
 	};
 
+#if HAVE_CDS_LFHT_ALLOC
+	bc->ht = cds_lfht_new_with_flavor_alloc(
+		BADCACHE_INIT_SIZE, BADCACHE_MIN_SIZE, 0,
+		CDS_LFHT_AUTO_RESIZE | CDS_LFHT_ACCOUNTING, &rcu_flavor,
+		isc__urcu_alloc, NULL);
+#else
 	bc->ht = cds_lfht_new(BADCACHE_INIT_SIZE, BADCACHE_MIN_SIZE, 0,
 			      CDS_LFHT_AUTO_RESIZE | CDS_LFHT_ACCOUNTING, NULL);
+#endif
 	INSIST(bc->ht != NULL);
 
-	bc->lru = isc_mem_cget(mctx, bc->nloops, sizeof(bc->lru[0]));
+	bc->lru = isc_mem_cget(bc->mctx, bc->nloops, sizeof(bc->lru[0]));
 	for (size_t i = 0; i < bc->nloops; i++) {
 		CDS_INIT_LIST_HEAD(&bc->lru[i]);
 	}
-
-	isc_mem_attach(mctx, &bc->mctx);
 
 	return bc;
 }

@@ -9612,12 +9612,12 @@ dns_resolver_create(dns_view_t *view, unsigned int options,
 		.nloops = isc_loopmgr_nloops(),
 		.maxvalidations = DEFAULT_MAX_VALIDATIONS,
 		.maxvalidationfails = DEFAULT_MAX_VALIDATION_FAILURES,
+		.mctx = isc_mem_ref(view->mctx),
 	};
 
 	RTRACE("create");
 
 	dns_view_weakattach(view, &res->view);
-	isc_mem_attach(view->mctx, &res->mctx);
 
 	res->quotaresp[dns_quotatype_zone] = DNS_R_DROP;
 	res->quotaresp[dns_quotatype_server] = DNS_R_SERVFAIL;
@@ -9628,9 +9628,16 @@ dns_resolver_create(dns_view_t *view, unsigned int options,
 #endif
 	isc_refcount_init(&res->references, 1);
 
+#if HAVE_CDS_LFHT_ALLOC
+	res->fctxs_ht = cds_lfht_new_with_flavor_alloc(
+		RES_DOMAIN_HASH_SIZE, RES_DOMAIN_HASH_SIZE, 0,
+		CDS_LFHT_AUTO_RESIZE | CDS_LFHT_ACCOUNTING, &rcu_flavor,
+		isc__urcu_alloc, NULL);
+#else
 	res->fctxs_ht =
 		cds_lfht_new(RES_DOMAIN_HASH_SIZE, RES_DOMAIN_HASH_SIZE, 0,
 			     CDS_LFHT_AUTO_RESIZE | CDS_LFHT_ACCOUNTING, NULL);
+#endif
 	RUNTIME_CHECK(res->fctxs_ht != NULL);
 
 	isc_hashmap_create(view->mctx, RES_DOMAIN_HASH_BITS, &res->counters);

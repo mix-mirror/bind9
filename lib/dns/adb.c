@@ -1607,17 +1607,18 @@ ISC_REFCOUNT_IMPL(dns_adb, dns_adb_destroy);
  */
 
 void
-dns_adb_create(isc_mem_t *mem, dns_view_t *view, dns_adb_t **adbp) {
-	REQUIRE(mem != NULL);
+dns_adb_create(isc_mem_t *mctx, dns_view_t *view, dns_adb_t **adbp) {
+	REQUIRE(mctx != NULL);
 	REQUIRE(view != NULL);
 	REQUIRE(adbp != NULL && *adbp == NULL);
 
 	uint32_t nloops = isc_loopmgr_nloops();
-	dns_adb_t *adb = isc_mem_get(mem, sizeof(dns_adb_t));
+	dns_adb_t *adb = isc_mem_get(mctx, sizeof(dns_adb_t));
 	*adb = (dns_adb_t){
 		.references = 1,
 		.nloops = nloops,
 		.magic = DNS_ADB_MAGIC,
+		.mctx = isc_mem_ref(mctx),
 	};
 
 	/*
@@ -1630,18 +1631,28 @@ dns_adb_create(isc_mem_t *mem, dns_view_t *view, dns_adb_t **adbp) {
 #endif
 	dns_view_weakattach(view, &adb->view);
 	dns_resolver_attach(view->resolver, &adb->res);
-	isc_mem_attach(mem, &adb->mctx);
 
 	isc_mem_create("ADB_dynamic", &adb->hmctx);
 
+#if HAVE_CDS_LFHT_ALLOC
+	adb->names_ht = cds_lfht_new_with_flavor_alloc(
+		ADB_HASH_SIZE, ADB_HASH_SIZE, 0,
+		CDS_LFHT_AUTO_RESIZE | CDS_LFHT_ACCOUNTING, &rcu_flavor,
+		isc__urcu_alloc, NULL);
+	adb->entries_ht = cds_lfht_new_with_flavor_alloc(
+		ADB_HASH_SIZE, ADB_HASH_SIZE, 0,
+		CDS_LFHT_AUTO_RESIZE | CDS_LFHT_ACCOUNTING, &rcu_flavor,
+		isc__urcu_alloc, NULL);
+#else
 	adb->names_ht = cds_lfht_new(ADB_HASH_SIZE, ADB_HASH_SIZE, 0,
 				     CDS_LFHT_AUTO_RESIZE | CDS_LFHT_ACCOUNTING,
 				     NULL);
-	INSIST(adb->names_ht != NULL);
-
 	adb->entries_ht =
 		cds_lfht_new(ADB_HASH_SIZE, ADB_HASH_SIZE, 0,
 			     CDS_LFHT_AUTO_RESIZE | CDS_LFHT_ACCOUNTING, NULL);
+#endif
+
+	INSIST(adb->names_ht != NULL);
 	INSIST(adb->entries_ht != NULL);
 
 	adb->lru = isc_mem_cget(adb->hmctx, adb->nloops, sizeof(adb->lru[0]));
