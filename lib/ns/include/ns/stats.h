@@ -127,7 +127,12 @@ enum {
 	ns_statscounter_encryptedproxydot = 78,
 	ns_statscounter_encryptedproxydoh = 79,
 
-	ns_statscounter_max = 80,
+	ns_statscounter_msgblackholed = 80,
+	ns_statscounter_unexpectedresp = 81,
+	ns_statscounter_msgunparseable = 82,
+	ns_statscounter_dropport = 83,
+
+	ns_statscounter_max = 84,
 };
 
 void

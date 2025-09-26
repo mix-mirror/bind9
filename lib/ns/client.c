@@ -909,6 +909,8 @@ ns_client_error(ns_client_t *client, isc_result_t result) {
 			      NS_LOGMODULE_CLIENT, ISC_LOG_DEBUG(10),
 			      "dropped error (%.*s) response: suspicious port",
 			      (int)isc_buffer_usedlength(&b), buf);
+		ns_stats_increment(client->manager->sctx->nsstats,
+				   ns_statscounter_dropport);
 		ns_client_drop(client, ISC_R_SUCCESS);
 		return;
 	}
@@ -1935,6 +1937,8 @@ ns_client_request(isc_nmhandle_t *handle, isc_result_t eresult,
 		ns_client_log(client, DNS_LOGCATEGORY_SECURITY,
 			      NS_LOGMODULE_CLIENT, ISC_LOG_DEBUG(10),
 			      "dropped request: suspicious port");
+		ns_stats_increment(client->manager->sctx->nsstats,
+				   ns_statscounter_dropport);
 		isc_nm_bad_request(handle);
 		return;
 	}
@@ -1946,6 +1950,8 @@ ns_client_request(isc_nmhandle_t *handle, isc_result_t eresult,
 			   env, &match, NULL) == ISC_R_SUCCESS) &&
 	    match > 0)
 	{
+		ns_stats_increment(client->manager->sctx->nsstats,
+				   ns_statscounter_msgblackholed);
 		ns_client_log(client, DNS_LOGCATEGORY_SECURITY,
 			      NS_LOGMODULE_CLIENT, ISC_LOG_DEBUG(10),
 			      "dropped request: blackholed peer");
@@ -1963,6 +1969,8 @@ ns_client_request(isc_nmhandle_t *handle, isc_result_t eresult,
 		 * There isn't enough header to determine whether
 		 * this was a request or a response.  Drop it.
 		 */
+		ns_stats_increment(client->manager->sctx->nsstats,
+				   ns_statscounter_msgunparseable);
 		ns_client_log(client, DNS_LOGCATEGORY_SECURITY,
 			      NS_LOGMODULE_CLIENT, ISC_LOG_DEBUG(10),
 			      "dropped request: invalid message header");
@@ -1982,6 +1990,8 @@ ns_client_request(isc_nmhandle_t *handle, isc_result_t eresult,
 	 * If it's a TCP response, discard it here.
 	 */
 	if ((flags & DNS_MESSAGEFLAG_QR) != 0) {
+		ns_stats_increment(client->manager->sctx->nsstats,
+				   ns_statscounter_unexpectedresp);
 		ns_client_log(client, DNS_LOGCATEGORY_SECURITY,
 			      NS_LOGMODULE_CLIENT, ISC_LOG_DEBUG(10),
 			      "dropped request: unexpected response");

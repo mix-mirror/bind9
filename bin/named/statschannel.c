@@ -289,6 +289,12 @@ init_desc(void) {
 	SET_NSSTATDESC(requesttcp, "TCP requests received", "ReqTCP");
 	SET_NSSTATDESC(tcphighwater, "TCP connection high-water",
 		       "TCPConnHighWater");
+	SET_NSSTATDESC(unexpectedresp, "unexpected responses received", "UnexpResp");
+	SET_NSSTATDESC(msgblackholed, "blackholed messages", "BlackholeMsg");
+	SET_NSSTATDESC(dropport,
+		       "messages dropped due to suspicious port number",
+		       "DropPort");
+	SET_NSSTATDESC(msgunparseable, "unparseable messages", "Unparseable");
 	SET_NSSTATDESC(authrej, "auth queries rejected", "AuthQryRej");
 	SET_NSSTATDESC(recurserej, "recursive queries rejected", "RecQryRej");
 	SET_NSSTATDESC(xfrrej, "transfer requests rejected", "XfrRej");
