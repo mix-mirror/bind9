@@ -1001,9 +1001,16 @@ dns_dispatchmgr_create(isc_mem_t *mctx, isc_loopmgr_t *loopmgr, isc_nm_t *nm,
 
 	mgr->tcps = isc_mem_cget(mgr->mctx, mgr->nloops, sizeof(mgr->tcps[0]));
 	for (size_t i = 0; i < mgr->nloops; i++) {
+#if HAVE_CDS_LFHT_ALLOC
+		mgr->tcps[i] = cds_lfht_new_with_flavor_alloc(
+			2, 2, 0, CDS_LFHT_AUTO_RESIZE | CDS_LFHT_ACCOUNTING,
+			&rcu_flavor, isc__urcu_alloc, NULL);
+#else
 		mgr->tcps[i] = cds_lfht_new(
 			2, 2, 0, CDS_LFHT_AUTO_RESIZE | CDS_LFHT_ACCOUNTING,
 			NULL);
+#endif
+		INSIST(mgr->tcps[i] != NULL);
 	}
 
 	create_default_portset(mgr->mctx, AF_INET, &v4portset);
@@ -1014,9 +1021,17 @@ dns_dispatchmgr_create(isc_mem_t *mctx, isc_loopmgr_t *loopmgr, isc_nm_t *nm,
 	isc_portset_destroy(mgr->mctx, &v4portset);
 	isc_portset_destroy(mgr->mctx, &v6portset);
 
+#if HAVE_CDS_LFHT_ALLOC
+	mgr->qids = cds_lfht_new_with_flavor_alloc(
+		QIDS_INIT_SIZE, QIDS_MIN_SIZE, 0,
+		CDS_LFHT_AUTO_RESIZE | CDS_LFHT_ACCOUNTING, &rcu_flavor,
+		isc__urcu_alloc, NULL);
+#else
 	mgr->qids = cds_lfht_new(QIDS_INIT_SIZE, QIDS_MIN_SIZE, 0,
 				 CDS_LFHT_AUTO_RESIZE | CDS_LFHT_ACCOUNTING,
 				 NULL);
+#endif
+	INSIST(mgr->qids != NULL);
 
 	mgr->magic = DNS_DISPATCHMGR_MAGIC;
 

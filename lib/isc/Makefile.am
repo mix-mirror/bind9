@@ -199,6 +199,7 @@ libisc_la_SOURCES =		\
 	timer.c			\
 	tls.c			\
 	tm.c			\
+	urcu.c			\
 	url.c			\
 	utf8.c			\
 	uv.c			\

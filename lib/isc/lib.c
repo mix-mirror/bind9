@@ -48,6 +48,7 @@ isc__initialize(void) {
 	isc__mutex_initialize();
 	isc__mem_initialize();
 	isc__tls_initialize();
+	isc__urcu_initialize();
 	isc__uv_initialize();
 	isc__xml_initialize();
 	isc__md_initialize();
@@ -64,6 +65,7 @@ isc__shutdown(void) {
 	isc__xml_shutdown();
 	isc__uv_shutdown();
 	isc__tls_shutdown();
+	isc__urcu_shutdown();
 	isc__mem_shutdown();
 	isc__mutex_shutdown();
 	isc__os_shutdown();

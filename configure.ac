@@ -238,9 +238,12 @@ AC_MSG_RESULT([$RCU_FLAVOR])
 # liburcu << v0.13.0 didn't add -lurcu-common and some toolchains would
 # not add it automatically - we need to add it explicitly in such case.
 #
-PKG_CHECK_MODULES([LIBURCU], [$RCU_FLAVOR >= 0.13.0 liburcu-cds >= 0.13.0], [],
-		  [PKG_CHECK_MODULES([LIBURCU], [$RCU_FLAVOR >= 0.10.0 liburcu-cds >= 0.10.0],
-				     [LIBURCU_LIBS="$LIBURCU_LIBS -lurcu-common"])])
+PKG_CHECK_MODULES([LIBURCU], [$RCU_FLAVOR >= 0.15.0 liburcu-cds >= 0.15.0],
+		  [AC_DEFINE([HAVE_CDS_LFHT_ALLOC], [1],
+			[define if the struct cds_lft_alloc is available])],
+		  [PKG_CHECK_MODULES([LIBURCU], [$RCU_FLAVOR >= 0.13.0 liburcu-cds >= 0.13.0], [],
+				    [PKG_CHECK_MODULES([LIBURCU], [$RCU_FLAVOR >= 0.10.0 liburcu-cds >= 0.10.0],
+						       [LIBURCU_LIBS="$LIBURCU_LIBS -lurcu-common"])])])
 
 AC_DEFINE_UNQUOTED([RCU_FLAVOR], ["$RCU_FLAVOR"], [Chosen Userspace-RCU flavor])
 
