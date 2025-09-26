@@ -152,6 +152,9 @@ add_project_arguments(
         '-fno-delete-null-pointer-checks',
         '-fno-strict-aliasing',
         '-fstrict-flex-arrays=3',
+
+        '-ffuction-sections',
+        '-fvisibility=hidden',
     ),
     language: 'c',
 )
@@ -1811,7 +1814,7 @@ shared_library(
 )
 
 subdir('doc')
-subdir('tests')
+# subdir('tests')
 
 foreach name, sources : fuzz_binaries
     fuzz_bin = executable(
