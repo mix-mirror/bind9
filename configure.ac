@@ -1324,7 +1324,7 @@ AM_CONDITIONAL([HAVE_CMOCKA], [test "$with_cmocka" = "yes"])
 # [pairwise: --with-jemalloc=detect, --with-jemalloc=yes, --without-jemalloc]
 AC_ARG_WITH([jemalloc],
 	    [AS_HELP_STRING([--with-jemalloc=detect],[enable jemalloc memory allocator (default is detect)])],
-	    [],[with_jemalloc=detect])
+	    [],[with_jemalloc=no])
 
 AS_CASE([$with_jemalloc],
 	[no],[],
@@ -1336,10 +1336,6 @@ AS_CASE([$with_jemalloc],
 	    with_jemalloc=yes],
 	   [AC_MSG_WARN([jemalloc not found; performance will be reduced])
 	    with_jemalloc=no])])
-
-AS_IF([test "$with_jemalloc" = "no"],
-      [AS_CASE([$host],
-	       [*-freebsd*],[AC_MSG_ERROR([You cannot compile without jemalloc; jemalloc is the system allocator on FreeBSD])])])
 
 AM_CONDITIONAL([HAVE_JEMALLOC], [test "$with_jemalloc" = "yes"])
 
