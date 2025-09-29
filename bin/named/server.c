@@ -2635,6 +2635,7 @@ cleanup:
 	isc_mem_putanddetach(&cz->mctx, cz, sizeof(*cz));
 }
 
+static size_t _n = 0;
 static isc_result_t
 catz_run(dns_catz_entry_t *entry, dns_catz_zone_t *origin, dns_view_t *view,
 	 void *udata, catz_type_t type) {
@@ -2665,7 +2666,10 @@ catz_run(dns_catz_entry_t *entry, dns_catz_zone_t *origin, dns_view_t *view,
 	dns_catz_zone_attach(origin, &cz->origin);
 	dns_view_weakattach(view, &cz->view);
 
-	isc_async_run(isc_loop_main(), action, cz);
+	if (_n >= 3) {
+		_n = 0;
+	}
+	isc_async_run(isc_loop_get(_n++), action, cz);
 
 	return ISC_R_SUCCESS;
 }

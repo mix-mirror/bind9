@@ -1,0 +1,88 @@
+/*
+ * Copyright (C) Internet Systems Consortium, Inc. ("ISC")
+ *
+ * SPDX-License-Identifier: MPL-2.0
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0.  If a copy of the MPL was not distributed with this
+ * file, you can obtain one at https://mozilla.org/MPL/2.0/.
+ *
+ * See the COPYRIGHT file distributed with this work for additional
+ * information regarding copyright ownership.
+ */
+
+include "../../_common/rndc.key";
+
+controls {
+	inet 10.53.0.4 port @CONTROLPORT@ allow { any; } keys { rndc_key; };
+};
+
+options {
+	query-source address 10.53.0.4;
+	notify-source 10.53.0.4;
+	transfer-source 10.53.0.4;
+	port @PORT@;
+	allow-new-zones yes;
+	pid-file "named.pid";
+	listen-on { 10.53.0.4; };
+	listen-on port @EXTRAPORT1@ { 10.53.0.4; };
+	listen-on-v6 { none; };
+	notify no;
+	notify-delay 0;
+	recursion no;
+	allow-transfer { any; };
+	dnssec-validation no;
+};
+
+view v1 {
+    match-clients {10.53.0.1;};
+    //allow-notify { 10.53.0.1; };
+    //allow-transfer { 10.53.0.1; };
+    //allow-query { 10.53.0.1; };
+
+    catalog-zones {
+        zone "catalog1.example" default-primaries { 10.53.0.1; } min-update-interval 0;
+    };
+    
+    zone "catalog1.example" {
+	type secondary;
+	file "catalog1.example.db";
+	primaries { 10.53.0.1; };
+
+    };
+};
+
+view v2 {
+    match-clients {10.53.0.2;};
+
+//    allow-notify { 10.53.0.2; };
+//    allow-transfer { 10.53.0.2; };
+//    allow-query { 10.53.0.2; };
+
+    catalog-zones {
+        zone "catalog2.example" default-primaries { 10.53.0.2; } min-update-interval 0;
+    };
+
+    zone "catalog2.example" {
+	type secondary;
+	file "catalog2.example.db";
+	primaries { 10.53.0.2; };
+    };
+};
+
+view v3 {
+    match-clients {10.53.0.3;};
+
+  //  allow-notify { 10.53.0.3; };
+  //  allow-transfer { 10.53.0.3; };
+
+    catalog-zones { 
+        zone "catalog3.example" default-primaries { 10.53.0.3; } min-update-interval 0;
+    };
+
+    zone "catalog3.example" {
+    	type secondary;
+    	file "catalog3.example.db";
+    	primaries { 10.53.0.3; };
+    };
+};
