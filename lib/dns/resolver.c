@@ -7522,7 +7522,9 @@ answer_response(fetchctx_t *fctx, dns_message_t *message) {
 	while (!done && result == ISC_R_SUCCESS) {
 		name = NULL;
 		dns_message_currentname(message, DNS_SECTION_AUTHORITY, &name);
-		if (!name_external(name, dns_rdatatype_ns, fctx)) {
+		if (!name_external(name, dns_rdatatype_ns, fctx) &&
+		    dns_name_issubdomain(&fctx->name, name))
+		{
 			/*
 			 * We expect to find NS or SIG NS rdatasets, and
 			 * nothing else.
