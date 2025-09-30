@@ -1431,6 +1431,8 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 		return;
 	}
 
+	synchronize_rcu();
+
 	ISC_LIST_FOREACH(cleanup_list, changed, link) {
 		isc_rwlock_t *nlock = NULL;
 		isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
