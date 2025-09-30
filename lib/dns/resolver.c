@@ -9243,7 +9243,9 @@ rctx_authority_positive(respctx_t *rctx) {
 		dns_message_currentname(rctx->query->rmessage,
 					DNS_SECTION_AUTHORITY, &name);
 
-		if (!name_external(name, dns_rdatatype_ns, fctx)) {
+		if (!name_external(name, dns_rdatatype_ns, fctx) &&
+		    dns_name_issubdomain(&fctx->name, name))
+		{
 			dns_rdataset_t *rdataset = NULL;
 
 			/*
