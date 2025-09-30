@@ -316,16 +316,30 @@ try:
 except:
     ctrlport = 5300
 
-query4_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-query4_socket.bind((ip4, port))
+query4_udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+query4_udp.bind((ip4, port))
+
+query4_tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+query4_tcp.bind((ip4, port))
+query4_tcp.listen(1)
+query4_tcp.settimeout(1)
 
 havev6 = True
 try:
-    query6_socket = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+    query6_udp = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
     try:
-        query6_socket.bind((ip6, port))
+        query6_udp.bind((ip6, port))
     except:
-        query6_socket.close()
+        query6_udp.close()
+        havev6 = False
+
+    query6_tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        query6_tcp.bind((ip4, port))
+        query6_tcp.listen(1)
+        query6_tcp.settimeout(1)
+    except:
+        query6_tcp.close()
         havev6 = False
 except:
     havev6 = False
@@ -350,9 +364,9 @@ print("Control channel on %s port %d" % (ip4, ctrlport))
 print("Ctrl-c to quit")
 
 if havev6:
-    input = [query4_socket, query6_socket, ctrl_socket]
+    input = [query4_udp, query4_tcp, query6_udp, query6_tcp, ctrl_socket]
 else:
-    input = [query4_socket, ctrl_socket]
+    input = [query4_udp, query4_tcp, ctrl_socket]
 
 while running:
     try:
@@ -375,12 +389,37 @@ while running:
                     break
                 ctl_channel(msg)
             conn.close()
-        if s == query4_socket or s == query6_socket:
-            print("Query received on %s" % (ip4 if s == query4_socket else ip6))
+        elif s == query4_udp or s == query6_udp:
+            print("Query received on %s" % (ip4 if s == query4_udp else ip6))
             # Handle incoming queries
             msg = s.recvfrom(65535)
             rsp = create_response(msg[0])
             if rsp:
                 s.sendto(rsp, msg[1])
+        elif s == query4_tcp or s == query6_tcp:
+            try:
+                conn, _ = s.accept()
+                if s == query4_tcp or s == query6_tcp:
+                    print(
+                        "TCP Query received on %s" % (ip4 if s == query4_tcp else ip6),
+                        end=" ",
+                    )
+                # get TCP message length
+                msg = conn.recv(2)
+                if len(msg) != 2:
+                    print("couldn't read TCP message length")
+                    continue
+                length = struct.unpack(">H", msg[:2])[0]
+                msg = conn.recv(length)
+                if len(msg) != length:
+                    print("couldn't read TCP message")
+                    continue
+                rsp = create_response(msg)
+                if rsp:
+                    conn.send(struct.pack(">H", len(rsp)))
+                    conn.send(rsp)
+                conn.close()
+            except socket.error as e:
+                print("error: %s" % str(e))
     if not running:
         break

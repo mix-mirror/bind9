@@ -758,6 +758,7 @@ typedef struct respctx {
 	bool get_nameservers; /* get a new NS rrset at
 			       * zone cut? */
 	bool resend;	      /* resend this query? */
+	bool secured;	      /* message was signed or had a valid cookie */
 	bool nextitem;	      /* invalid response; keep
 			       * listening for the correct one */
 	bool truncated;	      /* response was truncated */
@@ -7900,6 +7901,47 @@ betterreferral(respctx_t *rctx) {
 	return (false);
 }
 
+static bool
+rctx_need_tcpretry(respctx_t *rctx) {
+	resquery_t *query = rctx->query;
+	if ((rctx->retryopts & DNS_FETCHOPT_TCP) != 0) {
+		/* TCP is already in the retry flags */
+		return false;
+	}
+
+	/*
+	 * If the message was secured, no need to continue.
+	 */
+	if (rctx->secured) {
+		return false;
+	}
+
+	/*
+	 * Currently the only extra reason why we might need to
+	 * retry a UDP response over TCP is a DNAME in the message.
+	 */
+	if (dns_message_hasdname(query->rmessage)) {
+		return true;
+	}
+
+	return false;
+}
+
+static isc_result_t
+rctx_tcpretry(respctx_t *rctx) {
+	/*
+	 * Do we need to retry a UDP response over TCP?
+	 */
+	if (rctx_need_tcpretry(rctx)) {
+		rctx->retryopts |= DNS_FETCHOPT_TCP;
+		rctx->resend = true;
+		rctx_done(rctx, ISC_R_SUCCESS);
+		return ISC_R_COMPLETE;
+	}
+
+	return ISC_R_SUCCESS;
+}
+
 /*
  * resquery_response():
  * Handles responses received in response to iterative queries sent by
@@ -8059,6 +8101,11 @@ resquery_response(isc_task_t *task, isc_event_t *event) {
 	}
 
 	/*
+	 * The dispatcher should ensure we only get responses with QR set.
+	 */
+	INSIST((query->rmessage->flags & DNS_MESSAGEFLAG_QR) != 0);
+
+	/*
 	 * If the message is signed, check the signature.  If not, this
 	 * returns success anyway.
 	 */
@@ -8075,9 +8122,16 @@ resquery_response(isc_task_t *task, isc_event_t *event) {
 	}
 
 	/*
-	 * The dispatcher should ensure we only get responses with QR set.
+	 * Remember whether this message was signed or had a
+	 * valid client cookie; if not, we may need to retry over
+	 * TCP later.
 	 */
-	INSIST((query->rmessage->flags & DNS_MESSAGEFLAG_QR) != 0);
+	if (query->rmessage->cc_ok || query->rmessage->tsig != NULL ||
+	    query->rmessage->sig0 != NULL)
+	{
+		rctx.secured = true;
+	}
+
 	/*
 	 * INSIST() that the message comes from the place we sent it to,
 	 * since the dispatch code should ensure this.
@@ -8091,10 +8145,7 @@ resquery_response(isc_task_t *task, isc_event_t *event) {
 	 * This may be a misconfigured anycast server or an attempt to send
 	 * a spoofed response.  Skip if we have a valid tsig.
 	 */
-	if (dns_message_gettsig(query->rmessage, NULL) == NULL &&
-	    !query->rmessage->cc_ok && !query->rmessage->cc_bad &&
-	    (rctx.retryopts & DNS_FETCHOPT_TCP) == 0)
-	{
+	if (!rctx.secured && (rctx.retryopts & DNS_FETCHOPT_TCP) == 0) {
 		unsigned char cookie[COOKIE_BUFFER_SIZE];
 		if (dns_adb_getcookie(fctx->adb, query->addrinfo, cookie,
 				      sizeof(cookie)) > CLIENT_COOKIE_SIZE)
@@ -8120,6 +8171,17 @@ resquery_response(isc_task_t *task, isc_event_t *event) {
 		 */
 	}
 
+	/*
+	 * Check whether we need to retry over TCP for some other reason.
+	 */
+	result = rctx_tcpretry(&rctx);
+	if (result == ISC_R_COMPLETE) {
+		return;
+	}
+
+	/*
+	 * Check for EDNS issues.
+	 */
 	rctx_edns(&rctx);
 
 	/*
@@ -8848,8 +8910,8 @@ rctx_answer_positive(respctx_t *rctx) {
 	}
 
 	/*
-	 * Cache records in the authority section, if
-	 * there are any suitable for caching.
+	 * Cache records in the authority section, if there are
+	 * any suitable for caching.
 	 */
 	rctx_authority_positive(rctx);
 
@@ -9221,20 +9283,25 @@ rctx_answer_dname(respctx_t *rctx) {
 
 /*
  * rctx_authority_positive():
- * Examine the records in the authority section (if there are any) for a
- * positive answer.  We expect the names for all rdatasets in this section
- * to be subdomains of the domain being queried; any that are not are
- * skipped.  We expect to find only *one* owner name; any names
- * after the first one processed are ignored. We expect to find only
- * rdatasets of type NS, RRSIG, or SIG; all others are ignored. Whatever
- * remains can be cached at trust level authauthority or additional
- * (depending on whether the AA bit was set on the answer).
+ * If a positive answer was received over TCP or secured with a cookie
+ * or TSIG, examine the authority section.  We expect names for all
+ * rdatasets in this section to be subdomains of the domain being queried;
+ * any that are not are skipped.  We expect to find only *one* owner name;
+ * any names after the first one processed are ignored. We expect to find
+ * only rdatasets of type NS; all others are ignored. Whatever remains can
+ * be cached at trust level authauthority or additional (depending on
+ * whether the AA bit was set on the answer).
  */
 static void
 rctx_authority_positive(respctx_t *rctx) {
 	fetchctx_t *fctx = rctx->fctx;
 	bool done = false;
 	isc_result_t result;
+
+	/* If it's spoofable, don't cache it. */
+	if (!rctx->secured && (rctx->query->options & DNS_FETCHOPT_TCP) == 0) {
+		return;
+	}
 
 	result = dns_message_firstname(rctx->query->rmessage,
 				       DNS_SECTION_AUTHORITY);
