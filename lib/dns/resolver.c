@@ -427,6 +427,7 @@ typedef struct {
 typedef struct {
 	fetchctx_t *			fctx;
 	dns_message_t *			rmessage;
+	dns_name_t *			ns_name;
 } dns_chkarg_t;
 
 struct dns_fetch {
@@ -6265,7 +6266,9 @@ mark_related(dns_name_t *name, dns_rdataset_t *rdataset,
  * locally served zone.
  */
 static inline bool
-name_external(dns_name_t *name, dns_rdatatype_t type, fetchctx_t *fctx) {
+name_external(dns_name_t *name, dns_name_t *ns_name, dns_rdatatype_t type,
+	      fetchctx_t *fctx)
+{
 	isc_result_t result;
 	dns_forwarders_t *forwarders = NULL;
 	dns_fixedname_t fixed, zfixed;
@@ -6283,7 +6286,9 @@ name_external(dns_name_t *name, dns_rdatatype_t type, fetchctx_t *fctx) {
 	int _orderp = 0;
 	unsigned int _nlabelsp = 0;
 
-	apex = ISFORWARDER(fctx->addrinfo) ? fctx->fwdname : &fctx->domain;
+	apex = ISFORWARDER(fctx->addrinfo)
+		? fctx->fwdname
+		: (ns_name != NULL) ? ns_name : &fctx->domain;
 
 	/*
 	 * The name is outside the queried namespace.
@@ -6392,7 +6397,7 @@ check_section(void *arg, dns_name_t *addname, dns_rdatatype_t type,
 	result = dns_message_findname(rmessage, section, addname,
 				      dns_rdatatype_any, 0, &name, NULL);
 	if (result == ISC_R_SUCCESS) {
-		external = name_external(name, type, fctx);
+		external = name_external(name, chkarg->ns_name, type, fctx);
 		if (type == dns_rdatatype_a) {
 			for (rdataset = ISC_LIST_HEAD(name->list);
 			     rdataset != NULL;
@@ -6466,7 +6471,7 @@ chase_additional(fetchctx_t *fctx, dns_message_t *rmessage) {
 		     rdataset != NULL;
 		     rdataset = ISC_LIST_NEXT(rdataset, link)) {
 			if (CHASE(rdataset)) {
-				dns_chkarg_t chkarg;
+				dns_chkarg_t chkarg = { 0 };
 				chkarg.fctx = fctx;
 				chkarg.rmessage = rmessage;
 				rdataset->attributes &= ~DNS_RDATASETATTR_CHASE;
@@ -7074,7 +7079,7 @@ noanswer_response(fetchctx_t *fctx, dns_message_t *message,
 	 * we're not following a chain.)
 	 */
 	if (!negative_response && ns_name != NULL && oqname == NULL) {
-		dns_chkarg_t chkarg;
+		dns_chkarg_t chkarg = { 0 };
 		/*
 		 * We already know ns_name is a subdomain of fctx->domain.
 		 * If ns_name is equal to fctx->domain, we're not making
@@ -7106,6 +7111,7 @@ noanswer_response(fetchctx_t *fctx, dns_message_t *message,
 		FCTX_ATTR_SET(fctx, FCTX_ATTR_GLUING);
 		chkarg.fctx = fctx;
 		chkarg.rmessage = message;
+		chkarg.ns_name = ns_name;
 
 		/*
 		 * Mark the glue records in the additional section to be cached.
@@ -7123,7 +7129,7 @@ noanswer_response(fetchctx_t *fctx, dns_message_t *message,
 		if ((look_in_options & LOOK_FOR_GLUE_IN_ANSWER) != 0 &&
 		    (fctx->type == dns_rdatatype_aaaa ||
 		     fctx->type == dns_rdatatype_a)) {
-			dns_chkarg_t chkarg;
+			dns_chkarg_t chkarg = { 0 };
 			chkarg.fcx = fctx;
 			chkarg.rmessage = message;
 			(void)dns_rdataset_additionaldata(ns_rdataset,
@@ -7281,7 +7287,9 @@ answer_response(fetchctx_t *fctx, dns_message_t *message) {
 			/*
 			 * Don't accept DNAME from parent namespace.
 			 */
-			if (name_external(name, dns_rdatatype_dname, fctx)) {
+			if (name_external(name, NULL, dns_rdatatype_dname,
+					  fctx))
+			{
 				continue;
 			}
 
@@ -7336,7 +7344,7 @@ answer_response(fetchctx_t *fctx, dns_message_t *message) {
 		     rdataset != NULL;
 		     rdataset = ISC_LIST_NEXT(rdataset, link))
 		{
-			dns_chkarg_t chkarg;
+			dns_chkarg_t chkarg = { 0 };
 			if (!validinanswer(rdataset, fctx)) {
 				return (DNS_R_FORMERR);
 			}
@@ -7367,12 +7375,13 @@ answer_response(fetchctx_t *fctx, dns_message_t *message) {
 			rdataset->attributes &= ~DNS_RDATASETATTR_CHASE;
 			chkarg.fctx = fctx;
 			chkarg.rmessage = message;
+			chkarg.ns_name = ns_name;
 			(void)dns_rdataset_additionaldata(rdataset,
 							  check_related,
 							  &chkarg, 0);
 		}
 	} else if (aname != NULL) {
-		dns_chkarg_t chkarg;
+		dns_chkarg_t chkarg = { 0 };
 		if (!validinanswer(ardataset, fctx))
 			return (DNS_R_FORMERR);
 		if ((ardataset->type == dns_rdatatype_a ||
@@ -7396,6 +7405,7 @@ answer_response(fetchctx_t *fctx, dns_message_t *message) {
 		ardataset->trust = trust;
 		chkarg.fctx = fctx;
 		chkarg.rmessage = message;
+		chkarg.ns_name = ns_name;
 		(void)dns_rdataset_additionaldata(ardataset, check_related,
 						  &chkarg, 0);
 		for (sigrdataset = ISC_LIST_HEAD(aname->list);
@@ -7522,7 +7532,7 @@ answer_response(fetchctx_t *fctx, dns_message_t *message) {
 	while (!done && result == ISC_R_SUCCESS) {
 		name = NULL;
 		dns_message_currentname(message, DNS_SECTION_AUTHORITY, &name);
-		if (!name_external(name, dns_rdatatype_ns, fctx) &&
+		if (!name_external(name, ns_name, dns_rdatatype_ns, fctx) &&
 		    dns_name_issubdomain(&fctx->name, name))
 		{
 			/*
@@ -7535,7 +7545,7 @@ answer_response(fetchctx_t *fctx, dns_message_t *message) {
 				if (rdataset->type == dns_rdatatype_ns ||
 				    (rdataset->type == dns_rdatatype_rrsig &&
 				     rdataset->covers == dns_rdatatype_ns)) {
-					dns_chkarg_t chkarg;
+					dns_chkarg_t chkarg = { 0 };
 					name->attributes |=
 						DNS_NAMEATTR_CACHE;
 					rdataset->attributes |=
@@ -7559,6 +7569,7 @@ answer_response(fetchctx_t *fctx, dns_message_t *message) {
 					 */
 					chkarg.fctx = fctx;
 					chkarg.rmessage = message;
+					chkarg.ns_name = ns_name;
 					(void)dns_rdataset_additionaldata(
 							rdataset,
 							check_related,
