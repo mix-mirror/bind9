@@ -20,7 +20,7 @@ project(
         'b_pch': false,
         'b_pie': true,
         'c_std': 'gnu11',
-        'default_library': 'shared',
+        'default_library': 'static',
         'localstatedir': '/var',
         'strip': false,
         'warning_level': '2',
@@ -1799,7 +1799,7 @@ shared_library(
 )
 
 subdir('doc')
-# subdir('tests')
+subdir('tests')
 
 foreach name, sources : fuzz_binaries
     fuzz_bin = executable(

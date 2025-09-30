@@ -15,7 +15,7 @@ test_inc = include_directories(
     '..' / 'lib' / 'dns',
 )
 
-libtest = shared_library(
+libtest = library(
     'bindtest',
     files(
         'libtest/dns.c',
