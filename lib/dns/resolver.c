@@ -7209,8 +7209,9 @@ validinanswer(dns_rdataset_t *rdataset, fetchctx_t *fctx) {
 }
 
 static isc_result_t
-answer_response(fetchctx_t *fctx, dns_message_t *message) {
+answer_response(resquery_t *query,  dns_message_t *message) {
 	isc_result_t result;
+	fetchctx_t *fctx = NULL;
 	dns_name_t *name = NULL, *qname = NULL, *ns_name = NULL;
 	dns_name_t *aname = NULL, *cname = NULL, *dname = NULL;
 	dns_rdataset_t *rdataset = NULL, *sigrdataset = NULL;
@@ -7223,6 +7224,8 @@ answer_response(fetchctx_t *fctx, dns_message_t *message) {
 	dns_view_t *view = NULL;
 	dns_trust_t trust;
 
+	REQUIRE(VALID_QUERY(query));
+	fctx = query->fctx;
 	REQUIRE(VALID_FCTX(fctx));
 
 	FCTXTRACE("answer_response");
@@ -7527,8 +7530,17 @@ answer_response(fetchctx_t *fctx, dns_message_t *message) {
 	 *
 	 * We expect there to be only one owner name for all the rdatasets
 	 * in this section, and we expect that it is not external.
+	 *
+	 * If the message was not sent over TCP or otherwise secured,
+	 * skip this.
 	 */
-	result = dns_message_firstname(message, DNS_SECTION_AUTHORITY);
+	if (message->cc_ok || message->tsig != NULL || message->sig0 != NULL ||
+	    (query->options & DNS_FETCHOPT_TCP) != 0)
+	{
+		result = dns_message_firstname(message, DNS_SECTION_AUTHORITY);
+	} else {
+		done = true;
+	}
 	while (!done && result == ISC_R_SUCCESS) {
 		name = NULL;
 		dns_message_currentname(message, DNS_SECTION_AUTHORITY, &name);
@@ -8011,6 +8023,7 @@ resquery_response(isc_task_t *task, isc_event_t *event) {
 	unsigned int bucketnum;
 	dns_resolver_t *res;
 	bool bucket_empty;
+	bool secured = false;
 #ifdef HAVE_DNSTAP
 	isc_socket_t *sock = NULL;
 	isc_sockaddr_t localaddr, *la = NULL;
@@ -8322,6 +8335,17 @@ resquery_response(isc_task_t *task, isc_event_t *event) {
 	}
 
 	/*
+	 * Remember whether this message was signed or had a
+	 * valid client cookie; if not, we may need to retry over
+	 * TCP later.
+	 */
+	if (rmessage->cc_ok || rmessage->tsig != NULL ||
+	    rmessage->sig0 != NULL)
+	{
+		secured = true;
+	}
+
+	/*
 	 * The dispatcher should ensure we only get responses with QR set.
 	 */
 	INSIST((rmessage->flags & DNS_MESSAGEFLAG_QR) != 0);
@@ -8338,10 +8362,7 @@ resquery_response(isc_task_t *task, isc_event_t *event) {
 	 * This may be a misconfigured anycast server or an attempt to send
 	 * a spoofed response.  Skip if we have a valid tsig.
 	 */
-	if (dns_message_gettsig(rmessage, NULL) == NULL &&
-	    !rmessage->cc_ok && !rmessage->cc_bad &&
-	    (options & DNS_FETCHOPT_TCP) == 0)
-	{
+	if (!secured && (options & DNS_FETCHOPT_TCP) == 0) {
 		unsigned char cookie[COOKIE_BUFFER_SIZE];
 		if (dns_adb_getcookie(fctx->adb, query->addrinfo, cookie,
 				      sizeof(cookie)) > CLIENT_COOKIE_SIZE)
@@ -8364,6 +8385,16 @@ resquery_response(isc_task_t *task, isc_event_t *event) {
 		 * XXXMPA When support for DNS COOKIE becomes ubiquitous, fall
 		 * back to TCP for all non-COOKIE responses.
 		 */
+
+		/*
+		 * Check whether we need to retry over TCP for some other
+		 * reason.
+		 */
+		if (dns_message_hasdname(rmessage)) {
+			options |= DNS_FETCHOPT_TCP;
+			resend = true;
+			goto done;
+		}
 	}
 
 	/*
@@ -8720,7 +8751,7 @@ resquery_response(isc_task_t *task, isc_event_t *event) {
 		if ((rmessage->flags & DNS_MESSAGEFLAG_AA) != 0 ||
 		    ISFORWARDER(query->addrinfo))
 		{
-			result = answer_response(fctx, rmessage);
+			result = answer_response(query, rmessage);
 			if (result != ISC_R_SUCCESS)
 				FCTXTRACE3("answer_response (AA/fwd)", result);
 		} else if (iscname(fctx, rmessage) &&
@@ -8732,7 +8763,7 @@ resquery_response(isc_task_t *task, isc_event_t *event) {
 			 * answer when a CNAME is followed.  We should treat
 			 * it as a valid answer.
 			 */
-			result = answer_response(fctx, rmessage);
+			result = answer_response(query, rmessage);
 			if (result != ISC_R_SUCCESS)
 				FCTXTRACE3("answer_response (!ANY/!CNAME)",
 					   result);
@@ -8741,7 +8772,7 @@ resquery_response(isc_task_t *task, isc_event_t *event) {
 			/*
 			 * Lame response !!!.
 			 */
-			result = answer_response(fctx, rmessage);
+			result = answer_response(query, rmessage);
 			if (result != ISC_R_SUCCESS)
 				FCTXTRACE3("answer_response (!NS)", result);
 		} else {
