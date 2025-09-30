@@ -310,7 +310,7 @@ cleanup:
  * Called by ns_plugin_register() to initialize the plugin and
  * register hook functions into the view hook table.
  */
-isc_result_t
+__attribute__ ((visibility ("default"))) isc_result_t
 plugin_register(const char *parameters, const void *cfg, const char *cfg_file,
 		unsigned long cfg_line, isc_mem_t *mctx, void *aclctx,
 		ns_hooktable_t *hooktable, const ns_pluginctx_t *ctx,
@@ -353,7 +353,7 @@ cleanup:
 	return result;
 }
 
-isc_result_t
+__attribute__ ((visibility ("default"))) isc_result_t
 plugin_check(const char *parameters, const void *cfg, const char *cfg_file,
 	     unsigned long cfg_line, isc_mem_t *mctx, void *aclctx,
 	     const ns_pluginctx_t *ctx ISC_ATTR_UNUSED) {
@@ -379,7 +379,7 @@ cleanup:
  * Called by ns_plugins_free(); frees memory allocated by
  * the module when it was registered.
  */
-void
+__attribute__ ((visibility ("default"))) void
 plugin_destroy(void **instp) {
 	filter_instance_t *inst = (filter_instance_t *)*instp;
 
@@ -400,7 +400,7 @@ plugin_destroy(void **instp) {
 /*
  * Returns plugin API version for compatibility checks.
  */
-int
+__attribute__ ((visibility ("default"))) int
 plugin_version(void) {
 	return NS_PLUGIN_VERSION;
 }
