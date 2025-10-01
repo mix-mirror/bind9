@@ -297,7 +297,7 @@ dns_rdatasetstats_create(isc_mem_t *mctx, dns_stats_t **statsp);
 void
 dns_opcodestats_create(isc_mem_t *mctx, isc_statsmulti_t **statsp);
 /*%<
- * Create a statistics counter structure per opcode using statsmulti.
+ * Create a statistics counter structure per opcode.
  *
  * Requires:
  *\li	'mctx' must be a valid memory context.
@@ -308,7 +308,7 @@ dns_opcodestats_create(isc_mem_t *mctx, isc_statsmulti_t **statsp);
 void
 dns_rcodestats_create(isc_mem_t *mctx, isc_statsmulti_t **statsp);
 /*%<
- * Create a statistics counter structure per assigned rcode using statsmulti.
+ * Create a statistics counter structure per assigned rcode.
  *
  * Requires:
  *\li	'mctx' must be a valid memory context.
