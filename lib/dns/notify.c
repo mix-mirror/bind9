@@ -464,7 +464,8 @@ again:
 
 	isc_tlsctx_cache_detach(&zmgr_tlsctx_cache);
 
-	if (result == ISC_R_SUCCESS) {
+	switch (result) {
+	case ISC_R_SUCCESS:
 		if (isc_sockaddr_pf(&notify->dst) == AF_INET) {
 			dns__zone_stats_increment(
 				notify->zone, dns_zonestatscounter_notifyoutv4);
@@ -472,14 +473,25 @@ again:
 			dns__zone_stats_increment(
 				notify->zone, dns_zonestatscounter_notifyoutv6);
 		}
-	} else if (result == ISC_R_SHUTTINGDOWN || result == ISC_R_CANCELED) {
-		goto cleanup_key;
-	} else if ((notify->flags & DNS_NOTIFY_TCP) == 0) {
+		break;
+	case ISC_R_SHUTTINGDOWN:
+	case ISC_R_CANCELED:
+	case ISC_R_ADDRNOTAVAIL:
+	case DNS_R_BLACKHOLED:
+	case ISC_R_FAMILYNOSUPPORT:
 		notify_log(notify, ISC_LOG_NOTICE,
-			   "notify(%s) to %s failed: %s: retrying over TCP",
-			   typebuf, addrbuf, isc_result_totext(result));
-		notify->flags |= DNS_NOTIFY_TCP;
-		goto again;
+			   "notify(%s) to %s failed: %s", typebuf, addrbuf,
+			   isc_result_totext(result));
+		break;
+	default:
+		if ((notify->flags & DNS_NOTIFY_TCP) == 0) {
+			notify_log(notify, ISC_LOG_NOTICE,
+				   "notify(%s) to %s failed: %s: retrying over "
+				   "TCP",
+				   typebuf, addrbuf, isc_result_totext(result));
+			notify->flags |= DNS_NOTIFY_TCP;
+			goto again;
+		}
 	}
 
 cleanup_key:
