@@ -215,7 +215,7 @@ stages:
 # openSUSE Tumbleweed
 
 .tumbleweed-latest-amd64: &tumbleweed_latest_amd64_image
-  image: "$CI_REGISTRY_IMAGE:tumbleweed-latest-amd64"
+  image: "$CI_REGISTRY_IMAGE:libressl-tumbleweed-latest-amd64"
   <<: *linux_amd64
 
 # Fedora
