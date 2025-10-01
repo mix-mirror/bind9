@@ -56,6 +56,36 @@
 		goto err; \
 	}
 
+/*
+ * The maximum size of the DER-encoded signature is 72 bytes for P-256 and 104
+ * bytes for P-384. [1]
+ *
+ * ECDSA-Sig-Value ::= SEQUENCE {
+ *   r  INTEGER,
+ *   s  INTEGER
+ * }
+ *
+ * Header:
+ * - `SEQUENCE` tag = 1 byte
+ * - Length of sequence = 1 byte
+ *
+ * r:
+ * - `INTEGER` tag = 1 byte
+ * - Length of integer = 1 byte
+ * - Integer sign = 1 byte
+ * - The actual value <= 48 byte (32 for P-256 / 48 for P-384)
+ *
+ *
+ * s:
+ * - `INTEGER` tag = 1 byte
+ * - Length of integer = 1 byte
+ * - Integer sign = 1 byte
+ * - The actual value <= 48 byte (32 for P-256 / 48 for P-384)
+ *
+ * [1]: https://datatracker.ietf.org/doc/html/rfc5912 (ECDSA-Sig-Value)
+ */
+#define ECDSA_DER_SIGNATURE_MAX_SIZE 104
+
 #if OPENSSL_VERSION_NUMBER >= 0x30200000L
 static isc_result_t
 opensslecdsa_set_deterministic(EVP_PKEY_CTX *pctx, unsigned int key_alg) {
@@ -782,8 +812,8 @@ opensslecdsa_sign(dst_context_t *dctx, isc_buffer_t *sig) {
 	isc_region_t region;
 	EVP_MD_CTX *evp_md_ctx = dctx->ctxdata.evp_md_ctx;
 	ECDSA_SIG *ecdsasig = NULL;
-	size_t siglen, sigder_len = 0, sigder_alloced = 0;
-	unsigned char *sigder = NULL;
+	size_t siglen, sigder_len = 0;
+	unsigned char sigder[ECDSA_DER_SIGNATURE_MAX_SIZE];
 	const unsigned char *sigder_copy;
 	const BIGNUM *r, *s;
 
@@ -808,8 +838,9 @@ opensslecdsa_sign(dst_context_t *dctx, isc_buffer_t *sig) {
 	if (sigder_len == 0) {
 		DST_RET(ISC_R_FAILURE);
 	}
-	sigder = isc_mem_get(dctx->mctx, sigder_len);
-	sigder_alloced = sigder_len;
+
+	INSIST(sigder_len <= sizeof(sigder));
+
 	if (EVP_DigestSignFinal(evp_md_ctx, sigder, &sigder_len) != 1) {
 		DST_RET(dst__openssl_toresult3(
 			dctx->category, "EVP_DigestSignFinal", ISC_R_FAILURE));
@@ -830,10 +861,6 @@ opensslecdsa_sign(dst_context_t *dctx, isc_buffer_t *sig) {
 	ret = ISC_R_SUCCESS;
 
 err:
-	if (sigder != NULL && sigder_alloced != 0) {
-		isc_mem_put(dctx->mctx, sigder, sigder_alloced);
-	}
-
 	return ret;
 }
 
@@ -845,8 +872,8 @@ opensslecdsa_verify(dst_context_t *dctx, const isc_region_t *sig) {
 	unsigned char *cp = sig->base;
 	ECDSA_SIG *ecdsasig = NULL;
 	EVP_MD_CTX *evp_md_ctx = dctx->ctxdata.evp_md_ctx;
-	size_t siglen, sigder_len = 0, sigder_alloced = 0;
-	unsigned char *sigder = NULL;
+	size_t siglen, sigder_len = 0;
+	unsigned char sigder[ECDSA_DER_SIGNATURE_MAX_SIZE];
 	unsigned char *sigder_copy;
 	BIGNUM *r = NULL, *s = NULL;
 
@@ -880,9 +907,7 @@ opensslecdsa_verify(dst_context_t *dctx, const isc_region_t *sig) {
 	}
 
 	sigder_len = (size_t)status;
-	sigder = isc_mem_get(dctx->mctx, sigder_len);
-	sigder_alloced = sigder_len;
-
+	INSIST(sigder_len <= sizeof(sigder));
 	sigder_copy = sigder;
 	status = i2d_ECDSA_SIG(ecdsasig, &sigder_copy);
 	if (status < 0) {
@@ -909,9 +934,6 @@ opensslecdsa_verify(dst_context_t *dctx, const isc_region_t *sig) {
 err:
 	if (ecdsasig != NULL) {
 		ECDSA_SIG_free(ecdsasig);
-	}
-	if (sigder != NULL && sigder_alloced != 0) {
-		isc_mem_put(dctx->mctx, sigder, sigder_alloced);
 	}
 
 	return ret;
