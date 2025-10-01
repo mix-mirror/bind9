@@ -30,16 +30,11 @@
 #define ISC_STATSMULTI_MAGIC	   ISC_MAGIC('S', 'M', 'u', 'l')
 #define ISC_STATSMULTI_VALID(x) ISC_MAGIC_VALID(x, ISC_STATSMULTI_MAGIC)
 
-typedef int_fast64_t isc_internal_statscounter_t;
-
 /*
  * Same constraint as stats.c
  */
 STATIC_ASSERT(sizeof(isc_statscounter_t) <= sizeof(uint64_t),
 	      "Exported statistics must fit into the statistic counter size");
-
-STATIC_ASSERT(sizeof(isc_internal_statscounter_t) == sizeof(isc_statscounter_t),
-	      "Internal and external counter types must be the same size");
 
 enum {
 	COUNTERS_PER_CACHELINE = 64 / sizeof(isc_statscounter_t),
@@ -84,11 +79,6 @@ to_index(isc_statsmulti_t *stats, isc_tid_t tid, isc_statscounter_t internal_cou
 static isc_atomic_statscounter_t *
 get_atomic_counter_from_index(isc_statsmulti_t *stats, int index) {
 	return (isc_atomic_statscounter_t *)&stats->counters[index * sizeof(isc_atomic_statscounter_t)];
-}
-
-static isc_internal_statscounter_t *
-get_internal_counter(isc_statsmulti_t *stats, int index) {
-	return (isc_internal_statscounter_t *)&stats->counters[index * sizeof(isc_atomic_statscounter_t)];
 }
 
 static void
@@ -170,8 +160,10 @@ isc_statsmulti_increment(isc_statsmulti_t *stats, isc_statscounter_t counter) {
 	if (isc_tid() == 0) {
 		return atomic_fetch_add_relaxed(get_atomic_counter_from_index(stats, index), 1);
 	} else {
-		isc_internal_statscounter_t *ptr = get_internal_counter(stats, index);
-		return (*ptr)++;
+		isc_atomic_statscounter_t *ptr = get_atomic_counter_from_index(stats, index);
+		int_fast64_t tmp = atomic_load_relaxed(ptr);
+		atomic_store_relaxed(ptr, tmp + 1);
+		return tmp;
 	}
 }
 
@@ -184,8 +176,9 @@ isc_statsmulti_decrement(isc_statsmulti_t *stats, isc_statscounter_t counter) {
 	if (isc_tid() == 0) {
 		atomic_fetch_sub_relaxed(get_atomic_counter_from_index(stats, index), 1);
 	} else {
-		isc_internal_statscounter_t *ptr = get_internal_counter(stats, index);
-		*ptr -= 1;
+		isc_atomic_statscounter_t *ptr = get_atomic_counter_from_index(stats, index);
+		int_fast64_t tmp = atomic_load_relaxed(ptr);
+		atomic_store_relaxed(ptr, tmp - 1);
 	}
 }
 
@@ -204,7 +197,7 @@ isc_statsmulti_dump(isc_statsmulti_t *stats, isc_statsmulti_dumper_t dump_fn, vo
 		/* Other threads (tid >= 1) use normal operations */
 		for (int thread = 1; thread < stats->num_threads_plus_one; thread++) {
 			int index = to_index(stats, thread, i);
-			total += *get_internal_counter(stats, index);
+			total += atomic_load_relaxed(get_atomic_counter_from_index(stats, index));
 		}
 		if ((options & ISC_STATSMULTIDUMP_VERBOSE) == 0 && total == 0) {
 			continue;
@@ -225,7 +218,7 @@ isc_statsmulti_get_counter(isc_statsmulti_t *stats, isc_statscounter_t counter) 
 	/* Other threads (tid >= 1) use normal operations */
 	for (int thread = 1; thread < stats->num_threads_plus_one; thread++) {
 		int index = to_index(stats, thread, counter);
-		total += *get_internal_counter(stats, index);
+		total += atomic_load_relaxed(get_atomic_counter_from_index(stats, index));
 	}
 	return total;
 }
