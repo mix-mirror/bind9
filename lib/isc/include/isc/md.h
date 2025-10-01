@@ -18,7 +18,6 @@
 
 #pragma once
 
-#include <isc/crypto.h>
 #include <isc/result.h>
 #include <isc/types.h>
 

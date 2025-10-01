@@ -20,6 +20,7 @@
 #include <openssl/objects.h>
 #include <openssl/x509.h>
 
+#include <isc/crypto.h>
 #include <isc/mem.h>
 #include <isc/result.h>
 #include <isc/safe.h>

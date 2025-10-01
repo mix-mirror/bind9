@@ -40,6 +40,7 @@
 #include <isc/attributes.h>
 #include <isc/base32.h>
 #include <isc/commandline.h>
+#include <isc/crypto.h>
 #include <isc/dir.h>
 #include <isc/file.h>
 #include <isc/hash.h>
