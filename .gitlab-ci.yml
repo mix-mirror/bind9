@@ -440,21 +440,6 @@ docs:
     when: always
   needs: []
 
-docs:pdf:
-  <<: *api_pipelines_schedules_tags_triggers_web_triggering_rules
-  <<: *base_image
-  stage: docs
-  before_script:
-    - apt-get update
-    - apt-get -y install qpdf texlive-full texlive-xetex xindy
-  script:
-    - *configure
-    - make -C doc/arm/ pdf V=1
-    - qpdf --check doc/arm/_build/latex/Bv9ARM.pdf
-  artifacts:
-    untracked: true
-  needs: []
-
 # Job detecting named.conf breakage introduced since the previous point release
 
 cross-version-config-tests:
@@ -890,15 +875,12 @@ release:
     - mv "${BIND_DIRECTORY}"/{CHANGES*,COPYRIGHT,LICENSE,README,srcid} .
     - rm -rf "${BIND_DIRECTORY}"
     - mv "../doc/arm/_build/html" doc/arm/
-    - mv "../doc/arm/_build/latex/Bv9ARM.pdf" doc/arm/
     - echo '<!DOCTYPE HTML><html lang="en"><meta http-equiv="refresh" content="0; url=doc/arm/html/notes.html"><title>Redirect</title></html>' > "RELEASE-NOTES-${BIND_DIRECTORY}.html"
     - popd
   needs:
     - job: tarball-create
       artifacts: true
     - job: docs
-      artifacts: true
-    - job: docs:pdf
       artifacts: true
   only:
     - tags
