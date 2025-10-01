@@ -26,6 +26,7 @@
 #include <isc/mem.h>
 #include <isc/result.h>
 #include <isc/stats.h>
+#include <isc/statsmulti.h>
 #include <isc/util.h>
 
 #include <tests/isc.h>
@@ -92,9 +93,58 @@ ISC_RUN_TEST_IMPL(isc_stats_basic) {
 	isc_stats_detach(&stats);
 }
 
+/* test statsmulti */
+ISC_RUN_TEST_IMPL(isc_statsmulti_basic) {
+	isc_statsmulti_t *stats = NULL;
+
+	/* Create with 3 additive counters and 1 highwater counter */
+	isc_statsmulti_create(isc_g_mctx, &stats, 3, 1);
+
+	/* Test increment on additive counters */
+	for (int i = 0; i < 3; i++) {
+		isc_statsmulti_increment(stats, i);
+		assert_int_equal(isc_statsmulti_get_counter(stats, i), 1);
+		isc_statsmulti_increment(stats, i);
+		assert_int_equal(isc_statsmulti_get_counter(stats, i), 2);
+	}
+
+	/* Test decrement on additive counters */
+	for (int i = 0; i < 3; i++) {
+		isc_statsmulti_decrement(stats, i);
+		assert_int_equal(isc_statsmulti_get_counter(stats, i), 1);
+		isc_statsmulti_decrement(stats, i);
+		assert_int_equal(isc_statsmulti_get_counter(stats, i), 0);
+	}
+
+	/* Test update if greater on highwater counter (counter 3) */
+	isc_statsmulti_update_if_greater(stats, 3, 5);
+	assert_int_equal(isc_statsmulti_get_highwater(stats, 3), 5);
+	isc_statsmulti_update_if_greater(stats, 3, 3);
+	assert_int_equal(isc_statsmulti_get_highwater(stats, 3), 5);
+	isc_statsmulti_update_if_greater(stats, 3, 7);
+	assert_int_equal(isc_statsmulti_get_highwater(stats, 3), 7);
+
+	/* Test reset highwater */
+	isc_statsmulti_reset_highwater(stats, 3);
+	assert_int_equal(isc_statsmulti_get_highwater(stats, 3), 0);
+
+	/* Test clear */
+	isc_statsmulti_increment(stats, 0);
+	isc_statsmulti_increment(stats, 1);
+	isc_statsmulti_update_if_greater(stats, 3, 10);
+	isc_statsmulti_clear(stats);
+	for (int i = 0; i < 3; i++) {
+		assert_int_equal(isc_statsmulti_get_counter(stats, i), 0);
+	}
+	assert_int_equal(isc_statsmulti_get_highwater(stats, 3), 0);
+
+	isc_statsmulti_detach(&stats);
+}
+
 ISC_TEST_LIST_START
 
 ISC_TEST_ENTRY(isc_stats_basic)
+ISC_TEST_ENTRY(isc_statsmulti_basic)
 
 ISC_TEST_LIST_END
 
