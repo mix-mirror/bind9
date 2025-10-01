@@ -36,10 +36,6 @@
 STATIC_ASSERT(sizeof(isc_statscounter_t) <= sizeof(uint64_t),
 	      "Exported statistics must fit into the statistic counter size");
 
-enum {
-	COUNTERS_PER_CACHELINE = 64 / sizeof(isc_statscounter_t),
-};
-
 struct isc_statsmulti {
 	unsigned int magic;
 	isc_mem_t *mctx;
@@ -101,25 +97,21 @@ isc_statsmulti_create(isc_mem_t *mctx, isc_statsmulti_t **statsp, int n_additive
 	size_t rounded_up = (size_in_bytes + 63) & ~63; /* Round up to next multiple of 64 */
 	int per_thread_capacity = rounded_up / sizeof(isc_atomic_statscounter_t);
 	int num_threads_plus_one = isc_tid_count() + 1;
-	REQUIRE(num_threads_plus_one >= 1);
 	
-	/* Allocate per_thread_capacity * num_threads total counters */
-	size_t alloc_size = rounded_up * num_threads_plus_one;
-	isc_statsmulti_t *stats = isc_mem_get(mctx, sizeof(*stats));
-	stats->counters = isc_mem_get(mctx, alloc_size);
-	isc_refcount_init(&stats->references, 1);
-	for (int i = 0; i < per_thread_capacity * num_threads_plus_one; i++) {
-		atomic_init(ptr_from_index(stats, i), 0);
-	}
 
-	stats->mctx = NULL;
+	isc_statsmulti_t *stats = isc_mem_get(mctx, sizeof(*stats));
+	*stats = (isc_statsmulti_t){
+		.magic = ISC_STATSMULTI_MAGIC,
+		.mctx = NULL,
+		.n_counters = ncounters,
+		.n_additive = n_additive,
+		.n_highwater = n_highwater,
+		.per_thread_capacity = per_thread_capacity,
+		.num_threads_plus_one = num_threads_plus_one,
+		.counters = isc_mem_cget(mctx, per_thread_capacity * num_threads_plus_one, sizeof(isc_atomic_statscounter_t)),
+	};
+	isc_refcount_init(&stats->references, 1);
 	isc_mem_attach(mctx, &stats->mctx);
-	stats->n_counters = ncounters;
-	stats->n_additive = n_additive;
-	stats->n_highwater = n_highwater;
-	stats->per_thread_capacity = per_thread_capacity;
-	stats->num_threads_plus_one = num_threads_plus_one;
-	stats->magic = ISC_STATSMULTI_MAGIC;
 	*statsp = stats;
 }
 
