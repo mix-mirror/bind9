@@ -124,19 +124,16 @@ enum {
 	ns_statscounter_encryptedproxydot = 76,
 	ns_statscounter_encryptedproxydoh = 77,
 
-	ns_statscounter_max = 80,
-};
+	ns_additive_count = 78,
 
-// XXX(ap): highwater counters
-enum {
 	ns_statscounter_tcphighwater = 78,
 	ns_statscounter_recurshighwater = 79,
 
-	ns_highwater_max = ns_statscounter_max,
+	ns_statscounter_max = 80,
 };
 
 enum {
-	ns_statscounter_total = ns_statscounter_max + ns_highwater_max,
+	ns_highwater_count = ns_statscounter_max - ns_additive_count,
 };
 
 void

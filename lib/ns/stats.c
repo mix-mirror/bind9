@@ -23,11 +23,7 @@ void
 ns_stats_create(isc_mem_t *mctx, isc_statsmulti_t **statsp) {
 	REQUIRE(statsp != NULL && *statsp == NULL);
 
-	/*
-	 * Create ns statistics using statsmulti for better multithreading performance.
-	 * We have 78 additive counters and ns_highwater_max highwater counters.
-	 */
-	isc_statsmulti_create(mctx, statsp, 78, 2);
+	isc_statsmulti_create(mctx, statsp, ns_additive_count, ns_highwater_count);
 }
 
 /*%
