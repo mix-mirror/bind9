@@ -632,6 +632,7 @@ again:
 
 cleanup:
 	if (result != ISC_R_SUCCESS) {
+		dns_message_settsigkey(message, NULL);
 		req_cleanup(request);
 		dns_request_detach(&request);
 		req_log(ISC_LOG_DEBUG(3), "%s: failed %s", __func__,
