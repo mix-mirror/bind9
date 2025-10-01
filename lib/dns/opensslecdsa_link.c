@@ -26,6 +26,7 @@
 #include <openssl/param_build.h>
 #endif
 
+#include <isc/crypto.h>
 #include <isc/md.h>
 #include <isc/mem.h>
 #include <isc/result.h>
