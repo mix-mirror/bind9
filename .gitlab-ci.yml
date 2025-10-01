@@ -235,6 +235,10 @@ stages:
   image: "$CI_REGISTRY_IMAGE:tumbleweed-latest-amd64"
   <<: *linux_amd64
 
+.awslc-tumbleweed-latest-amd64: &awslc_tumbleweed_latest_amd64_image
+  image: "$CI_REGISTRY_IMAGE:awslc-tumbleweed-latest-amd64"
+  <<: *linux_amd64
+
 # Fedora
 
 .tsan-fedora-44-amd64: &tsan_fedora_44_amd64_image
@@ -1466,26 +1470,48 @@ unit:gcc:tarball:
     - job: gcc:tarball
       artifacts: true
 
-# Jobs for debug GCC builds on openSUSE Tumbleweed (amd64)
+# Jobs for debug GCC builds with LibreSSL on openSUSE Tumbleweed (amd64)
 
-gcc:tumbleweed:amd64:
+gcc:tumbleweed:libressl:amd64:
   <<: *tumbleweed_latest_amd64_image
   <<: *build_job
   variables:
     EXTRA_SETUP_FILES: "--native-file ci/tumbleweed.ini"
 
-system:gcc:tumbleweed:amd64:
+system:gcc:tumbleweed:libressl:amd64:
   <<: *tumbleweed_latest_amd64_image
   <<: *system_test_job
   needs:
-    - job: gcc:tumbleweed:amd64
+    - job: gcc:tumbleweed:libressl:amd64
       artifacts: true
 
-unit:gcc:tumbleweed:amd64:
+unit:gcc:tumbleweed:libressl:amd64:
   <<: *tumbleweed_latest_amd64_image
   <<: *unit_test_job
   needs:
-    - job: gcc:tumbleweed:amd64
+    - job: gcc:tumbleweed:libressl:amd64
+      artifacts: true
+
+# Jobs for debug GCC builds with AWS-LC on openSUSE Tumbleweed (amd64)
+
+gcc:tumbleweed:awslc:amd64:
+  <<: *awslc_tumbleweed_latest_amd64_image
+  <<: *build_job
+  variables:
+    EXTRA_SETUP_FILES: "--native-file ci/tumbleweed.ini"
+
+system:gcc:tumbleweed:awslc:amd64:
+  <<: *awslc_tumbleweed_latest_amd64_image
+  <<: *system_test_job
+  needs:
+    - job: gcc:tumbleweed:awslc:amd64
+      artifacts: true
+
+unit:gcc:tumbleweed:awslc:amd64:
+  <<: *awslc_tumbleweed_latest_amd64_image
+  <<: *unit_test_job
+  needs:
+    - job: gcc:tumbleweed:awslc:amd64
       artifacts: true
 
 # Jobs for regular GCC builds on Ubuntu 22.04 Jammy Jellyfish (amd64)
