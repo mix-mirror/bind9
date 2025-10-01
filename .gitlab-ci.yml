@@ -106,8 +106,12 @@ stages:
   image: "$CI_REGISTRY_IMAGE:debian-bookworm-amd64"
   <<: *linux_amd64
 
-.debian-bookworm-amd64cross32: &debian_bookworm_amd64cross32_image
-  image: "$CI_REGISTRY_IMAGE:debian-bookworm-amd64cross32"
+.debian-trixie-amd64: &debian_trixie_amd64_image
+  image: "$CI_REGISTRY_IMAGE:debian-trixie-amd64"
+  <<: *linux_amd64
+
+.debian-trixie-amd64cross32: &debian_trixie_amd64cross32_image
+  image: "$CI_REGISTRY_IMAGE:debian-trixie-amd64cross32"
   <<: *linux_amd64
 
 .debian-sid-amd64: &debian_sid_amd64_image
@@ -144,7 +148,7 @@ stages:
 # This is a meta image that is used as a base for non-specific jobs
 
 .base: &base_image
-  <<: *debian_bookworm_amd64_image
+  <<: *debian_trixie_amd64_image
 
 ### Job Templates
 
@@ -410,7 +414,7 @@ tarball-create:
     paths:
       - bind-*.tar.xz
 
-# Jobs for doc builds on Debian 12 "bookworm" (amd64)
+# Jobs for doc builds on Debian 13 "trixie" (amd64)
 
 docs:
   <<: *default_triggering_rules
@@ -618,7 +622,7 @@ unit:gcc:noble:amd64:
 gcc:bookworm:amd64:
   variables:
     CC: gcc
-    CFLAGS: "${CFLAGS_COMMON} --coverage -O0"
+    CFLAGS: "${CFLAGS_COMMON}"
     EXTRA_CONFIGURE: "--with-libidn2"
     LDFLAGS: "--coverage"
   <<: *debian_bookworm_amd64_image
@@ -626,33 +630,58 @@ gcc:bookworm:amd64:
 
 system:gcc:bookworm:amd64:
   <<: *debian_bookworm_amd64_image
-  <<: *system_test_gcov_job
-  variables:
-    CI_ENABLE_ALL_TESTS: 1
-  needs:
-    - job: unit:gcc:bookworm:amd64
-      artifacts: true
-
-unit:gcc:bookworm:amd64:
-  <<: *debian_bookworm_amd64_image
-  <<: *unit_test_gcov_job
-  variables:
-    CI_ENABLE_ALL_TESTS: 1
+  <<: *system_test_job
   needs:
     - job: gcc:bookworm:amd64
       artifacts: true
 
-# Build job for cross-compiled GCC builds on 64-bit Debian 12 "bookworm"
+unit:gcc:bookworm:amd64:
+  <<: *debian_bookworm_amd64_image
+  <<: *unit_test_job
+  needs:
+    - job: gcc:bookworm:amd64
+      artifacts: true
+
+# Jobs for regular GCC builds on Debian 13 "trixie" (amd64)
+
+gcc:trixie:amd64:
+  variables:
+    CC: gcc
+    CFLAGS: "${CFLAGS_COMMON} --coverage -O0"
+    EXTRA_CONFIGURE: "--with-libidn2"
+    LDFLAGS: "--coverage"
+  <<: *debian_trixie_amd64_image
+  <<: *build_job
+
+system:gcc:trixie:amd64:
+  <<: *debian_trixie_amd64_image
+  <<: *system_test_gcov_job
+  variables:
+    CI_ENABLE_ALL_TESTS: 1
+  needs:
+    - job: unit:gcc:trixie:amd64
+      artifacts: true
+
+unit:gcc:trixie:amd64:
+  <<: *debian_trixie_amd64_image
+  <<: *unit_test_gcov_job
+  variables:
+    CI_ENABLE_ALL_TESTS: 1
+  needs:
+    - job: gcc:trixie:amd64
+      artifacts: true
+
+# Build job for cross-compiled GCC builds on 64-bit Debian 12 "trixie"
 # (amd64) with 32-bit BIND 9.
 
-gcc:bookworm:amd64cross32:
+gcc:trixie:amd64cross32:
   variables:
     BUILD_CC: gcc
     BUILD_CFLAGS: "${CFLAGS_COMMON}"
     CFLAGS: "${CFLAGS_COMMON}"
     CROSS_COMPILATION: 1
     EXTRA_CONFIGURE: "--build=x86_64-linux-gnu --host=i686-linux-gnu --with-libidn2"
-  <<: *debian_bookworm_amd64cross32_image
+  <<: *debian_trixie_amd64cross32_image
   <<: *build_job
 
 # Jobs for regular GCC builds on Debian "sid" (amd64)
@@ -681,7 +710,7 @@ unit:gcc:sid:amd64:
     - job: gcc:sid:amd64
       artifacts: true
 
-# Job for out-of-tree GCC build on Debian 12 "bookworm" (amd64)
+# Job for out-of-tree GCC build on Debian 13 "trixie" (amd64)
 # Also tests configration option: --with-lmdb.
 
 gcc:out-of-tree:
@@ -696,7 +725,7 @@ gcc:out-of-tree:
   <<: *base_image
   <<: *build_job
 
-# Jobs for tarball GCC builds on Debian 12 "bookworm" (amd64)
+# Jobs for tarball GCC builds on Debian 13 "trixie" (amd64)
 
 gcc:tarball:
   variables:
@@ -1044,7 +1073,7 @@ coverity:
 respdiff:
   <<: *respdiff_job
   <<: *default_triggering_rules
-  <<: *debian_bookworm_amd64_image
+  <<: *base_image
   variables:
     CC: gcc
     CFLAGS: "${CFLAGS_COMMON} -Og"
@@ -1055,7 +1084,7 @@ respdiff:
 respdiff:asan:
   <<: *respdiff_job
   <<: *default_triggering_rules
-  <<: *debian_bookworm_amd64_image
+  <<: *base_image
   variables:
     CC: gcc
     CFLAGS: "${CFLAGS_COMMON} -Og -fsanitize=address,undefined -DISC_MEM_USE_INTERNAL_MALLOC=0"
@@ -1067,7 +1096,7 @@ respdiff:asan:
 respdiff-third-party:
   <<: *respdiff_job
   <<: *default_triggering_rules
-  <<: *debian_bookworm_amd64_image
+  <<: *base_image
   variables:
     CC: gcc
     CFLAGS: "${CFLAGS_COMMON} -Og"
@@ -1080,7 +1109,7 @@ gcov:
   <<: *default_triggering_rules
   stage: postcheck
   needs:
-    - job: system:gcc:bookworm:amd64
+    - job: system:gcc:trixie:amd64
       artifacts: true
   script:
     # The "a-conftest.gcno" file is result of the ./configure step and
