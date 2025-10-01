@@ -23,6 +23,10 @@ options {
 	dnssec-validation yes;
 };
 
+server 10.53.0.5 {
+        require-cookie no;
+};
+
 zone "." {
 	type primary;
 	file "root.db";

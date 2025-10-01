@@ -23,6 +23,9 @@ options {
 	dnssec-validation no;
 };
 
+server 10.53.0.5 {
+	require-cookie no;
+};
 
 key rndc_key {
 	secret "1234abcd8765";
