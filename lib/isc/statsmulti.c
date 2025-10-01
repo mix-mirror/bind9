@@ -83,13 +83,11 @@ get_atomic_counter_from_index(isc_statsmulti_t *stats, int index) {
 
 static void
 atomic_update_if_greater(isc_atomic_statscounter_t *counter, isc_statscounter_t value) {
-	/* Atomically update if the new value is greater than current */
 	isc_statscounter_t current = atomic_load_relaxed(counter);
 	while (value > current) {
 		if (atomic_compare_exchange_weak_relaxed(counter, &current, value)) {
 			break;
 		}
-		/* current was updated by the failed compare_exchange, try again */
 	}
 }
 
@@ -190,11 +188,9 @@ isc_statsmulti_dump(isc_statsmulti_t *stats, isc_statsmulti_dumper_t dump_fn, vo
 	REQUIRE(ISC_STATSMULTI_VALID(stats));
 
 	for (i = 0; i < stats->n_counters; i++) {
-		/* Accumulate across all threads */
-		/* First thread (tid 0) uses atomic operations */
 		int index0 = to_index(stats, 0, i);
 		isc_statscounter_t total = atomic_load_acquire(get_atomic_counter_from_index(stats, index0));
-		/* Other threads (tid >= 1) use normal operations */
+
 		for (int thread = 1; thread < stats->num_threads_plus_one; thread++) {
 			int index = to_index(stats, thread, i);
 			total += atomic_load_relaxed(get_atomic_counter_from_index(stats, index));
@@ -211,15 +207,14 @@ isc_statsmulti_get_counter(isc_statsmulti_t *stats, isc_statscounter_t counter) 
 	REQUIRE(ISC_STATSMULTI_VALID(stats));
 	counter = additive_counter(stats, counter);
 
-	/* Accumulate across all threads */
-	/* First thread (tid 0) uses atomic operations */
 	int index0 = to_index(stats, 0, counter);
 	isc_statscounter_t total = atomic_load_acquire(get_atomic_counter_from_index(stats, index0));
-	/* Other threads (tid >= 1) use normal operations */
+
 	for (int thread = 1; thread < stats->num_threads_plus_one; thread++) {
 		int index = to_index(stats, thread, counter);
 		total += atomic_load_relaxed(get_atomic_counter_from_index(stats, index));
 	}
+
 	return total;
 }
 
@@ -250,11 +245,9 @@ isc_statsmulti_get_highwater(isc_statsmulti_t *stats, isc_statscounter_t counter
 
 	isc_statscounter_t internal_counter = highwater_counter(stats, counter);
 
-	/* Find maximum value across all threads */
-	/* First thread (tid 0) uses atomic operations */
 	int index0 = to_index(stats, 0, internal_counter);
 	isc_statscounter_t max_value = atomic_load_acquire(get_atomic_counter_from_index(stats, index0));
-	/* Other threads (tid >= 1) can use atomic operations for now */
+
 	for (int thread = 1; thread < stats->num_threads_plus_one; thread++) {
 		int index = to_index(stats, thread, internal_counter);
 		isc_statscounter_t value = atomic_load_acquire(get_atomic_counter_from_index(stats, index));
@@ -271,7 +264,6 @@ isc_statsmulti_reset_highwater(isc_statsmulti_t *stats, isc_statscounter_t count
 
 	isc_statscounter_t internal_counter = highwater_counter(stats, counter);
 
-	/* Reset highwater counter to 0 across all threads */
 	for (int thread = 0; thread < stats->num_threads_plus_one; thread++) {
 		int index = to_index(stats, thread, internal_counter);
 		atomic_store_relaxed(get_atomic_counter_from_index(stats, index), 0);
