@@ -349,7 +349,7 @@ coccinelle:
 reuse:
   <<: *precheck_job
   image:
-    name: docker.io/fsfe/reuse:latest
+    name: docker.io/fsfe/reuse:5.0
     entrypoint: [""]
   script:
     - reuse lint
