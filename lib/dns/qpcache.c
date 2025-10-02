@@ -1980,7 +1980,7 @@ static isc_result_t
 seek_ns_headers(qpc_search_t *search, qpcnode_t *node, dns_dbnode_t **nodep,
 		dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset,
 		dns_name_t *foundname, dns_name_t *dcname,
-		isc_rwlocktype_t *tlocktype) {
+		isc_rwlocktype_t *tlocktype DNS__DB_FLARG) {
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 	isc_rwlock_t *nlock = &search->qpdb->buckets[node->locknum].lock;
 	dns_slabheader_t *found = NULL, *foundsig = NULL;
@@ -2056,7 +2056,7 @@ qpcache_findzonecut(dns_db_t *db, const dns_name_t *name, unsigned int options,
 			dns_name_copy(&node->name, foundname);
 			result = seek_ns_headers(&search, node, nodep, rdataset,
 						 sigrdataset, foundname, dcname,
-						 &tlocktype);
+						 &tlocktype DNS__DB_FLARG_PASS);
 			break;
 		}
 
@@ -2718,7 +2718,8 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 			 */
 			isc_result_t result = expire_ncache_entry(
 				qpdb, qpnode, top, newheader, trust,
-				addedrdataset, now, nlocktype, tlocktype);
+				addedrdataset, now, nlocktype,
+				tlocktype DNS__DB_FLARG_PASS);
 			if (result == DNS_R_UNCHANGED) {
 				/*
 				 * The existing negative entry is more trusted
