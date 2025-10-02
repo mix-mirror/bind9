@@ -109,3 +109,11 @@ zone "migrate-nomatch-kzc.kasp" {
 	inline-signing no;
 	allow-update { any; };
 };
+
+zone "migrate-nomatch-kzc-nosync.kasp" {
+	type primary;
+	file "migrate-nomatch-kzc-nosync.kasp.db";
+	dnssec-policy "migrate-nomatch-kzc";
+	inline-signing no;
+	allow-update { any; };
+};

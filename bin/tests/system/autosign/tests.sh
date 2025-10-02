@@ -1256,10 +1256,10 @@ act=$(grep "DNSKEY .* is now active" ns3/named.run | wc -l)
 if [ $RSASHA1_SUPPORTED = 1 ]; then
   # Include two log lines for nsec-only zone.
   [ "$pub" -eq 53 ] || ret=1
-  [ "$act" -eq 54 ] || ret=1
+  [ "$act" -eq 53 ] || ret=1
 else
   [ "$pub" -eq 51 ] || ret=1
-  [ "$act" -eq 52 ] || ret=1
+  [ "$act" -eq 51 ] || ret=1
 fi
 rev=$(grep "DNSKEY .* is now revoked" ns3/named.run | wc -l)
 [ "$rev" -eq 0 ] || ret=1

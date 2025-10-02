@@ -208,7 +208,7 @@ $SIGNER -S -3 beef -A -o $zone -f $zonefile $infile >s.out || dumpit s.out
 #
 setup prepub.example
 infile="prepub.example.db.in"
-$KEYGEN -a $DEFAULT_ALGORITHM -3 -q -fk $keytimes $zone >kg.out 2>&1 || dumpit kg.out
+$KEYGEN -a $DEFAULT_ALGORITHM -3 -q -fk $keytimes -P sync now-7d $zone >kg.out 2>&1 || dumpit kg.out
 zsk=$($KEYGEN -a $DEFAULT_ALGORITHM -3 -q $keytimes $zone 2>kg.out) || dumpit kg.out
 echo $zsk >../prepub.key
 $SIGNER -S -3 beef -o $zone -f $zonefile $infile >s.out || dumpit s.out

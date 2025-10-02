@@ -272,7 +272,9 @@ class KeyProperties:
         if migrate:
             self.timing["Published"] = self.key.get_timing("Publish")
             if self.key.is_ksk():
-                self.timing["PublishCDS"] = self.key.get_timing("SyncPublish")
+                self.timing["PublishCDS"] = self.key.get_timing(
+                    "SyncPublish", must_exist=False
+                )
             self.timing["Active"] = self.key.get_timing("Activate")
         else:
             self.timing["Published"] = self.timing["Published"] + offset
@@ -1014,9 +1016,9 @@ def check_cds(cdss, keys, alg, manual_mode=False):
             published = md in ["omnipresent", "rumoured"]
             removed = not published
         else:
-            publish = key.get_timing("SyncPublish")
+            publish = key.get_timing("SyncPublish", must_exist=False)
             delete = key.get_timing("SyncDelete", must_exist=False)
-            published = now >= publish
+            published = publish is not None and now >= publish
             removed = delete is not None and delete <= now
 
         if not published or removed:
