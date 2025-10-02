@@ -13,7 +13,7 @@
 
 #pragma once
 
-#undef DNS_DB_NODETRACE
+#define DNS_DB_NODETRACE 1
 
 #if DNS_DB_NODETRACE
 
