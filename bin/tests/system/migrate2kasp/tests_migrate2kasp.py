@@ -266,6 +266,24 @@ lifetime = {
             },
             id="migrate-nomatch-kzc.kasp",
         ),
+        # Test migration to dnssec-policy, existing keys do not match role (KSK/ZSK -> CSK), without -P sync.
+        pytest.param(
+            {
+                "zone": "migrate-nomatch-kzc-nosync.kasp",
+                "policy": "migrate-nomatch-kzc",
+                "server": "ns3",
+                "config": migrate_config,
+                "offset": -timedelta(seconds=3900),
+                "key-properties": [
+                    # These public keys and signatures for the KSK and ZSK stay in the zone until the zone is in a valid DNSSEC state.
+                    f"ksk - {os.environ['DEFAULT_ALGORITHM_NUMBER']} {os.environ['DEFAULT_BITS']} goal:hidden dnskey:omnipresent krrsig:omnipresent ds:hidden",
+                    f"zsk - {os.environ['DEFAULT_ALGORITHM_NUMBER']} {os.environ['DEFAULT_BITS']} goal:hidden dnskey:omnipresent zrrsig:omnipresent",
+                    # This key is created according to the policy.
+                    f"csk 0 {os.environ['DEFAULT_ALGORITHM_NUMBER']} {os.environ['DEFAULT_BITS']} goal:omnipresent dnskey:rumoured krrsig:rumoured zrrsig:rumoured ds:hidden",
+                ],
+            },
+            id="migrate-nomatch-kzc-nosync.kasp",
+        ),
         # Test good migration with views.
         pytest.param(
             {
