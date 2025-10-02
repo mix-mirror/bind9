@@ -13,6 +13,30 @@
 
 // NS7
 
+server 10.53.0.2 {
+	require-cookie no;
+};
+
+server 10.53.0.3 {
+	require-cookie no;
+};
+
+server 10.53.0.4 {
+	require-cookie no;
+};
+
+server fd92:7065:b8e:ffff::2 {
+	require-cookie no;
+};
+
+server fd92:7065:b8e:ffff::3 {
+	require-cookie no;
+};
+
+server fd92:7065:b8e:ffff::4 {
+	require-cookie no;
+};
+
 options {
 	query-source address 10.53.0.7;
 	notify-source 10.53.0.7;
