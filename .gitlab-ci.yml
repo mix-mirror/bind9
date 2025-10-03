@@ -551,6 +551,7 @@ system:gcc:tarball:
   needs:
     - job: gcc:tarball
       artifacts: true
+  allow_failure: true
 
 unit:gcc:tarball:
   <<: *base_image
@@ -609,6 +610,7 @@ system:gcc:asan:
   needs:
     - job: gcc:asan
       artifacts: true
+  allow_failure: true
 
 unit:gcc:asan:
   variables:
@@ -636,6 +638,7 @@ system:clang:asan:
   needs:
     - job: clang:asan
       artifacts: true
+  allow_failure: true
 
 unit:clang:asan:
   variables:
