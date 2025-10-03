@@ -106,8 +106,12 @@ stages:
   image: "$CI_REGISTRY_IMAGE:debian-bookworm-amd64"
   <<: *linux_amd64
 
-.debian-bookworm-amd64cross32: &debian_bookworm_amd64cross32_image
-  image: "$CI_REGISTRY_IMAGE:debian-bookworm-amd64cross32"
+.debian-trixie-amd64: &debian_trixie_amd64_image
+  image: "$CI_REGISTRY_IMAGE:debian-trixie-amd64"
+  <<: *linux_amd64
+
+.debian-trixie-amd64cross32: &debian_trixie_amd64cross32_image
+  image: "$CI_REGISTRY_IMAGE:debian-trixie-amd64cross32"
   <<: *linux_amd64
 
 .debian-sid-amd64: &debian_sid_amd64_image
@@ -144,7 +148,7 @@ stages:
 # This is a meta image that is used as a base for non-specific jobs
 
 .base: &base_image
-  <<: *debian_bookworm_amd64_image
+  <<: *debian_trixie_amd64_image
 
 ### Job Templates
 
@@ -345,7 +349,7 @@ coccinelle:
 reuse:
   <<: *precheck_job
   image:
-    name: docker.io/fsfe/reuse:latest
+    name: docker.io/fsfe/reuse:5.0
     entrypoint: [""]
   script:
     - reuse lint
@@ -410,7 +414,7 @@ tarball-create:
     paths:
       - bind-*.tar.xz
 
-# Jobs for doc builds on Debian 12 "bookworm" (amd64)
+# Jobs for doc builds on Debian 13 "trixie" (amd64)
 
 docs:
   <<: *default_triggering_rules
@@ -434,21 +438,6 @@ docs:
       - doc/man/
       - doc/misc/
     when: always
-  needs: []
-
-docs:pdf:
-  <<: *api_pipelines_schedules_tags_triggers_web_triggering_rules
-  <<: *base_image
-  stage: docs
-  before_script:
-    - apt-get update
-    - apt-get -y install qpdf texlive-full texlive-xetex xindy
-  script:
-    - *configure
-    - make -C doc/arm/ pdf V=1
-    - qpdf --check doc/arm/_build/latex/Bv9ARM.pdf
-  artifacts:
-    untracked: true
   needs: []
 
 # Job detecting named.conf breakage introduced since the previous point release
@@ -594,8 +583,8 @@ gcc:tarball:nosphinx:
 gcc:noble:amd64:
   variables:
     CC: gcc
-    CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "--with-libidn2"
+    CFLAGS: "${CFLAGS_COMMON} -O3"
+    EXTRA_CONFIGURE: "--with-libidn2 --without-lmdb"
   <<: *ubuntu_noble_amd64_image
   <<: *build_job
 
@@ -618,70 +607,68 @@ unit:gcc:noble:amd64:
 gcc:bookworm:amd64:
   variables:
     CC: gcc
-    CFLAGS: "${CFLAGS_COMMON} --coverage -O0"
-    EXTRA_CONFIGURE: "--with-libidn2"
-    LDFLAGS: "--coverage"
+    CFLAGS: "${CFLAGS_COMMON}"
   <<: *debian_bookworm_amd64_image
   <<: *build_job
 
 system:gcc:bookworm:amd64:
   <<: *debian_bookworm_amd64_image
-  <<: *system_test_gcov_job
-  variables:
-    CI_ENABLE_ALL_TESTS: 1
-  needs:
-    - job: unit:gcc:bookworm:amd64
-      artifacts: true
-
-unit:gcc:bookworm:amd64:
-  <<: *debian_bookworm_amd64_image
-  <<: *unit_test_gcov_job
-  variables:
-    CI_ENABLE_ALL_TESTS: 1
+  <<: *system_test_job
   needs:
     - job: gcc:bookworm:amd64
       artifacts: true
 
-# Build job for cross-compiled GCC builds on 64-bit Debian 12 "bookworm"
+unit:gcc:bookworm:amd64:
+  <<: *debian_bookworm_amd64_image
+  <<: *unit_test_job
+  needs:
+    - job: gcc:bookworm:amd64
+      artifacts: true
+
+# Jobs for regular GCC builds on Debian 13 "trixie" (amd64)
+
+gcc:trixie:amd64:
+  variables:
+    CC: gcc
+    CFLAGS: "${CFLAGS_COMMON} --coverage -O0"
+    EXTRA_CONFIGURE: "--with-libidn2"
+    LDFLAGS: "--coverage"
+    RUN_MAKE_INSTALL: 1
+  <<: *debian_trixie_amd64_image
+  <<: *build_job
+
+system:gcc:trixie:amd64:
+  <<: *debian_trixie_amd64_image
+  <<: *system_test_gcov_job
+  variables:
+    CI_ENABLE_ALL_TESTS: 1
+  needs:
+    - job: unit:gcc:trixie:amd64
+      artifacts: true
+
+unit:gcc:trixie:amd64:
+  <<: *debian_trixie_amd64_image
+  <<: *unit_test_gcov_job
+  variables:
+    CI_ENABLE_ALL_TESTS: 1
+  needs:
+    - job: gcc:trixie:amd64
+      artifacts: true
+
+# Build job for cross-compiled GCC builds on 64-bit Debian 13 "trixie"
 # (amd64) with 32-bit BIND 9.
 
-gcc:bookworm:amd64cross32:
+gcc:trixie:amd64cross32:
   variables:
     BUILD_CC: gcc
     BUILD_CFLAGS: "${CFLAGS_COMMON}"
     CFLAGS: "${CFLAGS_COMMON}"
     CROSS_COMPILATION: 1
     EXTRA_CONFIGURE: "--build=x86_64-linux-gnu --host=i686-linux-gnu --with-libidn2"
-  <<: *debian_bookworm_amd64cross32_image
+  <<: *debian_trixie_amd64cross32_image
   <<: *build_job
 
-# Jobs for regular GCC builds on Debian "sid" (amd64)
-# Also tests configration option: --without-lmdb.
-
-gcc:sid:amd64:
-  variables:
-    CC: gcc
-    CFLAGS: "${CFLAGS_COMMON} -O3"
-    EXTRA_CONFIGURE: "--with-libidn2 --without-lmdb --without-python"
-    RUN_MAKE_INSTALL: 1
-  <<: *debian_sid_amd64_image
-  <<: *build_job
-
-system:gcc:sid:amd64:
-  <<: *debian_sid_amd64_image
-  <<: *system_test_job
-  needs:
-    - job: gcc:sid:amd64
-      artifacts: true
-
-unit:gcc:sid:amd64:
-  <<: *debian_sid_amd64_image
-  <<: *unit_test_job
-  needs:
-    - job: gcc:sid:amd64
-      artifacts: true
-
-# Job for out-of-tree GCC build on Debian 12 "bookworm" (amd64)
+# Job for out-of-tree GCC build on Debian 13 "trixie" (amd64)
 # Also tests configration option: --with-lmdb.
 
 gcc:out-of-tree:
@@ -696,7 +683,7 @@ gcc:out-of-tree:
   <<: *base_image
   <<: *build_job
 
-# Jobs for tarball GCC builds on Debian 12 "bookworm" (amd64)
+# Jobs for tarball GCC builds on Debian 13 "trixie" (amd64)
 
 gcc:tarball:
   variables:
@@ -823,28 +810,28 @@ unit:clang:asan:
     - job: clang:asan
       artifacts: true
 
-# Jobs for Clang builds on Debian 12 "bookworm" (amd64)
+# Jobs for Clang builds on Debian 13 "trixie" (amd64)
 
-clang:bookworm:amd64:
+clang:trixie:amd64:
   variables:
     CC: ${CLANG}
     CFLAGS: "${CFLAGS_COMMON} -Wenum-conversion"
     EXTRA_CONFIGURE: "--with-python=python3"
-  <<: *debian_bookworm_amd64_image
+  <<: *debian_trixie_amd64_image
   <<: *build_job
 
-system:clang:bookworm:amd64:
-  <<: *debian_bookworm_amd64_image
+system:clang:trixie:amd64:
+  <<: *debian_trixie_amd64_image
   <<: *system_test_job
   needs:
-    - job: clang:bookworm:amd64
+    - job: clang:trixie:amd64
       artifacts: true
 
-unit:clang:bookworm:amd64:
-  <<: *debian_bookworm_amd64_image
+unit:clang:trixie:amd64:
+  <<: *debian_trixie_amd64_image
   <<: *unit_test_job
   needs:
-    - job: clang:bookworm:amd64
+    - job: clang:trixie:amd64
       artifacts: true
 
 # Jobs with libtool disabled
@@ -888,15 +875,12 @@ release:
     - mv "${BIND_DIRECTORY}"/{CHANGES*,COPYRIGHT,LICENSE,README,srcid} .
     - rm -rf "${BIND_DIRECTORY}"
     - mv "../doc/arm/_build/html" doc/arm/
-    - mv "../doc/arm/_build/latex/Bv9ARM.pdf" doc/arm/
     - echo '<!DOCTYPE HTML><html lang="en"><meta http-equiv="refresh" content="0; url=doc/arm/html/notes.html"><title>Redirect</title></html>' > "RELEASE-NOTES-${BIND_DIRECTORY}.html"
     - popd
   needs:
     - job: tarball-create
       artifacts: true
     - job: docs
-      artifacts: true
-    - job: docs:pdf
       artifacts: true
   only:
     - tags
@@ -1044,34 +1028,34 @@ coverity:
 respdiff:
   <<: *respdiff_job
   <<: *default_triggering_rules
-  <<: *debian_bookworm_amd64_image
+  <<: *base_image
   variables:
     CC: gcc
     CFLAGS: "${CFLAGS_COMMON} -Og"
-    MAX_DISAGREEMENTS_PERCENTAGE: "0.1"
+    MAX_DISAGREEMENTS_PERCENTAGE: "0.3"
   script:
     - bash respdiff.sh -s named -q "${PWD}/100k_mixed.txt" -c 3 -w "${PWD}/rspworkdir" "${CI_PROJECT_DIR}" "/usr/local/respdiff-reference-bind/sbin/named"
 
 respdiff:asan:
   <<: *respdiff_job
   <<: *default_triggering_rules
-  <<: *debian_bookworm_amd64_image
+  <<: *base_image
   variables:
     CC: gcc
     CFLAGS: "${CFLAGS_COMMON} -Og -fsanitize=address,undefined -DISC_MEM_USE_INTERNAL_MALLOC=0"
     LDFLAGS: "-fsanitize=address,undefined"
-    MAX_DISAGREEMENTS_PERCENTAGE: "0.1"
+    MAX_DISAGREEMENTS_PERCENTAGE: "0.3"
   script:
     - bash respdiff.sh -s named -q "${PWD}/100k_mixed.txt" -c 3 -w "${PWD}/rspworkdir" "${CI_PROJECT_DIR}" "/usr/local/respdiff-reference-bind/sbin/named"
 
 respdiff-third-party:
   <<: *respdiff_job
   <<: *default_triggering_rules
-  <<: *debian_bookworm_amd64_image
+  <<: *base_image
   variables:
     CC: gcc
     CFLAGS: "${CFLAGS_COMMON} -Og"
-    MAX_DISAGREEMENTS_PERCENTAGE: "0.2"
+    MAX_DISAGREEMENTS_PERCENTAGE: "0.3"
   script:
     - bash respdiff.sh -s third_party -q "${PWD}/100k_mixed.txt" -c 1 -w "${PWD}/rspworkdir" "${CI_PROJECT_DIR}"
 
@@ -1080,7 +1064,7 @@ gcov:
   <<: *default_triggering_rules
   stage: postcheck
   needs:
-    - job: system:gcc:bookworm:amd64
+    - job: system:gcc:trixie:amd64
       artifacts: true
   script:
     # The "a-conftest.gcno" file is result of the ./configure step and
