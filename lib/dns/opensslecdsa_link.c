@@ -839,6 +839,10 @@ opensslecdsa_sign(dst_context_t *dctx, isc_buffer_t *sig) {
 		DST_RET(ISC_R_FAILURE);
 	}
 
+	if (sigder_len > sizeof(sigder)) {
+		isc_log_write(DNS_LOGCATEGORY_GENERAL, DNS_LOGMODULE_CRYPTO,
+			      ISC_LOG_CRITICAL, "owo %zu", sigder_len);
+	}
 	INSIST(sigder_len <= sizeof(sigder));
 
 	if (EVP_DigestSignFinal(evp_md_ctx, sigder, &sigder_len) != 1) {
