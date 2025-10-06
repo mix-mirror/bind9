@@ -2167,7 +2167,7 @@ dns_catz_dbupdate_callback(dns_db_t *db, void *fn_arg) {
 
 	if (!catz->updatepending && !catz->updaterunning) {
 		catz->updatepending = true;
-		dns_db_currentversion(db, &catz->dbversion);
+		dns_db_snapshotversion(db, &catz->dbversion);
 		dns__catz_timer_start(catz);
 	} else {
 		char dname[DNS_NAME_FORMATSIZE];
@@ -2181,7 +2181,7 @@ dns_catz_dbupdate_callback(dns_db_t *db, void *fn_arg) {
 		if (catz->dbversion != NULL) {
 			dns_db_closeversion(catz->db, &catz->dbversion, false);
 		}
-		dns_db_currentversion(catz->db, &catz->dbversion);
+		dns_db_snapshotversion(catz->db, &catz->dbversion);
 	}
 
 cleanup:
@@ -2297,7 +2297,8 @@ dns__catz_update_cb(void *data) {
 		      "catz: updating catalog zone '%s' with serial %" PRIu32,
 		      bname, vers);
 
-	result = dns_db_createiterator(updb, DNS_DB_NONSEC3, &updbit);
+	result = dns_db_createiterator(updb, catz->updbversion, DNS_DB_NONSEC3,
+				       &updbit);
 	if (result != ISC_R_SUCCESS) {
 		isc_log_write(DNS_LOGCATEGORY_GENERAL, DNS_LOGMODULE_CATZ,
 			      ISC_LOG_ERROR,

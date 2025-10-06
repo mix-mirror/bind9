@@ -950,7 +950,7 @@ addnowildcardhash(hashlist_t *l,
 	}
 	check_result(result, "addnowildcardhash: dns_name_concatenate()");
 
-	result = dns_db_findnode(gdb, wild, false, &node);
+	result = dns_db_findnode(gdb, wild, gversion, false, &node);
 	if (result == ISC_R_SUCCESS) {
 		dns_db_detachnode(&node);
 		return;
@@ -1024,7 +1024,7 @@ loadds(dns_name_t *name, uint32_t ttl, dns_rdataset_t *dsset) {
 
 	opendb("dsset-", name, gclass, &db);
 	if (db != NULL) {
-		result = dns_db_findnode(db, name, false, &node);
+		result = dns_db_findnode(db, name, NULL, false, &node);
 		if (result == ISC_R_SUCCESS) {
 			dns_rdataset_init(dsset);
 			result = dns_db_findrdataset(db, node, NULL,
@@ -1047,7 +1047,7 @@ loadds(dns_name_t *name, uint32_t ttl, dns_rdataset_t *dsset) {
 		return ISC_R_NOTFOUND;
 	}
 
-	result = dns_db_findnode(db, name, false, &node);
+	result = dns_db_findnode(db, name, NULL, false, &node);
 	if (result != ISC_R_SUCCESS) {
 		dns_db_detach(&db);
 		return result;
@@ -1464,7 +1464,7 @@ presign(void) {
 	isc_result_t result;
 
 	gdbiter = NULL;
-	result = dns_db_createiterator(gdb, 0, &gdbiter);
+	result = dns_db_createiterator(gdb, gversion, 0, &gdbiter);
 	check_result(result, "dns_db_createiterator()");
 }
 
@@ -1775,7 +1775,8 @@ nsecify(void) {
 	/*
 	 * Remove any NSEC3 chains.
 	 */
-	result = dns_db_createiterator(gdb, DNS_DB_NSEC3ONLY, &dbiter);
+	result = dns_db_createiterator(gdb, gversion, DNS_DB_NSEC3ONLY,
+				       &dbiter);
 	check_result(result, "dns_db_createiterator()");
 	DNS_DBITERATOR_FOREACH(dbiter) {
 		dns_rdataset_t rdataset = DNS_RDATASET_INIT;
@@ -1799,7 +1800,7 @@ nsecify(void) {
 	}
 	dns_dbiterator_destroy(&dbiter);
 
-	result = dns_db_createiterator(gdb, DNS_DB_NONSEC3, &dbiter);
+	result = dns_db_createiterator(gdb, gversion, DNS_DB_NONSEC3, &dbiter);
 	check_result(result, "dns_db_createiterator()");
 
 	result = dns_dbiterator_first(dbiter);
@@ -1915,7 +1916,7 @@ addnsec3param(const unsigned char *salt, size_t salt_len,
 	ISC_LIST_APPEND(rdatalist.rdata, &rdata, link);
 	dns_rdatalist_tordataset(&rdatalist, &rdataset);
 
-	result = dns_db_findnode(gdb, gorigin, true, &node);
+	result = dns_db_findnode(gdb, gorigin, gversion, true, &node);
 	check_result(result, "dns_db_findnode(gorigin)");
 
 	/*
@@ -1975,8 +1976,8 @@ addnsec3(dns_name_t *name, dns_dbnode_t *node, const unsigned char *salt,
 	rdatalist.ttl = ttl;
 	ISC_LIST_APPEND(rdatalist.rdata, &rdata, link);
 	dns_rdatalist_tordataset(&rdatalist, &rdataset);
-	result = dns_db_findnsec3node(gdb, dns_fixedname_name(&hashname), true,
-				      &nsec3node);
+	result = dns_db_findnsec3node(gdb, dns_fixedname_name(&hashname),
+				      gversion, true, &nsec3node);
 	check_result(result, "addnsec3: dns_db_findnode()");
 	result = dns_db_addrdataset(gdb, nsec3node, gversion, 0, &rdataset, 0,
 				    NULL);
@@ -2165,7 +2166,7 @@ cleanup_zone(void) {
 	dns_diff_init(isc_g_mctx, &add);
 	dns_diff_init(isc_g_mctx, &del);
 
-	result = dns_db_createiterator(gdb, 0, &dbiter);
+	result = dns_db_createiterator(gdb, gversion, 0, &dbiter);
 	check_result(result, "dns_db_createiterator()");
 
 	DNS_DBITERATOR_FOREACH(dbiter) {
@@ -2221,7 +2222,7 @@ nsec3ify(unsigned int hashalg, dns_iterations_t iterations,
 	/*
 	 * Walk the zone generating the hash names.
 	 */
-	result = dns_db_createiterator(gdb, DNS_DB_NONSEC3, &dbiter);
+	result = dns_db_createiterator(gdb, gversion, DNS_DB_NONSEC3, &dbiter);
 	check_result(result, "dns_db_createiterator()");
 
 	result = dns_dbiterator_first(dbiter);
@@ -2354,7 +2355,8 @@ nsec3ify(unsigned int hashalg, dns_iterations_t iterations,
 	/*
 	 * Clean out NSEC3 records which don't match this chain.
 	 */
-	result = dns_db_createiterator(gdb, DNS_DB_NSEC3ONLY, &dbiter);
+	result = dns_db_createiterator(gdb, gversion, DNS_DB_NSEC3ONLY,
+				       &dbiter);
 	check_result(result, "dns_db_createiterator()");
 
 	DNS_DBITERATOR_FOREACH(dbiter) {
@@ -2369,7 +2371,7 @@ nsec3ify(unsigned int hashalg, dns_iterations_t iterations,
 	/*
 	 * Generate / complete the new chain.
 	 */
-	result = dns_db_createiterator(gdb, DNS_DB_NONSEC3, &dbiter);
+	result = dns_db_createiterator(gdb, gversion, DNS_DB_NONSEC3, &dbiter);
 	check_result(result, "dns_db_createiterator()");
 
 	result = dns_dbiterator_first(dbiter);
@@ -2507,7 +2509,7 @@ loadzonekeys(bool preserve_keys, bool load_public) {
 	dns_rdataset_t rdataset, keysigs, soasigs;
 
 	node = NULL;
-	result = dns_db_findnode(gdb, gorigin, false, &node);
+	result = dns_db_findnode(gdb, gorigin, gversion, false, &node);
 	if (result != ISC_R_SUCCESS) {
 		fatal("failed to find the zone's origin: %s",
 		      isc_result_totext(result));
@@ -2820,7 +2822,7 @@ warnifallksk(dns_db_t *db) {
 
 	dns_db_currentversion(db, &currentversion);
 
-	result = dns_db_findnode(db, gorigin, false, &node);
+	result = dns_db_findnode(db, gorigin, gversion, false, &node);
 	if (result != ISC_R_SUCCESS) {
 		fatal("failed to find the zone's origin: %s",
 		      isc_result_totext(result));
@@ -2927,7 +2929,7 @@ set_nsec3params(bool update, bool set_salt, bool set_optout, bool set_iter) {
 				    orig_saltlen);
 	check_result(result, "dns_nsec3_hashname");
 
-	result = dns_db_findnsec3node(gdb, hashname, false, &node);
+	result = dns_db_findnsec3node(gdb, hashname, ver, false, &node);
 	if (result != ISC_R_SUCCESS) {
 		goto cleanup;
 	}

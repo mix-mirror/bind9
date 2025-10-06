@@ -3172,7 +3172,9 @@ ns_client_findversion(ns_client_t *client, dns_db_t *db) {
 	 */
 	ns_dbversion_t *dbversion = client_getdbversion(client);
 	dns_db_attach(db, &dbversion->db);
-	dns_db_currentversion(db, &dbversion->version);
+	// FIXME
+	// dns_db_currentversion(db, &dbversion->version);
+	dns_db_snapshotversion(db, &dbversion->version);
 	dbversion->acl_checked = false;
 	dbversion->queryok = false;
 	ISC_LIST_APPEND(client->query.activeversions, dbversion, link);

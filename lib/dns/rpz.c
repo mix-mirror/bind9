@@ -1563,7 +1563,7 @@ dns_rpz_dbupdate_callback(dns_db_t *db, void *fn_arg) {
 	if (!rpz->updatepending && !rpz->updaterunning) {
 		rpz->updatepending = true;
 
-		dns_db_currentversion(rpz->db, &rpz->dbversion);
+		dns_db_snapshotversion(rpz->db, &rpz->dbversion);
 		dns__rpz_timer_start(rpz);
 	} else {
 		char dname[DNS_NAME_FORMATSIZE];
@@ -1577,7 +1577,7 @@ dns_rpz_dbupdate_callback(dns_db_t *db, void *fn_arg) {
 		if (rpz->dbversion != NULL) {
 			dns_db_closeversion(rpz->db, &rpz->dbversion, false);
 		}
-		dns_db_currentversion(rpz->db, &rpz->dbversion);
+		dns_db_snapshotversion(rpz->db, &rpz->dbversion);
 	}
 
 unlock:
@@ -1711,7 +1711,8 @@ update_nodes(dns_rpz_zone_t *rpz, isc_ht_t *newnodes) {
 
 	name = dns_fixedname_initname(&fixname);
 
-	result = dns_db_createiterator(rpz->updb, DNS_DB_NONSEC3, &updbit);
+	result = dns_db_createiterator(rpz->updb, rpz->updbversion,
+				       DNS_DB_NONSEC3, &updbit);
 	if (result != ISC_R_SUCCESS) {
 		isc_log_write(DNS_LOGCATEGORY_GENERAL, DNS_LOGMODULE_RPZ,
 			      ISC_LOG_ERROR,

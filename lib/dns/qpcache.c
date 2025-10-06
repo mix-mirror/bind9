@@ -2447,7 +2447,8 @@ new_qpcnode(qpcache_t *qpdb, const dns_name_t *name, dns_namespace_t nspace) {
 }
 
 static isc_result_t
-qpcache_findnode(dns_db_t *db, const dns_name_t *name, bool create,
+qpcache_findnode(dns_db_t *db, const dns_name_t *name,
+		 dns_dbversion_t *dbversion, bool create,
 		 dns_clientinfomethods_t *methods ISC_ATTR_UNUSED,
 		 dns_clientinfo_t *clientinfo ISC_ATTR_UNUSED,
 		 dns_dbnode_t **nodep DNS__DB_FLARG) {
@@ -2456,6 +2457,9 @@ qpcache_findnode(dns_db_t *db, const dns_name_t *name, bool create,
 	isc_result_t result;
 	isc_rwlocktype_t tlocktype = isc_rwlocktype_none;
 	dns_namespace_t nspace = DNS_DBNAMESPACE_NORMAL;
+
+	REQUIRE(VALID_QPDB((qpcache_t *)db));
+	REQUIRE(dbversion == NULL);
 
 	TREE_RDLOCK(&qpdb->tree_lock, &tlocktype);
 	result = dns_qp_getname(qpdb->tree, name, nspace, (void **)&node, NULL);
@@ -2487,12 +2491,14 @@ unlock:
 }
 
 static isc_result_t
-qpcache_createiterator(dns_db_t *db, unsigned int options ISC_ATTR_UNUSED,
+qpcache_createiterator(dns_db_t *db, dns_dbversion_t *dbversion,
+		       unsigned int options ISC_ATTR_UNUSED,
 		       dns_dbiterator_t **iteratorp) {
 	qpcache_t *qpdb = (qpcache_t *)db;
 	qpc_dbit_t *qpdbiter = NULL;
 
 	REQUIRE(VALID_QPDB(qpdb));
+	REQUIRE(dbversion == NULL);
 
 	qpdbiter = isc_mem_get(qpdb->common.mctx, sizeof(*qpdbiter));
 	*qpdbiter = (qpc_dbit_t){

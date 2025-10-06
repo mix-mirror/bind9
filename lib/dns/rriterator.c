@@ -44,7 +44,7 @@ dns_rriterator_init(dns_rriterator_t *it, dns_db_t *db, dns_dbversion_t *ver,
 	it->ver = ver;
 	it->now = now;
 	it->node = NULL;
-	result = dns_db_createiterator(it->db, 0, &it->dbit);
+	result = dns_db_createiterator(it->db, ver, 0, &it->dbit);
 	if (result != ISC_R_SUCCESS) {
 		return result;
 	}

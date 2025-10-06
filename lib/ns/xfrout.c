@@ -857,7 +857,7 @@ ns_xfr_start(ns_client_t *client, dns_rdatatype_t reqtype) {
 			      question_name, question_class);
 		}
 		CHECK(dns_zone_getdb(zone, &db));
-		dns_db_currentversion(db, &ver);
+		dns_db_snapshotversion(db, &ver);
 	}
 
 	xfrout_log1(client, question_name, question_class, ISC_LOG_DEBUG(6),
@@ -949,7 +949,7 @@ got_soa:
 	 * Get a dynamically allocated copy of the current SOA.
 	 */
 	if (is_dlz) {
-		dns_db_currentversion(db, &ver);
+		dns_db_snapshotversion(db, &ver);
 	}
 
 	CHECK(dns_db_createsoatuple(db, ver, mctx, DNS_DIFFOP_EXISTS,
@@ -1228,9 +1228,8 @@ xfrout_ctx_create(isc_mem_t *mctx, ns_client_t *client, unsigned int id,
 		.lasttsig = lasttsig,
 		.verified_tsig = verified_tsig,
 		.many_answers = many_answers,
+		.mctx = isc_mem_ref(mctx),
 	};
-
-	isc_mem_attach(mctx, &xfr->mctx);
 
 	if (zone != NULL) { /* zone will be NULL if it's DLZ */
 		dns_zone_attach(zone, &xfr->zone);

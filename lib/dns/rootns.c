@@ -158,13 +158,16 @@ check_hints(dns_db_t *db) {
 	dns_fixedname_t fixname;
 	dns_name_t *name;
 	dns_rdatasetiter_t *rdsiter = NULL;
+	dns_dbversion_t *version = NULL;
 
 	name = dns_fixedname_initname(&fixname);
 
+	dns_db_snapshotversion(db, &version);
+
 	dns_rdataset_init(&rootns);
-	(void)dns_db_find(db, dns_rootname, NULL, dns_rdatatype_ns, 0, now,
+	(void)dns_db_find(db, dns_rootname, version, dns_rdatatype_ns, 0, now,
 			  NULL, name, &rootns, NULL);
-	result = dns_db_createiterator(db, 0, &dbiter);
+	result = dns_db_createiterator(db, version, 0, &dbiter);
 	if (result != ISC_R_SUCCESS) {
 		goto cleanup;
 	}
@@ -197,6 +200,9 @@ cleanup:
 	}
 	if (dbiter != NULL) {
 		dns_dbiterator_destroy(&dbiter);
+	}
+	if (version != NULL) {
+		dns_db_closeversion(db, &version, false);
 	}
 	return result;
 }

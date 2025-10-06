@@ -96,6 +96,7 @@ struct dns_dbiterator {
 	unsigned int		 magic;
 	dns_dbiteratormethods_t *methods;
 	dns_db_t		*db;
+	dns_dbversion_t		*version;
 	bool			 relative_names;
 };
 

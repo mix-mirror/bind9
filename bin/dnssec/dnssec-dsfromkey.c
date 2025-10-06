@@ -117,7 +117,7 @@ loadset(const char *filename, dns_rdataset_t *rdataset) {
 		}
 	}
 
-	result = dns_db_findnode(db, name, false, &node);
+	result = dns_db_findnode(db, name, NULL, false, &node);
 	if (result != ISC_R_SUCCESS) {
 		fatal("can't find %s node in %s", setname, filename);
 	}

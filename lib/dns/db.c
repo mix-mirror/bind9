@@ -344,7 +344,7 @@ dns_db_load(dns_db_t *db, const char *filename, dns_masterformat_t format,
  ***/
 
 void
-dns_db_currentversion(dns_db_t *db, dns_dbversion_t **versionp) {
+dns__db_currentversion(dns_db_t *db, dns_dbversion_t **versionp) {
 	/*
 	 * Open the current version for reading.
 	 */
@@ -356,8 +356,21 @@ dns_db_currentversion(dns_db_t *db, dns_dbversion_t **versionp) {
 	(db->methods->currentversion)(db, versionp);
 }
 
+void
+dns__db_snapshotversion(dns_db_t *db, dns_dbversion_t **versionp) {
+	/*
+	 * Open the current version for reading.
+	 */
+
+	REQUIRE(DNS_DB_VALID(db));
+	REQUIRE((db->attributes & DNS_DBATTR_CACHE) == 0);
+	REQUIRE(versionp != NULL && *versionp == NULL);
+
+	(db->methods->snapshotversion)(db, versionp);
+}
+
 isc_result_t
-dns_db_newversion(dns_db_t *db, dns_dbversion_t **versionp) {
+dns__db_newversion(dns_db_t *db, dns_dbversion_t **versionp) {
 	/*
 	 * Open a new version for reading and writing.
 	 */
@@ -373,8 +386,8 @@ dns_db_newversion(dns_db_t *db, dns_dbversion_t **versionp) {
 }
 
 void
-dns_db_attachversion(dns_db_t *db, dns_dbversion_t *source,
-		     dns_dbversion_t **targetp) {
+dns__db_attachversion(dns_db_t *db, dns_dbversion_t *source,
+		      dns_dbversion_t **targetp) {
 	/*
 	 * Attach '*targetp' to 'source'.
 	 */
@@ -414,7 +427,8 @@ dns__db_closeversion(dns_db_t *db, dns_dbversion_t **versionp,
  ***/
 
 isc_result_t
-dns__db_findnode(dns_db_t *db, const dns_name_t *name, bool create,
+dns__db_findnode(dns_db_t *db, const dns_name_t *name,
+		 dns_dbversion_t *dbversion, bool create,
 		 dns_clientinfomethods_t *methods, dns_clientinfo_t *clientinfo,
 		 dns_dbnode_t **nodep DNS__DB_FLARG) {
 	/*
@@ -426,15 +440,16 @@ dns__db_findnode(dns_db_t *db, const dns_name_t *name, bool create,
 	REQUIRE(nodep != NULL && *nodep == NULL);
 
 	if (db->methods->findnode != NULL) {
-		return (db->methods->findnode)(db, name, create, methods,
-					       clientinfo,
+		return (db->methods->findnode)(db, name, dbversion, create,
+					       methods, clientinfo,
 					       nodep DNS__DB_FLARG_PASS);
 	}
 	return ISC_R_NOTIMPLEMENTED;
 }
 
 isc_result_t
-dns__db_findnsec3node(dns_db_t *db, const dns_name_t *name, bool create,
+dns__db_findnsec3node(dns_db_t *db, const dns_name_t *name,
+		      dns_dbversion_t *dbversion, bool create,
 		      dns_dbnode_t **nodep DNS__DB_FLARG) {
 	/*
 	 * Find the node with name 'name'.
@@ -443,7 +458,7 @@ dns__db_findnsec3node(dns_db_t *db, const dns_name_t *name, bool create,
 	REQUIRE(DNS_DB_VALID(db));
 	REQUIRE(nodep != NULL && *nodep == NULL);
 
-	return (db->methods->findnsec3node)(db, name, create,
+	return (db->methods->findnsec3node)(db, name, dbversion, create,
 					    nodep DNS__DB_FLARG_PASS);
 }
 
@@ -550,8 +565,8 @@ dns_db_transfernode(dns_db_t *db, dns_dbnode_t **sourcep,
  ***/
 
 isc_result_t
-dns_db_createiterator(dns_db_t *db, unsigned int flags,
-		      dns_dbiterator_t **iteratorp) {
+dns_db_createiterator(dns_db_t *db, dns_dbversion_t *version,
+		      unsigned int flags, dns_dbiterator_t **iteratorp) {
 	/*
 	 * Create an iterator for version 'version' of 'db'.
 	 */
@@ -562,7 +577,8 @@ dns_db_createiterator(dns_db_t *db, unsigned int flags,
 		(DNS_DB_NSEC3ONLY | DNS_DB_NONSEC3));
 
 	if (db->methods->createiterator != NULL) {
-		return db->methods->createiterator(db, flags, iteratorp);
+		return db->methods->createiterator(db, version, flags,
+						   iteratorp);
 	}
 	return ISC_R_NOTIMPLEMENTED;
 }
@@ -697,7 +713,7 @@ dns_db_getsoaserial(dns_db_t *db, dns_dbversion_t *ver, uint32_t *serialp) {
 
 	REQUIRE(dns_db_iszone(db) || dns_db_isstub(db));
 
-	result = dns_db_findnode(db, dns_db_origin(db), false, &node);
+	result = dns_db_findnode(db, dns_db_origin(db), ver, false, &node);
 	if (result != ISC_R_SUCCESS) {
 		return result;
 	}
@@ -798,8 +814,9 @@ dns__db_getoriginnode(dns_db_t *db, dns_dbnode_t **nodep DNS__DB_FLARG) {
 		return (db->methods->getoriginnode)(db,
 						    nodep DNS__DB_FLARG_PASS);
 	} else if (db->methods->findnode != NULL) {
-		return (db->methods->findnode)(db, &db->origin, false, NULL,
-					       NULL, nodep DNS__DB_FLARG_PASS);
+		return (db->methods->findnode)(db, &db->origin, NULL, false,
+					       NULL, NULL,
+					       nodep DNS__DB_FLARG_PASS);
 	}
 
 	return ISC_R_NOTFOUND;

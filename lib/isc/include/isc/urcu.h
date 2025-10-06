@@ -21,6 +21,8 @@
 
 #if defined(RCU_MEMBARRIER) || defined(RCU_MB) || defined(RCU_SIGNAL)
 #include <urcu.h>
+
+#include <urcu/urcu-memb.h>
 #elif defined(RCU_QSBR)
 #include <urcu-qsbr.h>
 #elif defined(RCU_BP)
@@ -141,3 +143,31 @@
 
 #endif /* !defined(caa_container_of_check_null) */
 /* clang-format on */
+
+#if 0
+
+#undef rcu_read_lock
+#define rcu_read_lock()                                                   \
+	{                                                                 \
+		fprintf(stderr, "%" PRItid ":%s:%s:%d:rcu_read_lock()\n", \
+			isc_tid(), __func__, __FILE__, __LINE__);         \
+		urcu_memb_read_lock();                                    \
+	}
+
+#undef rcu_read_unlock
+#define rcu_read_unlock()                                                   \
+	{                                                                   \
+		fprintf(stderr, "%" PRItid ":%s:%s:%d:rcu_read_unlock()\n", \
+			isc_tid(), __func__, __FILE__, __LINE__);           \
+		urcu_memb_read_unlock();                                    \
+	}
+
+#undef rcu_read_ongoing
+#define rcu_read_ongoing()                                                   \
+	({                                                                   \
+		fprintf(stderr, "%" PRItid ":%s:%s:%d:rcu_read_ongoing()\n", \
+			isc_tid(), __func__, __FILE__, __LINE__);            \
+		urcu_memb_read_ongoing();                                    \
+	})
+
+#endif

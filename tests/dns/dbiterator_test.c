@@ -55,7 +55,7 @@ test_create(const char *filename) {
 	result = dns_test_loaddb(&db, dns_dbtype_zone, TEST_ORIGIN, filename);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	result = dns_db_createiterator(db, 0, &iter);
+	result = dns_db_createiterator(db, NULL, 0, &iter);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	dns_dbiterator_destroy(&iter);
@@ -90,7 +90,7 @@ test_walk(const char *filename, int flags, int nodes) {
 	result = dns_test_loaddb(&db, dns_dbtype_zone, TEST_ORIGIN, filename);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	result = dns_db_createiterator(db, flags, &iter);
+	result = dns_db_createiterator(db, NULL, flags, &iter);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	DNS_DBITERATOR_FOREACH(iter) {
@@ -142,7 +142,7 @@ test_reverse(const char *filename, int flags, int nodes) {
 	result = dns_test_loaddb(&db, dns_dbtype_zone, TEST_ORIGIN, filename);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	result = dns_db_createiterator(db, flags, &iter);
+	result = dns_db_createiterator(db, NULL, flags, &iter);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	for (result = dns_dbiterator_last(iter); result == ISC_R_SUCCESS;
@@ -197,7 +197,7 @@ test_seek_node(const char *filename, int flags, int nodes) {
 	result = dns_test_loaddb(&db, dns_dbtype_zone, TEST_ORIGIN, filename);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	result = dns_db_createiterator(db, flags, &iter);
+	result = dns_db_createiterator(db, NULL, flags, &iter);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	result = make_name("c." TEST_ORIGIN, seekname);
@@ -284,7 +284,7 @@ test_seek_empty(const char *filename) {
 	result = dns_test_loaddb(&db, dns_dbtype_zone, TEST_ORIGIN, filename);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	result = dns_db_createiterator(db, 0, &iter);
+	result = dns_db_createiterator(db, NULL, 0, &iter);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	result = make_name("d." TEST_ORIGIN, seekname);
@@ -325,7 +325,7 @@ test_seek_nx(const char *filename) {
 	result = dns_test_loaddb(&db, dns_dbtype_zone, TEST_ORIGIN, filename);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	result = dns_db_createiterator(db, 0, &iter);
+	result = dns_db_createiterator(db, NULL, 0, &iter);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	result = make_name("nonexistent." TEST_ORIGIN, seekname);

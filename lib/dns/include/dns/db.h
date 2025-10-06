@@ -90,6 +90,7 @@ typedef struct dns_db_methods {
 				  dns_rdatacallbacks_t *callbacks);
 	isc_result_t (*endload)(dns_db_t *db, dns_rdatacallbacks_t *callbacks);
 	void (*currentversion)(dns_db_t *db, dns_dbversion_t **versionp);
+	void (*snapshotversion)(dns_db_t *db, dns_dbversion_t **versionp);
 	isc_result_t (*newversion)(dns_db_t *db, dns_dbversion_t **versionp);
 	void (*attachversion)(dns_db_t *db, dns_dbversion_t *source,
 			      dns_dbversion_t **targetp);
@@ -101,7 +102,8 @@ typedef struct dns_db_methods {
 				    dns_name_t		       *dcname,
 				    dns_rdataset_t	       *rdataset,
 				    dns_rdataset_t *sigrdataset DNS__DB_FLARG);
-	isc_result_t (*createiterator)(dns_db_t *db, unsigned int options,
+	isc_result_t (*createiterator)(dns_db_t *db, dns_dbversion_t *version,
+				       unsigned int	  options,
 				       dns_dbiterator_t **iteratorp);
 	isc_result_t (*findrdataset)(dns_db_t *db, dns_dbnode_t *node,
 				     dns_dbversion_t *version,
@@ -137,7 +139,7 @@ typedef struct dns_db_methods {
 					   unsigned char *salt,
 					   size_t	 *salt_len);
 	isc_result_t (*findnsec3node)(dns_db_t *db, const dns_name_t *name,
-				      bool		   create,
+				      dns_dbversion_t *dbversion, bool create,
 				      dns_dbnode_t **nodep DNS__DB_FLARG);
 	isc_result_t (*setsigningtime)(dns_db_t *db, dns_rdataset_t *rdataset,
 				       isc_stdtime_t resign);
@@ -146,9 +148,10 @@ typedef struct dns_db_methods {
 				       dns_typepair_t *typepair);
 	dns_stats_t *(*getrrsetstats)(dns_db_t *db);
 	isc_result_t (*findnode)(dns_db_t *db, const dns_name_t *name,
-				 bool create, dns_clientinfomethods_t *methods,
-				 dns_clientinfo_t    *clientinfo,
-				 dns_dbnode_t **nodep DNS__DB_FLARG);
+				 dns_dbversion_t *version, bool create,
+				 dns_clientinfomethods_t *methods,
+				 dns_clientinfo_t	 *clientinfo,
+				 dns_dbnode_t **nodep	  DNS__DB_FLARG);
 	isc_result_t (*find)(dns_db_t *db, const dns_name_t *name,
 			     dns_dbversion_t *version, dns_rdatatype_t type,
 			     unsigned int options, isc_stdtime_t now,
@@ -582,8 +585,72 @@ dns_db_dump(dns_db_t *db, dns_dbversion_t *version, const char *filename);
  *** Version Methods
  ***/
 
+#if 1 || DNS_DBVERSION_DEBUG
+#define dns_db_currentversion(db, versionp)                            \
+	{                                                              \
+		fprintf(stderr,                                        \
+			"%" PRItid                                     \
+			":%s:%s:%d:dns_db_currentversion(%p, %p) -> ", \
+			isc_tid(), __func__, __FILE__, __LINE__, db,   \
+			versionp);                                     \
+		dns__db_currentversion(db, versionp DNS__DB_FLARG);    \
+		fprintf(stderr, "%p\n", *versionp);                    \
+	}
+#define dns_db_snapshotversion(db, versionp)                            \
+	{                                                               \
+		fprintf(stderr,                                         \
+			"%" PRItid                                      \
+			":%s:%s:%d:dns_db_snapshotversion(%p, %p) -> ", \
+			isc_tid(), __func__, __FILE__, __LINE__, db,    \
+			versionp);                                      \
+		dns__db_snapshotversion(db, versionp DNS__DB_FLARG);    \
+		fprintf(stderr, "%p\n", *versionp);                     \
+	}
+#define dns_db_newversion(db, versionp)                                       \
+	({                                                                    \
+		fprintf(stderr,                                               \
+			"%" PRItid ":%s:%s:%d:dns_db_newversion(%p, %p) -> ", \
+			isc_tid(), __func__, __FILE__, __LINE__, db,          \
+			versionp);                                            \
+		isc_result_t __result =                                       \
+			dns__db_newversion(db, versionp DNS__DB_FLARG);       \
+		fprintf(stderr, "%p\n", *versionp);                           \
+		__result;                                                     \
+	})
+#define dns_db_attachversion(db, source, targetp)                            \
+	({                                                                   \
+		fprintf(stderr,                                              \
+			"%" PRItid                                           \
+			":%s:%s:%d:dns_db_attachversion(%p, %p, %p) -> ",    \
+			isc_tid(), __func__, __FILE__, __LINE__, db, source, \
+			targetp);                                            \
+		dns__db_attachversion(db, source, targetp DNS__DB_FLARG);    \
+		fprintf(stderr, "%p\n", *targetp);                           \
+	})
+#define dns_db_closeversion(db, versionp, commit)                              \
+	{                                                                      \
+		fprintf(stderr,                                                \
+			"%" PRItid                                             \
+			":%s:%s:%d:dns_db_closeversion(%p, %p, %s) -> %p\n",   \
+			isc_tid(), __func__, __FILE__, __LINE__, db, versionp, \
+			(commit) ? "true" : "false", *versionp);               \
+		dns__db_closeversion(db, versionp, commit DNS__DB_FILELINE);   \
+	}
+#else
+#define dns_db_currentversion(db, versionp) \
+	dns__db_currentversion(db, versionp DNS__DB_FLARG)
+#define dns_db_snapshotversion(db, versionp) \
+	dns__db_snapshotversion(db, versionp DNS__DB_FLARG)
+#define dns_db_newversion(db, versionp) \
+	dns__db_newversion(db, versionp DNS__DB_FLARG)
+#define dns_db_attachversion(db, source, targetp) \
+	dns__db_attachversion(db, source, targetp DNS__DB_FLARG)
+#define dns_db_closeversion(db, versionp, commit) \
+	dns__db_closeversion(db, versionp, commit DNS__DB_FILELINE);
+#endif
 void
-dns_db_currentversion(dns_db_t *db, dns_dbversion_t **versionp);
+dns__db_currentversion(dns_db_t			 *db,
+		       dns_dbversion_t **versionp DNS__DB_FILELINE);
 /*%<
  * Open the current version for reading.
  *
@@ -595,12 +662,28 @@ dns_db_currentversion(dns_db_t *db, dns_dbversion_t **versionp);
  *
  * Ensures:
  *
- * \li	On success, '*versionp' is attached to the current version.
+ * \li	'*versionp' is attached to the current version.
+ */
+
+void
+dns__db_snapshotversion(dns_db_t		  *db,
+			dns_dbversion_t **versionp DNS__DB_FILELINE);
+/*%<
+ * Create a snapshot of the current version for reading.
  *
+ * Requires:
+ *
+ * \li	'db' is a valid database with zone semantics.
+ *
+ * \li	versionp != NULL && *verisonp == NULL
+ *
+ * Ensures:
+ *
+ * \li	'*versionp' is attached to the current version.
  */
 
 isc_result_t
-dns_db_newversion(dns_db_t *db, dns_dbversion_t **versionp);
+dns__db_newversion(dns_db_t *db, dns_dbversion_t **versionp DNS__DB_FILELINE);
 /*%<
  * Open a new version for reading and writing.
  *
@@ -623,26 +706,24 @@ dns_db_newversion(dns_db_t *db, dns_dbversion_t **versionp);
  */
 
 void
-dns_db_attachversion(dns_db_t *db, dns_dbversion_t *source,
-		     dns_dbversion_t **targetp);
+dns__db_attachversion(dns_db_t *db, dns_dbversion_t *source,
+		      dns_dbversion_t **targetp DNS__DB_FILELINE);
 /*%<
  * Attach '*targetp' to 'source'.
  *
  * Requires:
  *
- * \li	'db' is a valid database with zone semantics.
+ * \li        'db' is a valid database with zone semantics.
  *
- * \li	source is a valid open version
+ * \li        source is a valid open version
  *
- * \li	targetp != NULL && *targetp == NULL
+ * \li        targetp != NULL && *targetp == NULL
  *
  * Ensures:
  *
- * \li	'*targetp' is attached to source.
+ * \li        '*targetp' is attached to source.
  */
 
-#define dns_db_closeversion(db, versionp, commit) \
-	dns__db_closeversion(db, versionp, commit DNS__DB_FILELINE)
 void
 dns__db_closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 		     bool commit DNS__DB_FLARG);
@@ -678,14 +759,17 @@ dns__db_closeversion(dns_db_t *db, dns_dbversion_t **versionp,
  *** Node Methods
  ***/
 
-#define dns_db_findnode(db, name, create, nodep) \
-	dns__db_findnode(db, name, create, NULL, NULL, nodep DNS__DB_FILELINE)
-#define dns_db_findnodeext(db, name, create, methods, clientinfo, nodep) \
-	dns__db_findnode(db, name, create, methods, clientinfo,          \
+#define dns_db_findnode(db, name, version, create, nodep)       \
+	dns__db_findnode(db, name, version, create, NULL, NULL, \
+			 nodep DNS__DB_FILELINE)
+#define dns_db_findnodeext(db, name, version, create, methods, clientinfo, \
+			   nodep)                                          \
+	dns__db_findnode(db, name, version, create, methods, clientinfo,   \
 			 nodep DNS__DB_FILELINE)
 isc_result_t
-dns__db_findnode(dns_db_t *db, const dns_name_t *name, bool create,
-		 dns_clientinfomethods_t *methods, dns_clientinfo_t *clientinfo,
+dns__db_findnode(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
+		 bool create, dns_clientinfomethods_t *methods,
+		 dns_clientinfo_t    *clientinfo,
 		 dns_dbnode_t **nodep DNS__DB_FLARG);
 /*%<
  * Find the node with name 'name'.
@@ -1051,8 +1135,8 @@ dns_db_printnode(dns_db_t *db, dns_dbnode_t *node, FILE *out);
  ***/
 
 isc_result_t
-dns_db_createiterator(dns_db_t *db, unsigned int options,
-		      dns_dbiterator_t **iteratorp);
+dns_db_createiterator(dns_db_t *db, dns_dbversion_t *version,
+		      unsigned int options, dns_dbiterator_t **iteratorp);
 /*%<
  * Create an iterator for 'db'.
  *
@@ -1512,10 +1596,11 @@ dns_db_getsize(dns_db_t *db, dns_dbversion_t *version, uint64_t *records,
  * \li	#ISC_R_NOTIMPLEMENTED
  */
 
-#define dns_db_findnsec3node(db, name, create, nodep) \
-	dns__db_findnsec3node(db, name, create, nodep DNS__DB_FILELINE)
+#define dns_db_findnsec3node(db, name, version, create, nodep) \
+	dns__db_findnsec3node(db, name, version, create, nodep DNS__DB_FILELINE)
 isc_result_t
-dns__db_findnsec3node(dns_db_t *db, const dns_name_t *name, bool create,
+dns__db_findnsec3node(dns_db_t *db, const dns_name_t *name,
+		      dns_dbversion_t *version, bool create,
 		      dns_dbnode_t **nodep DNS__DB_FLARG);
 /*%<
  * Find the NSEC3 node with name 'name'.

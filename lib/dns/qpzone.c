@@ -153,6 +153,52 @@ struct qpz_version {
 
 typedef ISC_LIST(qpz_version_t) qpz_versionlist_t;
 
+typedef enum qpz_transactiontype {
+	QPZ_TRANSACTION_READER,
+	QPZ_TRANSACTION_SNAPSHOT,
+	QPZ_TRANSACTION_WRITER,
+} qpz_transactiontype_t;
+
+typedef struct qpz_transaction qpz_transaction_t;
+struct qpz_transaction {
+	qpzonedb_t *qpdb;
+	qpz_version_t *version;
+	dns_qpreadable_t qp;
+	isc_refcount_t references;
+	qpz_transactiontype_t type;
+	dns_qpread_t qpr_; /* read */
+	bool commit;
+};
+
+#define VALID_TRANSACTION(db, transaction)                      \
+	(transaction != NULL && transaction->version != NULL && \
+	 transaction->version->qpdb == qpdb)
+
+#define VALID_OR_NULL_TRANSACTION(db, transaction) \
+	(transaction == NULL ||                    \
+	 (transaction->version != NULL && transaction->version->qpdb == qpdb))
+
+#define MAYBE_OPEN_TRANSACTION(db, transaction, version)                       \
+	{                                                                      \
+		REQUIRE(VALID_OR_NULL_TRANSACTION(db, transaction));           \
+		if (transaction == NULL) {                                     \
+			readtransaction(db, (dns_dbversion_t **)&transaction); \
+		}                                                              \
+		INSIST(VALID_TRANSACTION(qpdb, transaction));                  \
+		version = transaction->version;                                \
+	}
+
+#define MAYBE_CLOSE_TRANSACTION(dbversion, transaction, version)               \
+	{                                                                      \
+		if (transaction != (qpz_transaction_t *)dbversion) {           \
+			closetransaction(db, (dns_dbversion_t **)&transaction, \
+					 false DNS__DB_FLARG_PASS);            \
+		}                                                              \
+		version = NULL;                                                \
+	}
+
+ISC_REFCOUNT_STATIC_DECL(qpz_transaction);
+
 /* Resigning heap indirection to allow ref counting */
 typedef struct qpz_heap {
 	isc_mem_t *mctx;
@@ -251,8 +297,7 @@ struct qpzonedb {
  */
 typedef struct {
 	qpzonedb_t *qpdb;
-	qpz_version_t *version;
-	dns_qpread_t qpr;
+	qpz_transaction_t *transaction;
 	uint32_t serial;
 	unsigned int options;
 	dns_qpchain_t chain;
@@ -363,8 +408,7 @@ static dns_dbiteratormethods_t dbiterator_methods = {
 typedef struct qpdb_dbiterator {
 	dns_dbiterator_t common;
 	isc_result_t result;
-	dns_qpsnap_t *snap; /* tree snapshot */
-	dns_qpiter_t iter;  /* tree iterator */
+	dns_qpiter_t iter; /* tree iterator */
 	qpznode_t *node;
 	enum { full, nonsec3, nsec3only } nsec3mode;
 } qpdb_dbiterator_t;
@@ -1047,14 +1091,13 @@ bindrdataset(qpzonedb_t *qpdb, qpznode_t *node, dns_slabheader_t *header,
 }
 
 static void
-setnsec3parameters(dns_db_t *db, qpz_version_t *version) {
+setnsec3parameters(qpzonedb_t *qpdb, qpz_version_t *version) {
 	qpznode_t *node = NULL;
 	dns_rdata_nsec3param_t nsec3param;
 	isc_region_t region;
 	isc_result_t result;
 	unsigned char *raw; /* RDATASLAB */
 	unsigned int count, length;
-	qpzonedb_t *qpdb = (qpzonedb_t *)db;
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 	isc_rwlock_t *nlock = NULL;
 	dns_slabheader_t *found = NULL;
@@ -1142,18 +1185,22 @@ cleanup_nondirty(qpz_version_t *version, qpz_changedlist_t *cleanup_list) {
 }
 
 static void
-setsecure(dns_db_t *db, qpz_version_t *version, dns_dbnode_t *origin) {
+setsecure(qpzonedb_t *qpdb, qpz_transaction_t *transaction,
+	  qpz_version_t *version, dns_dbnode_t *origin) {
+	dns_db_t *db = (dns_db_t *)qpdb;
 	dns_rdataset_t keyset;
 	dns_rdataset_t nsecset, signsecset;
 	bool haszonekey = false;
 	bool hasnsec = false;
 	isc_result_t result;
 
+	REQUIRE(VALID_OR_NULL_TRANSACTION(db, transaction));
+
 	version->secure = false;
 	version->havensec3 = false;
 
 	dns_rdataset_init(&keyset);
-	result = dns_db_findrdataset(db, origin, (dns_dbversion_t *)version,
+	result = dns_db_findrdataset(db, origin, (dns_dbversion_t *)transaction,
 				     dns_rdatatype_dnskey, 0, 0, &keyset, NULL);
 	if (result == ISC_R_SUCCESS) {
 		haszonekey = dns_dnssec_haszonekey(&keyset);
@@ -1165,7 +1212,7 @@ setsecure(dns_db_t *db, qpz_version_t *version, dns_dbnode_t *origin) {
 
 	dns_rdataset_init(&nsecset);
 	dns_rdataset_init(&signsecset);
-	result = dns_db_findrdataset(db, origin, (dns_dbversion_t *)version,
+	result = dns_db_findrdataset(db, origin, (dns_dbversion_t *)transaction,
 				     dns_rdatatype_nsec, 0, 0, &nsecset,
 				     &signsecset);
 	if (result == ISC_R_SUCCESS) {
@@ -1176,7 +1223,7 @@ setsecure(dns_db_t *db, qpz_version_t *version, dns_dbnode_t *origin) {
 		dns_rdataset_disassociate(&nsecset);
 	}
 
-	setnsec3parameters(db, version);
+	setnsec3parameters(qpdb, version);
 
 	/*
 	 * If we don't have a valid NSEC/NSEC3 chain,
@@ -1188,37 +1235,72 @@ setsecure(dns_db_t *db, qpz_version_t *version, dns_dbnode_t *origin) {
 }
 
 static void
-currentversion(dns_db_t *db, dns_dbversion_t **versionp) {
-	qpzonedb_t *qpdb = (qpzonedb_t *)db;
+_currentversion(qpzonedb_t *qpdb, qpz_version_t **versionp) {
 	qpz_version_t *version = NULL;
-
-	REQUIRE(VALID_QPZONE(qpdb));
 
 	RWLOCK(&qpdb->lock, isc_rwlocktype_read);
 	version = qpdb->current_version;
 	isc_refcount_increment(&version->references);
 	RWUNLOCK(&qpdb->lock, isc_rwlocktype_read);
 
-	*versionp = (dns_dbversion_t *)version;
+	*versionp = version;
+}
+
+static qpz_transaction_t *
+qpz_transaction_new(qpzonedb_t *qpdb, qpz_transactiontype_t type) {
+	qpz_transaction_t *transaction = isc_mem_get(qpdb->common.mctx,
+						     sizeof(*transaction));
+	isc_refcount_init(&transaction->references, 1);
+	transaction->qpdb = qpdb;
+	transaction->type = type;
+
+	switch (transaction->type) {
+	case QPZ_TRANSACTION_READER:
+		dns_qpmulti_query(qpdb->tree, &transaction->qpr_);
+		transaction->qp.qpr = &transaction->qpr_;
+		break;
+	case QPZ_TRANSACTION_SNAPSHOT:
+		transaction->qp.qps = NULL;
+		dns_qpmulti_snapshot(qpdb->tree, &transaction->qp.qps);
+		break;
+	case QPZ_TRANSACTION_WRITER:
+		transaction->qp.qpt = NULL;
+		dns_qpmulti_update(qpdb->tree, &transaction->qp.qpt);
+		break;
+	default:
+		UNREACHABLE();
+	}
+
+	return transaction;
 }
 
 static void
-attachversion(dns_db_t *db, dns_dbversion_t *source,
-	      dns_dbversion_t **targetp) {
+readtransaction(dns_db_t *db, dns_dbversion_t **versionp) {
 	qpzonedb_t *qpdb = (qpzonedb_t *)db;
-	qpz_version_t *version = (qpz_version_t *)source;
 
 	REQUIRE(VALID_QPZONE(qpdb));
-	INSIST(version != NULL && version->qpdb == qpdb);
+	qpz_transaction_t *transaction =
+		qpz_transaction_new(qpdb, QPZ_TRANSACTION_READER);
+	_currentversion(qpdb, &transaction->version);
 
-	isc_refcount_increment(&version->references);
-
-	*targetp = source;
+	*versionp = (dns_dbversion_t *)transaction;
 }
 
-static isc_result_t
-newversion(dns_db_t *db, dns_dbversion_t **versionp) {
+static void
+snapshottransaction(dns_db_t *db, dns_dbversion_t **versionp) {
 	qpzonedb_t *qpdb = (qpzonedb_t *)db;
+
+	REQUIRE(VALID_QPZONE(qpdb));
+
+	qpz_transaction_t *transaction =
+		qpz_transaction_new(qpdb, QPZ_TRANSACTION_SNAPSHOT);
+	_currentversion(qpdb, &transaction->version);
+
+	*versionp = (dns_dbversion_t *)transaction;
+}
+
+static void
+newversion(qpzonedb_t *qpdb, qpz_version_t **versionp) {
 	qpz_version_t *version = NULL;
 
 	REQUIRE(VALID_QPZONE(qpdb));
@@ -1248,9 +1330,37 @@ newversion(dns_db_t *db, dns_dbversion_t **versionp) {
 	qpdb->future_version = version;
 	RWUNLOCK(&qpdb->lock, isc_rwlocktype_write);
 
-	*versionp = (dns_dbversion_t *)version;
+	*versionp = version;
+}
 
+static isc_result_t
+writetransaction(dns_db_t *db, dns_dbversion_t **versionp) {
+	qpzonedb_t *qpdb = (qpzonedb_t *)db;
+	REQUIRE(VALID_QPZONE(qpdb));
+
+	qpz_transaction_t *transaction =
+		qpz_transaction_new(qpdb, QPZ_TRANSACTION_WRITER);
+	transaction->version = NULL;
+	newversion(qpdb, &transaction->version);
+
+	*versionp = (dns_dbversion_t *)transaction;
 	return ISC_R_SUCCESS;
+}
+
+static void
+attachtransaction(dns_db_t *db, dns_dbversion_t *source,
+		  dns_dbversion_t **targetp) {
+	REQUIRE(source != NULL);
+	REQUIRE(targetp != NULL && *targetp == NULL);
+
+	qpzonedb_t *qpdb = (qpzonedb_t *)db;
+	qpz_transaction_t *transaction = (qpz_transaction_t *)source;
+
+	REQUIRE(VALID_TRANSACTION(qpdb, transaction));
+
+	isc_refcount_increment(&transaction->references);
+
+	*targetp = source;
 }
 
 static void
@@ -1319,9 +1429,8 @@ rollback_node(qpznode_t *node, uint32_t serial) {
 }
 
 static void
-closeversion(dns_db_t *db, dns_dbversion_t **versionp,
-	     bool commit DNS__DB_FLARG) {
-	qpzonedb_t *qpdb = (qpzonedb_t *)db;
+closeversion(qpzonedb_t *qpdb, qpz_transaction_t *transaction,
+	     qpz_version_t **versionp, bool commit DNS__DB_FLARG) {
 	qpz_version_t *version = NULL, *cleanup_version = NULL;
 	qpz_version_t *least_greater = NULL;
 	qpznode_t *node = NULL;
@@ -1332,7 +1441,6 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 
 	REQUIRE(VALID_QPZONE(qpdb));
 	version = (qpz_version_t *)*versionp;
-	INSIST(version->qpdb == qpdb);
 
 	if (isc_refcount_decrement(&version->references) > 1) {
 		*versionp = NULL;
@@ -1347,7 +1455,8 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 	 * it the current version.
 	 */
 	if (version->writer && commit) {
-		setsecure(db, version, (dns_dbnode_t *)qpdb->origin);
+		setsecure(qpdb, transaction, version,
+			  (dns_dbnode_t *)qpdb->origin);
 	}
 
 	RWLOCK(&qpdb->lock, isc_rwlocktype_write);
@@ -1508,7 +1617,7 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 
 		ISC_LIST_UNLINK(resigned_list, resigned, link);
 
-		isc_mem_put(db->mctx, resigned, sizeof(*resigned));
+		isc_mem_put(qpdb->common.mctx, resigned, sizeof(*resigned));
 
 		nlock = qpzone_get_lock(HEADERNODE(header));
 		NODE_WRLOCK(nlock, &nlocktype);
@@ -1547,6 +1656,49 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 	*versionp = NULL;
 }
 
+static void
+qpz_transaction_destroy(qpz_transaction_t *transaction) {
+	qpzonedb_t *qpdb = transaction->qpdb;
+
+	switch (transaction->type) {
+	case QPZ_TRANSACTION_READER:
+		dns_qpread_destroy(qpdb->tree, &transaction->qpr_);
+		transaction->qp.qpr = NULL;
+		break;
+	case QPZ_TRANSACTION_SNAPSHOT:
+		dns_qpsnap_destroy(qpdb->tree, &transaction->qp.qps);
+		break;
+	case QPZ_TRANSACTION_WRITER:
+		if (transaction->commit) {
+			dns_qpmulti_commit(qpdb->tree, &transaction->qp.qpt);
+		} else {
+			dns_qpmulti_rollback(qpdb->tree, &transaction->qp.qpt);
+		}
+		break;
+	}
+
+	isc_mem_put(qpdb->common.mctx, transaction, sizeof(*transaction));
+}
+
+static void
+closetransaction(dns_db_t *db, dns_dbversion_t **versionp,
+		 bool commit DNS__DB_FLARG) {
+	qpzonedb_t *qpdb = (qpzonedb_t *)db;
+	qpz_transaction_t *transaction = (qpz_transaction_t *)*versionp;
+
+	REQUIRE(VALID_QPZONE(qpdb));
+	REQUIRE(VALID_TRANSACTION(qpdb, transaction));
+
+	*versionp = NULL;
+
+	if (isc_refcount_decrement(&transaction->references) == 1) {
+		closeversion(qpdb, transaction, &transaction->version,
+			     commit DNS__DB_FLARG_PASS);
+		transaction->commit = commit;
+		qpz_transaction_destroy(transaction);
+	}
+}
+
 static isc_result_t
 qpzone_findrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 		    dns_dbversion_t *dbversion, dns_rdatatype_t type,
@@ -1557,24 +1709,21 @@ qpzone_findrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 	qpznode_t *node = (qpznode_t *)dbnode;
 	dns_slabheader_t *found = NULL, *foundsig = NULL;
 	uint32_t serial;
-	qpz_version_t *version = (qpz_version_t *)dbversion;
-	bool close_version = false;
+	qpz_transaction_t *transaction = (qpz_transaction_t *)dbversion;
+	qpz_version_t *version = NULL;
 	dns_typepair_t typepair, sigpair;
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 	isc_rwlock_t *nlock = NULL;
 
 	REQUIRE(VALID_QPZONE(qpdb));
 	REQUIRE(type != dns_rdatatype_any);
-	INSIST(version == NULL || version->qpdb == qpdb);
 
 	if (type == dns_rdatatype_none && covers == dns_rdatatype_none) {
 		return ISC_R_NOTFOUND;
 	}
 
-	if (version == NULL) {
-		currentversion(db, (dns_dbversion_t **)&version);
-		close_version = true;
-	}
+	MAYBE_OPEN_TRANSACTION(db, transaction, version);
+
 	serial = version->serial;
 
 	nlock = qpzone_get_lock(node);
@@ -1617,10 +1766,7 @@ qpzone_findrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 
 	NODE_UNLOCK(nlock, &nlocktype);
 
-	if (close_version) {
-		closeversion(db, (dns_dbversion_t **)&version,
-			     false DNS__DB_FLARG_PASS);
-	}
+	MAYBE_CLOSE_TRANSACTION(dbversion, transaction, version);
 
 	if (found == NULL) {
 		return ISC_R_NOTFOUND;
@@ -1978,7 +2124,8 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 			node->dirty = true;
 		} else {
 			/*
-			 * No rdatasets of the given type exist at the node.
+			 * No rdatasets of the given type exist at the
+			 * node.
 			 */
 
 			if (qpdb->maxtypepername > 0 &&
@@ -1996,7 +2143,8 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 				     &newtop->headers);
 
 			if (prio_type(newheader->typepair)) {
-				/* This is a priority type, prepend it */
+				/* This is a priority type, prepend it
+				 */
 				cds_list_add(&newtop->types_link, node->data);
 			} else if (priotop != NULL) {
 				/* Append after the priority headers */
@@ -2232,7 +2380,7 @@ endload(dns_db_t *db, dns_rdatacallbacks_t *callbacks) {
 	if (qpdb->origin != NULL) {
 		qpz_version_t *version = qpdb->current_version;
 		RWUNLOCK(&qpdb->lock, isc_rwlocktype_write);
-		setsecure(db, version, (dns_dbnode_t *)qpdb->origin);
+		setsecure(qpdb, NULL, version, (dns_dbnode_t *)qpdb->origin);
 	} else {
 		RWUNLOCK(&qpdb->lock, isc_rwlocktype_write);
 	}
@@ -2269,18 +2417,16 @@ getnsec3parameters(dns_db_t *db, dns_dbversion_t *dbversion, dns_hash_t *hash,
 		   size_t *salt_length) {
 	qpzonedb_t *qpdb = NULL;
 	isc_result_t result = ISC_R_NOTFOUND;
-	qpz_version_t *version = (qpz_version_t *)dbversion;
+	qpz_transaction_t *transaction = (qpz_transaction_t *)dbversion;
+	qpz_version_t *version = NULL;
 
 	qpdb = (qpzonedb_t *)db;
 
 	REQUIRE(VALID_QPZONE(qpdb));
-	INSIST(version == NULL || version->qpdb == qpdb);
+
+	MAYBE_OPEN_TRANSACTION(db, transaction, version);
 
 	RWLOCK(&qpdb->lock, isc_rwlocktype_read);
-	if (version == NULL) {
-		version = qpdb->current_version;
-	}
-
 	if (version->havensec3) {
 		SET_IF_NOT_NULL(hash, version->hash);
 		if (salt != NULL && salt_length != NULL) {
@@ -2294,6 +2440,8 @@ getnsec3parameters(dns_db_t *db, dns_dbversion_t *dbversion, dns_hash_t *hash,
 	}
 	RWUNLOCK(&qpdb->lock, isc_rwlocktype_read);
 
+	MAYBE_CLOSE_TRANSACTION(dbversion, transaction, version);
+
 	return result;
 }
 
@@ -2301,25 +2449,25 @@ static isc_result_t
 getsize(dns_db_t *db, dns_dbversion_t *dbversion, uint64_t *records,
 	uint64_t *xfrsize) {
 	qpzonedb_t *qpdb = NULL;
-	qpz_version_t *version = (qpz_version_t *)dbversion;
+	qpz_transaction_t *transaction = (qpz_transaction_t *)dbversion;
+	qpz_version_t *version = NULL;
 	isc_result_t result = ISC_R_SUCCESS;
 
 	qpdb = (qpzonedb_t *)db;
 
 	REQUIRE(VALID_QPZONE(qpdb));
-	INSIST(version == NULL || version->qpdb == qpdb);
+
+	MAYBE_OPEN_TRANSACTION(db, transaction, version);
 
 	RWLOCK(&qpdb->lock, isc_rwlocktype_read);
-	if (version == NULL) {
-		version = qpdb->current_version;
-	}
-
 	RWLOCK(&version->rwlock, isc_rwlocktype_read);
 	SET_IF_NOT_NULL(records, version->records);
 
 	SET_IF_NOT_NULL(xfrsize, version->xfrsize);
 	RWUNLOCK(&version->rwlock, isc_rwlocktype_read);
 	RWUNLOCK(&qpdb->lock, isc_rwlocktype_read);
+
+	MAYBE_CLOSE_TRANSACTION(dbversion, transaction, version);
 
 	return result;
 }
@@ -2343,9 +2491,9 @@ setsigningtime(dns_db_t *db, dns_rdataset_t *rdataset, isc_stdtime_t resign) {
 	oldheader = *header;
 
 	/*
-	 * Only break the heap invariant (by adjusting resign and resign_lsb)
-	 * if we are going to be restoring it by calling isc_heap_increased
-	 * or isc_heap_decreased.
+	 * Only break the heap invariant (by adjusting resign and
+	 * resign_lsb) if we are going to be restoring it by calling
+	 * isc_heap_increased or isc_heap_decreased.
 	 */
 	if (resign != 0) {
 		header->resign = (isc_stdtime_t)(dns_time64_from32(resign) >>
@@ -2439,38 +2587,45 @@ setgluecachestats(dns_db_t *db, isc_stats_t *stats) {
 }
 
 static isc_result_t
-findnodeintree(qpzonedb_t *qpdb, const dns_name_t *name, bool create,
-	       bool nsec3, dns_dbnode_t **nodep DNS__DB_FLARG) {
+findnodeintree(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *dbversion,
+	       bool create, bool nsec3, dns_dbnode_t **nodep DNS__DB_FLARG) {
+	qpzonedb_t *qpdb = (qpzonedb_t *)db;
+	qpz_transaction_t *transaction = (qpz_transaction_t *)dbversion;
+	qpz_version_t *version ISC_ATTR_UNUSED = NULL;
 	isc_result_t result;
 	qpznode_t *node = NULL;
 	dns_namespace_t nspace = nsec3 ? DNS_DBNAMESPACE_NSEC3
 				       : DNS_DBNAMESPACE_NORMAL;
-	dns_qpread_t qpr = { 0 };
-	dns_qp_t *qp = NULL;
 
-	if (create) {
-		dns_qpmulti_write(qpdb->tree, &qp);
-	} else {
-		dns_qpmulti_query(qpdb->tree, &qpr);
-		qp = (dns_qp_t *)&qpr;
+	if (transaction == NULL && create) {
+		writetransaction((dns_db_t *)qpdb,
+				 (dns_dbversion_t **)&transaction);
+	} else if (transaction == NULL) {
+		readtransaction((dns_db_t *)qpdb,
+				(dns_dbversion_t **)&transaction);
+	} else if (create) {
+		REQUIRE(transaction->type == QPZ_TRANSACTION_WRITER);
 	}
 
-	result = dns_qp_getname(qp, name, nspace, (void **)&node, NULL);
+	result = dns_qp_getname(transaction->qp, name, nspace, (void **)&node,
+				NULL);
 	if (result != ISC_R_SUCCESS) {
 		if (!create) {
-			dns_qpread_destroy(qpdb->tree, &qpr);
+			MAYBE_CLOSE_TRANSACTION(dbversion, transaction,
+						version);
 			return result;
 		}
 
 		node = new_qpznode(qpdb, name, nspace);
-		result = dns_qp_insert(qp, node, 0);
+		result = dns_qp_insert(transaction->qp.qpt, node, 0);
 		INSIST(result == ISC_R_SUCCESS);
 		qpznode_unref(node);
 
 		if (!nsec3) {
-			addwildcards(qpdb, qp, name, nspace);
+			addwildcards(qpdb, transaction->qp.qpt, name, nspace);
 			if (dns_name_iswildcard(name)) {
-				wildcardmagic(qpdb, qp, name, nspace);
+				wildcardmagic(qpdb, transaction->qp.qpt, name,
+					      nspace);
 			}
 		}
 	}
@@ -2479,12 +2634,7 @@ findnodeintree(qpzonedb_t *qpdb, const dns_name_t *name, bool create,
 
 	qpznode_acquire(node DNS__DB_FLARG_PASS);
 
-	if (create) {
-		dns_qp_compact(qp, DNS_QPGC_MAYBE);
-		dns_qpmulti_commit(qpdb->tree, &qp);
-	} else {
-		dns_qpread_destroy(qpdb->tree, &qpr);
-	}
+	MAYBE_CLOSE_TRANSACTION(dbversion, transaction, version);
 
 	*nodep = (dns_dbnode_t *)node;
 
@@ -2492,7 +2642,8 @@ findnodeintree(qpzonedb_t *qpdb, const dns_name_t *name, bool create,
 }
 
 static isc_result_t
-qpzone_findnode(dns_db_t *db, const dns_name_t *name, bool create,
+qpzone_findnode(dns_db_t *db, const dns_name_t *name,
+		dns_dbversion_t *dbversion, bool create,
 		dns_clientinfomethods_t *methods ISC_ATTR_UNUSED,
 		dns_clientinfo_t *clientinfo ISC_ATTR_UNUSED,
 		dns_dbnode_t **nodep DNS__DB_FLARG) {
@@ -2500,18 +2651,19 @@ qpzone_findnode(dns_db_t *db, const dns_name_t *name, bool create,
 
 	REQUIRE(VALID_QPZONE(qpdb));
 
-	return findnodeintree(qpdb, name, create, false,
+	return findnodeintree(db, name, dbversion, create, false,
 			      nodep DNS__DB_FLARG_PASS);
 }
 
 static isc_result_t
-qpzone_findnsec3node(dns_db_t *db, const dns_name_t *name, bool create,
+qpzone_findnsec3node(dns_db_t *db, const dns_name_t *name,
+		     dns_dbversion_t *dbversion, bool create,
 		     dns_dbnode_t **nodep DNS__DB_FLARG) {
 	qpzonedb_t *qpdb = (qpzonedb_t *)db;
 
 	REQUIRE(VALID_QPZONE(qpdb));
 
-	return findnodeintree(qpdb, name, create, true,
+	return findnodeintree(db, name, dbversion, create, true,
 			      nodep DNS__DB_FLARG_PASS);
 }
 
@@ -2522,6 +2674,7 @@ matchparams(dns_slabheader_t *header, qpz_search_t *search) {
 	unsigned int rdlen, count;
 	isc_region_t region;
 	isc_result_t result;
+	qpz_version_t *version = search->transaction->version;
 
 	REQUIRE(header->typepair == DNS_TYPEPAIR(dns_rdatatype_nsec3));
 
@@ -2539,11 +2692,10 @@ matchparams(dns_slabheader_t *header, qpz_search_t *search) {
 		raw += rdlen;
 		result = dns_rdata_tostruct(&rdata, &nsec3, NULL);
 		INSIST(result == ISC_R_SUCCESS);
-		if (nsec3.hash == search->version->hash &&
-		    nsec3.iterations == search->version->iterations &&
-		    nsec3.salt_length == search->version->salt_length &&
-		    memcmp(nsec3.salt, search->version->salt,
-			   nsec3.salt_length) == 0)
+		if (nsec3.hash == version->hash &&
+		    nsec3.iterations == version->iterations &&
+		    nsec3.salt_length == version->salt_length &&
+		    memcmp(nsec3.salt, version->salt, nsec3.salt_length) == 0)
 		{
 			return true;
 		}
@@ -2572,10 +2724,10 @@ qpzone_setup_delegation(qpz_search_t *search, dns_dbnode_t **nodep,
 
 	/*
 	 * If we have to set foundname, we do it before anything else.
-	 * If we were to set foundname after we had set nodep or bound the
-	 * rdataset, then we'd have to undo that work if dns_name_copy()
-	 * failed.  By setting foundname first, there's nothing to undo if
-	 * we have trouble.
+	 * If we were to set foundname after we had set nodep or bound
+	 * the rdataset, then we'd have to undo that work if
+	 * dns_name_copy() failed.  By setting foundname first, there's
+	 * nothing to undo if we have trouble.
 	 */
 	if (foundname != NULL && search->copy_name) {
 		zcname = dns_fixedname_name(&search->zonecut_name);
@@ -2583,9 +2735,9 @@ qpzone_setup_delegation(qpz_search_t *search, dns_dbnode_t **nodep,
 	}
 	if (nodep != NULL) {
 		/*
-		 * Note that we don't have to increment the node's reference
-		 * count here because we're going to use the reference we
-		 * already have in the search block.
+		 * Note that we don't have to increment the node's
+		 * reference count here because we're going to use the
+		 * reference we already have in the search block.
 		 */
 		*nodep = (dns_dbnode_t *)node;
 		search->need_cleanup = false;
@@ -2614,9 +2766,9 @@ typedef enum { FORWARD, BACK } direction_t;
 
 /*
  * Step backwards or forwards through the database until we find a
- * node with data in it for the desired version. If 'nextname' is not NULL,
- * and we found a predecessor or successor, save the name we found in it.
- * Return true if we found a predecessor or successor.
+ * node with data in it for the desired version. If 'nextname' is not
+ * NULL, and we found a predecessor or successor, save the name we found
+ * in it. Return true if we found a predecessor or successor.
  */
 static bool
 step(qpz_search_t *search, dns_qpiter_t *it, direction_t direction,
@@ -2744,7 +2896,8 @@ wildcard_blocked(qpz_search_t *search, const dns_name_t *qname,
 		}
 
 		/*
-		 * Remove the leftmost label from the qname and check again.
+		 * Remove the leftmost label from the qname and check
+		 * again.
 		 */
 		n = dns_name_countlabels(&rname);
 		dns_name_getlabelsequence(&rname, 1, n - 1, &rname);
@@ -2774,8 +2927,8 @@ find_wildcard(qpz_search_t *search, qpznode_t **nodep, const dns_name_t *qname,
 	 * search for it.  If the wildcard node exists, and is active in
 	 * this version, we're done.  If not, then we next check to see
 	 * if the ancestor is active in this version.  If so, then there
-	 * can be no possible wildcard match and again we're done.  If not,
-	 * continue the search.
+	 * can be no possible wildcard match and again we're done.  If
+	 * not, continue the search.
 	 */
 	for (int i = dns_qpchain_length(&search->chain) - 1; i >= 0; i--) {
 		qpznode_t *node = NULL;
@@ -2790,8 +2943,8 @@ find_wildcard(qpz_search_t *search, qpznode_t **nodep, const dns_name_t *qname,
 		/*
 		 * First we try to figure out if this node is active in
 		 * the search's version.  We do this now, even though we
-		 * may not need the information, because it simplifies the
-		 * locking and code flow.
+		 * may not need the information, because it simplifies
+		 * the locking and code flow.
 		 */
 		active = node_active(search, node);
 		wild = node->wild;
@@ -2813,14 +2966,14 @@ find_wildcard(qpz_search_t *search, qpznode_t **nodep, const dns_name_t *qname,
 				break;
 			}
 
-			result = dns_qp_lookup(&search->qpr, wname, nspace,
-					       NULL, &wit, NULL,
+			result = dns_qp_lookup(search->transaction->qp, wname,
+					       nspace, NULL, &wit, NULL,
 					       (void **)&wnode, NULL);
 			if (result == ISC_R_SUCCESS) {
 				/*
-				 * We have found the wildcard node.  If it
-				 * is active in the search's version, we're
-				 * done.
+				 * We have found the wildcard node.  If
+				 * it is active in the search's version,
+				 * we're done.
 				 */
 				nlock = qpzone_get_lock(wnode);
 				NODE_RDLOCK(nlock, &nlocktype);
@@ -2837,8 +2990,9 @@ find_wildcard(qpz_search_t *search, qpznode_t **nodep, const dns_name_t *qname,
 					/*
 					 * The wildcard node is active!
 					 *
-					 * Note: result is still ISC_R_SUCCESS
-					 * so we don't have to set it.
+					 * Note: result is still
+					 * ISC_R_SUCCESS so we don't
+					 * have to set it.
 					 */
 					*nodep = wnode;
 					break;
@@ -2891,8 +3045,8 @@ previous_closest_nsec(dns_rdatatype_t type, qpz_search_t *search,
 	for (;;) {
 		if (*firstp) {
 			/*
-			 * This is the first attempt to find 'name' in the
-			 * NSEC namespace.
+			 * This is the first attempt to find 'name' in
+			 * the NSEC namespace.
 			 */
 			*firstp = false;
 			result = dns_qp_lookup(&qpr, name, DNS_DBNAMESPACE_NSEC,
@@ -2902,10 +3056,10 @@ previous_closest_nsec(dns_rdatatype_t type, qpz_search_t *search,
 				/*
 				 * If we find an exact match in the NSEC
 				 * namespace on our first attempt, it
-				 * implies that the corresponding node in
-				 * the normal namespace had an unacceptable
-				 * NSEC record; we want the previous node
-				 * in the NSEC tree.
+				 * implies that the corresponding node
+				 * in the normal namespace had an
+				 * unacceptable NSEC record; we want the
+				 * previous node in the NSEC tree.
 				 */
 				result = dns_qpiter_prev(nit, name, NULL, NULL);
 			} else if (result == DNS_R_PARTIALMATCH) {
@@ -2920,11 +3074,11 @@ previous_closest_nsec(dns_rdatatype_t type, qpz_search_t *search,
 			}
 		} else {
 			/*
-			 * We've taken at least two steps back through the
-			 * NSEC namespace. The previous steps must have
-			 * found nodes with NSEC records, but they didn't
-			 * work; perhaps they lacked signature records.
-			 * Keep searching.
+			 * We've taken at least two steps back through
+			 * the NSEC namespace. The previous steps must
+			 * have found nodes with NSEC records, but they
+			 * didn't work; perhaps they lacked signature
+			 * records. Keep searching.
 			 */
 			result = dns_qpiter_prev(nit, name, NULL, NULL);
 		}
@@ -2933,9 +3087,10 @@ previous_closest_nsec(dns_rdatatype_t type, qpz_search_t *search,
 		}
 
 		*nodep = NULL;
-		result = dns_qp_lookup(
-			&search->qpr, name, DNS_DBNAMESPACE_NORMAL, NULL,
-			&search->iter, &search->chain, (void **)nodep, NULL);
+		result = dns_qp_lookup(search->transaction->qp, name,
+				       DNS_DBNAMESPACE_NORMAL, NULL,
+				       &search->iter, &search->chain,
+				       (void **)nodep, NULL);
 		if (result == ISC_R_SUCCESS) {
 			break;
 		}
@@ -2987,10 +3142,10 @@ find_closest_nsec(qpz_search_t *search, dns_dbnode_t **nodep,
 	/*
 	 * When a lookup is unsuccessful, the QP iterator will already
 	 * be pointing at the node preceding the searched-for name in
-	 * the normal namespace. We'll check there first, assuming it will
-	 * be right much of the time. If we don't find an NSEC there,
-	 * then we start using the auxiliary NSEC namespace to find
-	 * the next predecessor.
+	 * the normal namespace. We'll check there first, assuming it
+	 * will be right much of the time. If we don't find an NSEC
+	 * there, then we start using the auxiliary NSEC namespace to
+	 * find the next predecessor.
 	 */
 	result = dns_qpiter_current(&search->iter, name, (void **)&node, NULL);
 	if (result != ISC_R_SUCCESS) {
@@ -3005,14 +3160,15 @@ again:
 		empty_node = true;
 		DNS_SLABTOP_FOREACH(top, node->data) {
 			/*
-			 * Look for an active, extant NSEC or RRSIG NSEC.
+			 * Look for an active, extant NSEC or RRSIG
+			 * NSEC.
 			 */
 			dns_slabheader_t *header =
 				first_existing_header(top, search->serial);
 			if (header != NULL) {
 				/*
-				 * We now know that there is at least one
-				 * active rdataset at this node.
+				 * We now know that there is at least
+				 * one active rdataset at this node.
 				 */
 				empty_node = false;
 				if (top->typepair == typepair) {
@@ -3029,7 +3185,8 @@ again:
 			}
 		}
 		if (!empty_node) {
-			if (found != NULL && search->version->havensec3 &&
+			if (found != NULL &&
+			    search->transaction->version->havensec3 &&
 			    found->typepair ==
 				    DNS_TYPEPAIR(dns_rdatatype_nsec3) &&
 			    !matchparams(found, search))
@@ -3044,13 +3201,14 @@ again:
 				   (foundsig != NULL || !need_sig))
 			{
 				/*
-				 * We've found the right NSEC/NSEC3 record.
+				 * We've found the right NSEC/NSEC3
+				 * record.
 				 *
 				 * Note: for this to really be the right
-				 * NSEC record, it's essential that the NSEC
-				 * records of any nodes obscured by a zone
-				 * cut have been removed; we assume this is
-				 * the case.
+				 * NSEC record, it's essential that the
+				 * NSEC records of any nodes obscured by
+				 * a zone cut have been removed; we
+				 * assume this is the case.
 				 */
 				dns_name_copy(name, foundname);
 				if (nodep != NULL) {
@@ -3067,11 +3225,12 @@ again:
 				}
 			} else if (found == NULL && foundsig == NULL) {
 				/*
-				 * This node is active, but has no NSEC or
-				 * RRSIG NSEC.  That means it's glue or
-				 * other obscured zone data that isn't
-				 * relevant for our search.  Treat the
-				 * node as if it were empty and keep looking.
+				 * This node is active, but has no NSEC
+				 * or RRSIG NSEC.  That means it's glue
+				 * or other obscured zone data that
+				 * isn't relevant for our search.  Treat
+				 * the node as if it were empty and keep
+				 * looking.
 				 */
 				empty_node = true;
 				result = previous_closest_nsec(
@@ -3079,9 +3238,9 @@ again:
 					&nseciter, &first);
 			} else {
 				/*
-				 * We found an active node, but either the
-				 * NSEC or the RRSIG NSEC is missing.  This
-				 * shouldn't happen.
+				 * We found an active node, but either
+				 * the NSEC or the RRSIG NSEC is
+				 * missing.  This shouldn't happen.
 				 */
 				result = DNS_R_BADDB;
 			}
@@ -3109,9 +3268,9 @@ again:
 	}
 
 	/*
-	 * If the result is ISC_R_NOMORE, then we got to the beginning of
-	 * the database and didn't find a NSEC record.  This shouldn't
-	 * happen.
+	 * If the result is ISC_R_NOMORE, then we got to the beginning
+	 * of the database and didn't find a NSEC record.  This
+	 * shouldn't happen.
 	 */
 	if (result == ISC_R_NOMORE) {
 		result = DNS_R_BADDB;
@@ -3155,8 +3314,9 @@ qpzone_check_zonecut(qpznode_t *node, void *arg DNS__DB_FLARG) {
 					   IS_STUB(search->qpdb))
 				{
 					/*
-					 * We've found an NS rdataset that
-					 * isn't at the origin node.
+					 * We've found an NS rdataset
+					 * that isn't at the origin
+					 * node.
 					 */
 					ns_header = header;
 				}
@@ -3184,8 +3344,9 @@ qpzone_check_zonecut(qpznode_t *node, void *arg DNS__DB_FLARG) {
 
 	if (found != NULL) {
 		/*
-		 * We increment the reference count on node to ensure that
-		 * search->zonecut_header will still be valid later.
+		 * We increment the reference count on node to ensure
+		 * that search->zonecut_header will still be valid
+		 * later.
 		 */
 		qpznode_acquire(node DNS__DB_FLARG_PASS);
 		search->zonecut = node;
@@ -3199,18 +3360,19 @@ qpzone_check_zonecut(qpznode_t *node, void *arg DNS__DB_FLARG) {
 		search->wild = false;
 		if ((search->options & DNS_DBFIND_GLUEOK) == 0) {
 			/*
-			 * If the caller does not want to find glue, then
-			 * this is the best answer and the search should
-			 * stop now.
+			 * If the caller does not want to find glue,
+			 * then this is the best answer and the search
+			 * should stop now.
 			 */
 			result = DNS_R_PARTIALMATCH;
 		} else {
 			dns_name_t *zcname = NULL;
 
 			/*
-			 * The search will continue beneath the zone cut.
-			 * This may or may not be the best match.  In case it
-			 * is, we need to remember the node name.
+			 * The search will continue beneath the zone
+			 * cut. This may or may not be the best match.
+			 * In case it is, we need to remember the node
+			 * name.
 			 */
 			zcname = dns_fixedname_name(&search->zonecut_name);
 			dns_name_copy(&node->name, zcname);
@@ -3218,13 +3380,13 @@ qpzone_check_zonecut(qpznode_t *node, void *arg DNS__DB_FLARG) {
 		}
 	} else {
 		/*
-		 * There is no zonecut at this node which is active in this
-		 * version.
+		 * There is no zonecut at this node which is active in
+		 * this version.
 		 *
-		 * If this is a "wild" node and the caller hasn't disabled
-		 * wildcard matching, remember that we've seen a wild node
-		 * in case we need to go searching for wildcard matches
-		 * later on.
+		 * If this is a "wild" node and the caller hasn't
+		 * disabled wildcard matching, remember that we've seen
+		 * a wild node in case we need to go searching for
+		 * wildcard matches later on.
 		 */
 		if (node->wild && (search->options & DNS_DBFIND_NOWILD) == 0) {
 			search->wild = true;
@@ -3237,19 +3399,18 @@ qpzone_check_zonecut(qpznode_t *node, void *arg DNS__DB_FLARG) {
 }
 
 static void
-qpz_search_init(qpz_search_t *search, qpzonedb_t *db, qpz_version_t *version,
-		unsigned int options) {
+qpz_search_init(qpz_search_t *search, qpzonedb_t *db,
+		qpz_transaction_t *transaction, unsigned int options) {
 	/*
-	 * qpz_search_t contains two structures with large buffers (dns_qpiter_t
-	 * and dns_qpchain_t). Those two structures will be initialized later by
-	 * dns_qp_lookup anyway.
-	 * To avoid the overhead of zero initialization, we avoid designated
+	 * qpz_search_t contains two structures with large buffers
+	 * (dns_qpiter_t and dns_qpchain_t). Those two structures will
+	 * be initialized later by dns_qp_lookup anyway. To avoid the
+	 * overhead of zero initialization, we avoid designated
 	 * initializers and initialize all "small" fields manually.
 	 */
 	search->qpdb = db;
-	search->version = version;
-	search->qpr = (dns_qpread_t){};
-	search->serial = version->serial;
+	search->transaction = transaction;
+	search->serial = transaction->version->serial;
 	search->options = options;
 	/*
 	 * qpch->in -- init in dns_qp_lookup
@@ -3265,7 +3426,7 @@ qpz_search_init(qpz_search_t *search, qpzonedb_t *db, qpz_version_t *version,
 }
 
 static isc_result_t
-qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
+qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *dbversion,
 	    dns_rdatatype_t type, unsigned int options,
 	    isc_stdtime_t now ISC_ATTR_UNUSED, dns_dbnode_t **nodep,
 	    dns_name_t *foundname,
@@ -3276,7 +3437,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	isc_result_t result;
 	qpzonedb_t *qpdb = (qpzonedb_t *)db;
 	qpznode_t *node = NULL;
-	bool cname_ok = true, close_version = false;
+	bool cname_ok = true;
 	bool maybe_zonecut = false, at_zonecut = false;
 	bool wild = false, empty_node = false;
 	bool nsec3 = false;
@@ -3286,24 +3447,16 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	bool active;
 	isc_rwlock_t *nlock = NULL;
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
+	qpz_transaction_t *transaction = (qpz_transaction_t *)dbversion;
+	qpz_version_t *version = NULL;
 
-	REQUIRE(VALID_QPZONE((qpzonedb_t *)db));
-	INSIST(version == NULL ||
-	       ((qpz_version_t *)version)->qpdb == (qpzonedb_t *)db);
-
-	/*
-	 * If the caller didn't supply a version, attach to the current
-	 * version.
-	 */
-	if (version == NULL) {
-		currentversion(db, &version);
-		close_version = true;
-	}
+	REQUIRE(VALID_QPZONE(qpdb));
+	MAYBE_OPEN_TRANSACTION(db, transaction, version)
 
 	dns_namespace_t nspace;
 	qpz_search_t search;
-	qpz_search_init(&search, (qpzonedb_t *)db, (qpz_version_t *)version,
-			options);
+
+	qpz_search_init(&search, qpdb, transaction, options);
 
 	if ((options & DNS_DBFIND_FORCENSEC3) != 0) {
 		nsec3 = true;
@@ -3311,13 +3464,13 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	} else {
 		nspace = DNS_DBNAMESPACE_NORMAL;
 	}
-	dns_qpmulti_query(qpdb->tree, &search.qpr);
 
 	/*
 	 * Search down from the root of the tree.
 	 */
-	result = dns_qp_lookup(&search.qpr, name, nspace, NULL, &search.iter,
-			       &search.chain, (void **)&node, NULL);
+	result = dns_qp_lookup(transaction->qp, name, nspace, NULL,
+			       &search.iter, &search.chain, (void **)&node,
+			       NULL);
 	if (result != ISC_R_NOTFOUND) {
 		dns_name_copy(&node->name, foundname);
 	}
@@ -3358,10 +3511,10 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 
 		if (search.wild) {
 			/*
-			 * At least one of the levels in the search chain
-			 * potentially has a wildcard.  For each such level,
-			 * we must see if there's a matching wildcard active
-			 * in the current version.
+			 * At least one of the levels in the search
+			 * chain potentially has a wildcard.  For each
+			 * such level, we must see if there's a matching
+			 * wildcard active in the current version.
 			 */
 			result = find_wildcard(&search, &node, name, nspace);
 			if (result == ISC_R_SUCCESS) {
@@ -3387,13 +3540,11 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		 * If we're here, then the name does not exist, is not
 		 * beneath a zonecut, and there's no matching wildcard.
 		 */
-		if ((search.version->secure && !search.version->havensec3) ||
-		    nsec3)
-		{
+		if ((version->secure && !version->havensec3) || nsec3) {
 			result = find_closest_nsec(
 				&search, nodep, foundname, rdataset,
 				sigrdataset, nsec3,
-				search.version->secure DNS__DB_FLARG_PASS);
+				version->secure DNS__DB_FLARG_PASS);
 			if (result == ISC_R_SUCCESS) {
 				result = active ? DNS_R_EMPTYNAME
 						: DNS_R_NXDOMAIN;
@@ -3417,20 +3568,20 @@ found:
 
 	if (search.zonecut != NULL) {
 		/*
-		 * If we're beneath a zone cut, we don't want to look for
-		 * CNAMEs because they're not legitimate zone glue.
+		 * If we're beneath a zone cut, we don't want to look
+		 * for CNAMEs because they're not legitimate zone glue.
 		 */
 		cname_ok = false;
 	} else {
 		/*
-		 * The node may be a zone cut itself.  If it might be one,
-		 * make sure we check for it later.
+		 * The node may be a zone cut itself.  If it might be
+		 * one, make sure we check for it later.
 		 *
-		 * DS records live above the zone cut in ordinary zone so
-		 * we want to ignore any referral.
+		 * DS records live above the zone cut in ordinary zone
+		 * so we want to ignore any referral.
 		 *
-		 * Stub zones don't have anything "above" the delegation so
-		 * we always return a referral.
+		 * Stub zones don't have anything "above" the delegation
+		 * so we always return a referral.
 		 */
 		if (node->delegating && ((node != search.qpdb->origin &&
 					  !dns_rdatatype_atparent(type)) ||
@@ -3444,8 +3595,8 @@ found:
 	 * Certain DNSSEC types are not subject to CNAME matching
 	 * (RFC4035, section 2.5 and RFC3007).
 	 *
-	 * We don't check for RRSIG, because we don't store RRSIG records
-	 * directly.
+	 * We don't check for RRSIG, because we don't store RRSIG
+	 * records directly.
 	 */
 	if (type == dns_rdatatype_key || type == dns_rdatatype_nsec) {
 		cname_ok = false;
@@ -3477,9 +3628,10 @@ found:
 			    top->typepair == DNS_TYPEPAIR(dns_rdatatype_ns))
 			{
 				/*
-				 * We increment the reference count on node to
-				 * ensure that search->zonecut_header will
-				 * still be valid later.
+				 * We increment the reference count on
+				 * node to ensure that
+				 * search->zonecut_header will still be
+				 * valid later.
 				 */
 				qpznode_acquire(node DNS__DB_FLARG_PASS);
 				search.zonecut = node;
@@ -3489,19 +3641,20 @@ found:
 				maybe_zonecut = false;
 				at_zonecut = true;
 				/*
-				 * It is not clear if KEY should still be
-				 * allowed at the parent side of the zone
-				 * cut or not.  It is needed for RFC3007
-				 * validated updates.
+				 * It is not clear if KEY should still
+				 * be allowed at the parent side of the
+				 * zone cut or not.  It is needed for
+				 * RFC3007 validated updates.
 				 */
 				if ((search.options & DNS_DBFIND_GLUEOK) == 0 &&
 				    type != dns_rdatatype_nsec &&
 				    type != dns_rdatatype_key)
 				{
 					/*
-					 * Glue is not OK, but any answer we
-					 * could return would be glue.  Return
-					 * the delegation.
+					 * Glue is not OK, but any
+					 * answer we could return would
+					 * be glue.  Return the
+					 * delegation.
 					 */
 					found = NULL;
 					break;
@@ -3541,12 +3694,13 @@ found:
 				    cname_ok)
 				{
 					/*
-					 * We may be finding a CNAME instead
-					 * of the desired type.
+					 * We may be finding a CNAME
+					 * instead of the desired type.
 					 *
-					 * If we've already got the CNAME RRSIG,
-					 * use it, otherwise change sigtype
-					 * so that we find it.
+					 * If we've already got the
+					 * CNAME RRSIG, use it,
+					 * otherwise change sigtype so
+					 * that we find it.
 					 */
 					if (cnamesig != NULL) {
 						foundsig = cnamesig;
@@ -3556,41 +3710,43 @@ found:
 					}
 				}
 				/*
-				 * If we've got all we need, end the search.
+				 * If we've got all we need, end the
+				 * search.
 				 */
 				if (!maybe_zonecut && foundsig != NULL) {
 					break;
 				}
 			} else if (top->typepair == sigpair) {
 				/*
-				 * We've found the RRSIG rdataset for our
-				 * target type.  Remember it.
+				 * We've found the RRSIG rdataset for
+				 * our target type.  Remember it.
 				 */
 				foundsig = header;
 				/*
-				 * If we've got all we need, end the search.
+				 * If we've got all we need, end the
+				 * search.
 				 */
 				if (!maybe_zonecut && found != NULL) {
 					break;
 				}
 			} else if (top->typepair ==
 					   DNS_TYPEPAIR(dns_rdatatype_nsec) &&
-				   !search.version->havensec3)
+				   !version->havensec3)
 			{
 				/*
-				 * Remember a NSEC rdataset even if we're
-				 * not specifically looking for it, because
-				 * we might need it later.
+				 * Remember a NSEC rdataset even if
+				 * we're not specifically looking for
+				 * it, because we might need it later.
 				 */
 				nsecheader = header;
 			} else if (top->typepair ==
 					   DNS_SIGTYPEPAIR(
 						   dns_rdatatype_nsec) &&
-				   !search.version->havensec3)
+				   !version->havensec3)
 			{
 				/*
-				 * If we need the NSEC rdataset, we'll also
-				 * need its signature.
+				 * If we need the NSEC rdataset, we'll
+				 * also need its signature.
 				 */
 				nsecsig = header;
 			} else if (cname_ok &&
@@ -3598,8 +3754,8 @@ found:
 					   DNS_SIGTYPEPAIR(dns_rdatatype_cname))
 			{
 				/*
-				 * If we get a CNAME match, we'll also need
-				 * its signature.
+				 * If we get a CNAME match, we'll also
+				 * need its signature.
 				 */
 				cnamesig = header;
 			}
@@ -3609,8 +3765,8 @@ found:
 	if (empty_node) {
 		/*
 		 * We have an exact match for the name, but there are no
-		 * active rdatasets in the desired version.  That means that
-		 * this node doesn't exist in the desired version.
+		 * active rdatasets in the desired version.  That means
+		 * that this node doesn't exist in the desired version.
 		 * If there's a node above this one, reassign the
 		 * foundname to the parent and treat this as a partial
 		 * match.
@@ -3633,8 +3789,8 @@ found:
 	if (found == NULL) {
 		if (search.zonecut != NULL) {
 			/*
-			 * We were trying to find glue at a node beneath a
-			 * zone cut, but didn't.
+			 * We were trying to find glue at a node beneath
+			 * a zone cut, but didn't.
 			 *
 			 * Return the delegation.
 			 */
@@ -3648,7 +3804,7 @@ found:
 		 * The desired type doesn't exist.
 		 */
 		result = DNS_R_NXRRSET;
-		if (search.version->secure && !search.version->havensec3 &&
+		if (version->secure && !version->havensec3 &&
 		    (nsecheader == NULL || nsecsig == NULL))
 		{
 			/*
@@ -3664,7 +3820,7 @@ found:
 			result = find_closest_nsec(
 				&search, nodep, foundname, rdataset,
 				sigrdataset, false,
-				search.version->secure DNS__DB_FLARG_PASS);
+				version->secure DNS__DB_FLARG_PASS);
 			if (result == ISC_R_SUCCESS) {
 				result = DNS_R_EMPTYWILD;
 			}
@@ -3674,7 +3830,7 @@ found:
 			qpznode_acquire(node DNS__DB_FLARG_PASS);
 			*nodep = (dns_dbnode_t *)node;
 		}
-		if (search.version->secure && !search.version->havensec3) {
+		if (version->secure && !version->havensec3) {
 			bindrdataset(search.qpdb, node, nsecheader,
 				     rdataset DNS__DB_FLARG_PASS);
 			if (nsecsig != NULL) {
@@ -3695,16 +3851,16 @@ found:
 	    found->typepair == DNS_TYPEPAIR(dns_rdatatype_cname))
 	{
 		/*
-		 * We weren't doing an ANY query and we found a CNAME instead
-		 * of the type we were looking for, so we need to indicate
-		 * that result to the caller.
+		 * We weren't doing an ANY query and we found a CNAME
+		 * instead of the type we were looking for, so we need
+		 * to indicate that result to the caller.
 		 */
 		result = DNS_R_CNAME;
 	} else if (search.zonecut != NULL) {
 		/*
-		 * If we're beneath a zone cut, we must indicate that the
-		 * result is glue, unless we're actually at the zone cut
-		 * and the type is NSEC or KEY.
+		 * If we're beneath a zone cut, we must indicate that
+		 * the result is glue, unless we're actually at the zone
+		 * cut and the type is NSEC or KEY.
 		 */
 		if (search.zonecut == node) {
 			/*
@@ -3758,8 +3914,6 @@ node_exit:
 	NODE_UNLOCK(nlock, &nlocktype);
 
 tree_exit:
-	dns_qpread_destroy(qpdb->tree, &search.qpr);
-
 	/*
 	 * If we found a zonecut but aren't going to use it, we have to
 	 * let go of it.
@@ -3774,8 +3928,9 @@ tree_exit:
 		NODE_UNLOCK(nlock, &nlocktype);
 	}
 
-	if (close_version) {
-		closeversion(db, &version, false DNS__DB_FLARG_PASS);
+	if (transaction != (qpz_transaction_t *)dbversion) {
+		closetransaction(db, (dns_dbversion_t **)&transaction,
+				 false DNS__DB_FLARG_PASS);
 	}
 
 	return result;
@@ -3788,16 +3943,16 @@ qpzone_allrdatasets(dns_db_t *db, dns_dbnode_t *dbnode,
 		    dns_rdatasetiter_t **iteratorp DNS__DB_FLARG) {
 	qpzonedb_t *qpdb = (qpzonedb_t *)db;
 	qpznode_t *node = (qpznode_t *)dbnode;
-	qpz_version_t *version = (qpz_version_t *)dbversion;
+	qpz_transaction_t *transaction = (qpz_transaction_t *)dbversion;
+
 	qpdb_rdatasetiter_t *iterator = NULL;
 
 	REQUIRE(VALID_QPZONE(qpdb));
 
-	if (version == NULL) {
-		currentversion(db, (dns_dbversion_t **)(void *)(&version));
+	if (transaction == NULL) {
+		snapshottransaction(db, (dns_dbversion_t **)&transaction);
 	} else {
-		INSIST(version->qpdb == qpdb);
-		isc_refcount_increment(&version->references);
+		isc_refcount_increment(&transaction->references);
 	}
 
 	iterator = isc_mem_get(qpdb->common.mctx, sizeof(*iterator));
@@ -3805,7 +3960,7 @@ qpzone_allrdatasets(dns_db_t *db, dns_dbnode_t *dbnode,
 		.common.methods = &rdatasetiter_methods,
 		.common.db = db,
 		.common.node = (dns_dbnode_t *)node,
-		.common.version = (dns_dbversion_t *)version,
+		.common.version = (dns_dbversion_t *)transaction,
 		.common.options = options,
 		.common.magic = DNS_RDATASETITER_MAGIC,
 	};
@@ -3841,10 +3996,10 @@ qpzone_detachnode(dns_dbnode_t **nodep DNS__DB_FLARG) {
 	nlock = qpzone_get_lock(node);
 
 	/*
-	 * qpzone_destroy() uses call_rcu() API to destroy the node locks, so it
-	 * is safe to call it in the middle of NODE_LOCK, but we need to acquire
-	 * the database reference to prevent destroying the database while the
-	 * NODE_LOCK is locked.
+	 * qpzone_destroy() uses call_rcu() API to destroy the node
+	 * locks, so it is safe to call it in the middle of NODE_LOCK,
+	 * but we need to acquire the database reference to prevent
+	 * destroying the database while the NODE_LOCK is locked.
 	 */
 
 	rcu_read_lock();
@@ -3873,7 +4028,8 @@ getoriginnode(dns_db_t *db, dns_dbnode_t **nodep DNS__DB_FLARG) {
 	REQUIRE(VALID_QPZONE(qpdb));
 	REQUIRE(nodep != NULL && *nodep == NULL);
 
-	/* Note that the access to the origin node doesn't require a DB lock */
+	/* Note that the access to the origin node doesn't require a DB
+	 * lock */
 	INSIST(qpdb->origin != NULL);
 	qpznode_acquire(qpdb->origin DNS__DB_FLARG_PASS);
 	*nodep = (dns_dbnode_t *)qpdb->origin;
@@ -3905,8 +4061,8 @@ rdatasetiter_destroy(dns_rdatasetiter_t **iteratorp DNS__DB_FLARG) {
 	qrditer = (qpdb_rdatasetiter_t *)(*iteratorp);
 
 	if (qrditer->common.version != NULL) {
-		closeversion(qrditer->common.db, &qrditer->common.version,
-			     false DNS__DB_FLARG_PASS);
+		closetransaction(qrditer->common.db, &qrditer->common.version,
+				 false DNS__DB_FLARG_PASS);
 	}
 	dns__db_detachnode(&qrditer->common.node DNS__DB_FLARG_PASS);
 	isc_mem_put(qrditer->common.db->mctx, qrditer, sizeof(*qrditer));
@@ -3918,7 +4074,9 @@ static isc_result_t
 rdatasetiter_first(dns_rdatasetiter_t *iterator DNS__DB_FLARG) {
 	qpdb_rdatasetiter_t *qrditer = (qpdb_rdatasetiter_t *)iterator;
 	qpznode_t *node = (qpznode_t *)qrditer->common.node;
-	qpz_version_t *version = (qpz_version_t *)qrditer->common.version;
+	qpz_transaction_t *transaction =
+		(qpz_transaction_t *)qrditer->common.version;
+	qpz_version_t *version = transaction->version;
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 	isc_rwlock_t *nlock = qpzone_get_lock(node);
 
@@ -3949,7 +4107,9 @@ static isc_result_t
 rdatasetiter_next(dns_rdatasetiter_t *iterator DNS__DB_FLARG) {
 	qpdb_rdatasetiter_t *qrditer = (qpdb_rdatasetiter_t *)iterator;
 	qpznode_t *node = (qpznode_t *)qrditer->common.node;
-	qpz_version_t *version = (qpz_version_t *)qrditer->common.version;
+	qpz_transaction_t *transaction =
+		(qpz_transaction_t *)qrditer->common.version;
+	qpz_version_t *version = transaction->version;
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 	isc_rwlock_t *nlock = qpzone_get_lock(node);
 	dns_slabtop_t *from = NULL;
@@ -4049,8 +4209,7 @@ dbiterator_destroy(dns_dbiterator_t **iteratorp DNS__DB_FLARG) {
 	dns_db_attach(iter->common.db, &db);
 	dns_db_detach(&iter->common.db);
 
-	qpzonedb_t *qpdb = (qpzonedb_t *)db;
-	dns_qpsnap_destroy(qpdb->tree, &iter->snap);
+	closetransaction(db, &iter->common.version, false);
 
 	isc_mem_put(db->mctx, iter, sizeof(*iter));
 	dns_db_detach(&db);
@@ -4063,6 +4222,7 @@ dbiterator_first(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 	isc_result_t result;
 	qpdb_dbiterator_t *qpdbiter = (qpdb_dbiterator_t *)iterator;
 	qpzonedb_t *qpdb = (qpzonedb_t *)iterator->db;
+	qpz_transaction_t *transaction = (qpz_transaction_t *)iterator->version;
 
 	if (qpdbiter->result != ISC_R_SUCCESS &&
 	    qpdbiter->result != ISC_R_NOTFOUND &&
@@ -4074,7 +4234,7 @@ dbiterator_first(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 
 	dereference_iter_node(qpdbiter DNS__DB_FLARG_PASS);
 
-	dns_qpiter_init(qpdbiter->snap, &qpdbiter->iter);
+	dns_qpiter_init(transaction->qp, &qpdbiter->iter);
 	result = dns_qpiter_next(&qpdbiter->iter, NULL,
 				 (void **)&qpdbiter->node, NULL);
 
@@ -4106,8 +4266,8 @@ dbiterator_first(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 		}
 
 		/*
-		 * If we hit an NSEC node, we need to start at the NSEC3 part of
-		 * the tree.
+		 * If we hit an NSEC node, we need to start at the NSEC3
+		 * part of the tree.
 		 */
 		if (qpdbiter->node->nspace != DNS_DBNAMESPACE_NSEC) {
 			break;
@@ -4117,17 +4277,18 @@ dbiterator_first(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 		/* FALLTHROUGH */
 	case nsec3only:
 		/*
-		 * NSEC3 follows after all non-nsec3 nodes, seek the NSEC3
-		 * origin node.
+		 * NSEC3 follows after all non-nsec3 nodes, seek the
+		 * NSEC3 origin node.
 		 */
-		result = dns_qp_lookup(qpdbiter->snap, &qpdb->common.origin,
+		result = dns_qp_lookup(transaction->qp, &qpdb->common.origin,
 				       DNS_DBNAMESPACE_NSEC3, NULL,
 				       &qpdbiter->iter, NULL,
 				       (void **)&qpdbiter->node, NULL);
 		if (result != ISC_R_SUCCESS ||
 		    QPDBITER_NSEC3_ORIGIN_NODE(qpdb, qpdbiter))
 		{
-			/* skip the NSEC3 origin node (or its predecessor) */
+			/* skip the NSEC3 origin node (or its
+			 * predecessor) */
 			result = dns_qpiter_next(&qpdbiter->iter, NULL,
 						 (void **)&qpdbiter->node,
 						 NULL);
@@ -4151,6 +4312,7 @@ dbiterator_last(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 	isc_result_t result;
 	qpdb_dbiterator_t *qpdbiter = (qpdb_dbiterator_t *)iterator;
 	qpzonedb_t *qpdb = (qpzonedb_t *)iterator->db;
+	qpz_transaction_t *transaction = (qpz_transaction_t *)iterator->version;
 
 	if (qpdbiter->result != ISC_R_SUCCESS &&
 	    qpdbiter->result != ISC_R_NOTFOUND &&
@@ -4162,7 +4324,7 @@ dbiterator_last(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 
 	dereference_iter_node(qpdbiter DNS__DB_FLARG_PASS);
 
-	dns_qpiter_init(qpdbiter->snap, &qpdbiter->iter);
+	dns_qpiter_init(transaction->qp, &qpdbiter->iter);
 	result = dns_qpiter_prev(&qpdbiter->iter, NULL,
 				 (void **)&qpdbiter->node, NULL);
 
@@ -4197,8 +4359,8 @@ dbiterator_last(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 		}
 
 		/*
-		 * If we hit an NSEC node, we need to seek the final normal node
-		 * of the tree.
+		 * If we hit an NSEC node, we need to seek the final
+		 * normal node of the tree.
 		 */
 		if (qpdbiter->node->nspace != DNS_DBNAMESPACE_NSEC) {
 			break;
@@ -4208,9 +4370,10 @@ dbiterator_last(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 		/* FALLTHROUGH */
 	case nonsec3:
 		/*
-		 * The final non-nsec node is before the the NSEC origin node.
+		 * The final non-nsec node is before the the NSEC origin
+		 * node.
 		 */
-		result = dns_qp_lookup(qpdbiter->snap, &qpdb->common.origin,
+		result = dns_qp_lookup(transaction->qp, &qpdb->common.origin,
 				       DNS_DBNAMESPACE_NSEC, NULL,
 				       &qpdbiter->iter, NULL,
 				       (void **)&qpdbiter->node, NULL);
@@ -4222,9 +4385,9 @@ dbiterator_last(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 						 NULL);
 		} else {
 			/*
-			 * The NSEC origin node was not found, but the iterator
-			 * should point to its predecessor, which is the node we
-			 * want.
+			 * The NSEC origin node was not found, but the
+			 * iterator should point to its predecessor,
+			 * which is the node we want.
 			 */
 			result = dns_qpiter_current(&qpdbiter->iter, NULL,
 						    (void **)&qpdbiter->node,
@@ -4252,6 +4415,7 @@ dbiterator_seek(dns_dbiterator_t *iterator,
 		const dns_name_t *name DNS__DB_FLARG) {
 	isc_result_t result, tresult;
 	qpdb_dbiterator_t *qpdbiter = (qpdb_dbiterator_t *)iterator;
+	qpz_transaction_t *transaction = (qpz_transaction_t *)iterator->version;
 
 	if (qpdbiter->result != ISC_R_SUCCESS &&
 	    qpdbiter->result != ISC_R_NOTFOUND &&
@@ -4266,20 +4430,20 @@ dbiterator_seek(dns_dbiterator_t *iterator,
 	switch (qpdbiter->nsec3mode) {
 	case nsec3only:
 		result = dns_qp_lookup(
-			qpdbiter->snap, name, DNS_DBNAMESPACE_NSEC3, NULL,
+			transaction->qp, name, DNS_DBNAMESPACE_NSEC3, NULL,
 			&qpdbiter->iter, NULL, (void **)&qpdbiter->node, NULL);
 		break;
 	case nonsec3:
 		result = dns_qp_lookup(
-			qpdbiter->snap, name, DNS_DBNAMESPACE_NORMAL, NULL,
+			transaction->qp, name, DNS_DBNAMESPACE_NORMAL, NULL,
 			&qpdbiter->iter, NULL, (void **)&qpdbiter->node, NULL);
 		break;
 	case full:
 		result = dns_qp_lookup(
-			qpdbiter->snap, name, DNS_DBNAMESPACE_NORMAL, NULL,
+			transaction->qp, name, DNS_DBNAMESPACE_NORMAL, NULL,
 			&qpdbiter->iter, NULL, (void **)&qpdbiter->node, NULL);
 		if (result != ISC_R_SUCCESS) {
-			tresult = dns_qp_lookup(qpdbiter->snap, name,
+			tresult = dns_qp_lookup(transaction->qp, name,
 						DNS_DBNAMESPACE_NSEC3, NULL,
 						&qpdbiter->iter, NULL,
 						(void **)&qpdbiter->node, NULL);
@@ -4308,6 +4472,7 @@ dbiterator_prev(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 	isc_result_t result;
 	qpdb_dbiterator_t *qpdbiter = (qpdb_dbiterator_t *)iterator;
 	qpzonedb_t *qpdb = (qpzonedb_t *)iterator->db;
+	qpz_transaction_t *transaction = (qpz_transaction_t *)iterator->version;
 
 	REQUIRE(qpdbiter->node != NULL);
 
@@ -4351,15 +4516,15 @@ dbiterator_prev(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 		}
 
 		/*
-		 * If we hit an NSEC node, we need to seek the final normal node
-		 * of the tree.
+		 * If we hit an NSEC node, we need to seek the final
+		 * normal node of the tree.
 		 */
 		if (qpdbiter->node->nspace != DNS_DBNAMESPACE_NSEC) {
 			break;
 		}
 
 		INSIST(qpdbiter->node->nspace == DNS_DBNAMESPACE_NSEC);
-		result = dns_qp_lookup(qpdbiter->snap, &qpdb->common.origin,
+		result = dns_qp_lookup(transaction->qp, &qpdb->common.origin,
 				       DNS_DBNAMESPACE_NSEC, NULL,
 				       &qpdbiter->iter, NULL,
 				       (void **)&qpdbiter->node, NULL);
@@ -4372,9 +4537,9 @@ dbiterator_prev(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 						 NULL);
 		} else {
 			/*
-			 * The NSEC origin node was not found, but the iterator
-			 * should point to its predecessor, which is the node we
-			 * want.
+			 * The NSEC origin node was not found, but the
+			 * iterator should point to its predecessor,
+			 * which is the node we want.
 			 */
 			result = dns_qpiter_current(&qpdbiter->iter, NULL,
 						    (void **)&qpdbiter->node,
@@ -4405,6 +4570,7 @@ dbiterator_next(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 	isc_result_t result;
 	qpdb_dbiterator_t *qpdbiter = (qpdb_dbiterator_t *)iterator;
 	qpzonedb_t *qpdb = (qpzonedb_t *)iterator->db;
+	qpz_transaction_t *transaction = (qpz_transaction_t *)iterator->version;
 
 	REQUIRE(qpdbiter->node != NULL);
 
@@ -4442,22 +4608,23 @@ dbiterator_next(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 		}
 
 		/*
-		 * If we hit an NSEC node, we need to start at the NSEC3 part of
-		 * the tree.
+		 * If we hit an NSEC node, we need to start at the NSEC3
+		 * part of the tree.
 		 */
 		if (qpdbiter->node->nspace != DNS_DBNAMESPACE_NSEC) {
 			break;
 		}
 		INSIST(qpdbiter->node->nspace == DNS_DBNAMESPACE_NSEC);
 
-		result = dns_qp_lookup(qpdbiter->snap, &qpdb->common.origin,
+		result = dns_qp_lookup(transaction->qp, &qpdb->common.origin,
 				       DNS_DBNAMESPACE_NSEC3, NULL,
 				       &qpdbiter->iter, NULL,
 				       (void **)&qpdbiter->node, NULL);
 		if (result != ISC_R_SUCCESS ||
 		    QPDBITER_NSEC3_ORIGIN_NODE(qpdb, qpdbiter))
 		{
-			/* skip the NSEC3 origin node (or its predecessor). */
+			/* skip the NSEC3 origin node (or its
+			 * predecessor). */
 			result = dns_qpiter_next(&qpdbiter->iter, NULL,
 						 (void **)&qpdbiter->node,
 						 NULL);
@@ -4517,9 +4684,10 @@ dbiterator_origin(dns_dbiterator_t *iterator, dns_name_t *name) {
 }
 
 static isc_result_t
-qpzone_createiterator(dns_db_t *db, unsigned int options,
-		      dns_dbiterator_t **iteratorp) {
+qpzone_createiterator(dns_db_t *db, dns_dbversion_t *dbversion,
+		      unsigned int options, dns_dbiterator_t **iteratorp) {
 	qpzonedb_t *qpdb = (qpzonedb_t *)db;
+	qpz_transaction_t *transaction = NULL;
 	qpdb_dbiterator_t *iter = NULL;
 	isc_result_t result;
 
@@ -4543,19 +4711,27 @@ qpzone_createiterator(dns_db_t *db, unsigned int options,
 
 	dns_db_attach(db, &iter->common.db);
 
-	dns_qpmulti_snapshot(qpdb->tree, &iter->snap);
+	if (dbversion != NULL) {
+		attachtransaction(db, dbversion, &iter->common.version);
+	} else {
+		snapshottransaction(db, &iter->common.version);
+	}
+	transaction = (qpz_transaction_t *)iter->common.version;
+	INSIST(VALID_OR_NULL_TRANSACTION(db, transaction));
+	INSIST(transaction->type == QPZ_TRANSACTION_SNAPSHOT ||
+	       transaction->type == QPZ_TRANSACTION_WRITER);
 
 	switch (iter->nsec3mode) {
 	case nonsec3:
 	case full:
-		dns_qpiter_init(iter->snap, &iter->iter);
+		dns_qpiter_init(transaction->qp, &iter->iter);
 		break;
 	case nsec3only:
 		/*
 		 * NSEC3 follows after all non-nsec3 nodes,
 		 * seek the NSEC3 origin node.
 		 */
-		result = dns_qp_lookup(iter->snap, &qpdb->common.origin,
+		result = dns_qp_lookup(transaction->qp, &qpdb->common.origin,
 				       DNS_DBNAMESPACE_NSEC3, NULL, &iter->iter,
 				       NULL, NULL, NULL);
 		INSIST(result == ISC_R_SUCCESS);
@@ -4577,17 +4753,18 @@ qpzone_addrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 	isc_result_t result;
 	qpzonedb_t *qpdb = (qpzonedb_t *)db;
 	qpznode_t *node = (qpznode_t *)dbnode;
-	qpz_version_t *version = (qpz_version_t *)dbversion;
+	qpz_transaction_t *transaction = (qpz_transaction_t *)dbversion;
+	qpz_version_t *version = NULL;
 	isc_region_t region;
 	dns_slabheader_t *newheader = NULL;
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 	isc_rwlock_t *nlock = NULL;
 	dns_fixedname_t fn;
 	dns_name_t *name = dns_fixedname_initname(&fn);
-	dns_qp_t *nsec = NULL;
 
 	REQUIRE(VALID_QPZONE(qpdb));
-	REQUIRE(version != NULL && version->qpdb == qpdb);
+	REQUIRE(VALID_TRANSACTION(db, transaction));
+	version = transaction->version;
 
 	/*
 	 * SOA records are only allowed at top of zone.
@@ -4636,17 +4813,10 @@ qpzone_addrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 	}
 
 	/*
-	 * Add to the auxiliary NSEC tree if we're adding an NSEC record.
-	 */
-	if (!node->havensec && rdataset->type == dns_rdatatype_nsec) {
-		dns_qpmulti_write(qpdb->tree, &nsec);
-	}
-
-	/*
-	 * If we're adding a delegation type or adding to the auxiliary NSEC
-	 * tree hold an exclusive lock on the tree.  In the latter case the
-	 * lock does not necessarily have to be acquired but it will help
-	 * purge ancient entries more effectively.
+	 * If we're adding a delegation type or adding to the auxiliary
+	 * NSEC tree hold an exclusive lock on the tree.  In the latter
+	 * case the lock does not necessarily have to be acquired but it
+	 * will help purge ancient entries more effectively.
 	 *
 	 * (Note: node lock must be acquired after starting
 	 * the QPDB transaction and released before committing.)
@@ -4656,7 +4826,11 @@ qpzone_addrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 	NODE_WRLOCK(nlock, &nlocktype);
 
 	result = ISC_R_SUCCESS;
-	if (nsec != NULL) {
+	/*
+	 * Add to the auxiliary NSEC tree if we're adding an NSEC
+	 * record.
+	 */
+	if (!node->havensec && rdataset->type == dns_rdatatype_nsec) {
 		node->havensec = true;
 
 		/*
@@ -4666,7 +4840,7 @@ qpzone_addrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 		 */
 		qpznode_t *nsecnode = new_qpznode(qpdb, name,
 						  DNS_DBNAMESPACE_NSEC);
-		(void)dns_qp_insert(nsec, nsecnode, 0);
+		(void)dns_qp_insert(transaction->qp.qpt, nsecnode, 0);
 		qpznode_detach(&nsecnode);
 	}
 
@@ -4687,10 +4861,6 @@ qpzone_addrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 
 	NODE_UNLOCK(nlock, &nlocktype);
 
-	if (nsec != NULL) {
-		dns_qpmulti_commit(qpdb->tree, &nsec);
-	}
-
 	return result;
 }
 
@@ -4701,7 +4871,8 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 			dns_rdataset_t *newrdataset DNS__DB_FLARG) {
 	qpzonedb_t *qpdb = (qpzonedb_t *)db;
 	qpznode_t *node = (qpznode_t *)dbnode;
-	qpz_version_t *version = (qpz_version_t *)dbversion;
+	qpz_transaction_t *transaction = (qpz_transaction_t *)dbversion;
+	qpz_version_t *version = NULL;
 	dns_fixedname_t fname;
 	dns_name_t *nodename = dns_fixedname_initname(&fname);
 	dns_slabtop_t *foundtop = NULL;
@@ -4714,7 +4885,8 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 	isc_rwlock_t *nlock;
 
 	REQUIRE(VALID_QPZONE(qpdb));
-	REQUIRE(version != NULL && version->qpdb == qpdb);
+	REQUIRE(VALID_TRANSACTION(db, transaction));
+	version = transaction->version;
 
 	REQUIRE((node->nspace == DNS_DBNAMESPACE_NSEC3 &&
 		 (rdataset->type == dns_rdatatype_nsec3 ||
@@ -4753,9 +4925,9 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 		}
 	}
 	/*
-	 * If header isn't NULL, we've found the right type.  There may be
-	 * IGNORE rdatasets between the top of the chain and the first real
-	 * data.  We skip over them.
+	 * If header isn't NULL, we've found the right type.  There may
+	 * be IGNORE rdatasets between the top of the chain and the
+	 * first real data.  We skip over them.
 	 */
 	dns_slabheader_t *header = NULL;
 	if (foundtop != NULL) {
@@ -4798,21 +4970,22 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 			}
 			/*
 			 * We have to set the serial since the rdataslab
-			 * subtraction routine copies the reserved portion of
-			 * header, not newheader.
+			 * subtraction routine copies the reserved
+			 * portion of header, not newheader.
 			 */
 			newheader->serial = version->serial;
 			/*
-			 * XXXJT: dns_rdataslab_subtract() copied the pointers
-			 * to additional info.  We need to clear these fields
-			 * to avoid having duplicated references.
+			 * XXXJT: dns_rdataslab_subtract() copied the
+			 * pointers to additional info.  We need to
+			 * clear these fields to avoid having duplicated
+			 * references.
 			 */
 			maybe_update_recordsandsize(true, version, newheader,
 						    nodename->length);
 		} else if (result == DNS_R_NXRRSET) {
 			/*
-			 * This subtraction would remove all of the rdata;
-			 * add a nonexistent header instead.
+			 * This subtraction would remove all of the
+			 * rdata; add a nonexistent header instead.
 			 */
 			dns_slabheader_destroy(&newheader);
 			newheader = dns_slabheader_new(db->mctx,
@@ -4841,8 +5014,8 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 		resigndelete(qpdb, version, header DNS__DB_FLARG_PASS);
 	} else {
 		/*
-		 * The rdataset doesn't exist, so we don't need to do anything
-		 * to satisfy the deletion request.
+		 * The rdataset doesn't exist, so we don't need to do
+		 * anything to satisfy the deletion request.
 		 */
 		dns_slabheader_destroy(&newheader);
 		if ((options & DNS_DBSUB_EXACT) != 0) {
@@ -4875,7 +5048,8 @@ qpzone_deleterdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 		      dns_rdatatype_t covers DNS__DB_FLARG) {
 	qpzonedb_t *qpdb = (qpzonedb_t *)db;
 	qpznode_t *node = (qpznode_t *)dbnode;
-	qpz_version_t *version = (qpz_version_t *)dbversion;
+	qpz_transaction_t *transaction = (qpz_transaction_t *)dbversion;
+	qpz_version_t *version = NULL;
 	dns_fixedname_t fname;
 	dns_name_t *nodename = dns_fixedname_initname(&fname);
 	isc_result_t result;
@@ -4884,7 +5058,8 @@ qpzone_deleterdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 	isc_rwlock_t *nlock = NULL;
 
 	REQUIRE(VALID_QPZONE(qpdb));
-	REQUIRE(version != NULL && version->qpdb == qpdb);
+	REQUIRE(VALID_TRANSACTION(db, transaction));
+	version = transaction->version;
 
 	if (type == dns_rdatatype_any) {
 		return ISC_R_NOTIMPLEMENTED;
@@ -5014,12 +5189,13 @@ glue_nsdname_cb(void *arg, const dns_name_t *name, dns_rdatatype_t qtype,
 	}
 
 	/*
-	 * If the currently processed NS record is in-bailiwick, mark any glue
-	 * RRsets found for it with 'required' attribute.  Note that for
-	 * simplicity, glue RRsets for all in-bailiwick NS records are marked
-	 * this way, even though dns_message_rendersection() only checks the
-	 * attributes for the first rdataset associated with the first name
-	 * added to the ADDITIONAL section.
+	 * If the currently processed NS record is in-bailiwick, mark
+	 * any glue RRsets found for it with 'required' attribute.  Note
+	 * that for simplicity, glue RRsets for all in-bailiwick NS
+	 * records are marked this way, even though
+	 * dns_message_rendersection() only checks the attributes for
+	 * the first rdataset associated with the first name added to
+	 * the ADDITIONAL section.
 	 */
 	if (glue != NULL && dns_name_issubdomain(name, &node->name)) {
 		if (dns_rdataset_isassociated(&glue->rdataset_a)) {
@@ -5123,14 +5299,15 @@ addglue_to_message(dns_glue_t *ge, dns_message_t *msg) {
 		dns_message_addname(msg, name, DNS_SECTION_ADDITIONAL);
 
 		/*
-		 * When looking for required glue, dns_message_rendersection()
-		 * only processes the first rdataset associated with the first
-		 * name added to the ADDITIONAL section.  dns_message_addname()
-		 * performs an append on the list of names in a given section,
-		 * so if any glue record was marked as required, we need to
-		 * move the name it is associated with to the beginning of the
-		 * list for the ADDITIONAL section or else required glue might
-		 * not be rendered.
+		 * When looking for required glue,
+		 * dns_message_rendersection() only processes the first
+		 * rdataset associated with the first name added to the
+		 * ADDITIONAL section.  dns_message_addname() performs
+		 * an append on the list of names in a given section, so
+		 * if any glue record was marked as required, we need to
+		 * move the name it is associated with to the beginning
+		 * of the list for the ADDITIONAL section or else
+		 * required glue might not be rendered.
 		 */
 		if (prepend_name) {
 			ISC_LIST_UNLINK(msg->sections[DNS_SECTION_ADDITIONAL],
@@ -5142,12 +5319,12 @@ addglue_to_message(dns_glue_t *ge, dns_message_t *msg) {
 }
 
 static dns_gluelist_t *
-create_gluelist(qpzonedb_t *qpdb, qpz_version_t *version, qpznode_t *node,
-		dns_rdataset_t *rdataset) {
+create_gluelist(qpzonedb_t *qpdb, qpz_transaction_t *transaction,
+		qpznode_t *node, dns_rdataset_t *rdataset) {
 	dns_slabheader_t *header = dns_rdataset_getheader(rdataset);
 	dns_glue_additionaldata_ctx_t ctx = {
 		.db = (dns_db_t *)qpdb,
-		.version = (dns_dbversion_t *)version,
+		.version = (dns_dbversion_t *)transaction,
 		.node = (dns_dbnode_t *)node,
 	};
 	dns_gluelist_t *gluelist = new_gluelist(ctx.db, header, ctx.version);
@@ -5171,7 +5348,8 @@ static void
 addglue(dns_db_t *db, dns_dbversion_t *dbversion, dns_rdataset_t *rdataset,
 	dns_message_t *msg) {
 	qpzonedb_t *qpdb = (qpzonedb_t *)db;
-	qpz_version_t *version = (qpz_version_t *)dbversion;
+	qpz_transaction_t *transaction = (qpz_transaction_t *)dbversion;
+	qpz_version_t *version = NULL;
 	qpznode_t *node = (qpznode_t *)rdataset->slab.node;
 	dns_slabheader_t *header = dns_rdataset_getheader(rdataset);
 	dns_glue_t *glue = NULL;
@@ -5179,8 +5357,11 @@ addglue(dns_db_t *db, dns_dbversion_t *dbversion, dns_rdataset_t *rdataset,
 
 	REQUIRE(rdataset->type == dns_rdatatype_ns);
 	REQUIRE(qpdb == (qpzonedb_t *)rdataset->slab.db);
-	REQUIRE(qpdb == version->qpdb);
 	REQUIRE(!IS_STUB(qpdb));
+	REQUIRE(VALID_TRANSACTION(db, transaction));
+	version = transaction->version;
+
+	REQUIRE(qpdb == version->qpdb);
 
 	rcu_read_lock();
 
@@ -5190,8 +5371,8 @@ addglue(dns_db_t *db, dns_dbversion_t *dbversion, dns_rdataset_t *rdataset,
 
 		dns_gluelist_t *xchg_gluelist = gluelist;
 		dns_gluelist_t *old_gluelist = (void *)-1;
-		dns_gluelist_t *new_gluelist = create_gluelist(qpdb, version,
-							       node, rdataset);
+		dns_gluelist_t *new_gluelist =
+			create_gluelist(qpdb, transaction, node, rdataset);
 
 		while (old_gluelist != xchg_gluelist &&
 		       (xchg_gluelist == NULL ||
@@ -5250,10 +5431,11 @@ static dns_dbmethods_t qpdb_zonemethods = {
 	.destroy = qpdb_destroy,
 	.beginload = beginload,
 	.endload = endload,
-	.currentversion = currentversion,
-	.newversion = newversion,
-	.attachversion = attachversion,
-	.closeversion = closeversion,
+	.currentversion = readtransaction,
+	.snapshotversion = snapshottransaction,
+	.newversion = writetransaction,
+	.attachversion = attachtransaction,
+	.closeversion = closetransaction,
 	.findnode = qpzone_findnode,
 	.find = qpzone_find,
 	.createiterator = qpzone_createiterator,
@@ -5334,3 +5516,5 @@ static void
 qp_triename(void *uctx ISC_ATTR_UNUSED, char *buf, size_t size) {
 	snprintf(buf, size, "QPDB");
 }
+
+ISC_REFCOUNT_STATIC_IMPL(qpz_transaction, qpz_transaction_destroy);

@@ -1571,7 +1571,14 @@ dumpctx_create(isc_mem_t *mctx, dns_db_t *db, dns_dbversion_t *version,
 	}
 
 	dctx->now = isc_stdtime_now();
+
 	dns_db_attach(db, &dctx->db);
+
+	if (version != NULL) {
+		dns_db_attachversion(dctx->db, version, &dctx->version);
+	} else if (!dns_db_iscache(db)) {
+		dns_db_snapshotversion(dctx->db, &dctx->version);
+	}
 
 	dctx->do_date = dns_db_iscache(dctx->db);
 	if (dctx->do_date) {
@@ -1586,18 +1593,14 @@ dumpctx_create(isc_mem_t *mctx, dns_db_t *db, dns_dbversion_t *version,
 	} else {
 		options = 0;
 	}
-	result = dns_db_createiterator(dctx->db, options, &dctx->dbiter);
+
+	result = dns_db_createiterator(dctx->db, dctx->version, options,
+				       &dctx->dbiter);
 	if (result != ISC_R_SUCCESS) {
 		goto cleanup;
 	}
 
 	isc_mutex_init(&dctx->lock);
-
-	if (version != NULL) {
-		dns_db_attachversion(dctx->db, version, &dctx->version);
-	} else if (!dns_db_iscache(db)) {
-		dns_db_currentversion(dctx->db, &dctx->version);
-	}
 	isc_mem_attach(mctx, &dctx->mctx);
 
 	isc_refcount_init(&dctx->references, 1);

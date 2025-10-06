@@ -594,7 +594,7 @@ foreach_rrset(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 	dns_db_closeversion(db, &oldver, false);
 
 	node = NULL;
-	result = dns_db_findnodeext(db, name, false, &cm, &ci, &node);
+	result = dns_db_findnodeext(db, name, ver, false, &cm, &ci, &node);
 	if (result == ISC_R_NOTFOUND) {
 		return ISC_R_SUCCESS;
 	}
@@ -684,9 +684,10 @@ foreach_rr(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 	if (type == dns_rdatatype_nsec3 ||
 	    (type == dns_rdatatype_rrsig && covers == dns_rdatatype_nsec3))
 	{
-		result = dns_db_findnsec3node(db, name, false, &node);
+		result = dns_db_findnsec3node(db, name, ver, false, &node);
 	} else {
-		result = dns_db_findnodeext(db, name, false, &cm, &ci, &node);
+		result = dns_db_findnodeext(db, name, ver, false, &cm, &ci,
+					    &node);
 	}
 	if (result == ISC_R_NOTFOUND) {
 		return ISC_R_SUCCESS;
@@ -1120,7 +1121,7 @@ temp_check(isc_mem_t *mctx, dns_diff_t *temp, dns_db_t *db,
 
 		/* A new unique name begins here. */
 		node = NULL;
-		result = dns_db_findnode(db, name, false, &node);
+		result = dns_db_findnode(db, name, ver, false, &node);
 		if (result == ISC_R_NOTFOUND) {
 			dns_diff_clear(&trash);
 			return DNS_R_NXRRSET;
@@ -2157,9 +2158,9 @@ rr_exists(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 
 	dns_rdataset_init(&rdataset);
 	if (rdata->type == dns_rdatatype_nsec3) {
-		result = dns_db_findnsec3node(db, name, false, &node);
+		result = dns_db_findnsec3node(db, name, ver, false, &node);
 	} else {
-		result = dns_db_findnode(db, name, false, &node);
+		result = dns_db_findnode(db, name, ver, false, &node);
 	}
 	if (result == ISC_R_NOTFOUND) {
 		*flag = false;

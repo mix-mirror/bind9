@@ -5324,7 +5324,7 @@ cache_rrset(fetchctx_t *fctx, isc_stdtime_t now, dns_name_t *name,
 	if (nodep != NULL && *nodep != NULL) {
 		dns_db_attachnode(*nodep, &node);
 	} else {
-		result = dns_db_findnode(fctx->cache, name, true, &node);
+		result = dns_db_findnode(fctx->cache, name, NULL, true, &node);
 	}
 
 	if (result == ISC_R_SUCCESS) {
@@ -5368,7 +5368,7 @@ delete_rrset(fetchctx_t *fctx, dns_name_t *name, dns_rdatatype_t type) {
 	isc_result_t result;
 	dns_dbnode_t *node = NULL;
 
-	result = dns_db_findnode(fctx->cache, name, false, &node);
+	result = dns_db_findnode(fctx->cache, name, NULL, false, &node);
 	if (result != ISC_R_SUCCESS) {
 		return;
 	}
@@ -6025,7 +6025,7 @@ rctx_cachename(respctx_t *rctx, dns_message_t *message, dns_name_t *name) {
 	/*
 	 * Find or create the cache node.
 	 */
-	result = dns_db_findnode(fctx->cache, name, true, &node);
+	result = dns_db_findnode(fctx->cache, name, NULL, true, &node);
 	if (result != ISC_R_SUCCESS) {
 		return result;
 	}
@@ -6205,7 +6205,7 @@ negcache(dns_message_t *message, fetchctx_t *fctx, const dns_name_t *name,
 	/*
 	 * Cache the negative entry.
 	 */
-	result = dns_db_findnode(fctx->cache, name, true, &node);
+	result = dns_db_findnode(fctx->cache, name, NULL, true, &node);
 	if (result != ISC_R_SUCCESS) {
 		return result;
 	}

@@ -247,7 +247,7 @@ load_db(const char *filename, dns_db_t **dbp, dns_dbnode_t **nodep) {
 		fatal("can't load %s: %s", filename, isc_result_totext(result));
 	}
 
-	result = dns_db_findnode(*dbp, name, false, nodep);
+	result = dns_db_findnode(*dbp, name, NULL, false, nodep);
 	if (result != ISC_R_SUCCESS) {
 		fatal("can't find %s node in %s", namestr, filename);
 	}
@@ -967,7 +967,8 @@ update_diff(const char *cmd, uint32_t ttl, dns_rdataset_t *addset,
 	result = dns_db_newversion(update_db, &update_version);
 	check_result(result, "dns_db_newversion()");
 
-	result = dns_db_findnode(update_db, name, true, &update_node);
+	result = dns_db_findnode(update_db, name, update_version, true,
+				 &update_node);
 	check_result(result, "dns_db_findnode()");
 
 	dns_rdataset_init(&diffset);

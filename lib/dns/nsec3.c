@@ -346,7 +346,7 @@ name_exists(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
 	dns_dbnode_t *node = NULL;
 	dns_rdatasetiter_t *iter = NULL;
 
-	result = dns_db_findnode(db, name, false, &node);
+	result = dns_db_findnode(db, name, version, false, &node);
 	if (result == ISC_R_NOTFOUND) {
 		*exists = false;
 		return ISC_R_SUCCESS;
@@ -403,7 +403,7 @@ delnsec3(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
 	dns_rdataset_t rdataset;
 	isc_result_t result;
 
-	result = dns_db_findnsec3node(db, name, false, &node);
+	result = dns_db_findnsec3node(db, name, version, false, &node);
 	if (result == ISC_R_NOTFOUND) {
 		return ISC_R_SUCCESS;
 	}
@@ -579,12 +579,12 @@ dns_nsec3_addnsec3(dns_db_t *db, dns_dbversion_t *version,
 	 * Create the node if it doesn't exist and hold
 	 * a reference to it until we have added the NSEC3.
 	 */
-	CHECK(dns_db_findnsec3node(db, hashname, true, &newnode));
+	CHECK(dns_db_findnsec3node(db, hashname, version, true, &newnode));
 
 	/*
 	 * Seek the iterator to the 'newnode'.
 	 */
-	CHECK(dns_db_createiterator(db, DNS_DB_NSEC3ONLY, &dbit));
+	CHECK(dns_db_createiterator(db, version, DNS_DB_NSEC3ONLY, &dbit));
 	CHECK(dns_dbiterator_seek(dbit, hashname));
 	CHECK(dns_dbiterator_pause(dbit));
 	result = dns_db_findrdataset(db, newnode, version, dns_rdatatype_nsec3,
@@ -708,7 +708,7 @@ addnsec3:
 	/*
 	 * Create the NSEC3 RDATA.
 	 */
-	CHECK(dns_db_findnode(db, name, false, &node));
+	CHECK(dns_db_findnode(db, name, version, false, &node));
 	CHECK(dns_nsec3_buildrdata(db, version, node, hash, flags, iterations,
 				   salt, salt_length, nexthash, next_length,
 				   nsec3buf, &rdata));
@@ -752,7 +752,8 @@ addnsec3:
 		 * a reference to it until we have added the NSEC3
 		 * or we discover we don't need to make a change.
 		 */
-		CHECK(dns_db_findnsec3node(db, hashname, true, &newnode));
+		CHECK(dns_db_findnsec3node(db, hashname, version, true,
+					   &newnode));
 		result = dns_db_findrdataset(db, newnode, version,
 					     dns_rdatatype_nsec3, 0,
 					     (isc_stdtime_t)0, &rdataset, NULL);
@@ -772,8 +773,8 @@ addnsec3:
 			 * the node's predecessor.
 			 */
 			dns_dbiterator_destroy(&dbit);
-			CHECK(dns_db_createiterator(db, DNS_DB_NSEC3ONLY,
-						    &dbit));
+			CHECK(dns_db_createiterator(db, version,
+						    DNS_DB_NSEC3ONLY, &dbit));
 		}
 
 		/*
@@ -984,7 +985,7 @@ dns_nsec3param_toprivate(dns_rdata_t *src, dns_rdata_t *target,
 }
 
 static isc_result_t
-rr_exists(dns_db_t *db, dns_dbversion_t *ver, const dns_name_t *name,
+rr_exists(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
 	  const dns_rdata_t *rdata, bool *flag) {
 	dns_rdataset_t rdataset;
 	dns_dbnode_t *node = NULL;
@@ -992,11 +993,11 @@ rr_exists(dns_db_t *db, dns_dbversion_t *ver, const dns_name_t *name,
 
 	dns_rdataset_init(&rdataset);
 	if (rdata->type == dns_rdatatype_nsec3) {
-		CHECK(dns_db_findnsec3node(db, name, false, &node));
+		CHECK(dns_db_findnsec3node(db, name, version, false, &node));
 	} else {
-		CHECK(dns_db_findnode(db, name, false, &node));
+		CHECK(dns_db_findnode(db, name, version, false, &node));
 	}
-	result = dns_db_findrdataset(db, node, ver, rdata->type, 0,
+	result = dns_db_findrdataset(db, node, version, rdata->type, 0,
 				     (isc_stdtime_t)0, &rdataset, NULL);
 	if (result == ISC_R_NOTFOUND) {
 		*flag = false;
@@ -1374,7 +1375,7 @@ dns_nsec3_delnsec3(dns_db_t *db, dns_dbversion_t *version,
 	CHECK(dns_nsec3_hashname(&fixed, nexthash, &next_length, name, origin,
 				 hash, iterations, salt, salt_length));
 
-	CHECK(dns_db_createiterator(db, DNS_DB_NSEC3ONLY, &dbit));
+	CHECK(dns_db_createiterator(db, version, DNS_DB_NSEC3ONLY, &dbit));
 
 	result = dns_dbiterator_seek(dbit, hashname);
 	if (result == ISC_R_NOTFOUND || result == DNS_R_PARTIALMATCH) {

@@ -336,9 +336,10 @@ diff_apply(const dns_diff_t *diff, dns_db_t *db, dns_dbversion_t *ver,
 			if (type != dns_rdatatype_nsec3 &&
 			    covers != dns_rdatatype_nsec3)
 			{
-				CHECK(dns_db_findnode(db, name, true, &node));
+				CHECK(dns_db_findnode(db, name, ver, true,
+						      &node));
 			} else {
-				CHECK(dns_db_findnsec3node(db, name, true,
+				CHECK(dns_db_findnsec3node(db, name, ver, true,
 							   &node));
 			}
 

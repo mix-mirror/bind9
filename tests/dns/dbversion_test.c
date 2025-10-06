@@ -102,7 +102,6 @@ teardown_test(void **state) {
 	if (strcmp(tempname, "dtXXXXXXXX") != 0) {
 		unlink(tempname);
 	}
-
 	if (v1 != NULL) {
 		dns_db_closeversion(db1, &v1, false);
 		assert_null(v1);
@@ -111,7 +110,6 @@ teardown_test(void **state) {
 		dns_db_detach(&db1);
 		assert_null(db1);
 	}
-
 	if (v2 != NULL) {
 		dns_db_closeversion(db2, &v2, false);
 		assert_null(v2);
@@ -122,23 +120,6 @@ teardown_test(void **state) {
 	}
 
 	return 0;
-}
-
-/*
- * Check dns_db_attachversion() passes with matching db and version, and
- * asserts with mis-matching db and version.
- */
-ISC_RUN_TEST_IMPL(attachversion) {
-	dns_dbversion_t *v = NULL;
-
-	UNUSED(state);
-
-	dns_db_attachversion(db1, v1, &v);
-	assert_ptr_equal(v, v1);
-	dns_db_closeversion(db1, &v, false);
-	assert_null(v);
-
-	check_assertion(dns_db_attachversion(db1, v2, &v));
 }
 
 /*
@@ -202,7 +183,7 @@ ISC_RUN_TEST_IMPL(allrdatasets) {
 
 	UNUSED(state);
 
-	res = dns_db_findnode(db1, dns_rootname, false, &node);
+	res = dns_db_findnode(db1, dns_rootname, v1, false, &node);
 	assert_int_equal(res, ISC_R_SUCCESS);
 
 	res = dns_db_allrdatasets(db1, node, v1, 0, 0, &iterator);
@@ -228,7 +209,7 @@ ISC_RUN_TEST_IMPL(findrdataset) {
 
 	UNUSED(state);
 
-	res = dns_db_findnode(db1, dns_rootname, false, &node);
+	res = dns_db_findnode(db1, dns_rootname, v1, false, &node);
 	assert_int_equal(res, ISC_R_SUCCESS);
 
 	dns_rdataset_init(&rdataset);
@@ -258,7 +239,7 @@ ISC_RUN_TEST_IMPL(deleterdataset) {
 
 	UNUSED(state);
 
-	res = dns_db_findnode(db1, dns_rootname, false, &node);
+	res = dns_db_findnode(db1, dns_rootname, v1, false, &node);
 	assert_int_equal(res, ISC_R_SUCCESS);
 
 	res = dns_db_deleterdataset(db1, node, v1, dns_rdatatype_soa, 0);
@@ -299,7 +280,7 @@ ISC_RUN_TEST_IMPL(subtract) {
 
 	dns_rdatalist_tordataset(&rdatalist, &rdataset);
 
-	res = dns_db_findnode(db1, dns_rootname, false, &node);
+	res = dns_db_findnode(db1, dns_rootname, v1, false, &node);
 	assert_int_equal(res, ISC_R_SUCCESS);
 
 	res = dns_db_subtractrdataset(db1, node, v1, &rdataset, 0, NULL);
@@ -348,7 +329,7 @@ ISC_RUN_TEST_IMPL(addrdataset) {
 
 	dns_rdatalist_tordataset(&rdatalist, &rdataset);
 
-	res = dns_db_findnode(db1, dns_rootname, false, &node);
+	res = dns_db_findnode(db1, dns_rootname, v1, false, &node);
 	assert_int_equal(res, ISC_R_SUCCESS);
 
 	res = dns_db_addrdataset(db1, node, v1, 0, &rdataset, 0, NULL);
@@ -429,7 +410,7 @@ ISC_RUN_TEST_IMPL(rollback) {
 	dns_rdatalist_tordataset(&rdatalist2, &input2);
 
 	/* db1: Insert the first version ("text 1"), and commit */
-	res = dns_db_findnode(db1, dns_rootname, true, &node);
+	res = dns_db_findnode(db1, dns_rootname, v1, true, &node);
 	assert_int_equal(res, ISC_R_SUCCESS);
 	res = dns_db_addrdataset(db1, node, v1, 0, &input1, 0, NULL);
 	assert_int_equal(res, ISC_R_SUCCESS);
@@ -439,7 +420,7 @@ ISC_RUN_TEST_IMPL(rollback) {
 	assert_null(node);
 
 	/* db2: Insert the first version ("text 1"), and commit */
-	res = dns_db_findnode(db2, dns_rootname, true, &node);
+	res = dns_db_findnode(db2, dns_rootname, v2, true, &node);
 	assert_int_equal(res, ISC_R_SUCCESS);
 	res = dns_db_addrdataset(db2, node, v2, 0, &input1, 0, NULL);
 	assert_int_equal(res, ISC_R_SUCCESS);
@@ -455,7 +436,7 @@ ISC_RUN_TEST_IMPL(rollback) {
 	assert_non_null(v2);
 
 	/* db1: Insert the second version ("text 2"), and roll back */
-	res = dns_db_findnode(db1, dns_rootname, true, &node);
+	res = dns_db_findnode(db1, dns_rootname, v1, true, &node);
 	assert_int_equal(res, ISC_R_SUCCESS);
 	res = dns_db_addrdataset(db1, node, v1, 0, &input2, 0, NULL);
 	assert_int_equal(res, ISC_R_SUCCESS);
@@ -465,7 +446,7 @@ ISC_RUN_TEST_IMPL(rollback) {
 	assert_null(node);
 
 	/* db2: Insert the second version ("text 2"), and commit */
-	res = dns_db_findnode(db2, dns_rootname, true, &node);
+	res = dns_db_findnode(db2, dns_rootname, v2, true, &node);
 	assert_int_equal(res, ISC_R_SUCCESS);
 	res = dns_db_addrdataset(db2, node, v2, 0, &input2, 0, NULL);
 	assert_int_equal(res, ISC_R_SUCCESS);
@@ -477,7 +458,7 @@ ISC_RUN_TEST_IMPL(rollback) {
 	/* db1: Look it up and check that the first version is found */
 	dns_db_currentversion(db1, &v1);
 	assert_non_null(v1);
-	res = dns_db_findnode(db1, dns_rootname, true, &node);
+	res = dns_db_findnode(db1, dns_rootname, v1, true, &node);
 	assert_int_equal(res, ISC_R_SUCCESS);
 	res = dns_db_findrdataset(db1, node, v1, dns_rdatatype_txt, 0, 0,
 				  &rdataset1, NULL);
@@ -505,7 +486,7 @@ ISC_RUN_TEST_IMPL(rollback) {
 	/* db2: Look it up and check that the second version is found */
 	dns_db_currentversion(db2, &v2);
 	assert_non_null(v2);
-	res = dns_db_findnode(db2, dns_rootname, true, &node);
+	res = dns_db_findnode(db2, dns_rootname, v2, true, &node);
 	assert_int_equal(res, ISC_R_SUCCESS);
 	res = dns_db_findrdataset(db2, node, v2, dns_rdatatype_txt, 0, 0,
 				  &rdataset2, NULL);
@@ -539,7 +520,6 @@ ISC_TEST_ENTRY_CUSTOM(deleterdataset, setup_test, teardown_test)
 ISC_TEST_ENTRY_CUSTOM(subtract, setup_test, teardown_test)
 ISC_TEST_ENTRY_CUSTOM(addrdataset, setup_test, teardown_test)
 ISC_TEST_ENTRY_CUSTOM(getnsec3parameters, setup_test, teardown_test)
-ISC_TEST_ENTRY_CUSTOM(attachversion, setup_test, teardown_test)
 ISC_TEST_ENTRY_CUSTOM(closeversion, setup_test, teardown_test)
 ISC_TEST_ENTRY_CUSTOM(rollback, setup_test, teardown_test)
 ISC_TEST_LIST_END

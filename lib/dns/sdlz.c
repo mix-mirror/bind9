@@ -619,7 +619,8 @@ getnodedata(dns_db_t *db, const dns_name_t *name, bool create,
 }
 
 static isc_result_t
-findnode(dns_db_t *db, const dns_name_t *name, bool create,
+findnode(dns_db_t *db, const dns_name_t *name,
+	 dns_dbversion_t *dbversion ISC_ATTR_UNUSED, bool create,
 	 dns_clientinfomethods_t *methods, dns_clientinfo_t *clientinfo,
 	 dns_dbnode_t **nodep DNS__DB_FLARG) {
 	return getnodedata(db, name, create, 0, methods, clientinfo, nodep);
@@ -666,7 +667,7 @@ sdlznode_detachnode(dns_dbnode_t **targetp DNS__DB_FLARG) {
 }
 
 static isc_result_t
-createiterator(dns_db_t *db, unsigned int options,
+createiterator(dns_db_t *db, dns_dbversion_t *dbversion, unsigned int options,
 	       dns_dbiterator_t **iteratorp) {
 	dns_sdlz_db_t *sdlz = (dns_sdlz_db_t *)db;
 	sdlz_dbiterator_t *sdlziter;
@@ -697,8 +698,8 @@ createiterator(dns_db_t *db, unsigned int options,
 	sdlziter = isc_mem_get(sdlz->common.mctx, sizeof(sdlz_dbiterator_t));
 
 	sdlziter->common.methods = &dbiterator_methods;
-	sdlziter->common.db = NULL;
-	dns_db_attach(db, &sdlziter->common.db);
+	sdlziter->common.db = db;
+	sdlziter->common.version = dbversion;
 	sdlziter->common.relative_names = ((options & DNS_DB_RELATIVENAMES) !=
 					   0);
 	sdlziter->common.magic = DNS_DBITERATOR_MAGIC;
@@ -1096,6 +1097,7 @@ static dns_dbmethods_t sdlzdb_methods = {
 	.destroy = destroy,
 	.currentversion = currentversion,
 	.newversion = newversion,
+	.snapshotversion = currentversion,
 	.attachversion = attachversion,
 	.closeversion = closeversion,
 	.findnode = findnode,
@@ -1126,6 +1128,8 @@ dbiterator_destroy(dns_dbiterator_t **iteratorp DNS__DB_FLARG) {
 		destroynode(node);
 	}
 
+	dns_db_closeversion(sdlziter->common.db, &sdlziter->common.version,
+			    false);
 	dns_db_detach(&sdlziter->common.db);
 	isc_mem_put(sdlz->common.mctx, sdlziter, sizeof(sdlz_dbiterator_t));
 

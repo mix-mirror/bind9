@@ -132,7 +132,7 @@ dns_db_createsoatuple(dns_db_t *db, dns_dbversion_t *ver, isc_mem_t *mctx,
 	dns_name_copy(dns_db_origin(db), zonename);
 
 	node = NULL;
-	result = dns_db_findnode(db, zonename, false, &node);
+	result = dns_db_findnode(db, zonename, ver, false, &node);
 	if (result != ISC_R_SUCCESS) {
 		goto nonode;
 	}
@@ -2269,11 +2269,11 @@ diff_namespace(dns_db_t *dba, dns_dbversion_t *dbvera, dns_db_t *dbb,
 	dns_fixedname_init(&fixname[0]);
 	dns_fixedname_init(&fixname[1]);
 
-	result = dns_db_createiterator(db[0], options, &dbit[0]);
+	result = dns_db_createiterator(db[0], ver[0], options, &dbit[0]);
 	if (result != ISC_R_SUCCESS) {
 		return result;
 	}
-	result = dns_db_createiterator(db[1], options, &dbit[1]);
+	result = dns_db_createiterator(db[1], ver[1], options, &dbit[1]);
 	if (result != ISC_R_SUCCESS) {
 		goto cleanup_iterator;
 	}
