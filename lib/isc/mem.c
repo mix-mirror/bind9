@@ -208,6 +208,10 @@ add_trace_entry(isc_mem_t *mctx, const void *ptr, size_t size FLARG) {
 	uint32_t hash;
 	uint32_t idx;
 
+	if (file == NULL) {
+		file = "<unknown>";
+	}
+
 	/*
 	 * "file" needs to be copied because it can be part of a dynamically
 	 * loaded plugin which would be unloaded at the time the trace is

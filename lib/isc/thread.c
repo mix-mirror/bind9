@@ -30,6 +30,8 @@
 
 #include <stdlib.h>
 
+#include <openssl/crypto.h>
+
 #include <isc/atomic.h>
 #include <isc/iterated_hash.h>
 #include <isc/strerr.h>
@@ -85,6 +87,8 @@ thread_body(struct thread_wrap *wrap) {
 	free(wrap);
 
 	ret = func(arg);
+
+	OPENSSL_thread_stop();
 
 	return ret;
 }
