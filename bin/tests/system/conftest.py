@@ -684,3 +684,9 @@ def ns9(servers):
 @pytest.fixture(scope="module")
 def ns10(servers):
     return servers["ns10"]
+
+
+@pytest.fixture(autouse=True)
+def rndc_checkpoint(servers, request):
+    for ns in servers.values():
+        ns.rndc(f"null {request.node.name}")
