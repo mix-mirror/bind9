@@ -691,4 +691,17 @@ dns_trust_totext(dns_trust_t trust);
  * Display trust in textual form.
  */
 
+isc_stdtime_t
+dns_rdataset_minresign(dns_rdataset_t *rdataset);
+/*%<
+ * Return the minimum resign time from an RRSIG rdataset.
+ *
+ * This function iterates through all RRSIG records in the rdataset
+ * and returns the earliest expiration time, which indicates when
+ * the signatures should be resigned.
+ *
+ * Requires:
+ * \li	'rdataset' is a valid rdataset.
+ */
+
 ISC_LANG_ENDDECLS
