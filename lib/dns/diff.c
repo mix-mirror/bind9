@@ -203,41 +203,6 @@ dns_diff_appendminimal(dns_diff_t *diff, dns_difftuple_t **tuplep) {
 	}
 }
 
-static isc_stdtime_t
-setresign(dns_rdataset_t *modified) {
-	dns_rdata_t rdata = DNS_RDATA_INIT;
-	dns_rdata_rrsig_t sig;
-	int64_t when;
-	isc_result_t result;
-
-	result = dns_rdataset_first(modified);
-	INSIST(result == ISC_R_SUCCESS);
-	dns_rdataset_current(modified, &rdata);
-	(void)dns_rdata_tostruct(&rdata, &sig, NULL);
-	if ((rdata.flags & DNS_RDATA_OFFLINE) != 0) {
-		when = 0;
-	} else {
-		when = dns_time64_from32(sig.timeexpire);
-	}
-	dns_rdata_reset(&rdata);
-
-	result = dns_rdataset_next(modified);
-	while (result == ISC_R_SUCCESS) {
-		dns_rdataset_current(modified, &rdata);
-		(void)dns_rdata_tostruct(&rdata, &sig, NULL);
-		if ((rdata.flags & DNS_RDATA_OFFLINE) != 0) {
-			goto next_rr;
-		}
-		if (when == 0 || dns_time64_from32(sig.timeexpire) < when) {
-			when = dns_time64_from32(sig.timeexpire);
-		}
-	next_rr:
-		dns_rdata_reset(&rdata);
-		result = dns_rdataset_next(modified);
-	}
-	INSIST(result == ISC_R_NOMORE);
-	return (isc_stdtime_t)when;
-}
 
 static void
 getownercase(dns_rdataset_t *rdataset, dns_name_t *name) {
@@ -407,7 +372,7 @@ diff_apply(const dns_diff_t *diff, dns_db_t *db, dns_dbversion_t *ver,
 				     op == DNS_DIFFOP_ADDRESIGN))
 				{
 					isc_stdtime_t resign;
-					resign = setresign(&ardataset);
+					resign = dns_rdataset_minresign(&ardataset);
 					dns_db_setsigningtime(db, &ardataset,
 							      resign);
 				}
