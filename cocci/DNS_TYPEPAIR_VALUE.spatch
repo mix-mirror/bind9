@@ -1,7 +1,6 @@
+@replacement@
+expression e;
 @@
-identifier RRSIG = dns_rdatatype_rrsig;
-expression T;
-@@
-
-- DNS_TYPEPAIR_VALUE(RRSIG, T)
-+ DNS_SIGTYPE(T)
+-DNS_TYPEPAIR_VALUE(dns_rdatatype_rrsig,
++DNS_SIGTYPE(
+             e)

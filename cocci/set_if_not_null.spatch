@@ -1,14 +1,15 @@
-@@
+@replacement@
 type T;
-identifier fun;
-identifier arg;
+identifier fun, arg;
 expression val;
 @@
-	fun(..., T *arg, ...) {
-		...
--		if (arg != NULL) {
--				*arg = val;
--		}
-+		SET_IF_NOT_NULL(arg, val);
-		...
-	}
+ fun(..., T *arg, ...)
+ {
+ <+...
+-   if (arg != NULL)
+-   {
+-      *arg = val;
+-   }
++   SET_IF_NOT_NULL(arg, val);
+ ...+>
+ }
