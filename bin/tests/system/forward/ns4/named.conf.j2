@@ -33,7 +33,9 @@ options {
 
 };
 
+{% if FEATURE_JSON_C == "1" %}
 statistics-channels { inet 10.53.0.4 port @EXTRAPORT1@ allow { localhost; }; };
+{% endif %}
 
 zone "." {
 	type hint;
