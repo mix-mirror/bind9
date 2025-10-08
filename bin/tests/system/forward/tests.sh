@@ -170,12 +170,16 @@ status=$((status + ret))
 # GL#1793
 n=$((n + 1))
 echo_i "checking that the correct counter is increased because of the SERVFAIL in the previous check ($n)"
-ret=0
-"${CURL}" "http://10.53.0.4:${EXTRAPORT1}/json/v1" 2>/dev/null >statschannel.out.$n
-grep -F '"ServerQuota"' statschannel.out.$n >/dev/null && ret=1
-grep -F '"ForwardOnlyFail":1' statschannel.out.$n >/dev/null || ret=1
-if [ $ret != 0 ]; then echo_i "failed"; fi
-status=$((status + ret))
+if $FEATURETEST --have-json-c && [ -x ${CURL} ]; then
+  ret=0
+  "${CURL}" "http://10.53.0.4:${EXTRAPORT1}/json/v1" 2>/dev/null >statschannel.out.$n
+  grep -F '"ServerQuota"' statschannel.out.$n >/dev/null && ret=1
+  grep -F '"ForwardOnlyFail":1' statschannel.out.$n >/dev/null || ret=1
+  if [ $ret != 0 ]; then echo_i "failed"; fi
+  status=$((status + ret))
+else
+  echo_i "skipping test as libjson-c and/or curl was not found"
+fi
 
 n=$((n + 1))
 echo_i "checking for negative caching of forwarder response ($n)"
