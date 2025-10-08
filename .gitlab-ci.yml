@@ -1236,6 +1236,30 @@ unit:gcc:trixie:amd64:
     - job: gcc:trixie:amd64
       artifacts: true
 
+# Minimal jobs for regular GCC builds on Debian 13 "trixie" (amd64)
+
+minimal:gcc:trixie:amd64:
+  variables:
+    CC: gcc
+    CFLAGS: "${CFLAGS_COMMON}"
+    EXTRA_CONFIGURE: "-Dauto_features=disabled -Dcmocka=enabled -Ddeveloper=disabled -Doptimization=s"
+  <<: *debian_trixie_amd64_image
+  <<: *build_job
+
+system:minimal:gcc:trixie:amd64:
+  <<: *debian_trixie_amd64_image
+  <<: *system_test_job
+  needs:
+    - job: minimal:gcc:trixie:amd64
+      artifacts: true
+
+unit:minimal:gcc:trixie:amd64:
+  <<: *debian_trixie_amd64_image
+  <<: *unit_test_job
+  needs:
+    - job: minimal:gcc:trixie:amd64
+      artifacts: true
+
 # Build job for cross-compiled GCC builds on 64-bit Debian 13 "trixie"
 # (amd64) with 32-bit BIND 9.
 
