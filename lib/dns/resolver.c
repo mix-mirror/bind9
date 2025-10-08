@@ -3365,9 +3365,7 @@ findname(fetchctx_t *fctx, const dns_name_t *name, in_port_t port,
 	 * No addresses and no pending events: the find failed.
 	 */
 	if ((find->options & DNS_ADBFIND_OVERQUOTA) != 0) {
-		if (overquota != NULL) {
-			*overquota = true;
-		}
+		SET_IF_NOT_NULL(overquota, true);
 		fctx->quotacount++; /* quota exceeded */
 	} else {
 		fctx->adberr++; /* unreachable server, etc. */

@@ -493,9 +493,7 @@ tls_try_handshake(isc_nmsocket_t *sock, isc_result_t *presult) {
 		isc_nmhandle_detach(&tlshandle);
 		sock->tlsstream.state = TLS_IO;
 
-		if (presult != NULL) {
-			*presult = result;
-		}
+		SET_IF_NOT_NULL(presult, result);
 	}
 
 	return rv;

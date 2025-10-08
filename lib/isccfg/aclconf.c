@@ -109,9 +109,7 @@ get_acl_def(const cfg_obj_t *cctx, const char *name, const cfg_obj_t **ret) {
 		const char *aclname =
 			cfg_obj_asstring(cfg_tuple_get(acl, "name"));
 		if (strcasecmp(aclname, name) == 0) {
-			if (ret != NULL) {
-				*ret = cfg_tuple_get(acl, "value");
-			}
+			SET_IF_NOT_NULL(ret, cfg_tuple_get(acl, "value"));
 			return ISC_R_SUCCESS;
 		}
 	}
@@ -224,9 +222,7 @@ count_acl_elements(const cfg_obj_t *caml, const cfg_obj_t *cctx,
 			const cfg_obj_t *negated = cfg_tuple_get(ce, "negated");
 			if (!cfg_obj_isvoid(negated)) {
 				ce = negated;
-				if (has_negative != NULL) {
-					*has_negative = true;
-				}
+				SET_IF_NOT_NULL(has_negative, true);
 			}
 		}
 

@@ -170,9 +170,7 @@ dns_private_chains(dns_db_t *db, dns_dbversion_t *ver,
 			if (REMOVE(rdata.data[1])) {
 				continue;
 			}
-			if (build_nsec3 != NULL) {
-				*build_nsec3 = true;
-			}
+			SET_IF_NOT_NULL(build_nsec3, true);
 			break;
 		}
 		goto success;
@@ -239,9 +237,7 @@ dns_private_chains(dns_db_t *db, dns_dbversion_t *ver,
 		 * The last NSEC3 chain is being removed and does not have
 		 * have NONSEC set.
 		 */
-		if (build_nsec != NULL) {
-			*build_nsec = true;
-		}
+		SET_IF_NOT_NULL(build_nsec, true);
 		goto success;
 	}
 
@@ -282,13 +278,9 @@ dns_private_chains(dns_db_t *db, dns_dbversion_t *ver,
 
 	if (signing) {
 		if (nsec3chain) {
-			if (build_nsec3 != NULL) {
-				*build_nsec3 = true;
-			}
+			SET_IF_NOT_NULL(build_nsec3, true);
 		} else {
-			if (build_nsec != NULL) {
-				*build_nsec = true;
-			}
+			SET_IF_NOT_NULL(build_nsec, true);
 		}
 	}
 

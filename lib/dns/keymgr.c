@@ -709,9 +709,7 @@ keymgr_dep(dst_key_t *k, dns_dnsseckeylist_t *keyring, uint32_t *dep) {
 				continue;
 			}
 
-			if (dep != NULL) {
-				*dep = dst_key_id(d->key);
-			}
+			SET_IF_NOT_NULL(dep, dst_key_id(d->key));
 			return true;
 		}
 	}

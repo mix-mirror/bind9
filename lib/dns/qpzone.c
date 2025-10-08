@@ -2287,22 +2287,14 @@ getnsec3parameters(dns_db_t *db, dns_dbversion_t *dbversion, dns_hash_t *hash,
 	}
 
 	if (version->havensec3) {
-		if (hash != NULL) {
-			*hash = version->hash;
-		}
+		SET_IF_NOT_NULL(hash, version->hash);
 		if (salt != NULL && salt_length != NULL) {
 			REQUIRE(*salt_length >= version->salt_length);
 			memmove(salt, version->salt, version->salt_length);
 		}
-		if (salt_length != NULL) {
-			*salt_length = version->salt_length;
-		}
-		if (iterations != NULL) {
-			*iterations = version->iterations;
-		}
-		if (flags != NULL) {
-			*flags = version->flags;
-		}
+		SET_IF_NOT_NULL(salt_length, version->salt_length);
+		SET_IF_NOT_NULL(iterations, version->iterations);
+		SET_IF_NOT_NULL(flags, version->flags);
 		result = ISC_R_SUCCESS;
 	}
 	RWUNLOCK(&qpdb->lock, isc_rwlocktype_read);

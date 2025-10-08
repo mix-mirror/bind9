@@ -814,9 +814,7 @@ findname(dns_name_t **foundname, const dns_name_t *target,
 
 	ISC_LIST_FOREACH_REV(*section, name, link) {
 		if (dns_name_equal(name, target)) {
-			if (foundname != NULL) {
-				*foundname = name;
-			}
+			SET_IF_NOT_NULL(foundname, name);
 			return ISC_R_SUCCESS;
 		}
 	}

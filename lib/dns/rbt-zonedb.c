@@ -1890,23 +1890,15 @@ getnsec3parameters(dns_db_t *db, dns_dbversion_t *version, dns_hash_t *hash,
 	}
 
 	if (rbtversion->havensec3) {
-		if (hash != NULL) {
-			*hash = rbtversion->hash;
-		}
+		SET_IF_NOT_NULL(hash, rbtversion->hash);
 		if (salt != NULL && salt_length != NULL) {
 			REQUIRE(*salt_length >= rbtversion->salt_length);
 			memmove(salt, rbtversion->salt,
 				rbtversion->salt_length);
 		}
-		if (salt_length != NULL) {
-			*salt_length = rbtversion->salt_length;
-		}
-		if (iterations != NULL) {
-			*iterations = rbtversion->iterations;
-		}
-		if (flags != NULL) {
-			*flags = rbtversion->flags;
-		}
+		SET_IF_NOT_NULL(salt_length, rbtversion->salt_length);
+		SET_IF_NOT_NULL(iterations, rbtversion->iterations);
+		SET_IF_NOT_NULL(flags, rbtversion->flags);
 		result = ISC_R_SUCCESS;
 	}
 	RWUNLOCK(&rbtdb->lock, isc_rwlocktype_read);

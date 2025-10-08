@@ -545,9 +545,7 @@ again:
 						id, oldid);
 				}
 			} else {
-				if (exact != NULL) {
-					*exact = true;
-				}
+				SET_IF_NOT_NULL(exact, true);
 				if (verbose > 1) {
 					fprintf(stderr, "Key ID %d exists\n",
 						id);

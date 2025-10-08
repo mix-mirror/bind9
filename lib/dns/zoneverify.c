@@ -141,9 +141,7 @@ is_delegation(const vctx_t *vctx, const dns_name_t *name, dns_dbnode_t *node,
 	result = dns_db_findrdataset(vctx->db, node, vctx->ver,
 				     dns_rdatatype_ns, 0, 0, &nsset, NULL);
 	if (dns_rdataset_isassociated(&nsset)) {
-		if (ttlp != NULL) {
-			*ttlp = nsset.ttl;
-		}
+		SET_IF_NOT_NULL(ttlp, nsset.ttl);
 		dns_rdataset_disassociate(&nsset);
 	}
 

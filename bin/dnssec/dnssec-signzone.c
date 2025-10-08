@@ -1227,9 +1227,7 @@ is_delegation(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *origin,
 	result = dns_db_findrdataset(db, node, ver, dns_rdatatype_ns, 0, 0,
 				     &nsset, NULL);
 	if (dns_rdataset_isassociated(&nsset)) {
-		if (ttlp != NULL) {
-			*ttlp = nsset.ttl;
-		}
+		SET_IF_NOT_NULL(ttlp, nsset.ttl);
 		dns_rdataset_disassociate(&nsset);
 	}
 

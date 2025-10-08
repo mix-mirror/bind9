@@ -904,9 +904,7 @@ isccc_cc_lookupstring(isccc_sexpr_t *alist, const char *key, char **strp) {
 	if (kv != NULL) {
 		v = ISCCC_SEXPR_CDR(kv);
 		if (isccc_sexpr_binaryp(v)) {
-			if (strp != NULL) {
-				*strp = isccc_sexpr_tostring(v);
-			}
+			SET_IF_NOT_NULL(strp, isccc_sexpr_tostring(v));
 			return ISC_R_SUCCESS;
 		} else {
 			return ISC_R_EXISTS;
@@ -924,10 +922,9 @@ isccc_cc_lookupuint32(isccc_sexpr_t *alist, const char *key, uint32_t *uintp) {
 	if (kv != NULL) {
 		v = ISCCC_SEXPR_CDR(kv);
 		if (isccc_sexpr_binaryp(v)) {
-			if (uintp != NULL) {
-				*uintp = (uint32_t)strtoul(
-					isccc_sexpr_tostring(v), NULL, 10);
-			}
+			SET_IF_NOT_NULL(uintp, (uint32_t)strtoul(
+						       isccc_sexpr_tostring(v),
+						       NULL, 10));
 			return ISC_R_SUCCESS;
 		} else {
 			return ISC_R_EXISTS;

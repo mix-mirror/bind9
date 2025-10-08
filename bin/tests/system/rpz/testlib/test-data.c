@@ -165,12 +165,11 @@ get_address_info(const char *astr, int *pfamily, char *pbuf,
 	 */
 	if (*pfamily == AF_INET) {
 		if (prefix > 32) {
-			if (errp != NULL) {
-				*errp = str_printf(
-					"invalid rpz IP address \"%s\"; "
-					"invalid prefix length of %u",
-					optname ? optname : astr, prefix);
-			}
+			SET_IF_NOT_NULL(
+				errp,
+				str_printf("invalid rpz IP address \"%s\"; "
+					   "invalid prefix length of %u",
+					   optname ? optname : astr, prefix));
 
 			return -1;
 		} else if (bcount > 0) {
@@ -183,12 +182,11 @@ get_address_info(const char *astr, int *pfamily, char *pbuf,
 		size_t n;
 
 		if (prefix > 128) {
-			if (errp != NULL) {
-				*errp = str_printf(
-					"invalid rpz IP address \"%s\"; "
-					"invalid prefix length of %u",
-					optname ? optname : astr, prefix);
-			}
+			SET_IF_NOT_NULL(
+				errp,
+				str_printf("invalid rpz IP address \"%s\"; "
+					   "invalid prefix length of %u",
+					   optname ? optname : astr, prefix));
 
 			return -1;
 		}
@@ -1060,9 +1058,7 @@ free_nodes(trpz_result_t **presults, size_t *pnresults) {
 	size_t n, tot;
 
 	if (presults == NULL || *presults == NULL) {
-		if (pnresults != NULL) {
-			*pnresults = 0;
-		}
+		SET_IF_NOT_NULL(pnresults, 0);
 		return;
 	}
 
@@ -1166,11 +1162,10 @@ sanity_check_data_file(const char *fname, char **errp) {
 		} else if (strcasecmp(line, "static") &&
 			   strcasecmp(line, "update"))
 		{
-			if (errp != NULL) {
-				*errp = str_printf("Found unknown instruction "
+			SET_IF_NOT_NULL(errp,
+					str_printf("Found unknown instruction "
 						   "directive: \"%s\"\n",
-						   line);
-			}
+						   line));
 
 			goto out;
 		}
@@ -1195,11 +1190,10 @@ sanity_check_data_file(const char *fname, char **errp) {
 		    strcasecmp(rrbuf, "TXT") && strcasecmp(rrbuf, "DNAME") &&
 		    strcasecmp(rrbuf, "AAAA"))
 		{
-			if (errp != NULL) {
-				*errp = str_printf("Target \"%s\" is not "
+			SET_IF_NOT_NULL(errp,
+					str_printf("Target \"%s\" is not "
 						   "currently supported!\n",
-						   rrbuf);
-			}
+						   rrbuf));
 
 			goto out;
 		}

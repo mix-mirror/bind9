@@ -564,9 +564,7 @@ find_deepest_zonecut(rbtdb_search_t *search, dns_rbtnode_t *node,
 						foundname, &name, foundname,
 						NULL);
 					if (result != ISC_R_SUCCESS) {
-						if (nodep != NULL) {
-							*nodep = NULL;
-						}
+						SET_IF_NOT_NULL(nodep, NULL);
 						goto node_exit;
 					}
 				}

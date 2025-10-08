@@ -1991,9 +1991,7 @@ dns_nsec3_noexistnodata(dns_rdatatype_t type, const dns_name_t *name,
 	 * the deepest covering zone.
 	 */
 	if (!dns_nsec3_supportedhash(nsec3.hash)) {
-		if (unknown != NULL) {
-			*unknown = true;
-		}
+		SET_IF_NOT_NULL(unknown, true);
 		return ISC_R_IGNORE;
 	}
 

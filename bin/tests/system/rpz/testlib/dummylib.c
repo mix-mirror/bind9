@@ -1590,9 +1590,7 @@ address_cmp(const char *addrstr, const void *addr, uint family,
 			memmove(&a2, addr, sizeof(uint32_t));
 			m = get_mask(nmask);
 
-			if (pmask != NULL) {
-				*pmask = nmask;
-			}
+			SET_IF_NOT_NULL(pmask, nmask);
 
 			return ((a1 & m) == (a2 & m)) ? 0 : 1;
 		}
@@ -1602,9 +1600,7 @@ address_cmp(const char *addrstr, const void *addr, uint family,
 	}
 
 	if (strcmp(addrstr, abuf) == 0) {
-		if (pmask != NULL) {
-			*pmask = nmask;
-		}
+		SET_IF_NOT_NULL(pmask, nmask);
 
 		return 0;
 	}
@@ -2104,13 +2100,9 @@ trpz_rsp_rr(librpz_emsg_t *emsg, uint16_t *typep, uint16_t *classp,
 	if (last_result->rridx < last_result->nrrs) {
 		trpz_rr_t *this_rr = &(last_result->rrs[last_result->rridx]);
 
-		if (classp != NULL) {
-			*classp = this_rr->class;
-		}
+		SET_IF_NOT_NULL(classp, this_rr->class);
 
-		if (ttlp != NULL) {
-			*ttlp = 3600;
-		}
+		SET_IF_NOT_NULL(ttlp, 3600);
 
 		SET_IF_NOT_NULL(typep, this_rr->type);
 
@@ -2200,9 +2192,7 @@ trpz_rsp_rr(librpz_emsg_t *emsg, uint16_t *typep, uint16_t *classp,
 	} else {
 		SET_IF_NOT_NULL(typep, ns_t_invalid);
 
-		if (rrp != NULL) {
-			*rrp = NULL;
-		}
+		SET_IF_NOT_NULL(rrp, NULL);
 
 		result->next_rr = 0;
 		trsp->rstack[0].result.next_rr = 0;
