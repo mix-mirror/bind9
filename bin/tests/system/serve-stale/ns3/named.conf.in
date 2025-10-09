@@ -37,6 +37,7 @@ options {
 	stale-refresh-time 30;
 	stale-answer-client-timeout 0;
 	max-cache-ttl 24h;
+	server-id hostname;
 };
 
 zone "." {

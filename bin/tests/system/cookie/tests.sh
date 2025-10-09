@@ -58,7 +58,7 @@ done
 n=$((n + 1))
 echo_i "checking RCODE=FORMERR to query without question section and without COOKIE option ($n)"
 ret=0
-$DIG $DIGOPTS +qr +header-only +nocookie version.bind txt ch @10.53.0.1 >dig.out.test$n || ret=1
+$DIG $DIGOPTS +qr +header-only +nocookie id.server txt ch @10.53.0.1 >dig.out.test$n || ret=1
 grep COOKIE: dig.out.test$n >/dev/null && ret=1
 grep "status: FORMERR" dig.out.test$n >/dev/null || ret=1
 if [ $ret != 0 ]; then echo_i "failed"; fi
@@ -67,7 +67,7 @@ status=$((status + ret))
 n=$((n + 1))
 echo_i "checking RCODE=NOERROR to query without question section and with COOKIE option ($n)"
 ret=0
-$DIG $DIGOPTS +qr +header-only +cookie version.bind txt ch @10.53.0.1 >dig.out.test$n || ret=1
+$DIG $DIGOPTS +qr +header-only +cookie id.server txt ch @10.53.0.1 >dig.out.test$n || ret=1
 grep COOKIE: dig.out.test$n >/dev/null || ret=1
 grep "status: NOERROR" dig.out.test$n >/dev/null || ret=1
 if [ $ret != 0 ]; then echo_i "failed"; fi
@@ -76,7 +76,7 @@ status=$((status + ret))
 n=$((n + 1))
 echo_i "checking COOKIE token is returned to empty COOKIE option ($n)"
 ret=0
-$DIG $DIGOPTS +cookie version.bind txt ch @10.53.0.1 >dig.out.test$n || ret=1
+$DIG $DIGOPTS +cookie id.server txt ch @10.53.0.1 >dig.out.test$n || ret=1
 grep COOKIE: dig.out.test$n >/dev/null || ret=1
 grep "status: NOERROR" dig.out.test$n >/dev/null || ret=1
 if [ $ret != 0 ]; then echo_i "failed"; fi
@@ -86,7 +86,7 @@ n=$((n + 1))
 echo_i "checking COOKIE is not returned when answer-cookie is false ($n)"
 ret=0
 oldcookie=b71d3138bb984fc50100000064a65cffbbf02482dfb99ba5
-$DIG $DIGOPTS +cookie=$oldcookie version.bind txt ch @10.53.0.7 >dig.out.test$n || ret=1
+$DIG $DIGOPTS +cookie=$oldcookie id.server txt ch @10.53.0.7 >dig.out.test$n || ret=1
 grep COOKIE: dig.out.test$n >/dev/null && ret=1
 grep "status: NOERROR" dig.out.test$n >/dev/null || ret=1
 if [ $ret != 0 ]; then echo_i "failed"; fi

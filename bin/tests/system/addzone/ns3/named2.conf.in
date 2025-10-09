@@ -27,4 +27,5 @@ options {
 	recursion no;
 	allow-new-zones yes;
 	dnssec-validation no;
+	server-id hostname;
 };

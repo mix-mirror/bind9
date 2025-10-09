@@ -593,8 +593,8 @@ if [ -x "$DIG" ]; then
   n=$((n + 1))
   echo_i "checking dig -c works ($n)"
   ret=0
-  dig_with_opts @10.53.0.3 -c CHAOS -t txt version.bind >dig.out.test$n || ret=1
-  grep "version.bind.		0	CH	TXT" <dig.out.test$n >/dev/null || ret=1
+  dig_with_opts @10.53.0.3 -c CHAOS -t txt id.server >dig.out.test$n || ret=1
+  grep "id.server.		0	CH	TXT" <dig.out.test$n >/dev/null || ret=1
   if [ $ret -ne 0 ]; then echo_i "failed"; fi
   status=$((status + ret))
 

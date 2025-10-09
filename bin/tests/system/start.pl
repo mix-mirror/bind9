@@ -424,7 +424,7 @@ sub verify_ns_server {
 	}
 
 	while (1) {
-		my $return = system("$DIG $tcp +noadd +nosea +nostat +noquest +nocomm +nocmd +noedns -p $port version.bind. chaos txt \@$ip > /dev/null");
+		my $return = system("$DIG $tcp +noadd +nosea +nostat +noquest +nocomm +nocmd +noedns -p $port id.server. chaos txt \@$ip > /dev/null");
 
 		last if ($return == 0);
 

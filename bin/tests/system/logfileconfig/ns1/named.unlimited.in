@@ -22,6 +22,7 @@ options {
 	dnssec-validation no;
 	recursion no;
 	notify yes;
+	server-id hostname;
 };
 
 logging {

@@ -19,7 +19,7 @@ def test_emptyzones(ns1, templates):
         watcher.wait_for_line("all zones loaded")
     templates.render("ns1/named.conf", {"automatic_empty_zones": True})
     ns1.rndc("reload")
-    msg = isctest.query.create("version.bind", "TXT", "CH")
+    msg = isctest.query.create("id.server", "TXT", "CH")
     res = isctest.query.tcp(msg, "10.53.0.1")
     isctest.check.noerror(res)
 
