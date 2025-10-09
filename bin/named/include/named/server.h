@@ -57,10 +57,6 @@ struct named_server {
 	char *secrootsfile; /*%< Secroots file name */
 	char *bindkeysfile; /*%< bind.keys file name */
 	char *recfile;	    /*%< Recursive file name */
-	bool  version_set;  /*%< User has set version */
-	char *version;	    /*%< User-specified version */
-	bool  hostname_set; /*%< User has set hostname */
-	char *hostname;	    /*%< User-specified hostname */
 
 	/* Server data structures. */
 	dns_zonemgr_t	  *zonemgr;

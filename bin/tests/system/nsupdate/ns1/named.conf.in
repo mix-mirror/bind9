@@ -28,6 +28,7 @@ options {
 	update-quota 1;
 	dnssec-validation no;
 	include "tls.options";
+	server-id hostname;
 };
 
 acl named-acl {

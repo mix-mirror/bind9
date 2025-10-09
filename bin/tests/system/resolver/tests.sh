@@ -943,7 +943,7 @@ n=$((n + 1))
 echo_i "check that response codes have been logged with 'responselog yes;' ($n)"
 ret=0
 grep "responselog yes;" ns5/named.conf >/dev/null || ret=1
-grep "response: version.bind CH TXT NOERROR" ns5/named.run >/dev/null || ret=1
+grep "response: id.server CH TXT NOERROR" ns5/named.run >/dev/null || ret=1
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -970,7 +970,7 @@ n=$((n + 1))
 echo_i "check that response codes have not been logged with default 'responselog' ($n)"
 ret=0
 grep "responselog" ns1/named.conf >/dev/null && ret=1
-grep "response: version.bind CH TXT NOERROR" ns1/named.run >/dev/null && ret=1
+grep "response: id.server CH TXT NOERROR" ns1/named.run >/dev/null && ret=1
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -997,7 +997,7 @@ n=$((n + 1))
 echo_i "check that response codes have not been logged with 'responselog no;' ($n)"
 ret=0
 grep "responselog no;" ns6/named.conf >/dev/null || ret=1
-grep "response: version.bind CH TXT NOERROR" ns6/named.run >/dev/null && ret=1
+grep "response: id.server CH TXT NOERROR" ns6/named.run >/dev/null && ret=1
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 

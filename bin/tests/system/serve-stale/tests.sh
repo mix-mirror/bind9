@@ -1765,7 +1765,7 @@ if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
 check_server_responds() {
-  $DIG -p ${PORT} @10.53.0.3 version.bind txt ch >dig.out.test$n || return 1
+  $DIG -p ${PORT} @10.53.0.3 id.server txt ch >dig.out.test$n || return 1
   grep "status: NOERROR" dig.out.test$n >/dev/null || return 1
 }
 

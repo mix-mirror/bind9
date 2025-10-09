@@ -706,8 +706,8 @@ if ! $FEATURETEST --with-lmdb; then
   status=$((status + ret))
 fi
 
-_check_version_bind() (
-  $DIG $DIGOPTS @10.53.0.3 version.bind txt ch >dig.out.test$n \
+_check_id_server() (
+  $DIG $DIGOPTS @10.53.0.3 id.server txt ch >dig.out.test$n \
     && grep "status: NOERROR" dig.out.test$n >/dev/null
 )
 
@@ -722,7 +722,7 @@ $RNDCCMD 10.53.0.3 addzone '"test\032.baz"' '{ type primary; check-names ignore;
 $RNDCCMD 10.53.0.3 addzone '"test\010.baz"' '{ type primary; check-names ignore; file "e.db"; };' >/dev/null 2>&1 || ret=1
 stop_server ns3
 start_server --noclean --restart --port ${PORT} ns3 || ret=1
-retry_quiet 10 _check_version_bind || ret=1
+retry_quiet 10 _check_id_server || ret=1
 $DIG $DIGOPTS @10.53.0.3 SOA "test4.baz" >dig.out.1.test$n || ret=1
 grep "status: NOERROR" dig.out.1.test$n >/dev/null || ret=1
 grep "ANSWER: 1," dig.out.1.test$n >/dev/null || ret=1

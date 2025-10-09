@@ -38,6 +38,7 @@ options {
 		clients { any; };
 		mapped { any; };
 	};
+	server-id hostname;
 };
 
 zone "." {

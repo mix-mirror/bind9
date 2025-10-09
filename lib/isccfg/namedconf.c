@@ -1284,7 +1284,7 @@ static cfg_clausedef_t options_clauses[] = {
 	{ "heartbeat-interval", NULL, CFG_CLAUSEFLAG_ANCIENT },
 	{ "host-statistics", NULL, CFG_CLAUSEFLAG_ANCIENT },
 	{ "host-statistics-max", NULL, CFG_CLAUSEFLAG_ANCIENT },
-	{ "hostname", &cfg_type_qstringornone, 0 },
+	{ "hostname", &cfg_type_qstringornone, CFG_CLAUSEFLAG_OBSOLETE },
 	{ "interface-interval", &cfg_type_duration, 0 },
 	{ "keep-response-order", &cfg_type_bracketed_aml,
 	  CFG_CLAUSEFLAG_OBSOLETE },
@@ -1363,7 +1363,7 @@ static cfg_clausedef_t options_clauses[] = {
 	{ "use-ixfr", NULL, CFG_CLAUSEFLAG_ANCIENT },
 	{ "use-v4-udp-ports", NULL, CFG_CLAUSEFLAG_ANCIENT },
 	{ "use-v6-udp-ports", NULL, CFG_CLAUSEFLAG_ANCIENT },
-	{ "version", &cfg_type_qstringornone, 0 },
+	{ "version", &cfg_type_qstringornone, CFG_CLAUSEFLAG_OBSOLETE },
 	{ NULL, NULL, 0 }
 };
 

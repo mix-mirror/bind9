@@ -32,6 +32,7 @@ options {
 	attach-cache "globalcache";
 	max-recursion-queries 100;
 	request-zoneversion yes;
+	server-id hostname;
 };
 
 

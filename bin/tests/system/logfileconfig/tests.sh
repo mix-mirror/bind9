@@ -178,7 +178,7 @@ copy_setports ns1/named.versconf.in ns1/named.conf
 # a seconds since epoch version number
 touch ns1/named_vers.1480039317
 rndc_reconfig ns1 10.53.0.1 >rndc.out.test$n
-$DIG version.bind txt ch @10.53.0.1 -p ${PORT} >dig.out.test$n || ret=1
+$DIG id.server txt ch @10.53.0.1 -p ${PORT} >dig.out.test$n || ret=1
 grep "status: NOERROR" dig.out.test$n >/dev/null || ret=1
 # we are configured to retain five logfiles (a current file
 # and 4 backups). so files with version number 5 or higher
@@ -199,7 +199,7 @@ touch ns1/named_ts.1480039317
 touch ns1/named_ts.20150101120000120
 rndc_reconfig ns1 10.53.0.1 >rndc.out.test$n
 _found2() (
-  $DIG version.bind txt ch @10.53.0.1 -p ${PORT} >dig.out.test$n || return 1
+  $DIG id.server txt ch @10.53.0.1 -p ${PORT} >dig.out.test$n || return 1
   grep "status: NOERROR" dig.out.test$n >/dev/null || return 1
 
   # we are configured to keep three versions, so the oldest
@@ -225,7 +225,7 @@ while test $try -lt 12; do
 done
 rndc_reconfig ns1 10.53.0.1 >rndc.out.test$n
 _found2() (
-  $DIG version.bind txt ch @10.53.0.1 -p ${PORT} >dig.out.test$n || return 1
+  $DIG id.server txt ch @10.53.0.1 -p ${PORT} >dig.out.test$n || return 1
   grep "status: NOERROR" dig.out.test$n >/dev/null || return 1
 
   try=1
@@ -251,7 +251,7 @@ while test $try -lt 12; do
 done
 rndc_reconfig ns1 10.53.0.1 >rndc.out.test$n
 _found2() (
-  $DIG version.bind txt ch @10.53.0.1 -p ${PORT} >dig.out.test$n || return 1
+  $DIG id.server txt ch @10.53.0.1 -p ${PORT} >dig.out.test$n || return 1
   grep "status: NOERROR" dig.out.test$n >/dev/null || return 1
 
   try=1
@@ -273,7 +273,7 @@ copy_setports ns1/named.unlimited.in ns1/named.conf
 # a seconds since epoch version number
 touch ns1/named_unlimited.1480039317
 rndc_reconfig ns1 10.53.0.1 >rndc.out.test$n
-$DIG version.bind txt ch @10.53.0.1 -p ${PORT} >dig.out.test$n || ret=1
+$DIG id.server txt ch @10.53.0.1 -p ${PORT} >dig.out.test$n || ret=1
 grep "status: NOERROR" dig.out.test$n >/dev/null || ret=1
 test_with_retry -f ns1/named_unlimited.1480039317 || ret=1
 test_with_retry -f ns1/named_unlimited.4 || ret=1
@@ -286,7 +286,7 @@ ret=0
 test -f ns1/query_log || ret=1
 mv ns1/query_log ns1/query_log.$n || ret=1
 rndccmd 10.53.0.1 closelogs >rndc.out.test$n || ret=1
-$DIG version.bind txt ch @10.53.0.1 -p ${PORT} >dig.out.test$n || ret=1
+$DIG id.server txt ch @10.53.0.1 -p ${PORT} >dig.out.test$n || ret=1
 test -f ns1/query_log || ret=1
 lines=$(wc -l <"ns1/query_log")
 test ${lines:-0} -eq 1 || ret=1
@@ -299,7 +299,7 @@ ret=0
 test -f ns1/query_log || ret=1
 mv ns1/query_log ns1/query_log.$n || ret=1
 kill -USR1 $(cat ns1/named.pid) || ret=1
-$DIG version.bind txt ch @10.53.0.1 -p ${PORT} >dig.out.test$n || ret=1
+$DIG id.server txt ch @10.53.0.1 -p ${PORT} >dig.out.test$n || ret=1
 test -f ns1/query_log || ret=1
 lines=$(wc -l <"ns1/query_log")
 test ${lines:-0} -eq 1 || ret=1

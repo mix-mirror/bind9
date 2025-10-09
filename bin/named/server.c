@@ -24,6 +24,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "dns/name.h"
+
 #ifdef HAVE_DNSTAP
 #include <fstrm.h>
 #endif
@@ -7106,20 +7108,6 @@ setstring(named_server_t *server, char **field, const char *value) {
 	*field = copy;
 }
 
-/*
- * Replace the current value of '*field', a dynamically allocated
- * string or NULL, with another dynamically allocated string
- * or NULL if whether 'obj' is a string or void value, respectively.
- */
-static void
-setoptstring(named_server_t *server, char **field, const cfg_obj_t *obj) {
-	if (cfg_obj_isvoid(obj)) {
-		setstring(server, field, NULL);
-	} else {
-		setstring(server, field, cfg_obj_asstring(obj));
-	}
-}
-
 static isc_result_t
 removed(dns_zone_t *zone, void *uap) {
 	if (dns_zone_getview(zone) != uap) {
@@ -9043,30 +9031,20 @@ apply_configuration(cfg_parser_t *configparser, cfg_obj_t *config,
 	setstring(server, &server->recfile, cfg_obj_asstring(obj));
 
 	obj = NULL;
-	result = named_config_get(maps, "version", &obj);
-	if (result == ISC_R_SUCCESS) {
-		setoptstring(server, &server->version, obj);
-		server->version_set = true;
-	} else {
-		server->version_set = false;
-	}
-
-	obj = NULL;
-	result = named_config_get(maps, "hostname", &obj);
-	if (result == ISC_R_SUCCESS) {
-		setoptstring(server, &server->hostname, obj);
-		server->hostname_set = true;
-	} else {
-		server->hostname_set = false;
-	}
-
-	obj = NULL;
 	result = named_config_get(maps, "server-id", &obj);
-	server->sctx->usehostname = false;
 	if (result == ISC_R_SUCCESS && cfg_obj_isboolean(obj)) {
 		/* The parser translates "hostname" to true */
-		server->sctx->usehostname = true;
-		result = ns_server_setserverid(server->sctx, NULL);
+		if (cfg_obj_asboolean(obj)) {
+			char hostname[DNS_NAME_MAXTEXT];
+			if (gethostname(hostname, sizeof(hostname)) != 0) {
+				result = ISC_R_FAILURE;
+			} else {
+				result = ns_server_setserverid(server->sctx,
+							       hostname);
+			}
+		} else {
+			result = ns_server_setserverid(server->sctx, NULL);
+		}
 	} else if (result == ISC_R_SUCCESS && !cfg_obj_isvoid(obj)) {
 		/* Found a quoted string */
 		result = ns_server_setserverid(server->sctx,
@@ -9988,13 +9966,6 @@ named_server_destroy(named_server_t **serverp) {
 
 	if (server->bindkeysfile != NULL) {
 		isc_mem_free(server->mctx, server->bindkeysfile);
-	}
-
-	if (server->version != NULL) {
-		isc_mem_free(server->mctx, server->version);
-	}
-	if (server->hostname != NULL) {
-		isc_mem_free(server->mctx, server->hostname);
 	}
 
 	if (server->zonemgr != NULL) {
@@ -11949,7 +11920,6 @@ named_server_status(named_server_t *server, isc_buffer_t **text) {
 	isc_result_t result;
 	unsigned int zonecount, xferrunning, xferdeferred, xferfirstrefresh;
 	unsigned int soaqueries, automatic;
-	const char *ob = "", *cb = "", *alt = "";
 	char boottime[ISC_FORMATHTTPTIMESTAMP_SIZE];
 	char configtime[ISC_FORMATHTTPTIMESTAMP_SIZE];
 	char line[1024], hostname[256];
@@ -11957,15 +11927,6 @@ named_server_status(named_server_t *server, isc_buffer_t **text) {
 
 	REQUIRE(text != NULL);
 
-	if (named_g_server->version_set) {
-		ob = " (";
-		cb = ")";
-		if (named_g_server->version == NULL) {
-			alt = "version.bind/txt/ch disabled";
-		} else {
-			alt = named_g_server->version;
-		}
-	}
 	zonecount = dns_zonemgr_getcount(server->zonemgr, DNS_ZONESTATE_ANY);
 	xferrunning = dns_zonemgr_getcount(server->zonemgr,
 					   DNS_ZONESTATE_XFERRUNNING);
@@ -11983,9 +11944,8 @@ named_server_status(named_server_t *server, isc_buffer_t **text) {
 	isc_time_formathttptimestamp(&named_g_defaultconfigtime, configtime,
 				     sizeof(configtime));
 
-	snprintf(line, sizeof(line), "version: %s (%s) <id:%s>%s%s%s\n",
-		 PACKAGE_STRING, PACKAGE_DESCRIPTION, PACKAGE_SRCID, ob, alt,
-		 cb);
+	snprintf(line, sizeof(line), "version: %s (%s) <id:%s>\n",
+		 PACKAGE_STRING, PACKAGE_DESCRIPTION, PACKAGE_SRCID);
 	CHECK(putstr(text, line));
 
 	if (gethostname(hostname, sizeof(hostname)) == 0) {

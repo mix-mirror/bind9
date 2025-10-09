@@ -1056,7 +1056,6 @@ isc_result_t
 ns_client_addopt(ns_client_t *client, dns_message_t *message,
 		 dns_rdataset_t **opt) {
 	unsigned char ecs[ECS_SIZE];
-	char nsid[_POSIX_HOST_NAME_MAX + 1], *nsidp = NULL;
 	unsigned char cookie[COOKIE_SIZE];
 	isc_result_t result;
 	dns_view_t *view = NULL;
@@ -1083,25 +1082,15 @@ ns_client_addopt(ns_client_t *client, dns_message_t *message,
 	flags = client->inner.extflags & DNS_MESSAGEEXTFLAG_REPLYPRESERVE;
 
 	/* Set EDNS options if applicable */
-	if (WANTNSID(client)) {
-		if (client->manager->sctx->server_id != NULL) {
-			nsidp = client->manager->sctx->server_id;
-		} else if (client->manager->sctx->usehostname) {
-			if (gethostname(nsid, sizeof(nsid)) != 0) {
-				goto no_nsid;
-			}
-			nsidp = nsid;
-		} else {
-			goto no_nsid;
-		}
-
+	if (WANTNSID(client) && client->manager->sctx->server_id != NULL) {
 		INSIST(count < DNS_EDNSOPTIONS);
 		ednsopts[count].code = DNS_OPT_NSID;
-		ednsopts[count].length = (uint16_t)strlen(nsidp);
-		ednsopts[count].value = (unsigned char *)nsidp;
+		ednsopts[count].length =
+			(uint16_t)strlen(client->manager->sctx->server_id);
+		ednsopts[count].value =
+			(unsigned char *)client->manager->sctx->server_id;
 		count++;
 	}
-no_nsid:
 	if ((client->inner.attributes & NS_CLIENTATTR_WANTCOOKIE) != 0) {
 		isc_buffer_t buf;
 		isc_stdtime_t now = isc_stdtime_now();

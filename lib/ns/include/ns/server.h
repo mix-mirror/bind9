@@ -110,7 +110,6 @@ struct ns_server {
 
 	/*% Server id for NSID */
 	char *server_id;
-	bool  usehostname;
 
 	/*% Fuzzer callback */
 	isc_fuzztype_t fuzztype;

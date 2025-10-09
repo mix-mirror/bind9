@@ -13,7 +13,7 @@
 
 /*! \file
  * \brief
- * The built-in "version", "hostname", "id", and "empty" databases.
+ * The built-in "id", and "empty" databases.
  */
 
 #include <stdio.h>
@@ -504,44 +504,8 @@ builtin_authority(bdb_t *bdb, bdbnode_t *node) {
 }
 
 static isc_result_t
-version_lookup(bdbnode_t *node) {
-	if (named_g_server->version_set) {
-		if (named_g_server->version == NULL) {
-			return ISC_R_SUCCESS;
-		} else {
-			return puttxt(node, named_g_server->version);
-		}
-	} else {
-		return puttxt(node, PACKAGE_VERSION);
-	}
-}
-
-static isc_result_t
-hostname_lookup(bdbnode_t *node) {
-	if (named_g_server->hostname_set) {
-		if (named_g_server->hostname == NULL) {
-			return ISC_R_SUCCESS;
-		} else {
-			return puttxt(node, named_g_server->hostname);
-		}
-	} else {
-		char buf[256];
-		if (gethostname(buf, sizeof(buf)) != 0) {
-			return ISC_R_FAILURE;
-		}
-		return puttxt(node, buf);
-	}
-}
-
-static isc_result_t
 id_lookup(bdbnode_t *node) {
-	if (named_g_server->sctx->usehostname) {
-		char buf[256];
-		if (gethostname(buf, sizeof(buf)) != 0) {
-			return ISC_R_FAILURE;
-		}
-		return puttxt(node, buf);
-	} else if (named_g_server->sctx->server_id != NULL) {
+	if (named_g_server->sctx->server_id != NULL) {
 		return puttxt(node, named_g_server->sctx->server_id);
 	} else {
 		return ISC_R_SUCCESS;
@@ -1115,12 +1079,8 @@ create(isc_mem_t *mctx, const dns_name_t *origin, dns_dbtype_t type,
 	dns_name_dup(origin, mctx, &bdb->common.origin);
 
 	INSIST(argc >= 1);
-	if (strcmp(argv[0], "hostname") == 0) {
-		bdb->lookup = hostname_lookup;
-	} else if (strcmp(argv[0], "id") == 0) {
+	if (strcmp(argv[0], "id") == 0) {
 		bdb->lookup = id_lookup;
-	} else if (strcmp(argv[0], "version") == 0) {
-		bdb->lookup = version_lookup;
 	} else if (strcmp(argv[0], "dns64") == 0) {
 		needargs = true;
 		bdb->lookup = empty_lookup;

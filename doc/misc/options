@@ -151,7 +151,7 @@ options {
 	fstrm-set-output-queue-size <integer>; // optional (only available if configured)
 	fstrm-set-reopen-interval <duration>; // optional (only available if configured)
 	geoip-directory ( <quoted_string> | none );
-	hostname ( <quoted_string> | none );
+	hostname ( <quoted_string> | none ); // obsolete
 	http-listener-clients <integer>; // optional (only available if configured)
 	http-port <integer>; // optional (only available if configured)
 	http-streams-per-connection <integer>; // optional (only available if configured)
@@ -319,7 +319,7 @@ options {
 	update-quota <integer>;
 	v6-bias <integer>;
 	validate-except { <string>; ... };
-	version ( <quoted_string> | none );
+	version ( <quoted_string> | none ); // obsolete
 	zero-no-soa-ttl <boolean>;
 	zero-no-soa-ttl-cache <boolean>;
 	zone-statistics ( full | terse | none | <boolean> );

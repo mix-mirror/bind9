@@ -274,16 +274,6 @@ view \"_bind\" chaos {\n\
 		min-table-size 10;\n\
 	};\n\
 \n\
-	zone \"version.bind\" chaos {\n\
-		type primary;\n\
-		database \"_builtin version\";\n\
-	};\n\
-\n\
-	zone \"hostname.bind\" chaos {\n\
-		type primary;\n\
-		database \"_builtin hostname\";\n\
-	};\n\
-\n\
 	zone \"id.server\" chaos {\n\
 		type primary;\n\
 		database \"_builtin id\";\n\
