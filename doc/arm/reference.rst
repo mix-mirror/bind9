@@ -4551,40 +4551,15 @@ Tuning
 Built-in Server Information Zones
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The server provides some helpful diagnostic information through a number
-of built-in zones under the pseudo-top-level-domain ``bind`` in the
-``CHAOS`` class. These zones are part of a built-in view
+The server provides some helpful diagnostic information through a built-in
+zone ``id.server``` in the
+``CHAOS`` class. This zone is part of a built-in view
 (see :any:`view`) of class ``CHAOS``, which is
 separate from the default view of class ``IN``. Most global
 configuration options (:any:`allow-query`, etc.) apply to this view,
 but some are locally overridden: :namedconf:ref:`notify`, :any:`recursion`, and
 :any:`allow-new-zones` are always set to ``no``, and :any:`rate-limit` is set
 to allow three responses per second.
-
-To disable these zones, use the options below or hide the
-built-in ``CHAOS`` view by defining an explicit view of class ``CHAOS``
-that matches all clients.
-
-.. namedconf:statement:: version
-   :tags: server
-   :short: Specifies the version number of the server to return in response to a ``version.bind`` query.
-
-   This is the version the server should report via a query of the name
-   ``version.bind`` with type ``TXT`` and class ``CHAOS``. The default is
-   the real version number of this server. Specifying ``version none``
-   disables processing of the queries.
-
-.. namedconf:statement:: hostname
-   :tags: server
-   :short: Specifies the hostname of the server to return in response to a ``hostname.bind`` query.
-
-   This is the hostname the server should report via a query of the name
-   ``hostname.bind`` with type ``TXT`` and class ``CHAOS``. This defaults
-   to the hostname of the machine hosting the name server, as found by
-   the ``gethostname()`` function. The primary purpose of such queries is to
-   identify which of a group of anycast servers is actually answering
-   the queries. Specifying ``hostname none;`` disables processing of
-   the queries.
 
 .. namedconf:statement:: server-id
    :tags: server
@@ -4598,6 +4573,20 @@ that matches all clients.
    the queries. Specifying ``server-id hostname;`` causes :iscman:`named`
    to use the hostname as found by the ``gethostname()`` function. The
    default :any:`server-id` is ``none``.
+
+.. namedconf:statement:: version
+   :tags: deprecated
+   :short: This options has been deprecated.
+
+   This option has been deprecated, and will be rendered non-operational in a
+   future release.  Use ``server-id`` instead.
+
+.. namedconf:statement:: hostname
+   :tags: deprecated
+   :short: This options has been deprecated.
+
+   This option has been deprecated, and will be rendered non-operational in a
+   future release.  Use ``server-id`` instead.
 
 .. _empty:
 
