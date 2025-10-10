@@ -817,6 +817,8 @@ opensslecdsa_sign(dst_context_t *dctx, isc_buffer_t *sig) {
 	const unsigned char *sigder_copy;
 	const BIGNUM *r, *s;
 
+	size_t oldsigder_len;
+
 	REQUIRE(opensslecdsa_valid_key_alg(key->key_alg));
 	REQUIRE(dctx->use == DO_SIGN);
 
@@ -839,7 +841,9 @@ opensslecdsa_sign(dst_context_t *dctx, isc_buffer_t *sig) {
 		DST_RET(ISC_R_FAILURE);
 	}
 
-	if (sigder_len > ECDSA_DER_SIGNATURE_MAX_SIZE) {
+	oldsigder_len = sigder_len;
+
+	if (oldsigder_len > ECDSA_DER_SIGNATURE_MAX_SIZE) {
 		isc_log_write(DNS_LOGCATEGORY_GENERAL, DNS_LOGMODULE_CRYPTO,
 			      ISC_LOG_CRITICAL, "owo %zu", sigder_len);
 	}
@@ -849,7 +853,7 @@ opensslecdsa_sign(dst_context_t *dctx, isc_buffer_t *sig) {
 		DST_RET(dst__openssl_toresult3(
 			dctx->category, "EVP_DigestSignFinal", ISC_R_FAILURE));
 	}
-	if (sigder_len > ECDSA_DER_SIGNATURE_MAX_SIZE) {
+	if (oldsigder_len > ECDSA_DER_SIGNATURE_MAX_SIZE) {
 		char buf[sizeof(sigder) * 3 + 1] = { 0 };
 		for (size_t i = 0; i < sigder_len && i < sizeof(sigder); i++) {
 			size_t len = strlen(buf);
@@ -858,7 +862,7 @@ opensslecdsa_sign(dst_context_t *dctx, isc_buffer_t *sig) {
 				 sigder[i]);
 		}
 		isc_log_write(DNS_LOGCATEGORY_GENERAL, DNS_LOGMODULE_CRYPTO,
-			      ISC_LOG_CRITICAL, "FINAL: %s", buf);
+			      ISC_LOG_CRITICAL, "owo %zu: %s", sigder_len, buf);
 		INSIST(sigder_len <= ECDSA_DER_SIGNATURE_MAX_SIZE);
 	}
 	sigder_copy = sigder;
