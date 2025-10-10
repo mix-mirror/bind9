@@ -813,7 +813,7 @@ opensslecdsa_sign(dst_context_t *dctx, isc_buffer_t *sig) {
 	EVP_MD_CTX *evp_md_ctx = dctx->ctxdata.evp_md_ctx;
 	ECDSA_SIG *ecdsasig = NULL;
 	size_t siglen, sigder_len = 0;
-	unsigned char sigder[ECDSA_DER_SIGNATURE_MAX_SIZE];
+	unsigned char sigder[ECDSA_DER_SIGNATURE_MAX_SIZE + 10];
 	const unsigned char *sigder_copy;
 	const BIGNUM *r, *s;
 
@@ -839,9 +839,16 @@ opensslecdsa_sign(dst_context_t *dctx, isc_buffer_t *sig) {
 		DST_RET(ISC_R_FAILURE);
 	}
 
-	if (sigder_len > sizeof(sigder)) {
+	if (sigder_len > ECDSA_DER_SIGNATURE_MAX_SIZE) {
+		char buf[sizeof(sigder) * 3 + 1] = { 0 };
+		for (size_t i = 0; i < sigder_len && i < sizeof(sigder); i++) {
+			size_t len = strlen(buf);
+			INSIST(len < sizeof(buf));
+			snprintf(buf + len, sizeof(buf) - len, " %02x",
+				 sigder[i]);
+		}
 		isc_log_write(DNS_LOGCATEGORY_GENERAL, DNS_LOGMODULE_CRYPTO,
-			      ISC_LOG_CRITICAL, "owo %zu", sigder_len);
+			      ISC_LOG_CRITICAL, "owo %zu :%s", sigder_len, buf);
 	}
 	INSIST(sigder_len <= sizeof(sigder));
 
