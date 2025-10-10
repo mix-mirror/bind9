@@ -850,7 +850,7 @@ opensslecdsa_sign(dst_context_t *dctx, isc_buffer_t *sig) {
 		isc_log_write(DNS_LOGCATEGORY_GENERAL, DNS_LOGMODULE_CRYPTO,
 			      ISC_LOG_CRITICAL, "owo %zu :%s", sigder_len, buf);
 	}
-	INSIST(sigder_len <= sizeof(sigder));
+	INSIST(sigder_len <= ECDSA_DER_SIGNATURE_MAX_SIZE);
 
 	if (EVP_DigestSignFinal(evp_md_ctx, sigder, &sigder_len) != 1) {
 		DST_RET(dst__openssl_toresult3(
