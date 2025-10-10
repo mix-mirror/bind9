@@ -1896,6 +1896,8 @@ static unsigned char inaddr_prefix[] = "\007IN-ADDR\004ARPA";
 
 static unsigned char inaddr10[] = "\00210\007IN-ADDR\004ARPA";
 
+static unsigned char inaddr172[] = "\003172\007IN-ADDR\004ARPA";
+
 static unsigned char inaddr16172[] = "\00216\003172\007IN-ADDR\004ARPA";
 static unsigned char inaddr17172[] = "\00217\003172\007IN-ADDR\004ARPA";
 static unsigned char inaddr18172[] = "\00218\003172\007IN-ADDR\004ARPA";
@@ -1915,18 +1917,21 @@ static unsigned char inaddr31172[] = "\00231\003172\007IN-ADDR\004ARPA";
 
 static unsigned char inaddr168192[] = "\003168\003192\007IN-ADDR\004ARPA";
 
-static dns_name_t const rfc1918prefix = DNS_NAME_INITABSOLUTE(inaddr_prefix);
+static dns_name_t const inaddr_arpa = DNS_NAME_INITABSOLUTE(inaddr_prefix);
+static dns_name_t const inaddr_arpa_10 = DNS_NAME_INITABSOLUTE(inaddr10);
+static dns_name_t const inaddr_arpa_172 = DNS_NAME_INITABSOLUTE(inaddr172);
+static dns_name_t const inaddr_arpa_192_168 =
+	DNS_NAME_INITABSOLUTE(inaddr168192);
 
-static dns_name_t const rfc1918names[] = {
-	DNS_NAME_INITABSOLUTE(inaddr10),    DNS_NAME_INITABSOLUTE(inaddr16172),
-	DNS_NAME_INITABSOLUTE(inaddr17172), DNS_NAME_INITABSOLUTE(inaddr18172),
-	DNS_NAME_INITABSOLUTE(inaddr19172), DNS_NAME_INITABSOLUTE(inaddr20172),
-	DNS_NAME_INITABSOLUTE(inaddr21172), DNS_NAME_INITABSOLUTE(inaddr22172),
-	DNS_NAME_INITABSOLUTE(inaddr23172), DNS_NAME_INITABSOLUTE(inaddr24172),
-	DNS_NAME_INITABSOLUTE(inaddr25172), DNS_NAME_INITABSOLUTE(inaddr26172),
-	DNS_NAME_INITABSOLUTE(inaddr27172), DNS_NAME_INITABSOLUTE(inaddr28172),
-	DNS_NAME_INITABSOLUTE(inaddr29172), DNS_NAME_INITABSOLUTE(inaddr30172),
-	DNS_NAME_INITABSOLUTE(inaddr31172), DNS_NAME_INITABSOLUTE(inaddr168192)
+static dns_name_t const rfc1918_172_names[] = {
+	DNS_NAME_INITABSOLUTE(inaddr16172), DNS_NAME_INITABSOLUTE(inaddr17172),
+	DNS_NAME_INITABSOLUTE(inaddr18172), DNS_NAME_INITABSOLUTE(inaddr19172),
+	DNS_NAME_INITABSOLUTE(inaddr20172), DNS_NAME_INITABSOLUTE(inaddr21172),
+	DNS_NAME_INITABSOLUTE(inaddr22172), DNS_NAME_INITABSOLUTE(inaddr23172),
+	DNS_NAME_INITABSOLUTE(inaddr24172), DNS_NAME_INITABSOLUTE(inaddr25172),
+	DNS_NAME_INITABSOLUTE(inaddr26172), DNS_NAME_INITABSOLUTE(inaddr27172),
+	DNS_NAME_INITABSOLUTE(inaddr28172), DNS_NAME_INITABSOLUTE(inaddr29172),
+	DNS_NAME_INITABSOLUTE(inaddr30172), DNS_NAME_INITABSOLUTE(inaddr31172),
 };
 
 bool
@@ -1936,12 +1941,22 @@ dns_name_isrfc1918(const dns_name_t *name) {
 	/*
 	 * Even better, this could be a trie or a perfect hashmap
 	 */
-	if (!dns_name_issubdomain(name, &rfc1918prefix)) {
+	if (!dns_name_issubdomain(name, &inaddr_arpa)) {
 		return false;
 	}
 
-	for (i = 0; i < (sizeof(rfc1918names) / sizeof(*rfc1918names)); i++) {
-		if (dns_name_issubdomain(name, &rfc1918names[i])) {
+	if (dns_name_issubdomain(name, &inaddr_arpa_10) ||
+	    dns_name_issubdomain(name, &inaddr_arpa_192_168))
+	{
+		return true;
+	}
+
+	if (!dns_name_issubdomain(name, &inaddr_arpa_172)) {
+		return false;
+	}
+
+	for (i = 0; i < ARRAY_SIZE(rfc1918_172_names); i++) {
+		if (dns_name_issubdomain(name, &rfc1918_172_names[i])) {
 			return true;
 		}
 	}
