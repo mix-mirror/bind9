@@ -32,6 +32,8 @@
 #include <dns/rdataset.h>
 #include <dns/types.h>
 
+#include <dns/rdataslab.h>
+
 #define MAX_SHUFFLE 100
 thread_local dns_rdata_t dns__rdataset_rdatas[MAX_SHUFFLE];
 
@@ -89,7 +91,9 @@ dns__rdataset_disassociate(dns_rdataset_t *rdataset DNS__DB_FLARG) {
 	REQUIRE(DNS_RDATASET_VALID(rdataset));
 	REQUIRE(rdataset->methods != NULL);
 
-	if (rdataset->methods->disassociate != NULL) {
+	if (rdataset->methods == &dns_rdataslab_rdatasetmethods) {
+		dns_rdataslab_rdatasetmethods.disassociate(rdataset DNS__DB_FLARG_PASS);
+	} else if (rdataset->methods->disassociate != NULL) {
 		(rdataset->methods->disassociate)(rdataset DNS__DB_FLARG_PASS);
 	}
 	*rdataset = (dns_rdataset_t){
@@ -156,7 +160,11 @@ dns_rdataset_count(dns_rdataset_t *rdataset) {
 	REQUIRE(rdataset->methods != NULL);
 	REQUIRE(rdataset->methods->count != NULL);
 
-	return (rdataset->methods->count)(rdataset);
+	if (rdataset->methods == &dns_rdataslab_rdatasetmethods) {
+		return dns_rdataslab_rdatasetmethods.count(rdataset);
+	} else {
+		return (rdataset->methods->count)(rdataset);
+	}
 }
 
 void
@@ -171,7 +179,11 @@ dns__rdataset_clone(dns_rdataset_t *source,
 	REQUIRE(DNS_RDATASET_VALID(target));
 	REQUIRE(target->methods == NULL);
 
-	(source->methods->clone)(source, target DNS__DB_FLARG_PASS);
+	if (source->methods == &dns_rdataslab_rdatasetmethods) {
+		dns_rdataslab_rdatasetmethods.clone(source, target DNS__DB_FLARG_PASS);
+	} else {
+		(source->methods->clone)(source, target DNS__DB_FLARG_PASS);
+	}
 }
 
 isc_result_t
@@ -180,7 +192,12 @@ dns_rdataset_first(dns_rdataset_t *rdataset) {
 	REQUIRE(rdataset->methods != NULL);
 	REQUIRE(rdataset->methods->first != NULL);
 
-	isc_result_t result = rdataset->methods->first(rdataset);
+	isc_result_t result;
+	if (rdataset->methods == &dns_rdataslab_rdatasetmethods) {
+		result = dns_rdataslab_rdatasetmethods.first(rdataset);
+	} else {
+		result = rdataset->methods->first(rdataset);
+	}
 	ENSURE(result == ISC_R_SUCCESS || result == ISC_R_NOMORE);
 	return result;
 }
@@ -191,7 +208,12 @@ dns_rdataset_next(dns_rdataset_t *rdataset) {
 	REQUIRE(rdataset->methods != NULL);
 	REQUIRE(rdataset->methods->next != NULL);
 
-	isc_result_t result = rdataset->methods->next(rdataset);
+	isc_result_t result;
+	if (rdataset->methods == &dns_rdataslab_rdatasetmethods) {
+		result = dns_rdataslab_rdatasetmethods.next(rdataset);
+	} else {
+		result = rdataset->methods->next(rdataset);
+	}
 	ENSURE(result == ISC_R_SUCCESS || result == ISC_R_NOMORE);
 	return result;
 }
@@ -206,7 +228,11 @@ dns_rdataset_current(dns_rdataset_t *rdataset, dns_rdata_t *rdata) {
 	REQUIRE(rdataset->methods != NULL);
 	REQUIRE(rdataset->methods->current != NULL);
 
-	(rdataset->methods->current)(rdataset, rdata);
+	if (rdataset->methods == &dns_rdataslab_rdatasetmethods) {
+		dns_rdataslab_rdatasetmethods.current(rdataset, rdata);
+	} else {
+		(rdataset->methods->current)(rdataset, rdata);
+	}
 }
 
 #define WANT_CYCLIC(r) (((r)->attributes.order == dns_order_cyclic))
@@ -488,11 +514,16 @@ dns__rdataset_getnoqname(dns_rdataset_t *rdataset, dns_name_t *name,
 	REQUIRE(DNS_RDATASET_VALID(rdataset));
 	REQUIRE(rdataset->methods != NULL);
 
-	if (rdataset->methods->getnoqname == NULL) {
-		return ISC_R_NOTIMPLEMENTED;
+	if (rdataset->methods == &dns_rdataslab_rdatasetmethods) {
+		return dns_rdataslab_rdatasetmethods.getnoqname(rdataset, name, neg,
+							        negsig DNS__DB_FLARG_PASS);
+	} else {
+		if (rdataset->methods->getnoqname == NULL) {
+			return ISC_R_NOTIMPLEMENTED;
+		}
+		return (rdataset->methods->getnoqname)(rdataset, name, neg,
+						       negsig DNS__DB_FLARG_PASS);
 	}
-	return (rdataset->methods->getnoqname)(rdataset, name, neg,
-					       negsig DNS__DB_FLARG_PASS);
 }
 
 isc_result_t
@@ -512,11 +543,16 @@ dns__rdataset_getclosest(dns_rdataset_t *rdataset, dns_name_t *name,
 	REQUIRE(DNS_RDATASET_VALID(rdataset));
 	REQUIRE(rdataset->methods != NULL);
 
-	if (rdataset->methods->getclosest == NULL) {
-		return ISC_R_NOTIMPLEMENTED;
+	if (rdataset->methods == &dns_rdataslab_rdatasetmethods) {
+		return dns_rdataslab_rdatasetmethods.getclosest(rdataset, name, neg,
+							        negsig DNS__DB_FLARG_PASS);
+	} else {
+		if (rdataset->methods->getclosest == NULL) {
+			return ISC_R_NOTIMPLEMENTED;
+		}
+		return (rdataset->methods->getclosest)(rdataset, name, neg,
+						       negsig DNS__DB_FLARG_PASS);
 	}
-	return (rdataset->methods->getclosest)(rdataset, name, neg,
-					       negsig DNS__DB_FLARG_PASS);
 }
 
 void
@@ -524,10 +560,14 @@ dns_rdataset_settrust(dns_rdataset_t *rdataset, dns_trust_t trust) {
 	REQUIRE(DNS_RDATASET_VALID(rdataset));
 	REQUIRE(rdataset->methods != NULL);
 
-	if (rdataset->methods->settrust != NULL) {
-		(rdataset->methods->settrust)(rdataset, trust);
+	if (rdataset->methods == &dns_rdataslab_rdatasetmethods) {
+		dns_rdataslab_rdatasetmethods.settrust(rdataset, trust);
 	} else {
-		rdataset->trust = trust;
+		if (rdataset->methods->settrust != NULL) {
+			(rdataset->methods->settrust)(rdataset, trust);
+		} else {
+			rdataset->trust = trust;
+		}
 	}
 }
 
@@ -536,8 +576,12 @@ dns__rdataset_expire(dns_rdataset_t *rdataset DNS__DB_FLARG) {
 	REQUIRE(DNS_RDATASET_VALID(rdataset));
 	REQUIRE(rdataset->methods != NULL);
 
-	if (rdataset->methods->expire != NULL) {
-		(rdataset->methods->expire)(rdataset DNS__DB_FLARG_PASS);
+	if (rdataset->methods == &dns_rdataslab_rdatasetmethods) {
+		dns_rdataslab_rdatasetmethods.expire(rdataset DNS__DB_FLARG_PASS);
+	} else {
+		if (rdataset->methods->expire != NULL) {
+			(rdataset->methods->expire)(rdataset DNS__DB_FLARG_PASS);
+		}
 	}
 }
 
@@ -546,8 +590,12 @@ dns_rdataset_clearprefetch(dns_rdataset_t *rdataset) {
 	REQUIRE(DNS_RDATASET_VALID(rdataset));
 	REQUIRE(rdataset->methods != NULL);
 
-	if (rdataset->methods->clearprefetch != NULL) {
-		(rdataset->methods->clearprefetch)(rdataset);
+	if (rdataset->methods == &dns_rdataslab_rdatasetmethods) {
+		dns_rdataslab_rdatasetmethods.clearprefetch(rdataset);
+	} else {
+		if (rdataset->methods->clearprefetch != NULL) {
+			(rdataset->methods->clearprefetch)(rdataset);
+		}
 	}
 }
 
@@ -568,10 +616,16 @@ dns_rdataset_getownercase(const dns_rdataset_t *rdataset, dns_name_t *name) {
 	REQUIRE(DNS_RDATASET_VALID(rdataset));
 	REQUIRE(rdataset->methods != NULL);
 
-	if (rdataset->methods->getownercase != NULL &&
-	    !rdataset->attributes.keepcase)
-	{
-		(rdataset->methods->getownercase)(rdataset, name);
+	if (rdataset->methods == &dns_rdataslab_rdatasetmethods) {
+		if (!rdataset->attributes.keepcase) {
+			dns_rdataslab_rdatasetmethods.getownercase(rdataset, name);
+		}
+	} else {
+		if (rdataset->methods->getownercase != NULL &&
+		    !rdataset->attributes.keepcase)
+		{
+			(rdataset->methods->getownercase)(rdataset, name);
+		}
 	}
 }
 
@@ -607,8 +661,12 @@ dns_slabheader_t *
 dns_rdataset_getheader(const dns_rdataset_t *rdataset) {
 	REQUIRE(DNS_RDATASET_VALID(rdataset));
 
-	if (rdataset->methods->getheader != NULL) {
-		return (rdataset->methods->getheader)(rdataset);
+	if (rdataset->methods == &dns_rdataslab_rdatasetmethods) {
+		return dns_rdataslab_rdatasetmethods.getheader(rdataset);
+	} else {
+		if (rdataset->methods->getheader != NULL) {
+			return (rdataset->methods->getheader)(rdataset);
+		}
 	}
 
 	return NULL;
