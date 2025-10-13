@@ -1935,7 +1935,7 @@ static dns_name_t const rfc1918_172_names[] = {
 };
 
 bool
-dns_name_isrfc1918(const dns_name_t *name) {
+dns_name_isrfc1918(const dns_name_t *name, dns_name_t *which) {
 	size_t i;
 	unsigned int labels = dns_name_countlabels(name);
 
@@ -1950,9 +1950,21 @@ dns_name_isrfc1918(const dns_name_t *name) {
 		return false;
 	}
 
-	if (dns_name_issubdomain(name, &inaddr_arpa_10) ||
-	    dns_name_issubdomain(name, &inaddr_arpa_192_168))
-	{
+	if (dns_name_issubdomain(name, &inaddr_arpa_10)) {
+		if (which != NULL) {
+			dns_name_clone(&inaddr_arpa_10, which);
+		}
+		return true;
+	}
+
+	if (labels < 5) {
+		return false;
+	}
+
+	if (dns_name_issubdomain(name, &inaddr_arpa_192_168)) {
+		if (which != NULL) {
+			dns_name_clone(&inaddr_arpa_192_168, which);
+		}
 		return true;
 	}
 
@@ -1966,6 +1978,9 @@ dns_name_isrfc1918(const dns_name_t *name) {
 
 	for (i = 0; i < ARRAY_SIZE(rfc1918_172_names); i++) {
 		if (dns_name_issubdomain(name, &rfc1918_172_names[i])) {
+			if (which != NULL) {
+				dns_name_clone(&rfc1918_172_names[i], which);
+			}
 			return true;
 		}
 	}

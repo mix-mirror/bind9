@@ -3813,7 +3813,8 @@ isccfg_check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 	 * unless explicitly configured to be so.
 	 */
 	if (ztype == CFG_ZONE_FORWARD &&
-	    ((rfc1918 = dns_name_isrfc1918(zname)) || dns_name_isula(zname)))
+	    ((rfc1918 = dns_name_isrfc1918(zname, NULL)) ||
+	     dns_name_isula(zname)))
 	{
 		obj = NULL;
 		(void)get_zoneopt(zoptions, toptions, NULL, NULL, "forward",
