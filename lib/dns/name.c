@@ -1937,6 +1937,11 @@ static dns_name_t const rfc1918_172_names[] = {
 bool
 dns_name_isrfc1918(const dns_name_t *name) {
 	size_t i;
+	unsigned int labels = dns_name_countlabels(name);
+
+	if (labels < 4) {
+		return false;
+	}
 
 	/*
 	 * Even better, this could be a trie or a perfect hashmap
@@ -1949,6 +1954,10 @@ dns_name_isrfc1918(const dns_name_t *name) {
 	    dns_name_issubdomain(name, &inaddr_arpa_192_168))
 	{
 		return true;
+	}
+
+	if (labels < 5) {
+		return false;
 	}
 
 	if (!dns_name_issubdomain(name, &inaddr_arpa_172)) {
