@@ -180,3 +180,9 @@ def test_multiple_rrsigs(ns3):
         res = isctest.query.tcp(msg, "10.53.0.3")
 
     isctest.check.servfail(res)
+
+
+def test_truncated_dnskey():
+    msg = isctest.query.create("a.truncated.selfsigned.", "A")
+    res = isctest.query.tcp(msg, "10.53.0.3")
+    isctest.check.servfail(res)
