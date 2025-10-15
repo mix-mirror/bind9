@@ -399,21 +399,6 @@ stages:
         fi
       fi
 
-.check_for_junit_xml: &check_for_junit_xml
-    # test if junit.xml file exists and is longer 40 bytes
-    # (i.e., contains more than `<testsuites><testsuite /></testsuites>`)
-    - if [ -f "$CI_PROJECT_DIR"/junit.xml ]; then
-        if [ $(wc -c < "$CI_PROJECT_DIR"/junit.xml) -gt 40 ]; then
-          echo "junit.xml file exists and is longer than 40 bytes.";
-        else
-          echo "junit.xml file exists but is too short.";
-          exit 1;
-        fi
-      else
-        echo "junit.xml file does not exist.";
-        exit 1;
-      fi
-
 .build: &build_job
   <<: *default_triggering_rules
   stage: build
@@ -521,7 +506,9 @@ stages:
     - RET=0
     - >
       ("$PYTEST" --junit-xml="$CI_PROJECT_DIR"/junit.xml -n "$TEST_PARALLEL_JOBS" | tee pytest.out.txt) || RET=1
-    - *check_for_junit_xml
+    - git clone --depth 1 https://gitlab.isc.org/isc-projects/bind9-qa.git
+    - >
+      "$PYTHON" bind9-qa/ci/postprocess_junit_files.py "$CI_PROJECT_DIR"/junit.xml --output "$CI_PROJECT_DIR"/junit.xml
     - (exit $RET)
     - '( ! grep -F "grep: warning:" pytest.out.txt )'
     - test "$CLEAN_BUILD_ARTIFACTS_ON_SUCCESS" -eq 0 || ( cd ../../.. && ninja -C build clean >/dev/null 2>&1 )
@@ -556,7 +543,10 @@ stages:
     - meson test -C build --no-rebuild --no-suite flaky || RET=1
     - cp build/meson-logs/testlog.junit.xml $CI_PROJECT_DIR/junit.xml
     - meson test -C build --no-rebuild --suite flaky  --logbase testlog-flaky || meson test -C build --no-rebuild --suite flaky --logbase testlog-flaky || RET=1
-    - *check_for_junit_xml
+    - git clone --depth 1 https://gitlab.isc.org/isc-projects/bind9-qa.git
+    - *find_python
+    - >
+      "$PYTHON" bind9-qa/ci/postprocess_junit_files.py "$CI_PROJECT_DIR"/junit.xml --output "$CI_PROJECT_DIR"/junit.xml
     - (exit $RET)
     - test "$CLEAN_BUILD_ARTIFACTS_ON_SUCCESS" -eq 0 || ninja -C build clean >/dev/null 2>&1
   artifacts:
@@ -913,7 +903,10 @@ cross-version-config-tests:
     - RET=0
     - >
       "$PYTEST" --setup-only --junit-xml="$CI_PROJECT_DIR"/junit.xml -n "${TEST_PARALLEL_JOBS:-1}" || RET=1
-    - *check_for_junit_xml
+    - git clone --depth 1 https://gitlab.isc.org/isc-projects/bind9-qa.git
+    - *find_python
+    - >
+      "$PYTHON" bind9-qa/ci/postprocess_junit_files.py "$CI_PROJECT_DIR"/junit.xml --output "$CI_PROJECT_DIR"/junit.xml
     - (exit $RET)
   needs:
     - job: ci-variables
