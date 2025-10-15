@@ -532,22 +532,37 @@ stages:
   <<: *default_triggering_rules
   stage: unit
   # This script needs to: 1) fail if the unit tests fail, 2) fail if the
-  # junit.xml file is broken, 3) produce the junit.xml file even if the
+  # junit.xml file is broken, 3) produce the JUnit reports even if the
   # unit tests fail.  Therefore, $RET is used to "cache" the result of
   # running "meson test" as interrupting the script immediately when
   # unit tests fail would make checking the contents of the junit.xml
   # file impossible (GitLab Runner uses "set -o pipefail").
+
+  # Additionally, both flaky and CMocka test need special handling:
+  # - flaky tests are retried a number of times (default 2) before being
+  #   considered failed
+  # - for CMocka tests, we use the CMocka's XML report to get more detailed
+  #   information (subtest results and timings). Meson also produces
+  #   a JUnit report, so we need to not pass it to GitLab to avoid duplication.
   script:
     - *fips_feature_test
-    - RET=0
-    - meson test -C build --no-rebuild --no-suite flaky || RET=1
-    - cp build/meson-logs/testlog.junit.xml $CI_PROJECT_DIR/junit.xml
-    - meson test -C build --no-rebuild --suite flaky  --logbase testlog-flaky || meson test -C build --no-rebuild --suite flaky --logbase testlog-flaky || RET=1
-    - git clone --depth 1 https://gitlab.isc.org/isc-projects/bind9-qa.git
     - *find_python
+
+    - git clone --depth 1 https://gitlab.isc.org/isc-projects/bind9-qa.git
+
+    - export CMOCKA_MESSAGE_OUTPUT="xml"
+    - export CMOCKA_XML_FILE="$(pwd)/build/meson-logs/include-cmocka-%g.junit.xml"
+
+    - RET=0
+    - MESON_WRAPPER="$(pwd)/bind9-qa/ci/meson_retry_if_flaky.sh 2"
+    - meson test -C build --suite cmocka --wrapper "$MESON_WRAPPER" --no-rebuild --logbase "exclude-" || RET=1
+    - meson test -C build --no-suite cmocka --wrapper "$MESON_WRAPPER" --no-rebuild --logbase "include-" || RET=1
+
     - >
-      "$PYTHON" bind9-qa/ci/postprocess_junit_files.py "$CI_PROJECT_DIR"/junit.xml --output "$CI_PROJECT_DIR"/junit.xml
+      "$PYTHON" bind9-qa/ci/postprocess_junit_files.py build/meson-logs/include-*.junit.xml --output "$CI_PROJECT_DIR/junit.xml"
+
     - (exit $RET)
+
     - test "$CLEAN_BUILD_ARTIFACTS_ON_SUCCESS" -eq 0 || ninja -C build clean >/dev/null 2>&1
   artifacts:
     untracked: true
@@ -555,7 +570,6 @@ stages:
     reports:
       junit:
         - junit.xml
-        - build/meson-logs/testlog-flaky.junit.xml
 
 .unit_test_tsan: &unit_test_tsan_job
   <<: *unit_test_job
