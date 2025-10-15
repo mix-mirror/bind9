@@ -89,7 +89,7 @@ foreach unit : isc_test
         ],
     )
 
-    suites = ['isc']
+    suites = ['isc', 'cmocka']
     if unit in flaky_isc_test
         suites += 'flaky'
     endif
