@@ -906,8 +906,15 @@ cross-version-config-tests:
     # should not be run.
     - rm -r dlzexternal
     - rm -r dyndb
+    # RET is used to "cache" the result of running pytest as interrupting
+    # the script immediately when system tests fail would make checking the
+    # contents of the junit.xml file impossible (GitLab Runner uses "set -o
+    # pipefail").
+    - RET=0
     - >
-      "$PYTEST" --setup-only --junit-xml="$CI_PROJECT_DIR"/junit.xml -n "${TEST_PARALLEL_JOBS:-1}"
+      "$PYTEST" --setup-only --junit-xml="$CI_PROJECT_DIR"/junit.xml -n "${TEST_PARALLEL_JOBS:-1}" || RET=1
+    - *check_for_junit_xml
+    - (exit $RET)
   needs:
     - job: ci-variables
       artifacts: true
