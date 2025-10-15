@@ -38,6 +38,10 @@ dst_region_computeid(const isc_region_t *source) {
 	p = source->base;
 	size = source->length;
 
+	if (p[3] == DST_ALG_RSAMD5) {
+		return (p[size - 3] << 8) + p[size - 2];
+	}
+
 	for (ac = 0; size > 1; size -= 2, p += 2) {
 		ac += ((*p) << 8) + *(p + 1);
 	}
@@ -61,6 +65,14 @@ dst_region_computerid(const isc_region_t *source) {
 
 	p = source->base;
 	size = source->length;
+
+	if (p[3] == DST_ALG_RSAMD5) {
+		ac = (p[size - 3] << 8) + p[size - 2];
+		if (size == 4U) {
+			ac |= (DNS_KEYFLAG_REVOKE << 8);
+		}
+		return ac;
+	}
 
 	ac = ((*p) << 8) + *(p + 1);
 	ac |= DNS_KEYFLAG_REVOKE;
