@@ -120,6 +120,7 @@ dns_srcset.add(
         'name.c',
         'nametree.c',
         'ncache.c',
+        'notify.c',
         'nsec.c',
         'nsec3.c',
         'nta.c',
