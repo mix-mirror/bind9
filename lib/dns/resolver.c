@@ -9778,7 +9778,8 @@ ISC_REFCOUNT_IMPL(dns_resolver, dns_resolver__destroy);
 #endif
 
 static void
-log_fetch(const dns_name_t *name, dns_rdatatype_t type) {
+log_fetch(const dns_name_t *name, dns_rdatatype_t type, bool new_fctx,
+	  isc_result_t result) {
 	char namebuf[DNS_NAME_FORMATSIZE];
 	char typebuf[DNS_RDATATYPE_FORMATSIZE];
 	int level = ISC_LOG_DEBUG(1);
@@ -9795,7 +9796,8 @@ log_fetch(const dns_name_t *name, dns_rdatatype_t type) {
 	dns_rdatatype_format(type, typebuf, sizeof(typebuf));
 
 	isc_log_write(DNS_LOGCATEGORY_RESOLVER, DNS_LOGMODULE_RESOLVER, level,
-		      "fetch: %s/%s", namebuf, typebuf);
+		      "fetch: %s/%s %s %s", namebuf, typebuf,
+		      new_fctx ? "create" : "join", isc_result_totext(result));
 }
 
 static void
@@ -10045,8 +10047,6 @@ dns_resolver_createfetch(dns_resolver_t *res, const dns_name_t *name,
 		return ISC_R_SHUTTINGDOWN;
 	}
 
-	log_fetch(name, type);
-
 	fetch = isc_mem_get(mctx, sizeof(*fetch));
 	*fetch = (dns_fetch_t){ 0 };
 
@@ -10130,6 +10130,7 @@ unlock:
 	}
 
 fail:
+	log_fetch(name, type, new_fctx, result);
 	if (result != ISC_R_SUCCESS) {
 		dns_resolver_detach(&fetch->res);
 		isc_mem_putanddetach(&fetch->mctx, fetch, sizeof(*fetch));
