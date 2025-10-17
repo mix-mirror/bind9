@@ -1249,7 +1249,7 @@ xfrin_create(isc_mem_t *mctx, dns_zone_t *zone, dns_db_t *db, isc_loop_t *loop,
 
 	isc_loop_attach(loop, &xfr->loop);
 	isc_mem_attach(mctx, &xfr->mctx);
-	dns_zone_iattach(zone, &xfr->zone);
+	dns_zone_iattach(zone, &xfr->zone, false);
 	dns_view_weakattach(dns_zone_getview(zone), &xfr->view);
 	dns_name_init(&xfr->name);
 
@@ -2200,7 +2200,7 @@ xfrin_destroy(dns_xfrin_t *xfr) {
 		/*
 		 * xfr->zone must not be detached before xfrin_log() is called.
 		 */
-		dns_zone_idetach(&xfr->zone);
+		dns_zone_idetach(&xfr->zone, false);
 	}
 
 	if (xfr->view != NULL) {

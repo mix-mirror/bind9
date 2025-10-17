@@ -158,10 +158,6 @@
 #define DNS_DEFAULT_IDLEOUT 3600       /*%< 1 hour */
 #define MAX_XFER_TIME	    (2 * 3600) /*%< Documented default is 2 hours */
 #define RESIGN_DELAY	    3600       /*%< 1 hour */
-#define UDP_REQUEST_TIMEOUT 5	       /*%< 5 seconds */
-#define UDP_REQUEST_RETRIES 2
-#define TCP_REQUEST_TIMEOUT \
-	(UDP_REQUEST_TIMEOUT * (UDP_REQUEST_RETRIES + 1) + 1)
 
 #ifndef DNS_MAX_EXPIRE
 #define DNS_MAX_EXPIRE 14515200 /*%< 24 weeks */
@@ -986,20 +982,6 @@ zone_journal_rollforward(dns_zone_t *zone, dns_db_t *db, bool *needdump,
 			 bool *fixjournal);
 static void
 setnsec3param(void *arg);
-
-static void
-zmgr_tlsctx_attach(dns_zonemgr_t *zmgr, isc_tlsctx_cache_t **ptlsctx_cache);
-/*%<
- *	Attach to TLS client context cache used for zone transfers via
- *	encrypted transports (e.g. XoT).
- *
- * The obtained reference needs to be detached by a call to
- * 'isc_tlsctx_cache_detach()' when not needed anymore.
- *
- * Requires:
- *\li	'zmgr' is a valid zone manager.
- *\li	'ptlsctx_cache' is not 'NULL' and points to 'NULL'.
- */
 
 #define ENTER zone_debuglog(zone, __func__, 1, "enter")
 
@@ -2695,7 +2677,7 @@ zone_asyncload(void *arg) {
 	}
 
 	isc_mem_put(zone->mctx, asl, sizeof(*asl));
-	dns_zone_idetach(&zone);
+	dns_zone_idetach(&zone, false);
 }
 
 isc_result_t
@@ -6217,15 +6199,6 @@ ISC_REFCOUNT_TRACE_IMPL(dns_zone, zone_destroy);
 ISC_REFCOUNT_IMPL(dns_zone, zone_destroy);
 #endif
 
-void
-dns_zone_iattach(dns_zone_t *source, dns_zone_t **target) {
-	REQUIRE(DNS_ZONE_VALID(source));
-
-	LOCK_ZONE(source);
-	zone_iattach(source, target);
-	UNLOCK_ZONE(source);
-}
-
 static void
 zone_iattach(dns_zone_t *source, dns_zone_t **target) {
 	REQUIRE(DNS_ZONE_VALID(source));
@@ -6235,6 +6208,20 @@ zone_iattach(dns_zone_t *source, dns_zone_t **target) {
 		       isc_refcount_current(&source->references) >
 	       0);
 	*target = source;
+}
+
+void
+dns_zone_iattach(dns_zone_t *source, dns_zone_t **target, bool locked) {
+	REQUIRE(DNS_ZONE_VALID(source));
+
+	if (locked) {
+		zone_iattach(source, target);
+		return;
+	}
+
+	LOCK_ZONE(source);
+	zone_iattach(source, target);
+	UNLOCK_ZONE(source);
 }
 
 static void
@@ -6256,10 +6243,15 @@ zone_idetach(dns_zone_t **zonep) {
 }
 
 void
-dns_zone_idetach(dns_zone_t **zonep) {
+dns_zone_idetach(dns_zone_t **zonep, bool locked) {
 	dns_zone_t *zone;
 
 	REQUIRE(zonep != NULL && DNS_ZONE_VALID(*zonep));
+
+	if (locked) {
+		zone_idetach(zonep);
+		return;
+	}
 
 	zone = *zonep;
 	*zonep = NULL;
@@ -12319,7 +12311,7 @@ dump_done(void *arg, isc_result_t result) {
 	if (again) {
 		(void)zone_dump(zone, false);
 	}
-	dns_zone_idetach(&zone);
+	dns_zone_idetach(&zone, false);
 }
 
 static isc_result_t
@@ -12389,7 +12381,7 @@ redo:
 
 		UNLOCK_ZONE(zone);
 		if (result != ISC_R_SUCCESS) {
-			dns_zone_idetach(&(dns_zone_t *){ zone });
+			dns_zone_idetach(&(dns_zone_t *){ zone }, false);
 			goto fail;
 		}
 		result = DNS_R_CONTINUE;
@@ -12772,11 +12764,7 @@ notify_destroy(dns_notify_t *notify, bool locked) {
 		if (!locked) {
 			UNLOCK_ZONE(notify->zone);
 		}
-		if (locked) {
-			zone_idetach(&notify->zone);
-		} else {
-			dns_zone_idetach(&notify->zone);
-		}
+		dns_zone_idetach(&notify->zone, locked);
 	}
 	if (notify->find != NULL) {
 		dns_adb_destroyfind(&notify->find);
@@ -13008,7 +12996,7 @@ again:
 		options |= DNS_REQUESTOPT_TCP;
 	}
 
-	zmgr_tlsctx_attach(notify->zone->zmgr, &zmgr_tlsctx_cache);
+	dns_zonemgr_tlsctx_attach(notify->zone->zmgr, &zmgr_tlsctx_cache);
 
 	const unsigned int connect_timeout = isc_nm_getinitialtimeout() /
 					     MS_PER_SEC;
@@ -13379,7 +13367,7 @@ zone_notify(dns_zone_t *zone, isc_time_t *now) {
 			continue;
 		}
 		dns_notify_create(zone->mctx, flags, &notify);
-		dns_zone_iattach(zone, &notify->zone);
+		dns_zone_iattach(zone, &notify->zone, false);
 		dns_name_dup(&ns.name, zone->mctx, &notify->ns);
 		LOCK_ZONE(zone);
 		ISC_LIST_APPEND(zone->notifyctx.notifies, notify, link);
@@ -13706,7 +13694,7 @@ cleanup:
 		stub_finish_zone_update(stub, isc_time_now());
 		UNLOCK_ZONE(zone);
 		stub->magic = 0;
-		dns_zone_idetach(&stub->zone);
+		dns_zone_idetach(&stub->zone, false);
 		INSIST(stub->db == NULL);
 		INSIST(stub->version == NULL);
 		isc_mem_put(stub->mctx, stub, sizeof(*stub));
@@ -14164,7 +14152,7 @@ same_primary:
 free_stub:
 	UNLOCK_ZONE(zone);
 	stub->magic = 0;
-	dns_zone_idetach(&stub->zone);
+	dns_zone_idetach(&stub->zone, false);
 	INSIST(stub->db == NULL);
 	INSIST(stub->version == NULL);
 	isc_mem_put(stub->mctx, stub, sizeof(*stub));
@@ -14703,7 +14691,7 @@ detach:
 	if (do_queue_xfrin) {
 		queue_xfrin(zone);
 	}
-	dns_zone_idetach(&zone);
+	dns_zone_idetach(&zone, false);
 	return;
 }
 
@@ -14972,7 +14960,7 @@ cleanup:
 	}
 	isc_rlevent_free(&sq->rlevent);
 	isc_mem_put(zone->mctx, sq, sizeof(*sq));
-	dns_zone_idetach(&zone);
+	dns_zone_idetach(&zone, false);
 	return;
 
 skip_primary:
@@ -15368,7 +15356,7 @@ zone_shutdown(void *arg) {
 		dns_zone_detach(&raw);
 	}
 	if (secure != NULL) {
-		dns_zone_idetach(&secure);
+		dns_zone_idetach(&secure, false);
 	}
 	if (free_needed) {
 		zone_free(zone);
@@ -16516,6 +16504,20 @@ dns_zone_getorigin(dns_zone_t *zone) {
 	return &zone->origin;
 }
 
+dns_rdataclass_t
+dns_zone_getrdclass(dns_zone_t *zone) {
+	REQUIRE(DNS_ZONE_VALID(zone));
+
+	return zone->rdclass;
+}
+
+dns_notifyctx_t *
+dns_zone_getnotifyctx(dns_zone_t *zone) {
+	REQUIRE(DNS_ZONE_VALID(zone));
+
+	return &zone->notifyctx;
+}
+
 void
 dns_zone_setidlein(dns_zone_t *zone, uint32_t idlein) {
 	REQUIRE(DNS_ZONE_VALID(zone));
@@ -16545,6 +16547,55 @@ dns_zone_getidleout(dns_zone_t *zone) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 
 	return zone->idleout;
+}
+
+void
+dns_zone_stats_increment(dns_zone_t *zone, isc_statscounter_t counter) {
+	REQUIRE(DNS_ZONE_VALID(zone));
+	REQUIRE(LOCKED_ZONE(zone));
+	inc_stats(zone, counter);
+}
+
+void
+dns_zone_lock(dns_zone_t *zone) {
+	REQUIRE(DNS_ZONE_VALID(zone));
+	LOCK_ZONE(zone);
+}
+
+void
+dns_zone_unlock(dns_zone_t *zone) {
+	REQUIRE(DNS_ZONE_VALID(zone));
+	UNLOCK_ZONE(zone);
+}
+
+bool
+dns_zone_locked(dns_zone_t *zone) {
+	REQUIRE(DNS_ZONE_VALID(zone));
+	return LOCKED_ZONE(zone);
+}
+
+void
+dns_zone_dblock(dns_zone_t *zone, isc_rwlocktype_t locktype) {
+	REQUIRE(DNS_ZONE_VALID(zone));
+	ZONEDB_LOCK(&zone->dblock, locktype);
+}
+
+void
+dns_zone_dbunlock(dns_zone_t *zone, isc_rwlocktype_t locktype) {
+	REQUIRE(DNS_ZONE_VALID(zone));
+	ZONEDB_UNLOCK(&zone->dblock, locktype);
+}
+
+bool
+dns_zone_loaded(dns_zone_t *zone) {
+	REQUIRE(DNS_ZONE_VALID(zone));
+	return DNS_ZONE_FLAG(zone, DNS_ZONEFLG_LOADED) != 0;
+}
+
+bool
+dns_zone_exiting(dns_zone_t *zone) {
+	REQUIRE(DNS_ZONE_VALID(zone));
+	return DNS_ZONE_FLAG(zone, DNS_ZONEFLG_EXITING) != 0;
 }
 
 static void
@@ -17422,7 +17473,7 @@ failure:
 	}
 	dns_diff_clear(&zone->rss_diff);
 
-	dns_zone_idetach(&zone);
+	dns_zone_idetach(&zone, false);
 }
 
 static isc_result_t
@@ -17878,7 +17929,7 @@ failure:
 
 	dns_db_detach(&rawdb);
 	isc_mem_put(zone->mctx, rss, sizeof(*rss));
-	dns_zone_idetach(&zone);
+	dns_zone_idetach(&zone, false);
 
 	INSIST(version == NULL);
 }
@@ -18516,7 +18567,7 @@ again:
 	}
 	isc_mem_put(zone->mctx, load, sizeof(*load));
 
-	dns_zone_idetach(&zone);
+	dns_zone_idetach(&zone, false);
 }
 
 void
@@ -18891,7 +18942,7 @@ got_transfer_quota(void *arg) {
 
 	INSIST(isc_sockaddr_pf(&primaryaddr) == isc_sockaddr_pf(&sourceaddr));
 
-	zmgr_tlsctx_attach(zone->zmgr, &zmgr_tlsctx_cache);
+	dns_zonemgr_tlsctx_attach(zone->zmgr, &zmgr_tlsctx_cache);
 
 	dns_xfrin_create(zone, xfrtype, ixfr_maxdiffs, &primaryaddr,
 			 &sourceaddr, zone->tsigkey, soa_transport_type,
@@ -18959,7 +19010,7 @@ forward_destroy(dns_forward_t *forward) {
 			ISC_LIST_UNLINK(forward->zone->forwards, forward, link);
 		}
 		UNLOCK(&forward->zone->lock);
-		dns_zone_idetach(&forward->zone);
+		dns_zone_idetach(&forward->zone, false);
 	}
 	isc_mem_putanddetach(&forward->mctx, forward, sizeof(*forward));
 }
@@ -19035,7 +19086,7 @@ next:
 		}
 	}
 
-	zmgr_tlsctx_attach(zone->zmgr, &zmgr_tlsctx_cache);
+	dns_zonemgr_tlsctx_attach(zone->zmgr, &zmgr_tlsctx_cache);
 	const unsigned int connect_timeout = isc_nm_getprimariestimeout() /
 					     MS_PER_SEC;
 	result = dns_request_createraw(
@@ -19226,7 +19277,7 @@ dns_zone_forwardupdate(dns_zone_t *zone, dns_message_t *msg,
 	}
 
 	isc_mem_attach(zone->mctx, &forward->mctx);
-	dns_zone_iattach(zone, &forward->zone);
+	dns_zone_iattach(zone, &forward->zone, false);
 	result = sendtoprimary(forward);
 
 cleanup:
@@ -19900,11 +19951,25 @@ dns_zonemgr_getnotifyrate(dns_zonemgr_t *zmgr) {
 	return zmgr->notifyrate;
 }
 
+void
+dns_zonemgr_getnotifyrl(dns_zonemgr_t *zmgr, isc_ratelimiter_t **prl) {
+	REQUIRE(DNS_ZONEMGR_VALID(zmgr));
+
+	*prl = zmgr->notifyrl;
+}
+
 unsigned int
 dns_zonemgr_getstartupnotifyrate(dns_zonemgr_t *zmgr) {
 	REQUIRE(DNS_ZONEMGR_VALID(zmgr));
 
 	return zmgr->startupnotifyrate;
+}
+
+void
+dns_zonemgr_getstartupnotifyrl(dns_zonemgr_t *zmgr, isc_ratelimiter_t **prl) {
+	REQUIRE(DNS_ZONEMGR_VALID(zmgr));
+
+	*prl = zmgr->startupnotifyrl;
 }
 
 unsigned int
@@ -20320,6 +20385,16 @@ dns_zone_setisself(dns_zone_t *zone, dns_isselffunc_t isself, void *arg) {
 	zone->isself = isself;
 	zone->isselfarg = arg;
 	UNLOCK_ZONE(zone);
+}
+
+void
+dns_zone_getisself(dns_zone_t *zone, dns_isselffunc_t *isself, void **arg) {
+	REQUIRE(DNS_ZONE_VALID(zone));
+	REQUIRE(isself != NULL);
+	REQUIRE(arg != NULL && *arg == NULL);
+
+	*isself = zone->isself;
+	*arg = zone->isselfarg;
 }
 
 void
@@ -20920,11 +20995,7 @@ checkds_destroy(dns_checkds_t *checkds, bool locked) {
 		if (!locked) {
 			UNLOCK_ZONE(checkds->zone);
 		}
-		if (locked) {
-			zone_idetach(&checkds->zone);
-		} else {
-			dns_zone_idetach(&checkds->zone);
-		}
+		dns_zone_idetach(&checkds->zone, locked);
 	}
 	if (checkds->find != NULL) {
 		dns_adb_destroyfind(&checkds->find);
@@ -23710,7 +23781,7 @@ failure:
 	}
 	dns_diff_clear(&diff);
 	isc_mem_put(zone->mctx, kd, sizeof(*kd));
-	dns_zone_idetach(&zone);
+	dns_zone_idetach(&zone, false);
 
 	INSIST(oldver == NULL);
 	INSIST(newver == NULL);
@@ -23821,7 +23892,7 @@ setnsec3param(void *arg) {
 
 	rss_post(npe);
 
-	dns_zone_idetach(&zone);
+	dns_zone_idetach(&zone, false);
 }
 
 static void
@@ -24553,7 +24624,7 @@ failure:
 
 disabled:
 	isc_mem_put(zone->mctx, sse, sizeof(*sse));
-	dns_zone_idetach(&zone);
+	dns_zone_idetach(&zone, false);
 
 	INSIST(oldver == NULL);
 	INSIST(newver == NULL);
@@ -24679,8 +24750,9 @@ dns_zonemgr_set_tlsctx_cache(dns_zonemgr_t *zmgr,
 	RWUNLOCK(&zmgr->tlsctx_cache_rwlock, isc_rwlocktype_write);
 }
 
-static void
-zmgr_tlsctx_attach(dns_zonemgr_t *zmgr, isc_tlsctx_cache_t **ptlsctx_cache) {
+void
+dns_zonemgr_tlsctx_attach(dns_zonemgr_t *zmgr,
+			  isc_tlsctx_cache_t **ptlsctx_cache) {
 	REQUIRE(DNS_ZONEMGR_VALID(zmgr));
 	REQUIRE(ptlsctx_cache != NULL && *ptlsctx_cache == NULL);
 
