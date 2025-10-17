@@ -354,11 +354,12 @@ struct dns_zone {
 	uint32_t nsfetchcount;
 	uint32_t parent_nscount;
 
-	dns_remote_t notify;
+	dns_remote_t alsonotify;
 	dns_notifytype_t notifytype;
 	isc_sockaddr_t notifyfrom;
 	isc_sockaddr_t notifysrc4;
 	isc_sockaddr_t notifysrc6;
+
 	isc_sockaddr_t parentalsrc4;
 	isc_sockaddr_t parentalsrc6;
 	isc_sockaddr_t xfrsource4;
@@ -1207,7 +1208,7 @@ dns_zone_create(dns_zone_t **zonep, isc_mem_t *mctx, isc_tid_t tid) {
 
 	zone->primaries = r;
 	zone->parentals = r;
-	zone->notify = r;
+	zone->alsonotify = r;
 	zone->defaultkasp = NULL;
 	ISC_LIST_INIT(zone->keyring);
 
@@ -6546,11 +6547,11 @@ dns_zone_setalsonotify(dns_zone_t *zone, isc_sockaddr_t *addresses,
 	remote.tlsnames = tlsnames;
 	remote.addrcnt = count;
 
-	if (dns_remote_equal(&zone->notify, &remote)) {
+	if (dns_remote_equal(&zone->alsonotify, &remote)) {
 		goto unlock;
 	}
 
-	dns_remote_clear(&zone->notify);
+	dns_remote_clear(&zone->alsonotify);
 
 	/*
 	 * If count == 0, don't allocate any space for servers to notify.
@@ -6562,7 +6563,7 @@ dns_zone_setalsonotify(dns_zone_t *zone, isc_sockaddr_t *addresses,
 	/*
 	 * Now set up the notify address and key lists.
 	 */
-	dns_remote_init(&zone->notify, count, addresses, sources, keynames,
+	dns_remote_init(&zone->alsonotify, count, addresses, sources, keynames,
 			tlsnames, true, zone->mctx);
 
 unlock:
@@ -13290,20 +13291,22 @@ zone_notify(dns_zone_t *zone, isc_time_t *now) {
 	 */
 	LOCK_ZONE(zone);
 
-	dns_remote_reset(&zone->notify, false);
-	while (!dns_remote_done(&zone->notify)) {
+	dns_remote_reset(&zone->alsonotify, false);
+	while (!dns_remote_done(&zone->alsonotify)) {
 		dns_tsigkey_t *key = NULL;
 		dns_transport_t *transport = NULL;
 		dns_notify_t *notify = NULL;
 		dns_view_t *view = dns_zone_getview(zone);
 
-		if (dns_remote_keyname(&zone->notify) != NULL) {
-			dns_name_t *keyname = dns_remote_keyname(&zone->notify);
+		if (dns_remote_keyname(&zone->alsonotify) != NULL) {
+			dns_name_t *keyname =
+				dns_remote_keyname(&zone->alsonotify);
 			(void)dns_view_gettsig(view, keyname, &key);
 		}
 
-		if (dns_remote_tlsname(&zone->notify) != NULL) {
-			dns_name_t *tlsname = dns_remote_tlsname(&zone->notify);
+		if (dns_remote_tlsname(&zone->alsonotify) != NULL) {
+			dns_name_t *tlsname =
+				dns_remote_tlsname(&zone->alsonotify);
 			result = dns_view_gettransport(view, DNS_TRANSPORT_TLS,
 						       tlsname, &transport);
 
@@ -13325,8 +13328,8 @@ zone_notify(dns_zone_t *zone, isc_time_t *now) {
 
 		/* TODO: glue the transport to the notify */
 
-		dst = dns_remote_curraddr(&zone->notify);
-		src = dns_remote_sourceaddr(&zone->notify);
+		dst = dns_remote_curraddr(&zone->alsonotify);
+		src = dns_remote_sourceaddr(&zone->alsonotify);
 		INSIST(isc_sockaddr_pf(&src) == isc_sockaddr_pf(&dst));
 
 		if (isc_sockaddr_disabled(&dst)) {
@@ -13383,7 +13386,7 @@ zone_notify(dns_zone_t *zone, isc_time_t *now) {
 		}
 	next:
 		flags &= ~DNS_NOTIFY_TCP;
-		dns_remote_next(&zone->notify, false);
+		dns_remote_next(&zone->alsonotify, false);
 	}
 	UNLOCK_ZONE(zone);
 
