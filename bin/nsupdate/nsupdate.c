@@ -2274,6 +2274,68 @@ show_message(FILE *stream, dns_message_t *msg, const char *description) {
 	isc_buffer_free(&buf);
 }
 
+static isc_sockaddr_t *
+get_localaddr(isc_sockaddr_t *primary) {
+	if (isc_sockaddr_pf(primary) == AF_INET6) {
+		return localaddr6;
+	} else {
+		return localaddr4;
+	}
+}
+
+static void
+print_keyval(FILE *stream, const char *key, const char *val) {
+	if (val != NULL) {
+		fprintf(stream, "%s: %s\n", key, val);
+	}
+}
+
+static void
+show_transport(FILE *stream, const char *description) {
+	char remotetxt[ISC_SOCKADDR_FORMATSIZE];
+	char localtxt[ISC_SOCKADDR_FORMATSIZE];
+	int i;
+	isc_sockaddr_t *srcaddr;
+
+	ddebug("show_transport()");
+	printf("%s\n", description);
+
+	if (use_tls) {
+		const char *hostname;
+		const char *tran_str;
+
+		INSIST(transport != NULL);
+
+		tran_str =
+			dns_transport_totext(dns_transport_get_type(transport));
+		print_keyval(stream, "Transport", tran_str);
+		hostname = dns_transport_get_remote_hostname(transport);
+		print_keyval(stream, "Hostname", hostname);
+		print_keyval(stream, "CA file",
+			     dns_transport_get_cafile(transport));
+		print_keyval(stream, "Certfile",
+			     dns_transport_get_certfile(transport));
+		print_keyval(stream, "Keyfile",
+			     dns_transport_get_keyfile(transport));
+	} else if (usevc) {
+		print_keyval(stream, "Transport", "tcp");
+	} else {
+		print_keyval(stream, "Transport", "udp");
+	}
+
+	for (i = 0; i < ns_total; i++) {
+		const char *local = "(default)";
+		isc_sockaddr_format(&servers[i], remotetxt, sizeof(remotetxt));
+		srcaddr = get_localaddr(&servers[i]);
+		if (srcaddr) {
+			isc_sockaddr_format(srcaddr, localtxt,
+					    sizeof(localtxt));
+			local = localtxt;
+		}
+		fprintf(stream, "Remote: %20s Local: %s\n", remotetxt, local);
+	}
+}
+
 static uint16_t
 do_next_command(char *cmdline) {
 	char *word;
@@ -2350,6 +2412,12 @@ do_next_command(char *cmdline) {
 		show_message(stdout, updatemsg, "Outgoing update query:");
 		return STATUS_MORE;
 	}
+	if (strcasecmp(word, "transport") == 0 ||
+	    strcasecmp(word, "transports") == 0)
+	{
+		show_transport(stdout, "Configured servers:");
+		return STATUS_MORE;
+	}
 	if (strcasecmp(word, "answer") == 0) {
 		LOCK(&answer_lock);
 		if (answer != NULL) {
@@ -2392,43 +2460,42 @@ do_next_command(char *cmdline) {
 		return STATUS_MORE;
 	}
 	if (strcasecmp(word, "help") == 0) {
-		fprintf(stdout, "nsupdate " PACKAGE_VERSION ":\n"
-				"local address [port]      (set local "
-				"resolver)\n"
-				"server address [port]     (set primary server "
-				"for zone)\n"
-				"send                      (send the update "
-				"request)\n"
-				"show                      (show the update "
-				"request)\n"
-				"answer                    (show the answer to "
-				"the last request)\n"
-				"quit                      (quit, any pending "
-				"update is not sent)\n"
-				"help                      (display this "
-				"message)\n"
-				"key [hmac:]keyname secret (use TSIG to sign "
-				"the request)\n"
-				"gsstsig                   (use GSS_TSIG to "
-				"sign the request)\n"
-				"zone name                 (set the zone to be "
-				"updated)\n"
-				"class CLASS               (set the zone's DNS "
-				"class, e.g. IN (default), CH)\n"
-				"check-names { on | off }  (enable / disable "
-				"check-names)\n"
-				"[prereq] nxdomain name    (require that this "
-				"name does not exist)\n"
-				"[prereq] yxdomain name    (require that this "
-				"name exists)\n"
-				"[prereq] nxrrset ....     (require that this "
-				"RRset does not exist)\n"
-				"[prereq] yxrrset ....     (require that this "
-				"RRset exists)\n"
-				"[update] add ....         (add the given "
-				"record to the zone)\n"
-				"[update] del[ete] ....    (remove the given "
-				"record(s) from the zone)\n");
+		fprintf(stdout,
+			"nsupdate " PACKAGE_VERSION ":\n"
+			"local address [port]      (set local resolver)\n"
+			"server address [port]     (set primary server for "
+			"zone)\n"
+			"send                      (send the update request)\n"
+			"show                      (show the update request)\n"
+			"answer                    (show the answer to the "
+			"last request)\n"
+			"quit                      (quit, any pending update "
+			"is not sent)\n"
+			"help                      (display this message)\n"
+			"key [hmac:]keyname secret (use TSIG to sign the "
+			"request)\n"
+			"gsstsig                   (use GSS_TSIG to sign the "
+			"request)\n"
+			"zone name                 (set the zone to be "
+			"updated)\n"
+			"class CLASS               (set the zone's DNS class, "
+			"e.g. IN (default), CH)\n"
+			"check-names { on | off }  (enable / disable "
+			"check-names)\n"
+			"transport                 (show server address and "
+			"transport channel information)"
+			"[prereq] nxdomain name    (require that this name "
+			"does not exist)\n"
+			"[prereq] yxdomain name    (require that this name "
+			"exists)\n"
+			"[prereq] nxrrset ....     (require that this RRset "
+			"does not exist)\n"
+			"[prereq] yxrrset ....     (require that this RRset "
+			"exists)\n"
+			"[update] add ....         (add the given record to "
+			"the zone)\n"
+			"[update] del[ete] ....    (remove the given record(s) "
+			"from the zone)\n");
 		return STATUS_MORE;
 	}
 	if (strcasecmp(word, "version") == 0) {
@@ -2671,11 +2738,7 @@ send_update(dns_name_t *zone, isc_sockaddr_t *primary) {
 		fprintf(stderr, "Sending update to %s\n", addrbuf);
 	}
 
-	if (isc_sockaddr_pf(primary) == AF_INET6) {
-		srcaddr = localaddr6;
-	} else {
-		srcaddr = localaddr4;
-	}
+	srcaddr = get_localaddr(primary);
 
 	/* Windows doesn't like the tsig name to be compressed. */
 	if (updatemsg->tsigname) {
@@ -2783,12 +2846,7 @@ recvsoa(void *arg) {
 			}
 		}
 
-		if (isc_sockaddr_pf(addr) == AF_INET6) {
-			srcaddr = localaddr6;
-		} else {
-			srcaddr = localaddr4;
-		}
-
+		srcaddr = get_localaddr(addr);
 		result = dns_request_create(
 			requestmgr, soaquery, srcaddr, addr, req_transport,
 			req_tls_ctx_cache, options, NULL, timeout, timeout,
@@ -3014,11 +3072,7 @@ sendrequest(isc_sockaddr_t *destaddr, dns_message_t *msg,
 	reqinfo->msg = msg;
 	reqinfo->addr = destaddr;
 
-	if (isc_sockaddr_pf(destaddr) == AF_INET6) {
-		srcaddr = localaddr6;
-	} else {
-		srcaddr = localaddr4;
-	}
+	srcaddr = get_localaddr(destaddr);
 
 	result = dns_request_create(requestmgr, msg, srcaddr, destaddr,
 				    req_transport, req_tls_ctx_cache, options,
@@ -3219,11 +3273,7 @@ send_gssrequest(isc_sockaddr_t *destaddr, dns_message_t *msg,
 		.context = context,
 	};
 
-	if (isc_sockaddr_pf(destaddr) == AF_INET6) {
-		srcaddr = localaddr6;
-	} else {
-		srcaddr = localaddr4;
-	}
+	srcaddr = get_localaddr(destaddr);
 
 	result = dns_request_create(requestmgr, msg, srcaddr, destaddr,
 				    req_transport, req_tls_ctx_cache, options,
