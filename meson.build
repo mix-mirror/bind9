@@ -154,7 +154,7 @@ add_project_arguments(
         '-fno-strict-aliasing',
         '-fstrict-flex-arrays=3',
 
-        '-ffuction-sections',
+        '-ffunction-sections',
         '-fvisibility=hidden',
     ),
     language: 'c',
