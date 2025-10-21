@@ -2648,7 +2648,7 @@ ns_clientmgr_create(ns_server_t *sctx, dns_aclenv_t *aclenv, isc_tid_t tid,
 	return ISC_R_SUCCESS;
 }
 
-void
+__attribute__((weak)) void
 ns_clientmgr_shutdown(ns_clientmgr_t *manager) {
 	REQUIRE(VALID_MANAGER(manager));
 
