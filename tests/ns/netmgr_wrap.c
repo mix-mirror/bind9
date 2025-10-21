@@ -36,10 +36,10 @@
  */
 
 #if ISC_NETMGR_TRACE
-void
+void __attribute__((weak))
 isc_nmhandle__attach(isc_nmhandle_t *source, isc_nmhandle_t **targetp FLARG) {
 #else
-void
+void __attribute__((weak))
 isc_nmhandle_attach(isc_nmhandle_t *source, isc_nmhandle_t **targetp) {
 #endif
 	ns_client_t *client = (ns_client_t *)source;
@@ -64,10 +64,10 @@ isc_nmhandle_attach(isc_nmhandle_t *source, isc_nmhandle_t **targetp) {
 }
 
 #if ISC_NETMGR_TRACE
-void
+void __attribute__((weak))
 isc_nmhandle__detach(isc_nmhandle_t **handlep FLARG) {
 #else
-void
+void __attribute__((weak))
 isc_nmhandle_detach(isc_nmhandle_t **handlep) {
 #endif
 	isc_nmhandle_t *handle = *handlep;
@@ -97,7 +97,7 @@ isc_nmhandle_detach(isc_nmhandle_t **handlep) {
 	return;
 }
 
-isc_nmsocket_type
+isc_nmsocket_type __attribute__((weak))
 isc_nm_socket_type(const isc_nmhandle_t *handle ISC_ATTR_UNUSED) {
 	/*
 	 * By arbitrary choice, we treat mock handles as if
@@ -109,7 +109,7 @@ isc_nm_socket_type(const isc_nmhandle_t *handle ISC_ATTR_UNUSED) {
 	return isc_nm_udpsocket;
 }
 
-void
+void __attribute__((weak))
 ns_client_error(ns_client_t *client ISC_ATTR_UNUSED,
 		isc_result_t result ISC_ATTR_UNUSED) {
 	return;
