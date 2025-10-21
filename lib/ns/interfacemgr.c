@@ -264,7 +264,7 @@ route_connected(isc_nmhandle_t *handle, isc_result_t eresult, void *arg) {
 	isc_nm_read(handle, route_recv, mgr);
 }
 
-isc_result_t
+__attribute__((weak)) isc_result_t
 ns_interfacemgr_create(isc_mem_t *mctx, ns_server_t *sctx,
 		       dns_dispatchmgr_t *dispatchmgr,
 		       dns_geoip_databases_t *geoip, ns_interfacemgr_t **mgrp) {
@@ -408,9 +408,9 @@ ns_interfacemgr_getaclenv(ns_interfacemgr_t *mgr) {
 	return aclenv;
 }
 
-ISC_REFCOUNT_IMPL(ns_interfacemgr, ns_interfacemgr__destroy);
+ISC__REFCOUNT_IMPL(ns_interfacemgr, ns_interfacemgr__destroy, __attribute__((weak)));
 
-void
+__attribute__((weak)) void
 ns_interfacemgr_shutdown(ns_interfacemgr_t *mgr) {
 	REQUIRE(NS_INTERFACEMGR_VALID(mgr));
 
@@ -1239,7 +1239,7 @@ do_scan(ns_interfacemgr_t *mgr, bool verbose, bool config) {
 	return result;
 }
 
-isc_result_t
+__attribute__((weak)) isc_result_t
 ns_interfacemgr_scan(ns_interfacemgr_t *mgr, bool verbose, bool config) {
 	isc_result_t result;
 	bool purge = true;
@@ -1339,7 +1339,7 @@ ns_interfacemgr_getserver(ns_interfacemgr_t *mgr) {
 	return mgr->sctx;
 }
 
-ns_clientmgr_t *
+__attribute__((weak)) ns_clientmgr_t *
 ns_interfacemgr_getclientmgr(ns_interfacemgr_t *mgr) {
 	isc_tid_t tid = isc_tid();
 

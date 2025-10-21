@@ -60,7 +60,7 @@ ignore_signal(int sig, void (*handler)(int)) {
 	}
 }
 
-void
+__attribute__((weak)) void
 isc_loopmgr_shutdown(void) {
 	isc_loopmgr_t *loopmgr = isc__loopmgr;
 	if (!atomic_compare_exchange_strong(&loopmgr->shuttingdown,
@@ -437,7 +437,7 @@ isc_loop_setup(isc_loop_t *loop, isc_job_cb cb, void *cbarg) {
 	return job;
 }
 
-isc_job_t *
+__attribute__((weak)) isc_job_t *
 isc_loop_teardown(isc_loop_t *loop, isc_job_cb cb, void *cbarg) {
 	REQUIRE(VALID_LOOP(loop));
 
