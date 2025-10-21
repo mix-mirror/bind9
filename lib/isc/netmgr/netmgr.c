@@ -47,7 +47,7 @@
 #include "../openssl_shim.h"
 #include "netmgr-int.h"
 
-isc__netmgr_t *isc__netmgr = NULL;
+__attribute__((visibility("default"))) isc__netmgr_t *isc__netmgr = NULL;
 
 /*%
  * Shortcut index arrays to get access to statistics counters.

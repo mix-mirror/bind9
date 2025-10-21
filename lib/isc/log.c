@@ -287,7 +287,7 @@ static isc_logchannellist_t default_channel;
 /*!
  * libisc logs to this context.
  */
-static isc_log_t *isc__lctx = NULL;
+__attribute__((visibility("default"))) isc_log_t *isc__lctx = NULL;
 
 /*!
  * Forward declarations.
