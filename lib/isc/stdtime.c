@@ -33,7 +33,7 @@
 #define CLOCKSOURCE CLOCK_REALTIME
 #endif /* if defined(CLOCK_REALTIME_COARSE) */
 
-isc_stdtime_t
+__attribute__((weak)) isc_stdtime_t
 isc_stdtime_now(void) {
 	struct timespec ts;
 
