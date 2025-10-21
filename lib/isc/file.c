@@ -411,7 +411,7 @@ isc_file_rename(const char *oldname, const char *newname) {
 	}
 }
 
-bool
+__attribute__((weak)) bool
 isc_file_exists(const char *pathname) {
 	struct stat stats;
 
