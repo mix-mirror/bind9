@@ -1001,8 +1001,9 @@ create_fetch(dns_validator_t *val, dns_name_t *name, dns_rdatatype_t type,
 	dns_validator_ref(val);
 	result = dns_resolver_createfetch(
 		val->view->resolver, name, type, NULL, NULL, NULL, NULL, 0,
-		fopts, 0, val->qc, val->gqc, val->loop, callback, val,
-		&val->edectx, &val->frdataset, &val->fsigrdataset, &val->fetch);
+		fopts, 0, val->qc, val->gqc, val->parent_fetch, val->loop,
+		callback, val, &val->edectx, &val->frdataset,
+		&val->fsigrdataset, &val->fetch);
 	if (result != ISC_R_SUCCESS) {
 		dns_validator_detach(&val);
 	}
@@ -1039,7 +1040,7 @@ create_validator(dns_validator_t *val, dns_name_t *name, dns_rdatatype_t type,
 	result = dns_validator_create(
 		val->view, name, type, rdataset, sig, NULL, vopts, val->loop,
 		cb, val, val->nvalidations, val->nfails, val->qc, val->gqc,
-		&val->edectx, &val->subvalidator);
+		val->parent_fetch, &val->edectx, &val->subvalidator);
 	if (result == ISC_R_SUCCESS) {
 		dns_validator_attach(val, &val->subvalidator->parent);
 		val->subvalidator->depth = val->depth + 1;
@@ -3671,7 +3672,7 @@ dns_validator_create(dns_view_t *view, dns_name_t *name, dns_rdatatype_t type,
 		     dns_message_t *message, unsigned int options,
 		     isc_loop_t *loop, isc_job_cb cb, void *arg,
 		     isc_counter_t *nvalidations, isc_counter_t *nfails,
-		     isc_counter_t *qc, isc_counter_t *gqc,
+		     isc_counter_t *qc, isc_counter_t *gqc, fetchctx_t *parent,
 		     dns_edectx_t *edectx, dns_validator_t **validatorp) {
 	isc_result_t result = ISC_R_FAILURE;
 	dns_validator_t *val = NULL;
@@ -3704,6 +3705,7 @@ dns_validator_create(dns_view_t *view, dns_name_t *name, dns_rdatatype_t type,
 		.arg = arg,
 		.rdata = DNS_RDATA_INIT,
 		.cb_edectx = edectx,
+		.parent_fetch = parent,
 	};
 
 	dns_ede_init(view->mctx, &val->edectx);

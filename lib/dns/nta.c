@@ -237,7 +237,7 @@ checkbogus(void *arg) {
 	dns__nta_ref(nta); /* for dns_resolver_createfetch */
 	result = dns_resolver_createfetch(
 		resolver, &nta->name, dns_rdatatype_nsec, NULL, NULL, NULL,
-		NULL, 0, DNS_FETCHOPT_NONTA, 0, NULL, NULL, nta->loop,
+		NULL, 0, DNS_FETCHOPT_NONTA, 0, NULL, NULL, NULL, nta->loop,
 		fetch_done, nta, NULL, &nta->rdataset, &nta->sigrdataset,
 		&nta->fetch);
 	if (result != ISC_R_SUCCESS) {

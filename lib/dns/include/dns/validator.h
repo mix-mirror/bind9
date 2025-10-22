@@ -156,6 +156,7 @@ struct dns_validator {
 	isc_counter_t *nfails;
 	isc_counter_t *qc;
 	isc_counter_t *gqc;
+	fetchctx_t    *parent_fetch;
 
 	dns_edectx_t edectx;
 
@@ -176,7 +177,7 @@ dns_validator_create(dns_view_t *view, dns_name_t *name, dns_rdatatype_t type,
 		     dns_message_t *message, unsigned int options,
 		     isc_loop_t *loop, isc_job_cb cb, void *arg,
 		     isc_counter_t *nvalidations, isc_counter_t *nfails,
-		     isc_counter_t *qc, isc_counter_t *gqc,
+		     isc_counter_t *qc, isc_counter_t *gqc, fetchctx_t *parent,
 		     dns_edectx_t *edectx, dns_validator_t **validatorp);
 /*%<
  * Start a DNSSEC validation.

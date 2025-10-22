@@ -278,7 +278,8 @@ isc_result_t
 dns_adb_createfind(dns_adb_t *adb, isc_loop_t *loop, isc_job_cb cb, void *cbarg,
 		   const dns_name_t *name, unsigned int options,
 		   isc_stdtime_t now, in_port_t port, unsigned int depth,
-		   isc_counter_t *qc, isc_counter_t *gqc, dns_adbfind_t **find);
+		   isc_counter_t *qc, isc_counter_t *gqc, fetchctx_t *parent,
+		   dns_adbfind_t **find);
 /*%<
  * Main interface for clients. The adb will look up the name given in
  * "name" and will build up a list of found addresses, and perhaps start

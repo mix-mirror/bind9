@@ -6975,7 +6975,7 @@ tat_send(void *arg) {
 		result = dns_resolver_createfetch(
 			tat->view->resolver, tatname, dns_rdatatype_null,
 			domain, &nameservers, NULL, NULL, 0, 0, 0, NULL, NULL,
-			tat->loop, tat_done, tat, NULL, &tat->rdataset,
+			NULL, tat->loop, tat_done, tat, NULL, &tat->rdataset,
 			&tat->sigrdataset, &tat->fetch);
 	}
 
