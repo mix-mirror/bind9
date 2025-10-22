@@ -10181,11 +10181,11 @@ dns_resolver_createfetch(dns_resolver_t *res, const dns_name_t *name,
 			dns_rdatatype_format(type, typebuf, sizeof(typebuf));
 
 			isc_log_write(DNS_LOGCATEGORY_RESOLVER,
-				      DNS_LOGMODULE_RESOLVER, ISC_LOG_INFO,
+				      DNS_LOGMODULE_RESOLVER, ISC_LOG_DEBUG(2),
 				      "fetch loop detected resolving '%s/%s'",
 				      namebuf, typebuf);
 		}
-		return DNS_R_SERVFAIL;
+		return DNS_R_LOOPDETECTED;
 	}
 
 	fetch = isc_mem_get(mctx, sizeof(*fetch));
