@@ -983,11 +983,12 @@ setup_system(void *arg ISC_ATTR_UNUSED) {
 }
 
 static bool
-is_ip_address(const char *host, isc_sockaddr_t *sockaddr) {
-	if (inet_pton(AF_INET, host, &sockaddr) > 0) {
+is_ip_address(const char *host) {
+	unsigned char buf[16];
+	if (inet_pton(AF_INET, host, buf) > 0) {
 		return true;
 	}
-	return inet_pton(AF_INET6, host, &sockaddr) > 0;
+	return inet_pton(AF_INET6, host, buf) > 0;
 }
 
 static int
@@ -1652,7 +1653,7 @@ evaluate_server(char *cmdline) {
 	ns_alloc = MAX_SERVERADDRS;
 	ns_inuse = 0;
 	servers = isc_mem_cget(isc_g_mctx, ns_alloc, sizeof(isc_sockaddr_t));
-	if (use_tls && !tls_hostname && !is_ip_address(server, servers)) {
+	if (use_tls && !tls_hostname && !is_ip_address(server)) {
 		INSIST(transport);
 		/*
 		 * If server is not IP address and -H were not given,
