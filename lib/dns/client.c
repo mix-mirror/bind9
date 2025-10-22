@@ -455,8 +455,8 @@ start_fetch(resctx_t *rctx) {
 	result = dns_resolver_createfetch(
 		rctx->view->resolver, dns_fixedname_name(&rctx->name),
 		rctx->type, NULL, NULL, NULL, NULL, 0, fopts, 0, NULL, rctx->qc,
-		rctx->client->loop, fetch_done, rctx, NULL, rctx->rdataset,
-		rctx->sigrdataset, &rctx->fetch);
+		NULL, rctx->client->loop, fetch_done, rctx, NULL,
+		rctx->rdataset, rctx->sigrdataset, &rctx->fetch);
 
 	return result;
 }

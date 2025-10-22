@@ -2868,7 +2868,7 @@ fetch_and_forget(ns_client_t *client, dns_name_t *qname, dns_rdatatype_t qtype,
 	result = dns_resolver_createfetch(
 		client->inner.view->resolver, qname, qtype, NULL, NULL, NULL,
 		peeraddr, client->message->id, options, 0, NULL,
-		client->query.qc, client->manager->loop, cb, client, NULL,
+		client->query.qc, NULL, client->manager->loop, cb, client, NULL,
 		tmprdataset, NULL, fetchp);
 	if (result != ISC_R_SUCCESS) {
 		ns_client_putrdataset(client, &tmprdataset);
@@ -6380,7 +6380,7 @@ ns_query_recurse(ns_client_t *client, dns_rdatatype_t qtype, dns_name_t *qname,
 	result = dns_resolver_createfetch(
 		client->inner.view->resolver, qname, qtype, qdomain,
 		nameservers, NULL, peeraddr, client->message->id,
-		client->query.fetchoptions, 0, NULL, client->query.qc,
+		client->query.fetchoptions, 0, NULL, client->query.qc, NULL,
 		client->manager->loop, fetch_callback, client, &client->edectx,
 		rdataset, sigrdataset, &FETCH_RECTYPE_NORMAL(client));
 	if (result != ISC_R_SUCCESS) {
