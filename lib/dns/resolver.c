@@ -3334,9 +3334,7 @@ findname(fetchctx_t *fctx, const dns_name_t *name, in_port_t port,
 	 * fetch, because if it is, we won't be answering it and it
 	 * won't be answering us.
 	 */
-	if (0 && waiting_for(find, fctx->type) &&
-	    dns_name_equal(name, fctx->name))
-	{
+	if (waiting_for(find, fctx->type) && dns_name_equal(name, fctx->name)) {
 		fctx->adberr++;
 		isc_log_write(DNS_LOGCATEGORY_RESOLVER, DNS_LOGMODULE_RESOLVER,
 			      ISC_LOG_INFO, "loop detected resolving '%s'",
