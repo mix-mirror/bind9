@@ -3334,7 +3334,9 @@ findname(fetchctx_t *fctx, const dns_name_t *name, in_port_t port,
 	 * fetch, because if it is, we won't be answering it and it
 	 * won't be answering us.
 	 */
-	if (waiting_for(find, fctx->type) && dns_name_equal(name, fctx->name)) {
+	if (0 && waiting_for(find, fctx->type) &&
+	    dns_name_equal(name, fctx->name))
+	{
 		fctx->adberr++;
 		isc_log_write(DNS_LOGCATEGORY_RESOLVER, DNS_LOGMODULE_RESOLVER,
 			      ISC_LOG_INFO, "loop detected resolving '%s'",
@@ -6863,6 +6865,17 @@ resume_dslookup(void *arg) {
 
 		FCTXTRACE("continuing to look for parent's NS records");
 
+		char namebuf[DNS_NAME_FORMATSIZE];
+		char typebuf[DNS_RDATATYPE_FORMATSIZE];
+
+		dns_name_format(fctx->name, namebuf, sizeof(namebuf));
+		dns_rdatatype_format(fctx->type, typebuf, sizeof(typebuf));
+		fprintf(stderr, "parent NS fetch: %s/%s", namebuf, typebuf);
+		if (fctx->gqc) {
+			fprintf(stderr, " gqc=%u", isc_counter_used(fctx->gqc));
+		}
+		fprintf(stderr, " qc=%u\n", isc_counter_used(fctx->qc));
+
 		fetchctx_ref(fctx);
 		result = dns_resolver_createfetch(
 			res, fctx->nsname, dns_rdatatype_ns, domain, nsrdataset,
@@ -10089,10 +10102,27 @@ get_attached_fctx(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 static bool
 waiting_for_fetch(fetchctx_t *fctx, const dns_name_t *name,
 		  dns_rdatatype_t type) {
+	char namebuf[DNS_NAME_FORMATSIZE];
+	char typebuf[DNS_RDATATYPE_FORMATSIZE];
+
+	fprintf(stderr, "comparing ");
+
+	dns_name_format(name, namebuf, sizeof(namebuf));
+	dns_rdatatype_format(type, typebuf, sizeof(typebuf));
+	fprintf(stderr, "%s/%s:\n", namebuf, typebuf);
+
 	while (fctx != NULL) {
+		fprintf(stderr, "	with %p ", fctx);
+
+		dns_name_format(fctx->name, namebuf, sizeof(namebuf));
+		dns_rdatatype_format(fctx->type, typebuf, sizeof(typebuf));
+		fprintf(stderr, "%s/%s", namebuf, typebuf);
+
 		if (type == fctx->type && !dns_name_compare(name, fctx->name)) {
+			fprintf(stderr, " -> MATCH\n");
 			return true;
 		}
+		fprintf(stderr, "\n");
 
 		fctx = fctx->parent;
 	}
@@ -10152,7 +10182,7 @@ dns_resolver_createfetch(dns_resolver_t *res, const dns_name_t *name,
 
 			isc_log_write(DNS_LOGCATEGORY_RESOLVER,
 				      DNS_LOGMODULE_RESOLVER, ISC_LOG_INFO,
-				      "loop detected resolving '%s/%s'",
+				      "fetch loop detected resolving '%s/%s'",
 				      namebuf, typebuf);
 		}
 		return DNS_R_SERVFAIL;
