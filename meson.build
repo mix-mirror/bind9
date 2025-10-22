@@ -204,6 +204,7 @@ if optimization != 'plain'
             '-Wl,-z,now',
             '-Wl,-z,relro',
             '-Wl,-z,separate-code',
+            '-Werror=stringop-overflow',
         ),
         language: 'c',
     )
