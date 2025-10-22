@@ -3967,13 +3967,13 @@ fctx_try(fetchctx_t *fctx, bool retrying) {
 
 	/* We've already exceeded maximum query count */
 	if (isc_counter_used(fctx->qc) > isc_counter_getlimit(fctx->qc)) {
-		isc_log_write(
-			DNS_LOGCATEGORY_RESOLVER, DNS_LOGMODULE_RESOLVER,
-			ISC_LOG_DEBUG(3),
-			"exceeded max queries resolving '%s' "
-			"(max-recursion-queries, querycount=%u, maxqueries=%u)",
-			fctx->info, isc_counter_used(fctx->qc),
-			isc_counter_getlimit(fctx->qc));
+		isc_log_write(DNS_LOGCATEGORY_RESOLVER, DNS_LOGMODULE_RESOLVER,
+			      ISC_LOG_DEBUG(3),
+			      "exceeded max queries resolving '%s' "
+			      "(max-recursion-queries, querycount=%u, "
+			      "maxqueries=%" PRIu32 ")",
+			      fctx->info, isc_counter_used(fctx->qc),
+			      isc_counter_getlimit(fctx->qc));
 		result = DNS_R_SERVFAIL;
 		goto done;
 	}
@@ -3984,7 +3984,8 @@ fctx_try(fetchctx_t *fctx, bool retrying) {
 		isc_log_write(DNS_LOGCATEGORY_RESOLVER, DNS_LOGMODULE_RESOLVER,
 			      ISC_LOG_DEBUG(3),
 			      "exceeded global max queries resolving '%s' "
-			      "(max-query-count, querycount=%u, maxqueries=%u)",
+			      "(max-query-count, querycount=%u, "
+			      "maxqueries=%" PRIu32 ")",
 			      fctx->info, isc_counter_used(fctx->gqc),
 			      isc_counter_getlimit(fctx->gqc));
 		result = DNS_R_SERVFAIL;
@@ -4627,6 +4628,7 @@ fctx_create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 	size_t p;
 	uint32_t nvalidations = atomic_load_relaxed(&res->maxvalidations);
 	uint32_t nfails = atomic_load_relaxed(&res->maxvalidationfails);
+	bool ignore_qc = (dns_name_countlabels(name) <= 2) ? true : false;
 
 	/*
 	 * Caller must be holding the lock for 'bucket'
@@ -4674,21 +4676,27 @@ fctx_create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 		isc_counter_create(mctx, nvalidations, &fctx->nvalidations);
 	}
 
-	if (qc != NULL) {
+	if (!ignore_qc && qc != NULL) {
 		isc_counter_attach(qc, &fctx->qc);
 		isc_log_write(DNS_LOGCATEGORY_RESOLVER, DNS_LOGMODULE_RESOLVER,
 			      ISC_LOG_DEBUG(9),
 			      "fctx %p(%s): attached to counter %p (%d)", fctx,
 			      fctx->info, fctx->qc, isc_counter_used(fctx->qc));
-	} else {
+	} else if (!ignore_qc) {
 		isc_counter_create(fctx->mctx, res->maxqueries, &fctx->qc);
 		isc_log_write(DNS_LOGCATEGORY_RESOLVER, DNS_LOGMODULE_RESOLVER,
 			      ISC_LOG_DEBUG(9),
 			      "fctx %p(%s): created counter %p", fctx,
 			      fctx->info, fctx->qc);
+	} else {
+		isc_counter_create(fctx->mctx, UINT32_MAX, &fctx->qc);
+		isc_log_write(DNS_LOGCATEGORY_RESOLVER, DNS_LOGMODULE_RESOLVER,
+			      ISC_LOG_DEBUG(9),
+			      "fctx %p(%s): created unlimited counter %p", fctx,
+			      fctx->info, fctx->qc);
 	}
 
-	if (gqc != NULL) {
+	if (!ignore_qc && gqc != NULL) {
 		isc_counter_attach(gqc, &fctx->gqc);
 		isc_log_write(DNS_LOGCATEGORY_RESOLVER, DNS_LOGMODULE_RESOLVER,
 			      ISC_LOG_DEBUG(9),

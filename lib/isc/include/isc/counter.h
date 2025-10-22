@@ -39,9 +39,9 @@
 *****/
 
 void
-isc_counter_create(isc_mem_t *mctx, int limit, isc_counter_t **counterp);
+isc_counter_create(isc_mem_t *mctx, uint32_t limit, isc_counter_t **counterp);
 /*%<
- * Allocate and initialize a counter object.
+ * Allocate and initialize a counter object.  Set limit to -1 to infinity.
  */
 
 isc_result_t
@@ -54,19 +54,19 @@ isc_counter_increment(isc_counter_t *counter);
  * incremented regardless of return value.)
  */
 
-unsigned int
+uint32_t
 isc_counter_used(isc_counter_t *counter);
 /*%<
  * Return the current counter value.
  */
 
 void
-isc_counter_setlimit(isc_counter_t *counter, int limit);
+isc_counter_setlimit(isc_counter_t *counter, uint32_t limit);
 /*%<
  * Set the counter limit.
  */
 
-unsigned int
+uint32_t
 isc_counter_getlimit(isc_counter_t *counter);
 /*%<
  * Get the counter limit.
