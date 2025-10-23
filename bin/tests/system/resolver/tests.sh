@@ -242,7 +242,7 @@ for nscount in 1 2 3 4 5 6 7 8 9 10; do
 
   # Expected queries = 2 * number of NS records, up to a maximum of 10.
   expected=$((nscount * 2))
-  if [ "$expected" -gt 10 ]; then expected=10; fi
+  if [ "$expected" -gt 6 ]; then expected=6; fi
   # Count the number of logged fetches
   nextpart ns5/named.run >/dev/null
   dig_with_opts @10.53.0.5 target${nscount}.sourcens A >dig.ns5.out.${nscount}.${n} || ret=1
