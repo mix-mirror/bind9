@@ -187,7 +187,7 @@
 #endif
 
 /*
- * A minumum sane timeout value for the whole query to live when e.g. talking to
+ * A minimum sane timeout value for the whole query to live when e.g. talking to
  * a backend server and a quick timeout is preferred by the user.
  *
  * IMPORTANT: if changing this value, note there is a documented behavior when
@@ -660,8 +660,10 @@ static void
 fctx_shutdown(void *arg);
 static void
 fctx_minimize_qname(fetchctx_t *fctx);
+#define fctx_destroy(fctx) fctx__destroy(fctx, __func__, __FILE__, __LINE__)
 static void
-fctx_destroy(fetchctx_t *fctx);
+fctx__destroy(fetchctx_t *fctx, const char *func, const char *file,
+	      const unsigned int line);
 static isc_result_t
 negcache(dns_message_t *message, fetchctx_t *fctx, const dns_name_t *name,
 	 isc_stdtime_t now, bool optout, bool secure, dns_rdataset_t *added,
@@ -705,22 +707,62 @@ findnoqname(fetchctx_t *fctx, dns_message_t *message, dns_name_t *name,
 	}                                                                    \
 	rcu_read_unlock()
 
+#define fetchctx_ref_unless_zero(fctx) \
+	fetchctx__ref_unless_zero(fctx, __func__, __FILE__, __LINE__)
 static bool
-fetchctx_ref_unless_zero(fetchctx_t *fctx) {
-	return urcu_ref_get_unless_zero(&fctx->ref);
+fetchctx__ref_unless_zero(fetchctx_t *fctx, const char *func, const char *file,
+			  const unsigned int line) {
+	bool ref = urcu_ref_get_unless_zero(&fctx->ref);
+#if DNS_RESOLVER_TRACE
+	fprintf(stderr,
+		"%s:%s:%s:%u:t%" PRItid ":%p->references = %" PRIuFAST32 "\n",
+		__func__, func, file, line, isc_tid(), &fctx->ref,
+		fctx->ref.refcount);
+#else
+	UNUSED(file);
+	UNUSED(line);
+	UNUSED(func);
+#endif
+	return ref;
 }
 
+#define fetchctx_attach(source, targetp) \
+	fetchctx__attach(source, targetp, __func__, __FILE__, __LINE__)
 static void
-fetchctx_attach(fetchctx_t *fctx, fetchctx_t **fctxp) {
+fetchctx__attach(fetchctx_t *fctx, fetchctx_t **fctxp, const char *func,
+		 const char *file, const unsigned int line) {
 	bool ref = fetchctx_ref_unless_zero(fctx);
 	INSIST(ref == true);
 	*fctxp = fctx;
+#if DNS_RESOLVER_TRACE
+	fprintf(stderr,
+		"%s:%s:%s:%u:t%" PRItid ":%p->references = %" PRIuFAST32 "\n",
+		__func__, func, file, line, isc_tid(), &fctx->ref,
+		fctx->ref.refcount);
+#else
+	UNUSED(file);
+	UNUSED(line);
+	UNUSED(func);
+#endif
 }
 
-static void
-fetchctx_ref(fetchctx_t *fctx) {
+#define fetchctx_ref(fctx) fetchctx__ref(fctx, __func__, __FILE__, __LINE__)
+static fetchctx_t *
+fetchctx__ref(fetchctx_t *fctx, const char *func, const char *file,
+	      const unsigned int line) {
 	bool ref = fetchctx_ref_unless_zero(fctx);
 	INSIST(ref == true);
+#if DNS_RESOLVER_TRACE
+	fprintf(stderr,
+		"%s:%s:%s:%u:t%" PRItid ":%p->references = %" PRIuFAST32 "\n",
+		__func__, func, file, line, isc_tid(), &fctx->ref,
+		fctx->ref.refcount);
+#else
+	UNUSED(file);
+	UNUSED(line);
+	UNUSED(func);
+#endif
+	return fctx;
 }
 
 static void
@@ -728,18 +770,42 @@ fetchctx_destroy(struct urcu_ref *ref) {
 	fetchctx_t *fctx = caa_container_of(ref, fetchctx_t, ref);
 	fctx_destroy(fctx);
 }
-
+#define fetchctx_detach(fctxp) \
+	fetchctx__detach(fctxp, __func__, __FILE__, __LINE__)
 static void
-fetchctx_detach(fetchctx_t **fctxp) {
+fetchctx__detach(fetchctx_t **fctxp, const char *func, const char *file,
+		 const unsigned int line) {
 	fetchctx_t *fctx = *fctxp;
 	*fctxp = NULL;
 
 	urcu_ref_put(&fctx->ref, fetchctx_destroy);
+#if DNS_RESOLVER_TRACE
+	fprintf(stderr,
+		"%s:%s:%s:%u:t%" PRItid ":%p->references = %" PRIuFAST32 "\n",
+		__func__, func, file, line, isc_tid(), &fctx->ref,
+		fctx->ref.refcount);
+#else
+	UNUSED(file);
+	UNUSED(line);
+	UNUSED(func);
+#endif
 }
 
+#define fetchctx_unref(fctx) fetchctx__unref(fctx, __func__, __FILE__, __LINE__)
 static void
-fetchctx_unref(fetchctx_t *fctx) {
+fetchctx__unref(fetchctx_t *fctx, const char *func, const char *file,
+		const unsigned int line) {
 	urcu_ref_put(&fctx->ref, fetchctx_destroy);
+#if DNS_RESOLVER_TRACE
+	fprintf(stderr,
+		"%s:%s:%s:%u:t%" PRItid ":%p->references = %" PRIuFAST32 "\n",
+		__func__, func, file, line, isc_tid(), &fctx->ref,
+		fctx->ref.refcount);
+#else
+	UNUSED(file);
+	UNUSED(line);
+	UNUSED(func);
+#endif
 }
 
 static bool
@@ -4596,12 +4662,18 @@ log_ns_ttl(fetchctx_t *fctx, const char *where) {
 		      where, namebuf, domainbuf, fctx->ns_ttl_ok, fctx->ns_ttl);
 }
 
+#define fctx_create(res, loop, name, type, domain, nameservers, client,  \
+		    options, depth, qc, gqp, fctxp)                      \
+	fctx__create(res, loop, name, type, domain, nameservers, client, \
+		     options, depth, qc, gqp, fctxp, __func__, __FILE__, \
+		     __LINE__)
 static isc_result_t
-fctx_create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
-	    dns_rdatatype_t type, const dns_name_t *domain,
-	    dns_rdataset_t *nameservers, const isc_sockaddr_t *client,
-	    unsigned int options, unsigned int depth, isc_counter_t *qc,
-	    isc_counter_t *gqc, fetchctx_t **fctxp) {
+fctx__create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
+	     dns_rdatatype_t type, const dns_name_t *domain,
+	     dns_rdataset_t *nameservers, const isc_sockaddr_t *client,
+	     unsigned int options, unsigned int depth, isc_counter_t *qc,
+	     isc_counter_t *gqc, fetchctx_t **fctxp, const char *func,
+	     const char *file, const unsigned int line) {
 	fetchctx_t *fctx = NULL;
 	isc_result_t result;
 	isc_result_t iresult;
@@ -4682,10 +4754,6 @@ fctx_create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 			      isc_counter_used(fctx->gqc));
 	}
 
-#if DNS_RESOLVER_TRACE
-	fprintf(stderr, "fetchctx__init:%s:%s:%d:%p:%p->references = 1\n",
-		__func__, __FILE__, __LINE__, fctx, fctx);
-#endif
 	urcu_ref_set(&fctx->ref, 1);
 
 	ISC_LIST_INIT(fctx->queries);
@@ -4885,6 +4953,17 @@ fctx_create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 	isc_timer_create(fctx->loop, fctx_expired, fctx, &fctx->timer);
 
 	*fctxp = fctx;
+
+#if DNS_RESOLVER_TRACE
+	fprintf(stderr,
+		"%s:%s:%s:%u:t%" PRItid ":%p->references = %" PRIuFAST32 "\n",
+		__func__, func, file, line, isc_tid(), &fctx->ref,
+		fctx->ref.refcount);
+#else
+	UNUSED(file);
+	UNUSED(line);
+	UNUSED(func);
+#endif
 
 	return ISC_R_SUCCESS;
 
