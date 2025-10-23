@@ -5884,6 +5884,10 @@ zone_check_ns(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *version,
 		return true;
 	}
 
+	if (strcmp(zone->db_argv[0], "_builtin") == 0) {
+		return true;
+	}
+
 	if (zone->type == dns_zone_primary) {
 		level = ISC_LOG_ERROR;
 	} else {

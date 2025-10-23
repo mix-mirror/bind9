@@ -30,3 +30,8 @@ zone "30.172.IN-ADDR.ARPA" { type primary; file "empty.db"; };
 zone "31.172.IN-ADDR.ARPA" { type primary; file "empty.db"; };
 zone "168.192.IN-ADDR.ARPA" { type primary; file "empty.db"; };
 
+/* alternate empty zone configuration, using a builtin database */
+zone "1.0.0.127.IN-ADDR.ARPA" {
+        type primary;
+        database "_builtin empty @ .";
+};

@@ -14,11 +14,8 @@ import isctest
 
 def test_emptyzones(ns1, templates):
     # check that switching to automatic empty zones works
-    with ns1.watch_log_from_here() as watcher:
-        ns1.rndc("reload")
-        watcher.wait_for_line("all zones loaded")
     templates.render("ns1/named.conf", {"automatic_empty_zones": True})
-    ns1.rndc("reload")
+    ns1.reconfigure(log=False)
     msg = isctest.query.create("version.bind", "TXT", "CH")
     res = isctest.query.tcp(msg, "10.53.0.1")
     isctest.check.noerror(res)
@@ -27,3 +24,17 @@ def test_emptyzones(ns1, templates):
     msg = isctest.query.create("10.in-addr.arpa", "AXFR")
     res = isctest.query.tcp(msg, "10.53.0.1")
     isctest.check.refused(res)
+
+    # switch to rfc1918.zones configuration
+    templates.render("ns1/named.conf", {"automatic_empty_zones": True})
+    ns1.reconfigure(log=False)
+
+    # check that empty.db works
+    msg = isctest.query.create("1.0.53.10.in-addr.arpa", "PTR")
+    res = isctest.query.tcp(msg, "10.53.0.1")
+    isctest.check.nxdomain(res)
+
+    # check that "_database empty" works
+    msg = isctest.query.create("127.127.127.127.in-addr.arpa", "PTR")
+    res = isctest.query.tcp(msg, "10.53.0.1")
+    isctest.check.nxdomain(res)
