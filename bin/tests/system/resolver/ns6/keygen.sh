@@ -36,3 +36,11 @@ $SIGNER -P -o $zone $zonefile >/dev/null
 
 # Configure a static key to be used by delv
 keyfile_to_static_ds $ksk >../ns5/trusted.conf
+
+# Badly sign this zone.
+zone=fetchloop.tld
+zonefile="${zone}.db"
+key=$($KEYGEN -q -a ${DEFAULT_ALGORITHM} -fk $zone)
+cat $key.key >>$zonefile
+$SIGNER -P -z -O full -o $zone $zonefile >/dev/null
+

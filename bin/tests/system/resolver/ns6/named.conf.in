@@ -78,6 +78,11 @@ zone "fetch.tld" {
 	file "fetch.tld.db";
 };
 
+zone "fetchloop.tld" {
+	type primary;
+	file "fetchloop.tld.db.badlysigned";
+};
+
 zone "targetns" {
 	type primary;
 	file "targetns.db";
