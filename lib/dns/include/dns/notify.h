@@ -73,3 +73,77 @@ dns_notify_create(isc_mem_t *mctx, unsigned int flags, dns_notify_t **notifyp);
  *		'mctx' is not NULL.
  *		'notifyp' is not NULL and '*notifyp' is NULL.
  */
+
+void
+dns_notify_destroy(dns_notify_t *notify, bool zone_locked);
+/*%<
+ *	Destroy a notify structure. If 'zone_locked' is true, the attached
+ *	zone is already locked.
+ *
+ *	Requires:
+ *		'notify' is a valid notify.
+ */
+
+void
+dns_notify_log(dns_notify_t *notify, int level, const char *fmt, ...)
+	ISC_FORMAT_PRINTF(3, 4);
+/*%<
+ *	Log a message in the notify category.
+ *
+ */
+
+bool
+dns_notify_isqueued(dns_notifyctx_t *nctx, unsigned int flags, dns_name_t *name,
+		    isc_sockaddr_t *addr, dns_tsigkey_t *key,
+		    dns_transport_t *transport);
+/*%<
+ *	Check if we already have a notify queued matching name, destination
+ *	address, TSIG key, and transport. Will requeue on the normal notify
+ *	ratelimiter if the notify was enqueued on the startup ratelimiter and
+ *	this is not a startup notify.
+ *
+ *      Requires:
+ *		'nctx' is not NULL
+ *
+ *      Returns:
+ *		true if the notify matching the parameters is already enqueued
+ *		false otherwise
+ */
+
+isc_result_t
+dns_notify_queue(dns_notify_t *notify, bool startup);
+/*%<
+ *      Queue notify.
+ *
+ *      Requires:
+ *              'notify' is a valid notify.
+ */
+
+isc_result_t
+dns_notify_dequeue(dns_notify_t *notify, bool startup);
+/*%<
+ *      Dequeue notify.
+ *
+ *      Requires:
+ *              'notify' is a valid notify.
+ */
+
+void
+dns_notify_find_address(dns_notify_t *notify);
+/*%<
+ *	Find corresponding addresses for name server to send notify to.
+ *	Does a lookup into the ADB, then sends a notify to the found
+ *	addresses.
+ *
+ *	Requires:
+ *		'notify' is a valid notify.
+ */
+
+void
+dns_notify_cancel(dns_notifyctx_t *nctx);
+/*%<
+ *	Cancel all notifies.
+ *
+ *	Requires:
+ *		'nctx' is not NULL
+ */
