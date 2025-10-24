@@ -511,7 +511,7 @@ loadctx_create(dns_masterformat_t format, isc_mem_t *mctx, unsigned int options,
 
 	REQUIRE(lctxp != NULL && *lctxp == NULL);
 	REQUIRE(callbacks != NULL);
-	REQUIRE(callbacks->add != NULL);
+	REQUIRE(callbacks->update != NULL);
 	REQUIRE(callbacks->error != NULL);
 	REQUIRE(callbacks->warn != NULL);
 	REQUIRE(mctx != NULL);
@@ -2948,8 +2948,8 @@ commit(dns_rdatacallbacks_t *callbacks, dns_loadctx_t *lctx,
 			dataset.attributes |= DNS_RDATASETATTR_RESIGN;
 			dataset.resign = resign_fromlist(this, lctx);
 		}
-		result = callbacks->add(callbacks->add_private, owner,
-					&dataset DNS__DB_FILELINE);
+		result = callbacks->update(callbacks->add_private, owner,
+					&dataset, DNS_DIFFOP_ADD DNS__DB_FILELINE);
 		if (result == ISC_R_NOMEMORY) {
 			(*error)(callbacks, "dns_master_load: %s",
 				 isc_result_totext(result));
