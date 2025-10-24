@@ -20,7 +20,11 @@ import time
 from typing import Dict, List, Optional, Tuple, Union
 
 import dns
+import dns.rdatatype
+import dns.rrset
 import dns.tsig
+
+import pytest
 
 import isctest.log
 import isctest.query
@@ -443,12 +447,20 @@ class Key:
                 return int(line.split()[1])
         return 0
 
-    def dnskey(self):
+    @property
+    def dnskey(self) -> dns.rrset.RRset:
+        pytest.importorskip("dns.zonefile")
         with open(self.keyfile, "r", encoding="utf-8") as file:
-            for line in file:
-                if "DNSKEY" in line:
-                    return line.strip()
-        return "undefined"
+            rrsets = dns.zonefile.read_rrsets(
+                file.read(),
+                rdclass=None,  # read rdclass from the file
+                default_ttl=DEFAULT_TTL,  # use this TTL if not present
+            )
+        assert len(rrsets) == 1, f"{self.keyfile} has multiple RRsets"
+        dnskey_rr = rrsets[0]
+        assert len(dnskey_rr) == 1, f"{self.keyfile} has multiple RRs"
+        assert dnskey_rr.rdtype == dns.rdatatype.DNSKEY, f"DNSKEY not found in {self.keyfile}"
+        return dnskey_rr
 
     def is_ksk(self) -> bool:
         return self.get_metadata("KSK") == "yes"

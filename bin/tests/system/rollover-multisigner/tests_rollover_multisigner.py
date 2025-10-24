@@ -102,11 +102,10 @@ def test_rollover_multisigner(ns3, alg, size):
     expected2[0].legacy = True  # noqa
     expected = expected + expected2
 
-    dnskey = newkeys[0].dnskey().split()
-    rdata = " ".join(dnskey[4:])
+    dnskey = newkeys[0].dnskey
 
     update_msg = dns.update.UpdateMessage(zone)
-    update_msg.add(f"{dnskey[0]}", 3600, "DNSKEY", rdata)
+    update_msg.add(dnskey.name, dnskey.ttl, dnskey[0])
     ns3.nsupdate(update_msg)
 
     isctest.kasp.check_dnssec_verify(ns3, zone)
@@ -118,11 +117,10 @@ def test_rollover_multisigner(ns3, alg, size):
     isctest.kasp.check_subdomain(ns3, zone, ksks, zsks)
 
     # Remove ZSKs from the other providers for zone.
-    dnskey2 = extkeys[0].dnskey().split()
-    rdata2 = " ".join(dnskey2[4:])
+    dnskey2 = extkeys[0].dnskey
     update_msg = dns.update.UpdateMessage(zone)
-    update_msg.delete(f"{dnskey[0]}", "DNSKEY", rdata)
-    update_msg.delete(f"{dnskey2[0]}", "DNSKEY", rdata2)
+    update_msg.delete(dnskey.name, dnskey[0])
+    update_msg.delete(dnskey2.name, dnskey2[0])
     ns3.nsupdate(update_msg)
 
     isctest.kasp.check_dnssec_verify(ns3, zone)
