@@ -301,6 +301,56 @@ dns_db_endload(dns_db_t *db, dns_rdatacallbacks_t *callbacks) {
 }
 
 isc_result_t
+dns_db_beginupdate(dns_db_t *db, dns_rdatacallbacks_t *callbacks) {
+	/*
+	 * Begin updating 'db'.
+	 */
+
+	REQUIRE(DNS_DB_VALID(db));
+	REQUIRE(dns_db_iszone(db));
+	REQUIRE(DNS_CALLBACK_VALID(callbacks));
+
+	if (db->methods->beginupdate != NULL) {
+		return (db->methods->beginupdate)(db, callbacks);
+	}
+	return ISC_R_NOTIMPLEMENTED;
+}
+
+isc_result_t
+dns_db_commitupdate(dns_db_t *db, dns_rdatacallbacks_t *callbacks) {
+	/*
+	 * Commit the update to 'db'.
+	 */
+
+	REQUIRE(DNS_DB_VALID(db));
+	REQUIRE(dns_db_iszone(db));
+	REQUIRE(DNS_CALLBACK_VALID(callbacks));
+
+	if (db->methods->commitupdate != NULL) {
+		return (db->methods->commitupdate)(db, callbacks);
+	}
+
+	return ISC_R_NOTIMPLEMENTED;
+}
+
+isc_result_t
+dns_db_abortupdate(dns_db_t *db, dns_rdatacallbacks_t *callbacks) {
+	/*
+	 * Abort the update to 'db'.
+	 */
+
+	REQUIRE(DNS_DB_VALID(db));
+	REQUIRE(dns_db_iszone(db));
+	REQUIRE(DNS_CALLBACK_VALID(callbacks));
+
+	if (db->methods->abortupdate != NULL) {
+		return (db->methods->abortupdate)(db, callbacks);
+	}
+
+	return ISC_R_NOTIMPLEMENTED;
+}
+
+isc_result_t
 dns_db_load(dns_db_t *db, const char *filename, dns_masterformat_t format,
 	    unsigned int options) {
 	isc_result_t result, eresult;

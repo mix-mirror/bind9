@@ -184,6 +184,14 @@ typedef struct dst_gssapi_signverifyctx dst_gssapi_signverifyctx_t;
 typedef enum { dns_hash_sha1 = 1 } dns_hash_t;
 
 typedef enum {
+	DNS_DIFFOP_ADD = 0,	  /*%< Add an RR. */
+	DNS_DIFFOP_DEL = 1,	  /*%< Delete an RR. */
+	DNS_DIFFOP_EXISTS = 2,	  /*%< Assert RR existence. */
+	DNS_DIFFOP_ADDRESIGN = 4, /*%< ADD + RESIGN. */
+	DNS_DIFFOP_DELRESIGN = 5  /*%< DEL + RESIGN. */
+} dns_diffop_t;
+
+typedef enum {
 	dns_fwdpolicy_none = 0,
 	dns_fwdpolicy_first = 1,
 	dns_fwdpolicy_only = 2
@@ -424,8 +432,8 @@ typedef void (*dns_loaddonefunc_t)(void *, isc_result_t);
 typedef void (*dns_rawdatafunc_t)(dns_zone_t *, dns_masterrawheader_t *);
 
 typedef isc_result_t (*dns_addrdatasetfunc_t)(void *arg, const dns_name_t *name,
-					      dns_rdataset_t *rdataset
-						      DNS__DB_FLARG);
+					      dns_rdataset_t *rdataset,
+					      dns_diffop_t op DNS__DB_FLARG);
 typedef void (*dns_transactionfunc_t)(void *arg);
 
 typedef isc_result_t (*dns_additionaldatafunc_t)(
