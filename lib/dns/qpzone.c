@@ -2064,7 +2064,7 @@ addwildcards(qpzonedb_t *qpdb, dns_qp_t *qp, const dns_name_t *name,
 
 static isc_result_t
 loading_addrdataset(void *arg, const dns_name_t *name,
-		    dns_rdataset_t *rdataset DNS__DB_FLARG) {
+		    dns_rdataset_t *rdataset, dns_diffop_t op ISC_ATTR_UNUSED DNS__DB_FLARG) {
 	qpz_load_t *loadctx = arg;
 	qpzonedb_t *qpdb = (qpzonedb_t *)loadctx->db;
 	qpznode_t *node = NULL;
@@ -2194,7 +2194,7 @@ beginload(dns_db_t *db, dns_rdatacallbacks_t *callbacks) {
 
 	RWUNLOCK(&qpdb->lock, isc_rwlocktype_write);
 
-	callbacks->add = loading_addrdataset;
+	callbacks->update = loading_addrdataset;
 	callbacks->setup = loading_setup;
 	callbacks->commit = loading_commit;
 	callbacks->add_private = loadctx;
@@ -2229,7 +2229,7 @@ endload(dns_db_t *db, dns_rdatacallbacks_t *callbacks) {
 		RWUNLOCK(&qpdb->lock, isc_rwlocktype_write);
 	}
 
-	callbacks->add = NULL;
+	callbacks->update = NULL;
 	callbacks->setup = NULL;
 	callbacks->commit = NULL;
 	callbacks->add_private = NULL;

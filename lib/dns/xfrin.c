@@ -516,6 +516,11 @@ ixfr_apply_one(dns_xfrin_t *xfr, ixfr_apply_data_t *data) {
 	isc_result_t result = ISC_R_SUCCESS;
 	uint64_t records;
 
+	dns_rdatacallbacks_t callbacks;
+	dns_rdatacallbacks_init(&callbacks);
+	dns_db_beginupdate(xfr->db, &callbacks);
+
+
 	CHECK(ixfr_begin_transaction(&xfr->ixfr));
 
 	CHECK(dns_diff_apply(&data->diff, xfr->db, xfr->ver));
@@ -529,12 +534,27 @@ ixfr_apply_one(dns_xfrin_t *xfr, ixfr_apply_data_t *data) {
 		CHECK(dns_journal_writediff(xfr->ixfr.journal, &data->diff));
 	}
 
+	/*
+	 * At the moment, rdatacallbacks doesn't offer a way to inspect the
+	 * result of a transaction before committing it.
+	 *
+	 * So we need to commit *before* calling dns_zone_verifydb, and rely
+	 * on closeversion to actually do cleanup.
+	 */
+	dns_db_commitupdate(xfr->db, &callbacks);
+
 	CHECK(dns_zone_verifydb(xfr->zone, xfr->db, xfr->ver));
 
 	result = ixfr_end_transaction(&xfr->ixfr);
 
 	return result;
 cleanup:
+	/*
+	 * For the reason stated above, dns_db_abortupdate must *commit* the
+	 * changes and rely on closeversion to clean them up.
+	 */
+	dns_db_abortupdate(xfr->db, &callbacks);
+
 	/* We need to end the transaction, but keep the previous error */
 	(void)ixfr_end_transaction(&xfr->ixfr);
 

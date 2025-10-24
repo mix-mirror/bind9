@@ -59,13 +59,6 @@
  * timeexpire.
  */
 
-typedef enum {
-	DNS_DIFFOP_ADD = 0,	  /*%< Add an RR. */
-	DNS_DIFFOP_DEL = 1,	  /*%< Delete an RR. */
-	DNS_DIFFOP_EXISTS = 2,	  /*%< Assert RR existence. */
-	DNS_DIFFOP_ADDRESIGN = 4, /*%< ADD + RESIGN. */
-	DNS_DIFFOP_DELRESIGN = 5  /*%< DEL + RESIGN. */
-} dns_diffop_t;
 
 typedef struct dns_difftuple dns_difftuple_t;
 typedef ISC_LIST(dns_difftuple_t) dns_difftuplelist_t;
@@ -257,6 +250,24 @@ dns_diff_applysilently(const dns_diff_t *diff, dns_db_t *db,
  *	tuples of type #DNS_DIFFOP_ADD and/or
  *	For #DNS_DIFFOP_DEL tuples, the TTL is ignored.
  *
+ */
+
+typedef struct {
+	dns_db_t *db;
+	dns_dbversion_t *ver;
+	bool warn;
+} dns_updatectx_t;
+
+isc_result_t
+dns_diff_apply_with_callbacks(const dns_diff_t *diff, dns_rdatacallbacks_t *callbacks);
+/*%<
+ * Apply 'diff' to the database using the provided callbacks and context.
+ * The context contains the database, version, and warning flag.
+ * This allows for custom callback implementations.
+ *
+ * Requires:
+ *\li	'callbacks' points to a valid dns_rdatacallbacks_t structure
+ *\li	'callbacks->update' is not NULL
  */
 
 isc_result_t
