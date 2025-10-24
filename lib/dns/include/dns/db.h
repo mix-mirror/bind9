@@ -89,6 +89,12 @@ typedef struct dns_db_methods {
 	isc_result_t (*beginload)(dns_db_t	       *db,
 				  dns_rdatacallbacks_t *callbacks);
 	isc_result_t (*endload)(dns_db_t *db, dns_rdatacallbacks_t *callbacks);
+	isc_result_t (*beginupdate)(dns_db_t	       *db,
+				    dns_rdatacallbacks_t *callbacks);
+	isc_result_t (*commitupdate)(dns_db_t	       *db,
+				     dns_rdatacallbacks_t *callbacks);
+	isc_result_t (*abortupdate)(dns_db_t	      *db,
+				    dns_rdatacallbacks_t *callbacks);
 	void (*currentversion)(dns_db_t *db, dns_dbversion_t **versionp);
 	isc_result_t (*newversion)(dns_db_t *db, dns_dbversion_t **versionp);
 	void (*attachversion)(dns_db_t *db, dns_dbversion_t *source,
@@ -528,6 +534,85 @@ dns_db_endload(dns_db_t *db, dns_rdatacallbacks_t *callbacks);
  *
  * \li	Other results are possible, depending upon the database
  *	implementation used, syntax errors in the master file, etc.
+ */
+
+isc_result_t
+dns_db_beginupdate(dns_db_t *db, dns_rdatacallbacks_t *callbacks);
+/*%<
+ * Begin updating 'db'.
+ *
+ * Requires:
+ *
+ * \li	'db' is a valid database.
+ *
+ * \li  'callbacks' is a pointer to an initialized dns_rdatacallbacks_t
+ *       structure.
+ *
+ * Ensures:
+ *
+ * \li	On success, callbacks->add will be a valid dns_addrdatasetfunc_t
+ *      suitable for updating records in 'db' from IXFR operations.
+ *      callbacks->add_private will be a valid DB update context
+ *      which should be used as 'arg' when callbacks->add is called.
+ *
+ * Returns:
+ *
+ * \li	#ISC_R_SUCCESS
+ *
+ * \li	Other results are possible, depending upon the database
+ *	implementation used.
+ */
+
+isc_result_t
+dns_db_commitupdate(dns_db_t *db, dns_rdatacallbacks_t *callbacks);
+/*%<
+ * Commit the update to 'db'. Must be safe to double-call or call after 
+ * dns_db_abortupdate.
+ *
+ * Requires:
+ *
+ * \li	'db' is a valid database that is being updated.
+ *
+ * \li	'callbacks' is a valid dns_rdatacallbacks_t structure.
+ *
+ * \li	callbacks->add_private is not NULL and is a valid database update context.
+ *
+ * Ensures:
+ *
+ * \li	'callbacks' is returned to its state prior to calling dns_db_beginupdate()
+ *
+ * Returns:
+ *
+ * \li	#ISC_R_SUCCESS
+ *
+ * \li	Other results are possible, depending upon the database
+ *	implementation used.
+ */
+
+isc_result_t
+dns_db_abortupdate(dns_db_t *db, dns_rdatacallbacks_t *callbacks);
+/*%<
+ * Abort the update to 'db'. Must be safe to double-call or call after 
+ * dns_db_commitupdate.
+ *
+ * Requires:
+ *
+ * \li	'db' is a valid database that is being updated.
+ *
+ * \li	'callbacks' is a valid dns_rdatacallbacks_t structure.
+ *
+ * \li	callbacks->add_private is not NULL and is a valid database update context.
+ *
+ * Ensures:
+ *
+ * \li	'callbacks' is returned to its state prior to calling dns_db_beginupdate()
+ *
+ * Returns:
+ *
+ * \li	#ISC_R_SUCCESS
+ *
+ * \li	Other results are possible, depending upon the database
+ *	implementation used.
  */
 
 isc_result_t
