@@ -86,6 +86,8 @@ typedef enum {
  * Incoming zone transfer context.
  */
 
+typedef struct dns_ixfr dns_ixfr_t;
+
 struct dns_xfrin {
 	unsigned int magic;
 	isc_mem_t *mctx;
@@ -178,7 +180,7 @@ struct dns_xfrin {
 	 */
 	dns_rdatacallbacks_t axfr;
 
-	struct {
+	struct dns_ixfr {
 		uint32_t request_serial;
 		uint32_t current_serial;
 		dns_journal_t *journal;
@@ -495,24 +497,22 @@ failure:
 }
 
 static isc_result_t
-ixfr_begin_transaction(dns_xfrin_t *xfr) {
+ixfr_begin_transaction(dns_ixfr_t *ixfr) {
 	isc_result_t result = ISC_R_SUCCESS;
 
-	if (xfr->ixfr.journal != NULL) {
-		CHECK(dns_journal_begin_transaction(xfr->ixfr.journal));
+	if (ixfr->journal != NULL) {
+		CHECK(dns_journal_begin_transaction(ixfr->journal));
 	}
 failure:
 	return result;
 }
 
 static isc_result_t
-ixfr_end_transaction(dns_xfrin_t *xfr) {
+ixfr_end_transaction(dns_ixfr_t *ixfr) {
 	isc_result_t result = ISC_R_SUCCESS;
-
-	CHECK(dns_zone_verifydb(xfr->zone, xfr->db, xfr->ver));
 	/* XXX enter ready-to-commit state here */
-	if (xfr->ixfr.journal != NULL) {
-		CHECK(dns_journal_commit(xfr->ixfr.journal));
+	if (ixfr->journal != NULL) {
+		CHECK(dns_journal_commit(ixfr->journal));
 	}
 failure:
 	return result;
@@ -523,7 +523,7 @@ ixfr_apply_one(dns_xfrin_t *xfr, ixfr_apply_data_t *data) {
 	isc_result_t result = ISC_R_SUCCESS;
 	uint64_t records;
 
-	CHECK(ixfr_begin_transaction(xfr));
+	CHECK(ixfr_begin_transaction(&xfr->ixfr));
 
 	CHECK(dns_diff_apply(&data->diff, xfr->db, xfr->ver));
 	if (xfr->maxrecords != 0U) {
@@ -537,12 +537,14 @@ ixfr_apply_one(dns_xfrin_t *xfr, ixfr_apply_data_t *data) {
 		CHECK(dns_journal_writediff(xfr->ixfr.journal, &data->diff));
 	}
 
-	result = ixfr_end_transaction(xfr);
+	CHECK(dns_zone_verifydb(xfr->zone, xfr->db, xfr->ver));
+
+	result = ixfr_end_transaction(&xfr->ixfr);
 
 	return result;
 failure:
 	/* We need to end the transaction, but keep the previous error */
-	(void)ixfr_end_transaction(xfr);
+	(void)ixfr_end_transaction(&xfr->ixfr);
 
 	return result;
 }
