@@ -2577,6 +2577,28 @@ isc_nmsocket_set_tlsctx(isc_nmsocket_t *listener, isc_tlsctx_t *tlsctx) {
 }
 
 void
+isc_nmhandle_set_nonstop_read(isc_nmhandle_t *handle, const bool val) {
+	isc_nmsocket_t *sock = NULL;
+
+	REQUIRE(VALID_NMHANDLE(handle));
+	REQUIRE(VALID_NMSOCK(handle->sock));
+	sock = handle->sock;
+	REQUIRE(sock->client);
+
+	switch (sock->type) {
+	case isc_nm_udpsocket:
+		isc__nm_udp_set_nonstop_read(handle, val);
+		break;
+	case isc_nm_proxyudpsocket:
+		isc__nm_proxyudp_set_nonstop_read(handle, val);
+		break;
+	default:
+		UNREACHABLE();
+		break;
+	}
+}
+
+void
 isc_nmsocket_set_max_streams(isc_nmsocket_t *listener,
 			     const uint32_t max_streams) {
 	REQUIRE(VALID_NMSOCK(listener));
