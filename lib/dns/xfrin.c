@@ -518,12 +518,12 @@ ixfr_apply_one(dns_xfrin_t *xfr, ixfr_apply_data_t *data) {
 
 	dns_rdatacallbacks_t callbacks;
 	dns_rdatacallbacks_init(&callbacks);
-	dns_db_beginupdate(xfr->db, &callbacks);
-
 
 	CHECK(ixfr_begin_transaction(&xfr->ixfr));
 
-	CHECK(dns_diff_apply(&data->diff, xfr->db, xfr->ver));
+	dns_db_beginupdate(xfr->db, xfr->ver, &callbacks);
+
+	CHECK(dns_diff_apply_with_callbacks(&data->diff, &callbacks));
 	if (xfr->maxrecords != 0U) {
 		result = dns_db_getsize(xfr->db, xfr->ver, &records, NULL);
 		if (result == ISC_R_SUCCESS && records > xfr->maxrecords) {
@@ -533,6 +533,12 @@ ixfr_apply_one(dns_xfrin_t *xfr, ixfr_apply_data_t *data) {
 	if (xfr->ixfr.journal != NULL) {
 		CHECK(dns_journal_writediff(xfr->ixfr.journal, &data->diff));
 	}
+	/*
+	 * In the current implementation, we always commit the results, since
+	 * dns_zone_verifydb doesn't know how to access the in-progress
+	 * transaction.
+	 */
+	dns_db_commitupdate(xfr->db, &callbacks);
 
 	/*
 	 * At the moment, rdatacallbacks doesn't offer a way to inspect the

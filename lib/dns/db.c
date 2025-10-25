@@ -301,7 +301,7 @@ dns_db_endload(dns_db_t *db, dns_rdatacallbacks_t *callbacks) {
 }
 
 isc_result_t
-dns_db_beginupdate(dns_db_t *db, dns_rdatacallbacks_t *callbacks) {
+dns_db_beginupdate(dns_db_t *db, dns_dbversion_t *ver, dns_rdatacallbacks_t *callbacks) {
 	/*
 	 * Begin updating 'db'.
 	 */
@@ -311,7 +311,7 @@ dns_db_beginupdate(dns_db_t *db, dns_rdatacallbacks_t *callbacks) {
 	REQUIRE(DNS_CALLBACK_VALID(callbacks));
 
 	if (db->methods->beginupdate != NULL) {
-		return (db->methods->beginupdate)(db, callbacks);
+		return (db->methods->beginupdate)(db, ver, callbacks);
 	}
 	return ISC_R_NOTIMPLEMENTED;
 }
