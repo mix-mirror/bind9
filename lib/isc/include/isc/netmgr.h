@@ -708,6 +708,18 @@ isc_nmhandle_proxy_type(isc_nmhandle_t *handle);
  * Returns the PROXYv2 type associated with 'handle'.
  */
 
+void
+isc_nmhandle_set_nonstop_read(isc_nmhandle_t *handle, const bool val);
+/*%<
+ * Set non-stop reading mode for client-side datagram handles
+ * (e.g. UDP).  In this mode the underlying sockets never stop reading
+ * after receiving a datagram from the peer - just like server-side
+ * sockets do.
+ *
+ * It is meant to be called from the context of the connection
+ * establishment callback.
+ */
+
 isc_result_t
 isc_nm_listentls(uint32_t workers, isc_sockaddr_t *iface,
 		 isc_nm_accept_cb_t accept_cb, void *accept_cbarg, int backlog,

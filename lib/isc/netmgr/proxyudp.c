@@ -875,3 +875,18 @@ isc__nm_proxyudp_send(isc_nmhandle_t *handle, isc_region_t *region,
 			    send_req);
 	}
 }
+
+void
+isc__nm_proxyudp_set_nonstop_read(isc_nmhandle_t *handle, const bool val) {
+	isc_nmsocket_t *sock = NULL;
+
+	REQUIRE(VALID_NMHANDLE(handle));
+	REQUIRE(VALID_NMSOCK(handle->sock));
+	REQUIRE(handle->sock->type == isc_nm_proxyudpsocket);
+
+	sock = handle->sock;
+	if (sock->outerhandle != NULL) {
+		INSIST(VALID_NMHANDLE(sock->outerhandle));
+		isc_nmhandle_set_nonstop_read(sock->outerhandle, val);
+	}
+}
