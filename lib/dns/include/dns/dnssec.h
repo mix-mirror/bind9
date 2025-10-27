@@ -403,6 +403,7 @@ dns_dnssec_syncupdate(dns_dnsseckeylist_t *keys, dns_dnsseckeylist_t *rmkeys,
  *
  * Returns:
  *\li   ISC_R_SUCCESS
+ *\li   DNS_R_UNCHANGED - if the CDS and CDNSKEY sets have not changed
  *\li   Other values indicate error
  */
 
@@ -421,6 +422,7 @@ dns_dnssec_syncdelete(dns_rdataset_t *cds, dns_rdataset_t *cdnskey,
  *
  * Returns:
  *\li   ISC_R_SUCCESS
+ *\li   DNS_R_UNCHANGED - if the CDS and CDNSKEY sets have not changed
  *\li   Other values indicate error
  */
 
