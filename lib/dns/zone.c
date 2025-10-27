@@ -21845,7 +21845,10 @@ zone_rekey(dns_zone_t *zone) {
 		result = dns_dnssec_syncupdate(&dnskeys, &rmkeys, &cdsset,
 					       &cdnskeyset, now, &digests,
 					       cdnskeypub, ttl, &diff, mctx);
-		if (result != ISC_R_SUCCESS) {
+		if (result == ISC_R_SUCCESS) {
+			dnssec_log(zone, ISC_LOG_DEBUG(3),
+				   "zone_rekey:CDS/CDNSKEY updated");
+		} else if (result != DNS_R_UNCHANGED) {
 			dnssec_log(zone, ISC_LOG_ERROR,
 				   "zone_rekey:couldn't update CDS/CDNSKEY: %s",
 				   isc_result_totext(result));
@@ -21881,7 +21884,10 @@ zone_rekey(dns_zone_t *zone) {
 		result = dns_dnssec_syncdelete(
 			&cdsset, &cdnskeyset, &zone->origin, zone->rdclass, ttl,
 			&diff, mctx, cdsdel, cdnskeydel);
-		if (result != ISC_R_SUCCESS) {
+		if (result == ISC_R_SUCCESS) {
+			dnssec_log(zone, ISC_LOG_DEBUG(3),
+				   "zone_rekey:CDS/CDNSKEY updated (DELETE)");
+		} else if (result != DNS_R_UNCHANGED) {
 			dnssec_log(zone, ISC_LOG_ERROR,
 				   "zone_rekey:couldn't update CDS/CDNSKEY "
 				   "DELETE records: %s",
