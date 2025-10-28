@@ -65,6 +65,11 @@ static void
 print_updatepolicy(cfg_printer_t *pctx, const cfg_obj_t *obj);
 
 static void
+merge_prepend(cfg_obj_t *effectiveobj, const cfg_obj_t *defaultobj);
+static void
+merge_append(cfg_obj_t *effectiveobj, const cfg_obj_t *defaultobj);
+
+static void
 doc_updatepolicy(cfg_printer_t *pctx, const cfg_type_t *type);
 
 static void
@@ -500,6 +505,7 @@ static cfg_type_t cfg_type_view = { .name = "view",
 				    .parse = cfg_parse_tuple,
 				    .print = cfg_print_tuple,
 				    .doc = cfg_doc_tuple,
+				    .merge = merge_append,
 				    .rep = &cfg_rep_tuple,
 				    .of = view_fields };
 
@@ -546,6 +552,7 @@ static cfg_type_t cfg_type_dnssecpolicy = { .name = "dnssec-policy",
 					    .parse = cfg_parse_tuple,
 					    .print = cfg_print_tuple,
 					    .doc = cfg_doc_tuple,
+					    .merge = merge_prepend,
 					    .rep = &cfg_rep_tuple,
 					    .of = dnssecpolicy_fields };
 
@@ -907,6 +914,45 @@ static cfg_type_t cfg_type_rrsetorderingelement = {
  * "check-names" option has a different syntax.
  */
 
+static void
+checknames_merge(cfg_obj_t *effectiveobj, const cfg_obj_t *defaultobj) {
+	/*
+	 * Applies only to the top-level option `check-names` statement.
+	 * The view and zone-level versions aren't merged into the defaults
+	 * the way global options are.
+	 */
+	REQUIRE(cfg_obj_islist(effectiveobj));
+	REQUIRE(cfg_obj_islist(defaultobj));
+
+	CFG_LIST_FOREACH(defaultobj, delt) {
+		const cfg_obj_t *checkname = cfg_listelt_value(delt);
+		const cfg_obj_t *type = cfg_tuple_get(checkname, "type");
+		bool found = false;
+
+		CFG_LIST_FOREACH(effectiveobj, eelt) {
+			const cfg_obj_t *echeckname = cfg_listelt_value(eelt);
+			const cfg_obj_t *etype = cfg_tuple_get(echeckname,
+							       "type");
+
+			if (strcasecmp(type->value.string.base,
+				       etype->value.string.base) == 0)
+			{
+				found = true;
+				break;
+			}
+		}
+
+		if (found == false) {
+			cfg_listelt_t *eelt = isc_mem_get(effectiveobj->mctx,
+							  sizeof(*eelt));
+
+			*eelt = (cfg_listelt_t){ .link = ISC_LINK_INITIALIZER };
+			cfg_obj_clone(checkname, &eelt->obj);
+			ISC_LIST_APPEND(effectiveobj->value.list, eelt, link);
+		}
+	}
+}
+
 static const char *checktype_enums[] = { "primary", "master",	"secondary",
 					 "slave",   "response", NULL };
 static cfg_type_t cfg_type_checktype = { .name = "checktype",
@@ -942,6 +988,7 @@ static cfg_type_t cfg_type_checknames = { .name = "checknames",
 					  .parse = cfg_parse_tuple,
 					  .print = cfg_print_tuple,
 					  .doc = cfg_doc_tuple,
+					  .merge = checknames_merge,
 					  .rep = &cfg_rep_tuple,
 					  .of = checknames_fields };
 
@@ -1334,19 +1381,19 @@ map_merge(cfg_obj_t *effectivemap, const cfg_obj_t *defaultmap) {
 		       effectiveres == ISC_R_SUCCESS);
 
 		/*
-		 * If the clause has a specific case, let's delegate to its
-		 * merge callback
+		 * If there's a type-specific merge function, use it.
 		 */
 		if (effectiveobj != NULL && defaultobj != NULL &&
-		    clause->merge != NULL)
+		    clause->type->merge != NULL)
 		{
-			clause->merge(effectiveobj, defaultobj);
+			clause->type->merge(effectiveobj, defaultobj);
 			continue;
 		}
 
 		/*
-		 * If the clause is defined in the default but not in the user
-		 * config, let's clone it inside the user config
+		 * Default merge behavior: if the clause is defined in
+		 * the default but not in the user config, clone it inside
+		 * the user config.
 		 */
 		if (effectiveres == ISC_R_NOTFOUND &&
 		    defaultres == ISC_R_SUCCESS)
@@ -1357,8 +1404,8 @@ map_merge(cfg_obj_t *effectivemap, const cfg_obj_t *defaultmap) {
 		}
 
 		/*
-		 * Otherwise, the clause is defined in user, so the default (if
-		 * it exists) is ignored
+		 * Otherwise, the clause is defined in user, so the default
+		 * (if it exists) is ignored.
 		 */
 	}
 }
@@ -1520,8 +1567,7 @@ options_merge(cfg_obj_t *effectiveoptions, const cfg_obj_t *defaultoptions) {
 static cfg_clausedef_t namedconf_clauses[] = {
 	{ "acl", &cfg_type_acl, CFG_CLAUSEFLAG_MULTI },
 	{ "controls", &cfg_type_controls, CFG_CLAUSEFLAG_MULTI },
-	{ "dnssec-policy", &cfg_type_dnssecpolicy, CFG_CLAUSEFLAG_MULTI,
-	  merge_prepend },
+	{ "dnssec-policy", &cfg_type_dnssecpolicy, CFG_CLAUSEFLAG_MULTI },
 #if HAVE_LIBNGHTTP2
 	{ "http", &cfg_type_http_description,
 	  CFG_CLAUSEFLAG_MULTI | CFG_CLAUSEFLAG_OPTIONAL },
@@ -1534,7 +1580,7 @@ static cfg_clausedef_t namedconf_clauses[] = {
 	{ "lwres", NULL, CFG_CLAUSEFLAG_MULTI | CFG_CLAUSEFLAG_ANCIENT },
 	{ "masters", &cfg_type_serverlist,
 	  CFG_CLAUSEFLAG_MULTI | CFG_CLAUSEFLAG_NODOC },
-	{ "options", &cfg_type_options, 0, options_merge },
+	{ "options", &cfg_type_options, 0 },
 	{ "parental-agents", &cfg_type_serverlist,
 	  CFG_CLAUSEFLAG_MULTI | CFG_CLAUSEFLAG_NODOC },
 	{ "primaries", &cfg_type_serverlist,
@@ -1552,7 +1598,7 @@ static cfg_clausedef_t namedconf_clauses[] = {
 	  CFG_CLAUSEFLAG_MULTI | CFG_CLAUSEFLAG_BUILTINONLY |
 		  CFG_CLAUSEFLAG_NODOC },
 	{ "tls", &cfg_type_tlsconf, CFG_CLAUSEFLAG_MULTI },
-	{ "view", &cfg_type_view, CFG_CLAUSEFLAG_MULTI, merge_append },
+	{ "view", &cfg_type_view, CFG_CLAUSEFLAG_MULTI },
 	{ NULL, NULL, 0 }
 };
 
@@ -2374,6 +2420,34 @@ static cfg_type_t cfg_type_rrl = { .name = "rate-limit",
 				   .rep = &cfg_rep_map,
 				   .of = rrl_clausesets };
 
+static void
+prefetch_merge(cfg_obj_t *effectiveobj, const cfg_obj_t *defaultobj) {
+	cfg_obj_t *trigger = NULL;
+	cfg_obj_t *eligible = NULL;
+
+	trigger = (cfg_obj_t *)cfg_tuple_get(effectiveobj, "trigger");
+	INSIST(cfg_obj_isuint32(trigger));
+	if (cfg_obj_asuint32(trigger) > 10) {
+		trigger->value.uint32 = 10;
+	}
+
+	eligible = (cfg_obj_t *)cfg_tuple_get(effectiveobj, "eligible");
+	if (cfg_obj_isvoid(eligible)) {
+		const cfg_obj_t *defaulteligible = NULL;
+
+		defaulteligible = cfg_tuple_get(defaultobj, "eligible");
+		INSIST(cfg_obj_isuint32(defaulteligible));
+
+		eligible->value.uint32 = cfg_obj_asuint32(defaulteligible);
+		eligible->type = &cfg_type_uint32;
+	}
+
+	INSIST(cfg_obj_isuint32(eligible));
+	if (cfg_obj_asuint32(eligible) < cfg_obj_asuint32(trigger) + 6) {
+		eligible->value.uint32 = cfg_obj_asuint32(trigger) + 6;
+	}
+}
+
 static isc_result_t
 parse_optional_uint32(cfg_parser_t *pctx, const cfg_type_t *type,
 		      cfg_obj_t **ret) {
@@ -2412,6 +2486,7 @@ static cfg_type_t cfg_type_prefetch = { .name = "prefetch",
 					.parse = cfg_parse_tuple,
 					.print = cfg_print_tuple,
 					.doc = cfg_doc_tuple,
+					.merge = prefetch_merge,
 					.rep = &cfg_rep_tuple,
 					.of = prefetch_fields };
 /*
@@ -2458,73 +2533,6 @@ static cfg_type_t cfg_type_staleanswerclienttimeout = {
 	.of = staleanswerclienttimeout_enums
 };
 
-static void
-prefetch_merge(cfg_obj_t *effectiveobj, const cfg_obj_t *defaultobj) {
-	cfg_obj_t *trigger = NULL;
-	cfg_obj_t *eligible = NULL;
-
-	trigger = (cfg_obj_t *)cfg_tuple_get(effectiveobj, "trigger");
-	INSIST(cfg_obj_isuint32(trigger));
-	if (cfg_obj_asuint32(trigger) > 10) {
-		trigger->value.uint32 = 10;
-	}
-
-	eligible = (cfg_obj_t *)cfg_tuple_get(effectiveobj, "eligible");
-	if (cfg_obj_isvoid(eligible)) {
-		const cfg_obj_t *defaulteligible = NULL;
-
-		defaulteligible = cfg_tuple_get(defaultobj, "eligible");
-		INSIST(cfg_obj_isuint32(defaulteligible));
-
-		eligible->value.uint32 = cfg_obj_asuint32(defaulteligible);
-		eligible->type = &cfg_type_uint32;
-	}
-
-	INSIST(cfg_obj_isuint32(eligible));
-	if (cfg_obj_asuint32(eligible) < cfg_obj_asuint32(trigger) + 6) {
-		eligible->value.uint32 = cfg_obj_asuint32(trigger) + 6;
-	}
-}
-
-static void
-checknames_merge(cfg_obj_t *effectiveobj, const cfg_obj_t *defaultobj) {
-	/*
-	 * Applies only to the top-level option `check-names` statement.
-	 * The view and zone-level versions aren't merged into the defaults
-	 * the way global options are.
-	 */
-	REQUIRE(cfg_obj_islist(effectiveobj));
-	REQUIRE(cfg_obj_islist(defaultobj));
-
-	CFG_LIST_FOREACH(defaultobj, delt) {
-		const cfg_obj_t *checkname = cfg_listelt_value(delt);
-		const cfg_obj_t *type = cfg_tuple_get(checkname, "type");
-		bool found = false;
-
-		CFG_LIST_FOREACH(effectiveobj, eelt) {
-			const cfg_obj_t *echeckname = cfg_listelt_value(eelt);
-			const cfg_obj_t *etype = cfg_tuple_get(echeckname,
-							       "type");
-
-			if (strcasecmp(type->value.string.base,
-				       etype->value.string.base) == 0)
-			{
-				found = true;
-				break;
-			}
-		}
-
-		if (found == false) {
-			cfg_listelt_t *eelt = isc_mem_get(effectiveobj->mctx,
-							  sizeof(*eelt));
-
-			*eelt = (cfg_listelt_t){ .link = ISC_LINK_INITIALIZER };
-			cfg_obj_clone(checkname, &eelt->obj);
-			ISC_LIST_APPEND(effectiveobj->value.list, eelt, link);
-		}
-	}
-}
-
 /*%
  * Clauses that can be found within the 'view' statement,
  * with defaults in the 'options' statement.
@@ -2548,8 +2556,7 @@ static cfg_clausedef_t view_clauses[] = {
 	{ "auth-nxdomain", &cfg_type_boolean, 0 },
 	{ "cache-file", NULL, CFG_CLAUSEFLAG_ANCIENT },
 	{ "catalog-zones", &cfg_type_catz, 0 },
-	{ "check-names", &cfg_type_checknames, CFG_CLAUSEFLAG_MULTI,
-	  checknames_merge },
+	{ "check-names", &cfg_type_checknames, CFG_CLAUSEFLAG_MULTI },
 	{ "cleaning-interval", NULL, CFG_CLAUSEFLAG_ANCIENT },
 	{ "clients-per-query", &cfg_type_uint32, 0 },
 	{ "deny-answer-addresses", &cfg_type_denyaddresses, 0 },
@@ -2628,7 +2635,7 @@ static cfg_clausedef_t view_clauses[] = {
 	{ "nta-recheck", &cfg_type_duration, 0 },
 	{ "nxdomain-redirect", &cfg_type_astring, 0 },
 	{ "preferred-glue", &cfg_type_astring, 0 },
-	{ "prefetch", &cfg_type_prefetch, 0, prefetch_merge },
+	{ "prefetch", &cfg_type_prefetch, 0 },
 	{ "provide-ixfr", &cfg_type_boolean, 0 },
 	{ "qname-minimization", &cfg_type_qminmethod, 0 },
 	/*
@@ -3041,6 +3048,7 @@ static cfg_type_t cfg_type_options = { .name = "options",
 				       .parse = cfg_parse_map,
 				       .print = cfg_print_map,
 				       .doc = cfg_doc_map,
+				       .merge = options_merge,
 				       .rep = &cfg_rep_map,
 				       .of = options_clausesets };
 
