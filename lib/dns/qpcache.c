@@ -292,17 +292,6 @@ struct qpcache {
 	 */
 	uint32_t serve_stale_refresh;
 
-	/*
-	 * Start point % node_lock_count for next LRU cleanup.
-	 */
-	atomic_uint lru_sweep;
-
-	/*
-	 * When performing LRU cleaning limit cleaning to headers that were
-	 * last used at or before this.
-	 */
-	_Atomic(isc_stdtime_t) last_used;
-
 	/* Locked by tree_lock. */
 	dns_qp_t *tree;
 	dns_qp_t *nsec;
@@ -2401,7 +2390,7 @@ rdataset_size(dns_slabheader_t *header) {
 	return sizeof(*header);
 }
 
-static size_t
+static void
 expire_lru_headers(qpcache_t *qpdb, unsigned int locknum,
 		   isc_rwlocktype_t *nlocktypep, isc_rwlocktype_t *tlocktypep,
 		   size_t purgesize DNS__DB_FLARG) {
@@ -2409,8 +2398,7 @@ expire_lru_headers(qpcache_t *qpdb, unsigned int locknum,
 	size_t purged = 0;
 
 	for (header = ISC_LIST_TAIL(qpdb->buckets[locknum].lru);
-	     header != NULL && header->last_used <= qpdb->last_used &&
-	     purged <= purgesize;
+	     header != NULL && purged <= purgesize;
 	     header = ISC_LIST_TAIL(qpdb->buckets[locknum].lru))
 	{
 		size_t header_size = rdataset_size(header);
@@ -2427,8 +2415,6 @@ expire_lru_headers(qpcache_t *qpdb, unsigned int locknum,
 			     dns_expire_lru DNS__DB_FLARG_PASS);
 		purged += header_size;
 	}
-
-	return purged;
 }
 
 /*%
@@ -2444,11 +2430,10 @@ expire_lru_headers(qpcache_t *qpdb, unsigned int locknum,
 static void
 overmem(qpcache_t *qpdb, dns_slabheader_t *newheader,
 	isc_rwlocktype_t *tlocktypep DNS__DB_FLARG) {
-	uint32_t locknum_start = HEADERNODE(newheader)->locknum;
-	uint32_t locknum = locknum_start;
-	size_t purgesize, purged = 0;
-	isc_stdtime_t min_last_used = 0;
-	size_t max_passes = 8;
+	uint32_t locknum = HEADERNODE(newheader)->locknum;
+	size_t purgesize;
+	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
+	isc_rwlock_t *nlock = &qpdb->buckets[locknum].lock;
 
 	/*
 	 * Maximum estimated size of the data being added: The size
@@ -2461,43 +2446,12 @@ overmem(qpcache_t *qpdb, dns_slabheader_t *newheader,
 	purgesize = 2 * (sizeof(qpcnode_t) +
 			 dns_name_size(&HEADERNODE(newheader)->name)) +
 		    rdataset_size(newheader) + QP_SAFETY_MARGIN;
-again:
-	do {
-		isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
-		isc_rwlock_t *nlock = &qpdb->buckets[locknum].lock;
-		NODE_WRLOCK(nlock, &nlocktype);
 
-		purged += expire_lru_headers(
-			qpdb, locknum, &nlocktype, tlocktypep,
-			purgesize - purged DNS__DB_FLARG_PASS);
+	NODE_WRLOCK(nlock, &nlocktype);
+	expire_lru_headers(qpdb, locknum, &nlocktype, tlocktypep,
+			   purgesize DNS__DB_FLARG_PASS);
 
-		/*
-		 * Work out the oldest remaining last_used values of the list
-		 * tails as we walk across the array of lru lists.
-		 */
-		dns_slabheader_t *header =
-			ISC_LIST_TAIL(qpdb->buckets[locknum].lru);
-		if (header != NULL &&
-		    (min_last_used == 0 || header->last_used < min_last_used))
-		{
-			min_last_used = header->last_used;
-		}
-		NODE_UNLOCK(nlock, &nlocktype);
-		locknum = (locknum + 1) % qpdb->buckets_count;
-	} while (locknum != locknum_start && purged <= purgesize);
-
-	/*
-	 * Update qpdb->last_used if we have walked all the list tails and have
-	 * not freed the required amount of memory.
-	 */
-	if (purged < purgesize) {
-		if (min_last_used != 0) {
-			qpdb->last_used = min_last_used;
-			if (max_passes-- > 0) {
-				goto again;
-			}
-		}
-	}
+	NODE_UNLOCK(nlock, &nlocktype);
 }
 
 /*%
@@ -3129,7 +3083,7 @@ find_header:
 			newheader->down = NULL;
 			idx = HEADERNODE(newheader)->locknum;
 			if (ZEROTTL(newheader)) {
-				newheader->last_used = qpdb->last_used + 1;
+				newheader->last_used = now;
 				ISC_LIST_APPEND(qpdb->buckets[idx].lru,
 						newheader, link);
 			} else {
@@ -3157,7 +3111,7 @@ find_header:
 			isc_heap_insert(qpdb->buckets[idx].heap, newheader);
 			newheader->heap = qpdb->buckets[idx].heap;
 			if (ZEROTTL(newheader)) {
-				newheader->last_used = qpdb->last_used + 1;
+				newheader->last_used = now;
 				ISC_LIST_APPEND(qpdb->buckets[idx].lru,
 						newheader, link);
 			} else {
