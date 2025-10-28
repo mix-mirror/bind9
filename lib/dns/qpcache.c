@@ -2444,7 +2444,7 @@ expire_lru_headers(qpcache_t *qpdb, unsigned int locknum,
 static void
 overmem(qpcache_t *qpdb, dns_slabheader_t *newheader,
 	isc_rwlocktype_t *tlocktypep DNS__DB_FLARG) {
-	uint32_t locknum_start = qpdb->lru_sweep++ % qpdb->buckets_count;
+	uint32_t locknum_start = HEADERNODE(newheader)->locknum;
 	uint32_t locknum = locknum_start;
 	size_t purgesize, purged = 0;
 	isc_stdtime_t min_last_used = 0;
