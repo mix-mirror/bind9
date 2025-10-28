@@ -83,6 +83,8 @@ isc__nm_udp_lb_socket(sa_family_t sa_family) {
 	if (isc__netmgr->load_balance_sockets) {
 		result = isc__nm_socket_reuse_lb(sock);
 		RUNTIME_CHECK(result == ISC_R_SUCCESS);
+
+		result = isc__nm_socket_reuse_bpf(sock, isc_loopmgr_nloops());
 	}
 
 	return sock;

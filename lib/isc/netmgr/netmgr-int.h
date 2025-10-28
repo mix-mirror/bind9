@@ -1348,6 +1348,15 @@ isc__nm_socket_reuse_lb(uv_os_sock_t fd);
  */
 
 isc_result_t
+isc__nm_socket_reuse_bpf(uv_os_sock_t fd, uint32_t threads_per_socket);
+/*%<
+ * Attach a BPF program to distribute incoming packets across multiple
+ * threads when using SO_REUSEPORT. The program uses a random value
+ * modulo threads_per_socket to determine which thread should handle
+ * each packet, providing load balancing across worker threads.
+ */
+
+isc_result_t
 isc__nm_socket_disable_pmtud(uv_os_sock_t fd, sa_family_t sa_family);
 /*%<
  * Disable the Path MTU Discovery, either by disabling IP(V6)_DONTFRAG socket

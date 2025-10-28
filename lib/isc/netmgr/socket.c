@@ -14,7 +14,10 @@
 #include <isc/errno.h>
 #include <isc/uv.h>
 
+#include "isc/result.h"
 #include "netmgr-int.h"
+
+#include <linux/filter.h>
 
 #define setsockopt_on(socket, level, name) \
 	setsockopt(socket, level, name, &(int){ 1 }, sizeof(int))
@@ -216,6 +219,33 @@ isc__nm_socket_reuse_lb(uv_os_sock_t fd) {
 	UNUSED(fd);
 	return ISC_R_NOTIMPLEMENTED;
 #endif
+}
+
+isc_result_t
+isc__nm_socket_reuse_bpf(uv_os_sock_t fd, uint32_t threads_per_socket) {
+	/*
+	 * See:
+	 * https://pavel.network/rocky-road-towards-ultimate-udp-server-with-bpf-based-load-balancing-on-linux-part-2/
+	 * and
+	 * https://www.kernel.org/doc/Documentation/networking/filter.txt
+	 */
+	struct sock_filter bpf_bytecode[3] = {
+		/* Load random to A */
+		{ BPF_LD | BPF_W | BPF_ABS, 0, 0, 0xfffff038 },
+		/* A = A % mod */
+		{ BPF_ALU | BPF_MOD, 0, 0, threads_per_socket },
+		/* return A */
+		{ BPF_RET | BPF_A, 0, 0, 0 },
+	};
+
+	struct sock_fprog bpf_program = {
+		.len = sizeof(bpf_bytecode),
+		.filter = bpf_bytecode
+	};
+
+	int attach_filter_result = setsockopt(fd, SOL_SOCKET, SO_ATTACH_REUSEPORT_CBPF, &bpf_program, sizeof(bpf_program));
+
+	return (attach_filter_result == 0) ? ISC_R_SUCCESS : ISC_R_FAILURE;
 }
 
 isc_result_t
