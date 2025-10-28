@@ -53,7 +53,8 @@ dns_notifyctx_init(dns_notifyctx_t *nctx, dns_rdatatype_t type) {
 }
 
 void
-dns_notify_create(isc_mem_t *mctx, unsigned int flags, dns_notify_t **notifyp) {
+dns_notify_create(isc_mem_t *mctx, in_port_t port, unsigned int flags,
+		  dns_notify_t **notifyp) {
 	dns_notify_t *notify;
 
 	REQUIRE(notifyp != NULL && *notifyp == NULL);
@@ -61,6 +62,7 @@ dns_notify_create(isc_mem_t *mctx, unsigned int flags, dns_notify_t **notifyp) {
 	notify = isc_mem_get(mctx, sizeof(*notify));
 	*notify = (dns_notify_t){
 		.flags = flags,
+		.port = port,
 	};
 
 	isc_mem_attach(mctx, &notify->mctx);
@@ -528,8 +530,8 @@ dns_notify_queue(dns_notify_t *notify, bool startup) {
 }
 
 bool
-dns_notify_isqueued(dns_notifyctx_t *nctx, unsigned int flags, dns_name_t *name,
-		    isc_sockaddr_t *addr, dns_tsigkey_t *key,
+dns_notify_isqueued(dns_notifyctx_t *nctx, in_port_t port, unsigned int flags,
+		    dns_name_t *name, isc_sockaddr_t *addr, dns_tsigkey_t *key,
 		    dns_transport_t *transport) {
 	dns_notify_t *notify = NULL;
 	isc_result_t result;
@@ -543,7 +545,8 @@ dns_notify_isqueued(dns_notifyctx_t *nctx, unsigned int flags, dns_name_t *name,
 		if ((name != NULL && dns_name_dynamic(&n->ns) &&
 		     dns_name_equal(name, &n->ns)) ||
 		    (addr != NULL && isc_sockaddr_equal(addr, &n->dst) &&
-		     n->key == key && n->transport == transport))
+		     n->port == port && n->key == key &&
+		     n->transport == transport))
 		{
 			notify = n;
 			goto requeue;
@@ -649,8 +652,8 @@ notify_send(dns_notify_t *notify) {
 
 	ISC_LIST_FOREACH(notify->find->list, ai, publink) {
 		dst = ai->sockaddr;
-		if (dns_notify_isqueued(notifyctx, notify->flags, NULL, &dst,
-					NULL, NULL))
+		if (dns_notify_isqueued(notifyctx, notify->port, notify->flags,
+					NULL, &dst, NULL, NULL))
 		{
 			continue;
 		}
@@ -659,7 +662,8 @@ notify_send(dns_notify_t *notify) {
 		}
 		newnotify = NULL;
 		flags = notify->flags & DNS_NOTIFY_NOSOA;
-		dns_notify_create(notify->mctx, flags, &newnotify);
+		dns_notify_create(notify->mctx, notify->port, flags,
+				  &newnotify);
 		dns__zone_iattach_locked(notify->zone, &newnotify->zone);
 		ISC_LIST_APPEND(notifyctx->notifies, newnotify, link);
 		newnotify->dst = dst;
@@ -737,7 +741,7 @@ dns_notify_find_address(dns_notify_t *notify) {
 	}
 
 	result = dns_adb_createfind(adb, loop, process_notify_adb_event, notify,
-				    &notify->ns, options, 0, view->dstport, 0,
+				    &notify->ns, options, 0, notify->port, 0,
 				    NULL, NULL, NULL, &notify->find);
 	dns_adb_detach(&adb);
 
