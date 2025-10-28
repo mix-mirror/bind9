@@ -2704,6 +2704,8 @@ static cfg_clausedef_t zone_clauses[] = {
 	  CFG_ZONE_SECONDARY | CFG_ZONE_MIRROR | CFG_ZONE_STUB, NULL },
 	{ "notify", &cfg_type_notifytype,
 	  CFG_ZONE_PRIMARY | CFG_ZONE_SECONDARY | CFG_ZONE_MIRROR, NULL },
+	{ "notify-cds", &cfg_type_boolean,
+	  CFG_ZONE_PRIMARY | CFG_ZONE_SECONDARY | CFG_ZONE_MIRROR, NULL },
 	{ "notify-defer", &cfg_type_uint32,
 	  CFG_ZONE_PRIMARY | CFG_ZONE_SECONDARY | CFG_ZONE_MIRROR, NULL },
 	{ "notify-delay", &cfg_type_uint32,

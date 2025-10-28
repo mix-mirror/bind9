@@ -1265,6 +1265,9 @@ dns__zone_free(dns_zone_t *zone) {
 	if (zone->notifysoa.notify_acl != NULL) {
 		dns_acl_detach(&zone->notifysoa.notify_acl);
 	}
+	if (zone->notifycds.notify_acl != NULL) {
+		dns_acl_detach(&zone->notifycds.notify_acl);
+	}
 	if (zone->query_acl != NULL) {
 		dns_acl_detach(&zone->query_acl);
 	}
@@ -1377,11 +1380,23 @@ dns_zone_getclass(dns_zone_t *zone) {
 }
 
 void
-dns_zone_setnotifytype(dns_zone_t *zone, dns_notifytype_t notifytype) {
+dns_zone_setnotifytype(dns_zone_t *zone, dns_rdatatype_t type,
+		       dns_notifytype_t notifytype) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 
 	LOCK_ZONE(zone);
-	zone->notifysoa.notifytype = notifytype;
+	switch (type) {
+	case dns_rdatatype_soa:
+		zone->notifysoa.notifytype = notifytype;
+		break;
+	case dns_rdatatype_cds:
+		INSIST(notifytype == dns_notifytype_no ||
+		       notifytype == dns_notifytype_yes);
+		zone->notifycds.notifytype = notifytype;
+		break;
+	default:
+		UNREACHABLE();
+	}
 	UNLOCK_ZONE(zone);
 }
 
@@ -6420,6 +6435,7 @@ dns_zone_setnotifysrc4(dns_zone_t *zone, const isc_sockaddr_t *notifysrc) {
 
 	LOCK_ZONE(zone);
 	zone->notifysoa.notifysrc4 = *notifysrc;
+	zone->notifycds.notifysrc4 = *notifysrc;
 	UNLOCK_ZONE(zone);
 }
 
@@ -6430,6 +6446,7 @@ dns_zone_getnotifysrc4(dns_zone_t *zone, isc_sockaddr_t *notifysrc) {
 
 	LOCK_ZONE(zone);
 	*notifysrc = zone->notifysoa.notifysrc4;
+	*notifysrc = zone->notifycds.notifysrc4;
 	UNLOCK_ZONE(zone);
 }
 
@@ -6440,6 +6457,7 @@ dns_zone_setnotifysrc6(dns_zone_t *zone, const isc_sockaddr_t *notifysrc) {
 
 	LOCK_ZONE(zone);
 	zone->notifysoa.notifysrc6 = *notifysrc;
+	zone->notifycds.notifysrc6 = *notifysrc;
 	UNLOCK_ZONE(zone);
 }
 
@@ -6450,6 +6468,7 @@ dns_zone_getnotifysrc6(dns_zone_t *zone, isc_sockaddr_t *notifysrc) {
 
 	LOCK_ZONE(zone);
 	*notifysrc = zone->notifysoa.notifysrc6;
+	*notifysrc = zone->notifycds.notifysrc6;
 	UNLOCK_ZONE(zone);
 }
 
@@ -14745,6 +14764,7 @@ zone_shutdown(void *arg) {
 	checkds_cancel(zone);
 
 	dns_notify_cancel(&zone->notifysoa);
+	dns_notify_cancel(&zone->notifycds);
 
 	forward_cancel(zone);
 
@@ -15245,11 +15265,11 @@ void
 dns_zone_setnotifyacl(dns_zone_t *zone, dns_acl_t *acl) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 
+	dns_zone_clearnotifyacl(zone);
+
 	LOCK_ZONE(zone);
-	if (zone->notifysoa.notify_acl != NULL) {
-		dns_acl_detach(&zone->notifysoa.notify_acl);
-	}
 	dns_acl_attach(acl, &zone->notifysoa.notify_acl);
+	dns_acl_attach(acl, &zone->notifycds.notify_acl);
 	UNLOCK_ZONE(zone);
 }
 
@@ -15377,6 +15397,9 @@ dns_zone_clearnotifyacl(dns_zone_t *zone) {
 	LOCK_ZONE(zone);
 	if (zone->notifysoa.notify_acl != NULL) {
 		dns_acl_detach(&zone->notifysoa.notify_acl);
+	}
+	if (zone->notifycds.notify_acl != NULL) {
+		dns_acl_detach(&zone->notifycds.notify_acl);
 	}
 	UNLOCK_ZONE(zone);
 }

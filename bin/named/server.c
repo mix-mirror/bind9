@@ -1893,7 +1893,8 @@ dns64_reverse(dns_view_t *view, isc_mem_t *mctx, isc_netaddr_t *na,
 		dns_zone_setqueryonacl(zone, view->queryonacl);
 	}
 	dns_zone_setcheckdstype(zone, dns_checkdstype_no);
-	dns_zone_setnotifytype(zone, dns_notifytype_no);
+	dns_zone_setnotifytype(zone, dns_rdatatype_soa, dns_notifytype_no);
+	dns_zone_setnotifytype(zone, dns_rdatatype_cds, dns_notifytype_no);
 	dns_zone_setoption(zone, DNS_ZONEOPT_NOCHECKNS, true);
 	setquerystats(zone, mctx, dns_zonestat_none);
 	CHECK(dns_view_addzone(view, zone));
@@ -3292,7 +3293,8 @@ create_empty_zone(dns_zone_t *pzone, dns_name_t *name, dns_view_t *view,
 	dns_zone_setoption(zone, DNS_ZONEOPT_NOCHECKNS, true);
 	dns_zone_setoption(zone, DNS_ZONEOPT_ZONEVERSION, false);
 	dns_zone_setcheckdstype(zone, dns_checkdstype_no);
-	dns_zone_setnotifytype(zone, dns_notifytype_no);
+	dns_zone_setnotifytype(zone, dns_rdatatype_soa, dns_notifytype_no);
+	dns_zone_setnotifytype(zone, dns_rdatatype_cds, dns_notifytype_no);
 	dns_zone_setautomatic(zone, true);
 	if (view->queryacl != NULL) {
 		dns_zone_setqueryacl(zone, view->queryacl);
@@ -3391,7 +3393,10 @@ create_ipv4only_zone(dns_zone_t *pzone, dns_view_t *view,
 		dns_zone_setstats(zone, named_g_server->zonestats);
 		dns_zone_setdbtype(zone, dbtypec, dbtype);
 		dns_zone_setcheckdstype(zone, dns_checkdstype_no);
-		dns_zone_setnotifytype(zone, dns_notifytype_no);
+		dns_zone_setnotifytype(zone, dns_rdatatype_soa,
+				       dns_notifytype_no);
+		dns_zone_setnotifytype(zone, dns_rdatatype_cds,
+				       dns_notifytype_no);
 		dns_zone_setautomatic(zone, true);
 		dns_zone_setoption(zone, DNS_ZONEOPT_NOCHECKNS, true);
 	} else {
@@ -6513,7 +6518,8 @@ add_keydata_zone(dns_view_t *view, const char *directory, isc_mem_t *mctx) {
 	dns_acl_detach(&none);
 
 	dns_zone_setcheckdstype(zone, dns_checkdstype_no);
-	dns_zone_setnotifytype(zone, dns_notifytype_no);
+	dns_zone_setnotifytype(zone, dns_rdatatype_soa, dns_notifytype_no);
+	dns_zone_setnotifytype(zone, dns_rdatatype_cds, dns_notifytype_no);
 	dns_zone_setoption(zone, DNS_ZONEOPT_NOCHECKNS, true);
 	dns_zone_setjournalsize(zone, 0);
 
