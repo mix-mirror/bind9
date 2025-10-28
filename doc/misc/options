@@ -293,7 +293,7 @@ options {
 	statistics-file <quoted_string>;
 	synth-from-dnssec <boolean>;
 	tcp-advertised-timeout <integer>;
-	tcp-clients <integer>;
+	tcp-clients ( default | unlimited | <sizeval> | <percentage> );
 	tcp-idle-timeout <integer>;
 	tcp-initial-timeout <integer>;
 	tcp-keepalive-timeout <integer>;

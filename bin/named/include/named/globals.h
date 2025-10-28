@@ -16,6 +16,7 @@
 /*! \file */
 
 #include <stdbool.h>
+#include <sys/resource.h>
 
 #include <isc/log.h>
 #include <isc/loop.h>
@@ -103,6 +104,7 @@ EXTERN bool named_g_logstderr	     INIT(false);
 EXTERN bool named_g_nosyslog	     INIT(false);
 EXTERN unsigned int named_g_logflags INIT(0);
 EXTERN const char *named_g_logfile   INIT(NULL);
+EXTERN rlim_t named_g_nofiles	     INIT(0);
 
 EXTERN const char *named_g_defaultsessionkeyfile INIT(NAMED_LOCALSTATEDIR
 						      "/run/named/"

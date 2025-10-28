@@ -1181,7 +1181,7 @@ setup(void) {
 	 * System resources cannot effectively be tuned on some systems.
 	 * Raise the limit in such cases for safety.
 	 */
-	named_os_adjustnofile();
+	named_g_nofiles = named_os_adjustnofile();
 
 	/*
 	 * If the named configuration filename is relative, prepend the current
