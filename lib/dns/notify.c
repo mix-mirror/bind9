@@ -28,6 +28,21 @@
 #include <dns/zone.h>
 
 void
+dns_notifyctx_init(dns_notifyctx_t *nctx, dns_zone_t *zone,
+		   dns_rdatatype_t type) {
+	dns_notifyctx_t ctx = {
+		.type = type,
+		.notifytype = dns_notifytype_yes,
+		.notifies = ISC_LIST_INITIALIZER,
+	};
+	isc_sockaddr_any(&ctx.notifysrc4);
+	isc_sockaddr_any6(&ctx.notifysrc6);
+	ctx.zone = zone;
+
+	*nctx = ctx;
+}
+
+void
 dns_notify_create(isc_mem_t *mctx, unsigned int flags, dns_notify_t **notifyp) {
 	dns_notify_t *notify;
 

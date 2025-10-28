@@ -27,8 +27,9 @@
  * Hold notify contxt.
  */
 struct dns_notifyctx {
-	dns_zone_t *zone;
-	dns_acl_t  *notify_acl;
+	dns_zone_t     *zone;
+	dns_rdatatype_t type;
+	dns_acl_t      *notify_acl;
 
 	isc_sockaddr_t	 notifyfrom;
 	dns_notifylist_t notifies;
@@ -63,6 +64,16 @@ typedef enum dns_notify_flags {
 	DNS_NOTIFY_STARTUP = 1 << 1,
 	DNS_NOTIFY_TCP = 1 << 2,
 } dns_notify_flags_t;
+
+void
+dns_notifyctx_init(dns_notifyctx_t *nctx, dns_zone_t *zone,
+		   dns_rdatatype_t type);
+/*%
+ *	Initializes a notify context.
+ *	Requires:
+ *		'nctx' is not NULL.
+ *
+ */
 
 void
 dns_notify_create(isc_mem_t *mctx, unsigned int flags, dns_notify_t **notifyp);

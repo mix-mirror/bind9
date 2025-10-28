@@ -347,7 +347,8 @@ struct dns_zone {
 	uint32_t parent_nscount;
 
 	dns_remote_t alsonotify;
-	dns_notifyctx_t notifyctx;
+	dns_notifyctx_t notifysoa;
+	dns_notifyctx_t notifycds;
 
 	isc_sockaddr_t parentalsrc4;
 	isc_sockaddr_t parentalsrc6;
@@ -1100,10 +1101,6 @@ dns_zone_create(dns_zone_t **zonep, isc_mem_t *mctx, isc_tid_t tid) {
 	dns_remote_t r = {
 		.magic = DNS_REMOTE_MAGIC,
 	};
-	dns_notifyctx_t nc = {
-		.notifytype = dns_notifytype_yes,
-		.notifies = ISC_LIST_INITIALIZER,
-	};
 
 	isc_mem_attach(mctx, &zone->mctx);
 	isc_mutex_init(&zone->lock);
@@ -1123,10 +1120,8 @@ dns_zone_create(dns_zone_t **zonep, isc_mem_t *mctx, isc_tid_t tid) {
 	zone->defaultkasp = NULL;
 	ISC_LIST_INIT(zone->keyring);
 
-	isc_sockaddr_any(&nc.notifysrc4);
-	isc_sockaddr_any6(&nc.notifysrc6);
-	nc.zone = zone;
-	zone->notifyctx = nc;
+	dns_notifyctx_init(&zone->notifysoa, zone, dns_rdatatype_soa);
+	dns_notifyctx_init(&zone->notifycds, zone, dns_rdatatype_cds);
 
 	isc_stats_create(mctx, &zone->gluecachestats,
 			 dns_gluecachestatscounter_max);
@@ -1268,8 +1263,8 @@ dns_zone_free(dns_zone_t *zone) {
 	if (zone->forward_acl != NULL) {
 		dns_acl_detach(&zone->forward_acl);
 	}
-	if (zone->notifyctx.notify_acl != NULL) {
-		dns_acl_detach(&zone->notifyctx.notify_acl);
+	if (zone->notifysoa.notify_acl != NULL) {
+		dns_acl_detach(&zone->notifysoa.notify_acl);
 	}
 	if (zone->query_acl != NULL) {
 		dns_acl_detach(&zone->query_acl);
@@ -1392,7 +1387,7 @@ dns_zone_setnotifytype(dns_zone_t *zone, dns_notifytype_t notifytype) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 
 	LOCK_ZONE(zone);
-	zone->notifyctx.notifytype = notifytype;
+	zone->notifysoa.notifytype = notifytype;
 	UNLOCK_ZONE(zone);
 }
 
@@ -6435,7 +6430,7 @@ dns_zone_setnotifysrc4(dns_zone_t *zone, const isc_sockaddr_t *notifysrc) {
 	REQUIRE(notifysrc != NULL);
 
 	LOCK_ZONE(zone);
-	zone->notifyctx.notifysrc4 = *notifysrc;
+	zone->notifysoa.notifysrc4 = *notifysrc;
 	UNLOCK_ZONE(zone);
 }
 
@@ -6445,7 +6440,7 @@ dns_zone_getnotifysrc4(dns_zone_t *zone, isc_sockaddr_t *notifysrc) {
 	REQUIRE(notifysrc != NULL);
 
 	LOCK_ZONE(zone);
-	*notifysrc = zone->notifyctx.notifysrc4;
+	*notifysrc = zone->notifysoa.notifysrc4;
 	UNLOCK_ZONE(zone);
 }
 
@@ -6455,7 +6450,7 @@ dns_zone_setnotifysrc6(dns_zone_t *zone, const isc_sockaddr_t *notifysrc) {
 	REQUIRE(notifysrc != NULL);
 
 	LOCK_ZONE(zone);
-	zone->notifyctx.notifysrc6 = *notifysrc;
+	zone->notifysoa.notifysrc6 = *notifysrc;
 	UNLOCK_ZONE(zone);
 }
 
@@ -6465,7 +6460,7 @@ dns_zone_getnotifysrc6(dns_zone_t *zone, isc_sockaddr_t *notifysrc) {
 	REQUIRE(notifysrc != NULL);
 
 	LOCK_ZONE(zone);
-	*notifysrc = zone->notifyctx.notifysrc6;
+	*notifysrc = zone->notifysoa.notifysrc6;
 	UNLOCK_ZONE(zone);
 }
 
@@ -12620,7 +12615,7 @@ zone_notify(dns_zone_t *zone, isc_time_t *now) {
 				       DNS_ZONEFLG_NEEDSTARTUPNOTIFY |
 				       DNS_ZONEFLG_NOTIFYNODEFER |
 				       DNS_ZONEFLG_NOTIFYDEFERRED);
-	notifytype = zone->notifyctx.notifytype;
+	notifytype = zone->notifysoa.notifytype;
 	DNS_ZONE_TIME_ADD(now, zone->notifydelay, &zone->notifytime);
 	UNLOCK_ZONE(zone);
 
@@ -12739,7 +12734,7 @@ zone_notify(dns_zone_t *zone, isc_time_t *now) {
 			goto next;
 		}
 
-		if (dns_notify_isqueued(&zone->notifyctx, flags, NULL, &dst,
+		if (dns_notify_isqueued(&zone->notifysoa, flags, NULL, &dst,
 					key, transport))
 		{
 			if (key != NULL) {
@@ -12769,7 +12764,7 @@ zone_notify(dns_zone_t *zone, isc_time_t *now) {
 			transport = NULL;
 		}
 
-		ISC_LIST_APPEND(zone->notifyctx.notifies, notify, link);
+		ISC_LIST_APPEND(zone->notifysoa.notifies, notify, link);
 		result = dns_notify_queue(notify, startup);
 		if (result != ISC_R_SUCCESS) {
 			dns_notify_destroy(notify, true);
@@ -12828,7 +12823,7 @@ zone_notify(dns_zone_t *zone, isc_time_t *now) {
 		}
 
 		LOCK_ZONE(zone);
-		isqueued = dns_notify_isqueued(&zone->notifyctx, flags,
+		isqueued = dns_notify_isqueued(&zone->notifysoa, flags,
 					       &ns.name, NULL, NULL, NULL);
 		UNLOCK_ZONE(zone);
 		if (isqueued) {
@@ -12838,7 +12833,7 @@ zone_notify(dns_zone_t *zone, isc_time_t *now) {
 		dns_zone_iattach(zone, &notify->zone, false);
 		dns_name_dup(&ns.name, zone->mctx, &notify->ns);
 		LOCK_ZONE(zone);
-		ISC_LIST_APPEND(zone->notifyctx.notifies, notify, link);
+		ISC_LIST_APPEND(zone->notifysoa.notifies, notify, link);
 		UNLOCK_ZONE(zone);
 		dns_notify_find_address(notify);
 	}
@@ -14781,7 +14776,7 @@ zone_shutdown(void *arg) {
 
 	checkds_cancel(zone);
 
-	dns_notify_cancel(&zone->notifyctx);
+	dns_notify_cancel(&zone->notifysoa);
 
 	forward_cancel(zone);
 
@@ -15172,13 +15167,13 @@ dns_zone_notifyreceive(dns_zone_t *zone, isc_sockaddr_t *from,
 
 	/*
 	 * Accept notify requests from non primaries if they are on
-	 * 'zone->notifyctx.notify_acl'.
+	 * 'zone->notifysoa.notify_acl'.
 	 */
 	tsigkey = dns_message_gettsigkey(msg);
 	tsig = dns_tsigkey_identity(tsigkey);
 	if (i >= dns_remote_count(&zone->primaries) &&
-	    zone->notifyctx.notify_acl != NULL &&
-	    (dns_acl_match(&netaddr, tsig, zone->notifyctx.notify_acl,
+	    zone->notifysoa.notify_acl != NULL &&
+	    (dns_acl_match(&netaddr, tsig, zone->notifysoa.notify_acl,
 			   zone->view->aclenv, &match,
 			   NULL) == ISC_R_SUCCESS) &&
 	    match > 0)
@@ -15242,7 +15237,7 @@ dns_zone_notifyreceive(dns_zone_t *zone, isc_sockaddr_t *from,
 	 */
 	if (DNS_ZONE_FLAG(zone, DNS_ZONEFLG_REFRESH)) {
 		DNS_ZONE_SETFLAG(zone, DNS_ZONEFLG_NEEDREFRESH);
-		zone->notifyctx.notifyfrom = *from;
+		zone->notifysoa.notifyfrom = *from;
 		UNLOCK_ZONE(zone);
 		if (have_serial) {
 			dns_zone_logc(zone, DNS_LOGCATEGORY_XFER_IN,
@@ -15268,7 +15263,7 @@ dns_zone_notifyreceive(dns_zone_t *zone, isc_sockaddr_t *from,
 		dns_zone_logc(zone, DNS_LOGCATEGORY_XFER_IN, ISC_LOG_INFO,
 			      "notify from %s: no serial", fromtext);
 	}
-	zone->notifyctx.notifyfrom = *from;
+	zone->notifysoa.notifyfrom = *from;
 	UNLOCK_ZONE(zone);
 
 	if (to != NULL) {
@@ -15283,10 +15278,10 @@ dns_zone_setnotifyacl(dns_zone_t *zone, dns_acl_t *acl) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 
 	LOCK_ZONE(zone);
-	if (zone->notifyctx.notify_acl != NULL) {
-		dns_acl_detach(&zone->notifyctx.notify_acl);
+	if (zone->notifysoa.notify_acl != NULL) {
+		dns_acl_detach(&zone->notifysoa.notify_acl);
 	}
-	dns_acl_attach(acl, &zone->notifyctx.notify_acl);
+	dns_acl_attach(acl, &zone->notifysoa.notify_acl);
 	UNLOCK_ZONE(zone);
 }
 
@@ -15354,7 +15349,7 @@ dns_acl_t *
 dns_zone_getnotifyacl(dns_zone_t *zone) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 
-	return zone->notifyctx.notify_acl;
+	return zone->notifysoa.notify_acl;
 }
 
 dns_acl_t *
@@ -15419,8 +15414,8 @@ dns_zone_clearnotifyacl(dns_zone_t *zone) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 
 	LOCK_ZONE(zone);
-	if (zone->notifyctx.notify_acl != NULL) {
-		dns_acl_detach(&zone->notifyctx.notify_acl);
+	if (zone->notifysoa.notify_acl != NULL) {
+		dns_acl_detach(&zone->notifysoa.notify_acl);
 	}
 	UNLOCK_ZONE(zone);
 }
@@ -15845,7 +15840,7 @@ dns_notifyctx_t *
 dns_zone_getnotifyctx(dns_zone_t *zone) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 
-	return &zone->notifyctx;
+	return &zone->notifysoa;
 }
 
 void
