@@ -43,7 +43,8 @@ dns_notifyctx_init(dns_notifyctx_t *nctx, dns_zone_t *zone,
 }
 
 void
-dns_notify_create(isc_mem_t *mctx, unsigned int flags, dns_notify_t **notifyp) {
+dns_notify_create(isc_mem_t *mctx, in_port_t port, unsigned int flags,
+		  dns_notify_t **notifyp) {
 	dns_notify_t *notify;
 
 	REQUIRE(notifyp != NULL && *notifyp == NULL);
@@ -51,6 +52,7 @@ dns_notify_create(isc_mem_t *mctx, unsigned int flags, dns_notify_t **notifyp) {
 	notify = isc_mem_get(mctx, sizeof(*notify));
 	*notify = (dns_notify_t){
 		.flags = flags,
+		.port = port,
 	};
 
 	isc_mem_attach(mctx, &notify->mctx);
@@ -662,7 +664,8 @@ notify_send(dns_notify_t *notify) {
 		}
 		newnotify = NULL;
 		flags = notify->flags & DNS_NOTIFY_NOSOA;
-		dns_notify_create(notify->mctx, flags, &newnotify);
+		dns_notify_create(notify->mctx, notify->port, flags,
+				  &newnotify);
 		dns_zone_iattach(notify->zone, &newnotify->zone, true);
 		ISC_LIST_APPEND(notifyctx->notifies, newnotify, link);
 		newnotify->dst = dst;
@@ -740,7 +743,7 @@ dns_notify_find_address(dns_notify_t *notify) {
 	}
 
 	result = dns_adb_createfind(adb, loop, process_notify_adb_event, notify,
-				    &notify->ns, options, 0, view->dstport, 0,
+				    &notify->ns, options, 0, notify->port, 0,
 				    NULL, NULL, &notify->find);
 	dns_adb_detach(&adb);
 

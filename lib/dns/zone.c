@@ -12757,7 +12757,8 @@ zone_notify(dns_zone_t *zone, isc_time_t *now) {
 			goto next;
 		}
 
-		dns_notify_create(zone->mctx, flags, &notify);
+		dns_notify_create(zone->mctx, zone->view->dstport, flags,
+				  &notify);
 		zone_iattach(zone, &notify->zone);
 		notify->src = src;
 		notify->dst = dst;
@@ -12840,7 +12841,8 @@ zone_notify(dns_zone_t *zone, isc_time_t *now) {
 		if (isqueued) {
 			continue;
 		}
-		dns_notify_create(zone->mctx, flags, &notify);
+		dns_notify_create(zone->mctx, zone->view->dstport, flags,
+				  &notify);
 		dns_zone_iattach(zone, &notify->zone, false);
 		dns_name_dup(&ns.name, zone->mctx, &notify->ns);
 		LOCK_ZONE(zone);

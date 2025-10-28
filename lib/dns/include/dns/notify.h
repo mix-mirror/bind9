@@ -51,6 +51,7 @@ struct dns_notify {
 	dns_adbfind_t	*find;
 	dns_request_t	*request;
 	dns_name_t	 ns;
+	in_port_t	 port;
 	isc_sockaddr_t	 src;
 	isc_sockaddr_t	 dst;
 	dns_tsigkey_t	*key;
@@ -76,7 +77,8 @@ dns_notifyctx_init(dns_notifyctx_t *nctx, dns_zone_t *zone,
  */
 
 void
-dns_notify_create(isc_mem_t *mctx, unsigned int flags, dns_notify_t **notifyp);
+dns_notify_create(isc_mem_t *mctx, in_port_t port, unsigned int flags,
+		  dns_notify_t **notifyp);
 /*%<
  *	Create a notify structure to maintain state.
  *
