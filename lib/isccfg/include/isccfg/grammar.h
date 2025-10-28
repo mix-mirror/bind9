@@ -152,12 +152,12 @@ struct cfg_tuplefielddef {
 
 /*% A configuration object type definition. */
 struct cfg_type {
-	const char     *name; /*%< For debugging purposes only */
-	cfg_parsefunc_t parse;
-	cfg_printfunc_t print;
-	cfg_docfunc_t	doc; /*%< Print grammar description */
-	cfg_rep_t      *rep; /*%< Data representation */
-	const void     *of;  /*%< Additional data for meta-types */
+	const char     *name;  /*%< For debugging purposes only */
+	cfg_rep_t      *rep;   /*%< Data representation */
+	const void     *of;    /*%< Additional data for meta-types */
+	cfg_parsefunc_t parse; /*%< Parse grammar */
+	cfg_printfunc_t print; /*%< Print value */
+	cfg_docfunc_t	doc;   /*%< Print grammar description */
 };
 
 /*% A keyword-type definition, for things like "port <integer>". */

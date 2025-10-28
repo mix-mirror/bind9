@@ -76,8 +76,12 @@ static cfg_clausedef_t *syncplugin__cfgparamsclausesets[] = {
 };
 
 static cfg_type_t syncplugin__cfgparams = {
-	"syncplugin-params", cfg_parse_mapbody, cfg_print_mapbody,
-	cfg_doc_mapbody,     &cfg_rep_map,	syncplugin__cfgparamsclausesets
+	.name = "syncplugin-params",
+	.parse = cfg_parse_mapbody,
+	.print = cfg_print_mapbody,
+	.doc = cfg_doc_mapbody,
+	.rep = &cfg_rep_map,
+	.of = syncplugin__cfgparamsclausesets
 };
 
 static isc_result_t

@@ -167,10 +167,12 @@ static cfg_tuplefielddef_t listenon_tuple_fields[] = {
 #endif
 	{ NULL, NULL, 0 }
 };
-static cfg_type_t cfg_type_listen_tuple = {
-	"listenon tuple", cfg_parse_kv_tuple, cfg_print_kv_tuple,
-	cfg_doc_kv_tuple, &cfg_rep_tuple,     listenon_tuple_fields
-};
+static cfg_type_t cfg_type_listen_tuple = { .name = "listenon tuple",
+					    .parse = cfg_parse_kv_tuple,
+					    .print = cfg_print_kv_tuple,
+					    .doc = cfg_doc_kv_tuple,
+					    .rep = &cfg_rep_tuple,
+					    .of = listenon_tuple_fields };
 
 static cfg_tuplefielddef_t listenon_fields[] = {
 	{ "tuple", &cfg_type_listen_tuple, 0 },
@@ -178,9 +180,12 @@ static cfg_tuplefielddef_t listenon_fields[] = {
 	{ NULL, NULL, 0 }
 };
 
-static cfg_type_t cfg_type_listenon = { "listenon",	 cfg_parse_tuple,
-					cfg_print_tuple, cfg_doc_tuple,
-					&cfg_rep_tuple,	 listenon_fields };
+static cfg_type_t cfg_type_listenon = { .name = "listenon",
+					.parse = cfg_parse_tuple,
+					.print = cfg_print_tuple,
+					.doc = cfg_doc_tuple,
+					.rep = &cfg_rep_tuple,
+					.of = listenon_fields };
 
 /*% acl */
 
@@ -194,9 +199,12 @@ static cfg_tuplefielddef_t cfg_transport_acl_tuple_fields[] = {
 	{ NULL, NULL, 0 }
 };
 static cfg_type_t cfg_transport_acl_tuple = {
-	"transport-acl tuple", cfg_parse_kv_tuple,
-	cfg_print_kv_tuple,    cfg_doc_kv_tuple,
-	&cfg_rep_tuple,	       cfg_transport_acl_tuple_fields
+	.name = "transport-acl tuple",
+	.parse = cfg_parse_kv_tuple,
+	.print = cfg_print_kv_tuple,
+	.doc = cfg_doc_kv_tuple,
+	.rep = &cfg_rep_tuple,
+	.of = cfg_transport_acl_tuple_fields
 };
 
 static cfg_tuplefielddef_t cfg_transport_acl_fields[] = {
@@ -205,10 +213,12 @@ static cfg_tuplefielddef_t cfg_transport_acl_fields[] = {
 	{ NULL, NULL, 0 }
 };
 
-static cfg_type_t cfg_type_transport_acl = {
-	"transport-acl", cfg_parse_tuple, cfg_print_tuple,
-	cfg_doc_tuple,	 &cfg_rep_tuple,  cfg_transport_acl_fields
-};
+static cfg_type_t cfg_type_transport_acl = { .name = "transport-acl",
+					     .parse = cfg_parse_tuple,
+					     .print = cfg_print_tuple,
+					     .doc = cfg_doc_tuple,
+					     .rep = &cfg_rep_tuple,
+					     .of = cfg_transport_acl_fields };
 
 /*
  * NOTE: To enable syntax which allows specifying port and protocol,
@@ -222,9 +232,12 @@ static cfg_tuplefielddef_t acl_fields[] = { { "name", &cfg_type_astring, 0 },
 					      0 },
 					    { NULL, NULL, 0 } };
 
-static cfg_type_t cfg_type_acl = { "acl",	    cfg_parse_tuple,
-				   cfg_print_tuple, cfg_doc_tuple,
-				   &cfg_rep_tuple,  acl_fields };
+static cfg_type_t cfg_type_acl = { .name = "acl",
+				   .parse = cfg_parse_tuple,
+				   .print = cfg_print_tuple,
+				   .doc = cfg_doc_tuple,
+				   .rep = &cfg_rep_tuple,
+				   .of = acl_fields };
 
 /*% remote servers, used for primaries and parental agents */
 static cfg_tuplefielddef_t remotes_fields[] = {
@@ -236,9 +249,12 @@ static cfg_tuplefielddef_t remotes_fields[] = {
 	{ NULL, NULL, 0 }
 };
 
-static cfg_type_t cfg_type_serverlist = { "server-list",   cfg_parse_tuple,
-					  cfg_print_tuple, cfg_doc_tuple,
-					  &cfg_rep_tuple,  remotes_fields };
+static cfg_type_t cfg_type_serverlist = { .name = "server-list",
+					  .parse = cfg_parse_tuple,
+					  .print = cfg_print_tuple,
+					  .doc = cfg_doc_tuple,
+					  .rep = &cfg_rep_tuple,
+					  .of = remotes_fields };
 
 /*%
  * "sockaddrkeylist", a list of socket addresses with optional keys
@@ -254,18 +270,20 @@ static cfg_tuplefielddef_t namesockaddrkey_fields[] = {
 	{ NULL, NULL, 0 },
 };
 
-static cfg_type_t cfg_type_namesockaddrkey = {
-	"namesockaddrkey", cfg_parse_tuple, cfg_print_tuple,
-	cfg_doc_tuple,	   &cfg_rep_tuple,  namesockaddrkey_fields
-};
+static cfg_type_t cfg_type_namesockaddrkey = { .name = "namesockaddrkey",
+					       .parse = cfg_parse_tuple,
+					       .print = cfg_print_tuple,
+					       .doc = cfg_doc_tuple,
+					       .rep = &cfg_rep_tuple,
+					       .of = namesockaddrkey_fields };
 
 static cfg_type_t cfg_type_bracketed_namesockaddrkeylist = {
-	"bracketed_namesockaddrkeylist",
-	cfg_parse_bracketed_list,
-	cfg_print_bracketed_list,
-	cfg_doc_bracketed_list,
-	&cfg_rep_list,
-	&cfg_type_namesockaddrkey
+	.name = "bracketed_namesockaddrkeylist",
+	.parse = cfg_parse_bracketed_list,
+	.print = cfg_print_bracketed_list,
+	.doc = cfg_doc_bracketed_list,
+	.rep = &cfg_rep_list,
+	.of = &cfg_type_namesockaddrkey
 };
 
 static cfg_tuplefielddef_t namesockaddrkeylist_fields[] = {
@@ -276,8 +294,12 @@ static cfg_tuplefielddef_t namesockaddrkeylist_fields[] = {
 	{ NULL, NULL, 0 }
 };
 static cfg_type_t cfg_type_namesockaddrkeylist = {
-	"sockaddrkeylist", cfg_parse_tuple, cfg_print_tuple,
-	cfg_doc_tuple,	   &cfg_rep_tuple,  namesockaddrkeylist_fields
+	.name = "sockaddrkeylist",
+	.parse = cfg_parse_tuple,
+	.print = cfg_print_tuple,
+	.doc = cfg_doc_tuple,
+	.rep = &cfg_rep_tuple,
+	.of = namesockaddrkeylist_fields
 };
 
 /*%
@@ -290,24 +312,31 @@ static cfg_tuplefielddef_t portiplist_fields[] = {
 	{ "addresses", &cfg_type_bracketed_sockaddrtlslist, 0 },
 	{ NULL, NULL, 0 }
 };
-static cfg_type_t cfg_type_portiplist = { "portiplist",	   cfg_parse_tuple,
-					  cfg_print_tuple, cfg_doc_tuple,
-					  &cfg_rep_tuple,  portiplist_fields };
+static cfg_type_t cfg_type_portiplist = { .name = "portiplist",
+					  .parse = cfg_parse_tuple,
+					  .print = cfg_print_tuple,
+					  .doc = cfg_doc_tuple,
+					  .rep = &cfg_rep_tuple,
+					  .of = portiplist_fields };
 
 /*%
  * A list of RR types, used in grant statements.
  * Note that the old parser allows quotes around the RR type names.
  */
-static cfg_type_t cfg_type_rrtypelist = {
-	"rrtypelist",	  cfg_parse_spacelist, cfg_print_spacelist,
-	cfg_doc_terminal, &cfg_rep_list,       &cfg_type_astring
-};
+static cfg_type_t cfg_type_rrtypelist = { .name = "rrtypelist",
+					  .parse = cfg_parse_spacelist,
+					  .print = cfg_print_spacelist,
+					  .doc = cfg_doc_terminal,
+					  .rep = &cfg_rep_list,
+					  .of = &cfg_type_astring };
 
 static const char *mode_enums[] = { "deny", "grant", NULL };
-static cfg_type_t cfg_type_mode = {
-	"mode",	      cfg_parse_enum,  cfg_print_ustring,
-	cfg_doc_enum, &cfg_rep_string, &mode_enums
-};
+static cfg_type_t cfg_type_mode = { .name = "mode",
+				    .parse = cfg_parse_enum,
+				    .print = cfg_print_ustring,
+				    .doc = cfg_doc_enum,
+				    .rep = &cfg_rep_string,
+				    .of = &mode_enums };
 
 static isc_result_t
 parse_matchtype(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
@@ -369,14 +398,19 @@ static const char *matchtype_enums[] = { "6to4-self",
 					 "zonesub",
 					 NULL };
 
-static cfg_type_t cfg_type_matchtype = { "matchtype",	    parse_matchtype,
-					 cfg_print_ustring, cfg_doc_enum,
-					 &cfg_rep_string,   &matchtype_enums };
+static cfg_type_t cfg_type_matchtype = { .name = "matchtype",
+					 .parse = parse_matchtype,
+					 .print = cfg_print_ustring,
+					 .doc = cfg_doc_enum,
+					 .rep = &cfg_rep_string,
+					 .of = &matchtype_enums };
 
-static cfg_type_t cfg_type_matchname = {
-	"optional_matchname", parse_matchname, cfg_print_ustring,
-	doc_matchname,	      &cfg_rep_tuple,  &cfg_type_ustring
-};
+static cfg_type_t cfg_type_matchname = { .name = "optional_matchname",
+					 .parse = parse_matchname,
+					 .print = cfg_print_ustring,
+					 .doc = doc_matchname,
+					 .rep = &cfg_rep_tuple,
+					 .of = &cfg_type_ustring };
 
 /*%
  * A grant statement, used in the update policy.
@@ -389,14 +423,19 @@ static cfg_tuplefielddef_t grant_fields[] = {
 	{ "types", &cfg_type_rrtypelist, 0 },
 	{ NULL, NULL, 0 }
 };
-static cfg_type_t cfg_type_grant = { "grant",	      cfg_parse_tuple,
-				     cfg_print_tuple, cfg_doc_tuple,
-				     &cfg_rep_tuple,  grant_fields };
+static cfg_type_t cfg_type_grant = { .name = "grant",
+				     .parse = cfg_parse_tuple,
+				     .print = cfg_print_tuple,
+				     .doc = cfg_doc_tuple,
+				     .rep = &cfg_rep_tuple,
+				     .of = grant_fields };
 
-static cfg_type_t cfg_type_updatepolicy = {
-	"update_policy",  parse_updatepolicy, print_updatepolicy,
-	doc_updatepolicy, &cfg_rep_list,      &cfg_type_grant
-};
+static cfg_type_t cfg_type_updatepolicy = { .name = "update_policy",
+					    .parse = parse_updatepolicy,
+					    .print = print_updatepolicy,
+					    .doc = doc_updatepolicy,
+					    .rep = &cfg_rep_list,
+					    .of = &cfg_type_grant };
 
 static isc_result_t
 parse_updatepolicy(cfg_parser_t *pctx, const cfg_type_t *type,
@@ -457,9 +496,12 @@ static cfg_tuplefielddef_t view_fields[] = {
 	{ "options", &cfg_type_viewopts, 0 },
 	{ NULL, NULL, 0 }
 };
-static cfg_type_t cfg_type_view = { "view",	     cfg_parse_tuple,
-				    cfg_print_tuple, cfg_doc_tuple,
-				    &cfg_rep_tuple,  view_fields };
+static cfg_type_t cfg_type_view = { .name = "view",
+				    .parse = cfg_parse_tuple,
+				    .print = cfg_print_tuple,
+				    .doc = cfg_doc_tuple,
+				    .rep = &cfg_rep_tuple,
+				    .of = view_fields };
 
 /*%
  * A zone statement.
@@ -470,9 +512,12 @@ static cfg_tuplefielddef_t zone_fields[] = {
 	{ "options", &cfg_type_zoneopts, 0 },
 	{ NULL, NULL, 0 }
 };
-static cfg_type_t cfg_type_zone = { "zone",	     cfg_parse_tuple,
-				    cfg_print_tuple, cfg_doc_tuple,
-				    &cfg_rep_tuple,  zone_fields };
+static cfg_type_t cfg_type_zone = { .name = "zone",
+				    .parse = cfg_parse_tuple,
+				    .print = cfg_print_tuple,
+				    .doc = cfg_doc_tuple,
+				    .rep = &cfg_rep_tuple,
+				    .of = zone_fields };
 
 /*%
  * A zone statement.
@@ -482,9 +527,12 @@ static cfg_tuplefielddef_t template_fields[] = {
 	{ "options", &cfg_type_templateopts, 0 },
 	{ NULL, NULL, 0 }
 };
-static cfg_type_t cfg_type_template = { "template",	 cfg_parse_tuple,
-					cfg_print_tuple, cfg_doc_tuple,
-					&cfg_rep_tuple,	 template_fields };
+static cfg_type_t cfg_type_template = { .name = "template",
+					.parse = cfg_parse_tuple,
+					.print = cfg_print_tuple,
+					.doc = cfg_doc_tuple,
+					.rep = &cfg_rep_tuple,
+					.of = template_fields };
 
 /*%
  * A dnssec-policy statement.
@@ -494,10 +542,12 @@ static cfg_tuplefielddef_t dnssecpolicy_fields[] = {
 	{ "options", &cfg_type_dnssecpolicyopts, 0 },
 	{ NULL, NULL, 0 }
 };
-static cfg_type_t cfg_type_dnssecpolicy = {
-	"dnssec-policy", cfg_parse_tuple, cfg_print_tuple,
-	cfg_doc_tuple,	 &cfg_rep_tuple,  dnssecpolicy_fields
-};
+static cfg_type_t cfg_type_dnssecpolicy = { .name = "dnssec-policy",
+					    .parse = cfg_parse_tuple,
+					    .print = cfg_print_tuple,
+					    .doc = cfg_doc_tuple,
+					    .rep = &cfg_rep_tuple,
+					    .of = dnssecpolicy_fields };
 
 /*%
  * A "category" clause in the "logging" statement.
@@ -507,9 +557,12 @@ static cfg_tuplefielddef_t category_fields[] = {
 	{ "destinations", &cfg_type_destinationlist, 0 },
 	{ NULL, NULL, 0 }
 };
-static cfg_type_t cfg_type_category = { "category",	 cfg_parse_tuple,
-					cfg_print_tuple, cfg_doc_tuple,
-					&cfg_rep_tuple,	 category_fields };
+static cfg_type_t cfg_type_category = { .name = "category",
+					.parse = cfg_parse_tuple,
+					.print = cfg_print_tuple,
+					.doc = cfg_doc_tuple,
+					.rep = &cfg_rep_tuple,
+					.of = category_fields };
 
 static isc_result_t
 parse_maxduration(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
@@ -525,10 +578,12 @@ doc_maxduration(cfg_printer_t *pctx, const cfg_type_t *type) {
  * A duration or "unlimited", but not "default".
  */
 static const char *maxduration_enums[] = { "unlimited", NULL };
-static cfg_type_t cfg_type_maxduration = {
-	"maxduration_no_default", parse_maxduration, cfg_print_ustring,
-	doc_maxduration,	  &cfg_rep_duration, maxduration_enums
-};
+static cfg_type_t cfg_type_maxduration = { .name = "maxduration_no_default",
+					   .parse = parse_maxduration,
+					   .print = cfg_print_ustring,
+					   .doc = doc_maxduration,
+					   .rep = &cfg_rep_duration,
+					   .of = maxduration_enums };
 
 /*%
  * Optional enums.
@@ -553,9 +608,12 @@ doc_optional_enum(cfg_printer_t *pctx, const cfg_type_t *type) {
  */
 static const char *anchortype_enums[] = { "static-key", "initial-key",
 					  "static-ds", "initial-ds", NULL };
-static cfg_type_t cfg_type_anchortype = { "anchortype",	     cfg_parse_enum,
-					  cfg_print_ustring, cfg_doc_enum,
-					  &cfg_rep_string,   anchortype_enums };
+static cfg_type_t cfg_type_anchortype = { .name = "anchortype",
+					  .parse = cfg_parse_enum,
+					  .print = cfg_print_ustring,
+					  .doc = cfg_doc_enum,
+					  .rep = &cfg_rep_string,
+					  .of = anchortype_enums };
 static cfg_tuplefielddef_t managedkey_fields[] = {
 	{ "name", &cfg_type_astring, 0 },
 	{ "anchortype", &cfg_type_anchortype, 0 },
@@ -565,26 +623,34 @@ static cfg_tuplefielddef_t managedkey_fields[] = {
 	{ "data", &cfg_type_qstring, 0 },
 	{ NULL, NULL, 0 }
 };
-static cfg_type_t cfg_type_managedkey = { "managedkey",	   cfg_parse_tuple,
-					  cfg_print_tuple, cfg_doc_tuple,
-					  &cfg_rep_tuple,  managedkey_fields };
+static cfg_type_t cfg_type_managedkey = { .name = "managedkey",
+					  .parse = cfg_parse_tuple,
+					  .print = cfg_print_tuple,
+					  .doc = cfg_doc_tuple,
+					  .rep = &cfg_rep_tuple,
+					  .of = managedkey_fields };
 
 /*%
  * DNSSEC key roles.
  */
 static const char *dnsseckeyrole_enums[] = { "csk", "ksk", "zsk", NULL };
-static cfg_type_t cfg_type_dnsseckeyrole = {
-	"dnssec-key-role", cfg_parse_enum,  cfg_print_ustring,
-	cfg_doc_enum,	   &cfg_rep_string, &dnsseckeyrole_enums
-};
+static cfg_type_t cfg_type_dnsseckeyrole = { .name = "dnssec-key-role",
+					     .parse = cfg_parse_enum,
+					     .print = cfg_print_ustring,
+					     .doc = cfg_doc_enum,
+					     .rep = &cfg_rep_string,
+					     .of = &dnsseckeyrole_enums };
 
 /*%
  * DNSSEC key storage types.
  */
 static keyword_type_t keystore_kw = { "key-store", &cfg_type_astring };
-static cfg_type_t cfg_type_keystorage = { "keystorage",	   parse_keyvalue,
-					  print_keyvalue,  doc_keyvalue,
-					  &cfg_rep_string, &keystore_kw };
+static cfg_type_t cfg_type_keystorage = { .name = "keystorage",
+					  .parse = parse_keyvalue,
+					  .print = print_keyvalue,
+					  .doc = doc_keyvalue,
+					  .rep = &cfg_rep_string,
+					  .of = &keystore_kw };
 
 static isc_result_t
 parse_keystore(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
@@ -630,24 +696,32 @@ print_keystore(cfg_printer_t *pctx, const cfg_obj_t *obj) {
 	cfg_print_ustring(pctx, obj);
 }
 
-static cfg_type_t cfg_type_optional_keystore = {
-	"optionalkeystorage", parse_keystore,  print_keystore,
-	doc_keystore,	      &cfg_rep_string, &keystore_kw
-};
+static cfg_type_t cfg_type_optional_keystore = { .name = "optionalkeystorage",
+						 .parse = parse_keystore,
+						 .print = print_keystore,
+						 .doc = doc_keystore,
+						 .rep = &cfg_rep_string,
+						 .of = &keystore_kw };
 
 /*%
  * A dnssec key, as used in the "keys" statement in a "dnssec-policy".
  */
 static keyword_type_t algorithm_kw = { "algorithm", &cfg_type_ustring };
-static cfg_type_t cfg_type_algorithm = { "algorithm",	  parse_keyvalue,
-					 print_keyvalue,  doc_keyvalue,
-					 &cfg_rep_string, &algorithm_kw };
+static cfg_type_t cfg_type_algorithm = { .name = "algorithm",
+					 .parse = parse_keyvalue,
+					 .print = print_keyvalue,
+					 .doc = doc_keyvalue,
+					 .rep = &cfg_rep_string,
+					 .of = &algorithm_kw };
 
 static keyword_type_t lifetime_kw = { "lifetime",
 				      &cfg_type_duration_or_unlimited };
-static cfg_type_t cfg_type_lifetime = { "lifetime",	   parse_keyvalue,
-					print_keyvalue,	   doc_keyvalue,
-					&cfg_rep_duration, &lifetime_kw };
+static cfg_type_t cfg_type_lifetime = { .name = "lifetime",
+					.parse = parse_keyvalue,
+					.print = print_keyvalue,
+					.doc = doc_keyvalue,
+					.rep = &cfg_rep_duration,
+					.of = &lifetime_kw };
 /*
  *
  */
@@ -669,9 +743,12 @@ static cfg_tuplefielddef_t tagrange_fields[] = {
 	{ NULL, NULL, 0 }
 };
 
-static cfg_type_t cfg_type_tagrange = { "tagrange",	cfg_parse_tuple,
-					print_tagrange, cfg_doc_tuple,
-					&cfg_rep_tuple, tagrange_fields };
+static cfg_type_t cfg_type_tagrange = { .name = "tagrange",
+					.parse = cfg_parse_tuple,
+					print_tagrange,
+					.doc = cfg_doc_tuple,
+					.rep = &cfg_rep_tuple,
+					.of = tagrange_fields };
 
 static keyword_type_t tagrange_kw = { "tag-range", &cfg_type_tagrange };
 static void
@@ -704,10 +781,13 @@ cleanup:
 	return result;
 }
 
-static cfg_type_t cfg_type_optional_tagrange = {
-	"optionaltagrange",   parse_optionaltagrange, NULL,
-	doc_optionaltagrange, &cfg_rep_tuple,	      &tagrange_kw
-};
+static cfg_type_t cfg_type_optional_tagrange = { .name = "optionaltagrange",
+						 .parse =
+							 parse_optionaltagrange,
+						 NULL,
+						 .doc = doc_optionaltagrange,
+						 .rep = &cfg_rep_tuple,
+						 .of = &tagrange_kw };
 
 static cfg_tuplefielddef_t kaspkey_fields[] = {
 	{ "role", &cfg_type_dnsseckeyrole, 0 },
@@ -718,31 +798,39 @@ static cfg_tuplefielddef_t kaspkey_fields[] = {
 	{ "length", &cfg_type_optional_uint32, 0 },
 	{ NULL, NULL, 0 }
 };
-static cfg_type_t cfg_type_kaspkey = { "kaspkey",	cfg_parse_tuple,
-				       cfg_print_tuple, cfg_doc_tuple,
-				       &cfg_rep_tuple,	kaspkey_fields };
+static cfg_type_t cfg_type_kaspkey = { .name = "kaspkey",
+				       .parse = cfg_parse_tuple,
+				       .print = cfg_print_tuple,
+				       .doc = cfg_doc_tuple,
+				       .rep = &cfg_rep_tuple,
+				       .of = kaspkey_fields };
 
 /*%
  * NSEC3 parameters.
  */
 static keyword_type_t nsec3iter_kw = { "iterations", &cfg_type_uint32 };
-static cfg_type_t cfg_type_nsec3iter = {
-	"iterations",	       parse_optional_keyvalue, print_keyvalue,
-	doc_optional_keyvalue, &cfg_rep_uint32,		&nsec3iter_kw
-};
+static cfg_type_t cfg_type_nsec3iter = { .name = "iterations",
+					 .parse = parse_optional_keyvalue,
+					 .print = print_keyvalue,
+					 .doc = doc_optional_keyvalue,
+					 .rep = &cfg_rep_uint32,
+					 .of = &nsec3iter_kw };
 
 static keyword_type_t nsec3optout_kw = { "optout", &cfg_type_boolean };
-static cfg_type_t cfg_type_nsec3optout = {
-	"optout",	  parse_optional_keyvalue,
-	print_keyvalue,	  doc_optional_keyvalue,
-	&cfg_rep_boolean, &nsec3optout_kw
-};
+static cfg_type_t cfg_type_nsec3optout = { .name = "optout",
+					   .parse = parse_optional_keyvalue,
+					   .print = print_keyvalue,
+					   .doc = doc_optional_keyvalue,
+					   .rep = &cfg_rep_boolean,
+					   .of = &nsec3optout_kw };
 
 static keyword_type_t nsec3salt_kw = { "salt-length", &cfg_type_uint32 };
-static cfg_type_t cfg_type_nsec3salt = {
-	"salt-length",	       parse_optional_keyvalue, print_keyvalue,
-	doc_optional_keyvalue, &cfg_rep_uint32,		&nsec3salt_kw
-};
+static cfg_type_t cfg_type_nsec3salt = { .name = "salt-length",
+					 .parse = parse_optional_keyvalue,
+					 .print = print_keyvalue,
+					 .doc = doc_optional_keyvalue,
+					 .rep = &cfg_rep_uint32,
+					 .of = &nsec3salt_kw };
 
 static cfg_tuplefielddef_t nsec3param_fields[] = {
 	{ "iterations", &cfg_type_nsec3iter, 0 },
@@ -751,9 +839,12 @@ static cfg_tuplefielddef_t nsec3param_fields[] = {
 	{ NULL, NULL, 0 }
 };
 
-static cfg_type_t cfg_type_nsec3 = { "nsec3param",    cfg_parse_tuple,
-				     cfg_print_tuple, cfg_doc_tuple,
-				     &cfg_rep_tuple,  nsec3param_fields };
+static cfg_type_t cfg_type_nsec3 = { .name = "nsec3param",
+				     .parse = cfg_parse_tuple,
+				     .print = cfg_print_tuple,
+				     .doc = cfg_doc_tuple,
+				     .rep = &cfg_rep_tuple,
+				     .of = nsec3param_fields };
 
 /*%
  * Wild class, type, name.
@@ -761,22 +852,34 @@ static cfg_type_t cfg_type_nsec3 = { "nsec3param",    cfg_parse_tuple,
 static keyword_type_t wild_class_kw = { "class", &cfg_type_ustring };
 
 static cfg_type_t cfg_type_optional_wild_class = {
-	"optional_wild_class", parse_optional_keyvalue, print_keyvalue,
-	doc_optional_keyvalue, &cfg_rep_string,		&wild_class_kw
+	.name = "optional_wild_class",
+	.parse = parse_optional_keyvalue,
+	.print = print_keyvalue,
+	.doc = doc_optional_keyvalue,
+	.rep = &cfg_rep_string,
+	.of = &wild_class_kw
 };
 
 static keyword_type_t wild_type_kw = { "type", &cfg_type_ustring };
 
 static cfg_type_t cfg_type_optional_wild_type = {
-	"optional_wild_type",  parse_optional_keyvalue, print_keyvalue,
-	doc_optional_keyvalue, &cfg_rep_string,		&wild_type_kw
+	.name = "optional_wild_type",
+	.parse = parse_optional_keyvalue,
+	.print = print_keyvalue,
+	.doc = doc_optional_keyvalue,
+	.rep = &cfg_rep_string,
+	.of = &wild_type_kw
 };
 
 static keyword_type_t wild_name_kw = { "name", &cfg_type_qstring };
 
 static cfg_type_t cfg_type_optional_wild_name = {
-	"optional_wild_name",  parse_optional_keyvalue, print_keyvalue,
-	doc_optional_keyvalue, &cfg_rep_string,		&wild_name_kw
+	.name = "optional_wild_name",
+	.parse = parse_optional_keyvalue,
+	.print = print_keyvalue,
+	.doc = doc_optional_keyvalue,
+	.rep = &cfg_rep_string,
+	.of = &wild_name_kw
 };
 
 /*%
@@ -791,8 +894,12 @@ static cfg_tuplefielddef_t rrsetorderingelement_fields[] = {
 	{ NULL, NULL, 0 }
 };
 static cfg_type_t cfg_type_rrsetorderingelement = {
-	"rrsetorderingelement", cfg_parse_tuple, cfg_print_tuple,
-	cfg_doc_tuple,		&cfg_rep_tuple,	 rrsetorderingelement_fields
+	.name = "rrsetorderingelement",
+	.parse = cfg_parse_tuple,
+	.print = cfg_print_tuple,
+	.doc = cfg_doc_tuple,
+	.rep = &cfg_rep_tuple,
+	.of = rrsetorderingelement_fields
 };
 
 /*%
@@ -802,20 +909,28 @@ static cfg_type_t cfg_type_rrsetorderingelement = {
 
 static const char *checktype_enums[] = { "primary", "master",	"secondary",
 					 "slave",   "response", NULL };
-static cfg_type_t cfg_type_checktype = { "checktype",	    cfg_parse_enum,
-					 cfg_print_ustring, cfg_doc_enum,
-					 &cfg_rep_string,   &checktype_enums };
+static cfg_type_t cfg_type_checktype = { .name = "checktype",
+					 .parse = cfg_parse_enum,
+					 .print = cfg_print_ustring,
+					 .doc = cfg_doc_enum,
+					 .rep = &cfg_rep_string,
+					 .of = &checktype_enums };
 
 static const char *checkmode_enums[] = { "fail", "warn", "ignore", NULL };
-static cfg_type_t cfg_type_checkmode = { "checkmode",	    cfg_parse_enum,
-					 cfg_print_ustring, cfg_doc_enum,
-					 &cfg_rep_string,   &checkmode_enums };
+static cfg_type_t cfg_type_checkmode = { .name = "checkmode",
+					 .parse = cfg_parse_enum,
+					 .print = cfg_print_ustring,
+					 .doc = cfg_doc_enum,
+					 .rep = &cfg_rep_string,
+					 .of = &checkmode_enums };
 
 static const char *warn_enums[] = { "warn", "ignore", NULL };
-static cfg_type_t cfg_type_warn = {
-	"warn",	      cfg_parse_enum,  cfg_print_ustring,
-	cfg_doc_enum, &cfg_rep_string, &warn_enums
-};
+static cfg_type_t cfg_type_warn = { .name = "warn",
+				    .parse = cfg_parse_enum,
+				    .print = cfg_print_ustring,
+				    .doc = cfg_doc_enum,
+				    .rep = &cfg_rep_string,
+				    .of = &warn_enums };
 
 static cfg_tuplefielddef_t checknames_fields[] = {
 	{ "type", &cfg_type_checktype, 0 },
@@ -823,38 +938,47 @@ static cfg_tuplefielddef_t checknames_fields[] = {
 	{ NULL, NULL, 0 }
 };
 
-static cfg_type_t cfg_type_checknames = { "checknames",	   cfg_parse_tuple,
-					  cfg_print_tuple, cfg_doc_tuple,
-					  &cfg_rep_tuple,  checknames_fields };
+static cfg_type_t cfg_type_checknames = { .name = "checknames",
+					  .parse = cfg_parse_tuple,
+					  .print = cfg_print_tuple,
+					  .doc = cfg_doc_tuple,
+					  .rep = &cfg_rep_tuple,
+					  .of = checknames_fields };
 
-static cfg_type_t cfg_type_bracketed_netaddrlist = { "bracketed_netaddrlist",
-						     cfg_parse_bracketed_list,
-						     cfg_print_bracketed_list,
-						     cfg_doc_bracketed_list,
-						     &cfg_rep_list,
-						     &cfg_type_netaddr };
+static cfg_type_t cfg_type_bracketed_netaddrlist = {
+	.name = "bracketed_netaddrlist",
+	.parse = cfg_parse_bracketed_list,
+	.print = cfg_print_bracketed_list,
+	.doc = cfg_doc_bracketed_list,
+	.rep = &cfg_rep_list,
+	.of = &cfg_type_netaddr
+};
 
 static cfg_type_t cfg_type_bracketed_sockaddrtlslist = {
-	"bracketed_sockaddrtlslist",
-	cfg_parse_bracketed_list,
-	cfg_print_bracketed_list,
-	cfg_doc_bracketed_list,
-	&cfg_rep_list,
-	&cfg_type_sockaddrtls
+	.name = "bracketed_sockaddrtlslist",
+	.parse = cfg_parse_bracketed_list,
+	.print = cfg_print_bracketed_list,
+	.doc = cfg_doc_bracketed_list,
+	.rep = &cfg_rep_list,
+	.of = &cfg_type_sockaddrtls
 };
 
 static const char *dnssecupdatemode_enums[] = { "maintain", "no-resign", NULL };
-static cfg_type_t cfg_type_dnssecupdatemode = {
-	"dnssecupdatemode", cfg_parse_enum,  cfg_print_ustring,
-	cfg_doc_enum,	    &cfg_rep_string, &dnssecupdatemode_enums
-};
+static cfg_type_t cfg_type_dnssecupdatemode = { .name = "dnssecupdatemode",
+						.parse = cfg_parse_enum,
+						.print = cfg_print_ustring,
+						.doc = cfg_doc_enum,
+						.rep = &cfg_rep_string,
+						.of = &dnssecupdatemode_enums };
 
 static const char *updatemethods_enums[] = { "date", "increment", "unixtime",
 					     NULL };
-static cfg_type_t cfg_type_updatemethod = {
-	"updatemethod", cfg_parse_enum,	 cfg_print_ustring,
-	cfg_doc_enum,	&cfg_rep_string, &updatemethods_enums
-};
+static cfg_type_t cfg_type_updatemethod = { .name = "updatemethod",
+					    .parse = cfg_parse_enum,
+					    .print = cfg_print_ustring,
+					    .doc = cfg_doc_enum,
+					    .rep = &cfg_rep_string,
+					    .of = &updatemethods_enums };
 
 /*
  * zone-statistics: full, terse, or none.
@@ -872,86 +996,101 @@ static void
 doc_zonestat(cfg_printer_t *pctx, const cfg_type_t *type) {
 	cfg_doc_enum_or_other(pctx, type, &cfg_type_boolean);
 }
-static cfg_type_t cfg_type_zonestat = { "zonestat",	   parse_zonestat,
-					cfg_print_ustring, doc_zonestat,
-					&cfg_rep_string,   zonestat_enums };
+static cfg_type_t cfg_type_zonestat = { .name = "zonestat",
+					.parse = parse_zonestat,
+					.print = cfg_print_ustring,
+					.doc = doc_zonestat,
+					.rep = &cfg_rep_string,
+					.of = zonestat_enums };
 
-static cfg_type_t cfg_type_rrsetorder = { "rrsetorder",
-					  cfg_parse_bracketed_list,
-					  cfg_print_bracketed_list,
-					  cfg_doc_bracketed_list,
-					  &cfg_rep_list,
-					  &cfg_type_rrsetorderingelement };
+static cfg_type_t cfg_type_rrsetorder = { .name = "rrsetorder",
+					  .parse = cfg_parse_bracketed_list,
+					  .print = cfg_print_bracketed_list,
+					  .doc = cfg_doc_bracketed_list,
+					  .rep = &cfg_rep_list,
+					  .of = &cfg_type_rrsetorderingelement };
 
 static keyword_type_t port_kw = { "port", &cfg_type_uint32 };
 
-static cfg_type_t cfg_type_optional_port = {
-	"optional_port",       parse_optional_keyvalue, print_keyvalue,
-	doc_optional_keyvalue, &cfg_rep_uint32,		&port_kw
-};
+static cfg_type_t cfg_type_optional_port = { .name = "optional_port",
+					     .parse = parse_optional_keyvalue,
+					     .print = print_keyvalue,
+					     .doc = doc_optional_keyvalue,
+					     .rep = &cfg_rep_uint32,
+					     .of = &port_kw };
 
 /*% A list of keys, as in the "key" clause of the controls statement. */
-static cfg_type_t cfg_type_keylist = { "keylist",
-				       cfg_parse_bracketed_list,
-				       cfg_print_bracketed_list,
-				       cfg_doc_bracketed_list,
-				       &cfg_rep_list,
-				       &cfg_type_astring };
+static cfg_type_t cfg_type_keylist = { .name = "keylist",
+				       .parse = cfg_parse_bracketed_list,
+				       .print = cfg_print_bracketed_list,
+				       .doc = cfg_doc_bracketed_list,
+				       .rep = &cfg_rep_list,
+				       .of = &cfg_type_astring };
 
 /*%
  * A list of managed trust anchors.  Each entry contains a name, a keyword
  * ("static-key", initial-key", "static-ds" or "initial-ds"), and the
  * fields associated with either a DNSKEY or a DS record.
  */
-static cfg_type_t cfg_type_dnsseckeys = { "dnsseckeys",
-					  cfg_parse_bracketed_list,
-					  cfg_print_bracketed_list,
-					  cfg_doc_bracketed_list,
-					  &cfg_rep_list,
-					  &cfg_type_managedkey };
+static cfg_type_t cfg_type_dnsseckeys = { .name = "dnsseckeys",
+					  .parse = cfg_parse_bracketed_list,
+					  .print = cfg_print_bracketed_list,
+					  .doc = cfg_doc_bracketed_list,
+					  .rep = &cfg_rep_list,
+					  .of = &cfg_type_managedkey };
 
-cfg_type_t cfg_type_builtin_dnsseckeys = {
-	"builtin-dnsseckeys", cfg_parse_bracketed_list, NULL, NULL,
-	&cfg_rep_list,	      &cfg_type_managedkey
-};
+cfg_type_t cfg_type_builtin_dnsseckeys = { .name = "builtin-dnsseckeys",
+					   .parse = cfg_parse_bracketed_list,
+					   .rep = &cfg_rep_list,
+					   .of = &cfg_type_managedkey };
 
 /*%
  * A list of key entries, used in a DNSSEC Key and Signing Policy.
  */
-static cfg_type_t cfg_type_kaspkeys = { "kaspkeys",
-					cfg_parse_bracketed_list,
-					cfg_print_bracketed_list,
-					cfg_doc_bracketed_list,
-					&cfg_rep_list,
-					&cfg_type_kaspkey };
+static cfg_type_t cfg_type_kaspkeys = { .name = "kaspkeys",
+					.parse = cfg_parse_bracketed_list,
+					.print = cfg_print_bracketed_list,
+					.doc = cfg_doc_bracketed_list,
+					.rep = &cfg_rep_list,
+					.of = &cfg_type_kaspkey };
 
 static const char *forwardtype_enums[] = { "first", "only", NULL };
-static cfg_type_t cfg_type_forwardtype = {
-	"forwardtype", cfg_parse_enum,	cfg_print_ustring,
-	cfg_doc_enum,  &cfg_rep_string, &forwardtype_enums
-};
+static cfg_type_t cfg_type_forwardtype = { .name = "forwardtype",
+					   .parse = cfg_parse_enum,
+					   .print = cfg_print_ustring,
+					   .doc = cfg_doc_enum,
+					   .rep = &cfg_rep_string,
+					   .of = &forwardtype_enums };
 
 static const char *zonetype_enums[] = { "primary", "master",   "secondary",
 					"slave",   "mirror",   "forward",
 					"hint",	   "redirect", "static-stub",
 					"stub",	   NULL };
-static cfg_type_t cfg_type_zonetype = { "zonetype",	   cfg_parse_enum,
-					cfg_print_ustring, cfg_doc_enum,
-					&cfg_rep_string,   &zonetype_enums };
+static cfg_type_t cfg_type_zonetype = { .name = "zonetype",
+					.parse = cfg_parse_enum,
+					.print = cfg_print_ustring,
+					.doc = cfg_doc_enum,
+					.rep = &cfg_rep_string,
+					.of = &zonetype_enums };
 
 static const char *loglevel_enums[] = { "critical", "error", "warning",
 					"notice",   "info",  "dynamic",
 					NULL };
-static cfg_type_t cfg_type_loglevel = { "loglevel",	   cfg_parse_enum,
-					cfg_print_ustring, cfg_doc_enum,
-					&cfg_rep_string,   &loglevel_enums };
+static cfg_type_t cfg_type_loglevel = { .name = "loglevel",
+					.parse = cfg_parse_enum,
+					.print = cfg_print_ustring,
+					.doc = cfg_doc_enum,
+					.rep = &cfg_rep_string,
+					.of = &loglevel_enums };
 
 static const char *transferformat_enums[] = { "many-answers", "one-answer",
 					      NULL };
-static cfg_type_t cfg_type_transferformat = {
-	"transferformat", cfg_parse_enum,  cfg_print_ustring,
-	cfg_doc_enum,	  &cfg_rep_string, &transferformat_enums
-};
+static cfg_type_t cfg_type_transferformat = { .name = "transferformat",
+					      .parse = cfg_parse_enum,
+					      .print = cfg_print_ustring,
+					      .doc = cfg_doc_enum,
+					      .rep = &cfg_rep_string,
+					      .of = &transferformat_enums };
 
 /*%
  * The special keyword "none", as used in the pid-file option.
@@ -963,8 +1102,11 @@ print_none(cfg_printer_t *pctx, const cfg_obj_t *obj) {
 	cfg_print_cstr(pctx, "none");
 }
 
-static cfg_type_t cfg_type_none = { "none", NULL,	   print_none,
-				    NULL,   &cfg_rep_void, NULL };
+static cfg_type_t cfg_type_none = {
+	.name = "none",
+	.print = print_none,
+	.rep = &cfg_rep_void,
+};
 
 /*%
  * A quoted string or the special keyword "none".  Used in the pid-file option.
@@ -994,12 +1136,11 @@ doc_qstringornone(cfg_printer_t *pctx, const cfg_type_t *type) {
 	cfg_print_cstr(pctx, "( <quoted_string> | none )");
 }
 
-static cfg_type_t cfg_type_qstringornone = { "qstringornone",
-					     parse_qstringornone,
-					     NULL,
-					     doc_qstringornone,
-					     NULL,
-					     NULL };
+static cfg_type_t cfg_type_qstringornone = {
+	.name = "qstringornone",
+	.parse = parse_qstringornone,
+	.doc = doc_qstringornone,
+};
 
 /*%
  * A boolean ("yes" or "no"), or the special keyword "auto".
@@ -1011,8 +1152,11 @@ print_auto(cfg_printer_t *pctx, const cfg_obj_t *obj) {
 	cfg_print_cstr(pctx, "auto");
 }
 
-static cfg_type_t cfg_type_auto = { "auto", NULL,	   print_auto,
-				    NULL,   &cfg_rep_void, NULL };
+static cfg_type_t cfg_type_auto = {
+	.name = "auto",
+	.print = print_auto,
+	.rep = &cfg_rep_void,
+};
 
 static isc_result_t
 parse_boolorauto(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
@@ -1050,8 +1194,10 @@ doc_boolorauto(cfg_printer_t *pctx, const cfg_type_t *type) {
 }
 
 static cfg_type_t cfg_type_boolorauto = {
-	"boolorauto", parse_boolorauto, print_boolorauto, doc_boolorauto, NULL,
-	NULL
+	.name = "boolorauto",
+	.parse = parse_boolorauto,
+	.print = print_boolorauto,
+	.doc = doc_boolorauto,
 };
 
 /*%
@@ -1063,9 +1209,11 @@ print_hostname(cfg_printer_t *pctx, const cfg_obj_t *obj) {
 	cfg_print_cstr(pctx, "hostname");
 }
 
-static cfg_type_t cfg_type_hostname = { "hostname",	  NULL,
-					print_hostname,	  NULL,
-					&cfg_rep_boolean, NULL };
+static cfg_type_t cfg_type_hostname = {
+	.name = "hostname",
+	.print = print_hostname,
+	.rep = &cfg_rep_boolean,
+};
 
 /*%
  * "server-id" argument.
@@ -1102,13 +1250,19 @@ doc_serverid(cfg_printer_t *pctx, const cfg_type_t *type) {
 	cfg_print_cstr(pctx, "( <quoted_string> | none | hostname )");
 }
 
-static cfg_type_t cfg_type_serverid = { "serverid",   parse_serverid, NULL,
-					doc_serverid, NULL,	      NULL };
+static cfg_type_t cfg_type_serverid = {
+	.name = "serverid",
+	.parse = parse_serverid,
+	.doc = doc_serverid,
+};
 
 static const char *cookiealg_enums[] = { "siphash24", NULL };
-static cfg_type_t cfg_type_cookiealg = { "cookiealg",	    cfg_parse_enum,
-					 cfg_print_ustring, cfg_doc_enum,
-					 &cfg_rep_string,   &cookiealg_enums };
+static cfg_type_t cfg_type_cookiealg = { .name = "cookiealg",
+					 .parse = cfg_parse_enum,
+					 .print = cfg_print_ustring,
+					 .doc = cfg_doc_enum,
+					 .rep = &cfg_rep_string,
+					 .of = &cookiealg_enums };
 
 /*%
  * fetch-quota-params
@@ -1122,9 +1276,12 @@ static cfg_tuplefielddef_t fetchquota_fields[] = {
 	{ NULL, NULL, 0 }
 };
 
-static cfg_type_t cfg_type_fetchquota = { "fetchquota",	   cfg_parse_tuple,
-					  cfg_print_tuple, cfg_doc_tuple,
-					  &cfg_rep_tuple,  fetchquota_fields };
+static cfg_type_t cfg_type_fetchquota = { .name = "fetchquota",
+					  .parse = cfg_parse_tuple,
+					  .print = cfg_print_tuple,
+					  .doc = cfg_doc_tuple,
+					  .rep = &cfg_rep_tuple,
+					  .of = fetchquota_fields };
 
 /*%
  * fetches-per-server or fetches-per-zone
@@ -1132,10 +1289,12 @@ static cfg_type_t cfg_type_fetchquota = { "fetchquota",	   cfg_parse_tuple,
 
 static const char *response_enums[] = { "drop", "fail", NULL };
 
-static cfg_type_t cfg_type_responsetype = {
-	"responsetype",	   parse_optional_enum, cfg_print_ustring,
-	doc_optional_enum, &cfg_rep_string,	response_enums
-};
+static cfg_type_t cfg_type_responsetype = { .name = "responsetype",
+					    .parse = parse_optional_enum,
+					    .print = cfg_print_ustring,
+					    .doc = doc_optional_enum,
+					    .rep = &cfg_rep_string,
+					    .of = response_enums };
 
 static cfg_tuplefielddef_t fetchesper_fields[] = {
 	{ "fetches", &cfg_type_uint32, 0 },
@@ -1143,9 +1302,12 @@ static cfg_tuplefielddef_t fetchesper_fields[] = {
 	{ NULL, NULL, 0 }
 };
 
-static cfg_type_t cfg_type_fetchesper = { "fetchesper",	   cfg_parse_tuple,
-					  cfg_print_tuple, cfg_doc_tuple,
-					  &cfg_rep_tuple,  fetchesper_fields };
+static cfg_type_t cfg_type_fetchesper = { .name = "fetchesper",
+					  .parse = cfg_parse_tuple,
+					  .print = cfg_print_tuple,
+					  .doc = cfg_doc_tuple,
+					  .rep = &cfg_rep_tuple,
+					  .of = fetchesper_fields };
 
 static void
 map_merge(cfg_obj_t *effectivemap, const cfg_obj_t *defaultmap) {
@@ -1425,10 +1587,12 @@ static cfg_clausedef_t bindkeys_clauses[] = {
 };
 
 static const char *fstrm_model_enums[] = { "mpsc", "spsc", NULL };
-static cfg_type_t cfg_type_fstrm_model = {
-	"model",      cfg_parse_enum,  cfg_print_ustring,
-	cfg_doc_enum, &cfg_rep_string, &fstrm_model_enums
-};
+static cfg_type_t cfg_type_fstrm_model = { .name = "model",
+					   .parse = cfg_parse_enum,
+					   .print = cfg_print_ustring,
+					   .doc = cfg_doc_enum,
+					   .rep = &cfg_rep_string,
+					   .of = &fstrm_model_enums };
 
 /*%
  * Clauses that can be found within the 'options' statement.
@@ -1587,18 +1751,22 @@ static cfg_clausedef_t options_clauses[] = {
 	{ NULL, NULL, 0 }
 };
 
-static cfg_type_t cfg_type_namelist = { "namelist",
-					cfg_parse_bracketed_list,
-					cfg_print_bracketed_list,
-					cfg_doc_bracketed_list,
-					&cfg_rep_list,
-					&cfg_type_astring };
+static cfg_type_t cfg_type_namelist = { .name = "namelist",
+					.parse = cfg_parse_bracketed_list,
+					.print = cfg_print_bracketed_list,
+					.doc = cfg_doc_bracketed_list,
+					.rep = &cfg_rep_list,
+					.of = &cfg_type_astring };
 
 static keyword_type_t exceptionnames_kw = { "except-from", &cfg_type_namelist };
 
 static cfg_type_t cfg_type_optional_exceptionnames = {
-	"optional_allow",      parse_optional_keyvalue, print_keyvalue,
-	doc_optional_keyvalue, &cfg_rep_list,		&exceptionnames_kw
+	.name = "optional_allow",
+	.parse = parse_optional_keyvalue,
+	.print = print_keyvalue,
+	.doc = doc_optional_keyvalue,
+	.rep = &cfg_rep_list,
+	.of = &exceptionnames_kw
 };
 
 static cfg_tuplefielddef_t denyaddresses_fields[] = {
@@ -1607,10 +1775,12 @@ static cfg_tuplefielddef_t denyaddresses_fields[] = {
 	{ NULL, NULL, 0 }
 };
 
-static cfg_type_t cfg_type_denyaddresses = {
-	"denyaddresses", cfg_parse_tuple, cfg_print_tuple,
-	cfg_doc_tuple,	 &cfg_rep_tuple,  denyaddresses_fields
-};
+static cfg_type_t cfg_type_denyaddresses = { .name = "denyaddresses",
+					     .parse = cfg_parse_tuple,
+					     .print = cfg_print_tuple,
+					     .doc = cfg_doc_tuple,
+					     .rep = &cfg_rep_tuple,
+					     .of = denyaddresses_fields };
 
 static cfg_tuplefielddef_t denyaliases_fields[] = {
 	{ "name", &cfg_type_namelist, 0 },
@@ -1618,17 +1788,19 @@ static cfg_tuplefielddef_t denyaliases_fields[] = {
 	{ NULL, NULL, 0 }
 };
 
-static cfg_type_t cfg_type_denyaliases = {
-	"denyaliases", cfg_parse_tuple, cfg_print_tuple,
-	cfg_doc_tuple, &cfg_rep_tuple,	denyaliases_fields
-};
+static cfg_type_t cfg_type_denyaliases = { .name = "denyaliases",
+					   .parse = cfg_parse_tuple,
+					   .print = cfg_print_tuple,
+					   .doc = cfg_doc_tuple,
+					   .rep = &cfg_rep_tuple,
+					   .of = denyaliases_fields };
 
-static cfg_type_t cfg_type_algorithmlist = { "algorithmlist",
-					     cfg_parse_bracketed_list,
-					     cfg_print_bracketed_list,
-					     cfg_doc_bracketed_list,
-					     &cfg_rep_list,
-					     &cfg_type_astring };
+static cfg_type_t cfg_type_algorithmlist = { .name = "algorithmlist",
+					     .parse = cfg_parse_bracketed_list,
+					     .print = cfg_print_bracketed_list,
+					     .doc = cfg_doc_bracketed_list,
+					     .rep = &cfg_rep_list,
+					     .of = &cfg_type_astring };
 
 static cfg_tuplefielddef_t disablealgorithm_fields[] = {
 	{ "name", &cfg_type_astring, 0 },
@@ -1636,17 +1808,19 @@ static cfg_tuplefielddef_t disablealgorithm_fields[] = {
 	{ NULL, NULL, 0 }
 };
 
-static cfg_type_t cfg_type_disablealgorithm = {
-	"disablealgorithm", cfg_parse_tuple, cfg_print_tuple,
-	cfg_doc_tuple,	    &cfg_rep_tuple,  disablealgorithm_fields
-};
+static cfg_type_t cfg_type_disablealgorithm = { .name = "disablealgorithm",
+						.parse = cfg_parse_tuple,
+						.print = cfg_print_tuple,
+						.doc = cfg_doc_tuple,
+						.rep = &cfg_rep_tuple,
+						.of = disablealgorithm_fields };
 
-static cfg_type_t cfg_type_dsdigestlist = { "dsdigestlist",
-					    cfg_parse_bracketed_list,
-					    cfg_print_bracketed_list,
-					    cfg_doc_bracketed_list,
-					    &cfg_rep_list,
-					    &cfg_type_astring };
+static cfg_type_t cfg_type_dsdigestlist = { .name = "dsdigestlist",
+					    .parse = cfg_parse_bracketed_list,
+					    .print = cfg_print_bracketed_list,
+					    .doc = cfg_doc_bracketed_list,
+					    .rep = &cfg_rep_list,
+					    .of = &cfg_type_astring };
 
 static cfg_tuplefielddef_t disabledsdigest_fields[] = {
 	{ "name", &cfg_type_astring, 0 },
@@ -1654,28 +1828,37 @@ static cfg_tuplefielddef_t disabledsdigest_fields[] = {
 	{ NULL, NULL, 0 }
 };
 
-static cfg_type_t cfg_type_disabledsdigest = {
-	"disabledsdigest", cfg_parse_tuple, cfg_print_tuple,
-	cfg_doc_tuple,	   &cfg_rep_tuple,  disabledsdigest_fields
-};
+static cfg_type_t cfg_type_disabledsdigest = { .name = "disabledsdigest",
+					       .parse = cfg_parse_tuple,
+					       .print = cfg_print_tuple,
+					       .doc = cfg_doc_tuple,
+					       .rep = &cfg_rep_tuple,
+					       .of = disabledsdigest_fields };
 
 static const char *masterformat_enums[] = { "raw", "text", NULL };
-static cfg_type_t cfg_type_masterformat = {
-	"masterformat", cfg_parse_enum,	 cfg_print_ustring,
-	cfg_doc_enum,	&cfg_rep_string, &masterformat_enums
-};
+static cfg_type_t cfg_type_masterformat = { .name = "masterformat",
+					    .parse = cfg_parse_enum,
+					    .print = cfg_print_ustring,
+					    .doc = cfg_doc_enum,
+					    .rep = &cfg_rep_string,
+					    .of = &masterformat_enums };
 
 static const char *masterstyle_enums[] = { "full", "relative", NULL };
-static cfg_type_t cfg_type_masterstyle = {
-	"masterstyle", cfg_parse_enum,	cfg_print_ustring,
-	cfg_doc_enum,  &cfg_rep_string, &masterstyle_enums
-};
+static cfg_type_t cfg_type_masterstyle = { .name = "masterstyle",
+					   .parse = cfg_parse_enum,
+					   .print = cfg_print_ustring,
+					   .doc = cfg_doc_enum,
+					   .rep = &cfg_rep_string,
+					   .of = &masterstyle_enums };
 
 static keyword_type_t blocksize_kw = { "block-size", &cfg_type_uint32 };
 
-static cfg_type_t cfg_type_blocksize = { "blocksize",	  parse_keyvalue,
-					 print_keyvalue,  doc_keyvalue,
-					 &cfg_rep_uint32, &blocksize_kw };
+static cfg_type_t cfg_type_blocksize = { .name = "blocksize",
+					 .parse = parse_keyvalue,
+					 .print = print_keyvalue,
+					 .doc = doc_keyvalue,
+					 .rep = &cfg_rep_uint32,
+					 .of = &blocksize_kw };
 
 static cfg_tuplefielddef_t resppadding_fields[] = {
 	{ "acl", &cfg_type_bracketed_aml, 0 },
@@ -1683,10 +1866,12 @@ static cfg_tuplefielddef_t resppadding_fields[] = {
 	{ NULL, NULL, 0 }
 };
 
-static cfg_type_t cfg_type_resppadding = {
-	"resppadding", cfg_parse_tuple, cfg_print_tuple,
-	cfg_doc_tuple, &cfg_rep_tuple,	resppadding_fields
-};
+static cfg_type_t cfg_type_resppadding = { .name = "resppadding",
+					   .parse = cfg_parse_tuple,
+					   .print = cfg_print_tuple,
+					   .doc = cfg_doc_tuple,
+					   .rep = &cfg_rep_tuple,
+					   .of = resppadding_fields };
 
 /*%
  *  dnstap {
@@ -1703,14 +1888,19 @@ static const char *dnstap_types[] = { "all",	   "auth",     "client",
 
 static const char *dnstap_modes[] = { "query", "response", NULL };
 
-static cfg_type_t cfg_type_dnstap_type = { "dnstap_type",     cfg_parse_enum,
-					   cfg_print_ustring, cfg_doc_enum,
-					   &cfg_rep_string,   dnstap_types };
+static cfg_type_t cfg_type_dnstap_type = { .name = "dnstap_type",
+					   .parse = cfg_parse_enum,
+					   .print = cfg_print_ustring,
+					   .doc = cfg_doc_enum,
+					   .rep = &cfg_rep_string,
+					   .of = dnstap_types };
 
-static cfg_type_t cfg_type_dnstap_mode = {
-	"dnstap_mode",	   parse_optional_enum, cfg_print_ustring,
-	doc_optional_enum, &cfg_rep_string,	dnstap_modes
-};
+static cfg_type_t cfg_type_dnstap_mode = { .name = "dnstap_mode",
+					   .parse = parse_optional_enum,
+					   .print = cfg_print_ustring,
+					   .doc = doc_optional_enum,
+					   .rep = &cfg_rep_string,
+					   .of = dnstap_modes };
 
 static cfg_tuplefielddef_t dnstap_fields[] = {
 	{ "type", &cfg_type_dnstap_type, 0 },
@@ -1718,16 +1908,19 @@ static cfg_tuplefielddef_t dnstap_fields[] = {
 	{ NULL, NULL, 0 }
 };
 
-static cfg_type_t cfg_type_dnstap_entry = { "dnstap_value",  cfg_parse_tuple,
-					    cfg_print_tuple, cfg_doc_tuple,
-					    &cfg_rep_tuple,  dnstap_fields };
+static cfg_type_t cfg_type_dnstap_entry = { .name = "dnstap_value",
+					    .parse = cfg_parse_tuple,
+					    .print = cfg_print_tuple,
+					    .doc = cfg_doc_tuple,
+					    .rep = &cfg_rep_tuple,
+					    .of = dnstap_fields };
 
-static cfg_type_t cfg_type_dnstap = { "dnstap",
-				      cfg_parse_bracketed_list,
-				      cfg_print_bracketed_list,
-				      cfg_doc_bracketed_list,
-				      &cfg_rep_list,
-				      &cfg_type_dnstap_entry };
+static cfg_type_t cfg_type_dnstap = { .name = "dnstap",
+				      .parse = cfg_parse_bracketed_list,
+				      .print = cfg_print_bracketed_list,
+				      .doc = cfg_doc_bracketed_list,
+				      .rep = &cfg_rep_list,
+				      .of = &cfg_type_dnstap_entry };
 
 /*%
  * dnstap-output
@@ -1827,9 +2020,12 @@ doc_dtout(cfg_printer_t *pctx, const cfg_type_t *type) {
 }
 
 static const char *dtoutmode_enums[] = { "file", "unix", NULL };
-static cfg_type_t cfg_type_dtmode = { "dtmode",		 cfg_parse_enum,
-				      cfg_print_ustring, cfg_doc_enum,
-				      &cfg_rep_string,	 &dtoutmode_enums };
+static cfg_type_t cfg_type_dtmode = { .name = "dtmode",
+				      .parse = cfg_parse_enum,
+				      .print = cfg_print_ustring,
+				      .doc = cfg_doc_enum,
+				      .rep = &cfg_rep_string,
+				      .of = &dtoutmode_enums };
 
 static cfg_tuplefielddef_t dtout_fields[] = {
 	{ "mode", &cfg_type_dtmode, 0 },
@@ -1840,9 +2036,12 @@ static cfg_tuplefielddef_t dtout_fields[] = {
 	{ NULL, NULL, 0 }
 };
 
-static cfg_type_t cfg_type_dnstapoutput = { "dnstapoutput", parse_dtout,
-					    print_dtout,    doc_dtout,
-					    &cfg_rep_tuple, dtout_fields };
+static cfg_type_t cfg_type_dnstapoutput = { .name = "dnstapoutput",
+					    .parse = parse_dtout,
+					    .print = print_dtout,
+					    .doc = doc_dtout,
+					    .rep = &cfg_rep_tuple,
+					    .of = dtout_fields };
 
 /*%
  *  response-policy {
@@ -2016,9 +2215,12 @@ cfg_doc_kv_tuple(cfg_printer_t *pctx, const cfg_type_t *type) {
 }
 
 static keyword_type_t zone_kw = { "zone", &cfg_type_astring };
-static cfg_type_t cfg_type_rpz_zone = { "zone",		 parse_keyvalue,
-					print_keyvalue,	 doc_keyvalue,
-					&cfg_rep_string, &zone_kw };
+static cfg_type_t cfg_type_rpz_zone = { .name = "zone",
+					.parse = parse_keyvalue,
+					.print = print_keyvalue,
+					.doc = doc_keyvalue,
+					.rep = &cfg_rep_string,
+					.of = &zone_kw };
 /*
  * "no-op" is an obsolete equivalent of "passthru".
  */
@@ -2026,22 +2228,29 @@ static const char *rpz_policies[] = { "cname",	  "disabled", "drop",
 				      "given",	  "no-op",    "nodata",
 				      "nxdomain", "passthru", "tcp-only",
 				      NULL };
-static cfg_type_t cfg_type_rpz_policy_name = {
-	"policy name",	cfg_parse_enum,	 cfg_print_ustring,
-	doc_rpz_policy, &cfg_rep_string, &rpz_policies
-};
-static cfg_type_t cfg_type_rpz_cname = {
-	"quoted_string", cfg_parse_astring, NULL,
-	doc_rpz_cname,	 &cfg_rep_string,   NULL
-};
+static cfg_type_t cfg_type_rpz_policy_name = { .name = "policy name",
+					       .parse = cfg_parse_enum,
+					       .print = cfg_print_ustring,
+					       .doc = doc_rpz_policy,
+					       .rep = &cfg_rep_string,
+					       .of = &rpz_policies };
+static cfg_type_t cfg_type_rpz_cname = { .name = "quoted_string",
+					 .parse = cfg_parse_astring,
+					 NULL,
+					 .doc = doc_rpz_cname,
+					 .rep = &cfg_rep_string,
+					 .of = NULL };
 static cfg_tuplefielddef_t rpz_policy_fields[] = {
 	{ "policy name", &cfg_type_rpz_policy_name, 0 },
 	{ "cname", &cfg_type_rpz_cname, 0 },
 	{ NULL, NULL, 0 }
 };
-static cfg_type_t cfg_type_rpz_policy = { "policy tuple",  cfg_parse_rpz_policy,
-					  cfg_print_tuple, cfg_doc_tuple,
-					  &cfg_rep_tuple,  rpz_policy_fields };
+static cfg_type_t cfg_type_rpz_policy = { .name = "policy tuple",
+					  .parse = cfg_parse_rpz_policy,
+					  .print = cfg_print_tuple,
+					  .doc = cfg_doc_tuple,
+					  .rep = &cfg_rep_tuple,
+					  .of = rpz_policy_fields };
 static cfg_tuplefielddef_t rpz_zone_fields[] = {
 	{ "zone name", &cfg_type_rpz_zone, 0 },
 	{ "add-soa", &cfg_type_boolean, 0 },
@@ -2055,15 +2264,18 @@ static cfg_tuplefielddef_t rpz_zone_fields[] = {
 	{ "ede", &cfg_type_ustring, 0 },
 	{ NULL, NULL, 0 }
 };
-static cfg_type_t cfg_type_rpz_tuple = { "rpz tuple",	     cfg_parse_kv_tuple,
-					 cfg_print_kv_tuple, cfg_doc_kv_tuple,
-					 &cfg_rep_tuple,     rpz_zone_fields };
-static cfg_type_t cfg_type_rpz_list = { "zone list",
-					cfg_parse_bracketed_list,
-					cfg_print_bracketed_list,
-					cfg_doc_bracketed_list,
-					&cfg_rep_list,
-					&cfg_type_rpz_tuple };
+static cfg_type_t cfg_type_rpz_tuple = { .name = "rpz tuple",
+					 .parse = cfg_parse_kv_tuple,
+					 .print = cfg_print_kv_tuple,
+					 .doc = cfg_doc_kv_tuple,
+					 .rep = &cfg_rep_tuple,
+					 .of = rpz_zone_fields };
+static cfg_type_t cfg_type_rpz_list = { .name = "zone list",
+					.parse = cfg_parse_bracketed_list,
+					.print = cfg_print_bracketed_list,
+					.doc = cfg_doc_bracketed_list,
+					.rep = &cfg_rep_list,
+					.of = &cfg_type_rpz_tuple };
 static cfg_tuplefielddef_t rpz_fields[] = {
 	{ "zone list", &cfg_type_rpz_list, 0 },
 	{ "add-soa", &cfg_type_boolean, 0 },
@@ -2082,19 +2294,22 @@ static cfg_tuplefielddef_t rpz_fields[] = {
 	{ "dnsrps-options", &cfg_type_bracketed_text, CFG_CLAUSEFLAG_OBSOLETE },
 	{ NULL, NULL, 0 }
 };
-static cfg_type_t cfg_type_rpz = { "rpz",
-				   cfg_parse_kv_tuple,
-				   cfg_print_kv_tuple,
-				   cfg_doc_kv_tuple,
-				   &cfg_rep_tuple,
-				   rpz_fields };
+static cfg_type_t cfg_type_rpz = { .name = "rpz",
+				   .parse = cfg_parse_kv_tuple,
+				   .print = cfg_print_kv_tuple,
+				   .doc = cfg_doc_kv_tuple,
+				   .rep = &cfg_rep_tuple,
+				   .of = rpz_fields };
 
 /*
  * Catalog zones
  */
-static cfg_type_t cfg_type_catz_zone = { "zone",	  parse_keyvalue,
-					 print_keyvalue,  doc_keyvalue,
-					 &cfg_rep_string, &zone_kw };
+static cfg_type_t cfg_type_catz_zone = { .name = "zone",
+					 .parse = parse_keyvalue,
+					 .print = print_keyvalue,
+					 .doc = doc_keyvalue,
+					 .rep = &cfg_rep_string,
+					 .of = &zone_kw };
 
 static cfg_tuplefielddef_t catz_zone_fields[] = {
 	{ "zone name", &cfg_type_catz_zone, 0 },
@@ -2106,23 +2321,27 @@ static cfg_tuplefielddef_t catz_zone_fields[] = {
 	{ "min-update-interval", &cfg_type_duration, 0 },
 	{ NULL, NULL, 0 }
 };
-static cfg_type_t cfg_type_catz_tuple = {
-	"catz tuple",	  cfg_parse_kv_tuple, cfg_print_kv_tuple,
-	cfg_doc_kv_tuple, &cfg_rep_tuple,     catz_zone_fields
-};
-static cfg_type_t cfg_type_catz_list = { "zone list",
-					 cfg_parse_bracketed_list,
-					 cfg_print_bracketed_list,
-					 cfg_doc_bracketed_list,
-					 &cfg_rep_list,
-					 &cfg_type_catz_tuple };
+static cfg_type_t cfg_type_catz_tuple = { .name = "catz tuple",
+					  .parse = cfg_parse_kv_tuple,
+					  .print = cfg_print_kv_tuple,
+					  .doc = cfg_doc_kv_tuple,
+					  .rep = &cfg_rep_tuple,
+					  .of = catz_zone_fields };
+static cfg_type_t cfg_type_catz_list = { .name = "zone list",
+					 .parse = cfg_parse_bracketed_list,
+					 .print = cfg_print_bracketed_list,
+					 .doc = cfg_doc_bracketed_list,
+					 .rep = &cfg_rep_list,
+					 .of = &cfg_type_catz_tuple };
 static cfg_tuplefielddef_t catz_fields[] = {
 	{ "zone list", &cfg_type_catz_list, 0 }, { NULL, NULL, 0 }
 };
-static cfg_type_t cfg_type_catz = {
-	"catz",		  cfg_parse_kv_tuple, cfg_print_kv_tuple,
-	cfg_doc_kv_tuple, &cfg_rep_tuple,     catz_fields
-};
+static cfg_type_t cfg_type_catz = { .name = "catz",
+				    .parse = cfg_parse_kv_tuple,
+				    .print = cfg_print_kv_tuple,
+				    .doc = cfg_doc_kv_tuple,
+				    .rep = &cfg_rep_tuple,
+				    .of = catz_fields };
 
 /*
  * rate-limit
@@ -2148,8 +2367,12 @@ static cfg_clausedef_t rrl_clauses[] = {
 
 static cfg_clausedef_t *rrl_clausesets[] = { rrl_clauses, NULL };
 
-static cfg_type_t cfg_type_rrl = { "rate-limit", cfg_parse_map, cfg_print_map,
-				   cfg_doc_map,	 &cfg_rep_map,	rrl_clausesets };
+static cfg_type_t cfg_type_rrl = { .name = "rate-limit",
+				   .parse = cfg_parse_map,
+				   .print = cfg_print_map,
+				   .doc = cfg_doc_map,
+				   .rep = &cfg_rep_map,
+				   .of = rrl_clausesets };
 
 static isc_result_t
 parse_optional_uint32(cfg_parser_t *pctx, const cfg_type_t *type,
@@ -2173,12 +2396,11 @@ doc_optional_uint32(cfg_printer_t *pctx, const cfg_type_t *type) {
 	cfg_print_cstr(pctx, "[ <integer> ]");
 }
 
-static cfg_type_t cfg_type_optional_uint32 = { "optional_uint32",
-					       parse_optional_uint32,
-					       NULL,
-					       doc_optional_uint32,
-					       NULL,
-					       NULL };
+static cfg_type_t cfg_type_optional_uint32 = {
+	.name = "optional_uint32",
+	.parse = parse_optional_uint32,
+	.doc = doc_optional_uint32,
+};
 
 static cfg_tuplefielddef_t prefetch_fields[] = {
 	{ "trigger", &cfg_type_uint32, 0 },
@@ -2186,9 +2408,12 @@ static cfg_tuplefielddef_t prefetch_fields[] = {
 	{ NULL, NULL, 0 }
 };
 
-static cfg_type_t cfg_type_prefetch = { "prefetch",	 cfg_parse_tuple,
-					cfg_print_tuple, cfg_doc_tuple,
-					&cfg_rep_tuple,	 prefetch_fields };
+static cfg_type_t cfg_type_prefetch = { .name = "prefetch",
+					.parse = cfg_parse_tuple,
+					.print = cfg_print_tuple,
+					.doc = cfg_doc_tuple,
+					.rep = &cfg_rep_tuple,
+					.of = prefetch_fields };
 /*
  * DNS64.
  */
@@ -2204,9 +2429,12 @@ static cfg_clausedef_t dns64_clauses[] = {
 
 static cfg_clausedef_t *dns64_clausesets[] = { dns64_clauses, NULL };
 
-static cfg_type_t cfg_type_dns64 = { "dns64",	    cfg_parse_netprefix_map,
-				     cfg_print_map, cfg_doc_map,
-				     &cfg_rep_map,  dns64_clausesets };
+static cfg_type_t cfg_type_dns64 = { .name = "dns64",
+				     .parse = cfg_parse_netprefix_map,
+				     .print = cfg_print_map,
+				     .doc = cfg_doc_map,
+				     .rep = &cfg_rep_map,
+				     .of = dns64_clausesets };
 
 static const char *staleanswerclienttimeout_enums[] = { "disabled", "off",
 							NULL };
@@ -2222,12 +2450,12 @@ doc_staleanswerclienttimeout(cfg_printer_t *pctx, const cfg_type_t *type) {
 }
 
 static cfg_type_t cfg_type_staleanswerclienttimeout = {
-	"staleanswerclienttimeout",
-	parse_staleanswerclienttimeout,
-	cfg_print_ustring,
-	doc_staleanswerclienttimeout,
-	&cfg_rep_string,
-	staleanswerclienttimeout_enums
+	.name = "staleanswerclienttimeout",
+	.parse = parse_staleanswerclienttimeout,
+	.print = cfg_print_ustring,
+	.doc = doc_staleanswerclienttimeout,
+	.rep = &cfg_rep_string,
+	.of = staleanswerclienttimeout_enums
 };
 
 static void
@@ -2470,10 +2698,12 @@ static cfg_tuplefielddef_t validityinterval_fields[] = {
 	{ NULL, NULL, 0 }
 };
 
-static cfg_type_t cfg_type_validityinterval = {
-	"validityinterval", cfg_parse_tuple, cfg_print_tuple,
-	cfg_doc_tuple,	    &cfg_rep_tuple,  validityinterval_fields
-};
+static cfg_type_t cfg_type_validityinterval = { .name = "validityinterval",
+						.parse = cfg_parse_tuple,
+						.print = cfg_print_tuple,
+						.doc = cfg_doc_tuple,
+						.rep = &cfg_rep_tuple,
+						.of = validityinterval_fields };
 
 /*%
  * Checkds type.
@@ -2489,8 +2719,12 @@ doc_checkds_type(cfg_printer_t *pctx, const cfg_type_t *type) {
 	cfg_doc_enum_or_other(pctx, type, &cfg_type_boolean);
 }
 static cfg_type_t cfg_type_checkdstype = {
-	"checkdstype",	  parse_checkds_type, cfg_print_ustring,
-	doc_checkds_type, &cfg_rep_string,    checkds_enums,
+	.name = "checkdstype",
+	.parse = parse_checkds_type,
+	.print = cfg_print_ustring,
+	.doc = doc_checkds_type,
+	.rep = &cfg_rep_string,
+	.of = checkds_enums,
 };
 
 /*%
@@ -2530,8 +2764,13 @@ static cfg_tuplefielddef_t min_transfer_rate_fields[] = {
 };
 
 static cfg_type_t cfg_type_min_transfer_rate_in = {
-	"min-transfer-rate-in", cfg_parse_tuple, cfg_print_tuple,
-	cfg_doc_tuple,		&cfg_rep_tuple,	 min_transfer_rate_fields
+	.name = "min-transfer-rate-"
+		"in",
+	.parse = cfg_parse_tuple,
+	.print = cfg_print_tuple,
+	.doc = cfg_doc_tuple,
+	.rep = &cfg_rep_tuple,
+	.of = min_transfer_rate_fields
 };
 
 /*%
@@ -2778,23 +3017,32 @@ static cfg_clausedef_t non_template_clauses[] = {
 static cfg_clausedef_t *namedconf_clausesets[] = { namedconf_clauses,
 						   namedconf_or_view_clauses,
 						   NULL };
-cfg_type_t cfg_type_namedconf = { "namedconf",	     cfg_parse_mapbody,
-				  cfg_print_mapbody, cfg_doc_mapbody,
-				  &cfg_rep_map,	     namedconf_clausesets };
+cfg_type_t cfg_type_namedconf = { .name = "namedconf",
+				  .parse = cfg_parse_mapbody,
+				  .print = cfg_print_mapbody,
+				  .doc = cfg_doc_mapbody,
+				  .rep = &cfg_rep_map,
+				  .of = namedconf_clausesets };
 
 /*% The bind.keys syntax (trust-anchors). */
 static cfg_clausedef_t *bindkeys_clausesets[] = { bindkeys_clauses, NULL };
-cfg_type_t cfg_type_bindkeys = { "bindkeys",	    cfg_parse_mapbody,
-				 cfg_print_mapbody, cfg_doc_mapbody,
-				 &cfg_rep_map,	    bindkeys_clausesets };
+cfg_type_t cfg_type_bindkeys = { .name = "bindkeys",
+				 .parse = cfg_parse_mapbody,
+				 .print = cfg_print_mapbody,
+				 .doc = cfg_doc_mapbody,
+				 .rep = &cfg_rep_map,
+				 .of = bindkeys_clausesets };
 
 /*% The "options" statement syntax. */
 
 static cfg_clausedef_t *options_clausesets[] = { options_clauses, view_clauses,
 						 zone_clauses, NULL };
-static cfg_type_t cfg_type_options = { "options",     cfg_parse_map,
-				       cfg_print_map, cfg_doc_map,
-				       &cfg_rep_map,  options_clausesets };
+static cfg_type_t cfg_type_options = { .name = "options",
+				       .parse = cfg_parse_map,
+				       .print = cfg_print_map,
+				       .doc = cfg_doc_map,
+				       .rep = &cfg_rep_map,
+				       .of = options_clausesets };
 
 /*% The "view" statement syntax. */
 
@@ -2803,17 +3051,24 @@ static cfg_clausedef_t *view_clausesets[] = { view_only_clauses,
 					      view_clauses, zone_clauses,
 					      NULL };
 
-static cfg_type_t cfg_type_viewopts = { "view",	       cfg_parse_map,
-					cfg_print_map, cfg_doc_map,
-					&cfg_rep_map,  view_clausesets };
+static cfg_type_t cfg_type_viewopts = { .name = "view",
+					.parse = cfg_parse_map,
+					.print = cfg_print_map,
+					.doc = cfg_doc_map,
+					.rep = &cfg_rep_map,
+					.of = view_clausesets };
 
 /*% The "zone" statement syntax. */
 
 static cfg_clausedef_t *zone_clausesets[] = { non_template_clauses,
 					      zone_only_clauses, zone_clauses,
 					      NULL };
-cfg_type_t cfg_type_zoneopts = { "zoneopts",  cfg_parse_map, cfg_print_map,
-				 cfg_doc_map, &cfg_rep_map,  zone_clausesets };
+cfg_type_t cfg_type_zoneopts = { .name = "zoneopts",
+				 .parse = cfg_parse_map,
+				 .print = cfg_print_map,
+				 .doc = cfg_doc_map,
+				 .rep = &cfg_rep_map,
+				 .of = zone_clausesets };
 
 /*%
  * The "template" statement syntax: any clause that "zone" can take,
@@ -2822,18 +3077,22 @@ cfg_type_t cfg_type_zoneopts = { "zoneopts",  cfg_parse_map, cfg_print_map,
 
 static cfg_clausedef_t *template_clausesets[] = { zone_only_clauses,
 						  zone_clauses, NULL };
-static cfg_type_t cfg_type_templateopts = {
-	"templateopts", cfg_parse_map, cfg_print_map,
-	cfg_doc_map,	&cfg_rep_map,  template_clausesets
-};
+static cfg_type_t cfg_type_templateopts = { .name = "templateopts",
+					    .parse = cfg_parse_map,
+					    .print = cfg_print_map,
+					    .doc = cfg_doc_map,
+					    .rep = &cfg_rep_map,
+					    .of = template_clausesets };
 
 /*% The "dnssec-policy" statement syntax. */
 static cfg_clausedef_t *dnssecpolicy_clausesets[] = { dnssecpolicy_clauses,
 						      NULL };
-cfg_type_t cfg_type_dnssecpolicyopts = {
-	"dnssecpolicyopts", cfg_parse_map, cfg_print_map,
-	cfg_doc_map,	    &cfg_rep_map,  dnssecpolicy_clausesets
-};
+cfg_type_t cfg_type_dnssecpolicyopts = { .name = "dnssecpolicyopts",
+					 .parse = cfg_parse_map,
+					 .print = cfg_print_map,
+					 .doc = cfg_doc_map,
+					 .rep = &cfg_rep_map,
+					 .of = dnssecpolicy_clausesets };
 
 /*% The "dynamically loadable zones" statement syntax. */
 
@@ -2841,9 +3100,12 @@ static cfg_clausedef_t dlz_clauses[] = { { "database", &cfg_type_astring, 0 },
 					 { "search", &cfg_type_boolean, 0 },
 					 { NULL, NULL, 0 } };
 static cfg_clausedef_t *dlz_clausesets[] = { dlz_clauses, NULL };
-static cfg_type_t cfg_type_dlz = { "dlz",	  cfg_parse_named_map,
-				   cfg_print_map, cfg_doc_map,
-				   &cfg_rep_map,  dlz_clausesets };
+static cfg_type_t cfg_type_dlz = { .name = "dlz",
+				   .parse = cfg_parse_named_map,
+				   .print = cfg_print_map,
+				   .doc = cfg_doc_map,
+				   .rep = &cfg_rep_map,
+				   .of = dlz_clausesets };
 
 /*%
  * The "dyndb" statement syntax.
@@ -2856,9 +3118,12 @@ static cfg_tuplefielddef_t dyndb_fields[] = {
 	{ NULL, NULL, 0 }
 };
 
-static cfg_type_t cfg_type_dyndb = { "dyndb",	      cfg_parse_tuple,
-				     cfg_print_tuple, cfg_doc_tuple,
-				     &cfg_rep_tuple,  dyndb_fields };
+static cfg_type_t cfg_type_dyndb = { .name = "dyndb",
+				     .parse = cfg_parse_tuple,
+				     .print = cfg_print_tuple,
+				     .doc = cfg_doc_tuple,
+				     .rep = &cfg_rep_tuple,
+				     .of = dyndb_fields };
 
 /*%
  * The "plugin" statement syntax.
@@ -2866,18 +3131,24 @@ static cfg_type_t cfg_type_dyndb = { "dyndb",	      cfg_parse_tuple,
  */
 
 static const char *plugin_enums[] = { "query", NULL };
-static cfg_type_t cfg_type_plugintype = { "plugintype",	     cfg_parse_enum,
-					  cfg_print_ustring, cfg_doc_enum,
-					  &cfg_rep_string,   plugin_enums };
+static cfg_type_t cfg_type_plugintype = { .name = "plugintype",
+					  .parse = cfg_parse_enum,
+					  .print = cfg_print_ustring,
+					  .doc = cfg_doc_enum,
+					  .rep = &cfg_rep_string,
+					  .of = plugin_enums };
 static cfg_tuplefielddef_t plugin_fields[] = {
 	{ "type", &cfg_type_plugintype, 0 },
 	{ "library", &cfg_type_astring, 0 },
 	{ "parameters", &cfg_type_optional_bracketed_text, 0 },
 	{ NULL, NULL, 0 }
 };
-static cfg_type_t cfg_type_plugin = { "plugin",	       cfg_parse_tuple,
-				      cfg_print_tuple, cfg_doc_tuple,
-				      &cfg_rep_tuple,  plugin_fields };
+static cfg_type_t cfg_type_plugin = { .name = "plugin",
+				      .parse = cfg_parse_tuple,
+				      .print = cfg_print_tuple,
+				      .doc = cfg_doc_tuple,
+				      .rep = &cfg_rep_tuple,
+				      .of = plugin_fields };
 
 /*%
  * Clauses that can be found within the 'key' statement.
@@ -2887,9 +3158,12 @@ static cfg_clausedef_t key_clauses[] = { { "algorithm", &cfg_type_astring, 0 },
 					 { NULL, NULL, 0 } };
 
 static cfg_clausedef_t *key_clausesets[] = { key_clauses, NULL };
-static cfg_type_t cfg_type_key = { "key",	  cfg_parse_named_map,
-				   cfg_print_map, cfg_doc_map,
-				   &cfg_rep_map,  key_clausesets };
+static cfg_type_t cfg_type_key = { .name = "key",
+				   .parse = cfg_parse_named_map,
+				   .print = cfg_print_map,
+				   .doc = cfg_doc_map,
+				   .rep = &cfg_rep_map,
+				   .of = key_clausesets };
 
 /*%
  * A key-store statement.
@@ -2901,19 +3175,24 @@ static cfg_clausedef_t keystore_clauses[] = {
 };
 
 static cfg_clausedef_t *keystore_clausesets[] = { keystore_clauses, NULL };
-static cfg_type_t cfg_type_keystoreopts = {
-	"keystoreopts", cfg_parse_map, cfg_print_map,
-	cfg_doc_map,	&cfg_rep_map,  keystore_clausesets
-};
+static cfg_type_t cfg_type_keystoreopts = { .name = "keystoreopts",
+					    .parse = cfg_parse_map,
+					    .print = cfg_print_map,
+					    .doc = cfg_doc_map,
+					    .rep = &cfg_rep_map,
+					    .of = keystore_clausesets };
 
 static cfg_tuplefielddef_t keystore_fields[] = {
 	{ "name", &cfg_type_astring, 0 },
 	{ "options", &cfg_type_keystoreopts, 0 },
 	{ NULL, NULL, 0 }
 };
-static cfg_type_t cfg_type_keystore = { "key-store",	 cfg_parse_tuple,
-					cfg_print_tuple, cfg_doc_tuple,
-					&cfg_rep_tuple,	 keystore_fields };
+static cfg_type_t cfg_type_keystore = { .name = "key-store",
+					.parse = cfg_parse_tuple,
+					.print = cfg_print_tuple,
+					.doc = cfg_doc_tuple,
+					.rep = &cfg_rep_tuple,
+					.of = keystore_fields };
 
 /*%
  * Clauses that can be found in a 'server' statement.
@@ -2953,9 +3232,12 @@ static cfg_clausedef_t server_clauses[] = {
 	{ NULL, NULL, 0 }
 };
 static cfg_clausedef_t *server_clausesets[] = { server_clauses, NULL };
-static cfg_type_t cfg_type_server = { "server",	     cfg_parse_netprefix_map,
-				      cfg_print_map, cfg_doc_map,
-				      &cfg_rep_map,  server_clausesets };
+static cfg_type_t cfg_type_server = { .name = "server",
+				      .parse = cfg_parse_netprefix_map,
+				      .print = cfg_print_map,
+				      .doc = cfg_doc_map,
+				      .rep = &cfg_rep_map,
+				      .of = server_clausesets };
 
 /*%
  * Clauses that can be found in a 'channel' clause in the
@@ -2976,9 +3258,12 @@ static void
 doc_printtime(cfg_printer_t *pctx, const cfg_type_t *type) {
 	cfg_doc_enum_or_other(pctx, type, &cfg_type_boolean);
 }
-static cfg_type_t cfg_type_printtime = { "printtime",	    parse_printtime,
-					 cfg_print_ustring, doc_printtime,
-					 &cfg_rep_string,   printtime_enums };
+static cfg_type_t cfg_type_printtime = { .name = "printtime",
+					 .parse = parse_printtime,
+					 .print = cfg_print_ustring,
+					 .doc = doc_printtime,
+					 .rep = &cfg_rep_string,
+					 .of = printtime_enums };
 
 static cfg_clausedef_t channel_clauses[] = {
 	/* Destinations.  We no longer require these to be first. */
@@ -2995,17 +3280,22 @@ static cfg_clausedef_t channel_clauses[] = {
 	{ NULL, NULL, 0 }
 };
 static cfg_clausedef_t *channel_clausesets[] = { channel_clauses, NULL };
-static cfg_type_t cfg_type_channel = { "channel",     cfg_parse_named_map,
-				       cfg_print_map, cfg_doc_map,
-				       &cfg_rep_map,  channel_clausesets };
+static cfg_type_t cfg_type_channel = { .name = "channel",
+				       .parse = cfg_parse_named_map,
+				       .print = cfg_print_map,
+				       .doc = cfg_doc_map,
+				       .rep = &cfg_rep_map,
+				       .of = channel_clausesets };
 
 /*% A list of log destination, used in the "category" clause. */
-static cfg_type_t cfg_type_destinationlist = { "destinationlist",
-					       cfg_parse_bracketed_list,
-					       cfg_print_bracketed_list,
-					       cfg_doc_bracketed_list,
-					       &cfg_rep_list,
-					       &cfg_type_astring };
+static cfg_type_t cfg_type_destinationlist = {
+	.name = "destinationlist",
+	.parse = cfg_parse_bracketed_list,
+	.print = cfg_print_bracketed_list,
+	.doc = cfg_doc_bracketed_list,
+	.rep = &cfg_rep_list,
+	.of = &cfg_type_astring
+};
 
 /*%
  * Clauses that can be found in a 'logging' statement.
@@ -3016,9 +3306,12 @@ static cfg_clausedef_t logging_clauses[] = {
 	{ NULL, NULL, 0 }
 };
 static cfg_clausedef_t *logging_clausesets[] = { logging_clauses, NULL };
-static cfg_type_t cfg_type_logging = { "logging",     cfg_parse_map,
-				       cfg_print_map, cfg_doc_map,
-				       &cfg_rep_map,  logging_clausesets };
+static cfg_type_t cfg_type_logging = { .name = "logging",
+				       .parse = cfg_parse_map,
+				       .print = cfg_print_map,
+				       .doc = cfg_doc_map,
+				       .rep = &cfg_rep_map,
+				       .of = logging_clausesets };
 
 /*%
  * For parsing an 'addzone' statement
@@ -3030,9 +3323,12 @@ static cfg_tuplefielddef_t addzone_fields[] = {
 	{ "options", &cfg_type_zoneopts, 0 },
 	{ NULL, NULL, 0 }
 };
-static cfg_type_t cfg_type_addzone = { "zone",		cfg_parse_tuple,
-				       cfg_print_tuple, cfg_doc_tuple,
-				       &cfg_rep_tuple,	addzone_fields };
+static cfg_type_t cfg_type_addzone = { .name = "zone",
+				       .parse = cfg_parse_tuple,
+				       .print = cfg_print_tuple,
+				       .doc = cfg_doc_tuple,
+				       .rep = &cfg_rep_tuple,
+				       .of = addzone_fields };
 
 static cfg_clausedef_t addzoneconf_clauses[] = {
 	{ "zone", &cfg_type_addzone, CFG_CLAUSEFLAG_MULTI }, { NULL, NULL, 0 }
@@ -3041,9 +3337,12 @@ static cfg_clausedef_t addzoneconf_clauses[] = {
 static cfg_clausedef_t *addzoneconf_clausesets[] = { addzoneconf_clauses,
 						     NULL };
 
-cfg_type_t cfg_type_addzoneconf = { "addzoneconf",     cfg_parse_mapbody,
-				    cfg_print_mapbody, cfg_doc_mapbody,
-				    &cfg_rep_map,      addzoneconf_clausesets };
+cfg_type_t cfg_type_addzoneconf = { .name = "addzoneconf",
+				    .parse = cfg_parse_mapbody,
+				    .print = cfg_print_mapbody,
+				    .doc = cfg_doc_mapbody,
+				    .rep = &cfg_rep_map,
+				    .of = addzoneconf_clausesets };
 
 static isc_result_t
 parse_unitstring(char *str, uint64_t *valuep) {
@@ -3167,9 +3466,13 @@ doc_sizeval_percent(cfg_printer_t *pctx, const cfg_type_t *type) {
 /*%
  * A size value (number + optional unit).
  */
-static cfg_type_t cfg_type_sizeval = { "sizeval",	 parse_sizeval,
-				       cfg_print_uint64, cfg_doc_terminal,
-				       &cfg_rep_uint64,	 NULL };
+static cfg_type_t cfg_type_sizeval = {
+	.name = "sizeval",
+	.parse = parse_sizeval,
+	.print = cfg_print_uint64,
+	.doc = cfg_doc_terminal,
+	.rep = &cfg_rep_uint64,
+};
 
 /*%
  * A size, "unlimited", or "default".
@@ -3186,27 +3489,33 @@ doc_size(cfg_printer_t *pctx, const cfg_type_t *type) {
 }
 
 static const char *size_enums[] = { "default", "unlimited", NULL };
-static cfg_type_t cfg_type_size = {
-	"size",	  parse_size,	   cfg_print_ustring,
-	doc_size, &cfg_rep_string, size_enums
-};
+static cfg_type_t cfg_type_size = { .name = "size",
+				    .parse = parse_size,
+				    .print = cfg_print_ustring,
+				    .doc = doc_size,
+				    .rep = &cfg_rep_string,
+				    .of = size_enums };
 
 /*%
  * A size or "unlimited", but not "default".
  */
 static const char *sizenodefault_enums[] = { "unlimited", NULL };
-static cfg_type_t cfg_type_sizenodefault = {
-	"size_no_default", parse_size,	    cfg_print_ustring,
-	doc_size,	   &cfg_rep_string, sizenodefault_enums
-};
+static cfg_type_t cfg_type_sizenodefault = { .name = "size_no_default",
+					     .parse = parse_size,
+					     .print = cfg_print_ustring,
+					     .doc = doc_size,
+					     .rep = &cfg_rep_string,
+					     .of = sizenodefault_enums };
 
 /*%
  * A size in absolute values or percents.
  */
-static cfg_type_t cfg_type_sizeval_percent = {
-	"sizeval_percent",   parse_sizeval_percent, cfg_print_ustring,
-	doc_sizeval_percent, &cfg_rep_string,	    NULL
-};
+static cfg_type_t cfg_type_sizeval_percent = { .name = "sizeval_percent",
+					       .parse = parse_sizeval_percent,
+					       .print = cfg_print_ustring,
+					       .doc = doc_sizeval_percent,
+					       .rep = &cfg_rep_string,
+					       NULL };
 
 /*%
  * A size in absolute values or percents, or "unlimited", or "default"
@@ -3230,10 +3539,12 @@ doc_maxcachesize(cfg_printer_t *pctx, const cfg_type_t *type) {
 }
 
 static const char *maxcachesize_enums[] = { "default", "unlimited", NULL };
-static cfg_type_t cfg_type_maxcachesize = {
-	"maxcachesize",	  parse_maxcachesize, cfg_print_ustring,
-	doc_maxcachesize, &cfg_rep_string,    maxcachesize_enums
-};
+static cfg_type_t cfg_type_maxcachesize = { .name = "maxcachesize",
+					    .parse = parse_maxcachesize,
+					    .print = cfg_print_ustring,
+					    .doc = doc_parse_maxcachesize,
+					    .rep = &cfg_rep_string,
+					    .of = maxcachesize_enums };
 
 /*%
  * An IXFR size ratio: percentage, or "unlimited".
@@ -3253,9 +3564,10 @@ doc_ixfrratio(cfg_printer_t *pctx, const cfg_type_t *type) {
 }
 
 static const char *ixfrratio_enums[] = { "unlimited", NULL };
-static cfg_type_t cfg_type_ixfrratio = { "ixfr_ratio", parse_ixfrratio,
-					 NULL,	       doc_ixfrratio,
-					 NULL,	       ixfrratio_enums };
+static cfg_type_t cfg_type_ixfrratio = { .name = "ixfr_ratio",
+					 .parse = parse_ixfrratio,
+					 .doc = doc_ixfrratio,
+					 .of = ixfrratio_enums };
 
 /*%
  * optional_keyvalue
@@ -3338,8 +3650,12 @@ doc_notify_type(cfg_printer_t *pctx, const cfg_type_t *type) {
 	cfg_doc_enum_or_other(pctx, type, &cfg_type_boolean);
 }
 static cfg_type_t cfg_type_notifytype = {
-	"notifytype",	 parse_notify_type, cfg_print_ustring,
-	doc_notify_type, &cfg_rep_string,   notify_enums,
+	.name = "notifytype",
+	.parse = parse_notify_type,
+	.print = cfg_print_ustring,
+	.doc = doc_notify_type,
+	.rep = &cfg_rep_string,
+	.of = notify_enums,
 };
 
 static const char *minimal_enums[] = { "no-auth", "no-auth-recursive", NULL };
@@ -3352,8 +3668,12 @@ doc_minimal(cfg_printer_t *pctx, const cfg_type_t *type) {
 	cfg_doc_enum_or_other(pctx, type, &cfg_type_boolean);
 }
 static cfg_type_t cfg_type_minimal = {
-	"minimal",   parse_minimal,   cfg_print_ustring,
-	doc_minimal, &cfg_rep_string, minimal_enums,
+	.name = "minimal",
+	.parse = parse_minimal,
+	.print = cfg_print_ustring,
+	.doc = doc_minimal,
+	.rep = &cfg_rep_string,
+	.of = minimal_enums,
 };
 
 static const char *ixfrdiff_enums[] = { "primary", "master", "secondary",
@@ -3368,26 +3688,39 @@ doc_ixfrdiff_type(cfg_printer_t *pctx, const cfg_type_t *type) {
 	cfg_doc_enum_or_other(pctx, type, &cfg_type_boolean);
 }
 static cfg_type_t cfg_type_ixfrdifftype = {
-	"ixfrdiff",	   parse_ixfrdiff_type, cfg_print_ustring,
-	doc_ixfrdiff_type, &cfg_rep_string,	ixfrdiff_enums,
+	.name = "ixfrdiff",
+	.parse = parse_ixfrdiff_type,
+	.print = cfg_print_ustring,
+	.doc = doc_ixfrdiff_type,
+	.rep = &cfg_rep_string,
+	.of = ixfrdiff_enums,
 };
 
 static keyword_type_t key_kw = { "key", &cfg_type_astring };
 
-cfg_type_t cfg_type_keyref = { "keyref",     parse_keyvalue,  print_keyvalue,
-			       doc_keyvalue, &cfg_rep_string, &key_kw };
+cfg_type_t cfg_type_keyref = { .name = "keyref",
+			       .parse = parse_keyvalue,
+			       .print = print_keyvalue,
+			       .doc = doc_keyvalue,
+			       .rep = &cfg_rep_string,
+			       .of = &key_kw };
 
-static cfg_type_t cfg_type_optional_keyref = {
-	"optional_keyref",     parse_optional_keyvalue, print_keyvalue,
-	doc_optional_keyvalue, &cfg_rep_string,		&key_kw
-};
+static cfg_type_t cfg_type_optional_keyref = { .name = "optional_keyref",
+					       .parse = parse_optional_keyvalue,
+					       .print = print_keyvalue,
+					       .doc = doc_optional_keyvalue,
+					       .rep = &cfg_rep_string,
+					       .of = &key_kw };
 
 static const char *qminmethod_enums[] = { "strict", "relaxed", "disabled",
 					  "off", NULL };
 
-static cfg_type_t cfg_type_qminmethod = { "qminmethod",	     cfg_parse_enum,
-					  cfg_print_ustring, cfg_doc_enum,
-					  &cfg_rep_string,   qminmethod_enums };
+static cfg_type_t cfg_type_qminmethod = { .name = "qminmethod",
+					  .parse = cfg_parse_enum,
+					  .print = cfg_print_ustring,
+					  .doc = cfg_doc_enum,
+					  .rep = &cfg_rep_string,
+					  .of = qminmethod_enums };
 
 /*%
  * A "controls" statement is represented as a map with the multivalued
@@ -3396,23 +3729,31 @@ static cfg_type_t cfg_type_qminmethod = { "qminmethod",	     cfg_parse_enum,
 
 static keyword_type_t controls_allow_kw = { "allow", &cfg_type_bracketed_aml };
 
-static cfg_type_t cfg_type_controls_allow = {
-	"controls_allow", parse_keyvalue, print_keyvalue,
-	doc_keyvalue,	  &cfg_rep_list,  &controls_allow_kw
-};
+static cfg_type_t cfg_type_controls_allow = { .name = "controls_allow",
+					      .parse = parse_keyvalue,
+					      .print = print_keyvalue,
+					      .doc = doc_keyvalue,
+					      .rep = &cfg_rep_list,
+					      .of = &controls_allow_kw };
 
 static keyword_type_t controls_keys_kw = { "keys", &cfg_type_keylist };
 
-static cfg_type_t cfg_type_controls_keys = {
-	"controls_keys",       parse_optional_keyvalue, print_keyvalue,
-	doc_optional_keyvalue, &cfg_rep_list,		&controls_keys_kw
-};
+static cfg_type_t cfg_type_controls_keys = { .name = "controls_keys",
+					     .parse = parse_optional_keyvalue,
+					     .print = print_keyvalue,
+					     .doc = doc_optional_keyvalue,
+					     .rep = &cfg_rep_list,
+					     .of = &controls_keys_kw };
 
 static keyword_type_t controls_readonly_kw = { "read-only", &cfg_type_boolean };
 
 static cfg_type_t cfg_type_controls_readonly = {
-	"controls_readonly",   parse_optional_keyvalue, print_keyvalue,
-	doc_optional_keyvalue, &cfg_rep_boolean,	&controls_readonly_kw
+	.name = "controls_readonly",
+	.parse = parse_optional_keyvalue,
+	.print = print_keyvalue,
+	.doc = doc_optional_keyvalue,
+	.rep = &cfg_rep_boolean,
+	.of = &controls_readonly_kw
 };
 
 static cfg_tuplefielddef_t inetcontrol_fields[] = {
@@ -3423,31 +3764,39 @@ static cfg_tuplefielddef_t inetcontrol_fields[] = {
 	{ NULL, NULL, 0 }
 };
 
-static cfg_type_t cfg_type_inetcontrol = {
-	"inetcontrol", cfg_parse_tuple, cfg_print_tuple,
-	cfg_doc_tuple, &cfg_rep_tuple,	inetcontrol_fields
-};
+static cfg_type_t cfg_type_inetcontrol = { .name = "inetcontrol",
+					   .parse = cfg_parse_tuple,
+					   .print = cfg_print_tuple,
+					   .doc = cfg_doc_tuple,
+					   .rep = &cfg_rep_tuple,
+					   .of = inetcontrol_fields };
 
 static keyword_type_t controls_perm_kw = { "perm", &cfg_type_uint32 };
 
-static cfg_type_t cfg_type_controls_perm = {
-	"controls_perm", parse_keyvalue,  print_keyvalue,
-	doc_keyvalue,	 &cfg_rep_uint32, &controls_perm_kw
-};
+static cfg_type_t cfg_type_controls_perm = { .name = "controls_perm",
+					     .parse = parse_keyvalue,
+					     .print = print_keyvalue,
+					     .doc = doc_keyvalue,
+					     .rep = &cfg_rep_uint32,
+					     .of = &controls_perm_kw };
 
 static keyword_type_t controls_owner_kw = { "owner", &cfg_type_uint32 };
 
-static cfg_type_t cfg_type_controls_owner = {
-	"controls_owner", parse_keyvalue,  print_keyvalue,
-	doc_keyvalue,	  &cfg_rep_uint32, &controls_owner_kw
-};
+static cfg_type_t cfg_type_controls_owner = { .name = "controls_owner",
+					      .parse = parse_keyvalue,
+					      .print = print_keyvalue,
+					      .doc = doc_keyvalue,
+					      .rep = &cfg_rep_uint32,
+					      .of = &controls_owner_kw };
 
 static keyword_type_t controls_group_kw = { "group", &cfg_type_uint32 };
 
-static cfg_type_t cfg_type_controls_group = {
-	"controls_allow", parse_keyvalue,  print_keyvalue,
-	doc_keyvalue,	  &cfg_rep_uint32, &controls_group_kw
-};
+static cfg_type_t cfg_type_controls_group = { .name = "controls_allow",
+					      .parse = parse_keyvalue,
+					      .print = print_keyvalue,
+					      .doc = doc_keyvalue,
+					      .rep = &cfg_rep_uint32,
+					      .of = &controls_group_kw };
 
 static cfg_tuplefielddef_t unixcontrol_fields[] = {
 	{ "path", &cfg_type_qstring, 0 },
@@ -3459,10 +3808,12 @@ static cfg_tuplefielddef_t unixcontrol_fields[] = {
 	{ NULL, NULL, 0 }
 };
 
-static cfg_type_t cfg_type_unixcontrol = {
-	"unixcontrol", cfg_parse_tuple, cfg_print_tuple,
-	cfg_doc_tuple, &cfg_rep_tuple,	unixcontrol_fields
-};
+static cfg_type_t cfg_type_unixcontrol = { .name = "unixcontrol",
+					   .parse = cfg_parse_tuple,
+					   .print = cfg_print_tuple,
+					   .doc = cfg_doc_tuple,
+					   .rep = &cfg_rep_tuple,
+					   .of = unixcontrol_fields };
 
 static cfg_clausedef_t controls_clauses[] = {
 	{ "inet", &cfg_type_inetcontrol, CFG_CLAUSEFLAG_MULTI },
@@ -3471,9 +3822,12 @@ static cfg_clausedef_t controls_clauses[] = {
 };
 
 static cfg_clausedef_t *controls_clausesets[] = { controls_clauses, NULL };
-static cfg_type_t cfg_type_controls = { "controls",    cfg_parse_map,
-					cfg_print_map, cfg_doc_map,
-					&cfg_rep_map,  &controls_clausesets };
+static cfg_type_t cfg_type_controls = { .name = "controls",
+					.parse = cfg_parse_map,
+					.print = cfg_print_map,
+					.doc = cfg_doc_map,
+					.rep = &cfg_rep_map,
+					.of = &controls_clausesets };
 
 /*%
  * A "statistics-channels" statement is represented as a map with the
@@ -3489,11 +3843,12 @@ doc_optional_bracketed_list(cfg_printer_t *pctx, const cfg_type_t *type) {
 	cfg_print_cstr(pctx, " ]");
 }
 
-static cfg_type_t cfg_type_optional_allow = {
-	"optional_allow", parse_optional_keyvalue,
-	print_keyvalue,	  doc_optional_bracketed_list,
-	&cfg_rep_list,	  &controls_allow_kw
-};
+static cfg_type_t cfg_type_optional_allow = { .name = "optional_allow",
+					      .parse = parse_optional_keyvalue,
+					      .print = print_keyvalue,
+					      .doc = doc_optional_bracketed_list,
+					      .rep = &cfg_rep_list,
+					      .of = &controls_allow_kw };
 
 static cfg_tuplefielddef_t statserver_fields[] = {
 	{ "address", &cfg_type_controls_sockaddr, 0 }, /* reuse controls def */
@@ -3501,10 +3856,12 @@ static cfg_tuplefielddef_t statserver_fields[] = {
 	{ NULL, NULL, 0 }
 };
 
-static cfg_type_t cfg_type_statschannel = {
-	"statschannel", cfg_parse_tuple, cfg_print_tuple,
-	cfg_doc_tuple,	&cfg_rep_tuple,	 statserver_fields
-};
+static cfg_type_t cfg_type_statschannel = { .name = "statschannel",
+					    .parse = cfg_parse_tuple,
+					    .print = cfg_print_tuple,
+					    .doc = cfg_doc_tuple,
+					    .rep = &cfg_rep_tuple,
+					    .of = statserver_fields };
 
 static cfg_clausedef_t statservers_clauses[] = {
 	{ "inet", &cfg_type_statschannel, CFG_CLAUSEFLAG_MULTI },
@@ -3514,10 +3871,12 @@ static cfg_clausedef_t statservers_clauses[] = {
 static cfg_clausedef_t *statservers_clausesets[] = { statservers_clauses,
 						     NULL };
 
-static cfg_type_t cfg_type_statschannels = {
-	"statistics-channels", cfg_parse_map, cfg_print_map,
-	cfg_doc_map,	       &cfg_rep_map,  &statservers_clausesets
-};
+static cfg_type_t cfg_type_statschannels = { .name = "statistics-channels",
+					     .parse = cfg_parse_map,
+					     .print = cfg_print_map,
+					     .doc = cfg_doc_map,
+					     .rep = &cfg_rep_map,
+					     .of = &statservers_clausesets };
 
 /*%
  * An optional class, as used in view and zone statements.
@@ -3543,12 +3902,11 @@ doc_optional_class(cfg_printer_t *pctx, const cfg_type_t *type) {
 	cfg_print_cstr(pctx, "[ <class> ]");
 }
 
-static cfg_type_t cfg_type_optional_class = { "optional_class",
-					      parse_optional_class,
-					      NULL,
-					      doc_optional_class,
-					      NULL,
-					      NULL };
+static cfg_type_t cfg_type_optional_class = {
+	.name = "optional_class",
+	.parse = parse_optional_class,
+	.doc = doc_optional_class,
+};
 
 static isc_result_t
 parse_querysource(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
@@ -3629,29 +3987,35 @@ static unsigned int querysource4wild_flags = CFG_ADDR_WILDOK | CFG_ADDR_V4OK |
 static unsigned int querysource6wild_flags = CFG_ADDR_WILDOK | CFG_ADDR_V6OK |
 					     CFG_ADDR_TRAILINGOK;
 
-static cfg_type_t cfg_type_querysource4 = {
-	"querysource4", parse_querysource,	NULL, doc_querysource,
-	NULL,		&querysource4wild_flags
-};
+static cfg_type_t cfg_type_querysource4 = { .name = "querysource4",
+					    .parse = parse_querysource,
+					    .doc = doc_querysource,
+					    .of = &querysource4wild_flags };
 
-static cfg_type_t cfg_type_querysource6 = {
-	"querysource6", parse_querysource,	NULL, doc_querysource,
-	NULL,		&querysource6wild_flags
-};
+static cfg_type_t cfg_type_querysource6 = { .name = "querysource6",
+					    .parse = parse_querysource,
+					    .doc = doc_querysource,
+					    .of = &querysource6wild_flags };
 
 static cfg_type_t cfg_type_server_querysource4 = {
-	"querysource4", parse_querysource,	NULL, doc_serverquerysource,
-	NULL,		&querysource4wild_flags
+	.name = "querysource4",
+	.parse = parse_querysource,
+	.doc = doc_serverquerysource,
+	.of = &querysource4wild_flags
 };
 
 static cfg_type_t cfg_type_server_querysource6 = {
-	"querysource6", parse_querysource,	NULL, doc_serverquerysource,
-	NULL,		&querysource6wild_flags
+	.name = "querysource6",
+	.parse = parse_querysource,
+	.doc = doc_serverquerysource,
+	.of = &querysource6wild_flags
 };
 
-static cfg_type_t cfg_type_querysource = { "querysource",     NULL,
-					   print_querysource, NULL,
-					   &cfg_rep_sockaddr, NULL };
+static cfg_type_t cfg_type_querysource = {
+	.name = "querysource",
+	.print = print_querysource,
+	.rep = &cfg_rep_sockaddr,
+};
 
 /*%
  * The socket address syntax in the "controls" statement is silly.
@@ -3661,8 +4025,12 @@ static cfg_type_t cfg_type_querysource = { "querysource",     NULL,
 static unsigned int controls_sockaddr_flags = CFG_ADDR_V4OK | CFG_ADDR_V6OK |
 					      CFG_ADDR_WILDOK | CFG_ADDR_PORTOK;
 static cfg_type_t cfg_type_controls_sockaddr = {
-	"controls_sockaddr", cfg_parse_sockaddr, cfg_print_sockaddr,
-	cfg_doc_sockaddr,    &cfg_rep_sockaddr,	 &controls_sockaddr_flags
+	.name = "controls_sockaddr",
+	.parse = cfg_parse_sockaddr,
+	.print = cfg_print_sockaddr,
+	.doc = cfg_doc_sockaddr,
+	.rep = &cfg_rep_sockaddr,
+	.of = &controls_sockaddr_flags
 };
 
 /*%
@@ -3702,8 +4070,9 @@ cleanup:
 	return result;
 }
 static cfg_type_t cfg_type_server_key_kludge = {
-	"server_key", parse_server_key_kludge, NULL, cfg_doc_terminal, NULL,
-	NULL
+	.name = "server_key",
+	.parse = parse_server_key_kludge,
+	.doc = cfg_doc_terminal,
 };
 
 /*%
@@ -3734,12 +4103,11 @@ doc_optional_facility(cfg_printer_t *pctx, const cfg_type_t *type) {
 	cfg_print_cstr(pctx, "[ <syslog_facility> ]");
 }
 
-static cfg_type_t cfg_type_optional_facility = { "optional_facility",
-						 parse_optional_facility,
-						 NULL,
-						 doc_optional_facility,
-						 NULL,
-						 NULL };
+static cfg_type_t cfg_type_optional_facility = {
+	.name = "optional_facility",
+	.parse = parse_optional_facility,
+	.doc = doc_optional_facility,
+};
 
 /*%
  * A log severity.  Return as a string, except "debug N",
@@ -3747,9 +4115,12 @@ static cfg_type_t cfg_type_optional_facility = { "optional_facility",
  */
 
 static keyword_type_t debug_kw = { "debug", &cfg_type_uint32 };
-static cfg_type_t cfg_type_debuglevel = { "debuglevel",	   parse_keyvalue,
-					  print_keyvalue,  doc_keyvalue,
-					  &cfg_rep_uint32, &debug_kw };
+static cfg_type_t cfg_type_debuglevel = { .name = "debuglevel",
+					  .parse = parse_keyvalue,
+					  .print = print_keyvalue,
+					  .doc = doc_keyvalue,
+					  .rep = &cfg_rep_uint32,
+					  .of = &debug_kw };
 
 static isc_result_t
 parse_logseverity(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
@@ -3782,9 +4153,11 @@ cleanup:
 	return result;
 }
 
-static cfg_type_t cfg_type_logseverity = { "log_severity", parse_logseverity,
-					   NULL,	   cfg_doc_terminal,
-					   NULL,	   NULL };
+static cfg_type_t cfg_type_logseverity = {
+	.name = "log_severity",
+	.parse = parse_logseverity,
+	.doc = cfg_doc_terminal,
+};
 
 /*%
  * The "file" clause of the "channel" statement.
@@ -3802,15 +4175,20 @@ doc_logversions(cfg_printer_t *pctx, const cfg_type_t *type) {
 	cfg_doc_enum_or_other(pctx, type, &cfg_type_uint32);
 }
 
-static cfg_type_t cfg_type_logversions = {
-	"logversions",	 parse_logversions, cfg_print_ustring,
-	doc_logversions, &cfg_rep_string,   logversions_enums
-};
+static cfg_type_t cfg_type_logversions = { .name = "logversions",
+					   .parse = parse_logversions,
+					   .print = cfg_print_ustring,
+					   .doc = doc_logversions,
+					   .rep = &cfg_rep_string,
+					   .of = logversions_enums };
 
 static const char *logsuffix_enums[] = { "increment", "timestamp", NULL };
-static cfg_type_t cfg_type_logsuffix = { "logsuffix",	    cfg_parse_enum,
-					 cfg_print_ustring, cfg_doc_enum,
-					 &cfg_rep_string,   &logsuffix_enums };
+static cfg_type_t cfg_type_logsuffix = { .name = "logsuffix",
+					 .parse = cfg_parse_enum,
+					 .print = cfg_print_ustring,
+					 .doc = cfg_doc_enum,
+					 .rep = &cfg_rep_string,
+					 .of = &logsuffix_enums };
 
 static cfg_tuplefielddef_t logfile_fields[] = {
 	{ "file", &cfg_type_qstring, 0 },
@@ -3909,34 +4287,48 @@ doc_logfile(cfg_printer_t *pctx, const cfg_type_t *type) {
 	cfg_print_cstr(pctx, "[ suffix ( increment | timestamp ) ]");
 }
 
-static cfg_type_t cfg_type_logfile = { "log_file",     parse_logfile,
-				       print_logfile,  doc_logfile,
-				       &cfg_rep_tuple, logfile_fields };
+static cfg_type_t cfg_type_logfile = { .name = "log_file",
+				       .parse = parse_logfile,
+				       .print = print_logfile,
+				       .doc = doc_logfile,
+				       .rep = &cfg_rep_tuple,
+				       .of = logfile_fields };
 
 /*% An IPv4 address, "*" accepted as wildcard. */
 static cfg_type_t cfg_type_sockaddr4wild = {
-	"sockaddr4wild",  cfg_parse_sockaddr, cfg_print_sockaddr,
-	cfg_doc_sockaddr, &cfg_rep_sockaddr,  &sockaddr4wild_flags
+	".name = sockaddr4wild",     .parse = cfg_parse_sockaddr,
+	.print = cfg_print_sockaddr, .doc = cfg_doc_sockaddr,
+	.rep = &cfg_rep_sockaddr,    .of = &sockaddr4wild_flags
 };
 
 /*% An IPv6 address, "*" accepted as wildcard. */
-static cfg_type_t cfg_type_sockaddr6wild = {
-	"v6addrportwild", cfg_parse_sockaddr, cfg_print_sockaddr,
-	cfg_doc_sockaddr, &cfg_rep_sockaddr,  &sockaddr6wild_flags
-};
+static cfg_type_t cfg_type_sockaddr6wild = { .name = "v6addrportwild",
+					     .parse = cfg_parse_sockaddr,
+					     .print = cfg_print_sockaddr,
+					     .doc = cfg_doc_sockaddr,
+					     .rep = &cfg_rep_sockaddr,
+					     .of = &sockaddr6wild_flags };
 
 static keyword_type_t sourceaddr4_kw = { "source", &cfg_type_sockaddr4wild };
 
 static cfg_type_t cfg_type_optional_sourceaddr4 = {
-	"optional_sourceaddr4", parse_optional_keyvalue, print_keyvalue,
-	doc_optional_keyvalue,	&cfg_rep_sockaddr,	 &sourceaddr4_kw
+	.name = "optional_sourceaddr4",
+	.parse = parse_optional_keyvalue,
+	.print = print_keyvalue,
+	.doc = doc_optional_keyvalue,
+	.rep = &cfg_rep_sockaddr,
+	.of = &sourceaddr4_kw
 };
 
 static keyword_type_t sourceaddr6_kw = { "source-v6", &cfg_type_sockaddr6wild };
 
 static cfg_type_t cfg_type_optional_sourceaddr6 = {
-	"optional_sourceaddr6", parse_optional_keyvalue, print_keyvalue,
-	doc_optional_keyvalue,	&cfg_rep_sockaddr,	 &sourceaddr6_kw
+	.name = "optional_sourceaddr6",
+	.parse = parse_optional_keyvalue,
+	.print = print_keyvalue,
+	.doc = doc_optional_keyvalue,
+	.rep = &cfg_rep_sockaddr,
+	.of = &sourceaddr6_kw
 };
 
 /*%
@@ -3957,8 +4349,12 @@ static cfg_clausedef_t *rndcconf_options_clausesets[] = {
 };
 
 static cfg_type_t cfg_type_rndcconf_options = {
-	"rndcconf_options", cfg_parse_map, cfg_print_map,
-	cfg_doc_map,	    &cfg_rep_map,  rndcconf_options_clausesets
+	.name = "rndcconf_options",
+	.parse = cfg_parse_map,
+	.print = cfg_print_map,
+	.doc = cfg_doc_map,
+	.rep = &cfg_rep_map,
+	.of = rndcconf_options_clausesets
 };
 
 static cfg_clausedef_t rndcconf_server_clauses[] = {
@@ -3975,8 +4371,12 @@ static cfg_clausedef_t *rndcconf_server_clausesets[] = {
 };
 
 static cfg_type_t cfg_type_rndcconf_server = {
-	"rndcconf_server", cfg_parse_named_map, cfg_print_map,
-	cfg_doc_map,	   &cfg_rep_map,	rndcconf_server_clausesets
+	.name = "rndcconf_server",
+	.parse = cfg_parse_named_map,
+	.print = cfg_print_map,
+	.doc = cfg_doc_map,
+	.rep = &cfg_rep_map,
+	.of = rndcconf_server_clausesets
 };
 
 static cfg_clausedef_t rndcconf_clauses[] = {
@@ -3988,26 +4388,35 @@ static cfg_clausedef_t rndcconf_clauses[] = {
 
 static cfg_clausedef_t *rndcconf_clausesets[] = { rndcconf_clauses, NULL };
 
-cfg_type_t cfg_type_rndcconf = { "rndcconf",	    cfg_parse_mapbody,
-				 cfg_print_mapbody, cfg_doc_mapbody,
-				 &cfg_rep_map,	    rndcconf_clausesets };
+cfg_type_t cfg_type_rndcconf = { .name = "rndcconf",
+				 .parse = cfg_parse_mapbody,
+				 .print = cfg_print_mapbody,
+				 .doc = cfg_doc_mapbody,
+				 .rep = &cfg_rep_map,
+				 .of = rndcconf_clausesets };
 
 static cfg_clausedef_t rndckey_clauses[] = { { "key", &cfg_type_key, 0 },
 					     { NULL, NULL, 0 } };
 
 static cfg_clausedef_t *rndckey_clausesets[] = { rndckey_clauses, NULL };
 
-cfg_type_t cfg_type_rndckey = { "rndckey",	   cfg_parse_mapbody,
-				cfg_print_mapbody, cfg_doc_mapbody,
-				&cfg_rep_map,	   rndckey_clausesets };
+cfg_type_t cfg_type_rndckey = { .name = "rndckey",
+				.parse = cfg_parse_mapbody,
+				.print = cfg_print_mapbody,
+				.doc = cfg_doc_mapbody,
+				.rep = &cfg_rep_map,
+				.of = rndckey_clausesets };
 
 /*
  * session.key has exactly the same syntax as rndc.key, but it's defined
  * separately for clarity (and so we can extend it someday, if needed).
  */
-cfg_type_t cfg_type_sessionkey = { "sessionkey",      cfg_parse_mapbody,
-				   cfg_print_mapbody, cfg_doc_mapbody,
-				   &cfg_rep_map,      rndckey_clausesets };
+cfg_type_t cfg_type_sessionkey = { .name = "sessionkey",
+				   .parse = cfg_parse_mapbody,
+				   .print = cfg_print_mapbody,
+				   .doc = cfg_doc_mapbody,
+				   .rep = &cfg_rep_map,
+				   .of = rndckey_clausesets };
 
 static cfg_tuplefielddef_t nameport_fields[] = {
 	{ "name", &cfg_type_astring, 0 },
@@ -4015,9 +4424,12 @@ static cfg_tuplefielddef_t nameport_fields[] = {
 	{ NULL, NULL, 0 }
 };
 
-static cfg_type_t cfg_type_nameport = { "nameport",	 cfg_parse_tuple,
-					cfg_print_tuple, cfg_doc_tuple,
-					&cfg_rep_tuple,	 nameport_fields };
+static cfg_type_t cfg_type_nameport = { .name = "nameport",
+					.parse = cfg_parse_tuple,
+					.print = cfg_print_tuple,
+					.doc = cfg_doc_tuple,
+					.rep = &cfg_rep_tuple,
+					.of = nameport_fields };
 
 static void
 doc_sockaddrnameport(cfg_printer_t *pctx, const cfg_type_t *type) {
@@ -4063,20 +4475,19 @@ cleanup:
 	return result;
 }
 
-static cfg_type_t cfg_type_sockaddrnameport = { "sockaddrnameport_element",
-						parse_sockaddrnameport,
-						NULL,
-						doc_sockaddrnameport,
-						NULL,
-						NULL };
+static cfg_type_t cfg_type_sockaddrnameport = {
+	.name = "sockaddrnameport_element",
+	.parse = parse_sockaddrnameport,
+	.doc = doc_sockaddrnameport,
+};
 
 static cfg_type_t cfg_type_bracketed_sockaddrnameportlist = {
-	"bracketed_sockaddrnameportlist",
-	cfg_parse_bracketed_list,
-	cfg_print_bracketed_list,
-	cfg_doc_bracketed_list,
-	&cfg_rep_list,
-	&cfg_type_sockaddrnameport
+	.name = "bracketed_sockaddrnameportlist",
+	.parse = cfg_parse_bracketed_list,
+	.print = cfg_print_bracketed_list,
+	.doc = cfg_doc_bracketed_list,
+	.rep = &cfg_rep_list,
+	.of = &cfg_type_sockaddrnameport
 };
 
 /*%
@@ -4090,10 +4501,12 @@ static cfg_tuplefielddef_t nameportiplist_fields[] = {
 	{ NULL, NULL, 0 }
 };
 
-static cfg_type_t cfg_type_nameportiplist = {
-	"nameportiplist", cfg_parse_tuple, cfg_print_tuple,
-	cfg_doc_tuple,	  &cfg_rep_tuple,  nameportiplist_fields
-};
+static cfg_type_t cfg_type_nameportiplist = { .name = "nameportiplist",
+					      .parse = cfg_parse_tuple,
+					      .print = cfg_print_tuple,
+					      .doc = cfg_doc_tuple,
+					      .rep = &cfg_rep_tuple,
+					      .of = nameportiplist_fields };
 
 /*%
  * remote servers element.
@@ -4144,12 +4557,11 @@ cleanup:
 	return result;
 }
 
-static cfg_type_t cfg_type_remoteselement = { "remotes_element",
-					      parse_remoteselement,
-					      NULL,
-					      doc_remoteselement,
-					      NULL,
-					      NULL };
+static cfg_type_t cfg_type_remoteselement = {
+	.name = "remotes_element",
+	.parse = parse_remoteselement,
+	.doc = doc_remoteselement,
+};
 
 static int
 cmp_clause(const void *ap, const void *bp) {
@@ -4293,12 +4705,12 @@ cfg_print_zonegrammar(const unsigned int zonetype, unsigned int flags,
 /*%
  * "tls" and related statement syntax.
  */
-static cfg_type_t cfg_type_tlsprotos = { "tls_protocols",
-					 cfg_parse_bracketed_list,
-					 cfg_print_bracketed_list,
-					 cfg_doc_bracketed_list,
-					 &cfg_rep_list,
-					 &cfg_type_astring };
+static cfg_type_t cfg_type_tlsprotos = { .name = "tls_protocols",
+					 .parse = cfg_parse_bracketed_list,
+					 .print = cfg_print_bracketed_list,
+					 .doc = cfg_doc_bracketed_list,
+					 .rep = &cfg_rep_list,
+					 .of = &cfg_type_astring };
 
 static cfg_clausedef_t tls_clauses[] = {
 	{ "key-file", &cfg_type_qstring, 0 },
@@ -4315,25 +4727,30 @@ static cfg_clausedef_t tls_clauses[] = {
 };
 
 static cfg_clausedef_t *tls_clausesets[] = { tls_clauses, NULL };
-static cfg_type_t cfg_type_tlsconf = { "tlsconf",     cfg_parse_named_map,
-				       cfg_print_map, cfg_doc_map,
-				       &cfg_rep_map,  tls_clausesets };
+static cfg_type_t cfg_type_tlsconf = { .name = "tlsconf",
+				       .parse = cfg_parse_named_map,
+				       .print = cfg_print_map,
+				       .doc = cfg_doc_map,
+				       .rep = &cfg_rep_map,
+				       .of = tls_clausesets };
 
 static keyword_type_t tls_kw = { "tls", &cfg_type_astring };
-static cfg_type_t cfg_type_optional_tls = {
-	"tlsoptional",	       parse_optional_keyvalue, print_keyvalue,
-	doc_optional_keyvalue, &cfg_rep_string,		&tls_kw
-};
+static cfg_type_t cfg_type_optional_tls = { .name = "tlsoptional",
+					    .parse = parse_optional_keyvalue,
+					    .print = print_keyvalue,
+					    .doc = doc_optional_keyvalue,
+					    .rep = &cfg_rep_string,
+					    .of = &tls_kw };
 
 /* http and https */
 
 static cfg_type_t cfg_type_bracketed_http_endpoint_list = {
-	"bracketed_http_endpoint_list",
-	cfg_parse_bracketed_list,
-	cfg_print_bracketed_list,
-	cfg_doc_bracketed_list,
-	&cfg_rep_list,
-	&cfg_type_qstring
+	.name = "bracketed_http_endpoint_list",
+	.parse = cfg_parse_bracketed_list,
+	.print = cfg_print_bracketed_list,
+	.doc = cfg_doc_bracketed_list,
+	.rep = &cfg_rep_list,
+	.of = &cfg_type_qstring
 };
 
 static cfg_clausedef_t cfg_http_description_clauses[] = {
@@ -4348,8 +4765,12 @@ static cfg_clausedef_t *http_description_clausesets[] = {
 };
 
 static cfg_type_t cfg_type_http_description = {
-	"http_desc", cfg_parse_named_map, cfg_print_map,
-	cfg_doc_map, &cfg_rep_map,	  http_description_clausesets
+	.name = "http_desc",
+	.parse = cfg_parse_named_map,
+	.print = cfg_print_map,
+	.doc = cfg_doc_map,
+	.rep = &cfg_rep_map,
+	.of = http_description_clausesets
 };
 
 cfg_obj_t *

@@ -413,8 +413,12 @@ static cfg_clausedef_t *synthrecord_cfgparamsclausesets[] = {
 };
 
 static cfg_type_t synthrecord_cfgparams = {
-	"synthrecord-params", cfg_parse_mapbody, cfg_print_mapbody,
-	cfg_doc_mapbody,      &cfg_rep_map,	 synthrecord_cfgparamsclausesets
+	.name = "synthrecord-params",
+	.parse = cfg_parse_mapbody,
+	.print = cfg_print_mapbody,
+	.doc = cfg_doc_mapbody,
+	.rep = &cfg_rep_map,
+	.of = synthrecord_cfgparamsclausesets
 };
 
 static isc_result_t

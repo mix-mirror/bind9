@@ -187,8 +187,12 @@ doc_filter_aaaa(cfg_printer_t *pctx, const cfg_type_t *type) {
 }
 
 static cfg_type_t cfg_type_filter_aaaa = {
-	"filter_aaaa",	 parse_filter_aaaa, cfg_print_ustring,
-	doc_filter_aaaa, &cfg_rep_string,   filter_aaaa_enums,
+	.name = "filter_aaaa",
+	.parse = parse_filter_aaaa,
+	.print = cfg_print_ustring,
+	.doc = doc_filter_aaaa,
+	.rep = &cfg_rep_string,
+	.of = filter_aaaa_enums,
 };
 
 static cfg_clausedef_t param_clauses[] = {
@@ -199,10 +203,12 @@ static cfg_clausedef_t param_clauses[] = {
 
 static cfg_clausedef_t *param_clausesets[] = { param_clauses, NULL };
 
-static cfg_type_t cfg_type_parameters = {
-	"filter-aaaa-params", cfg_parse_mapbody, cfg_print_mapbody,
-	cfg_doc_mapbody,      &cfg_rep_map,	 param_clausesets
-};
+static cfg_type_t cfg_type_parameters = { .name = "filter-aaaa-params",
+					  .parse = cfg_parse_mapbody,
+					  .print = cfg_print_mapbody,
+					  .doc = cfg_doc_mapbody,
+					  .rep = &cfg_rep_map,
+					  .of = param_clausesets };
 
 static isc_result_t
 parse_filter_aaaa_on(const cfg_obj_t *param_obj, const char *param_name,
