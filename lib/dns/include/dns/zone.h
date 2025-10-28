@@ -1654,7 +1654,13 @@ dns_zone_getrequesttransporttype(dns_zone_t *zone);
 void
 dns_zone_setnotifytype(dns_zone_t *zone, dns_notifytype_t notifytype);
 /*%<
- * Sets zone notify method to "notifytype"
+ * Sets zone notify(soa) method to "notifytype"
+ */
+
+void
+dns_zone_setnotifycdstype(dns_zone_t *zone, dns_notifytype_t notifytype);
+/*%<
+ * Sets zone notify(cds) method to "notifytype"
  */
 
 void

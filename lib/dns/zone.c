@@ -1392,6 +1392,17 @@ dns_zone_setnotifytype(dns_zone_t *zone, dns_notifytype_t notifytype) {
 }
 
 void
+dns_zone_setnotifycdstype(dns_zone_t *zone, dns_notifytype_t notifytype) {
+	REQUIRE(DNS_ZONE_VALID(zone));
+	REQUIRE(notifytype == dns_notifytype_no ||
+		notifytype == dns_notifytype_yes);
+
+	LOCK_ZONE(zone);
+	zone->notifycds.notifytype = notifytype;
+	UNLOCK_ZONE(zone);
+}
+
+void
 dns_zone_setcheckdstype(dns_zone_t *zone, dns_checkdstype_t checkdstype) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 

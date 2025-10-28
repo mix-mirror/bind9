@@ -194,6 +194,7 @@ view "fourth" {
 			1.2.3.5;
 		};
 		dnssec-policy "test";
+		notify-cds no;
 		parental-source 10.10.10.10;
 	};
 	zone "dnssec-default" {
@@ -203,6 +204,7 @@ view "fourth" {
 			"parents";
 		};
 		dnssec-policy "default";
+		notify-cds yes;
 	};
 	zone "dnssec-inherit" {
 		type primary;

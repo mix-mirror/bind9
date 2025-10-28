@@ -3555,6 +3555,23 @@ isccfg_check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 	}
 
 	/*
+	 * Only a limited subset of all possible "notify-cds" settings can be
+	 * used.
+	 */
+	obj = NULL;
+	(void)get_zoneopt(zoptions, toptions, voptions, goptions, "notify-cds",
+			  &obj);
+	if (obj != NULL && !cfg_obj_isboolean(obj)) {
+		cfg_obj_log(obj, ISC_LOG_ERROR,
+			    "zone '%s': option 'notify-cds' must be either "
+			    "'no' or 'yes'",
+			    znamestr);
+		if (result == ISC_R_SUCCESS) {
+			result = ISC_R_FAILURE;
+		}
+	}
+
+	/*
 	 * Primary, secondary, and mirror zones may have an "also-notify"
 	 * field, but shouldn't if notify is disabled.
 	 */

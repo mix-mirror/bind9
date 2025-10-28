@@ -1245,6 +1245,14 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 		dns_zone_setnotifytype(zone, notifytype);
 
 		obj = NULL;
+		result = named_config_get(maps, "notify-cds", &obj);
+		INSIST(result == ISC_R_SUCCESS && obj != NULL);
+		if (raw != NULL) {
+			dns_zone_setnotifycdstype(raw, dns_notifytype_no);
+		}
+		dns_zone_setnotifycdstype(zone, cfg_obj_asboolean(obj));
+
+		obj = NULL;
 		result = named_config_get(maps, "also-notify", &obj);
 		if (result == ISC_R_SUCCESS &&
 		    (notifytype == dns_notifytype_yes ||
