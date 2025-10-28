@@ -103,14 +103,6 @@
  */
 #define QPDB_VIRTUAL 10
 
-/*
- * This defines the number of headers that we try to expire each time the
- * expire_ttl_headers() is run.  The number should be small enough, so the
- * TTL-based header expiration doesn't take too long, but it should be large
- * enough, so we expire enough headers if their TTL is clustered.
- */
-#define DNS_QPDB_EXPIRE_TTL_COUNT 10
-
 /*%
  * Forward declarations
  */
@@ -3811,15 +3803,9 @@ expire_ttl_headers(qpcache_t *qpdb, unsigned int locknum,
 		   isc_rwlocktype_t *nlocktypep, isc_rwlocktype_t *tlocktypep,
 		   isc_stdtime_t now DNS__DB_FLARG) {
 	isc_heap_t *heap = qpdb->buckets[locknum].heap;
+	dns_slabheader_t *header = isc_heap_element(heap, 1);
 
-	for (size_t i = 0; i < DNS_QPDB_EXPIRE_TTL_COUNT; i++) {
-		dns_slabheader_t *header = isc_heap_element(heap, 1);
-
-		if (header == NULL) {
-			/* No headers left on this TTL heap; exit cleaning */
-			return;
-		}
-
+	while (header != NULL) {
 		dns_ttl_t ttl = header->expire + STALE_TTL(header, qpdb);
 
 		if (ttl >= now - QPDB_VIRTUAL) {
@@ -3829,11 +3815,13 @@ expire_ttl_headers(qpcache_t *qpdb, unsigned int locknum,
 			 * the same heap can be eligible for expiry, either;
 			 * exit cleaning.
 			 */
-			return;
+			break;
 		}
 
 		(void)expireheader(header, nlocktypep, tlocktypep,
 				   dns_expire_ttl DNS__DB_FLARG_PASS);
+
+		header = isc_heap_element(heap, 1);
 	}
 }
 
