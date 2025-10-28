@@ -1872,7 +1872,7 @@ delete_cds(dns_dnsseckey_t *key, dns_rdata_t *keyrdata, const char *keystr,
 	r = dns_ds_buildrdata(origin, keyrdata, digesttype, dsbuf,
 			      sizeof(dsbuf), &cdsrdata);
 	if (r != ISC_R_SUCCESS) {
-		return r;
+		return DNS_R_UNCHANGED;
 	}
 
 	cdsrdata.type = dns_rdatatype_cds;
@@ -1897,7 +1897,7 @@ dns_dnssec_syncupdate(dns_dnsseckeylist_t *keys, dns_dnsseckeylist_t *rmkeys,
 		      bool gencdnskey, dns_ttl_t ttl, dns_diff_t *diff,
 		      isc_mem_t *mctx) {
 	unsigned char keybuf[DST_KEY_MAXSIZE];
-	isc_result_t result;
+	isc_result_t result = DNS_R_UNCHANGED;
 	dns_ttl_t cdsttl = ttl;
 	dns_ttl_t cdnskeyttl = ttl;
 	bool changed = false;
