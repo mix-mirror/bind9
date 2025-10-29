@@ -96,7 +96,8 @@ test__querysource(const char *clause_name, const char *name,
 	const cfg_clausedef_t *querysource_clause = NULL;
 	querysource_clause = find_clause(options_clause->type, name);
 	assert_non_null(querysource_clause);
-	querysource_clause->type->doc(&gprinter, querysource_clause->type);
+	querysource_clause->type->methods->doc(&gprinter,
+					       querysource_clause->type);
 	assert_text(expected);
 }
 
@@ -137,7 +138,7 @@ test__query_source_print(const char *config, const char *expected) {
 	cfg_printer_t pctx = gprinter;
 	pctx.flags = CFG_PRINTER_ONELINE;
 
-	output_conf->type->print(&pctx, output_conf);
+	output_conf->type->methods->print(&pctx, output_conf);
 	assert_text(expected);
 
 	cfg_obj_detach(&output_conf);

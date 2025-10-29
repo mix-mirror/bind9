@@ -125,9 +125,9 @@ typedef void (*cfg_mergefunc_t)(cfg_obj_t	*effectiveobj,
 				const cfg_obj_t *defaultobj);
 
 struct cfg_clausedef {
-	const char     *name;
-	cfg_type_t     *type;
-	unsigned int	flags;
+	const char  *name;
+	cfg_type_t  *type;
+	unsigned int flags;
 };
 
 /*% A tuple field definition. */
@@ -138,7 +138,7 @@ struct cfg_tuplefielddef {
 };
 
 /*%
- * A configuration object type definition and the methods associated 
+ * A configuration object type definition and the methods associated
  * with it.
  *
  * The merge method, if provided, will be called when merging the
@@ -148,14 +148,17 @@ struct cfg_tuplefielddef {
  * default options as a normal cfg_rep_map, * because the allow-query and
  * allow-recursion ACLs have complex semantics that need to be preserved.
  */
-struct cfg_type {
-	const char     *name;  /*%< For debugging purposes only */
-	cfg_rep_t      *rep;   /*%< Data representation */
-	const void     *of;    /*%< Additional data for meta-types */
+struct cfg_typemethods {
 	cfg_parsefunc_t parse; /*%< Parse grammar */
 	cfg_printfunc_t print; /*%< Print value */
 	cfg_docfunc_t	doc;   /*%< Print grammar description */
 	cfg_mergefunc_t merge; /*%< Merge method */
+};
+struct cfg_type {
+	const char	 *name; /*%< Used for cfg_doc_terminal() */
+	cfg_rep_t	 *rep;	/*%< Data representation */
+	const void	 *of;	/*%< Additional data for meta-types */
+	cfg_typemethods_t methods;
 };
 
 /*% A keyword-type definition, for things like "port <integer>". */

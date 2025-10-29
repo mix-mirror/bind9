@@ -49,9 +49,11 @@ typedef struct cfg_parser cfg_parser_t;
 /*%
  * A configuration type definition object.  There is a single
  * static cfg_type_t object for each data type supported by
- * the configuration parser.
+ * the configuration parser; it includes a typemethods
+ * structure with the implementation functions.
  */
-typedef struct cfg_type cfg_type_t;
+typedef struct cfg_typemethods cfg_typemethods_t;
+typedef struct cfg_type	       cfg_type_t;
 
 /*%
  * A configuration object.  This is the basic building block of the

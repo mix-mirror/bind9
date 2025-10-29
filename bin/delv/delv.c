@@ -168,7 +168,7 @@ static cfg_clausedef_t delv_clauses[] = { { "builtin-trust-anchors",
 					  { NULL, NULL, 0 } };
 static cfg_clausedef_t *delv_clausesets[] = { delv_clauses, NULL };
 static cfg_type_t delv_type = { .name = "delv",
-				.parse = cfg_parse_mapbody,
+				.methods.parse = cfg_parse_mapbody,
 				.rep = &cfg_rep_map,
 				.of = delv_clausesets };
 

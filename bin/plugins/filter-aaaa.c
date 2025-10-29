@@ -188,9 +188,9 @@ doc_filter_aaaa(cfg_printer_t *pctx, const cfg_type_t *type) {
 
 static cfg_type_t cfg_type_filter_aaaa = {
 	.name = "filter_aaaa",
-	.parse = parse_filter_aaaa,
-	.print = cfg_print_ustring,
-	.doc = doc_filter_aaaa,
+	.methods.parse = parse_filter_aaaa,
+	.methods.print = cfg_print_ustring,
+	.methods.doc = doc_filter_aaaa,
 	.rep = &cfg_rep_string,
 	.of = filter_aaaa_enums,
 };
@@ -204,9 +204,9 @@ static cfg_clausedef_t param_clauses[] = {
 static cfg_clausedef_t *param_clausesets[] = { param_clauses, NULL };
 
 static cfg_type_t cfg_type_parameters = { .name = "filter-aaaa-params",
-					  .parse = cfg_parse_mapbody,
-					  .print = cfg_print_mapbody,
-					  .doc = cfg_doc_mapbody,
+					  .methods.parse = cfg_parse_mapbody,
+					  .methods.print = cfg_print_mapbody,
+					  .methods.doc = cfg_doc_mapbody,
 					  .rep = &cfg_rep_map,
 					  .of = param_clausesets };
 

@@ -414,9 +414,9 @@ static cfg_clausedef_t *synthrecord_cfgparamsclausesets[] = {
 
 static cfg_type_t synthrecord_cfgparams = {
 	.name = "synthrecord-params",
-	.parse = cfg_parse_mapbody,
-	.print = cfg_print_mapbody,
-	.doc = cfg_doc_mapbody,
+	.methods.parse = cfg_parse_mapbody,
+	.methods.print = cfg_print_mapbody,
+	.methods.doc = cfg_doc_mapbody,
 	.rep = &cfg_rep_map,
 	.of = synthrecord_cfgparamsclausesets
 };
