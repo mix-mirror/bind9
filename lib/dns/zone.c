@@ -92,6 +92,7 @@
 #include <dns/update.h>
 #include <dns/xfrin.h>
 #include <dns/zone.h>
+#include <dns/zonefetch.h>
 #include <dns/zoneverify.h>
 #include <dns/zt.h>
 
@@ -177,8 +178,6 @@ typedef struct dns_signing dns_signing_t;
 typedef ISC_LIST(dns_signing_t) dns_signinglist_t;
 typedef struct dns_nsec3chain dns_nsec3chain_t;
 typedef ISC_LIST(dns_nsec3chain_t) dns_nsec3chainlist_t;
-typedef struct dns_nsfetch dns_nsfetch_t;
-typedef struct dns_keyfetch dns_keyfetch_t;
 typedef struct dns_asyncload dns_asyncload_t;
 typedef struct dns_include dns_include_t;
 
@@ -760,27 +759,6 @@ struct dns_nsec3chain {
  * so it can be recovered in the event of a error.
  */
 
-struct dns_keyfetch {
-	isc_mem_t *mctx;
-	dns_fixedname_t name;
-	dns_rdataset_t keydataset;
-	dns_rdataset_t dnskeyset;
-	dns_rdataset_t dnskeysigset;
-	dns_zone_t *zone;
-	dns_db_t *db;
-	dns_fetch_t *fetch;
-};
-
-struct dns_nsfetch {
-	isc_mem_t *mctx;
-	dns_fixedname_t name;
-	dns_name_t pname;
-	dns_rdataset_t nsrrset;
-	dns_rdataset_t nssigset;
-	dns_zone_t *zone;
-	dns_fetch_t *fetch;
-};
-
 /*%
  * Hold state for an asynchronous load
  */
@@ -835,6 +813,7 @@ zone_debuglog(dns_zone_t *zone, const char *, int debuglevel, const char *msg,
 static void
 dnssec_log(dns_zone_t *zone, int level, const char *fmt, ...)
 	ISC_FORMAT_PRINTF(3, 4);
+
 static void
 queue_xfrin(dns_zone_t *zone);
 static isc_result_t
@@ -912,8 +891,6 @@ static void
 checkds_send_tons(dns_checkds_t *checkds);
 static void
 checkds_send_toaddr(void *arg);
-static void
-nsfetch_levelup(dns_nsfetch_t *nsfetch);
 static isc_result_t
 zone_dump(dns_zone_t *, bool);
 static void
@@ -10467,26 +10444,30 @@ matchkey(dns_rdataset_t *rdset, dns_rdata_t *rr) {
  *			   1/10 * RRSigExpirationInterval))
  */
 static isc_stdtime_t
-refresh_time(dns_keyfetch_t *kfetch, bool retry) {
+refresh_time(dns_zonefetch_t *fetch, bool retry) {
 	isc_result_t result;
 	uint32_t t;
-	dns_rdataset_t *rdset;
+	dns_rdataset_t *sigset;
 	dns_rdata_t sigrr = DNS_RDATA_INIT;
 	dns_rdata_sig_t sig;
-	isc_stdtime_t now = isc_stdtime_now();
+	isc_stdtime_t now;
 
-	if (dns_rdataset_isassociated(&kfetch->dnskeysigset)) {
-		rdset = &kfetch->dnskeysigset;
+	REQUIRE(fetch->fetchtype == ZONEFETCHTYPE_KEY);
+
+	now = isc_stdtime_now();
+
+	if (dns_rdataset_isassociated(&fetch->sigset)) {
+		sigset = &fetch->sigset;
 	} else {
 		return now + dns_zone_mkey_hour;
 	}
 
-	result = dns_rdataset_first(rdset);
+	result = dns_rdataset_first(sigset);
 	if (result != ISC_R_SUCCESS) {
 		return now + dns_zone_mkey_hour;
 	}
 
-	dns_rdataset_current(rdset, &sigrr);
+	dns_rdataset_current(sigset, &sigrr);
 	result = dns_rdata_tostruct(&sigrr, &sig, NULL);
 	RUNTIME_CHECK(result == ISC_R_SUCCESS);
 
@@ -10535,16 +10516,22 @@ refresh_time(dns_keyfetch_t *kfetch, bool retry) {
  * hold zone lock.
  */
 static isc_result_t
-minimal_update(dns_keyfetch_t *kfetch, dns_dbversion_t *ver, dns_diff_t *diff) {
+minimal_update(dns_zonefetch_t *fetch, dns_dbversion_t *ver, dns_diff_t *diff) {
+	dns_keyfetch_t *kfetch;
 	isc_result_t result;
 	isc_buffer_t keyb;
 	unsigned char key_buf[4096];
 	dns_rdata_keydata_t keydata;
 	dns_name_t *name;
-	dns_zone_t *zone = kfetch->zone;
-	isc_stdtime_t now = isc_stdtime_now();
+	dns_zone_t *zone;
+	isc_stdtime_t now;
 
-	name = dns_fixedname_name(&kfetch->name);
+	REQUIRE(fetch->fetchtype == ZONEFETCHTYPE_KEY);
+
+	now = isc_stdtime_now();
+	zone = fetch->zone;
+	name = dns_fixedname_name(&fetch->name);
+	kfetch = &fetch->fetchdata.keyfetch;
 
 	DNS_RDATASET_FOREACH(&kfetch->keydataset) {
 		dns_rdata_t rdata = DNS_RDATA_INIT;
@@ -10562,7 +10549,7 @@ minimal_update(dns_keyfetch_t *kfetch, dns_dbversion_t *ver, dns_diff_t *diff) {
 		if (result != ISC_R_SUCCESS) {
 			goto failure;
 		}
-		keydata.refresh = refresh_time(kfetch, true);
+		keydata.refresh = refresh_time(fetch, true);
 		set_refreshkeytimer(zone, &keydata, now, false);
 
 		dns_rdata_reset(&rdata);
@@ -10584,7 +10571,7 @@ failure:
  * Verify that DNSKEY set is signed by the key specified in 'keydata'.
  */
 static bool
-revocable(dns_keyfetch_t *kfetch, dns_rdata_keydata_t *keydata) {
+revocable(dns_zonefetch_t *fetch, dns_rdata_keydata_t *keydata) {
 	isc_result_t result;
 	dns_name_t *keyname;
 	isc_mem_t *mctx;
@@ -10597,11 +10584,12 @@ revocable(dns_keyfetch_t *kfetch, dns_rdata_keydata_t *keydata) {
 	bool answer = false;
 	dst_algorithm_t algorithm;
 
-	REQUIRE(kfetch != NULL && keydata != NULL);
-	REQUIRE(dns_rdataset_isassociated(&kfetch->dnskeysigset));
+	REQUIRE(fetch != NULL && keydata != NULL);
+	REQUIRE(fetch->fetchtype == ZONEFETCHTYPE_KEY);
+	REQUIRE(dns_rdataset_isassociated(&fetch->sigset));
 
-	keyname = dns_fixedname_name(&kfetch->name);
-	mctx = kfetch->zone->view->mctx;
+	keyname = dns_fixedname_name(&fetch->name);
+	mctx = fetch->zone->view->mctx;
 
 	/* Generate a key from keydata */
 	isc_buffer_init(&keyb, key_buf, sizeof(key_buf));
@@ -10614,12 +10602,12 @@ revocable(dns_keyfetch_t *kfetch, dns_rdata_keydata_t *keydata) {
 	}
 
 	/* See if that key generated any of the signatures */
-	DNS_RDATASET_FOREACH(&kfetch->dnskeysigset) {
+	DNS_RDATASET_FOREACH(&fetch->sigset) {
 		dns_rdata_t sigrr = DNS_RDATA_INIT;
 		dns_fixedname_t fixed;
 		dns_fixedname_init(&fixed);
 
-		dns_rdataset_current(&kfetch->dnskeysigset, &sigrr);
+		dns_rdataset_current(&fetch->sigset, &sigrr);
 		result = dns_rdata_tostruct(&sigrr, &sig, NULL);
 		RUNTIME_CHECK(result == ISC_R_SUCCESS);
 
@@ -10628,11 +10616,11 @@ revocable(dns_keyfetch_t *kfetch, dns_rdata_keydata_t *keydata) {
 		if (dst_key_alg(dstkey) == algorithm &&
 		    dst_key_rid(dstkey) == sig.keyid)
 		{
-			result = dns_dnssec_verify(keyname, &kfetch->dnskeyset,
+			result = dns_dnssec_verify(keyname, &fetch->rrset,
 						   dstkey, false, mctx, &sigrr,
 						   dns_fixedname_name(&fixed));
 
-			dnssec_log(kfetch->zone, ISC_LOG_DEBUG(3),
+			dnssec_log(fetch->zone, ISC_LOG_DEBUG(3),
 				   "Confirm revoked DNSKEY is self-signed: %s",
 				   isc_result_totext(result));
 
@@ -10648,14 +10636,67 @@ revocable(dns_keyfetch_t *kfetch, dns_rdata_keydata_t *keydata) {
 }
 
 /*
+ * Fetch DNSKEY records at the trust anchor name.
+ */
+static void
+keyfetch_start(dns_zonefetch_t *fetch) {
+	REQUIRE(fetch->fetchtype == ZONEFETCHTYPE_KEY);
+
+	fetch->qname = dns_fixedname_name(&fetch->name);
+	fetch->qtype = dns_rdatatype_dnskey;
+}
+
+static void
+keyfetch_continue(dns_zonefetch_t *fetch) {
+	REQUIRE(fetch->fetchtype == ZONEFETCHTYPE_KEY);
+	/* No continue path for keyfetch exists. */
+	REQUIRE(0);
+}
+
+static void
+keyfetch_cancel(dns_zonefetch_t *fetch) {
+	dns_keyfetch_t *kfetch;
+	dns_zone_t *zone;
+
+	REQUIRE(fetch->fetchtype == ZONEFETCHTYPE_KEY);
+
+	kfetch = &fetch->fetchdata.keyfetch;
+	zone = fetch->zone;
+
+	INSIST(LOCKED_ZONE(zone));
+
+	/*
+	 * Error during a key fetch; cancel and retry in an hour.
+	 */
+	zone->refreshkeycount--;
+
+	dns_db_detach(&kfetch->db);
+	dns_rdataset_disassociate(&kfetch->keydataset);
+
+	if (!DNS_ZONE_FLAG(zone, DNS_ZONEFLG_EXITING)) {
+		/* Don't really retry if we are exiting */
+		isc_time_t timenow, timethen;
+		char timebuf[80];
+
+		timenow = isc_time_now();
+		DNS_ZONE_TIME_ADD(&timenow, dns_zone_mkey_hour, &timethen);
+		zone->refreshkeytime = timethen;
+		zone_settimer(zone, &timenow);
+
+		isc_time_formattimestamp(&zone->refreshkeytime, timebuf, 80);
+		dnssec_log(zone, ISC_LOG_DEBUG(1), "retry key refresh: %s",
+			   timebuf);
+	}
+}
+
+/*
  * A DNSKEY set has been fetched from the zone apex of a zone whose trust
  * anchors are being managed; scan the keyset, and update the key zone and the
  * local trust anchors according to RFC5011.
  */
-static void
-keyfetch_done(void *arg) {
-	dns_fetchresponse_t *resp = (dns_fetchresponse_t *)arg;
-	isc_result_t result, eresult;
+static isc_result_t
+keyfetch_done(dns_zonefetch_t *fetch, isc_result_t eresult) {
+	isc_result_t result;
 	dns_keyfetch_t *kfetch = NULL;
 	dns_zone_t *zone = NULL;
 	isc_mem_t *mctx = NULL;
@@ -10677,40 +10718,21 @@ keyfetch_done(void *arg) {
 	isc_stdtime_t now;
 	int pending = 0;
 	bool secure = false, initial = false;
-	bool free_needed;
 	dns_keynode_t *keynode = NULL;
 	dns_rdataset_t *dnskeys = NULL, *dnskeysigs = NULL;
 	dns_rdataset_t *keydataset = NULL, dsset;
 
-	INSIST(resp != NULL);
+	REQUIRE(fetch != NULL);
+	REQUIRE(fetch->fetchtype == ZONEFETCHTYPE_KEY);
 
-	kfetch = resp->arg;
+	kfetch = &fetch->fetchdata.keyfetch;
+	zone = fetch->zone;
+	mctx = fetch->mctx;
+	keyname = dns_fixedname_name(&fetch->name);
+	dnskeys = &fetch->rrset;
+	dnskeysigs = &fetch->sigset;
 
-	INSIST(kfetch != NULL);
-
-	zone = kfetch->zone;
-	mctx = kfetch->mctx;
-	keyname = dns_fixedname_name(&kfetch->name);
-	dnskeys = &kfetch->dnskeyset;
-	dnskeysigs = &kfetch->dnskeysigset;
 	keydataset = &kfetch->keydataset;
-
-	eresult = resp->result;
-
-	/* Free resources which are not of interest */
-	if (resp->node != NULL) {
-		dns_db_detachnode(&resp->node);
-	}
-	if (resp->db != NULL) {
-		dns_db_detach(&resp->db);
-	}
-
-	dns_resolver_destroyfetch(&kfetch->fetch);
-
-	LOCK_ZONE(zone);
-	if (DNS_ZONE_FLAG(zone, DNS_ZONEFLG_EXITING) || zone->view == NULL) {
-		goto cleanup;
-	}
 
 	now = isc_stdtime_now();
 	dns_name_format(keyname, namebuf, sizeof(namebuf));
@@ -10738,7 +10760,7 @@ keyfetch_done(void *arg) {
 		dnssec_log(zone, ISC_LOG_WARNING,
 			   "Unable to fetch DNSKEY set '%s': %s", namebuf,
 			   isc_result_totext(eresult));
-		CHECK(minimal_update(kfetch, ver, &diff));
+		CHECK(minimal_update(fetch, ver, &diff));
 		goto done;
 	}
 
@@ -10747,7 +10769,7 @@ keyfetch_done(void *arg) {
 		dnssec_log(zone, ISC_LOG_WARNING,
 			   "No DNSKEY RRSIGs found for '%s': %s", namebuf,
 			   isc_result_totext(eresult));
-		CHECK(minimal_update(kfetch, ver, &diff));
+		CHECK(minimal_update(fetch, ver, &diff));
 		goto done;
 	}
 
@@ -10913,7 +10935,7 @@ anchors_done:
 					keydata.addhd = now +
 							dns_zone_mkey_month;
 				}
-				keydata.refresh = refresh_time(kfetch, false);
+				keydata.refresh = refresh_time(fetch, false);
 			} else if (keydata.removehd == 0) {
 				dnssec_log(zone, ISC_LOG_INFO,
 					   "Active key %d for zone %s "
@@ -10930,7 +10952,7 @@ anchors_done:
 					"from managed keys database",
 					keytag, namebuf);
 			} else {
-				keydata.refresh = refresh_time(kfetch, false);
+				keydata.refresh = refresh_time(fetch, false);
 			}
 
 			if (secure || deletekey) {
@@ -11016,7 +11038,7 @@ anchors_done:
 			result = dns_rdata_tostruct(&keydatarr, &keydata, NULL);
 			RUNTIME_CHECK(result == ISC_R_SUCCESS);
 
-			if (revoked && revocable(kfetch, &keydata)) {
+			if (revoked && revocable(fetch, &keydata)) {
 				if (keydata.addhd > now) {
 					/*
 					 * Key wasn't trusted yet, and now
@@ -11172,7 +11194,7 @@ anchors_done:
 
 		if (updatekey) {
 			/* Set refresh timer */
-			keydata.refresh = refresh_time(kfetch, false);
+			keydata.refresh = refresh_time(fetch, false);
 			dns_rdata_reset(&keydatarr);
 			isc_buffer_init(&keyb, key_buf, sizeof(key_buf));
 			dns_rdata_fromstruct(&keydatarr, zone->rdclass,
@@ -11192,7 +11214,7 @@ anchors_done:
 			keydata.addhd = initializing
 						? now
 						: now + dns_zone_mkey_month;
-			keydata.refresh = refresh_time(kfetch, false);
+			keydata.refresh = refresh_time(fetch, false);
 			dns_rdata_reset(&keydatarr);
 			isc_buffer_init(&keyb, key_buf, sizeof(key_buf));
 			dns_rdata_fromstruct(&keydatarr, zone->rdclass,
@@ -11262,127 +11284,24 @@ failure:
 			   isc_result_totext(result));
 	}
 	dns_diff_clear(&diff);
+
 	if (ver != NULL) {
 		dns_db_closeversion(kfetch->db, &ver, commit);
 	}
 
-cleanup:
 	dns_db_detach(&kfetch->db);
-
-	isc_refcount_decrement(&zone->irefs);
 
 	if (dns_rdataset_isassociated(keydataset)) {
 		dns_rdataset_disassociate(keydataset);
 	}
-	if (dns_rdataset_isassociated(dnskeys)) {
-		dns_rdataset_disassociate(dnskeys);
-	}
-	if (dns_rdataset_isassociated(dnskeysigs)) {
-		dns_rdataset_disassociate(dnskeysigs);
-	}
-
-	dns_resolver_freefresp(&resp);
-	dns_name_free(keyname, mctx);
-	isc_mem_putanddetach(&kfetch->mctx, kfetch, sizeof(dns_keyfetch_t));
 
 	if (secroots != NULL) {
 		dns_keytable_detach(&secroots);
 	}
 
-	free_needed = exit_check(zone);
-	UNLOCK_ZONE(zone);
-
-	if (free_needed) {
-		zone_free(zone);
-	}
-
 	INSIST(ver == NULL);
-}
 
-static void
-retry_keyfetch(dns_keyfetch_t *kfetch, dns_name_t *kname) {
-	isc_time_t timenow, timethen;
-	dns_zone_t *zone = kfetch->zone;
-	bool free_needed;
-	char namebuf[DNS_NAME_FORMATSIZE];
-
-	dns_name_format(kname, namebuf, sizeof(namebuf));
-	dnssec_log(zone, ISC_LOG_WARNING,
-		   "Failed to create fetch for %s DNSKEY update", namebuf);
-
-	/*
-	 * Error during a key fetch; cancel and retry in an hour.
-	 */
-	LOCK_ZONE(zone);
-	zone->refreshkeycount--;
-	isc_refcount_decrement(&zone->irefs);
-	dns_db_detach(&kfetch->db);
-	dns_rdataset_disassociate(&kfetch->keydataset);
-	dns_name_free(kname, zone->mctx);
-	isc_mem_putanddetach(&kfetch->mctx, kfetch, sizeof(*kfetch));
-
-	if (!DNS_ZONE_FLAG(zone, DNS_ZONEFLG_EXITING)) {
-		/* Don't really retry if we are exiting */
-		char timebuf[80];
-
-		timenow = isc_time_now();
-		DNS_ZONE_TIME_ADD(&timenow, dns_zone_mkey_hour, &timethen);
-		zone->refreshkeytime = timethen;
-		zone_settimer(zone, &timenow);
-
-		isc_time_formattimestamp(&zone->refreshkeytime, timebuf, 80);
-		dnssec_log(zone, ISC_LOG_DEBUG(1), "retry key refresh: %s",
-			   timebuf);
-	}
-
-	free_needed = exit_check(zone);
-	UNLOCK_ZONE(zone);
-
-	if (free_needed) {
-		zone_free(zone);
-	}
-}
-
-static void
-do_keyfetch(void *arg) {
-	isc_result_t result;
-	dns_keyfetch_t *kfetch = (dns_keyfetch_t *)arg;
-	dns_name_t *kname = dns_fixedname_name(&kfetch->name);
-	dns_resolver_t *resolver = NULL;
-	dns_zone_t *zone = kfetch->zone;
-	unsigned int options = DNS_FETCHOPT_NOVALIDATE | DNS_FETCHOPT_UNSHARED |
-			       DNS_FETCHOPT_NOCACHED;
-
-	if (DNS_ZONE_FLAG(zone, DNS_ZONEFLG_EXITING)) {
-		goto retry;
-	}
-
-	result = dns_view_getresolver(zone->view, &resolver);
-	if (result != ISC_R_SUCCESS) {
-		goto retry;
-	}
-
-	/*
-	 * Use of DNS_FETCHOPT_NOCACHED is essential here.  If it is not
-	 * set and the cache still holds a non-expired, validated version
-	 * of the RRset being queried for by the time the response is
-	 * received, the cached RRset will be passed to keyfetch_done()
-	 * instead of the one received in the response as the latter will
-	 * have a lower trust level due to not being validated until
-	 * keyfetch_done() is called.
-	 */
-	result = dns_resolver_createfetch(
-		resolver, kname, dns_rdatatype_dnskey, NULL, NULL, NULL, NULL,
-		0, options, 0, NULL, NULL, zone->loop, keyfetch_done, kfetch,
-		NULL, &kfetch->dnskeyset, &kfetch->dnskeysigset,
-		&kfetch->fetch);
-
-	dns_resolver_detach(&resolver);
-	if (result == ISC_R_SUCCESS) {
-		return;
-	}
-retry:
-	retry_keyfetch(kfetch, kname);
+	return result;
 }
 
 /*
@@ -11481,19 +11400,36 @@ zone_refreshkeys(dns_zone_t *zone) {
 #ifdef ENABLE_AFL
 		if (!dns_fuzzing_resolver) {
 #endif /* ifdef ENABLE_AFL */
+			dns_zonefetch_t *fetch = NULL;
 			dns_keyfetch_t *kfetch = NULL;
 
-			kfetch = isc_mem_get(zone->mctx,
-					     sizeof(dns_keyfetch_t));
-			*kfetch = (dns_keyfetch_t){ .zone = zone };
-			isc_mem_attach(zone->mctx, &kfetch->mctx);
+			fetch = isc_mem_get(zone->mctx,
+					    sizeof(dns_zonefetch_t));
+			*fetch = (dns_zonefetch_t){
+				.zone = zone,
+				.options = DNS_FETCHOPT_NOVALIDATE |
+					   DNS_FETCHOPT_UNSHARED |
+					   DNS_FETCHOPT_NOCACHED,
+				.fetchtype = ZONEFETCHTYPE_KEY,
+				.fetchmethods =
+					(dns_zonefetch_methods_t){
+						.start_fetch = keyfetch_start,
+						.continue_fetch =
+							keyfetch_continue,
+						.cancel_fetch = keyfetch_cancel,
+						.done_fetch = keyfetch_done,
+					},
+			};
+			isc_mem_attach(zone->mctx, &fetch->mctx);
 
 			zone->refreshkeycount++;
 			isc_refcount_increment0(&zone->irefs);
-			kname = dns_fixedname_initname(&kfetch->name);
+			kname = dns_fixedname_initname(&fetch->name);
 			dns_name_dup(name, zone->mctx, kname);
-			dns_rdataset_init(&kfetch->dnskeyset);
-			dns_rdataset_init(&kfetch->dnskeysigset);
+			dns_rdataset_init(&fetch->rrset);
+			dns_rdataset_init(&fetch->sigset);
+
+			kfetch = &fetch->fetchdata.keyfetch;
 			dns_rdataset_init(&kfetch->keydataset);
 			dns_rdataset_clone(kdset, &kfetch->keydataset);
 			dns_db_attach(db, &kfetch->db);
@@ -11508,7 +11444,7 @@ zone_refreshkeys(dns_zone_t *zone) {
 					   namebuf);
 			}
 
-			isc_async_run(zone->loop, do_keyfetch, kfetch);
+			isc_async_run(zone->loop, dns_zonefetch_run, fetch);
 			fetching = true;
 #ifdef ENABLE_AFL
 		}
@@ -21165,64 +21101,115 @@ checkds_send(dns_zone_t *zone) {
 }
 
 /*
+ * Fetch NS records from parent zone.
+ */
+static void
+nsfetch_start(dns_zonefetch_t *fetch) {
+	dns_nsfetch_t *nsfetch;
+	dns_zone_t *zone = fetch->zone;
+	unsigned int nlabels = 1;
+
+	REQUIRE(fetch->fetchtype == ZONEFETCHTYPE_NS);
+
+	nsfetch = &fetch->fetchdata.nsfetch;
+
+	if (isc_log_wouldlog(ISC_LOG_DEBUG(3))) {
+		char namebuf[DNS_NAME_FORMATSIZE];
+		dns_name_format(&nsfetch->pname, namebuf, sizeof(namebuf));
+		dnssec_log(zone, ISC_LOG_DEBUG(3),
+			   "Create fetch for '%s' NS request", namebuf);
+	}
+
+	/* Derive parent domain. XXXWMM: Check for root domain */
+	dns_name_split(&nsfetch->pname,
+		       dns_name_countlabels(&nsfetch->pname) - nlabels, NULL,
+		       &nsfetch->pname);
+
+	fetch->qtype = dns_rdatatype_ns;
+	fetch->qname = &nsfetch->pname;
+}
+
+/*
+ * Retry an NS RRset lookup, one level up. In other words, this function should
+ * be called on an dns_nsfetch structure where the response yielded in a NODATA
+ * response. This must be because there is an empty non-terminal inbetween the
+ * child and parent zone.
+ */
+static void
+nsfetch_continue(dns_zonefetch_t *fetch) {
+	dns_zone_t *zone = fetch->zone;
+
+	REQUIRE(fetch->fetchtype == ZONEFETCHTYPE_NS);
+
+#ifdef ENABLE_AFL
+	if (!dns_fuzzing_resolver) {
+#endif /* ifdef ENABLE_AFL */
+		LOCK_ZONE(zone);
+		zone->nsfetchcount++;
+		isc_refcount_increment0(&zone->irefs);
+
+		dns_rdataset_init(&fetch->rrset);
+		dns_rdataset_init(&fetch->sigset);
+		if (isc_log_wouldlog(ISC_LOG_DEBUG(3))) {
+			dnssec_log(zone, ISC_LOG_DEBUG(3),
+				   "Creating parent NS fetch in "
+				   "nsfetch_continue()");
+		}
+		isc_async_run(zone->loop, dns_zonefetch_run, fetch);
+		UNLOCK_ZONE(zone);
+#ifdef ENABLE_AFL
+	}
+#endif /* ifdef ENABLE_AFL */
+}
+
+static void
+nsfetch_cancel(dns_zonefetch_t *fetch) {
+	dns_zone_t *zone;
+
+	REQUIRE(fetch->fetchtype == ZONEFETCHTYPE_NS);
+
+	zone = fetch->zone;
+
+	INSIST(LOCKED_ZONE(zone));
+
+	zone->nsfetchcount--;
+}
+
+/*
  * An NS RRset has been fetched from the parent of a zone whose DS RRset needs
  * to be checked; scan the RRset and start sending queries to the parental
  * agents.
  */
-static void
-nsfetch_done(void *arg) {
-	dns_fetchresponse_t *resp = (dns_fetchresponse_t *)arg;
-	isc_result_t result = ISC_R_NOMORE, eresult;
-	dns_nsfetch_t *nsfetch = NULL;
+static isc_result_t
+nsfetch_done(dns_zonefetch_t *fetch, isc_result_t eresult) {
+	dns_nsfetch_t *nsfetch;
+	isc_result_t result = ISC_R_NOMORE;
 	dns_zone_t *zone = NULL;
-	isc_mem_t *mctx = NULL;
-	dns_name_t *zname = NULL;
 	dns_name_t *pname = NULL;
 	char pnamebuf[DNS_NAME_FORMATSIZE];
-	bool free_needed, levelup = false;
 	dns_rdataset_t *nsrrset = NULL;
 	dns_rdataset_t *nssigset = NULL;
 
-	INSIST(resp != NULL);
+	REQUIRE(fetch != NULL);
+	REQUIRE(fetch->fetchtype == ZONEFETCHTYPE_NS);
 
-	nsfetch = resp->arg;
-
-	INSIST(nsfetch != NULL);
-
-	zone = nsfetch->zone;
-	mctx = nsfetch->mctx;
-	zname = dns_fixedname_name(&nsfetch->name);
+	zone = fetch->zone;
+	nsrrset = &fetch->rrset;
+	nssigset = &fetch->sigset;
+	nsfetch = &fetch->fetchdata.nsfetch;
 	pname = &nsfetch->pname;
-	nsrrset = &nsfetch->nsrrset;
-	nssigset = &nsfetch->nssigset;
-	eresult = resp->result;
-
-	/* Free resources which are not of interest */
-	if (resp->node != NULL) {
-		dns_db_detachnode(&resp->node);
-	}
-	if (resp->db != NULL) {
-		dns_db_detach(&resp->db);
-	}
-	dns_resolver_destroyfetch(&nsfetch->fetch);
-
-	LOCK_ZONE(zone);
-	if (DNS_ZONE_FLAG(zone, DNS_ZONEFLG_EXITING) || zone->view == NULL) {
-		goto cleanup;
-	}
 
 	zone->nsfetchcount--;
 
 	dns_name_format(pname, pnamebuf, sizeof(pnamebuf));
 	dnssec_log(zone, ISC_LOG_DEBUG(3),
-		   "Returned from '%s' NS fetch in nsfetch_done(): %s",
-		   pnamebuf, isc_result_totext(eresult));
+		   "Returned from '%s' NS fetch in fetch_done(): %s", pnamebuf,
+		   isc_result_totext(eresult));
 
 	if (eresult == DNS_R_NCACHENXRRSET || eresult == DNS_R_NXRRSET) {
 		dnssec_log(zone, ISC_LOG_DEBUG(3),
 			   "NODATA response for NS '%s', level up", pnamebuf);
-		levelup = true;
-		goto cleanup;
+		return DNS_R_CONTINUE;
 
 	} else if (eresult != ISC_R_SUCCESS) {
 		dnssec_log(zone, ISC_LOG_WARNING,
@@ -21316,136 +21303,7 @@ done:
 			isc_result_totext(result));
 	}
 
-cleanup:
-	isc_refcount_decrement(&zone->irefs);
-
-	if (dns_rdataset_isassociated(nsrrset)) {
-		dns_rdataset_disassociate(nsrrset);
-	}
-	if (dns_rdataset_isassociated(nssigset)) {
-		dns_rdataset_disassociate(nssigset);
-	}
-
-	dns_resolver_freefresp(&resp);
-
-	if (levelup) {
-		UNLOCK_ZONE(zone);
-		nsfetch_levelup(nsfetch);
-		return;
-	}
-
-	dns_name_free(zname, mctx);
-	isc_mem_putanddetach(&nsfetch->mctx, nsfetch, sizeof(dns_nsfetch_t));
-
-	free_needed = exit_check(zone);
-	UNLOCK_ZONE(zone);
-
-	if (free_needed) {
-		zone_free(zone);
-	}
-}
-
-static void
-do_nsfetch(void *arg) {
-	dns_nsfetch_t *nsfetch = (dns_nsfetch_t *)arg;
-	isc_result_t result;
-	unsigned int nlabels = 1;
-	dns_resolver_t *resolver = NULL;
-	dns_zone_t *zone = nsfetch->zone;
-	unsigned int options = DNS_FETCHOPT_UNSHARED | DNS_FETCHOPT_NOCACHED;
-
-	if (DNS_ZONE_FLAG(zone, DNS_ZONEFLG_EXITING)) {
-		result = ISC_R_SHUTTINGDOWN;
-		goto cleanup;
-	}
-
-	result = dns_view_getresolver(zone->view, &resolver);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
-
-	if (isc_log_wouldlog(ISC_LOG_DEBUG(3))) {
-		char namebuf[DNS_NAME_FORMATSIZE];
-		dns_name_format(&nsfetch->pname, namebuf, sizeof(namebuf));
-		dnssec_log(zone, ISC_LOG_DEBUG(3),
-			   "Create fetch for '%s' NS request", namebuf);
-	}
-
-	/* Derive parent domain. XXXWMM: Check for root domain */
-	dns_name_split(&nsfetch->pname,
-		       dns_name_countlabels(&nsfetch->pname) - nlabels, NULL,
-		       &nsfetch->pname);
-
-	/*
-	 * Use of DNS_FETCHOPT_NOCACHED is essential here.  If it is not
-	 * set and the cache still holds a non-expired, validated version
-	 * of the RRset being queried for by the time the response is
-	 * received, the cached RRset will be passed to nsfetch_done()
-	 * instead of the one received in the response as the latter will
-	 * have a lower trust level due to not being validated until
-	 * nsfetch_done() is called.
-	 */
-	result = dns_resolver_createfetch(
-		resolver, &nsfetch->pname, dns_rdatatype_ns, NULL, NULL, NULL,
-		NULL, 0, options, 0, NULL, NULL, zone->loop, nsfetch_done,
-		nsfetch, NULL, &nsfetch->nsrrset, &nsfetch->nssigset,
-		&nsfetch->fetch);
-
-	dns_resolver_detach(&resolver);
-
-cleanup:
-	if (result != ISC_R_SUCCESS) {
-		dns_name_t *zname = dns_fixedname_name(&nsfetch->name);
-		bool free_needed;
-		char namebuf[DNS_NAME_FORMATSIZE];
-		dns_name_format(&nsfetch->pname, namebuf, sizeof(namebuf));
-		dnssec_log(zone, ISC_LOG_WARNING,
-			   "Failed to create fetch for '%s' NS request",
-			   namebuf);
-		LOCK_ZONE(zone);
-		zone->nsfetchcount--;
-		isc_refcount_decrement(&zone->irefs);
-
-		dns_name_free(zname, zone->mctx);
-		isc_mem_putanddetach(&nsfetch->mctx, nsfetch, sizeof(*nsfetch));
-
-		free_needed = exit_check(zone);
-		UNLOCK_ZONE(zone);
-		if (free_needed) {
-			zone_free(zone);
-		}
-	}
-}
-
-/*
- * Retry an NS RRset lookup, one level up. In other words, this function should
- * be called on an dns_nsfetch structure where the response yielded in a NODATA
- * response. This must be because there is an empty non-terminal inbetween the
- * child and parent zone.
- */
-static void
-nsfetch_levelup(dns_nsfetch_t *nsfetch) {
-	dns_zone_t *zone = nsfetch->zone;
-
-#ifdef ENABLE_AFL
-	if (!dns_fuzzing_resolver) {
-#endif /* ifdef ENABLE_AFL */
-		LOCK_ZONE(zone);
-		zone->nsfetchcount++;
-		isc_refcount_increment0(&zone->irefs);
-
-		dns_rdataset_init(&nsfetch->nsrrset);
-		dns_rdataset_init(&nsfetch->nssigset);
-		if (isc_log_wouldlog(ISC_LOG_DEBUG(3))) {
-			dnssec_log(zone, ISC_LOG_DEBUG(3),
-				   "Creating parent NS fetch in "
-				   "nsfetch_levelup()");
-		}
-		isc_async_run(zone->loop, do_nsfetch, nsfetch);
-		UNLOCK_ZONE(zone);
-#ifdef ENABLE_AFL
-	}
-#endif /* ifdef ENABLE_AFL */
+	return result;
 }
 
 static void
@@ -21501,27 +21359,44 @@ zone_checkds(dns_zone_t *zone) {
 #ifdef ENABLE_AFL
 	if (!dns_fuzzing_resolver) {
 #endif /* ifdef ENABLE_AFL */
-		dns_nsfetch_t *nsfetch;
+		dns_zonefetch_t *fetch = NULL;
+		dns_nsfetch_t *nsfetch = NULL;
 		dns_name_t *name = NULL;
 
-		nsfetch = isc_mem_get(zone->mctx, sizeof(dns_nsfetch_t));
-		*nsfetch = (dns_nsfetch_t){ .zone = zone };
-		isc_mem_attach(zone->mctx, &nsfetch->mctx);
+		fetch = isc_mem_get(zone->mctx, sizeof(dns_zonefetch_t));
+		*fetch = (dns_zonefetch_t){
+			.zone = zone,
+			.options = DNS_FETCHOPT_UNSHARED |
+				   DNS_FETCHOPT_NOCACHED,
+			.fetchtype = ZONEFETCHTYPE_NS,
+			.fetchmethods =
+				(dns_zonefetch_methods_t){
+					.start_fetch = nsfetch_start,
+					.continue_fetch = nsfetch_continue,
+					.cancel_fetch = nsfetch_cancel,
+					.done_fetch = nsfetch_done,
+				},
+		};
+		isc_mem_attach(zone->mctx, &fetch->mctx);
+
 		LOCK_ZONE(zone);
 		zone->nsfetchcount++;
 		isc_refcount_increment0(&zone->irefs);
-		name = dns_fixedname_initname(&nsfetch->name);
+		name = dns_fixedname_initname(&fetch->name);
+		dns_name_dup(&zone->origin, zone->mctx, name);
+		dns_rdataset_init(&fetch->rrset);
+		dns_rdataset_init(&fetch->sigset);
+
+		nsfetch = &fetch->fetchdata.nsfetch;
 		dns_name_init(&nsfetch->pname);
 		dns_name_clone(&zone->origin, &nsfetch->pname);
-		dns_name_dup(&zone->origin, zone->mctx, name);
-		dns_rdataset_init(&nsfetch->nsrrset);
-		dns_rdataset_init(&nsfetch->nssigset);
+
 		if (isc_log_wouldlog(ISC_LOG_DEBUG(3))) {
 			dnssec_log(
 				zone, ISC_LOG_DEBUG(3),
 				"Creating parent NS fetch in zone_checkds()");
 		}
-		isc_async_run(zone->loop, do_nsfetch, nsfetch);
+		isc_async_run(zone->loop, dns_zonefetch_run, fetch);
 		UNLOCK_ZONE(zone);
 #ifdef ENABLE_AFL
 	}
