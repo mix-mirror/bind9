@@ -13,7 +13,7 @@
 
 /*! \file
  * \brief
- * The built-in "version", "hostname", "id", "authors" and "empty" databases.
+ * The built-in "version", "hostname", "id", and "empty" databases.
  */
 
 #include <stdio.h>
@@ -531,40 +531,6 @@ hostname_lookup(bdbnode_t *node) {
 		}
 		return puttxt(node, buf);
 	}
-}
-
-static isc_result_t
-authors_lookup(bdbnode_t *node) {
-	isc_result_t result;
-	const char **p = NULL;
-	static const char *authors[] = {
-		"Mark Andrews",	      "Curtis Blackburn",
-		"James Brister",      "Ben Cottrell",
-		"John H. DuBois III", "Francis Dupont",
-		"Michael Graff",      "Andreas Gustafsson",
-		"Bob Halley",	      "Evan Hunt",
-		"JINMEI Tatuya",      "Witold Krecicki",
-		"David Lawrence",     "Scott Mann",
-		"Danny Mayer",	      "Aydin Mercan",
-		"Damien Neil",	      "Matt Nelson",
-		"Jeremy C. Reed",     "Michael Sawyer",
-		"Brian Wellington",   NULL
-	};
-
-	/*
-	 * If a version string is specified, disable the authors.bind zone.
-	 */
-	if (named_g_server->version_set) {
-		return ISC_R_SUCCESS;
-	}
-
-	for (p = authors; *p != NULL; p++) {
-		result = puttxt(node, *p);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
-	}
-	return ISC_R_SUCCESS;
 }
 
 static isc_result_t
@@ -1149,9 +1115,7 @@ create(isc_mem_t *mctx, const dns_name_t *origin, dns_dbtype_t type,
 	dns_name_dup(origin, mctx, &bdb->common.origin);
 
 	INSIST(argc >= 1);
-	if (strcmp(argv[0], "authors") == 0) {
-		bdb->lookup = authors_lookup;
-	} else if (strcmp(argv[0], "hostname") == 0) {
+	if (strcmp(argv[0], "hostname") == 0) {
 		bdb->lookup = hostname_lookup;
 	} else if (strcmp(argv[0], "id") == 0) {
 		bdb->lookup = id_lookup;
