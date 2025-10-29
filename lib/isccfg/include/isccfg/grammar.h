@@ -155,7 +155,7 @@ struct cfg_typemethods {
 	cfg_mergefunc_t merge; /*%< Merge method */
 };
 struct cfg_type {
-	const char	 *name; /*%< Used for cfg_doc_terminal() */
+	const char	 *name; /*%< Used for cfg_doc_typename() */
 	cfg_rep_t	 *rep;	/*%< Data representation */
 	const void	 *of;	/*%< Additional data for meta-types */
 	cfg_typemethods_t methods;
@@ -287,25 +287,30 @@ struct cfg_parser {
 };
 
 /* Parser context flags */
-#define CFG_PCTX_SKIP		(1 << 0)
-#define CFG_PCTX_NODEPRECATED	(1 << 1)
-#define CFG_PCTX_NOOBSOLETE	(1 << 2)
-#define CFG_PCTX_NOEXPERIMENTAL (1 << 3)
-#define CFG_PCTX_ALLCONFIGS	(1 << 4)
-#define CFG_PCTX_BUILTIN	(1 << 5)
+enum {
+	CFG_PCTX_SKIP = (1 << 0),
+	CFG_PCTX_NODEPRECATED = (1 << 1),
+	CFG_PCTX_NOOBSOLETE = (1 << 2),
+	CFG_PCTX_NOEXPERIMENTAL = (1 << 3),
+	CFG_PCTX_ALLCONFIGS = (1 << 4),
+	CFG_PCTX_BUILTIN = (1 << 5),
+};
 
 /*@{*/
 /*%
  * Flags defining whether to accept certain types of network addresses.
  */
-#define CFG_ADDR_V4OK	    0x00000001
-#define CFG_ADDR_V4PREFIXOK 0x00000002
-#define CFG_ADDR_V6OK	    0x00000004
-#define CFG_ADDR_WILDOK	    0x00000008
-#define CFG_ADDR_PORTOK	    0x00000010
-#define CFG_ADDR_TLSOK	    0x00000020
-#define CFG_ADDR_TRAILINGOK 0x00000040
-#define CFG_ADDR_MASK	    (CFG_ADDR_V6OK | CFG_ADDR_V4OK)
+enum {
+	CFG_ADDR_V4OK = (1 << 0),
+	CFG_ADDR_V4PREFIXOK = (1 << 1),
+	CFG_ADDR_V6OK = (1 << 2),
+	CFG_ADDR_WILDOK = (1 << 3),
+	CFG_ADDR_PORTOK = (1 << 4),
+	CFG_ADDR_TLSOK = (1 << 5),
+	CFG_ADDR_TRAILINGOK = (1 << 6),
+	CFG_ADDR_NONONE = (1 << 7),
+	CFG_ADDR_MASK = (CFG_ADDR_V6OK | CFG_ADDR_V4OK),
+};
 /*@}*/
 
 /*@{*/
@@ -412,26 +417,23 @@ isc_result_t
 cfg_parse_rawport(cfg_parser_t *pctx, unsigned int flags, in_port_t *port);
 
 isc_result_t
-cfg_parse_sockaddr_generic(cfg_parser_t *pctx, cfg_type_t *klass,
-			   const cfg_type_t *type, cfg_obj_t **ret);
-isc_result_t
 cfg_parse_sockaddr(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret);
+void
+cfg_print_sockaddr(cfg_printer_t *pctx, const cfg_obj_t *obj);
+void
+cfg_doc_sockaddr(cfg_printer_t *pctx, const cfg_type_t *type);
 
-isc_result_t
-cfg_parse_sockaddrtls(cfg_parser_t *pctx, const cfg_type_t *type,
-		      cfg_obj_t **ret);
+static const cfg_typemethods_t cfg_sockaddr_methods = {
+	.parse = cfg_parse_sockaddr,
+	.print = cfg_print_sockaddr,
+	.doc = cfg_doc_sockaddr,
+};
 
 isc_result_t
 cfg_parse_boolean(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret);
 
 void
-cfg_print_sockaddr(cfg_printer_t *pctx, const cfg_obj_t *obj);
-
-void
 cfg_print_boolean(cfg_printer_t *pctx, const cfg_obj_t *obj);
-
-void
-cfg_doc_sockaddr(cfg_printer_t *pctx, const cfg_type_t *type);
 
 isc_result_t
 cfg_parse_netprefix(cfg_parser_t *pctx, const cfg_type_t *type,
@@ -446,13 +448,29 @@ cfg_tuple_create(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **objp);
 
 isc_result_t
 cfg_parse_tuple(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret);
-
 void
 cfg_print_tuple(cfg_printer_t *pctx, const cfg_obj_t *obj);
-
 void
 cfg_doc_tuple(cfg_printer_t *pctx, const cfg_type_t *type);
 
+static const cfg_typemethods_t tuple_methods = {
+	.parse = cfg_parse_tuple,
+	.print = cfg_print_tuple,
+	.doc = cfg_doc_tuple,
+};
+
+isc_result_t
+cfg_parse_kv_tuple(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret);
+void
+cfg_print_kv_tuple(cfg_printer_t *pctx, const cfg_obj_t *obj);
+void
+cfg_doc_kv_tuple(cfg_printer_t *pctx, const cfg_type_t *type);
+
+static const cfg_typemethods_t kvtuple_methods = {
+	.parse = cfg_parse_kv_tuple,
+	.print = cfg_print_kv_tuple,
+	.doc = cfg_doc_kv_tuple,
+};
 isc_result_t
 cfg_parse_listelt(cfg_parser_t *pctx, cfg_obj_t *list,
 		  const cfg_type_t *elttype, cfg_listelt_t **ret);
@@ -460,12 +478,16 @@ cfg_parse_listelt(cfg_parser_t *pctx, cfg_obj_t *list,
 isc_result_t
 cfg_parse_bracketed_list(cfg_parser_t *pctx, const cfg_type_t *type,
 			 cfg_obj_t **ret);
-
 void
 cfg_print_bracketed_list(cfg_printer_t *pctx, const cfg_obj_t *obj);
-
 void
 cfg_doc_bracketed_list(cfg_printer_t *pctx, const cfg_type_t *type);
+
+static const cfg_typemethods_t cfg_bracketed_list_methods = {
+	.parse = cfg_parse_bracketed_list,
+	.print = cfg_print_bracketed_list,
+	.doc = cfg_doc_bracketed_list,
+};
 
 isc_result_t
 cfg_parse_spacelist(cfg_parser_t *pctx, const cfg_type_t *type,
@@ -476,14 +498,17 @@ cfg_print_spacelist(cfg_printer_t *pctx, const cfg_obj_t *obj);
 
 isc_result_t
 cfg_parse_enum(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret);
-
 void
 cfg_doc_enum(cfg_printer_t *pctx, const cfg_type_t *type);
+static const cfg_typemethods_t cfg_enum_methods = {
+	.parse = cfg_parse_enum,
+	.print = cfg_print_ustring,
+	.doc = cfg_doc_enum,
+};
 
 isc_result_t
 cfg_parse_enum_or_other(cfg_parser_t *pctx, const cfg_type_t *enumtype,
 			const cfg_type_t *othertype, cfg_obj_t **ret);
-
 void
 cfg_doc_enum_or_other(cfg_printer_t *pctx, const cfg_type_t *enumtype,
 		      const cfg_type_t *othertype);
@@ -498,10 +523,24 @@ cfg_print_cstr(cfg_printer_t *pctx, const char *s);
 
 isc_result_t
 cfg_parse_map(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret);
+void
+cfg_print_map(cfg_printer_t *pctx, const cfg_obj_t *obj);
+void
+cfg_doc_map(cfg_printer_t *pctx, const cfg_type_t *type);
+static const cfg_typemethods_t cfg_map_methods = {
+	.parse = cfg_parse_map,
+	.print = cfg_print_map,
+	.doc = cfg_doc_map,
+};
 
 isc_result_t
 cfg_parse_named_map(cfg_parser_t *pctx, const cfg_type_t *type,
 		    cfg_obj_t **ret);
+static const cfg_typemethods_t cfg_namedmap_methods = {
+	.parse = cfg_parse_named_map,
+	.print = cfg_print_map,
+	.doc = cfg_doc_map,
+};
 
 isc_result_t
 cfg_parse_addressed_map(cfg_parser_t *pctx, const cfg_type_t *type,
@@ -511,20 +550,17 @@ isc_result_t
 cfg_parse_netprefix_map(cfg_parser_t *pctx, const cfg_type_t *type,
 			cfg_obj_t **ret);
 
-void
-cfg_print_map(cfg_printer_t *pctx, const cfg_obj_t *obj);
-
-void
-cfg_doc_map(cfg_printer_t *pctx, const cfg_type_t *type);
-
 isc_result_t
 cfg_parse_mapbody(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret);
-
 void
 cfg_print_mapbody(cfg_printer_t *pctx, const cfg_obj_t *obj);
-
 void
 cfg_doc_mapbody(cfg_printer_t *pctx, const cfg_type_t *type);
+static const cfg_typemethods_t cfg_mapbody_methods = {
+	.parse = cfg_parse_mapbody,
+	.print = cfg_print_mapbody,
+	.doc = cfg_doc_mapbody,
+};
 
 isc_result_t
 cfg_parse_void(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret);
@@ -576,7 +612,9 @@ cfg_doc_obj(cfg_printer_t *pctx, const cfg_type_t *type);
  */
 
 void
-cfg_doc_terminal(cfg_printer_t *pctx, const cfg_type_t *type);
+cfg_print_typename(cfg_printer_t *pctx, const cfg_obj_t *obj);
+void
+cfg_doc_typename(cfg_printer_t *pctx, const cfg_type_t *type);
 /*%<
  * Document the type 'type' as a terminal by printing its
  * name in angle brackets, e.g., &lt;uint32>.

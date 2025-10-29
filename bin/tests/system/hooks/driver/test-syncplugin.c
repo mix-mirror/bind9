@@ -77,9 +77,7 @@ static cfg_clausedef_t *syncplugin__cfgparamsclausesets[] = {
 
 static cfg_type_t syncplugin__cfgparams = {
 	.name = "syncplugin-params",
-	.methods.parse = cfg_parse_mapbody,
-	.methods.print = cfg_print_mapbody,
-	.methods.doc = cfg_doc_mapbody,
+	.methods = cfg_mapbody_methods,
 	.rep = &cfg_rep_map,
 	.of = syncplugin__cfgparamsclausesets
 };

@@ -588,6 +588,109 @@ cfg_doc_tuple(cfg_printer_t *pctx, const cfg_type_t *type) {
 	}
 }
 
+/*
+ * Parse a tuple consisting of any kind of required field followed
+ * by 2 or more optional keyvalues that can be in any order.
+ */
+isc_result_t
+cfg_parse_kv_tuple(cfg_parser_t *pctx, const cfg_type_t *type,
+		   cfg_obj_t **ret) {
+	const cfg_tuplefielddef_t *fields, *f;
+	cfg_obj_t *obj = NULL;
+	isc_result_t result;
+	int fn;
+
+	cfg_tuple_create(pctx, type, &obj);
+
+	/*
+	 * The zone first field is required and always first.
+	 */
+	fields = type->of;
+	CHECK(cfg_parse_obj(pctx, fields[0].type, &obj->value.tuple[0]));
+
+	for (;;) {
+		CHECK(cfg_peektoken(pctx, CFG_LEXOPT_QSTRING));
+		if (pctx->token.type != isc_tokentype_string) {
+			break;
+		}
+
+		for (fn = 1, f = &fields[1];; ++fn, ++f) {
+			if (f->name == NULL) {
+				cfg_parser_error(pctx, 0, "unexpected '%s'",
+						 TOKEN_STRING(pctx));
+				result = ISC_R_UNEXPECTEDTOKEN;
+				goto cleanup;
+			}
+			if (obj->value.tuple[fn] == NULL &&
+			    strcasecmp(f->name, TOKEN_STRING(pctx)) == 0)
+			{
+				break;
+			}
+		}
+
+		CHECK(cfg_gettoken(pctx, 0));
+		CHECK(cfg_parse_obj(pctx, f->type, &obj->value.tuple[fn]));
+	}
+
+	for (fn = 1, f = &fields[1]; f->name != NULL; ++fn, ++f) {
+		if (obj->value.tuple[fn] == NULL) {
+			CHECK(cfg_parse_void(pctx, NULL,
+					     &obj->value.tuple[fn]));
+		}
+	}
+
+	*ret = obj;
+	return ISC_R_SUCCESS;
+
+cleanup:
+	CLEANUP_OBJ(obj);
+	return result;
+}
+
+void
+cfg_print_kv_tuple(cfg_printer_t *pctx, const cfg_obj_t *obj) {
+	unsigned int i;
+	const cfg_tuplefielddef_t *fields, *f;
+	const cfg_obj_t *fieldobj;
+
+	fields = obj->type->of;
+	for (f = fields, i = 0; f->name != NULL; f++, i++) {
+		fieldobj = obj->value.tuple[i];
+		if (fieldobj->type->methods.print == cfg_print_void) {
+			continue;
+		}
+		if (i != 0) {
+			cfg_print_cstr(pctx, " ");
+			cfg_print_cstr(pctx, f->name);
+			cfg_print_cstr(pctx, " ");
+		}
+		cfg_print_obj(pctx, fieldobj);
+	}
+}
+
+void
+cfg_doc_kv_tuple(cfg_printer_t *pctx, const cfg_type_t *type) {
+	const cfg_tuplefielddef_t *fields, *f;
+
+	fields = type->of;
+	for (f = fields; f->name != NULL; f++) {
+		if ((f->flags & CFG_CLAUSEFLAG_NODOC) != 0) {
+			continue;
+		}
+		if (f != fields) {
+			cfg_print_cstr(pctx, " [ ");
+			cfg_print_cstr(pctx, f->name);
+			if (f->type->methods.doc != cfg_doc_void) {
+				cfg_print_cstr(pctx, " ");
+			}
+		}
+		cfg_doc_obj(pctx, f->type);
+		if (f != fields) {
+			cfg_print_cstr(pctx, " ]");
+		}
+	}
+}
+
 static void
 free_tuple(cfg_obj_t *obj) {
 	unsigned int i;
@@ -994,7 +1097,7 @@ cfg_obj_aspercentage(const cfg_obj_t *obj) {
 cfg_type_t cfg_type_percentage = { .name = "percentage",
 				   .methods.parse = cfg_parse_percentage,
 				   .methods.print = cfg_print_percentage,
-				   .methods.doc = cfg_doc_terminal,
+				   .methods.doc = cfg_doc_typename,
 				   .rep = &cfg_rep_percentage };
 
 bool
@@ -1079,7 +1182,7 @@ cfg_obj_asfixedpoint(const cfg_obj_t *obj) {
 cfg_type_t cfg_type_fixedpoint = { .name = "fixedpoint",
 				   .methods.parse = cfg_parse_fixedpoint,
 				   .methods.print = cfg_print_fixedpoint,
-				   .methods.doc = cfg_doc_terminal,
+				   .methods.doc = cfg_doc_typename,
 				   .rep = &cfg_rep_fixedpoint };
 
 bool
@@ -1150,7 +1253,7 @@ cfg_obj_asuint32(const cfg_obj_t *obj) {
 cfg_type_t cfg_type_uint32 = { .name = "integer",
 			       .methods.parse = cfg_parse_uint32,
 			       .methods.print = cfg_print_uint32,
-			       .methods.doc = cfg_doc_terminal,
+			       .methods.doc = cfg_doc_typename,
 			       .rep = &cfg_rep_uint32 };
 
 /*
@@ -1181,7 +1284,7 @@ cfg_print_uint64(cfg_printer_t *pctx, const cfg_obj_t *obj) {
 
 cfg_type_t cfg_type_uint64 = { .name = "64_bit_integer",
 			       .methods.print = cfg_print_uint64,
-			       .methods.doc = cfg_doc_terminal,
+			       .methods.doc = cfg_doc_typename,
 			       .rep = &cfg_rep_uint64 };
 
 /*
@@ -1423,13 +1526,13 @@ cleanup:
 cfg_type_t cfg_type_duration = { .name = "duration",
 				 .methods.parse = cfg_parse_duration,
 				 .methods.print = cfg_print_duration,
-				 .methods.doc = cfg_doc_terminal,
+				 .methods.doc = cfg_doc_typename,
 				 .rep = &cfg_rep_duration };
 cfg_type_t cfg_type_duration_or_unlimited = {
 	.name = "duration_or_unlimited",
 	.methods.parse = cfg_parse_duration_or_unlimited,
 	.methods.print = cfg_print_duration_or_unlimited,
-	.methods.doc = cfg_doc_terminal,
+	.methods.doc = cfg_doc_typename,
 	.rep = &cfg_rep_duration,
 };
 
@@ -1669,7 +1772,7 @@ cfg_doc_enum_or_other(cfg_printer_t *pctx, const cfg_type_t *enumtype,
 		if (!first) {
 			cfg_print_cstr(pctx, " | ");
 		}
-		cfg_doc_terminal(pctx, othertype);
+		cfg_doc_typename(pctx, othertype);
 	}
 	cfg_print_cstr(pctx, " )");
 	if (othertype == &cfg_type_void) {
@@ -1750,21 +1853,21 @@ cfg_obj_asstring(const cfg_obj_t *obj) {
 cfg_type_t cfg_type_qstring = { .name = "quoted_string",
 				.methods.parse = cfg_parse_qstring,
 				.methods.print = print_qstring,
-				.methods.doc = cfg_doc_terminal,
+				.methods.doc = cfg_doc_typename,
 				.rep = &cfg_rep_string };
 
 /* Unquoted string only */
 cfg_type_t cfg_type_ustring = { .name = "string",
 				.methods.parse = parse_ustring,
 				.methods.print = cfg_print_ustring,
-				.methods.doc = cfg_doc_terminal,
+				.methods.doc = cfg_doc_typename,
 				.rep = &cfg_rep_string };
 
 /* Any string (quoted or unquoted); printed with quotes */
 cfg_type_t cfg_type_astring = { .name = "string",
 				.methods.parse = cfg_parse_astring,
 				.methods.print = print_qstring,
-				.methods.doc = cfg_doc_terminal,
+				.methods.doc = cfg_doc_typename,
 				.rep = &cfg_rep_string };
 
 /*
@@ -1774,7 +1877,7 @@ cfg_type_t cfg_type_astring = { .name = "string",
 cfg_type_t cfg_type_sstring = { .name = "string",
 				.methods.parse = cfg_parse_sstring,
 				.methods.print = print_sstring,
-				.methods.doc = cfg_doc_terminal,
+				.methods.doc = cfg_doc_typename,
 				.rep = &cfg_rep_string };
 
 /*
@@ -1801,9 +1904,7 @@ static const char *geoiptype_enums[] = {
 	NULL
 };
 static cfg_type_t cfg_type_geoiptype = { .name = "geoiptype",
-					 .methods.parse = cfg_parse_enum,
-					 .methods.print = cfg_print_ustring,
-					 .methods.doc = cfg_doc_enum,
+					 .methods = cfg_enum_methods,
 					 .rep = &cfg_rep_string,
 					 .of = &geoiptype_enums };
 
@@ -1959,7 +2060,6 @@ print_negated(cfg_printer_t *pctx, const cfg_obj_t *obj) {
 static cfg_type_t cfg_type_negated = { .name = "negated",
 				       .methods.parse = cfg_parse_tuple,
 				       .methods.print = print_negated,
-				       NULL,
 				       .rep = &cfg_rep_tuple,
 				       .of = &negated_fields };
 
@@ -1968,16 +2068,14 @@ static cfg_type_t cfg_type_negated = { .name = "negated",
 static cfg_type_t cfg_type_addrmatchelt = {
 	.name = "address_match_element",
 	.methods.parse = parse_addrmatchelt,
-	.methods.doc = cfg_doc_terminal,
+	.methods.doc = cfg_doc_typename,
 };
 
 /*%
  * A bracketed address match list
  */
 cfg_type_t cfg_type_bracketed_aml = { .name = "bracketed_aml",
-				      .methods.parse = cfg_parse_bracketed_list,
-				      .methods.print = cfg_print_bracketed_list,
-				      .methods.doc = cfg_doc_bracketed_list,
+				      .methods = cfg_bracketed_list_methods,
 				      .rep = &cfg_rep_list,
 				      .of = &cfg_type_addrmatchelt };
 
@@ -2100,7 +2198,7 @@ cfg_print_boolean(cfg_printer_t *pctx, const cfg_obj_t *obj) {
 cfg_type_t cfg_type_boolean = { .name = "boolean",
 				.methods.parse = cfg_parse_boolean,
 				.methods.print = cfg_print_boolean,
-				.methods.doc = cfg_doc_terminal,
+				.methods.doc = cfg_doc_typename,
 				.rep = &cfg_rep_boolean };
 
 /*
@@ -3055,7 +3153,7 @@ cleanup:
 cfg_type_t cfg_type_token = { .name = "token",
 			      .methods.parse = parse_token,
 			      .methods.print = cfg_print_ustring,
-			      .methods.doc = cfg_doc_terminal,
+			      .methods.doc = cfg_doc_typename,
 			      .rep = &cfg_rep_string };
 
 /*
@@ -3109,7 +3207,7 @@ cleanup:
 cfg_type_t cfg_type_unsupported = { .name = "unsupported",
 				    .methods.parse = parse_unsupported,
 				    .methods.print = cfg_print_spacelist,
-				    .methods.doc = cfg_doc_terminal,
+				    .methods.doc = cfg_doc_typename,
 				    .rep = &cfg_rep_list };
 
 /*
@@ -3345,38 +3443,34 @@ cfg_doc_netaddr(cfg_printer_t *pctx, const cfg_type_t *type) {
 	}
 }
 
+static const cfg_typemethods_t netaddr_methods = {
+	.parse = parse_netaddr,
+	.print = cfg_print_sockaddr,
+	.doc = cfg_doc_netaddr,
+};
+
 cfg_type_t cfg_type_netaddr = { .name = "netaddr",
-				.methods.parse = parse_netaddr,
-				.methods.print = cfg_print_sockaddr,
-				.methods.doc = cfg_doc_netaddr,
+				.methods = netaddr_methods,
 				.rep = &cfg_rep_sockaddr,
 				.of = &netaddr_flags };
 
 cfg_type_t cfg_type_netaddr4 = { .name = "netaddr4",
-				 .methods.parse = parse_netaddr,
-				 .methods.print = cfg_print_sockaddr,
-				 .methods.doc = cfg_doc_netaddr,
+				 .methods = netaddr_methods,
 				 .rep = &cfg_rep_sockaddr,
 				 .of = &netaddr4_flags };
 
 cfg_type_t cfg_type_netaddr4wild = { .name = "netaddr4wild",
-				     .methods.parse = parse_netaddr,
-				     .methods.print = cfg_print_sockaddr,
-				     .methods.doc = cfg_doc_netaddr,
+				     .methods = netaddr_methods,
 				     .rep = &cfg_rep_sockaddr,
 				     .of = &netaddr4wild_flags };
 
 cfg_type_t cfg_type_netaddr6 = { .name = "netaddr6",
-				 .methods.parse = parse_netaddr,
-				 .methods.print = cfg_print_sockaddr,
-				 .methods.doc = cfg_doc_netaddr,
+				 .methods = netaddr_methods,
 				 .rep = &cfg_rep_sockaddr,
 				 .of = &netaddr6_flags };
 
 cfg_type_t cfg_type_netaddr6wild = { .name = "netaddr6wild",
-				     .methods.parse = parse_netaddr,
-				     .methods.print = cfg_print_sockaddr,
-				     .methods.doc = cfg_doc_netaddr,
+				     .methods = netaddr_methods,
 				     .rep = &cfg_rep_sockaddr,
 				     .of = &netaddr6wild_flags };
 
@@ -3491,7 +3585,7 @@ cfg_type_t cfg_type_netprefix = {
 	.name = "netprefix",
 	.methods.parse = cfg_parse_netprefix,
 	.methods.print = print_netprefix,
-	.methods.doc = cfg_doc_terminal,
+	.methods.doc = cfg_doc_typename,
 	.rep = &cfg_rep_netprefix,
 };
 
@@ -3505,9 +3599,9 @@ copy_textregion(isc_mem_t *mctx, isc_textregion_t *dest, isc_textregion_t src) {
 	dest->base[dest->length] = '\0';
 }
 
-static isc_result_t
-parse_sockaddrsub(cfg_parser_t *pctx, const cfg_type_t *type, int flags,
-		  cfg_obj_t **ret) {
+isc_result_t
+cfg_parse_sockaddr(cfg_parser_t *pctx, const cfg_type_t *type,
+		   cfg_obj_t **ret) {
 	isc_result_t result;
 	isc_netaddr_t netaddr;
 	in_port_t port = 0;
@@ -3515,11 +3609,16 @@ parse_sockaddrsub(cfg_parser_t *pctx, const cfg_type_t *type, int flags,
 	int have_address = 0;
 	int have_port = 0;
 	int have_tls = 0;
+	isc_textregion_t tls = { .base = NULL, .length = 0 };
+
+	REQUIRE(pctx != NULL);
+	REQUIRE(type != NULL);
+	REQUIRE(ret != NULL && *ret == NULL);
+
+	unsigned int flags = *(unsigned int *)type->of;
 	int is_port_ok = (flags & CFG_ADDR_PORTOK) != 0;
 	int is_tls_ok = (flags & CFG_ADDR_TLSOK) != 0;
 	int is_address_ok = (flags & CFG_ADDR_TRAILINGOK) != 0;
-
-	isc_textregion_t tls = { .base = NULL, .length = 0 };
 
 	CHECK(cfg_peektoken(pctx, 0));
 	if (cfg_lookingat_netaddr(pctx, flags)) {
@@ -3600,51 +3699,19 @@ cleanup:
 	return result;
 }
 
-isc_result_t
-cfg_parse_sockaddr_generic(cfg_parser_t *pctx, cfg_type_t *klass,
-			   const cfg_type_t *type, cfg_obj_t **ret) {
-	const unsigned int *flagp;
-
-	REQUIRE(pctx != NULL);
-	REQUIRE(klass != NULL);
-	REQUIRE(type != NULL);
-	REQUIRE(ret != NULL && *ret == NULL);
-
-	flagp = type->of;
-
-	return parse_sockaddrsub(pctx, klass, *flagp, ret);
-}
-
 static unsigned int sockaddr_flags = CFG_ADDR_V4OK | CFG_ADDR_V6OK |
 				     CFG_ADDR_PORTOK;
 cfg_type_t cfg_type_sockaddr = { .name = "sockaddr",
-				 .methods.parse = cfg_parse_sockaddr,
-				 .methods.print = cfg_print_sockaddr,
-				 .methods.doc = cfg_doc_sockaddr,
+				 .methods = cfg_sockaddr_methods,
 				 .rep = &cfg_rep_sockaddr,
 				 .of = &sockaddr_flags };
 
 static unsigned int sockaddrtls_flags = CFG_ADDR_V4OK | CFG_ADDR_V6OK |
 					CFG_ADDR_PORTOK | CFG_ADDR_TLSOK;
 cfg_type_t cfg_type_sockaddrtls = { .name = "sockaddrtls",
-				    .methods.parse = cfg_parse_sockaddrtls,
-				    .methods.print = cfg_print_sockaddr,
-				    .methods.doc = cfg_doc_sockaddr,
+				    .methods = cfg_sockaddr_methods,
 				    .rep = &cfg_rep_sockaddrtls,
 				    .of = &sockaddrtls_flags };
-
-isc_result_t
-cfg_parse_sockaddr(cfg_parser_t *pctx, const cfg_type_t *type,
-		   cfg_obj_t **ret) {
-	return cfg_parse_sockaddr_generic(pctx, &cfg_type_sockaddr, type, ret);
-}
-
-isc_result_t
-cfg_parse_sockaddrtls(cfg_parser_t *pctx, const cfg_type_t *type,
-		      cfg_obj_t **ret) {
-	return cfg_parse_sockaddr_generic(pctx, &cfg_type_sockaddrtls, type,
-					  ret);
-}
 
 void
 cfg_print_sockaddr(cfg_printer_t *pctx, const cfg_obj_t *obj) {
@@ -4072,7 +4139,12 @@ cfg_doc_obj(cfg_printer_t *pctx, const cfg_type_t *type) {
 }
 
 void
-cfg_doc_terminal(cfg_printer_t *pctx, const cfg_type_t *type) {
+cfg_print_typename(cfg_printer_t *pctx, const cfg_obj_t *obj) {
+	cfg_print_cstr(pctx, obj->type->name);
+}
+
+void
+cfg_doc_typename(cfg_printer_t *pctx, const cfg_type_t *type) {
 	REQUIRE(pctx != NULL);
 	REQUIRE(type != NULL);
 

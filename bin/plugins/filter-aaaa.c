@@ -204,9 +204,7 @@ static cfg_clausedef_t param_clauses[] = {
 static cfg_clausedef_t *param_clausesets[] = { param_clauses, NULL };
 
 static cfg_type_t cfg_type_parameters = { .name = "filter-aaaa-params",
-					  .methods.parse = cfg_parse_mapbody,
-					  .methods.print = cfg_print_mapbody,
-					  .methods.doc = cfg_doc_mapbody,
+					  .methods = cfg_mapbody_methods,
 					  .rep = &cfg_rep_map,
 					  .of = param_clausesets };
 
