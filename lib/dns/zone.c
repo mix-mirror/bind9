@@ -1170,12 +1170,8 @@ clear_keylist(dns_dnsseckeylist_t *list, isc_mem_t *mctx) {
 	}
 }
 
-/*
- * Free a zone.  Because we require that there be no more
- * outstanding events or references, no locking is necessary.
- */
-static void
-zone_free(dns_zone_t *zone) {
+void
+dns_zone_free(dns_zone_t *zone) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 	REQUIRE(!LOCKED_ZONE(zone));
 	REQUIRE(zone->timer == NULL);
@@ -1337,6 +1333,11 @@ zone_free(dns_zone_t *zone) {
 	isc_mutex_destroy(&zone->lock);
 	zone->magic = 0;
 	isc_mem_putanddetach(&zone->mctx, zone, sizeof(*zone));
+}
+
+static void
+zone_free(dns_zone_t *zone) {
+	dns_zone_free(zone);
 }
 
 /*
@@ -5884,8 +5885,8 @@ done:
 	return result;
 }
 
-static bool
-exit_check(dns_zone_t *zone) {
+bool
+dns_zone_free_check(dns_zone_t *zone) {
 	REQUIRE(LOCKED_ZONE(zone));
 
 	if (DNS_ZONE_FLAG(zone, DNS_ZONEFLG_SHUTDOWN) &&
@@ -5898,6 +5899,11 @@ exit_check(dns_zone_t *zone) {
 		return true;
 	}
 	return false;
+}
+
+static bool
+exit_check(dns_zone_t *zone) {
+	return dns_zone_free_check(zone);
 }
 
 static bool
@@ -6256,6 +6262,13 @@ dns_zone_getmctx(dns_zone_t *zone) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 
 	return zone->mctx;
+}
+
+isc_refcount_t *
+dns_zone_irefs(dns_zone_t *zone) {
+	REQUIRE(DNS_ZONE_VALID(zone));
+
+	return &zone->irefs;
 }
 
 dns_zonemgr_t *

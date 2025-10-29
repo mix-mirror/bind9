@@ -1515,6 +1515,15 @@ dns_zone_getmctx(dns_zone_t *zone);
  * \li	'zone' to be a valid zone.
  */
 
+isc_refcount_t *
+dns_zone_irefs(dns_zone_t *zone);
+/*%<
+ * Get the reference count of a zone.
+ *
+ * Requires:
+ * \li	'zone' to be a valid zone.
+ */
+
 dns_zonemgr_t *
 dns_zone_getmgr(dns_zone_t *zone);
 /*%<
@@ -2947,6 +2956,25 @@ dns_zone_getcfg(dns_zone_t *zone);
  *
  * Requires:
  * \li	'zone' to be a valid zone.
+ */
+
+void
+dns_zone_free(dns_zone_t *zone);
+/*
+ * Free a zone.  Because we require that there be no more
+ * outstanding events or references, no locking is necessary.
+ *
+ * Requires:
+ * \li	'zone' to be a valid zone, unlocked.
+ */
+
+bool
+dns_zone_free_check(dns_zone_t *zone);
+/*
+ * Check if a zone is ready to be freed.
+ *
+ * Requires:
+ * \li	'zone' to be a valid zone, locked.
  */
 
 #if DNS_ZONE_TRACE
