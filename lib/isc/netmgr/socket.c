@@ -245,6 +245,12 @@ isc__nm_socket_reuse_bpf(uv_os_sock_t fd, uint32_t threads_per_socket) {
 
 	int attach_filter_result = setsockopt(fd, SOL_SOCKET, SO_ATTACH_REUSEPORT_CBPF, &bpf_program, sizeof(bpf_program));
 
+	if (attach_filter_result != 0) {
+		printf("SETSOCKOPT: fd: %d, errno: %d (%s)\n", fd, errno, strerror(errno));
+	} else {
+		printf("SETSOCKOPT: successful!\n");
+	}
+
 	return (attach_filter_result == 0) ? ISC_R_SUCCESS : ISC_R_FAILURE;
 }
 

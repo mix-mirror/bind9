@@ -83,6 +83,8 @@ isc__nm_udp_lb_socket(sa_family_t sa_family) {
 	if (isc__netmgr->load_balance_sockets) {
 		result = isc__nm_socket_reuse_lb(sock);
 		RUNTIME_CHECK(result == ISC_R_SUCCESS);
+	} else {
+		RUNTIME_CHECK(false); // FIXME(ap): DO NOT FORCE REUSEPORT
 	}
 
 	return sock;
@@ -254,7 +256,8 @@ isc_nm_listenudp(uint32_t workers, isc_sockaddr_t *iface, isc_nm_recv_cb_t cb,
 #if defined(__linux__)
 	// TODO(alessio): How do we expose this? What do we do if the
 	// kernel is too old or is not Linux?
-	result = isc__nm_socket_reuse_bpf(fd, isc_loopmgr_nloops());
+	int c_fd = sock->children[0].fd;
+	result = isc__nm_socket_reuse_bpf(c_fd, isc_loopmgr_nloops());
 	RUNTIME_CHECK(result == ISC_R_SUCCESS);
 #endif
 	}
