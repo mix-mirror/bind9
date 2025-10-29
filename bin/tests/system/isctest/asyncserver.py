@@ -773,7 +773,9 @@ class AsyncDnsServer(AsyncServer):
 
     def __init__(
         self,
+        /,
         default_rcode: dns.rcode.Rcode = dns.rcode.REFUSED,
+        default_aa: bool = True,
         acknowledge_manual_dname_handling: bool = False,
         acknowledge_tsig_dnspython_hacks: bool = False,
     ) -> None:
@@ -783,6 +785,7 @@ class AsyncDnsServer(AsyncServer):
         self._connection_handler: Optional[ConnectionHandler] = None
         self._response_handlers: List[ResponseHandler] = []
         self._default_rcode = default_rcode
+        self._default_aa = default_aa
         self._acknowledge_manual_dname_handling = acknowledge_manual_dname_handling
         self._acknowledge_tsig_dnspython_hacks = acknowledge_tsig_dnspython_hacks
 
@@ -1101,6 +1104,8 @@ class AsyncDnsServer(AsyncServer):
         Yield response(s) either from response handlers or zone data.
         """
         qctx.response.set_rcode(self._default_rcode)
+        if self._default_aa:
+            qctx.response.flags |= dns.flags.AA
 
         self._prepare_response_from_zone_data(qctx)
 
