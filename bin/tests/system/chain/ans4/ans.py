@@ -443,7 +443,6 @@ class ChainResponseHandler(DomainHandler):
         for rrset in self._additional_rrsets:
             qctx.response.additional.append(rrset)
 
-        qctx.response.set_rcode(dns.rcode.NOERROR)
         qctx.response.use_edns()
         yield DnsResponseSend(qctx.response)
 
@@ -473,7 +472,9 @@ class ChainResponseHandler(DomainHandler):
 
 
 def main() -> None:
-    server = ControllableAsyncDnsServer(default_aa=True)
+    server = ControllableAsyncDnsServer(
+        default_aa=True, default_rcode=dns.rcode.NOERROR
+    )
     server.install_control_command(ChainSetupCommand())
     server.run()
 
