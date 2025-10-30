@@ -348,6 +348,8 @@ struct dns_zone {
 
 	dns_remote_t alsonotify;
 	dns_notifyctx_t notifysoa;
+
+	dns_remote_t cds_endpoints;
 	dns_notifyctx_t notifycds;
 
 	isc_sockaddr_t parentalsrc4;
@@ -1116,6 +1118,7 @@ dns_zone_create(dns_zone_t **zonep, isc_mem_t *mctx, isc_tid_t tid) {
 	zone->primaries = r;
 	zone->parentals = r;
 	zone->alsonotify = r;
+	zone->cds_endpoints = r;
 	zone->defaultkasp = NULL;
 	ISC_LIST_INIT(zone->keyring);
 
@@ -1254,6 +1257,7 @@ dns__zone_free(dns_zone_t *zone) {
 	dns_zone_setparentals(zone, NULL, NULL, NULL, NULL, 0);
 	dns_zone_setprimaries(zone, NULL, NULL, NULL, NULL, 0);
 	dns_zone_setalsonotify(zone, NULL, NULL, NULL, NULL, 0);
+	dns_zone_setcdsendpoints(zone, NULL, NULL, NULL, NULL, 0);
 
 	zone->check_names = dns_severity_ignore;
 	if (zone->update_acl != NULL) {
@@ -6472,46 +6476,6 @@ dns_zone_getnotifysrc6(dns_zone_t *zone, isc_sockaddr_t *notifysrc) {
 	UNLOCK_ZONE(zone);
 }
 
-void
-dns_zone_setalsonotify(dns_zone_t *zone, isc_sockaddr_t *addresses,
-		       isc_sockaddr_t *sources, dns_name_t **keynames,
-		       dns_name_t **tlsnames, uint32_t count) {
-	dns_remote_t remote;
-
-	REQUIRE(DNS_ZONE_VALID(zone));
-
-	LOCK_ZONE(zone);
-
-	remote.magic = DNS_REMOTE_MAGIC;
-	remote.addresses = addresses;
-	remote.sources = sources;
-	remote.keynames = keynames;
-	remote.tlsnames = tlsnames;
-	remote.addrcnt = count;
-
-	if (dns_remote_equal(&zone->alsonotify, &remote)) {
-		goto unlock;
-	}
-
-	dns_remote_clear(&zone->alsonotify);
-
-	/*
-	 * If count == 0, don't allocate any space for servers to notify.
-	 */
-	if (count == 0) {
-		goto unlock;
-	}
-
-	/*
-	 * Now set up the notify address and key lists.
-	 */
-	dns_remote_init(&zone->alsonotify, count, addresses, sources, keynames,
-			tlsnames, true, zone->mctx);
-
-unlock:
-	UNLOCK_ZONE(zone);
-}
-
 static bool
 has_pf(isc_sockaddr_t *addresses, size_t count, int pf) {
 	for (size_t i = 0; i < count; i++) {
@@ -6538,57 +6502,81 @@ report_no_active_addresses(dns_zone_t *zone, isc_sockaddr_t *addresses,
 	}
 }
 
-void
-dns_zone_setprimaries(dns_zone_t *zone, isc_sockaddr_t *addresses,
-		      isc_sockaddr_t *sources, dns_name_t **keynames,
-		      dns_name_t **tlsnames, uint32_t count) {
-	dns_remote_t remote;
+static void
+setremote(dns_zone_t *zone, dns_remote_t *remote, const char *remotestr,
+	  isc_sockaddr_t *addresses, isc_sockaddr_t *sources,
+	  dns_name_t **keynames, dns_name_t **tlsnames, bool refresh,
+	  bool report, uint32_t count) {
+	dns_remote_t newremote;
 
 	REQUIRE(DNS_ZONE_VALID(zone));
+	REQUIRE(DNS_REMOTE_VALID(remote));
 
-	LOCK_ZONE(zone);
+	newremote.magic = DNS_REMOTE_MAGIC;
+	newremote.addresses = addresses;
+	newremote.sources = sources;
+	newremote.keynames = keynames;
+	newremote.tlsnames = tlsnames;
+	newremote.addrcnt = count;
 
-	remote.magic = DNS_REMOTE_MAGIC;
-	remote.addresses = addresses;
-	remote.sources = sources;
-	remote.keynames = keynames;
-	remote.tlsnames = tlsnames;
-	remote.addrcnt = count;
+	if (dns_remote_equal(remote, &newremote)) {
+		return;
+	}
 
 	/*
-	 * The refresh code assumes that 'primaries' wouldn't change under it.
+	 * The refresh code assumes that 'servers' wouldn't change under it.
 	 * If it will change then kill off any current refresh in progress
 	 * and update the primaries info.  If it won't change then we can just
 	 * unlock and exit.
 	 */
-	if (!dns_remote_equal(&zone->primaries, &remote)) {
-		if (zone->request != NULL) {
-			dns_request_cancel(zone->request);
-		}
-	} else {
-		goto unlock;
+	if (zone->request != NULL && refresh) {
+		dns_request_cancel(zone->request);
 	}
 
-	dns_remote_clear(&zone->primaries);
+	dns_remote_clear(remote);
 
 	/*
-	 * If count == 0, don't allocate any space for primaries.
+	 * If count == 0, don't allocate any space for servers.
 	 */
 	if (count == 0) {
-		goto unlock;
+		return;
 	}
 
-	report_no_active_addresses(zone, addresses, count, "primaries");
-
 	/*
-	 * Now set up the primaries and primary key lists.
+	 * Now set up the address and key lists.
 	 */
-	dns_remote_init(&zone->primaries, count, addresses, sources, keynames,
-			tlsnames, true, zone->mctx);
+	if (report) {
+		report_no_active_addresses(zone, addresses, count, remotestr);
+	}
 
+	dns_remote_init(remote, count, addresses, sources, keynames, tlsnames,
+			true, zone->mctx);
+}
+
+void
+dns_zone_setalsonotify(dns_zone_t *zone, isc_sockaddr_t *addresses,
+		       isc_sockaddr_t *sources, dns_name_t **keynames,
+		       dns_name_t **tlsnames, uint32_t count) {
+	bool refresh = false;
+	bool report = false;
+
+	LOCK_ZONE(zone);
+	setremote(zone, &zone->alsonotify, "also-notify", addresses, sources,
+		  keynames, tlsnames, refresh, report, count);
+	UNLOCK_ZONE(zone);
+}
+
+void
+dns_zone_setprimaries(dns_zone_t *zone, isc_sockaddr_t *addresses,
+		      isc_sockaddr_t *sources, dns_name_t **keynames,
+		      dns_name_t **tlsnames, uint32_t count) {
+	bool refresh = true;
+	bool report = true;
+
+	LOCK_ZONE(zone);
+	setremote(zone, &zone->primaries, "primaries", addresses, sources,
+		  keynames, tlsnames, refresh, report, count);
 	DNS_ZONE_CLRFLAG(zone, DNS_ZONEFLG_NOPRIMARIES);
-
-unlock:
 	UNLOCK_ZONE(zone);
 }
 
@@ -6596,43 +6584,25 @@ void
 dns_zone_setparentals(dns_zone_t *zone, isc_sockaddr_t *addresses,
 		      isc_sockaddr_t *sources, dns_name_t **keynames,
 		      dns_name_t **tlsnames, uint32_t count) {
-	dns_remote_t remote;
-
-	REQUIRE(DNS_ZONE_VALID(zone));
+	bool refresh = false;
+	bool report = true;
 
 	LOCK_ZONE(zone);
+	setremote(zone, &zone->parentals, "parental-agents", addresses, sources,
+		  keynames, tlsnames, refresh, report, count);
+	UNLOCK_ZONE(zone);
+}
 
-	remote.magic = DNS_REMOTE_MAGIC;
-	remote.addresses = addresses;
-	remote.sources = sources;
-	remote.keynames = keynames;
-	remote.tlsnames = tlsnames;
-	remote.addrcnt = count;
+void
+dns_zone_setcdsendpoints(dns_zone_t *zone, isc_sockaddr_t *addresses,
+			 isc_sockaddr_t *sources, dns_name_t **keynames,
+			 dns_name_t **tlsnames, uint32_t count) {
+	bool refresh = false;
+	bool report = false;
 
-	if (dns_remote_equal(&zone->parentals, &remote)) {
-		goto unlock;
-	}
-
-	dns_remote_clear(&zone->parentals);
-
-	/*
-	 * If count == 0, don't allocate any space for parentals.
-	 */
-	if (count == 0) {
-		goto unlock;
-	}
-
-	report_no_active_addresses(zone, addresses, count, "parental-agents");
-
-	/*
-	 * Now set up the parentals and parental key lists.
-	 */
-	dns_remote_init(&zone->parentals, count, addresses, sources, keynames,
-			tlsnames, true, zone->mctx);
-
-	dns_zone_log(zone, ISC_LOG_NOTICE, "checkds: set %u parentals", count);
-
-unlock:
+	LOCK_ZONE(zone);
+	setremote(zone, &zone->cds_endpoints, "cds-endpoints", addresses,
+		  sources, keynames, tlsnames, refresh, report, count);
 	UNLOCK_ZONE(zone);
 }
 

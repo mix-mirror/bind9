@@ -683,6 +683,20 @@ dns_zone_setalsonotify(dns_zone_t *zone, isc_sockaddr_t *addresses,
  */
 
 void
+dns_zone_setcdsendpoints(dns_zone_t *zone, isc_sockaddr_t *addresses,
+			 isc_sockaddr_t *sources, dns_name_t **keynames,
+			 dns_name_t **tlsnames, uint32_t count);
+/*%<
+ *	Set the list of servers to be notified when the zone changes
+ *	its CDS/CDNSKEY RRset. To clear the list use 'count = 0'.
+ *
+ * Require:
+ *\li	'zone' to be a valid zone.
+ *\li	'addresses' to be non-NULL if count != 0.
+ *\li	'count' to be the number of notifiees.
+ */
+
+void
 dns_zone_unload(dns_zone_t *zone);
 /*%<
  *	detach the database from the zone structure.
