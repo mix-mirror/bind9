@@ -25,8 +25,6 @@ from isctest.asyncserver import (
     ResponseAction,
 )
 
-from isctest.compat import dns_rcode
-
 
 def log_query(qctx: QueryContext) -> None:
     """
@@ -66,7 +64,7 @@ class EntRcodeChanger(DomainHandler):
 
     @property
     @abc.abstractmethod
-    def rcode(self) -> dns_rcode:
+    def rcode(self) -> dns.rcode.Rcode:
         raise NotImplementedError
 
     async def get_responses(
