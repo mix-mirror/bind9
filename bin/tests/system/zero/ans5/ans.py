@@ -14,10 +14,7 @@ information regarding copyright ownership.
 import ipaddress
 from typing import AsyncGenerator
 
-import dns.flags
-import dns.message
-import dns.rdata
-import dns.rdataclass
+import dns.rcode
 import dns.rdatatype
 import dns.rrset
 

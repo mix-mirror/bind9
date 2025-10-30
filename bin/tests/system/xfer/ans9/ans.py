@@ -14,7 +14,6 @@ information regarding copyright ownership.
 from typing import AsyncGenerator
 
 import dns.message
-import dns.rdataclass
 import dns.rdatatype
 import dns.rrset
 
@@ -52,7 +51,7 @@ class AXFRServer(DomainHandler):
         soa_rrset = dns.rrset.from_text(
             qctx.qname,
             300,
-            dns.rdataclass.IN,
+            qctx.qclass,
             dns.rdatatype.SOA,
             f". . {self.soa_version} 0 0 0 0",
         )
@@ -79,7 +78,7 @@ class AXFRServer(DomainHandler):
         # will already have been done with the mandatory stuff by then.
         ns_message = dns.message.make_response(qctx.query)
         ns_rrset = dns.rrset.from_text(
-            qctx.qname, 300, dns.rdataclass.IN, dns.rdatatype.NS, "."
+            qctx.qname, 300, qctx.qclass, dns.rdatatype.NS, "."
         )
         ns_message.answer.append(ns_rrset)
 
@@ -90,7 +89,7 @@ class AXFRServer(DomainHandler):
         txt_rrset = dns.rrset.from_text(
             qctx.qname,
             300,
-            dns.rdataclass.IN,
+            qctx.qclass,
             dns.rdatatype.TXT,
             "foo bar",
         )

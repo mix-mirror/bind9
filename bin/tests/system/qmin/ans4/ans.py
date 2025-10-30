@@ -14,6 +14,7 @@ information regarding copyright ownership.
 from typing import AsyncGenerator
 
 import dns.rcode
+import dns.rdatatype
 
 from isctest.asyncserver import (
     AsyncDnsServer,

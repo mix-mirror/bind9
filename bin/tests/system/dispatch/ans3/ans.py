@@ -11,7 +11,8 @@
 
 from typing import AsyncGenerator
 
-import dns
+import dns.flags
+import dns.rcode
 
 from isctest.asyncserver import (
     AsyncDnsServer,

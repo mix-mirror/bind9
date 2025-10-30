@@ -19,8 +19,8 @@ import abc
 import logging
 import re
 
+import dns.name
 import dns.rcode
-import dns.rdata
 import dns.rdataclass
 import dns.rdatatype
 import dns.rrset

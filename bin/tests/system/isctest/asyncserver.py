@@ -38,12 +38,15 @@ import signal
 import struct
 import sys
 
+import dns.exception
 import dns.flags
 import dns.message
 import dns.name
 import dns.node
 import dns.rcode
+import dns.rdata
 import dns.rdataclass
+import dns.rdataset
 import dns.rdatatype
 import dns.rrset
 import dns.tsig

@@ -11,7 +11,8 @@
 
 from typing import AsyncGenerator
 
-import dns
+import dns.rdatatype
+import dns.rrset
 
 from isctest.asyncserver import (
     AsyncDnsServer,
@@ -33,7 +34,7 @@ class AddRrsigToAHandler(ResponseHandler):
             "gB+eISXAhSPZU2i/II0W9ZUhC2SCIrb94mlNvP5092WAeXxqN/vG43/1nmDly2Qs7y5VCjSMOGn85bnaMoAc7w=="
         )
         rrsig_rrset = dns.rrset.from_text(
-            qctx.qname, 1, dns.rdataclass.IN, dns.rdatatype.RRSIG, rrsig
+            qctx.qname, 1, qctx.qclass, dns.rdatatype.RRSIG, rrsig
         )
         qctx.response.answer.append(rrsig_rrset)
         yield DnsResponseSend(qctx.response)
@@ -48,7 +49,7 @@ class AddNsecToTxtHandler(ResponseHandler):
     ) -> AsyncGenerator[DnsResponseSend, None]:
         nsec = f"{qctx.qname.to_text()} A NS SOA RRSIG NSEC"
         nsec_rrset = dns.rrset.from_text(
-            qctx.qname, 1, dns.rdataclass.IN, dns.rdatatype.NSEC, nsec
+            qctx.qname, 1, qctx.qclass, dns.rdatatype.NSEC, nsec
         )
         qctx.response.authority.append(nsec_rrset)
         yield DnsResponseSend(qctx.response)
