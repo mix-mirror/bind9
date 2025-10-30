@@ -13,7 +13,9 @@ information regarding copyright ownership.
 
 from typing import AsyncGenerator
 
-import dns
+import dns.rcode
+import dns.rdatatype
+import dns.rrset
 
 from isctest.asyncserver import (
     AsyncDnsServer,
@@ -32,7 +34,7 @@ class ReplyA(ResponseHandler):
         self, qctx: QueryContext
     ) -> AsyncGenerator[DnsResponseSend, None]:
         a_rrset = dns.rrset.from_text(
-            qctx.qname, 300, dns.rdataclass.IN, dns.rdatatype.A, "10.53.0.5"
+            qctx.qname, 300, qctx.qclass, dns.rdatatype.A, "10.53.0.5"
         )
         qctx.response.answer.append(a_rrset)
         yield DnsResponseSend(qctx.response)

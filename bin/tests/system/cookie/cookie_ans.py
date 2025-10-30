@@ -11,7 +11,11 @@
 
 from typing import AsyncGenerator
 
-import dns
+import dns.edns
+import dns.message
+import dns.name
+import dns.rdatatype
+import dns.rrset
 import dns.tsigkeyring
 
 from isctest.asyncserver import (
@@ -68,7 +72,7 @@ def _tld(qctx: QueryContext) -> dns.name.Name:
 
 def _soa(qctx: QueryContext) -> dns.rrset.RRset:
     return dns.rrset.from_text(
-        _tld(qctx), 2, dns.rdataclass.IN, dns.rdatatype.SOA, ". . 0 0 0 0 2"
+        _tld(qctx), 2, qctx.qclass, dns.rdatatype.SOA, ". . 0 0 0 0 2"
     )
 
 
@@ -80,21 +84,19 @@ def _ns(qctx: QueryContext) -> dns.rrset.RRset:
     return dns.rrset.from_text(
         qctx.qname,
         1,
-        dns.rdataclass.IN,
+        qctx.qclass,
         dns.rdatatype.NS,
         _ns_name(qctx).to_text(),
     )
 
 
 def _legit_a(qctx: QueryContext) -> dns.rrset.RRset:
-    return dns.rrset.from_text(
-        qctx.qname, 1, dns.rdataclass.IN, dns.rdatatype.A, "10.53.0.9"
-    )
+    return dns.rrset.from_text(qctx.qname, 1, qctx.qclass, dns.rdatatype.A, "10.53.0.9")
 
 
 def _spoofed_a(qctx: QueryContext) -> dns.rrset.RRset:
     return dns.rrset.from_text(
-        qctx.qname, 1, dns.rdataclass.IN, dns.rdatatype.A, "10.53.0.10"
+        qctx.qname, 1, qctx.qclass, dns.rdatatype.A, "10.53.0.10"
     )
 
 

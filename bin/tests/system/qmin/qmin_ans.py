@@ -16,7 +16,6 @@ from typing import AsyncGenerator
 import abc
 
 import dns.rcode
-import dns.rdataclass
 import dns.rdatatype
 
 from isctest.asyncserver import (
