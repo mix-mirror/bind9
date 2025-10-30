@@ -48,12 +48,11 @@ class IncrementARecordHandler(ResponseHandler):
             qctx.response.answer.append(rrset)
             self._ip_address += 1
 
-        qctx.response.set_rcode(dns.rcode.NOERROR)
         yield DnsResponseSend(qctx.response)
 
 
 def main() -> None:
-    server = AsyncDnsServer(default_aa=True)
+    server = AsyncDnsServer(default_aa=True, default_rcode=dns.rcode.NOERROR)
     server.install_response_handler(IncrementARecordHandler())
     server.run()
 

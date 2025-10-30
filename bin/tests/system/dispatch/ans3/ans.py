@@ -29,13 +29,12 @@ class TruncateOnUdpHandler(ResponseHandler):
         self, qctx: QueryContext
     ) -> AsyncGenerator[ResponseAction, None]:
         assert qctx.protocol == DnsProtocol.UDP, "This server only supports UDP"
-        qctx.response.set_rcode(dns.rcode.NOERROR)
         qctx.response.flags |= dns.flags.TC
         yield DnsResponseSend(qctx.response)
 
 
 def main() -> None:
-    server = AsyncDnsServer()
+    server = AsyncDnsServer(default_rcode=dns.rcode.NOERROR)
     server.install_connection_handler(ConnectionReset(delay=1.0))
     server.install_response_handler(TruncateOnUdpHandler())
     server.run()

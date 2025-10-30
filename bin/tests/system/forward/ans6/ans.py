@@ -60,7 +60,6 @@ class ChaseDsHandler(ResponseHandler):
             response_rdata = ". . 0 0 0 0 0"
             response_section = qctx.response.authority
 
-        qctx.response.set_rcode(dns.rcode.NOERROR)
         qctx.response.use_edns(None)
 
         response_rrset = dns.rrset.from_text(
@@ -72,7 +71,9 @@ class ChaseDsHandler(ResponseHandler):
 
 
 def main() -> None:
-    server = ControllableAsyncDnsServer(default_aa=True)
+    server = ControllableAsyncDnsServer(
+        default_rcode=dns.rcode.NOERROR, default_aa=True
+    )
     server.install_control_command(ToggleResponsesCommand())
     server.install_response_handler(ChaseDsHandler())
     server.run()
