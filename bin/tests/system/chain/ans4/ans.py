@@ -445,7 +445,7 @@ class ChainResponseHandler(DomainHandler):
 
         qctx.response.set_rcode(dns.rcode.NOERROR)
         qctx.response.use_edns()
-        yield DnsResponseSend(qctx.response, authoritative=True)
+        yield DnsResponseSend(qctx.response)
 
     def _non_chain_answer(self, qctx: QueryContext) -> List[dns.rrset.RRset]:
         owner = qctx.qname
@@ -473,7 +473,7 @@ class ChainResponseHandler(DomainHandler):
 
 
 def main() -> None:
-    server = ControllableAsyncDnsServer()
+    server = ControllableAsyncDnsServer(default_aa=True)
     server.install_control_command(ChainSetupCommand())
     server.run()
 
