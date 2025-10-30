@@ -44,6 +44,15 @@ dns_zonefetch_run(void *arg) {
 		goto cancel;
 	}
 
+	if (isc_log_wouldlog(ISC_LOG_DEBUG(3))) {
+		char namebuf[DNS_NAME_FORMATSIZE];
+		char typebuf[DNS_RDATATYPE_FORMATSIZE];
+		dns_name_format(fetch->qname, namebuf, sizeof(namebuf));
+		dns_rdatatype_format(fetch->qtype, typebuf, sizeof(typebuf));
+		dns_zone_log(zone, ISC_LOG_DEBUG(3),
+			     "Do fetch for %s/%s request", namebuf, typebuf);
+	}
+
 	/*
 	 * Use of DNS_FETCHOPT_NOCACHED is essential here.  If it is not
 	 * set and the cache still holds a non-expired, validated version
@@ -71,8 +80,8 @@ cancel:
 		dns_name_format(fetch->qname, namebuf, sizeof(namebuf));
 		dns_rdatatype_format(fetch->qtype, typebuf, sizeof(typebuf));
 		dns_zone_log(zone, ISC_LOG_WARNING,
-			     "Failed to create fetch for '%s' %s request",
-			     namebuf, typebuf);
+			     "Failed fetch for %s/%s request", namebuf,
+			     typebuf);
 	}
 
 	/*

@@ -21084,19 +21084,11 @@ checkds_send(dns_zone_t *zone) {
 static void
 nsfetch_start(dns_zonefetch_t *fetch) {
 	dns_nsfetch_t *nsfetch;
-	dns_zone_t *zone = fetch->zone;
 	unsigned int nlabels = 1;
 
 	REQUIRE(fetch->fetchtype == ZONEFETCHTYPE_NS);
 
 	nsfetch = &fetch->fetchdata.nsfetch;
-
-	if (isc_log_wouldlog(ISC_LOG_DEBUG(3))) {
-		char namebuf[DNS_NAME_FORMATSIZE];
-		dns_name_format(&nsfetch->pname, namebuf, sizeof(namebuf));
-		dnssec_log(zone, ISC_LOG_DEBUG(3),
-			   "Create fetch for '%s' NS request", namebuf);
-	}
 
 	/* Derive parent domain. XXXWMM: Check for root domain */
 	dns_name_split(&nsfetch->pname,
