@@ -35,11 +35,11 @@ class MaybeDelayedAddressAnswerHandler(ResponseHandler):
 
         qctx.response.set_rcode(dns.rcode.NOERROR)
         delay = 0.05 if qctx.qname.labels[0].startswith(b"latency") else 0.00
-        yield DnsResponseSend(qctx.response, delay=delay, authoritative=True)
+        yield DnsResponseSend(qctx.response, delay=delay)
 
 
 def main() -> None:
-    server = ControllableAsyncDnsServer()
+    server = ControllableAsyncDnsServer(default_aa=True)
     server.install_control_command(ToggleResponsesCommand())
     server.install_response_handler(MaybeDelayedAddressAnswerHandler())
     server.run()

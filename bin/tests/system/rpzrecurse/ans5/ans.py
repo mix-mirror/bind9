@@ -36,7 +36,7 @@ class ReplyA(ResponseHandler):
         )
         qctx.response.answer.append(a_rrset)
         qctx.response.set_rcode(dns.rcode.NOERROR)
-        yield DnsResponseSend(qctx.response, authoritative=True)
+        yield DnsResponseSend(qctx.response)
 
 
 class IgnoreNs(ResponseHandler):
@@ -54,11 +54,11 @@ class FallbackHandler(ResponseHandler):
         self, qctx: QueryContext
     ) -> AsyncGenerator[DnsResponseSend, None]:
         qctx.response.set_rcode(dns.rcode.NOERROR)
-        yield DnsResponseSend(qctx.response, authoritative=True)
+        yield DnsResponseSend(qctx.response)
 
 
 def main() -> None:
-    server = AsyncDnsServer()
+    server = AsyncDnsServer(default_aa=True)
     server.install_response_handler(ReplyA())
     server.install_response_handler(IgnoreNs())
     server.install_response_handler(FallbackHandler())

@@ -69,7 +69,7 @@ class CnameThenDnameHandler(DomainHandler):
             dname_rrset = get_dname_rrset_at_name(qctx.zone, dname_owner)
             qctx.response.answer.append(dname_rrset)
 
-        yield DnsResponseSend(qctx.response, authoritative=True)
+        yield DnsResponseSend(qctx.response)
 
 
 class Cve202125215(DomainHandler):
@@ -108,11 +108,11 @@ class Cve202125215(DomainHandler):
             )
             qctx.response.answer.append(cname_rrset)
 
-        yield DnsResponseSend(qctx.response, authoritative=True)
+        yield DnsResponseSend(qctx.response)
 
 
 def main() -> None:
-    server = AsyncDnsServer(acknowledge_manual_dname_handling=True)
+    server = AsyncDnsServer(acknowledge_manual_dname_handling=True, default_aa=True)
     server.install_response_handler(CnameThenDnameHandler())
     server.install_response_handler(Cve202125215())
     server.run()
