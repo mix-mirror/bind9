@@ -28,13 +28,15 @@
  * allows common code paths to differentiate between them
  */
 typedef enum {
+	ZONEFETCHTYPE_DSYNC,
 	ZONEFETCHTYPE_KEY,
 	ZONEFETCHTYPE_NS,
 } dns_zonefetch_type_t;
 
-typedef struct dns_keyfetch  dns_keyfetch_t;
-typedef struct dns_nsfetch   dns_nsfetch_t;
-typedef struct dns_zonefetch dns_zonefetch_t;
+typedef struct dns_dsyncfetch dns_dsyncfetch_t;
+typedef struct dns_keyfetch   dns_keyfetch_t;
+typedef struct dns_nsfetch    dns_nsfetch_t;
+typedef struct dns_zonefetch  dns_zonefetch_t;
 
 /*
  * Fetch methods.
@@ -50,6 +52,10 @@ typedef struct dns_zonefetch_methods {
 /*
  * Fetch contexts.
  */
+struct dns_dsyncfetch {
+	dns_name_t dsyncname;
+};
+
 struct dns_keyfetch {
 	dns_rdataset_t keydataset;
 	dns_db_t      *db;
@@ -60,8 +66,9 @@ struct dns_nsfetch {
 };
 
 typedef union dns_fetchdata {
-	dns_keyfetch_t keyfetch;
-	dns_nsfetch_t  nsfetch;
+	dns_dsyncfetch_t dsyncfetch;
+	dns_keyfetch_t	 keyfetch;
+	dns_nsfetch_t	 nsfetch;
 } dns_zonefetch_data_t;
 
 struct dns_zonefetch {

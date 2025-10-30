@@ -53,6 +53,7 @@
 #include <dns/dbiterator.h>
 #include <dns/dlz.h>
 #include <dns/dnssec.h>
+#include <dns/dsync.h>
 #include <dns/journal.h>
 #include <dns/kasp.h>
 #include <dns/keydata.h>
@@ -345,6 +346,8 @@ struct dns_zone {
 	dns_checkdstype_t checkdstype;
 	uint32_t nsfetchcount;
 	uint32_t parent_nscount;
+	uint32_t dsyncfetchcount;
+	uint32_t parent_dsynccount;
 
 	dns_remote_t alsonotify;
 	dns_notifyctx_t notifysoa;
@@ -923,6 +926,8 @@ static void
 zone_maintenance(dns_zone_t *zone);
 static void
 zone_notify(dns_zone_t *zone, isc_time_t *now);
+static void
+zone_notifycds(dns_zone_t *zone, isc_time_t *now);
 static void
 dump_done(void *arg, isc_result_t result);
 static isc_result_t
@@ -12833,6 +12838,285 @@ cleanup1:
 	dns_db_detach(&zonedb);
 }
 
+static void
+dsyncfetch_start(dns_zonefetch_t *fetch) {
+	dns_dsyncfetch_t *dsyncfetch;
+	unsigned int nlabels = 1;
+
+	REQUIRE(fetch->fetchtype == ZONEFETCHTYPE_DSYNC);
+
+	dsyncfetch = &fetch->fetchdata.dsyncfetch;
+
+	/* Derive parent domain. XXXWMM: Check for root domain */
+	dns_name_split(&dsyncfetch->dsyncname,
+		       dns_name_countlabels(&dsyncfetch->dsyncname) - nlabels,
+		       NULL, &dsyncfetch->dsyncname);
+
+	fetch->qtype = dns_rdatatype_dsync;
+	fetch->qname = &dsyncfetch->dsyncname;
+}
+
+/*
+ * Retry an DSYNC RRset lookup.
+ */
+static void
+dsyncfetch_continue(dns_zonefetch_t *fetch) {
+	dns_zone_t *zone = fetch->zone;
+
+	REQUIRE(fetch->fetchtype == ZONEFETCHTYPE_DSYNC);
+
+#ifdef ENABLE_AFL
+	if (!dns_fuzzing_resolver) {
+#endif /* ifdef ENABLE_AFL */
+		LOCK_ZONE(zone);
+		zone->dsyncfetchcount++;
+		isc_refcount_increment0(&zone->irefs);
+
+		dns_rdataset_init(&fetch->rrset);
+		dns_rdataset_init(&fetch->sigset);
+		if (isc_log_wouldlog(ISC_LOG_DEBUG(3))) {
+			dnssec_log(zone, ISC_LOG_DEBUG(3),
+				   "Creating parent DSYNC fetch in "
+				   "dsyncfetch_continue()");
+		}
+		isc_async_run(zone->loop, dns_zonefetch_run, fetch);
+		UNLOCK_ZONE(zone);
+#ifdef ENABLE_AFL
+	}
+#endif /* ifdef ENABLE_AFL */
+}
+
+static void
+dsyncfetch_cancel(dns_zonefetch_t *fetch) {
+	dns_zone_t *zone;
+
+	REQUIRE(fetch->fetchtype == ZONEFETCHTYPE_DSYNC);
+
+	zone = fetch->zone;
+
+	INSIST(LOCKED_ZONE(zone));
+
+	zone->dsyncfetchcount--;
+}
+
+/*
+ * A DSYNC RRset has been fetched; scan the RRset and start sending
+ * NOTIFY(CDS) queries to them.
+ */
+static isc_result_t
+dsyncfetch_done(dns_zonefetch_t *fetch, isc_result_t eresult) {
+	dns_dsyncfetch_t *dfetch;
+	isc_result_t result = ISC_R_NOMORE;
+	dns_notify_t *notify = NULL;
+	dns_zone_t *zone = NULL;
+	dns_name_t *dsyncname = NULL;
+	char dsyncnamebuf[DNS_NAME_FORMATSIZE];
+	dns_rdataset_t *rrset = NULL;
+	dns_rdataset_t *sigset = NULL;
+
+	dfetch = &fetch->fetchdata.dsyncfetch;
+	zone = fetch->zone;
+	rrset = &fetch->rrset;
+	sigset = &fetch->sigset;
+	dsyncname = &dfetch->dsyncname;
+
+	zone->dsyncfetchcount--;
+
+	dns_name_format(dsyncname, dsyncnamebuf, sizeof(dsyncnamebuf));
+	dns_zone_log(zone, ISC_LOG_DEBUG(3),
+		     "dsyncfetch: Returned from '%s' DSYNC fetch in "
+		     "dsyncfetch_done(): %s",
+		     dsyncnamebuf, isc_result_totext(eresult));
+
+	if (eresult == DNS_R_NCACHENXRRSET || eresult == DNS_R_NXRRSET) {
+		dns_zone_log(
+			zone, ISC_LOG_DEBUG(3),
+			"dsyncfetch: NODATA response for DSYNC '%s', level up",
+			dsyncnamebuf);
+		return DNS_R_CONTINUE;
+	} else if (eresult != ISC_R_SUCCESS) {
+		dns_zone_log(zone, ISC_LOG_WARNING,
+			     "dsyncfetch: Unable to fetch DSYNC set '%s': %s",
+			     dsyncnamebuf, isc_result_totext(eresult));
+		result = eresult;
+		goto done;
+	}
+
+	/* No DSYNC records found */
+	if (!dns_rdataset_isassociated(rrset)) {
+		dns_zone_log(zone, ISC_LOG_WARNING,
+			     "dsyncfetch: No DSYNC records found for '%s'",
+			     dsyncnamebuf);
+		result = ISC_R_NOTFOUND;
+		goto done;
+	}
+
+	/* No RRSIGs found */
+	if (!dns_rdataset_isassociated(sigset)) {
+		dns_zone_log(
+			zone, ISC_LOG_WARNING,
+			"dsyncfetch: No RRSIG(DSYNC) record found for '%s'",
+			dsyncnamebuf);
+		result = DNS_R_NOVALIDSIG;
+		goto done;
+	}
+
+	/* Check trust level */
+	if (rrset->trust < dns_trust_secure) {
+		dns_zone_log(zone, ISC_LOG_WARNING,
+			     "dsyncfetch: Invalid DSYNC RRset for '%s' trust "
+			     "level %u",
+			     dsyncnamebuf, rrset->trust);
+		result = DNS_R_NOVALIDSIG;
+		goto done;
+	}
+
+	/* Record the number of DSYNC records we found. */
+	zone->parent_dsynccount = dns_rdataset_count(rrset);
+
+	/* Look up the addresses for the found servers. */
+	for (result = dns_rdataset_first(rrset); result == ISC_R_SUCCESS;
+	     result = dns_rdataset_next(rrset))
+	{
+		dns_rdata_t rdata = DNS_RDATA_INIT;
+		dns_rdata_dsync_t dsync;
+		bool isqueued;
+
+		dns_rdataset_current(rrset, &rdata);
+		result = dns_rdata_tostruct(&rdata, &dsync, NULL);
+		RUNTIME_CHECK(result == ISC_R_SUCCESS);
+
+		dns_rdata_reset(&rdata);
+		if (dsync.scheme != DNS_DSYNCSCHEME_NOTIFY) {
+			dns_zone_log(zone, ISC_LOG_WARNING,
+				     "dsyncfetch: unsupported DSYNC scheme %u, "
+				     "ignoring",
+				     dsync.scheme);
+			LOCK_ZONE(zone);
+			zone->parent_dsynccount--;
+			UNLOCK_ZONE(zone);
+			continue;
+		}
+
+		if (dsync.type != dns_rdatatype_cds) {
+			char typestr[DNS_RDATATYPE_FORMATSIZE];
+			isc_buffer_t typebuf;
+			isc_buffer_init(&typebuf, typestr, sizeof(typestr));
+			result = dns_rdatatype_totext(dsync.type, &typebuf);
+			dns_zone_log(zone, ISC_LOG_WARNING,
+				     "dsyncfetch: DSYNC RRtype %s, ignoring",
+				     result == ISC_R_SUCCESS ? typestr
+							     : "UNKNOWN");
+			LOCK_ZONE(zone);
+			zone->parent_dsynccount--;
+			UNLOCK_ZONE(zone);
+			continue;
+		}
+
+		LOCK_ZONE(zone);
+		isqueued = dns_notify_isqueued(&zone->notifycds, 0,
+					       &dsync.target, NULL, NULL, NULL);
+		UNLOCK_ZONE(zone);
+		if (isqueued) {
+			continue;
+		}
+
+		dns_notify_create(zone->mctx, dsync.port, 0, &notify);
+
+		if (isc_log_wouldlog(ISC_LOG_DEBUG(3))) {
+			char tbuf[DNS_NAME_FORMATSIZE];
+			dns_name_format(&dsync.target, tbuf, sizeof(tbuf));
+			dns_zone_log(zone, ISC_LOG_DEBUG(3),
+				     "dsyncfetch: send NOTIFY(CDS) query to %s",
+				     tbuf);
+		}
+
+		LOCK_ZONE(zone);
+		zone_iattach(zone, &notify->zone);
+		dns_name_dup(&dsync.target, zone->mctx, &notify->ns);
+		ISC_LIST_APPEND(zone->notifycds.notifies, notify, link);
+		UNLOCK_ZONE(zone);
+
+		dns_notify_find_address(notify);
+	}
+	if (result == ISC_R_NOMORE) {
+		result = ISC_R_SUCCESS;
+	}
+
+done:
+	if (result != ISC_R_SUCCESS) {
+		dns_zone_log(zone, ISC_LOG_DEBUG(3),
+			     "dsyncfetch: error processing DSYNC RRset: %s",
+			     isc_result_totext(result));
+	}
+}
+
+static void
+zone_notifycds(dns_zone_t *zone, isc_time_t *now) {
+	dns_notifytype_t notifytype = zone->notifycds.notifytype;
+
+	if (notifytype == dns_notifytype_no) {
+		return;
+	}
+
+	INSIST(notifytype == dns_notifytype_yes);
+	UNUSED(now); /* WMM: TODO: is this needed? */
+
+	return; /* WMM: TODO: REMOVE */
+
+#ifdef ENABLE_AFL
+	if (!dns_fuzzing_resolver) {
+#endif /* ifdef ENABLE_AFL */
+		dns_zonefetch_t *fetch = NULL;
+		dns_dsyncfetch_t *dsyncfetch;
+		dns_name_t *name = NULL;
+
+		fetch = isc_mem_get(zone->mctx, sizeof(dns_zonefetch_t));
+		*fetch = (dns_zonefetch_t){
+			.zone = zone,
+			.options = DNS_FETCHOPT_UNSHARED |
+				   DNS_FETCHOPT_NOCACHED,
+			.fetchtype = ZONEFETCHTYPE_DSYNC,
+			.fetchmethods =
+				(dns_zonefetch_methods_t){
+					.start_fetch = dsyncfetch_start,
+					.continue_fetch = dsyncfetch_continue,
+					.cancel_fetch = dsyncfetch_cancel,
+					.done_fetch = dsyncfetch_done,
+				},
+		};
+		isc_mem_attach(zone->mctx, &fetch->mctx);
+
+		LOCK_ZONE(zone);
+		zone->dsyncfetchcount++;
+		isc_refcount_increment0(&zone->irefs);
+		name = dns_fixedname_initname(&fetch->name);
+		dns_name_dup(&zone->origin, zone->mctx, name);
+		dns_rdataset_init(&fetch->rrset);
+		dns_rdataset_init(&fetch->sigset);
+
+		dsyncfetch = &fetch->fetchdata.dsyncfetch;
+		/*
+		 * XXXWMM: This sets the dsync name to the zone name.
+		 * Maybe we should already set it to <label>._dsync.<suffix>?
+		 * Or do we first need to do an NS fetch to find out the
+		 * parent domain name?
+		 */
+		dns_name_init(&dsyncfetch->dsyncname);
+		dns_name_clone(&zone->origin, &dsyncfetch->dsyncname);
+
+		if (isc_log_wouldlog(ISC_LOG_DEBUG(3))) {
+			dnssec_log(zone, ISC_LOG_DEBUG(3),
+				   "Creating parent DSYNC fetch in "
+				   "zone_notifycds()");
+		}
+		isc_async_run(zone->loop, dns_zonefetch_run, fetch);
+		UNLOCK_ZONE(zone);
+#ifdef ENABLE_AFL
+	}
+#endif /* ifdef ENABLE_AFL */
+}
+
 /***
  *** Private
  ***/
@@ -21518,6 +21802,7 @@ zone_rekey(dns_zone_t *zone) {
 	bool commit = false, newactive = false;
 	bool newalg = false;
 	bool fullsign;
+	bool notifycds = false;
 	bool offlineksk = false;
 	bool kasp_change = false;
 	uint8_t options = 0;
@@ -21891,8 +22176,7 @@ zone_rekey(dns_zone_t *zone) {
 					       &cdnskeyset, now, &digests,
 					       cdnskeypub, ttl, &diff, mctx);
 		if (result == ISC_R_SUCCESS) {
-			dnssec_log(zone, ISC_LOG_DEBUG(3),
-				   "zone_rekey:CDS/CDNSKEY updated");
+			notifycds = true;
 		} else if (result != DNS_R_UNCHANGED) {
 			dnssec_log(zone, ISC_LOG_ERROR,
 				   "zone_rekey:couldn't update CDS/CDNSKEY: %s",
@@ -21930,8 +22214,7 @@ zone_rekey(dns_zone_t *zone) {
 			&cdsset, &cdnskeyset, &zone->origin, zone->rdclass, ttl,
 			&diff, mctx, cdsdel, cdnskeydel);
 		if (result == ISC_R_SUCCESS) {
-			dnssec_log(zone, ISC_LOG_DEBUG(3),
-				   "zone_rekey:CDS/CDNSKEY updated (DELETE)");
+			notifycds = true;
 		} else if (result != DNS_R_UNCHANGED) {
 			dnssec_log(zone, ISC_LOG_ERROR,
 				   "zone_rekey:couldn't update CDS/CDNSKEY "
@@ -22245,6 +22528,13 @@ zone_rekey(dns_zone_t *zone) {
 		}
 		ISC_LIST_UNLINK(dnskeys, key, link);
 		ISC_LIST_APPEND(zone->keyring, key, link);
+	}
+
+	/*
+	 * If the CDS/CDNSKEY RRset has changed, send NOTIFY(CDS) to endpoints.
+	 */
+	if (notifycds) {
+		zone_notifycds(zone, &timenow);
 	}
 
 	result = ISC_R_SUCCESS;
