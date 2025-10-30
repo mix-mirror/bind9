@@ -810,6 +810,10 @@ class AsyncDnsServer(AsyncServer):
         else:
             self._response_handlers.append(handler)
 
+    def install_response_handlers(self, handlers: List[ResponseHandler]) -> None:
+        for handler in handlers:
+            self.install_response_handler(handler)
+
     def uninstall_response_handler(self, handler: ResponseHandler) -> None:
         """
         Remove the specified handler from the list of response handlers.
