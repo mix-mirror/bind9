@@ -473,7 +473,8 @@ class ChainResponseHandler(DomainHandler):
 
 
 def main() -> None:
-    server = ControllableAsyncDnsServer(commands=[ChainSetupCommand])
+    server = ControllableAsyncDnsServer()
+    server.install_control_command(ChainSetupCommand())
     server.run()
 
 

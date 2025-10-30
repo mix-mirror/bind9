@@ -106,6 +106,7 @@ class AXFRServer(DomainHandler):
 
 
 if __name__ == "__main__":
-    server = ControllableAsyncDnsServer([ToggleResponsesCommand])
+    server = ControllableAsyncDnsServer()
+    server.install_control_command(ToggleResponsesCommand())
     server.install_response_handler(AXFRServer())
     server.run()
