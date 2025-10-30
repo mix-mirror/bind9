@@ -72,7 +72,8 @@ class ChaseDsHandler(ResponseHandler):
 
 
 def main() -> None:
-    server = ControllableAsyncDnsServer([ToggleResponsesCommand])
+    server = ControllableAsyncDnsServer()
+    server.install_control_command(ToggleResponsesCommand())
     server.install_response_handler(ChaseDsHandler())
     server.run()
 
