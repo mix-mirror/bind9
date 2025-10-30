@@ -53,13 +53,6 @@ import dns.tsig
 import dns.version
 import dns.zone
 
-try:
-    RdataType = dns.rdatatype.RdataType
-    RdataClass = dns.rdataclass.RdataClass
-except AttributeError:  # dnspython < 2.0.0 compat
-    RdataType = int  # type: ignore
-    RdataClass = int  # type: ignore
-
 
 _UdpHandler = Callable[
     [bytes, Tuple[str, int], asyncio.DatagramTransport], Coroutine[Any, Any, None]
@@ -291,11 +284,11 @@ class QueryContext:
         return self.alias or self.qname
 
     @property
-    def qclass(self) -> RdataClass:
+    def qclass(self) -> dns.rdataclass.RdataClass:
         return self.query.question[0].rdclass
 
     @property
-    def qtype(self) -> RdataType:
+    def qtype(self) -> dns.rdatatype.RdataType:
         return self.query.question[0].rdtype
 
 

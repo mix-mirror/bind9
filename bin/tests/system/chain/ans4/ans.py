@@ -34,11 +34,6 @@ from isctest.asyncserver import (
     ResponseAction,
 )
 
-try:
-    RdataType = dns.rdatatype.RdataType
-except AttributeError:  # dnspython < 2.0.0 compat
-    RdataType = int  # type: ignore
-
 
 class ChainNameGenerator:
     """
@@ -105,13 +100,13 @@ class RecordGenerator(abc.ABC):
 
     @classmethod
     def create_rrset(
-        cls, owner: dns.name.Name, rrtype: RdataType, rdata: str
+        cls, owner: dns.name.Name, rrtype: dns.rdatatype.RdataType, rdata: str
     ) -> dns.rrset.RRset:
         return dns.rrset.from_text(owner, 86400, dns.rdataclass.IN, rrtype, rdata)
 
     @classmethod
     def create_rrset_signature(
-        cls, owner: dns.name.Name, rrtype: RdataType
+        cls, owner: dns.name.Name, rrtype: dns.rdatatype.RdataType
     ) -> dns.rrset.RRset:
         covers = dns.rdatatype.to_text(rrtype)
         ttl = "86400"
