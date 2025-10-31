@@ -939,8 +939,8 @@ mark_ancient(dns_slabheader_t *header) {
  * Caller must hold the node (write) lock.
  */
 static size_t
-expireheader(dns_slabheader_t *header, isc_rwlocktype_t *nlocktypep,
-	     isc_rwlocktype_t *tlocktypep, dns_expire_t reason DNS__DB_FLARG) {
+expireheader(dns_slabheader_t *header, ISC_ATTR_UNUSED isc_rwlocktype_t *nlocktypep,
+	     ISC_ATTR_UNUSED isc_rwlocktype_t *tlocktypep, dns_expire_t reason DNS__DB_FLARG) {
 	size_t expired = rdataset_size(header);
 
 	mark_ancient(header);
@@ -953,10 +953,16 @@ expireheader(dns_slabheader_t *header, isc_rwlocktype_t *nlocktypep,
 		 * We first need to gain a new reference to the node to meet a
 		 * requirement of qpcnode_release().
 		 */
-		qpcnode_acquire(qpdb, HEADERNODE(header), *nlocktypep,
-				*tlocktypep DNS__DB_FLARG_PASS);
-		qpcnode_release(qpdb, HEADERNODE(header), nlocktypep,
-				tlocktypep DNS__DB_FLARG_PASS);
+		// qpcnode_acquire(qpdb, HEADERNODE(header), *nlocktypep,
+		// 		*tlocktypep DNS__DB_FLARG_PASS);
+		// qpcnode_release(qpdb, HEADERNODE(header), nlocktypep,
+		// 		tlocktypep DNS__DB_FLARG_PASS);
+		qpcnode_ref(HEADERNODE(header));
+		cds_list_del(&header->headers_link);
+		qpcnode_unref(HEADERNODE(header));
+
+		dns_slabheader_destroy(&header);
+
 
 		if (qpdb->cachestats == NULL) {
 			return expired;

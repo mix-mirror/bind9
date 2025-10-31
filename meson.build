@@ -657,6 +657,13 @@ else
     message('likely non-glibc on linux, disabling recvmmsg')
 endif
 
+## detect reuseport
+if cc.has_header_symbol('sys/socket.h', 'SO_REUSEPORT') and host_machine.system() == 'linux'
+    config.set('HAVE_SO_REUSEPORT_LB', 1)
+elif cc.has_header_symbol('sys/socket.h', 'SO_REUSEPORT_LB')
+    config.set('HAVE_SO_REUSEPORT_LB', 1)
+endif
+
 ## userspace-rcu
 urcu_dep = [dependency('liburcu-cds', version: '>=0.10.0')]
 if rcu_flavor == 'membarrier'

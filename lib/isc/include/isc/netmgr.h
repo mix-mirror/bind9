@@ -27,10 +27,6 @@
 
 /* Add -DISC_NETMGR_TRACE=1 to CFLAGS for detailed reference tracing */
 
-#if defined(SO_REUSEPORT_LB) || (defined(SO_REUSEPORT) && defined(__linux__))
-#define HAVE_SO_REUSEPORT_LB 1
-#endif
-
 /*
  * Convenience macros to specify on how many threads should socket listen
  */
