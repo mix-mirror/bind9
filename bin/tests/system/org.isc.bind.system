@@ -29,3 +29,5 @@ do
 done
 /sbin/ifconfig lo0 inet6 fd92:7065:b8e:fffe::10.53.0.4 alias
 /sbin/ifconfig lo0 inet6 2002:a35:7::1 alias
+
+/sbin/route -n add 10.53.10.53 127.0.0.1 -blackhole
