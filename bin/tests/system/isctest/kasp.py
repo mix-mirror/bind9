@@ -20,6 +20,8 @@ import time
 from typing import Dict, List, Optional, Tuple, Union
 
 import dns
+import dns.dnssec
+from dns.dnssectypes import DSDigest
 import dns.rdatatype
 import dns.rrset
 import dns.tsig
@@ -30,6 +32,7 @@ import isctest.log
 import isctest.query
 import isctest.util
 from isctest.instance import NamedInstance
+from isctest.template import TrustAnchor
 from isctest.vars.algorithms import Algorithm, ALL_ALGORITHMS_BY_NUM
 
 DEFAULT_TTL = 300
@@ -461,6 +464,19 @@ class Key:
         assert len(dnskey_rr) == 1, f"{self.keyfile} has multiple RRs"
         assert dnskey_rr.rdtype == dns.rdatatype.DNSKEY, f"DNSKEY not found in {self.keyfile}"
         return dnskey_rr
+
+    def into_ta(self, type: str, dsdigest=DSDigest.SHA256) -> TrustAnchor:
+        dnskey = self.dnskey
+        if type in ["static-ds", "initial-ds"]:
+            ds = dns.dnssec.make_ds(dnskey.name, dnskey[0], dsdigest)
+            parts = str(ds).split()
+            contents = " ".join(parts[:3]) + f' "{parts[3]}"'
+        elif type in ["static-key", "initial-key"]:
+            parts = str(dnskey).split()
+            contents = " ".join(parts[4:7]) + f' "{"".join(parts[7:])}"'
+        else:
+            raise ValueError(f"invalid trust anchor type: {type}")
+        return TrustAnchor(str(dnskey.name), type, contents)
 
     def is_ksk(self) -> bool:
         return self.get_metadata("KSK") == "yes"
