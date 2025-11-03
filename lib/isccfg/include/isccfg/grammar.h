@@ -383,6 +383,10 @@ cfg_obj_create(isc_mem_t *mctx, cfg_obj_t *file, size_t line,
 	       const cfg_type_t *type, cfg_obj_t **ret);
 
 void
+cfg_string_create(cfg_parser_t *pctx, const char *contents,
+		  const cfg_type_t *type, cfg_obj_t **ret);
+
+void
 cfg_print_rawuint(cfg_printer_t *pctx, unsigned int u);
 
 isc_result_t

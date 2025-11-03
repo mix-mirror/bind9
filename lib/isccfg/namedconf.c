@@ -415,15 +415,7 @@ parse_updatepolicy(cfg_parser_t *pctx, const cfg_type_t *type,
 	if (pctx->token.type == isc_tokentype_string &&
 	    strcasecmp(TOKEN_STRING(pctx), "local") == 0)
 	{
-		cfg_obj_t *obj = NULL;
-		cfg_obj_create(pctx->mctx, cfg_parser_currentfile(pctx),
-			       pctx->line, &cfg_type_ustring, &obj);
-		obj->value.string.length = strlen("local");
-		obj->value.string.base =
-			isc_mem_get(pctx->mctx, obj->value.string.length + 1);
-		memmove(obj->value.string.base, "local", 5);
-		obj->value.string.base[5] = '\0';
-		*ret = obj;
+		cfg_string_create(pctx, "local", &cfg_type_ustring, ret);
 		return ISC_R_SUCCESS;
 	}
 
