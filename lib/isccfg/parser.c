@@ -69,6 +69,8 @@
 #include <isccfg/cfg.h>
 #include <isccfg/grammar.h>
 
+#include "parser_p.h"
+
 /* Shorthand */
 #define CAT CFG_LOGCATEGORY_CONFIG
 #define MOD CFG_LOGMODULE_PARSER
@@ -99,6 +101,11 @@
 			cfg_obj_detach(&(obj)); \
 		}                               \
 	} while (0)
+
+/*
+ * Configuration tree have their own memory context
+ */
+static isc_mem_t *parser_mctx = NULL;
 
 /*
  * Forward declarations of static functions.
@@ -161,6 +168,18 @@ print_geoip(cfg_printer_t *pctx, const cfg_obj_t *obj);
 static void
 doc_geoip(cfg_printer_t *pctx, const cfg_type_t *type);
 #endif /* HAVE_GEOIP2 */
+
+void
+isccfg__parser_initialize(void) {
+	isc_mem_create("config", &parser_mctx);
+	INSIST(parser_mctx != NULL);
+}
+
+void
+isccfg__parser_shutdown(void) {
+	INSIST(parser_mctx != NULL);
+	isc_mem_detach(&parser_mctx);
+}
 
 void
 cfg_obj_clone(const cfg_obj_t *source, cfg_obj_t **target) {

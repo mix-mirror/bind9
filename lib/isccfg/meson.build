@@ -15,6 +15,7 @@ isccfg_srcset.add(
         'check.c',
         'duration.c',
         'kaspconf.c',
+        'lib.c',
         'namedconf.c',
         'parser.c',
     ),
