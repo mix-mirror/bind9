@@ -125,8 +125,8 @@ class AsyncServer:
         except IndexError:
             ipv4_address = self._get_ipv4_address_from_directory_name()
 
-        last_ipv4_address_octet = ipv4_address.split(".")[-1]
-        ipv6_address = f"fd92:7065:b8e:ffff::{last_ipv4_address_octet}"
+        self.num = int(ipv4_address.split(".")[-1])
+        ipv6_address = f"fd92:7065:b8e:ffff::{self.num}"
 
         try:
             port = int(sys.argv[2])

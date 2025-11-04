@@ -1,0 +1,35 @@
+; Copyright (C) Internet Systems Consortium, Inc. ("ISC")
+;
+; SPDX-License-Identifier: MPL-2.0
+;
+; This Source Code Form is subject to the terms of the Mozilla Public
+; License, v. 2.0.  If a copy of the MPL was not distributed with this
+; file, you can obtain one at https://mozilla.org/MPL/2.0/.
+;
+; See the COPYRIGHT file distributed with this work for additional
+; information regarding copyright ownership.
+
+$TTL 300
+$ORIGIN .
+. 			IN SOA	root.domain.nil a.root.servers.nil. (
+				2025110400   	; serial
+				600         	; refresh
+				600         	; retry
+				1200    	; expire
+				600       	; minimum
+				)
+.			NS	a.root-servers.nil.
+a.root-servers.nil.	A	10.53.0.1
+
+{% set first_ns = 3 %}
+{% set last_ns = 9 %}
+
+{% for n in range(first_ns, last_ns + 1) %}
+ns@n@.nsset.		A	10.53.0.@n@
+			AAAA	fd92:7065:b8e:ffff::@n@
+
+multiple-ns.		NS	ns@n@.nsset.
+{% endfor %}
+
+double-ns.		NS	ns3.nsset.
+double-ns.		NS	ns4.nsset.
