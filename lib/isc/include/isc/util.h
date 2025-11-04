@@ -42,21 +42,6 @@
 /***
  *** General Macros.
  ***/
-
-/*%
- * Legacy way how to hide unused function arguments, don't use in
- * the new code, rather use the ISC_ATTR_UNUSED macro that expands
- * to either C23's [[maybe_unused]] or __attribute__((__unused__)).
- *
- * \code
- * int
- * foo(ISC_ATTR_UNUSED char *bar) {
- *         ...;
- * }
- * \endcode
- */
-#define UNUSED(x) (void)(x)
-
 #if __GNUC__ >= 8 && !defined(__clang__)
 #define ISC_NONSTRING __attribute__((nonstring))
 #else /* if __GNUC__ >= 8 && !defined(__clang__) */
