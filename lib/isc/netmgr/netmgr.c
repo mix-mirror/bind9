@@ -1334,7 +1334,8 @@ isc___nm_get_read_req(isc_nmsocket_t *sock, isc_sockaddr_t *sockaddr FLARG) {
  * worker's receive buffer to a socket, and marks it as "in use".
  */
 void
-isc__nm_alloc_cb(uv_handle_t *handle, size_t size, uv_buf_t *buf) {
+isc__nm_alloc_cb(uv_handle_t *handle, size_t size ISC_ATTR_UNUSED,
+		 uv_buf_t *buf) {
 	isc_nmsocket_t *sock = uv_handle_get_data(handle);
 	isc__networker_t *worker = NULL;
 
@@ -1344,7 +1345,6 @@ isc__nm_alloc_cb(uv_handle_t *handle, size_t size, uv_buf_t *buf) {
 	 * defaults to 64 * 1024 in the current versions of libuv (see
 	 * src/unix/udp.c and src/unix/stream.c).
 	 */
-	UNUSED(size);
 
 	worker = sock->worker;
 	INSIST(!worker->recvbuf_inuse);
@@ -2013,9 +2013,8 @@ isc__nmsocket_shutdown(isc_nmsocket_t *sock) {
 }
 
 static void
-shutdown_walk_cb(uv_handle_t *handle, void *arg) {
+shutdown_walk_cb(uv_handle_t *handle, void *arg ISC_ATTR_UNUSED) {
 	isc_nmsocket_t *sock = NULL;
-	UNUSED(arg);
 
 	if (uv_is_closing(handle)) {
 		return;
@@ -2576,22 +2575,25 @@ isc_nmsocket_set_tlsctx(isc_nmsocket_t *listener, isc_tlsctx_t *tlsctx) {
 	};
 }
 
+#if HAVE_LIBNGHTTP2
 void
 isc_nmsocket_set_max_streams(isc_nmsocket_t *listener,
 			     const uint32_t max_streams) {
 	REQUIRE(VALID_NMSOCK(listener));
 	switch (listener->type) {
-#if HAVE_LIBNGHTTP2
 	case isc_nm_httplistener:
 		isc__nm_http_set_max_streams(listener, max_streams);
 		break;
-#endif /* HAVE_LIBNGHTTP2 */
 	default:
-		UNUSED(max_streams);
 		break;
 	};
 	return;
 }
+#else
+void
+isc_nmsocket_set_max_streams(isc_nmsocket_t *listener,
+			     const uint32_t max_streams ISC_ATTR_UNUSED) {}
+#endif
 
 void
 isc__nmsocket_log_tls_session_reuse(isc_nmsocket_t *sock, isc_tls_t *tls) {

@@ -2354,13 +2354,11 @@ static ssize_t
 server_read_callback(nghttp2_session *ngsession ISC_ATTR_UNUSED,
 		     int32_t stream_id, uint8_t *buf, size_t length,
 		     uint32_t *data_flags, nghttp2_data_source *source,
-		     void *user_data) {
-	isc_nm_http_session_t *session = (isc_nm_http_session_t *)user_data;
+		     void *user_data ISC_ATTR_UNUSED) {
 	isc_nmsocket_t *socket = (isc_nmsocket_t *)source->ptr;
 	size_t buflen;
 
 	REQUIRE(socket->h2->stream_id == stream_id);
-	UNUSED(session);
 
 	buflen = isc_buffer_remaininglength(&socket->h2->wbuf);
 	if (buflen > length) {

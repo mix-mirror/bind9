@@ -22,18 +22,20 @@
 #define setsockopt_off(socket, level, name) \
 	setsockopt(socket, level, name, &(int){ 0 }, sizeof(int))
 
+#ifdef IP_FREEBIND
 static isc_result_t
-socket_freebind(uv_os_sock_t fd, sa_family_t sa_family) {
+socket_freebind(uv_os_sock_t fd, sa_family_t sa_family ISC_ATTR_UNUSED) {
 	/*
 	 * Set the IP_FREEBIND (or equivalent option) on the uv_handle.
 	 */
-#ifdef IP_FREEBIND
-	UNUSED(sa_family);
 	if (setsockopt_on(fd, IPPROTO_IP, IP_FREEBIND) == -1) {
 		return ISC_R_FAILURE;
 	}
 	return ISC_R_SUCCESS;
+}
 #elif defined(IP_BINDANY) || defined(IPV6_BINDANY)
+static isc_result_t
+socket_freebind(uv_os_sock_t fd, sa_family_t sa_family) {
 	if (sa_family == AF_INET) {
 #if defined(IP_BINDANY)
 		if (setsockopt_on(fd, IPPROTO_IP, IP_BINDANY) == -1) {
@@ -50,18 +52,16 @@ socket_freebind(uv_os_sock_t fd, sa_family_t sa_family) {
 #endif
 	}
 	return ISC_R_NOTIMPLEMENTED;
+}
 #elif defined(SO_BINDANY)
-	UNUSED(sa_family);
+static isc_result_t
+socket_freebind(uv_os_sock_t fd, sa_family_t sa_family ISC_ATTR_UNUSED) {
 	if (setsockopt_on(fd, SOL_SOCKET, SO_BINDANY) == -1) {
 		return ISC_R_FAILURE;
 	}
 	return ISC_R_SUCCESS;
-#else
-	UNUSED(fd);
-	UNUSED(sa_family);
-	return ISC_R_NOTIMPLEMENTED;
-#endif
 }
+#endif
 
 int
 isc__nm_udp_freebind(uv_udp_t *handle, const struct sockaddr *addr,
@@ -285,9 +285,9 @@ isc__nm_socket_v6only(uv_os_sock_t fd, sa_family_t sa_family) {
 	return ISC_R_NOTIMPLEMENTED;
 }
 
+#if defined(TIMEOUT_OPTNAME)
 isc_result_t
 isc__nm_socket_connectiontimeout(uv_os_sock_t fd, int timeout_ms) {
-#if defined(TIMEOUT_OPTNAME)
 	TIMEOUT_TYPE timeout = timeout_ms / TIMEOUT_DIV;
 
 	if (timeout == 0) {
@@ -301,13 +301,14 @@ isc__nm_socket_connectiontimeout(uv_os_sock_t fd, int timeout_ms) {
 	}
 
 	return ISC_R_SUCCESS;
-#else
-	UNUSED(fd);
-	UNUSED(timeout_ms);
-
-	return ISC_R_SUCCESS;
-#endif
 }
+#else
+isc_result_t
+isc__nm_socket_connectiontimeout(uv_os_sock_t fd ISC_ATTR_UNUSED,
+				 int timeout_ms ISC_ATTR_UNUSED) {
+	return ISC_R_SUCCESS;
+}
+#endif
 
 isc_result_t
 isc__nm_socket_tcp_nodelay(uv_os_sock_t fd, bool value) {

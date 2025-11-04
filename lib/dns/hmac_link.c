@@ -77,9 +77,8 @@
 		return (hmac_compare(ISC_MD_##alg, key1, key2));               \
 	}                                                                      \
 	static isc_result_t hmac##alg##_generate(                              \
-		dst_key_t *key, int pseudorandom_ok, void (*callback)(int)) {  \
-		UNUSED(pseudorandom_ok);                                       \
-		UNUSED(callback);                                              \
+		dst_key_t *key, int pseudorandom_ok ISC_ATTR_UNUSED,           \
+		void (*callback ISC_ATTR_UNUSED)(int)) {                       \
 		return (hmac_generate(ISC_MD_##alg, key));                     \
 	}                                                                      \
 	static bool hmac##alg##_isprivate(const dst_key_t *key) {              \

@@ -176,7 +176,8 @@ getudpportrange_sysctl(int af, in_port_t *low, in_port_t *high) {
 #endif /* USE_SYSCTL_PORTRANGE */
 
 isc_result_t
-isc_net_getudpportrange(int af, in_port_t *low, in_port_t *high) {
+isc_net_getudpportrange(int af ISC_ATTR_UNUSED, in_port_t *low,
+			in_port_t *high) {
 	int result = ISC_R_FAILURE;
 #if !defined(USE_SYSCTL_PORTRANGE) && defined(__linux)
 	FILE *fp;
@@ -187,8 +188,6 @@ isc_net_getudpportrange(int af, in_port_t *low, in_port_t *high) {
 #if defined(USE_SYSCTL_PORTRANGE)
 	result = getudpportrange_sysctl(af, low, high);
 #elif defined(__linux)
-
-	UNUSED(af);
 
 	/*
 	 * Linux local ports are address family agnostic.
@@ -206,8 +205,6 @@ isc_net_getudpportrange(int af, in_port_t *low, in_port_t *high) {
 		}
 		fclose(fp);
 	}
-#else  /* if defined(USE_SYSCTL_PORTRANGE) */
-	UNUSED(af);
 #endif /* if defined(USE_SYSCTL_PORTRANGE) */
 
 	if (result != ISC_R_SUCCESS) {

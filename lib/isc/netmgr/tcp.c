@@ -452,7 +452,6 @@ start_tcp_child(isc_sockaddr_t *iface, isc_nmsocket_t *sock, uv_os_sock_t fd,
 	csock->pquota = sock->pquota;
 
 	if (isc__netmgr->load_balance_sockets) {
-		UNUSED(fd);
 		csock->fd = isc__nm_tcp_lb_socket(iface->type.sa.sa_family);
 	} else {
 		csock->fd = dup(fd);

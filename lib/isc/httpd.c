@@ -1089,14 +1089,15 @@ isc_httpdmgr_addurl(isc_httpdmgr_t *httpdmgr, const char *url, bool isstatic,
 	return ISC_R_SUCCESS;
 }
 
+#if ENABLED_AFL
 void
 isc_httpd_setfinishhook(void (*fn)(void)) {
-#if ENABLE_AFL
 	finishhook = fn;
-#else  /* ENABLE_AFL */
-	UNUSED(fn);
-#endif /* ENABLE_AFL */
 }
+#else
+void
+isc_httpd_setfinishhook(void (*fn ISC_ATTR_UNUSED)(void)) {}
+#endif
 
 bool
 isc_httpdurl_isstatic(const isc_httpdurl_t *url) {
