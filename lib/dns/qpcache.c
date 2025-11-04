@@ -3274,7 +3274,7 @@ dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 	isc_mem_t *hmctx = mctx;
 	isc_loop_t *loop = isc_loop();
 	int i;
-	size_t nloops = isc_loopmgr_nloops();
+	size_t nloops = QPCACHE_NUM_LOCKS;
 
 	/* This database implementation only supports cache semantics */
 	REQUIRE(type == dns_dbtype_cache);
@@ -3301,8 +3301,6 @@ dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 
 	isc_rwlock_init(&qpdb->lock);
 	TREE_INITLOCK(&qpdb->tree_lock);
-
-	qpdb->buckets_count = isc_loopmgr_nloops();
 
 	dns_rdatasetstats_create(mctx, &qpdb->rrsetstats);
 	for (i = 0; i < (int)qpdb->buckets_count; i++) {
