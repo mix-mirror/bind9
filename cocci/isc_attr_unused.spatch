@@ -1,0 +1,24 @@
+@unused_arg@
+identifier fn, arg;
+type t;
+@@
+fn(..., t arg, ...) {
+...
+	UNUSED(arg);
+...
+}
+
+@transform@
+identifier unused_arg.fn;
+identifier unused_arg.arg;
+attribute name ISC_ATTR_UNUSED;
+type unused_arg.t;
+@@
+fn(...,
+t arg
++ ISC_ATTR_UNUSED
+, ...) { 
+	...
+-	UNUSED(arg);
+	...
+}
