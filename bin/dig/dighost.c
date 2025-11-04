@@ -4608,16 +4608,12 @@ do_lookup(dig_lookup_t *lookup) {
  * Start everything in action upon task startup.
  */
 void
-onrun_callback(void *arg) {
-	UNUSED(arg);
-
+onrun_callback(void *arg ISC_ATTR_UNUSED) {
 	start_lookup();
 }
 
 void
-run_loop(void *arg) {
-	UNUSED(arg);
-
+run_loop(void *arg ISC_ATTR_UNUSED) {
 	start_lookup();
 }
 

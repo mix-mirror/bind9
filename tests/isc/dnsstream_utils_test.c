@@ -54,13 +54,10 @@ teardown_test_dnsbuf(void **state) {
 }
 
 static bool
-dnsasm_dummy(isc_dnsstream_assembler_t *dnsasm, const isc_result_t result,
-	     isc_region_t *restrict region, void *cbarg, void *userarg) {
-	UNUSED(dnsasm);
-	UNUSED(result);
-	UNUSED(region);
-	UNUSED(cbarg);
-	UNUSED(userarg);
+dnsasm_dummy(isc_dnsstream_assembler_t *dnsasm ISC_ATTR_UNUSED,
+	     const isc_result_t result ISC_ATTR_UNUSED,
+	     isc_region_t *restrict region ISC_ATTR_UNUSED,
+	     void *cbarg ISC_ATTR_UNUSED, void *userarg ISC_ATTR_UNUSED) {
 	return true;
 }
 
@@ -265,13 +262,12 @@ typedef struct verify_cbdata {
 } verify_cbdata_t;
 
 static bool
-verify_dnsmsg(isc_dnsstream_assembler_t *dnsasm, const isc_result_t result,
-	      isc_region_t *restrict region, void *cbarg, void *userarg) {
+verify_dnsmsg(isc_dnsstream_assembler_t *dnsasm ISC_ATTR_UNUSED,
+	      const isc_result_t result, isc_region_t *restrict region,
+	      void *cbarg, void *userarg) {
 	size_t *processed = (size_t *)userarg;
 	verify_cbdata_t *vdata = (verify_cbdata_t *)cbarg;
 	uint8_t *message = (uint8_t *)vdata->verify_message;
-
-	UNUSED(dnsasm);
 
 	assert_true(result == isc_dnsstream_assembler_result(dnsasm));
 
@@ -305,14 +301,12 @@ typedef struct verify_regions_cbdata {
 } verify_regions_cbdata_t;
 
 static bool
-verify_dnsmsg_regions(isc_dnsstream_assembler_t *dnsasm,
+verify_dnsmsg_regions(isc_dnsstream_assembler_t *dnsasm ISC_ATTR_UNUSED,
 		      const isc_result_t result, isc_region_t *restrict region,
 		      void *cbarg, void *userarg) {
 	size_t *processed = (size_t *)userarg;
 	verify_regions_cbdata_t *vdata = (verify_regions_cbdata_t *)cbarg;
 	uint8_t *message = (uint8_t *)vdata->packets[0].base;
-
-	UNUSED(dnsasm);
 
 	assert_true(result == isc_dnsstream_assembler_result(dnsasm));
 

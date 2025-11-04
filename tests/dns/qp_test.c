@@ -241,10 +241,8 @@ qpiter_makekey(dns_qpkey_t key, void *uctx, void *pval, uint32_t ival) {
 }
 
 static void
-getname(void *uctx, char *buf, size_t size) {
+getname(void *uctx ISC_ATTR_UNUSED, char *buf, size_t size ISC_ATTR_UNUSED) {
 	strlcpy(buf, "test", size);
-	UNUSED(uctx);
-	UNUSED(size);
 }
 
 const dns_qpmethods_t qpiter_methods = {
@@ -381,18 +379,14 @@ ISC_RUN_TEST_IMPL(qpiter) {
 }
 
 static void
-no_op(void *uctx, void *pval, uint32_t ival) {
-	UNUSED(uctx);
-	UNUSED(pval);
-	UNUSED(ival);
-}
+no_op(void *uctx ISC_ATTR_UNUSED, void *pval ISC_ATTR_UNUSED,
+      uint32_t ival ISC_ATTR_UNUSED) {}
 
 static size_t
-qpkey_fromstring(dns_qpkey_t key, void *uctx, void *pval, uint32_t ival) {
+qpkey_fromstring(dns_qpkey_t key, void *uctx ISC_ATTR_UNUSED, void *pval,
+		 uint32_t ival) {
 	dns_fixedname_t fixed;
 	dns_namespace_t space = ival;
-
-	UNUSED(uctx);
 	dns_test_namefromstring(pval, &fixed);
 	return dns_qpkey_fromname(key, dns_fixedname_name(&fixed), space);
 }

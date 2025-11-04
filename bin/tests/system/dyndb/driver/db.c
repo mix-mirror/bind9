@@ -506,7 +506,7 @@ cleanup:
 isc_result_t
 create_db(isc_mem_t *mctx, const dns_name_t *origin, dns_dbtype_t type,
 	  dns_rdataclass_t rdclass, unsigned int argc, char *argv[],
-	  void *driverarg, dns_db_t **dbp) {
+	  void *driverarg ISC_ATTR_UNUSED, dns_db_t **dbp) {
 	sampledb_t *sampledb = NULL;
 	isc_result_t result;
 	dns_dbversion_t *version = NULL;
@@ -518,8 +518,6 @@ create_db(isc_mem_t *mctx, const dns_name_t *origin, dns_dbtype_t type,
 	REQUIRE(argv != NULL);
 	REQUIRE(driverarg != NULL); /* pointer to driver instance */
 	REQUIRE(dbp != NULL && *dbp == NULL);
-
-	UNUSED(driverarg); /* no driver-specific configuration */
 
 	a_addr.s_addr = 0x0100007fU;
 

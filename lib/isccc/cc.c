@@ -935,20 +935,16 @@ isccc_cc_lookupuint32(isccc_sexpr_t *alist, const char *key, uint32_t *uintp) {
 }
 
 static void
-symtab_undefine(char *key, unsigned int type, isc_symvalue_t value, void *arg) {
-	UNUSED(type);
-	UNUSED(value);
-	UNUSED(arg);
-
+symtab_undefine(char *key, unsigned int type ISC_ATTR_UNUSED,
+		isc_symvalue_t value ISC_ATTR_UNUSED,
+		void *arg ISC_ATTR_UNUSED) {
 	free(key);
 }
 
 static bool
-symtab_clean(char *key, unsigned int type, isc_symvalue_t value, void *arg) {
+symtab_clean(char *key ISC_ATTR_UNUSED, unsigned int type ISC_ATTR_UNUSED,
+	     isc_symvalue_t value, void *arg) {
 	isccc_time_t *now;
-
-	UNUSED(key);
-	UNUSED(type);
 
 	now = arg;
 

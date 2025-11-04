@@ -72,10 +72,7 @@ EVP_PKEY *pkey;
 	} while (0)
 
 int
-main(int argc, char **argv) {
-	UNUSED(argc);
-	UNUSED(argv);
-
+main(int argc ISC_ATTR_UNUSED, char **argv ISC_ATTR_UNUSED) {
 	rsa = RSA_new();
 	e = BN_new();
 	pkey = EVP_PKEY_new();

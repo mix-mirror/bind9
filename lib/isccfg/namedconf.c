@@ -541,8 +541,7 @@ parse_optional_enum(cfg_parser_t *pctx, const cfg_type_t *type,
 }
 
 static void
-doc_optional_enum(cfg_printer_t *pctx, const cfg_type_t *type) {
-	UNUSED(type);
+doc_optional_enum(cfg_printer_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED) {
 	cfg_print_cstr(pctx, "[ ");
 	cfg_doc_enum(pctx, type);
 	cfg_print_cstr(pctx, " ]");
@@ -587,11 +586,10 @@ static cfg_type_t cfg_type_keystorage = { "keystorage",	   parse_keyvalue,
 					  &cfg_rep_string, &keystore_kw };
 
 static isc_result_t
-parse_keystore(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
+parse_keystore(cfg_parser_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED,
+	       cfg_obj_t **ret) {
 	isc_result_t result;
 	cfg_obj_t *obj = NULL;
-
-	UNUSED(type);
 
 	CHECK(cfg_peektoken(pctx, 0));
 	if (pctx->token.type == isc_tokentype_string &&
@@ -612,9 +610,7 @@ cleanup:
 }
 
 static void
-doc_keystore(cfg_printer_t *pctx, const cfg_type_t *type) {
-	UNUSED(type);
-
+doc_keystore(cfg_printer_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED) {
 	cfg_print_cstr(pctx, "[ key-directory | key-store <string> ]");
 }
 
@@ -675,19 +671,17 @@ static cfg_type_t cfg_type_tagrange = { "tagrange",	cfg_parse_tuple,
 
 static keyword_type_t tagrange_kw = { "tag-range", &cfg_type_tagrange };
 static void
-doc_optionaltagrange(cfg_printer_t *pctx, const cfg_type_t *type) {
-	UNUSED(type);
-
+doc_optionaltagrange(cfg_printer_t *pctx,
+		     const cfg_type_t *type ISC_ATTR_UNUSED) {
 	cfg_print_cstr(pctx, "[ tag-range <integer> <integer> ]");
 }
 
 static isc_result_t
-parse_optionaltagrange(cfg_parser_t *pctx, const cfg_type_t *type,
+parse_optionaltagrange(cfg_parser_t *pctx,
+		       const cfg_type_t *type ISC_ATTR_UNUSED,
 		       cfg_obj_t **ret) {
 	isc_result_t result;
 	cfg_obj_t *obj = NULL;
-
-	UNUSED(type);
 
 	CHECK(cfg_peektoken(pctx, 0));
 	if (pctx->token.type == isc_tokentype_string &&
@@ -958,8 +952,7 @@ static cfg_type_t cfg_type_transferformat = {
  */
 
 static void
-print_none(cfg_printer_t *pctx, const cfg_obj_t *obj) {
-	UNUSED(obj);
+print_none(cfg_printer_t *pctx, const cfg_obj_t *obj ISC_ATTR_UNUSED) {
 	cfg_print_cstr(pctx, "none");
 }
 
@@ -989,8 +982,7 @@ cleanup:
 }
 
 static void
-doc_qstringornone(cfg_printer_t *pctx, const cfg_type_t *type) {
-	UNUSED(type);
+doc_qstringornone(cfg_printer_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED) {
 	cfg_print_cstr(pctx, "( <quoted_string> | none )");
 }
 
@@ -1006,8 +998,7 @@ static cfg_type_t cfg_type_qstringornone = { "qstringornone",
  * Used in the dnssec-validation option.
  */
 static void
-print_auto(cfg_printer_t *pctx, const cfg_obj_t *obj) {
-	UNUSED(obj);
+print_auto(cfg_printer_t *pctx, const cfg_obj_t *obj ISC_ATTR_UNUSED) {
 	cfg_print_cstr(pctx, "auto");
 }
 
@@ -1044,8 +1035,7 @@ print_boolorauto(cfg_printer_t *pctx, const cfg_obj_t *obj) {
 }
 
 static void
-doc_boolorauto(cfg_printer_t *pctx, const cfg_type_t *type) {
-	UNUSED(type);
+doc_boolorauto(cfg_printer_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED) {
 	cfg_print_cstr(pctx, "( yes | no | auto )");
 }
 
@@ -1058,8 +1048,7 @@ static cfg_type_t cfg_type_boolorauto = {
  * keyword hostname
  */
 static void
-print_hostname(cfg_printer_t *pctx, const cfg_obj_t *obj) {
-	UNUSED(obj);
+print_hostname(cfg_printer_t *pctx, const cfg_obj_t *obj ISC_ATTR_UNUSED) {
 	cfg_print_cstr(pctx, "hostname");
 }
 
@@ -1097,8 +1086,7 @@ cleanup:
 }
 
 static void
-doc_serverid(cfg_printer_t *pctx, const cfg_type_t *type) {
-	UNUSED(type);
+doc_serverid(cfg_printer_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED) {
 	cfg_print_cstr(pctx, "( <quoted_string> | none | hostname )");
 }
 
@@ -1815,8 +1803,7 @@ print_dtout(cfg_printer_t *pctx, const cfg_obj_t *obj) {
 }
 
 static void
-doc_dtout(cfg_printer_t *pctx, const cfg_type_t *type) {
-	UNUSED(type);
+doc_dtout(cfg_printer_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED) {
 	cfg_print_cstr(pctx, "( file | unix ) <quoted_string>");
 	cfg_print_cstr(pctx, " ");
 	cfg_print_cstr(pctx, "[ size ( unlimited | <size> ) ]");
@@ -2152,10 +2139,9 @@ static cfg_type_t cfg_type_rrl = { "rate-limit", cfg_parse_map, cfg_print_map,
 				   cfg_doc_map,	 &cfg_rep_map,	rrl_clausesets };
 
 static isc_result_t
-parse_optional_uint32(cfg_parser_t *pctx, const cfg_type_t *type,
-		      cfg_obj_t **ret) {
+parse_optional_uint32(cfg_parser_t *pctx,
+		      const cfg_type_t *type ISC_ATTR_UNUSED, cfg_obj_t **ret) {
 	isc_result_t result;
-	UNUSED(type);
 
 	CHECK(cfg_peektoken(pctx, ISC_LEXOPT_NUMBER | ISC_LEXOPT_CNUMBER));
 	if (pctx->token.type == isc_tokentype_number) {
@@ -2168,8 +2154,8 @@ cleanup:
 }
 
 static void
-doc_optional_uint32(cfg_printer_t *pctx, const cfg_type_t *type) {
-	UNUSED(type);
+doc_optional_uint32(cfg_printer_t *pctx,
+		    const cfg_type_t *type ISC_ATTR_UNUSED) {
 	cfg_print_cstr(pctx, "[ <integer> ]");
 }
 
@@ -3087,12 +3073,11 @@ parse_unitstring(char *str, uint64_t *valuep) {
 }
 
 static isc_result_t
-parse_sizeval(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
+parse_sizeval(cfg_parser_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED,
+	      cfg_obj_t **ret) {
 	isc_result_t result;
 	cfg_obj_t *obj = NULL;
 	uint64_t val;
-
-	UNUSED(type);
 
 	CHECK(cfg_gettoken(pctx, 0));
 	if (pctx->token.type != isc_tokentype_string) {
@@ -3114,15 +3099,13 @@ cleanup:
 }
 
 static isc_result_t
-parse_sizeval_percent(cfg_parser_t *pctx, const cfg_type_t *type,
-		      cfg_obj_t **ret) {
+parse_sizeval_percent(cfg_parser_t *pctx,
+		      const cfg_type_t *type ISC_ATTR_UNUSED, cfg_obj_t **ret) {
 	char *endp;
 	isc_result_t result;
 	cfg_obj_t *obj = NULL;
 	uint64_t val;
 	uint64_t percent;
-
-	UNUSED(type);
 
 	CHECK(cfg_gettoken(pctx, 0));
 	if (pctx->token.type != isc_tokentype_string) {
@@ -3154,9 +3137,8 @@ cleanup:
 }
 
 static void
-doc_sizeval_percent(cfg_printer_t *pctx, const cfg_type_t *type) {
-	UNUSED(type);
-
+doc_sizeval_percent(cfg_printer_t *pctx,
+		    const cfg_type_t *type ISC_ATTR_UNUSED) {
 	cfg_print_cstr(pctx, "( ");
 	cfg_doc_terminal(pctx, &cfg_type_size);
 	cfg_print_cstr(pctx, " | ");
@@ -3220,8 +3202,7 @@ parse_maxcachesize(cfg_parser_t *pctx, const cfg_type_t *type,
 }
 
 static void
-doc_maxcachesize(cfg_printer_t *pctx, const cfg_type_t *type) {
-	UNUSED(type);
+doc_maxcachesize(cfg_printer_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED) {
 	cfg_print_cstr(pctx, "( default | unlimited | ");
 	cfg_doc_terminal(pctx, &cfg_type_sizeval);
 	cfg_print_cstr(pctx, " | ");
@@ -3245,8 +3226,7 @@ parse_ixfrratio(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 }
 
 static void
-doc_ixfrratio(cfg_printer_t *pctx, const cfg_type_t *type) {
-	UNUSED(type);
+doc_ixfrratio(cfg_printer_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED) {
 	cfg_print_cstr(pctx, "( unlimited | ");
 	cfg_doc_terminal(pctx, &cfg_type_percentage);
 	cfg_print_cstr(pctx, " )");
@@ -3523,10 +3503,9 @@ static cfg_type_t cfg_type_statschannels = {
  * An optional class, as used in view and zone statements.
  */
 static isc_result_t
-parse_optional_class(cfg_parser_t *pctx, const cfg_type_t *type,
+parse_optional_class(cfg_parser_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED,
 		     cfg_obj_t **ret) {
 	isc_result_t result;
-	UNUSED(type);
 	CHECK(cfg_peektoken(pctx, 0));
 	if (pctx->token.type == isc_tokentype_string) {
 		CHECK(cfg_parse_obj(pctx, &cfg_type_ustring, ret));
@@ -3538,8 +3517,8 @@ cleanup:
 }
 
 static void
-doc_optional_class(cfg_printer_t *pctx, const cfg_type_t *type) {
-	UNUSED(type);
+doc_optional_class(cfg_printer_t *pctx,
+		   const cfg_type_t *type ISC_ATTR_UNUSED) {
 	cfg_print_cstr(pctx, "[ <class> ]");
 }
 
@@ -3670,11 +3649,11 @@ static cfg_type_t cfg_type_controls_sockaddr = {
  * statement, which takes a single key with or without braces and semicolon.
  */
 static isc_result_t
-parse_server_key_kludge(cfg_parser_t *pctx, const cfg_type_t *type,
+parse_server_key_kludge(cfg_parser_t *pctx,
+			const cfg_type_t *type ISC_ATTR_UNUSED,
 			cfg_obj_t **ret) {
 	isc_result_t result;
 	bool braces = false;
-	UNUSED(type);
 
 	/* Allow opening brace. */
 	CHECK(cfg_peektoken(pctx, 0));
@@ -3711,10 +3690,10 @@ static cfg_type_t cfg_type_server_key_kludge = {
  */
 
 static isc_result_t
-parse_optional_facility(cfg_parser_t *pctx, const cfg_type_t *type,
+parse_optional_facility(cfg_parser_t *pctx,
+			const cfg_type_t *type ISC_ATTR_UNUSED,
 			cfg_obj_t **ret) {
 	isc_result_t result;
-	UNUSED(type);
 
 	CHECK(cfg_peektoken(pctx, CFG_LEXOPT_QSTRING));
 	if (pctx->token.type == isc_tokentype_string ||
@@ -3729,8 +3708,8 @@ cleanup:
 }
 
 static void
-doc_optional_facility(cfg_printer_t *pctx, const cfg_type_t *type) {
-	UNUSED(type);
+doc_optional_facility(cfg_printer_t *pctx,
+		      const cfg_type_t *type ISC_ATTR_UNUSED) {
 	cfg_print_cstr(pctx, "[ <syslog_facility> ]");
 }
 
@@ -3752,9 +3731,9 @@ static cfg_type_t cfg_type_debuglevel = { "debuglevel",	   parse_keyvalue,
 					  &cfg_rep_uint32, &debug_kw };
 
 static isc_result_t
-parse_logseverity(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
+parse_logseverity(cfg_parser_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED,
+		  cfg_obj_t **ret) {
 	isc_result_t result;
-	UNUSED(type);
 
 	CHECK(cfg_peektoken(pctx, 0));
 	if (pctx->token.type == isc_tokentype_string &&
@@ -3898,8 +3877,7 @@ print_logfile(cfg_printer_t *pctx, const cfg_obj_t *obj) {
 }
 
 static void
-doc_logfile(cfg_printer_t *pctx, const cfg_type_t *type) {
-	UNUSED(type);
+doc_logfile(cfg_printer_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED) {
 	cfg_print_cstr(pctx, "<quoted_string>");
 	cfg_print_cstr(pctx, " ");
 	cfg_print_cstr(pctx, "[ versions ( unlimited | <integer> ) ]");
@@ -4020,8 +3998,8 @@ static cfg_type_t cfg_type_nameport = { "nameport",	 cfg_parse_tuple,
 					&cfg_rep_tuple,	 nameport_fields };
 
 static void
-doc_sockaddrnameport(cfg_printer_t *pctx, const cfg_type_t *type) {
-	UNUSED(type);
+doc_sockaddrnameport(cfg_printer_t *pctx,
+		     const cfg_type_t *type ISC_ATTR_UNUSED) {
 	cfg_print_cstr(pctx, "( ");
 	cfg_print_cstr(pctx, "<quoted_string>");
 	cfg_print_cstr(pctx, " ");
@@ -4038,10 +4016,10 @@ doc_sockaddrnameport(cfg_printer_t *pctx, const cfg_type_t *type) {
 }
 
 static isc_result_t
-parse_sockaddrnameport(cfg_parser_t *pctx, const cfg_type_t *type,
+parse_sockaddrnameport(cfg_parser_t *pctx,
+		       const cfg_type_t *type ISC_ATTR_UNUSED,
 		       cfg_obj_t **ret) {
 	isc_result_t result;
-	UNUSED(type);
 
 	CHECK(cfg_peektoken(pctx, CFG_LEXOPT_QSTRING));
 	if (pctx->token.type == isc_tokentype_string ||
@@ -4100,8 +4078,8 @@ static cfg_type_t cfg_type_nameportiplist = {
  */
 
 static void
-doc_remoteselement(cfg_printer_t *pctx, const cfg_type_t *type) {
-	UNUSED(type);
+doc_remoteselement(cfg_printer_t *pctx,
+		   const cfg_type_t *type ISC_ATTR_UNUSED) {
 	cfg_print_cstr(pctx, "( ");
 	cfg_print_cstr(pctx, "<server-list>");
 	cfg_print_cstr(pctx, " | ");
@@ -4116,11 +4094,10 @@ doc_remoteselement(cfg_printer_t *pctx, const cfg_type_t *type) {
 }
 
 static isc_result_t
-parse_remoteselement(cfg_parser_t *pctx, const cfg_type_t *type,
+parse_remoteselement(cfg_parser_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED,
 		     cfg_obj_t **ret) {
 	isc_result_t result;
 	cfg_obj_t *obj = NULL;
-	UNUSED(type);
 
 	CHECK(cfg_peektoken(pctx, CFG_LEXOPT_QSTRING));
 	if (pctx->token.type == isc_tokentype_string ||

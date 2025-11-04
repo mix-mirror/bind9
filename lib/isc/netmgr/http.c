@@ -666,14 +666,11 @@ on_server_data_chunk_recv_callback(int32_t stream_id, const uint8_t *data,
 }
 
 static int
-on_data_chunk_recv_callback(nghttp2_session *ngsession, uint8_t flags,
-			    int32_t stream_id, const uint8_t *data, size_t len,
-			    void *user_data) {
+on_data_chunk_recv_callback(nghttp2_session *ngsession ISC_ATTR_UNUSED,
+			    uint8_t flags ISC_ATTR_UNUSED, int32_t stream_id,
+			    const uint8_t *data, size_t len, void *user_data) {
 	isc_nm_http_session_t *session = (isc_nm_http_session_t *)user_data;
 	int rv;
-
-	UNUSED(ngsession);
-	UNUSED(flags);
 
 	if (session->client) {
 		rv = on_client_data_chunk_recv_callback(stream_id, data, len,
@@ -767,14 +764,12 @@ on_server_stream_close_callback(int32_t stream_id,
 
 static int
 on_stream_close_callback(nghttp2_session *ngsession, int32_t stream_id,
-			 uint32_t error_code, void *user_data) {
+			 uint32_t error_code ISC_ATTR_UNUSED, void *user_data) {
 	isc_nm_http_session_t *session = (isc_nm_http_session_t *)user_data;
 	int rv = 0;
 
 	REQUIRE(VALID_HTTP2_SESSION(session));
 	REQUIRE(session->ngsession == ngsession);
-
-	UNUSED(error_code);
 
 	if (session->client) {
 		rv = on_client_stream_close_callback(stream_id, session);
@@ -822,11 +817,9 @@ client_handle_content_length_header(http_cstream_t *cstream,
 
 static bool
 client_handle_content_type_header(http_cstream_t *cstream, const uint8_t *value,
-				  const size_t valuelen) {
+				  const size_t valuelen ISC_ATTR_UNUSED) {
 	const char type_dns_message[] = DNS_MEDIA_TYPE;
 	const size_t len = sizeof(type_dns_message) - 1;
-
-	UNUSED(valuelen);
 
 	if (strncasecmp((const char *)value, type_dns_message, len) == 0) {
 		cstream->response_status.content_type_valid = true;
@@ -837,10 +830,10 @@ client_handle_content_type_header(http_cstream_t *cstream, const uint8_t *value,
 }
 
 static int
-client_on_header_callback(nghttp2_session *ngsession,
+client_on_header_callback(nghttp2_session *ngsession ISC_ATTR_UNUSED,
 			  const nghttp2_frame *frame, const uint8_t *name,
 			  size_t namelen, const uint8_t *value, size_t valuelen,
-			  uint8_t flags, void *user_data) {
+			  uint8_t flags ISC_ATTR_UNUSED, void *user_data) {
 	isc_nm_http_session_t *session = (isc_nm_http_session_t *)user_data;
 	http_cstream_t *cstream = NULL;
 	const char status[] = ":status";
@@ -850,9 +843,6 @@ client_on_header_callback(nghttp2_session *ngsession,
 
 	REQUIRE(VALID_HTTP2_SESSION(session));
 	REQUIRE(session->client);
-
-	UNUSED(flags);
-	UNUSED(ngsession);
 
 	cstream = find_http_cstream(frame->hd.stream_id, session);
 	if (cstream == NULL) {
@@ -948,17 +938,16 @@ send_client_connection_header(isc_nm_http_session_t *session) {
 	  sizeof(NAME) - 1, sizeof(VALUE) - 1, NGHTTP2_NV_FLAG_NONE }
 
 static ssize_t
-client_read_callback(nghttp2_session *ngsession, int32_t stream_id,
-		     uint8_t *buf, size_t length, uint32_t *data_flags,
-		     nghttp2_data_source *source, void *user_data) {
+client_read_callback(nghttp2_session *ngsession ISC_ATTR_UNUSED,
+		     int32_t stream_id, uint8_t *buf, size_t length,
+		     uint32_t *data_flags,
+		     nghttp2_data_source *source ISC_ATTR_UNUSED,
+		     void *user_data) {
 	isc_nm_http_session_t *session = (isc_nm_http_session_t *)user_data;
 	http_cstream_t *cstream = NULL;
 
 	REQUIRE(session->client);
 	REQUIRE(!ISC_LIST_EMPTY(session->cstreams));
-
-	UNUSED(ngsession);
-	UNUSED(source);
 
 	cstream = find_http_cstream(stream_id, session);
 	if (!cstream || cstream->stream_id != stream_id) {
@@ -2272,12 +2261,10 @@ server_handle_content_length_header(isc_nmsocket_t *socket,
 }
 
 static isc_http_error_responses_t
-server_handle_content_type_header(isc_nmsocket_t *socket, const uint8_t *value,
-				  const size_t valuelen) {
+server_handle_content_type_header(isc_nmsocket_t *socket ISC_ATTR_UNUSED,
+				  const uint8_t *value, const size_t valuelen) {
 	const char type_dns_message[] = DNS_MEDIA_TYPE;
 	isc_http_error_responses_t resp = ISC_HTTP_ERROR_SUCCESS;
-
-	UNUSED(socket);
 
 	if (!HEADER_MATCH(type_dns_message, value, valuelen)) {
 		resp = ISC_HTTP_ERROR_UNSUPPORTED_MEDIA_TYPE;
@@ -2322,13 +2309,11 @@ server_handle_header(isc_nmsocket_t *socket, const uint8_t *name,
 static int
 server_on_header_callback(nghttp2_session *session, const nghttp2_frame *frame,
 			  const uint8_t *name, size_t namelen,
-			  const uint8_t *value, size_t valuelen, uint8_t flags,
-			  void *user_data) {
+			  const uint8_t *value, size_t valuelen,
+			  uint8_t flags ISC_ATTR_UNUSED,
+			  void *user_data ISC_ATTR_UNUSED) {
 	isc_nmsocket_t *socket = NULL;
 	isc_http_error_responses_t code = ISC_HTTP_ERROR_SUCCESS;
-
-	UNUSED(flags);
-	UNUSED(user_data);
 
 	socket = nghttp2_session_get_stream_user_data(session,
 						      frame->hd.stream_id);
@@ -2366,16 +2351,15 @@ server_on_header_callback(nghttp2_session *session, const nghttp2_frame *frame,
 }
 
 static ssize_t
-server_read_callback(nghttp2_session *ngsession, int32_t stream_id,
-		     uint8_t *buf, size_t length, uint32_t *data_flags,
-		     nghttp2_data_source *source, void *user_data) {
+server_read_callback(nghttp2_session *ngsession ISC_ATTR_UNUSED,
+		     int32_t stream_id, uint8_t *buf, size_t length,
+		     uint32_t *data_flags, nghttp2_data_source *source,
+		     void *user_data) {
 	isc_nm_http_session_t *session = (isc_nm_http_session_t *)user_data;
 	isc_nmsocket_t *socket = (isc_nmsocket_t *)source->ptr;
 	size_t buflen;
 
 	REQUIRE(socket->h2->stream_id == stream_id);
-
-	UNUSED(ngsession);
 	UNUSED(session);
 
 	buflen = isc_buffer_remaininglength(&socket->h2->wbuf);
@@ -2808,10 +2792,9 @@ isc__nm_http_read(isc_nmhandle_t *handle, isc_nm_recv_cb_t cb, void *cbarg) {
 
 static int
 server_on_frame_recv_callback(nghttp2_session *ngsession,
-			      const nghttp2_frame *frame, void *user_data) {
+			      const nghttp2_frame *frame,
+			      void *user_data ISC_ATTR_UNUSED) {
 	isc_nmsocket_t *socket = NULL;
-
-	UNUSED(user_data);
 
 	switch (frame->hd.type) {
 	case NGHTTP2_DATA:

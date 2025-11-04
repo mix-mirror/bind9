@@ -1765,24 +1765,20 @@ putmem(isc_buffer_t *b, const char *base, size_t length) {
 }
 
 static isc_result_t
-tokenparse_type(const dns_zone_t *zone, const foundtoken_t *token,
-		isc_buffer_t *b) {
+tokenparse_type(const dns_zone_t *zone,
+		const foundtoken_t *token ISC_ATTR_UNUSED, isc_buffer_t *b) {
 	const char *typename = dns_zonetype_name(zone->type);
-
-	UNUSED(token);
 
 	return putmem(b, typename, strlen(typename));
 }
 
 static isc_result_t
-tokenparse_name(const dns_zone_t *zone, const foundtoken_t *token,
-		isc_buffer_t *b) {
+tokenparse_name(const dns_zone_t *zone,
+		const foundtoken_t *token ISC_ATTR_UNUSED, isc_buffer_t *b) {
 	isc_result_t result;
 	char buf[DNS_NAME_FORMATSIZE];
 	dns_fixedname_t fn;
 	dns_name_t *name = dns_fixedname_initname(&fn);
-
-	UNUSED(token);
 
 	result = dns_name_downcase(&zone->origin, name);
 	RUNTIME_CHECK(result == ISC_R_SUCCESS);
@@ -1793,10 +1789,8 @@ tokenparse_name(const dns_zone_t *zone, const foundtoken_t *token,
 }
 
 static isc_result_t
-tokenparse_view(const dns_zone_t *zone, const foundtoken_t *token,
-		isc_buffer_t *b) {
-	UNUSED(token);
-
+tokenparse_view(const dns_zone_t *zone,
+		const foundtoken_t *token ISC_ATTR_UNUSED, isc_buffer_t *b) {
 	return putmem(b, zone->view->name, strlen(zone->view->name));
 }
 
@@ -4962,7 +4956,7 @@ struct addifmissing_arg {
 };
 
 static void
-addifmissing(dns_keytable_t *keytable, dns_keynode_t *keynode,
+addifmissing(dns_keytable_t *keytable ISC_ATTR_UNUSED, dns_keynode_t *keynode,
 	     dns_name_t *keyname, void *arg) {
 	dns_db_t *db = ((struct addifmissing_arg *)arg)->db;
 	dns_dbversion_t *ver = ((struct addifmissing_arg *)arg)->ver;
@@ -4971,8 +4965,6 @@ addifmissing(dns_keytable_t *keytable, dns_keynode_t *keynode,
 	bool *changed = ((struct addifmissing_arg *)arg)->changed;
 	isc_result_t result;
 	dns_fixedname_t fname;
-
-	UNUSED(keytable);
 
 	if (((struct addifmissing_arg *)arg)->result != ISC_R_SUCCESS) {
 		return;
@@ -15966,8 +15958,8 @@ struct rss {
 };
 
 static void
-update_log_cb(void *arg, dns_zone_t *zone, int level, const char *message) {
-	UNUSED(arg);
+update_log_cb(void *arg ISC_ATTR_UNUSED, dns_zone_t *zone, int level,
+	      const char *message) {
 	dns_zone_log(zone, level, "%s", message);
 }
 
@@ -19324,21 +19316,13 @@ dns_zone_isforced(dns_zone_t *zone) {
 }
 
 isc_result_t
-dns_zone_setstatistics(dns_zone_t *zone, bool on) {
-	/*
-	 * This function is obsoleted.
-	 */
-	UNUSED(zone);
-	UNUSED(on);
+dns_zone_setstatistics(dns_zone_t *zone ISC_ATTR_UNUSED,
+		       bool on ISC_ATTR_UNUSED) {
 	return ISC_R_NOTIMPLEMENTED;
 }
 
 uint64_t *
-dns_zone_getstatscounters(dns_zone_t *zone) {
-	/*
-	 * This function is obsoleted.
-	 */
-	UNUSED(zone);
+dns_zone_getstatscounters(dns_zone_t *zone ISC_ATTR_UNUSED) {
 	return NULL;
 }
 
@@ -20408,10 +20392,8 @@ do_checkds(dns_zone_t *zone, dst_key_t *key, isc_stdtime_t now,
 }
 
 static isc_result_t
-validate_ds(dns_zone_t *zone, dns_message_t *message) {
-	UNUSED(zone);
-	UNUSED(message);
-
+validate_ds(dns_zone_t *zone ISC_ATTR_UNUSED,
+	    dns_message_t *message ISC_ATTR_UNUSED) {
 	/* Get closest trust anchor */
 
 	/* Check that trust anchor is (grand)parent of zone. */

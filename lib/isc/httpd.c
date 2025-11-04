@@ -660,14 +660,12 @@ httpd_newconn(isc_nmhandle_t *handle, isc_result_t result, void *arg) {
 }
 
 static isc_result_t
-render_404(const isc_httpd_t *httpd, const isc_httpdurl_t *urlinfo, void *arg,
-	   unsigned int *retcode, const char **retmsg, const char **mimetype,
-	   isc_buffer_t *b, isc_httpdfree_t **freecb, void **freecb_args) {
+render_404(const isc_httpd_t *httpd ISC_ATTR_UNUSED,
+	   const isc_httpdurl_t *urlinfo ISC_ATTR_UNUSED,
+	   void *arg ISC_ATTR_UNUSED, unsigned int *retcode,
+	   const char **retmsg, const char **mimetype, isc_buffer_t *b,
+	   isc_httpdfree_t **freecb, void **freecb_args) {
 	static char msg[] = "No such URL.\r\n";
-
-	UNUSED(httpd);
-	UNUSED(urlinfo);
-	UNUSED(arg);
 
 	*retcode = 404;
 	*retmsg = "No such URL";
@@ -681,14 +679,12 @@ render_404(const isc_httpd_t *httpd, const isc_httpdurl_t *urlinfo, void *arg,
 }
 
 static isc_result_t
-render_500(const isc_httpd_t *httpd, const isc_httpdurl_t *urlinfo, void *arg,
-	   unsigned int *retcode, const char **retmsg, const char **mimetype,
-	   isc_buffer_t *b, isc_httpdfree_t **freecb, void **freecb_args) {
+render_500(const isc_httpd_t *httpd ISC_ATTR_UNUSED,
+	   const isc_httpdurl_t *urlinfo ISC_ATTR_UNUSED,
+	   void *arg ISC_ATTR_UNUSED, unsigned int *retcode,
+	   const char **retmsg, const char **mimetype, isc_buffer_t *b,
+	   isc_httpdfree_t **freecb, void **freecb_args) {
 	static char msg[] = "Internal server failure.\r\n";
-
-	UNUSED(httpd);
-	UNUSED(urlinfo);
-	UNUSED(arg);
 
 	*retcode = 500;
 	*retmsg = "Internal server failure";

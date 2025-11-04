@@ -2894,10 +2894,9 @@ static int quota_adj[] = {
  * The adb entry associated with 'addr' must be locked.
  */
 static void
-maybe_adjust_quota(dns_adb_t *adb, dns_adbaddrinfo_t *addr, bool timeout) {
+maybe_adjust_quota(dns_adb_t *adb ISC_ATTR_UNUSED, dns_adbaddrinfo_t *addr,
+		   bool timeout) {
 	double tr;
-
-	UNUSED(adb);
 
 	if (adb->quota == 0 || adb->atr_freq == 0) {
 		return;

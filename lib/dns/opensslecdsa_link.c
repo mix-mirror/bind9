@@ -592,14 +592,13 @@ opensslecdsa_extract_private_key(const dst_key_t *key, unsigned char *buf,
 #else
 
 static isc_result_t
-opensslecdsa_generate_pkey(unsigned int key_alg, const char *label,
+opensslecdsa_generate_pkey(unsigned int key_alg,
+			   const char *label ISC_ATTR_UNUSED,
 			   EVP_PKEY **retkey) {
 	isc_result_t ret;
 	EC_KEY *eckey = NULL;
 	EVP_PKEY *pkey = NULL;
 	int group_nid;
-
-	UNUSED(label);
 
 	group_nid = opensslecdsa_key_alg_to_group_nid(key_alg);
 
@@ -675,13 +674,11 @@ opensslecdsa_extract_private_key(const dst_key_t *key, unsigned char *buf,
 #endif /* OPENSSL_VERSION_NUMBER >= 0x30000000L */
 
 static isc_result_t
-opensslecdsa_createctx(dst_key_t *key, dst_context_t *dctx) {
+opensslecdsa_createctx(dst_key_t *key ISC_ATTR_UNUSED, dst_context_t *dctx) {
 	isc_result_t ret = ISC_R_SUCCESS;
 	EVP_MD_CTX *evp_md_ctx;
 	EVP_PKEY_CTX *pctx = NULL;
 	const EVP_MD *type = NULL;
-
-	UNUSED(key);
 	REQUIRE(opensslecdsa_valid_key_alg(dctx->key->key_alg));
 	REQUIRE(dctx->use == DO_SIGN || dctx->use == DO_VERIFY);
 
@@ -918,13 +915,12 @@ err:
 }
 
 static isc_result_t
-opensslecdsa_generate(dst_key_t *key, int unused, void (*callback)(int)) {
+opensslecdsa_generate(dst_key_t *key, int unused ISC_ATTR_UNUSED,
+		      void (*callback ISC_ATTR_UNUSED)(int)) {
 	isc_result_t ret;
 	EVP_PKEY *pkey = NULL;
 
 	REQUIRE(opensslecdsa_valid_key_alg(key->key_alg));
-	UNUSED(unused);
-	UNUSED(callback);
 
 	ret = opensslecdsa_generate_pkey(key->key_alg, key->label, &pkey);
 	if (ret != ISC_R_SUCCESS) {
@@ -1043,7 +1039,8 @@ err:
 }
 
 static isc_result_t
-opensslecdsa_fromlabel(dst_key_t *key, const char *label, const char *pin);
+opensslecdsa_fromlabel(dst_key_t *key, const char *label,
+		       const char *pin ISC_ATTR_UNUSED);
 
 static isc_result_t
 opensslecdsa_parse(dst_key_t *key, isc_lex_t *lexer, dst_key_t *pub) {
@@ -1136,12 +1133,12 @@ err:
 }
 
 static isc_result_t
-opensslecdsa_fromlabel(dst_key_t *key, const char *label, const char *pin) {
+opensslecdsa_fromlabel(dst_key_t *key, const char *label,
+		       const char *pin ISC_ATTR_UNUSED) {
 	EVP_PKEY *privpkey = NULL, *pubpkey = NULL;
 	isc_result_t ret;
 
 	REQUIRE(opensslecdsa_valid_key_alg(key->key_alg));
-	UNUSED(pin);
 
 	ret = dst__openssl_fromlabel(EVP_PKEY_EC, label, pin, &pubpkey,
 				     &privpkey);

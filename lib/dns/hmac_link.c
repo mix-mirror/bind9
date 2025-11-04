@@ -298,8 +298,7 @@ hmac_generate(const isc_md_type_t *type, dst_key_t *key) {
 }
 
 static bool
-hmac_isprivate(const dst_key_t *key) {
-	UNUSED(key);
+hmac_isprivate(const dst_key_t *key ISC_ATTR_UNUSED) {
 	return true;
 }
 
@@ -454,14 +453,12 @@ hmac__to_dst_alg(const isc_md_type_t *type) {
 
 static isc_result_t
 hmac_parse(const isc_md_type_t *type, dst_key_t *key, isc_lex_t *lexer,
-	   dst_key_t *pub) {
+	   dst_key_t *pub ISC_ATTR_UNUSED) {
 	dst_private_t priv;
 	isc_result_t result, tresult;
 	isc_buffer_t b;
 	isc_mem_t *mctx = key->mctx;
 	unsigned int i;
-
-	UNUSED(pub);
 	/* read private key file */
 	result = dst__privstruct_parse(key, hmac__to_dst_alg(type), lexer, mctx,
 				       &priv);

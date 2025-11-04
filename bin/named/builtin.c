@@ -78,10 +78,11 @@ typedef struct bdb_rdatasetiter {
 } bdb_rdatasetiter_t;
 
 static isc_result_t
-findrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
-	     dns_rdatatype_t type, dns_rdatatype_t covers, isc_stdtime_t now,
-	     dns_rdataset_t *rdataset,
-	     dns_rdataset_t *sigrdataset DNS__DB_FLARG);
+findrdataset(dns_db_t *db, dns_dbnode_t *node,
+	     dns_dbversion_t *version ISC_ATTR_UNUSED, dns_rdatatype_t type,
+	     dns_rdatatype_t covers ISC_ATTR_UNUSED,
+	     isc_stdtime_t now ISC_ATTR_UNUSED, dns_rdataset_t *rdataset,
+	     dns_rdataset_t *sigrdataset ISC_ATTR_UNUSED DNS__DB_FLARG);
 
 /*
  * Node methods forward declarations
@@ -583,9 +584,7 @@ id_lookup(bdbnode_t *node) {
 }
 
 static isc_result_t
-empty_lookup(bdbnode_t *node) {
-	UNUSED(node);
-
+empty_lookup(bdbnode_t *node ISC_ATTR_UNUSED) {
 	return ISC_R_SUCCESS;
 }
 
@@ -823,7 +822,7 @@ destroynode(bdbnode_t *node) {
 }
 
 static isc_result_t
-findnode(dns_db_t *db, const dns_name_t *name, bool create,
+findnode(dns_db_t *db, const dns_name_t *name, bool create ISC_ATTR_UNUSED,
 	 dns_clientinfomethods_t *methods ISC_ATTR_UNUSED,
 	 dns_clientinfo_t *clientinfo ISC_ATTR_UNUSED,
 	 dns_dbnode_t **nodep DNS__DB_FLARG) {
@@ -836,8 +835,6 @@ findnode(dns_db_t *db, const dns_name_t *name, bool create,
 
 	REQUIRE(VALID_BDB(bdb));
 	REQUIRE(nodep != NULL && *nodep == NULL);
-
-	UNUSED(create);
 
 	isorigin = dns_name_equal(name, &bdb->common.origin);
 
@@ -1060,18 +1057,14 @@ bdbnode_detachnode(dns_dbnode_t **nodep DNS__DB_FLARG) {
 }
 
 static isc_result_t
-findrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
-	     dns_rdatatype_t type, dns_rdatatype_t covers, isc_stdtime_t now,
-	     dns_rdataset_t *rdataset,
-	     dns_rdataset_t *sigrdataset DNS__DB_FLARG) {
+findrdataset(dns_db_t *db, dns_dbnode_t *node,
+	     dns_dbversion_t *version ISC_ATTR_UNUSED, dns_rdatatype_t type,
+	     dns_rdatatype_t covers ISC_ATTR_UNUSED,
+	     isc_stdtime_t now ISC_ATTR_UNUSED, dns_rdataset_t *rdataset,
+	     dns_rdataset_t *sigrdataset ISC_ATTR_UNUSED DNS__DB_FLARG) {
 	bdbnode_t *bdbnode = (bdbnode_t *)node;
 
 	REQUIRE(VALID_BDBNODE(bdbnode));
-
-	UNUSED(version);
-	UNUSED(covers);
-	UNUSED(now);
-	UNUSED(sigrdataset);
 
 	if (type == dns_rdatatype_rrsig) {
 		return ISC_R_NOTIMPLEMENTED;

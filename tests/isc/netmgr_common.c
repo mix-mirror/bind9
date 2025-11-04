@@ -208,9 +208,7 @@ setup_netmgr_test(void **state) {
 }
 
 int
-teardown_netmgr_test(void **state ISC_ATTR_UNUSED) {
-	UNUSED(state);
-
+teardown_netmgr_test(void **state ISC_ATTR_UNUSED ISC_ATTR_UNUSED) {
 	isc_tlsctx_client_session_cache_detach(&tcp_tlsctx_client_sess_cache);
 
 	isc_tlsctx_free(&tcp_connect_tlsctx);
@@ -261,18 +259,18 @@ noop_accept_cb(isc_nmhandle_t *handle ISC_ATTR_UNUSED, isc_result_t eresult,
 }
 
 void
-connect_send_cb(isc_nmhandle_t *handle, isc_result_t eresult, void *cbarg);
+connect_send_cb(isc_nmhandle_t *handle, isc_result_t eresult,
+		void *cbarg ISC_ATTR_UNUSED);
 
 void
 connect_send(isc_nmhandle_t *handle);
 
 void
-connect_send_cb(isc_nmhandle_t *handle, isc_result_t eresult, void *cbarg) {
+connect_send_cb(isc_nmhandle_t *handle, isc_result_t eresult,
+		void *cbarg ISC_ATTR_UNUSED) {
 	isc_nmhandle_t *sendhandle = handle;
 
 	assert_non_null(sendhandle);
-
-	UNUSED(cbarg);
 
 	F();
 
@@ -312,10 +310,8 @@ connect_send(isc_nmhandle_t *handle) {
 
 void
 connect_read_cb(isc_nmhandle_t *handle, isc_result_t eresult,
-		isc_region_t *region, void *cbarg) {
+		isc_region_t *region, void *cbarg ISC_ATTR_UNUSED) {
 	uint64_t magic = 0;
-
-	UNUSED(cbarg);
 
 	assert_non_null(handle);
 
@@ -398,11 +394,9 @@ connect_connect_cb(isc_nmhandle_t *handle, isc_result_t eresult, void *cbarg) {
 }
 
 void
-listen_send_cb(isc_nmhandle_t *handle, isc_result_t eresult, void *cbarg) {
+listen_send_cb(isc_nmhandle_t *handle, isc_result_t eresult ISC_ATTR_UNUSED,
+	       void *cbarg ISC_ATTR_UNUSED) {
 	isc_nmhandle_t *sendhandle = handle;
-
-	UNUSED(cbarg);
-	UNUSED(eresult);
 
 	assert_non_null(sendhandle);
 
@@ -484,10 +478,8 @@ listen_read_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 }
 
 isc_result_t
-listen_accept_cb(isc_nmhandle_t *handle, isc_result_t eresult, void *cbarg) {
-	UNUSED(handle);
-	UNUSED(cbarg);
-
+listen_accept_cb(isc_nmhandle_t *handle ISC_ATTR_UNUSED, isc_result_t eresult,
+		 void *cbarg ISC_ATTR_UNUSED) {
 	F();
 
 	if (eresult != ISC_R_SUCCESS) {
@@ -505,10 +497,9 @@ listen_accept_cb(isc_nmhandle_t *handle, isc_result_t eresult, void *cbarg) {
 }
 
 isc_result_t
-stream_accept_cb(isc_nmhandle_t *handle, isc_result_t eresult, void *cbarg) {
+stream_accept_cb(isc_nmhandle_t *handle, isc_result_t eresult,
+		 void *cbarg ISC_ATTR_UNUSED) {
 	isc_nmhandle_t *readhandle = NULL;
-
-	UNUSED(cbarg);
 
 	F();
 
@@ -549,10 +540,8 @@ stream_recv_send_connect(void *arg) {
 
 void
 timeout_retry_cb(isc_nmhandle_t *handle, isc_result_t eresult,
-		 isc_region_t *region, void *cbarg) {
-	UNUSED(region);
-	UNUSED(cbarg);
-
+		 isc_region_t *region ISC_ATTR_UNUSED,
+		 void *cbarg ISC_ATTR_UNUSED) {
 	assert_non_null(handle);
 
 	F();
@@ -712,10 +701,8 @@ get_proxy_type(void) {
 }
 
 void
-connect_success_cb(isc_nmhandle_t *handle, isc_result_t eresult, void *cbarg) {
-	UNUSED(handle);
-	UNUSED(cbarg);
-
+connect_success_cb(isc_nmhandle_t *handle ISC_ATTR_UNUSED, isc_result_t eresult,
+		   void *cbarg ISC_ATTR_UNUSED) {
 	F();
 
 	isc_refcount_decrement(&active_cconnects);
@@ -785,12 +772,9 @@ proxystreamtls_noop_teardown(void **state) {
 }
 
 static void
-noresponse_readcb(isc_nmhandle_t *handle, isc_result_t eresult,
-		  isc_region_t *region, void *cbarg) {
-	UNUSED(handle);
-	UNUSED(region);
-	UNUSED(cbarg);
-
+noresponse_readcb(isc_nmhandle_t *handle ISC_ATTR_UNUSED, isc_result_t eresult,
+		  isc_region_t *region ISC_ATTR_UNUSED,
+		  void *cbarg ISC_ATTR_UNUSED) {
 	F();
 
 	assert_true(eresult == ISC_R_CANCELED ||
@@ -803,10 +787,8 @@ noresponse_readcb(isc_nmhandle_t *handle, isc_result_t eresult,
 }
 
 static void
-noresponse_sendcb(isc_nmhandle_t *handle, isc_result_t eresult, void *cbarg) {
-	UNUSED(cbarg);
-	UNUSED(eresult);
-
+noresponse_sendcb(isc_nmhandle_t *handle, isc_result_t eresult ISC_ATTR_UNUSED,
+		  void *cbarg ISC_ATTR_UNUSED) {
 	F();
 
 	assert_non_null(handle);
@@ -921,18 +903,15 @@ typedef struct proxy_addrs {
 } proxy_addrs_t;
 
 static void
-proxy2_handler_save_addrs_cb(const isc_result_t result,
-			     const isc_proxy2_command_t cmd, const int socktype,
-			     const isc_sockaddr_t *restrict src_addr,
-			     const isc_sockaddr_t *restrict dst_addr,
-			     const isc_region_t *restrict tlv_data,
-			     const isc_region_t *restrict extra, void *cbarg) {
+proxy2_handler_save_addrs_cb(
+	const isc_result_t result,
+	const isc_proxy2_command_t cmd ISC_ATTR_UNUSED,
+	const int socktype ISC_ATTR_UNUSED,
+	const isc_sockaddr_t *restrict src_addr,
+	const isc_sockaddr_t *restrict dst_addr,
+	const isc_region_t *restrict tlv_data ISC_ATTR_UNUSED,
+	const isc_region_t *restrict extra ISC_ATTR_UNUSED, void *cbarg) {
 	proxy_addrs_t *addrs = (proxy_addrs_t *)cbarg;
-
-	UNUSED(cmd);
-	UNUSED(socktype);
-	UNUSED(tlv_data);
-	UNUSED(extra);
 
 	REQUIRE(result == ISC_R_SUCCESS);
 
@@ -1303,9 +1282,7 @@ setup_udp_test(void **state) {
 }
 
 int
-teardown_udp_test(void **state) {
-	UNUSED(state);
-
+teardown_udp_test(void **state ISC_ATTR_UNUSED) {
 	isc_refcount_destroy(&active_cconnects);
 	isc_refcount_destroy(&active_csends);
 	isc_refcount_destroy(&active_creads);
@@ -1541,20 +1518,15 @@ proxyudp_noop_teardown(void **state) {
 }
 
 static void
-udp_noresponse_recv_cb(isc_nmhandle_t *handle, isc_result_t eresult,
-		       isc_region_t *region, void *cbarg) {
-	UNUSED(handle);
-	UNUSED(eresult);
-	UNUSED(region);
-	UNUSED(cbarg);
-}
+udp_noresponse_recv_cb(isc_nmhandle_t *handle ISC_ATTR_UNUSED,
+		       isc_result_t eresult ISC_ATTR_UNUSED,
+		       isc_region_t *region ISC_ATTR_UNUSED,
+		       void *cbarg ISC_ATTR_UNUSED) {}
 
 static void
 udp_noresponse_read_cb(isc_nmhandle_t *handle, isc_result_t eresult,
-		       isc_region_t *region, void *cbarg) {
-	UNUSED(region);
-	UNUSED(cbarg);
-
+		       isc_region_t *region ISC_ATTR_UNUSED,
+		       void *cbarg ISC_ATTR_UNUSED) {
 	assert_int_equal(eresult, ISC_R_TIMEDOUT);
 
 	isc_refcount_decrement(&active_creads);
@@ -1568,9 +1540,7 @@ udp_noresponse_read_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 
 static void
 udp_noresponse_send_cb(isc_nmhandle_t *handle, isc_result_t eresult,
-		       void *cbarg) {
-	UNUSED(cbarg);
-
+		       void *cbarg ISC_ATTR_UNUSED) {
 	assert_non_null(handle);
 	assert_int_equal(eresult, ISC_R_SUCCESS);
 	atomic_fetch_add(&csends, 1);
@@ -1641,9 +1611,7 @@ proxyudp_noresponse_teardown(void **state) {
 
 static void
 udp_timeout_recovery_ssend_cb(isc_nmhandle_t *handle, isc_result_t eresult,
-			      void *cbarg) {
-	UNUSED(cbarg);
-
+			      void *cbarg ISC_ATTR_UNUSED) {
 	isc_refcount_decrement(&active_ssends);
 	assert_non_null(handle);
 	assert_int_equal(eresult, ISC_R_SUCCESS);
@@ -1679,10 +1647,8 @@ udp_timeout_recovery_recv_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 
 static void
 udp_timeout_recovery_read_cb(isc_nmhandle_t *handle, isc_result_t eresult,
-			     isc_region_t *region, void *cbarg) {
-	UNUSED(region);
-	UNUSED(cbarg);
-
+			     isc_region_t *region ISC_ATTR_UNUSED,
+			     void *cbarg ISC_ATTR_UNUSED) {
 	assert_non_null(handle);
 
 	F();
@@ -1703,9 +1669,7 @@ udp_timeout_recovery_read_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 
 static void
 udp_timeout_recovery_send_cb(isc_nmhandle_t *handle, isc_result_t eresult,
-			     void *cbarg) {
-	UNUSED(cbarg);
-
+			     void *cbarg ISC_ATTR_UNUSED) {
 	assert_non_null(handle);
 	assert_int_equal(eresult, ISC_R_SUCCESS);
 	atomic_fetch_add(&csends, 1);
@@ -1794,11 +1758,9 @@ static void
 udp_shutdown_connect_async_cb(void *arg ISC_ATTR_UNUSED);
 
 static void
-udp_shutdown_connect_connect_cb(isc_nmhandle_t *handle, isc_result_t eresult,
-				void *cbarg) {
-	UNUSED(handle);
-	UNUSED(cbarg);
-
+udp_shutdown_connect_connect_cb(isc_nmhandle_t *handle ISC_ATTR_UNUSED,
+				isc_result_t eresult,
+				void *cbarg ISC_ATTR_UNUSED) {
 	isc_refcount_decrement(&active_cconnects);
 
 	/*
@@ -1859,10 +1821,8 @@ proxyudp_shutdown_connect_teardown(void **state) {
 
 static void
 udp_shutdown_read_recv_cb(isc_nmhandle_t *handle, isc_result_t eresult,
-			  isc_region_t *region, void *cbarg) {
+			  isc_region_t *region, void *cbarg ISC_ATTR_UNUSED) {
 	uint64_t magic = 0;
-
-	UNUSED(cbarg);
 
 	assert_non_null(handle);
 
@@ -1878,9 +1838,7 @@ udp_shutdown_read_recv_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 
 static void
 udp_shutdown_read_send_cb(isc_nmhandle_t *handle, isc_result_t eresult,
-			  void *cbarg) {
-	UNUSED(cbarg);
-
+			  void *cbarg ISC_ATTR_UNUSED) {
 	F();
 
 	assert_non_null(handle);
@@ -1896,10 +1854,8 @@ udp_shutdown_read_send_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 
 static void
 udp_shutdown_read_read_cb(isc_nmhandle_t *handle, isc_result_t eresult,
-			  isc_region_t *region, void *cbarg) {
-	UNUSED(region);
-	UNUSED(cbarg);
-
+			  isc_region_t *region ISC_ATTR_UNUSED,
+			  void *cbarg ISC_ATTR_UNUSED) {
 	assert_true(eresult == ISC_R_SHUTTINGDOWN || eresult == ISC_R_TIMEDOUT);
 
 	isc_refcount_decrement(&active_creads);
@@ -1974,10 +1930,8 @@ proxyudp_shutdown_read_teardown(void **state) {
 
 static void
 udp_cancel_read_recv_cb(isc_nmhandle_t *handle, isc_result_t eresult,
-			isc_region_t *region, void *cbarg) {
+			isc_region_t *region, void *cbarg ISC_ATTR_UNUSED) {
 	uint64_t magic = 0;
-
-	UNUSED(cbarg);
 
 	assert_non_null(handle);
 
@@ -1993,9 +1947,7 @@ udp_cancel_read_recv_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 
 static void
 udp_cancel_read_send_cb(isc_nmhandle_t *handle, isc_result_t eresult,
-			void *cbarg) {
-	UNUSED(cbarg);
-
+			void *cbarg ISC_ATTR_UNUSED) {
 	F();
 
 	assert_non_null(handle);
@@ -2011,11 +1963,9 @@ udp_cancel_read_send_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 
 static void
 udp_cancel_read_read_cb(isc_nmhandle_t *handle, isc_result_t eresult,
-			isc_region_t *region, void *cbarg) {
+			isc_region_t *region ISC_ATTR_UNUSED, void *cbarg) {
 	isc_nmhandle_t *sendhandle = NULL;
 	isc_nmhandle_t *readhandle = NULL;
-
-	UNUSED(region);
 
 	F();
 

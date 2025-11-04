@@ -31,9 +31,7 @@
 bool debug = false;
 
 int
-LLVMFuzzerInitialize(int *argc, char ***argv) {
-	UNUSED(argc);
-	UNUSED(argv);
+LLVMFuzzerInitialize(int *argc ISC_ATTR_UNUSED, char ***argv ISC_ATTR_UNUSED) {
 	return 0;
 }
 

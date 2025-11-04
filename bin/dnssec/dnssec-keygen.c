@@ -231,7 +231,7 @@ progress(int p) {
 }
 
 static void
-keygen(keygen_ctx_t *ctx, int argc, char **argv) {
+keygen(keygen_ctx_t *ctx, int argc ISC_ATTR_UNUSED, char **argv) {
 	char filename[255];
 	char algstr[DNS_SECALG_FORMATSIZE];
 	uint16_t flags = 0;
@@ -244,8 +244,6 @@ keygen(keygen_ctx_t *ctx, int argc, char **argv) {
 	isc_result_t ret;
 	dst_key_t *key = NULL;
 	dst_key_t *prevkey = NULL;
-
-	UNUSED(argc);
 
 	dst_algorithm_format(ctx->alg, algstr, sizeof(algstr));
 

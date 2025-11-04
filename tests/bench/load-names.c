@@ -57,14 +57,13 @@ struct thread_s {
 } threads[1024];
 
 static void
-item_check(void *ctx, void *pval, uint32_t ival) {
-	UNUSED(ctx);
+item_check(void *ctx ISC_ATTR_UNUSED, void *pval, uint32_t ival) {
 	assert(pval == &item[ival]);
 }
 
 static size_t
-item_makekey(dns_qpkey_t key, void *ctx, void *pval, uint32_t ival) {
-	UNUSED(ctx);
+item_makekey(dns_qpkey_t key, void *ctx ISC_ATTR_UNUSED, void *pval,
+	     uint32_t ival) {
 	assert(pval == &item[ival]);
 	return dns_qpkey_fromname(key, &item[ival].fixed.name,
 				  DNS_DBNAMESPACE_NORMAL);

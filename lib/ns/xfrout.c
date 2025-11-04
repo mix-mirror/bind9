@@ -194,9 +194,7 @@ struct rrstream_methods {
 };
 
 static void
-rrstream_noop_pause(rrstream_t *rs) {
-	UNUSED(rs);
-}
+rrstream_noop_pause(rrstream_t *rs ISC_ATTR_UNUSED) {}
 
 /**************************************************************************/
 /*
@@ -455,14 +453,12 @@ failure:
 }
 
 static isc_result_t
-soa_rrstream_first(rrstream_t *rs) {
-	UNUSED(rs);
+soa_rrstream_first(rrstream_t *rs ISC_ATTR_UNUSED) {
 	return ISC_R_SUCCESS;
 }
 
 static isc_result_t
-soa_rrstream_next(rrstream_t *rs) {
-	UNUSED(rs);
+soa_rrstream_next(rrstream_t *rs ISC_ATTR_UNUSED) {
 	return ISC_R_NOMORE;
 }
 
@@ -715,7 +711,7 @@ xfrout_log(xfrout_ctx_t *xfr, int level, const char *fmt, ...)
 	ISC_FORMAT_PRINTF(3, 4);
 
 static void
-xfrout_delayed_timeout(void *arg, isc_result_t result);
+xfrout_delayed_timeout(void *arg, isc_result_t result ISC_ATTR_UNUSED);
 
 /**************************************************************************/
 
@@ -1308,9 +1304,8 @@ xfrout_send(xfrout_ctx_t *xfr) {
 }
 
 static void
-xfrout_delayed_timeout(void *arg, isc_result_t result) {
+xfrout_delayed_timeout(void *arg, isc_result_t result ISC_ATTR_UNUSED) {
 	xfrout_ctx_t *xfr = (xfrout_ctx_t *)arg;
-	UNUSED(result);
 
 	isc_nm_timer_stop(xfr->delayed_send_timer);
 	xfrout_send(xfr);

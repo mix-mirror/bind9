@@ -68,7 +68,8 @@ typedef struct state {
 static ns_hookresult_t
 async_query_setup(void *arg, void *cbdata, isc_result_t *resp);
 static ns_hookresult_t
-async_query_done_begin(void *arg, void *cbdata, isc_result_t *resp);
+async_query_done_begin(void *arg, void *cbdata ISC_ATTR_UNUSED,
+		       isc_result_t *resp);
 static ns_hookresult_t
 async_query_reset(void *arg, void *cbdata, isc_result_t *resp);
 
@@ -123,16 +124,12 @@ logmsg(const char *fmt, ...) {
  * register hook functions into the view hook table.
  */
 isc_result_t
-plugin_register(const char *parameters, const void *cfg, const char *cfg_file,
-		unsigned long cfg_line, isc_mem_t *mctx, void *aclctx,
-		ns_hooktable_t *hooktable, const ns_pluginctx_t *ctx,
-		void **instp) {
+plugin_register(const char *parameters ISC_ATTR_UNUSED,
+		const void *cfg ISC_ATTR_UNUSED, const char *cfg_file,
+		unsigned long cfg_line, isc_mem_t *mctx,
+		void *aclctx ISC_ATTR_UNUSED, ns_hooktable_t *hooktable,
+		const ns_pluginctx_t *ctx ISC_ATTR_UNUSED, void **instp) {
 	async_instance_t *inst = NULL;
-
-	UNUSED(parameters);
-	UNUSED(cfg);
-	UNUSED(aclctx);
-	UNUSED(ctx);
 
 	isc_log_write(NS_LOGCATEGORY_GENERAL, NS_LOGMODULE_HOOKS, ISC_LOG_INFO,
 		      "registering 'test-async' module from %s:%lu", cfg_file,
@@ -156,17 +153,12 @@ plugin_register(const char *parameters, const void *cfg, const char *cfg_file,
 }
 
 isc_result_t
-plugin_check(const char *parameters, const void *cfg, const char *cfg_file,
-	     unsigned long cfg_line, isc_mem_t *mctx, void *aclctx,
-	     const ns_pluginctx_t *ctx) {
-	UNUSED(parameters);
-	UNUSED(cfg);
-	UNUSED(cfg_file);
-	UNUSED(cfg_line);
-	UNUSED(mctx);
-	UNUSED(aclctx);
-	UNUSED(ctx);
-
+plugin_check(const char *parameters ISC_ATTR_UNUSED,
+	     const void *cfg ISC_ATTR_UNUSED,
+	     const char *cfg_file ISC_ATTR_UNUSED,
+	     unsigned long cfg_line ISC_ATTR_UNUSED,
+	     isc_mem_t *mctx ISC_ATTR_UNUSED, void *aclctx ISC_ATTR_UNUSED,
+	     const ns_pluginctx_t *ctx ISC_ATTR_UNUSED) {
 	return ISC_R_SUCCESS;
 }
 
@@ -261,8 +253,7 @@ async_query_setup(void *arg, void *cbdata, isc_result_t *resp) {
 }
 
 static void
-cancelasync(ns_hookasync_t *hctx) {
-	UNUSED(hctx);
+cancelasync(ns_hookasync_t *hctx ISC_ATTR_UNUSED) {
 	logmsg("cancelasync");
 }
 
@@ -307,13 +298,13 @@ doasync(query_ctx_t *qctx, isc_mem_t *mctx, void *arg, isc_loop_t *loop,
 }
 
 static ns_hookresult_t
-async_query_done_begin(void *arg, void *cbdata, isc_result_t *resp) {
+async_query_done_begin(void *arg, void *cbdata ISC_ATTR_UNUSED,
+		       isc_result_t *resp) {
 	query_ctx_t *qctx = (query_ctx_t *)arg;
 	async_instance_t *inst = (async_instance_t *)cbdata;
 	state_t *state = client_state_get(qctx, inst);
 
 	UNUSED(qctx);
-	UNUSED(cbdata);
 	UNUSED(state);
 
 	logmsg("done begin hook");

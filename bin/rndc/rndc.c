@@ -527,9 +527,7 @@ rndc_startconnect(isc_sockaddr_t *addr) {
 }
 
 static void
-rndc_start(void *arg) {
-	UNUSED(arg);
-
+rndc_start(void *arg ISC_ATTR_UNUSED) {
 	currentaddr = 0;
 	rndc_startconnect(&serveraddrs[currentaddr]);
 }

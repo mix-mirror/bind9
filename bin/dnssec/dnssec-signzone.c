@@ -1506,9 +1506,7 @@ signapex(void) {
 }
 
 static void
-abortwork(void *arg) {
-	UNUSED(arg);
-
+abortwork(void *arg ISC_ATTR_UNUSED) {
 	atomic_store(&shuttingdown, true);
 }
 
@@ -1517,7 +1515,7 @@ abortwork(void *arg) {
  * lock.
  */
 static void
-assignwork(void *arg) {
+assignwork(void *arg ISC_ATTR_UNUSED) {
 	dns_fixedname_t fname;
 	dns_name_t *name = NULL;
 	dns_dbnode_t *node = NULL;
@@ -1527,8 +1525,6 @@ assignwork(void *arg) {
 	static dns_name_t *zonecut = NULL; /* Protected by namelock. */
 	static dns_fixedname_t fzonecut;   /* Protected by namelock. */
 	static unsigned int ended = 0;	   /* Protected by namelock. */
-
-	UNUSED(arg);
 
 	if (atomic_load(&shuttingdown)) {
 		return;

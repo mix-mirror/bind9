@@ -365,9 +365,8 @@ dns_catz_entry_detach(dns_catz_zone_t *catz, dns_catz_entry_t **entryp) {
 }
 
 bool
-dns_catz_entry_validate(const dns_catz_entry_t *entry) {
+dns_catz_entry_validate(const dns_catz_entry_t *entry ISC_ATTR_UNUSED) {
 	REQUIRE(DNS_CATZ_ENTRY_VALID(entry));
-	UNUSED(entry);
 
 	return true;
 }

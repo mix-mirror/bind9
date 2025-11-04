@@ -464,7 +464,8 @@ isc__nm_udp_stoplistening(isc_nmsocket_t *sock) {
  */
 void
 isc__nm_udp_read_cb(uv_udp_t *handle, ssize_t nrecv, const uv_buf_t *buf,
-		    const struct sockaddr *addr, unsigned int flags) {
+		    const struct sockaddr *addr,
+		    unsigned int flags ISC_ATTR_UNUSED) {
 	isc_nmsocket_t *sock = uv_handle_get_data((uv_handle_t *)handle);
 	isc__nm_uvreq_t *req = NULL;
 	uint32_t maxudp;
@@ -487,7 +488,6 @@ isc__nm_udp_read_cb(uv_udp_t *handle, ssize_t nrecv, const uv_buf_t *buf,
 		goto free;
 	}
 #else
-	UNUSED(flags);
 #endif
 	/*
 	 * Possible reasons to return now without processing:

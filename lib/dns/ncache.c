@@ -385,9 +385,7 @@ rollback:
 }
 
 static void
-rdataset_disassociate(dns_rdataset_t *rdataset DNS__DB_FLARG) {
-	UNUSED(rdataset);
-}
+rdataset_disassociate(dns_rdataset_t *rdataset ISC_ATTR_UNUSED DNS__DB_FLARG) {}
 
 static isc_result_t
 rdataset_first(dns_rdataset_t *rdataset) {

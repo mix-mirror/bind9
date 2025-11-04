@@ -170,10 +170,8 @@ sendquery(void) {
 }
 
 static void
-sendqueries(void *arg) {
+sendqueries(void *arg ISC_ATTR_UNUSED) {
 	isc_result_t result;
-
-	UNUSED(arg);
 
 	do {
 		result = sendquery();

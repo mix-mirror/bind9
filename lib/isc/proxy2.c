@@ -874,17 +874,14 @@ typedef struct tls_subtlv_verify_cbarg {
 } tls_subtlv_verify_cbarg_t;
 
 static bool
-proxy2_subtlv_verify_iter_cb(const uint8_t client,
-			     const bool client_cert_verified,
+proxy2_subtlv_verify_iter_cb(const uint8_t client ISC_ATTR_UNUSED,
+			     const bool client_cert_verified ISC_ATTR_UNUSED,
 			     const isc_proxy2_tlv_subtype_tls_t tls_subtlv_type,
 			     const isc_region_t *restrict data, void *cbarg) {
 	bool verify_count = false;
 	tls_subtlv_verify_cbarg_t *restrict arg =
 		(tls_subtlv_verify_cbarg_t *)cbarg;
 	uint8_t type = tls_subtlv_type;
-
-	UNUSED(client);
-	UNUSED(client_cert_verified);
 
 	if (type <= ISC_PROXY2_TLV_TYPE_TLS ||
 	    type == ISC_PROXY2_TLV_TYPE_NETNS)

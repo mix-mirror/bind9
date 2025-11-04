@@ -33,14 +33,12 @@
 #include <tests/qp.h>
 
 static inline size_t
-smallname_length(void *pval, uint32_t ival) {
-	UNUSED(pval);
+smallname_length(void *pval ISC_ATTR_UNUSED, uint32_t ival) {
 	return ival;
 }
 
 static inline isc_refcount_t *
-smallname_refcount(void *pval, uint32_t ival) {
-	UNUSED(ival);
+smallname_refcount(void *pval, uint32_t ival ISC_ATTR_UNUSED) {
 	return pval;
 }
 
@@ -77,16 +75,15 @@ name_from_smallname(dns_name_t *name, void *pval, uint32_t ival) {
 }
 
 static size_t
-qpkey_from_smallname(dns_qpkey_t key, void *ctx, void *pval, uint32_t ival) {
-	UNUSED(ctx);
+qpkey_from_smallname(dns_qpkey_t key, void *ctx ISC_ATTR_UNUSED, void *pval,
+		     uint32_t ival) {
 	dns_name_t name = DNS_NAME_INITEMPTY;
 	name_from_smallname(&name, pval, ival);
 	return dns_qpkey_fromname(key, &name, DNS_DBNAMESPACE_NORMAL);
 }
 
 static void
-smallname_attach(void *ctx, void *pval, uint32_t ival) {
-	UNUSED(ctx);
+smallname_attach(void *ctx ISC_ATTR_UNUSED, void *pval, uint32_t ival) {
 	isc_refcount_increment0(smallname_refcount(pval, ival));
 }
 

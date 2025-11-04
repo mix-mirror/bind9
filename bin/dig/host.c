@@ -163,9 +163,7 @@ received(unsigned int bytes, isc_sockaddr_t *from, dig_query_t *query) {
 }
 
 static void
-trying(char *frm, dig_lookup_t *lookup) {
-	UNUSED(lookup);
-
+trying(char *frm, dig_lookup_t *lookup ISC_ATTR_UNUSED) {
 	if (!short_form) {
 		printf("Trying \"%s\"\n", frm);
 	}
@@ -302,14 +300,12 @@ printsection(dns_message_t *msg, dns_section_t sectionid,
 }
 
 static isc_result_t
-printrdata(dns_message_t *msg, dns_rdataset_t *rdataset,
+printrdata(dns_message_t *msg ISC_ATTR_UNUSED, dns_rdataset_t *rdataset,
 	   const dns_name_t *owner, const char *set_name, bool headers) {
 	isc_buffer_t target;
 	isc_result_t result;
 	isc_region_t r;
 	char tbuf[4096];
-
-	UNUSED(msg);
 	if (headers) {
 		printf(";; %s SECTION:\n", set_name);
 	}
@@ -354,16 +350,13 @@ chase_cnamechain(dns_message_t *msg, dns_name_t *qname) {
 }
 
 static isc_result_t
-printmessage(dig_query_t *query, const isc_buffer_t *msgbuf, dns_message_t *msg,
-	     bool headers) {
+printmessage(dig_query_t *query, const isc_buffer_t *msgbuf ISC_ATTR_UNUSED,
+	     dns_message_t *msg, bool headers ISC_ATTR_UNUSED) {
 	bool did_flag = false;
 	dns_rdataset_t *opt, *tsig = NULL;
 	const dns_name_t *tsigname;
 	isc_result_t result = ISC_R_SUCCESS;
 	int force_error;
-
-	UNUSED(msgbuf);
-	UNUSED(headers);
 
 	/*
 	 * We get called multiple times.
@@ -657,7 +650,7 @@ pre_parse_args(int argc, char **argv) {
 }
 
 static void
-parse_args(bool is_batchfile, int argc, char **argv) {
+parse_args(bool is_batchfile ISC_ATTR_UNUSED, int argc, char **argv) {
 	char hostname[MXNAME];
 	dig_lookup_t *lookup;
 	int c;
@@ -667,8 +660,6 @@ parse_args(bool is_batchfile, int argc, char **argv) {
 	dns_rdatatype_t rdtype;
 	dns_rdataclass_t rdclass;
 	uint32_t serial = 0;
-
-	UNUSED(is_batchfile);
 
 	lookup = make_empty_lookup();
 

@@ -186,12 +186,10 @@ rdata_towire(dns_rdata_t *rdata, unsigned char *dst, size_t dstlen,
 }
 
 static isc_result_t
-additionaldata_cb(void *arg, const dns_name_t *name, dns_rdatatype_t qtype,
-		  dns_rdataset_t *found DNS__DB_FLARG) {
-	UNUSED(arg);
-	UNUSED(name);
-	UNUSED(qtype);
-	UNUSED(found);
+additionaldata_cb(void *arg ISC_ATTR_UNUSED,
+		  const dns_name_t *name ISC_ATTR_UNUSED,
+		  dns_rdatatype_t qtype ISC_ATTR_UNUSED,
+		  dns_rdataset_t *found ISC_ATTR_UNUSED DNS__DB_FLARG) {
 	return ISC_R_SUCCESS;
 }
 
@@ -846,7 +844,7 @@ check_textvsunknown(const textvsunknown_t *textvsunknown,
  *   - RKEY (draft-reid-dnsext-rkey-00)
  */
 static void
-key_required(void **state, dns_rdatatype_t type, size_t size) {
+key_required(void **state ISC_ATTR_UNUSED, dns_rdatatype_t type, size_t size) {
 	wire_ok_t wire_ok[] = { /*
 				 * RDATA must be at least 5 octets in size:
 				 *
@@ -869,8 +867,6 @@ key_required(void **state, dns_rdatatype_t type, size_t size) {
 				WIRE_VALID(0x00, 0x00, 0x00, 0x00, 0x00),
 				WIRE_SENTINEL()
 	};
-
-	UNUSED(state);
 
 	check_rdata(NULL, wire_ok, NULL, false, dns_rdataclass_in, type, size);
 }

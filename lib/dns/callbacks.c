@@ -35,11 +35,9 @@ isclog_warn_callback(dns_rdatacallbacks_t *callbacks, const char *fmt, ...)
  */
 
 static void
-stdio_error_warn_callback(dns_rdatacallbacks_t *callbacks, const char *fmt,
-			  ...) {
+stdio_error_warn_callback(dns_rdatacallbacks_t *callbacks ISC_ATTR_UNUSED,
+			  const char *fmt, ...) {
 	va_list ap;
-
-	UNUSED(callbacks);
 
 	va_start(ap, fmt);
 	vfprintf(stderr, fmt, ap);
@@ -48,10 +46,9 @@ stdio_error_warn_callback(dns_rdatacallbacks_t *callbacks, const char *fmt,
 }
 
 static void
-isclog_error_callback(dns_rdatacallbacks_t *callbacks, const char *fmt, ...) {
+isclog_error_callback(dns_rdatacallbacks_t *callbacks ISC_ATTR_UNUSED,
+		      const char *fmt, ...) {
 	va_list ap;
-
-	UNUSED(callbacks);
 
 	va_start(ap, fmt);
 	isc_log_vwrite(DNS_LOGCATEGORY_GENERAL, DNS_LOGMODULE_MASTER, /* XXX */
@@ -60,10 +57,9 @@ isclog_error_callback(dns_rdatacallbacks_t *callbacks, const char *fmt, ...) {
 }
 
 static void
-isclog_warn_callback(dns_rdatacallbacks_t *callbacks, const char *fmt, ...) {
+isclog_warn_callback(dns_rdatacallbacks_t *callbacks ISC_ATTR_UNUSED,
+		     const char *fmt, ...) {
 	va_list ap;
-
-	UNUSED(callbacks);
 
 	va_start(ap, fmt);
 

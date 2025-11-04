@@ -356,11 +356,9 @@ ISC_LOOP_TEST_IMPL(dispatchset_get) {
 static atomic_bool first = true;
 
 static void
-server_senddone(isc_nmhandle_t *handle, isc_result_t eresult, void *arg) {
-	UNUSED(handle);
-	UNUSED(eresult);
-	UNUSED(arg);
-
+server_senddone(isc_nmhandle_t *handle ISC_ATTR_UNUSED,
+		isc_result_t eresult ISC_ATTR_UNUSED,
+		void *arg ISC_ATTR_UNUSED) {
 	return;
 }
 
@@ -399,21 +397,16 @@ nameserver(isc_nmhandle_t *handle, isc_result_t eresult, isc_region_t *region,
 }
 
 static isc_result_t
-accept_cb(isc_nmhandle_t *handle, isc_result_t eresult, void *arg) {
-	UNUSED(handle);
-	UNUSED(arg);
-
+accept_cb(isc_nmhandle_t *handle ISC_ATTR_UNUSED, isc_result_t eresult,
+	  void *arg ISC_ATTR_UNUSED) {
 	return eresult;
 }
 
 static void
-noop_nameserver(isc_nmhandle_t *handle, isc_result_t eresult,
-		isc_region_t *region, void *arg) {
-	UNUSED(handle);
-	UNUSED(eresult);
-	UNUSED(region);
-	UNUSED(arg);
-}
+noop_nameserver(isc_nmhandle_t *handle ISC_ATTR_UNUSED,
+		isc_result_t eresult ISC_ATTR_UNUSED,
+		isc_region_t *region ISC_ATTR_UNUSED,
+		void *arg ISC_ATTR_UNUSED) {}
 
 static void
 response_getnext(isc_result_t result, isc_region_t *region ISC_ATTR_UNUSED,
@@ -459,11 +452,9 @@ response_timeout(isc_result_t eresult, isc_region_t *region ISC_ATTR_UNUSED,
 }
 
 static void
-client_senddone(isc_result_t eresult, isc_region_t *region, void *arg) {
-	UNUSED(eresult);
-	UNUSED(region);
-	UNUSED(arg);
-}
+client_senddone(isc_result_t eresult ISC_ATTR_UNUSED,
+		isc_region_t *region ISC_ATTR_UNUSED,
+		void *arg ISC_ATTR_UNUSED) {}
 
 static void
 connected(isc_result_t eresult, isc_region_t *region ISC_ATTR_UNUSED,
@@ -613,9 +604,7 @@ ISC_LOOP_TEST_IMPL(dispatch_timeout_tcp_connect) {
 }
 
 static void
-stop_listening(void *arg) {
-	UNUSED(arg);
-
+stop_listening(void *arg ISC_ATTR_UNUSED) {
 	isc_nm_stoplistening(sock);
 	isc_nmsocket_close(&sock);
 	assert_null(sock);

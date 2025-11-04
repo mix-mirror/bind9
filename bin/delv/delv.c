@@ -1860,14 +1860,12 @@ resolve_cb(dns_client_t *client, const dns_name_t *query_name,
 }
 
 static void
-run_resolve(void *arg) {
+run_resolve(void *arg ISC_ATTR_UNUSED) {
 	dns_client_t *client = NULL;
 	dns_namelist_t *namelist = NULL;
 	unsigned int resopt;
 	isc_result_t result;
 	dns_name_t *query_name = NULL;
-
-	UNUSED(arg);
 
 	namelist = isc_mem_get(isc_g_mctx, sizeof(*namelist));
 	ISC_LIST_INIT(*namelist);
@@ -2045,10 +2043,8 @@ cleanup:
 }
 
 static isc_result_t
-accept_cb(isc_nmhandle_t *handle, isc_result_t result, void *arg) {
-	UNUSED(handle);
-	UNUSED(arg);
-
+accept_cb(isc_nmhandle_t *handle ISC_ATTR_UNUSED, isc_result_t result,
+	  void *arg ISC_ATTR_UNUSED) {
 	return result;
 }
 
@@ -2110,34 +2106,24 @@ cleanup:
 }
 
 static isc_result_t
-matchview(isc_netaddr_t *srcaddr, isc_netaddr_t *destaddr,
-	  dns_message_t *message, dns_aclenv_t *env, ns_server_t *lsctx,
-	  isc_loop_t *loop, isc_job_cb cb, void *cbarg,
-	  isc_result_t *sigresultp, isc_result_t *viewpatchresultp,
-	  dns_view_t **viewp) {
-	UNUSED(srcaddr);
-	UNUSED(destaddr);
-	UNUSED(message);
-	UNUSED(env);
-	UNUSED(lsctx);
-	UNUSED(loop);
-	UNUSED(cb);
-	UNUSED(cbarg);
-	UNUSED(sigresultp);
-
+matchview(isc_netaddr_t *srcaddr ISC_ATTR_UNUSED,
+	  isc_netaddr_t *destaddr ISC_ATTR_UNUSED,
+	  dns_message_t *message ISC_ATTR_UNUSED,
+	  dns_aclenv_t *env ISC_ATTR_UNUSED, ns_server_t *lsctx ISC_ATTR_UNUSED,
+	  isc_loop_t *loop ISC_ATTR_UNUSED, isc_job_cb cb ISC_ATTR_UNUSED,
+	  void *cbarg ISC_ATTR_UNUSED, isc_result_t *sigresultp ISC_ATTR_UNUSED,
+	  isc_result_t *viewpatchresultp, dns_view_t **viewp) {
 	*viewp = view;
 	*viewpatchresultp = ISC_R_SUCCESS;
 	return ISC_R_SUCCESS;
 }
 
 static void
-run_server(void *arg) {
+run_server(void *arg ISC_ATTR_UNUSED) {
 	isc_result_t result;
 	dns_cache_t *cache = NULL;
 	isc_sockaddr_t addr, any, any6;
 	struct in_addr in;
-
-	UNUSED(arg);
 
 	RUNTIME_CHECK(inet_pton(AF_INET, "127.0.0.1", &in));
 	isc_sockaddr_fromin(&addr, &in, 0);

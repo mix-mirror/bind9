@@ -51,14 +51,12 @@ static bool ready;
  * test named from the client side.
  */
 static void *
-fuzz_thread_client(void *arg) {
+fuzz_thread_client(void *arg ISC_ATTR_UNUSED) {
 	char *host;
 	char *port;
 	struct sockaddr_in servaddr;
 	int sockfd;
 	void *buf;
-
-	UNUSED(arg);
 
 	/*
 	 * Parse named -A argument in the "address:port" syntax. Due to
@@ -179,7 +177,7 @@ fuzz_thread_client(void *arg) {
  * named(resolver) when being fuzzed will not cache answers.
  */
 static void *
-fuzz_thread_resolver(void *arg) {
+fuzz_thread_resolver(void *arg ISC_ATTR_UNUSED) {
 	char *sqtype, *shost, *sport, *rhost, *rport;
 	struct sockaddr_in servaddr, recaddr, recvaddr;
 	/*
@@ -274,8 +272,6 @@ fuzz_thread_resolver(void *arg) {
 	unsigned int i;
 	uint8_t llen;
 	uint64_t seed;
-
-	UNUSED(arg);
 
 	/*
 	 * Parse named -A argument in the "qtype:saddress:sport:raddress:rport"
@@ -597,15 +593,13 @@ fuzz_thread_resolver(void *arg) {
  * client side.
  */
 static void *
-fuzz_thread_tcp(void *arg) {
+fuzz_thread_tcp(void *arg ISC_ATTR_UNUSED) {
 	char *host;
 	char *port;
 	struct sockaddr_in servaddr;
 	int sockfd;
 	char *buf;
 	int loop;
-
-	UNUSED(arg);
 
 	/*
 	 * Parse named -A argument in the "address:port" syntax. Due to

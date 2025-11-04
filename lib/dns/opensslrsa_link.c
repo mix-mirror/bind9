@@ -171,11 +171,9 @@ opensslrsa_valid_key_alg(unsigned int key_alg) {
 }
 
 static isc_result_t
-opensslrsa_createctx(dst_key_t *key, dst_context_t *dctx) {
+opensslrsa_createctx(dst_key_t *key ISC_ATTR_UNUSED, dst_context_t *dctx) {
 	EVP_MD_CTX *evp_md_ctx;
 	const EVP_MD *type = NULL;
-
-	UNUSED(key);
 	REQUIRE(dctx != NULL && dctx->key != NULL);
 	REQUIRE(opensslrsa_valid_key_alg(dctx->key->key_alg));
 
@@ -410,10 +408,8 @@ opensslrsa_verify(dst_context_t *dctx, const isc_region_t *sig) {
 
 #if OPENSSL_VERSION_NUMBER < 0x30000000L
 static int
-progress_cb(int p, int n, BN_GENCB *cb) {
+progress_cb(int p, int n ISC_ATTR_UNUSED, BN_GENCB *cb) {
 	void (*fptr)(int);
-
-	UNUSED(n);
 
 	fptr = BN_GENCB_get_arg(cb);
 	if (fptr != NULL) {
@@ -423,14 +419,13 @@ progress_cb(int p, int n, BN_GENCB *cb) {
 }
 
 static isc_result_t
-opensslrsa_generate_pkey(unsigned int key_size, const char *label, BIGNUM *e,
+opensslrsa_generate_pkey(unsigned int key_size,
+			 const char *label ISC_ATTR_UNUSED, BIGNUM *e,
 			 void (*callback)(int), EVP_PKEY **retkey) {
 	RSA *rsa = NULL;
 	EVP_PKEY *pkey = NULL;
 	BN_GENCB *cb = NULL;
 	isc_result_t ret;
-
-	UNUSED(label);
 
 	rsa = RSA_new();
 	pkey = EVP_PKEY_new();
@@ -735,12 +730,11 @@ err:
 #endif /* OPENSSL_VERSION_NUMBER < 0x30000000L */
 
 static isc_result_t
-opensslrsa_generate(dst_key_t *key, int unused, void (*callback)(int)) {
+opensslrsa_generate(dst_key_t *key, int unused ISC_ATTR_UNUSED,
+		    void (*callback)(int)) {
 	isc_result_t ret;
 	BIGNUM *e = BN_new();
 	EVP_PKEY *pkey = NULL;
-
-	UNUSED(unused);
 
 	if (e == NULL) {
 		DST_RET(dst__openssl_toresult(DST_R_OPENSSLFAILURE));

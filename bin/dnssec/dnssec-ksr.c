@@ -627,14 +627,13 @@ fail:
 }
 
 static isc_stdtime_t
-sign_rrset(ksr_ctx_t *ksr, isc_stdtime_t inception, isc_stdtime_t expiration,
-	   dns_rdataset_t *rrset, dns_dnsseckeylist_t *keys) {
+sign_rrset(ksr_ctx_t *ksr ISC_ATTR_UNUSED, isc_stdtime_t inception,
+	   isc_stdtime_t expiration, dns_rdataset_t *rrset,
+	   dns_dnsseckeylist_t *keys) {
 	dns_rdatalist_t *rrsiglist = NULL;
 	dns_rdataset_t rrsigset = DNS_RDATASET_INIT;
 	isc_result_t ret;
 	isc_stdtime_t next_bundle = expiration;
-
-	UNUSED(ksr);
 
 	/* Bundle header */
 	if (rrset->type == dns_rdatatype_dnskey) {

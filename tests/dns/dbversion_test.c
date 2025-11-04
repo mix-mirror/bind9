@@ -64,19 +64,15 @@ jmp_buf assertion;
 	} while (false);
 
 static void
-local_callback(const char *file, int line, isc_assertiontype_t type,
-	       const char *cond) {
-	UNUSED(type);
-
+local_callback(const char *file, int line,
+	       isc_assertiontype_t type ISC_ATTR_UNUSED, const char *cond) {
 	mock_assert(1, cond, file, line);
 	longjmp(assertion, 1);
 }
 
 static int
-setup_test(void **state) {
+setup_test(void **state ISC_ATTR_UNUSED) {
 	isc_result_t res;
-
-	UNUSED(state);
 
 	isc_assertion_setcallback(local_callback);
 
@@ -96,9 +92,7 @@ setup_test(void **state) {
 }
 
 static int
-teardown_test(void **state) {
-	UNUSED(state);
-
+teardown_test(void **state ISC_ATTR_UNUSED) {
 	if (strcmp(tempname, "dtXXXXXXXX") != 0) {
 		unlink(tempname);
 	}

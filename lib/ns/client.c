@@ -216,9 +216,8 @@ ns_client_killoldestquery(ns_client_t *client) {
 }
 
 void
-ns_client_settimeout(ns_client_t *client, unsigned int seconds) {
-	UNUSED(client);
-	UNUSED(seconds);
+ns_client_settimeout(ns_client_t *client ISC_ATTR_UNUSED,
+		     unsigned int seconds ISC_ATTR_UNUSED) {
 	/* XXXWPK TODO use netmgr to set timeout */
 }
 

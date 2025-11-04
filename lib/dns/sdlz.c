@@ -217,9 +217,9 @@ static isc_result_t
 dbiterator_current(dns_dbiterator_t *iterator, dns_dbnode_t **nodep,
 		   dns_name_t *name DNS__DB_FLARG);
 static isc_result_t
-dbiterator_pause(dns_dbiterator_t *iterator);
+dbiterator_pause(dns_dbiterator_t *iterator ISC_ATTR_UNUSED);
 static isc_result_t
-dbiterator_origin(dns_dbiterator_t *iterator, dns_name_t *name);
+dbiterator_origin(dns_dbiterator_t *iterator ISC_ATTR_UNUSED, dns_name_t *name);
 
 static dns_dbiteratormethods_t dbiterator_methods = {
 	dbiterator_destroy, dbiterator_first, dbiterator_last,
@@ -730,19 +730,14 @@ createiterator(dns_db_t *db, unsigned int options,
 }
 
 static isc_result_t
-findrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
-	     dns_rdatatype_t type, dns_rdatatype_t covers, isc_stdtime_t now,
-	     dns_rdataset_t *rdataset,
-	     dns_rdataset_t *sigrdataset DNS__DB_FLARG) {
+findrdataset(dns_db_t *db ISC_ATTR_UNUSED, dns_dbnode_t *node,
+	     dns_dbversion_t *version ISC_ATTR_UNUSED, dns_rdatatype_t type,
+	     dns_rdatatype_t covers ISC_ATTR_UNUSED,
+	     isc_stdtime_t now ISC_ATTR_UNUSED, dns_rdataset_t *rdataset,
+	     dns_rdataset_t *sigrdataset ISC_ATTR_UNUSED DNS__DB_FLARG) {
 	REQUIRE(VALID_SDLZNODE(node));
 	dns_rdatalist_t *list;
 	dns_sdlznode_t *sdlznode = (dns_sdlznode_t *)node;
-
-	UNUSED(db);
-	UNUSED(version);
-	UNUSED(covers);
-	UNUSED(now);
-	UNUSED(sigrdataset);
 
 	if (dns_rdatatype_issig(type)) {
 		return ISC_R_NOTIMPLEMENTED;
@@ -930,8 +925,9 @@ find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 }
 
 static isc_result_t
-allrdatasets(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
-	     unsigned int options, isc_stdtime_t now,
+allrdatasets(dns_db_t *db, dns_dbnode_t *node,
+	     dns_dbversion_t *version ISC_ATTR_UNUSED, unsigned int options,
+	     isc_stdtime_t now ISC_ATTR_UNUSED,
 	     dns_rdatasetiter_t **iteratorp DNS__DB_FLARG) {
 	dns_sdlz_db_t *sdlz = (dns_sdlz_db_t *)db;
 	sdlz_rdatasetiter_t *iterator;
@@ -940,9 +936,6 @@ allrdatasets(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 
 	REQUIRE(version == NULL || version == (void *)&sdlz->dummy_version ||
 		version == sdlz->future_version);
-
-	UNUSED(version);
-	UNUSED(now);
 
 	iterator = isc_mem_get(db->mctx, sizeof(sdlz_rdatasetiter_t));
 
@@ -963,7 +956,7 @@ allrdatasets(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 
 static isc_result_t
 modrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
-	    dns_rdataset_t *rdataset, unsigned int options,
+	    dns_rdataset_t *rdataset, unsigned int options ISC_ATTR_UNUSED,
 	    dns_sdlzmodrdataset_t mod_function) {
 	dns_sdlz_db_t *sdlz = (dns_sdlz_db_t *)db;
 	dns_master_style_t *style = NULL;
@@ -981,8 +974,6 @@ modrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	}
 
 	sdlznode = (dns_sdlznode_t *)node;
-
-	UNUSED(options);
 
 	dns_name_format(&sdlznode->name, name, sizeof(name));
 
@@ -1026,13 +1017,11 @@ cleanup:
 
 static isc_result_t
 addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
-	    isc_stdtime_t now, dns_rdataset_t *rdataset, unsigned int options,
-	    dns_rdataset_t *addedrdataset DNS__DB_FLARG) {
+	    isc_stdtime_t now ISC_ATTR_UNUSED, dns_rdataset_t *rdataset,
+	    unsigned int options,
+	    dns_rdataset_t *addedrdataset ISC_ATTR_UNUSED DNS__DB_FLARG) {
 	dns_sdlz_db_t *sdlz = (dns_sdlz_db_t *)db;
 	isc_result_t result;
-
-	UNUSED(now);
-	UNUSED(addedrdataset);
 	REQUIRE(VALID_SDLZDB(sdlz));
 
 	if (sdlz->dlzimp->methods->addrdataset == NULL) {
@@ -1047,11 +1036,9 @@ addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 static isc_result_t
 subtractrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 		 dns_rdataset_t *rdataset, unsigned int options,
-		 dns_rdataset_t *newrdataset DNS__DB_FLARG) {
+		 dns_rdataset_t *newrdataset ISC_ATTR_UNUSED DNS__DB_FLARG) {
 	dns_sdlz_db_t *sdlz = (dns_sdlz_db_t *)db;
 	isc_result_t result;
-
-	UNUSED(newrdataset);
 	REQUIRE(VALID_SDLZDB(sdlz));
 
 	if (sdlz->dlzimp->methods->subtractrdataset == NULL) {
@@ -1210,14 +1197,13 @@ dbiterator_current(dns_dbiterator_t *iterator, dns_dbnode_t **nodep,
 }
 
 static isc_result_t
-dbiterator_pause(dns_dbiterator_t *iterator) {
-	UNUSED(iterator);
+dbiterator_pause(dns_dbiterator_t *iterator ISC_ATTR_UNUSED) {
 	return ISC_R_SUCCESS;
 }
 
 static isc_result_t
-dbiterator_origin(dns_dbiterator_t *iterator, dns_name_t *name) {
-	UNUSED(iterator);
+dbiterator_origin(dns_dbiterator_t *iterator ISC_ATTR_UNUSED,
+		  dns_name_t *name) {
 	dns_name_copy(dns_rootname, name);
 	return ISC_R_SUCCESS;
 }
@@ -1388,8 +1374,9 @@ dns_sdlzallowzonexfr(void *driverarg, void *dbdata, isc_mem_t *mctx,
 }
 
 static isc_result_t
-dns_sdlzcreate(isc_mem_t *mctx, const char *dlzname, unsigned int argc,
-	       char *argv[], void *driverarg, void **dbdata) {
+dns_sdlzcreate(isc_mem_t *mctx ISC_ATTR_UNUSED, const char *dlzname,
+	       unsigned int argc, char *argv[], void *driverarg,
+	       void **dbdata) {
 	dns_sdlzimplementation_t *imp;
 	isc_result_t result = ISC_R_NOTFOUND;
 
@@ -1402,7 +1389,6 @@ dns_sdlzcreate(isc_mem_t *mctx, const char *dlzname, unsigned int argc,
 	REQUIRE(driverarg != NULL);
 	REQUIRE(dlzname != NULL);
 	REQUIRE(dbdata != NULL);
-	UNUSED(mctx);
 
 	imp = driverarg;
 

@@ -60,10 +60,8 @@ LLVMFuzzerInitialize(int *argc ISC_ATTR_UNUSED, char ***argv ISC_ATTR_UNUSED) {
 }
 
 static void
-nullmsg(dns_rdatacallbacks_t *cb, const char *fmt, ...) {
+nullmsg(dns_rdatacallbacks_t *cb ISC_ATTR_UNUSED, const char *fmt, ...) {
 	va_list args;
-
-	UNUSED(cb);
 
 	if (debug) {
 		va_start(args, fmt);

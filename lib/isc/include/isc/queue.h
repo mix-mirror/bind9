@@ -40,9 +40,7 @@ isc_queue_init(isc_queue_t *queue) {
 }
 
 static inline void
-isc_queue_destroy(isc_queue_t *queue) {
-	UNUSED(queue);
-}
+isc_queue_destroy(isc_queue_t *queue ISC_ATTR_UNUSED) {}
 
 static inline bool
 isc_queue_empty(isc_queue_t *queue) {

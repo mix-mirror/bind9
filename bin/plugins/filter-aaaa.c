@@ -321,12 +321,10 @@ cleanup:
 isc_result_t
 plugin_register(const char *parameters, const void *cfg, const char *cfg_file,
 		unsigned long cfg_line, isc_mem_t *mctx, void *aclctx,
-		ns_hooktable_t *hooktable, const ns_pluginctx_t *ctx,
-		void **instp) {
+		ns_hooktable_t *hooktable,
+		const ns_pluginctx_t *ctx ISC_ATTR_UNUSED, void **instp) {
 	filter_instance_t *inst = NULL;
 	isc_result_t result = ISC_R_SUCCESS;
-
-	UNUSED(ctx);
 
 	isc_log_write(NS_LOGCATEGORY_GENERAL, NS_LOGMODULE_HOOKS, ISC_LOG_INFO,
 		      "registering 'filter-aaaa' "

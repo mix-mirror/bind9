@@ -85,9 +85,8 @@ static const cfg_obj_t *
 find_maplist(const cfg_obj_t *config, const char *listname, const char *name);
 
 static void
-freekey(char *key, unsigned int type, isc_symvalue_t value, void *userarg) {
-	UNUSED(type);
-	UNUSED(value);
+freekey(char *key, unsigned int type ISC_ATTR_UNUSED,
+	isc_symvalue_t value ISC_ATTR_UNUSED, void *userarg) {
 	isc_mem_free(userarg, key);
 }
 
@@ -3075,13 +3074,12 @@ struct check_one_plugin_data {
  */
 static isc_result_t
 check_one_plugin(const cfg_obj_t *config, const cfg_obj_t *obj,
-		 cfg_aclconfctx_t *aclctx, const char *plugin_path,
-		 const char *parameters, void *callback_data) {
+		 cfg_aclconfctx_t *aclctx ISC_ATTR_UNUSED,
+		 const char *plugin_path, const char *parameters,
+		 void *callback_data) {
 	struct check_one_plugin_data *data = callback_data;
 	char full_path[PATH_MAX];
 	isc_result_t result = ISC_R_SUCCESS;
-
-	UNUSED(aclctx);
 
 	result = ns_plugin_expandpath(plugin_path, full_path,
 				      sizeof(full_path));

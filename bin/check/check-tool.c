@@ -95,9 +95,8 @@ dns_zoneopt_t zone_options = DNS_ZONEOPT_CHECKNS | DNS_ZONEOPT_CHECKMX |
 static isc_symtab_t *symtab = NULL;
 
 static void
-freekey(char *key, unsigned int type, isc_symvalue_t value, void *userarg) {
-	UNUSED(type);
-	UNUSED(value);
+freekey(char *key, unsigned int type ISC_ATTR_UNUSED,
+	isc_symvalue_t value ISC_ATTR_UNUSED, void *userarg) {
 	isc_mem_free(userarg, key);
 }
 

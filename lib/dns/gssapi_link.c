@@ -63,10 +63,9 @@ struct dst_gssapi_signverifyctx {
  * or verifying.
  */
 static isc_result_t
-gssapi_create_signverify_ctx(dst_key_t *key, dst_context_t *dctx) {
+gssapi_create_signverify_ctx(dst_key_t *key ISC_ATTR_UNUSED,
+			     dst_context_t *dctx) {
 	dst_gssapi_signverifyctx_t *ctx;
-
-	UNUSED(key);
 
 	ctx = isc_mem_get(dctx->mctx, sizeof(dst_gssapi_signverifyctx_t));
 	ctx->buffer = NULL;
@@ -238,18 +237,14 @@ gssapi_compare(const dst_key_t *key1, const dst_key_t *key2) {
 }
 
 static isc_result_t
-gssapi_generate(dst_key_t *key, int unused, void (*callback)(int)) {
-	UNUSED(key);
-	UNUSED(unused);
-	UNUSED(callback);
-
+gssapi_generate(dst_key_t *key ISC_ATTR_UNUSED, int unused ISC_ATTR_UNUSED,
+		void (*callback ISC_ATTR_UNUSED)(int)) {
 	/* No idea */
 	return ISC_R_FAILURE;
 }
 
 static bool
-gssapi_isprivate(const dst_key_t *key) {
-	UNUSED(key);
+gssapi_isprivate(const dst_key_t *key ISC_ATTR_UNUSED) {
 	return true;
 }
 

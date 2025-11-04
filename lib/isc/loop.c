@@ -234,9 +234,7 @@ loop_init(isc_loop_t *loop, isc_tid_t tid, const char *kind) {
 }
 
 static void
-quiescent_cb(uv_prepare_t *handle) {
-	UNUSED(handle);
-
+quiescent_cb(uv_prepare_t *handle ISC_ATTR_UNUSED) {
 #if defined(RCU_QSBR)
 	/* safe memory reclamation */
 	rcu_quiescent_state();

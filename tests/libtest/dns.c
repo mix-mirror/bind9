@@ -322,10 +322,8 @@ dns_test_getdata(const char *file, unsigned char *buf, size_t bufsiz,
 }
 
 static void
-nullmsg(dns_rdatacallbacks_t *cb, const char *fmt, ...) {
-	UNUSED(cb);
-	UNUSED(fmt);
-}
+nullmsg(dns_rdatacallbacks_t *cb ISC_ATTR_UNUSED,
+	const char *fmt ISC_ATTR_UNUSED, ...) {}
 
 isc_result_t
 dns_test_rdatafromstring(dns_rdata_t *rdata, dns_rdataclass_t rdclass,

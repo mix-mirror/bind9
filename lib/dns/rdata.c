@@ -2251,11 +2251,9 @@ decvalue(char value) {
 }
 
 static void
-default_fromtext_callback(dns_rdatacallbacks_t *callbacks, const char *fmt,
-			  ...) {
+default_fromtext_callback(dns_rdatacallbacks_t *callbacks ISC_ATTR_UNUSED,
+			  const char *fmt, ...) {
 	va_list ap;
-
-	UNUSED(callbacks);
 
 	va_start(ap, fmt);
 	vfprintf(stderr, fmt, ap);

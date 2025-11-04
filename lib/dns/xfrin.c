@@ -258,7 +258,8 @@ xfrin_connect_done(isc_result_t result, isc_region_t *region, void *arg);
 static isc_result_t
 xfrin_send_request(dns_xfrin_t *xfr);
 static void
-xfrin_send_done(isc_result_t eresult, isc_region_t *region, void *arg);
+xfrin_send_done(isc_result_t eresult, isc_region_t *region ISC_ATTR_UNUSED,
+		void *arg);
 static void
 xfrin_recv_done(isc_result_t result, isc_region_t *region, void *arg);
 
@@ -1701,10 +1702,9 @@ failure:
 }
 
 static void
-xfrin_send_done(isc_result_t result, isc_region_t *region, void *arg) {
+xfrin_send_done(isc_result_t result, isc_region_t *region ISC_ATTR_UNUSED,
+		void *arg) {
 	dns_xfrin_t *xfr = (dns_xfrin_t *)arg;
-
-	UNUSED(region);
 
 	REQUIRE(VALID_XFRIN(xfr));
 

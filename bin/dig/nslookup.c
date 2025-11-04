@@ -196,12 +196,9 @@ printrdata(dns_rdata_t *rdata) {
 }
 
 static isc_result_t
-printsection(dig_query_t *query, dns_message_t *msg, bool headers,
-	     dns_section_t section) {
+printsection(dig_query_t *query ISC_ATTR_UNUSED, dns_message_t *msg,
+	     bool headers ISC_ATTR_UNUSED, dns_section_t section) {
 	char namebuf[DNS_NAME_FORMATSIZE];
-
-	UNUSED(query);
-	UNUSED(headers);
 
 	debug("printsection()");
 
@@ -242,11 +239,9 @@ printsection(dig_query_t *query, dns_message_t *msg, bool headers,
 }
 
 static isc_result_t
-detailsection(dig_query_t *query, dns_message_t *msg, bool headers,
-	      dns_section_t section) {
+detailsection(dig_query_t *query ISC_ATTR_UNUSED, dns_message_t *msg,
+	      bool headers, dns_section_t section) {
 	char namebuf[DNS_NAME_FORMATSIZE];
-
-	UNUSED(query);
 
 	debug("detailsection()");
 
@@ -302,17 +297,12 @@ detailsection(dig_query_t *query, dns_message_t *msg, bool headers,
 }
 
 static void
-received(unsigned int bytes, isc_sockaddr_t *from, dig_query_t *query) {
-	UNUSED(bytes);
-	UNUSED(from);
-	UNUSED(query);
-}
+received(unsigned int bytes ISC_ATTR_UNUSED,
+	 isc_sockaddr_t *from ISC_ATTR_UNUSED,
+	 dig_query_t *query ISC_ATTR_UNUSED) {}
 
 static void
-trying(char *frm, dig_lookup_t *lookup) {
-	UNUSED(frm);
-	UNUSED(lookup);
-}
+trying(char *frm ISC_ATTR_UNUSED, dig_lookup_t *lookup ISC_ATTR_UNUSED) {}
 
 static void
 chase_cnamechain(dns_message_t *msg, dns_name_t *qname) {
@@ -342,10 +332,8 @@ chase_cnamechain(dns_message_t *msg, dns_name_t *qname) {
 }
 
 static isc_result_t
-printmessage(dig_query_t *query, const isc_buffer_t *msgbuf, dns_message_t *msg,
-	     bool headers) {
-	UNUSED(msgbuf);
-
+printmessage(dig_query_t *query, const isc_buffer_t *msgbuf ISC_ATTR_UNUSED,
+	     dns_message_t *msg, bool headers) {
 	/* I've we've gotten this far, we've reached a server. */
 	query_error = 0;
 
@@ -759,10 +747,8 @@ do_next_command(char *input) {
 }
 
 static void
-readline_next_command(void *arg) {
+readline_next_command(void *arg ISC_ATTR_UNUSED) {
 	char *ptr = NULL;
-
-	UNUSED(arg);
 
 	isc_loopmgr_blocking();
 	ptr = readline("> ");
@@ -780,9 +766,7 @@ readline_next_command(void *arg) {
 }
 
 static void
-fgets_next_command(void *arg) {
-	UNUSED(arg);
-
+fgets_next_command(void *arg ISC_ATTR_UNUSED) {
 	cmdline = fgets(cmdlinebuf, COMMSIZE, stdin);
 }
 
@@ -876,9 +860,7 @@ start_next_command(void) {
 }
 
 static void
-read_loop(void *arg) {
-	UNUSED(arg);
-
+read_loop(void *arg ISC_ATTR_UNUSED) {
 	start_next_command();
 }
 

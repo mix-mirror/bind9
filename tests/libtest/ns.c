@@ -59,29 +59,19 @@ atomic_uint_fast32_t client_refs[32];
 atomic_uintptr_t client_addrs[32];
 
 static isc_result_t
-matchview(isc_netaddr_t *srcaddr, isc_netaddr_t *destaddr,
-	  dns_message_t *message, dns_aclenv_t *env, ns_server_t *lsctx,
-	  isc_loop_t *loop, isc_job_cb cb, void *cbarg,
-	  isc_result_t *sigresultp, isc_result_t *viewmatchresultp,
-	  dns_view_t **viewp) {
-	UNUSED(srcaddr);
-	UNUSED(destaddr);
-	UNUSED(message);
-	UNUSED(env);
-	UNUSED(lsctx);
-	UNUSED(loop);
-	UNUSED(cb);
-	UNUSED(cbarg);
-	UNUSED(sigresultp);
-	UNUSED(viewp);
-
+matchview(isc_netaddr_t *srcaddr ISC_ATTR_UNUSED,
+	  isc_netaddr_t *destaddr ISC_ATTR_UNUSED,
+	  dns_message_t *message ISC_ATTR_UNUSED,
+	  dns_aclenv_t *env ISC_ATTR_UNUSED, ns_server_t *lsctx ISC_ATTR_UNUSED,
+	  isc_loop_t *loop ISC_ATTR_UNUSED, isc_job_cb cb ISC_ATTR_UNUSED,
+	  void *cbarg ISC_ATTR_UNUSED, isc_result_t *sigresultp ISC_ATTR_UNUSED,
+	  isc_result_t *viewmatchresultp, dns_view_t **viewp ISC_ATTR_UNUSED) {
 	*viewmatchresultp = ISC_R_NOTIMPLEMENTED;
 	return ISC_R_NOTIMPLEMENTED;
 }
 
 static void
-scan_interfaces(void *arg) {
-	UNUSED(arg);
+scan_interfaces(void *arg ISC_ATTR_UNUSED) {
 	ns_interfacemgr_scan(interfacemgr, true, false);
 }
 
@@ -214,13 +204,11 @@ ns_test_cleanup_zone(void) {
 }
 
 void
-ns_test_getclient(ns_interface_t *ifp0, bool tcp, ns_client_t **clientp) {
+ns_test_getclient(ns_interface_t *ifp0 ISC_ATTR_UNUSED,
+		  bool tcp ISC_ATTR_UNUSED, ns_client_t **clientp) {
 	ns_client_t *client;
 	ns_clientmgr_t *clientmgr;
 	int i;
-
-	UNUSED(ifp0);
-	UNUSED(tcp);
 
 	clientmgr = ns_interfacemgr_getclientmgr(interfacemgr);
 
@@ -505,10 +493,8 @@ ns_test_qctx_destroy(query_ctx_t **qctxp) {
 }
 
 ns_hookresult_t
-ns_test_hook_catch_call(void *arg, void *data, isc_result_t *resultp) {
-	UNUSED(arg);
-	UNUSED(data);
-
+ns_test_hook_catch_call(void *arg ISC_ATTR_UNUSED, void *data ISC_ATTR_UNUSED,
+			isc_result_t *resultp) {
 	*resultp = ISC_R_UNSET;
 
 	return NS_HOOK_RETURN;

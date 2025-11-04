@@ -1056,9 +1056,9 @@ isc__nm_failed_connect_cb(isc_nmsocket_t *sock, isc__nm_uvreq_t *req,
 }
 
 void
-isc__nm_failed_read_cb(isc_nmsocket_t *sock, isc_result_t result, bool async) {
+isc__nm_failed_read_cb(isc_nmsocket_t *sock, isc_result_t result,
+		       bool async ISC_ATTR_UNUSED) {
 	REQUIRE(VALID_NMSOCK(sock));
-	UNUSED(async);
 	switch (sock->type) {
 	case isc_nm_udpsocket:
 		isc__nm_udp_failed_read_cb(sock, result, async);

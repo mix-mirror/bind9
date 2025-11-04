@@ -169,11 +169,9 @@ add_name(struct dlz_example_data *state, struct record *list, const char *name,
  * Delete a record from a list
  */
 static isc_result_t
-del_name(struct dlz_example_data *state, struct record *list, const char *name,
-	 const char *type, dns_ttl_t ttl, const char *data) {
+del_name(struct dlz_example_data *state ISC_ATTR_UNUSED, struct record *list,
+	 const char *name, const char *type, dns_ttl_t ttl, const char *data) {
 	int i;
-
-	UNUSED(state);
 
 	for (i = 0; i < MAX_RECORDS; i++) {
 		if (strcasecmp(name, list[i].name) == 0 &&
@@ -223,8 +221,7 @@ fmt_address(isc_sockaddr_t *addr, char *buffer, size_t size) {
  * Return the version of the API
  */
 int
-dlz_version(unsigned int *flags) {
-	UNUSED(flags);
+dlz_version(unsigned int *flags ISC_ATTR_UNUSED) {
 	return DLZ_DLOPEN_VERSION;
 }
 
@@ -252,16 +249,14 @@ b9_add_helper(struct dlz_example_data *state, const char *helper_name,
  * Called to initialize the driver
  */
 isc_result_t
-dlz_create(const char *dlzname, unsigned int argc, char *argv[], void **dbdata,
-	   ...) {
+dlz_create(const char *dlzname ISC_ATTR_UNUSED, unsigned int argc, char *argv[],
+	   void **dbdata, ...) {
 	struct dlz_example_data *state;
 	const char *helper_name;
 	va_list ap;
 	char soa_data[sizeof("@ hostmaster.root 123 900 600 86400 3600")];
 	isc_result_t result;
 	size_t n;
-
-	UNUSED(dlzname);
 
 	state = calloc(1, sizeof(struct dlz_example_data));
 	if (state == NULL) {
@@ -418,7 +413,7 @@ dlz_findzonedb(void *dbdata, const char *name, dns_clientinfomethods_t *methods,
  * to process; this should result in a SERVFAIL when queried.
  */
 isc_result_t
-dlz_lookup(const char *zone, const char *name, void *dbdata,
+dlz_lookup(const char *zone ISC_ATTR_UNUSED, const char *name, void *dbdata,
 	   dns_sdlzlookup_t *lookup, dns_clientinfomethods_t *methods,
 	   dns_clientinfo_t *clientinfo) {
 	isc_result_t result;
@@ -431,8 +426,6 @@ dlz_lookup(const char *zone, const char *name, void *dbdata,
 	static char last[256];
 	static int count = 0;
 	int i, size;
-
-	UNUSED(zone);
 
 	if (state->putrr == NULL) {
 		return ISC_R_NOTIMPLEMENTED;
@@ -616,11 +609,10 @@ dlz_allowzonexfr(void *dbdata, const char *name, const char *client) {
  * Perform a zone transfer
  */
 isc_result_t
-dlz_allnodes(const char *zone, void *dbdata, dns_sdlzallnodes_t *allnodes) {
+dlz_allnodes(const char *zone ISC_ATTR_UNUSED, void *dbdata,
+	     dns_sdlzallnodes_t *allnodes) {
 	struct dlz_example_data *state = (struct dlz_example_data *)dbdata;
 	int i;
-
-	UNUSED(zone);
 
 	if (state->putnamedrr == NULL) {
 		return ISC_R_NOTIMPLEMENTED;
@@ -738,16 +730,12 @@ dlz_configure(dns_view_t *view, dns_dlzdb_t *dlzdb, void *dbdata) {
  * Authorize a zone update
  */
 bool
-dlz_ssumatch(const char *signer, const char *name, const char *tcpaddr,
-	     const char *type, const char *key, uint32_t keydatalen,
-	     unsigned char *keydata, void *dbdata) {
+dlz_ssumatch(const char *signer, const char *name,
+	     const char *tcpaddr ISC_ATTR_UNUSED,
+	     const char *type ISC_ATTR_UNUSED, const char *key ISC_ATTR_UNUSED,
+	     uint32_t keydatalen ISC_ATTR_UNUSED,
+	     unsigned char *keydata ISC_ATTR_UNUSED, void *dbdata) {
 	struct dlz_example_data *state = (struct dlz_example_data *)dbdata;
-
-	UNUSED(tcpaddr);
-	UNUSED(type);
-	UNUSED(key);
-	UNUSED(keydatalen);
-	UNUSED(keydata);
 
 	if (strncmp(name, "deny.", 5) == 0) {
 		loginfo("dlz_example: denying update of name=%s by %s", name,

@@ -746,10 +746,8 @@ typedef bool
 rr_predicate(dns_rdata_t *update_rr, dns_rdata_t *db_rr);
 
 static isc_result_t
-count_action(void *data, rr_t *rr) {
+count_action(void *data, rr_t *rr ISC_ATTR_UNUSED) {
 	unsigned int *ui = (unsigned int *)data;
-
-	UNUSED(rr);
 
 	(*ui)++;
 
@@ -760,9 +758,7 @@ count_action(void *data, rr_t *rr) {
  * Helper function for rrset_exists().
  */
 static isc_result_t
-rrset_exists_action(void *data, rr_t *rr) {
-	UNUSED(data);
-	UNUSED(rr);
+rrset_exists_action(void *data ISC_ATTR_UNUSED, rr_t *rr ISC_ATTR_UNUSED) {
 	return ISC_R_EXISTS;
 }
 
@@ -803,8 +799,7 @@ rrset_exists(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
  * Helper function for cname_incompatible_rrset_exists.
  */
 static isc_result_t
-cname_compatibility_action(void *data, dns_rdataset_t *rrset) {
-	UNUSED(data);
+cname_compatibility_action(void *data ISC_ATTR_UNUSED, dns_rdataset_t *rrset) {
 	if (rrset->type != dns_rdatatype_cname &&
 	    !dns_rdatatype_atcname(rrset->type))
 	{
@@ -833,9 +828,8 @@ cname_incompatible_rrset_exists(dns_db_t *db, dns_dbversion_t *ver,
  * Helper function for rr_count().
  */
 static isc_result_t
-count_rr_action(void *data, rr_t *rr) {
+count_rr_action(void *data, rr_t *rr ISC_ATTR_UNUSED) {
 	int *countp = data;
-	UNUSED(rr);
 	(*countp)++;
 	return ISC_R_SUCCESS;
 }
@@ -855,9 +849,8 @@ rr_count(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
  */
 
 static isc_result_t
-name_exists_action(void *data, dns_rdataset_t *rrset) {
-	UNUSED(data);
-	UNUSED(rrset);
+name_exists_action(void *data ISC_ATTR_UNUSED,
+		   dns_rdataset_t *rrset ISC_ATTR_UNUSED) {
 	return ISC_R_EXISTS;
 }
 
@@ -1253,8 +1246,8 @@ typedef struct {
  * an RRSIG nor an NSEC3PARAM nor a NSEC.
  */
 static bool
-type_not_soa_nor_ns_p(dns_rdata_t *update_rr, dns_rdata_t *db_rr) {
-	UNUSED(update_rr);
+type_not_soa_nor_ns_p(dns_rdata_t *update_rr ISC_ATTR_UNUSED,
+		      dns_rdata_t *db_rr) {
 	return (db_rr->type != dns_rdatatype_soa &&
 		db_rr->type != dns_rdatatype_ns &&
 		db_rr->type != dns_rdatatype_nsec3param &&
@@ -1268,8 +1261,7 @@ type_not_soa_nor_ns_p(dns_rdata_t *update_rr, dns_rdata_t *db_rr) {
  * Return true iff 'db_rr' is neither a RRSIG nor a NSEC.
  */
 static bool
-type_not_dnssec(dns_rdata_t *update_rr, dns_rdata_t *db_rr) {
-	UNUSED(update_rr);
+type_not_dnssec(dns_rdata_t *update_rr ISC_ATTR_UNUSED, dns_rdata_t *db_rr) {
 	return (db_rr->type != dns_rdatatype_rrsig &&
 		db_rr->type != dns_rdatatype_nsec)
 		       ? true
@@ -1280,9 +1272,8 @@ type_not_dnssec(dns_rdata_t *update_rr, dns_rdata_t *db_rr) {
  * Return true always.
  */
 static bool
-true_p(dns_rdata_t *update_rr, dns_rdata_t *db_rr) {
-	UNUSED(update_rr);
-	UNUSED(db_rr);
+true_p(dns_rdata_t *update_rr ISC_ATTR_UNUSED,
+       dns_rdata_t *db_rr ISC_ATTR_UNUSED) {
 	return true;
 }
 

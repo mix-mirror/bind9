@@ -6859,11 +6859,9 @@ tat_timer_tick(void *arg) {
 }
 
 static void
-pps_timer_tick(void *arg) {
+pps_timer_tick(void *arg ISC_ATTR_UNUSED) {
 	static unsigned int oldrequests = 0;
 	unsigned int requests = atomic_load_relaxed(&ns_client_requests);
-
-	UNUSED(arg);
 
 	/*
 	 * Don't worry about wrapping as the overflow result will be right.
@@ -7589,14 +7587,11 @@ configure_newzone(const cfg_obj_t *zconfig, cfg_obj_t *config,
  * Revert new view assignment for a zone found in NZD.
  */
 static isc_result_t
-configure_newzone_revert(const cfg_obj_t *zconfig, cfg_obj_t *config,
-			 cfg_obj_t *vconfig, dns_view_t *view,
-			 cfg_aclconfctx_t *aclctx, dns_kasplist_t *kasplist) {
-	UNUSED(config);
-	UNUSED(vconfig);
-	UNUSED(aclctx);
-	UNUSED(kasplist);
-
+configure_newzone_revert(const cfg_obj_t *zconfig,
+			 cfg_obj_t *config ISC_ATTR_UNUSED,
+			 cfg_obj_t *vconfig ISC_ATTR_UNUSED, dns_view_t *view,
+			 cfg_aclconfctx_t *aclctx ISC_ATTR_UNUSED,
+			 dns_kasplist_t *kasplist ISC_ATTR_UNUSED) {
 	configure_zone_setviewcommit(ISC_R_FAILURE, zconfig, view);
 
 	return ISC_R_SUCCESS;
@@ -9894,9 +9889,7 @@ named_server_reloadwanted(void *arg, int signum) {
  * Handle a reload event (from SIGUSR1).
  */
 static void
-named_server_closelogs(void *arg) {
-	UNUSED(arg);
-
+named_server_closelogs(void *arg ISC_ATTR_UNUSED) {
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
 		      ISC_LOG_INFO,
 		      "received SIGUSR1 signal to close log files");
@@ -9932,9 +9925,7 @@ memprof_dump(void) {
 }
 #else
 static isc_result_t
-memprof_toggle(bool active) {
-	UNUSED(active);
-
+memprof_toggle(bool active ISC_ATTR_UNUSED) {
 	return ISC_R_NOTIMPLEMENTED;
 }
 
@@ -11395,12 +11386,11 @@ cleanup:
 }
 
 isc_result_t
-named_server_setdebuglevel(named_server_t *server, isc_lex_t *lex) {
+named_server_setdebuglevel(named_server_t *server ISC_ATTR_UNUSED,
+			   isc_lex_t *lex) {
 	char *ptr;
 	char *endp;
 	long newlevel;
-
-	UNUSED(server);
 
 	/* Skip the command name. */
 	ptr = next_token(lex, NULL);
@@ -13005,8 +12995,8 @@ cleanup:
 
 static isc_result_t
 do_addzone(named_server_t *server, dns_view_t *view, dns_name_t *name,
-	   cfg_obj_t *zoneconf, const cfg_obj_t *zoneobj, bool redirect,
-	   isc_buffer_t **text) {
+	   cfg_obj_t *zoneconf ISC_ATTR_UNUSED, const cfg_obj_t *zoneobj,
+	   bool redirect, isc_buffer_t **text) {
 	isc_result_t result, tresult;
 	dns_zone_t *zone = NULL;
 	const cfg_obj_t *voptions = NULL;
@@ -13017,8 +13007,6 @@ do_addzone(named_server_t *server, dns_view_t *view, dns_name_t *name,
 	MDB_txn *txn = NULL;
 	MDB_dbi dbi;
 	bool locked = false;
-
-	UNUSED(zoneconf);
 #endif
 
 	if (!view->newzone.allowed) {

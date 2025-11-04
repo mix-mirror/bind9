@@ -19,11 +19,9 @@
 #define UNUSED(x) (void)(x)
 
 int
-main(int argc, char *argv[]) {
+main(int argc ISC_ATTR_UNUSED, char *argv[]) {
 	unsigned char buf[16];
 	int i;
-
-	UNUSED(argc);
 
 	while (argv[1]) {
 		if (inet_pton(AF_INET6, argv[1], buf) == 1) {

@@ -138,23 +138,20 @@ isc__crypto_free_ex(void *ptr, const char *file, int line) {
 #else /* ISC_MEM_TRACKLINES */
 
 static void *
-isc__crypto_malloc_ex(size_t size, const char *file, int line) {
-	UNUSED(file);
-	UNUSED(line);
+isc__crypto_malloc_ex(size_t size, const char *file ISC_ATTR_UNUSED,
+		      int line ISC_ATTR_UNUSED) {
 	return isc_mem_allocate(isc__crypto_mctx, size);
 }
 
 static void *
-isc__crypto_realloc_ex(void *ptr, size_t size, const char *file, int line) {
-	UNUSED(file);
-	UNUSED(line);
+isc__crypto_realloc_ex(void *ptr, size_t size, const char *file ISC_ATTR_UNUSED,
+		       int line ISC_ATTR_UNUSED) {
 	return isc_mem_reallocate(isc__crypto_mctx, ptr, size);
 }
 
 static void
-isc__crypto_free_ex(void *ptr, const char *file, int line) {
-	UNUSED(file);
-	UNUSED(line);
+isc__crypto_free_ex(void *ptr, const char *file ISC_ATTR_UNUSED,
+		    int line ISC_ATTR_UNUSED) {
 	if (ptr == NULL) {
 		return;
 	}

@@ -992,7 +992,7 @@ isc_lex_getoctaltoken(isc_lex_t *lex, isc_token_t *token, bool eol) {
 }
 
 void
-isc_lex_ungettoken(isc_lex_t *lex, isc_token_t *tokenp) {
+isc_lex_ungettoken(isc_lex_t *lex, isc_token_t *tokenp ISC_ATTR_UNUSED) {
 	inputsource *source;
 	/*
 	 * Unget the current token.
@@ -1005,8 +1005,6 @@ isc_lex_ungettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 	REQUIRE(isc_buffer_consumedlength(source->pushback) != 0 ||
 		tokenp->type == isc_tokentype_eof);
 
-	UNUSED(tokenp);
-
 	isc_buffer_first(source->pushback);
 	lex->paren_count = lex->saved_paren_count;
 	source->line = source->saved_line;
@@ -1014,7 +1012,8 @@ isc_lex_ungettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 }
 
 void
-isc_lex_getlasttokentext(isc_lex_t *lex, isc_token_t *tokenp, isc_region_t *r) {
+isc_lex_getlasttokentext(isc_lex_t *lex, isc_token_t *tokenp ISC_ATTR_UNUSED,
+			 isc_region_t *r) {
 	inputsource *source;
 
 	REQUIRE(VALID_LEX(lex));
@@ -1023,8 +1022,6 @@ isc_lex_getlasttokentext(isc_lex_t *lex, isc_token_t *tokenp, isc_region_t *r) {
 	REQUIRE(tokenp != NULL);
 	REQUIRE(isc_buffer_consumedlength(source->pushback) != 0 ||
 		tokenp->type == isc_tokentype_eof);
-
-	UNUSED(tokenp);
 
 	INSIST(source->ignored <= isc_buffer_consumedlength(source->pushback));
 	r->base = (unsigned char *)isc_buffer_base(source->pushback) +

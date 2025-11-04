@@ -243,8 +243,7 @@ dns_zt_attach(dns_zt_t *zt, dns_zt_t **ztp) {
 }
 
 static isc_result_t
-flush(dns_zone_t *zone, void *uap) {
-	UNUSED(uap);
+flush(dns_zone_t *zone, void *uap ISC_ATTR_UNUSED) {
 	return dns_zone_flush(zone);
 }
 

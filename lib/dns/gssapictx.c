@@ -541,11 +541,10 @@ out:
 }
 
 isc_result_t
-dst_gssapi_deletectx(isc_mem_t *mctx, dns_gss_ctx_id_t *gssctx) {
+dst_gssapi_deletectx(isc_mem_t *mctx ISC_ATTR_UNUSED,
+		     dns_gss_ctx_id_t *gssctx) {
 	OM_uint32 gret, minor;
 	char buf[1024];
-
-	UNUSED(mctx);
 
 	REQUIRE(gssctx != NULL && *gssctx != NULL);
 
@@ -591,61 +590,44 @@ gss_error_tostring(uint32_t major, uint32_t minor, char *buf, size_t buflen) {
 #else
 
 bool
-dst_gssapi_identitymatchesrealmkrb5(const dns_name_t *signer,
-				    const dns_name_t *name,
-				    const dns_name_t *realm, bool subdomain) {
-	UNUSED(signer);
-	UNUSED(name);
-	UNUSED(realm);
-	UNUSED(subdomain);
-
+dst_gssapi_identitymatchesrealmkrb5(const dns_name_t *signer ISC_ATTR_UNUSED,
+				    const dns_name_t *name ISC_ATTR_UNUSED,
+				    const dns_name_t *realm ISC_ATTR_UNUSED,
+				    bool subdomain ISC_ATTR_UNUSED) {
 	return false;
 }
 
 bool
-dst_gssapi_identitymatchesrealmms(const dns_name_t *signer,
-				  const dns_name_t *name,
-				  const dns_name_t *realm, bool subdomain) {
-	UNUSED(signer);
-	UNUSED(name);
-	UNUSED(realm);
-	UNUSED(subdomain);
-
+dst_gssapi_identitymatchesrealmms(const dns_name_t *signer ISC_ATTR_UNUSED,
+				  const dns_name_t *name ISC_ATTR_UNUSED,
+				  const dns_name_t *realm ISC_ATTR_UNUSED,
+				  bool subdomain ISC_ATTR_UNUSED) {
 	return false;
 }
 
 isc_result_t
-dst_gssapi_initctx(const dns_name_t *name, isc_buffer_t *intoken,
-		   isc_buffer_t *outtoken, dns_gss_ctx_id_t *gssctx,
-		   isc_mem_t *mctx, char **err_message) {
-	UNUSED(name);
-	UNUSED(intoken);
-	UNUSED(outtoken);
-	UNUSED(gssctx);
-	UNUSED(mctx);
-	UNUSED(err_message);
-
+dst_gssapi_initctx(const dns_name_t *name ISC_ATTR_UNUSED,
+		   isc_buffer_t *intoken ISC_ATTR_UNUSED,
+		   isc_buffer_t *outtoken ISC_ATTR_UNUSED,
+		   dns_gss_ctx_id_t *gssctx ISC_ATTR_UNUSED,
+		   isc_mem_t *mctx ISC_ATTR_UNUSED,
+		   char **err_message ISC_ATTR_UNUSED) {
 	return ISC_R_NOTIMPLEMENTED;
 }
 
 isc_result_t
-dst_gssapi_acceptctx(const char *gssapi_keytab, isc_region_t *intoken,
-		     isc_buffer_t **outtoken, dns_gss_ctx_id_t *ctxout,
-		     dns_name_t *principal, isc_mem_t *mctx) {
-	UNUSED(gssapi_keytab);
-	UNUSED(intoken);
-	UNUSED(outtoken);
-	UNUSED(ctxout);
-	UNUSED(principal);
-	UNUSED(mctx);
-
+dst_gssapi_acceptctx(const char *gssapi_keytab ISC_ATTR_UNUSED,
+		     isc_region_t *intoken ISC_ATTR_UNUSED,
+		     isc_buffer_t **outtoken ISC_ATTR_UNUSED,
+		     dns_gss_ctx_id_t *ctxout ISC_ATTR_UNUSED,
+		     dns_name_t *principal ISC_ATTR_UNUSED,
+		     isc_mem_t *mctx ISC_ATTR_UNUSED) {
 	return ISC_R_NOTIMPLEMENTED;
 }
 
 isc_result_t
-dst_gssapi_deletectx(isc_mem_t *mctx, dns_gss_ctx_id_t *gssctx) {
-	UNUSED(mctx);
-	UNUSED(gssctx);
+dst_gssapi_deletectx(isc_mem_t *mctx ISC_ATTR_UNUSED,
+		     dns_gss_ctx_id_t *gssctx ISC_ATTR_UNUSED) {
 	return ISC_R_NOTIMPLEMENTED;
 }
 

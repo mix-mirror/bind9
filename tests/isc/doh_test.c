@@ -277,13 +277,10 @@ setup_ephemeral_port(isc_sockaddr_t *addr, sa_family_t family) {
 /* Generic */
 
 static void
-noop_read_cb(isc_nmhandle_t *handle, isc_result_t result, isc_region_t *region,
-	     void *cbarg) {
-	UNUSED(handle);
-	UNUSED(result);
-	UNUSED(region);
-	UNUSED(cbarg);
-}
+noop_read_cb(isc_nmhandle_t *handle ISC_ATTR_UNUSED,
+	     isc_result_t result ISC_ATTR_UNUSED,
+	     isc_region_t *region ISC_ATTR_UNUSED,
+	     void *cbarg ISC_ATTR_UNUSED) {}
 
 thread_local uint8_t tcp_buffer_storage[4096];
 thread_local size_t tcp_buffer_length = 0;
@@ -403,10 +400,9 @@ init_listener_quota(size_t nthreads) {
 
 static void
 doh_receive_reply_cb(isc_nmhandle_t *handle, isc_result_t eresult,
-		     isc_region_t *region, void *cbarg) {
+		     isc_region_t *region ISC_ATTR_UNUSED,
+		     void *cbarg ISC_ATTR_UNUSED) {
 	assert_non_null(handle);
-	UNUSED(cbarg);
-	UNUSED(region);
 
 	if (eresult == ISC_R_SUCCESS) {
 		if (atomic_load(&use_PROXY)) {
@@ -424,10 +420,8 @@ doh_receive_reply_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 }
 
 static void
-doh_reply_sent_cb(isc_nmhandle_t *handle, isc_result_t eresult, void *cbarg) {
-	UNUSED(eresult);
-	UNUSED(cbarg);
-
+doh_reply_sent_cb(isc_nmhandle_t *handle, isc_result_t eresult ISC_ATTR_UNUSED,
+		  void *cbarg ISC_ATTR_UNUSED) {
 	assert_non_null(handle);
 
 	if (eresult == ISC_R_SUCCESS) {
@@ -437,10 +431,8 @@ doh_reply_sent_cb(isc_nmhandle_t *handle, isc_result_t eresult, void *cbarg) {
 
 static void
 doh_receive_request_cb(isc_nmhandle_t *handle, isc_result_t eresult,
-		       isc_region_t *region, void *cbarg) {
+		       isc_region_t *region, void *cbarg ISC_ATTR_UNUSED) {
 	uint64_t magic = 0;
-
-	UNUSED(cbarg);
 	assert_non_null(handle);
 
 	if (eresult != ISC_R_SUCCESS) {
@@ -588,11 +580,9 @@ ISC_LOOP_TEST_IMPL(doh_noresponse_GET) {
 }
 
 static void
-timeout_query_sent_cb(isc_nmhandle_t *handle, isc_result_t eresult,
-		      void *cbarg) {
-	UNUSED(eresult);
-	UNUSED(cbarg);
-
+timeout_query_sent_cb(isc_nmhandle_t *handle,
+		      isc_result_t eresult ISC_ATTR_UNUSED,
+		      void *cbarg ISC_ATTR_UNUSED) {
 	assert_non_null(handle);
 
 	if (eresult == ISC_R_SUCCESS) {
@@ -696,13 +686,13 @@ doh_connect_thread(void *arg);
 
 static void
 doh_receive_send_reply_cb(isc_nmhandle_t *handle, isc_result_t eresult,
-			  isc_region_t *region, void *cbarg ISC_ATTR_UNUSED) {
+			  isc_region_t *region ISC_ATTR_UNUSED,
+			  void *cbarg ISC_ATTR_UNUSED) {
 	if (eresult != ISC_R_SUCCESS) {
 		return;
 	}
 
 	assert_non_null(handle);
-	UNUSED(region);
 
 	int_fast64_t sends = atomic_fetch_sub(&nsends, 1);
 	atomic_fetch_add(&csends, 1);

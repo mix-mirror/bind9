@@ -53,20 +53,14 @@
 /* Callbacks */
 
 static void
-mock_recv_cb(isc_nmhandle_t *handle, isc_result_t eresult, isc_region_t *region,
-	     void *cbarg) {
-	UNUSED(handle);
-	UNUSED(eresult);
-	UNUSED(region);
-	UNUSED(cbarg);
-}
+mock_recv_cb(isc_nmhandle_t *handle ISC_ATTR_UNUSED,
+	     isc_result_t eresult ISC_ATTR_UNUSED,
+	     isc_region_t *region ISC_ATTR_UNUSED,
+	     void *cbarg ISC_ATTR_UNUSED) {}
 
 static void
-udp_connect_nomemory_cb(isc_nmhandle_t *handle, isc_result_t eresult,
-			void *cbarg) {
-	UNUSED(handle);
-	UNUSED(cbarg);
-
+udp_connect_nomemory_cb(isc_nmhandle_t *handle ISC_ATTR_UNUSED,
+			isc_result_t eresult, void *cbarg ISC_ATTR_UNUSED) {
 	isc_refcount_decrement(&active_cconnects);
 	assert_int_equal(eresult, ISC_R_NOMEMORY);
 

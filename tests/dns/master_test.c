@@ -43,10 +43,8 @@
 #include <tests/dns.h>
 
 static void
-nullmsg(dns_rdatacallbacks_t *cb, const char *fmt, ...) {
-	UNUSED(cb);
-	UNUSED(fmt);
-}
+nullmsg(dns_rdatacallbacks_t *cb ISC_ATTR_UNUSED,
+	const char *fmt ISC_ATTR_UNUSED, ...) {}
 
 #define BUFLEN	    255
 #define BIGBUFLEN   (70 * 1024)
@@ -62,16 +60,15 @@ dns_rdatacallbacks_t callbacks;
 char *include_file = NULL;
 
 static void
-rawdata_callback(dns_zone_t *zone, dns_masterrawheader_t *header);
+rawdata_callback(dns_zone_t *zone ISC_ATTR_UNUSED,
+		 dns_masterrawheader_t *header);
 
 static isc_result_t
-add_callback(void *arg, const dns_name_t *owner,
+add_callback(void *arg ISC_ATTR_UNUSED, const dns_name_t *owner,
 	     dns_rdataset_t *dataset DNS__DB_FLARG) {
 	char buf[BIGBUFLEN];
 	isc_buffer_t target;
 	isc_result_t result;
-
-	UNUSED(arg);
 
 	isc_buffer_init(&target, buf, BIGBUFLEN);
 	result = dns_rdataset_totext(dataset, owner, false, false, &target);
@@ -79,8 +76,7 @@ add_callback(void *arg, const dns_name_t *owner,
 }
 
 static void
-rawdata_callback(dns_zone_t *zone, dns_masterrawheader_t *h) {
-	UNUSED(zone);
+rawdata_callback(dns_zone_t *zone ISC_ATTR_UNUSED, dns_masterrawheader_t *h) {
 	header = *h;
 	headerset = true;
 }
@@ -513,11 +509,10 @@ static const char *warn_expect_value;
 static bool warn_expect_result;
 
 static void
-warn_expect(struct dns_rdatacallbacks *mycallbacks, const char *fmt, ...) {
+warn_expect(struct dns_rdatacallbacks *mycallbacks ISC_ATTR_UNUSED,
+	    const char *fmt, ...) {
 	char buf[4096];
 	va_list ap;
-
-	UNUSED(mycallbacks);
 
 	warn_expect_result = false;
 

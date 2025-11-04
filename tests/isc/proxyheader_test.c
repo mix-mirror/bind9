@@ -48,13 +48,11 @@ typedef struct dummy_handler_cbarg {
 } dummy_handler_cbarg_t;
 
 static bool
-dummy_subtlv_iter_cb(const uint8_t client, const bool client_cert_verified,
+dummy_subtlv_iter_cb(const uint8_t client ISC_ATTR_UNUSED,
+		     const bool client_cert_verified ISC_ATTR_UNUSED,
 		     const isc_proxy2_tlv_subtype_tls_t tls_subtlv_type,
 		     const isc_region_t *restrict data, void *cbarg) {
 	dummy_handler_cbarg_t *arg = (dummy_handler_cbarg_t *)cbarg;
-
-	UNUSED(client);
-	UNUSED(client_cert_verified);
 
 	arg->tls_subtlvs++;
 
@@ -102,10 +100,9 @@ proxy2_handler_dummy(const isc_result_t result, const isc_proxy2_command_t cmd,
 		     const isc_sockaddr_t *restrict src_addr,
 		     const isc_sockaddr_t *restrict dst_addr,
 		     const isc_region_t *restrict tlv_blob,
-		     const isc_region_t *restrict extra, void *cbarg) {
+		     const isc_region_t *restrict extra ISC_ATTR_UNUSED,
+		     void *cbarg) {
 	dummy_handler_cbarg_t *arg = (dummy_handler_cbarg_t *)cbarg;
-
-	UNUSED(extra);
 
 	if (result == ISC_R_NOMORE && arg != NULL) {
 		arg->no_more_calls++;
@@ -705,14 +702,12 @@ ISC_RUN_TEST_IMPL(proxyheader_make_header_test) {
 }
 
 static bool
-rebuild_subtlv_iter_cb(const uint8_t client, const bool client_cert_verified,
+rebuild_subtlv_iter_cb(const uint8_t client ISC_ATTR_UNUSED,
+		       const bool client_cert_verified ISC_ATTR_UNUSED,
 		       const isc_proxy2_tlv_subtype_tls_t tls_subtlv_type,
 		       const isc_region_t *restrict data, void *cbarg) {
 	isc_result_t result;
 	isc_buffer_t *outbuf = (isc_buffer_t *)cbarg;
-
-	UNUSED(client);
-	UNUSED(client_cert_verified);
 
 	result = isc_proxy2_append_tlv(outbuf, tls_subtlv_type, data);
 	assert_true(result == ISC_R_SUCCESS);

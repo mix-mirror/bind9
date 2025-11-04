@@ -223,7 +223,7 @@ cleanup:
 }
 
 isc_result_t
-dns_client_create(isc_mem_t *mctx, unsigned int options,
+dns_client_create(isc_mem_t *mctx, unsigned int options ISC_ATTR_UNUSED,
 		  isc_tlsctx_cache_t *tlsctx_client_cache,
 		  dns_client_t **clientp, const isc_sockaddr_t *localaddr4,
 		  const isc_sockaddr_t *localaddr6) {
@@ -236,8 +236,6 @@ dns_client_create(isc_mem_t *mctx, unsigned int options,
 	REQUIRE(mctx != NULL);
 	REQUIRE(tlsctx_client_cache != NULL);
 	REQUIRE(clientp != NULL && *clientp == NULL);
-
-	UNUSED(options);
 
 	client = isc_mem_get(mctx, sizeof(*client));
 	*client = (dns_client_t){

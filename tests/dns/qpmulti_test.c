@@ -351,9 +351,7 @@ one_transaction(dns_qpmulti_t *qpm) {
 }
 
 static void
-many_transactions(void *arg) {
-	UNUSED(arg);
-
+many_transactions(void *arg ISC_ATTR_UNUSED) {
 	dns_qpmulti_t *qpm = NULL;
 	dns_qpmulti_create(isc_g_mctx, &test_methods, NULL, &qpm);
 	qpm->writer.write_protect = true;

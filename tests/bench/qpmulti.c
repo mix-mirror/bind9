@@ -91,23 +91,18 @@ static struct {
 } *item;
 
 static void
-item_refcount(void *ctx, void *pval, uint32_t ival) {
-	UNUSED(ctx);
-	UNUSED(pval);
-	UNUSED(ival);
-}
+item_refcount(void *ctx ISC_ATTR_UNUSED, void *pval ISC_ATTR_UNUSED,
+	      uint32_t ival ISC_ATTR_UNUSED) {}
 
 static size_t
-item_makekey(dns_qpkey_t key, void *ctx, void *pval, uint32_t ival) {
-	UNUSED(ctx);
-	UNUSED(pval);
+item_makekey(dns_qpkey_t key, void *ctx ISC_ATTR_UNUSED,
+	     void *pval ISC_ATTR_UNUSED, uint32_t ival) {
 	memmove(key, item[ival].key, item[ival].len);
 	return item[ival].len;
 }
 
 static void
-benchname(void *ctx, char *buf, size_t size) {
-	UNUSED(ctx);
+benchname(void *ctx ISC_ATTR_UNUSED, char *buf, size_t size) {
 	strlcpy(buf, "bench", size);
 }
 
@@ -811,10 +806,7 @@ struct ticker {
 };
 
 static void
-tick(void *varg) {
-	/* just make the loop cycle */
-	UNUSED(varg);
-}
+tick(void *varg ISC_ATTR_UNUSED) {}
 
 static void
 start_ticker(void *varg) {

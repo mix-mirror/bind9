@@ -48,9 +48,7 @@
 #include <tests/dns.h>
 
 static int
-setup_test(void **state) {
-	UNUSED(state);
-
+setup_test(void **state ISC_ATTR_UNUSED) {
 	setenv("TZ", "", 1);
 
 	return 0;

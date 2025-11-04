@@ -43,7 +43,7 @@ static isc_tlsctx_t *tls_ctx = NULL;
 
 static void
 read_cb(isc_nmhandle_t *handle, isc_result_t eresult, isc_region_t *region,
-	void *cbarg);
+	void *cbarg ISC_ATTR_UNUSED);
 static void
 send_cb(isc_nmhandle_t *handle, isc_result_t eresult, void *cbarg);
 
@@ -192,12 +192,11 @@ test_server_yield(void) {
 
 static void
 read_cb(isc_nmhandle_t *handle, isc_result_t eresult, isc_region_t *region,
-	void *cbarg) {
+	void *cbarg ISC_ATTR_UNUSED) {
 	isc_region_t *reply = NULL;
 
 	REQUIRE(handle != NULL);
 	REQUIRE(eresult == ISC_R_SUCCESS);
-	UNUSED(cbarg);
 
 	fprintf(stderr, "RECEIVED %u bytes\n", region->length);
 
@@ -226,10 +225,10 @@ send_cb(isc_nmhandle_t *handle, isc_result_t eresult, void *cbarg) {
 }
 
 static isc_result_t
-accept_cb(isc_nmhandle_t *handle, isc_result_t eresult, void *cbarg) {
+accept_cb(isc_nmhandle_t *handle, isc_result_t eresult,
+	  void *cbarg ISC_ATTR_UNUSED) {
 	REQUIRE(handle != NULL);
 	REQUIRE(eresult == ISC_R_SUCCESS);
-	UNUSED(cbarg);
 
 	return ISC_R_SUCCESS;
 }

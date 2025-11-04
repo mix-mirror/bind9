@@ -46,10 +46,8 @@ static FILE *zonefile, *origfile;
 static dns_view_t *view = NULL;
 
 static isc_result_t
-count_zone(dns_zone_t *zone, void *uap) {
+count_zone(dns_zone_t *zone ISC_ATTR_UNUSED, void *uap) {
 	int *nzones = (int *)uap;
-
-	UNUSED(zone);
 
 	*nzones += 1;
 	return ISC_R_SUCCESS;

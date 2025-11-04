@@ -94,14 +94,12 @@ mark_nxdomain_stale(dns_stats_t *stats, int from, int to) {
 
 #define ATTRIBUTE_SET(y) ((attributes & (y)) != 0)
 static void
-verify_active_counters(dns_rdatastatstype_t which, uint64_t value, void *arg) {
+verify_active_counters(dns_rdatastatstype_t which ISC_ATTR_UNUSED,
+		       uint64_t value, void *arg ISC_ATTR_UNUSED) {
 	unsigned int attributes;
 #if debug
 	unsigned int type;
 #endif /* if debug */
-
-	UNUSED(which);
-	UNUSED(arg);
 
 	attributes = DNS_RDATASTATSTYPE_ATTR(which);
 #if debug
@@ -125,14 +123,12 @@ verify_active_counters(dns_rdatastatstype_t which, uint64_t value, void *arg) {
 }
 
 static void
-verify_stale_counters(dns_rdatastatstype_t which, uint64_t value, void *arg) {
+verify_stale_counters(dns_rdatastatstype_t which ISC_ATTR_UNUSED,
+		      uint64_t value, void *arg ISC_ATTR_UNUSED) {
 	unsigned int attributes;
 #if debug
 	unsigned int type;
 #endif /* if debug */
-
-	UNUSED(which);
-	UNUSED(arg);
 
 	attributes = DNS_RDATASTATSTYPE_ATTR(which);
 #if debug
@@ -154,14 +150,12 @@ verify_stale_counters(dns_rdatastatstype_t which, uint64_t value, void *arg) {
 }
 
 static void
-verify_ancient_counters(dns_rdatastatstype_t which, uint64_t value, void *arg) {
+verify_ancient_counters(dns_rdatastatstype_t which ISC_ATTR_UNUSED,
+			uint64_t value, void *arg ISC_ATTR_UNUSED) {
 	unsigned int attributes;
 #if debug
 	unsigned int type;
 #endif /* if debug */
-
-	UNUSED(which);
-	UNUSED(arg);
 
 	attributes = DNS_RDATASTATSTYPE_ATTR(which);
 #if debug

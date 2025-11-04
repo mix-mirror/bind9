@@ -196,16 +196,14 @@ dns_skrbundle_getsig(dns_skrbundle_t *bundle, dst_key_t *key,
 }
 
 void
-dns_skr_create(isc_mem_t *mctx, const char *filename, dns_name_t *origin,
-	       dns_rdataclass_t rdclass, dns_skr_t **skrp) {
+dns_skr_create(isc_mem_t *mctx, const char *filename,
+	       dns_name_t *origin ISC_ATTR_UNUSED,
+	       dns_rdataclass_t rdclass ISC_ATTR_UNUSED, dns_skr_t **skrp) {
 	isc_time_t now;
 	dns_skr_t *skr = NULL;
 
 	REQUIRE(skrp != NULL && *skrp == NULL);
 	REQUIRE(mctx != NULL);
-
-	UNUSED(origin);
-	UNUSED(rdclass);
 
 	now = isc_time_now();
 	skr = isc_mem_get(mctx, sizeof(*skr));

@@ -39,8 +39,7 @@
  * ns_plugin_expandpath() function defined in lib/ns/hooks.c
  */
 static bool
-isc_file_exists(const char *pathname) {
-	UNUSED(pathname);
+isc_file_exists(const char *pathname ISC_ATTR_UNUSED) {
 	return mock();
 }
 

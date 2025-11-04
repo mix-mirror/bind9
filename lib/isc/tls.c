@@ -672,11 +672,9 @@ isc_tls_verify_peer_result_string(isc_tls_t *tls) {
  * NPN TLS extension client callback.
  */
 static int
-select_next_proto_cb(SSL *ssl, unsigned char **out, unsigned char *outlen,
-		     const unsigned char *in, unsigned int inlen, void *arg) {
-	UNUSED(ssl);
-	UNUSED(arg);
-
+select_next_proto_cb(SSL *ssl ISC_ATTR_UNUSED, unsigned char **out,
+		     unsigned char *outlen, const unsigned char *in,
+		     unsigned int inlen, void *arg ISC_ATTR_UNUSED) {
 	if (nghttp2_select_next_protocol(out, outlen, in, inlen) <= 0) {
 		return SSL_TLSEXT_ERR_NOACK;
 	}
@@ -698,11 +696,8 @@ isc_tlsctx_enable_http2client_alpn(isc_tlsctx_t *ctx) {
 
 #ifndef OPENSSL_NO_NEXTPROTONEG
 static int
-next_proto_cb(isc_tls_t *ssl, const unsigned char **data, unsigned int *len,
-	      void *arg) {
-	UNUSED(ssl);
-	UNUSED(arg);
-
+next_proto_cb(isc_tls_t *ssl ISC_ATTR_UNUSED, const unsigned char **data,
+	      unsigned int *len, void *arg ISC_ATTR_UNUSED) {
 	*data = (const unsigned char *)NGHTTP2_PROTO_ALPN;
 	*len = (unsigned int)NGHTTP2_PROTO_ALPN_LEN;
 	return SSL_TLSEXT_ERR_OK;
@@ -710,12 +705,10 @@ next_proto_cb(isc_tls_t *ssl, const unsigned char **data, unsigned int *len,
 #endif /* !OPENSSL_NO_NEXTPROTONEG */
 
 static int
-alpn_select_proto_cb(SSL *ssl, const unsigned char **out, unsigned char *outlen,
-		     const unsigned char *in, unsigned int inlen, void *arg) {
+alpn_select_proto_cb(SSL *ssl ISC_ATTR_UNUSED, const unsigned char **out,
+		     unsigned char *outlen, const unsigned char *in,
+		     unsigned int inlen, void *arg ISC_ATTR_UNUSED) {
 	int ret;
-
-	UNUSED(ssl);
-	UNUSED(arg);
 
 	ret = nghttp2_select_next_protocol((unsigned char **)(uintptr_t)out,
 					   outlen, in, inlen);
@@ -788,13 +781,10 @@ isc_tlsctx_enable_dot_client_alpn(isc_tlsctx_t *ctx) {
 }
 
 static int
-dot_alpn_select_proto_cb(SSL *ssl, const unsigned char **out,
+dot_alpn_select_proto_cb(SSL *ssl ISC_ATTR_UNUSED, const unsigned char **out,
 			 unsigned char *outlen, const unsigned char *in,
-			 unsigned int inlen, void *arg) {
+			 unsigned int inlen, void *arg ISC_ATTR_UNUSED) {
 	bool ret;
-
-	UNUSED(ssl);
-	UNUSED(arg);
 
 	ret = dot_select_next_protocol(out, outlen, in, inlen);
 

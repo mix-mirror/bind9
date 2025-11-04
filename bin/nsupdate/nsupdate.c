@@ -192,7 +192,7 @@ static void
 send_update(dns_name_t *zonename, isc_sockaddr_t *primary);
 
 static void
-getinput(void *arg);
+getinput(void *arg ISC_ATTR_UNUSED);
 
 ISC_NORETURN static void
 fatal(const char *format, ...) ISC_FORMAT_PRINTF(1, 2);
@@ -737,9 +737,7 @@ maybeshutdown(void) {
 }
 
 static void
-shutdown_program(void *arg) {
-	UNUSED(arg);
-
+shutdown_program(void *arg ISC_ATTR_UNUSED) {
 	ddebug("shutdown_program()");
 
 	shuttingdown = true;
@@ -3476,10 +3474,8 @@ cleanup(void) {
 }
 
 static void
-getinput(void *arg) {
+getinput(void *arg ISC_ATTR_UNUSED) {
 	bool more;
-
-	UNUSED(arg);
 
 	if (shuttingdown) {
 		maybeshutdown();

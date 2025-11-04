@@ -157,8 +157,6 @@ dyndb_destroy(void **instp) {
  * is no API mismatch between the driver and the caller.
  */
 int
-dyndb_version(unsigned int *flags) {
-	UNUSED(flags);
-
+dyndb_version(unsigned int *flags ISC_ATTR_UNUSED) {
 	return DNS_DYNDB_VERSION;
 }

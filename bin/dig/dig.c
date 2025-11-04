@@ -485,10 +485,7 @@ received(unsigned int bytes, isc_sockaddr_t *from, dig_query_t *query) {
  * XXX print_trying
  */
 static void
-trying(char *frm, dig_lookup_t *lookup) {
-	UNUSED(frm);
-	UNUSED(lookup);
-}
+trying(char *frm ISC_ATTR_UNUSED, dig_lookup_t *lookup ISC_ATTR_UNUSED) {}
 
 /*%
  * Internal print routine used to print short form replies.
@@ -598,11 +595,9 @@ dns64prefix_answer(dns_message_t *msg, isc_buffer_t *buf) {
  * short_form message print handler.  Calls above say_message()
  */
 static isc_result_t
-short_answer(dns_message_t *msg, dns_messagetextflag_t flags, isc_buffer_t *buf,
-	     dig_query_t *query) {
+short_answer(dns_message_t *msg, dns_messagetextflag_t flags ISC_ATTR_UNUSED,
+	     isc_buffer_t *buf, dig_query_t *query) {
 	dns_name_t empty_name;
-
-	UNUSED(flags);
 
 	dns_name_init(&empty_name);
 	MSG_SECTION_FOREACH(msg, DNS_SECTION_ANSWER, name) {
@@ -641,8 +636,8 @@ isdotlocal(dns_message_t *msg) {
  * Callback from dighost.c to print the reply from a server
  */
 static isc_result_t
-printmessage(dig_query_t *query, const isc_buffer_t *msgbuf, dns_message_t *msg,
-	     bool headers) {
+printmessage(dig_query_t *query, const isc_buffer_t *msgbuf ISC_ATTR_UNUSED,
+	     dns_message_t *msg, bool headers) {
 	isc_result_t result;
 	dns_messagetextflag_t flags;
 	isc_buffer_t *buf = NULL;
@@ -651,8 +646,6 @@ printmessage(dig_query_t *query, const isc_buffer_t *msgbuf, dns_message_t *msg,
 	unsigned int styleflags = 0;
 	bool isquery = (msg == query->lookup->sendmsg);
 	bool dns64prefix = query->lookup->dns64prefix;
-
-	UNUSED(msgbuf);
 
 	dig_idnsetup(query->lookup, true);
 

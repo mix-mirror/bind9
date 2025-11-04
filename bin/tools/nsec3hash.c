@@ -138,11 +138,9 @@ nsec3hash(nsec3printer *nsec3print, const char *algostr, const char *flagstr,
 }
 
 static void
-nsec3hash_print(unsigned int algo, unsigned int flags, unsigned int iters,
-		const char *saltstr, const char *domain, const char *digest) {
-	UNUSED(flags);
-	UNUSED(domain);
-
+nsec3hash_print(unsigned int algo, unsigned int flags ISC_ATTR_UNUSED,
+		unsigned int iters, const char *saltstr,
+		const char *domain ISC_ATTR_UNUSED, const char *digest) {
 	fprintf(stdout, "%s (salt=%s, hash=%u, iterations=%u)\n", digest,
 		saltstr, algo, iters);
 }

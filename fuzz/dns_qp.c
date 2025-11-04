@@ -98,10 +98,7 @@ random_byte(void) {
 }
 
 int
-LLVMFuzzerInitialize(int *argc, char ***argv) {
-	UNUSED(argc);
-	UNUSED(argv);
-
+LLVMFuzzerInitialize(int *argc ISC_ATTR_UNUSED, char ***argv ISC_ATTR_UNUSED) {
 	for (size_t i = 0; i < ARRAY_SIZE(item); i++) {
 		size_t len = isc_random_uniform(100) + 16;
 		item[i].len = len + 1;

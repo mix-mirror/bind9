@@ -105,15 +105,14 @@ raw_key_to_ossl(const eddsa_alginfo_t *alginfo, int private,
 }
 
 static isc_result_t
-openssleddsa_fromlabel(dst_key_t *key, const char *label, const char *pin);
+openssleddsa_fromlabel(dst_key_t *key, const char *label,
+		       const char *pin ISC_ATTR_UNUSED);
 
 static isc_result_t
-openssleddsa_createctx(dst_key_t *key, dst_context_t *dctx) {
+openssleddsa_createctx(dst_key_t *key ISC_ATTR_UNUSED, dst_context_t *dctx) {
 	isc_buffer_t *buf = NULL;
 	const eddsa_alginfo_t *alginfo =
 		openssleddsa_alg_info(dctx->key->key_alg);
-
-	UNUSED(key);
 	REQUIRE(alginfo != NULL);
 
 	isc_buffer_allocate(dctx->mctx, &buf, 64);
@@ -263,7 +262,8 @@ err:
 }
 
 static isc_result_t
-openssleddsa_generate(dst_key_t *key, int unused, void (*callback)(int)) {
+openssleddsa_generate(dst_key_t *key, int unused ISC_ATTR_UNUSED,
+		      void (*callback ISC_ATTR_UNUSED)(int)) {
 	isc_result_t ret;
 	EVP_PKEY *pkey = NULL;
 	EVP_PKEY_CTX *ctx = NULL;
@@ -271,8 +271,6 @@ openssleddsa_generate(dst_key_t *key, int unused, void (*callback)(int)) {
 	int status;
 
 	REQUIRE(alginfo != NULL);
-	UNUSED(unused);
-	UNUSED(callback);
 
 	ctx = EVP_PKEY_CTX_new_id(alginfo->nid, NULL);
 	if (ctx == NULL) {
@@ -498,13 +496,13 @@ err:
 }
 
 static isc_result_t
-openssleddsa_fromlabel(dst_key_t *key, const char *label, const char *pin) {
+openssleddsa_fromlabel(dst_key_t *key, const char *label,
+		       const char *pin ISC_ATTR_UNUSED) {
 	const eddsa_alginfo_t *alginfo = openssleddsa_alg_info(key->key_alg);
 	EVP_PKEY *privpkey = NULL, *pubpkey = NULL;
 	isc_result_t ret;
 
 	REQUIRE(alginfo != NULL);
-	UNUSED(pin);
 
 	ret = dst__openssl_fromlabel(alginfo->pkey_type, label, pin, &pubpkey,
 				     &privpkey);

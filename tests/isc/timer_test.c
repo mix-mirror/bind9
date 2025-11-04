@@ -126,7 +126,7 @@ subthread_assert_result_equal(isc_result_t result, isc_result_t expected,
 	subthread_assert_result_equal(observed, expected, __FILE__, __LINE__)
 
 static void
-ticktock(void *arg) {
+ticktock(void *arg ISC_ATTR_UNUSED) {
 	isc_result_t result;
 	isc_time_t now;
 	isc_time_t base;
@@ -134,8 +134,6 @@ ticktock(void *arg) {
 	isc_time_t llim;
 	isc_interval_t interval;
 	int tick = atomic_fetch_add(&eventcnt, 1);
-
-	UNUSED(arg);
 
 	if (verbose) {
 		print_message("# tick %d\n", tick);
@@ -192,7 +190,7 @@ ISC_RUN_TEST_IMPL(ticker) {
 }
 
 static void
-test_idle(void *arg) {
+test_idle(void *arg ISC_ATTR_UNUSED) {
 	isc_result_t result;
 	isc_time_t now;
 	isc_time_t base;
@@ -200,8 +198,6 @@ test_idle(void *arg) {
 	isc_time_t llim;
 	isc_interval_t interval;
 	int tick = atomic_fetch_add(&eventcnt, 1);
-
-	UNUSED(arg);
 
 	if (verbose) {
 		print_message("# tick %d\n", tick);
@@ -251,7 +247,7 @@ ISC_RUN_TEST_IMPL(once_idle) {
 
 /* timer reset */
 static void
-test_reset(void *arg) {
+test_reset(void *arg ISC_ATTR_UNUSED) {
 	isc_result_t result;
 	isc_time_t now;
 	isc_time_t base;
@@ -259,8 +255,6 @@ test_reset(void *arg) {
 	isc_time_t llim;
 	isc_interval_t interval;
 	int tick = atomic_fetch_add(&eventcnt, 1);
-
-	UNUSED(arg);
 
 	if (verbose) {
 		print_message("# tick %d\n", tick);
@@ -323,10 +317,8 @@ static isc_timer_t *tickertimer = NULL;
 static isc_timer_t *oncetimer = NULL;
 
 static void
-tick_event(void *arg) {
+tick_event(void *arg ISC_ATTR_UNUSED) {
 	int tick;
-
-	UNUSED(arg);
 
 	if (!atomic_load(&startflag)) {
 		if (verbose) {
@@ -350,9 +342,7 @@ tick_event(void *arg) {
 }
 
 static void
-once_event(void *arg) {
-	UNUSED(arg);
-
+once_event(void *arg ISC_ATTR_UNUSED) {
 	if (verbose) {
 		print_message("# once_event\n");
 	}

@@ -348,11 +348,11 @@ send_cb(isc_nmhandle_t *handle, isc_result_t eresult, void *cbarg) {
 }
 
 static void
-connect_cb(isc_nmhandle_t *handle, isc_result_t eresult, void *cbarg) {
+connect_cb(isc_nmhandle_t *handle, isc_result_t eresult,
+	   void *cbarg ISC_ATTR_UNUSED) {
 	isc_nmhandle_t *readhandle = NULL;
 
 	REQUIRE(handle != NULL);
-	UNUSED(cbarg);
 
 	fprintf(stderr, "ECHO_CLIENT:%s:%s\n", __func__,
 		isc_result_totext(eresult));

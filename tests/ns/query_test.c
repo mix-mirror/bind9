@@ -42,9 +42,7 @@
 
 /* can be used for client->sendcb to avoid disruption on sending a response */
 static void
-send_noop(isc_buffer_t *buffer) {
-	UNUSED(buffer);
-}
+send_noop(isc_buffer_t *buffer ISC_ATTR_UNUSED) {}
 
 /*****
  ***** ns__query_sfcache() tests
@@ -1246,9 +1244,7 @@ typedef struct hookasync_e2e_data {
 
 /* Cancel callback.  Just need to be defined, it doesn't have to do anything. */
 static void
-cancel_e2ehookasyncctx(ns_hookasync_t *ctx) {
-	UNUSED(ctx);
-}
+cancel_e2ehookasyncctx(ns_hookasync_t *ctx ISC_ATTR_UNUSED) {}
 
 /* 'runasync' callback passed to ns_query_hookasync */
 static isc_result_t
@@ -1474,55 +1470,43 @@ ns__query_test_concat(char *base, const char *tail) {
 }
 
 static ns_hookresult_t
-ns__query_test_zonehook1(void *arg, void *data, isc_result_t *resultp) {
-	UNUSED(arg);
-	UNUSED(resultp);
-
+ns__query_test_zonehook1(void *arg ISC_ATTR_UNUSED, void *data,
+			 isc_result_t *resultp ISC_ATTR_UNUSED) {
 	ns__query_test_concat(data, "z1");
 	return NS_HOOK_CONTINUE;
 }
 
 static ns_hookresult_t
-ns__query_test_zonehook2(void *arg, void *data, isc_result_t *resultp) {
-	UNUSED(arg);
-	UNUSED(resultp);
-
+ns__query_test_zonehook2(void *arg ISC_ATTR_UNUSED, void *data,
+			 isc_result_t *resultp ISC_ATTR_UNUSED) {
 	ns__query_test_concat(data, "z2");
 	return NS_HOOK_RETURN;
 }
 
 static ns_hookresult_t
-ns__query_test_viewhook1(void *arg, void *data, isc_result_t *resultp) {
-	UNUSED(arg);
-	UNUSED(resultp);
-
+ns__query_test_viewhook1(void *arg ISC_ATTR_UNUSED, void *data,
+			 isc_result_t *resultp ISC_ATTR_UNUSED) {
 	ns__query_test_concat(data, "v1");
 	return NS_HOOK_CONTINUE;
 }
 
 static ns_hookresult_t
-ns__query_test_viewhook2(void *arg, void *data, isc_result_t *resultp) {
-	UNUSED(arg);
-	UNUSED(resultp);
-
+ns__query_test_viewhook2(void *arg ISC_ATTR_UNUSED, void *data,
+			 isc_result_t *resultp ISC_ATTR_UNUSED) {
 	ns__query_test_concat(data, "v2");
 	return NS_HOOK_RETURN;
 }
 
 static ns_hookresult_t
-ns__query_test_defaulthook1(void *arg, void *data, isc_result_t *resultp) {
-	UNUSED(arg);
-	UNUSED(resultp);
-
+ns__query_test_defaulthook1(void *arg ISC_ATTR_UNUSED, void *data,
+			    isc_result_t *resultp ISC_ATTR_UNUSED) {
 	ns__query_test_concat(data, "d1");
 	return NS_HOOK_CONTINUE;
 }
 
 static ns_hookresult_t
-ns__query_test_defaulthook2(void *arg, void *data, isc_result_t *resultp) {
-	UNUSED(arg);
-	UNUSED(resultp);
-
+ns__query_test_defaulthook2(void *arg ISC_ATTR_UNUSED, void *data,
+			    isc_result_t *resultp ISC_ATTR_UNUSED) {
 	ns__query_test_concat(data, "d2");
 	return NS_HOOK_RETURN;
 }

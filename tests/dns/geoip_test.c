@@ -48,9 +48,7 @@ static void
 close_geoip(void);
 
 static int
-setup_test(void **state) {
-	UNUSED(state);
-
+setup_test(void **state ISC_ATTR_UNUSED) {
 	/* Use databases from the geoip system test */
 	load_geoip(TEST_GEOIP_DATA);
 
@@ -58,9 +56,7 @@ setup_test(void **state) {
 }
 
 static int
-teardown_test(void **state) {
-	UNUSED(state);
-
+teardown_test(void **state ISC_ATTR_UNUSED) {
 	close_geoip();
 
 	return 0;

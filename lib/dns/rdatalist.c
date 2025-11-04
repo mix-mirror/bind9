@@ -95,9 +95,8 @@ dns_rdatalist_fromrdataset(dns_rdataset_t *rdataset,
 }
 
 void
-dns_rdatalist_disassociate(dns_rdataset_t *rdataset DNS__DB_FLARG) {
-	UNUSED(rdataset);
-}
+dns_rdatalist_disassociate(
+	dns_rdataset_t *rdataset ISC_ATTR_UNUSED DNS__DB_FLARG) {}
 
 isc_result_t
 dns__rdatalist_first(dns_rdataset_t *rdataset) {

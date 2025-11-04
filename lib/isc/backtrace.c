@@ -84,34 +84,23 @@ isc_backtrace_log(isc_logcategory_t category, isc_logmodule_t module,
 #else /* HAVE_BACKTRACE_SYMBOLS */
 
 int
-isc_backtrace(void **addrs, int maxaddrs) {
-	UNUSED(addrs);
-	UNUSED(maxaddrs);
-
+isc_backtrace(void **addrs ISC_ATTR_UNUSED, int maxaddrs ISC_ATTR_UNUSED) {
 	return -1;
 }
 
 char **
-isc_backtrace_symbols(void *const *buffer, int size) {
-	UNUSED(buffer);
-	UNUSED(size);
-
+isc_backtrace_symbols(void *const *buffer ISC_ATTR_UNUSED,
+		      int size ISC_ATTR_UNUSED) {
 	return NULL;
 }
 
 void
-isc_backtrace_symbols_fd(void *const *buffer, int size, int fd) {
-	UNUSED(buffer);
-	UNUSED(size);
-	UNUSED(fd);
-}
+isc_backtrace_symbols_fd(void *const *buffer ISC_ATTR_UNUSED,
+			 int size ISC_ATTR_UNUSED, int fd ISC_ATTR_UNUSED) {}
 
 void
-isc_backtrace_log(isc_logcategory_t category, isc_logmodule_t module,
-		  int level) {
-	UNUSED(category);
-	UNUSED(module);
-	UNUSED(level);
-}
+isc_backtrace_log(isc_logcategory_t category ISC_ATTR_UNUSED,
+		  isc_logmodule_t module ISC_ATTR_UNUSED,
+		  int level ISC_ATTR_UNUSED) {}
 
 #endif /* HAVE_BACKTRACE_SYMBOLS */

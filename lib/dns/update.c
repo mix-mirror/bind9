@@ -478,9 +478,7 @@ rr_predicate(dns_rdata_t *update_rr, dns_rdata_t *db_rr);
  * Helper function for rrset_exists().
  */
 static isc_result_t
-rrset_exists_action(void *data, rr_t *rr) {
-	UNUSED(data);
-	UNUSED(rr);
+rrset_exists_action(void *data ISC_ATTR_UNUSED, rr_t *rr ISC_ATTR_UNUSED) {
 	return ISC_R_EXISTS;
 }
 
@@ -561,9 +559,8 @@ rrset_visible(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
  */
 
 static isc_result_t
-name_exists_action(void *data, dns_rdataset_t *rrset) {
-	UNUSED(data);
-	UNUSED(rrset);
+name_exists_action(void *data ISC_ATTR_UNUSED,
+		   dns_rdataset_t *rrset ISC_ATTR_UNUSED) {
 	return ISC_R_EXISTS;
 }
 
@@ -639,9 +636,8 @@ typedef struct {
  * Return true always.
  */
 static bool
-true_p(dns_rdata_t *update_rr, dns_rdata_t *db_rr) {
-	UNUSED(update_rr);
-	UNUSED(db_rr);
+true_p(dns_rdata_t *update_rr ISC_ATTR_UNUSED,
+       dns_rdata_t *db_rr ISC_ATTR_UNUSED) {
 	return true;
 }
 
@@ -649,8 +645,7 @@ true_p(dns_rdata_t *update_rr, dns_rdata_t *db_rr) {
  * Return true if the record is a RRSIG.
  */
 static bool
-rrsig_p(dns_rdata_t *update_rr, dns_rdata_t *db_rr) {
-	UNUSED(update_rr);
+rrsig_p(dns_rdata_t *update_rr ISC_ATTR_UNUSED, dns_rdata_t *db_rr) {
 	return (db_rr->type == dns_rdatatype_rrsig) ? true : false;
 }
 
@@ -748,8 +743,7 @@ failure:
  * Helper function for non_nsec_rrset_exists().
  */
 static isc_result_t
-is_non_nsec_action(void *data, dns_rdataset_t *rrset) {
-	UNUSED(data);
+is_non_nsec_action(void *data ISC_ATTR_UNUSED, dns_rdataset_t *rrset) {
 	if (!(dns_rdatatype_isnsec(rrset->type) ||
 	      (rrset->type == dns_rdatatype_rrsig &&
 	       dns_rdatatype_isnsec(rrset->covers))))

@@ -37,11 +37,9 @@ typedef struct {
 	} while (0)
 
 static ns_hookresult_t
-syncplugin__hook(void *arg, void *cbdata, isc_result_t *resp) {
+syncplugin__hook(void *arg, void *cbdata, isc_result_t *resp ISC_ATTR_UNUSED) {
 	query_ctx_t *qctx = (query_ctx_t *)arg;
 	syncplugin_t *inst = cbdata;
-
-	UNUSED(resp);
 
 	if (inst->firstlbl != NULL) {
 		const dns_name_t *qname = qctx->client->query.qname;
@@ -111,10 +109,10 @@ syncplugin__parse_rcode(const cfg_obj_t *syncplugincfg, uint8_t *rcode) {
 }
 
 isc_result_t
-plugin_register(const char *parameters, const void *cfg, const char *cfgfile,
-		unsigned long cfgline, isc_mem_t *mctx, void *aclctx,
-		ns_hooktable_t *hooktable, const ns_pluginctx_t *ctx,
-		void **instp) {
+plugin_register(const char *parameters, const void *cfg ISC_ATTR_UNUSED,
+		const char *cfgfile, unsigned long cfgline, isc_mem_t *mctx,
+		void *aclctx ISC_ATTR_UNUSED, ns_hooktable_t *hooktable,
+		const ns_pluginctx_t *ctx ISC_ATTR_UNUSED, void **instp) {
 	isc_result_t result;
 	cfg_obj_t *syncplugincfg = NULL;
 	const cfg_obj_t *obj = NULL;
@@ -125,10 +123,6 @@ plugin_register(const char *parameters, const void *cfg, const char *cfgfile,
 	dns_name_t example2com = DNS_NAME_INITEMPTY;
 	dns_name_t example3com = DNS_NAME_INITEMPTY;
 	dns_name_t example4com = DNS_NAME_INITEMPTY;
-
-	UNUSED(cfg);
-	UNUSED(aclctx);
-	UNUSED(ctx);
 
 	inst = isc_mem_get(mctx, sizeof(*inst));
 	*inst = (syncplugin_t){ .mctx = mctx };
@@ -217,17 +211,12 @@ cleanup:
 }
 
 isc_result_t
-plugin_check(const char *parameters, const void *cfg, const char *cfgfile,
-	     unsigned long cfgline, isc_mem_t *mctx, void *aclctx,
-	     const ns_pluginctx_t *ctx) {
-	UNUSED(parameters);
-	UNUSED(cfg);
-	UNUSED(cfgfile);
-	UNUSED(cfgline);
-	UNUSED(mctx);
-	UNUSED(aclctx);
-	UNUSED(ctx);
-
+plugin_check(const char *parameters ISC_ATTR_UNUSED,
+	     const void *cfg ISC_ATTR_UNUSED,
+	     const char *cfgfile ISC_ATTR_UNUSED,
+	     unsigned long cfgline ISC_ATTR_UNUSED,
+	     isc_mem_t *mctx ISC_ATTR_UNUSED, void *aclctx ISC_ATTR_UNUSED,
+	     const ns_pluginctx_t *ctx ISC_ATTR_UNUSED) {
 	return ISC_R_SUCCESS;
 }
 
