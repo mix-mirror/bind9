@@ -199,7 +199,6 @@ struct cfg_rep {
 
 struct cfg_obj {
 	unsigned int   magic;
-	isc_mem_t     *mctx;
 	isc_refcount_t references;
 
 	/*%
@@ -238,7 +237,6 @@ struct cfg_listelt {
 
 /*% The parser object. */
 struct cfg_parser {
-	isc_mem_t   *mctx;
 	isc_lex_t   *lexer;
 	unsigned int errors;
 	unsigned int warnings;
@@ -376,8 +374,8 @@ cfg_ungettoken(cfg_parser_t *pctx);
 #define CFG_LEXOPT_QSTRING (ISC_LEXOPT_QSTRING | ISC_LEXOPT_QSTRINGMULTILINE)
 
 void
-cfg_obj_create(isc_mem_t *mctx, cfg_obj_t *file, size_t line,
-	       const cfg_type_t *type, cfg_obj_t **ret);
+cfg_obj_create(cfg_obj_t *file, size_t line, const cfg_type_t *type,
+	       cfg_obj_t **ret);
 
 void
 cfg_string_create(cfg_parser_t *pctx, const char *contents,
@@ -464,6 +462,9 @@ cfg_doc_tuple(cfg_printer_t *pctx, const cfg_type_t *type);
 isc_result_t
 cfg_parse_listelt(cfg_parser_t *pctx, cfg_obj_t *list,
 		  const cfg_type_t *elttype, cfg_listelt_t **ret);
+
+void
+cfg_listelt_create(cfg_listelt_t **ret);
 
 isc_result_t
 cfg_parse_bracketed_list(cfg_parser_t *pctx, const cfg_type_t *type,
