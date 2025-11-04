@@ -143,7 +143,7 @@ ISC_RUN_TEST_IMPL(duration) {
 		isc_buffer_add(&buf1, strlen(conf) - 1);
 
 		/* Parse with default line numbering */
-		result = cfg_parse_buffer(isc_g_mctx, &buf1, "text1", 0,
+		result = cfg_parse_buffer(&buf1, "text1", 0,
 					  &cfg_type_namedconf, 0, &c1);
 		if (must_fail) {
 			assert_int_equal(result, DNS_R_BADTTL);

@@ -1085,8 +1085,7 @@ read_confkey(void) {
 		return ISC_R_FILENOTFOUND;
 	}
 
-	result = cfg_parse_file(isc_g_mctx, keyfile, &cfg_type_sessionkey, 0,
-				&file);
+	result = cfg_parse_file(keyfile, &cfg_type_sessionkey, 0, &file);
 	if (result != ISC_R_SUCCESS) {
 		goto cleanup;
 	}

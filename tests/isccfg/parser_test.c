@@ -79,8 +79,8 @@ ISC_RUN_TEST_IMPL(addzoneconf) {
 		isc_buffer_constinit(&b, tests[i], strlen(tests[i]));
 		isc_buffer_add(&b, strlen(tests[i]));
 
-		result = cfg_parse_buffer(isc_g_mctx, &b, "text1", 0,
-					  &cfg_type_namedconf, 0, &conf);
+		result = cfg_parse_buffer(&b, "text1", 0, &cfg_type_namedconf,
+					  0, &conf);
 		assert_int_equal(result, ISC_R_SUCCESS);
 
 		/*
@@ -130,22 +130,20 @@ ISC_RUN_TEST_IMPL(parse_buffer) {
 	/* Parse with default line numbering. */
 	isc_buffer_init(&buf, &text[0], sizeof(text) - 1);
 	isc_buffer_add(&buf, sizeof(text) - 1);
-	result = cfg_parse_buffer(isc_g_mctx, &buf, "text1", 0,
-				  &cfg_type_namedconf, 0, &c);
+	result = cfg_parse_buffer(&buf, "text1", 0, &cfg_type_namedconf, 0, &c);
 	assert_int_equal(result, ISC_R_FAILURE);
 	assert_null(c);
 
 	/* Parse with changed line number. */
 	isc_buffer_first(&buf);
-	result = cfg_parse_buffer(isc_g_mctx, &buf, "text2", 100,
-				  &cfg_type_namedconf, 0, &c);
+	result = cfg_parse_buffer(&buf, "text2", 100, &cfg_type_namedconf, 0,
+				  &c);
 	assert_int_equal(result, ISC_R_FAILURE);
 	assert_null(c);
 
 	/* Parse with changed line number and no name. */
 	isc_buffer_first(&buf);
-	result = cfg_parse_buffer(isc_g_mctx, &buf, NULL, 100,
-				  &cfg_type_namedconf, 0, &c);
+	result = cfg_parse_buffer(&buf, NULL, 100, &cfg_type_namedconf, 0, &c);
 	assert_int_equal(result, ISC_R_FAILURE);
 	assert_null(c);
 
@@ -262,8 +260,7 @@ view \"_bind\" chaos {\n\
 	isc_buffer_init(&buf, conf, sizeof(conf));
 	isc_buffer_add(&buf, sizeof(conf) - 1);
 
-	result = cfg_parse_buffer(isc_g_mctx, &buf, "", 0, &cfg_type_namedconf,
-				  0, &orig);
+	result = cfg_parse_buffer(&buf, "", 0, &cfg_type_namedconf, 0, &orig);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	isc_buffer_init(&dumpb1, dumpbdata1, sizeof(dumpbdata1));

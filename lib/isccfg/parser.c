@@ -712,17 +712,16 @@ static cfg_type_t cfg_type_filelist = { "filelist",    NULL,
 					&cfg_rep_list, &cfg_type_qstring };
 
 static void
-parser_create(isc_mem_t *mctx, cfg_parser_t **ret) {
+parser_create(cfg_parser_t **ret) {
 	cfg_parser_t *pctx;
 	isc_lexspecials_t specials;
 
-	REQUIRE(mctx != NULL);
 	REQUIRE(ret != NULL && *ret == NULL);
 
-	pctx = isc_mem_get(mctx, sizeof(*pctx));
+	pctx = isc_mem_get(parser_mctx, sizeof(*pctx));
 
 	pctx->mctx = NULL;
-	isc_mem_attach(mctx, &pctx->mctx);
+	isc_mem_attach(parser_mctx, &pctx->mctx);
 
 	pctx->lexer = NULL;
 	pctx->seen_eof = false;
@@ -744,14 +743,14 @@ parser_create(isc_mem_t *mctx, cfg_parser_t **ret) {
 	specials['"'] = 1;
 	specials['!'] = 1;
 
-	isc_lex_create(pctx->mctx, 1024, &pctx->lexer);
+	isc_lex_create(parser_mctx, 1024, &pctx->lexer);
 
 	isc_lex_setspecials(pctx->lexer, specials);
 	isc_lex_setcomments(pctx->lexer, ISC_LEXCOMMENT_C |
 						 ISC_LEXCOMMENT_CPLUSPLUS |
 						 ISC_LEXCOMMENT_SHELL);
 
-	create_list(pctx->mctx, cfg_parser_currentfile(pctx), pctx->line,
+	create_list(parser_mctx, cfg_parser_currentfile(pctx), pctx->line,
 		    &cfg_type_filelist, &pctx->open_files);
 	create_list(pctx->mctx, cfg_parser_currentfile(pctx), pctx->line,
 		    &cfg_type_filelist, &pctx->closed_files);
@@ -843,19 +842,18 @@ cleanup:
 			   CFG_PCTX_NOEXPERIMENTAL | CFG_PCTX_BUILTIN)) == 0)
 
 isc_result_t
-cfg_parse_file(isc_mem_t *mctx, const char *filename, const cfg_type_t *type,
-	       unsigned int flags, cfg_obj_t **ret) {
+cfg_parse_file(const char *filename, const cfg_type_t *type, unsigned int flags,
+	       cfg_obj_t **ret) {
 	isc_result_t result;
 	cfg_listelt_t *elt;
 	cfg_parser_t *pctx = NULL;
 
-	REQUIRE(mctx != NULL);
 	REQUIRE(filename != NULL);
 	REQUIRE(type != NULL);
 	REQUIRE(ret != NULL && *ret == NULL);
 	REQUIRE_PCTX_FLAGS(flags);
 
-	parser_create(mctx, &pctx);
+	parser_create(&pctx);
 	pctx->flags = flags;
 
 	CHECK(parser_openfile(pctx, filename));
@@ -875,19 +873,17 @@ cleanup:
 }
 
 isc_result_t
-cfg_parse_buffer(isc_mem_t *mctx, isc_buffer_t *buffer, const char *file,
-		 unsigned int line, const cfg_type_t *type, unsigned int flags,
-		 cfg_obj_t **ret) {
+cfg_parse_buffer(isc_buffer_t *buffer, const char *file, unsigned int line,
+		 const cfg_type_t *type, unsigned int flags, cfg_obj_t **ret) {
 	isc_result_t result;
 	cfg_parser_t *pctx = NULL;
 
-	REQUIRE(mctx != NULL);
 	REQUIRE(type != NULL);
 	REQUIRE(buffer != NULL);
 	REQUIRE(ret != NULL && *ret == NULL);
 	REQUIRE_PCTX_FLAGS(flags);
 
-	parser_create(mctx, &pctx);
+	parser_create(&pctx);
 	CHECK(isc_lex_openbuffer(pctx->lexer, buffer));
 
 	pctx->buf_name = file;

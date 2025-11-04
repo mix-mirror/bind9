@@ -115,8 +115,8 @@ test__query_source_print(const char *config, const char *expected) {
 	isc_buffer_constinit(&buffer, config, strlen(config));
 	isc_buffer_add(&buffer, strlen(config));
 
-	result = cfg_parse_buffer(isc_g_mctx, &buffer, "text1", 0,
-				  &cfg_type_namedconf, 0, &output_conf);
+	result = cfg_parse_buffer(&buffer, "text1", 0, &cfg_type_namedconf, 0,
+				  &output_conf);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_non_null(output_conf);
 

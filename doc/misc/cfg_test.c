@@ -133,7 +133,7 @@ main(int argc, char **argv) {
 		if (type == NULL || filename == NULL) {
 			usage();
 		}
-		result = cfg_parse_file(mctx, filename, type, 0, &cfg);
+		result = cfg_parse_file(filename, type, 0, &cfg);
 
 		fprintf(stderr, "read config: %s\n", isc_result_totext(result));
 
@@ -147,6 +147,10 @@ main(int argc, char **argv) {
 	}
 
 	if (memstats) {
+		/*
+		 * TODO: this is memstat of config that we are interested in
+		 * here, right?
+		 */
 		isc_mem_stats(mctx, stderr);
 	}
 	isc_mem_detach(&mctx);
