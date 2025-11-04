@@ -111,6 +111,8 @@
  */
 #define DNS_QPDB_EXPIRE_TTL_COUNT 10
 
+#define QPCACHE_NUM_LOCKS 128
+
 /*%
  * Forward declarations
  */
@@ -829,10 +831,12 @@ qpcnode_release(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t *nlocktypep,
 			    deadlink))
 		{
 			/* Queue was empty, trigger new cleaning */
-			isc_loop_t *loop = isc_loop_get(node->locknum);
+			isc_loop_t *loop = isc_loop_get(node->locknum % isc_loopmgr_nloops());
+
+			uint64_t arg_as_u64 = ((uint64_t) qpdb) << 8ul | (node->locknum);
 
 			qpcache_ref(qpdb);
-			isc_async_run(loop, cleanup_deadnodes_cb, qpdb);
+			isc_async_run(loop, cleanup_deadnodes_cb, (void*) arg_as_u64);
 		}
 	}
 
@@ -2397,8 +2401,8 @@ cleanup_deadnodes(qpcache_t *qpdb, uint16_t locknum) {
 
 static void
 cleanup_deadnodes_cb(void *arg) {
-	qpcache_t *qpdb = arg;
-	uint16_t locknum = isc_tid();
+	qpcache_t *qpdb = (qpcache_t*) (((uint64_t) arg) >> 8ul);
+	uint16_t locknum = ((uint64_t) arg) & 255ul;
 
 	cleanup_deadnodes(qpdb, locknum);
 	qpcache_unref(qpdb);
