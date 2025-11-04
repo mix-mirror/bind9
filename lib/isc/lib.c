@@ -16,6 +16,7 @@
 #include <isc/crypto.h>
 #include <isc/hash.h>
 #include <isc/iterated_hash.h>
+#include <isc/lib.h>
 #include <isc/md.h>
 #include <isc/mem.h>
 #include <isc/os.h>
@@ -37,13 +38,8 @@
 
 static isc_refcount_t isc__lib_references = 0;
 
-void
-isc__lib_initialize(void);
-void
-isc__lib_shutdown(void);
-
-void
-isc__lib_initialize(void) {
+static void
+iscinitialize(void) {
 	if (isc_refcount_increment0(&isc__lib_references) > 0) {
 		return;
 	}
@@ -61,8 +57,8 @@ isc__lib_initialize(void) {
 	(void)isc_os_ncpus();
 }
 
-void
-isc__lib_shutdown(void) {
+static void
+iscshutdown(void) {
 	if (isc_refcount_decrement(&isc__lib_references) > 1) {
 		return;
 	}
@@ -78,4 +74,14 @@ isc__lib_shutdown(void) {
 	isc__mem_shutdown();
 	isc__mutex_shutdown();
 	isc__os_shutdown();
+}
+
+void
+isc_lib_initialize(void) {
+	iscinitialize();
+}
+
+void
+isc_lib_shutdown(void) {
+	iscshutdown();
 }
