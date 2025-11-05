@@ -383,6 +383,7 @@ static dns_rdatasetitermethods_t rdatasetiter_methods = {
 typedef struct qpc_rditer {
 	dns_rdatasetiter_t common;
 	dns_slabtop_t *current;
+	dns_typepair_t typepair;
 } qpc_rditer_t;
 
 static void
@@ -3380,6 +3381,7 @@ rdatasetiter_first(dns_rdatasetiter_t *it DNS__DB_FLARG) {
 	isc_rwlock_t *nlock = &qpdb->buckets[qpnode->locknum].lock;
 
 	iterator->current = NULL;
+	iterator->typepair = dns_typepair_none;
 
 	NODE_RDLOCK(nlock, &nlocktype);
 
@@ -3390,6 +3392,7 @@ rdatasetiter_first(dns_rdatasetiter_t *it DNS__DB_FLARG) {
 		    (header != NULL && iterator_active(qpdb, iterator, header)))
 		{
 			iterator->current = top;
+			iterator->typepair = top->typepair;
 			break;
 		}
 	}
@@ -3412,15 +3415,20 @@ rdatasetiter_next(dns_rdatasetiter_t *it DNS__DB_FLARG) {
 	isc_rwlock_t *nlock = &qpdb->buckets[qpnode->locknum].lock;
 	dns_slabtop_t *from = NULL;
 
-	if (iterator->current == NULL) {
+	if (iterator->typepair == dns_typepair_none) {
 		return ISC_R_NOMORE;
 	}
 
 	NODE_RDLOCK(nlock, &nlocktype);
 
-	from = cds_list_entry(iterator->current->types_link.next, dns_slabtop_t,
-			      types_link);
+	DNS_SLABTOP_FOREACH(tmp, qpnode->data) {
+		if (tmp->typepair > iterator->typepair) {
+			from = tmp;
+			break;
+		}
+	}
 	iterator->current = NULL;
+	iterator->typepair = dns_typepair_none;
 
 	if (from != NULL) {
 		DNS_SLABTOP_FOREACH_FROM(top, qpnode->data, from) {
@@ -3431,6 +3439,7 @@ rdatasetiter_next(dns_rdatasetiter_t *it DNS__DB_FLARG) {
 			     iterator_active(qpdb, iterator, header)))
 			{
 				iterator->current = top;
+				iterator->typepair = top->typepair;
 				break;
 			}
 		}
