@@ -5479,6 +5479,9 @@ dns_zone_checkzonemd(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *version) {
 		if (result == ISC_R_SUCCESS) {
 			if (dns_keynode_dsset(keynode, &dsset)) {
 				dssetp = &dsset;
+				dns_zone_log(
+					zone, ISC_LOG_INFO,
+					"checking ZONEMD with trust anchor");
 			}
 		}
 
@@ -5498,6 +5501,10 @@ dns_zone_checkzonemd(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *version) {
 					dns_zone_log(zone, ISC_LOG_WARNING,
 						     "checking ZONEMD with "
 						     "insecure DS");
+				} else {
+					dns_zone_log(zone, ISC_LOG_INFO,
+						     "checking ZONEMD with "
+						     "secure DS");
 				}
 			} else {
 				dns_zone_log(zone, ISC_LOG_WARNING,
