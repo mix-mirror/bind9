@@ -1665,14 +1665,18 @@ static void
 dns_adb_shutdown_async(void *arg) {
 	dns_adb_t *adb = arg;
 
-	synchronize_rcu();
-
 	rcu_read_lock();
 	shutdown_names(adb);
 	shutdown_entries(adb);
 	rcu_read_unlock();
 
 	dns_adb_detach(&adb);
+}
+
+static void
+dns_adb_shutdown_rcu(struct rcu_head *rcu_head) {
+	dns_adb_t *adb = caa_container_of(rcu_head, dns_adb_t, rcu_head);
+	isc_async_run(isc_loop_main(), dns_adb_shutdown_async, adb);
 }
 
 void
@@ -1693,7 +1697,7 @@ dns_adb_shutdown(dns_adb_t *adb) {
 	 * shutting down ADB.
 	 */
 	dns_adb_ref(adb);
-	isc_async_run(isc_loop_main(), dns_adb_shutdown_async, adb);
+	call_rcu(&adb->rcu_head, dns_adb_shutdown_rcu);
 }
 
 /*

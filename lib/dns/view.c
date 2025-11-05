@@ -468,7 +468,8 @@ shutdown_view(dns_view_t *view) {
 		dns_resolver_detach(&resolver);
 	}
 
-	synchronize_rcu();
+	// FIXME
+	//	synchronize_rcu();
 	if (dispatchmgr != NULL) {
 		dns_dispatchmgr_detach(&dispatchmgr);
 	}

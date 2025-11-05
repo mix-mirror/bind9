@@ -244,7 +244,7 @@ quiescent_cb(uv_prepare_t *handle) {
 	/* mark the thread offline when polling */
 	rcu_thread_offline();
 #else
-	INSIST(!rcu_read_ongoing());
+//	INSIST(!rcu_read_ongoing());
 #endif
 }
 

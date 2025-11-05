@@ -17,13 +17,10 @@
 #include <stdalign.h>
 #include <stdbool.h>
 
-#include <urcu/compiler.h>
-#include <urcu/list.h>
-#include <urcu/rculist.h>
-
 #include <isc/ascii.h>
 #include <isc/async.h>
 #include <isc/atomic.h>
+#include <isc/backtrace.h>
 #include <isc/file.h>
 #include <isc/heap.h>
 #include <isc/hex.h>
@@ -717,6 +714,7 @@ static void
 qpcnode_acquire(qpcache_t *qpdb ISC_ATTR_UNUSED, qpcnode_t *node,
 		isc_rwlocktype_t nlocktype ISC_ATTR_UNUSED,
 		isc_rwlocktype_t tlocktype ISC_ATTR_UNUSED DNS__DB_FLARG) {
+	rcu_read_lock();
 	qpcnode_ref(node);
 	(void)qpcnode_erefs_increment(node DNS__DB_FLARG_PASS);
 }
@@ -831,6 +829,7 @@ qpcnode_release(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t *nlocktypep,
 
 unref:
 	qpcnode_unref(node);
+	rcu_read_unlock();
 }
 
 static void
@@ -1006,14 +1005,6 @@ bindrdataset(qpcache_t *qpdb, qpcnode_t *node, dns_slabheader_t *header,
 	     dns_rdataset_t *rdataset DNS__DB_FLARG) {
 	bool stale = STALE(header);
 	bool ancient = ANCIENT(header);
-
-	/*
-	 * Caller must be holding the node reader lock.
-	 * XXXJT: technically, we need a writer lock, since we'll increment
-	 * the header count below.  However, since the actual counter value
-	 * doesn't matter, we prioritize performance here.  (We may want to
-	 * use atomic increment when available).
-	 */
 
 	if (rdataset == NULL) {
 		return;

@@ -141,3 +141,18 @@
 
 #endif /* !defined(caa_container_of_check_null) */
 /* clang-format on */
+
+#ifdef RCU_READ_DEBUG
+thread_local size_t rcu_depth = 0;
+#undef rcu_read_lock
+#define rcu_read_lock()                                               \
+	fprintf(stderr, "rcu_read_lock(%zu):%s:%s:%d\n", rcu_depth++, \
+		__func__, __FILE__, __LINE__);                        \
+	urcu_memb_read_lock()
+
+#undef rcu_read_unlock
+#define rcu_read_unlock()                                               \
+	urcu_memb_read_unlock();                                        \
+	fprintf(stderr, "rcu_read_unlock(%zu):%s:%s:%d\n", --rcu_depth, \
+		__func__, __FILE__, __LINE__)
+#endif
