@@ -779,18 +779,18 @@ qpcnode_release(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t *nlocktypep,
 		 * will be larger than 0, if it doesn't it is going to be 0.
 		 */
 		isc_rwlock_t *nlock = &qpdb->buckets[node->locknum].lock;
-		if (qpcnode_erefs_increment(node DNS__DB_FLARG_PASS)) {
+		if (!qpcnode_erefs_increment(node DNS__DB_FLARG_PASS)) {
 			/*
 			 * Don't upgrade the lock if we are not the first one to
 			 * take the reference.
 			 */
+			qpcnode_erefs_decrement(node DNS__DB_FLARG_PASS);
+			goto unref;
+		} else {
 			NODE_FORCEUPGRADE(nlock, nlocktypep);
 			if (!qpcnode_erefs_decrement(node DNS__DB_FLARG_PASS)) {
 				goto unref;
 			}
-		} else {
-			qpcnode_erefs_decrement(node DNS__DB_FLARG_PASS);
-			goto unref;
 		}
 	}
 
