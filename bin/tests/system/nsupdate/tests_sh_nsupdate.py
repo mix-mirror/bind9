@@ -63,6 +63,8 @@ pytestmark = pytest.mark.extra_artifacts(
         "ns3/zonemd-nsec3.test.db",
         "ns3/zonemd.test.db",
         "ns5/local.db",
+        "ns5/zonemd-nsec3.test.bk",
+        "ns5/zonemd.test.bk",
         "ns6/2.0.0.2.ip6.addr.db",
         "ns6/in-addr.db",
         "ns7/_default.tsigkeys",
