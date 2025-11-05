@@ -1715,12 +1715,10 @@ cname_and_other(qpznode_t *node, uint32_t serial) {
 			   rdtype != dns_rdatatype_rrsig)
 		{
 			if (first_existing_header(top, serial) != NULL) {
-				if (!prio_type(rdtype)) {
+				if (top->typepair > dns_rdatatype_cname) {
 					/*
-					 * CNAME is in the priority list, so if
-					 * we are done with priority types, we
-					 * know there will not be a CNAME, and
-					 * are safe to skip the rest.
+					 * The list is sorted, so it is safe to
+					 * skip the rest.
 					 */
 					return cname;
 				}
@@ -1786,7 +1784,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
     isc_stdtime_t now ISC_ATTR_UNUSED DNS__DB_FLARG) {
 	qpz_changed_t *changed = NULL;
 	dns_slabtop_t *foundtop = NULL;
-	dns_slabtop_t *priotop = NULL;
+	dns_slabtop_t *prevtop = NULL;
 	dns_slabheader_t *merged = NULL;
 	isc_result_t result;
 	bool merge = false;
@@ -1810,10 +1808,9 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 	ntypes = 0;
 	DNS_SLABTOP_FOREACH(top, node->data) {
 		++ntypes;
-		if (prio_type(top->typepair)) {
-			priotop = top;
-		}
-		if (top->typepair == newheader->typepair) {
+		if (top->typepair < newheader->typepair) {
+			prevtop = top;
+		} else if (top->typepair == newheader->typepair) {
 			foundtop = top;
 			break;
 		}
@@ -1995,15 +1992,10 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 			cds_list_add(&newheader->headers_link,
 				     &newtop->headers);
 
-			if (prio_type(newheader->typepair)) {
-				/* This is a priority type, prepend it */
-				cds_list_add(&newtop->types_link, node->data);
-			} else if (priotop != NULL) {
-				/* Append after the priority headers */
+			if (prevtop != NULL) {
 				cds_list_add(&newtop->types_link,
-					     &priotop->types_link);
+					     &prevtop->types_link);
 			} else {
-				/* There were no priority headers */
 				cds_list_add(&newtop->types_link, node->data);
 			}
 		}

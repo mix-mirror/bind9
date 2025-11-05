@@ -113,48 +113,6 @@ typedef struct dns_glue_additionaldata_ctx {
 	dns_glue_t *glue;
 } dns_glue_additionaldata_ctx_t;
 
-static inline bool
-prio_type(dns_typepair_t type) {
-	switch (type) {
-	case dns_rdatatype_soa:
-	case DNS_SIGTYPEPAIR(dns_rdatatype_soa):
-	case dns_rdatatype_a:
-	case DNS_SIGTYPEPAIR(dns_rdatatype_a):
-	case dns_rdatatype_mx:
-	case DNS_SIGTYPEPAIR(dns_rdatatype_mx):
-	case dns_rdatatype_aaaa:
-	case DNS_SIGTYPEPAIR(dns_rdatatype_aaaa):
-	case dns_rdatatype_nsec:
-	case DNS_SIGTYPEPAIR(dns_rdatatype_nsec):
-	case dns_rdatatype_nsec3:
-	case DNS_SIGTYPEPAIR(dns_rdatatype_nsec3):
-	case dns_rdatatype_ns:
-	case DNS_SIGTYPEPAIR(dns_rdatatype_ns):
-	case dns_rdatatype_ds:
-	case DNS_SIGTYPEPAIR(dns_rdatatype_ds):
-	case dns_rdatatype_cname:
-	case DNS_SIGTYPEPAIR(dns_rdatatype_cname):
-	case dns_rdatatype_dname:
-	case DNS_SIGTYPEPAIR(dns_rdatatype_dname):
-	case dns_rdatatype_svcb:
-	case DNS_SIGTYPEPAIR(dns_rdatatype_svcb):
-	case dns_rdatatype_https:
-	case DNS_SIGTYPEPAIR(dns_rdatatype_https):
-	case dns_rdatatype_dnskey:
-	case DNS_SIGTYPEPAIR(dns_rdatatype_dnskey):
-	case dns_rdatatype_srv:
-	case DNS_SIGTYPEPAIR(dns_rdatatype_srv):
-	case dns_rdatatype_txt:
-	case DNS_SIGTYPEPAIR(dns_rdatatype_txt):
-	case dns_rdatatype_ptr:
-	case DNS_SIGTYPEPAIR(dns_rdatatype_ptr):
-	case dns_rdatatype_naptr:
-	case DNS_SIGTYPEPAIR(dns_rdatatype_naptr):
-		return true;
-	}
-	return false;
-}
-
 void
 dns__db_logtoomanyrecords(dns_db_t *db, const dns_name_t *name,
 			  dns_rdatatype_t type, const char *op, uint32_t limit);

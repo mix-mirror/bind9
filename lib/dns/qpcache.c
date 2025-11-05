@@ -17,6 +17,10 @@
 #include <stdalign.h>
 #include <stdbool.h>
 
+#include <urcu/compiler.h>
+#include <urcu/list.h>
+#include <urcu/rculist.h>
+
 #include <isc/ascii.h>
 #include <isc/async.h>
 #include <isc/atomic.h>
@@ -2543,11 +2547,6 @@ overmaxtype(qpcache_t *qpdb, uint32_t ntypes) {
 	return ntypes >= qpdb->maxtypepername;
 }
 
-static bool
-prio_header(dns_slabtop_t *top) {
-	return prio_type(top->typepair);
-}
-
 static void
 qpcnode_attachnode(dns_dbnode_t *source, dns_dbnode_t **targetp DNS__DB_FLARG) {
 	REQUIRE(targetp != NULL && *targetp == NULL);
@@ -2642,7 +2641,7 @@ static isc_result_t
 add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
     unsigned int options, dns_rdataset_t *addedrdataset, isc_stdtime_t now,
     isc_rwlocktype_t nlocktype, isc_rwlocktype_t tlocktype DNS__DB_FLARG) {
-	dns_slabtop_t *priotop = NULL, *expiretop = NULL;
+	dns_slabtop_t *prevtop = NULL, *expiretop = NULL;
 	dns_slabtop_t *oldtop = NULL, *related = NULL;
 	dns_trust_t trust;
 	uint32_t ntypes = 0;
@@ -2725,11 +2724,10 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 			++ntypes;
 			expiretop = top;
 		}
-		if (prio_header(top)) {
-			priotop = top;
-		}
 
-		if (top->typepair == newheader->typepair) {
+		if (top->typepair < newheader->typepair) {
+			prevtop = top;
+		} else if (top->typepair == newheader->typepair) {
 			INSIST(oldtop == NULL);
 			oldtop = top;
 		}
@@ -2923,14 +2921,9 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 		dns_slabtop_t *newtop = dns_slabtop_new(
 			((dns_db_t *)qpdb)->mctx, newheader->typepair);
 
-		if (prio_header(newtop)) {
-			/* This is a priority type, prepend it */
-			cds_list_add(&newtop->types_link, qpnode->data);
-		} else if (priotop != NULL) {
-			/* Append after the priority headers */
-			cds_list_add(&newtop->types_link, &priotop->types_link);
+		if (prevtop != NULL) {
+			cds_list_add(&newtop->types_link, &prevtop->types_link);
 		} else {
-			/* There were no priority headers */
 			cds_list_add(&newtop->types_link, qpnode->data);
 		}
 
@@ -2950,15 +2943,6 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 			if (expiretop == NULL) {
 				expiretop = newtop;
 			}
-			if (NEGATIVE(newheader) && !prio_header(newtop)) {
-				/*
-				 * Add the new non-priority negative
-				 * header to the database only
-				 * temporarily.
-				 */
-				expiretop = newtop;
-			}
-
 			mark_ancient(first_header(expiretop));
 			if (expiretop->related != NULL) {
 				mark_ancient(first_header(expiretop->related));
