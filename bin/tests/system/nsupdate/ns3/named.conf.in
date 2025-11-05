@@ -24,6 +24,7 @@ options {
 	recursion no;
 	notify yes;
 	dnssec-validation no;
+	allow-transfer {any;};
 };
 
 
