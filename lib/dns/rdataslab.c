@@ -17,6 +17,8 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
+#include <urcu/compiler.h>
+
 #include <isc/ascii.h>
 #include <isc/atomic.h>
 #include <isc/list.h>
@@ -328,8 +330,8 @@ dns_rdataslab_fromrdataset(dns_rdataset_t *rdataset, isc_mem_t *mctx,
 			.typepair = typepair,
 			.trust = rdataset->trust,
 			.ttl = rdataset->ttl,
-			.dirtylink = ISC_LINK_INITIALIZER,
 		};
+		isc_queue_node_init(&new->dirtylink);
 	}
 
 	return result;
@@ -842,7 +844,7 @@ dns_slabheader_reset(dns_slabheader_t *h, dns_dbnode_t *node) {
 	atomic_init(&h->attributes, 0);
 	atomic_init(&h->last_refresh_fail_ts, 0);
 
-	ISC_LINK_INIT(h, dirtylink);
+	isc_queue_node_init(&h->dirtylink);
 
 	STATIC_ASSERT(sizeof(h->attributes) == 2,
 		      "The .attributes field of dns_slabheader_t needs to be "
@@ -856,14 +858,23 @@ dns_slabheader_new(isc_mem_t *mctx, dns_dbnode_t *node) {
 	h = isc_mem_get(mctx, sizeof(*h));
 	*h = (dns_slabheader_t){
 		.node = node,
-		.dirtylink = ISC_LINK_INITIALIZER,
 	};
+	isc_queue_node_init(&h->dirtylink);
 	return h;
+}
+
+static void
+dns_slabheader_destroy_rcu(struct rcu_head *rcu_head) {
+	dns_slabheader_t *header = caa_container_of(rcu_head, dns_slabheader_t,
+						    rcu_head);
+	size_t size = EXISTS(header) ? dns_rdataslab_size(header)
+				     : sizeof(*header);
+
+	isc_mem_putanddetach(&header->mctx, header, size);
 }
 
 void
 dns_slabheader_destroy(dns_slabheader_t **headerp) {
-	unsigned int size;
 	dns_slabheader_t *header = *headerp;
 
 	*headerp = NULL;
@@ -871,13 +882,8 @@ dns_slabheader_destroy(dns_slabheader_t **headerp) {
 	isc_mem_t *mctx = header->node->mctx;
 	dns_db_deletedata(header->node, header);
 
-	if (EXISTS(header)) {
-		size = dns_rdataslab_size(header);
-	} else {
-		size = sizeof(*header);
-	}
-
-	isc_mem_put(mctx, header, size);
+	isc_mem_attach(mctx, &header->mctx);
+	call_rcu(&header->rcu_head, dns_slabheader_destroy_rcu);
 }
 
 void
@@ -1185,6 +1191,7 @@ dns_slabtop_t *
 dns_slabtop_new(isc_mem_t *mctx, dns_typepair_t typepair) {
 	dns_slabtop_t *top = isc_mem_get(mctx, sizeof(*top));
 	*top = (dns_slabtop_t){
+		.mctx = isc_mem_ref(mctx),
 		.types_link = CDS_LIST_HEAD_INIT(top->types_link),
 		.headers = CDS_LIST_HEAD_INIT(top->headers),
 		.typepair = typepair,
@@ -1194,10 +1201,17 @@ dns_slabtop_new(isc_mem_t *mctx, dns_typepair_t typepair) {
 	return top;
 }
 
+static void
+dns_slabtop_destroy_rcu(struct rcu_head *rcu_head) {
+	dns_slabtop_t *top = caa_container_of(rcu_head, dns_slabtop_t,
+					      rcu_head);
+	isc_mem_putanddetach(&top->mctx, top, sizeof(*top));
+}
+
 void
-dns_slabtop_destroy(isc_mem_t *mctx, dns_slabtop_t **topp) {
+dns_slabtop_destroy(dns_slabtop_t **topp) {
 	REQUIRE(topp != NULL && *topp != NULL);
 	dns_slabtop_t *top = *topp;
 	*topp = NULL;
-	isc_mem_put(mctx, top, sizeof(*top));
+	call_rcu(&top->rcu_head, dns_slabtop_destroy_rcu);
 }

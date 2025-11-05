@@ -45,6 +45,7 @@
 
 #include <isc/atomic.h>
 #include <isc/heap.h>
+#include <isc/queue.h>
 #include <isc/stdtime.h>
 #include <isc/urcu.h>
 
@@ -68,12 +69,19 @@ struct dns_slabheader_proof {
 	dns_slabtop_t *pos = NULL, *pos##_next = NULL; \
 	cds_list_for_each_entry_safe(pos, pos##_next, head, types_link)
 
+#define DNS_SLABTOP_FOREACH_RCU(pos, head) \
+	dns_slabtop_t *pos = NULL;         \
+	cds_list_for_each_entry_rcu(pos, head, types_link)
+
 #define DNS_SLABTOP_FOREACH_FROM(pos, head, first)      \
 	dns_slabtop_t *pos = first, *pos##_next = NULL; \
 	cds_list_for_each_entry_safe_from(pos, pos##_next, head, types_link)
 
 typedef struct dns_slabtop dns_slabtop_t;
 struct dns_slabtop {
+	struct rcu_head rcu_head;
+	isc_mem_t      *mctx;
+
 	struct cds_list_head types_link;
 	struct cds_list_head headers;
 
@@ -84,10 +92,13 @@ struct dns_slabtop {
 	/*% Used for SIEVE-LRU (cache) and changed_list (zone) */
 	ISC_LINK(struct dns_slabtop) link;
 	/*% Used for SIEVE-LRU */
-	bool visited;
+	atomic_bool visited;
 };
 
 struct dns_slabheader {
+	struct rcu_head rcu_head;
+	isc_mem_t      *mctx;
+
 	_Atomic(uint16_t)    attributes;
 	_Atomic(dns_trust_t) trust;
 
@@ -96,8 +107,8 @@ struct dns_slabheader {
 	 */
 	uint32_t serial;
 	union {
-		isc_stdtime_t expire;
-		dns_ttl_t     ttl;
+		_Atomic(isc_stdtime_t) expire;
+		dns_ttl_t	       ttl;
 	};
 	dns_typepair_t typepair;
 
@@ -116,7 +127,7 @@ struct dns_slabheader {
 	/*%
 	 * Used for cleaning.
 	 */
-	ISC_LINK(dns_slabheader_t) dirtylink;
+	isc_queue_node_t dirtylink;
 
 	/*%
 	 * Points to the top slabtop structure for the type.
@@ -331,7 +342,7 @@ dns_slabtop_new(isc_mem_t *mctx, dns_typepair_t typepair);
  */
 
 void
-dns_slabtop_destroy(isc_mem_t *mctx, dns_slabtop_t **topp);
+dns_slabtop_destroy(dns_slabtop_t **topp);
 /*%<
  * Free all memory associated with '*slabtopp'.
  */

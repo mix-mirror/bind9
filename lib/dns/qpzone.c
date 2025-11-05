@@ -910,7 +910,7 @@ clean_zone_node(qpznode_t *node, uint32_t least_serial) {
 
 		if (first_header(top) == NULL) {
 			cds_list_del(&top->types_link);
-			dns_slabtop_destroy(node->mctx, &top);
+			dns_slabtop_destroy(&top);
 		} else {
 			/*
 			 * Try to find the first down node less than the least
@@ -5285,7 +5285,7 @@ destroy_qpznode(qpznode_t *node) {
 			dns_slabheader_destroy(&header);
 		}
 
-		dns_slabtop_destroy(node->mctx, &top);
+		dns_slabtop_destroy(&top);
 	}
 
 	qpz_heap_unref(node->heap);

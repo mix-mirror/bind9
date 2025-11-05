@@ -111,13 +111,12 @@
 	}
 #define ISC_SIEVE_EMPTY(sieve) ISC_LIST_EMPTY((sieve).list)
 
-#define ISC_SIEVE_MARKED(entry, visited) CMM_LOAD_SHARED((entry)->visited)
-#define ISC_SIEVE_MARK(entry, visited)                    \
-	if (!ISC_SIEVE_MARKED(entry, visited)) {          \
-		CMM_STORE_SHARED((entry)->visited, true); \
+#define ISC_SIEVE_MARKED(entry, visited) atomic_load(&(entry)->visited)
+#define ISC_SIEVE_MARK(entry, visited)                 \
+	if (!ISC_SIEVE_MARKED(entry, visited)) {       \
+		atomic_store(&(entry)->visited, true); \
 	}
-#define ISC_SIEVE_UNMARK(entry, visited) \
-	CMM_STORE_SHARED((entry)->visited, false)
+#define ISC_SIEVE_UNMARK(entry, visited) atomic_store(&(entry)->visited, false)
 
 /*
  * Note: To match the original algorithm design, the
