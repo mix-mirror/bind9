@@ -1,0 +1,41 @@
+; Copyright (C) Internet Systems Consortium, Inc. ("ISC")
+;
+; SPDX-License-Identifier: MPL-2.0
+;
+; This Source Code Form is subject to the terms of the Mozilla Public
+; License, v. 2.0.  If a copy of the MPL was not distributed with this
+; file, you can obtain one at https://mozilla.org/MPL/2.0/.
+;
+; See the COPYRIGHT file distributed with this work for additional
+; information regarding copyright ownership.
+
+$TTL 300
+@ 			IN SOA	nsset.nil ns2.nsset. (
+				2025110400   	; serial
+				600         	; refresh
+				600         	; retry
+				1200    	; expire
+				600       	; minimum
+				)
+@			NS	ns2.nsset.
+
+ns2		A	10.53.0.2
+ns2		AAAA	fd92:7065:b8e:ffff::2
+
+ns3		A	10.53.0.3
+ns3		AAAA	fd92:7065:b8e:ffff::3
+
+ns4		A	10.53.0.4
+ns4		AAAA	fd92:7065:b8e:ffff::4
+
+ns5		A	10.53.0.5
+ns5		AAAA	fd92:7065:b8e:ffff::5
+
+ns6		A	10.53.0.6
+ns6		AAAA	fd92:7065:b8e:ffff::6
+
+ns7		A	10.53.0.7
+ns7		AAAA	fd92:7065:b8e:ffff::7
+
+ns8		A	10.53.0.8
+ns8		AAAA	fd92:7065:b8e:ffff::8
