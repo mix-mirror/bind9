@@ -21,6 +21,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+/* C11 aligned_alloc is always available in C11 codebase */
+
 #include <isc/atomic.h>
 #include <isc/hash.h>
 #include <isc/magic.h>
@@ -341,6 +343,53 @@ mem_realloc(isc_mem_t *ctx, void *old_ptr, size_t new_size, int flags) {
 	INSIST(new_ptr != NULL);
 
 	return new_ptr;
+}
+
+/*!
+ * Perform an aligned allocation.
+ */
+static void *
+mem_allocate_aligned(isc_mem_t *ctx, size_t size, size_t alignment, int flags) {
+	void *new_ptr = NULL;
+
+	/* 
+	 * Adjust allocation size due to C11 requirements. See `man aligned_alloc` 
+	 */
+	ADJUST_ZERO_ALLOCATION_SIZE(size);
+	size_t adjusted_size = ISC_ALIGN(size, alignment);
+
+	/* 
+	 * We use aligned_alloc instead of jemalloc's flags since aligned_alloc
+	 * is always available
+	 */
+	new_ptr = aligned_alloc(alignment, adjusted_size);
+
+	INSIST(new_ptr != NULL);
+
+	if ((flags & ISC__MEM_ZERO) != 0) {
+		memset(new_ptr, 0, adjusted_size);
+	} else if ((ctx->flags & ISC_MEMFLAG_FILL) != 0) {
+		memset(new_ptr, 0xbe, adjusted_size); /* Mnemonic for "beef". */
+	}
+
+	return new_ptr;
+}
+
+/*!
+ * Free aligned memory.
+ */
+/* coverity[+free : arg-1] */
+static void
+mem_free_aligned(isc_mem_t *ctx, void *mem, size_t size, size_t alignment, int flags ISC_ATTR_UNUSED) {
+	ADJUST_ZERO_ALLOCATION_SIZE(size);
+	size_t adjusted_size= ISC_ALIGN(size, alignment);
+
+	if ((ctx->flags & ISC_MEMFLAG_FILL) != 0) {
+		memset(mem, 0xde, adjusted_size); /* Mnemonic for "dead". */
+	}
+
+	/* aligned_alloc pairs with regular free() */
+	free(mem);
 }
 
 /*!
@@ -837,6 +886,39 @@ isc__mem_strndup(isc_mem_t *mctx, const char *s, size_t size FLARG) {
 	strlcpy(ns, s, len);
 
 	return ns;
+}
+
+void *
+isc__mem_allocate_aligned(isc_mem_t *ctx, size_t size, size_t alignment, int flags FLARG) {
+	void *ptr = NULL;
+
+	REQUIRE(VALID_CONTEXT(ctx));
+	REQUIRE((alignment & (alignment - 1)) == 0); /* Must be power of 2 */
+	REQUIRE(alignment >= sizeof(void *)); /* C11 requirement */
+
+	/* Adjust size to be multiple of alignment, as required by C11  */
+	size_t adjusted_size = ISC_ALIGN(size, alignment);
+
+	ptr = mem_allocate_aligned(ctx, size, alignment, flags);
+
+	mem_getstats(ctx, adjusted_size);
+	ADD_TRACE(ctx, ptr, adjusted_size, func, file, line);
+
+	return ptr;
+}
+
+void
+isc__mem_free_aligned(isc_mem_t *ctx, void *ptr, size_t size, size_t alignment, int flags FLARG) {
+	REQUIRE(VALID_CONTEXT(ctx));
+	REQUIRE(ptr != NULL);
+	
+	/* Pairs with isc__mem_allocate_aligned */
+	size_t adjusted_size = ISC_ALIGN(size, alignment);
+
+	DELETE_TRACE(ctx, ptr, adjusted_size, func, file, line);
+
+	mem_putstats(ctx, adjusted_size);
+	mem_free_aligned(ctx, ptr, adjusted_size, alignment, flags);
 }
 
 void

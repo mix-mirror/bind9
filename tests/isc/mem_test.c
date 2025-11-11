@@ -325,6 +325,17 @@ ISC_RUN_TEST_IMPL(isc_mem_overmem) {
 	isc_mem_detach(&mctx);
 }
 
+ISC_RUN_TEST_IMPL(aligned_alloc) {
+	void *ptr;
+
+	ptr = isc_mem_callocate_aligned(isc_g_mctx, 1, 4096, 1024);
+	assert_non_null(ptr);
+
+	assert_int_equal((uintptr_t)ptr % 1024, 0);
+
+	isc_mem_free_aligned(isc_g_mctx, ptr, 4096, 1024);
+}
+
 #if ISC_MEM_TRACKLINES
 
 /* test mem with no flags */
@@ -553,6 +564,7 @@ ISC_TEST_ENTRY(isc_mem_zeroget)
 ISC_TEST_ENTRY(isc_mem_reget)
 ISC_TEST_ENTRY(isc_mem_reallocate)
 ISC_TEST_ENTRY(isc_mem_overmem)
+ISC_TEST_ENTRY(aligned_alloc)
 
 #if ISC_MEM_TRACKLINES
 ISC_TEST_ENTRY(isc_mem_noflags)

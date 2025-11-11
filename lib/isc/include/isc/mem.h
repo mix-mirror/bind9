@@ -141,6 +141,11 @@ extern isc_mem_t *isc_g_mctx;
 			  ISC__MEM_ZERO _ISC_MEM_FILELINE)
 #define isc_mem_reallocate(c, p, s) \
 	isc__mem_reallocate((c), (p), (s), 0 _ISC_MEM_FILELINE)
+#define isc_mem_allocate_aligned(c, s, a) \
+	isc__mem_allocate_aligned((c), (s), (a), 0 _ISC_MEM_FILELINE)
+#define isc_mem_callocate_aligned(c, n, s, a)                     \
+	isc__mem_allocate_aligned((c), ISC_CHECKED_MUL((n), (s)), \
+				  (a), ISC__MEM_ZERO _ISC_MEM_FILELINE)
 #define isc_mem_strdup(c, p) isc__mem_strdup((c), (p)_ISC_MEM_FILELINE)
 #define isc_mem_strndup(c, p, l) \
 	isc__mem_strndup((c), (p), (l)_ISC_MEM_FILELINE)
@@ -166,6 +171,11 @@ extern isc_mem_t *isc_g_mctx;
 	do {                                                  \
 		isc__mem_free((c), (p), 0 _ISC_MEM_FILELINE); \
 		(p) = NULL;                                   \
+	} while (0)
+#define isc_mem_free_aligned(c, p, s, a)                             \
+	do {                                                         \
+		isc__mem_free_aligned((c), (p), (s), (a), 0 _ISC_MEM_FILELINE); \
+		(p) = NULL;                                          \
 	} while (0)
 #define isc_mempool_put(c, p)                                \
 	do {                                                 \
@@ -469,6 +479,13 @@ ISC_ATTR_RETURNS_NONNULL
 ISC_ATTR_MALLOC_DEALLOCATOR_IDX(isc__mem_free, 2)
 char *
 isc__mem_strndup(isc_mem_t *, const char *, size_t _ISC_MEM_FLARG);
+
+ISC_ATTR_MALLOC_DEALLOCATOR_IDX(isc__mem_free_aligned, 2)
+void *
+isc__mem_allocate_aligned(isc_mem_t *, size_t, size_t, int _ISC_MEM_FLARG);
+
+void
+isc__mem_free_aligned(isc_mem_t *, void *, size_t, size_t, int _ISC_MEM_FLARG);
 
 ISC_ATTR_MALLOC_DEALLOCATOR_IDX(isc__mempool_put, 2)
 void *
