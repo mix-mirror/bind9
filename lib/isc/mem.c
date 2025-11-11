@@ -465,6 +465,37 @@ mem_realloc(isc_mem_t *ctx, void *old_ptr, size_t new_size, int flags) {
 }
 
 /*!
+ * Perform an aligned allocation.
+ */
+static size_t
+mem_aligned_size(size_t size, size_t alignment) {
+	ADJUST_ZERO_ALLOCATION_SIZE(size);
+
+	return ISC_CHECKED_ADD(size, alignment - 1) & ~(alignment - 1);
+}
+
+static void *
+mem_allocate_aligned(size_t adjusted_size, size_t alignment, int flags) {
+	void *new_ptr = aligned_alloc(alignment, adjusted_size);
+	CHECK_OOM(new_ptr, adjusted_size);
+
+	if ((flags & ISC__MEM_ZERO) != 0) {
+		memset(new_ptr, 0, adjusted_size);
+	}
+
+	return new_ptr;
+}
+
+/*!
+ * Free aligned memory.
+ */
+/* coverity[+free : arg-1] */
+static void
+mem_free_aligned(void *mem) {
+	free(mem);
+}
+
+/*!
  * Update internal counters after a memory get.
  */
 static void
@@ -958,6 +989,38 @@ isc__mem_strdup(isc_mem_t *mctx, const char *s FLARG) {
 	strlcpy(ns, s, len);
 
 	return ns;
+}
+
+void *
+isc__mem_allocate_aligned(isc_mem_t *ctx, size_t size, size_t alignment,
+			  int flags FLARG) {
+	REQUIRE(VALID_CONTEXT(ctx));
+	REQUIRE(alignment >= sizeof(void *));
+	REQUIRE((alignment & (alignment - 1)) == 0);
+
+	size_t adjusted_size = mem_aligned_size(size, alignment);
+	void *ptr = mem_allocate_aligned(adjusted_size, alignment, flags);
+
+	mem_getstats(ctx, adjusted_size);
+	ADD_TRACE(ctx, ptr, adjusted_size, func, file, line);
+
+	return ptr;
+}
+
+void
+isc__mem_free_aligned(isc_mem_t *ctx, void *ptr, size_t size, size_t alignment,
+		      int flags ISC_ATTR_UNUSED FLARG) {
+	REQUIRE(VALID_CONTEXT(ctx));
+	REQUIRE(ptr != NULL);
+	REQUIRE(alignment >= sizeof(void *));
+	REQUIRE((alignment & (alignment - 1)) == 0);
+
+	size_t adjusted_size = mem_aligned_size(size, alignment);
+
+	DELETE_TRACE(ctx, ptr, adjusted_size, func, file, line);
+
+	mem_putstats(ctx, adjusted_size);
+	mem_free_aligned(ptr);
 }
 
 void
