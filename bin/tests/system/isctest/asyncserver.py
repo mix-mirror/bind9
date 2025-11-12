@@ -751,6 +751,10 @@ class _DnsMessageWithTsigDisabled(dns.message.Message):
             return super().to_wire(*args, **kwargs)
 
 
+class _NoKeyringType:
+    pass
+
+
 class AsyncDnsServer(AsyncServer):
     """
     DNS server which responds to queries based on zone data and/or custom
@@ -772,8 +776,10 @@ class AsyncDnsServer(AsyncServer):
         /,
         default_rcode: dns.rcode.Rcode = dns.rcode.REFUSED,
         default_aa: bool = True,
+        keyring: Union[
+            dict[dns.name.Name, dns.tsig.Key], None, _NoKeyringType
+        ] = _NoKeyringType(),
         acknowledge_manual_dname_handling: bool = False,
-        acknowledge_tsig_dnspython_hacks: bool = False,
     ) -> None:
         super().__init__(self._handle_udp, self._handle_tcp, "ans.pid")
 
@@ -782,8 +788,8 @@ class AsyncDnsServer(AsyncServer):
         self._response_handlers: List[ResponseHandler] = []
         self._default_rcode = default_rcode
         self._default_aa = default_aa
+        self._keyring = keyring
         self._acknowledge_manual_dname_handling = acknowledge_manual_dname_handling
-        self._acknowledge_tsig_dnspython_hacks = acknowledge_tsig_dnspython_hacks
 
         self._load_zones()
 
@@ -1062,10 +1068,7 @@ class AsyncDnsServer(AsyncServer):
         Yield wire data to send as a response over the established transport.
         """
         try:
-            query = dns.message.from_wire(wire)
-        except dns.message.UnknownTSIGKey:
-            self._abort_if_tsig_signed_query_received_unless_acknowledged()
-            query = _DnsMessageWithTsigDisabled.from_wire(wire)
+            query = self._parse_message(wire)
         except dns.exception.DNSException as exc:
             logging.error("Invalid query from %s (%s): %s", peer, wire.hex(), exc)
             return
@@ -1084,16 +1087,29 @@ class AsyncDnsServer(AsyncServer):
                     response_length = struct.pack("!H", len(response))
                     yield response_length + response
 
-    def _abort_if_tsig_signed_query_received_unless_acknowledged(self) -> None:
-        if self._acknowledge_tsig_dnspython_hacks:
-            return
+    def _parse_message(self, wire: bytes) -> dns.message.Message:
+        try:
+            return dns.message.from_wire(
+                wire,
+                keyring=(
+                    self._keyring
+                    if not isinstance(self._keyring, _NoKeyringType)
+                    else None
+                ),
+            )
+        except dns.message.UnknownTSIGKey:
+            if self._keyring is Ellipsis:
+                self._abort_if_tsig_signed_query_received_unless_acknowledged()
+            if self._keyring is None:
+                return _DnsMessageWithTsigDisabled.from_wire(wire)
+            raise
 
-        error = "TSIG-signed query received; "
-        error += "due to a bug in dnspython, this requires some hacking around; "
-        error += "you may experience unexpected behavior when dealing with TSIG; "
-        error += "TSIG validation is disabled, so any TSIG handling must be done "
-        error += "manually; pass `acknowledge_tsig_dnspython_hacks=True` to the "
-        error += "AsyncDnsServer constructor to acknowledge this and continue."
+    def _abort_if_tsig_signed_query_received_unless_acknowledged(self) -> None:
+        error = "TSIG-signed query received but no `keyring` was provided; "
+        error += "either provide a keyring (in which case the server will ignore "
+        error += "any TSIG-invalid queries), or set `keyring=None` explicitely "
+        error += "to disable TSIG validation altogether. This requires some hacking "
+        error += "around a dnspython bug, so there may be unexpected side effects."
 
         raise ValueError(error)
 
