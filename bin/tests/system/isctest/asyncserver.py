@@ -28,6 +28,7 @@ from typing import (
 import abc
 import asyncio
 import contextlib
+import copy
 import enum
 import functools
 import logging
@@ -274,6 +275,7 @@ class QueryContext:
     node: Optional[dns.node.Node] = None
     answer: Optional[dns.rdataset.Rdataset] = None
     alias: Optional[dns.name.Name] = None
+    _fresh_response: Optional[dns.message.Message] = field(default=None, init=False)
 
     @property
     def qname(self) -> dns.name.Name:
@@ -290,6 +292,24 @@ class QueryContext:
     @property
     def qtype(self) -> dns.rdatatype.RdataType:
         return self.query.question[0].rdtype
+
+    def refresh_response(self) -> dns.message.Message:
+        """
+        Roll back the response to a fresh copy.
+
+        Returns the fresh copy of the response.
+        """
+        assert self._fresh_response
+        self.response = copy.deepcopy(self._fresh_response)
+        return self.response
+
+    def set_fresh_response(self) -> None:
+        """
+        Store a fresh copy of the current response for future rollbacks.
+
+        This is to be called after preparing the response from zone data.
+        """
+        self._fresh_response = copy.deepcopy(self.response)
 
 
 @dataclass
@@ -1124,6 +1144,7 @@ class AsyncDnsServer(AsyncServer):
             qctx.response.flags |= dns.flags.AA
 
         self._prepare_response_from_zone_data(qctx)
+        qctx.set_fresh_response()
 
         response_handled = False
         async for action in self._run_response_handlers(qctx):
