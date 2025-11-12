@@ -206,7 +206,7 @@ class FallbackHandler(ResponseHandler):
 
 
 def cookie_server(evil: bool) -> AsyncDnsServer:
-    server = AsyncDnsServer(acknowledge_tsig_dnspython_hacks=True)
+    server = AsyncDnsServer(keyring=None)
     server.install_response_handlers(
         [
             NsHandler(evil),
