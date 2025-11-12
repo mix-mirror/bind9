@@ -13,7 +13,7 @@ information regarding copyright ownership.
 
 from typing import AsyncGenerator
 
-import dns.message
+import dns.rcode
 import dns.rdatatype
 import dns.rrset
 
@@ -47,7 +47,7 @@ class AXFRServer(DomainHandler):
         # expected to send a SOA query over UDP and then an AXFR query over
         # TCP.  Responses to both of those start with a SOA RRset in the ANSWER
         # section :-)
-        soa_message = dns.message.make_response(qctx.query)
+        soa_message = qctx.response
         soa_rrset = dns.rrset.from_text(
             qctx.qname,
             300,
@@ -57,7 +57,7 @@ class AXFRServer(DomainHandler):
         )
         soa_message.answer.append(soa_rrset)
 
-        yield DnsResponseSend(soa_message, authoritative=True)
+        yield DnsResponseSend(soa_message)
 
         if qctx.qtype == dns.rdatatype.SOA:
             # If QTYPE=SOA, the SOA record is the complete response.
@@ -76,16 +76,16 @@ class AXFRServer(DomainHandler):
         # Send just the obligatory NS RRset at zone apex in the next message.
         # This is stupidly inefficient, but makes looping below simpler as we
         # will already have been done with the mandatory stuff by then.
-        ns_message = dns.message.make_response(qctx.query)
+        ns_message = qctx.prepare_new_response()
         ns_rrset = dns.rrset.from_text(
             qctx.qname, 300, qctx.qclass, dns.rdatatype.NS, "."
         )
         ns_message.answer.append(ns_rrset)
 
-        yield DnsResponseSend(ns_message, authoritative=True)
+        yield DnsResponseSend(ns_message)
 
         # Generate the AXFR with a txt rrset.
-        txt_message = dns.message.make_response(qctx.query)
+        txt_message = qctx.prepare_new_response()
         txt_rrset = dns.rrset.from_text(
             qctx.qname,
             300,
@@ -95,17 +95,19 @@ class AXFRServer(DomainHandler):
         )
         txt_message.answer.append(txt_rrset)
 
-        yield DnsResponseSend(txt_message, authoritative=True)
+        yield DnsResponseSend(txt_message)
 
         # Finish the AXFR transaction by sending the second SOA RRset.
-        yield DnsResponseSend(soa_message, authoritative=True)
+        yield DnsResponseSend(soa_message)
 
         # This makes sure that the next SOA request causes a new zone transfer
         self.soa_version += 1
 
 
 if __name__ == "__main__":
-    server = ControllableAsyncDnsServer()
+    server = ControllableAsyncDnsServer(
+        default_aa=True, default_rcode=dns.rcode.NOERROR
+    )
     server.install_control_command(ToggleResponsesCommand())
     server.install_response_handler(AXFRServer())
     server.run()
