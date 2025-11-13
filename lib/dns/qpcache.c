@@ -833,7 +833,7 @@ qpcnode_release(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t *nlocktypep,
 			/* Queue was empty, trigger new cleaning */
 			isc_loop_t *loop = isc_loop_get(node->locknum % isc_loopmgr_nloops());
 
-			uint64_t arg_as_u64 = ((uint64_t) qpdb) << 8ul | (node->locknum);
+			uint64_t arg_as_u64 = ((uint64_t) qpdb) | (node->locknum);
 
 			qpcache_ref(qpdb);
 			isc_async_run(loop, cleanup_deadnodes_cb, (void*) arg_as_u64);
@@ -2356,9 +2356,10 @@ qpcache__destroy(qpcache_t *qpdb) {
 	qpdb->common.impmagic = 0;
 	isc_mem_detach(&qpdb->hmctx);
 
-	isc_mem_putanddetach(&qpdb->common.mctx, qpdb,
-			     sizeof(*qpdb) + qpdb->buckets_count *
-						     sizeof(qpdb->buckets[0]));
+	isc_mem_t *mctx = qpdb->common.mctx;
+	size_t size = sizeof(*qpdb) + qpdb->buckets_count * sizeof(qpdb->buckets[0]);
+	isc_mem_free_aligned(mctx, qpdb, size, QPCACHE_NUM_LOCKS);
+	isc_mem_detach(&mctx);
 }
 
 static void
@@ -2401,8 +2402,8 @@ cleanup_deadnodes(qpcache_t *qpdb, uint16_t locknum) {
 
 static void
 cleanup_deadnodes_cb(void *arg) {
-	qpcache_t *qpdb = (qpcache_t*) (((uint64_t) arg) >> 8ul);
-	uint16_t locknum = ((uint64_t) arg) & 255ul;
+	qpcache_t *qpdb = (qpcache_t*) (((uint64_t) arg) & ~(QPCACHE_NUM_LOCKS - 1));
+	uint16_t locknum = ((uint64_t) arg) & (QPCACHE_NUM_LOCKS - 1);
 
 	cleanup_deadnodes(qpdb, locknum);
 	qpcache_unref(qpdb);
@@ -3280,8 +3281,9 @@ dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 	REQUIRE(type == dns_dbtype_cache);
 	REQUIRE(loop != NULL);
 
-	qpdb = isc_mem_get(mctx,
-			   sizeof(*qpdb) + nloops * sizeof(qpdb->buckets[0]));
+	qpdb = isc_mem_callocate_aligned(mctx, 1,
+					  sizeof(*qpdb) + nloops * sizeof(qpdb->buckets[0]),
+					  QPCACHE_NUM_LOCKS);
 	*qpdb = (qpcache_t){
 		.common.methods = &qpdb_cachemethods,
 		.common.origin = DNS_NAME_INITEMPTY,

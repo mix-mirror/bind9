@@ -123,7 +123,7 @@ cleanup_all_deadnodes(dns_db_t *db) {
 }
 
 ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
-	size_t maxcache = 2097152U; /* 2MB - same as DNS_CACHE_MINSIZE */
+	size_t maxcache = 8U * 2097152U;
 	size_t hiwater = maxcache - (maxcache >> 3); /* borrowed from cache.c */
 	size_t lowater = maxcache - (maxcache >> 2); /* ditto */
 	isc_result_t result;
@@ -151,6 +151,11 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 		overmempurge_addrdataset(db, now, i, 50053, 0, false);
 	}
 	assert_true(isc_mem_isovermem(mctx));
+
+	if (verbose) {
+		print_message("# inuse: %zd max: %zd\n",
+			      isc_mem_inuse(mctx), maxcache);
+	}
 
 	/*
 	 * Then try to add the same number of entries, each has very large data.
