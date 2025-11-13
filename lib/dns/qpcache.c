@@ -833,10 +833,10 @@ qpcnode_release(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t *nlocktypep,
 			/* Queue was empty, trigger new cleaning */
 			isc_loop_t *loop = isc_loop_get(node->locknum % isc_loopmgr_nloops());
 
-			uint64_t arg_as_u64 = ((uint64_t) qpdb) | (node->locknum);
+			ptrdiff_t arg_as_ptrdiff_t = ((ptrdiff_t) qpdb) | (node->locknum);
 
 			qpcache_ref(qpdb);
-			isc_async_run(loop, cleanup_deadnodes_cb, (void*) arg_as_u64);
+			isc_async_run(loop, cleanup_deadnodes_cb, (void*) arg_as_ptrdiff_t);
 		}
 	}
 
