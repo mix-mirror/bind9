@@ -2402,8 +2402,8 @@ cleanup_deadnodes(qpcache_t *qpdb, uint16_t locknum) {
 
 static void
 cleanup_deadnodes_cb(void *arg) {
-	qpcache_t *qpdb = (qpcache_t*) (((uint64_t) arg) & ~(QPCACHE_NUM_LOCKS - 1));
-	uint16_t locknum = ((uint64_t) arg) & (QPCACHE_NUM_LOCKS - 1);
+	qpcache_t *qpdb = (qpcache_t*) (((ptrdiff_t) arg) & ~(QPCACHE_NUM_LOCKS - 1));
+	uint16_t locknum = ((ptrdiff_t) arg) & (QPCACHE_NUM_LOCKS - 1);
 
 	cleanup_deadnodes(qpdb, locknum);
 	qpcache_unref(qpdb);
