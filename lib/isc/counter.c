@@ -16,6 +16,9 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#include <urcu/compiler.h>
+#include <urcu/system.h>
+
 #include <isc/atomic.h>
 #include <isc/counter.h>
 #include <isc/magic.h>
@@ -30,12 +33,12 @@ struct isc_counter {
 	unsigned int magic;
 	isc_mem_t *mctx;
 	isc_refcount_t references;
-	atomic_uint_fast32_t limit;
+	uint32_t limit;
 	atomic_uint_fast32_t used;
 };
 
 void
-isc_counter_create(isc_mem_t *mctx, int limit, isc_counter_t **counterp) {
+isc_counter_create(isc_mem_t *mctx, uint32_t limit, isc_counter_t **counterp) {
 	REQUIRE(counterp != NULL && *counterp == NULL);
 
 	isc_counter_t *counter = isc_mem_get(mctx, sizeof(*counter));
@@ -52,10 +55,15 @@ isc_counter_create(isc_mem_t *mctx, int limit, isc_counter_t **counterp) {
 
 isc_result_t
 isc_counter_increment(isc_counter_t *counter) {
-	uint_fast32_t used = atomic_fetch_add_relaxed(&counter->used, 1) + 1;
-	uint_fast32_t limit = atomic_load_acquire(&counter->limit);
+	uint32_t limit = CMM_LOAD_SHARED(counter->limit);
 
-	if (limit != 0 && used >= limit) {
+	if (limit == UINT32_MAX) {
+		return ISC_R_SUCCESS;
+	}
+
+	uint_fast32_t used = atomic_fetch_add_relaxed(&counter->used, 1) + 1;
+
+	if (limit != 0 && used >= (uint32_t)limit) {
 		return ISC_R_QUOTA;
 	}
 
@@ -70,17 +78,17 @@ isc_counter_used(isc_counter_t *counter) {
 }
 
 void
-isc_counter_setlimit(isc_counter_t *counter, int limit) {
+isc_counter_setlimit(isc_counter_t *counter, uint32_t limit) {
 	REQUIRE(VALID_COUNTER(counter));
 
-	atomic_store_release(&counter->limit, limit);
+	CMM_STORE_SHARED(counter->limit, limit);
 }
 
-unsigned int
+uint32_t
 isc_counter_getlimit(isc_counter_t *counter) {
 	REQUIRE(VALID_COUNTER(counter));
 
-	return atomic_load_acquire(&counter->limit);
+	return CMM_LOAD_SHARED(counter->limit);
 }
 
 static void
