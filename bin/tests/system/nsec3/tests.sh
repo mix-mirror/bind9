@@ -592,10 +592,12 @@ set_server "ns3" "10.53.0.3"
 # confirm the pre-existing name still exists
 dig_with_opts +noquestion "@${SERVER}" c.$ZONE >"dig.out.$ZONE.test$n.1" || ret=1
 grep "c\.nsec3-ent\.kasp\..*IN.*A.*10\.0\.0\.3" "dig.out.$ZONE.test$n.1" >/dev/null || ret=1
+nextpart ns3/named.run >/dev/null
 # remove a name, bump the SOA, and reload
 sed -e 's/1 *; serial/2/' -e '/^c/d' ns3/template.db.in >ns3/nsec3-ent.kasp.db
 rndc_reload ns3 10.53.0.3
 # try the query again
+wait_for_log 5 "zone_needdump: zone nsec3-ent.kasp/IN (signed): enter" ns3/named.run || ret=1
 dig_with_opts +noquestion "@${SERVER}" c.$ZONE >"dig.out.$ZONE.test$n.2" || ret=1
 grep "status: NXDOMAIN" "dig.out.$ZONE.test$n.2" >/dev/null || ret=1
 if [ "$ret" -ne 0 ]; then echo_i "failed"; fi
@@ -608,11 +610,13 @@ set_server "ns3" "10.53.0.3"
 # confirm the ENT name does not exist yet
 dig_with_opts +noquestion "@${SERVER}" x.y.z.$ZONE >"dig.out.$ZONE.test$n.1" || ret=1
 grep "status: NXDOMAIN" "dig.out.$ZONE.test$n.1" >/dev/null || ret=1
+nextpart ns3/named.run >/dev/null
 # add a name with an ENT, bump the SOA, and reload ensuring the time stamp changes
 sleep 1
 sed -e 's/1 *; serial/3/' ns3/template.db.in >ns3/nsec3-ent.kasp.db
 echo "x.y.z A 10.0.0.4" >>ns3/nsec3-ent.kasp.db
 rndc_reload ns3 10.53.0.3
+wait_for_log 5 "zone_needdump: zone nsec3-ent.kasp/IN (signed): enter" ns3/named.run || ret=1
 # try the query again
 dig_with_opts +noquestion "@${SERVER}" x.y.z.$ZONE >"dig.out.$ZONE.test$n.2" || ret=1
 grep "x\.y\.z\.nsec3-ent\.kasp\..*IN.*A.*10\.0\.0\.4" "dig.out.$ZONE.test$n.2" >/dev/null || ret=1
