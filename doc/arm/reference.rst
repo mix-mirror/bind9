@@ -2359,11 +2359,10 @@ Boolean Options
    :tags: query
    :short: Sets the maximum size of UDP responses that are sent to queries without a valid server COOKIE.
 
-   This sets the maximum size of UDP responses that are sent to queries
-   without a valid server COOKIE. A value below 128 is silently
-   raised to 128. The default value is 4096, but the :any:`max-udp-size`
-   option may further limit the response size as the default for
-   :any:`max-udp-size` is 1232.
+   This sets the maximum size of UDP responses that are sent to queries without
+   a valid server COOKIE. A minimum value is 128. The default value is 4096,
+   but the :any:`max-udp-size` option may further limit the response size as
+   the default for :any:`max-udp-size` is 1232.
 
 .. namedconf:statement:: cookie-algorithm
    :tags: server
@@ -4331,10 +4330,8 @@ Tuning
    :short: Sets the maximum advertised EDNS UDP buffer size to control the size of packets received from authoritative servers in response to recursive queries.
 
    This sets the maximum advertised EDNS UDP buffer size, in bytes, to control
-   the size of packets received from authoritative servers in response
-   to recursive queries. Valid values are 512 to 4096; values outside
-   this range are silently adjusted to the nearest value within it.
-   The default value is 1232.
+   the size of packets received from authoritative servers in response to
+   recursive queries. Valid values are 512 to 4096. The default value is 1232.
 
    The usual reason for setting :any:`edns-udp-size` to a non-default value
    is to get UDP answers to pass through broken firewalls that block
@@ -4367,9 +4364,7 @@ Tuning
    :short: Sets the maximum EDNS UDP message size sent by :iscman:`named`.
 
    This sets the maximum EDNS UDP message size that :iscman:`named` sends, in bytes.
-   Valid values are 512 to 4096; values outside this range are
-   silently adjusted to the nearest value within it. The default value
-   is 1232.
+   Valid values are 512 to 4096. The default value is 1232.
 
    This value applies to responses sent by a server; to set the
    advertised buffer size in queries, see :any:`edns-udp-size`.
@@ -4515,9 +4510,8 @@ Tuning
    :any:`prefetch` specifies the "trigger" TTL value at which prefetch
    of the current query takes place; when a cache record with an
    equal or lower TTL value is encountered during query processing, it is
-   refreshed. Valid trigger TTL values are 1 to 10 seconds. Values
-   larger than 10 seconds are silently reduced to 10. Setting a
-   trigger TTL to zero causes prefetch to be disabled. The default
+   refreshed. Valid trigger TTL values are 1 to 10 seconds.  Setting a trigger
+   TTL to zero causes prefetch to be disabled. The default
    trigger TTL is ``2``.
 
    An optional second argument specifies the "eligibility" TTL: the
@@ -5605,9 +5599,8 @@ any top-level :namedconf:ref:`server` statements are used as defaults.
    heuristics that indicate that a lower version should be sent. This
    option is intended to be used when a remote server reacts badly to a
    given EDNS version or higher; it should be set to the highest version
-   the remote server is known to support. Valid values are 0 to 255; higher
-   values are silently adjusted. This option is not needed until
-   higher EDNS versions than 0 are in use.
+   the remote server is known to support. Valid values are 0 to 255. This
+   option is not needed until higher EDNS versions than 0 are in use.
 
 .. namedconf:statement:: padding
    :tags: server
