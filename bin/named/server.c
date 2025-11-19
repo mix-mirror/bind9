@@ -1414,50 +1414,29 @@ configure_peer(const cfg_obj_t *cpeer, isc_mem_t *mctx, dns_peer_t **peerp) {
 	obj = NULL;
 	(void)cfg_map_get(cpeer, "edns-udp-size", &obj);
 	if (obj != NULL) {
-		uint32_t udpsize = cfg_obj_asuint32(obj);
-		if (udpsize < 512U) {
-			udpsize = 512U;
-		}
-		if (udpsize > 4096U) {
-			udpsize = 4096U;
-		}
-		CHECK(dns_peer_setudpsize(peer, (uint16_t)udpsize));
+		CHECK(dns_peer_setudpsize(peer,
+					  (uint16_t)cfg_obj_asuint32(obj)));
 	}
 
 	obj = NULL;
 	(void)cfg_map_get(cpeer, "edns-version", &obj);
 	if (obj != NULL) {
-		uint32_t ednsversion = cfg_obj_asuint32(obj);
-		if (ednsversion > 255U) {
-			ednsversion = 255U;
-		}
-		CHECK(dns_peer_setednsversion(peer, (uint8_t)ednsversion));
+		CHECK(dns_peer_setednsversion(peer,
+					      (uint8_t)cfg_obj_asuint32(obj)));
 	}
 
 	obj = NULL;
 	(void)cfg_map_get(cpeer, "max-udp-size", &obj);
 	if (obj != NULL) {
-		uint32_t udpsize = cfg_obj_asuint32(obj);
-		if (udpsize < 512U) {
-			udpsize = 512U;
-		}
-		if (udpsize > 4096U) {
-			udpsize = 4096U;
-		}
-		CHECK(dns_peer_setmaxudp(peer, (uint16_t)udpsize));
+		CHECK(dns_peer_setmaxudp(peer,
+					 (uint16_t)cfg_obj_asuint32(obj)));
 	}
 
 	obj = NULL;
 	(void)cfg_map_get(cpeer, "padding", &obj);
 	if (obj != NULL) {
-		uint32_t padding = cfg_obj_asuint32(obj);
-		if (padding > 512U) {
-			cfg_obj_log(obj, ISC_LOG_WARNING,
-				    "server padding value cannot "
-				    "exceed 512: lowering");
-			padding = 512U;
-		}
-		CHECK(dns_peer_setpadding(peer, (uint16_t)padding));
+		CHECK(dns_peer_setpadding(peer,
+					  (uint16_t)cfg_obj_asuint32(obj)));
 	}
 
 	obj = NULL;
@@ -3691,7 +3670,6 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	const char *str = NULL;
 	const char *cachename = NULL;
 	dns_order_t *order = NULL;
-	uint32_t udpsize;
 	unsigned int resopts = 0;
 	dns_zone_t *zone = NULL;
 	uint32_t clients_per_query, max_clients_per_query;
@@ -4460,14 +4438,7 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	obj = NULL;
 	result = named_config_get(maps, "edns-udp-size", &obj);
 	INSIST(result == ISC_R_SUCCESS);
-	udpsize = cfg_obj_asuint32(obj);
-	if (udpsize < 512) {
-		udpsize = 512;
-	}
-	if (udpsize > 4096) {
-		udpsize = 4096;
-	}
-	dns_view_setudpsize(view, (uint16_t)udpsize);
+	dns_view_setudpsize(view, (uint16_t)cfg_obj_asuint32(obj));
 
 	/*
 	 * Set the maximum UDP response size.
@@ -4475,14 +4446,7 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	obj = NULL;
 	result = named_config_get(maps, "max-udp-size", &obj);
 	INSIST(result == ISC_R_SUCCESS);
-	udpsize = cfg_obj_asuint32(obj);
-	if (udpsize < 512) {
-		udpsize = 512;
-	}
-	if (udpsize > 4096) {
-		udpsize = 4096;
-	}
-	view->maxudp = udpsize;
+	view->maxudp = cfg_obj_asuint32(obj);
 
 	/*
 	 * Set the maximum UDP when a COOKIE is not provided.
@@ -4490,14 +4454,10 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	obj = NULL;
 	result = named_config_get(maps, "nocookie-udp-size", &obj);
 	INSIST(result == ISC_R_SUCCESS);
-	udpsize = cfg_obj_asuint32(obj);
-	if (udpsize < 128) {
-		udpsize = 128;
+	view->nocookieudp = cfg_obj_asuint32(obj);
+	if (view->nocookieudp > view->maxudp) {
+		view->nocookieudp = view->maxudp;
 	}
-	if (udpsize > view->maxudp) {
-		udpsize = view->maxudp;
-	}
-	view->nocookieudp = udpsize;
 
 	/*
 	 * Set supported DNSSEC algorithms.
@@ -7745,7 +7705,6 @@ apply_configuration(cfg_obj_t *effectiveconfig, cfg_obj_t *bindkeys,
 	isc_portset_t *v6portset = NULL;
 	isc_result_t result;
 	uint32_t interface_interval;
-	uint32_t udpsize;
 	uint32_t transfer_message_size;
 	uint32_t recv_tcp_buffer_size;
 	uint32_t send_tcp_buffer_size;
@@ -8126,14 +8085,7 @@ apply_configuration(cfg_obj_t *effectiveconfig, cfg_obj_t *bindkeys,
 	obj = NULL;
 	result = named_config_get(maps, "edns-udp-size", &obj);
 	INSIST(result == ISC_R_SUCCESS);
-	udpsize = cfg_obj_asuint32(obj);
-	if (udpsize < 512) {
-		udpsize = 512;
-	}
-	if (udpsize > 4096) {
-		udpsize = 4096;
-	}
-	server->sctx->udpsize = (uint16_t)udpsize;
+	server->sctx->udpsize = (uint16_t)cfg_obj_asuint32(obj);
 
 	/* Set the transfer message size for TCP */
 	obj = NULL;
