@@ -243,7 +243,7 @@ struct dns_view {
 	void (*plugins_free)(isc_mem_t *, void **);
 
 	/* Hook table */
-	void *hooktable; /* ns_hooktable */
+	void *hooktable; /* dns_hooktable */
 	void (*hooktable_free)(isc_mem_t *, void **);
 };
 

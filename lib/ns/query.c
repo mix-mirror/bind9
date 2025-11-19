@@ -45,6 +45,7 @@
 #include <dns/dns64.h>
 #include <dns/dnssec.h>
 #include <dns/ede.h>
+#include <dns/hooks.h>
 #include <dns/keytable.h>
 #include <dns/message.h>
 #include <dns/ncache.h>
@@ -69,7 +70,6 @@
 #include <dns/zt.h>
 
 #include <ns/client.h>
-#include <ns/hooks.h>
 #include <ns/interfacemgr.h>
 #include <ns/server.h>
 #include <ns/stats.h>
@@ -259,40 +259,40 @@ acquire_recursionquota(ns_client_t *client);
 static void
 release_recursionquota(ns_client_t *client);
 
-static inline ns_hookresult_t
+static inline dns_hookresult_t
 ns__query_callhook(uint8_t id, query_ctx_t *qctx, isc_result_t *result,
-		   ns_hooktable_t *hooktab) {
+		   dns_hooktable_t *hooktab) {
 	isc_result_t hookresult = *result;
-	ns_hook_t *hook = ISC_LIST_HEAD((*hooktab)[id]);
+	dns_hook_t *hook = ISC_LIST_HEAD((*hooktab)[id]);
 
 	while (hook != NULL) {
-		ns_hook_action_t func = hook->action;
+		dns_hook_action_t func = hook->action;
 		void *data = hook->action_data;
 
 		INSIST(func != NULL);
 
 		switch (func(qctx, data, &hookresult)) {
-		case NS_HOOK_CONTINUE:
+		case DNS_HOOK_CONTINUE:
 			hook = ISC_LIST_NEXT(hook, link);
 			break;
-		case NS_HOOK_RETURN:
+		case DNS_HOOK_RETURN:
 			*result = hookresult;
-			return NS_HOOK_RETURN;
+			return DNS_HOOK_RETURN;
 		default:
 			UNREACHABLE();
 		}
 	}
 
-	return NS_HOOK_CONTINUE;
+	return DNS_HOOK_CONTINUE;
 }
 
 static inline void
 ns__query_callhook_noreturn(uint8_t id, query_ctx_t *qctx,
-			    ns_hooktable_t *hooktab) {
-	ns_hook_t *hook = ISC_LIST_HEAD((*hooktab)[id]);
+			    dns_hooktable_t *hooktab) {
+	dns_hook_t *hook = ISC_LIST_HEAD((*hooktab)[id]);
 
 	while (hook != NULL) {
-		ns_hook_action_t func = hook->action;
+		dns_hook_action_t func = hook->action;
 		void *data = hook->action_data;
 		isc_result_t dummyres;
 
@@ -305,7 +305,7 @@ ns__query_callhook_noreturn(uint8_t id, query_ctx_t *qctx,
 
 /*
  * Call the specified hook function in every configured module that
- * implements that function. If any hook function returns NS_HOOK_RETURN,
+ * implements that function. If any hook function returns DNS_HOOK_RETURN,
  * we set 'result' and terminate processing by jumping to the 'cleanup' tag.
  *
  * Before any hook point is reached, qctx->view must be initialized to
@@ -316,24 +316,24 @@ ns__query_callhook_noreturn(uint8_t id, query_ctx_t *qctx,
  * is a macro instead of a static function; it needs to be able to use
  * 'goto cleanup' regardless of the return value.
  */
-#define CALL_HOOK(_id, _qctx)                                               \
-	if ((_qctx)->zhooks != NULL &&                                      \
-	    ns__query_callhook(_id, _qctx, &result, (_qctx)->zhooks) ==     \
-		    NS_HOOK_RETURN)                                         \
-	{                                                                   \
-		goto cleanup;                                               \
-	}                                                                   \
-	if ((_qctx)->view->hooktable != NULL &&                             \
-	    ns__query_callhook(_id, _qctx, &result,                         \
-			       (_qctx)->view->hooktable) == NS_HOOK_RETURN) \
-	{                                                                   \
-		goto cleanup;                                               \
-	}                                                                   \
-	if (ns__hook_table != NULL &&                                       \
-	    ns__query_callhook(_id, _qctx, &result, ns__hook_table) ==      \
-		    NS_HOOK_RETURN)                                         \
-	{                                                                   \
-		goto cleanup;                                               \
+#define CALL_HOOK(_id, _qctx)                                                \
+	if ((_qctx)->zhooks != NULL &&                                       \
+	    ns__query_callhook(_id, _qctx, &result, (_qctx)->zhooks) ==      \
+		    DNS_HOOK_RETURN)                                         \
+	{                                                                    \
+		goto cleanup;                                                \
+	}                                                                    \
+	if ((_qctx)->view->hooktable != NULL &&                              \
+	    ns__query_callhook(_id, _qctx, &result,                          \
+			       (_qctx)->view->hooktable) == DNS_HOOK_RETURN) \
+	{                                                                    \
+		goto cleanup;                                                \
+	}                                                                    \
+	if (dns__hook_table != NULL &&                                       \
+	    ns__query_callhook(_id, _qctx, &result, dns__hook_table) ==      \
+		    DNS_HOOK_RETURN)                                         \
+	{                                                                    \
+		goto cleanup;                                                \
 	}
 
 /*
@@ -356,8 +356,8 @@ ns__query_callhook_noreturn(uint8_t id, query_ctx_t *qctx,
 		ns__query_callhook_noreturn(_id, _qctx,                   \
 					    (_qctx)->view->hooktable);    \
 	}                                                                 \
-	if (ns__hook_table != NULL) {                                     \
-		ns__query_callhook_noreturn(_id, _qctx, ns__hook_table);  \
+	if (dns__hook_table != NULL) {                                    \
+		ns__query_callhook_noreturn(_id, _qctx, dns__hook_table); \
 	}
 
 /*
@@ -6613,10 +6613,10 @@ cleanup:
 
 static void
 query_hookresume(void *arg) {
-	ns_hook_resume_t *rev = (ns_hook_resume_t *)arg;
-	ns_hookasync_t *hctx = NULL;
+	dns_hook_resume_t *rev = (dns_hook_resume_t *)arg;
+	dns_hookasync_t *hctx = NULL;
 	ns_client_t *client = rev->arg;
-	query_ctx_t *qctx = rev->saved_qctx;
+	query_ctx_t *qctx = rev->context;
 	bool canceled;
 
 	CTRACE(ISC_LOG_DEBUG(3), "query_hookresume");
@@ -6744,7 +6744,7 @@ ns_query_hookasync(query_ctx_t *qctx, ns_query_starthookasync_t runasync,
 		   void *arg) {
 	isc_result_t result;
 	ns_client_t *client = qctx->client;
-	query_ctx_t *saved_qctx = NULL;
+	query_ctx_t *context = NULL;
 
 	CTRACE(ISC_LOG_DEBUG(3), "ns_query_hookasync");
 
@@ -6757,8 +6757,8 @@ ns_query_hookasync(query_ctx_t *qctx, ns_query_starthookasync_t runasync,
 		goto cleanup;
 	}
 
-	qctx_save(qctx, &saved_qctx);
-	result = runasync(saved_qctx, client->manager->mctx, arg,
+	qctx_save(qctx, &context);
+	result = runasync(context, client->manager->mctx, arg,
 			  client->manager->loop, query_hookresume, client,
 			  &client->query.hookasyncctx);
 	if (result != ISC_R_SUCCESS) {
@@ -6771,7 +6771,7 @@ ns_query_hookasync(query_ctx_t *qctx, ns_query_starthookasync_t runasync,
 	/*
 	 * Typically the runasync() function will trigger recursion, but
 	 * there is no need to set NS_QUERYATTR_RECURSING. The calling hook
-	 * is expected to return NS_HOOK_RETURN, and the RECURSING
+	 * is expected to return DNS_HOOK_RETURN, and the RECURSING
 	 * attribute won't be checked anywhere.
 	 *
 	 * Hook-based asynchronous processing cannot coincide with normal
@@ -6798,10 +6798,10 @@ cleanup:
 	 * simply return on failure of this function, so there's no other
 	 * place for this to prevent leak.
 	 */
-	if (saved_qctx != NULL) {
-		qctx_clean(saved_qctx);
-		qctx_freedata(saved_qctx);
-		qctx_destroy(saved_qctx);
+	if (context != NULL) {
+		qctx_clean(context);
+		qctx_freedata(context);
+		qctx_destroy(context);
 	}
 	return result;
 }
@@ -11338,13 +11338,13 @@ ns_query_done(query_ctx_t *qctx) {
 		if (qctx->client->query.restarts <
 		    qctx->client->inner.view->max_restarts)
 		{
-			query_ctx_t *saved_qctx = NULL;
+			query_ctx_t *context = NULL;
 			qctx->client->query.restarts++;
-			qctx_save(qctx, &saved_qctx);
+			qctx_save(qctx, &context);
 			isc_nmhandle_attach(qctx->client->inner.handle,
 					    &qctx->client->inner.restarthandle);
 			isc_async_run(qctx->client->manager->loop,
-				      async_restart, saved_qctx);
+				      async_restart, context);
 			return DNS_R_CONTINUE;
 		} else {
 			/*
@@ -11444,7 +11444,7 @@ cleanup:
 	/*
 	 * We'd only get here if one of the hooks above
 	 * (NS_QUERY_DONE_BEGIN or NS_QUERY_DONE_SEND) returned
-	 * NS_HOOK_RETURN. Some housekeeping may be needed.
+	 * DNS_HOOK_RETURN. Some housekeeping may be needed.
 	 */
 	qctx_clean(qctx);
 	qctx_freedata(qctx);

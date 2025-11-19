@@ -33,6 +33,7 @@
 #include <isc/md.h>
 #include <isc/mem.h>
 #include <isc/netaddr.h>
+#include <isc/netmgr.h>
 #include <isc/parseint.h>
 #include <isc/region.h>
 #include <isc/result.h>
@@ -45,6 +46,7 @@
 #include <dns/acl.h>
 #include <dns/dnstap.h>
 #include <dns/fixedname.h>
+#include <dns/hooks.h>
 #include <dns/journal.h>
 #include <dns/kasp.h>
 #include <dns/keymgr.h>
@@ -66,8 +68,6 @@
 #include <isccfg/grammar.h>
 #include <isccfg/kaspconf.h>
 #include <isccfg/namedconf.h>
-
-#include <ns/hooks.h>
 
 #define NAMED_CONTROL_PORT 953
 
@@ -3092,9 +3092,9 @@ check:
 struct check_one_plugin_data {
 	isc_mem_t *mctx;
 	cfg_aclconfctx_t *aclctx;
-	ns_hooksource_t source;
+	dns_hooksource_t source;
 	isc_result_t *check_result;
-	const ns_pluginctx_t *ctx;
+	const dns_pluginctx_t *ctx;
 };
 
 /*%
@@ -3114,8 +3114,8 @@ check_one_plugin(const cfg_obj_t *config, const cfg_obj_t *obj,
 
 	UNUSED(aclctx);
 
-	result = ns_plugin_expandpath(plugin_path, full_path,
-				      sizeof(full_path));
+	result = dns_plugin_expandpath(plugin_path, full_path,
+				       sizeof(full_path));
 	if (result != ISC_R_SUCCESS) {
 		cfg_obj_log(obj, ISC_LOG_ERROR,
 			    "%s: plugin check failed: "
@@ -3124,9 +3124,9 @@ check_one_plugin(const cfg_obj_t *config, const cfg_obj_t *obj,
 		return result;
 	}
 
-	result = ns_plugin_check(full_path, parameters, config,
-				 cfg_obj_file(obj), cfg_obj_line(obj),
-				 data->mctx, data->aclctx, data->ctx);
+	result = dns_plugin_check(full_path, parameters, config,
+				  cfg_obj_file(obj), cfg_obj_line(obj),
+				  data->mctx, data->aclctx, data->ctx);
 	if (result != ISC_R_SUCCESS) {
 		cfg_obj_log(obj, ISC_LOG_ERROR, "%s: plugin check failed: %s",
 			    full_path, isc_result_totext(result));
@@ -3141,9 +3141,9 @@ check_plugins(const cfg_obj_t *plugins, const cfg_obj_t *config,
 	      cfg_aclconfctx_t *aclctx, const dns_name_t *zname,
 	      isc_mem_t *mctx) {
 	isc_result_t result = ISC_R_SUCCESS;
-	ns_pluginctx_t ctx = {
-		.source = (zname == NULL) ? NS_HOOKSOURCE_VIEW
-					  : NS_HOOKSOURCE_ZONE,
+	dns_pluginctx_t ctx = {
+		.source = (zname == NULL) ? DNS_HOOKSOURCE_VIEW
+					  : DNS_HOOKSOURCE_ZONE,
 		.origin = zname,
 	};
 	struct check_one_plugin_data check_one_plugin_data = {

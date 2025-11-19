@@ -28,10 +28,7 @@
 #include <isc/util.h>
 #include <isc/uv.h>
 
-#include <dns/view.h>
-
-#include <ns/hooks.h>
-#include <ns/query.h>
+#include <dns/hooks.h>
 
 #define CHECK(op)                              \
 	do {                                   \
@@ -41,19 +38,19 @@
 		}                              \
 	} while (0)
 
-struct ns_plugin {
+struct dns_plugin {
 	isc_mem_t *mctx;
 	uv_lib_t handle;
 	void *inst;
 	char *modpath;
-	ns_plugin_check_t *check_func;
-	ns_plugin_register_t *register_func;
-	ns_plugin_destroy_t *destroy_func;
-	ISC_LINK(ns_plugin_t) link;
+	dns_plugin_check_t *check_func;
+	dns_plugin_register_t *register_func;
+	dns_plugin_destroy_t *destroy_func;
+	ISC_LINK(dns_plugin_t) link;
 };
 
-static ns_hooklist_t default_hooktable[NS_HOOKPOINTS_COUNT];
-ns_hooktable_t *ns__hook_table = &default_hooktable;
+static dns_hooklist_t default_hooktable[DNS_HOOKPOINTS_COUNT];
+dns_hooktable_t *dns__hook_table = &default_hooktable;
 
 static isc_result_t
 plugin_expandpath(const char *src, char *dst, size_t dstsize, bool appendext) {
@@ -86,7 +83,7 @@ plugin_expandpath(const char *src, char *dst, size_t dstsize, bool appendext) {
 }
 
 isc_result_t
-ns_plugin_expandpath(const char *src, char *dst, size_t dstsize) {
+dns_plugin_expandpath(const char *src, char *dst, size_t dstsize) {
 	isc_result_t result;
 
 	result = plugin_expandpath(src, dst, dstsize, false);
@@ -130,20 +127,20 @@ load_symbol(uv_lib_t *handle, const char *modpath, const char *symbol_name,
 }
 
 static void
-unload_plugin(ns_plugin_t **pluginp);
+unload_plugin(dns_plugin_t **pluginp);
 
 static isc_result_t
-load_plugin(isc_mem_t *mctx, const char *modpath, ns_plugin_t **pluginp) {
+load_plugin(isc_mem_t *mctx, const char *modpath, dns_plugin_t **pluginp) {
 	isc_result_t result;
-	ns_plugin_t *plugin = NULL;
-	ns_plugin_version_t *version_func = NULL;
+	dns_plugin_t *plugin = NULL;
+	dns_plugin_version_t *version_func = NULL;
 	int version;
 	int r;
 
 	REQUIRE(pluginp != NULL && *pluginp == NULL);
 
 	plugin = isc_mem_get(mctx, sizeof(*plugin));
-	*plugin = (ns_plugin_t){
+	*plugin = (dns_plugin_t){
 		.modpath = isc_mem_strdup(mctx, modpath),
 	};
 
@@ -168,13 +165,13 @@ load_plugin(isc_mem_t *mctx, const char *modpath, ns_plugin_t **pluginp) {
 			  (void **)&version_func));
 
 	version = version_func();
-	if (version < (NS_PLUGIN_VERSION - NS_PLUGIN_AGE) ||
-	    version > NS_PLUGIN_VERSION)
+	if (version < (DNS_PLUGIN_VERSION - DNS_PLUGIN_AGE) ||
+	    version > DNS_PLUGIN_VERSION)
 	{
 		isc_log_write(NS_LOGCATEGORY_GENERAL, NS_LOGMODULE_HOOKS,
 			      ISC_LOG_ERROR,
 			      "plugin API version mismatch: %d/%d", version,
-			      NS_PLUGIN_VERSION);
+			      DNS_PLUGIN_VERSION);
 		CHECK(ISC_R_FAILURE);
 	}
 
@@ -200,8 +197,8 @@ cleanup:
 }
 
 static void
-unload_plugin(ns_plugin_t **pluginp) {
-	ns_plugin_t *plugin = NULL;
+unload_plugin(dns_plugin_t **pluginp) {
+	dns_plugin_t *plugin = NULL;
 
 	REQUIRE(pluginp != NULL && *pluginp != NULL);
 
@@ -222,11 +219,12 @@ unload_plugin(ns_plugin_t **pluginp) {
 }
 
 isc_result_t
-ns_plugin_register(const char *modpath, const char *parameters, const void *cfg,
-		   const char *cfg_file, unsigned long cfg_line,
-		   isc_mem_t *mctx, void *aclctx, ns_hook_data_t *hookdata) {
+dns_plugin_register(const char *modpath, const char *parameters,
+		    const void *cfg, const char *cfg_file,
+		    unsigned long cfg_line, isc_mem_t *mctx, void *aclctx,
+		    dns_hook_data_t *hookdata) {
 	isc_result_t result;
-	ns_plugin_t *plugin = NULL;
+	dns_plugin_t *plugin = NULL;
 
 	REQUIRE(mctx != NULL);
 	REQUIRE(hookdata != NULL);
@@ -239,7 +237,7 @@ ns_plugin_register(const char *modpath, const char *parameters, const void *cfg,
 	isc_log_write(NS_LOGCATEGORY_GENERAL, NS_LOGMODULE_HOOKS, ISC_LOG_INFO,
 		      "registering plugin '%s'", modpath);
 
-	INSIST(hookdata->pluginctx.source != NS_HOOKSOURCE_UNDEFINED);
+	INSIST(hookdata->pluginctx.source != DNS_HOOKSOURCE_UNDEFINED);
 
 	CHECK(plugin->check_func(parameters, cfg, cfg_file, cfg_line, mctx,
 				 aclctx, &hookdata->pluginctx));
@@ -258,11 +256,11 @@ cleanup:
 }
 
 isc_result_t
-ns_plugin_check(const char *modpath, const char *parameters, const void *cfg,
-		const char *cfg_file, unsigned long cfg_line, isc_mem_t *mctx,
-		void *aclctx, const ns_pluginctx_t *ctx) {
+dns_plugin_check(const char *modpath, const char *parameters, const void *cfg,
+		 const char *cfg_file, unsigned long cfg_line, isc_mem_t *mctx,
+		 void *aclctx, const dns_pluginctx_t *ctx) {
 	isc_result_t result;
-	ns_plugin_t *plugin = NULL;
+	dns_plugin_t *plugin = NULL;
 
 	CHECK(load_plugin(mctx, modpath, &plugin));
 
@@ -278,30 +276,30 @@ cleanup:
 }
 
 void
-ns_hooktable_init(ns_hooktable_t *hooktable) {
+dns_hooktable_init(dns_hooktable_t *hooktable) {
 	int i;
 
-	for (i = 0; i < NS_HOOKPOINTS_COUNT; i++) {
+	for (i = 0; i < DNS_HOOKPOINTS_COUNT; i++) {
 		ISC_LIST_INIT((*hooktable)[i]);
 	}
 }
 
 void
-ns_hooktable_create(isc_mem_t *mctx, ns_hooktable_t **tablep) {
-	ns_hooktable_t *hooktable = NULL;
+dns_hooktable_create(isc_mem_t *mctx, dns_hooktable_t **tablep) {
+	dns_hooktable_t *hooktable = NULL;
 
 	REQUIRE(tablep != NULL && *tablep == NULL);
 
 	hooktable = isc_mem_get(mctx, sizeof(*hooktable));
 
-	ns_hooktable_init(hooktable);
+	dns_hooktable_init(hooktable);
 
 	*tablep = hooktable;
 }
 
 void
-ns_hooktable_free(isc_mem_t *mctx, void **tablep) {
-	ns_hooktable_t *table = NULL;
+dns_hooktable_free(isc_mem_t *mctx, void **tablep) {
+	dns_hooktable_t *table = NULL;
 	int i = 0;
 
 	REQUIRE(tablep != NULL && *tablep != NULL);
@@ -309,7 +307,7 @@ ns_hooktable_free(isc_mem_t *mctx, void **tablep) {
 	table = *tablep;
 	*tablep = NULL;
 
-	for (i = 0; i < NS_HOOKPOINTS_COUNT; i++) {
+	for (i = 0; i < DNS_HOOKPOINTS_COUNT; i++) {
 		ISC_LIST_FOREACH((*table)[i], hook, link) {
 			ISC_LIST_UNLINK((*table)[i], hook, link);
 			if (hook->mctx != NULL) {
@@ -323,17 +321,17 @@ ns_hooktable_free(isc_mem_t *mctx, void **tablep) {
 }
 
 void
-ns_hook_add(ns_hooktable_t *hooktable, isc_mem_t *mctx,
-	    ns_hookpoint_t hookpoint, const ns_hook_t *hook) {
-	ns_hook_t *copy = NULL;
+dns_hook_add(dns_hooktable_t *hooktable, isc_mem_t *mctx,
+	     dns_hookpoint_t hookpoint, const dns_hook_t *hook) {
+	dns_hook_t *copy = NULL;
 
 	REQUIRE(hooktable != NULL);
 	REQUIRE(mctx != NULL);
-	REQUIRE(hookpoint < NS_HOOKPOINTS_COUNT);
+	REQUIRE(hookpoint < DNS_HOOKPOINTS_COUNT);
 	REQUIRE(hook != NULL);
 
 	copy = isc_mem_get(mctx, sizeof(*copy));
-	*copy = (ns_hook_t){
+	*copy = (dns_hook_t){
 		.action = hook->action,
 		.action_data = hook->action_data,
 	};
@@ -344,21 +342,21 @@ ns_hook_add(ns_hooktable_t *hooktable, isc_mem_t *mctx,
 }
 
 void
-ns_plugins_create(isc_mem_t *mctx, ns_plugins_t **listp) {
-	ns_plugins_t *plugins = NULL;
+dns_plugins_create(isc_mem_t *mctx, dns_plugins_t **listp) {
+	dns_plugins_t *plugins = NULL;
 
 	REQUIRE(listp != NULL && *listp == NULL);
 
 	plugins = isc_mem_get(mctx, sizeof(*plugins));
-	*plugins = (ns_plugins_t){ 0 };
+	*plugins = (dns_plugins_t){ 0 };
 	ISC_LIST_INIT(*plugins);
 
 	*listp = plugins;
 }
 
 void
-ns_plugins_free(isc_mem_t *mctx, void **listp) {
-	ns_plugins_t *list = NULL;
+dns_plugins_free(isc_mem_t *mctx, void **listp) {
+	dns_plugins_t *list = NULL;
 
 	REQUIRE(listp != NULL && *listp != NULL);
 

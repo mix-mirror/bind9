@@ -30,8 +30,9 @@
 #include <isc/types.h>
 #include <isc/util.h>
 
+#include <dns/hooks.h>
+
 #include <ns/client.h>
-#include <ns/hooks.h>
 #include <ns/query.h>
 #include <ns/types.h>
 
@@ -49,7 +50,7 @@
  * accessible until the client object is detached.
  */
 typedef struct async_instance {
-	ns_plugin_t *module;
+	dns_plugin_t *module;
 	isc_mem_t *mctx;
 	isc_ht_t *ht;
 	isc_mutex_t hlock;
@@ -57,46 +58,46 @@ typedef struct async_instance {
 
 typedef struct state {
 	bool async;
-	ns_hook_resume_t *rev;
-	ns_hookpoint_t hookpoint;
+	dns_hook_resume_t *rev;
+	dns_hookpoint_t hookpoint;
 	isc_result_t origresult;
 } state_t;
 
 /*
  * Forward declarations of functions referenced in install_hooks().
  */
-static ns_hookresult_t
+static dns_hookresult_t
 async_query_setup(void *arg, void *cbdata, isc_result_t *resp);
-static ns_hookresult_t
+static dns_hookresult_t
 async_query_done_begin(void *arg, void *cbdata, isc_result_t *resp);
-static ns_hookresult_t
+static dns_hookresult_t
 async_query_reset(void *arg, void *cbdata, isc_result_t *resp);
 
 /*%
  * Register the functions to be called at each hook point in 'hooktable', using
  * memory context 'mctx' for allocating copies of stack-allocated structures
- * passed to ns_hook_add().  Make sure 'inst' will be passed as the 'cbdata'
+ * passed to dns_hook_add().  Make sure 'inst' will be passed as the 'cbdata'
  * argument to every callback.
  */
 static void
-install_hooks(ns_hooktable_t *hooktable, isc_mem_t *mctx,
+install_hooks(dns_hooktable_t *hooktable, isc_mem_t *mctx,
 	      async_instance_t *inst) {
-	const ns_hook_t async_setup = {
+	const dns_hook_t async_setup = {
 		.action = async_query_setup,
 		.action_data = inst,
 	};
-	const ns_hook_t async_donebegin = {
+	const dns_hook_t async_donebegin = {
 		.action = async_query_done_begin,
 		.action_data = inst,
 	};
-	const ns_hook_t async_reset = {
+	const dns_hook_t async_reset = {
 		.action = async_query_reset,
 		.action_data = inst,
 	};
 
-	ns_hook_add(hooktable, mctx, NS_QUERY_SETUP, &async_setup);
-	ns_hook_add(hooktable, mctx, NS_QUERY_DONE_BEGIN, &async_donebegin);
-	ns_hook_add(hooktable, mctx, NS_QUERY_CLEANUP, &async_reset);
+	dns_hook_add(hooktable, mctx, NS_QUERY_SETUP, &async_setup);
+	dns_hook_add(hooktable, mctx, NS_QUERY_DONE_BEGIN, &async_donebegin);
+	dns_hook_add(hooktable, mctx, NS_QUERY_CLEANUP, &async_reset);
 }
 
 static void
@@ -119,13 +120,13 @@ logmsg(const char *fmt, ...) {
 **/
 
 /*
- * Called by ns_plugin_register() to initialize the plugin and
+ * Called by dns_plugin_register() to initialize the plugin and
  * register hook functions into the view hook table.
  */
 isc_result_t
 plugin_register(const char *parameters, const void *cfg, const char *cfg_file,
 		unsigned long cfg_line, isc_mem_t *mctx, void *aclctx,
-		ns_hooktable_t *hooktable, const ns_pluginctx_t *ctx,
+		dns_hooktable_t *hooktable, const dns_pluginctx_t *ctx,
 		void **instp) {
 	async_instance_t *inst = NULL;
 
@@ -158,7 +159,7 @@ plugin_register(const char *parameters, const void *cfg, const char *cfg_file,
 isc_result_t
 plugin_check(const char *parameters, const void *cfg, const char *cfg_file,
 	     unsigned long cfg_line, isc_mem_t *mctx, void *aclctx,
-	     const ns_pluginctx_t *ctx) {
+	     const dns_pluginctx_t *ctx) {
 	UNUSED(parameters);
 	UNUSED(cfg);
 	UNUSED(cfg_file);
@@ -171,7 +172,7 @@ plugin_check(const char *parameters, const void *cfg, const char *cfg_file,
 }
 
 /*
- * Called by ns_plugins_free(); frees memory allocated by
+ * Called by dns_plugins_free(); frees memory allocated by
  * the module when it was registered.
  */
 void
@@ -194,7 +195,7 @@ plugin_destroy(void **instp) {
  */
 int
 plugin_version(void) {
-	return NS_PLUGIN_VERSION;
+	return DNS_PLUGIN_VERSION;
 }
 
 static state_t *
@@ -243,7 +244,7 @@ client_state_destroy(const query_ctx_t *qctx, async_instance_t *inst) {
 	isc_mem_put(inst->mctx, state, sizeof(*state));
 }
 
-static ns_hookresult_t
+static dns_hookresult_t
 async_query_setup(void *arg, void *cbdata, isc_result_t *resp) {
 	query_ctx_t *qctx = (query_ctx_t *)arg;
 	async_instance_t *inst = (async_instance_t *)cbdata;
@@ -257,18 +258,18 @@ async_query_setup(void *arg, void *cbdata, isc_result_t *resp) {
 		client_state_create(qctx, inst);
 	}
 
-	return NS_HOOK_CONTINUE;
+	return DNS_HOOK_CONTINUE;
 }
 
 static void
-cancelasync(ns_hookasync_t *hctx) {
+cancelasync(dns_hookasync_t *hctx) {
 	UNUSED(hctx);
 	logmsg("cancelasync");
 }
 
 static void
-destroyasync(ns_hookasync_t **ctxp) {
-	ns_hookasync_t *ctx = *ctxp;
+destroyasync(dns_hookasync_t **ctxp) {
+	dns_hookasync_t *ctx = *ctxp;
 
 	logmsg("destroyasync");
 	*ctxp = NULL;
@@ -277,23 +278,23 @@ destroyasync(ns_hookasync_t **ctxp) {
 
 static isc_result_t
 doasync(query_ctx_t *qctx, isc_mem_t *mctx, void *arg, isc_loop_t *loop,
-	isc_job_cb cb, void *evarg, ns_hookasync_t **ctxp) {
-	ns_hook_resume_t *rev = isc_mem_get(mctx, sizeof(*rev));
-	ns_hookasync_t *ctx = isc_mem_get(mctx, sizeof(*ctx));
+	isc_job_cb cb, void *evarg, dns_hookasync_t **ctxp) {
+	dns_hook_resume_t *rev = isc_mem_get(mctx, sizeof(*rev));
+	dns_hookasync_t *ctx = isc_mem_get(mctx, sizeof(*ctx));
 	state_t *state = (state_t *)arg;
 
 	logmsg("doasync");
-	*ctx = (ns_hookasync_t){
+	*ctx = (dns_hookasync_t){
 		.cancel = cancelasync,
 		.destroy = destroyasync,
 	};
 	isc_mem_attach(mctx, &ctx->mctx);
 
 	qctx->result = DNS_R_NOTIMP;
-	*rev = (ns_hook_resume_t){
+	*rev = (dns_hook_resume_t){
 		.hookpoint = state->hookpoint,
 		.origresult = qctx->result,
-		.saved_qctx = qctx,
+		.context = qctx,
 		.ctx = ctx,
 		.arg = evarg,
 	};
@@ -306,7 +307,7 @@ doasync(query_ctx_t *qctx, isc_mem_t *mctx, void *arg, isc_loop_t *loop,
 	return ISC_R_SUCCESS;
 }
 
-static ns_hookresult_t
+static dns_hookresult_t
 async_query_done_begin(void *arg, void *cbdata, isc_result_t *resp) {
 	query_ctx_t *qctx = (query_ctx_t *)arg;
 	async_instance_t *inst = (async_instance_t *)cbdata;
@@ -320,7 +321,7 @@ async_query_done_begin(void *arg, void *cbdata, isc_result_t *resp) {
 	if (state->async) {
 		/* resuming */
 		state->async = false;
-		return NS_HOOK_CONTINUE;
+		return DNS_HOOK_CONTINUE;
 	}
 
 	/* initial call */
@@ -328,10 +329,10 @@ async_query_done_begin(void *arg, void *cbdata, isc_result_t *resp) {
 	state->hookpoint = NS_QUERY_DONE_BEGIN;
 	state->origresult = *resp;
 	ns_query_hookasync(qctx, doasync, state);
-	return NS_HOOK_RETURN;
+	return DNS_HOOK_RETURN;
 }
 
-static ns_hookresult_t
+static dns_hookresult_t
 async_query_reset(void *arg, void *cbdata, isc_result_t *resp) {
 	query_ctx_t *qctx = (query_ctx_t *)arg;
 	async_instance_t *inst = (async_instance_t *)cbdata;
@@ -340,5 +341,5 @@ async_query_reset(void *arg, void *cbdata, isc_result_t *resp) {
 	*resp = ISC_R_UNSET;
 	client_state_destroy(qctx, inst);
 
-	return NS_HOOK_CONTINUE;
+	return DNS_HOOK_CONTINUE;
 }

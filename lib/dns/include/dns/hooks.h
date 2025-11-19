@@ -18,14 +18,13 @@
 #include <stdbool.h>
 
 #include <isc/list.h>
+#include <isc/loop.h>
 #include <isc/magic.h>
 #include <isc/mem.h>
 #include <isc/result.h>
 
-#include <dns/rdatatype.h>
+#include <dns/types.h>
 
-#include <ns/client.h>
-#include <ns/query.h>
 /*
  * "Hooks" are a mechanism to call a defined function or set of functions once
  * a certain place in code is reached.  Hook actions can inspect and alter the
@@ -37,13 +36,12 @@
  * where they are used to inspect state before and after certain functions have
  * run.
  *
- * Both of these uses are limited to libns, so hooks are currently defined in
- * the ns/hooks.h header file, and hook-related macro and function names are
- * prefixed with `NS_` and `ns_`.  However, the design is fairly generic and
- * could be repurposed for general use, e.g. as part of libisc, after some
- * further customization.
+ * While these uses are limited to libns, there are future plans to add
+ * hooks in dns_resolver, so hooks are defined in the dns/hooks.h header
+ * file, and hook-related macro and function names that aren't specifically
+ * related to ns/query.c are prefixed with `DNS_` and `dns_`.
  *
- * Hooks are created by defining a hook point identifier in the ns_hookpoint_t
+ * Hooks are created by defining a hook point identifier in the dns_hookpoint_t
  * enum below, and placing a special call at a corresponding location in the
  * code which invokes the action(s) for that hook; there are two such special
  * calls currently implemented, namely the CALL_HOOK() and CALL_HOOK_NORETURN()
@@ -62,18 +60,18 @@
  * Each view and zone has its own separate hook table, populated by loading
  * plugin modules specified in the "plugin" statements in named.conf. (See
  * `ZONE-SPECIFIC PLUGINS` section below.) There is also a special, global
- * hook table (ns__hook_table) that is only used by libns unit tests and
+ * hook table (dns__hook_table) that is only used by libns unit tests and
  * whose existence can be safely ignored by plugin modules.
  *
  * Hook actions are functions which:
  *
- *   - return an ns_hookresult_t value:
- *       - if NS_HOOK_RETURN is returned by the hook action, the function
+ *   - return a dns_hookresult_t value:
+ *       - if DDNS_HOOK_RETURN is returned by the hook action, the function
  *         into which the hook is inserted will return and no further hook
  *         actions at the same hook point will be invoked,
- *       - if NS_HOOK_CONTINUE is returned by the hook action and there are
+ *       - if DDNS_HOOK_CONTINUE is returned by the hook action and there are
  *         further hook actions set up at the same hook point, they will be
- *         processed; if NS_HOOK_CONTINUE is returned and there are no
+ *         processed; if DDNS_HOOK_CONTINUE is returned and there are no
  *         further hook actions set up at the same hook point, execution of
  *         the function into which the hook has been inserted will be
  *         resumed.
@@ -83,14 +81,14 @@
  *       - a pointer specified upon inserting the action into the hook table,
  *       - a pointer to an isc_result_t value which will be returned by the
  *         function into which the hook is inserted if the action returns
- *         NS_HOOK_RETURN.
+ *         DDNS_HOOK_RETURN.
  *
  * In order for a hook action to be called for a given hook, a pointer to that
  * action function (along with an optional pointer to action-specific data) has
  * to be inserted into the relevant hook table entry for that hook using an
- * ns_hook_add() call.  If multiple actions are set up at a single hook point
+ * dns_hook_add() call.  If multiple actions are set up at a single hook point
  * (e.g. by multiple plugin modules), they are processed in FIFO order, that is
- * they are performed in the same order in which their relevant ns_hook_add()
+ * they are performed in the same order in which their relevant dns_hook_add()
  * calls were issued.  Since the configuration is loaded from a single thread,
  * this means that multiple actions at a single hook point are determined by
  * the order in which the relevant plugin modules were declared in the
@@ -106,7 +104,7 @@
  *
  *     CALL_HOOK(NS_QUERY_FOO_BEGIN, qctx);
  *
- *     ns_client_log(qctx->client, NS_LOGCATEGORY_CLIENT, NS_LOGMODULE_QUERY,
+ *     dns_client_log(qctx->client, NS_LOGCATEGORY_CLIENT, NS_LOGMODULE_QUERY,
  *                   ISC_LOG_DEBUG(99), "Lorem ipsum dolor sit amet...");
  *
  *     result = ISC_R_COMPLETE;
@@ -119,36 +117,36 @@
  * and the following hook action:
  *
  * ----------------------------------------------------------------------------
- * static ns_hookresult_t
+ * static dns_hookresult_t
  * cause_failure(void *hook_data, void *action_data, isc_result_t *resultp) {
  *     UNUSED(hook_data);
  *     UNUSED(action_data);
  *
  *     *resultp = ISC_R_FAILURE;
  *
- *     return (NS_HOOK_RETURN);
+ *     return (DDNS_HOOK_RETURN);
  * }
  * ----------------------------------------------------------------------------
  *
  * If this hook action was installed in the hook table using:
  *
  * ----------------------------------------------------------------------------
- * const ns_hook_t foo_fail = {
+ * const dns_hook_t foo_fail = {
  *     .action = cause_failure,
  * };
  *
- * ns_hook_add(..., NS_QUERY_FOO_BEGIN, &foo_fail);
+ * dns_hook_add(..., NS_QUERY_FOO_BEGIN, &foo_fail);
  * ----------------------------------------------------------------------------
  *
  * then query_foo() would return ISC_R_FAILURE every time it is called due
- * to the cause_failure() hook action returning NS_HOOK_RETURN and setting
+ * to the cause_failure() hook action returning DDNS_HOOK_RETURN and setting
  * '*resultp' to ISC_R_FAILURE.  query_foo() would also never log the
  * "Lorem ipsum dolor sit amet..." message.
  *
  * Consider a different hook action:
  *
  * ----------------------------------------------------------------------------
- * static ns_hookresult_t
+ * static dns_hookresult_t
  * log_qtype(void *hook_data, void *action_data, isc_result_t *resultp) {
  *     query_ctx_t *qctx = (query_ctx_t *)hook_data;
  *     FILE *stream = (FILE *)action_data;
@@ -157,7 +155,7 @@
  *
  *     fprintf(stream, "QTYPE=%u\n", qctx->qtype);
  *
- *     return (NS_HOOK_CONTINUE);
+ *     return (DDNS_HOOK_CONTINUE);
  * }
  * ----------------------------------------------------------------------------
  *
@@ -165,20 +163,20 @@
  * cause_failure(), using:
  *
  * ----------------------------------------------------------------------------
- * const ns_hook_t foo_log_qtype = {
+ * const dns_hook_t foo_log_qtype = {
  *     .action = log_qtype,
  *     .action_data = stderr,
  * };
  *
- * ns_hook_add(..., NS_QUERY_FOO_BEGIN, &foo_log_qtype);
+ * dns_hook_add(..., NS_QUERY_FOO_BEGIN, &foo_log_qtype);
  * ----------------------------------------------------------------------------
  *
  * then the QTYPE stored in the query context passed to query_foo() would be
  * logged to stderr upon each call to that function; 'qctx' would be passed to
  * the hook action in 'hook_data' since it is specified in the CALL_HOOK() call
  * inside query_foo() while stderr would be passed to the hook action in
- * 'action_data' since it is specified in the ns_hook_t structure passed to
- * ns_hook_add().  As the hook action returns NS_HOOK_CONTINUE,
+ * 'action_data' since it is specified in the dns_hook_t structure passed to
+ * dns_hook_add().  As the hook action returns DDNS_HOOK_CONTINUE,
  * query_foo() would also be logging the "Lorem ipsum dolor sit amet..."
  * message before returning ISC_R_COMPLETE.
  *
@@ -194,17 +192,17 @@
  * etc, it may take several seconds or more.
  *
  * In order to handle such a situation, a hook action can start an
- * asynchronous event by calling ns_query_hookasync().  This is similar
- * to ns_query_recurse(), but more generic.  ns_query_hookasync() will
+ * asynchronous event by calling dns_query_hookasync().  This is similar
+ * to dns_query_recurse(), but more generic.  dns_query_hookasync() will
  * call the 'runasync' function with a specified 'arg' (both passed to
- * ns_query_hookasync()) and a set of loop and associated event arguments
+ * dns_query_hookasync()) and a set of loop and associated event arguments
  * to be called to resume query handling upon completion of the
  * asynchronous event.
  *
  * The implementation of 'runasync' is assumed to allocate and build an
- * instance of ns_hook_resume_t whose callback, arg, and loop are set to
- * the passed values from ns_query_hookasync().  Other fields of
- * ns_hook_resume_t must be correctly set in the hook implementation
+ * instance of dns_hook_resume_t whose callback, arg, and loop are set to
+ * the passed values from dns_query_hookasync().  Other fields of
+ * dns_hook_resume_t must be correctly set in the hook implementation
  * by the time it's sent to the specified loop:
  *
  * - hookpoint: the point from which the query handling should be resumed
@@ -220,12 +218,12 @@
  * The hook implementation should somehow maintain the created event
  * instance so that it can eventually send the event.
  *
- * 'runasync' then creates an instance of ns_hookasync_t with specifying its
- * own cancel and destroy function, and returns it to ns_query_hookasync()
+ * 'runasync' then creates an instance of dns_hookasync_t with specifying its
+ * own cancel and destroy function, and returns it to dns_query_hookasync()
  * in the passed pointer.
  *
- * On return from ns_query_hookasync(), the hook action MUST return
- * NS_HOOK_RETURN to suspend the query handling.
+ * On return from dns_query_hookasync(), the hook action MUST return
+ * DDNS_HOOK_RETURN to suspend the query handling.
  *
  * On the completion of the asynchronous event, the hook implementation is
  * supposed to send the resumeevent to the corresponding loop.  The query
@@ -241,8 +239,8 @@
  *
  * typedef struct hookstate {
  * 	bool async;
- *	ns_hook_resume_t *rev
- *	ns_hookpoint_t hookpoint;
+ *	dns_hook_resume_t *rev
+ *	dns_hookpoint_t hookpoint;
  *	isc_result_t origresult;
  * } hookstate_t;
  *
@@ -259,36 +257,36 @@
  *		// complete the hook's action using the result of the
  *		// internal asynchronous event.
  *		state->async = false;
- *		return (NS_HOOK_CONTINUE);
+ *		return (DDNS_HOOK_CONTINUE);
  *	}
  *
  *	// Initial call to the hook action.  Start the internal
  *	// asynchronous event, and have the query module suspend
- *	// its own handling by returning NS_HOOK_RETURN.
+ *	// its own handling by returning DDNS_HOOK_RETURN.
  *	state->hookpoint = ...; // would be hook point for this hook
  *	state->origresult = *resultp;
- *	ns_query_hookasync(hook_data, runasync, state);
+ *	dns_query_hookasync(hook_data, runasync, state);
  *	state->async = true;
- *	return (NS_HOOK_RETURN);
+ *	return (DDNS_HOOK_RETURN);
  * }
  *
  * And the 'runasync' function would be something like this:
  *
  * static isc_result_t
  * runasync(query_ctx_t *qctx, void *arg, isc_job_cb cb, void *evarg,
- * 	    isc_loop_t *loop, ns_hookasync_t **ctxp) {
+ * 	    isc_loop_t *loop, dns_hookasync_t **ctxp) {
  * 	hookstate_t *state = arg;
- *	ns_hook_resume_t *rev isc_mem_get(mctx, sizeof(*rev));
- *	ns_hookasync_t *ctx = isc_mem_get(mctx, sizeof(*ctx));
+ *	dns_hook_resume_t *rev isc_mem_get(mctx, sizeof(*rev));
+ *	dns_hookasync_t *ctx = isc_mem_get(mctx, sizeof(*ctx));
  *
- *	*ctx = (ns_hookasync_t){ .private = NULL
- *                               .hookpoint = state->hookpoint,
- *                               .origresult = state->origresult,
- *                               .saved_ctx = qctx,
- *                               .ctx = ctx,
- *                               .loop = loop,
- *                               .cb = cb,
- *                               .arg = cbarg
+ *	*ctx = (dns_hookasync_t){ .private = NULL
+ *                                .hookpoint = state->hookpoint,
+ *                                .origresult = state->origresult,
+ *                                .saved_ctx = qctx,
+ *                                .ctx = ctx,
+ *                                .loop = loop,
+ *                                .cb = cb,
+ *                                .arg = cbarg
  *	};
  *	isc_mem_attach(mctx, &ctx->mctx);
  *
@@ -353,15 +351,15 @@
  *
  * - Zone plugin hooks are called first. Zone template hooks are called
  *   second. View hooks are called third. If any plugin hook at any level
- *   returns NS_HOOK_RETURN, the whole calling chain is stopped and no
- *   subsequent hooks are called. (See the `ns__query_hookchain` unit test
+ *   returns DDNS_HOOK_RETURN, the whole calling chain is stopped and no
+ *   subsequent hooks are called. (See the `dns__query_hookchain` unit test
  *   in `tests/ns/query_test.c`.)
  *
  * - When a query hook is called, the `qctx->client->query.authzone`
  *   pointer is checked to determine whether an authoritative zone is
  *   being used to answer the query; if so, the zone's hooktable is used to
  *   call the hooks. As a consequence, a zone plugin won't be called by all
- *   the hook points defined below in `ns_hookpoint_t`. For instance,
+ *   the hook points defined below in `dns_hookpoint_t`. For instance,
  *   `NS_QUERY_SETUP` and `NS_QUERY_QCTX_INITIALIZED` will never be
  *   called in a zone plugin, as they occur before the zone has been
  *   looked up.  `NS_QUERY_DONE_BEGIN` could be called if an
@@ -369,16 +367,16 @@
  *   instance, bad cookie handling), it would be skipped.
  *
  * The `plugin_register` function (defined by each plugin and called
- * when the plugin is loaded) has a `ns_pluginctx_t ctx` parameter.
+ * when the plugin is loaded) has a `dns_pluginctx_t ctx` parameter.
  * This provides to the plugin registering function various contextual
- * informations about the plugin. For instance,  the `ns_hooksource_t source`
+ * informations about the plugin. For instance,  the `dns_hooksource_t source`
  * property indicates whether the plugin has been loaded at the zone level
- * (`NS_HOOKSOURCE_ZONE`) or at the view level (`NS_HOOKSOURCE_VIEW`).
+ * (`DNS_HOOKSOURCE_ZONE`) or at the view level (`DNS_HOOKSOURCE_VIEW`).
  * While this can be ignored if it doesn't matter where the plugin is
  * loaded, it can also be checked to enforce that the plugin is loaded
  * only at the zone or view level. Another property is `dns_name_t *origin`
  * which indicates the zone name to the plugin if it is loaded at the zone level
- * (this property is NULL otherwise). Note that `ns_pluginctx_t`
+ * (this property is NULL otherwise). Note that `dns_pluginctx_t`
  * parameter is defined in a parent stack frame, thus, it is valid only during
  * `plugin_register` execution.
  */
@@ -389,7 +387,7 @@
  * order in which they are referenced in query.c.
  */
 typedef enum {
-	/* hookpoints from query.c */
+	/* hookpoints from ns/query.c */
 	NS_QUERY_SETUP,
 	NS_QUERY_CLEANUP,
 	NS_QUERY_START_BEGIN,
@@ -420,45 +418,45 @@ typedef enum {
 
 	/* XXX other files could be added later */
 
-	NS_HOOKPOINTS_COUNT /* MUST BE LAST */
-} ns_hookpoint_t;
+	DNS_HOOKPOINTS_COUNT /* MUST BE LAST */
+} dns_hookpoint_t;
 
 /*
  * Returned by a hook action to indicate how to proceed after it has
  * been called: continue processing, or return immediately.
  */
 typedef enum {
-	NS_HOOK_CONTINUE,
-	NS_HOOK_RETURN,
-} ns_hookresult_t;
+	DNS_HOOK_CONTINUE,
+	DNS_HOOK_RETURN,
+} dns_hookresult_t;
 
-typedef ns_hookresult_t (*ns_hook_action_t)(void *arg, void *data,
-					    isc_result_t *resultp);
+typedef dns_hookresult_t (*dns_hook_action_t)(void *arg, void *data,
+					      isc_result_t *resultp);
 
-typedef struct ns_hook {
-	isc_mem_t	*mctx;
-	ns_hook_action_t action;
-	void		*action_data;
-	ISC_LINK(struct ns_hook) link;
-} ns_hook_t;
+typedef struct dns_hook {
+	isc_mem_t	 *mctx;
+	dns_hook_action_t action;
+	void		 *action_data;
+	ISC_LINK(struct dns_hook) link;
+} dns_hook_t;
 
-typedef ISC_LIST(ns_hook_t) ns_hooklist_t;
-typedef ns_hooklist_t ns_hooktable_t[NS_HOOKPOINTS_COUNT];
+typedef ISC_LIST(dns_hook_t) dns_hooklist_t;
+typedef dns_hooklist_t dns_hooktable_t[DNS_HOOKPOINTS_COUNT];
 
 /*%
- * ns__hook_table is a global hook table, which is used if view->hooktable
+ * dns__hook_table is a global hook table, which is used if view->hooktable
  * is NULL.  It's intended only for use by unit tests.
  */
-extern ns_hooktable_t *ns__hook_table;
+extern dns_hooktable_t *dns__hook_table;
 
-typedef void (*ns_hook_cancelasync_t)(ns_hookasync_t *);
-typedef void (*ns_hook_destroyasync_t)(ns_hookasync_t **);
+typedef void (*dns_hook_cancelasync_t)(dns_hookasync_t *);
+typedef void (*dns_hook_destroyasync_t)(dns_hookasync_t **);
 
 /*%
  * Context for a hook-initiated asynchronous process. This works
  * similarly to dns_fetch_t.
  */
-struct ns_hookasync {
+struct dns_hookasync {
 	isc_mem_t *mctx;
 
 	/*
@@ -466,8 +464,8 @@ struct ns_hookasync {
 	 * dns_resolver_destroyfetch, respectively, but specified as function
 	 * pointers since they can be hook-specific.
 	 */
-	ns_hook_cancelasync_t  cancel;
-	ns_hook_destroyasync_t destroy;
+	dns_hook_cancelasync_t	cancel;
+	dns_hook_destroyasync_t destroy;
 
 	void *private; /* hook-specific data */
 };
@@ -476,58 +474,58 @@ struct ns_hookasync {
  * isc_event to be sent on the completion of a hook-initiated asyncronous
  * process, similar to dns_fetchresponse_t.
  */
-typedef struct ns_hook_resume {
-	ns_hookasync_t *ctx;	   /* asynchronous processing context */
-	ns_hookpoint_t	hookpoint; /* hook point from which to resume */
+typedef struct dns_hook_resume {
+	dns_hookasync_t *ctx;	    /* asynchronous processing context */
+	dns_hookpoint_t	 hookpoint; /* hook point from which to resume */
 	isc_result_t origresult; /* result code at the point of call to hook */
-	query_ctx_t *saved_qctx; /* qctx at the point of call to hook */
+	void	    *context;	 /* context and the point of call to hook */
 	isc_loop_t  *loop;	 /* loopmgr loop to resume in */
 	isc_job_cb   cb;	 /* callback function */
 	void	    *arg;	 /* argument to pass to the callback */
-} ns_hook_resume_t;
+} dns_hook_resume_t;
 
 /*
  * Wrapper struct holding hook/plugins owning data structures used and owned by
  * zones and views having registered plugins.
  */
 typedef enum {
-	NS_HOOKSOURCE_UNDEFINED,
-	NS_HOOKSOURCE_VIEW,
-	NS_HOOKSOURCE_ZONE
-} ns_hooksource_t;
+	DNS_HOOKSOURCE_UNDEFINED,
+	DNS_HOOKSOURCE_VIEW,
+	DNS_HOOKSOURCE_ZONE
+} dns_hooksource_t;
 
-typedef struct ns_pluginctx {
+typedef struct dns_pluginctx {
 	/* is this a zone or a view plugin */
-	ns_hooksource_t source;
+	dns_hooksource_t source;
 
 	/* origin of the zone if this is a zone plugin, NULL otherwise */
 	const dns_name_t *origin;
-} ns_pluginctx_t;
+} dns_pluginctx_t;
 
-typedef struct ns_hook_data {
-	ns_hooktable_t *hooktable;
-	ns_plugins_t   *plugins;
-	ns_pluginctx_t	pluginctx;
-} ns_hook_data_t;
+typedef struct dns_hook_data {
+	dns_hooktable_t *hooktable;
+	dns_plugins_t	*plugins;
+	dns_pluginctx_t	 pluginctx;
+} dns_hook_data_t;
 
 /*
  * Plugin API version
  *
- * When the API changes, increment NS_PLUGIN_VERSION. If the
+ * When the API changes, increment DNS_PLUGIN_VERSION. If the
  * change is backward-compatible (e.g., adding a new function call
- * but not changing or removing an old one), increment NS_PLUGIN_AGE
- * as well; if not, set NS_PLUGIN_AGE to 0.
+ * but not changing or removing an old one), increment DNS_PLUGIN_AGE
+ * as well; if not, set DNS_PLUGIN_AGE to 0.
  */
-#ifndef NS_PLUGIN_VERSION
-#define NS_PLUGIN_VERSION 3
-#define NS_PLUGIN_AGE	  0
-#endif /* ifndef NS_PLUGIN_VERSION */
+#ifndef DNS_PLUGIN_VERSION
+#define DNS_PLUGIN_VERSION 3
+#define DNS_PLUGIN_AGE	   0
+#endif /* ifndef DNS_PLUGIN_VERSION */
 
 typedef isc_result_t
-ns_plugin_register_t(const char *parameters, const void *cfg, const char *file,
-		     unsigned long line, isc_mem_t *mctx, void *aclctx,
-		     ns_hooktable_t *hooktable, const ns_pluginctx_t *ctx,
-		     void **instp);
+dns_plugin_register_t(const char *parameters, const void *cfg, const char *file,
+		      unsigned long line, isc_mem_t *mctx, void *aclctx,
+		      dns_hooktable_t *hooktable, const dns_pluginctx_t *ctx,
+		      void **instp);
 /*%<
  * Called when registering a new plugin.
  *
@@ -542,7 +540,7 @@ ns_plugin_register_t(const char *parameters, const void *cfg, const char *file,
  */
 
 typedef void
-ns_plugin_destroy_t(void **instp);
+dns_plugin_destroy_t(void **instp);
 /*%<
  * Destroy a plugin instance.
  *
@@ -550,33 +548,33 @@ ns_plugin_destroy_t(void **instp);
  */
 
 typedef isc_result_t
-ns_plugin_check_t(const char *parameters, const void *cfg, const char *file,
-		  unsigned long line, isc_mem_t *mctx, void *aclctx,
-		  const ns_pluginctx_t *ctx);
+dns_plugin_check_t(const char *parameters, const void *cfg, const char *file,
+		   unsigned long line, isc_mem_t *mctx, void *aclctx,
+		   const dns_pluginctx_t *ctx);
 /*%<
  * Check the validity of 'parameters'.
  */
 
 typedef int
-ns_plugin_version_t(void);
+dns_plugin_version_t(void);
 /*%<
  * Return the API version number a plugin was compiled with.
  *
  * If the returned version number is no greater than
- * NS_PLUGIN_VERSION, and no less than NS_PLUGIN_VERSION - NS_PLUGIN_AGE,
+ * DNS_PLUGIN_VERSION, and no less than DNS_PLUGIN_VERSION - DNS_PLUGIN_AGE,
  * then the module is API-compatible with named.
  */
 
 /*%
  * Prototypes for API functions to be defined in each module.
  */
-ns_plugin_check_t    plugin_check;
-ns_plugin_destroy_t  plugin_destroy;
-ns_plugin_register_t plugin_register;
-ns_plugin_version_t  plugin_version;
+dns_plugin_check_t    plugin_check;
+dns_plugin_destroy_t  plugin_destroy;
+dns_plugin_register_t plugin_register;
+dns_plugin_version_t  plugin_version;
 
 isc_result_t
-ns_plugin_expandpath(const char *src, char *dst, size_t dstsize);
+dns_plugin_expandpath(const char *src, char *dst, size_t dstsize);
 /*%<
  * Prepare the plugin location to be passed to dlopen() based on the plugin
  * path or filename found in the configuration file ('src').  Store the result
@@ -598,9 +596,10 @@ ns_plugin_expandpath(const char *src, char *dst, size_t dstsize);
  */
 
 isc_result_t
-ns_plugin_register(const char *modpath, const char *parameters, const void *cfg,
-		   const char *cfg_file, unsigned long cfg_line,
-		   isc_mem_t *mctx, void *aclctx, ns_hook_data_t *hookdata);
+dns_plugin_register(const char *modpath, const char *parameters,
+		    const void *cfg, const char *cfg_file,
+		    unsigned long cfg_line, isc_mem_t *mctx, void *aclctx,
+		    dns_hook_data_t *hookdata);
 /*%<
  * Load the plugin module specified from the file 'modpath', and
  * register an instance using 'parameters'.
@@ -617,9 +616,9 @@ ns_plugin_register(const char *modpath, const char *parameters, const void *cfg,
  */
 
 isc_result_t
-ns_plugin_check(const char *modpath, const char *parameters, const void *cfg,
-		const char *cfg_file, unsigned long cfg_line, isc_mem_t *mctx,
-		void *aclctx, const ns_pluginctx_t *ctx);
+dns_plugin_check(const char *modpath, const char *parameters, const void *cfg,
+		 const char *cfg_file, unsigned long cfg_line, isc_mem_t *mctx,
+		 void *aclctx, const dns_pluginctx_t *ctx);
 /*%<
  * Open the plugin module at 'modpath' and check the validity of
  * 'parameters', logging any errors or warnings found, then
@@ -627,26 +626,26 @@ ns_plugin_check(const char *modpath, const char *parameters, const void *cfg,
  */
 
 void
-ns_plugins_create(isc_mem_t *mctx, ns_plugins_t **listp);
+dns_plugins_create(isc_mem_t *mctx, dns_plugins_t **listp);
 /*%<
  * Create and initialize a plugin list.
  */
 
 void
-ns_plugins_free(isc_mem_t *mctx, void **listp);
+dns_plugins_free(isc_mem_t *mctx, void **listp);
 /*%<
  * Close each plugin module in a plugin list, then free the list object.
  */
 
 void
-ns_hooktable_free(isc_mem_t *mctx, void **tablep);
+dns_hooktable_free(isc_mem_t *mctx, void **tablep);
 /*%<
  * Free a hook table.
  */
 
 void
-ns_hook_add(ns_hooktable_t *hooktable, isc_mem_t *mctx,
-	    ns_hookpoint_t hookpoint, const ns_hook_t *hook);
+dns_hook_add(dns_hooktable_t *hooktable, isc_mem_t *mctx,
+	     dns_hookpoint_t hookpoint, const dns_hook_t *hook);
 /*%<
  * Allocate (using memory context 'mctx') a copy of the 'hook' structure
  * describing a hook action and append it to the list of hooks at 'hookpoint'
@@ -663,13 +662,13 @@ ns_hook_add(ns_hooktable_t *hooktable, isc_mem_t *mctx,
  */
 
 void
-ns_hooktable_init(ns_hooktable_t *hooktable);
+dns_hooktable_init(dns_hooktable_t *hooktable);
 /*%<
  * Initialize a hook table.
  */
 
 void
-ns_hooktable_create(isc_mem_t *mctx, ns_hooktable_t **tablep);
+dns_hooktable_create(isc_mem_t *mctx, dns_hooktable_t **tablep);
 /*%<
  * Allocate and initialize a hook table.
  */

@@ -40,12 +40,12 @@
 #include <dns/db.h>
 #include <dns/dispatch.h>
 #include <dns/fixedname.h>
+#include <dns/hooks.h>
 #include <dns/name.h>
 #include <dns/view.h>
 #include <dns/zone.h>
 
 #include <ns/client.h>
-#include <ns/hooks.h>
 #include <ns/interfacemgr.h>
 #include <ns/server.h>
 
@@ -140,8 +140,8 @@ teardown_server(void **state) {
 static dns_zone_t *served_zone = NULL;
 
 void
-ns_test_serve_zone_sethooktab(ns_hooktable_t *hooktab) {
-	dns_zone_sethooktable(served_zone, hooktab, ns_hooktable_free);
+ns_test_serve_zone_sethooktab(dns_hooktable_t *hooktab) {
+	dns_zone_sethooktable(served_zone, hooktab, dns_hooktable_free);
 }
 
 isc_result_t
@@ -341,7 +341,7 @@ destroy_message:
  * "data".  Causes execution to be interrupted at hook insertion
  * point.
  */
-static ns_hookresult_t
+static dns_hookresult_t
 extract_qctx(void *arg, void *data, isc_result_t *resultp) {
 	query_ctx_t **qctxp;
 	query_ctx_t *qctx;
@@ -362,7 +362,7 @@ extract_qctx(void *arg, void *data, isc_result_t *resultp) {
 	*qctxp = qctx;
 	*resultp = ISC_R_UNSET;
 
-	return NS_HOOK_RETURN;
+	return DNS_HOOK_RETURN;
 }
 
 /*%
@@ -374,8 +374,8 @@ extract_qctx(void *arg, void *data, isc_result_t *resultp) {
  */
 static isc_result_t
 create_qctx_for_client(ns_client_t *client, query_ctx_t **qctxp) {
-	ns_hooktable_t *saved_hook_table = NULL, *query_hooks = NULL;
-	const ns_hook_t hook = {
+	dns_hooktable_t *saved_hook_table = NULL, *query_hooks = NULL;
+	const dns_hook_t hook = {
 		.action = extract_qctx,
 		.action_data = qctxp,
 	};
@@ -392,16 +392,16 @@ create_qctx_for_client(ns_client_t *client, query_ctx_t **qctxp) {
 	 * set hooks.
 	 */
 
-	ns_hooktable_create(isc_g_mctx, &query_hooks);
-	ns_hook_add(query_hooks, isc_g_mctx, NS_QUERY_SETUP, &hook);
+	dns_hooktable_create(isc_g_mctx, &query_hooks);
+	dns_hook_add(query_hooks, isc_g_mctx, NS_QUERY_SETUP, &hook);
 
-	saved_hook_table = ns__hook_table;
-	ns__hook_table = query_hooks;
+	saved_hook_table = dns__hook_table;
+	dns__hook_table = query_hooks;
 
 	ns_query_start(client, client->inner.handle);
 
-	ns__hook_table = saved_hook_table;
-	ns_hooktable_free(isc_g_mctx, (void **)&query_hooks);
+	dns__hook_table = saved_hook_table;
+	dns_hooktable_free(isc_g_mctx, (void **)&query_hooks);
 
 	isc_nmhandle_detach(&client->inner.reqhandle);
 
@@ -504,14 +504,14 @@ ns_test_qctx_destroy(query_ctx_t **qctxp) {
 	isc_mem_put(isc_g_mctx, qctx, sizeof(*qctx));
 }
 
-ns_hookresult_t
+dns_hookresult_t
 ns_test_hook_catch_call(void *arg, void *data, isc_result_t *resultp) {
 	UNUSED(arg);
 	UNUSED(data);
 
 	*resultp = ISC_R_UNSET;
 
-	return NS_HOOK_RETURN;
+	return DNS_HOOK_RETURN;
 }
 
 isc_result_t

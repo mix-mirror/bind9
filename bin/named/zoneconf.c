@@ -26,6 +26,7 @@
 #include <dns/acl.h>
 #include <dns/db.h>
 #include <dns/fixedname.h>
+#include <dns/hooks.h>
 #include <dns/ipkeylist.h>
 #include <dns/journal.h>
 #include <dns/kasp.h>
@@ -44,7 +45,6 @@
 #include <dns/zone.h>
 
 #include <ns/client.h>
-#include <ns/hooks.h>
 
 #include <named/config.h>
 #include <named/globals.h>
@@ -2128,18 +2128,18 @@ named_zone_loadplugins(dns_zone_t *zone, const cfg_obj_t *config,
 	}
 
 	if (tpluginlist != NULL || zpluginlist != NULL) {
-		ns_hook_data_t hookdata = {
-			.pluginctx = { .source = NS_HOOKSOURCE_ZONE,
+		dns_hook_data_t hookdata = {
+			.pluginctx = { .source = DNS_HOOKSOURCE_ZONE,
 				       .origin = dns_zone_getorigin(zone) }
 		};
 		isc_mem_t *zmctx = dns_zone_getmctx(zone);
 
-		ns_hooktable_create(zmctx, &hookdata.hooktable);
+		dns_hooktable_create(zmctx, &hookdata.hooktable);
 		dns_zone_sethooktable(zone, hookdata.hooktable,
-				      ns_hooktable_free);
+				      dns_hooktable_free);
 
-		ns_plugins_create(zmctx, &hookdata.plugins);
-		dns_zone_setplugins(zone, hookdata.plugins, ns_plugins_free);
+		dns_plugins_create(zmctx, &hookdata.plugins);
+		dns_zone_setplugins(zone, hookdata.plugins, dns_plugins_free);
 
 		result = cfg_pluginlist_foreach(config, tpluginlist, aclctx,
 						named_register_one_plugin,

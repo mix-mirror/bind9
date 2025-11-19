@@ -46,7 +46,6 @@ ns_srcset.add(
 ns_srcset.add(
     files(
         'client.c',
-        'hooks.c',
         'interfacemgr.c',
         'listenlist.c',
         'notify.c',

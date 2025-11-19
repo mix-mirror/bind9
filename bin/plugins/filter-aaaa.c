@@ -32,6 +32,7 @@
 #include <dns/acl.h>
 #include <dns/db.h>
 #include <dns/enumtype.h>
+#include <dns/hooks.h>
 #include <dns/message.h>
 #include <dns/rdataset.h>
 #include <dns/types.h>
@@ -42,7 +43,6 @@
 #include <isccfg/grammar.h>
 
 #include <ns/client.h>
-#include <ns/hooks.h>
 #include <ns/query.h>
 #include <ns/types.h>
 
@@ -72,7 +72,7 @@ typedef struct filter_data {
 } filter_data_t;
 
 typedef struct filter_instance {
-	ns_plugin_t *module;
+	dns_plugin_t *module;
 	isc_mem_t *mctx;
 
 	/*
@@ -104,67 +104,68 @@ typedef struct filter_instance {
 /*
  * Forward declarations of functions referenced in install_hooks().
  */
-static ns_hookresult_t
+static dns_hookresult_t
 filter_initialize(void *arg, void *cbdata, isc_result_t *resp);
-static ns_hookresult_t
+static dns_hookresult_t
 filter_respond_begin(void *arg, void *cbdata, isc_result_t *resp);
-static ns_hookresult_t
+static dns_hookresult_t
 filter_respond_any_found(void *arg, void *cbdata, isc_result_t *resp);
-static ns_hookresult_t
+static dns_hookresult_t
 filter_prep_response_begin(void *arg, void *cbdata, isc_result_t *resp);
-static ns_hookresult_t
+static dns_hookresult_t
 filter_query_done_send(void *arg, void *cbdata, isc_result_t *resp);
-static ns_hookresult_t
+static dns_hookresult_t
 filter_freeclientstate(void *arg, void *cbdata, isc_result_t *resp);
 
 /*%
  * Register the functions to be called at each hook point in 'hooktable', using
  * memory context 'mctx' for allocating copies of stack-allocated structures
- * passed to ns_hook_add().  Make sure 'inst' will be passed as the 'cbdata'
+ * passed to dns_hook_add().  Make sure 'inst' will be passed as the 'cbdata'
  * argument to every callback.
  */
 static void
-install_hooks(ns_hooktable_t *hooktable, isc_mem_t *mctx,
+install_hooks(dns_hooktable_t *hooktable, isc_mem_t *mctx,
 	      filter_instance_t *inst) {
-	const ns_hook_t filter_init = {
+	const dns_hook_t filter_init = {
 		.action = filter_initialize,
 		.action_data = inst,
 	};
 
-	const ns_hook_t filter_respbegin = {
+	const dns_hook_t filter_respbegin = {
 		.action = filter_respond_begin,
 		.action_data = inst,
 	};
 
-	const ns_hook_t filter_respanyfound = {
+	const dns_hook_t filter_respanyfound = {
 		.action = filter_respond_any_found,
 		.action_data = inst,
 	};
 
-	const ns_hook_t filter_prepresp = {
+	const dns_hook_t filter_prepresp = {
 		.action = filter_prep_response_begin,
 		.action_data = inst,
 	};
 
-	const ns_hook_t filter_donesend = {
+	const dns_hook_t filter_donesend = {
 		.action = filter_query_done_send,
 		.action_data = inst,
 	};
 
-	const ns_hook_t filter_reset = {
+	const dns_hook_t filter_reset = {
 		.action = filter_freeclientstate,
 		.action_data = inst,
 	};
 
-	ns_hook_add(hooktable, mctx, NS_QUERY_SETUP, &filter_init);
-	ns_hook_add(hooktable, mctx, NS_QUERY_AUTHZONE_ATTACHED, &filter_init);
-	ns_hook_add(hooktable, mctx, NS_QUERY_RESPOND_BEGIN, &filter_respbegin);
-	ns_hook_add(hooktable, mctx, NS_QUERY_RESPOND_ANY_FOUND,
-		    &filter_respanyfound);
-	ns_hook_add(hooktable, mctx, NS_QUERY_PREP_RESPONSE_BEGIN,
-		    &filter_prepresp);
-	ns_hook_add(hooktable, mctx, NS_QUERY_DONE_SEND, &filter_donesend);
-	ns_hook_add(hooktable, mctx, NS_QUERY_CLEANUP, &filter_reset);
+	dns_hook_add(hooktable, mctx, NS_QUERY_SETUP, &filter_init);
+	dns_hook_add(hooktable, mctx, NS_QUERY_AUTHZONE_ATTACHED, &filter_init);
+	dns_hook_add(hooktable, mctx, NS_QUERY_RESPOND_BEGIN,
+		     &filter_respbegin);
+	dns_hook_add(hooktable, mctx, NS_QUERY_RESPOND_ANY_FOUND,
+		     &filter_respanyfound);
+	dns_hook_add(hooktable, mctx, NS_QUERY_PREP_RESPONSE_BEGIN,
+		     &filter_prepresp);
+	dns_hook_add(hooktable, mctx, NS_QUERY_DONE_SEND, &filter_donesend);
+	dns_hook_add(hooktable, mctx, NS_QUERY_CLEANUP, &filter_reset);
 }
 
 /**
@@ -315,13 +316,13 @@ cleanup:
 **/
 
 /*
- * Called by ns_plugin_register() to initialize the plugin and
+ * Called by dns_plugin_register() to initialize the plugin and
  * register hook functions into the view hook table.
  */
 isc_result_t
 plugin_register(const char *parameters, const void *cfg, const char *cfg_file,
 		unsigned long cfg_line, isc_mem_t *mctx, void *aclctx,
-		ns_hooktable_t *hooktable, const ns_pluginctx_t *ctx,
+		dns_hooktable_t *hooktable, const dns_pluginctx_t *ctx,
 		void **instp) {
 	filter_instance_t *inst = NULL;
 	isc_result_t result = ISC_R_SUCCESS;
@@ -364,7 +365,7 @@ cleanup:
 isc_result_t
 plugin_check(const char *parameters, const void *cfg, const char *cfg_file,
 	     unsigned long cfg_line, isc_mem_t *mctx, void *aclctx,
-	     const ns_pluginctx_t *ctx ISC_ATTR_UNUSED) {
+	     const dns_pluginctx_t *ctx ISC_ATTR_UNUSED) {
 	isc_result_t result = ISC_R_SUCCESS;
 	cfg_obj_t *param_obj = NULL;
 	isc_buffer_t b;
@@ -384,7 +385,7 @@ cleanup:
 }
 
 /*
- * Called by ns_plugins_free(); frees memory allocated by
+ * Called by dns_plugins_free(); frees memory allocated by
  * the module when it was registered.
  */
 void
@@ -410,7 +411,7 @@ plugin_destroy(void **instp) {
  */
 int
 plugin_version(void) {
-	return NS_PLUGIN_VERSION;
+	return DNS_PLUGIN_VERSION;
 }
 
 /**
@@ -622,7 +623,7 @@ process_section(const section_filter_t *filter) {
  * the state will be initialized on the first call, and the function bails off
  * early on the second call (the state is already initialized).
  */
-static ns_hookresult_t
+static dns_hookresult_t
 filter_initialize(void *arg, void *cbdata, isc_result_t *resp) {
 	query_ctx_t *qctx = (query_ctx_t *)arg;
 	filter_instance_t *inst = (filter_instance_t *)cbdata;
@@ -635,7 +636,7 @@ filter_initialize(void *arg, void *cbdata, isc_result_t *resp) {
 		client_state_create(qctx, inst);
 	}
 
-	return NS_HOOK_CONTINUE;
+	return DNS_HOOK_CONTINUE;
 }
 
 /*
@@ -643,7 +644,7 @@ filter_initialize(void *arg, void *cbdata, isc_result_t *resp) {
  * the client address family and the settings of filter-aaaa-on-v4 and
  * filter-aaaa-on-v6.
  */
-static ns_hookresult_t
+static dns_hookresult_t
 filter_prep_response_begin(void *arg, void *cbdata, isc_result_t *resp) {
 	query_ctx_t *qctx = (query_ctx_t *)arg;
 	filter_instance_t *inst = (filter_instance_t *)cbdata;
@@ -653,7 +654,7 @@ filter_prep_response_begin(void *arg, void *cbdata, isc_result_t *resp) {
 	*resp = ISC_R_UNSET;
 
 	if (client_state == NULL) {
-		return NS_HOOK_CONTINUE;
+		return DNS_HOOK_CONTINUE;
 	}
 
 	if (inst->v4_aaaa != NONE || inst->v6_aaaa != NONE) {
@@ -670,7 +671,7 @@ filter_prep_response_begin(void *arg, void *cbdata, isc_result_t *resp) {
 		}
 	}
 
-	return NS_HOOK_CONTINUE;
+	return DNS_HOOK_CONTINUE;
 }
 
 /*
@@ -680,7 +681,7 @@ filter_prep_response_begin(void *arg, void *cbdata, isc_result_t *resp) {
  * (This version is for processing answers to explicit AAAA queries; ANY
  * queries are handled in filter_respond_any_found().)
  */
-static ns_hookresult_t
+static dns_hookresult_t
 filter_respond_begin(void *arg, void *cbdata, isc_result_t *resp) {
 	query_ctx_t *qctx = (query_ctx_t *)arg;
 	filter_instance_t *inst = (filter_instance_t *)cbdata;
@@ -690,7 +691,7 @@ filter_respond_begin(void *arg, void *cbdata, isc_result_t *resp) {
 	*resp = ISC_R_UNSET;
 
 	if (client_state == NULL) {
-		return NS_HOOK_CONTINUE;
+		return DNS_HOOK_CONTINUE;
 	}
 
 	if (client_state->mode != BREAK_DNSSEC &&
@@ -698,7 +699,7 @@ filter_respond_begin(void *arg, void *cbdata, isc_result_t *resp) {
 	     (WANTDNSSEC(qctx->client) && qctx->sigrdataset != NULL &&
 	      dns_rdataset_isassociated(qctx->sigrdataset))))
 	{
-		return NS_HOOK_CONTINUE;
+		return DNS_HOOK_CONTINUE;
 	}
 
 	if (qctx->qtype == dns_rdatatype_aaaa) {
@@ -770,17 +771,17 @@ filter_respond_begin(void *arg, void *cbdata, isc_result_t *resp) {
 
 		*resp = result;
 
-		return NS_HOOK_RETURN;
+		return DNS_HOOK_RETURN;
 	}
 
 	*resp = result;
-	return NS_HOOK_CONTINUE;
+	return DNS_HOOK_CONTINUE;
 }
 
 /*
  * When answering an ANY query, remove AAAA if A is present.
  */
-static ns_hookresult_t
+static dns_hookresult_t
 filter_respond_any_found(void *arg, void *cbdata, isc_result_t *resp) {
 	query_ctx_t *qctx = (query_ctx_t *)arg;
 	filter_instance_t *inst = (filter_instance_t *)cbdata;
@@ -807,7 +808,7 @@ filter_respond_any_found(void *arg, void *cbdata, isc_result_t *resp) {
 		process_section(&filter_answer);
 	}
 
-	return NS_HOOK_CONTINUE;
+	return DNS_HOOK_CONTINUE;
 }
 
 /*
@@ -815,7 +816,7 @@ filter_respond_any_found(void *arg, void *cbdata, isc_result_t *resp) {
  * hide NS in the authority section if AAAA was filtered in the answer
  * section.
  */
-static ns_hookresult_t
+static dns_hookresult_t
 filter_query_done_send(void *arg, void *cbdata, isc_result_t *resp) {
 	query_ctx_t *qctx = (query_ctx_t *)arg;
 	filter_instance_t *inst = (filter_instance_t *)cbdata;
@@ -844,14 +845,14 @@ filter_query_done_send(void *arg, void *cbdata, isc_result_t *resp) {
 		}
 	}
 
-	return NS_HOOK_CONTINUE;
+	return DNS_HOOK_CONTINUE;
 }
 
 /*
  * If the client is being detached, then we can delete our persistent data
  * from hash table and return it to the memory pool.
  */
-static ns_hookresult_t
+static dns_hookresult_t
 filter_freeclientstate(void *arg, void *cbdata, isc_result_t *resp) {
 	query_ctx_t *qctx = (query_ctx_t *)arg;
 	filter_instance_t *inst = (filter_instance_t *)cbdata;
@@ -859,5 +860,5 @@ filter_freeclientstate(void *arg, void *cbdata, isc_result_t *resp) {
 	*resp = ISC_R_UNSET;
 	client_state_destroy(qctx, inst);
 
-	return NS_HOOK_CONTINUE;
+	return DNS_HOOK_CONTINUE;
 }

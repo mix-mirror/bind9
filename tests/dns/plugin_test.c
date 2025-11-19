@@ -32,11 +32,14 @@
 #include <isc/types.h>
 #include <isc/util.h>
 
+#include <dns/hooks.h>
 #include <dns/lib.h>
+
+#include <tests/dns.h>
 
 /*
  * Mocking isc_file_exists() as it's used inside the tested
- * ns_plugin_expandpath() function defined in lib/ns/hooks.c
+ * dns_plugin_expandpath() function defined in lib/dns/hooks.c
  */
 static bool
 isc_file_exists(const char *pathname) {
@@ -44,28 +47,26 @@ isc_file_exists(const char *pathname) {
 	return mock();
 }
 
-#include "../ns/hooks.c"
-
-#include <tests/ns.h>
+#include "../../dns/hooks.c"
 
 /*%
  * Structure containing parameters for run_full_path_test().
  */
 typedef struct {
-	const ns_test_id_t id; /* libns test identifier */
-	const char *input;     /* source string - plugin name or path */
-	bool exists;	       /* return of mocked isc_file_exists() */
-	size_t output_size;    /* size of target char array to
-				* allocate */
-	isc_result_t result;   /* expected return value */
-	const char *output;    /* expected output string */
-} ns_plugin_expandpath_test_params_t;
+	const dns_test_id_t id; /* libns test identifier */
+	const char *input;	/* source string - plugin name or path */
+	bool exists;		/* return of mocked isc_file_exists() */
+	size_t output_size;	/* size of target char array to
+				 * allocate */
+	isc_result_t result;	/* expected return value */
+	const char *output;	/* expected output string */
+} dns_plugin_expandpath_test_params_t;
 
 /*%
- * Perform a single ns_plugin_expandpath() check using given parameters.
+ * Perform a single dns_plugin_expandpath() check using given parameters.
  */
 static void
-run_full_path_test(const ns_plugin_expandpath_test_params_t *test,
+run_full_path_test(const dns_plugin_expandpath_test_params_t *test,
 		   void **state) {
 	char **target = (char **)state;
 	isc_result_t result;
@@ -86,9 +87,9 @@ run_full_path_test(const ns_plugin_expandpath_test_params_t *test,
 	*target = isc_mem_allocate(isc_g_mctx, test->output_size);
 
 	/*
-	 * Call ns_plugin_expandpath().
+	 * Call dns_plugin_expandpath().
 	 */
-	result = ns_plugin_expandpath(test->input, *target, test->output_size);
+	result = dns_plugin_expandpath(test->input, *target, test->output_size);
 
 	/*
 	 * Check return value.
@@ -114,13 +115,13 @@ run_full_path_test(const ns_plugin_expandpath_test_params_t *test,
 	isc_mem_free(isc_g_mctx, *target);
 }
 
-/* test ns_plugin_expandpath() */
-ISC_RUN_TEST_IMPL(ns_plugin_expandpath) {
+/* test dns_plugin_expandpath() */
+ISC_RUN_TEST_IMPL(dns_plugin_expandpath) {
 	size_t i;
 
-	const ns_plugin_expandpath_test_params_t tests[] = {
+	const dns_plugin_expandpath_test_params_t tests[] = {
 		{
-			NS_TEST_ID("correct use with an absolute path"),
+			DNS_TEST_ID("correct use with an absolute path"),
 			.input = "/usr/lib/named/foo.so",
 			.exists = true,
 			.output_size = PATH_MAX,
@@ -128,7 +129,7 @@ ISC_RUN_TEST_IMPL(ns_plugin_expandpath) {
 			.output = "/usr/lib/named/foo.so",
 		},
 		{
-			NS_TEST_ID("correct use with a relative path"),
+			DNS_TEST_ID("correct use with a relative path"),
 			.input = "../../foo.so",
 			.exists = true,
 			.output_size = PATH_MAX,
@@ -136,7 +137,7 @@ ISC_RUN_TEST_IMPL(ns_plugin_expandpath) {
 			.output = "../../foo.so",
 		},
 		{
-			NS_TEST_ID("correct use with a filename"),
+			DNS_TEST_ID("correct use with a filename"),
 			.input = "foo.so",
 			.exists = true,
 			.output_size = PATH_MAX,
@@ -144,8 +145,8 @@ ISC_RUN_TEST_IMPL(ns_plugin_expandpath) {
 			.output = NAMED_PLUGINDIR "/foo.so",
 		},
 		{
-			NS_TEST_ID("correct use with an absolute path and no "
-				   "extension"),
+			DNS_TEST_ID("correct use with an absolute path and no "
+				    "extension"),
 			.input = "/usr/lib/named/foo",
 			.exists = false,
 			.output_size = PATH_MAX,
@@ -153,8 +154,8 @@ ISC_RUN_TEST_IMPL(ns_plugin_expandpath) {
 			.output = "/usr/lib/named/foo" NAMED_PLUGINEXT,
 		},
 		{
-			NS_TEST_ID("correct use with a relative path and no "
-				   "extension"),
+			DNS_TEST_ID("correct use with a relative path and no "
+				    "extension"),
 			.input = "../../foo",
 			.exists = false,
 			.output_size = PATH_MAX,
@@ -162,8 +163,8 @@ ISC_RUN_TEST_IMPL(ns_plugin_expandpath) {
 			.output = "../../foo" NAMED_PLUGINEXT,
 		},
 		{
-			NS_TEST_ID("correct use with a filename and no "
-				   "extension"),
+			DNS_TEST_ID("correct use with a filename and no "
+				    "extension"),
 			.input = "foo",
 			.exists = false,
 			.output_size = PATH_MAX,
@@ -171,8 +172,8 @@ ISC_RUN_TEST_IMPL(ns_plugin_expandpath) {
 			.output = NAMED_PLUGINDIR "/foo" NAMED_PLUGINEXT,
 		},
 		{
-			NS_TEST_ID("correct use with a filename and no "
-				   "extension but a name with dots"),
+			DNS_TEST_ID("correct use with a filename and no "
+				    "extension but a name with dots"),
 			.input = "foo.bar",
 			.exists = false,
 			.output_size = PATH_MAX,
@@ -180,28 +181,28 @@ ISC_RUN_TEST_IMPL(ns_plugin_expandpath) {
 			.output = NAMED_PLUGINDIR "/foo.bar" NAMED_PLUGINEXT,
 		},
 		{
-			NS_TEST_ID("no space at all in target buffer"),
+			DNS_TEST_ID("no space at all in target buffer"),
 			.input = "/usr/lib/named/foo.so",
 			.exists = true,
 			.output_size = 0,
 			.result = ISC_R_NOSPACE,
 		},
 		{
-			NS_TEST_ID("target buffer too small to fit input"),
+			DNS_TEST_ID("target buffer too small to fit input"),
 			.input = "/usr/lib/named/foo.so",
 			.exists = true,
 			.output_size = 1,
 			.result = ISC_R_NOSPACE,
 		},
 		{
-			NS_TEST_ID("target buffer too small to fit NULL byte"),
+			DNS_TEST_ID("target buffer too small to fit NULL byte"),
 			.input = "/foo.so",
 			.exists = true,
 			.output_size = 7,
 			.result = ISC_R_NOSPACE,
 		},
 		{
-			NS_TEST_ID("target buffer too small to fit full path"),
+			DNS_TEST_ID("target buffer too small to fit full path"),
 			.input = "foo.so",
 			.exists = true,
 			.output_size = 7,
@@ -215,7 +216,7 @@ ISC_RUN_TEST_IMPL(ns_plugin_expandpath) {
 }
 
 ISC_TEST_LIST_START
-ISC_TEST_ENTRY(ns_plugin_expandpath)
+ISC_TEST_ENTRY(dns_plugin_expandpath)
 ISC_TEST_LIST_END
 
 ISC_TEST_MAIN

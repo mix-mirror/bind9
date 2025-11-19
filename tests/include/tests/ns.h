@@ -28,10 +28,10 @@
 #include <isc/timer.h>
 #include <isc/util.h>
 
+#include <dns/hooks.h>
 #include <dns/zone.h>
 
 #include <ns/client.h>
-#include <ns/hooks.h>
 #include <ns/interfacemgr.h>
 
 #include <tests/dns.h>
@@ -78,7 +78,7 @@ ns_test_serve_zone(const char *zonename, const char *filename,
  * Set a hooktable on the served zone
  */
 void
-ns_test_serve_zone_sethooktab(ns_hooktable_t *hooktab);
+ns_test_serve_zone_sethooktab(dns_hooktable_t *hooktab);
 
 /*%
  * Release the zone loaded by ns_test_serve_zone().
@@ -127,5 +127,5 @@ ns_test_qctx_destroy(query_ctx_t **qctxp);
 /*%
  * A hook callback interrupting execution at given hook's insertion point.
  */
-ns_hookresult_t
+dns_hookresult_t
 ns_test_hook_catch_call(void *arg, void *data, isc_result_t *resultp);
