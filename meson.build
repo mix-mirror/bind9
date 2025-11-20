@@ -1132,6 +1132,7 @@ libdns = library(
         json_c_dep,
         lmdb_dep,
         xml2_dep,
+        idn2_dep,
 
         dns_srcconf.dependencies(),
     ],
@@ -1411,7 +1412,6 @@ executable(
         libdns_dep,
         libisc_dep,
         libisccfg_dep,
-
         idn2_dep,
     ],
 )
@@ -1425,6 +1425,7 @@ executable(
     dependencies: [
         libdns_dep,
         libisc_dep,
+        idn2_dep,
     ],
 )
 
@@ -1439,6 +1440,7 @@ executable(
         libisc_dep,
         libdns_dep,
         libisccfg_dep,
+        idn2_dep,
     ],
 )
 
@@ -1453,6 +1455,7 @@ executable(
         libdns_dep,
         libisccfg_dep,
         libns_dep,
+        idn2_dep,
     ],
 )
 
@@ -1471,6 +1474,7 @@ executable(
     dependencies: [
         libdns_dep,
         libisc_dep,
+        idn2_dep,
     ],
 )
 
@@ -1483,6 +1487,7 @@ executable(
     dependencies: [
         libdns_dep,
         libisc_dep,
+        idn2_dep,
     ],
 )
 
@@ -1498,6 +1503,7 @@ if config.has('HAVE_LMDB')
             libisc_dep,
 
             lmdb_dep,
+            idn2_dep,
         ],
     )
 endif
@@ -1511,6 +1517,7 @@ executable(
     dependencies: [
         libdns_dep,
         libisc_dep,
+        idn2_dep,
     ],
 
 )
@@ -1573,6 +1580,7 @@ executable(
         lmdb_dep,
         nghttp2_dep,
         xml2_dep,
+        idn2_dep,
         zlib_dep,
 
         named_srcconf.dependencies(),
@@ -1602,8 +1610,8 @@ executable(
         libisc_dep,
         libisccfg_dep,
 
-        idn2_dep,
         edit_dep,
+        idn2_dep,
     ],
 )
 
@@ -1621,6 +1629,7 @@ executable(
         gssapi_dep,
         krb5_dep,
         edit_dep,
+        idn2_dep,
     ],
 )
 
@@ -1635,6 +1644,7 @@ executable(
     dependencies: [
         libdns_dep,
         libisc_dep,
+        idn2_dep,
     ],
 )
 
@@ -1650,6 +1660,7 @@ executable(
         libisc_dep,
         libisccc_dep,
         libisccfg_dep,
+        idn2_dep,
     ],
 )
 
@@ -1666,6 +1677,7 @@ executable(
         libisc_dep,
         libisccc_dep,
         libisccfg_dep,
+        idn2_dep,
     ],
 )
 

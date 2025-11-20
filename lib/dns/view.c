@@ -183,6 +183,9 @@ destroy(dns_view_t *view) {
 	isc_refcount_destroy(&view->references);
 	isc_refcount_destroy(&view->weakrefs);
 
+	if (view->psl != NULL) {
+		dns_db_detach(&view->psl);
+	}
 	if (view->order != NULL) {
 		dns_order_detach(&view->order);
 	}

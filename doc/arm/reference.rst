@@ -1423,6 +1423,18 @@ default is used.
    to the working directory. The directory *must* be writable by the
    effective user ID of the :iscman:`named` process.
 
+.. namedconf:statement:: public-suffix-list
+   :tags: server, view
+   :short: Specifies the location of the file containing the public suffix list.
+
+   When specified the DNs servers for zones in the public suffix list are deemed
+   to support the DNS COOKIE and :iscman:`named` will fallback to TCP when
+   querying them if a DNS COOKIE response is not received.  `require-cookie no;`
+   can be specified in :namedconf:ref:`server` statements if the server supports
+   neither.
+
+   Mozilla maintians the public suffix list at https://github.com/publicsuffix/list
+
 .. namedconf:statement:: qname-minimization
    :tags: query
    :short: Controls QNAME minimization behavior in the BIND 9 resolver.
@@ -2176,29 +2188,29 @@ Boolean Options
 
    The ``require-cookie`` clause can be used to indicate that the
    remote server is known to support DNS COOKIE. Setting this option
-   to ``yes`` causes :iscman:`named` to always retry a request over TCP when
-   it receives a UDP response without a DNS COOKIE from the remote
-   server, even if UDP responses with DNS COOKIE have not been sent
-   by this server before. This prevents spoofed answers from being
-   accepted without a retry over TCP, when :iscman:`named` has not yet
-   determined whether the remote server supports DNS COOKIE. Setting
-   this option to ``no`` (the default) causes :iscman:`named` to rely on
-   autodetection of DNS COOKIE support to determine when to retry a
-   request over TCP.
+   to ``yes`` (the default) causes :iscman:`named` to always retry
+   a request over TCP when it receives a UDP response without a DNS
+   COOKIE from the remote server, even if UDP responses with DNS
+   COOKIE have not been sent by this server before. This prevents
+   spoofed answers from being accepted without a retry over TCP,
+   when :iscman:`named` has not yet determined whether the remote
+   server supports DNS COOKIE. Setting this option to ``no`` causes
+   :iscman:`named` to rely on autodetection of DNS COOKIE support
+   to determine when to retry a request over TCP.
 
    For DNAME lookups the default is ``yes`` and it is enforced.  Servers
    serving DNAME must correctly support DNS over TCP.
 
    .. note::
-      If a UDP response is signed using TSIG, :iscman:`named` accepts it even if
-      ``require-cookie`` is set to ``yes`` and the response does not
-      contain a DNS COOKIE.
+      If a UDP response is signed using TSIG, :iscman:`named` accepts
+      it even if ``require-cookie`` is set to ``yes`` and the
+      response does not contain a DNS COOKIE.
 
-   The ``send-cookie`` clause determines whether the local server adds
-   a COOKIE EDNS option to requests sent to the server. This overrides
-   ``send-cookie`` set at the view or option level. The :iscman:`named` server
-   may determine that COOKIE is not supported by the remote server and not
-   add a COOKIE EDNS option to requests.
+   The ``send-cookie`` clause determines whether the local server
+   adds a COOKIE EDNS option to requests sent to the server. This
+   overrides ``send-cookie`` set at the view or option level. The
+   :iscman:`named` server may determine that COOKIE is not supported
+   by the remote server and not add a COOKIE EDNS option to requests.
 
 .. namedconf:statement:: require-server-cookie
    :tags: query

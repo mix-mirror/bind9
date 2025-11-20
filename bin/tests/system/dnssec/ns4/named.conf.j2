@@ -47,6 +47,10 @@ options {
 	disable-algorithms "ent.secure.example." { ECDSAP256SHA256; };
 };
 
+server 10.53.0.10 {
+	require-cookie no;
+};
+
 {% if not managed_key %}
 include "trusted.conf";
 {% endif %}

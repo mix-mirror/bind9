@@ -11,6 +11,10 @@
  * information regarding copyright ownership.
  */
 
+server 10.53.0.4 {
+	require-cookie no;
+};
+
 options {
 	query-source address 10.53.0.3;
 	notify-source 10.53.0.3;
@@ -26,7 +30,6 @@ options {
 	qname-minimization disabled;
 	zone-statistics yes;
 };
-
 
 include "statistics-channels.conf";
 

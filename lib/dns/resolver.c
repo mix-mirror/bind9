@@ -400,6 +400,7 @@ struct fetchctx {
 	uint32_t ns_ttl;
 	isc_counter_t *qc;
 	isc_counter_t *gqc;
+	bool inpsl;
 	bool minimized;
 	unsigned int qmin_labels;
 	isc_result_t qmin_warning;
@@ -2084,10 +2085,18 @@ fctx_query(fetchctx_t *fctx, dns_adbaddrinfo_t *addrinfo,
 		}
 		isc_sockaddr_setport(&addr, 0);
 
-		result = dns_dispatch_createtcp(fctx->dispatchmgr, &addr,
-						&sockaddr, addrinfo->transport,
-						DNS_DISPATCHOPT_UNSHARED,
-						&query->dispatch);
+		result = ISC_R_NOTFOUND;
+		if (dns_name_countlabels(fctx->domain) <= 2) {
+			result = dns_dispatch_gettcp(
+				fctx->dispatchmgr, &addr, &sockaddr,
+				addrinfo->transport, &query->dispatch);
+		}
+		if (result != ISC_R_SUCCESS) {
+			result = dns_dispatch_createtcp(
+				fctx->dispatchmgr, &addr, &sockaddr,
+				addrinfo->transport, DNS_DISPATCHOPT_UNSHARED,
+				&query->dispatch);
+		}
 		if (result != ISC_R_SUCCESS) {
 			goto cleanup_query;
 		}
@@ -4630,6 +4639,7 @@ fctx_create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 		.fwdpolicy = dns_fwdpolicy_none,
 		.result = ISC_R_FAILURE,
 		.loop = loop,
+		.inpsl = true,
 	};
 
 	isc_mem_attach(mctx, &fctx->mctx);
@@ -7246,10 +7256,99 @@ cleanup:
 	isc_mem_putanddetach(&rctx->mctx, rctx, sizeof(*rctx));
 }
 
+static bool
+all_rrsets_in_section_signed(dns_message_t *msg, dns_section_t section) {
+	MSG_SECTION_FOREACH(msg, section, name) {
+		bool type[0x10000] = { false };
+		bool covers[0x10000] = { false };
+		ISC_LIST_FOREACH(name->list, rdataset, link) {
+			if (rdataset->type == dns_rdatatype_opt ||
+			    rdataset->type == dns_rdatatype_tsig ||
+			    rdataset->type == dns_rdatatype_sig)
+			{
+				continue;
+			}
+			if (rdataset->type != dns_rdatatype_rrsig) {
+				type[rdataset->type] = true;
+			} else {
+				covers[rdataset->covers] = true;
+			}
+		}
+		if (memcmp(type, covers, sizeof(type)) != 0) {
+			return false;
+		}
+	}
+	return true;
+}
+
+static bool
+all_rrsets_signed(respctx_t *rctx) {
+	dns_message_t *msg = rctx->query->rmessage;
+	return all_rrsets_in_section_signed(msg, DNS_SECTION_ANSWER) &&
+	       all_rrsets_in_section_signed(msg, DNS_SECTION_AUTHORITY) &&
+	       all_rrsets_in_section_signed(msg, DNS_SECTION_ADDITIONAL);
+}
+
+static bool
+inpsl(fetchctx_t *fctx) {
+	bool answer = false;
+	dns_db_t *psl = NULL;
+	dns_dbnode_t *node = NULL;
+	isc_result_t result;
+	dns_rdataset_t rdataset = DNS_RDATASET_INIT;
+
+	if (!fctx->inpsl) {
+		return false;
+	}
+	LOCK(&fctx->res->view->lock);
+	if (fctx->res->view->psl != NULL) {
+		dns_db_attach(fctx->res->view->psl, &psl);
+	}
+	UNLOCK(&fctx->res->view->lock);
+	if (psl == NULL) {
+		return false;
+	}
+	result = dns_db_findnode(psl, fctx->domain, false, &node);
+	if (result != ISC_R_SUCCESS) {
+		goto cleanup;
+	}
+	result = dns_db_findrdataset(psl, node, NULL, dns_rdatatype_a, 0,
+				     (isc_stdtime_t)0, &rdataset, NULL);
+	if (result != ISC_R_SUCCESS) {
+		goto cleanup;
+	}
+
+	/*
+	 * Check the 4th octet of the address record for the expected label
+	 * count.
+	 */
+	DNS_RDATASET_FOREACH(&rdataset) {
+		dns_rdata_t rdata = DNS_RDATA_INIT;
+		dns_rdataset_current(&rdataset, &rdata);
+		answer = rdata.data[3] == dns_name_countlabels(fctx->domain);
+	}
+
+cleanup:
+	if (dns_rdataset_isassociated(&rdataset)) {
+		dns_rdataset_disassociate(&rdataset);
+	}
+	if (node != NULL) {
+		dns_db_detachnode(&node);
+	}
+	if (psl != NULL) {
+		dns_db_detach(&psl);
+	}
+	fctx->inpsl = answer;
+	return answer;
+}
+
 static isc_result_t
 rctx_cookiecheck(respctx_t *rctx) {
 	fetchctx_t *fctx = rctx->fctx;
 	resquery_t *query = rctx->query;
+	bool required = (dns_name_countlabels(fctx->domain) <= 2 ||
+			 inpsl(fctx)) &&
+			!all_rrsets_signed(rctx);
 
 	/*
 	 * If the message was secured or TCP is already in the
@@ -7281,12 +7380,11 @@ rctx_cookiecheck(respctx_t *rctx) {
 	}
 
 	/*
-	 * Retry over TCP if require-cookie is true.
+	 * Turn off retry over TCP if require-cookie is false.
 	 */
 	if (fctx->res->view->peers != NULL) {
 		isc_result_t result;
 		dns_peer_t *peer = NULL;
-		bool required = false;
 		isc_netaddr_t netaddr;
 
 		isc_netaddr_fromsockaddr(&netaddr, &query->addrinfo->sockaddr);
@@ -7295,27 +7393,25 @@ rctx_cookiecheck(respctx_t *rctx) {
 		if (result == ISC_R_SUCCESS) {
 			dns_peer_getrequirecookie(peer, &required);
 		}
-		if (!required) {
-			return ISC_R_SUCCESS;
-		}
-
-		if (isc_log_wouldlog(ISC_LOG_INFO)) {
-			char addrbuf[ISC_SOCKADDR_FORMATSIZE];
-			isc_sockaddr_format(&query->addrinfo->sockaddr, addrbuf,
-					    sizeof(addrbuf));
-			isc_log_write(DNS_LOGCATEGORY_RESOLVER,
-				      DNS_LOGMODULE_RESOLVER, ISC_LOG_INFO,
-				      "missing required cookie from %s",
-				      addrbuf);
-		}
-
-		rctx->retryopts |= DNS_FETCHOPT_TCP;
-		rctx->resend = true;
-		rctx_done(rctx, ISC_R_SUCCESS);
-		return ISC_R_COMPLETE;
 	}
 
-	return ISC_R_SUCCESS;
+	if (!required) {
+		return ISC_R_SUCCESS;
+	}
+
+	if (isc_log_wouldlog(ISC_LOG_INFO)) {
+		char addrbuf[ISC_SOCKADDR_FORMATSIZE];
+		isc_sockaddr_format(&query->addrinfo->sockaddr, addrbuf,
+				    sizeof(addrbuf));
+		isc_log_write(DNS_LOGCATEGORY_RESOLVER, DNS_LOGMODULE_RESOLVER,
+			      ISC_LOG_INFO, "missing required cookie from %s",
+			      addrbuf);
+	}
+
+	rctx->retryopts |= DNS_FETCHOPT_TCP;
+	rctx->resend = true;
+	rctx_done(rctx, ISC_R_SUCCESS);
+	return ISC_R_COMPLETE;
 }
 
 static bool
