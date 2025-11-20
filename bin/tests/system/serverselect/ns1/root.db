@@ -1,0 +1,45 @@
+; Copyright (C) Internet Systems Consortium, Inc. ("ISC")
+;
+; SPDX-License-Identifier: MPL-2.0
+;
+; This Source Code Form is subject to the terms of the Mozilla Public
+; License, v. 2.0.  If a copy of the MPL was not distributed with this
+; file, you can obtain one at https://mozilla.org/MPL/2.0/.
+;
+; See the COPYRIGHT file distributed with this work for additional
+; information regarding copyright ownership.
+
+$TTL 300
+$ORIGIN .
+. 			IN SOA	root.domain.nil a.root.servers.nil. (
+				2025110400   	; serial
+				600         	; refresh
+				600         	; retry
+				1200    	; expire
+				600       	; minimum
+				)
+.			NS	a.root-servers.nil.
+a.root-servers.nil.	A	10.53.0.1
+
+nsset.			NS	ns2.nsset.
+ns2.nsset.		A	10.53.0.2
+ns2.nsset.		AAAA	fd92:7065:b8e:ffff::2
+
+two-ns.			NS	ns3.nsset.
+two-ns.			NS	ns4.nsset.
+
+three-ns.		NS	ns3.nsset.
+three-ns.		NS	ns4.nsset.
+three-ns.		NS	ns5.nsset.
+
+four-ns.		NS	ns3.nsset.
+four-ns.		NS	ns4.nsset.
+four-ns.		NS	ns5.nsset.
+four-ns.		NS	ns6.nsset.
+
+six-ns.			NS	ns3.nsset.
+six-ns.			NS	ns4.nsset.
+six-ns.			NS	ns5.nsset.
+six-ns.			NS	ns6.nsset.
+six-ns.			NS	ns7.nsset.
+six-ns.			NS	ns8.nsset.
