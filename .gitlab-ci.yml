@@ -102,13 +102,13 @@ default:
       - runner_system_failure
 
 stages:
-  - precheck
+  - quick-checks
   - build
   - unit
   - system
   - performance
   - docs
-  - postcheck
+  - other-checks
   - postmerge
   - release
 
@@ -369,10 +369,12 @@ stages:
     - *rule_source_other_than_mr
     - *rule_mr_system_tests
 
-.precheck: &precheck_job
+.quick-check: &quick_checks_job
   <<: *default_triggering_rules
   <<: *base_image
-  stage: precheck
+  stage: quick-checks
+  tags:
+    - smalljob
 
 .configure: &configure
     - meson setup
@@ -443,6 +445,20 @@ stages:
         echo "junit.xml file does not exist.";
         exit 1;
       fi
+
+tarball-create:
+  stage: build
+  <<: *base_image
+  <<: *default_triggering_rules
+  script:
+    - *configure
+    - meson dist -C build --no-tests
+    - if test "$(git status --porcelain | grep -Ev '\?\?' | wc -l)" -gt "0"; then git status --short; git diff > diff.patch; exit 1; fi
+  artifacts:
+    paths:
+      - diff.patch
+      - build/meson-dist/*.tar.xz
+  needs: []
 
 .build: &build_job
   <<: *default_triggering_rules
@@ -633,10 +649,10 @@ stages:
 
 ### Job Definitions
 
-# Jobs in the precheck stage
+# Jobs in the quick-checks stage
 
 misc:
-  <<: *precheck_job
+  <<: *quick_checks_job
   script:
     - sh util/checklibs.sh > checklibs.out
     - sh util/check-categories.sh
@@ -653,7 +669,7 @@ misc:
     when: on_failure
 
 black:
-  <<: *precheck_job
+  <<: *quick_checks_job
   <<: *python_triggering_rules
   needs: []
   script:
@@ -667,14 +683,14 @@ black:
     when: on_failure
 
 vulture:
-  <<: *precheck_job
+  <<: *quick_checks_job
   <<: *python_triggering_rules
   needs: []
   script:
     - vulture --exclude "*ans.py,conftest.py,isctest" --ignore-names "after_servers_start,bootstrap,pytestmark" bin/tests/system/
 
 ci-variables:
-  <<: *precheck_job
+  <<: *quick_checks_job
   script:
     # When testing a .0 release, compare it against the previous development
     # release (e.g., 9.19.0 and 9.18.0 should both be compared against 9.17.22).
@@ -686,7 +702,7 @@ ci-variables:
       dotenv: ci_vars.env
 
 ci-orphaned-anchors:
-  <<: *precheck_job
+  <<: *quick_checks_job
   script:
     - git clone --depth 1 https://gitlab.isc.org/isc-projects/bind9-qa.git
     - bind9-qa/ci-orphaned-anchors/check-orphaned-anchors-ci.py .gitlab-ci.yml
@@ -697,7 +713,7 @@ ci-orphaned-anchors:
         - .gitlab-ci.yml
 
 clang-format:
-  <<: *precheck_job
+  <<: *quick_checks_job
   rules:
     - if: '$CI_MERGE_REQUEST_DIFF_BASE_SHA != null'
       changes:
@@ -719,25 +735,8 @@ clang-format:
     expire_in: "1 week"
     when: on_failure
 
-coccinelle:
-  <<: *precheck_job
-  rules:
-    - if: '$CI_MERGE_REQUEST_DIFF_BASE_SHA != null'
-      changes:
-        - '**/*.c'
-        - '**/*.h'
-        - 'cocci/**'
-        - 'util/check-cocci.sh'
-    - *rule_mr_manual
-    - *rule_tag
-    - *rule_source_other_than_mr
-  needs: []
-  script:
-    - util/check-cocci.sh
-    - if test "$(git status --porcelain | grep -Ev '\?\?' | wc -l)" -gt "0"; then git status --short; exit 1; fi
-
 meson-format:
-  <<: *precheck_job
+  <<: *quick_checks_job
   rules:
     - if: '$CI_MERGE_REQUEST_DIFF_BASE_SHA != null'
       changes:
@@ -761,7 +760,7 @@ meson-format:
         - "**/meson.build"
 
 doctest:
-  <<: *precheck_job
+  <<: *quick_checks_job
   needs: []
   script:
     - *configure
@@ -772,7 +771,7 @@ doctest:
       "$PYTEST" --noconftest --doctest-modules
 
 pylint:
-  <<: *precheck_job
+  <<: *quick_checks_job
   <<: *python_triggering_rules
   needs: []
   variables:
@@ -783,7 +782,7 @@ pylint:
     - pylint --rcfile $CI_PROJECT_DIR/.pylintrc --disable=wrong-import-position $(git ls-files 'bin/tests/system/*.py' | grep -vE '(ans\.py|vulture_ignore_list\.py)')
 
 reuse:
-  <<: *precheck_job
+  <<: *quick_checks_job
   needs: []
   image:
     name: docker.io/fsfe/reuse:latest
@@ -792,7 +791,7 @@ reuse:
     - reuse lint
 
 shfmt:
-  <<: *precheck_job
+  <<: *quick_checks_job
   <<: *shell_triggering_rules
   needs: []
   script:
@@ -806,7 +805,7 @@ shfmt:
     when: on_failure
 
 danger:
-  <<: *precheck_job
+  <<: *quick_checks_job
   needs: []
   script:
     - pip install git+https://gitlab.isc.org/isc-projects/hazard.git
@@ -814,32 +813,20 @@ danger:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
 
-checkbashisms:
-  <<: *precheck_job
-  <<: *shell_triggering_rules
-  needs: []
-  script:
-    - checkbashisms $(find . -path './.git' -prune -o -type f -exec sh -c 'head -n 1 "{}" | grep -qsF "#!/bin/sh"' \; -print)
-
 mypy:
-  <<: *precheck_job
+  <<: *quick_checks_job
   <<: *python_triggering_rules
-  stage: precheck
   script:
     - mypy "bin/tests/system/isctest/"
 
-tarball-create:
-  stage: precheck
-  <<: *base_image
-  <<: *default_triggering_rules
+generate-stress-test-configs:
+  <<: *quick_checks_job
   script:
-    - *configure
-    - meson dist -C build --no-tests
-    - if test "$(git status --porcelain | grep -Ev '\?\?' | wc -l)" -gt "0"; then git status --short; git diff > diff.patch; exit 1; fi
+    - git clone --depth 1 https://gitlab.isc.org/isc-projects/bind9-qa.git
+    - bind9-qa/stress/generate-stress-test-configs.py > stress-test-configs.yml
   artifacts:
     paths:
-      - diff.patch
-      - build/meson-dist/*.tar.xz
+      - stress-test-configs.yml
   needs: []
 
 # Jobs for doc builds on Debian 13 "trixie" (amd64)
@@ -1213,45 +1200,6 @@ unit:gcc:trixie:amd64:
     - job: gcc:trixie:amd64
       artifacts: true
 
-# Build job for cross-compiled GCC builds on 64-bit Debian 13 "trixie"
-# (amd64) with 32-bit BIND 9.
-
-gcc:trixie:amd64cross32:
-  variables:
-    CFLAGS: "${CFLAGS_COMMON}"
-    CROSS_COMPILATION: 1
-    EXTRA_CONFIGURE: "--cross-file ci/amd64cross32.ini -Didn=enabled -Dgssapi=disabled -Dtracing=disabled ${WITH_LIBEDIT}"
-  <<: *debian_trixie_amd64cross32_image
-  <<: *build_job
-
-# Jobs for scan-build builds on Debian 13 "trixie" (amd64)
-
-.scan_build: &scan_build
-  - ${SCAN_BUILD} --html-title="BIND 9 ($CI_COMMIT_SHORT_SHA)"
-                  --keep-cc
-                  --status-bugs
-                  --keep-going
-                  -o scan-build.reports ninja -C build
-
-scan-build:
-  <<: *default_triggering_rules
-  <<: *base_image
-  stage: postcheck
-  variables:
-    CC: "${CLANG}"
-    CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "-Didn=enabled --native-file ci/clang-trixie.ini"
-  before_script:
-    - *list_installed_package_versions
-  script:
-    - *configure
-    - *scan_build
-  needs: []
-  artifacts:
-    paths:
-      - scan-build.reports/
-    when: on_failure
-
 # Jobs for strict OpenSSL 3.x (no deprecated) GCC builds on Debian "trixie" (amd64)
 # Run with pkcs11-provider tests
 
@@ -1547,7 +1495,7 @@ generate-tsan-stress-test-configs:
 
 tsan:stress:
   <<: *default_triggering_rules
-  stage: postcheck
+  stage: other-checks
   variables:
     PARENT_PIPELINE_ID: $CI_PIPELINE_ID
   trigger:
@@ -1780,6 +1728,8 @@ publish:
 .manual_release_job_qa: &manual_release_job_qa
   <<: *manual_release_job
   <<: *base_image
+  tags:
+    - smalljob
   before_script:
     - git clone --depth 1 https://gitlab.isc.org/isc-projects/bind9-qa.git
   needs:
@@ -1932,7 +1882,7 @@ customer-git:tag:
 
 coverity:
   <<: *base_image
-  stage: postcheck
+  stage: other-checks
   variables:
     CC: gcc
     CFLAGS: "${CFLAGS_COMMON}"
@@ -2069,18 +2019,6 @@ shotgun:doh-get:
   #   - *shotgun_rule_tag
   #   - *shotgun_rule_other
 
-generate-stress-test-configs:
-  <<: *base_image
-  <<: *default_triggering_rules
-  stage: precheck
-  script:
-    - git clone --depth 1 https://gitlab.isc.org/isc-projects/bind9-qa.git
-    - bind9-qa/stress/generate-stress-test-configs.py > stress-test-configs.yml
-  artifacts:
-    paths:
-      - stress-test-configs.yml
-  needs: []
-
 stress-test-child-pipeline:
   <<: *default_triggering_rules
   stage: performance
@@ -2102,11 +2040,80 @@ stress-test-child-pipeline:
     - job: generate-stress-test-configs
       artifacts: true
 
+# Jobs in other-checks stage
+
+checkbashisms:
+  <<: *base_image
+  <<: *default_triggering_rules
+  <<: *shell_triggering_rules
+  stage: other-checks
+  needs: []
+  script:
+    - checkbashisms $(find . -path './.git' -prune -o -type f -exec sh -c 'head -n 1 "{}" | grep -qsF "#!/bin/sh"' \; -print)
+
+coccinelle:
+  <<: *default_triggering_rules
+  <<: *base_image
+  stage: other-checks
+  rules:
+    - if: '$CI_MERGE_REQUEST_DIFF_BASE_SHA != null'
+      changes:
+        - '**/*.c'
+        - '**/*.h'
+        - 'cocci/**'
+        - 'util/check-cocci.sh'
+    - *rule_mr_manual
+    - *rule_tag
+    - *rule_source_other_than_mr
+  needs: []
+  script:
+    - util/check-cocci.sh
+    - if test "$(git status --porcelain | grep -Ev '\?\?' | wc -l)" -gt "0"; then git status --short; exit 1; fi
+
+# Build job for cross-compiled GCC builds on 64-bit Debian 13 "trixie"
+# (amd64) with 32-bit BIND 9.
+
+gcc:trixie:amd64cross32:
+  variables:
+    CFLAGS: "${CFLAGS_COMMON}"
+    CROSS_COMPILATION: 1
+    EXTRA_CONFIGURE: "--cross-file ci/amd64cross32.ini -Didn=enabled -Dgssapi=disabled -Dtracing=disabled ${WITH_LIBEDIT}"
+  <<: *debian_trixie_amd64cross32_image
+  <<: *build_job
+
+# Jobs for scan-build builds on Debian 13 "trixie" (amd64)
+
+.scan_build: &scan_build
+  - ${SCAN_BUILD} --html-title="BIND 9 ($CI_COMMIT_SHORT_SHA)"
+                  --keep-cc
+                  --status-bugs
+                  --keep-going
+                  -o scan-build.reports ninja -C build
+
+scan-build:
+  <<: *default_triggering_rules
+  <<: *base_image
+  stage: other-checks
+  variables:
+    CC: "${CLANG}"
+    CFLAGS: "${CFLAGS_COMMON}"
+    EXTRA_CONFIGURE: "-Didn=enabled --native-file ci/clang-trixie.ini"
+  before_script:
+    - *list_installed_package_versions
+  script:
+    - *configure
+    - *scan_build
+  needs: []
+  artifacts:
+    paths:
+      - scan-build.reports/
+    when: on_failure
+
 # Simple reproductibilty test, needs an image with meson >=1.6.0
 reproducible-build:
   <<: *default_triggering_rules
   <<: *alpine_3_22_amd64_image
-  stage: postcheck
+  stage: other-checks
   needs: []
   variables:
     CC: gcc
@@ -2132,7 +2139,7 @@ reproducible-build:
 # from using the "bind9" repo clone; we need to clone it ourselves.
 fsck:
   <<: *base_image
-  stage: postcheck
+  stage: other-checks
   variables:
     GIT_STRATEGY: none
   script:
@@ -2146,7 +2153,7 @@ fsck:
 gcov:
   <<: *base_image
   <<: *default_triggering_rules
-  stage: postcheck
+  stage: other-checks
   needs:
     - job: system:gcc:trixie:amd64
       artifacts: true
@@ -2185,6 +2192,8 @@ pairwise:
 .post_merge_template: &post_merge
   <<: *base_image
   stage: postmerge
+  tags:
+    - smalljob
   needs: []
   # post-merge processes should run even if another MR was merged while the job was running (or queued)
   interruptible: false
