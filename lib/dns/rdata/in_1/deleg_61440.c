@@ -136,6 +136,35 @@ finish:
 }
 
 static isc_result_t
+servname_fromtxt(isc_textregion_t *region, const dns_name_t *origin,
+		 unsigned int options, isc_buffer_t *target) {
+	isc_textregion_t src = *region;
+
+	if (origin == NULL) {
+		origin = dns_rootname;
+	}
+
+	do {
+		char buf[DNS_NAME_FORMATSIZE];
+		isc_buffer_t b;
+		dns_fixedname_t fn;
+		dns_name_t *name = dns_fixedname_initname(&fn);
+
+		isc_buffer_init(&b, buf, sizeof(buf));
+		RETERR(commatxt_fromtext(&src, true, true, &b));
+
+		/* skip the leading length byte */
+		isc_buffer_forward(&b, 1);
+
+		RETERR(dns_name_fromtext(name, &b, origin, options));
+		RETERR(dns_name_towire(name, NULL, target));
+	} while (src.length != 0);
+
+	isc_textregion_consume(region, region->length);
+	return ISC_R_SUCCESS;
+}
+
+static isc_result_t
 deleg_fromtext(isc_textregion_t *region, const dns_name_t *origin,
 	       unsigned int options, isc_buffer_t *target) {
 	char *e = NULL;
@@ -199,32 +228,8 @@ deleg_fromtext(isc_textregion_t *region, const dns_name_t *origin,
 			} while (e != NULL);
 			break;
 		case deleg_namelist:
-			do {
-				isc_buffer_t b;
-				size_t rlen = region->length;
-				dns_fixedname_t fn;
-				dns_name_t *name = dns_fixedname_initname(&fn);
-				isc_buffer_init(&b, region->base, rlen);
-
-				snprintf(tbuf, sizeof(tbuf), "%*s", (int)rlen,
-					 region->base);
-				e = strchr(tbuf, ',');
-				if (e == NULL) {
-					isc_buffer_add(&b, rlen);
-				} else {
-					*e++ = 0;
-					rlen = e - tbuf;
-					isc_buffer_add(&b, rlen - 1);
-				}
-
-				if (origin == NULL) {
-					origin = dns_rootname;
-				}
-				RETERR(dns_name_fromtext(name, &b, origin,
-							 options));
-				RETERR(dns_name_towire(name, NULL, target));
-				isc_textregion_consume(region, rlen);
-			} while (e != NULL);
+			RETERR(servname_fromtxt(region, origin, options,
+						target));
 			break;
 		case deleg_unknown:
 		default:
@@ -403,6 +408,40 @@ deleginfokey(unsigned short value, enum deleg_encoding *encoding, char *buf,
 }
 
 static isc_result_t
+comma_name_totext(const dns_name_t *name, isc_buffer_t *target) {
+	char in[DNS_NAME_FORMATSIZE];
+	size_t len = DNS_NAME_FORMATSIZE;
+
+	dns_name_format(name, in, sizeof(in));
+
+	for (char *sp = in; *sp != '\0'; sp++) {
+		if (*sp == ',') {
+			if (len < 3) {
+				return ISC_R_NOSPACE;
+			}
+			isc_buffer_putstr(target, "\\\\,");
+		} else if (*sp == '\\') {
+			if (len < 2) {
+				return ISC_R_NOSPACE;
+			}
+			isc_buffer_putstr(target, "\\\\");
+		} else {
+			if (len < 1) {
+				return ISC_R_NOSPACE;
+			}
+			isc_buffer_putuint8(target, *sp);
+		}
+	}
+
+	if (len < 1) {
+		return ISC_R_NOSPACE;
+	}
+	isc_buffer_putuint8(target, '.');
+
+	return ISC_R_SUCCESS;
+}
+
+static isc_result_t
 generic_totext_in_deleg(ARGS_TOTEXT) {
 	isc_region_t region;
 	char buf[sizeof("xxxx:xxxx:xxxx:xxxx:xxxx:xxxx:255.255.255.255")];
@@ -475,7 +514,7 @@ generic_totext_in_deleg(ARGS_TOTEXT) {
 				isc_buffer_add(&b, r.length);
 				RETERR(dns_name_fromwire(
 					name, &b, DNS_DECOMPRESS_NEVER, NULL));
-				RETERR(dns_name_totext(name, 0, target));
+				RETERR(comma_name_totext(name, target));
 
 				isc_region_consume(
 					&r, isc_buffer_consumedlength(&b));
