@@ -61,8 +61,10 @@ static atomic_int_fast64_t server_handshakes = 0;
 static atomic_int_fast64_t client_handshakes = 0;
 static atomic_int_fast64_t total_opened_streams = 0;
 static atomic_int_fast64_t total_closed_streams = 0;
+static atomic_int_fast64_t total_connections = 0;
 
 typedef struct quic_session_user_data {
+	size_t closed_streams;
 	isc_nmhandle_t *handle;
 	isc_quic_sm_t *mgr;
 } quic_session_user_data_t;
@@ -328,16 +330,16 @@ udp_quic_send_cb(isc_nmhandle_t *handle, isc_result_t eresult, void *cbarg) {
 	free_quic_io_req(req);
 }
 
-/* static void */
-/* udp_quic_send_shutdown_cb(isc_nmhandle_t *handle, isc_result_t eresult, */
-/* 			  void *cbarg) { */
-/* 	quic_io_req_t *req = (quic_io_req_t *)cbarg; */
-/* 	if (req->session != NULL) { */
-/* 		isc_quic_session_detach(&req->session); */
-/* 	} */
-/* 	udp_quic_send_cb(handle, eresult, cbarg); */
-/* 	isc_loopmgr_shutdown(); */
-/* } */
+static void
+udp_quic_send_shutdown_cb(isc_nmhandle_t *handle, isc_result_t eresult,
+			  void *cbarg) {
+	quic_io_req_t *req = (quic_io_req_t *)cbarg;
+	if (req->session != NULL) {
+		isc_quic_session_detach(&req->session);
+	}
+	udp_quic_send_cb(handle, eresult, cbarg);
+	isc_loopmgr_shutdown();
+}
 
 static void
 process_incoming_packet(isc_nmhandle_t *handle, isc_region_t *pkt,
@@ -386,6 +388,7 @@ process_incoming_packet(isc_nmhandle_t *handle, isc_region_t *pkt,
 			alloc_session_user_data(handle, mgr);
 		isc_quic_session_set_user_data(session, (void *)session_data);
 		(void)atomic_fetch_add(&conns_accepted, 1);
+		atomic_fetch_add(&total_connections, 1);
 	}
 
 	if (out_pkt.pktsz == 0 && session != NULL) {
@@ -483,6 +486,8 @@ udp_quic_connect_cb(isc_nmhandle_t *handle, isc_result_t eresult, void *cbarg) {
 
 		(void)isc_quic_sm_connect(mgr, session_tid, &local, &peer, NULL,
 					  &out_pkt, &session);
+		(void)atomic_fetch_add(&connect_attempts, 1);
+		atomic_fetch_add(&total_connections, 1);
 
 		quic_session_user_data_t *session_data =
 			alloc_session_user_data(handle, mgr);
@@ -596,53 +601,59 @@ quic_on_expiry_timer_cb(isc_quic_sm_t *restrict mgr,
 	return true;
 }
 
-/* static void */
-/* udp_quic_shutdown_loopmgr_cb(void *arg) { */
-/* 	UNUSED(arg); */
-/* 	isc_loopmgr_shutdown(); */
-/* } */
+static void
+udp_quic_shutdown_loopmgr_cb(void *arg) {
+	UNUSED(arg);
+	isc_loopmgr_shutdown();
+}
 
-/* static void */
-/* quic_shutdown_async_cb(isc_quic_session_t *session) { */
-/* 	isc_nmhandle_t *handle = isc_quic_session_get_user_data(session); */
-/* 	if (handle != NULL && !isc_quic_session_is_server(session)) { */
-/* 		/\* uint8_t out_pkt_buf[NGTCP2_MAX_UDP_PAYLOAD_SIZE]; *\/ */
-/* 		/\* isc_quic_out_pkt_t out_pkt; *\/ */
+static void
+quic_shutdown_async_cb(isc_quic_session_t *session) {
+	quic_session_user_data_t *session_data =
+		isc_quic_session_get_user_data(session);
 
-/* 		/\* isc_quic_out_pkt_init(&out_pkt, out_pkt_buf, *\/ */
-/* 		/\* 		      sizeof(out_pkt_buf)); *\/ */
+	int64_t total = atomic_fetch_sub(&total_connections, 1) - 1;
 
-/* 		/\* isc_quic_session_shutdown(session, &out_pkt); *\/ */
+	if (session_data != NULL && session_data->handle != NULL) {
+		uint8_t out_pkt_buf[NGTCP2_MAX_UDP_PAYLOAD_SIZE];
+		isc_quic_out_pkt_t out_pkt;
 
-/* 		/\* isc_region_t out_region; *\/ */
-/* 		/\* quic_io_req_t *req = alloc_quic_send_req(&out_pkt, handle,
- */
-/* 		 *\/ */
-/* 		/\* 					 session, &out_region);
- */
-/* 		 *\/ */
+		isc_quic_out_pkt_init(&out_pkt, out_pkt_buf,
+				      sizeof(out_pkt_buf));
 
-/* 		/\* isc_nm_cb_t cb = udp_quic_send_cb; *\/ */
+		isc_quic_session_shutdown(session, &out_pkt);
 
-/* 		/\* if (!isc_quic_session_is_server(session) && *\/ */
-/* 		/\*     atomic_fetch_sub(&connect_attempts, 1) == 0) *\/ */
-/* 		/\* { *\/ */
-/* 		/\* 	cb = udp_quic_send_shutdown_cb; *\/ */
-/* 		/\* } *\/ */
+		isc_region_t out_region;
+		quic_io_req_t *req = alloc_quic_send_req(
+			&out_pkt, session_data->handle, session, &out_region);
 
-/* 		/\* isc_nm_send(handle, &out_region, cb, req); *\/ */
+		isc_nm_cb_t cb = udp_quic_send_cb;
 
-/* 		if (!isc_quic_session_is_server(session) && */
-/* 		    atomic_fetch_sub(&connect_attempts, 1) == 0) */
-/* 		{ */
-/* 			isc_async_run(isc_loop(), udp_quic_shutdown_loopmgr_cb,
- */
-/* 				      NULL); */
-/* 		} */
-/* 	} */
+		if (isc_quic_session_is_server(session)) {
+			(void)atomic_fetch_sub(&conns_accepted, 1);
+		} else {
+			(void)atomic_fetch_sub(&connect_attempts, 1);
+		}
 
-/* 	isc_quic_session_detach(&session); */
-/* } */
+		if (total == 0) {
+			cb = udp_quic_send_shutdown_cb;
+		}
+
+		isc_nm_send(session_data->handle, &out_region, cb, req);
+
+		/* if (!isc_quic_session_is_server(session) && */
+		/*     atomic_fetch_sub(&connect_attempts, 1) == 0) */
+		/* { */
+		/* 	isc_async_run(isc_loop(), udp_quic_shutdown_loopmgr_cb,
+		 */
+		/* 		      NULL); */
+		/* } */
+	} else if (total == 0) {
+		isc_async_run(isc_loop(), udp_quic_shutdown_loopmgr_cb, NULL);
+	}
+
+	isc_quic_session_detach(&session);
+}
 
 static void
 udp_quic_stream_send_cb(isc_quic_session_t *restrict session,
@@ -748,10 +759,6 @@ quic_on_conn_close_cb(isc_quic_sm_t *restrict mgr,
 	/* 	puts("closing client"); */
 	/* } */
 
-	if (isc_quic_session_is_server(session)) {
-		atomic_fetch_sub(&conns_accepted, 1);
-	}
-
 	quic_session_user_data_t *session_data =
 		isc_quic_session_get_user_data(session);
 
@@ -778,11 +785,22 @@ quic_on_stream_close_cb(isc_quic_sm_t *restrict mgr,
 	UNUSED(mgr);
 	UNUSED(mgrarg);
 
+	quic_session_user_data_t *session_data =
+		isc_quic_session_get_user_data(session);
+
 	INSIST(isc_quic_session_get_stream_user_data(session, streamd_id) ==
 	       stream_data);
 
 	if (stream_data->send_buf != NULL) {
 		isc_buffer_free(&stream_data->send_buf);
+	}
+
+	session_data->closed_streams++;
+	if (session_data->closed_streams == 2 * MAX_STREAMS) {
+		isc_quic_session_t *tmpsess = NULL;
+		isc_quic_session_attach(session, &tmpsess);
+		isc_async_run(isc_loop(), (isc_job_cb)quic_shutdown_async_cb,
+			      tmpsess);
 	}
 
 	if (stream_data->local) {
@@ -794,10 +812,11 @@ quic_on_stream_close_cb(isc_quic_sm_t *restrict mgr,
 		INSIST(atomic_load(&total_opened_streams) >= total);
 
 		/* if (total == (workers * MAX_STREAMS * 2)) { */
+		/* 	isc_quic_session_t *tmpsess = NULL; */
+		/* 	isc_quic_session_attach(session, &tmpsess); */
 		/* 	isc_async_run(isc_loop(), */
-		/* 		      (isc_job_cb)udp_quic_shutdown_loopmgr_cb,
-		 */
-		/* 		      NULL); */
+		/* 		      (isc_job_cb)quic_shutdown_async_cb, */
+		/* 		      tmpsess); */
 		/* } */
 	}
 
@@ -927,6 +946,7 @@ quic_sm_test_setup(void **state) {
 	quic_udp_on_stop(server_quic_sm);
 
 	atomic_store(&connect_attempts, 0);
+	atomic_store(&conns_accepted, 0);
 	atomic_store(&server_handshakes, 0);
 	atomic_store(&client_handshakes, 0);
 	atomic_store(&total_opened_streams, 0);
