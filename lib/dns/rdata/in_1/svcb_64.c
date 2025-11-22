@@ -58,7 +58,7 @@ static isc_result_t
 alpn_fromtxt(isc_textregion_t *source, isc_buffer_t *target) {
 	isc_textregion_t source0 = *source;
 	do {
-		RETERR(commatxt_fromtext(&source0, true, target));
+		RETERR(commatxt_fromtext(&source0, true, false, target));
 	} while (source0.length != 0);
 	return ISC_R_SUCCESS;
 }
