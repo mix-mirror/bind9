@@ -376,8 +376,10 @@ process_incoming_packet(isc_nmhandle_t *handle, isc_region_t *pkt,
 		&session_tid, &session);
 
 	if (result == ISC_R_SUCCESS && session_tid != isc_tid()) {
-		quic_io_req_t *req = alloc_quic_reroute_req(pkt, handle, mgr,
-							    session);
+		quic_session_user_data_t *session_data =
+			isc_quic_session_get_user_data(session);
+		quic_io_req_t *req = alloc_quic_reroute_req(
+			pkt, session_data->handle, mgr, session);
 		isc_async_run(isc_loop_get(session_tid),
 			      (isc_job_cb)process_rerouted_packet, req);
 		goto done;
@@ -753,11 +755,11 @@ quic_on_conn_close_cb(isc_quic_sm_t *restrict mgr,
 	UNUSED(cbarg);
 	UNUSED(session);
 
-	/* if (isc_quic_session_is_server(session)) { */
-	/* 	puts("closing server"); */
-	/* } else { */
-	/* 	puts("closing client"); */
-	/* } */
+	if (isc_quic_session_is_server(session)) {
+		puts("closing server");
+	} else {
+		puts("closing client");
+	}
 
 	quic_session_user_data_t *session_data =
 		isc_quic_session_get_user_data(session);
