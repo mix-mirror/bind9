@@ -946,6 +946,9 @@ extern uint8_t dns_qp_byte_for_bit[];
 /**********************************************************************/
 
 void
+maybe_set_name(dns_qpreader_t *qp, dns_qpnode_t *node, dns_name_t *name);
+
+void
 dns__qp_initialize(void);
 void
 dns__qp_shutdown(void);

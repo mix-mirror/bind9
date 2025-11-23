@@ -511,7 +511,7 @@ dns_keytable_finddeepestmatch(dns_keytable_t *keytable, const dns_name_t *name,
 	REQUIRE(foundname != NULL);
 
 	dns_qpmulti_query(keytable->table, &qpr);
-	result = dns_qp_lookup(&qpr, name, DNS_DBNAMESPACE_NORMAL, NULL, NULL,
+	result = dns_qp_lookup(&qpr, name, DNS_DBNAMESPACE_NORMAL, NULL,
 			       NULL, &pval, NULL);
 	keynode = pval;
 
@@ -541,7 +541,7 @@ dns_keytable_issecuredomain(dns_keytable_t *keytable, const dns_name_t *name,
 	REQUIRE(dns_name_isabsolute(name));
 
 	dns_qpmulti_query(keytable->table, &qpr);
-	result = dns_qp_lookup(&qpr, name, DNS_DBNAMESPACE_NORMAL, NULL, NULL,
+	result = dns_qp_lookup(&qpr, name, DNS_DBNAMESPACE_NORMAL, NULL,
 			       NULL, &pval, NULL);
 	if (result == ISC_R_SUCCESS || result == DNS_R_PARTIALMATCH) {
 		keynode = pval;

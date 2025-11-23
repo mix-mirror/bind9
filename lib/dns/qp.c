@@ -1857,7 +1857,7 @@ dns_qp_deletename(dns_qp_t *qp, const dns_name_t *name, dns_namespace_t space,
 /***********************************************************************
  *  chains
  */
-static void
+void
 maybe_set_name(dns_qpreader_t *qp, dns_qpnode_t *node, dns_name_t *name) {
 	dns_qpkey_t key;
 	size_t len;
@@ -2289,7 +2289,7 @@ fix_chain(dns_qpchain_t *chain, size_t offset) {
 
 isc_result_t
 dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
-	      dns_namespace_t space, dns_name_t *foundname, dns_qpiter_t *iter,
+	      dns_namespace_t space, dns_qpiter_t *iter,
 	      dns_qpchain_t *chain, void **pval_r, uint32_t *ival_r) {
 	dns_qpreader_t *qp = dns_qpreader(qpr);
 	dns_qpkey_t search, found;
@@ -2303,7 +2303,6 @@ dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
 	bool setiter = true;
 
 	REQUIRE(QP_VALID(qp));
-	REQUIRE(foundname == NULL || ISC_MAGIC_VALID(name, DNS_NAME_MAGIC));
 
 	searchlen = dns_qpkey_fromname(search, name, space);
 
@@ -2406,7 +2405,6 @@ dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
 
 		SET_IF_NOT_NULL(pval_r, leaf_pval(n));
 		SET_IF_NOT_NULL(ival_r, leaf_ival(n));
-		maybe_set_name(qp, n, foundname);
 		return result;
 	}
 
@@ -2420,7 +2418,6 @@ dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
 			n = chain->chain[len].node;
 			SET_IF_NOT_NULL(pval_r, leaf_pval(n));
 			SET_IF_NOT_NULL(ival_r, leaf_ival(n));
-			maybe_set_name(qp, n, foundname);
 			return DNS_R_PARTIALMATCH;
 		} else {
 			/*

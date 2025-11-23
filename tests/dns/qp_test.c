@@ -418,11 +418,21 @@ check_partialmatch(dns_qp_t *qp, struct check_partialmatch check[],
 		dns_fixedname_t fn1, fn2;
 		dns_name_t *name = dns_fixedname_initname(&fn1);
 		dns_name_t *foundname = dns_fixedname_initname(&fn2);
+		dns_qpchain_t chain;
 		void *pval = NULL;
 
 		dns_test_namefromstring(check[i].query, &fn1);
-		result = dns_qp_lookup(qp, name, space, foundname, NULL, NULL,
-				       &pval, NULL);
+		dns_qpchain_init(qp, &chain);
+		result = dns_qp_lookup(qp, name, space, NULL,
+				       &chain, &pval, NULL);
+
+		/* Extract the found name using maybe_set_name if we found something */
+		if (result == ISC_R_SUCCESS || result == DNS_R_PARTIALMATCH) {
+			if (chain.len > 0) {
+				dns_qpnode_t *node = chain.chain[chain.len - 1].node;
+				maybe_set_name((dns_qpreader_t *)qp, node, foundname);
+			}
+		}
 
 #if 0
 		fprintf(stderr, "%s%s %s (expected %s) "
@@ -584,7 +594,7 @@ check_qpchainiter(dns_qp_t *qp, struct check_qpchain check[],
 
 		dns_qpchain_init(qp, &chain);
 		dns_test_namefromstring(check[i].query, &fn1);
-		result = dns_qp_lookup(qp, name, check[i].space, NULL, iter,
+		result = dns_qp_lookup(qp, name, check[i].space, iter,
 				       &chain, NULL, NULL);
 #if 0
 		fprintf(stderr,
@@ -810,7 +820,7 @@ check_predecessors_withchain(dns_qp_t *qp, struct check_predecessors check[],
 		result = dns_name_tostring(expred, &predstr, isc_g_mctx);
 		assert_int_equal(result, ISC_R_SUCCESS);
 
-		result = dns_qp_lookup(qp, name, check[i].space, NULL, &it,
+		result = dns_qp_lookup(qp, name, check[i].space, &it,
 				       chain, NULL, NULL);
 #if 0
 		fprintf(stderr, "%s %s: expected %s got %s\n", check[i].query,

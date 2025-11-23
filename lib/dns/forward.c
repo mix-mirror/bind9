@@ -163,7 +163,7 @@ dns_fwdtable_find(dns_fwdtable_t *fwdtable, const dns_name_t *name,
 	REQUIRE(VALID_FWDTABLE(fwdtable));
 
 	dns_qpmulti_query(fwdtable->table, &qpr);
-	result = dns_qp_lookup(&qpr, name, DNS_DBNAMESPACE_NORMAL, NULL, NULL,
+	result = dns_qp_lookup(&qpr, name, DNS_DBNAMESPACE_NORMAL, NULL,
 			       NULL, &pval, NULL);
 	if (result == ISC_R_SUCCESS || result == DNS_R_PARTIALMATCH) {
 		dns_forwarders_t *fwdrs = pval;
