@@ -87,14 +87,17 @@ quic_sm_on_expiry_timer(isc_quic_session_entry_t *restrict sess_entry,
 			const isc_result_t expiry_result,
 			isc_quic_out_pkt_t *restrict out_pkt) {
 	isc_region_t pkt_data = { 0 };
+	bool ret = true;
 	if (out_pkt->pktsz > 0) {
 		pkt_data = out_pkt->pktbuf;
 		pkt_data.length = out_pkt->pktsz;
 	}
-	bool ret = sess_entry->pmgr->sm_interface.on_expiry_timer(
-		sess_entry->pmgr, sess_entry->session, expiry_result,
-		&out_pkt->local, &out_pkt->peer, &pkt_data,
-		sess_entry->pmgr->sm_cbarg);
+	if (sess_entry->pmgr != NULL) {
+		ret = sess_entry->pmgr->sm_interface.on_expiry_timer(
+			sess_entry->pmgr, sess_entry->session, expiry_result,
+			&out_pkt->local, &out_pkt->peer, &pkt_data,
+			sess_entry->pmgr->sm_cbarg);
+	}
 	if (ret) {
 		isc_quic_session_update_expiry_timer(sess_entry->session);
 	} else {
@@ -109,7 +112,9 @@ quic_sm_sess_on_expiry_timer_cb(void *restrict cbarg) {
 	uint8_t out_pkt_data[NGTCP2_MAX_UDP_PAYLOAD_SIZE];
 	isc_quic_out_pkt_t out_pkt;
 
-	REQUIRE(VALID_QUIC_SM_MAGIC(sess_entry->pmgr));
+	if (sess_entry->pmgr != NULL) {
+		INSIST(VALID_QUIC_SM_MAGIC(sess_entry->pmgr));
+	}
 
 	isc_quic_out_pkt_init(&out_pkt, out_pkt_data, sizeof(out_pkt_data));
 
