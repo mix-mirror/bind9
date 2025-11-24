@@ -401,7 +401,7 @@ create_qctx_for_client(ns_client_t *client, query_ctx_t **qctxp) {
 	ns_query_start(client, client->inner.handle);
 
 	dns__hook_table = saved_hook_table;
-	dns_hooktable_free(isc_g_mctx, (void **)&query_hooks);
+	dns_hooktable_free(isc_g_mctx, &query_hooks);
 
 	isc_nmhandle_detach(&client->inner.reqhandle);
 

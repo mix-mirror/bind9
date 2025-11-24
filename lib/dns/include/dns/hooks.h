@@ -443,6 +443,8 @@ typedef struct dns_hook {
 typedef ISC_LIST(dns_hook_t) dns_hooklist_t;
 typedef dns_hooklist_t dns_hooktable_t[DNS_HOOKPOINTS_COUNT];
 
+typedef void (*dns_hooktable_free_t)(isc_mem_t *, dns_hooktable_t **);
+
 /*%
  * dns__hook_table is a global hook table, which is used if view->hooktable
  * is NULL.  It's intended only for use by unit tests.
@@ -638,7 +640,7 @@ dns_plugins_free(isc_mem_t *mctx, void **listp);
  */
 
 void
-dns_hooktable_free(isc_mem_t *mctx, void **tablep);
+dns_hooktable_free(isc_mem_t *mctx, dns_hooktable_t **tablep);
 /*%<
  * Free a hook table.
  */

@@ -298,7 +298,7 @@ dns_hooktable_create(isc_mem_t *mctx, dns_hooktable_t **tablep) {
 }
 
 void
-dns_hooktable_free(isc_mem_t *mctx, void **tablep) {
+dns_hooktable_free(isc_mem_t *mctx, dns_hooktable_t **tablep) {
 	dns_hooktable_t *table = NULL;
 	int i = 0;
 

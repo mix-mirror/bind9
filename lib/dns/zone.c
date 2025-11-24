@@ -525,8 +525,8 @@ struct dns_zone {
 	 */
 	void *plugins;
 	void (*plugins_free)(isc_mem_t *, void **);
-	void *hooktable;
-	void (*hooktable_free)(isc_mem_t *, void **);
+	dns_hooktable_t *hooktable;
+	dns_hooktable_free_t hooktable_free;
 
 	/* Configuration text */
 	char *cfg;
@@ -24005,7 +24005,7 @@ dns_zone_setrad(dns_zone_t *zone, dns_name_t *name) {
 	rcu_read_unlock();
 }
 
-void *
+dns_hooktable_t *
 dns_zone_gethooktable(dns_zone_t *zone) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 	return zone->hooktable;
@@ -24013,7 +24013,7 @@ dns_zone_gethooktable(dns_zone_t *zone) {
 
 void
 dns_zone_sethooktable(dns_zone_t *zone, void *hooktable,
-		      void (*hooktable_free)(isc_mem_t *, void **)) {
+		      dns_hooktable_free_t hooktable_free) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 	REQUIRE(zone->hooktable == NULL);
 	REQUIRE(zone->hooktable_free == NULL);
