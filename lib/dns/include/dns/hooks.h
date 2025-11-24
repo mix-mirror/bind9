@@ -66,12 +66,12 @@
  * Hook actions are functions which:
  *
  *   - return a dns_hookresult_t value:
- *       - if DDNS_HOOK_RETURN is returned by the hook action, the function
+ *       - if DNS_HOOK_RETURN is returned by the hook action, the function
  *         into which the hook is inserted will return and no further hook
  *         actions at the same hook point will be invoked,
- *       - if DDNS_HOOK_CONTINUE is returned by the hook action and there are
+ *       - if DNS_HOOK_CONTINUE is returned by the hook action and there are
  *         further hook actions set up at the same hook point, they will be
- *         processed; if DDNS_HOOK_CONTINUE is returned and there are no
+ *         processed; if DNS_HOOK_CONTINUE is returned and there are no
  *         further hook actions set up at the same hook point, execution of
  *         the function into which the hook has been inserted will be
  *         resumed.
@@ -81,7 +81,7 @@
  *       - a pointer specified upon inserting the action into the hook table,
  *       - a pointer to an isc_result_t value which will be returned by the
  *         function into which the hook is inserted if the action returns
- *         DDNS_HOOK_RETURN.
+ *         DNS_HOOK_RETURN.
  *
  * In order for a hook action to be called for a given hook, a pointer to that
  * action function (along with an optional pointer to action-specific data) has
@@ -124,7 +124,7 @@
  *
  *     *resultp = ISC_R_FAILURE;
  *
- *     return (DDNS_HOOK_RETURN);
+ *     return (DNS_HOOK_RETURN);
  * }
  * ----------------------------------------------------------------------------
  *
@@ -139,7 +139,7 @@
  * ----------------------------------------------------------------------------
  *
  * then query_foo() would return ISC_R_FAILURE every time it is called due
- * to the cause_failure() hook action returning DDNS_HOOK_RETURN and setting
+ * to the cause_failure() hook action returning DNS_HOOK_RETURN and setting
  * '*resultp' to ISC_R_FAILURE.  query_foo() would also never log the
  * "Lorem ipsum dolor sit amet..." message.
  *
@@ -155,7 +155,7 @@
  *
  *     fprintf(stream, "QTYPE=%u\n", qctx->qtype);
  *
- *     return (DDNS_HOOK_CONTINUE);
+ *     return (DNS_HOOK_CONTINUE);
  * }
  * ----------------------------------------------------------------------------
  *
@@ -176,7 +176,7 @@
  * the hook action in 'hook_data' since it is specified in the CALL_HOOK() call
  * inside query_foo() while stderr would be passed to the hook action in
  * 'action_data' since it is specified in the dns_hook_t structure passed to
- * dns_hook_add().  As the hook action returns DDNS_HOOK_CONTINUE,
+ * dns_hook_add().  As the hook action returns DNS_HOOK_CONTINUE,
  * query_foo() would also be logging the "Lorem ipsum dolor sit amet..."
  * message before returning ISC_R_COMPLETE.
  *
@@ -223,7 +223,7 @@
  * in the passed pointer.
  *
  * On return from dns_query_hookasync(), the hook action MUST return
- * DDNS_HOOK_RETURN to suspend the query handling.
+ * DNS_HOOK_RETURN to suspend the query handling.
  *
  * On the completion of the asynchronous event, the hook implementation is
  * supposed to send the resumeevent to the corresponding loop.  The query
@@ -257,17 +257,17 @@
  *		// complete the hook's action using the result of the
  *		// internal asynchronous event.
  *		state->async = false;
- *		return (DDNS_HOOK_CONTINUE);
+ *		return (DNS_HOOK_CONTINUE);
  *	}
  *
  *	// Initial call to the hook action.  Start the internal
  *	// asynchronous event, and have the query module suspend
- *	// its own handling by returning DDNS_HOOK_RETURN.
+ *	// its own handling by returning DNS_HOOK_RETURN.
  *	state->hookpoint = ...; // would be hook point for this hook
  *	state->origresult = *resultp;
  *	dns_query_hookasync(hook_data, runasync, state);
  *	state->async = true;
- *	return (DDNS_HOOK_RETURN);
+ *	return (DNS_HOOK_RETURN);
  * }
  *
  * And the 'runasync' function would be something like this:
@@ -351,7 +351,7 @@
  *
  * - Zone plugin hooks are called first. Zone template hooks are called
  *   second. View hooks are called third. If any plugin hook at any level
- *   returns DDNS_HOOK_RETURN, the whole calling chain is stopped and no
+ *   returns DNS_HOOK_RETURN, the whole calling chain is stopped and no
  *   subsequent hooks are called. (See the `dns__query_hookchain` unit test
  *   in `tests/ns/query_test.c`.)
  *
