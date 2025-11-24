@@ -11,12 +11,11 @@
  * information regarding copyright ownership.
  */
 
-include "kasp.conf";
-include "named.common.conf";
+dnssec-policy "manual-rollover" {
+	dnskey-ttl 3600;
 
-zone "manual-rollover.kasp" {
-	type primary;
-	file "manual-rollover.kasp.db";
-	dnssec-policy "manual-rollover";
-	notify no;
+	keys {
+		ksk key-directory lifetime unlimited algorithm @DEFAULT_ALGORITHM@;
+		zsk key-directory lifetime unlimited algorithm @DEFAULT_ALGORITHM@;
+	};
 };
