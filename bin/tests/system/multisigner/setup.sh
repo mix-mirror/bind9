@@ -16,10 +16,10 @@
 
 set -e
 
-copy_setports ns3/named.conf.in ns3/named.conf
-copy_setports ns4/named.conf.in ns4/named.conf
-copy_setports ns5/named.conf.in ns5/named.conf
+copy_setports ns2/multisigner.db.in ns2/multisigner.db.infile
+copy_setports ns2/secondary.db.in ns2/secondary.db.infile
 
+# multi-signers
 (
   cd ns3
   $SHELL setup.sh
@@ -30,5 +30,15 @@ copy_setports ns5/named.conf.in ns5/named.conf
 )
 (
   cd ns5
+  $SHELL setup.sh
+)
+# tld
+(
+  cd ns2
+  $SHELL setup.sh
+)
+# root
+(
+  cd ns1
   $SHELL setup.sh
 )

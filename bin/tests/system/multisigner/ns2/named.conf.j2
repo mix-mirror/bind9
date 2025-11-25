@@ -11,21 +11,18 @@
  * information regarding copyright ownership.
  */
 
-// NS3
-
-include "../kasp.conf";
+// NS2
 
 options {
-	query-source address 10.53.0.3;
-	notify-source 10.53.0.3;
-	transfer-source 10.53.0.3;
+	query-source address 10.53.0.2;
+	notify-source 10.53.0.2;
+	transfer-source 10.53.0.2;
 	port @PORT@;
 	pid-file "named.pid";
-	listen-on { 10.53.0.3; };
+	listen-on { 10.53.0.2; };
 	listen-on-v6 { none; };
 	allow-transfer { any; };
-	recursion no;
-	key-directory ".";
+	allow-notify { 10.53.0.3; 10.53.0.4; };
 	dnssec-validation no;
 };
 
@@ -35,21 +32,22 @@ key rndc_key {
 };
 
 controls {
-	inet 10.53.0.3 port @CONTROLPORT@ allow { any; } keys { rndc_key; };
+	inet 10.53.0.2 port @CONTROLPORT@ allow { any; } keys { rndc_key; };
 };
 
-zone "model2.multisigner." {
+zone "multisigner" {
 	type primary;
-	allow-update { any; };
-	file "model2.multisigner.db";
-	dnssec-policy model2;
-	inline-signing no;
+	file "multisigner.db.signed";
 };
 
-zone "model2.secondary." {
-	type secondary;
-	primaries { 10.53.0.5; };
-	file "model2.secondary.db";
-	dnssec-policy model2;
-	inline-signing yes;
+zone "secondary" {
+	type primary;
+	file "secondary.db.signed";
 };
+
+zone "." {
+	type hint;
+	file "../../_common/root.hint";
+};
+
+include "trusted.conf";
