@@ -3107,6 +3107,8 @@ query_rpzfetch(ns_client_t *client, dns_name_t *qname, dns_rdatatype_t type) {
 		return;
 	}
 
+	client->message->flags |= DNS_MESSAGEFLAG_Z;
+
 	fetch_and_forget(client, qname, type, RECTYPE_RPZ);
 }
 
