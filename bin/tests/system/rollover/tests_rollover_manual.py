@@ -13,9 +13,71 @@ from datetime import timedelta
 import os
 
 import isctest
-from isctest.kasp import KeyTimingMetadata, Ipub, Iret
+from isctest.kasp import KeyTimingMetadata, Ipub, Iret, private_type_record
+from isctest.template import Nameserver, Zone
 
-from rollover.common import pytestmark  # pylint: disable=unused-import
+from rollover.common import default_algorithm
+from rollover.setup import (
+    CmdHelper,
+    configure_root,
+    configure_tld,
+)
+
+
+def bootstrap():
+    templates = isctest.template.TemplateEngine(".")
+    alg = default_algorithm()
+    keygen = CmdHelper("KEYGEN", f"-q -a {alg.number} -b {alg.bits} -L 3600")
+    signer = CmdHelper("SIGNER", "-S -g")
+    settime = CmdHelper("SETTIME", "-s")
+
+    zones = []
+
+    zone = "manual-rollover.kasp"
+    # Configuration.
+    isctest.log.info(f"setup {zone}")
+    template = "template.db.j2.manual"
+    outfile = f"{zone}.db"
+    zones.append(Zone(zone, outfile, Nameserver("ns3", "10.53.0.3")))
+    # Key generation.
+    when = "now-7d"
+    ksk_name = keygen(f"-f KSK -P {when} -A {when} {zone}", cwd="ns3").strip()
+    zsk_name = keygen(f"-P {when} -A {when} {zone}", cwd="ns3").strip()
+    settime(
+        f"-g OMNIPRESENT -k OMNIPRESENT {when} -r OMNIPRESENT {when} -d OMNIPRESENT {when} {ksk_name}",
+        cwd="ns3",
+    )
+    settime(
+        f"-g OMNIPRESENT -k OMNIPRESENT {when} -z OMNIPRESENT {when} {zsk_name}",
+        cwd="ns3",
+    )
+    ksk = isctest.kasp.Key(ksk_name, keydir="ns3")
+    zsk = isctest.kasp.Key(zsk_name, keydir="ns3")
+    dnskeys = [ksk.dnskey, zsk.dnskey]
+    privaterrs = [
+        private_type_record(zone, ksk),
+        private_type_record(zone, zsk),
+    ]
+    # Signing.
+    tdata = {
+        "fqdn": f"{zone}.",
+        "dnskeys": dnskeys,
+        "privaterrs": privaterrs,
+    }
+    templates.render(f"ns3/{outfile}", tdata, template=f"ns3/{template}")
+    signer(f"-P -x -O raw -o {zone} -f {outfile}.signed {outfile}", cwd="ns3")
+    # Chain of trust.
+    data = {
+        "tlds": [],
+        "trust_anchors": [],
+    }
+    tld = configure_tld("kasp", zones)
+    data["tlds"].append("kasp")
+
+    ta = configure_root([tld])
+    data["trust_anchors"].append(ta)
+
+    return data
 
 
 def test_rollover_manual(ns3):

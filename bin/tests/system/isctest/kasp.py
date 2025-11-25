@@ -1655,3 +1655,19 @@ def wait_keymgr_done(server: NamedInstance, zone: str, reconfig: bool = False) -
     messages.append(f"keymgr: {zone} done")
     with server.watch_log_from_start(timeout=60) as watcher:
         watcher.wait_for_sequence(messages)
+
+
+def private_type_record(zone: str, key: Key, rrtype: int = 65534) -> str:
+    """
+    Write a private type record recording the state of the signing process for
+    a given zone and key, print the private type record with given RRtype,
+    indicating that the signing process for this key is completed.
+    """
+    keyid = key.tag
+    algorithm = key.get_dnsalg()
+    secalg = int(key.get_metadata("Algorithm"))
+
+    if algorithm < 256:
+        return f"{zone}. 0 IN TYPE{rrtype} \\# 5 {secalg:02x}{keyid:04x}0000"
+
+    return f"{zone}. 0 IN TYPE{rrtype} \\# 7 {secalg:02x}{keyid:04x}0000{algorithm:04x}"

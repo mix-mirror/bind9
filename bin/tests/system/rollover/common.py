@@ -15,6 +15,7 @@ import os
 import pytest
 
 from isctest.kasp import Ipub, IpubC, Iret
+from isctest.vars.algorithms import Algorithm
 
 pytestmark = pytest.mark.extra_artifacts(
     [
@@ -34,9 +35,11 @@ pytestmark = pytest.mark.extra_artifacts(
         "ns*/K*.private",
         "ns*/K*.state",
         "ns*/keygen.out.*",
+        "ns*/managed-keys.**",
         "ns*/settime.out.*",
         "ns*/signer.out.*",
         "ns*/zones",
+        "ns1/root.db.in",
     ]
 )
 
@@ -137,3 +140,12 @@ def alg():
 @pytest.fixture
 def size():
     return os.environ["DEFAULT_BITS"]
+
+
+def default_algorithm():
+    return Algorithm(
+        os.environ["DEFAULT_ALGORITHM"],
+        int(os.environ["DEFAULT_ALGORITHM_NUMBER"]),
+        int(os.environ["DEFAULT_ALGORITHM_DST_NUMBER"]),
+        int(os.environ["DEFAULT_BITS"]),
+    )
