@@ -87,7 +87,7 @@ dns_notify_destroy(dns_notify_t *notify, bool locked) {
 			dns__zone_lock(notify->zone);
 		}
 		REQUIRE(dns__zone_locked(notify->zone));
-		nctx = dns__zone_getnotifyctx(notify->zone);
+		nctx = dns__zone_getnotifyctx(notify->zone, notify->type);
 		if (ISC_LINK_LINKED(notify, link)) {
 			ISC_LIST_UNLINK(nctx->notifies, notify, link);
 		}
@@ -129,11 +129,15 @@ notify_done(void *arg) {
 	isc_buffer_t buf;
 	char rcode[128];
 	char addrbuf[ISC_SOCKADDR_FORMATSIZE];
+	char typebuf[DNS_RDATATYPE_FORMATSIZE];
 
 	REQUIRE(DNS_NOTIFY_VALID(notify));
 
 	isc_buffer_init(&buf, rcode, sizeof(rcode));
 	isc_sockaddr_format(&notify->dst, addrbuf, sizeof(addrbuf));
+
+	dns_rdatatype_format(notify->type, typebuf, sizeof(typebuf));
+
 	/* WMM: This is changing the mctx from zone to notify. */
 	dns_message_create(notify->mctx, NULL, NULL, DNS_MESSAGE_INTENTPARSE,
 			   &message);
@@ -152,32 +156,33 @@ notify_done(void *arg) {
 	result = dns_rcode_totext(message->rcode, &buf);
 	if (result == ISC_R_SUCCESS) {
 		notify_log(notify, ISC_LOG_DEBUG(3),
-			   "notify response from %s: %.*s", addrbuf,
-			   (int)buf.used, rcode);
+			   "notify(%s) response from %s: %.*s", typebuf,
+			   addrbuf, (int)buf.used, rcode);
 	}
 fail:
 	dns_message_detach(&message);
 
 	if (result == ISC_R_SUCCESS) {
-		notify_log(notify, ISC_LOG_DEBUG(1), "notify to %s successful",
-			   addrbuf);
+		notify_log(notify, ISC_LOG_DEBUG(1),
+			   "notify(%s) to %s successful", typebuf, addrbuf);
 	} else if (result == ISC_R_SHUTTINGDOWN || result == ISC_R_CANCELED) {
 		/* just destroy the notify */
 	} else if ((notify->flags & DNS_NOTIFY_TCP) == 0) {
 		notify_log(notify, ISC_LOG_NOTICE,
-			   "notify to %s failed: %s: retrying over TCP",
-			   addrbuf, isc_result_totext(result));
+			   "notify(%s) to %s failed: %s: retrying over TCP",
+			   typebuf, addrbuf, isc_result_totext(result));
 		notify->flags |= DNS_NOTIFY_TCP;
 		dns_request_destroy(&notify->request);
 		dns_notify_queue(notify, notify->flags & DNS_NOTIFY_STARTUP);
 		return;
 	} else if (result == ISC_R_TIMEDOUT) {
 		notify_log(notify, ISC_LOG_WARNING,
-			   "notify to %s failed: %s: retries exceeded", addrbuf,
-			   isc_result_totext(result));
+			   "notify(%s) to %s failed: %s: retries exceeded",
+			   typebuf, addrbuf, isc_result_totext(result));
 	} else {
-		notify_log(notify, ISC_LOG_WARNING, "notify to %s failed: %s",
-			   addrbuf, isc_result_totext(result));
+		notify_log(notify, ISC_LOG_WARNING,
+			   "notify(%s) to %s failed: %s", typebuf, addrbuf,
+			   isc_result_totext(result));
 	}
 	dns_notify_destroy(notify, false);
 }
@@ -324,6 +329,7 @@ notify_send_toaddr(void *arg) {
 	isc_netaddr_t dstip;
 	dns_tsigkey_t *key = NULL;
 	char addrbuf[ISC_SOCKADDR_FORMATSIZE];
+	char typebuf[DNS_RDATATYPE_FORMATSIZE];
 	isc_sockaddr_t src;
 	unsigned int options;
 	bool have_notifysource = false;
@@ -333,12 +339,15 @@ notify_send_toaddr(void *arg) {
 
 	dns__zone_lock(notify->zone);
 
-	notifyctx = dns__zone_getnotifyctx(notify->zone);
+	notifyctx = dns__zone_getnotifyctx(notify->zone, notify->type);
 	zmgr = dns_zone_getmgr(notify->zone);
 	view = dns_zone_getview(notify->zone);
 	loop = dns_zone_getloop(notify->zone);
 	result = dns_zone_getdb(notify->zone, &zonedb);
+
 	isc_sockaddr_format(&notify->dst, addrbuf, sizeof(addrbuf));
+
+	dns_rdatatype_format(notify->type, typebuf, sizeof(typebuf));
 
 	if (!dns__zone_loaded(notify->zone) || notify->rlevent->canceled ||
 	    dns__zone_exiting(notify->zone) || zmgr == NULL || view == NULL ||
@@ -357,8 +366,8 @@ notify_send_toaddr(void *arg) {
 	    IN6_IS_ADDR_V4MAPPED(&notify->dst.type.sin6.sin6_addr))
 	{
 		notify_log(notify, ISC_LOG_DEBUG(3),
-			   "notify: ignoring IPv6 mapped IPV4 address: %s",
-			   addrbuf);
+			   "notify(%s): ignoring IPv6 mapped IPV4 address: %s",
+			   typebuf, addrbuf);
 		result = ISC_R_CANCELED;
 		goto cleanup;
 	}
@@ -377,9 +386,9 @@ notify_send_toaddr(void *arg) {
 		result = dns_view_getpeertsig(view, &dstip, &key);
 		if (result != ISC_R_SUCCESS && result != ISC_R_NOTFOUND) {
 			notify_log(notify, ISC_LOG_ERROR,
-				   "NOTIFY to %s not sent. "
+				   "NOTIFY(%s) to %s not sent. "
 				   "Peer TSIG key lookup failure.",
-				   addrbuf);
+				   typebuf, addrbuf);
 			goto cleanup_message;
 		}
 	}
@@ -389,11 +398,11 @@ notify_send_toaddr(void *arg) {
 
 		dns_name_format(key->name, namebuf, sizeof(namebuf));
 		notify_log(notify, ISC_LOG_INFO,
-			   "sending notify to %s : TSIG (%s)", addrbuf,
-			   namebuf);
+			   "sending notify(%s) to %s : TSIG (%s)", typebuf,
+			   addrbuf, namebuf);
 	} else {
-		notify_log(notify, ISC_LOG_INFO, "sending notify to %s",
-			   addrbuf);
+		notify_log(notify, ISC_LOG_INFO, "sending notify(%s) to %s",
+			   typebuf, addrbuf);
 	}
 	options = 0;
 	if (view->peers != NULL) {
@@ -469,8 +478,8 @@ again:
 		goto cleanup_key;
 	} else if ((notify->flags & DNS_NOTIFY_TCP) == 0) {
 		notify_log(notify, ISC_LOG_NOTICE,
-			   "notify to %s failed: %s: retrying over TCP",
-			   addrbuf, isc_result_totext(result));
+			   "notify(%s) to %s failed: %s: retrying over TCP",
+			   typebuf, addrbuf, isc_result_totext(result));
 		notify->flags |= DNS_NOTIFY_TCP;
 		goto again;
 	}
@@ -494,8 +503,9 @@ cleanup:
 
 	if (result != ISC_R_SUCCESS) {
 		isc_sockaddr_format(&notify->dst, addrbuf, sizeof(addrbuf));
-		notify_log(notify, ISC_LOG_WARNING, "notify to %s failed: %s",
-			   addrbuf, isc_result_totext(result));
+		notify_log(notify, ISC_LOG_WARNING,
+			   "notify(%s) to %s failed: %s", typebuf, addrbuf,
+			   isc_result_totext(result));
 		dns_notify_destroy(notify, false);
 	}
 }
@@ -594,7 +604,7 @@ notify_isself(dns_notify_t *notify, isc_sockaddr_t *dst) {
 	dns_isselffunc_t isselffunc;
 	void *isselfarg = NULL;
 
-	notifyctx = dns__zone_getnotifyctx(notify->zone);
+	notifyctx = dns__zone_getnotifyctx(notify->zone, notify->type);
 	view = dns_zone_getview(notify->zone);
 	dns__zone_getisself(notify->zone, &isselffunc, &isselfarg);
 	if (view == NULL || isselffunc == NULL) {
@@ -652,7 +662,7 @@ notify_send(dns_notify_t *notify) {
 	if (dns__zone_exiting(notify->zone)) {
 		return;
 	}
-	notifyctx = dns__zone_getnotifyctx(notify->zone);
+	notifyctx = dns__zone_getnotifyctx(notify->zone, notify->type);
 
 	ISC_LIST_FOREACH(notify->find->list, ai, publink) {
 		dst = ai->sockaddr;

@@ -15825,10 +15825,18 @@ dns_zone_getrdclass(dns_zone_t *zone) {
 }
 
 dns_notifyctx_t *
-dns__zone_getnotifyctx(dns_zone_t *zone) {
+dns__zone_getnotifyctx(dns_zone_t *zone, dns_rdatatype_t type) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 
-	return &zone->notifysoa;
+	switch (type) {
+	case dns_rdatatype_soa:
+		return &zone->notifysoa;
+	case dns_rdatatype_cds:
+		return &zone->notifycds;
+	default:
+		UNREACHABLE();
+	}
+	return NULL;
 }
 
 void
