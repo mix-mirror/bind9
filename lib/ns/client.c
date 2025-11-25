@@ -63,6 +63,8 @@
 #include <ns/stats.h>
 #include <ns/update.h>
 
+#include "probes-ns.h"
+
 /***
  *** Client
  ***/
@@ -192,6 +194,8 @@ ns_client_recursing(ns_client_t *client) {
 	REQUIRE(NS_CLIENT_VALID(client));
 	REQUIRE(client->inner.state == NS_CLIENTSTATE_WORKING);
 
+	LIBNS_CLIENT_RECURSING(client);
+
 	client->message->flags |= DNS_MESSAGEFLAG_Z;
 
 	LOCK(&client->manager->reclock);
@@ -240,6 +244,7 @@ ns_client_endrequest(ns_client_t *client) {
 	       client->inner.state == NS_CLIENTSTATE_RECURSING);
 
 	CTRACE("endrequest");
+	LIBNS_CLIENT_ENDREQUEST(client);
 
 	if (client->inner.state == NS_CLIENTSTATE_RECURSING) {
 		LOCK(&client->manager->reclock);
@@ -303,6 +308,8 @@ ns_client_drop(ns_client_t *client, isc_result_t result) {
 		client->inner.state == NS_CLIENTSTATE_RECURSING);
 
 	CTRACE("drop");
+	LIBNS_CLIENT_DROP(client);
+
 	if (result != ISC_R_SUCCESS) {
 		ns_client_log(client, DNS_LOGCATEGORY_SECURITY,
 			      NS_LOGMODULE_CLIENT, ISC_LOG_DEBUG(3),
@@ -317,6 +324,7 @@ client_senddone(isc_nmhandle_t *handle, isc_result_t result, void *cbarg) {
 	REQUIRE(client->inner.sendhandle == handle);
 
 	CTRACE("senddone");
+	LIBNS_CLIENT_SENDDONE(client);
 
 	/*
 	 * Set sendhandle to NULL, but don't detach it immediately, in
@@ -488,6 +496,7 @@ ns_client_sendraw(ns_client_t *client, dns_message_t *message) {
 	REQUIRE(NS_CLIENT_VALID(client));
 
 	CTRACE("sendraw");
+	LIBNS_CLIENT_SENDRAW(client);
 
 	mr = dns_message_getrawmessage(message);
 	if (mr == NULL) {
@@ -577,6 +586,7 @@ ns_client_send(ns_client_t *client) {
 	env = client->manager->aclenv;
 
 	CTRACE("send");
+	LIBNS_CLIENT_SEND(client);
 
 	if (client->message->opcode == dns_opcode_query &&
 	    (client->inner.attributes & NS_CLIENTATTR_RA) != 0)
@@ -865,6 +875,7 @@ ns_client_error(ns_client_t *client, isc_result_t result) {
 	REQUIRE(NS_CLIENT_VALID(client));
 
 	CTRACE("error");
+	LIBNS_CLIENT_ERROR(client);
 
 	message = client->message;
 
@@ -1889,6 +1900,8 @@ ns_client_request(isc_nmhandle_t *handle, isc_result_t eresult,
 		ns__client_setup(client, NULL, false);
 	}
 
+	LIBNS_CLIENT_REQUEST(client, NS_CLIENTSTATE_READY);
+
 	client->inner.state = NS_CLIENTSTATE_READY;
 
 	if (client->inner.handle == NULL) {
@@ -2481,6 +2494,7 @@ ns_client_request_continue(void *arg) {
 	switch (client->message->opcode) {
 	case dns_opcode_query:
 		CTRACE("query");
+		LIBNS_CLIENT_REQUEST(client, "query");
 #ifdef HAVE_DNSTAP
 		if (ra && (client->message->flags & DNS_MESSAGEFLAG_RD) != 0) {
 			dtmsgtype = DNS_DTTYPE_CQ;
@@ -2498,6 +2512,7 @@ ns_client_request_continue(void *arg) {
 		break;
 	case dns_opcode_update:
 		CTRACE("update");
+		LIBNS_CLIENT_REQUEST(client, "update");
 #ifdef HAVE_DNSTAP
 		dns_dt_send(client->inner.view, DNS_DTTYPE_UQ,
 			    &client->inner.peeraddr,
@@ -2511,15 +2526,18 @@ ns_client_request_continue(void *arg) {
 		break;
 	case dns_opcode_notify:
 		CTRACE("notify");
+		LIBNS_CLIENT_REQUEST(client, "notify");
 		ns_client_settimeout(client, 60);
 		ns_notify_start(client, client->inner.handle);
 		break;
 	case dns_opcode_iquery:
 		CTRACE("iquery");
+		LIBNS_CLIENT_REQUEST(client, "iquery");
 		ns_client_error(client, DNS_R_NOTIMP);
 		break;
 	default:
 		CTRACE("unknown opcode");
+		LIBNS_CLIENT_REQUEST(client, "unknown opcode");
 		ns_client_error(client, DNS_R_NOTIMP);
 	}
 

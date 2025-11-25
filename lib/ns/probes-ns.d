@@ -13,4 +13,14 @@
 
 provider libns {
 	probe rrl_drop(const char *, const char *, const char *, int);
+	probe client_recursing(void *, const char *);
+	probe client_request(void *);
+	probe client_send(void *);
+	probe client_sendraw(void *);
+	probe client_drop(void *);
+	probe client_senddone(void *);
+	probe client_endrequest(void *);
+	probe client_error(void *);
+	probe client_query(void *);
+	probe client_request(void *, const char *);
 };
