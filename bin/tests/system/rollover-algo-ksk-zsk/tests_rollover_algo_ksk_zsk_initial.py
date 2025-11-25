@@ -31,12 +31,12 @@ from rollover.common import (
         param("manual"),
     ],
 )
-def test_algoroll_ksk_zsk_initial(ns6, tld):
+def test_algoroll_ksk_zsk_initial(ns3, tld):
     config = ALGOROLL_CONFIG
     policy = f"rsasha256-{tld}"
     zone = f"step1.algorithm-roll.{tld}"
 
-    isctest.kasp.wait_keymgr_done(ns6, zone)
+    isctest.kasp.wait_keymgr_done(ns3, zone)
 
     step = {
         "zone": zone,
@@ -47,4 +47,4 @@ def test_algoroll_ksk_zsk_initial(ns6, tld):
         ],
         "nextev": TIMEDELTA["PT1H"],
     }
-    isctest.kasp.check_rollover_step(ns6, config, policy, step)
+    isctest.kasp.check_rollover_step(ns3, config, policy, step)

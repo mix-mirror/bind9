@@ -31,11 +31,11 @@ from rollover.common import (
         "going-straight-to-none-dynamic.kasp",
     ],
 )
-def test_straight2none_initial(zone, ns6, alg, size):
+def test_straight2none_initial(zone, ns3, alg, size):
     config = DEFAULT_CONFIG
     policy = "default"
 
-    isctest.kasp.wait_keymgr_done(ns6, zone)
+    isctest.kasp.wait_keymgr_done(ns3, zone)
 
     step = {
         "zone": zone,
@@ -45,4 +45,4 @@ def test_straight2none_initial(zone, ns6, alg, size):
         ],
         "nextev": None,
     }
-    isctest.kasp.check_rollover_step(ns6, config, policy, step)
+    isctest.kasp.check_rollover_step(ns3, config, policy, step)

@@ -14,7 +14,7 @@
 # shellcheck source=conf.sh
 . ../conf.sh
 
-cd "ns6"
+cd "ns3"
 
 setup() {
   zone="$1"

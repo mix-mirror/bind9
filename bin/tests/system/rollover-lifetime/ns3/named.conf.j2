@@ -20,25 +20,25 @@
 include "kasp.conf";
 include "named.common.conf";
 
-zone longer-lifetime {
+zone longer-lifetime.kasp {
 	type primary;
 	file "longer-lifetime.db";
 	dnssec-policy @longer@;
 };
 
-zone shorter-lifetime {
+zone shorter-lifetime.kasp {
 	type primary;
 	file "shorter-lifetime.db";
 	dnssec-policy @shorter@;
 };
 
-zone limit-lifetime {
+zone limit-lifetime.kasp {
 	type primary;
 	file "limit-lifetime.db";
 	dnssec-policy @limit@;
 };
 
-zone unlimit-lifetime {
+zone unlimit-lifetime.kasp {
 	type primary;
 	file "unlimit-lifetime.db";
 	dnssec-policy @unlimit@;

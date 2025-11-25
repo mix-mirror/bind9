@@ -31,12 +31,12 @@ from rollover.common import (
         "going-insecure-dynamic.kasp",
     ],
 )
-def test_going_insecure_initial(zone, ns6, alg, size):
+def test_going_insecure_initial(zone, ns3, alg, size):
     config = UNSIGNING_CONFIG
     policy = "unsigning"
     zone = f"step1.{zone}"
 
-    isctest.kasp.wait_keymgr_done(ns6, zone)
+    isctest.kasp.wait_keymgr_done(ns3, zone)
 
     step = {
         "zone": zone,
@@ -47,4 +47,4 @@ def test_going_insecure_initial(zone, ns6, alg, size):
         ],
         "nextev": None,
     }
-    isctest.kasp.check_rollover_step(ns6, config, policy, step)
+    isctest.kasp.check_rollover_step(ns3, config, policy, step)
