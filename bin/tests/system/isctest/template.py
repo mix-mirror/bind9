@@ -83,6 +83,20 @@ class TemplateEngine:
 
 
 @dataclass
+class Nameserver:
+    name: str
+    ip: str
+
+
+@dataclass
+class Zone:
+    name: str
+    filename: str
+    ns: Nameserver
+    type: str = "primary"
+
+
+@dataclass
 class TrustAnchor:
     domain: str
     type: str

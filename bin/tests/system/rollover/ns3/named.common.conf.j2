@@ -11,6 +11,14 @@
  * information regarding copyright ownership.
  */
 
+{% if trust_anchors is defined %}
+include "trusted.conf";
+{% set dnssec_validation = "yes" %}
+{% else %}
+{% set dnssec_validation = "auto" %}
+{% endif %}
+
+
 options {
         query-source address 10.53.0.3;
         notify-source 10.53.0.3;
@@ -20,8 +28,8 @@ options {
         listen-on { 10.53.0.3; };
         listen-on-v6 { none; };
         allow-transfer { any; };
-        recursion no;
-        dnssec-validation no;
+        recursion yes;
+        dnssec-validation @dnssec_validation@;
 };
 
 key rndc_key {
@@ -35,5 +43,5 @@ controls {
 
 zone "." {
         type hint;
-        file "../../_common/root.hint.blackhole";
+        file "../../_common/root.hint";
 };

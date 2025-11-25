@@ -10,18 +10,22 @@
 ; information regarding copyright ownership.
 
 $TTL 300
-@		IN	SOA  mname1. . (
-			1       ; serial
-			20      ; refresh (20 seconds)
-			20      ; retry (20 seconds)
-			1814400 ; expire (3 weeks)
-			3600    ; minimum (1 hour)
-			)
+.			IN SOA	. a.root.servers.nil. (
+				2000042100	; serial
+				600		; refresh
+				600		; retry
+				1200		; expire
+				600		; minimum
+				)
+.			NS	a.root-servers.nil.
+a.root-servers.nil.	A	10.53.0.1
 
-			NS	ns3
-ns3			A	10.53.0.3
+{% for dnskey in dnskeys %}
+@dnskey@
+{% endfor %}
 
-a			A	10.0.0.1
-b			A	10.0.0.2
-c			A	10.0.0.3
-
+{% for zone in delegations %}
+{% set ns_name = zone.ns.name + "." + zone.name %}
+@zone.name@		NS	@ns_name@
+@ns_name@		A	@zone.ns.ip@
+{% endfor %}
