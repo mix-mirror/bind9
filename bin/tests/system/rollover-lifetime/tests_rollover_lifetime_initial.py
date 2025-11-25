@@ -34,17 +34,17 @@ from rollover.common import (
         param("unlimit-lifetime", "short-lifetime", "P6M"),
     ],
 )
-def test_lifetime_initial(zone, policy, lifetime, alg, size, ns6):
+def test_lifetime_initial(zone, policy, lifetime, alg, size, ns3):
     config = DEFAULT_CONFIG
 
-    isctest.kasp.wait_keymgr_done(ns6, zone)
+    isctest.kasp.wait_keymgr_done(ns3, f"{zone}.kasp")
 
     step = {
-        "zone": zone,
+        "zone": f"{zone}.kasp",
         "cdss": CDSS,
         "keyprops": [
             f"csk {DURATION[lifetime]} {alg} {size} goal:omnipresent dnskey:rumoured krrsig:rumoured zrrsig:rumoured ds:hidden",
         ],
         "nextev": None,
     }
-    isctest.kasp.check_rollover_step(ns6, config, policy, step)
+    isctest.kasp.check_rollover_step(ns3, config, policy, step)

@@ -39,14 +39,14 @@ TIME_PASSED = 0  # set in reconfigure() fixture
 
 
 @pytest.fixture(scope="module", autouse=True)
-def after_servers_start(ns6, templates):
+def after_servers_start(ns3, templates):
     global TIME_PASSED  # pylint: disable=global-statement
 
-    isctest.kasp.wait_keymgr_done(ns6, "step1.csk-algorithm-roll.kasp")
+    isctest.kasp.wait_keymgr_done(ns3, "step1.csk-algorithm-roll.kasp")
 
-    templates.render("ns6/named.conf", {"csk_roll": True})
+    templates.render("ns3/named.conf", {"csk_roll": True})
     start_time = KeyTimingMetadata.now()
-    ns6.reconfigure()
+    ns3.reconfigure()
 
     # Calculate time passed to correctly check for next key events.
     TIME_PASSED = KeyTimingMetadata.now().value - start_time.value
@@ -59,11 +59,11 @@ def after_servers_start(ns6, templates):
         param("manual"),
     ],
 )
-def test_algoroll_csk_reconfig_step1(tld, ns6, alg, size):
+def test_algoroll_csk_reconfig_step1(tld, ns3, alg, size):
     zone = f"step1.csk-algorithm-roll.{tld}"
     policy = f"{POLICY}-{tld}"
 
-    isctest.kasp.wait_keymgr_done(ns6, zone, reconfig=True)
+    isctest.kasp.wait_keymgr_done(ns3, zone, reconfig=True)
 
     if tld == "manual":
         # Same as initial.
@@ -76,18 +76,18 @@ def test_algoroll_csk_reconfig_step1(tld, ns6, alg, size):
             "manual-mode": True,
             "nextev": None,
         }
-        keys = isctest.kasp.check_rollover_step(ns6, CONFIG, policy, step)
+        keys = isctest.kasp.check_rollover_step(ns3, CONFIG, policy, step)
 
         # Check logs.
         tag = keys[0].key.tag
         msg1 = f"keymgr-manual-mode: block retire DNSKEY {zone}/RSASHA256/{tag} (CSK)"
         msg2 = f"keymgr-manual-mode: block new key generation for zone {zone} (policy {policy})"
-        assert msg1 in ns6.log
-        assert msg2 in ns6.log
+        assert msg1 in ns3.log
+        assert msg2 in ns3.log
 
         # Force step.
-        with ns6.watch_log_from_here() as watcher:
-            ns6.rndc(f"dnssec -step {zone}")
+        with ns3.watch_log_from_here() as watcher:
+            ns3.rndc(f"dnssec -step {zone}")
             watcher.wait_for_line(
                 f"zone {zone}/IN (signed): zone_rekey done: key {tag}/RSASHA256"
             )
@@ -105,7 +105,7 @@ def test_algoroll_csk_reconfig_step1(tld, ns6, alg, size):
         # Next key event is when the ecdsa256 keys have been propagated.
         "nextev": ALGOROLL_IPUB,
     }
-    isctest.kasp.check_rollover_step(ns6, CONFIG, policy, step)
+    isctest.kasp.check_rollover_step(ns3, CONFIG, policy, step)
 
 
 @pytest.mark.parametrize(
@@ -115,11 +115,11 @@ def test_algoroll_csk_reconfig_step1(tld, ns6, alg, size):
         param("manual"),
     ],
 )
-def test_algoroll_csk_reconfig_step2(tld, ns6, alg, size):
+def test_algoroll_csk_reconfig_step2(tld, ns3, alg, size):
     zone = f"step2.csk-algorithm-roll.{tld}"
     policy = f"{POLICY}-{tld}"
 
-    isctest.kasp.wait_keymgr_done(ns6, zone, reconfig=True)
+    isctest.kasp.wait_keymgr_done(ns3, zone, reconfig=True)
 
     # manual-mode: Nothing changing in the zone, no 'dnssec -step' required.
 
@@ -142,7 +142,7 @@ def test_algoroll_csk_reconfig_step2(tld, ns6, alg, size):
         # the time passed between key creation and invoking 'rndc reconfig'.
         "nextev": ALGOROLL_IPUBC - ALGOROLL_IPUB - TIME_PASSED,
     }
-    isctest.kasp.check_rollover_step(ns6, CONFIG, policy, step)
+    isctest.kasp.check_rollover_step(ns3, CONFIG, policy, step)
 
 
 @pytest.mark.parametrize(
@@ -152,11 +152,11 @@ def test_algoroll_csk_reconfig_step2(tld, ns6, alg, size):
         param("manual"),
     ],
 )
-def test_algoroll_csk_reconfig_step3(tld, ns6, alg, size):
+def test_algoroll_csk_reconfig_step3(tld, ns3, alg, size):
     zone = f"step3.csk-algorithm-roll.{tld}"
     policy = f"{POLICY}-{tld}"
 
-    isctest.kasp.wait_keymgr_done(ns6, zone, reconfig=True)
+    isctest.kasp.wait_keymgr_done(ns3, zone, reconfig=True)
 
     if tld == "manual":
         # Same as step 2, but the zone signatures have become OMNIPRESENT.
@@ -170,16 +170,16 @@ def test_algoroll_csk_reconfig_step3(tld, ns6, alg, size):
             "manual-mode": True,
             "nextev": None,
         }
-        keys = isctest.kasp.check_rollover_step(ns6, CONFIG, policy, step)
+        keys = isctest.kasp.check_rollover_step(ns3, CONFIG, policy, step)
 
         # Check logs.
         tag = keys[1].key.tag
         msg = f"keymgr-manual-mode: block transition CSK {zone}/ECDSAP256SHA256/{tag} type DS state HIDDEN to state RUMOURED"
-        assert msg in ns6.log
+        assert msg in ns3.log
 
         # Force step.
-        with ns6.watch_log_from_here() as watcher:
-            ns6.rndc(f"dnssec -step {zone}")
+        with ns3.watch_log_from_here() as watcher:
+            ns3.rndc(f"dnssec -step {zone}")
             watcher.wait_for_line(
                 f"zone {zone}/IN (signed): zone_rekey done: key {tag}/ECDSAP256SHA256"
             )
@@ -187,14 +187,14 @@ def test_algoroll_csk_reconfig_step3(tld, ns6, alg, size):
         # Check logs.
         tag = keys[0].key.tag
         msg = f"keymgr-manual-mode: block transition CSK {zone}/RSASHA256/{tag} type DS state OMNIPRESENT to state UNRETENTIVE"
-        if msg in ns6.log:
+        if msg in ns3.log:
             # Force step.
             isctest.log.debug(
                 f"keymgr-manual-mode blocking transition CSK {zone}/RSASHA256/{tag} type DS state OMNIPRESENT to state UNRETENTIVE, step again"
             )
             tag = keys[1].key.tag
-            with ns6.watch_log_from_here() as watcher:
-                ns6.rndc(f"dnssec -step {zone}")
+            with ns3.watch_log_from_here() as watcher:
+                ns3.rndc(f"dnssec -step {zone}")
                 watcher.wait_for_line(
                     f"zone {zone}/IN (signed): zone_rekey done: key {tag}/ECDSAP256SHA256"
                 )
@@ -211,7 +211,7 @@ def test_algoroll_csk_reconfig_step3(tld, ns6, alg, size):
         # after the publication interval of the parent side.
         "nextev": ALGOROLL_IRETKSK - TIME_PASSED,
     }
-    isctest.kasp.check_rollover_step(ns6, CONFIG, policy, step)
+    isctest.kasp.check_rollover_step(ns3, CONFIG, policy, step)
 
 
 @pytest.mark.parametrize(
@@ -221,11 +221,11 @@ def test_algoroll_csk_reconfig_step3(tld, ns6, alg, size):
         param("manual"),
     ],
 )
-def test_algoroll_csk_reconfig_step4(tld, ns6, alg, size):
+def test_algoroll_csk_reconfig_step4(tld, ns3, alg, size):
     zone = f"step4.csk-algorithm-roll.{tld}"
     policy = f"{POLICY}-{tld}"
 
-    isctest.kasp.wait_keymgr_done(ns6, zone, reconfig=True)
+    isctest.kasp.wait_keymgr_done(ns3, zone, reconfig=True)
 
     if tld == "manual":
         # Same as step 3, but the DS has become HIDDEN/OMNIPRESENT.
@@ -239,17 +239,17 @@ def test_algoroll_csk_reconfig_step4(tld, ns6, alg, size):
             "manual-mode": True,
             "nextev": None,
         }
-        keys = isctest.kasp.check_rollover_step(ns6, CONFIG, policy, step)
+        keys = isctest.kasp.check_rollover_step(ns3, CONFIG, policy, step)
 
         # Check logs.
         tag = keys[0].key.tag
         msg = f"keymgr-manual-mode: block transition CSK {zone}/RSASHA256/{tag} type DNSKEY state OMNIPRESENT to state UNRETENTIVE"
-        assert msg in ns6.log
+        assert msg in ns3.log
 
         # Force step.
         tag = keys[1].key.tag
-        with ns6.watch_log_from_here() as watcher:
-            ns6.rndc(f"dnssec -step {zone}")
+        with ns3.watch_log_from_here() as watcher:
+            ns3.rndc(f"dnssec -step {zone}")
             watcher.wait_for_line(
                 f"zone {zone}/IN (signed): zone_rekey done: key {tag}/ECDSAP256SHA256"
             )
@@ -266,7 +266,7 @@ def test_algoroll_csk_reconfig_step4(tld, ns6, alg, size):
         # This happens after the DNSKEY TTL plus zone propagation delay.
         "nextev": ALGOROLL_KEYTTLPROP,
     }
-    isctest.kasp.check_rollover_step(ns6, CONFIG, policy, step)
+    isctest.kasp.check_rollover_step(ns3, CONFIG, policy, step)
 
 
 @pytest.mark.parametrize(
@@ -276,11 +276,11 @@ def test_algoroll_csk_reconfig_step4(tld, ns6, alg, size):
         param("manual"),
     ],
 )
-def test_algoroll_csk_reconfig_step5(tld, ns6, alg, size):
+def test_algoroll_csk_reconfig_step5(tld, ns3, alg, size):
     zone = f"step5.csk-algorithm-roll.{tld}"
     policy = f"{POLICY}-{tld}"
 
-    isctest.kasp.wait_keymgr_done(ns6, zone, reconfig=True)
+    isctest.kasp.wait_keymgr_done(ns3, zone, reconfig=True)
 
     # manual-mode: Nothing changing in the zone, no 'dnssec -step' required.
 
@@ -300,7 +300,7 @@ def test_algoroll_csk_reconfig_step5(tld, ns6, alg, size):
         # between key creation and invoking 'rndc reconfig'.
         "nextev": ALGOROLL_IRET - ALGOROLL_IRETKSK - ALGOROLL_KEYTTLPROP - TIME_PASSED,
     }
-    isctest.kasp.check_rollover_step(ns6, CONFIG, policy, step)
+    isctest.kasp.check_rollover_step(ns3, CONFIG, policy, step)
 
 
 @pytest.mark.parametrize(
@@ -310,11 +310,11 @@ def test_algoroll_csk_reconfig_step5(tld, ns6, alg, size):
         param("manual"),
     ],
 )
-def test_algoroll_csk_reconfig_step6(tld, ns6, alg, size):
+def test_algoroll_csk_reconfig_step6(tld, ns3, alg, size):
     zone = f"step6.csk-algorithm-roll.{tld}"
     policy = f"{POLICY}-{tld}"
 
-    isctest.kasp.wait_keymgr_done(ns6, zone, reconfig=True)
+    isctest.kasp.wait_keymgr_done(ns3, zone, reconfig=True)
 
     # manual-mode: Nothing changing in the zone, no 'dnssec -step' required.
 
@@ -331,4 +331,4 @@ def test_algoroll_csk_reconfig_step6(tld, ns6, alg, size):
         # loadkeys interval.
         "nextev": TIMEDELTA["PT1H"],
     }
-    isctest.kasp.check_rollover_step(ns6, CONFIG, policy, step)
+    isctest.kasp.check_rollover_step(ns3, CONFIG, policy, step)

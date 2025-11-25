@@ -25,12 +25,12 @@ from rollover.common import (
 
 
 @pytest.fixture(scope="module", autouse=True)
-def after_servers_start(ns6, templates):
-    isctest.kasp.wait_keymgr_done(ns6, "going-straight-to-none.kasp")
-    isctest.kasp.wait_keymgr_done(ns6, "going-straight-to-none-dynamic.kasp")
+def after_servers_start(ns3, templates):
+    isctest.kasp.wait_keymgr_done(ns3, "going-straight-to-none.kasp")
+    isctest.kasp.wait_keymgr_done(ns3, "going-straight-to-none-dynamic.kasp")
 
-    templates.render("ns6/named.conf", {"policy": "none"})
-    ns6.reconfigure()
+    templates.render("ns3/named.conf", {"policy": "none"})
+    ns3.reconfigure()
 
 
 @pytest.mark.parametrize(
@@ -40,7 +40,7 @@ def after_servers_start(ns6, templates):
         "going-straight-to-none-dynamic.kasp",
     ],
 )
-def test_straight2none_reconfig(zone, ns6, alg, size):
+def test_straight2none_reconfig(zone, ns3, alg, size):
     config = DEFAULT_CONFIG
     policy = None
 
@@ -54,4 +54,4 @@ def test_straight2none_reconfig(zone, ns6, alg, size):
         ],
         "nextev": None,
     }
-    isctest.kasp.check_rollover_step(ns6, config, policy, step)
+    isctest.kasp.check_rollover_step(ns3, config, policy, step)

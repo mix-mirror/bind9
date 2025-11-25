@@ -26,9 +26,9 @@ from rollover.common import (
 
 
 @pytest.fixture(scope="module", autouse=True)
-def after_servers_start(ns6, templates):
-    templates.render("ns6/named.conf", {"policy": "insecure"})
-    ns6.reconfigure()  # move from "unsigning" to "insecure"
+def after_servers_start(ns3, templates):
+    templates.render("ns3/named.conf", {"policy": "insecure"})
+    ns3.reconfigure()  # move from "unsigning" to "insecure"
 
 
 @pytest.mark.parametrize(
@@ -38,12 +38,12 @@ def after_servers_start(ns6, templates):
         "going-insecure-dynamic.kasp",
     ],
 )
-def test_going_insecure_reconfig_step1(zone, alg, size, ns6):
+def test_going_insecure_reconfig_step1(zone, alg, size, ns3):
     config = DEFAULT_CONFIG
     policy = "insecure"
     zone = f"step1.{zone}"
 
-    isctest.kasp.wait_keymgr_done(ns6, zone, reconfig=True)
+    isctest.kasp.wait_keymgr_done(ns3, zone, reconfig=True)
 
     # Key goal states should be HIDDEN.
     # The DS may be removed if we are going insecure.
@@ -61,7 +61,7 @@ def test_going_insecure_reconfig_step1(zone, alg, size, ns6):
         "cds-delete": True,
         "check-keytimes": False,
     }
-    isctest.kasp.check_rollover_step(ns6, config, policy, step)
+    isctest.kasp.check_rollover_step(ns3, config, policy, step)
 
 
 @pytest.mark.parametrize(
@@ -71,12 +71,12 @@ def test_going_insecure_reconfig_step1(zone, alg, size, ns6):
         "going-insecure-dynamic.kasp",
     ],
 )
-def test_going_insecure_reconfig_step2(zone, alg, size, ns6):
+def test_going_insecure_reconfig_step2(zone, alg, size, ns3):
     config = DEFAULT_CONFIG
     policy = "insecure"
     zone = f"step2.{zone}"
 
-    isctest.kasp.wait_keymgr_done(ns6, zone, reconfig=True)
+    isctest.kasp.wait_keymgr_done(ns3, zone, reconfig=True)
 
     # The DS is long enough removed from the zone to be considered
     # HIDDEN.  This means the DNSKEY and the KSK signatures can be
@@ -96,4 +96,4 @@ def test_going_insecure_reconfig_step2(zone, alg, size, ns6):
         "zone-signed": False,
         "check-keytimes": False,
     }
-    isctest.kasp.check_rollover_step(ns6, config, policy, step)
+    isctest.kasp.check_rollover_step(ns3, config, policy, step)
