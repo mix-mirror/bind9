@@ -666,6 +666,9 @@ endif
 
 ## userspace-rcu
 urcu_dep = [dependency('liburcu-cds', version: '>=0.10.0')]
+if urcu_dep[0].version().version_compare('>=0.15.0')
+    config.set('HAVE_CDS_LFHT_ALLOC', 1)
+endif
 if rcu_flavor == 'membarrier'
     config.set('RCU_MEMBARRIER', true)
     urcu_dep += dependency('liburcu', version: '>=0.10.0')

@@ -52,6 +52,7 @@ isc__lib_initialize(void) {
 	isc__os_initialize();
 	isc__mutex_initialize();
 	isc__mem_initialize();
+	isc__urcu_initialize();
 	isc__log_initialize();
 	isc__crypto_initialize();
 	isc__uv_initialize();
@@ -75,6 +76,7 @@ isc__lib_shutdown(void) {
 	isc__uv_shutdown();
 	isc__crypto_shutdown();
 	isc__log_shutdown();
+	isc__urcu_shutdown();
 	isc__mem_shutdown();
 	isc__mutex_shutdown();
 	isc__os_shutdown();

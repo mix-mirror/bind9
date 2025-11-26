@@ -28,10 +28,10 @@
 
 #include <dns/fixedname.h>
 #include <dns/lib.h>
+#include <dns/name.h>
 #include <dns/qp.h>
 #include <dns/types.h>
 
-#include "dns/name.h"
 #include "qp_p.h"
 
 #include <tests/dns.h>

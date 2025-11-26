@@ -100,18 +100,24 @@ dns_unreachcache_new(isc_mem_t *mctx, const uint16_t expire_min_s,
 		.expire_max_s = expire_max_s,
 		.backoff_eligible_s = backoff_eligible_s,
 		.nloops = nloops,
+		.mctx = isc_mem_ref(mctx),
 	};
 
+#if HAVE_CDS_LFHT_ALLOC
+	uc->ht = cds_lfht_new_with_flavor_alloc(
+		UNREACHCACHE_INIT_SIZE, UNREACHCACHE_MIN_SIZE, 0,
+		CDS_LFHT_AUTO_RESIZE | CDS_LFHT_ACCOUNTING, &rcu_flavor,
+		isc__urcu_alloc, NULL);
+#else
 	uc->ht = cds_lfht_new(UNREACHCACHE_INIT_SIZE, UNREACHCACHE_MIN_SIZE, 0,
 			      CDS_LFHT_AUTO_RESIZE | CDS_LFHT_ACCOUNTING, NULL);
+#endif
 	INSIST(uc->ht != NULL);
 
-	uc->lru = isc_mem_cget(mctx, uc->nloops, sizeof(uc->lru[0]));
+	uc->lru = isc_mem_cget(uc->mctx, uc->nloops, sizeof(uc->lru[0]));
 	for (size_t i = 0; i < uc->nloops; i++) {
 		CDS_INIT_LIST_HEAD(&uc->lru[i]);
 	}
-
-	isc_mem_attach(mctx, &uc->mctx);
 
 	return uc;
 }
