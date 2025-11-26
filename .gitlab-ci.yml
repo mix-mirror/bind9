@@ -32,15 +32,10 @@ variables:
   TSAN_CONFIGURE_FLAGS_COMMON: "-Db_sanitize=thread -Doptimization=2 -Ddebug=true -Didn=enabled -Dlocktype=system -Djemalloc=disabled --pkg-config-path /opt/tsan/lib/pkgconfig"
 
   # Pass run-time flags to AddressSanitizer to get core dumps on error.
-  ASAN_OPTIONS: abort_on_error=1:disable_coredump=0:unmap_shadow_on_exit=1:detect_odr_violation=0
   ASAN_SYMBOLIZER_PATH: "${LLVM_SYMBOLIZER}"
 
-  TSAN_OPTIONS_COMMON: "disable_coredump=0 second_deadlock_stack=1 atexit_sleep_ms=1000 history_size=7 log_exe_name=true log_path=tsan"
-  TSAN_SUPPRESSIONS: "suppressions=${CI_PROJECT_DIR}/.tsan-suppress"
-  TSAN_OPTIONS_DEBIAN: "${TSAN_OPTIONS_COMMON} ${TSAN_SUPPRESSIONS} external_symbolizer_path=${LLVM_SYMBOLIZER}"
-  TSAN_OPTIONS_FEDORA: "${TSAN_OPTIONS_COMMON} ${TSAN_SUPPRESSIONS} external_symbolizer_path=/usr/bin/llvm-symbolizer"
-
-  UBSAN_OPTIONS: "halt_on_error=1:abort_on_error=1:disable_coredump=0"
+  TSAN_SYMBOLIZER_PATH_DEBIAN: "${LLVM_SYMBOLIZER}"
+  TSAN_SYMBOLIZER_PATH_FEDORA: "/usr/bin/llvm-symbolizer"
 
   WITHOUT_LIBEDIT: "-Dline=disabled"
   WITH_LIBEDIT: "-Dline=enabled"
@@ -457,6 +452,8 @@ stages:
     #- test -z "${CROSS_COMPILATION}" || grep -F -A 1 "checking whether we are cross compiling" config.log | grep -q "result.*yes"
     - test -z "${CROSS_COMPILATION}" || file build/lib/dns/gen | grep -F -q "ELF 64-bit LSB"
     #- test -z "${CROSS_COMPILATION}" || ( ! git ls-files -z --others --exclude lib/dns/gen | xargs -0 file | grep "ELF 64-bit LSB" )
+    - *find_python
+    - $PYTHON ${CI_PROJECT_DIR}/ci/sanitizer-default-check.py build
     - build/named -V
     - *fips_feature_test
   needs: []
@@ -1429,8 +1426,6 @@ gcc:asan:
   <<: *build_job
 
 system:gcc:asan:
-  variables:
-    LSAN_OPTIONS: "suppressions=$CI_PROJECT_DIR/suppr-lsan.txt"
   <<: *fedora_42_amd64_image
   <<: *system_test_job
   needs:
@@ -1453,8 +1448,6 @@ clang:asan:
   <<: *build_job
 
 system:clang:asan:
-  variables:
-    LSAN_OPTIONS: "suppressions=$CI_PROJECT_DIR/suppr-lsan.txt"
   <<: *base_image
   <<: *system_test_job
   <<: *extra_system_tests_triggering_rules
@@ -1483,7 +1476,7 @@ gcc:tsan:
 
 system:gcc:tsan:
   variables:
-    TSAN_OPTIONS: "${TSAN_OPTIONS_FEDORA}"
+    TSAN_SYMBOLIZER_PATH: "${TSAN_SYMBOLIZER_PATH_FEDORA}"
   <<: *tsan_fedora_42_amd64_image
   <<: *system_test_tsan_job
   <<: *extra_system_tests_triggering_rules
@@ -1493,7 +1486,7 @@ system:gcc:tsan:
 
 unit:gcc:tsan:
   variables:
-    TSAN_OPTIONS: "${TSAN_OPTIONS_FEDORA}"
+    TSAN_SYMBOLIZER_PATH: "${TSAN_SYMBOLIZER_PATH_FEDORA}"
   <<: *tsan_fedora_42_amd64_image
   <<: *unit_test_tsan_job
   <<: *api_pipelines_schedules_tags_triggers_web_triggering_rules
@@ -1513,7 +1506,7 @@ clang:tsan:
 
 system:clang:tsan:
   variables:
-    TSAN_OPTIONS: "${TSAN_OPTIONS_DEBIAN}"
+    TSAN_SYMBOLIZER_PATH: "${TSAN_SYMBOLIZER_PATH_DEBIAN}"
   <<: *tsan_debian_trixie_amd64_image
   <<: *system_test_tsan_job
   needs:
@@ -1522,7 +1515,7 @@ system:clang:tsan:
 
 unit:clang:tsan:
   variables:
-    TSAN_OPTIONS: "${TSAN_OPTIONS_DEBIAN}"
+    TSAN_SYMBOLIZER_PATH: "${TSAN_SYMBOLIZER_PATH_DEBIAN}"
   <<: *tsan_debian_trixie_amd64_image
   <<: *unit_test_tsan_job
   needs:
@@ -1984,7 +1977,7 @@ respdiff:tsan:
     LDFLAGS: "-Wl,--disable-new-dtags"
     EXTRA_CONFIGURE: "${TSAN_CONFIGURE_FLAGS_COMMON} -Dnamed-lto=off -Db_lundef=false"
     MAX_DISAGREEMENTS_PERCENTAGE: "0.3"
-    TSAN_OPTIONS: "${TSAN_OPTIONS_DEBIAN}"
+    TSAN_SYMBOLIZER_PATH: "${TSAN_SYMBOLIZER_PATH_DEBIAN}"
   script:
     - bash respdiff.sh -s named -q "${PWD}/100k_mixed.txt" -c 3 -w "${PWD}/rspworkdir" "${CI_PROJECT_DIR}" "/usr/local/respdiff-reference-bind/sbin/named"
     - cd ../.. && ninja -C build clean >/dev/null 2>&1

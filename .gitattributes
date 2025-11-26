@@ -12,7 +12,6 @@
 .gitlab-ci.yml			 export-ignore
 .pylintrc			 export-ignore
 .readthedocs.yaml		 export-ignore
-.tsan-suppress			 export-ignore
 .uncrustify.cfg		 export-ignore
 dangerfile.py			 export-ignore
 /.github/**			 export-ignore

@@ -24,6 +24,7 @@ foreach bench : [
         files(fs.replace_suffix(bench, '.c')),
         export_dynamic: true,
         install: false,
+        sources: default_sanitize_options,
         dependencies: [
             libisc_dep,
             libdns_dep,
@@ -42,6 +43,7 @@ executable(
     export_dynamic: true,
     include_directories: '..' / '..' / 'fuzz',
     install: false,
+    sources: default_sanitize_options,
     dependencies: [
         libisc_dep,
         libdns_dep,
