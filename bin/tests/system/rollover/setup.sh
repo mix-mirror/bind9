@@ -43,3 +43,12 @@ private_type_record $zone $DEFAULT_ALGORITHM_NUMBER "$KSK" >>"$infile"
 private_type_record $zone $DEFAULT_ALGORITHM_NUMBER "$ZSK" >>"$infile"
 cp $infile $zonefile
 $SIGNER -PS -x -o $zone -O raw -f "${zonefile}.signed" $infile >signer.out.$zone.1 2>&1
+
+cp "${KSK}.key" ../ns4
+cp "${KSK}.private" ../ns4
+cp "${KSK}.state" ../ns4
+cp "${ZSK}.key" ../ns4
+cp "${ZSK}.private" ../ns4
+cp "${ZSK}.state" ../ns4
+cp "${zonefile}" ../ns4/
+cp "${zonefile}.signed" ../ns4/
