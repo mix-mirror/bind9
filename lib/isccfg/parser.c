@@ -724,8 +724,6 @@ parser_create(isc_mem_t *mctx, cfg_parser_t **ret) {
 	pctx->mctx = NULL;
 	isc_mem_attach(mctx, &pctx->mctx);
 
-	isc_refcount_init(&pctx->references, 1);
-
 	pctx->lexer = NULL;
 	pctx->seen_eof = false;
 	pctx->ungotten = false;
@@ -769,17 +767,15 @@ parser_destroy(cfg_parser_t **pctxp) {
 	pctx = *pctxp;
 	*pctxp = NULL;
 
-	if (isc_refcount_decrement(&pctx->references) == 1) {
-		isc_lex_destroy(&pctx->lexer);
-		/*
-		 * Cleaning up open_files does not
-		 * close the files; that was already done
-		 * by closing the lexer.
-		 */
-		CLEANUP_OBJ(pctx->open_files);
-		CLEANUP_OBJ(pctx->closed_files);
-		isc_mem_putanddetach(&pctx->mctx, pctx, sizeof(*pctx));
-	}
+	isc_lex_destroy(&pctx->lexer);
+	/*
+	 * Cleaning up open_files does not
+	 * close the files; that was already done
+	 * by closing the lexer.
+	 */
+	CLEANUP_OBJ(pctx->open_files);
+	CLEANUP_OBJ(pctx->closed_files);
+	isc_mem_putanddetach(&pctx->mctx, pctx, sizeof(*pctx));
 }
 
 static isc_result_t

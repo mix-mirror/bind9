@@ -288,9 +288,6 @@ struct cfg_parser {
 	 * from one token to the next.
 	 */
 	unsigned int flags;
-
-	/*%< Reference counter */
-	isc_refcount_t references;
 };
 
 /* Parser context flags */
