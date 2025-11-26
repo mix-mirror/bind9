@@ -738,6 +738,7 @@ signset(dns_diff_t *del, dns_diff_t *add, dns_dbnode_t *node, dns_name_t *name,
 				 * - Have the ZSK type (iszsk).
 				 * - Have key ID equal to the predecessor id.
 				 * - Have a successor that matches 'key' id.
+				 * - Must not be revoked.
 				 */
 				ISC_LIST_FOREACH(keylist, curr, link) {
 					uint32_t suc;
@@ -747,6 +748,9 @@ signset(dns_diff_t *del, dns_diff_t *add, dns_dbnode_t *node, dns_name_t *name,
 					    !iszsk(curr) ||
 					    dst_key_id(curr->key) != pre)
 					{
+						continue;
+					}
+					if (REVOKE(curr->key)) {
 						continue;
 					}
 					ret = dst_key_getnum(curr->key,
