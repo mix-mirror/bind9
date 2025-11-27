@@ -5522,7 +5522,7 @@ cache_rrset(fetchctx_t *fctx, isc_stdtime_t now, dns_name_t *name,
 					    sigrdataset, options, addedsig);
 		if (result != ISC_R_SUCCESS && result != DNS_R_UNCHANGED) {
 			if (added != NULL) {
-				dns__rdataset_disassociate(added);
+				dns_rdataset_disassociate(added);
 			}
 		}
 	}
