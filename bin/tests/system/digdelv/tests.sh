@@ -382,8 +382,6 @@ if [ -x "$DIG" ]; then
   n=$((n + 1))
   echo_i "checking dig preserves origin on TCP retries ($n)"
   ret=0
-  # Ask ans4 to still accept TCP connections, but not respond to queries
-  echo "//" | sendcmd 10.53.0.4
   dig_with_opts -d +tcp @10.53.0.4 +retry=1 +time=1 +domain=bar foo >dig.out.test$n 2>&1 && ret=1
   test "$(grep -c "trying origin bar" dig.out.test$n)" -eq 2 || ret=1
   grep "using root origin" <dig.out.test$n >/dev/null && ret=1
