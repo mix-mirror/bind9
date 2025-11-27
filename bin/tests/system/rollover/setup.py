@@ -90,7 +90,16 @@ def configure_root(delegations: List[Zone]) -> TrustAnchor:
     return ksk.into_ta("static-ds")
 
 
-def render_and_sign_zone(zonename: str, keys: List[str]):
+def fake_lifetime(keys: List[str]):
+    """
+    Fake lifetime of old algorithm keys.
+    """
+    for key in keys:
+        with open(f"ns3/{key}.state", "a") as statefile:
+            statefile.write("Lifetime: 0\n")
+
+
+def render_and_sign_zone(zonename: str, keys: List[str], extra_options: str = ""):
     dnskeys = []
     privaterrs = []
     for key_name in keys:
@@ -109,8 +118,8 @@ def render_and_sign_zone(zonename: str, keys: List[str]):
     }
     templates.render(f"ns3/{outfile}", tdata, template=f"ns3/{template}")
 
-    signer = CmdHelper("SIGNER", "-S -g -x -z -s now-1h -e now+2w -O raw")
-    signer(f"-o {zonename} -f {outfile}.signed {outfile}", cwd="ns3")
+    signer = CmdHelper("SIGNER", "-S -g -x -s now-1h -e now+2w -O raw")
+    signer(f"{extra_options} -o {zonename} -f {outfile}.signed {outfile}", cwd="ns3")
 
 
 def configure_algo_csk(tld: str, policy: str, reconfig: bool = False) -> List[Zone]:
@@ -136,7 +145,7 @@ def configure_algo_csk(tld: str, policy: str, reconfig: bool = False) -> List[Zo
         cwd="ns3",
     )
     # Signing.
-    render_and_sign_zone(zonename, [csk_name])
+    render_and_sign_zone(zonename, [csk_name], extra_options="-z")
 
     if reconfig:
         # Step 2:
@@ -160,7 +169,7 @@ def configure_algo_csk(tld: str, policy: str, reconfig: bool = False) -> List[Zo
             cwd="ns3",
         )
         # Signing.
-        render_and_sign_zone(zonename, [csk1_name, csk2_name])
+        render_and_sign_zone(zonename, [csk1_name, csk2_name], extra_options="-z")
 
         # Step 3:
         # The zone signatures are also OMNIPRESENT.
@@ -184,7 +193,7 @@ def configure_algo_csk(tld: str, policy: str, reconfig: bool = False) -> List[Zo
             cwd="ns3",
         )
         # Signing.
-        render_and_sign_zone(zonename, [csk1_name, csk2_name])
+        render_and_sign_zone(zonename, [csk1_name, csk2_name], extra_options="-z")
 
         # Step 4:
         # The DS is swapped and can become OMNIPRESENT.
@@ -208,7 +217,7 @@ def configure_algo_csk(tld: str, policy: str, reconfig: bool = False) -> List[Zo
             cwd="ns3",
         )
         # Signing.
-        render_and_sign_zone(zonename, [csk1_name, csk2_name])
+        render_and_sign_zone(zonename, [csk1_name, csk2_name], extra_options="-z")
 
         # Step 5:
         # The DNSKEY is removed long enough to be HIDDEN.
@@ -232,7 +241,7 @@ def configure_algo_csk(tld: str, policy: str, reconfig: bool = False) -> List[Zo
             cwd="ns3",
         )
         # Signing.
-        render_and_sign_zone(zonename, [csk1_name, csk2_name])
+        render_and_sign_zone(zonename, [csk1_name, csk2_name], extra_options="-z")
 
         # Step 6:
         # The RRSIGs have been removed long enough to be HIDDEN.
@@ -256,6 +265,245 @@ def configure_algo_csk(tld: str, policy: str, reconfig: bool = False) -> List[Zo
             cwd="ns3",
         )
         # Signing.
-        render_and_sign_zone(zonename, [csk1_name, csk2_name])
+        render_and_sign_zone(zonename, [csk1_name, csk2_name], extra_options="-z")
+
+    return zones
+
+
+def configure_algo_ksk_zsk(tld: str, reconfig: bool = False) -> List[Zone]:
+    # The zones at algorithm-roll.$tld represent the various steps of a ZSK/KSK
+    # algorithm rollover.
+    zones = []
+    zone = f"algorithm-roll.{tld}"
+    keygen = CmdHelper("KEYGEN", "-L 3600")
+    settime = CmdHelper("SETTIME", "-s")
+
+    # Step 1:
+    # Introduce the first key. This will immediately be active.
+    zonename = f"step1.{zone}"
+    zones.append(Zone(zonename, f"{zonename}.db", Nameserver("ns3", "10.53.0.3")))
+    isctest.log.info(f"setup {zonename}")
+    TactN = "now-7d"
+    TsbmN = "now-161h"
+    keytimes = f"-P {TactN} -A {TactN}"
+    # Key generation.
+    ksk_name = keygen(f"-a RSASHA256 -f KSK {keytimes} {zonename}", cwd="ns3").strip()
+    zsk_name = keygen(f"-a RSASHA256 {keytimes} {zonename}", cwd="ns3").strip()
+    settime(
+        f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {ksk_name}",
+        cwd="ns3",
+    )
+    settime(
+        f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} {zsk_name}",
+        cwd="ns3",
+    )
+    # Signing.
+    render_and_sign_zone(zonename, [ksk_name, zsk_name])
+
+    if reconfig:
+        # Step 2:
+        # After the publication interval has passed the DNSKEY is OMNIPRESENT.
+        zonename = f"step2.{zone}"
+        zones.append(Zone(zonename, f"{zonename}.db", Nameserver("ns3", "10.53.0.3")))
+        isctest.log.info(f"setup {zonename}")
+        # The time passed since the new algorithm keys have been introduced is 3 hours.
+        # Tsbm(N+1) = TpubN1 + Ipub = now + TTLsig + Dprp = now - 3h + 6h + 1h = now + 4h
+        TpubN1 = "now-3h"
+        TsbmN1 = "now+4h"
+        ksk1times = f"-P {TactN}  -A {TactN}  -P sync {TsbmN} -I {TsbmN1}"
+        zsk1times = f"-P {TactN}  -A {TactN}  -I {TsbmN1}"
+        ksk2times = f"-P {TpubN1} -A {TpubN1} -P sync {TsbmN1}"
+        zsk2times = f"-P {TpubN1} -A {TpubN1}"
+        # Key generation.
+        ksk1_name = keygen(
+            f"-a RSASHA256 -f KSK {ksk1times} {zonename}", cwd="ns3"
+        ).strip()
+        zsk1_name = keygen(f"-a RSASHA256 {zsk1times} {zonename}", cwd="ns3").strip()
+        ksk2_name = keygen(
+            f"-a ECDSA256 -f KSK {ksk2times} {zonename}", cwd="ns3"
+        ).strip()
+        zsk2_name = keygen(f"-a ECDSA256 {zsk2times} {zonename}", cwd="ns3").strip()
+        settime(
+            f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {ksk1_name}",
+            cwd="ns3",
+        )
+        settime(
+            f"-g HIDDEN -k OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} {zsk1_name}",
+            cwd="ns3",
+        )
+        settime(
+            f"-g OMNIPRESENT -k RUMOURED {TpubN1} -r RUMOURED {TpubN1} -d HIDDEN {TpubN1} {ksk2_name}",
+            cwd="ns3",
+        )
+        settime(
+            f"-g OMNIPRESENT -k RUMOURED {TpubN1} -z RUMOURED {TpubN1} {zsk2_name}",
+            cwd="ns3",
+        )
+        # Signing.
+        fake_lifetime([ksk1_name, zsk1_name])
+        render_and_sign_zone(zonename, [ksk1_name, zsk1_name, ksk2_name, zsk2_name])
+
+        # Step 3:
+        # The zone signatures are also OMNIPRESENT.
+        zonename = f"step3.{zone}"
+        zones.append(Zone(zonename, f"{zonename}.db", Nameserver("ns3", "10.53.0.3")))
+        isctest.log.info(f"setup {zonename}")
+        # The time passed since the new algorithm keys have been introduced is 7 hours.
+        TpubN1 = "now-7h"
+        TsbmN1 = "now"
+        ksk1times = f"-P {TactN} -A {TactN} -P sync {TsbmN} -I {TsbmN1}"
+        zsk1times = f"-P {TactN} -A {TactN} -I {TsbmN1}"
+        ksk2times = f"-P {TpubN1} -A {TpubN1} -P sync {TsbmN1}"
+        zsk2times = f"-P {TpubN1} -A {TpubN1}"
+        # Key generation.
+        ksk1_name = keygen(
+            f"-a RSASHA256 -f KSK {ksk1times} {zonename}", cwd="ns3"
+        ).strip()
+        zsk1_name = keygen(f"-a RSASHA256 {zsk1times} {zonename}", cwd="ns3").strip()
+        ksk2_name = keygen(
+            f"-a ECDSA256 -f KSK {ksk2times} {zonename}", cwd="ns3"
+        ).strip()
+        zsk2_name = keygen(f"-a ECDSA256 {zsk2times} {zonename}", cwd="ns3").strip()
+        settime(
+            f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {ksk1_name}",
+            cwd="ns3",
+        )
+        settime(
+            f"-g HIDDEN -k OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} {zsk1_name}",
+            cwd="ns3",
+        )
+        settime(
+            f"-g OMNIPRESENT -k OMNIPRESENT {TpubN1} -r OMNIPRESENT {TpubN1} -d HIDDEN {TpubN1} {ksk2_name}",
+            cwd="ns3",
+        )
+        settime(
+            f"-g OMNIPRESENT -k OMNIPRESENT {TpubN1} -z RUMOURED {TpubN1} {zsk2_name}",
+            cwd="ns3",
+        )
+        # Signing.
+        fake_lifetime([ksk1_name, zsk1_name])
+        render_and_sign_zone(zonename, [ksk1_name, zsk1_name, ksk2_name, zsk2_name])
+
+        # Step 4:
+        # The DS is swapped and can become OMNIPRESENT.
+        zonename = f"step4.{zone}"
+        zones.append(Zone(zonename, f"{zonename}.db", Nameserver("ns3", "10.53.0.3")))
+        isctest.log.info(f"setup {zonename}")
+        # The time passed since the DS has been swapped is 3 hours.
+        TpubN1 = "now-10h"
+        TsbmN1 = "now-3h"
+        ksk1times = f"-P {TactN} -A {TactN} -P sync {TsbmN} -I {TsbmN1}"
+        zsk1times = f"-P {TactN} -A {TactN} -I {TsbmN1}"
+        ksk2times = f"-P {TpubN1} -A {TpubN1} -P sync {TsbmN1}"
+        zsk2times = f"-P {TpubN1} -A {TpubN1}"
+        # Key generation.
+        ksk1_name = keygen(
+            f"-a RSASHA256 -f KSK {ksk1times} {zonename}", cwd="ns3"
+        ).strip()
+        zsk1_name = keygen(f"-a RSASHA256 {zsk1times} {zonename}", cwd="ns3").strip()
+        ksk2_name = keygen(
+            f"-a ECDSA256 -f KSK {ksk2times} {zonename}", cwd="ns3"
+        ).strip()
+        zsk2_name = keygen(f"-a ECDSA256 {zsk2times} {zonename}", cwd="ns3").strip()
+        settime(
+            f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d UNRETENTIVE {TsbmN1} -D ds {TsbmN1} {ksk1_name}",
+            cwd="ns3",
+        )
+        settime(
+            f"-g HIDDEN -k OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} {zsk1_name}",
+            cwd="ns3",
+        )
+        settime(
+            f"-g OMNIPRESENT -k OMNIPRESENT {TpubN1} -r OMNIPRESENT {TpubN1} -d RUMOURED {TsbmN1} -P ds {TsbmN1} {ksk2_name}",
+            cwd="ns3",
+        )
+        settime(
+            f"-g OMNIPRESENT -k OMNIPRESENT {TpubN1} -z RUMOURED {TpubN1} {zsk2_name}",
+            cwd="ns3",
+        )
+        # Signing.
+        fake_lifetime([ksk1_name, zsk1_name])
+        render_and_sign_zone(zonename, [ksk1_name, zsk1_name, ksk2_name, zsk2_name])
+
+        # Step 5:
+        # The DNSKEY is removed long enough to be HIDDEN.
+        zonename = f"step5.{zone}"
+        zones.append(Zone(zonename, f"{zonename}.db", Nameserver("ns3", "10.53.0.3")))
+        isctest.log.info(f"setup {zonename}")
+        # The time passed since the DNSKEY has been removed is 2 hours.
+        TpubN1 = "now-12h"
+        TsbmN1 = "now-5h"
+        ksk1times = f"-P {TactN} -A {TactN} -P sync {TsbmN} -I {TsbmN1}"
+        zsk1times = f"-P {TactN} -A {TactN} -I {TsbmN1}"
+        ksk2times = f"-P {TpubN1} -A {TpubN1} -P sync {TsbmN1}"
+        zsk2times = f"-P {TpubN1} -A {TpubN1}"
+        # Key generation.
+        ksk1_name = keygen(
+            f"-a RSASHA256 -f KSK {ksk1times} {zonename}", cwd="ns3"
+        ).strip()
+        zsk1_name = keygen(f"-a RSASHA256 {zsk1times} {zonename}", cwd="ns3").strip()
+        ksk2_name = keygen(
+            f"-a ECDSA256 -f KSK {ksk2times} {zonename}", cwd="ns3"
+        ).strip()
+        zsk2_name = keygen(f"-a ECDSA256 {zsk2times} {zonename}", cwd="ns3").strip()
+        settime(
+            f"-g HIDDEN -k UNRETENTIVE {TsbmN1} -r UNRETENTIVE {TsbmN1} -d HIDDEN {TsbmN1} {ksk1_name}",
+            cwd="ns3",
+        )
+        settime(
+            f"-g HIDDEN -k UNRETENTIVE {TsbmN1} -z UNRETENTIVE {TsbmN1} {zsk1_name}",
+            cwd="ns3",
+        )
+        settime(
+            f"-g OMNIPRESENT -k OMNIPRESENT {TpubN1} -r OMNIPRESENT {TpubN1} -d OMNIPRESENT {TsbmN1} {ksk2_name}",
+            cwd="ns3",
+        )
+        settime(
+            f"-g OMNIPRESENT -k OMNIPRESENT {TpubN1} -z RUMOURED {TpubN1} {zsk2_name}",
+            cwd="ns3",
+        )
+        # Signing.
+        fake_lifetime([ksk1_name, zsk1_name])
+        render_and_sign_zone(zonename, [ksk1_name, zsk1_name, ksk2_name, zsk2_name])
+
+        # Step 6:
+        # The RRSIGs have been removed long enough to be HIDDEN.
+        zonename = f"step6.{zone}"
+        zones.append(Zone(zonename, f"{zonename}.db", Nameserver("ns3", "10.53.0.3")))
+        isctest.log.info(f"setup {zonename}")
+        # Additional time passed: 7h.
+        TpubN1 = "now-19h"
+        TsbmN1 = "now-12h"
+        ksk1times = f"-P {TactN} -A {TactN} -P sync {TsbmN} -I {TsbmN1}"
+        zsk1times = f"-P {TactN} -A {TactN} -I {TsbmN1}"
+        ksk2times = f"-P {TpubN1} -A {TpubN1} -P sync {TsbmN1}"
+        zsk2times = f"-P {TpubN1} -A {TpubN1}"
+        ksk1_name = keygen(
+            f"-a RSASHA256 -f KSK {ksk1times} {zonename}", cwd="ns3"
+        ).strip()
+        zsk1_name = keygen(f"-a RSASHA256 {zsk1times} {zonename}", cwd="ns3").strip()
+        ksk2_name = keygen(
+            f"-a ECDSA256 -f KSK {ksk2times} {zonename}", cwd="ns3"
+        ).strip()
+        zsk2_name = keygen(f"-a ECDSA256 {zsk2times} {zonename}", cwd="ns3").strip()
+        settime(
+            f"-g HIDDEN -k HIDDEN {TsbmN1} -r UNRETENTIVE {TsbmN1} -d HIDDEN {TsbmN1} {ksk1_name}",
+            cwd="ns3",
+        )
+        settime(
+            f"-g HIDDEN -k HIDDEN {TsbmN1} -z UNRETENTIVE {TsbmN1} {zsk1_name}",
+            cwd="ns3",
+        )
+        settime(
+            f"-g OMNIPRESENT -k OMNIPRESENT {TpubN1} -r OMNIPRESENT {TpubN1} -d OMNIPRESENT {TsbmN1} {ksk2_name}",
+            cwd="ns3",
+        )
+        settime(
+            f"-g OMNIPRESENT -k OMNIPRESENT {TpubN1} -z RUMOURED {TpubN1} {zsk2_name}",
+            cwd="ns3",
+        )
+        # Signing.
+        fake_lifetime([ksk1_name, zsk1_name])
+        render_and_sign_zone(zonename, [ksk1_name, zsk1_name, ksk2_name, zsk2_name])
 
     return zones
