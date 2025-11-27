@@ -32,10 +32,41 @@ from rollover.common import (
     DURATION,
     TIMEDELTA,
 )
+from rollover.setup import (
+    configure_root,
+    configure_tld,
+    configure_algo_csk,
+)
 
 CONFIG = ALGOROLL_CONFIG
 POLICY = "csk-algoroll"
 TIME_PASSED = 0  # set in reconfigure() fixture
+
+
+def bootstrap():
+    data = {
+        "tlds": [],
+        "trust_anchors": [],
+    }
+
+    tlds = []
+    for tld_name in [
+        "kasp",
+        "manual",
+    ]:
+        delegations = configure_algo_csk(
+            tld_name, f"{POLICY}-{tld_name}", reconfig=True
+        )
+
+        tld = configure_tld(tld_name, delegations)
+        tlds.append(tld)
+
+        data["tlds"].append(tld_name)
+
+    ta = configure_root(tlds)
+    data["trust_anchors"].append(ta)
+
+    return data
 
 
 @pytest.fixture(scope="module", autouse=True)
