@@ -528,6 +528,7 @@ def configure_cskroll1(tld: str, policy: str) -> List[Zone]:
     # (which is essentially a ZSK Pre-Publication / KSK Double-KSK rollover).
     zones = []
     zone = f"csk-roll1.{tld}"
+    cds = "cdnskey,cds:sha384"
     keygen = CmdHelper("KEYGEN", f"-k {policy} -l kasp.conf")
     settime = CmdHelper("SETTIME", "-s")
 
@@ -545,7 +546,7 @@ def configure_cskroll1(tld: str, policy: str) -> List[Zone]:
         cwd="ns3",
     )
     # Signing.
-    render_and_sign_zone(zonename, [csk_name], extra_options="-z -G cdnskey,cds:sha384")
+    render_and_sign_zone(zonename, [csk_name], extra_options=f"-z -G {cds}")
 
     # Step 2:
     # It is time to introduce the new CSK.
@@ -577,7 +578,7 @@ def configure_cskroll1(tld: str, policy: str) -> List[Zone]:
         cwd="ns3",
     )
     # Signing.
-    render_and_sign_zone(zonename, [csk_name], extra_options="-z -G cdnskey,cds:sha384")
+    render_and_sign_zone(zonename, [csk_name], extra_options=f"-z -G {cds}")
 
     # Step 3:
     # It is time to submit the DS and to roll signatures.
@@ -639,9 +640,7 @@ def configure_cskroll1(tld: str, policy: str) -> List[Zone]:
     # Set key rollover relationship.
     set_key_relationship(csk1_name, csk2_name)
     # Signing.
-    render_and_sign_zone(
-        zonename, [csk1_name, csk2_name], extra_options="-z -G cdnskey,cds:sha384"
-    )
+    render_and_sign_zone(zonename, [csk1_name, csk2_name], extra_options=f"-z -G {cds}")
 
     # Step 4:
     # Some time later all the ZRRSIG records should be from the new CSK, and the
@@ -694,9 +693,7 @@ def configure_cskroll1(tld: str, policy: str) -> List[Zone]:
     # Set key rollover relationship.
     set_key_relationship(csk1_name, csk2_name)
     # Signing.
-    render_and_sign_zone(
-        zonename, [csk1_name, csk2_name], extra_options="-z -G cdnskey,cds:sha384"
-    )
+    render_and_sign_zone(zonename, [csk1_name, csk2_name], extra_options=f"-z -G {cds}")
 
     # Step 5:
     # After the DS is swapped in step 4, also the KRRSIG records can be removed.
@@ -731,9 +728,7 @@ def configure_cskroll1(tld: str, policy: str) -> List[Zone]:
     # Set key rollover relationship.
     set_key_relationship(csk1_name, csk2_name)
     # Signing.
-    render_and_sign_zone(
-        zonename, [csk1_name, csk2_name], extra_options="-z -G cdnskey,cds:sha384"
-    )
+    render_and_sign_zone(zonename, [csk1_name, csk2_name], extra_options=f"-z -G {cds}")
 
     # Step 6:
     # After the retire interval has passed the predecessor DNSKEY can be
@@ -784,9 +779,7 @@ def configure_cskroll1(tld: str, policy: str) -> List[Zone]:
     # Set key rollover relationship.
     set_key_relationship(csk1_name, csk2_name)
     # Signing.
-    render_and_sign_zone(
-        zonename, [csk1_name, csk2_name], extra_options="-z -G cdnskey,cds:sha384"
-    )
+    render_and_sign_zone(zonename, [csk1_name, csk2_name], extra_options=f"-z -G {cds}")
 
     # Step 7:
     # Some time later the predecessor DNSKEY enters the HIDDEN state.
@@ -820,9 +813,7 @@ def configure_cskroll1(tld: str, policy: str) -> List[Zone]:
     # Set key rollover relationship.
     set_key_relationship(csk1_name, csk2_name)
     # Signing.
-    render_and_sign_zone(
-        zonename, [csk1_name, csk2_name], extra_options="-z -G cdnskey,cds:sha384"
-    )
+    render_and_sign_zone(zonename, [csk1_name, csk2_name], extra_options=f"-z -G {cds}")
 
     # Step 8:
     # The predecessor DNSKEY can be purged.
@@ -856,8 +847,350 @@ def configure_cskroll1(tld: str, policy: str) -> List[Zone]:
     # Set key rollover relationship.
     set_key_relationship(csk1_name, csk2_name)
     # Signing.
-    render_and_sign_zone(
-        zonename, [csk1_name, csk2_name], extra_options="-z -G cdnskey,cds:sha384"
+    render_and_sign_zone(zonename, [csk1_name, csk2_name], extra_options=f"-z -G {cds}")
+
+    return zones
+
+
+def configure_cskroll2(tld: str, policy: str) -> List[Zone]:
+    # The zones at csk-roll2.$tld represent the various steps of a CSK rollover
+    # (which is essentially a ZSK Pre-Publication / KSK Double-KSK rollover).
+    # This scenario differs from the csk-roll1 one because the zone signatures (ZRRSIG)
+    # are replaced with the new key sooner than the DS is swapped.
+    zones = []
+    zone = f"csk-roll2.{tld}"
+    cds = "cdnskey,cds:sha-256,cds:sha-384"
+    keygen = CmdHelper("KEYGEN", f"-k {policy} -l kasp.conf")
+    settime = CmdHelper("SETTIME", "-s")
+
+    # Step 1:
+    # Introduce the first key. This will immediately be active.
+    zonename = f"step1.{zone}"
+    zones.append(Zone(zonename, f"{zonename}.db", Nameserver("ns3", "10.53.0.3")))
+    isctest.log.info(f"setup {zonename}")
+    TactN = "now-7d"
+    keytimes = f"-P {TactN} -A {TactN}"
+    # Key generation.
+    csk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
+    settime(
+        f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {csk_name}",
+        cwd="ns3",
     )
+    # Signing.
+    render_and_sign_zone(zonename, [csk_name], extra_options=f"-z -G {cds}")
+
+    # Step 2:
+    # It is time to introduce the new CSK.
+    zonename = f"step2.{zone}"
+    zones.append(Zone(zonename, f"{zonename}.db", Nameserver("ns3", "10.53.0.3")))
+    isctest.log.info(f"setup {zonename}")
+    # According to RFC 7583:
+    # KSK: Tpub(N+1) <= Tact(N) + Lksk - IpubC
+    # ZSK: Tpub(N+1) <= Tact(N) + Lzsk - Ipub
+    # IpubC = DprpC + TTLkey (+publish-safety)
+    # Ipub  = IpubC
+    # Lcsk = Lksk = Lzsk
+    #
+    # Lcsk:           6mo (186d, 4464h)
+    # Dreg:           N/A
+    # DprpC:          1h
+    # TTLkey:         1h
+    # publish-safety: 1h
+    # Ipub:           3h
+    #
+    # Tact(N)  = now - Lcsk + Ipub = now - 186d + 3h
+    #          = now - 4464h + 3h = now - 4461h
+    TactN = "now-4461h"
+    keytimes = f"-P {TactN} -A {TactN}"
+    # Key generation.
+    csk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
+    settime(
+        f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {csk_name}",
+        cwd="ns3",
+    )
+    # Signing.
+    render_and_sign_zone(zonename, [csk_name], extra_options=f"-z -G {cds}")
+
+    # Step 3:
+    # It is time to submit the DS and to roll signatures.
+    zonename = f"step3.{zone}"
+    zones.append(Zone(zonename, f"{zonename}.db", Nameserver("ns3", "10.53.0.3")))
+    isctest.log.info(f"setup {zonename}")
+    # According to RFC 7583:
+    #
+    # Tsbm(N+1) >= Trdy(N+1)
+    # KSK: Tact(N+1) = Tsbm(N+1)
+    # ZSK: Tact(N+1) = Tpub(N+1) + Ipub = Tsbm(N+1)
+    # KSK: Iret  = DprpP + TTLds (+retire-safety)
+    # ZSK: IretZ = Dsgn + Dprp + TTLsig (+retire-safety)
+    #
+    # Lcsk:           186d
+    # Dprp:           1h
+    # DprpP:          1w
+    # Dreg:           N/A
+    # Dsgn:           12h
+    # TTLds:          1h
+    # TTLsig:         1d
+    # retire-safety:  1h
+    # Iret:           170h
+    # IretZ:          38h
+    # Ipub:           3h
+    #
+    # Tpub(N)   = now - Lcsk = now - 186d
+    # Tact(N)   = now - Lcsk + Dprp + TTLsig = now - 4439h
+    # Tret(N)   = now
+    # Trem(N)   = now + IretZ = now + 26d3h = now + 627h
+    # Tpub(N+1) = now - Ipub = now - 3h
+    # Tact(N+1) = Tret(N)
+    # Tret(N+1) = now + Lcsk = now + 186d = now + 186d
+    # Trem(N+1) = now + Lcsk + IretZ = now + 186d + 26d3h =
+    #           = now + 5091h
+    TpubN = "now-186d"
+    TactN = "now-4439h"
+    TretN = "now"
+    TremN = "now+170h"
+    TpubN1 = "now-3h"
+    TactN1 = TretN
+    TretN1 = "now+186d"
+    TremN1 = "now+4634h"
+    keytimes = (
+        f"-P {TpubN} -P sync {TactN} -A {TpubN} -I {TretN} -D {TremN} -D sync {TactN1}"
+    )
+    newtimes = f"-P {TpubN1} -P sync {TactN1} -A {TactN1} -I {TretN1} -D {TremN1}"
+    # Key generation.
+    csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
+    csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").strip()
+    settime(
+        f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {csk1_name}",
+        cwd="ns3",
+    )
+    settime(
+        f"-g OMNIPRESENT -k RUMOURED {TpubN1} -r RUMOURED {TpubN1} -z HIDDEN {TpubN1} -d HIDDEN {TpubN1} {csk2_name}",
+        cwd="ns3",
+    )
+    # Set key rollover relationship.
+    set_key_relationship(csk1_name, csk2_name)
+    # Signing.
+    render_and_sign_zone(zonename, [csk1_name, csk2_name], extra_options=f"-z -G {cds}")
+
+    # Step 4:
+    # Some time later all the ZRRSIG records should be from the new CSK, and the
+    # DS should be swapped.  The ZRRSIG records are all replaced after IretZ (38h).
+    # The DS is swapped after Dreg + Iret (1w3h). In other words, the zone
+    # signatures are replaced before the DS is swapped.
+    zonename = f"step4.{zone}"
+    zones.append(Zone(zonename, f"{zonename}.db", Nameserver("ns3", "10.53.0.3")))
+    isctest.log.info(f"setup {zonename}")
+    # According to RFC 7583:
+    # Trem(N)    = Tret(N) + IretZ
+    #
+    # Lcsk:   186d
+    # Dreg:   N/A
+    # Iret:   170h
+    # IretZ:  38h
+    #
+    # Tpub(N)    = now - IretZ - Lcsk = now - 38h - 186d
+    #            = now - 38h - 4464h = now - 4502h
+    # Tact(N)    = now - Iret - Lcsk + TTLsig = now - 4502h + 25h = now - 4477h
+    # Tret(N)    = now - IretZ = now - 38h
+    # Trem(N)    = now - IretZ + Iret = now - 38h + 170h = now + 132h
+    # Tpub(N+1)  = now - IretZ - IpubC = now - 38h - 3h = now - 41h
+    # Tact(N+1)  = Tret(N)
+    # Tret(N+1)  = now - IretZ + Lcsk = now - 38h + 186d
+    #            = now + 4426h
+    # Trem(N+1)  = now - IretZ + Lcsk + Iret
+    #            = now + 4426h + 3h = now + 4429h
+    TpubN = "now-4502h"
+    TactN = "now-4477h"
+    TretN = "now-38h"
+    TremN = "now+132h"
+    TpubN1 = "now-41h"
+    TactN1 = TretN
+    TretN1 = "now+4426h"
+    TremN1 = "now+4429h"
+    keytimes = (
+        f"-P {TpubN} -P sync {TactN} -A {TpubN} -I {TretN} -D {TremN} -D sync {TactN1}"
+    )
+    newtimes = f"-P {TpubN1} -P sync {TactN1} -A {TactN1} -I {TretN1} -D {TremN1}"
+    # Key generation.
+    csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
+    csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").strip()
+    settime(
+        f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -z UNRETENTIVE {TretN} -d UNRETENTIVE {TretN} -D ds {TretN} {csk1_name}",
+        cwd="ns3",
+    )
+    settime(
+        f"-g OMNIPRESENT -k OMNIPRESENT {TactN1} -r OMNIPRESENT {TactN1} -z RUMOURED {TactN1} -d RUMOURED {TactN1} -P ds {TactN1} {csk2_name}",
+        cwd="ns3",
+    )
+    # Set key rollover relationship.
+    set_key_relationship(csk1_name, csk2_name)
+    # Signing.
+    render_and_sign_zone(zonename, [csk1_name, csk2_name], extra_options=f"-z -G {cds}")
+
+    # Step 5:
+    # Some time later the DS can be swapped and the old DNSKEY can be removed from
+    # the zone.
+    zonename = f"step5.{zone}"
+    zones.append(Zone(zonename, f"{zonename}.db", Nameserver("ns3", "10.53.0.3")))
+    isctest.log.info(f"setup {zonename}")
+    # Subtract Iret (170h) - IretZ (38h) = 132h.
+    #
+    # Tpub(N)   = now - 4502h - 132h = now - 4634h
+    # Tact(N)   = now - 4477h - 132h = now - 4609h
+    # Tret(N)   = now - 38h - 132h = now - 170h
+    # Trem(N)   = now + 132h - 132h = now
+    # Tpub(N+1) = now - 41h - 132h = now - 173h
+    # Tact(N+1) = Tret(N)
+    # Tret(N+1) = now + 4426h - 132h = now + 4294h
+    # Trem(N+1) = now + 4492h - 132h = now + 4360h
+    TpubN = "now-4634h"
+    TactN = "now-4609h"
+    TretN = "now-170h"
+    TremN = "now"
+    TpubN1 = "now-173h"
+    TactN1 = TretN
+    TretN1 = "now+4294h"
+    TremN1 = "now+4360h"
+    keytimes = (
+        f"-P {TpubN} -P sync {TactN} -A {TpubN} -I {TretN} -D {TremN} -D sync {TactN1}"
+    )
+    newtimes = f"-P {TpubN1} -P sync {TactN1} -A {TactN1} -I {TretN1} -D {TremN1}"
+    # Key generation.
+    csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
+    csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").strip()
+    settime(
+        f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -z HIDDEN now-133h -d UNRETENTIVE {TactN1} -D ds {TactN1} {csk1_name}",
+        cwd="ns3",
+    )
+    settime(
+        f"-g OMNIPRESENT -k OMNIPRESENT {TactN1} -r OMNIPRESENT {TactN1} -z OMNIPRESENT now-133h -d RUMOURED {TactN1} -P ds {TactN1} {csk2_name}",
+        cwd="ns3",
+    )
+    # Set key rollover relationship.
+    set_key_relationship(csk1_name, csk2_name)
+    # Signing.
+    render_and_sign_zone(zonename, [csk1_name, csk2_name], extra_options=f"-z -G {cds}")
+
+    # Step 6:
+    # Some time later the predecessor DNSKEY enters the HIDDEN state.
+    zonename = f"step6.{zone}"
+    zones.append(Zone(zonename, f"{zonename}.db", Nameserver("ns3", "10.53.0.3")))
+    isctest.log.info(f"setup {zonename}")
+    # Subtract DNSKEY TTL plus zone propagation delay (2h).
+    #
+    # Tpub(N)   = now - 4634h - 2h = now - 4636h
+    # Tact(N)   = now - 4609h - 2h = now - 4611h
+    # Tret(N)   = now - 170h - 2h = now - 172h
+    # Trem(N)   = now - 2h
+    # Tpub(N+1) = now - 173h - 2h = now - 175h
+    # Tact(N+1) = Tret(N)
+    # Tret(N+1) = now + 4294h - 2h = now + 4292h
+    # Trem(N+1) = now + 4360h - 2h = now + 4358h
+    TpubN = "now-4636h"
+    TactN = "now-4611h"
+    TretN = "now-172h"
+    TremN = "now-2h"
+    TpubN1 = "now-175h"
+    TactN1 = TretN
+    TretN1 = "now+4292h"
+    TremN1 = "now+4358h"
+    keytimes = (
+        f"-P {TpubN} -P sync {TactN} -A {TpubN} -I {TretN} -D {TremN} -D sync {TactN1}"
+    )
+    newtimes = f"-P {TpubN1} -P sync {TactN1} -A {TactN1} -I {TretN1} -D {TremN1}"
+    # Key generation.
+    csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
+    csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").strip()
+    settime(
+        f"-g HIDDEN -k UNRETENTIVE {TremN} -r UNRETENTIVE {TremN} -z HIDDEN now-135h -d HIDDEN {TremN} {csk1_name}",
+        cwd="ns3",
+    )
+    settime(
+        f"-g OMNIPRESENT -k OMNIPRESENT {TactN1} -r OMNIPRESENT {TactN1} -z OMNIPRESENT now-135h -d OMNIPRESENT {TremN} {csk2_name}",
+        cwd="ns3",
+    )
+    # Set key rollover relationship.
+    set_key_relationship(csk1_name, csk2_name)
+    # Signing.
+    render_and_sign_zone(zonename, [csk1_name, csk2_name], extra_options=f"-z -G {cds}")
+
+    # Step 7:
+    # The predecessor DNSKEY can be purged, but purge-keys is disabled.
+    zonename = f"step7.{zone}"
+    zones.append(Zone(zonename, f"{zonename}.db", Nameserver("ns3", "10.53.0.3")))
+    isctest.log.info(f"setup {zonename}")
+    # Subtract 90 days (default, 2160h) from all the times.
+    #
+    # Tpub(N)   = now - 4636h - 2160h = now - 6796h
+    # Tact(N)   = now - 4611h - 2160h = now - 6771h
+    # Tret(N)   = now - 172h - 2160h = now - 2332h
+    # Trem(N)   = now - 2h - 2160h = now - 2162h
+    # Tpub(N+1) = now - 175h - 2160h = now - 2335h
+    # Tact(N+1) = Tret(N)
+    # Tret(N+1) = now + 4292h - 2160h = now + 2132h
+    # Trem(N+1) = now + 4358h - 2160h = now + 2198h
+    TpubN = "now-6796h"
+    TactN = "now-6771h"
+    TretN = "now-2332h"
+    TremN = "now-2162h"
+    TpubN1 = "now-2335h"
+    TactN1 = TretN
+    TretN1 = "now+2132h"
+    TremN1 = "now+2198h"
+
+    keytimes = (
+        f"-P {TpubN} -P sync {TactN} -A {TpubN} -I {TretN} -D {TremN} -D sync {TactN1}"
+    )
+    newtimes = f"-P {TpubN1} -P sync {TactN1} -A {TactN1} -I {TretN1} -D {TremN1}"
+    # Key generation.
+    csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
+    csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").strip()
+    settime(
+        f"-g HIDDEN -k UNRETENTIVE {TremN} -r HIDDEN {TremN} -z HIDDEN {TactN1} -d HIDDEN {TremN} {csk1_name}",
+        cwd="ns3",
+    )
+    settime(
+        f"-g OMNIPRESENT -k OMNIPRESENT {TactN1} -r OMNIPRESENT {TactN1} -z OMNIPRESENT {TactN1} -d OMNIPRESENT {TremN} {csk2_name}",
+        cwd="ns3",
+    )
+    # Set key rollover relationship.
+    set_key_relationship(csk1_name, csk2_name)
+    # Signing.
+    render_and_sign_zone(zonename, [csk1_name, csk2_name], extra_options=f"-z -G {cds}")
+
+    # Step 8:
+    # The predecessor DNSKEY can be purged.
+    zonename = f"step8.{zone}"
+    zones.append(Zone(zonename, f"{zonename}.db", Nameserver("ns3", "10.53.0.3")))
+    isctest.log.info(f"setup {zonename}")
+    # Subtract purge-keys interval from all the times (1h).
+    TpubN = "now-5094h"
+    TactN = "now-5069h"
+    TretN = "now-630h"
+    TremN = "now-3h"
+    TpubN1 = "now-633h"
+    TactN1 = TretN
+    TretN1 = "now+3834h"
+    TremN1 = "now+4461h"
+    keytimes = (
+        f"-P {TpubN} -P sync {TactN} -A {TpubN} -I {TretN} -D {TremN} -D sync {TactN1}"
+    )
+    newtimes = f"-P {TpubN1} -P sync {TactN1} -A {TactN1} -I {TretN1} -D {TremN1}"
+    # Key generation.
+    csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
+    csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").strip()
+    settime(
+        f"-g HIDDEN -k UNRETENTIVE {TremN} -r UNRETENTIVE {TremN} -z HIDDEN now-2295h -d HIDDEN {TremN} {csk1_name}",
+        cwd="ns3",
+    )
+    settime(
+        f"-g OMNIPRESENT -k OMNIPRESENT {TactN1} -r OMNIPRESENT {TactN1} -z OMNIPRESENT now-2295h -d OMNIPRESENT {TremN} {csk2_name}",
+        cwd="ns3",
+    )
+    # Set key rollover relationship.
+    set_key_relationship(csk1_name, csk2_name)
+    # Signing.
+    render_and_sign_zone(zonename, [csk1_name, csk2_name], extra_options=f"-z -G {cds}")
 
     return zones
