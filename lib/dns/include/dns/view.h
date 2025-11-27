@@ -69,6 +69,7 @@
 #include <dns/clientinfo.h>
 #include <dns/dnstap.h>
 #include <dns/fixedname.h>
+#include <dns/hooks.h>
 #include <dns/nta.h>
 #include <dns/rdatastruct.h>
 #include <dns/rpz.h>
@@ -243,8 +244,8 @@ struct dns_view {
 	void (*plugins_free)(isc_mem_t *, void **);
 
 	/* Hook table */
-	void *hooktable; /* ns_hooktable */
-	void (*hooktable_free)(isc_mem_t *, void **);
+	dns_hooktable_t	    *hooktable;
+	dns_hooktable_free_t hooktable_free;
 };
 
 #define DNS_VIEW_MAGIC	     ISC_MAGIC('V', 'i', 'e', 'w')

@@ -29,6 +29,7 @@
 
 #include <dns/catz.h>
 #include <dns/diff.h>
+#include <dns/hooks.h>
 #include <dns/master.h>
 #include <dns/masterdump.h>
 #include <dns/rdatastruct.h>
@@ -2719,7 +2720,7 @@ dns_zone_getkeystores(dns_zone_t *zone);
  * initialized.
  */
 
-void *
+dns_hooktable_t *
 dns_zone_gethooktable(dns_zone_t *zone);
 /**<
  * Returns the zone hooktable
@@ -2730,7 +2731,7 @@ dns_zone_gethooktable(dns_zone_t *zone);
 
 void
 dns_zone_sethooktable(dns_zone_t *zone, void *hooktable,
-		      void (*hooktable_free)(isc_mem_t *, void **));
+		      dns_hooktable_free_t hooktable_free);
 /**<
  * Initialize zone hooktable and free callback
  *

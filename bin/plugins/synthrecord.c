@@ -12,6 +12,7 @@
  */
 
 #include <dns/byaddr.h>
+#include <dns/hooks.h>
 #include <dns/rdatalist.h>
 #include <dns/view.h>
 
@@ -19,7 +20,8 @@
 #include <isccfg/cfg.h>
 #include <isccfg/grammar.h>
 
-#include <ns/hooks.h>
+#include <ns/client.h>
+#include <ns/query.h>
 
 #define CHECK(op)                              \
 	do {                                   \
@@ -258,7 +260,7 @@ synthrecord_parseforward(synthrecord_t *inst, const dns_name_t *name,
 	return false;
 }
 
-static ns_hookresult_t
+static dns_hookresult_t
 synthrecord_forward(synthrecord_t *inst, query_ctx_t *qctx,
 		    isc_result_t *resp) {
 	isc_netaddr_t addr;
@@ -267,11 +269,11 @@ synthrecord_forward(synthrecord_t *inst, query_ctx_t *qctx,
 	*resp = ISC_R_UNSET;
 
 	if (!synthrecord_parseforward(inst, qname, &addr)) {
-		return NS_HOOK_CONTINUE;
+		return DNS_HOOK_CONTINUE;
 	}
 
 	if (!synthrecord_allowedsynth(inst, &addr)) {
-		return NS_HOOK_CONTINUE;
+		return DNS_HOOK_CONTINUE;
 	}
 
 	if (qctx->qtype != dns_rdatatype_a &&
@@ -285,7 +287,7 @@ synthrecord_forward(synthrecord_t *inst, query_ctx_t *qctx,
 		 */
 		qctx->client->message->rcode = dns_rcode_noerror;
 		*resp = ns_query_done(qctx);
-		return NS_HOOK_RETURN;
+		return DNS_HOOK_RETURN;
 	}
 
 	if ((qctx->qtype == dns_rdatatype_a ||
@@ -316,10 +318,10 @@ synthrecord_forward(synthrecord_t *inst, query_ctx_t *qctx,
 		*resp = ns_query_done(qctx);
 	}
 
-	return NS_HOOK_RETURN;
+	return DNS_HOOK_RETURN;
 }
 
-static ns_hookresult_t
+static dns_hookresult_t
 synthrecord_reverse(synthrecord_t *inst, query_ctx_t *qctx,
 		    isc_result_t *resp) {
 	isc_result_t result;
@@ -338,11 +340,11 @@ synthrecord_reverse(synthrecord_t *inst, query_ctx_t *qctx,
 			      ISC_LOG_DEBUG(10),
 			      "synthrecord ptr parsing error %s",
 			      isc_result_totext(result));
-		return NS_HOOK_CONTINUE;
+		return DNS_HOOK_CONTINUE;
 	}
 
 	if (!synthrecord_allowedsynth(inst, &qaddr)) {
-		return NS_HOOK_CONTINUE;
+		return DNS_HOOK_CONTINUE;
 	}
 
 	if (qctx->qtype != dns_rdatatype_ptr &&
@@ -356,7 +358,7 @@ synthrecord_reverse(synthrecord_t *inst, query_ctx_t *qctx,
 		 */
 		qctx->client->message->rcode = dns_rcode_noerror;
 		*resp = ns_query_done(qctx);
-		return NS_HOOK_RETURN;
+		return DNS_HOOK_RETURN;
 	}
 
 	isc_buffer_init(&anameb, anamebdata, sizeof(anamebdata));
@@ -368,7 +370,7 @@ synthrecord_reverse(synthrecord_t *inst, query_ctx_t *qctx,
 			ISC_LOG_DEBUG(1),
 			"synthrecord cannot create reverse answer name: %s",
 			isc_result_totext(result));
-		return NS_HOOK_CONTINUE;
+		return DNS_HOOK_CONTINUE;
 	}
 
 	synthptrdata = (dns_rdata_ptr_t){
@@ -380,10 +382,10 @@ synthrecord_reverse(synthrecord_t *inst, query_ctx_t *qctx,
 				     dns_rdatatype_ptr);
 	*resp = result;
 
-	return NS_HOOK_RETURN;
+	return DNS_HOOK_RETURN;
 }
 
-static ns_hookresult_t
+static dns_hookresult_t
 synthrecord_entry(void *arg, void *cbdata, isc_result_t *resp) {
 	synthrecord_t *inst = cbdata;
 	query_ctx_t *qctx = arg;
@@ -599,10 +601,10 @@ cleanup:
 isc_result_t
 plugin_register(const char *parameters, const void *cfg, const char *cfgfile,
 		unsigned long cfgline, isc_mem_t *mctx, void *aclctx,
-		ns_hooktable_t *hooktable, const ns_pluginctx_t *ctx,
+		dns_hooktable_t *hooktable, const dns_pluginctx_t *ctx,
 		void **instp) {
 	synthrecord_t *inst = NULL;
-	ns_hook_t hook;
+	dns_hook_t hook;
 	isc_result_t result;
 
 	REQUIRE(cfg);
@@ -624,14 +626,14 @@ plugin_register(const char *parameters, const void *cfg, const char *cfgfile,
 	result = synthrecord_parseconfig(inst, parameters, cfg, cfgfile,
 					 cfgline, aclctx, ctx->origin);
 
-	hook = (ns_hook_t){ .action = synthrecord_entry, .action_data = inst };
-	ns_hook_add(hooktable, mctx, NS_QUERY_NXDOMAIN_BEGIN, &hook);
+	hook = (dns_hook_t){ .action = synthrecord_entry, .action_data = inst };
+	dns_hook_add(hooktable, mctx, NS_QUERY_NXDOMAIN_BEGIN, &hook);
 
 	/*
 	 * The qname with a different type might be defined in the zone. If
 	 * there is a delegation, NS_QUERY_NODATA_BEGIN is never called.
 	 */
-	ns_hook_add(hooktable, mctx, NS_QUERY_NODATA_BEGIN, &hook);
+	dns_hook_add(hooktable, mctx, NS_QUERY_NODATA_BEGIN, &hook);
 
 	return result;
 }
@@ -639,12 +641,12 @@ plugin_register(const char *parameters, const void *cfg, const char *cfgfile,
 isc_result_t
 plugin_check(const char *parameters, const void *cfg, const char *cfgfile,
 	     unsigned long cfgline, isc_mem_t *mctx, void *aclctx,
-	     const ns_pluginctx_t *ctx) {
+	     const dns_pluginctx_t *ctx) {
 	isc_result_t result;
 	synthrecord_t *inst = NULL;
 
 	REQUIRE(ctx != NULL);
-	if (ctx->source != NS_HOOKSOURCE_ZONE || ctx->origin == NULL) {
+	if (ctx->source != DNS_HOOKSOURCE_ZONE || ctx->origin == NULL) {
 		isc_log_write(NS_LOGCATEGORY_GENERAL, NS_LOGMODULE_HOOKS,
 			      ISC_LOG_INFO,
 			      "'synthrecord' must be configured "
@@ -688,5 +690,5 @@ plugin_destroy(void **instp) {
 
 int
 plugin_version(void) {
-	return NS_PLUGIN_VERSION;
+	return DNS_PLUGIN_VERSION;
 }

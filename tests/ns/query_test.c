@@ -28,12 +28,12 @@
 #include <isc/util.h>
 
 #include <dns/badcache.h>
+#include <dns/hooks.h>
 #include <dns/lib.h>
 #include <dns/view.h>
 #include <dns/zone.h>
 
 #include <ns/client.h>
-#include <ns/hooks.h>
 #include <ns/query.h>
 #include <ns/server.h>
 #include <ns/stats.h>
@@ -76,10 +76,10 @@ typedef struct {
  */
 static void
 run_sfcache_test(const ns__query_sfcache_test_params_t *test) {
-	ns_hooktable_t *query_hooks = NULL;
+	dns_hooktable_t *query_hooks = NULL;
 	query_ctx_t *qctx = NULL;
 	isc_result_t result;
-	const ns_hook_t hook = {
+	const dns_hook_t hook = {
 		.action = ns_test_hook_catch_call,
 	};
 
@@ -91,9 +91,9 @@ run_sfcache_test(const ns__query_sfcache_test_params_t *test) {
 	 * Interrupt execution if ns_query_done() is called.
 	 */
 
-	ns_hooktable_create(isc_g_mctx, &query_hooks);
-	ns_hook_add(query_hooks, isc_g_mctx, NS_QUERY_DONE_BEGIN, &hook);
-	ns__hook_table = query_hooks;
+	dns_hooktable_create(isc_g_mctx, &query_hooks);
+	dns_hook_add(query_hooks, isc_g_mctx, NS_QUERY_DONE_BEGIN, &hook);
+	dns__hook_table = query_hooks;
 
 	/*
 	 * Construct a query context for a ./NS query with given flags.
@@ -153,7 +153,7 @@ run_sfcache_test(const ns__query_sfcache_test_params_t *test) {
 	 * Clean up.
 	 */
 	ns_test_qctx_destroy(&qctx);
-	ns_hooktable_free(isc_g_mctx, (void **)&query_hooks);
+	dns_hooktable_free(isc_g_mctx, (void **)&query_hooks);
 }
 
 /* test ns__query_sfcache() */
@@ -277,10 +277,10 @@ typedef struct {
  */
 static void
 run_start_test(const ns__query_start_test_params_t *test) {
-	ns_hooktable_t *query_hooks = NULL;
+	dns_hooktable_t *query_hooks = NULL;
 	query_ctx_t *qctx = NULL;
 	isc_result_t result;
-	const ns_hook_t hook = {
+	const dns_hook_t hook = {
 		.action = ns_test_hook_catch_call,
 	};
 
@@ -294,10 +294,10 @@ run_start_test(const ns__query_start_test_params_t *test) {
 	/*
 	 * Interrupt execution if query_lookup() or ns_query_done() is called.
 	 */
-	ns_hooktable_create(isc_g_mctx, &query_hooks);
-	ns_hook_add(query_hooks, isc_g_mctx, NS_QUERY_LOOKUP_BEGIN, &hook);
-	ns_hook_add(query_hooks, isc_g_mctx, NS_QUERY_DONE_BEGIN, &hook);
-	ns__hook_table = query_hooks;
+	dns_hooktable_create(isc_g_mctx, &query_hooks);
+	dns_hook_add(query_hooks, isc_g_mctx, NS_QUERY_LOOKUP_BEGIN, &hook);
+	dns_hook_add(query_hooks, isc_g_mctx, NS_QUERY_DONE_BEGIN, &hook);
+	dns__hook_table = query_hooks;
 
 	/*
 	 * Construct a query context using the supplied parameters.
@@ -412,7 +412,7 @@ run_start_test(const ns__query_start_test_params_t *test) {
 		ns_test_cleanup_zone();
 	}
 	ns_test_qctx_destroy(&qctx);
-	ns_hooktable_free(isc_g_mctx, (void **)&query_hooks);
+	dns_hooktable_free(isc_g_mctx, (void **)&query_hooks);
 }
 
 /* test ns__query_start() */
@@ -593,26 +593,26 @@ ISC_LOOP_TEST_IMPL(ns__query_start) {
  * Structure containing parameters for ns__query_hookasync_test().
  */
 typedef struct {
-	const ns_test_id_t id;	   /* libns test identifier */
-	ns_hookpoint_t hookpoint;  /* hook point specified for resume */
-	ns_hookpoint_t hookpoint2; /* expected hook point used after resume */
-	ns_hook_action_t action;   /* action for the hook point */
-	isc_result_t start_result; /* result of 'runasync' */
-	bool quota_ok;		   /* true if recursion quota should be okay */
-	bool do_cancel;		   /* true if query should be canceled
-				    * in test */
+	const ns_test_id_t id;	    /* libns test identifier */
+	dns_hookpoint_t hookpoint;  /* hook point specified for resume */
+	dns_hookpoint_t hookpoint2; /* expected hook point used after resume */
+	dns_hook_action_t action;   /* action for the hook point */
+	isc_result_t start_result;  /* result of 'runasync' */
+	bool quota_ok;		    /* true if recursion quota should be okay */
+	bool do_cancel;		    /* true if query should be canceled
+				     * in test */
 } ns__query_hookasync_test_params_t;
 
 /* Data structure passed from tests to hooks */
 typedef struct hookasync_data {
-	bool async;		      /* true if in a hook-triggered
-				       * asynchronous process */
-	bool canceled;		      /* true if the query has been canceled  */
-	isc_result_t start_result;    /* result of 'runasync' */
-	ns_hook_resume_t *rev;	      /* resume state sent on completion */
-	query_ctx_t qctx;	      /* shallow copy of qctx passed to hook */
-	ns_hookpoint_t hookpoint;     /* specifies where to resume */
-	ns_hookpoint_t lasthookpoint; /* remember the last hook point called */
+	bool async;		   /* true if in a hook-triggered
+				    * asynchronous process */
+	bool canceled;		   /* true if the query has been canceled  */
+	isc_result_t start_result; /* result of 'runasync' */
+	dns_hook_resume_t *rev;	   /* resume state sent on completion */
+	query_ctx_t qctx;	   /* shallow copy of qctx passed to hook */
+	dns_hookpoint_t hookpoint; /* specifies where to resume */
+	dns_hookpoint_t lasthookpoint; /* remember the last hook point called */
 } hookasync_data_t;
 
 /*
@@ -621,8 +621,8 @@ typedef struct hookasync_data {
  * this is actually called; otherwise tests would fail due to memory leak.
  */
 static void
-destroy_hookasyncctx(ns_hookasync_t **ctxp) {
-	ns_hookasync_t *ctx = *ctxp;
+destroy_hookasyncctx(dns_hookasync_t **ctxp) {
+	dns_hookasync_t *ctx = *ctxp;
 
 	*ctxp = NULL;
 	isc_mem_putanddetach(&ctx->mctx, ctx, sizeof(*ctx));
@@ -630,7 +630,7 @@ destroy_hookasyncctx(ns_hookasync_t **ctxp) {
 
 /* 'cancel' callback of hook recursion ctx. */
 static void
-cancel_hookasyncctx(ns_hookasync_t *ctx) {
+cancel_hookasyncctx(dns_hookasync_t *ctx) {
 	/* Mark the hook data so the test can confirm this is called. */
 	((hookasync_data_t *)ctx->private)->canceled = true;
 }
@@ -638,10 +638,10 @@ cancel_hookasyncctx(ns_hookasync_t *ctx) {
 /* 'runasync' callback passed to ns_query_hookasync */
 static isc_result_t
 test_hookasync(query_ctx_t *qctx, isc_mem_t *mctx, void *arg, isc_loop_t *loop,
-	       isc_job_cb cb, void *evarg, ns_hookasync_t **ctxp) {
+	       isc_job_cb cb, void *evarg, dns_hookasync_t **ctxp) {
 	hookasync_data_t *asdata = arg;
-	ns_hookasync_t *ctx = NULL;
-	ns_hook_resume_t *rev = NULL;
+	dns_hookasync_t *ctx = NULL;
+	dns_hook_resume_t *rev = NULL;
 
 	if (asdata->start_result != ISC_R_SUCCESS) {
 		return asdata->start_result;
@@ -649,10 +649,10 @@ test_hookasync(query_ctx_t *qctx, isc_mem_t *mctx, void *arg, isc_loop_t *loop,
 
 	ctx = isc_mem_get(mctx, sizeof(*ctx));
 	rev = isc_mem_get(mctx, sizeof(*rev));
-	*rev = (ns_hook_resume_t){
+	*rev = (dns_hook_resume_t){
 		.hookpoint = asdata->hookpoint,
 		.origresult = DNS_R_NXDOMAIN,
-		.saved_qctx = qctx,
+		.context = qctx,
 		.ctx = ctx,
 		.loop = loop,
 		.cb = cb,
@@ -661,7 +661,7 @@ test_hookasync(query_ctx_t *qctx, isc_mem_t *mctx, void *arg, isc_loop_t *loop,
 
 	asdata->rev = rev;
 
-	*ctx = (ns_hookasync_t){
+	*ctx = (dns_hookasync_t){
 		.destroy = destroy_hookasyncctx,
 		.cancel = cancel_hookasyncctx,
 		.private = asdata,
@@ -678,9 +678,9 @@ test_hookasync(query_ctx_t *qctx, isc_mem_t *mctx, void *arg, isc_loop_t *loop,
  * remembered in the hook data, so that the test can confirm which hook point
  * was last used.
  */
-static ns_hookresult_t
+static dns_hookresult_t
 hook_async_common(void *arg, void *data, isc_result_t *resultp,
-		  ns_hookpoint_t hookpoint) {
+		  dns_hookpoint_t hookpoint) {
 	query_ctx_t *qctx = arg;
 	hookasync_data_t *asdata = data;
 	isc_result_t result;
@@ -714,116 +714,116 @@ hook_async_common(void *arg, void *data, isc_result_t *resultp,
 	}
 
 	*resultp = ISC_R_UNSET;
-	return NS_HOOK_RETURN;
+	return DNS_HOOK_RETURN;
 }
 
-static ns_hookresult_t
+static dns_hookresult_t
 hook_async_query_setup(void *arg, void *data, isc_result_t *resultp) {
 	return hook_async_common(arg, data, resultp, NS_QUERY_SETUP);
 }
 
-static ns_hookresult_t
+static dns_hookresult_t
 hook_async_query_start_begin(void *arg, void *data, isc_result_t *resultp) {
 	return hook_async_common(arg, data, resultp, NS_QUERY_START_BEGIN);
 }
 
-static ns_hookresult_t
+static dns_hookresult_t
 hook_async_query_lookup_begin(void *arg, void *data, isc_result_t *resultp) {
 	return hook_async_common(arg, data, resultp, NS_QUERY_LOOKUP_BEGIN);
 }
 
-static ns_hookresult_t
+static dns_hookresult_t
 hook_async_query_resume_begin(void *arg, void *data, isc_result_t *resultp) {
 	return hook_async_common(arg, data, resultp, NS_QUERY_RESUME_BEGIN);
 }
 
-static ns_hookresult_t
+static dns_hookresult_t
 hook_async_query_got_answer_begin(void *arg, void *data,
 				  isc_result_t *resultp) {
 	return hook_async_common(arg, data, resultp, NS_QUERY_GOT_ANSWER_BEGIN);
 }
 
-static ns_hookresult_t
+static dns_hookresult_t
 hook_async_query_respond_any_begin(void *arg, void *data,
 				   isc_result_t *resultp) {
 	return hook_async_common(arg, data, resultp,
 				 NS_QUERY_RESPOND_ANY_BEGIN);
 }
 
-static ns_hookresult_t
+static dns_hookresult_t
 hook_async_query_addanswer_begin(void *arg, void *data, isc_result_t *resultp) {
 	return hook_async_common(arg, data, resultp, NS_QUERY_ADDANSWER_BEGIN);
 }
 
-static ns_hookresult_t
+static dns_hookresult_t
 hook_async_query_notfound_begin(void *arg, void *data, isc_result_t *resultp) {
 	return hook_async_common(arg, data, resultp, NS_QUERY_NOTFOUND_BEGIN);
 }
 
-static ns_hookresult_t
+static dns_hookresult_t
 hook_async_query_prep_delegation_begin(void *arg, void *data,
 				       isc_result_t *resultp) {
 	return hook_async_common(arg, data, resultp,
 				 NS_QUERY_PREP_DELEGATION_BEGIN);
 }
 
-static ns_hookresult_t
+static dns_hookresult_t
 hook_async_query_zone_delegation_begin(void *arg, void *data,
 				       isc_result_t *resultp) {
 	return hook_async_common(arg, data, resultp,
 				 NS_QUERY_ZONE_DELEGATION_BEGIN);
 }
 
-static ns_hookresult_t
+static dns_hookresult_t
 hook_async_query_delegation_begin(void *arg, void *data,
 				  isc_result_t *resultp) {
 	return hook_async_common(arg, data, resultp, NS_QUERY_DELEGATION_BEGIN);
 }
 
-static ns_hookresult_t
+static dns_hookresult_t
 hook_async_query_delegation_recurse_begin(void *arg, void *data,
 					  isc_result_t *resultp) {
 	return hook_async_common(arg, data, resultp,
 				 NS_QUERY_DELEGATION_RECURSE_BEGIN);
 }
 
-static ns_hookresult_t
+static dns_hookresult_t
 hook_async_query_nodata_begin(void *arg, void *data, isc_result_t *resultp) {
 	return hook_async_common(arg, data, resultp, NS_QUERY_NODATA_BEGIN);
 }
 
-static ns_hookresult_t
+static dns_hookresult_t
 hook_async_query_nxdomain_begin(void *arg, void *data, isc_result_t *resultp) {
 	return hook_async_common(arg, data, resultp, NS_QUERY_NXDOMAIN_BEGIN);
 }
 
-static ns_hookresult_t
+static dns_hookresult_t
 hook_async_query_ncache_begin(void *arg, void *data, isc_result_t *resultp) {
 	return hook_async_common(arg, data, resultp, NS_QUERY_NCACHE_BEGIN);
 }
 
-static ns_hookresult_t
+static dns_hookresult_t
 hook_async_query_cname_begin(void *arg, void *data, isc_result_t *resultp) {
 	return hook_async_common(arg, data, resultp, NS_QUERY_CNAME_BEGIN);
 }
 
-static ns_hookresult_t
+static dns_hookresult_t
 hook_async_query_dname_begin(void *arg, void *data, isc_result_t *resultp) {
 	return hook_async_common(arg, data, resultp, NS_QUERY_DNAME_BEGIN);
 }
 
-static ns_hookresult_t
+static dns_hookresult_t
 hook_async_query_respond_begin(void *arg, void *data, isc_result_t *resultp) {
 	return hook_async_common(arg, data, resultp, NS_QUERY_RESPOND_BEGIN);
 }
 
-static ns_hookresult_t
+static dns_hookresult_t
 hook_async_query_response_begin(void *arg, void *data, isc_result_t *resultp) {
 	return hook_async_common(arg, data, resultp,
 				 NS_QUERY_PREP_RESPONSE_BEGIN);
 }
 
-static ns_hookresult_t
+static dns_hookresult_t
 hook_async_query_done_begin(void *arg, void *data, isc_result_t *resultp) {
 	return hook_async_common(arg, data, resultp, NS_QUERY_DONE_BEGIN);
 }
@@ -838,7 +838,7 @@ run_hookasync_test(const ns__query_hookasync_test_params_t *test) {
 		.start_result = test->start_result,
 		.hookpoint = test->hookpoint,
 	};
-	const ns_hook_t testhook = {
+	const dns_hook_t testhook = {
 		.action = test->action,
 		.action_data = &asdata,
 	};
@@ -850,17 +850,17 @@ run_hookasync_test(const ns__query_hookasync_test_params_t *test) {
 	 * Its action will specify various different resume points (unusual
 	 * in practice, but that's fine for the testing purpose).
 	 */
-	ns__hook_table = NULL;
-	ns_hooktable_create(isc_g_mctx, &ns__hook_table);
-	ns_hook_add(ns__hook_table, isc_g_mctx, NS_QUERY_START_BEGIN,
-		    &testhook);
+	dns__hook_table = NULL;
+	dns_hooktable_create(isc_g_mctx, &dns__hook_table);
+	dns_hook_add(dns__hook_table, isc_g_mctx, NS_QUERY_START_BEGIN,
+		     &testhook);
 	if (test->hookpoint2 != NS_QUERY_START_BEGIN) {
 		/*
 		 * unless testing START_BEGIN itself, specify the hook for the
 		 * expected resume point, too.
 		 */
-		ns_hook_add(ns__hook_table, isc_g_mctx, test->hookpoint2,
-			    &testhook);
+		dns_hook_add(dns__hook_table, isc_g_mctx, test->hookpoint2,
+			     &testhook);
 	}
 
 	{
@@ -964,7 +964,7 @@ run_hookasync_test(const ns__query_hookasync_test_params_t *test) {
 	 * qctx->client may have been invalidated while we still need it.
 	 */
 	ns_test_qctx_destroy(&qctx);
-	ns_hooktable_free(isc_g_mctx, (void **)&ns__hook_table);
+	dns_hooktable_free(isc_g_mctx, (void **)&dns__hook_table);
 	if (!test->quota_ok) {
 		isc_quota_release(&sctx->recursionquota);
 	}
@@ -1226,7 +1226,7 @@ ISC_LOOP_TEST_IMPL(ns__query_hookasync) {
 typedef struct {
 	const ns_test_id_t id;	   /* libns test identifier */
 	const char *qname;	   /* QNAME */
-	ns_hookpoint_t hookpoint;  /* hook point specified for resume */
+	dns_hookpoint_t hookpoint; /* hook point specified for resume */
 	isc_result_t start_result; /* result of 'runasync' */
 	bool do_cancel;		   /* true if query should be canceled
 				    * in test */
@@ -1237,8 +1237,8 @@ typedef struct {
 typedef struct hookasync_e2e_data {
 	bool async;		   /* true if in a hook-triggered
 				    * asynchronous process */
-	ns_hook_resume_t *rev;	   /* resume state sent on completion */
-	ns_hookpoint_t hookpoint;  /* specifies where to resume */
+	dns_hook_resume_t *rev;	   /* resume state sent on completion */
+	dns_hookpoint_t hookpoint; /* specifies where to resume */
 	isc_result_t start_result; /* result of 'runasync' */
 	dns_rcode_t expected_rcode;
 	bool done; /* if SEND_DONE hook is called */
@@ -1246,7 +1246,7 @@ typedef struct hookasync_e2e_data {
 
 /* Cancel callback.  Just need to be defined, it doesn't have to do anything. */
 static void
-cancel_e2ehookasyncctx(ns_hookasync_t *ctx) {
+cancel_e2ehookasyncctx(dns_hookasync_t *ctx) {
 	UNUSED(ctx);
 }
 
@@ -1254,9 +1254,9 @@ cancel_e2ehookasyncctx(ns_hookasync_t *ctx) {
 static isc_result_t
 test_hookasync_e2e(query_ctx_t *qctx, isc_mem_t *mctx, void *arg,
 		   isc_loop_t *loop, isc_job_cb cb, void *evarg,
-		   ns_hookasync_t **ctxp) {
-	ns_hookasync_t *ctx = NULL;
-	ns_hook_resume_t *rev = NULL;
+		   dns_hookasync_t **ctxp) {
+	dns_hookasync_t *ctx = NULL;
+	dns_hook_resume_t *rev = NULL;
 	hookasync_e2e_data_t *asdata = arg;
 
 	if (asdata->start_result != ISC_R_SUCCESS) {
@@ -1265,9 +1265,9 @@ test_hookasync_e2e(query_ctx_t *qctx, isc_mem_t *mctx, void *arg,
 
 	ctx = isc_mem_get(mctx, sizeof(*ctx));
 	rev = isc_mem_get(mctx, sizeof(*rev));
-	*rev = (ns_hook_resume_t){
+	*rev = (dns_hook_resume_t){
 		.hookpoint = asdata->hookpoint,
-		.saved_qctx = qctx,
+		.context = qctx,
 		.ctx = ctx,
 		.loop = loop,
 		.cb = cb,
@@ -1276,7 +1276,7 @@ test_hookasync_e2e(query_ctx_t *qctx, isc_mem_t *mctx, void *arg,
 
 	asdata->rev = rev;
 
-	*ctx = (ns_hookasync_t){
+	*ctx = (dns_hookasync_t){
 		.destroy = destroy_hookasyncctx,
 		.cancel = cancel_e2ehookasyncctx,
 		.private = asdata,
@@ -1287,7 +1287,7 @@ test_hookasync_e2e(query_ctx_t *qctx, isc_mem_t *mctx, void *arg,
 	return ISC_R_SUCCESS;
 }
 
-static ns_hookresult_t
+static dns_hookresult_t
 hook_async_e2e(void *arg, void *data, isc_result_t *resultp) {
 	query_ctx_t *qctx = arg;
 	hookasync_e2e_data_t *asdata = data;
@@ -1298,18 +1298,18 @@ hook_async_e2e(void *arg, void *data, isc_result_t *resultp) {
 		result = ns_query_hookasync(qctx, test_hookasync_e2e, asdata);
 		if (result != ISC_R_SUCCESS) {
 			*resultp = result;
-			return NS_HOOK_RETURN;
+			return DNS_HOOK_RETURN;
 		}
 
 		asdata->async = true;
 		asdata->rev->origresult = *resultp; /* save it for resume */
 		*resultp = ISC_R_UNSET;
-		return NS_HOOK_RETURN;
+		return DNS_HOOK_RETURN;
 	} else {
 		/* Resume from the completion of async event */
 		asdata->async = false;
 		/* Don't touch 'resultp' */
-		return NS_HOOK_CONTINUE;
+		return DNS_HOOK_CONTINUE;
 	}
 }
 
@@ -1317,7 +1317,7 @@ hook_async_e2e(void *arg, void *data, isc_result_t *resultp) {
  * Check whether the final response has expected the RCODE according to
  * the test scenario.
  */
-static ns_hookresult_t
+static dns_hookresult_t
 hook_donesend(void *arg, void *data, isc_result_t *resultp) {
 	query_ctx_t *qctx = arg;
 	hookasync_e2e_data_t *asdata = data;
@@ -1325,7 +1325,7 @@ hook_donesend(void *arg, void *data, isc_result_t *resultp) {
 	INSIST(qctx->client->message->rcode == asdata->expected_rcode);
 	asdata->done = true; /* Let the test know this hook is called */
 	*resultp = ISC_R_UNSET;
-	return NS_HOOK_CONTINUE;
+	return DNS_HOOK_CONTINUE;
 }
 
 static void
@@ -1339,11 +1339,11 @@ run_hookasync_e2e_test(const ns__query_hookasync_e2e_test_params_t *test) {
 		.expected_rcode = test->expected_rcode,
 		.done = false,
 	};
-	const ns_hook_t donesend_hook = {
+	const dns_hook_t donesend_hook = {
 		.action = hook_donesend,
 		.action_data = &asdata,
 	};
-	const ns_hook_t hook = {
+	const dns_hook_t hook = {
 		.action = hook_async_e2e,
 		.action_data = &asdata,
 	};
@@ -1353,11 +1353,11 @@ run_hookasync_e2e_test(const ns__query_hookasync_e2e_test_params_t *test) {
 		.with_cache = true,
 	};
 
-	ns__hook_table = NULL;
-	ns_hooktable_create(isc_g_mctx, &ns__hook_table);
-	ns_hook_add(ns__hook_table, isc_g_mctx, test->hookpoint, &hook);
-	ns_hook_add(ns__hook_table, isc_g_mctx, NS_QUERY_DONE_SEND,
-		    &donesend_hook);
+	dns__hook_table = NULL;
+	dns_hooktable_create(isc_g_mctx, &dns__hook_table);
+	dns_hook_add(dns__hook_table, isc_g_mctx, test->hookpoint, &hook);
+	dns_hook_add(dns__hook_table, isc_g_mctx, NS_QUERY_DONE_SEND,
+		     &donesend_hook);
 
 	result = ns_test_qctx_create(&qctx_params, &qctx);
 	INSIST(result == ISC_R_SUCCESS);
@@ -1406,7 +1406,7 @@ run_hookasync_e2e_test(const ns__query_hookasync_e2e_test_params_t *test) {
 	/* Cleanup */
 	ns_test_qctx_destroy(&qctx);
 	ns_test_cleanup_zone();
-	ns_hooktable_free(isc_g_mctx, (void **)&ns__hook_table);
+	dns_hooktable_free(isc_g_mctx, (void **)&dns__hook_table);
 }
 
 ISC_LOOP_TEST_IMPL(ns__query_hookasync_e2e) {
@@ -1456,12 +1456,12 @@ ISC_LOOP_TEST_IMPL(ns__query_hookasync_e2e) {
 /*
  * Tests covering the correctness of hook call order, i.e. hooks from a zone are
  * called first, then hooks from a view, then the default hook table. And any
- * hook returning NS_HOOK_RETURN interrupt the whole chain
+ * hook returning DNS_HOOK_RETURN interrupt the whole chain
  */
 typedef struct {
-	ns_hook_action_t zonehookactions[2];
-	ns_hook_action_t viewhookactions[2];
-	ns_hook_action_t defaulthookactions[2];
+	dns_hook_action_t zonehookactions[2];
+	dns_hook_action_t viewhookactions[2];
+	dns_hook_action_t defaulthookactions[2];
 	const char *expected;
 } ns__query_hook_test_params_t;
 
@@ -1473,75 +1473,75 @@ ns__query_test_concat(char *base, const char *tail) {
 	snprintf(base, sizeof(b), "%s%s", b, tail);
 }
 
-static ns_hookresult_t
+static dns_hookresult_t
 ns__query_test_zonehook1(void *arg, void *data, isc_result_t *resultp) {
 	UNUSED(arg);
 	UNUSED(resultp);
 
 	ns__query_test_concat(data, "z1");
-	return NS_HOOK_CONTINUE;
+	return DNS_HOOK_CONTINUE;
 }
 
-static ns_hookresult_t
+static dns_hookresult_t
 ns__query_test_zonehook2(void *arg, void *data, isc_result_t *resultp) {
 	UNUSED(arg);
 	UNUSED(resultp);
 
 	ns__query_test_concat(data, "z2");
-	return NS_HOOK_RETURN;
+	return DNS_HOOK_RETURN;
 }
 
-static ns_hookresult_t
+static dns_hookresult_t
 ns__query_test_viewhook1(void *arg, void *data, isc_result_t *resultp) {
 	UNUSED(arg);
 	UNUSED(resultp);
 
 	ns__query_test_concat(data, "v1");
-	return NS_HOOK_CONTINUE;
+	return DNS_HOOK_CONTINUE;
 }
 
-static ns_hookresult_t
+static dns_hookresult_t
 ns__query_test_viewhook2(void *arg, void *data, isc_result_t *resultp) {
 	UNUSED(arg);
 	UNUSED(resultp);
 
 	ns__query_test_concat(data, "v2");
-	return NS_HOOK_RETURN;
+	return DNS_HOOK_RETURN;
 }
 
-static ns_hookresult_t
+static dns_hookresult_t
 ns__query_test_defaulthook1(void *arg, void *data, isc_result_t *resultp) {
 	UNUSED(arg);
 	UNUSED(resultp);
 
 	ns__query_test_concat(data, "d1");
-	return NS_HOOK_CONTINUE;
+	return DNS_HOOK_CONTINUE;
 }
 
-static ns_hookresult_t
+static dns_hookresult_t
 ns__query_test_defaulthook2(void *arg, void *data, isc_result_t *resultp) {
 	UNUSED(arg);
 	UNUSED(resultp);
 
 	ns__query_test_concat(data, "d2");
-	return NS_HOOK_RETURN;
+	return DNS_HOOK_RETURN;
 }
 
 static bool
-ns__query_test_setup_hooks(const ns_hook_t *h1, const ns_hook_t *h2,
-			   ns_hooktable_t **tp) {
+ns__query_test_setup_hooks(const dns_hook_t *h1, const dns_hook_t *h2,
+			   dns_hooktable_t **tp) {
 	if (h1->action || h2->action) {
 		INSIST(*tp == NULL);
-		ns_hooktable_create(isc_g_mctx, tp);
+		dns_hooktable_create(isc_g_mctx, tp);
 
 		if (h1->action) {
-			ns_hook_add(*tp, isc_g_mctx, NS_QUERY_NXDOMAIN_BEGIN,
-				    h1);
+			dns_hook_add(*tp, isc_g_mctx, NS_QUERY_NXDOMAIN_BEGIN,
+				     h1);
 		}
 
 		if (h2->action) {
-			ns_hook_add(*tp, isc_g_mctx, NS_QUERY_NXDOMAIN_BEGIN,
-				    h2);
+			dns_hook_add(*tp, isc_g_mctx, NS_QUERY_NXDOMAIN_BEGIN,
+				     h2);
 		}
 
 		return true;
@@ -1555,8 +1555,8 @@ ns__query_test_run_hookchain_test(const ns__query_hook_test_params_t *test) {
 	isc_result_t result;
 	query_ctx_t *qctx = NULL;
 	char buffer[512] = { 0 };
-	ns_hooktable_t *zone_hooktab = NULL;
-	ns_hooktable_t *view_hooktab = NULL;
+	dns_hooktable_t *zone_hooktab = NULL;
+	dns_hooktable_t *view_hooktab = NULL;
 
 	const ns_test_qctx_create_params_t qctx_params = {
 		.qname = "idontexists.foo",
@@ -1564,23 +1564,23 @@ ns__query_test_run_hookchain_test(const ns__query_hook_test_params_t *test) {
 		.with_cache = true,
 	};
 
-	const ns_hook_t zonehook1 = { .action = test->zonehookactions[0],
-				      .action_data = buffer };
+	const dns_hook_t zonehook1 = { .action = test->zonehookactions[0],
+				       .action_data = buffer };
 
-	const ns_hook_t zonehook2 = { .action = test->zonehookactions[1],
-				      .action_data = buffer };
+	const dns_hook_t zonehook2 = { .action = test->zonehookactions[1],
+				       .action_data = buffer };
 
-	const ns_hook_t viewhook1 = { .action = test->viewhookactions[0],
-				      .action_data = buffer };
+	const dns_hook_t viewhook1 = { .action = test->viewhookactions[0],
+				       .action_data = buffer };
 
-	const ns_hook_t viewhook2 = { .action = test->viewhookactions[1],
-				      .action_data = buffer };
+	const dns_hook_t viewhook2 = { .action = test->viewhookactions[1],
+				       .action_data = buffer };
 
-	const ns_hook_t defaulthook1 = { .action = test->defaulthookactions[0],
-					 .action_data = buffer };
+	const dns_hook_t defaulthook1 = { .action = test->defaulthookactions[0],
+					  .action_data = buffer };
 
-	const ns_hook_t defaulthook2 = { .action = test->defaulthookactions[1],
-					 .action_data = buffer };
+	const dns_hook_t defaulthook2 = { .action = test->defaulthookactions[1],
+					  .action_data = buffer };
 
 	/*
 	 * Create a fake query context
@@ -1613,7 +1613,7 @@ ns__query_test_run_hookchain_test(const ns__query_hook_test_params_t *test) {
 	 * Setup the default hook table
 	 */
 	(void)ns__query_test_setup_hooks(&defaulthook1, &defaulthook2,
-					 &ns__hook_table);
+					 &dns__hook_table);
 
 	/*
 	 * Handling the response
@@ -1639,12 +1639,12 @@ ns__query_test_run_hookchain_test(const ns__query_hook_test_params_t *test) {
 	ns_test_qctx_destroy(&qctx);
 	ns_test_cleanup_zone();
 
-	if (ns__hook_table) {
-		ns_hooktable_free(isc_g_mctx, (void **)&ns__hook_table);
+	if (dns__hook_table) {
+		dns_hooktable_free(isc_g_mctx, (void **)&dns__hook_table);
 	}
 
 	if (view_hooktab) {
-		ns_hooktable_free(isc_g_mctx, (void **)&view_hooktab);
+		dns_hooktable_free(isc_g_mctx, (void **)&view_hooktab);
 	}
 }
 

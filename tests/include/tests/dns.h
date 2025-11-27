@@ -34,6 +34,13 @@
 
 #include <tests/isc.h>
 
+typedef struct dns_test_id {
+	const char *description;
+	int	    lineno;
+} dns_test_id_t;
+
+#define DNS_TEST_ID(desc) { .description = desc, .lineno = __LINE__ }
+
 extern dns_zonemgr_t *zonemgr;
 
 typedef struct {

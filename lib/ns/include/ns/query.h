@@ -118,7 +118,7 @@ struct ns_query {
 	bool		 authdbset;
 	bool		 isreferral;
 	isc_mutex_t	 fetchlock;
-	ns_hookasync_t	*hookasyncctx;
+	dns_hookasync_t *hookasyncctx;
 	dns_rpz_st_t	*rpz_st;
 	isc_bufferlist_t namebufs;
 	ISC_LIST(ns_dbversion_t) activeversions;
@@ -241,7 +241,7 @@ typedef isc_result_t (*ns_query_starthookasync_t)(query_ctx_t *qctx,
 						  isc_mem_t *mctx, void *arg,
 						  isc_loop_t *loop,
 						  isc_job_cb cb, void *evarg,
-						  ns_hookasync_t **ctxp);
+						  dns_hookasync_t **ctxp);
 
 /*
  * The following functions are expected to be used only within query.c

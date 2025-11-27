@@ -70,6 +70,7 @@
 #include <dns/fixedname.h>
 #include <dns/forward.h>
 #include <dns/geoip.h>
+#include <dns/hooks.h>
 #include <dns/journal.h>
 #include <dns/kasp.h>
 #include <dns/keymgr.h>
@@ -110,7 +111,6 @@
 #include <isccfg/namedconf.h>
 
 #include <ns/client.h>
-#include <ns/hooks.h>
 #include <ns/interfacemgr.h>
 #include <ns/listenlist.h>
 
@@ -3677,10 +3677,10 @@ named_register_one_plugin(const cfg_obj_t *config, const cfg_obj_t *obj,
 			  const char *parameters, void *callback_data) {
 	char full_path[PATH_MAX];
 	isc_result_t result;
-	ns_hook_data_t *hookdata = callback_data;
+	dns_hook_data_t *hookdata = callback_data;
 
-	result = ns_plugin_expandpath(plugin_path, full_path,
-				      sizeof(full_path));
+	result = dns_plugin_expandpath(plugin_path, full_path,
+				       sizeof(full_path));
 	if (result != ISC_R_SUCCESS) {
 		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
 			      ISC_LOG_ERROR,
@@ -3690,9 +3690,9 @@ named_register_one_plugin(const cfg_obj_t *config, const cfg_obj_t *obj,
 		return result;
 	}
 
-	result = ns_plugin_register(full_path, parameters, config,
-				    cfg_obj_file(obj), cfg_obj_line(obj),
-				    isc_g_mctx, aclctx, hookdata);
+	result = dns_plugin_register(full_path, parameters, config,
+				     cfg_obj_file(obj), cfg_obj_line(obj),
+				     isc_g_mctx, aclctx, hookdata);
 	if (result != ISC_R_SUCCESS) {
 		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
 			      ISC_LOG_ERROR,
@@ -5157,18 +5157,18 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	}
 
 	if (plugin_list != NULL) {
-		ns_hook_data_t hookdata = {
-			.pluginctx = { .source = NS_HOOKSOURCE_VIEW }
+		dns_hook_data_t hookdata = {
+			.pluginctx = { .source = DNS_HOOKSOURCE_VIEW }
 		};
 
 		INSIST(view->hooktable == NULL);
-		ns_hooktable_create(view->mctx, &hookdata.hooktable);
+		dns_hooktable_create(view->mctx, &hookdata.hooktable);
 		view->hooktable = hookdata.hooktable;
-		view->hooktable_free = ns_hooktable_free;
+		view->hooktable_free = dns_hooktable_free;
 
-		ns_plugins_create(view->mctx, &hookdata.plugins);
+		dns_plugins_create(view->mctx, &hookdata.plugins);
 		view->plugins = hookdata.plugins;
-		view->plugins_free = ns_plugins_free;
+		view->plugins_free = dns_plugins_free;
 
 		CHECK(cfg_pluginlist_foreach(config, plugin_list, aclctx,
 					     named_register_one_plugin,
