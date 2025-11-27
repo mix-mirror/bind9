@@ -524,6 +524,14 @@ keydata			TYPE65533	\# 0
 keydata			TYPE65533	\# 6 010203040506
 keydata			TYPE65533	\# 18 010203040506010203040506010203040506
 
+; deleg and delegi (temporary code point assignments: 61440 and 65433)
+deleg			DELEG	server-name=ns1.example.net.,ns2.example.org.
+deleg			DELEG	server-ipv4=192.0.2.1 server-ipv6=2001:DB8::1
+deleg			DELEG	key12345=abc
+delegi			DELEGI	server-name=ns1.example.net.,ns2.example.org.
+delegi			DELEGI	server-ipv4=192.0.2.1 server-ipv6=2001:DB8::1
+delegi			DELEGI	key321=xyz
+
 ; type 65535 (reserved)
 
 EOF

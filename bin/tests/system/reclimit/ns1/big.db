@@ -2669,7 +2669,8 @@ manytypes.big.	IN	TYPE65429	\# 0
 manytypes.big.	IN	TYPE65430	\# 0
 manytypes.big.	IN	TYPE65431	\# 0
 manytypes.big.	IN	TYPE65432	\# 0
-manytypes.big.	IN	TYPE65433	\# 0
+; XXX: temporarily removed 65433 until DELEGI gets a permanent code point
+;manytypes.big.	IN	TYPE65433	\# 0
 manytypes.big.	IN	TYPE65434	\# 0
 manytypes.big.	IN	TYPE65435	\# 0
 manytypes.big.	IN	TYPE65436	\# 0

@@ -490,7 +490,6 @@ keymgr_keyid_conflict(dst_key_t *newkey, uint16_t min, uint16_t max,
  * Create a new key for 'origin' given the kasp key configuration 'kkey'.
  * This will check for key id collisions with keys in 'keylist'.
  * The created key will be stored in 'dst_key'.
- *
  */
 static isc_result_t
 keymgr_createkey(dns_kasp_key_t *kkey, const dns_name_t *origin,
@@ -500,7 +499,7 @@ keymgr_createkey(dns_kasp_key_t *kkey, const dns_name_t *origin,
 		 dst_key_t **dst_key) {
 	isc_result_t result = ISC_R_SUCCESS;
 	bool conflict = false;
-	int flags = DNS_KEYOWNER_ZONE;
+	int flags = DNS_KEYOWNER_ZONE | DNS_KEYFLAG_ADT;
 	dst_key_t *newkey = NULL;
 	uint32_t alg = dns_kasp_key_algorithm(kkey);
 	dns_keystore_t *keystore = dns_kasp_key_keystore(kkey);

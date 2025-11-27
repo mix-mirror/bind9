@@ -247,17 +247,19 @@ set_keyrole() {
   key_set "$1" "ROLE" "$2"
   key_set "$1" "KSK" "no"
   key_set "$1" "ZSK" "no"
-  key_set "$1" "FLAGS" "0"
+
+  kflags=0
+  test "$2" = "ksk" && kflags=259
+  test "$2" = "zsk" && kflags=258
+  test "$2" = "csk" && kflags=259
+
+  test "$3" = "noadt" && kflags=$((kflags - 2))
+  key_set "$1" "FLAGS" "$kflags"
 
   test "$2" = "ksk" && key_set "$1" "KSK" "yes"
-  test "$2" = "ksk" && key_set "$1" "FLAGS" "257"
-
   test "$2" = "zsk" && key_set "$1" "ZSK" "yes"
-  test "$2" = "zsk" && key_set "$1" "FLAGS" "256"
-
   test "$2" = "csk" && key_set "$1" "KSK" "yes"
   test "$2" = "csk" && key_set "$1" "ZSK" "yes"
-  test "$2" = "csk" && key_set "$1" "FLAGS" "257"
 
   return 0
 }
@@ -386,9 +388,9 @@ check_key() {
   fi
 
   _role2="none"
-  if [ "$_flags" = "257" ]; then
+  if [ "$_flags" = "257" -o "$_flags" = "259" ]; then
     _role2="key-signing"
-  elif [ "$_flags" = "256" ]; then
+  elif [ "$_flags" = "256" -o "$_flags" = "258" ]; then
     _role2="zone-signing"
   fi
 

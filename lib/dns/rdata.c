@@ -89,7 +89,8 @@
 #define ARGS_FROMTEXT                                           \
 	int rdclass, dns_rdatatype_t type, isc_lex_t *lexer,    \
 		const dns_name_t *origin, unsigned int options, \
-		isc_buffer_t *target, dns_rdatacallbacks_t *callbacks
+		isc_buffer_t *target,                           \
+		dns_rdatacallbacks_t *callbacks ISC_ATTR_UNUSED
 
 #define CALL_FROMTEXT rdclass, type, lexer, origin, options, target, callbacks
 
@@ -136,9 +137,9 @@
 
 #define CALL_DIGEST rdata, digest, arg
 
-#define ARGS_CHECKOWNER                                   \
-	const dns_name_t *name, dns_rdataclass_t rdclass, \
-		dns_rdatatype_t type, bool wildcard
+#define ARGS_CHECKOWNER                                                   \
+	const dns_name_t *name ISC_ATTR_UNUSED, dns_rdataclass_t rdclass, \
+		dns_rdatatype_t type, bool wildcard ISC_ATTR_UNUSED
 
 #define CALL_CHECKOWNER name, rdclass, type, wildcard
 
@@ -169,14 +170,15 @@ static isc_result_t
 txt_fromwire(isc_buffer_t *source, isc_buffer_t *target);
 
 static isc_result_t
-commatxt_fromtext(isc_textregion_t *source, bool comma, isc_buffer_t *target);
+commatxt_fromtext(isc_textregion_t *source, bool comma, bool isname,
+		  isc_buffer_t *target);
 
 static isc_result_t
 commatxt_totext(isc_region_t *source, bool quote, bool comma,
 		isc_buffer_t *target);
 
 static isc_result_t
-multitxt_totext(isc_region_t *source, isc_buffer_t *target);
+multitxt_totext(isc_region_t *source, bool quote, isc_buffer_t *target);
 
 static isc_result_t
 multitxt_fromtext(isc_textregion_t *source, isc_buffer_t *target);
@@ -1739,7 +1741,8 @@ txt_totext(isc_region_t *source, bool quote, isc_buffer_t *target) {
 }
 
 static isc_result_t
-commatxt_fromtext(isc_textregion_t *source, bool comma, isc_buffer_t *target) {
+commatxt_fromtext(isc_textregion_t *source, bool comma, bool isname,
+		  isc_buffer_t *target) {
 	isc_region_t tregion;
 	bool escape = false, comma_escape = false, seen_comma = false;
 	unsigned int n, nrem;
@@ -1807,18 +1810,25 @@ commatxt_fromtext(isc_textregion_t *source, bool comma, isc_buffer_t *target) {
 		 * h1\\h2   =>	h1\h2   =>	h1h2
 		 * h1\\\\h2 =>	h1\\h2  =>	h1\h2
 		 */
-		if (comma && !comma_escape && c == ',') {
-			seen_comma = true;
-			break;
-		}
-		if (comma && !comma_escape && c == '\\') {
-			comma_escape = true;
-			continue;
+		if (comma && !comma_escape) {
+			if (c == ',') {
+				seen_comma = true;
+				break;
+			}
+			if (c == '\\') {
+				comma_escape = true;
+				continue;
+			}
 		}
 		comma_escape = false;
-		if (nrem == 0) {
+
+		if (nrem == (isname && c == '\\') ? 1 : 0) {
 			return (tregion.length <= 256U) ? ISC_R_NOSPACE
 							: DNS_R_SYNTAX;
+		}
+		if (isname && c == '\\') {
+			*t++ = c;
+			nrem--;
 		}
 		*t++ = c;
 		nrem--;
@@ -1860,7 +1870,7 @@ commatxt_fromtext(isc_textregion_t *source, bool comma, isc_buffer_t *target) {
 
 static isc_result_t
 txt_fromtext(isc_textregion_t *source, isc_buffer_t *target) {
-	return commatxt_fromtext(source, false, target);
+	return commatxt_fromtext(source, false, false, target);
 }
 
 static isc_result_t
@@ -1895,7 +1905,7 @@ txt_fromwire(isc_buffer_t *source, isc_buffer_t *target) {
  * Conversion of TXT-like rdata fields without length limits.
  */
 static isc_result_t
-multitxt_totext(isc_region_t *source, isc_buffer_t *target) {
+multitxt_totext(isc_region_t *source, bool quote, isc_buffer_t *target) {
 	unsigned int tl;
 	unsigned int n0, n;
 	unsigned char *sp;
@@ -1910,8 +1920,10 @@ multitxt_totext(isc_region_t *source, isc_buffer_t *target) {
 	if (tl < 1) {
 		return ISC_R_NOSPACE;
 	}
-	*tp++ = '"';
-	tl--;
+	if (quote) {
+		*tp++ = '"';
+		tl--;
+	}
 	do {
 		n = source->length;
 		n0 = source->length - 1;
@@ -1948,8 +1960,10 @@ multitxt_totext(isc_region_t *source, isc_buffer_t *target) {
 	if (tl < 1) {
 		return ISC_R_NOSPACE;
 	}
-	*tp++ = '"';
-	tl--;
+	if (quote) {
+		*tp++ = '"';
+		tl--;
+	}
 	POST(tl);
 	isc_buffer_add(target, (unsigned int)(tp - (char *)region.base));
 	return ISC_R_SUCCESS;

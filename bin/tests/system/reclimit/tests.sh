@@ -474,12 +474,13 @@ echo_i "checking that lifting the limit will allow everything to get cached ($n)
 # Lift the limit
 ns3_reset ns3/named6.conf.in
 
-for ntype in $(seq 65280 65534); do
+# XXX: temporarily notched out 65533 for DELEGI
+for ntype in $(seq 65280 65432) $(seq 65434 65534); do
   check_manytypes 1 manytypes.big "TYPE${ntype}" NOERROR manytypes.big "TYPE${ntype}" 120 || ret=1
 done
 # Wait at least one second
 sleep 1
-for ntype in $(seq 65280 65534); do
+for ntype in $(seq 65280 65432) $(seq 65434 65534); do
   check_manytypes 2 manytypes.big "TYPE${ntype}" NOERROR manytypes.big "TYPE${ntype}" "" 120 || ret=1
 done
 

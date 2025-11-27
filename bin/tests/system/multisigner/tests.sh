@@ -31,7 +31,7 @@ set_policy "model2" "2" "3600"
 
 # Key properties and states.
 key_clear "KEY1"
-set_keyrole "KEY1" "ksk"
+set_keyrole "KEY1" "ksk" "noadt"
 set_keylifetime "KEY1" "0"
 set_keyalgorithm "KEY1" "13" "ECDSAP256SHA256" "256"
 set_keysigning "KEY1" "yes"
@@ -42,7 +42,7 @@ set_keystate "KEY1" "STATE_KRRSIG" "omnipresent"
 set_keystate "KEY1" "STATE_DS" "omnipresent"
 
 key_clear "KEY2"
-set_keyrole "KEY2" "zsk"
+set_keyrole "KEY2" "zsk" "noadt"
 set_keylifetime "KEY2" "0"
 set_keyalgorithm "KEY2" "13" "ECDSAP256SHA256" "256"
 set_keysigning "KEY2" "no"

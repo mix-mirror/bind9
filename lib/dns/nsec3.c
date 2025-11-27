@@ -134,18 +134,20 @@ dns_nsec3_buildrdata(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
 			 * Work out if we need to set the RRSIG bit for
 			 * this node.  We set the RRSIG bit if either of
 			 * the following conditions are met:
-			 * 1) We have a SOA or DS then we need to set
-			 *    the RRSIG bit as both always will be signed.
-			 * 2) We set the RRSIG bit if we don't have
-			 *    a NS record but do have other data.
+			 * 1) We have an SOA, DS or DELEG; these will
+			 *    always be signed.
+			 * 2) We don't have an NS, but do have other data.
 			 */
-			if (rdataset.type == dns_rdatatype_soa ||
-			    rdataset.type == dns_rdatatype_ds)
-			{
+			switch (rdataset.type) {
+			case dns_rdatatype_soa:
+			case dns_rdatatype_ds:
+			case dns_rdatatype_deleg:
 				need_rrsig = true;
-			} else if (rdataset.type == dns_rdatatype_ns) {
+				break;
+			case dns_rdatatype_ns:
 				found_ns = true;
-			} else {
+				break;
+			default:
 				found = true;
 			}
 		}
@@ -2015,12 +2017,18 @@ dns_nsec3_noexistnodata(dns_rdatatype_t type, const dns_name_t *name,
 
 		/*
 		 * Potential closest encloser.
+		 *
+		 * XXX: DELEG should only be recognized as a closest
+		 *      encloser if the client is DELEG-aware, but
+		 *      currently there's no way to know that.
 		 */
 		if (order == 0) {
 			if (closest != NULL &&
 			    (dns_name_countlabels(closest) == 0 ||
 			     dns_name_issubdomain(qname, closest)) &&
 			    !dns_nsec3_typepresent(&rdata, dns_rdatatype_ds) &&
+			    !dns_nsec3_typepresent(&rdata,
+						   dns_rdatatype_deleg) &&
 			    !dns_nsec3_typepresent(&rdata,
 						   dns_rdatatype_dname) &&
 			    (dns_nsec3_typepresent(&rdata, dns_rdatatype_soa) ||
