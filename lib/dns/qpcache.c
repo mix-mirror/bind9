@@ -1439,13 +1439,10 @@ find_deepest_zonecut(qpc_search_t *search, qpcnode_t *node,
 		     dns_rdataset_t *rdataset,
 		     dns_rdataset_t *sigrdataset DNS__DB_FLARG) {
 	isc_result_t result = ISC_R_NOTFOUND;
-	qpcache_t *qpdb = NULL;
 
 	/*
 	 * Caller must be holding the tree lock.
 	 */
-
-	qpdb = search->qpdb;
 
 	for (int i = dns_qpchain_length(&search->chain) - 1; i >= 0; i--) {
 		dns_slabheader_t *found = NULL, *foundsig = NULL;
@@ -2288,9 +2285,6 @@ getservestalerefresh(dns_db_t *db, uint32_t *interval) {
 
 static void
 qpcnode_expiredata(dns_dbnode_t *node, void *data) {
-	qpcnode_t *qpnode = (qpcnode_t *)node;
-	qpcache_t *qpdb = (qpcache_t *)qpnode->qpdb;
-
 	dns_slabtop_t *related = NULL;
 	dns_slabheader_t *header = data;
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
