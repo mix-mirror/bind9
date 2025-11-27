@@ -349,7 +349,7 @@ mem_realloc(isc_mem_t *ctx, void *old_ptr, size_t new_size, int flags) {
  * Perform an aligned allocation.
  */
 static void *
-mem_allocate_aligned(isc_mem_t *ctx, size_t size, size_t alignment, int flags) {
+mem_allocate_aligned(size_t size, size_t alignment, int flags) {
 	void *new_ptr = NULL;
 
 	/* 
@@ -368,8 +368,6 @@ mem_allocate_aligned(isc_mem_t *ctx, size_t size, size_t alignment, int flags) {
 
 	if ((flags & ISC__MEM_ZERO) != 0) {
 		memset(new_ptr, 0, adjusted_size);
-	} else if ((ctx->flags & ISC_MEMFLAG_FILL) != 0) {
-		memset(new_ptr, 0xbe, adjusted_size); /* Mnemonic for "beef". */
 	}
 
 	return new_ptr;
@@ -380,13 +378,8 @@ mem_allocate_aligned(isc_mem_t *ctx, size_t size, size_t alignment, int flags) {
  */
 /* coverity[+free : arg-1] */
 static void
-mem_free_aligned(isc_mem_t *ctx, void *mem, size_t size, size_t alignment, int flags ISC_ATTR_UNUSED) {
+mem_free_aligned(void *mem, size_t size, size_t alignment ISC_ATTR_UNUSED, int flags ISC_ATTR_UNUSED) {
 	ADJUST_ZERO_ALLOCATION_SIZE(size);
-	size_t adjusted_size= ISC_ALIGN(size, alignment);
-
-	if ((ctx->flags & ISC_MEMFLAG_FILL) != 0) {
-		memset(mem, 0xde, adjusted_size); /* Mnemonic for "dead". */
-	}
 
 	/* aligned_alloc pairs with regular free() */
 	free(mem);
@@ -899,7 +892,7 @@ isc__mem_allocate_aligned(isc_mem_t *ctx, size_t size, size_t alignment, int fla
 	/* Adjust size to be multiple of alignment, as required by C11  */
 	size_t adjusted_size = ISC_ALIGN(size, alignment);
 
-	ptr = mem_allocate_aligned(ctx, size, alignment, flags);
+	ptr = mem_allocate_aligned(size, alignment, flags);
 
 	mem_getstats(ctx, adjusted_size);
 	ADD_TRACE(ctx, ptr, adjusted_size, func, file, line);
@@ -918,7 +911,7 @@ isc__mem_free_aligned(isc_mem_t *ctx, void *ptr, size_t size, size_t alignment, 
 	DELETE_TRACE(ctx, ptr, adjusted_size, func, file, line);
 
 	mem_putstats(ctx, adjusted_size);
-	mem_free_aligned(ctx, ptr, adjusted_size, alignment, flags);
+	mem_free_aligned(ptr, adjusted_size, alignment, flags);
 }
 
 void
