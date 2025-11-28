@@ -1355,6 +1355,45 @@ def configure_going_insecure(tld: str, reconfig: bool = False) -> List[Zone]:
     return zones
 
 
+def configure_straight2none(tld: str) -> List[Zone]:
+    # These zones are going straight to "none" policy. This is undefined behavior.
+    zones = []
+    keygen = CmdHelper("KEYGEN", "-k default")
+    settime = CmdHelper("SETTIME", "-s")
+
+    TpubN = "now-10d"
+    TsbmN = "now-12955mi"
+    keytimes = f"-P {TpubN} -A {TpubN} -P sync {TsbmN}"
+
+    zonename = f"going-straight-to-none.{tld}"
+    zones.append(Zone(zonename, f"{zonename}.db", Nameserver("ns3", "10.53.0.3")))
+    isctest.log.info(f"setup {zonename}")
+    # Key generation.
+    csk_name = keygen(f"-f KSK {keytimes} {zonename}", cwd="ns3").strip()
+    settime(
+        f"-g OMNIPRESENT -k OMNIPRESENT {TpubN} -r OMNIPRESENT {TpubN} -z OMNIPRESENT {TpubN} -d OMNIPRESENT {TpubN} {csk_name}",
+        cwd="ns3",
+    )
+    # Signing.
+    render_and_sign_zone(zonename, [csk_name], extra_options="-z")
+
+    zonename = f"going-straight-to-none-dynamic.{tld}"
+    zones.append(
+        Zone(zonename, f"{zonename}.db.signed", Nameserver("ns3", "10.53.0.3"))
+    )
+    isctest.log.info(f"setup {zonename}")
+    # Key generation.
+    csk_name = keygen(f"-f KSK {keytimes} {zonename}", cwd="ns3").strip()
+    settime(
+        f"-g OMNIPRESENT -k OMNIPRESENT {TpubN} -r OMNIPRESENT {TpubN} -z OMNIPRESENT {TpubN} -d OMNIPRESENT {TpubN} {csk_name}",
+        cwd="ns3",
+    )
+    # Signing.
+    render_and_sign_zone(zonename, [csk_name], extra_options="-z -O full")
+
+    return zones
+
+
 def configure_ksk_doubleksk(tld: str) -> List[Zone]:
     # The zones at ksk-doubleksk.$tld represent the various steps of a KSK
     # Double-KSK rollover.

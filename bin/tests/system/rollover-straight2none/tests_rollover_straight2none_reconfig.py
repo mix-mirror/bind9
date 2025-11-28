@@ -22,6 +22,28 @@ from rollover.common import (
     DURATION,
     DEFAULT_CONFIG,
 )
+from rollover.setup import (
+    configure_root,
+    configure_tld,
+    configure_straight2none,
+)
+
+
+def bootstrap():
+    data = {
+        "tlds": [],
+        "trust_anchors": [],
+    }
+
+    tlds = []
+    tld_name = "kasp"
+    delegations = configure_straight2none(tld_name)
+    tld = configure_tld(tld_name, delegations)
+    tlds.append(tld)
+    data["tlds"].append(tld_name)
+    ta = configure_root(tlds)
+    data["trust_anchors"].append(ta)
+    return data
 
 
 @pytest.fixture(scope="module", autouse=True)
