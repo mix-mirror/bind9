@@ -94,13 +94,12 @@ def configure_root(delegations: List[Zone]) -> TrustAnchor:
     return ksk.into_ta("static-ds")
 
 
-def fake_lifetime(keys: List[str]):
+def fake_lifetime(key: str, lifetime: int):
     """
-    Fake lifetime of old algorithm keys.
+    Fake lifetime of key.
     """
-    for key in keys:
-        with open(f"ns3/{key}.state", "a") as statefile:
-            statefile.write("Lifetime: 0\n")
+    with open(f"ns3/{key}.state", "a", encoding="utf-8") as statefile:
+        statefile.write(f"Lifetime: {lifetime}\n")
 
 
 def set_key_relationship(key1: str, key2: str):
@@ -363,7 +362,8 @@ def configure_algo_ksk_zsk(tld: str, reconfig: bool = False) -> List[Zone]:
             cwd="ns3",
         )
         # Signing.
-        fake_lifetime([ksk1_name, zsk1_name])
+        fake_lifetime(ksk1_name, 0)
+        fake_lifetime(zsk1_name, 0)
         render_and_sign_zone(zonename, [ksk1_name, zsk1_name, ksk2_name, zsk2_name])
 
         # Step 3:
@@ -404,7 +404,8 @@ def configure_algo_ksk_zsk(tld: str, reconfig: bool = False) -> List[Zone]:
             cwd="ns3",
         )
         # Signing.
-        fake_lifetime([ksk1_name, zsk1_name])
+        fake_lifetime(ksk1_name, 0)
+        fake_lifetime(zsk1_name, 0)
         render_and_sign_zone(zonename, [ksk1_name, zsk1_name, ksk2_name, zsk2_name])
 
         # Step 4:
@@ -445,7 +446,8 @@ def configure_algo_ksk_zsk(tld: str, reconfig: bool = False) -> List[Zone]:
             cwd="ns3",
         )
         # Signing.
-        fake_lifetime([ksk1_name, zsk1_name])
+        fake_lifetime(ksk1_name, 0)
+        fake_lifetime(zsk1_name, 0)
         render_and_sign_zone(zonename, [ksk1_name, zsk1_name, ksk2_name, zsk2_name])
 
         # Step 5:
@@ -486,7 +488,8 @@ def configure_algo_ksk_zsk(tld: str, reconfig: bool = False) -> List[Zone]:
             cwd="ns3",
         )
         # Signing.
-        fake_lifetime([ksk1_name, zsk1_name])
+        fake_lifetime(ksk1_name, 0)
+        fake_lifetime(zsk1_name, 0)
         render_and_sign_zone(zonename, [ksk1_name, zsk1_name, ksk2_name, zsk2_name])
 
         # Step 6:
@@ -526,7 +529,8 @@ def configure_algo_ksk_zsk(tld: str, reconfig: bool = False) -> List[Zone]:
             cwd="ns3",
         )
         # Signing.
-        fake_lifetime([ksk1_name, zsk1_name])
+        fake_lifetime(ksk1_name, 0)
+        fake_lifetime(zsk1_name, 0)
         render_and_sign_zone(zonename, [ksk1_name, zsk1_name, ksk2_name, zsk2_name])
 
     return zones
@@ -1281,5 +1285,71 @@ def configure_enable_dnssec(tld: str, policy: str) -> List[Zone]:
     )
     # Signing.
     render_and_sign_zone(zonename, [csk_name], extra_options="-z")
+
+    return zones
+
+
+def configure_going_insecure(tld: str, reconfig: bool = False) -> List[Zone]:
+    zones = []
+    keygen = CmdHelper("KEYGEN", "-a ECDSA256 -L 7200")
+    settime = CmdHelper("SETTIME", "-s")
+
+    # The child zones (step1, step2) beneath these zones represent the various
+    # steps of unsigning a zone.
+    for zone in [f"going-insecure.{tld}", f"going-insecure-dynamic.{tld}"]:
+        # Set up a zone with dnssec-policy that is going insecure.
+
+        # Step 1:
+        zonename = f"step1.{zone}"
+        zones.append(Zone(zonename, f"{zonename}.db", Nameserver("ns3", "10.53.0.3")))
+        isctest.log.info(f"setup {zonename}")
+        # Timing metadata.
+        TpubN = "now-10d"
+        TsbmN = "now-12955mi"
+        keytimes = f"-P {TpubN} -A {TpubN}"
+        cdstimes = f"-P sync {TsbmN}"
+        # Key generation.
+        ksk_name = keygen(f"-f KSK {keytimes} {cdstimes} {zonename}", cwd="ns3").strip()
+        zsk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
+        settime(
+            f"-g OMNIPRESENT -k OMNIPRESENT {TpubN} -r OMNIPRESENT {TpubN} -d OMNIPRESENT {TpubN} {ksk_name}",
+            cwd="ns3",
+        )
+        settime(
+            f"-g OMNIPRESENT -k OMNIPRESENT {TpubN} -z OMNIPRESENT {TpubN} {zsk_name}",
+            cwd="ns3",
+        )
+        # Signing.
+        render_and_sign_zone(zonename, [ksk_name, zsk_name])
+
+        if reconfig:
+            # Step 2:
+            zonename = f"step2.{zone}"
+            zones.append(
+                Zone(zonename, f"{zonename}.db", Nameserver("ns3", "10.53.0.3"))
+            )
+            isctest.log.info(f"setup {zonename}")
+            # The DS was withdrawn from the parent zone 26 hours ago.
+            TremN = "now-26h"
+            keytimes = f"-P {TpubN} -A {TpubN} -I {TremN} -D now"
+            cdstimes = f"-P sync {TsbmN} -D sync {TremN}"
+            # Key generation.
+            ksk_name = keygen(
+                f"-f KSK {keytimes} {cdstimes} {zonename}", cwd="ns3"
+            ).strip()
+            zsk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
+            settime(
+                f"-g HIDDEN -k OMNIPRESENT {TpubN} -r OMNIPRESENT {TpubN} -d UNRETENTIVE {TremN} -D ds {TremN} {ksk_name}",
+                cwd="ns3",
+            )
+            settime(
+                f"-g HIDDEN -k OMNIPRESENT {TpubN} -z OMNIPRESENT {TpubN} {zsk_name}",
+                cwd="ns3",
+            )
+            # Fake lifetime of old algorithm keys.
+            fake_lifetime(ksk_name, 0)
+            fake_lifetime(zsk_name, 5184000)
+            # Signing.
+            render_and_sign_zone(zonename, [ksk_name, zsk_name], extra_options="-P")
 
     return zones
