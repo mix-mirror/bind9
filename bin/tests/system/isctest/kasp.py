@@ -33,6 +33,7 @@ import isctest.util
 from isctest.compat import DSDigest
 from isctest.instance import NamedInstance
 from isctest.template import TrustAnchor
+from isctest.run import CmdHelper
 from isctest.vars.algorithms import Algorithm, ALL_ALGORITHMS_BY_NUM
 
 DEFAULT_TTL = 300
@@ -699,6 +700,62 @@ class Key:
                 return False
 
         return True
+
+    def settime(self, timings: Dict[str, Union[str]]):
+        """
+        Timing options:
+        -P date/[+-]offset/none: set/unset key publication date
+        -P ds date/[+-]offset/none: set/unset DS publication date
+        -P sync date/[+-]offset/none: set/unset CDS and CDNSKEY publication date
+        -A date/[+-]offset/none: set/unset key activation date
+        -R date/[+-]offset/none: set/unset key revocation date
+        -I date/[+-]offset/none: set/unset key inactivation date
+        -D date/[+-]offset/none: set/unset key deletion date
+        -D ds date/[+-]offset/none: set/unset DS deletion date
+        -D sync date/[+-]offset/none: set/unset CDS and CDNSKEY deletion date
+        Key state options:
+        -g state: set the goal state for this key
+        -d state date/[+-]offset: set the DS state
+        -k state date/[+-]offset: set the DNSKEY state
+        -r state date/[+-]offset: set the RRSIG (KSK) state
+        -z state date/[+-]offset: set the RRSIG (ZSK) state
+        """
+        params = []
+
+        # Timing options:
+        timing_options = [
+            "P",
+            "P ds",
+            "P sync",
+            "A",
+            "R",
+            "I",
+            "D",
+            "D ds",
+            "D sync",
+        ]
+        for option in timing_options:
+            if option in timings:
+                value = timings[option]
+                params.append(f"-{option} {value}")
+
+        # Key state options.
+        keystate_options = [
+            "g",
+            "d",
+            "k",
+            "r",
+            "z",
+        ]
+        for option in keystate_options:
+            if option in timings:
+                value = timings[option]
+                params.append(f"-{option} {value}")
+
+        settime_params = " ".join(params)
+        isctest.log.debug(f"SETTIME: {settime_params} {self.path}")
+        settime_cmd = CmdHelper("SETTIME", "-s")
+        settime_cmd(f"{settime_params} {self.path}")
 
     def __lt__(self, other: "Key"):
         return self.name < other.name
