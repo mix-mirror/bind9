@@ -1620,3 +1620,64 @@ def configure_ksk_doubleksk(tld: str) -> List[Zone]:
     )
 
     return zones
+
+
+def configure_ksk_3crowd(tld: str) -> List[Zone]:
+    # Test #2375, the "three is a crowd" bug, where a new key is introduced but the
+    # previous rollover has not finished yet. In other words, we have a key KEY2
+    # that is the successor of key KEY1, and we introduce a new key KEY3 that is
+    # the successor of key KEY2:
+    #
+    #     KEY1 < KEY2 < KEY3.
+    #
+    # The expected behavior is that all three keys remain in the zone, and not
+    # the bug behavior where KEY2 is removed and immediately replaced with KEY3.
+    #
+    zones = []
+    cds = "cds:sha-256"
+    keygen = CmdHelper("KEYGEN", "-a ECDSAP256SHA256 -L 7200")
+    settime = CmdHelper("SETTIME", "-s")
+
+    # Set up a zone that has a KSK (KEY1) and have the successor key (KEY2)
+    # published as well.
+    zonename = f"three-is-a-crowd.{tld}"
+    zones.append(Zone(zonename, f"{zonename}.db", Nameserver("ns3", "10.53.0.3")))
+    isctest.log.info(f"setup {zonename}")
+    # These times are the same as step3.ksk-doubleksk.autosign.
+    TpubN = "now-60d"
+    TactN = "now-1413h"
+    TretN = "now"
+    TremN = "now+50h"
+    TpubN1 = "now-27h"
+    TactN1 = TretN
+    TretN1 = "now+60d"
+    TremN1 = "now+1490h"
+    ksktimes = (
+        f"-P {TpubN} -A {TpubN} -P sync {TactN} -I {TretN} -D {TremN} -D sync {TactN1}"
+    )
+    newtimes = f"-P {TpubN1} -A {TactN1} -P sync {TactN1} -I {TretN1} -D {TremN1}"
+    zsktimes = f"-P {TpubN}  -A {TpubN}"
+    # Key generation.
+    ksk1_name = keygen(f"-f KSK {ksktimes} {zonename}", cwd="ns3").strip()
+    ksk2_name = keygen(f"-f KSK {newtimes} {zonename}", cwd="ns3").strip()
+    zsk_name = keygen(f"{zsktimes} {zonename}", cwd="ns3").strip()
+    settime(
+        f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {ksk1_name}",
+        cwd="ns3",
+    )
+    settime(
+        f"-g OMNIPRESENT -k RUMOURED {TpubN1} -r RUMOURED {TpubN1} -d HIDDEN {TpubN1} {ksk2_name}",
+        cwd="ns3",
+    )
+    settime(
+        f"-g OMNIPRESENT -k OMNIPRESENT {TpubN} -z OMNIPRESENT {TpubN} {zsk_name}",
+        cwd="ns3",
+    )
+    # Set key rollover relationship.
+    set_key_relationship(ksk1_name, ksk2_name)
+    # Signing.
+    render_and_sign_zone(
+        zonename, [ksk1_name, ksk2_name, zsk_name], extra_options=f"-G {cds}"
+    )
+
+    return zones

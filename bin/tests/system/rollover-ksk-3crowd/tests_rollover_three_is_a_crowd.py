@@ -24,6 +24,11 @@ from rollover.common import (
     KSK_IPUB,
     KSK_IRET,
 )
+from rollover.setup import (
+    configure_root,
+    configure_tld,
+    configure_ksk_3crowd,
+)
 
 
 CDSS = ["CDS (SHA-256)"]
@@ -31,6 +36,23 @@ POLICY = "ksk-doubleksk-autosign"
 OFFSET1 = -int(timedelta(days=60).total_seconds())
 OFFSET2 = -int(timedelta(hours=27).total_seconds())
 TTL = int(KSK_CONFIG["dnskey-ttl"].total_seconds())
+
+
+def bootstrap():
+    data = {
+        "tlds": [],
+        "trust_anchors": [],
+    }
+
+    tlds = []
+    tld_name = "kasp"
+    delegations = configure_ksk_3crowd(tld_name)
+    tld = configure_tld(tld_name, delegations)
+    tlds.append(tld)
+    data["tlds"].append(tld_name)
+    ta = configure_root(tlds)
+    data["trust_anchors"].append(ta)
+    return data
 
 
 def test_rollover_ksk_three_is_a_crowd(alg, size, ns3):
