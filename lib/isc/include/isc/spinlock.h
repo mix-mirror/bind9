@@ -32,6 +32,7 @@
 #define SPINUNLOCK(sp)                                                    \
 	{                                                                 \
 		isc_spinlock_unlock((sp));                                \
+		sched_yield();                                            \
 		ISC_UTIL_TRACE(fprintf(stderr, "SPINUNLOCKED %p %s %d\n", \
 				       (sp), __FILE__, __LINE__));        \
 	}

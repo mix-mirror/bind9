@@ -36,9 +36,10 @@ typedef enum {
 	}
 #define RWUNLOCK(lp, t)                                                   \
 	{                                                                 \
+		isc_rwlock_unlock((lp), (t));                             \
+		sched_yield();                                            \
 		ISC_UTIL_TRACE(fprintf(stderr, "RWUNLOCK %p, %d %s %d\n", \
 				       (lp), (t), __FILE__, __LINE__));   \
-		isc_rwlock_unlock((lp), (t));                             \
 	}
 
 #define RDLOCK(lp)   RWLOCK(lp, isc_rwlocktype_read)

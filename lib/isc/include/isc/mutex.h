@@ -33,6 +33,7 @@
 #define UNLOCK(lp)                                                          \
 	{                                                                   \
 		isc_mutex_unlock((lp));                                     \
+		sched_yield();                                              \
 		ISC_UTIL_TRACE(fprintf(stderr, "UNLOCKED %p %s %d\n", (lp), \
 				       __FILE__, __LINE__));                \
 	}
