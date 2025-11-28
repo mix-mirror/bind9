@@ -387,10 +387,9 @@ class _ConnectionTeardownRequested(Exception):
 
 
 @dataclass
-class ResponseDropAndCloseConnection(ResponseAction):
+class CloseConnection(ResponseAction):
     """
-    Action which makes the server close the connection after the DNS query is
-    received by the server (TCP only).
+    Action which makes the server close the connection (TCP only).
 
     The connection may be closed with a delay if requested.
     """
@@ -497,8 +496,8 @@ class ConnectionReset(ConnectionHandler):
     make the server send an RST segment; this happens when the server closes a
     client's socket while there is still unread data in that socket's buffer.
     If closing the connection _after_ the query is read by the server is enough
-    for a given use case, the ResponseDropAndCloseConnection response handler
-    should be used instead.
+    for a given use case, the CloseConnection response handler should be used
+    instead.
     """
 
     delay: float = 0.0
