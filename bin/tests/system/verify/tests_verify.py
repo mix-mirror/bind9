@@ -184,3 +184,37 @@ def test_verify_j_reads_journal_file():
         ]
     ).stdout.decode("utf-8")
     assert "Loading zone 'updated' from file 'zones/updated.other'" in output
+
+
+@pytest.mark.parametrize(
+    "zone",
+    [
+        "ksk+zsk.zonemd.nsec",
+        "ksk+zsk.zonemd.nsec3",
+    ],
+)
+def test_verify_zonemd(zone):
+    output = isctest.run.cmd(
+        [VERIFY, "-o", zone, f"zones/{zone}.good"],
+        raise_on_exception=False,
+        log_stdout=True,
+    )
+    stream = (output.stdout + output.stderr).decode("utf-8").replace("\n", "")
+    assert "ZONEMD verification: success" in stream
+
+
+@pytest.mark.parametrize(
+    "zone",
+    [
+        "ksk+zsk.nsec",
+        "ksk+zsk.nsec3",
+    ],
+)
+def test_verify_no_zonemd(zone):
+    output = isctest.run.cmd(
+        [VERIFY, "-Zo", zone, f"zones/{zone}.good"],
+        raise_on_exception=False,
+        log_stdout=True,
+    )
+    stream = (output.stdout + output.stderr).decode("utf-8").replace("\n", "")
+    assert "Valid ZONEMD required but not present" in stream

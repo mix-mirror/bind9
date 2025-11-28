@@ -13,9 +13,26 @@
 
 #pragma once
 
+/* Known scheme type(s). */
+enum {
+	DNS_ZONEMD_SCHEME_SIMPLE = 1,
+	DNS_ZONEMD_SCHEME_MAX = 2,
+};
+
 /* Known digest type(s). */
-#define DNS_ZONEMD_DIGEST_SHA384 (1)
-#define DNS_ZONEMD_DIGEST_SHA512 (2)
+enum {
+	DNS_ZONEMD_DIGEST_SHA384 = 1,
+	DNS_ZONEMD_DIGEST_SHA512 = 2,
+	DNS_ZONEMD_DIGEST_MAX = 3,
+};
+
+/*
+ * Array size that can hold all possible combinations of schemes and digests
+ * with a sentinal (0, 0) entry.
+ */
+#define DNS_ZONEMD_MAX                                                         \
+	(((int)DNS_ZONEMD_SCHEME_MAX - 1) * ((int)DNS_ZONEMD_DIGEST_MAX - 1) + \
+	 1)
 
 /*
  *  \brief per RFC 8976

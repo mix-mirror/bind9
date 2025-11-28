@@ -33,6 +33,7 @@ options {
 	trust-anchor-telemetry yes;
 	allow-new-zones yes;
 	dnssec-validation yes;
+	check-zonemd no;
 };
 
 zone "." {

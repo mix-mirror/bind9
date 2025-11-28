@@ -23,7 +23,7 @@ named-checkzone - zone file validation tool
 Synopsis
 ~~~~~~~~
 
-:program:`named-checkzone` [**-d**] [**-h**] [**-j**] [**-q**] [**-v**] [**-c** class] [**-C** mode] [**-f** format] [**-F** format] [**-J** filename] [**-i** mode] [**-k** mode] [**-m** mode] [**-M** mode] [**-n** mode] [**-l** ttl] [**-L** serial] [**-o** filename] [**-r** mode] [**-R** mode] [**-s** style] [**-S** mode] [**-t** directory] [**-T** mode] [**-w** directory] [**-D**] [**-W** mode] {zonename} {filename}
+:program:`named-checkzone` [**-d**] [**-h**] [**-j**] [**-q**] [**-v**] [**-c** class] [**-C** mode] [**-f** format] [**-F** format] [**-J** filename] [**-i** mode] [**-k** mode] [**-m** mode] [**-M** mode] [**-n** mode] [**-l** ttl] [**-L** serial] [**-o** filename] [**-r** mode] [**-R** mode] [**-s** style] [**-S** mode] [**-t** directory] [**-T** mode] [**-w** directory] [**-D**] [**-W** mode] [**-z** mode] {zonename} {filename}
 
 Description
 ~~~~~~~~~~~
@@ -219,6 +219,12 @@ Options
    wildcards are almost always the result of a failure to understand the
    wildcard matching algorithm (:rfc:`4592`). Possible modes are ``warn``
    (the default) and ``ignore``.
+
+.. option:: -z mode
+
+   This option specifies whether to check the contents of a zone against
+   the cryptographic hash in a ZONEMD record (:rfc:`8976`).
+   Possible modes are ``fail`` and ``ignore`` (the default).
 
 .. option:: zonename
 

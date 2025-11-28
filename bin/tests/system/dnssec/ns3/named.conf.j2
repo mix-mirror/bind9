@@ -208,17 +208,23 @@ zone "nsec3-unknown.example" {
 	type primary;
 	nsec3-test-zone yes;
 	file "nsec3-unknown.example.db.signed";
+	check-zonemd no;
 };
 
 zone "optout-unknown.example" {
 	type primary;
 	nsec3-test-zone yes;
 	file "optout-unknown.example.db.signed";
+	check-zonemd no;
 };
 
 zone "dnskey-unknown.example" {
 	type primary;
 	file "dnskey-unknown.example.db.signed";
+	/*
+	 * ZONEMD: self validation failure SOA and DNSKEY
+	 */
+	check-zonemd no;
 };
 
 zone "digest-alg-unsupported.example" {
@@ -236,6 +242,10 @@ zone "ds-unsupported.example" {
 zone "dnskey-unsupported.example" {
 	type primary;
 	file "dnskey-unsupported.example.db.signed";
+	/*
+	 * ZONEMD: self validation failure SOA and DNSKEY
+	 */
+	check-zonemd no;
 };
 
 zone "dnskey-unsupported-2.example" {
@@ -247,6 +257,7 @@ zone "dnskey-nsec3-unknown.example" {
 	type primary;
 	nsec3-test-zone yes;
 	file "dnskey-nsec3-unknown.example.db.signed";
+	check-zonemd no;
 };
 
 zone "multiple.example" {
@@ -280,6 +291,7 @@ zone "expired.example" {
 	type primary;
 	allow-update { none; };
 	file "expired.example.db.signed";
+	check-zonemd no; /* signatures are expired */
 };
 
 zone "update-nsec3.example" {
@@ -360,12 +372,17 @@ zone "inline.example" {
 zone "future.example" {
 	type primary;
 	file "future.example.db.signed";
+	check-zonemd no;
 };
 
 zone "managed-future.example" {
 	type primary;
 	file "managed-future.example.db.signed";
 	allow-update { any; };
+	/*
+	 * ZONEMD: self validation failure SOA and DNSKEY
+	 */
+	check-zonemd no;
 };
 
 zone "revkey.example" {
@@ -401,11 +418,17 @@ zone "enabled.managed" {
 zone "unsupported.managed" {
 	type primary;
 	file "unsupported.managed.db.signed";
+	/*
+	 * ZONEMD: self validation failure SOA and DNSKEY
+	 */
+	check-zonemd no;
 };
 
 zone "revoked.managed" {
 	type primary;
 	file "revoked.managed.db.signed";
+	/* Only a revoked key in the zone. */
+	check-zonemd no;
 };
 
 zone "secure.trusted" {
@@ -426,11 +449,17 @@ zone "enabled.trusted" {
 zone "unsupported.trusted" {
 	type primary;
 	file "unsupported.trusted.db.signed";
+	/*
+	 * ZONEMD: self validation failure SOA and DNSKEY
+	 */
+	check-zonemd no;
 };
 
 zone "revoked.trusted" {
 	type primary;
 	file "revoked.trusted.db.signed";
+	/* Only a revoked key in the zone. */
+	check-zonemd no;
 };
 
 zone "too-many-iterations" {
@@ -477,6 +506,7 @@ zone "extradsoid.example" {
 zone "extradsunknownoid.example" {
         type primary;
         file "extradsunknownoid.example.db.signed";
+	check-zonemd no; /* no supported algorithm */
 };
 
 zone "extended-ds-unknown-oid.example" {

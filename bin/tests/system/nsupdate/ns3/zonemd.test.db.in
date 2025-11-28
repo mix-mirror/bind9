@@ -1,0 +1,17 @@
+; Copyright (C) Internet Systems Consortium, Inc. ("ISC")
+;
+; SPDX-License-Identifier: MPL-2.0
+;
+; This Source Code Form is subject to the terms of the Mozilla Public
+; License, v. 2.0.  If a copy of the MPL was not distributed with this
+; file, you can obtain one at https://mozilla.org/MPL/2.0/.
+;
+; See the COPYRIGHT file distributed with this work for additional
+; information regarding copyright ownership.
+
+$TTL 10
+zonemd.test. IN SOA ns3.zonemd.test. hostmaster.zonemd.test. 1 3600 900 2419200 3600
+zonemd.test. IN NS ns3.zonemd.test.
+zonemd.test. IN NS ns5.zonemd.test.
+ns3.zonemd.test. IN A 10.53.0.3
+ns5.zonemd.test. IN A 10.53.0.5

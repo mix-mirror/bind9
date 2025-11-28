@@ -96,15 +96,21 @@ typedef enum {
 	DNS_ZONEOPT_LOGREPORTS = 1 << 23,    /* Log error-reporting queries */
 	DNS_ZONEOPT_DNSKEYKSKONLY = 1 << 24, /*%< dnssec-dnskey-kskonly */
 	DNS_ZONEOPT_CHECKDUPRR = 1 << 25,    /*%< check-dup-records */
-	DNS_ZONEOPT_CHECKDUPRRFAIL = 1 << 26, /*%< fatal check-dup-records
-					       * failures */
-	DNS_ZONEOPT_CHECKSPF = 1 << 27,	      /*%< check SPF records */
-	DNS_ZONEOPT_CHECKTTL = 1 << 28,	      /*%< check max-zone-ttl */
-	DNS_ZONEOPT_AUTOEMPTY = 1 << 29,      /*%< automatic empty zone */
-	DNS_ZONEOPT_CHECKSVCB = 1 << 30,      /*%< check SVBC records */
-	DNS_ZONEOPT_ZONEVERSION = 1U << 31,   /*%< enable zoneversion */
-	DNS_ZONEOPT_FULLSIGN = 1ULL << 32,    /*%< fully sign zone */
-	DNS_ZONEOPT_FORCEKEYMGR = 1ULL << 33, /*%< force keymgr step */
+	DNS_ZONEOPT_CHECKDUPRRFAIL = 1 << 26,	   /*%< fatal check-dup-records
+						      failures */
+	DNS_ZONEOPT_CHECKSPF = 1 << 27,		   /*%< check SPF records */
+	DNS_ZONEOPT_CHECKTTL = 1 << 28,		   /*%< check max-zone-ttl */
+	DNS_ZONEOPT_AUTOEMPTY = 1 << 29,	   /*%< automatic empty zone */
+	DNS_ZONEOPT_CHECKSVCB = 1 << 30,	   /*%< check SVBC records */
+	DNS_ZONEOPT_ZONEVERSION = 1U << 31,	   /*%< enable zoneversion */
+	DNS_ZONEOPT_FULLSIGN = 1ULL << 32,	   /*%< fully sign zone */
+	DNS_ZONEOPT_FORCEKEYMGR = 1ULL << 33,	   /*%< force keymgr step */
+	DNS_ZONEOPT_ZONEMD_CHECK = 1ULL << 34,	   /*%< zonemd check */
+	DNS_ZONEOPT_ZONEMD_DNSSEC = 1ULL << 35,	   /*%< zonemd DNSSEC only */
+	DNS_ZONEOPT_ZONEMD_REQUIRED = 1ULL << 36,  /*%< zonemd required */
+	DNS_ZONEOPT_ZONEMD_NOEXPIRED = 1ULL << 37, /*%< don't allow expired
+						      RRSIG when verifying
+						      zonemd */
 	DNS_ZONEOPT___MAX = UINT64_MAX, /* trick to make the ENUM 64-bit wide */
 } dns_zoneopt_t;
 
@@ -2578,21 +2584,40 @@ dns_zone_isloaded(dns_zone_t *zone);
  */
 
 isc_result_t
-dns_zone_verifydb(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *ver);
+dns_zone_checkzonemd(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *ver);
 /*%<
- * If 'zone' is a mirror zone, perform DNSSEC validation of version 'ver' of
- * its database, 'db'.  Ensure that the DNSKEY RRset at zone apex is signed by
- * at least one trust anchor specified for the view that 'zone' is assigned to.
- * If 'ver' is NULL, use the current version of 'db'.
- *
- * If 'zone' is not a mirror zone, return ISC_R_SUCCESS immediately.
+ * Check that version 'ver' of a zone's database 'db' either contains a
+ * ZONEMD record which is a valid hash of contents of the database, or
+ * is not required to contain one.
  *
  * Returns:
  *
- * \li	#ISC_R_SUCCESS		either 'zone' is not a mirror zone or 'zone' is
- *				a mirror zone and all DNSSEC checks succeeded
- *				and the DNSKEY RRset at zone apex is signed by
- *				a trusted key
+ * \li	#ISC_R_SUCCESS		a ZONEMD is present at the zone apex,
+ * 				which is validly signed by a trusted key
+ *
+ * \li	#ISC_R_NOTFOUND		a ZONEMD record is not present at the
+ * 				zone apex, but is not required
+ *
+ * \li	#DNS_R_BADZONE		a ZONEMD record was required but
+ * 				was not present, was not validly
+ * 				signed, was not signed by a trusted
+ * 				key, etc.
+ */
+
+isc_result_t
+dns_zone_verifydb(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *ver);
+/*%<
+ * Perform DNSSEC validation of version 'ver' of a zone database, 'db'.
+ * Ensure that the DNSKEY RRset at zone apex is signed by at least one
+ * trust anchor specified for the view that 'zone' is assigned to.
+ * If 'ver' is NULL, use the current version of 'db'.
+ *
+ * This is meant to be used for mirror zones.
+ *
+ * Returns:
+ *
+ * \li	#ISC_R_SUCCESS		all DNSSEC checks succeeded, and the DNSKEY
+ *				RRset at zone apex is signed by a trusted key
  *
  * \li	#DNS_R_VERIFYFAILURE	any other case
  */

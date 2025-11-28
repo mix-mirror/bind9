@@ -1785,3 +1785,10 @@ def test_kasp_manual_mode(ns3):
     isctest.kasp.check_keys(zone, keys, expected)
     check_all(ns3, zone, policy, ksks, zsks, manual_mode=True)
     isctest.kasp.check_dnssec_verify(ns3, zone)
+
+
+def test_kasp_zonemd(ns3):
+    msg = isctest.query.create("zonemd.kasp", "zonemd")
+    res = isctest.query.tcp(msg, ns3.ip)
+    isctest.check.noerror(res)
+    isctest.check.rr_count_eq(res.answer, 2)

@@ -373,6 +373,23 @@ axfr_apply(void *arg) {
 		}
 	}
 
+	if (xfr->diff_running) {
+		/*
+		 * We're in an offloaded work thread, so running this
+		 * shouldn't impact query performance.
+		 */
+		result = dns_zone_checkzonemd(xfr->zone, xfr->db, xfr->ver);
+		if (result == DNS_R_BADZONE) {
+			goto failure;
+		}
+		if (result != ISC_R_SUCCESS &&
+		    dns_zone_gettype(xfr->zone) == dns_zone_mirror)
+		{
+			CHECK(dns_zone_verifydb(xfr->zone, xfr->db, xfr->ver));
+		}
+	}
+	result = ISC_R_SUCCESS;
+
 failure:
 	dns_diff_clear(&xfr->diff);
 	work->result = result;
@@ -393,7 +410,6 @@ axfr_apply_done(void *arg) {
 
 	if (result == ISC_R_SUCCESS) {
 		CHECK(dns_db_endload(xfr->db, &xfr->axfr));
-		CHECK(dns_zone_verifydb(xfr->zone, xfr->db, NULL));
 		CHECK(axfr_finalize(xfr));
 	} else {
 		(void)dns_db_endload(xfr->db, &xfr->axfr);
@@ -512,11 +528,26 @@ static isc_result_t
 ixfr_end_transaction(dns_xfrin_t *xfr) {
 	isc_result_t result = ISC_R_SUCCESS;
 
-	CHECK(dns_zone_verifydb(xfr->zone, xfr->db, xfr->ver));
+	/*
+	 * We're in an offloaded work thread, so running this
+	 * shouldn't impact query performance.
+	 */
+	result = dns_zone_checkzonemd(xfr->zone, xfr->db, xfr->ver);
+	if (result == DNS_R_BADZONE) {
+		goto failure;
+	}
+
+	if (result != ISC_R_SUCCESS &&
+	    dns_zone_gettype(xfr->zone) == dns_zone_mirror)
+	{
+		CHECK(dns_zone_verifydb(xfr->zone, xfr->db, xfr->ver));
+	}
+
 	/* XXX enter ready-to-commit state here */
 	if (xfr->ixfr.journal != NULL) {
 		CHECK(dns_journal_commit(xfr->ixfr.journal));
 	}
+
 failure:
 	return result;
 }

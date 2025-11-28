@@ -102,7 +102,6 @@ def token_init_and_cleanup():
     ],
 )
 def test_keyfromlabel(alg_name, alg_type, alg_bits):
-
     def keygen(alg_type, alg_bits, zone, key_id):
         label = f"{key_id}-{zone}"
         p11_id = hashlib.sha1(label.encode("utf-8")).hexdigest()

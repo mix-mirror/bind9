@@ -23,7 +23,7 @@ named-compilezone - zone file converting tool
 Synopsis
 ~~~~~~~~
 
-:program:`named-compilezone` [**-d**] [**-h**] [**-j**] [**-q**] [**-v**] [**-c** class] [**-C** mode] [**-f** format] [**-F** format] [**-J** filename] [**-i** mode] [**-k** mode] [**-m** mode] [**-M** mode] [**-n** mode] [**-l** ttl] [**-L** serial] [**-r** mode] [**-R** mode] [**-s** style] [**-S** mode] [**-t** directory] [**-T** mode] [**-w** directory] [**-D**] [**-W** mode] {**-o** filename} {zonename} {filename}
+:program:`named-compilezone` [**-d**] [**-h**] [**-j**] [**-q**] [**-v**] [**-c** class] [**-C** mode] [**-f** format] [**-F** format] [**-J** filename] [**-i** mode] [**-k** mode] [**-m** mode] [**-M** mode] [**-n** mode] [**-l** ttl] [**-L** serial] [**-r** mode] [**-R** mode] [**-s** style] [**-S** mode] [**-t** directory] [**-T** mode] [**-w** directory] [**-D**] [**-W** mode] [**-z** mode] {**-o** filename} {zonename} {filename}
 
 Description
 ~~~~~~~~~~~
@@ -223,6 +223,18 @@ Options
    wildcards are almost always the result of a failure to understand the
    wildcard matching algorithm (:rfc:`4592`). Possible modes are ``warn``
    and ``ignore`` (the default).
+
+.. option:: -z option
+
+   This option specifies whether to check the contents of a zone against
+   the cryptographic hash in a ZONEMD record (:rfc:`8976`).  This is
+   off by default.  Up to four options can be active simultaneously;
+   these options are: ``check`` (check the contents of the zone against
+   the ZONEMD hash if a ZONEMD record is present), ``required`` (reject
+   a zone if ZONEMD is *not* present), ``dnssec-only`` (reject a zone if
+   ZONEMD is present but the zone is not DNSSEC-signed), and
+   ``accept-expired`` (allow expired RRSIG records when verifying the
+   ZONEMD hash).
 
 .. option:: zonename
 

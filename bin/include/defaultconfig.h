@@ -195,6 +195,8 @@ options {\n\
 	check-sibling yes;\n\
 	check-srv-cname warn;\n\
 	check-wildcard yes;\n\
+	check-zonemd yes;\n\
+	check-zonemd-dnssec yes;\n\
 	dnssec-loadkeys-interval 60;\n\
 #	forward <none>\n\
 #	forwarders <none>\n\
@@ -219,6 +221,7 @@ options {\n\
 	notify-delay 5;\n\
 	notify-to-soa no;\n\
 	provide-zoneversion yes;\n\
+	require-zonemd no;\n\
 	send-report-channel .;\n\
 	serial-update-method increment;\n\
 	sig-signing-nodes 100;\n\
@@ -239,6 +242,7 @@ view \"_bind\" chaos {\n\
 	recursion no;\n\
 	notify no;\n\
 	allow-new-zones no;\n\
+	check-zonemd no;\n\
 	max-cache-size 2M;\n\
 	provide-zoneversion no;\n\
 \n\

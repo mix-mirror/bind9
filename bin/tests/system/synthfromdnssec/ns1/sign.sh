@@ -62,7 +62,7 @@ keyname=$($KEYGEN -q -a ${DEFAULT_ALGORITHM} $zone)
 cat "$infile" "$keyname.key" >"$zonefile"
 
 # do not regenerate NSEC chain as there in a minimal NSEC record present
-$SIGNER -P -Z nonsecify -o $zone $zonefile >/dev/null
+$SIGNER -P -U nonsecify -o $zone $zonefile >/dev/null
 
 zone=soa-without-dnskey
 infile=soa-without-dnskey.db.in
@@ -72,7 +72,7 @@ keyname=$($KEYGEN -q -a ${DEFAULT_ALGORITHM} $zone)
 cat "$infile" "$keyname.key" >"$zonefile"
 
 # do not regenerate NSEC chain as there in a minimal NSEC record present
-$SIGNER -P -Z nonsecify -o $zone $zonefile >/dev/null
+$SIGNER -P -U nonsecify -o $zone $zonefile >/dev/null
 
 zone=.
 infile=root.db.in
