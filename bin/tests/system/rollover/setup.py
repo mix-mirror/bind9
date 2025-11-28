@@ -37,7 +37,11 @@ def configure_tld(zonename: str, delegations: List[Zone]) -> Zone:
     isctest.log.info(f"create {zonename} zone with delegations and sign")
 
     for zone in delegations:
-        shutil.copy(f"{zone.ns.name}/dsset-{zone.name}.", "ns2/")
+        try:
+            shutil.copy(f"{zone.ns.name}/dsset-{zone.name}.", "ns2/")
+        except FileNotFoundError:
+            # Some delegations are unsigned.
+            pass
 
     ksk_name = keygen(f"-f KSK {zonename}", cwd="ns2").strip()
     zsk_name = keygen(f"{zonename}", cwd="ns2").strip()
@@ -113,7 +117,9 @@ def set_key_relationship(key1: str, key2: str):
         statefile.write(f"Predecessor: {predecessor.tag}\n")
 
 
-def render_and_sign_zone(zonename: str, keys: List[str], extra_options: str = ""):
+def render_and_sign_zone(
+    zonename: str, keys: List[str], signing: bool = True, extra_options: str = ""
+):
     dnskeys = []
     privaterrs = []
     for key_name in keys:
@@ -132,8 +138,11 @@ def render_and_sign_zone(zonename: str, keys: List[str], extra_options: str = ""
     }
     templates.render(f"ns3/{outfile}", tdata, template=f"ns3/{template}")
 
-    signer = CmdHelper("SIGNER", "-S -g -x -s now-1h -e now+2w -O raw")
-    signer(f"{extra_options} -o {zonename} -f {outfile}.signed {outfile}", cwd="ns3")
+    if signing:
+        signer = CmdHelper("SIGNER", "-S -g -x -s now-1h -e now+2w -O raw")
+        signer(
+            f"{extra_options} -o {zonename} -f {outfile}.signed {outfile}", cwd="ns3"
+        )
 
 
 def configure_algo_csk(tld: str, policy: str, reconfig: bool = False) -> List[Zone]:
@@ -1192,5 +1201,85 @@ def configure_cskroll2(tld: str, policy: str) -> List[Zone]:
     set_key_relationship(csk1_name, csk2_name)
     # Signing.
     render_and_sign_zone(zonename, [csk1_name, csk2_name], extra_options=f"-z -G {cds}")
+
+    return zones
+
+
+def configure_enable_dnssec(tld: str, policy: str) -> List[Zone]:
+    # The zones at enable-dnssec.$tld represent the various steps of the
+    # initial signing of a zone.
+    zones = []
+    zone = f"enable-dnssec.{tld}"
+    keygen = CmdHelper("KEYGEN", f"-k {policy} -l kasp.conf")
+    settime = CmdHelper("SETTIME", "-s")
+
+    # Step 1:
+    # This is an unsigned zone and named should perform the initial steps of
+    # introducing the DNSSEC records in the right order.
+    zonename = f"step1.{zone}"
+    zones.append(Zone(zonename, f"{zonename}.db", Nameserver("ns3", "10.53.0.3")))
+    isctest.log.info(f"setup {zonename}")
+    render_and_sign_zone(zonename, [], signing=False)
+
+    # Step 2:
+    # The DNSKEY has been published long enough to become OMNIPRESENT.
+    zonename = f"step2.{zone}"
+    zones.append(Zone(zonename, f"{zonename}.db", Nameserver("ns3", "10.53.0.3")))
+    isctest.log.info(f"setup {zonename}")
+    # DNSKEY TTL:             300 seconds
+    # zone-propagation-delay: 5 minutes (300 seconds)
+    # publish-safety:         5 minutes (300 seconds)
+    # Total:                  900 seconds
+    TpubN = "now-900s"
+    keytimes = f"-P {TpubN} -A {TpubN}"
+    # Key generation.
+    csk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
+    settime(
+        f"-g OMNIPRESENT -k RUMOURED {TpubN} -r RUMOURED {TpubN} -z RUMOURED {TpubN} -d HIDDEN {TpubN} {csk_name}",
+        cwd="ns3",
+    )
+    # Signing.
+    render_and_sign_zone(zonename, [csk_name], extra_options="-z")
+
+    # Step 3:
+    # The zone signatures have been published long enough to become OMNIPRESENT.
+    zonename = f"step3.{zone}"
+    zones.append(Zone(zonename, f"{zonename}.db", Nameserver("ns3", "10.53.0.3")))
+    isctest.log.info(f"setup {zonename}")
+    # Passed time since publication:
+    # max-zone-ttl:           12 hours (43200 seconds)
+    # zone-propagation-delay: 5 minutes (300 seconds)
+    # We can submit the DS now.
+    TpubN = "now-43500s"
+    keytimes = f"-P {TpubN} -A {TpubN}"
+    # Key generation.
+    csk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
+    settime(
+        f"-g OMNIPRESENT -k OMNIPRESENT {TpubN} -r OMNIPRESENT {TpubN} -z RUMOURED {TpubN} -d HIDDEN {TpubN} {csk_name}",
+        cwd="ns3",
+    )
+    # Signing.
+    render_and_sign_zone(zonename, [csk_name], extra_options="-z")
+
+    # Step 4:
+    # The DS has been submitted long enough ago to become OMNIPRESENT.
+    zonename = f"step4.{zone}"
+    zones.append(Zone(zonename, f"{zonename}.db", Nameserver("ns3", "10.53.0.3")))
+    isctest.log.info(f"setup {zonename}")
+    # DS TTL:                    2 hour (7200 seconds)
+    # parent-propagation-delay:  1 hour (3600 seconds)
+    # Total aditional time:      10800 seconds
+    # 43500 + 10800 = 54300
+    TpubN = "now-54300s"
+    TsbmN = "now-10800s"
+    keytimes = f"-P {TpubN} -A {TpubN} -P sync {TsbmN}"
+    # Key generation.
+    csk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
+    settime(
+        f"-g OMNIPRESENT -k OMNIPRESENT {TpubN} -r OMNIPRESENT {TpubN} -z OMNIPRESENT {TsbmN} -d RUMOURED {TpubN} -P ds {TsbmN} {csk_name}",
+        cwd="ns3",
+    )
+    # Signing.
+    render_and_sign_zone(zonename, [csk_name], extra_options="-z")
 
     return zones
