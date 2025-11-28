@@ -446,6 +446,7 @@ dns_rdataset_additionaldata(dns_rdataset_t *rdataset,
 			    const dns_name_t *owner_name,
 			    dns_additionaldatafunc_t add, void *arg,
 			    size_t limit) {
+	size_t n = 0;
 	/*
 	 * For each rdata in rdataset, call 'add' for each name and type in the
 	 * rdata which is subject to additional section processing.
@@ -454,10 +455,6 @@ dns_rdataset_additionaldata(dns_rdataset_t *rdataset,
 	REQUIRE(DNS_RDATASET_VALID(rdataset));
 	REQUIRE(!rdataset->attributes.question);
 
-	if (limit != 0 && dns_rdataset_count(rdataset) > limit) {
-		return DNS_R_TOOMANYRECORDS;
-	}
-
 	DNS_RDATASET_FOREACH(rdataset) {
 		isc_result_t result;
 		dns_rdata_t rdata = DNS_RDATA_INIT;
@@ -465,6 +462,9 @@ dns_rdataset_additionaldata(dns_rdataset_t *rdataset,
 		result = dns_rdata_additionaldata(&rdata, owner_name, add, arg);
 		if (result != ISC_R_SUCCESS) {
 			return result;
+		}
+		if (limit != 0 && ++n >= limit) {
+			return DNS_R_TOOMANYRECORDS;
 		}
 	}
 
