@@ -1301,20 +1301,16 @@ if [ -x "$DIG" ]; then
   # See [GL #3020] for more information
   n=$((n + 1))
   echo_i "check that dig handles UDP timeout followed by a SERVFAIL correctly ($n)"
-  # Ask ans8 to be in "unstable" mode (switching between "silent" and "servfail" modes)
-  echo "unstable" | sendcmd 10.53.0.8
   ret=0
-  dig_with_opts +timeout=1 +nofail @10.53.0.8 a.example >dig.out.test$n 2>&1 || ret=1
+  dig_with_opts +timeout=1 +nofail @10.53.0.8 silent-then-servfail.example >dig.out.test$n 2>&1 || ret=1
   grep -F "status: SERVFAIL" dig.out.test$n >/dev/null || ret=1
   if [ $ret -ne 0 ]; then echo_i "failed"; fi
   status=$((status + ret))
 
   n=$((n + 1))
   echo_i "check that dig handles TCP timeout followed by a SERVFAIL correctly ($n)"
-  # Ask ans8 to be in "unstable" mode (switching between "silent" and "servfail" modes)
-  echo "unstable" | sendcmd 10.53.0.8
   ret=0
-  dig_with_opts +timeout=1 +nofail +tcp @10.53.0.8 a.example >dig.out.test$n 2>&1 || ret=1
+  dig_with_opts +timeout=1 +nofail +tcp @10.53.0.8 silent-then-servfail.example >dig.out.test$n 2>&1 || ret=1
   grep -F "status: SERVFAIL" dig.out.test$n >/dev/null || ret=1
   if [ $ret -ne 0 ]; then echo_i "failed"; fi
   status=$((status + ret))
@@ -1347,10 +1343,8 @@ if [ -x "$DIG" ]; then
 
   n=$((n + 1))
   echo_i "check that dig tries the next server after a TCP socket read error ($n)"
-  # Ask ans8 to be in "close" mode, which closes the connection after accepting it
-  echo "close" | sendcmd 10.53.0.8
   ret=0
-  dig_with_opts +tcp @10.53.0.8 @10.53.0.3 a.example >dig.out.test$n 2>&1 || ret=1
+  dig_with_opts +tcp @10.53.0.8 @10.53.0.3 close.example >dig.out.test$n 2>&1 || ret=1
   grep -F "status: NOERROR" dig.out.test$n >/dev/null || ret=1
   if [ $ret -ne 0 ]; then echo_i "failed"; fi
   status=$((status + ret))
@@ -1372,20 +1366,16 @@ if [ -x "$DIG" ]; then
 
   n=$((n + 1))
   echo_i "check that dig tries the next server after UDP socket read timeouts ($n)"
-  # Ask ans8 to be in "silent" mode
-  echo "silent" | sendcmd 10.53.0.8
   ret=0
-  dig_with_opts +timeout=1 @10.53.0.8 @10.53.0.3 a.example >dig.out.test$n 2>&1 || ret=1
+  dig_with_opts +timeout=1 @10.53.0.8 @10.53.0.3 silent.example >dig.out.test$n 2>&1 || ret=1
   grep -F "status: NOERROR" dig.out.test$n >/dev/null || ret=1
   if [ $ret -ne 0 ]; then echo_i "failed"; fi
   status=$((status + ret))
 
   n=$((n + 1))
   echo_i "check that dig tries the next server after TCP socket read timeouts ($n)"
-  # Ask ans8 to be in "silent" mode
-  echo "silent" | sendcmd 10.53.0.8
   ret=0
-  dig_with_opts +timeout=1 +tcp @10.53.0.8 @10.53.0.3 a.example >dig.out.test$n 2>&1 || ret=1
+  dig_with_opts +timeout=1 +tcp @10.53.0.8 @10.53.0.3 silent.example >dig.out.test$n 2>&1 || ret=1
   grep -F "status: NOERROR" dig.out.test$n >/dev/null || ret=1
   if [ $ret -ne 0 ]; then echo_i "failed"; fi
   status=$((status + ret))
@@ -1394,7 +1384,7 @@ if [ -x "$DIG" ]; then
   n=$((n + 1))
   echo_i "check that dig correctly refuses to use a server with a IPv4 mapped IPv6 address after failing with a regular IP address ($n)"
   ret=0
-  dig_with_opts @10.53.0.8 @::ffff:10.53.0.8 a.example >dig.out.test$n 2>&1 || ret=1
+  dig_with_opts @10.53.0.8 @::ffff:10.53.0.8 silent.example >dig.out.test$n 2>&1 || ret=1
   grep -F ";; Skipping mapped address" dig.out.test$n >/dev/null || ret=1
   grep -F ";; No acceptable nameservers" dig.out.test$n >/dev/null || ret=1
   if [ $ret -ne 0 ]; then echo_i "failed"; fi
