@@ -21,6 +21,7 @@ from rollover.setup import (
     CmdHelper,
     configure_root,
     configure_tld,
+    setkeytimes,
 )
 
 
@@ -29,7 +30,6 @@ def bootstrap():
     alg = default_algorithm()
     keygen = CmdHelper("KEYGEN", f"-q -a {alg.number} -b {alg.bits} -L 3600")
     signer = CmdHelper("SIGNER", "-S -g")
-    settime = CmdHelper("SETTIME", "-s")
 
     zones = []
 
@@ -43,14 +43,21 @@ def bootstrap():
     when = "now-7d"
     ksk_name = keygen(f"-f KSK -P {when} -A {when} {zone}", cwd="ns3").strip()
     zsk_name = keygen(f"-P {when} -A {when} {zone}", cwd="ns3").strip()
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {when} -r OMNIPRESENT {when} -d OMNIPRESENT {when} {ksk_name}",
-        cwd="ns3",
-    )
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {when} -z OMNIPRESENT {when} {zsk_name}",
-        cwd="ns3",
-    )
+    # Key state timing metadata.
+    timings = {
+        "g": "OMNIPRESENT",
+        "k": f"OMNIPRESENT {when}",
+        "r": f"OMNIPRESENT {when}",
+        "d": f"OMNIPRESENT {when}",
+    }
+    setkeytimes(ksk_name, timings)
+    timings = {
+        "g": "OMNIPRESENT",
+        "k": f"OMNIPRESENT {when}",
+        "z": f"OMNIPRESENT {when}",
+    }
+    setkeytimes(zsk_name, timings)
+    # Signing.
     ksk = isctest.kasp.Key(ksk_name, keydir="ns3")
     zsk = isctest.kasp.Key(zsk_name, keydir="ns3")
     dnskeys = [ksk.dnskey, zsk.dnskey]
@@ -58,7 +65,6 @@ def bootstrap():
         private_type_record(zone, ksk),
         private_type_record(zone, zsk),
     ]
-    # Signing.
     tdata = {
         "fqdn": f"{zone}.",
         "dnskeys": dnskeys,

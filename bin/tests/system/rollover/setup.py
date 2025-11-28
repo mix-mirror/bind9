@@ -10,7 +10,7 @@
 # information regarding copyright ownership.
 
 import shutil
-from typing import List
+from typing import Dict, List
 
 import isctest
 from isctest.kasp import private_type_record
@@ -105,6 +105,11 @@ def set_key_relationship(key1: str, key2: str):
 
     with open(f"ns3/{key2}.state", "a", encoding="utf-8") as statefile:
         statefile.write(f"Predecessor: {predecessor.tag}\n")
+
+
+def setkeytimes(key_name: str, timings: Dict[str, str]):
+    key = isctest.kasp.Key(key_name, keydir="ns3")
+    key.settime(timings)
 
 
 def render_and_sign_zone(
