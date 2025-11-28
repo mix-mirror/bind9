@@ -20,14 +20,14 @@ pytest.importorskip("dns", minversion="2.0.0")
 import dns.update
 
 import isctest
-from isctest.kasp import Iret
+from isctest.kasp import Iret, SettimeOptions
 from isctest.run import EnvCmd
 from rollover.common import (
     pytestmark,
     alg,
     size,
 )
-from rollover.setup import fake_lifetime, render_and_sign_zone
+from rollover.setup import fake_lifetime, render_and_sign_zone, setkeytimes
 
 
 def bootstrap():
@@ -35,7 +35,6 @@ def bootstrap():
 
     # Multi-signer zones.
     keygen = EnvCmd("KEYGEN", "-a ECDSA256 -L 3600")
-    settime = EnvCmd("SETTIME", "-s")
 
     # Model 2.
     zonename = "multisigner-model2.kasp"
@@ -77,14 +76,21 @@ def bootstrap():
         f"-M 0:32767 -f KSK {keytimes} {cdstimes} {zonename}", cwd="ns3"
     ).out.strip()
     zsk_name = keygen(f"-M 0:32767 {keytimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g OMNIPRESENT -d OMNIPRESENT {TpubN} -k OMNIPRESENT {TpubN} -r OMNIPRESENT {TpubN} {ksk_name}",
-        cwd="ns3",
+
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TpubN}",
+        r=f"OMNIPRESENT {TpubN}",
+        d=f"OMNIPRESENT {TpubN}",
     )
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TpubN} -z OMNIPRESENT {TpubN} {zsk_name}",
-        cwd="ns3",
+    setkeytimes(ksk_name, timings)
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TpubN}",
+        z=f"OMNIPRESENT {TpubN}",
     )
+    setkeytimes(zsk_name, timings)
     # Signing.
     fake_lifetime(ksk_name, 0)
     fake_lifetime(zsk_name, 0)

@@ -13,7 +13,7 @@ import shutil
 from typing import List
 
 import isctest
-from isctest.kasp import private_type_record
+from isctest.kasp import private_type_record, SettimeOptions
 from isctest.template import Nameserver, TrustAnchor, Zone
 from isctest.run import EnvCmd
 from rollover.common import default_algorithm
@@ -107,6 +107,11 @@ def set_key_relationship(key1: str, key2: str):
         statefile.write(f"Predecessor: {predecessor.tag}\n")
 
 
+def setkeytimes(key_name: str, options: SettimeOptions):
+    key = isctest.kasp.Key(key_name, keydir="ns3")
+    key.settime(options)
+
+
 def render_and_sign_zone(
     zonename: str, keys: List[str], signing: bool = True, extra_options: str = ""
 ):
@@ -141,7 +146,6 @@ def configure_algo_csk(tld: str, policy: str, reconfig: bool = False) -> List[Zo
     zones = []
     zone = f"csk-algorithm-roll.{tld}"
     keygen = EnvCmd("KEYGEN", f"-k {policy}")
-    settime = EnvCmd("SETTIME", "-s")
 
     # Step 1:
     # Introduce the first key. This will immediately be active.
@@ -153,10 +157,15 @@ def configure_algo_csk(tld: str, policy: str, reconfig: bool = False) -> List[Zo
     csktimes = f"-P {TactN} -A {TactN}"
     # Key generation.
     csk_name = keygen(f"-l csk1.conf {csktimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {csk_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN}",
+        r=f"OMNIPRESENT {TactN}",
+        z=f"OMNIPRESENT {TactN}",
+        d=f"OMNIPRESENT {TactN}",
     )
+    setkeytimes(csk_name, timings)
     # Signing.
     render_and_sign_zone(zonename, [csk_name], extra_options="-z")
 
@@ -173,14 +182,23 @@ def configure_algo_csk(tld: str, policy: str, reconfig: bool = False) -> List[Zo
         # Key generation.
         csk1_name = keygen(f"-l csk1.conf {csktimes} {zonename}", cwd="ns3").out.strip()
         csk2_name = keygen(f"-l csk2.conf {newtimes} {zonename}", cwd="ns3").out.strip()
-        settime(
-            f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {csk1_name}",
-            cwd="ns3",
+        # Key state timing metadata.
+        timings = SettimeOptions(
+            g="HIDDEN",
+            k=f"OMNIPRESENT {TactN}",
+            r=f"OMNIPRESENT {TactN}",
+            z=f"OMNIPRESENT {TactN}",
+            d=f"OMNIPRESENT {TactN}",
         )
-        settime(
-            f"-g OMNIPRESENT -k RUMOURED {TpubN1} -r RUMOURED {TpubN1} -z RUMOURED {TpubN1} -d HIDDEN {TpubN1} {csk2_name}",
-            cwd="ns3",
+        setkeytimes(csk1_name, timings)
+        timings = SettimeOptions(
+            g="OMNIPRESENT",
+            k=f"RUMOURED {TpubN1}",
+            r=f"RUMOURED {TpubN1}",
+            z=f"RUMOURED {TpubN1}",
+            d=f"HIDDEN {TpubN1}",
         )
+        setkeytimes(csk2_name, timings)
         # Signing.
         render_and_sign_zone(zonename, [csk1_name, csk2_name], extra_options="-z")
 
@@ -197,14 +215,23 @@ def configure_algo_csk(tld: str, policy: str, reconfig: bool = False) -> List[Zo
         # Key generation.
         csk1_name = keygen(f"-l csk1.conf {csktimes} {zonename}", cwd="ns3").out.strip()
         csk2_name = keygen(f"-l csk2.conf {newtimes} {zonename}", cwd="ns3").out.strip()
-        settime(
-            f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {csk1_name}",
-            cwd="ns3",
+        # Key state timing metadata.
+        timings = SettimeOptions(
+            g="HIDDEN",
+            k=f"OMNIPRESENT {TactN}",
+            r=f"OMNIPRESENT {TactN}",
+            z=f"OMNIPRESENT {TactN}",
+            d=f"OMNIPRESENT {TactN}",
         )
-        settime(
-            f"-g OMNIPRESENT -k OMNIPRESENT {TpubN1} -r OMNIPRESENT {TpubN1} -z RUMOURED {TpubN1} -d HIDDEN {TpubN1} {csk2_name}",
-            cwd="ns3",
+        setkeytimes(csk1_name, timings)
+        timings = SettimeOptions(
+            g="OMNIPRESENT",
+            k=f"OMNIPRESENT {TpubN1}",
+            r=f"OMNIPRESENT {TpubN1}",
+            z=f"RUMOURED {TpubN1}",
+            d=f"HIDDEN {TpubN1}",
         )
+        setkeytimes(csk2_name, timings)
         # Signing.
         render_and_sign_zone(zonename, [csk1_name, csk2_name], extra_options="-z")
 
@@ -221,14 +248,25 @@ def configure_algo_csk(tld: str, policy: str, reconfig: bool = False) -> List[Zo
         # Key generation.
         csk1_name = keygen(f"-l csk1.conf {csktimes} {zonename}", cwd="ns3").out.strip()
         csk2_name = keygen(f"-l csk2.conf {newtimes} {zonename}", cwd="ns3").out.strip()
-        settime(
-            f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -z OMNIPRESENT {TsbmN1} -d UNRETENTIVE {TsbmN1} -D ds {TsbmN1} {csk1_name}",
-            cwd="ns3",
+        # Key state timing metadata.
+        timings = SettimeOptions(
+            g="HIDDEN",
+            k=f"OMNIPRESENT {TactN}",
+            r=f"OMNIPRESENT {TactN}",
+            z=f"OMNIPRESENT {TsbmN1}",
+            d=f"UNRETENTIVE {TsbmN1}",
+            D_ds=f"{TsbmN1}",
         )
-        settime(
-            f"-g OMNIPRESENT -k OMNIPRESENT {TpubN1} -r OMNIPRESENT {TpubN1} -z OMNIPRESENT {TsbmN1} -d RUMOURED {TsbmN1} -P ds {TsbmN1} {csk2_name}",
-            cwd="ns3",
+        setkeytimes(csk1_name, timings)
+        timings = SettimeOptions(
+            g="OMNIPRESENT",
+            k=f"OMNIPRESENT {TpubN1}",
+            r=f"OMNIPRESENT {TpubN1}",
+            z=f"OMNIPRESENT {TsbmN1}",
+            d=f"RUMOURED {TsbmN1}",
+            P_ds=f"{TsbmN1}",
         )
+        setkeytimes(csk2_name, timings)
         # Signing.
         render_and_sign_zone(zonename, [csk1_name, csk2_name], extra_options="-z")
 
@@ -245,14 +283,23 @@ def configure_algo_csk(tld: str, policy: str, reconfig: bool = False) -> List[Zo
         # Key generation.
         csk1_name = keygen(f"-l csk1.conf {csktimes} {zonename}", cwd="ns3").out.strip()
         csk2_name = keygen(f"-l csk2.conf {newtimes} {zonename}", cwd="ns3").out.strip()
-        settime(
-            f"-g HIDDEN -k UNRETENTIVE {TactN} -r UNRETENTIVE {TactN} -z UNRETENTIVE {TsbmN1} -d HIDDEN {TsbmN1} {csk1_name}",
-            cwd="ns3",
+        # Key state timing metadata.
+        timings = SettimeOptions(
+            g="HIDDEN",
+            k=f"UNRETENTIVE {TactN}",
+            r=f"UNRETENTIVE {TactN}",
+            z=f"UNRETENTIVE {TsbmN1}",
+            d=f"HIDDEN {TsbmN1}",
         )
-        settime(
-            f"-g OMNIPRESENT -k OMNIPRESENT {TpubN1} -r OMNIPRESENT {TpubN1} -z OMNIPRESENT {TsbmN1} -d OMNIPRESENT {TsbmN1} {csk2_name}",
-            cwd="ns3",
+        setkeytimes(csk1_name, timings)
+        timings = SettimeOptions(
+            g="OMNIPRESENT",
+            k=f"OMNIPRESENT {TpubN1}",
+            r=f"OMNIPRESENT {TpubN1}",
+            z=f"OMNIPRESENT {TsbmN1}",
+            d=f"OMNIPRESENT {TsbmN1}",
         )
+        setkeytimes(csk2_name, timings)
         # Signing.
         render_and_sign_zone(zonename, [csk1_name, csk2_name], extra_options="-z")
 
@@ -269,14 +316,23 @@ def configure_algo_csk(tld: str, policy: str, reconfig: bool = False) -> List[Zo
         # Key generation.
         csk1_name = keygen(f"-l csk1.conf {csktimes} {zonename}", cwd="ns3").out.strip()
         csk2_name = keygen(f"-l csk2.conf {newtimes} {zonename}", cwd="ns3").out.strip()
-        settime(
-            f"-g HIDDEN -k HIDDEN {TactN} -r UNRETENTIVE {TactN} -z UNRETENTIVE {TactN} -d HIDDEN {TsbmN1} {csk1_name}",
-            cwd="ns3",
+        # Key state timing metadata.
+        timings = SettimeOptions(
+            g="HIDDEN",
+            k=f"HIDDEN {TactN}",
+            r=f"UNRETENTIVE {TactN}",
+            z=f"UNRETENTIVE {TactN}",
+            d=f"HIDDEN {TsbmN1}",
         )
-        settime(
-            f"-g OMNIPRESENT -k OMNIPRESENT {TpubN1} -r OMNIPRESENT {TpubN1} -z OMNIPRESENT {TsbmN1} -d OMNIPRESENT {TsbmN1} {csk2_name}",
-            cwd="ns3",
+        setkeytimes(csk1_name, timings)
+        timings = SettimeOptions(
+            g="OMNIPRESENT",
+            k=f"OMNIPRESENT {TpubN1}",
+            r=f"OMNIPRESENT {TpubN1}",
+            z=f"OMNIPRESENT {TsbmN1}",
+            d=f"OMNIPRESENT {TsbmN1}",
         )
+        setkeytimes(csk2_name, timings)
         # Signing.
         render_and_sign_zone(zonename, [csk1_name, csk2_name], extra_options="-z")
 
@@ -289,7 +345,6 @@ def configure_algo_ksk_zsk(tld: str, reconfig: bool = False) -> List[Zone]:
     zones = []
     zone = f"algorithm-roll.{tld}"
     keygen = EnvCmd("KEYGEN", "-L 3600")
-    settime = EnvCmd("SETTIME", "-s")
 
     # Step 1:
     # Introduce the first key. This will immediately be active.
@@ -304,14 +359,20 @@ def configure_algo_ksk_zsk(tld: str, reconfig: bool = False) -> List[Zone]:
         f"-a RSASHA256 -f KSK {keytimes} {zonename}", cwd="ns3"
     ).out.strip()
     zsk_name = keygen(f"-a RSASHA256 {keytimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {ksk_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN}",
+        r=f"OMNIPRESENT {TactN}",
+        d=f"OMNIPRESENT {TactN}",
     )
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} {zsk_name}",
-        cwd="ns3",
+    setkeytimes(ksk_name, timings)
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN}",
+        z=f"OMNIPRESENT {TactN}",
     )
+    setkeytimes(zsk_name, timings)
     # Signing.
     render_and_sign_zone(zonename, [ksk_name, zsk_name])
 
@@ -340,22 +401,33 @@ def configure_algo_ksk_zsk(tld: str, reconfig: bool = False) -> List[Zone]:
             f"-a ECDSA256 -f KSK {ksk2times} {zonename}", cwd="ns3"
         ).out.strip()
         zsk2_name = keygen(f"-a ECDSA256 {zsk2times} {zonename}", cwd="ns3").out.strip()
-        settime(
-            f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {ksk1_name}",
-            cwd="ns3",
+        # Key state timing metadata.
+        timings = SettimeOptions(
+            g="HIDDEN",
+            k=f"OMNIPRESENT {TactN}",
+            r=f"OMNIPRESENT {TactN}",
+            d=f"OMNIPRESENT {TactN}",
         )
-        settime(
-            f"-g HIDDEN -k OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} {zsk1_name}",
-            cwd="ns3",
+        setkeytimes(ksk1_name, timings)
+        timings = SettimeOptions(
+            g="HIDDEN",
+            k=f"OMNIPRESENT {TactN}",
+            z=f"OMNIPRESENT {TactN}",
         )
-        settime(
-            f"-g OMNIPRESENT -k RUMOURED {TpubN1} -r RUMOURED {TpubN1} -d HIDDEN {TpubN1} {ksk2_name}",
-            cwd="ns3",
+        setkeytimes(zsk1_name, timings)
+        timings = SettimeOptions(
+            g="OMNIPRESENT",
+            k=f"RUMOURED {TpubN1}",
+            r=f"RUMOURED {TpubN1}",
+            d=f"HIDDEN {TpubN1}",
         )
-        settime(
-            f"-g OMNIPRESENT -k RUMOURED {TpubN1} -z RUMOURED {TpubN1} {zsk2_name}",
-            cwd="ns3",
+        setkeytimes(ksk2_name, timings)
+        timings = SettimeOptions(
+            g="OMNIPRESENT",
+            k=f"RUMOURED {TpubN1}",
+            z=f"RUMOURED {TpubN1}",
         )
+        setkeytimes(zsk2_name, timings)
         # Signing.
         fake_lifetime(ksk1_name, 0)
         fake_lifetime(zsk1_name, 0)
@@ -384,22 +456,33 @@ def configure_algo_ksk_zsk(tld: str, reconfig: bool = False) -> List[Zone]:
             f"-a ECDSA256 -f KSK {ksk2times} {zonename}", cwd="ns3"
         ).out.strip()
         zsk2_name = keygen(f"-a ECDSA256 {zsk2times} {zonename}", cwd="ns3").out.strip()
-        settime(
-            f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {ksk1_name}",
-            cwd="ns3",
+        # Key state timing metadata.
+        timings = SettimeOptions(
+            g="HIDDEN",
+            k=f"OMNIPRESENT {TactN}",
+            r=f"OMNIPRESENT {TactN}",
+            d=f"OMNIPRESENT {TactN}",
         )
-        settime(
-            f"-g HIDDEN -k OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} {zsk1_name}",
-            cwd="ns3",
+        setkeytimes(ksk1_name, timings)
+        timings = SettimeOptions(
+            g="HIDDEN",
+            k=f"OMNIPRESENT {TactN}",
+            z=f"OMNIPRESENT {TactN}",
         )
-        settime(
-            f"-g OMNIPRESENT -k OMNIPRESENT {TpubN1} -r OMNIPRESENT {TpubN1} -d HIDDEN {TpubN1} {ksk2_name}",
-            cwd="ns3",
+        setkeytimes(zsk1_name, timings)
+        timings = SettimeOptions(
+            g="OMNIPRESENT",
+            k=f"OMNIPRESENT {TpubN1}",
+            r=f"OMNIPRESENT {TpubN1}",
+            d=f"HIDDEN {TpubN1}",
         )
-        settime(
-            f"-g OMNIPRESENT -k OMNIPRESENT {TpubN1} -z RUMOURED {TpubN1} {zsk2_name}",
-            cwd="ns3",
+        setkeytimes(ksk2_name, timings)
+        timings = SettimeOptions(
+            g="OMNIPRESENT",
+            k=f"OMNIPRESENT {TpubN1}",
+            z=f"RUMOURED {TpubN1}",
         )
+        setkeytimes(zsk2_name, timings)
         # Signing.
         fake_lifetime(ksk1_name, 0)
         fake_lifetime(zsk1_name, 0)
@@ -428,22 +511,35 @@ def configure_algo_ksk_zsk(tld: str, reconfig: bool = False) -> List[Zone]:
             f"-a ECDSA256 -f KSK {ksk2times} {zonename}", cwd="ns3"
         ).out.strip()
         zsk2_name = keygen(f"-a ECDSA256 {zsk2times} {zonename}", cwd="ns3").out.strip()
-        settime(
-            f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d UNRETENTIVE {TsbmN1} -D ds {TsbmN1} {ksk1_name}",
-            cwd="ns3",
+        # Key state timing metadata.
+        timings = SettimeOptions(
+            g="HIDDEN",
+            k=f"OMNIPRESENT {TactN}",
+            r=f"OMNIPRESENT {TactN}",
+            d=f"UNRETENTIVE {TsbmN1}",
+            D_ds=f"{TsbmN1}",
         )
-        settime(
-            f"-g HIDDEN -k OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} {zsk1_name}",
-            cwd="ns3",
+        setkeytimes(ksk1_name, timings)
+        timings = SettimeOptions(
+            g="HIDDEN",
+            k=f"OMNIPRESENT {TactN}",
+            z=f"OMNIPRESENT {TactN}",
         )
-        settime(
-            f"-g OMNIPRESENT -k OMNIPRESENT {TpubN1} -r OMNIPRESENT {TpubN1} -d RUMOURED {TsbmN1} -P ds {TsbmN1} {ksk2_name}",
-            cwd="ns3",
+        setkeytimes(zsk1_name, timings)
+        timings = SettimeOptions(
+            g="OMNIPRESENT",
+            k=f"OMNIPRESENT {TpubN1}",
+            r=f"OMNIPRESENT {TpubN1}",
+            d=f"RUMOURED {TsbmN1}",
+            P_ds=f"{TsbmN1}",
         )
-        settime(
-            f"-g OMNIPRESENT -k OMNIPRESENT {TpubN1} -z RUMOURED {TpubN1} {zsk2_name}",
-            cwd="ns3",
+        setkeytimes(ksk2_name, timings)
+        timings = SettimeOptions(
+            g="OMNIPRESENT",
+            k=f"OMNIPRESENT {TpubN1}",
+            z=f"RUMOURED {TpubN1}",
         )
+        setkeytimes(zsk2_name, timings)
         # Signing.
         fake_lifetime(ksk1_name, 0)
         fake_lifetime(zsk1_name, 0)
@@ -472,22 +568,33 @@ def configure_algo_ksk_zsk(tld: str, reconfig: bool = False) -> List[Zone]:
             f"-a ECDSA256 -f KSK {ksk2times} {zonename}", cwd="ns3"
         ).out.strip()
         zsk2_name = keygen(f"-a ECDSA256 {zsk2times} {zonename}", cwd="ns3").out.strip()
-        settime(
-            f"-g HIDDEN -k UNRETENTIVE {TsbmN1} -r UNRETENTIVE {TsbmN1} -d HIDDEN {TsbmN1} {ksk1_name}",
-            cwd="ns3",
+        # Key state timing metadata.
+        timings = SettimeOptions(
+            g="HIDDEN",
+            k=f"UNRETENTIVE {TsbmN1}",
+            r=f"UNRETENTIVE {TsbmN1}",
+            d=f"HIDDEN {TsbmN1}",
         )
-        settime(
-            f"-g HIDDEN -k UNRETENTIVE {TsbmN1} -z UNRETENTIVE {TsbmN1} {zsk1_name}",
-            cwd="ns3",
+        setkeytimes(ksk1_name, timings)
+        timings = SettimeOptions(
+            g="HIDDEN",
+            k=f"UNRETENTIVE {TsbmN1}",
+            z=f"UNRETENTIVE {TsbmN1}",
         )
-        settime(
-            f"-g OMNIPRESENT -k OMNIPRESENT {TpubN1} -r OMNIPRESENT {TpubN1} -d OMNIPRESENT {TsbmN1} {ksk2_name}",
-            cwd="ns3",
+        setkeytimes(zsk1_name, timings)
+        timings = SettimeOptions(
+            g="OMNIPRESENT",
+            k=f"OMNIPRESENT {TpubN1}",
+            r=f"OMNIPRESENT {TpubN1}",
+            d=f"OMNIPRESENT {TsbmN1}",
         )
-        settime(
-            f"-g OMNIPRESENT -k OMNIPRESENT {TpubN1} -z RUMOURED {TpubN1} {zsk2_name}",
-            cwd="ns3",
+        setkeytimes(ksk2_name, timings)
+        timings = SettimeOptions(
+            g="OMNIPRESENT",
+            k=f"OMNIPRESENT {TpubN1}",
+            z=f"RUMOURED {TpubN1}",
         )
+        setkeytimes(zsk2_name, timings)
         # Signing.
         fake_lifetime(ksk1_name, 0)
         fake_lifetime(zsk1_name, 0)
@@ -515,22 +622,33 @@ def configure_algo_ksk_zsk(tld: str, reconfig: bool = False) -> List[Zone]:
             f"-a ECDSA256 -f KSK {ksk2times} {zonename}", cwd="ns3"
         ).out.strip()
         zsk2_name = keygen(f"-a ECDSA256 {zsk2times} {zonename}", cwd="ns3").out.strip()
-        settime(
-            f"-g HIDDEN -k HIDDEN {TsbmN1} -r UNRETENTIVE {TsbmN1} -d HIDDEN {TsbmN1} {ksk1_name}",
-            cwd="ns3",
+        # Key state timing metadata.
+        timings = SettimeOptions(
+            g="HIDDEN",
+            k=f"HIDDEN {TsbmN1}",
+            r=f"UNRETENTIVE {TsbmN1}",
+            d=f"HIDDEN {TsbmN1}",
         )
-        settime(
-            f"-g HIDDEN -k HIDDEN {TsbmN1} -z UNRETENTIVE {TsbmN1} {zsk1_name}",
-            cwd="ns3",
+        setkeytimes(ksk1_name, timings)
+        timings = SettimeOptions(
+            g="HIDDEN",
+            k=f"HIDDEN {TsbmN1}",
+            z=f"UNRETENTIVE {TsbmN1}",
         )
-        settime(
-            f"-g OMNIPRESENT -k OMNIPRESENT {TpubN1} -r OMNIPRESENT {TpubN1} -d OMNIPRESENT {TsbmN1} {ksk2_name}",
-            cwd="ns3",
+        setkeytimes(zsk1_name, timings)
+        timings = SettimeOptions(
+            g="OMNIPRESENT",
+            k=f"OMNIPRESENT {TpubN1}",
+            r=f"OMNIPRESENT {TpubN1}",
+            d=f"OMNIPRESENT {TsbmN1}",
         )
-        settime(
-            f"-g OMNIPRESENT -k OMNIPRESENT {TpubN1} -z RUMOURED {TpubN1} {zsk2_name}",
-            cwd="ns3",
+        setkeytimes(ksk2_name, timings)
+        timings = SettimeOptions(
+            g="OMNIPRESENT",
+            k=f"OMNIPRESENT {TpubN1}",
+            z=f"RUMOURED {TpubN1}",
         )
+        setkeytimes(zsk2_name, timings)
         # Signing.
         fake_lifetime(ksk1_name, 0)
         fake_lifetime(zsk1_name, 0)
@@ -546,7 +664,6 @@ def configure_cskroll1(tld: str, policy: str) -> List[Zone]:
     zone = f"csk-roll1.{tld}"
     cds = "cdnskey,cds:sha384"
     keygen = EnvCmd("KEYGEN", f"-k {policy} -l kasp.conf")
-    settime = EnvCmd("SETTIME", "-s")
 
     # Step 1:
     # Introduce the first key. This will immediately be active.
@@ -557,10 +674,15 @@ def configure_cskroll1(tld: str, policy: str) -> List[Zone]:
     keytimes = f"-P {TactN} -A {TactN}"
     # Key generation.
     csk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {csk_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN}",
+        r=f"OMNIPRESENT {TactN}",
+        z=f"OMNIPRESENT {TactN}",
+        d=f"OMNIPRESENT {TactN}",
     )
+    setkeytimes(csk_name, timings)
     # Signing.
     render_and_sign_zone(zonename, [csk_name], extra_options=f"-z -G {cds}")
 
@@ -589,10 +711,15 @@ def configure_cskroll1(tld: str, policy: str) -> List[Zone]:
     keytimes = f"-P {TactN} -A {TactN}"
     # Key generation.
     csk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {csk_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN}",
+        r=f"OMNIPRESENT {TactN}",
+        z=f"OMNIPRESENT {TactN}",
+        d=f"OMNIPRESENT {TactN}",
     )
+    setkeytimes(csk_name, timings)
     # Signing.
     render_and_sign_zone(zonename, [csk_name], extra_options=f"-z -G {cds}")
 
@@ -645,14 +772,23 @@ def configure_cskroll1(tld: str, policy: str) -> List[Zone]:
     # Key generation.
     csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
     csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {csk1_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="HIDDEN",
+        k=f"OMNIPRESENT {TactN}",
+        r=f"OMNIPRESENT {TactN}",
+        z=f"OMNIPRESENT {TactN}",
+        d=f"OMNIPRESENT {TactN}",
     )
-    settime(
-        f"-g OMNIPRESENT -k RUMOURED {TpubN1} -r RUMOURED {TpubN1} -z HIDDEN {TpubN1} -d HIDDEN {TpubN1} {csk2_name}",
-        cwd="ns3",
+    setkeytimes(csk1_name, timings)
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"RUMOURED {TpubN1}",
+        r=f"RUMOURED {TpubN1}",
+        z=f"HIDDEN {TpubN1}",
+        d=f"HIDDEN {TpubN1}",
     )
+    setkeytimes(csk2_name, timings)
     # Set key rollover relationship.
     set_key_relationship(csk1_name, csk2_name)
     # Signing.
@@ -698,14 +834,25 @@ def configure_cskroll1(tld: str, policy: str) -> List[Zone]:
     # Key generation.
     csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
     csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -z UNRETENTIVE {TactN1} -d UNRETENTIVE {TactN1} -D ds {TactN1} {csk1_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="HIDDEN",
+        k=f"OMNIPRESENT {TactN}",
+        r=f"OMNIPRESENT {TactN}",
+        z=f"UNRETENTIVE {TactN1}",
+        d=f"UNRETENTIVE {TactN1}",
+        D_ds=f"{TactN1}",
     )
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN1} -r OMNIPRESENT {TactN1} -z RUMOURED {TactN1} -d RUMOURED {TactN1} -P ds {TactN1} {csk2_name}",
-        cwd="ns3",
+    setkeytimes(csk1_name, timings)
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN1}",
+        r=f"OMNIPRESENT {TactN1}",
+        z=f"RUMOURED {TactN1}",
+        d=f"RUMOURED {TactN1}",
+        P_ds=f"{TactN1}",
     )
+    setkeytimes(csk2_name, timings)
     # Set key rollover relationship.
     set_key_relationship(csk1_name, csk2_name)
     # Signing.
@@ -733,14 +880,23 @@ def configure_cskroll1(tld: str, policy: str) -> List[Zone]:
     # Key generation.
     csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
     csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g HIDDEN -k OMNIPRESENT {TactN} -r UNRETENTIVE now-2h -z UNRETENTIVE {TactN1} -d HIDDEN now-2h {csk1_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="HIDDEN",
+        k=f"OMNIPRESENT {TactN}",
+        r="UNRETENTIVE now-2h",
+        z=f"UNRETENTIVE {TactN1}",
+        d="HIDDEN now-2h",
     )
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN1} -r OMNIPRESENT {TactN1} -z RUMOURED {TactN1} -d OMNIPRESENT now-2h {csk2_name}",
-        cwd="ns3",
+    setkeytimes(csk1_name, timings)
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN1}",
+        r=f"OMNIPRESENT {TactN1}",
+        z=f"RUMOURED {TactN1}",
+        d="OMNIPRESENT now-2h",
     )
+    setkeytimes(csk2_name, timings)
     # Set key rollover relationship.
     set_key_relationship(csk1_name, csk2_name)
     # Signing.
@@ -784,14 +940,23 @@ def configure_cskroll1(tld: str, policy: str) -> List[Zone]:
     # Key generation.
     csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
     csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g HIDDEN -k OMNIPRESENT {TactN} -r HIDDEN {TremN} -z UNRETENTIVE {TactN1} -d HIDDEN {TremN} {csk1_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="HIDDEN",
+        k=f"OMNIPRESENT {TactN}",
+        r=f"HIDDEN {TremN}",
+        z=f"UNRETENTIVE {TactN1}",
+        d=f"HIDDEN {TremN}",
     )
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN1} -r OMNIPRESENT {TactN1} -z RUMOURED {TactN1} -d OMNIPRESENT {TremN} {csk2_name}",
-        cwd="ns3",
+    setkeytimes(csk1_name, timings)
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN1}",
+        r=f"OMNIPRESENT {TactN1}",
+        z=f"RUMOURED {TactN1}",
+        d=f"OMNIPRESENT {TremN}",
     )
+    setkeytimes(csk2_name, timings)
     # Set key rollover relationship.
     set_key_relationship(csk1_name, csk2_name)
     # Signing.
@@ -818,14 +983,23 @@ def configure_cskroll1(tld: str, policy: str) -> List[Zone]:
     # Key generation.
     csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
     csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g HIDDEN -k UNRETENTIVE {TremN} -r HIDDEN {TremN} -z HIDDEN {TactN1} -d HIDDEN {TremN} {csk1_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="HIDDEN",
+        k=f"UNRETENTIVE {TremN}",
+        r=f"HIDDEN {TremN}",
+        z=f"HIDDEN {TactN1}",
+        d=f"HIDDEN {TremN}",
     )
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN1} -r OMNIPRESENT {TactN1} -z OMNIPRESENT {TactN1} -d OMNIPRESENT {TactN1} {csk2_name}",
-        cwd="ns3",
+    setkeytimes(csk1_name, timings)
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN1}",
+        r=f"OMNIPRESENT {TactN1}",
+        z=f"OMNIPRESENT {TactN1}",
+        d=f"OMNIPRESENT {TactN1}",
     )
+    setkeytimes(csk2_name, timings)
     # Set key rollover relationship.
     set_key_relationship(csk1_name, csk2_name)
     # Signing.
@@ -852,14 +1026,23 @@ def configure_cskroll1(tld: str, policy: str) -> List[Zone]:
     # Key generation.
     csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
     csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g HIDDEN -k HIDDEN {TremN} -r HIDDEN {TremN} -z HIDDEN {TactN1} -d HIDDEN {TremN} {csk1_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="HIDDEN",
+        k=f"HIDDEN {TremN}",
+        r=f"HIDDEN {TremN}",
+        z=f"HIDDEN {TactN1}",
+        d=f"HIDDEN {TremN}",
     )
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN1} -r OMNIPRESENT {TactN1} -z OMNIPRESENT {TactN1} -d OMNIPRESENT {TactN1} {csk2_name}",
-        cwd="ns3",
+    setkeytimes(csk1_name, timings)
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN1}",
+        r=f"OMNIPRESENT {TactN1}",
+        z=f"OMNIPRESENT {TactN1}",
+        d=f"OMNIPRESENT {TactN1}",
     )
+    setkeytimes(csk2_name, timings)
     # Set key rollover relationship.
     set_key_relationship(csk1_name, csk2_name)
     # Signing.
@@ -877,7 +1060,6 @@ def configure_cskroll2(tld: str, policy: str) -> List[Zone]:
     zone = f"csk-roll2.{tld}"
     cds = "cdnskey,cds:sha-256,cds:sha-384"
     keygen = EnvCmd("KEYGEN", f"-k {policy} -l kasp.conf")
-    settime = EnvCmd("SETTIME", "-s")
 
     # Step 1:
     # Introduce the first key. This will immediately be active.
@@ -888,10 +1070,15 @@ def configure_cskroll2(tld: str, policy: str) -> List[Zone]:
     keytimes = f"-P {TactN} -A {TactN}"
     # Key generation.
     csk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {csk_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN}",
+        r=f"OMNIPRESENT {TactN}",
+        z=f"OMNIPRESENT {TactN}",
+        d=f"OMNIPRESENT {TactN}",
     )
+    setkeytimes(csk_name, timings)
     # Signing.
     render_and_sign_zone(zonename, [csk_name], extra_options=f"-z -G {cds}")
 
@@ -920,10 +1107,15 @@ def configure_cskroll2(tld: str, policy: str) -> List[Zone]:
     keytimes = f"-P {TactN} -A {TactN}"
     # Key generation.
     csk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {csk_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN}",
+        r=f"OMNIPRESENT {TactN}",
+        z=f"OMNIPRESENT {TactN}",
+        d=f"OMNIPRESENT {TactN}",
     )
+    setkeytimes(csk_name, timings)
     # Signing.
     render_and_sign_zone(zonename, [csk_name], extra_options=f"-z -G {cds}")
 
@@ -976,14 +1168,23 @@ def configure_cskroll2(tld: str, policy: str) -> List[Zone]:
     # Key generation.
     csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
     csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {csk1_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="HIDDEN",
+        k=f"OMNIPRESENT {TactN}",
+        r=f"OMNIPRESENT {TactN}",
+        z=f"OMNIPRESENT {TactN}",
+        d=f"OMNIPRESENT {TactN}",
     )
-    settime(
-        f"-g OMNIPRESENT -k RUMOURED {TpubN1} -r RUMOURED {TpubN1} -z HIDDEN {TpubN1} -d HIDDEN {TpubN1} {csk2_name}",
-        cwd="ns3",
+    setkeytimes(csk1_name, timings)
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"RUMOURED {TpubN1}",
+        r=f"RUMOURED {TpubN1}",
+        z=f"HIDDEN {TpubN1}",
+        d=f"HIDDEN {TpubN1}",
     )
+    setkeytimes(csk2_name, timings)
     # Set key rollover relationship.
     set_key_relationship(csk1_name, csk2_name)
     # Signing.
@@ -1031,14 +1232,25 @@ def configure_cskroll2(tld: str, policy: str) -> List[Zone]:
     # Key generation.
     csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
     csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -z UNRETENTIVE {TretN} -d UNRETENTIVE {TretN} -D ds {TretN} {csk1_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="HIDDEN",
+        k=f"OMNIPRESENT {TactN}",
+        r=f"OMNIPRESENT {TactN}",
+        z=f"UNRETENTIVE {TretN}",
+        d=f"UNRETENTIVE {TretN}",
+        D_ds=f"{TretN}",
     )
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN1} -r OMNIPRESENT {TactN1} -z RUMOURED {TactN1} -d RUMOURED {TactN1} -P ds {TactN1} {csk2_name}",
-        cwd="ns3",
+    setkeytimes(csk1_name, timings)
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN1}",
+        r=f"OMNIPRESENT {TactN1}",
+        z=f"RUMOURED {TactN1}",
+        d=f"RUMOURED {TactN1}",
+        P_ds=f"{TactN1}",
     )
+    setkeytimes(csk2_name, timings)
     # Set key rollover relationship.
     set_key_relationship(csk1_name, csk2_name)
     # Signing.
@@ -1075,14 +1287,25 @@ def configure_cskroll2(tld: str, policy: str) -> List[Zone]:
     # Key generation.
     csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
     csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -z HIDDEN now-133h -d UNRETENTIVE {TactN1} -D ds {TactN1} {csk1_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="HIDDEN",
+        k=f"OMNIPRESENT {TactN}",
+        r=f"OMNIPRESENT {TactN}",
+        z="HIDDEN now-133h",
+        d=f"UNRETENTIVE {TactN1}",
+        D_ds=f"{TactN1}",
     )
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN1} -r OMNIPRESENT {TactN1} -z OMNIPRESENT now-133h -d RUMOURED {TactN1} -P ds {TactN1} {csk2_name}",
-        cwd="ns3",
+    setkeytimes(csk1_name, timings)
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN1}",
+        r=f"OMNIPRESENT {TactN1}",
+        z="OMNIPRESENT now-133h",
+        d=f"RUMOURED {TactN1}",
+        P_ds=f"{TactN1}",
     )
+    setkeytimes(csk2_name, timings)
     # Set key rollover relationship.
     set_key_relationship(csk1_name, csk2_name)
     # Signing.
@@ -1118,14 +1341,23 @@ def configure_cskroll2(tld: str, policy: str) -> List[Zone]:
     # Key generation.
     csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
     csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g HIDDEN -k UNRETENTIVE {TremN} -r UNRETENTIVE {TremN} -z HIDDEN now-135h -d HIDDEN {TremN} {csk1_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="HIDDEN",
+        k=f"UNRETENTIVE {TremN}",
+        r=f"UNRETENTIVE {TremN}",
+        z="HIDDEN now-135h",
+        d=f"HIDDEN {TremN}",
     )
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN1} -r OMNIPRESENT {TactN1} -z OMNIPRESENT now-135h -d OMNIPRESENT {TremN} {csk2_name}",
-        cwd="ns3",
+    setkeytimes(csk1_name, timings)
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN1}",
+        r=f"OMNIPRESENT {TactN1}",
+        z="OMNIPRESENT now-135h",
+        d=f"OMNIPRESENT {TremN}",
     )
+    setkeytimes(csk2_name, timings)
     # Set key rollover relationship.
     set_key_relationship(csk1_name, csk2_name)
     # Signing.
@@ -1162,14 +1394,23 @@ def configure_cskroll2(tld: str, policy: str) -> List[Zone]:
     # Key generation.
     csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
     csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g HIDDEN -k UNRETENTIVE {TremN} -r HIDDEN {TremN} -z HIDDEN {TactN1} -d HIDDEN {TremN} {csk1_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="HIDDEN",
+        k=f"UNRETENTIVE {TremN}",
+        r=f"HIDDEN {TremN}",
+        z=f"HIDDEN {TactN1}",
+        d=f"HIDDEN {TremN}",
     )
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN1} -r OMNIPRESENT {TactN1} -z OMNIPRESENT {TactN1} -d OMNIPRESENT {TremN} {csk2_name}",
-        cwd="ns3",
+    setkeytimes(csk1_name, timings)
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN1}",
+        r=f"OMNIPRESENT {TactN1}",
+        z=f"OMNIPRESENT {TactN1}",
+        d=f"OMNIPRESENT {TremN}",
     )
+    setkeytimes(csk2_name, timings)
     # Set key rollover relationship.
     set_key_relationship(csk1_name, csk2_name)
     # Signing.
@@ -1196,14 +1437,23 @@ def configure_cskroll2(tld: str, policy: str) -> List[Zone]:
     # Key generation.
     csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
     csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g HIDDEN -k UNRETENTIVE {TremN} -r UNRETENTIVE {TremN} -z HIDDEN now-2295h -d HIDDEN {TremN} {csk1_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="HIDDEN",
+        k=f"UNRETENTIVE {TremN}",
+        r=f"UNRETENTIVE {TremN}",
+        z="HIDDEN now-2295h",
+        d=f"HIDDEN {TremN}",
     )
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN1} -r OMNIPRESENT {TactN1} -z OMNIPRESENT now-2295h -d OMNIPRESENT {TremN} {csk2_name}",
-        cwd="ns3",
+    setkeytimes(csk1_name, timings)
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN1}",
+        r=f"OMNIPRESENT {TactN1}",
+        z="OMNIPRESENT now-2295h",
+        d=f"OMNIPRESENT {TremN}",
     )
+    setkeytimes(csk2_name, timings)
     # Set key rollover relationship.
     set_key_relationship(csk1_name, csk2_name)
     # Signing.
@@ -1218,7 +1468,6 @@ def configure_enable_dnssec(tld: str, policy: str) -> List[Zone]:
     zones = []
     zone = f"enable-dnssec.{tld}"
     keygen = EnvCmd("KEYGEN", f"-k {policy} -l kasp.conf")
-    settime = EnvCmd("SETTIME", "-s")
 
     # Step 1:
     # This is an unsigned zone and named should perform the initial steps of
@@ -1241,10 +1490,15 @@ def configure_enable_dnssec(tld: str, policy: str) -> List[Zone]:
     keytimes = f"-P {TpubN} -A {TpubN}"
     # Key generation.
     csk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g OMNIPRESENT -k RUMOURED {TpubN} -r RUMOURED {TpubN} -z RUMOURED {TpubN} -d HIDDEN {TpubN} {csk_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"RUMOURED {TpubN}",
+        r=f"RUMOURED {TpubN}",
+        z=f"RUMOURED {TpubN}",
+        d=f"HIDDEN {TpubN}",
     )
+    setkeytimes(csk_name, timings)
     # Signing.
     render_and_sign_zone(zonename, [csk_name], extra_options="-z")
 
@@ -1261,10 +1515,15 @@ def configure_enable_dnssec(tld: str, policy: str) -> List[Zone]:
     keytimes = f"-P {TpubN} -A {TpubN}"
     # Key generation.
     csk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TpubN} -r OMNIPRESENT {TpubN} -z RUMOURED {TpubN} -d HIDDEN {TpubN} {csk_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TpubN}",
+        r=f"OMNIPRESENT {TpubN}",
+        z=f"RUMOURED {TpubN}",
+        d=f"HIDDEN {TpubN}",
     )
+    setkeytimes(csk_name, timings)
     # Signing.
     render_and_sign_zone(zonename, [csk_name], extra_options="-z")
 
@@ -1282,10 +1541,16 @@ def configure_enable_dnssec(tld: str, policy: str) -> List[Zone]:
     keytimes = f"-P {TpubN} -A {TpubN} -P sync {TsbmN}"
     # Key generation.
     csk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TpubN} -r OMNIPRESENT {TpubN} -z OMNIPRESENT {TsbmN} -d RUMOURED {TpubN} -P ds {TsbmN} {csk_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TpubN}",
+        r=f"OMNIPRESENT {TpubN}",
+        z=f"OMNIPRESENT {TsbmN}",
+        d=f"RUMOURED {TpubN}",
+        P_ds=f"{TsbmN}",
     )
+    setkeytimes(csk_name, timings)
     # Signing.
     render_and_sign_zone(zonename, [csk_name], extra_options="-z")
 
@@ -1295,7 +1560,6 @@ def configure_enable_dnssec(tld: str, policy: str) -> List[Zone]:
 def configure_going_insecure(tld: str, reconfig: bool = False) -> List[Zone]:
     zones = []
     keygen = EnvCmd("KEYGEN", "-a ECDSA256 -L 7200")
-    settime = EnvCmd("SETTIME", "-s")
 
     # The child zones (step1, step2) beneath these zones represent the various
     # steps of unsigning a zone.
@@ -1316,14 +1580,20 @@ def configure_going_insecure(tld: str, reconfig: bool = False) -> List[Zone]:
             f"-f KSK {keytimes} {cdstimes} {zonename}", cwd="ns3"
         ).out.strip()
         zsk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
-        settime(
-            f"-g OMNIPRESENT -k OMNIPRESENT {TpubN} -r OMNIPRESENT {TpubN} -d OMNIPRESENT {TpubN} {ksk_name}",
-            cwd="ns3",
+        # Key state timing metadata.
+        timings = SettimeOptions(
+            g="OMNIPRESENT",
+            k=f"OMNIPRESENT {TpubN}",
+            r=f"OMNIPRESENT {TpubN}",
+            d=f"OMNIPRESENT {TpubN}",
         )
-        settime(
-            f"-g OMNIPRESENT -k OMNIPRESENT {TpubN} -z OMNIPRESENT {TpubN} {zsk_name}",
-            cwd="ns3",
+        setkeytimes(ksk_name, timings)
+        timings = SettimeOptions(
+            g="OMNIPRESENT",
+            k=f"OMNIPRESENT {TpubN}",
+            z=f"OMNIPRESENT {TpubN}",
         )
+        setkeytimes(zsk_name, timings)
         # Signing.
         render_and_sign_zone(zonename, [ksk_name, zsk_name])
 
@@ -1343,14 +1613,21 @@ def configure_going_insecure(tld: str, reconfig: bool = False) -> List[Zone]:
                 f"-f KSK {keytimes} {cdstimes} {zonename}", cwd="ns3"
             ).out.strip()
             zsk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
-            settime(
-                f"-g HIDDEN -k OMNIPRESENT {TpubN} -r OMNIPRESENT {TpubN} -d UNRETENTIVE {TremN} -D ds {TremN} {ksk_name}",
-                cwd="ns3",
+            # Key state timing metadata.
+            timings = SettimeOptions(
+                g="HIDDEN",
+                k=f"OMNIPRESENT {TpubN}",
+                r=f"OMNIPRESENT {TpubN}",
+                d=f"UNRETENTIVE {TremN}",
+                D_ds=f"{TremN}",
             )
-            settime(
-                f"-g HIDDEN -k OMNIPRESENT {TpubN} -z OMNIPRESENT {TpubN} {zsk_name}",
-                cwd="ns3",
+            setkeytimes(ksk_name, timings)
+            timings = SettimeOptions(
+                g="HIDDEN",
+                k=f"OMNIPRESENT {TpubN}",
+                z=f"OMNIPRESENT {TpubN}",
             )
+            setkeytimes(zsk_name, timings)
             # Fake lifetime of old algorithm keys.
             fake_lifetime(ksk_name, 0)
             fake_lifetime(zsk_name, 5184000)
@@ -1364,7 +1641,6 @@ def configure_straight2none(tld: str) -> List[Zone]:
     # These zones are going straight to "none" policy. This is undefined behavior.
     zones = []
     keygen = EnvCmd("KEYGEN", "-k default")
-    settime = EnvCmd("SETTIME", "-s")
 
     TpubN = "now-10d"
     TsbmN = "now-12955mi"
@@ -1375,10 +1651,15 @@ def configure_straight2none(tld: str) -> List[Zone]:
     isctest.log.info(f"setup {zonename}")
     # Key generation.
     csk_name = keygen(f"-f KSK {keytimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TpubN} -r OMNIPRESENT {TpubN} -z OMNIPRESENT {TpubN} -d OMNIPRESENT {TpubN} {csk_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TpubN}",
+        r=f"OMNIPRESENT {TpubN}",
+        z=f"OMNIPRESENT {TpubN}",
+        d=f"OMNIPRESENT {TpubN}",
     )
+    setkeytimes(csk_name, timings)
     # Signing.
     render_and_sign_zone(zonename, [csk_name], extra_options="-z")
 
@@ -1389,10 +1670,15 @@ def configure_straight2none(tld: str) -> List[Zone]:
     isctest.log.info(f"setup {zonename}")
     # Key generation.
     csk_name = keygen(f"-f KSK {keytimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TpubN} -r OMNIPRESENT {TpubN} -z OMNIPRESENT {TpubN} -d OMNIPRESENT {TpubN} {csk_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TpubN}",
+        r=f"OMNIPRESENT {TpubN}",
+        z=f"OMNIPRESENT {TpubN}",
+        d=f"OMNIPRESENT {TpubN}",
     )
+    setkeytimes(csk_name, timings)
     # Signing.
     render_and_sign_zone(zonename, [csk_name], extra_options="-z -O full")
 
@@ -1406,7 +1692,6 @@ def configure_ksk_doubleksk(tld: str) -> List[Zone]:
     zone = f"ksk-doubleksk.{tld}"
     cds = "cds:sha-256"
     keygen = EnvCmd("KEYGEN", "-a ECDSAP256SHA256 -L 7200")
-    settime = EnvCmd("SETTIME", "-s")
 
     # Step 1:
     # Introduce the first key. This will immediately be active.
@@ -1419,14 +1704,20 @@ def configure_ksk_doubleksk(tld: str) -> List[Zone]:
     # Key generation.
     ksk_name = keygen(f"-f KSK {keytimes} {zonename}", cwd="ns3").out.strip()
     zsk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {ksk_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN}",
+        r=f"OMNIPRESENT {TactN}",
+        d=f"OMNIPRESENT {TactN}",
     )
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} {zsk_name}",
-        cwd="ns3",
+    setkeytimes(ksk_name, timings)
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN}",
+        z=f"OMNIPRESENT {TactN}",
     )
+    setkeytimes(zsk_name, timings)
     # Signing.
     render_and_sign_zone(zonename, [ksk_name, zsk_name], extra_options=f"-G {cds}")
 
@@ -1455,14 +1746,20 @@ def configure_ksk_doubleksk(tld: str) -> List[Zone]:
     # Key generation.
     ksk_name = keygen(f"-f KSK {keytimes} {zonename}", cwd="ns3").out.strip()
     zsk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {ksk_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN}",
+        r=f"OMNIPRESENT {TactN}",
+        d=f"OMNIPRESENT {TactN}",
     )
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} {zsk_name}",
-        cwd="ns3",
+    setkeytimes(ksk_name, timings)
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN}",
+        z=f"OMNIPRESENT {TactN}",
     )
+    setkeytimes(zsk_name, timings)
     # Signing.
     render_and_sign_zone(zonename, [ksk_name, zsk_name], extra_options=f"-G {cds}")
 
@@ -1501,18 +1798,27 @@ def configure_ksk_doubleksk(tld: str) -> List[Zone]:
     ksk1_name = keygen(f"-f KSK {ksktimes} {zonename}", cwd="ns3").out.strip()
     ksk2_name = keygen(f"-f KSK {newtimes} {zonename}", cwd="ns3").out.strip()
     zsk_name = keygen(f"{zsktimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {ksk1_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="HIDDEN",
+        k=f"OMNIPRESENT {TactN}",
+        r=f"OMNIPRESENT {TactN}",
+        d=f"OMNIPRESENT {TactN}",
     )
-    settime(
-        f"-g OMNIPRESENT -k RUMOURED {TpubN1} -r RUMOURED {TpubN1} -d HIDDEN {TpubN1} {ksk2_name}",
-        cwd="ns3",
+    setkeytimes(ksk1_name, timings)
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"RUMOURED {TpubN1}",
+        r=f"RUMOURED {TpubN1}",
+        d=f"HIDDEN {TpubN1}",
     )
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TpubN} -z OMNIPRESENT {TpubN} {zsk_name}",
-        cwd="ns3",
+    setkeytimes(ksk2_name, timings)
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TpubN}",
+        z=f"OMNIPRESENT {TpubN}",
     )
+    setkeytimes(zsk_name, timings)
     # Set key rollover relationship.
     set_key_relationship(ksk1_name, ksk2_name)
     # Signing.
@@ -1552,18 +1858,29 @@ def configure_ksk_doubleksk(tld: str) -> List[Zone]:
     ksk1_name = keygen(f"-f KSK {ksktimes} {zonename}", cwd="ns3").out.strip()
     ksk2_name = keygen(f"-f KSK {newtimes} {zonename}", cwd="ns3").out.strip()
     zsk_name = keygen(f"{zsktimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d UNRETENTIVE {TretN} -D ds {TretN} {ksk1_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="HIDDEN",
+        k=f"OMNIPRESENT {TactN}",
+        r=f"OMNIPRESENT {TactN}",
+        d=f"UNRETENTIVE {TretN}",
+        D_ds=f"{TretN}",
     )
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN1} -r OMNIPRESENT {TactN1} -d RUMOURED {TactN1} -P ds {TactN1} {ksk2_name}",
-        cwd="ns3",
+    setkeytimes(ksk1_name, timings)
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN1}",
+        r=f"OMNIPRESENT {TactN1}",
+        d=f"RUMOURED {TactN1}",
+        P_ds=f"{TactN1}",
     )
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} {zsk_name}",
-        cwd="ns3",
+    setkeytimes(ksk2_name, timings)
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN}",
+        z=f"OMNIPRESENT {TactN}",
     )
+    setkeytimes(zsk_name, timings)
     # Set key rollover relationship.
     set_key_relationship(ksk1_name, ksk2_name)
     # Signing.
@@ -1602,18 +1919,27 @@ def configure_ksk_doubleksk(tld: str) -> List[Zone]:
     ksk1_name = keygen(f"-f KSK {ksktimes} {zonename}", cwd="ns3").out.strip()
     ksk2_name = keygen(f"-f KSK {newtimes} {zonename}", cwd="ns3").out.strip()
     zsk_name = keygen(f"{zsktimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g HIDDEN -k UNRETENTIVE {TretN} -r UNRETENTIVE {TretN} -d HIDDEN {TretN} {ksk1_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="HIDDEN",
+        k=f"UNRETENTIVE {TretN}",
+        r=f"UNRETENTIVE {TretN}",
+        d=f"HIDDEN {TretN}",
     )
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN1} -r OMNIPRESENT {TactN1} -d OMNIPRESENT {TactN1} {ksk2_name}",
-        cwd="ns3",
+    setkeytimes(ksk1_name, timings)
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN1}",
+        r=f"OMNIPRESENT {TactN1}",
+        d=f"OMNIPRESENT {TactN1}",
     )
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} {zsk_name}",
-        cwd="ns3",
+    setkeytimes(ksk2_name, timings)
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN}",
+        z=f"OMNIPRESENT {TactN}",
     )
+    setkeytimes(zsk_name, timings)
     # Set key rollover relationship.
     set_key_relationship(ksk1_name, ksk2_name)
     # Signing.
@@ -1644,18 +1970,27 @@ def configure_ksk_doubleksk(tld: str) -> List[Zone]:
     ksk1_name = keygen(f"-f KSK {ksktimes} {zonename}", cwd="ns3").out.strip()
     ksk2_name = keygen(f"-f KSK {newtimes} {zonename}", cwd="ns3").out.strip()
     zsk_name = keygen(f"{zsktimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g HIDDEN -k HIDDEN {TretN} -r HIDDEN {TretN} -d HIDDEN {TretN} {ksk1_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="HIDDEN",
+        k=f"HIDDEN {TretN}",
+        r=f"HIDDEN {TretN}",
+        d=f"HIDDEN {TretN}",
     )
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN1} -r OMNIPRESENT {TactN1} -d OMNIPRESENT {TactN1} {ksk2_name}",
-        cwd="ns3",
+    setkeytimes(ksk1_name, timings)
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN1}",
+        r=f"OMNIPRESENT {TactN1}",
+        d=f"OMNIPRESENT {TactN1}",
     )
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} {zsk_name}",
-        cwd="ns3",
+    setkeytimes(ksk2_name, timings)
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN}",
+        z=f"OMNIPRESENT {TactN}",
     )
+    setkeytimes(zsk_name, timings)
     # Set key rollover relationship.
     set_key_relationship(ksk1_name, ksk2_name)
     # Signing.
@@ -1680,7 +2015,6 @@ def configure_ksk_3crowd(tld: str) -> List[Zone]:
     zones = []
     cds = "cds:sha-256"
     keygen = EnvCmd("KEYGEN", "-a ECDSAP256SHA256 -L 7200")
-    settime = EnvCmd("SETTIME", "-s")
 
     # Set up a zone that has a KSK (KEY1) and have the successor key (KEY2)
     # published as well.
@@ -1705,18 +2039,27 @@ def configure_ksk_3crowd(tld: str) -> List[Zone]:
     ksk1_name = keygen(f"-f KSK {ksktimes} {zonename}", cwd="ns3").out.strip()
     ksk2_name = keygen(f"-f KSK {newtimes} {zonename}", cwd="ns3").out.strip()
     zsk_name = keygen(f"{zsktimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {ksk1_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="HIDDEN",
+        k=f"OMNIPRESENT {TactN}",
+        r=f"OMNIPRESENT {TactN}",
+        d=f"OMNIPRESENT {TactN}",
     )
-    settime(
-        f"-g OMNIPRESENT -k RUMOURED {TpubN1} -r RUMOURED {TpubN1} -d HIDDEN {TpubN1} {ksk2_name}",
-        cwd="ns3",
+    setkeytimes(ksk1_name, timings)
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"RUMOURED {TpubN1}",
+        r=f"RUMOURED {TpubN1}",
+        d=f"HIDDEN {TpubN1}",
     )
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TpubN} -z OMNIPRESENT {TpubN} {zsk_name}",
-        cwd="ns3",
+    setkeytimes(ksk2_name, timings)
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TpubN}",
+        z=f"OMNIPRESENT {TpubN}",
     )
+    setkeytimes(zsk_name, timings)
     # Set key rollover relationship.
     set_key_relationship(ksk1_name, ksk2_name)
     # Signing.
@@ -1733,7 +2076,6 @@ def configure_zsk_prepub(tld: str) -> List[Zone]:
     zones = []
     zone = f"zsk-prepub.{tld}"
     keygen = EnvCmd("KEYGEN", "-a ECDSAP256SHA256 -L 3600")
-    settime = EnvCmd("SETTIME", "-s")
 
     # Step 1:
     # Introduce the first key. This will immediately be active.
@@ -1746,14 +2088,20 @@ def configure_zsk_prepub(tld: str) -> List[Zone]:
     # Key generation.
     ksk_name = keygen(f"-f KSK {keytimes} {zonename}", cwd="ns3").out.strip()
     zsk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {ksk_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN}",
+        r=f"OMNIPRESENT {TactN}",
+        d=f"OMNIPRESENT {TactN}",
     )
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} {zsk_name}",
-        cwd="ns3",
+    setkeytimes(ksk_name, timings)
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN}",
+        z=f"OMNIPRESENT {TactN}",
     )
+    setkeytimes(zsk_name, timings)
     # Signing.
     render_and_sign_zone(zonename, [ksk_name, zsk_name])
 
@@ -1770,14 +2118,20 @@ def configure_zsk_prepub(tld: str) -> List[Zone]:
     # Key generation.
     ksk_name = keygen(f"-f KSK {keytimes} {zonename}", cwd="ns3").out.strip()
     zsk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {ksk_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN}",
+        r=f"OMNIPRESENT {TactN}",
+        d=f"OMNIPRESENT {TactN}",
     )
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} {zsk_name}",
-        cwd="ns3",
+    setkeytimes(ksk_name, timings)
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN}",
+        z=f"OMNIPRESENT {TactN}",
     )
+    setkeytimes(zsk_name, timings)
     # Signing.
     render_and_sign_zone(zonename, [ksk_name, zsk_name])
 
@@ -1807,17 +2161,26 @@ def configure_zsk_prepub(tld: str) -> List[Zone]:
     ksk_name = keygen(f"-f KSK {keytimes} {zonename}", cwd="ns3").out.strip()
     zsk1_name = keygen(f"{oldtimes} {zonename}", cwd="ns3").out.strip()
     zsk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {ksk_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN}",
+        r=f"OMNIPRESENT {TactN}",
+        d=f"OMNIPRESENT {TactN}",
     )
-    settime(
-        f"-g HIDDEN -k OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} {zsk1_name}",
-        cwd="ns3",
+    setkeytimes(ksk_name, timings)
+    timings = SettimeOptions(
+        g="HIDDEN",
+        k=f"OMNIPRESENT {TactN}",
+        z=f"OMNIPRESENT {TactN}",
     )
-    settime(
-        f"-g OMNIPRESENT -k RUMOURED {TpubN1} -z HIDDEN {TpubN1} {zsk2_name}", cwd="ns3"
+    setkeytimes(zsk1_name, timings)
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"RUMOURED {TpubN1}",
+        z=f"HIDDEN {TpubN1}",
     )
+    setkeytimes(zsk2_name, timings)
     # Set key rollover relationship.
     set_key_relationship(zsk1_name, zsk2_name)
     # Signing.
@@ -1858,18 +2221,26 @@ def configure_zsk_prepub(tld: str) -> List[Zone]:
     ksk_name = keygen(f"-f KSK {keytimes} {zonename}", cwd="ns3").out.strip()
     zsk1_name = keygen(f"{oldtimes} {zonename}", cwd="ns3").out.strip()
     zsk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {ksk_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN}",
+        r=f"OMNIPRESENT {TactN}",
+        d=f"OMNIPRESENT {TactN}",
     )
-    settime(
-        f"-g HIDDEN -k OMNIPRESENT {TactN} -z UNRETENTIVE {TactN1} {zsk1_name}",
-        cwd="ns3",
+    setkeytimes(ksk_name, timings)
+    timings = SettimeOptions(
+        g="HIDDEN",
+        k=f"OMNIPRESENT {TactN}",
+        z=f"UNRETENTIVE {TactN1}",
     )
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN1} -z RUMOURED {TactN1} {zsk2_name}",
-        cwd="ns3",
+    setkeytimes(zsk1_name, timings)
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN1}",
+        z=f"RUMOURED {TactN1}",
     )
+    setkeytimes(zsk2_name, timings)
     # Set key rollover relationship.
     set_key_relationship(zsk1_name, zsk2_name)
     # Signing.
@@ -1897,17 +2268,26 @@ def configure_zsk_prepub(tld: str) -> List[Zone]:
     ksk_name = keygen(f"-f KSK {keytimes} {zonename}", cwd="ns3").out.strip()
     zsk1_name = keygen(f"{oldtimes} {zonename}", cwd="ns3").out.strip()
     zsk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {ksk_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN}",
+        r=f"OMNIPRESENT {TactN}",
+        d=f"OMNIPRESENT {TactN}",
     )
-    settime(
-        f"-g HIDDEN -k UNRETENTIVE {TremN} -z HIDDEN {TremN} {zsk1_name}", cwd="ns3"
+    setkeytimes(ksk_name, timings)
+    timings = SettimeOptions(
+        g="HIDDEN",
+        k=f"UNRETENTIVE {TremN}",
+        z=f"HIDDEN {TremN}",
     )
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN1} -z OMNIPRESENT {TremN} {zsk2_name}",
-        cwd="ns3",
+    setkeytimes(zsk1_name, timings)
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN1}",
+        z=f"OMNIPRESENT {TremN}",
     )
+    setkeytimes(zsk2_name, timings)
     # Set key rollover relationship.
     set_key_relationship(zsk1_name, zsk2_name)
     # Signing.
@@ -1931,15 +2311,26 @@ def configure_zsk_prepub(tld: str) -> List[Zone]:
     ksk_name = keygen(f"-f KSK {keytimes} {zonename}", cwd="ns3").out.strip()
     zsk1_name = keygen(f"{oldtimes} {zonename}", cwd="ns3").out.strip()
     zsk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").out.strip()
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {ksk_name}",
-        cwd="ns3",
+    # Key state timing metadata.
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN}",
+        r=f"OMNIPRESENT {TactN}",
+        d=f"OMNIPRESENT {TactN}",
     )
-    settime(f"-g HIDDEN -k HIDDEN {TremN} -z HIDDEN {TremN} {zsk1_name}", cwd="ns3")
-    settime(
-        f"-g OMNIPRESENT -k OMNIPRESENT {TactN1} -z OMNIPRESENT {TremN} {zsk2_name}",
-        cwd="ns3",
+    setkeytimes(ksk_name, timings)
+    timings = SettimeOptions(
+        g="HIDDEN",
+        k=f"HIDDEN {TremN}",
+        z=f"HIDDEN {TremN}",
     )
+    setkeytimes(zsk1_name, timings)
+    timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {TactN1}",
+        z=f"OMNIPRESENT {TremN}",
+    )
+    setkeytimes(zsk2_name, timings)
     # Set key rollover relationship.
     set_key_relationship(zsk1_name, zsk2_name)
     # Signing.

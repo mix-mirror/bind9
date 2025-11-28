@@ -26,6 +26,7 @@ import isctest.mark
 from isctest.kasp import (
     KeyProperties,
     KeyTimingMetadata,
+    SettimeOptions,
 )
 from isctest.util import param
 from isctest.vars.algorithms import ECDSAP256SHA256, ECDSAP384SHA384
@@ -1322,13 +1323,8 @@ def test_kasp_dnssec_keygen():
 
     created = key.get_timing("Created")
     publish = key.get_timing("Publish") + timedelta(hours=1)
-    settime = [
-        os.environ.get("SETTIME"),
-        "-P",
-        str(publish),
-        key.path,
-    ]
-    isctest.run.cmd(settime)
+    timings = SettimeOptions(P=f"{publish}")
+    key.settime(timings, with_state=False)
 
     isctest.check.file_contents_equal(f"{key.statefile}", f"{key.statefile}.backup")
     assert key.get_metadata("Publish", file=key.privatefile) == str(publish)
@@ -1358,28 +1354,16 @@ def test_kasp_dnssec_keygen():
         "DSChange": now,
     }
 
-    settime = [
-        os.environ.get("SETTIME"),
-        "-s",
-        "-P",
-        str(now),
-        "-g",
-        goal,
-        "-k",
-        dnskey,
-        str(now),
-        "-r",
-        krrsig,
-        str(now),
-        "-z",
-        zrrsig,
-        str(now),
-        "-d",
-        ds,
-        str(now),
-        key.path,
-    ]
-    isctest.run.cmd(settime)
+    timings = SettimeOptions(
+        P=f"{now}",
+        g=f"{goal}",
+        k=f"{dnskey} {now}",
+        r=f"{krrsig} {now}",
+        z=f"{zrrsig} {now}",
+        d=f"{ds} {now}",
+    )
+    key.settime(timings)
+
     isctest.kasp.check_keys("kasp", keys, expected)
     isctest.kasp.check_keytimes(keys, expected)
 
@@ -1395,28 +1379,16 @@ def test_kasp_dnssec_keygen():
         "Active": created,
     }
 
-    settime = [
-        os.environ.get("SETTIME"),
-        "-s",
-        "-P",
-        "none",
-        "-g",
-        "none",
-        "-k",
-        "none",
-        str(now),
-        "-z",
-        "none",
-        str(now),
-        "-r",
-        "none",
-        str(now),
-        "-d",
-        "none",
-        str(now),
-        key.path,
-    ]
-    isctest.run.cmd(settime)
+    timings = SettimeOptions(
+        P="none",
+        g="none",
+        k=f"none {now}",
+        r=f"none {now}",
+        z=f"none {now}",
+        d=f"none {now}",
+    )
+    key.settime(timings)
+
     isctest.kasp.check_keys("kasp", keys, expected)
     isctest.kasp.check_keytimes(keys, expected)
 
@@ -1443,28 +1415,16 @@ def test_kasp_dnssec_keygen():
         "DSChange": soon,
     }
 
-    settime = [
-        os.environ.get("SETTIME"),
-        "-s",
-        "-A",
-        str(soon),
-        "-g",
-        "HIDDEN",
-        "-k",
-        "UNRETENTIVE",
-        str(soon),
-        "-z",
-        "UNRETENTIVE",
-        str(soon),
-        "-r",
-        "OMNIPRESENT",
-        str(soon),
-        "-d",
-        "OMNIPRESENT",
-        str(soon),
-        key.path,
-    ]
-    isctest.run.cmd(settime)
+    timings = SettimeOptions(
+        A=f"{soon}",
+        g="HIDDEN",
+        k=f"UNRETENTIVE {soon}",
+        z=f"UNRETENTIVE {soon}",
+        r=f"OMNIPRESENT {soon}",
+        d=f"OMNIPRESENT {soon}",
+    )
+    key.settime(timings)
+
     isctest.kasp.check_keys("kasp", keys, expected)
     isctest.kasp.check_keytimes(keys, expected)
 

@@ -21,6 +21,7 @@ from dns import dnssec, name, rdataclass, rdatatype, update
 import pytest
 
 pytest.importorskip("dns", minversion="2.0.0")
+from isctest.kasp import SettimeOptions
 import isctest
 
 
@@ -60,10 +61,9 @@ def keygen(*args):
 
 
 # run dnssec-settime
-def settime(*args):
-    settime_cmd = [os.environ.get("SETTIME")]
-    settime_cmd.extend(args)
-    return isctest.run.cmd(settime_cmd).out.strip()
+def setkeytimes(key_name: str, options: SettimeOptions, keydir=None):
+    key = isctest.kasp.Key(key_name, keydir=keydir)
+    key.settime(options)
 
 
 @pytest.mark.parametrize(
@@ -482,7 +482,8 @@ def test_offline_ksk_signing(ns2):
     # set key state for KSK. the ZSK rollovers below assume that there is a
     # chain of trust established, so we tell named that the DS is in
     # omnipresent state.
-    settime("-s", "-d", "OMNIPRESENT", "now", "-Kns2", KSK)
+    timings = SettimeOptions(d="OMNIPRESENT now")
+    setkeytimes(KSK, timings, keydir="ns2")
 
     isctest.log.info("check state before KSK is made offline")
     isctest.log.info("make sure certain types are signed with KSK only")
@@ -509,8 +510,15 @@ def test_offline_ksk_signing(ns2):
     isctest.run.retry_with_timeout(check_zskcount, 5)
 
     isctest.log.info("make the new ZSK active")
-    settime("-sKns2", "-Inow", ZSK)
-    settime("-sKns2", "-Anow", "-k", "OMNIPRESENT", "now", ZSK2)
+
+    timings = SettimeOptions(I="now")
+    setkeytimes(ZSK, timings, keydir="ns2")
+    timings = SettimeOptions(
+        A="now",
+        k="OMNIPRESENT now",
+    )
+    setkeytimes(ZSK2, timings, keydir="ns2")
+
     loadkeys()
 
     with ns2.watch_log_from_start() as watcher:
@@ -557,8 +565,19 @@ def test_offline_ksk_signing(ns2):
     ZSKID3 = getkeyid(ZSK3)
 
     isctest.log.info("delete old ZSK, schedule ZSK2 inactive, pre-publish ZSK3")
-    settime("-sKns2", "-k", "HIDDEN", "now", "-z", "HIDDEN", "now", "-Dnow", ZSK)
-    settime("-sKns2", "-k", "OMNIPRESENT", "now", "-z", "OMNIPRESENT", "now", ZSK2)
+
+    timings = SettimeOptions(
+        k="HIDDEN now",
+        z="HIDDEN now",
+        D="now",
+    )
+    setkeytimes(ZSK, timings, keydir="ns2")
+    timings = SettimeOptions(
+        k="OMNIPRESENT now",
+        z="OMNIPRESENT now",
+    )
+    setkeytimes(ZSK2, timings, keydir="ns2")
+
     loadkeys()
     ns2.rndc(f"dnssec -rollover -key {ZSKID2} {zone}")
 
@@ -591,8 +610,15 @@ def test_offline_ksk_signing(ns2):
     ksk_recover()
 
     isctest.log.info("make ZSK3 active")
-    settime("-sKns2", "-Inow", ZSK2)
-    settime("-sKns2", "-k", "OMNIPRESENT", "now", "-Anow", ZSK3)
+
+    timings = SettimeOptions(I="now")
+    setkeytimes(ZSK2, timings, keydir="ns2")
+    timings = SettimeOptions(
+        k="OMNIPRESENT now",
+        A="now",
+    )
+    setkeytimes(ZSK3, timings, keydir="ns2")
+
     loadkeys()
 
     with ns2.watch_log_from_start() as watcher:

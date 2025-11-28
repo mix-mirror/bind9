@@ -9,6 +9,7 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from functools import total_ordering
 import glob
@@ -33,6 +34,7 @@ import isctest.util
 from isctest.compat import DSDigest
 from isctest.instance import NamedInstance
 from isctest.template import TrustAnchor
+from isctest.run import EnvCmd
 from isctest.vars.algorithms import Algorithm, ALL_ALGORITHMS_BY_NUM
 
 DEFAULT_TTL = 300
@@ -313,6 +315,63 @@ class KeyProperties:
 
         if self.key.is_zsk():
             self.timing["ZRRSIGChange"] = None
+
+
+@dataclass
+class SettimeOptions:
+
+    P: Optional[str] = None
+    """-P date/[+-]offset/none: set/unset key publication date"""
+
+    P_ds: Optional[str] = None
+    """-P ds date/[+-]offset/none: set/unset DS publication date"""
+
+    P_sync: Optional[str] = None
+    """-P sync date/[+-]offset/none: set/unset CDS and CDNSKEY publication date"""
+
+    A: Optional[str] = None
+    """-A date/[+-]offset/none: set/unset key activation date"""
+
+    R: Optional[str] = None
+    """-R date/[+-]offset/none: set/unset key revocation date"""
+
+    I: Optional[str] = None
+    """-I date/[+-]offset/none: set/unset key inactivation date"""
+
+    D: Optional[str] = None
+    """-D date/[+-]offset/none: set/unset key deletion date"""
+
+    D_ds: Optional[str] = None
+    """-D ds date/[+-]offset/none: set/unset DS deletion date"""
+
+    D_sync: Optional[str] = None
+    """-D sync date/[+-]offset/none: set/unset CDS and CDNSKEY deletion date"""
+
+    g: Optional[str] = None
+    """-g state: set the goal state for this key"""
+
+    d: Optional[str] = None
+    """-d state date/[+-]offset: set the DS state"""
+
+    k: Optional[str] = None
+    """-k state date/[+-]offset: set the DNSKEY state"""
+
+    r: Optional[str] = None
+    """-r state date/[+-]offset: set the RRSIG (KSK) state"""
+
+    z: Optional[str] = None
+    """-z state date/[+-]offset: set the RRSIG (ZSK) state"""
+
+    def __str__(self):
+        args = []
+        for opt, value in self.__dict__.items():
+            if value is None:
+                continue
+            if not isinstance(value, str):
+                raise ValueError(f"{opt}: invalid option value, only string supported")
+            opt_str = opt.replace("_", " ")
+            args.append(f"-{opt_str} {value}")
+        return " ".join(args)
 
 
 @total_ordering
@@ -699,6 +758,14 @@ class Key:
                 return False
 
         return True
+
+    def settime(self, options: SettimeOptions, with_state=True):
+        if with_state:
+            settime_cmd = EnvCmd("SETTIME", "-s")
+        else:
+            settime_cmd = EnvCmd("SETTIME")
+
+        settime_cmd(f"{options} {self.path}")
 
     def __lt__(self, other: "Key"):
         return self.name < other.name

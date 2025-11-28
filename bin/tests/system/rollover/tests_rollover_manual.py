@@ -13,7 +13,13 @@ from datetime import timedelta
 import os
 
 import isctest
-from isctest.kasp import KeyTimingMetadata, Ipub, Iret, private_type_record
+from isctest.kasp import (
+    KeyTimingMetadata,
+    Ipub,
+    Iret,
+    private_type_record,
+    SettimeOptions,
+)
 from isctest.template import Nameserver, Zone
 from isctest.run import EnvCmd
 
@@ -21,15 +27,15 @@ from rollover.common import default_algorithm
 from rollover.setup import (
     configure_root,
     configure_tld,
+    setkeytimes,
 )
 
 
-def setup_zone(zone, ksk_time, ksk_settime, zsk_time, zsk_settime) -> Zone:
+def setup_zone(zone, ksk_time, ksk_timings, zsk_time, zsk_timings) -> Zone:
     templates = isctest.template.TemplateEngine(".")
     alg = default_algorithm()
     keygen = EnvCmd("KEYGEN", f"-q -a {alg.number} -b {alg.bits} -L 3600")
     signer = EnvCmd("SIGNER", "-S -g")
-    settime = EnvCmd("SETTIME", "-s")
 
     isctest.log.info(f"setup {zone}")
     template = "template.db.j2.manual"
@@ -44,8 +50,9 @@ def setup_zone(zone, ksk_time, ksk_settime, zsk_time, zsk_settime) -> Zone:
         f"-f KSK -P {ksk_time} -A {ksk_time} {zone}", cwd="ns3"
     ).out.strip()
     zsk_name = keygen(f"-P {zsk_time} -A {zsk_time} {zone}", cwd="ns3").out.strip()
-    settime(f"{ksk_settime} {ksk_name}", cwd="ns3")
-    settime(f"{zsk_settime} {zsk_name}", cwd="ns3")
+    # Key state timing metadata.
+    setkeytimes(ksk_name, ksk_timings)
+    setkeytimes(zsk_name, zsk_timings)
     # Signing.
     ksk = isctest.kasp.Key(ksk_name, keydir="ns3")
     zsk = isctest.kasp.Key(zsk_name, keydir="ns3")
@@ -70,15 +77,27 @@ def bootstrap():
 
     zone = "manual-rollover.kasp"
     when = "now-7d"
-    ksk_settime = f"-g OMNIPRESENT -k OMNIPRESENT {when} -r OMNIPRESENT {when} -d OMNIPRESENT {when}"
-    zsk_settime = f"-g OMNIPRESENT -k OMNIPRESENT {when} -z OMNIPRESENT {when}"
-    zones.append(setup_zone(zone, when, ksk_settime, when, zsk_settime))
+    ksk_timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {when}",
+        r=f"OMNIPRESENT {when}",
+        d=f"OMNIPRESENT {when}",
+    )
+    zsk_timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {when}",
+        z=f"OMNIPRESENT {when}",
+    )
+    zones.append(setup_zone(zone, when, ksk_timings, when, zsk_timings))
 
     zone = "manual-rollover-zrrsig-rumoured.kasp"
     then = "now-2h"
-    ksk_settime = f"-g OMNIPRESENT -k OMNIPRESENT {when} -r OMNIPRESENT {when} -d OMNIPRESENT {when}"
-    zsk_settime = f"-g OMNIPRESENT -k OMNIPRESENT {then} -z RUMOURED {then}"
-    zones.append(setup_zone(zone, when, ksk_settime, then, zsk_settime))
+    zsk_timings = SettimeOptions(
+        g="OMNIPRESENT",
+        k=f"OMNIPRESENT {then}",
+        z=f"RUMOURED {then}",
+    )
+    zones.append(setup_zone(zone, when, ksk_timings, then, zsk_timings))
 
     # Chain of trust.
     data = {
