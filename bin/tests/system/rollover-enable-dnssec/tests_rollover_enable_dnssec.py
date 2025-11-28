@@ -23,6 +23,11 @@ from rollover.common import (
     CDSS,
     TIMEDELTA,
 )
+from rollover.setup import (
+    configure_root,
+    configure_tld,
+    configure_enable_dnssec,
+)
 
 CONFIG = {
     "dnskey-ttl": TIMEDELTA["PT5M"],
@@ -45,6 +50,30 @@ OFFSETS["step1"] = 0
 OFFSETS["step2"] = -int(IPUB.total_seconds())
 OFFSETS["step3"] = -int(IRETZSK.total_seconds())
 OFFSETS["step4"] = -int(IPUBC.total_seconds() + IRETKSK.total_seconds())
+
+
+def bootstrap():
+    data = {
+        "tlds": [],
+        "trust_anchors": [],
+    }
+
+    tlds = []
+    for tld_name in [
+        "autosign",
+        "manual",
+    ]:
+        delegations = configure_enable_dnssec(tld_name, f"{POLICY}-{tld_name}")
+
+        tld = configure_tld(tld_name, delegations)
+        tlds.append(tld)
+
+        data["tlds"].append(tld_name)
+
+    ta = configure_root(tlds)
+    data["trust_anchors"].append(ta)
+
+    return data
 
 
 @pytest.mark.parametrize(
