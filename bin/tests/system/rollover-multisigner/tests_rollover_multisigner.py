@@ -26,6 +26,70 @@ from rollover.common import (
     alg,
     size,
 )
+from rollover.setup import CmdHelper, fake_lifetime, render_and_sign_zone
+
+
+def bootstrap():
+    templates = isctest.template.TemplateEngine(".")
+
+    # Multi-signer zones.
+    keygen = CmdHelper("KEYGEN", "-a ECDSA256 -L 3600")
+    settime = CmdHelper("SETTIME", "-s")
+
+    # Model 2.
+    zonename = "multisigner-model2.kasp"
+    isctest.log.info(f"setup {zonename}")
+    # Key generation.
+    ksk_name = keygen(f"-M 32768:65535 -f KSK {zonename}", cwd="ns3").strip()
+    zsk_name = keygen(f"-M 32768:65535 {zonename}", cwd="ns3").strip()
+    # Signing.
+    dnskeys = []
+    for key_name in [ksk_name, zsk_name]:
+        key = isctest.kasp.Key(key_name, keydir="ns3")
+        dnskeys.append(key.dnskey)
+    # Import a ZSK of another provider into the DNSKEY RRset.
+    zsk_extra = keygen(f"-M 0:32767 {zonename}").strip()
+    key = isctest.kasp.Key(zsk_extra)
+    dnskeys.append(key.dnskey)
+    # Render zone file.
+    outfile = f"{zonename}.db"
+    templates = isctest.template.TemplateEngine(".")
+    template = "template.db.j2.manual"
+    tdata = {
+        "fqdn": f"{zonename}.",
+        "dnskeys": dnskeys,
+        "privaterrs": [],
+    }
+    templates.render(f"ns3/{outfile}", tdata, template=f"ns3/{template}")
+
+    # We are changing an existing single-signed zone to multi-signed
+    # zone where the key tags do not match the dnssec-policy key tag range
+    zonename = "single-to-multisigner.kasp"
+    isctest.log.info(f"setup {zonename}")
+    # Timing metadata.
+    TpubN = "now-7d"
+    TsbmN = "now-8635mi"  # T - 1d5m
+    keytimes = f"-P {TpubN} -A {TpubN}"
+    cdstimes = f"-P sync {TsbmN}"
+    # Key generation.
+    ksk_name = keygen(
+        f"-M 0:32767 -f KSK {keytimes} {cdstimes} {zonename}", cwd="ns3"
+    ).strip()
+    zsk_name = keygen(f"-M 0:32767 {keytimes} {zonename}", cwd="ns3").strip()
+    settime(
+        f"-g OMNIPRESENT -d OMNIPRESENT {TpubN} -k OMNIPRESENT {TpubN} -r OMNIPRESENT {TpubN} {ksk_name}",
+        cwd="ns3",
+    )
+    settime(
+        f"-g OMNIPRESENT -k OMNIPRESENT {TpubN} -z OMNIPRESENT {TpubN} {zsk_name}",
+        cwd="ns3",
+    )
+    # Signing.
+    fake_lifetime(ksk_name, 0)
+    fake_lifetime(zsk_name, 0)
+    render_and_sign_zone(zonename, [ksk_name, zsk_name])
+
+    return {}
 
 
 def test_rollover_multisigner(ns3, alg, size):
