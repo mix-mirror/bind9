@@ -412,8 +412,8 @@ dns_rdataset_towire(dns_rdataset_t *rdataset, const dns_name_t *owner_name,
 			goto rollback;
 		}
 	} else {
-		result = towire_answer(rdataset, owner_name, cctx, target, &rrbuffer,
-				       id, countp);
+		result = towire_answer(rdataset, owner_name, cctx, target,
+				       &rrbuffer, id, countp);
 		if (result != ISC_R_SUCCESS) {
 			goto rollback;
 		}

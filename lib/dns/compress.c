@@ -141,7 +141,6 @@ match_wirename(uint8_t *a, uint8_t *b, unsigned int len, bool sensitive) {
 	}
 }
 
-
 /*
  * Robin Hood hashing aims to minimize probe distance when inserting a
  * new element by ensuring that the new element does not have a worse
@@ -170,7 +169,7 @@ insert_label(dns_compress_t *cctx, dns_compress_slot_t slot_data,
 	if (slot_data.coff >= 0x4000 || cctx->count > cctx->mask * 3 / 4) {
 		return false;
 	}
-	
+
 	for (;;) {
 		unsigned int slot = slot_index(cctx, slot_data.hash, probe);
 		/* we can stop when we find an empty slot */
@@ -212,7 +211,7 @@ dns_compress_name(dns_compress_t *cctx, isc_buffer_t *buffer,
 	/* Pre-compute hashes for all labels in reverse order */
 	uint16_t hashes[DNS_NAME_MAXLABELS];
 	uint16_t hash = HASH_INIT_DJB2;
-	
+
 	/* Starting from `labels - 2` is ok because of ssize_t and the fact
 	 * that labels > 0 */
 	for (ssize_t i = labels - 2; i >= 0; i--) {
@@ -247,7 +246,8 @@ dns_compress_name(dns_compress_t *cctx, isc_buffer_t *buffer,
 			if (coff == 0 || probe > probe_distance(cctx, slot)) {
 				dns_compress_slot_t slot_data = {
 					.hash = hash,
-					.coff = isc_buffer_usedlength(buffer) + prefix_len,
+					.coff = isc_buffer_usedlength(buffer) +
+						prefix_len,
 					.suffix_ptr = suffix_ptr,
 					.suffix_len = suffix_len
 				};
@@ -262,8 +262,8 @@ dns_compress_name(dns_compress_t *cctx, isc_buffer_t *buffer,
 			 */
 			if (hash == cctx->set[slot].hash &&
 			    suffix_len == cctx->set[slot].suffix_len &&
-			    match_wirename(cctx->set[slot].suffix_ptr, suffix_ptr, suffix_len, sensitive)
-			)
+			    match_wirename(cctx->set[slot].suffix_ptr,
+					   suffix_ptr, suffix_len, sensitive))
 			{
 				*return_coff = coff;
 				*return_prefix = prefix_len;
@@ -298,7 +298,7 @@ dns_compress_rollback(dns_compress_t *cctx, unsigned int coff) {
 			prev = next;
 			next = slot_index(cctx, prev, 1);
 		}
-		cctx->set[prev] = (dns_compress_slot_t){0};
+		cctx->set[prev] = (dns_compress_slot_t){ 0 };
 		cctx->count--;
 	}
 }
