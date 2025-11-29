@@ -886,7 +886,7 @@ isc__nm_udp_failed_read_cb(isc_nmsocket_t *sock, isc_result_t result,
 	 * - we don't destroy it (only stoplistening could do that)
 	 */
 
-	if (sock->client && !sock->client_udp_read_non_stop) {
+	if (sock->client) {
 		isc__nmsocket_timer_stop(sock);
 		isc__nm_stop_reading(sock);
 	}
@@ -901,7 +901,7 @@ isc__nm_udp_failed_read_cb(isc_nmsocket_t *sock, isc_result_t result,
 		}
 	}
 
-	if (sock->client && !sock->client_udp_read_non_stop) {
+	if (sock->client) {
 		isc__nmsocket_clearcb(sock);
 		isc__nmsocket_prep_destroy(sock);
 		return;
