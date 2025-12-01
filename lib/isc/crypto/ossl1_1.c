@@ -26,8 +26,8 @@
 #include <isc/magic.h>
 #include <isc/md.h>
 #include <isc/mem.h>
+#include <isc/ossl_wrap.h>
 #include <isc/safe.h>
-#include <isc/tls.h>
 #include <isc/util.h>
 
 #include "crypto_p.h"
@@ -322,9 +322,9 @@ isc_crypto_fips_enable(void) {
 	}
 
 	if (FIPS_mode_set(1) == 0) {
-		return isc_tlserr2result(ISC_LOGCATEGORY_GENERAL,
-					 ISC_LOGMODULE_CRYPTO, "FIPS_mode_set",
-					 ISC_R_CRYPTOFAILURE);
+		return isc_ossl_wrap_logged_toresult(
+			ISC_LOGCATEGORY_GENERAL, ISC_LOGMODULE_CRYPTO,
+			"FIPS_mode_set", ISC_R_CRYPTOFAILURE);
 	}
 
 	register_algorithms();
@@ -389,8 +389,9 @@ isc__crypto_initialize(void) {
 
 	/* Protect ourselves against unseeded PRNG */
 	if (RAND_status() != 1) {
-		isc_tlserr2result(ISC_LOGCATEGORY_GENERAL, ISC_LOGMODULE_CRYPTO,
-				  "RAND_status", ISC_R_CRYPTOFAILURE);
+		isc_ossl_wrap_logged_toresult(
+			ISC_LOGCATEGORY_GENERAL, ISC_LOGMODULE_CRYPTO,
+			"RAND_status", ISC_R_CRYPTOFAILURE);
 		FATAL_ERROR("OpenSSL pseudorandom number generator "
 			    "cannot be initialized (see the `PRNG not "
 			    "seeded' message in the OpenSSL FAQ)");

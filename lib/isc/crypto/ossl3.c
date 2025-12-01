@@ -28,9 +28,9 @@
 #include <isc/magic.h>
 #include <isc/md.h>
 #include <isc/mem.h>
+#include <isc/ossl_wrap.h>
 #include <isc/region.h>
 #include <isc/safe.h>
-#include <isc/tls.h>
 #include <isc/util.h>
 
 #include "crypto_p.h"
@@ -403,7 +403,7 @@ isc_crypto_fips_enable(void) {
 	INSIST(fips == NULL);
 	fips = OSSL_PROVIDER_load(NULL, "fips");
 	if (fips == NULL) {
-		return isc_tlserr2result(
+		return isc_ossl_wrap_logged_toresult(
 			ISC_LOGCATEGORY_GENERAL, ISC_LOGMODULE_CRYPTO,
 			"OSSL_PROVIDER_load", ISC_R_CRYPTOFAILURE);
 	}
@@ -412,16 +412,16 @@ isc_crypto_fips_enable(void) {
 	base = OSSL_PROVIDER_load(NULL, "base");
 	if (base == NULL) {
 		OSSL_PROVIDER_unload(fips);
-		return isc_tlserr2result(
+		return isc_ossl_wrap_logged_toresult(
 			ISC_LOGCATEGORY_GENERAL, ISC_LOGMODULE_CRYPTO,
 			"OSS_PROVIDER_load", ISC_R_CRYPTOFAILURE);
 	}
 
 	if (EVP_default_properties_enable_fips(NULL, 1) == 0) {
-		return isc_tlserr2result(ISC_LOGCATEGORY_GENERAL,
-					 ISC_LOGMODULE_CRYPTO,
-					 "EVP_default_properties_enable_fips",
-					 ISC_R_CRYPTOFAILURE);
+		return isc_ossl_wrap_logged_toresult(
+			ISC_LOGCATEGORY_GENERAL, ISC_LOGMODULE_CRYPTO,
+			"EVP_default_properties_enable_fips",
+			ISC_R_CRYPTOFAILURE);
 	}
 
 	unregister_algorithms();
@@ -466,8 +466,9 @@ isc__crypto_initialize(void) {
 
 	/* Protect ourselves against unseeded PRNG */
 	if (RAND_status() != 1) {
-		isc_tlserr2result(ISC_LOGCATEGORY_GENERAL, ISC_LOGMODULE_CRYPTO,
-				  "RAND_status", ISC_R_CRYPTOFAILURE);
+		isc_ossl_wrap_logged_toresult(
+			ISC_LOGCATEGORY_GENERAL, ISC_LOGMODULE_CRYPTO,
+			"RAND_status", ISC_R_CRYPTOFAILURE);
 		FATAL_ERROR("OpenSSL pseudorandom number generator "
 			    "cannot be initialized (see the `PRNG not "
 			    "seeded' message in the OpenSSL FAQ)");

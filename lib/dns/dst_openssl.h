@@ -21,18 +21,20 @@
 #include <openssl/rand.h>
 
 #include <isc/log.h>
+#include <isc/ossl_wrap.h>
 #include <isc/result.h>
-#include <isc/tls.h>
 
-#define dst__openssl_toresult(fallback)                                    \
-	isc__tlserr2result(ISC_LOGCATEGORY_INVALID, ISC_LOGMODULE_INVALID, \
-			   NULL, fallback, __FILE__, __LINE__)
-#define dst__openssl_toresult2(funcname, fallback)                        \
-	isc__tlserr2result(DNS_LOGCATEGORY_GENERAL, DNS_LOGMODULE_CRYPTO, \
-			   funcname, fallback, __FILE__, __LINE__)
-#define dst__openssl_toresult3(category, funcname, fallback)                   \
-	isc__tlserr2result(category, DNS_LOGMODULE_CRYPTO, funcname, fallback, \
-			   __FILE__, __LINE__)
+#define dst__openssl_toresult(fallback)                                       \
+	isc__ossl_wrap_logged_toresult(ISC_LOGCATEGORY_INVALID,               \
+				       ISC_LOGMODULE_INVALID, NULL, fallback, \
+				       __FILE__, __LINE__)
+#define dst__openssl_toresult2(funcname, fallback)                     \
+	isc__ossl_wrap_logged_toresult(DNS_LOGCATEGORY_GENERAL,        \
+				       DNS_LOGMODULE_CRYPTO, funcname, \
+				       fallback, __FILE__, __LINE__)
+#define dst__openssl_toresult3(category, funcname, fallback)           \
+	isc__ossl_wrap_logged_toresult(category, DNS_LOGMODULE_CRYPTO, \
+				       funcname, fallback, __FILE__, __LINE__)
 
 isc_result_t
 dst__openssl_fromlabel(int key_base_id, const char *label, const char *pin,
