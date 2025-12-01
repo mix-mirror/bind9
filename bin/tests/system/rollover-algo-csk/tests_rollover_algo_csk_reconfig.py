@@ -138,6 +138,8 @@ def test_algoroll_csk_reconfig_step1(tld, ns3, alg, size):
     }
     isctest.kasp.check_rollover_step(ns3, CONFIG, policy, step)
 
+    ns3.log.prohibit(f"zone {zone}/IN (signed): dsyncfetch")
+
 
 @pytest.mark.parametrize(
     "tld",
@@ -174,6 +176,8 @@ def test_algoroll_csk_reconfig_step2(tld, ns3, alg, size):
         "nextev": ALGOROLL_IPUBC - ALGOROLL_IPUB - TIME_PASSED,
     }
     isctest.kasp.check_rollover_step(ns3, CONFIG, policy, step)
+
+    ns3.log.prohibit(f"zone {zone}/IN (signed): dsyncfetch")
 
 
 @pytest.mark.parametrize(
@@ -244,6 +248,11 @@ def test_algoroll_csk_reconfig_step3(tld, ns3, alg, size):
     }
     isctest.kasp.check_rollover_step(ns3, CONFIG, policy, step)
 
+    with ns3.watch_log_from_start() as watcher:
+        watcher.wait_for_line(
+            f"zone {zone}/IN (signed): dsyncfetch: send NOTIFY(CDS) query to scanner.{tld}"
+        )
+
 
 @pytest.mark.parametrize(
     "tld",
@@ -299,6 +308,8 @@ def test_algoroll_csk_reconfig_step4(tld, ns3, alg, size):
     }
     isctest.kasp.check_rollover_step(ns3, CONFIG, policy, step)
 
+    ns3.log.prohibit(f"zone {zone}/IN (signed): dsyncfetch")
+
 
 @pytest.mark.parametrize(
     "tld",
@@ -333,6 +344,8 @@ def test_algoroll_csk_reconfig_step5(tld, ns3, alg, size):
     }
     isctest.kasp.check_rollover_step(ns3, CONFIG, policy, step)
 
+    ns3.log.prohibit(f"zone {zone}/IN (signed): dsyncfetch")
+
 
 @pytest.mark.parametrize(
     "tld",
@@ -365,3 +378,5 @@ def test_algoroll_csk_reconfig_step6(tld, ns3, alg, size):
         "verbose": True,
     }
     isctest.kasp.check_rollover_step(ns3, CONFIG, policy, step)
+
+    ns3.log.prohibit(f"zone {zone}/IN (signed): dsyncfetch")

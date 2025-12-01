@@ -115,3 +115,8 @@ def test_rollover_ksk_three_is_a_crowd(alg, size, ns3):
     expected[1].timing["Removed"] = now + KSK_IPUB + KSK_IRET
 
     isctest.kasp.check_keytimes(keys, expected)
+
+    with ns3.watch_log_from_start() as watcher:
+        watcher.wait_for_line(
+            f"zone {zone}/IN (signed): dsyncfetch: send NOTIFY(CDS) query to scanner.kasp"
+        )

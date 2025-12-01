@@ -77,3 +77,5 @@ def test_straight2none_reconfig(zone, ns3, alg, size):
         "nextev": None,
     }
     isctest.kasp.check_rollover_step(ns3, config, policy, step)
+
+    ns3.log.prohibit(f"zone {zone}/IN (signed): dsyncfetch")
