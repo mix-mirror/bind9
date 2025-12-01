@@ -11,12 +11,39 @@
  * information regarding copyright ownership.
  */
 
+#include <openssl/bn.h>
 #include <openssl/err.h>
 
 #include <isc/ossl_wrap.h>
 #include <isc/util.h>
 
 #include "../openssl_shim.h"
+
+void
+isc_ossl_wrap_rsa_components_cleanup(isc_ossl_wrap_rsa_components_t *c) {
+	REQUIRE(c != NULL);
+
+	if (!c->needs_cleanup) {
+		return;
+	}
+
+	/*
+	 * NOTE: BN_free() frees the components of the BIGNUM, and if it was
+	 * created by BN_new(), also the structure itself. BN_clear_free()
+	 * additionally overwrites the data before the memory is returned to the
+	 * system. If a is NULL, nothing is done.
+	 */
+	BN_free(c->e);
+	BN_free(c->n);
+	BN_clear_free(c->d);
+	BN_clear_free(c->p);
+	BN_clear_free(c->q);
+	BN_clear_free(c->dmp1);
+	BN_clear_free(c->dmq1);
+	BN_clear_free(c->iqmp);
+
+	c->needs_cleanup = false;
+}
 
 isc_result_t
 isc_ossl_wrap_toresult(isc_result_t fallback) {
