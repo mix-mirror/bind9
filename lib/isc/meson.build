@@ -22,6 +22,7 @@ isc_inc_p += include_directories('.')
 
 subdir('crypto')
 subdir('netmgr')
+subdir('ossl_wrap')
 
 isc_srcset.add(
     m_dep,
