@@ -27,6 +27,10 @@
 #include <isc/uv.h>
 #include <isc/xml.h>
 
+#ifdef __SANITIZE_ADDRESS__
+#include <sanitizer/lsan_interface.h>
+#endif
+
 #include "mem_p.h"
 #include "mutex_p.h"
 #include "os_p.h"
@@ -74,6 +78,20 @@ iscshutdown(void) {
 	isc__mem_shutdown();
 	isc__mutex_shutdown();
 	isc__os_shutdown();
+
+#ifdef __SANITIZE_ADDRESS__
+	/*
+	 * LeakSanitizer uses by default `atexit` to register itself (as
+	 * __destructor__ does). If it runs before our own destructors, false
+	 * positive will be detected since lot of memory wouldn't be released
+	 * yet. Since there is no way to control if it will run before or after
+	 * our own destructors, the default `atexit` registration is disabled
+	 * (see `LSAN_OPTIONS=leak_check_at_exit=0`) and we manually call the
+	 * LeakSanitizer from there, at the last point we have control and where
+	 * all memory is actually freed.
+	 */
+	__lsan_do_leak_check();
+#endif
 }
 
 void
