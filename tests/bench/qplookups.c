@@ -212,10 +212,13 @@ main(int argc, char **argv) {
 
 	start = isc_time_monotonic();
 	for (i = 0;; i++) {
+		void *pval = NULL;
+		uint32_t ival = 0;
 		name = dns_fixedname_initname(&items[i]);
-		if (dns_qpiter_next(&it, name, NULL, NULL) != ISC_R_SUCCESS) {
+		if (dns_qpiter_next(&it, &pval, &ival) != ISC_R_SUCCESS) {
 			break;
 		}
+		name_from_smallname(name, pval, ival);
 	}
 	stop = isc_time_monotonic();
 

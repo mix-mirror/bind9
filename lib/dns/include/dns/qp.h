@@ -650,17 +650,14 @@ dns_qpiter_init(dns_qpreadable_t qpr, dns_qpiter_t *qpi);
  */
 
 isc_result_t
-dns_qpiter_next(dns_qpiter_t *qpi, dns_name_t *name, void **pval_r,
-		uint32_t *ival_r);
+dns_qpiter_next(dns_qpiter_t *qpi, void **pval_r, uint32_t *ival_r);
 isc_result_t
-dns_qpiter_prev(dns_qpiter_t *qpi, dns_name_t *name, void **pval_r,
-		uint32_t *ival_r);
+dns_qpiter_prev(dns_qpiter_t *qpi, void **pval_r, uint32_t *ival_r);
 /*%<
  * Iterate forward/backward through a QP trie in lexicographic order.
  *
  * The leaf values are assigned to whichever of `*pval_r` and `*ival_r`
- * are not null, unless the return value is ISC_R_NOMORE. Similarly,
- * if `name` is not null, it is updated to contain the node name.
+ * are not null, unless the return value is ISC_R_NOMORE.
  *
  * NOTE: see the safety note under `dns_qpiter_init()`.
  *
@@ -682,16 +679,16 @@ dns_qpiter_prev(dns_qpiter_t *qpi, dns_name_t *name, void **pval_r,
  * \li  ISC_R_NOMORE otherwise
  */
 
+
 isc_result_t
-dns_qpiter_current(dns_qpiter_t *qpi, dns_name_t *name, void **pval_r,
-		   uint32_t *ival_r);
+dns_qpiter_current(dns_qpiter_t *qpi, void **pval_r, uint32_t *ival_r);
 /*%<
- * Sets the values of `name`, `pval_r` and `ival_r` to those at the
+ * Sets the values of `pval_r` and `ival_r` to those at the
  * node currently pointed to by `qpi`, but without moving the iterator
  * in either direction. If the iterator is not currently pointed at a
  * leaf node, ISC_R_FAILURE is returned.
- * Requires:
  *
+ * Requires:
  * \li  `qpi` is a pointer to a valid qp iterator
  *
  * Returns:
@@ -699,6 +696,7 @@ dns_qpiter_current(dns_qpiter_t *qpi, dns_name_t *name, void **pval_r,
  * \li  ISC_R_FAILURE if the iterator is not initialized or not pointing
  *      at a leaf node
  */
+
 
 void
 dns_qpchain_init(dns_qpreadable_t qpr, dns_qpchain_t *chain);
@@ -720,7 +718,7 @@ dns_qpchain_length(dns_qpchain_t *chain);
  */
 
 void
-dns_qpchain_node(dns_qpchain_t *chain, unsigned int level, dns_name_t *name,
+dns_qpchain_node(dns_qpchain_t *chain, unsigned int level,
 		 void **pval_r, uint32_t *ival_r);
 /*%<
  * Sets 'name' to the name of the leaf referenced at `chain->stack[level]`.

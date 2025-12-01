@@ -1423,7 +1423,7 @@ find_deepest_zonecut(qpc_search_t *search, qpcnode_t *node,
 		isc_rwlock_t *nlock = NULL;
 		isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 
-		dns_qpchain_node(&search->chain, i, NULL, (void **)&node, NULL);
+		dns_qpchain_node(&search->chain, i, (void **)&node, NULL);
 		nlock = &qpdb->buckets[node->locknum].lock;
 
 		NODE_RDLOCK(nlock, &nlocktype);
@@ -1506,10 +1506,11 @@ find_coveringnsec(qpc_search_t *search, const dns_name_t *name,
 	/*
 	 * Extract predecessor from iterator.
 	 */
-	result = dns_qpiter_current(&iter, predecessor, NULL, NULL);
+	result = dns_qpiter_current(&iter, (void **)&node, NULL);
 	if (result != ISC_R_SUCCESS) {
 		return ISC_R_NOTFOUND;
 	}
+	dns_name_copy(&node->name, predecessor);
 
 	/*
 	 * Lookup the predecessor in the normal namespace.
@@ -1643,7 +1644,7 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		isc_result_t zcresult;
 		qpcnode_t *encloser = NULL;
 
-		dns_qpchain_node(&search.chain, i, NULL, (void **)&encloser,
+		dns_qpchain_node(&search.chain, i, (void **)&encloser,
 				 NULL);
 
 		zcresult = check_zonecut(encloser,
@@ -2078,7 +2079,7 @@ qpcache_findzonecut(dns_db_t *db, const dns_name_t *name, unsigned int options,
 			INSIST(len >= 2);
 
 			node = NULL;
-			dns_qpchain_node(&search.chain, len - 2, NULL,
+			dns_qpchain_node(&search.chain, len - 2,
 					 (void **)&node, NULL);
 			search.chain.len = len - 1;
 		}
@@ -3590,7 +3591,7 @@ dbiterator_first(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 	dereference_iter_node(qpdbiter DNS__DB_FLARG_PASS);
 
 	dns_qpiter_init(qpdb->tree, &qpdbiter->iter);
-	result = dns_qpiter_next(&qpdbiter->iter, NULL,
+	result = dns_qpiter_next(&qpdbiter->iter,
 				 (void **)&qpdbiter->node, NULL);
 
 	if (result == ISC_R_SUCCESS &&
@@ -3680,7 +3681,7 @@ dbiterator_next(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 
 	dereference_iter_node(qpdbiter DNS__DB_FLARG_PASS);
 
-	result = dns_qpiter_next(&qpdbiter->iter, NULL,
+	result = dns_qpiter_next(&qpdbiter->iter,
 				 (void **)&qpdbiter->node, NULL);
 
 	if (result == ISC_R_SUCCESS &&
