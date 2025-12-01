@@ -45,7 +45,7 @@ for i in 1 2 3 4 5 6 7 8 9 10; do
   $DIG +tcp -p "${PORT}" example @10.53.0.3 soa >dig.out.ns3.test$n || ret=1
   grep "status: NOERROR" dig.out.ns3.test$n >/dev/null || ret=1
   grep "flags:.* aa[ ;]" dig.out.ns3.test$n >/dev/null || ret=1
-  nr=$(grep -c 'x[0-9].*sending notify to' ns2/named.run)
+  nr=$(grep -c 'x[0-9].*sending notify(SOA) to' ns2/named.run)
   [ "$nr" -ge 23 ] || ret=1
   [ $ret = 0 ] && break
   sleep 1
@@ -64,7 +64,7 @@ digcomp dig.out.ns2.test$n dig.out.ns3.test$n || ret=1
 test_end
 
 test_start "checking startup notify rate limit"
-awk '/x[0-9].*sending notify to/ {
+awk '/x[0-9].*sending notify\(SOA\) to/ {
   split($1, ts, "T");
 	split(ts[2], a, ":");
 	this = a[1] * 3600 + a[2] * 60 + a[3];
@@ -101,7 +101,7 @@ test_end
 
 # See [GL#4689]
 test_start "checking server behaviour with invalid notify-source-v6 address"
-grep "zone ./IN: sending notify to fd92:7065:b8e:fffe::a35:4#" ns1/named.run >/dev/null || ret=1
+grep "zone ./IN: sending notify(SOA) to fd92:7065:b8e:fffe::a35:4#" ns1/named.run >/dev/null || ret=1
 grep "dns_request_create: failed address not available" ns1/named.run >/dev/null || ret=1
 test_end
 
@@ -121,15 +121,15 @@ test_end
 
 if $FEATURETEST --have-fips-dh; then
   test_start "checking notify over TLS successful"
-  grep "zone tls-x1/IN: notify to 10.53.0.2#${TLSPORT} successful" ns3/named.run >/dev/null || ret=1
-  grep "zone tls-x2/IN: notify to 10.53.0.2#${EXTRAPORT1} successful" ns3/named.run >/dev/null || ret=1
-  grep "zone tls-x3/IN: notify to 10.53.0.2#${EXTRAPORT1} successful" ns3/named.run >/dev/null || ret=1
-  grep "zone tls-x5/IN: notify to 10.53.0.2#${EXTRAPORT3} successful" ns3/named.run >/dev/null || ret=1
+  grep "zone tls-x1/IN: notify(SOA) to 10.53.0.2#${TLSPORT} successful" ns3/named.run >/dev/null || ret=1
+  grep "zone tls-x2/IN: notify(SOA) to 10.53.0.2#${EXTRAPORT1} successful" ns3/named.run >/dev/null || ret=1
+  grep "zone tls-x3/IN: notify(SOA) to 10.53.0.2#${EXTRAPORT1} successful" ns3/named.run >/dev/null || ret=1
+  grep "zone tls-x5/IN: notify(SOA) to 10.53.0.2#${EXTRAPORT3} successful" ns3/named.run >/dev/null || ret=1
   test_end
 
   test_start "checking notify over TLS failed"
-  grep "zone tls-x4/IN: notify to 10.53.0.2#${EXTRAPORT1} failed: TLS peer certificate verification failed" ns3/named.run >/dev/null || ret=1
-  grep "zone tls-x6/IN: notify to 10.53.0.2#${EXTRAPORT4} failed: TLS peer certificate verification failed" ns3/named.run >/dev/null || ret=1
+  grep "zone tls-x4/IN: notify(SOA) to 10.53.0.2#${EXTRAPORT1} failed: TLS peer certificate verification failed" ns3/named.run >/dev/null || ret=1
+  grep "zone tls-x6/IN: notify(SOA) to 10.53.0.2#${EXTRAPORT4} failed: TLS peer certificate verification failed" ns3/named.run >/dev/null || ret=1
   test_end
 fi
 
@@ -218,8 +218,8 @@ for i in 1 2 3 4 5 6 7 8 9; do
 done
 grep "test string" "$fnb" >/dev/null || ret=1
 grep "test string" "$fnc" >/dev/null || ret=1
-grep "sending notify to 10.53.0.5#[0-9]* : TSIG (b)" ns5/named.run >/dev/null || ret=1
-grep "sending notify to 10.53.0.5#[0-9]* : TSIG (c)" ns5/named.run >/dev/null || ret=1
+grep "sending notify(SOA) to 10.53.0.5#[0-9]* : TSIG (b)" ns5/named.run >/dev/null || ret=1
+grep "sending notify(SOA) to 10.53.0.5#[0-9]* : TSIG (c)" ns5/named.run >/dev/null || ret=1
 test_end
 
 # notify messages were sent to unresponsive 10.53.10.53 during the tests

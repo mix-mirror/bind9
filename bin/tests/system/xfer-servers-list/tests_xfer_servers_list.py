@@ -33,7 +33,7 @@ def wait_for_initial_xfrin(ns):
 
 def wait_for_sending_notify(ns1, ns, key_name):
     pattern = re.compile(
-        f"zone test/IN: sending notify to {ns.ip}#[0-9]+ : TSIG \\({key_name}\\)"
+        f"zone test/IN: sending notify\\(SOA\\) to {ns.ip}#[0-9]+ : TSIG \\({key_name}\\)"
     )
     with ns1.watch_log_from_start() as watcher:
         watcher.wait_for_line(pattern)
