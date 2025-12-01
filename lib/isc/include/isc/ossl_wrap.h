@@ -32,6 +32,179 @@ typedef struct isc_ossl_wrap_rsa_components {
 } isc_ossl_wrap_rsa_components_t;
 
 isc_result_t
+isc_ossl_wrap_generate_p256_key(EVP_PKEY **pkeyp);
+/*%
+ * Generates an uncompressed, named P-256 secret key.
+ *
+ * Requires:
+ * \li pkeyp != NULL
+ * \li *pkeyp == NULL
+ */
+
+isc_result_t
+isc_ossl_wrap_generate_pkcs11_p256_key(char *uri, EVP_PKEY **pkeyp);
+/*%
+ * Generates a P-256 secret key using the PKCS#11 label specified at `uri`.
+ *
+ * Requires:
+ * \li pkeyp != NULL
+ * \li *pkeyp == NULL
+ * \li `uri != NULL` and is a NUL-terminated string
+ */
+
+isc_result_t
+isc_ossl_wrap_validate_p256_pkey(EVP_PKEY *pkey);
+/*%
+ * Validatest that a EVP_PKEY is a P-256 EC key.
+ *
+ * Requires:
+ * \li `pkey != NULL`
+ * \li pkey is a valid EVP_PKEY
+ */
+
+isc_result_t
+isc_ossl_wrap_load_p256_public_from_region(isc_region_t region,
+					   EVP_PKEY   **pkeyp);
+/*%
+ * Create a verifying `EVP_PKEY` using the P-256 public key pointed by
+ * `region`.
+ *
+ * Requires:
+ * \li `pkeyp != NULL`
+ * \li `*pkeyp == NULL`
+ * \li `region.base != NULL`
+ * \li `region.length == 64`
+ */
+
+isc_result_t
+isc_ossl_wrap_load_p256_secret_from_region(isc_region_t region,
+					   EVP_PKEY   **pkeyp);
+/*%
+ * Create a signing `EVP_PKEY` using the P-256 secret key pointed by
+ * `region`.
+ *
+ * Requires:
+ * \li `pkeyp != NULL`
+ * \li `*pkeyp == NULL`
+ * \li `region.base != NULL`
+ * \li `region.length == 32`
+ */
+
+isc_result_t
+isc_ossl_wrap_p256_public_region(EVP_PKEY *pkey, isc_region_t pub);
+/*%
+ * Export the P-256 public key to the region pointed by `pub`
+ *
+ * Requires:
+ * \li `pkey` is a non-NULL, valid, P-256 public key.
+ * \li `pub` has to a non-NULL pointer with enough space to fit the public key.
+ */
+
+isc_result_t
+isc_ossl_wrap_p256_secret_region(EVP_PKEY *pkey, isc_region_t sec);
+/*%
+ * Export the P-256 curve secret key to the region pointed by `sec`
+ *
+ * Requires:
+ * \li `pkey` is a non-NULL, valid P-256 secret key.
+ * \li `sec` has to a non-NULL pointer with enough space to fit the secret key.
+ */
+
+isc_result_t
+isc_ossl_wrap_generate_p384_key(EVP_PKEY **pkeyp);
+/*%
+ * Generates an uncompressed, named P-256 secret key.
+ *
+ * Requires:
+ * \li pkeyp != NULL
+ * \li *pkeyp == NULL
+ */
+
+isc_result_t
+isc_ossl_wrap_generate_pkcs11_p384_key(char *uri, EVP_PKEY **pkeyp);
+/*%
+ * Generates a P-384 secret key using the PKCS#11 label specified at `uri`.
+ *
+ * Requires:
+ * \li pkeyp != NULL
+ * \li *pkeyp == NULL
+ * \li `uri != NULL` and is a NUL-terminated string
+ */
+
+isc_result_t
+isc_ossl_wrap_load_p384_public_from_region(isc_region_t region,
+					   EVP_PKEY   **pkeyp);
+/*%
+ * Create a verifying `EVP_PKEY` using the P-384 public key pointed by
+ * `region`.
+ *
+ * Requires:
+ * \li `pkeyp != NULL`
+ * \li `*pkeyp == NULL`
+ * \li `region.base != NULL`
+ * \li `region.length == 64`
+ */
+
+isc_result_t
+isc_ossl_wrap_load_p384_secret_from_region(isc_region_t region,
+					   EVP_PKEY   **pkeyp);
+/*%
+ * Create a signing `EVP_PKEY` using the P-384 secret key pointed by
+ * `region`.
+ *
+ * Requires:
+ * \li `pkeyp != NULL`
+ * \li `*pkeyp == NULL`
+ * \li `region.base != NULL`
+ * \li `region.length == 32`
+ */
+
+isc_result_t
+isc_ossl_wrap_validate_p384_pkey(EVP_PKEY *pkey);
+
+isc_result_t
+isc_ossl_wrap_p384_public_region(EVP_PKEY *pkey, isc_region_t pub);
+/*%
+ * Export the P-384 public key to the region pointed by `pub`
+ *
+ * Requires:
+ * \li `pkey` is a non-NULL, valid, P-384 public key.
+ * \li `pub` has to a non-NULL pointer with enough space to fit the public key.
+ */
+
+isc_result_t
+isc_ossl_wrap_p384_secret_region(EVP_PKEY *pkey, isc_region_t sec);
+/*%
+ * Export the P-384 curve secret key to the region pointed by `sec`
+ *
+ * Requires:
+ * \li `pkey` is a non-NULL, valid P-384 secret key.
+ * \li `sec` has to a non-NULL pointer with enough space to fit the secret key.
+ */
+
+isc_result_t
+isc_ossl_wrap_ecdsa_set_deterministic(EVP_PKEY_CTX *pctx, const char *hash);
+/*
+ * Use deterministic ECDSA to generate signatures.
+ *
+ * Returns:
+ * \li	#ISC_R_SUCCESS		-- signature set to use RFC6979
+ * \li	#ISC_R_IGNORE		-- FIPS mode is active
+ * \li	#ISC_R_NOTIMPLEMENTED	-- libcrypto doesn't support
+ */
+
+isc_result_t
+isc_ossl_wrap_ecdsa_set_deterministic(EVP_PKEY_CTX *pctx, const char *hash);
+/*
+ * Use deterministic ECDSA to generate signatures.
+ *
+ * Returns:
+ * \li	#ISC_R_SUCCESS		-- signature set to use RFC6979
+ * \li	#ISC_R_IGNORE		-- FIPS mode is active
+ * \li	#ISC_R_NOTIMPLEMENTED	-- libcrypto doesn't support RFC6979
+ */
+
+isc_result_t
 isc_ossl_wrap_generate_rsa_key(void (*callback)(int), size_t bit_size,
 			       EVP_PKEY **pkeyp);
 /*%
