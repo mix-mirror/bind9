@@ -21,12 +21,12 @@ from rollover.common import (
 )
 
 
-def test_dynamic2inline(alg, size, ns6, templates):
+def test_dynamic2inline(alg, size, ns3, templates):
     config = DEFAULT_CONFIG
     policy = "default"
     zone = "dynamic2inline.kasp"
 
-    isctest.kasp.wait_keymgr_done(ns6, zone)
+    isctest.kasp.wait_keymgr_done(ns3, zone)
 
     step = {
         "zone": zone,
@@ -37,10 +37,10 @@ def test_dynamic2inline(alg, size, ns6, templates):
         "nextev": None,
     }
 
-    isctest.kasp.check_rollover_step(ns6, config, policy, step)
+    isctest.kasp.check_rollover_step(ns3, config, policy, step)
 
-    templates.render("ns6/named.conf", {"change_lifetime": True})
-    ns6.reconfigure()
-    isctest.kasp.wait_keymgr_done(ns6, zone, reconfig=True)
+    templates.render("ns3/named.conf", {"change_lifetime": True})
+    ns3.reconfigure()
+    isctest.kasp.wait_keymgr_done(ns3, zone, reconfig=True)
 
-    isctest.kasp.check_rollover_step(ns6, config, policy, step)
+    isctest.kasp.check_rollover_step(ns3, config, policy, step)

@@ -22,6 +22,28 @@ from rollover.common import (
     DURATION,
     UNSIGNING_CONFIG,
 )
+from rollover.setup import (
+    configure_root,
+    configure_tld,
+    configure_going_insecure,
+)
+
+
+def bootstrap():
+    data = {
+        "tlds": [],
+        "trust_anchors": [],
+    }
+
+    tlds = []
+    tld_name = "kasp"
+    delegations = configure_going_insecure(tld_name, reconfig=False)
+    tld = configure_tld(tld_name, delegations)
+    tlds.append(tld)
+    data["tlds"].append(tld_name)
+    ta = configure_root(tlds)
+    data["trust_anchors"].append(ta)
+    return data
 
 
 @pytest.mark.parametrize(
@@ -31,12 +53,12 @@ from rollover.common import (
         "going-insecure-dynamic.kasp",
     ],
 )
-def test_going_insecure_initial(zone, ns6, alg, size):
+def test_going_insecure_initial(zone, ns3, alg, size):
     config = UNSIGNING_CONFIG
     policy = "unsigning"
     zone = f"step1.{zone}"
 
-    isctest.kasp.wait_keymgr_done(ns6, zone)
+    isctest.kasp.wait_keymgr_done(ns3, zone)
 
     step = {
         "zone": zone,
@@ -47,4 +69,4 @@ def test_going_insecure_initial(zone, ns6, alg, size):
         ],
         "nextev": None,
     }
-    isctest.kasp.check_rollover_step(ns6, config, policy, step)
+    isctest.kasp.check_rollover_step(ns3, config, policy, step)

@@ -18,6 +18,16 @@ from typing import List, Optional
 import isctest.log
 
 
+class CmdHelper:
+    def __init__(self, env_name: str, base_params: str = ""):
+        self.bin_path = os.environ[env_name]
+        self.base_params = base_params
+
+    def __call__(self, params: str, **kwargs):
+        args = f"{self.base_params} {params}".split()
+        return isctest.run.cmd([self.bin_path] + args, **kwargs).stdout.decode("utf-8")
+
+
 def cmd(
     args,
     cwd=None,

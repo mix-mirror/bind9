@@ -26,14 +26,14 @@ from rollover.common import (
 
 
 @pytest.fixture(scope="module", autouse=True)
-def after_servers_start(ns6, templates):
-    isctest.kasp.wait_keymgr_done(ns6, "shorter-lifetime")
-    isctest.kasp.wait_keymgr_done(ns6, "longer-lifetime")
-    isctest.kasp.wait_keymgr_done(ns6, "limit-lifetime")
-    isctest.kasp.wait_keymgr_done(ns6, "unlimit-lifetime")
+def after_servers_start(ns3, templates):
+    isctest.kasp.wait_keymgr_done(ns3, "shorter-lifetime.kasp")
+    isctest.kasp.wait_keymgr_done(ns3, "longer-lifetime.kasp")
+    isctest.kasp.wait_keymgr_done(ns3, "limit-lifetime.kasp")
+    isctest.kasp.wait_keymgr_done(ns3, "unlimit-lifetime.kasp")
 
-    templates.render("ns6/named.conf", {"change_lifetime": True})
-    ns6.reconfigure()
+    templates.render("ns3/named.conf", {"change_lifetime": True})
+    ns3.reconfigure()
 
 
 @pytest.mark.parametrize(
@@ -49,17 +49,17 @@ def after_servers_start(ns6, templates):
         param("unlimit-lifetime", "unlimited-lifetime", 0),
     ],
 )
-def test_lifetime_reconfig(zone, policy, lifetime, alg, size, ns6):
+def test_lifetime_reconfig(zone, policy, lifetime, alg, size, ns3):
     config = DEFAULT_CONFIG
 
-    isctest.kasp.wait_keymgr_done(ns6, zone, reconfig=True)
+    isctest.kasp.wait_keymgr_done(ns3, f"{zone}.kasp", reconfig=True)
 
     step = {
-        "zone": zone,
+        "zone": f"{zone}.kasp",
         "cdss": CDSS,
         "keyprops": [
             f"csk {DURATION[lifetime]} {alg} {size} goal:omnipresent dnskey:rumoured krrsig:rumoured zrrsig:rumoured ds:hidden",
         ],
         "nextev": None,
     }
-    isctest.kasp.check_rollover_step(ns6, config, policy, step)
+    isctest.kasp.check_rollover_step(ns3, config, policy, step)

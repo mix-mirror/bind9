@@ -22,20 +22,54 @@ from rollover.common import (
     TIMEDELTA,
     ALGOROLL_CONFIG,
 )
+from rollover.setup import (
+    configure_root,
+    configure_tld,
+    configure_algo_csk,
+)
+
+POLICY = "csk-algoroll"
+
+
+def bootstrap():
+    data = {
+        "tlds": [],
+        "trust_anchors": [],
+    }
+
+    tlds = []
+    for tld_name in [
+        "kasp",
+        "manual",
+    ]:
+        delegations = configure_algo_csk(
+            tld_name, f"{POLICY}-{tld_name}", reconfig=False
+        )
+
+        tld = configure_tld(tld_name, delegations)
+        tlds.append(tld)
+
+        data["tlds"].append(tld_name)
+
+    ta = configure_root(tlds)
+    data["trust_anchors"].append(ta)
+
+    return data
 
 
 @pytest.mark.parametrize(
-    "tld, policy",
+    "tld",
     [
-        param("kasp", "csk-algoroll-kasp"),
-        param("manual", "csk-algoroll-manual"),
+        param("kasp"),
+        param("manual"),
     ],
 )
-def test_algoroll_csk_initial(ns6, tld, policy):
+def test_algoroll_csk_initial(tld, ns3):
     config = ALGOROLL_CONFIG
     zone = f"step1.csk-algorithm-roll.{tld}"
+    policy = f"{POLICY}-{tld}"
 
-    isctest.kasp.wait_keymgr_done(ns6, zone)
+    isctest.kasp.wait_keymgr_done(ns3, zone)
 
     step = {
         "zone": zone,
@@ -45,4 +79,4 @@ def test_algoroll_csk_initial(ns6, tld, policy):
         ],
         "nextev": TIMEDELTA["PT1H"],
     }
-    isctest.kasp.check_rollover_step(ns6, config, policy, step)
+    isctest.kasp.check_rollover_step(ns3, config, policy, step)
