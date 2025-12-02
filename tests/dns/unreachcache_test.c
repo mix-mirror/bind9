@@ -119,21 +119,26 @@ ISC_LOOP_TEST_IMPL(expire) {
 	result = dns_unreachcache_find(uc, &dst_addrv4, &src_addrv4);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	sleep(1);
+	/*
+	 * A successful find is expected after two seconds, because the
+	 * expiration time is longer than 2 seconds.
+	 */
+	sleep(2);
 	result = dns_unreachcache_find(uc, &dst_addrv4, &src_addrv4);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
+	/* After the expiration time, it's no longer expected to be found. */
 	sleep(EXPIRE_MIN_S);
 	result = dns_unreachcache_find(uc, &dst_addrv4, &src_addrv4);
 	assert_int_equal(result, ISC_R_NOTFOUND);
 
 	/*
-	 * Because of the exponentatl backoff, the new quick addition after the
+	 * Because of the exponential backoff, the new quick addition after the
 	 * previous expiration should expire in 2 x EXPIRE_MIN_S seconds.
 	 */
 	dns_unreachcache_add(uc, &dst_addrv4, &src_addrv4);
 
-	sleep(1);
+	sleep(2);
 	result = dns_unreachcache_find(uc, &dst_addrv4, &src_addrv4);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
