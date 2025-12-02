@@ -485,7 +485,9 @@ dns_qpkey_fromnametype(dns_qpkey_t key, const dns_name_t *name,
 		       dns_rdatatype_t type, dns_namespace_t space);
 /*%<
  * Convert a DNS name and RR type into a trie lookup key in the right
- * namespace.
+ * namespace. `dns_qpkey_fromname()` is used for zone table, forward
+ * table, NTAs, and other cases where type is not being used, and
+ * sets type to 0.
  *
  * Requires:
  * \li  `name` is a pointer to a valid `dns_name_t`
@@ -507,7 +509,9 @@ dns_qpkey_tonametype(const dns_qpkey_t key, size_t keylen, dns_name_t *name,
  * Convert a trie lookup key back into a DNS name and RRtype.
  *
  * 'space' stores whether the key is for a normal name, or denial of
- * existence.
+ * existence. `dns_qpkey_toname()` is used for zone table, forward
+ * table, NTAs, and other cases where type is not being used, and
+ * sets type to 0.
  *
  * Requires:
  * \li  `name` is a pointer to a valid `dns_name_t`
@@ -542,7 +546,9 @@ dns_qp_getnametype(dns_qpreadable_t qpr, const dns_name_t *name,
 		   uint32_t *ival_r);
 /*%<
  * Find a leaf in a qp-trie that matches the given DNS name, RR type, and
- * namespace.
+ * namespace. `dns_qp_getname()` is used for zone table, forward
+ * table, NTAs, and other cases where type is not being used, and
+ * sets type to 0.
  *
  * The leaf values are assigned to whichever of `*pval_r` and `*ival_r`
  * are not null, unless the return value is ISC_R_NOTFOUND.
@@ -645,7 +651,9 @@ dns_qp_deletename(dns_qp_t *qp, const dns_name_t *name, dns_namespace_t space,
 		  void **pval_r, uint32_t *ival_r);
 /*%<
  * Delete a leaf from a qp-trie that matches the given DNS name, RR type, and
- * namespace.
+ * namespace. `dns_qp_deletename()` is used for zone table, forward
+ * table, NTAs, and other cases where type is not being used, and
+ * sets type to 0.
  *
  * The leaf values are assigned to whichever of `*pval_r` and `*ival_r`
  * are not null, unless the return value is ISC_R_NOTFOUND.
