@@ -14220,8 +14220,8 @@ named_server_dnssec(named_server_t *server, isc_lex_t *lex,
 				CHECK(DNS_R_SYNTAX);
 			} else {
 				zonetext = ptr;
+				break;
 			}
-			break;
 		}
 	}
 
