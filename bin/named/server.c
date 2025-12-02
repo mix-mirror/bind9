@@ -12247,6 +12247,7 @@ do_addzone(named_server_t *server, dns_view_t *view, dns_name_t *name,
 	   const cfg_obj_t *zoneobj, bool redirect, isc_buffer_t *text) {
 	isc_result_t result, tresult;
 	dns_zone_t *zone = NULL;
+	dns_zone_t *oldzone = NULL;
 	const cfg_obj_t *voptions = NULL;
 	bool locked = false;
 	MDB_txn *txn = NULL;
@@ -12265,7 +12266,13 @@ do_addzone(named_server_t *server, dns_view_t *view, dns_name_t *name,
 	} else {
 		result = dns_view_findzone(view, name, DNS_ZTFIND_EXACT, &zone);
 		if (result == ISC_R_SUCCESS) {
-			result = ISC_R_EXISTS;
+			if (dns_zone_getautomatic(zone)) {
+				oldzone = zone;
+				zone = NULL;
+				result = ISC_R_NOTFOUND;
+			} else {
+				result = ISC_R_EXISTS;
+			}
 		}
 	}
 	if (result != ISC_R_NOTFOUND) {
@@ -12273,6 +12280,10 @@ do_addzone(named_server_t *server, dns_view_t *view, dns_name_t *name,
 	}
 
 	isc_loopmgr_pause();
+
+	if (oldzone != NULL) {
+		dns_view_delzone(view, oldzone);
+	}
 
 	LOCK(&view->newzone.lock);
 	locked = true;
@@ -12355,6 +12366,11 @@ do_addzone(named_server_t *server, dns_view_t *view, dns_name_t *name,
 		/* Remove the zone from the zone table */
 		dns_view_delzone(view, zone);
 		goto cleanup;
+	} else if (oldzone != NULL) {
+		/*
+		 * We no longer need to keep the old zone around.
+		 */
+		dns_zone_detach(&oldzone);
 	}
 
 	/* Flag the zone as having been added at runtime */
@@ -12365,6 +12381,22 @@ do_addzone(named_server_t *server, dns_view_t *view, dns_name_t *name,
 	CHECK(nzd_save(&txn, dbi, zone, zoneobj));
 
 cleanup:
+
+	if (oldzone != NULL) {
+		/*
+		 * Restore the old zone.
+		 */
+		dns_view_thaw(view);
+		tresult = dns_view_addzone(view, oldzone);
+		dns_view_freeze(view);
+		dns_zone_detach(&oldzone);
+
+		if (tresult != ISC_R_SUCCESS && tresult != ISC_R_SHUTTINGDOWN) {
+			TCHECK(putstr(text, "\nUnable to restore automatic "
+					    "empty zone: "));
+			TCHECK(putstr(text, isc_result_totext(result)));
+		}
+	}
 
 	if (txn != NULL) {
 		(void)nzd_close(&txn, false);
