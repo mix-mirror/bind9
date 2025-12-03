@@ -589,8 +589,8 @@ dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
  * updated.
  *
  * If 'iter' is not NULL, it will be updated to point to a QP iterator
- * which is pointed at the searched-for name if it exists in the trie,
- * or the closest predecessor if it doesn't. Note that the closest
+ * which is pointed at the searched-for name+type if it exists in the
+ * trie, or the closest predecessor if it doesn't. Note that the closest
  * predecessor can be a node with the same name but a different type.
  *
  * The leaf data for the node that was found will be assigned to
