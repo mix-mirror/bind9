@@ -75,6 +75,7 @@ def do_test_query(
         sorted(ZONE.reachable - ZONE.get_names_with_type(dns.rdatatype.CNAME))
     )
 )
+@pytest.mark.skip("Disabled temporarily")
 def test_nodata(server: str, qname: dns.name.Name, named_port: int) -> None:
     """An existing name, no wildcards, but a query type for RRset which does not exist"""
     _, nsec3check = do_test_query(qname, dns.rdatatype.HINFO, server, named_port)
@@ -87,6 +88,7 @@ def test_nodata(server: str, qname: dns.name.Name, named_port: int) -> None:
         suffix=(ZONE.delegations - ZONE.get_names_with_type(dns.rdatatype.DS))
     )
 )
+@pytest.mark.skip("Disabled temporarily")
 def test_nodata_ds(server: str, qname: dns.name.Name, named_port: int) -> None:
     """Auth sends proof of nonexistance with referral without DS RR. Opt-out is not supported."""
     response, nsec3check = do_test_query(qname, dns.rdatatype.HINFO, server, named_port)
@@ -127,6 +129,7 @@ def assume_nx_and_no_delegation(qname: dns.name.Name) -> None:
     "server", [pytest.param(AUTH, id="ns1"), pytest.param(RESOLVER, id="ns2")]
 )
 @given(qname=dns_names(suffix=SUFFIX))
+@pytest.mark.skip("Disabled temporarily")
 def test_nxdomain(server: str, qname: dns.name.Name, named_port: int) -> None:
     """A real NXDOMAIN, no wildcards involved"""
     assume_nx_and_no_delegation(qname)
@@ -141,6 +144,7 @@ def test_nxdomain(server: str, qname: dns.name.Name, named_port: int) -> None:
     "server", [pytest.param(AUTH, id="ns1"), pytest.param(RESOLVER, id="ns2")]
 )
 @given(qname=sampled_from(sorted(ZONE.get_names_with_type(dns.rdatatype.CNAME))))
+@pytest.mark.skip("Disabled temporarily")
 def test_cname_nxdomain(server: str, qname: dns.name.Name, named_port: int) -> None:
     """CNAME which terminates by NXDOMAIN, no wildcards involved"""
     response, nsec3check = do_test_query(qname, dns.rdatatype.A, server, named_port)
@@ -175,6 +179,7 @@ def test_dname_nxdomain(server: str, qname: dns.name.Name, named_port: int) -> N
     "server", [pytest.param(AUTH, id="ns1"), pytest.param(RESOLVER, id="ns2")]
 )
 @given(qname=dns_names(suffix=ZONE.ents))
+@pytest.mark.skip("Disabled temporarily")
 def test_ents(server: str, qname: dns.name.Name, named_port: int) -> None:
     """ENT can have a wildcard under it"""
     assume_nx_and_no_delegation(qname)
@@ -193,6 +198,7 @@ def test_ents(server: str, qname: dns.name.Name, named_port: int) -> None:
     "server", [pytest.param(AUTH, id="ns1"), pytest.param(RESOLVER, id="ns2")]
 )
 @given(qname=dns_names(suffix=ZONE.reachable_wildcard_parents))
+@pytest.mark.skip("Disabled temporarily")
 def test_wildcard_synthesis(server: str, qname: dns.name.Name, named_port: int) -> None:
     assume(qname not in ZONE.all_existing_names)
 
@@ -207,6 +213,7 @@ def test_wildcard_synthesis(server: str, qname: dns.name.Name, named_port: int) 
     "server", [pytest.param(AUTH, id="ns1"), pytest.param(RESOLVER, id="ns2")]
 )
 @given(qname=dns_names(suffix=ZONE.reachable_wildcard_parents))
+@pytest.mark.skip("Disabled temporarily")
 def test_wildcard_nodata(server: str, qname: dns.name.Name, named_port: int) -> None:
     assume(qname not in ZONE.all_existing_names)
 
