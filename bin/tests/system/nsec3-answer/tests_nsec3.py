@@ -165,6 +165,8 @@ def test_dname_nxdomain(server: str, qname: dns.name.Name, named_port: int) -> N
     """DNAME which terminates by NXDOMAIN, no wildcards involved"""
     assume(qname not in ZONE.reachable)
 
+    time.sleep(0.1)
+
     response, nsec3check = do_test_query(qname, dns.rdatatype.A, server, named_port)
     chain = response.resolve_chaining()
     assume_nx_and_no_delegation(chain.canonical_name)
