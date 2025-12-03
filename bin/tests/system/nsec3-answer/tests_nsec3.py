@@ -34,7 +34,7 @@ from isctest.hypothesis.strategies import dns_names, sampled_from
 import isctest
 import isctest.name
 
-from hypothesis import assume, given
+from hypothesis import assume, given, reproduce_failure
 
 SUFFIX = dns.name.from_text(".")
 AUTH = "10.53.0.1"
@@ -156,6 +156,7 @@ def test_cname_nxdomain(server: str, qname: dns.name.Name, named_port: int) -> N
 
     check_nxdomain(chain.canonical_name, nsec3check)
 
+# @reproduce_failure('6.124.5', b'AXiczcKFVUIBAADAbwDSSEm3tIJ0Ce/chFWYnDHw3fEX3AT/wJNnL16FhEW8iYqJS0hKSct4l5WTV1D0oaSsoqqmrqGppa2jq+dT38DQyNjE1JdvM3M/FpZW1ja2dvYOjk5+nV2uwaPdAeCKQok=')
 
 @pytest.mark.parametrize(
     "server", [pytest.param(AUTH, id="ns1"), pytest.param(RESOLVER, id="ns2")]
@@ -165,6 +166,7 @@ def test_dname_nxdomain(server: str, qname: dns.name.Name, named_port: int) -> N
     """DNAME which terminates by NXDOMAIN, no wildcards involved"""
     assume(qname not in ZONE.reachable)
 
+    import time
     time.sleep(0.1)
 
     response, nsec3check = do_test_query(qname, dns.rdatatype.A, server, named_port)
