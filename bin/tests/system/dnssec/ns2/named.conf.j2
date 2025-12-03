@@ -239,4 +239,19 @@ zone "child.ds-rrsigs-stripped" {
 	file "child.ds-rrsigs-stripped.db.signed";
 };
 
+zone "missing-dnskey" {
+	type primary;
+	file "missing-dnskey.db.signed";
+};
+
+zone "missing-ksk" {
+	type primary;
+	file "missing-ksk.db.signed";
+};
+
+zone "wrong-dnskey" {
+	type primary;
+	file "wrong-dnskey.db.signed";
+};
+
 include "trusted.conf";
