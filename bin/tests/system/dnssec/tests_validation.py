@@ -945,6 +945,14 @@ def test_positive_validation_multistage(qname):
     isctest.check.adflag(res2)
 
 
+def test_validation_missing_rrsig(ns4):
+    msg = isctest.query.create("a.dnskey-rrsigs-stripped.", "A")
+    res = isctest.query.tcp(msg, ns4.ip)
+    isctest.check.servfail(res)
+    isctest.check.ede(res, EDECode.RRSIGS_MISSING)
+    # probably need to check that in such flow, there is no EDE 9 (as both errors are raises closely)
+
+
 def test_validation_recovery(ns2, ns4):
     # check recovery from spoofed server address.
     # prime cache with spoofed address records...

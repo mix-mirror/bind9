@@ -3631,6 +3631,7 @@ validator_start(void *arg) {
 			validator_log(val, ISC_LOG_INFO,
 				      "got insecure response; "
 				      "parent indicates it should be secure");
+			validator_addede(val, DNS_EDE_RRSIGSMISSING, NULL);
 		}
 	} else if (val->rdataset == NULL && val->sigrdataset == NULL) {
 		/*
