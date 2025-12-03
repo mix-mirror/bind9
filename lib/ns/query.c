@@ -5843,9 +5843,7 @@ qctx_prepare_buffers(query_ctx_t *qctx, isc_buffer_t *buffer) {
 	qctx->fname = ns_client_newname(qctx->client, qctx->dbuf, buffer);
 	qctx->rdataset = ns_client_newrdataset(qctx->client);
 
-	if ((WANTDNSSEC(qctx->client) || qctx->findcoveringnsec) &&
-	    (!qctx->is_zone || dns_db_issecure(qctx->db)))
-	{
+	if (WANTDNSSEC(qctx->client) || qctx->findcoveringnsec) {
 		qctx->sigrdataset = ns_client_newrdataset(qctx->client);
 	}
 

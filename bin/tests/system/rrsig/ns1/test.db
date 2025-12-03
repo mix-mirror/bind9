@@ -1,0 +1,102 @@
+; Copyright (C) Internet Systems Consortium, Inc. ("ISC")
+;
+; SPDX-License-Identifier: MPL-2.0
+;
+; This Source Code Form is subject to the terms of the Mozilla Public
+; License, v. 2.0.  If a copy of the MPL was not distributed with this
+; file, you can obtain one at https://mozilla.org/MPL/2.0/.
+;
+; See the COPYRIGHT file distributed with this work for additional
+; information regarding copyright ownership.
+
+; This zone file is signed but is not a valid signed zone. It is missing
+; DNSKEYs and RR b.test is not signed
+
+; File (originally) written on Wed Dec  3 11:56:30 2025
+; dnssec-signzone version 9.20.9-dev
+test.			300	IN SOA	mname1. . (
+					2000042407 ; serial
+					20         ; refresh (20 seconds)
+					20         ; retry (20 seconds)
+					1814400    ; expire (3 weeks)
+					3600       ; minimum (1 hour)
+					)
+			300	RRSIG	SOA 13 1 300 (
+					20260102095630 20251203095630 52821 test.
+					P7APqLQqBAd/nqcUcFUnSBpAwfSI/qM4tUvH
+					wdTtOlog9L0SxPhPFX2MQFqDQ8JO6mMlwU7c
+					Re/P/ATZ/OKt2Q== )
+			300	NS	ns.test.
+			300	RRSIG	NS 13 1 300 (
+					20260102095630 20251203095630 52821 test.
+					hEFoqGYUAZtjH5pY0vGcPGBIsIC5lz1PETij
+					8tGSE0VSopYDFOxiaoYh2gdP0DIuU+zkvObQ
+					K/fLQht0EvcpUg== )
+			300	MX	10 mx.test.
+			300	RRSIG	MX 13 1 300 (
+					20260102095630 20251203095630 52821 test.
+					ng2y6mPF6d+dhxK2gI4SMcGJFRW/TXSuGZIj
+					6vkMLnnaGii2wuc1riJ8+71cGFfobYh49sff
+					a6kMDN+Yeoh2ZA== )
+			300	NSEC	a.test. NS SOA MX RRSIG NSEC DNSKEY
+			300	RRSIG	NSEC 13 1 300 (
+					20260102095630 20251203095630 52821 test.
+					HaOwDq57XKfMRafsTXWikWCz6c9vj62iO/gA
+					m4xg87ynpkFQKtjHTvMPTQm7yfA+JPPdnH+W
+					Id8V5/eA43Wz5g== )
+;			300	DNSKEY	256 3 13 (
+;					exU/MZuG3h7i6u4Ey7YajUmRjXnBEqMjwj9W
+;					GN8BJxuVzbiRiiylSaxxgMHUgvY0+xpCX/vQ
+;					lKQm7tRf/b9ItA==
+;					) ; ZSK; alg = ECDSAP256SHA256 ; key id = 52821
+;			300	DNSKEY	257 3 13 (
+;					SwabCqxfxlzLRPN/oPu+8ShNd2J0QZA0NHNg
+;					18TrNCPbc7z2nYS2KPxCOt+AEr7abBhI6w76
+;					vpyST26I6x0u6g==
+;					) ; KSK; alg = ECDSAP256SHA256 ; key id = 44462
+			300	RRSIG	DNSKEY 13 1 300 (
+					20260102095630 20251203095630 44462 test.
+					Iab1tk+FrJOuSImGTbroLk3r3Cu7IQEoL/5N
+					tXCB/W87X0hLI9KgrrZgYWBvLQL388QtDSSO
+					MoAYKxn2c+wWXw== )
+			300	RRSIG	DNSKEY 13 1 300 (
+					20260102095630 20251203095630 52821 test.
+					SXx+YXfM2A9Q94rKnaJ4NFGqJ5uKeuCdUpSM
+					owIshSrjqfQZNyYp0Obz6lb8HD9XxwASpHfx
+					VUOn7OHLZa0hiA== )
+a.test.			300	IN A	10.0.0.1
+			300	RRSIG	A 13 2 300 (
+					20260102095630 20251203095630 52821 test.
+					37i9bH5PCR42bCLS62ydRGHB6Q7OUKUUGoV5
+					CR2tKtODSlHdByuAcPP8KOahyglgLxIx7191
+					ZOiMzsyQdD8zDg== )
+			300	NSEC	b.test. A RRSIG NSEC
+			300	RRSIG	NSEC 13 2 300 (
+					20260102095630 20251203095630 52821 test.
+					am4Q7ULEti/XiiYXQV6JkRh61sW23928y/JH
+					zBkHj/e5HIRWOwG8v4ivRhnZJjzzEJSIJmhv
+					hw7duxsVKKbITw== )
+b.test.			300	IN A	10.0.0.2
+;			300	RRSIG	A 13 2 300 (
+;					20260102095630 20251203095630 52821 test.
+;					/bJJcHiTPW7csvPNOzEkedb04EWPdGcmHfrS
+;					LjCt3+JBKB8kxtPhv5VoqodNBRlnydCUV2AS
+;					5aYRegtIcEuwog== )
+			300	NSEC	ns.test. A RRSIG NSEC
+			300	RRSIG	NSEC 13 2 300 (
+					20260102095630 20251203095630 52821 test.
+					+Q2H9NBt/9KGKeuQLEVSt5sLP6KnkpI68gxa
+					F0B2vfN0npwWxPPqUktj0QcvXj4HQK0iW7aa
+					2Ce8AlAp1y32xg== )
+ns.test.		300	IN A	10.53.0.1
+			300	RRSIG	A 13 2 300 (
+					20260102095630 20251203095630 52821 test.
+					/g2PZ6LTkN7N+PvP5RKUgkXeVQimKiNyrAmX
+					PZz0x5OhgpLRrDuAAYX7JR/QqUZ61uAtLUO8
+					RCED90fQOLWLPw== )
+			300	NSEC	test. A RRSIG NSEC
+			300	RRSIG	NSEC 13 2 300 (
+					20260102095630 20251203095630 52821 test.
+					CaUsf4jGVbi8y7fH4l4EDYdhjz+tcP2M9bCl
+					hfh/tivKMutTm3qr1kB96liC+Tkw9m3waxZo
+					zZgr++cyTF2lkw== )
