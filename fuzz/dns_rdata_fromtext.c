@@ -79,10 +79,7 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 
 	RUNTIME_CHECK(isc_lex_openbuffer(lex, &inbuf) == ISC_R_SUCCESS);
 
-	result = isc_lex_gettoken(lex, options | ISC_LEXOPT_NUMBER, &token);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(isc_lex_gettoken(lex, options | ISC_LEXOPT_NUMBER, &token));
 	if (token.type == isc_tokentype_eof) {
 		goto cleanup;
 	}
@@ -98,18 +95,12 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 		}
 		rdclass = (dns_rdataclass_t)token.value.as_ulong;
 	} else if (token.type == isc_tokentype_string) {
-		result = dns_rdataclass_fromtext(&rdclass,
-						 &token.value.as_textregion);
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup;
-		}
+		CHECK(dns_rdataclass_fromtext(&rdclass,
+					      &token.value.as_textregion));
 	} else {
 		goto cleanup;
 	}
-	result = isc_lex_gettoken(lex, options | ISC_LEXOPT_NUMBER, &token);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(isc_lex_gettoken(lex, options | ISC_LEXOPT_NUMBER, &token));
 	if (token.type == isc_tokentype_eol) {
 		goto cleanup;
 	}
@@ -126,11 +117,8 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 		}
 		rdtype = (dns_rdatatype_t)token.value.as_ulong;
 	} else if (token.type == isc_tokentype_string) {
-		result = dns_rdatatype_fromtext(&rdtype,
-						&token.value.as_textregion);
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup;
-		}
+		CHECK(dns_rdatatype_fromtext(&rdtype,
+					     &token.value.as_textregion));
 	} else {
 		goto cleanup;
 	}

@@ -200,7 +200,6 @@ new_source(isc_lex_t *lex, bool is_file, bool need_close, void *input,
 
 isc_result_t
 isc_lex_openfile(isc_lex_t *lex, const char *filename) {
-	isc_result_t result;
 	FILE *stream = NULL;
 
 	/*
@@ -209,10 +208,7 @@ isc_lex_openfile(isc_lex_t *lex, const char *filename) {
 
 	REQUIRE(VALID_LEX(lex));
 
-	result = isc_stdio_open(filename, "r", &stream);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(isc_stdio_open(filename, "r", &stream));
 
 	new_source(lex, true, true, stream, filename);
 	return ISC_R_SUCCESS;

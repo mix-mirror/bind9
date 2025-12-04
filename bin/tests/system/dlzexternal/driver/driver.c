@@ -49,13 +49,6 @@ dlz_dlopen_addrdataset_t dlz_addrdataset;
 dlz_dlopen_subrdataset_t dlz_subrdataset;
 dlz_dlopen_delrdataset_t dlz_delrdataset;
 
-#define CHECK(x)                             \
-	do {                                 \
-		result = (x);                \
-		if (result != ISC_R_SUCCESS) \
-			goto failure;        \
-	} while (0)
-
 #define loginfo(...)                                           \
 	({                                                     \
 		if ((state != NULL) && (state->log != NULL))   \
@@ -258,7 +251,6 @@ dlz_create(const char *dlzname, unsigned int argc, char *argv[], void **dbdata,
 	const char *helper_name;
 	va_list ap;
 	char soa_data[sizeof("@ hostmaster.root 123 900 600 86400 3600")];
-	isc_result_t result;
 	size_t n;
 
 	UNUSED(dlzname);
@@ -306,7 +298,8 @@ dlz_create(const char *dlzname, unsigned int argc, char *argv[], void **dbdata,
 	}
 
 	if (n >= sizeof(soa_data)) {
-		CHECK(ISC_R_NOSPACE);
+		free(state);
+		return ISC_R_NOSPACE;
 	}
 
 	add_name(state, &state->current[0], state->zone_name, "soa", 3600,
@@ -320,10 +313,6 @@ dlz_create(const char *dlzname, unsigned int argc, char *argv[], void **dbdata,
 
 	*dbdata = state;
 	return ISC_R_SUCCESS;
-
-failure:
-	free(state);
-	return result;
 }
 
 /*
@@ -513,10 +502,7 @@ dlz_lookup(const char *zone, const char *name, void *dbdata,
 		loginfo("dlz_example: lookup connection from %s", buf);
 
 		found = true;
-		result = state->putrr(lookup, "TXT", 0, buf);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(state->putrr(lookup, "TXT", 0, buf));
 	}
 
 	if (strcmp(name, "too-long") == 0 ||
@@ -527,10 +513,7 @@ dlz_lookup(const char *zone, const char *name, void *dbdata,
 		}
 		buf[i] = '\0';
 		found = true;
-		result = state->putrr(lookup, "TXT", 0, buf);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(state->putrr(lookup, "TXT", 0, buf));
 	}
 
 	/* Tests for DLZ redirection zones */
@@ -556,12 +539,9 @@ dlz_lookup(const char *zone, const char *name, void *dbdata,
 	for (i = 0; i < MAX_RECORDS; i++) {
 		if (strcasecmp(state->current[i].name, full_name) == 0) {
 			found = true;
-			result = state->putrr(lookup, state->current[i].type,
-					      state->current[i].ttl,
-					      state->current[i].data);
-			if (result != ISC_R_SUCCESS) {
-				return result;
-			}
+			RETERR(state->putrr(lookup, state->current[i].type,
+					    state->current[i].ttl,
+					    state->current[i].data));
 		}
 	}
 
@@ -627,17 +607,13 @@ dlz_allnodes(const char *zone, void *dbdata, dns_sdlzallnodes_t *allnodes) {
 	}
 
 	for (i = 0; i < MAX_RECORDS; i++) {
-		isc_result_t result;
 		if (strlen(state->current[i].name) == 0U) {
 			continue;
 		}
-		result = state->putnamedrr(allnodes, state->current[i].name,
-					   state->current[i].type,
-					   state->current[i].ttl,
-					   state->current[i].data);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(state->putnamedrr(allnodes, state->current[i].name,
+					 state->current[i].type,
+					 state->current[i].ttl,
+					 state->current[i].data));
 	}
 
 	return ISC_R_SUCCESS;

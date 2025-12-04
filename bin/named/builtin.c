@@ -166,10 +166,7 @@ putrr(bdbnode_t *node, const char *type, dns_ttl_t ttl, const char *data) {
 	origin = &node->bdb->common.origin;
 
 	isc_constregion_t r = { .base = type, .length = strlen(type) };
-	result = dns_rdatatype_fromtext(&typeval, (isc_textregion_t *)&r);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_rdatatype_fromtext(&typeval, (isc_textregion_t *)&r));
 
 	isc_lex_create(mctx, 64, &lex);
 
@@ -177,10 +174,7 @@ putrr(bdbnode_t *node, const char *type, dns_ttl_t ttl, const char *data) {
 	isc_buffer_constinit(&b, data, datalen);
 	isc_buffer_add(&b, datalen);
 
-	result = isc_lex_openbuffer(lex, &b);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(isc_lex_openbuffer(lex, &b));
 
 	isc_buffer_allocate(mctx, &rb, DNS_RDATA_MAXLENGTH);
 	result = dns_rdata_fromtext(NULL, node->bdb->common.rdclass, typeval,
@@ -535,7 +529,6 @@ hostname_lookup(bdbnode_t *node) {
 
 static isc_result_t
 authors_lookup(bdbnode_t *node) {
-	isc_result_t result;
 	const char **p = NULL;
 	static const char *authors[] = {
 		"Mark Andrews",	      "Curtis Blackburn",
@@ -559,10 +552,7 @@ authors_lookup(bdbnode_t *node) {
 	}
 
 	for (p = authors; *p != NULL; p++) {
-		result = puttxt(node, *p);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(puttxt(node, *p));
 	}
 	return ISC_R_SUCCESS;
 }
@@ -591,14 +581,10 @@ empty_lookup(bdbnode_t *node) {
 
 static isc_result_t
 ipv4only_lookup(bdbnode_t *node) {
-	isc_result_t result;
 	unsigned char data[2][4] = { { 192, 0, 0, 170 }, { 192, 0, 0, 171 } };
 
 	for (int i = 0; i < 2; i++) {
-		result = putrdata(node, dns_rdatatype_a, 3600, data[i], 4);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(putrdata(node, dns_rdatatype_a, 3600, data[i], 4));
 	}
 	return ISC_R_SUCCESS;
 }
@@ -846,10 +832,7 @@ findnode(dns_db_t *db, const dns_name_t *name, bool create,
 	dns_name_getlabelsequence(name, 0, labels, &relname);
 	name = &relname;
 
-	result = createnode(bdb, &node);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(createnode(bdb, &node));
 
 	result = builtin_lookup(bdb, name, node);
 	if (result != ISC_R_SUCCESS && (!isorigin || result != ISC_R_NOTFOUND))
@@ -1173,15 +1156,13 @@ create(isc_mem_t *mctx, const dns_name_t *origin, dns_dbtype_t type,
 
 	if (needargs) {
 		if (argc != 3) {
-			result = DNS_R_SYNTAX;
-			goto cleanup;
+			CLEANUP(DNS_R_SYNTAX);
 		}
 
 		bdb->server = isc_mem_strdup(isc_g_mctx, argv[1]);
 		bdb->contact = isc_mem_strdup(isc_g_mctx, argv[2]);
 	} else if (argc != 1) {
-		result = DNS_R_SYNTAX;
-		goto cleanup;
+		CLEANUP(DNS_R_SYNTAX);
 	}
 
 	bdb->common.magic = DNS_DB_MAGIC;
@@ -1214,11 +1195,8 @@ isc_result_t
 named_builtin_init(void) {
 	isc_result_t result;
 
-	result = dns_db_register("_builtin", create, &builtin, isc_g_mctx,
-				 &builtin.dbimp);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_db_register("_builtin", create, &builtin, isc_g_mctx,
+			       &builtin.dbimp));
 
 	result = dns_db_register("_dns64", create, &dns64, isc_g_mctx,
 				 &dns64.dbimp);

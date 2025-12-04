@@ -1190,16 +1190,11 @@ isc_buffer_dup(isc_mem_t *mctx, isc_buffer_t **restrict dstp,
 static inline isc_result_t
 isc_buffer_copyregion(isc_buffer_t *restrict b,
 		      const isc_region_t *restrict r) {
-	isc_result_t result;
-
 	REQUIRE(ISC_BUFFER_VALID(b));
 	REQUIRE(r != NULL);
 
 	if (b->mctx) {
-		result = isc_buffer_reserve(b, r->length);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(isc_buffer_reserve(b, r->length));
 	}
 
 	if (r->length > isc_buffer_availablelength(b)) {
@@ -1216,9 +1211,8 @@ isc_buffer_copyregion(isc_buffer_t *restrict b,
 
 static inline isc_result_t
 isc_buffer_printf(isc_buffer_t *restrict b, const char *restrict format, ...) {
-	va_list	     ap;
-	int	     n;
-	isc_result_t result;
+	va_list ap;
+	int	n;
 
 	REQUIRE(ISC_BUFFER_VALID(b));
 
@@ -1231,10 +1225,7 @@ isc_buffer_printf(isc_buffer_t *restrict b, const char *restrict format, ...) {
 	}
 
 	if (b->mctx) {
-		result = isc_buffer_reserve(b, n + 1);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(isc_buffer_reserve(b, n + 1));
 	}
 
 	if (isc_buffer_availablelength(b) < (unsigned int)n + 1) {

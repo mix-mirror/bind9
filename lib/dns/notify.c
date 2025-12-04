@@ -347,10 +347,7 @@ notify_send_toaddr(void *arg) {
 		goto cleanup;
 	}
 
-	result = notify_createmessage(notify, &message);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(notify_createmessage(notify, &message));
 
 	if (notify->key != NULL) {
 		/* Transfer ownership of key */
@@ -654,10 +651,7 @@ notify_send(dns_notify_t *notify) {
 			isc_sockaddr_any6(&newnotify->src);
 		}
 		startup = ((notify->flags & DNS_NOTIFY_STARTUP) != 0);
-		result = dns_notify_queue(newnotify, startup);
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup;
-		}
+		CHECK(dns_notify_queue(newnotify, startup));
 		newnotify = NULL;
 	}
 

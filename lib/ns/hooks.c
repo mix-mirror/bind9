@@ -33,14 +33,6 @@
 #include <ns/hooks.h>
 #include <ns/query.h>
 
-#define CHECK(op)                              \
-	do {                                   \
-		result = (op);                 \
-		if (result != ISC_R_SUCCESS) { \
-			goto cleanup;          \
-		}                              \
-	} while (0)
-
 struct ns_plugin {
 	isc_mem_t *mctx;
 	uv_lib_t handle;
@@ -87,12 +79,9 @@ plugin_expandpath(const char *src, char *dst, size_t dstsize, bool appendext) {
 
 isc_result_t
 ns_plugin_expandpath(const char *src, char *dst, size_t dstsize) {
-	isc_result_t result;
+	isc_result_t result = ISC_R_SUCCESS;
 
-	result = plugin_expandpath(src, dst, dstsize, false);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(plugin_expandpath(src, dst, dstsize, false));
 
 	if (isc_file_exists(dst) == false) {
 		result = plugin_expandpath(src, dst, dstsize, true);
@@ -161,7 +150,7 @@ load_plugin(isc_mem_t *mctx, const char *modpath, ns_plugin_t **pluginp) {
 			      ISC_LOG_ERROR,
 			      "failed to dlopen() plugin '%s': %s", modpath,
 			      errmsg);
-		CHECK(ISC_R_FAILURE);
+		CLEANUP(ISC_R_FAILURE);
 	}
 
 	CHECK(load_symbol(&plugin->handle, modpath, "plugin_version",
@@ -175,7 +164,7 @@ load_plugin(isc_mem_t *mctx, const char *modpath, ns_plugin_t **pluginp) {
 			      ISC_LOG_ERROR,
 			      "plugin API version mismatch: %d/%d", version,
 			      NS_PLUGIN_VERSION);
-		CHECK(ISC_R_FAILURE);
+		CLEANUP(ISC_R_FAILURE);
 	}
 
 	CHECK(load_symbol(&plugin->handle, modpath, "plugin_check",

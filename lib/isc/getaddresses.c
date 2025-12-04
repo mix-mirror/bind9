@@ -81,14 +81,8 @@ isc_getaddresses(const char *hostname, in_port_t port, isc_sockaddr_t *addrs,
 			}
 
 			if (d != NULL) {
-				isc_result_t iresult;
-
-				iresult = isc_netscope_pton(AF_INET6, d + 1,
-							    &in6, &zone);
-
-				if (iresult != ISC_R_SUCCESS) {
-					return iresult;
-				}
+				RETERR(isc_netscope_pton(AF_INET6, d + 1, &in6,
+							 &zone));
 			}
 
 			isc_netaddr_fromin6(&na, &in6);

@@ -272,7 +272,7 @@ hmac_compare(const isc_md_type_t *type, const dst_key_t *key1,
 static isc_result_t
 hmac_generate(const isc_md_type_t *type, dst_key_t *key) {
 	isc_buffer_t b;
-	isc_result_t ret;
+	isc_result_t result;
 	unsigned int bytes, len;
 	unsigned char data[ISC_MAX_MD_SIZE] = { 0 };
 
@@ -290,11 +290,11 @@ hmac_generate(const isc_md_type_t *type, dst_key_t *key) {
 	isc_buffer_init(&b, data, bytes);
 	isc_buffer_add(&b, bytes);
 
-	ret = hmac_fromdns(type, key, &b);
+	result = hmac_fromdns(type, key, &b);
 
 	isc_safe_memwipe(data, sizeof(data));
 
-	return ret;
+	return result;
 }
 
 static bool
@@ -456,18 +456,15 @@ static isc_result_t
 hmac_parse(const isc_md_type_t *type, dst_key_t *key, isc_lex_t *lexer,
 	   dst_key_t *pub) {
 	dst_private_t priv;
-	isc_result_t result, tresult;
+	isc_result_t result = ISC_R_SUCCESS, tresult;
 	isc_buffer_t b;
 	isc_mem_t *mctx = key->mctx;
 	unsigned int i;
 
 	UNUSED(pub);
 	/* read private key file */
-	result = dst__privstruct_parse(key, hmac__to_dst_alg(type), lexer, mctx,
-				       &priv);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dst__privstruct_parse(key, hmac__to_dst_alg(type), lexer, mctx,
+				     &priv));
 
 	if (key->external) {
 		result = DST_R_EXTERNALKEY;

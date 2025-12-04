@@ -75,13 +75,6 @@
 #define RESCONFMAXLINELEN     256U /*%< max size of a line */
 #define RESCONFMAXSORTLIST    10U  /*%< max 10 */
 
-#define CHECK(op)                            \
-	do {                                 \
-		result = (op);               \
-		if (result != ISC_R_SUCCESS) \
-			goto cleanup;        \
-	} while (0)
-
 /*!
  * configuration data structure
  */
@@ -224,8 +217,7 @@ add_server(isc_mem_t *mctx, const char *address_str,
 	address = isc_mem_get(mctx, sizeof(*address));
 	if (res->ai_addrlen > sizeof(address->type)) {
 		isc_mem_put(mctx, address, sizeof(*address));
-		result = ISC_R_RANGE;
-		goto cleanup;
+		CLEANUP(ISC_R_RANGE);
 	}
 
 	if (res->ai_family == AF_INET) {
@@ -245,8 +237,7 @@ add_server(isc_mem_t *mctx, const char *address_str,
 		isc_mem_put(mctx, address, sizeof(*address));
 		UNEXPECTED_ERROR("ai_family (%d) not INET nor INET6",
 				 res->ai_family);
-		result = ISC_R_UNEXPECTED;
-		goto cleanup;
+		CLEANUP(ISC_R_UNEXPECTED);
 	}
 	address->length = (unsigned int)res->ai_addrlen;
 
@@ -290,7 +281,6 @@ static isc_result_t
 resconf_parsenameserver(irs_resconf_t *conf, FILE *fp) {
 	char word[RESCONFMAXLINELEN];
 	int cp;
-	isc_result_t result;
 
 	cp = getword(fp, word, sizeof(word));
 	if (cp == EOF || strlen(word) == 0U) {
@@ -307,10 +297,7 @@ resconf_parsenameserver(irs_resconf_t *conf, FILE *fp) {
 		return ISC_R_SUCCESS;
 	}
 
-	result = add_server(conf->mctx, word, &conf->nameservers);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(add_server(conf->mctx, word, &conf->nameservers));
 	conf->numns++;
 
 	return ISC_R_SUCCESS;
@@ -379,7 +366,6 @@ static isc_result_t
 resconf_parsesearch(irs_resconf_t *conf, FILE *fp) {
 	int delim;
 	char word[RESCONFMAXLINELEN];
-	isc_result_t result;
 
 	if (conf->domainname != NULL) {
 		/*
@@ -398,10 +384,7 @@ resconf_parsesearch(irs_resconf_t *conf, FILE *fp) {
 		return ISC_R_UNEXPECTEDEND; /* Nothing else on line. */
 	}
 	do {
-		result = add_search(conf, word);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(add_search(conf, word));
 
 		if (delim == '\n') {
 			break;

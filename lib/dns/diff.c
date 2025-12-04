@@ -36,13 +36,6 @@
 #include <dns/rdatatype.h>
 #include <dns/time.h>
 
-#define CHECK(op)                            \
-	do {                                 \
-		result = (op);               \
-		if (result != ISC_R_SUCCESS) \
-			goto failure;        \
-	} while (0)
-
 static dns_rdatatype_t
 rdata_covers(dns_rdata_t *rdata) {
 	return rdata->type == dns_rdatatype_rrsig ? dns_rdata_covers(rdata) : 0;
@@ -494,7 +487,7 @@ diff_apply(const dns_diff_t *diff, dns_db_t *db, dns_dbversion_t *ver,
 	}
 	return ISC_R_SUCCESS;
 
-failure:
+cleanup:
 	if (node != NULL) {
 		dns_db_detachnode(&node);
 	}
@@ -584,7 +577,7 @@ dns_diff_load(const dns_diff_t *diff, dns_rdatacallbacks_t *callbacks) {
 	}
 	result = ISC_R_SUCCESS;
 
-failure:
+cleanup:
 	if (callbacks->commit != NULL) {
 		callbacks->commit(callbacks->add_private);
 	}

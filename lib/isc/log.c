@@ -796,14 +796,7 @@ greatest_version(isc_logfile_t *file, int versions, int *greatestp) {
 	bnamelen = strlen(bname);
 
 	isc_dir_init(&dir);
-	result = isc_dir_open(&dir, dirname);
-
-	/*
-	 * Return if the directory open failed.
-	 */
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(isc_dir_open(&dir, dirname));
 
 	while (isc_dir_read(&dir) == ISC_R_SUCCESS) {
 		if (dir.entry.length > bnamelen &&
@@ -943,14 +936,7 @@ remove_old_tsversions(isc_logfile_t *file, int versions) {
 	bnamelen = strlen(bname);
 
 	isc_dir_init(&dir);
-	result = isc_dir_open(&dir, dirname);
-
-	/*
-	 * Return if the directory open failed.
-	 */
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(isc_dir_open(&dir, dirname));
 
 	last = last_to_keep(versions, &dir, bname, bnamelen);
 
@@ -1023,10 +1009,7 @@ roll_increment(isc_logfile_t *file) {
 		 * Get the largest existing version and remove any
 		 * version greater than the permitted version.
 		 */
-		result = greatest_version(file, file->versions, &greatest);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(greatest_version(file, file->versions, &greatest));
 
 		/*
 		 * Increment if greatest is not the actual maximum value.

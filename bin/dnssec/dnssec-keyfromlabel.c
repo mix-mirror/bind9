@@ -116,7 +116,7 @@ main(int argc, char **argv) {
 	dst_algorithm_t alg;
 	bool oldstyle = false;
 	int ch;
-	isc_result_t ret;
+	isc_result_t result;
 	isc_textregion_t r;
 	char filename[255];
 	isc_buffer_t buf;
@@ -182,10 +182,10 @@ main(int argc, char **argv) {
 			break;
 		case 'K':
 			directory = isc_commandline_argument;
-			ret = try_dir(directory);
-			if (ret != ISC_R_SUCCESS) {
+			result = try_dir(directory);
+			if (result != ISC_R_SUCCESS) {
 				fatal("cannot open directory %s: %s", directory,
-				      isc_result_totext(ret));
+				      isc_result_totext(result));
 			}
 			break;
 		case 'k':
@@ -358,11 +358,11 @@ main(int argc, char **argv) {
 		isc_buffer_init(&buf, argv[isc_commandline_index],
 				strlen(argv[isc_commandline_index]));
 		isc_buffer_add(&buf, strlen(argv[isc_commandline_index]));
-		ret = dns_name_fromtext(name, &buf, dns_rootname, 0);
-		if (ret != ISC_R_SUCCESS) {
+		result = dns_name_fromtext(name, &buf, dns_rootname, 0);
+		if (result != ISC_R_SUCCESS) {
 			fatal("invalid key name %s: %s",
 			      argv[isc_commandline_index],
-			      isc_result_totext(ret));
+			      isc_result_totext(result));
 		}
 
 		if (strchr(label, ':') == NULL) {
@@ -382,8 +382,8 @@ main(int argc, char **argv) {
 
 		r.base = algname;
 		r.length = strlen(algname);
-		ret = dst_algorithm_fromtext(&alg, &r);
-		if (ret != ISC_R_SUCCESS) {
+		result = dst_algorithm_fromtext(&alg, &r);
+		if (result != ISC_R_SUCCESS) {
 			fatal("unknown algorithm %s", algname);
 		}
 
@@ -459,12 +459,13 @@ main(int argc, char **argv) {
 			fatal("-S and -G cannot be used together");
 		}
 
-		ret = dst_key_fromnamedfile(predecessor, directory,
-					    DST_TYPE_PUBLIC | DST_TYPE_PRIVATE,
-					    isc_g_mctx, &prevkey);
-		if (ret != ISC_R_SUCCESS) {
+		result = dst_key_fromnamedfile(predecessor, directory,
+					       DST_TYPE_PUBLIC |
+						       DST_TYPE_PRIVATE,
+					       isc_g_mctx, &prevkey);
+		if (result != ISC_R_SUCCESS) {
 			fatal("Invalid keyfile %s: %s", predecessor,
-			      isc_result_totext(ret));
+			      isc_result_totext(result));
 		}
 		if (!dst_key_isprivate(prevkey)) {
 			fatal("%s is not a private key", predecessor);
@@ -482,16 +483,16 @@ main(int argc, char **argv) {
 			      keystr, major, minor);
 		}
 
-		ret = dst_key_gettime(prevkey, DST_TIME_ACTIVATE, &when);
-		if (ret != ISC_R_SUCCESS) {
+		result = dst_key_gettime(prevkey, DST_TIME_ACTIVATE, &when);
+		if (result != ISC_R_SUCCESS) {
 			fatal("Key %s has no activation date.\n\t"
 			      "You must use dnssec-settime -A to set one "
 			      "before generating a successor.",
 			      keystr);
 		}
 
-		ret = dst_key_gettime(prevkey, DST_TIME_INACTIVE, &activate);
-		if (ret != ISC_R_SUCCESS) {
+		result = dst_key_gettime(prevkey, DST_TIME_INACTIVE, &activate);
+		if (result != ISC_R_SUCCESS) {
 			fatal("Key %s has no inactivation date.\n\t"
 			      "You must use dnssec-settime -I to set one "
 			      "before generating a successor.",
@@ -510,8 +511,8 @@ main(int argc, char **argv) {
 			      keystr);
 		}
 
-		ret = dst_key_gettime(prevkey, DST_TIME_DELETE, &when);
-		if (ret != ISC_R_SUCCESS) {
+		result = dst_key_gettime(prevkey, DST_TIME_DELETE, &when);
+		if (result != ISC_R_SUCCESS) {
 			fprintf(stderr,
 				"%s: WARNING: Key %s has no removal "
 				"date;\n\t it will remain in the zone "
@@ -556,16 +557,16 @@ main(int argc, char **argv) {
 	isc_buffer_init(&buf, filename, sizeof(filename) - 1);
 
 	/* associate the key */
-	ret = dst_key_fromlabel(name, alg, flags, DNS_KEYPROTO_DNSSEC, rdclass,
-				label, NULL, isc_g_mctx, &key);
+	result = dst_key_fromlabel(name, alg, flags, DNS_KEYPROTO_DNSSEC,
+				   rdclass, label, NULL, isc_g_mctx, &key);
 
-	if (ret != ISC_R_SUCCESS) {
+	if (result != ISC_R_SUCCESS) {
 		char namestr[DNS_NAME_FORMATSIZE];
 		char algstr[DNS_SECALG_FORMATSIZE];
 		dns_name_format(name, namestr, sizeof(namestr));
 		dns_secalg_format(alg, algstr, sizeof(algstr));
 		fatal("failed to get key %s/%s: %s", namestr, algstr,
-		      isc_result_totext(ret));
+		      isc_result_totext(result));
 		UNREACHABLE();
 		exit(EXIT_FAILURE);
 	}
@@ -651,10 +652,10 @@ main(int argc, char **argv) {
 			  &exact))
 	{
 		isc_buffer_clear(&buf);
-		ret = dst_key_buildfilename(key, 0, directory, &buf);
-		if (ret != ISC_R_SUCCESS) {
+		result = dst_key_buildfilename(key, 0, directory, &buf);
+		if (result != ISC_R_SUCCESS) {
 			fatal("dst_key_buildfilename returned: %s\n",
-			      isc_result_totext(ret));
+			      isc_result_totext(result));
 		}
 		if (exact) {
 			fatal("%s: %s already exists\n",
@@ -675,19 +676,19 @@ main(int argc, char **argv) {
 			isc_commandline_progname, filename);
 	}
 
-	ret = dst_key_tofile(key, options, directory);
-	if (ret != ISC_R_SUCCESS) {
+	result = dst_key_tofile(key, options, directory);
+	if (result != ISC_R_SUCCESS) {
 		char keystr[DST_KEY_FORMATSIZE];
 		dst_key_format(key, keystr, sizeof(keystr));
 		fatal("failed to write key %s: %s\n", keystr,
-		      isc_result_totext(ret));
+		      isc_result_totext(result));
 	}
 
 	isc_buffer_clear(&buf);
-	ret = dst_key_buildfilename(key, 0, NULL, &buf);
-	if (ret != ISC_R_SUCCESS) {
+	result = dst_key_buildfilename(key, 0, NULL, &buf);
+	if (result != ISC_R_SUCCESS) {
 		fatal("dst_key_buildfilename returned: %s\n",
-		      isc_result_totext(ret));
+		      isc_result_totext(result));
 	}
 	printf("%s\n", filename);
 	dst_key_free(&key);

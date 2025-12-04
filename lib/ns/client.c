@@ -610,10 +610,7 @@ ns_client_send(ns_client_t *client) {
 	 * Create an OPT for our reply.
 	 */
 	if ((client->inner.attributes & NS_CLIENTATTR_WANTOPT) != 0) {
-		result = ns_client_addopt(client, client->message);
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup;
-		}
+		CHECK(ns_client_addopt(client, client->message));
 		opt_included = true;
 	}
 
@@ -642,10 +639,7 @@ ns_client_send(ns_client_t *client) {
 	dns_compress_init(&cctx, client->manager->mctx, compflags);
 	cleanup_cctx = true;
 
-	result = dns_message_renderbegin(client->message, &cctx, &buffer);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(dns_message_renderbegin(client->message, &cctx, &buffer));
 
 	result = dns_message_rendersection(client->message,
 					   DNS_SECTION_QUESTION, 0);
@@ -689,10 +683,7 @@ ns_client_send(ns_client_t *client) {
 		goto cleanup;
 	}
 renderend:
-	result = dns_message_renderend(client->message);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(dns_message_renderend(client->message));
 
 #ifdef HAVE_DNSTAP
 	memset(&zr, 0, sizeof(zr));
@@ -1083,10 +1074,7 @@ ns_client_addopt(ns_client_t *client, dns_message_t *message) {
 				.value = (unsigned char *)nsidp,
 				.length = (uint16_t)strlen(nsidp),
 			};
-			result = dns_message_ednsaddopt(message, &option);
-			if (result != ISC_R_SUCCESS) {
-				return result;
-			}
+			RETERR(dns_message_ednsaddopt(message, &option));
 		}
 	}
 
@@ -1102,10 +1090,7 @@ ns_client_addopt(ns_client_t *client, dns_message_t *message) {
 		dns_ednsopt_t option = { .code = DNS_OPT_COOKIE,
 					 .length = COOKIE_SIZE,
 					 .value = cookie };
-		result = dns_message_ednsaddopt(message, &option);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(dns_message_ednsaddopt(message, &option));
 	}
 
 	if ((client->inner.attributes & NS_CLIENTATTR_HAVEEXPIRE) != 0) {
@@ -1117,10 +1102,7 @@ ns_client_addopt(ns_client_t *client, dns_message_t *message) {
 		dns_ednsopt_t option = { .code = DNS_OPT_EXPIRE,
 					 .value = expire,
 					 .length = 4 };
-		result = dns_message_ednsaddopt(message, &option);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(dns_message_ednsaddopt(message, &option));
 	}
 
 	if (((client->inner.attributes & NS_CLIENTATTR_HAVEECS) != 0) &&
@@ -1179,10 +1161,7 @@ ns_client_addopt(ns_client_t *client, dns_message_t *message) {
 		dns_ednsopt_t option = { .code = DNS_OPT_CLIENT_SUBNET,
 					 .length = addrl + 4,
 					 .value = ecs };
-		result = dns_message_ednsaddopt(message, &option);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(dns_message_ednsaddopt(message, &option));
 	}
 
 	if (TCP_CLIENT(client) && USEKEEPALIVE(client)) {
@@ -1196,10 +1175,7 @@ ns_client_addopt(ns_client_t *client, dns_message_t *message) {
 		dns_ednsopt_t option = { .code = DNS_OPT_TCP_KEEPALIVE,
 					 .length = 2,
 					 .value = advtimo };
-		result = dns_message_ednsaddopt(message, &option);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(dns_message_ednsaddopt(message, &option));
 	}
 
 	for (size_t i = 0; i < DNS_EDE_MAX_ERRORS; i++) {
@@ -1212,10 +1188,7 @@ ns_client_addopt(ns_client_t *client, dns_message_t *message) {
 		dns_ednsopt_t option = { .code = DNS_OPT_EDE,
 					 .length = ede->length,
 					 .value = ede->value };
-		result = dns_message_ednsaddopt(message, &option);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(dns_message_ednsaddopt(message, &option));
 	}
 	if ((client->inner.attributes & NS_CLIENTATTR_HAVEZONEVERSION) != 0) {
 		dns_ednsopt_t option = {
@@ -1223,10 +1196,7 @@ ns_client_addopt(ns_client_t *client, dns_message_t *message) {
 			.length = client->inner.zoneversionlength,
 			.value = client->inner.zoneversion
 		};
-		result = dns_message_ednsaddopt(message, &option);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(dns_message_ednsaddopt(message, &option));
 	}
 
 	if (WANTRC(client)) {
@@ -1240,10 +1210,7 @@ ns_client_addopt(ns_client_t *client, dns_message_t *message) {
 				.length = rad->length,
 				.value = rad->ndata,
 			};
-			result = dns_message_ednsaddopt(message, &option);
-			if (result != ISC_R_SUCCESS) {
-				return result;
-			}
+			RETERR(dns_message_ednsaddopt(message, &option));
 		}
 	}
 

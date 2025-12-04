@@ -36,7 +36,7 @@
 	result = (dns_name_fromtext(name, &namesrc, dns_rootname, \
 				    DNS_NAME_DOWNCASE));          \
 	if (result != ISC_R_SUCCESS) {                            \
-		goto failure;                                     \
+		goto cleanup;                                     \
 	}
 
 #define parse_transport_option(map, transport, name, setter)      \
@@ -126,7 +126,7 @@ add_doh_transports(const cfg_obj_t *transportlist, dns_transport_list_t *list) {
 	}
 
 	return ISC_R_SUCCESS;
-failure:
+cleanup:
 	cfg_obj_log(doh, ISC_LOG_ERROR, "configuring DoH '%s': %s", dohid,
 		    isc_result_totext(result));
 
@@ -147,8 +147,7 @@ add_tls_transports(const cfg_obj_t *transportlist, dns_transport_list_t *list) {
 		tlsid = cfg_obj_asstring(cfg_map_getname(tls));
 
 		if (!strcmp(tlsid, "ephemeral")) {
-			result = ISC_R_UNEXPECTEDTOKEN;
-			goto failure;
+			CLEANUP(ISC_R_UNEXPECTEDTOKEN);
 		}
 
 		create_name(tlsid, tlsname);
@@ -176,17 +175,12 @@ add_tls_transports(const cfg_obj_t *transportlist, dns_transport_list_t *list) {
 	}
 
 	return ISC_R_SUCCESS;
-failure:
+cleanup:
 	cfg_obj_log(tls, ISC_LOG_ERROR, "configuring tls '%s': %s", tlsid,
 		    isc_result_totext(result));
 
 	return result;
 }
-
-#define CHECK(f)                             \
-	if ((result = f) != ISC_R_SUCCESS) { \
-		goto failure;                \
-	}
 
 static isc_result_t
 transport_list_fromconfig(const cfg_obj_t *config, dns_transport_list_t *list) {
@@ -222,7 +216,7 @@ transport_list_add_ephemeral(dns_transport_list_t *list) {
 	dns_transport_set_tlsname(transport, "ephemeral");
 
 	return;
-failure:
+cleanup:
 	RUNTIME_CHECK(result == ISC_R_SUCCESS);
 }
 
@@ -237,10 +231,7 @@ named_transports_fromconfig(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 	transport_list_add_ephemeral(list);
 
 	if (config != NULL) {
-		result = transport_list_fromconfig(config, list);
-		if (result != ISC_R_SUCCESS) {
-			goto failure;
-		}
+		CHECK(transport_list_fromconfig(config, list));
 	}
 
 	if (vconfig != NULL) {
@@ -250,7 +241,7 @@ named_transports_fromconfig(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 
 	*listp = list;
 	return ISC_R_SUCCESS;
-failure:
+cleanup:
 	dns_transport_list_detach(&list);
 	return result;
 }

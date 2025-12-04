@@ -64,14 +64,6 @@
 #define STATS_JSON_VERSION_MINOR "8"
 #define STATS_JSON_VERSION	 STATS_JSON_VERSION_MAJOR "." STATS_JSON_VERSION_MINOR
 
-#define CHECK(m)                               \
-	do {                                   \
-		result = (m);                  \
-		if (result != ISC_R_SUCCESS) { \
-			goto cleanup;          \
-		}                              \
-	} while (0)
-
 struct named_statschannel {
 	/* Unlocked */
 	isc_httpdmgr_t *httpdmgr;
@@ -2413,8 +2405,7 @@ zone_jsonrender(dns_zone_t *zone, void *arg) {
 		if (zonestats != NULL) {
 			json_object *counters = json_object_new_object();
 			if (counters == NULL) {
-				result = ISC_R_NOMEMORY;
-				goto cleanup;
+				CLEANUP(ISC_R_NOMEMORY);
 			}
 
 			result = dump_stats(zonestats, isc_statsformat_json,
@@ -2438,8 +2429,7 @@ zone_jsonrender(dns_zone_t *zone, void *arg) {
 		if (gluecachestats != NULL) {
 			json_object *counters = json_object_new_object();
 			if (counters == NULL) {
-				result = ISC_R_NOMEMORY;
-				goto cleanup;
+				CLEANUP(ISC_R_NOMEMORY);
 			}
 
 			result = dump_stats(
@@ -2592,8 +2582,7 @@ xfrin_jsonrender(dns_zone_t *zone, void *arg) {
 	}
 
 	if (xfrinobj == NULL) {
-		result = ISC_R_NOMEMORY;
-		goto cleanup;
+		CLEANUP(ISC_R_NOMEMORY);
 	}
 
 	result = dns_zone_getxfr(zone, &xfr, &is_firstrefresh, &is_running,
@@ -3175,8 +3164,7 @@ generatejson(named_server_t *server, size_t *msglen, const char **msg,
 						0);
 					if (result != ISC_R_SUCCESS) {
 						json_object_put(counters);
-						result = dumparg.result;
-						goto cleanup;
+						CHECK(dumparg.result);
 					}
 
 					json_object_object_add(res, "adb",
@@ -3662,7 +3650,7 @@ add_listener(named_server_t *server, named_statschannel_t **listenerp,
 	if ((pf == AF_INET && isc_net_probeipv4() != ISC_R_SUCCESS) ||
 	    (pf == AF_INET6 && isc_net_probeipv6() != ISC_R_SUCCESS))
 	{
-		CHECK(ISC_R_FAMILYNOSUPPORT);
+		CLEANUP(ISC_R_FAMILYNOSUPPORT);
 	}
 
 	CHECK(isc_httpdmgr_create(server->mctx, addr, client_ok,

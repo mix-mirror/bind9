@@ -622,12 +622,7 @@ isc_url_parse(const char *buf, size_t buflen, bool is_connect,
 	}
 
 	if (up->field_set & (1 << ISC_UF_HOST)) {
-		isc_result_t result;
-
-		result = http_parse_host(buf, up, found_at);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(http_parse_host(buf, up, found_at));
 	}
 
 	/* CONNECT requests can only contain "hostname:port" */

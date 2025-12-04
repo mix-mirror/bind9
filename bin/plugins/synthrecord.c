@@ -21,14 +21,6 @@
 
 #include <ns/hooks.h>
 
-#define CHECK(op)                              \
-	do {                                   \
-		result = (op);                 \
-		if (result != ISC_R_SUCCESS) { \
-			goto cleanup;          \
-		}                              \
-	} while (0)
-
 #define DEFAULT_TTL 300
 
 typedef enum { UNDEFINED, FORWARD, REVERSE } synthrecord_mode_t;
@@ -70,7 +62,6 @@ synthrecord_reverseanswer(synthrecord_t *inst, isc_netaddr_t *na,
 	isc_buffer_t addrb;
 	char addrbdata[DNS_NAME_FORMATSIZE];
 	isc_region_t addrr;
-	isc_result_t result;
 
 	REQUIRE(DNS_NAME_VALID(synthname));
 	REQUIRE(na->family == AF_INET || na->family == AF_INET6);
@@ -79,10 +70,7 @@ synthrecord_reverseanswer(synthrecord_t *inst, isc_netaddr_t *na,
 	isc_buffer_copyregion(&b, &inst->prefix);
 
 	isc_buffer_init(&addrb, addrbdata, sizeof(addrbdata));
-	result = isc_netaddr_totext(na, &addrb);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(isc_netaddr_totext(na, &addrb));
 
 	/*
 	 * IDN compatibility, as an IPv6 begining or ending with `::` will be
@@ -476,11 +464,8 @@ synthrecord_initorigin(synthrecord_t *inst, const cfg_obj_t *synthrecordcfg,
 	dns_name_init(&inst->origin);
 	if (result == ISC_R_SUCCESS) {
 		originstr = cfg_obj_asstring(obj);
-		result = dns_name_fromstring(&inst->origin, originstr, NULL, 0,
-					     inst->mctx);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(dns_name_fromstring(&inst->origin, originstr, NULL, 0,
+					   inst->mctx));
 
 		if (!dns_name_isabsolute(&inst->origin)) {
 			isc_log_write(NS_LOGCATEGORY_GENERAL,
@@ -525,11 +510,8 @@ synthrecord_parseallowsynth(synthrecord_t *inst, const cfg_obj_t *cfg,
 		return result;
 	}
 
-	result = cfg_acl_fromconfig(obj, cfg, aclctx, inst->mctx, 0,
-				    &inst->allowedsynth);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(cfg_acl_fromconfig(obj, cfg, aclctx, inst->mctx, 0,
+				  &inst->allowedsynth));
 
 	for (unsigned int i = 0; i < inst->allowedsynth->length; i++) {
 		switch (inst->allowedsynth->elements[i].type) {

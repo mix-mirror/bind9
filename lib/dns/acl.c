@@ -271,7 +271,6 @@ dns_acl_match_port_transport(const isc_netaddr_t *reqaddr,
  */
 isc_result_t
 dns_acl_merge(dns_acl_t *dest, dns_acl_t *source, bool pos) {
-	isc_result_t result;
 	unsigned int nelem, i;
 	int max_node = 0, nodes;
 
@@ -345,10 +344,7 @@ dns_acl_merge(dns_acl_t *dest, dns_acl_t *source, bool pos) {
 	 * node_count value is set correctly afterward.
 	 */
 	nodes = max_node + dns_acl_node_count(dest);
-	result = dns_iptable_merge(dest->iptable, source->iptable, pos);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_iptable_merge(dest->iptable, source->iptable, pos));
 	if (nodes > dns_acl_node_count(dest)) {
 		dns_acl_node_count(dest) = nodes;
 	}

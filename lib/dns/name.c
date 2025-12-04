@@ -1707,7 +1707,6 @@ dns_name_dynamic(const dns_name_t *name) {
 
 isc_result_t
 dns_name_print(const dns_name_t *name, FILE *stream) {
-	isc_result_t result;
 	isc_buffer_t b;
 	isc_region_t r;
 	char t[1024];
@@ -1719,10 +1718,7 @@ dns_name_print(const dns_name_t *name, FILE *stream) {
 	REQUIRE(DNS_NAME_VALID(name));
 
 	isc_buffer_init(&b, t, sizeof(t));
-	result = dns_name_totext(name, 0, &b);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_name_totext(name, 0, &b));
 	isc_buffer_usedregion(&b, &r);
 	fprintf(stream, "%.*s", (int)r.length, (char *)r.base);
 
@@ -1774,7 +1770,6 @@ dns_name_format(const dns_name_t *name, char *cp, unsigned int size) {
  */
 isc_result_t
 dns_name_tostring(const dns_name_t *name, char **target, isc_mem_t *mctx) {
-	isc_result_t result;
 	isc_buffer_t buf;
 	isc_region_t reg;
 	char *p, txt[DNS_NAME_FORMATSIZE];
@@ -1783,10 +1778,7 @@ dns_name_tostring(const dns_name_t *name, char **target, isc_mem_t *mctx) {
 	REQUIRE(target != NULL && *target == NULL);
 
 	isc_buffer_init(&buf, txt, sizeof(txt));
-	result = dns_name_totext(name, 0, &buf);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_name_totext(name, 0, &buf));
 
 	isc_buffer_usedregion(&buf, &reg);
 	p = isc_mem_allocate(mctx, reg.length + 1);
@@ -1801,7 +1793,6 @@ isc_result_t
 dns_name_fromstring(dns_name_t *target, const char *src,
 		    const dns_name_t *origin, unsigned int options,
 		    isc_mem_t *mctx) {
-	isc_result_t result;
 	isc_buffer_t buf;
 	dns_fixedname_t fn;
 	dns_name_t *name;
@@ -1816,15 +1807,13 @@ dns_name_fromstring(dns_name_t *target, const char *src,
 		name = dns_fixedname_initname(&fn);
 	}
 
-	result = dns_name_fromtext(name, &buf, origin, options);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_name_fromtext(name, &buf, origin, options));
 
 	if (name != target) {
 		dns_name_dup(name, mctx, target);
 	}
-	return result;
+
+	return ISC_R_SUCCESS;
 }
 
 void

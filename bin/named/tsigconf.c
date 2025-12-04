@@ -38,7 +38,7 @@ add_initial_keys(const cfg_obj_t *list, dns_tsigkeyring_t *ring,
 	const char *keyid = NULL;
 	unsigned char *secret = NULL;
 	int secretalloc = 0;
-	isc_result_t ret;
+	isc_result_t result;
 
 	CFG_LIST_FOREACH(list, element) {
 		const cfg_obj_t *algobj = NULL;
@@ -67,11 +67,8 @@ add_initial_keys(const cfg_obj_t *list, dns_tsigkeyring_t *ring,
 		 */
 		isc_buffer_constinit(&keynamesrc, keyid, strlen(keyid));
 		isc_buffer_add(&keynamesrc, strlen(keyid));
-		ret = dns_name_fromtext(keyname, &keynamesrc, dns_rootname,
-					DNS_NAME_DOWNCASE);
-		if (ret != ISC_R_SUCCESS) {
-			goto failure;
-		}
+		CHECK(dns_name_fromtext(keyname, &keynamesrc, dns_rootname,
+					DNS_NAME_DOWNCASE));
 
 		/*
 		 * Create the algorithm.
@@ -84,31 +81,27 @@ add_initial_keys(const cfg_obj_t *list, dns_tsigkeyring_t *ring,
 				    "key '%s': has a "
 				    "unsupported algorithm '%s'",
 				    keyid, algstr);
-			ret = DNS_R_BADALG;
-			goto failure;
+			CLEANUP(DNS_R_BADALG);
 		}
 
 		secretstr = cfg_obj_asstring(secretobj);
 		secretalloc = secretlen = strlen(secretstr) * 3 / 4;
 		secret = isc_mem_get(mctx, secretlen);
 		isc_buffer_init(&secretbuf, secret, secretlen);
-		ret = isc_base64_decodestring(secretstr, &secretbuf);
-		if (ret != ISC_R_SUCCESS) {
-			goto failure;
-		}
+		CHECK(isc_base64_decodestring(secretstr, &secretbuf));
 		secretlen = isc_buffer_usedlength(&secretbuf);
 
-		ret = dns_tsigkey_create(keyname, alg, secret, secretlen, mctx,
-					 &tsigkey);
+		result = dns_tsigkey_create(keyname, alg, secret, secretlen,
+					    mctx, &tsigkey);
 		isc_mem_put(mctx, secret, secretalloc);
-		if (ret == ISC_R_SUCCESS) {
-			ret = dns_tsigkeyring_add(ring, tsigkey);
+		if (result == ISC_R_SUCCESS) {
+			result = dns_tsigkeyring_add(ring, tsigkey);
 		}
-		if (ret != ISC_R_SUCCESS) {
+		if (result != ISC_R_SUCCESS) {
 			if (tsigkey != NULL) {
 				dns_tsigkey_detach(&tsigkey);
 			}
-			goto failure;
+			goto cleanup;
 		}
 		/*
 		 * Set digest bits.
@@ -119,13 +112,13 @@ add_initial_keys(const cfg_obj_t *list, dns_tsigkeyring_t *ring,
 
 	return ISC_R_SUCCESS;
 
-failure:
+cleanup:
 	if (secret != NULL) {
 		isc_mem_put(mctx, secret, secretalloc);
 	}
 	cfg_obj_log(key, ISC_LOG_ERROR, "configuring key '%s': %s", keyid,
-		    isc_result_totext(ret));
-	return ret;
+		    isc_result_totext(result));
+	return result;
 }
 
 isc_result_t
@@ -159,16 +152,13 @@ named_tsigkeyring_fromconfig(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 		if (result != ISC_R_SUCCESS) {
 			continue;
 		}
-		result = add_initial_keys(keylist, ring, mctx);
-		if (result != ISC_R_SUCCESS) {
-			goto failure;
-		}
+		CHECK(add_initial_keys(keylist, ring, mctx));
 	}
 
 	*ringp = ring;
 	return ISC_R_SUCCESS;
 
-failure:
+cleanup:
 	dns_tsigkeyring_detach(&ring);
 	return result;
 }

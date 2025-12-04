@@ -576,15 +576,13 @@ dir_current(char *dirname, size_t length) {
 
 isc_result_t
 isc_file_absolutepath(const char *filename, char *path, size_t pathlen) {
-	isc_result_t result;
-	result = dir_current(path, pathlen);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dir_current(path, pathlen));
+
 	if (strlen(path) + strlen(filename) + 1 > pathlen) {
 		return ISC_R_NOSPACE;
 	}
 	strlcat(path, filename, pathlen);
+
 	return ISC_R_SUCCESS;
 }
 
@@ -697,7 +695,6 @@ isc_file_sanitize(const char *dir, const char *base, const char *ext,
 	unsigned int digestlen;
 	char hash[ISC_MAX_MD_SIZE * 2 + 1];
 	size_t l = 0;
-	isc_result_t err;
 
 	REQUIRE(base != NULL);
 	REQUIRE(path != NULL);
@@ -724,16 +721,10 @@ isc_file_sanitize(const char *dir, const char *base, const char *ext,
 	}
 
 	/* Check whether the full-length SHA256 hash filename exists */
-	err = isc_md(ISC_MD_SHA256, (const unsigned char *)base, strlen(base),
-		     digest, &digestlen);
-	if (err != ISC_R_SUCCESS) {
-		return err;
-	}
+	RETERR(isc_md(ISC_MD_SHA256, (const unsigned char *)base, strlen(base),
+		      digest, &digestlen));
 
-	err = digest2hex(digest, digestlen, hash, sizeof(hash));
-	if (err != ISC_R_SUCCESS) {
-		return err;
-	}
+	RETERR(digest2hex(digest, digestlen, hash, sizeof(hash)));
 
 	snprintf(buf, sizeof(buf), "%s%s%s%s%s", dir != NULL ? dir : "",
 		 dir != NULL ? "/" : "", hash, ext != NULL ? "." : "",

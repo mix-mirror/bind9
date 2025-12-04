@@ -114,7 +114,6 @@ isc_sockaddr_eqaddrprefix(const isc_sockaddr_t *a, const isc_sockaddr_t *b,
 
 isc_result_t
 isc_sockaddr_totext(const isc_sockaddr_t *sockaddr, isc_buffer_t *target) {
-	isc_result_t result;
 	isc_netaddr_t netaddr;
 	char pbuf[sizeof("65000")];
 	unsigned int plen;
@@ -144,10 +143,7 @@ isc_sockaddr_totext(const isc_sockaddr_t *sockaddr, isc_buffer_t *target) {
 	INSIST(plen < sizeof(pbuf));
 
 	isc_netaddr_fromsockaddr(&netaddr, sockaddr);
-	result = isc_netaddr_totext(&netaddr, target);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(isc_netaddr_totext(&netaddr, target));
 
 	if (1 + plen + 1 > isc_buffer_availablelength(target)) {
 		return ISC_R_NOSPACE;

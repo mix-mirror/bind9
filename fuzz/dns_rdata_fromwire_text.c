@@ -210,5 +210,6 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	assert(target.used == size);
 	assert(!memcmp(target.base, data, size));
 
+cleanup:
 	return 0;
 }

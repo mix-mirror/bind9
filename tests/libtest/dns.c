@@ -65,10 +65,7 @@ dns_test_makeview(const char *name, bool with_dispatchmgr, bool with_cache,
 	dns_dispatchmgr_t *dispatchmgr = NULL;
 
 	if (with_dispatchmgr) {
-		result = dns_dispatchmgr_create(isc_g_mctx, &dispatchmgr);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(dns_dispatchmgr_create(isc_g_mctx, &dispatchmgr));
 	}
 
 	dns_view_create(isc_g_mctx, dispatchmgr, dns_rdataclass_in, name,
@@ -211,16 +208,10 @@ dns_test_loaddb(dns_db_t **db, dns_dbtype_t dbtype, const char *origin,
 
 	name = dns_fixedname_initname(&fixed);
 
-	result = dns_name_fromstring(name, origin, dns_rootname, 0, NULL);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_name_fromstring(name, origin, dns_rootname, 0, NULL));
 
-	result = dns_db_create(isc_g_mctx, dbimp, name, dbtype,
-			       dns_rdataclass_in, 0, NULL, db);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_db_create(isc_g_mctx, dbimp, name, dbtype, dns_rdataclass_in,
+			     0, NULL, db));
 
 	result = dns_db_load(*db, testfile, dns_masterformat_text, 0);
 	return result;
@@ -263,7 +254,7 @@ dns_test_tohex(const unsigned char *data, size_t len, char *buf,
 isc_result_t
 dns_test_getdata(const char *file, unsigned char *buf, size_t bufsiz,
 		 size_t *sizep) {
-	isc_result_t result;
+	isc_result_t result = ISC_R_SUCCESS;
 	unsigned char *bp;
 	char *rp, *wp;
 	char s[BUFSIZ];
@@ -271,10 +262,7 @@ dns_test_getdata(const char *file, unsigned char *buf, size_t bufsiz,
 	FILE *f = NULL;
 	int n;
 
-	result = isc_stdio_open(file, "r", &f);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(isc_stdio_open(file, "r", &f));
 
 	bp = buf;
 	while (fgets(s, sizeof(s), f) != NULL) {

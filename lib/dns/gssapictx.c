@@ -82,13 +82,6 @@ static gss_OID_desc __gss_spnego_mechanism_oid_desc = {
 		(r).base = (gb).value;                  \
 	} while (0)
 
-#define RETERR(x)                            \
-	do {                                 \
-		result = (x);                \
-		if (result != ISC_R_SUCCESS) \
-			goto out;            \
-	} while (0)
-
 static void
 name_to_gbuffer(const dns_name_t *name, isc_buffer_t *buffer,
 		gss_buffer_desc *gbuffer) {
@@ -321,8 +314,7 @@ dst_gssapi_initctx(const dns_name_t *name, isc_buffer_t *intoken,
 	gret = gss_import_name(&minor, &gnamebuf, GSS_C_NO_OID, &gname);
 	if (gret != GSS_S_COMPLETE) {
 		gss_err_message(mctx, gret, minor, err_message);
-		result = ISC_R_FAILURE;
-		goto out;
+		CLEANUP(ISC_R_FAILURE);
 	}
 
 	if (intoken != NULL) {
@@ -353,8 +345,7 @@ dst_gssapi_initctx(const dns_name_t *name, isc_buffer_t *intoken,
 			gss_log(3, "Failure initiating security context");
 		}
 
-		result = ISC_R_FAILURE;
-		goto out;
+		CLEANUP(ISC_R_FAILURE);
 	}
 
 	/*
@@ -367,7 +358,7 @@ dst_gssapi_initctx(const dns_name_t *name, isc_buffer_t *intoken,
 	 */
 	if (gouttoken.length != 0U) {
 		GBUFFER_TO_REGION(gouttoken, r);
-		RETERR(isc_buffer_copyregion(outtoken, &r));
+		CHECK(isc_buffer_copyregion(outtoken, &r));
 	}
 
 	if (gret == GSS_S_COMPLETE) {
@@ -376,7 +367,7 @@ dst_gssapi_initctx(const dns_name_t *name, isc_buffer_t *intoken,
 		result = DNS_R_CONTINUE;
 	}
 
-out:
+cleanup:
 	if (gouttoken.length != 0U) {
 		(void)gss_release_buffer(&minor, &gouttoken);
 	}
@@ -479,7 +470,7 @@ dst_gssapi_acceptctx(const char *gssapi_keytab, isc_region_t *intoken,
 		isc_buffer_allocate(mctx, outtoken,
 				    (unsigned int)gouttoken.length);
 		GBUFFER_TO_REGION(gouttoken, r);
-		RETERR(isc_buffer_copyregion(*outtoken, &r));
+		CHECK(isc_buffer_copyregion(*outtoken, &r));
 		(void)gss_release_buffer(&minor, &gouttoken);
 	}
 
@@ -489,7 +480,7 @@ dst_gssapi_acceptctx(const char *gssapi_keytab, isc_region_t *intoken,
 			gss_log(3, "failed gss_display_name: %s",
 				gss_error_tostring(gret, minor, buf,
 						   sizeof(buf)));
-			RETERR(ISC_R_FAILURE);
+			CLEANUP(ISC_R_FAILURE);
 		}
 
 		/*
@@ -511,7 +502,7 @@ dst_gssapi_acceptctx(const char *gssapi_keytab, isc_region_t *intoken,
 		isc_buffer_init(&namebuf, r.base, r.length);
 		isc_buffer_add(&namebuf, r.length);
 
-		RETERR(dns_name_fromtext(principal, &namebuf, dns_rootname, 0));
+		CHECK(dns_name_fromtext(principal, &namebuf, dns_rootname, 0));
 
 		if (gnamebuf.length != 0U) {
 			gret = gss_release_buffer(&minor, &gnamebuf);
@@ -527,7 +518,7 @@ dst_gssapi_acceptctx(const char *gssapi_keytab, isc_region_t *intoken,
 
 	*ctxout = context;
 
-out:
+cleanup:
 	if (gname != NULL) {
 		gret = gss_release_name(&minor, &gname);
 		if (gret != GSS_S_COMPLETE) {

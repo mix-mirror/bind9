@@ -258,10 +258,7 @@ make_dispatchset(dns_dispatchmgr_t *dispatchmgr, unsigned int ndisps,
 	dns_dispatch_t *disp = NULL;
 
 	isc_sockaddr_any(&any);
-	result = dns_dispatch_createudp(dispatchmgr, &any, &disp);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_dispatch_createudp(dispatchmgr, &any, &disp));
 
 	result = dns_dispatchset_create(isc_g_mctx, disp, dsetp, ndisps);
 	dns_dispatch_detach(&disp);

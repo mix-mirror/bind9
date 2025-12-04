@@ -80,14 +80,6 @@
 #define TOKEN_STRING(pctx) (pctx->token.value.as_textregion.base)
 #define TOKEN_REGION(pctx) (pctx->token.value.as_textregion)
 
-/* Check a return value. */
-#define CHECK(op)                            \
-	do {                                 \
-		result = (op);               \
-		if (result != ISC_R_SUCCESS) \
-			goto cleanup;        \
-	} while (0)
-
 /* cfg_obj_t magic number */
 #define CFGOBJ_MAGIC	  ISC_MAGIC('c', 'f', 'g', 'o')
 #define VALID_CFGOBJ(obj) ISC_MAGIC_VALID(obj, CFGOBJ_MAGIC)
@@ -444,16 +436,11 @@ cfg_parser_currentfile(cfg_parser_t *pctx) {
 
 isc_result_t
 cfg_parse_obj(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
-	isc_result_t result;
-
 	REQUIRE(pctx != NULL);
 	REQUIRE(type != NULL);
 	REQUIRE(ret != NULL && *ret == NULL);
 
-	result = type->parse(pctx, type, ret);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(type->parse(pctx, type, ret));
 	ENSURE(*ret != NULL);
 	return ISC_R_SUCCESS;
 }
@@ -1343,8 +1330,7 @@ cfg_parse_duration(cfg_parser_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED,
 
 	CHECK(cfg_gettoken(pctx, 0));
 	if (pctx->token.type != isc_tokentype_string) {
-		result = ISC_R_UNEXPECTEDTOKEN;
-		goto cleanup;
+		CLEANUP(ISC_R_UNEXPECTEDTOKEN);
 	}
 
 	return parse_duration(pctx, ret);
@@ -1365,8 +1351,7 @@ cfg_parse_duration_or_unlimited(cfg_parser_t *pctx,
 
 	CHECK(cfg_gettoken(pctx, 0));
 	if (pctx->token.type != isc_tokentype_string) {
-		result = ISC_R_UNEXPECTEDTOKEN;
-		goto cleanup;
+		CLEANUP(ISC_R_UNEXPECTEDTOKEN);
 	}
 
 	if (strcmp(TOKEN_STRING(pctx), "unlimited") == 0) {
@@ -2017,17 +2002,13 @@ cfg_obj_asboolean(const cfg_obj_t *obj) {
 isc_result_t
 cfg_parse_boolean(cfg_parser_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED,
 		  cfg_obj_t **ret) {
-	isc_result_t result;
 	bool value;
 	cfg_obj_t *obj = NULL;
 
 	REQUIRE(pctx != NULL);
 	REQUIRE(ret != NULL && *ret == NULL);
 
-	result = cfg_gettoken(pctx, 0);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(cfg_gettoken(pctx, 0));
 
 	if (pctx->token.type != isc_tokentype_string) {
 		goto bad_boolean;
@@ -2121,7 +2102,6 @@ free_list(cfg_obj_t *obj) {
 isc_result_t
 cfg_parse_listelt(cfg_parser_t *pctx, cfg_obj_t *list,
 		  const cfg_type_t *elttype, cfg_listelt_t **ret) {
-	isc_result_t result;
 	cfg_listelt_t *elt = NULL;
 	cfg_obj_t *value = NULL;
 
@@ -2130,10 +2110,7 @@ cfg_parse_listelt(cfg_parser_t *pctx, cfg_obj_t *list,
 	REQUIRE(elttype != NULL);
 	REQUIRE(ret != NULL && *ret == NULL);
 
-	result = cfg_parse_obj(pctx, elttype, &value);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(cfg_parse_obj(pctx, elttype, &value));
 
 	create_listelt(list, &elt);
 	elt->obj = value;
@@ -2414,7 +2391,7 @@ cfg_parse_mapbody(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 			CHECK(parse_semicolon(pctx));
 
 			if (includename->value.string.length == 0) {
-				CHECK(ISC_R_FILENOTFOUND);
+				CLEANUP(ISC_R_FILENOTFOUND);
 			}
 
 			/*
@@ -2428,14 +2405,14 @@ cfg_parse_mapbody(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 			case 0:
 				break;
 			case GLOB_NOMATCH:
-				CHECK(ISC_R_FILENOTFOUND);
+				CLEANUP(ISC_R_FILENOTFOUND);
 				break;
 			case GLOB_NOSPACE:
-				CHECK(ISC_R_NOMEMORY);
+				CLEANUP(ISC_R_NOMEMORY);
 				break;
 			default:
 				if (errno == 0) {
-					CHECK(ISC_R_IOERROR);
+					CLEANUP(ISC_R_IOERROR);
 				}
 				CHECK(isc_errno_toresult(errno));
 			}
@@ -2484,7 +2461,7 @@ cfg_parse_mapbody(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 			cfg_parser_error(pctx, 0,
 					 "option '%s' no longer exists",
 					 clause->name);
-			CHECK(ISC_R_FAILURE);
+			CLEANUP(ISC_R_FAILURE);
 		}
 		if ((pctx->flags & CFG_PCTX_ALLCONFIGS) == 0 &&
 		    (clause->flags & CFG_CLAUSEFLAG_NOTCONFIGURED) != 0)
@@ -2493,7 +2470,7 @@ cfg_parse_mapbody(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 					 "option '%s' was not "
 					 "enabled at compile time",
 					 clause->name);
-			CHECK(ISC_R_FAILURE);
+			CLEANUP(ISC_R_FAILURE);
 		}
 		if ((pctx->flags & CFG_PCTX_BUILTIN) == 0 &&
 		    (clause->flags & CFG_CLAUSEFLAG_BUILTINONLY) != 0)
@@ -2905,7 +2882,6 @@ cfg_obj_ismap(const cfg_obj_t *obj) {
 
 isc_result_t
 cfg_map_get(const cfg_obj_t *mapobj, const char *name, const cfg_obj_t **obj) {
-	isc_result_t result;
 	isc_symvalue_t val;
 	const cfg_map_t *map;
 
@@ -2915,10 +2891,7 @@ cfg_map_get(const cfg_obj_t *mapobj, const char *name, const cfg_obj_t **obj) {
 
 	map = &mapobj->value.map;
 
-	result = isc_symtab_lookup(map->symtab, name, SYMTAB_DUMMY_TYPE, &val);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(isc_symtab_lookup(map->symtab, name, SYMTAB_DUMMY_TYPE, &val));
 	*obj = val.as_pointer;
 	return ISC_R_SUCCESS;
 }
@@ -3020,8 +2993,7 @@ parse_token(cfg_parser_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED,
 	CHECK(cfg_gettoken(pctx, CFG_LEXOPT_QSTRING));
 	if (pctx->token.type == isc_tokentype_eof) {
 		cfg_ungettoken(pctx);
-		result = ISC_R_EOF;
-		goto cleanup;
+		CLEANUP(ISC_R_EOF);
 	}
 
 	isc_lex_getlasttokentext(pctx->lexer, &pctx->token, &r);
@@ -3076,8 +3048,7 @@ parse_unsupported(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 		if (pctx->token.type == isc_tokentype_eof || braces < 0) {
 			cfg_parser_error(pctx, CFG_LOG_NEAR,
 					 "unexpected token");
-			result = ISC_R_UNEXPECTEDTOKEN;
-			goto cleanup;
+			CLEANUP(ISC_R_UNEXPECTEDTOKEN);
 		}
 
 		CHECK(cfg_parse_listelt(pctx, listobj, &cfg_type_token, &elt));
@@ -3159,13 +3130,8 @@ token_addr(cfg_parser_t *pctx, unsigned int flags, isc_netaddr_t *na) {
 
 			if (inet_pton(AF_INET6, buf, &in6a) == 1) {
 				if (d != NULL) {
-					isc_result_t result;
-
-					result = isc_netscope_pton(
-						AF_INET6, d + 1, &in6a, &zone);
-					if (result != ISC_R_SUCCESS) {
-						return result;
-					}
+					RETERR(isc_netscope_pton(
+						AF_INET6, d + 1, &in6a, &zone));
 				}
 
 				isc_netaddr_fromin6(na, &in6a);
@@ -3526,25 +3492,21 @@ parse_sockaddrsub(cfg_parser_t *pctx, const cfg_type_t *type, int flags,
 
 	if (have_address != 1) {
 		cfg_parser_error(pctx, 0, "expected exactly one address");
-		result = ISC_R_UNEXPECTEDTOKEN;
-		goto cleanup;
+		CLEANUP(ISC_R_UNEXPECTEDTOKEN);
 	}
 
 	if (!is_port_ok && have_port > 0) {
 		cfg_parser_error(pctx, 0, "subconfig 'port' no longer exists");
-		result = ISC_R_UNEXPECTEDTOKEN;
-		goto cleanup;
+		CLEANUP(ISC_R_UNEXPECTEDTOKEN);
 	}
 	if (have_port > 1) {
 		cfg_parser_error(pctx, 0, "expected at most one port");
-		result = ISC_R_UNEXPECTEDTOKEN;
-		goto cleanup;
+		CLEANUP(ISC_R_UNEXPECTEDTOKEN);
 	}
 
 	if (have_tls > 1) {
 		cfg_parser_error(pctx, 0, "expected at most one tls");
-		result = ISC_R_UNEXPECTEDTOKEN;
-		goto cleanup;
+		CLEANUP(ISC_R_UNEXPECTEDTOKEN);
 	}
 
 	cfg_obj_create(pctx->mctx, cfg_parser_currentfile(pctx), pctx->line,
@@ -3789,12 +3751,7 @@ cleanup:
  */
 static isc_result_t
 cfg_getstringtoken(cfg_parser_t *pctx) {
-	isc_result_t result;
-
-	result = cfg_gettoken(pctx, CFG_LEXOPT_QSTRING);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(cfg_gettoken(pctx, CFG_LEXOPT_QSTRING));
 
 	if (pctx->token.type != isc_tokentype_string &&
 	    pctx->token.type != isc_tokentype_qstring)

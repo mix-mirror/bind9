@@ -203,20 +203,17 @@ dns_dlzcreate(isc_mem_t *mctx, const char *dlzname, const char *drivername,
 	/* Create a new database using implementation 'drivername'. */
 	result = ((impinfo->methods->create)(mctx, dlzname, argc, argv,
 					     impinfo->driverarg, &db->dbdata));
-
 	RWUNLOCK(&dlz_implock, isc_rwlocktype_read);
-	/* mark the DLZ driver as valid */
-	if (result != ISC_R_SUCCESS) {
-		goto failure;
-	}
+	CHECK(result);
 
+	/* Mark the DLZ driver as valid */
 	db->magic = DNS_DLZ_MAGIC;
 	isc_mem_attach(mctx, &db->mctx);
 	isc_log_write(DNS_LOGCATEGORY_DATABASE, DNS_LOGMODULE_DLZ,
 		      ISC_LOG_DEBUG(2), "DLZ driver loaded successfully.");
 	*dbp = db;
 	return ISC_R_SUCCESS;
-failure:
+cleanup:
 	isc_log_write(DNS_LOGCATEGORY_DATABASE, DNS_LOGMODULE_DLZ,
 		      ISC_LOG_ERROR, "DLZ driver failed to load.");
 
@@ -402,11 +399,8 @@ dns_dlz_writeablezone(dns_view_t *view, dns_dlzdb_t *dlzdb,
 	isc_buffer_constinit(&buffer, zone_name, strlen(zone_name));
 	isc_buffer_add(&buffer, strlen(zone_name));
 	dns_fixedname_init(&fixorigin);
-	result = dns_name_fromtext(dns_fixedname_name(&fixorigin), &buffer,
-				   dns_rootname, 0);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(dns_name_fromtext(dns_fixedname_name(&fixorigin), &buffer,
+				dns_rootname, 0));
 	origin = dns_fixedname_name(&fixorigin);
 
 	if (!dlzdb->search) {
@@ -423,8 +417,7 @@ dns_dlz_writeablezone(dns_view_t *view, dns_dlzdb_t *dlzdb,
 	result = dns_view_findzone(view, origin, DNS_ZTFIND_EXACT, &dupzone);
 	if (result == ISC_R_SUCCESS) {
 		dns_zone_detach(&dupzone);
-		result = ISC_R_EXISTS;
-		goto cleanup;
+		CLEANUP(ISC_R_EXISTS);
 	}
 	INSIST(dupzone == NULL);
 
@@ -440,10 +433,7 @@ dns_dlz_writeablezone(dns_view_t *view, dns_dlzdb_t *dlzdb,
 	}
 	dns_zone_setssutable(zone, dlzdb->ssutable);
 
-	result = dlzdb->configure_callback(view, dlzdb, zone);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(dlzdb->configure_callback(view, dlzdb, zone));
 
 	result = dns_view_addzone(view, zone);
 

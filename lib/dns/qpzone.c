@@ -64,14 +64,6 @@
 #include "qpzone_p.h"
 #include "rdataslab_p.h"
 
-#define CHECK(op)                              \
-	{                                      \
-		result = (op);                 \
-		if (result != ISC_R_SUCCESS) { \
-			goto failure;          \
-		}                              \
-	}
-
 #define HEADERNODE(h) ((qpznode_t *)((h)->node))
 
 #define QPDB_ATTR_LOADED  0x01

@@ -514,8 +514,7 @@ dns_rdataslab_merge(dns_slabheader_t *oheader, dns_slabheader_t *nheader,
 	 * than ncount, then we found such a duplicate.
 	 */
 	if (((flags & DNS_RDATASLAB_EXACT) != 0) && (tcount < ncount)) {
-		result = DNS_R_NOTEXACT;
-		goto cleanup;
+		CLEANUP(DNS_R_NOTEXACT);
 	}
 
 	/*
@@ -523,8 +522,7 @@ dns_rdataslab_merge(dns_slabheader_t *oheader, dns_slabheader_t *nheader,
 	 * FORCE flag isn't set, we're done.
 	 */
 	if (tcount == 0 && (flags & DNS_RDATASLAB_FORCE) == 0) {
-		result = DNS_R_UNCHANGED;
-		goto cleanup;
+		CLEANUP(DNS_R_UNCHANGED);
 	}
 
 	/* Add to tcount the total number of items from the old slab. */
@@ -535,13 +533,11 @@ dns_rdataslab_merge(dns_slabheader_t *oheader, dns_slabheader_t *nheader,
 
 	/* Single types can't have more than one RR. */
 	if (tcount > 1 && dns_rdatatype_issingleton(type)) {
-		result = DNS_R_SINGLETON;
-		goto cleanup;
+		CLEANUP(DNS_R_SINGLETON);
 	}
 
 	if (tcount > 0xffff) {
-		result = ISC_R_NOSPACE;
-		goto cleanup;
+		CLEANUP(ISC_R_NOSPACE);
 	}
 
 	/* Allocate the target buffer and copy the new slab's header */
@@ -677,8 +673,7 @@ dns_rdataslab_subtract(dns_slabheader_t *oheader, dns_slabheader_t *sheader,
 	 * duplicates.)
 	 */
 	if ((flags & DNS_RDATASLAB_EXACT) != 0 && rcount != scount) {
-		result = DNS_R_NOTEXACT;
-		goto cleanup;
+		CLEANUP(DNS_R_NOTEXACT);
 	}
 
 	/*
@@ -686,16 +681,14 @@ dns_rdataslab_subtract(dns_slabheader_t *oheader, dns_slabheader_t *sheader,
 	 * create a new buffer, just return.
 	 */
 	if (tcount == 0) {
-		result = DNS_R_NXRRSET;
-		goto cleanup;
+		CLEANUP(DNS_R_NXRRSET);
 	}
 
 	/*
 	 * If nothing is going to change, stop.
 	 */
 	if (rcount == 0) {
-		result = DNS_R_UNCHANGED;
-		goto cleanup;
+		CLEANUP(DNS_R_UNCHANGED);
 	}
 
 	/*

@@ -156,25 +156,13 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	isc_buffer_add(&buffer, size);
 	isc_buffer_setactive(&buffer, size);
 
-	result = parse_message(&buffer, &message);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(parse_message(&buffer, &message));
 
-	result = print_message(message);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(print_message(message));
 
-	result = render_message(&message);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(render_message(&message));
 
-	result = print_message(message);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(print_message(message));
 
 cleanup:
 	if (message != NULL) {

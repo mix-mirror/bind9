@@ -72,11 +72,8 @@ named_config_parsefile(cfg_obj_t **conf) {
 		      ISC_LOG_INFO, "parsing user configuration from '%s'",
 		      named_g_conffile);
 
-	result = cfg_parse_file(isc_g_mctx, named_g_conffile,
-				&cfg_type_namedconf, 0, conf);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(cfg_parse_file(isc_g_mctx, named_g_conffile, &cfg_type_namedconf,
+			     0, conf));
 
 	/*
 	 * Check the validity of the configuration.
@@ -85,11 +82,7 @@ named_config_parsefile(cfg_obj_t **conf) {
 	 * checked later when the modules are actually loaded and
 	 * registered.)
 	 */
-	result = isccfg_check_namedconf(*conf, BIND_CHECK_ALGORITHMS,
-					isc_g_mctx);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(isccfg_check_namedconf(*conf, BIND_CHECK_ALGORITHMS, isc_g_mctx));
 
 	goto out;
 
@@ -255,17 +248,13 @@ named_config_getzonetype(const cfg_obj_t *zonetypeobj) {
 isc_result_t
 named_config_getremotesdef(const cfg_obj_t *cctx, const char *list,
 			   const char *name, const cfg_obj_t **ret) {
-	isc_result_t result;
 	const cfg_obj_t *obj = NULL;
 
 	REQUIRE(cctx != NULL);
 	REQUIRE(name != NULL);
 	REQUIRE(ret != NULL && *ret == NULL);
 
-	result = cfg_map_get(cctx, list, &obj);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(cfg_map_get(cctx, list, &obj));
 	CFG_LIST_FOREACH(obj, elt) {
 		obj = cfg_listelt_value(elt);
 		if (strcasecmp(cfg_obj_asstring(cfg_tuple_get(obj, "name")),
@@ -568,24 +557,15 @@ named_config_getipandkeylist(const cfg_obj_t *config, const cfg_obj_t *list,
 	/*
 	 * Get system defaults.
 	 */
-	result = named_config_getport(config, "port", &def_port);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(named_config_getport(config, "port", &def_port));
 
-	result = named_config_getport(config, "tls-port", &def_tlsport);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(named_config_getport(config, "tls-port", &def_tlsport));
 
 	/*
 	 * Process the (nested) list(s).
 	 */
-	result = getipandkeylist(def_port, def_tlsport, config, list,
-				 (in_port_t)0, NULL, NULL, mctx, &s);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(getipandkeylist(def_port, def_tlsport, config, list, (in_port_t)0,
+			      NULL, NULL, mctx, &s));
 
 	shrink_array(mctx, s.addrs, s.count, s.addrsallocated);
 	shrink_array(mctx, s.keys, s.count, s.keysallocated);
@@ -713,7 +693,6 @@ named_config_getkeyalgorithm(const char *str, unsigned int *typep,
 	int i;
 	size_t len = 0;
 	uint16_t bits;
-	isc_result_t result;
 
 	for (i = 0; algorithms[i].str != NULL; i++) {
 		len = strlen(algorithms[i].str);
@@ -728,10 +707,7 @@ named_config_getkeyalgorithm(const char *str, unsigned int *typep,
 		return ISC_R_NOTFOUND;
 	}
 	if (str[len] == '-') {
-		result = isc_parse_uint16(&bits, str + len + 1, 10);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(isc_parse_uint16(&bits, str + len + 1, 10));
 		if (bits > algorithms[i].size) {
 			return ISC_R_RANGE;
 		}

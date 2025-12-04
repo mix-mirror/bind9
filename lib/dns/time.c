@@ -204,11 +204,8 @@ dns_time64_fromtext(const char *source, int64_t *target) {
 isc_result_t
 dns_time32_fromtext(const char *source, uint32_t *target) {
 	int64_t value64;
-	isc_result_t result;
-	result = dns_time64_fromtext(source, &value64);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+
+	RETERR(dns_time64_fromtext(source, &value64));
 	*target = (uint32_t)value64;
 
 	return ISC_R_SUCCESS;

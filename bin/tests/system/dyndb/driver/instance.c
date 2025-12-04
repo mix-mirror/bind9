@@ -78,8 +78,7 @@ parse_params(isc_mem_t *mctx, int argc, char **argv, dns_name_t *z1,
 	if (argc != 2) {
 		log_error("exactly two parameters "
 			  "(absolute zone names) are required");
-		result = ISC_R_FAILURE;
-		goto cleanup;
+		CLEANUP(ISC_R_FAILURE);
 	}
 	result = dns_name_fromstring(z1, argv[0], dns_rootname, 0, mctx);
 	if (result != ISC_R_SUCCESS) {

@@ -131,7 +131,6 @@ dns_dns64_aaaafroma(const dns_dns64_t *dns64, const isc_netaddr_t *reqaddr,
 		    const dns_name_t *reqsigner, dns_aclenv_t *env,
 		    unsigned int flags, unsigned char *a, unsigned char *aaaa) {
 	unsigned int nbytes, i;
-	isc_result_t result;
 	int match;
 
 	if ((dns64->flags & DNS_DNS64_RECURSIVE_ONLY) != 0 &&
@@ -147,11 +146,8 @@ dns_dns64_aaaafroma(const dns_dns64_t *dns64, const isc_netaddr_t *reqaddr,
 	}
 
 	if (dns64->clients != NULL && reqaddr != NULL) {
-		result = dns_acl_match(reqaddr, reqsigner, dns64->clients, env,
-				       &match, NULL);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(dns_acl_match(reqaddr, reqsigner, dns64->clients, env,
+				     &match, NULL));
 		if (match <= 0) {
 			return DNS_R_DISALLOWED;
 		}
@@ -163,11 +159,8 @@ dns_dns64_aaaafroma(const dns_dns64_t *dns64, const isc_netaddr_t *reqaddr,
 
 		memmove(&ina.s_addr, a, 4);
 		isc_netaddr_fromin(&netaddr, &ina);
-		result = dns_acl_match(&netaddr, NULL, dns64->mapped, env,
-				       &match, NULL);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(dns_acl_match(&netaddr, NULL, dns64->mapped, env, &match,
+				     NULL));
 		if (match <= 0) {
 			return DNS_R_DISALLOWED;
 		}

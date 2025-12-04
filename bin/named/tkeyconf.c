@@ -21,6 +21,7 @@
 
 #include <isccfg/cfg.h>
 
+#include <named/log.h>
 #include <named/tkeyconf.h>
 
 void
@@ -28,11 +29,10 @@ named_tkeyctx_fromconfig(const cfg_obj_t *options, isc_mem_t *mctx,
 			 dns_tkeyctx_t **tctxp) {
 	isc_result_t result;
 	dns_tkeyctx_t *tctx = NULL;
-	const cfg_obj_t *obj;
+	const cfg_obj_t *obj = NULL;
 
 	dns_tkeyctx_create(mctx, &tctx);
 
-	obj = NULL;
 	result = cfg_map_get(options, "tkey-gssapi-keytab", &obj);
 	if (result == ISC_R_SUCCESS) {
 		const char *s = cfg_obj_asstring(obj);

@@ -46,25 +46,19 @@
 
 #include "openssl_shim.h"
 
-#define DST_RET(a)        \
-	{                 \
-		ret = a;  \
-		goto err; \
-	}
-
 static isc_result_t
 dst__openssl_fromlabel_provider(int key_base_id, const char *label,
 				const char *pin, EVP_PKEY **ppub,
 				EVP_PKEY **ppriv) {
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
-	isc_result_t ret = DST_R_OPENSSLFAILURE;
+	isc_result_t result = DST_R_OPENSSLFAILURE;
 	OSSL_STORE_CTX *ctx = NULL;
 
 	UNUSED(pin);
 
 	ctx = OSSL_STORE_open(label, NULL, NULL, NULL, NULL);
 	if (!ctx) {
-		DST_RET(dst__openssl_toresult(DST_R_OPENSSLFAILURE));
+		CLEANUP(dst__openssl_toresult(DST_R_OPENSSLFAILURE));
 	}
 
 	while (!OSSL_STORE_eof(ctx)) {
@@ -76,34 +70,34 @@ dst__openssl_fromlabel_provider(int key_base_id, const char *label,
 		case OSSL_STORE_INFO_PKEY:
 			if (*ppriv != NULL) {
 				OSSL_STORE_INFO_free(info);
-				DST_RET(DST_R_INVALIDPRIVATEKEY);
+				CLEANUP(DST_R_INVALIDPRIVATEKEY);
 			}
 			*ppriv = OSSL_STORE_INFO_get1_PKEY(info);
 			if (EVP_PKEY_get_base_id(*ppriv) != key_base_id) {
 				OSSL_STORE_INFO_free(info);
-				DST_RET(DST_R_BADKEYTYPE);
+				CLEANUP(DST_R_BADKEYTYPE);
 			}
 			break;
 		case OSSL_STORE_INFO_PUBKEY:
 			if (*ppub != NULL) {
 				OSSL_STORE_INFO_free(info);
-				DST_RET(DST_R_INVALIDPUBLICKEY);
+				CLEANUP(DST_R_INVALIDPUBLICKEY);
 			}
 			*ppub = OSSL_STORE_INFO_get1_PUBKEY(info);
 			if (EVP_PKEY_get_base_id(*ppub) != key_base_id) {
 				OSSL_STORE_INFO_free(info);
-				DST_RET(DST_R_BADKEYTYPE);
+				CLEANUP(DST_R_BADKEYTYPE);
 			}
 			break;
 		}
 		OSSL_STORE_INFO_free(info);
 	}
 	if (*ppriv != NULL && *ppub != NULL) {
-		ret = ISC_R_SUCCESS;
+		result = ISC_R_SUCCESS;
 	}
-err:
+cleanup:
 	OSSL_STORE_close(ctx);
-	return ret;
+	return result;
 #else
 	UNUSED(key_base_id);
 	UNUSED(label);

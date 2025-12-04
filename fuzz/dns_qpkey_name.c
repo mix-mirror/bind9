@@ -44,6 +44,7 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	isc_buffer_t buf;
 	dns_qpkey_t key, cmp;
 	dns_namespace_t space;
+	isc_result_t result;
 
 	namein = dns_fixedname_initname(&fixedin);
 	nameout = dns_fixedname_initname(&fixedout);
@@ -77,5 +78,6 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	assert((namerel > 0) == (keyrel > 0));
 	assert(space == DNS_DBNAMESPACE_NORMAL);
 
+cleanup:
 	return 0;
 }

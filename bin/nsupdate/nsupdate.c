@@ -569,16 +569,10 @@ read_sessionkey(isc_mem_t *mctx) {
 		return ISC_R_FILENOTFOUND;
 	}
 
-	result = cfg_parse_file(mctx, keyfile, &cfg_type_sessionkey, 0,
-				&sessionkey);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(cfg_parse_file(mctx, keyfile, &cfg_type_sessionkey, 0,
+			     &sessionkey));
 
-	result = cfg_map_get(sessionkey, "key", &key);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(cfg_map_get(sessionkey, "key", &key));
 
 	(void)cfg_map_get(key, "secret", &secretobj);
 	(void)cfg_map_get(key, "algorithm", &algorithmobj);

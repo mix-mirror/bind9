@@ -81,7 +81,7 @@
 			      "bad zone transfer request: %s (%s)", msg, \
 			      isc_result_totext(code));                  \
 		if (result != ISC_R_SUCCESS)                             \
-			goto failure;                                    \
+			goto cleanup;                                    \
 	} while (0)
 
 #define FAILQ(code, msg, question, rdclass)                                  \
@@ -96,14 +96,7 @@
 			      "bad zone transfer request: '%s/%s': %s (%s)", \
 			      _buf1, _buf2, msg, isc_result_totext(code));   \
 		if (result != ISC_R_SUCCESS)                                 \
-			goto failure;                                        \
-	} while (0)
-
-#define CHECK(op)                            \
-	do {                                 \
-		result = (op);               \
-		if (result != ISC_R_SUCCESS) \
-			goto failure;        \
+			goto cleanup;                                        \
 	} while (0)
 
 /**************************************************************************/
@@ -248,7 +241,7 @@ ixfr_rrstream_create(isc_mem_t *mctx, const char *journal_filename,
 	*sp = (rrstream_t *)s;
 	return ISC_R_SUCCESS;
 
-failure:
+cleanup:
 	ixfr_rrstream_destroy((rrstream_t **)(void *)&s);
 	return result;
 }
@@ -329,7 +322,7 @@ axfr_rrstream_create(isc_mem_t *mctx, dns_db_t *db, dns_dbversion_t *ver,
 	*sp = (rrstream_t *)s;
 	return ISC_R_SUCCESS;
 
-failure:
+cleanup:
 	axfr_rrstream_destroy((rrstream_t **)(void *)&s);
 	return result;
 }
@@ -337,11 +330,9 @@ failure:
 static isc_result_t
 axfr_rrstream_first(rrstream_t *rs) {
 	axfr_rrstream_t *s = (axfr_rrstream_t *)rs;
-	isc_result_t result;
-	result = dns_rriterator_first(&s->it);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+
+	RETERR(dns_rriterator_first(&s->it));
+
 	/* Skip SOA records. */
 	for (;;) {
 		dns_name_t *name_dummy = NULL;
@@ -352,12 +343,10 @@ axfr_rrstream_first(rrstream_t *rs) {
 		if (rdata->type != dns_rdatatype_soa) {
 			break;
 		}
-		result = dns_rriterator_next(&s->it);
-		if (result != ISC_R_SUCCESS) {
-			break;
-		}
+		RETERR(dns_rriterator_next(&s->it));
 	}
-	return result;
+
+	return ISC_R_SUCCESS;
 }
 
 static isc_result_t
@@ -449,7 +438,7 @@ soa_rrstream_create(isc_mem_t *mctx, dns_db_t *db, dns_dbversion_t *ver,
 	*sp = (rrstream_t *)s;
 	return ISC_R_SUCCESS;
 
-failure:
+cleanup:
 	soa_rrstream_destroy((rrstream_t **)(void *)&s);
 	return result;
 }
@@ -826,7 +815,7 @@ ns_xfr_start(ns_client_t *client, dns_rdatatype_t reqtype) {
 					      ISC_LOG_ERROR,
 					      "zone transfer '%s/%s' denied",
 					      _buf1, _buf2);
-				goto failure;
+				goto cleanup;
 			}
 			if (result != ISC_R_SUCCESS) {
 				FAILQ(DNS_R_NOTAUTH, "non-authoritative zone",
@@ -1161,7 +1150,7 @@ have_stream:
 
 	result = ISC_R_SUCCESS;
 
-failure:
+cleanup:
 	if (result == DNS_R_REFUSED) {
 		inc_stats(client, zone, ns_statscounter_xfrrej);
 	}
@@ -1271,7 +1260,7 @@ xfrout_ctx_create(isc_mem_t *mctx, ns_client_t *client, unsigned int id,
 	xfr->txmemlen = len;
 
 	/*
-	 * These MUST be after the last "goto failure;" / CHECK to
+	 * These MUST be after the last "goto cleanup;" / CHECK to
 	 * prevent a double free by the caller.
 	 */
 	xfr->stream = stream;
@@ -1512,8 +1501,7 @@ sendstream(xfrout_ctx_t *xfr) {
 					   "(%d bytes)",
 					   size);
 				/* XXX DNS_R_RRTOOLARGE? */
-				result = ISC_R_NOSPACE;
-				goto failure;
+				CLEANUP(ISC_R_NOSPACE);
 			}
 			break;
 		}
@@ -1608,7 +1596,7 @@ sendstream(xfrout_ctx_t *xfr) {
 	/* Advance lasttsig to be the last TSIG generated */
 	CHECK(dns_message_getquerytsig(msg, xfr->mctx, &xfr->lasttsig));
 
-failure:
+cleanup:
 	if (tcpmsg != NULL) {
 		dns_message_detach(&tcpmsg);
 	}

@@ -626,7 +626,6 @@ static isc_result_t
 digest_naptr(ARGS_DIGEST) {
 	isc_region_t r1, r2;
 	unsigned int length, n;
-	isc_result_t result;
 	dns_name_t name;
 
 	REQUIRE(rdata->type == dns_rdatatype_naptr);
@@ -666,10 +665,7 @@ digest_naptr(ARGS_DIGEST) {
 	 * Digest the RR up to the replacement name.
 	 */
 	r1.length = length;
-	result = (digest)(arg, &r1);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR((digest)(arg, &r1));
 
 	/*
 	 * Replacement.

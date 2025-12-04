@@ -291,15 +291,8 @@ reverse_octets(const char *in, char **p, char *end) {
 	const char *dot = strchr(in, '.');
 	size_t len;
 	if (dot != NULL) {
-		isc_result_t result;
-		result = reverse_octets(dot + 1, p, end);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
-		result = append(".", 1, p, end);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(reverse_octets(dot + 1, p, end));
+		RETERR(append(".", 1, p, end));
 		len = (int)(dot - in);
 	} else {
 		len = (int)strlen(in);
@@ -310,7 +303,6 @@ reverse_octets(const char *in, char **p, char *end) {
 isc_result_t
 get_reverse(char *reverse, size_t len, char *value, bool strict) {
 	int r;
-	isc_result_t result;
 	isc_netaddr_t addr;
 
 	addr.family = AF_INET6;
@@ -321,10 +313,7 @@ get_reverse(char *reverse, size_t len, char *value, bool strict) {
 		dns_name_t *name;
 
 		name = dns_fixedname_initname(&fname);
-		result = dns_byaddr_createptrname(&addr, name);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(dns_byaddr_createptrname(&addr, name));
 		dns_name_format(name, reverse, (unsigned int)len);
 		return ISC_R_SUCCESS;
 	} else {
@@ -341,15 +330,9 @@ get_reverse(char *reverse, size_t len, char *value, bool strict) {
 		if (strict && inet_pton(AF_INET, value, &addr.type.in) != 1) {
 			return DNS_R_BADDOTTEDQUAD;
 		}
-		result = reverse_octets(value, &p, end);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(reverse_octets(value, &p, end));
 		/* Append .in-addr.arpa. and a terminating NUL. */
-		result = append(".in-addr.arpa.", 15, &p, end);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(append(".in-addr.arpa.", 15, &p, end));
 		return ISC_R_SUCCESS;
 	}
 }
@@ -862,26 +845,19 @@ setup_text_key(void) {
 	secretsize = (unsigned int)strlen(keysecret) * 3 / 4;
 	secretstore = isc_mem_allocate(isc_g_mctx, secretsize);
 	isc_buffer_init(&secretbuf, secretstore, secretsize);
-	result = isc_base64_decodestring(keysecret, &secretbuf);
-	if (result != ISC_R_SUCCESS) {
-		goto failure;
-	}
+	CHECK(isc_base64_decodestring(keysecret, &secretbuf));
 
 	secretsize = isc_buffer_usedlength(&secretbuf);
 
 	if (hmac_alg == DST_ALG_UNKNOWN) {
-		result = DST_R_UNSUPPORTEDALG;
-		goto failure;
+		CLEANUP(DST_R_UNSUPPORTEDALG);
 	}
 
-	result = dns_name_fromtext(keyname, namebuf, dns_rootname, 0);
-	if (result != ISC_R_SUCCESS) {
-		goto failure;
-	}
+	CHECK(dns_name_fromtext(keyname, namebuf, dns_rootname, 0));
 
 	result = dns_tsigkey_create(keyname, hmac_alg, secretstore,
 				    (int)secretsize, isc_g_mctx, &tsigkey);
-failure:
+cleanup:
 	if (result != ISC_R_SUCCESS) {
 		printf(";; Couldn't create key %s: %s\n", keynametext,
 		       isc_result_totext(result));
@@ -1086,16 +1062,10 @@ read_confkey(void) {
 		return ISC_R_FILENOTFOUND;
 	}
 
-	result = cfg_parse_file(isc_g_mctx, keyfile, &cfg_type_sessionkey, 0,
-				&file);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(cfg_parse_file(isc_g_mctx, keyfile, &cfg_type_sessionkey, 0,
+			     &file));
 
-	result = cfg_map_get(file, "key", &keyobj);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(cfg_map_get(file, "key", &keyobj));
 
 	(void)cfg_map_get(keyobj, "secret", &secretobj);
 	(void)cfg_map_get(keyobj, "algorithm", &algorithmobj);
@@ -1147,7 +1117,7 @@ setup_file_key(void) {
 	if (result != ISC_R_SUCCESS) {
 		fprintf(stderr, "Couldn't read key from %s: %s\n", keyfile,
 			isc_result_totext(result));
-		goto failure;
+		goto cleanup;
 	}
 
 	switch (dst_key_alg(dstkey)) {
@@ -1175,7 +1145,7 @@ setup_file_key(void) {
 		}
 	}
 
-failure:
+cleanup:
 	if (dstkey != NULL) {
 		dst_key_free(&dstkey);
 	}
@@ -2764,21 +2734,14 @@ get_create_tls_context(dig_query_t *query, const bool is_https,
 	if (result != ISC_R_SUCCESS) {
 		if (query->lookup->tls_ca_set) {
 			if (found_store == NULL) {
-				result = isc_tls_cert_store_create(
-					query->lookup->tls_ca_file, &store);
-
-				if (result != ISC_R_SUCCESS) {
-					goto failure;
-				}
+				CHECK(isc_tls_cert_store_create(
+					query->lookup->tls_ca_file, &store));
 			} else {
 				store = found_store;
 			}
 		}
 
-		result = isc_tlsctx_createclient(&ctx);
-		if (result != ISC_R_SUCCESS) {
-			goto failure;
-		}
+		CHECK(isc_tlsctx_createclient(&ctx));
 
 		if (store != NULL) {
 			const char *hostname = get_tls_sni_hostname(query);
@@ -2788,23 +2751,17 @@ get_create_tls_context(dig_query_t *query, const bool is_https,
 			 * SubjectAltName must be checked. That is NOT the case
 			 * for HTTPS.
 			 */
-			result = isc_tlsctx_enable_peer_verification(
+			CHECK(isc_tlsctx_enable_peer_verification(
 				ctx, false, store, hostname,
-				hostname_ignore_subject);
-			if (result != ISC_R_SUCCESS) {
-				goto failure;
-			}
+				hostname_ignore_subject));
 		}
 
 		if (query->lookup->tls_key_file_set &&
 		    query->lookup->tls_cert_file_set)
 		{
-			result = isc_tlsctx_load_certificate(
+			CHECK(isc_tlsctx_load_certificate(
 				ctx, query->lookup->tls_key_file,
-				query->lookup->tls_cert_file);
-			if (result != ISC_R_SUCCESS) {
-				goto failure;
-			}
+				query->lookup->tls_cert_file));
 		}
 
 		if (!is_https) {
@@ -2840,7 +2797,7 @@ get_create_tls_context(dig_query_t *query, const bool is_https,
 
 	INSIST(!query->lookup->tls_ca_set || found_store != NULL);
 	return found_ctx;
-failure:
+cleanup:
 	if (ctx != NULL) {
 		isc_tlsctx_free(&ctx);
 	}

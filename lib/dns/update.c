@@ -70,116 +70,6 @@
  */
 #define LOGLEVEL_DEBUG ISC_LOG_DEBUG(8)
 
-/*%
- * Check an operation for failure.  These macros all assume that
- * the function using them has a 'result' variable and a 'failure'
- * label.
- */
-#define CHECK(op)                            \
-	do {                                 \
-		result = (op);               \
-		if (result != ISC_R_SUCCESS) \
-			goto failure;        \
-	} while (0)
-
-/*%
- * Fail unconditionally with result 'code', which must not
- * be ISC_R_SUCCESS.  The reason for failure presumably has
- * been logged already.
- *
- * The test against ISC_R_SUCCESS is there to keep the Solaris compiler
- * from complaining about "end-of-loop code not reached".
- */
-
-#define FAIL(code)                           \
-	do {                                 \
-		result = (code);             \
-		if (result != ISC_R_SUCCESS) \
-			goto failure;        \
-	} while (0)
-
-/*%
- * Fail unconditionally and log as a client error.
- * The test against ISC_R_SUCCESS is there to keep the Solaris compiler
- * from complaining about "end-of-loop code not reached".
- */
-#define FAILC(code, msg)                                                       \
-	do {                                                                   \
-		const char *_what = "failed";                                  \
-		result = (code);                                               \
-		switch (result) {                                              \
-		case DNS_R_NXDOMAIN:                                           \
-		case DNS_R_YXDOMAIN:                                           \
-		case DNS_R_YXRRSET:                                            \
-		case DNS_R_NXRRSET:                                            \
-			_what = "unsuccessful";                                \
-		}                                                              \
-		update_log(log, zone, LOGLEVEL_PROTOCOL, "update %s: %s (%s)", \
-			   _what, msg, isc_result_totext(result));             \
-		if (result != ISC_R_SUCCESS)                                   \
-			goto failure;                                          \
-	} while (0)
-
-#define FAILN(code, name, msg)                                             \
-	do {                                                               \
-		const char *_what = "failed";                              \
-		result = (code);                                           \
-		switch (result) {                                          \
-		case DNS_R_NXDOMAIN:                                       \
-		case DNS_R_YXDOMAIN:                                       \
-		case DNS_R_YXRRSET:                                        \
-		case DNS_R_NXRRSET:                                        \
-			_what = "unsuccessful";                            \
-		}                                                          \
-		if (isc_log_wouldlog(LOGLEVEL_PROTOCOL)) {                 \
-			char _nbuf[DNS_NAME_FORMATSIZE];                   \
-			dns_name_format(name, _nbuf, sizeof(_nbuf));       \
-			update_log(log, zone, LOGLEVEL_PROTOCOL,           \
-				   "update %s: %s: %s (%s)", _what, _nbuf, \
-				   msg, isc_result_totext(result));        \
-		}                                                          \
-		if (result != ISC_R_SUCCESS)                               \
-			goto failure;                                      \
-	} while (0)
-
-#define FAILNT(code, name, type, msg)                                         \
-	do {                                                                  \
-		const char *_what = "failed";                                 \
-		result = (code);                                              \
-		switch (result) {                                             \
-		case DNS_R_NXDOMAIN:                                          \
-		case DNS_R_YXDOMAIN:                                          \
-		case DNS_R_YXRRSET:                                           \
-		case DNS_R_NXRRSET:                                           \
-			_what = "unsuccessful";                               \
-		}                                                             \
-		if (isc_log_wouldlog(LOGLEVEL_PROTOCOL)) {                    \
-			char _nbuf[DNS_NAME_FORMATSIZE];                      \
-			char _tbuf[DNS_RDATATYPE_FORMATSIZE];                 \
-			dns_name_format(name, _nbuf, sizeof(_nbuf));          \
-			dns_rdatatype_format(type, _tbuf, sizeof(_tbuf));     \
-			update_log(log, zone, LOGLEVEL_PROTOCOL,              \
-				   "update %s: %s/%s: %s (%s)", _what, _nbuf, \
-				   _tbuf, msg, isc_result_totext(result));    \
-		}                                                             \
-		if (result != ISC_R_SUCCESS)                                  \
-			goto failure;                                         \
-	} while (0)
-
-/*%
- * Fail unconditionally and log as a server error.
- * The test against ISC_R_SUCCESS is there to keep the Solaris compiler
- * from complaining about "end-of-loop code not reached".
- */
-#define FAILS(code, msg)                                                       \
-	do {                                                                   \
-		result = (code);                                               \
-		update_log(log, zone, LOGLEVEL_PROTOCOL, "error: %s: %s", msg, \
-			   isc_result_totext(result));                         \
-		if (result != ISC_R_SUCCESS)                                   \
-			goto failure;                                          \
-	} while (0)
-
 /**************************************************************************/
 
 typedef struct rr rr_t;
@@ -314,17 +204,13 @@ typedef struct {
  */
 static isc_result_t
 foreach_node_rr_action(void *data, dns_rdataset_t *rdataset) {
-	isc_result_t result;
 	foreach_node_rr_ctx_t *ctx = data;
 	DNS_RDATASET_FOREACH(rdataset) {
 		rr_t rr = { 0, DNS_RDATA_INIT };
 
 		dns_rdataset_current(rdataset, &rr.rdata);
 		rr.ttl = rdataset->ttl;
-		result = (*ctx->rr_action)(ctx->rr_action_data, &rr);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR((*ctx->rr_action)(ctx->rr_action_data, &rr));
 	}
 
 	return ISC_R_SUCCESS;
@@ -737,7 +623,7 @@ namelist_append_subdomain(dns_db_t *db, dns_name_t *name,
 	if (result == ISC_R_NOMORE) {
 		result = ISC_R_SUCCESS;
 	}
-failure:
+cleanup:
 	if (dbit != NULL) {
 		dns_dbiterator_destroy(&dbit);
 	}
@@ -802,7 +688,7 @@ uniqify_name_list(dns_diff_t *list) {
 			dns_difftuple_free(&p);
 		}
 	}
-failure:
+cleanup:
 	return result;
 }
 
@@ -898,8 +784,7 @@ next_active(dns_update_log_t *log, dns_zone_t *zone, dns_db_t *db,
 			if (wraps == 2) {
 				update_log(log, zone, ISC_LOG_ERROR,
 					   "secure zone with no NSECs");
-				result = DNS_R_BADZONE;
-				goto failure;
+				CLEANUP(DNS_R_BADZONE);
 			}
 		}
 		CHECK(dns_dbiterator_current(dbit, &node, newname));
@@ -935,7 +820,7 @@ next_active(dns_update_log_t *log, dns_zone_t *zone, dns_db_t *db,
 			}
 		}
 	} while (!has_nsec);
-failure:
+cleanup:
 	if (dbit != NULL) {
 		dns_dbiterator_destroy(&dbit);
 	}
@@ -987,7 +872,7 @@ add_nsec(dns_update_log_t *log, dns_zone_t *zone, dns_db_t *db,
 	CHECK(do_one_tuple(&tuple, db, ver, diff));
 	INSIST(tuple == NULL);
 
-failure:
+cleanup:
 	if (node != NULL) {
 		dns_db_detachnode(&node);
 	}
@@ -1012,7 +897,7 @@ add_placeholder_nsec(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 	dns_difftuple_create(diff->mctx, DNS_DIFFOP_ADD, name, 0, &rdata,
 			     &tuple);
 	CHECK(do_one_tuple(&tuple, db, ver, diff));
-failure:
+cleanup:
 	return result;
 }
 
@@ -1219,7 +1104,7 @@ add_sigs(dns_update_log_t *log, dns_zone_t *zone, dns_db_t *db,
 			/* Look up the signature in the SKR bundle */
 			dns_skrbundle_t *bundle = dns_zone_getskrbundle(zone);
 			if (bundle == NULL) {
-				CHECK(DNS_R_NOSKRBUNDLE);
+				CLEANUP(DNS_R_NOSKRBUNDLE);
 			}
 			CHECK(dns_skrbundle_getsig(bundle, keys[i], type,
 						   &sig_rdata));
@@ -1251,7 +1136,7 @@ add_sigs(dns_update_log_t *log, dns_zone_t *zone, dns_db_t *db,
 		result = ISC_R_NOTFOUND;
 	}
 
-failure:
+cleanup:
 	if (dns_rdataset_isassociated(&rdataset)) {
 		dns_rdataset_disassociate(&rdataset);
 	}
@@ -1281,9 +1166,8 @@ del_keysigs(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 	if (result == ISC_R_NOTFOUND) {
 		return ISC_R_SUCCESS;
 	}
-	if (result != ISC_R_SUCCESS) {
-		goto failure;
-	}
+	CHECK(result);
+
 	result = dns_db_findrdataset(db, node, ver, dns_rdatatype_rrsig,
 				     dns_rdatatype_dnskey, (isc_stdtime_t)0,
 				     &rdataset, NULL);
@@ -1292,9 +1176,7 @@ del_keysigs(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 	if (result == ISC_R_NOTFOUND) {
 		return ISC_R_SUCCESS;
 	}
-	if (result != ISC_R_SUCCESS) {
-		goto failure;
-	}
+	CHECK(result);
 
 	DNS_RDATASET_FOREACH(&rdataset) {
 		dns_rdata_t rdata = DNS_RDATA_INIT;
@@ -1335,7 +1217,7 @@ del_keysigs(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 	}
 	dns_rdataset_disassociate(&rdataset);
 
-failure:
+cleanup:
 	if (node != NULL) {
 		dns_db_detachnode(&node);
 	}
@@ -1525,7 +1407,7 @@ dns_update_signaturesinc(dns_update_log_t *log, dns_zone_t *zone, dns_db_t *db,
 			update_log(log, zone, ISC_LOG_ERROR,
 				   "could not get zone keys for secure "
 				   "dynamic update");
-			goto failure;
+			goto cleanup;
 		}
 
 		state->now = isc_stdtime_now();
@@ -1947,7 +1829,7 @@ next_state:
 		if (!state->build_nsec3) {
 			update_log(log, zone, ISC_LOG_DEBUG(3),
 				   "no NSEC3 chains to rebuild");
-			goto failure;
+			goto cleanup;
 		}
 
 		update_log(log, zone, ISC_LOG_DEBUG(3),
@@ -2119,7 +2001,7 @@ next_state:
 		UNREACHABLE();
 	}
 
-failure:
+cleanup:
 	if (node != NULL) {
 		dns_db_detachnode(&node);
 	}

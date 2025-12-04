@@ -673,7 +673,6 @@ isc_proxy2_handler_addresses(const isc_proxy2_handler_t *restrict handler,
 			     int *restrict psocktype,
 			     isc_sockaddr_t *restrict psrc_addr,
 			     isc_sockaddr_t *restrict pdst_addr) {
-	isc_result_t result;
 	size_t ret;
 	isc_region_t header_region = { 0 };
 	isc_buffer_t buf = { 0 };
@@ -693,12 +692,8 @@ isc_proxy2_handler_addresses(const isc_proxy2_handler_t *restrict handler,
 
 	INSIST(handler->expect_data == 0);
 
-	result = isc__proxy2_handler_get_addresses(
-		(isc_proxy2_handler_t *)handler, &buf, psrc_addr, pdst_addr);
-
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(isc__proxy2_handler_get_addresses(
+		(isc_proxy2_handler_t *)handler, &buf, psrc_addr, pdst_addr));
 
 	SET_IF_NOT_NULL(psocktype,
 			proxy2_socktype_to_socktype(handler->proxy_socktype));
@@ -840,12 +835,8 @@ isc_proxy2_subtlv_tls_iterate(const isc_region_t *restrict tls_tlv_data,
 		return ISC_R_RANGE;
 	}
 
-	result = isc_proxy2_subtlv_tls_header_data(tls_tlv_data, &client_flags,
-						   &client_cert_verified);
-
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(isc_proxy2_subtlv_tls_header_data(tls_tlv_data, &client_flags,
+						 &client_cert_verified));
 
 	p = tls_tlv_data->base;
 	p += ISC_PROXY2_TLS_SUBHEADER_MIN_SIZE;
@@ -1041,14 +1032,10 @@ error_range:
 
 isc_result_t
 isc_proxy2_tlv_data_verify(const isc_region_t *restrict tlv_data) {
-	isc_result_t result;
 	tlv_verify_cbarg_t cbarg = { .verify_result = ISC_R_SUCCESS };
 
-	result = isc_proxy2_tlv_iterate(tlv_data, isc_proxy2_tlv_verify_cb,
-					&cbarg);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(isc_proxy2_tlv_iterate(tlv_data, isc_proxy2_tlv_verify_cb,
+				      &cbarg));
 
 	return cbarg.verify_result;
 }

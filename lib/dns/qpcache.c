@@ -66,13 +66,6 @@
 #define DNS_QPCACHE_LOG_STATS_LEVEL 3
 #endif
 
-#define CHECK(op)                            \
-	do {                                 \
-		result = (op);               \
-		if (result != ISC_R_SUCCESS) \
-			goto failure;        \
-	} while (0)
-
 #define STALE_TTL(header, qpdb) \
 	(NXDOMAIN(header) ? 0 : qpdb->common.serve_stale_ttl)
 
@@ -1515,11 +1508,8 @@ find_coveringnsec(qpc_search_t *search, const dns_name_t *name,
 	 * Lookup the predecessor in the normal namespace.
 	 */
 	node = NULL;
-	result = dns_qp_getname(search->qpdb->tree, predecessor,
-				DNS_DBNAMESPACE_NORMAL, (void **)&node, NULL);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_qp_getname(search->qpdb->tree, predecessor,
+			      DNS_DBNAMESPACE_NORMAL, (void **)&node, NULL));
 	dns_name_copy(&node->name, fname);
 
 	nlock = &search->qpdb->buckets[node->locknum].lock;
@@ -2988,15 +2978,9 @@ addnoqname(isc_mem_t *mctx, dns_slabheader_t *newheader, uint32_t maxrrperset,
 	result = dns_rdataset_getnoqname(rdataset, &name, &neg, &negsig);
 	RUNTIME_CHECK(result == ISC_R_SUCCESS);
 
-	result = dns_rdataslab_fromrdataset(&neg, mctx, &r1, maxrrperset);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(dns_rdataslab_fromrdataset(&neg, mctx, &r1, maxrrperset));
 
-	result = dns_rdataslab_fromrdataset(&negsig, mctx, &r2, maxrrperset);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(dns_rdataslab_fromrdataset(&negsig, mctx, &r2, maxrrperset));
 
 	noqname = isc_mem_get(mctx, sizeof(*noqname));
 	*noqname = (dns_slabheader_proof_t){
@@ -3027,15 +3011,9 @@ addclosest(isc_mem_t *mctx, dns_slabheader_t *newheader, uint32_t maxrrperset,
 	result = dns_rdataset_getclosest(rdataset, &name, &neg, &negsig);
 	RUNTIME_CHECK(result == ISC_R_SUCCESS);
 
-	result = dns_rdataslab_fromrdataset(&neg, mctx, &r1, maxrrperset);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(dns_rdataslab_fromrdataset(&neg, mctx, &r1, maxrrperset));
 
-	result = dns_rdataslab_fromrdataset(&negsig, mctx, &r2, maxrrperset);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(dns_rdataslab_fromrdataset(&negsig, mctx, &r2, maxrrperset));
 
 	closest = isc_mem_get(mctx, sizeof(*closest));
 	*closest = (dns_slabheader_proof_t){
@@ -3120,18 +3098,12 @@ qpcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 		DNS_SLABHEADER_SETATTR(newheader, DNS_SLABHEADERATTR_OPTOUT);
 	}
 	if (rdataset->attributes.noqname) {
-		result = addnoqname(qpnode->mctx, newheader, qpdb->maxrrperset,
-				    rdataset);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(addnoqname(qpnode->mctx, newheader, qpdb->maxrrperset,
+				  rdataset));
 	}
 	if (rdataset->attributes.closest) {
-		result = addclosest(qpnode->mctx, newheader, qpdb->maxrrperset,
-				    rdataset);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(addclosest(qpnode->mctx, newheader, qpdb->maxrrperset,
+				  rdataset));
 	}
 
 	nlock = &qpdb->buckets[qpnode->locknum].lock;

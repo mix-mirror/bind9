@@ -255,17 +255,13 @@ static isc_result_t
 digest_minfo(ARGS_DIGEST) {
 	isc_region_t r;
 	dns_name_t name;
-	isc_result_t result;
 
 	REQUIRE(rdata->type == dns_rdatatype_minfo);
 
 	dns_rdata_toregion(rdata, &r);
 	dns_name_init(&name);
 	dns_name_fromregion(&name, &r);
-	result = dns_name_digest(&name, digest, arg);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_name_digest(&name, digest, arg));
 	isc_region_consume(&r, name_length(&name));
 	dns_name_init(&name);
 	dns_name_fromregion(&name, &r);

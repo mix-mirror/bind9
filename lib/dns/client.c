@@ -59,13 +59,6 @@
 #define UCTX_MAGIC    ISC_MAGIC('U', 'c', 't', 'x')
 #define UCTX_VALID(c) ISC_MAGIC_VALID(c, UCTX_MAGIC)
 
-#define CHECK(r)                             \
-	do {                                 \
-		result = (r);                \
-		if (result != ISC_R_SUCCESS) \
-			goto cleanup;        \
-	} while (0)
-
 /*%
  * DNS client object
  */
@@ -149,17 +142,11 @@ setsourceports(isc_mem_t *mctx, dns_dispatchmgr_t *manager) {
 	isc_result_t result;
 
 	isc_portset_create(mctx, &v4portset);
-	result = isc_net_getudpportrange(AF_INET, &udpport_low, &udpport_high);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(isc_net_getudpportrange(AF_INET, &udpport_low, &udpport_high));
 	isc_portset_addrange(v4portset, udpport_low, udpport_high);
 
 	isc_portset_create(mctx, &v6portset);
-	result = isc_net_getudpportrange(AF_INET6, &udpport_low, &udpport_high);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(isc_net_getudpportrange(AF_INET6, &udpport_low, &udpport_high));
 	isc_portset_addrange(v6portset, udpport_low, udpport_high);
 
 	result = dns_dispatchmgr_setavailports(manager, v4portset, v6portset);
@@ -907,17 +894,11 @@ startresolve(dns_client_t *client, const dns_name_t *name,
 		.link = ISC_LINK_INITIALIZER,
 	};
 
-	result = getrdataset(mctx, &rdataset);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(getrdataset(mctx, &rdataset));
 	rctx->rdataset = rdataset;
 
 	if (want_dnssec) {
-		result = getrdataset(mctx, &sigrdataset);
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup;
-		}
+		CHECK(getrdataset(mctx, &sigrdataset));
 	}
 	rctx->sigrdataset = sigrdataset;
 

@@ -463,17 +463,11 @@ dns_request_createraw(dns_requestmgr_t *requestmgr, isc_buffer_t *msgbuf,
 			      timeout, udptimeout, udpretries);
 
 	isc_buffer_allocate(mctx, &request->query, r.length + (tcp ? 2 : 0));
-	result = isc_buffer_copyregion(request->query, &r);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(isc_buffer_copyregion(request->query, &r));
 
 again:
-	result = get_dispatch(tcp, newtcp, requestmgr, srcaddr, destaddr,
-			      transport, &request->dispatch);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(get_dispatch(tcp, newtcp, requestmgr, srcaddr, destaddr,
+			   transport, &request->dispatch));
 
 	if ((options & DNS_REQUESTOPT_FIXEDID) != 0) {
 		id = (r.base[0] << 8) | r.base[1];
@@ -589,26 +583,17 @@ dns_request_create(dns_requestmgr_t *requestmgr, dns_message_t *message,
 		dns_tsigkey_attach(key, &request->tsigkey);
 	}
 
-	result = dns_message_settsigkey(message, request->tsigkey);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(dns_message_settsigkey(message, request->tsigkey));
 
 again:
-	result = get_dispatch(tcp, false, requestmgr, srcaddr, destaddr,
-			      transport, &request->dispatch);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(get_dispatch(tcp, false, requestmgr, srcaddr, destaddr, transport,
+			   &request->dispatch));
 
-	result = dns_dispatch_add(request->dispatch, loop, 0,
-				  request->connect_timeout, request->timeout,
-				  destaddr, transport, tlsctx_cache,
-				  req_connected, req_senddone, req_response,
-				  request, &id, &request->dispentry);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(dns_dispatch_add(request->dispatch, loop, 0,
+			       request->connect_timeout, request->timeout,
+			       destaddr, transport, tlsctx_cache, req_connected,
+			       req_senddone, req_response, request, &id,
+			       &request->dispentry));
 
 	message->id = id;
 	result = req_render(message, &request->query, options, mctx);
@@ -624,10 +609,7 @@ again:
 		goto cleanup;
 	}
 
-	result = dns_message_getquerytsig(message, mctx, &request->tsig);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(dns_message_getquerytsig(message, mctx, &request->tsig));
 
 	request->destaddr = *destaddr;
 	request->flags |= DNS_REQUEST_F_CONNECTING;
@@ -692,44 +674,22 @@ req_render(dns_message_t *message, isc_buffer_t **bufferp, unsigned int options,
 	/*
 	 * Render message.
 	 */
-	result = dns_message_renderbegin(message, &cctx, buf1);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
-	result = dns_message_rendersection(message, DNS_SECTION_QUESTION, 0);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
-	result = dns_message_rendersection(message, DNS_SECTION_ANSWER, 0);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
-	result = dns_message_rendersection(message, DNS_SECTION_AUTHORITY, 0);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
-	result = dns_message_rendersection(message, DNS_SECTION_ADDITIONAL, 0);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
-	result = dns_message_renderend(message);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(dns_message_renderbegin(message, &cctx, buf1));
+	CHECK(dns_message_rendersection(message, DNS_SECTION_QUESTION, 0));
+	CHECK(dns_message_rendersection(message, DNS_SECTION_ANSWER, 0));
+	CHECK(dns_message_rendersection(message, DNS_SECTION_AUTHORITY, 0));
+	CHECK(dns_message_rendersection(message, DNS_SECTION_ADDITIONAL, 0));
+	CHECK(dns_message_renderend(message));
 
 	/*
 	 * Copy rendered message to exact sized buffer.
 	 */
 	isc_buffer_usedregion(buf1, &r);
 	if ((options & DNS_REQUESTOPT_TCP) == 0 && r.length > 512) {
-		result = DNS_R_USETCP;
-		goto cleanup;
+		CLEANUP(DNS_R_USETCP);
 	}
 	isc_buffer_allocate(mctx, &buf2, r.length);
-	result = isc_buffer_copyregion(buf2, &r);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(isc_buffer_copyregion(buf2, &r));
 
 	/*
 	 * Cleanup and return.
@@ -788,8 +748,6 @@ dns_request_cancel(dns_request_t *request) {
 isc_result_t
 dns_request_getresponse(dns_request_t *request, dns_message_t *message,
 			unsigned int options) {
-	isc_result_t result;
-
 	REQUIRE(VALID_REQUEST(request));
 	REQUIRE(request->tid == isc_tid());
 	REQUIRE(request->answer != NULL);
@@ -797,18 +755,12 @@ dns_request_getresponse(dns_request_t *request, dns_message_t *message,
 	req_log(ISC_LOG_DEBUG(3), "%s: request %p", __func__, request);
 
 	dns_message_setquerytsig(message, request->tsig);
-	result = dns_message_settsigkey(message, request->tsigkey);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
-	result = dns_message_parse(message, request->answer, options);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_message_settsigkey(message, request->tsigkey));
+	RETERR(dns_message_parse(message, request->answer, options));
 	if (request->tsigkey != NULL) {
-		result = dns_tsig_verify(request->answer, message, NULL, NULL);
+		RETERR(dns_tsig_verify(request->answer, message, NULL, NULL));
 	}
-	return result;
+	return ISC_R_SUCCESS;
 }
 
 isc_buffer_t *

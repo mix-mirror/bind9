@@ -25,27 +25,11 @@
 #include <dns/time.h>
 #include <dns/ttl.h>
 
-#define CHECK(op)                            \
-	do {                                 \
-		result = (op);               \
-		if (result != ISC_R_SUCCESS) \
-			goto failure;        \
-	} while (0)
-
 #define READLINE(lex, opt, token)
 
-#define NEXTTOKEN(lex, opt, token)                       \
-	{                                                \
-		ret = isc_lex_gettoken(lex, opt, token); \
-		if (ret != ISC_R_SUCCESS)                \
-			goto cleanup;                    \
-	}
+#define NEXTTOKEN(lex, opt, token) CHECK(isc_lex_gettoken(lex, opt, token))
 
-#define BADTOKEN()                           \
-	{                                    \
-		ret = ISC_R_UNEXPECTEDTOKEN; \
-		goto cleanup;                \
-	}
+#define BADTOKEN() CLEANUP(ISC_R_UNEXPECTEDTOKEN)
 
 #define TOKENSIZ (8 * 1024)
 #define STR(t)	 ((t).value.as_textregion.base)
@@ -61,7 +45,7 @@ parse_rr(isc_lex_t *lex, isc_mem_t *mctx, char *owner, dns_name_t *origin,
 	isc_buffer_t b;
 	isc_token_t token;
 	unsigned int opt = ISC_LEXOPT_EOL;
-	isc_result_t ret = ISC_R_SUCCESS;
+	isc_result_t result = ISC_R_SUCCESS;
 
 	isc_lex_setcomments(lex, ISC_LEXCOMMENT_DNSMASTERFILE);
 
@@ -72,13 +56,9 @@ parse_rr(isc_lex_t *lex, isc_mem_t *mctx, char *owner, dns_name_t *origin,
 	dname = dns_fixedname_initname(&dfname);
 	isc_buffer_init(&b, owner, strlen(owner));
 	isc_buffer_add(&b, strlen(owner));
-	ret = dns_name_fromtext(dname, &b, dns_rootname, 0);
-	if (ret != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(dns_name_fromtext(dname, &b, dns_rootname, 0));
 	if (dns_name_compare(dname, origin) != 0) {
-		ret = DNS_R_BADOWNERNAME;
-		goto cleanup;
+		CLEANUP(DNS_R_BADOWNERNAME);
 	}
 	isc_buffer_clear(&b);
 
@@ -89,8 +69,8 @@ parse_rr(isc_lex_t *lex, isc_mem_t *mctx, char *owner, dns_name_t *origin,
 	}
 
 	/* If it's a TTL, read the next one */
-	ret = dns_ttl_fromtext(&token.value.as_textregion, ttl);
-	if (ret == ISC_R_SUCCESS) {
+	result = dns_ttl_fromtext(&token.value.as_textregion, ttl);
+	if (result == ISC_R_SUCCESS) {
 		NEXTTOKEN(lex, opt, &token);
 	}
 	if (token.type != isc_tokentype_string) {
@@ -98,8 +78,8 @@ parse_rr(isc_lex_t *lex, isc_mem_t *mctx, char *owner, dns_name_t *origin,
 	}
 
 	/* If it's a class, read the next one */
-	ret = dns_rdataclass_fromtext(&clas, &token.value.as_textregion);
-	if (ret == ISC_R_SUCCESS) {
+	result = dns_rdataclass_fromtext(&clas, &token.value.as_textregion);
+	if (result == ISC_R_SUCCESS) {
 		if (clas != rdclass) {
 			BADTOKEN();
 		}
@@ -110,8 +90,8 @@ parse_rr(isc_lex_t *lex, isc_mem_t *mctx, char *owner, dns_name_t *origin,
 	}
 
 	/* Must be the record type */
-	ret = dns_rdatatype_fromtext(rdtype, &token.value.as_textregion);
-	if (ret != ISC_R_SUCCESS) {
+	result = dns_rdatatype_fromtext(rdtype, &token.value.as_textregion);
+	if (result != ISC_R_SUCCESS) {
 		BADTOKEN();
 	}
 	switch (*rdtype) {
@@ -126,11 +106,11 @@ parse_rr(isc_lex_t *lex, isc_mem_t *mctx, char *owner, dns_name_t *origin,
 	}
 
 	dns_rdatacallbacks_init(&callbacks);
-	ret = dns_rdata_fromtext(*rdata, rdclass, *rdtype, lex, dname, 0, mctx,
-				 buf, &callbacks);
+	result = dns_rdata_fromtext(*rdata, rdclass, *rdtype, lex, dname, 0,
+				    mctx, buf, &callbacks);
 cleanup:
 	isc_lex_setcomments(lex, 0);
-	return ret;
+	return result;
 }
 
 static void
@@ -162,8 +142,6 @@ skrbundle_addtuple(dns_skrbundle_t *bundle, dns_difftuple_t **tuple) {
 isc_result_t
 dns_skrbundle_getsig(dns_skrbundle_t *bundle, dst_key_t *key,
 		     dns_rdatatype_t covering_type, dns_rdata_t *sigrdata) {
-	isc_result_t result = ISC_R_SUCCESS;
-
 	REQUIRE(DNS_SKRBUNDLE_VALID(bundle));
 	REQUIRE(DNS_DIFF_VALID(&bundle->diff));
 
@@ -175,10 +153,7 @@ dns_skrbundle_getsig(dns_skrbundle_t *bundle, dst_key_t *key,
 		}
 		INSIST(tuple->rdata.type == dns_rdatatype_rrsig);
 
-		result = dns_rdata_tostruct(&tuple->rdata, &rrsig, NULL);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(dns_rdata_tostruct(&tuple->rdata, &rrsig, NULL));
 
 		/*
 		 * Check if covering type matches, and if the signature is
@@ -273,7 +248,7 @@ dns_skr_read(isc_mem_t *mctx, const char *filename, dns_name_t *origin,
 		}
 
 		if (token.type != isc_tokentype_string) {
-			CHECK(DNS_R_SYNTAX);
+			CLEANUP(DNS_R_SYNTAX);
 		}
 
 		if (strcmp(STR(token), ";;") == 0) {
@@ -282,7 +257,7 @@ dns_skr_read(isc_mem_t *mctx, const char *filename, dns_name_t *origin,
 			if (token.type != isc_tokentype_string ||
 			    strcmp(STR(token), "SignedKeyResponse") != 0)
 			{
-				CHECK(DNS_R_SYNTAX);
+				CLEANUP(DNS_R_SYNTAX);
 			}
 
 			/* Version */
@@ -290,20 +265,20 @@ dns_skr_read(isc_mem_t *mctx, const char *filename, dns_name_t *origin,
 			if (token.type != isc_tokentype_string ||
 			    strcmp(STR(token), "1.0") != 0)
 			{
-				CHECK(DNS_R_SYNTAX);
+				CLEANUP(DNS_R_SYNTAX);
 			}
 
 			/* Date and time of bundle */
 			CHECK(isc_lex_gettoken(lex, opt, &token));
 			if (token.type != isc_tokentype_string) {
-				CHECK(DNS_R_SYNTAX);
+				CLEANUP(DNS_R_SYNTAX);
 			}
 			if (strcmp(STR(token), "generated") == 0) {
 				/* Final bundle */
 				goto readline;
 			}
 			if (token.type != isc_tokentype_string) {
-				CHECK(DNS_R_SYNTAX);
+				CLEANUP(DNS_R_SYNTAX);
 			}
 
 			/* Add previous bundle */
@@ -345,7 +320,7 @@ dns_skr_read(isc_mem_t *mctx, const char *filename, dns_name_t *origin,
 					filename, isc_lex_getsourceline(lex),
 					isc_result_totext(result));
 				isc_mem_put(mctx, rdata, sizeof(*rdata));
-				goto failure;
+				goto cleanup;
 			}
 
 			/* Create new diff tuple */
@@ -365,7 +340,7 @@ dns_skr_read(isc_mem_t *mctx, const char *filename, dns_name_t *origin,
 	}
 
 	if (result != ISC_R_EOF) {
-		CHECK(DNS_R_SYNTAX);
+		CLEANUP(DNS_R_SYNTAX);
 	}
 	result = ISC_R_SUCCESS;
 
@@ -374,7 +349,7 @@ dns_skr_read(isc_mem_t *mctx, const char *filename, dns_name_t *origin,
 		addbundle(*skrp, &bundle);
 	}
 
-failure:
+cleanup:
 	if (result != ISC_R_SUCCESS) {
 		isc_log_write(DNS_LOGCATEGORY_GENERAL, DNS_LOGMODULE_ZONE,
 			      ISC_LOG_DEBUG(1),

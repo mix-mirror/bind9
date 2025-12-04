@@ -704,10 +704,7 @@ verifynsec3(const vctx_t *vctx, const dns_name_t *name,
 		return result;
 	}
 
-	result = isoptout(vctx, &nsec3param, &optout);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(isoptout(vctx, &nsec3param, &optout));
 
 	dns_fixedname_init(&fixed);
 	result = dns_nsec3_hashname(
@@ -772,23 +769,18 @@ verifynsec3s(const vctx_t *vctx, const dns_name_t *name,
 	     dns_rdataset_t *nsec3paramset, bool delegation, bool empty,
 	     const unsigned char types[8192], unsigned int maxtype,
 	     isc_result_t *vresult) {
-	isc_result_t result = ISC_R_NOMORE;
-
 	DNS_RDATASET_FOREACH(nsec3paramset) {
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 
 		dns_rdataset_current(nsec3paramset, &rdata);
-		result = verifynsec3(vctx, name, &rdata, delegation, empty,
-				     types, maxtype, vresult);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(verifynsec3(vctx, name, &rdata, delegation, empty, types,
+				   maxtype, vresult));
 		if (*vresult != ISC_R_SUCCESS) {
 			break;
 		}
 	}
 
-	return result;
+	return ISC_R_SUCCESS;
 }
 
 static isc_result_t
@@ -970,19 +962,13 @@ verifynode(vctx_t *vctx, const dns_name_t *name, dns_dbnode_t *node,
 	*vresult = ISC_R_SUCCESS;
 
 	if (nsecset != NULL && dns_rdataset_isassociated(nsecset)) {
-		result = verifynsec(vctx, name, node, nextname, &tvresult);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(verifynsec(vctx, name, node, nextname, &tvresult));
 		*vresult = tvresult;
 	}
 
 	if (nsec3paramset != NULL && dns_rdataset_isassociated(nsec3paramset)) {
-		result = verifynsec3s(vctx, name, nsec3paramset, delegation,
-				      false, types, maxtype, &tvresult);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(verifynsec3s(vctx, name, nsec3paramset, delegation,
+				    false, types, maxtype, &tvresult));
 		if (*vresult == ISC_R_SUCCESS) {
 			*vresult = tvresult;
 		}
@@ -1217,7 +1203,7 @@ verifyemptynodes(const vctx_t *vctx, const dns_name_t *name,
 	int order;
 	unsigned int labels, nlabels, i;
 	dns_name_t suffix;
-	isc_result_t result, tvresult = ISC_R_UNSET;
+	isc_result_t tvresult = ISC_R_UNSET;
 
 	*vresult = ISC_R_SUCCESS;
 
@@ -1238,12 +1224,9 @@ verifyemptynodes(const vctx_t *vctx, const dns_name_t *name,
 			if (nsec3paramset != NULL &&
 			    dns_rdataset_isassociated(nsec3paramset))
 			{
-				result = verifynsec3s(
-					vctx, &suffix, nsec3paramset,
-					isdelegation, true, NULL, 0, &tvresult);
-				if (result != ISC_R_SUCCESS) {
-					return result;
-				}
+				RETERR(verifynsec3s(vctx, &suffix,
+						    nsec3paramset, isdelegation,
+						    true, NULL, 0, &tvresult));
 				if (*vresult == ISC_R_SUCCESS) {
 					*vresult = tvresult;
 				}
@@ -1486,11 +1469,7 @@ check_dnskey_sigs(vctx_t *vctx, const dns_rdata_dnskey_t *dnskey,
 	 * is NULL, then we have neither a DNSKEY nor a DS format
 	 * trust anchor, and can give up.
 	 */
-	result = dns_keytable_find(vctx->secroots, vctx->origin, &keynode);
-	if (result != ISC_R_SUCCESS) {
-		/* No such trust anchor */
-		goto cleanup;
-	}
+	CHECK(dns_keytable_find(vctx->secroots, vctx->origin, &keynode));
 
 	/*
 	 * If the keynode has any DS format trust anchors, that means

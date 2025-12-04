@@ -44,10 +44,7 @@ named_log_init(bool safe) {
 		named_log_setdefaultchannels(lcfg);
 	}
 
-	result = named_log_setdefaultcategory(lcfg);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(named_log_setdefaultcategory(lcfg));
 
 	named_log_setdefaultsslkeylogfile(lcfg);
 	rcu_read_unlock();
@@ -199,12 +196,8 @@ isc_result_t
 named_log_setdefaultcategory(isc_logconfig_t *lcfg) {
 	isc_result_t result = ISC_R_SUCCESS;
 
-	result = isc_log_usechannel(lcfg, "default_debug",
-				    ISC_LOGCATEGORY_DEFAULT,
-				    ISC_LOGMODULE_DEFAULT);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(isc_log_usechannel(lcfg, "default_debug", ISC_LOGCATEGORY_DEFAULT,
+				 ISC_LOGMODULE_DEFAULT));
 
 	if (!named_g_logstderr) {
 		if (named_g_logfile != NULL) {

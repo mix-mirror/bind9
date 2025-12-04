@@ -282,10 +282,7 @@ additionaldata_mx(ARGS_ADDLDATA) {
 		return ISC_R_SUCCESS;
 	}
 
-	result = (add)(arg, &name, dns_rdatatype_a, NULL DNS__DB_FILELINE);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR((add)(arg, &name, dns_rdatatype_a, NULL DNS__DB_FILELINE));
 
 	dns_fixedname_init(&fixed);
 	result = dns_name_concatenate(&port25, &name,

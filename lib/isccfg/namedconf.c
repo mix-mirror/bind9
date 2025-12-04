@@ -33,15 +33,6 @@
 
 #define TOKEN_STRING(pctx) (pctx->token.value.as_textregion.base)
 
-/*% Check a return value. */
-#define CHECK(op)                              \
-	{                                      \
-		result = (op);                 \
-		if (result != ISC_R_SUCCESS) { \
-			goto cleanup;          \
-		}                              \
-	}
-
 /*% Clean up a configuration object if non-NULL. */
 #define CLEANUP_OBJ(obj)                        \
 	{                                       \
@@ -1811,8 +1802,7 @@ parse_dtout(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 			} else {
 				cfg_parser_error(pctx, CFG_LOG_NEAR,
 						 "unexpected token");
-				result = ISC_R_UNEXPECTEDTOKEN;
-				goto cleanup;
+				CLEANUP(ISC_R_UNEXPECTEDTOKEN);
 			}
 		} else {
 			break;
@@ -1984,8 +1974,7 @@ cfg_parse_kv_tuple(cfg_parser_t *pctx, const cfg_type_t *type,
 			if (f->name == NULL) {
 				cfg_parser_error(pctx, 0, "unexpected '%s'",
 						 TOKEN_STRING(pctx));
-				result = ISC_R_UNEXPECTEDTOKEN;
-				goto cleanup;
+				CLEANUP(ISC_R_UNEXPECTEDTOKEN);
 			}
 			if (obj->value.tuple[fn] == NULL &&
 			    strcasecmp(f->name, TOKEN_STRING(pctx)) == 0)
@@ -3173,8 +3162,7 @@ parse_sizeval(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 
 	CHECK(cfg_gettoken(pctx, 0));
 	if (pctx->token.type != isc_tokentype_string) {
-		result = ISC_R_UNEXPECTEDTOKEN;
-		goto cleanup;
+		CLEANUP(ISC_R_UNEXPECTEDTOKEN);
 	}
 	CHECK(parse_unitstring(TOKEN_STRING(pctx), &val));
 
@@ -3203,8 +3191,7 @@ parse_sizeval_percent(cfg_parser_t *pctx, const cfg_type_t *type,
 
 	CHECK(cfg_gettoken(pctx, 0));
 	if (pctx->token.type != isc_tokentype_string) {
-		result = ISC_R_UNEXPECTEDTOKEN;
-		goto cleanup;
+		CLEANUP(ISC_R_UNEXPECTEDTOKEN);
 	}
 
 	percent = strtoull(TOKEN_STRING(pctx), &endp, 10);
@@ -3357,8 +3344,7 @@ parse_maybe_optional_keyvalue(cfg_parser_t *pctx, const cfg_type_t *type,
 		} else {
 			cfg_parser_error(pctx, CFG_LOG_NEAR, "expected '%s'",
 					 kw->name);
-			result = ISC_R_UNEXPECTEDTOKEN;
-			goto cleanup;
+			CLEANUP(ISC_R_UNEXPECTEDTOKEN);
 		}
 	}
 

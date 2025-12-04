@@ -241,7 +241,7 @@ keygen(keygen_ctx_t *ctx, int argc, char **argv) {
 	isc_buffer_t buf;
 	dns_name_t *name;
 	dns_fixedname_t fname;
-	isc_result_t ret;
+	isc_result_t result;
 	dst_key_t *key = NULL;
 	dst_key_t *prevkey = NULL;
 
@@ -258,11 +258,11 @@ keygen(keygen_ctx_t *ctx, int argc, char **argv) {
 		isc_buffer_init(&buf, argv[isc_commandline_index],
 				strlen(argv[isc_commandline_index]));
 		isc_buffer_add(&buf, strlen(argv[isc_commandline_index]));
-		ret = dns_name_fromtext(name, &buf, dns_rootname, 0);
-		if (ret != ISC_R_SUCCESS) {
+		result = dns_name_fromtext(name, &buf, dns_rootname, 0);
+		if (result != ISC_R_SUCCESS) {
 			fatal("invalid key name %s: %s",
 			      argv[isc_commandline_index],
-			      isc_result_totext(ret));
+			      isc_result_totext(result));
 		}
 
 		if (!dst_algorithm_supported(ctx->alg)) {
@@ -391,13 +391,13 @@ keygen(keygen_ctx_t *ctx, int argc, char **argv) {
 			fatal("-S and -G cannot be used together");
 		}
 
-		ret = dst_key_fromnamedfile(ctx->predecessor, ctx->directory,
-					    DST_TYPE_PUBLIC | DST_TYPE_PRIVATE |
-						    DST_TYPE_STATE,
-					    isc_g_mctx, &prevkey);
-		if (ret != ISC_R_SUCCESS) {
+		result = dst_key_fromnamedfile(
+			ctx->predecessor, ctx->directory,
+			DST_TYPE_PUBLIC | DST_TYPE_PRIVATE | DST_TYPE_STATE,
+			isc_g_mctx, &prevkey);
+		if (result != ISC_R_SUCCESS) {
 			fatal("Invalid keyfile %s: %s", ctx->predecessor,
-			      isc_result_totext(ret));
+			      isc_result_totext(result));
 		}
 		if (!dst_key_isprivate(prevkey)) {
 			fatal("%s is not a private key", ctx->predecessor);
@@ -416,17 +416,17 @@ keygen(keygen_ctx_t *ctx, int argc, char **argv) {
 			      keystr, major, minor);
 		}
 
-		ret = dst_key_gettime(prevkey, DST_TIME_ACTIVATE, &when);
-		if (ret != ISC_R_SUCCESS) {
+		result = dst_key_gettime(prevkey, DST_TIME_ACTIVATE, &when);
+		if (result != ISC_R_SUCCESS) {
 			fatal("Key %s has no activation date.\n\t"
 			      "You must use dnssec-settime -A to set one "
 			      "before generating a successor.",
 			      keystr);
 		}
 
-		ret = dst_key_gettime(prevkey, DST_TIME_INACTIVE,
-				      &ctx->activate);
-		if (ret != ISC_R_SUCCESS) {
+		result = dst_key_gettime(prevkey, DST_TIME_INACTIVE,
+					 &ctx->activate);
+		if (result != ISC_R_SUCCESS) {
 			fatal("Key %s has no inactivation date.\n\t"
 			      "You must use dnssec-settime -I to set one "
 			      "before generating a successor.",
@@ -445,8 +445,8 @@ keygen(keygen_ctx_t *ctx, int argc, char **argv) {
 			      keystr);
 		}
 
-		ret = dst_key_gettime(prevkey, DST_TIME_DELETE, &when);
-		if (ret != ISC_R_SUCCESS) {
+		result = dst_key_gettime(prevkey, DST_TIME_DELETE, &when);
+		if (result != ISC_R_SUCCESS) {
 			fprintf(stderr,
 				"%s: WARNING: Key %s has no removal "
 				"date;\n\t it will remain in the zone "
@@ -558,19 +558,19 @@ keygen(keygen_ctx_t *ctx, int argc, char **argv) {
 		}
 
 		if (ctx->keystore != NULL && ctx->policy != NULL) {
-			ret = dns_keystore_keygen(
+			result = dns_keystore_keygen(
 				ctx->keystore, name, ctx->policy, ctx->rdclass,
 				isc_g_mctx, ctx->alg, ctx->size, flags, &key);
 		} else if (!ctx->quiet && show_progress) {
-			ret = dst_key_generate(name, ctx->alg, ctx->size, 0,
-					       flags, DNS_KEYPROTO_DNSSEC,
-					       ctx->rdclass, NULL, isc_g_mctx,
-					       &key, &progress);
+			result = dst_key_generate(name, ctx->alg, ctx->size, 0,
+						  flags, DNS_KEYPROTO_DNSSEC,
+						  ctx->rdclass, NULL,
+						  isc_g_mctx, &key, &progress);
 		} else {
-			ret = dst_key_generate(name, ctx->alg, ctx->size, 0,
-					       flags, DNS_KEYPROTO_DNSSEC,
-					       ctx->rdclass, NULL, isc_g_mctx,
-					       &key, NULL);
+			result = dst_key_generate(name, ctx->alg, ctx->size, 0,
+						  flags, DNS_KEYPROTO_DNSSEC,
+						  ctx->rdclass, NULL,
+						  isc_g_mctx, &key, NULL);
 		}
 
 		if (!ctx->quiet && show_progress) {
@@ -578,11 +578,11 @@ keygen(keygen_ctx_t *ctx, int argc, char **argv) {
 			fflush(stderr);
 		}
 
-		if (ret != ISC_R_SUCCESS) {
+		if (result != ISC_R_SUCCESS) {
 			char namestr[DNS_NAME_FORMATSIZE];
 			dns_name_format(name, namestr, sizeof(namestr));
 			fatal("failed to generate key %s/%s: %s\n", namestr,
-			      algstr, isc_result_totext(ret));
+			      algstr, isc_result_totext(result));
 		}
 
 		/*
@@ -715,9 +715,9 @@ keygen(keygen_ctx_t *ctx, int argc, char **argv) {
 
 			if (verbose > 0) {
 				isc_buffer_clear(&buf);
-				ret = dst_key_buildfilename(
+				result = dst_key_buildfilename(
 					key, 0, ctx->directory, &buf);
-				if (ret == ISC_R_SUCCESS) {
+				if (result == ISC_R_SUCCESS) {
 					fprintf(stderr,
 						"%s: %s already exists, or "
 						"might collide with another "
@@ -741,28 +741,28 @@ keygen(keygen_ctx_t *ctx, int argc, char **argv) {
 		dst_key_setnum(prevkey, DST_NUM_SUCCESSOR, dst_key_id(key));
 		dst_key_setnum(key, DST_NUM_PREDECESSOR, dst_key_id(prevkey));
 
-		ret = dst_key_tofile(prevkey, ctx->options, ctx->directory);
-		if (ret != ISC_R_SUCCESS) {
+		result = dst_key_tofile(prevkey, ctx->options, ctx->directory);
+		if (result != ISC_R_SUCCESS) {
 			char keystr[DST_KEY_FORMATSIZE];
 			dst_key_format(prevkey, keystr, sizeof(keystr));
 			fatal("failed to update predecessor %s: %s\n", keystr,
-			      isc_result_totext(ret));
+			      isc_result_totext(result));
 		}
 	}
 
-	ret = dst_key_tofile(key, ctx->options, ctx->directory);
-	if (ret != ISC_R_SUCCESS) {
+	result = dst_key_tofile(key, ctx->options, ctx->directory);
+	if (result != ISC_R_SUCCESS) {
 		char keystr[DST_KEY_FORMATSIZE];
 		dst_key_format(key, keystr, sizeof(keystr));
 		fatal("failed to write key %s: %s\n", keystr,
-		      isc_result_totext(ret));
+		      isc_result_totext(result));
 	}
 
 	isc_buffer_clear(&buf);
-	ret = dst_key_buildfilename(key, 0, NULL, &buf);
-	if (ret != ISC_R_SUCCESS) {
+	result = dst_key_buildfilename(key, 0, NULL, &buf);
+	if (result != ISC_R_SUCCESS) {
 		fatal("dst_key_buildfilename returned: %s\n",
-		      isc_result_totext(ret));
+		      isc_result_totext(result));
 	}
 	printf("%s\n", filename);
 
@@ -776,10 +776,10 @@ static void
 check_keystore_options(keygen_ctx_t *ctx) {
 	ctx->directory = dns_keystore_directory(ctx->keystore, NULL);
 	if (ctx->directory != NULL) {
-		isc_result_t ret = try_dir(ctx->directory);
-		if (ret != ISC_R_SUCCESS) {
+		isc_result_t result = try_dir(ctx->directory);
+		if (result != ISC_R_SUCCESS) {
 			fatal("cannot open directory %s: %s", ctx->directory,
-			      isc_result_totext(ret));
+			      isc_result_totext(result));
 		}
 	}
 }
@@ -789,7 +789,7 @@ main(int argc, char **argv) {
 	char *algname = NULL, *freeit = NULL;
 	char *classname = NULL;
 	char *endp;
-	isc_result_t ret;
+	isc_result_t result;
 	isc_textregion_t r;
 	unsigned char c;
 	int ch;
@@ -878,10 +878,10 @@ main(int argc, char **argv) {
 			break;
 		case 'K':
 			ctx.directory = isc_commandline_argument;
-			ret = try_dir(ctx.directory);
-			if (ret != ISC_R_SUCCESS) {
+			result = try_dir(ctx.directory);
+			if (result != ISC_R_SUCCESS) {
 				fatal("cannot open directory %s: %s",
-				      ctx.directory, isc_result_totext(ret));
+				      ctx.directory, isc_result_totext(result));
 			}
 			break;
 		case 'k':
@@ -1096,8 +1096,8 @@ main(int argc, char **argv) {
 		}
 		r.base = algname;
 		r.length = strlen(algname);
-		ret = dst_algorithm_fromtext(&ctx.alg, &r);
-		if (ret != ISC_R_SUCCESS) {
+		result = dst_algorithm_fromtext(&ctx.alg, &r);
+		if (result != ISC_R_SUCCESS) {
 			fatal("unknown algorithm %s", algname);
 		}
 		if (!dst_algorithm_supported(ctx.alg)) {

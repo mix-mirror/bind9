@@ -281,18 +281,14 @@ isc_nm_listenudp(uint32_t workers, isc_sockaddr_t *iface, isc_nm_recv_cb_t cb,
 #ifdef USE_ROUTE_SOCKET
 static isc_result_t
 route_socket(uv_os_sock_t *fdp) {
-	isc_result_t result;
 	uv_os_sock_t fd = -1;
 #ifdef USE_NETLINK
 	struct sockaddr_nl sa;
 	int r;
 #endif
 
-	result = isc__nm_socket(ROUTE_SOCKET_PF, SOCK_RAW,
-				ROUTE_SOCKET_PROTOCOL, &fd);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(isc__nm_socket(ROUTE_SOCKET_PF, SOCK_RAW, ROUTE_SOCKET_PROTOCOL,
+			      &fd));
 
 #ifdef USE_NETLINK
 	sa.nl_family = PF_NETLINK;
@@ -361,10 +357,7 @@ isc_nm_routeconnect(isc_nm_cb_t cb, void *cbarg) {
 		return ISC_R_SHUTTINGDOWN;
 	}
 
-	result = route_socket(&fd);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(route_socket(&fd));
 
 	sock = isc_mempool_get(worker->nmsocket_pool);
 	isc__nmsocket_init(sock, worker, isc_nm_udpsocket, NULL, NULL);

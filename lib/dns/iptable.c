@@ -90,17 +90,12 @@ dns_iptable_addprefix(dns_iptable_t *tab, const isc_netaddr_t *addr,
  */
 isc_result_t
 dns_iptable_merge(dns_iptable_t *tab, dns_iptable_t *source, bool pos) {
-	isc_result_t result;
 	isc_radix_node_t *node, *new_node;
 	int i, max_node = 0;
 
 	RADIX_WALK(source->radix->head, node) {
 		new_node = NULL;
-		result = isc_radix_insert(tab->radix, &new_node, node, NULL);
-
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(isc_radix_insert(tab->radix, &new_node, node, NULL));
 
 		/*
 		 * If we're negating a nested ACL, then we should

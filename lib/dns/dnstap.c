@@ -120,13 +120,6 @@ struct dns_dtenv {
 	isc_stats_t *stats;
 };
 
-#define CHECK(x)                             \
-	do {                                 \
-		result = (x);                \
-		if (result != ISC_R_SUCCESS) \
-			goto cleanup;        \
-	} while (0)
-
 typedef struct ioq {
 	unsigned int generation;
 	struct fstrm_iothr_queue *ioq;
@@ -171,13 +164,13 @@ dns_dt_create(isc_mem_t *mctx, dns_dtmode_t mode, const char *path,
 
 	fwopt = fstrm_writer_options_init();
 	if (fwopt == NULL) {
-		CHECK(ISC_R_NOMEMORY);
+		CLEANUP(ISC_R_NOMEMORY);
 	}
 
 	res = fstrm_writer_options_add_content_type(
 		fwopt, DNSTAP_CONTENT_TYPE, sizeof(DNSTAP_CONTENT_TYPE) - 1);
 	if (res != fstrm_res_success) {
-		CHECK(ISC_R_FAILURE);
+		CLEANUP(ISC_R_FAILURE);
 	}
 
 	if (mode == dns_dtmode_file) {
@@ -194,11 +187,11 @@ dns_dt_create(isc_mem_t *mctx, dns_dtmode_t mode, const char *path,
 			fw = fstrm_unix_writer_init(fuwopt, fwopt);
 		}
 	} else {
-		CHECK(ISC_R_FAILURE);
+		CLEANUP(ISC_R_FAILURE);
 	}
 
 	if (fw == NULL) {
-		CHECK(ISC_R_FAILURE);
+		CLEANUP(ISC_R_FAILURE);
 	}
 
 	env->iothr = fstrm_iothr_init(*foptp, &fw);
@@ -207,7 +200,7 @@ dns_dt_create(isc_mem_t *mctx, dns_dtmode_t mode, const char *path,
 			      ISC_LOG_WARNING,
 			      "unable to initialize dnstap I/O thread");
 		fstrm_writer_destroy(&fw);
-		CHECK(ISC_R_FAILURE);
+		CLEANUP(ISC_R_FAILURE);
 	}
 	env->mode = mode;
 	env->max_size = 0;
@@ -288,13 +281,13 @@ dns_dt_reopen(dns_dtenv_t *env, int roll) {
 	 */
 	fwopt = fstrm_writer_options_init();
 	if (fwopt == NULL) {
-		CHECK(ISC_R_NOMEMORY);
+		CLEANUP(ISC_R_NOMEMORY);
 	}
 
 	res = fstrm_writer_options_add_content_type(
 		fwopt, DNSTAP_CONTENT_TYPE, sizeof(DNSTAP_CONTENT_TYPE) - 1);
 	if (res != fstrm_res_success) {
-		CHECK(ISC_R_FAILURE);
+		CLEANUP(ISC_R_FAILURE);
 	}
 
 	if (env->mode == dns_dtmode_file) {
@@ -311,11 +304,11 @@ dns_dt_reopen(dns_dtenv_t *env, int roll) {
 			fw = fstrm_unix_writer_init(fuwopt, fwopt);
 		}
 	} else {
-		CHECK(ISC_R_NOTIMPLEMENTED);
+		CLEANUP(ISC_R_NOTIMPLEMENTED);
 	}
 
 	if (fw == NULL) {
-		CHECK(ISC_R_FAILURE);
+		CLEANUP(ISC_R_FAILURE);
 	}
 
 	/*
@@ -357,7 +350,7 @@ dns_dt_reopen(dns_dtenv_t *env, int roll) {
 		isc_log_write(DNS_LOGCATEGORY_DNSTAP, DNS_LOGMODULE_DNSTAP,
 			      ISC_LOG_WARNING,
 			      "unable to initialize dnstap I/O thread");
-		CHECK(ISC_R_FAILURE);
+		CLEANUP(ISC_R_FAILURE);
 	}
 
 cleanup:
@@ -945,23 +938,23 @@ dns_dt_open(const char *filename, dns_dtmode_t mode, isc_mem_t *mctx,
 	case dns_dtmode_file:
 		fopt = fstrm_file_options_init();
 		if (fopt == NULL) {
-			CHECK(ISC_R_NOMEMORY);
+			CLEANUP(ISC_R_NOMEMORY);
 		}
 
 		fstrm_file_options_set_file_path(fopt, filename);
 
 		handle->reader = fstrm_file_reader_init(fopt, NULL);
 		if (handle->reader == NULL) {
-			CHECK(ISC_R_NOMEMORY);
+			CLEANUP(ISC_R_NOMEMORY);
 		}
 
 		res = fstrm_reader_open(handle->reader);
 		if (res != fstrm_res_success) {
-			CHECK(ISC_R_FAILURE);
+			CLEANUP(ISC_R_FAILURE);
 		}
 
 		if (!dnstap_file(handle->reader)) {
-			CHECK(DNS_R_BADDNSTAP);
+			CLEANUP(DNS_R_BADDNSTAP);
 		}
 		break;
 	case dns_dtmode_unix:
@@ -1050,13 +1043,13 @@ dns_dt_parse(isc_mem_t *mctx, isc_region_t *src, dns_dtdata_t **destp) {
 
 	d->frame = dnstap__dnstap__unpack(NULL, src->length, src->base);
 	if (d->frame == NULL) {
-		CHECK(ISC_R_NOMEMORY);
+		CLEANUP(ISC_R_NOMEMORY);
 	}
 
 	frame = (Dnstap__Dnstap *)d->frame;
 
 	if (frame->type != DNSTAP__DNSTAP__TYPE__MESSAGE) {
-		CHECK(DNS_R_BADDNSTAP);
+		CLEANUP(DNS_R_BADDNSTAP);
 	}
 
 	m = frame->message;
@@ -1106,7 +1099,7 @@ dns_dt_parse(isc_mem_t *mctx, isc_region_t *src, dns_dtdata_t **destp) {
 		d->type = DNS_DTTYPE_UR;
 		break;
 	default:
-		CHECK(DNS_R_BADDNSTAP);
+		CLEANUP(DNS_R_BADDNSTAP);
 	}
 
 	/* Query? */

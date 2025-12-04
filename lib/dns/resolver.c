@@ -4524,10 +4524,7 @@ resume_qmin(void *arg) {
 	fcount_decr(fctx);
 	dns_name_copy(fname, fctx->domain);
 
-	result = fcount_incr(fctx, false);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(fcount_incr(fctx, false));
 
 	dns_name_copy(dcname, fctx->qmindcname);
 	fctx->ns_ttl = fctx->nameservers.ttl;
@@ -6045,7 +6042,6 @@ static isc_result_t
 rctx_cache_secure(respctx_t *rctx, dns_message_t *message, dns_name_t *name,
 		  dns_dbnode_t *node, dns_rdataset_t *rdataset,
 		  dns_rdataset_t *sigrdataset, bool need_validation) {
-	isc_result_t result;
 	fetchctx_t *fctx = rctx->fctx;
 	resquery_t *query = rctx->query;
 	dns_rdataset_t *ardataset = NULL, *asigset = NULL;
@@ -6129,12 +6125,8 @@ rctx_cache_secure(respctx_t *rctx, dns_message_t *message, dns_name_t *name,
 		 * in-between.
 		 */
 
-		result = cache_rrset(fctx, rctx->now, name, rdataset,
-				     sigrdataset, &node, ardataset, asigset,
-				     need_validation);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(cache_rrset(fctx, rctx->now, name, rdataset, sigrdataset,
+				   &node, ardataset, asigset, need_validation));
 	}
 
 	return ISC_R_SUCCESS;
@@ -6182,7 +6174,7 @@ rctx_cache_insecure(respctx_t *rctx, dns_message_t *message, dns_name_t *name,
 
 static isc_result_t
 rctx_cachename(respctx_t *rctx, dns_message_t *message, dns_name_t *name) {
-	isc_result_t result;
+	isc_result_t result = ISC_R_SUCCESS;
 	fetchctx_t *fctx = rctx->fctx;
 	resquery_t *query = rctx->query;
 	dns_resolver_t *res = fctx->res;
@@ -6206,10 +6198,7 @@ rctx_cachename(respctx_t *rctx, dns_message_t *message, dns_name_t *name) {
 	/*
 	 * Find or create the cache node.
 	 */
-	result = dns_db_findnode(fctx->cache, name, true, &node);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_db_findnode(fctx->cache, name, true, &node));
 
 	/*
 	 * Cache or validate each cacheable rdataset.
@@ -6247,9 +6236,7 @@ rctx_cachename(respctx_t *rctx, dns_message_t *message, dns_name_t *name) {
 			result = rctx_cache_insecure(rctx, message, name, node,
 						     rdataset, sigrdataset);
 		}
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup;
-		}
+		CHECK(result);
 	}
 
 	/*
@@ -6319,10 +6306,7 @@ rctx_cachemessage(respctx_t *rctx) {
 	{
 		MSG_SECTION_FOREACH(message, section, name) {
 			if (name->attributes.cache) {
-				result = rctx_cachename(rctx, message, name);
-				if (result != ISC_R_SUCCESS) {
-					goto cleanup;
-				}
+				CHECK(rctx_cachename(rctx, message, name));
 			}
 		}
 	}
@@ -6386,10 +6370,7 @@ negcache(dns_message_t *message, fetchctx_t *fctx, const dns_name_t *name,
 	/*
 	 * Cache the negative entry.
 	 */
-	result = dns_db_findnode(fctx->cache, name, true, &node);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_db_findnode(fctx->cache, name, true, &node));
 
 	result = dns_ncache_add(message, cache, node, covers, now, minttl,
 				maxttl, optout, secure, added);
@@ -6976,10 +6957,7 @@ resume_dslookup(void *arg) {
 
 		fcount_decr(fctx);
 		dns_name_copy(fctx->nsname, fctx->domain);
-		result = fcount_incr(fctx, false);
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup;
-		}
+		CHECK(fcount_incr(fctx, false));
 
 		/* Try again. */
 		fctx_try(fctx, true);
@@ -7009,8 +6987,7 @@ resume_dslookup(void *arg) {
 		 * made.  Interrupt the DS chasing process, returning SERVFAIL.
 		 */
 		if (dns_name_equal(fctx->nsname, fetch->private->domain)) {
-			result = DNS_R_SERVFAIL;
-			goto cleanup;
+			CLEANUP(DNS_R_SERVFAIL);
 		}
 
 		/* Get nameservers from fetch before we destroy it. */
@@ -10863,10 +10840,7 @@ dns_resolver_dumpquota(dns_resolver_t *res, isc_buffer_t *buf) {
 			 " spilled %" PRIuFAST32 ")",
 			 nb, count, allowed, dropped);
 
-		result = isc_buffer_reserve(buf, strlen(text));
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup;
-		}
+		CHECK(isc_buffer_reserve(buf, strlen(text)));
 		isc_buffer_putstr(buf, text);
 	}
 	if (result == ISC_R_NOMORE) {

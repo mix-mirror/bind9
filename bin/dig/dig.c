@@ -503,10 +503,7 @@ say_message(dns_rdata_t *rdata, dig_query_t *query, isc_buffer_t *buf) {
 	unsigned int styleflags = 0;
 
 	if (query->lookup->trace || query->lookup->ns_search_only) {
-		result = dns_rdatatype_totext(rdata->type, buf);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(dns_rdatatype_totext(rdata->type, buf));
 		ADD_STRING(buf, " ");
 	}
 
@@ -583,14 +580,8 @@ dns64prefix_answer(dns_message_t *msg, isc_buffer_t *buf) {
 		count = 10;
 	}
 	for (i = 0; i < count; i++) {
-		result = isc_netaddr_totext(&prefix[i].addr, buf);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
-		result = isc_buffer_printf(buf, "/%u\n", prefix[i].prefixlen);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(isc_netaddr_totext(&prefix[i].addr, buf));
+		RETERR(isc_buffer_printf(buf, "/%u\n", prefix[i].prefixlen));
 	}
 
 	return ISC_R_SUCCESS;

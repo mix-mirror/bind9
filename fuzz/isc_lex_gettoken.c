@@ -50,5 +50,6 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 		result = isc_lex_gettoken(lex, 0, &token);
 	} while (result == ISC_R_SUCCESS);
 
+cleanup:
 	return 0;
 }

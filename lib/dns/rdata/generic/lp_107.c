@@ -187,7 +187,6 @@ static isc_result_t
 additionaldata_lp(ARGS_ADDLDATA) {
 	dns_name_t name;
 	isc_region_t region;
-	isc_result_t result;
 
 	REQUIRE(rdata->type == dns_rdatatype_lp);
 
@@ -198,10 +197,7 @@ additionaldata_lp(ARGS_ADDLDATA) {
 	isc_region_consume(&region, 2);
 	dns_name_fromregion(&name, &region);
 
-	result = (add)(arg, &name, dns_rdatatype_l32, NULL DNS__DB_FILELINE);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR((add)(arg, &name, dns_rdatatype_l32, NULL DNS__DB_FILELINE));
 	return (add)(arg, &name, dns_rdatatype_l64, NULL DNS__DB_FILELINE);
 }
 

@@ -2183,10 +2183,7 @@ pushfile(const char *master_file, dns_name_t *origin, dns_loadctx_t *lctx) {
 		newctx->drop = ictx->drop;
 	}
 
-	result = (lctx->openfile)(lctx, master_file);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK((lctx->openfile)(lctx, master_file));
 	newctx->parent = ictx;
 	lctx->inc = newctx;
 
@@ -2207,17 +2204,12 @@ cleanup:
 static isc_result_t
 read_and_check(bool do_read, isc_buffer_t *buffer, size_t len, FILE *f,
 	       uint32_t *totallen) {
-	isc_result_t result;
-
 	REQUIRE(totallen != NULL);
 
 	if (do_read) {
 		INSIST(isc_buffer_availablelength(buffer) >= len);
-		result = isc_stdio_read(isc_buffer_used(buffer), 1, len, f,
-					NULL);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(isc_stdio_read(isc_buffer_used(buffer), 1, len, f,
+				      NULL));
 		isc_buffer_add(buffer, (unsigned int)len);
 		if (*totallen < len) {
 			return ISC_R_RANGE;
@@ -2339,10 +2331,7 @@ load_raw(dns_loadctx_t *lctx) {
 	dctx = DNS_DECOMPRESS_NEVER;
 
 	if (lctx->first) {
-		result = load_header(lctx);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(load_header(lctx));
 	}
 
 	ISC_LIST_INIT(head);
@@ -2400,8 +2389,7 @@ load_raw(dns_loadctx_t *lctx) {
 			 sizeof(uint16_t) + sizeof(uint16_t) +
 			 sizeof(uint32_t) + sizeof(uint32_t);
 		if (totallen < minlen) {
-			result = ISC_R_RANGE;
-			goto cleanup;
+			CLEANUP(ISC_R_RANGE);
 		}
 		totallen -= sizeof(totallen);
 
@@ -2428,10 +2416,7 @@ load_raw(dns_loadctx_t *lctx) {
 			 */
 			readlen = totallen;
 		}
-		result = isc_stdio_read(target.base, 1, readlen, lctx->f, NULL);
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup;
-		}
+		CHECK(isc_stdio_read(target.base, 1, readlen, lctx->f, NULL));
 		isc_buffer_add(&target, (unsigned int)readlen);
 		totallen -= (uint32_t)readlen;
 
@@ -2439,42 +2424,30 @@ load_raw(dns_loadctx_t *lctx) {
 		dns_rdatalist_init(&rdatalist);
 		rdatalist.rdclass = isc_buffer_getuint16(&target);
 		if (lctx->zclass != rdatalist.rdclass) {
-			result = DNS_R_BADCLASS;
-			goto cleanup;
+			CLEANUP(DNS_R_BADCLASS);
 		}
 		rdatalist.type = isc_buffer_getuint16(&target);
 		rdatalist.covers = isc_buffer_getuint16(&target);
 		rdatalist.ttl = isc_buffer_getuint32(&target);
 		rdcount = isc_buffer_getuint32(&target);
 		if (rdcount == 0 || rdcount > 0xffff) {
-			result = ISC_R_RANGE;
-			goto cleanup;
+			CLEANUP(ISC_R_RANGE);
 		}
 		INSIST(isc_buffer_consumedlength(&target) <= readlen);
 
 		/* Owner name: length followed by name */
-		result = read_and_check(sequential_read, &target,
-					sizeof(namelen), lctx->f, &totallen);
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup;
-		}
+		CHECK(read_and_check(sequential_read, &target, sizeof(namelen),
+				     lctx->f, &totallen));
 		namelen = isc_buffer_getuint16(&target);
 		if (namelen > sizeof(namebuf)) {
-			result = ISC_R_RANGE;
-			goto cleanup;
+			CLEANUP(ISC_R_RANGE);
 		}
 
-		result = read_and_check(sequential_read, &target, namelen,
-					lctx->f, &totallen);
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup;
-		}
+		CHECK(read_and_check(sequential_read, &target, namelen, lctx->f,
+				     &totallen));
 
 		isc_buffer_setactive(&target, (unsigned int)namelen);
-		result = dns_name_fromwire(name, &target, dctx, NULL);
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup;
-		}
+		CHECK(dns_name_fromwire(name, &target, dctx, NULL));
 
 		if ((lctx->options & DNS_MASTER_CHECKTTL) != 0 &&
 		    rdatalist.ttl > lctx->maxttl)
@@ -2484,8 +2457,7 @@ load_raw(dns_loadctx_t *lctx) {
 					   "TTL %d exceeds configured "
 					   "max-zone-ttl %d",
 					   rdatalist.ttl, lctx->maxttl);
-			result = ISC_R_RANGE;
-			goto cleanup;
+			CLEANUP(ISC_R_RANGE);
 		}
 
 		/* Rdata contents. */
@@ -2533,20 +2505,14 @@ load_raw(dns_loadctx_t *lctx) {
 			}
 
 			/* rdata length */
-			result = read_and_check(sequential_read, &target,
-						sizeof(rdlen), lctx->f,
-						&totallen);
-			if (result != ISC_R_SUCCESS) {
-				goto cleanup;
-			}
+			CHECK(read_and_check(sequential_read, &target,
+					     sizeof(rdlen), lctx->f,
+					     &totallen));
 			rdlen = isc_buffer_getuint16(&target);
 
 			/* rdata */
-			result = read_and_check(sequential_read, &target, rdlen,
-						lctx->f, &totallen);
-			if (result != ISC_R_SUCCESS) {
-				goto cleanup;
-			}
+			CHECK(read_and_check(sequential_read, &target, rdlen,
+					     lctx->f, &totallen));
 			isc_buffer_setactive(&target, (unsigned int)rdlen);
 			/*
 			 * It is safe to have the source active region and
@@ -2556,12 +2522,9 @@ load_raw(dns_loadctx_t *lctx) {
 			 */
 			isc_buffer_init(&buf, isc_buffer_current(&target),
 					(unsigned int)rdlen);
-			result = dns_rdata_fromwire(
-				&rdata[i], rdatalist.rdclass, rdatalist.type,
-				&target, dctx, &buf);
-			if (result != ISC_R_SUCCESS) {
-				goto cleanup;
-			}
+			CHECK(dns_rdata_fromwire(&rdata[i], rdatalist.rdclass,
+						 rdatalist.type, &target, dctx,
+						 &buf));
 			ISC_LIST_APPEND(rdatalist.rdata, &rdata[i], link);
 		}
 
@@ -2571,8 +2534,7 @@ load_raw(dns_loadctx_t *lctx) {
 		 * or malformed data.
 		 */
 		if (isc_buffer_remaininglength(&target) != 0 || totallen != 0) {
-			result = ISC_R_RANGE;
-			goto cleanup;
+			CLEANUP(ISC_R_RANGE);
 		}
 
 		ISC_LIST_APPEND(head, &rdatalist, link);
@@ -2635,10 +2597,7 @@ dns_master_loadfile(const char *master_file, dns_name_t *top,
 
 	lctx->maxttl = maxttl;
 
-	result = (lctx->openfile)(lctx, master_file);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK((lctx->openfile)(lctx, master_file));
 
 	result = (lctx->load)(lctx);
 	INSIST(result != DNS_R_CONTINUE);
@@ -2729,10 +2688,7 @@ dns_master_loadbuffer(isc_buffer_t *buffer, dns_name_t *top, dns_name_t *origin,
 	loadctx_create(dns_masterformat_text, mctx, options, 0, top, zclass,
 		       origin, callbacks, NULL, NULL, NULL, NULL, NULL, &lctx);
 
-	result = isc_lex_openbuffer(lctx->lex, buffer);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(isc_lex_openbuffer(lctx->lex, buffer));
 
 	result = (lctx->load)(lctx);
 	INSIST(result != DNS_R_CONTINUE);

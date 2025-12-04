@@ -93,16 +93,9 @@ setup_server(void **state) {
 
 	ns_server_create(isc_g_mctx, matchview, &sctx);
 
-	result = dns_dispatchmgr_create(isc_g_mctx, &dispatchmgr);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
-
-	result = ns_interfacemgr_create(isc_g_mctx, sctx, dispatchmgr, NULL,
-					&interfacemgr);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(dns_dispatchmgr_create(isc_g_mctx, &dispatchmgr));
+	CHECK(ns_interfacemgr_create(isc_g_mctx, sctx, dispatchmgr, NULL,
+				     &interfacemgr));
 
 	isc_loop_setup(isc_loop_main(), scan_interfaces, NULL);
 
@@ -153,10 +146,7 @@ ns_test_serve_zone(const char *zonename, const char *filename,
 	/*
 	 * Prepare zone structure for further processing.
 	 */
-	result = dns_test_makezone(zonename, &served_zone, view, false);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_test_makezone(zonename, &served_zone, view, false));
 
 	/*
 	 * Start zone manager.
@@ -525,16 +515,10 @@ ns_test_loaddb(dns_db_t **db, dns_dbtype_t dbtype, const char *origin,
 
 	name = dns_fixedname_initname(&fixed);
 
-	result = dns_name_fromstring(name, origin, dns_rootname, 0, NULL);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_name_fromstring(name, origin, dns_rootname, 0, NULL));
 
-	result = dns_db_create(isc_g_mctx, dbimp, name, dbtype,
-			       dns_rdataclass_in, 0, NULL, db);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_db_create(isc_g_mctx, dbimp, name, dbtype, dns_rdataclass_in,
+			     0, NULL, db));
 
 	result = dns_db_load(*db, testfile, dns_masterformat_text, 0);
 	return result;
@@ -565,10 +549,7 @@ ns_test_getdata(const char *file, unsigned char *buf, size_t bufsiz,
 	FILE *f = NULL;
 	int n;
 
-	result = isc_stdio_open(file, "r", &f);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(isc_stdio_open(file, "r", &f));
 
 	bp = buf;
 	while (fgets(s, sizeof(s), f) != NULL) {

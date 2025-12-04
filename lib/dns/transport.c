@@ -436,10 +436,7 @@ dns_transport_get_tlsctx(dns_transport_t *transport, const isc_sockaddr_t *peer,
 		 * parameters from the configuration file and try to
 		 * store it for further reuse.
 		 */
-		result = isc_tlsctx_createclient(&tlsctx);
-		if (result != ISC_R_SUCCESS) {
-			goto failure;
-		}
+		CHECK(isc_tlsctx_createclient(&tlsctx));
 		tls_versions = dns_transport_get_tls_versions(transport);
 		if (tls_versions != 0) {
 			isc_tlsctx_set_protocols(tlsctx, tls_versions);
@@ -475,12 +472,8 @@ dns_transport_get_tlsctx(dns_transport_t *transport, const isc_sockaddr_t *peer,
 				 * which case the store with system-wide
 				 * CA certificates will be created.
 				 */
-				result = isc_tls_cert_store_create(ca_file,
-								   &store);
-
-				if (result != ISC_R_SUCCESS) {
-					goto failure;
-				}
+				CHECK(isc_tls_cert_store_create(ca_file,
+								&store));
 			} else {
 				store = found_store;
 			}
@@ -503,12 +496,9 @@ dns_transport_get_tlsctx(dns_transport_t *transport, const isc_sockaddr_t *peer,
 			 * Only SubjectAltName must be checked.
 			 */
 			hostname_ignore_subject = true;
-			result = isc_tlsctx_enable_peer_verification(
+			CHECK(isc_tlsctx_enable_peer_verification(
 				tlsctx, false, store, hostname,
-				hostname_ignore_subject);
-			if (result != ISC_R_SUCCESS) {
-				goto failure;
-			}
+				hostname_ignore_subject));
 
 			/*
 			 * Let's load client certificate and enable
@@ -519,11 +509,8 @@ dns_transport_get_tlsctx(dns_transport_t *transport, const isc_sockaddr_t *peer,
 			if (cert_file != NULL) {
 				INSIST(key_file != NULL);
 
-				result = isc_tlsctx_load_certificate(
-					tlsctx, key_file, cert_file);
-				if (result != ISC_R_SUCCESS) {
-					goto failure;
-				}
+				CHECK(isc_tlsctx_load_certificate(
+					tlsctx, key_file, cert_file));
 			}
 		}
 
@@ -597,7 +584,7 @@ dns_transport_get_tlsctx(dns_transport_t *transport, const isc_sockaddr_t *peer,
 
 	return ISC_R_SUCCESS;
 
-failure:
+cleanup:
 	if (tlsctx != NULL) {
 		isc_tlsctx_free(&tlsctx);
 	}

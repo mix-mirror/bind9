@@ -28,13 +28,6 @@
 #include <named/log.h>
 #include <named/logconf.h>
 
-#define CHECK(op)                            \
-	do {                                 \
-		result = (op);               \
-		if (result != ISC_R_SUCCESS) \
-			goto cleanup;        \
-	} while (0)
-
 /*%
  * Set up a logging category according to the named.conf data
  * in 'ccat' and add it to 'logconfig'.

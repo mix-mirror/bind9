@@ -51,11 +51,8 @@ isc_parse_uint32(uint32_t *uip, const char *string, int base) {
 isc_result_t
 isc_parse_uint16(uint16_t *uip, const char *string, int base) {
 	uint32_t val;
-	isc_result_t result;
-	result = isc_parse_uint32(&val, string, base);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+
+	RETERR(isc_parse_uint32(&val, string, base));
 	if (val > 0xFFFF) {
 		return ISC_R_RANGE;
 	}
@@ -66,11 +63,8 @@ isc_parse_uint16(uint16_t *uip, const char *string, int base) {
 isc_result_t
 isc_parse_uint8(uint8_t *uip, const char *string, int base) {
 	uint32_t val;
-	isc_result_t result;
-	result = isc_parse_uint32(&val, string, base);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+
+	RETERR(isc_parse_uint32(&val, string, base));
 	if (val > 0xFF) {
 		return ISC_R_RANGE;
 	}

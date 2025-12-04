@@ -95,7 +95,6 @@ isc_result_t
 dns_nsec_buildrdata(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
 		    const dns_name_t *target, unsigned char *buffer,
 		    dns_rdata_t *rdata) {
-	isc_result_t result;
 	isc_region_t r;
 	unsigned int i;
 	unsigned char *nsec_bits, *bm;
@@ -118,10 +117,7 @@ dns_nsec_buildrdata(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
 	dns_nsec_setbit(bm, dns_rdatatype_nsec, 1);
 	max_type = dns_rdatatype_nsec;
 	rdsiter = NULL;
-	result = dns_db_allrdatasets(db, node, version, 0, 0, &rdsiter);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_db_allrdatasets(db, node, version, 0, 0, &rdsiter));
 	DNS_RDATASETITER_FOREACH(rdsiter) {
 		dns_rdataset_t rdataset = DNS_RDATASET_INIT;
 		dns_rdatasetiter_current(rdsiter, &rdataset);
@@ -173,10 +169,7 @@ dns_nsec_build(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
 	dns_rdataset_init(&rdataset);
 	dns_rdata_init(&rdata);
 
-	result = dns_nsec_buildrdata(db, version, node, target, data, &rdata);
-	if (result != ISC_R_SUCCESS) {
-		goto failure;
-	}
+	CHECK(dns_nsec_buildrdata(db, version, node, target, data, &rdata));
 
 	dns_rdatalist_init(&rdatalist);
 	rdatalist.rdclass = dns_db_class(db);
@@ -189,7 +182,7 @@ dns_nsec_build(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
 		result = ISC_R_SUCCESS;
 	}
 
-failure:
+cleanup:
 	if (dns_rdataset_isassociated(&rdataset)) {
 		dns_rdataset_disassociate(&rdataset);
 	}
@@ -246,10 +239,7 @@ dns_nsec_nseconly(dns_db_t *db, dns_dbversion_t *version, dns_diff_t *diff,
 
 	dns_rdataset_init(&rdataset);
 
-	result = dns_db_getoriginnode(db, &node);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_db_getoriginnode(db, &node));
 
 	result = dns_db_findrdataset(db, node, version, dns_rdatatype_dnskey, 0,
 				     0, &rdataset, NULL);
@@ -422,10 +412,7 @@ dns_nsec_noexistnodata(dns_rdatatype_t type, const dns_name_t *name,
 		return DNS_R_DNAME;
 	}
 
-	result = dns_rdata_tostruct(&rdata, &nsec, NULL);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_rdata_tostruct(&rdata, &nsec, NULL));
 	relation = dns_name_fullcompare(&nsec.next, name, &order, &nlabels);
 	if (order == 0) {
 		dns_rdata_freestruct(&nsec);

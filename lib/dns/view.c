@@ -66,13 +66,6 @@
 #include <dns/zone.h>
 #include <dns/zt.h>
 
-#define CHECK(op)                            \
-	do {                                 \
-		result = (op);               \
-		if (result != ISC_R_SUCCESS) \
-			goto cleanup;        \
-	} while (0)
-
 #define DNS_VIEW_DELONLYHASH 111
 
 /*%
@@ -544,12 +537,8 @@ dns_view_createresolver(dns_view_t *view, unsigned int options,
 	REQUIRE(view->resolver == NULL);
 	REQUIRE(view->dispatchmgr != NULL);
 
-	result = dns_resolver_create(view, options, tlsctx_cache, dispatchv4,
-				     dispatchv6, &view->resolver);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
-
+	RETERR(dns_resolver_create(view, options, tlsctx_cache, dispatchv4,
+				   dispatchv6, &view->resolver));
 	isc_mem_create("ADB", &mctx);
 	dns_adb_create(mctx, view, &view->adb);
 	isc_mem_detach(&mctx);
@@ -1082,8 +1071,7 @@ dns_view_findzonecut(dns_view_t *view, const dns_name_t *name,
 			try_hints = true;
 			goto finish;
 		} else {
-			result = DNS_R_NXDOMAIN;
-			goto cleanup;
+			CLEANUP(DNS_R_NXDOMAIN);
 		}
 	} else if (result != ISC_R_SUCCESS) {
 		/*
@@ -1361,15 +1349,9 @@ dns_view_getpeertsig(dns_view_t *view, const isc_netaddr_t *peeraddr,
 	dns_name_t *keyname = NULL;
 	dns_peer_t *peer = NULL;
 
-	result = dns_peerlist_peerbyaddr(view->peers, peeraddr, &peer);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_peerlist_peerbyaddr(view->peers, peeraddr, &peer));
 
-	result = dns_peer_getkey(peer, &keyname);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_peer_getkey(peer, &keyname));
 
 	result = dns_view_gettsig(view, keyname, keyp);
 	return (result == ISC_R_NOTFOUND) ? ISC_R_FAILURE : result;
@@ -1386,7 +1368,6 @@ dns_view_checksig(dns_view_t *view, isc_buffer_t *source, dns_message_t *msg) {
 
 isc_result_t
 dns_view_flushcache(dns_view_t *view, bool fixuponly) {
-	isc_result_t result;
 	dns_adb_t *adb = NULL;
 
 	REQUIRE(DNS_VIEW_VALID(view));
@@ -1395,10 +1376,7 @@ dns_view_flushcache(dns_view_t *view, bool fixuponly) {
 		return ISC_R_SUCCESS;
 	}
 	if (!fixuponly) {
-		result = dns_cache_flush(view->cache);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(dns_cache_flush(view->cache));
 	}
 	dns_db_detach(&view->cachedb);
 	dns_cache_attachdb(view->cache, &view->cachedb);
@@ -1857,7 +1835,7 @@ dns_view_loadnta(dns_view_t *view) {
 		if (token.type == isc_tokentype_eof) {
 			break;
 		} else if (token.type != isc_tokentype_string) {
-			CHECK(ISC_R_UNEXPECTEDTOKEN);
+			CLEANUP(ISC_R_UNEXPECTEDTOKEN);
 		}
 		name = TSTR(token);
 		len = TLEN(token);
@@ -1876,7 +1854,7 @@ dns_view_loadnta(dns_view_t *view) {
 
 		CHECK(isc_lex_gettoken(lex, options, &token));
 		if (token.type != isc_tokentype_string) {
-			CHECK(ISC_R_UNEXPECTEDTOKEN);
+			CLEANUP(ISC_R_UNEXPECTEDTOKEN);
 		}
 		type = TSTR(token);
 
@@ -1885,12 +1863,12 @@ dns_view_loadnta(dns_view_t *view) {
 		} else if (strcmp(type, "forced") == 0) {
 			forced = true;
 		} else {
-			CHECK(ISC_R_UNEXPECTEDTOKEN);
+			CLEANUP(ISC_R_UNEXPECTEDTOKEN);
 		}
 
 		CHECK(isc_lex_gettoken(lex, options, &token));
 		if (token.type != isc_tokentype_string) {
-			CHECK(ISC_R_UNEXPECTEDTOKEN);
+			CLEANUP(ISC_R_UNEXPECTEDTOKEN);
 		}
 		timestamp = TSTR(token);
 		CHECK(dns_time32_fromtext(timestamp, &t));
@@ -1899,7 +1877,7 @@ dns_view_loadnta(dns_view_t *view) {
 		if (token.type != isc_tokentype_eol &&
 		    token.type != isc_tokentype_eof)
 		{
-			CHECK(ISC_R_UNEXPECTEDTOKEN);
+			CLEANUP(ISC_R_UNEXPECTEDTOKEN);
 		}
 
 		if (now <= t) {
@@ -2132,8 +2110,7 @@ dns_view_addtrustedkey(dns_view_t *view, dns_rdatatype_t rdtype,
 	REQUIRE(view->rdclass == dns_rdataclass_in);
 
 	if (rdtype != dns_rdatatype_dnskey && rdtype != dns_rdatatype_ds) {
-		result = ISC_R_NOTIMPLEMENTED;
-		goto cleanup;
+		CLEANUP(ISC_R_NOTIMPLEMENTED);
 	}
 
 	isc_buffer_init(&b, rdatabuf, sizeof(rdatabuf));

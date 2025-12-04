@@ -45,20 +45,11 @@ static isc_result_t
 loadzone(dns_db_t **db, const char *origin, const char *filename) {
 	isc_result_t result;
 	dns_fixedname_t fixed;
-	dns_name_t *name = NULL;
+	dns_name_t *name = dns_fixedname_initname(&fixed);
 
-	name = dns_fixedname_initname(&fixed);
-
-	result = dns_name_fromstring(name, origin, dns_rootname, 0, NULL);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
-
-	result = dns_db_create(isc_g_mctx, ZONEDB_DEFAULT, name,
-			       dns_dbtype_zone, dns_rdataclass_in, 0, NULL, db);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_name_fromstring(name, origin, dns_rootname, 0, NULL));
+	RETERR(dns_db_create(isc_g_mctx, ZONEDB_DEFAULT, name, dns_dbtype_zone,
+			     dns_rdataclass_in, 0, NULL, db));
 
 	result = dns_db_load(*db, filename, dns_masterformat_text, 0);
 	if (result == DNS_R_SEENINCLUDE) {
@@ -177,10 +168,7 @@ main(int argc, char **argv) {
 		goto cleanup;
 	}
 
-	result = loadjournal(olddb, journal);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(loadjournal(olddb, journal));
 
 	result = dns_db_getsoaserial(olddb, NULL, &s2);
 	RUNTIME_CHECK(result == ISC_R_SUCCESS);

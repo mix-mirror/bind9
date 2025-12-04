@@ -40,14 +40,6 @@
 
 #define TEST_ORIGIN "test"
 
-#define CHECK(r)                               \
-	{                                      \
-		result = (r);                  \
-		if (result != ISC_R_SUCCESS) { \
-			goto cleanup;          \
-		}                              \
-	}
-
 static isc_result_t
 add_mac(dst_context_t *tsigctx, isc_buffer_t *buf) {
 	dns_rdata_any_tsig_t tsig;

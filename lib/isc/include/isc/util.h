@@ -241,6 +241,40 @@ mock_assert(const int result, const char *const expression,
 
 #endif /* UNIT_TESTING */
 
+/*
+ * Check for ISC_R_SUCCESS. On any other result, jump to a cleanup
+ * label. (This macro requires the function to define `result`
+ * and `cleanup:`.)
+ */
+#define CHECK(r)                               \
+	{                                      \
+		result = (r);                  \
+		if (result != ISC_R_SUCCESS) { \
+			goto cleanup;          \
+		}                              \
+	}
+
+/*
+ * Unconditionally jump to the cleanup tag with 'result' set to 'r'.
+ */
+#define CLEANUP(r)            \
+	{                     \
+		result = (r); \
+		goto cleanup; \
+	}
+
+/*
+ * Check for ISC_R_SUCCESS and continue if found. For any other
+ * result, return the result.
+ */
+#define RETERR(x)                          \
+	{                                  \
+		isc_result_t _r = (x);     \
+		if (_r != ISC_R_SUCCESS) { \
+			return ((_r));     \
+		}                          \
+	}
+
 /*%
  * Runtime check which logs the error value returned by a POSIX Threads
  * function and the error string that corresponds to it

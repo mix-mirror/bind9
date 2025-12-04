@@ -492,30 +492,18 @@ getnodedata(dns_db_t *db, const dns_name_t *name, bool create,
 			 dns_name_countlabels(&sdlz->common.origin);
 		dns_name_init(&relname);
 		dns_name_getlabelsequence(name, 0, labels, &relname);
-		result = dns_name_totext(&relname, DNS_NAME_OMITFINALDOT, &b);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(dns_name_totext(&relname, DNS_NAME_OMITFINALDOT, &b));
 	} else {
-		result = dns_name_totext(name, DNS_NAME_OMITFINALDOT, &b);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(dns_name_totext(name, DNS_NAME_OMITFINALDOT, &b));
 	}
 	isc_buffer_putuint8(&b, 0);
 
 	isc_buffer_init(&b2, zonestr, sizeof(zonestr));
-	result = dns_name_totext(&sdlz->common.origin, DNS_NAME_OMITFINALDOT,
-				 &b2);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_name_totext(&sdlz->common.origin, DNS_NAME_OMITFINALDOT,
+			       &b2));
 	isc_buffer_putuint8(&b2, 0);
 
-	result = createnode(sdlz, &node);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(createnode(sdlz, &node));
 
 	isorigin = dns_name_equal(name, &sdlz->common.origin);
 
@@ -687,11 +675,8 @@ createiterator(dns_db_t *db, unsigned int options,
 	}
 
 	isc_buffer_init(&b, zonestr, sizeof(zonestr));
-	result = dns_name_totext(&sdlz->common.origin, DNS_NAME_OMITFINALDOT,
-				 &b);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_name_totext(&sdlz->common.origin, DNS_NAME_OMITFINALDOT,
+			       &b));
 	isc_buffer_putuint8(&b, 0);
 
 	sdlziter = isc_mem_get(sdlz->common.mctx, sizeof(sdlz_dbiterator_t));
@@ -990,21 +975,14 @@ modrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 
 	isc_buffer_allocate(mctx, &buffer, 1024);
 
-	result = dns_master_stylecreate(&style, 0, 0, 0, 0, 0, 0, 1, 0xffffffff,
-					mctx);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(dns_master_stylecreate(&style, 0, 0, 0, 0, 0, 0, 1, 0xffffffff,
+				     mctx));
 
-	result = dns_master_rdatasettotext(&sdlznode->name, rdataset, style,
-					   NULL, buffer);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(dns_master_rdatasettotext(&sdlznode->name, rdataset, style, NULL,
+					buffer));
 
 	if (isc_buffer_usedlength(buffer) < 1) {
-		result = ISC_R_BADADDRESSFORM;
-		goto cleanup;
+		CLEANUP(ISC_R_BADADDRESSFORM);
 	}
 
 	rdatastr = isc_buffer_base(buffer);
@@ -1343,19 +1321,13 @@ dns_sdlzallowzonexfr(void *driverarg, void *dbdata, isc_mem_t *mctx,
 
 	/* Convert DNS name to ascii text */
 	isc_buffer_init(&b, namestr, sizeof(namestr));
-	result = dns_name_totext(name, DNS_NAME_OMITFINALDOT, &b);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_name_totext(name, DNS_NAME_OMITFINALDOT, &b));
 	isc_buffer_putuint8(&b, 0);
 
 	/* convert client address to ascii text */
 	isc_buffer_init(&b2, clientstr, sizeof(clientstr));
 	isc_netaddr_fromsockaddr(&netaddr, clientaddr);
-	result = isc_netaddr_totext(&netaddr, &b2);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(isc_netaddr_totext(&netaddr, &b2));
 	isc_buffer_putuint8(&b2, 0);
 
 	/* make sure strings are always lowercase */
@@ -1462,10 +1434,7 @@ dns_sdlzfindzone(void *driverarg, void *dbdata, isc_mem_t *mctx,
 
 	/* Convert DNS name to ascii text */
 	isc_buffer_init(&b, namestr, sizeof(namestr));
-	result = dns_name_totext(name, DNS_NAME_OMITFINALDOT, &b);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_name_totext(name, DNS_NAME_OMITFINALDOT, &b));
 	isc_buffer_putuint8(&b, 0);
 
 	/* make sure strings are always lowercase */
@@ -1606,10 +1575,7 @@ dns_sdlz_putrr(dns_sdlzlookup_t *lookup, const char *type, dns_ttl_t ttl,
 
 	r.base = type;
 	r.length = strlen(type);
-	result = dns_rdatatype_fromtext(&typeval, (void *)&r);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_rdatatype_fromtext(&typeval, (void *)&r));
 
 	rdatalist = ISC_LIST_HEAD(lookup->lists);
 	while (rdatalist != NULL) {
@@ -1654,10 +1620,7 @@ dns_sdlz_putrr(dns_sdlzlookup_t *lookup, const char *type, dns_ttl_t ttl,
 		isc_buffer_constinit(&b, data, strlen(data));
 		isc_buffer_add(&b, strlen(data));
 
-		result = isc_lex_openbuffer(lex, &b);
-		if (result != ISC_R_SUCCESS) {
-			goto failure;
-		}
+		CHECK(isc_lex_openbuffer(lex, &b));
 
 		rdatabuf = NULL;
 		isc_buffer_allocate(mctx, &rdatabuf, size);
@@ -1678,8 +1641,7 @@ dns_sdlz_putrr(dns_sdlzlookup_t *lookup, const char *type, dns_ttl_t ttl,
 	} while (result == ISC_R_NOSPACE);
 
 	if (result != ISC_R_SUCCESS) {
-		result = DNS_R_SERVFAIL;
-		goto failure;
+		CLEANUP(DNS_R_SERVFAIL);
 	}
 
 	ISC_LIST_APPEND(rdatalist->rdata, rdata, link);
@@ -1691,7 +1653,7 @@ dns_sdlz_putrr(dns_sdlzlookup_t *lookup, const char *type, dns_ttl_t ttl,
 
 	return ISC_R_SUCCESS;
 
-failure:
+cleanup:
 	if (rdatabuf != NULL) {
 		isc_buffer_free(&rdatabuf);
 	}
@@ -1713,7 +1675,6 @@ dns_sdlz_putnamedrr(dns_sdlzallnodes_t *allnodes, const char *name,
 	dns_sdlznode_t *sdlznode;
 	isc_mem_t *mctx = sdlz->common.mctx;
 	isc_buffer_t b;
-	isc_result_t result;
 
 	newname = dns_fixedname_initname(&fnewname);
 
@@ -1725,10 +1686,7 @@ dns_sdlz_putnamedrr(dns_sdlzallnodes_t *allnodes, const char *name,
 	isc_buffer_constinit(&b, name, strlen(name));
 	isc_buffer_add(&b, strlen(name));
 
-	result = dns_name_fromtext(newname, &b, origin, 0);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_name_fromtext(newname, &b, origin, 0));
 
 	if (allnodes->common.relative_names) {
 		/* All names are relative to the root */
@@ -1739,10 +1697,7 @@ dns_sdlz_putnamedrr(dns_sdlzallnodes_t *allnodes, const char *name,
 	sdlznode = ISC_LIST_HEAD(allnodes->nodelist);
 	if (sdlznode == NULL || !dns_name_equal(&sdlznode->name, newname)) {
 		sdlznode = NULL;
-		result = createnode(sdlz, &sdlznode);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(createnode(sdlz, &sdlznode));
 		dns_name_dup(newname, mctx, &sdlznode->name);
 		ISC_LIST_PREPEND(allnodes->nodelist, sdlznode, link);
 		if (allnodes->origin == NULL &&

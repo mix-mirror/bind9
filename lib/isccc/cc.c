@@ -146,10 +146,7 @@ value_towire(isccc_sexpr_t *elt, isc_buffer_t **buffer) {
 		/*
 		 * Emit the table.
 		 */
-		result = table_towire(elt, buffer);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(table_towire(elt, buffer));
 
 		len = (*buffer)->used - used;
 		/*
@@ -180,10 +177,7 @@ value_towire(isccc_sexpr_t *elt, isc_buffer_t **buffer) {
 		/*
 		 * Emit the list.
 		 */
-		result = list_towire(elt, buffer);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(list_towire(elt, buffer));
 
 		len = (*buffer)->used - used;
 		/*
@@ -229,10 +223,7 @@ table_towire(isccc_sexpr_t *alist, isc_buffer_t **buffer) {
 		/*
 		 * Emit the value.
 		 */
-		result = value_towire(v, buffer);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(value_towire(v, buffer));
 	}
 
 	return ISC_R_SUCCESS;
@@ -240,13 +231,8 @@ table_towire(isccc_sexpr_t *alist, isc_buffer_t **buffer) {
 
 static isc_result_t
 list_towire(isccc_sexpr_t *list, isc_buffer_t **buffer) {
-	isc_result_t result;
-
 	while (list != NULL) {
-		result = value_towire(ISCCC_SEXPR_CAR(list), buffer);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(value_towire(ISCCC_SEXPR_CAR(list), buffer));
 		list = ISCCC_SEXPR_CDR(list);
 	}
 
@@ -257,7 +243,6 @@ static isc_result_t
 sign(unsigned char *data, unsigned int length, unsigned char *out,
      uint32_t algorithm, isccc_region_t *secret) {
 	const isc_md_type_t *md_type;
-	isc_result_t result;
 	isccc_region_t source, target;
 	unsigned char digest[ISC_MAX_MD_SIZE];
 	unsigned int digestlen = sizeof(digest);
@@ -288,20 +273,14 @@ sign(unsigned char *data, unsigned int length, unsigned char *out,
 		return ISC_R_NOTIMPLEMENTED;
 	}
 
-	result = isc_hmac(md_type, secret->rstart, REGION_SIZE(*secret), data,
-			  length, digest, &digestlen);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(isc_hmac(md_type, secret->rstart, REGION_SIZE(*secret), data,
+			length, digest, &digestlen));
 	source.rend = digest + digestlen;
 
 	memset(digestb64, 0, sizeof(digestb64));
 	target.rstart = digestb64;
 	target.rend = digestb64 + sizeof(digestb64);
-	result = isccc_base64_encode(&source, 64, "", &target);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(isccc_base64_encode(&source, 64, "", &target));
 	if (algorithm == ISCCC_ALG_HMACMD5) {
 		PUT_MEM(digestb64, HMD5_LENGTH, out);
 	} else {
@@ -361,10 +340,7 @@ isccc_cc_towire(isccc_sexpr_t *alist, isc_buffer_t **buffer, uint32_t algorithm,
 	/*
 	 * Emit the message.
 	 */
-	result = table_towire(alist, buffer);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(table_towire(alist, buffer));
 	if (secret != NULL) {
 		return sign((unsigned char *)(*buffer)->base + signed_base,
 			    (*buffer)->used - signed_base,
@@ -380,7 +356,6 @@ verify(isccc_sexpr_t *alist, unsigned char *data, unsigned int length,
 	const isc_md_type_t *md_type;
 	isccc_region_t source;
 	isccc_region_t target;
-	isc_result_t result;
 	isccc_sexpr_t *_auth, *hmacvalue;
 	unsigned char digest[ISC_MAX_MD_SIZE];
 	unsigned int digestlen = sizeof(digest);
@@ -429,20 +404,14 @@ verify(isccc_sexpr_t *alist, unsigned char *data, unsigned int length,
 		return ISC_R_NOTIMPLEMENTED;
 	}
 
-	result = isc_hmac(md_type, secret->rstart, REGION_SIZE(*secret), data,
-			  length, digest, &digestlen);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(isc_hmac(md_type, secret->rstart, REGION_SIZE(*secret), data,
+			length, digest, &digestlen));
 	source.rend = digest + digestlen;
 
 	target.rstart = digestb64;
 	target.rend = digestb64 + sizeof(digestb64);
 	memset(digestb64, 0, sizeof(digestb64));
-	result = isccc_base64_encode(&source, 64, "", &target);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(isccc_base64_encode(&source, 64, "", &target));
 
 	/*
 	 * Verify.
@@ -752,10 +721,7 @@ isccc_cc_createack(isccc_sexpr_t *message, bool ok, isccc_sexpr_t **ackp) {
 	 * Create the ack.
 	 */
 	ack = NULL;
-	result = createmessage(1, _to, _frm, serial, t, 0, &ack, false);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(createmessage(1, _to, _frm, serial, t, 0, &ack, false));
 
 	_ctrl = isccc_alist_lookup(ack, "_ctrl");
 	if (_ctrl == NULL) {
@@ -834,11 +800,8 @@ isccc_cc_createresponse(isccc_sexpr_t *message, isccc_time_t now,
 	 * Create the response.
 	 */
 	alist = NULL;
-	result = isccc_cc_createmessage(1, _to, _frm, serial, now, expires,
-					&alist);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(isccc_cc_createmessage(1, _to, _frm, serial, now, expires,
+				      &alist));
 
 	_ctrl = isccc_alist_lookup(alist, "_ctrl");
 	if (_ctrl == NULL) {

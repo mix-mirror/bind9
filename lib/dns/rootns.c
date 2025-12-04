@@ -101,7 +101,6 @@ static struct upcoming {
 
 static isc_result_t
 in_rootns(dns_rdataset_t *rootns, dns_name_t *name) {
-	isc_result_t result;
 	dns_rdata_ns_t ns;
 
 	if (!dns_rdataset_isassociated(rootns)) {
@@ -111,10 +110,7 @@ in_rootns(dns_rdataset_t *rootns, dns_name_t *name) {
 	DNS_RDATASET_FOREACH(rootns) {
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		dns_rdataset_current(rootns, &rdata);
-		result = dns_rdata_tostruct(&rdata, &ns, NULL);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(dns_rdata_tostruct(&rdata, &ns, NULL));
 		if (dns_name_compare(name, &ns.name) == 0) {
 			return ISC_R_SUCCESS;
 		}
@@ -164,23 +160,11 @@ check_hints(dns_db_t *db) {
 	dns_rdataset_init(&rootns);
 	(void)dns_db_find(db, dns_rootname, NULL, dns_rdatatype_ns, 0, now,
 			  NULL, name, &rootns, NULL);
-	result = dns_db_createiterator(db, 0, &dbiter);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(dns_db_createiterator(db, 0, &dbiter));
 	DNS_DBITERATOR_FOREACH(dbiter) {
-		result = dns_dbiterator_current(dbiter, &node, name);
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup;
-		}
-		result = dns_db_allrdatasets(db, node, NULL, 0, now, &rdsiter);
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup;
-		}
-		result = check_node(&rootns, name, rdsiter);
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup;
-		}
+		CHECK(dns_dbiterator_current(dbiter, &node, name));
+		CHECK(dns_db_allrdatasets(db, node, NULL, 0, now, &rdsiter));
+		CHECK(check_node(&rootns, name, rdsiter));
 		dns_rdatasetiter_destroy(&rdsiter);
 		dns_db_detachnode(&node);
 	}
@@ -212,21 +196,15 @@ dns_rootns_create(isc_mem_t *mctx, dns_rdataclass_t rdclass,
 
 	REQUIRE(target != NULL && *target == NULL);
 
-	result = dns_db_create(mctx, ZONEDB_DEFAULT, dns_rootname,
-			       dns_dbtype_zone, rdclass, 0, NULL, &db);
-	if (result != ISC_R_SUCCESS) {
-		goto failure;
-	}
+	CHECK(dns_db_create(mctx, ZONEDB_DEFAULT, dns_rootname, dns_dbtype_zone,
+			    rdclass, 0, NULL, &db));
 
 	len = strlen(root_ns);
 	isc_buffer_init(&source, root_ns, len);
 	isc_buffer_add(&source, len);
 
 	dns_rdatacallbacks_init(&callbacks);
-	result = dns_db_beginload(db, &callbacks);
-	if (result != ISC_R_SUCCESS) {
-		goto failure;
-	}
+	CHECK(dns_db_beginload(db, &callbacks));
 	if (filename != NULL) {
 		/*
 		 * Load the hints from the specified filename.
@@ -249,8 +227,8 @@ dns_rootns_create(isc_mem_t *mctx, dns_rdataclass_t rdclass,
 	if (result == ISC_R_SUCCESS || result == DNS_R_SEENINCLUDE) {
 		result = eresult;
 	}
-	if (result != ISC_R_SUCCESS && result != DNS_R_SEENINCLUDE) {
-		goto failure;
+	if (result != DNS_R_SEENINCLUDE) {
+		CHECK(result);
 	}
 	if (check_hints(db) != ISC_R_SUCCESS) {
 		isc_log_write(DNS_LOGCATEGORY_GENERAL, DNS_LOGMODULE_HINTS,
@@ -260,7 +238,7 @@ dns_rootns_create(isc_mem_t *mctx, dns_rdataclass_t rdclass,
 	*target = db;
 	return ISC_R_SUCCESS;
 
-failure:
+cleanup:
 	isc_log_write(DNS_LOGCATEGORY_GENERAL, DNS_LOGMODULE_HINTS,
 		      ISC_LOG_ERROR,
 		      "could not configure root hints from "

@@ -450,11 +450,7 @@ isc_radix_insert(isc_radix_tree_t *radix, isc_radix_node_t **target,
 			*target = node;
 			return ISC_R_SUCCESS;
 		} else {
-			result = _ref_prefix(radix->mctx, &node->prefix,
-					     prefix);
-			if (result != ISC_R_SUCCESS) {
-				return result;
-			}
+			RETERR(_ref_prefix(radix->mctx, &node->prefix, prefix));
 		}
 		INSIST(node->data[RADIX_V4] == NULL &&
 		       node->node_num[RADIX_V4] == -1 &&

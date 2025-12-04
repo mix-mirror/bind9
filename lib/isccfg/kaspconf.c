@@ -131,12 +131,9 @@ cfg_kaspkey_fromconfig(const cfg_obj_t *config, dns_kasp_t *kasp,
 		key->lifetime = 0; /* unlimited */
 		key->algorithm = DST_ALG_ECDSA256;
 		key->length = -1;
-		result = dns_keystorelist_find(keystorelist,
-					       DNS_KEYSTORE_KEYDIRECTORY,
-					       &key->keystore);
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup;
-		}
+		CHECK(dns_keystorelist_find(keystorelist,
+					    DNS_KEYSTORE_KEYDIRECTORY,
+					    &key->keystore));
 	} else {
 		const char *rolestr = NULL;
 		const char *keydir = NULL;
@@ -158,8 +155,7 @@ cfg_kaspkey_fromconfig(const cfg_obj_t *config, dns_kasp_t *kasp,
 						    "allowed when offline-ksk "
 						    "is enabled");
 				}
-				result = ISC_R_FAILURE;
-				goto cleanup;
+				CLEANUP(ISC_R_FAILURE);
 			}
 			key->role |= DNS_KASP_KEY_ROLE_KSK;
 			key->role |= DNS_KASP_KEY_ROLE_ZSK;
@@ -181,16 +177,14 @@ cfg_kaspkey_fromconfig(const cfg_obj_t *config, dns_kasp_t *kasp,
 					    "not exist",
 					    keydir);
 			}
-			result = ISC_R_FAILURE;
-			goto cleanup;
+			CLEANUP(ISC_R_FAILURE);
 		} else if (result != ISC_R_SUCCESS) {
 			if (log_errors) {
 				cfg_obj_log(obj, ISC_LOG_ERROR,
 					    "dnssec-policy: bad keystore %s",
 					    keydir);
 			}
-			result = ISC_R_FAILURE;
-			goto cleanup;
+			CLEANUP(ISC_R_FAILURE);
 		}
 		INSIST(key->keystore != NULL);
 
@@ -227,8 +221,7 @@ cfg_kaspkey_fromconfig(const cfg_obj_t *config, dns_kasp_t *kasp,
 						    "takes to "
 						    "do a rollover");
 				}
-				result = ISC_R_FAILURE;
-				goto cleanup;
+				CLEANUP(ISC_R_FAILURE);
 			}
 		}
 
@@ -243,8 +236,7 @@ cfg_kaspkey_fromconfig(const cfg_obj_t *config, dns_kasp_t *kasp,
 					    "dnssec-policy: bad algorithm %s",
 					    alg.base);
 			}
-			result = DNS_R_BADALG;
-			goto cleanup;
+			CLEANUP(DNS_R_BADALG);
 		}
 		if (check_algorithms && isc_crypto_fips_mode() &&
 		    (key->algorithm == DST_ALG_RSASHA1 ||
@@ -257,8 +249,7 @@ cfg_kaspkey_fromconfig(const cfg_obj_t *config, dns_kasp_t *kasp,
 					    "in FIPS mode",
 					    alg.base);
 			}
-			result = DNS_R_BADALG;
-			goto cleanup;
+			CLEANUP(DNS_R_BADALG);
 		}
 
 		if (check_algorithms &&
@@ -270,8 +261,7 @@ cfg_kaspkey_fromconfig(const cfg_obj_t *config, dns_kasp_t *kasp,
 					    "supported",
 					    alg.base);
 			}
-			result = DNS_R_BADALG;
-			goto cleanup;
+			CLEANUP(DNS_R_BADALG);
 		}
 
 		switch (key->algorithm) {
@@ -316,8 +306,7 @@ cfg_kaspkey_fromconfig(const cfg_obj_t *config, dns_kasp_t *kasp,
 							    "key length %u",
 							    alg.base, size);
 					}
-					result = ISC_R_RANGE;
-					goto cleanup;
+					CLEANUP(ISC_R_RANGE);
 				}
 				break;
 			case DST_ALG_ECDSA256:
@@ -351,8 +340,7 @@ cfg_kaspkey_fromconfig(const cfg_obj_t *config, dns_kasp_t *kasp,
 						    "dnssec-policy: tag-min "
 						    "too big");
 				}
-				result = ISC_R_RANGE;
-				goto cleanup;
+				CLEANUP(ISC_R_RANGE);
 			}
 			obj = cfg_tuple_get(tagrange, "tag-max");
 			tag_max = cfg_obj_asuint32(obj);
@@ -362,8 +350,7 @@ cfg_kaspkey_fromconfig(const cfg_obj_t *config, dns_kasp_t *kasp,
 						    "dnssec-policy: tag-max "
 						    "too big");
 				}
-				result = ISC_R_RANGE;
-				goto cleanup;
+				CLEANUP(ISC_R_RANGE);
 			}
 			if (tag_min >= tag_max) {
 				if (log_errors) {
@@ -371,8 +358,7 @@ cfg_kaspkey_fromconfig(const cfg_obj_t *config, dns_kasp_t *kasp,
 						    "dnssec-policy: tag-min >= "
 						    "tag_max");
 				}
-				result = ISC_R_RANGE;
-				goto cleanup;
+				CLEANUP(ISC_R_RANGE);
 			}
 			key->tag_min = tag_min;
 			key->tag_max = tag_max;
@@ -688,11 +674,8 @@ cfg_kasp_fromconfig(const cfg_obj_t *config, dns_kasp_t *default_kasp,
 	(void)confget(maps, "cds-digest-types", &cds);
 	if (cds != NULL) {
 		CFG_LIST_FOREACH(cds, element) {
-			result = add_digest(kasp, cfg_listelt_value(element),
-					    log_errors);
-			if (result != ISC_R_SUCCESS) {
-				goto cleanup;
-			}
+			CHECK(add_digest(kasp, cfg_listelt_value(element),
+					 log_errors));
 		}
 	} else {
 		dns_kasp_adddigest(kasp, DNS_DSDIGEST_SHA256);
@@ -852,10 +835,7 @@ cfg_kasp_fromconfig(const cfg_obj_t *config, dns_kasp_t *default_kasp,
 		}
 	} else {
 		dns_kasp_setnsec3(kasp, true);
-		result = cfg_nsec3param_fromconfig(nsec3, kasp, log_errors);
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup;
-		}
+		CHECK(cfg_nsec3param_fromconfig(nsec3, kasp, log_errors));
 	}
 
 	/* Append it to the list for future lookups. */
@@ -941,12 +921,9 @@ cfg_kasp_builtinconfig(isc_mem_t *mctx, const char *name,
 		new_key->lifetime = 0;
 		new_key->algorithm = DST_ALG_ECDSA256;
 		new_key->length = 256;
-		result = dns_keystorelist_find(keystorelist,
-					       DNS_KEYSTORE_KEYDIRECTORY,
-					       &new_key->keystore);
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup;
-		}
+		CHECK(dns_keystorelist_find(keystorelist,
+					    DNS_KEYSTORE_KEYDIRECTORY,
+					    &new_key->keystore));
 		dns_kasp_addkey(kasp, new_key);
 	}
 

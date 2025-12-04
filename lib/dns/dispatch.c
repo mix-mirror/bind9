@@ -1328,10 +1328,7 @@ dispatch_createudp(dns_dispatchmgr_t *mgr, const isc_sockaddr_t *localaddr,
 	 */
 	isc_sockaddr_anyofpf(&sa_any, isc_sockaddr_pf(localaddr));
 	if (!isc_sockaddr_eqaddr(&sa_any, localaddr)) {
-		result = isc_nm_checkaddr(localaddr, isc_socktype_udp);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(isc_nm_checkaddr(localaddr, isc_socktype_udp));
 	}
 
 	dispatch_allocate(mgr, isc_socktype_udp, tid, &disp);
@@ -1978,15 +1975,9 @@ tcp_dispatch_connect(dns_dispatch_t *disp, dns_dispentry_t *resp) {
 	}
 
 	if (transport_type == DNS_TRANSPORT_TLS) {
-		isc_result_t result;
-
-		result = dns_transport_get_tlsctx(
-			resp->transport, &resp->peer, resp->tlsctx_cache,
-			resp->mctx, &tlsctx, &sess_cache);
-
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(dns_transport_get_tlsctx(resp->transport, &resp->peer,
+						resp->tlsctx_cache, resp->mctx,
+						&tlsctx, &sess_cache));
 		INSIST(tlsctx != NULL);
 	}
 

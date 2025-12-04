@@ -720,15 +720,11 @@ isc__nm_tcp_read(isc_nmhandle_t *handle, isc_nm_recv_cb_t cb, void *cbarg) {
 	}
 
 	if (isc__nmsocket_closing(sock)) {
-		result = ISC_R_CANCELED;
-		goto failure;
+		CLEANUP(ISC_R_CANCELED);
 	}
 
 	if (!sock->reading_throttled) {
-		result = isc__nm_start_reading(sock);
-		if (result != ISC_R_SUCCESS) {
-			goto failure;
-		}
+		CHECK(isc__nm_start_reading(sock));
 	}
 
 	sock->reading = true;
@@ -738,7 +734,7 @@ isc__nm_tcp_read(isc_nmhandle_t *handle, isc_nm_recv_cb_t cb, void *cbarg) {
 	}
 
 	return;
-failure:
+cleanup:
 	isc__nm_tcp_failed_read_cb(sock, result, true);
 }
 
@@ -916,15 +912,14 @@ accept_connection(isc_nmsocket_t *csock) {
 	 * isc__nm_tcp_close() can't handle uninitalized TCP nmsocket.
 	 */
 	if (isc__nmsocket_closing(csock)) {
-		result = ISC_R_CANCELED;
-		goto failure;
+		CLEANUP(ISC_R_CANCELED);
 	}
 
 	r = uv_accept(&csock->server->uv_handle.stream,
 		      &csock->uv_handle.stream);
 	if (r != 0) {
 		result = isc_uverr2result(r);
-		goto failure;
+		goto cleanup;
 	}
 
 	/* Check if the connection is not expired */
@@ -941,8 +936,7 @@ accept_connection(isc_nmsocket_t *csock) {
 			 * it has expired. We cannot do anything better than
 			 * drop it on the floor at this point.
 			 */
-			result = ISC_R_TIMEDOUT;
-			goto failure;
+			CLEANUP(ISC_R_TIMEDOUT);
 		} else {
 			/* Adjust the initial read timeout accordingly */
 			csock->read_timeout -= time_elapsed_ms;
@@ -953,33 +947,26 @@ accept_connection(isc_nmsocket_t *csock) {
 			       &(int){ sizeof(ss) });
 	if (r != 0) {
 		result = isc_uverr2result(r);
-		goto failure;
+		goto cleanup;
 	}
 
-	result = isc_sockaddr_fromsockaddr(&csock->peer,
-					   (struct sockaddr *)&ss);
-	if (result != ISC_R_SUCCESS) {
-		goto failure;
-	}
+	CHECK(isc_sockaddr_fromsockaddr(&csock->peer, (struct sockaddr *)&ss));
 
 	r = uv_tcp_getsockname(&csock->uv_handle.tcp, (struct sockaddr *)&ss,
 			       &(int){ sizeof(ss) });
 	if (r != 0) {
 		result = isc_uverr2result(r);
-		goto failure;
+		goto cleanup;
 	}
 
-	result = isc_sockaddr_fromsockaddr(&local, (struct sockaddr *)&ss);
-	if (result != ISC_R_SUCCESS) {
-		goto failure;
-	}
+	CHECK(isc_sockaddr_fromsockaddr(&local, (struct sockaddr *)&ss));
 
 	handle = isc__nmhandle_get(csock, NULL, &local);
 
 	result = csock->accept_cb(handle, ISC_R_SUCCESS, csock->accept_cbarg);
 	if (result != ISC_R_SUCCESS) {
 		isc_nmhandle_detach(&handle);
-		goto failure;
+		goto cleanup;
 	}
 
 	csock->accepting = false;
@@ -1001,7 +988,7 @@ accept_connection(isc_nmsocket_t *csock) {
 
 	return ISC_R_SUCCESS;
 
-failure:
+cleanup:
 	csock->active = false;
 	csock->accepting = false;
 

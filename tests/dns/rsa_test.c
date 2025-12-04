@@ -120,7 +120,7 @@ static unsigned char sigsha512[512] = {
 
 /* RSA verify */
 ISC_RUN_TEST_IMPL(isc_rsa_verify) {
-	isc_result_t ret;
+	isc_result_t result;
 	dns_fixedname_t fname;
 	isc_buffer_t buf;
 	dns_name_t *name;
@@ -133,30 +133,30 @@ ISC_RUN_TEST_IMPL(isc_rsa_verify) {
 	name = dns_fixedname_initname(&fname);
 	isc_buffer_constinit(&buf, "rsa.", 4);
 	isc_buffer_add(&buf, 4);
-	ret = dns_name_fromtext(name, &buf, NULL, 0);
-	assert_int_equal(ret, ISC_R_SUCCESS);
+	result = dns_name_fromtext(name, &buf, NULL, 0);
+	assert_int_equal(result, ISC_R_SUCCESS);
 
-	ret = dst_key_fromfile(name, 29238, DST_ALG_RSASHA256, DST_TYPE_PUBLIC,
-			       TESTS_DIR, isc_g_mctx, &key);
-	assert_int_equal(ret, ISC_R_SUCCESS);
+	result = dst_key_fromfile(name, 29238, DST_ALG_RSASHA256,
+				  DST_TYPE_PUBLIC, TESTS_DIR, isc_g_mctx, &key);
+	assert_int_equal(result, ISC_R_SUCCESS);
 
 	/* RSASHA1 - May not be supported by the OS */
 	if (dst_algorithm_supported(DST_ALG_RSASHA1)) {
 		key->key_alg = DST_ALG_RSASHA1;
 
-		ret = dst_context_create(key, isc_g_mctx,
-					 DNS_LOGCATEGORY_DNSSEC, false, &ctx);
-		assert_int_equal(ret, ISC_R_SUCCESS);
+		result = dst_context_create(
+			key, isc_g_mctx, DNS_LOGCATEGORY_DNSSEC, false, &ctx);
+		assert_int_equal(result, ISC_R_SUCCESS);
 
 		r.base = d;
 		r.length = 10;
-		ret = dst_context_adddata(ctx, &r);
-		assert_int_equal(ret, ISC_R_SUCCESS);
+		result = dst_context_adddata(ctx, &r);
+		assert_int_equal(result, ISC_R_SUCCESS);
 
 		r.base = sigsha1;
 		r.length = 256;
-		ret = dst_context_verify(ctx, &r);
-		assert_int_equal(ret, ISC_R_SUCCESS);
+		result = dst_context_verify(ctx, &r);
+		assert_int_equal(result, ISC_R_SUCCESS);
 
 		dst_context_destroy(&ctx);
 	}
@@ -165,19 +165,19 @@ ISC_RUN_TEST_IMPL(isc_rsa_verify) {
 
 	key->key_alg = DST_ALG_RSASHA256;
 
-	ret = dst_context_create(key, isc_g_mctx, DNS_LOGCATEGORY_DNSSEC, false,
-				 &ctx);
-	assert_int_equal(ret, ISC_R_SUCCESS);
+	result = dst_context_create(key, isc_g_mctx, DNS_LOGCATEGORY_DNSSEC,
+				    false, &ctx);
+	assert_int_equal(result, ISC_R_SUCCESS);
 
 	r.base = d;
 	r.length = 10;
-	ret = dst_context_adddata(ctx, &r);
-	assert_int_equal(ret, ISC_R_SUCCESS);
+	result = dst_context_adddata(ctx, &r);
+	assert_int_equal(result, ISC_R_SUCCESS);
 
 	r.base = sigsha256;
 	r.length = 256;
-	ret = dst_context_verify(ctx, &r);
-	assert_int_equal(ret, ISC_R_SUCCESS);
+	result = dst_context_verify(ctx, &r);
+	assert_int_equal(result, ISC_R_SUCCESS);
 
 	dst_context_destroy(&ctx);
 
@@ -185,19 +185,19 @@ ISC_RUN_TEST_IMPL(isc_rsa_verify) {
 
 	key->key_alg = DST_ALG_RSASHA512;
 
-	ret = dst_context_create(key, isc_g_mctx, DNS_LOGCATEGORY_DNSSEC, false,
-				 &ctx);
-	assert_int_equal(ret, ISC_R_SUCCESS);
+	result = dst_context_create(key, isc_g_mctx, DNS_LOGCATEGORY_DNSSEC,
+				    false, &ctx);
+	assert_int_equal(result, ISC_R_SUCCESS);
 
 	r.base = d;
 	r.length = 10;
-	ret = dst_context_adddata(ctx, &r);
-	assert_int_equal(ret, ISC_R_SUCCESS);
+	result = dst_context_adddata(ctx, &r);
+	assert_int_equal(result, ISC_R_SUCCESS);
 
 	r.base = sigsha512;
 	r.length = 256;
-	ret = dst_context_verify(ctx, &r);
-	assert_int_equal(ret, ISC_R_SUCCESS);
+	result = dst_context_verify(ctx, &r);
+	assert_int_equal(result, ISC_R_SUCCESS);
 
 	dst_context_destroy(&ctx);
 

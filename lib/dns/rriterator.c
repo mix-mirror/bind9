@@ -37,17 +37,13 @@
 isc_result_t
 dns_rriterator_init(dns_rriterator_t *it, dns_db_t *db, dns_dbversion_t *ver,
 		    isc_stdtime_t now) {
-	isc_result_t result;
 	it->magic = RRITERATOR_MAGIC;
 	it->db = db;
 	it->dbit = NULL;
 	it->ver = ver;
 	it->now = now;
 	it->node = NULL;
-	result = dns_db_createiterator(it->db, 0, &it->dbit);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_db_createiterator(it->db, 0, &it->dbit));
 	it->rdatasetit = NULL;
 	dns_rdata_init(&it->rdata);
 	dns_rdataset_init(&it->rdataset);

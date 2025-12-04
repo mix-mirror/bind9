@@ -1480,7 +1480,6 @@ dns_rpz_new_zones(dns_view_t *view, dns_rpz_zones_t **rpzsp, bool first_time) {
 
 isc_result_t
 dns_rpz_new_zone(dns_rpz_zones_t *rpzs, dns_rpz_zone_t **rpzp) {
-	isc_result_t result;
 	dns_rpz_zone_t *rpz = NULL;
 
 	REQUIRE(DNS_RPZ_ZONES_VALID(rpzs));
@@ -1490,10 +1489,7 @@ dns_rpz_new_zone(dns_rpz_zones_t *rpzs, dns_rpz_zone_t **rpzp) {
 		return ISC_R_NOSPACE;
 	}
 
-	result = dns__rpz_shuttingdown(rpzs);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns__rpz_shuttingdown(rpzs));
 
 	rpz = isc_mem_get(rpzs->mctx, sizeof(*rpz));
 	*rpz = (dns_rpz_zone_t){
@@ -1738,10 +1734,7 @@ update_nodes(dns_rpz_zone_t *rpz, isc_ht_t *newnodes) {
 		dns_rdatasetiter_t *rdsiter = NULL;
 		dns_dbnode_t *node = NULL;
 
-		result = dns__rpz_shuttingdown(rpz->rpzs);
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup;
-		}
+		CHECK(dns__rpz_shuttingdown(rpz->rpzs));
 
 		result = dns_dbiterator_current(updbit, &node, name);
 		if (result != ISC_R_SUCCESS) {
@@ -1921,15 +1914,9 @@ update_rpz_cb(void *data) {
 
 	isc_ht_init(&newnodes, rpz->rpzs->mctx, 1, ISC_HT_CASE_SENSITIVE);
 
-	result = update_nodes(rpz, newnodes);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(update_nodes(rpz, newnodes));
 
-	result = cleanup_nodes(rpz);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(cleanup_nodes(rpz));
 
 	/* Finalize the update */
 	ISC_SWAP(rpz->nodes, newnodes);

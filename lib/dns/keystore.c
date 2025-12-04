@@ -134,7 +134,6 @@ buildpkcs11label(const char *uri, const dns_name_t *zname, const char *policy,
 	bool ksk = ((flags & DNS_KEYFLAG_KSK) != 0);
 	char timebuf[18];
 	isc_time_t now = isc_time_now();
-	isc_result_t result;
 	dns_fixedname_t fname;
 	dns_name_t *pname = dns_fixedname_initname(&fname);
 
@@ -146,10 +145,7 @@ buildpkcs11label(const char *uri, const dns_name_t *zname, const char *policy,
 	isc_buffer_putstr(buf, uri);
 	isc_buffer_putstr(buf, ";object=");
 	/* zone name */
-	result = dns_name_tofilenametext(zname, false, buf);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_name_tofilenametext(zname, false, buf));
 	/*
 	 * policy name
 	 *
@@ -161,14 +157,8 @@ buildpkcs11label(const char *uri, const dns_name_t *zname, const char *policy,
 		return ISC_R_NOSPACE;
 	}
 	isc_buffer_putstr(buf, "-");
-	result = dns_name_fromstring(pname, policy, dns_rootname, 0, NULL);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
-	result = dns_name_tofilenametext(pname, false, buf);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_name_fromstring(pname, policy, dns_rootname, 0, NULL));
+	RETERR(dns_name_tofilenametext(pname, false, buf));
 	/* key type + current time */
 	isc_time_formatshorttimestamp(&now, timebuf, sizeof(timebuf));
 	return isc_buffer_printf(buf, "-%s-%s", ksk ? "ksk" : "zsk", timebuf);

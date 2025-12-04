@@ -840,11 +840,8 @@ setup_locals(isc_interface_t *interface, dns_acl_t *localhost,
 
 	/* First add localhost address */
 	prefixlen = (netaddr->family == AF_INET) ? 32 : 128;
-	result = dns_iptable_addprefix(localhost->iptable, netaddr, prefixlen,
-				       true);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_iptable_addprefix(localhost->iptable, netaddr, prefixlen,
+				     true));
 
 	/* Then add localnets prefix */
 	result = isc_netaddr_masktoprefixlen(&interface->netmask, &prefixlen);
@@ -873,11 +870,8 @@ setup_locals(isc_interface_t *interface, dns_acl_t *localhost,
 		return ISC_R_SUCCESS;
 	}
 
-	result = dns_iptable_addprefix(localnets->iptable, netaddr, prefixlen,
-				       true);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_iptable_addprefix(localnets->iptable, netaddr, prefixlen,
+				     true));
 
 	return ISC_R_SUCCESS;
 }
@@ -1083,10 +1077,7 @@ do_scan(ns_interfacemgr_t *mgr, bool verbose, bool config) {
 	isc_netaddr_any(&zero_address);
 	isc_netaddr_any6(&zero_address6);
 
-	result = isc_interfaceiter_create(mgr->mctx, &iter);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(isc_interfaceiter_create(mgr->mctx, &iter));
 
 	dns_acl_create(mgr->mctx, 0, &localhost);
 	dns_acl_create(mgr->mctx, 0, &localnets);

@@ -239,7 +239,6 @@ static isc_result_t
 additionaldata_rt(ARGS_ADDLDATA) {
 	dns_name_t name;
 	isc_region_t region;
-	isc_result_t result;
 
 	REQUIRE(rdata->type == dns_rdatatype_rt);
 
@@ -250,21 +249,14 @@ additionaldata_rt(ARGS_ADDLDATA) {
 	isc_region_consume(&region, 2);
 	dns_name_fromregion(&name, &region);
 
-	result = (add)(arg, &name, dns_rdatatype_x25, NULL DNS__DB_FILELINE);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
-	result = (add)(arg, &name, dns_rdatatype_isdn, NULL DNS__DB_FILELINE);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR((add)(arg, &name, dns_rdatatype_x25, NULL DNS__DB_FILELINE));
+	RETERR((add)(arg, &name, dns_rdatatype_isdn, NULL DNS__DB_FILELINE));
 	return (add)(arg, &name, dns_rdatatype_a, NULL DNS__DB_FILELINE);
 }
 
 static isc_result_t
 digest_rt(ARGS_DIGEST) {
 	isc_region_t r1, r2;
-	isc_result_t result;
 	dns_name_t name;
 
 	REQUIRE(rdata->type == dns_rdatatype_rt);
@@ -273,10 +265,7 @@ digest_rt(ARGS_DIGEST) {
 	r2 = r1;
 	isc_region_consume(&r2, 2);
 	r1.length = 2;
-	result = (digest)(arg, &r1);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR((digest)(arg, &r1));
 	dns_name_init(&name);
 	dns_name_fromregion(&name, &r2);
 	return dns_name_digest(&name, digest, arg);

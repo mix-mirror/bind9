@@ -52,13 +52,6 @@
 #include <dns/time.h>
 #include <dns/ttl.h>
 
-#define RETERR(x)                        \
-	do {                             \
-		isc_result_t _r = (x);   \
-		if (_r != ISC_R_SUCCESS) \
-			return ((_r));   \
-	} while (0)
-
 #define RETTOK(x)                                          \
 	do {                                               \
 		isc_result_t _r = (x);                     \
@@ -66,13 +59,6 @@
 			isc_lex_ungettoken(lexer, &token); \
 			return (_r);                       \
 		}                                          \
-	} while (0)
-
-#define CHECK(op)                            \
-	do {                                 \
-		result = (op);               \
-		if (result != ISC_R_SUCCESS) \
-			goto cleanup;        \
 	} while (0)
 
 #define CHECKTOK(op)                                       \
@@ -1104,14 +1090,10 @@ unknown_fromtext(dns_rdataclass_t rdclass, dns_rdatatype_t type,
 	isc_buffer_allocate(mctx, &buf, token.value.as_ulong);
 
 	if (token.value.as_ulong != 0U) {
-		result = isc_hex_tobuffer(lexer, buf,
-					  (unsigned int)token.value.as_ulong);
-		if (result != ISC_R_SUCCESS) {
-			goto failure;
-		}
+		CHECK(isc_hex_tobuffer(lexer, buf,
+				       (unsigned int)token.value.as_ulong));
 		if (isc_buffer_usedlength(buf) != token.value.as_ulong) {
-			result = ISC_R_UNEXPECTEDEND;
-			goto failure;
+			CLEANUP(ISC_R_UNEXPECTEDEND);
 		}
 	}
 
@@ -1122,14 +1104,12 @@ unknown_fromtext(dns_rdataclass_t rdclass, dns_rdatatype_t type,
 		isc_buffer_usedregion(buf, &r);
 		result = isc_buffer_copyregion(target, &r);
 	}
-	if (result != ISC_R_SUCCESS) {
-		goto failure;
-	}
+	CHECK(result);
 
 	isc_buffer_free(&buf);
 	return ISC_R_SUCCESS;
 
-failure:
+cleanup:
 	isc_buffer_free(&buf);
 	return result;
 }
@@ -1272,33 +1252,23 @@ dns_rdata_fromtext(dns_rdata_t *rdata, dns_rdataclass_t rdclass,
 static isc_result_t
 unknown_totext(dns_rdata_t *rdata, dns_rdata_textctx_t *tctx,
 	       isc_buffer_t *target) {
-	isc_result_t result;
+	isc_result_t result = ISC_R_SUCCESS;
 	char buf[sizeof("65535")];
 	isc_region_t sr;
 
 	strlcpy(buf, "\\# ", sizeof(buf));
-	result = str_totext(buf, target);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(str_totext(buf, target));
 
 	dns_rdata_toregion(rdata, &sr);
 	INSIST(sr.length < 65536);
 	snprintf(buf, sizeof(buf), "%u", sr.length);
-	result = str_totext(buf, target);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(str_totext(buf, target));
 
 	if (sr.length != 0U) {
 		if ((tctx->flags & DNS_STYLEFLAG_MULTILINE) != 0) {
-			result = str_totext(" ( ", target);
+			RETERR(str_totext(" ( ", target));
 		} else {
-			result = str_totext(" ", target);
-		}
-
-		if (result != ISC_R_SUCCESS) {
-			return result;
+			RETERR(str_totext(" ", target));
 		}
 
 		if (tctx->width == 0) { /* No splitting */

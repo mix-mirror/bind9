@@ -170,8 +170,7 @@ isc_interfaceiter_create(isc_mem_t *mctx, isc_interfaceiter_t **iterp) {
 		strerror_r(errno, strbuf, sizeof(strbuf));
 		UNEXPECTED_ERROR("getting interface addresses: getifaddrs: %s",
 				 strbuf);
-		result = ISC_R_UNEXPECTED;
-		goto failure;
+		CLEANUP(ISC_R_UNEXPECTED);
 	}
 
 	/*
@@ -185,7 +184,7 @@ isc_interfaceiter_create(isc_mem_t *mctx, isc_interfaceiter_t **iterp) {
 	*iterp = iter;
 	return ISC_R_SUCCESS;
 
-failure:
+cleanup:
 	if (iter->ifaddrs != NULL) { /* just in case */
 		freeifaddrs(iter->ifaddrs);
 	}

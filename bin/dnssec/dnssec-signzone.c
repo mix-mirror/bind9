@@ -727,9 +727,9 @@ signset(dns_diff_t *del, dns_diff_t *add, dns_dbnode_t *node, dns_name_t *name,
 			 */
 			bool have_pre_sig = false;
 			uint32_t pre;
-			isc_result_t ret = dst_key_getnum(
-				key->key, DST_NUM_PREDECESSOR, &pre);
-			if (ret == ISC_R_SUCCESS) {
+			result = dst_key_getnum(key->key, DST_NUM_PREDECESSOR,
+						&pre);
+			if (result == ISC_R_SUCCESS) {
 				/*
 				 * This key has a predecessor, look for the
 				 * corresponding key in the keylist. The
@@ -749,10 +749,10 @@ signset(dns_diff_t *del, dns_diff_t *add, dns_dbnode_t *node, dns_name_t *name,
 					{
 						continue;
 					}
-					ret = dst_key_getnum(curr->key,
-							     DST_NUM_SUCCESSOR,
-							     &suc);
-					if (ret != ISC_R_SUCCESS ||
+					result = dst_key_getnum(
+						curr->key, DST_NUM_SUCCESSOR,
+						&suc);
+					if (result != ISC_R_SUCCESS ||
 					    dst_key_id(key->key) != suc)
 					{
 						continue;
@@ -1377,18 +1377,12 @@ setsoaserial(uint32_t serial, dns_updatemethod_t method) {
 	uint32_t old_serial, new_serial = 0;
 	dns_updatemethod_t used = dns_updatemethod_none;
 
-	result = dns_db_getoriginnode(gdb, &node);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_db_getoriginnode(gdb, &node));
 
 	dns_rdataset_init(&rdataset);
 
-	result = dns_db_findrdataset(gdb, node, gversion, dns_rdatatype_soa, 0,
-				     0, &rdataset, NULL);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(dns_db_findrdataset(gdb, node, gversion, dns_rdatatype_soa, 0, 0,
+				  &rdataset, NULL));
 
 	result = dns_rdataset_first(&rdataset);
 	RUNTIME_CHECK(result == ISC_R_SUCCESS);
@@ -2520,22 +2514,14 @@ loadzonekeys(bool preserve_keys, bool load_public) {
 	dns_rdataset_init(&keysigs);
 
 	/* Make note of the keys which signed the SOA, if any */
-	result = dns_db_findrdataset(gdb, node, currentversion,
-				     dns_rdatatype_soa, 0, 0, &rdataset,
-				     &soasigs);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(dns_db_findrdataset(gdb, node, currentversion, dns_rdatatype_soa,
+				  0, 0, &rdataset, &soasigs));
 
 	/* Preserve the TTL of the DNSKEY RRset, if any */
 	dns_rdataset_disassociate(&rdataset);
-	result = dns_db_findrdataset(gdb, node, currentversion,
-				     dns_rdatatype_dnskey, 0, 0, &rdataset,
-				     &keysigs);
-
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(dns_db_findrdataset(gdb, node, currentversion,
+				  dns_rdatatype_dnskey, 0, 0, &rdataset,
+				  &keysigs));
 
 	if (set_keyttl && keyttl != rdataset.ttl) {
 		fprintf(stderr,
@@ -2886,12 +2872,8 @@ set_nsec3params(bool update, bool set_salt, bool set_optout, bool set_iter) {
 	dns_rdataset_init(&rdataset);
 
 	orig_saltlen = sizeof(orig_salt);
-	result = dns_db_getnsec3parameters(gdb, ver, &orig_hash, NULL,
-					   &orig_iter, orig_salt,
-					   &orig_saltlen);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(dns_db_getnsec3parameters(gdb, ver, &orig_hash, NULL, &orig_iter,
+					orig_salt, &orig_saltlen));
 
 	nsec_datatype = dns_rdatatype_nsec3;
 
@@ -2928,16 +2910,10 @@ set_nsec3params(bool update, bool set_salt, bool set_optout, bool set_iter) {
 				    orig_saltlen);
 	check_result(result, "dns_nsec3_hashname");
 
-	result = dns_db_findnsec3node(gdb, hashname, false, &node);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(dns_db_findnsec3node(gdb, hashname, false, &node));
 
-	result = dns_db_findrdataset(gdb, node, ver, dns_rdatatype_nsec3, 0, 0,
-				     &rdataset, NULL);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(dns_db_findrdataset(gdb, node, ver, dns_rdatatype_nsec3, 0, 0,
+				  &rdataset, NULL));
 
 	result = dns_rdataset_first(&rdataset);
 	check_result(result, "dns_rdataset_first");

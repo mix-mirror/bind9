@@ -71,17 +71,12 @@ generic_totext_txt(ARGS_TOTEXT) {
 
 static isc_result_t
 generic_fromwire_txt(ARGS_FROMWIRE) {
-	isc_result_t result;
-
 	UNUSED(type);
 	UNUSED(dctx);
 	UNUSED(rdclass);
 
 	do {
-		result = txt_fromwire(source, target);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(txt_fromwire(source, target));
 	} while (!buffer_empty(source));
 	return ISC_R_SUCCESS;
 }

@@ -211,8 +211,6 @@ isc_commandline_parse(int argc, char *const *argv, const char *options) {
 isc_result_t
 isc_commandline_strtoargv(isc_mem_t *mctx, char *s, unsigned int *argcp,
 			  char ***argvp, unsigned int n) {
-	isc_result_t result;
-
 restart:
 	/* Discard leading whitespace. */
 	while (*s == ' ' || *s == '\t') {
@@ -256,11 +254,7 @@ restart:
 			*p++ = '\0';
 		}
 
-		result = isc_commandline_strtoargv(mctx, p, argcp, argvp,
-						   n + 1);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(isc_commandline_strtoargv(mctx, p, argcp, argvp, n + 1));
 		(*argvp)[n] = s;
 	}
 

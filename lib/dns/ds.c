@@ -186,10 +186,7 @@ dns_ds_buildrdata(dns_name_t *owner, dns_rdata_t *key,
 	dns_rdata_ds_t ds;
 	isc_buffer_t b;
 
-	result = dns_ds_fromkeyrdata(owner, key, digest_type, digest, len, &ds);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_ds_fromkeyrdata(owner, key, digest_type, digest, len, &ds));
 
 	memset(buffer, 0, DNS_DS_BUFFERSIZE);
 	isc_buffer_init(&b, buffer, DNS_DS_BUFFERSIZE);

@@ -415,7 +415,6 @@ static isc_result_t
 digest_in_a6(ARGS_DIGEST) {
 	isc_region_t r1, r2;
 	unsigned char prefixlen, octets;
-	isc_result_t result;
 	dns_name_t name;
 
 	REQUIRE(rdata->type == dns_rdatatype_a6);
@@ -427,10 +426,7 @@ digest_in_a6(ARGS_DIGEST) {
 	octets = 1 + 16 - prefixlen / 8;
 
 	r1.length = octets;
-	result = (digest)(arg, &r1);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR((digest)(arg, &r1));
 	if (prefixlen == 0) {
 		return ISC_R_SUCCESS;
 	}

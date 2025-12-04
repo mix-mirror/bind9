@@ -350,38 +350,26 @@ restore_key(dns_tsigkeyring_t *ring, isc_stdtime_t now, FILE *fp) {
 	name = dns_fixedname_initname(&fname);
 	isc_buffer_init(&b, namestr, strlen(namestr));
 	isc_buffer_add(&b, strlen(namestr));
-	result = dns_name_fromtext(name, &b, dns_rootname, 0);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_name_fromtext(name, &b, dns_rootname, 0));
 
 	creator = dns_fixedname_initname(&fcreator);
 	isc_buffer_init(&b, creatorstr, strlen(creatorstr));
 	isc_buffer_add(&b, strlen(creatorstr));
-	result = dns_name_fromtext(creator, &b, dns_rootname, 0);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_name_fromtext(creator, &b, dns_rootname, 0));
 
 	algorithm = dns_fixedname_initname(&falgorithm);
 	isc_buffer_init(&b, algorithmstr, strlen(algorithmstr));
 	isc_buffer_add(&b, strlen(algorithmstr));
-	result = dns_name_fromtext(algorithm, &b, dns_rootname, 0);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_name_fromtext(algorithm, &b, dns_rootname, 0));
 
 	dstalg = dns__tsig_algfromname(algorithm);
 	if (dstalg == DST_ALG_UNKNOWN) {
 		return DNS_R_BADALG;
 	}
 
-	result = dst_key_restore(name, dstalg, DNS_KEYOWNER_ENTITY,
-				 DNS_KEYPROTO_DNSSEC, dns_rdataclass_in,
-				 ring->mctx, keystr, &dstkey);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dst_key_restore(name, dstalg, DNS_KEYOWNER_ENTITY,
+			       DNS_KEYPROTO_DNSSEC, dns_rdataclass_in,
+			       ring->mctx, keystr, &dstkey));
 
 	result = dns_tsigkey_createfromkey(name, dstalg, dstkey, true, true,
 					   creator, inception, expire,
@@ -483,13 +471,10 @@ dns_tsigkey_create(const dns_name_t *name, dst_algorithm_t algorithm,
 
 			isc_buffer_init(&b, secret, length);
 			isc_buffer_add(&b, length);
-			result = dst_key_frombuffer(
+			RETERR(dst_key_frombuffer(
 				name, algorithm, DNS_KEYOWNER_ENTITY,
 				DNS_KEYPROTO_DNSSEC, dns_rdataclass_in, &b,
-				mctx, &dstkey);
-			if (result != ISC_R_SUCCESS) {
-				return result;
-			}
+				mctx, &dstkey));
 		}
 	} else if (length > 0) {
 		return DNS_R_BADALG;
@@ -609,11 +594,8 @@ dns_tsig_sign(dns_message_t *msg) {
 		 * has validated at this point. This is why we include a
 		 * MAC length > 0 in the reply.
 		 */
-		result = dst_context_create(key->key, mctx,
-					    DNS_LOGCATEGORY_DNSSEC, true, &ctx);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(dst_context_create(key->key, mctx,
+					  DNS_LOGCATEGORY_DNSSEC, true, &ctx));
 
 		/*
 		 * If this is a response, and if there was a TSIG in
@@ -880,26 +862,14 @@ dns_tsig_verify(isc_buffer_t *source, dns_message_t *msg,
 	 */
 
 	keyname = msg->tsigname;
-	result = dns_rdataset_first(msg->tsig);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_rdataset_first(msg->tsig));
 	dns_rdataset_current(msg->tsig, &rdata);
-	result = dns_rdata_tostruct(&rdata, &tsig, NULL);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_rdata_tostruct(&rdata, &tsig, NULL));
 	dns_rdata_reset(&rdata);
 	if (response) {
-		result = dns_rdataset_first(msg->querytsig);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(dns_rdataset_first(msg->querytsig));
 		dns_rdataset_current(msg->querytsig, &rdata);
-		result = dns_rdata_tostruct(&rdata, &querytsig, NULL);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(dns_rdata_tostruct(&rdata, &querytsig, NULL));
 	}
 
 	/*
@@ -940,11 +910,8 @@ dns_tsig_verify(isc_buffer_t *source, dns_message_t *msg,
 		if (result != ISC_R_SUCCESS) {
 			msg->tsigstatus = dns_tsigerror_badkey;
 			alg = dns__tsig_algfromname(&tsig.algorithm);
-			result = dns_tsigkey_create(keyname, alg, NULL, 0, mctx,
-						    &msg->tsigkey);
-			if (result != ISC_R_SUCCESS) {
-				return result;
-			}
+			RETERR(dns_tsigkey_create(keyname, alg, NULL, 0, mctx,
+						  &msg->tsigkey));
 			if (alg == DST_ALG_UNKNOWN) {
 				dns_name_clone(&tsig.algorithm,
 					       &msg->tsigkey->algname);
@@ -962,10 +929,7 @@ dns_tsig_verify(isc_buffer_t *source, dns_message_t *msg,
 	 * Check digest length.
 	 */
 	alg = dst_key_alg(key);
-	result = dst_key_sigsize(key, &siglen);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dst_key_sigsize(key, &siglen));
 	if (dns__tsig_algvalid(alg)) {
 		if (tsig.siglen > siglen) {
 			tsig_log(msg->tsigkey, 2, "signature length too big");
@@ -986,11 +950,8 @@ dns_tsig_verify(isc_buffer_t *source, dns_message_t *msg,
 		sig_r.base = tsig.signature;
 		sig_r.length = tsig.siglen;
 
-		result = dst_context_create(key, mctx, DNS_LOGCATEGORY_DNSSEC,
-					    false, &ctx);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(dst_context_create(key, mctx, DNS_LOGCATEGORY_DNSSEC,
+					  false, &ctx));
 
 		if (response) {
 			isc_buffer_init(&databuf, data, sizeof(data));
@@ -1220,15 +1181,9 @@ tsig_verify_tcp(isc_buffer_t *source, dns_message_t *msg) {
 	/*
 	 * Extract and parse the previous TSIG
 	 */
-	result = dns_rdataset_first(msg->querytsig);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_rdataset_first(msg->querytsig));
 	dns_rdataset_current(msg->querytsig, &rdata);
-	result = dns_rdata_tostruct(&rdata, &querytsig, NULL);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_rdata_tostruct(&rdata, &querytsig, NULL));
 	dns_rdata_reset(&rdata);
 
 	/*

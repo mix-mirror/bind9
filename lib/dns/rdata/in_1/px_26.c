@@ -309,7 +309,6 @@ static isc_result_t
 digest_in_px(ARGS_DIGEST) {
 	isc_region_t r1, r2;
 	dns_name_t name;
-	isc_result_t result;
 
 	REQUIRE(rdata->type == dns_rdatatype_px);
 	REQUIRE(rdata->rdclass == dns_rdataclass_in);
@@ -318,16 +317,10 @@ digest_in_px(ARGS_DIGEST) {
 	r2 = r1;
 	isc_region_consume(&r2, 2);
 	r1.length = 2;
-	result = (digest)(arg, &r1);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR((digest)(arg, &r1));
 	dns_name_init(&name);
 	dns_name_fromregion(&name, &r2);
-	result = dns_name_digest(&name, digest, arg);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_name_digest(&name, digest, arg));
 	isc_region_consume(&r2, name_length(&name));
 	dns_name_init(&name);
 	dns_name_fromregion(&name, &r2);

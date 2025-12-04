@@ -522,7 +522,7 @@ dns_kasp_key_tagmax(dns_kasp_key_t *key) {
 
 bool
 dns_kasp_key_match(dns_kasp_key_t *key, dns_dnsseckey_t *dkey) {
-	isc_result_t ret;
+	isc_result_t result;
 	bool role = false;
 
 	REQUIRE(key != NULL);
@@ -537,12 +537,12 @@ dns_kasp_key_match(dns_kasp_key_t *key, dns_dnsseckey_t *dkey) {
 		return false;
 	}
 	/* Matching role? */
-	ret = dst_key_getbool(dkey->key, DST_BOOL_KSK, &role);
-	if (ret != ISC_R_SUCCESS || role != dns_kasp_key_ksk(key)) {
+	result = dst_key_getbool(dkey->key, DST_BOOL_KSK, &role);
+	if (result != ISC_R_SUCCESS || role != dns_kasp_key_ksk(key)) {
 		return false;
 	}
-	ret = dst_key_getbool(dkey->key, DST_BOOL_ZSK, &role);
-	if (ret != ISC_R_SUCCESS || role != dns_kasp_key_zsk(key)) {
+	result = dst_key_getbool(dkey->key, DST_BOOL_ZSK, &role);
+	if (result != ISC_R_SUCCESS || role != dns_kasp_key_zsk(key)) {
 		return false;
 	}
 	/* Valid key tag range? */

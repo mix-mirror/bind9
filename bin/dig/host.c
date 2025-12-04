@@ -208,7 +208,6 @@ printsection(dns_message_t *msg, dns_section_t sectionid,
 	     const char *section_name, bool headers, dig_query_t *query) {
 	dns_name_t *print_name;
 	isc_buffer_t target;
-	isc_result_t result;
 	isc_region_t r;
 	dns_name_t empty_name;
 	char tbuf[4096] = { 0 };
@@ -245,12 +244,9 @@ printsection(dns_message_t *msg, dns_section_t sectionid,
 				continue;
 			}
 			if (!short_form) {
-				result = dns_rdataset_totext(rdataset,
-							     print_name, false,
-							     no_rdata, &target);
-				if (result != ISC_R_SUCCESS) {
-					return result;
-				}
+				RETERR(dns_rdataset_totext(rdataset, print_name,
+							   false, no_rdata,
+							   &target));
 #ifdef USEINITALWS
 				if (first) {
 					print_name = &empty_name;
@@ -305,7 +301,6 @@ static isc_result_t
 printrdata(dns_message_t *msg, dns_rdataset_t *rdataset,
 	   const dns_name_t *owner, const char *set_name, bool headers) {
 	isc_buffer_t target;
-	isc_result_t result;
 	isc_region_t r;
 	char tbuf[4096];
 
@@ -316,10 +311,7 @@ printrdata(dns_message_t *msg, dns_rdataset_t *rdataset,
 
 	isc_buffer_init(&target, tbuf, sizeof(tbuf));
 
-	result = dns_rdataset_totext(rdataset, owner, false, false, &target);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_rdataset_totext(rdataset, owner, false, false, &target));
 	isc_buffer_usedregion(&target, &r);
 	printf("%.*s", (int)r.length, (char *)r.base);
 
@@ -501,50 +493,35 @@ printmessage(dig_query_t *query, const isc_buffer_t *msgbuf, dns_message_t *msg,
 	if (!ISC_LIST_EMPTY(msg->sections[DNS_SECTION_QUESTION]) && !short_form)
 	{
 		printf("\n");
-		result = printsection(msg, DNS_SECTION_QUESTION, "QUESTION",
-				      true, query);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(printsection(msg, DNS_SECTION_QUESTION, "QUESTION", true,
+				    query));
 	}
 	if (!ISC_LIST_EMPTY(msg->sections[DNS_SECTION_ANSWER])) {
 		if (!short_form) {
 			printf("\n");
 		}
-		result = printsection(msg, DNS_SECTION_ANSWER, "ANSWER",
-				      !short_form, query);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(printsection(msg, DNS_SECTION_ANSWER, "ANSWER",
+				    !short_form, query));
 	}
 
 	if (!ISC_LIST_EMPTY(msg->sections[DNS_SECTION_AUTHORITY]) &&
 	    !short_form)
 	{
 		printf("\n");
-		result = printsection(msg, DNS_SECTION_AUTHORITY, "AUTHORITY",
-				      true, query);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(printsection(msg, DNS_SECTION_AUTHORITY, "AUTHORITY",
+				    true, query));
 	}
 	if (!ISC_LIST_EMPTY(msg->sections[DNS_SECTION_ADDITIONAL]) &&
 	    !short_form)
 	{
 		printf("\n");
-		result = printsection(msg, DNS_SECTION_ADDITIONAL, "ADDITIONAL",
-				      true, query);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(printsection(msg, DNS_SECTION_ADDITIONAL, "ADDITIONAL",
+				    true, query));
 	}
 	if ((tsig != NULL) && !short_form) {
 		printf("\n");
-		result = printrdata(msg, tsig, tsigname, "PSEUDOSECTION TSIG",
-				    true);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(printrdata(msg, tsig, tsigname, "PSEUDOSECTION TSIG",
+				  true));
 	}
 	if (!short_form) {
 		printf("\n");

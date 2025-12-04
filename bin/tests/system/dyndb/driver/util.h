@@ -38,16 +38,3 @@
 #include <dns/types.h>
 
 #include "log.h"
-
-#define CLEANUP_WITH(result_code)       \
-	do {                            \
-		result = (result_code); \
-		goto cleanup;           \
-	} while (0)
-
-#define CHECK(op)                            \
-	do {                                 \
-		result = (op);               \
-		if (result != ISC_R_SUCCESS) \
-			goto cleanup;        \
-	} while (0)

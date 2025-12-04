@@ -68,7 +68,6 @@ copy_rdataset(dns_rdataset_t *rdataset, isc_buffer_t *buffer) {
 	isc_buffer_putuint16(buffer, (uint16_t)count);
 
 	DNS_RDATASET_FOREACH(rdataset) {
-		isc_result_t result;
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		dns_rdataset_current(rdataset, &rdata);
 
@@ -85,10 +84,7 @@ copy_rdataset(dns_rdataset_t *rdataset, isc_buffer_t *buffer) {
 		/*
 		 * Copy the rdata to the buffer.
 		 */
-		result = isc_buffer_copyregion(buffer, &r);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
+		RETERR(isc_buffer_copyregion(buffer, &r));
 	}
 
 	return ISC_R_SUCCESS;
@@ -142,8 +138,6 @@ dns_ncache_add(dns_message_t *message, dns_db_t *cache, dns_dbnode_t *node,
 	isc_buffer_init(&buffer, data, sizeof(data));
 
 	MSG_SECTION_FOREACH(message, DNS_SECTION_AUTHORITY, name) {
-		result = ISC_R_SUCCESS;
-
 		if (name->attributes.ncache) {
 			ISC_LIST_FOREACH(name->list, rdataset, link) {
 				if (!rdataset->attributes.ncache) {
@@ -169,11 +163,8 @@ dns_ncache_add(dns_message_t *message, dns_db_t *cache, dns_dbnode_t *node,
 					 * Copy the owner name to the buffer.
 					 */
 					dns_name_toregion(name, &r);
-					result = isc_buffer_copyregion(&buffer,
-								       &r);
-					if (result != ISC_R_SUCCESS) {
-						return result;
-					}
+					RETERR(isc_buffer_copyregion(&buffer,
+								     &r));
 					/*
 					 * Copy the type to the buffer.
 					 */
@@ -189,11 +180,8 @@ dns_ncache_add(dns_message_t *message, dns_db_t *cache, dns_dbnode_t *node,
 					/*
 					 * Copy the rdataset into the buffer.
 					 */
-					result = copy_rdataset(rdataset,
-							       &buffer);
-					if (result != ISC_R_SUCCESS) {
-						return result;
-					}
+					RETERR(copy_rdataset(rdataset,
+							     &buffer));
 
 					if (next >= DNS_NCACHE_RDATA) {
 						return ISC_R_NOSPACE;

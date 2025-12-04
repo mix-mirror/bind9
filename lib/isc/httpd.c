@@ -37,14 +37,6 @@
 #include <zlib.h>
 #endif /* ifdef HAVE_ZLIB */
 
-#define CHECK(m)                               \
-	do {                                   \
-		result = (m);                  \
-		if (result != ISC_R_SUCCESS) { \
-			goto cleanup;          \
-		}                              \
-	} while (0)
-
 /*
  * Size the recv buffer to hold at maximum two full buffers from isc_nm_read(),
  * so we don't have to handle the truncation.
@@ -369,7 +361,6 @@ process_request(isc_httpd_t *httpd, size_t last_len) {
 	size_t path_len = 0;
 	struct phr_header headers[HTTP_HEADERS_NUM];
 	size_t num_headers;
-	isc_result_t result;
 
 	num_headers = ARRAY_SIZE(headers);
 
@@ -409,10 +400,7 @@ process_request(isc_httpd_t *httpd, size_t last_len) {
 	/*
 	 * Parse the URL
 	 */
-	result = isc_url_parse(path, path_len, 0, &httpd->up);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(isc_url_parse(path, path_len, 0, &httpd->up));
 	httpd->path = path;
 
 	/*
