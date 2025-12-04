@@ -2350,7 +2350,7 @@ catz_addmodzone_cb(void *arg) {
 	confbuf = NULL;
 	result = dns_catz_generate_zonecfg(cz->origin, cz->entry, &confbuf);
 	if (result == ISC_R_SUCCESS) {
-		result = cfg_parse_buffer(isc_g_mctx, confbuf, "catz", 0,
+		result = cfg_parse_buffer(confbuf, "catz", 0,
 					  &cfg_type_addzoneconf, 0, &zoneconf);
 		isc_buffer_free(&confbuf);
 	}
@@ -2618,7 +2618,7 @@ catz_reconfigure(dns_catz_entry_t *entry, void *arg1, void *arg2) {
 
 	result = dns_catz_generate_zonecfg(data->catz, entry, &confbuf);
 	if (result == ISC_R_SUCCESS) {
-		result = cfg_parse_buffer(isc_g_mctx, confbuf, "catz", 0,
+		result = cfg_parse_buffer(confbuf, "catz", 0,
 					  &cfg_type_addzoneconf, 0, &zoneconf);
 		isc_buffer_free(&confbuf);
 	}
@@ -7294,8 +7294,8 @@ data_to_cfg(dns_view_t *view, MDB_val *key, MDB_val *data, isc_buffer_t *text,
 	snprintf(bufname, sizeof(bufname), "%.*s", (int)zone_name_len,
 		 zone_name);
 
-	result = cfg_parse_buffer(isc_g_mctx, text, bufname, 0,
-				  &cfg_type_addzoneconf, 0, &zoneconf);
+	result = cfg_parse_buffer(text, bufname, 0, &cfg_type_addzoneconf, 0,
+				  &zoneconf);
 	if (result != ISC_R_SUCCESS) {
 		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
 			      ISC_LOG_ERROR,
@@ -8920,9 +8920,9 @@ load_configuration(named_server_t *server, bool first_time) {
 				      "keys instead",
 				      named_g_bindkeysfile);
 		} else {
-			result = cfg_parse_file(
-				isc_g_mctx, named_g_bindkeysfile,
-				&cfg_type_bindkeys, 0, &bindkeys);
+			result = cfg_parse_file(named_g_bindkeysfile,
+						&cfg_type_bindkeys, 0,
+						&bindkeys);
 			if (result != ISC_R_SUCCESS) {
 				isc_log_write(NAMED_LOGCATEGORY_GENERAL,
 					      NAMED_LOGMODULE_SERVER,
@@ -12129,8 +12129,7 @@ load_nzf(dns_view_t *view) {
 	/*
 	 * Parse the configuration in the NZF file.
 	 */
-	result = cfg_parse_file(view->mctx, view->newzone.file,
-				&cfg_type_addzoneconf, 0,
+	result = cfg_parse_file(view->newzone.file, &cfg_type_addzoneconf, 0,
 				&view->newzone.nzconfig);
 	if (result != ISC_R_SUCCESS) {
 		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
@@ -12496,8 +12495,8 @@ load_nzf(dns_view_t *view) {
 	 * config type, giving us a guarantee that valid configuration
 	 * will be written to DB.
 	 */
-	result = cfg_parse_file(isc_g_mctx, view->newzone.file,
-				&cfg_type_addzoneconf, 0, &nzf_config);
+	result = cfg_parse_file(view->newzone.file, &cfg_type_addzoneconf, 0,
+				&nzf_config);
 	if (result != ISC_R_SUCCESS) {
 		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
 			      ISC_LOG_ERROR, "Error parsing NZF file '%s': %s",
@@ -12647,8 +12646,8 @@ newzone_parse(named_server_t *server, char *command, dns_view_t **viewp,
 	 */
 	isc_buffer_forward(&argbuf, 3);
 
-	CHECK(cfg_parse_buffer(server->mctx, &argbuf, bn, 0,
-			       &cfg_type_addzoneconf, 0, &zoneconf));
+	CHECK(cfg_parse_buffer(&argbuf, bn, 0, &cfg_type_addzoneconf, 0,
+			       &zoneconf));
 
 	CHECK(cfg_map_get(zoneconf, "zone", &zlist));
 	if (!cfg_obj_islist(zlist)) {

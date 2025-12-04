@@ -1062,8 +1062,7 @@ read_confkey(void) {
 		return ISC_R_FILENOTFOUND;
 	}
 
-	CHECK(cfg_parse_file(isc_g_mctx, keyfile, &cfg_type_sessionkey, 0,
-			     &file));
+	CHECK(cfg_parse_file(keyfile, &cfg_type_sessionkey, 0, &file));
 
 	CHECK(cfg_map_get(file, "key", &keyobj));
 

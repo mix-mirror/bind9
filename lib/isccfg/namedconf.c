@@ -406,15 +406,7 @@ parse_updatepolicy(cfg_parser_t *pctx, const cfg_type_t *type,
 	if (pctx->token.type == isc_tokentype_string &&
 	    strcasecmp(TOKEN_STRING(pctx), "local") == 0)
 	{
-		cfg_obj_t *obj = NULL;
-		cfg_obj_create(pctx->mctx, cfg_parser_currentfile(pctx),
-			       pctx->line, &cfg_type_ustring, &obj);
-		obj->value.string.length = strlen("local");
-		obj->value.string.base =
-			isc_mem_get(pctx->mctx, obj->value.string.length + 1);
-		memmove(obj->value.string.base, "local", 5);
-		obj->value.string.base[5] = '\0';
-		*ret = obj;
+		cfg_string_create(pctx, "local", &cfg_type_ustring, ret);
 		return ISC_R_SUCCESS;
 	}
 
@@ -971,8 +963,8 @@ parse_qstringornone(cfg_parser_t *pctx, const cfg_type_t *type,
 	if (pctx->token.type == isc_tokentype_string &&
 	    strcasecmp(TOKEN_STRING(pctx), "none") == 0)
 	{
-		cfg_obj_create(pctx->mctx, cfg_parser_currentfile(pctx),
-			       pctx->line, &cfg_type_none, ret);
+		cfg_obj_create(cfg_parser_currentfile(pctx), pctx->line,
+			       &cfg_type_none, ret);
 		return ISC_R_SUCCESS;
 	}
 	cfg_ungettoken(pctx);
@@ -1015,8 +1007,8 @@ parse_boolorauto(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 	if (pctx->token.type == isc_tokentype_string &&
 	    strcasecmp(TOKEN_STRING(pctx), "auto") == 0)
 	{
-		cfg_obj_create(pctx->mctx, cfg_parser_currentfile(pctx),
-			       pctx->line, &cfg_type_auto, ret);
+		cfg_obj_create(cfg_parser_currentfile(pctx), pctx->line,
+			       &cfg_type_auto, ret);
 		return ISC_R_SUCCESS;
 	}
 	cfg_ungettoken(pctx);
@@ -1071,15 +1063,15 @@ parse_serverid(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 	if (pctx->token.type == isc_tokentype_string &&
 	    strcasecmp(TOKEN_STRING(pctx), "none") == 0)
 	{
-		cfg_obj_create(pctx->mctx, cfg_parser_currentfile(pctx),
-			       pctx->line, &cfg_type_none, ret);
+		cfg_obj_create(cfg_parser_currentfile(pctx), pctx->line,
+			       &cfg_type_none, ret);
 		return ISC_R_SUCCESS;
 	}
 	if (pctx->token.type == isc_tokentype_string &&
 	    strcasecmp(TOKEN_STRING(pctx), "hostname") == 0)
 	{
-		cfg_obj_create(pctx->mctx, cfg_parser_currentfile(pctx),
-			       pctx->line, &cfg_type_hostname, ret);
+		cfg_obj_create(cfg_parser_currentfile(pctx), pctx->line,
+			       &cfg_type_hostname, ret);
 		(*ret)->value.boolean = true;
 		return ISC_R_SUCCESS;
 	}
@@ -2314,9 +2306,9 @@ checknames_merge(const cfg_obj_t *config ISC_ATTR_UNUSED,
 		}
 
 		if (found == false) {
-			cfg_listelt_t *eelt = isc_mem_get(effectiveobj->mctx,
-							  sizeof(*eelt));
+			cfg_listelt_t *eelt = NULL;
 
+			cfg_listelt_create(&eelt);
 			*eelt = (cfg_listelt_t){ .link = ISC_LINK_INITIALIZER };
 			cfg_obj_clone(checkname, &eelt->obj);
 			ISC_LIST_APPEND(effectiveobj->value.list, eelt, link);
@@ -3166,7 +3158,7 @@ parse_sizeval(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 	}
 	CHECK(parse_unitstring(TOKEN_STRING(pctx), &val));
 
-	cfg_obj_create(pctx->mctx, cfg_parser_currentfile(pctx), pctx->line,
+	cfg_obj_create(cfg_parser_currentfile(pctx), pctx->line,
 		       &cfg_type_uint64, &obj);
 	obj->value.uint64 = val;
 	*ret = obj;
@@ -3197,15 +3189,15 @@ parse_sizeval_percent(cfg_parser_t *pctx, const cfg_type_t *type,
 	percent = strtoull(TOKEN_STRING(pctx), &endp, 10);
 
 	if (*endp == '%' && *(endp + 1) == 0) {
-		cfg_obj_create(pctx->mctx, cfg_parser_currentfile(pctx),
-			       pctx->line, &cfg_type_percentage, &obj);
+		cfg_obj_create(cfg_parser_currentfile(pctx), pctx->line,
+			       &cfg_type_percentage, &obj);
 		obj->value.uint32 = (uint32_t)percent;
 		*ret = obj;
 		return ISC_R_SUCCESS;
 	} else {
 		CHECK(parse_unitstring(TOKEN_STRING(pctx), &val));
-		cfg_obj_create(pctx->mctx, cfg_parser_currentfile(pctx),
-			       pctx->line, &cfg_type_uint64, &obj);
+		cfg_obj_create(cfg_parser_currentfile(pctx), pctx->line,
+			       &cfg_type_uint64, &obj);
 		obj->value.uint64 = val;
 		*ret = obj;
 		return ISC_R_SUCCESS;
@@ -3631,8 +3623,8 @@ parse_querysource(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 	    strcasecmp(TOKEN_STRING(pctx), "none") == 0)
 	{
 		CHECK(cfg_gettoken(pctx, 0));
-		cfg_obj_create(pctx->mctx, cfg_parser_currentfile(pctx),
-			       pctx->line, &cfg_type_none, ret);
+		cfg_obj_create(cfg_parser_currentfile(pctx), pctx->line,
+			       &cfg_type_none, ret);
 	} else {
 		CHECK(cfg_parse_sockaddr_generic(pctx, &cfg_type_querysource,
 						 type, ret));
@@ -3833,8 +3825,8 @@ parse_logseverity(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 			 * This makes little sense, but we support it for
 			 * compatibility with BIND 8.
 			 */
-			cfg_obj_create(pctx->mctx, cfg_parser_currentfile(pctx),
-				       pctx->line, &cfg_type_uint32, ret);
+			cfg_obj_create(cfg_parser_currentfile(pctx), pctx->line,
+				       &cfg_type_uint32, ret);
 			(*ret)->value.uint32 = 1;
 		}
 		(*ret)->type = &cfg_type_debuglevel; /* XXX kludge */

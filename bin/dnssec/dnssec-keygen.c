@@ -1150,9 +1150,8 @@ main(int argc, char **argv) {
 			cfg_obj_t *config = NULL;
 			dns_kasp_t *kasp = NULL;
 
-			if (cfg_parse_file(isc_g_mctx, ctx.configfile,
-					   &cfg_type_namedconf, 0,
-					   &config) != ISC_R_SUCCESS)
+			if (cfg_parse_file(ctx.configfile, &cfg_type_namedconf,
+					   0, &config) != ISC_R_SUCCESS)
 			{
 				fatal("unable to load dnssec-policy '%s' from "
 				      "'%s'",

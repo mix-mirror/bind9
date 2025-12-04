@@ -829,8 +829,8 @@ setup_dnsseckeys(dns_client_t *client, dns_view_t *toview) {
 			fatal("Unable to read key file '%s'", anchorfile);
 		}
 
-		result = cfg_parse_file(isc_g_mctx, anchorfile,
-					&cfg_type_bindkeys, 0, &bindkeys);
+		result = cfg_parse_file(anchorfile, &cfg_type_bindkeys, 0,
+					&bindkeys);
 		if (result != ISC_R_SUCCESS) {
 			fatal("Unable to load keys from '%s'", anchorfile);
 		}
@@ -842,8 +842,8 @@ setup_dnsseckeys(dns_client_t *client, dns_view_t *toview) {
 
 		isc_buffer_init(&b, anchortext, sizeof(anchortext) - 1);
 		isc_buffer_add(&b, sizeof(anchortext) - 1);
-		result = cfg_parse_buffer(isc_g_mctx, &b, NULL, 0, &delv_type,
-					  0, &bindkeys);
+		result = cfg_parse_buffer(&b, NULL, 0, &delv_type, 0,
+					  &bindkeys);
 		if (result != ISC_R_SUCCESS) {
 			fatal("Unable to parse built-in keys");
 		}

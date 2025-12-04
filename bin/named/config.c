@@ -55,11 +55,11 @@ named_config_parsedefaults(cfg_obj_t **conf) {
 	isc_buffer_constinit(&b, common_named_defaultconf,
 			     sizeof(common_named_defaultconf) - 1);
 	isc_buffer_add(&b, sizeof(common_named_defaultconf) - 1);
-	return cfg_parse_buffer(
-		isc_g_mctx, &b, __FILE__, 0, &cfg_type_namedconf,
-		CFG_PCTX_NODEPRECATED | CFG_PCTX_NOOBSOLETE |
-			CFG_PCTX_NOEXPERIMENTAL | CFG_PCTX_BUILTIN,
-		conf);
+	return cfg_parse_buffer(&b, __FILE__, 0, &cfg_type_namedconf,
+				CFG_PCTX_NODEPRECATED | CFG_PCTX_NOOBSOLETE |
+					CFG_PCTX_NOEXPERIMENTAL |
+					CFG_PCTX_BUILTIN,
+				conf);
 }
 
 isc_result_t
@@ -72,8 +72,7 @@ named_config_parsefile(cfg_obj_t **conf) {
 		      ISC_LOG_INFO, "parsing user configuration from '%s'",
 		      named_g_conffile);
 
-	CHECK(cfg_parse_file(isc_g_mctx, named_g_conffile, &cfg_type_namedconf,
-			     0, conf));
+	CHECK(cfg_parse_file(named_g_conffile, &cfg_type_namedconf, 0, conf));
 
 	/*
 	 * Check the validity of the configuration.

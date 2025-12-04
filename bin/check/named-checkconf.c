@@ -531,11 +531,11 @@ parse_builtin(cfg_obj_t **defaultconfig) {
 			     sizeof(common_named_defaultconf) - 1);
 	isc_buffer_add(&b, sizeof(common_named_defaultconf) - 1);
 
-	return cfg_parse_buffer(
-		isc_g_mctx, &b, __FILE__, 0, &cfg_type_namedconf,
-		CFG_PCTX_NODEPRECATED | CFG_PCTX_NOOBSOLETE |
-			CFG_PCTX_NOEXPERIMENTAL | CFG_PCTX_BUILTIN,
-		defaultconfig);
+	return cfg_parse_buffer(&b, __FILE__, 0, &cfg_type_namedconf,
+				CFG_PCTX_NODEPRECATED | CFG_PCTX_NOOBSOLETE |
+					CFG_PCTX_NOEXPERIMENTAL |
+					CFG_PCTX_BUILTIN,
+				defaultconfig);
 }
 
 static void
@@ -714,8 +714,8 @@ main(int argc, char **argv) {
 	}
 
 	CHECK(setup_logging(stdout));
-	CHECK(cfg_parse_file(isc_g_mctx, conffile, &cfg_type_namedconf,
-			     parserflags, &config));
+	CHECK(cfg_parse_file(conffile, &cfg_type_namedconf, parserflags,
+			     &config));
 	CHECK(isccfg_check_namedconf(config, checkflags, isc_g_mctx));
 	if (load_zones || list_zones) {
 		CHECK(load_zones_fromconfig(config, list_zones));

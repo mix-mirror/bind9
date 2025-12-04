@@ -787,8 +787,7 @@ get_rndckey(isc_mem_t *mctx, controlkeylist_t *keyids) {
 		return ISC_R_FILENOTFOUND;
 	}
 
-	CHECK(cfg_parse_file(mctx, named_g_keyfile, &cfg_type_rndckey, 0,
-			     &config));
+	CHECK(cfg_parse_file(named_g_keyfile, &cfg_type_rndckey, 0, &config));
 	CHECK(cfg_map_get(config, "key", &key));
 
 	keyid = isc_mem_get(mctx, sizeof(*keyid));

@@ -126,8 +126,8 @@ plugin_register(const char *parameters, const void *cfg, const char *cfgfile,
 	isc_buffer_constinit(&b, parameters, strlen(parameters));
 	isc_buffer_add(&b, strlen(parameters));
 
-	CHECK(cfg_parse_buffer(mctx, &b, cfgfile, cfgline,
-			       &syncplugin__cfgparams, 0, &syncplugincfg));
+	CHECK(cfg_parse_buffer(&b, cfgfile, cfgline, &syncplugin__cfgparams, 0,
+			       &syncplugincfg));
 
 	CHECK(syncplugin__parse_rcode(syncplugincfg, &inst->rcode));
 

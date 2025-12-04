@@ -569,8 +569,7 @@ read_sessionkey(isc_mem_t *mctx) {
 		return ISC_R_FILENOTFOUND;
 	}
 
-	CHECK(cfg_parse_file(mctx, keyfile, &cfg_type_sessionkey, 0,
-			     &sessionkey));
+	CHECK(cfg_parse_file(keyfile, &cfg_type_sessionkey, 0, &sessionkey));
 
 	CHECK(cfg_map_get(sessionkey, "key", &key));
 

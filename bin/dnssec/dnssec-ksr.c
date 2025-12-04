@@ -157,8 +157,8 @@ static void
 getkasp(ksr_ctx_t *ksr, dns_kasp_t **kasp) {
 	cfg_obj_t *config = NULL;
 
-	if (cfg_parse_file(isc_g_mctx, ksr->configfile, &cfg_type_namedconf, 0,
-			   &config) != ISC_R_SUCCESS)
+	if (cfg_parse_file(ksr->configfile, &cfg_type_namedconf, 0, &config) !=
+	    ISC_R_SUCCESS)
 	{
 		fatal("unable to load dnssec-policy '%s' from '%s'",
 		      ksr->policy, ksr->configfile);

@@ -554,15 +554,14 @@ synthrecord_parseconfig(synthrecord_t *inst, const char *parameters,
 			unsigned long cfgline, cfg_aclconfctx_t *aclctx,
 			const dns_name_t *zname) {
 	isc_result_t result;
-	isc_mem_t *mctx = inst->mctx;
 	cfg_obj_t *synthrecordcfg = NULL;
 	isc_buffer_t b;
 
 	isc_buffer_constinit(&b, parameters, strlen(parameters));
 	isc_buffer_add(&b, strlen(parameters));
 
-	CHECK(cfg_parse_buffer(mctx, &b, cfgfile, cfgline,
-			       &synthrecord_cfgparams, 0, &synthrecordcfg));
+	CHECK(cfg_parse_buffer(&b, cfgfile, cfgline, &synthrecord_cfgparams, 0,
+			       &synthrecordcfg));
 
 	synthrecord_setconfigmode(inst, zname);
 	CHECK(synthrecord_initorigin(inst, synthrecordcfg, zname));

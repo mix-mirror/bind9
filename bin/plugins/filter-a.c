@@ -272,8 +272,8 @@ parse_parameters(filter_instance_t *inst, const char *parameters,
 
 	isc_buffer_constinit(&b, parameters, strlen(parameters));
 	isc_buffer_add(&b, strlen(parameters));
-	CHECK(cfg_parse_buffer(mctx, &b, cfg_file, cfg_line,
-			       &cfg_type_parameters, 0, &param_obj));
+	CHECK(cfg_parse_buffer(&b, cfg_file, cfg_line, &cfg_type_parameters, 0,
+			       &param_obj));
 
 	CHECK(parse_filter_a_on(param_obj, "filter-a-on-v6", &inst->v6_a));
 	CHECK(parse_filter_a_on(param_obj, "filter-a-on-v4", &inst->v4_a));
@@ -359,8 +359,8 @@ plugin_check(const char *parameters, const void *cfg, const char *cfg_file,
 
 	isc_buffer_constinit(&b, parameters, strlen(parameters));
 	isc_buffer_add(&b, strlen(parameters));
-	CHECK(cfg_parse_buffer(mctx, &b, cfg_file, cfg_line,
-			       &cfg_type_parameters, 0, &param_obj));
+	CHECK(cfg_parse_buffer(&b, cfg_file, cfg_line, &cfg_type_parameters, 0,
+			       &param_obj));
 
 	CHECK(check_syntax(param_obj, cfg, mctx, aclctx));
 

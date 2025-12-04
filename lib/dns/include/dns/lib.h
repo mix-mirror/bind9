@@ -11,6 +11,10 @@
  * information regarding copyright ownership.
  */
 
+/*
+ * See `lib/isc/include/isc/lib.h` README
+ */
+
 #pragma once
 
 #include <stdlib.h>
