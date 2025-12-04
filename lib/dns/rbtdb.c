@@ -2121,29 +2121,10 @@ dns__rbtnode_release(dns_rbtdb_t *rbtdb, dns_rbtnode_t *node,
 	}
 
 	/*
-	 * Attempt to switch to a write lock on the tree.  If this fails,
-	 * we will add this node to a linked list of nodes in this locking
-	 * bucket which we will free later.
+	 * If the tree is not write locked, we will add this node to a linked
+	 * list of nodes in this locking bucket which we will free later.
 	 */
-	if (tlock != isc_rwlocktype_write) {
-		/*
-		 * Locking hierarchy notwithstanding, we don't need to free
-		 * the node lock before acquiring the tree write lock because
-		 * we only do a trylock.
-		 */
-		if (tlock == isc_rwlocktype_read) {
-			result = isc_rwlock_tryupgrade(&rbtdb->tree_lock);
-		} else {
-			result = isc_rwlock_trylock(&rbtdb->tree_lock,
-						    isc_rwlocktype_write);
-		}
-		RUNTIME_CHECK(result == ISC_R_SUCCESS ||
-			      result == ISC_R_LOCKBUSY);
-
-		write_locked = (result == ISC_R_SUCCESS);
-	} else {
-		write_locked = true;
-	}
+	write_locked = (tlock == isc_rwlocktype_write);
 
 	if (KEEP_NODE(node, rbtdb, locked || write_locked)) {
 		goto restore_locks;
