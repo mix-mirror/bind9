@@ -47,7 +47,7 @@ following systems:
 -  Ubuntu LTS 22.04, 24.04
 -  Fedora 43
 -  Red Hat Enterprise Linux / CentOS / AlmaLinux 8, 9, 10
--  FreeBSD 13.4, 14.2
+-  FreeBSD 13, 14, 15
 -  Alpine Linux 3.23
 
 The amd64 CPU architecture is fully supported and regularly tested.
