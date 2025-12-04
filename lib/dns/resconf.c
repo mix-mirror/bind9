@@ -76,13 +76,6 @@
 #define RESCONFMAXLINELEN     256U /*%< max size of a line */
 #define RESCONFMAXSORTLIST    10U  /*%< max 10 */
 
-#define CHECK(op)                            \
-	do {                                 \
-		result = (op);               \
-		if (result != ISC_R_SUCCESS) \
-			goto cleanup;        \
-	} while (0)
-
 /*!
  * configuration data structure
  */

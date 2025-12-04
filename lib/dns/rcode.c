@@ -37,13 +37,6 @@
 #include <dns/secalg.h>
 #include <dns/secproto.h>
 
-#define RETERR(x)                        \
-	do {                             \
-		isc_result_t _r = (x);   \
-		if (_r != ISC_R_SUCCESS) \
-			return ((_r));   \
-	} while (0)
-
 #define NUMBERSIZE sizeof("037777777777") /* 2^32-1 octal + NUL */
 
 #define TOTEXTONLY 0x01

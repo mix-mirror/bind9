@@ -43,6 +43,7 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	dns_name_t *namein, *nameout, *namecmp;
 	isc_buffer_t buf;
 	dns_qpkey_t key, cmp;
+	isc_result_t result;
 
 	namein = dns_fixedname_initname(&fixedin);
 	nameout = dns_fixedname_initname(&fixedout);
@@ -73,5 +74,6 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	assert((namerel == 0) == (keyrel == 0));
 	assert((namerel > 0) == (keyrel > 0));
 
+cleanup:
 	return 0;
 }

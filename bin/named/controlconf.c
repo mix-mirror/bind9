@@ -149,14 +149,6 @@ ISC_REFCOUNT_DECL(controlconnection);
 
 #define CLOCKSKEW 300
 
-#define CHECK(x)                               \
-	{                                      \
-		result = (x);                  \
-		if (result != ISC_R_SUCCESS) { \
-			goto cleanup;          \
-		}                              \
-	}
-
 static void
 free_controlkey(controlkey_t *key, isc_mem_t *mctx) {
 	if (key->keyname != NULL) {

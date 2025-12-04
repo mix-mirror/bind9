@@ -65,13 +65,6 @@
 #include <dns/zone.h>
 #include <dns/zt.h>
 
-#define CHECK(op)                            \
-	do {                                 \
-		result = (op);               \
-		if (result != ISC_R_SUCCESS) \
-			goto cleanup;        \
-	} while (0)
-
 #define DNS_VIEW_DELONLYHASH 111
 
 /*%

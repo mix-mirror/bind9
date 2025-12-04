@@ -38,14 +38,6 @@
 
 #define TEST_ORIGIN "test"
 
-#define CHECK(r)                               \
-	{                                      \
-		result = (r);                  \
-		if (result != ISC_R_SUCCESS) { \
-			goto cleanup;          \
-		}                              \
-	}
-
 static int
 setup_test(void **state) {
 	isc_result_t result;

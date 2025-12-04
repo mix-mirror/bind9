@@ -36,13 +36,6 @@
 #include <dns/rdatatype.h>
 #include <dns/time.h>
 
-#define CHECK(op)                            \
-	do {                                 \
-		result = (op);               \
-		if (result != ISC_R_SUCCESS) \
-			goto failure;        \
-	} while (0)
-
 #define DIFF_COMMON_LOGARGS \
 	dns_lctx, DNS_LOGCATEGORY_GENERAL, DNS_LOGMODULE_DIFF
 
@@ -515,7 +508,7 @@ diff_apply(const dns_diff_t *diff, dns_db_t *db, dns_dbversion_t *ver,
 	}
 	return ISC_R_SUCCESS;
 
-failure:
+cleanup:
 	if (node != NULL) {
 		dns_db_detachnode(db, &node);
 	}
@@ -604,7 +597,7 @@ dns_diff_load(const dns_diff_t *diff, dns_rdatacallbacks_t *callbacks) {
 	}
 	result = ISC_R_SUCCESS;
 
-failure:
+cleanup:
 	if (callbacks->commit != NULL) {
 		callbacks->commit(callbacks->add_private);
 	}

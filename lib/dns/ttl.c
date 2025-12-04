@@ -30,13 +30,6 @@
 
 #include <dns/ttl.h>
 
-#define RETERR(x)                        \
-	do {                             \
-		isc_result_t _r = (x);   \
-		if (_r != ISC_R_SUCCESS) \
-			return ((_r));   \
-	} while (0)
-
 static isc_result_t
 bind_ttl(isc_textregion_t *source, uint32_t *ttl);
 

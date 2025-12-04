@@ -64,13 +64,6 @@
 #include "db_p.h"
 #include "rbtdb_p.h"
 
-#define CHECK(op)                            \
-	do {                                 \
-		result = (op);               \
-		if (result != ISC_R_SUCCESS) \
-			goto failure;        \
-	} while (0)
-
 #define EXISTS(header)                                 \
 	((atomic_load_acquire(&(header)->attributes) & \
 	  DNS_SLABHEADERATTR_NONEXISTENT) == 0)

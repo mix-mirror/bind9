@@ -36,14 +36,6 @@
 #include <ns/query.h>
 #include <ns/types.h>
 
-#define CHECK(op)                              \
-	do {                                   \
-		result = (op);                 \
-		if (result != ISC_R_SUCCESS) { \
-			goto cleanup;          \
-		}                              \
-	} while (0)
-
 /*
  * Persistent data for use by this module. This will be associated
  * with client object address in the hash table, and will remain

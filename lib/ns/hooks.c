@@ -33,14 +33,6 @@
 #include <ns/log.h>
 #include <ns/query.h>
 
-#define CHECK(op)                              \
-	do {                                   \
-		result = (op);                 \
-		if (result != ISC_R_SUCCESS) { \
-			goto cleanup;          \
-		}                              \
-	} while (0)
-
 struct ns_plugin {
 	isc_mem_t *mctx;
 	uv_lib_t handle;

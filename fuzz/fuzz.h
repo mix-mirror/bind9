@@ -36,9 +36,4 @@ LLVMFuzzerInitialize(int *argc ISC_ATTR_UNUSED, char ***argv ISC_ATTR_UNUSED);
 int
 LLVMFuzzerTestOneInput(const uint8_t *data, size_t size);
 
-#define CHECK(x)                    \
-	if ((x) != ISC_R_SUCCESS) { \
-		return (0);         \
-	}
-
 ISC_LANG_ENDDECLS

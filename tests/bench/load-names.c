@@ -79,7 +79,7 @@ const dns_qpmethods_t qpmethods = {
 	testname,
 };
 
-#define CHECK(count, result)                                        \
+#define CHECKN(count, result)                                       \
 	do {                                                        \
 		if (result != ISC_R_SUCCESS) {                      \
 			dns_name_t *name = &item[count].fixed.name; \
@@ -157,14 +157,14 @@ thread_lfht(void *arg0) {
 	isc_time_t t0 = isc_time_now_hires();
 	for (size_t n = arg->start; n < arg->end; n++) {
 		isc_result_t result = add_lfht(arg->map, n);
-		CHECK(n, result);
+		CHECKN(n, result);
 	}
 
 	isc_time_t t1 = isc_time_now_hires();
 	for (size_t n = arg->start; n < arg->end; n++) {
 		void *pval = NULL;
 		isc_result_t result = get_lfht(arg->map, n, &pval);
-		CHECK(n, result);
+		CHECKN(n, result);
 		assert(pval == &item[n]);
 	}
 
@@ -220,7 +220,7 @@ thread_hashmap(void *arg0) {
 	WRLOCK(&rwl);
 	for (size_t n = arg->start; n < arg->end; n++) {
 		isc_result_t result = add_hashmap(arg->map, n);
-		CHECK(n, result);
+		CHECKN(n, result);
 	}
 	WRUNLOCK(&rwl);
 
@@ -229,7 +229,7 @@ thread_hashmap(void *arg0) {
 	for (size_t n = arg->start; n < arg->end; n++) {
 		void *pval = NULL;
 		isc_result_t result = get_hashmap(arg->map, n, &pval);
-		CHECK(n, result);
+		CHECKN(n, result);
 		assert(pval == &item[n]);
 	}
 	RDUNLOCK(&rwl);
@@ -277,7 +277,7 @@ thread_ht(void *arg0) {
 	WRLOCK(&rwl);
 	for (size_t n = arg->start; n < arg->end; n++) {
 		isc_result_t result = add_ht(arg->map, n);
-		CHECK(n, result);
+		CHECKN(n, result);
 	}
 	WRUNLOCK(&rwl);
 
@@ -286,7 +286,7 @@ thread_ht(void *arg0) {
 	for (size_t n = arg->start; n < arg->end; n++) {
 		void *pval = NULL;
 		isc_result_t result = get_ht(arg->map, n, &pval);
-		CHECK(n, result);
+		CHECKN(n, result);
 		assert(pval == &item[n]);
 	}
 	RDUNLOCK(&rwl);
@@ -348,7 +348,7 @@ thread_rbt(void *arg0) {
 	WRLOCK(&rwl);
 	for (size_t n = arg->start; n < arg->end; n++) {
 		isc_result_t result = add_rbt(arg->map, n);
-		CHECK(n, result);
+		CHECKN(n, result);
 	}
 	WRUNLOCK(&rwl);
 
@@ -357,7 +357,7 @@ thread_rbt(void *arg0) {
 	for (size_t n = arg->start; n < arg->end; n++) {
 		void *pval = NULL;
 		isc_result_t result = get_rbt(arg->map, n, &pval);
-		CHECK(n, result);
+		CHECKN(n, result);
 		assert(pval == &item[n]);
 	}
 	RDUNLOCK(&rwl);
@@ -409,7 +409,7 @@ _thread_qp(void *arg0, bool sqz, bool brr) {
 	isc_time_t t0 = isc_time_now_hires();
 	for (size_t n = arg->start; n < arg->end; n++) {
 		isc_result_t result = add_qp(qp, n);
-		CHECK(n, result);
+		CHECKN(n, result);
 	}
 	if (sqz) {
 		sqz_qp(qp);
@@ -427,7 +427,7 @@ _thread_qp(void *arg0, bool sqz, bool brr) {
 	for (size_t n = arg->start; n < arg->end; n++) {
 		void *pval = NULL;
 		isc_result_t result = get_qp(&qpr, n, &pval);
-		CHECK(n, result);
+		CHECKN(n, result);
 		assert(pval == &item[n]);
 	}
 

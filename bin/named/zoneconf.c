@@ -61,13 +61,6 @@ typedef enum {
 	allow_update_forwarding
 } acl_type_t;
 
-#define CHECK(x)                             \
-	do {                                 \
-		result = (x);                \
-		if (result != ISC_R_SUCCESS) \
-			goto cleanup;        \
-	} while (0)
-
 /*%
  * Convenience function for configuring a single zone ACL.
  */

@@ -64,13 +64,6 @@
 #include "db_p.h"
 #include "rbtdb_p.h"
 
-#define CHECK(op)                            \
-	do {                                 \
-		result = (op);               \
-		if (result != ISC_R_SUCCESS) \
-			goto failure;        \
-	} while (0)
-
 /*%
  * Whether to rate-limit updating the LRU to avoid possible thread contention.
  * Updating LRU requires write locking, so we don't do it every time the

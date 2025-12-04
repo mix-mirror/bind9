@@ -35,10 +35,10 @@
 #include "dst_parse.h"
 #include "openssl_shim.h"
 
-#define DST_RET(a)        \
-	{                 \
-		ret = a;  \
-		goto err; \
+#define DST_RET(a)            \
+	{                     \
+		result = a;   \
+		goto cleanup; \
 	}
 
 #if HAVE_OPENSSL_ED25519
@@ -88,13 +88,13 @@ openssleddsa_alg_info(unsigned int key_alg) {
 static isc_result_t
 raw_key_to_ossl(const eddsa_alginfo_t *alginfo, int private,
 		const unsigned char *key, size_t *key_len, EVP_PKEY **pkey) {
-	isc_result_t ret;
+	isc_result_t result;
 	int pkey_type = alginfo->pkey_type;
 	size_t len = alginfo->key_size;
 
-	ret = (private ? DST_R_INVALIDPRIVATEKEY : DST_R_INVALIDPUBLICKEY);
+	result = (private ? DST_R_INVALIDPRIVATEKEY : DST_R_INVALIDPUBLICKEY);
 	if (*key_len < len) {
-		return ret;
+		return result;
 	}
 
 	if (private) {
@@ -103,7 +103,7 @@ raw_key_to_ossl(const eddsa_alginfo_t *alginfo, int private,
 		*pkey = EVP_PKEY_new_raw_public_key(pkey_type, NULL, key, len);
 	}
 	if (*pkey == NULL) {
-		return dst__openssl_toresult(ret);
+		return dst__openssl_toresult(result);
 	}
 
 	*key_len = len;
@@ -172,7 +172,7 @@ openssleddsa_adddata(dst_context_t *dctx, const isc_region_t *data) {
 
 static isc_result_t
 openssleddsa_sign(dst_context_t *dctx, isc_buffer_t *sig) {
-	isc_result_t ret;
+	isc_result_t result;
 	dst_key_t *key = dctx->key;
 	isc_region_t tbsreg;
 	isc_region_t sigreg;
@@ -207,19 +207,19 @@ openssleddsa_sign(dst_context_t *dctx, isc_buffer_t *sig) {
 					       DST_R_SIGNFAILURE));
 	}
 	isc_buffer_add(sig, (unsigned int)siglen);
-	ret = ISC_R_SUCCESS;
+	result = ISC_R_SUCCESS;
 
-err:
+cleanup:
 	EVP_MD_CTX_free(ctx);
 	isc_buffer_free(&buf);
 	dctx->ctxdata.generic = NULL;
 
-	return ret;
+	return result;
 }
 
 static isc_result_t
 openssleddsa_verify(dst_context_t *dctx, const isc_region_t *sig) {
-	isc_result_t ret;
+	isc_result_t result;
 	dst_key_t *key = dctx->key;
 	int status;
 	isc_region_t tbsreg;
@@ -250,28 +250,29 @@ openssleddsa_verify(dst_context_t *dctx, const isc_region_t *sig) {
 
 	switch (status) {
 	case 1:
-		ret = ISC_R_SUCCESS;
+		result = ISC_R_SUCCESS;
 		break;
 	case 0:
-		ret = dst__openssl_toresult(DST_R_VERIFYFAILURE);
+		result = dst__openssl_toresult(DST_R_VERIFYFAILURE);
 		break;
 	default:
-		ret = dst__openssl_toresult3(dctx->category, "EVP_DigestVerify",
-					     DST_R_VERIFYFAILURE);
+		result = dst__openssl_toresult3(dctx->category,
+						"EVP_DigestVerify",
+						DST_R_VERIFYFAILURE);
 		break;
 	}
 
-err:
+cleanup:
 	EVP_MD_CTX_free(ctx);
 	isc_buffer_free(&buf);
 	dctx->ctxdata.generic = NULL;
 
-	return ret;
+	return result;
 }
 
 static isc_result_t
 openssleddsa_generate(dst_key_t *key, int unused, void (*callback)(int)) {
-	isc_result_t ret;
+	isc_result_t result;
 	EVP_PKEY *pkey = NULL;
 	EVP_PKEY_CTX *ctx = NULL;
 	const eddsa_alginfo_t *alginfo = openssleddsa_alg_info(key->key_alg);
@@ -302,11 +303,11 @@ openssleddsa_generate(dst_key_t *key, int unused, void (*callback)(int)) {
 	key->key_size = alginfo->key_size * 8;
 	key->keydata.pkeypair.priv = pkey;
 	key->keydata.pkeypair.pub = pkey;
-	ret = ISC_R_SUCCESS;
+	result = ISC_R_SUCCESS;
 
-err:
+cleanup:
 	EVP_PKEY_CTX_free(ctx);
-	return ret;
+	return result;
 }
 
 static isc_result_t
@@ -363,7 +364,7 @@ openssleddsa_fromdns(dst_key_t *key, isc_buffer_t *data) {
 static isc_result_t
 openssleddsa_tofile(const dst_key_t *key, const char *directory) {
 	const eddsa_alginfo_t *alginfo = openssleddsa_alg_info(key->key_alg);
-	isc_result_t ret;
+	isc_result_t result;
 	dst_private_t priv;
 	unsigned char *buf = NULL;
 	size_t len;
@@ -411,20 +412,20 @@ openssleddsa_tofile(const dst_key_t *key, const char *directory) {
 	}
 
 	priv.nelements = i;
-	ret = dst__privstruct_writefile(key, &priv, directory);
+	result = dst__privstruct_writefile(key, &priv, directory);
 
-err:
+cleanup:
 	if (buf != NULL) {
 		isc_mem_put(key->mctx, buf, len);
 	}
-	return ret;
+	return result;
 }
 
 static isc_result_t
 openssleddsa_parse(dst_key_t *key, isc_lex_t *lexer, dst_key_t *pub) {
 	const eddsa_alginfo_t *alginfo = openssleddsa_alg_info(key->key_alg);
 	dst_private_t priv;
-	isc_result_t ret;
+	isc_result_t result;
 	int i, privkey_index = -1;
 	const char *engine = NULL, *label = NULL;
 	EVP_PKEY *pkey = NULL;
@@ -434,10 +435,7 @@ openssleddsa_parse(dst_key_t *key, isc_lex_t *lexer, dst_key_t *pub) {
 	REQUIRE(alginfo != NULL);
 
 	/* read private key file */
-	ret = dst__privstruct_parse(key, DST_ALG_ED25519, lexer, mctx, &priv);
-	if (ret != ISC_R_SUCCESS) {
-		goto err;
-	}
+	CHECK(dst__privstruct_parse(key, DST_ALG_ED25519, lexer, mctx, &priv));
 
 	if (key->external) {
 		if (priv.nelements != 0) {
@@ -470,10 +468,7 @@ openssleddsa_parse(dst_key_t *key, isc_lex_t *lexer, dst_key_t *pub) {
 	}
 
 	if (label != NULL) {
-		ret = openssleddsa_fromlabel(key, engine, label, NULL);
-		if (ret != ISC_R_SUCCESS) {
-			goto err;
-		}
+		CHECK(openssleddsa_fromlabel(key, engine, label, NULL));
 		/* Check that the public component matches if given */
 		if (pub != NULL && EVP_PKEY_eq(key->keydata.pkeypair.pub,
 					       pub->keydata.pkeypair.pub) != 1)
@@ -488,11 +483,8 @@ openssleddsa_parse(dst_key_t *key, isc_lex_t *lexer, dst_key_t *pub) {
 	}
 
 	len = priv.elements[privkey_index].length;
-	ret = raw_key_to_ossl(alginfo, 1, priv.elements[privkey_index].data,
-			      &len, &pkey);
-	if (ret != ISC_R_SUCCESS) {
-		goto err;
-	}
+	CHECK(raw_key_to_ossl(alginfo, 1, priv.elements[privkey_index].data,
+			      &len, &pkey));
 	/* Check that the public component matches if given */
 	if (pub != NULL && EVP_PKEY_eq(pkey, pub->keydata.pkeypair.pub) != 1) {
 		DST_RET(DST_R_INVALIDPRIVATEKEY);
@@ -502,13 +494,13 @@ openssleddsa_parse(dst_key_t *key, isc_lex_t *lexer, dst_key_t *pub) {
 	key->keydata.pkeypair.pub = pkey;
 	key->key_size = len * 8;
 	pkey = NULL;
-	ret = ISC_R_SUCCESS;
+	result = ISC_R_SUCCESS;
 
-err:
+cleanup:
 	EVP_PKEY_free(pkey);
 	dst__privstruct_free(&priv, mctx);
 	isc_safe_memwipe(&priv, sizeof(priv));
-	return ret;
+	return result;
 }
 
 static isc_result_t
@@ -516,16 +508,13 @@ openssleddsa_fromlabel(dst_key_t *key, const char *engine, const char *label,
 		       const char *pin) {
 	const eddsa_alginfo_t *alginfo = openssleddsa_alg_info(key->key_alg);
 	EVP_PKEY *privpkey = NULL, *pubpkey = NULL;
-	isc_result_t ret;
+	isc_result_t result;
 
 	REQUIRE(alginfo != NULL);
 	UNUSED(pin);
 
-	ret = dst__openssl_fromlabel(alginfo->pkey_type, engine, label, pin,
-				     &pubpkey, &privpkey);
-	if (ret != ISC_R_SUCCESS) {
-		goto err;
-	}
+	CHECK(dst__openssl_fromlabel(alginfo->pkey_type, engine, label, pin,
+				     &pubpkey, &privpkey));
 
 	if (engine != NULL) {
 		key->engine = isc_mem_strdup(key->mctx, engine);
@@ -537,10 +526,10 @@ openssleddsa_fromlabel(dst_key_t *key, const char *engine, const char *label,
 	privpkey = NULL;
 	pubpkey = NULL;
 
-err:
+cleanup:
 	EVP_PKEY_free(privpkey);
 	EVP_PKEY_free(pubpkey);
-	return ret;
+	return result;
 }
 
 static dst_func_t openssleddsa_functions = {
@@ -605,7 +594,7 @@ check_algorithm(unsigned char algorithm) {
 	const unsigned char *key = NULL;
 	const unsigned char *sig = NULL;
 	const unsigned char test[] = "test";
-	isc_result_t ret = ISC_R_SUCCESS;
+	isc_result_t result = ISC_R_SUCCESS;
 	size_t key_len, sig_len;
 
 	if (evp_md_ctx == NULL) {
@@ -636,10 +625,7 @@ check_algorithm(unsigned char algorithm) {
 	}
 
 	INSIST(alginfo != NULL);
-	ret = raw_key_to_ossl(alginfo, 0, key, &key_len, &pkey);
-	if (ret != ISC_R_SUCCESS) {
-		goto err;
-	}
+	CHECK(raw_key_to_ossl(alginfo, 0, key, &key_len, &pkey));
 
 	/*
 	 * Check that we can verify the signature.
@@ -651,7 +637,7 @@ check_algorithm(unsigned char algorithm) {
 		DST_RET(ISC_R_NOTIMPLEMENTED);
 	}
 
-err:
+cleanup:
 	if (pkey != NULL) {
 		EVP_PKEY_free(pkey);
 	}
@@ -659,7 +645,7 @@ err:
 		EVP_MD_CTX_destroy(evp_md_ctx);
 	}
 	ERR_clear_error();
-	return ret;
+	return result;
 }
 
 isc_result_t

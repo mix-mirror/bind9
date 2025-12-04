@@ -36,11 +36,9 @@
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wshadow"
-#undef CHECK
 #include "qpzone.c"
 #pragma GCC diagnostic pop
 
-#undef CHECK
 #include <tests/dns.h>
 
 #define CASESET(header)                                \

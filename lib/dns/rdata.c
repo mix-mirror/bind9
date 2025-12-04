@@ -52,13 +52,6 @@
 #include <dns/time.h>
 #include <dns/ttl.h>
 
-#define RETERR(x)                        \
-	do {                             \
-		isc_result_t _r = (x);   \
-		if (_r != ISC_R_SUCCESS) \
-			return ((_r));   \
-	} while (0)
-
 #define RETTOK(x)                                          \
 	do {                                               \
 		isc_result_t _r = (x);                     \
@@ -66,13 +59,6 @@
 			isc_lex_ungettoken(lexer, &token); \
 			return (_r);                       \
 		}                                          \
-	} while (0)
-
-#define CHECK(op)                            \
-	do {                                 \
-		result = (op);               \
-		if (result != ISC_R_SUCCESS) \
-			goto cleanup;        \
 	} while (0)
 
 #define CHECKTOK(op)                                       \

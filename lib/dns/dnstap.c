@@ -121,13 +121,6 @@ struct dns_dtenv {
 	isc_stats_t *stats;
 };
 
-#define CHECK(x)                             \
-	do {                                 \
-		result = (x);                \
-		if (result != ISC_R_SUCCESS) \
-			goto cleanup;        \
-	} while (0)
-
 typedef struct ioq {
 	unsigned int generation;
 	struct fstrm_iothr_queue *ioq;

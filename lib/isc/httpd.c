@@ -37,14 +37,6 @@
 #include <zlib.h>
 #endif /* ifdef HAVE_ZLIB */
 
-#define CHECK(m)                               \
-	do {                                   \
-		result = (m);                  \
-		if (result != ISC_R_SUCCESS) { \
-			goto cleanup;          \
-		}                              \
-	} while (0)
-
 /*
  * Size the recv buffer to hold at maximum two full buffers from isc_nm_read(),
  * so we don't have to handle the truncation.

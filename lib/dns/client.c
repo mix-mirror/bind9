@@ -59,13 +59,6 @@
 #define UCTX_MAGIC    ISC_MAGIC('U', 'c', 't', 'x')
 #define UCTX_VALID(c) ISC_MAGIC_VALID(c, UCTX_MAGIC)
 
-#define CHECK(r)                             \
-	do {                                 \
-		result = (r);                \
-		if (result != ISC_R_SUCCESS) \
-			goto cleanup;        \
-	} while (0)
-
 /*%
  * DNS client object
  */

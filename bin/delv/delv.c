@@ -79,13 +79,6 @@
 
 #include <irs/resconf.h>
 
-#define CHECK(r)                             \
-	do {                                 \
-		result = (r);                \
-		if (result != ISC_R_SUCCESS) \
-			goto cleanup;        \
-	} while (0)
-
 #define MAXNAME (DNS_NAME_MAXTEXT + 1)
 
 #define MAX_QUERIES  50

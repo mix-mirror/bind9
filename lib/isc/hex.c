@@ -38,13 +38,6 @@ const uint8_t isc__hex_char[256] = {
 #undef U
 #undef L
 
-#define RETERR(x)                        \
-	do {                             \
-		isc_result_t _r = (x);   \
-		if (_r != ISC_R_SUCCESS) \
-			return ((_r));   \
-	} while (0)
-
 /*
  * BEW: These static functions are copied from lib/dns/rdata.c.
  */
