@@ -2066,7 +2066,7 @@ rbtnode_erefs_decrement(dns_rbtdb_t *rbtdb, dns_rbtnode_t *node) {
 static bool
 dns__rbtnode_release(dns_rbtdb_t *rbtdb, dns_rbtnode_t *node,
 		     rbtdb_serial_t least_serial, isc_rwlocktype_t nlock,
-		     isc_rwlocktype_t tlock, bool pruning) {
+		     isc_rwlocktype_t tlock, bool pruning, bool upgrade) {
 	isc_result_t result;
 	bool write_locked;
 	bool locked = tlock != isc_rwlocktype_none;
@@ -2131,7 +2131,9 @@ dns__rbtnode_release(dns_rbtdb_t *rbtdb, dns_rbtnode_t *node,
 		 * the node lock before acquiring the tree write lock because
 		 * we only do a trylock.
 		 */
-		if (tlock == isc_rwlocktype_read) {
+		if (!upgrade) {
+			result = ISC_R_LOCKBUSY;
+		} else if (tlock == isc_rwlocktype_read) {
 			result = isc_rwlock_tryupgrade(&rbtdb->tree_lock);
 		} else {
 			result = isc_rwlock_trylock(&rbtdb->tree_lock,
@@ -2251,7 +2253,7 @@ prune_tree(isc_task_t *task, isc_event_t *event) {
 	do {
 		parent = node->parent;
 		dns__rbtnode_release(rbtdb, node, 0, isc_rwlocktype_write,
-				     isc_rwlocktype_write, true);
+				     isc_rwlocktype_write, true, true);
 
 		/*
 		 * Check whether the parent is an interior node.  Note that it
@@ -2707,7 +2709,7 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp, bool commit) {
 		}
 		dns__rbtnode_release(rbtdb, header->node, least_serial,
 				     isc_rwlocktype_write, isc_rwlocktype_none,
-				     false);
+				     false, false);
 		NODE_UNLOCK(lock, isc_rwlocktype_write);
 	}
 
@@ -2757,8 +2759,8 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp, bool commit) {
 				rollback_node(rbtnode, serial);
 			}
 			dns__rbtnode_release(rbtdb, rbtnode, least_serial,
-					     isc_rwlocktype_write, tlock,
-					     false);
+					     isc_rwlocktype_write, tlock, false,
+					     true);
 
 			NODE_UNLOCK(lock, isc_rwlocktype_write);
 
@@ -4560,7 +4562,7 @@ tree_exit:
 
 		NODE_LOCK(lock, isc_rwlocktype_read);
 		dns__rbtnode_release(search.rbtdb, node, 0, isc_rwlocktype_read,
-				     isc_rwlocktype_none, false);
+				     isc_rwlocktype_none, false, true);
 		NODE_UNLOCK(lock, isc_rwlocktype_read);
 	}
 
@@ -5441,7 +5443,7 @@ tree_exit:
 
 		NODE_LOCK(lock, isc_rwlocktype_read);
 		dns__rbtnode_release(search.rbtdb, node, 0, isc_rwlocktype_read,
-				     isc_rwlocktype_none, false);
+				     isc_rwlocktype_none, false, true);
 		NODE_UNLOCK(lock, isc_rwlocktype_read);
 	}
 
@@ -5646,7 +5648,7 @@ detachnode(dns_db_t *db, dns_dbnode_t **targetp) {
 	NODE_LOCK(&nodelock->lock, isc_rwlocktype_read);
 
 	if (dns__rbtnode_release(rbtdb, node, 0, isc_rwlocktype_read,
-				 isc_rwlocktype_none, false))
+				 isc_rwlocktype_none, false, true))
 	{
 		if (isc_refcount_current(&nodelock->references) == 0 &&
 		    nodelock->exiting)
@@ -9209,7 +9211,7 @@ dereference_iter_node(rbtdb_dbiterator_t *rbtdbiter) {
 	lock = &rbtdb->node_locks[node->locknum].lock;
 	NODE_LOCK(lock, isc_rwlocktype_read);
 	dns__rbtnode_release(rbtdb, node, 0, isc_rwlocktype_read,
-			     rbtdbiter->tree_locked, false);
+			     rbtdbiter->tree_locked, false, false);
 	NODE_UNLOCK(lock, isc_rwlocktype_read);
 
 	rbtdbiter->node = NULL;
@@ -9248,9 +9250,9 @@ flush_deletions(rbtdb_dbiterator_t *rbtdbiter) {
 			lock = &rbtdb->node_locks[node->locknum].lock;
 
 			NODE_LOCK(lock, isc_rwlocktype_read);
-			dns__rbtnode_release(rbtdb, node, 0,
-					     isc_rwlocktype_read,
-					     rbtdbiter->tree_locked, false);
+			dns__rbtnode_release(
+				rbtdb, node, 0, isc_rwlocktype_read,
+				rbtdbiter->tree_locked, false, true);
 			NODE_UNLOCK(lock, isc_rwlocktype_read);
 		}
 
@@ -10585,7 +10587,7 @@ expire_header(dns_rbtdb_t *rbtdb, rdatasetheader_t *header, bool tree_locked,
 				     isc_rwlocktype_write,
 				     tree_locked ? isc_rwlocktype_write
 						 : isc_rwlocktype_none,
-				     false);
+				     false, true);
 
 		if (rbtdb->cachestats == NULL) {
 			return;
