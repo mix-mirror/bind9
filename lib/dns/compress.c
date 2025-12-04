@@ -142,83 +142,6 @@ match_wirename(uint8_t *a, uint8_t *b, unsigned int len, bool sensitive) {
 }
 
 /*
- * We have found a hash set entry whose hash value matches the current
- * suffix of our name, which is passed to this function via `sptr` and
- * `slen`. We need to verify that the suffix in the message (referred to
- * by `new_coff`) actually matches, in case of hash collisions.
- *
- * We know that the previous suffix of this name (after the first label)
- * occurs in the message at `old_coff`, and all the compression offsets in
- * the hash set and in the message refer to the first occurrence of a
- * particular name or suffix.
- *
- * First, we need to match the label that was just added to our suffix,
- * and second, verify that it is followed by the previous suffix.
- *
- * There are a few ways to match the previous suffix:
- *
- * When the first occurrence of this suffix is also the first occurrence
- * of the previous suffix, `old_coff` points just after the new label.
- *
- * Otherwise, if this suffix occurs in a compressed name, it will be
- * followed by a compression pointer that refers to the previous suffix,
- * which must be equal to `old_coff`.
- *
- * The final possibility is that this suffix occurs in an uncompressed
- * name, so we have to compare the rest of the suffix in full.
- *
- * A special case is when this suffix is a TLD. That can be handled by
- * the case for uncompressed names, but it is common enough that it is
- * worth taking a short cut. (In the TLD case, the `old_coff` will be
- * zero, and the quick checks for the previous suffix will fail.)
- */
-static bool
-match_suffix(isc_buffer_t *buffer, unsigned int new_coff, uint8_t *sptr,
-	     unsigned int slen, unsigned int old_coff, bool sensitive) {
-	uint8_t pptr[] = { 0xC0 | (old_coff >> 8), old_coff & 0xff };
-	uint8_t *bptr = isc_buffer_base(buffer);
-	unsigned int blen = isc_buffer_usedlength(buffer);
-	unsigned int llen = sptr[0] + 1;
-
-	INSIST(llen <= 64 && llen < slen);
-
-	if (blen < new_coff + llen) {
-		return false;
-	}
-
-	blen -= new_coff;
-	bptr += new_coff;
-
-	/* does the first label of the suffix appear here? */
-	if (!match_wirename(bptr, sptr, llen, sensitive)) {
-		return false;
-	}
-
-	/* is this label followed by the previously matched suffix? */
-	if (old_coff == new_coff + llen) {
-		return true;
-	}
-
-	blen -= llen;
-	bptr += llen;
-	slen -= llen;
-	sptr += llen;
-
-	/* are both labels followed by the root label? */
-	if (blen >= 1 && slen == 1 && bptr[0] == 0 && sptr[0] == 0) {
-		return true;
-	}
-
-	/* is this label followed by a pointer to the previous match? */
-	if (blen >= 2 && bptr[0] == pptr[0] && bptr[1] == pptr[1]) {
-		return true;
-	}
-
-	/* is this label followed by a copy of the rest of the suffix? */
-	return blen >= slen && match_wirename(bptr, sptr, slen, sensitive);
-}
-
-/*
  * Robin Hood hashing aims to minimize probe distance when inserting a
  * new element by ensuring that the new element does not have a worse
  * probe distance than any other element in its probe sequence. During
@@ -237,57 +160,30 @@ slot_index(dns_compress_t *cctx, unsigned int hash, unsigned int probe) {
 }
 
 static bool
-insert_label(dns_compress_t *cctx, isc_buffer_t *buffer,
-	     const dns_offsets_t offsets, unsigned int label, uint16_t hash,
+insert_label(dns_compress_t *cctx, dns_compress_slot_t slot_data,
 	     unsigned int probe) {
 	/*
 	 * hash set entries must have valid compression offsets
 	 * and the hash set must not get too full (75% load)
 	 */
-	unsigned int prefix_len = offsets[label];
-	unsigned int coff = isc_buffer_usedlength(buffer) + prefix_len;
-	if (coff >= 0x4000 || cctx->count > cctx->mask * 3 / 4) {
+	if (slot_data.coff >= 0x4000 || cctx->count > cctx->mask * 3 / 4) {
 		return false;
 	}
+
 	for (;;) {
-		unsigned int slot = slot_index(cctx, hash, probe);
+		unsigned int slot = slot_index(cctx, slot_data.hash, probe);
 		/* we can stop when we find an empty slot */
 		if (cctx->set[slot].coff == 0) {
-			cctx->set[slot].hash = hash;
-			cctx->set[slot].coff = coff;
+			cctx->set[slot] = slot_data;
 			cctx->count++;
 			return true;
 		}
 		/* he steals from the rich and gives to the poor */
 		if (probe > probe_distance(cctx, slot)) {
 			probe = probe_distance(cctx, slot);
-			ISC_SWAP(cctx->set[slot].hash, hash);
-			ISC_SWAP(cctx->set[slot].coff, coff);
+			ISC_SWAP(cctx->set[slot], slot_data);
 		}
 		probe++;
-	}
-}
-
-/*
- * Add the unmatched prefix of the name to the hash set.
- */
-static void
-insert(dns_compress_t *cctx, isc_buffer_t *buffer, const dns_name_t *name,
-       const dns_offsets_t offsets, unsigned int label, uint16_t hash,
-       unsigned int probe) {
-	bool sensitive = (cctx->flags & DNS_COMPRESS_CASE) != 0;
-	/*
-	 * this insertion loop continues from the search loop inside
-	 * dns_compress_name() below, iterating over the remaining labels
-	 * of the name and accumulating the hash in the same manner
-	 */
-	while (insert_label(cctx, buffer, offsets, label, hash, probe) &&
-	       label-- > 0)
-	{
-		unsigned int prefix_len = offsets[label];
-		uint8_t *suffix_ptr = name->ndata + prefix_len;
-		hash = hash_label(hash, suffix_ptr, sensitive);
-		probe = 0;
 	}
 }
 
@@ -312,18 +208,30 @@ dns_compress_name(dns_compress_t *cctx, isc_buffer_t *buffer,
 
 	bool sensitive = (cctx->flags & DNS_COMPRESS_CASE) != 0;
 
+	/* Pre-compute hashes for all labels in reverse order */
+	uint16_t hashes[DNS_NAME_MAXLABELS];
 	uint16_t hash = HASH_INIT_DJB2;
-	size_t label = labels - 1; /* skip the root label */
+
+	/* Starting from `labels - 2` is ok because of ssize_t and the fact
+	 * that labels > 0 */
+	for (ssize_t i = labels - 2; i >= 0; i--) {
+		unsigned int prefix_len = offsets[i];
+		uint8_t *suffix_ptr = name->ndata + prefix_len;
+		hash = hash_label(hash, suffix_ptr, sensitive);
+		hashes[i] = hash;
+	}
 
 	/*
 	 * find out how much of the name's suffix is in the hash set,
 	 * stepping backwards from the end one label at a time
 	 */
-	while (label-- > 0) {
+
+	/* skip the root label */
+	for (size_t label = 0; label < labels - 1; ++label) {
 		unsigned int prefix_len = offsets[label];
 		unsigned int suffix_len = name->length - prefix_len;
 		uint8_t *suffix_ptr = name->ndata + prefix_len;
-		hash = hash_label(hash, suffix_ptr, sensitive);
+		hash = hashes[label];
 
 		for (unsigned int probe = 0; true; probe++) {
 			unsigned int slot = slot_index(cctx, hash, probe);
@@ -336,9 +244,16 @@ dns_compress_name(dns_compress_t *cctx, isc_buffer_t *buffer,
 			 * the rest of the name (its prefix) into the set
 			 */
 			if (coff == 0 || probe > probe_distance(cctx, slot)) {
-				insert(cctx, buffer, name, offsets, label, hash,
-				       probe);
-				return;
+				dns_compress_slot_t slot_data = {
+					.hash = hash,
+					.coff = isc_buffer_usedlength(buffer) +
+						prefix_len,
+					.suffix_ptr = suffix_ptr,
+					.suffix_len = suffix_len
+				};
+
+				insert_label(cctx, slot_data, probe);
+				break;
 			}
 
 			/*
@@ -346,12 +261,13 @@ dns_compress_name(dns_compress_t *cctx, isc_buffer_t *buffer,
 			 * return values and continue with the next label
 			 */
 			if (hash == cctx->set[slot].hash &&
-			    match_suffix(buffer, coff, suffix_ptr, suffix_len,
-					 *return_coff, sensitive))
+			    suffix_len == cctx->set[slot].suffix_len &&
+			    match_wirename(cctx->set[slot].suffix_ptr,
+					   suffix_ptr, suffix_len, sensitive))
 			{
 				*return_coff = coff;
 				*return_prefix = prefix_len;
-				break;
+				return;
 			}
 		}
 	}
@@ -372,6 +288,7 @@ dns_compress_rollback(dns_compress_t *cctx, unsigned int coff) {
 		 * element to the previous slot reduces its probe distance, so
 		 * we stop when we find an element whose probe distance is zero.
 		 */
+
 		unsigned int prev = slot;
 		unsigned int next = slot_index(cctx, prev, 1);
 		while (cctx->set[next].coff != 0 &&
@@ -381,8 +298,7 @@ dns_compress_rollback(dns_compress_t *cctx, unsigned int coff) {
 			prev = next;
 			next = slot_index(cctx, prev, 1);
 		}
-		cctx->set[prev].coff = 0;
-		cctx->set[prev].hash = 0;
+		cctx->set[prev] = (dns_compress_slot_t){ 0 };
 		cctx->count--;
 	}
 }

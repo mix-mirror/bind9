@@ -283,7 +283,7 @@ dns_nametree_covered(dns_nametree_t *nametree, const dns_name_t *name,
 	REQUIRE(VALID_NAMETREE(nametree));
 
 	dns_qpmulti_query(nametree->table, &qpr);
-	result = dns_qp_lookup(&qpr, name, DNS_DBNAMESPACE_NORMAL, NULL, NULL,
+	result = dns_qp_lookup(&qpr, name, DNS_DBNAMESPACE_NORMAL, NULL,
 			       NULL, (void **)&node, NULL);
 	if (result == ISC_R_SUCCESS || result == DNS_R_PARTIALMATCH) {
 		if (found != NULL) {

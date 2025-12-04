@@ -945,6 +945,7 @@ extern uint8_t dns_qp_byte_for_bit[];
 
 /**********************************************************************/
 
+
 void
 dns__qp_initialize(void);
 void

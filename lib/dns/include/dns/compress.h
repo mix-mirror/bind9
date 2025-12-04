@@ -85,6 +85,8 @@ enum dns_compress_flags {
 struct dns_compress_slot {
 	uint16_t hash;
 	uint16_t coff;
+	uint16_t suffix_len;
+	uint8_t *suffix_ptr;
 };
 
 struct dns_compress {
