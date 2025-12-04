@@ -14,6 +14,7 @@
 #pragma once
 
 void
-dns_lib_initialize(void) __attribute__((__constructor__));
+isccfg_lib_initialize(void) __attribute__((__constructor__));
+
 void
-dns_lib_shutdown(void) __attribute__((__destructor__));
+isccfg_lib_shutdown(void) __attribute__((__destructor__));

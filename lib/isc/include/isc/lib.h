@@ -13,24 +13,7 @@
 
 #pragma once
 
-#include <isc/util.h>
-
-void
-isc__lib_initialize(void);
-void
-isc__lib_shutdown(void);
-
 void
 isc_lib_initialize(void) __attribute__((__constructor__));
 void
 isc_lib_shutdown(void) __attribute__((__destructor__));
-
-void
-isc_lib_initialize(void) {
-	isc__lib_initialize();
-}
-
-void
-isc_lib_shutdown(void) {
-	isc__lib_shutdown();
-}

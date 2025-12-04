@@ -13,8 +13,11 @@
 
 /*! \file */
 
+#include <isc/lib.h>
 #include <isc/once.h>
 #include <isc/refcount.h>
+
+#include <dns/lib.h>
 
 #include "acl_p.h"
 #include "db_p.h"
@@ -30,13 +33,8 @@
 
 static isc_refcount_t dns__lib_references = 0;
 
-void
-dns__lib_initialize(void);
-void
-dns__lib_shutdown(void);
-
-void
-dns__lib_initialize(void) {
+static void
+dnsinitialize(void) {
 	if (isc_refcount_increment0(&dns__lib_references) > 0) {
 		return;
 	}
@@ -50,8 +48,8 @@ dns__lib_initialize(void) {
 	dns__qpzone_initialize();
 }
 
-void
-dns__lib_shutdown(void) {
+static void
+dnsshutdown(void) {
 	if (isc_refcount_decrement(&dns__lib_references) > 1) {
 		return;
 	}
@@ -63,4 +61,16 @@ dns__lib_shutdown(void) {
 	dns__dlz_shutdown();
 	dns__acl_shutdown();
 	dst__lib_shutdown();
+}
+
+void
+dns_lib_initialize(void) {
+	isc_lib_initialize();
+	dnsinitialize();
+}
+
+void
+dns_lib_shutdown(void) {
+	dnsshutdown();
+	isc_lib_shutdown();
 }

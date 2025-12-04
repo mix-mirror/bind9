@@ -35,7 +35,7 @@ static void
 usage(void) {
 	fprintf(stderr, "usage: cfg_test --rndc|--named "
 			"[--grammar] [--zonegrammar] [--active] "
-			"[--memstats] conffile\n");
+			"conffile\n");
 	exit(EXIT_FAILURE);
 }
 
@@ -55,7 +55,6 @@ main(int argc, char **argv) {
 	cfg_obj_t *cfg = NULL;
 	cfg_type_t *type = NULL;
 	bool grammar = false;
-	bool memstats = false;
 	char *filename = NULL;
 	unsigned int zonetype = 0;
 	unsigned int pflags = 0;
@@ -108,8 +107,6 @@ main(int argc, char **argv) {
 			} else {
 				usage();
 			}
-		} else if (strcmp(argv[1], "--memstats") == 0) {
-			memstats = true;
 		} else if (strcmp(argv[1], "--named") == 0) {
 			type = &cfg_type_namedconf;
 		} else if (strcmp(argv[1], "--rndc") == 0) {
@@ -133,7 +130,7 @@ main(int argc, char **argv) {
 		if (type == NULL || filename == NULL) {
 			usage();
 		}
-		result = cfg_parse_file(mctx, filename, type, 0, &cfg);
+		result = cfg_parse_file(filename, type, 0, &cfg);
 
 		fprintf(stderr, "read config: %s\n", isc_result_totext(result));
 
@@ -146,9 +143,6 @@ main(int argc, char **argv) {
 		cfg_obj_detach(&cfg);
 	}
 
-	if (memstats) {
-		isc_mem_stats(mctx, stderr);
-	}
 	isc_mem_detach(&mctx);
 
 	fflush(stdout);

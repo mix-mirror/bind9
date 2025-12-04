@@ -537,7 +537,7 @@ rndc_start(void *arg) {
 }
 
 static void
-parse_config(isc_mem_t *mctx, const char *keyname, cfg_obj_t **configp) {
+parse_config(const char *keyname, cfg_obj_t **configp) {
 	isc_result_t result;
 	const char *conffile = admin_conffile;
 	const cfg_obj_t *addresses = NULL;
@@ -581,7 +581,7 @@ parse_config(isc_mem_t *mctx, const char *keyname, cfg_obj_t **configp) {
 	/*
 	 * The parser will output its own errors, so DO() is not used.
 	 */
-	result = cfg_parse_file(mctx, conffile, conftype, 0, &config);
+	result = cfg_parse_file(conffile, conftype, 0, &config);
 	if (result != ISC_R_SUCCESS) {
 		fatal("could not load rndc configuration");
 	}
@@ -961,7 +961,7 @@ main(int argc, char **argv) {
 		ISC_LOG_PRINTTAG | ISC_LOG_PRINTLEVEL, ISC_LOGCATEGORY_DEFAULT,
 		ISC_LOGMODULE_DEFAULT);
 
-	parse_config(isc_g_mctx, keyname, &config);
+	parse_config(keyname, &config);
 
 	isc_buffer_allocate(isc_g_mctx, &databuf, 2048);
 

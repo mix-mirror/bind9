@@ -91,13 +91,12 @@ typedef isc_result_t (*cfg_parsecallback_t)(const char	    *clausename,
  ***/
 
 isc_result_t
-cfg_parse_file(isc_mem_t *mctx, const char *file, const cfg_type_t *type,
-	       unsigned int flags, cfg_obj_t **ret);
+cfg_parse_file(const char *file, const cfg_type_t *type, unsigned int flags,
+	       cfg_obj_t **ret);
 
 isc_result_t
-cfg_parse_buffer(isc_mem_t *mctx, isc_buffer_t *buffer, const char *file,
-		 unsigned int line, const cfg_type_t *type, unsigned int flags,
-		 cfg_obj_t **ret);
+cfg_parse_buffer(isc_buffer_t *buffer, const char *file, unsigned int line,
+		 const cfg_type_t *type, unsigned int flags, cfg_obj_t **ret);
 /*%<
  * Read a configuration containing data of type 'type'
  * and make '*ret' point to its parse tree.

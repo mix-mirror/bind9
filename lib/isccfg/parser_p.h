@@ -14,6 +14,7 @@
 #pragma once
 
 void
-dns_lib_initialize(void) __attribute__((__constructor__));
+isccfg__parser_initialize(void);
+
 void
-dns_lib_shutdown(void) __attribute__((__destructor__));
+isccfg__parser_shutdown(void);

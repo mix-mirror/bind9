@@ -16,6 +16,7 @@
 #include <isc/crypto.h>
 #include <isc/hash.h>
 #include <isc/iterated_hash.h>
+#include <isc/lib.h>
 #include <isc/md.h>
 #include <isc/mem.h>
 #include <isc/os.h>
@@ -25,6 +26,10 @@
 #include <isc/util.h>
 #include <isc/uv.h>
 #include <isc/xml.h>
+
+#ifdef __SANITIZE_ADDRESS__
+#include <sanitizer/lsan_interface.h>
+#endif
 
 #include "mem_p.h"
 #include "mutex_p.h"
@@ -37,13 +42,8 @@
 
 static isc_refcount_t isc__lib_references = 0;
 
-void
-isc__lib_initialize(void);
-void
-isc__lib_shutdown(void);
-
-void
-isc__lib_initialize(void) {
+static void
+iscinitialize(void) {
 	if (isc_refcount_increment0(&isc__lib_references) > 0) {
 		return;
 	}
@@ -61,8 +61,8 @@ isc__lib_initialize(void) {
 	(void)isc_os_ncpus();
 }
 
-void
-isc__lib_shutdown(void) {
+static void
+iscshutdown(void) {
 	if (isc_refcount_decrement(&isc__lib_references) > 1) {
 		return;
 	}
@@ -78,4 +78,28 @@ isc__lib_shutdown(void) {
 	isc__mem_shutdown();
 	isc__mutex_shutdown();
 	isc__os_shutdown();
+
+#ifdef __SANITIZE_ADDRESS__
+	/*
+	 * LeakSanitizer uses by default `atexit` to register itself (as
+	 * __destructor__ does). If it runs before our own destructors, false
+	 * positive will be detected since lot of memory wouldn't be released
+	 * yet. Since there is no way to control if it will run before or after
+	 * our own destructors, the default `atexit` registration is disabled
+	 * (see `LSAN_OPTIONS=leak_check_at_exit=0`) and we manually call the
+	 * LeakSanitizer from there, at the last point we have control and where
+	 * all memory is actually freed.
+	 */
+	__lsan_do_leak_check();
+#endif
+}
+
+void
+isc_lib_initialize(void) {
+	iscinitialize();
+}
+
+void
+isc_lib_shutdown(void) {
+	iscshutdown();
 }
