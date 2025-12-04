@@ -146,6 +146,15 @@ struct qpcnode {
 	 * release it when 'erefs' goes back to zero. This prevents the
 	 * database from being shut down until every caller has released
 	 * all nodes.
+	 *
+	 * Since qpcnode relies on locks (and other things, such as the cache
+	 * and the badnodes list) which are part of the qpcache, it needs a
+	 * reference to the qpcache.
+	 *
+	 * Instead of taking the reference each time an external reference is
+	 * taken, the reference is take only once at construction of the qpcnode
+	 * and release only at destruction, forcing the qpcache to be alive the
+	 * whole time.
 	 */
 	isc_refcount_t references;
 	isc_refcount_t erefs;
@@ -2341,6 +2350,21 @@ qpcache__destroy(qpcache_t *qpdb) {
 	call_rcu(&qpdb->rcu_head, qpcache__destroy_rcu);
 }
 
+/*
+ *
+ * Release a self-reference to qpcache that was acquired in the
+ * dns__qpcache_create().  This would normally create a cycle.  To break this
+ * cycle, the qpcache destructor first destroys the tree, which causes all nodes
+ * to be destroyed and to release their qpcache refs.
+ *
+ * Then release the self-reference, which causes the real destructor to be run.
+ * The real destructor then destroys the rest of the qpcache via call_rcu.
+ * Destroying with call_rcu (instead of synchronize_rcu) is necessary since the
+ * final reference might be released not by the qpcache destructor, but by a
+ * node's own reference release, which happens in an RCU read lock critical
+ * section and destroying with the call_rcu() ensures proper ordering of the
+ * destructors.
+ */
 static void
 qpcache_destroy(dns_db_t *arg) {
 	qpcache_t *qpdb = (qpcache_t *)arg;
