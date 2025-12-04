@@ -39,7 +39,7 @@
 #include <dns/tsig.h>
 #include <dns/view.h>
 
-#define CHECK(str, x)                                        \
+#define CHECKM(str, x)                                       \
 	{                                                    \
 		if ((x) != ISC_R_SUCCESS) {                  \
 			fprintf(stderr, "I:%s: %s\n", (str), \
@@ -81,7 +81,7 @@ recvquery(isc_task_t *task, isc_event_t *event) {
 
 	result = dns_request_getresponse(reqev->request, response,
 					 DNS_MESSAGEPARSE_PRESERVEORDER);
-	CHECK("dns_request_getresponse", result);
+	CHECKM("dns_request_getresponse", result);
 
 	if (response->rcode != dns_rcode_noerror) {
 		result = dns_result_fromrcode(response->rcode);
@@ -91,7 +91,7 @@ recvquery(isc_task_t *task, isc_event_t *event) {
 	}
 
 	result = dns_tkey_processdeleteresponse(query, response, ring);
-	CHECK("dns_tkey_processdhresponse", result);
+	CHECKM("dns_tkey_processdhresponse", result);
 
 	dns_message_detach(&query);
 	dns_message_detach(&response);
@@ -113,19 +113,19 @@ sendquery(isc_task_t *task, isc_event_t *event) {
 
 	result = ISC_R_FAILURE;
 	if (inet_pton(AF_INET, ip_address, &inaddr) != 1) {
-		CHECK("inet_pton", result);
+		CHECKM("inet_pton", result);
 	}
 	isc_sockaddr_fromin(&address, &inaddr, port);
 
 	dns_message_create(mctx, DNS_MESSAGE_INTENTRENDER, &query);
 
 	result = dns_tkey_builddeletequery(query, tsigkey);
-	CHECK("dns_tkey_builddeletequery", result);
+	CHECKM("dns_tkey_builddeletequery", result);
 
 	result = dns_request_create(requestmgr, query, NULL, &address,
 				    DNS_REQUESTOPT_TCP, tsigkey, TIMEOUT, 0, 0,
 				    task, recvquery, query, &request);
-	CHECK("dns_request_create", result);
+	CHECKM("dns_request_create", result);
 }
 
 int
@@ -184,12 +184,12 @@ main(int argc, char **argv) {
 
 	type = DST_TYPE_PUBLIC | DST_TYPE_PRIVATE | DST_TYPE_KEY;
 	result = dst_key_fromnamedfile(keyname, NULL, type, mctx, &dstkey);
-	CHECK("dst_key_fromnamedfile", result);
+	CHECKM("dst_key_fromnamedfile", result);
 	result = dns_tsigkey_createfromkey(dst_key_name(dstkey),
 					   DNS_TSIG_HMACMD5_NAME, dstkey, true,
 					   NULL, 0, 0, mctx, ring, &tsigkey);
 	dst_key_free(&dstkey);
-	CHECK("dns_tsigkey_createfromkey", result);
+	CHECKM("dns_tsigkey_createfromkey", result);
 
 	(void)isc_app_run();
 

@@ -47,7 +47,7 @@ LLVMFuzzerInitialize(int *argc __attribute__((unused)),
 	isc_lexspecials_t specials;
 
 	isc_mem_create(&mctx);
-	CHECK(isc_lex_create(mctx, 64, &lex));
+	RETERR(isc_lex_create(mctx, 64, &lex));
 
 	memset(specials, 0, sizeof(specials));
 	specials[0] = 1;
@@ -215,5 +215,6 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	assert(target.used == size);
 	assert(!memcmp(target.base, data, size));
 
+cleanup:
 	return 0;
 }

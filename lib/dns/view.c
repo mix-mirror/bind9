@@ -64,13 +64,6 @@
 #include <dns/zone.h>
 #include <dns/zt.h>
 
-#define CHECK(op)                            \
-	do {                                 \
-		result = (op);               \
-		if (result != ISC_R_SUCCESS) \
-			goto cleanup;        \
-	} while (0)
-
 #define RESSHUTDOWN(v) \
 	((atomic_load(&(v)->attributes) & DNS_VIEWATTR_RESSHUTDOWN) != 0)
 #define ADBSHUTDOWN(v) \

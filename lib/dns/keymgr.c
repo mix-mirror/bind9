@@ -34,13 +34,6 @@
 
 #include <dst/dst.h>
 
-#define RETERR(x)                            \
-	do {                                 \
-		result = (x);                \
-		if (result != ISC_R_SUCCESS) \
-			goto failure;        \
-	} while (0)
-
 /*
  * Set key state to `target` state and change last changed
  * to `time`, only if key state has not been set before.
@@ -494,9 +487,9 @@ keymgr_createkey(dns_kasp_key_t *kkey, const dns_name_t *origin,
 		if (dns_kasp_key_ksk(kkey)) {
 			keyflags |= DNS_KEYFLAG_KSK;
 		}
-		RETERR(dst_key_generate(origin, algo, size, 0, keyflags,
-					DNS_KEYPROTO_DNSSEC, rdclass, mctx,
-					&newkey, NULL));
+		CHECK(dst_key_generate(origin, algo, size, 0, keyflags,
+				       DNS_KEYPROTO_DNSSEC, rdclass, mctx,
+				       &newkey, NULL));
 
 		/* Key collision? */
 		conflict = keymgr_keyid_conflict(newkey, keylist);
@@ -520,7 +513,7 @@ keymgr_createkey(dns_kasp_key_t *kkey, const dns_name_t *origin,
 	*dst_key = newkey;
 	return ISC_R_SUCCESS;
 
-failure:
+cleanup:
 	return result;
 }
 
@@ -2238,7 +2231,7 @@ dns_keymgr_run(const dns_name_t *origin, dns_rdataclass_t rdclass,
 		}
 
 		/* See if this key requires a rollover. */
-		RETERR(keymgr_key_rollover(
+		CHECK(keymgr_key_rollover(
 			kkey, active_key, keyring, &newkeys, origin, rdclass,
 			kasp, lifetime, rollover_allowed, now, nexttime, mctx));
 	}
@@ -2268,14 +2261,14 @@ dns_keymgr_run(const dns_name_t *origin, dns_rdataclass_t rdclass,
 		}
 		if (modified && !dkey->purge) {
 			dns_dnssec_get_hints(dkey, now);
-			RETERR(dst_key_tofile(dkey->key, options, directory));
+			CHECK(dst_key_tofile(dkey->key, options, directory));
 		}
 		dst_key_setmodified(dkey->key, false);
 	}
 
 	result = ISC_R_SUCCESS;
 
-failure:
+cleanup:
 	if (dir_open) {
 		isc_dir_close(&dir);
 	}
@@ -2437,7 +2430,7 @@ static void
 rollover_status(dns_dnsseckey_t *dkey, dns_kasp_t *kasp, isc_stdtime_t now,
 		isc_buffer_t *buf, bool zsk) {
 	char timestr[26]; /* Minimal buf as per ctime_r() spec. */
-	isc_result_t ret = ISC_R_SUCCESS;
+	isc_result_t result = ISC_R_SUCCESS;
 	isc_stdtime_t active_time = 0;
 	dst_key_state_t state = NA, goal = NA;
 	int rrsig, active, retire;
@@ -2469,9 +2462,9 @@ rollover_status(dns_dnsseckey_t *dkey, dns_kasp_t *kasp, isc_stdtime_t now,
 		state = NA;
 		(void)dst_key_getstate(key, DST_KEY_DNSKEY, &state);
 		if (state == RUMOURED || state == OMNIPRESENT) {
-			ret = dst_key_gettime(key, DST_TIME_DELETE,
-					      &remove_time);
-			if (ret == ISC_R_SUCCESS) {
+			result = dst_key_gettime(key, DST_TIME_DELETE,
+						 &remove_time);
+			if (result == ISC_R_SUCCESS) {
 				isc_buffer_printf(buf, "  Key is retired, will "
 						       "be removed on ");
 				isc_stdtime_tostring(remove_time, timestr,
@@ -2484,8 +2477,8 @@ rollover_status(dns_dnsseckey_t *dkey, dns_kasp_t *kasp, isc_stdtime_t now,
 		}
 	} else {
 		isc_stdtime_t retire_time = 0;
-		ret = dst_key_gettime(key, retire, &retire_time);
-		if (ret == ISC_R_SUCCESS) {
+		result = dst_key_gettime(key, retire, &retire_time);
+		if (result == ISC_R_SUCCESS) {
 			if (now < retire_time) {
 				if (goal == OMNIPRESENT) {
 					isc_buffer_printf(buf,

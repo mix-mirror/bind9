@@ -190,11 +190,6 @@ failure:
 	return result;
 }
 
-#define CHECK(f)                             \
-	if ((result = f) != ISC_R_SUCCESS) { \
-		goto failure;                \
-	}
-
 static isc_result_t
 transport_list_fromconfig(const cfg_obj_t *config, dns_transport_list_t *list) {
 	const cfg_obj_t *obj = NULL;

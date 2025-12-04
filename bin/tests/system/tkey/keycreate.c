@@ -40,7 +40,7 @@
 #include <dns/tsig.h>
 #include <dns/view.h>
 
-#define CHECK(str, x)                                        \
+#define CHECKM(str, x)                                       \
 	{                                                    \
 		if ((x) != ISC_R_SUCCESS) {                  \
 			fprintf(stderr, "I:%s: %s\n", (str), \
@@ -90,7 +90,7 @@ recvquery(isc_task_t *task, isc_event_t *event) {
 
 	result = dns_request_getresponse(reqev->request, response,
 					 DNS_MESSAGEPARSE_PRESERVEORDER);
-	CHECK("dns_request_getresponse", result);
+	CHECKM("dns_request_getresponse", result);
 
 	if (response->rcode != dns_rcode_noerror) {
 		result = dns_result_fromrcode(response->rcode);
@@ -101,19 +101,19 @@ recvquery(isc_task_t *task, isc_event_t *event) {
 
 	result = dns_tkey_processdhresponse(query, response, ourkey, &nonce,
 					    &tsigkey, ring);
-	CHECK("dns_tkey_processdhresponse", result);
+	CHECKM("dns_tkey_processdhresponse", result);
 
 	/*
 	 * Yes, this is a hack.
 	 */
 	isc_buffer_init(&keynamebuf, keyname, sizeof(keyname));
 	result = dst_key_buildfilename(tsigkey->key, 0, "", &keynamebuf);
-	CHECK("dst_key_buildfilename", result);
+	CHECKM("dst_key_buildfilename", result);
 	printf("%.*s\n", (int)isc_buffer_usedlength(&keynamebuf),
 	       (char *)isc_buffer_base(&keynamebuf));
 	type = DST_TYPE_PRIVATE | DST_TYPE_PUBLIC | DST_TYPE_KEY;
 	result = dst_key_tofile(tsigkey->key, type, "");
-	CHECK("dst_key_tofile", result);
+	CHECKM("dst_key_tofile", result);
 
 	dns_message_detach(&query);
 	dns_message_detach(&response);
@@ -141,7 +141,7 @@ sendquery(isc_task_t *task, isc_event_t *event) {
 
 	result = ISC_R_FAILURE;
 	if (inet_pton(AF_INET, ip_address, &inaddr) != 1) {
-		CHECK("inet_pton", result);
+		CHECKM("inet_pton", result);
 	}
 	isc_sockaddr_fromin(&address, &inaddr, port);
 
@@ -150,18 +150,18 @@ sendquery(isc_task_t *task, isc_event_t *event) {
 	isc_buffer_add(&namestr, 9);
 	result = dns_name_fromtext(dns_fixedname_name(&keyname), &namestr, NULL,
 				   0, NULL);
-	CHECK("dns_name_fromtext", result);
+	CHECKM("dns_name_fromtext", result);
 
 	dns_fixedname_init(&ownername);
 	isc_buffer_constinit(&namestr, ownername_str, strlen(ownername_str));
 	isc_buffer_add(&namestr, strlen(ownername_str));
 	result = dns_name_fromtext(dns_fixedname_name(&ownername), &namestr,
 				   NULL, 0, NULL);
-	CHECK("dns_name_fromtext", result);
+	CHECKM("dns_name_fromtext", result);
 
 	isc_buffer_init(&keybuf, keydata, 9);
 	result = isc_base64_decodestring(keystr, &keybuf);
-	CHECK("isc_base64_decodestring", result);
+	CHECKM("isc_base64_decodestring", result);
 
 	isc_buffer_usedregion(&keybuf, &r);
 
@@ -169,19 +169,19 @@ sendquery(isc_task_t *task, isc_event_t *event) {
 		dns_fixedname_name(&keyname), DNS_TSIG_HMACMD5_NAME,
 		isc_buffer_base(&keybuf), isc_buffer_usedlength(&keybuf), false,
 		NULL, 0, 0, mctx, ring, &initialkey);
-	CHECK("dns_tsigkey_create", result);
+	CHECKM("dns_tsigkey_create", result);
 
 	dns_message_create(mctx, DNS_MESSAGE_INTENTRENDER, &query);
 
 	result = dns_tkey_builddhquery(query, ourkey,
 				       dns_fixedname_name(&ownername),
 				       DNS_TSIG_HMACMD5_NAME, &nonce, 3600);
-	CHECK("dns_tkey_builddhquery", result);
+	CHECKM("dns_tkey_builddhquery", result);
 
 	result = dns_request_create(requestmgr, query, NULL, &address,
 				    DNS_REQUESTOPT_TCP, initialkey, TIMEOUT, 0,
 				    0, task, recvquery, query, &request);
-	CHECK("dns_request_create", result);
+	CHECKM("dns_request_create", result);
 }
 
 int
@@ -242,7 +242,7 @@ main(int argc, char *argv[]) {
 
 	type = DST_TYPE_PUBLIC | DST_TYPE_PRIVATE | DST_TYPE_KEY;
 	result = dst_key_fromnamedfile(ourkeyname, NULL, type, mctx, &ourkey);
-	CHECK("dst_key_fromnamedfile", result);
+	CHECKM("dst_key_fromnamedfile", result);
 
 	isc_buffer_init(&nonce, noncedata, sizeof(noncedata));
 	isc_nonce_buf(noncedata, sizeof(noncedata));

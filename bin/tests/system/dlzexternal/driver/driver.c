@@ -49,13 +49,6 @@ dlz_dlopen_addrdataset_t dlz_addrdataset;
 dlz_dlopen_subrdataset_t dlz_subrdataset;
 dlz_dlopen_delrdataset_t dlz_delrdataset;
 
-#define CHECK(x)                             \
-	do {                                 \
-		result = (x);                \
-		if (result != ISC_R_SUCCESS) \
-			goto failure;        \
-	} while (0)
-
 #define loginfo(...)                                           \
 	({                                                     \
 		if ((state != NULL) && (state->log != NULL))   \
@@ -258,7 +251,6 @@ dlz_create(const char *dlzname, unsigned int argc, char *argv[], void **dbdata,
 	const char *helper_name;
 	va_list ap;
 	char soa_data[sizeof("@ hostmaster.root 123 900 600 86400 3600")];
-	isc_result_t result;
 	size_t n;
 
 	UNUSED(dlzname);
@@ -306,7 +298,8 @@ dlz_create(const char *dlzname, unsigned int argc, char *argv[], void **dbdata,
 	}
 
 	if (n >= sizeof(soa_data)) {
-		CHECK(ISC_R_NOSPACE);
+		free(state);
+		return ISC_R_NOSPACE;
 	}
 
 	add_name(state, &state->current[0], state->zone_name, "soa", 3600,
@@ -320,10 +313,6 @@ dlz_create(const char *dlzname, unsigned int argc, char *argv[], void **dbdata,
 
 	*dbdata = state;
 	return ISC_R_SUCCESS;
-
-failure:
-	free(state);
-	return result;
 }
 
 /*

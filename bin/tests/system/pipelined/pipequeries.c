@@ -45,7 +45,7 @@
 #include <dns/types.h>
 #include <dns/view.h>
 
-#define CHECK(str, x)                                        \
+#define CHECKM(str, x)                                       \
 	{                                                    \
 		if ((x) != ISC_R_SUCCESS) {                  \
 			fprintf(stderr, "I:%s: %s\n", (str), \
@@ -91,7 +91,7 @@ recvresponse(isc_task_t *task, isc_event_t *event) {
 
 	result = dns_request_getresponse(reqev->request, response,
 					 DNS_MESSAGEPARSE_PRESERVEORDER);
-	CHECK("dns_request_getresponse", result);
+	CHECKM("dns_request_getresponse", result);
 
 	if (response->rcode != dns_rcode_noerror) {
 		result = dns_result_fromrcode(response->rcode);
@@ -108,7 +108,7 @@ recvresponse(isc_task_t *task, isc_event_t *event) {
 	result = dns_message_sectiontotext(
 		response, DNS_SECTION_ANSWER, &dns_master_style_simple,
 		DNS_MESSAGETEXTFLAG_NOCOMMENTS, &outbuf);
-	CHECK("dns_message_sectiontotext", result);
+	CHECKM("dns_message_sectiontotext", result);
 	printf("%.*s", (int)isc_buffer_usedlength(&outbuf),
 	       (char *)isc_buffer_base(&outbuf));
 	fflush(stdout);
@@ -148,7 +148,7 @@ sendquery(isc_task_t *task) {
 	isc_buffer_add(&buf, strlen(host));
 	result = dns_name_fromtext(dns_fixedname_name(&queryname), &buf,
 				   dns_rootname, 0, NULL);
-	CHECK("dns_name_fromtext", result);
+	CHECKM("dns_name_fromtext", result);
 
 	dns_message_create(mctx, DNS_MESSAGE_INTENTRENDER, &message);
 
@@ -158,10 +158,10 @@ sendquery(isc_task_t *task) {
 	message->id = (unsigned short)(random() & 0xFFFF);
 
 	result = dns_message_gettempname(message, &qname);
-	CHECK("dns_message_gettempname", result);
+	CHECKM("dns_message_gettempname", result);
 
 	result = dns_message_gettemprdataset(message, &qrdataset);
-	CHECK("dns_message_gettemprdataset", result);
+	CHECKM("dns_message_gettemprdataset", result);
 
 	dns_name_clone(dns_fixedname_name(&queryname), qname);
 	dns_rdataset_makequestion(qrdataset, dns_rdataclass_in,
@@ -173,7 +173,7 @@ sendquery(isc_task_t *task) {
 				    have_src ? &srcaddr : NULL, &dstaddr,
 				    DNS_REQUESTOPT_TCP, NULL, TIMEOUT, 0, 0,
 				    task, recvresponse, message, &request);
-	CHECK("dns_request_create", result);
+	CHECKM("dns_request_create", result);
 
 	return ISC_R_SUCCESS;
 }
@@ -248,13 +248,13 @@ main(int argc, char *argv[]) {
 
 	result = ISC_R_FAILURE;
 	if (inet_pton(AF_INET, "10.53.0.7", &inaddr) != 1) {
-		CHECK("inet_pton", result);
+		CHECKM("inet_pton", result);
 	}
 	isc_sockaddr_fromin(&srcaddr, &inaddr, 0);
 
 	result = ISC_R_FAILURE;
 	if (inet_pton(AF_INET, "10.53.0.4", &inaddr) != 1) {
-		CHECK("inet_pton", result);
+		CHECKM("inet_pton", result);
 	}
 	isc_sockaddr_fromin(&dstaddr, &inaddr, port);
 

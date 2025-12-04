@@ -50,13 +50,6 @@ static bool loadplugins = true;
 
 isc_log_t *logc = NULL;
 
-#define CHECK(r)                             \
-	do {                                 \
-		result = (r);                \
-		if (result != ISC_R_SUCCESS) \
-			goto cleanup;        \
-	} while (0)
-
 /*% usage */
 noreturn static void
 usage(void);

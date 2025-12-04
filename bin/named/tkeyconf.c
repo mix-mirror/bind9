@@ -28,16 +28,8 @@
 
 #include <isccfg/cfg.h>
 
-#include <named/tkeyconf.h>
-
-#define RETERR(x)                            \
-	do {                                 \
-		result = (x);                \
-		if (result != ISC_R_SUCCESS) \
-			goto failure;        \
-	} while (0)
-
 #include <named/log.h>
+#include <named/tkeyconf.h>
 #define LOG(msg)                                               \
 	isc_log_write(named_g_lctx, NAMED_LOGCATEGORY_GENERAL, \
 		      NAMED_LOGMODULE_SERVER, ISC_LOG_ERROR, "%s", msg)
@@ -47,12 +39,12 @@ named_tkeyctx_fromconfig(const cfg_obj_t *options, isc_mem_t *mctx,
 			 dns_tkeyctx_t **tctxp) {
 	isc_result_t result;
 	dns_tkeyctx_t *tctx = NULL;
-	const char *s;
+	const char *s = NULL;
 	uint32_t n;
 	dns_fixedname_t fname;
-	dns_name_t *name;
+	dns_name_t *name = NULL;
 	isc_buffer_t b;
-	const cfg_obj_t *obj;
+	const cfg_obj_t *obj = NULL;
 	int type;
 
 	result = dns_tkeyctx_create(mctx, &tctx);
@@ -60,7 +52,6 @@ named_tkeyctx_fromconfig(const cfg_obj_t *options, isc_mem_t *mctx,
 		return result;
 	}
 
-	obj = NULL;
 	result = cfg_map_get(options, "tkey-dhkey", &obj);
 	if (result == ISC_R_SUCCESS) {
 		s = cfg_obj_asstring(cfg_tuple_get(obj, "name"));
@@ -95,8 +86,8 @@ named_tkeyctx_fromconfig(const cfg_obj_t *options, isc_mem_t *mctx,
 		isc_buffer_constinit(&b, s, strlen(s));
 		isc_buffer_add(&b, strlen(s));
 		name = dns_fixedname_initname(&fname);
-		RETERR(dns_name_fromtext(name, &b, dns_rootname, 0, NULL));
-		RETERR(dst_gssapi_acquirecred(name, false, &tctx->gsscred));
+		CHECK(dns_name_fromtext(name, &b, dns_rootname, 0, NULL));
+		CHECK(dst_gssapi_acquirecred(name, false, &tctx->gsscred));
 	}
 
 	obj = NULL;
@@ -109,7 +100,7 @@ named_tkeyctx_fromconfig(const cfg_obj_t *options, isc_mem_t *mctx,
 	*tctxp = tctx;
 	return ISC_R_SUCCESS;
 
-failure:
+cleanup:
 	dns_tkeyctx_destroy(&tctx);
 	return result;
 }

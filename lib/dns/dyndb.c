@@ -30,13 +30,6 @@
 #include <dns/view.h>
 #include <dns/zone.h>
 
-#define CHECK(op)                            \
-	do {                                 \
-		result = (op);               \
-		if (result != ISC_R_SUCCESS) \
-			goto cleanup;        \
-	} while (0)
-
 typedef struct dyndb_implementation dyndb_implementation_t;
 struct dyndb_implementation {
 	isc_mem_t *mctx;

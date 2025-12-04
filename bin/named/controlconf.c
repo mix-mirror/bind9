@@ -801,14 +801,6 @@ register_keys(const cfg_obj_t *control, const cfg_obj_t *keylist,
 	}
 }
 
-#define CHECK(x)                               \
-	do {                                   \
-		result = (x);                  \
-		if (result != ISC_R_SUCCESS) { \
-			goto cleanup;          \
-		}                              \
-	} while (0)
-
 static isc_result_t
 get_rndckey(isc_mem_t *mctx, controlkeylist_t *keyids) {
 	isc_result_t result;

@@ -58,7 +58,7 @@ RSA *rsa;
 BIGNUM *e;
 EVP_PKEY *pkey;
 
-#define CHECK(op, msg)                                                        \
+#define CHECKM(op, msg)                                                       \
 	do {                                                                  \
 		result = (op);                                                \
 		if (result != ISC_R_SUCCESS) {                                \
@@ -127,22 +127,20 @@ main(int argc, char **argv) {
 	name = dns_fixedname_initname(&fname);
 	isc_buffer_constinit(&buf, "example.", strlen("example."));
 	isc_buffer_add(&buf, strlen("example."));
-	CHECK(dns_name_fromtext(name, &buf, dns_rootname, 0, NULL), "dns_name_"
-								    "fromtext("
-								    "\"example."
-								    "\")");
+	CHECKM(dns_name_fromtext(name, &buf, dns_rootname, 0, NULL),
+	       "dns_name_fromtext(\"example.\")");
 
-	CHECK(dst_key_buildinternal(name, DNS_KEYALG_RSASHA256, bits,
-				    DNS_KEYOWNER_ZONE, DNS_KEYPROTO_DNSSEC,
-				    dns_rdataclass_in, pkey, mctx, &key),
-	      "dst_key_buildinternal(...)");
+	CHECKM(dst_key_buildinternal(name, DNS_KEYALG_RSASHA256, bits,
+				     DNS_KEYOWNER_ZONE, DNS_KEYPROTO_DNSSEC,
+				     dns_rdataclass_in, pkey, mctx, &key),
+	       "dst_key_buildinternal(...)");
 
-	CHECK(dst_key_tofile(key, DST_TYPE_PRIVATE | DST_TYPE_PUBLIC, NULL),
-	      "dst_key_tofile()");
+	CHECKM(dst_key_tofile(key, DST_TYPE_PRIVATE | DST_TYPE_PUBLIC, NULL),
+	       "dst_key_tofile()");
 	isc_buffer_init(&buf, filename, sizeof(filename) - 1);
 	isc_buffer_clear(&buf);
-	CHECK(dst_key_buildfilename(key, 0, NULL, &buf), "dst_key_"
-							 "buildfilename()");
+	CHECKM(dst_key_buildfilename(key, 0, NULL, &buf),
+	       "dst_key_buildfilename()");
 	printf("%s\n", filename);
 	dst_key_free(&key);
 

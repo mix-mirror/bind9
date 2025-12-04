@@ -62,14 +62,6 @@
 #define STATS_JSON_VERSION_MINOR "7"
 #define STATS_JSON_VERSION	 STATS_JSON_VERSION_MAJOR "." STATS_JSON_VERSION_MINOR
 
-#define CHECK(m)                               \
-	do {                                   \
-		result = (m);                  \
-		if (result != ISC_R_SUCCESS) { \
-			goto cleanup;          \
-		}                              \
-	} while (0)
-
 struct named_statschannel {
 	/* Unlocked */
 	isc_httpdmgr_t *httpdmgr;

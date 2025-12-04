@@ -77,5 +77,6 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 		result = isc_lex_getmastertoken(lex, &token, expect, eol);
 	} while (result == ISC_R_SUCCESS && token.type != isc_tokentype_eof);
 
+cleanup:
 	return 0;
 }

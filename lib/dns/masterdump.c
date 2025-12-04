@@ -52,19 +52,6 @@
 #define DNS_DCTX_MAGIC	  ISC_MAGIC('D', 'c', 't', 'x')
 #define DNS_DCTX_VALID(d) ISC_MAGIC_VALID(d, DNS_DCTX_MAGIC)
 
-#define RETERR(x)                        \
-	do {                             \
-		isc_result_t _r = (x);   \
-		if (_r != ISC_R_SUCCESS) \
-			return ((_r));   \
-	} while (0)
-
-#define CHECK(x)                          \
-	do {                              \
-		if ((x) != ISC_R_SUCCESS) \
-			goto cleanup;     \
-	} while (0)
-
 struct dns_master_style {
 	dns_masterstyle_flags_t flags; /* DNS_STYLEFLAG_* */
 	unsigned int ttl_column;

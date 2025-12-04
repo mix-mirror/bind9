@@ -81,7 +81,7 @@
 			      "bad zone transfer request: %s (%s)", msg, \
 			      isc_result_totext(code));                  \
 		if (result != ISC_R_SUCCESS)                             \
-			goto failure;                                    \
+			goto cleanup;                                    \
 	} while (0)
 
 #define FAILQ(code, msg, question, rdclass)                                  \
@@ -96,14 +96,7 @@
 			      "bad zone transfer request: '%s/%s': %s (%s)", \
 			      _buf1, _buf2, msg, isc_result_totext(code));   \
 		if (result != ISC_R_SUCCESS)                                 \
-			goto failure;                                        \
-	} while (0)
-
-#define CHECK(op)                            \
-	do {                                 \
-		result = (op);               \
-		if (result != ISC_R_SUCCESS) \
-			goto failure;        \
+			goto cleanup;                                        \
 	} while (0)
 
 /**************************************************************************/
@@ -250,7 +243,7 @@ ixfr_rrstream_create(isc_mem_t *mctx, const char *journal_filename,
 	*sp = (rrstream_t *)s;
 	return ISC_R_SUCCESS;
 
-failure:
+cleanup:
 	ixfr_rrstream_destroy((rrstream_t **)(void *)&s);
 	return result;
 }
@@ -331,7 +324,7 @@ axfr_rrstream_create(isc_mem_t *mctx, dns_db_t *db, dns_dbversion_t *ver,
 	*sp = (rrstream_t *)s;
 	return ISC_R_SUCCESS;
 
-failure:
+cleanup:
 	axfr_rrstream_destroy((rrstream_t **)(void *)&s);
 	return result;
 }
@@ -451,7 +444,7 @@ soa_rrstream_create(isc_mem_t *mctx, dns_db_t *db, dns_dbversion_t *ver,
 	*sp = (rrstream_t *)s;
 	return ISC_R_SUCCESS;
 
-failure:
+cleanup:
 	soa_rrstream_destroy((rrstream_t **)(void *)&s);
 	return result;
 }
@@ -772,7 +765,7 @@ ns_xfr_start(ns_client_t *client, dns_rdatatype_t reqtype) {
 		isc_log_write(XFROUT_COMMON_LOGARGS, ISC_LOG_WARNING,
 			      "%s request denied: %s", mnemonic,
 			      isc_result_totext(result));
-		goto failure;
+		goto cleanup;
 	}
 
 	/*
@@ -829,7 +822,7 @@ ns_xfr_start(ns_client_t *client, dns_rdatatype_t reqtype) {
 					      ISC_LOG_ERROR,
 					      "zone transfer '%s/%s' denied",
 					      _buf1, _buf2);
-				goto failure;
+				goto cleanup;
 			}
 			if (result != ISC_R_SUCCESS) {
 				FAILQ(DNS_R_NOTAUTH, "non-authoritative zone",
@@ -1171,7 +1164,7 @@ have_stream:
 
 	result = ISC_R_SUCCESS;
 
-failure:
+cleanup:
 	if (result == DNS_R_REFUSED) {
 		inc_stats(client, zone, ns_statscounter_xfrrej);
 	}
@@ -1279,7 +1272,7 @@ xfrout_ctx_create(isc_mem_t *mctx, ns_client_t *client, unsigned int id,
 	xfr->txmemlen = len;
 
 	/*
-	 * These MUST be after the last "goto failure;" / CHECK to
+	 * These MUST be after the last "goto cleanup;" / CHECK to
 	 * prevent a double free by the caller.
 	 */
 	xfr->quota = quota;
@@ -1387,18 +1380,12 @@ sendstream(xfrout_ctx_t *xfr) {
 			isc_buffer_add(&xfr->buf, 12 + 4);
 
 			qrdataset = NULL;
-			result = dns_message_gettemprdataset(msg, &qrdataset);
-			if (result != ISC_R_SUCCESS) {
-				goto failure;
-			}
+			CHECK(dns_message_gettemprdataset(msg, &qrdataset));
 			dns_rdataset_makequestion(qrdataset,
 						  xfr->client->message->rdclass,
 						  xfr->qtype);
 
-			result = dns_message_gettempname(msg, &qname);
-			if (result != ISC_R_SUCCESS) {
-				goto failure;
-			}
+			CHECK(dns_message_gettempname(msg, &qname));
 			isc_buffer_availableregion(&xfr->buf, &r);
 			INSIST(r.length >= xfr->qname->length);
 			r.length = xfr->qname->length;
@@ -1458,8 +1445,7 @@ sendstream(xfrout_ctx_t *xfr) {
 					   "(%d bytes)",
 					   size);
 				/* XXX DNS_R_RRTOOLARGE? */
-				result = ISC_R_NOSPACE;
-				goto failure;
+				CHECK(ISC_R_NOSPACE);
 			}
 			break;
 		}
@@ -1468,10 +1454,7 @@ sendstream(xfrout_ctx_t *xfr) {
 			log_rr(name, rdata, ttl); /* XXX */
 		}
 
-		result = dns_message_gettempname(msg, &msgname);
-		if (result != ISC_R_SUCCESS) {
-			goto failure;
-		}
+		CHECK(dns_message_gettempname(msg, &msgname));
 		isc_buffer_availableregion(&xfr->buf, &r);
 		INSIST(r.length >= name->length);
 		r.length = name->length;
@@ -1481,20 +1464,14 @@ sendstream(xfrout_ctx_t *xfr) {
 		/* Reserve space for RR header. */
 		isc_buffer_add(&xfr->buf, 10);
 
-		result = dns_message_gettemprdata(msg, &msgrdata);
-		if (result != ISC_R_SUCCESS) {
-			goto failure;
-		}
+		CHECK(dns_message_gettemprdata(msg, &msgrdata));
 		isc_buffer_availableregion(&xfr->buf, &r);
 		r.length = rdata->length;
 		isc_buffer_putmem(&xfr->buf, rdata->data, rdata->length);
 		dns_rdata_init(msgrdata);
 		dns_rdata_fromregion(msgrdata, rdata->rdclass, rdata->type, &r);
 
-		result = dns_message_gettemprdatalist(msg, &msgrdl);
-		if (result != ISC_R_SUCCESS) {
-			goto failure;
-		}
+		CHECK(dns_message_gettemprdatalist(msg, &msgrdl));
 		msgrdl->type = rdata->type;
 		msgrdl->rdclass = rdata->rdclass;
 		msgrdl->ttl = ttl;
@@ -1507,10 +1484,7 @@ sendstream(xfrout_ctx_t *xfr) {
 		}
 		ISC_LIST_APPEND(msgrdl->rdata, msgrdata, link);
 
-		result = dns_message_gettemprdataset(msg, &msgrds);
-		if (result != ISC_R_SUCCESS) {
-			goto failure;
-		}
+		CHECK(dns_message_gettemprdataset(msg, &msgrds));
 		result = dns_rdatalist_tordataset(msgrdl, msgrds);
 		INSIST(result == ISC_R_SUCCESS);
 
@@ -1616,7 +1590,7 @@ sendstream(xfrout_ctx_t *xfr) {
 	/* Advance lasttsig to be the last TSIG generated */
 	CHECK(dns_message_getquerytsig(msg, xfr->mctx, &xfr->lasttsig));
 
-failure:
+cleanup:
 	if (msgname != NULL) {
 		if (msgrds != NULL) {
 			if (dns_rdataset_isassociated(msgrds)) {

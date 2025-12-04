@@ -42,13 +42,6 @@
 #include <dns/log.h>
 #include <dns/rbt.h>
 
-#define CHECK(x)                             \
-	do {                                 \
-		result = (x);                \
-		if (result != ISC_R_SUCCESS) \
-			goto cleanup;        \
-	} while (0)
-
 #define RBT_MAGIC      ISC_MAGIC('R', 'B', 'T', '+')
 #define VALID_RBT(rbt) ISC_MAGIC_VALID(rbt, RBT_MAGIC)
 

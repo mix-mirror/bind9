@@ -38,11 +38,9 @@
  */
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wshadow"
-#undef CHECK
 #include "update.c"
 #pragma GCC diagnostic pop
 
-#undef CHECK
 #include <tests/dns.h>
 
 static int

@@ -21,13 +21,6 @@
 #include <isc/string.h>
 #include <isc/util.h>
 
-#define RETERR(x)                        \
-	do {                             \
-		isc_result_t _r = (x);   \
-		if (_r != ISC_R_SUCCESS) \
-			return ((_r));   \
-	} while (0)
-
 /*@{*/
 /*!
  * These static functions are also present in lib/dns/rdata.c.  I'm not

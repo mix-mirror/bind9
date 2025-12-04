@@ -65,13 +65,6 @@
 
 #define RBTDB_MAGIC ISC_MAGIC('R', 'B', 'D', '4')
 
-#define CHECK(op)                            \
-	do {                                 \
-		result = (op);               \
-		if (result != ISC_R_SUCCESS) \
-			goto failure;        \
-	} while (0)
-
 /*%
  * Note that "impmagic" is not the first four bytes of the struct, so
  * ISC_MAGIC_VALID cannot be used.
