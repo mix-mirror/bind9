@@ -2290,6 +2290,16 @@ set_index(void *what, unsigned int idx) {
 static void
 qpcache__destroy_rcu(struct rcu_head *rcu_head) {
 	qpcache_t *qpdb = caa_container_of(rcu_head, qpcache_t, rcu_head);
+	char namebuf[DNS_NAME_FORMATSIZE];
+
+	if (dns_name_dynamic(&qpdb->common.origin)) {
+		dns_name_format(&qpdb->common.origin, namebuf, sizeof(namebuf));
+	} else {
+		strlcpy(namebuf, "<UNKNOWN>", sizeof(namebuf));
+	}
+	isc_log_write(DNS_LOGCATEGORY_DATABASE, DNS_LOGMODULE_CACHE,
+		      ISC_LOG_DEBUG(DNS_QPCACHE_LOG_STATS_LEVEL), "done %s(%s)",
+		      __func__, namebuf);
 
 	if (dns_name_dynamic(&qpdb->common.origin)) {
 		dns_name_free(&qpdb->common.origin, qpdb->common.mctx);
@@ -2328,17 +2338,6 @@ qpcache__destroy_rcu(struct rcu_head *rcu_head) {
 
 static void
 qpcache__destroy(qpcache_t *qpdb) {
-	char buf[DNS_NAME_FORMATSIZE];
-
-	if (dns_name_dynamic(&qpdb->common.origin)) {
-		dns_name_format(&qpdb->common.origin, buf, sizeof(buf));
-	} else {
-		strlcpy(buf, "<UNKNOWN>", sizeof(buf));
-	}
-	isc_log_write(DNS_LOGCATEGORY_DATABASE, DNS_LOGMODULE_CACHE,
-		      ISC_LOG_DEBUG(DNS_QPCACHE_LOG_STATS_LEVEL), "done %s(%s)",
-		      __func__, buf);
-
 	call_rcu(&qpdb->rcu_head, qpcache__destroy_rcu);
 }
 
