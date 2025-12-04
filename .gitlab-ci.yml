@@ -136,6 +136,15 @@ stages:
     - shell
     - stress-test
 
+.freebsd-autoscaler-15-amd64-tags: &freebsd_autoscaler_15_amd64_tags
+  tags:
+    - amd64
+    - autoscaler
+    - aws
+    - bsd-stress-test-3
+    - shell
+    - stress-test
+
 .freebsd-autoscaler-amd64: &freebsd_autoscaler_amd64
   variables:
     CC: clang
@@ -167,6 +176,12 @@ stages:
 .freebsd-autoscaler-14-amd64: &freebsd_autoscaler_14_amd64
   <<: *freebsd_autoscaler_amd64
   <<: *freebsd_autoscaler_14_amd64_tags
+
+# Autoscaling GitLab Runner on AWS EC2 (FreeBSD 15)
+
+.freebsd-autoscaler-15-amd64: &freebsd_autoscaler_15_amd64
+  <<: *freebsd_autoscaler_amd64
+  <<: *freebsd_autoscaler_15_amd64_tags
 
 ### Docker Image Templates
 
@@ -1585,6 +1600,26 @@ unit:clang:freebsd14:amd64:
   <<: *freebsd_autoscaler_14_amd64
   needs:
     - job: clang:freebsd14:amd64
+      artifacts: true
+
+# Jobs for Clang builds on FreeBSD 15 (amd64)
+
+clang:freebsd15:amd64:
+  <<: *build_job
+  <<: *freebsd_autoscaler_15_amd64
+
+system:clang:freebsd15:amd64:
+  <<: *system_test_job
+  <<: *freebsd_autoscaler_15_amd64
+  needs:
+    - job: clang:freebsd15:amd64
+      artifacts: true
+
+unit:clang:freebsd15:amd64:
+  <<: *unit_test_job
+  <<: *freebsd_autoscaler_15_amd64
+  needs:
+    - job: clang:freebsd15:amd64
       artifacts: true
 
 # Job producing a release directory
