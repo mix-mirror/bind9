@@ -137,8 +137,8 @@ ret=0
 wait_for_signed() {
   "$DIG" -p "${PORT}" @10.53.0.2 -b 10.53.0.2 +dnssec DNSKEY inline >dig.out.internal
   "$DIG" -p "${PORT}" @10.53.0.2 -b 10.53.0.5 +dnssec DNSKEY inline >dig.out.external
-  grep "ANSWER: 4," dig.out.internal >/dev/null || return 1
-  grep "ANSWER: 4," dig.out.external >/dev/null || return 1
+  grep "ANSWER: 3," dig.out.internal >/dev/null || return 1
+  grep "ANSWER: 3," dig.out.external >/dev/null || return 1
   return 0
 }
 retry_quiet 10 wait_for_signed || ret=1

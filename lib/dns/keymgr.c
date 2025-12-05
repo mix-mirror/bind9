@@ -1273,17 +1273,18 @@ keymgr_policy_approval(dns_dnsseckeylist_t *keyring, dns_dnsseckey_t *key,
 static bool
 keymgr_transition_allowed(dns_dnsseckeylist_t *keyring, dns_dnsseckey_t *key,
 			  int type, dst_key_state_t next_state, uint8_t opts) {
+	bool rule1a, rule1b, rule2a, rule2b, rule3a, rule3b;
+	rule1a = keymgr_have_ds(keyring, key, type, NA, opts);
+	rule1b = keymgr_have_ds(keyring, key, type, next_state, opts);
+	rule2a = keymgr_have_dnskey(keyring, key, type, NA);
+	rule2b = keymgr_have_dnskey(keyring, key, type, next_state);
+	rule3a = keymgr_have_rrsig(keyring, key, type, NA);
+	rule3b = keymgr_have_rrsig(keyring, key, type, next_state);
+
 	/* Debug logging. */
 	if (isc_log_wouldlog(dns_lctx, ISC_LOG_DEBUG(1))) {
-		bool rule1a, rule1b, rule2a, rule2b, rule3a, rule3b;
 		char keystr[DST_KEY_FORMATSIZE];
 		dst_key_format(key->key, keystr, sizeof(keystr));
-		rule1a = keymgr_have_ds(keyring, key, type, NA, opts);
-		rule1b = keymgr_have_ds(keyring, key, type, next_state, opts);
-		rule2a = keymgr_have_dnskey(keyring, key, type, NA);
-		rule2b = keymgr_have_dnskey(keyring, key, type, next_state);
-		rule3a = keymgr_have_rrsig(keyring, key, type, NA);
-		rule3b = keymgr_have_rrsig(keyring, key, type, next_state);
 		isc_log_write(
 			dns_lctx, DNS_LOGCATEGORY_DNSSEC, DNS_LOGMODULE_DNSSEC,
 			ISC_LOG_DEBUG(1),
@@ -1296,29 +1297,40 @@ keymgr_transition_allowed(dns_dnsseckeylist_t *keyring, dns_dnsseckey_t *key,
 			rule3a ? "true" : "false", rule3b ? "true" : "false");
 	}
 
-	return
-		/*
-		 * Rule 1: There must be a DS at all times.
-		 * First check the current situation: if the rule check fails,
-		 * we allow the transition to attempt to move us out of the
-		 * invalid state.  If the rule check passes, also check if
-		 * the next state is also still a valid situation.
-		 */
-		(!keymgr_have_ds(keyring, key, type, NA, opts) ||
-		 keymgr_have_ds(keyring, key, type, next_state, opts)) &&
-		/*
-		 * Rule 2: There must be a DNSKEY at all times.  Again, first
-		 * check the current situation, then assess the next state.
-		 */
-		(!keymgr_have_dnskey(keyring, key, type, NA) ||
-		 keymgr_have_dnskey(keyring, key, type, next_state)) &&
-		/*
-		 * Rule 3: There must be RRSIG records at all times. Again,
-		 * first check the current situation, then assess the next
-		 * state.
-		 */
-		(!keymgr_have_rrsig(keyring, key, type, NA) ||
-		 keymgr_have_rrsig(keyring, key, type, next_state));
+	/*
+	 * Rule checking:
+	 * First check the current situation: if the rule check fails,
+	 * we allow the transition to attempt to move us out of the
+	 * invalid state.  If the rule check passes, also check if
+	 * the next state is also still a valid situation.
+	 */
+	char keystr2[DST_KEY_FORMATSIZE];
+	dst_key_format(key->key, keystr2, sizeof(keystr2));
+
+	/*
+	 * Rule 1: There must be a DS at all times.
+	 */
+	if (!rule1a && !rule1b && next_state == UNRETENTIVE) {
+		return false;
+	}
+	/*
+	 * Rule 2: There must be a DNSKEY at all times.  Again, first
+	 * check the current situation, then assess the next state.
+	 */
+	if (!rule2a && !rule2b && next_state == UNRETENTIVE) {
+		return false;
+	}
+	/*
+	 * Rule 3: There must be RRSIG records at all times. Again,
+	 * first check the current situation, then assess the next
+	 * state.
+	 */
+	if (!rule3a && !rule3b && next_state == UNRETENTIVE) {
+		return false;
+	}
+
+	return (!rule1a || rule1b) && (!rule2a || rule2b) &&
+	       (!rule3a || rule3b);
 }
 
 /*

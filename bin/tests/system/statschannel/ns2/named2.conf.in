@@ -24,6 +24,7 @@ options {
 	notify no;
 	minimal-responses no;
 	version none;  // make statistics independent of the version number
+	sig-signing-signatures 100;
 };
 
 statistics-channels { inet 10.53.0.2 port @EXTRAPORT1@ allow { localhost; }; };

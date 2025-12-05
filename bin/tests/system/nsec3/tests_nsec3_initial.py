@@ -81,7 +81,7 @@ def bootstrap():
                 "zone": "rsasha1-to-nsec3.kasp",
                 "policy": "rsasha1",
                 "key-properties": [
-                    f"csk 0 {RSASHA1.number} 2048 goal:omnipresent dnskey:rumoured krrsig:rumoured zrrsig:rumoured ds:hidden",
+                    f"csk 0 {RSASHA1.number} 2048 goal:omnipresent dnskey:omnipresent krrsig:omnipresent zrrsig:omnipresent ds:omnipresent",
                 ],
             },
             id="rsasha1-to-nsec3.kasp",
@@ -162,7 +162,7 @@ def test_nsec_case(ns3, params):
                 "zone": "nsec3-to-rsasha1.kasp",
                 "policy": "nsec3",
                 "key-properties": [
-                    f"csk 0 {ALGORITHM} {SIZE} goal:omnipresent dnskey:rumoured krrsig:rumoured zrrsig:rumoured ds:hidden",
+                    f"csk 0 {ALGORITHM} {SIZE} goal:omnipresent dnskey:omnipresent krrsig:omnipresent zrrsig:omnipresent ds:omnipresent",
                 ],
             },
             id="nsec3-to-rsasha1.kasp",
