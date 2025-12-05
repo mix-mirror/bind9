@@ -13,6 +13,7 @@
 
 
 import os
+import re
 import sys
 
 import isctest
@@ -48,10 +49,10 @@ pytestmark = [
 
 
 def has_nsec3param(zone, response):
-    match = f"{zone}. 0 IN NSEC3PARAM 1 0 0 -"
+    match = rf"{re.escape(zone)}\.\s+\d+\s+IN\s+NSEC3PARAM\s+1\s+0\s+0\s+-"
 
     for rr in response.answer:
-        if match in rr.to_text():
+        if re.search(match, rr.to_text()):
             return True
 
     return False
