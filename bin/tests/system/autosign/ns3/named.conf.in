@@ -250,14 +250,6 @@ zone "rsasha512.example" {
 	dnssec-policy rsasha512;
 };
 
-zone "nsec-only.example" {
-	type primary;
-	file "nsec-only.example.db";
-	allow-update { any; };
-	inline-signing no;
-	dnssec-policy autosign;
-};
-
 zone "nsec3-to-nsec.example" {
 	type primary;
 	file "nsec3-to-nsec.example.db";
@@ -393,5 +385,7 @@ zone "dname-at-apex-nsec3.example" {
 	inline-signing no;
 	dnssec-policy nsec3;
 };
+
+include "nsec-only.conf";
 
 include "trusted.conf";

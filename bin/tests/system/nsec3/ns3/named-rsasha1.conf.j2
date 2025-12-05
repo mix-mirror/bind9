@@ -25,7 +25,7 @@ dnssec-policy "rsasha1" {
 {% if "rsasha1-to-nsec3.kasp" in zones %}
 /*
  * This zone starts with NSEC, but will be reconfigured to use NSEC3.
- * This should work despite the incompatible RSAHSHA1 algorithm,
+ * This should work despite the incompatible RSASHA1 algorithm,
  * because the DS is still in hidden state.
  */
 zone "rsasha1-to-nsec3.kasp" {
@@ -51,7 +51,7 @@ zone "rsasha1-to-nsec3-wait.kasp" {
 {% if "nsec3-to-rsasha1.kasp" in zones %}
 /*
  * This zone starts with NSEC3, but will be reconfigured to use NSEC with an
- * NSEC only algorithm. This should work despite the incompatible RSAHSHA1
+ * NSEC only algorithm. This should work despite the incompatible RSASHA1
  * algorithm, because the DS is still in hidden state.
  */
 zone "nsec3-to-rsasha1.kasp" {

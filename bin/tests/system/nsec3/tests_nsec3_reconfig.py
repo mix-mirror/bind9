@@ -94,6 +94,18 @@ def after_servers_start(ns3, templates):
     [
         pytest.param(
             {
+                "zone": "rsasha1-to-nsec3.kasp",
+                "policy": "nsec3",
+                "key-properties": [
+                    f"csk 0 {RSASHA1.number} 2048 goal:hidden dnskey:omnipresent krrsig:omnipresent zrrsig:omnipresent ds:omnipresent",
+                    f"csk 0 {ALGORITHM} {SIZE} goal:omnipresent dnskey:rumoured krrsig:rumoured zrrsig:rumoured ds:hidden",
+                ],
+            },
+            id="rsasha1-to-nsec3.kasp",
+            marks=isctest.mark.with_algorithm("RSASHA1"),
+        ),
+        pytest.param(
+            {
                 "zone": "rsasha1-to-nsec3-wait.kasp",
                 "policy": "nsec3",
                 "key-properties": [
@@ -109,7 +121,7 @@ def after_servers_start(ns3, templates):
                 "zone": "nsec3-to-rsasha1.kasp",
                 "policy": "rsasha1",
                 "key-properties": [
-                    f"csk 0 {ALGORITHM} {SIZE} goal:hidden dnskey:unretentive krrsig:unretentive zrrsig:unretentive ds:hidden",
+                    f"csk 0 {ALGORITHM} {SIZE} goal:hidden dnskey:omnipresent krrsig:omnipresent zrrsig:omnipresent ds:omnipresent",
                     f"csk 0 {RSASHA1.number} 2048 goal:omnipresent dnskey:rumoured krrsig:rumoured zrrsig:rumoured ds:hidden",
                 ],
             },
@@ -162,18 +174,6 @@ def test_nsec_case(ns3, params):
                 ],
             },
             id="nsec-to-nsec3.kasp",
-        ),
-        pytest.param(
-            {
-                "zone": "rsasha1-to-nsec3.kasp",
-                "policy": "nsec3",
-                "key-properties": [
-                    f"csk 0 {RSASHA1.number} 2048 goal:hidden dnskey:unretentive krrsig:unretentive zrrsig:unretentive ds:hidden",
-                    f"csk 0 {ALGORITHM} {SIZE} goal:omnipresent dnskey:rumoured krrsig:rumoured zrrsig:rumoured ds:hidden",
-                ],
-            },
-            id="rsasha1-to-nsec3.kasp",
-            marks=isctest.mark.with_algorithm("RSASHA1"),
         ),
         pytest.param(
             {

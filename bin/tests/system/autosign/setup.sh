@@ -15,6 +15,11 @@
 
 copy_setports ns1/named.conf.in ns1/named.conf
 copy_setports ns2/named.conf.in ns2/named.conf
+if [ $RSASHA1_SUPPORTED = 1 ]; then
+  cp ns3/nsec-only.conf.in ns3/nsec-only.conf
+else
+  : >ns3/nsec-only.conf
+fi
 copy_setports ns3/named.conf.in ns3/named.conf
 copy_setports ns4/named.conf.in ns4/named.conf
 copy_setports ns5/named.conf.in ns5/named.conf
