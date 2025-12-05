@@ -203,7 +203,6 @@ dns_diff_appendminimal(dns_diff_t *diff, dns_difftuple_t **tuplep) {
 	}
 }
 
-
 static void
 getownercase(dns_rdataset_t *rdataset, dns_name_t *name) {
 	if (dns_rdataset_isassociated(rdataset)) {
@@ -225,30 +224,24 @@ update_rdataset(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 	is_resign = rds->type == dns_rdatatype_rrsig &&
 		    (op == DNS_DIFFOP_DELRESIGN || op == DNS_DIFFOP_ADDRESIGN);
 
-	if (rds->type != dns_rdatatype_nsec3 &&
-	    rds->covers != dns_rdatatype_nsec3)
-	{
-		CHECK(dns_db_findnode(db, name, true, &node));
-	} else {
-		CHECK(dns_db_findnsec3node(db, name, true, &node));
-	}
+	CHECK(dns_db_findnode(db, name, rds->type, rds->covers, true, &node));
 
 	switch (op) {
 	case DNS_DIFFOP_ADD:
 	case DNS_DIFFOP_ADDRESIGN:
 		options = DNS_DBADD_MERGE | DNS_DBADD_EXACT |
 			  DNS_DBADD_EXACTTTL;
-		result = dns_db_addrdataset(db, node, ver, 0,
-					    rds, options,
+		result = dns_db_addrdataset(db, node, ver, 0, rds, options,
 					    &ardataset);
 		break;
 	case DNS_DIFFOP_DEL:
 	case DNS_DIFFOP_DELRESIGN:
 		options = DNS_DBSUB_EXACT | DNS_DBSUB_WANTOLD;
-		result = dns_db_subtractrdataset(db, node, ver,
-						 rds, options,
+		result = dns_db_subtractrdataset(db, node, ver, rds, options,
 						 &ardataset);
-		if (result == ISC_R_SUCCESS || result == DNS_R_UNCHANGED || result == DNS_R_NXRRSET) {
+		if (result == ISC_R_SUCCESS || result == DNS_R_UNCHANGED ||
+		    result == DNS_R_NXRRSET)
+		{
 			getownercase(&ardataset, name);
 		}
 		break;
@@ -259,8 +252,7 @@ update_rdataset(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 	if (result == ISC_R_SUCCESS && is_resign) {
 		isc_stdtime_t resign;
 		resign = dns_rdataset_minresign(&ardataset);
-		dns_db_setsigningtime(db, &ardataset,
-				      resign);
+		dns_db_setsigningtime(db, &ardataset, resign);
 	}
 
 cleanup:
@@ -403,11 +395,12 @@ diff_apply(const dns_diff_t *diff, dns_rdatacallbacks_t *callbacks) {
 			/*
 			 * Merge the rdataset into the database.
 			 */
-			result = callbacks->update(callbacks->add_private, name, &rds, op DNS__DB_FILELINE);
+			result = callbacks->update(callbacks->add_private, name,
+						   &rds, op DNS__DB_FILELINE);
 
 			if (result == ISC_R_SUCCESS) {
-				/* 
-				 * OK. 
+				/*
+				 * OK.
 				 */
 			} else if (result == DNS_R_UNCHANGED) {
 				/*
@@ -422,9 +415,9 @@ diff_apply(const dns_diff_t *diff, dns_rdatacallbacks_t *callbacks) {
 					dns_name_format(dns_db_origin(ctx->db),
 							namebuf,
 							sizeof(namebuf));
-					dns_rdataclass_format(dns_db_class(ctx->db),
-							      classbuf,
-							      sizeof(classbuf));
+					dns_rdataclass_format(
+						dns_db_class(ctx->db), classbuf,
+						sizeof(classbuf));
 					isc_log_write(DNS_LOGCATEGORY_GENERAL,
 						      DNS_LOGMODULE_DIFF,
 						      ISC_LOG_WARNING,
@@ -549,8 +542,9 @@ dns_diff_load(const dns_diff_t *diff, dns_rdatacallbacks_t *callbacks) {
 			rds.trust = dns_trust_ultimate;
 
 			INSIST(op == DNS_DIFFOP_ADD);
-			result = callbacks->update(callbacks->add_private, name,
-						&rds, DNS_DIFFOP_ADD DNS__DB_FILELINE);
+			result = callbacks->update(
+				callbacks->add_private, name, &rds,
+				DNS_DIFFOP_ADD DNS__DB_FILELINE);
 			if (result == DNS_R_UNCHANGED) {
 				isc_log_write(DNS_LOGCATEGORY_GENERAL,
 					      DNS_LOGMODULE_DIFF,

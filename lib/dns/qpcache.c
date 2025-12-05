@@ -2438,7 +2438,9 @@ new_qpcnode(qpcache_t *qpdb, const dns_name_t *name, dns_namespace_t nspace) {
 }
 
 static isc_result_t
-qpcache_findnode(dns_db_t *db, const dns_name_t *name, bool create,
+qpcache_findnode(dns_db_t *db, const dns_name_t *name,
+		 const dns_rdatatype_t type ISC_ATTR_UNUSED,
+		 const dns_rdatatype_t covers ISC_ATTR_UNUSED, bool create,
 		 dns_clientinfomethods_t *methods ISC_ATTR_UNUSED,
 		 dns_clientinfo_t *clientinfo ISC_ATTR_UNUSED,
 		 dns_dbnode_t **nodep DNS__DB_FLARG) {

@@ -809,7 +809,9 @@ destroynode(bdbnode_t *node) {
 }
 
 static isc_result_t
-findnode(dns_db_t *db, const dns_name_t *name, bool create,
+findnode(dns_db_t *db, const dns_name_t *name,
+	 const dns_rdatatype_t type ISC_ATTR_UNUSED,
+	 const dns_rdatatype_t covers ISC_ATTR_UNUSED, bool create,
 	 dns_clientinfomethods_t *methods ISC_ATTR_UNUSED,
 	 dns_clientinfo_t *clientinfo ISC_ATTR_UNUSED,
 	 dns_dbnode_t **nodep DNS__DB_FLARG) {
@@ -894,7 +896,8 @@ find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		 * Look up the next label.
 		 */
 		dns_name_getlabelsequence(name, nlabels - i, i, xname);
-		result = findnode(db, xname, false, NULL, NULL,
+		result = findnode(db, xname, dns_rdatatype_any,
+				  dns_rdatatype_none, false, NULL, NULL,
 				  &node DNS__DB_FLARG_PASS);
 		if (result == ISC_R_NOTFOUND) {
 			/*

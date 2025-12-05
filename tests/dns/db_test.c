@@ -158,7 +158,8 @@ ISC_LOOP_TEST_IMPL(dns_dbfind_staleok) {
 		dns_rdataset_init(&rdataset);
 		dns_rdatalist_tordataset(&rdatalist, &rdataset);
 
-		result = dns_db_findnode(db, example, true, &node);
+		result = dns_db_findnode(db, example, rdataset.type,
+					 rdataset.covers, true, &node);
 		assert_int_equal(result, ISC_R_SUCCESS);
 
 		result = dns_db_addrdataset(db, node, NULL, 0, &rdataset, 0,
@@ -353,7 +354,8 @@ ISC_LOOP_TEST_IMPL(version) {
 	/* Now we create a node with an empty parent */
 	result = dns_db_newversion(db, &new);
 	dns_test_namefromstring("long.ent.name.test.test.", &fname);
-	result = dns_db_findnode(db, name, true, &node);
+	result = dns_db_findnode(db, name, rdataset.type, rdataset.covers, true,
+				 &node);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	result = dns_db_addrdataset(db, node, new, 0, &rdataset, 0, NULL);
 	assert_int_equal(result, ISC_R_SUCCESS);

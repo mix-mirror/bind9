@@ -89,12 +89,11 @@ typedef struct dns_db_methods {
 	isc_result_t (*beginload)(dns_db_t	       *db,
 				  dns_rdatacallbacks_t *callbacks);
 	isc_result_t (*endload)(dns_db_t *db, dns_rdatacallbacks_t *callbacks);
-	isc_result_t (*beginupdate)(dns_db_t	       *db,
-				    dns_dbversion_t	       *ver,
+	isc_result_t (*beginupdate)(dns_db_t *db, dns_dbversion_t *ver,
 				    dns_rdatacallbacks_t *callbacks);
-	isc_result_t (*commitupdate)(dns_db_t	       *db,
+	isc_result_t (*commitupdate)(dns_db_t		  *db,
 				     dns_rdatacallbacks_t *callbacks);
-	isc_result_t (*abortupdate)(dns_db_t	      *db,
+	isc_result_t (*abortupdate)(dns_db_t		 *db,
 				    dns_rdatacallbacks_t *callbacks);
 	void (*currentversion)(dns_db_t *db, dns_dbversion_t **versionp);
 	isc_result_t (*newversion)(dns_db_t *db, dns_dbversion_t **versionp);
@@ -143,9 +142,6 @@ typedef struct dns_db_methods {
 					   uint16_t	 *iterations,
 					   unsigned char *salt,
 					   size_t	 *salt_len);
-	isc_result_t (*findnsec3node)(dns_db_t *db, const dns_name_t *name,
-				      bool		   create,
-				      dns_dbnode_t **nodep DNS__DB_FLARG);
 	isc_result_t (*setsigningtime)(dns_db_t *db, dns_rdataset_t *rdataset,
 				       isc_stdtime_t resign);
 	isc_result_t (*getsigningtime)(dns_db_t *db, isc_stdtime_t *resign,
@@ -153,6 +149,7 @@ typedef struct dns_db_methods {
 				       dns_typepair_t *typepair);
 	dns_stats_t *(*getrrsetstats)(dns_db_t *db);
 	isc_result_t (*findnode)(dns_db_t *db, const dns_name_t *name,
+				 dns_rdatatype_t type, dns_rdatatype_t covers,
 				 bool create, dns_clientinfomethods_t *methods,
 				 dns_clientinfo_t    *clientinfo,
 				 dns_dbnode_t **nodep DNS__DB_FLARG);
@@ -538,7 +535,8 @@ dns_db_endload(dns_db_t *db, dns_rdatacallbacks_t *callbacks);
  */
 
 isc_result_t
-dns_db_beginupdate(dns_db_t *db, dns_dbversion_t *ver, dns_rdatacallbacks_t *callbacks);
+dns_db_beginupdate(dns_db_t *db, dns_dbversion_t *ver,
+		   dns_rdatacallbacks_t *callbacks);
 /*%<
  * Begin updating 'db'.
  *
@@ -567,7 +565,7 @@ dns_db_beginupdate(dns_db_t *db, dns_dbversion_t *ver, dns_rdatacallbacks_t *cal
 isc_result_t
 dns_db_commitupdate(dns_db_t *db, dns_rdatacallbacks_t *callbacks);
 /*%<
- * Commit the update to 'db'. Must be safe to double-call or call after 
+ * Commit the update to 'db'. Must be safe to double-call or call after
  * dns_db_abortupdate.
  *
  * Requires:
@@ -576,11 +574,13 @@ dns_db_commitupdate(dns_db_t *db, dns_rdatacallbacks_t *callbacks);
  *
  * \li	'callbacks' is a valid dns_rdatacallbacks_t structure.
  *
- * \li	callbacks->add_private is not NULL and is a valid database update context.
+ * \li	callbacks->add_private is not NULL and is a valid database update
+ *context.
  *
  * Ensures:
  *
- * \li	'callbacks' is returned to its state prior to calling dns_db_beginupdate()
+ * \li	'callbacks' is returned to its state prior to calling
+ *dns_db_beginupdate()
  *
  * Returns:
  *
@@ -593,7 +593,7 @@ dns_db_commitupdate(dns_db_t *db, dns_rdatacallbacks_t *callbacks);
 isc_result_t
 dns_db_abortupdate(dns_db_t *db, dns_rdatacallbacks_t *callbacks);
 /*%<
- * Abort the update to 'db'. Must be safe to double-call or call after 
+ * Abort the update to 'db'. Must be safe to double-call or call after
  * dns_db_commitupdate.
  *
  * Requires:
@@ -602,11 +602,13 @@ dns_db_abortupdate(dns_db_t *db, dns_rdatacallbacks_t *callbacks);
  *
  * \li	'callbacks' is a valid dns_rdatacallbacks_t structure.
  *
- * \li	callbacks->add_private is not NULL and is a valid database update context.
+ * \li	callbacks->add_private is not NULL and is a valid database update
+ *context.
  *
  * Ensures:
  *
- * \li	'callbacks' is returned to its state prior to calling dns_db_beginupdate()
+ * \li	'callbacks' is returned to its state prior to calling
+ *dns_db_beginupdate()
  *
  * Returns:
  *
@@ -764,17 +766,21 @@ dns__db_closeversion(dns_db_t *db, dns_dbversion_t **versionp,
  *** Node Methods
  ***/
 
-#define dns_db_findnode(db, name, create, nodep) \
-	dns__db_findnode(db, name, create, NULL, NULL, nodep DNS__DB_FILELINE)
-#define dns_db_findnodeext(db, name, create, methods, clientinfo, nodep) \
-	dns__db_findnode(db, name, create, methods, clientinfo,          \
+#define dns_db_findnode(db, name, type, covers, create, nodep)       \
+	dns__db_findnode(db, name, type, covers, create, NULL, NULL, \
+			 nodep DNS__DB_FILELINE)
+#define dns_db_findnodeext(db, name, type, covers, create, methods,           \
+			   clientinfo, nodep)                                 \
+	dns__db_findnode(db, name, type, covers, create, methods, clientinfo, \
 			 nodep DNS__DB_FILELINE)
 isc_result_t
-dns__db_findnode(dns_db_t *db, const dns_name_t *name, bool create,
-		 dns_clientinfomethods_t *methods, dns_clientinfo_t *clientinfo,
+dns__db_findnode(dns_db_t *db, const dns_name_t *name,
+		 const dns_rdatatype_t type, const dns_rdatatype_t covers,
+		 bool create, dns_clientinfomethods_t *methods,
+		 dns_clientinfo_t    *clientinfo,
 		 dns_dbnode_t **nodep DNS__DB_FLARG);
 /*%<
- * Find the node with name 'name'.
+ * Find the node with name 'name' and possibly also type.
  *
  * dns_db_findnodeext() (findnode extended) also accepts parameters
  * 'methods' and 'clientinfo', which, when provided, enable the database to
@@ -1596,39 +1602,6 @@ dns_db_getsize(dns_db_t *db, dns_dbversion_t *version, uint64_t *records,
  * Returns:
  * \li	#ISC_R_SUCCESS
  * \li	#ISC_R_NOTIMPLEMENTED
- */
-
-#define dns_db_findnsec3node(db, name, create, nodep) \
-	dns__db_findnsec3node(db, name, create, nodep DNS__DB_FILELINE)
-isc_result_t
-dns__db_findnsec3node(dns_db_t *db, const dns_name_t *name, bool create,
-		      dns_dbnode_t **nodep DNS__DB_FLARG);
-/*%<
- * Find the NSEC3 node with name 'name'.
- *
- * Notes:
- * \li	If 'create' is true and no node with name 'name' exists, then
- *	such a node will be created.
- *
- * Requires:
- *
- * \li	'db' is a valid database.
- *
- * \li	'name' is a valid, non-empty, absolute name.
- *
- * \li	nodep != NULL && *nodep == NULL
- *
- * Ensures:
- *
- * \li	On success, *nodep is attached to the node with name 'name'.
- *
- * Returns:
- *
- * \li	#ISC_R_SUCCESS
- * \li	#ISC_R_NOTFOUND			If !create and name not found.
- *
- * \li	Other results are possible, depending upon the database
- *	implementation used.
  */
 
 isc_result_t

@@ -230,7 +230,8 @@ foreach_rrset(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 	dns_dbnode_t *node = NULL;
 	dns_rdatasetiter_t *iter = NULL;
 
-	result = dns_db_findnode(db, name, false, &node);
+	result = dns_db_findnode(db, name, dns_rdatatype_any,
+				 dns_rdatatype_none, false, &node);
 	if (result == ISC_R_NOTFOUND) {
 		return ISC_R_SUCCESS;
 	}
@@ -303,13 +304,7 @@ foreach_rr(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 	}
 
 	node = NULL;
-	if (type == dns_rdatatype_nsec3 ||
-	    (type == dns_rdatatype_rrsig && covers == dns_rdatatype_nsec3))
-	{
-		result = dns_db_findnsec3node(db, name, false, &node);
-	} else {
-		result = dns_db_findnode(db, name, false, &node);
-	}
+	result = dns_db_findnode(db, name, type, covers, false, &node);
 	if (result == ISC_R_NOTFOUND) {
 		return ISC_R_SUCCESS;
 	}
@@ -854,7 +849,7 @@ add_nsec(dns_update_log_t *log, dns_zone_t *zone, dns_db_t *db,
 	/*
 	 * Create the NSEC RDATA.
 	 */
-	CHECK(dns_db_findnode(db, name, false, &node));
+	CHECK(dns_db_findnode(db, name, dns_rdatatype_nsec, 0, false, &node));
 	dns_rdata_init(&rdata);
 	CHECK(dns_nsec_buildrdata(db, ver, node, target, buffer, &rdata));
 	dns_db_detachnode(&node);
@@ -986,11 +981,7 @@ add_sigs(dns_update_log_t *log, dns_zone_t *zone, dns_db_t *db,
 	isc_buffer_init(&buffer, data, sizeof(data));
 
 	/* Get the rdataset to sign. */
-	if (type == dns_rdatatype_nsec3) {
-		CHECK(dns_db_findnsec3node(db, name, false, &node));
-	} else {
-		CHECK(dns_db_findnode(db, name, false, &node));
-	}
+	CHECK(dns_db_findnode(db, name, type, 0, false, &node));
 	CHECK(dns_db_findrdataset(db, node, ver, type, 0, (isc_stdtime_t)0,
 				  &rdataset, NULL));
 	dns_db_detachnode(&node);
@@ -1162,7 +1153,8 @@ del_keysigs(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 
 	dns_rdataset_init(&rdataset);
 
-	result = dns_db_findnode(db, name, false, &node);
+	result = dns_db_findnode(db, name, dns_rdatatype_rrsig,
+				 dns_rdatatype_dnskey, false, &node);
 	if (result == ISC_R_NOTFOUND) {
 		return ISC_R_SUCCESS;
 	}
@@ -1235,7 +1227,8 @@ add_exposed_sigs(dns_update_log_t *log, dns_zone_t *zone, dns_db_t *db,
 	dns_rdatasetiter_t *iter;
 
 	node = NULL;
-	result = dns_db_findnode(db, name, false, &node);
+	result = dns_db_findnode(db, name, dns_rdatatype_any,
+				 dns_rdatatype_none, false, &node);
 	if (result == ISC_R_NOTFOUND) {
 		return ISC_R_SUCCESS;
 	}
@@ -1426,7 +1419,8 @@ dns_update_signaturesinc(dns_update_log_t *log, dns_zone_t *zone, dns_db_t *db,
 		 * Calculate the NSEC/NSEC3 TTL as a minimum of the SOA TTL and
 		 * MINIMUM field.
 		 */
-		CHECK(dns_db_findnode(db, dns_db_origin(db), false, &node));
+		CHECK(dns_db_findnode(db, dns_db_origin(db), dns_rdatatype_soa,
+				      0, false, &node));
 		dns_rdataset_init(&rdataset);
 		CHECK(dns_db_findrdataset(db, node, newver, dns_rdatatype_soa,
 					  0, (isc_stdtime_t)0, &rdataset,

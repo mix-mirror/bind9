@@ -607,7 +607,9 @@ getnodedata(dns_db_t *db, const dns_name_t *name, bool create,
 }
 
 static isc_result_t
-findnode(dns_db_t *db, const dns_name_t *name, bool create,
+findnode(dns_db_t *db, const dns_name_t *name,
+	 const dns_rdatatype_t type ISC_ATTR_UNUSED,
+	 const dns_rdatatype_t covers ISC_ATTR_UNUSED, bool create,
 	 dns_clientinfomethods_t *methods, dns_clientinfo_t *clientinfo,
 	 dns_dbnode_t **nodep DNS__DB_FLARG) {
 	return getnodedata(db, name, create, 0, methods, clientinfo, nodep);

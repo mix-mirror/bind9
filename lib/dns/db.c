@@ -301,7 +301,8 @@ dns_db_endload(dns_db_t *db, dns_rdatacallbacks_t *callbacks) {
 }
 
 isc_result_t
-dns_db_beginupdate(dns_db_t *db, dns_dbversion_t *ver, dns_rdatacallbacks_t *callbacks) {
+dns_db_beginupdate(dns_db_t *db, dns_dbversion_t *ver,
+		   dns_rdatacallbacks_t *callbacks) {
 	/*
 	 * Begin updating 'db'.
 	 */
@@ -461,8 +462,10 @@ dns__db_closeversion(dns_db_t *db, dns_dbversion_t **versionp,
  ***/
 
 isc_result_t
-dns__db_findnode(dns_db_t *db, const dns_name_t *name, bool create,
-		 dns_clientinfomethods_t *methods, dns_clientinfo_t *clientinfo,
+dns__db_findnode(dns_db_t *db, const dns_name_t *name,
+		 const dns_rdatatype_t type, const dns_rdatatype_t covers,
+		 bool create, dns_clientinfomethods_t *methods,
+		 dns_clientinfo_t *clientinfo,
 		 dns_dbnode_t **nodep DNS__DB_FLARG) {
 	/*
 	 * Find the node with name 'name', passing 'arg' to the database
@@ -473,25 +476,11 @@ dns__db_findnode(dns_db_t *db, const dns_name_t *name, bool create,
 	REQUIRE(nodep != NULL && *nodep == NULL);
 
 	if (db->methods->findnode != NULL) {
-		return (db->methods->findnode)(db, name, create, methods,
-					       clientinfo,
+		return (db->methods->findnode)(db, name, type, covers, create,
+					       methods, clientinfo,
 					       nodep DNS__DB_FLARG_PASS);
 	}
 	return ISC_R_NOTIMPLEMENTED;
-}
-
-isc_result_t
-dns__db_findnsec3node(dns_db_t *db, const dns_name_t *name, bool create,
-		      dns_dbnode_t **nodep DNS__DB_FLARG) {
-	/*
-	 * Find the node with name 'name'.
-	 */
-
-	REQUIRE(DNS_DB_VALID(db));
-	REQUIRE(nodep != NULL && *nodep == NULL);
-
-	return (db->methods->findnsec3node)(db, name, create,
-					    nodep DNS__DB_FLARG_PASS);
 }
 
 isc_result_t
@@ -744,7 +733,8 @@ dns_db_getsoaserial(dns_db_t *db, dns_dbversion_t *ver, uint32_t *serialp) {
 
 	REQUIRE(dns_db_iszone(db) || dns_db_isstub(db));
 
-	RETERR(dns_db_findnode(db, dns_db_origin(db), false, &node));
+	RETERR(dns_db_findnode(db, dns_db_origin(db), dns_rdatatype_soa, 0,
+			       false, &node));
 
 	dns_rdataset_init(&rdataset);
 	result = dns_db_findrdataset(db, node, ver, dns_rdatatype_soa, 0,
@@ -842,8 +832,9 @@ dns__db_getoriginnode(dns_db_t *db, dns_dbnode_t **nodep DNS__DB_FLARG) {
 		return (db->methods->getoriginnode)(db,
 						    nodep DNS__DB_FLARG_PASS);
 	} else if (db->methods->findnode != NULL) {
-		return (db->methods->findnode)(db, &db->origin, false, NULL,
-					       NULL, nodep DNS__DB_FLARG_PASS);
+		return (db->methods->findnode)(
+			db, &db->origin, dns_rdatatype_any, 0, false, NULL,
+			NULL, nodep DNS__DB_FLARG_PASS);
 	}
 
 	return ISC_R_NOTFOUND;
