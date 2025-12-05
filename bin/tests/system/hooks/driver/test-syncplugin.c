@@ -80,7 +80,7 @@ syncplugin__parse_rcode(const cfg_obj_t *syncplugincfg, uint8_t *rcode) {
 
 	RETERR(cfg_map_get(syncplugincfg, "rcode", &obj));
 
-	rcodestr = obj->value.string.base;
+	rcodestr = obj->value.string;
 
 	if (strcmp("servfail", rcodestr) == 0) {
 		*rcode = dns_rcode_servfail;
@@ -141,7 +141,7 @@ plugin_register(const char *parameters, const void *cfg, const char *cfgfile,
 
 	obj = NULL;
 	CHECK(cfg_map_get(syncplugincfg, "source", &obj));
-	sourcestr = obj->value.string.base;
+	sourcestr = obj->value.string;
 
 	if (strcmp(sourcestr, "zone") == 0) {
 		if (ctx->source != NS_HOOKSOURCE_ZONE) {

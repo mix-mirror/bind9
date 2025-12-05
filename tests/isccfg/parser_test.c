@@ -233,6 +233,9 @@ options {\n\
 	answer-cookie yes;\n\
 	cookie-algorithm siphash24;\n\
 	dump-file \"named_dump.db\";\n\
+	listen-on port 53 tls \"foobar\" {\n\
+		127.0.0.1/32;\n\
+	};\n\
 	notify-rate 20;\n\
 	allow-recursion {\n\
 		\"localhost\";\n\
@@ -250,6 +253,9 @@ view \"_bind\" chaos {\n\
 	zone \"version.bind\" chaos {\n\
 		type primary;\n\
 		database \"_builtin version\";\n\
+		update-policy {\n\
+			grant \"int\" zonesub \"any\";\n\
+		};\n\
 	};\n\
 	max-cache-size 2097152;\n\
 	rate-limit {\n\
@@ -257,6 +263,7 @@ view \"_bind\" chaos {\n\
 		slip 0;\n\
 	};\n\
 };\n";
+
 	isc_buffer_init(&buf, conf, sizeof(conf));
 	isc_buffer_add(&buf, sizeof(conf) - 1);
 

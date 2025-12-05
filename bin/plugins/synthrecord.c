@@ -408,7 +408,6 @@ static cfg_type_t synthrecord_cfgparams = {
 static isc_result_t
 synthrecord_initprefix(synthrecord_t *inst, const cfg_obj_t *synthrecordcfg) {
 	isc_result_t result;
-	size_t len;
 	const char *base = NULL;
 	const cfg_obj_t *obj = NULL;
 
@@ -419,9 +418,7 @@ synthrecord_initprefix(synthrecord_t *inst, const cfg_obj_t *synthrecordcfg) {
 		return result;
 	}
 
-	len = obj->value.string.length;
-	base = obj->value.string.base;
-
+	base = obj->value.string;
 	if (strstr(base, ".") != NULL) {
 		isc_log_write(NS_LOGCATEGORY_GENERAL, NS_LOGMODULE_HOOKS,
 			      ISC_LOG_ERROR,
@@ -430,10 +427,9 @@ synthrecord_initprefix(synthrecord_t *inst, const cfg_obj_t *synthrecordcfg) {
 		return ISC_R_UNEXPECTEDTOKEN;
 	}
 
-	inst->prefix = (isc_region_t){
-		.base = isc_mem_allocate(inst->mctx, len), .length = len
-	};
-	memmove(inst->prefix.base, base, len);
+	inst->prefix = (isc_region_t){ .base = (unsigned char *)isc_mem_strdup(
+					       inst->mctx, base),
+				       .length = strlen(base) };
 
 	/*
 	 * Avoid dynamically lower-casing the prefix when parsing the

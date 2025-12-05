@@ -2297,8 +2297,8 @@ checknames_merge(const cfg_obj_t *config ISC_ATTR_UNUSED,
 			const cfg_obj_t *etype = cfg_tuple_get(echeckname,
 							       "type");
 
-			if (strcasecmp(type->value.string.base,
-				       etype->value.string.base) == 0)
+			if (strcasecmp(type->value.string,
+				       etype->value.string) == 0)
 			{
 				found = true;
 				break;
@@ -2311,7 +2311,7 @@ checknames_merge(const cfg_obj_t *config ISC_ATTR_UNUSED,
 			cfg_listelt_create(&eelt);
 			*eelt = (cfg_listelt_t){ .link = ISC_LINK_INITIALIZER };
 			cfg_obj_clone(checkname, &eelt->obj);
-			ISC_LIST_APPEND(effectiveobj->value.list, eelt, link);
+			ISC_LIST_APPEND(*effectiveobj->value.list, eelt, link);
 		}
 	}
 }

@@ -196,37 +196,43 @@ struct cfg_rep {
  * A configuration object.  This is the main building block
  * of the configuration parse tree.
  */
+typedef struct {
+	isc_sockaddr_t sockaddr;
+	char	      *tls;
+} cfg_sockaddrtls_t;
 
 struct cfg_obj {
-	unsigned int   magic;
-	isc_refcount_t references;
+	/*
+	 * These two 4 byte fields are contiguous to avoid an extra
+	 * padding of 4 bytes each, avoiding an extra 8 bytes in the
+	 * struct.
+	 */
+	unsigned int magic;
+	unsigned int line;
+
+	isc_refcount_t	  references;
+	cfg_obj_t	 *file; /*%< separate string with its own refcount */
+	const cfg_type_t *type;
+	union {
+		uint32_t	   uint32;
+		uint64_t	   uint64;
+		char		  *string; /*%< null terminated */
+		bool		   boolean;
+		cfg_map_t	  *map;
+		cfg_list_t	  *list;
+		cfg_obj_t	 **tuple;
+		isc_sockaddr_t	  *sockaddr;
+		cfg_sockaddrtls_t *sockaddrtls;
+		cfg_netprefix_t	  *netprefix;
+		isccfg_duration_t *duration;
+	} value;
 
 	/*%
 	 * Indicates that an object was cloned from the defaults
 	 * or otherwise generated during the configuration merge
-	 * process:
+	 * process.
 	 */
 	bool cloned;
-
-	const cfg_type_t *type;
-	union {
-		uint32_t	 uint32;
-		uint64_t	 uint64;
-		isc_textregion_t string; /*%< null terminated, too */
-		bool		 boolean;
-		cfg_map_t	 map;
-		cfg_list_t	 list;
-		cfg_obj_t      **tuple;
-		isc_sockaddr_t	*sockaddr;
-		struct {
-			isc_sockaddr_t	*sockaddr;
-			isc_textregion_t tls;
-		} sockaddrtls;
-		cfg_netprefix_t	  *netprefix;
-		isccfg_duration_t *duration;
-	} value;
-	cfg_obj_t   *file; /*%< separate string with its own refcount */
-	unsigned int line;
 };
 
 /*% A list element. */

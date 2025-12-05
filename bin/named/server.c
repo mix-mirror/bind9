@@ -12088,7 +12088,7 @@ nzf_writeconf(const cfg_obj_t *config, dns_view_t *view) {
 		CLEANUP(ISC_R_FAILURE);
 	}
 
-	list = UNCONST(&zl->value.list);
+	list = UNCONST(zl->value.list);
 
 	CHECK(add_comment(fp, view->name)); /* force a comment */
 
@@ -12750,7 +12750,7 @@ delete_zoneconf(dns_view_t *view, const cfg_obj_t *config,
 		CLEANUP(ISC_R_FAILURE);
 	}
 
-	cfg_list_t *list = UNCONST(&zl->value.list);
+	cfg_list_t *list = UNCONST(zl->value.list);
 	ISC_LIST_FOREACH(*list, elt, link) {
 		dns_fixedname_t myfixed;
 		dns_name_t *myname = dns_fixedname_initname(&myfixed);
