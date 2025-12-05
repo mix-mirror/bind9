@@ -113,7 +113,8 @@ dns_db_createsoatuple(dns_db_t *db, dns_dbversion_t *ver, isc_mem_t *mctx,
 	dns_name_copy(dns_db_origin(db), zonename);
 
 	node = NULL;
-	result = dns_db_findnode(db, zonename, false, &node);
+	result = dns_db_findnode(db, zonename, dns_rdatatype_soa, 0, false,
+				 &node);
 	if (result != ISC_R_SUCCESS) {
 		goto nonode;
 	}

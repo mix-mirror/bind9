@@ -225,7 +225,8 @@ notify_createmessage(dns_notify_t *notify, dns_message_t **messagep) {
 
 	dns_name_clone(dns_zone_getorigin(notify->zone), tempname);
 	dns_db_currentversion(zonedb, &version);
-	result = dns_db_findnode(zonedb, tempname, false, &node);
+	result = dns_db_findnode(zonedb, tempname, dns_rdatatype_soa,
+				 dns_rdatatype_none, false, &node);
 	if (result != ISC_R_SUCCESS) {
 		goto soa_cleanup;
 	}

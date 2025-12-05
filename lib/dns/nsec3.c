@@ -335,7 +335,7 @@ name_exists(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
 	dns_dbnode_t *node = NULL;
 	dns_rdatasetiter_t *iter = NULL;
 
-	result = dns_db_findnode(db, name, false, &node);
+	result = dns_db_findnode(db, name, dns_rdatatype_any, 0, false, &node);
 	if (result == ISC_R_NOTFOUND) {
 		*exists = false;
 		return ISC_R_SUCCESS;
@@ -392,7 +392,8 @@ delnsec3(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
 	dns_rdataset_t rdataset;
 	isc_result_t result;
 
-	result = dns_db_findnsec3node(db, name, false, &node);
+	result = dns_db_findnode(db, name, dns_rdatatype_nsec3, 0, false,
+				 &node);
 	if (result == ISC_R_NOTFOUND) {
 		return ISC_R_SUCCESS;
 	}
@@ -565,7 +566,8 @@ dns_nsec3_addnsec3(dns_db_t *db, dns_dbversion_t *version,
 	 * Create the node if it doesn't exist and hold
 	 * a reference to it until we have added the NSEC3.
 	 */
-	CHECK(dns_db_findnsec3node(db, hashname, true, &newnode));
+	CHECK(dns_db_findnode(db, hashname, dns_rdatatype_nsec3, 0, true,
+			      &newnode));
 
 	/*
 	 * Seek the iterator to the 'newnode'.
@@ -694,7 +696,7 @@ addnsec3:
 	/*
 	 * Create the NSEC3 RDATA.
 	 */
-	CHECK(dns_db_findnode(db, name, false, &node));
+	CHECK(dns_db_findnode(db, name, dns_rdatatype_any, 0, false, &node));
 	CHECK(dns_nsec3_buildrdata(db, version, node, hash, flags, iterations,
 				   salt, salt_length, nexthash, next_length,
 				   nsec3buf, &rdata));
@@ -738,7 +740,8 @@ addnsec3:
 		 * a reference to it until we have added the NSEC3
 		 * or we discover we don't need to make a change.
 		 */
-		CHECK(dns_db_findnsec3node(db, hashname, true, &newnode));
+		CHECK(dns_db_findnode(db, hashname, dns_rdatatype_nsec3, 0,
+				      true, &newnode));
 		result = dns_db_findrdataset(db, newnode, version,
 					     dns_rdatatype_nsec3, 0,
 					     (isc_stdtime_t)0, &rdataset, NULL);
@@ -974,11 +977,7 @@ rr_exists(dns_db_t *db, dns_dbversion_t *ver, const dns_name_t *name,
 	isc_result_t result;
 
 	dns_rdataset_init(&rdataset);
-	if (rdata->type == dns_rdatatype_nsec3) {
-		CHECK(dns_db_findnsec3node(db, name, false, &node));
-	} else {
-		CHECK(dns_db_findnode(db, name, false, &node));
-	}
+	CHECK(dns_db_findnode(db, name, rdata->type, 0, false, &node));
 	result = dns_db_findrdataset(db, node, ver, rdata->type, 0,
 				     (isc_stdtime_t)0, &rdataset, NULL);
 	if (result == ISC_R_NOTFOUND) {
