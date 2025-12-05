@@ -33,6 +33,8 @@
 #include <dns/time.h>
 #include <dns/types.h>
 
+#include "isc/stdtime.h"
+
 #define MAX_SHUFFLE 100
 thread_local dns_rdata_t dns__rdataset_rdatas[MAX_SHUFFLE];
 
@@ -601,8 +603,7 @@ dns_rdataset_getheader(const dns_rdataset_t *rdataset) {
 
 isc_stdtime_t
 dns_rdataset_minresign(dns_rdataset_t *rdataset) {
-	bool seen = false;
-	int64_t when = UINT32_MAX;
+	int64_t when = INT64_MAX;
 
 	REQUIRE(DNS_RDATASET_VALID(rdataset));
 
@@ -615,13 +616,14 @@ dns_rdataset_minresign(dns_rdataset_t *rdataset) {
 		if ((rdata.flags & DNS_RDATA_OFFLINE) != 0) {
 			continue;
 		} else {
-			seen = true;
-			int sigresign = dns_time64_from32(sig.timeexpire);
+			int64_t sigresign = dns_time64_from32(sig.timeexpire);
 			when = ISC_MIN(when, sigresign);
 		}
 	}
 
-	when = seen ? when : 0;
+	if (when == INT64_MAX) {
+		return (isc_stdtime_t)0;
+	}
 
 	return (isc_stdtime_t)when;
 }
