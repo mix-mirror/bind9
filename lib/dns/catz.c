@@ -2599,6 +2599,16 @@ dns_catz_postreconfig(dns_catz_zones_t *catzs) {
 }
 
 void
+dns_catz_zone_prereconfig(dns_catz_zone_t *catz) {
+	LOCK(&catz->lock);
+}
+
+void
+dns_catz_zone_postreconfig(dns_catz_zone_t *catz) {
+	UNLOCK(&catz->lock);
+}
+
+void
 dns_catz_zone_for_each_entry2(dns_catz_zone_t *catz, dns_catz_entry_cb2 cb,
 			      void *arg1, void *arg2) {
 	REQUIRE(DNS_CATZ_ZONE_VALID(catz));

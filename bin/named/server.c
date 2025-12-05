@@ -3231,6 +3231,15 @@ configure_catz_zone(dns_view_t *view, dns_view_t *pview,
 	}
 
 	result = dns_catz_zone_add(view->catzs, &origin, &zone);
+	if (result != ISC_R_SUCCESS && result != ISC_R_EXISTS) {
+		cfg_obj_log(catz_obj, named_g_lctx, DNS_CATZ_ERROR_LEVEL,
+			    "catz: dns_catz_zone_add failed: %s",
+			    isc_result_totext(result));
+		goto cleanup;
+	}
+
+	dns_catz_zone_prereconfig(zone);
+
 	if (result == ISC_R_EXISTS) {
 		catz_reconfig_data_t data = {
 			.catz = zone,
@@ -3249,11 +3258,6 @@ configure_catz_zone(dns_view_t *view, dns_view_t *pview,
 					      &data);
 
 		result = ISC_R_SUCCESS;
-	} else if (result != ISC_R_SUCCESS) {
-		cfg_obj_log(catz_obj, named_g_lctx, DNS_CATZ_ERROR_LEVEL,
-			    "catz: dns_catz_zone_add failed: %s",
-			    isc_result_totext(result));
-		goto cleanup;
 	}
 
 	dns_catz_zone_resetdefoptions(zone);
@@ -3290,6 +3294,8 @@ configure_catz_zone(dns_view_t *view, dns_view_t *pview,
 	if (obj != NULL && cfg_obj_isduration(obj)) {
 		opts->min_update_interval = cfg_obj_asduration(obj);
 	}
+
+	dns_catz_zone_postreconfig(zone);
 
 cleanup:
 	dns_name_free(&origin, view->mctx);
