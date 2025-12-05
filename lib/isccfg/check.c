@@ -1138,6 +1138,24 @@ check_listeners(const cfg_obj_t *list, const cfg_obj_t *config,
 	return result;
 }
 
+static void
+check_range_uint32(const cfg_obj_t *map, isc_result_t *result, const char *name,
+		   uint32_t lower, uint32_t upper) {
+	const cfg_obj_t *obj = NULL;
+	(void)cfg_map_get(map, name, &obj);
+	if (obj != NULL) {
+		uint32_t value = cfg_obj_asuint32(obj);
+		if (value < lower || value > upper) {
+			cfg_obj_log(obj, ISC_LOG_ERROR,
+				    "%s '%u' out of range (%u..%u)", name,
+				    value, lower, upper);
+			if (*result == ISC_R_SUCCESS) {
+				*result = ISC_R_RANGE;
+			}
+		}
+	}
+}
+
 static isc_result_t
 check_port(const cfg_obj_t *options, const char *type, in_port_t *portp) {
 	const cfg_obj_t *portobj = NULL;
@@ -1981,19 +1999,7 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 		}
 	}
 
-	obj = NULL;
-	(void)cfg_map_get(options, "max-query-restarts", &obj);
-	if (obj != NULL) {
-		uint32_t restarts = cfg_obj_asuint32(obj);
-		if (restarts == 0 || restarts > 255) {
-			cfg_obj_log(obj, ISC_LOG_ERROR,
-				    "'max-query-restarts' is out of "
-				    "range 1..255)");
-			if (result == ISC_R_SUCCESS) {
-				result = ISC_R_RANGE;
-			}
-		}
-	}
+	check_range_uint32(options, &result, "max-query-restarts", 1, 255);
 
 	obj = NULL;
 	(void)cfg_map_get(options, "prefetch", &obj);
@@ -2025,6 +2031,11 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 			}
 		}
 	}
+
+	check_range_uint32(options, &result, "edns-udp-size", 512, 4096);
+	check_range_uint32(options, &result, "max-udp-size", 512, 4096);
+	check_range_uint32(options, &result, "nocookie-udp-size", 128,
+			   UINT32_MAX);
 
 	if (aclctx != NULL) {
 		cfg_aclconfctx_detach(&aclctx);
@@ -4757,6 +4768,11 @@ check_servers(const cfg_obj_t *config, const cfg_obj_t *voptions,
 			}
 		}
 		dns_peer_detach(&peer);
+
+		check_range_uint32(v1, &result, "edns-udp-size", 512, 4096);
+		check_range_uint32(v1, &result, "max-udp-size", 512, 4096);
+		check_range_uint32(v1, &result, "edns-version", 0, 255);
+		check_range_uint32(v1, &result, "padding", 0, 512);
 	}
 	return result;
 }
