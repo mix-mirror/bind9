@@ -5582,7 +5582,7 @@ any top-level :namedconf:ref:`server` statements are used as defaults.
    increasing the packet size to a multiple of the specified block size.
    Valid block sizes range from 0 (the default, which disables the use of
    EDNS Padding) to 512 bytes. Larger values are reduced to 512, with a
-   logged warning. Note: this option is not currently compatible with no
+   logged warning. Note: this option is not currently compatible with
    TSIG or SIG(0), as the EDNS OPT record containing the padding would have
    to be added to the packet after it had already been signed.
 
