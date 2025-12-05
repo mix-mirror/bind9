@@ -13,6 +13,8 @@
 
 // NS5
 
+{% set servfail_ttl = servfail_ttl | default(30) %}
+
 options {
 	query-source address 10.53.0.5;
 	notify-source 10.53.0.5;
@@ -23,7 +25,7 @@ options {
 	listen-on-v6 { none; };
 	recursion yes;
 	dnssec-validation yes;
-	servfail-ttl 30;
+	servfail-ttl @servfail_ttl@;
 };
 
 key rndc_key {

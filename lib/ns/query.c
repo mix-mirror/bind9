@@ -6832,6 +6832,7 @@ ns__query_sfcache(query_ctx_t *qctx) {
 									 "0");
 		}
 
+		dns_ede_add(&qctx->client->edectx, DNS_EDE_CACHEDERROR, NULL);
 		qctx->client->inner.attributes |= NS_CLIENTATTR_NOSETFC;
 		QUERY_ERROR(qctx, DNS_R_SERVFAIL);
 		return ns_query_done(qctx);
