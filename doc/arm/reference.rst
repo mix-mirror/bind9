@@ -4430,35 +4430,32 @@ Tuning
    :tags: dnssec
    :short: Specifies the maximum number of nodes to be examined in each quantum, when signing a zone with a new DNSKEY.
 
-   This specifies the maximum number of nodes to be examined in each quantum,
-   when signing a zone with a new DNSKEY. The default is ``100``.
+   The default is ``100``.
 
 .. namedconf:statement:: sig-signing-signatures
    :tags: dnssec
    :short: Specifies the threshold for the number of signatures that terminates processing a quantum, when signing a zone with a new DNSKEY.
 
-   This specifies a threshold number of signatures that terminates
-   processing a quantum, when signing a zone with a new DNSKEY. The
-   default is ``10``.
+   The default is ``10``.
 
 .. namedconf:statement:: sig-signing-type
    :tags: dnssec
    :short: Specifies a private RDATA type to use when generating signing-state records.
 
-   This specifies a private RDATA type to be used when generating signing-state
-   records. The default is ``65534``.
+   The default is ``65534``.
 
-   This parameter may be removed in a future version,
-   once there is a standard type.
+   This parameter may be removed in a future version, once there is a standard
+   type.
 
    Signing-state records are used internally by :iscman:`named` to track
    the current state of a zone-signing process, i.e., whether it is
    still active or has been completed. The records can be inspected
-   using the command :option:`rndc signing -list zone <rndc signing>`. Once :iscman:`named` has
-   finished signing a zone with a particular key, the signing-state
-   record associated with that key can be removed from the zone by
-   running :option:`rndc signing -clear keyid/algorithm zone <rndc signing>`. To clear all of
-   the completed signing-state records for a zone, use
+   using the command :option:`rndc signing -list zone <rndc signing>`.
+   Once :iscman:`named` has finished signing a zone with a particular key,
+   the signing-state record associated with that key can be removed from the
+   zone by running
+   :option:`rndc signing -clear keyid/algorithm zone <rndc signing>`.
+   To clear all of the completed signing-state records for a zone, use
    :option:`rndc signing -clear all zone <rndc signing>`.
 
 .. namedconf:statement:: min-refresh-time
