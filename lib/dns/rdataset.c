@@ -601,38 +601,21 @@ dns_rdataset_getheader(const dns_rdataset_t *rdataset) {
 
 isc_stdtime_t
 dns_rdataset_minresign(dns_rdataset_t *rdataset) {
-	dns_rdata_t rdata = DNS_RDATA_INIT;
-	dns_rdata_rrsig_t sig;
-	int64_t when;
-	isc_result_t result;
+	int64_t when = 0;
 
 	REQUIRE(DNS_RDATASET_VALID(rdataset));
 
-	result = dns_rdataset_first(rdataset);
-	INSIST(result == ISC_R_SUCCESS);
-	dns_rdataset_current(rdataset, &rdata);
-	(void)dns_rdata_tostruct(&rdata, &sig, NULL);
-	if ((rdata.flags & DNS_RDATA_OFFLINE) != 0) {
-		when = 0;
-	} else {
-		when = dns_time64_from32(sig.timeexpire);
-	}
-	dns_rdata_reset(&rdata);
-
-	result = dns_rdataset_next(rdataset);
-	while (result == ISC_R_SUCCESS) {
+	DNS_RDATASET_FOREACH(rdataset) {
+		dns_rdata_t rdata = DNS_RDATA_INIT;
 		dns_rdataset_current(rdataset, &rdata);
+
+		dns_rdata_rrsig_t sig;
 		(void)dns_rdata_tostruct(&rdata, &sig, NULL);
 		if ((rdata.flags & DNS_RDATA_OFFLINE) != 0) {
-			goto next_rr;
-		}
-		if (when == 0 || dns_time64_from32(sig.timeexpire) < when) {
+			continue;
+		} else {
 			when = dns_time64_from32(sig.timeexpire);
 		}
-	next_rr:
-		dns_rdata_reset(&rdata);
-		result = dns_rdataset_next(rdataset);
 	}
-	INSIST(result == ISC_R_NOMORE);
 	return (isc_stdtime_t)when;
 }
