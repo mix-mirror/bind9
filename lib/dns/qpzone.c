@@ -4428,7 +4428,7 @@ dbiterator_prev(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 	/*
 	 * We have the prev node, we can release the previous current.
 	 */
-	nlock = qpzone_get_lock(node);
+	nlock = &qpdb->buckets[node->locknum].lock;
 	NODE_RDLOCK(nlock, &nlocktype);
 	qpznode_release(qpdb, node, 0, &nlocktype DNS__DB_FLARG_PASS);
 	NODE_UNLOCK(nlock, &nlocktype);
@@ -4503,7 +4503,7 @@ dbiterator_next(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 	/*
 	 * We have the next node, we can release the previous current.
 	 */
-	nlock = qpzone_get_lock(node);
+	nlock = &qpdb->buckets[node->locknum].lock;
 	NODE_RDLOCK(nlock, &nlocktype);
 	qpznode_release(qpdb, node, 0, &nlocktype DNS__DB_FLARG_PASS);
 	NODE_UNLOCK(nlock, &nlocktype);
