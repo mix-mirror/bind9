@@ -230,8 +230,10 @@ add_server(isc_mem_t *mctx, const char *address_str,
 		if (memcmp(v4, zeroaddress, 4) == 0) {
 			memmove(v4, loopaddress, 4);
 		}
+		INSIST(res->ai_addrlen == sizeof(address->type.sin));
 		memmove(&address->type.sin, res->ai_addr, res->ai_addrlen);
 	} else if (res->ai_family == AF_INET6) {
+		INSIST(res->ai_addrlen == sizeof(address->type.sin6));
 		memmove(&address->type.sin6, res->ai_addr, res->ai_addrlen);
 	} else {
 		isc_mem_put(mctx, address, sizeof(*address));
