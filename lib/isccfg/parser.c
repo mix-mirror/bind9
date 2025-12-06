@@ -73,8 +73,8 @@
  * can take a significant amount of memory. This assert ensures that we
  * won't increase its size by mistake without getting a warning.
  */
-static_assert(sizeof(struct cfg_obj) <= 48,
-	      "sizeof(cfg_obj_t) must be 48 bytes");
+static_assert(sizeof(struct cfg_obj) <= 40,
+	      "sizeof(cfg_obj_t) must be 40 bytes");
 
 /* Shorthand */
 #define CAT CFG_LOGCATEGORY_CONFIG

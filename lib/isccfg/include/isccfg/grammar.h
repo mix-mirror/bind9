@@ -206,9 +206,20 @@ struct cfg_obj {
 	 * These two 4 byte fields are contiguous to avoid an extra
 	 * padding of 4 bytes each, avoiding an extra 8 bytes in the
 	 * struct.
+	 *
+	 * `line` is 31 bits long (~2,000,000,000 is likely enough lines in a
+	 * named config) so the `cloned` boolean fit in the extra bit, and won't
+	 * take extra 8 bits because of padding.
 	 */
 	unsigned int magic;
-	unsigned int line;
+	unsigned int line : 31;
+
+	/*%
+	 * Indicates that an object was cloned from the defaults
+	 * or otherwise generated during the configuration merge
+	 * process.
+	 */
+	bool cloned : 1;
 
 	isc_refcount_t	  references;
 	cfg_obj_t	 *file; /*%< separate string with its own refcount */
@@ -226,13 +237,6 @@ struct cfg_obj {
 		cfg_netprefix_t	  *netprefix;
 		isccfg_duration_t *duration;
 	} value;
-
-	/*%
-	 * Indicates that an object was cloned from the defaults
-	 * or otherwise generated during the configuration merge
-	 * process.
-	 */
-	bool cloned;
 };
 
 /*% A list element. */
