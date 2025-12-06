@@ -20,6 +20,9 @@ To build on a Unix or Linux system, use:
 
     $ meson setup build-dir
     $ meson compile -C build-dir
+    $ cd build-dir
+    $ meson install  # by default installs into /usr/local
+    $ ldconfig
 
 Several environment variables affect compilation, and they can be set
 before running ``meson setup``. The most significant ones are:
