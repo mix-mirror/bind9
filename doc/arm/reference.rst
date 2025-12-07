@@ -4491,6 +4491,38 @@ Tuning
    seconds longer than the trigger TTL; if not, :iscman:`named`
    silently adjusts it upward. The default eligibility TTL is ``9``.
 
+.. namedconf:statement:: umbrella-virtual-appliance
+   :tags: server, query
+   :short: Sets the Virtual Appliance ID to send Cisco Umbrella servers
+
+   If Umbrella is enabled at compile time, this option sets the Virtual
+   Appliance ID to be sent by ``named`` when forwarding a query to a Cisco
+   Umbrella server. This can cause leakage of private information, and
+   therefore should only be set by Cisco Umbrella customers; see
+   :ref:`umbrella` for details.  This field is represented as an integer.
+
+.. namedconf:statement:: umbrella-organization
+   :tags: server, query
+   :short: Sets the Organization ID to send Cisco Umbrella servers
+
+   If Umbrella is enabled at compile time, this option sets the
+   Organization ID to be sent by ``named`` when forwarding a query to a
+   Cisco Umbrella server. This can cause leakage of private information,
+   and therefore should only be set by Cisco Umbrella customers; see
+   :ref:`umbrella` for details.  This field is represented as an integer.
+
+.. namedconf:statement:: umbrella-device
+   :tags: server, query
+   :short: Sets the Device ID to send Cisco Umbrella servers
+
+   If Umbrella is enabled at compile time, this option sets the Device ID
+   to be sent by ``named`` when forwarding a query to a Cisco Umbrella
+   server.  This can cause leakage of private information, and therefore
+   should only be set by Cisco Umbrella customers; see :ref:`umbrella` for
+   details.  This field is represented as a hexadecimal value 2 to 16
+   digits in length, representing 1 to 8 bytes. There must be an even
+   number of digits.
+
 .. namedconf:statement:: v6-bias
    :tags: server, query
    :short: Indicates the number of milliseconds of preference to give to IPv6 name servers.
@@ -5522,6 +5554,231 @@ zone; there are no delegations.
 If both a redirect zone and a redirect namespace are configured, the
 redirect zone is tried first.
 
+.. _ecs:
+
+EDNS CLIENT-SUBNET (ECS) Support
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The EDNS CLIENT-SUBNET option (ECS) is a mechanism to allow
+partially anonymized IP address information about the client
+originating a query to be passed, via a recursive resolver or
+forwarder, to the authoritative server which answers the
+query. This enables an authoritative server to provide
+different answers depending on the originating client
+address; for example, this may be used to route users to
+different resources depending on their geographic location.
+
+An ECS-tagged query contains the subnet from which the query
+originated, but not the specific IP address of the client.
+
+An ECS-tagged response also contains the prefix from which
+the query originated, and adds a "scope length" value
+indicating for which address prefix(es) this response is
+valid.  For example, an ECS-tagged response to a query from
+subnet 192.0.1/24 may be valid for all addresses in 192/8.
+A recursive name server may cache this response and
+subsequently reuse it for all queries originating from
+192/8, but not for queries originating from other addresses.
+
+.. _recursive_ecs:
+
+Recursive ECS Options
+"""""""""""""""""""""
+
+.. namedconf:statement:: ecs-bits
+
+  This option takes exactly two arguments, representing the
+  default SOURCE PREFIX-LENGTH to use in ECS queries for
+  IPv4 and IPv6 addresses, respectively.  These values can be
+  overridden on a per-domain basis by specifying ``bits-v4``
+  and ``bits-v6`` values in ``ecs-zones``.  The default
+  values are 24 and 56, respectively, for IPv4 and IPv6
+  addresses, which are also the maximum allowed. Higher
+  values are not permitted, and are capped to 24 and 56,
+  respectively.
+
+.. namedconf:statement:: ecs-zones
+
+  This is a domain name filter set, indicating to which zones
+  ECS-tagged queries may be sent.
+
+  Each element of ``ecs-zones`` is a zone name, which may
+  optionally be negated with a leading exclamation mark
+  ("!"); this allows certain subdomains to be excluded.
+  The longest matching element in ``ecs-zones`` is used to
+  determine whether or not to send ECS options when
+  resolving a given query.
+
+  Elements in ``ecs-zones`` may be followed with optional
+  ``bits-v4`` and ``bits-v6`` values, indicating the SOURCE
+  PREFIX-LENGTH values to be used in ECS options when
+  sending IPv4 and IPv6 queries, respectively, for names at
+  or below that subdomain. If ``bits-v4`` and ``bits-v6``
+  are not specified, the default SOURCE PREFIX-LENGTH values
+  are as set by ``ecs-bits``, which in turn default to 24
+  for IPv4 and 56 for IPv6. Higher values than these are not
+  accepted, and are clamped to 24 and 56 for IPv4 and
+  IPv6, respectively.
+
+  As names in ``ecs-zones`` become more specific,
+  prefix-lengths cannot increase. If "example.com" is
+  specified with ``bits-v4 20``, then no prefix length
+  higher than 20 can be used for IPv4 queries for any
+  subdomain of "example.com".
+
+  In the following example:
+
+  * ECS options are sent when looking up names in the zone
+    "example.com", with a SOURCE PREFIX-LENGTH of 20 bits
+    for IPv4 queries, and the default 56 bits for IPv6
+    queries.
+
+  * ECS options are also sent when looking up names in the
+    zone "example.org", but in this case the SOURCE
+    PREFIX-LENGTHs will be 22 and 48 for IPv4 and IPv6,
+    respectively. However, ECS is not used for names below
+    "excluded.example.org."
+
+  * ECS options are also sent when looking up names in the
+    zone "example.net", with the default SOURCE
+    PREFIX-LENGTHs of 24 and 56 bits for IPv4 and IPv6,
+    respectively.
+
+  ::
+
+    ecs-zones {
+        example.com bits-v4 20;
+        ! excluded.example.org;
+        example.org bits-v4 22 bits-v6 48;
+        example.net;
+    };
+
+  It is assumed that ECS is configured at the zone
+  level, not using individual domain names within a zone.
+  Consequently, ECS options are only sent when the name
+  being queried and the apex of the zone being queried both
+  match ``ecs-zones``.  For example, if the zone
+  "example.com" contains the name "www.example.com", then
+  ``ecs-zones`` should be configured with "example.com",
+  *not* with "www.example.com".  The latter configuration
+  would result in no ECS queries being sent, because the
+  zone apex ("example.com") would not match.
+
+  Note that negated entries do not need to be zone apexes
+  to be effective: If ``ecs-zones`` were
+  configured with "example.com" and "!www.example.com",
+  then an ECS option would not be sent for "www.example.com"
+  even though zone apex was allowed. An ECS option would
+  also not be sent for "foo.www.example.com", as it is a
+  subdomain of "www.example.com".
+
+  The zone apex is defined here as the delegation point.
+  Sometimes a server is authoritative for both parent and
+  child zones, so that a query sent to the parent zone will
+  get an authoritative answer for the child, with no
+  delegation taking place; in this case, ``ecs-zones`` must
+  match the *parent* zone apex to be effective.
+
+.. namedconf:statement:: ecs-forward
+
+  This specifies an ACL of client addresses from which
+  ECS-tagged queries may be forwarded. The default is
+  ``none``.
+
+  If a client is not allowed in this ACL, and if any
+  ECS-related configuration settings are in use in
+  ``named.conf``, then any recursive query which contains
+  an ECS option with a non-zero source prefix-length will
+  be answered with REFUSED.  (This does not apply to ECS
+  options with source prefix-length zero; all clients are
+  permitted to send those.)
+
+  In order to remain compatible with versions of BIND that
+  do not have ECS support, if ``named`` has not been
+  configured with any ECS-related configuration options,
+  it will not return REFUSED; it will simply ignore any ECS
+  options in queries.
+
+  If the client *is* allowed, and if the query would
+  normally be processed using ECS (i.e., because the query
+  name is covered by ``ecs-zones``), then the ECS option
+  that was sent by the client may be forwarded.
+
+  When ECS options are forwarded, their source prefix-length
+  values are clamped to the length that would ordinarily be
+  sent by the resolver.  For example, if a domain is
+  configured in ``ecs-zones`` to be sent a source
+  prefix-length of 20 bits, an ECS option sent by a client
+  with a source prefix-length Of 24 bits would be truncated
+  to 20 bits and then forwarded.  An ECS option with a
+  source prefix-length of 20 or less would be forwarded
+  as-is.
+
+  A query with source prefix-length zero is a
+  signal from the client that ECS should not be used in
+  processing this query. Any client may send such a query,
+  regardless of ``ecs-forward`` and ``ecs-zones`` and it
+  will always be forwarded. A matching ECS option will
+  always be included in the response sent back to the
+  client.
+
+.. namedconf:statement:: ecs-privacy
+
+  If set to ``yes``, then when a query is allowed for ECS
+  processing and no client ECS option is being forwarded,
+  the resolver will always include an ECS option with a
+  source prefix-length of zero in all of its upstream
+  queries.  This is a request to upstream intermediate
+  resolvers to disable ECS when processing queries sent by
+  this resolver.  The default is ``no``.
+
+.. namedconf:statement:: ecs-types
+
+  This specifies a list of RR types for which ECS-tagged
+  queries may be sent, and for which ECS-tagged replies may be
+  cached.  The default is "ANY", which matches all types
+  with the exception of DNS infrastructure types (NS, SOA),
+  and DNSSEC-related types (DS, DNSKEY, NSEC, NSEC3,
+  NSEC3PARAM).  Those types are never ECS-tagged, even if
+  they are explicitly included in ``ecs-types``.
+
+  Note that if an answer of type CNAME is found in a reply
+  to an ECS-tagged query, then the CNAME data is always
+  cached with ECS, regardless of whether CNAME is included
+  in ``ecs-types``.
+
+.. _umbrella:
+
+Cisco Umbrella Support
+^^^^^^^^^^^^^^^^^^^^^^
+
+In this release of BIND, ``named`` supports forwarding of queries to Cisco
+Umbrella servers, if compiled with ``configure --enable-umbrella``. Cisco
+Umbrella identifies customer queries via a custom "Protoss" EDNS option
+that is included with each query.
+
+Protoss options may include any combination of three identification codes:
+a Virtual Appliance ID, an Organization ID, or a Device ID. These are
+configured in ``named.conf`` by setting the ``umbrella-virtual-appliance``,
+``umbrella-organization``, and ``umbrella-device`` options. If any of these
+options is set, then when ``named`` is forwarding a message to Cisco
+Umbrella server, it can include a Protoss option in the query.
+
+Cisco Umbrella server addresses must be explicitly configured in a
+``server`` statement with the ``send-umbrella`` option set to ``yes``.
+Protoss options will not be sent to any server that has not been explicitly
+configured to receive them.
+
+Responses from Cisco Umbrella servers are specifically tailored to the
+client, and are therefore not cached by ``named``, so that other clients
+can get other answers. The TTLs of these responses are automatically
+lowered to zero.
+
+Note that, in order to identify the client, the Protoss option includes a
+copy of the client's IP address. This has serious implications for client
+privacy. The Protoss option must be configured cautiously and only by Cisco
+Umbrella customers.
+
 ``server`` Block Grammar
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 .. namedconf:statement:: server
@@ -5542,7 +5799,6 @@ one or more :namedconf:ref:`server` statements, only those apply to the view and
 top-level ones are ignored. If a view contains no :namedconf:ref:`server` statements,
 any top-level :namedconf:ref:`server` statements are used as defaults.
 
-
 .. namedconf:statement:: bogus
    :tags: server
    :short: Allows a remote server to be ignored.
@@ -5550,6 +5806,17 @@ any top-level :namedconf:ref:`server` statements are used as defaults.
    If a remote server is giving out bad data, marking it
    as bogus prevents further queries to it. The default value of
    :any:`bogus` is ``no``.
+
+.. namedconf:statement:: ecs
+   :tags: server
+   :short: Controls the use of the EDNS-CLIENT-SUBNET option.
+
+    The ``ecs`` clause determines whether the local server will send the
+    EDNS CLIENT-SUBNET option when communicating with the remote server.
+    The default is ``yes``, but the option is only sent if the name being
+    queried matches a domain listed in the ``ecs-zones`` statement. (See
+    :ref:`recursive_ecs`.) Changing the value to ``no`` disables the ECS
+    option for the remote server, regardless of query name.
 
 .. namedconf:statement:: edns
    :tags: server
@@ -5574,6 +5841,15 @@ any top-level :namedconf:ref:`server` statements are used as defaults.
    values are silently adjusted. This option is not needed until
    higher EDNS versions than 0 are in use.
 
+.. namedconf:statement:: ignore-ecs-opt
+   :tags: server
+   :short: Controls whether to reject responses with unsolicted ECS options.
+
+   When set to ``yes``, :any:`ignore-ecs-opt` clause allows responses
+   containing unsolicited ECS options to be accepted and processed by
+   the local server. When set to ``no``, such responses are dropped
+   on the basis of an ECS option mismatch. The default is ``no``.
+
 .. namedconf:statement:: padding
    :tags: server
    :short: Adds EDNS Padding options to outgoing messages to increase the packet size.
@@ -5585,6 +5861,17 @@ any top-level :namedconf:ref:`server` statements are used as defaults.
    logged warning. Note: this option is not currently compatible with
    TSIG or SIG(0), as the EDNS OPT record containing the padding would have
    to be added to the packet after it had already been signed.
+
+.. namedconf:statement:: send-umbrella
+   :tags: server
+   :short: Enable use of the Cisco Umbrella feature
+
+   The :any:`send-umbrella` ooption determines whether to treat a
+   server as a Cisco Umbrella server.  If set to ``yes``, and if Cisco
+   Umbrella has been enabled and compile time and configured via the
+   ``umbrella-virtual-appliance``, ``umbrella-organization``, or
+   ``umbrella-device`` options, then ``named`` will send an EDNS Protoss
+   option when forwarding queries to the server.
 
 .. namedconf:statement:: tcp-only
    :tags: server
