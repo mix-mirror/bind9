@@ -22128,6 +22128,7 @@ isc_result_t
 dns_zone_dnssecstatus(dns_zone_t *zone, dns_kasp_t *kasp,
 		      dns_dnsseckeylist_t *keys, isc_stdtime_t now,
 		      bool verbose, char *out, size_t out_len) {
+	isc_result_t result;
 	isc_buffer_t buf;
 	isc_time_t refreshkeytime;
 	isc_stdtime_t refresh;
@@ -22152,10 +22153,10 @@ dns_zone_dnssecstatus(dns_zone_t *zone, dns_kasp_t *kasp,
 
 	bool checkds = zone->checkdstype != dns_checkdstype_no;
 	LOCK(&kasp->lock);
-	RETERR(dns_keymgr_status(kasp, keys, &buf, now, verbose, checkds));
+	result = dns_keymgr_status(kasp, keys, &buf, now, verbose, checkds);
 	UNLOCK(&kasp->lock);
 
-	return ISC_R_SUCCESS;
+	return result;
 }
 
 isc_result_t
