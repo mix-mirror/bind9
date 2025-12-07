@@ -108,7 +108,8 @@ Options
 
    This option makes :program:`nsupdate` use the provided hostname during remote
    server TLS certificate verification. Otherwise, the DNS server name
-   is used. This option implies :option:`-S`.
+   is used. This option implies :option:`-S`. Name of the server is the default,
+   unless only IP address is specified.
 
 .. option:: -i
 
@@ -165,7 +166,7 @@ Options
 .. option:: -p port
 
    This option sets the port to use for connections to a name server. The default is
-   53.
+   53 or 853 when -S is used.
 
 .. option:: -P
 
