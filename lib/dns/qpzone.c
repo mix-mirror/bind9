@@ -4300,6 +4300,9 @@ dbiterator_prev(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 	isc_result_t result;
 	qpdb_dbiterator_t *qpdbiter = (qpdb_dbiterator_t *)iterator;
 	qpzonedb_t *qpdb = (qpzonedb_t *)iterator->db;
+	qpznode_t *node = NULL;
+	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
+	isc_rwlock_t *nlock = NULL;
 
 	REQUIRE(qpdbiter->node != NULL);
 
@@ -4307,7 +4310,12 @@ dbiterator_prev(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 		return qpdbiter->result;
 	}
 
-	dereference_iter_node(qpdbiter DNS__DB_FLARG_PASS);
+	/*
+	 * Defer the release of the current node until we have the prev node
+	 * from the QP tree.
+	 */
+	node = qpdbiter->node;
+	qpdbiter->node = NULL;
 
 	result = dns_qpiter_prev(&qpdbiter->iter, NULL,
 				 (void **)&qpdbiter->node, NULL);
@@ -4382,6 +4390,14 @@ dbiterator_prev(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 		UNREACHABLE();
 	}
 
+	/*
+	 * We have the prev node, we can release the previous current.
+	 */
+	nlock = qpzone_get_lock(node);
+	NODE_RDLOCK(nlock, &nlocktype);
+	qpznode_release(node, 0, &nlocktype DNS__DB_FLARG_PASS);
+	NODE_UNLOCK(nlock, &nlocktype);
+
 	if (result == ISC_R_SUCCESS) {
 		reference_iter_node(qpdbiter DNS__DB_FLARG_PASS);
 	} else {
@@ -4397,6 +4413,9 @@ dbiterator_next(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 	isc_result_t result;
 	qpdb_dbiterator_t *qpdbiter = (qpdb_dbiterator_t *)iterator;
 	qpzonedb_t *qpdb = (qpzonedb_t *)iterator->db;
+	qpznode_t *node = NULL;
+	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
+	isc_rwlock_t *nlock = NULL;
 
 	REQUIRE(qpdbiter->node != NULL);
 
@@ -4404,7 +4423,12 @@ dbiterator_next(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 		return qpdbiter->result;
 	}
 
-	dereference_iter_node(qpdbiter DNS__DB_FLARG_PASS);
+	/*
+	 * Defer the release of the current node until we have the next node
+	 * from the QP tree.
+	 */
+	node = qpdbiter->node;
+	qpdbiter->node = NULL;
 
 	result = dns_qpiter_next(&qpdbiter->iter, NULL,
 				 (void **)&qpdbiter->node, NULL);
@@ -4460,6 +4484,14 @@ dbiterator_next(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 	default:
 		UNREACHABLE();
 	}
+
+	/*
+	 * We have the next node, we can release the previous current.
+	 */
+	nlock = qpzone_get_lock(node);
+	NODE_RDLOCK(nlock, &nlocktype);
+	qpznode_release(node, 0, &nlocktype DNS__DB_FLARG_PASS);
+	NODE_UNLOCK(nlock, &nlocktype);
 
 	if (result == ISC_R_SUCCESS) {
 		reference_iter_node(qpdbiter DNS__DB_FLARG_PASS);
