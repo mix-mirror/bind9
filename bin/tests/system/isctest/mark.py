@@ -30,24 +30,11 @@ live_internet_test = pytest.mark.skipif(
 )
 
 
-def feature_test(feature):
-    feature_test_bin = os.environ.get("FEATURETEST")
-    if not feature_test_bin:  # this can be the case when running doctest
-        return False
-    try:
-        subprocess.run([feature_test_bin, feature], check=True)
-    except subprocess.CalledProcessError as exc:
-        if exc.returncode != 1:
-            raise
-        return False
-    return True
-
-
 DNSRPS_BIN = Path(os.environ["TOP_BUILDDIR"]) / "bin/tests/system/rpz/dnsrps"
 
 
 def is_dnsrps_available():
-    if not feature_test("--enable-dnsrps"):
+    if os.getenv("FEATURE_DNSRPS") != "1":
         return False
     try:
         subprocess.run([DNSRPS_BIN, "-a"], check=True)
@@ -67,24 +54,24 @@ def with_algorithm(name: str):
 
 
 with_dnstap = pytest.mark.skipif(
-    not feature_test("--enable-dnstap"), reason="DNSTAP support disabled in the build"
+    os.getenv("FEATURE_DNSTAP") != "1", reason="DNSTAP support disabled in the build"
 )
 
 
 without_fips = pytest.mark.skipif(
-    feature_test("--have-fips-mode"), reason="FIPS support enabled in the build"
+    os.getenv("FEATURE_FIPS_MODE") == "1", reason="FIPS support enabled in the build"
 )
 
 with_libxml2 = pytest.mark.skipif(
-    not feature_test("--have-libxml2"), reason="libxml2 support disabled in the build"
+    os.getenv("FEATURE_LIBXML2") != "1", reason="libxml2 support disabled in the build"
 )
 
 with_lmdb = pytest.mark.skipif(
-    not feature_test("--with-lmdb"), reason="LMDB support disabled in the build"
+    os.getenv("FEATURE_LMDB") != "1", reason="LMDB support disabled in the build"
 )
 
 with_json_c = pytest.mark.skipif(
-    not feature_test("--have-json-c"), reason="json-c support disabled in the build"
+    os.getenv("FEATURE_JSON_C") != "1", reason="json-c support disabled in the build"
 )
 
 dnsrps_enabled = pytest.mark.skipif(
