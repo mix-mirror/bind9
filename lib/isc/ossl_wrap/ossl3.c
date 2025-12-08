@@ -462,15 +462,18 @@ isc_ossl_wrap_generate_rsa_key(void (*callback)(int), size_t bit_size,
 			       EVP_PKEY **pkeyp) {
 	isc_result_t result;
 	EVP_PKEY_CTX *ctx;
-	BIGNUM *e;
+	uint32_t e = 65537;
 
 	REQUIRE(pkeyp != NULL && *pkeyp == NULL);
 
-	e = BN_new();
-
-	/* e = 65537 (0x10001, F4) */
-	BN_set_bit(e, 0);
-	BN_set_bit(e, 16);
+	/*
+	 * https://docs.openssl.org/master/man7/EVP_PKEY-RSA/#rsa-key-generation-parameters
+	 */
+	const OSSL_PARAM params[3] = {
+		OSSL_PARAM_uint(OSSL_PKEY_PARAM_RSA_E, &e),
+		OSSL_PARAM_size_t(OSSL_PKEY_PARAM_RSA_BITS, &bit_size),
+		OSSL_PARAM_END,
+	};
 
 	ctx = EVP_PKEY_CTX_new_from_name(NULL, "RSA", NULL);
 	if (ctx == NULL) {
@@ -481,12 +484,8 @@ isc_ossl_wrap_generate_rsa_key(void (*callback)(int), size_t bit_size,
 		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_keygen_init"));
 	}
 
-	if (EVP_PKEY_CTX_set_rsa_keygen_bits(ctx, bit_size) != 1) {
-		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_CTX_set_rsa_keygen_bits"));
-	}
-
-	if (EVP_PKEY_CTX_set1_rsa_keygen_pubexp(ctx, e) != 1) {
-		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_CTX_set1_rsa_keygen_pubexp"));
+	if (EVP_PKEY_CTX_set_params(ctx, params) != 1) {
+		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_CTX_set_params"));
 	}
 
 	if (callback != NULL) {
@@ -494,7 +493,15 @@ isc_ossl_wrap_generate_rsa_key(void (*callback)(int), size_t bit_size,
 		EVP_PKEY_CTX_set_cb(ctx, rsa_keygen_progress_cb);
 	}
 
-	if (EVP_PKEY_keygen(ctx, pkeyp) != 1) {
+	/*
+	 * EVP_PKEY_keygen is an older function now equivalent to
+	 * EVP_PKEY_generate with an additional check that EVP_PKEY_CTX has been
+	 * initialized with EVP_PKEY_keygen_init.
+	 *
+	 * Since we can guarantee such condition we use EVP_PKEY_generate
+	 * directly.
+	 */
+	if (EVP_PKEY_generate(ctx, pkeyp) != 1) {
 		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_keygen"));
 	}
 
@@ -502,7 +509,6 @@ isc_ossl_wrap_generate_rsa_key(void (*callback)(int), size_t bit_size,
 
 cleanup:
 	EVP_PKEY_CTX_free(ctx);
-	BN_free(e);
 	return result;
 }
 
@@ -510,15 +516,21 @@ isc_result_t
 isc_ossl_wrap_generate_pkcs11_rsa_key(char *uri, size_t bit_size,
 				      EVP_PKEY **pkeyp) {
 	EVP_PKEY_CTX *ctx = NULL;
-	OSSL_PARAM params[4];
 	isc_result_t result;
 	int status;
+	size_t len;
 
-	params[0] = OSSL_PARAM_construct_utf8_string("pkcs11_uri", uri, 0);
-	params[1] = OSSL_PARAM_construct_utf8_string(
-		"pkcs11_key_usage", (char *)"digitalSignature", 0);
-	params[2] = OSSL_PARAM_construct_size_t("rsa_keygen_bits", &bit_size);
-	params[3] = OSSL_PARAM_construct_end();
+	len = strlen(uri);
+	INSIST(len != 0);
+
+	/* NUL-terminator should be left out */
+	const OSSL_PARAM params[] = {
+		OSSL_PARAM_utf8_string("pkcs11_uri", uri, len),
+		OSSL_PARAM_utf8_string("pkcs11_key_usage", pkcs11_key_usage,
+				       sizeof(pkcs11_key_usage) - 1),
+		OSSL_PARAM_size_t("rsa_keygen_bits", &bit_size),
+		OSSL_PARAM_END,
+	};
 
 	ctx = EVP_PKEY_CTX_new_from_name(NULL, "RSA", "provider=pkcs11");
 	if (ctx == NULL) {
