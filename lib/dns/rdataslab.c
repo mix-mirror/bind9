@@ -19,6 +19,7 @@
 
 #include <isc/ascii.h>
 #include <isc/atomic.h>
+#include <isc/list.h>
 #include <isc/mem.h>
 #include <isc/region.h>
 #include <isc/result.h>
@@ -327,6 +328,7 @@ dns_rdataslab_fromrdataset(dns_rdataset_t *rdataset, isc_mem_t *mctx,
 			.typepair = typepair,
 			.trust = rdataset->trust,
 			.ttl = rdataset->ttl,
+			.dirtylink = ISC_LINK_INITIALIZER,
 		};
 	}
 
@@ -833,6 +835,8 @@ dns_slabheader_reset(dns_slabheader_t *h, dns_dbnode_t *node) {
 	atomic_init(&h->attributes, 0);
 	atomic_init(&h->last_refresh_fail_ts, 0);
 
+	ISC_LINK_INIT(h, dirtylink);
+
 	STATIC_ASSERT(sizeof(h->attributes) == 2,
 		      "The .attributes field of dns_slabheader_t needs to be "
 		      "16-bit int type exactly.");
@@ -845,6 +849,7 @@ dns_slabheader_new(isc_mem_t *mctx, dns_dbnode_t *node) {
 	h = isc_mem_get(mctx, sizeof(*h));
 	*h = (dns_slabheader_t){
 		.node = node,
+		.dirtylink = ISC_LINK_INITIALIZER,
 	};
 	return h;
 }

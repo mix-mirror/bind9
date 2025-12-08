@@ -23,6 +23,7 @@
 #include <isc/file.h>
 #include <isc/heap.h>
 #include <isc/hex.h>
+#include <isc/list.h>
 #include <isc/log.h>
 #include <isc/loop.h>
 #include <isc/mem.h>
@@ -152,15 +153,7 @@ struct qpcnode {
 	struct cds_list_head types_list;
 	struct cds_list_head *data;
 
-	/*%
-	 * NOTE: The 'dirty' flag is protected by the node lock, so
-	 * this bitfield has to be separated from the one above.
-	 * We don't want it to share the same qword with bits
-	 * that can be accessed without the node lock.
-	 */
-	uint8_t	      : 0;
-	uint8_t dirty : 1;
-	uint8_t	      : 0;
+	ISC_LIST(dns_slabheader_t) dirty;
 
 	/*%
 	 * Used for dead nodes cleaning.  This linked list is used to mark nodes
@@ -579,7 +572,17 @@ clean_cache_node(qpcache_t *qpdb, qpcnode_t *node) {
 	 * Caller must be holding the node lock.
 	 */
 
-	DNS_SLABTOP_FOREACH(top, node->data) {
+	/*
+	 * We can't use ordinary loop because multiple headers to be cleaned can
+	 * be stashed under a single slabtop.
+	 */
+	for (dns_slabheader_t *dirty = ISC_LIST_HEAD(node->dirty);
+	     dirty != NULL; dirty = ISC_LIST_HEAD(node->dirty))
+	{
+		dns_slabtop_t *top = dirty->top;
+
+		ISC_LIST_UNLINK(node->dirty, dirty, dirtylink);
+
 		clean_cache_headers(top);
 
 		/*
@@ -617,8 +620,6 @@ clean_cache_node(qpcache_t *qpdb, qpcnode_t *node) {
 			dns_slabtop_destroy(((dns_db_t *)qpdb)->mctx, &top);
 		}
 	}
-
-	node->dirty = false;
 }
 
 /*
@@ -767,7 +768,7 @@ qpcnode_release(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t *nlocktypep,
 	}
 
 	/* Handle easy and typical case first. */
-	if (!node->dirty && !cds_list_empty(node->data)) {
+	if (ISC_LIST_EMPTY(node->dirty) && !cds_list_empty(node->data)) {
 		goto unref;
 	}
 
@@ -794,7 +795,7 @@ qpcnode_release(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t *nlocktypep,
 		}
 	}
 
-	if (node->dirty) {
+	if (!ISC_LIST_EMPTY(node->dirty)) {
 		clean_cache_node(qpdb, node);
 	}
 
@@ -926,7 +927,9 @@ static void
 mark_ancient(dns_slabheader_t *header) {
 	setttl(header, 0);
 	mark(header, DNS_SLABHEADERATTR_ANCIENT);
-	HEADERNODE(header)->dirty = 1;
+	if (!ISC_LINK_LINKED(header, dirtylink)) {
+		ISC_LIST_APPEND(HEADERNODE(header)->dirty, header, dirtylink);
+	}
 }
 
 /*
@@ -2425,6 +2428,7 @@ new_qpcnode(qpcache_t *qpdb, const dns_name_t *name, dns_namespace_t nspace) {
 		.nspace = nspace,
 		.references = ISC_REFCOUNT_INITIALIZER(1),
 		.locknum = isc_random_uniform(qpdb->buckets_count),
+		.dirty = ISC_LIST_INITIALIZER,
 	};
 
 	isc_mem_attach(qpdb->common.mctx, &newdata->mctx);
@@ -3740,6 +3744,10 @@ static void
 qpcnode_deletedata(dns_dbnode_t *node ISC_ATTR_UNUSED, void *data) {
 	dns_slabheader_t *header = data;
 	qpcache_t *qpdb = HEADERNODE(header)->qpdb;
+
+	if (ISC_LINK_LINKED(header, dirtylink)) {
+		ISC_LIST_UNLINK(HEADERNODE(header)->dirty, header, dirtylink);
+	}
 
 	if (header->heap != NULL && header->heap_index != 0) {
 		isc_heap_delete(header->heap, header->heap_index);
