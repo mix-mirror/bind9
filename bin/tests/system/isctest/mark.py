@@ -15,7 +15,6 @@ import os
 import platform
 import socket
 import shutil
-import subprocess
 
 import pytest
 
@@ -29,24 +28,13 @@ live_internet_test = pytest.mark.skipif(
 )
 
 
-def feature_test(feature):
-    feature_test_bin = os.environ.get("FEATURETEST")
-    if not feature_test_bin:  # this can be the case when running doctest
-        return False
-    try:
-        subprocess.run([feature_test_bin, feature], check=True)
-    except subprocess.CalledProcessError as exc:
-        if exc.returncode != 1:
-            raise
-        return False
-    return True
-
-
-rsasha1 = pytest.mark.skipif(not feature_test("--rsasha1"), reason="RSASHA1 disabled")
+rsasha1 = pytest.mark.skipif(
+    os.getenv("FEATURE_RSASHA1") != "1", reason="RSASHA1 disabled"
+)
 
 
 extended_ds_digest = pytest.mark.skipif(
-    not feature_test("--extended-ds-digest"),
+    os.getenv("FEATURE_EXTENDED_DS_DIGEST") != "1",
     reason="extended DS digest algorithms disabled",
 )
 
@@ -62,24 +50,24 @@ def with_algorithm(name: str):
 
 
 with_dnstap = pytest.mark.skipif(
-    not feature_test("--enable-dnstap"), reason="DNSTAP support disabled in the build"
+    os.getenv("FEATURE_DNSTAP") != "1", reason="DNSTAP support disabled in the build"
 )
 
 
 without_fips = pytest.mark.skipif(
-    feature_test("--have-fips-mode"), reason="FIPS support enabled in the build"
+    os.getenv("FEATURE_FIPS_MODE") == "1", reason="FIPS support enabled in the build"
 )
 
 with_libxml2 = pytest.mark.skipif(
-    not feature_test("--have-libxml2"), reason="libxml2 support disabled in the build"
+    os.getenv("FEATURE_LIBXML2") != "1", reason="libxml2 support disabled in the build"
 )
 
 with_lmdb = pytest.mark.skipif(
-    not feature_test("--with-lmdb"), reason="LMDB support disabled in the build"
+    os.getenv("FEATURE_LMDB") != "1", reason="LMDB support disabled in the build"
 )
 
 with_json_c = pytest.mark.skipif(
-    not feature_test("--have-json-c"), reason="json-c support disabled in the build"
+    os.getenv("FEATURE_JSON_C") != "1", reason="json-c support disabled in the build"
 )
 
 softhsm2_environment = pytest.mark.skipif(

@@ -18,6 +18,7 @@ from .build import BUILD_VARS  # type: ignore
 from .algorithms import ALG_VARS, CRYPTO_SUPPORTED_VARS
 from .basic import BASIC_VARS
 from .dirs import DIR_VARS
+from .features import FEATURE_VARS
 from .openssl import OPENSSL_VARS
 from .ports import PORT_VARS
 
@@ -58,6 +59,7 @@ ALL = VarLookup(
     BASIC_VARS,
     CRYPTO_SUPPORTED_VARS,
     DIR_VARS,
+    FEATURE_VARS,
     BUILD_VARS,
     OPENSSL_VARS,
     PORT_VARS,
