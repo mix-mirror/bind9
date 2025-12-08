@@ -9582,11 +9582,12 @@ dbiterator_prev(dns_dbiterator_t *iterator) {
 		resume_iteration(rbtdbiter);
 	}
 
-	dereference_iter_node(rbtdbiter);
-
 	name = dns_fixedname_name(&rbtdbiter->name);
 	origin = dns_fixedname_name(&rbtdbiter->origin);
 	result = dns_rbtnodechain_prev(rbtdbiter->current, name, origin);
+
+	dereference_iter_node(rbtdbiter);
+
 	if (rbtdbiter->current == &rbtdbiter->nsec3chain &&
 	    (result == ISC_R_SUCCESS || result == DNS_R_NEWORIGIN))
 	{
