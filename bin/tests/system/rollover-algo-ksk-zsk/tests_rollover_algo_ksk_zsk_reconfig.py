@@ -85,9 +85,9 @@ def test_algoroll_ksk_zsk_reconfig_step1(tld, ns6, alg, size):
         msg1 = f"keymgr-manual-mode: block retire DNSKEY {zone}/RSASHA256/{ktag} (KSK)"
         msg2 = f"keymgr-manual-mode: block retire DNSKEY {zone}/RSASHA256/{ztag} (ZSK)"
         msg3 = f"keymgr-manual-mode: block new key generation for zone {zone} (policy {policy})"  # twice
-        ns6.log.expect(msg1)
-        ns6.log.expect(msg2)
-        ns6.log.expect(msg3)
+        assert msg1 in ns6.log
+        assert msg2 in ns6.log
+        assert len(ns6.log.grep(msg3)) >= 2
 
         # Force step.
         with ns6.watch_log_from_here() as watcher:
@@ -184,7 +184,7 @@ def test_algoroll_ksk_zsk_reconfig_step3(tld, ns6, alg, size):
         # Check logs.
         tag = keys[2].key.tag
         msg = f"keymgr-manual-mode: block transition KSK {zone}/ECDSAP256SHA256/{tag} type DS state HIDDEN to state RUMOURED"
-        ns6.log.expect(msg)
+        assert msg in ns6.log
 
         # Force step.
         with ns6.watch_log_from_here() as watcher:
@@ -259,8 +259,8 @@ def test_algoroll_ksk_zsk_reconfig_step4(tld, ns6, alg, size):
         ztag = keys[1].key.tag
         msg1 = f"keymgr-manual-mode: block transition KSK {zone}/RSASHA256/{ktag} type DNSKEY state OMNIPRESENT to state UNRETENTIVE"
         msg2 = f"keymgr-manual-mode: block transition ZSK {zone}/RSASHA256/{ztag} type DNSKEY state OMNIPRESENT to state UNRETENTIVE"
-        ns6.log.expect(msg1)
-        ns6.log.expect(msg2)
+        assert msg1 in ns6.log
+        assert msg2 in ns6.log
 
         # Force step.
         ktag = keys[3].key.tag

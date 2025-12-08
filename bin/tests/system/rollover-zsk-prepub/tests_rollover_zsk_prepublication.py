@@ -117,7 +117,7 @@ def test_zsk_prepub_step2(tld, alg, size, ns3):
         # Check logs.
         tag = keys[1].key.tag
         msg = f"keymgr-manual-mode: block ZSK rollover for key {zone}/ECDSAP256SHA256/{tag} (policy {policy})"
-        ns3.log.expect(msg)
+        assert msg in ns3.log
 
         # Force step.
         with ns3.watch_log_from_here() as watcher:
@@ -176,7 +176,7 @@ def test_zsk_prepub_step3(tld, alg, size, ns3):
         # Check logs.
         tag = keys[2].key.tag
         msg = f"keymgr-manual-mode: block transition ZSK {zone}/ECDSAP256SHA256/{tag} type ZRRSIG state HIDDEN to state RUMOURED"
-        ns3.log.expect(msg)
+        assert msg in ns3.log
 
         # Force step.
         with ns3.watch_log_from_here() as watcher:
@@ -224,7 +224,7 @@ def test_zsk_prepub_step3(tld, alg, size, ns3):
 
     # Force full resign and check all signatures have been replaced.
     with ns3.watch_log_from_here() as watcher:
-        ns3.rndc(f"sign {zone}", log=False)
+        ns3.rndc(f"sign {zone}")
         watcher.wait_for_line(f"zone_needdump: zone {zone}/IN (signed): enter")
 
     step["smooth"] = False
@@ -263,7 +263,7 @@ def test_zsk_prepub_step4(tld, alg, size, ns3):
         # Check logs.
         tag = keys[1].key.tag
         msg = f"keymgr-manual-mode: block transition ZSK {zone}/ECDSAP256SHA256/{tag} type DNSKEY state OMNIPRESENT to state UNRETENTIVE"
-        ns3.log.expect(msg)
+        assert msg in ns3.log
 
         # Force step.
         tag = keys[2].key.tag

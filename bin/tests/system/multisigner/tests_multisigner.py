@@ -11,7 +11,7 @@
 
 from datetime import timedelta
 import os
-import re
+from re import compile as Re
 
 import pytest
 
@@ -73,8 +73,8 @@ def dsfromkey(key):
         "-w",
         str(key.keyfile),
     ]
-    out = isctest.run.cmd(dsfromkey_command)
-    return out.stdout.decode("utf-8").split()
+    cmd = isctest.run.cmd(dsfromkey_command)
+    return cmd.out.split()
 
 
 def check_dnssec(server, zone, keys, expected):
@@ -102,13 +102,10 @@ def check_no_dnssec_in_journal(server, zone):
         f"{server.identifier}/{zone}.db.jnl",
     ]
 
-    out = isctest.run.cmd(journalprint)
-    contents = out.stdout.decode("utf-8")
-    pattern = re.compile(
-        r"^\s*(?:\S+\s+){4}(NSEC|NSEC3|NSEC3PARAM|RRSIG)", flags=re.MULTILINE
-    )
-    match = pattern.search(contents)
-    assert not match, f"{match.group(1)} record found in journal"
+    cmd = isctest.run.cmd(journalprint)
+    assert (
+        Re(r"^\s*(?:\S+\s+){4}(NSEC|NSEC3|NSEC3PARAM|RRSIG)") not in cmd.out
+    ), "dnssec record found in journal"
 
 
 def wait_for_serial(primary, server, zone):
@@ -181,17 +178,17 @@ def check_add_zsk(server, zone, keys, expected, extra_keys, extra, primary=None)
     isctest.log.info(
         f"- zone {zone} {server.identifier}: make sure we did not try to sign with the keys added with nsupdate"
     )
-    server.log.prohibit(f"dns_zone_findkeys: error reading ./K{zone}")
+    assert f"dns_zone_findkeys: error reading ./K{zone}" not in server.log
 
     # Trigger keymgr.
     with server.watch_log_from_here() as watcher:
-        server.rndc(f"loadkeys {zone}", log=False)
+        server.rndc(f"loadkeys {zone}")
         watcher.wait_for_line(f"keymgr: {zone} done")
 
     # Check again.
     isctest.log.info(f"- zone {zone} {server.identifier}: check again after keymgr run")
     check_dnssec(server, zone, keys + extra_keys, expected + extra)
-    server.log.prohibit(f"dns_zone_findkeys: error reading ./K{zone}")
+    assert f"dns_zone_findkeys: error reading ./K{zone}" not in server.log
 
 
 def _check_remove_zsk_fail(
@@ -223,7 +220,7 @@ def _check_remove_zsk_fail(
 
     # Trigger keymgr.
     with server.watch_log_from_here() as watcher:
-        server.rndc(f"loadkeys {zone}", log=False)
+        server.rndc(f"loadkeys {zone}")
         watcher.wait_for_line(f"keymgr: {zone} done")
 
     # Check again.
@@ -266,7 +263,7 @@ def check_remove_zsk(
 
     # Trigger keymgr.
     with server.watch_log_from_here() as watcher:
-        server.rndc(f"loadkeys {zone}", log=False)
+        server.rndc(f"loadkeys {zone}")
         watcher.wait_for_line(f"keymgr: {zone} done")
 
     # Check again.
@@ -302,7 +299,7 @@ def check_add_cdnskey(server, zone, keys, expected, extra_keys, extra, primary=N
 
     # Trigger keymgr.
     with server.watch_log_from_here() as watcher:
-        server.rndc(f"loadkeys {zone}", log=False)
+        server.rndc(f"loadkeys {zone}")
         watcher.wait_for_line(f"keymgr: {zone} done")
 
     # Check again.
@@ -339,7 +336,7 @@ def _check_remove_cdnskey_fail(
 
     # Trigger keymgr.
     with server.watch_log_from_here() as watcher:
-        server.rndc(f"loadkeys {zone}", log=False)
+        server.rndc(f"loadkeys {zone}")
         watcher.wait_for_line(f"keymgr: {zone} done")
 
     # Check again.
@@ -382,7 +379,7 @@ def check_remove_cdnskey(
 
     # Trigger keymgr.
     with server.watch_log_from_here() as watcher:
-        server.rndc(f"loadkeys {zone}", log=False)
+        server.rndc(f"loadkeys {zone}")
         watcher.wait_for_line(f"keymgr: {zone} done")
 
     # Check again.
@@ -418,7 +415,7 @@ def check_add_cds(server, zone, keys, expected, extra_keys, extra, primary=None)
 
     # Trigger keymgr.
     with server.watch_log_from_here() as watcher:
-        server.rndc(f"loadkeys {zone}", log=False)
+        server.rndc(f"loadkeys {zone}")
         watcher.wait_for_line(f"keymgr: {zone} done")
 
     # Check again.
@@ -455,7 +452,7 @@ def _check_remove_cds_fail(
 
     # Trigger keymgr.
     with server.watch_log_from_here() as watcher:
-        server.rndc(f"loadkeys {zone}", log=False)
+        server.rndc(f"loadkeys {zone}")
         watcher.wait_for_line(f"keymgr: {zone} done")
 
     # Check again.
@@ -498,7 +495,7 @@ def check_remove_cds(
 
     # Trigger keymgr.
     with server.watch_log_from_here() as watcher:
-        server.rndc(f"loadkeys {zone}", log=False)
+        server.rndc(f"loadkeys {zone}")
         watcher.wait_for_line(f"keymgr: {zone} done")
 
     # Check again.

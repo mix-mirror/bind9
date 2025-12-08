@@ -74,7 +74,7 @@ def test_rollover_enable_dnssec_step1(tld, alg, size, ns3):
 
         # Check logs.
         msg = f"keymgr-manual-mode: block new key generation for zone {zone} (policy {policy})"
-        ns3.log.expect(msg)
+        assert msg in ns3.log
 
         # Force step.
         with ns3.watch_log_from_here() as watcher:
@@ -155,7 +155,7 @@ def test_rollover_enable_dnssec_step3(tld, alg, size, ns3):
         # Check logs.
         tag = keys[0].key.tag
         msg = f"keymgr-manual-mode: block transition CSK {zone}/ECDSAP256SHA256/{tag} type DS state HIDDEN to state RUMOURED"
-        ns3.log.expect(msg)
+        assert msg in ns3.log
 
         # Force step.
         with ns3.watch_log_from_here() as watcher:

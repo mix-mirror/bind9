@@ -114,4 +114,4 @@ def test_nsec3_case(ns3):
     # Using rndc signing -nsec3param (should fail)
     isctest.log.info(f"use rndc signing -nsec3param {zone} to change NSEC3 settings")
     response = ns3.rndc(f"signing -nsec3param 1 1 12 ffff {zone}")
-    assert "zone uses dnssec-policy, use rndc dnssec command instead" in response
+    assert "zone uses dnssec-policy, use rndc dnssec command instead" in response.out

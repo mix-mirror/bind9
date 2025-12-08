@@ -58,7 +58,7 @@ def test_rollover_multisigner(ns3, alg, size):
             zone,
         ]
 
-        return isctest.run.cmd(keygen_command).stdout.decode("utf-8")
+        return isctest.run.cmd(keygen_command).out
 
     zone = "multisigner-model2.kasp"
 

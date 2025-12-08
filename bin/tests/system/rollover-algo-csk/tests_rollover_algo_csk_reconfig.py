@@ -82,8 +82,8 @@ def test_algoroll_csk_reconfig_step1(tld, ns6, alg, size):
         tag = keys[0].key.tag
         msg1 = f"keymgr-manual-mode: block retire DNSKEY {zone}/RSASHA256/{tag} (CSK)"
         msg2 = f"keymgr-manual-mode: block new key generation for zone {zone} (policy {policy})"
-        ns6.log.expect(msg1)
-        ns6.log.expect(msg2)
+        assert msg1 in ns6.log
+        assert msg2 in ns6.log
 
         # Force step.
         with ns6.watch_log_from_here() as watcher:
@@ -175,7 +175,7 @@ def test_algoroll_csk_reconfig_step3(tld, ns6, alg, size):
         # Check logs.
         tag = keys[1].key.tag
         msg = f"keymgr-manual-mode: block transition CSK {zone}/ECDSAP256SHA256/{tag} type DS state HIDDEN to state RUMOURED"
-        ns6.log.expect(msg)
+        assert msg in ns6.log
 
         # Force step.
         with ns6.watch_log_from_here() as watcher:
@@ -244,7 +244,7 @@ def test_algoroll_csk_reconfig_step4(tld, ns6, alg, size):
         # Check logs.
         tag = keys[0].key.tag
         msg = f"keymgr-manual-mode: block transition CSK {zone}/RSASHA256/{tag} type DNSKEY state OMNIPRESENT to state UNRETENTIVE"
-        ns6.log.expect(msg)
+        assert msg in ns6.log
 
         # Force step.
         tag = keys[1].key.tag

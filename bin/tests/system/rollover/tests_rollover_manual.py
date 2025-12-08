@@ -154,7 +154,7 @@ def test_rollover_manual(ns3):
     # Try to schedule a ZSK rollover for an inactive key (should fail).
     zsk = expected[3].key
     response = ns3.rndc(f"dnssec -rollover -key {zsk.tag} {zone}")
-    assert "key is not actively signing" in response
+    assert "key is not actively signing" in response.out
 
 
 def test_rollover_manual_zrrsig_rumoured(ns3):
