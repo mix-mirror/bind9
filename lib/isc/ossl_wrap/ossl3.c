@@ -127,24 +127,24 @@ generate_ec_key(EVP_PKEY **pkeyp, const int nid) {
 	/* Generate the key's parameters. */
 	pctx = EVP_PKEY_CTX_new_from_name(NULL, "EC", NULL);
 	if (pctx == NULL) {
-		CHECK(OSSL_WRAP_ERROR("EVP_PKEY_CTX_new_from_name"));
+		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_CTX_new_from_name"));
 	}
 
 	if (EVP_PKEY_paramgen_init(pctx) != 1) {
-		CHECK(OSSL_WRAP_ERROR("EVP_PKEY_paramgen_init"));
+		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_paramgen_init"));
 	}
 
 	if (EVP_PKEY_CTX_set_ec_paramgen_curve_nid(pctx, nid) != 1) {
-		CHECK(OSSL_WRAP_ERROR("EVP_PKEY_CTX_set_ec_paramgen_curve_"
+		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_CTX_set_ec_paramgen_curve_"
 				      "nid"));
 	}
 
 	if (EVP_PKEY_paramgen(pctx, &params_pkey) != 1) {
-		CHECK(OSSL_WRAP_ERROR("EVP_PKEY_paramgen"));
+		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_paramgen"));
 	}
 
 	if (params_pkey == NULL) {
-		CHECK(OSSL_WRAP_ERROR("EVP_PKEY_paramgen"));
+		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_paramgen"));
 	}
 
 	EVP_PKEY_CTX_free(pctx);
@@ -152,15 +152,15 @@ generate_ec_key(EVP_PKEY **pkeyp, const int nid) {
 	/* Generate the key. */
 	pctx = EVP_PKEY_CTX_new(params_pkey, NULL);
 	if (pctx == NULL) {
-		CHECK(OSSL_WRAP_ERROR("EVP_PKEY_CTX_new"));
+		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_CTX_new"));
 	}
 
 	if (EVP_PKEY_keygen_init(pctx) != 1) {
-		CHECK(OSSL_WRAP_ERROR("EVP_PKEY_keygen_init"));
+		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_keygen_init"));
 	}
 
 	if (EVP_PKEY_keygen(pctx, pkeyp) != 1) {
-		CHECK(OSSL_WRAP_ERROR("EVP_PKEY_keygen"));
+		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_keygen"));
 	}
 
 	result = ISC_R_SUCCESS;
@@ -185,15 +185,15 @@ generate_pkcs11_ec_key(char *uri, EVP_PKEY **pkeyp, int nid) {
 
 	pctx = EVP_PKEY_CTX_new_from_name(NULL, "EC", "provider=pkcs11");
 	if (pctx == NULL) {
-		CHECK(OSSL_WRAP_ERROR("EVP_PKEY_CTX_new_from_name"));
+		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_CTX_new_from_name"));
 	}
 
 	if (EVP_PKEY_keygen_init(pctx) != 1) {
-		CHECK(OSSL_WRAP_ERROR("EVP_PKEY_keygen_init"));
+		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_keygen_init"));
 	}
 
 	if (EVP_PKEY_CTX_set_params(pctx, params) != 1) {
-		CHECK(OSSL_WRAP_ERROR("EVP_PKEY_CTX_set_params"));
+		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_CTX_set_params"));
 	}
 
 	/*
@@ -203,12 +203,12 @@ generate_pkcs11_ec_key(char *uri, EVP_PKEY **pkeyp, int nid) {
 	 * Instead use the OpenSSL function to set the curve nid param.
 	 */
 	if (EVP_PKEY_CTX_set_ec_paramgen_curve_nid(pctx, nid) != 1) {
-		CHECK(OSSL_WRAP_ERROR("EVP_PKEY_CTX_set_ec_paramgen_curve_"
+		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_CTX_set_ec_paramgen_curve_"
 				      "nid"));
 	}
 
 	if (EVP_PKEY_generate(pctx, pkeyp) != 1) {
-		CHECK(OSSL_WRAP_ERROR("EVP_PKEY_generate"));
+		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_generate"));
 	}
 
 	result = ISC_R_SUCCESS;
@@ -224,7 +224,7 @@ validate_ec_pkey(EVP_PKEY *pkey, const char *expected) {
 	char actual[64];
 
 	if (EVP_PKEY_get_group_name(pkey, actual, sizeof(actual), NULL) != 1) {
-		CHECK(OSSL_WRAP_ERROR("EVP_PKEY_get_group_name"));
+		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_get_group_name"));
 	}
 
 	if (strcmp(expected, actual) != 0) {
@@ -251,37 +251,37 @@ load_ec_public_from_region(isc_region_t region, EVP_PKEY **pkeyp,
 
 	bld = OSSL_PARAM_BLD_new();
 	if (bld == NULL) {
-		CHECK(OSSL_WRAP_ERROR("OSSL_PARAM_BLD_new"));
+		CLEANUP(OSSL_WRAP_ERROR("OSSL_PARAM_BLD_new"));
 	}
 
 	if (OSSL_PARAM_BLD_push_utf8_string(bld, OSSL_PKEY_PARAM_GROUP_NAME,
 					    group_name, 0) != 1)
 	{
-		CHECK(OSSL_WRAP_ERROR("OSSL_PARAM_BLD_push_utf8_string"));
+		CLEANUP(OSSL_WRAP_ERROR("OSSL_PARAM_BLD_push_utf8_string"));
 	}
 
 	if (OSSL_PARAM_BLD_push_octet_string(bld, OSSL_PKEY_PARAM_PUB_KEY,
 					     buffer, region.length + 1) != 1)
 	{
-		CHECK(OSSL_WRAP_ERROR("OSSL_PARAM_BLD_push_octet_string"));
+		CLEANUP(OSSL_WRAP_ERROR("OSSL_PARAM_BLD_push_octet_string"));
 	}
 
 	params = OSSL_PARAM_BLD_to_param(bld);
 	if (params == NULL) {
-		CHECK(OSSL_WRAP_ERROR("OSSL_PARAM_BLD_to_param"));
+		CLEANUP(OSSL_WRAP_ERROR("OSSL_PARAM_BLD_to_param"));
 	}
 
 	pctx = EVP_PKEY_CTX_new_from_name(NULL, "EC", NULL);
 	if (pctx == NULL) {
-		CHECK(OSSL_WRAP_ERROR("EVP_PKEY_CTX_new_from_name"));
+		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_CTX_new_from_name"));
 	}
 
 	if (EVP_PKEY_fromdata_init(pctx) != 1) {
-		CHECK(OSSL_WRAP_ERROR("EVP_PKEY_fromdata_init"));
+		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_fromdata_init"));
 	}
 
 	if (EVP_PKEY_fromdata(pctx, pkeyp, EVP_PKEY_PUBLIC_KEY, params) != 1) {
-		CHECK(OSSL_WRAP_ERROR("EVP_PKEY_fromdata"));
+		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_fromdata"));
 	}
 
 	result = ISC_R_SUCCESS;
@@ -313,68 +313,68 @@ load_ec_secret_from_region(isc_region_t region, EVP_PKEY **pkeyp,
 	 */
 	group = EC_GROUP_new_by_curve_name(nid);
 	if (group == NULL) {
-		CHECK(OSSL_WRAP_ERROR("EC_GROUP_new_by_curve_name"));
+		CLEANUP(OSSL_WRAP_ERROR("EC_GROUP_new_by_curve_name"));
 	}
 
 	private = BN_bin2bn(region.base, region.length, NULL);
 	if (private == NULL) {
-		CHECK(OSSL_WRAP_ERROR("BN_bin2bn"));
+		CLEANUP(OSSL_WRAP_ERROR("BN_bin2bn"));
 	}
 
 	pub_point = EC_POINT_new(group);
 	if (pub_point == NULL) {
-		CHECK(OSSL_WRAP_ERROR("EC_POINT_new"));
+		CLEANUP(OSSL_WRAP_ERROR("EC_POINT_new"));
 	}
 
 	if (EC_POINT_mul(group, pub_point, private, NULL, NULL, NULL) != 1) {
-		CHECK(OSSL_WRAP_ERROR("EC_POINT_mul"));
+		CLEANUP(OSSL_WRAP_ERROR("EC_POINT_mul"));
 	}
 
 	public_len = EC_POINT_point2oct(group, pub_point,
 					POINT_CONVERSION_UNCOMPRESSED, public,
 					sizeof(public), NULL);
 	if (public_len == 0) {
-		CHECK(OSSL_WRAP_ERROR("EC_POINT_point2oct"));
+		CLEANUP(OSSL_WRAP_ERROR("EC_POINT_point2oct"));
 	}
 
 	bld = OSSL_PARAM_BLD_new();
 	if (bld == NULL) {
-		CHECK(OSSL_WRAP_ERROR("OSSL_PARAM_BLD_new"));
+		CLEANUP(OSSL_WRAP_ERROR("OSSL_PARAM_BLD_new"));
 	}
 
 	if (OSSL_PARAM_BLD_push_utf8_string(bld, OSSL_PKEY_PARAM_GROUP_NAME,
 					    group_name, 0) != 1)
 	{
-		CHECK(OSSL_WRAP_ERROR("OSSL_PARAM_BLD_push_utf8_string"));
+		CLEANUP(OSSL_WRAP_ERROR("OSSL_PARAM_BLD_push_utf8_string"));
 	}
 
 	if (OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_PRIV_KEY, private) != 1)
 	{
-		CHECK(OSSL_WRAP_ERROR("OSSL_PARAM_BLD_push_BN"));
+		CLEANUP(OSSL_WRAP_ERROR("OSSL_PARAM_BLD_push_BN"));
 	}
 
 	if (OSSL_PARAM_BLD_push_octet_string(bld, OSSL_PKEY_PARAM_PUB_KEY,
 					     public, public_len) != 1)
 	{
-		CHECK(OSSL_WRAP_ERROR("OSSL_PARAM_BLD_push_octet_string"));
+		CLEANUP(OSSL_WRAP_ERROR("OSSL_PARAM_BLD_push_octet_string"));
 	}
 
 	params = OSSL_PARAM_BLD_to_param(bld);
 	if (params == NULL) {
-		CHECK(OSSL_WRAP_ERROR("OSSL_PARAM_BLD_to_param"));
+		CLEANUP(OSSL_WRAP_ERROR("OSSL_PARAM_BLD_to_param"));
 	}
 
 	pctx = EVP_PKEY_CTX_new_from_name(NULL, "EC", NULL);
 	if (pctx == NULL) {
-		CHECK(OSSL_WRAP_ERROR("EVP_PKEY_CTX_new_from_name"));
+		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_CTX_new_from_name"));
 	}
 
 	if (EVP_PKEY_fromdata_init(pctx) != 1) {
-		CHECK(OSSL_WRAP_ERROR("EVP_PKEY_fromdata_init"));
+		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_fromdata_init"));
 	}
 
 	if (EVP_PKEY_fromdata(pctx, pkeyp, EVP_PKEY_KEYPAIR, params) != 1) {
-		CHECK(OSSL_WRAP_ERROR("EVP_PKEY_fromdata"));
+		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_fromdata"));
 	}
 
 	result = ISC_R_SUCCESS;
@@ -395,11 +395,11 @@ ec_public_region(EVP_PKEY *pkey, isc_region_t pub) {
 	BIGNUM *y = NULL;
 
 	if (EVP_PKEY_get_bn_param(pkey, OSSL_PKEY_PARAM_EC_PUB_X, &x) != 1) {
-		CHECK(OSSL_WRAP_ERROR("EVP_PKEY_get_bn_param"));
+		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_get_bn_param"));
 	}
 
 	if (EVP_PKEY_get_bn_param(pkey, OSSL_PKEY_PARAM_EC_PUB_Y, &y) != 1) {
-		CHECK(OSSL_WRAP_ERROR("EVP_PKEY_get_bn_param"));
+		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_get_bn_param"));
 	}
 
 	BN_bn2bin_fixed(x, &pub.base[0], pub.length / 2);
@@ -419,7 +419,7 @@ ec_secret_region(EVP_PKEY *pkey, isc_region_t sec) {
 	BIGNUM *priv = NULL;
 
 	if (EVP_PKEY_get_bn_param(pkey, OSSL_PKEY_PARAM_PRIV_KEY, &priv) != 1) {
-		CHECK(OSSL_WRAP_ERROR("EVP_PKEY_get_bn_param"));
+		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_get_bn_param"));
 	}
 
 	BN_bn2bin_fixed(priv, sec.base, sec.length);
@@ -448,7 +448,7 @@ isc_ossl_wrap_ecdsa_set_deterministic(EVP_PKEY_CTX *pctx, const char *hash) {
 	params[2] = OSSL_PARAM_construct_end();
 
 	if (EVP_PKEY_CTX_set_params(pctx, params) != 1) {
-		CHECK(OSSL_WRAP_ERROR("EVP_PKEY_CTX_set_params"));
+		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_CTX_set_params"));
 	}
 
 	result = ISC_R_SUCCESS;
