@@ -12,6 +12,7 @@
 import glob
 import os
 import re
+from re import compile as Re
 import shutil
 import signal
 import time
@@ -71,7 +72,7 @@ def test_xferquota(named_port, servers):
         isctest.check.rrsets_equal(ns1response.answer, ns2response.answer)
 
     query_and_compare(axfr_msg)
-    pattern = re.compile(
+    pattern = Re(
         f"transfer of 'changing/IN' from 10.53.0.1#{named_port}: "
         f"Transfer completed: .*\\(serial 2\\)"
     )

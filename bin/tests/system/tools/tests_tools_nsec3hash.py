@@ -51,16 +51,12 @@ def test_nsec3_hashes(domain, nsec3hash):
     algorithm = "1"
     iterations = "12"
 
-    output = isctest.run.cmd(
-        [NSEC3HASH, salt, algorithm, iterations, domain]
-    ).stdout.decode("utf-8")
-    assert nsec3hash in output
+    cmd = isctest.run.cmd([NSEC3HASH, salt, algorithm, iterations, domain])
+    assert nsec3hash in cmd.out
 
     flags = "0"
-    output = isctest.run.cmd(
-        [NSEC3HASH, "-r", algorithm, flags, iterations, salt, domain]
-    ).stdout.decode("utf-8")
-    assert nsec3hash in output
+    cmd = isctest.run.cmd([NSEC3HASH, "-r", algorithm, flags, iterations, salt, domain])
+    assert nsec3hash in cmd.out
 
 
 @pytest.mark.parametrize(
@@ -77,11 +73,11 @@ def test_nsec3_empty_salt(salt_emptiness_args):
     iterations = "0"
     domain = "com"
 
-    output = isctest.run.cmd(
+    cmd = isctest.run.cmd(
         [NSEC3HASH] + salt_emptiness_args + [algorithm, iterations, domain]
-    ).stdout.decode("utf-8")
-    assert "CK0POJMG874LJREF7EFN8430QVIT8BSM" in output
-    assert "salt=-" in output
+    )
+    assert "CK0POJMG874LJREF7EFN8430QVIT8BSM" in cmd.out
+    assert "salt=-" in cmd.out
 
 
 @pytest.mark.parametrize(
@@ -97,7 +93,7 @@ def test_nsec3_empty_salt_r(salt_emptiness_arg):
     iterations = "0"
     domain = "com"
 
-    output = isctest.run.cmd(
+    cmd = isctest.run.cmd(
         [
             NSEC3HASH,
             "-r",
@@ -107,8 +103,8 @@ def test_nsec3_empty_salt_r(salt_emptiness_arg):
             salt_emptiness_arg,
             domain,
         ]
-    ).stdout.decode("utf-8")
-    assert " - CK0POJMG874LJREF7EFN8430QVIT8BSM" in output
+    )
+    assert " - CK0POJMG874LJREF7EFN8430QVIT8BSM" in cmd.out
 
 
 @pytest.mark.parametrize(
@@ -144,10 +140,8 @@ def test_nsec3hash_acceptable_values(domain, it, salt_bytes) -> None:
     )
 
     # calculate the hash using nsec3hash:
-    output = isctest.run.cmd(
-        [NSEC3HASH, salt_text, "1", str(it), str(domain)]
-    ).stdout.decode("ascii")
-    hash2 = output.partition(" ")[0]
+    cmd = isctest.run.cmd([NSEC3HASH, salt_text, "1", str(it), str(domain)])
+    hash2 = cmd.out.partition(" ")[0]
 
     assert hash1 == hash2
 

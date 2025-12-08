@@ -11,14 +11,15 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
-from typing import NamedTuple, Optional
+from typing import NamedTuple
 
-import logging
 import os
+from pathlib import Path
 import re
 
-from .rndc import RNDCBinaryExecutor, RNDCException, RNDCExecutor
-from .log import info, LogFile, WatchLogFromStart, WatchLogFromHere
+from .log import WatchLogFromStart, WatchLogFromHere
+from .run import CmdResult, EnvCmd
+from .text import TextFile
 
 
 class NamedPorts(NamedTuple):
@@ -42,8 +43,6 @@ class NamedInstance:
         self,
         identifier: str,
         ports: NamedPorts = NamedPorts(),
-        rndc_logger: Optional[logging.Logger] = None,
-        rndc_executor: Optional[RNDCExecutor] = None,
     ) -> None:
         """
         `identifier` must be an `ns<X>` string, where `<X>` is an integer
@@ -52,18 +51,18 @@ class NamedInstance:
         `ports` is the `NamedPorts` instance listing the UDP/TCP ports on which
         this `named` instance is listening for various types of traffic (both
         DNS traffic and RNDC commands).
-
-        `rndc_logger` is the `logging.Logger` to use for logging RNDC
-        commands sent to this `named` instance.
-
-        `rndc_executor` is an object implementing the `RNDCExecutor` interface
-        that is used for executing RNDC commands on this `named` instance.
         """
         self.ip = self._identifier_to_ip(identifier)
         self.ports = ports
-        self.log = LogFile(os.path.join(identifier, "named.run"))
-        self._rndc_executor = rndc_executor or RNDCBinaryExecutor()
-        self._rndc_logger = rndc_logger
+        self.log = TextFile(os.path.join(identifier, "named.run"))
+
+        self._rndc_conf = Path("../_common/rndc.conf").absolute()
+        self._rndc = EnvCmd("RNDC", self.rndc_args)
+
+    @property
+    def rndc_args(self) -> str:
+        """Base arguments for calling RNDC to control the instance."""
+        return f"-c {self._rndc_conf} -s {self.ip} -p {self.ports.rndc}"
 
     @staticmethod
     def _identifier_to_ip(identifier: str) -> str:
@@ -72,52 +71,16 @@ class NamedInstance:
             raise ValueError("Invalid named instance identifier" + identifier)
         return "10.53.0." + regex_match.group("index")
 
-    def rndc(self, command: str, ignore_errors: bool = False, log: bool = True) -> str:
+    def rndc(self, command: str, timeout=10, **kwargs) -> CmdResult:
         """
         Send `command` to this named instance using RNDC.  Return the server's
         response.
 
-        If the RNDC command fails, an `RNDCException` is raised unless
-        `ignore_errors` is set to `True`.
-
-        The RNDC command will be logged to `rndc.log` (along with the server's
-        response) unless `log` is set to `False`.
-
-        ```python
-        def test_foo(servers):
-            # Send the "status" command to ns1.  An `RNDCException` will be
-            # raised if the RNDC command fails.  This command will be logged.
-            response = servers["ns1"].rndc("status")
-
-            # Send the "thaw foo" command to ns2.  No exception will be raised
-            # in case the RNDC command fails.  This command will be logged
-            # (even if it fails).
-            response = servers["ns2"].rndc("thaw foo", ignore_errors=True)
-
-            # Send the "stop" command to ns3.  An `RNDCException` will be
-            # raised if the RNDC command fails, but this command will not be
-            # logged (the server's response will still be returned to the
-            # caller, though).
-            response = servers["ns3"].rndc("stop", log=False)
-
-            # Send the "halt" command to ns4 in "fire & forget mode": no
-            # exceptions will be raised and no logging will take place (the
-            # server's response will still be returned to the caller, though).
-            response = servers["ns4"].rndc("stop", ignore_errors=True, log=False)
-        ```
+        To suppress exceptions, redirect outputs, control logging change
+        timeout etc. use keyword arguments which are passed to
+        isctest.cmd.run().
         """
-        try:
-            response = self._rndc_executor.call(self.ip, self.ports.rndc, command)
-            if log:
-                self._rndc_log(command, response)
-        except RNDCException as exc:
-            response = str(exc)
-            if log:
-                self._rndc_log(command, response)
-            if not ignore_errors:
-                raise
-
-        return response
+        return self._rndc(command, timeout=timeout, **kwargs)
 
     def watch_log_from_start(
         self, timeout: float = WatchLogFromStart.DEFAULT_TIMEOUT
@@ -137,28 +100,12 @@ class NamedInstance:
         """
         return WatchLogFromHere(self.log.path, timeout)
 
-    def reconfigure(self, **kwargs) -> None:
+    def reconfigure(self, **kwargs) -> CmdResult:
         """
         Reconfigure this named `instance` and wait until reconfiguration is
-        finished.  Raise an `RNDCException` if reconfiguration fails.
+        finished.
         """
         with self.watch_log_from_here() as watcher:
-            self.rndc("reconfig", **kwargs)
+            cmd = self.rndc("reconfig", **kwargs)
             watcher.wait_for_line("any newly configured zones are now loaded")
-
-    def _rndc_log(self, command: str, response: str) -> None:
-        """
-        Log an `rndc` invocation (and its output) to the `rndc.log` file in the
-        current working directory.
-        """
-        fmt = '%(ip)s: "%(command)s"\n%(separator)s\n%(response)s%(separator)s'
-        args = {
-            "ip": self.ip,
-            "command": command,
-            "separator": "-" * 80,
-            "response": response,
-        }
-        if self._rndc_logger is None:
-            info(fmt, args)
-        else:
-            self._rndc_logger.info(fmt, args)
+        return cmd

@@ -86,10 +86,10 @@ def verify_zone(zone, transfer):
 
     verifier = isctest.run.cmd(verify_cmd)
 
-    if verifier.returncode != 0:
+    if verifier.rc != 0:
         isctest.log.error(f"dnssec-verify {zone}. failed")
 
-    return verifier.returncode == 0
+    return verifier.rc == 0
 
 
 def test_optout(ns2):

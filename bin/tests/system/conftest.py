@@ -13,7 +13,7 @@ from functools import partial
 import filecmp
 import os
 from pathlib import Path
-import re
+from re import compile as Re
 import shutil
 import subprocess
 import tempfile
@@ -49,7 +49,7 @@ else:
 
 XDIST_WORKER = os.environ.get("PYTEST_XDIST_WORKER", "")
 FILE_DIR = os.path.abspath(Path(__file__).parent)
-ENV_RE = re.compile(b"([^=]+)=(.*)")
+ENV_RE = Re(b"([^=]+)=(.*)")
 PORT_MIN = 5001
 PORT_MAX = 32767
 PORTS_PER_TEST = 20
@@ -62,10 +62,10 @@ PRIORITY_TESTS = [
     "timeouts/",
     "upforwd/",
 ]
-PRIORITY_TESTS_RE = re.compile("|".join(PRIORITY_TESTS))
+PRIORITY_TESTS_RE = Re("|".join(PRIORITY_TESTS))
 SYSTEM_TEST_DIR_GIT_PATH = "bin/tests/system"
-SYSTEM_TEST_NAME_RE = re.compile(f"{SYSTEM_TEST_DIR_GIT_PATH}" + r"/([^/]+)")
-SYMLINK_REPLACEMENT_RE = re.compile(r"/tests(_.*)\.py")
+SYSTEM_TEST_NAME_RE = Re(f"{SYSTEM_TEST_DIR_GIT_PATH}" + r"/([^/]+)")
+SYMLINK_REPLACEMENT_RE = Re(r"/tests(_.*)\.py")
 
 # ---------------------- Module initialization ---------------------------
 
