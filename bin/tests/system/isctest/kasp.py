@@ -15,7 +15,7 @@ import glob
 import os
 from pathlib import Path
 import re
-import subprocess
+from re import compile as Re
 import time
 from typing import Dict, List, Optional, Tuple, Union
 
@@ -533,8 +533,8 @@ class Key:
             str(self.keyfile),
         ]
 
-        out = isctest.run.cmd(dsfromkey_command)
-        dsfromkey = out.stdout.decode("utf-8").split()
+        cmd = isctest.run.cmd(dsfromkey_command)
+        dsfromkey = cmd.out.split()
 
         rdata_fromfile = " ".join(dsfromkey[:7])
         rdata_fromwire = " ".join(cds[:7])
@@ -837,18 +837,14 @@ def check_dnssec_verify(server, zone, tsig=None):
                     file.write(rr.to_text())
                     file.write("\n")
 
-            try:
-                verify_command = [os.environ.get("VERIFY"), "-z", "-o", zone, zonefile]
-                verified = isctest.run.cmd(verify_command)
-            except subprocess.CalledProcessError:
-                pass
-
-        if verified:
-            break
+            verify_command = [os.environ.get("VERIFY"), "-z", "-o", zone, zonefile]
+            verified = isctest.run.cmd(verify_command, raise_on_exception=False)
+            if verified.rc == 0:
+                return
 
         time.sleep(1)
 
-    assert verified
+    assert False, "zone not verified"
 
 
 def check_dnssecstatus(server, zone, keys, policy=None, view=None, verbose=False):
@@ -863,19 +859,19 @@ def check_dnssecstatus(server, zone, keys, policy=None, view=None, verbose=False
         v = "-v "
 
     if view is None:
-        response = server.rndc(f"dnssec -status {v}{zone}", log=False)
+        response = server.rndc(f"dnssec -status {v}{zone}")
     else:
-        response = server.rndc(f"dnssec -status {v}{zone} in {view}", log=False)
+        response = server.rndc(f"dnssec -status {v}{zone} in {view}")
 
     if policy is None:
-        assert "Zone does not have dnssec-policy" in response
+        assert "Zone does not have dnssec-policy" in response.out
         return
 
-    assert f"DNSSEC status for zone '{zone}' using policy '{policy}'" in response
+    assert f"DNSSEC status for zone '{zone}' using policy '{policy}'" in response.out
 
     for key in keys:
         if not key.external:
-            assert f"{key.role()} {key.tag}" in response
+            assert f"{key.role()} {key.tag}" in response.out
 
 
 def _check_signatures(
@@ -1103,9 +1099,8 @@ def check_cdslog(server, zone, key, substr):
 
 
 def check_cdslog_prohibit(server, zone, key, substr):
-    server.log.prohibit(
-        f"{substr} for key {zone}/{key.algorithm.name}/{key.tag} is now published"
-    )
+    msg = f"{substr} for key {zone}/{key.algorithm.name}/{key.tag} is now published"
+    assert msg not in server.log
 
 
 def check_cdsdelete(rrset, expected):
@@ -1480,7 +1475,7 @@ def next_key_event_equals(server, zone, next_event):
         waitfor = rf".*zone {zone}.*: next key event in (?!3600$)(.*) seconds"
 
     with server.watch_log_from_start() as watcher:
-        watcher.wait_for_line(re.compile(waitfor))
+        watcher.wait_for_line(Re(waitfor))
 
     # WMM: The with code below is extracting the line the watcher was
     # waiting for. If WatchLog.wait_for_line()` returned the matched string,

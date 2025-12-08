@@ -15,25 +15,23 @@ import isctest
 
 
 def test_checkconf_effective():
-    proc = isctest.run.cmd([os.environ["CHECKCONF"], "-e", "effective.conf"])
-    checkconf_output = proc.stdout.decode()
-    assert "listen-on port 5353 {\n\t\t127.1.2.3/32;\n\t};" in checkconf_output
-    assert 'view "_bind" chaos {' in checkconf_output
-    assert 'remote-servers "_default_iana_root_zone_primaries" {' in checkconf_output
-    assert 'view "foo" {\n}' in checkconf_output
+    cmd = isctest.run.cmd([os.environ["CHECKCONF"], "-e", "effective.conf"])
+    assert b"listen-on port 5353 {\n\t\t127.1.2.3/32;\n\t};" in cmd.proc.stdout
+    assert 'view "_bind" chaos {' in cmd.out
+    assert 'remote-servers "_default_iana_root_zone_primaries" {' in cmd.out
+    assert b'view "foo" {\n}' in cmd.proc.stdout
 
     # builtin-trust-anchors is non documented and internal clause only, it must
     # not be visible.
-    assert "builtin-trust-anchors" not in checkconf_output
+    assert "builtin-trust-anchors" not in cmd.out
 
 
 def test_checkconf_builtin():
-    proc = isctest.run.cmd([os.environ["CHECKCONF"], "-b"])
-    checkconf_output = proc.stdout.decode()
-    assert 'listen-on  {\n\t\t"any";\n\t};' in checkconf_output
-    assert 'view "_bind" chaos {' in checkconf_output
-    assert 'remote-servers "_default_iana_root_zone_primaries" {' in checkconf_output
+    cmd = isctest.run.cmd([os.environ["CHECKCONF"], "-b"])
+    assert b'listen-on  {\n\t\t"any";\n\t};' in cmd.proc.stdout
+    assert 'view "_bind" chaos {' in cmd.out
+    assert 'remote-servers "_default_iana_root_zone_primaries" {' in cmd.out
 
     # builtin-trust-anchors is non documented and internal clause only, it must
     # not be visible.
-    assert "builtin-trust-anchors" not in checkconf_output
+    assert "builtin-trust-anchors" not in cmd.out

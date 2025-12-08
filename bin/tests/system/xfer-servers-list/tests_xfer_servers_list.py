@@ -9,7 +9,7 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
-import re
+from re import compile as Re
 
 import isctest
 
@@ -32,7 +32,7 @@ def wait_for_initial_xfrin(ns):
 
 
 def wait_for_sending_notify(ns1, ns, key_name):
-    pattern = re.compile(
+    pattern = Re(
         f"zone test/IN: sending notify to {ns.ip}#[0-9]+ : TSIG \\({key_name}\\)"
     )
     with ns1.watch_log_from_start() as watcher:

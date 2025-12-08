@@ -11,6 +11,7 @@
 
 import os
 import shutil
+import subprocess
 import time
 
 from datetime import timedelta
@@ -200,7 +201,7 @@ def cb_ixfr_is_signed(expected_updates, params, ksks=None, zsks=None):
         f"expected updates {expected_updates} policy {policy} ksks {ksks} zsks {zsks}"
     )
     shutil.copyfile(f"ns2/{zone}.db.in2", f"ns2/{zone}.db")
-    servers["ns2"].rndc(f"reload {zone}", log=False)
+    servers["ns2"].rndc(f"reload {zone}")
 
     def update_is_signed():
         parts = update.split()
@@ -314,7 +315,7 @@ def cb_remove_keyfiles(params, ksks=None, zsks=None):
         os.remove(k.statefile)
 
     with servers["ns3"].watch_log_from_here() as watcher:
-        servers["ns3"].rndc(f"loadkeys {zone}", log=False)
+        servers["ns3"].rndc(f"loadkeys {zone}")
         watcher.wait_for_line(
             f"zone {zone}/IN (signed): zone_rekey:zone_verifykeys failed: some key files are missing"
         )
@@ -806,9 +807,9 @@ def test_kasp_inherit_view(number, dynamic, inline_signing, txt_rdata, ns4):
     isctest.kasp.check_dnssecstatus(ns4, zone, keys, policy=policy, view=view)
     isctest.kasp.check_apex(ns4, zone, keys, [], tsig=tsig)
     # check zonestatus
-    response = ns4.rndc(f"zonestatus {zone} in {view}", log=False)
-    assert f"dynamic: {dynamic}" in response
-    assert f"inline signing: {inline_signing}" in response
+    response = ns4.rndc(f"zonestatus {zone} in {view}")
+    assert f"dynamic: {dynamic}" in response.out
+    assert f"inline signing: {inline_signing}" in response.out
     # check subdomain
     fqdn = f"{zone}."
     qname = f"view.{zone}."
@@ -869,7 +870,7 @@ def test_kasp_default(ns3):
     state_stat = os.stat(key.statefile)
 
     with ns3.watch_log_from_here() as watcher:
-        ns3.rndc(f"loadkeys {zone}", log=False)
+        ns3.rndc(f"loadkeys {zone}")
         watcher.wait_for_line(f"keymgr: {zone} done")
 
     assert privkey_stat.st_mtime == os.stat(key.privatefile).st_mtime
@@ -878,7 +879,7 @@ def test_kasp_default(ns3):
 
     # again
     with ns3.watch_log_from_here() as watcher:
-        ns3.rndc(f"loadkeys {zone}", log=False)
+        ns3.rndc(f"loadkeys {zone}")
         watcher.wait_for_line(f"keymgr: {zone} done")
 
     assert privkey_stat.st_mtime == os.stat(key.privatefile).st_mtime
@@ -888,7 +889,7 @@ def test_kasp_default(ns3):
     # modify unsigned zone file and check that new record is signed.
     isctest.log.info("check that an updated zone signs the new record")
     shutil.copyfile("ns3/template2.db.in", f"ns3/{zone}.db")
-    ns3.rndc(f"reload {zone}", log=False)
+    ns3.rndc(f"reload {zone}")
 
     def update_is_signed():
         parts = update.split()
@@ -909,7 +910,7 @@ def test_kasp_default(ns3):
     shutil.move(f"{key.privatefile}", f"{key.path}.offline")
     expectmsg = "zone_rekey:zone_verifykeys failed: some key files are missing"
     with ns3.watch_log_from_here() as watcher:
-        ns3.rndc(f"loadkeys {zone}", log=False)
+        ns3.rndc(f"loadkeys {zone}")
         watcher.wait_for_line(f"zone {zone}/IN (signed): {expectmsg}")
     # Nothing has changed.
     expected[0].private = False  # noqa
@@ -986,7 +987,7 @@ def test_kasp_dynamic(ns3):
     # Update zone with freeze/thaw.
     isctest.log.info("check dynamic zone is updated and signed after freeze and thaw")
     with ns3.watch_log_from_here() as watcher:
-        ns3.rndc(f"freeze {zone}", log=False)
+        ns3.rndc(f"freeze {zone}")
         watcher.wait_for_line(f"freezing zone '{zone}/IN': success")
 
     time.sleep(1)
@@ -995,7 +996,7 @@ def test_kasp_dynamic(ns3):
     time.sleep(1)
 
     with ns3.watch_log_from_here() as watcher:
-        ns3.rndc(f"thaw {zone}", log=False)
+        ns3.rndc(f"thaw {zone}")
         watcher.wait_for_line(f"thawing zone '{zone}/IN': success")
 
     expected_updates = [f"a.{zone}. A 10.0.0.1", f"d.{zone}. A 10.0.0.44"]
@@ -1025,7 +1026,7 @@ def test_kasp_dynamic(ns3):
         "check dynamic inline-signed zone is updated and signed after freeze and thaw"
     )
     with ns3.watch_log_from_here() as watcher:
-        ns3.rndc(f"freeze {zone}", log=False)
+        ns3.rndc(f"freeze {zone}")
         watcher.wait_for_line(f"freezing zone '{zone}/IN': success")
 
     time.sleep(1)
@@ -1033,7 +1034,7 @@ def test_kasp_dynamic(ns3):
     time.sleep(1)
 
     with ns3.watch_log_from_here() as watcher:
-        ns3.rndc(f"thaw {zone}", log=False)
+        ns3.rndc(f"thaw {zone}")
         watcher.wait_for_line(f"thawing zone '{zone}/IN': success")
 
     expected_updates = [f"a.{zone}. A 10.0.0.11", f"d.{zone}. A 10.0.0.44"]
@@ -1090,7 +1091,7 @@ def test_kasp_checkds(ns3):
     ksk = ksks[0]
 
     isctest.log.info("check if checkds -publish correctly sets DSPublish")
-    ns3.rndc(f"dnssec -checkds -when {now} published {zone}", log=False)
+    ns3.rndc(f"dnssec -checkds -when {now} published {zone}")
     metadata = f"DSPublish: {now}"
     isctest.run.retry_with_timeout(wait_for_metadata, timeout=3)
     expected[0].metadata["DSState"] = "rumoured"
@@ -1098,7 +1099,7 @@ def test_kasp_checkds(ns3):
     isctest.kasp.check_keys(zone, keys, expected)
 
     isctest.log.info("check if checkds -withdrawn correctly sets DSRemoved")
-    ns3.rndc(f"dnssec -checkds -when {now} withdrawn {zone}", log=False)
+    ns3.rndc(f"dnssec -checkds -when {now} withdrawn {zone}")
     metadata = f"DSRemoved: {now}"
     isctest.run.retry_with_timeout(wait_for_metadata, timeout=3)
     expected[0].metadata["DSState"] = "unretentive"
@@ -1138,8 +1139,8 @@ def test_kasp_checkds_doubleksk(ns3):
     isctest.log.info("check invalid checkds commands")
 
     def check_error():
-        response = ns3.rndc(test["command"], log=False)
-        assert test["error"] in response
+        response = ns3.rndc(test["command"], stderr=subprocess.STDOUT)
+        assert test["error"] in response.out
 
     test_cases = [
         {
@@ -1163,7 +1164,7 @@ def test_kasp_checkds_doubleksk(ns3):
         check_error()
 
     isctest.log.info("check if checkds -publish -key correctly sets DSPublish")
-    ns3.rndc(f"dnssec -checkds -when {now} -key {ksk.tag} published {zone}", log=False)
+    ns3.rndc(f"dnssec -checkds -when {now} -key {ksk.tag} published {zone}")
     metadata = f"DSPublish: {now}"
     isctest.run.retry_with_timeout(wait_for_metadata, timeout=3)
     expected[0].metadata["DSState"] = "rumoured"
@@ -1172,7 +1173,7 @@ def test_kasp_checkds_doubleksk(ns3):
 
     isctest.log.info("check if checkds -withdrawn -key correctly sets DSRemoved")
     ksk = ksks[1]
-    ns3.rndc(f"dnssec -checkds -when {now} -key {ksk.tag} withdrawn {zone}", log=False)
+    ns3.rndc(f"dnssec -checkds -when {now} -key {ksk.tag} withdrawn {zone}")
     metadata = f"DSRemoved: {now}"
     isctest.run.retry_with_timeout(wait_for_metadata, timeout=3)
     expected[1].metadata["DSState"] = "unretentive"
@@ -1205,7 +1206,7 @@ def test_kasp_checkds_csk(ns3):
     ksk = keys[0]
 
     isctest.log.info("check if checkds -publish csk correctly sets DSPublish")
-    ns3.rndc(f"dnssec -checkds -when {now} published {zone}", log=False)
+    ns3.rndc(f"dnssec -checkds -when {now} published {zone}")
     metadata = f"DSPublish: {now}"
     isctest.run.retry_with_timeout(wait_for_metadata, timeout=3)
     expected[0].metadata["DSState"] = "rumoured"
@@ -1213,7 +1214,7 @@ def test_kasp_checkds_csk(ns3):
     isctest.kasp.check_keys(zone, keys, expected)
 
     isctest.log.info("check if checkds -withdrawn csk correctly sets DSRemoved")
-    ns3.rndc(f"dnssec -checkds -when {now} withdrawn {zone}", log=False)
+    ns3.rndc(f"dnssec -checkds -when {now} withdrawn {zone}")
     metadata = f"DSRemoved: {now}"
     isctest.run.retry_with_timeout(wait_for_metadata, timeout=3)
     expected[0].metadata["DSState"] = "unretentive"
@@ -1282,7 +1283,7 @@ def test_kasp_dnssec_keygen():
             zone,
         ]
 
-        return isctest.run.cmd(keygen_command).stdout.decode("utf-8")
+        return isctest.run.cmd(keygen_command).out
 
     isctest.log.info(
         "check that 'dnssec-keygen -k' (configured policy) created valid files"
@@ -1327,7 +1328,7 @@ def test_kasp_dnssec_keygen():
         str(publish),
         key.path,
     ]
-    out = isctest.run.cmd(settime).stdout.decode("utf-8")
+    isctest.run.cmd(settime)
 
     isctest.check.file_contents_equal(f"{key.statefile}", f"{key.statefile}.backup")
     assert key.get_metadata("Publish", file=key.privatefile) == str(publish)
@@ -1378,7 +1379,7 @@ def test_kasp_dnssec_keygen():
         str(now),
         key.path,
     ]
-    out = isctest.run.cmd(settime).stdout.decode("utf-8")
+    isctest.run.cmd(settime)
     isctest.kasp.check_keys("kasp", keys, expected)
     isctest.kasp.check_keytimes(keys, expected)
 
@@ -1415,7 +1416,7 @@ def test_kasp_dnssec_keygen():
         str(now),
         key.path,
     ]
-    out = isctest.run.cmd(settime).stdout.decode("utf-8")
+    isctest.run.cmd(settime)
     isctest.kasp.check_keys("kasp", keys, expected)
     isctest.kasp.check_keytimes(keys, expected)
 
@@ -1463,7 +1464,7 @@ def test_kasp_dnssec_keygen():
         str(soon),
         key.path,
     ]
-    out = isctest.run.cmd(settime).stdout.decode("utf-8")
+    isctest.run.cmd(settime)
     isctest.kasp.check_keys("kasp", keys, expected)
     isctest.kasp.check_keytimes(keys, expected)
 
@@ -1597,11 +1598,11 @@ def test_kasp_zsk_retired(ns3):
 
     # Load again, make sure the purged key is not an issue when verifying keys.
     with ns3.watch_log_from_here() as watcher:
-        ns3.rndc(f"loadkeys {zone}", log=False)
+        ns3.rndc(f"loadkeys {zone}")
         watcher.wait_for_line(f"keymgr: {zone} done")
 
     msg = f"zone {zone}/IN (signed): zone_rekey:zone_verifykeys failed: some key files are missing"
-    ns3.log.prohibit(msg)
+    assert msg not in ns3.log
 
 
 def test_kasp_purge_keys(ns4):
@@ -1621,14 +1622,14 @@ def test_kasp_purge_keys(ns4):
     # Reconfig, make sure the purged key is not an issue when verifying keys.
     shutil.copyfile("ns4/purgekeys2.conf", "ns4/purgekeys.conf")
     with ns4.watch_log_from_here() as watcher:
-        ns4.rndc("reconfig", log=False)
+        ns4.rndc("reconfig")
         watcher.wait_for_line(f"keymgr: {zone} done")
 
     msg = f"zone {zone}/IN/example1 (signed): zone_rekey:zone_verifykeys failed: some key files are missing"
-    ns4.log.prohibit(msg)
+    assert msg not in ns4.log
 
     msg = f"zone {zone}/IN/example2 (signed): zone_rekey:zone_verifykeys failed: some key files are missing"
-    ns4.log.prohibit(msg)
+    assert msg not in ns4.log
 
 
 def test_kasp_reload_restart(ns6):
@@ -1667,7 +1668,7 @@ def test_kasp_reload_restart(ns6):
 
     shutil.copyfile(f"ns6/{zone}2.db.in", f"ns6/{zone}.db")
     with ns6.watch_log_from_here() as watcher:
-        ns6.rndc("reload", log=False)
+        ns6.rndc("reload")
         watcher.wait_for_line("all zones loaded")
 
     newttl = 300
@@ -1730,7 +1731,7 @@ def test_kasp_manual_mode(ns3):
     # Key rollover should have been be blocked.
     tag = expected[1].key.tag
     blockmsg = f"keymgr-manual-mode: block ZSK rollover for key {zone}/ECDSAP256SHA256/{tag} (policy {policy})"
-    ns3.log.expect(blockmsg)
+    assert blockmsg in ns3.log
 
     # Remove files.
     for key in ksks + zsks:
@@ -1744,7 +1745,7 @@ def test_kasp_manual_mode(ns3):
 
     # Force step.
     with ns3.watch_log_from_here() as watcher:
-        ns3.rndc(f"dnssec -step {zone}", log=False)
+        ns3.rndc(f"dnssec -step {zone}")
         watcher.wait_for_line(
             f"zone {zone}/IN (signed): zone_rekey:zone_verifykeys failed: some key files are missing"
         )
@@ -1757,7 +1758,7 @@ def test_kasp_manual_mode(ns3):
 
     # Load keys.
     with ns3.watch_log_from_here() as watcher:
-        ns3.rndc(f"loadkeys {zone}", log=False)
+        ns3.rndc(f"loadkeys {zone}")
         watcher.wait_for_line(blockmsg)
 
     # Check keys again, make sure no new keys are created.
@@ -1768,7 +1769,7 @@ def test_kasp_manual_mode(ns3):
 
     # Force step.
     with ns3.watch_log_from_here() as watcher:
-        ns3.rndc(f"dnssec -step {zone}", log=False)
+        ns3.rndc(f"dnssec -step {zone}")
         watcher.wait_for_line(
             f"zone {zone}/IN (signed): zone_rekey done: key {tag}/ECDSAP256SHA256"
         )

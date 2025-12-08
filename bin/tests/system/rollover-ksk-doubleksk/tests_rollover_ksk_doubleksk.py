@@ -110,7 +110,7 @@ def test_ksk_doubleksk_step2(tld, alg, size, ns3):
         # Check logs.
         tag = keys[1].key.tag
         msg = f"keymgr-manual-mode: block KSK rollover for key {zone}/ECDSAP256SHA256/{tag} (policy {policy})"
-        ns3.log.expect(msg)
+        assert msg in ns3.log
 
         # Force step.
         with ns3.watch_log_from_here() as watcher:
@@ -171,7 +171,7 @@ def test_ksk_doubleksk_step3(tld, alg, size, ns3):
         # Check logs.
         tag = keys[2].key.tag
         msg = f"keymgr-manual-mode: block transition KSK {zone}/ECDSAP256SHA256/{tag} type DS state HIDDEN to state RUMOURED"
-        ns3.log.expect(msg)
+        assert msg in ns3.log
 
         # Force step.
         with ns3.watch_log_from_here() as watcher:
@@ -252,8 +252,8 @@ def test_ksk_doubleksk_step4(tld, alg, size, ns3):
         tag = keys[1].key.tag
         msg1 = f"keymgr-manual-mode: block transition KSK {zone}/ECDSAP256SHA256/{tag} type DNSKEY state OMNIPRESENT to state UNRETENTIVE"
         msg2 = f"keymgr-manual-mode: block transition KSK {zone}/ECDSAP256SHA256/{tag} type KRRSIG state OMNIPRESENT to state UNRETENTIVE"
-        ns3.log.expect(msg1)
-        ns3.log.expect(msg2)
+        assert msg1 in ns3.log
+        assert msg2 in ns3.log
 
         # Force step.
         tag = keys[2].key.tag

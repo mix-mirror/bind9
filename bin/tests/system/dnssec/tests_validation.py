@@ -9,8 +9,8 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
+from re import compile as Re
 import os
-import re
 import shutil
 import time
 
@@ -52,14 +52,6 @@ pytestmark = pytest.mark.extra_artifacts(
         "*/*.unsplit",
     ]
 )
-
-
-# helper functions
-def grep_q(regex, filename):
-    with open(filename, "r", encoding="utf-8") as f:
-        blob = f.read().splitlines()
-    results = [x for x in blob if re.search(regex, x)]
-    return len(results) != 0
 
 
 def getfrom(file):
@@ -142,10 +134,9 @@ def test_secure_root(ns4):
     # check that "rndc secroots" dumps the trusted keys
     key = int(getfrom("ns1/managed.key.id"))
     alg = os.environ["DEFAULT_ALGORITHM"]
-    expected = f"./{alg}/{key} ; static"
-    response = ns4.rndc("secroots -", log=False).splitlines()
-    assert expected in response
-    assert len(response) == 10
+    response = ns4.rndc("secroots -")
+    assert f"./{alg}/{key} ; static" in response.out
+    assert len(response.out.splitlines()) == 10
 
 
 def test_positive_validation_nsec():
@@ -501,13 +492,10 @@ def test_negative_validation_nsec3():
     isctest.check.servfail(res2)
 
 
-def test_excessive_nsec3_iterations():
-    assert grep_q(
-        "zone too-many-iterations/IN: excessive NSEC3PARAM iterations", "ns2/named.run"
-    )
-    assert grep_q(
-        "zone too-many-iterations/IN: excessive NSEC3PARAM iterations", "ns3/named.run"
-    )
+def test_excessive_nsec3_iterations(ns2, ns3):
+    msg = "zone too-many-iterations/IN: excessive NSEC3PARAM iterations"
+    assert msg in ns2.log
+    assert msg in ns3.log
 
     # check fallback to insecure with NSEC3 iterations is too high
     msg = isctest.query.create("does-not-exist.too-many-iterations", "A")
@@ -720,11 +708,12 @@ def test_negative_validation_optout():
 
 def test_cache(ns4):
     # check that key id's are logged when dumping the cache
-    ns4.rndc("dumpdb -cache", log=False)
-    assert grep_q("; key id = ", "ns4/named_dump.db")
+    ns4.rndc("dumpdb -cache")
+    dumpdb = isctest.text.TextFile("ns4/named_dump.db")
+    assert "; key id = " in dumpdb
 
     # check for RRSIG covered type in negative cache
-    assert grep_q("; example. RRSIG NSEC ", "ns4/named_dump.db")
+    assert "; example. RRSIG NSEC " in dumpdb
 
     # check validated data are not cached longer than originalttl
     msg = isctest.query.create("a.ttlpatch.example", "A")
@@ -821,7 +810,7 @@ def test_insecure_proof_nsec(ns4):
     isctest.check.noadflag(res2)
 
     # insecurity proof using negative cache
-    ns4.rndc("flush", log=False)
+    ns4.rndc("flush")
     msg = isctest.query.create("insecure.example", "DS", cd=True)
     isctest.query.tcp(msg, "10.53.0.4")
 
@@ -951,15 +940,16 @@ def test_validation_recovery(ns2, ns4):
     msg = isctest.query.create("target.peer-ns-spoof", "A", cd=True)
     res = isctest.query.tcp(msg, "10.53.0.4")
     isctest.check.servfail(res)
-    ns4.rndc("dumpdb", log=False)
-    grep_q("10.53.0.100", "ns4/named_dump.db")
+    ns4.rndc("dumpdb")
+    dumpdb = isctest.text.TextFile("ns4/named_dump.db")
+    assert "10.53.0.100" in dumpdb
 
     # then reload server with properly signed zone
     shutil.copyfile(
         "ns2/peer.peer-ns-spoof.db.next", "ns2/peer.peer-ns-spoof.db.signed"
     )
     with ns2.watch_log_from_here() as watcher:
-        ns2.rndc("reload peer.peer-ns-spoof", log=False)
+        ns2.rndc("reload peer.peer-ns-spoof")
         watcher.wait_for_line("zone peer.peer-ns-spoof/IN: loaded serial 2000042408")
 
     # and check we can resolve with the correct server address
@@ -980,7 +970,7 @@ def test_validation_recovery(ns2, ns4):
         "ns2/dnskey-rrsigs-stripped.db.next", "ns2/dnskey-rrsigs-stripped.db.signed"
     )
     with ns2.watch_log_from_here() as watcher:
-        ns2.rndc("reload dnskey-rrsigs-stripped", log=False)
+        ns2.rndc("reload dnskey-rrsigs-stripped")
         watcher.wait_for_line(
             "zone dnskey-rrsigs-stripped/IN: loaded serial 2000042408"
         )
@@ -1004,7 +994,7 @@ def test_validation_recovery(ns2, ns4):
         "ns2/ds-rrsigs-stripped.db.next", "ns2/ds-rrsigs-stripped.db.signed"
     )
     with ns2.watch_log_from_here() as watcher:
-        ns2.rndc("reload ds-rrsigs-stripped", log=False)
+        ns2.rndc("reload ds-rrsigs-stripped")
         watcher.wait_for_line("zone ds-rrsigs-stripped/IN: loaded serial 2000042408")
 
     # and check we can now resolve with the correct server address
@@ -1015,7 +1005,7 @@ def test_validation_recovery(ns2, ns4):
     isctest.check.adflag(res2)
 
     # check recovery with mismatching NS
-    ns4.rndc("flush", log=False)
+    ns4.rndc("flush")
     msg = isctest.query.create("inconsistent", "NS", dnssec=False, cd=True)
     res = isctest.query.tcp(msg, "10.53.0.4")
     isctest.check.noadflag(res)
@@ -1083,7 +1073,7 @@ def test_transitions():
 
 def test_validating_forwarder(ns4, ns9):
     # check validating forwarder behavior with mismatching NS
-    ns4.rndc("flush", log=False)
+    ns4.rndc("flush")
     msg = isctest.query.create("inconsistent", "NS", dnssec=False, cd=True)
     res = isctest.query.tcp(msg, "10.53.0.9")
     isctest.check.noerror(res)
@@ -1107,7 +1097,7 @@ def test_validating_forwarder(ns4, ns9):
     isctest.check.adflag(res)
 
     # check validating forwarder sends CD to validate with a local trust anchor
-    ns4.rndc("flush", log=False)
+    ns4.rndc("flush")
     msg = isctest.query.create("localkey.example", "SOA")
     res = isctest.query.tcp(msg, "10.53.0.4")
     isctest.check.servfail(res)
@@ -1136,7 +1126,7 @@ def test_expired_signatures(ns4):
     isctest.check.servfail(res)
     isctest.check.noadflag(res)
     isctest.check.ede(res, EDECode.SIGNATURE_EXPIRED)
-    assert grep_q("expired.example/.*: RRSIG has expired", "ns4/named.run")
+    assert Re("expired.example/.*: RRSIG has expired") in ns4.log
 
     # check future signatures do not validate
     msg = isctest.query.create("future.example", "SOA")
@@ -1144,9 +1134,7 @@ def test_expired_signatures(ns4):
     isctest.check.servfail(res)
     isctest.check.noadflag(res)
     isctest.check.ede(res, EDECode.SIGNATURE_NOT_YET_VALID)
-    assert grep_q(
-        "future.example/.*: RRSIG validity period has not begun", "ns4/named.run"
-    )
+    assert Re("future.example/.*: RRSIG validity period has not begun") in ns4.log
 
     # check that a dynamic zone with future signatures is re-signed on load
     msg = isctest.query.create("managed-future.example", "A")
@@ -1155,7 +1143,7 @@ def test_expired_signatures(ns4):
     isctest.check.noerror(res)
 
     # test TTL is capped at RRSIG expiry time
-    ns4.rndc("flush", log=False)
+    ns4.rndc("flush")
     msg = isctest.query.create("expiring.example", "SOA", cd=True)
     res1 = isctest.query.tcp(msg, "10.53.0.4")
     msg = isctest.query.create("expiring.example", "SOA")
@@ -1166,7 +1154,7 @@ def test_expired_signatures(ns4):
         assert rrset.ttl <= 60
 
     # test TTL is capped at RRSIG expiry time in the additional section (NS)
-    ns4.rndc("flush", log=False)
+    ns4.rndc("flush")
     msg = isctest.query.create("expiring.example", "NS", cd=True)
     res1 = isctest.query.tcp(msg, "10.53.0.4")
     msg = isctest.query.create("expiring.example", "NS")
@@ -1177,7 +1165,7 @@ def test_expired_signatures(ns4):
         assert rrset.ttl <= 60
 
     # test TTL is capped at RRSIG expiry time in the additional section (MX)
-    ns4.rndc("flush", log=False)
+    ns4.rndc("flush")
     msg = isctest.query.create("expiring.example", "MX", cd=True)
     res1 = isctest.query.tcp(msg, "10.53.0.4")
     msg = isctest.query.create("expiring.example", "MX")
@@ -1265,7 +1253,7 @@ def test_pending_ds(ns4):
     # a negative cache entry with trust level "pending" for the DS.  prime
     # with a +cd DS query to produce the negative cache entry, then send a
     # query that uses that entry as part of the validation process.
-    ns4.rndc("flush", log=False)
+    ns4.rndc("flush")
     msg = isctest.query.create("insecure.example", "DS", cd=True)
     res = isctest.query.tcp(msg, "10.53.0.4")
     isctest.check.noerror(res)

@@ -22,18 +22,20 @@ def test_resolver_cache_reloadfails(ns1, templates):
     isctest.check.noerror(res)
     assert res.answer[0].ttl == 300
     templates.render("ns1/named.conf", {"wrongoption": True})
-    try:
-        # The first reload fails, and the old cache list will be preserved
-        ns1.rndc("reload")
-    except isctest.rndc.RNDCException:
-        templates.render("ns1/named.conf", {"wrongoption": False})
-        # The second reload succeed, and the cache is still there, as preserved
-        # from the old cache list
-        ns1.rndc("reload")
-        time.sleep(3)
-        msg = isctest.query.create("www.example.org.", "A")
-        res = isctest.query.udp(msg, "10.53.0.1")
-        isctest.check.noerror(res)
-        # The ttl being lower than 300 (provided by fake authoritative) proves
-        # the cache is still in use
-        assert res.answer[0].ttl < 300
+
+    # The first reload fails, and the old cache list will be preserved
+    cmd = ns1.rndc("reload", raise_on_exception=False)
+    assert cmd.rc != 0
+
+    templates.render("ns1/named.conf", {"wrongoption": False})
+    # The second reload succeed, and the cache is still there, as preserved
+    # from the old cache list
+    ns1.rndc("reload")
+    time.sleep(3)
+    msg = isctest.query.create("www.example.org.", "A")
+    res = isctest.query.udp(msg, "10.53.0.1")
+    isctest.check.noerror(res)
+
+    # The ttl being lower than 300 (provided by fake authoritative) proves
+    # the cache is still in use
+    assert res.answer[0].ttl < 300

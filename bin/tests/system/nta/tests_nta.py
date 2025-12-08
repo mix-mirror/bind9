@@ -10,15 +10,10 @@
 # information regarding copyright ownership.
 
 import os
-import re
+from re import compile as Re
 import time
 
 import isctest
-
-
-# helper functions
-def hasmatch(regex, blob):
-    return re.search(regex, blob, flags=re.MULTILINE)
 
 
 def active(blob):
@@ -48,8 +43,8 @@ def test_initial():
 
 def test_nta_validate_except(servers):
     ns4 = servers["ns4"]
-    response = ns4.rndc("secroots -", log=False)
-    assert hasmatch("^corp: permanent", response)
+    response = ns4.rndc("secroots -")
+    assert Re("^corp: permanent") in response.out
 
     # check insecure local domain works with validate-except
     m = isctest.query.create("www.corp", "NS")
@@ -62,41 +57,39 @@ def test_nta_bogus_lifetimes(servers):
     ns4 = servers["ns4"]
 
     # no nta lifetime specified:
-    response = ns4.rndc("nta -l '' foo", ignore_errors=True, log=False)
-    assert "'nta' failed: bad ttl" in response
+    response = ns4.rndc("nta -l '' foo", raise_on_exception=False)
+    assert "'nta' failed: bad ttl" in response.err
 
     # bad nta lifetime:
-    response = ns4.rndc("nta -l garbage foo", ignore_errors=True, log=False)
-    assert "'nta' failed: bad ttl" in response
+    response = ns4.rndc("nta -l garbage foo", raise_on_exception=False)
+    assert "'nta' failed: bad ttl" in response.err
 
     # excessive nta lifetime:
-    response = ns4.rndc("nta -l 7d1h foo", ignore_errors=True, log=False)
-    assert "'nta' failed: out of range" in response
+    response = ns4.rndc("nta -l 7d1h foo", raise_on_exception=False)
+    assert "'nta' failed: out of range" in response.err
 
 
 def test_nta_install(servers):
     global start
 
     ns4 = servers["ns4"]
-    ns4.rndc("nta -f -l 20s bogus.example", log=False)
-    ns4.rndc("nta badds.example", log=False)
+    ns4.rndc("nta -f -l 20s bogus.example")
+    ns4.rndc("nta badds.example")
 
     # NTAs should persist after reconfig
-    with ns4.watch_log_from_here() as watcher:
-        ns4.reconfigure(log=False)
-        watcher.wait_for_line("any newly configured zones are now loaded")
+    ns4.reconfigure()
 
-    response = ns4.rndc("nta -d", log=False)
-    assert len(response.splitlines()) == 3
+    response = ns4.rndc("nta -d")
+    assert len(response.out.splitlines()) == 3
 
-    ns4.rndc("nta secure.example", log=False)
-    ns4.rndc("nta fakenode.secure.example", log=False)
+    ns4.rndc("nta secure.example")
+    ns4.rndc("nta fakenode.secure.example")
     with ns4.watch_log_from_here() as watcher:
-        ns4.rndc("reload", log=False)
+        ns4.rndc("reload")
         watcher.wait_for_line("all zones loaded")
 
-    response = ns4.rndc("nta -d", log=False)
-    assert len(response.splitlines()) == 5
+    response = ns4.rndc("nta -d")
+    assert len(response.out.splitlines()) == 5
 
     start = time.time()
 
@@ -125,11 +118,11 @@ def test_nta_behavior(servers):
     isctest.check.noadflag(res)
 
     ns4 = servers["ns4"]
-    response = ns4.rndc("secroots -", log=False)
-    assert hasmatch("^bogus.example: expiry", response)
-    assert hasmatch("^badds.example: expiry", response)
-    assert hasmatch("^secure.example: expiry", response)
-    assert hasmatch("^fakenode.secure.example: expiry", response)
+    response = ns4.rndc("secroots -")
+    assert Re("^bogus.example: expiry") in response.out
+    assert Re("^badds.example: expiry") in response.out
+    assert Re("^secure.example: expiry") in response.out
+    assert Re("^fakenode.secure.example: expiry") in response.out
 
     # secure.example and badds.example used the default nta-duration
     # (configured as 12s in ns4/named1.conf), but the nta recheck interval
@@ -162,12 +155,12 @@ def test_nta_behavior(servers):
     if delay > 0:
         time.sleep(delay)
 
-    response = ns4.rndc("nta -d", log=False)
-    assert active(response) <= 2
+    response = ns4.rndc("nta -d")
+    assert active(response.out) <= 2
 
-    response = ns4.rndc("secroots -", log=False)
-    assert hasmatch("bogus.example: expiry", response)
-    assert not hasmatch("badds.example: expiry", response)
+    response = ns4.rndc("secroots -")
+    assert Re("bogus.example: expiry") in response.out
+    assert Re("badds.example: expiry") not in response.out
 
     m = isctest.query.create("b.bogus.example", "A")
     res = isctest.query.tcp(m, "10.53.0.4")
@@ -188,8 +181,8 @@ def test_nta_behavior(servers):
     if delay > 0:
         time.sleep(delay)
 
-    response = ns4.rndc("nta -d", log=False)
-    assert active(response) == 0
+    response = ns4.rndc("nta -d")
+    assert active(response.out) == 0
 
     m = isctest.query.create("d.secure.example", "A")
     res = isctest.query.tcp(m, "10.53.0.4")
@@ -204,31 +197,31 @@ def test_nta_behavior(servers):
 
 def test_nta_removals(servers):
     ns4 = servers["ns4"]
-    ns4.rndc("nta badds.example", log=False)
+    ns4.rndc("nta badds.example")
 
-    response = ns4.rndc("nta -d", log=False)
-    assert hasmatch("^badds.example/_default: expiry", response)
+    response = ns4.rndc("nta -d")
+    assert Re("^badds.example/_default: expiry") in response.out
 
     m = isctest.query.create("a.badds.example", "A")
     res = isctest.query.tcp(m, "10.53.0.4")
     isctest.check.noerror(res)
     isctest.check.noadflag(res)
 
-    response = ns4.rndc("nta -remove badds.example", log=False)
-    assert "Negative trust anchor removed: badds.example" in response
+    response = ns4.rndc("nta -remove badds.example")
+    assert "Negative trust anchor removed: badds.example" in response.out
 
-    response = ns4.rndc("nta -d", log=False)
-    assert not hasmatch("^badds.example/_default: expiry", response)
+    response = ns4.rndc("nta -d")
+    assert Re("^badds.example/_default: expiry") not in response.out
 
     res = isctest.query.tcp(m, "10.53.0.4")
     isctest.check.servfail(res)
     isctest.check.noadflag(res)
 
     # remove non-existent NTA three times
-    ns4.rndc("nta -r foo", log=False)
-    ns4.rndc("nta -remove foo", log=False)
-    response = ns4.rndc("nta -r foo", log=False)
-    assert "not found" in response
+    ns4.rndc("nta -r foo")
+    ns4.rndc("nta -remove foo")
+    response = ns4.rndc("nta -r foo")
+    assert "not found" in response.out
 
 
 def test_nta_restarts(servers):
@@ -237,14 +230,14 @@ def test_nta_restarts(servers):
 
     # test NTA persistence across restarts
     ns4 = servers["ns4"]
-    response = ns4.rndc("nta -d", log=False)
-    assert active(response) == 0
+    response = ns4.rndc("nta -d")
+    assert active(response.out) == 0
 
     start = time.time()
-    ns4.rndc("nta -f -l 30s bogus.example", log=False)
-    ns4.rndc("nta -f -l 10s badds.example", log=False)
-    response = ns4.rndc("nta -d", log=False)
-    assert active(response) == 2
+    ns4.rndc("nta -f -l 30s bogus.example")
+    ns4.rndc("nta -f -l 10s badds.example")
+    response = ns4.rndc("nta -d")
+    assert active(response.out) == 2
 
     # stop the server
     ns4.stop()
@@ -256,9 +249,9 @@ def test_nta_restarts(servers):
         time.sleep(delay)
     ns4.start(["--noclean", "--restart", "--port", os.environ["PORT"]])
 
-    response = ns4.rndc("nta -d", log=False)
-    assert active(response) == 1
-    assert hasmatch("^bogus.example/_default: expiry", response)
+    response = ns4.rndc("nta -d")
+    assert active(response.out) == 1
+    assert Re("^bogus.example/_default: expiry") in response.out
 
     m = isctest.query.create("a.badds.example", "A")
     res = isctest.query.tcp(m, "10.53.0.4")
@@ -269,7 +262,7 @@ def test_nta_restarts(servers):
     isctest.check.noerror(res)
     isctest.check.noadflag(res)
 
-    ns4.rndc("nta -r bogus.example", log=False)
+    ns4.rndc("nta -r bogus.example")
 
 
 def test_nta_regular(servers):
@@ -279,8 +272,8 @@ def test_nta_regular(servers):
     # check "regular" attribute in NTA file
     ns4 = servers["ns4"]
 
-    response = ns4.rndc("nta -d", log=False)
-    assert active(response) == 0
+    response = ns4.rndc("nta -d")
+    assert active(response.out) == 0
 
     # secure.example validates with AD=1
     m = isctest.query.create("a.secure.example", "A")
@@ -309,12 +302,12 @@ def test_nta_regular(servers):
     if delay > 0:
         time.sleep(delay)
 
-    response = ns4.rndc("nta -d", log=False)
-    assert active(response) == 0
+    response = ns4.rndc("nta -d")
+    assert active(response.out) == 0
 
     # NTA lifted; secure.example. flush the cache to trigger a new query,
     # and it should now return an AD=1 answer.
-    ns4.rndc("flushtree secure.example", log=False)
+    ns4.rndc("flushtree secure.example")
     res = isctest.query.tcp(m, "10.53.0.4")
     isctest.check.noerror(res)
     isctest.check.adflag(res)
@@ -328,10 +321,10 @@ def test_nta_forced(servers):
     ns4 = servers["ns4"]
 
     # just to be certain, clean up any existing NTA first
-    ns4.rndc("nta -r secure.example", log=False)
+    ns4.rndc("nta -r secure.example")
 
-    response = ns4.rndc("nta -d", log=False)
-    assert active(response) == 0
+    response = ns4.rndc("nta -d")
+    assert active(response.out) == 0
 
     # secure.example validates with AD=1
     m = isctest.query.create("a.secure.example", "A")
@@ -361,7 +354,7 @@ def test_nta_forced(servers):
         time.sleep(delay)
 
     # NTA lifted; secure.example. should still return an AD=0 answer
-    ns4.rndc("flushtree secure.example", log=False)
+    ns4.rndc("flushtree secure.example")
     res = isctest.query.tcp(m, "10.53.0.4")
     isctest.check.noerror(res)
     isctest.check.noadflag(res)
@@ -371,7 +364,7 @@ def test_nta_clamping(servers):
     ns4 = servers["ns4"]
 
     # clean up any existing NTA
-    ns4.rndc("nta -r secure.example", log=False)
+    ns4.rndc("nta -r secure.example")
 
     # stop the server, update _default.nta, restart
     ns4.stop()
@@ -383,10 +376,10 @@ def test_nta_clamping(servers):
     ns4.start(["--noclean", "--restart", "--port", os.environ["PORT"]])
 
     # check that NTA lifetime read from file is clamped to 1 week.
-    response = ns4.rndc("nta -d", log=False)
-    assert active(response) == 1
+    response = ns4.rndc("nta -d")
+    assert active(response.out) == 1
 
-    nta = next((s for s in response.splitlines() if " expiry" in s), None)
+    nta = next((s for s in response.out.splitlines() if " expiry" in s), None)
     assert nta is not None
 
     nta = nta.split(" ")
@@ -401,7 +394,7 @@ def test_nta_clamping(servers):
     assert abs(nextweek - then < 3610)
 
     # remove the NTA
-    ns4.rndc("nta -r secure.example", log=False)
+    ns4.rndc("nta -r secure.example")
 
 
 def test_nta_forward(servers):
@@ -414,14 +407,14 @@ def test_nta_forward(servers):
     isctest.check.noadflag(res)
 
     # add NTA and expect resolution to succeed
-    ns9.rndc("nta badds.example", log=False)
+    ns9.rndc("nta badds.example")
     res = isctest.query.tcp(m, "10.53.0.9")
     isctest.check.noerror(res)
     isctest.check.rr_count_eq(res.answer, 2)
     isctest.check.noadflag(res)
 
     # remove NTA and expect resolution to fail again
-    ns9.rndc("nta -remove badds.example", log=False)
+    ns9.rndc("nta -remove badds.example")
     res = isctest.query.tcp(m, "10.53.0.9")
     isctest.check.servfail(res)
     isctest.check.empty_answer(res)

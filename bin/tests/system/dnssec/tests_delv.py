@@ -10,7 +10,7 @@
 # information regarding copyright ownership.
 
 import os
-import re
+from re import compile as Re
 import subprocess
 
 import pytest
@@ -49,13 +49,6 @@ pytestmark = pytest.mark.extra_artifacts(
 )
 
 
-# helper functions
-def grep_c(regex, data):
-    blob = data.splitlines()
-    results = [x for x in blob if re.search(regex, x)]
-    return len(results)
-
-
 # run delv
 def delv(*args, tkeys=False):
     delv_cmd = [os.environ.get("DELV")]
@@ -64,125 +57,121 @@ def delv(*args, tkeys=False):
     delv_cmd.extend(["@10.53.0.4", "-a", tfile, "-p", os.environ["PORT"]])
     delv_cmd.extend(args)
 
-    return (
-        isctest.run.cmd(delv_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        .stdout.decode("utf-8")
-        .strip()
-    )
+    return isctest.run.cmd(delv_cmd, stderr=subprocess.STDOUT)
 
 
 def test_positive_validation_delv():
     # check positive validation NSEC
     response = delv("a", "a.example")
-    assert grep_c("a.example..*10.0.0.1", response)
-    assert grep_c("a.example..*.RRSIG.A [0-9][0-9]* 2 300 .*", response)
+    assert Re("a.example..*10.0.0.1") in response.out
+    assert Re("a.example..*.RRSIG.A [0-9][0-9]* 2 300 .*") in response.out
 
     # check positive validation NSEC (trsuted-keys)
     response = delv("a", "a.example", tkeys=True)
-    assert grep_c("a.example..*10.0.0.1", response)
-    assert grep_c("a.example..*.RRSIG.A [0-9][0-9]* 2 300 .*", response)
+    assert Re("a.example..*10.0.0.1") in response.out
+    assert Re("a.example..*.RRSIG.A [0-9][0-9]* 2 300 .*") in response.out
 
     # check positive validation NSEC3
     response = delv("a", "a.nsec3.example")
-    assert grep_c("a.nsec3.example..*10.0.0.1", response)
-    assert grep_c("a.nsec3.example..*.RRSIG.A [0-9][0-9]* 3 300 .*", response)
+    assert Re("a.nsec3.example..*10.0.0.1") in response.out
+    assert Re("a.nsec3.example..*.RRSIG.A [0-9][0-9]* 3 300 .*") in response.out
 
     # check positive validation OPTOUT
     response = delv("a", "a.optout.example")
-    assert grep_c("a.optout.example..*10.0.0.1", response)
-    assert grep_c("a.optout.example..*.RRSIG.A [0-9][0-9]* 3 300 .*", response)
+    assert Re("a.optout.example..*10.0.0.1") in response.out
+    assert Re("a.optout.example..*.RRSIG.A [0-9][0-9]* 3 300 .*") in response.out
 
     # check positive wildcard validation NSEC
     response = delv("a", "a.wild.example")
-    assert grep_c("a.wild.example..*10.0.0.27", response)
-    assert grep_c("a.wild.example..*.RRSIG.A [0-9][0-9]* 2 300 .*", response)
+    assert Re("a.wild.example..*10.0.0.27") in response.out
+    assert Re("a.wild.example..*.RRSIG.A [0-9][0-9]* 2 300 .*") in response.out
 
     # check positive wildcard validation NSEC3
     response = delv("a", "a.wild.nsec3.example")
-    assert grep_c("a.wild.nsec3.example..*10.0.0.6", response)
-    assert grep_c("a.wild.nsec3.example..*.RRSIG.A [0-9][0-9]* 3 300 .*", response)
+    assert Re("a.wild.nsec3.example..*10.0.0.6") in response.out
+    assert Re("a.wild.nsec3.example..*.RRSIG.A [0-9][0-9]* 3 300 .*") in response.out
 
     # check positive wildcard validation OPTOUT
     response = delv("a", "a.wild.optout.example")
-    assert grep_c("a.wild.optout.example..*10.0.0.6", response)
-    assert grep_c("a.wild.optout.example..*.RRSIG.A [0-9][0-9]* 3 300 .*", response)
+    assert Re("a.wild.optout.example..*10.0.0.6") in response.out
+    assert Re("a.wild.optout.example..*.RRSIG.A [0-9][0-9]* 3 300 .*") in response.out
 
 
 def test_negative_validation_delv():
     # checking negative validation NXDOMAIN NSEC
     response = delv("a", "q.example")
-    assert grep_c("resolution failed: ncache nxdomain", response)
+    assert "resolution failed: ncache nxdomain" in response.out
 
     # checking negative validation NODATA NSEC
     response = delv("txt", "a.example")
-    assert grep_c("resolution failed: ncache nxrrset", response)
+    assert "resolution failed: ncache nxrrset" in response.out
 
     # checking negative validation NXDOMAIN NSEC3
     response = delv("a", "q.nsec3.example")
-    assert grep_c("resolution failed: ncache nxdomain", response)
+    assert "resolution failed: ncache nxdomain" in response.out
 
     # checking negative validation NODATA NSEC3
     response = delv("txt", "a.nsec3.example")
-    assert grep_c("resolution failed: ncache nxrrset", response)
+    assert "resolution failed: ncache nxrrset" in response.out
 
     # checking negative validation NXDOMAIN OPTOUT
     response = delv("a", "q.optout.example")
-    assert grep_c("resolution failed: ncache nxdomain", response)
+    assert "resolution failed: ncache nxdomain" in response.out
 
     # checking negative validation NODATA OPTOUT
     response = delv("txt", "a.optout.example")
-    assert grep_c("resolution failed: ncache nxrrset", response)
+    assert "resolution failed: ncache nxrrset" in response.out
 
     # checking negative wildcard validation NSEC
     response = delv("txt", "b.wild.example")
-    assert grep_c("resolution failed: ncache nxrrset", response)
+    assert "resolution failed: ncache nxrrset" in response.out
 
     # checking negative wildcard validation NSEC3
     response = delv("txt", "b.wild.nsec3.example")
-    assert grep_c("resolution failed: ncache nxrrset", response)
+    assert "resolution failed: ncache nxrrset" in response.out
 
     # checking negative wildcard validation OPTOUT
     response = delv("txt", "b.wild.optout.example")
-    assert grep_c("resolution failed: ncache nxrrset", response)
+    assert "resolution failed: ncache nxrrset" in response.out
 
 
 def test_insecure_validation_delv():
     # check 1-server insecurity proof NSEC
     response = delv("a", "a.insecure.example")
-    assert grep_c("a.insecure.example..*10.0.0.1", response)
+    assert Re("a.insecure.example..*10.0.0.1") in response.out
 
     # check 1-server insecurity proof NSEC3
     response = delv("a", "a.insecure.nsec3.example")
-    assert grep_c("a.insecure.nsec3.example..*10.0.0.1", response)
+    assert Re("a.insecure.nsec3.example..*10.0.0.1") in response.out
 
     # check 1-server insecurity proof NSEC3
     response = delv("a", "a.insecure.optout.example")
-    assert grep_c("a.insecure.optout.example..*10.0.0.1", response)
+    assert Re("a.insecure.optout.example..*10.0.0.1") in response.out
 
     # check 1-server negative insecurity proof NSEC
     response = delv("a", "q.insecure.example")
-    assert grep_c("resolution failed: ncache nxdomain", response)
+    assert "resolution failed: ncache nxdomain" in response.out
 
     # check 1-server negative insecurity proof NSEC3
     response = delv("a", "q.insecure.nsec3.example")
-    assert grep_c("resolution failed: ncache nxdomain", response)
+    assert "resolution failed: ncache nxdomain" in response.out
 
     # check 1-server negative insecurity proof OPTOUT
     response = delv("a", "q.insecure.optout.example")
-    assert grep_c("resolution failed: ncache nxdomain", response)
+    assert "resolution failed: ncache nxdomain" in response.out
 
 
 def test_validation_failure_delv():
     # check failed validation due to bogus data
     response = delv("+cd", "a", "a.bogus.example")
-    assert grep_c("resolution failed: RRSIG failed to verify", response)
+    assert "resolution failed: RRSIG failed to verify" in response.out
 
     # check failed validation due to missing key record
     response = delv("+cd", "a", "a.b.keyless.example")
-    assert grep_c("resolution failed: insecurity proof failed", response)
+    assert "resolution failed: insecurity proof failed" in response.out
 
 
 def test_revoked_key_delv():
     # check failed validation succeeds when a revoked key is encountered
     response = delv("+cd", "soa", "revkey.example")
-    assert grep_c("fully validated", response)
+    assert "fully validated" in response.out

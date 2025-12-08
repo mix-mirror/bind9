@@ -20,6 +20,6 @@ def test_views_add_zones(ns2, templates):
         templates.render("ns2/named.conf", {"zone_names": zone_names})
         shutil.copyfile("ns2/zone.db.in", f"ns2/{name}.db")
         with ns2.watch_log_from_here() as watcher:
-            ns2.rndc("reconfig", log=False)
+            ns2.rndc("reconfig")
             log_seq = ["any newly configured zones are now loaded", "running"]
             watcher.wait_for_sequence(log_seq)

@@ -23,9 +23,9 @@ import pytest
 )
 def test_showzone_static(ns1, templates, allow):
     templates.render("ns1/named.conf", {"allownewzones": allow})
-    ns1.rndc("reload", log=False)
-    zoneconfig = ns1.rndc("showzone inlinesec.example", log=False)
+    ns1.rndc("reload")
+    response = ns1.rndc("showzone inlinesec.example")
     assert (
-        zoneconfig
-        == 'zone "inlinesec.example" { type primary; file "inlinesec.db"; };\n'
+        'zone "inlinesec.example" { type primary; file "inlinesec.db"; };'
+        in response.out
     )

@@ -21,7 +21,7 @@ def test_spf_log(ns1):
         "zone warn/IN: loaded serial 0",
         "zone nowarn/IN: loaded serial 0",
     ):
-        ns1.log.expect(msg)
+        assert msg in ns1.log
 
     for msg in (
         "zone nowarn/IN: 'y.nowarn' found type SPF record but no SPF TXT record found",
@@ -29,4 +29,4 @@ def test_spf_log(ns1):
         "zone warn/IN: 'warn' found type SPF record but no SPF TXT record found",
         "zone nowarn/IN: 'nowarn' found type SPF record but no SPF TXT record found",
     ):
-        ns1.log.prohibit(msg)
+        assert msg not in ns1.log

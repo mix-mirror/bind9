@@ -44,10 +44,9 @@ def test_secure_root_managed(ns4):
     # check that "rndc secroots" dumps the trusted keys
     key = int(getfrom("ns1/managed.key.id"))
     alg = os.environ["DEFAULT_ALGORITHM"]
-    expected = f"./{alg}/{key} ; managed"
-    response = ns4.rndc("secroots -", log=False).splitlines()
-    assert expected in response
-    assert len(response) == 10
+    response = ns4.rndc("secroots -")
+    assert f"./{alg}/{key} ; managed" in response.out
+    assert len(response.out.splitlines()) == 10
 
 
 def test_positive_validation_nsec_managed():
@@ -103,6 +102,6 @@ def test_ds_managed():
 
 
 def test_keydata_storage(ns4):
-    ns4.rndc("managed-keys sync", log=False)
+    ns4.rndc("managed-keys sync")
     with isctest.log.WatchLogFromStart("ns4/managed-keys.bind") as watcher:
         watcher.wait_for_line(["KEYDATA", "next refresh:"])

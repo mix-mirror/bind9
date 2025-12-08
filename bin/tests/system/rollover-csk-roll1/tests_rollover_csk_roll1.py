@@ -125,7 +125,7 @@ def test_csk_roll1_step2(tld, alg, size, ns3):
         # Check logs.
         tag = keys[0].key.tag
         msg = f"keymgr-manual-mode: block CSK rollover for key {zone}/ECDSAP256SHA256/{tag} (policy {policy})"
-        ns3.log.expect(msg)
+        assert msg in ns3.log
 
         # Force step.
         with ns3.watch_log_from_here() as watcher:
@@ -185,7 +185,7 @@ def test_csk_roll1_step3(tld, alg, size, ns3):
         # Check logs.
         tag = keys[1].key.tag
         msg = f"keymgr-manual-mode: block transition CSK {zone}/ECDSAP256SHA256/{tag} type ZRRSIG state HIDDEN to state RUMOURED"
-        ns3.log.expect(msg)
+        assert msg in ns3.log
 
         # Force step.
         with ns3.watch_log_from_here() as watcher:
@@ -274,8 +274,7 @@ def test_csk_roll1_step4(tld, alg, size, ns3):
         # Check logs.
         tag = keys[0].key.tag
         msg = f"keymgr-manual-mode: block transition CSK {zone}/ECDSAP256SHA256/{tag} type KRRSIG state OMNIPRESENT to state UNRETENTIVE"
-
-        ns3.log.expect(msg)
+        assert msg in ns3.log
 
         # Force step.
         tag = keys[1].key.tag

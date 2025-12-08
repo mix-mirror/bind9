@@ -34,7 +34,7 @@ def test_nzd2nzf(ns1):
     isctest.check.refused(res)
 
     # add new zone into the default NZD using "rndc addzone"
-    ns1.rndc(f"addzone {zone_data}", log=False)
+    ns1.rndc(f"addzone {zone_data}")
 
     # query for existing zone data
     res = isctest.query.tcp(msg, ns1.ip)
@@ -44,13 +44,11 @@ def test_nzd2nzf(ns1):
 
     # dump "_default.nzd" to "_default.nzf" and check that it contains the expected content
     cfg_dir = "ns1"
-    stdout = isctest.run.cmd(
-        [os.environ["NZD2NZF"], "_default.nzd"], cwd=cfg_dir
-    ).stdout.decode("utf-8")
-    assert f"zone {zone_data}" in stdout
+    cmd = isctest.run.cmd([os.environ["NZD2NZF"], "_default.nzd"], cwd=cfg_dir)
+    assert f"zone {zone_data}" in cmd.out
     nzf_filename = os.path.join(cfg_dir, "_default.nzf")
     with open(nzf_filename, "w", encoding="utf-8") as nzf_file:
-        nzf_file.write(stdout)
+        nzf_file.write(cmd.out)
 
     # delete "_default.nzd" database
     nzd_filename = os.path.join(cfg_dir, "_default.nzd")

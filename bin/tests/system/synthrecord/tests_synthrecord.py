@@ -499,7 +499,6 @@ def test_sythreverse_arpa_v6_nxdomain_toomanylabels(domain):
 def test_synthrecord_inview(ns1, templates):
     templates.render("ns1/named.conf", {"inview": True})
     with ns1.watch_log_from_here() as watcher:
-        try:
-            ns1.rndc("reconfig")
-        except isctest.rndc.RNDCException:
-            watcher.wait_for_line("'synthrecord' must be configured as a zone plugin")
+        cmd = ns1.rndc("reconfig", raise_on_exception=False)
+        assert cmd.rc != 0
+        watcher.wait_for_line("'synthrecord' must be configured as a zone plugin")

@@ -27,7 +27,7 @@ def bootstrap():
 
 def test_accept_expired(ns4):
     # test TTL of about-to-expire rrsets with accept-expired
-    ns4.rndc("flush", log=False)
+    ns4.rndc("flush")
     msg = isctest.query.create("expiring.example", "SOA")
     msg.flags |= flags.CD
     res1 = isctest.query.tcp(msg, "10.53.0.4")
@@ -40,7 +40,7 @@ def test_accept_expired(ns4):
 
     # test TTL is capped at RRSIG expiry time in the additional section
     # with accept-expired
-    ns4.rndc("flush", log=False)
+    ns4.rndc("flush")
     msg = isctest.query.create("expiring.example", "MX")
     msg.flags |= flags.CD
     res1 = isctest.query.tcp(msg, "10.53.0.4")
@@ -52,7 +52,7 @@ def test_accept_expired(ns4):
         assert rrset.ttl <= 120
 
     # test TTL of expired rrsets with accept-expired
-    ns4.rndc("flush", log=False)
+    ns4.rndc("flush")
     msg = isctest.query.create("expired.example", "SOA")
     msg.flags |= flags.CD
     res1 = isctest.query.tcp(msg, "10.53.0.4")

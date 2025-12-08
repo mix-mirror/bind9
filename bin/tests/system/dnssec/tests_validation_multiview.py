@@ -10,7 +10,7 @@
 # information regarding copyright ownership.
 
 import os
-import re
+from re import compile as Re
 
 import isctest
 
@@ -47,7 +47,7 @@ def test_staticstub_delegations():
 
 def test_validator_logging(ns4):
     # check that validator logging includes the view name with multiple views
-    pattern = re.compile("view rec: *validat")
+    pattern = Re("view rec: *validat")
     with ns4.watch_log_from_start() as watcher:
         msg = isctest.query.create("secure.example", "NS")
         isctest.query.tcp(msg, "10.53.0.4")
@@ -58,7 +58,6 @@ def test_secure_roots(ns4):
     # check that "rndc secroots" dumps the trusted keys with multiple views
     key = int(getfrom("ns1/managed.key.id"))
     alg = os.environ["DEFAULT_ALGORITHM"]
-    expected = f"./{alg}/{key} ; static"
-    response = ns4.rndc("secroots -", log=False).splitlines()
-    assert expected in response, response
-    assert len(response) == 17
+    response = ns4.rndc("secroots -")
+    assert f"./{alg}/{key} ; static" in response.out
+    assert len(response.out.splitlines()) == 17

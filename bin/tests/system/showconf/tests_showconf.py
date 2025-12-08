@@ -19,44 +19,38 @@ def test_showconf(ns1):
     res = isctest.query.udp(msg, "10.53.0.1")
     isctest.check.rcode(res, dns.rcode.NOERROR)
 
-    effectiveconfig = ns1.rndc("showconf -effective", log=False)
-    assert 'zone "example.com"' in effectiveconfig
-    assert 'view "_bind" chaos {' in effectiveconfig
+    effectiveconfig = ns1.rndc("showconf -effective")
+    assert 'zone "example.com"' in effectiveconfig.out
+    assert 'view "_bind" chaos {' in effectiveconfig.out
 
     # builtin-trust-anchors is non documented and internal clause only, it must
     # not be visible.
-    assert "builtin-trust-anchors" not in effectiveconfig
+    assert "builtin-trust-anchors" not in effectiveconfig.out
 
     # Dynamically added zones are not visible from the effectiveconfig
     zonedata = '"added.example" { type primary; file "example.db"; };'
-    ns1.rndc(f"addzone {zonedata}", log=False)
+    ns1.rndc(f"addzone {zonedata}")
 
     msg = isctest.query.create("a.added.example", "A")
     res = isctest.query.udp(msg, "10.53.0.1")
     isctest.check.rcode(res, dns.rcode.NOERROR)
 
-    effectiveconfig = ns1.rndc("showconf -effective", log=False)
-    assert 'zone "added.example"' not in effectiveconfig
+    effectiveconfig = ns1.rndc("showconf -effective")
+    assert 'zone "added.example"' not in effectiveconfig.out
 
-    userconfig = ns1.rndc("showconf -user", log=False)
-    assert 'zone "example.com"' in userconfig
-    assert 'view "_bind" chaos {' not in userconfig
+    userconfig = ns1.rndc("showconf -user")
+    assert 'zone "example.com"' in userconfig.out
+    assert 'view "_bind" chaos {' not in userconfig.out
 
-    builtinconfig = ns1.rndc("showconf -builtin", log=False)
-    assert len(userconfig.split()) < len(builtinconfig.split())
-    assert len(builtinconfig.split()) < len(effectiveconfig.split())
+    builtinconfig = ns1.rndc("showconf -builtin")
+    assert len(userconfig.out.split()) < len(builtinconfig.out.split())
+    assert len(builtinconfig.out.split()) < len(effectiveconfig.out.split())
 
     # Errors handling
-    error_msg = ""
+    response = ns1.rndc("showconf -idontexist", raise_on_exception=False)
+    assert response.rc != 0
+    assert "rndc: 'showconf' failed: syntax error" in response.err
 
-    try:
-        ns1.rndc("showconf -idontexist", log=False)
-    except isctest.rndc.RNDCException as e:
-        error_msg = str(e)
-    assert error_msg == "rndc: 'showconf' failed: syntax error\n"
-
-    try:
-        ns1.rndc("showconf", log=False)
-    except isctest.rndc.RNDCException as e:
-        error_msg = str(e)
-    assert error_msg == "rndc: 'showconf' failed: unexpected end of input\n"
+    response = ns1.rndc("showconf", raise_on_exception=False)
+    assert response.rc != 0
+    assert "rndc: 'showconf' failed: unexpected end of input" in response.err

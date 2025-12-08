@@ -13,7 +13,6 @@
 
 from typing import List, NamedTuple, Optional
 
-import logging
 import os
 from pathlib import Path
 import re
@@ -21,10 +20,10 @@ import re
 import dns.message
 import dns.rcode
 
-from .log import debug, info, LogFile, WatchLogFromStart, WatchLogFromHere
-from .rndc import RNDCBinaryExecutor, RNDCException, RNDCExecutor
-from .run import perl
+from .log import debug, WatchLogFromStart, WatchLogFromHere
+from .run import CmdResult, EnvCmd, perl
 from .query import udp
+from .text import TextFile
 
 
 class NamedPorts(NamedTuple):
@@ -56,8 +55,6 @@ class NamedInstance:
         identifier: str,
         num: Optional[int] = None,
         ports: Optional[NamedPorts] = None,
-        rndc_logger: Optional[logging.Logger] = None,
-        rndc_executor: Optional[RNDCExecutor] = None,
     ) -> None:
         """
         `identifier` is the name of the instance's directory
@@ -70,12 +67,6 @@ class NamedInstance:
         this `named` instance is listening for various types of traffic (both
         DNS traffic and RNDC commands). Defaults to ports set by the test
         framework.
-
-        `rndc_logger` is the `logging.Logger` to use for logging RNDC
-        commands sent to this `named` instance.
-
-        `rndc_executor` is an object implementing the `RNDCExecutor` interface
-        that is used for executing RNDC commands on this `named` instance.
         """
         self.directory = Path(identifier).absolute()
         if not self.directory.is_dir():
@@ -87,9 +78,15 @@ class NamedInstance:
         if ports is None:
             ports = NamedPorts.from_env()
         self.ports = ports
-        self.log = LogFile(os.path.join(identifier, "named.run"))
-        self._rndc_executor = rndc_executor or RNDCBinaryExecutor()
-        self._rndc_logger = rndc_logger
+        self.log = TextFile(os.path.join(identifier, "named.run"))
+
+        self._rndc_conf = Path("../_common/rndc.conf").absolute()
+        self._rndc = EnvCmd("RNDC", self.rndc_args)
+
+    @property
+    def rndc_args(self) -> str:
+        """Base arguments for calling RNDC to control the instance."""
+        return f"-c {self._rndc_conf} -s {self.ip} -p {self.ports.rndc}"
 
     @property
     def ip(self) -> str:
@@ -107,52 +104,16 @@ class NamedInstance:
         assert num is None or num == parsed_num, "mismatched num and identifier"
         return parsed_num
 
-    def rndc(self, command: str, ignore_errors: bool = False, log: bool = True) -> str:
+    def rndc(self, command: str, timeout=10, **kwargs) -> CmdResult:
         """
         Send `command` to this named instance using RNDC.  Return the server's
         response.
 
-        If the RNDC command fails, an `RNDCException` is raised unless
-        `ignore_errors` is set to `True`.
-
-        The RNDC command will be logged to `rndc.log` (along with the server's
-        response) unless `log` is set to `False`.
-
-        ```python
-        def test_foo(servers):
-            # Send the "status" command to ns1.  An `RNDCException` will be
-            # raised if the RNDC command fails.  This command will be logged.
-            response = servers["ns1"].rndc("status")
-
-            # Send the "thaw foo" command to ns2.  No exception will be raised
-            # in case the RNDC command fails.  This command will be logged
-            # (even if it fails).
-            response = servers["ns2"].rndc("thaw foo", ignore_errors=True)
-
-            # Send the "stop" command to ns3.  An `RNDCException` will be
-            # raised if the RNDC command fails, but this command will not be
-            # logged (the server's response will still be returned to the
-            # caller, though).
-            response = servers["ns3"].rndc("stop", log=False)
-
-            # Send the "halt" command to ns4 in "fire & forget mode": no
-            # exceptions will be raised and no logging will take place (the
-            # server's response will still be returned to the caller, though).
-            response = servers["ns4"].rndc("stop", ignore_errors=True, log=False)
-        ```
+        To suppress exceptions, redirect outputs, control logging change
+        timeout etc. use keyword arguments which are passed to
+        isctest.cmd.run().
         """
-        try:
-            response = self._rndc_executor.call(self.ip, self.ports.rndc, command)
-            if log:
-                self._rndc_log(command, response)
-        except RNDCException as exc:
-            response = str(exc)
-            if log:
-                self._rndc_log(command, response)
-            if not ignore_errors:
-                raise
-
-        return response
+        return self._rndc(command, timeout=timeout, **kwargs)
 
     def nsupdate(
         self, update_msg: dns.message.Message, expected_rcode=dns.rcode.NOERROR
@@ -198,31 +159,15 @@ class NamedInstance:
         """
         return WatchLogFromHere(self.log.path, timeout)
 
-    def reconfigure(self, **kwargs) -> None:
+    def reconfigure(self, **kwargs) -> CmdResult:
         """
         Reconfigure this named `instance` and wait until reconfiguration is
-        finished.  Raise an `RNDCException` if reconfiguration fails.
+        finished.
         """
         with self.watch_log_from_here() as watcher:
-            self.rndc("reconfig", **kwargs)
+            cmd = self.rndc("reconfig", **kwargs)
             watcher.wait_for_line("any newly configured zones are now loaded")
-
-    def _rndc_log(self, command: str, response: str) -> None:
-        """
-        Log an `rndc` invocation (and its output) to the `rndc.log` file in the
-        current working directory.
-        """
-        fmt = '%(ip)s: "%(command)s"\n%(separator)s\n%(response)s%(separator)s'
-        args = {
-            "ip": self.ip,
-            "command": command,
-            "separator": "-" * 80,
-            "response": response,
-        }
-        if self._rndc_logger is None:
-            info(fmt, args)
-        else:
-            self._rndc_logger.info(fmt, args)
+        return cmd
 
     def stop(self, args: Optional[List[str]] = None) -> None:
         """Stop the instance."""
@@ -239,3 +184,6 @@ class NamedInstance:
             f"{os.environ['srcdir']}/start.pl",
             [self.system_test_name, self.identifier] + args,
         )
+
+    def __repr__(self):
+        return self.identifier

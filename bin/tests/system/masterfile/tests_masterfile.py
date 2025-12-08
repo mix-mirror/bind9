@@ -149,7 +149,7 @@ def test_masterfile_missing_master_file_servfail():
 
 def test_masterfile_owner_inheritance():
     """Test owner inheritance after $INCLUDE"""
-    checker_output = isctest.run.cmd(
+    cmd = isctest.run.cmd(
         [
             os.environ["CHECKZONE"],
             "-D",
@@ -157,12 +157,12 @@ def test_masterfile_owner_inheritance():
             "example",
             "zone/inheritownerafterinclude.db",
         ]
-    ).stdout.decode("utf-8")
+    )
     owner_inheritance_zone = """
 example.	0	IN	SOA	. . 0 0 0 0 0
 example.	0	IN	TXT	"this should be at the zone apex"
 example.	0	IN	NS	.
 """
-    checker_zone = dns.zone.from_text(checker_output, origin="example.")
+    checker_zone = dns.zone.from_text(cmd.out, origin="example.")
     expected = dns.zone.from_text(owner_inheritance_zone, origin="example.")
     isctest.check.zones_equal(checker_zone, expected, compare_ttl=True)
