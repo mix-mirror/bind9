@@ -11,6 +11,9 @@
  * information regarding copyright ownership.
  */
 
+{% set reconfiged = reconfiged | default(False) %}
+{% set policy = "optout" if not reconfiged else "nsec" %}
+
 options {
         port @PORT@;
         pid-file "named.pid";
@@ -33,9 +36,22 @@ dnssec-policy "optout" {
 	nsec3param iterations 0 optout yes salt-length 0;
 };
 
+dnssec-policy "nsec" {
+	keys {
+		csk lifetime unlimited algorithm ecdsa256;
+	};
+};
+
 zone "test" {
 	type primary;
 	file "test.db";
 	dnssec-policy "optout";
+	inline-signing yes;
+};
+
+zone "small.test" {
+	type primary;
+	file "small.test.db";
+	dnssec-policy "@policy@";
 	inline-signing yes;
 };

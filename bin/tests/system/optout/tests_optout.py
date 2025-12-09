@@ -94,14 +94,51 @@ def verify_zone(zone, transfer):
 
 def test_optout(ns2):
     zone = "test"
+    expect_nsec3param = True
 
     # Wait until the provided zone is signed and then verify its DNSSEC data.
     def check_nsec3param():
         response = do_query(ns2, zone, "NSEC3PARAM")
-        return has_nsec3param(zone, response)
+        if expect_nsec3param:
+            return has_nsec3param(zone, response)
+        return not has_nsec3param(zone, response)
 
     # check zone is fully signed.
-    isctest.run.retry_with_timeout(check_nsec3param, timeout=300)
+    isctest.run.retry_with_timeout(check_nsec3param, timeout=100)
+
+    # check if zone if DNSSEC valid.
+    transfer = do_xfr(ns2, zone)
+    assert verify_zone(zone, transfer)
+
+
+def test_optout_to_nsec(ns2, templates):
+    zone = "small.test"
+    expect_nsec3param = True
+
+    # Wait until the provided zone is signed and then verify its DNSSEC data.
+    def check_nsec3param():
+        response = do_query(ns2, zone, "NSEC3PARAM")
+        if expect_nsec3param:
+            return has_nsec3param(zone, response)
+        return not has_nsec3param(zone, response)
+
+    # check zone is fully signed.
+    isctest.run.retry_with_timeout(check_nsec3param, timeout=100)
+
+    # check if zone if DNSSEC valid.
+    transfer = do_xfr(ns2, zone)
+    assert verify_zone(zone, transfer)
+
+    # reconfigure to NSEC.
+    data = {
+        "reconfiged": True,
+    }
+    templates.render(f"{ns2.identifier}/named.conf", data)
+    ns2.reconfigure()
+
+    # wait until NSEC3PARAM is removed.
+    expect_nsec3param = False
+    isctest.run.retry_with_timeout(check_nsec3param, timeout=100)
 
     # check if zone if DNSSEC valid.
     transfer = do_xfr(ns2, zone)
