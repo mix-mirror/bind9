@@ -1,0 +1,30 @@
+; Copyright (C) Internet Systems Consortium, Inc. ("ISC")
+;
+; SPDX-License-Identifier: MPL-2.0
+;
+; This Source Code Form is subject to the terms of the Mozilla Public
+; License, v. 2.0.  If a copy of the MPL was not distributed with this
+; file, you can obtain one at https://mozilla.org/MPL/2.0/.
+;
+; See the COPYRIGHT file distributed with this work for additional
+; information regarding copyright ownership.
+
+{% set ghost = ghost | default(True) %}
+
+$TTL 300	; 5 minutes
+example.		IN SOA	mname1. . (
+				2000042407 ; serial
+				20	   ; refresh (20 seconds)
+				20	   ; retry (20 seconds)
+				1814400	   ; expire (3 weeks)
+				3600	   ; minimum (1 hour)
+				)
+			NS	ns2
+ns2			A	10.53.0.2
+foo			A	10.53.0.55
+
+{% if ghost %}
+ghost 			NS	ns3.ghost
+; Very short TTL, so this is easier to see when the delegation is removed
+ns3.ghost	5 	A	10.53.0.3
+{% endif %}
