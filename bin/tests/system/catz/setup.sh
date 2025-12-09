@@ -25,6 +25,7 @@ cp -f ns1/catalog.example.db.in ns1/catalog3.example.db
 cp -f ns1/catalog.example.db.in ns1/catalog4.example.db
 # catalog5 is missing on purpose
 cp -f ns1/catalog.example.db.in ns1/catalog6.example.db
+cp -f ns1/catalog.example.db.in ns1/catalog-misc.example.db
 cp -f ns1/catalog.example.db.in ns1/catalog-tls.example.db
 cp -f ns4/catalog.example.db.in ns4/catalog-self.example.db
 

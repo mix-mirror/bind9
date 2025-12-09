@@ -137,6 +137,16 @@ view "default" {
 		also-notify { 10.53.0.4; };
 		notify explicit;
 	};
+
+	# A catalog zone to test specific issues
+	zone "catalog-misc.example" {
+		type primary;
+		file "catalog-misc.example.db";
+		allow-transfer { any; };
+		allow-update { any; };
+		also-notify { 10.53.0.4; };
+		notify explicit;
+	};
 };
 
 view "ch" ch {
@@ -161,4 +171,9 @@ key tsig_key. {
 key next_key. {
 	secret "LaAnCU+Z";
 	algorithm @DEFAULT_HMAC@;
+};
+
+key longlonglongname0123456789abcdef. {
+    secret "LaAnCU+Z";
+    algorithm @DEFAULT_HMAC@;
 };
