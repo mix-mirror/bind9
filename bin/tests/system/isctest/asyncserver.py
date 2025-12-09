@@ -797,7 +797,7 @@ class AsyncDnsServer(AsyncServer):
         default_rcode: dns.rcode.Rcode = dns.rcode.REFUSED,
         default_aa: bool = True,
         keyring: Union[
-            dict[dns.name.Name, dns.tsig.Key], None, _NoKeyringType
+            Dict[dns.name.Name, dns.tsig.Key], None, _NoKeyringType
         ] = _NoKeyringType(),
         acknowledge_manual_dname_handling: bool = False,
     ) -> None:
