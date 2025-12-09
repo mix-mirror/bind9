@@ -1128,7 +1128,7 @@ class AsyncDnsServer(AsyncServer):
     def _abort_if_tsig_signed_query_received_unless_acknowledged(self) -> None:
         error = "TSIG-signed query received but no `keyring` was provided; "
         error += "either provide a keyring (in which case the server will ignore "
-        error += "any TSIG-invalid queries), or set `keyring=None` explicitely "
+        error += "any TSIG-invalid queries), or set `keyring=None` explicitly "
         error += "to disable TSIG validation altogether. This requires some hacking "
         error += "around a dnspython bug, so there may be unexpected side effects."
 
