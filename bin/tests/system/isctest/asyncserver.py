@@ -1118,7 +1118,7 @@ class AsyncDnsServer(AsyncServer):
                 ),
             )
         except dns.message.UnknownTSIGKey:
-            if self._keyring is Ellipsis:
+            if isinstance(self._keyring, _NoKeyringType):
                 self._abort_if_tsig_signed_query_received_unless_acknowledged()
             if self._keyring is None:
                 return _DnsMessageWithTsigDisabled.from_wire(wire)
