@@ -18,7 +18,6 @@ from .basic import BASIC_VARS
 FEATURES = {
     "DNSRPS": "--enable-dnsrps",
     "DNSTAP": "--enable-dnstap",
-    "EXTENDED_DS_DIGEST": "--extended-ds-digest",
     "FIPS_DH": "--have-fips-dh",
     "FIPS_MODE": "--have-fips-mode",
     "FIPS_PROVIDER": "--fips-provider",
