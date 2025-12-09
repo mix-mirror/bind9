@@ -9062,7 +9062,7 @@ zone_nsec3chain(dns_zone_t *zone) {
 
 		if (first) {
 			dnssec_log(zone, ISC_LOG_DEBUG(3),
-				   "zone_nsec3chain:buildnsecchain = %u\n",
+				   "zone_nsec3chain:buildnsecchain = %u",
 				   buildnsecchain);
 		}
 
