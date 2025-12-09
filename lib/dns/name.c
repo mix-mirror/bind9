@@ -974,15 +974,14 @@ dns_name_fromtext(dns_name_t *name, isc_buffer_t *source,
 isc_result_t
 dns_name_totext(const dns_name_t *name, unsigned int options,
 		isc_buffer_t *target) {
-	unsigned char *ndata;
-	char *tdata;
-	unsigned int nlen, tlen;
-	unsigned char c;
-	unsigned int trem, count;
+	isc_result_t result;
+	unsigned char *ndata = NULL;
+	unsigned int nlen;
 	unsigned int labels;
 	bool saw_root = false;
 	unsigned int oused;
 	bool omit_final_dot = ((options & DNS_NAME_OMITFINALDOT) != 0);
+	bool first = true;
 
 	/*
 	 * This function assumes the name is in proper uncompressed
@@ -996,30 +995,14 @@ dns_name_totext(const dns_name_t *name, unsigned int options,
 	ndata = name->ndata;
 	nlen = name->length;
 	labels = dns_name_countlabels(name);
-	tdata = isc_buffer_used(target);
-	tlen = isc_buffer_availablelength(target);
-
-	trem = tlen;
 
 	if (labels == 0 && nlen == 0) {
 		/*
 		 * Special handling for an empty name.
 		 */
-		if (trem == 0) {
-			return ISC_R_NOSPACE;
-		}
-
-		/*
-		 * The names of these booleans are misleading in this case.
-		 * This empty name is not necessarily from the root node of
-		 * the DNS root zone, nor is a final dot going to be included.
-		 * They need to be set this way, though, to keep the "@"
-		 * from being trounced.
-		 */
-		saw_root = true;
-		omit_final_dot = false;
-		*tdata++ = '@';
-		trem--;
+		omit_final_dot = true;
+		CHECK(isc_buffer_reserve(target, 1));
+		isc_buffer_putuint8(target, '@');
 
 		/*
 		 * Skip the while() loop.
@@ -1029,14 +1012,8 @@ dns_name_totext(const dns_name_t *name, unsigned int options,
 		/*
 		 * Special handling for the root label.
 		 */
-		if (trem == 0) {
-			return ISC_R_NOSPACE;
-		}
-
 		saw_root = true;
 		omit_final_dot = false;
-		*tdata++ = '.';
-		trem--;
 
 		/*
 		 * Skip the while() loop.
@@ -1044,17 +1021,27 @@ dns_name_totext(const dns_name_t *name, unsigned int options,
 		nlen = 0;
 	}
 
-	while (labels > 0 && nlen > 0 && trem > 0) {
+	while (labels > 0 && nlen > 0) {
+		unsigned int count = *ndata++;
 		labels--;
-		count = *ndata++;
 		nlen--;
 		if (count == 0) {
 			saw_root = true;
 			break;
+		} else if (!first) {
+			CHECK(isc_buffer_reserve(target, 1));
+			isc_buffer_putuint8(target, '.');
 		}
+		first = false;
+
 		if (count <= DNS_NAME_LABELLEN) {
+			unsigned char c;
+
 			INSIST(nlen >= count);
+
 			while (count > 0) {
+				uint32_t value;
+
 				c = *ndata;
 				switch (c) {
 				/* Special modifiers in zone files. */
@@ -1071,36 +1058,33 @@ dns_name_totext(const dns_name_t *name, unsigned int options,
 				case 0x2E: /* '.' */
 				case 0x3B: /* ';' */
 				case 0x5C: /* '\\' */
-					if (trem < 2) {
-						return ISC_R_NOSPACE;
-					}
-					*tdata++ = '\\';
-					*tdata++ = c;
+					value = '\\' << 8 | c;
+					CHECK(isc_buffer_reserve(target, 2));
+					isc_buffer_putuint16(target, value);
 					ndata++;
-					trem -= 2;
 					nlen--;
 					break;
 				no_escape:
 				default:
 					if (c > 0x20 && c < 0x7f) {
-						if (trem == 0) {
-							return ISC_R_NOSPACE;
-						}
-						*tdata++ = c;
+						CHECK(isc_buffer_reserve(target,
+									 1));
+						isc_buffer_putuint8(target, c);
 						ndata++;
-						trem--;
 						nlen--;
 					} else {
-						if (trem < 4) {
-							return ISC_R_NOSPACE;
-						}
-						*tdata++ = 0x5c;
-						*tdata++ = 0x30 +
-							   ((c / 100) % 10);
-						*tdata++ = 0x30 +
-							   ((c / 10) % 10);
-						*tdata++ = 0x30 + (c % 10);
-						trem -= 4;
+						value = 0x5c << 24;
+						value |= (0x30 +
+							  ((c / 100) % 10))
+							 << 16;
+						value |=
+							(0x30 + ((c / 10) % 10))
+							<< 8;
+						value |= 0x30 + (c % 10);
+						CHECK(isc_buffer_reserve(target,
+									 4));
+						isc_buffer_putuint32(target,
+								     value);
 						ndata++;
 						nlen--;
 					}
@@ -1111,38 +1095,26 @@ dns_name_totext(const dns_name_t *name, unsigned int options,
 			FATAL_ERROR("Unexpected label type %02x", count);
 			UNREACHABLE();
 		}
-
-		/*
-		 * The following assumes names are absolute.  If not, we
-		 * fix things up later.  Note that this means that in some
-		 * cases one more byte of text buffer is required than is
-		 * needed in the final output.
-		 */
-		if (trem == 0) {
-			return ISC_R_NOSPACE;
-		}
-		*tdata++ = '.';
-		trem--;
 	}
 
-	if (nlen != 0 && trem == 0) {
-		return ISC_R_NOSPACE;
+	if (saw_root && !omit_final_dot) {
+		CHECK(isc_buffer_reserve(target, 1));
+		isc_buffer_putuint8(target, '.');
 	}
 
-	if (!saw_root || omit_final_dot) {
-		trem++;
-		tdata--;
+	if (isc_buffer_availablelength(target) > 1) {
+		uint8_t *p = isc_buffer_used(target);
+		*p = 0;
 	}
-	if (trem > 0) {
-		*tdata = 0;
-	}
-	isc_buffer_add(target, tlen - trem);
 
 	if (totext_filter_proc != NULL) {
 		return (totext_filter_proc)(target, oused);
 	}
 
 	return ISC_R_SUCCESS;
+
+cleanup:
+	return result;
 }
 
 isc_result_t
