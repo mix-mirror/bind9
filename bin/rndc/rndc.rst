@@ -128,19 +128,20 @@ Currently supported commands are:
 
 .. option:: addzone zone [class [view]] configuration
 
-   This command adds a zone while the server is running. This command requires the
-   ``allow-new-zones`` option to be set to ``yes``. The configuration
-   string specified on the command line is the zone configuration text
-   that would ordinarily be placed in :iscman:`named.conf`.
+   This command adds a zone while the server is running. This command
+   requires the ``allow-new-zones`` option to be set to ``yes``.
+   The configuration string specified on the command line is the
+   zone configuration text that would ordinarily be placed in
+   :iscman:`named.conf`.  Automatic empty zones will be replaced.
 
-   The configuration is saved in a file called ``viewname.nzf`` (or, if
-   :iscman:`named` is compiled with liblmdb, an LMDB database file called
-   ``viewname.nzd``). ``viewname`` is the name of the view, unless the view
-   name contains characters that are incompatible with use as a file
-   name, in which case a cryptographic hash of the view name is used
-   instead. When :iscman:`named` is restarted, the file is loaded into
-   the view configuration so that zones that were added can persist
-   after a restart.
+   The configuration is saved in a file called ``viewname.nzf``
+   (or, if :iscman:`named` is compiled with liblmdb, an LMDB database
+   file called ``viewname.nzd``). ``viewname`` is the name of the
+   view, unless the view name contains characters that are incompatible
+   with use as a file name, in which case a cryptographic hash of
+   the view name is used instead. When :iscman:`named` is restarted,
+   the file is loaded into the view configuration so that zones
+   that were added can persist after a restart.
 
    This sample ``addzone`` command adds the zone ``example.com`` to
    the default view:
