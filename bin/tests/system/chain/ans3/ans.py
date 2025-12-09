@@ -14,6 +14,7 @@ information regarding copyright ownership.
 from typing import AsyncGenerator
 
 import dns.name
+import dns.rcode
 import dns.rdataclass
 import dns.rdatatype
 import dns.rrset
