@@ -52,8 +52,7 @@ class IgnoreNs(ResponseHandler):
 
 def main() -> None:
     server = AsyncDnsServer(default_aa=True, default_rcode=dns.rcode.NOERROR)
-    server.install_response_handler(ReplyA())
-    server.install_response_handler(IgnoreNs())
+    server.install_response_handler([ReplyA(), IgnoreNs()])
     server.run()
 
 

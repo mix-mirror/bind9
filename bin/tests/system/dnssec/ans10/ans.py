@@ -57,8 +57,7 @@ class AddNsecToTxtHandler(ResponseHandler):
 
 def main() -> None:
     server = AsyncDnsServer()
-    server.install_response_handler(AddRrsigToAHandler())
-    server.install_response_handler(AddNsecToTxtHandler())
+    server.install_response_handlers([AddRrsigToAHandler(), AddNsecToTxtHandler()])
     server.run()
 
 
