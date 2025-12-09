@@ -80,6 +80,8 @@ typedef enum {
  * Incoming zone transfer context.
  */
 
+typedef struct dns_ixfr dns_ixfr_t;
+
 struct dns_xfrin {
 	unsigned int magic;
 	isc_mem_t *mctx;
@@ -172,7 +174,7 @@ struct dns_xfrin {
 	 */
 	dns_rdatacallbacks_t axfr;
 
-	struct {
+	struct dns_ixfr {
 		uint32_t diffs;
 		uint32_t maxdiffs;
 		uint32_t request_serial;
@@ -488,24 +490,22 @@ cleanup:
 }
 
 static isc_result_t
-ixfr_begin_transaction(dns_xfrin_t *xfr) {
+ixfr_begin_transaction(dns_ixfr_t *ixfr) {
 	isc_result_t result = ISC_R_SUCCESS;
 
-	if (xfr->ixfr.journal != NULL) {
-		CHECK(dns_journal_begin_transaction(xfr->ixfr.journal));
+	if (ixfr->journal != NULL) {
+		CHECK(dns_journal_begin_transaction(ixfr->journal));
 	}
 cleanup:
 	return result;
 }
 
 static isc_result_t
-ixfr_end_transaction(dns_xfrin_t *xfr) {
+ixfr_end_transaction(dns_ixfr_t *ixfr) {
 	isc_result_t result = ISC_R_SUCCESS;
-
-	CHECK(dns_zone_verifydb(xfr->zone, xfr->db, xfr->ver));
 	/* XXX enter ready-to-commit state here */
-	if (xfr->ixfr.journal != NULL) {
-		CHECK(dns_journal_commit(xfr->ixfr.journal));
+	if (ixfr->journal != NULL) {
+		CHECK(dns_journal_commit(ixfr->journal));
 	}
 cleanup:
 	return result;
@@ -516,9 +516,14 @@ ixfr_apply_one(dns_xfrin_t *xfr, ixfr_apply_data_t *data) {
 	isc_result_t result = ISC_R_SUCCESS;
 	uint64_t records;
 
-	CHECK(ixfr_begin_transaction(xfr));
+	dns_rdatacallbacks_t callbacks;
+	dns_rdatacallbacks_init(&callbacks);
 
-	CHECK(dns_diff_apply(&data->diff, xfr->db, xfr->ver));
+	CHECK(ixfr_begin_transaction(&xfr->ixfr));
+
+	dns_db_beginupdate(xfr->db, xfr->ver, &callbacks);
+
+	CHECK(dns_diff_apply_with_callbacks(&data->diff, &callbacks));
 	if (xfr->maxrecords != 0U) {
 		result = dns_db_getsize(xfr->db, xfr->ver, &records, NULL);
 		if (result == ISC_R_SUCCESS && records > xfr->maxrecords) {
@@ -528,13 +533,36 @@ ixfr_apply_one(dns_xfrin_t *xfr, ixfr_apply_data_t *data) {
 	if (xfr->ixfr.journal != NULL) {
 		CHECK(dns_journal_writediff(xfr->ixfr.journal, &data->diff));
 	}
+	/*
+	 * In the current implementation, we always commit the results, since
+	 * dns_zone_verifydb doesn't know how to access the in-progress
+	 * transaction.
+	 */
+	dns_db_commitupdate(xfr->db, &callbacks);
 
-	result = ixfr_end_transaction(xfr);
+	/*
+	 * At the moment, rdatacallbacks doesn't offer a way to inspect the
+	 * result of a transaction before committing it.
+	 *
+	 * So we need to commit *before* calling dns_zone_verifydb, and rely
+	 * on closeversion to actually do cleanup.
+	 */
+	dns_db_commitupdate(xfr->db, &callbacks);
+
+	CHECK(dns_zone_verifydb(xfr->zone, xfr->db, xfr->ver));
+
+	result = ixfr_end_transaction(&xfr->ixfr);
 
 	return result;
 cleanup:
+	/*
+	 * For the reason stated above, dns_db_abortupdate must *commit* the
+	 * changes and rely on closeversion to clean them up.
+	 */
+	dns_db_abortupdate(xfr->db, &callbacks);
+
 	/* We need to end the transaction, but keep the previous error */
-	(void)ixfr_end_transaction(xfr);
+	(void)ixfr_end_transaction(&xfr->ixfr);
 
 	return result;
 }

@@ -65,13 +65,14 @@ static void
 rawdata_callback(dns_zone_t *zone, dns_masterrawheader_t *header);
 
 static isc_result_t
-add_callback(void *arg, const dns_name_t *owner,
-	     dns_rdataset_t *dataset DNS__DB_FLARG) {
+add_callback(void *arg, const dns_name_t *owner, dns_rdataset_t *dataset,
+	     dns_diffop_t op DNS__DB_FLARG) {
 	char buf[BIGBUFLEN];
 	isc_buffer_t target;
 	isc_result_t result;
 
 	UNUSED(arg);
+	UNUSED(op);
 
 	isc_buffer_init(&target, buf, BIGBUFLEN);
 	result = dns_rdataset_totext(dataset, owner, false, false, &target);
@@ -102,7 +103,7 @@ setup_master(void (*warn)(struct dns_rdatacallbacks *, const char *, ...),
 	RETERR(dns_name_fromtext(dns_origin, &source, dns_rootname, 0));
 
 	dns_rdatacallbacks_init_stdio(&callbacks);
-	callbacks.add = add_callback;
+	callbacks.update = add_callback;
 	callbacks.rawdata = rawdata_callback;
 	callbacks.zone = NULL;
 	if (warn != NULL) {
@@ -125,7 +126,7 @@ test_master(const char *workdir, const char *testfile,
 	RETERR(setup_master(warn, error));
 
 	dns_rdatacallbacks_init_stdio(&callbacks);
-	callbacks.add = add_callback;
+	callbacks.update = add_callback;
 	callbacks.rawdata = rawdata_callback;
 	callbacks.zone = NULL;
 	if (warn != NULL) {
