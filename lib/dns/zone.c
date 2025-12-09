@@ -9150,7 +9150,8 @@ zone_nsec3chain(dns_zone_t *zone) {
 				seen_nsec = true;
 			} else if (rdataset.type == dns_rdatatype_nsec3) {
 				seen_nsec3 = true;
-			} else if (rdataset.type != dns_rdatatype_rrsig) {
+			}
+			if (rdataset.type != dns_rdatatype_rrsig) {
 				seen_rr = true;
 			}
 			dns_rdataset_disassociate(&rdataset);
