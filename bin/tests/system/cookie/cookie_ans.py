@@ -155,7 +155,7 @@ class WithtsigUdpAHandler(ResponseHandler):
         qctx.response.use_tsig(keyring=KEYRING, keyname="fake")
         yield DnsResponseSend(qctx.response)
 
-        qctx.refresh_response()
+        qctx.prepare_new_response()
         _add_cookie(qctx)
         qctx.response.answer.append(_legit_a(qctx))
         yield DnsResponseSend(qctx.response)
