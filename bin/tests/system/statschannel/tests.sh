@@ -464,7 +464,7 @@ n=$((n + 1))
 
 # Test sign operations after dnssec-policy change (removing keys).
 ret=0
-copy_setports ns2/named2.conf.in ns2/named.conf
+cp ns2/named2.conf ns2/named.conf
 $RNDCCMD 10.53.0.2 reload 2>&1 | sed 's/^/I:ns2 /'
 # This should trigger the resign of DNSKEY, CDS, and CDNSKEY (+3 ksk),
 # and SOA, NSEC, TYPE65534 (+3 zsk). The dnssec-sign statistics for the

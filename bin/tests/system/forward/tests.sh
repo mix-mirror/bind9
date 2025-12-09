@@ -317,7 +317,7 @@ status=$((status + ret))
 n=$((n + 1))
 echo_i "checking switch from forwarding to normal resolution while chasing DS ($n)"
 ret=0
-copy_setports ns3/named2.conf.in ns3/named.conf
+cp ns3/named2.conf ns3/named.conf
 rndccmd 10.53.0.3 reconfig 2>&1 | sed 's/^/ns3 /' | cat_i
 sleep 1
 nextpart ns3/named.run >/dev/null
@@ -332,9 +332,7 @@ sendcmd 10.53.0.11 send-responses "disable"
 n=$((n + 1))
 echo_i "checking the handling of hung DS fetch while chasing DS ($n)"
 ret=0
-copy_setports ns3/named2.conf.in ns3/tmp
-sed 's/root.db/root2.db/' ns3/tmp >ns3/named.conf
-rm -f ns3/tmp
+cp ns3/named2.conf ns3/named.conf
 rndccmd 10.53.0.3 reconfig 2>&1 | sed 's/^/ns3 /' | cat_i
 rndccmd 10.53.0.3 flush 2>&1 | sed 's/^/ns3 /' | cat_i
 sleep 1
@@ -401,7 +399,7 @@ run_spooftests() {
 echo_i "checking spoofed response scenarios with forward first zones"
 run_spooftests
 
-copy_setports ns9/named2.conf.in ns9/named.conf
+cp ns9/named2.conf ns9/named.conf
 rndccmd 10.53.0.9 reconfig 2>&1 | sed 's/^/ns3 /' | cat_i
 rndccmd 10.53.0.9 flush 2>&1 | sed 's/^/ns3 /' | cat_i
 sleep 1
@@ -414,7 +412,7 @@ run_spooftests
 # similar to the ones above, but not identical.
 #
 echo_i "rechecking spoofed response scenarios with 'forward only' set globally"
-copy_setports ns9/named3.conf.in ns9/named.conf
+cp ns9/named3.conf ns9/named.conf
 rndccmd 10.53.0.9 reconfig 2>&1 | sed 's/^/ns3 /' | cat_i
 rndccmd 10.53.0.9 flush 2>&1 | sed 's/^/ns3 /' | cat_i
 sleep 1
@@ -451,7 +449,7 @@ status=$((status + ret))
 # the namespace is defined by the zone content.
 #
 echo_i "rechecking spoofed response scenarios glue below local zone"
-copy_setports ns9/named4.conf.in ns9/named.conf
+cp ns9/named4.conf ns9/named.conf
 rndccmd 10.53.0.9 reconfig 2>&1 | sed 's/^/ns3 /' | cat_i
 rndccmd 10.53.0.9 flush 2>&1 | sed 's/^/ns3 /' | cat_i
 sleep 1

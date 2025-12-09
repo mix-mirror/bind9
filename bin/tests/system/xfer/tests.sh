@@ -688,7 +688,7 @@ status=$((status + tmp))
 
 # Restart ns1 with -T transferslowly
 stop_server ns1
-copy_setports ns1/named2.conf.in ns1/named.conf
+cp ns1/named2.conf ns1/named.conf
 start_server --noclean --restart --port ${PORT} ns1 -- "-D xfer-ns1 $NS_PARAMS -T transferinsecs -T transferslowly"
 sleep 1
 
@@ -733,7 +733,7 @@ status=$((status + tmp))
 
 # Restart ns1 with -T transferstuck
 stop_server ns1
-copy_setports ns1/named3.conf.in ns1/named.conf
+cp ns1/named3.conf ns1/named.conf
 start_server --noclean --restart --port ${PORT} ns1 -- "-D xfer-ns1 $NS_PARAMS -T transferinsecs -T transferstuck"
 sleep 1
 

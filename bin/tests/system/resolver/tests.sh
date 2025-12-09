@@ -462,7 +462,7 @@ grep "not subdomain of zone" ns1/named.run >/dev/null || ret=1
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
-copy_setports ns7/named2.conf.in ns7/named.conf
+cp ns7/named2.conf ns7/named.conf
 rndccmd 10.53.0.7 reconfig 2>&1 | sed 's/^/ns7 /' | cat_i
 
 n=$((n + 1))

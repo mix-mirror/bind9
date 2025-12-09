@@ -73,7 +73,7 @@ pytestmark = pytest.mark.extra_artifacts(
         "ns*/zsk",
         "ns*/zsk",
         "ns*/zsk/K*",
-        "ns*/named-fips.conf",
+        "ns*/named*.conf",
         "ns*/settime.out.*",
         "ns*/signer.out.*",
         "ns*/zones",

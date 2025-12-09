@@ -21,7 +21,9 @@ def test_resolver_cache_reloadfails(ns1, templates):
     res = isctest.query.udp(msg, "10.53.0.1")
     isctest.check.noerror(res)
     assert res.answer[0].ttl == 300
-    templates.render("ns1/named.conf", {"wrongoption": True})
+    templates.render(
+        "ns1/named.conf", {"wrongoption": True}, template="ns1/named2.conf.j2"
+    )
 
     # The first reload fails, and the old cache list will be preserved
     cmd = ns1.rndc("reload", raise_on_exception=False)

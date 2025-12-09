@@ -17,7 +17,9 @@ def test_views_add_zones(ns2, templates):
     for i in range(50):
         name = f"example{i:03}.com"
         zone_names.append(name)
-        templates.render("ns2/named.conf", {"zone_names": zone_names})
+        templates.render(
+            "ns2/named.conf", {"zone_names": zone_names}, template="ns2/named3.conf.j2"
+        )
         shutil.copyfile("ns2/zone.db.in", f"ns2/{name}.db")
         with ns2.watch_log_from_here() as watcher:
             ns2.rndc("reconfig")

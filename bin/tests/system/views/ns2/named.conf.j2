@@ -10,7 +10,6 @@
  * See the COPYRIGHT file distributed with this work for additional
  * information regarding copyright ownership.
  */
-{% set zone_names = zone_names | default([]) %}
 
 options {
 	query-source address 10.53.0.2;
@@ -21,9 +20,9 @@ options {
 	listen-on { 10.53.0.2; };
 	listen-on-v6 { none; };
 	allow-transfer { any; };
-	recursion no;
+	recursion yes;
 	dnssec-validation no;
-	notify no;
+	notify yes;
 };
 
 key rndc_key {
@@ -35,11 +34,28 @@ controls {
 	inet 10.53.0.2 port @CONTROLPORT@ allow { any; } keys { rndc_key; };
 };
 
-{% for name in zone_names %}
-zone "@name@" {
-    type primary;
-    file "@name@.db";
-    dnssec-policy default;
-    inline-signing yes;
+dnssec-policy "views" {
+	keys {
+		ksk key-directory lifetime unlimited algorithm @DEFAULT_ALGORITHM@;
+		zsk key-directory lifetime unlimited algorithm @DEFAULT_ALGORITHM@;
+	};
 };
-{% endfor %}
+
+zone "." {
+	type hint;
+	file "../../_common/root.hint";
+};
+
+zone "example" {
+	type primary;
+	file "example.db";
+	allow-update { any; };
+};
+
+zone "inline" {
+	type primary;
+	file "external/inline.db";
+	key-directory "external";
+	dnssec-policy views;
+	inline-signing yes;
+};

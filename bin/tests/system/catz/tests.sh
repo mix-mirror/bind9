@@ -650,8 +650,7 @@ nextpart ns2/named.run >/dev/null
 n=$((n + 1))
 echo_i "reconfiguring secondary - checking if catz survives a certain class of failed reconfiguration attempts ($n)"
 ret=0
-sed -e "s/^#T3//" <ns2/named1.conf.in >ns2/named.conf.tmp
-copy_setports ns2/named.conf.tmp ns2/named.conf
+cp ns2/named2.conf ns2/named.conf
 $RNDC -c ../_common/rndc.conf -s 10.53.0.2 -p "${CONTROLPORT}" reconfig >/dev/null 2>&1 && ret=1
 if [ $ret -ne 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
@@ -666,7 +665,7 @@ status=$((status + ret))
 n=$((n + 1))
 echo_i "reconfiguring secondary - reverting the bad configuration ($n)"
 ret=0
-copy_setports ns2/named1.conf.in ns2/named.conf
+cp ns2/named1.conf ns2/named.conf
 rndccmd 10.53.0.2 reconfig || ret=1
 if [ $ret -ne 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
@@ -677,8 +676,7 @@ nextpart ns2/named.run >/dev/null
 n=$((n + 1))
 echo_i "reconfiguring secondary - checking if catz survives another type of failed reconfiguration attempts ($n)"
 ret=0
-sed -e "s/^#T4//" <ns2/named1.conf.in >ns2/named.conf.tmp
-copy_setports ns2/named.conf.tmp ns2/named.conf
+cp ns2/named3.conf ns2/named.conf
 $RNDC -c ../_common/rndc.conf -s 10.53.0.2 -p "${CONTROLPORT}" reconfig >/dev/null 2>&1 && ret=1
 if [ $ret -ne 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
@@ -697,8 +695,7 @@ status=$((status + ret))
 n=$((n + 1))
 echo_i "reconfiguring secondary - checking if catz member zones are reconfigured ($n)"
 ret=0
-sed -e "s/^#T5//" <ns2/named1.conf.in >ns2/named.conf.tmp
-copy_setports ns2/named.conf.tmp ns2/named.conf
+cp ns2/named4.conf ns2/named.conf
 rndccmd 10.53.0.2 reconfig || ret=1
 if [ $ret -ne 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
@@ -713,7 +710,7 @@ status=$((status + ret))
 n=$((n + 1))
 echo_i "reconfiguring secondary - reverting the bad configuration ($n)"
 ret=0
-copy_setports ns2/named1.conf.in ns2/named.conf
+cp ns2/named1.conf ns2/named.conf
 rndccmd 10.53.0.2 reconfig || ret=1
 if [ $ret -ne 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
@@ -1714,8 +1711,7 @@ status=$((status + ret))
 n=$((n + 1))
 echo_i "reconfiguring secondary - adding catalog4 catalog zone ($n)"
 ret=0
-sed -e "s/^#T1//g" <ns2/named1.conf.in >ns2/named.conf.tmp
-copy_setports ns2/named.conf.tmp ns2/named.conf
+cp ns2/named5.conf ns2/named.conf
 rndccmd 10.53.0.2 reconfig || ret=1
 if [ $ret -ne 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
@@ -1745,8 +1741,7 @@ status=$((status + ret))
 n=$((n + 1))
 echo_i "reconfiguring secondary - removing catalog4 catalog zone, adding non-existent catalog5 catalog zone ($n)"
 ret=0
-sed -e "s/^#T2//" <ns2/named1.conf.in >ns2/named.conf.tmp
-copy_setports ns2/named.conf.tmp ns2/named.conf
+cp ns2/named6.conf ns2/named.conf
 $RNDC -c ../_common/rndc.conf -s 10.53.0.2 -p "${CONTROLPORT}" reconfig >/dev/null 2>&1 && ret=1
 if [ $ret -ne 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
@@ -1754,7 +1749,7 @@ status=$((status + ret))
 n=$((n + 1))
 echo_i "reconfiguring secondary - removing non-existent catalog5 catalog zone ($n)"
 ret=0
-copy_setports ns2/named1.conf.in ns2/named.conf
+cp ns2/named1.conf ns2/named.conf
 rndccmd 10.53.0.2 reconfig || ret=1
 if [ $ret -ne 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
@@ -2545,9 +2540,9 @@ status=$((status + ret))
 n=$((n + 1))
 echo_i "checking that reconfig can delete and restore catalog zone configuration ($n)"
 ret=0
-copy_setports ns2/named2.conf.in ns2/named.conf
+cp ns2/named7.conf ns2/named.conf
 rndccmd 10.53.0.2 reconfig || ret=1
-copy_setports ns2/named1.conf.in ns2/named.conf
+cp ns2/named1.conf ns2/named.conf
 rndccmd 10.53.0.2 reconfig || ret=1
 if [ $ret -ne 0 ]; then echo_i "failed"; fi
 status=$((status + ret))

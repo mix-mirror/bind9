@@ -166,7 +166,7 @@ quota=$2
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
-copy_setports ns3/named2.conf.in ns3/named.conf
+cp ns3/named2.conf ns3/named.conf
 rndc_reconfig ns3 10.53.0.3
 
 n=$((n + 1))
@@ -209,7 +209,7 @@ drops=$(grep 'queries dropped' ns3/named.stats | sed 's/\([0-9][0-9]*\) queries.
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
-copy_setports ns3/named3.conf.in ns3/named.conf
+cp ns3/named3.conf ns3/named.conf
 rndc_reconfig ns3 10.53.0.3
 
 n=$((n + 1))
@@ -298,7 +298,7 @@ status=$((status + ret))
 
 echo_i "stop ns5"
 stop_server --use-rndc --port ${CONTROLPORT} ns5
-copy_setports ns5/named2.conf.in ns5/named.conf
+cp ns5/named2.conf ns5/named.conf
 echo_i "start ns5"
 start_server --noclean --restart --port ${PORT} ns5
 
@@ -342,7 +342,7 @@ status=$((status + ret))
 n=$((n + 1))
 echo_i "checking a warning is logged if max-clients-per-query < clients-per-query ($n)"
 ret=0
-copy_setports ns5/named3.conf.in ns5/named.conf
+cp ns5/named3.conf ns5/named.conf
 rndc_reconfig ns5 10.53.0.5
 wait_for_message ns5/named.run "configured clients-per-query (10) exceeds max-clients-per-query (5); automatically adjusting max-clients-per-query to (10)" || ret=1
 if [ $ret != 0 ]; then echo_i "failed"; fi
