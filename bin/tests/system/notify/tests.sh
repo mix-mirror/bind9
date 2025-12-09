@@ -225,7 +225,7 @@ test_start "checking notify-source uses port option correctly"
 grep "10.53.0.3#${EXTRAPORT2}: received notify for zone 'notify-source-port-test'" ns2/named.run >/dev/null || ret=1
 test_end
 
-# notify messages were sent to unresponsive 10.53.10.53 during the tests
+# notify messages were sent to unresponsive 10.53.0.6 during the tests
 # above, which should time out at some point; we need to wait for them to
 # appear in the logs in case the tests run faster than the notify timeouts
 
