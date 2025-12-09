@@ -76,7 +76,7 @@ class AXFRServer(DomainHandler):
         # Send just the obligatory NS RRset at zone apex in the next message.
         # This is stupidly inefficient, but makes looping below simpler as we
         # will already have been done with the mandatory stuff by then.
-        ns_message = qctx.refresh_response()
+        ns_message = qctx.prepare_new_response()
         ns_rrset = dns.rrset.from_text(
             qctx.qname, 300, qctx.qclass, dns.rdatatype.NS, "."
         )
@@ -85,7 +85,7 @@ class AXFRServer(DomainHandler):
         yield DnsResponseSend(ns_message)
 
         # Generate the AXFR with a txt rrset.
-        txt_message = qctx.refresh_response()
+        txt_message = qctx.prepare_new_response()
         txt_rrset = dns.rrset.from_text(
             qctx.qname,
             300,
