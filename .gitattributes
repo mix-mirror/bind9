@@ -34,3 +34,4 @@ dangerfile.py			 export-ignore
 /util/meson.build		-export-ignore
 /util/meson-system-test-init.sh	-export-ignore
 /util/meson-dist-package.sh	-export-ignore
+/util/meson-get-named-flags.py -export-ignore

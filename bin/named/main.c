@@ -111,6 +111,9 @@
 #include <jemalloc/jemalloc.h>
 #endif
 
+extern const char *named_compiler_args;
+extern const char *named_linker_args;
+
 /*
  * Include header files for database drivers here.
  */
@@ -535,6 +538,8 @@ printversion(bool verbose) {
 #ifdef __SUNPRO_C
 	printf("compiled by Solaris Studio %x\n", __SUNPRO_C);
 #endif /* ifdef __SUNPRO_C */
+	printf("compiled using flags: %s\n", named_compiler_args);
+	printf("linked using flags: %s\n", named_linker_args);
 	printf("compiled with OpenSSL version: %s\n", OPENSSL_VERSION_TEXT);
 	printf("linked to OpenSSL version: %s\n",
 	       OpenSSL_version(OPENSSL_VERSION));
@@ -1070,6 +1075,12 @@ setup(void) {
 		      ISC_LOG_NOTICE, "compiled by Solaris Studio %x",
 		      __SUNPRO_C);
 #endif /* ifdef __SUNPRO_C */
+	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
+		      ISC_LOG_NOTICE, "compiled using flags: %s",
+		      named_compiler_args);
+	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
+		      ISC_LOG_NOTICE, "linked using flags: %s",
+		      named_linker_args);
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
 		      ISC_LOG_NOTICE, "compiled with OpenSSL version: %s",
 		      OPENSSL_VERSION_TEXT);

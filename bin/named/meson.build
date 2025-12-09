@@ -22,6 +22,18 @@ named_srcset.add(
         },
     ),
 
+    custom_target(
+        'named-compiler-args',
+        capture: true,
+        env: env,
+        output: 'compiler_args.c',
+        depend_files: meson.project_source_root() / 'util' / 'meson-get-named-flags.py',
+        command: [
+            python,
+            meson.project_source_root() / 'util' / 'meson-get-named-flags.py',
+        ],
+    ),
+
     files(
         'builtin.c',
         'config.c',
