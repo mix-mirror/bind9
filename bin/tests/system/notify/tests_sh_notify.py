@@ -11,6 +11,10 @@
 
 import pytest
 
+# isctest.asyncserver requires dnspython >= 2.0.0
+pytest.importorskip("dns", minversion="2.0.0")
+
+
 pytestmark = pytest.mark.extra_artifacts(
     [
         "awk.out.*",
@@ -28,6 +32,7 @@ pytestmark = pytest.mark.extra_artifacts(
         "ns5/x21.bk-c",
         "ns5/x21.bk-c.jnl",
         "ns5/x21.db.jnl",
+        "ans6/ans.run",
     ]
 )
 
