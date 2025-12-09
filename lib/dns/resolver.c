@@ -10766,9 +10766,11 @@ dns_resolver_dumpfetches(dns_resolver_t *res, isc_statsformat_t format,
 
 		dns_rdatatype_format(fctx->type, typebuf, sizeof(typebuf));
 
-		fprintf(fp, "/%s (%s): started %s, ", typebuf,
-			fctx->state == fetchstate_active ? "active" : "done",
-			timebuf);
+		fprintf(fp, "/%s (%s), 0x%x: started %s, ", typebuf,
+			fctx->state == fetchstate_done ? "done"
+			: fctx->cloned		       ? "cloned"
+						       : "active",
+			fctx->options, timebuf);
 
 		ISC_LIST_FOREACH(fctx->resps, resp, link) {
 			resp_count++;
