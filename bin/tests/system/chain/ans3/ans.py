@@ -28,6 +28,13 @@ from isctest.asyncserver import (
     ResponseAction,
 )
 
+try:
+    dns_namerelation_equal = dns.name.NameRelation.EQUAL
+    dns_namerelation_subdomain = dns.name.NameRelation.SUBDOMAIN
+except AttributeError:  # dnspython < 2.0.0 compat
+    dns_namerelation_equal = dns.name.NAMERELN_EQUAL  # type: ignore
+    dns_namerelation_subdomain = dns.name.NAMERELN_SUBDOMAIN  # type: ignore
+
 
 def get_dname_rrset_at_name(
     zone: dns.zone.Zone, name: dns.name.Name
@@ -87,11 +94,11 @@ class Cve202125215(DomainHandler):
 
         relation, _, _ = qctx.qname.fullcompare(self_example_dname)
 
-        if relation in (dns.name.NameRelation.EQUAL, dns.name.NameRelation.SUBDOMAIN):
+        if relation in (dns_namerelation_equal, dns_namerelation_subdomain):
             del qctx.response.authority[:]
             qctx.response.set_rcode(dns.rcode.NOERROR)
 
-        if relation == dns.name.NameRelation.SUBDOMAIN:
+        if relation == dns_namerelation_subdomain:
             qctx.response.answer.append(dname_rrset)
             cname_rrset = dns.rrset.from_text(
                 qctx.qname,
