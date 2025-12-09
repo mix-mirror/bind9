@@ -260,6 +260,10 @@ class Peer:
         return f"{host}:{self.port}"
 
 
+def _empty_field():
+    return field(default=None, init=False)
+
+
 @dataclass
 class QueryContext:
     """
@@ -270,17 +274,13 @@ class QueryContext:
     response: dns.message.Message
     peer: Peer
     protocol: DnsProtocol
-    zone: Optional[dns.zone.Zone] = None
-    soa: Optional[dns.rrset.RRset] = None
-    node: Optional[dns.node.Node] = None
-    answer: Optional[dns.rdataset.Rdataset] = None
-    alias: Optional[dns.name.Name] = None
-    _initialized_response: Optional[dns.message.Message] = field(
-        default=None, init=False
-    )
-    _initialized_response_with_zone_data: Optional[dns.message.Message] = field(
-        default=None, init=False
-    )
+    zone: Optional[dns.zone.Zone] = _empty_field()
+    soa: Optional[dns.rrset.RRset] = _empty_field()
+    node: Optional[dns.node.Node] = _empty_field()
+    answer: Optional[dns.rdataset.Rdataset] = _empty_field()
+    alias: Optional[dns.name.Name] = _empty_field()
+    _initialized_response: Optional[dns.message.Message] = _empty_field()
+    _initialized_response_with_zone_data: Optional[dns.message.Message] = _empty_field()
 
     @property
     def qname(self) -> dns.name.Name:
