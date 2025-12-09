@@ -70,11 +70,13 @@ class ChaseDsHandler(ResponseHandler):
         )
         response_section.append(response_rrset)
 
-        yield DnsResponseSend(qctx.response, authoritative=True)
+        yield DnsResponseSend(qctx.response)
 
 
 def main() -> None:
-    server = ControllableAsyncDnsServer(default_rcode=dns.rcode.NOERROR)
+    server = ControllableAsyncDnsServer(
+        default_rcode=dns.rcode.NOERROR, default_aa=True
+    )
     server.install_control_command(ToggleResponsesCommand())
     server.install_response_handler(ChaseDsHandler())
     server.run()
