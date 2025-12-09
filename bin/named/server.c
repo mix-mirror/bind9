@@ -2352,20 +2352,26 @@ catz_addmodzone_cb(void *arg) {
 	if (result == ISC_R_SUCCESS) {
 		result = cfg_parse_buffer(confbuf, "catz", 0,
 					  &cfg_type_addzoneconf, 0, &zoneconf);
-		isc_buffer_free(&confbuf);
 	}
 	/*
 	 * Fail if either dns_catz_generate_zonecfg() or cfg_parse_buffer()
 	 * failed.
 	 */
 	if (result != ISC_R_SUCCESS) {
-		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
-			      ISC_LOG_ERROR,
-			      "catz: error \"%s\" while trying to generate "
-			      "config for zone '%s'",
-			      isc_result_totext(result), nameb);
+		isc_log_write(
+			NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
+			ISC_LOG_ERROR,
+			"catz: error \"%s\" while trying to generate "
+			"config for zone '%s'%s%.*s%s",
+			isc_result_totext(result), nameb,
+			confbuf != NULL ? " buffer '" : "",
+			confbuf != NULL ? (int)isc_buffer_usedlength(confbuf)
+					: 0,
+			confbuf != NULL ? (char *)isc_buffer_base(confbuf) : "",
+			confbuf != NULL ? "'" : "");
 		goto cleanup;
 	}
+	isc_buffer_free(&confbuf);
 	CHECK(cfg_map_get(zoneconf, "zone", &zlist));
 	if (!cfg_obj_islist(zlist)) {
 		CLEANUP(ISC_R_FAILURE);
@@ -2425,6 +2431,9 @@ catz_addmodzone_cb(void *arg) {
 	dns_zone_set_parentcatz(zone, cz->origin);
 
 cleanup:
+	if (confbuf != NULL) {
+		isc_buffer_free(&confbuf);
+	}
 	if (zone != NULL) {
 		dns_zone_detach(&zone);
 	}
