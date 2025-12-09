@@ -1109,14 +1109,11 @@ class AsyncDnsServer(AsyncServer):
 
     def _parse_message(self, wire: bytes) -> dns.message.Message:
         try:
-            return dns.message.from_wire(
-                wire,
-                keyring=(
-                    self._keyring
-                    if not isinstance(self._keyring, _NoKeyringType)
-                    else None
-                ),
-            )
+            if isinstance(self._keyring, _NoKeyringType):
+                keyring = None
+            else:
+                keyring = self._keyring
+            return dns.message.from_wire(wire, keyring=keyring)
         except dns.message.UnknownTSIGKey:
             if isinstance(self._keyring, _NoKeyringType):
                 self._abort_if_tsig_signed_query_received_unless_acknowledged()
