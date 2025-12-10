@@ -69,7 +69,8 @@ static char domainopt[DNS_NAME_MAXTEXT];
 static char hexcookie[81];
 
 static bool short_form = false, printcmd = true, plusquest = false,
-	    pluscomm = false, ipv4only = false, ipv6only = false, digrc = true;
+	    pluscomm = false, ipv4only = false, ipv6only = false, digrc = true,
+	    color = false;
 static uint32_t splitwidth = 0xffffffff;
 
 #include <openssl/opensslv.h>
@@ -80,6 +81,28 @@ static const char *const opcodetext[] = {
 	"NOTIFY",     "UPDATE",	    "RESERVED6",  "RESERVED7",
 	"RESERVED8",  "RESERVED9",  "RESERVED10", "RESERVED11",
 	"RESERVED12", "RESERVED13", "RESERVED14", "RESERVED15"
+};
+
+static const char DIG_ANSI_WARN_COLOR[] = "\e[93m";
+static const char DIG_ANSI_GOOD_COLOR[] = "\e[92m";
+static const char DIG_ANSI_ERR_COLOR[] = "\e[91m";
+static const char DIG_ANSI_RST_COLOR[] = "\e[0m";
+
+/*% colors used for rcodes */
+static const char *const color_rcodetext[] = {
+	[dns_rcode_noerror] = DIG_ANSI_GOOD_COLOR,
+	[dns_rcode_formerr] = DIG_ANSI_ERR_COLOR,
+	[dns_rcode_servfail] = DIG_ANSI_ERR_COLOR,
+	[dns_rcode_nxdomain] = DIG_ANSI_WARN_COLOR,
+	[dns_rcode_notimp] = DIG_ANSI_ERR_COLOR,
+	[dns_rcode_refused] = DIG_ANSI_ERR_COLOR,
+	[dns_rcode_yxdomain] = DIG_ANSI_ERR_COLOR,
+	[dns_rcode_yxrrset] = DIG_ANSI_ERR_COLOR,
+	[dns_rcode_nxrrset] = DIG_ANSI_ERR_COLOR,
+	[dns_rcode_notauth] = DIG_ANSI_ERR_COLOR,
+	[dns_rcode_notzone] = DIG_ANSI_ERR_COLOR,
+	[dns_rcode_badvers] = DIG_ANSI_ERR_COLOR,
+	[dns_rcode_badcookie] = DIG_ANSI_ERR_COLOR,
 };
 
 static const char *
@@ -146,6 +169,7 @@ help(void) {
 	       "                 -b address[#port]   (bind to source "
 	       "address/port)\n"
 	       "                 -c class            (specify query class)\n"
+	       "                 -C                  (enable colored output)\n"
 	       "                 -f filename         (batch mode)\n"
 	       "                 -k keyfile          (specify tsig key file)\n"
 	       "                 -m                  (enable memory usage "
@@ -861,10 +885,27 @@ printmessage(dig_query_t *query, const isc_buffer_t *msgbuf, dns_message_t *msg,
 				       "testing what happens when an mDNS "
 				       "query is leaked to DNS\n");
 			}
-			printf(";; ->>HEADER<<- opcode: %s, status: %s, "
+
+			const char *color_start = "";
+			const char *color_end = "";
+			if (color && msg->rcode >= ARRAY_SIZE(color_rcodetext))
+			{
+				color_start = DIG_ANSI_WARN_COLOR;
+				color_end = DIG_ANSI_RST_COLOR;
+			} else if (color && color_rcodetext[msg->rcode] == NULL)
+			{
+				color_start = DIG_ANSI_WARN_COLOR;
+				color_end = DIG_ANSI_RST_COLOR;
+			} else if (color) {
+				color_start = color_rcodetext[msg->rcode];
+				color_end = DIG_ANSI_RST_COLOR;
+			}
+
+			printf(";; ->>HEADER<<- opcode: %s, status: %s%s%s, "
 			       "id: %u\n",
-			       opcodetext[msg->opcode],
-			       rcode_totext(msg->rcode), msg->id);
+			       opcodetext[msg->opcode], color_start,
+			       rcode_totext(msg->rcode), color_end, msg->id);
+
 			printf(";; flags:");
 			if ((msg->flags & DNS_MESSAGEFLAG_QR) != 0) {
 				printf(" qr");
@@ -2623,7 +2664,7 @@ exit_or_usage:
 /*%
  * #true returned if value was used
  */
-static const char *single_dash_opts = "46dFhimnruv";
+static const char *single_dash_opts = "46dFhimnruvC";
 static const char *dash_opts = "46bcdFfhikmnpqrtvyx";
 static bool
 dash_option(char *option, char *next, dig_lookup_t **lookup,
@@ -2698,6 +2739,9 @@ dash_option(char *option, char *next, dig_lookup_t **lookup,
 		case 'r':
 			debug("digrc (late)");
 			digrc = false;
+			break;
+		case 'C':
+			color = true;
 			break;
 		case 'u':
 			(*lookup)->use_usec = true;

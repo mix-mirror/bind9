@@ -119,6 +119,10 @@ Options
    This option sets the query class. The default ``class`` is IN; other classes are
    HS for Hesiod records or CH for Chaosnet records.
 
+.. option:: -C
+
+   This option surrounds some output with escape sequences to display them in color on the terminal.
+
 .. option:: -f file
 
    This option sets batch mode, in which :program:`dig` reads a list of lookup requests to process from
