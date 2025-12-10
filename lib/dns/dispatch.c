@@ -34,6 +34,7 @@
 #include <isc/netmgr.h>
 #include <isc/portset.h>
 #include <isc/random.h>
+#include <isc/result.h>
 #include <isc/stats.h>
 #include <isc/string.h>
 #include <isc/tid.h>
@@ -615,8 +616,7 @@ next:
 	 * Do not invoke the read callback just yet and instead wait for the
 	 * proper response to arrive until the original timeout fires.
 	 */
-	respond = false;
-	udp_dispatch_getnext(resp, timeout);
+	eresult = DNS_R_UNEXPECTEDID;
 
 done:
 	if (respond) {
