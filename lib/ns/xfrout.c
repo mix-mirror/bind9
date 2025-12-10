@@ -1008,7 +1008,8 @@ got_soa:
 			xfrout_log1(client, question_name, question_class,
 				    ISC_LOG_INFO,
 				    "IXFR version not in journal, "
-				    "falling back to AXFR");
+				    "falling back to AXFR (serial %u)",
+				    begin_serial);
 			mnemonic = "AXFR-style IXFR";
 			goto axfr_fallback;
 		}
