@@ -193,16 +193,14 @@ ck_soa() {
 # (re)load the response policy zones with the rules in the file $TEST_FILE
 load_db() {
   if test -n "$TEST_FILE"; then
-    copy_setports $TEST_FILE tmp
-
     for ZONE in bl0 bl1 bl2 bl3 bl4 bl5 bl6 bl7 bl8 bl9 bl10 bl11 bl12 bl13 bl14 bl15 bl16 bl17 bl18 bl19; do
       produce_librpz_rules ns5 $ZONE bl
     done
 
     produce_librpz_rules ns2 bl.tld2 bl.tld2
-    cat tmp >>$DNSRPS_TEST_UPDATE_FILE
+    cat $TEST_FILE >>$DNSRPS_TEST_UPDATE_FILE
 
-    if $NSUPDATE -v tmp; then
+    if $NSUPDATE -v $TEST_FILE; then
       :
       $RNDCCMD $ns3 sync
     else
@@ -210,7 +208,6 @@ load_db() {
       $RNDCCMD $ns3 sync
       exit 1
     fi
-    rm -f tmp
   fi
 }
 
@@ -328,7 +325,7 @@ start_group() {
 end_group() {
   if test -n "$TEST_FILE"; then
     # remove the previous set of test rules
-    copy_setports $TEST_FILE tmp
+    cp $TEST_FILE tmp
     add_librpz_rule "rollback"
     sed -e 's/[	 ]add[	 ]/ delete /' tmp | $NSUPDATE
     rm -f tmp
@@ -765,12 +762,10 @@ if [ native = "$MODE" ]; then
 
   t=$((t + 1))
   echo_i "checking if rpz survives a certain class of failed reconfiguration attempts (${t})"
-  sed -e "s/^#BAD//" <ns3/named.conf.in >ns3/named.conf.tmp
-  copy_setports ns3/named.conf.tmp ns3/named.conf
-  rm ns3/named.conf.tmp
+  cp ns3/named2.conf ns3/named.conf
   $RNDCCMD $ns3 reconfig >/dev/null 2>&1 && setret "failed"
   sleep 1
-  copy_setports ns3/named.conf.in ns3/named.conf
+  cp ns3/named1.conf ns3/named.conf
   $RNDCCMD $ns3 reconfig || setret "failed"
 
   t=$((t + 1))

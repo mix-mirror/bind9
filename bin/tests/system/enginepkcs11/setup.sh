@@ -44,10 +44,6 @@ keyfromlabel() {
   cat keyfromlabel.out.$zone.$id
 }
 
-# Setup ns1.
-copy_setports ns1/named.conf.in ns1/named.conf
-sed -e "s/@ENGINE_ARGS@/${ENGINE_ARG}/g" <ns1/named.args.in >ns1/named.args
-
 mkdir ns1/keys
 
 dir="ns1"
@@ -179,10 +175,6 @@ zone "${alg}.split" {
 EOF
   fi
 done
-
-# Setup ns2 (with views).
-copy_setports ns2/named.conf.in ns2/named.conf
-sed -e "s/@ENGINE_ARGS@/${ENGINE_ARG}/g" <ns2/named.args.in >ns2/named.args
 
 mkdir ns2/keys
 

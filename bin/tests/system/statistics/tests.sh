@@ -258,17 +258,17 @@ ret=0
 rndc_stats ns2 10.53.0.2 || ret=1
 sed -n '/Per Zone Query Statistics/,/^++/p' $last_stats | grep -F '[example]' >/dev/null && ret=0
 # turn on
-copy_setports ns2/named2.conf.in ns2/named.conf
+cp ns2/named2.conf ns2/named.conf
 rndc_reconfig ns2 10.53.0.2
 rndc_stats ns2 10.53.0.2 || ret=1
 sed -n '/Per Zone Query Statistics/,/^++/p' $last_stats | grep -F '[example]' >/dev/null || ret=1
 # turn off
-copy_setports ns2/named.conf.in ns2/named.conf
+cp ns2/named1.conf ns2/named.conf
 rndc_reconfig ns2 10.53.0.2
 rndc_stats ns2 10.53.0.2 || ret=1
 sed -n '/Per Zone Query Statistics/,/^++/p' $last_stats | grep -F '[example]' >/dev/null && ret=0
 # turn on
-copy_setports ns2/named2.conf.in ns2/named.conf
+cp ns2/named2.conf ns2/named.conf
 rndc_reconfig ns2 10.53.0.2
 rndc_stats ns2 10.53.0.2 || ret=1
 sed -n '/Per Zone Query Statistics/,/^++/p' $last_stats | grep -F '[example]' >/dev/null || ret=1

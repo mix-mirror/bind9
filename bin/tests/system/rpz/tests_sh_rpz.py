@@ -18,6 +18,7 @@ pytestmark = pytest.mark.extra_artifacts(
         "dnsrps.conf",
         "dnsrps.zones",
         "proto.*",
+        "test*",
         "trusted.conf",
         "ns2/K*",
         "ns2/bl.tld2.db",

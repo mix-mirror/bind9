@@ -9,6 +9,8 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
+import os
+
 import pytest
 
 pytestmark = pytest.mark.extra_artifacts(
@@ -49,6 +51,12 @@ pytestmark = pytest.mark.extra_artifacts(
         "ns2/*.view*.db.signed",
     ]
 )
+
+
+def bootstrap():
+    return {
+        "ENGINE_ARG": os.getenv("ENGINE_ARG", ""),
+    }
 
 
 @pytest.mark.flaky(max_runs=5)  # GL#4605

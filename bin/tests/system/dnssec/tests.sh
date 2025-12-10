@@ -2760,7 +2760,7 @@ status=$((status + ret))
 # correctly.
 echo_i "switching to automatic root key configuration"
 cp ns4/managed-keys.bind.in ns4/managed-keys.bind
-copy_setports ns4/named2.conf.in ns4/named.conf
+cp ns4/named2.conf ns4/named.conf
 rndccmd 10.53.0.4 reconfig 2>&1 | sed 's/^/ns4 /' | cat_i
 sleep 5
 
@@ -3158,7 +3158,7 @@ n=$((n + 1))
 test "$ret" -eq 0 || echo_i "failed"
 status=$((status + ret))
 
-copy_setports ns4/named3.conf.in ns4/named.conf
+cp ns4/named3.conf ns4/named.conf
 rndccmd 10.53.0.4 reconfig 2>&1 | sed 's/^/ns4 /' | cat_i
 sleep 3
 
@@ -3391,7 +3391,7 @@ EOF
   status=$((status + ret))
 fi
 
-copy_setports ns4/named4.conf.in ns4/named.conf
+cp ns4/named4.conf ns4/named.conf
 rndccmd 10.53.0.4 reconfig 2>&1 | sed 's/^/ns4 /' | cat_i
 sleep 3
 
@@ -3889,7 +3889,7 @@ status=$((status + ret))
 
 echo_i "checking initialization with a revoked managed key ($n)"
 ret=0
-copy_setports ns5/named2.conf.in ns5/named.conf
+cp ns5/named2.conf ns5/named.conf
 rndccmd 10.53.0.5 reconfig 2>&1 | sed 's/^/ns5 /' | cat_i
 sleep 3
 dig_with_opts +dnssec @10.53.0.5 SOA . >dig.out.ns5.test$n

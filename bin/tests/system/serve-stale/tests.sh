@@ -289,7 +289,7 @@ status=$((status + ret))
 n=$((n + 1))
 echo_i "updating ns1/named.conf ($n)"
 ret=0
-copy_setports ns1/named2.conf.in ns1/named.conf
+cp ns1/named2.conf ns1/named.conf
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -535,7 +535,7 @@ echo_i "test server with serve-stale options set, low max-stale-ttl"
 n=$((n + 1))
 echo_i "updating ns1/named.conf ($n)"
 ret=0
-copy_setports ns1/named3.conf.in ns1/named.conf
+cp ns1/named3.conf ns1/named.conf
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -895,7 +895,7 @@ status=$((status + ret))
 n=$((n + 1))
 echo_i "updating ns1/named.conf ($n)"
 ret=0
-copy_setports ns1/named4.conf.in ns1/named.conf
+cp ns1/named4.conf ns1/named.conf
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -997,7 +997,7 @@ echo_i "test server with no serve-stale options set"
 n=$((n + 1))
 echo_i "updating ns3/named.conf ($n)"
 ret=0
-copy_setports ns3/named1.conf.in ns3/named.conf
+cp ns3/named1.conf ns3/named.conf
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -1723,7 +1723,7 @@ echo_i "test stale-answer-client-timeout (off)"
 n=$((n + 1))
 echo_i "updating ns3/named.conf ($n)"
 ret=0
-copy_setports ns3/named3.conf.in ns3/named.conf
+cp ns3/named3.conf ns3/named.conf
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -1850,7 +1850,7 @@ echo_i "test stale-answer-client-timeout (0)"
 n=$((n + 1))
 echo_i "updating ns3/named.conf ($n)"
 ret=0
-copy_setports ns3/named4.conf.in ns3/named.conf
+cp ns3/named4.conf ns3/named.conf
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -2171,7 +2171,7 @@ echo_i "test stale-answer-client-timeout (0) and stale-refresh-time (4)"
 n=$((n + 1))
 echo_i "updating ns3/named.conf ($n)"
 ret=0
-copy_setports ns3/named5.conf.in ns3/named.conf
+cp ns3/named5.conf ns3/named.conf
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -2356,7 +2356,7 @@ echo_i "test serve-stale's interaction with fetch-limits (cache only)"
 n=$((n + 1))
 echo_i "updating ns3/named.conf ($n)"
 ret=0
-copy_setports ns3/named6.conf.in ns3/named.conf
+cp ns3/named6.conf ns3/named.conf
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -2466,7 +2466,7 @@ echo_i "test serve-stale's interaction with fetch limits (dual-mode)"
 n=$((n + 1))
 echo_i "updating ns3/named.conf ($n)"
 ret=0
-copy_setports ns3/named7.conf.in ns3/named.conf
+cp ns3/named7.conf ns3/named.conf
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -2548,7 +2548,7 @@ n=$((n + 1))
 echo_i "check DNS64 processing of a stale negative answer ($n)"
 ret=0
 # configure ns3 with dns64
-copy_setports ns3/named8.conf.in ns3/named.conf
+cp ns3/named8.conf ns3/named.conf
 rndc_reload ns3 10.53.0.3
 # flush cache, enable ans2 responses, make sure serve-stale is on
 $RNDCCMD 10.53.0.3 flush >rndc.out.test$n.1 2>&1 || ret=1
@@ -2574,7 +2574,7 @@ if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
 # configure ns3 with stale-answer-client-timeout 0 and a delegated zone
-copy_setports ns3/named9.conf.in ns3/named.conf
+cp ns3/named9.conf ns3/named.conf
 rndc_reload ns3 10.53.0.3
 
 n=$((n + 1))
