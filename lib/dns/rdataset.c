@@ -588,17 +588,6 @@ dns_rdataset_trimttl(dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset,
 	sigrdataset->ttl = ttl;
 }
 
-dns_slabheader_t *
-dns_rdataset_getheader(const dns_rdataset_t *rdataset) {
-	REQUIRE(DNS_RDATASET_VALID(rdataset));
-
-	if (rdataset->methods->getheader != NULL) {
-		return (rdataset->methods->getheader)(rdataset);
-	}
-
-	return NULL;
-}
-
 isc_stdtime_t
 dns_rdataset_minresign(dns_rdataset_t *rdataset) {
 	dns_rdata_t rdata = DNS_RDATA_INIT;

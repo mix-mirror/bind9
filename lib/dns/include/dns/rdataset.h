@@ -52,6 +52,7 @@
 
 #include <dns/rdataslab.h>
 #include <dns/rdatastruct.h>
+#include <dns/rdatavec.h>
 #include <dns/types.h>
 
 #define DNS_RDATASET_MAXADDITIONAL 13
@@ -86,7 +87,6 @@ struct dns_rdatasetmethods {
 	void (*getownercase)(const dns_rdataset_t *rdataset, dns_name_t *name);
 	isc_result_t (*addglue)(dns_rdataset_t	*rdataset,
 				dns_dbversion_t *version, dns_message_t *msg);
-	dns_slabheader_t *(*getheader)(const dns_rdataset_t *rdataset);
 };
 
 #define DNS_RDATASET_MAGIC	ISC_MAGIC('D', 'N', 'S', 'R')
@@ -199,6 +199,20 @@ struct dns_rdataset {
 			unsigned int		iter_count;
 			dns_slabheader_proof_t *noqname, *closest;
 		} slab;
+
+		/*
+		 * A vec rdataset provides access to an rdatavec. In
+		 * a QP database, 'header' points to the vecheader
+		 * structure. (There is an exception in the case of
+		 * rdatasets returned by the `getnoqname` and `getclosest`
+		 * methods; see comments in rdatavec.c for details.)
+		 */
+		struct {
+			struct dns_db	*db;
+			dns_dbnode_t	*node;
+			dns_vecheader_t *header;
+			rdatavec_iter_t	 iter;
+		} vec;
 
 		/*
 		 * A simple rdatalist, plus an optional dbnode used by
@@ -619,17 +633,6 @@ const char *
 dns_trust_totext(dns_trust_t trust);
 /*%<
  * Display trust in textual form.
- */
-
-dns_slabheader_t *
-dns_rdataset_getheader(const dns_rdataset_t *rdataset);
-/*%<
- * Return a pointer to the slabheader for a slab rdataset. If 'rdataset'
- * is not a slab rdataset or if the slab is raw (lacking a header), return
- * NULL.
- *
- * Requires:
- * \li	'rdataset' is a valid rdataset.
  */
 
 isc_stdtime_t

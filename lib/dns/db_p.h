@@ -17,6 +17,7 @@
 #include <isc/urcu.h>
 
 #include <dns/nsec3.h>
+#include <dns/rdatavec.h>
 #include <dns/types.h>
 
 #ifdef STRONG_RWLOCK_CHECK
@@ -97,7 +98,7 @@ struct dns_gluelist {
 	isc_mem_t *mctx;
 
 	const dns_dbversion_t *version;
-	dns_slabheader_t *header;
+	dns_vecheader_t *header;
 
 	struct dns_glue *glue;
 

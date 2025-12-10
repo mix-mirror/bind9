@@ -44,6 +44,7 @@ dns_tests = [
     'tsig',
     'unreachcache',
     'update',
+    'vecheader',
     'zonefile',
     'zonemgr',
     'zt',

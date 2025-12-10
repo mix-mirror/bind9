@@ -33,11 +33,11 @@
 #include <dns/qp.h>
 #include <dns/rdatalist.h>
 #include <dns/rdataset.h>
-#include <dns/rdataslab.h>
 #include <dns/rdatastruct.h>
+#include <dns/rdatavec.h>
 #define KEEP_BEFORE
 
-#include "rdataslab_p.h"
+#include "rdatavec_p.h"
 
 /* Include the main file */
 
@@ -187,17 +187,16 @@ ownercase_test_one(const char *str1, const char *str2) {
 		.common.mctx = isc_g_mctx,
 	};
 	qpznode_t node = { .methods = &qpznode_methods, .locknum = 0 };
-	dns_slabheader_t header = {
+	dns_vecheader_t header = {
 		.node = (dns_dbnode_t *)&node,
 	};
-	unsigned char *raw = (unsigned char *)(&header) + sizeof(header);
 	dns_rdataset_t rdataset = {
 		.magic = DNS_RDATASET_MAGIC,
-		.slab = { .db = (dns_db_t *)qpdb,
-			  .node = (dns_dbnode_t *)&node,
-			  .raw = raw,
+		.vec = { .db = (dns_db_t *)qpdb,
+			 .node = (dns_dbnode_t *)&node,
+			 .header = &header,
 		},
-		.methods = &dns_rdataslab_rdatasetmethods,
+		.methods = &dns_rdatavec_rdatasetmethods,
 	};
 	isc_buffer_t b;
 	dns_fixedname_t fname1, fname2;
@@ -216,7 +215,7 @@ ownercase_test_one(const char *str1, const char *str2) {
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	/* Store the case from name1 */
-	dns_slabheader_setownercase(&header, name1);
+	dns_vecheader_setownercase(&header, name1);
 
 	assert_true(CASESET(&header));
 
@@ -361,17 +360,16 @@ ISC_RUN_TEST_IMPL(setownercase) {
 		.common.mctx = isc_g_mctx,
 	};
 	qpznode_t node = { .methods = &qpznode_methods, .locknum = 0 };
-	dns_slabheader_t header = {
+	dns_vecheader_t header = {
 		.node = (dns_dbnode_t *)&node,
 	};
-	unsigned char *raw = (unsigned char *)(&header) + sizeof(header);
 	dns_rdataset_t rdataset = {
 		.magic = DNS_RDATASET_MAGIC,
-		.slab = { .db = (dns_db_t *)qpdb,
-			  .node = (dns_dbnode_t *)&node,
-			  .raw = raw,
+		.vec = { .db = (dns_db_t *)qpdb,
+			 .node = (dns_dbnode_t *)&node,
+			 .header = &header,
 		},
-		.methods = &dns_rdataslab_rdatasetmethods,
+		.methods = &dns_rdatavec_rdatasetmethods,
 	};
 	const char *str1 =
 		"AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqRrSsTtUuVvWwXxYyZz";

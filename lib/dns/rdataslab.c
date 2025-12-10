@@ -92,7 +92,6 @@ dns_rdatasetmethods_t dns_rdataslab_rdatasetmethods = {
 	.expire = rdataset_expire,
 	.clearprefetch = rdataset_clearprefetch,
 	.getownercase = rdataset_getownercase,
-	.getheader = rdataset_getheader,
 };
 
 /*% Note: the "const void *" are just to make qsort happy.  */
@@ -126,7 +125,7 @@ makeslab(dns_rdataset_t *rdataset, isc_mem_t *mctx, isc_region_t *region,
 	 * new buffer.
 	 */
 	if (rdataset->methods == &dns_rdataslab_rdatasetmethods) {
-		dns_slabheader_t *header = dns_rdataset_getheader(rdataset);
+		dns_slabheader_t *header = rdataset_getheader(rdataset);
 		buflen = dns_rdataslab_size(header);
 
 		rawbuf = isc_mem_get(mctx, buflen);
@@ -1120,7 +1119,7 @@ rdataset_getclosest(dns_rdataset_t *rdataset, dns_name_t *name,
 
 static void
 rdataset_settrust(dns_rdataset_t *rdataset, dns_trust_t trust) {
-	dns_slabheader_t *header = dns_rdataset_getheader(rdataset);
+	dns_slabheader_t *header = rdataset_getheader(rdataset);
 
 	rdataset->trust = trust;
 	atomic_store(&header->trust, trust);
@@ -1128,21 +1127,21 @@ rdataset_settrust(dns_rdataset_t *rdataset, dns_trust_t trust) {
 
 static void
 rdataset_expire(dns_rdataset_t *rdataset DNS__DB_FLARG) {
-	dns_slabheader_t *header = dns_rdataset_getheader(rdataset);
+	dns_slabheader_t *header = rdataset_getheader(rdataset);
 
 	dns_db_expiredata(header->node, header);
 }
 
 static void
 rdataset_clearprefetch(dns_rdataset_t *rdataset) {
-	dns_slabheader_t *header = dns_rdataset_getheader(rdataset);
+	dns_slabheader_t *header = rdataset_getheader(rdataset);
 
 	DNS_SLABHEADER_CLRATTR(header, DNS_SLABHEADERATTR_PREFETCH);
 }
 
 static void
 rdataset_getownercase(const dns_rdataset_t *rdataset, dns_name_t *name) {
-	dns_slabheader_t *header = dns_rdataset_getheader(rdataset);
+	dns_slabheader_t *header = rdataset_getheader(rdataset);
 	uint8_t mask = (1 << 7);
 	uint8_t bits = 0;
 
