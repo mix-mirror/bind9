@@ -21,6 +21,7 @@
 #include <openssl/param_build.h>
 #include <openssl/rsa.h>
 
+#include <isc/crypto.h>
 #include <isc/ossl_wrap.h>
 #include <isc/region.h>
 #include <isc/util.h>
@@ -36,7 +37,7 @@
 #define P_CURVE_IMPL(curve, nid)                                               \
 	isc_result_t isc_ossl_wrap_generate_##curve##_key(EVP_PKEY **pkeyp) {  \
 		REQUIRE(pkeyp != NULL && *pkeyp == NULL);                      \
-		return generate_ec_key(pkeyp, nid);                            \
+		return generate_ec_key(pkeyp, curve##_params);                 \
 	}                                                                      \
 	isc_result_t isc_ossl_wrap_generate_pkcs11_##curve##_key(              \
 		char *uri, EVP_PKEY **pkeyp) {                                 \
@@ -46,7 +47,7 @@
 	}                                                                      \
 	isc_result_t isc_ossl_wrap_validate_##curve##_pkey(EVP_PKEY *pkey) {   \
 		REQUIRE(pkey != NULL);                                         \
-		return validate_ec_pkey(pkey, curve##_group_name);             \
+		return validate_ec_pkey(pkey, curve##_params);                 \
 	}                                                                      \
 	isc_result_t isc_ossl_wrap_load_##curve##_public_from_region(          \
 		isc_region_t region, EVP_PKEY **pkeyp) {                       \
@@ -55,7 +56,7 @@
 		REQUIRE(pkeyp != NULL && *pkeyp == NULL);                      \
 		region.length = curve##_public_key_size;                       \
 		return load_ec_public_from_region(region, pkeyp,               \
-						  curve##_group_name);         \
+						  curve##_params);             \
 	}                                                                      \
 	isc_result_t isc_ossl_wrap_load_##curve##_secret_from_region(          \
 		isc_region_t region, EVP_PKEY **pkeyp) {                       \
@@ -64,7 +65,7 @@
 			region.length >= curve##_secret_key_size);             \
 		region.length = curve##_secret_key_size;                       \
 		return load_ec_secret_from_region(region, pkeyp,               \
-						  curve##_group_name, nid);    \
+						  curve##_params);             \
 	}                                                                      \
 	isc_result_t isc_ossl_wrap_##curve##_public_region(EVP_PKEY *pkey,     \
 							   isc_region_t pub) { \
@@ -85,14 +86,37 @@
 
 static char pkcs11_key_usage[] = "digitalSignature";
 
-constexpr char *p256_group_name = "prime256v1";
-constexpr char *p384_group_name = "secp384r1";
-
 constexpr size_t p256_public_key_size = 64;
 constexpr size_t p384_public_key_size = 96;
 
 constexpr size_t p256_secret_key_size = 32;
 constexpr size_t p384_secret_key_size = 48;
+
+/*
+ * "group" MUST be the first parameter, we rely on it to get the group name.
+ */
+
+/* clang-format off */
+static const OSSL_PARAM p256_params[] = {
+	OSSL_PARAM_utf8_string(OSSL_PKEY_PARAM_GROUP_NAME,
+			       UNCONST("prime256v1"), sizeof("prime256v1") - 1),
+	OSSL_PARAM_utf8_string(OSSL_PKEY_PARAM_EC_ENCODING,
+			       UNCONST("named_curve"), sizeof("named_curve") - 1),
+	OSSL_PARAM_utf8_string(OSSL_PKEY_PARAM_EC_POINT_CONVERSION_FORMAT,
+			       UNCONST("uncompressed"), sizeof("uncompressed") - 1),
+	OSSL_PARAM_END,
+};
+
+static const OSSL_PARAM p384_params[] = {
+	OSSL_PARAM_utf8_string(OSSL_PKEY_PARAM_GROUP_NAME,
+			       UNCONST("secp384r1"), sizeof("secp384r1") - 1),
+	OSSL_PARAM_utf8_string(OSSL_PKEY_PARAM_EC_ENCODING,
+			       UNCONST("named_curve"), sizeof("named_curve") - 1),
+	OSSL_PARAM_utf8_string(OSSL_PKEY_PARAM_EC_POINT_CONVERSION_FORMAT,
+			       UNCONST("uncompressed"), sizeof("uncompressed") - 1),
+	OSSL_PARAM_END,
+};
+/* clang-format on */
 
 static void
 BN_bn2bin_fixed(const BIGNUM *bn, unsigned char *buf, int size) {
@@ -119,55 +143,39 @@ rsa_keygen_progress_cb(EVP_PKEY_CTX *ctx) {
 }
 
 static isc_result_t
-generate_ec_key(EVP_PKEY **pkeyp, const int nid) {
+generate_ec_key(EVP_PKEY **pkeyp, const OSSL_PARAM *const params) {
 	isc_result_t result;
 	EVP_PKEY_CTX *pctx = NULL;
-	EVP_PKEY *params_pkey = NULL;
 
-	/* Generate the key's parameters. */
 	pctx = EVP_PKEY_CTX_new_from_name(NULL, "EC", NULL);
 	if (pctx == NULL) {
 		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_CTX_new_from_name"));
-	}
-
-	if (EVP_PKEY_paramgen_init(pctx) != 1) {
-		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_paramgen_init"));
-	}
-
-	if (EVP_PKEY_CTX_set_ec_paramgen_curve_nid(pctx, nid) != 1) {
-		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_CTX_set_ec_paramgen_curve_"
-				      "nid"));
-	}
-
-	if (EVP_PKEY_paramgen(pctx, &params_pkey) != 1) {
-		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_paramgen"));
-	}
-
-	if (params_pkey == NULL) {
-		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_paramgen"));
-	}
-
-	EVP_PKEY_CTX_free(pctx);
-
-	/* Generate the key. */
-	pctx = EVP_PKEY_CTX_new(params_pkey, NULL);
-	if (pctx == NULL) {
-		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_CTX_new"));
 	}
 
 	if (EVP_PKEY_keygen_init(pctx) != 1) {
 		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_keygen_init"));
 	}
 
-	if (EVP_PKEY_keygen(pctx, pkeyp) != 1) {
-		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_keygen"));
+	if (EVP_PKEY_CTX_set_params(pctx, params) != 1) {
+		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_CTX_set_params"));
+	}
+
+	/*
+	 * EVP_PKEY_keygen is an older function now equivalent to
+	 * EVP_PKEY_generate with an additional check that EVP_PKEY_CTX has been
+	 * initialized with EVP_PKEY_keygen_init.
+	 *
+	 * Since we can guarantee such condition we use EVP_PKEY_generate
+	 * directly.
+	 */
+	if (EVP_PKEY_generate(pctx, pkeyp) != 1) {
+		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_generate"));
 	}
 
 	result = ISC_R_SUCCESS;
 
 cleanup:
 	EVP_PKEY_CTX_free(pctx);
-	EVP_PKEY_free(params_pkey);
 	return result;
 }
 
@@ -207,6 +215,14 @@ generate_pkcs11_ec_key(char *uri, EVP_PKEY **pkeyp, int nid) {
 					"nid"));
 	}
 
+	/*
+	 * EVP_PKEY_keygen is an older function now equivalent to
+	 * EVP_PKEY_generate with an additional check that EVP_PKEY_CTX has been
+	 * initialized with EVP_PKEY_keygen_init.
+	 *
+	 * Since we can guarantee such condition we use EVP_PKEY_generate
+	 * directly.
+	 */
 	if (EVP_PKEY_generate(pctx, pkeyp) != 1) {
 		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_generate"));
 	}
@@ -219,15 +235,16 @@ cleanup:
 }
 
 static isc_result_t
-validate_ec_pkey(EVP_PKEY *pkey, const char *expected) {
+validate_ec_pkey(EVP_PKEY *pkey, const OSSL_PARAM *const curve_params) {
 	isc_result_t result;
+	const char *expected = curve_params[0].data;
 	char actual[64];
 
 	if (EVP_PKEY_get_group_name(pkey, actual, sizeof(actual), NULL) != 1) {
 		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_get_group_name"));
 	}
 
-	if (strcmp(expected, actual) != 0) {
+	if (strncmp(expected, actual, curve_params[0].data_size) != 0) {
 		return ISC_R_FAILURE;
 	}
 
@@ -239,37 +256,19 @@ cleanup:
 
 static isc_result_t
 load_ec_public_from_region(isc_region_t region, EVP_PKEY **pkeyp,
-			   const char *group_name) {
+			   const OSSL_PARAM *const curve_params) {
 	isc_result_t result;
-	OSSL_PARAM_BLD *bld = NULL;
-	OSSL_PARAM *params = NULL;
 	EVP_PKEY_CTX *pctx = NULL;
 	uint8_t buffer[MAX_PUBLIC_KEY_SIZE + 1];
+	OSSL_PARAM params[] = {
+		curve_params[0], /* group */
+		OSSL_PARAM_octet_string(OSSL_PKEY_PARAM_PUB_KEY, buffer,
+					region.length + 1),
+		OSSL_PARAM_END,
+	};
 
 	buffer[0] = POINT_CONVERSION_UNCOMPRESSED;
 	memmove(buffer + 1, region.base, region.length);
-
-	bld = OSSL_PARAM_BLD_new();
-	if (bld == NULL) {
-		CLEANUP(OSSL_WRAP_ERROR("OSSL_PARAM_BLD_new"));
-	}
-
-	if (OSSL_PARAM_BLD_push_utf8_string(bld, OSSL_PKEY_PARAM_GROUP_NAME,
-					    group_name, 0) != 1)
-	{
-		CLEANUP(OSSL_WRAP_ERROR("OSSL_PARAM_BLD_push_utf8_string"));
-	}
-
-	if (OSSL_PARAM_BLD_push_octet_string(bld, OSSL_PKEY_PARAM_PUB_KEY,
-					     buffer, region.length + 1) != 1)
-	{
-		CLEANUP(OSSL_WRAP_ERROR("OSSL_PARAM_BLD_push_octet_string"));
-	}
-
-	params = OSSL_PARAM_BLD_to_param(bld);
-	if (params == NULL) {
-		CLEANUP(OSSL_WRAP_ERROR("OSSL_PARAM_BLD_to_param"));
-	}
 
 	pctx = EVP_PKEY_CTX_new_from_name(NULL, "EC", NULL);
 	if (pctx == NULL) {
@@ -287,19 +286,17 @@ load_ec_public_from_region(isc_region_t region, EVP_PKEY **pkeyp,
 	result = ISC_R_SUCCESS;
 
 cleanup:
-	OSSL_PARAM_free(params);
-	OSSL_PARAM_BLD_free(bld);
 	EVP_PKEY_CTX_free(pctx);
 	return result;
 }
 
 static isc_result_t
 load_ec_secret_from_region(isc_region_t region, EVP_PKEY **pkeyp,
-			   const char *group_name, const int nid) {
+			   const OSSL_PARAM *const curve_params) {
 	uint8_t public[MAX_PUBLIC_KEY_SIZE + 1];
-	EVP_PKEY_CTX *pctx = NULL;
 	OSSL_PARAM_BLD *bld = NULL;
 	OSSL_PARAM *params = NULL;
+	EVP_PKEY_CTX *pctx = NULL;
 	EC_POINT *pub_point = NULL;
 	EC_GROUP *group = NULL;
 	BIGNUM *private = NULL;
@@ -311,7 +308,7 @@ load_ec_secret_from_region(isc_region_t region, EVP_PKEY **pkeyp,
 	 * private key file format does not contain it directly, we generate it
 	 * as needed.
 	 */
-	group = EC_GROUP_new_by_curve_name(nid);
+	group = EC_GROUP_new_from_params(curve_params, NULL, NULL);
 	if (group == NULL) {
 		CLEANUP(OSSL_WRAP_ERROR("EC_GROUP_new_by_curve_name"));
 	}
@@ -342,8 +339,9 @@ load_ec_secret_from_region(isc_region_t region, EVP_PKEY **pkeyp,
 		CLEANUP(OSSL_WRAP_ERROR("OSSL_PARAM_BLD_new"));
 	}
 
-	if (OSSL_PARAM_BLD_push_utf8_string(bld, OSSL_PKEY_PARAM_GROUP_NAME,
-					    group_name, 0) != 1)
+	if (OSSL_PARAM_BLD_push_utf8_string(bld, curve_params[0].key,
+					    curve_params[0].data,
+					    curve_params[0].data_size) != 1)
 	{
 		CLEANUP(OSSL_WRAP_ERROR("OSSL_PARAM_BLD_push_utf8_string"));
 	}
@@ -548,6 +546,14 @@ isc_ossl_wrap_generate_pkcs11_rsa_key(char *uri, size_t bit_size,
 		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_CTX_set_params"));
 	}
 
+	/*
+	 * EVP_PKEY_keygen is an older function now equivalent to
+	 * EVP_PKEY_generate with an additional check that EVP_PKEY_CTX has been
+	 * initialized with EVP_PKEY_keygen_init.
+	 *
+	 * Since we can guarantee such condition we use EVP_PKEY_generate
+	 * directly.
+	 */
 	status = EVP_PKEY_generate(ctx, pkeyp);
 	if (status != 1) {
 		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_generate"));
