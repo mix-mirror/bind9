@@ -31,7 +31,7 @@ from isctest.asyncserver import (
 try:
     dns_namerelation_equal = dns.name.NameRelation.EQUAL
     dns_namerelation_subdomain = dns.name.NameRelation.SUBDOMAIN
-except AttributeError:  # dnspython < 2.0.0 compat
+except AttributeError:  # dnspython < 2.3.0 compat
     dns_namerelation_equal = dns.name.NAMERELN_EQUAL  # type: ignore
     dns_namerelation_subdomain = dns.name.NAMERELN_SUBDOMAIN  # type: ignore
 
