@@ -183,10 +183,14 @@ typedef union dns_qpreadable {
  * character in the name corresponds to one byte in the key if it is a
  * common hostname character; otherwise unusual characters are escaped,
  * using two bytes in the key. Because the maximum label length is 63
- * characters, the actual max is (255 - 5) * 2 + 6 == 506. Then, we need
- * one more byte to prepend the namespace.
+ * characters, and label separators only require one byte, the actual
+ * max is (255 - 5) * 2 + 6 == 506. Note that we reserve space for six
+ * separators for five labels for the maximum length domain name, that is
+ * because every key is closed with a NOBYTE value.
  *
- * Note: this gives us 5 bytes available space to store more data.
+ * Then, we need one more byte to prepend the namespace, and the RRtype
+ * appended to the key requires four more bytes, bringing the maximum
+ * length to 512.
  */
 #define DNS_QP_MAXKEY 512
 
@@ -224,7 +228,7 @@ typedef uint32_t dns_qpcell_t;
 /*%
  * A trie lookup key is a small array, allocated on the stack during trie
  * searches. Keys are usually created on demand from DNS names using
- * `dns_qpkey_fromname()`, but in principle you can define your own
+ * `dns_qpkey_fromnametype()`, but in principle you can define your own
  * functions to convert other types to trie lookup keys.
  */
 typedef dns_qpshift_t dns_qpkey_t[DNS_QP_MAXKEY];
@@ -285,8 +289,8 @@ typedef struct dns_qpchain {
  * The `makekey` method fills in a `dns_qpkey_t` corresponding to a
  * value object stored in the qp-trie. It returns the length of the
  * key, which must be less than `sizeof(dns_qpkey_t)`. This method
- * will typically call dns_qpkey_fromname() with a name stored in the
- * value object.
+ * will typically call dns_qpkey_fromnametype() with a name stored in
+ * the value object.
  *
  * For logging and tracing, the `triename` method copies a human-
  * readable identifier into `buf` which has max length `size`.
@@ -476,8 +480,14 @@ dns_qpmulti_memusage(dns_qpmulti_t *multi);
 size_t
 dns_qpkey_fromname(dns_qpkey_t key, const dns_name_t *name,
 		   dns_namespace_t space);
+size_t
+dns_qpkey_fromnametype(dns_qpkey_t key, const dns_name_t *name,
+		       dns_rdatatype_t type, dns_namespace_t space);
 /*%<
- * Convert a DNS name into a trie lookup key in the right namespace.
+ * Convert a DNS name and RR type into a trie lookup key in the right
+ * namespace. `dns_qpkey_fromname()` is used for zone table, forward
+ * table, NTAs, and other cases where type is not being used, and
+ * sets type to 0.
  *
  * Requires:
  * \li  `name` is a pointer to a valid `dns_name_t`
@@ -492,10 +502,16 @@ dns_qpkey_fromname(dns_qpkey_t key, const dns_name_t *name,
 void
 dns_qpkey_toname(const dns_qpkey_t key, size_t keylen, dns_name_t *name,
 		 dns_namespace_t *space);
+void
+dns_qpkey_tonametype(const dns_qpkey_t key, size_t keylen, dns_name_t *name,
+		     dns_rdatatype_t *type, dns_namespace_t *space);
 /*%<
- * Convert a trie lookup key back into a DNS name.
+ * Convert a trie lookup key back into a DNS name and RRtype.
  *
- * 'space' stores whether the key is for a normal name, or denial of existence.
+ * 'space' stores whether the key is for a normal name, or denial of
+ * existence. `dns_qpkey_toname()` is used for zone table, forward
+ * table, NTAs, and other cases where type is not being used, and
+ * sets type to 0.
  *
  * Requires:
  * \li  `name` is a pointer to a valid `dns_name_t`
@@ -524,8 +540,15 @@ dns_qp_getkey(dns_qpreadable_t qpr, const dns_qpkey_t search_key,
 isc_result_t
 dns_qp_getname(dns_qpreadable_t qpr, const dns_name_t *name,
 	       dns_namespace_t space, void **pval_r, uint32_t *ival_r);
+isc_result_t
+dns_qp_getnametype(dns_qpreadable_t qpr, const dns_name_t *name,
+		   dns_rdatatype_t type, dns_namespace_t space, void **pval_r,
+		   uint32_t *ival_r);
 /*%<
- * Find a leaf in a qp-trie that matches the given DNS name, and namespace.
+ * Find a leaf in a qp-trie that matches the given DNS name, RR type, and
+ * namespace. `dns_qp_getname()` is used for zone table, forward
+ * table, NTAs, and other cases where type is not being used, and
+ * sets type to 0.
  *
  * The leaf values are assigned to whichever of `*pval_r` and `*ival_r`
  * are not null, unless the return value is ISC_R_NOTFOUND.
@@ -541,15 +564,16 @@ dns_qp_getname(dns_qpreadable_t qpr, const dns_name_t *name,
 
 isc_result_t
 dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
-	      dns_namespace_t space, dns_name_t *foundname, dns_qpiter_t *iter,
-	      dns_qpchain_t *chain, void **pval_r, uint32_t *ival_r);
+	      dns_rdatatype_t type, dns_namespace_t space,
+	      dns_name_t *foundname, dns_qpiter_t *iter, dns_qpchain_t *chain,
+	      void **pval_r, uint32_t *ival_r);
 /*%<
  * Look up a leaf in a qp-trie that is equal to, or an ancestor domain of,
- * 'name' in the namespace 'space'.
+ * 'name', matching 'type', in the namespace 'space'.
  *
  * If 'foundname' is not NULL, it will be updated to contain the name
- * that was found (if any). The return code, ISC_R_SUCCESS or
- * DNS_R_PARTIALMATCH, indicates whether the name found is the name
+ * that was found (if any). The return code, ISC_R_SUCCESS, DNS_R_NODATA,
+ * or DNS_R_PARTIALMATCH, indicates whether the name found is the name
  * that was requested, or an ancestor. If the result is ISC_R_NOTFOUND,
  * 'foundname' will not be updated. (NOTE: the name will be constructed
  * from the QP key of the found node, and this can be time-consuming.
@@ -560,12 +584,14 @@ dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
  * references to the populated nodes in the tree between the root and
  * the name that was found. If the return code is DNS_R_PARTIALMATCH
  * then the chain terminates at the closest ancestor found; if it is
- * ISC_R_SUCCESS then it terminates at the name that was requested.
- * If the result is ISC_R_NOTFOUND, 'chain' will not be updated.
+ * ISC_R_SUCCESS or DNS_R_NODATA then it terminates at the name that
+ * was requested. If the result is ISC_R_NOTFOUND, 'chain' will not be
+ * updated.
  *
  * If 'iter' is not NULL, it will be updated to point to a QP iterator
- * which is pointed at the searched-for name if it exists in the trie,
- * or the closest predecessor if it doesn't.
+ * which is pointed at the searched-for name+type if it exists in the
+ * trie, or the closest predecessor if it doesn't. Note that the closest
+ * predecessor can be a node with the same name but a different type.
  *
  * The leaf data for the node that was found will be assigned to
  * whichever of `*pval_r` and `*ival_r` are not NULL, unless the
@@ -617,10 +643,17 @@ dns_qp_deletekey(dns_qp_t *qp, const dns_qpkey_t key, size_t keylen,
  */
 
 isc_result_t
+dns_qp_deletenametype(dns_qp_t *qp, const dns_name_t *name,
+		      dns_rdatatype_t type, dns_namespace_t space,
+		      void **pval_r, uint32_t *ival_r);
+isc_result_t
 dns_qp_deletename(dns_qp_t *qp, const dns_name_t *name, dns_namespace_t space,
 		  void **pval_r, uint32_t *ival_r);
 /*%<
- * Delete a leaf from a qp-trie that matches the given DNS name, and namespace.
+ * Delete a leaf from a qp-trie that matches the given DNS name, RR type, and
+ * namespace. `dns_qp_deletename()` is used for zone table, forward
+ * table, NTAs, and other cases where type is not being used, and
+ * sets type to 0.
  *
  * The leaf values are assigned to whichever of `*pval_r` and `*ival_r`
  * are not null, unless the return value is ISC_R_NOTFOUND.
@@ -670,7 +703,7 @@ dns_qpiter_prev(dns_qpiter_t *qpi, dns_name_t *name, void **pval_r,
  *	void *pval;
  *	uint32_t ival;
  *	dns_qpiter_init(qp, &qpi);
- *	while (dns_qpiter_next(&qpi, &pval, &ival) == ISC_R_SUCCESS) {
+ *	while (dns_qpiter_next(&qpi, ..., &pval, &ival) == ISC_R_SUCCESS) {
  *		// do something with pval and ival
  *	}
  *

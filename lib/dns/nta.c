@@ -413,8 +413,8 @@ dns_ntatable_covered(dns_ntatable_t *ntatable, isc_stdtime_t now,
 
 	RWLOCK(&ntatable->rwlock, isc_rwlocktype_read);
 	dns_qpmulti_query(ntatable->table, &qpr);
-	result = dns_qp_lookup(&qpr, name, DNS_DBNAMESPACE_NORMAL, NULL, NULL,
-			       NULL, &pval, NULL);
+	result = dns_qp_lookup(&qpr, name, 0, DNS_DBNAMESPACE_NORMAL, NULL,
+			       NULL, NULL, &pval, NULL);
 	nta = pval;
 
 	switch (result) {
