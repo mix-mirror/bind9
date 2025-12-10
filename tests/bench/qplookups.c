@@ -212,10 +212,13 @@ main(int argc, char **argv) {
 
 	start = isc_time_monotonic();
 	for (i = 0;; i++) {
+		void *pval = NULL;
+		uint32_t ival = 0;
 		name = dns_fixedname_initname(&items[i]);
-		if (dns_qpiter_next(&it, name, NULL, NULL) != ISC_R_SUCCESS) {
+		if (dns_qpiter_next(&it, &pval, &ival) != ISC_R_SUCCESS) {
 			break;
 		}
+		name_from_smallname(name, pval, ival);
 	}
 	stop = isc_time_monotonic();
 
@@ -237,7 +240,7 @@ main(int argc, char **argv) {
 	for (i = 0; i < n; i++) {
 		name = dns_fixedname_name(&items[i]);
 		dns_qp_lookup(qp, name, DNS_DBNAMESPACE_NORMAL, NULL, NULL,
-			      NULL, NULL, NULL);
+			      NULL, NULL);
 	}
 	stop = isc_time_monotonic();
 
@@ -263,7 +266,7 @@ main(int argc, char **argv) {
 		}
 
 		dns_qp_lookup(qp, search, DNS_DBNAMESPACE_NORMAL, NULL, NULL,
-			      NULL, NULL, NULL);
+			      NULL, NULL);
 	}
 	stop = isc_time_monotonic();
 

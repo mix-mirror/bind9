@@ -2684,7 +2684,10 @@ step(qpz_search_t *search, dns_qpiter_t *it, direction_t direction,
 	qpznode_t *node = NULL;
 	isc_result_t result = ISC_R_SUCCESS;
 
-	result = dns_qpiter_current(it, nodename, (void **)&node, NULL);
+	result = dns_qpiter_current(it, (void **)&node, NULL);
+	if (result == ISC_R_SUCCESS) {
+		dns_name_copy(&node->name, nodename);
+	}
 	while (result == ISC_R_SUCCESS) {
 		isc_rwlock_t *nlock = qpzone_get_lock(node);
 		isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
@@ -2700,11 +2703,12 @@ step(qpz_search_t *search, dns_qpiter_t *it, direction_t direction,
 		}
 
 		if (direction == FORWARD) {
-			result = dns_qpiter_next(it, nodename, (void **)&node,
-						 NULL);
+			result = dns_qpiter_next(it, (void **)&node, NULL);
 		} else {
-			result = dns_qpiter_prev(it, nodename, (void **)&node,
-						 NULL);
+			result = dns_qpiter_prev(it, (void **)&node, NULL);
+		}
+		if (result == ISC_R_SUCCESS) {
+			dns_name_copy(&node->name, nodename);
 		}
 	};
 	if (result == ISC_R_SUCCESS) {
@@ -2730,7 +2734,7 @@ activeempty(qpz_search_t *search, dns_qpiter_t *it, const dns_name_t *current) {
 	 * subdomain of the one we were looking for, then we're
 	 * at an active empty nonterminal node.
 	 */
-	isc_result_t result = dns_qpiter_next(it, NULL, NULL, NULL);
+	isc_result_t result = dns_qpiter_next(it, NULL, NULL);
 	if (result != ISC_R_SUCCESS) {
 		/* An ENT at the end of the zone is impossible */
 		return false;
@@ -2776,7 +2780,7 @@ wildcard_blocked(qpz_search_t *search, const dns_name_t *qname,
 
 	/* Now reset the iterator and look for a successor with data. */
 	it = search->iter;
-	result = dns_qpiter_next(&it, NULL, NULL, NULL);
+	result = dns_qpiter_next(&it, NULL, NULL);
 	if (result == ISC_R_SUCCESS) {
 		check_next = step(search, &it, FORWARD, next);
 	}
@@ -2841,7 +2845,7 @@ find_wildcard(qpz_search_t *search, qpznode_t **nodep, const dns_name_t *qname,
 		isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 		bool wild, active;
 
-		dns_qpchain_node(&search->chain, i, NULL, (void **)&node, NULL);
+		dns_qpchain_node(&search->chain, i, (void **)&node, NULL);
 
 		nlock = qpzone_get_lock(node);
 		NODE_RDLOCK(nlock, &nlocktype);
@@ -2872,8 +2876,8 @@ find_wildcard(qpz_search_t *search, qpznode_t **nodep, const dns_name_t *qname,
 			}
 
 			result = dns_qp_lookup(&search->qpr, wname, nspace,
-					       NULL, &wit, NULL,
-					       (void **)&wnode, NULL);
+					       &wit, NULL, (void **)&wnode,
+					       NULL);
 			if (result == ISC_R_SUCCESS) {
 				/*
 				 * We have found the wildcard node.  If it
@@ -2939,8 +2943,10 @@ previous_closest_nsec(dns_rdatatype_t type, qpz_search_t *search,
 	REQUIRE(type == dns_rdatatype_nsec3 || firstp != NULL);
 
 	if (type == dns_rdatatype_nsec3) {
-		result = dns_qpiter_prev(&search->iter, name, (void **)nodep,
-					 NULL);
+		result = dns_qpiter_prev(&search->iter, (void **)nodep, NULL);
+		if (result == ISC_R_SUCCESS) {
+			dns_name_copy(&(*nodep)->name, name);
+		}
 		return result;
 	}
 
@@ -2954,7 +2960,9 @@ previous_closest_nsec(dns_rdatatype_t type, qpz_search_t *search,
 			 */
 			*firstp = false;
 			result = dns_qp_lookup(&qpr, name, DNS_DBNAMESPACE_NSEC,
-					       NULL, nit, NULL, NULL, NULL);
+					       nit, NULL, NULL, NULL);
+			qpznode_t *node = NULL;
+
 			INSIST(result != ISC_R_NOTFOUND);
 			if (result == ISC_R_SUCCESS) {
 				/*
@@ -2965,7 +2973,11 @@ previous_closest_nsec(dns_rdatatype_t type, qpz_search_t *search,
 				 * NSEC record; we want the previous node
 				 * in the NSEC tree.
 				 */
-				result = dns_qpiter_prev(nit, name, NULL, NULL);
+				result = dns_qpiter_prev(nit, (void **)&node,
+							 NULL);
+				if (result == ISC_R_SUCCESS) {
+					dns_name_copy(&node->name, name);
+				}
 			} else if (result == DNS_R_PARTIALMATCH) {
 				/*
 				 * This was a partial match, so the
@@ -2973,7 +2985,11 @@ previous_closest_nsec(dns_rdatatype_t type, qpz_search_t *search,
 				 * node in the NSEC namespace, which is
 				 * what we want.
 				 */
-				dns_qpiter_current(nit, name, NULL, NULL);
+				isc_result_t iresult = dns_qpiter_current(
+					nit, (void **)&node, NULL);
+				if (iresult == ISC_R_SUCCESS) {
+					dns_name_copy(&node->name, name);
+				}
 				result = ISC_R_SUCCESS;
 			}
 		} else {
@@ -2984,16 +3000,20 @@ previous_closest_nsec(dns_rdatatype_t type, qpz_search_t *search,
 			 * work; perhaps they lacked signature records.
 			 * Keep searching.
 			 */
-			result = dns_qpiter_prev(nit, name, NULL, NULL);
+			qpznode_t *tempnode = NULL;
+			result = dns_qpiter_prev(nit, (void **)&tempnode, NULL);
+			if (result == ISC_R_SUCCESS) {
+				dns_name_copy(&tempnode->name, name);
+			}
 		}
 		if (result != ISC_R_SUCCESS) {
 			break;
 		}
 
 		*nodep = NULL;
-		result = dns_qp_lookup(
-			&search->qpr, name, DNS_DBNAMESPACE_NORMAL, NULL,
-			&search->iter, &search->chain, (void **)nodep, NULL);
+		result = dns_qp_lookup(&search->qpr, name,
+				       DNS_DBNAMESPACE_NORMAL, &search->iter,
+				       &search->chain, (void **)nodep, NULL);
 		if (result == ISC_R_SUCCESS) {
 			break;
 		}
@@ -3050,10 +3070,11 @@ find_closest_nsec(qpz_search_t *search, dns_dbnode_t **nodep,
 	 * then we start using the auxiliary NSEC namespace to find
 	 * the next predecessor.
 	 */
-	result = dns_qpiter_current(&search->iter, name, (void **)&node, NULL);
+	result = dns_qpiter_current(&search->iter, (void **)&node, NULL);
 	if (result != ISC_R_SUCCESS) {
 		return result;
 	}
+	dns_name_copy(&node->name, name);
 again:
 	do {
 		dns_slabheader_t *found = NULL, *foundsig = NULL;
@@ -3158,9 +3179,9 @@ again:
 	} while (empty_node && result == ISC_R_SUCCESS);
 
 	if (result == ISC_R_NOMORE && wraps) {
-		result = dns_qpiter_prev(&search->iter, name, (void **)&node,
-					 NULL);
+		result = dns_qpiter_prev(&search->iter, (void **)&node, NULL);
 		if (result == ISC_R_SUCCESS) {
+			dns_name_copy(&node->name, name);
 			wraps = false;
 			goto again;
 		}
@@ -3374,7 +3395,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	/*
 	 * Search down from the root of the tree.
 	 */
-	result = dns_qp_lookup(&search.qpr, name, nspace, NULL, &search.iter,
+	result = dns_qp_lookup(&search.qpr, name, nspace, &search.iter,
 			       &search.chain, (void **)&node, NULL);
 	if (result != ISC_R_NOTFOUND) {
 		dns_name_copy(&node->name, foundname);
@@ -3395,7 +3416,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		qpznode_t *n = NULL;
 		isc_result_t tresult;
 
-		dns_qpchain_node(&search.chain, i, NULL, (void **)&n, NULL);
+		dns_qpchain_node(&search.chain, i, (void **)&n, NULL);
 		tresult = qpzone_check_zonecut(n, &search DNS__DB_FLARG_PASS);
 		if (tresult != DNS_R_CONTINUE) {
 			result = tresult;
@@ -3677,7 +3698,7 @@ found:
 			unsigned int len = search.chain.len - 1;
 			if (len > 0) {
 				NODE_UNLOCK(nlock, &nlocktype);
-				dns_qpchain_node(&search.chain, len - 1, NULL,
+				dns_qpchain_node(&search.chain, len - 1,
 						 (void **)&node, NULL);
 				dns_name_copy(&node->name, foundname);
 				goto partial_match;
@@ -4133,8 +4154,8 @@ dbiterator_first(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 	dereference_iter_node(qpdbiter DNS__DB_FLARG_PASS);
 
 	dns_qpiter_init(qpdbiter->snap, &qpdbiter->iter);
-	result = dns_qpiter_next(&qpdbiter->iter, NULL,
-				 (void **)&qpdbiter->node, NULL);
+	result = dns_qpiter_next(&qpdbiter->iter, (void **)&qpdbiter->node,
+				 NULL);
 
 	switch (qpdbiter->nsec3mode) {
 	case nonsec3:
@@ -4154,7 +4175,7 @@ dbiterator_first(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 		if (result == ISC_R_SUCCESS &&
 		    QPDBITER_NSEC3_ORIGIN_NODE(qpdb, qpdbiter))
 		{
-			result = dns_qpiter_next(&qpdbiter->iter, NULL,
+			result = dns_qpiter_next(&qpdbiter->iter,
 						 (void **)&qpdbiter->node,
 						 NULL);
 		}
@@ -4179,14 +4200,13 @@ dbiterator_first(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 		 * origin node.
 		 */
 		result = dns_qp_lookup(qpdbiter->snap, &qpdb->common.origin,
-				       DNS_DBNAMESPACE_NSEC3, NULL,
-				       &qpdbiter->iter, NULL,
-				       (void **)&qpdbiter->node, NULL);
+				       DNS_DBNAMESPACE_NSEC3, &qpdbiter->iter,
+				       NULL, (void **)&qpdbiter->node, NULL);
 		if (result != ISC_R_SUCCESS ||
 		    QPDBITER_NSEC3_ORIGIN_NODE(qpdb, qpdbiter))
 		{
 			/* skip the NSEC3 origin node (or its predecessor) */
-			result = dns_qpiter_next(&qpdbiter->iter, NULL,
+			result = dns_qpiter_next(&qpdbiter->iter,
 						 (void **)&qpdbiter->node,
 						 NULL);
 		}
@@ -4221,8 +4241,8 @@ dbiterator_last(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 	dereference_iter_node(qpdbiter DNS__DB_FLARG_PASS);
 
 	dns_qpiter_init(qpdbiter->snap, &qpdbiter->iter);
-	result = dns_qpiter_prev(&qpdbiter->iter, NULL,
-				 (void **)&qpdbiter->node, NULL);
+	result = dns_qpiter_prev(&qpdbiter->iter, (void **)&qpdbiter->node,
+				 NULL);
 
 	switch (qpdbiter->nsec3mode) {
 	case nsec3only:
@@ -4245,7 +4265,7 @@ dbiterator_last(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 		if (result == ISC_R_SUCCESS &&
 		    QPDBITER_NSEC3_ORIGIN_NODE(qpdb, qpdbiter))
 		{
-			result = dns_qpiter_prev(&qpdbiter->iter, NULL,
+			result = dns_qpiter_prev(&qpdbiter->iter,
 						 (void **)&qpdbiter->node,
 						 NULL);
 		}
@@ -4269,13 +4289,12 @@ dbiterator_last(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 		 * The final non-nsec node is before the the NSEC origin node.
 		 */
 		result = dns_qp_lookup(qpdbiter->snap, &qpdb->common.origin,
-				       DNS_DBNAMESPACE_NSEC, NULL,
-				       &qpdbiter->iter, NULL,
-				       (void **)&qpdbiter->node, NULL);
+				       DNS_DBNAMESPACE_NSEC, &qpdbiter->iter,
+				       NULL, (void **)&qpdbiter->node, NULL);
 		if (result == ISC_R_SUCCESS) {
 			INSIST(QPDBITER_NSEC_ORIGIN_NODE(qpdb, qpdbiter));
 			/* skip the NSEC origin node */
-			result = dns_qpiter_prev(&qpdbiter->iter, NULL,
+			result = dns_qpiter_prev(&qpdbiter->iter,
 						 (void **)&qpdbiter->node,
 						 NULL);
 		} else {
@@ -4284,7 +4303,7 @@ dbiterator_last(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 			 * should point to its predecessor, which is the node we
 			 * want.
 			 */
-			result = dns_qpiter_current(&qpdbiter->iter, NULL,
+			result = dns_qpiter_current(&qpdbiter->iter,
 						    (void **)&qpdbiter->node,
 						    NULL);
 			INSIST(result == ISC_R_SUCCESS);
@@ -4323,22 +4342,22 @@ dbiterator_seek(dns_dbiterator_t *iterator,
 
 	switch (qpdbiter->nsec3mode) {
 	case nsec3only:
-		result = dns_qp_lookup(
-			qpdbiter->snap, name, DNS_DBNAMESPACE_NSEC3, NULL,
-			&qpdbiter->iter, NULL, (void **)&qpdbiter->node, NULL);
+		result = dns_qp_lookup(qpdbiter->snap, name,
+				       DNS_DBNAMESPACE_NSEC3, &qpdbiter->iter,
+				       NULL, (void **)&qpdbiter->node, NULL);
 		break;
 	case nonsec3:
-		result = dns_qp_lookup(
-			qpdbiter->snap, name, DNS_DBNAMESPACE_NORMAL, NULL,
-			&qpdbiter->iter, NULL, (void **)&qpdbiter->node, NULL);
+		result = dns_qp_lookup(qpdbiter->snap, name,
+				       DNS_DBNAMESPACE_NORMAL, &qpdbiter->iter,
+				       NULL, (void **)&qpdbiter->node, NULL);
 		break;
 	case full:
-		result = dns_qp_lookup(
-			qpdbiter->snap, name, DNS_DBNAMESPACE_NORMAL, NULL,
-			&qpdbiter->iter, NULL, (void **)&qpdbiter->node, NULL);
+		result = dns_qp_lookup(qpdbiter->snap, name,
+				       DNS_DBNAMESPACE_NORMAL, &qpdbiter->iter,
+				       NULL, (void **)&qpdbiter->node, NULL);
 		if (result != ISC_R_SUCCESS) {
 			tresult = dns_qp_lookup(qpdbiter->snap, name,
-						DNS_DBNAMESPACE_NSEC3, NULL,
+						DNS_DBNAMESPACE_NSEC3,
 						&qpdbiter->iter, NULL,
 						(void **)&qpdbiter->node, NULL);
 			if (tresult == ISC_R_SUCCESS) {
@@ -4383,8 +4402,8 @@ dbiterator_prev(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 	node = qpdbiter->node;
 	qpdbiter->node = NULL;
 
-	result = dns_qpiter_prev(&qpdbiter->iter, NULL,
-				 (void **)&qpdbiter->node, NULL);
+	result = dns_qpiter_prev(&qpdbiter->iter, (void **)&qpdbiter->node,
+				 NULL);
 
 	switch (qpdbiter->nsec3mode) {
 	case nsec3only:
@@ -4407,7 +4426,7 @@ dbiterator_prev(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 		if (result == ISC_R_SUCCESS &&
 		    QPDBITER_NSEC3_ORIGIN_NODE(qpdb, qpdbiter))
 		{
-			result = dns_qpiter_prev(&qpdbiter->iter, NULL,
+			result = dns_qpiter_prev(&qpdbiter->iter,
 						 (void **)&qpdbiter->node,
 						 NULL);
 		}
@@ -4426,14 +4445,13 @@ dbiterator_prev(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 
 		INSIST(qpdbiter->node->nspace == DNS_DBNAMESPACE_NSEC);
 		result = dns_qp_lookup(qpdbiter->snap, &qpdb->common.origin,
-				       DNS_DBNAMESPACE_NSEC, NULL,
-				       &qpdbiter->iter, NULL,
-				       (void **)&qpdbiter->node, NULL);
+				       DNS_DBNAMESPACE_NSEC, &qpdbiter->iter,
+				       NULL, (void **)&qpdbiter->node, NULL);
 
 		if (result == ISC_R_SUCCESS) {
 			INSIST(QPDBITER_NSEC_ORIGIN_NODE(qpdb, qpdbiter));
 			/* skip the NSEC origin node */
-			result = dns_qpiter_prev(&qpdbiter->iter, NULL,
+			result = dns_qpiter_prev(&qpdbiter->iter,
 						 (void **)&qpdbiter->node,
 						 NULL);
 		} else {
@@ -4442,7 +4460,7 @@ dbiterator_prev(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 			 * should point to its predecessor, which is the node we
 			 * want.
 			 */
-			result = dns_qpiter_current(&qpdbiter->iter, NULL,
+			result = dns_qpiter_current(&qpdbiter->iter,
 						    (void **)&qpdbiter->node,
 						    NULL);
 			INSIST(result == ISC_R_SUCCESS);
@@ -4496,8 +4514,8 @@ dbiterator_next(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 	node = qpdbiter->node;
 	qpdbiter->node = NULL;
 
-	result = dns_qpiter_next(&qpdbiter->iter, NULL,
-				 (void **)&qpdbiter->node, NULL);
+	result = dns_qpiter_next(&qpdbiter->iter, (void **)&qpdbiter->node,
+				 NULL);
 
 	switch (qpdbiter->nsec3mode) {
 	case nonsec3:
@@ -4514,7 +4532,7 @@ dbiterator_next(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 		if (result == ISC_R_SUCCESS &&
 		    QPDBITER_NSEC3_ORIGIN_NODE(qpdb, qpdbiter))
 		{
-			result = dns_qpiter_next(&qpdbiter->iter, NULL,
+			result = dns_qpiter_next(&qpdbiter->iter,
 						 (void **)&qpdbiter->node,
 						 NULL);
 		}
@@ -4533,14 +4551,13 @@ dbiterator_next(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 		INSIST(qpdbiter->node->nspace == DNS_DBNAMESPACE_NSEC);
 
 		result = dns_qp_lookup(qpdbiter->snap, &qpdb->common.origin,
-				       DNS_DBNAMESPACE_NSEC3, NULL,
-				       &qpdbiter->iter, NULL,
-				       (void **)&qpdbiter->node, NULL);
+				       DNS_DBNAMESPACE_NSEC3, &qpdbiter->iter,
+				       NULL, (void **)&qpdbiter->node, NULL);
 		if (result != ISC_R_SUCCESS ||
 		    QPDBITER_NSEC3_ORIGIN_NODE(qpdb, qpdbiter))
 		{
 			/* skip the NSEC3 origin node (or its predecessor). */
-			result = dns_qpiter_next(&qpdbiter->iter, NULL,
+			result = dns_qpiter_next(&qpdbiter->iter,
 						 (void **)&qpdbiter->node,
 						 NULL);
 		}
@@ -4646,8 +4663,8 @@ qpzone_createiterator(dns_db_t *db, unsigned int options,
 		 * seek the NSEC3 origin node.
 		 */
 		result = dns_qp_lookup(iter->snap, &qpdb->common.origin,
-				       DNS_DBNAMESPACE_NSEC3, NULL, &iter->iter,
-				       NULL, NULL, NULL);
+				       DNS_DBNAMESPACE_NSEC3, &iter->iter, NULL,
+				       NULL, NULL);
 		INSIST(result == ISC_R_SUCCESS);
 		break;
 	default:

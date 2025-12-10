@@ -414,7 +414,7 @@ dns_ntatable_covered(dns_ntatable_t *ntatable, isc_stdtime_t now,
 	RWLOCK(&ntatable->rwlock, isc_rwlocktype_read);
 	dns_qpmulti_query(ntatable->table, &qpr);
 	result = dns_qp_lookup(&qpr, name, DNS_DBNAMESPACE_NORMAL, NULL, NULL,
-			       NULL, &pval, NULL);
+			       &pval, NULL);
 	nta = pval;
 
 	switch (result) {
@@ -475,7 +475,7 @@ dns_ntatable_totext(dns_ntatable_t *ntatable, const char *view,
 	dns_qpmulti_query(ntatable->table, &qpr);
 	dns_qpiter_init(&qpr, &iter);
 
-	while (dns_qpiter_next(&iter, NULL, &pval, NULL) == ISC_R_SUCCESS) {
+	while (dns_qpiter_next(&iter, &pval, NULL) == ISC_R_SUCCESS) {
 		dns__nta_t *n = pval;
 		char nbuf[DNS_NAME_FORMATSIZE];
 		char tbuf[ISC_FORMATHTTPTIMESTAMP_SIZE];
@@ -528,7 +528,7 @@ dns_ntatable_save(dns_ntatable_t *ntatable, FILE *fp) {
 	dns_qpmulti_query(ntatable->table, &qpr);
 	dns_qpiter_init(&qpr, &iter);
 
-	while (dns_qpiter_next(&iter, NULL, &pval, NULL) == ISC_R_SUCCESS) {
+	while (dns_qpiter_next(&iter, &pval, NULL) == ISC_R_SUCCESS) {
 		dns__nta_t *n = pval;
 		isc_buffer_t b;
 		char nbuf[DNS_NAME_FORMATSIZE + 1], tbuf[80];
@@ -614,7 +614,7 @@ dns_ntatable_shutdown(dns_ntatable_t *ntatable) {
 	ntatable->shuttingdown = true;
 
 	dns_qpiter_init(&qpr, &iter);
-	while (dns_qpiter_next(&iter, NULL, &pval, NULL) == ISC_R_SUCCESS) {
+	while (dns_qpiter_next(&iter, &pval, NULL) == ISC_R_SUCCESS) {
 		dns__nta_t *n = pval;
 		dns__nta_shutdown(n);
 		dns__nta_detach(&n);

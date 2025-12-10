@@ -2497,7 +2497,7 @@ dns_rpz_find_name(dns_rpz_zones_t *rpzs, dns_rpz_type_t rpz_type,
 	dns_qpchain_init(&qpr, &chain);
 
 	result = dns_qp_lookup(&qpr, trig_name, DNS_DBNAMESPACE_NORMAL, NULL,
-			       NULL, &chain, (void **)&data, NULL);
+			       &chain, (void **)&data, NULL);
 	switch (result) {
 	case ISC_R_SUCCESS:
 		INSIST(data != NULL);
@@ -2511,7 +2511,7 @@ dns_rpz_find_name(dns_rpz_zones_t *rpzs, dns_rpz_type_t rpz_type,
 	case DNS_R_PARTIALMATCH:
 		i = dns_qpchain_length(&chain);
 		while (i-- > 0) {
-			dns_qpchain_node(&chain, i, NULL, (void **)&data, NULL);
+			dns_qpchain_node(&chain, i, (void **)&data, NULL);
 			INSIST(data != NULL);
 			if (rpz_type == DNS_RPZ_TYPE_QNAME) {
 				found_zbits |= data->wild.qname;

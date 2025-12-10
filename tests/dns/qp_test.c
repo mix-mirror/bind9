@@ -46,6 +46,70 @@
 
 bool verbose = false;
 
+/*
+ * Test-only functions for dns_qpiter_*_with_name functionality
+ */
+static void
+maybe_set_name(dns_qpreader_t *qp, void *pval, uint32_t ival,
+	       dns_name_t *name) {
+	if (name != NULL) {
+		dns_qpkey_t key;
+		size_t len;
+		dns_qpnode_t node = make_leaf(pval, ival);
+		dns_name_reset(name);
+		len = leaf_qpkey(qp, &node, key);
+		dns_qpkey_toname(key, len, name, NULL);
+	}
+}
+
+static isc_result_t
+qpiter_next_with_name(dns_qpiter_t *qpi, dns_name_t *name, void **pval_r,
+		      uint32_t *ival_r) {
+	isc_result_t result;
+	void *pval = NULL;
+	uint32_t ival = 0;
+
+	result = iterate(true, qpi, &pval, &ival);
+	if (result == ISC_R_SUCCESS) {
+		SET_IF_NOT_NULL(pval_r, pval);
+		SET_IF_NOT_NULL(ival_r, ival);
+		maybe_set_name(qpi->qp, pval, ival, name);
+	}
+	return result;
+}
+
+static isc_result_t
+qpiter_prev_with_name(dns_qpiter_t *qpi, dns_name_t *name, void **pval_r,
+		      uint32_t *ival_r) {
+	isc_result_t result;
+	void *pval = NULL;
+	uint32_t ival = 0;
+
+	result = iterate(false, qpi, &pval, &ival);
+	if (result == ISC_R_SUCCESS) {
+		SET_IF_NOT_NULL(pval_r, pval);
+		SET_IF_NOT_NULL(ival_r, ival);
+		maybe_set_name(qpi->qp, pval, ival, name);
+	}
+	return result;
+}
+
+static isc_result_t
+qpiter_current_with_name(dns_qpiter_t *qpi, dns_name_t *name, void **pval_r,
+			 uint32_t *ival_r) {
+	isc_result_t result;
+	void *pval = NULL;
+	uint32_t ival = 0;
+
+	result = dns_qpiter_current(qpi, &pval, &ival);
+	if (result == ISC_R_SUCCESS) {
+		SET_IF_NOT_NULL(pval_r, pval);
+		SET_IF_NOT_NULL(ival_r, ival);
+		maybe_set_name(qpi->qp, pval, ival, name);
+	}
+	return result;
+}
+
 ISC_RUN_TEST_IMPL(qpkey_name) {
 	struct {
 		const char *namestr;
@@ -288,9 +352,7 @@ ISC_RUN_TEST_IMPL(qpiter) {
 		/* check that we see only valid items in the correct order */
 		uint32_t prev = 0;
 		dns_qpiter_init(qp, &qpi);
-		while (dns_qpiter_next(&qpi, NULL, &pval, &ival) ==
-		       ISC_R_SUCCESS)
-		{
+		while (dns_qpiter_next(&qpi, &pval, &ival) == ISC_R_SUCCESS) {
 			assert_in_range(ival, prev + 1, ITER_ITEMS - 1);
 			assert_int_equal(ival, item[ival]);
 			assert_ptr_equal(pval, &item[ival]);
@@ -309,15 +371,13 @@ ISC_RUN_TEST_IMPL(qpiter) {
 
 		/* now iterate backward and check correctness */
 		n = inserted;
-		while (dns_qpiter_prev(&qpi, NULL, NULL, &ival) ==
-		       ISC_R_SUCCESS)
-		{
+		while (dns_qpiter_prev(&qpi, NULL, &ival) == ISC_R_SUCCESS) {
 			--n;
 
 			assert_int_equal(ival, order[n]);
 
 			/* and check current iterator value as well */
-			result = dns_qpiter_current(&qpi, NULL, NULL, &ival);
+			result = dns_qpiter_current(&qpi, NULL, &ival);
 			assert_int_equal(result, ISC_R_SUCCESS);
 			assert_int_equal(ival, order[n]);
 		}
@@ -325,13 +385,11 @@ ISC_RUN_TEST_IMPL(qpiter) {
 		assert_int_equal(n, 0);
 
 		/* ...and forward again */
-		while (dns_qpiter_next(&qpi, NULL, NULL, &ival) ==
-		       ISC_R_SUCCESS)
-		{
+		while (dns_qpiter_next(&qpi, NULL, &ival) == ISC_R_SUCCESS) {
 			assert_int_equal(ival, order[n]);
 
 			/* and check current iterator value as well */
-			result = dns_qpiter_current(&qpi, NULL, NULL, &ival);
+			result = dns_qpiter_current(&qpi, NULL, &ival);
 			assert_int_equal(result, ISC_R_SUCCESS);
 			assert_int_equal(ival, order[n]);
 
@@ -346,34 +404,28 @@ ISC_RUN_TEST_IMPL(qpiter) {
 		 * to confirm we can change directions while iterating.
 		 */
 		if (inserted > 3) {
-			assert_int_equal(
-				dns_qpiter_next(&qpi, NULL, NULL, &ival),
-				ISC_R_SUCCESS);
+			assert_int_equal(dns_qpiter_next(&qpi, NULL, &ival),
+					 ISC_R_SUCCESS);
 			assert_int_equal(ival, order[0]);
 
-			assert_int_equal(
-				dns_qpiter_next(&qpi, NULL, NULL, &ival),
-				ISC_R_SUCCESS);
+			assert_int_equal(dns_qpiter_next(&qpi, NULL, &ival),
+					 ISC_R_SUCCESS);
 			assert_int_equal(ival, order[1]);
 
-			assert_int_equal(
-				dns_qpiter_prev(&qpi, NULL, NULL, &ival),
-				ISC_R_SUCCESS);
+			assert_int_equal(dns_qpiter_prev(&qpi, NULL, &ival),
+					 ISC_R_SUCCESS);
 			assert_int_equal(ival, order[0]);
 
-			assert_int_equal(
-				dns_qpiter_next(&qpi, NULL, NULL, &ival),
-				ISC_R_SUCCESS);
+			assert_int_equal(dns_qpiter_next(&qpi, NULL, &ival),
+					 ISC_R_SUCCESS);
 			assert_int_equal(ival, order[1]);
 
-			assert_int_equal(
-				dns_qpiter_prev(&qpi, NULL, NULL, &ival),
-				ISC_R_SUCCESS);
+			assert_int_equal(dns_qpiter_prev(&qpi, NULL, &ival),
+					 ISC_R_SUCCESS);
 			assert_int_equal(ival, order[0]);
 
-			assert_int_equal(
-				dns_qpiter_prev(&qpi, NULL, NULL, &ival),
-				ISC_R_NOMORE);
+			assert_int_equal(dns_qpiter_prev(&qpi, NULL, &ival),
+					 ISC_R_NOMORE);
 		}
 	}
 
@@ -418,11 +470,21 @@ check_partialmatch(dns_qp_t *qp, struct check_partialmatch check[],
 		dns_fixedname_t fn1, fn2;
 		dns_name_t *name = dns_fixedname_initname(&fn1);
 		dns_name_t *foundname = dns_fixedname_initname(&fn2);
+		dns_qpchain_t chain;
 		void *pval = NULL;
 
 		dns_test_namefromstring(check[i].query, &fn1);
-		result = dns_qp_lookup(qp, name, space, foundname, NULL, NULL,
-				       &pval, NULL);
+		dns_qpchain_init(qp, &chain);
+		result = dns_qp_lookup(qp, name, space, NULL, &chain, &pval,
+				       NULL);
+
+		/* Extract the found name if we found something */
+		if ((result == ISC_R_SUCCESS || result == DNS_R_PARTIALMATCH) &&
+		    pval != NULL)
+		{
+			maybe_set_name((dns_qpreader_t *)qp, pval, space,
+				       foundname);
+		}
 
 #if 0
 		fprintf(stderr, "%s%s %s (expected %s) "
@@ -584,8 +646,8 @@ check_qpchainiter(dns_qp_t *qp, struct check_qpchain check[],
 
 		dns_qpchain_init(qp, &chain);
 		dns_test_namefromstring(check[i].query, &fn1);
-		result = dns_qp_lookup(qp, name, check[i].space, NULL, iter,
-				       &chain, NULL, NULL);
+		result = dns_qp_lookup(qp, name, check[i].space, iter, &chain,
+				       NULL, NULL);
 #if 0
 		fprintf(stderr,
 			"%s %s (expected %s), "
@@ -602,7 +664,10 @@ check_qpchainiter(dns_qp_t *qp, struct check_qpchain check[],
 			dns_name_t *expected = dns_fixedname_initname(&fn2);
 			dns_name_t *found = dns_fixedname_initname(&fn3);
 			dns_test_namefromstring(check[i].names[j], &fn2);
-			dns_qpchain_node(&chain, j, found, NULL, NULL);
+			void *pval = NULL;
+			uint32_t ival = 0;
+			dns_qpchain_node(&chain, j, &pval, &ival);
+			maybe_set_name(chain.qp, pval, ival, found);
 #if 0
 			char nb[DNS_NAME_FORMATSIZE];
 			dns_name_format(found, nb, sizeof(nb));
@@ -810,8 +875,8 @@ check_predecessors_withchain(dns_qp_t *qp, struct check_predecessors check[],
 		result = dns_name_tostring(expred, &predstr, isc_g_mctx);
 		assert_int_equal(result, ISC_R_SUCCESS);
 
-		result = dns_qp_lookup(qp, name, check[i].space, NULL, &it,
-				       chain, NULL, NULL);
+		result = dns_qp_lookup(qp, name, check[i].space, &it, chain,
+				       NULL, NULL);
 #if 0
 		fprintf(stderr, "%s %s: expected %s got %s\n", check[i].query,
 			check[i].space == DNS_DBNAMESPACE_NSEC3
@@ -829,17 +894,18 @@ check_predecessors_withchain(dns_qp_t *qp, struct check_predecessors check[],
 			 * we found an exact match; iterate to find
 			 * the predecessor.
 			 */
-			result = dns_qpiter_prev(&it, pred, NULL, &ival);
+			result = qpiter_prev_with_name(&it, pred, NULL, &ival);
 			if (result == ISC_R_NOMORE) {
-				result = dns_qpiter_prev(&it, pred, NULL,
-							 &ival);
+				result = qpiter_prev_with_name(&it, pred, NULL,
+							       &ival);
 			}
 		} else {
 			/*
 			 * we didn't find a match, so the iterator should
 			 * already be pointed at the predecessor node.
 			 */
-			result = dns_qpiter_current(&it, pred, NULL, &ival);
+			result = qpiter_current_with_name(&it, pred, NULL,
+							  &ival);
 		}
 		assert_int_equal(result, ISC_R_SUCCESS);
 
@@ -859,7 +925,8 @@ check_predecessors_withchain(dns_qp_t *qp, struct check_predecessors check[],
 		isc_mem_free(isc_g_mctx, predstr);
 
 		int j = 0;
-		while (dns_qpiter_next(&it, name, NULL, NULL) == ISC_R_SUCCESS)
+		while (qpiter_next_with_name(&it, name, NULL, NULL) ==
+		       ISC_R_SUCCESS)
 		{
 #if 0
 			result = dns_name_tostring(name, &namestr, isc_g_mctx);

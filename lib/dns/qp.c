@@ -1857,20 +1857,6 @@ dns_qp_deletename(dns_qp_t *qp, const dns_name_t *name, dns_namespace_t space,
 /***********************************************************************
  *  chains
  */
-static void
-maybe_set_name(dns_qpreader_t *qp, dns_qpnode_t *node, dns_name_t *name) {
-	dns_qpkey_t key;
-	size_t len;
-
-	if (name == NULL) {
-		return;
-	}
-
-	dns_name_reset(name);
-	len = leaf_qpkey(qp, node, key);
-	dns_qpkey_toname(key, len, name, NULL);
-}
-
 void
 dns_qpchain_init(dns_qpreadable_t qpr, dns_qpchain_t *chain) {
 	dns_qpreader_t *qp = dns_qpreader(qpr);
@@ -1895,15 +1881,14 @@ dns_qpchain_length(dns_qpchain_t *chain) {
 }
 
 void
-dns_qpchain_node(dns_qpchain_t *chain, unsigned int level, dns_name_t *name,
-		 void **pval_r, uint32_t *ival_r) {
+dns_qpchain_node(dns_qpchain_t *chain, unsigned int level, void **pval_r,
+		 uint32_t *ival_r) {
 	dns_qpnode_t *node = NULL;
 
 	REQUIRE(QPCHAIN_VALID(chain));
 	REQUIRE(level < chain->len);
 
 	node = chain->chain[level].node;
-	maybe_set_name(chain->qp, node, name);
 	SET_IF_NOT_NULL(pval_r, leaf_pval(node));
 	SET_IF_NOT_NULL(ival_r, leaf_ival(node));
 }
@@ -1956,8 +1941,7 @@ last_twig(dns_qpiter_t *qpi, bool forward) {
  * a mutable view of the trie which is altered while iterating
  */
 static isc_result_t
-iterate(bool forward, dns_qpiter_t *qpi, dns_name_t *name, void **pval_r,
-	uint32_t *ival_r) {
+iterate(bool forward, dns_qpiter_t *qpi, void **pval_r, uint32_t *ival_r) {
 	dns_qpnode_t *node = NULL;
 	bool initial_branch = true;
 
@@ -2032,25 +2016,21 @@ iterate(bool forward, dns_qpiter_t *qpi, dns_name_t *name, void **pval_r,
 	/* we're at a leaf: return its data to the caller */
 	SET_IF_NOT_NULL(pval_r, leaf_pval(node));
 	SET_IF_NOT_NULL(ival_r, leaf_ival(node));
-	maybe_set_name(qpi->qp, node, name);
 	return ISC_R_SUCCESS;
 }
 
 isc_result_t
-dns_qpiter_next(dns_qpiter_t *qpi, dns_name_t *name, void **pval_r,
-		uint32_t *ival_r) {
-	return iterate(true, qpi, name, pval_r, ival_r);
+dns_qpiter_next(dns_qpiter_t *qpi, void **pval_r, uint32_t *ival_r) {
+	return iterate(true, qpi, pval_r, ival_r);
 }
 
 isc_result_t
-dns_qpiter_prev(dns_qpiter_t *qpi, dns_name_t *name, void **pval_r,
-		uint32_t *ival_r) {
-	return iterate(false, qpi, name, pval_r, ival_r);
+dns_qpiter_prev(dns_qpiter_t *qpi, void **pval_r, uint32_t *ival_r) {
+	return iterate(false, qpi, pval_r, ival_r);
 }
 
 isc_result_t
-dns_qpiter_current(dns_qpiter_t *qpi, dns_name_t *name, void **pval_r,
-		   uint32_t *ival_r) {
+dns_qpiter_current(dns_qpiter_t *qpi, void **pval_r, uint32_t *ival_r) {
 	dns_qpnode_t *node = NULL;
 
 	REQUIRE(QPITER_VALID(qpi));
@@ -2062,7 +2042,6 @@ dns_qpiter_current(dns_qpiter_t *qpi, dns_name_t *name, void **pval_r,
 
 	SET_IF_NOT_NULL(pval_r, leaf_pval(node));
 	SET_IF_NOT_NULL(ival_r, leaf_ival(node));
-	maybe_set_name(qpi->qp, node, name);
 	return ISC_R_SUCCESS;
 }
 
@@ -2131,9 +2110,9 @@ add_link(dns_qpchain_t *chain, dns_qpnode_t *node, size_t offset) {
 
 static inline void
 prevleaf(dns_qpiter_t *it) {
-	isc_result_t result = dns_qpiter_prev(it, NULL, NULL, NULL);
+	isc_result_t result = dns_qpiter_prev(it, NULL, NULL);
 	if (result == ISC_R_NOMORE) {
-		result = dns_qpiter_prev(it, NULL, NULL, NULL);
+		result = dns_qpiter_prev(it, NULL, NULL);
 	}
 	RUNTIME_CHECK(result == ISC_R_SUCCESS);
 }
@@ -2289,8 +2268,8 @@ fix_chain(dns_qpchain_t *chain, size_t offset) {
 
 isc_result_t
 dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
-	      dns_namespace_t space, dns_name_t *foundname, dns_qpiter_t *iter,
-	      dns_qpchain_t *chain, void **pval_r, uint32_t *ival_r) {
+	      dns_namespace_t space, dns_qpiter_t *iter, dns_qpchain_t *chain,
+	      void **pval_r, uint32_t *ival_r) {
 	dns_qpreader_t *qp = dns_qpreader(qpr);
 	dns_qpkey_t search, found;
 	size_t searchlen, foundlen;
@@ -2303,7 +2282,6 @@ dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
 	bool setiter = true;
 
 	REQUIRE(QP_VALID(qp));
-	REQUIRE(foundname == NULL || ISC_MAGIC_VALID(name, DNS_NAME_MAGIC));
 
 	searchlen = dns_qpkey_fromname(search, name, space);
 
@@ -2406,7 +2384,6 @@ dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
 
 		SET_IF_NOT_NULL(pval_r, leaf_pval(n));
 		SET_IF_NOT_NULL(ival_r, leaf_ival(n));
-		maybe_set_name(qp, n, foundname);
 		return result;
 	}
 
@@ -2420,7 +2397,6 @@ dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
 			n = chain->chain[len].node;
 			SET_IF_NOT_NULL(pval_r, leaf_pval(n));
 			SET_IF_NOT_NULL(ival_r, leaf_ival(n));
-			maybe_set_name(qp, n, foundname);
 			return DNS_R_PARTIALMATCH;
 		} else {
 			/*
