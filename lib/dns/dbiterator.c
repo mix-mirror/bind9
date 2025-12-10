@@ -59,6 +59,14 @@ dns__dbiterator_seek(dns_dbiterator_t *iterator,
 }
 
 isc_result_t
+dns__dbiterator_seek3(dns_dbiterator_t *iterator,
+		      const dns_name_t *name DNS__DB_FLARG) {
+	REQUIRE(DNS_DBITERATOR_VALID(iterator));
+
+	return iterator->methods->seek3(iterator, name DNS__DB_FLARG_PASS);
+}
+
+isc_result_t
 dns__dbiterator_prev(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 	REQUIRE(DNS_DBITERATOR_VALID(iterator));
 
