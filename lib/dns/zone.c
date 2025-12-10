@@ -1882,6 +1882,11 @@ setfilename(dns_zone_t *zone, char **field, const char *value) {
 		return;
 	}
 
+	if (strpbrk(value, "$%") == NULL) {
+		setstring(zone, field, value);
+		return;
+	}
+
 	for (size_t i = 0; i < ARRAY_SIZE(tokens); i++) {
 		const token_t *token = &tokens[i];
 		const char *p = strcasestr(value, token->name);

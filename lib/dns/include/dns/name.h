@@ -1317,9 +1317,10 @@ dns_name_isdnssd(const dns_name_t *owner);
  */
 
 bool
-dns_name_isrfc1918(const dns_name_t *owner);
+dns_name_isrfc1918(const dns_name_t *owner, dns_name_t *which);
 /*%<
  * Determine if the 'name' is in the RFC 1918 reverse namespace.
+ * If which is not NULL return the RFC 1918 prefix that applies.
  */
 
 bool

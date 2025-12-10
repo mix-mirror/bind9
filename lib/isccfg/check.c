@@ -3254,7 +3254,6 @@ isccfg_check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 	isc_buffer_t b;
 	bool root = false;
 	bool rfc1918 = false;
-	bool ula = false;
 	bool dlz;
 	bool ddns = false;
 	bool has_dnssecpolicy = false;
@@ -3415,10 +3414,6 @@ isccfg_check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 		}
 		if (dns_name_equal(zname, dns_rootname)) {
 			root = true;
-		} else if (dns_name_isrfc1918(zname)) {
-			rfc1918 = true;
-		} else if (dns_name_isula(zname)) {
-			ula = true;
 		}
 		vname = (ztype == CFG_ZONE_INVIEW) ? target
 			: (viewname != NULL)	   ? viewname
@@ -3890,7 +3885,10 @@ isccfg_check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 	 * Check that a RFC 1918 / ULA reverse zone is not forward first
 	 * unless explicitly configured to be so.
 	 */
-	if (ztype == CFG_ZONE_FORWARD && (rfc1918 || ula)) {
+	if (ztype == CFG_ZONE_FORWARD &&
+	    ((rfc1918 = dns_name_isrfc1918(zname, NULL)) ||
+	     dns_name_isula(zname)))
+	{
 		obj = NULL;
 		(void)get_zoneopt(zoptions, toptions, NULL, NULL, "forward",
 				  &obj);
