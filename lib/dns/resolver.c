@@ -6989,10 +6989,20 @@ name_external(const dns_name_t *name, dns_rdatatype_t type, respctx_t *rctx) {
 	dns_zone_t *zone = NULL;
 	unsigned int labels;
 	dns_namereln_t rel;
+	bool secured = rctx->secured ||
+		       (rctx->query->options & DNS_FETCHOPT_TCP) != 0;
 
-	apex = (ISDUALSTACK(fctx->addrinfo) || !ISFORWARDER(fctx->addrinfo))
-		       ? rctx->ns_name != NULL ? rctx->ns_name : fctx->domain
-		       : fctx->fwdname;
+	if (ISDUALSTACK(fctx->addrinfo) || !ISFORWARDER(fctx->addrinfo)) {
+		if (secured) {
+			apex = fctx->domain;
+		} else if (rctx->ns_name != NULL) {
+			apex = rctx->ns_name;
+		} else {
+			apex = fctx->domain;
+		}
+	} else {
+		apex = fctx->fwdname;
+	}
 
 	/*
 	 * The name is outside the queried namespace.
@@ -9140,7 +9150,6 @@ rctx_answer_dname(respctx_t *rctx) {
  */
 static void
 rctx_authority_positive(respctx_t *rctx) {
-	fetchctx_t *fctx = rctx->fctx;
 	bool done = false;
 	isc_result_t result;
 
@@ -9157,9 +9166,7 @@ rctx_authority_positive(respctx_t *rctx) {
 		dns_message_currentname(rctx->query->rmessage,
 					DNS_SECTION_AUTHORITY, &name);
 
-		if (!name_external(name, dns_rdatatype_ns, rctx) &&
-		    dns_name_issubdomain(fctx->name, name))
-		{
+		if (!name_external(name, dns_rdatatype_ns, rctx)) {
 			dns_rdataset_t *rdataset = NULL;
 
 			/*
