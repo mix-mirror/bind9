@@ -52,6 +52,7 @@ isc_test = [
     'timer',
     'tls',
     'tlsdns',
+    'tw',
     'udp',
     'work',
 ]
