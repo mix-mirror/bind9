@@ -27,6 +27,7 @@ pytestmark = pytest.mark.extra_artifacts(
         "ns2/named-tls.conf",
         "ns3/trusted.conf",
         "ns4/named-tls.conf",
+        "ns4/statistics-channels.conf",
         "ns9/named_dump.db",
     ]
 )
