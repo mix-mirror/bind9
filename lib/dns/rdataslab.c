@@ -26,6 +26,7 @@
 #include <isc/region.h>
 #include <isc/result.h>
 #include <isc/string.h>
+#include <isc/tw.h>
 #include <isc/util.h>
 
 #include <dns/db.h>
@@ -110,7 +111,6 @@ newslab(dns_rdataset_t *rdataset, isc_mem_t *mctx, isc_region_t *region,
 	*header = (dns_slabheader_t){
 		.headers_link = CDS_LIST_HEAD_INIT(header->headers_link),
 		.trust = rdataset->trust,
-		.ttl = rdataset->ttl,
 		.dirtylink = ISC_LINK_INITIALIZER,
 	};
 
@@ -831,8 +831,7 @@ dns_slabheader_copycase(dns_slabheader_t *dest, dns_slabheader_t *src) {
 
 void
 dns_slabheader_reset(dns_slabheader_t *h, dns_dbnode_t *node) {
-	h->heap_index = 0;
-	h->heap = NULL;
+	ISC_TW_ELT_INIT(&h->tw_elt);
 	h->node = node;
 
 	atomic_init(&h->attributes, 0);
@@ -854,24 +853,22 @@ dns_slabheader_new(isc_mem_t *mctx, dns_dbnode_t *node) {
 		.node = node,
 		.dirtylink = ISC_LINK_INITIALIZER,
 	};
+
+	ISC_TW_ELT_INIT(&h->tw_elt);
+
 	return h;
 }
 
 void
 dns_slabheader_destroy(dns_slabheader_t **headerp) {
-	unsigned int size;
 	dns_slabheader_t *header = *headerp;
-
 	*headerp = NULL;
+
+	size_t size = EXISTS(header) ? dns_rdataslab_size(header)
+				     : sizeof(*header);
 
 	isc_mem_t *mctx = header->node->mctx;
 	dns_db_deletedata(header->node, header);
-
-	if (EXISTS(header)) {
-		size = dns_rdataslab_size(header);
-	} else {
-		size = sizeof(*header);
-	}
 
 	isc_mem_put(mctx, header, size);
 }

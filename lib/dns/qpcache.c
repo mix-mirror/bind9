@@ -21,7 +21,6 @@
 #include <isc/async.h>
 #include <isc/atomic.h>
 #include <isc/file.h>
-#include <isc/heap.h>
 #include <isc/hex.h>
 #include <isc/list.h>
 #include <isc/log.h>
@@ -38,6 +37,7 @@
 #include <isc/stdio.h>
 #include <isc/string.h>
 #include <isc/time.h>
+#include <isc/tw.h>
 #include <isc/urcu.h>
 #include <isc/util.h>
 
@@ -70,9 +70,9 @@
 #define STALE_TTL(header, qpdb) \
 	(NXDOMAIN(header) ? 0 : qpdb->common.serve_stale_ttl)
 
-#define ACTIVE(header, now)            \
-	(((header)->expire > (now)) || \
-	 ((header)->expire == (now) && ZEROTTL(header)))
+#define ACTIVE(header, now)                   \
+	(((header)->tw_elt.expire > (now)) || \
+	 ((header)->tw_elt.expire == (now) && ZEROTTL(header)))
 
 #define EXPIREDOK(iterator) \
 	(((iterator)->common.options & DNS_DB_EXPIREDOK) != 0)
@@ -180,11 +180,9 @@ typedef struct qpcache_bucket {
 	isc_rwlock_t lock;
 
 	/*
-	 * The heap is used for TTL based expiry.  Note that qpcache->hmctx
-	 * is the memory context to use for heap memory; this differs from
-	 * the main database memory context, which is qpcache->common.mctx.
+	 * The timing wheel is used for TTL based expiry.
 	 */
-	isc_heap_t *heap;
+	isc_tw_t *tw;
 
 	/* SIEVE-LRU cache cleaning state. */
 	ISC_SIEVE(dns_slabtop_t) sieve;
@@ -192,7 +190,7 @@ typedef struct qpcache_bucket {
 	/* Padding to prevent false sharing between locks. */
 	uint8_t __padding[ISC_OS_CACHELINE_SIZE -
 			  (sizeof(isc_queue_t) + sizeof(isc_rwlock_t) +
-			   sizeof(isc_heap_t *) +
+			   sizeof(isc_tw_t *) +
 			   sizeof(ISC_SIEVE(dns_slabtop_t))) %
 				  ISC_OS_CACHELINE_SIZE];
 
@@ -518,8 +516,7 @@ qpcache_miss(qpcache_t *qpdb, dns_slabheader_t *newheader,
 	     isc_rwlocktype_t *tlocktypep DNS__DB_FLARG) {
 	uint32_t idx = HEADERNODE(newheader)->locknum;
 
-	isc_heap_insert(qpdb->buckets[idx].heap, newheader);
-	newheader->heap = qpdb->buckets[idx].heap;
+	isc_tw_insert(qpdb->buckets[idx].tw, &newheader->tw_elt);
 
 	if (isc_mem_isovermem(qpdb->common.mctx)) {
 		/*
@@ -908,22 +905,21 @@ mark(dns_slabheader_t *header, uint_least16_t flag) {
 
 static void
 setttl(dns_slabheader_t *header, isc_stdtime_t newts) {
-	isc_stdtime_t oldts = header->expire;
+	qpcnode_t *node = HEADERNODE(header);
+	qpcache_t *qpdb = node->qpdb;
+	isc_tw_t *tw = qpdb->buckets[node->locknum].tw;
 
-	header->expire = newts;
+	isc_stdtime_t oldts = isc_tw_getexpire(&header->tw_elt);
 
-	if (header->heap == NULL || header->heap_index == 0 || newts == oldts) {
+	isc_tw_setexpire(&header->tw_elt, newts);
+
+	if (newts == oldts || isc_tw_is_node_deleted(&header->tw_elt)) {
 		return;
 	}
 
-	if (newts < oldts) {
-		isc_heap_increased(header->heap, header->heap_index);
-	} else {
-		isc_heap_decreased(header->heap, header->heap_index);
-	}
-
-	if (newts == 0) {
-		isc_heap_delete(header->heap, header->heap_index);
+	isc_tw_delete(tw, &header->tw_elt);
+	if (newts != 0) {
+		isc_tw_insert(tw, &header->tw_elt);
 	}
 }
 
@@ -948,7 +944,6 @@ expireheader(dns_slabheader_t *header, isc_rwlocktype_t *nlocktypep,
 
 	if (isc_refcount_current(&HEADERNODE(header)->erefs) == 0) {
 		qpcache_t *qpdb = HEADERNODE(header)->qpdb;
-
 		/*
 		 * If no one else is using the node, we can clean it up now.
 		 * We first need to gain a new reference to the node to meet a
@@ -1034,7 +1029,8 @@ bindrdataset(qpcache_t *qpdb, qpcnode_t *node, dns_slabheader_t *header,
 	 * Mark header stale or ancient if the RRset is no longer active.
 	 */
 	if (!ACTIVE(header, now)) {
-		dns_ttl_t stale_ttl = header->expire + STALE_TTL(header, qpdb);
+		dns_ttl_t stale_ttl = isc_tw_getexpire(&header->tw_elt) +
+				      STALE_TTL(header, qpdb);
 		/*
 		 * If this data is in the stale window keep it and if
 		 * DNS_DBFIND_STALEOK is not set we tell the caller to
@@ -1064,7 +1060,9 @@ bindrdataset(qpcache_t *qpdb, qpcnode_t *node, dns_slabheader_t *header,
 		rdataset->type = DNS_TYPEPAIR_TYPE(header->typepair);
 		rdataset->covers = DNS_TYPEPAIR_COVERS(header->typepair);
 	}
-	rdataset->ttl = !ZEROTTL(header) ? header->expire - now : 0;
+	rdataset->ttl = !ZEROTTL(header)
+				? isc_tw_getexpire(&header->tw_elt) - now
+				: 0;
 	rdataset->trust = atomic_load(&header->trust);
 	rdataset->resign = 0;
 
@@ -1082,7 +1080,8 @@ bindrdataset(qpcache_t *qpdb, qpcnode_t *node, dns_slabheader_t *header,
 	}
 
 	if (stale && !ancient) {
-		dns_ttl_t stale_ttl = header->expire + STALE_TTL(header, qpdb);
+		dns_ttl_t stale_ttl = isc_tw_getexpire(&header->tw_elt) +
+				      STALE_TTL(header, qpdb);
 		if (stale_ttl > now) {
 			rdataset->ttl = stale_ttl - now;
 		} else {
@@ -1092,7 +1091,7 @@ bindrdataset(qpcache_t *qpdb, qpcnode_t *node, dns_slabheader_t *header,
 			rdataset->attributes.stale_window = true;
 		}
 		rdataset->attributes.stale = true;
-		rdataset->expire = header->expire;
+		rdataset->expire = header->tw_elt.expire;
 	} else if (!ACTIVE(header, now)) {
 		rdataset->attributes.ancient = true;
 		rdataset->ttl = 0;
@@ -1184,7 +1183,8 @@ check_stale_header(dns_slabheader_t *header, qpc_search_t *search) {
 		return false;
 	}
 
-	isc_stdtime_t stale = header->expire + STALE_TTL(header, search->qpdb);
+	isc_stdtime_t stale = isc_tw_getexpire(&header->tw_elt) +
+			      STALE_TTL(header, search->qpdb);
 	/*
 	 * If this data is in the stale window keep it and if
 	 * DNS_DBFIND_STALEOK is not set we tell the caller to
@@ -2282,28 +2282,6 @@ qpcnode_expiredata(dns_dbnode_t *node, void *data) {
 	INSIST(tlocktype == isc_rwlocktype_none);
 }
 
-/*%
- * These functions allow the heap code to rank the priority of each
- * element.  It returns true if v1 happens "sooner" than v2.
- */
-static bool
-ttl_sooner(void *v1, void *v2) {
-	dns_slabheader_t *h1 = v1;
-	dns_slabheader_t *h2 = v2;
-
-	return h1->expire < h2->expire;
-}
-
-/*%
- * This function sets the heap index into the header.
- */
-static void
-set_index(void *what, unsigned int idx) {
-	dns_slabheader_t *h = what;
-
-	h->heap_index = idx;
-}
-
 static void
 qpcache__destroy(qpcache_t *qpdb) {
 	unsigned int i;
@@ -2331,7 +2309,7 @@ qpcache__destroy(qpcache_t *qpdb) {
 		INSIST(isc_queue_empty(&qpdb->buckets[i].deadnodes));
 		isc_queue_destroy(&qpdb->buckets[i].deadnodes);
 
-		isc_heap_destroy(&qpdb->buckets[i].heap);
+		isc_tw_destroy(&qpdb->buckets[i].tw);
 	}
 
 	dns_stats_detach(&qpdb->rrsetstats);
@@ -2798,7 +2776,8 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 		    oldtop->typepair == DNS_TYPEPAIR(dns_rdatatype_ns) &&
 		    EXISTS(oldheader) && EXISTS(newheader) &&
 		    newheader->trust < oldtrust &&
-		    oldheader->expire < newheader->expire &&
+		    isc_tw_getexpire(&oldheader->tw_elt) <
+			    isc_tw_getexpire(&newheader->tw_elt) &&
 		    dns_rdataslab_equalx(oldheader, newheader,
 					 qpdb->common.rdclass,
 					 DNS_TYPEPAIR_TYPE(oldtop->typepair)))
@@ -2840,13 +2819,17 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 		    EXISTS(oldheader) && EXISTS(newheader) &&
 		    newheader->trust > oldtrust)
 		{
-			if (newheader->expire > oldheader->expire) {
+			if (isc_tw_getexpire(&newheader->tw_elt) >
+			    isc_tw_getexpire(&oldheader->tw_elt))
+			{
 				if (ZEROTTL(oldheader)) {
 					DNS_SLABHEADER_SETATTR(
 						newheader,
 						DNS_SLABHEADERATTR_ZEROTTL);
 				}
-				newheader->expire = oldheader->expire;
+				isc_tw_setexpire(
+					&newheader->tw_elt,
+					isc_tw_getexpire(&oldheader->tw_elt));
 			}
 		}
 		if (ACTIVE(oldheader, now) &&
@@ -2857,7 +2840,8 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 		     oldtop->typepair == DNS_SIGTYPEPAIR(dns_rdatatype_ds)) &&
 		    EXISTS(oldheader) && EXISTS(newheader) &&
 		    newheader->trust < oldtrust &&
-		    oldheader->expire < newheader->expire &&
+		    isc_tw_getexpire(&oldheader->tw_elt) <
+			    isc_tw_getexpire(&newheader->tw_elt) &&
 		    dns_rdataslab_equal(oldheader, newheader))
 		{
 			if (oldheader->noqname == NULL &&
@@ -3284,9 +3268,8 @@ dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 	for (i = 0; i < (int)qpdb->buckets_count; i++) {
 		ISC_SIEVE_INIT(qpdb->buckets[i].sieve);
 
-		qpdb->buckets[i].heap = NULL;
-		isc_heap_create(hmctx, ttl_sooner, set_index, 0,
-				&qpdb->buckets[i].heap);
+		qpdb->buckets[i].tw = NULL;
+		isc_tw_create(hmctx, &qpdb->buckets[i].tw);
 
 		isc_queue_init(&qpdb->buckets[i].deadnodes);
 
@@ -3338,7 +3321,8 @@ rdatasetiter_destroy(dns_rdatasetiter_t **iteratorp DNS__DB_FLARG) {
 static bool
 iterator_active(qpcache_t *qpdb, qpc_rditer_t *iterator,
 		dns_slabheader_t *header) {
-	dns_ttl_t stale_ttl = header->expire + STALE_TTL(header, qpdb);
+	dns_ttl_t stale_ttl = isc_tw_getexpire(&header->tw_elt) +
+			      STALE_TTL(header, qpdb);
 
 	/*
 	 * If this header is still active then return it.
@@ -3751,16 +3735,17 @@ dbiterator_origin(dns_dbiterator_t *iterator, dns_name_t *name) {
 }
 
 static void
-qpcnode_deletedata(dns_dbnode_t *node ISC_ATTR_UNUSED, void *data) {
+qpcnode_deletedata(dns_dbnode_t *dbnode ISC_ATTR_UNUSED, void *data) {
 	dns_slabheader_t *header = data;
-	qpcache_t *qpdb = HEADERNODE(header)->qpdb;
+	qpcnode_t *node = (qpcnode_t *)dbnode;
+	qpcache_t *qpdb = node->qpdb;
 
 	if (ISC_LINK_LINKED(header, dirtylink)) {
-		ISC_LIST_UNLINK(HEADERNODE(header)->dirty, header, dirtylink);
+		ISC_LIST_UNLINK(node->dirty, header, dirtylink);
 	}
 
-	if (header->heap != NULL && header->heap_index != 0) {
-		isc_heap_delete(header->heap, header->heap_index);
+	if (!isc_tw_is_node_deleted(&header->tw_elt)) {
+		isc_tw_delete(qpdb->buckets[node->locknum].tw, &header->tw_elt);
 	}
 
 	/*
@@ -3784,17 +3769,22 @@ static void
 expire_ttl_headers(qpcache_t *qpdb, unsigned int locknum,
 		   isc_rwlocktype_t *nlocktypep, isc_rwlocktype_t *tlocktypep,
 		   isc_stdtime_t now DNS__DB_FLARG) {
-	isc_heap_t *heap = qpdb->buckets[locknum].heap;
+	isc_tw_t *tw = qpdb->buckets[locknum].tw;
+
+	isc_tw_settime(tw, now);
 
 	for (size_t i = 0; i < DNS_QPDB_EXPIRE_TTL_COUNT; i++) {
-		dns_slabheader_t *header = isc_heap_element(heap, 1);
+		isc_tw_elt_t *tw_elt = isc_tw_element(tw);
+		dns_slabheader_t *header = caa_container_of_check_null(
+			tw_elt, dns_slabheader_t, tw_elt);
 
 		if (header == NULL) {
 			/* No headers left on this TTL heap; exit cleaning */
 			return;
 		}
 
-		dns_ttl_t ttl = header->expire + STALE_TTL(header, qpdb);
+		dns_ttl_t ttl = isc_tw_getexpire(&header->tw_elt) +
+				STALE_TTL(header, qpdb);
 
 		if (ttl >= now - QPDB_VIRTUAL) {
 			/*
