@@ -199,6 +199,9 @@ static isc_result_t
 dbiterator_seek(dns_dbiterator_t *iterator,
 		const dns_name_t *name DNS__DB_FLARG);
 static isc_result_t
+dbiterator_seek3(dns_dbiterator_t *iterator,
+		 const dns_name_t *name DNS__DB_FLARG);
+static isc_result_t
 dbiterator_prev(dns_dbiterator_t *iterator DNS__DB_FLARG);
 static isc_result_t
 dbiterator_next(dns_dbiterator_t *iterator DNS__DB_FLARG);
@@ -211,9 +214,10 @@ static isc_result_t
 dbiterator_origin(dns_dbiterator_t *iterator, dns_name_t *name);
 
 static dns_dbiteratormethods_t dbiterator_methods = {
-	dbiterator_destroy, dbiterator_first, dbiterator_last,
-	dbiterator_seek,    dbiterator_prev,  dbiterator_next,
-	dbiterator_current, dbiterator_pause, dbiterator_origin
+	dbiterator_destroy, dbiterator_first,	dbiterator_last,
+	dbiterator_seek,    dbiterator_seek3,	dbiterator_prev,
+	dbiterator_next,    dbiterator_current, dbiterator_pause,
+	dbiterator_origin
 };
 
 /*
@@ -4654,6 +4658,90 @@ dbiterator_seek(dns_dbiterator_t *iterator,
 
 	rbtdbiter->result = (result == DNS_R_PARTIALMATCH) ? ISC_R_SUCCESS
 							   : result;
+
+	return result;
+}
+
+static isc_result_t
+dbiterator_seek3(dns_dbiterator_t *iterator,
+		 const dns_name_t *name DNS__DB_FLARG) {
+	isc_result_t result, tresult;
+	rbtdb_dbiterator_t *rbtdbiter = (rbtdb_dbiterator_t *)iterator;
+	dns_rbtdb_t *rbtdb = (dns_rbtdb_t *)iterator->db;
+	dns_name_t *iname = NULL, *origin = NULL;
+
+	if (rbtdbiter->result != ISC_R_SUCCESS &&
+	    rbtdbiter->result != ISC_R_NOTFOUND &&
+	    rbtdbiter->result != DNS_R_PARTIALMATCH &&
+	    rbtdbiter->result != ISC_R_NOMORE)
+	{
+		return rbtdbiter->result;
+	}
+
+	if (rbtdbiter->nsec3mode != nsec3only) {
+		return ISC_R_NOTIMPLEMENTED;
+	}
+
+	if (rbtdbiter->paused) {
+		resume_iteration(rbtdbiter);
+	}
+
+	dereference_iter_node(rbtdbiter DNS__DB_FLARG_PASS);
+
+	iname = dns_fixedname_name(&rbtdbiter->name);
+	origin = dns_fixedname_name(&rbtdbiter->origin);
+	dns_rbtnodechain_reset(&rbtdbiter->chain);
+	dns_rbtnodechain_reset(&rbtdbiter->nsec3chain);
+
+	rbtdbiter->current = &rbtdbiter->nsec3chain;
+	result = dns_rbt_findnode(rbtdb->nsec3, name, NULL, &rbtdbiter->node,
+				  rbtdbiter->current, DNS_RBTFIND_EMPTYDATA,
+				  NULL, NULL);
+
+	if (result == ISC_R_SUCCESS) {
+		tresult = dns_rbtnodechain_current(rbtdbiter->current, iname,
+						   origin, NULL);
+
+		reference_iter_node(rbtdbiter DNS__DB_FLARG_PASS);
+
+		if (tresult == ISC_R_SUCCESS) {
+			rbtdbiter->new_origin = true;
+		} else {
+			result = tresult;
+			rbtdbiter->node = NULL;
+		}
+	} else if (result == DNS_R_PARTIALMATCH) {
+		tresult = dns_rbtnodechain_current(rbtdbiter->current, iname,
+						   origin, NULL);
+
+		/* dbiterator_next() will dereference the node */
+		reference_iter_node(rbtdbiter DNS__DB_FLARG_PASS);
+
+		if (tresult == ISC_R_SUCCESS) {
+			rbtdbiter->new_origin = true;
+
+			result = dbiterator_next(iterator);
+			if (result == ISC_R_NOMORE) {
+				result = dbiterator_first(iterator);
+			}
+
+			tresult = dns_rbtnodechain_current(rbtdbiter->current,
+							   iname, origin, NULL);
+			if (tresult == ISC_R_SUCCESS) {
+				rbtdbiter->new_origin = true;
+			} else {
+				result = tresult;
+				rbtdbiter->node = NULL;
+			}
+		} else {
+			result = tresult;
+			rbtdbiter->node = NULL;
+		}
+	} else {
+		rbtdbiter->node = NULL;
+	}
+
+	rbtdbiter->result = result;
 
 	return result;
 }

@@ -589,7 +589,24 @@ dns_nsec3_addnsec3(dns_db_t *db, dns_dbversion_t *version,
 	 * Create the node if it doesn't exist and hold
 	 * a reference to it until we have added the NSEC3.
 	 */
-	CHECK(dns_db_findnsec3node(db, hashname, true, &newnode));
+	result = dns_db_findnsec3node(db, hashname, false, &newnode);
+	if (result != ISC_R_SUCCESS) {
+		isc_result_t tresult;
+
+		CHECK(dns_db_createiterator(db, DNS_DB_NSEC3ONLY, &dbit));
+		tresult = dns_dbiterator_seek3(dbit, hashname);
+		CHECK(dns_dbiterator_pause(dbit));
+
+		if (tresult != ISC_R_SUCCESS) {
+			/* Nothing in the NSEC3 space yet. */
+			if (!unsecure) {
+				goto addnsec3;
+			}
+			goto cleanup;
+		}
+
+		goto find_previous;
+	}
 
 	/*
 	 * Seek the iterator to the 'newnode'.
@@ -637,6 +654,7 @@ dns_nsec3_addnsec3(dns_db_t *db, dns_dbversion_t *version,
 		}
 	}
 
+find_previous:
 	/*
 	 * Find the previous NSEC3 (if any) and update it if required.
 	 */
@@ -722,6 +740,10 @@ addnsec3:
 	/*
 	 * Create the NSEC3 RDATA.
 	 */
+	if (newnode == NULL) {
+		CHECK(dns_db_findnsec3node(db, hashname, true, &newnode));
+	}
+
 	CHECK(dns_db_findnode(db, name, false, &node));
 	CHECK(dns_nsec3_buildrdata(db, version, node, hash, flags, iterations,
 				   salt, salt_length, nexthash, next_length,
