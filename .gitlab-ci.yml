@@ -550,22 +550,19 @@ stages:
   script:
     - *fips_feature_test
     - *find_python
-
     - *git_clone_bind9-qa
-
+    # Set CMocka JUnit XML output.
     - export CMOCKA_MESSAGE_OUTPUT="xml"
     - export CMOCKA_XML_FILE="$(pwd)/build/meson-logs/include-cmocka-%g.junit.xml"
-
     - RET=0
     - MESON_WRAPPER="$(pwd)/bind9-qa/ci/meson_retry_if_flaky.sh 2"
+    # CMocka tests: Mark Meson-generated XMLs to exclude them later with --logbase, CMocka generates better ones.
     - meson test -C build --suite cmocka --wrapper "$MESON_WRAPPER" --no-rebuild --logbase "exclude-" || RET=1
-    - meson test -C build --no-suite cmocka --wrapper "$MESON_WRAPPER" --no-rebuild --logbase "include-" || RET=1
-
+    # Non-CMocka test: Use Meson-generated XMLs.
+    - meson test -C build --no-suite cmocka --wrapper "$MESON_WRAPPER" --no-rebuild --logbase "-" || RET=1
     - >
       "$PYTHON" bind9-qa/ci/postprocess_junit_files.py build/meson-logs/include-*.junit.xml --output "$CI_PROJECT_DIR/junit.xml"
-
     - (exit $RET)
-
     - test "$CLEAN_BUILD_ARTIFACTS_ON_SUCCESS" -eq 0 || ninja -C build clean >/dev/null 2>&1
   artifacts:
     untracked: true
