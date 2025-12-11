@@ -134,6 +134,7 @@ isc_srcset.add(
         'timer.c',
         'tls.c',
         'tm.c',
+        'tw.c',
         'url.c',
         'utf8.c',
         'uv.c',
