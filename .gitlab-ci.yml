@@ -356,7 +356,7 @@ stages:
       build
 
 .git-clone-bind9-qa: &git_clone_bind9-qa
-  - git clone --depth 1 https://gitlab.isc.org/isc-projects/bind9-qa.git
+  - git clone --depth 1 https://gitlab.isc.org/isc-projects/bind9-qa.git --branch stepan/postprocess-junit-xml
 
 # change directory to the workspace before including this
 .find_python: &find_python
