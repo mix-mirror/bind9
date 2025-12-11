@@ -87,3 +87,12 @@ def test_bailiwick_sibling_ns_referral(servers: Dict[str, NamedInstance]) -> Non
     ns4 = servers["ns4"]
     send_trigger_query(ns4, "trigger.")
     check_domain_hijack(ns4)
+
+
+def test_bailiwick_unsolicited_authority(servers: Dict[str, NamedInstance]) -> None:
+    set_spoofing_mode(ans1="none", ans2="unsolicited-ns")
+
+    ns4 = servers["ns4"]
+    prime_cache(ns4)
+    send_trigger_query(ns4, "trigger.victim.")
+    check_domain_hijack(ns4)
