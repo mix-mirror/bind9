@@ -11,6 +11,8 @@
 
 from typing import Dict
 
+import time
+
 import dns.message
 
 import pytest
@@ -77,3 +79,11 @@ def check_domain_hijack(ns4: NamedInstance) -> None:
         "TXT",
         '"correct answer from the domain under attack"',
     )
+
+
+def test_bailiwick_sibling_ns_referral(servers: Dict[str, NamedInstance]) -> None:
+    set_spoofing_mode(ans1="sibling-ns", ans2="none")
+
+    ns4 = servers["ns4"]
+    send_trigger_query(ns4, "trigger.")
+    check_domain_hijack(ns4)
