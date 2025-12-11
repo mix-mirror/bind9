@@ -2331,7 +2331,10 @@ query_addrrset(query_ctx_t *qctx, dns_name_t **namep,
 	 */
 	query_addtoname(mname, rdataset);
 	query_setorder(qctx, mname, rdataset);
-	if (qctx->qtype != dns_rdatatype_any) {
+	if (qctx->qtype != dns_rdatatype_any ||
+	    (!qctx->authoritative && section == DNS_SECTION_AUTHORITY &&
+	     rdataset->type == dns_rdatatype_ns))
+	{
 		query_additional(qctx, mname, rdataset);
 	}
 
