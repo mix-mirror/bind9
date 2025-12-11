@@ -897,6 +897,7 @@ cross-version-config-tests:
     - *setup_interfaces
     - meson compile -C build system-test-init system-test-dependencies
     - meson compile -C build
+    - *find_python
     - *find_pytest
     - git clone --branch "${BIND_BASELINE_VERSION}" --depth 1 https://gitlab.isc.org/isc-projects/bind9.git "bind-${BIND_BASELINE_VERSION}"
     - cd "bind-${BIND_BASELINE_VERSION}"
@@ -923,7 +924,6 @@ cross-version-config-tests:
     - >
       "$PYTEST" --setup-only --junit-xml="$CI_PROJECT_DIR"/junit.xml -n "${TEST_PARALLEL_JOBS:-1}" || RET=1
     - *git_clone_bind9-qa
-    - *find_python
     - >
       "$PYTHON" bind9-qa/ci/postprocess_junit_files.py "$CI_PROJECT_DIR"/junit.xml --output "$CI_PROJECT_DIR"/junit.xml
     - (exit $RET)
