@@ -109,3 +109,11 @@ def test_bailiwick_parent_glue(servers: Dict[str, NamedInstance]) -> None:
     time.sleep(61)
 
     check_domain_hijack(ns4)
+
+
+def test_bailiwick_spoofed_dname(servers: Dict[str, NamedInstance]) -> None:
+    set_spoofing_mode(ans1="none", ans2="dname")
+
+    ns4 = servers["ns4"]
+    send_trigger_query(ns4, "trigger.victim.")
+    check_domain_hijack(ns4)

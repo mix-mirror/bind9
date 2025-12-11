@@ -83,6 +83,33 @@ class ParentGlueSpoofer(ResponseSpoofer, mode="parent-glue"):
         yield DnsResponseSend(response, authoritative=False)
 
 
+class DnameSpoofer(ResponseSpoofer, mode="dname"):
+
+    qname = "trigger.victim."
+
+    async def get_responses(
+        self, qctx: QueryContext
+    ) -> AsyncGenerator[ResponseAction, None]:
+        # Prepare a custom response from scratch, without using any zone data.
+        response = dns.message.make_response(qctx.query)
+        response.set_rcode(dns.rcode.NOERROR)
+
+        cname_rrset = dns.rrset.from_text(
+            qctx.qname,
+            TTL,
+            qctx.qclass,
+            dns.rdatatype.CNAME,
+            "trigger.attacker.",
+        )
+        dname_rrset = dns.rrset.from_text(
+            "victim.", TTL, qctx.qclass, dns.rdatatype.DNAME, "attacker."
+        )
+        response.answer.append(cname_rrset)
+        response.answer.append(dname_rrset)
+
+        yield DnsResponseSend(response, authoritative=True)
+
+
 def main() -> None:
     spoofing_server().run()
 
