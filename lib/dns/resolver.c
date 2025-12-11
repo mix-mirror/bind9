@@ -6528,10 +6528,20 @@ name_external(const dns_name_t *name, dns_rdatatype_t type, respctx_t *rctx) {
 	dns_zone_t *zone = NULL;
 	unsigned int labels;
 	dns_namereln_t rel;
+	bool secured = rctx->secured ||
+		       (rctx->query->options & DNS_FETCHOPT_TCP) != 0;
 
-	apex = (ISDUALSTACK(fctx->addrinfo) || !ISFORWARDER(fctx->addrinfo))
-		       ? rctx->ns_name != NULL ? rctx->ns_name : fctx->domain
-		       : fctx->fwdname;
+	if (ISDUALSTACK(fctx->addrinfo) || !ISFORWARDER(fctx->addrinfo)) {
+		if (secured) {
+			apex = fctx->domain;
+		} else if (rctx->ns_name != NULL) {
+			apex = rctx->ns_name;
+		} else {
+			apex = fctx->domain;
+		}
+	} else {
+		apex = fctx->fwdname;
+	}
 
 	/*
 	 * The name is outside the queried namespace.
@@ -8655,7 +8665,6 @@ rctx_answer_dname(respctx_t *rctx) {
  */
 static void
 rctx_authority_positive(respctx_t *rctx) {
-	fetchctx_t *fctx = rctx->fctx;
 	dns_message_t *msg = rctx->query->rmessage;
 
 	/* If it's spoofable, don't cache it. */
@@ -8664,44 +8673,41 @@ rctx_authority_positive(respctx_t *rctx) {
 	}
 
 	MSG_SECTION_FOREACH(msg, DNS_SECTION_AUTHORITY, name) {
-		if (!name_external(name, dns_rdatatype_ns, rctx) &&
-		    dns_name_issubdomain(fctx->name, name))
-		{
-			/*
-			 * We expect to find NS or SIG NS rdatasets, and
-			 * nothing else.
-			 */
-			ISC_LIST_FOREACH(name->list, rdataset, link) {
-				if (dns_rdataset_matchestype(rdataset,
-							     dns_rdatatype_ns))
-				{
-					name->attributes.cache = true;
-					rdataset->attributes.cache = true;
+		if (name_external(name, dns_rdatatype_ns, rctx)) {
+			continue;
+		}
 
-					if (rctx->aa) {
-						rdataset->trust =
-							dns_trust_authauthority;
-					} else {
-						rdataset->trust =
-							dns_trust_additional;
-					}
-
-					if (rdataset->type == dns_rdatatype_ns)
-					{
-						rctx->ns_name = name;
-						rctx->ns_rdataset = rdataset;
-					}
-					/*
-					 * Mark any additional data
-					 * related to this rdataset.
-					 */
-					(void)dns_rdataset_additionaldata(
-						rdataset, name, check_related,
-						rctx,
-						DNS_RDATASET_MAXADDITIONAL);
-					return;
-				}
+		/*
+		 * We expect to find NS or SIG NS rdatasets, and
+		 * nothing else.
+		 */
+		ISC_LIST_FOREACH(name->list, rdataset, link) {
+			if (!dns_rdataset_matchestype(rdataset,
+						      dns_rdatatype_ns))
+			{
+				continue;
 			}
+
+			name->attributes.cache = true;
+			rdataset->attributes.cache = true;
+
+			if (rctx->aa) {
+				rdataset->trust = dns_trust_authauthority;
+			} else {
+				rdataset->trust = dns_trust_additional;
+			}
+
+			if (rdataset->type == dns_rdatatype_ns) {
+				rctx->ns_name = name;
+				rctx->ns_rdataset = rdataset;
+			}
+			/*
+			 * Mark any additional data related to this rdataset.
+			 */
+			(void)dns_rdataset_additionaldata(
+				rdataset, name, check_related, rctx,
+				DNS_RDATASET_MAXADDITIONAL);
+			return;
 		}
 	}
 }
