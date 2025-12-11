@@ -21,18 +21,18 @@
 #include <isc/magic.h>
 #include <isc/mem.h>
 #include <isc/tw.h>
-#include <isc/urcu.h>
 #include <isc/util.h>
 
 static inline void
 slot_add(isc_tw_slot_t *slot, isc_tw_elt_t *elt) {
-	cds_list_add(&elt->list_node, &slot->head);
+	ISC_LIST_APPEND(slot->head, elt, link);
 	slot->count++;
 }
 
 static inline void
 slot_del(isc_tw_slot_t *slot, isc_tw_elt_t *elt) {
-	cds_list_del(&elt->list_node);
+	INSIST(slot->count > 0);
+	ISC_LIST_UNLINK(slot->head, elt, link);
 	slot->count--;
 }
 
@@ -108,7 +108,7 @@ isc_tw_create(isc_mem_t *mctx, isc_tw_t **twp) {
 		lvl->current = 0;
 
 		for (size_t j = 0; j < ISC_TW_SLOTS; j++) {
-			CDS_INIT_LIST_HEAD(&lvl->slots[j].head);
+			ISC_LIST_INIT(lvl->slots[j].head);
 			lvl->slots[j].count = 0;
 		}
 	}
@@ -183,6 +183,7 @@ isc_tw_delete(isc_tw_t *tw, isc_tw_elt_t *elt) {
 
 	isc_tw_level_t *lvl = &tw->levels[elt->level];
 	slot_del(&lvl->slots[elt->slot], elt);
+	INSIST(tw->size > 0);
 	tw->size--;
 
 	elt->level = (unsigned int)-1;
@@ -205,6 +206,7 @@ cascade_slot(isc_tw_t *tw, unsigned int level, unsigned int slot_idx) {
 		}
 
 		slot_del(slot, elt);
+		INSIST(tw->size > 0);
 		tw->size--;
 
 		elt->level = (unsigned int)-1;
@@ -266,19 +268,18 @@ isc_tw_element(isc_tw_t *tw) {
 		unsigned int current = lvl->current;
 
 		/* Check current slot first */
-		if (!cds_list_empty(&lvl->slots[current].head)) {
+		if (!ISC_LIST_EMPTY(lvl->slots[current].head)) {
 			isc_tw_elt_t *min = NULL;
 			isc_tw_elt_t *elt;
 
-			cds_list_for_each_entry(elt, &lvl->slots[current].head,
-						list_node) {
+			for (elt = ISC_LIST_HEAD(lvl->slots[current].head);
+			     elt != NULL;
+			     elt = ISC_LIST_NEXT(elt, link)) {
 				if (isc_tw_is_node_deleted(elt)) {
 					continue;
 				}
 
-				if (min == NULL) {
-					min = elt;
-				} else if (elt->expire < min->expire) {
+				if (min == NULL || elt->expire < min->expire) {
 					min = elt;
 				}
 			}
@@ -299,21 +300,20 @@ isc_tw_element(isc_tw_t *tw) {
 							 (unsigned int)offset) %
 							ISC_TW_SLOTS;
 
-				if (!cds_list_empty(&lvl->slots[slot_idx].head)) {
+				if (!ISC_LIST_EMPTY(lvl->slots[slot_idx].head)) {
 					isc_tw_elt_t *min = NULL;
 					isc_tw_elt_t *elt;
 
-					cds_list_for_each_entry(
-						elt, &lvl->slots[slot_idx].head,
-						list_node) {
+					for (elt = ISC_LIST_HEAD(
+						     lvl->slots[slot_idx].head);
+					     elt != NULL;
+					     elt = ISC_LIST_NEXT(elt, link)) {
 						if (isc_tw_is_node_deleted(elt)) {
 							continue;
 						}
 
-						if (min == NULL) {
-							min = elt;
-						} else if (elt->expire <
-							   min->expire) {
+						if (min == NULL ||
+						    elt->expire < min->expire) {
 							min = elt;
 						}
 					}

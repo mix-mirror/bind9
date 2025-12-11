@@ -20,11 +20,11 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#include <isc/list.h>
 #include <isc/mem.h>
 #include <isc/result.h>
 #include <isc/stdtime.h>
 #include <isc/types.h>
-#include <isc/urcu.h>
 
 /*
  * Configuration for timing wheel hierarchy
@@ -37,10 +37,10 @@
  * Priority queue element - embedded in user structures
  */
 typedef struct isc_tw_elt {
-	struct cds_list_head list_node;
-	isc_stdtime_t	     expire;
-	uint32_t	     level;
-	uint32_t	     slot;
+	ISC_LINK(isc_tw_elt_t) link;
+	isc_stdtime_t	      expire;
+	uint32_t	      level;
+	uint32_t	      slot;
 } isc_tw_elt_t;
 
 /*
@@ -48,8 +48,8 @@ typedef struct isc_tw_elt {
  * concurrent access.
  */
 typedef struct isc_tw_slot {
-	struct cds_list_head head;
-	size_t	       count;
+	ISC_LIST(isc_tw_elt_t) head;
+	size_t		      count;
 } isc_tw_slot_t;
 
 /*
@@ -79,12 +79,12 @@ typedef struct isc_tw {
 /*
  * Initialize timing wheel element
  */
-#define ISC_TW_ELT_INIT(elt)                           \
-	{                                              \
-		CDS_INIT_LIST_HEAD(&(elt)->list_node); \
-		(elt)->expire = 0;                     \
-		(elt)->level = (unsigned int)-1;       \
-		(elt)->slot = (unsigned int)-1;        \
+#define ISC_TW_ELT_INIT(elt)                     \
+	{                                        \
+		ISC_LINK_INIT((elt), link);      \
+		(elt)->expire = 0;               \
+		(elt)->level = (unsigned int)-1; \
+		(elt)->slot = (unsigned int)-1;  \
 	}
 
 /*
