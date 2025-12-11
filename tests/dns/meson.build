@@ -94,7 +94,7 @@ foreach unit : dns_tests
         unit,
         test_bin,
         depends: master_data,
-        suite: 'dns',
+        suite: ['dns', 'cmocka'],
         timeout: 300,
         workdir: meson.current_source_dir(),
     )

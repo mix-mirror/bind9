@@ -36,7 +36,7 @@ foreach unit : [
     test(
         unit,
         test_bin,
-        suite: 'ns',
+        suite: ['ns', 'cmocka'],
         timeout: 300,
         workdir: meson.current_source_dir(),
     )

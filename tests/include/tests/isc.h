@@ -20,6 +20,7 @@
 
 #include <isc/buffer.h>
 #include <isc/commandline.h>
+#include <isc/file.h>
 #include <isc/hash.h>
 #include <isc/log.h>
 #include <isc/mem.h>
@@ -56,6 +57,16 @@ int
 setup_managers(void **state);
 int
 teardown_managers(void **state);
+
+isc_result_t
+file_path_to_groupname(const char *path, char *out, size_t outlen);
+/*%<
+ * Example:
+ *   "/.../tests/dns/dbdiff" -> "dns_dbdiff"
+ *
+ * Returns ISC_R_SUCCESS on success, ISC_R_NOSPACE if outlen is too small,
+ * or other error codes returned by isc_file_splitpath.
+ */
 
 #ifndef TESTS_DIR
 #define TESTS_DIR "./"
@@ -240,10 +251,18 @@ teardown_managers(void **state);
 			}                                                               \
 		}                                                                       \
                                                                                         \
+		char	     group_name[1024];                                          \
+		isc_result_t res = file_path_to_groupname(argv[0], group_name,          \
+							  sizeof(group_name));          \
+		if (res != ISC_R_SUCCESS) {                                             \
+			strncpy(group_name, "tests", sizeof(group_name));               \
+		}                                                                       \
 		if (selected[0].name != NULL) {                                         \
-			r = cmocka_run_group_tests(selected, setup, teardown);          \
+			r = cmocka_run_group_tests_name(group_name, selected,           \
+							setup, teardown);               \
 		} else {                                                                \
-			r = cmocka_run_group_tests(tests, setup, teardown);             \
+			r = cmocka_run_group_tests_name(group_name, tests,              \
+							setup, teardown);               \
 		}                                                                       \
                                                                                         \
 		teardown_mctx(NULL);                                                    \

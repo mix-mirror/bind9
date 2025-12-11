@@ -26,6 +26,7 @@
 #include <isc/managers.h>
 #include <isc/mem.h>
 #include <isc/os.h>
+#include <isc/result.h>
 #include <isc/string.h>
 #include <isc/timer.h>
 #include <isc/util.h>
@@ -125,4 +126,34 @@ teardown_managers(void **state) {
 	teardown_loopmgr(state);
 
 	return 0;
+}
+
+isc_result_t
+file_path_to_groupname(const char *path, char *out, size_t outlen) {
+	char *dir = NULL;
+	const char *base = NULL;
+	const char *parent_basename;
+	const char *file_basename;
+	isc_result_t result;
+
+	REQUIRE(path != NULL);
+	REQUIRE(out != NULL);
+
+	result = isc_file_splitpath(isc_g_mctx, path, &dir, &base);
+	if (result != ISC_R_SUCCESS) {
+		return result;
+	}
+
+	parent_basename = isc_file_basename(dir);
+	file_basename = isc_file_basename(base);
+
+	if (strlen(parent_basename) + 1 + strlen(file_basename) + 1 > outlen) {
+		isc_mem_free(isc_g_mctx, dir);
+		return ISC_R_NOSPACE;
+	}
+
+	snprintf(out, outlen, "%s_%s", parent_basename, file_basename);
+
+	isc_mem_free(isc_g_mctx, dir);
+	return ISC_R_SUCCESS;
 }

@@ -32,7 +32,7 @@ foreach unit : [
     test(
         unit,
         test_bin,
-        suite: 'isccfg',
+        suite: ['isccfg', 'cmocka'],
         timeout: 300,
         workdir: meson.current_source_dir(),
     )

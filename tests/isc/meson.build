@@ -89,15 +89,21 @@ foreach unit : isc_test
         ],
     )
 
-    suites = ['isc']
+    suites = ['isc', 'cmocka']
+    env = environment()
+    timeout = 300
     if unit in flaky_isc_test
         suites += 'flaky'
+        # Pass FLAKY and TIMEOUT to the test wrapper so it can retry appropriately
+        env.set('FLAKY', '1')
+        env.set('TIMEOUT', timeout.to_string())
     endif
     test(
         unit,
         test_bin,
         suite: suites,
-        timeout: 300,
+        timeout: timeout,
         workdir: meson.current_source_dir(),
+        env: env,
     )
 endforeach

@@ -429,21 +429,6 @@ stages:
         fi
       fi
 
-.check_for_junit_xml: &check_for_junit_xml
-    # test if junit.xml file exists and is longer 40 bytes
-    # (i.e., contains more than `<testsuites><testsuite /></testsuites>`)
-    - if [ -f "$CI_PROJECT_DIR"/junit.xml ]; then
-        if [ $(wc -c < "$CI_PROJECT_DIR"/junit.xml) -gt 40 ]; then
-          echo "junit.xml file exists and is longer than 40 bytes.";
-        else
-          echo "junit.xml file exists but is too short.";
-          exit 1;
-        fi
-      else
-        echo "junit.xml file does not exist.";
-        exit 1;
-      fi
-
 .build: &build_job
   <<: *default_triggering_rules
   stage: build
@@ -551,7 +536,9 @@ stages:
     - RET=0
     - >
       ("$PYTEST" --junit-xml="$CI_PROJECT_DIR"/junit.xml -n "$TEST_PARALLEL_JOBS" | tee pytest.out.txt) || RET=1
-    - *check_for_junit_xml
+    - git clone --depth 1 https://gitlab.isc.org/isc-projects/bind9-qa.git --branch stepan/postprocess-junit-xml
+    - >
+      "$PYTHON" bind9-qa/ci/postprocess_junit_files.py "$CI_PROJECT_DIR"/junit.xml --output "$CI_PROJECT_DIR"/junit.xml
     - (exit $RET)
     - '( ! grep -F "grep: warning:" pytest.out.txt )'
     - test "$CLEAN_BUILD_ARTIFACTS_ON_SUCCESS" -eq 0 || ( cd ../../.. && ninja -C build clean >/dev/null 2>&1 )
@@ -575,19 +562,37 @@ stages:
   <<: *default_triggering_rules
   stage: unit
   # This script needs to: 1) fail if the unit tests fail, 2) fail if the
-  # junit.xml file is broken, 3) produce the junit.xml file even if the
+  # junit.xml file is broken, 3) produce the JUnit reports even if the
   # unit tests fail.  Therefore, $RET is used to "cache" the result of
   # running "meson test" as interrupting the script immediately when
   # unit tests fail would make checking the contents of the junit.xml
   # file impossible (GitLab Runner uses "set -o pipefail").
+
+  # Additionally, both flaky and CMocka test need special handling:
+  # - flaky tests are retried a number of times (default 2) before being
+  #   considered failed
+  # - for CMocka tests, we use the CMocka's XML report to get more detailed
+  #   information (subtest results and timings). Meson also produces
+  #   a JUnit report, so we need to not pass it to GitLab to avoid duplication.
   script:
     - *fips_feature_test
+    - *find_python
+
+    - git clone --depth 1 https://gitlab.isc.org/isc-projects/bind9-qa.git --branch stepan/postprocess-junit-xml
+
+    - export CMOCKA_MESSAGE_OUTPUT="xml"
+    - export CMOCKA_XML_FILE="$(pwd)/build/meson-logs/include-cmocka-%g.junit.xml"
+
     - RET=0
-    - meson test -C build --no-rebuild --no-suite flaky || RET=1
-    - cp build/meson-logs/testlog.junit.xml $CI_PROJECT_DIR/junit.xml
-    - meson test -C build --no-rebuild --suite flaky  --logbase testlog-flaky || meson test -C build --no-rebuild --suite flaky --logbase testlog-flaky || RET=1
-    - *check_for_junit_xml
+    - MESON_WRAPPER="$(pwd)/bind9-qa/ci/meson_retry_if_flaky.sh 2"
+    - meson test -C build --suite cmocka --wrapper "$MESON_WRAPPER" --no-rebuild --logbase "exclude-" || RET=1
+    - meson test -C build --no-suite cmocka --wrapper "$MESON_WRAPPER" --no-rebuild --logbase "include-" || RET=1
+
+    - >
+      "$PYTHON" bind9-qa/ci/postprocess_junit_files.py build/meson-logs/include-*.junit.xml --output "$CI_PROJECT_DIR/junit.xml"
+
     - (exit $RET)
+
     - test "$CLEAN_BUILD_ARTIFACTS_ON_SUCCESS" -eq 0 || ninja -C build clean >/dev/null 2>&1
   artifacts:
     untracked: true
@@ -595,7 +600,6 @@ stages:
     reports:
       junit:
         - junit.xml
-        - build/meson-logs/testlog-flaky.junit.xml
 
 .unit_test_tsan: &unit_test_tsan_job
   <<: *unit_test_job
@@ -932,8 +936,18 @@ cross-version-config-tests:
     # should not be run.
     - rm -r dlzexternal
     - rm -r dyndb
+    # RET is used to "cache" the result of running pytest as interrupting
+    # the script immediately when system tests fail would make checking the
+    # contents of the junit.xml file impossible (GitLab Runner uses "set -o
+    # pipefail").
+    - RET=0
     - >
-      "$PYTEST" --setup-only --junit-xml="$CI_PROJECT_DIR"/junit.xml -n "${TEST_PARALLEL_JOBS:-1}"
+      "$PYTEST" --setup-only --junit-xml="$CI_PROJECT_DIR"/junit.xml -n "${TEST_PARALLEL_JOBS:-1}" || RET=1
+    - git clone --depth 1 https://gitlab.isc.org/isc-projects/bind9-qa.git --branch stepan/postprocess-junit-xml
+    - *find_python
+    - >
+      "$PYTHON" bind9-qa/ci/postprocess_junit_files.py "$CI_PROJECT_DIR"/junit.xml --output "$CI_PROJECT_DIR"/junit.xml
+    - (exit $RET)
   needs:
     - job: ci-variables
       artifacts: true
