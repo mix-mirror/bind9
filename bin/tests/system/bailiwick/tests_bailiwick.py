@@ -96,3 +96,16 @@ def test_bailiwick_unsolicited_authority(servers: Dict[str, NamedInstance]) -> N
     prime_cache(ns4)
     send_trigger_query(ns4, "trigger.victim.")
     check_domain_hijack(ns4)
+
+
+def test_bailiwick_parent_glue(servers: Dict[str, NamedInstance]) -> None:
+    set_spoofing_mode(ans1="none", ans2="parent-glue")
+
+    ns4 = servers["ns4"]
+    prime_cache(ns4)
+    send_trigger_query(ns4, "trigger.victim.")
+
+    isctest.log.info("Waiting 61 seconds for the ns.victim. ADB entry to expire")
+    time.sleep(61)
+
+    check_domain_hijack(ns4)

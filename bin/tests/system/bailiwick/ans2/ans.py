@@ -59,6 +59,30 @@ class UnsolicitedNsSpoofer(ResponseSpoofer, mode="unsolicited-ns"):
         yield DnsResponseSend(response, authoritative=True)
 
 
+class ParentGlueSpoofer(ResponseSpoofer, mode="parent-glue"):
+
+    qname = "trigger.victim."
+
+    async def get_responses(
+        self, qctx: QueryContext
+    ) -> AsyncGenerator[ResponseAction, None]:
+        # Prepare a custom response from scratch, without using any zone data.
+        response = dns.message.make_response(qctx.query)
+        response.set_rcode(dns.rcode.NOERROR)
+
+        ns_rrset = dns.rrset.from_text(
+            "trigger.victim.", TTL, qctx.qclass, dns.rdatatype.NS, "ns.victim."
+        )
+        response.authority.append(ns_rrset)
+
+        glue_rrset = dns.rrset.from_text(
+            "ns.victim.", TTL, qctx.qclass, dns.rdatatype.A, ATTACKER_IP
+        )
+        response.additional.append(glue_rrset)
+
+        yield DnsResponseSend(response, authoritative=False)
+
+
 def main() -> None:
     spoofing_server().run()
 
