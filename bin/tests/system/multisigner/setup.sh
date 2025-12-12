@@ -17,6 +17,7 @@
 set -e
 
 copy_setports ns2/multisigner.db.in ns2/multisigner.db.infile
+copy_setports ns2/bad-dsync.db.in ns2/bad-dsync.db.infile
 copy_setports ns2/secondary.db.in ns2/secondary.db.infile
 
 # multi-signers

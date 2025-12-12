@@ -598,6 +598,29 @@ def test_multisigner(ns2, ns3, ns4):
     check_no_dnssec_in_journal(ns4, zone)
 
 
+def test_multisigner_bad_dsync(ns2, ns3, ns4):
+    zone = "model2.bad-dsync"
+    keyprops = [
+        f"ksk 0 {ALGORITHM} {SIZE} goal:omnipresent dnskey:omnipresent krrsig:omnipresent ds:omnipresent",
+        f"zsk 0 {ALGORITHM} {SIZE} goal:omnipresent dnskey:omnipresent zrrsig:omnipresent",
+    ]
+
+    # First make sure the zone is properly signed.
+    isctest.log.info(f"basic DNSSEC tests for {zone}")
+    isctest.kasp.wait_keymgr_done(ns3, zone)
+    isctest.kasp.wait_keymgr_done(ns4, zone)
+
+    with ns3.watch_log_from_start() as watcher:
+        watcher.wait_for_line(
+            f"zone {zone}/IN: dsyncfetch: multiple DSYNC records matching NOTIFY scheme and CDS RRtype, dropping response"
+        )
+
+    with ns4.watch_log_from_start() as watcher:
+        watcher.wait_for_line(
+            f"zone {zone}/IN (signed): dsyncfetch: multiple DSYNC records matching NOTIFY scheme and CDS RRtype, dropping response"
+        )
+
+
 def test_multisigner_secondary(ns2, ns3, ns4, ns5):
     zone = "model2.secondary"
     keyprops = [

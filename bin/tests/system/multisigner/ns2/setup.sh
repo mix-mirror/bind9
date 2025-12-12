@@ -35,4 +35,5 @@ setup() {
 }
 
 setup "multisigner"
+setup "bad-dsync"
 setup "secondary"

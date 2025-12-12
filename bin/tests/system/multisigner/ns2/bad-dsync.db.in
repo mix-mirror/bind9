@@ -10,21 +10,26 @@
 ; information regarding copyright ownership.
 
 $TTL 300
-.			IN SOA	gson.nominum.com. a.root.servers.nil. (
-				2000042100	; serial
-				600		; refresh
-				600		; retry
-				1200		; expire
-				600		; minimum
-				)
-.			NS	a.root-servers.nil.
-a.root-servers.nil.	A	10.53.0.1
+$ORIGIN bad-dsync.
 
-multisigner.		NS	ns2.multisigner.
-ns2.multisigner.	A	10.53.0.2
+bad-dsync.	IN	SOA  mname1. . (
+			1       ; serial
+			20      ; refresh (20 seconds)
+			20      ; retry (20 seconds)
+			1814400 ; expire (3 weeks)
+			3600    ; minimum (1 hour)
+			)
 
-bad-dsync.		NS	ns2.bad-dsync.
-ns2.bad-dsync.		A	10.53.0.2
+			NS	ns2
+ns2			A	10.53.0.2
 
-secondary.		NS	ns2.secondary.
-ns2.secondary.		A	10.53.0.2
+scanner			A	10.53.0.2
+
+model2			NS	ns3
+			NS	ns4
+
+ns3.model2		A	10.53.0.3
+ns4.model2		A	10.53.0.4
+
+*._dsync		DSYNC	CDS NOTIFY @PORT@ scanner1
+*._dsync		DSYNC	CDS NOTIFY @PORT@ scanner2

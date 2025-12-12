@@ -46,6 +46,14 @@ zone "model2.multisigner." {
 	inline-signing yes;
 };
 
+zone "model2.bad-dsync." {
+	type primary;
+	allow-update { any; };
+	file "model2.bad-dsync.db";
+	dnssec-policy model2;
+	inline-signing yes;
+};
+
 zone "model2.secondary." {
 	type secondary;
 	primaries { 10.53.0.5; };

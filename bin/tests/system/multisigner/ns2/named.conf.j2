@@ -40,6 +40,11 @@ zone "multisigner" {
 	file "multisigner.db.signed";
 };
 
+zone "bad-dsync" {
+	type primary;
+	file "bad-dsync.db.signed";
+};
+
 zone "secondary" {
 	type primary;
 	file "secondary.db.signed";

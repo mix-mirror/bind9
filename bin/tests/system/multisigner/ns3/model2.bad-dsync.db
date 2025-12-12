@@ -10,21 +10,17 @@
 ; information regarding copyright ownership.
 
 $TTL 300
-.			IN SOA	gson.nominum.com. a.root.servers.nil. (
-				2000042100	; serial
-				600		; refresh
-				600		; retry
-				1200		; expire
-				600		; minimum
-				)
-.			NS	a.root-servers.nil.
-a.root-servers.nil.	A	10.53.0.1
+@		IN	SOA  mname1. . (
+			1       ; serial
+			20      ; refresh (20 seconds)
+			20      ; retry (20 seconds)
+			1814400 ; expire (3 weeks)
+			3600    ; minimum (1 hour)
+			)
 
-multisigner.		NS	ns2.multisigner.
-ns2.multisigner.	A	10.53.0.2
+			NS	ns3
+ns3			A	10.53.0.3
 
-bad-dsync.		NS	ns2.bad-dsync.
-ns2.bad-dsync.		A	10.53.0.2
-
-secondary.		NS	ns2.secondary.
-ns2.secondary.		A	10.53.0.2
+a			A	10.0.0.1
+b			A	10.0.0.2
+c			A	10.0.0.3
