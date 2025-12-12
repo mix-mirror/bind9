@@ -570,7 +570,7 @@ struct dns_resolver {
 	unsigned int maxqueries;
 	isc_result_t quotaresp[2];
 	isc_stats_t *stats;
-	dns_stats_t *querystats;
+	isc_statsmulti_t *querystats;
 
 	/* Additions for serve-stale feature. */
 	unsigned int retryinterval; /* in milliseconds */
@@ -9699,7 +9699,7 @@ dns_resolver__destroy(dns_resolver_t *res) {
 	dns_nametree_detach(&res->digests);
 
 	if (res->querystats != NULL) {
-		dns_stats_detach(&res->querystats);
+		isc_statsmulti_detach(&res->querystats);
 	}
 	if (res->stats != NULL) {
 		isc_stats_detach(&res->stats);
@@ -10902,20 +10902,20 @@ dns_resolver_incstats(dns_resolver_t *res, isc_statscounter_t counter) {
 }
 
 void
-dns_resolver_setquerystats(dns_resolver_t *res, dns_stats_t *stats) {
+dns_resolver_setquerystats(dns_resolver_t *res, isc_statsmulti_t *stats) {
 	REQUIRE(VALID_RESOLVER(res));
 	REQUIRE(res->querystats == NULL);
 
-	dns_stats_attach(stats, &res->querystats);
+	isc_statsmulti_attach(stats, &res->querystats);
 }
 
 void
-dns_resolver_getquerystats(dns_resolver_t *res, dns_stats_t **statsp) {
+dns_resolver_getquerystats(dns_resolver_t *res, isc_statsmulti_t **statsp) {
 	REQUIRE(VALID_RESOLVER(res));
 	REQUIRE(statsp != NULL && *statsp == NULL);
 
 	if (res->querystats != NULL) {
-		dns_stats_attach(res->querystats, statsp);
+		isc_statsmulti_attach(res->querystats, statsp);
 	}
 }
 
