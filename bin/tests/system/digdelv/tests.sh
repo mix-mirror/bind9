@@ -382,8 +382,6 @@ if [ -x "$DIG" ]; then
   n=$((n + 1))
   echo_i "checking dig preserves origin on TCP retries ($n)"
   ret=0
-  # Ask ans4 to still accept TCP connections, but not respond to queries
-  echo "//" | sendcmd 10.53.0.4
   dig_with_opts -d +tcp @10.53.0.4 +retry=1 +time=1 +domain=bar foo >dig.out.test$n 2>&1 && ret=1
   test "$(grep -c "trying origin bar" dig.out.test$n)" -eq 2 || ret=1
   grep "using root origin" <dig.out.test$n >/dev/null && ret=1
@@ -1109,7 +1107,7 @@ if [ -x "$DIG" ]; then
   n=$((n + 1))
   echo_i "checking exit code for a retry upon TCP EOF (immediate -> immediate) ($n)"
   ret=0
-  echo "no_response no_response" | sendcmd 10.53.0.5
+  dig_with_opts @10.53.0.5 no-response.response-sequence._control TXT >dig.out.control$n 2>&1 || ret=1
   dig_with_opts @10.53.0.5 example AXFR +tries=2 >dig.out.test$n 2>&1 && ret=1
   # Sanity check: ensure ans5 behaves as expected.
   [ $(grep "communications error.*end of file" dig.out.test$n | wc -l) -eq 2 ] || ret=1
@@ -1119,7 +1117,7 @@ if [ -x "$DIG" ]; then
   n=$((n + 1))
   echo_i "checking exit code for a retry upon TCP EOF (partial AXFR -> partial AXFR) ($n)"
   ret=0
-  echo "partial_axfr partial_axfr" | sendcmd 10.53.0.5
+  dig_with_opts @10.53.0.5 partial-axfr.response-sequence._control TXT >dig.out.control$n 2>&1 || ret=1
   dig_with_opts @10.53.0.5 example AXFR +tries=2 >dig.out.test$n 2>&1 && ret=1
   # Sanity check: ensure ans5 behaves as expected.
   [ $(grep "communications error.*end of file" dig.out.test$n | wc -l) -eq 2 ] || ret=1
@@ -1129,7 +1127,7 @@ if [ -x "$DIG" ]; then
   n=$((n + 1))
   echo_i "checking exit code for a retry upon TCP EOF (immediate -> partial AXFR) ($n)"
   ret=0
-  echo "no_response partial_axfr" | sendcmd 10.53.0.5
+  dig_with_opts @10.53.0.5 no-response.partial-axfr.response-sequence._control TXT >dig.out.control$n 2>&1 || ret=1
   dig_with_opts @10.53.0.5 example AXFR +tries=2 >dig.out.test$n 2>&1 && ret=1
   # Sanity check: ensure ans5 behaves as expected.
   [ $(grep "communications error.*end of file" dig.out.test$n | wc -l) -eq 2 ] || ret=1
@@ -1139,7 +1137,7 @@ if [ -x "$DIG" ]; then
   n=$((n + 1))
   echo_i "checking exit code for a retry upon TCP EOF (partial AXFR -> immediate) ($n)"
   ret=0
-  echo "partial_axfr no_response" | sendcmd 10.53.0.5
+  dig_with_opts @10.53.0.5 partial-axfr.no-response.response-sequence._control TXT >dig.out.control$n 2>&1 || ret=1
   dig_with_opts @10.53.0.5 example AXFR +tries=2 >dig.out.test$n 2>&1 && ret=1
   # Sanity check: ensure ans5 behaves as expected.
   [ $(grep "communications error.*end of file" dig.out.test$n | wc -l) -eq 2 ] || ret=1
@@ -1149,7 +1147,7 @@ if [ -x "$DIG" ]; then
   n=$((n + 1))
   echo_i "checking exit code for a retry upon TCP EOF (immediate -> complete AXFR) ($n)"
   ret=0
-  echo "no_response complete_axfr" | sendcmd 10.53.0.5
+  dig_with_opts @10.53.0.5 no-response.complete-axfr.response-sequence._control TXT >dig.out.control$n 2>&1 || ret=1
   dig_with_opts @10.53.0.5 example AXFR +tries=2 >dig.out.test$n 2>&1 || ret=1
   # Sanity check: ensure ans5 behaves as expected.
   [ $(grep "communications error.*end of file" dig.out.test$n | wc -l) -eq 1 ] || ret=1
@@ -1159,7 +1157,7 @@ if [ -x "$DIG" ]; then
   n=$((n + 1))
   echo_i "checking exit code for a retry upon TCP EOF (partial AXFR -> complete AXFR) ($n)"
   ret=0
-  echo "partial_axfr complete_axfr" | sendcmd 10.53.0.5
+  dig_with_opts @10.53.0.5 partial-axfr.complete-axfr.response-sequence._control TXT >dig.out.control$n 2>&1 || ret=1
   dig_with_opts @10.53.0.5 example AXFR +tries=2 >dig.out.test$n 2>&1 || ret=1
   # Sanity check: ensure ans5 behaves as expected.
   [ $(grep "communications error.*end of file" dig.out.test$n | wc -l) -eq 1 ] || ret=1
@@ -1169,7 +1167,7 @@ if [ -x "$DIG" ]; then
   n=$((n + 1))
   echo_i "checking +tries=1 won't retry twice upon TCP EOF ($n)"
   ret=0
-  echo "no_response no_response" | sendcmd 10.53.0.5
+  dig_with_opts @10.53.0.5 no-response.response-sequence._control TXT >dig.out.control$n 2>&1 || ret=1
   dig_with_opts @10.53.0.5 example AXFR +tries=1 >dig.out.test$n 2>&1 && ret=1
   # Sanity check: ensure ans5 behaves as expected.
   [ $(grep "communications error.*end of file" dig.out.test$n | wc -l) -eq 1 ] || ret=1
@@ -1303,20 +1301,16 @@ if [ -x "$DIG" ]; then
   # See [GL #3020] for more information
   n=$((n + 1))
   echo_i "check that dig handles UDP timeout followed by a SERVFAIL correctly ($n)"
-  # Ask ans8 to be in "unstable" mode (switching between "silent" and "servfail" modes)
-  echo "unstable" | sendcmd 10.53.0.8
   ret=0
-  dig_with_opts +timeout=1 +nofail @10.53.0.8 a.example >dig.out.test$n 2>&1 || ret=1
+  dig_with_opts +timeout=1 +nofail @10.53.0.8 silent-then-servfail.example >dig.out.test$n 2>&1 || ret=1
   grep -F "status: SERVFAIL" dig.out.test$n >/dev/null || ret=1
   if [ $ret -ne 0 ]; then echo_i "failed"; fi
   status=$((status + ret))
 
   n=$((n + 1))
   echo_i "check that dig handles TCP timeout followed by a SERVFAIL correctly ($n)"
-  # Ask ans8 to be in "unstable" mode (switching between "silent" and "servfail" modes)
-  echo "unstable" | sendcmd 10.53.0.8
   ret=0
-  dig_with_opts +timeout=1 +nofail +tcp @10.53.0.8 a.example >dig.out.test$n 2>&1 || ret=1
+  dig_with_opts +timeout=1 +nofail +tcp @10.53.0.8 silent-then-servfail.example >dig.out.test$n 2>&1 || ret=1
   grep -F "status: SERVFAIL" dig.out.test$n >/dev/null || ret=1
   if [ $ret -ne 0 ]; then echo_i "failed"; fi
   status=$((status + ret))
@@ -1349,10 +1343,8 @@ if [ -x "$DIG" ]; then
 
   n=$((n + 1))
   echo_i "check that dig tries the next server after a TCP socket read error ($n)"
-  # Ask ans8 to be in "close" mode, which closes the connection after accepting it
-  echo "close" | sendcmd 10.53.0.8
   ret=0
-  dig_with_opts +tcp @10.53.0.8 @10.53.0.3 a.example >dig.out.test$n 2>&1 || ret=1
+  dig_with_opts +tcp @10.53.0.8 @10.53.0.3 close.example >dig.out.test$n 2>&1 || ret=1
   grep -F "status: NOERROR" dig.out.test$n >/dev/null || ret=1
   if [ $ret -ne 0 ]; then echo_i "failed"; fi
   status=$((status + ret))
@@ -1374,20 +1366,16 @@ if [ -x "$DIG" ]; then
 
   n=$((n + 1))
   echo_i "check that dig tries the next server after UDP socket read timeouts ($n)"
-  # Ask ans8 to be in "silent" mode
-  echo "silent" | sendcmd 10.53.0.8
   ret=0
-  dig_with_opts +timeout=1 @10.53.0.8 @10.53.0.3 a.example >dig.out.test$n 2>&1 || ret=1
+  dig_with_opts +timeout=1 @10.53.0.8 @10.53.0.3 silent.example >dig.out.test$n 2>&1 || ret=1
   grep -F "status: NOERROR" dig.out.test$n >/dev/null || ret=1
   if [ $ret -ne 0 ]; then echo_i "failed"; fi
   status=$((status + ret))
 
   n=$((n + 1))
   echo_i "check that dig tries the next server after TCP socket read timeouts ($n)"
-  # Ask ans8 to be in "silent" mode
-  echo "silent" | sendcmd 10.53.0.8
   ret=0
-  dig_with_opts +timeout=1 +tcp @10.53.0.8 @10.53.0.3 a.example >dig.out.test$n 2>&1 || ret=1
+  dig_with_opts +timeout=1 +tcp @10.53.0.8 @10.53.0.3 silent.example >dig.out.test$n 2>&1 || ret=1
   grep -F "status: NOERROR" dig.out.test$n >/dev/null || ret=1
   if [ $ret -ne 0 ]; then echo_i "failed"; fi
   status=$((status + ret))
@@ -1396,7 +1384,7 @@ if [ -x "$DIG" ]; then
   n=$((n + 1))
   echo_i "check that dig correctly refuses to use a server with a IPv4 mapped IPv6 address after failing with a regular IP address ($n)"
   ret=0
-  dig_with_opts @10.53.0.8 @::ffff:10.53.0.8 a.example >dig.out.test$n 2>&1 || ret=1
+  dig_with_opts @10.53.0.8 @::ffff:10.53.0.8 silent.example >dig.out.test$n 2>&1 || ret=1
   grep -F ";; Skipping mapped address" dig.out.test$n >/dev/null || ret=1
   grep -F ";; No acceptable nameservers" dig.out.test$n >/dev/null || ret=1
   if [ $ret -ne 0 ]; then echo_i "failed"; fi
