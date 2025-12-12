@@ -87,7 +87,7 @@ zone "axfr-rndc-retransfer-force" {
 
 zone "xot-primary-try-next" {
 	type secondary;
-	primaries { 10.53.0.99 port @EXTRAPORT1@ tls ephemeral; 10.53.0.1; };
+	primaries { 10.53.0.10 port @EXTRAPORT1@ tls ephemeral; 10.53.0.1; };
 	file "xot-primary-try-next.bk";
 };
 
