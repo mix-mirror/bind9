@@ -23,6 +23,9 @@ dns_rootns_create(isc_mem_t *mctx, dns_rdataclass_t rdclass,
 
 void
 dns_root_checkhints(dns_view_t *view, dns_db_t *hints, dns_db_t *db);
+
+const char *
+dns_rootns_gethints(void);
 /*
  * Reports differences between hints and the real roots.
  *

@@ -520,3 +520,8 @@ cleanup:
 		dns_rdataset_disassociate(&hintns);
 	}
 }
+
+const char *
+dns_rootns_gethints(void) {
+	return root_ns;
+}
