@@ -1863,6 +1863,19 @@ merge-tag:
       - bind9/
     when: on_failure
 
+update-stable-tag:
+  <<: *manual_release_job_qa
+  variables:
+    GIT_DEPTH: 1
+  script:
+    - bind9-qa/releng/update_stable_tag.py --tag "$CI_COMMIT_TAG"
+  rules:
+    - *rule_tag_open_source
+  artifacts:
+    paths:
+      - bind9/
+    when: on_failure
+
 .customer-git: &customer_git
   <<: *base_image
   stage: release
