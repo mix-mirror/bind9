@@ -27,10 +27,13 @@
 
 bool debug = false;
 
+extern bool dns_master_fuzz;
+
 int
 LLVMFuzzerInitialize(int *argc, char ***argv) {
 	UNUSED(argc);
 	UNUSED(argv);
+	dns_master_fuzz = true;
 	return 0;
 }
 
