@@ -549,7 +549,7 @@ stages:
     - cd bin/tests/system
     - RET=0
     - >
-      (python3.12 -m pytest -W ignore::pytest.PytestRemovedIn9Warning --junit-xml="$CI_PROJECT_DIR"/junit.xml -n "$TEST_PARALLEL_JOBS" | tee pytest.out.txt) || RET=1
+      (python3.12 -m pytest --assert=plain -k notify --junit-xml="$CI_PROJECT_DIR"/junit.xml -n "$TEST_PARALLEL_JOBS" | tee pytest.out.txt) || RET=1
     - *check_for_junit_xml
     - (exit $RET)
     - '( ! grep -F "grep: warning:" pytest.out.txt )'
@@ -582,7 +582,7 @@ system:gcc:almalinux9:amd64:
   <<: *almalinux_9_amd64_image
   <<: *system_test_job
   before_script:
-    - python3.12 -m pip install dnspython jinja2 pytest pytest-timeout pytest-xdist requests
+    - python3.12 -m pip install dnspython jinja2 pytest==6.2.2 flaky==3.7.0 hypothesis==6.39.1 pytest-timeout==1.4.2 pytest-xdist==2.5.0 pytest-forked==1.4.0 requests
     - echo "/usr/bin/python3.12" > build/bin/tests/system/isctest/vars/.build_vars/PYTHON
   needs:
     - job: gcc:almalinux9:amd64
