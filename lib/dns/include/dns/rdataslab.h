@@ -77,14 +77,15 @@ struct dns_slabtop {
 	struct cds_list_head types_link;
 	struct cds_list_head headers;
 
+	/*% Used for SIEVE-LRU. Here for struct packing reasons. */
+	bool visited;
+
 	dns_typepair_t typepair;
 
 	dns_slabtop_t *related;
 
 	/*% Used for SIEVE-LRU (cache) and changed_list (zone) */
 	ISC_LINK(struct dns_slabtop) link;
-	/*% Used for SIEVE-LRU */
-	bool visited;
 };
 
 struct dns_slabheader {
@@ -94,16 +95,9 @@ struct dns_slabheader {
 	/*%
 	 * Locked by the owning node's lock.
 	 */
-	uint32_t serial;
-	union {
-		isc_stdtime_t expire;
-		dns_ttl_t     ttl;
-	};
+	isc_stdtime_t expire;
 	dns_typepair_t typepair;
 
-	/* resigning (zone) and TTL-cleaning (cache) */
-	uint16_t      resign_lsb : 1;
-	isc_stdtime_t resign;
 	isc_heap_t   *heap;
 	unsigned int  heap_index;
 
@@ -132,11 +126,6 @@ struct dns_slabheader {
 	 * The database node objects containing this rdataset, if any.
 	 */
 	dns_dbnode_t *node;
-
-	/*%
-	 * Cached glue records for an rdataset of type NS (zone only).
-	 */
-	dns_gluelist_t *gluelist;
 
 	/*%
 	 * Case vector.  If the bit is set then the corresponding

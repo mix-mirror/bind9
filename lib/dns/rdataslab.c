@@ -326,7 +326,7 @@ dns_rdataslab_fromrdataset(dns_rdataset_t *rdataset, isc_mem_t *mctx,
 			.headers_link = CDS_LIST_HEAD_INIT(new->headers_link),
 			.typepair = typepair,
 			.trust = rdataset->trust,
-			.ttl = rdataset->ttl,
+			.expire = rdataset->ttl,
 			.dirtylink = ISC_LINK_INITIALIZER,
 		};
 	}
