@@ -2653,16 +2653,13 @@ typedef enum { FORWARD, BACK } direction_t;
 static bool
 step(qpz_search_t *search, dns_qpiter_t *it, direction_t direction,
      dns_name_t *nextname) {
-	dns_fixedname_t fnodename;
-	dns_name_t *nodename = dns_fixedname_initname(&fnodename);
-	qpznode_t *node = NULL;
+	qpznode_t *node = NULL, *previous_node = NULL;
 	isc_result_t result = ISC_R_SUCCESS;
 
 	result = dns_qpiter_current(it, (void **)&node, NULL);
-	if (result == ISC_R_SUCCESS) {
-		dns_name_copy(&node->name, nodename);
-	}
 	while (result == ISC_R_SUCCESS) {
+		previous_node = node;
+
 		isc_rwlock_t *nlock = qpzone_get_lock(node);
 		isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 		dns_vecheader_t *found = NULL;
@@ -2681,13 +2678,11 @@ step(qpz_search_t *search, dns_qpiter_t *it, direction_t direction,
 		} else {
 			result = dns_qpiter_prev(it, (void **)&node, NULL);
 		}
-		if (result == ISC_R_SUCCESS) {
-			dns_name_copy(&node->name, nodename);
-		}
 	};
+
 	if (result == ISC_R_SUCCESS) {
-		if (nextname != NULL) {
-			dns_name_copy(nodename, nextname);
+		if (previous_node != NULL) {
+			dns_name_copy(&previous_node->name, nextname);
 		}
 		return true;
 	}
