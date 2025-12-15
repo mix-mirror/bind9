@@ -5883,6 +5883,7 @@ emit_text(void *arg, const char *buf, int len) {
 	}
 }
 
+/*
 static isc_result_t
 save_zoneconfig(dns_zone_t *zone, const cfg_obj_t *zconfig) {
 	isc_result_t result;
@@ -5904,6 +5905,7 @@ cleanup:
 	isc_buffer_free(&text);
 	return result;
 }
+*/
 
 /*
  * Configure or reconfigure a zone.
@@ -6107,7 +6109,7 @@ configure_zone(const cfg_obj_t *config, const cfg_obj_t *zconfig,
 		}
 		CHECK(named_zone_configure(config, vconfig, zconfig, aclctx,
 					   kasplist, zone, NULL));
-		CHECK(save_zoneconfig(zone, zconfig));
+		/* CHECK(save_zoneconfig(zone, zconfig)); */
 		dns_zone_attach(zone, &view->redirect);
 		goto cleanup;
 	}
@@ -6283,7 +6285,7 @@ configure_zone(const cfg_obj_t *config, const cfg_obj_t *zconfig,
 	 */
 	CHECK(named_zone_configure(config, vconfig, zconfig, aclctx, kasplist,
 				   zone, raw));
-	CHECK(save_zoneconfig(zone, zconfig));
+	/* CHECK(save_zoneconfig(zone, zconfig)); */
 
 	/*
 	 * Add the zone to its view in the new view list.
@@ -8907,6 +8909,7 @@ load_configuration(named_server_t *server, bool first_time) {
 	cfg_obj_t *config = NULL, *effective = NULL;
 	cfg_obj_t *bindkeys = NULL, *builtin = NULL;
 	ns_dzarg_t dzarg;
+	UNUSED(dzarg);
 	bool newzones_allowed = false;
 
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
@@ -8955,13 +8958,13 @@ load_configuration(named_server_t *server, bool first_time) {
 	if (server->userconftext != NULL) {
 		isc_buffer_free(&server->userconftext);
 	}
-	isc_buffer_allocate(isc_g_mctx, &server->userconftext, BUFSIZ);
+	/* isc_buffer_allocate(isc_g_mctx, &server->userconftext, BUFSIZ); */
 
 	dzarg = (ns_dzarg_t){
 		.magic = DZARG_MAGIC,
 		.text = server->userconftext,
 	};
-	cfg_printx(config, 0, emit_text, &dzarg);
+	/* cfg_printx(config, 0, emit_text, &dzarg); */
 
 	/*
 	 * And finally we apply the effective configuration.
@@ -8988,12 +8991,12 @@ load_configuration(named_server_t *server, bool first_time) {
 		server->effectiveconfig = effective;
 		effective = NULL;
 	} else {
-		isc_buffer_allocate(isc_g_mctx, &server->effectivetext, BUFSIZ);
+		/* isc_buffer_allocate(isc_g_mctx, &server->effectivetext, BUFSIZ); */
 		dzarg = (ns_dzarg_t){
 			.magic = DZARG_MAGIC,
 			.text = server->effectivetext,
 		};
-		cfg_printx(effective, 0, emit_text, &dzarg);
+		/* cfg_printx(effective, 0, emit_text, &dzarg); */
 	}
 
 cleanup:
