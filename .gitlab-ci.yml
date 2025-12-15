@@ -107,7 +107,7 @@ stages:
   - system
   - performance
   - docs
-  - postcheck
+  - other-checks
   - postmerge
   - release
 
@@ -1190,7 +1190,7 @@ gcc:trixie:amd64cross32:
 scan-build:
   <<: *default_triggering_rules
   <<: *base_image
-  stage: postcheck
+  stage: other-checks
   variables:
     CC: "${CLANG}"
     CFLAGS: "${CFLAGS_COMMON}"
@@ -1518,7 +1518,7 @@ generate-tsan-stress-test-configs:
 
 tsan:stress:
   <<: *default_triggering_rules
-  stage: postcheck
+  stage: other-checks
   variables:
     PARENT_PIPELINE_ID: $CI_PIPELINE_ID
   trigger:
@@ -1957,7 +1957,7 @@ customer-git:tag:
 
 coverity:
   <<: *base_image
-  stage: postcheck
+  stage: other-checks
   variables:
     CC: gcc
     CFLAGS: "${CFLAGS_COMMON} -Og"
@@ -2130,7 +2130,7 @@ stress-test-child-pipeline:
 gcov:
   <<: *base_image
   <<: *default_triggering_rules
-  stage: postcheck
+  stage: other-checks
   needs:
     - job: system:gcc:trixie:amd64
       artifacts: true
