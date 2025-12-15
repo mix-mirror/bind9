@@ -2679,7 +2679,7 @@ print_symval(cfg_printer_t *pctx, const char *name, cfg_obj_t *obj) {
 }
 
 static bool
-print_mapentry(const char *key, unsigned int type, isc_symvalue_t value, void *arg) {
+print_mapentry(char *key, unsigned int type, isc_symvalue_t value, void *arg) {
 	cfg_printer_t *pctx = (cfg_printer_t *)arg;
 	cfg_obj_t *obj = value.as_pointer;
 
@@ -2704,38 +2704,10 @@ print_mapentry(const char *key, unsigned int type, isc_symvalue_t value, void *a
 
 void
 cfg_print_mapbody(cfg_printer_t *pctx, const cfg_obj_t *obj) {
-	const cfg_clausedef_t *const *clauseset;
-
 	REQUIRE(pctx != NULL);
 	REQUIRE(VALID_CFGOBJ(obj));
 
-	for (clauseset = obj->value.map->clausesets; *clauseset != NULL;
-	     clauseset++)
-	{
-		isc_symvalue_t symval;
-		const cfg_clausedef_t *clause;
-
-		for (clause = *clauseset; clause->name != NULL; clause++) {
-			isc_result_t result;
-
-			if ((clause->flags & CFG_CLAUSEFLAG_BUILTINONLY) != 0) {
-				continue;
-			}
-
-			result = isc_symtab_lookup(obj->value.map->symtab,
-						   clause->name,
-						   SYMTAB_DUMMY_TYPE, &symval);
-			if (result == ISC_R_SUCCESS) {
-				print_mapentry(clause->name, SYMTAB_DUMMY_TYPE,	symval, pctx);
-			} else if (result == ISC_R_NOTFOUND) {
-				/* do nothing */
-			} else {
-				UNREACHABLE();
-			}
-		}
-	}
-
-	// isc_symtab_foreach(obj->value.map->symtab, print_mapentry, pctx);
+	isc_symtab_foreach(obj->value.map->symtab, print_mapentry, pctx);
 }
 
 static struct flagtext {
