@@ -2678,13 +2678,20 @@ print_symval(cfg_printer_t *pctx, const char *name, cfg_obj_t *obj) {
 	}
 }
 
-static bool
-print_mapentry(char *key, unsigned int type, isc_symvalue_t value, void *arg) {
-	cfg_printer_t *pctx = (cfg_printer_t *)arg;
-	cfg_obj_t *obj = value.as_pointer;
+typedef struct {
+	const char *key;
+	cfg_obj_t *obj;
+} cfg_mapentry_t;
 
-	UNUSED(type);
+static int
+compare_mapentries(const void *a, const void *b) {
+	const cfg_mapentry_t *entry_a = (const cfg_mapentry_t *)a;
+	const cfg_mapentry_t *entry_b = (const cfg_mapentry_t *)b;
+	return strcmp(entry_a->key, entry_b->key);
+}
 
+static void
+print_mapentry_sorted(cfg_printer_t *pctx, const char *key, cfg_obj_t *obj) {
 	if (obj->type == &cfg_type_implicitlist) {
 		/* Multivalued. */
 		cfg_list_t *list = obj->value.list;
@@ -2698,16 +2705,62 @@ print_mapentry(char *key, unsigned int type, isc_symvalue_t value, void *arg) {
 		/* Single-valued. */
 		print_symval(pctx, key, obj);
 	}
+}
 
-	return (true);
+
+typedef struct {
+	cfg_mapentry_t *entries;
+	size_t *count_ptr;
+	size_t max_size;
+} collect_context_t;
+
+static bool
+collect_mapentry(char *key, unsigned int type, isc_symvalue_t value, void *arg) {
+	collect_context_t *ctx = (collect_context_t *)arg;
+	cfg_obj_t *obj = value.as_pointer;
+
+	UNUSED(type);
+
+	/* Basic safety check */
+	if (obj == NULL || !VALID_CFGOBJ(obj)) {
+		return (false); /* Continue iteration but skip this entry */
+	}
+
+	if (*ctx->count_ptr < ctx->max_size) {
+		ctx->entries[*ctx->count_ptr].key = key;
+		ctx->entries[*ctx->count_ptr].obj = obj;
+		(*ctx->count_ptr)++;
+	}
+
+	return (false); /* Do NOT delete the entry from the hashmap! */
 }
 
 void
 cfg_print_mapbody(cfg_printer_t *pctx, const cfg_obj_t *obj) {
+	cfg_mapentry_t entries[256];
+	size_t count = 0;
+	collect_context_t ctx;
+
 	REQUIRE(pctx != NULL);
 	REQUIRE(VALID_CFGOBJ(obj));
 
-	isc_symtab_foreach(obj->value.map->symtab, print_mapentry, pctx);
+	/* Setup collection context */
+	ctx.entries = entries;
+	ctx.count_ptr = &count;
+	ctx.max_size = 256;
+
+	/* Collect all entries using isc_symtab_foreach */
+	isc_symtab_foreach(obj->value.map->symtab, collect_mapentry, &ctx);
+
+	/* Sort entries by key */
+	if (count > 1) {
+		qsort(entries, count, sizeof(cfg_mapentry_t), compare_mapentries);
+	}
+
+	/* Print sorted entries */
+	for (size_t idx = 0; idx < count; ++idx) {
+		print_mapentry_sorted(pctx, entries[idx].key, entries[idx].obj);
+	}
 }
 
 static struct flagtext {
