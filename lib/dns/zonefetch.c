@@ -43,7 +43,10 @@ dns_zonefetch_run(void *arg) {
 	INSIST(view != NULL);
 	INSIST(loop != NULL);
 
-	fetch->fetchmethods.start_fetch(fetch);
+	result = fetch->fetchmethods.start_fetch(fetch);
+	if (result != ISC_R_SUCCESS) {
+		goto cancel;
+	}
 
 	result = dns_view_getresolver(view, &resolver);
 	if (result != ISC_R_SUCCESS) {

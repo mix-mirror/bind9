@@ -53,6 +53,7 @@
 #include <dns/dbiterator.h>
 #include <dns/dlz.h>
 #include <dns/dnssec.h>
+#include <dns/dsync.h>
 #include <dns/journal.h>
 #include <dns/kasp.h>
 #include <dns/keydata.h>
@@ -347,7 +348,10 @@ struct dns_zone {
 	uint32_t fetchcount[ZONEFETCHTYPE_COUNT];
 
 	dns_remote_t alsonotify;
-	dns_notifyctx_t notifyctx;
+	dns_notifyctx_t notifysoa;
+
+	dns_remote_t cds_endpoints;
+	dns_notifyctx_t notifycds;
 
 	isc_sockaddr_t parentalsrc4;
 	isc_sockaddr_t parentalsrc6;
@@ -920,6 +924,8 @@ zone_maintenance(dns_zone_t *zone);
 static void
 zone_notify(dns_zone_t *zone, isc_time_t *now);
 static void
+zone_notifycds(dns_zone_t *zone);
+static void
 dump_done(void *arg, isc_result_t result);
 static isc_result_t
 zone_signwithkey(dns_zone_t *zone, dst_algorithm_t algorithm, uint16_t keyid,
@@ -1099,13 +1105,6 @@ dns_zone_create(dns_zone_t **zonep, isc_mem_t *mctx, isc_tid_t tid) {
 	dns_remote_t r = {
 		.magic = DNS_REMOTE_MAGIC,
 	};
-	dns_notifyctx_t nc = {
-		.notifytype = dns_notifytype_yes,
-		.notifies = ISC_LIST_INITIALIZER,
-	};
-	isc_sockaddr_any(&nc.notifysrc4);
-	isc_sockaddr_any6(&nc.notifysrc6);
-	zone->notifyctx = nc;
 
 	isc_mem_attach(mctx, &zone->mctx);
 	isc_mutex_init(&zone->lock);
@@ -1122,8 +1121,12 @@ dns_zone_create(dns_zone_t **zonep, isc_mem_t *mctx, isc_tid_t tid) {
 	zone->primaries = r;
 	zone->parentals = r;
 	zone->alsonotify = r;
+	zone->cds_endpoints = r;
 	zone->defaultkasp = NULL;
 	ISC_LIST_INIT(zone->keyring);
+
+	dns_notifyctx_init(&zone->notifysoa, dns_rdatatype_soa);
+	dns_notifyctx_init(&zone->notifycds, dns_rdatatype_cds);
 
 	isc_stats_create(mctx, &zone->gluecachestats,
 			 dns_gluecachestatscounter_max);
@@ -1257,6 +1260,7 @@ dns__zone_free(dns_zone_t *zone) {
 	dns_zone_setparentals(zone, NULL, NULL, NULL, NULL, 0);
 	dns_zone_setprimaries(zone, NULL, NULL, NULL, NULL, 0);
 	dns_zone_setalsonotify(zone, NULL, NULL, NULL, NULL, 0);
+	dns_zone_setcdsendpoints(zone, NULL, NULL, NULL, NULL, 0);
 
 	zone->check_names = dns_severity_ignore;
 	if (zone->update_acl != NULL) {
@@ -1265,8 +1269,11 @@ dns__zone_free(dns_zone_t *zone) {
 	if (zone->forward_acl != NULL) {
 		dns_acl_detach(&zone->forward_acl);
 	}
-	if (zone->notifyctx.notify_acl != NULL) {
-		dns_acl_detach(&zone->notifyctx.notify_acl);
+	if (zone->notifysoa.notify_acl != NULL) {
+		dns_acl_detach(&zone->notifysoa.notify_acl);
+	}
+	if (zone->notifycds.notify_acl != NULL) {
+		dns_acl_detach(&zone->notifycds.notify_acl);
 	}
 	if (zone->query_acl != NULL) {
 		dns_acl_detach(&zone->query_acl);
@@ -1380,11 +1387,23 @@ dns_zone_getclass(dns_zone_t *zone) {
 }
 
 void
-dns_zone_setnotifytype(dns_zone_t *zone, dns_notifytype_t notifytype) {
+dns_zone_setnotifytype(dns_zone_t *zone, dns_rdatatype_t type,
+		       dns_notifytype_t notifytype) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 
 	LOCK_ZONE(zone);
-	zone->notifyctx.notifytype = notifytype;
+	switch (type) {
+	case dns_rdatatype_soa:
+		zone->notifysoa.notifytype = notifytype;
+		break;
+	case dns_rdatatype_cds:
+		INSIST(notifytype == dns_notifytype_no ||
+		       notifytype == dns_notifytype_yes);
+		zone->notifycds.notifytype = notifytype;
+		break;
+	default:
+		UNREACHABLE();
+	}
 	UNLOCK_ZONE(zone);
 }
 
@@ -6422,7 +6441,8 @@ dns_zone_setnotifysrc4(dns_zone_t *zone, const isc_sockaddr_t *notifysrc) {
 	REQUIRE(notifysrc != NULL);
 
 	LOCK_ZONE(zone);
-	zone->notifyctx.notifysrc4 = *notifysrc;
+	zone->notifysoa.notifysrc4 = *notifysrc;
+	zone->notifycds.notifysrc4 = *notifysrc;
 	UNLOCK_ZONE(zone);
 }
 
@@ -6432,7 +6452,8 @@ dns_zone_getnotifysrc4(dns_zone_t *zone, isc_sockaddr_t *notifysrc) {
 	REQUIRE(notifysrc != NULL);
 
 	LOCK_ZONE(zone);
-	*notifysrc = zone->notifyctx.notifysrc4;
+	*notifysrc = zone->notifysoa.notifysrc4;
+	*notifysrc = zone->notifycds.notifysrc4;
 	UNLOCK_ZONE(zone);
 }
 
@@ -6442,7 +6463,8 @@ dns_zone_setnotifysrc6(dns_zone_t *zone, const isc_sockaddr_t *notifysrc) {
 	REQUIRE(notifysrc != NULL);
 
 	LOCK_ZONE(zone);
-	zone->notifyctx.notifysrc6 = *notifysrc;
+	zone->notifysoa.notifysrc6 = *notifysrc;
+	zone->notifycds.notifysrc6 = *notifysrc;
 	UNLOCK_ZONE(zone);
 }
 
@@ -6452,47 +6474,8 @@ dns_zone_getnotifysrc6(dns_zone_t *zone, isc_sockaddr_t *notifysrc) {
 	REQUIRE(notifysrc != NULL);
 
 	LOCK_ZONE(zone);
-	*notifysrc = zone->notifyctx.notifysrc6;
-	UNLOCK_ZONE(zone);
-}
-
-void
-dns_zone_setalsonotify(dns_zone_t *zone, isc_sockaddr_t *addresses,
-		       isc_sockaddr_t *sources, dns_name_t **keynames,
-		       dns_name_t **tlsnames, uint32_t count) {
-	dns_remote_t remote;
-
-	REQUIRE(DNS_ZONE_VALID(zone));
-
-	LOCK_ZONE(zone);
-
-	remote.magic = DNS_REMOTE_MAGIC;
-	remote.addresses = addresses;
-	remote.sources = sources;
-	remote.keynames = keynames;
-	remote.tlsnames = tlsnames;
-	remote.addrcnt = count;
-
-	if (dns_remote_equal(&zone->alsonotify, &remote)) {
-		goto unlock;
-	}
-
-	dns_remote_clear(&zone->alsonotify);
-
-	/*
-	 * If count == 0, don't allocate any space for servers to notify.
-	 */
-	if (count == 0) {
-		goto unlock;
-	}
-
-	/*
-	 * Now set up the notify address and key lists.
-	 */
-	dns_remote_init(&zone->alsonotify, count, addresses, sources, keynames,
-			tlsnames, true, zone->mctx);
-
-unlock:
+	*notifysrc = zone->notifysoa.notifysrc6;
+	*notifysrc = zone->notifycds.notifysrc6;
 	UNLOCK_ZONE(zone);
 }
 
@@ -6522,57 +6505,81 @@ report_no_active_addresses(dns_zone_t *zone, isc_sockaddr_t *addresses,
 	}
 }
 
-void
-dns_zone_setprimaries(dns_zone_t *zone, isc_sockaddr_t *addresses,
-		      isc_sockaddr_t *sources, dns_name_t **keynames,
-		      dns_name_t **tlsnames, uint32_t count) {
-	dns_remote_t remote;
+static void
+setremote(dns_zone_t *zone, dns_remote_t *remote, const char *remotestr,
+	  isc_sockaddr_t *addresses, isc_sockaddr_t *sources,
+	  dns_name_t **keynames, dns_name_t **tlsnames, bool refresh,
+	  bool report, uint32_t count) {
+	dns_remote_t newremote;
 
 	REQUIRE(DNS_ZONE_VALID(zone));
+	REQUIRE(DNS_REMOTE_VALID(remote));
 
-	LOCK_ZONE(zone);
+	newremote.magic = DNS_REMOTE_MAGIC;
+	newremote.addresses = addresses;
+	newremote.sources = sources;
+	newremote.keynames = keynames;
+	newremote.tlsnames = tlsnames;
+	newremote.addrcnt = count;
 
-	remote.magic = DNS_REMOTE_MAGIC;
-	remote.addresses = addresses;
-	remote.sources = sources;
-	remote.keynames = keynames;
-	remote.tlsnames = tlsnames;
-	remote.addrcnt = count;
+	if (dns_remote_equal(remote, &newremote)) {
+		return;
+	}
 
 	/*
-	 * The refresh code assumes that 'primaries' wouldn't change under it.
+	 * The refresh code assumes that 'servers' wouldn't change under it.
 	 * If it will change then kill off any current refresh in progress
 	 * and update the primaries info.  If it won't change then we can just
 	 * unlock and exit.
 	 */
-	if (!dns_remote_equal(&zone->primaries, &remote)) {
-		if (zone->request != NULL) {
-			dns_request_cancel(zone->request);
-		}
-	} else {
-		goto unlock;
+	if (zone->request != NULL && refresh) {
+		dns_request_cancel(zone->request);
 	}
 
-	dns_remote_clear(&zone->primaries);
+	dns_remote_clear(remote);
 
 	/*
-	 * If count == 0, don't allocate any space for primaries.
+	 * If count == 0, don't allocate any space for servers.
 	 */
 	if (count == 0) {
-		goto unlock;
+		return;
 	}
 
-	report_no_active_addresses(zone, addresses, count, "primaries");
-
 	/*
-	 * Now set up the primaries and primary key lists.
+	 * Now set up the address and key lists.
 	 */
-	dns_remote_init(&zone->primaries, count, addresses, sources, keynames,
-			tlsnames, true, zone->mctx);
+	if (report) {
+		report_no_active_addresses(zone, addresses, count, remotestr);
+	}
 
+	dns_remote_init(remote, count, addresses, sources, keynames, tlsnames,
+			true, zone->mctx);
+}
+
+void
+dns_zone_setalsonotify(dns_zone_t *zone, isc_sockaddr_t *addresses,
+		       isc_sockaddr_t *sources, dns_name_t **keynames,
+		       dns_name_t **tlsnames, uint32_t count) {
+	bool refresh = false;
+	bool report = false;
+
+	LOCK_ZONE(zone);
+	setremote(zone, &zone->alsonotify, "also-notify", addresses, sources,
+		  keynames, tlsnames, refresh, report, count);
+	UNLOCK_ZONE(zone);
+}
+
+void
+dns_zone_setprimaries(dns_zone_t *zone, isc_sockaddr_t *addresses,
+		      isc_sockaddr_t *sources, dns_name_t **keynames,
+		      dns_name_t **tlsnames, uint32_t count) {
+	bool refresh = true;
+	bool report = true;
+
+	LOCK_ZONE(zone);
+	setremote(zone, &zone->primaries, "primaries", addresses, sources,
+		  keynames, tlsnames, refresh, report, count);
 	DNS_ZONE_CLRFLAG(zone, DNS_ZONEFLG_NOPRIMARIES);
-
-unlock:
 	UNLOCK_ZONE(zone);
 }
 
@@ -6580,43 +6587,25 @@ void
 dns_zone_setparentals(dns_zone_t *zone, isc_sockaddr_t *addresses,
 		      isc_sockaddr_t *sources, dns_name_t **keynames,
 		      dns_name_t **tlsnames, uint32_t count) {
-	dns_remote_t remote;
-
-	REQUIRE(DNS_ZONE_VALID(zone));
+	bool refresh = false;
+	bool report = true;
 
 	LOCK_ZONE(zone);
+	setremote(zone, &zone->parentals, "parental-agents", addresses, sources,
+		  keynames, tlsnames, refresh, report, count);
+	UNLOCK_ZONE(zone);
+}
 
-	remote.magic = DNS_REMOTE_MAGIC;
-	remote.addresses = addresses;
-	remote.sources = sources;
-	remote.keynames = keynames;
-	remote.tlsnames = tlsnames;
-	remote.addrcnt = count;
+void
+dns_zone_setcdsendpoints(dns_zone_t *zone, isc_sockaddr_t *addresses,
+			 isc_sockaddr_t *sources, dns_name_t **keynames,
+			 dns_name_t **tlsnames, uint32_t count) {
+	bool refresh = false;
+	bool report = false;
 
-	if (dns_remote_equal(&zone->parentals, &remote)) {
-		goto unlock;
-	}
-
-	dns_remote_clear(&zone->parentals);
-
-	/*
-	 * If count == 0, don't allocate any space for parentals.
-	 */
-	if (count == 0) {
-		goto unlock;
-	}
-
-	report_no_active_addresses(zone, addresses, count, "parental-agents");
-
-	/*
-	 * Now set up the parentals and parental key lists.
-	 */
-	dns_remote_init(&zone->parentals, count, addresses, sources, keynames,
-			tlsnames, true, zone->mctx);
-
-	dns_zone_log(zone, ISC_LOG_NOTICE, "checkds: set %u parentals", count);
-
-unlock:
+	LOCK_ZONE(zone);
+	setremote(zone, &zone->cds_endpoints, "cds-endpoints", addresses,
+		  sources, keynames, tlsnames, refresh, report, count);
 	UNLOCK_ZONE(zone);
 }
 
@@ -10625,12 +10614,14 @@ revocable(dns_zonefetch_t *fetch, dns_rdata_keydata_t *keydata) {
 /*
  * Fetch DNSKEY records at the trust anchor name.
  */
-static void
+static isc_result_t
 keyfetch_start(dns_zonefetch_t *fetch) {
 	REQUIRE(fetch->fetchtype == ZONEFETCHTYPE_KEY);
 
 	fetch->qname = dns_fixedname_name(&fetch->name);
 	fetch->qtype = dns_rdatatype_dnskey;
+
+	return ISC_R_SUCCESS;
 }
 
 static void
@@ -10646,11 +10637,11 @@ keyfetch_cancel(dns_zonefetch_t *fetch) {
 	dns_zone_t *zone;
 
 	REQUIRE(fetch->fetchtype == ZONEFETCHTYPE_KEY);
+	REQUIRE(DNS_ZONE_VALID(fetch->zone));
+	REQUIRE(LOCKED_ZONE(fetch->zone));
 
 	kfetch = &fetch->fetchdata.keyfetch;
 	zone = fetch->zone;
-
-	INSIST(LOCKED_ZONE(zone));
 
 	/*
 	 * Error during a key fetch; cancel and retry in an hour.
@@ -10726,6 +10717,8 @@ keyfetch_done(dns_zonefetch_t *fetch, isc_result_t eresult) {
 
 	REQUIRE(fetch != NULL);
 	REQUIRE(fetch->fetchtype == ZONEFETCHTYPE_KEY);
+	REQUIRE(DNS_ZONE_VALID(fetch->zone));
+	REQUIRE(LOCKED_ZONE(fetch->zone));
 
 	kfetch = &fetch->fetchdata.keyfetch;
 	zone = fetch->zone;
@@ -12592,7 +12585,7 @@ zone_notify(dns_zone_t *zone, isc_time_t *now) {
 				       DNS_ZONEFLG_NEEDSTARTUPNOTIFY |
 				       DNS_ZONEFLG_NOTIFYNODEFER |
 				       DNS_ZONEFLG_NOTIFYDEFERRED);
-	notifytype = zone->notifyctx.notifytype;
+	notifytype = zone->notifysoa.notifytype;
 	DNS_ZONE_TIME_ADD(now, zone->notifydelay, &zone->notifytime);
 	UNLOCK_ZONE(zone);
 
@@ -12711,7 +12704,8 @@ zone_notify(dns_zone_t *zone, isc_time_t *now) {
 			goto next;
 		}
 
-		if (dns_notify_isqueued(&zone->notifyctx, flags, NULL, &dst,
+		if (dns_notify_isqueued(&zone->notifysoa, dns_rdatatype_soa,
+					zone->view->dstport, flags, NULL, &dst,
 					key, transport))
 		{
 			if (key != NULL) {
@@ -12723,7 +12717,8 @@ zone_notify(dns_zone_t *zone, isc_time_t *now) {
 			goto next;
 		}
 
-		dns_notify_create(zone->mctx, flags, &notify);
+		dns_notify_create(zone->mctx, dns_rdatatype_soa,
+				  zone->view->dstport, flags, &notify);
 		zone_iattach(zone, &notify->zone);
 		notify->src = src;
 		notify->dst = dst;
@@ -12741,7 +12736,7 @@ zone_notify(dns_zone_t *zone, isc_time_t *now) {
 			transport = NULL;
 		}
 
-		ISC_LIST_APPEND(zone->notifyctx.notifies, notify, link);
+		ISC_LIST_APPEND(zone->notifysoa.notifies, notify, link);
 		result = dns_notify_queue(notify, startup);
 		if (result != ISC_R_SUCCESS) {
 			dns_notify_destroy(notify, true);
@@ -12800,17 +12795,19 @@ zone_notify(dns_zone_t *zone, isc_time_t *now) {
 		}
 
 		LOCK_ZONE(zone);
-		isqueued = dns_notify_isqueued(&zone->notifyctx, flags,
-					       &ns.name, NULL, NULL, NULL);
+		isqueued = dns_notify_isqueued(
+			&zone->notifysoa, dns_rdatatype_soa,
+			zone->view->dstport, flags, &ns.name, NULL, NULL, NULL);
 		UNLOCK_ZONE(zone);
 		if (isqueued) {
 			continue;
 		}
-		dns_notify_create(zone->mctx, flags, &notify);
+		dns_notify_create(zone->mctx, dns_rdatatype_soa,
+				  zone->view->dstport, flags, &notify);
 		dns_zone_iattach(zone, &notify->zone);
 		dns_name_dup(&ns.name, zone->mctx, &notify->ns);
 		LOCK_ZONE(zone);
-		ISC_LIST_APPEND(zone->notifyctx.notifies, notify, link);
+		ISC_LIST_APPEND(zone->notifysoa.notifies, notify, link);
 		UNLOCK_ZONE(zone);
 		dns_notify_find_address(notify);
 	}
@@ -14747,7 +14744,8 @@ zone_shutdown(void *arg) {
 
 	checkds_cancel(zone);
 
-	dns_notify_cancel(&zone->notifyctx);
+	dns_notify_cancel(&zone->notifysoa);
+	dns_notify_cancel(&zone->notifycds);
 
 	forward_cancel(zone);
 
@@ -15138,13 +15136,13 @@ dns_zone_notifyreceive(dns_zone_t *zone, isc_sockaddr_t *from,
 
 	/*
 	 * Accept notify requests from non primaries if they are on
-	 * 'zone->notifyctx.notify_acl'.
+	 * 'zone->notifysoa.notify_acl'.
 	 */
 	tsigkey = dns_message_gettsigkey(msg);
 	tsig = dns_tsigkey_identity(tsigkey);
 	if (i >= dns_remote_count(&zone->primaries) &&
-	    zone->notifyctx.notify_acl != NULL &&
-	    (dns_acl_match(&netaddr, tsig, zone->notifyctx.notify_acl,
+	    zone->notifysoa.notify_acl != NULL &&
+	    (dns_acl_match(&netaddr, tsig, zone->notifysoa.notify_acl,
 			   zone->view->aclenv, &match,
 			   NULL) == ISC_R_SUCCESS) &&
 	    match > 0)
@@ -15208,7 +15206,7 @@ dns_zone_notifyreceive(dns_zone_t *zone, isc_sockaddr_t *from,
 	 */
 	if (DNS_ZONE_FLAG(zone, DNS_ZONEFLG_REFRESH)) {
 		DNS_ZONE_SETFLAG(zone, DNS_ZONEFLG_NEEDREFRESH);
-		zone->notifyctx.notifyfrom = *from;
+		zone->notifysoa.notifyfrom = *from;
 		UNLOCK_ZONE(zone);
 		if (have_serial) {
 			dns_zone_logc(zone, DNS_LOGCATEGORY_XFER_IN,
@@ -15234,7 +15232,7 @@ dns_zone_notifyreceive(dns_zone_t *zone, isc_sockaddr_t *from,
 		dns_zone_logc(zone, DNS_LOGCATEGORY_XFER_IN, ISC_LOG_INFO,
 			      "notify from %s: no serial", fromtext);
 	}
-	zone->notifyctx.notifyfrom = *from;
+	zone->notifysoa.notifyfrom = *from;
 	UNLOCK_ZONE(zone);
 
 	if (to != NULL) {
@@ -15248,11 +15246,11 @@ void
 dns_zone_setnotifyacl(dns_zone_t *zone, dns_acl_t *acl) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 
+	dns_zone_clearnotifyacl(zone);
+
 	LOCK_ZONE(zone);
-	if (zone->notifyctx.notify_acl != NULL) {
-		dns_acl_detach(&zone->notifyctx.notify_acl);
-	}
-	dns_acl_attach(acl, &zone->notifyctx.notify_acl);
+	dns_acl_attach(acl, &zone->notifysoa.notify_acl);
+	dns_acl_attach(acl, &zone->notifycds.notify_acl);
 	UNLOCK_ZONE(zone);
 }
 
@@ -15378,8 +15376,11 @@ dns_zone_clearnotifyacl(dns_zone_t *zone) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 
 	LOCK_ZONE(zone);
-	if (zone->notifyctx.notify_acl != NULL) {
-		dns_acl_detach(&zone->notifyctx.notify_acl);
+	if (zone->notifysoa.notify_acl != NULL) {
+		dns_acl_detach(&zone->notifysoa.notify_acl);
+	}
+	if (zone->notifycds.notify_acl != NULL) {
+		dns_acl_detach(&zone->notifycds.notify_acl);
 	}
 	UNLOCK_ZONE(zone);
 }
@@ -15801,10 +15802,18 @@ dns_zone_getrdclass(dns_zone_t *zone) {
 }
 
 dns_notifyctx_t *
-dns__zone_getnotifyctx(dns_zone_t *zone) {
+dns__zone_getnotifyctx(dns_zone_t *zone, dns_rdatatype_t type) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 
-	return &zone->notifyctx;
+	switch (type) {
+	case dns_rdatatype_soa:
+		return &zone->notifysoa;
+	case dns_rdatatype_cds:
+		return &zone->notifycds;
+	default:
+		UNREACHABLE();
+	}
+	return NULL;
 }
 
 void
@@ -21066,7 +21075,7 @@ checkds_send(dns_zone_t *zone) {
 /*
  * Fetch NS records from parent zone.
  */
-static void
+static isc_result_t
 nsfetch_start(dns_zonefetch_t *fetch) {
 	dns_nsfetch_t *nsfetch;
 	unsigned int nlabels = 1;
@@ -21082,6 +21091,8 @@ nsfetch_start(dns_zonefetch_t *fetch) {
 
 	fetch->qtype = dns_rdatatype_ns;
 	fetch->qname = &nsfetch->pname;
+
+	return ISC_R_SUCCESS;
 }
 
 /*
@@ -21120,10 +21131,10 @@ nsfetch_cancel(dns_zonefetch_t *fetch) {
 	dns_zone_t *zone;
 
 	REQUIRE(fetch->fetchtype == ZONEFETCHTYPE_NS);
+	REQUIRE(DNS_ZONE_VALID(fetch->zone));
+	REQUIRE(LOCKED_ZONE(fetch->zone));
 
 	zone = fetch->zone;
-
-	INSIST(LOCKED_ZONE(zone));
 
 	zone->fetchcount[ZONEFETCHTYPE_NS]--;
 }
@@ -21139,7 +21150,7 @@ nsfetch_cleanup(dns_zonefetch_t *fetch) {
  * agents.
  */
 static isc_result_t
-nsfetch_done(dns_zonefetch_t *fetch, isc_result_t eresult) {
+nsfetch_checkds(dns_zonefetch_t *fetch, isc_result_t eresult) {
 	dns_nsfetch_t *nsfetch;
 	isc_result_t result = ISC_R_NOMORE;
 	dns_zone_t *zone = NULL;
@@ -21149,6 +21160,8 @@ nsfetch_done(dns_zonefetch_t *fetch, isc_result_t eresult) {
 
 	REQUIRE(fetch != NULL);
 	REQUIRE(fetch->fetchtype == ZONEFETCHTYPE_NS);
+	REQUIRE(DNS_ZONE_VALID(fetch->zone));
+	REQUIRE(LOCKED_ZONE(fetch->zone));
 
 	nsfetch = &fetch->fetchdata.nsfetch;
 	zone = fetch->zone;
@@ -21159,7 +21172,7 @@ nsfetch_done(dns_zonefetch_t *fetch, isc_result_t eresult) {
 
 	dns_name_format(pname, pnamebuf, sizeof(pnamebuf));
 	dnssec_log(zone, ISC_LOG_DEBUG(3),
-		   "Returned from '%s' NS fetch in nsfetch_done(): %s",
+		   "Returned from '%s' NS fetch in nsfetch_checkds(): %s",
 		   pnamebuf, isc_result_totext(eresult));
 
 	if (eresult == DNS_R_NCACHENXRRSET || eresult == DNS_R_NXRRSET) {
@@ -21303,7 +21316,7 @@ zone_checkds(dns_zone_t *zone) {
 					.continue_fetch = nsfetch_continue,
 					.cancel_fetch = nsfetch_cancel,
 					.cleanup_fetch = nsfetch_cleanup,
-					.done_fetch = nsfetch_done,
+					.done_fetch = nsfetch_checkds,
 				},
 		};
 		isc_mem_attach(zone->mctx, &fetch->mctx);
@@ -21321,6 +21334,374 @@ zone_checkds(dns_zone_t *zone) {
 			dnssec_log(
 				zone, ISC_LOG_DEBUG(3),
 				"Creating parent NS fetch in zone_checkds()");
+		}
+		UNLOCK_ZONE(zone);
+#ifdef ENABLE_AFL
+	}
+#endif /* ifdef ENABLE_AFL */
+}
+
+static isc_result_t
+dsyncfetch_start(dns_zonefetch_t *fetch) {
+	dns_dsyncfetch_t *dsyncfetch;
+	dns_zone_t *zone;
+	dns_fixedname_t fndl, fnp;
+	dns_name_t *name, *dsyncname, *dsynclabel, *prefix;
+	unsigned int nlabels;
+	isc_result_t result;
+
+	REQUIRE(fetch->fetchtype == ZONEFETCHTYPE_DSYNC);
+	REQUIRE(DNS_ZONE_VALID(fetch->zone));
+
+	dsyncfetch = &fetch->fetchdata.dsyncfetch;
+	zone = fetch->zone;
+
+	/*
+	 * The dsync owner name is build up of <prefix>._dsync.<parent-name>.
+	 * The prefix is the relative domain name of the child consisting of
+	 * the labels under the zonecut.
+	 */
+	dsyncname = dns_fixedname_initname(&dsyncfetch->fname);
+	dsynclabel = dns_fixedname_initname(&fndl);
+	dns_name_fromstring(dsynclabel, "_dsync", NULL, 0, fetch->mctx);
+	result = dns_name_concatenate(dsynclabel, &dsyncfetch->pname,
+				      dsyncname);
+	if (result != ISC_R_SUCCESS) {
+		dnssec_log(zone, ISC_LOG_ERROR,
+			   "dsyncfetch: failed to create parent DSYNC fetch "
+			   "(parent part): %s",
+			   isc_result_totext(result));
+		return result;
+	}
+
+	name = dns_fixedname_name(&fetch->name);
+	nlabels = dns_name_countlabels(&dsyncfetch->pname);
+	prefix = dns_fixedname_initname(&fnp);
+	dns_name_split(name, nlabels, prefix, NULL);
+	result = dns_name_concatenate(prefix, dsyncname, dsyncname);
+	if (result != ISC_R_SUCCESS) {
+		dnssec_log(zone, ISC_LOG_ERROR,
+			   "dsyncfetch: failed to create parent DSYNC fetch "
+			   "(child part): %s",
+			   isc_result_totext(result));
+		return result;
+	}
+
+	dns_name_init(&dsyncfetch->dsyncname);
+	dns_name_clone(dsyncname, &dsyncfetch->dsyncname);
+
+	fetch->qtype = dns_rdatatype_dsync;
+	fetch->qname = &dsyncfetch->dsyncname;
+
+	return ISC_R_SUCCESS;
+}
+
+/*
+ * Retry an DSYNC RRset lookup.
+ */
+static void
+dsyncfetch_continue(dns_zonefetch_t *fetch) {
+	dns_zone_t *zone;
+
+	REQUIRE(fetch->fetchtype == ZONEFETCHTYPE_DSYNC);
+	REQUIRE(DNS_ZONE_VALID(fetch->zone));
+
+	zone = fetch->zone;
+
+#ifdef ENABLE_AFL
+	if (!dns_fuzzing_resolver) {
+#endif /* ifdef ENABLE_AFL */
+		LOCK_ZONE(zone);
+		zone->fetchcount[ZONEFETCHTYPE_DSYNC]++;
+
+		dns_zonefetch_reschedule(fetch);
+
+		if (isc_log_wouldlog(ISC_LOG_DEBUG(3))) {
+			dnssec_log(zone, ISC_LOG_DEBUG(3),
+				   "Creating parent DSYNC fetch in "
+				   "dsyncfetch_continue()");
+		}
+		UNLOCK_ZONE(zone);
+#ifdef ENABLE_AFL
+	}
+#endif /* ifdef ENABLE_AFL */
+}
+
+static void
+dsyncfetch_cancel(dns_zonefetch_t *fetch) {
+	dns_zone_t *zone;
+
+	REQUIRE(fetch->fetchtype == ZONEFETCHTYPE_DSYNC);
+	REQUIRE(DNS_ZONE_VALID(fetch->zone));
+	REQUIRE(LOCKED_ZONE(fetch->zone));
+
+	zone = fetch->zone;
+
+	zone->fetchcount[ZONEFETCHTYPE_DSYNC]--;
+}
+
+static void
+dsyncfetch_cleanup(dns_zonefetch_t *fetch) {
+	REQUIRE(fetch->fetchtype == ZONEFETCHTYPE_DSYNC);
+}
+
+/*
+ * A DSYNC RRset has been fetched; scan the RRset and start sending
+ * NOTIFY(CDS) queries to them.
+ */
+static isc_result_t
+dsyncfetch_done(dns_zonefetch_t *fetch, isc_result_t eresult) {
+	dns_dsyncfetch_t *dsyncfetch;
+	isc_result_t result = ISC_R_NOMORE;
+	dns_notify_t *notify = NULL;
+	dns_zone_t *zone = NULL;
+	dns_name_t *dsyncname = NULL;
+	char dsyncnamebuf[DNS_NAME_FORMATSIZE];
+	dns_rdataset_t *rrset = NULL;
+
+	REQUIRE(fetch != NULL);
+	REQUIRE(fetch->fetchtype == ZONEFETCHTYPE_DSYNC);
+	REQUIRE(DNS_ZONE_VALID(fetch->zone));
+	REQUIRE(LOCKED_ZONE(fetch->zone));
+
+	dsyncfetch = &fetch->fetchdata.dsyncfetch;
+	zone = fetch->zone;
+	rrset = &fetch->rrset;
+	dsyncname = &dsyncfetch->dsyncname;
+
+	zone->fetchcount[ZONEFETCHTYPE_DSYNC]--;
+
+	dns_name_format(dsyncname, dsyncnamebuf, sizeof(dsyncnamebuf));
+	dns_zone_log(zone, ISC_LOG_DEBUG(3),
+		     "dsyncfetch: Returned from '%s' DSYNC fetch in "
+		     "dsyncfetch_done(): %s",
+		     dsyncnamebuf, isc_result_totext(eresult));
+
+	result = dns_zonefetch_verify(fetch, eresult, dns_trust_secure);
+	if (result != ISC_R_SUCCESS) {
+		goto done;
+	}
+
+	UNLOCK_ZONE(zone);
+
+	/* Notify targets. */
+	dns_rdata_dsync_t dsync;
+	unsigned int count = 0;
+	for (result = dns_rdataset_first(rrset); result == ISC_R_SUCCESS;
+	     result = dns_rdataset_next(rrset))
+	{
+		dns_rdata_t rdata = DNS_RDATA_INIT;
+
+		dns_rdataset_current(rrset, &rdata);
+		result = dns_rdata_tostruct(&rdata, &dsync, NULL);
+		RUNTIME_CHECK(result == ISC_R_SUCCESS);
+
+		dns_rdata_reset(&rdata);
+		if (dsync.scheme != DNS_DSYNCSCHEME_NOTIFY) {
+			dns_zone_log(zone, ISC_LOG_DEBUG(1),
+				     "dsyncfetch: unsupported DSYNC scheme %u, "
+				     "ignoring",
+				     dsync.scheme);
+			continue;
+		}
+
+		if (dsync.type != dns_rdatatype_cds) {
+			char typebuf[DNS_RDATATYPE_FORMATSIZE];
+			dns_rdatatype_format(dsync.type, typebuf,
+					     sizeof(typebuf));
+
+			dns_zone_log(zone, ISC_LOG_DEBUG(1),
+				     "dsyncfetch: DSYNC RRtype %s not "
+				     "supported, ignoring",
+				     result == ISC_R_SUCCESS ? typebuf
+							     : "UNKNOWN");
+			continue;
+		}
+
+		count++;
+		if (count > 1) {
+			dns_zone_log(zone, ISC_LOG_WARNING,
+				     "dsyncfetch: multiple DSYNC records "
+				     "matching NOTIFY scheme and CDS RRtype, "
+				     "dropping response");
+			result = DNS_R_INVALIDDSYNC;
+			break;
+		}
+	}
+
+	LOCK_ZONE(zone);
+
+	if (result == ISC_R_NOMORE) {
+		result = ISC_R_SUCCESS;
+	} else {
+		goto done;
+	}
+
+	bool isqueued = dns_notify_isqueued(&zone->notifycds, dns_rdatatype_cds,
+					    dsync.port, 0, &dsync.target, NULL,
+					    NULL, NULL);
+
+	UNLOCK_ZONE(zone);
+
+	if (!isqueued) {
+		dns_notify_create(zone->mctx, dns_rdatatype_cds, dsync.port,
+				  DNS_NOTIFY_NOSOA, &notify);
+		if (isc_log_wouldlog(ISC_LOG_DEBUG(3))) {
+			char tbuf[DNS_NAME_FORMATSIZE];
+			dns_name_format(&dsync.target, tbuf, sizeof(tbuf));
+			dns_zone_log(zone, ISC_LOG_DEBUG(3),
+				     "dsyncfetch: send NOTIFY(CDS) query to %s",
+				     tbuf);
+		}
+		dns_zone_iattach(zone, &notify->zone);
+		dns_name_dup(&dsync.target, zone->mctx, &notify->ns);
+		LOCK_ZONE(zone);
+		ISC_LIST_APPEND(zone->notifycds.notifies, notify, link);
+		UNLOCK_ZONE(zone);
+		dns_notify_find_address(notify);
+	}
+
+	LOCK_ZONE(zone);
+
+done:
+	if (result != ISC_R_SUCCESS) {
+		dns_zone_log(zone, ISC_LOG_DEBUG(3),
+			     "dsyncfetch: error processing DSYNC RRset: %s",
+			     isc_result_totext(result));
+	}
+
+	return result;
+}
+
+/*
+ * An NS RRset has been fetched from the parent of a zone whose DSYNC RRset
+ * needs to be queried; scan the RRset and start resolving those queries.
+ */
+static isc_result_t
+nsfetch_dsync(dns_zonefetch_t *fetch, isc_result_t eresult) {
+	dns_nsfetch_t *nsfetch;
+	isc_result_t result = ISC_R_NOMORE;
+	dns_zone_t *zone = NULL;
+	dns_name_t *pname = NULL;
+	char pnamebuf[DNS_NAME_FORMATSIZE];
+
+	REQUIRE(fetch != NULL);
+	REQUIRE(fetch->fetchtype == ZONEFETCHTYPE_NS);
+	REQUIRE(DNS_ZONE_VALID(fetch->zone));
+	REQUIRE(LOCKED_ZONE(fetch->zone));
+
+	nsfetch = &fetch->fetchdata.nsfetch;
+	zone = fetch->zone;
+	pname = &nsfetch->pname;
+
+	zone->fetchcount[ZONEFETCHTYPE_NS]--;
+
+	dns_name_format(pname, pnamebuf, sizeof(pnamebuf));
+	dnssec_log(zone, ISC_LOG_DEBUG(3),
+		   "Returned from '%s' NS fetch in nsfetch_dsync(): %s",
+		   pnamebuf, isc_result_totext(eresult));
+
+	if (eresult == DNS_R_NCACHENXRRSET || eresult == DNS_R_NXRRSET) {
+		dnssec_log(zone, ISC_LOG_DEBUG(3),
+			   "NODATA response for NS '%s', level up", pnamebuf);
+		return DNS_R_CONTINUE;
+	}
+
+	result = dns_zonefetch_verify(fetch, eresult, dns_trust_secure);
+	if (result != ISC_R_SUCCESS) {
+		goto done;
+	}
+
+#ifdef ENABLE_AFL
+	if (!dns_fuzzing_resolver) {
+#endif /* ifdef ENABLE_AFL */
+		dns_zonefetch_t *zfetch = NULL;
+		dns_dsyncfetch_t *dsyncfetch;
+
+		zfetch = isc_mem_get(zone->mctx, sizeof(dns_zonefetch_t));
+		*zfetch = (dns_zonefetch_t){
+			.zone = zone,
+			.options = DNS_FETCHOPT_UNSHARED |
+				   DNS_FETCHOPT_NOCACHED,
+			.fetchtype = ZONEFETCHTYPE_DSYNC,
+			.fetchmethods =
+				(dns_zonefetch_methods_t){
+					.start_fetch = dsyncfetch_start,
+					.continue_fetch = dsyncfetch_continue,
+					.cancel_fetch = dsyncfetch_cancel,
+					.cleanup_fetch = dsyncfetch_cleanup,
+					.done_fetch = dsyncfetch_done,
+				},
+		};
+		isc_mem_attach(zone->mctx, &zfetch->mctx);
+
+		zone->fetchcount[ZONEFETCHTYPE_DSYNC]++;
+
+		dsyncfetch = &zfetch->fetchdata.dsyncfetch;
+		dns_name_init(&dsyncfetch->pname);
+		dns_name_clone(pname, &dsyncfetch->pname);
+
+		dns_zonefetch_schedule(zfetch, &zone->origin);
+
+		if (isc_log_wouldlog(ISC_LOG_DEBUG(3))) {
+			dnssec_log(zone, ISC_LOG_DEBUG(3),
+				   "Creating parent DSYNC fetch in "
+				   "nsfetch_dsync()");
+		}
+#ifdef ENABLE_AFL
+	}
+#endif /* ifdef ENABLE_AFL */
+
+done:
+	return result;
+}
+
+static void
+zone_notifycds(dns_zone_t *zone) {
+	dns_notifytype_t notifytype = zone->notifycds.notifytype;
+
+	if (notifytype == dns_notifytype_no) {
+		return;
+	}
+
+	INSIST(notifytype == dns_notifytype_yes);
+
+#ifdef ENABLE_AFL
+	if (!dns_fuzzing_resolver) {
+#endif /* ifdef ENABLE_AFL */
+		dns_zonefetch_t *fetch = NULL;
+		dns_nsfetch_t *nsfetch;
+
+		fetch = isc_mem_get(zone->mctx, sizeof(dns_zonefetch_t));
+		*fetch = (dns_zonefetch_t){
+			.zone = zone,
+			.options = DNS_FETCHOPT_UNSHARED |
+				   DNS_FETCHOPT_NOCACHED,
+			.fetchtype = ZONEFETCHTYPE_NS,
+			.fetchmethods =
+				(dns_zonefetch_methods_t){
+					.start_fetch = nsfetch_start,
+					.continue_fetch = nsfetch_continue,
+					.cancel_fetch = nsfetch_cancel,
+					.cleanup_fetch = nsfetch_cleanup,
+					.done_fetch = nsfetch_dsync,
+				},
+		};
+		isc_mem_attach(zone->mctx, &fetch->mctx);
+
+		LOCK_ZONE(zone);
+		zone->fetchcount[ZONEFETCHTYPE_NS]++;
+
+		nsfetch = &fetch->fetchdata.nsfetch;
+		dns_name_init(&nsfetch->pname);
+		dns_name_clone(&zone->origin, &nsfetch->pname);
+
+		dns_zonefetch_schedule(fetch, &zone->origin);
+
+		if (isc_log_wouldlog(ISC_LOG_DEBUG(3))) {
+			dnssec_log(
+				zone, ISC_LOG_DEBUG(3),
+				"Creating parent NS fetch in zone_notifyds()");
 		}
 		UNLOCK_ZONE(zone);
 #ifdef ENABLE_AFL
@@ -21473,6 +21854,7 @@ zone_rekey(dns_zone_t *zone) {
 	bool commit = false, newactive = false;
 	bool newalg = false;
 	bool fullsign;
+	bool notifycds = false;
 	bool offlineksk = false;
 	bool kasp_change = false;
 	uint8_t options = 0;
@@ -21845,7 +22227,9 @@ zone_rekey(dns_zone_t *zone) {
 		result = dns_dnssec_syncupdate(&dnskeys, &rmkeys, &cdsset,
 					       &cdnskeyset, now, &digests,
 					       cdnskeypub, ttl, &diff, mctx);
-		if (result != ISC_R_SUCCESS) {
+		if (result == ISC_R_SUCCESS) {
+			notifycds = true;
+		} else if (result != DNS_R_UNCHANGED) {
 			dnssec_log(zone, ISC_LOG_ERROR,
 				   "zone_rekey:couldn't update CDS/CDNSKEY: %s",
 				   isc_result_totext(result));
@@ -21881,7 +22265,9 @@ zone_rekey(dns_zone_t *zone) {
 		result = dns_dnssec_syncdelete(
 			&cdsset, &cdnskeyset, &zone->origin, zone->rdclass, ttl,
 			&diff, mctx, cdsdel, cdnskeydel);
-		if (result != ISC_R_SUCCESS) {
+		if (result == ISC_R_SUCCESS) {
+			notifycds = true;
+		} else if (result != DNS_R_UNCHANGED) {
 			dnssec_log(zone, ISC_LOG_ERROR,
 				   "zone_rekey:couldn't update CDS/CDNSKEY "
 				   "DELETE records: %s",
@@ -22194,6 +22580,13 @@ zone_rekey(dns_zone_t *zone) {
 		}
 		ISC_LIST_UNLINK(dnskeys, key, link);
 		ISC_LIST_APPEND(zone->keyring, key, link);
+	}
+
+	/*
+	 * If the CDS/CDNSKEY RRset has changed, send NOTIFY(CDS) to endpoints.
+	 */
+	if (notifycds) {
+		zone_notifycds(zone);
 	}
 
 	result = ISC_R_SUCCESS;

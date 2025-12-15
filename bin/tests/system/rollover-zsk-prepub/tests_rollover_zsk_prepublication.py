@@ -116,6 +116,8 @@ def test_zsk_prepub_step1(tld, alg, size, ns3):
     }
     isctest.kasp.check_rollover_step(ns3, CONFIG, policy, step)
 
+    ns3.log.prohibit(f"zone {zone}/IN (signed): dsyncfetch")
+
 
 @pytest.mark.parametrize(
     "tld",
@@ -172,6 +174,8 @@ def test_zsk_prepub_step2(tld, alg, size, ns3):
         "nextev": IPUB,
     }
     isctest.kasp.check_rollover_step(ns3, CONFIG, policy, step)
+
+    ns3.log.prohibit(f"zone {zone}/IN (signed): dsyncfetch")
 
 
 @pytest.mark.parametrize(
@@ -251,6 +255,8 @@ def test_zsk_prepub_step3(tld, alg, size, ns3):
     }
     isctest.kasp.check_rollover_step(ns3, CONFIG, policy, step)
 
+    ns3.log.prohibit(f"zone {zone}/IN (signed): dsyncfetch")
+
     # Force full resign and check all signatures have been replaced.
     with ns3.watch_log_from_here() as watcher:
         ns3.rndc(f"sign {zone}", log=False)
@@ -321,6 +327,8 @@ def test_zsk_prepub_step4(tld, alg, size, ns3):
     }
     isctest.kasp.check_rollover_step(ns3, CONFIG, policy, step)
 
+    ns3.log.prohibit(f"zone {zone}/IN (signed): dsyncfetch")
+
 
 @pytest.mark.parametrize(
     "tld",
@@ -356,6 +364,8 @@ def test_zsk_prepub_step5(tld, alg, size, ns3):
     }
     isctest.kasp.check_rollover_step(ns3, CONFIG, policy, step)
 
+    ns3.log.prohibit(f"zone {zone}/IN (signed): dsyncfetch")
+
 
 @pytest.mark.parametrize(
     "tld",
@@ -382,3 +392,5 @@ def test_zsk_prepub_step6(tld, alg, size, ns3):
         "nextev": None,
     }
     isctest.kasp.check_rollover_step(ns3, CONFIG, policy, step)
+
+    ns3.log.prohibit(f"zone {zone}/IN (signed): dsyncfetch")

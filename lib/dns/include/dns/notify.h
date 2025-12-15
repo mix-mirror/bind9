@@ -29,6 +29,8 @@
 struct dns_notifyctx {
 	dns_acl_t *notify_acl;
 
+	dns_rdatatype_t type;
+
 	isc_sockaddr_t	 notifyfrom;
 	dns_notifylist_t notifies;
 
@@ -49,6 +51,8 @@ struct dns_notify {
 	dns_adbfind_t	*find;
 	dns_request_t	*request;
 	dns_name_t	 ns;
+	dns_rdatatype_t	 type;
+	in_port_t	 port;
 	isc_sockaddr_t	 src;
 	isc_sockaddr_t	 dst;
 	dns_tsigkey_t	*key;
@@ -64,7 +68,18 @@ typedef enum dns_notify_flags {
 } dns_notify_flags_t;
 
 void
-dns_notify_create(isc_mem_t *mctx, unsigned int flags, dns_notify_t **notifyp);
+dns_notifyctx_init(dns_notifyctx_t *nctx, dns_rdatatype_t type);
+/*%
+ *	Initializes a notify context for the RRtype 'type'.
+ *
+ *	Requires:
+ *		'nctx' is not NULL.
+ *
+ */
+
+void
+dns_notify_create(isc_mem_t *mctx, dns_rdatatype_t type, in_port_t port,
+		  unsigned int flags, dns_notify_t **notifyp);
 /*%<
  *	Create a notify structure to maintain state.
  *
@@ -84,14 +99,15 @@ dns_notify_destroy(dns_notify_t *notify, bool zone_locked);
  */
 
 bool
-dns_notify_isqueued(dns_notifyctx_t *nctx, unsigned int flags, dns_name_t *name,
-		    isc_sockaddr_t *addr, dns_tsigkey_t *key,
-		    dns_transport_t *transport);
+dns_notify_isqueued(dns_notifyctx_t *nctx, dns_rdatatype_t type, in_port_t port,
+		    unsigned int flags, dns_name_t *name, isc_sockaddr_t *addr,
+		    dns_tsigkey_t *key, dns_transport_t *transport);
 /*%<
- *	Check if we already have a notify queued matching name, destination
- *	address, TSIG key, and transport. Will requeue on the normal notify
- *	ratelimiter if the notify was enqueued on the startup ratelimiter and
- *	this is not a startup notify.
+ *	Check if we already have a notify queued matching name, type,
+ *	destination address and port, TSIG key, and transport. Will
+ *	requeue on the normal notify ratelimiter if the notify was
+ *	enqueued on the startup ratelimiter and this is not a startup
+ *	notify.
  *
  *      Requires:
  *		'nctx' is not NULL

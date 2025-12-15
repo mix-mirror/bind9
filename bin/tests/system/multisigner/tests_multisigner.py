@@ -33,16 +33,20 @@ pytestmark = pytest.mark.extra_artifacts(
         "secondary.cds.ns*",
         "unused.*",
         "verify.out.*",
-        "ns*/K*",
-        "ns*/db-*",
-        "ns*/keygen.out.*",
+        "ns*/*.db",
+        "ns*/*.db.infile",
         "ns*/*.jbk",
         "ns*/*.jnl",
-        "ns*/*.zsk",
-        "ns*/*.signed",
         "ns*/*.journal.out.*",
+        "ns*/*.signed",
+        "ns*/*.zsk",
+        "ns*/db-*",
+        "ns*/dsset-*",
+        "ns*/K*",
+        "ns*/keygen.out.*",
+        "ns*/managed-keys.bind*",
         "ns*/settime.out.*",
-        "ns*/model2.secondary.db",
+        "ns*/trusted.conf",
     ]
 )
 
@@ -506,7 +510,7 @@ def check_remove_cds(
     check_dnssec(server, zone, keys, expected)
 
 
-def test_multisigner(ns3, ns4):
+def test_multisigner(ns2, ns3, ns4):
     zone = "model2.multisigner"
     keyprops = [
         f"ksk 0 {ALGORITHM} {SIZE} goal:omnipresent dnskey:omnipresent krrsig:omnipresent ds:omnipresent",
@@ -517,6 +521,23 @@ def test_multisigner(ns3, ns4):
     isctest.log.info(f"basic DNSSEC tests for {zone}")
     isctest.kasp.wait_keymgr_done(ns3, zone)
     isctest.kasp.wait_keymgr_done(ns4, zone)
+
+    with ns3.watch_log_from_start() as watcher:
+        watcher.wait_for_line(
+            f"zone {zone}/IN: dsyncfetch: send NOTIFY(CDS) query to scanner.multisigner"
+        )
+
+    with ns4.watch_log_from_start() as watcher:
+        watcher.wait_for_line(
+            f"zone {zone}/IN (signed): dsyncfetch: send NOTIFY(CDS) query to scanner.multisigner"
+        )
+
+    with ns2.watch_log_from_start() as watcher:
+        # Receiving NOTIFY(CDS) has not been implemented yet.  Until
+        # then, notifies for child zones towards the parent result in
+        # not authoritative (unless child and parent are served by the
+        # same name server).
+        watcher.wait_for_line(f"received notify for zone '{zone}': NOTAUTH")
 
     keys3 = isctest.kasp.keydir_to_keylist(zone, ns3.identifier)
     ksks3 = [k for k in keys3 if k.is_ksk()]
@@ -577,7 +598,30 @@ def test_multisigner(ns3, ns4):
     check_no_dnssec_in_journal(ns4, zone)
 
 
-def test_multisigner_secondary(ns3, ns4, ns5):
+def test_multisigner_bad_dsync(ns2, ns3, ns4):
+    zone = "model2.bad-dsync"
+    keyprops = [
+        f"ksk 0 {ALGORITHM} {SIZE} goal:omnipresent dnskey:omnipresent krrsig:omnipresent ds:omnipresent",
+        f"zsk 0 {ALGORITHM} {SIZE} goal:omnipresent dnskey:omnipresent zrrsig:omnipresent",
+    ]
+
+    # First make sure the zone is properly signed.
+    isctest.log.info(f"basic DNSSEC tests for {zone}")
+    isctest.kasp.wait_keymgr_done(ns3, zone)
+    isctest.kasp.wait_keymgr_done(ns4, zone)
+
+    with ns3.watch_log_from_start() as watcher:
+        watcher.wait_for_line(
+            f"zone {zone}/IN: dsyncfetch: multiple DSYNC records matching NOTIFY scheme and CDS RRtype, dropping response"
+        )
+
+    with ns4.watch_log_from_start() as watcher:
+        watcher.wait_for_line(
+            f"zone {zone}/IN (signed): dsyncfetch: multiple DSYNC records matching NOTIFY scheme and CDS RRtype, dropping response"
+        )
+
+
+def test_multisigner_secondary(ns2, ns3, ns4, ns5):
     zone = "model2.secondary"
     keyprops = [
         f"ksk 0 {ALGORITHM} {SIZE} goal:omnipresent dnskey:omnipresent krrsig:omnipresent ds:omnipresent",
@@ -588,6 +632,26 @@ def test_multisigner_secondary(ns3, ns4, ns5):
     isctest.log.info(f"basic DNSSEC tests for {zone}")
     isctest.kasp.wait_keymgr_done(ns3, zone)
     isctest.kasp.wait_keymgr_done(ns4, zone)
+
+    for server in [ns3, ns4]:
+        with server.watch_log_from_start() as watcher:
+            watcher.wait_for_line(
+                f"zone {zone}/IN (signed): dsyncfetch: send NOTIFY(CDS) query to scanner.secondary"
+            )
+
+        server.log.expect(
+            f"zone {zone}/IN (signed): dsyncfetch: DSYNC RRtype CSYNC not supported, ignoring"
+        )
+        server.log.expect(
+            f"zone {zone}/IN (signed): dsyncfetch: DSYNC RRtype DSYNC not supported, ignoring"
+        )
+
+    with ns2.watch_log_from_start() as watcher:
+        # Receiving NOTIFY(CDS) has not been implemented yet.  Until
+        # then, notifies for child zones towards the parent result in
+        # not authoritative (unless child and parent are served by the
+        # same name server).
+        watcher.wait_for_line(f"received notify for zone '{zone}': NOTAUTH")
 
     keys3 = isctest.kasp.keydir_to_keylist(zone, ns3.identifier)
     ksks3 = [k for k in keys3 if k.is_ksk()]

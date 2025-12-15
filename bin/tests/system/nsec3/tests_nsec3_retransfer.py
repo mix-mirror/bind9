@@ -123,7 +123,7 @@ def test_nsec3_retransfer(servers, templates):
     with ns3.watch_log_from_here() as watcher:
         ns3.rndc(f"retransfer {zone}")
         # When sending notifies, the zone should be up to date.
-        watcher.wait_for_line(f"zone {zone}/IN (signed): sending notify to 10.53.0.4")
+        watcher.wait_for_line(f"zone_needdump: zone {zone}/IN (signed): enter")
 
     salt = perform_nsec3_tests(ns3, params)
     assert prevsalt == salt

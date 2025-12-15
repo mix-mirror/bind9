@@ -24,9 +24,9 @@ options {
 	listen-on { 10.53.0.3; };
 	listen-on-v6 { none; };
 	allow-transfer { any; };
-	recursion no;
 	key-directory ".";
-	dnssec-validation no;
+	dnssec-validation yes;
+	notify-cds yes;
 };
 
 key rndc_key {
@@ -46,10 +46,26 @@ zone "model2.multisigner." {
 	inline-signing no;
 };
 
+zone "model2.bad-dsync." {
+	type primary;
+	allow-update { any; };
+	file "model2.bad-dsync.db";
+	dnssec-policy model2;
+	inline-signing no;
+};
+
 zone "model2.secondary." {
 	type secondary;
 	primaries { 10.53.0.5; };
 	file "model2.secondary.db";
 	dnssec-policy model2;
 	inline-signing yes;
+	notify no;
 };
+
+zone "." {
+	type hint;
+	file "../../_common/root.hint";
+};
+
+include "trusted.conf";

@@ -1233,9 +1233,20 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 		notifytype = process_notifytype(notifytype, ztype, zname,
 						nodefault);
 		if (raw != NULL) {
-			dns_zone_setnotifytype(raw, dns_notifytype_no);
+			dns_zone_setnotifytype(raw, dns_rdatatype_soa,
+					       dns_notifytype_no);
 		}
-		dns_zone_setnotifytype(zone, notifytype);
+		dns_zone_setnotifytype(zone, dns_rdatatype_soa, notifytype);
+
+		obj = NULL;
+		result = named_config_get(maps, "notify-cds", &obj);
+		INSIST(result == ISC_R_SUCCESS && obj != NULL);
+		if (raw != NULL) {
+			dns_zone_setnotifytype(raw, dns_rdatatype_cds,
+					       dns_notifytype_no);
+		}
+		dns_zone_setnotifytype(zone, dns_rdatatype_cds,
+				       cfg_obj_asboolean(obj));
 
 		obj = NULL;
 		result = named_config_get(maps, "also-notify", &obj);
@@ -1497,7 +1508,10 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 			}
 		}
 	} else if (ztype == dns_zone_redirect) {
-		dns_zone_setnotifytype(zone, dns_notifytype_no);
+		dns_zone_setnotifytype(zone, dns_rdatatype_soa,
+				       dns_notifytype_no);
+		dns_zone_setnotifytype(zone, dns_rdatatype_cds,
+				       dns_notifytype_no);
 
 		obj = NULL;
 		result = named_config_get(maps, "max-journal-size", &obj);

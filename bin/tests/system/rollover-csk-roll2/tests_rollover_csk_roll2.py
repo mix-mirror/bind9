@@ -126,6 +126,8 @@ def test_csk_roll2_step1(tld, alg, size, ns3):
     }
     isctest.kasp.check_rollover_step(ns3, CONFIG, policy, step)
 
+    ns3.log.prohibit(f"zone {zone}/IN (signed): dsyncfetch")
+
 
 @pytest.mark.parametrize(
     "tld",
@@ -183,6 +185,8 @@ def test_csk_roll2_step2(tld, alg, size, ns3):
         "nextev": IPUB,
     }
     isctest.kasp.check_rollover_step(ns3, CONFIG, policy, step)
+
+    ns3.log.prohibit(f"zone {zone}/IN (signed): dsyncfetch")
 
 
 @pytest.mark.parametrize(
@@ -271,6 +275,11 @@ def test_csk_roll2_step3(tld, alg, size, ns3):
     }
     isctest.kasp.check_rollover_step(ns3, CONFIG, policy, step)
 
+    with ns3.watch_log_from_start() as watcher:
+        watcher.wait_for_line(
+            f"zone {zone}/IN (signed): dsyncfetch: send NOTIFY(CDS) query to scanner.{tld}"
+        )
+
 
 @pytest.mark.parametrize(
     "tld",
@@ -309,6 +318,8 @@ def test_csk_roll2_step4(tld, alg, size, ns3):
         "ds-swap": False,
     }
     isctest.kasp.check_rollover_step(ns3, CONFIG, policy, step)
+
+    ns3.log.prohibit(f"zone {zone}/IN (signed): dsyncfetch")
 
 
 @pytest.mark.parametrize(
@@ -374,6 +385,8 @@ def test_csk_roll2_step5(tld, alg, size, ns3):
     }
     isctest.kasp.check_rollover_step(ns3, CONFIG, policy, step)
 
+    ns3.log.prohibit(f"zone {zone}/IN (signed): dsyncfetch")
+
 
 @pytest.mark.parametrize(
     "tld",
@@ -409,6 +422,8 @@ def test_csk_roll2_step6(tld, alg, size, ns3):
     }
     isctest.kasp.check_rollover_step(ns3, CONFIG, policy, step)
 
+    ns3.log.prohibit(f"zone {zone}/IN (signed): dsyncfetch")
+
 
 @pytest.mark.parametrize(
     "tld",
@@ -439,3 +454,5 @@ def test_csk_roll2_step7(tld, alg, size, ns3):
         "verbose": True,
     }
     isctest.kasp.check_rollover_step(ns3, CONFIG, policy, step)
+
+    ns3.log.prohibit(f"zone {zone}/IN (signed): dsyncfetch")

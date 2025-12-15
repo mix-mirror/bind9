@@ -108,7 +108,7 @@ dns__zone_stats_increment(dns_zone_t *zone, isc_statscounter_t counter);
  */
 
 dns_notifyctx_t *
-dns__zone_getnotifyctx(dns_zone_t *zone);
+dns__zone_getnotifyctx(dns_zone_t *zone, dns_rdatatype_t type);
 /*%<
  *	Returns the notify context.
  *

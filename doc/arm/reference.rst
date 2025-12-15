@@ -2097,9 +2097,9 @@ Boolean Options
 
 .. namedconf:statement:: notify
    :tags: transfer
-   :short: Controls whether ``NOTIFY`` messages are sent on zone changes.
+   :short: Controls whether ``NOTIFY(SOA)`` messages are sent on zone changes.
 
-   If set to ``yes`` (the default), DNS NOTIFY messages are sent when a
+   If set to ``yes`` (the default), DNS NOTIFY(SOA) messages are sent when a
    zone the server is authoritative for changes; see :ref:`using notify<notify>`.
    The messages are sent to the servers listed in the zone's NS records
    (except the primary server identified in the SOA MNAME field), and to
@@ -2114,6 +2114,22 @@ Boolean Options
    statement, in which case it overrides the ``options notify``
    statement. It would only be necessary to turn off this option if it
    caused secondary zones to crash.
+
+.. namedconf:statement:: notify-cds
+   :tags: dnssec
+   :short: Controls whether ``NOTIFY(CDS)`` messages are sent on zone changes.
+
+   If set to ``yes``, DNS NOTIFY(CDS) messages are sent when the CDS or CDNSKEY
+   RRset changes. The messages are sent to the servers listed in the parent
+   zone's matching DSYNC records. A DSYNC record matches if the owner name under
+   `_dsync` subdomain of the parent zone corresponds to the given zone.  For
+   example, the zone `child.example` should have a DSYNC record at
+   `child._dsync.example`.  In addition, the RRtype field of the record must be
+   `CDS` and the Scheme field must be 1 (NOTIFY).
+
+   The default is ``no``.  The :namedconf:ref:`notify-cds` option may also be
+   specified in the :any:`zone` statement, in which case it overrides the
+   ``options notify-cds`` statement.
 
 .. namedconf:statement:: notify-to-soa
    :tags: transfer

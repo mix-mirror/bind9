@@ -1,0 +1,35 @@
+; Copyright (C) Internet Systems Consortium, Inc. ("ISC")
+;
+; SPDX-License-Identifier: MPL-2.0
+;
+; This Source Code Form is subject to the terms of the Mozilla Public
+; License, v. 2.0.  If a copy of the MPL was not distributed with this
+; file, you can obtain one at https://mozilla.org/MPL/2.0/.
+;
+; See the COPYRIGHT file distributed with this work for additional
+; information regarding copyright ownership.
+
+$TTL 300
+$ORIGIN bad-dsync.
+
+bad-dsync.	IN	SOA  mname1. . (
+			1       ; serial
+			20      ; refresh (20 seconds)
+			20      ; retry (20 seconds)
+			1814400 ; expire (3 weeks)
+			3600    ; minimum (1 hour)
+			)
+
+			NS	ns2
+ns2			A	10.53.0.2
+
+scanner			A	10.53.0.2
+
+model2			NS	ns3
+			NS	ns4
+
+ns3.model2		A	10.53.0.3
+ns4.model2		A	10.53.0.4
+
+*._dsync		DSYNC	CDS NOTIFY @PORT@ scanner1
+*._dsync		DSYNC	CDS NOTIFY @PORT@ scanner2
