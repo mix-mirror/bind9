@@ -437,14 +437,13 @@ isc_result_t
 isc_ossl_wrap_ecdsa_set_deterministic(EVP_PKEY_CTX *pctx, const char *hash) {
 	unsigned int rfc6979 = 1;
 	isc_result_t result;
-	OSSL_PARAM params[3];
+	OSSL_PARAM params[3] = {
+		OSSL_PARAM_construct_utf8_string("digest", UNCONST(hash), 0),
+		OSSL_PARAM_construct_uint("nonce-type", &rfc6979),
+		OSSL_PARAM_END,
+	};
 
 	REQUIRE(pctx != NULL && hash != NULL);
-
-	params[0] = OSSL_PARAM_construct_utf8_string("digest", UNCONST(hash),
-						     0);
-	params[1] = OSSL_PARAM_construct_uint("nonce-type", &rfc6979);
-	params[2] = OSSL_PARAM_construct_end();
 
 	if (EVP_PKEY_CTX_set_params(pctx, params) != 1) {
 		CLEANUP(OSSL_WRAP_ERROR("EVP_PKEY_CTX_set_params"));
