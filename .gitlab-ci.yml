@@ -771,7 +771,7 @@ clang-format:
     when: on_failure
 
 coccinelle:
-  <<: *quick_checks_job
+  <<: *other_checks_job
   rules:
     - if: '$CI_MERGE_REQUEST_DIFF_BASE_SHA != null'
       changes:
@@ -860,7 +860,7 @@ danger:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
 
 checkbashisms:
-  <<: *quick_checks_job
+  <<: *other_checks_job
   <<: *shell_triggering_rules
   needs: []
   script:
@@ -873,9 +873,8 @@ mypy:
     - mypy "bin/tests/system/isctest/"
 
 tarball-create:
-  stage: quick-checks
+  <<: *build_job
   <<: *base_image
-  <<: *default_triggering_rules
   script:
     - ./configure --enable-maintainer-mode
     - make maintainer-clean
