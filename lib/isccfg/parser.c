@@ -2678,6 +2678,30 @@ print_symval(cfg_printer_t *pctx, const char *name, cfg_obj_t *obj) {
 	}
 }
 
+static bool
+print_mapentry(const char *key, unsigned int type, isc_symvalue_t value, void *arg) {
+	cfg_printer_t *pctx = (cfg_printer_t *)arg;
+	cfg_obj_t *obj = value.as_pointer;
+
+	UNUSED(type);
+
+	if (obj->type == &cfg_type_implicitlist) {
+		/* Multivalued. */
+		cfg_list_t *list = obj->value.list;
+		cfg_listelt_t *elt;
+		for (elt = ISC_LIST_HEAD(*list); elt != NULL;
+		     elt = ISC_LIST_NEXT(elt, link))
+		{
+			print_symval(pctx, key, elt->obj);
+		}
+	} else {
+		/* Single-valued. */
+		print_symval(pctx, key, obj);
+	}
+
+	return (true);
+}
+
 void
 cfg_print_mapbody(cfg_printer_t *pctx, const cfg_obj_t *obj) {
 	const cfg_clausedef_t *const *clauseset;
@@ -2702,19 +2726,7 @@ cfg_print_mapbody(cfg_printer_t *pctx, const cfg_obj_t *obj) {
 						   clause->name,
 						   SYMTAB_DUMMY_TYPE, &symval);
 			if (result == ISC_R_SUCCESS) {
-				cfg_obj_t *symobj = symval.as_pointer;
-				if (symobj->type == &cfg_type_implicitlist) {
-					/* Multivalued. */
-					cfg_list_t *list = symobj->value.list;
-					ISC_LIST_FOREACH(*list, elt, link) {
-						print_symval(pctx, clause->name,
-							     elt->obj);
-					}
-				} else {
-					/* Single-valued. */
-					print_symval(pctx, clause->name,
-						     symobj);
-				}
+				print_mapentry(clause->name, SYMTAB_DUMMY_TYPE,	symval, pctx);
 			} else if (result == ISC_R_NOTFOUND) {
 				/* do nothing */
 			} else {
@@ -2722,6 +2734,8 @@ cfg_print_mapbody(cfg_printer_t *pctx, const cfg_obj_t *obj) {
 			}
 		}
 	}
+
+	// isc_symtab_foreach(obj->value.map->symtab, print_mapentry, pctx);
 }
 
 static struct flagtext {

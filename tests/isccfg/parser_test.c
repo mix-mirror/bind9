@@ -278,6 +278,12 @@ view \"_bind\" chaos {\n\
 	 * cfg_obj_t tree, but let's do it as a sanity check first.
 	 */
 	dumpblen1 = isc_buffer_remaininglength(&dumpb1);
+
+	printf("\n=== ORIGINAL CONFIG ===\n");
+	printf("Expected length: %zu, Actual length: %zu\n", sizeof(conf) - 1, dumpblen1);
+	printf("Original config:\n%.*s\n", (int)dumpblen1, dumpbdata1);
+	printf("=== END ORIGINAL ===\n");
+
 	assert_int_equal(sizeof(conf) - 1, dumpblen1);
 	assert_memory_equal(conf, dumpbdata1, dumpblen1);
 
@@ -297,6 +303,18 @@ view \"_bind\" chaos {\n\
 
 	dumpblen1 = isc_buffer_remaininglength(&dumpb1);
 	dumpblen2 = isc_buffer_remaininglength(&dumpb2);
+
+	printf("\n=== CLONED CONFIG ===\n");
+	printf("Original length: %zu, Clone length: %zu\n", dumpblen1, dumpblen2);
+	printf("Cloned config:\n%.*s\n", (int)dumpblen2, dumpbdata2);
+	printf("=== END CLONED ===\n");
+
+	if (dumpblen1 != dumpblen2) {
+		printf("\n=== DIFF INFO ===\n");
+		printf("Length mismatch: orig=%zu, clone=%zu\n", dumpblen1, dumpblen2);
+		printf("=== END DIFF ===\n");
+	}
+
 	assert_int_equal(dumpblen1, dumpblen2);
 	assert_memory_equal(dumpbdata1, dumpbdata2, dumpblen1);
 
