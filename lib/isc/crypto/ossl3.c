@@ -188,7 +188,6 @@ isc_hmac_key_create(isc_md_type_t type, const void *secret, const size_t len,
 	isc_hmac_key_t *key;
 	uint8_t digest[ISC_MAX_MD_SIZE];
 	unsigned int digest_len = sizeof(digest);
-	isc_result_t result;
 	size_t key_len;
 
 	REQUIRE(keyp != NULL && *keyp == NULL);
@@ -199,11 +198,7 @@ isc_hmac_key_create(isc_md_type_t type, const void *secret, const size_t len,
 	}
 
 	if (len > (size_t)EVP_MD_block_size(isc__crypto_md[type])) {
-		result = isc_md(type, secret, len, digest, &digest_len);
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
-
+		RETERR(isc_md(type, secret, len, digest, &digest_len));
 		secret = digest;
 		key_len = digest_len;
 	} else {
