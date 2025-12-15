@@ -61,13 +61,13 @@ ISC_RUN_TEST_IMPL(addzoneconf) {
 	isc_result_t result;
 	isc_buffer_t b;
 	const char *tests[] = {
-		"zone \"test4.baz\" { type primary; file \"e.db\"; };",
-		"zone \"test/.baz\" { type primary; file \"e.db\"; };",
-		"zone \"test\\\".baz\" { type primary; file \"e.db\"; };",
-		"zone \"test\\.baz\" { type primary; file \"e.db\"; };",
-		"zone \"test\\\\.baz\" { type primary; file \"e.db\"; };",
-		"zone \"test\\032.baz\" { type primary; file \"e.db\"; };",
-		"zone \"test\\010.baz\" { type primary; file \"e.db\"; };"
+		"zone \"test4.baz\" { file \"e.db\"; type primary; };",
+		"zone \"test/.baz\" { file \"e.db\"; type primary; };",
+		"zone \"test\\\".baz\" { file \"e.db\"; type primary; };",
+		"zone \"test\\.baz\" { file \"e.db\"; type primary; };",
+		"zone \"test\\\\.baz\" { file \"e.db\"; type primary; };",
+		"zone \"test\\032.baz\" { file \"e.db\"; type primary; };",
+		"zone \"test\\010.baz\" { file \"e.db\"; type primary; };"
 	};
 	char buf[1024];
 
@@ -230,37 +230,37 @@ ISC_RUN_TEST_IMPL(cfg_clone_copy) {
 	 */
 	static char conf[] = "\
 options {\n\
+	allow-recursion {\n\
+		\"localhost\";\n\
+		\"localnets\";\n\
+	};\n\
 	answer-cookie yes;\n\
+	check-dup-records warn;\n\
 	cookie-algorithm siphash24;\n\
 	dump-file \"named_dump.db\";\n\
 	listen-on port 53 tls \"foobar\" {\n\
 		127.0.0.1/32;\n\
 	};\n\
-	notify-rate 20;\n\
-	allow-recursion {\n\
-		\"localhost\";\n\
-		\"localnets\";\n\
-	};\n\
-	prefetch 2 9;\n\
-	check-dup-records warn;\n\
 	max-ixfr-ratio 100%;\n\
+	notify-rate 20;\n\
+	prefetch 2 9;\n\
 };\n\
 remote-servers \"foo\" {\n\
 	2801:1b8:10::b;\n\
 	192.0.32.132;\n\
 };\n\
 view \"_bind\" chaos {\n\
-	zone \"version.bind\" chaos {\n\
-		type primary;\n\
-		database \"_builtin version\";\n\
-		update-policy {\n\
-			grant \"int\" zonesub \"any\";\n\
-		};\n\
-	};\n\
 	max-cache-size 2097152;\n\
 	rate-limit {\n\
 		min-table-size 10;\n\
 		slip 0;\n\
+	};\n\
+	zone \"version.bind\" chaos {\n\
+		database \"_builtin version\";\n\
+		type primary;\n\
+		update-policy {\n\
+			grant \"int\" zonesub \"any\";\n\
+		};\n\
 	};\n\
 };\n";
 
@@ -278,6 +278,7 @@ view \"_bind\" chaos {\n\
 	 * cfg_obj_t tree, but let's do it as a sanity check first.
 	 */
 	dumpblen1 = isc_buffer_remaininglength(&dumpb1);
+
 	assert_int_equal(sizeof(conf) - 1, dumpblen1);
 	assert_memory_equal(conf, dumpbdata1, dumpblen1);
 
@@ -297,6 +298,7 @@ view \"_bind\" chaos {\n\
 
 	dumpblen1 = isc_buffer_remaininglength(&dumpb1);
 	dumpblen2 = isc_buffer_remaininglength(&dumpb2);
+
 	assert_int_equal(dumpblen1, dumpblen2);
 	assert_memory_equal(dumpbdata1, dumpbdata2, dumpblen1);
 

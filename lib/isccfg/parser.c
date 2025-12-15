@@ -2678,50 +2678,147 @@ print_symval(cfg_printer_t *pctx, const char *name, cfg_obj_t *obj) {
 	}
 }
 
+typedef struct {
+	const char *key;
+	cfg_obj_t *obj;
+} cfg_mapentry_t;
+
+static int
+compare_mapentries(const void *a, const void *b) {
+	const cfg_mapentry_t *entry_a = (const cfg_mapentry_t *)a;
+	const cfg_mapentry_t *entry_b = (const cfg_mapentry_t *)b;
+	return strcmp(entry_a->key, entry_b->key);
+}
+
+static void
+print_mapentry_sorted(cfg_printer_t *pctx, const char *key, cfg_obj_t *obj) {
+	if (obj->type == &cfg_type_implicitlist) {
+		/* Multivalued. */
+		cfg_list_t *list = obj->value.list;
+		ISC_LIST_FOREACH(*list, elt, link) {
+			/*
+			 * The print function is NULL for values that should
+			 * only be present in the default config.
+			 */
+			if (elt->obj->type->print) {
+				print_symval(pctx, key, elt->obj);
+			}
+		}
+	} else {
+		/* Single-valued. Same observation about NULL print functions */
+		if (obj->type->print) {
+			print_symval(pctx, key, obj);
+		}
+	}
+}
+
+typedef struct {
+	cfg_mapentry_t stack_buffer[16];
+	cfg_mapentry_t *entries;
+	size_t size;
+	size_t capacity;
+} mapentry_buffer_t;
+
+static bool
+mapentry_buffer_is_heap_allocated(const mapentry_buffer_t *buffer) {
+	return buffer->entries != buffer->stack_buffer;
+}
+
+static void
+init_mapentry_buffer(mapentry_buffer_t *buffer) {
+	*buffer = (mapentry_buffer_t){
+		.entries = buffer->stack_buffer,
+		.size = 0,
+		.capacity = ARRAY_SIZE(buffer->stack_buffer),
+	};
+}
+
+static void
+maybe_cleanup_mapentry_buffer(mapentry_buffer_t *buffer) {
+	if (mapentry_buffer_is_heap_allocated(buffer)) {
+		isc_mem_cput(isc_g_mctx, buffer->entries, buffer->capacity,
+			     sizeof(cfg_mapentry_t));
+	}
+}
+
+static void
+realloc_mapentry_buffer(mapentry_buffer_t *buffer, size_t new_capacity) {
+	cfg_mapentry_t *new_entries;
+
+	if (mapentry_buffer_is_heap_allocated(buffer)) {
+		new_entries = isc_mem_creget(isc_g_mctx, buffer->entries,
+					     buffer->capacity, new_capacity,
+					     sizeof(cfg_mapentry_t));
+	} else {
+		/* First allocation from stack to heap */
+		new_entries = isc_mem_cget(isc_g_mctx, new_capacity,
+					   sizeof(cfg_mapentry_t));
+		memmove(new_entries, buffer->entries,
+			buffer->size * sizeof(cfg_mapentry_t));
+	}
+
+	buffer->entries = new_entries;
+	buffer->capacity = new_capacity;
+}
+
+static void
+push_mapentry(mapentry_buffer_t *buffer, const char *key, cfg_obj_t *obj) {
+	/* Expand buffer if needed */
+	if (buffer->size >= buffer->capacity) {
+		realloc_mapentry_buffer(buffer, buffer->capacity * 2);
+	}
+
+	/* Add the new entry */
+	buffer->entries[buffer->size].key = key;
+	buffer->entries[buffer->size].obj = obj;
+	buffer->size++;
+}
+
+static bool
+collect_mapentry(char *key, unsigned int type, isc_symvalue_t value,
+		 void *arg) {
+	mapentry_buffer_t *buffer = (mapentry_buffer_t *)arg;
+	cfg_obj_t *obj = value.as_pointer;
+
+	UNUSED(type);
+
+	/* Basic safety check */
+	if (obj == NULL || !VALID_CFGOBJ(obj)) {
+		return false; /* Continue iteration but skip this entry */
+	}
+
+	push_mapentry(buffer, key, obj);
+
+	return false; /* Do NOT delete the entry from the hashmap! */
+}
+
 void
 cfg_print_mapbody(cfg_printer_t *pctx, const cfg_obj_t *obj) {
-	const cfg_clausedef_t *const *clauseset;
+	mapentry_buffer_t buffer;
 
 	REQUIRE(pctx != NULL);
 	REQUIRE(VALID_CFGOBJ(obj));
 
-	for (clauseset = obj->value.map->clausesets; *clauseset != NULL;
-	     clauseset++)
-	{
-		isc_symvalue_t symval;
-		const cfg_clausedef_t *clause;
+	/* Initialize the buffer */
+	init_mapentry_buffer(&buffer);
 
-		for (clause = *clauseset; clause->name != NULL; clause++) {
-			isc_result_t result;
+	/* Collect all entries using isc_symtab_foreach */
+	isc_symtab_foreach(obj->value.map->symtab, collect_mapentry, &buffer);
 
-			if ((clause->flags & CFG_CLAUSEFLAG_BUILTINONLY) != 0) {
-				continue;
-			}
-
-			result = isc_symtab_lookup(obj->value.map->symtab,
-						   clause->name,
-						   SYMTAB_DUMMY_TYPE, &symval);
-			if (result == ISC_R_SUCCESS) {
-				cfg_obj_t *symobj = symval.as_pointer;
-				if (symobj->type == &cfg_type_implicitlist) {
-					/* Multivalued. */
-					cfg_list_t *list = symobj->value.list;
-					ISC_LIST_FOREACH(*list, elt, link) {
-						print_symval(pctx, clause->name,
-							     elt->obj);
-					}
-				} else {
-					/* Single-valued. */
-					print_symval(pctx, clause->name,
-						     symobj);
-				}
-			} else if (result == ISC_R_NOTFOUND) {
-				/* do nothing */
-			} else {
-				UNREACHABLE();
-			}
-		}
+	/* Sort entries by key */
+	if (buffer.size > 1) {
+		qsort(buffer.entries, buffer.size, sizeof(cfg_mapentry_t),
+		      compare_mapentries);
 	}
+
+	/* Print sorted entries */
+	for (size_t idx = 0; idx < buffer.size; ++idx) {
+		print_mapentry_sorted(pctx, buffer.entries[idx].key,
+				      buffer.entries[idx].obj);
+	}
+
+	/* Clean up the buffer */
+	maybe_cleanup_mapentry_buffer(&buffer);
 }
 
 static struct flagtext {
