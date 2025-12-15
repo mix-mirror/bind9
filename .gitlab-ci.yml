@@ -103,12 +103,12 @@ default:
 
 stages:
   - quick-checks
+  - other-checks
   - build
   - unit
   - system
   - performance
   - docs
-  - other-checks
   - postmerge
   - release
 
@@ -727,23 +727,6 @@ clang-format:
     expire_in: "1 week"
     when: on_failure
 
-coccinelle:
-  <<: *other_checks_job
-  rules:
-    - if: '$CI_MERGE_REQUEST_DIFF_BASE_SHA != null'
-      changes:
-        - '**/*.c'
-        - '**/*.h'
-        - 'cocci/**'
-        - 'util/check-cocci.sh'
-    - *rule_mr_manual
-    - *rule_tag
-    - *rule_source_other_than_mr
-  needs: []
-  script:
-    - util/check-cocci.sh
-    - if test "$(git status --porcelain | grep -Ev '\?\?' | wc -l)" -gt "0"; then git status --short; exit 1; fi
-
 meson-format:
   <<: *quick_checks_job
   rules:
@@ -822,6 +805,14 @@ danger:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
 
+mypy:
+  <<: *quick_checks_job
+  <<: *python_triggering_rules
+  script:
+    - mypy "bin/tests/system/isctest/"
+
+# Jobs in the other-checks stage
+
 checkbashisms:
   <<: *other_checks_job
   <<: *shell_triggering_rules
@@ -829,11 +820,135 @@ checkbashisms:
   script:
     - checkbashisms $(find . -path './.git' -prune -o -type f -exec sh -c 'head -n 1 "{}" | grep -qsF "#!/bin/sh"' \; -print)
 
-mypy:
-  <<: *quick_checks_job
-  <<: *python_triggering_rules
+coccinelle:
+  <<: *other_checks_job
+  rules:
+    - if: '$CI_MERGE_REQUEST_DIFF_BASE_SHA != null'
+      changes:
+        - '**/*.c'
+        - '**/*.h'
+        - 'cocci/**'
+        - 'util/check-cocci.sh'
+    - *rule_mr_manual
+    - *rule_tag
+    - *rule_source_other_than_mr
+  needs: []
   script:
-    - mypy "bin/tests/system/isctest/"
+    - util/check-cocci.sh
+    - if test "$(git status --porcelain | grep -Ev '\?\?' | wc -l)" -gt "0"; then git status --short; exit 1; fi
+
+# Jobs for scan-build builds on Debian 13 "trixie" (amd64)
+
+.scan_build: &scan_build
+  - ${SCAN_BUILD} --html-title="BIND 9 ($CI_COMMIT_SHORT_SHA)"
+                  --keep-cc
+                  --status-bugs
+                  --keep-going
+                  -o scan-build.reports ninja -C build
+
+scan-build:
+  <<: *other_checks_job
+  variables:
+    CC: "${CLANG}"
+    CFLAGS: "${CFLAGS_COMMON}"
+    EXTRA_CONFIGURE: "-Didn=enabled --native-file ci/clang-trixie.ini"
+  before_script:
+    - *list_installed_package_versions
+  script:
+    - *configure
+    - *scan_build
+  needs: []
+  artifacts:
+    paths:
+      - scan-build.reports/
+    when: on_failure
+
+# Coverity Scan analysis upload
+
+.coverity_prep: &coverity_prep
+  - curl --output /tmp/cov-analysis-linux64.md5 https://scan.coverity.com/download/linux64
+         --form project=$COVERITY_SCAN_PROJECT_NAME
+         --form token=$COVERITY_SCAN_TOKEN
+         --form md5=1
+  - curl --output /tmp/cov-analysis-linux64.tgz https://scan.coverity.com/download/linux64
+         --form project=$COVERITY_SCAN_PROJECT_NAME
+         --form token=$COVERITY_SCAN_TOKEN
+  - test "$(md5sum /tmp/cov-analysis-linux64.tgz | awk '{ print $1 }')" = "$(cat /tmp/cov-analysis-linux64.md5)"
+  - tar --extract --gzip --file=/tmp/cov-analysis-linux64.tgz --directory=/tmp
+  - test -d /tmp/cov-analysis-linux64-*
+
+.coverity_build: &coverity_build
+  - /tmp/cov-analysis-linux64-*/bin/cov-build --dir /tmp/cov-int sh -c 'ninja -C ./build -v'
+  - tar --create --gzip --file=/tmp/cov-int.tar.gz --directory /tmp cov-int
+  - curl -v https://scan.coverity.com/builds?project=$COVERITY_SCAN_PROJECT_NAME
+        --form token=$COVERITY_SCAN_TOKEN
+        --form email=bind-changes@isc.org
+        --form file=@/tmp/cov-int.tar.gz
+        --form version="$(git rev-parse --short HEAD)"
+        --form description="$(git rev-parse --short HEAD) / $CI_COMMIT_TITLE / $CI_COMMIT_REF_NAME:$CI_PIPELINE_ID" 2>&1
+        | tee curl-response.txt
+  - grep -q 'Build successfully submitted' curl-response.txt
+
+coverity:
+  <<: *other_checks_job
+  variables:
+    CC: gcc
+    CFLAGS: "${CFLAGS_COMMON}"
+    EXTRA_CONFIGURE: "-Doptimization=g -Ddoc=disabled -Didn=enabled"
+  script:
+    - *coverity_prep
+    - *configure
+    - *coverity_build
+  after_script:
+    - mv -v /tmp/cov-int.tar.gz ${CI_PROJECT_DIR}/
+  needs: []
+  artifacts:
+    paths:
+      - curl-response.txt
+      - cov-int.tar.gz
+    expire_in: "1 week"
+    when: on_failure
+  rules:
+    - if: '$COVERITY_SCAN_PROJECT_NAME != null && $COVERITY_SCAN_TOKEN != null'
+
+# Simple reproductibilty test, needs an image with meson >=1.6.0
+reproducible-build:
+  <<: *other_checks_job
+  <<: *alpine_3_22_amd64_image
+  needs: []
+  variables:
+    CC: gcc
+    CFLAGS: "${CFLAGS_COMMON}"
+  before_script:
+    - *list_installed_package_versions
+  script:
+    # dnstap produces an intermediate .a file, and meson considers all .a
+    # files to be final results independently of whether they are installed or
+    # not. But the content of the .a file might be unstable under LTO due to
+    # -ffat-lto-objects. Hence we disable dnstap for reproducibility tests.
+    - meson reprotest
+      --
+      -Ddnstap=disabled
+      -Ddoc=disabled
+      -Doptimization=1
+  artifacts:
+    untracked: true
+    when: on_failure
+
+# git fsck operates over the whole repository and is sufficient to schedule it
+# only in one branch, preferably "main". GitLab's clone strategy prevents us
+# from using the "bind9" repo clone; we need to clone it ourselves.
+fsck:
+  <<: *other_checks_job
+  variables:
+    GIT_STRATEGY: none
+  script:
+    - git clone https://gitlab.isc.org/isc-projects/bind9.git bind9-full-clone
+    - cd bind9-full-clone/
+    - git fsck
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+  needs: []
 
 tarball-create:
   <<: *build_job
@@ -1230,32 +1345,6 @@ gcc:trixie:amd64cross32:
     EXTRA_CONFIGURE: "--cross-file ci/amd64cross32.ini -Didn=enabled -Dgssapi=disabled -Dtracing=disabled ${WITH_LIBEDIT}"
   <<: *debian_trixie_amd64cross32_image
   <<: *build_job
-
-# Jobs for scan-build builds on Debian 13 "trixie" (amd64)
-
-.scan_build: &scan_build
-  - ${SCAN_BUILD} --html-title="BIND 9 ($CI_COMMIT_SHORT_SHA)"
-                  --keep-cc
-                  --status-bugs
-                  --keep-going
-                  -o scan-build.reports ninja -C build
-
-scan-build:
-  <<: *other_checks_job
-  variables:
-    CC: "${CLANG}"
-    CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "-Didn=enabled --native-file ci/clang-trixie.ini"
-  before_script:
-    - *list_installed_package_versions
-  script:
-    - *configure
-    - *scan_build
-  needs: []
-  artifacts:
-    paths:
-      - scan-build.reports/
-    when: on_failure
 
 # Jobs for strict OpenSSL 3.x (no deprecated) GCC builds on Debian "trixie" (amd64)
 # Run with pkcs11-provider tests
@@ -1909,54 +1998,6 @@ customer-git:tag:
   script:
     - bind9-qa/releng/push_to_customer_repository.py --tag "$CI_COMMIT_TAG" --entitlements isc-customer-settings/entitlements.yaml --force
 
-# Coverity Scan analysis upload
-
-.coverity_prep: &coverity_prep
-  - curl --output /tmp/cov-analysis-linux64.md5 https://scan.coverity.com/download/linux64
-         --form project=$COVERITY_SCAN_PROJECT_NAME
-         --form token=$COVERITY_SCAN_TOKEN
-         --form md5=1
-  - curl --output /tmp/cov-analysis-linux64.tgz https://scan.coverity.com/download/linux64
-         --form project=$COVERITY_SCAN_PROJECT_NAME
-         --form token=$COVERITY_SCAN_TOKEN
-  - test "$(md5sum /tmp/cov-analysis-linux64.tgz | awk '{ print $1 }')" = "$(cat /tmp/cov-analysis-linux64.md5)"
-  - tar --extract --gzip --file=/tmp/cov-analysis-linux64.tgz --directory=/tmp
-  - test -d /tmp/cov-analysis-linux64-*
-
-.coverity_build: &coverity_build
-  - /tmp/cov-analysis-linux64-*/bin/cov-build --dir /tmp/cov-int sh -c 'ninja -C ./build -v'
-  - tar --create --gzip --file=/tmp/cov-int.tar.gz --directory /tmp cov-int
-  - curl -v https://scan.coverity.com/builds?project=$COVERITY_SCAN_PROJECT_NAME
-        --form token=$COVERITY_SCAN_TOKEN
-        --form email=bind-changes@isc.org
-        --form file=@/tmp/cov-int.tar.gz
-        --form version="$(git rev-parse --short HEAD)"
-        --form description="$(git rev-parse --short HEAD) / $CI_COMMIT_TITLE / $CI_COMMIT_REF_NAME:$CI_PIPELINE_ID" 2>&1
-        | tee curl-response.txt
-  - grep -q 'Build successfully submitted' curl-response.txt
-
-coverity:
-  <<: *other_checks_job
-  variables:
-    CC: gcc
-    CFLAGS: "${CFLAGS_COMMON}"
-    EXTRA_CONFIGURE: "-Doptimization=g -Ddoc=disabled -Didn=enabled"
-  script:
-    - *coverity_prep
-    - *configure
-    - *coverity_build
-  after_script:
-    - mv -v /tmp/cov-int.tar.gz ${CI_PROJECT_DIR}/
-  needs: []
-  artifacts:
-    paths:
-      - curl-response.txt
-      - cov-int.tar.gz
-    expire_in: "1 week"
-    when: on_failure
-  rules:
-    - if: '$COVERITY_SCAN_PROJECT_NAME != null && $COVERITY_SCAN_TOKEN != null'
-
 # Respdiff tests
 
 respdiff:
@@ -2103,45 +2144,6 @@ stress-test-child-pipeline:
   needs:
     - job: generate-stress-test-configs
       artifacts: true
-
-# Simple reproductibilty test, needs an image with meson >=1.6.0
-reproducible-build:
-  <<: *other_checks_job
-  <<: *alpine_3_22_amd64_image
-  needs: []
-  variables:
-    CC: gcc
-    CFLAGS: "${CFLAGS_COMMON}"
-  before_script:
-    - *list_installed_package_versions
-  script:
-    # dnstap produces an intermediate .a file, and meson considers all .a
-    # files to be final results independently of whether they are installed or
-    # not. But the content of the .a file might be unstable under LTO due to
-    # -ffat-lto-objects. Hence we disable dnstap for reproducibility tests.
-    - meson reprotest
-      --
-      -Ddnstap=disabled
-      -Ddoc=disabled
-      -Doptimization=1
-  artifacts:
-    untracked: true
-    when: on_failure
-
-# git fsck operates over the whole repository and is sufficient to schedule it
-# only in one branch, preferably "main". GitLab's clone strategy prevents us
-# from using the "bind9" repo clone; we need to clone it ourselves.
-fsck:
-  <<: *other_checks_job
-  variables:
-    GIT_STRATEGY: none
-  script:
-    - git clone https://gitlab.isc.org/isc-projects/bind9.git bind9-full-clone
-    - cd bind9-full-clone/
-    - git fsck
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "schedule"'
-  needs: []
 
 gcov:
   <<: *other_checks_job
