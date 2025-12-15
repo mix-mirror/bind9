@@ -811,6 +811,31 @@ mypy:
   script:
     - mypy "bin/tests/system/isctest/"
 
+linkcheck:
+  <<: *quick_checks_job
+  script:
+    # Some domains tested by linkchecker may think that we connect to them too
+    # often and will refuse connection or reply with and error code, which
+    # makes this job fail. Let's check links only on Wednesdays.
+    - if [ "$(date +%w)" != "3" ]; then exit 0; fi
+    - pushd doc/arm/ > /dev/null && sphinx-build -b linkcheck . linkcheck_output/
+  artifacts:
+    paths:
+      - doc/arm/linkcheck_output/
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+  needs: []
+
+generate-stress-test-configs:
+  <<: *quick_checks_job
+  script:
+    - git clone --depth 1 https://gitlab.isc.org/isc-projects/bind9-qa.git
+    - bind9-qa/stress/generate-stress-test-configs.py > stress-test-configs.yml
+  artifacts:
+    paths:
+      - stress-test-configs.yml
+  needs: []
+
 # Jobs in the other-checks stage
 
 checkbashisms:
@@ -982,21 +1007,6 @@ changelog:
   needs: []
   artifacts:
     untracked: true
-
-linkcheck:
-  <<: *quick_checks_job
-  script:
-    # Some domains tested by linkchecker may think that we connect to them too
-    # often and will refuse connection or reply with and error code, which
-    # makes this job fail. Let's check links only on Wednesdays.
-    - if [ "$(date +%w)" != "3" ]; then exit 0; fi
-    - pushd doc/arm/ > /dev/null && sphinx-build -b linkcheck . linkcheck_output/
-  artifacts:
-    paths:
-      - doc/arm/linkcheck_output/
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "schedule"'
-  needs: []
 
 docs:
   <<: *default_triggering_rules
@@ -2110,16 +2120,6 @@ shotgun:doh-get:
     - *shotgun_rule_mr_manual
   #   - *shotgun_rule_tag
   #   - *shotgun_rule_other
-
-generate-stress-test-configs:
-  <<: *quick_checks_job
-  script:
-    - git clone --depth 1 https://gitlab.isc.org/isc-projects/bind9-qa.git
-    - bind9-qa/stress/generate-stress-test-configs.py > stress-test-configs.yml
-  artifacts:
-    paths:
-      - stress-test-configs.yml
-  needs: []
 
 stress-test-child-pipeline:
   <<: *default_triggering_rules
