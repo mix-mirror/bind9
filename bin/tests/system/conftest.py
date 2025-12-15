@@ -313,7 +313,10 @@ def expected_artifacts(request):
         "ns*/named.memstats",
         "ns*/named.run",
         "ns*/named.run.prev",
+        "core.[0-9]*-backtrace.txt",
+        "core.[0-9]*.gz",
         "pytest.log.txt",
+        "tsan.*.[0-9]*",
     ]
 
     if "USE_RR" in os.environ:
