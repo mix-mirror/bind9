@@ -102,7 +102,7 @@ default:
       - runner_system_failure
 
 stages:
-  - precheck
+  - quick-checks
   - build
   - unit
   - system
@@ -369,10 +369,12 @@ stages:
     - *rule_source_other_than_mr
     - *rule_mr_system_tests
 
-.precheck: &precheck_job
+.quick-check: &quick_checks_job
   <<: *default_triggering_rules
   <<: *base_image
-  stage: precheck
+  stage: quick-checks
+  tags:
+    - smalljob
 
 .configure: &configure
     - meson setup
@@ -633,10 +635,10 @@ stages:
 
 ### Job Definitions
 
-# Jobs in the precheck stage
+# Jobs in the quick-checks stage
 
 misc:
-  <<: *precheck_job
+  <<: *quick_checks_job
   script:
     - sh util/checklibs.sh > checklibs.out
     - sh util/check-categories.sh
@@ -653,7 +655,7 @@ misc:
     when: on_failure
 
 black:
-  <<: *precheck_job
+  <<: *quick_checks_job
   <<: *python_triggering_rules
   needs: []
   script:
@@ -667,14 +669,14 @@ black:
     when: on_failure
 
 vulture:
-  <<: *precheck_job
+  <<: *quick_checks_job
   <<: *python_triggering_rules
   needs: []
   script:
     - vulture --exclude "*ans.py,conftest.py,isctest" --ignore-names "after_servers_start,bootstrap,pytestmark" bin/tests/system/
 
 ci-variables:
-  <<: *precheck_job
+  <<: *quick_checks_job
   script:
     # When testing a .0 release, compare it against the previous development
     # release (e.g., 9.19.0 and 9.18.0 should both be compared against 9.17.22).
@@ -686,7 +688,7 @@ ci-variables:
       dotenv: ci_vars.env
 
 ci-orphaned-anchors:
-  <<: *precheck_job
+  <<: *quick_checks_job
   script:
     - git clone --depth 1 https://gitlab.isc.org/isc-projects/bind9-qa.git
     - bind9-qa/ci-orphaned-anchors/check-orphaned-anchors-ci.py .gitlab-ci.yml
@@ -697,7 +699,7 @@ ci-orphaned-anchors:
         - .gitlab-ci.yml
 
 clang-format:
-  <<: *precheck_job
+  <<: *quick_checks_job
   rules:
     - if: '$CI_MERGE_REQUEST_DIFF_BASE_SHA != null'
       changes:
@@ -720,7 +722,7 @@ clang-format:
     when: on_failure
 
 coccinelle:
-  <<: *precheck_job
+  <<: *quick_checks_job
   rules:
     - if: '$CI_MERGE_REQUEST_DIFF_BASE_SHA != null'
       changes:
@@ -737,7 +739,7 @@ coccinelle:
     - if test "$(git status --porcelain | grep -Ev '\?\?' | wc -l)" -gt "0"; then git status --short; exit 1; fi
 
 meson-format:
-  <<: *precheck_job
+  <<: *quick_checks_job
   rules:
     - if: '$CI_MERGE_REQUEST_DIFF_BASE_SHA != null'
       changes:
@@ -761,7 +763,7 @@ meson-format:
         - "**/meson.build"
 
 doctest:
-  <<: *precheck_job
+  <<: *quick_checks_job
   needs: []
   script:
     - *configure
@@ -772,7 +774,7 @@ doctest:
       "$PYTEST" --noconftest --doctest-modules
 
 pylint:
-  <<: *precheck_job
+  <<: *quick_checks_job
   <<: *python_triggering_rules
   needs: []
   variables:
@@ -783,7 +785,7 @@ pylint:
     - pylint --rcfile $CI_PROJECT_DIR/.pylintrc --disable=wrong-import-position $(git ls-files 'bin/tests/system/*.py' | grep -vE '(ans\.py|vulture_ignore_list\.py)')
 
 reuse:
-  <<: *precheck_job
+  <<: *quick_checks_job
   needs: []
   image:
     name: docker.io/fsfe/reuse:latest
@@ -792,7 +794,7 @@ reuse:
     - reuse lint
 
 shfmt:
-  <<: *precheck_job
+  <<: *quick_checks_job
   <<: *shell_triggering_rules
   needs: []
   script:
@@ -806,7 +808,7 @@ shfmt:
     when: on_failure
 
 danger:
-  <<: *precheck_job
+  <<: *quick_checks_job
   needs: []
   script:
     - pip install git+https://gitlab.isc.org/isc-projects/hazard.git
@@ -815,21 +817,20 @@ danger:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
 
 checkbashisms:
-  <<: *precheck_job
+  <<: *quick_checks_job
   <<: *shell_triggering_rules
   needs: []
   script:
     - checkbashisms $(find . -path './.git' -prune -o -type f -exec sh -c 'head -n 1 "{}" | grep -qsF "#!/bin/sh"' \; -print)
 
 mypy:
-  <<: *precheck_job
+  <<: *quick_checks_job
   <<: *python_triggering_rules
-  stage: precheck
   script:
     - mypy "bin/tests/system/isctest/"
 
 tarball-create:
-  stage: precheck
+  stage: quick-checks
   <<: *base_image
   <<: *default_triggering_rules
   script:
@@ -2070,9 +2071,7 @@ shotgun:doh-get:
   #   - *shotgun_rule_other
 
 generate-stress-test-configs:
-  <<: *base_image
-  <<: *default_triggering_rules
-  stage: precheck
+  <<: *quick_checks_job
   script:
     - git clone --depth 1 https://gitlab.isc.org/isc-projects/bind9-qa.git
     - bind9-qa/stress/generate-stress-test-configs.py > stress-test-configs.yml
