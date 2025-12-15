@@ -21,7 +21,6 @@ from typing import (
     List,
     Optional,
     Tuple,
-    Type,
     Union,
     cast,
 )
@@ -29,6 +28,7 @@ from typing import (
 import abc
 import asyncio
 import contextlib
+import copy
 import enum
 import functools
 import logging
@@ -39,24 +39,20 @@ import signal
 import struct
 import sys
 
+import dns.exception
 import dns.flags
 import dns.message
 import dns.name
 import dns.node
 import dns.rcode
+import dns.rdata
 import dns.rdataclass
+import dns.rdataset
 import dns.rdatatype
 import dns.rrset
 import dns.tsig
 import dns.version
 import dns.zone
-
-try:
-    RdataType = dns.rdatatype.RdataType
-    RdataClass = dns.rdataclass.RdataClass
-except AttributeError:  # dnspython < 2.0.0 compat
-    RdataType = int  # type: ignore
-    RdataClass = int  # type: ignore
 
 
 _UdpHandler = Callable[
@@ -274,11 +270,17 @@ class QueryContext:
     response: dns.message.Message
     peer: Peer
     protocol: DnsProtocol
-    zone: Optional[dns.zone.Zone] = None
-    soa: Optional[dns.rrset.RRset] = None
-    node: Optional[dns.node.Node] = None
-    answer: Optional[dns.rdataset.Rdataset] = None
-    alias: Optional[dns.name.Name] = None
+    zone: Optional[dns.zone.Zone] = field(default=None, init=False)
+    soa: Optional[dns.rrset.RRset] = field(default=None, init=False)
+    node: Optional[dns.node.Node] = field(default=None, init=False)
+    answer: Optional[dns.rdataset.Rdataset] = field(default=None, init=False)
+    alias: Optional[dns.name.Name] = field(default=None, init=False)
+    _initialized_response: Optional[dns.message.Message] = field(
+        default=None, init=False
+    )
+    _initialized_response_with_zone_data: Optional[dns.message.Message] = field(
+        default=None, init=False
+    )
 
     @property
     def qname(self) -> dns.name.Name:
@@ -289,12 +291,29 @@ class QueryContext:
         return self.alias or self.qname
 
     @property
-    def qclass(self) -> RdataClass:
+    def qclass(self) -> dns.rdataclass.RdataClass:
         return self.query.question[0].rdclass
 
     @property
-    def qtype(self) -> RdataType:
+    def qtype(self) -> dns.rdatatype.RdataType:
         return self.query.question[0].rdtype
+
+    def prepare_new_response(
+        self, /, with_zone_data: bool = True
+    ) -> dns.message.Message:
+        if with_zone_data:
+            assert self._initialized_response_with_zone_data
+            self.response = copy.deepcopy(self._initialized_response_with_zone_data)
+        else:
+            assert self._initialized_response
+            self.response = copy.deepcopy(self._initialized_response)
+        return self.response
+
+    def mark_response_as_initialized(self, /, with_zone_data: bool) -> None:
+        if with_zone_data:
+            self._initialized_response_with_zone_data = copy.deepcopy(self.response)
+        else:
+            self._initialized_response = copy.deepcopy(self.response)
 
 
 @dataclass
@@ -756,6 +775,10 @@ class _DnsMessageWithTsigDisabled(dns.message.Message):
             return super().to_wire(*args, **kwargs)
 
 
+class _NoKeyringType:
+    pass
+
+
 class AsyncDnsServer(AsyncServer):
     """
     DNS server which responds to queries based on zone data and/or custom
@@ -774,9 +797,13 @@ class AsyncDnsServer(AsyncServer):
 
     def __init__(
         self,
+        /,
         default_rcode: dns.rcode.Rcode = dns.rcode.REFUSED,
+        default_aa: bool = True,
+        keyring: Union[
+            Dict[dns.name.Name, dns.tsig.Key], None, _NoKeyringType
+        ] = _NoKeyringType(),
         acknowledge_manual_dname_handling: bool = False,
-        acknowledge_tsig_dnspython_hacks: bool = False,
     ) -> None:
         super().__init__(self._handle_udp, self._handle_tcp, "ans.pid")
 
@@ -784,8 +811,9 @@ class AsyncDnsServer(AsyncServer):
         self._connection_handler: Optional[ConnectionHandler] = None
         self._response_handlers: List[ResponseHandler] = []
         self._default_rcode = default_rcode
+        self._default_aa = default_aa
+        self._keyring = keyring
         self._acknowledge_manual_dname_handling = acknowledge_manual_dname_handling
-        self._acknowledge_tsig_dnspython_hacks = acknowledge_tsig_dnspython_hacks
 
         self._load_zones()
 
@@ -807,6 +835,10 @@ class AsyncDnsServer(AsyncServer):
             self._response_handlers.insert(0, handler)
         else:
             self._response_handlers.append(handler)
+
+    def install_response_handlers(self, handlers: List[ResponseHandler]) -> None:
+        for handler in handlers:
+            self.install_response_handler(handler)
 
     def uninstall_response_handler(self, handler: ResponseHandler) -> None:
         """
@@ -1060,10 +1092,7 @@ class AsyncDnsServer(AsyncServer):
         Yield wire data to send as a response over the established transport.
         """
         try:
-            query = dns.message.from_wire(wire)
-        except dns.message.UnknownTSIGKey:
-            self._abort_if_tsig_signed_query_received_unless_acknowledged()
-            query = _DnsMessageWithTsigDisabled.from_wire(wire)
+            query = self._parse_message(wire)
         except dns.exception.DNSException as exc:
             logging.error("Invalid query from %s (%s): %s", peer, wire.hex(), exc)
             return
@@ -1082,16 +1111,26 @@ class AsyncDnsServer(AsyncServer):
                     response_length = struct.pack("!H", len(response))
                     yield response_length + response
 
-    def _abort_if_tsig_signed_query_received_unless_acknowledged(self) -> None:
-        if self._acknowledge_tsig_dnspython_hacks:
-            return
+    def _parse_message(self, wire: bytes) -> dns.message.Message:
+        try:
+            if isinstance(self._keyring, _NoKeyringType):
+                keyring = None
+            else:
+                keyring = self._keyring
+            return dns.message.from_wire(wire, keyring=keyring)
+        except dns.message.UnknownTSIGKey:
+            if isinstance(self._keyring, _NoKeyringType):
+                self._abort_if_tsig_signed_query_received_unless_acknowledged()
+            if self._keyring is None:
+                return _DnsMessageWithTsigDisabled.from_wire(wire)
+            raise
 
-        error = "TSIG-signed query received; "
-        error += "due to a bug in dnspython, this requires some hacking around; "
-        error += "you may experience unexpected behavior when dealing with TSIG; "
-        error += "TSIG validation is disabled, so any TSIG handling must be done "
-        error += "manually; pass `acknowledge_tsig_dnspython_hacks=True` to the "
-        error += "AsyncDnsServer constructor to acknowledge this and continue."
+    def _abort_if_tsig_signed_query_received_unless_acknowledged(self) -> None:
+        error = "TSIG-signed query received but no `keyring` was provided; "
+        error += "either provide a keyring (in which case the server will ignore "
+        error += "any TSIG-invalid queries), or set `keyring=None` explicitly "
+        error += "to disable TSIG validation altogether. This requires some hacking "
+        error += "around a dnspython bug, so there may be unexpected side effects."
 
         raise ValueError(error)
 
@@ -1102,8 +1141,12 @@ class AsyncDnsServer(AsyncServer):
         Yield response(s) either from response handlers or zone data.
         """
         qctx.response.set_rcode(self._default_rcode)
+        if self._default_aa:
+            qctx.response.flags |= dns.flags.AA
+        qctx.mark_response_as_initialized(with_zone_data=False)
 
         self._prepare_response_from_zone_data(qctx)
+        qctx.mark_response_as_initialized(with_zone_data=True)
 
         response_handled = False
         async for action in self._run_response_handlers(qctx):
@@ -1281,22 +1324,29 @@ class ControllableAsyncDnsServer(AsyncDnsServer):
 
     _CONTROL_DOMAIN = "_control."
 
-    def __init__(self, commands: List[Type["ControlCommand"]]):
-        super().__init__()
-        self._control_domain = dns.name.from_text(self._CONTROL_DOMAIN)
-        self._commands: Dict[dns.name.Name, "ControlCommand"] = {}
-        for command_class in commands:
-            command = command_class()
-            command_subdomain = dns.name.Name([command.control_subdomain])
-            control_subdomain = command_subdomain.concatenate(self._control_domain)
-            try:
-                existing_command = self._commands[control_subdomain]
-            except KeyError:
-                self._commands[control_subdomain] = command
-            else:
-                raise RuntimeError(
-                    f"{control_subdomain} already handled by {existing_command}"
-                )
+    @functools.cached_property
+    def _control_domain(self) -> dns.name.Name:
+        return dns.name.from_text(self._CONTROL_DOMAIN)
+
+    @functools.cached_property
+    def _commands(self) -> Dict[dns.name.Name, "ControlCommand"]:
+        return {}
+
+    def install_control_commands(self, commands: List["ControlCommand"]) -> None:
+        for command in commands:
+            self.install_control_command(command)
+
+    def install_control_command(self, command: "ControlCommand") -> None:
+        command_subdomain = dns.name.Name([command.control_subdomain])
+        control_subdomain = command_subdomain.concatenate(self._control_domain)
+        try:
+            existing_command = self._commands[control_subdomain]
+        except KeyError:
+            self._commands[control_subdomain] = command
+        else:
+            raise RuntimeError(
+                f"{control_subdomain} already handled by {existing_command}"
+            )
 
     async def _prepare_responses(
         self, qctx: QueryContext

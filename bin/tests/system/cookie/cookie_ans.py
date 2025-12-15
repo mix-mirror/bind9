@@ -11,7 +11,11 @@
 
 from typing import AsyncGenerator
 
-import dns
+import dns.edns
+import dns.name
+import dns.rcode
+import dns.rdatatype
+import dns.rrset
 import dns.tsigkeyring
 
 from isctest.asyncserver import (
@@ -31,16 +35,6 @@ KEYRING = dns.tsigkeyring.from_text(
         "fake": (ALG_VARS["DEFAULT_HMAC"], "aaaaaaaaaaaa"),
     }
 )
-
-
-def _reparse_with_keyring(qctx: QueryContext) -> None:
-    """
-    `isctest.asyncserver` doesn't support TSIG signing and validation properly
-    and hacks around it. However, here we need to be able to sign responses with
-    TSIG, so we reparse the query and recreate the response stub here.
-    """
-    qctx.query = dns.message.from_wire(qctx.query.to_wire(), keyring=KEYRING)
-    qctx.response = dns.message.make_response(qctx.query)
 
 
 def _first_label(qctx: QueryContext) -> str:
@@ -68,7 +62,7 @@ def _tld(qctx: QueryContext) -> dns.name.Name:
 
 def _soa(qctx: QueryContext) -> dns.rrset.RRset:
     return dns.rrset.from_text(
-        _tld(qctx), 2, dns.rdataclass.IN, dns.rdatatype.SOA, ". . 0 0 0 0 2"
+        _tld(qctx), 2, qctx.qclass, dns.rdatatype.SOA, ". . 0 0 0 0 2"
     )
 
 
@@ -80,21 +74,19 @@ def _ns(qctx: QueryContext) -> dns.rrset.RRset:
     return dns.rrset.from_text(
         qctx.qname,
         1,
-        dns.rdataclass.IN,
+        qctx.qclass,
         dns.rdatatype.NS,
         _ns_name(qctx).to_text(),
     )
 
 
 def _legit_a(qctx: QueryContext) -> dns.rrset.RRset:
-    return dns.rrset.from_text(
-        qctx.qname, 1, dns.rdataclass.IN, dns.rdatatype.A, "10.53.0.9"
-    )
+    return dns.rrset.from_text(qctx.qname, 1, qctx.qclass, dns.rdatatype.A, "10.53.0.9")
 
 
 def _spoofed_a(qctx: QueryContext) -> dns.rrset.RRset:
     return dns.rrset.from_text(
-        qctx.qname, 1, dns.rdataclass.IN, dns.rdatatype.A, "10.53.0.10"
+        qctx.qname, 1, qctx.qclass, dns.rdatatype.A, "10.53.0.10"
     )
 
 
@@ -110,14 +102,13 @@ class NsHandler(_SpoofableHandler):
     async def get_responses(
         self, qctx: QueryContext
     ) -> AsyncGenerator[DnsResponseSend, None]:
-        _reparse_with_keyring(qctx)
         _add_cookie(qctx)
         qctx.response.answer.append(_ns(qctx))
         if self.evil_server:
             qctx.response.authority.append(_spoofed_a(qctx))
         else:
             qctx.response.authority.append(_legit_a(qctx))
-        yield DnsResponseSend(qctx.response, authoritative=True)
+        yield DnsResponseSend(qctx.response)
 
 
 class GlueHandler(_SpoofableHandler):
@@ -127,13 +118,12 @@ class GlueHandler(_SpoofableHandler):
     async def get_responses(
         self, qctx: QueryContext
     ) -> AsyncGenerator[DnsResponseSend, None]:
-        _reparse_with_keyring(qctx)
         _add_cookie(qctx)
         if self.evil_server:
             qctx.response.answer.append(_spoofed_a(qctx))
         else:
             qctx.response.answer.append(_legit_a(qctx))
-        yield DnsResponseSend(qctx.response, authoritative=True)
+        yield DnsResponseSend(qctx.response)
 
 
 class TcpAHandler(ResponseHandler):
@@ -143,11 +133,10 @@ class TcpAHandler(ResponseHandler):
     async def get_responses(
         self, qctx: QueryContext
     ) -> AsyncGenerator[DnsResponseSend, None]:
-        _reparse_with_keyring(qctx)
         if _first_label(qctx) != "nocookie":
             _add_cookie(qctx)
         qctx.response.answer.append(_legit_a(qctx))
-        yield DnsResponseSend(qctx.response, authoritative=True)
+        yield DnsResponseSend(qctx.response)
 
 
 class WithtsigUdpAHandler(ResponseHandler):
@@ -161,16 +150,15 @@ class WithtsigUdpAHandler(ResponseHandler):
     async def get_responses(
         self, qctx: QueryContext
     ) -> AsyncGenerator[DnsResponseSend, None]:
-        _reparse_with_keyring(qctx)
         qctx.response.answer.append(_legit_a(qctx))
         qctx.response.answer.append(_spoofed_a(qctx))
         qctx.response.use_tsig(keyring=KEYRING, keyname="fake")
-        yield DnsResponseSend(qctx.response, authoritative=True)
+        yield DnsResponseSend(qctx.response)
 
-        _reparse_with_keyring(qctx)
+        qctx.prepare_new_response()
         _add_cookie(qctx)
         qctx.response.answer.append(_legit_a(qctx))
-        yield DnsResponseSend(qctx.response, authoritative=True)
+        yield DnsResponseSend(qctx.response)
 
 
 class UdpAHandler(ResponseHandler):
@@ -180,35 +168,39 @@ class UdpAHandler(ResponseHandler):
     async def get_responses(
         self, qctx: QueryContext
     ) -> AsyncGenerator[DnsResponseSend, None]:
-        _reparse_with_keyring(qctx)
         qctx.response.answer.append(_legit_a(qctx))
         if _first_label(qctx) not in ("nocookie", "tcponly"):
             _add_cookie(qctx)
         else:
             qctx.response.answer.append(_spoofed_a(qctx))
 
-        yield DnsResponseSend(qctx.response, authoritative=True)
+        yield DnsResponseSend(qctx.response)
 
 
 class FallbackHandler(ResponseHandler):
     async def get_responses(
         self, qctx: QueryContext
     ) -> AsyncGenerator[DnsResponseSend, None]:
-        _reparse_with_keyring(qctx)
         _add_cookie(qctx)
         if qctx.qtype == dns.rdatatype.SOA:
             qctx.response.answer.append(_soa(qctx))
         else:
             qctx.response.authority.append(_soa(qctx))
-        yield DnsResponseSend(qctx.response, authoritative=True)
+        yield DnsResponseSend(qctx.response)
 
 
 def cookie_server(evil: bool) -> AsyncDnsServer:
-    server = AsyncDnsServer(acknowledge_tsig_dnspython_hacks=True)
-    server.install_response_handler(NsHandler(evil))
-    server.install_response_handler(GlueHandler(evil))
-    server.install_response_handler(TcpAHandler())
-    server.install_response_handler(WithtsigUdpAHandler())
-    server.install_response_handler(UdpAHandler())
-    server.install_response_handler(FallbackHandler())
+    server = AsyncDnsServer(
+        keyring=KEYRING, default_aa=True, default_rcode=dns.rcode.NOERROR
+    )
+    server.install_response_handlers(
+        [
+            NsHandler(evil),
+            GlueHandler(evil),
+            TcpAHandler(),
+            WithtsigUdpAHandler(),
+            UdpAHandler(),
+            FallbackHandler(),
+        ]
+    )
     return server

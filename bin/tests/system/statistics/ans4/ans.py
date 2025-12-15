@@ -13,7 +13,9 @@ information regarding copyright ownership.
 
 from typing import AsyncGenerator
 
-import dns
+import dns.rcode
+import dns.rdatatype
+import dns.rrset
 
 from isctest.asyncserver import (
     AsyncDnsServer,
@@ -159,18 +161,19 @@ class FallbackHandler(ResponseHandler):
 
 def main() -> None:
     server = AsyncDnsServer(default_rcode=dns.rcode.NOERROR)
-    for handler in (
-        BadGoodCnameHandler,
-        Cname1Handler,
-        Cname2Handler,
-        ExampleHandler,
-        FooInfoHandler,
-        NoDataHandler,
-        NxdomainHandler,
-        SubHandler,
-        FallbackHandler,
-    ):
-        server.install_response_handler(handler())
+    server.install_response_handlers(
+        [
+            BadGoodCnameHandler(),
+            Cname1Handler(),
+            Cname2Handler(),
+            ExampleHandler(),
+            FooInfoHandler(),
+            NoDataHandler(),
+            NxdomainHandler(),
+            SubHandler(),
+            FallbackHandler(),
+        ]
+    )
     server.run()
 
 

@@ -13,7 +13,9 @@ information regarding copyright ownership.
 
 from typing import AsyncGenerator
 
-import dns
+import dns.rcode
+import dns.rdatatype
+import dns.rrset
 
 from isctest.asyncserver import (
     AsyncDnsServer,
@@ -32,11 +34,10 @@ class ReplyA(ResponseHandler):
         self, qctx: QueryContext
     ) -> AsyncGenerator[DnsResponseSend, None]:
         a_rrset = dns.rrset.from_text(
-            qctx.qname, 300, dns.rdataclass.IN, dns.rdatatype.A, "10.53.0.5"
+            qctx.qname, 300, qctx.qclass, dns.rdatatype.A, "10.53.0.5"
         )
         qctx.response.answer.append(a_rrset)
-        qctx.response.set_rcode(dns.rcode.NOERROR)
-        yield DnsResponseSend(qctx.response, authoritative=True)
+        yield DnsResponseSend(qctx.response)
 
 
 class IgnoreNs(ResponseHandler):
@@ -49,19 +50,9 @@ class IgnoreNs(ResponseHandler):
         yield ResponseDrop()
 
 
-class FallbackHandler(ResponseHandler):
-    async def get_responses(
-        self, qctx: QueryContext
-    ) -> AsyncGenerator[DnsResponseSend, None]:
-        qctx.response.set_rcode(dns.rcode.NOERROR)
-        yield DnsResponseSend(qctx.response, authoritative=True)
-
-
 def main() -> None:
-    server = AsyncDnsServer()
-    server.install_response_handler(ReplyA())
-    server.install_response_handler(IgnoreNs())
-    server.install_response_handler(FallbackHandler())
+    server = AsyncDnsServer(default_aa=True, default_rcode=dns.rcode.NOERROR)
+    server.install_response_handlers([ReplyA(), IgnoreNs()])
     server.run()
 
 

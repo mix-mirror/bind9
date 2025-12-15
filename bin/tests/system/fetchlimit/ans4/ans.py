@@ -13,7 +13,9 @@ information regarding copyright ownership.
 
 from typing import AsyncGenerator
 
-import dns
+import dns.rcode
+import dns.rdatatype
+import dns.rrset
 
 from isctest.asyncserver import (
     ControllableAsyncDnsServer,
@@ -33,13 +35,15 @@ class MaybeDelayedAddressAnswerHandler(ResponseHandler):
             rrset = dns.rrset.from_text(qctx.qname, 300, qctx.qclass, qctx.qtype, addr)
             qctx.response.answer.append(rrset)
 
-        qctx.response.set_rcode(dns.rcode.NOERROR)
         delay = 0.05 if qctx.qname.labels[0].startswith(b"latency") else 0.00
-        yield DnsResponseSend(qctx.response, delay=delay, authoritative=True)
+        yield DnsResponseSend(qctx.response, delay=delay)
 
 
 def main() -> None:
-    server = ControllableAsyncDnsServer([ToggleResponsesCommand])
+    server = ControllableAsyncDnsServer(
+        default_aa=True, default_rcode=dns.rcode.NOERROR
+    )
+    server.install_control_command(ToggleResponsesCommand())
     server.install_response_handler(MaybeDelayedAddressAnswerHandler())
     server.run()
 

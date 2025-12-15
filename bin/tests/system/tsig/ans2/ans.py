@@ -40,7 +40,7 @@ class TruncatedWithLastByteDroppedHandler(ResponseHandler):
 
 
 def main() -> None:
-    server = AsyncDnsServer(acknowledge_tsig_dnspython_hacks=True)
+    server = AsyncDnsServer(keyring=None)
     server.install_response_handler(TruncatedWithLastByteDroppedHandler())
     server.run()
 

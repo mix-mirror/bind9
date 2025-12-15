@@ -14,10 +14,7 @@ information regarding copyright ownership.
 import ipaddress
 from typing import AsyncGenerator
 
-import dns.flags
-import dns.message
-import dns.rdata
-import dns.rdataclass
+import dns.rcode
 import dns.rdatatype
 import dns.rrset
 
@@ -48,12 +45,11 @@ class IncrementARecordHandler(ResponseHandler):
             qctx.response.answer.append(rrset)
             self._ip_address += 1
 
-        qctx.response.set_rcode(dns.rcode.NOERROR)
-        yield DnsResponseSend(qctx.response, authoritative=True)
+        yield DnsResponseSend(qctx.response)
 
 
 def main() -> None:
-    server = AsyncDnsServer()
+    server = AsyncDnsServer(default_aa=True, default_rcode=dns.rcode.NOERROR)
     server.install_response_handler(IncrementARecordHandler())
     server.run()
 
