@@ -376,6 +376,12 @@ stages:
   tags:
     - smalljob
 
+.other-check: &other_checks_job
+  <<: *default_triggering_rules
+  <<: *base_image
+  stage: other-checks
+  needs: []
+
 .configure: &configure
     - meson setup
       --libdir=lib
@@ -1235,9 +1241,7 @@ gcc:trixie:amd64cross32:
                   -o scan-build.reports ninja -C build
 
 scan-build:
-  <<: *default_triggering_rules
-  <<: *base_image
-  stage: other-checks
+  <<: *other_checks_job
   variables:
     CC: "${CLANG}"
     CFLAGS: "${CFLAGS_COMMON}"
@@ -1932,8 +1936,7 @@ customer-git:tag:
   - grep -q 'Build successfully submitted' curl-response.txt
 
 coverity:
-  <<: *base_image
-  stage: other-checks
+  <<: *other_checks_job
   variables:
     CC: gcc
     CFLAGS: "${CFLAGS_COMMON}"
@@ -2103,9 +2106,8 @@ stress-test-child-pipeline:
 
 # Simple reproductibilty test, needs an image with meson >=1.6.0
 reproducible-build:
-  <<: *default_triggering_rules
+  <<: *other_checks_job
   <<: *alpine_3_22_amd64_image
-  stage: other-checks
   needs: []
   variables:
     CC: gcc
@@ -2130,8 +2132,7 @@ reproducible-build:
 # only in one branch, preferably "main". GitLab's clone strategy prevents us
 # from using the "bind9" repo clone; we need to clone it ourselves.
 fsck:
-  <<: *base_image
-  stage: other-checks
+  <<: *other_checks_job
   variables:
     GIT_STRATEGY: none
   script:
@@ -2143,9 +2144,7 @@ fsck:
   needs: []
 
 gcov:
-  <<: *base_image
-  <<: *default_triggering_rules
-  stage: other-checks
+  <<: *other_checks_job
   needs:
     - job: system:gcc:trixie:amd64
       artifacts: true
