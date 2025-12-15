@@ -446,13 +446,17 @@ again:
 			dns__zone_stats_increment(
 				notify->zone, dns_zonestatscounter_notifyoutv6);
 		}
-	} else if (result == ISC_R_SHUTTINGDOWN || result == ISC_R_CANCELED) {
+	} else if (result == ISC_R_SHUTTINGDOWN || result == ISC_R_CANCELED ||
+		   result == ISC_R_ADDRNOTAVAIL)
+	{
 		goto cleanup_key;
 	} else if ((notify->flags & DNS_NOTIFY_TCP) == 0) {
 		notify_log(notify, ISC_LOG_NOTICE,
 			   "notify to %s failed: %s: retrying over TCP",
 			   addrbuf, isc_result_totext(result));
 		notify->flags |= DNS_NOTIFY_TCP;
+		result = dns_message_settsigkey(message, NULL);
+		RUNTIME_CHECK(result == ISC_R_SUCCESS);
 		goto again;
 	}
 
