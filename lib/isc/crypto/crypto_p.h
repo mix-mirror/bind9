@@ -13,31 +13,6 @@
 
 #pragma once
 
-#include <isc/types.h>
+#include <openssl/evp.h>
 
-bool
-isc_crypto_fips_mode(void);
-/*
- * Return if FIPS mode is currently enabled or not.
- */
-
-isc_result_t
-isc_crypto_fips_enable(void);
-/*
- * Enable FIPS mode. It cannot be disabled afterwards.
- *
- * This function is NOT thread safe.
- */
-
-/**
- * Private
- */
-
-void
-isc__crypto_setdestroycheck(bool check);
-
-void
-isc__crypto_initialize(void);
-
-void
-isc__crypto_shutdown(void);
+extern EVP_MD *isc__crypto_md[];

@@ -62,8 +62,6 @@
 
 typedef struct dst_func dst_func_t;
 
-typedef struct dst_hmac_key dst_hmac_key_t;
-
 /*%
  * Indicate whether a DST context will be used for signing
  * or for verification
@@ -93,7 +91,7 @@ struct dst_key {
 	union {
 		void *generic;
 		dns_gss_ctx_id_t gssctx;
-		dst_hmac_key_t *hmac_key;
+		isc_hmac_key_t *hmac_key;
 		struct {
 			EVP_PKEY *pub;
 			EVP_PKEY *priv;

@@ -20,7 +20,9 @@ endif
 # isc_inc += include_directories('include')
 isc_inc_p += include_directories('.')
 
+subdir('crypto')
 subdir('netmgr')
+subdir('ossl_wrap')
 
 isc_srcset.add(
     m_dep,
@@ -75,7 +77,6 @@ isc_srcset.add(
         'base64.c',
         'commandline.c',
         'counter.c',
-        'crypto.c',
         'dir.c',
         'errno.c',
         'errno2result.c',
@@ -88,7 +89,6 @@ isc_srcset.add(
         'helper.c',
         'hex.c',
         'histo.c',
-        'hmac.c',
         'ht.c',
         'httpd.c',
         'interfaceiter.c',

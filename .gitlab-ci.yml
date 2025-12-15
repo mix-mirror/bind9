@@ -1252,7 +1252,7 @@ scan-build:
       - scan-build.reports/
     when: on_failure
 
-# Jobs for strict OpenSSL 3.x (no deprecated) GCC builds on Debian "trixie" (amd64)
+# Jobs for regular GCC builds on Debian "trixie" (amd64)
 # Run with pkcs11-provider tests
 
 gcc:ossl3:trixie:amd64:
@@ -1260,7 +1260,7 @@ gcc:ossl3:trixie:amd64:
   <<: *build_job
   variables:
     CC: gcc
-    CFLAGS: "${CFLAGS_COMMON} -DOPENSSL_NO_DEPRECATED=1 -DOPENSSL_API_COMPAT=30000"
+    CFLAGS: "${CFLAGS_COMMON}"
     # See https://gitlab.isc.org/isc-projects/bind9/-/issues/3444
     EXTRA_CONFIGURE: "-Doptimization=3 -Djemalloc=disabled -Dleak-detection=disabled"
     RUN_MESON_INSTALL: 1

@@ -18,7 +18,6 @@
 
 #pragma once
 
-#include <isc/crypto.h>
 #include <isc/result.h>
 #include <isc/types.h>
 
@@ -35,27 +34,29 @@ typedef void isc_md_t;
  *
  * Enumeration of supported message digest algorithms.
  */
-typedef void isc_md_type_t;
+typedef enum isc_md_type {
+	ISC_MD_UNKNOWN = 0x00,
+	ISC_MD_MD5 = 0x01,
+	ISC_MD_SHA1 = 0x02,
+	ISC_MD_SHA224 = 0x03,
+	ISC_MD_SHA256 = 0x04,
+	ISC_MD_SHA384 = 0x05,
+	ISC_MD_SHA512 = 0x06,
+	ISC_MD_MAX = 0x07,
+} isc_md_type_t;
 
-#define ISC_MD_MD5    isc__crypto_md5
-#define ISC_MD_SHA1   isc__crypto_sha1
-#define ISC_MD_SHA224 isc__crypto_sha224
-#define ISC_MD_SHA256 isc__crypto_sha256
-#define ISC_MD_SHA384 isc__crypto_sha384
-#define ISC_MD_SHA512 isc__crypto_sha512
-
-#define ISC_MD5_DIGESTLENGTH	isc_md_type_get_size(ISC_MD_MD5)
-#define ISC_MD5_BLOCK_LENGTH	isc_md_type_get_block_size(ISC_MD_MD5)
-#define ISC_SHA1_DIGESTLENGTH	isc_md_type_get_size(ISC_MD_SHA1)
-#define ISC_SHA1_BLOCK_LENGTH	isc_md_type_get_block_size(ISC_MD_SHA1)
-#define ISC_SHA224_DIGESTLENGTH isc_md_type_get_size(ISC_MD_SHA224)
-#define ISC_SHA224_BLOCK_LENGTH isc_md_type_get_block_size(ISC_MD_SHA224)
-#define ISC_SHA256_DIGESTLENGTH isc_md_type_get_size(ISC_MD_SHA256)
-#define ISC_SHA256_BLOCK_LENGTH isc_md_type_get_block_size(ISC_MD_SHA256)
-#define ISC_SHA384_DIGESTLENGTH isc_md_type_get_size(ISC_MD_SHA384)
-#define ISC_SHA384_BLOCK_LENGTH isc_md_type_get_block_size(ISC_MD_SHA384)
-#define ISC_SHA512_DIGESTLENGTH isc_md_type_get_size(ISC_MD_SHA512)
-#define ISC_SHA512_BLOCK_LENGTH isc_md_type_get_block_size(ISC_MD_SHA512)
+#define ISC_MD5_DIGESTLENGTH	16
+#define ISC_MD5_BLOCK_LENGTH	64
+#define ISC_SHA1_DIGESTLENGTH	20
+#define ISC_SHA1_BLOCK_LENGTH	64
+#define ISC_SHA224_DIGESTLENGTH 28
+#define ISC_SHA224_BLOCK_LENGTH 64
+#define ISC_SHA256_DIGESTLENGTH 32
+#define ISC_SHA256_BLOCK_LENGTH 64
+#define ISC_SHA384_DIGESTLENGTH 48
+#define ISC_SHA384_BLOCK_LENGTH 128
+#define ISC_SHA512_DIGESTLENGTH 64
+#define ISC_SHA512_BLOCK_LENGTH 128
 
 #define ISC_MAX_MD_SIZE	   64U	/* EVP_MAX_MD_SIZE */
 #define ISC_MAX_BLOCK_SIZE 128U /* ISC_SHA512_BLOCK_LENGTH */
@@ -74,7 +75,7 @@ typedef void isc_md_type_t;
  * at @digestlen, at most ISC_MAX_MD_SIZE bytes will be written.
  */
 isc_result_t
-isc_md(const isc_md_type_t *type, const unsigned char *buf, const size_t len,
+isc_md(isc_md_type_t type, const unsigned char *buf, const size_t len,
        unsigned char *digest, unsigned int *digestlen);
 
 /**
@@ -93,7 +94,7 @@ isc_md_new(void);
  * to it.
  */
 void
-isc_md_free(isc_md_t *);
+isc_md_free(isc_md_t *md);
 
 /**
  * isc_md_init:
@@ -104,7 +105,7 @@ isc_md_free(isc_md_t *);
  * initialized before calling this function.
  */
 isc_result_t
-isc_md_init(isc_md_t *, const isc_md_type_t *md_type);
+isc_md_init(isc_md_t *md, isc_md_type_t type);
 
 /**
  * isc_md_reset:
@@ -145,16 +146,6 @@ isc_result_t
 isc_md_final(isc_md_t *md, unsigned char *digest, unsigned int *digestlen);
 
 /**
- * isc_md_get_type:
- * @md: message digest contezt
- *
- * This function return the isc_md_type_t previously set for the supplied
- * message digest context or NULL if no isc_md_type_t has been set.
- */
-const isc_md_type_t *
-isc_md_get_md_type(isc_md_t *md);
-
-/**
  * isc_md_size:
  *
  * This function return the size of the message digest when passed an isc_md_t
@@ -173,19 +164,10 @@ size_t
 isc_md_get_block_size(isc_md_t *md);
 
 /**
- * isc_md_size:
- *
- * This function return the size of the message digest when passed an
- * isc_md_type_t , i.e. the size of the hash.
- */
-size_t
-isc_md_type_get_size(const isc_md_type_t *md_type);
-
-/**
  * isc_md_block_size:
  *
  * This function return the block size of the message digest when passed an
  * isc_md_type_t.
  */
 size_t
-isc_md_type_get_block_size(const isc_md_type_t *md_type);
+isc_md_type_get_block_size(isc_md_type_t type);

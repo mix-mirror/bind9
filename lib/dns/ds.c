@@ -41,7 +41,7 @@ dns_ds_fromkeyrdata(const dns_name_t *owner, dns_rdata_t *key,
 	unsigned int privatelen = 0;
 	isc_region_t r;
 	isc_md_t *md;
-	const isc_md_type_t *md_type = NULL;
+	isc_md_type_t md_type = ISC_MD_UNKNOWN;
 
 	REQUIRE(key != NULL);
 	REQUIRE(key->type == dns_rdatatype_dnskey ||

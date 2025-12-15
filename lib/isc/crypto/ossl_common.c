@@ -11,33 +11,16 @@
  * information regarding copyright ownership.
  */
 
-#pragma once
+#include <openssl/err.h>
+#include <openssl/evp.h>
 
-#include <isc/types.h>
+#include <isc/crypto.h>
+#include <isc/md.h>
 
-bool
-isc_crypto_fips_mode(void);
-/*
- * Return if FIPS mode is currently enabled or not.
- */
+#include "crypto_p.h"
 
-isc_result_t
-isc_crypto_fips_enable(void);
-/*
- * Enable FIPS mode. It cannot be disabled afterwards.
- *
- * This function is NOT thread safe.
- */
-
-/**
- * Private
- */
-
-void
-isc__crypto_setdestroycheck(bool check);
-
-void
-isc__crypto_initialize(void);
-
-void
-isc__crypto_shutdown(void);
+EVP_MD *isc__crypto_md[] = {
+	[ISC_MD_UNKNOWN] = NULL, [ISC_MD_MD5] = NULL,	 [ISC_MD_SHA1] = NULL,
+	[ISC_MD_SHA224] = NULL,	 [ISC_MD_SHA256] = NULL, [ISC_MD_SHA384] = NULL,
+	[ISC_MD_SHA512] = NULL,
+};
