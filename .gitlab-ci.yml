@@ -986,8 +986,7 @@ changelog:
     untracked: true
 
 linkcheck:
-  <<: *base_image
-  stage: docs
+  <<: *quick_checks_job
   script:
     # Some domains tested by linkchecker may think that we connect to them too
     # often and will refuse connection or reply with and error code, which
@@ -1628,9 +1627,7 @@ unit:clang:tsan:
       artifacts: true
 
 generate-tsan-stress-test-configs:
-  <<: *base_image
-  <<: *default_triggering_rules
-  stage: system
+  <<: *quick_checks_job
   script:
     - util/generate-tsan-stress-jobs.py > tsan-stress-test-configs.yml
   artifacts:
