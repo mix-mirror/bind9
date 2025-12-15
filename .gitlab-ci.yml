@@ -335,6 +335,12 @@ stages:
   tags:
     - smalljob
 
+.other-check: &other_checks_job
+  <<: *default_triggering_rules
+  <<: *base_image
+  stage: other-checks
+  needs: []
+
 .autoconf: &autoconf_job
   <<: *default_triggering_rules
   <<: *base_image
@@ -1188,9 +1194,7 @@ gcc:trixie:amd64cross32:
                   -o scan-build.reports make -j${BUILD_PARALLEL_JOBS:-1} all V=1
 
 scan-build:
-  <<: *default_triggering_rules
-  <<: *base_image
-  stage: other-checks
+  <<: *other_checks_job
   variables:
     CC: "${CLANG}"
     CFLAGS: "${CFLAGS_COMMON}"
@@ -1956,8 +1960,7 @@ customer-git:tag:
   - grep -q 'Build successfully submitted' curl-response.txt
 
 coverity:
-  <<: *base_image
-  stage: other-checks
+  <<: *other_checks_job
   variables:
     CC: gcc
     CFLAGS: "${CFLAGS_COMMON} -Og"
@@ -2128,9 +2131,7 @@ stress-test-child-pipeline:
       artifacts: true
 
 gcov:
-  <<: *base_image
-  <<: *default_triggering_rules
-  stage: other-checks
+  <<: *other_checks_job
   needs:
     - job: system:gcc:trixie:amd64
       artifacts: true
