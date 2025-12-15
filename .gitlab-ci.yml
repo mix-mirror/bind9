@@ -108,7 +108,7 @@ stages:
   - system
   - performance
   - docs
-  - postcheck
+  - other-checks
   - postmerge
   - release
 
@@ -1237,7 +1237,7 @@ gcc:trixie:amd64cross32:
 scan-build:
   <<: *default_triggering_rules
   <<: *base_image
-  stage: postcheck
+  stage: other-checks
   variables:
     CC: "${CLANG}"
     CFLAGS: "${CFLAGS_COMMON}"
@@ -1548,7 +1548,7 @@ generate-tsan-stress-test-configs:
 
 tsan:stress:
   <<: *default_triggering_rules
-  stage: postcheck
+  stage: other-checks
   variables:
     PARENT_PIPELINE_ID: $CI_PIPELINE_ID
   trigger:
@@ -1933,7 +1933,7 @@ customer-git:tag:
 
 coverity:
   <<: *base_image
-  stage: postcheck
+  stage: other-checks
   variables:
     CC: gcc
     CFLAGS: "${CFLAGS_COMMON}"
@@ -2105,7 +2105,7 @@ stress-test-child-pipeline:
 reproducible-build:
   <<: *default_triggering_rules
   <<: *alpine_3_22_amd64_image
-  stage: postcheck
+  stage: other-checks
   needs: []
   variables:
     CC: gcc
@@ -2131,7 +2131,7 @@ reproducible-build:
 # from using the "bind9" repo clone; we need to clone it ourselves.
 fsck:
   <<: *base_image
-  stage: postcheck
+  stage: other-checks
   variables:
     GIT_STRATEGY: none
   script:
@@ -2145,7 +2145,7 @@ fsck:
 gcov:
   <<: *base_image
   <<: *default_triggering_rules
-  stage: postcheck
+  stage: other-checks
   needs:
     - job: system:gcc:trixie:amd64
       artifacts: true
