@@ -984,6 +984,32 @@ dns_view_simplefind(dns_view_t *view, const dns_name_t *name,
 }
 
 static isc_result_t
+findzonecut_cache(dns_view_t *view, const dns_name_t *name, dns_name_t *fname,
+		  dns_name_t *dcname, isc_stdtime_t now, unsigned int options,
+		  dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset) {
+	isc_result_t result = DNS_R_NXDOMAIN;
+
+	if (view->cachedb != NULL) {
+		result = dns_db_findzonecut(view->cachedb, name, options, now,
+					    NULL, fname, dcname, rdataset,
+					    sigrdataset);
+	}
+
+	/*
+	 * Cache miss returns ISC_R_NOTFOUND, but to not confuse it
+	 * with a zone found without delegation matching `name` (nor partial),
+	 * keep DNS_R_NXDOMAIN, so the hints can be checked.
+	 */
+	if (result != ISC_R_SUCCESS) {
+		dns_rdataset_cleanup(rdataset);
+		dns_rdataset_cleanup(sigrdataset);
+		result = DNS_R_NXDOMAIN;
+	}
+
+	return result;
+}
+
+static isc_result_t
 findzonecut_hints(dns_view_t *view, dns_name_t *fname, dns_name_t *dcname,
 		  isc_stdtime_t now, dns_rdataset_t *rdataset) {
 	isc_result_t result = ISC_R_NOTFOUND;
@@ -1114,8 +1140,8 @@ db_find:
 			goto db_find;
 		}
 	} else {
-		result = dns_db_findzonecut(db, name, options, now, NULL, fname,
-					    dcname, rdataset, sigrdataset);
+		result = findzonecut_cache(view, name, fname, dcname, now,
+					   options, rdataset, sigrdataset);
 		if (result == ISC_R_SUCCESS) {
 			if (zfname != NULL &&
 			    (!dns_name_issubdomain(fname, zfname) ||
@@ -1128,7 +1154,7 @@ db_find:
 				 */
 				use_zone = true;
 			}
-		} else if (result == ISC_R_NOTFOUND) {
+		} else if (result == DNS_R_NXDOMAIN) {
 			if (zfname != NULL) {
 				/*
 				 * We didn't find anything in the cache, but we
@@ -1142,8 +1168,6 @@ db_find:
 				 */
 				try_hints = true;
 				result = ISC_R_SUCCESS;
-			} else {
-				result = DNS_R_NXDOMAIN;
 			}
 		} else {
 			/*
