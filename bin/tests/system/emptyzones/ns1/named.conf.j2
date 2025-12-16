@@ -37,11 +37,22 @@ options {
 			      "gooddname.example.net"; };
 	allow-query {!10.53.0.8; any; };
 	allow-transfer { none; };
+	disable-empty-zone "127.in-addr.arpa.";
 };
 
 zone "." {
 	type hint;
 	file "root.hint";
+};
+
+/*
+ * alternate empty zone configuration, using a builtin
+ * database specifically for 127.0.0.1 but not the rest of
+ * 127.in-addr.arpa.
+ */
+zone "1.0.0.127.IN-ADDR.ARPA" {
+        type primary;
+        database "_builtin empty host admin";
 };
 
 {% set automatic_empty_zones = automatic_empty_zones | default(False) %}

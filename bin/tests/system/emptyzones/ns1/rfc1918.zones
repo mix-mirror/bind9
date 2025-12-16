@@ -29,4 +29,3 @@ zone "29.172.IN-ADDR.ARPA" { type primary; file "empty.db"; };
 zone "30.172.IN-ADDR.ARPA" { type primary; file "empty.db"; };
 zone "31.172.IN-ADDR.ARPA" { type primary; file "empty.db"; };
 zone "168.192.IN-ADDR.ARPA" { type primary; file "empty.db"; };
-
