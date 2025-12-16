@@ -1139,7 +1139,7 @@ isc__mempool_get(isc_mempool_t *restrict mpctx FLARG) {
 
 	if (mpctx->items == NULL) {
 		isc_mem_t *mctx = mpctx->mctx;
-#if !__SANITIZE_ADDRESS__
+#if !__SANITIZE_ADDRESS__ && !__SANITIZE_THREAD__
 		const size_t fillcount = mpctx->fillcount;
 #else
 		const size_t fillcount = 1;
@@ -1180,7 +1180,7 @@ isc__mempool_put(isc_mempool_t *restrict mpctx, void *mem FLARG) {
 
 	isc_mem_t *mctx = mpctx->mctx;
 	const size_t freecount = mpctx->freecount;
-#if !__SANITIZE_ADDRESS__
+#if !__SANITIZE_ADDRESS__ && !__SANITIZE_THREAD__
 	const size_t freemax = mpctx->freemax;
 #else
 	const size_t freemax = 0;

@@ -79,7 +79,7 @@ ISC_RUN_TEST_IMPL(isc_mem_get) {
 		isc_mempool_put(mp1, items1[i]);
 	}
 
-#if !__SANITIZE_ADDRESS__
+#if !__SANITIZE_ADDRESS__ && !__SANITIZE_THREAD__
 	rval = isc_mempool_getfreecount(mp1);
 	assert_int_equal(rval, 10);
 #endif /* !__SANITIZE_ADDRESS__ */
