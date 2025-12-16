@@ -338,12 +338,14 @@ def test_sythreverse_refused_v4(ip):
 
 arpa_cafecafe = dns.name.from_text("e.f.a.c.e.f.a.c.ip6.arpa.")
 arpa_zeros16 = dns.name.from_text("0.0.0.0.ip6.arpa.")
+arpa_ffff16 = dns.name.from_text("f.f.f.f.ip6.arpa.")
 
 
 @given(ip=ip_addresses(v=6))
 def test_sythreverse_refused_v6(ip):
     assume(not dns.name.from_text(ip.reverse_pointer).is_subdomain(arpa_cafecafe))
     assume(not dns.name.from_text(ip.reverse_pointer).is_subdomain(arpa_zeros16))
+    assume(not dns.name.from_text(ip.reverse_pointer).is_subdomain(arpa_ffff16))
     query = dns.message.make_query(ip.reverse_pointer, "PTR")
     res = isctest.query.udp(query, SERVER)
     assert res.rcode() == dns.rcode.REFUSED
