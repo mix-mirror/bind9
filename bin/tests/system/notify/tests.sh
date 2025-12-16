@@ -222,7 +222,7 @@ grep "sending notify to 10.53.0.5#[0-9]* : TSIG (b)" ns5/named.run >/dev/null ||
 grep "sending notify to 10.53.0.5#[0-9]* : TSIG (c)" ns5/named.run >/dev/null || ret=1
 test_end
 
-# notify messages were sent to unresponsive 10.53.10.53 during the tests
+# notify messages were sent to unresponsive 10.53.0.6 during the tests
 # above, which should time out at some point; we need to wait for them to
 # appear in the logs in case the tests run faster than the notify timeouts
 
