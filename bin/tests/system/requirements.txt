@@ -1,0 +1,22 @@
+### Test requirements
+
+# Track precise dnspython version, as this is the most likely package to cause
+# breakage in our tests.
+dnspython==2.7.0
+
+hypothesis>=4.41.2
+jinja2
+pytest>=7.0.0
+requests
+
+
+### Utility packages for executing the tests
+flaky
+xdist
+# TODO pytest-timeout ?
+
+
+### Optional dependencies
+
+# This would require newer pip (and python) on EL8.
+# cryptography
