@@ -984,6 +984,77 @@ dns_view_simplefind(dns_view_t *view, const dns_name_t *name,
 }
 
 static isc_result_t
+findzonecut_zone(dns_view_t *view, const dns_name_t *name, dns_name_t *fname,
+		 dns_name_t *dcname, isc_stdtime_t now, unsigned int options,
+		 dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset) {
+	dns_db_t *db = NULL;
+	dns_zone_t *zone = NULL;
+	unsigned int ztoptions = DNS_ZTFIND_MIRROR;
+	isc_result_t result;
+
+	if ((options & DNS_DBFIND_NOEXACT) != 0) {
+		ztoptions |= DNS_ZTFIND_NOEXACT;
+	}
+
+	result = dns_view_findzone(view, name, ztoptions, &zone);
+	if (result != ISC_R_SUCCESS && result != DNS_R_PARTIALMATCH) {
+		CLEANUP(DNS_R_NXDOMAIN);
+	}
+
+	result = dns_zone_getdb(zone, &db);
+	if (result != ISC_R_SUCCESS || db == view->hints) {
+		/*
+		 * The zone exists, but there is no DB (likely not loaded yet),
+		 * as for the case below (no delegation), ISC_R_NOTFOUND is used
+		 * to differentiate from the case where there is no zone at all,
+		 * so the caller won't attempt to hit the cache or hints.
+		 */
+		CLEANUP(ISC_R_NOTFOUND);
+	}
+
+	result = dns_db_find(db, name, NULL, dns_rdatatype_ns, options, now,
+			     NULL, fname, rdataset, sigrdataset);
+	if (result != DNS_R_DELEGATION && result != ISC_R_SUCCESS) {
+		/*
+		 * The zone exists, but there is no delegation. Using
+		 * ISC_R_NOTFOUND enable to differentiate from the case where
+		 * there is no zone at all.
+		 */
+		CLEANUP(ISC_R_NOTFOUND);
+	}
+
+	/*
+	 * Tag static stub NS RRset so that when we look for
+	 * addresses we use the configured server addresses.
+	 */
+	if (dns_zone_gettype(zone) == dns_zone_staticstub) {
+		rdataset->attributes.staticstub = true;
+	}
+
+	if (dcname != NULL) {
+		dns_name_copy(fname, dcname);
+	}
+
+	result = ISC_R_SUCCESS;
+
+cleanup:
+	if (result != ISC_R_SUCCESS) {
+		dns_rdataset_cleanup(rdataset);
+		dns_rdataset_cleanup(sigrdataset);
+	}
+
+	if (db != NULL) {
+		dns_db_detach(&db);
+	}
+
+	if (zone != NULL) {
+		dns_zone_detach(&zone);
+	}
+
+	return result;
+}
+
+static isc_result_t
 findzonecut_cache(dns_view_t *view, const dns_name_t *name, dns_name_t *fname,
 		  dns_name_t *dcname, isc_stdtime_t now, unsigned int options,
 		  dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset) {
