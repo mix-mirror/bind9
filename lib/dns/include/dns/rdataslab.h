@@ -237,29 +237,6 @@ dns_rdataslab_count(dns_slabheader_t *header);
  *\li	The number of records in the slab.
  */
 
-isc_result_t
-dns_rdataslab_merge(dns_slabheader_t *oheader, dns_slabheader_t *nheader,
-		    isc_mem_t *mctx, dns_rdataclass_t rdclass,
-		    dns_rdatatype_t type, unsigned int flags,
-		    uint32_t maxrrperset, dns_slabheader_t **theaderp);
-/*%<
- * Merge the slabs following 'oheader' and 'nheader'.
- */
-
-isc_result_t
-dns_rdataslab_subtract(dns_slabheader_t *mheader, dns_slabheader_t *sheader,
-		       isc_mem_t *mctx, dns_rdataclass_t rdclass,
-		       dns_rdatatype_t type, unsigned int flags,
-		       dns_slabheader_t **theaderp);
-/*%<
- * Subtract the slab following 'sheader' from the one following 'mheader'.
- * If 'exact' is true then all elements from the 'sheader' slab must exist
- * in the 'mheader' slab.
- *
- * XXX
- * valid flags are DNS_RDATASLAB_EXACT
- */
-
 bool
 dns_rdataslab_equal(dns_slabheader_t *header1, dns_slabheader_t *header2);
 /*%<
@@ -283,18 +260,6 @@ dns_rdataslab_equalx(dns_slabheader_t *header1, dns_slabheader_t *header2,
  *
  * Returns:
  *\li	true if the slabs are equal, #false otherwise.
- */
-
-void
-dns_slabheader_setownercase(dns_slabheader_t *header, const dns_name_t *name);
-/*%<
- * Store the casing of 'name', into a bitfield in 'header'.
- */
-
-void
-dns_slabheader_copycase(dns_slabheader_t *dest, dns_slabheader_t *src);
-/*%<
- * Copy the casing of 'src', into 'dest'.
  */
 
 void
