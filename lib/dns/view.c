@@ -983,6 +983,26 @@ dns_view_simplefind(dns_view_t *view, const dns_name_t *name,
 	return result;
 }
 
+static isc_result_t
+findzonecut_hints(dns_view_t *view, dns_name_t *fname, dns_name_t *dcname,
+		  isc_stdtime_t now, dns_rdataset_t *rdataset) {
+	isc_result_t result = ISC_R_NOTFOUND;
+
+	if (view->hints == NULL) {
+		return result;
+	}
+
+	result = dns_db_find(view->hints, dns_rootname, NULL, dns_rdatatype_ns,
+			     0, now, NULL, fname, rdataset, NULL);
+	if (result != ISC_R_SUCCESS) {
+		dns_rdataset_cleanup(rdataset);
+	} else if (dcname != NULL) {
+		dns_name_copy(fname, dcname);
+	}
+
+	return result;
+}
+
 isc_result_t
 dns_view_findzonecut(dns_view_t *view, const dns_name_t *name,
 		     dns_name_t *fname, dns_name_t *dcname, isc_stdtime_t now,
@@ -1149,22 +1169,7 @@ finish:
 			dns_rdataset_clone(&zsigrdataset, sigrdataset);
 		}
 	} else if (try_hints) {
-		/*
-		 * We've found nothing so far, but we have hints.
-		 */
-		result = dns_db_find(view->hints, dns_rootname, NULL,
-				     dns_rdatatype_ns, 0, now, NULL, fname,
-				     rdataset, NULL);
-		if (result != ISC_R_SUCCESS) {
-			/*
-			 * We can't even find the hints for the root
-			 * nameservers!
-			 */
-			dns_rdataset_cleanup(rdataset);
-			result = ISC_R_NOTFOUND;
-		} else if (dcname != NULL) {
-			dns_name_copy(fname, dcname);
-		}
+		result = findzonecut_hints(view, fname, dcname, now, rdataset);
 	}
 
 cleanup:
