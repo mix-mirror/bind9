@@ -90,7 +90,7 @@ sh = find_program('sh')
 
 ## Feature gated
 krb5_config = find_program('krb5-config', required: gssapi_opt)
-protoc = find_program(['protoc-c', 'protoc'], required: dnstap_opt)
+protoc = find_program(['protoc', 'protoc-c'], required: dnstap_opt)
 dtrace = find_program(['dtrace', dtrace_shim], required: false)
 
 ## Testing
