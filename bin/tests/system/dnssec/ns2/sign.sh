@@ -469,3 +469,40 @@ key1=$("$KEYGEN" -q -a "$DEFAULT_ALGORITHM" -b "$DEFAULT_BITS" -f KSK "$zone")
 key2=$("$KEYGEN" -q -a "$DEFAULT_ALGORITHM" -b "$DEFAULT_BITS" "$zone")
 cat "$infile" "$key1.key" "$key2.key" >"$zonefile"
 "$SIGNER" -3 - -g -o "$zone" "$zonefile" >/dev/null 2>&1
+
+#
+# The DNSKEYs gets removed from the signed zone.
+#
+zone=missing-dnskey
+infile=missing-dnskey.db.in
+zonefile=missing-dnskey.db
+key1=$("$KEYGEN" -q -a "$DEFAULT_ALGORITHM" -b "$DEFAULT_BITS" "$zone")
+key2=$("$KEYGEN" -q -a "$DEFAULT_ALGORITHM" -b "$DEFAULT_BITS" -f KSK "$zone")
+cat "$infile" "$key1.key" "$key2.key" >"$zonefile"
+"$SIGNER" -o "$zone" "$zonefile" >/dev/null 2>&1
+"$CHECKZONE" -D -q -i local "$zone" "$zonefile.signed" | awk '$4 == "DNSKEY" { next } { print }' >"$zonefile.stripped"
+mv "$zonefile.stripped" "$zonefile.signed"
+
+#
+# The KSK gets removed from the signed zone, but the ZSK is still there.
+# 257 is the flag value indicating the key is the KSK
+#
+zone=missing-ksk
+infile=missing-ksk.db.in
+zonefile=missing-ksk.db
+key1=$("$KEYGEN" -q -a "$DEFAULT_ALGORITHM" -b "$DEFAULT_BITS" "$zone")
+key2=$("$KEYGEN" -q -a "$DEFAULT_ALGORITHM" -b "$DEFAULT_BITS" -f KSK "$zone")
+cat "$infile" "$key1.key" "$key2.key" >"$zonefile"
+"$SIGNER" -o "$zone" "$zonefile" >/dev/null 2>&1
+"$CHECKZONE" -D -q -i local "$zone" "$zonefile.signed" | awk '$4 == "DNSKEY" && $5 == "257" { next } { print }' >"$zonefile.stripped"
+mv "$zonefile.stripped" "$zonefile.signed"
+
+zone=wrong-dnskey
+infile=wrong-dnskey.db.in
+zonefile=wrong-dnskey.db
+key1=$("$KEYGEN" -q -a "$DEFAULT_ALGORITHM" -b "$DEFAULT_BITS" "$zone")
+key2=$("$KEYGEN" -q -a "$DEFAULT_ALGORITHM" -b "$DEFAULT_BITS" -f KSK "$zone")
+cat "$infile" "$key1.key" "$key2.key" >"$zonefile"
+"$SIGNER" -o "$zone" "$zonefile" >/dev/null 2>&1
+key3=$("$KEYGEN" -q -a "$DEFAULT_ALGORITHM" -b "$DEFAULT_BITS" -f KSK "$zone")
+$DSFROMKEY "$key3.key" >"dsset-$zone."

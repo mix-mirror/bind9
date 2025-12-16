@@ -1109,6 +1109,22 @@ def test_validating_forwarder(ns4, ns9):
         watcher.wait_for_line("status: SERVFAIL")
 
 
+@pytest.mark.parametrize(
+    "zone",
+    [
+        "missing-dnskey",
+        "wrong-dnskey",
+        "missing-ksk",
+        "a.extradsunknownoid.example",
+    ],
+)
+def test_missing_dnskey(zone, ns4):
+    msg = isctest.query.create(f"a.{zone}", "A")
+    res = isctest.query.tcp(msg, ns4.ip)
+    isctest.check.servfail(res)
+    isctest.check.ede(res, EDECode.DNSKEY_MISSING)
+
+
 def test_expired_signatures(ns4):
     # check expired signatures do not validate
     msg = isctest.query.create("expired.example", "SOA")

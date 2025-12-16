@@ -47,3 +47,9 @@ inconsistent.		NS	ns2.inconsistent.
 ns2.inconsistent.	A	10.53.0.2
 nsec-rrsigs-stripped.	NS	ns10.nsec-rrsigs-stripped.
 ns10.nsec-rrsigs-stripped.	A	10.53.0.10
+ns.missing-dnskey.	A	10.53.0.2
+missing-dnskey.		NS	ns.missing-dnskey.
+ns.missing-ksk.		A	10.53.0.2
+missing-ksk.		NS	ns.missing-ksk.
+ns.wrong-dnskey.	A	10.53.0.2
+wrong-dnskey.		NS	ns.wrong-dnskey.

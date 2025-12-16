@@ -2112,6 +2112,8 @@ validate_dnskey_dsset(dns_validator_t *val) {
 				       &keyrdata);
 	if (result != ISC_R_SUCCESS) {
 		validator_log(val, ISC_LOG_DEBUG(3), "no DNSKEY matching DS");
+		validator_addede(val, DNS_EDE_DNSKEYMISSING,
+				 "DNSKEY found but not matching DS");
 		return DNS_R_NOKEYMATCH;
 	}
 
@@ -3522,6 +3524,11 @@ proveunsecure(dns_validator_t *val, bool have_ds, bool have_dnskey,
 	/* Couldn't complete insecurity proof. */
 	validator_log(val, ISC_LOG_DEBUG(3), "insecurity proof failed: %s",
 		      isc_result_totext(result));
+
+	if (val->type == dns_rdatatype_dnskey && val->rdataset == NULL) {
+		validator_addede(val, DNS_EDE_DNSKEYMISSING, "no DNSKEY found");
+	}
+
 	return DNS_R_NOTINSECURE;
 
 out:
