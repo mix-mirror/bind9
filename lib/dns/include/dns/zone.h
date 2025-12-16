@@ -900,44 +900,52 @@ dns_zone_getparentalsrc6(dns_zone_t *zone, isc_sockaddr_t *parentalsrc);
  */
 
 void
-dns_zone_setnotifysrc4(dns_zone_t *zone, const isc_sockaddr_t *notifysrc);
+dns_zone_setnotifysrc4(dns_zone_t *zone, dns_rdatatype_t type,
+		       const isc_sockaddr_t *notifysrc);
 /*%<
  * 	Set the source address to be used with IPv4 NOTIFY messages.
  *
  * Require:
  *\li	'zone' to be a valid zone.
+ *\li	'type' to be a valid notify RRtype.
  *\li	'notifysrc' to contain the address.
  */
 
 void
-dns_zone_getnotifysrc4(dns_zone_t *zone, isc_sockaddr_t *notifysrc);
+dns_zone_getnotifysrc4(dns_zone_t *zone, dns_rdatatype_t type,
+		       isc_sockaddr_t *notifysrc);
 /*%<
  *	Returns the source address set by a previous dns_zone_setnotifysrc4
  *	call, or the default of inaddr_any, port 0.
  *
  * Require:
  *\li	'zone' to be a valid zone.
+ *\li	'type' to be a valid notify RRtype.
  *\li	'notifysrc' to be non NULL.
  */
 
 void
-dns_zone_setnotifysrc6(dns_zone_t *zone, const isc_sockaddr_t *notifysrc);
+dns_zone_setnotifysrc6(dns_zone_t *zone, dns_rdatatype_t type,
+		       const isc_sockaddr_t *notifysrc);
 /*%<
  * 	Set the source address to be used with IPv6 NOTIFY messages.
  *
  * Require:
  *\li	'zone' to be a valid zone.
+ *\li	'type' to be a valid notify RRtype.
  *\li	'notifysrc' to contain the address.
  */
 
 void
-dns_zone_getnotifysrc6(dns_zone_t *zone, isc_sockaddr_t *notifysrc);
+dns_zone_getnotifysrc6(dns_zone_t *zone, dns_rdatatype_t type,
+		       isc_sockaddr_t *notifysrc);
 /*%<
  *	Returns the source address set by a previous dns_zone_setnotifysrc6
  *	call, or the default of in6addr_any, port 0.
  *
  * Require:
  *\li	'zone' to be a valid zone.
+ *\li	'type' to be a valid notify RRtype.
  *\li	'notifysrc' to be non NULL.
  */
 
@@ -2123,22 +2131,24 @@ dns_zone_setcheckisservedby(dns_zone_t		     *zone,
  */
 
 void
-dns_zone_setnotifydefer(dns_zone_t *zone, uint32_t defer);
+dns_zone_setnotifydefer(dns_zone_t *zone, dns_rdatatype_t type, uint32_t defer);
 /*%<
  * Set the wait/defer time (in seconds) before notify messages are sent when
  * they are ready.
  *
  * Requires:
  *	'zone' to be valid.
+ *	'type' to be a valid notify RRtype.
  */
 
 void
-dns_zone_setnotifydelay(dns_zone_t *zone, uint32_t delay);
+dns_zone_setnotifydelay(dns_zone_t *zone, dns_rdatatype_t type, uint32_t delay);
 /*%<
  * Set the minimum delay (in seconds) between sets of notify messages.
  *
  * Requires:
  *	'zone' to be valid.
+ *	'type' to be a valid notify RRtype.
  */
 
 void

@@ -44,6 +44,7 @@ dns_notifyctx_init(dns_notifyctx_t *nctx, dns_rdatatype_t type) {
 	dns_notifyctx_t ctx = {
 		.type = type,
 		.notifytype = dns_notifytype_yes,
+		.notifydelay = 5,
 		.notifies = ISC_LIST_INITIALIZER,
 	};
 	isc_sockaddr_any(&ctx.notifysrc4);

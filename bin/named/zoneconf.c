@@ -1258,12 +1258,14 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 		obj = NULL;
 		result = named_config_get(maps, "notify-source", &obj);
 		INSIST(result == ISC_R_SUCCESS && obj != NULL);
-		dns_zone_setnotifysrc4(zone, cfg_obj_assockaddr(obj));
+		dns_zone_setnotifysrc4(zone, dns_rdatatype_soa,
+				       cfg_obj_assockaddr(obj));
 
 		obj = NULL;
 		result = named_config_get(maps, "notify-source-v6", &obj);
 		INSIST(result == ISC_R_SUCCESS && obj != NULL);
-		dns_zone_setnotifysrc6(zone, cfg_obj_assockaddr(obj));
+		dns_zone_setnotifysrc6(zone, dns_rdatatype_soa,
+				       cfg_obj_assockaddr(obj));
 
 		obj = NULL;
 		result = named_config_get(maps, "notify-to-soa", &obj);
@@ -1396,12 +1398,14 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 		obj = NULL;
 		result = named_config_get(maps, "notify-delay", &obj);
 		INSIST(result == ISC_R_SUCCESS && obj != NULL);
-		dns_zone_setnotifydelay(zone, cfg_obj_asuint32(obj));
+		dns_zone_setnotifydelay(zone, dns_rdatatype_soa,
+					cfg_obj_asuint32(obj));
 
 		obj = NULL;
 		result = named_config_get(maps, "notify-defer", &obj);
 		INSIST(result == ISC_R_SUCCESS && obj != NULL);
-		dns_zone_setnotifydefer(zone, cfg_obj_asuint32(obj));
+		dns_zone_setnotifydefer(zone, dns_rdatatype_soa,
+					cfg_obj_asuint32(obj));
 
 		obj = NULL;
 		result = named_config_get(maps, "check-sibling", &obj);

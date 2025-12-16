@@ -408,8 +408,6 @@ struct dns_zone {
 	isc_stats_t *requeststats;
 	dns_stats_t *rcvquerystats;
 	dns_stats_t *dnssecsignstats;
-	uint32_t notifydelay;
-	uint32_t notifydefer;
 	dns_isselffunc_t isself;
 	void *isselfarg;
 
@@ -1068,7 +1066,6 @@ dns_zone_create(dns_zone_t **zonep, isc_mem_t *mctx, isc_tid_t tid) {
 		.sigvalidityinterval = 30 * 24 * 3600,
 		.sigresigninginterval = 7 * 24 * 3600,
 		.statlevel = dns_zonestat_none,
-		.notifydelay = 5,
 		.signatures = 10,
 		.nodes = 100,
 		.privatetype = (dns_rdatatype_t)0xffffU,
@@ -6353,46 +6350,82 @@ dns_zone_getparentalsrc6(dns_zone_t *zone, isc_sockaddr_t *parentalsrc) {
 }
 
 void
-dns_zone_setnotifysrc4(dns_zone_t *zone, const isc_sockaddr_t *notifysrc) {
+dns_zone_setnotifysrc4(dns_zone_t *zone, dns_rdatatype_t type,
+		       const isc_sockaddr_t *notifysrc) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 	REQUIRE(notifysrc != NULL);
 
 	LOCK_ZONE(zone);
-	zone->notifysoa.notifysrc4 = *notifysrc;
-	zone->notifycds.notifysrc4 = *notifysrc;
+	switch (type) {
+	case dns_rdatatype_soa:
+		zone->notifysoa.notifysrc4 = *notifysrc;
+		break;
+	case dns_rdatatype_cds:
+		zone->notifycds.notifysrc4 = *notifysrc;
+		break;
+	default:
+		UNREACHABLE();
+	}
 	UNLOCK_ZONE(zone);
 }
 
 void
-dns_zone_getnotifysrc4(dns_zone_t *zone, isc_sockaddr_t *notifysrc) {
+dns_zone_getnotifysrc4(dns_zone_t *zone, dns_rdatatype_t type,
+		       isc_sockaddr_t *notifysrc) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 	REQUIRE(notifysrc != NULL);
 
 	LOCK_ZONE(zone);
-	*notifysrc = zone->notifysoa.notifysrc4;
-	*notifysrc = zone->notifycds.notifysrc4;
+	switch (type) {
+	case dns_rdatatype_soa:
+		*notifysrc = zone->notifysoa.notifysrc4;
+		break;
+	case dns_rdatatype_cds:
+		*notifysrc = zone->notifycds.notifysrc4;
+		break;
+	default:
+		UNREACHABLE();
+	}
 	UNLOCK_ZONE(zone);
 }
 
 void
-dns_zone_setnotifysrc6(dns_zone_t *zone, const isc_sockaddr_t *notifysrc) {
+dns_zone_setnotifysrc6(dns_zone_t *zone, dns_rdatatype_t type,
+		       const isc_sockaddr_t *notifysrc) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 	REQUIRE(notifysrc != NULL);
 
 	LOCK_ZONE(zone);
-	zone->notifysoa.notifysrc6 = *notifysrc;
-	zone->notifycds.notifysrc6 = *notifysrc;
+	switch (type) {
+	case dns_rdatatype_soa:
+		zone->notifysoa.notifysrc6 = *notifysrc;
+		break;
+	case dns_rdatatype_cds:
+		zone->notifycds.notifysrc6 = *notifysrc;
+		break;
+	default:
+		UNREACHABLE();
+	}
 	UNLOCK_ZONE(zone);
 }
 
 void
-dns_zone_getnotifysrc6(dns_zone_t *zone, isc_sockaddr_t *notifysrc) {
+dns_zone_getnotifysrc6(dns_zone_t *zone, dns_rdatatype_t type,
+		       isc_sockaddr_t *notifysrc) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 	REQUIRE(notifysrc != NULL);
 
 	LOCK_ZONE(zone);
-	*notifysrc = zone->notifysoa.notifysrc6;
-	*notifysrc = zone->notifycds.notifysrc6;
+	switch (type) {
+	case dns_rdatatype_soa:
+		*notifysrc = zone->notifysoa.notifysrc6;
+		break;
+	case dns_rdatatype_cds:
+		*notifysrc = zone->notifycds.notifysrc6;
+		break;
+	default:
+		UNREACHABLE();
+	}
 	UNLOCK_ZONE(zone);
 }
 
@@ -11403,7 +11436,7 @@ zone_maintenance(dns_zone_t *zone) {
 	 * primaries after.
 	 */
 	LOCK_ZONE(zone);
-	if (zone->notifydefer != 0 &&
+	if (zone->notifysoa.notifydefer != 0 &&
 	    !DNS_ZONE_FLAG(zone, DNS_ZONEFLG_NOTIFYNODEFER) &&
 	    !DNS_ZONE_FLAG(zone, DNS_ZONEFLG_NOTIFYDEFERRED))
 	{
@@ -11411,7 +11444,8 @@ zone_maintenance(dns_zone_t *zone) {
 			zone->notifytime = now;
 		}
 		DNS_ZONE_SETFLAG(zone, DNS_ZONEFLG_NOTIFYDEFERRED);
-		DNS_ZONE_TIME_ADD(&zone->notifytime, zone->notifydefer,
+		DNS_ZONE_TIME_ADD(&zone->notifytime,
+				  zone->notifysoa.notifydefer,
 				  &zone->notifytime);
 	}
 	notify = (zone->type == dns_zone_secondary ||
@@ -12408,7 +12442,7 @@ dns_zone_notify(dns_zone_t *zone, bool nodefer) {
 			 */
 			DNS_ZONE_CLRFLAG(zone, DNS_ZONEFLG_NOTIFYDEFERRED);
 			DNS_ZONE_TIME_SUBTRACT(&zone->notifytime,
-					       zone->notifydefer,
+					       zone->notifysoa.notifydefer,
 					       &zone->notifytime);
 		}
 		DNS_ZONE_SETFLAG(zone, DNS_ZONEFLG_NOTIFYNODEFER);
@@ -12449,7 +12483,7 @@ zone_notify(dns_zone_t *zone, isc_time_t *now) {
 				       DNS_ZONEFLG_NOTIFYNODEFER |
 				       DNS_ZONEFLG_NOTIFYDEFERRED);
 	notifytype = zone->notifysoa.notifytype;
-	DNS_ZONE_TIME_ADD(now, zone->notifydelay, &zone->notifytime);
+	DNS_ZONE_TIME_ADD(now, zone->notifysoa.notifydelay, &zone->notifytime);
 	UNLOCK_ZONE(zone);
 
 	if (DNS_ZONE_FLAG(zone, DNS_ZONEFLG_EXITING) ||
@@ -19441,20 +19475,40 @@ dns__zone_getisself(dns_zone_t *zone, dns_isselffunc_t *isself, void **arg) {
 }
 
 void
-dns_zone_setnotifydefer(dns_zone_t *zone, uint32_t defer) {
+dns_zone_setnotifydefer(dns_zone_t *zone, dns_rdatatype_t type,
+			uint32_t defer) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 
 	LOCK_ZONE(zone);
-	zone->notifydefer = defer;
+	switch (type) {
+	case dns_rdatatype_soa:
+		zone->notifysoa.notifydefer = defer;
+		break;
+	case dns_rdatatype_cds:
+		zone->notifycds.notifydefer = defer;
+		break;
+	default:
+		UNREACHABLE();
+	}
 	UNLOCK_ZONE(zone);
 }
 
 void
-dns_zone_setnotifydelay(dns_zone_t *zone, uint32_t delay) {
+dns_zone_setnotifydelay(dns_zone_t *zone, dns_rdatatype_t type,
+			uint32_t delay) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 
 	LOCK_ZONE(zone);
-	zone->notifydelay = delay;
+	switch (type) {
+	case dns_rdatatype_soa:
+		zone->notifysoa.notifydelay = delay;
+		break;
+	case dns_rdatatype_cds:
+		zone->notifycds.notifydelay = delay;
+		break;
+	default:
+		UNREACHABLE();
+	}
 	UNLOCK_ZONE(zone);
 }
 

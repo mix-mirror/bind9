@@ -36,6 +36,8 @@ struct dns_notifyctx {
 
 	/* Configuration data. */
 	dns_notifytype_t notifytype;
+	uint32_t	 notifydefer;
+	uint32_t	 notifydelay;
 	isc_sockaddr_t	 notifysrc4;
 	isc_sockaddr_t	 notifysrc6;
 };
