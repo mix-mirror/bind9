@@ -506,10 +506,6 @@ stages:
     - ( if [ "${CI_DISPOSABLE_ENVIRONMENT}" = "true" ]; then sleep 3000; "$PYTHON" "${CI_PROJECT_DIR}/util/get-running-system-tests.py"; fi ) &
     - cd bin/tests/system
     - RET=0
-    # With pytest 9.0, there's the following error in pytest_ignore_collect():
-    #   The (path: py.path.local) argument is deprecated, please use (collection_path: pathlib.Path).
-    # This should be fixed before pytest 9.1, when it becomes ineffective.
-    - if pytest --version | grep -F "pytest 9.0" >/dev/null; then echo "filterwarnings = ignore::pytest.PytestRemovedIn9Warning" >> pytest.ini; fi
     - >
       ("$PYTEST" --junit-xml="$CI_PROJECT_DIR"/junit_pytest.xml -n "$TEST_PARALLEL_JOBS" | tee pytest.out.txt) || RET=1
     - *git_clone_bind9-qa
@@ -981,6 +977,7 @@ cross-version-config-tests:
     untracked: true
     expire_in: "1 day"
     when: always
+  allow_failure: true  # GL!11415
 
 # Jobs for regular GCC builds on Alpine Linux 3.23 (amd64)
 
