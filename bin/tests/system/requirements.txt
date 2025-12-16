@@ -1,0 +1,16 @@
+### Test requirements
+
+# dnspython 2.3.0 is the newest version that can run on debian bookworm without
+# running into Python 3.11.2 compatbility issue
+# see https://github.com/rthalley/dnspython/issues/972
+dnspython>=2.3.0
+
+cryptography
+hypothesis>=4.41.2
+jinja2
+pytest>=7.0.0
+requests
+
+### Utility packages for executing the tests
+flaky
+pytest-xdist
