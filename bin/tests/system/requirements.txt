@@ -13,7 +13,7 @@ requests
 
 ### Utility packages for executing the tests
 flaky
-xdist
+pytest-xdist
 # TODO pytest-timeout ?
 
 
