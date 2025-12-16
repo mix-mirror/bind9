@@ -110,7 +110,7 @@ in_rootns(dns_rdataset_t *rootns, dns_name_t *name) {
 	DNS_RDATASET_FOREACH(rootns) {
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		dns_rdataset_current(rootns, &rdata);
-		RETERR(dns_rdata_tostruct(&rdata, &ns, NULL));
+		dns_rdata_tostruct(&rdata, &ns);
 		if (dns_name_compare(name, &ns.name) == 0) {
 			return ISC_R_SUCCESS;
 		}
@@ -475,8 +475,7 @@ dns_root_checkhints(dns_view_t *view, dns_db_t *hints, dns_db_t *db) {
 	DNS_RDATASET_FOREACH(&rootns) {
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		dns_rdataset_current(&rootns, &rdata);
-		result = dns_rdata_tostruct(&rdata, &ns, NULL);
-		RUNTIME_CHECK(result == ISC_R_SUCCESS);
+		dns_rdata_tostruct(&rdata, &ns);
 		result = in_rootns(&hintns, &ns.name);
 		if (result != ISC_R_SUCCESS) {
 			char namebuf[DNS_NAME_FORMATSIZE];
@@ -498,8 +497,7 @@ dns_root_checkhints(dns_view_t *view, dns_db_t *hints, dns_db_t *db) {
 	DNS_RDATASET_FOREACH(&hintns) {
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		dns_rdataset_current(&hintns, &rdata);
-		result = dns_rdata_tostruct(&rdata, &ns, NULL);
-		RUNTIME_CHECK(result == ISC_R_SUCCESS);
+		dns_rdata_tostruct(&rdata, &ns);
 		result = in_rootns(&rootns, &ns.name);
 		if (result != ISC_R_SUCCESS) {
 			char namebuf[DNS_NAME_FORMATSIZE];

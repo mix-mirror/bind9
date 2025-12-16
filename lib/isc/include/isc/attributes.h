@@ -113,6 +113,12 @@
 #define ISC_ATTR_COUNTED_BY(x)
 #endif
 
+#if __has_c_attribute(nodiscard)
+#define ISC_ATTR_NODISCARD [[nodiscard]]
+#else
+#define ISC_ATTR_NODISCARD
+#endif
+
 #if __has_attribute(__nonnull__)
 #define ISC_ATTR_NONNULL(...) __attribute__((__nonnull__(__VA_ARGS__)))
 #else

@@ -335,75 +335,34 @@ tostruct_keydata(ARGS_TOSTRUCT) {
 	dns_rdata_toregion(rdata, &sr);
 
 	/* Refresh timer */
-	if (sr.length < 4) {
-		/* Not KEYDATA */
-		return ISC_R_NOTIMPLEMENTED;
-	}
 	keydata->refresh = uint32_fromregion(&sr);
 	isc_region_consume(&sr, 4);
 
 	/* Add hold-down */
-	if (sr.length < 4) {
-		/* Not KEYDATA */
-		return ISC_R_NOTIMPLEMENTED;
-	}
 	keydata->addhd = uint32_fromregion(&sr);
 	isc_region_consume(&sr, 4);
 
 	/* Remove hold-down */
-	if (sr.length < 4) {
-		/* Not KEYDATA */
-		return ISC_R_NOTIMPLEMENTED;
-	}
 	keydata->removehd = uint32_fromregion(&sr);
 	isc_region_consume(&sr, 4);
 
 	/* Flags */
-	if (sr.length < 2) {
-		/* Not KEYDATA */
-		return ISC_R_NOTIMPLEMENTED;
-	}
 	keydata->flags = uint16_fromregion(&sr);
 	isc_region_consume(&sr, 2);
 
 	/* Protocol */
-	if (sr.length < 1) {
-		/* Not KEYDATA */
-		return ISC_R_NOTIMPLEMENTED;
-	}
 	keydata->protocol = uint8_fromregion(&sr);
 	isc_region_consume(&sr, 1);
 
 	/* Algorithm */
-	if (sr.length < 1) {
-		/* Not KEYDATA */
-		return ISC_R_NOTIMPLEMENTED;
-	}
 	keydata->algorithm = uint8_fromregion(&sr);
 	isc_region_consume(&sr, 1);
 
 	/* Data */
 	keydata->datalen = sr.length;
-	keydata->data = mem_maybedup(mctx, sr.base, keydata->datalen);
-	keydata->mctx = mctx;
+	keydata->data = sr.base;
+
 	return ISC_R_SUCCESS;
-}
-
-static void
-freestruct_keydata(ARGS_FREESTRUCT) {
-	dns_rdata_keydata_t *keydata = (dns_rdata_keydata_t *)source;
-
-	REQUIRE(keydata != NULL);
-	REQUIRE(keydata->common.rdtype == dns_rdatatype_keydata);
-
-	if (keydata->mctx == NULL) {
-		return;
-	}
-
-	if (keydata->data != NULL) {
-		isc_mem_free(keydata->mctx, keydata->data);
-	}
-	keydata->mctx = NULL;
 }
 
 static isc_result_t

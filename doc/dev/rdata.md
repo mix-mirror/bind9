@@ -287,6 +287,14 @@ transfer the contents of the `rdata` to the target buffer.
         static dns_result_t
         tostruct_classname_typename(dns_rdata_t *rdata, void *target);
 
+This function takes a valid, non-empty rdata record and converts it
+to its corresponding C structure form.
+
+This function must be implemented for all rdatatypes, and the
+implementation function must return `ISC_R_SUCCESS`. The wrapper function,
+`dns_rdata_tostruct()`, is type void, and will trigger an assertion failure
+if the implementation function is unsuccessful or unavailable.
+
 |Parameter|Description |
 |---------|-----------------------|
 |`rdata`|This is the rdata record to be converted from internal format to a structure. `rdata->type` (and `rdata->class` for class-specific RR types) should be checked at the start of the function with `REQUIRE` statements.|

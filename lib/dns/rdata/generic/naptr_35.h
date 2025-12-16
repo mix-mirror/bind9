@@ -18,7 +18,6 @@
 
 typedef struct dns_rdata_naptr {
 	dns_rdatacommon_t common;
-	isc_mem_t *mctx;
 	uint16_t order;
 	uint16_t preference;
 	char *flags;

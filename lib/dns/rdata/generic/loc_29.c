@@ -744,13 +744,8 @@ tostruct_loc(ARGS_TOSTRUCT) {
 	REQUIRE(loc != NULL);
 	REQUIRE(rdata->length != 0);
 
-	UNUSED(mctx);
-
 	dns_rdata_toregion(rdata, &r);
 	version = uint8_fromregion(&r);
-	if (version != 0) {
-		return ISC_R_NOTIMPLEMENTED;
-	}
 
 	DNS_RDATACOMMON_INIT(loc, rdata->type, rdata->rdclass);
 
@@ -769,17 +764,6 @@ tostruct_loc(ARGS_TOSTRUCT) {
 	loc->v.v0.altitude = uint32_fromregion(&r);
 	isc_region_consume(&r, 4);
 	return ISC_R_SUCCESS;
-}
-
-static void
-freestruct_loc(ARGS_FREESTRUCT) {
-	dns_rdata_loc_t *loc = source;
-
-	REQUIRE(loc != NULL);
-	REQUIRE(loc->common.rdtype == dns_rdatatype_loc);
-
-	UNUSED(source);
-	UNUSED(loc);
 }
 
 static isc_result_t

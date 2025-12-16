@@ -529,35 +529,17 @@ dns_rdata_fromstruct(dns_rdata_t *rdata, dns_rdataclass_t rdclass,
  *\li	Resource Limit: Not enough space
  */
 
-isc_result_t
-dns_rdata_tostruct(const dns_rdata_t *rdata, void *target, isc_mem_t *mctx);
+void
+dns_rdata_tostruct(const dns_rdata_t *rdata, void *target);
 /*%<
  * Convert an rdata into its C structure representation.
- *
- * If 'mctx' is NULL then 'rdata' must persist while 'target' is being used.
- *
- * If 'mctx' is non NULL then memory will be allocated if required.
+ * 'rdata' must persist while 'target' is being used.
  *
  * Requires:
  *
  *\li	'rdata' is a valid, non-empty, non-pseudo rdata.
  *
  *\li	'target' to point to a valid pointer for the type and class.
- *
- * Result:
- *\li	Success
- *\li	Not Implemented
- */
-
-void
-dns_rdata_freestruct(void *source);
-/*%<
- * Free dynamic memory attached to 'source' (if any).
- *
- * Requires:
- *
- *\li	'source' to point to the structure previously filled in by
- *	dns_rdata_tostruct().
  */
 
 unsigned int
@@ -871,21 +853,6 @@ dns_rdata_checknames(dns_rdata_t *rdata, const dns_name_t *owner,
  *	'owner' to be valid.
  *	'bad'	to be NULL or valid.
  */
-
-void
-dns_rdata_exists(dns_rdata_t *rdata, dns_rdatatype_t type);
-
-void
-dns_rdata_notexist(dns_rdata_t *rdata, dns_rdatatype_t type);
-
-void
-dns_rdata_deleterrset(dns_rdata_t *rdata, dns_rdatatype_t type);
-
-void
-dns_rdata_makedelete(dns_rdata_t *rdata);
-
-const char *
-dns_rdata_updateop(dns_rdata_t *rdata, dns_section_t section);
 
 isc_result_t
 dns_rdata_checksvcb(const dns_name_t *owner, const dns_rdata_t *rdata);

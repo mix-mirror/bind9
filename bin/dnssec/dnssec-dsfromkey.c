@@ -256,10 +256,7 @@ emit(dns_dsdigest_t dt, bool showall, bool cds, dns_rdata_t *rdata) {
 
 	dns_rdata_init(&ds);
 
-	result = dns_rdata_tostruct(rdata, &dnskey, NULL);
-	if (result != ISC_R_SUCCESS) {
-		fatal("can't convert DNSKEY");
-	}
+	dns_rdata_tostruct(rdata, &dnskey);
 
 	if ((dnskey.flags & DNS_KEYFLAG_REVOKE) != 0) {
 		return;

@@ -135,11 +135,9 @@ rcode_totext(dns_rcode_t rcode) {
 static void
 printsoa(dns_rdata_t *rdata) {
 	dns_rdata_soa_t soa;
-	isc_result_t result;
 	char namebuf[DNS_NAME_FORMATSIZE];
 
-	result = dns_rdata_tostruct(rdata, &soa, NULL);
-	check_result(result, "dns_rdata_tostruct");
+	dns_rdata_tostruct(rdata, &soa);
 
 	dns_name_format(&soa.origin, namebuf, sizeof(namebuf));
 	printf("\torigin = %s\n", namebuf);
@@ -150,7 +148,6 @@ printsoa(dns_rdata_t *rdata) {
 	printf("\tretry = %u\n", soa.retry);
 	printf("\texpire = %u\n", soa.expire);
 	printf("\tminimum = %u\n", soa.minimum);
-	dns_rdata_freestruct(&soa);
 }
 
 static void
@@ -336,10 +333,8 @@ chase_cnamechain(dns_message_t *msg, dns_name_t *qname) {
 		check_result(result, "dns_rdataset_first");
 		dns_rdata_reset(&rdata);
 		dns_rdataset_current(rdataset, &rdata);
-		result = dns_rdata_tostruct(&rdata, &cname, NULL);
-		check_result(result, "dns_rdata_tostruct");
+		dns_rdata_tostruct(&rdata, &cname);
 		dns_name_copy(&cname.cname, qname);
-		dns_rdata_freestruct(&cname);
 	}
 }
 

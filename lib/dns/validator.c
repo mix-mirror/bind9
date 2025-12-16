@@ -324,7 +324,7 @@ trynsec3:
 		DNS_RDATASET_FOREACH(&set) {
 			dns_rdata_t rdata = DNS_RDATA_INIT;
 			dns_rdataset_current(&set, &rdata);
-			(void)dns_rdata_tostruct(&rdata, &nsec3, NULL);
+			dns_rdata_tostruct(&rdata, &nsec3);
 			if (nsec3.hash != 1) {
 				continue;
 			}
@@ -1073,7 +1073,7 @@ select_signing_key(dns_validator_t *val, dns_rdataset_t *rdataset) {
 		isc_region_t r;
 
 		dns_rdataset_current(rdataset, &rdata);
-		dns_rdata_tostruct(&rdata, &key, NULL); /* can't fail */
+		dns_rdata_tostruct(&rdata, &key);
 
 		if (key.algorithm != siginfo->algorithm ||
 		    (key.flags & DNS_KEYFLAG_REVOKE) != 0 ||
@@ -1331,8 +1331,7 @@ selfsigned_dnskey(dns_validator_t *val) {
 		dns_keytag_t keytag;
 
 		dns_rdataset_current(rdataset, &keyrdata);
-		result = dns_rdata_tostruct(&keyrdata, &key, NULL);
-		RUNTIME_CHECK(result == ISC_R_SUCCESS);
+		dns_rdata_tostruct(&keyrdata, &key);
 		keytag = compute_keytag(&keyrdata);
 
 		DNS_RDATASET_FOREACH(sigrdataset) {
@@ -1340,8 +1339,7 @@ selfsigned_dnskey(dns_validator_t *val) {
 			dst_key_t *dstkey = NULL;
 
 			dns_rdataset_current(sigrdataset, &sigrdata);
-			result = dns_rdata_tostruct(&sigrdata, &sig, NULL);
-			RUNTIME_CHECK(result == ISC_R_SUCCESS);
+			dns_rdata_tostruct(&sigrdata, &sig);
 
 			if (sig.algorithm != key.algorithm ||
 			    sig.keyid != keytag ||
@@ -1693,7 +1691,7 @@ validate_answer_process(void *arg) {
 		val->siginfo = isc_mem_get(val->view->mctx,
 					   sizeof(*val->siginfo));
 	}
-	CHECK(dns_rdata_tostruct(&val->rdata, val->siginfo, NULL));
+	dns_rdata_tostruct(&val->rdata, val->siginfo);
 
 	/*
 	 * At this point we could check that the signature algorithm
@@ -1909,8 +1907,7 @@ check_signer(dns_validator_t *val, dns_rdata_t *keyrdata, uint16_t keyid,
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 
 		dns_rdataset_current(&rdataset, &rdata);
-		result = dns_rdata_tostruct(&rdata, &sig, NULL);
-		RUNTIME_CHECK(result == ISC_R_SUCCESS);
+		dns_rdata_tostruct(&rdata, &sig);
 		if (keyid != sig.keyid || algorithm != sig.algorithm) {
 			continue;
 		}
@@ -2056,8 +2053,7 @@ validate_dnskey_dsset(dns_validator_t *val) {
 
 	dns_rdata_reset(&dsrdata);
 	dns_rdataset_current(val->dsset, &dsrdata);
-	result = dns_rdata_tostruct(&dsrdata, &ds, NULL);
-	RUNTIME_CHECK(result == ISC_R_SUCCESS);
+	dns_rdata_tostruct(&dsrdata, &ds);
 
 	if (ds.digest_type == DNS_DSDIGEST_SHA1 && val->digest_sha1 == false) {
 		return DNS_R_BADALG;
@@ -2119,7 +2115,7 @@ validate_dnskey_dsset(dns_validator_t *val) {
 	 * Figure out if the private algorithm is supported now that we have
 	 * found a matching dnskey.
 	 */
-	dns_rdata_tostruct(&keyrdata, &key, NULL);
+	dns_rdata_tostruct(&keyrdata, &key);
 	if (data == NULL && (ds.algorithm == DNS_KEYALG_PRIVATEDNS ||
 			     ds.algorithm == DNS_KEYALG_PRIVATEOID))
 	{
@@ -2309,8 +2305,7 @@ validate_dnskey(void *arg) {
 	DNS_RDATASET_FOREACH(val->dsset) {
 		dns_rdata_t dsrdata = DNS_RDATA_INIT;
 		dns_rdataset_current(val->dsset, &dsrdata);
-		result = dns_rdata_tostruct(&dsrdata, &ds, NULL);
-		RUNTIME_CHECK(result == ISC_R_SUCCESS);
+		dns_rdata_tostruct(&dsrdata, &ds);
 
 		if (!dns_resolver_ds_digest_supported(
 			    val->view->resolver, val->name, ds.digest_type))
@@ -3004,8 +2999,7 @@ check_ds_private(dns_rdataset_t *rdataset) {
 	{
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		dns_rdataset_current(rdataset, &rdata);
-		result = dns_rdata_tostruct(&rdata, &ds, NULL);
-		RUNTIME_CHECK(result == ISC_R_SUCCESS);
+		dns_rdata_tostruct(&rdata, &ds);
 		if (ds.algorithm == DNS_KEYALG_PRIVATEDNS ||
 		    ds.algorithm == DNS_KEYALG_PRIVATEOID)
 		{
@@ -3029,15 +3023,13 @@ check_ds_algs(dns_validator_t *val, dns_name_t *name,
 	uint8_t algorithm = 0;
 
 	DNS_RDATASET_FOREACH(dsrdataset) {
-		isc_result_t result;
 		dns_rdata_t dsrdata = DNS_RDATA_INIT;
 		dns_rdata_t keyrdata = DNS_RDATA_INIT;
 		unsigned char *data = NULL;
 		size_t datalen = 0;
 
 		dns_rdataset_current(dsrdataset, &dsrdata);
-		result = dns_rdata_tostruct(&dsrdata, &ds, NULL);
-		RUNTIME_CHECK(result == ISC_R_SUCCESS);
+		dns_rdata_tostruct(&dsrdata, &ds);
 
 		/*
 		 * Look for a matching DNSKEY to find the PRIVATE
@@ -3046,6 +3038,7 @@ check_ds_algs(dns_validator_t *val, dns_name_t *name,
 		if (ds.algorithm == DNS_KEYALG_PRIVATEOID ||
 		    ds.algorithm == DNS_KEYALG_PRIVATEDNS)
 		{
+			isc_result_t result;
 			switch (ds.digest_type) {
 #if defined(DNS_DSDIGEST_SHA256PRIVATE) && defined(DNS_DSDIGEST_SHA384PRIVATE)
 			case DNS_DSDIGEST_SHA256PRIVATE:
@@ -3071,9 +3064,7 @@ check_ds_algs(dns_validator_t *val, dns_name_t *name,
 					seen_private = true;
 					continue;
 				}
-				result = dns_rdata_tostruct(&keyrdata, &key,
-							    NULL);
-				RUNTIME_CHECK(result == ISC_R_SUCCESS);
+				dns_rdata_tostruct(&keyrdata, &key);
 				data = key.data;
 				datalen = key.datalen;
 				break;

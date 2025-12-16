@@ -106,6 +106,11 @@ str2name(const char *namestr) {
 }
 
 static void
+free_keystruct(dns_rdata_dnskey_t *keystruct) {
+	isc_mem_free(isc_g_mctx, keystruct->data);
+}
+
+static void
 create_keystruct(uint16_t flags, uint8_t proto, uint8_t alg, const char *keystr,
 		 dns_rdata_dnskey_t *keystruct) {
 	unsigned char keydata[4096];
@@ -115,7 +120,6 @@ create_keystruct(uint16_t flags, uint8_t proto, uint8_t alg, const char *keystr,
 
 	keystruct->common.rdclass = rdclass;
 	keystruct->common.rdtype = dns_rdatatype_dnskey;
-	keystruct->mctx = isc_g_mctx;
 	keystruct->flags = flags;
 	keystruct->protocol = proto;
 	keystruct->algorithm = alg;
@@ -160,7 +164,7 @@ create_dsstruct(dns_name_t *name, uint16_t flags, uint8_t proto, uint8_t alg,
 				     digest_len, dsstruct);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	dns_rdata_freestruct(&dnskey);
+	free_keystruct(&dnskey);
 }
 
 /* Common setup: create a keytable and ntatable to test with a few keys */
@@ -432,21 +436,21 @@ ISC_LOOP_TEST_IMPL(deletekey) {
 	create_keystruct(257, 3, 5, keystr1, &dnskey);
 	assert_int_equal(dns_keytable_deletekey(keytable, keyname, &dnskey),
 			 ISC_R_NOTFOUND);
-	dns_rdata_freestruct(&dnskey);
+	free_keystruct(&dnskey);
 
 	/* subdomain match is the same as no match */
 	dns_test_namefromstring("sub.example.org.", &fn);
 	create_keystruct(257, 3, 5, keystr1, &dnskey);
 	assert_int_equal(dns_keytable_deletekey(keytable, keyname, &dnskey),
 			 ISC_R_NOTFOUND);
-	dns_rdata_freestruct(&dnskey);
+	free_keystruct(&dnskey);
 
 	/* name matches but key doesn't match (resulting in PARTIALMATCH) */
 	dns_test_namefromstring("example.com.", &fn);
 	create_keystruct(257, 3, 5, keystr2, &dnskey);
 	assert_int_equal(dns_keytable_deletekey(keytable, keyname, &dnskey),
 			 DNS_R_PARTIALMATCH);
-	dns_rdata_freestruct(&dnskey);
+	free_keystruct(&dnskey);
 
 	/*
 	 * exact match: should return SUCCESS on the first try, then
@@ -467,7 +471,7 @@ ISC_LOOP_TEST_IMPL(deletekey) {
 			 ISC_R_SUCCESS);
 	assert_int_equal(dns_keytable_deletekey(keytable, keyname, &dnskey),
 			 ISC_R_NOTFOUND);
-	dns_rdata_freestruct(&dnskey);
+	free_keystruct(&dnskey);
 
 	/*
 	 * A null key node for a name is not deleted when searched by key;
@@ -479,7 +483,7 @@ ISC_LOOP_TEST_IMPL(deletekey) {
 			 DNS_R_PARTIALMATCH);
 	assert_int_equal(dns_keytable_delete(keytable, keyname, NULL, NULL),
 			 ISC_R_SUCCESS);
-	dns_rdata_freestruct(&dnskey);
+	free_keystruct(&dnskey);
 
 	destroy_tables();
 

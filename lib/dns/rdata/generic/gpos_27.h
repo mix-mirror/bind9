@@ -18,7 +18,6 @@
 
 typedef struct dns_rdata_gpos {
 	dns_rdatacommon_t common;
-	isc_mem_t *mctx;
 	char *longitude;
 	char *latitude;
 	char *altitude;

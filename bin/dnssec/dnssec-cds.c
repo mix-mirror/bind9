@@ -469,8 +469,7 @@ match_key_dsset(keyinfo_t *ki, dns_rdataset_t *dsset, strictness_t strictness) {
 		bool c;
 
 		dns_rdataset_current(dsset, &dsrdata);
-		result = dns_rdata_tostruct(&dsrdata, &ds, NULL);
-		check_result(result, "dns_rdata_tostruct(DS)");
+		dns_rdata_tostruct(&dsrdata, &ds);
 
 		if (ki->tag != ds.key_tag || ki->algo != ds.algorithm) {
 			continue;
@@ -539,8 +538,7 @@ match_keyset_dsset(dns_rdataset_t *keyset, dns_rdataset_t *dsset,
 		dns_rdata_init(keyrdata);
 		dns_rdataset_current(keyset, keyrdata);
 
-		result = dns_rdata_tostruct(keyrdata, &dnskey, NULL);
-		check_result(result, "dns_rdata_tostruct(DNSKEY)");
+		dns_rdata_tostruct(keyrdata, &dnskey);
 		ki->algo = dnskey.algorithm;
 
 		dns_rdata_toregion(keyrdata, &r);
@@ -609,8 +607,7 @@ matching_sigs(keyinfo_t *keytbl, dns_rdataset_t *rdataset,
 		dns_rdata_rrsig_t sig;
 
 		dns_rdataset_current(sigset, &sigrdata);
-		result = dns_rdata_tostruct(&sigrdata, &sig, NULL);
-		check_result(result, "dns_rdata_tostruct(RRSIG)");
+		dns_rdata_tostruct(&sigrdata, &sig);
 
 		/*
 		 * Replay attack protection: check against current age limit
@@ -695,7 +692,6 @@ signed_loose(dns_secalg_t *algo) {
  */
 static bool
 signed_strict(dns_rdataset_t *dsset, dns_secalg_t *algo) {
-	isc_result_t result;
 	bool all_ok = true;
 
 	DNS_RDATASET_FOREACH(dsset) {
@@ -705,8 +701,7 @@ signed_strict(dns_rdataset_t *dsset, dns_secalg_t *algo) {
 		int i;
 
 		dns_rdataset_current(dsset, &dsrdata);
-		result = dns_rdata_tostruct(&dsrdata, &ds, NULL);
-		check_result(result, "dns_rdata_tostruct(DS)");
+		dns_rdata_tostruct(&dsrdata, &ds);
 
 		ds_ok = false;
 		for (i = 0; i < nkey; i++) {
@@ -735,13 +730,11 @@ signed_strict(dns_rdataset_t *dsset, dns_secalg_t *algo) {
 static isc_result_t
 ds_from_cds(isc_buffer_t *buf, dns_rdata_t *rds, dns_dsdigest_t dt,
 	    dns_rdata_t *cds) {
-	isc_result_t result;
 	dns_rdata_ds_t ds;
 
 	REQUIRE(buf != NULL);
 
-	result = dns_rdata_tostruct(cds, &ds, NULL);
-	check_result(result, "dns_rdata_tostruct(CDS)");
+	dns_rdata_tostruct(cds, &ds);
 	ds.common.rdtype = dns_rdatatype_ds;
 
 	if (ds.digest_type != dt) {
@@ -860,7 +853,6 @@ rdata_cmp(const void *rdata1, const void *rdata2) {
  */
 static bool
 consistent_digests(dns_rdataset_t *dsset) {
-	isc_result_t result;
 	dns_rdata_t *arrdata = NULL;
 	dns_rdata_ds_t *ds = NULL;
 	dns_keytag_t key_tag;
@@ -892,8 +884,7 @@ consistent_digests(dns_rdataset_t *dsset) {
 	ds = isc_mem_cget(isc_g_mctx, n, sizeof(dns_rdata_ds_t));
 
 	for (i = 0; i < n; i++) {
-		result = dns_rdata_tostruct(&arrdata[i], &ds[i], NULL);
-		check_result(result, "dns_rdata_tostruct(DS)");
+		dns_rdata_tostruct(&arrdata[i], &ds[i]);
 	}
 
 	/*

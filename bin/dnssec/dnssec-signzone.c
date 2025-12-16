@@ -527,8 +527,7 @@ signset(dns_diff_t *del, dns_diff_t *add, dns_dbnode_t *node, dns_name_t *name,
 
 			dns_rdataset_current(&sigset, &sigrdata);
 
-			result = dns_rdata_tostruct(&sigrdata, &rrsig, NULL);
-			check_result(result, "dns_rdata_tostruct");
+			dns_rdata_tostruct(&sigrdata, &rrsig);
 
 			future = isc_serial_lt(now, rrsig.timesigned);
 
@@ -672,7 +671,6 @@ signset(dns_diff_t *del, dns_diff_t *add, dns_dbnode_t *node, dns_name_t *name,
 			}
 
 			dns_rdata_reset(&sigrdata);
-			dns_rdata_freestruct(&rrsig);
 		}
 	}
 
@@ -1892,7 +1890,6 @@ addnsec3param(const unsigned char *salt, size_t salt_len,
 
 	nsec3param.common.rdclass = gclass;
 	nsec3param.common.rdtype = dns_rdatatype_nsec3param;
-	nsec3param.mctx = NULL;
 	nsec3param.flags = 0;
 	nsec3param.hash = unknownalg ? DNS_NSEC3_UNKNOWNALG : dns_hash_sha1;
 	nsec3param.iterations = iterations;
@@ -2050,8 +2047,7 @@ nsec3clean(dns_name_t *name, dns_dbnode_t *node, unsigned int hashalg,
 		dns_rdata_t delrdata = DNS_RDATA_INIT;
 
 		dns_rdataset_current(&rdataset, &rdata);
-		result = dns_rdata_tostruct(&rdata, &nsec3, NULL);
-		check_result(result, "dns_rdata_tostruct");
+		dns_rdata_tostruct(&rdata, &nsec3);
 		if (exists && nsec3.hash == hashalg &&
 		    nsec3.iterations == iterations &&
 		    nsec3.salt_length == salt_len &&
@@ -2829,13 +2825,11 @@ warnifallksk(dns_db_t *db) {
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		dns_rdataset_current(&rdataset, &rdata);
 
-		result = dns_rdata_tostruct(&rdata, &dnskey, NULL);
-		check_result(result, "dns_rdata_tostruct");
+		dns_rdata_tostruct(&rdata, &dnskey);
 		if ((dnskey.flags & DNS_KEYFLAG_KSK) == 0) {
 			have_non_ksk = true;
 			break;
 		}
-		dns_rdata_freestruct(&dnskey);
 	}
 	dns_rdataset_disassociate(&rdataset);
 	dns_db_detachnode(&node);
@@ -2918,8 +2912,7 @@ set_nsec3params(bool update, bool set_salt, bool set_optout, bool set_iter) {
 	result = dns_rdataset_first(&rdataset);
 	check_result(result, "dns_rdataset_first");
 	dns_rdataset_current(&rdataset, &rdata);
-	result = dns_rdata_tostruct(&rdata, &nsec3, NULL);
-	check_result(result, "dns_rdata_tostruct");
+	dns_rdata_tostruct(&rdata, &nsec3);
 
 	if (!update && set_optout) {
 		if (nsec3flags != nsec3.flags) {
@@ -2932,8 +2925,6 @@ set_nsec3params(bool update, bool set_salt, bool set_optout, bool set_iter) {
 	} else if (!set_optout) {
 		nsec3flags = nsec3.flags;
 	}
-
-	dns_rdata_freestruct(&nsec3);
 
 cleanup:
 	if (dns_rdataset_isassociated(&rdataset)) {
