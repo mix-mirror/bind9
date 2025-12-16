@@ -545,6 +545,10 @@ stages:
     - *find_python
     - >
       $PYTHON -m pip install -r bin/tests/system/requirements.txt
+    - rm -rf build
+    - *configure
+    - meson compile -C build
+    - meson compile -C build system-test-dependencies
   # This script needs to: 1) fail if the system tests fail, 2) fail if
   # the junit.xml file is broken, 3) produce the junit.xml file even if
   # the system tests fail.  Therefore, $RET is used to "cache" the
