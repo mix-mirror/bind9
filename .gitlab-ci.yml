@@ -1648,7 +1648,7 @@ generate-tsan-stress-test-configs:
 
 tsan:stress:
   <<: *default_triggering_rules
-  stage: other-checks
+  stage: system
   variables:
     PARENT_PIPELINE_ID: $CI_PIPELINE_ID
   trigger:
@@ -2144,6 +2144,7 @@ stress-test-child-pipeline:
 
 gcov:
   <<: *other_checks_job
+  stage: system
   needs:
     - job: system:gcc:trixie:amd64
       artifacts: true
