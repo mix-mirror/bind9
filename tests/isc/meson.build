@@ -66,6 +66,17 @@ if config.has('HAVE_LIBNGHTTP2') and not is_el8
     isc_test += 'doh'
 endif
 
+if config.has('HAVE_LIBNGTCP2')
+    isc_test += [
+        'ngtcp2_integration',
+        'quic_session',
+        'quic_sm',
+        'quic_tls',
+    ]
+
+    flaky_isc_test += 'quic_session'
+endif
+
 foreach unit : isc_test
     test_bin = executable(
         unit,
@@ -86,6 +97,7 @@ foreach unit : isc_test
 
             cmocka_dep,
             nghttp2_dep,
+            ngtcp2_dep,
         ],
     )
 

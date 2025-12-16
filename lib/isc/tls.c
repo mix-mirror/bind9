@@ -51,8 +51,14 @@
 
 #include "openssl_shim.h"
 
+#ifdef HAVE_LIBNGTCP2
+#include "quic/quic-int.h"
+#endif /* HAVE_LIBNGTCP2 */
+
 #define COMMON_SSL_OPTIONS \
 	(SSL_OP_NO_COMPRESSION | SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION)
+
+static bool sslkeylogfile_enabled = false;
 
 void
 isc_tlsctx_free(isc_tlsctx_t **ctxp) {
@@ -75,14 +81,32 @@ isc_tlsctx_attach(isc_tlsctx_t *src, isc_tlsctx_t **ptarget) {
 	*ptarget = src;
 }
 
+void
+isc__sslkeylog_init(void) __attribute__((__constructor__));
+
+void
+isc__sslkeylog_init(void) {
+	if (getenv("SSLKEYLOGFILE") != NULL) {
+		sslkeylogfile_enabled = true;
+	}
+}
+
 /*
  * Callback invoked by the SSL library whenever a new TLS pre-master secret
  * needs to be logged.
  */
+void
+isc_tls_sslkeylogfile_append(const char *line) {
+	if (sslkeylogfile_enabled) {
+		isc_log_write(ISC_LOGCATEGORY_SSLKEYLOG, ISC_LOGMODULE_CRYPTO,
+			      ISC_LOG_INFO, "%s", line);
+	}
+}
+
 static void
 sslkeylogfile_append(const SSL *ssl ISC_ATTR_UNUSED, const char *line) {
-	isc_log_write(ISC_LOGCATEGORY_SSLKEYLOG, ISC_LOGMODULE_CRYPTO,
-		      ISC_LOG_INFO, "%s", line);
+	UNUSED(ssl);
+	isc_tls_sslkeylogfile_append(line);
 }
 
 /*
@@ -92,7 +116,7 @@ sslkeylogfile_append(const SSL *ssl ISC_ATTR_UNUSED, const char *line) {
  */
 static void
 sslkeylogfile_init(isc_tlsctx_t *ctx) {
-	if (getenv("SSLKEYLOGFILE") != NULL) {
+	if (sslkeylogfile_enabled) {
 		SSL_CTX_set_keylog_callback(ctx, sslkeylogfile_append);
 	}
 }
@@ -649,12 +673,36 @@ isc_tls_create(isc_tlsctx_t *ctx) {
 	return newctx;
 }
 
+#ifdef HAVE_LIBNGTCP2
+isc_tls_t *
+isc_tls_create_quic(isc_tlsctx_t *ctx) {
+	isc_tls_t *newtls = NULL;
+
+	REQUIRE(ctx != NULL);
+
+	newtls = isc_tls_create(ctx);
+
+	if (newtls != NULL) {
+		isc__tls_quic_init(newtls);
+	}
+
+	return newtls;
+}
+#endif /* HAVE_LIBNGTCP2 */
+
 void
 isc_tls_free(isc_tls_t **tlsp) {
 	isc_tls_t *tls = NULL;
 	REQUIRE(tlsp != NULL && *tlsp != NULL);
 
 	tls = *tlsp;
+
+#ifdef HAVE_LIBNGTCP2
+	if (isc__tls_is_quic(tls)) {
+		isc__tls_quic_uninit(tls);
+	}
+#endif /* HAVE_LIBNGTCP2 */
+
 	*tlsp = NULL;
 	SSL_free(tls);
 }

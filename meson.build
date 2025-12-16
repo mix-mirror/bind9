@@ -67,6 +67,7 @@ lmdb_opt = get_option('lmdb')
 locktype_opt = get_option('locktype')
 named_lto_opt = get_option('named-lto')
 oss_fuzz_args_opt = get_option('oss-fuzz-args')
+quic_opt = get_option('quic')
 stats_json_opt = get_option('stats-json')
 stats_xml_opt = get_option('stats-xml')
 tracing_opt = get_option('tracing')
@@ -626,6 +627,7 @@ foreach fn, header : {
     'ERR_get_error_all': '#include <openssl/err.h>',
     'BIO_read_ex': '#include <openssl/bio.h>',
     'BIO_write_ex': '#include <openssl/bio.h>',
+    'CRYPTO_free_ex_index': '#include <openssl/crypto.h>',
     'EVP_MD_CTX_get0_md': '#include <openssl/evp.h>',
     'EVP_PKEY_eq': '#include <openssl/evp.h>',
     'SSL_CTX_set1_cert_store': '#include <openssl/ssl.h>',
@@ -635,6 +637,23 @@ foreach fn, header : {
         cc.has_function(fn, dependencies: openssl_dep, prefix: header),
     )
 endforeach
+
+# Check if the SSL library is LibreSSL
+have_libressl = cc.compiles(
+    '''
+        #include <openssl/opensslv.h>
+        #ifndef LIBRESSL_VERSION_NUMBER
+        #error "Not LibreSSL"
+        #endif
+        int main(void) { return 0; }
+    ''',
+    dependencies: openssl_dep,
+    name: 'whether LibreSSL is used',
+)
+
+if have_libressl
+    config.set('HAVE_LIBRESSL', 1)
+endif
 
 ## libuv
 uv_dep = dependency('libuv', version: '>=1.34.0')
@@ -781,6 +800,58 @@ if doh_opt.allowed()
     nghttp2_dep = dependency('libnghttp2', version: '>=1.6.0', required: doh_opt)
     if nghttp2_dep.found()
         config.set('HAVE_LIBNGHTTP2', 1)
+    endif
+endif
+
+# QUIC
+ngtcp2_dep = null_dep
+if quic_opt.allowed()
+    # Check for libngtcp2 using pkg-config. Meson will error out if it is not
+    # found and quic was explicitly enabled.
+    _ngtcp2_dep = dependency('libngtcp2', version: '>=1.0.0', required: quic_opt)
+
+    if _ngtcp2_dep.found()
+        # Check if the OpenSSL library provides TLSv1.3, which is required for QUIC.
+        has_tls13 = cc.compiles(
+            '''
+                #include <openssl/ssl.h>
+                #if (!defined(SSL_OP_NO_TLSv1_3) && !defined(TLS1_3_VERSION))
+                #error "TLSv1.3 support is required for QUIC"
+                #endif
+                int main(void) { return 0; }
+            ''',
+            dependencies: openssl_dep,
+            name: 'TLSv1.3 support for QUIC',
+        )
+
+        if has_tls13
+            config.set('HAVE_LIBNGTCP2', 1)
+
+            # Check if OpenSSL has the native QUIC integration API
+            if cc.compiles(
+                '''
+                    #include <openssl/ssl.h>
+                    int main(void) {
+                        SSL_QUIC_METHOD quic_method = { 0 };
+                        (void)quic_method;
+                        return 0;
+                    }
+                ''',
+                dependencies: openssl_dep,
+                name: 'native OpenSSL QUIC API',
+            )
+                config.set('HAVE_NATIVE_BORINGSSL_QUIC_API', 1)
+            endif
+
+            # If all checks pass, create the final dependency object.
+            ngtcp2_dep = _ngtcp2_dep
+
+        elif quic_opt.enabled()
+            # If QUIC was explicitly enabled but TLSv1.3 is missing, fail the build.
+            error(
+                'QUIC support requires an OpenSSL/LibreSSL with TLSv1.3 support. Use -Dquic=disabled to build without it.',
+            )
+        endif
     endif
 endif
 
@@ -1648,6 +1719,7 @@ executable(
         json_c_dep,
         lmdb_dep,
         nghttp2_dep,
+        ngtcp2_dep,
         xml2_dep,
         zlib_dep,
 
@@ -2057,6 +2129,7 @@ summary(
         'LMDB': lmdb_dep.version(),
         'MaxMindDB': maxminddb_dep.version(),
         'nghttp2': nghttp2_dep.version(),
+        'ngtcp2': ngtcp2_dep.version(),
         'protobuf-c': proto_dep.version(),
         'zlib': zlib_dep.version(),
     },

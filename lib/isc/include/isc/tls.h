@@ -616,6 +616,314 @@ isc_tls_valid_sni_hostname(const char *hostname);
  * 'false' if it represents an IP address.
  */
 
+void
+isc_tls_sslkeylogfile_append(const char *line);
+/*%<
+ * Appends the provided line to the dedicated SSL keys log file
+ * provided via "SSLKEYLOGFILE" environmental variable (iff the variable is
+ * set).
+ */
+
+/* QUIC related functionality (mostly see quic/tls_quic.c) */
+#ifdef HAVE_LIBNGTCP2
+
+typedef struct ssl_cipher_st isc_tls_cipher_t;
+/*%<
+ * See 'SSL_CIPHER'.
+ */
+
+typedef void (*isc_tls_keylog_cb_t)(const isc_tls_t *tls, const char *line);
+/*%<
+ * Keylog callback. See 'SSL_CTX_set_keylog_callback()'.
+ */
+
+typedef enum isc_quic_encryption_level {
+	ISC_QUIC_ENCRYPTION_INITIAL = 0,
+	ISC_QUIC_ENCRYPTION_EARLY_DATA,
+	ISC_QUIC_ENCRYPTION_HANDSHAKE,
+	ISC_QUIC_ENCRYPTION_APPLICATION
+} isc_quic_encryption_level_t;
+/*%<
+ * QUIC TLS encryption level (similar to 'ssl_encryption_level_t').
+ */
+
+typedef struct isc_tls_quic_method {
+	bool (*set_read_secret)(isc_tls_t			 *tls,
+				const isc_quic_encryption_level_t level,
+				const isc_tls_cipher_t		 *cipher,
+				const uint8_t *secret, const size_t secret_len);
+
+	bool (*set_write_secret)(isc_tls_t			  *tls,
+				 const isc_quic_encryption_level_t level,
+				 const isc_tls_cipher_t		  *cipher,
+				 const uint8_t			  *secret,
+				 const size_t			   secret_len);
+
+	bool (*add_handshake_data)(isc_tls_t			    *tls,
+				   const isc_quic_encryption_level_t level,
+				   const uint8_t *data, const size_t len);
+
+	/* The flush_flight() callback is used for optimisation means and
+	 * cannot be implemented manually without access to the internals
+	 * of the crypto libraries (TLS state machine). We need to skip
+	 * it. */
+	/*bool (*flush_flight)(isc_tls_t *tls);*/
+
+	bool (*send_alert)(isc_tls_t			    *tls,
+			   const isc_quic_encryption_level_t level,
+			   const uint8_t		     alert);
+} isc_tls_quic_method_t;
+/*%<
+ * As set of functions (hooks) for interaction between TLS and QUIC. Closely
+ * resembles the LibreSSL/BoringSSL/QuicTLS's
+ * 'SSL_QUIC_METHOD/ssl_quic_method_st' type.
+ */
+
+typedef struct isc_tls_quic_interface isc_tls_quic_interface_t;
+/*%<
+ * An implementation of QUIC and TLS interaction interface.
+ */
+
+const char *
+isc_tls_quic_encryption_level_text(const isc_quic_encryption_level_t level);
+/*%<
+ * Get textual description of a given QUIC encryption level. The
+ * function is intended for log messages.
+ */
+
+const isc_tls_quic_interface_t *
+isc_tls_get_default_quic_interface(void);
+/*%<
+ * Returns a set of hooks to interact wit the default implementation
+ * of QUIC integration API. It might be either a native QUIC
+ * integration API or a compatibility layer depending on BIND
+ * configuration.
+ */
+
+void
+isc_tlsctx_quic_configure(isc_tlsctx_t			 *tlsctx,
+			  const isc_tls_quic_interface_t *quic_interface);
+/*%<
+ * Configures the given TLS context object to be used for QUIC.
+ * It is meant to be used as one of the last steps of a TLS
+ * context configuration.
+ *
+ * Requires:
+ *\li	'tlsctx' is a valid pointer to a TLS context object;
+ *\li	'quic_interface' - a valid pointer to a QUIC interface object.
+ */
+
+isc_tls_t *
+isc_tls_create_quic(isc_tlsctx_t *ctx);
+/*%<
+ * Create a new TLS structure to hold data for a new QUIC connection.
+ *
+ * Requires:
+ *\li	'ctx' != NULL.
+ */
+
+void
+isc_tls_quic_set_app_data(isc_tls_t *tls, void *app_data);
+/*%<
+ * Sets QUIC application data (user data) for the given TLS object
+ * configured for QUIC. Works similar to 'SSL_set_app_data()' which
+ * cannot be used for TLS objects configured for QUIC as this
+ * functionality is used internally.
+ *
+ * Requires:
+ *\li	'tls' is a valid pointer to a TLS object.
+ */
+
+void *
+isc_tls_quic_get_app_data(isc_tls_t *tls);
+/*%<
+ * Returns QUIC application data (user data) for the given TLS
+ * object configured for QUIC. Works similar to 'SSL_get_app_data()'
+ * which cannot be used for TLS objects configured for QUIC as this
+ * functionality is used internally.
+ *
+ * Requires:
+ *\li	'tls' is a valid pointer to a TLS object.
+ */
+
+void
+isc_tls_quic_set_keylog_callback(isc_tls_t *tls, isc_tls_keylog_cb_t cb);
+/*%<
+ * Sets QUIC keylog callback. See 'SSL_CTX_set_keylog_callback()' for more
+ * details. NOTE: No-op on LibreSSL.
+ *
+ * Additional information:
+ * https://datatracker.ietf.org/doc/draft-ietf-tls-keylogfile/
+ *
+ * Requires:
+ *\li	'tls' is a valid pointer to a TLS object.
+ */
+
+isc_result_t
+isc_tls_set_quic_method(isc_tls_t *tls, const isc_tls_quic_method_t *method);
+/*%<
+ * Configures the QUIC related hooks on a TLS object previously configured for
+ * QUIC. The 'method' must remain valid for the lifetime of 'tls'.
+ *
+ * NOTE: See 'SSL_set_quic_method()'.
+ *
+ * Requires:
+ *\li	'tls' is a valid pointer to a TLS object;
+ *\li	'method' is a valid pointer to a QUIC method object.
+ *
+ * Returns:
+ *\li	#ISC_R_SUCCESS - on success;
+ *\li	#ISC_R_FAILURE - on failure.
+ */
+
+isc_result_t
+isc_tls_provide_quic_data(isc_tls_t			   *tls,
+			  const isc_quic_encryption_level_t level,
+			  const uint8_t *data, const size_t len);
+/*%<
+ * Provides data from QUIC at a particular encryption level 'level' to a TLS
+ * object previously configured for QUIC.
+ *
+ * NOTE: See 'SSL_provide_quic_data()'.
+ *
+ * Requires:
+ *\li	'tls' is a valid pointer to a TLS object;
+ *\li	'len' == 0 || 'data' != NULL;
+ *
+ * Returns:
+ *\li	#ISC_R_SUCCESS - on success;
+ *\li	#ISC_R_FAILURE - on failure.
+ */
+
+int
+isc_tls_process_quic_post_handshake(isc_tls_t *tls);
+/*%<
+ * Processes any data that QUIC has provided that left after TLS handshake
+ * completion in a TLS object previously configured for QUIC.
+ *
+ * NOTE: See 'SSL_process_quic_post_handshake()'. You can pass the
+ * return value to 'SSL_get_error()' for better error processing.
+ *
+ * Requires:
+ *\li	'tls' is a valid pointer to a TLS object.
+ *
+ * Returns:
+ *\li	'1' - on success;
+ *\li	'0' - on failure.
+ */
+
+int
+isc_tls_do_quic_handshake(isc_tls_t *tls);
+/*%<
+ * Processes any handshake data that QUIC has provided.
+ *
+ * NOTE: See 'SSL_do_handshake()'. The function shares return values
+ * with this function and can be considered a thin wrapper on top of
+ * it. The intention behind the wrapper to hide some differences in
+ * behaviour between native BoringSSL-style QUIC API and our OpenSSL
+ * compatibility layer. You can pass the return value to
+ * 'SSL_get_error()' for better error processing.
+ *
+ * Requires:
+ *\li	'tls' is a valid pointer to a TLS object.
+ */
+
+isc_result_t
+isc_tls_set_quic_transport_params(isc_tls_t *tls, const uint8_t *params,
+				  const size_t params_len);
+/*%<
+ * Sets the 'quic_transport_parameters' extension value in either the
+ *'ClientHello' or 'EncryptedExtensions' handshake message for a TLS object
+ * previously configured for QUIC. The pointers need to be valid only for the
+ * time of the call.
+ *
+ * NOTE: See 'SSL_set_quic_transport_params()'.
+ *
+ * Requires:
+ *\li	'tls' is a valid pointer to a TLS object;
+ *\li	'params' is a valid pointer;
+ *\li	'params_len' is more than zero.
+ *
+ * Returns:
+ *\li	#ISC_R_SUCCESS - on success;
+ *\li	#ISC_R_FAILURE - on failure.
+ */
+
+void
+isc_tls_get_peer_quic_transport_params(isc_tls_t      *tls,
+				       const uint8_t **out_params,
+				       size_t	      *out_params_len);
+/*%<
+ * Returns the 'quic_transport_parameters' extension value and its length for
+ * either the 'ClientHello' or 'EncryptedExtensions' handshake message sent by
+ * the peer for a TLS object previously configured for QUIC. The data buffer is
+ * valid for the for until the call to 'isc_tls_quic_uninit()'.
+ *
+ * NOTE: See 'SSL_get_peer_quic_transport_params()'.
+ *
+ * Requires:
+ *\li	'tls' is a valid pointer to a TLS object;
+ *\li	'out_params' is a valid pointer to a nullified pointer;
+ *\li	'out_params_len' is a valid pointer to a nullified variable.
+ *
+ * Returns:
+ *\li	#ISC_R_SUCCESS - on success;
+ *\li	#ISC_R_FAILURE - on failure.
+ */
+
+isc_quic_encryption_level_t
+isc_tls_quic_read_level(const isc_tls_t *tls);
+/*%<
+ * Returns the current read encryption level. MUST NOT be called from a
+ * 'isc_tls_quic_method_t' callback  (due to inconsistent behaviour in different
+ * crypto libraries in this situation).
+ *
+ * NOTE: See 'SSL_quic_read_level()'.
+ *
+ * Requires:
+ *\li	'tls' is a valid pointer to a TLS object.
+ */
+
+isc_quic_encryption_level_t
+isc_tls_quic_write_level(const isc_tls_t *tls);
+/*%<
+ * Returns the current write encryption level. MUST NOT be called from a
+ * 'isc_tls_quic_method_t' callback  (due to inconsistent behaviour in different
+ * crypto libraries in this situation).
+ *
+ * NOTE: See 'SSL_quic_write_level()'.
+ *
+ * Requires:
+ *\li	'tls' is a valid pointer to a TLS object.
+ */
+
+void
+isc_tls_quic_crypto_initialize(void);
+/*%<
+ * Initiliazes the internal QUIC crypto library. It is supposed to
+ * be used right after loading all required OpenSSL crypto providers.
+ *
+ * Internally it mostly pre-fetches the crypto algorithms according to
+ * OpenSSL 3.X recommendations.
+ *
+ * https://docs.openssl.org/3.0/man7/crypto/#explicit-fetching
+ */
+
+void
+isc_tls_quic_crypto_shutdown(void);
+/*%<
+ * Uninitiliazes the internal QUIC crypto library. It is supposed to
+ * be used right before unloading the used OpenSSL crypto providers.
+ */
+
+void
+isc__tls_quic_initialize(void);
+
+void
+isc__tls_quic_shutdown(void);
+
+#endif /* HAVE_LIBNGTCP2 */
+
 #define isc_tlserr2result(category, module, funcname, fallback)            \
 	isc__tlserr2result(category, module, funcname, fallback, __FILE__, \
 			   __LINE__)

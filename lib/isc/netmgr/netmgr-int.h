@@ -668,6 +668,10 @@ struct isc_nmsocket {
 	 * Established an outgoing connection, as client not server.
 	 */
 	bool client;
+	/*%
+	 * Don't stop reading after receiving the first datagram;
+	 */
+	bool client_udp_read_non_stop;
 
 	/*%
 	 * The socket is processing read callback, this is guard to not read
@@ -898,6 +902,13 @@ void
 isc__nm_udp_settimeout(isc_nmhandle_t *handle, uint32_t timeout);
 /*%<
  * Set or clear the recv timeout for the UDP socket associated with 'handle'.
+ */
+
+void
+isc__nm_udp_set_nonstop_read(isc_nmhandle_t *handle, const bool val);
+/*%<
+ * Set or clear the client non-stop read flag of the UDP socket associated with
+ * 'handle'.
  */
 
 void
@@ -1310,6 +1321,9 @@ isc__nm_proxyudp_read(isc_nmhandle_t *handle, isc_nm_recv_cb_t cb, void *cbarg);
 void
 isc__nm_proxyudp_send(isc_nmhandle_t *handle, isc_region_t *region,
 		      isc_nm_cb_t cb, void *cbarg);
+
+void
+isc__nm_proxyudp_set_nonstop_read(isc_nmhandle_t *handle, const bool val);
 
 void
 isc__nm_incstats(isc_nmsocket_t *sock, isc__nm_statid_t id);
