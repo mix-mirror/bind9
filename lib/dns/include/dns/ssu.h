@@ -41,9 +41,14 @@ typedef enum {
 	dns_ssumatchtype_selfsubkrb5 = 15,
 	dns_ssumatchtype_subdomainselfkrb5rhs = 16,
 	dns_ssumatchtype_subdomainselfmsrhs = 17,
-	dns_ssumatchtype_max = 17, /* max value */
+	dns_ssumatchtype_64self = 18,
+	dns_ssumatchtype_60self = 19,
+	dns_ssumatchtype_56self = 20,
+	dns_ssumatchtype_52self = 21,
+	dns_ssumatchtype_48self = 22,
+	dns_ssumatchtype_max = 22, /* max value */
 
-	dns_ssumatchtype_dlz = 18 /* intentionally higher than _max */
+	dns_ssumatchtype_dlz = 23 /* intentionally higher than _max */
 } dns_ssumatchtype_t;
 
 typedef struct dns_ssuruletype {

@@ -1006,6 +1006,120 @@ diff policy.expected.$n policy.log.$n || ret=1
 }
 
 n=$((n + 1))
+echo_i "check that 'update-policy 64-self' refuses update of records via UDP ($n)"
+ret=0
+nextpart ns6/named.run >/dev/null
+# remove 16 nibbles
+REVERSE_NAME=$($ARPANAME fd92:7065:b8e:ffff::6 | cut -d . -f 17-34)
+$NSUPDATE -d >nsupdate.out.$n 2>&1 <<END && ret=1
+server fd92:7065:b8e:ffff::6 ${PORT}
+local fd92:7065:b8e:ffff::6
+zone d.f.ip6.arpa
+update add $REVERSE_NAME 600 PTR localhost.
+send
+END
+grep REFUSED nsupdate.out.$n >/dev/null 2>&1 || ret=1
+$DIG $DIGOPTS @10.53.0.6 \
+  +norec +tcp +noadd +nosea +nostat +noquest +nocomm +nocmd \
+  $REVERSE_NAME NS >dig.out.ns6.$n || ret=1
+grep localhost. dig.out.ns6.$n >/dev/null 2>&1 && ret=1
+if test $ret -ne 0; then
+  echo_i "failed"
+  status=1
+fi
+
+n=$((n + 1))
+echo_i "check update-policy logs ($n)"
+ret=0
+update_policy_log ns6/named.run >policy.log.$n
+cat <<EOF >policy.expected.$n
+EOF
+diff policy.expected.$n policy.log.$n || ret=1
+[ $ret = 0 ] || {
+  echo_i "failed"
+  status=1
+}
+
+n=$((n + 1))
+ret=0
+echo_i "check that 'update-policy 64-self' permits update of records for the client's /64 via TCP ($n)"
+nextpart ns6/named.run >/dev/null
+# remove 16 nibbles
+REVERSE_NAME=$($ARPANAME fd92:7065:b8e:ffff::6 | cut -d . -f 17-34)
+$NSUPDATE -d -v >nsupdate.out.$n 2>&1 <<END || ret=1
+server fd92:7065:b8e:ffff::6 ${PORT}
+local fd92:7065:b8e:ffff::6
+zone D.F.IP6.ARPA
+update add $REVERSE_NAME 600 NS localhost.
+send
+END
+grep REFUSED nsupdate.out.$n >/dev/null 2>&1 && ret=1
+$DIG $DIGOPTS @10.53.0.6 \
+  +norec +tcp +noadd +nosea +nostat +noquest +nocomm +nocmd \
+  $REVERSE_NAME NS >dig.out.ns6.$n || ret=1
+grep localhost. dig.out.ns6.$n >/dev/null 2>&1 || ret=1
+if test $ret -ne 0; then
+  echo_i "failed"
+  status=1
+fi
+
+n=$((n + 1))
+echo_i "check update-policy logs ($n)"
+ret=0
+update_policy_log ns6/named.run >policy.log.$n
+cat <<EOF >policy.expected.$n
+update-policy: using: signer= name=F.F.F.F.E.8.B.0.5.6.0.7.2.9.D.F.IP6.ARPA addr=fd92:7065:b8e:ffff::6 tcp=1 type=NS target=
+update-policy: trying: grant * 64-self . NS(10) DS(4)
+update-policy: 64-self=f.f.f.f.e.8.b.0.5.6.0.7.2.9.d.f.IP6.ARPA
+update-policy: matched: grant * 64-self . NS(10) DS(4)
+EOF
+diff policy.expected.$n policy.log.$n || ret=1
+[ $ret = 0 ] || {
+  echo_i "failed"
+  status=1
+}
+
+n=$((n + 1))
+ret=0
+echo_i "check that 'update-policy 64-self' rejects non /64 clients via TCP ($n)"
+nextpart ns6/named.run >/dev/null
+# remove 16 nibbles
+REVERSE_NAME=$($ARPANAME fd92:7065:b8e:ffff::6 | cut -d . -f 17-34)
+$NSUPDATE -d -v >nsupdate.out.$n 2>&1 <<END && ret=1
+server fd92:7065:b8e:ffff::6 ${PORT}
+local fd92:7065:b8e:ff::1
+zone D.F.IP6.ARPA
+update add $REVERSE_NAME 600 NS a-name-server.
+send
+END
+grep REFUSED nsupdate.out.$n >/dev/null 2>&1 || ret=1
+$DIG $DIGOPTS @10.53.0.6 \
+  +norec +tcp +noadd +nosea +nostat +noquest +nocomm +nocmd \
+  $REVERSE_NAME NS >dig.out.ns6.$n || ret=1
+grep a-name-server. dig.out.ns6.$n >/dev/null 2>&1 && ret=1
+if test $ret -ne 0; then
+  echo_i "failed"
+  status=1
+fi
+
+n=$((n + 1))
+echo_i "check update-policy logs ($n)"
+ret=0
+update_policy_log ns6/named.run >policy.log.$n
+cat <<EOF >policy.expected.$n
+update-policy: using: signer= name=F.F.F.F.E.8.B.0.5.6.0.7.2.9.D.F.IP6.ARPA addr=fd92:7065:b8e:ff::1 tcp=1 type=NS target=
+update-policy: trying: grant * 64-self . NS(10) DS(4)
+update-policy: 64-self=f.f.0.0.e.8.b.0.5.6.0.7.2.9.d.f.IP6.ARPA
+update-policy: next rule: 64-self name does not match record name
+update-policy: no match found
+EOF
+diff policy.expected.$n policy.log.$n || ret=1
+[ $ret = 0 ] || {
+  echo_i "failed"
+  status=1
+}
+
+n=$((n + 1))
 ret=0
 echo_i "check that 'update-policy 6to4-self' refuses update of records via UDP over IPv4 ($n)"
 nextpart ns6/named.run >/dev/null

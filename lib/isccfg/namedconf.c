@@ -342,7 +342,12 @@ doc_matchname(cfg_printer_t *pctx, const cfg_type_t *type) {
 	cfg_print_cstr(pctx, " ]");
 }
 
-static const char *matchtype_enums[] = { "6to4-self",
+static const char *matchtype_enums[] = { "48-self",
+					 "52-self",
+					 "56-self",
+					 "60-self",
+					 "64-self",
+					 "6to4-self",
 					 "external",
 					 "krb5-self",
 					 "krb5-selfsub",
