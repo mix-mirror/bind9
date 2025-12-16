@@ -1009,6 +1009,47 @@ findzonecut_cache(dns_view_t *view, const dns_name_t *name, dns_name_t *fname,
 	return result;
 }
 
+static void
+findzonecut_zoneorcache(dns_view_t *view, const dns_name_t *name,
+			dns_name_t *fname, dns_name_t *dcname,
+			isc_stdtime_t now, unsigned int options,
+			dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset) {
+	isc_result_t result;
+	dns_rdataset_t crdataset = DNS_RDATASET_INIT;
+	dns_rdataset_t csigrdataset = DNS_RDATASET_INIT;
+	dns_fixedname_t cfname, cdcname;
+
+	dns_fixedname_init(&cfname);
+	dns_fixedname_init(&cdcname);
+	CHECK(findzonecut_cache(view, name, dns_fixedname_name(&cfname),
+				dns_fixedname_name(&cdcname), now, options,
+				&crdataset, &csigrdataset));
+
+	bool cacheclosest = dns_name_issubdomain(dns_fixedname_name(&cfname),
+						 fname);
+	bool staticstub = rdataset->attributes.staticstub &&
+			  dns_name_equal(fname, dns_fixedname_name(&cfname));
+
+	if (cacheclosest && !staticstub) {
+		dns_rdataset_cleanup(rdataset);
+		dns_rdataset_cleanup(sigrdataset);
+
+		dns_rdataset_clone(&crdataset, rdataset);
+		if (sigrdataset != NULL) {
+			dns_rdataset_clone(&csigrdataset, sigrdataset);
+		}
+
+		dns_name_copy(dns_fixedname_name(&cfname), fname);
+		if (dcname != NULL) {
+			dns_name_copy(dns_fixedname_name(&cdcname), dcname);
+		}
+	}
+
+cleanup:
+	dns_rdataset_cleanup(&crdataset);
+	dns_rdataset_cleanup(&csigrdataset);
+}
+
 static isc_result_t
 findzonecut_hints(dns_view_t *view, dns_name_t *fname, dns_name_t *dcname,
 		  isc_stdtime_t now, dns_rdataset_t *rdataset) {
