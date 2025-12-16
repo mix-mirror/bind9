@@ -536,6 +536,15 @@ stages:
   stage: system
   before_script:
     - *setup_interfaces
+    - >
+      dnf remove -y python3-dns python3-jinja2 python3-pytest python3-pytest-timeout python3-pytest-xdist python3-requests || :
+    - >
+      dnf remove -v python3-hypothesis || :
+    - >
+      apt-get -y remove python3-dnspython python3-flaky python3-hypothesis python3-jinja2 python3-pytest python3-pytest-timeout python3-pytest-xdist python3-requests || :
+    - *find_python
+    - >
+      $PYTHON -m pip install -r bin/tests/system/requirements.txt
   # This script needs to: 1) fail if the system tests fail, 2) fail if
   # the junit.xml file is broken, 3) produce the junit.xml file even if
   # the system tests fail.  Therefore, $RET is used to "cache" the
