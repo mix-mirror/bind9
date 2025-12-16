@@ -77,14 +77,13 @@ struct dns_slabtop {
 	struct cds_list_head types_link;
 	struct cds_list_head headers;
 
-	dns_typepair_t typepair;
-
 	dns_slabtop_t *related;
 
-	/*% Used for SIEVE-LRU (cache) and changed_list (zone) */
-	ISC_LINK(struct dns_slabtop) link;
-	/*% Used for SIEVE-LRU */
+	dns_typepair_t typepair;
+
+	/*% Used for SIEVE-LRU (cache) */
 	bool visited;
+	ISC_LINK(struct dns_slabtop) link;
 };
 
 struct dns_slabheader {
@@ -94,21 +93,15 @@ struct dns_slabheader {
 	/*%
 	 * Locked by the owning node's lock.
 	 */
-	uint32_t serial;
-	union {
-		isc_stdtime_t expire;
-		dns_ttl_t     ttl;
-	};
+	isc_stdtime_t  expire;
 	dns_typepair_t typepair;
 
-	/* resigning (zone) and TTL-cleaning (cache) */
-	uint16_t      resign_lsb : 1;
-	isc_stdtime_t resign;
-	isc_heap_t   *heap;
-	unsigned int  heap_index;
+	/* TTL-cleaning (cache) */
+	unsigned int heap_index;
+	isc_heap_t  *heap;
 
 	/* Used for stale refresh */
-	_Atomic(uint32_t) last_refresh_fail_ts;
+	_Atomic(isc_stdtime_t) last_refresh_fail_ts;
 
 	dns_slabheader_proof_t *noqname;
 	dns_slabheader_proof_t *closest;
