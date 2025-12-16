@@ -106,7 +106,7 @@ def pytest_configure(config):
                 config.option.dist = "loadscope"
 
 
-def pytest_ignore_collect(path):
+def pytest_ignore_collect(collection_path):
     # System tests are executed in temporary directories inside
     # bin/tests/system. These temporary directories contain all files
     # needed for the system tests - including tests_*.py files. Make sure to
@@ -115,9 +115,9 @@ def pytest_ignore_collect(path):
     # convenience symlinks to those test directories. In both of those
     # cases, the system test name (directory) contains an underscore, which
     # is otherwise and invalid character for a system test name.
-    match = SYSTEM_TEST_NAME_RE.search(str(path))
+    match = SYSTEM_TEST_NAME_RE.search(str(collection_path))
     if match is None:
-        isctest.log.warning("unexpected test path: %s (ignored)", path)
+        isctest.log.warning("unexpected test path: %s (ignored)", collection_path)
         return True
     system_test_name = match.groups()[0]
     return "_" in system_test_name
