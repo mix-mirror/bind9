@@ -404,6 +404,24 @@ typedef void (*dns_catz_entry_cb2)(dns_catz_entry_t *entry, void *arg1,
 				   void *arg2);
 
 void
+dns_catz_zone_prereconfig(dns_catz_zone_t *catz);
+/*%<
+ * Must be called before reconfiguring a catalog zone. Locks the catalog zone.
+ *
+ * Requires:
+ * \li	'catz' is a valid, unlocked dns_catz_zone_t.
+ */
+
+void
+dns_catz_zone_postreconfig(dns_catz_zone_t *catz);
+/*%<
+ * Must be called after reconfiguring a catalog zone. Unlocks the catalog zone.
+ *
+ * Requires:
+ * \li	'catz' is a valid, locked dns_catz_zone_t.
+ */
+
+void
 dns_catz_zone_for_each_entry2(dns_catz_zone_t *catz, dns_catz_entry_cb2 cb,
 			      void *arg1, void *arg2);
 /*%<
