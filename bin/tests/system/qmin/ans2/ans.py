@@ -100,13 +100,11 @@ class StaleHandler(DomainHandler):
 def main() -> None:
     server = AsyncDnsServer()
     server.install_response_handlers(
-        [
-            QueryLogger(),
-            BadHandler(),
-            UglyHandler(),
-            SlowHandler(),
-            StaleHandler(),
-        ]
+        QueryLogger(),
+        BadHandler(),
+        UglyHandler(),
+        SlowHandler(),
+        StaleHandler(),
     )
     server.run()
 

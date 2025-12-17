@@ -162,18 +162,16 @@ class FallbackHandler(ResponseHandler):
 def main() -> None:
     server = AsyncDnsServer(default_rcode=dns.rcode.NOERROR)
     server.install_response_handlers(
-        [
-            BadGoodCnameHandler(),
-            Cname1Handler(),
-            Cname2Handler(),
-            ExampleHandler(),
-            FooInfoHandler(),
-            NoDataHandler(),
-            NxdomainHandler(),
-            SubHandler(),
-            FallbackHandler(),
-        ]
+        BadGoodCnameHandler(),
+        Cname1Handler(),
+        Cname2Handler(),
+        ExampleHandler(),
+        FooInfoHandler(),
+        NoDataHandler(),
+        NxdomainHandler(),
+        SubHandler(),
     )
+    server.install_response_handler(FallbackHandler())
     server.run()
 
 

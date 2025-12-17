@@ -40,12 +40,10 @@ class ZoopBoingSlowHandler(DelayedResponseHandler):
 def main() -> None:
     server = AsyncDnsServer()
     server.install_response_handlers(
-        [
-            QueryLogger(),
-            ZoopBoingBadHandler(),
-            ZoopBoingUglyHandler(),
-            ZoopBoingSlowHandler(),
-        ]
+        QueryLogger(),
+        ZoopBoingBadHandler(),
+        ZoopBoingUglyHandler(),
+        ZoopBoingSlowHandler(),
     )
     server.run()
 
