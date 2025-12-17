@@ -724,9 +724,9 @@ dns_view_findzonecut(dns_view_t *view, const dns_name_t *name,
  *
  * Returns:
  *
- *\li	#ISC_R_SUCCESS				Success.
- *
- *\li	Many other results are possible.
+ *\li	#ISC_R_SUCCESS  If a delegation is found;
+ *\li   #DNS_R_NXDOMAIN	If no delegation is found; 'rdataset' and 'sigrdataset'
+ *                      are disassociated.
  */
 
 isc_result_t

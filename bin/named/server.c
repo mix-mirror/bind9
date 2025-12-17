@@ -6625,20 +6625,19 @@ tat_send(void *arg) {
 			domain, &nameservers, NULL, NULL, 0, 0, 0, NULL, NULL,
 			NULL, tat->loop, tat_done, tat, NULL, &tat->rdataset,
 			&tat->sigrdataset, &tat->fetch);
+
+		/*
+		 * dns_resolver_createfetch() will create its own copy of
+		 * nameservers.
+		 */
+		dns_rdataset_cleanup(&nameservers);
 	}
 
 	/*
 	 * 'domain' holds the dns_name_t pointer inside a dst_key_t structure.
 	 * dns_resolver_createfetch() creates its own copy of 'domain' if it
 	 * succeeds.  Thus, 'domain' is not freed here.
-	 *
-	 * Even if dns_view_findzonecut() returned something else than
-	 * ISC_R_SUCCESS, it still could have associated 'nameservers'.
-	 * dns_resolver_createfetch() creates its own copy of 'nameservers' if
-	 * it succeeds.  Thus, we need to check whether 'nameservers' is
-	 * associated and release it if it is.
 	 */
-	dns_rdataset_cleanup(&nameservers);
 
 	if (result != ISC_R_SUCCESS) {
 		dns_view_detach(&tat->view);
