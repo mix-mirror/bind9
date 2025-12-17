@@ -139,8 +139,9 @@ typedef struct dns_db_methods {
 	isc_result_t (*findnsec3node)(dns_db_t *db, const dns_name_t *name,
 				      bool		   create,
 				      dns_dbnode_t **nodep DNS__DB_FLARG);
-	isc_result_t (*setsigningtime)(dns_db_t *db, dns_rdataset_t *rdataset,
-				       isc_stdtime_t resign);
+	isc_result_t (*setsigningtime)(dns_db_t *db, dns_dbnode_t *node,
+				       dns_rdataset_t *rdataset,
+				       isc_stdtime_t   resign);
 	isc_result_t (*getsigningtime)(dns_db_t *db, isc_stdtime_t *resign,
 				       dns_name_t     *name,
 				       dns_typepair_t *typepair);
@@ -1572,8 +1573,8 @@ dns__db_findnsec3node(dns_db_t *db, const dns_name_t *name, bool create,
  */
 
 isc_result_t
-dns_db_setsigningtime(dns_db_t *db, dns_rdataset_t *rdataset,
-		      isc_stdtime_t resign);
+dns_db_setsigningtime(dns_db_t *db, dns_dbnode_t *node,
+		      dns_rdataset_t *rdataset, isc_stdtime_t resign);
 /*%<
  * Sets the re-signing time associated with 'rdataset' to 'resign'.
  *

@@ -2308,7 +2308,8 @@ getsize(dns_db_t *db, dns_dbversion_t *dbversion, uint64_t *records,
 }
 
 static isc_result_t
-setsigningtime(dns_db_t *db, dns_rdataset_t *rdataset, isc_stdtime_t resign) {
+setsigningtime(dns_db_t *db, dns_dbnode_t *node, dns_rdataset_t *rdataset,
+	       isc_stdtime_t resign) {
 	qpzonedb_t *qpdb = (qpzonedb_t *)db;
 	dns_vecheader_t *header = NULL, oldheader;
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
@@ -2320,7 +2321,7 @@ setsigningtime(dns_db_t *db, dns_rdataset_t *rdataset, isc_stdtime_t resign) {
 
 	header = dns_vecheader_getheader(rdataset);
 
-	nlock = qpzone_get_lock(HEADERNODE(header));
+	nlock = qpzone_get_lock((qpznode_t *)node);
 	NODE_WRLOCK(nlock, &nlocktype);
 
 	oldheader = *header;
@@ -2339,14 +2340,14 @@ setsigningtime(dns_db_t *db, dns_rdataset_t *rdataset, isc_stdtime_t resign) {
 		INSIST(RESIGN(header));
 		LOCK(get_heap_lock(header));
 		if (resign == 0) {
-			isc_heap_delete(HEADERNODE(header)->heap->heap,
+			isc_heap_delete(((qpznode_t *)node)->heap->heap,
 					header->heap_index);
 			header->heap_index = 0;
 		} else if (resign_sooner(header, &oldheader)) {
-			isc_heap_increased(HEADERNODE(header)->heap->heap,
+			isc_heap_increased(((qpznode_t *)node)->heap->heap,
 					   header->heap_index);
 		} else if (resign_sooner(&oldheader, header)) {
-			isc_heap_decreased(HEADERNODE(header)->heap->heap,
+			isc_heap_decreased(((qpznode_t *)node)->heap->heap,
 					   header->heap_index);
 		}
 		UNLOCK(get_heap_lock(header));
@@ -5450,7 +5451,8 @@ qpzone_update_rdataset(qpzonedb_t *qpdb, qpz_version_t *version, dns_qp_t *qp,
 	if (result == ISC_R_SUCCESS && is_resign) {
 		isc_stdtime_t resign;
 		resign = dns_rdataset_minresign(&ardataset);
-		dns_db_setsigningtime((dns_db_t *)qpdb, &ardataset, resign);
+		dns_db_setsigningtime((dns_db_t *)qpdb, (dns_dbnode_t *)node,
+				      &ardataset, resign);
 	}
 
 failure:
