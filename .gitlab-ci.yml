@@ -980,7 +980,6 @@ fsck:
 tarball-create:
   <<: *build_job
   <<: *base_image
-  <<: *default_triggering_rules
   script:
     - *configure
     - meson dist -C build --no-tests
