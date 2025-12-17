@@ -261,6 +261,17 @@ update_rdataset(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 			  DNS_DBADD_EXACTTTL;
 		CHECK(dns_db_addrdataset(db, node, ver, 0, rds, options,
 					    &ardataset));
+		switch (result) {
+		case ISC_R_SUCCESS:
+		case DNS_R_UNCHANGED:
+		case DNS_R_NXRRSET:
+			setownercase(&ardataset, name);
+			CHECK(result);
+			break;
+		default:
+			CHECK(result);
+			break;
+		}
 		break;
 	case DNS_DIFFOP_DEL:
 	case DNS_DIFFOP_DELRESIGN:
