@@ -827,7 +827,9 @@ linkcheck:
   needs: []
 
 generate-stress-test-configs:
-  <<: *quick_checks_job
+  <<: *base_image
+  <<: *default_triggering_rules
+  stage: quick-checks
   script:
     - git clone --depth 1 https://gitlab.isc.org/isc-projects/bind9-qa.git
     - bind9-qa/stress/generate-stress-test-configs.py > stress-test-configs.yml
