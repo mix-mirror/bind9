@@ -859,7 +859,7 @@ class AsyncDnsServer(AsyncServer):
         else:
             self._response_handlers.append(handler)
 
-    def install_response_handlers(self, handlers: List[ResponseHandler]) -> None:
+    def install_response_handlers(self, *handlers: ResponseHandler) -> None:
         for handler in handlers:
             self.install_response_handler(handler)
 
@@ -1352,7 +1352,7 @@ class ControllableAsyncDnsServer(AsyncDnsServer):
     def _commands(self) -> Dict[dns.name.Name, "ControlCommand"]:
         return {}
 
-    def install_control_commands(self, commands: List["ControlCommand"]) -> None:
+    def install_control_commands(self, *commands: "ControlCommand") -> None:
         for command in commands:
             self.install_control_command(command)
 

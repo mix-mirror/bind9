@@ -194,13 +194,11 @@ def cookie_server(evil: bool) -> AsyncDnsServer:
         keyring=KEYRING, default_aa=True, default_rcode=dns.rcode.NOERROR
     )
     server.install_response_handlers(
-        [
-            NsHandler(evil),
-            GlueHandler(evil),
-            TcpAHandler(),
-            WithtsigUdpAHandler(),
-            UdpAHandler(),
-            FallbackHandler(),
-        ]
+        NsHandler(evil),
+        GlueHandler(evil),
+        TcpAHandler(),
+        WithtsigUdpAHandler(),
+        UdpAHandler(),
+        FallbackHandler(),
     )
     return server
