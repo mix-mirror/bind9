@@ -26,7 +26,7 @@ options {
 	allow-transfer { any; };
 	key-directory ".";
 	dnssec-validation yes;
-	notify-cds yes;
+	notify-cfg CDS { notify yes; };
 };
 
 key rndc_key {
