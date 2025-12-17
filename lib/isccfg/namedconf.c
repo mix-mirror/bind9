@@ -108,6 +108,7 @@ static cfg_type_t cfg_type_maxcachesize;
 static cfg_type_t cfg_type_maxduration;
 static cfg_type_t cfg_type_minimal;
 static cfg_type_t cfg_type_nameportiplist;
+static cfg_type_t cfg_type_notifycfg;
 static cfg_type_t cfg_type_notifytype;
 static cfg_type_t cfg_type_optional_allow;
 static cfg_type_t cfg_type_optional_class;
@@ -2685,8 +2686,10 @@ static cfg_clausedef_t zone_clauses[] = {
 	  CFG_ZONE_SECONDARY | CFG_ZONE_MIRROR | CFG_ZONE_STUB, NULL },
 	{ "notify", &cfg_type_notifytype,
 	  CFG_ZONE_PRIMARY | CFG_ZONE_SECONDARY | CFG_ZONE_MIRROR, NULL },
-	{ "notify-cds", &cfg_type_boolean,
-	  CFG_ZONE_PRIMARY | CFG_ZONE_SECONDARY | CFG_ZONE_MIRROR, NULL },
+	{ "notify-cfg", &cfg_type_notifycfg,
+	  CFG_CLAUSEFLAG_MULTI | CFG_ZONE_PRIMARY | CFG_ZONE_SECONDARY |
+		  CFG_ZONE_MIRROR,
+	  NULL },
 	{ "notify-defer", &cfg_type_uint32,
 	  CFG_ZONE_PRIMARY | CFG_ZONE_SECONDARY | CFG_ZONE_MIRROR, NULL },
 	{ "notify-delay", &cfg_type_uint32,
@@ -3398,6 +3401,25 @@ static cfg_type_t cfg_type_notifytype = {
 	"notifytype",	 parse_notify_type, cfg_print_ustring,
 	doc_notify_type, &cfg_rep_string,   notify_enums,
 };
+
+/*
+ * Generalized DNS Notifications.
+ */
+static cfg_clausedef_t notify_clauses[] = {
+	{ "notify", &cfg_type_boolean, 0, NULL }, /* this limits the options for
+						     NOTIFY(SOA) */
+	{ "notify-defer", &cfg_type_uint32, 0, NULL },
+	{ "notify-delay", &cfg_type_uint32, 0, NULL },
+	{ "notify-source", &cfg_type_sockaddr4wild, 0, NULL },
+	{ "notify-source-v6", &cfg_type_sockaddr6wild, 0, NULL },
+	{ NULL, NULL, 0, NULL },
+};
+
+static cfg_clausedef_t *notify_clausesets[] = { notify_clauses, NULL };
+
+static cfg_type_t cfg_type_notifycfg = { "notify-cfg",	cfg_parse_named_map,
+					 cfg_print_map, cfg_doc_map,
+					 &cfg_rep_map,	notify_clausesets };
 
 static const char *minimal_enums[] = { "no-auth", "no-auth-recursive", NULL };
 static isc_result_t

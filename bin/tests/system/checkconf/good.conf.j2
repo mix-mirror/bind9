@@ -194,7 +194,16 @@ view "fourth" {
 			1.2.3.5;
 		};
 		dnssec-policy "test";
-		notify-cds no;
+		notify-cfg "SOA" {
+			notify yes;
+			notify-defer 1;
+			notify-delay 3;
+			notify-source 192.0.2.1;
+			notify-source-v6 2001:db8::1;
+		};
+		notify-cfg "CDS" {
+			notify no;
+		};
 		parental-source 10.10.10.10;
 	};
 	zone "dnssec-default" {
@@ -204,7 +213,13 @@ view "fourth" {
 			"parents";
 		};
 		dnssec-policy "default";
-		notify-cds yes;
+		notify-cfg "CDS" {
+			notify yes;
+			notify-defer 0;
+			notify-delay 5;
+			notify-source 0.0.0.0;
+			notify-source-v6 ::;
+		};
 	};
 	zone "dnssec-inherit" {
 		type primary;

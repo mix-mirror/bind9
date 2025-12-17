@@ -3629,7 +3629,8 @@ isccfg_check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 
 	/*
 	 * Primary, secondary, and mirror zones may have an "also-notify"
-	 * field, but shouldn't if notify is disabled.
+	 * field, but shouldn't if notify is disabled. Also check "notify-cfg"
+	 * for valid types.
 	 */
 	if (ztype == CFG_ZONE_PRIMARY || ztype == CFG_ZONE_SECONDARY ||
 	    ztype == CFG_ZONE_MIRROR)
@@ -3672,6 +3673,47 @@ isccfg_check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 			if (tresult != ISC_R_SUCCESS && result == ISC_R_SUCCESS)
 			{
 				result = tresult;
+			}
+		}
+
+		obj = NULL;
+		(void)get_zoneopt(zoptions, toptions, voptions, goptions,
+				  "notify-cfg", &obj);
+		if (obj != NULL) {
+			CFG_LIST_FOREACH(obj, element) {
+				const cfg_obj_t *map =
+					cfg_listelt_value(element);
+				const char *name =
+					cfg_obj_asstring(cfg_map_getname(map));
+				isc_textregion_t tr;
+				dns_rdatatype_t rdtype = 0;
+
+				tr.base = UNCONST(name);
+				tr.length = strlen(name);
+				tresult = dns_rdatatype_fromtext(&rdtype, &tr);
+				if (tresult != ISC_R_SUCCESS &&
+				    result == ISC_R_SUCCESS)
+				{
+					cfg_obj_log(
+						map, ISC_LOG_ERROR,
+						"%s is not a valid notify type",
+						name);
+					result = tresult;
+				}
+
+				switch (rdtype) {
+				case dns_rdatatype_soa:
+				case dns_rdatatype_cds:
+					break;
+				default:
+					if (result == ISC_R_SUCCESS) {
+						cfg_obj_log(map, ISC_LOG_ERROR,
+							    "%s notify type is "
+							    "not supported",
+							    name);
+						result = ISC_R_NOTIMPLEMENTED;
+					}
+				}
 			}
 		}
 	}

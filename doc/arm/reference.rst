@@ -2115,21 +2115,39 @@ Boolean Options
    statement. It would only be necessary to turn off this option if it
    caused secondary zones to crash.
 
-.. namedconf:statement:: notify-cds
+.. namedconf:statement:: notify-cfg
    :tags: dnssec
-   :short: Controls whether ``NOTIFY(CDS)`` messages are sent on zone changes.
+   :short: Controls generalized DNS notifications configuration.
 
-   If set to ``yes``, DNS NOTIFY(CDS) messages are sent when the CDS or CDNSKEY
-   RRset changes. The messages are sent to the servers listed in the parent
-   zone's matching DSYNC records. A DSYNC record matches if the owner name under
-   `_dsync` subdomain of the parent zone corresponds to the given zone.  For
-   example, the zone `child.example` should have a DSYNC record at
-   `child._dsync.example`.  In addition, the RRtype field of the record must be
-   `CDS` and the Scheme field must be 1 (NOTIFY).
+    This option can be used to override notify-related configuration options
+    for specific types.  The following options can be set within a
+    :any:`notify-cfg` statement: :any:`notify-defer`, :any:`notify-delay`,
+    :any:`notify-source`, :any:`notify-source-v6`, and :any:`notify`.  The
+    latter can only be set to ``yes`` or ``no``.
 
-   The default is ``no``.  The :namedconf:ref:`notify-cds` option may also be
-   specified in the :any:`zone` statement, in which case it overrides the
-   ``options notify-cds`` statement.
+    By default, only NOTIFY(SOA) messages are enabled.  When configuring
+    notify configuration for other types you enable sending DNS notifications
+    for the given type. For example, to enable NOTIFY(CDS) messages, using a
+    specific source, you can add the following configuration:
+
+    ::
+
+        notify-cfg CDS { notify yes; notify-source-v6 2001:DB8::1; };
+
+    If enabled, DNS NOTIFY(CDS) messages are sent when the CDS or CDNSKEY
+    RRset changes. The messages are sent to the servers listed in the parent
+    zone's matching DSYNC records. A DSYNC record matches if the owner name under
+    `_dsync` subdomain of the parent zone corresponds to the given zone.  For
+    example, the zone `child.example` should have a DSYNC record at
+    `child._dsync.example`.  In addition, the RRtype field of the record must be
+    `CDS` and the Scheme field must be 1 (NOTIFY).
+
+    The :any:`notify-defer` and :any:`notify-delay` options are not applicable
+    to NOTIFY(CDS) messages and they are ignored for that type.
+
+    The :namedconf:ref:`notify-cfg` option may also be specified in the
+    :any:`zone` statement, in which case it overrides the ``options notify-cfg``
+    statement. The only supported types are ``SOA`` and ``CDS``.
 
 .. namedconf:statement:: notify-to-soa
    :tags: transfer

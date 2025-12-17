@@ -30,7 +30,7 @@ options {
         allow-transfer { any; };
         recursion yes;
         dnssec-validation @dnssec_validation@;
-        notify-cds yes;
+        notify-cfg CDS { notify yes; };
 };
 
 key rndc_key {

@@ -62,6 +62,10 @@ typedef enum {
 	allow_update_forwarding
 } acl_type_t;
 
+#define MAPS_SIZE	    6
+#define NODEFAULT_MAPS_SIZE 5
+#define NOOPTIONS_MAPS_SIZE 3
+
 /*%
  * Convenience function for configuring a single zone ACL.
  */
@@ -71,7 +75,7 @@ configure_zone_acl(const cfg_obj_t *zconfig, const cfg_obj_t *vconfig,
 		   cfg_aclconfctx_t *aclctx, dns_zone_t *zone,
 		   void (*setzacl)(dns_zone_t *, dns_acl_t *),
 		   void (*clearzacl)(dns_zone_t *)) {
-	const cfg_obj_t *maps[6] = { 0 };
+	const cfg_obj_t *maps[MAPS_SIZE] = { 0 };
 	const cfg_obj_t *aclobj = NULL;
 	int i = 0;
 	dns_acl_t **aclp = NULL, *acl = NULL;
@@ -819,8 +823,8 @@ isself(dns_view_t *myview, dns_tsigkey_t *mykey, const isc_sockaddr_t *srcaddr,
  * default configuration.
  */
 static dns_notifytype_t
-process_notifytype(dns_notifytype_t ntype, dns_zonetype_t ztype,
-		   const char *zname, const cfg_obj_t **maps) {
+process_notifysoatype(dns_notifytype_t ntype, dns_zonetype_t ztype,
+		      const char *zname, const cfg_obj_t **maps) {
 	const cfg_obj_t *obj = NULL;
 
 	/*
@@ -845,6 +849,105 @@ process_notifytype(dns_notifytype_t ntype, dns_zonetype_t ztype,
 	return dns_notifytype_explicit;
 }
 
+static void
+process_notify_options(dns_rdatatype_t type, const cfg_obj_t **maps,
+		       dns_zone_t *zone, dns_zone_t *raw, bool notifycfg) {
+	isc_result_t result;
+	const cfg_obj_t *obj = NULL;
+
+	/*
+	 * "notify" for SOA is already inherited and set in
+	 * named_zone_configure(), and for other types it can only be
+	 * configured within "notify-cfg".  Only look into first map
+	 * to see if sending NOTIFY(type) messages are allowed.
+	 */
+	if (notifycfg) {
+		obj = NULL;
+		result = cfg_map_get(maps[0], "notify", &obj);
+		if (result == ISC_R_SUCCESS && obj != NULL) {
+			dns_zone_setnotifytype(zone, type,
+					       cfg_obj_asboolean(obj));
+		} else {
+			dns_zone_setnotifytype(zone, type, dns_notifytype_no);
+		}
+		if (raw != NULL) {
+			dns_zone_setnotifytype(raw, type, dns_notifytype_no);
+		}
+	}
+
+	obj = NULL;
+	result = named_config_get(maps, "notify-delay", &obj);
+	INSIST(result == ISC_R_SUCCESS && obj != NULL);
+	dns_zone_setnotifydelay(zone, type, cfg_obj_asuint32(obj));
+
+	obj = NULL;
+	result = named_config_get(maps, "notify-defer", &obj);
+	INSIST(result == ISC_R_SUCCESS && obj != NULL);
+	dns_zone_setnotifydefer(zone, type, cfg_obj_asuint32(obj));
+
+	obj = NULL;
+	result = named_config_get(maps, "notify-source", &obj);
+	INSIST(result == ISC_R_SUCCESS && obj != NULL);
+	dns_zone_setnotifysrc4(zone, type, cfg_obj_assockaddr(obj));
+
+	obj = NULL;
+	result = named_config_get(maps, "notify-source-v6", &obj);
+	INSIST(result == ISC_R_SUCCESS && obj != NULL);
+	dns_zone_setnotifysrc6(zone, type, cfg_obj_assockaddr(obj));
+}
+
+static isc_result_t
+process_notify_cfg(const cfg_obj_t **maps, dns_zone_t *zone, dns_zone_t *raw) {
+	isc_result_t result;
+	const cfg_obj_t *obj = NULL;
+
+	result = named_config_get(maps, "notify-cfg", &obj);
+	if (result == ISC_R_SUCCESS && obj != NULL) {
+		CFG_LIST_FOREACH(obj, element) {
+			const cfg_obj_t *nmaps[MAPS_SIZE + 1];
+			const cfg_obj_t *map = cfg_listelt_value(element);
+			const char *name =
+				cfg_obj_asstring(cfg_map_getname(map));
+			isc_textregion_t tr;
+			dns_rdatatype_t rdtype = 0;
+
+			tr.base = UNCONST(name);
+			tr.length = strlen(name);
+			result = dns_rdatatype_fromtext(&rdtype, &tr);
+			if (result != ISC_R_SUCCESS) {
+				cfg_obj_log(map, ISC_LOG_ERROR,
+					    "%s is not a valid notify type",
+					    name);
+				return result;
+			}
+			switch (rdtype) {
+			case dns_rdatatype_soa:
+			case dns_rdatatype_cds:
+				break;
+			default:
+				cfg_obj_log(map, ISC_LOG_ERROR,
+					    "%s notify type is not supported",
+					    name);
+				return ISC_R_NOTIMPLEMENTED;
+			}
+
+			/* Prepend the notify-cfg map. */
+			size_t i = 0;
+			nmaps[i] = map;
+			while (maps[i] != NULL) {
+				nmaps[i + 1] = maps[i];
+				i++;
+			}
+			INSIST(i <= MAPS_SIZE);
+			nmaps[i + 1] = NULL;
+
+			process_notify_options(rdtype, nmaps, zone, raw, true);
+		}
+	}
+
+	return ISC_R_SUCCESS;
+}
+
 isc_result_t
 named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 		     const cfg_obj_t *zconfig, cfg_aclconfctx_t *aclctx,
@@ -854,9 +957,9 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 	const char *zname;
 	dns_rdataclass_t zclass;
 	dns_rdataclass_t vclass;
-	const cfg_obj_t *maps[6];
-	const cfg_obj_t *nodefault[5];
-	const cfg_obj_t *nooptions[3];
+	const cfg_obj_t *maps[MAPS_SIZE];
+	const cfg_obj_t *nodefault[NODEFAULT_MAPS_SIZE];
+	const cfg_obj_t *nooptions[NOOPTIONS_MAPS_SIZE];
 	const cfg_obj_t *zoptions = NULL;
 	const cfg_obj_t *toptions = NULL;
 	const cfg_obj_t *options = NULL;
@@ -1194,6 +1297,7 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 			} else {
 				notifytype = dns_notifytype_no;
 			}
+			notifytype = cfg_obj_asboolean(obj);
 		} else {
 			const char *str = cfg_obj_asstring(obj);
 			if (strcasecmp(str, "explicit") == 0) {
@@ -1206,23 +1310,13 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 				UNREACHABLE();
 			}
 		}
-		notifytype = process_notifytype(notifytype, ztype, zname,
-						nodefault);
+		notifytype = process_notifysoatype(notifytype, ztype, zname,
+						   nodefault);
 		if (raw != NULL) {
 			dns_zone_setnotifytype(raw, dns_rdatatype_soa,
 					       dns_notifytype_no);
 		}
 		dns_zone_setnotifytype(zone, dns_rdatatype_soa, notifytype);
-
-		obj = NULL;
-		result = named_config_get(maps, "notify-cds", &obj);
-		INSIST(result == ISC_R_SUCCESS && obj != NULL);
-		if (raw != NULL) {
-			dns_zone_setnotifytype(raw, dns_rdatatype_cds,
-					       dns_notifytype_no);
-		}
-		dns_zone_setnotifytype(zone, dns_rdatatype_cds,
-				       cfg_obj_asboolean(obj));
 
 		obj = NULL;
 		result = named_config_get(maps, "also-notify", &obj);
@@ -1254,18 +1348,6 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 		result = named_config_get(maps, "parental-source-v6", &obj);
 		INSIST(result == ISC_R_SUCCESS && obj != NULL);
 		dns_zone_setparentalsrc6(zone, cfg_obj_assockaddr(obj));
-
-		obj = NULL;
-		result = named_config_get(maps, "notify-source", &obj);
-		INSIST(result == ISC_R_SUCCESS && obj != NULL);
-		dns_zone_setnotifysrc4(zone, dns_rdatatype_soa,
-				       cfg_obj_assockaddr(obj));
-
-		obj = NULL;
-		result = named_config_get(maps, "notify-source-v6", &obj);
-		INSIST(result == ISC_R_SUCCESS && obj != NULL);
-		dns_zone_setnotifysrc6(zone, dns_rdatatype_soa,
-				       cfg_obj_assockaddr(obj));
 
 		obj = NULL;
 		result = named_config_get(maps, "notify-to-soa", &obj);
@@ -1396,18 +1478,6 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 		}
 
 		obj = NULL;
-		result = named_config_get(maps, "notify-delay", &obj);
-		INSIST(result == ISC_R_SUCCESS && obj != NULL);
-		dns_zone_setnotifydelay(zone, dns_rdatatype_soa,
-					cfg_obj_asuint32(obj));
-
-		obj = NULL;
-		result = named_config_get(maps, "notify-defer", &obj);
-		INSIST(result == ISC_R_SUCCESS && obj != NULL);
-		dns_zone_setnotifydefer(zone, dns_rdatatype_soa,
-					cfg_obj_asuint32(obj));
-
-		obj = NULL;
 		result = named_config_get(maps, "check-sibling", &obj);
 		INSIST(result == ISC_R_SUCCESS && obj != NULL);
 		dns_zone_setoption(zone, DNS_ZONEOPT_CHECKSIBLING,
@@ -1487,6 +1557,11 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 				dns_zone_setrad(zone, rad);
 			}
 		}
+
+		process_notify_options(dns_rdatatype_soa, maps, zone, raw,
+				       false);
+		CHECK(process_notify_cfg(maps, zone, raw));
+
 	} else if (ztype == dns_zone_redirect) {
 		dns_zone_setnotifytype(zone, dns_rdatatype_soa,
 				       dns_notifytype_no);
@@ -2005,7 +2080,8 @@ named_zone_reusable(dns_zone_t *zone, const cfg_obj_t *zconfig,
 bool
 named_zone_inlinesigning(const cfg_obj_t *zconfig, const cfg_obj_t *vconfig,
 			 const cfg_obj_t *config, dns_kasplist_t *kasplist) {
-	const cfg_obj_t *maps[5] = { 0 }, *noopts[3] = { 0 };
+	const cfg_obj_t *maps[NODEFAULT_MAPS_SIZE] = { 0 },
+			*noopts[NOOPTIONS_MAPS_SIZE] = { 0 };
 	const cfg_obj_t *signing = NULL;
 	const cfg_obj_t *policy = NULL;
 	const cfg_obj_t *toptions = NULL;
