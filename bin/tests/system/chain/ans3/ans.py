@@ -114,7 +114,7 @@ class Cve202125215(DomainHandler):
 
 def main() -> None:
     server = AsyncDnsServer(acknowledge_manual_dname_handling=True, default_aa=True)
-    server.install_response_handlers([CnameThenDnameHandler(), Cve202125215()])
+    server.install_response_handlers(CnameThenDnameHandler(), Cve202125215())
     server.run()
 
 
