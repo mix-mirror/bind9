@@ -41,6 +41,7 @@
  *** Imports
  ***/
 
+#include <stdalign.h>
 #include <stdbool.h>
 
 #include <isc/atomic.h>
@@ -100,9 +101,6 @@ struct dns_slabheader {
 	unsigned int heap_index;
 	isc_heap_t  *heap;
 
-	/* Used for stale refresh */
-	_Atomic(isc_stdtime_t) last_refresh_fail_ts;
-
 	dns_slabheader_proof_t *noqname;
 	dns_slabheader_proof_t *closest;
 
@@ -138,11 +136,18 @@ struct dns_slabheader {
 	 */
 	unsigned char upper[32];
 
+	/* Used for stale refresh */
+	_Atomic(isc_stdtime_t) last_refresh_fail_ts;
+
+	uint16_t nitems;
+
 	/*%
 	 * Flexible member indicates the address of the raw data
-	 * following this header.
+	 * following this header.  This needs to be aligned to the
+	 * size of the pointer because we cast raw[] to slabheader
+	 * in rdataset_getheader().
 	 */
-	unsigned char raw[];
+	alignas(sizeof(void *)) unsigned char raw[];
 };
 
 enum {

@@ -103,7 +103,7 @@ compare_rdata(const void *p1, const void *p2) {
 
 static unsigned char *
 newslab(dns_rdataset_t *rdataset, isc_mem_t *mctx, isc_region_t *region,
-	size_t size) {
+	uint16_t nitems, size_t size) {
 	dns_slabheader_t *header = isc_mem_get(mctx, size);
 
 	*header = (dns_slabheader_t){
@@ -111,6 +111,7 @@ newslab(dns_rdataset_t *rdataset, isc_mem_t *mctx, isc_region_t *region,
 		.trust = rdataset->trust,
 		.expire = rdataset->ttl,
 		.dirtylink = ISC_LINK_INITIALIZER,
+		.nitems = nitems,
 	};
 
 	region->base = (unsigned char *)header;
@@ -130,7 +131,7 @@ makeslab(dns_rdataset_t *rdataset, isc_mem_t *mctx, isc_region_t *region,
 	dns_rdata_t *rdata = NULL;
 	unsigned char *rawbuf = NULL;
 	unsigned int headerlen = sizeof(dns_slabheader_t);
-	unsigned int buflen = headerlen + 2;
+	unsigned int buflen = headerlen;
 	isc_result_t result;
 	unsigned int nitems;
 	unsigned int nalloc;
@@ -147,7 +148,8 @@ makeslab(dns_rdataset_t *rdataset, isc_mem_t *mctx, isc_region_t *region,
 		dns_slabheader_t *header = rdataset_getheader(rdataset);
 		buflen = dns_rdataslab_size(header);
 
-		rawbuf = newslab(rdataset, mctx, region, buflen);
+		rawbuf = newslab(rdataset, mctx, region, header->nitems,
+				 buflen);
 
 		INSIST(headerlen <= buflen);
 		memmove(rawbuf, (unsigned char *)header + headerlen,
@@ -164,8 +166,7 @@ makeslab(dns_rdataset_t *rdataset, isc_mem_t *mctx, isc_region_t *region,
 		if (rdataset->type != 0) {
 			return ISC_R_FAILURE;
 		}
-		rawbuf = newslab(rdataset, mctx, region, buflen);
-		put_uint16(rawbuf, 0);
+		rawbuf = newslab(rdataset, mctx, region, 0, buflen);
 		return ISC_R_SUCCESS;
 	}
 
@@ -269,8 +270,7 @@ makeslab(dns_rdataset_t *rdataset, isc_mem_t *mctx, isc_region_t *region,
 	 * Allocate the memory, set up a buffer, start copying in
 	 * data.
 	 */
-	rawbuf = newslab(rdataset, mctx, region, buflen);
-	put_uint16(rawbuf, nitems);
+	rawbuf = newslab(rdataset, mctx, region, nitems, buflen);
 
 	for (i = 0; i < nalloc; i++) {
 		if (rdata[i].data == &removed) {
@@ -308,33 +308,32 @@ free_rdatas:
 isc_result_t
 dns_rdataslab_fromrdataset(dns_rdataset_t *rdataset, isc_mem_t *mctx,
 			   isc_region_t *region, uint32_t maxrrperset) {
-	isc_result_t result;
-
 	if (rdataset->type == dns_rdatatype_none &&
 	    rdataset->covers == dns_rdatatype_none)
 	{
 		return DNS_R_DISALLOWED;
 	}
 
-	result = makeslab(rdataset, mctx, region, maxrrperset);
-	if (result == ISC_R_SUCCESS) {
-		dns_slabheader_t *header = (dns_slabheader_t *)region->base;
-
-		if (rdataset->attributes.negative) {
-			INSIST(rdataset->type == dns_rdatatype_none);
-			INSIST(rdataset->covers != dns_rdatatype_none);
-			header->typepair = DNS_TYPEPAIR_VALUE(
-				rdataset->covers, dns_rdatatype_none);
-		} else {
-			INSIST(rdataset->type != dns_rdatatype_none);
-			INSIST(dns_rdatatype_issig(rdataset->type) ||
-			       rdataset->covers == dns_rdatatype_none);
-			header->typepair = DNS_TYPEPAIR_VALUE(rdataset->type,
-							      rdataset->covers);
-		}
+	isc_result_t result = makeslab(rdataset, mctx, region, maxrrperset);
+	if (result != ISC_R_SUCCESS) {
+		return result;
 	}
 
-	return result;
+	dns_slabheader_t *header = (dns_slabheader_t *)region->base;
+	if (rdataset->attributes.negative) {
+		INSIST(rdataset->type == dns_rdatatype_none);
+		INSIST(rdataset->covers != dns_rdatatype_none);
+		header->typepair = DNS_TYPEPAIR_VALUE(rdataset->covers,
+						      dns_rdatatype_none);
+	} else {
+		INSIST(rdataset->type != dns_rdatatype_none);
+		INSIST(dns_rdatatype_issig(rdataset->type) ||
+		       rdataset->covers == dns_rdatatype_none);
+		header->typepair = DNS_TYPEPAIR_VALUE(rdataset->type,
+						      rdataset->covers);
+	}
+
+	return ISC_R_SUCCESS;
 }
 
 unsigned int
@@ -346,7 +345,7 @@ dns_rdataslab_size(dns_slabheader_t *header) {
 	INSIST(slab != NULL);
 
 	unsigned char *current = slab;
-	uint16_t count = get_uint16(current);
+	uint16_t count = header->nitems;
 
 	while (count-- > 0) {
 		uint16_t length = get_uint16(current);
@@ -360,10 +359,7 @@ unsigned int
 dns_rdataslab_count(dns_slabheader_t *header) {
 	REQUIRE(header != NULL);
 
-	unsigned char *current = (unsigned char *)header + sizeof(*header);
-	uint16_t count = get_uint16(current);
-
-	return count;
+	return header->nitems;
 }
 
 /*
@@ -403,10 +399,10 @@ dns_rdataslab_equal(dns_slabheader_t *slab1, dns_slabheader_t *slab2) {
 	unsigned int count1, count2;
 
 	current1 = (unsigned char *)slab1 + sizeof(dns_slabheader_t);
-	count1 = get_uint16(current1);
+	count1 = slab1->nitems;
 
 	current2 = (unsigned char *)slab2 + sizeof(dns_slabheader_t);
-	count2 = get_uint16(current2);
+	count2 = slab2->nitems;
 
 	if (count1 != count2) {
 		return false;
@@ -437,10 +433,10 @@ dns_rdataslab_equalx(dns_slabheader_t *slab1, dns_slabheader_t *slab2,
 	unsigned int count1, count2;
 
 	current1 = (unsigned char *)slab1 + sizeof(dns_slabheader_t);
-	count1 = get_uint16(current1);
+	count1 = slab1->nitems;
 
 	current2 = (unsigned char *)slab2 + sizeof(dns_slabheader_t);
-	count2 = get_uint16(current2);
+	count2 = slab2->nitems;
 
 	if (count1 != count2) {
 		return false;
@@ -546,8 +542,10 @@ rdataset_disassociate(dns_rdataset_t *rdataset DNS__DB_FLARG) {
 
 static isc_result_t
 rdataset_first(dns_rdataset_t *rdataset) {
+	dns_slabheader_t *header = rdataset_getheader(rdataset);
 	unsigned char *raw = rdataset->slab.raw;
-	uint16_t count = peek_uint16(raw);
+	uint16_t count = header->nitems;
+
 	if (count == 0) {
 		rdataset->slab.iter_pos = NULL;
 		rdataset->slab.iter_count = 0;
@@ -561,7 +559,7 @@ rdataset_first(dns_rdataset_t *rdataset) {
 	 *
 	 * 'raw' points to the first record.
 	 */
-	rdataset->slab.iter_pos = raw + sizeof(uint16_t);
+	rdataset->slab.iter_pos = raw;
 	rdataset->slab.iter_count = count - 1;
 
 	return ISC_R_SUCCESS;
@@ -632,13 +630,9 @@ rdataset_clone(dns_rdataset_t *source, dns_rdataset_t *target DNS__DB_FLARG) {
 
 static unsigned int
 rdataset_count(dns_rdataset_t *rdataset) {
-	unsigned char *raw = NULL;
-	unsigned int count;
+	dns_slabheader_t *header = rdataset_getheader(rdataset);
 
-	raw = rdataset->slab.raw;
-	count = get_uint16(raw);
-
-	return count;
+	return header->nitems;
 }
 
 static isc_result_t
