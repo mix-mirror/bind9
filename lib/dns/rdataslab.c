@@ -799,8 +799,8 @@ rdataset_getownercase(const dns_rdataset_t *rdataset, dns_name_t *name) {
 
 static dns_slabheader_t *
 rdataset_getheader(const dns_rdataset_t *rdataset) {
-	dns_slabheader_t *header = (dns_slabheader_t *)rdataset->slab.raw;
-	return header - 1;
+	uint8_t *rawbuf = rdataset->slab.raw;
+	return (dns_slabheader_t *)(rawbuf - offsetof(dns_slabheader_t, raw));
 }
 
 dns_slabtop_t *
