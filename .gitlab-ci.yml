@@ -1359,7 +1359,8 @@ gcc:tumbleweed:amd64:
   <<: *build_job
   variables:
     CC: gcc
-    CFLAGS: "${CFLAGS_COMMON} -DDEBUG"
+    # EC_KEY_set_asn1_flag is deprecated in AWS LC
+    CFLAGS: "${CFLAGS_COMMON} -DDEBUG -Wno-error=deprecated-declarations"
     EXTRA_CONFIGURE: "-Didn=enabled -Dgssapi=disabled ${WITH_LIBEDIT}"
 
 system:gcc:tumbleweed:amd64:
