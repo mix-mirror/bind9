@@ -264,7 +264,7 @@ update_rdataset(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 	if (is_resign) {
 		isc_stdtime_t resign;
 		resign = dns_rdataset_minresign(&ardataset);
-		dns_db_setsigningtime(db, &ardataset, resign);
+		dns_db_setsigningtime(db, node, &ardataset, resign);
 	}
 
 cleanup:

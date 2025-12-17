@@ -290,12 +290,12 @@ findnsec3node(dns_db_t *db, const dns_name_t *name, bool create,
 }
 
 static isc_result_t
-setsigningtime(dns_db_t *db, dns_rdataset_t *rdataset, isc_stdtime_t resign) {
+setsigningtime(dns_db_t *db, dns_dbnode_t *node, dns_rdataset_t *rdataset, isc_stdtime_t resign) {
 	sampledb_t *sampledb = (sampledb_t *)db;
 
 	REQUIRE(VALID_SAMPLEDB(sampledb));
 
-	return dns_db_setsigningtime(sampledb->db, rdataset, resign);
+	return dns_db_setsigningtime(sampledb->db, node, rdataset, resign);
 }
 
 static isc_result_t
