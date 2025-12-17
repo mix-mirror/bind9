@@ -68,6 +68,9 @@
 
 #define HEADERNODE(h) ((qpznode_t *)((h)->node))
 
+/* Forward declaration */
+static void deletedata(dns_dbnode_t *node, void *data);
+
 #define QPDB_ATTR_LOADED  0x01
 #define QPDB_ATTR_LOADING 0x02
 
@@ -848,6 +851,7 @@ clean_multiple_headers(dns_vectop_t *top) {
 
 		if (header->serial == parent_serial || IGNORE(header)) {
 			ISC_SLIST_PTR_REMOVE(p, header, next_header);
+			deletedata(header->node, header);
 			dns_vecheader_destroy(&header);
 		} else {
 			parent_serial = header->serial;
@@ -871,6 +875,7 @@ clean_multiple_versions(dns_vectop_t *top, uint32_t least_serial) {
 		dns_vecheader_t *header = *p;
 		if (header->serial < least_serial) {
 			ISC_SLIST_PTR_REMOVE(p, header, next_header);
+			deletedata(header->node, header);
 			dns_vecheader_destroy(&header);
 		} else {
 			multiple = true;
@@ -1857,6 +1862,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 				 * alone.  It will get cleaned up when
 				 * clean_zone_node() runs.
 				 */
+				deletedata(newheader->node, newheader);
 				dns_vecheader_destroy(&newheader);
 				newheader = merged;
 				dns_vecheader_reset(newheader,
@@ -1881,6 +1887,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 							header->typepair),
 						"updating", qpdb->maxrrperset);
 				}
+				deletedata(newheader->node, newheader);
 				dns_vecheader_destroy(&newheader);
 				return result;
 			}
@@ -1907,6 +1914,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 			maybe_update_recordsandsize(false, version, header,
 						    nodename->length);
 
+			deletedata(header->node, header);
 			dns_vecheader_destroy(&header);
 		} else {
 			if (RESIGN(newheader)) {
@@ -1933,6 +1941,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 		 * If we're trying to delete the type, don't bother.
 		 */
 		if (!EXISTS(newheader)) {
+			deletedata(newheader->node, newheader);
 			dns_vecheader_destroy(&newheader);
 			return DNS_R_UNCHANGED;
 		}
@@ -1968,6 +1977,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 			if (qpdb->maxtypepername > 0 &&
 			    ntypes >= qpdb->maxtypepername)
 			{
+				deletedata(newheader->node, newheader);
 				dns_vecheader_destroy(&newheader);
 				return DNS_R_TOOMANYRECORDS;
 			}
@@ -4948,6 +4958,7 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 				&subresult);
 		}
 		if (result == ISC_R_SUCCESS) {
+			deletedata(newheader->node, newheader);
 			dns_vecheader_destroy(&newheader);
 			newheader = subresult;
 			dns_vecheader_reset(newheader, (dns_dbnode_t *)node);
@@ -4980,6 +4991,7 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 			 * This subtraction would remove all of the rdata;
 			 * add a nonexistent header instead.
 			 */
+			deletedata(newheader->node, newheader);
 			dns_vecheader_destroy(&newheader);
 			newheader = dns_vecheader_new(db->mctx,
 						      (dns_dbnode_t *)node);
@@ -4989,6 +5001,7 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 				    DNS_VECHEADERATTR_NONEXISTENT);
 			newheader->serial = version->serial;
 		} else {
+			deletedata(newheader->node, newheader);
 			dns_vecheader_destroy(&newheader);
 			goto unlock;
 		}
@@ -5009,6 +5022,7 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 		 * The rdataset doesn't exist, so we don't need to do anything
 		 * to satisfy the deletion request.
 		 */
+		deletedata(newheader->node, newheader);
 		dns_vecheader_destroy(&newheader);
 		if ((options & DNS_DBSUB_EXACT) != 0) {
 			result = DNS_R_NOTEXACT;
@@ -5598,6 +5612,7 @@ static void
 destroy_qpznode(qpznode_t *node) {
 	ISC_SLIST_FOREACH(top, node->next_type, next_type) {
 		ISC_SLIST_FOREACH(header, top->headers, next_header) {
+			deletedata(header->node, header);
 			dns_vecheader_destroy(&header);
 		}
 

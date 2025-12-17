@@ -820,7 +820,6 @@ dns_vecheader_destroy(dns_vecheader_t **headerp) {
 	*headerp = NULL;
 
 	isc_mem_t *mctx = header->node->mctx;
-	dns_db_deletedata(header->node, header);
 
 	if (EXISTS(header)) {
 		size = dns_rdatavec_size(header);
