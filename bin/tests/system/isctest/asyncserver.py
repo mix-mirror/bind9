@@ -1120,19 +1120,16 @@ class AsyncDnsServer(AsyncServer):
             return dns.message.from_wire(wire, keyring=keyring)
         except dns.message.UnknownTSIGKey:
             if isinstance(self._keyring, _NoKeyringType):
-                self._abort_if_tsig_signed_query_received_unless_acknowledged()
+                error = "TSIG-signed query received but no `keyring` was provided; "
+                error += "either provide a keyring (in which case the server will "
+                error += "ignore any TSIG-invalid queries), or set `keyring=None` "
+                error += "explicitly to disable TSIG validation altogether. "
+                error += "This requires some hacking around a dnspython bug, "
+                error += "so there may be unexpected side effects."
+                raise ValueError(error)
             if self._keyring is None:
                 return _DnsMessageWithTsigDisabled.from_wire(wire)
             raise
-
-    def _abort_if_tsig_signed_query_received_unless_acknowledged(self) -> None:
-        error = "TSIG-signed query received but no `keyring` was provided; "
-        error += "either provide a keyring (in which case the server will ignore "
-        error += "any TSIG-invalid queries), or set `keyring=None` explicitly "
-        error += "to disable TSIG validation altogether. This requires some hacking "
-        error += "around a dnspython bug, so there may be unexpected side effects."
-
-        raise ValueError(error)
 
     async def _prepare_responses(
         self, qctx: QueryContext
