@@ -647,9 +647,8 @@ get_heap_lock(dns_vecheader_t *header) {
 }
 
 static void
-resign_insert(dns_vecheader_t *newheader) {
-	LOCK(get_heap_lock(newheader));
-	qpz_heap_t *heap = HEADERNODE(newheader)->heap;
+resign_insert(qpz_heap_t *heap, dns_vecheader_t *newheader) {
+	LOCK(&heap->lock);
 
 	qpz_heap_elem_t *elem = isc_mem_cget(heap->mctx, sizeof(qpz_heap_elem_t), 1);
 	*elem = (qpz_heap_elem_t) {
@@ -669,7 +668,7 @@ resign_insert(dns_vecheader_t *newheader) {
 	/* Add element to hashmap using header+node as key */
 	isc_hashmap_add(heap->hashmap, hashval, qpz_elem_match, elem, elem, NULL);
 
-	UNLOCK(get_heap_lock(newheader));
+	UNLOCK(&heap->lock);
 }
 
 static void
@@ -1588,7 +1587,7 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 		nlock = qpzone_get_lock(HEADERNODE(header));
 		NODE_WRLOCK(nlock, &nlocktype);
 		if (rollback && !IGNORE(header)) {
-			resign_insert(header);
+			resign_insert(HEADERNODE(header)->heap, header);
 		}
 		qpznode_release(HEADERNODE(header), least_serial,
 				&nlocktype DNS__DB_FLARG_PASS);
@@ -1981,7 +1980,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 
 		if (loading) {
 			if (RESIGN(newheader)) {
-				resign_insert(newheader);
+				resign_insert(node->heap, newheader);
 				/* resigndelete not needed here */
 			}
 
@@ -2001,7 +2000,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 			dns_vecheader_destroy(&header);
 		} else {
 			if (RESIGN(newheader)) {
-				resign_insert(newheader);
+				resign_insert(node->heap, newheader);
 				resign_unregister_and_delete(qpdb, version,
 					     header DNS__DB_FLARG_PASS);
 			}
@@ -2030,7 +2029,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 		}
 
 		if (RESIGN(newheader)) {
-			resign_insert(newheader);
+			resign_insert(node->heap, newheader);
 			resign_unregister_and_delete(qpdb, version, header DNS__DB_FLARG_PASS);
 		}
 
@@ -2446,7 +2445,7 @@ setsigningtime(dns_db_t *db, dns_dbnode_t *node, dns_rdataset_t *rdataset, isc_s
 		UNLOCK(get_heap_lock(header));
 	} else if (resign != 0) {
 		DNS_VECHEADER_SETATTR(header, DNS_VECHEADERATTR_RESIGN);
-		resign_insert(header);
+		resign_insert(((qpznode_t *)node)->heap, header);
 	}
 	NODE_UNLOCK(nlock, &nlocktype);
 	return ISC_R_SUCCESS;
@@ -5041,7 +5040,7 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 						      DNS_VECHEADERATTR_RESIGN);
 				newheader->resign = header->resign;
 				newheader->resign_lsb = header->resign_lsb;
-				resign_insert(newheader);
+				resign_insert(node->heap, newheader);
 			}
 			/*
 			 * We have to set the serial since the rdatavec
