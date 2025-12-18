@@ -815,6 +815,15 @@ dns_view_find(dns_view_t *view, const dns_name_t *name, dns_rdatatype_t type,
 
 	is_cache = dns_db_iscache(db);
 
+	if (is_cache) {
+		char b[512];
+		dns_name_format(name, b, 512);
+		fprintf(stderr,
+			"----DELEG dns_view_find attempt to lookup from the "
+			"cache %s\n",
+			b);
+	}
+
 db_find:
 	/*
 	 * Now look for an answer in the database.

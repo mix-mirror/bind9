@@ -2430,113 +2430,138 @@ dbfind_name(dns_adbname_t *adbname, isc_stdtime_t now, dns_rdatatype_t rdtype) {
 	if ((adbname->type & DNS_ADBFIND_STARTATZONE) != 0) {
 		options |= DNS_DBFIND_PENDINGOK;
 	}
-	result = dns_view_find(adb->view, adbname->name, rdtype, now, options,
-			       true,
-			       (adbname->type & DNS_ADBFIND_STARTATZONE) != 0,
-			       NULL, NULL, fname, &rdataset, NULL);
 
-	switch (result) {
-	case DNS_R_GLUE:
-	case DNS_R_HINT:
-		result = ISC_R_SUCCESS;
-		FALLTHROUGH;
-	case ISC_R_SUCCESS:
-		/*
-		 * Found in the database.  Even if we can't copy out
-		 * any information, return success, or else a fetch
-		 * will be made, which will only make things worse.
-		 */
-		if (rdtype == dns_rdatatype_a) {
-			adbname->fetch_err = FIND_ERR_SUCCESS;
-		} else {
-			adbname->fetch6_err = FIND_ERR_SUCCESS;
-		}
-		import_rdataset(adbname, &rdataset, now);
-		break;
-	case DNS_R_NXDOMAIN:
-	case DNS_R_NXRRSET:
-		/*
-		 * We're authoritative and the data doesn't exist.
-		 * Make up a negative cache entry so we don't ask again
-		 * for a while.
-		 *
-		 * XXXRTH  What time should we use?  I'm putting in 30 seconds
-		 * for now.
-		 */
-		if (rdtype == dns_rdatatype_a) {
-			adbname->expire_v4 = now + 30;
-			DP(NCACHE_LEVEL,
-			   "adb name %p: Caching auth negative entry for A",
-			   adbname);
-			if (result == DNS_R_NXDOMAIN) {
-				adbname->fetch_err = FIND_ERR_NXDOMAIN;
+		result = dns_view_findzonecut(adb->view, adbname->name, fname,
+					      NULL, 0, 0, false, true,
+					      &rdataset, NULL);
+
+		// this is wrong: the delegation must always be picked form the
+		// deleg database. if not found, then it can make a regular
+		// query.
+		//
+		// (not taht because the API of findzonecut is different, we
+		// need to filter out the type we want after, i.e. ipv4/v6)
+		//
+		// and in such case, it should be added to the cache.
+		//
+		// (It is possible though that explicit queries, i.e. NS foo.fr
+		// does not add in the cache, so that might be added here as
+		// well for auth responses)
+		//
+		//	} else {
+		//		result = dns_view_find(
+		//			adb->view, adbname->name, rdtype, now,
+		// options, true, 			(adbname->type &
+		// DNS_ADBFIND_STARTATZONE) != 0, NULL,
+		// NULL, fname, &rdataset, NULL);
+		//	}
+
+		switch (result) {
+		case DNS_R_GLUE:
+		case DNS_R_HINT:
+			result = ISC_R_SUCCESS;
+			FALLTHROUGH;
+		case ISC_R_SUCCESS:
+			/*
+			 * Found in the database.  Even if we can't copy out
+			 * any information, return success, or else a fetch
+			 * will be made, which will only make things worse.
+			 */
+			if (rdtype == dns_rdatatype_a) {
+				adbname->fetch_err = FIND_ERR_SUCCESS;
 			} else {
-				adbname->fetch_err = FIND_ERR_NXRRSET;
+				adbname->fetch6_err = FIND_ERR_SUCCESS;
 			}
-		} else {
-			DP(NCACHE_LEVEL,
-			   "adb name %p: Caching auth negative entry for AAAA",
-			   adbname);
-			adbname->expire_v6 = now + 30;
-			if (result == DNS_R_NXDOMAIN) {
-				adbname->fetch6_err = FIND_ERR_NXDOMAIN;
+			import_rdataset(adbname, &rdataset, now);
+			break;
+		case DNS_R_NXDOMAIN:
+		case DNS_R_NXRRSET:
+			/*
+			 * We're authoritative and the data doesn't exist.
+			 * Make up a negative cache entry so we don't ask again
+			 * for a while.
+			 *
+			 * XXXRTH  What time should we use?  I'm putting in 30
+			 * seconds for now.
+			 */
+			if (rdtype == dns_rdatatype_a) {
+				adbname->expire_v4 = now + 30;
+				DP(NCACHE_LEVEL,
+				   "adb name %p: Caching auth negative entry "
+				   "for A",
+				   adbname);
+				if (result == DNS_R_NXDOMAIN) {
+					adbname->fetch_err = FIND_ERR_NXDOMAIN;
+				} else {
+					adbname->fetch_err = FIND_ERR_NXRRSET;
+				}
 			} else {
-				adbname->fetch6_err = FIND_ERR_NXRRSET;
+				DP(NCACHE_LEVEL,
+				   "adb name %p: Caching auth negative entry "
+				   "for AAAA",
+				   adbname);
+				adbname->expire_v6 = now + 30;
+				if (result == DNS_R_NXDOMAIN) {
+					adbname->fetch6_err = FIND_ERR_NXDOMAIN;
+				} else {
+					adbname->fetch6_err = FIND_ERR_NXRRSET;
+				}
 			}
-		}
-		break;
-	case DNS_R_NCACHENXDOMAIN:
-	case DNS_R_NCACHENXRRSET:
-		/*
-		 * We found a negative cache entry.  Pull the TTL from it
-		 * so we won't ask again for a while.
-		 */
-		rdataset.ttl = ttlclamp(rdataset.ttl);
-		if (rdtype == dns_rdatatype_a) {
-			adbname->expire_v4 = rdataset.ttl + now;
-			if (result == DNS_R_NCACHENXDOMAIN) {
-				adbname->fetch_err = FIND_ERR_NXDOMAIN;
+			break;
+		case DNS_R_NCACHENXDOMAIN:
+		case DNS_R_NCACHENXRRSET:
+			/*
+			 * We found a negative cache entry.  Pull the TTL from
+			 * it so we won't ask again for a while.
+			 */
+			rdataset.ttl = ttlclamp(rdataset.ttl);
+			if (rdtype == dns_rdatatype_a) {
+				adbname->expire_v4 = rdataset.ttl + now;
+				if (result == DNS_R_NCACHENXDOMAIN) {
+					adbname->fetch_err = FIND_ERR_NXDOMAIN;
+				} else {
+					adbname->fetch_err = FIND_ERR_NXRRSET;
+				}
+				DP(NCACHE_LEVEL,
+				   "adb name %p: Caching negative entry for A "
+				   "(ttl %u)",
+				   adbname, rdataset.ttl);
 			} else {
-				adbname->fetch_err = FIND_ERR_NXRRSET;
+				DP(NCACHE_LEVEL,
+				   "adb name %p: Caching negative entry for "
+				   "AAAA (ttl "
+				   "%u)",
+				   adbname, rdataset.ttl);
+				adbname->expire_v6 = rdataset.ttl + now;
+				if (result == DNS_R_NCACHENXDOMAIN) {
+					adbname->fetch6_err = FIND_ERR_NXDOMAIN;
+				} else {
+					adbname->fetch6_err = FIND_ERR_NXRRSET;
+				}
 			}
-			DP(NCACHE_LEVEL,
-			   "adb name %p: Caching negative entry for A (ttl %u)",
-			   adbname, rdataset.ttl);
-		} else {
-			DP(NCACHE_LEVEL,
-			   "adb name %p: Caching negative entry for AAAA (ttl "
-			   "%u)",
-			   adbname, rdataset.ttl);
-			adbname->expire_v6 = rdataset.ttl + now;
-			if (result == DNS_R_NCACHENXDOMAIN) {
-				adbname->fetch6_err = FIND_ERR_NXDOMAIN;
+			break;
+		case DNS_R_CNAME:
+		case DNS_R_DNAME:
+			/*
+			 * We found a CNAME or DNAME. Mark this as an
+			 * alias (not to be used) and mark the expiry
+			 * for both address families so we won't ask again
+			 * for a while.
+			 */
+			rdataset.ttl = ttlclamp(rdataset.ttl);
+			result = DNS_R_ALIAS;
+			adbname->flags |= NAME_IS_ALIAS;
+			adbname->expire_v4 = adbname->expire_v6 =
+				ADJUSTED_EXPIRE(INT_MAX, now, rdataset.ttl);
+			if (rdtype == dns_rdatatype_a) {
+				adbname->fetch_err = FIND_ERR_SUCCESS;
 			} else {
-				adbname->fetch6_err = FIND_ERR_NXRRSET;
+				adbname->fetch6_err = FIND_ERR_SUCCESS;
 			}
+			break;
+		default:
+			break;
 		}
-		break;
-	case DNS_R_CNAME:
-	case DNS_R_DNAME:
-		/*
-		 * We found a CNAME or DNAME. Mark this as an
-		 * alias (not to be used) and mark the expiry
-		 * for both address families so we won't ask again
-		 * for a while.
-		 */
-		rdataset.ttl = ttlclamp(rdataset.ttl);
-		result = DNS_R_ALIAS;
-		adbname->flags |= NAME_IS_ALIAS;
-		adbname->expire_v4 = adbname->expire_v6 =
-			ADJUSTED_EXPIRE(INT_MAX, now, rdataset.ttl);
-		if (rdtype == dns_rdatatype_a) {
-			adbname->fetch_err = FIND_ERR_SUCCESS;
-		} else {
-			adbname->fetch6_err = FIND_ERR_SUCCESS;
-		}
-		break;
-	default:
-		break;
-	}
 
 	dns_rdataset_cleanup(&rdataset);
 

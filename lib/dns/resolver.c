@@ -3333,6 +3333,9 @@ findname(fetchctx_t *fctx, const dns_name_t *name, in_port_t port,
 	 * from getting stuck if the nameserver is beneath the zone cut
 	 * and we don't know its address (e.g. because the A record has
 	 * expired).
+	 *
+	 * maybe we need a separate flag to tell the ns is below the domain, so
+	 * we can use our local deleg cache first.
 	 */
 	if (dns_name_issubdomain(name, fctx->domain)) {
 		options |= DNS_ADBFIND_STARTATZONE;
@@ -3598,6 +3601,27 @@ fctx_getaddresses_forwarders(fetchctx_t *fctx) {
 	return DNS_R_CONTINUE;
 }
 
+/*
+ * TODO: something has to change here! We're looking at a delegation, so we
+ * should never access the cache here. (only zone/deleg db/hints) and adb would
+ * call dns_view_find which would hit the cache...
+ *
+ * ----DELEG attempt to get address of ns2.example
+2025-12-18T18:03:05.243+01:00 fctx 0x7f766fed5000(foo.example/A): FINDNAME
+
+(this is here)
+
+but it can't find it... becaus eit looks inside the cache, not the deleg cache
+
+----DELEG dns_view_find attempt to lookup from the cache ns2.example
+----DELEG dns_view_find attempt to lookup from the cache ns2.example
+
+so it attempt to resovle it again and again....
+2025-12-18T18:03:05.243+01:00 fetch_name: starting at zone for name 0x7f766fe28400
+DELEG findzonecut success ns2.example . 
+
+
+ */
 static isc_result_t
 fctx_getaddresses_nameservers(fetchctx_t *fctx, isc_stdtime_t now,
 			      unsigned int stdoptions,
@@ -3619,6 +3643,9 @@ fctx_getaddresses_nameservers(fetchctx_t *fctx, isc_stdtime_t now,
 		 * Extract the name from the NS record.
 		 */
 		result = dns_rdata_tostruct(&rdata, &ns, NULL);
+		char b[512];
+		dns_name_format(&ns.name, b, 512);
+		fprintf(stderr, "----DELEG attempt to get address of %s\n", b); 
 		if (result != ISC_R_SUCCESS) {
 			continue;
 		}
@@ -4149,6 +4176,11 @@ fctx_try(fetchctx_t *fctx, bool retrying) {
 	}
 
 	addrinfo = fctx_nextaddress(fctx);
+	if (addrinfo != NULL) {
+		char b[512];
+		isc_sockaddr_format(&addrinfo->sockaddr, b, 512);
+		fprintf(stderr, "---- DELEG got addrinfo %s\n", b);
+	}
 
 	/* Try to find an address that isn't over quota */
 	while (addrinfo != NULL && dns_adb_overquota(fctx->adb, addrinfo)) {
@@ -4156,6 +4188,8 @@ fctx_try(fetchctx_t *fctx, bool retrying) {
 	}
 
 	if (addrinfo == NULL) {
+		fprintf(stderr, "---- DELEG no addr info\n");
+
 		/* We have no more addresses.  Start over. */
 		fctx_cancelqueries(fctx, true, false);
 		fctx_cleanup(fctx);
@@ -4534,6 +4568,7 @@ resume_qmin(void *arg) {
 		fctx_cleanup(fctx);
 	}
 
+	fprintf(stderr,"DELEG -- try after qmin\n");
 	fctx_try(fctx, true);
 
 cleanup:
