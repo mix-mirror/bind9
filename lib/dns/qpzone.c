@@ -566,6 +566,17 @@ qpdb_destroy(dns_db_t *arg) {
 }
 
 /*%
+ * Compare resign times with SOA priority logic.
+ * Returns true if lhs should be resigned sooner than rhs.
+ */
+static bool
+resign_sooner_values(int64_t lhs_resign, int64_t rhs_resign, dns_typepair_t rhs_typepair) {
+	return lhs_resign < rhs_resign ||
+	       (lhs_resign == rhs_resign &&
+		rhs_typepair == DNS_SIGTYPEPAIR(dns_rdatatype_soa));
+}
+
+/*%
  * Return which RRset should be resigned sooner.  If the RRsets have the
  * same signing time, prefer the other RRset over the SOA RRset.
  */
@@ -574,9 +585,7 @@ resign_sooner(void *v1, void *v2) {
 	dns_vecheader_t *h1 = v1;
 	dns_vecheader_t *h2 = v2;
 
-	return h1->resign < h2->resign ||
-	       (h1->resign == h2->resign &&
-		h2->typepair == DNS_SIGTYPEPAIR(dns_rdatatype_soa));
+	return resign_sooner_values(h1->resign, h2->resign, h2->typepair);
 }
 
 /*%
@@ -2377,7 +2386,7 @@ getsize(dns_db_t *db, dns_dbversion_t *dbversion, uint64_t *records,
 static isc_result_t
 setsigningtime(dns_db_t *db, dns_dbnode_t *node, dns_rdataset_t *rdataset, isc_stdtime_t resign) {
 	qpzonedb_t *qpdb = (qpzonedb_t *)db;
-	dns_vecheader_t *header = NULL, oldheader;
+	dns_vecheader_t *header = NULL;
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 	isc_rwlock_t *nlock = NULL;
 
@@ -2390,16 +2399,11 @@ setsigningtime(dns_db_t *db, dns_dbnode_t *node, dns_rdataset_t *rdataset, isc_s
 	nlock = qpzone_get_lock((qpznode_t *)node);
 	NODE_WRLOCK(nlock, &nlocktype);
 
-	oldheader = *header;
-
 	/*
 	 * Only break the heap invariant (by adjusting resign time)
 	 * if we are going to be restoring it by calling isc_heap_increased
 	 * or isc_heap_decreased.
 	 */
-	if (resign != 0) {
-		header->resign = dns_time64_from32(resign);
-	}
 	if (header->heap_index != 0) {
 		INSIST(RESIGN(header));
 		LOCK(get_heap_lock(qpdb));
@@ -2407,15 +2411,24 @@ setsigningtime(dns_db_t *db, dns_dbnode_t *node, dns_rdataset_t *rdataset, isc_s
 			isc_heap_delete(qpdb->heap->heap,
 					header->heap_index);
 			header->heap_index = 0;
-		} else if (resign_sooner(header, &oldheader)) {
-			isc_heap_increased(qpdb->heap->heap,
-					   header->heap_index);
-		} else if (resign_sooner(&oldheader, header)) {
-			isc_heap_decreased(qpdb->heap->heap,
-					   header->heap_index);
+		} else {
+			int64_t old_resign = header->resign;
+			int64_t new_resign = dns_time64_from32(resign);
+
+			header->resign = new_resign;
+
+			if (resign_sooner_values(new_resign, old_resign, header->typepair)) {
+				isc_heap_increased(qpdb->heap->heap,
+						   header->heap_index);
+			} else if (resign_sooner_values(old_resign, new_resign, header->typepair)) {
+				isc_heap_decreased(qpdb->heap->heap,
+						   header->heap_index);
+			}
+			/* No heap adjustment needed if neither direction indicates sooner */
 		}
 		UNLOCK(get_heap_lock(qpdb));
 	} else if (resign != 0) {
+		header->resign = dns_time64_from32(resign);
 		DNS_VECHEADER_SETATTR(header, DNS_VECHEADERATTR_RESIGN);
 		resign_insert(qpdb->heap, ((qpznode_t *)node), header);
 	}
