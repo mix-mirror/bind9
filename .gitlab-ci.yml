@@ -72,6 +72,19 @@ variables:
   SHOTGUN_EVAL_THRESHOLD_LATENCY_PCTL_MIN: '-inf'
   SHOTGUN_EVAL_THRESHOLD_LATENCY_PCTL_DRIFT_MIN: '-inf'
 
+  # Even though there's only one job per runtime environment, the GitLab
+  # "instance" executor insists on cloning the Git repository to a path that
+  # contains a variable number from zero to the "maximum concurrent instances
+  # count" allowed on the GitLab Runner. See the "0" directory in this example
+  # path: /home/ec2-user/builds/t1_4FZzvz/0/isc-projects/bind9/.git/.
+  #
+  # This is not a problem for isolated jobs like "stress" tests that depend on
+  # no other jobs. However, it is a problem for jobs that need other jobs'
+  # artifacts. For example, a system test job that has its Git repo cloned to
+  # the "/1/" sub-path will fail if it downloads build job artifacts that have
+  # ./configure output files with "/0/" in its sub-path recorded.
+  GIT_CLONE_PATH_INSTANCE_EXECUTOR: "/home/ec2-user/builds/${CI_PROJECT_PATH}/"
+
 default:
   # Allow all running CI jobs to be automatically canceled when a new
   # version of a branch is pushed.
@@ -144,44 +157,6 @@ stages:
     - bsd-stress-test-3
     - shell
     - stress-test
-
-.freebsd-autoscaler-amd64: &freebsd_autoscaler_amd64
-  variables:
-    CC: clang
-    CFLAGS: "${CFLAGS_COMMON} -Og"
-    # Even though there's only one job per runtime environment, the GitLab
-    # "instance" executor insists on cloning the Git repository to a path that
-    # contains a variable number from zero to the "maximum concurrent instances
-    # count" allowed on the GitLab Runner. See the "0" directory in this
-    # example path: /home/ec2-user/builds/t1_4FZzvz/0/isc-projects/bind9/.git/.
-    #
-    # This is not a problem for isolated jobs like "stress" tests that depend
-    # on no other jobs. However, it is a problem for jobs that need other jobs'
-    # artifacts. For example, a system test job that has its Git repo cloned to
-    # the "/1/" sub-path will fail if it downloads build job artifacts that
-    # have ./configure output files with "/0/" in its sub-path recorded.
-    GIT_CLONE_PATH: "/home/ec2-user/builds/${CI_PROJECT_PATH}/"
-    # Use MIT Kerberos5 for BIND 9 GSS-API support because of FreeBSD Heimdal
-    # incompatibility; see https://bugs.freebsd.org/275241.
-    EXTRA_CONFIGURE: "${WITH_READLINE_EDITLINE} --with-gssapi=/usr/local/bin/krb5-config"
-
-# Autoscaling GitLab Runner on AWS EC2 (FreeBSD 13)
-
-.freebsd-autoscaler-13-amd64: &freebsd_autoscaler_13_amd64
-  <<: *freebsd_autoscaler_amd64
-  <<: *freebsd_autoscaler_13_amd64_tags
-
-# Autoscaling GitLab Runner on AWS EC2 (FreeBSD 14)
-
-.freebsd-autoscaler-14-amd64: &freebsd_autoscaler_14_amd64
-  <<: *freebsd_autoscaler_amd64
-  <<: *freebsd_autoscaler_14_amd64_tags
-
-# Autoscaling GitLab Runner on AWS EC2 (FreeBSD 15)
-
-.freebsd-autoscaler-15-amd64: &freebsd_autoscaler_15_amd64
-  <<: *freebsd_autoscaler_amd64
-  <<: *freebsd_autoscaler_15_amd64_tags
 
 ### Docker Image Templates
 
@@ -1563,64 +1538,97 @@ unit:clang:trixie:amd64:
 # Jobs for Clang builds on FreeBSD 13 (amd64)
 
 clang:freebsd13:amd64:
+  variables:
+    CC: clang
+    CFLAGS: "${CFLAGS_COMMON} -Og"
+    GIT_CLONE_PATH: "${GIT_CLONE_PATH_INSTANCE_EXECUTOR}"
+    # Use MIT Kerberos5 for BIND 9 GSS-API support because of FreeBSD Heimdal
+    # incompatibility; see https://bugs.freebsd.org/275241.
+    EXTRA_CONFIGURE: "${WITH_READLINE_EDITLINE} --with-gssapi=/usr/local/bin/krb5-config"
   <<: *build_job
-  <<: *freebsd_autoscaler_13_amd64
+  <<: *freebsd_autoscaler_13_amd64_tags
 
 system:clang:freebsd13:amd64:
-  <<: *system_test_job
-  <<: *freebsd_autoscaler_13_amd64
-  <<: *extra_system_tests_triggering_rules
+  variables:
+    GIT_CLONE_PATH: "${GIT_CLONE_PATH_INSTANCE_EXECUTOR}"
   needs:
     - job: clang:freebsd13:amd64
       artifacts: true
+  <<: *system_test_job
+  <<: *freebsd_autoscaler_13_amd64_tags
+  <<: *extra_system_tests_triggering_rules
 
 unit:clang:freebsd13:amd64:
-  <<: *unit_test_job
-  <<: *freebsd_autoscaler_13_amd64
-  <<: *api_pipelines_schedules_tags_triggers_web_triggering_rules
+  variables:
+    GIT_CLONE_PATH: "${GIT_CLONE_PATH_INSTANCE_EXECUTOR}"
   needs:
     - job: clang:freebsd13:amd64
       artifacts: true
+  <<: *unit_test_job
+  <<: *freebsd_autoscaler_13_amd64_tags
+  <<: *api_pipelines_schedules_tags_triggers_web_triggering_rules
 
 # Jobs for Clang builds on FreeBSD 14 (amd64)
 
 clang:freebsd14:amd64:
+  variables:
+    CC: clang
+    CFLAGS: "${CFLAGS_COMMON} -Og"
+    GIT_CLONE_PATH: "${GIT_CLONE_PATH_INSTANCE_EXECUTOR}"
+    # Use MIT Kerberos5 for BIND 9 GSS-API support because of FreeBSD Heimdal
+    # incompatibility; see https://bugs.freebsd.org/275241.
+    EXTRA_CONFIGURE: "${WITH_READLINE_EDITLINE} --with-gssapi=/usr/local/bin/krb5-config"
   <<: *build_job
-  <<: *freebsd_autoscaler_14_amd64
+  <<: *freebsd_autoscaler_14_amd64_tags
 
 system:clang:freebsd14:amd64:
-  <<: *system_test_job
-  <<: *freebsd_autoscaler_14_amd64
+  variables:
+    GIT_CLONE_PATH: "${GIT_CLONE_PATH_INSTANCE_EXECUTOR}"
   needs:
     - job: clang:freebsd14:amd64
       artifacts: true
+  <<: *system_test_job
+  <<: *freebsd_autoscaler_14_amd64_tags
 
 unit:clang:freebsd14:amd64:
-  <<: *unit_test_job
-  <<: *freebsd_autoscaler_14_amd64
+  variables:
+    GIT_CLONE_PATH: "${GIT_CLONE_PATH_INSTANCE_EXECUTOR}"
   needs:
     - job: clang:freebsd14:amd64
       artifacts: true
+  <<: *unit_test_job
+  <<: *freebsd_autoscaler_14_amd64_tags
 
 # Jobs for Clang builds on FreeBSD 15 (amd64)
 
 clang:freebsd15:amd64:
+  variables:
+    CC: clang
+    CFLAGS: "${CFLAGS_COMMON} -Og"
+    GIT_CLONE_PATH: "${GIT_CLONE_PATH_INSTANCE_EXECUTOR}"
+    # Use MIT Kerberos5 for BIND 9 GSS-API support because of FreeBSD Heimdal
+    # incompatibility; see https://bugs.freebsd.org/275241.
+    EXTRA_CONFIGURE: "${WITH_READLINE_EDITLINE} --with-gssapi=/usr/local/bin/krb5-config"
   <<: *build_job
-  <<: *freebsd_autoscaler_15_amd64
+  <<: *freebsd_autoscaler_15_amd64_tags
 
 system:clang:freebsd15:amd64:
-  <<: *system_test_job
-  <<: *freebsd_autoscaler_15_amd64
+  variables:
+    GIT_CLONE_PATH: "${GIT_CLONE_PATH_INSTANCE_EXECUTOR}"
   needs:
     - job: clang:freebsd15:amd64
       artifacts: true
+  <<: *system_test_job
+  <<: *freebsd_autoscaler_15_amd64_tags
 
 unit:clang:freebsd15:amd64:
-  <<: *unit_test_job
-  <<: *freebsd_autoscaler_15_amd64
+  variables:
+    GIT_CLONE_PATH: "${GIT_CLONE_PATH_INSTANCE_EXECUTOR}"
   needs:
     - job: clang:freebsd15:amd64
       artifacts: true
+  <<: *unit_test_job
+  <<: *freebsd_autoscaler_15_amd64_tags
 
 # Job producing a release directory
 
