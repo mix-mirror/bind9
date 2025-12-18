@@ -1,0 +1,33 @@
+; Copyright (C) Internet Systems Consortium, Inc. ("ISC")
+;
+; SPDX-License-Identifier: MPL-2.0
+;
+; This Source Code Form is subject to the terms of the Mozilla Public
+; License, v. 2.0.  If a copy of the MPL was not distributed with this
+; file, you can obtain one at https://mozilla.org/MPL/2.0/.
+;
+; See the COPYRIGHT file distributed with this work for additional
+; information regarding copyright ownership.
+
+{% set ns3ttl = ns3ttl | default(555) %}
+{% set ns3ip = ns3ip | default("10.53.33.33") %}
+{% set extrarr = extrarr | default(False) %}
+
+$TTL 300	; 5 minutes
+ghost.example.		IN SOA	mname1. . (
+				2000042407 ; serial
+				20	   ; refresh (20 seconds)
+				20	   ; retry (20 seconds)
+				1814400	   ; expire (3 weeks)
+				3600	   ; minimum (1 hour)
+				)
+			NS	ns3
+
+; ns3 is actually different in the child, TTL of 555 and different IP.
+ns3	@ns3ttl@	A	@ns3ip@
+
+bar			A	10.53.0.44
+baz			A	10.53.0.45
+{% if extrarr %}
+gee			A	10.53.0.66
+{% endif %}
