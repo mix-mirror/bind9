@@ -22,6 +22,7 @@
 #include <isc/async.h>
 #include <isc/atomic.h>
 #include <isc/file.h>
+#include <isc/hashmap.h>
 #include <isc/heap.h>
 #include <isc/hex.h>
 #include <isc/log.h>
@@ -69,7 +70,7 @@
 #define HEADERNODE(h) ((qpznode_t *)((h)->node))
 
 /* Forward declaration */
-static void deletedata(dns_dbnode_t *node, void *data);
+static void resign_unregister(dns_dbnode_t *node, void *data);
 
 #define QPDB_ATTR_LOADED  0x01
 #define QPDB_ATTR_LOADING 0x02
@@ -166,7 +167,14 @@ typedef struct qpz_heap {
 	/* Locks the data in this struct */
 	isc_mutex_t lock;
 	isc_heap_t *heap;
+	isc_hashmap_t *hashmap;
 } qpz_heap_t;
+
+typedef struct qpz_heap_elem {
+	qpznode_t *node;
+	dns_vecheader_t *header;
+	unsigned int heap_index;
+} qpz_heap_elem_t;
 
 ISC_REFCOUNT_STATIC_DECL(qpz_heap);
 
@@ -416,31 +424,6 @@ qpzone_get_locknum(void) {
 	return isc_random_uniform(ARRAY_SIZE(qpzone_buckets_g));
 }
 
-/*%
- * Return which RRset should be resigned sooner.  If the RRsets have the
- * same signing time, prefer the other RRset over the SOA RRset.
- */
-static bool
-resign_sooner(void *v1, void *v2) {
-	dns_vecheader_t *h1 = v1;
-	dns_vecheader_t *h2 = v2;
-
-	return h1->resign < h2->resign ||
-	       (h1->resign == h2->resign && h1->resign_lsb < h2->resign_lsb) ||
-	       (h1->resign == h2->resign && h1->resign_lsb == h2->resign_lsb &&
-		h2->typepair == DNS_SIGTYPEPAIR(dns_rdatatype_soa));
-}
-
-/*%
- * This function sets the heap index into the header.
- */
-static void
-set_index(void *what, unsigned int idx) {
-	dns_vecheader_t *h = what;
-
-	h->heap_index = idx;
-}
-
 static void
 free_glue(isc_mem_t *mctx, dns_glue_t *glue) {
 	while (glue != NULL) {
@@ -584,6 +567,44 @@ qpdb_destroy(dns_db_t *arg) {
 	qpzone_destroy(qpdb);
 }
 
+/*%
+ * Return which RRset should be resigned sooner.  If the RRsets have the
+ * same signing time, prefer the other RRset over the SOA RRset.
+ */
+static bool
+resign_sooner(void *v1, void *v2) {
+	dns_vecheader_t *h1 = v1;
+	dns_vecheader_t *h2 = v2;
+
+	return h1->resign < h2->resign ||
+	       (h1->resign == h2->resign && h1->resign_lsb < h2->resign_lsb) ||
+	       (h1->resign == h2->resign && h1->resign_lsb == h2->resign_lsb &&
+		h2->typepair == DNS_SIGTYPEPAIR(dns_rdatatype_soa));
+}
+
+/*%
+ * This function sets the heap index into the header.
+ */
+static void
+set_index(void *what, unsigned int idx) {
+	dns_vecheader_t *h = what;
+
+	h->heap_index = idx;
+}
+
+/*%
+ * Hashmap matching function for qpz_heap_elem_t entries.
+ * Matches based on header and node pointers.
+ */
+static bool
+qpz_elem_match(void *elem_ptr, const void *key) {
+	qpz_heap_elem_t *elem = elem_ptr;
+	const qpz_heap_elem_t *search_elem = key;
+
+	return elem->header == search_elem->header &&
+	       elem->node == search_elem->node;
+}
+
 static qpz_heap_t *
 new_qpz_heap(isc_mem_t *mctx) {
 	qpz_heap_t *new_heap = isc_mem_get(mctx, sizeof(*new_heap));
@@ -594,6 +615,8 @@ new_qpz_heap(isc_mem_t *mctx) {
 	isc_mutex_init(&new_heap->lock);
 	isc_heap_create(mctx, resign_sooner, set_index, 0, &new_heap->heap);
 	isc_mem_attach(mctx, &new_heap->mctx);
+
+	isc_hashmap_create(mctx, 1u, &new_heap->hashmap);
 
 	return new_heap;
 }
@@ -624,7 +647,111 @@ get_heap_lock(dns_vecheader_t *header) {
 }
 
 static void
+resign_insert(dns_vecheader_t *newheader) {
+	LOCK(get_heap_lock(newheader));
+	qpz_heap_t *heap = HEADERNODE(newheader)->heap;
+
+	qpz_heap_elem_t *elem = isc_mem_cget(heap->mctx, sizeof(qpz_heap_elem_t), 1);
+	*elem = (qpz_heap_elem_t) {
+		.header = newheader,
+		.node = HEADERNODE(newheader),
+	};
+
+	isc_heap_insert(heap->heap, newheader);
+
+	/* Add element to hashmap using header+node as key */
+	uint32_t hashval = isc_hash32(elem, sizeof(*elem), true);
+	isc_hashmap_add(heap->hashmap, hashval, qpz_elem_match, elem, elem, NULL);
+
+	UNLOCK(get_heap_lock(newheader));
+}
+
+static void
+resign_unregister(dns_dbnode_t *node ISC_ATTR_UNUSED, void *data) {
+	dns_vecheader_t *header = data;
+
+	if (header->heap_index != 0) {
+		LOCK(get_heap_lock(header));
+		qpz_heap_t *heap = HEADERNODE(header)->heap;
+
+		/* Remove element from hashmap */
+		qpz_heap_elem_t search_elem = {
+			.header = header,
+			.node = HEADERNODE(header),
+		};
+		uint32_t hashval = isc_hash32(&search_elem, sizeof(search_elem), true);
+		qpz_heap_elem_t *found_elem = NULL;
+		if (isc_hashmap_find(heap->hashmap, hashval, qpz_elem_match,
+				     &search_elem, (void **)&found_elem) == ISC_R_SUCCESS) {
+			isc_hashmap_delete(heap->hashmap, hashval, qpz_elem_match, &search_elem);
+			isc_mem_cput(heap->mctx, found_elem, sizeof(qpz_heap_elem_t), 1);
+		}
+
+		isc_heap_delete(heap->heap, header->heap_index);
+		UNLOCK(get_heap_lock(header));
+	}
+	header->heap_index = 0;
+}
+
+static void
+qpznode_acquire(qpznode_t *node DNS__DB_FLARG);
+
+static void
+resign_unregister_and_delete(qpzonedb_t *qpdb ISC_ATTR_UNUSED, qpz_version_t *version,
+	     dns_vecheader_t *header DNS__DB_FLARG) {
+	if (header == NULL || header->heap_index == 0) {
+		return;
+	}
+
+	LOCK(get_heap_lock(header));
+	qpz_heap_t *heap = HEADERNODE(header)->heap;
+
+	/* Remove element from hashmap */
+	qpz_heap_elem_t search_elem = {
+		.header = header,
+		.node = HEADERNODE(header),
+	};
+	uint32_t hashval = isc_hash32(&search_elem, sizeof(search_elem), true);
+	qpz_heap_elem_t *found_elem = NULL;
+	if (isc_hashmap_find(heap->hashmap, hashval, qpz_elem_match,
+			     &search_elem, (void **)&found_elem) == ISC_R_SUCCESS) {
+		isc_hashmap_delete(heap->hashmap, hashval, qpz_elem_match, &search_elem);
+		isc_mem_cput(heap->mctx, found_elem, sizeof(qpz_heap_elem_t), 1);
+	}
+
+	isc_heap_delete(heap->heap, header->heap_index);
+	UNLOCK(get_heap_lock(header));
+
+	header->heap_index = 0;
+	qpznode_acquire(HEADERNODE(header) DNS__DB_FLARG_PASS);
+
+	qpz_resigned_t *resigned = isc_mem_get(((dns_db_t *)qpdb)->mctx,
+					       sizeof(*resigned));
+	*resigned = (qpz_resigned_t){
+		.header = header,
+		.link = ISC_LINK_INITIALIZER,
+	};
+
+	ISC_LIST_APPEND(version->resigned_list, resigned, link);
+}
+
+static void
 qpz_heap_destroy(qpz_heap_t *qpheap) {
+	/* Clean up hashmap entries */
+	isc_hashmap_iter_t *iter = NULL;
+	isc_hashmap_iter_create(qpheap->hashmap, &iter);
+	for (isc_result_t result = isc_hashmap_iter_first(iter);
+	     result == ISC_R_SUCCESS;
+	     result = isc_hashmap_iter_next(iter)) {
+		qpz_heap_elem_t *elem = NULL;
+		isc_hashmap_iter_current(iter, (void **)&elem);
+		if (elem != NULL) {
+			isc_mem_cput(qpheap->mctx, elem, sizeof(qpz_heap_elem_t), 1);
+		}
+	}
+	isc_hashmap_iter_destroy(&iter);
+	isc_hashmap_destroy(&qpheap->hashmap);
+
 	isc_mutex_destroy(&qpheap->lock);
 	isc_heap_destroy(&qpheap->heap);
 	isc_mem_putanddetach(&qpheap->mctx, qpheap, sizeof(*qpheap));
@@ -851,7 +978,7 @@ clean_multiple_headers(dns_vectop_t *top) {
 
 		if (header->serial == parent_serial || IGNORE(header)) {
 			ISC_SLIST_PTR_REMOVE(p, header, next_header);
-			deletedata(header->node, header);
+			resign_unregister(header->node, header);
 			dns_vecheader_destroy(&header);
 		} else {
 			parent_serial = header->serial;
@@ -875,7 +1002,7 @@ clean_multiple_versions(dns_vectop_t *top, uint32_t least_serial) {
 		dns_vecheader_t *header = *p;
 		if (header->serial < least_serial) {
 			ISC_SLIST_PTR_REMOVE(p, header, next_header);
-			deletedata(header->node, header);
+			resign_unregister(header->node, header);
 			dns_vecheader_destroy(&header);
 		} else {
 			multiple = true;
@@ -1246,38 +1373,6 @@ newversion(dns_db_t *db, dns_dbversion_t **versionp) {
 	return ISC_R_SUCCESS;
 }
 
-static void
-resigninsert(dns_vecheader_t *newheader) {
-	REQUIRE(newheader->heap_index == 0);
-
-	LOCK(get_heap_lock(newheader));
-	isc_heap_insert(HEADERNODE(newheader)->heap->heap, newheader);
-	UNLOCK(get_heap_lock(newheader));
-}
-
-static void
-resigndelete(qpzonedb_t *qpdb ISC_ATTR_UNUSED, qpz_version_t *version,
-	     dns_vecheader_t *header DNS__DB_FLARG) {
-	if (header == NULL || header->heap_index == 0) {
-		return;
-	}
-
-	LOCK(get_heap_lock(header));
-	isc_heap_delete(HEADERNODE(header)->heap->heap, header->heap_index);
-	UNLOCK(get_heap_lock(header));
-
-	header->heap_index = 0;
-	qpznode_acquire(HEADERNODE(header) DNS__DB_FLARG_PASS);
-
-	qpz_resigned_t *resigned = isc_mem_get(((dns_db_t *)qpdb)->mctx,
-					       sizeof(*resigned));
-	*resigned = (qpz_resigned_t){
-		.header = header,
-		.link = ISC_LINK_INITIALIZER,
-	};
-
-	ISC_LIST_APPEND(version->resigned_list, resigned, link);
-}
 
 static void
 make_least_version(qpzonedb_t *qpdb, qpz_version_t *version,
@@ -1505,7 +1600,7 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 		nlock = qpzone_get_lock(HEADERNODE(header));
 		NODE_WRLOCK(nlock, &nlocktype);
 		if (rollback && !IGNORE(header)) {
-			resigninsert(header);
+			resign_insert(header);
 		}
 		qpznode_release(HEADERNODE(header), least_serial,
 				&nlocktype DNS__DB_FLARG_PASS);
@@ -1862,7 +1957,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 				 * alone.  It will get cleaned up when
 				 * clean_zone_node() runs.
 				 */
-				deletedata(newheader->node, newheader);
+				resign_unregister(newheader->node, newheader);
 				dns_vecheader_destroy(&newheader);
 				newheader = merged;
 				dns_vecheader_reset(newheader,
@@ -1887,7 +1982,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 							header->typepair),
 						"updating", qpdb->maxrrperset);
 				}
-				deletedata(newheader->node, newheader);
+				resign_unregister(newheader->node, newheader);
 				dns_vecheader_destroy(&newheader);
 				return result;
 			}
@@ -1898,7 +1993,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 
 		if (loading) {
 			if (RESIGN(newheader)) {
-				resigninsert(newheader);
+				resign_insert(newheader);
 				/* resigndelete not needed here */
 			}
 
@@ -1914,12 +2009,12 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 			maybe_update_recordsandsize(false, version, header,
 						    nodename->length);
 
-			deletedata(header->node, header);
+			resign_unregister(header->node, header);
 			dns_vecheader_destroy(&header);
 		} else {
 			if (RESIGN(newheader)) {
-				resigninsert(newheader);
-				resigndelete(qpdb, version,
+				resign_insert(newheader);
+				resign_unregister_and_delete(qpdb, version,
 					     header DNS__DB_FLARG_PASS);
 			}
 
@@ -1941,14 +2036,14 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 		 * If we're trying to delete the type, don't bother.
 		 */
 		if (!EXISTS(newheader)) {
-			deletedata(newheader->node, newheader);
+			resign_unregister(newheader->node, newheader);
 			dns_vecheader_destroy(&newheader);
 			return DNS_R_UNCHANGED;
 		}
 
 		if (RESIGN(newheader)) {
-			resigninsert(newheader);
-			resigndelete(qpdb, version, header DNS__DB_FLARG_PASS);
+			resign_insert(newheader);
+			resign_unregister_and_delete(qpdb, version, header DNS__DB_FLARG_PASS);
 		}
 
 		if (foundtop != NULL) {
@@ -1977,7 +2072,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 			if (qpdb->maxtypepername > 0 &&
 			    ntypes >= qpdb->maxtypepername)
 			{
-				deletedata(newheader->node, newheader);
+				resign_unregister(newheader->node, newheader);
 				dns_vecheader_destroy(&newheader);
 				return DNS_R_TOOMANYRECORDS;
 			}
@@ -2363,7 +2458,7 @@ setsigningtime(dns_db_t *db, dns_dbnode_t *node, dns_rdataset_t *rdataset, isc_s
 		UNLOCK(get_heap_lock(header));
 	} else if (resign != 0) {
 		DNS_VECHEADER_SETATTR(header, DNS_VECHEADERATTR_RESIGN);
-		resigninsert(header);
+		resign_insert(header);
 	}
 	NODE_UNLOCK(nlock, &nlocktype);
 	return ISC_R_SUCCESS;
@@ -3944,19 +4039,6 @@ getoriginnode(dns_db_t *db, dns_dbnode_t **nodep DNS__DB_FLARG) {
 	return ISC_R_SUCCESS;
 }
 
-static void
-deletedata(dns_dbnode_t *node ISC_ATTR_UNUSED, void *data) {
-	dns_vecheader_t *header = data;
-
-	if (header->heap_index != 0) {
-		LOCK(get_heap_lock(header));
-		isc_heap_delete(HEADERNODE(header)->heap->heap,
-				header->heap_index);
-		UNLOCK(get_heap_lock(header));
-	}
-	header->heap_index = 0;
-}
-
 /*
  * Rdataset Iterator Methods
  */
@@ -4958,7 +5040,7 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 				&subresult);
 		}
 		if (result == ISC_R_SUCCESS) {
-			deletedata(newheader->node, newheader);
+			resign_unregister(newheader->node, newheader);
 			dns_vecheader_destroy(&newheader);
 			newheader = subresult;
 			dns_vecheader_reset(newheader, (dns_dbnode_t *)node);
@@ -4971,7 +5053,7 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 						      DNS_VECHEADERATTR_RESIGN);
 				newheader->resign = header->resign;
 				newheader->resign_lsb = header->resign_lsb;
-				resigninsert(newheader);
+				resign_insert(newheader);
 			}
 			/*
 			 * We have to set the serial since the rdatavec
@@ -4991,7 +5073,7 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 			 * This subtraction would remove all of the rdata;
 			 * add a nonexistent header instead.
 			 */
-			deletedata(newheader->node, newheader);
+			resign_unregister(newheader->node, newheader);
 			dns_vecheader_destroy(&newheader);
 			newheader = dns_vecheader_new(db->mctx,
 						      (dns_dbnode_t *)node);
@@ -5001,7 +5083,7 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 				    DNS_VECHEADERATTR_NONEXISTENT);
 			newheader->serial = version->serial;
 		} else {
-			deletedata(newheader->node, newheader);
+			resign_unregister(newheader->node, newheader);
 			dns_vecheader_destroy(&newheader);
 			goto unlock;
 		}
@@ -5016,13 +5098,13 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 
 		node->dirty = true;
 		changed->dirty = true;
-		resigndelete(qpdb, version, header DNS__DB_FLARG_PASS);
+		resign_unregister_and_delete(qpdb, version, header DNS__DB_FLARG_PASS);
 	} else {
 		/*
 		 * The rdataset doesn't exist, so we don't need to do anything
 		 * to satisfy the deletion request.
 		 */
-		deletedata(newheader->node, newheader);
+		resign_unregister(newheader->node, newheader);
 		dns_vecheader_destroy(&newheader);
 		if ((options & DNS_DBSUB_EXACT) != 0) {
 			result = DNS_R_NOTEXACT;
@@ -5605,14 +5687,14 @@ static dns_dbmethods_t qpdb_zonemethods = {
 static dns_dbnode_methods_t qpznode_methods = (dns_dbnode_methods_t){
 	.attachnode = qpzone_attachnode,
 	.detachnode = qpzone_detachnode,
-	.deletedata = deletedata,
+	.deletedata = resign_unregister,
 };
 
 static void
 destroy_qpznode(qpznode_t *node) {
 	ISC_SLIST_FOREACH(top, node->next_type, next_type) {
 		ISC_SLIST_FOREACH(header, top->headers, next_header) {
-			deletedata(header->node, header);
+			resign_unregister(header->node, header);
 			dns_vecheader_destroy(&header);
 		}
 
