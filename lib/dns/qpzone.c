@@ -620,28 +620,12 @@ new_qpz_heap(isc_mem_t *mctx) {
 }
 
 /*
- * This function accesses the heap lock through the header and node rather than
- * directly through &qpdb->heap->lock to handle a critical race condition.
- *
- * Consider this scenario:
- * 1. A reference is taken to a qpznode
- * 2. The database containing that node is freed
- * 3. The qpznode reference is finally released
- *
- * When the qpznode reference is released, it needs to unregister all its
- * vecheaders from the resigning heap. The heap is a separate refcounted
- * object with references from both the database and every qpznode. This
- * design ensures that even after the database is destroyed, if nodes are
- * still alive, the heap remains accessible for safe cleanup.
- *
- * Accessing the heap lock through the database (&qpdb->heap->lock) would
- * cause a segfault in this scenario, even though the heap itself is still
- * alive. By going through the node's heap reference, we maintain safe access
- * to the heap lock regardless of the database's lifecycle.
+ * Get the heap lock from the database. This function should only be called
+ * in contexts where the database is guaranteed to be alive.
  */
 static isc_mutex_t *
-get_heap_lock(dns_vecheader_t *header) {
-	return &HEADERNODE(header)->heap->lock;
+get_heap_lock(qpzonedb_t *qpdb) {
+	return &qpdb->heap->lock;
 }
 
 static void
@@ -2426,19 +2410,19 @@ setsigningtime(dns_db_t *db, dns_dbnode_t *node, dns_rdataset_t *rdataset, isc_s
 	}
 	if (header->heap_index != 0) {
 		INSIST(RESIGN(header));
-		LOCK(get_heap_lock(header));
+		LOCK(get_heap_lock(qpdb));
 		if (resign == 0) {
-			isc_heap_delete(((qpznode_t *)node)->heap->heap,
+			isc_heap_delete(qpdb->heap->heap,
 					header->heap_index);
 			header->heap_index = 0;
 		} else if (resign_sooner(header, &oldheader)) {
-			isc_heap_increased(((qpznode_t *)node)->heap->heap,
+			isc_heap_increased(qpdb->heap->heap,
 					   header->heap_index);
 		} else if (resign_sooner(&oldheader, header)) {
-			isc_heap_decreased(((qpznode_t *)node)->heap->heap,
+			isc_heap_decreased(qpdb->heap->heap,
 					   header->heap_index);
 		}
-		UNLOCK(get_heap_lock(header));
+		UNLOCK(get_heap_lock(qpdb));
 	} else if (resign != 0) {
 		DNS_VECHEADER_SETATTR(header, DNS_VECHEADERATTR_RESIGN);
 		resign_insert(qpdb->heap, ((qpznode_t *)node), header);
@@ -2461,23 +2445,23 @@ getsigningtime(dns_db_t *db, isc_stdtime_t *resign, dns_name_t *foundname,
 	REQUIRE(foundname != NULL);
 	REQUIRE(typepair != NULL);
 
-	LOCK(&qpdb->heap->lock);
+	LOCK(get_heap_lock(qpdb));
 	header = isc_heap_element(qpdb->heap->heap, 1);
 	if (header == NULL) {
-		UNLOCK(&qpdb->heap->lock);
+		UNLOCK(get_heap_lock(qpdb));
 		return ISC_R_NOTFOUND;
 	}
 	nlock = qpzone_get_lock(HEADERNODE(header));
-	UNLOCK(&qpdb->heap->lock);
+	UNLOCK(get_heap_lock(qpdb));
 
 again:
 	NODE_RDLOCK(nlock, &nlocktype);
 
-	LOCK(&qpdb->heap->lock);
+	LOCK(get_heap_lock(qpdb));
 	header = isc_heap_element(qpdb->heap->heap, 1);
 
 	if (header != NULL && qpzone_get_lock(HEADERNODE(header)) != nlock) {
-		UNLOCK(&qpdb->heap->lock);
+		UNLOCK(get_heap_lock(qpdb));
 		NODE_UNLOCK(nlock, &nlocktype);
 
 		nlock = qpzone_get_lock(HEADERNODE(header));
@@ -2492,7 +2476,7 @@ again:
 		*typepair = header->typepair;
 		result = ISC_R_SUCCESS;
 	}
-	UNLOCK(&qpdb->heap->lock);
+	UNLOCK(get_heap_lock(qpdb));
 	NODE_UNLOCK(nlock, &nlocktype);
 
 	return result;
