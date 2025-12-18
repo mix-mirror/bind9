@@ -97,8 +97,7 @@ struct dns_vecheader {
 	/*
 	 * resigning (zone).
 	 */
-	isc_stdtime_t resign;
-	uint16_t      resign_lsb : 1;
+	int64_t resign;
 
 	/*%
 	 * Link to the other versions of this rdataset.

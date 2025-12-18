@@ -575,8 +575,7 @@ resign_sooner(void *v1, void *v2) {
 	dns_vecheader_t *h2 = v2;
 
 	return h1->resign < h2->resign ||
-	       (h1->resign == h2->resign && h1->resign_lsb < h2->resign_lsb) ||
-	       (h1->resign == h2->resign && h1->resign_lsb == h2->resign_lsb &&
+	       (h1->resign == h2->resign &&
 		h2->typepair == DNS_SIGTYPEPAIR(dns_rdatatype_soa));
 }
 
@@ -1135,7 +1134,7 @@ bindrdataset(qpzonedb_t *qpdb, qpznode_t *node, dns_vecheader_t *header,
 	 */
 	if (RESIGN(header)) {
 		rdataset->attributes.resign = true;
-		rdataset->resign = (header->resign << 1) | header->resign_lsb;
+		rdataset->resign = header->resign;
 	} else {
 		rdataset->resign = 0;
 	}
@@ -1938,8 +1937,6 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 				    resign_sooner(header, newheader))
 				{
 					newheader->resign = header->resign;
-					newheader->resign_lsb =
-						header->resign_lsb;
 				}
 			} else {
 				if (result == DNS_R_TOOMANYRECORDS) {
@@ -2196,10 +2193,7 @@ loading_addrdataset(void *arg, const dns_name_t *name, dns_rdataset_t *rdataset,
 
 	if (rdataset->attributes.resign) {
 		DNS_VECHEADER_SETATTR(newheader, DNS_VECHEADERATTR_RESIGN);
-		newheader->resign =
-			(isc_stdtime_t)(dns_time64_from32(rdataset->resign) >>
-					1);
-		newheader->resign_lsb = rdataset->resign & 0x1;
+		newheader->resign = dns_time64_from32(rdataset->resign);
 	}
 
 	nlock = qpzone_get_lock(node);
@@ -2399,14 +2393,12 @@ setsigningtime(dns_db_t *db, dns_dbnode_t *node, dns_rdataset_t *rdataset, isc_s
 	oldheader = *header;
 
 	/*
-	 * Only break the heap invariant (by adjusting resign and resign_lsb)
+	 * Only break the heap invariant (by adjusting resign time)
 	 * if we are going to be restoring it by calling isc_heap_increased
 	 * or isc_heap_decreased.
 	 */
 	if (resign != 0) {
-		header->resign = (isc_stdtime_t)(dns_time64_from32(resign) >>
-						 1);
-		header->resign_lsb = resign & 0x1;
+		header->resign = dns_time64_from32(resign);
 	}
 	if (header->heap_index != 0) {
 		INSIST(RESIGN(header));
@@ -2469,9 +2461,7 @@ again:
 	}
 
 	if (header != NULL) {
-		*resign = RESIGN(header)
-				  ? (header->resign << 1) | header->resign_lsb
-				  : 0;
+		*resign = RESIGN(header) ? (uint32_t)header->resign : 0;
 		dns_name_copy(&HEADERNODE(header)->name, foundname);
 		*typepair = header->typepair;
 		result = ISC_R_SUCCESS;
@@ -4823,10 +4813,7 @@ qpzone_addrdataset_inner(dns_db_t *db, dns_dbnode_t *dbnode,
 	newheader->serial = version->serial;
 	if (rdataset->attributes.resign) {
 		DNS_VECHEADER_SETATTR(newheader, DNS_VECHEADERATTR_RESIGN);
-		newheader->resign =
-			(isc_stdtime_t)(dns_time64_from32(rdataset->resign) >>
-					1);
-		newheader->resign_lsb = rdataset->resign & 0x1;
+		newheader->resign = dns_time64_from32(rdataset->resign);
 	}
 
 	/*
@@ -4959,10 +4946,7 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 	newheader->serial = version->serial;
 	if (rdataset->attributes.resign) {
 		DNS_VECHEADER_SETATTR(newheader, DNS_VECHEADERATTR_RESIGN);
-		newheader->resign =
-			(isc_stdtime_t)(dns_time64_from32(rdataset->resign) >>
-					1);
-		newheader->resign_lsb = rdataset->resign & 0x1;
+		newheader->resign = dns_time64_from32(rdataset->resign);
 	}
 
 	nlock = qpzone_get_lock(node);
@@ -5019,7 +5003,6 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 				DNS_VECHEADER_SETATTR(newheader,
 						      DNS_VECHEADERATTR_RESIGN);
 				newheader->resign = header->resign;
-				newheader->resign_lsb = header->resign_lsb;
 				resign_insert(qpdb->heap, node, newheader);
 			}
 			/*
