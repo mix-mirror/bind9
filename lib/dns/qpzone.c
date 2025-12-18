@@ -703,26 +703,8 @@ resign_unregister_and_delete(qpzonedb_t *qpdb ISC_ATTR_UNUSED, qpz_version_t *ve
 		return;
 	}
 
-	LOCK(get_heap_lock(header));
-	qpz_heap_t *heap = HEADERNODE(header)->heap;
-
-	/* Remove element from hashmap */
-	qpz_heap_elem_t search_elem = {
-		.header = header,
-		.node = HEADERNODE(header),
-	};
-	uint32_t hashval = isc_hash32(&search_elem, sizeof(search_elem), true);
-	qpz_heap_elem_t *found_elem = NULL;
-	if (isc_hashmap_find(heap->hashmap, hashval, qpz_elem_match,
-			     &search_elem, (void **)&found_elem) == ISC_R_SUCCESS) {
-		isc_hashmap_delete(heap->hashmap, hashval, qpz_elem_match, &search_elem);
-		isc_mem_cput(heap->mctx, found_elem, sizeof(qpz_heap_elem_t), 1);
-	}
-
-	isc_heap_delete(heap->heap, header->heap_index);
-	UNLOCK(get_heap_lock(header));
-
-	header->heap_index = 0;
+	/* Use the existing resign_unregister function to handle hashmap and heap cleanup */
+	resign_unregister(header->node, header);
 	qpznode_acquire(HEADERNODE(header) DNS__DB_FLARG_PASS);
 
 	qpz_resigned_t *resigned = isc_mem_get(((dns_db_t *)qpdb)->mctx,
