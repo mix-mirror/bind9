@@ -21,34 +21,35 @@ import dns.update
 
 import isctest
 from isctest.kasp import Iret
+from isctest.run import EnvCmd
 from rollover.common import (
     pytestmark,
     alg,
     size,
 )
-from rollover.setup import CmdHelper, fake_lifetime, render_and_sign_zone
+from rollover.setup import fake_lifetime, render_and_sign_zone
 
 
 def bootstrap():
     templates = isctest.template.TemplateEngine(".")
 
     # Multi-signer zones.
-    keygen = CmdHelper("KEYGEN", "-a ECDSA256 -L 3600")
-    settime = CmdHelper("SETTIME", "-s")
+    keygen = EnvCmd("KEYGEN", "-a ECDSA256 -L 3600")
+    settime = EnvCmd("SETTIME", "-s")
 
     # Model 2.
     zonename = "multisigner-model2.kasp"
     isctest.log.info(f"setup {zonename}")
     # Key generation.
-    ksk_name = keygen(f"-M 32768:65535 -f KSK {zonename}", cwd="ns3").strip()
-    zsk_name = keygen(f"-M 32768:65535 {zonename}", cwd="ns3").strip()
+    ksk_name = keygen(f"-M 32768:65535 -f KSK {zonename}", cwd="ns3").out.strip()
+    zsk_name = keygen(f"-M 32768:65535 {zonename}", cwd="ns3").out.strip()
     # Signing.
     dnskeys = []
     for key_name in [ksk_name, zsk_name]:
         key = isctest.kasp.Key(key_name, keydir="ns3")
         dnskeys.append(key.dnskey)
     # Import a ZSK of another provider into the DNSKEY RRset.
-    zsk_extra = keygen(f"-M 0:32767 {zonename}").strip()
+    zsk_extra = keygen(f"-M 0:32767 {zonename}").out.strip()
     key = isctest.kasp.Key(zsk_extra)
     dnskeys.append(key.dnskey)
     # Render zone file.
@@ -74,8 +75,8 @@ def bootstrap():
     # Key generation.
     ksk_name = keygen(
         f"-M 0:32767 -f KSK {keytimes} {cdstimes} {zonename}", cwd="ns3"
-    ).strip()
-    zsk_name = keygen(f"-M 0:32767 {keytimes} {zonename}", cwd="ns3").strip()
+    ).out.strip()
+    zsk_name = keygen(f"-M 0:32767 {keytimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g OMNIPRESENT -d OMNIPRESENT {TpubN} -k OMNIPRESENT {TpubN} -r OMNIPRESENT {TpubN} {ksk_name}",
         cwd="ns3",

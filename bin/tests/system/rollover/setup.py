@@ -15,24 +15,15 @@ from typing import List
 import isctest
 from isctest.kasp import private_type_record
 from isctest.template import Nameserver, TrustAnchor, Zone
+from isctest.run import EnvCmd
 from rollover.common import default_algorithm
-
-
-class CmdHelper:
-    def __init__(self, env_name: str, base_params: str = ""):
-        self.bin_path = os.environ[env_name]
-        self.base_params = base_params
-
-    def __call__(self, params: str, **kwargs):
-        args = f"{self.base_params} {params}".split()
-        return isctest.run.cmd([self.bin_path] + args, **kwargs).stdout.decode("utf-8")
 
 
 def configure_tld(zonename: str, delegations: List[Zone]) -> Zone:
     templates = isctest.template.TemplateEngine(".")
     alg = default_algorithm()
-    keygen = CmdHelper("KEYGEN", f"-q -a {alg.number} -b {alg.bits} -L 3600")
-    signer = CmdHelper("SIGNER", "-S -g")
+    keygen = EnvCmd("KEYGEN", f"-q -a {alg.number} -b {alg.bits} -L 3600")
+    signer = EnvCmd("SIGNER", "-S -g")
 
     isctest.log.info(f"create {zonename} zone with delegations and sign")
 
@@ -43,8 +34,8 @@ def configure_tld(zonename: str, delegations: List[Zone]) -> Zone:
             # Some delegations are unsigned.
             pass
 
-    ksk_name = keygen(f"-f KSK {zonename}", cwd="ns2").strip()
-    zsk_name = keygen(f"{zonename}", cwd="ns2").strip()
+    ksk_name = keygen(f"-f KSK {zonename}", cwd="ns2").out.strip()
+    zsk_name = keygen(f"{zonename}", cwd="ns2").out.strip()
     ksk = isctest.kasp.Key(ksk_name, keydir="ns2")
     zsk = isctest.kasp.Key(zsk_name, keydir="ns2")
     dnskeys = [ksk.dnskey, zsk.dnskey]
@@ -65,8 +56,8 @@ def configure_tld(zonename: str, delegations: List[Zone]) -> Zone:
 def configure_root(delegations: List[Zone]) -> TrustAnchor:
     templates = isctest.template.TemplateEngine(".")
     alg = default_algorithm()
-    keygen = CmdHelper("KEYGEN", f"-q -a {alg.number} -b {alg.bits} -L 3600")
-    signer = CmdHelper("SIGNER", "-S -g")
+    keygen = EnvCmd("KEYGEN", f"-q -a {alg.number} -b {alg.bits} -L 3600")
+    signer = EnvCmd("SIGNER", "-S -g")
 
     zonename = "."
     isctest.log.info("create root zone with delegations and sign")
@@ -74,8 +65,8 @@ def configure_root(delegations: List[Zone]) -> TrustAnchor:
     for zone in delegations:
         shutil.copy(f"{zone.ns.name}/dsset-{zone.name}.", "ns1/")
 
-    ksk_name = keygen(f"-f KSK {zonename}", cwd="ns1").strip()
-    zsk_name = keygen(f"{zonename}", cwd="ns1").strip()
+    ksk_name = keygen(f"-f KSK {zonename}", cwd="ns1").out.strip()
+    zsk_name = keygen(f"{zonename}", cwd="ns1").out.strip()
     ksk = isctest.kasp.Key(ksk_name, keydir="ns1")
     zsk = isctest.kasp.Key(zsk_name, keydir="ns1")
     dnskeys = [ksk.dnskey, zsk.dnskey]
@@ -138,7 +129,7 @@ def render_and_sign_zone(
     templates.render(f"ns3/{outfile}", tdata, template=f"ns3/{template}")
 
     if signing:
-        signer = CmdHelper("SIGNER", "-S -g -x -s now-1h -e now+2w -O raw")
+        signer = EnvCmd("SIGNER", "-S -g -x -s now-1h -e now+2w -O raw")
         signer(
             f"{extra_options} -o {zonename} -f {outfile}.signed {outfile}", cwd="ns3"
         )
@@ -149,8 +140,8 @@ def configure_algo_csk(tld: str, policy: str, reconfig: bool = False) -> List[Zo
     # of a CSK algorithm rollover.
     zones = []
     zone = f"csk-algorithm-roll.{tld}"
-    keygen = CmdHelper("KEYGEN", f"-k {policy}")
-    settime = CmdHelper("SETTIME", "-s")
+    keygen = EnvCmd("KEYGEN", f"-k {policy}")
+    settime = EnvCmd("SETTIME", "-s")
 
     # Step 1:
     # Introduce the first key. This will immediately be active.
@@ -161,7 +152,7 @@ def configure_algo_csk(tld: str, policy: str, reconfig: bool = False) -> List[Zo
     TsbmN = "now-161h"
     csktimes = f"-P {TactN} -A {TactN}"
     # Key generation.
-    csk_name = keygen(f"-l csk1.conf {csktimes} {zonename}", cwd="ns3").strip()
+    csk_name = keygen(f"-l csk1.conf {csktimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {csk_name}",
         cwd="ns3",
@@ -180,8 +171,8 @@ def configure_algo_csk(tld: str, policy: str, reconfig: bool = False) -> List[Zo
         csktimes = f"-P {TactN} -A {TactN} -P sync {TsbmN} -I now"
         newtimes = f"-P {TpubN1} -A {TpubN1}"
         # Key generation.
-        csk1_name = keygen(f"-l csk1.conf {csktimes} {zonename}", cwd="ns3").strip()
-        csk2_name = keygen(f"-l csk2.conf {newtimes} {zonename}", cwd="ns3").strip()
+        csk1_name = keygen(f"-l csk1.conf {csktimes} {zonename}", cwd="ns3").out.strip()
+        csk2_name = keygen(f"-l csk2.conf {newtimes} {zonename}", cwd="ns3").out.strip()
         settime(
             f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {csk1_name}",
             cwd="ns3",
@@ -204,8 +195,8 @@ def configure_algo_csk(tld: str, policy: str, reconfig: bool = False) -> List[Zo
         csktimes = f"-P {TactN} -A {TactN}  -P sync {TsbmN} -I {TsbmN1}"
         newtimes = f"-P {TpubN1} -A {TpubN1} -P sync {TsbmN1}"
         # Key generation.
-        csk1_name = keygen(f"-l csk1.conf {csktimes} {zonename}", cwd="ns3").strip()
-        csk2_name = keygen(f"-l csk2.conf {newtimes} {zonename}", cwd="ns3").strip()
+        csk1_name = keygen(f"-l csk1.conf {csktimes} {zonename}", cwd="ns3").out.strip()
+        csk2_name = keygen(f"-l csk2.conf {newtimes} {zonename}", cwd="ns3").out.strip()
         settime(
             f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {csk1_name}",
             cwd="ns3",
@@ -228,8 +219,8 @@ def configure_algo_csk(tld: str, policy: str, reconfig: bool = False) -> List[Zo
         csktimes = f"-P {TactN} -A {TactN}  -P sync {TsbmN} -I {TsbmN1}"
         newtimes = f"-P {TpubN1} -A {TpubN1} -P sync {TsbmN1}"
         # Key generation.
-        csk1_name = keygen(f"-l csk1.conf {csktimes} {zonename}", cwd="ns3").strip()
-        csk2_name = keygen(f"-l csk2.conf {newtimes} {zonename}", cwd="ns3").strip()
+        csk1_name = keygen(f"-l csk1.conf {csktimes} {zonename}", cwd="ns3").out.strip()
+        csk2_name = keygen(f"-l csk2.conf {newtimes} {zonename}", cwd="ns3").out.strip()
         settime(
             f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -z OMNIPRESENT {TsbmN1} -d UNRETENTIVE {TsbmN1} -D ds {TsbmN1} {csk1_name}",
             cwd="ns3",
@@ -252,8 +243,8 @@ def configure_algo_csk(tld: str, policy: str, reconfig: bool = False) -> List[Zo
         csktimes = f"-P {TactN} -A {TactN} -P sync {TsbmN} -I {TsbmN1}"
         newtimes = f"-P {TpubN1} -A {TpubN1} -P sync {TsbmN1}"
         # Key generation.
-        csk1_name = keygen(f"-l csk1.conf {csktimes} {zonename}", cwd="ns3").strip()
-        csk2_name = keygen(f"-l csk2.conf {newtimes} {zonename}", cwd="ns3").strip()
+        csk1_name = keygen(f"-l csk1.conf {csktimes} {zonename}", cwd="ns3").out.strip()
+        csk2_name = keygen(f"-l csk2.conf {newtimes} {zonename}", cwd="ns3").out.strip()
         settime(
             f"-g HIDDEN -k UNRETENTIVE {TactN} -r UNRETENTIVE {TactN} -z UNRETENTIVE {TsbmN1} -d HIDDEN {TsbmN1} {csk1_name}",
             cwd="ns3",
@@ -276,8 +267,8 @@ def configure_algo_csk(tld: str, policy: str, reconfig: bool = False) -> List[Zo
         csktimes = f"-P {TactN}  -A {TactN}  -P sync {TsbmN} -I {TsbmN1}"
         newtimes = f"-P {TpubN1} -A {TpubN1} -P sync {TsbmN1}"
         # Key generation.
-        csk1_name = keygen(f"-l csk1.conf {csktimes} {zonename}", cwd="ns3").strip()
-        csk2_name = keygen(f"-l csk2.conf {newtimes} {zonename}", cwd="ns3").strip()
+        csk1_name = keygen(f"-l csk1.conf {csktimes} {zonename}", cwd="ns3").out.strip()
+        csk2_name = keygen(f"-l csk2.conf {newtimes} {zonename}", cwd="ns3").out.strip()
         settime(
             f"-g HIDDEN -k HIDDEN {TactN} -r UNRETENTIVE {TactN} -z UNRETENTIVE {TactN} -d HIDDEN {TsbmN1} {csk1_name}",
             cwd="ns3",
@@ -297,8 +288,8 @@ def configure_algo_ksk_zsk(tld: str, reconfig: bool = False) -> List[Zone]:
     # algorithm rollover.
     zones = []
     zone = f"algorithm-roll.{tld}"
-    keygen = CmdHelper("KEYGEN", "-L 3600")
-    settime = CmdHelper("SETTIME", "-s")
+    keygen = EnvCmd("KEYGEN", "-L 3600")
+    settime = EnvCmd("SETTIME", "-s")
 
     # Step 1:
     # Introduce the first key. This will immediately be active.
@@ -309,8 +300,10 @@ def configure_algo_ksk_zsk(tld: str, reconfig: bool = False) -> List[Zone]:
     TsbmN = "now-161h"
     keytimes = f"-P {TactN} -A {TactN}"
     # Key generation.
-    ksk_name = keygen(f"-a RSASHA256 -f KSK {keytimes} {zonename}", cwd="ns3").strip()
-    zsk_name = keygen(f"-a RSASHA256 {keytimes} {zonename}", cwd="ns3").strip()
+    ksk_name = keygen(
+        f"-a RSASHA256 -f KSK {keytimes} {zonename}", cwd="ns3"
+    ).out.strip()
+    zsk_name = keygen(f"-a RSASHA256 {keytimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {ksk_name}",
         cwd="ns3",
@@ -339,12 +332,14 @@ def configure_algo_ksk_zsk(tld: str, reconfig: bool = False) -> List[Zone]:
         # Key generation.
         ksk1_name = keygen(
             f"-a RSASHA256 -f KSK {ksk1times} {zonename}", cwd="ns3"
-        ).strip()
-        zsk1_name = keygen(f"-a RSASHA256 {zsk1times} {zonename}", cwd="ns3").strip()
+        ).out.strip()
+        zsk1_name = keygen(
+            f"-a RSASHA256 {zsk1times} {zonename}", cwd="ns3"
+        ).out.strip()
         ksk2_name = keygen(
             f"-a ECDSA256 -f KSK {ksk2times} {zonename}", cwd="ns3"
-        ).strip()
-        zsk2_name = keygen(f"-a ECDSA256 {zsk2times} {zonename}", cwd="ns3").strip()
+        ).out.strip()
+        zsk2_name = keygen(f"-a ECDSA256 {zsk2times} {zonename}", cwd="ns3").out.strip()
         settime(
             f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {ksk1_name}",
             cwd="ns3",
@@ -381,12 +376,14 @@ def configure_algo_ksk_zsk(tld: str, reconfig: bool = False) -> List[Zone]:
         # Key generation.
         ksk1_name = keygen(
             f"-a RSASHA256 -f KSK {ksk1times} {zonename}", cwd="ns3"
-        ).strip()
-        zsk1_name = keygen(f"-a RSASHA256 {zsk1times} {zonename}", cwd="ns3").strip()
+        ).out.strip()
+        zsk1_name = keygen(
+            f"-a RSASHA256 {zsk1times} {zonename}", cwd="ns3"
+        ).out.strip()
         ksk2_name = keygen(
             f"-a ECDSA256 -f KSK {ksk2times} {zonename}", cwd="ns3"
-        ).strip()
-        zsk2_name = keygen(f"-a ECDSA256 {zsk2times} {zonename}", cwd="ns3").strip()
+        ).out.strip()
+        zsk2_name = keygen(f"-a ECDSA256 {zsk2times} {zonename}", cwd="ns3").out.strip()
         settime(
             f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {ksk1_name}",
             cwd="ns3",
@@ -423,12 +420,14 @@ def configure_algo_ksk_zsk(tld: str, reconfig: bool = False) -> List[Zone]:
         # Key generation.
         ksk1_name = keygen(
             f"-a RSASHA256 -f KSK {ksk1times} {zonename}", cwd="ns3"
-        ).strip()
-        zsk1_name = keygen(f"-a RSASHA256 {zsk1times} {zonename}", cwd="ns3").strip()
+        ).out.strip()
+        zsk1_name = keygen(
+            f"-a RSASHA256 {zsk1times} {zonename}", cwd="ns3"
+        ).out.strip()
         ksk2_name = keygen(
             f"-a ECDSA256 -f KSK {ksk2times} {zonename}", cwd="ns3"
-        ).strip()
-        zsk2_name = keygen(f"-a ECDSA256 {zsk2times} {zonename}", cwd="ns3").strip()
+        ).out.strip()
+        zsk2_name = keygen(f"-a ECDSA256 {zsk2times} {zonename}", cwd="ns3").out.strip()
         settime(
             f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d UNRETENTIVE {TsbmN1} -D ds {TsbmN1} {ksk1_name}",
             cwd="ns3",
@@ -465,12 +464,14 @@ def configure_algo_ksk_zsk(tld: str, reconfig: bool = False) -> List[Zone]:
         # Key generation.
         ksk1_name = keygen(
             f"-a RSASHA256 -f KSK {ksk1times} {zonename}", cwd="ns3"
-        ).strip()
-        zsk1_name = keygen(f"-a RSASHA256 {zsk1times} {zonename}", cwd="ns3").strip()
+        ).out.strip()
+        zsk1_name = keygen(
+            f"-a RSASHA256 {zsk1times} {zonename}", cwd="ns3"
+        ).out.strip()
         ksk2_name = keygen(
             f"-a ECDSA256 -f KSK {ksk2times} {zonename}", cwd="ns3"
-        ).strip()
-        zsk2_name = keygen(f"-a ECDSA256 {zsk2times} {zonename}", cwd="ns3").strip()
+        ).out.strip()
+        zsk2_name = keygen(f"-a ECDSA256 {zsk2times} {zonename}", cwd="ns3").out.strip()
         settime(
             f"-g HIDDEN -k UNRETENTIVE {TsbmN1} -r UNRETENTIVE {TsbmN1} -d HIDDEN {TsbmN1} {ksk1_name}",
             cwd="ns3",
@@ -506,12 +507,14 @@ def configure_algo_ksk_zsk(tld: str, reconfig: bool = False) -> List[Zone]:
         zsk2times = f"-P {TpubN1} -A {TpubN1}"
         ksk1_name = keygen(
             f"-a RSASHA256 -f KSK {ksk1times} {zonename}", cwd="ns3"
-        ).strip()
-        zsk1_name = keygen(f"-a RSASHA256 {zsk1times} {zonename}", cwd="ns3").strip()
+        ).out.strip()
+        zsk1_name = keygen(
+            f"-a RSASHA256 {zsk1times} {zonename}", cwd="ns3"
+        ).out.strip()
         ksk2_name = keygen(
             f"-a ECDSA256 -f KSK {ksk2times} {zonename}", cwd="ns3"
-        ).strip()
-        zsk2_name = keygen(f"-a ECDSA256 {zsk2times} {zonename}", cwd="ns3").strip()
+        ).out.strip()
+        zsk2_name = keygen(f"-a ECDSA256 {zsk2times} {zonename}", cwd="ns3").out.strip()
         settime(
             f"-g HIDDEN -k HIDDEN {TsbmN1} -r UNRETENTIVE {TsbmN1} -d HIDDEN {TsbmN1} {ksk1_name}",
             cwd="ns3",
@@ -542,8 +545,8 @@ def configure_cskroll1(tld: str, policy: str) -> List[Zone]:
     zones = []
     zone = f"csk-roll1.{tld}"
     cds = "cdnskey,cds:sha384"
-    keygen = CmdHelper("KEYGEN", f"-k {policy} -l kasp.conf")
-    settime = CmdHelper("SETTIME", "-s")
+    keygen = EnvCmd("KEYGEN", f"-k {policy} -l kasp.conf")
+    settime = EnvCmd("SETTIME", "-s")
 
     # Step 1:
     # Introduce the first key. This will immediately be active.
@@ -553,7 +556,7 @@ def configure_cskroll1(tld: str, policy: str) -> List[Zone]:
     TactN = "now-7d"
     keytimes = f"-P {TactN} -A {TactN}"
     # Key generation.
-    csk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
+    csk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {csk_name}",
         cwd="ns3",
@@ -585,7 +588,7 @@ def configure_cskroll1(tld: str, policy: str) -> List[Zone]:
     TactN = "now-4461h"
     keytimes = f"-P {TactN} -A {TactN}"
     # Key generation.
-    csk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
+    csk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {csk_name}",
         cwd="ns3",
@@ -640,8 +643,8 @@ def configure_cskroll1(tld: str, policy: str) -> List[Zone]:
     )
     newtimes = f"-P {TpubN1} -P sync {TactN1} -A {TactN1} -I {TretN1} -D {TremN1}"
     # Key generation.
-    csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
-    csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").strip()
+    csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
+    csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {csk1_name}",
         cwd="ns3",
@@ -693,8 +696,8 @@ def configure_cskroll1(tld: str, policy: str) -> List[Zone]:
     )
     newtimes = f"-P {TpubN1} -P sync {TactN1} -A {TactN1} -I {TretN1} -D {TremN1}"
     # Key generation.
-    csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
-    csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").strip()
+    csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
+    csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -z UNRETENTIVE {TactN1} -d UNRETENTIVE {TactN1} -D ds {TactN1} {csk1_name}",
         cwd="ns3",
@@ -728,8 +731,8 @@ def configure_cskroll1(tld: str, policy: str) -> List[Zone]:
     )
     newtimes = f"-P {TpubN1} -P sync {TactN1} -A {TactN1} -I {TretN1} -D {TremN1}"
     # Key generation.
-    csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
-    csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").strip()
+    csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
+    csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g HIDDEN -k OMNIPRESENT {TactN} -r UNRETENTIVE now-2h -z UNRETENTIVE {TactN1} -d HIDDEN now-2h {csk1_name}",
         cwd="ns3",
@@ -779,8 +782,8 @@ def configure_cskroll1(tld: str, policy: str) -> List[Zone]:
     )
     newtimes = f"-P {TpubN1} -P sync {TactN1} -A {TactN1} -I {TretN1} -D {TremN1}"
     # Key generation.
-    csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
-    csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").strip()
+    csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
+    csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g HIDDEN -k OMNIPRESENT {TactN} -r HIDDEN {TremN} -z UNRETENTIVE {TactN1} -d HIDDEN {TremN} {csk1_name}",
         cwd="ns3",
@@ -813,8 +816,8 @@ def configure_cskroll1(tld: str, policy: str) -> List[Zone]:
     )
     newtimes = f"-P {TpubN1} -P sync {TactN1} -A {TactN1} -I {TretN1} -D {TremN1}"
     # Key generation.
-    csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
-    csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").strip()
+    csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
+    csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g HIDDEN -k UNRETENTIVE {TremN} -r HIDDEN {TremN} -z HIDDEN {TactN1} -d HIDDEN {TremN} {csk1_name}",
         cwd="ns3",
@@ -847,8 +850,8 @@ def configure_cskroll1(tld: str, policy: str) -> List[Zone]:
     )
     newtimes = f"-P {TpubN1} -P sync {TactN1} -A {TactN1} -I {TretN1} -D {TremN1}"
     # Key generation.
-    csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
-    csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").strip()
+    csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
+    csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g HIDDEN -k HIDDEN {TremN} -r HIDDEN {TremN} -z HIDDEN {TactN1} -d HIDDEN {TremN} {csk1_name}",
         cwd="ns3",
@@ -873,8 +876,8 @@ def configure_cskroll2(tld: str, policy: str) -> List[Zone]:
     zones = []
     zone = f"csk-roll2.{tld}"
     cds = "cdnskey,cds:sha-256,cds:sha-384"
-    keygen = CmdHelper("KEYGEN", f"-k {policy} -l kasp.conf")
-    settime = CmdHelper("SETTIME", "-s")
+    keygen = EnvCmd("KEYGEN", f"-k {policy} -l kasp.conf")
+    settime = EnvCmd("SETTIME", "-s")
 
     # Step 1:
     # Introduce the first key. This will immediately be active.
@@ -884,7 +887,7 @@ def configure_cskroll2(tld: str, policy: str) -> List[Zone]:
     TactN = "now-7d"
     keytimes = f"-P {TactN} -A {TactN}"
     # Key generation.
-    csk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
+    csk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {csk_name}",
         cwd="ns3",
@@ -916,7 +919,7 @@ def configure_cskroll2(tld: str, policy: str) -> List[Zone]:
     TactN = "now-4461h"
     keytimes = f"-P {TactN} -A {TactN}"
     # Key generation.
-    csk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
+    csk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {csk_name}",
         cwd="ns3",
@@ -971,8 +974,8 @@ def configure_cskroll2(tld: str, policy: str) -> List[Zone]:
     )
     newtimes = f"-P {TpubN1} -P sync {TactN1} -A {TactN1} -I {TretN1} -D {TremN1}"
     # Key generation.
-    csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
-    csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").strip()
+    csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
+    csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -z OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {csk1_name}",
         cwd="ns3",
@@ -1026,8 +1029,8 @@ def configure_cskroll2(tld: str, policy: str) -> List[Zone]:
     )
     newtimes = f"-P {TpubN1} -P sync {TactN1} -A {TactN1} -I {TretN1} -D {TremN1}"
     # Key generation.
-    csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
-    csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").strip()
+    csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
+    csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -z UNRETENTIVE {TretN} -d UNRETENTIVE {TretN} -D ds {TretN} {csk1_name}",
         cwd="ns3",
@@ -1070,8 +1073,8 @@ def configure_cskroll2(tld: str, policy: str) -> List[Zone]:
     )
     newtimes = f"-P {TpubN1} -P sync {TactN1} -A {TactN1} -I {TretN1} -D {TremN1}"
     # Key generation.
-    csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
-    csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").strip()
+    csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
+    csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -z HIDDEN now-133h -d UNRETENTIVE {TactN1} -D ds {TactN1} {csk1_name}",
         cwd="ns3",
@@ -1113,8 +1116,8 @@ def configure_cskroll2(tld: str, policy: str) -> List[Zone]:
     )
     newtimes = f"-P {TpubN1} -P sync {TactN1} -A {TactN1} -I {TretN1} -D {TremN1}"
     # Key generation.
-    csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
-    csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").strip()
+    csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
+    csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g HIDDEN -k UNRETENTIVE {TremN} -r UNRETENTIVE {TremN} -z HIDDEN now-135h -d HIDDEN {TremN} {csk1_name}",
         cwd="ns3",
@@ -1157,8 +1160,8 @@ def configure_cskroll2(tld: str, policy: str) -> List[Zone]:
     )
     newtimes = f"-P {TpubN1} -P sync {TactN1} -A {TactN1} -I {TretN1} -D {TremN1}"
     # Key generation.
-    csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
-    csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").strip()
+    csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
+    csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g HIDDEN -k UNRETENTIVE {TremN} -r HIDDEN {TremN} -z HIDDEN {TactN1} -d HIDDEN {TremN} {csk1_name}",
         cwd="ns3",
@@ -1191,8 +1194,8 @@ def configure_cskroll2(tld: str, policy: str) -> List[Zone]:
     )
     newtimes = f"-P {TpubN1} -P sync {TactN1} -A {TactN1} -I {TretN1} -D {TremN1}"
     # Key generation.
-    csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
-    csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").strip()
+    csk1_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
+    csk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g HIDDEN -k UNRETENTIVE {TremN} -r UNRETENTIVE {TremN} -z HIDDEN now-2295h -d HIDDEN {TremN} {csk1_name}",
         cwd="ns3",
@@ -1214,8 +1217,8 @@ def configure_enable_dnssec(tld: str, policy: str) -> List[Zone]:
     # initial signing of a zone.
     zones = []
     zone = f"enable-dnssec.{tld}"
-    keygen = CmdHelper("KEYGEN", f"-k {policy} -l kasp.conf")
-    settime = CmdHelper("SETTIME", "-s")
+    keygen = EnvCmd("KEYGEN", f"-k {policy} -l kasp.conf")
+    settime = EnvCmd("SETTIME", "-s")
 
     # Step 1:
     # This is an unsigned zone and named should perform the initial steps of
@@ -1237,7 +1240,7 @@ def configure_enable_dnssec(tld: str, policy: str) -> List[Zone]:
     TpubN = "now-900s"
     keytimes = f"-P {TpubN} -A {TpubN}"
     # Key generation.
-    csk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
+    csk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g OMNIPRESENT -k RUMOURED {TpubN} -r RUMOURED {TpubN} -z RUMOURED {TpubN} -d HIDDEN {TpubN} {csk_name}",
         cwd="ns3",
@@ -1257,7 +1260,7 @@ def configure_enable_dnssec(tld: str, policy: str) -> List[Zone]:
     TpubN = "now-43500s"
     keytimes = f"-P {TpubN} -A {TpubN}"
     # Key generation.
-    csk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
+    csk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g OMNIPRESENT -k OMNIPRESENT {TpubN} -r OMNIPRESENT {TpubN} -z RUMOURED {TpubN} -d HIDDEN {TpubN} {csk_name}",
         cwd="ns3",
@@ -1278,7 +1281,7 @@ def configure_enable_dnssec(tld: str, policy: str) -> List[Zone]:
     TsbmN = "now-10800s"
     keytimes = f"-P {TpubN} -A {TpubN} -P sync {TsbmN}"
     # Key generation.
-    csk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
+    csk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g OMNIPRESENT -k OMNIPRESENT {TpubN} -r OMNIPRESENT {TpubN} -z OMNIPRESENT {TsbmN} -d RUMOURED {TpubN} -P ds {TsbmN} {csk_name}",
         cwd="ns3",
@@ -1291,8 +1294,8 @@ def configure_enable_dnssec(tld: str, policy: str) -> List[Zone]:
 
 def configure_going_insecure(tld: str, reconfig: bool = False) -> List[Zone]:
     zones = []
-    keygen = CmdHelper("KEYGEN", "-a ECDSA256 -L 7200")
-    settime = CmdHelper("SETTIME", "-s")
+    keygen = EnvCmd("KEYGEN", "-a ECDSA256 -L 7200")
+    settime = EnvCmd("SETTIME", "-s")
 
     # The child zones (step1, step2) beneath these zones represent the various
     # steps of unsigning a zone.
@@ -1309,8 +1312,10 @@ def configure_going_insecure(tld: str, reconfig: bool = False) -> List[Zone]:
         keytimes = f"-P {TpubN} -A {TpubN}"
         cdstimes = f"-P sync {TsbmN}"
         # Key generation.
-        ksk_name = keygen(f"-f KSK {keytimes} {cdstimes} {zonename}", cwd="ns3").strip()
-        zsk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
+        ksk_name = keygen(
+            f"-f KSK {keytimes} {cdstimes} {zonename}", cwd="ns3"
+        ).out.strip()
+        zsk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
         settime(
             f"-g OMNIPRESENT -k OMNIPRESENT {TpubN} -r OMNIPRESENT {TpubN} -d OMNIPRESENT {TpubN} {ksk_name}",
             cwd="ns3",
@@ -1336,8 +1341,8 @@ def configure_going_insecure(tld: str, reconfig: bool = False) -> List[Zone]:
             # Key generation.
             ksk_name = keygen(
                 f"-f KSK {keytimes} {cdstimes} {zonename}", cwd="ns3"
-            ).strip()
-            zsk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
+            ).out.strip()
+            zsk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
             settime(
                 f"-g HIDDEN -k OMNIPRESENT {TpubN} -r OMNIPRESENT {TpubN} -d UNRETENTIVE {TremN} -D ds {TremN} {ksk_name}",
                 cwd="ns3",
@@ -1358,8 +1363,8 @@ def configure_going_insecure(tld: str, reconfig: bool = False) -> List[Zone]:
 def configure_straight2none(tld: str) -> List[Zone]:
     # These zones are going straight to "none" policy. This is undefined behavior.
     zones = []
-    keygen = CmdHelper("KEYGEN", "-k default")
-    settime = CmdHelper("SETTIME", "-s")
+    keygen = EnvCmd("KEYGEN", "-k default")
+    settime = EnvCmd("SETTIME", "-s")
 
     TpubN = "now-10d"
     TsbmN = "now-12955mi"
@@ -1369,7 +1374,7 @@ def configure_straight2none(tld: str) -> List[Zone]:
     zones.append(Zone(zonename, f"{zonename}.db", Nameserver("ns3", "10.53.0.3")))
     isctest.log.info(f"setup {zonename}")
     # Key generation.
-    csk_name = keygen(f"-f KSK {keytimes} {zonename}", cwd="ns3").strip()
+    csk_name = keygen(f"-f KSK {keytimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g OMNIPRESENT -k OMNIPRESENT {TpubN} -r OMNIPRESENT {TpubN} -z OMNIPRESENT {TpubN} -d OMNIPRESENT {TpubN} {csk_name}",
         cwd="ns3",
@@ -1383,7 +1388,7 @@ def configure_straight2none(tld: str) -> List[Zone]:
     )
     isctest.log.info(f"setup {zonename}")
     # Key generation.
-    csk_name = keygen(f"-f KSK {keytimes} {zonename}", cwd="ns3").strip()
+    csk_name = keygen(f"-f KSK {keytimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g OMNIPRESENT -k OMNIPRESENT {TpubN} -r OMNIPRESENT {TpubN} -z OMNIPRESENT {TpubN} -d OMNIPRESENT {TpubN} {csk_name}",
         cwd="ns3",
@@ -1400,8 +1405,8 @@ def configure_ksk_doubleksk(tld: str) -> List[Zone]:
     zones = []
     zone = f"ksk-doubleksk.{tld}"
     cds = "cds:sha-256"
-    keygen = CmdHelper("KEYGEN", "-a ECDSAP256SHA256 -L 7200")
-    settime = CmdHelper("SETTIME", "-s")
+    keygen = EnvCmd("KEYGEN", "-a ECDSAP256SHA256 -L 7200")
+    settime = EnvCmd("SETTIME", "-s")
 
     # Step 1:
     # Introduce the first key. This will immediately be active.
@@ -1412,8 +1417,8 @@ def configure_ksk_doubleksk(tld: str) -> List[Zone]:
     TactN = "now-7d"
     keytimes = f"-P {TactN} -A {TactN}"
     # Key generation.
-    ksk_name = keygen(f"-f KSK {keytimes} {zonename}", cwd="ns3").strip()
-    zsk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
+    ksk_name = keygen(f"-f KSK {keytimes} {zonename}", cwd="ns3").out.strip()
+    zsk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {ksk_name}",
         cwd="ns3",
@@ -1448,8 +1453,8 @@ def configure_ksk_doubleksk(tld: str) -> List[Zone]:
     TactN = "now-1413h"
     keytimes = f"-P {TactN} -A {TactN}"
     # Key generation.
-    ksk_name = keygen(f"-f KSK {keytimes} {zonename}", cwd="ns3").strip()
-    zsk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
+    ksk_name = keygen(f"-f KSK {keytimes} {zonename}", cwd="ns3").out.strip()
+    zsk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {ksk_name}",
         cwd="ns3",
@@ -1493,9 +1498,9 @@ def configure_ksk_doubleksk(tld: str) -> List[Zone]:
     newtimes = f"-P {TpubN1} -A {TactN1} -P sync {TactN1} -I {TretN1} -D {TremN1}"
     zsktimes = f"-P {TpubN}  -A {TpubN}"
     # Key generation.
-    ksk1_name = keygen(f"-f KSK {ksktimes} {zonename}", cwd="ns3").strip()
-    ksk2_name = keygen(f"-f KSK {newtimes} {zonename}", cwd="ns3").strip()
-    zsk_name = keygen(f"{zsktimes} {zonename}", cwd="ns3").strip()
+    ksk1_name = keygen(f"-f KSK {ksktimes} {zonename}", cwd="ns3").out.strip()
+    ksk2_name = keygen(f"-f KSK {newtimes} {zonename}", cwd="ns3").out.strip()
+    zsk_name = keygen(f"{zsktimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {ksk1_name}",
         cwd="ns3",
@@ -1544,9 +1549,9 @@ def configure_ksk_doubleksk(tld: str) -> List[Zone]:
     newtimes = f"-P {TpubN1} -A {TactN1} -P sync {TactN1} -I {TretN1} -D {TremN1}"
     zsktimes = f"-P {TpubN} -A {TpubN}"
     # Key generation.
-    ksk1_name = keygen(f"-f KSK {ksktimes} {zonename}", cwd="ns3").strip()
-    ksk2_name = keygen(f"-f KSK {newtimes} {zonename}", cwd="ns3").strip()
-    zsk_name = keygen(f"{zsktimes} {zonename}", cwd="ns3").strip()
+    ksk1_name = keygen(f"-f KSK {ksktimes} {zonename}", cwd="ns3").out.strip()
+    ksk2_name = keygen(f"-f KSK {newtimes} {zonename}", cwd="ns3").out.strip()
+    zsk_name = keygen(f"{zsktimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d UNRETENTIVE {TretN} -D ds {TretN} {ksk1_name}",
         cwd="ns3",
@@ -1594,9 +1599,9 @@ def configure_ksk_doubleksk(tld: str) -> List[Zone]:
     newtimes = f"-P {TpubN1} -A {TactN1} -P sync {TactN1} -I {TretN1} -D {TremN1}"
     zsktimes = f"-P {TpubN} -A {TpubN}"
     # Key generation.
-    ksk1_name = keygen(f"-f KSK {ksktimes} {zonename}", cwd="ns3").strip()
-    ksk2_name = keygen(f"-f KSK {newtimes} {zonename}", cwd="ns3").strip()
-    zsk_name = keygen(f"{zsktimes} {zonename}", cwd="ns3").strip()
+    ksk1_name = keygen(f"-f KSK {ksktimes} {zonename}", cwd="ns3").out.strip()
+    ksk2_name = keygen(f"-f KSK {newtimes} {zonename}", cwd="ns3").out.strip()
+    zsk_name = keygen(f"{zsktimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g HIDDEN -k UNRETENTIVE {TretN} -r UNRETENTIVE {TretN} -d HIDDEN {TretN} {ksk1_name}",
         cwd="ns3",
@@ -1636,9 +1641,9 @@ def configure_ksk_doubleksk(tld: str) -> List[Zone]:
     newtimes = f"-P {TpubN1} -A {TactN1} -P sync {TactN1} -I {TretN1} -D {TremN1}"
     zsktimes = f"-P {TpubN} -A {TpubN}"
     # Key generation.
-    ksk1_name = keygen(f"-f KSK {ksktimes} {zonename}", cwd="ns3").strip()
-    ksk2_name = keygen(f"-f KSK {newtimes} {zonename}", cwd="ns3").strip()
-    zsk_name = keygen(f"{zsktimes} {zonename}", cwd="ns3").strip()
+    ksk1_name = keygen(f"-f KSK {ksktimes} {zonename}", cwd="ns3").out.strip()
+    ksk2_name = keygen(f"-f KSK {newtimes} {zonename}", cwd="ns3").out.strip()
+    zsk_name = keygen(f"{zsktimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g HIDDEN -k HIDDEN {TretN} -r HIDDEN {TretN} -d HIDDEN {TretN} {ksk1_name}",
         cwd="ns3",
@@ -1674,8 +1679,8 @@ def configure_ksk_3crowd(tld: str) -> List[Zone]:
     #
     zones = []
     cds = "cds:sha-256"
-    keygen = CmdHelper("KEYGEN", "-a ECDSAP256SHA256 -L 7200")
-    settime = CmdHelper("SETTIME", "-s")
+    keygen = EnvCmd("KEYGEN", "-a ECDSAP256SHA256 -L 7200")
+    settime = EnvCmd("SETTIME", "-s")
 
     # Set up a zone that has a KSK (KEY1) and have the successor key (KEY2)
     # published as well.
@@ -1697,9 +1702,9 @@ def configure_ksk_3crowd(tld: str) -> List[Zone]:
     newtimes = f"-P {TpubN1} -A {TactN1} -P sync {TactN1} -I {TretN1} -D {TremN1}"
     zsktimes = f"-P {TpubN}  -A {TpubN}"
     # Key generation.
-    ksk1_name = keygen(f"-f KSK {ksktimes} {zonename}", cwd="ns3").strip()
-    ksk2_name = keygen(f"-f KSK {newtimes} {zonename}", cwd="ns3").strip()
-    zsk_name = keygen(f"{zsktimes} {zonename}", cwd="ns3").strip()
+    ksk1_name = keygen(f"-f KSK {ksktimes} {zonename}", cwd="ns3").out.strip()
+    ksk2_name = keygen(f"-f KSK {newtimes} {zonename}", cwd="ns3").out.strip()
+    zsk_name = keygen(f"{zsktimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g HIDDEN -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {ksk1_name}",
         cwd="ns3",
@@ -1727,8 +1732,8 @@ def configure_zsk_prepub(tld: str) -> List[Zone]:
     # Pre-Publication rollover.
     zones = []
     zone = f"zsk-prepub.{tld}"
-    keygen = CmdHelper("KEYGEN", "-a ECDSAP256SHA256 -L 3600")
-    settime = CmdHelper("SETTIME", "-s")
+    keygen = EnvCmd("KEYGEN", "-a ECDSAP256SHA256 -L 3600")
+    settime = EnvCmd("SETTIME", "-s")
 
     # Step 1:
     # Introduce the first key. This will immediately be active.
@@ -1739,8 +1744,8 @@ def configure_zsk_prepub(tld: str) -> List[Zone]:
     TactN = "now-7d"
     keytimes = f"-P {TactN} -A {TactN}"
     # Key generation.
-    ksk_name = keygen(f"-f KSK {keytimes} {zonename}", cwd="ns3").strip()
-    zsk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
+    ksk_name = keygen(f"-f KSK {keytimes} {zonename}", cwd="ns3").out.strip()
+    zsk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {ksk_name}",
         cwd="ns3",
@@ -1763,8 +1768,8 @@ def configure_zsk_prepub(tld: str) -> List[Zone]:
     TactN = "now-694h"
     keytimes = f"-P {TactN} -A {TactN}"
     # Key generation.
-    ksk_name = keygen(f"-f KSK {keytimes} {zonename}", cwd="ns3").strip()
-    zsk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").strip()
+    ksk_name = keygen(f"-f KSK {keytimes} {zonename}", cwd="ns3").out.strip()
+    zsk_name = keygen(f"{keytimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {ksk_name}",
         cwd="ns3",
@@ -1799,9 +1804,9 @@ def configure_zsk_prepub(tld: str) -> List[Zone]:
     oldtimes = f"-P {TactN} -A {TactN} -I {TactN1} -D {TremN}"
     newtimes = f"-P {TpubN1} -A {TactN1}"
     # Key generation.
-    ksk_name = keygen(f"-f KSK {keytimes} {zonename}", cwd="ns3").strip()
-    zsk1_name = keygen(f"{oldtimes} {zonename}", cwd="ns3").strip()
-    zsk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").strip()
+    ksk_name = keygen(f"-f KSK {keytimes} {zonename}", cwd="ns3").out.strip()
+    zsk1_name = keygen(f"{oldtimes} {zonename}", cwd="ns3").out.strip()
+    zsk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {ksk_name}",
         cwd="ns3",
@@ -1850,9 +1855,9 @@ def configure_zsk_prepub(tld: str) -> List[Zone]:
     oldtimes = f"-P {TactN} -A {TactN} -I {TactN1} -D {TremN}"
     newtimes = f"-P {TpubN1} -A {TactN1}"
     # Key generation.
-    ksk_name = keygen(f"-f KSK {keytimes} {zonename}", cwd="ns3").strip()
-    zsk1_name = keygen(f"{oldtimes} {zonename}", cwd="ns3").strip()
-    zsk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").strip()
+    ksk_name = keygen(f"-f KSK {keytimes} {zonename}", cwd="ns3").out.strip()
+    zsk1_name = keygen(f"{oldtimes} {zonename}", cwd="ns3").out.strip()
+    zsk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {ksk_name}",
         cwd="ns3",
@@ -1889,9 +1894,9 @@ def configure_zsk_prepub(tld: str) -> List[Zone]:
     oldtimes = f"-P {TactN} -A {TactN} -I {TactN1} -D {TremN}"
     newtimes = f"-P {TpubN1} -A {TactN1}"
     # Key generation.
-    ksk_name = keygen(f"-f KSK {keytimes} {zonename}", cwd="ns3").strip()
-    zsk1_name = keygen(f"{oldtimes} {zonename}", cwd="ns3").strip()
-    zsk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").strip()
+    ksk_name = keygen(f"-f KSK {keytimes} {zonename}", cwd="ns3").out.strip()
+    zsk1_name = keygen(f"{oldtimes} {zonename}", cwd="ns3").out.strip()
+    zsk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {ksk_name}",
         cwd="ns3",
@@ -1923,9 +1928,9 @@ def configure_zsk_prepub(tld: str) -> List[Zone]:
     oldtimes = f"-P {TactN} -A {TactN} -I {TactN1} -D {TremN}"
     newtimes = f"-P {TpubN1} -A {TactN1}"
     # Key generation.
-    ksk_name = keygen(f"-f KSK {keytimes} {zonename}", cwd="ns3").strip()
-    zsk1_name = keygen(f"{oldtimes} {zonename}", cwd="ns3").strip()
-    zsk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").strip()
+    ksk_name = keygen(f"-f KSK {keytimes} {zonename}", cwd="ns3").out.strip()
+    zsk1_name = keygen(f"{oldtimes} {zonename}", cwd="ns3").out.strip()
+    zsk2_name = keygen(f"{newtimes} {zonename}", cwd="ns3").out.strip()
     settime(
         f"-g OMNIPRESENT -k OMNIPRESENT {TactN} -r OMNIPRESENT {TactN} -d OMNIPRESENT {TactN} {ksk_name}",
         cwd="ns3",

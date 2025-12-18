@@ -15,10 +15,10 @@ import os
 import isctest
 from isctest.kasp import KeyTimingMetadata, Ipub, Iret, private_type_record
 from isctest.template import Nameserver, Zone
+from isctest.run import EnvCmd
 
 from rollover.common import default_algorithm
 from rollover.setup import (
-    CmdHelper,
     configure_root,
     configure_tld,
 )
@@ -27,9 +27,9 @@ from rollover.setup import (
 def setup_zone(zone, ksk_time, ksk_settime, zsk_time, zsk_settime) -> Zone:
     templates = isctest.template.TemplateEngine(".")
     alg = default_algorithm()
-    keygen = CmdHelper("KEYGEN", f"-q -a {alg.number} -b {alg.bits} -L 3600")
-    signer = CmdHelper("SIGNER", "-S -g")
-    settime = CmdHelper("SETTIME", "-s")
+    keygen = EnvCmd("KEYGEN", f"-q -a {alg.number} -b {alg.bits} -L 3600")
+    signer = EnvCmd("SIGNER", "-S -g")
+    settime = EnvCmd("SETTIME", "-s")
 
     isctest.log.info(f"setup {zone}")
     template = "template.db.j2.manual"
@@ -40,8 +40,10 @@ def setup_zone(zone, ksk_time, ksk_settime, zsk_time, zsk_settime) -> Zone:
     template = "template.db.j2.manual"
     outfile = f"{zone}.db"
     # Key generation.
-    ksk_name = keygen(f"-f KSK -P {ksk_time} -A {ksk_time} {zone}", cwd="ns3").strip()
-    zsk_name = keygen(f"-P {zsk_time} -A {zsk_time} {zone}", cwd="ns3").strip()
+    ksk_name = keygen(
+        f"-f KSK -P {ksk_time} -A {ksk_time} {zone}", cwd="ns3"
+    ).out.strip()
+    zsk_name = keygen(f"-P {zsk_time} -A {zsk_time} {zone}", cwd="ns3").out.strip()
     settime(f"{ksk_settime} {ksk_name}", cwd="ns3")
     settime(f"{zsk_settime} {zsk_name}", cwd="ns3")
     # Signing.
