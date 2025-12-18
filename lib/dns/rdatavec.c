@@ -791,7 +791,6 @@ dns_vecheader_setownercase(dns_vecheader_t *header, const dns_name_t *name) {
 
 void
 dns_vecheader_reset(dns_vecheader_t *h, dns_dbnode_t *node) {
-	h->heap_index = 0;
 	h->node = node;
 
 	atomic_init(&h->attributes, 0);

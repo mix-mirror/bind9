@@ -582,20 +582,20 @@ resign_sooner_values(int64_t lhs_resign, int64_t rhs_resign, dns_typepair_t rhs_
  */
 static bool
 resign_sooner(void *v1, void *v2) {
-	dns_vecheader_t *h1 = v1;
-	dns_vecheader_t *h2 = v2;
+	qpz_heap_elem_t *elem1 = v1;
+	qpz_heap_elem_t *elem2 = v2;
 
-	return resign_sooner_values(h1->resign, h2->resign, h2->typepair);
+	return resign_sooner_values(elem1->header->resign, elem2->header->resign, elem2->header->typepair);
 }
 
 /*%
- * This function sets the heap index into the header.
+ * This function sets the heap index into the qpz_heap_elem_t.
  */
 static void
 set_index(void *what, unsigned int idx) {
-	dns_vecheader_t *h = what;
+	qpz_heap_elem_t *elem = what;
 
-	h->heap_index = idx;
+	elem->heap_index = idx;
 }
 
 /*%
@@ -637,9 +637,7 @@ get_heap_lock(qpzonedb_t *qpdb) {
 }
 
 static void
-resign_insert(qpz_heap_t *heap, qpznode_t *node, dns_vecheader_t *newheader) {
-	LOCK(&heap->lock);
-
+resign_insert_locked(qpz_heap_t *heap, qpznode_t *node, dns_vecheader_t *newheader) {
 	qpz_heap_elem_t *elem = isc_mem_cget(heap->mctx, sizeof(qpz_heap_elem_t), 1);
 	*elem = (qpz_heap_elem_t) {
 		.header = newheader,
@@ -653,36 +651,40 @@ resign_insert(qpz_heap_t *heap, qpznode_t *node, dns_vecheader_t *newheader) {
 						    elem, &found);
 	INSIST(find_result == ISC_R_NOTFOUND);
 
-	isc_heap_insert(heap->heap, newheader);
+	isc_heap_insert(heap->heap, elem);
 
 	/* Add element to hashmap using header+node as key */
 	isc_hashmap_add(heap->hashmap, hashval, qpz_elem_match, elem, elem, NULL);
+}
 
+static void
+resign_insert(qpz_heap_t *heap, qpznode_t *node, dns_vecheader_t *newheader) {
+	LOCK(&heap->lock);
+	resign_insert_locked(heap, node, newheader);
 	UNLOCK(&heap->lock);
 }
 
 static void
 resign_unregister(qpz_heap_t *heap, qpznode_t *node, dns_vecheader_t *header) {
-	if (header->heap_index != 0) {
-		LOCK(&heap->lock);
+	LOCK(&heap->lock);
 
-		/* Remove element from hashmap */
-		qpz_heap_elem_t search_elem = {
-			.header = header,
-			.node = node,
-		};
-		uint32_t hashval = isc_hash32(&search_elem, sizeof(search_elem), true);
-		qpz_heap_elem_t *found_elem = NULL;
-		isc_result_t result = isc_hashmap_find(heap->hashmap, hashval, qpz_elem_match,
-						       &search_elem, (void **)&found_elem);
-		INSIST(result == ISC_R_SUCCESS);
+	/* Remove element from hashmap */
+	qpz_heap_elem_t search_elem = {
+		.header = header,
+		.node = node,
+	};
+	uint32_t hashval = isc_hash32(&search_elem, sizeof(search_elem), true);
+	qpz_heap_elem_t *found_elem = NULL;
+	isc_result_t result = isc_hashmap_find(heap->hashmap, hashval, qpz_elem_match,
+					       &search_elem, (void **)&found_elem);
+
+	if (result == ISC_R_SUCCESS) {
 		isc_hashmap_delete(heap->hashmap, hashval, qpz_elem_match, &search_elem);
+		isc_heap_delete(heap->heap, found_elem->heap_index);
 		isc_mem_cput(heap->mctx, found_elem, sizeof(qpz_heap_elem_t), 1);
-
-		isc_heap_delete(heap->heap, header->heap_index);
-		UNLOCK(&heap->lock);
 	}
-	header->heap_index = 0;
+
+	UNLOCK(&heap->lock);
 }
 
 static void
@@ -691,7 +693,7 @@ qpznode_acquire(qpznode_t *node DNS__DB_FLARG);
 static void
 resign_unregister_and_delete(qpzonedb_t *qpdb, qpznode_t *node, qpz_version_t *version,
 	     dns_vecheader_t *header DNS__DB_FLARG) {
-	if (header == NULL || header->heap_index == 0) {
+	if (header == NULL) {
 		return;
 	}
 
@@ -2400,17 +2402,27 @@ setsigningtime(dns_db_t *db, dns_dbnode_t *node, dns_rdataset_t *rdataset, isc_s
 	NODE_WRLOCK(nlock, &nlocktype);
 
 	/*
-	 * Only break the heap invariant (by adjusting resign time)
-	 * if we are going to be restoring it by calling isc_heap_increased
-	 * or isc_heap_decreased.
+	 * Check if element is in the heap using hashmap lookup.
 	 */
-	if (header->heap_index != 0) {
+	qpz_heap_elem_t search_elem = {
+		.header = header,
+		.node = (qpznode_t *)node,
+	};
+	uint32_t hashval = isc_hash32(&search_elem, sizeof(search_elem), true);
+	qpz_heap_elem_t *found_elem = NULL;
+	isc_result_t find_result;
+
+	LOCK(get_heap_lock(qpdb));
+	find_result = isc_hashmap_find(qpdb->heap->hashmap, hashval, qpz_elem_match,
+				       &search_elem, (void **)&found_elem);
+
+	if (find_result == ISC_R_SUCCESS) {
+		/* Element is in heap */
 		INSIST(RESIGN(header));
-		LOCK(get_heap_lock(qpdb));
 		if (resign == 0) {
-			isc_heap_delete(qpdb->heap->heap,
-					header->heap_index);
-			header->heap_index = 0;
+			isc_heap_delete(qpdb->heap->heap, found_elem->heap_index);
+			isc_hashmap_delete(qpdb->heap->hashmap, hashval, qpz_elem_match, &search_elem);
+			isc_mem_cput(qpdb->heap->mctx, found_elem, sizeof(qpz_heap_elem_t), 1);
 		} else {
 			int64_t old_resign = header->resign;
 			int64_t new_resign = dns_time64_from32(resign);
@@ -2418,20 +2430,19 @@ setsigningtime(dns_db_t *db, dns_dbnode_t *node, dns_rdataset_t *rdataset, isc_s
 			header->resign = new_resign;
 
 			if (resign_sooner_values(new_resign, old_resign, header->typepair)) {
-				isc_heap_increased(qpdb->heap->heap,
-						   header->heap_index);
+				isc_heap_increased(qpdb->heap->heap, found_elem->heap_index);
 			} else if (resign_sooner_values(old_resign, new_resign, header->typepair)) {
-				isc_heap_decreased(qpdb->heap->heap,
-						   header->heap_index);
+				isc_heap_decreased(qpdb->heap->heap, found_elem->heap_index);
 			}
 			/* No heap adjustment needed if neither direction indicates sooner */
 		}
-		UNLOCK(get_heap_lock(qpdb));
 	} else if (resign != 0) {
+		/* Element not in heap, add it */
 		header->resign = dns_time64_from32(resign);
 		DNS_VECHEADER_SETATTR(header, DNS_VECHEADERATTR_RESIGN);
-		resign_insert(qpdb->heap, ((qpznode_t *)node), header);
+		resign_insert_locked(qpdb->heap, ((qpznode_t *)node), header);
 	}
+	UNLOCK(get_heap_lock(qpdb));
 	NODE_UNLOCK(nlock, &nlocktype);
 	return ISC_R_SUCCESS;
 }

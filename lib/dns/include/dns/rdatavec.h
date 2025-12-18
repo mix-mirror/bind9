@@ -82,12 +82,6 @@ struct dns_vecheader {
 	_Atomic(dns_trust_t) trust;
 
 	/*%
-	 * Locked by the heap lock. Can't be packed together with other fields
-	 * since it is protected by a different lock.
-	 */
-	unsigned int heap_index;
-
-	/*%
 	 * Locked by the owning node's lock.
 	 */
 	uint32_t       serial;
