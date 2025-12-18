@@ -1575,17 +1575,18 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 		isc_rwlock_t *nlock = NULL;
 		isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 		dns_vecheader_t *header = resigned->header;
+		qpznode_t *resigned_node = resigned->node;
 
 		ISC_LIST_UNLINK(resigned_list, resigned, link);
 
 		isc_mem_put(db->mctx, resigned, sizeof(*resigned));
 
-		nlock = qpzone_get_lock(HEADERNODE(header));
+		nlock = qpzone_get_lock(resigned_node);
 		NODE_WRLOCK(nlock, &nlocktype);
 		if (rollback && !IGNORE(header)) {
-			resign_insert(qpdb->heap, HEADERNODE(header), header);
+			resign_insert(qpdb->heap, resigned_node, header);
 		}
-		qpznode_release(HEADERNODE(header), least_serial,
+		qpznode_release(resigned_node, least_serial,
 				&nlocktype DNS__DB_FLARG_PASS);
 		NODE_UNLOCK(nlock, &nlocktype);
 	}
@@ -1807,10 +1808,9 @@ cname_and_other(qpznode_t *node, uint32_t serial) {
 }
 
 static qpz_changed_t *
-add_changed(qpzonedb_t *qpdb, dns_vecheader_t *header,
+add_changed(qpzonedb_t *qpdb, qpznode_t *node,
 	    qpz_version_t *version DNS__DB_FLARG) {
 	qpz_changed_t *changed = NULL;
-	qpznode_t *node = HEADERNODE(header);
 
 	changed = isc_mem_get(qpdb->common.mctx, sizeof(*changed));
 
@@ -1873,7 +1873,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 		 * being made to this node, because it's harmless and
 		 * simplifies the code.
 		 */
-		changed = add_changed(qpdb, newheader,
+		changed = add_changed(qpdb, node,
 				      version DNS__DB_FLARG_PASS);
 	}
 
@@ -4984,7 +4984,7 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 	nlock = qpzone_get_lock(node);
 	NODE_WRLOCK(nlock, &nlocktype);
 
-	changed = add_changed(qpdb, newheader, version DNS__DB_FLARG_PASS);
+	changed = add_changed(qpdb, node, version DNS__DB_FLARG_PASS);
 	ISC_SLIST_FOREACH(top, node->next_type, next_type) {
 		if (top->typepair == newheader->typepair) {
 			foundtop = top;
