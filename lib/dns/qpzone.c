@@ -657,10 +657,16 @@ resign_insert(dns_vecheader_t *newheader) {
 		.node = HEADERNODE(newheader),
 	};
 
+	/* Verify invariant: element should not already be in hashmap */
+	uint32_t hashval = isc_hash32(elem, sizeof(*elem), true);
+	void *found = NULL;
+	isc_result_t find_result = isc_hashmap_find(heap->hashmap, hashval, qpz_elem_match,
+						    elem, &found);
+	INSIST(find_result == ISC_R_NOTFOUND);
+
 	isc_heap_insert(heap->heap, newheader);
 
 	/* Add element to hashmap using header+node as key */
-	uint32_t hashval = isc_hash32(elem, sizeof(*elem), true);
 	isc_hashmap_add(heap->hashmap, hashval, qpz_elem_match, elem, elem, NULL);
 
 	UNLOCK(get_heap_lock(newheader));
@@ -681,11 +687,11 @@ resign_unregister(dns_dbnode_t *node ISC_ATTR_UNUSED, void *data) {
 		};
 		uint32_t hashval = isc_hash32(&search_elem, sizeof(search_elem), true);
 		qpz_heap_elem_t *found_elem = NULL;
-		if (isc_hashmap_find(heap->hashmap, hashval, qpz_elem_match,
-				     &search_elem, (void **)&found_elem) == ISC_R_SUCCESS) {
-			isc_hashmap_delete(heap->hashmap, hashval, qpz_elem_match, &search_elem);
-			isc_mem_cput(heap->mctx, found_elem, sizeof(qpz_heap_elem_t), 1);
-		}
+		isc_result_t result = isc_hashmap_find(heap->hashmap, hashval, qpz_elem_match,
+						       &search_elem, (void **)&found_elem);
+		INSIST(result == ISC_R_SUCCESS);
+		isc_hashmap_delete(heap->hashmap, hashval, qpz_elem_match, &search_elem);
+		isc_mem_cput(heap->mctx, found_elem, sizeof(qpz_heap_elem_t), 1);
 
 		isc_heap_delete(heap->heap, header->heap_index);
 		UNLOCK(get_heap_lock(header));
