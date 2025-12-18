@@ -1088,18 +1088,16 @@ findzonecut_zoneorcache(dns_view_t *view, const dns_name_t *name,
 	isc_result_t result;
 	dns_rdataset_t crdataset = DNS_RDATASET_INIT;
 	dns_rdataset_t csigrdataset = DNS_RDATASET_INIT;
-	dns_fixedname_t cfname, cdcname;
+	dns_fixedname_t f, dc;
+	dns_name_t *cfname = dns_fixedname_initname(&f);
+	dns_name_t *cdcname = dns_fixedname_initname(&dc);
 
-	dns_fixedname_init(&cfname);
-	dns_fixedname_init(&cdcname);
-	CHECK(findzonecut_cache(view, name, dns_fixedname_name(&cfname),
-				dns_fixedname_name(&cdcname), now, options,
+	CHECK(findzonecut_cache(view, name, cfname, cdcname, now, options,
 				&crdataset, &csigrdataset));
 
-	bool cacheclosest = dns_name_issubdomain(dns_fixedname_name(&cfname),
-						 fname);
+	bool cacheclosest = dns_name_issubdomain(cfname, fname);
 	bool staticstub = rdataset->attributes.staticstub &&
-			  dns_name_equal(fname, dns_fixedname_name(&cfname));
+			  dns_name_equal(fname, cfname);
 
 	if (cacheclosest && !staticstub) {
 		dns_rdataset_cleanup(rdataset);
@@ -1110,9 +1108,9 @@ findzonecut_zoneorcache(dns_view_t *view, const dns_name_t *name,
 			dns_rdataset_clone(&csigrdataset, sigrdataset);
 		}
 
-		dns_name_copy(dns_fixedname_name(&cfname), fname);
+		dns_name_copy(cfname, fname);
 		if (dcname != NULL) {
-			dns_name_copy(dns_fixedname_name(&cdcname), dcname);
+			dns_name_copy(cdcname, dcname);
 		}
 	}
 
