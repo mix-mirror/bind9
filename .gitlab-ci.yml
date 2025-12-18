@@ -1778,7 +1778,9 @@ clang:freebsd15:amd64:
     GIT_CLONE_PATH: "${GIT_CLONE_PATH_INSTANCE_EXECUTOR}"
     # Use MIT Kerberos5 for BIND 9 GSS-API support because of FreeBSD Heimdal
     # incompatibility; see https://bugs.freebsd.org/275241.
-    EXTRA_CONFIGURE: "${WITH_READLINE_EDITLINE} --with-gssapi=/usr/local/bin/krb5-config"
+    #
+    # The "doh" unit test permanently fails on FreeBSD 15; see #5448.
+    EXTRA_CONFIGURE: "${WITH_READLINE_EDITLINE} --with-gssapi=/usr/local/bin/krb5-config --disable-doh"
   <<: *build_job
   <<: *freebsd_autoscaler_15_amd64_tags
 
