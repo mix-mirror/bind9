@@ -120,6 +120,7 @@ struct dns_rdataset {
 		bool rendered	 : 1; /*%< message.c: was rendered */
 		bool answered	 : 1; /*%< server. */
 		bool cache	 : 1; /*%< resolver. */
+		bool deleg	 : 1; /*%< resolver. */
 		bool answer	 : 1; /*%< resolver. */
 		bool answersig	 : 1; /*%< resolver. */
 		bool external	 : 1; /*%< resolver. */

@@ -76,6 +76,12 @@
 #include <dns/validator.h>
 #include <dns/zone.h>
 
+#define DEBUG {\
+	char nameb[512];\
+	dns_name_format(name, nameb, 512);\
+	fprintf(stderr, "------ DELEG ------ %s %s\n", __func__, nameb);\
+}
+
 #ifdef WANT_QUERYTRACE
 #define RTRACE(m)                                                       \
 	isc_log_write(DNS_LOGCATEGORY_RESOLVER, DNS_LOGMODULE_RESOLVER, \
@@ -383,6 +389,7 @@ struct fetchctx {
 	ISC_LIST(struct tried) edns;
 	ISC_LIST(dns_validator_t) validators;
 	dns_db_t *cache;
+	dns_db_t *deleg;
 	dns_adb_t *adb;
 	dns_dispatchmgr_t *dispatchmgr;
 	bool ns_ttl_ok;
@@ -4616,6 +4623,7 @@ fctx__destroy(fetchctx_t *fctx, const char *func, const char *file,
 	dns_message_detach(&fctx->qmessage);
 	dns_rdataset_cleanup(&fctx->nameservers);
 	dns_db_detach(&fctx->cache);
+	dns_db_detach(&fctx->deleg);
 	dns_adb_detach(&fctx->adb);
 	dns_dispatchmgr_detach(&fctx->dispatchmgr);
 
@@ -5031,6 +5039,7 @@ fctx__create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 		goto cleanup_adb;
 	}
 	dns_db_attach(res->view->cachedb, &fctx->cache);
+	dns_db_attach(res->view->delegdb, &fctx->deleg);
 
 	ISC_LIST_INIT(fctx->resps);
 	fctx->magic = FCTX_MAGIC;
@@ -5435,6 +5444,9 @@ cache_rrset(fetchctx_t *fctx, isc_stdtime_t now, dns_name_t *name,
 	isc_result_t result = ISC_R_SUCCESS;
 	unsigned int options = 0, equalok = 0;
 	dns_dbnode_t *node = NULL;
+	dns_dbnode_t *delegnode = NULL;
+	dns_dbnode_t *actualnode = NULL;
+	dns_db_t *db = fctx->cache;
 
 	if (rdataset == NULL) {
 		return ISC_R_NOTFOUND;
@@ -5475,15 +5487,21 @@ cache_rrset(fetchctx_t *fctx, isc_stdtime_t now, dns_name_t *name,
 	 * If there's no node pointer at all, find the node, but
 	 * detach it before returning.
 	 */
-	if (nodep != NULL && *nodep != NULL) {
+	if (rdataset->attributes.deleg) {
+		db = fctx->deleg;
+		result = dns_db_findnode(db, fctx->domain, true, &delegnode);
+		actualnode = delegnode;
+	} else if (nodep != NULL && *nodep != NULL) {
 		dns_db_attachnode(*nodep, &node);
+		actualnode = node;
 	} else {
-		result = dns_db_findnode(fctx->cache, name, true, &node);
+		result = dns_db_findnode(db, name, true, &node);
+		actualnode = node;
 	}
 
 	if (result == ISC_R_SUCCESS) {
-		result = dns_db_addrdataset(fctx->cache, node, NULL, now,
-					    rdataset, options | equalok, added);
+		result = dns_db_addrdataset(db, actualnode, NULL, now, rdataset,
+					    options | equalok, added);
 	}
 
 	if (equalok == 0 && result == DNS_R_UNCHANGED) {
@@ -5491,7 +5509,7 @@ cache_rrset(fetchctx_t *fctx, isc_stdtime_t now, dns_name_t *name,
 	}
 
 	if (result == ISC_R_SUCCESS && sigrdataset != NULL) {
-		result = dns_db_addrdataset(fctx->cache, node, NULL, now,
+		result = dns_db_addrdataset(db, actualnode, NULL, now,
 					    sigrdataset, options, addedsig);
 		if (result != ISC_R_SUCCESS && result != DNS_R_UNCHANGED) {
 			if (added != NULL) {
@@ -5508,7 +5526,9 @@ cache_rrset(fetchctx_t *fctx, isc_stdtime_t now, dns_name_t *name,
 	 * If we're passing a node that we looked up back to the
 	 * caller, then we don't detach it.
 	 */
-	if (nodep != NULL && *nodep == NULL) {
+	if (delegnode != NULL) {
+		dns_db_detachnode(&delegnode);
+	} else if (nodep != NULL && *nodep == NULL) {
 		*nodep = node;
 	} else if (node != NULL) {
 		dns_db_detachnode(&node);
@@ -6171,9 +6191,21 @@ rctx_cachename(respctx_t *rctx, dns_message_t *message, dns_name_t *name) {
 	bool need_validation = secure_domain &&
 			       ((fctx->options & DNS_FETCHOPT_NOVALIDATE) == 0);
 
-	/*
-	 * Find or create the cache node.
-	 */
+//	/*
+//	 * Find or create the cache node.
+//	 */
+//	if (name->attributes.deleg) {
+//		db = fctx->deleg;
+//	} else {
+//		db = fctx->cache;
+//	}
+//
+//	/* if it's a glue, it must be associated with the zonecut, not the
+//	 * nameserver */
+//	dns_name_t *n = name->attributes.deleg ? fctx->domain : name;
+//	RETERR(dns_db_findnode(db, n, true, &node));
+
+	// this is useless if there are only deleg tagged rrset
 	RETERR(dns_db_findnode(fctx->cache, name, true, &node));
 
 	/*
@@ -6464,6 +6496,8 @@ mark_related(dns_name_t *name, dns_rdataset_t *rdataset, bool external,
 	name->attributes.cache = true;
 	if (gluing) {
 		rdataset->trust = dns_trust_glue;
+		rdataset->attributes.deleg = true;
+		DEBUG;
 		/*
 		 * Glue with 0 TTL causes problems.  We force the TTL to
 		 * 1 second to prevent this.
@@ -8654,6 +8688,8 @@ rctx_authority_positive(respctx_t *rctx) {
 
 					if (rdataset->type == dns_rdatatype_ns)
 					{
+						rdataset->attributes.deleg = true;
+						DEBUG;
 						rctx->ns_name = name;
 						rctx->ns_rdataset = rdataset;
 					}
@@ -8873,6 +8909,8 @@ rctx_authority_negative(respctx_t *rctx) {
 					}
 					rctx->ns_name = name;
 					rctx->ns_rdataset = rdataset;
+					rdataset->attributes.deleg = true;
+					DEBUG;
 				}
 				name->attributes.cache = true;
 				rdataset->attributes.cache = true;
