@@ -248,6 +248,7 @@ struct named_cache {
 struct dumpcontext {
 	isc_mem_t *mctx;
 	bool dumpcache;
+	bool dumpdeleg;
 	bool dumpzones;
 	bool dumpadb;
 	bool dumpexpired;
@@ -4309,6 +4310,13 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	dns_cache_setcachesize(cache, max_cache_size);
 	dns_cache_setservestalettl(cache, max_stale_ttl);
 	dns_cache_setservestalerefresh(cache, stale_refresh_time);
+
+	/*
+	 * Temporary hack
+	 */
+	CHECK(dns_db_create(mctx, CACHEDB_DEFAULT, dns_rootname,
+			    dns_dbtype_cache, view->rdclass, 0, NULL,
+			    &view->delegdb));
 
 	dns_cache_detach(&cache);
 
@@ -10859,6 +10867,23 @@ resume:
 		}
 	}
 
+	if (dctx->dumpdeleg && dctx->view->view->delegdb != NULL) {
+		dctx->cache = NULL;
+		dns_db_attach(dctx->view->view->delegdb, &dctx->cache);
+
+		fprintf(dctx->fp, ";\n; Cache dump of view '%s' (deleg)\n;\n",
+			dctx->view->view->name);
+		result = dns_master_dumptostreamasync(
+			dctx->mctx, dctx->cache, NULL, &dns_master_style_cache,
+			dctx->fp, isc_loop_main(), dumpdone, dctx,
+			&dctx->mdctx);
+		if (result == ISC_R_SUCCESS) {
+			return;
+		} else {
+			goto cleanup;
+		}
+	}
+
 	if ((dctx->dumpadb || dctx->dumpfail) && dctx->cache == NULL &&
 	    dctx->view->view->cachedb != NULL)
 	{
@@ -11014,6 +11039,13 @@ named_server_dumpdb(named_server_t *server, isc_lex_t *lex,
 		/* only dump servfail cache, suppress other caches */
 		dctx->dumpadb = false;
 		dctx->dumpcache = false;
+		ptr = next_token(lex, NULL);
+	} else if (ptr != NULL && strcmp(ptr, "-deleg") == 0) {
+		/* only dump deleg db, suppress other caches */
+		dctx->dumpcache = false,
+		dctx->dumpadb = false,
+		dctx->dumpfail = false,
+		dctx->dumpdeleg = true;
 		ptr = next_token(lex, NULL);
 	}
 

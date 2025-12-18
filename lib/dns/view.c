@@ -250,6 +250,9 @@ destroy(dns_view_t *view) {
 	if (view->cachedb != NULL) {
 		dns_db_detach(&view->cachedb);
 	}
+	if (view->delegdb != NULL) {
+		dns_db_detach(&view->delegdb);
+	}
 	if (view->cache != NULL) {
 		dns_cache_detach(&view->cache);
 	}
@@ -1060,8 +1063,8 @@ findzonecut_cache(dns_view_t *view, const dns_name_t *name, dns_name_t *fname,
 		  dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset) {
 	isc_result_t result = DNS_R_NXDOMAIN;
 
-	if (view->cachedb != NULL) {
-		result = dns_db_findzonecut(view->cachedb, name, options, now,
+	if (view->delegdb != NULL) {
+		result = dns_db_findzonecut(view->delegdb, name, options, now,
 					    NULL, fname, dcname, rdataset,
 					    sigrdataset);
 	}
@@ -1182,6 +1185,21 @@ dns_view_findzonecut(dns_view_t *view, const dns_name_t *name,
 		dns_rdataset_cleanup(rdataset);
 		dns_rdataset_cleanup(sigrdataset);
 	}
+
+	char b1[512] = { 0 };
+	char b2[512] = { 0 };
+	char b3[512] = { 0 };
+	if (name != NULL) {
+		dns_name_format(name, b1, 512);
+	}
+	if (fname != NULL) {
+		dns_name_format(fname, b2, 512);
+	}
+	if (dcname != NULL) {
+		dns_name_format(dcname, b3, 512);
+	}
+	fprintf(stderr, "DELEG findzonecut %s %s %s %s\n",
+		isc_result_totext(result), b1, b2, b3);
 
 	return result;
 }

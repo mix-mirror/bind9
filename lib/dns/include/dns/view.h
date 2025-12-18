@@ -97,6 +97,7 @@ struct dns_view {
 	dns_dispatchmgr_t *dispatchmgr;
 	dns_cache_t	  *cache;
 	dns_db_t	  *cachedb;
+	dns_db_t	  *delegdb;
 	dns_db_t	  *hints;
 
 	/*
