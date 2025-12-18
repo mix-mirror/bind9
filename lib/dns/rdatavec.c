@@ -21,6 +21,7 @@
 #include <isc/ascii.h>
 #include <isc/atomic.h>
 #include <isc/mem.h>
+#include <isc/refcount.h>
 #include <isc/region.h>
 #include <isc/result.h>
 #include <isc/string.h>
@@ -133,6 +134,8 @@ newvec(dns_rdataset_t *rdataset, isc_mem_t *mctx, isc_region_t *region,
 		.next_header = ISC_SLINK_INITIALIZER,
 		.trust = rdataset->trust,
 		.ttl = rdataset->ttl,
+		.references = ISC_REFCOUNT_INITIALIZER(1),
+		.mctx = isc_mem_ref(mctx),
 	};
 
 	region->base = (unsigned char *)header;
@@ -356,11 +359,16 @@ dns_rdatavec_fromrdataset(dns_rdataset_t *rdataset, isc_mem_t *mctx,
 						      rdataset->covers);
 		}
 
+		/*
+		 * Reset the vecheader content, but keep the refcount and mctx.
+		 */
 		*new = (dns_vecheader_t){
 			.next_header = ISC_SLINK_INITIALIZER,
 			.typepair = typepair,
 			.trust = rdataset->trust,
 			.ttl = rdataset->ttl,
+			.references = atomic_load_acquire(&new->references),
+			.mctx = new->mctx,
 		};
 	}
 
@@ -583,10 +591,17 @@ dns_rdatavec_merge(dns_vecheader_t *oheader, dns_vecheader_t *nheader,
 	uint16_t case_attrs = DNS_VECHEADER_GETATTR(
 		oheader,
 		DNS_VECHEADERATTR_CASESET | DNS_VECHEADERATTR_CASEFULLYLOWER);
-	DNS_VECHEADER_CLRATTR(as_header,
-			      DNS_VECHEADERATTR_CASESET |
-				      DNS_VECHEADERATTR_CASEFULLYLOWER);
+	atomic_init(&as_header->attributes, 0);
 	DNS_VECHEADER_SETATTR(as_header, case_attrs);
+	if (RESIGN(nheader)) {
+		DNS_VECHEADER_SETATTR(as_header, DNS_VECHEADERATTR_RESIGN);
+	}
+
+	/* Initialize refcount for the new header */
+	isc_refcount_init(&as_header->references, 1);
+
+	/* We need to re-attach to the memory context for refcount reasons. */
+	as_header->mctx = isc_mem_ref(mctx);
 
 	tcurrent = tstart + header_size(nheader);
 
@@ -740,6 +755,18 @@ dns_rdatavec_subtract(dns_vecheader_t *oheader, dns_vecheader_t *sheader,
 	 */
 	tstart = isc_mem_get(mctx, tlength);
 	memmove(tstart, oheader, header_size(oheader));
+
+	/* Initialize refcount for the new header */
+	dns_vecheader_t *as_header = (dns_vecheader_t *)tstart;
+	isc_refcount_init(&as_header->references, 1);
+	atomic_init(&as_header->attributes, 0);
+	if (RESIGN(oheader)) {
+		DNS_VECHEADER_SETATTR(as_header, DNS_VECHEADERATTR_RESIGN);
+	}
+
+	/* We need to re-attach to the memory context for refcount reasons. */
+	as_header->mctx = isc_mem_ref(mctx);
+
 	tcurrent = tstart + header_size(oheader);
 
 	/*
@@ -790,45 +817,16 @@ dns_vecheader_setownercase(dns_vecheader_t *header, const dns_name_t *name) {
 	DNS_VECHEADER_SETATTR(header, DNS_VECHEADERATTR_CASESET);
 }
 
-void
-dns_vecheader_reset(dns_vecheader_t *h, dns_dbnode_t *node) {
-	h->heap_index = 0;
-	h->node = node;
-
-	atomic_init(&h->attributes, 0);
-
-	STATIC_ASSERT(sizeof(h->attributes) == 2,
-		      "The .attributes field of dns_vecheader_t needs to be "
-		      "16-bit int type exactly.");
-}
-
 dns_vecheader_t *
-dns_vecheader_new(isc_mem_t *mctx, dns_dbnode_t *node) {
+dns_vecheader_new(isc_mem_t *mctx) {
 	dns_vecheader_t *h = NULL;
 
 	h = isc_mem_get(mctx, sizeof(*h));
 	*h = (dns_vecheader_t){
-		.node = node,
+		.references = ISC_REFCOUNT_INITIALIZER(1),
+		.mctx = isc_mem_ref(mctx),
 	};
 	return h;
-}
-
-void
-dns_vecheader_destroy(dns_vecheader_t **headerp) {
-	unsigned int size;
-	dns_vecheader_t *header = *headerp;
-
-	*headerp = NULL;
-
-	isc_mem_t *mctx = header->node->mctx;
-
-	if (EXISTS(header)) {
-		size = dns_rdatavec_size(header);
-	} else {
-		size = sizeof(*header);
-	}
-
-	isc_mem_put(mctx, header, size);
 }
 
 /* Iterators for already bound rdatavec */
@@ -912,9 +910,7 @@ vecheader_current(rdatavec_iter_t *iter, dns_rdata_t *rdata) {
 
 static void
 rdataset_disassociate(dns_rdataset_t *rdataset DNS__DB_FLARG) {
-	dns_dbnode_t *node = rdataset->vec.node;
-
-	dns__db_detachnode(&node DNS__DB_FLARG_PASS);
+	dns_vecheader_unref(rdataset->vec.header);
 }
 
 static isc_result_t
@@ -936,16 +932,14 @@ rdataset_current(dns_rdataset_t *rdataset, dns_rdata_t *rdata) {
 static void
 rdataset_clone(const dns_rdataset_t *source,
 	       dns_rdataset_t *target DNS__DB_FLARG) {
-	dns_dbnode_t *node = source->vec.node;
-	dns_dbnode_t *cloned_node = NULL;
-
-	dns__db_attachnode(node, &cloned_node DNS__DB_FLARG_PASS);
 	INSIST(!ISC_LINK_LINKED(target, link));
 	*target = *source;
 	ISC_LINK_INIT(target, link);
 
 	target->vec.iter.iter_pos = NULL;
 	target->vec.iter.iter_count = 0;
+
+	dns_vecheader_ref(target->vec.header);
 }
 
 static unsigned int
@@ -1013,3 +1007,16 @@ dns_vectop_destroy(isc_mem_t *mctx, dns_vectop_t **topp) {
 	*topp = NULL;
 	isc_mem_put(mctx, top, sizeof(*top));
 }
+
+static void
+vecheader_destroy(dns_vecheader_t *header) {
+	unsigned int size = EXISTS(header) ? dns_rdatavec_size(header)
+					   : sizeof(*header);
+
+	isc_mem_putanddetach(&header->mctx, header, size);
+}
+
+/*
+ * Reference counting implementation for dns_vecheader_t
+ */
+ISC_REFCOUNT_IMPL(dns_vecheader, vecheader_destroy);

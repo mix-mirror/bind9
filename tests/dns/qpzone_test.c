@@ -187,9 +187,7 @@ ownercase_test_one(const char *str1, const char *str2) {
 		.common.mctx = isc_g_mctx,
 	};
 	qpznode_t node = { .methods = &qpznode_methods, .locknum = 0 };
-	dns_vecheader_t header = {
-		.node = (dns_dbnode_t *)&node,
-	};
+	dns_vecheader_t header = { 0 };
 	dns_rdataset_t rdataset = {
 		.magic = DNS_RDATASET_MAGIC,
 		.vec = { .db = (dns_db_t *)qpdb,
@@ -360,9 +358,7 @@ ISC_RUN_TEST_IMPL(setownercase) {
 		.common.mctx = isc_g_mctx,
 	};
 	qpznode_t node = { .methods = &qpznode_methods, .locknum = 0 };
-	dns_vecheader_t header = {
-		.node = (dns_dbnode_t *)&node,
-	};
+	dns_vecheader_t header = { 0 };
 	dns_rdataset_t rdataset = {
 		.magic = DNS_RDATASET_MAGIC,
 		.vec = { .db = (dns_db_t *)qpdb,

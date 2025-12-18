@@ -282,10 +282,274 @@ cleanup:
 	}
 }
 
+/* Test case where dns_rdatavec_subtract causes assertion failure */
+ISC_RUN_TEST_IMPL(rdatavec_subtract_assertion_failure) {
+	isc_mem_t *mctx = isc_g_mctx;
+	UNUSED(state);
+	dns_vecheader_t *original_header = NULL, *subtract_header = NULL,
+			*result_header = NULL;
+	dns_rdataset_t original_rdataset, subtract_rdataset;
+	dns_rdatalist_t *original_rdatalist = NULL, *subtract_rdatalist = NULL;
+	dns_rdata_t *original_rdata1 = NULL, *original_rdata2 = NULL,
+		    *subtract_rdata = NULL;
+	unsigned char *original_data1 = NULL, *original_data2 = NULL,
+		      *subtract_data = NULL;
+	isc_region_t original_region, subtract_region;
+	isc_result_t result;
+
+	/* Allocate temporary structures for original rdatalist with 2 records
+	 */
+	original_data1 = isc_mem_get(mctx, 256);
+	original_data2 = isc_mem_get(mctx, 256);
+	original_rdatalist = isc_mem_get(mctx, sizeof(*original_rdatalist));
+	original_rdata1 = isc_mem_get(mctx, sizeof(*original_rdata1));
+	original_rdata2 = isc_mem_get(mctx, sizeof(*original_rdata2));
+
+	/* Allocate temporary structures for subtract rdatalist with 1 record */
+	subtract_data = isc_mem_get(mctx, 256);
+	subtract_rdatalist = isc_mem_get(mctx, sizeof(*subtract_rdatalist));
+	subtract_rdata = isc_mem_get(mctx, sizeof(*subtract_rdata));
+
+	/* Initialize original rdataset and rdatalist with 2 A records */
+	dns_rdataset_init(&original_rdataset);
+	dns_rdatalist_init(original_rdatalist);
+	original_rdatalist->type = dns_rdatatype_a;
+	original_rdatalist->rdclass = dns_rdataclass_in;
+	original_rdatalist->ttl = 300;
+
+	/* Create first rdata: 192.168.1.1 */
+	dns_rdata_init(original_rdata1);
+	CHECK(dns_test_rdatafromstring(original_rdata1, dns_rdataclass_in,
+				       dns_rdatatype_a, original_data1, 256,
+				       "192.168.1.1", false));
+	ISC_LIST_APPEND(original_rdatalist->rdata, original_rdata1, link);
+
+	/* Create second rdata: 192.168.1.2 */
+	dns_rdata_init(original_rdata2);
+	CHECK(dns_test_rdatafromstring(original_rdata2, dns_rdataclass_in,
+				       dns_rdatatype_a, original_data2, 256,
+				       "192.168.1.2", false));
+	ISC_LIST_APPEND(original_rdatalist->rdata, original_rdata2, link);
+
+	dns_rdatalist_tordataset(original_rdatalist, &original_rdataset);
+
+	/* Initialize subtract rdataset and rdatalist with 1 A record */
+	dns_rdataset_init(&subtract_rdataset);
+	dns_rdatalist_init(subtract_rdatalist);
+	subtract_rdatalist->type = dns_rdatatype_a;
+	subtract_rdatalist->rdclass = dns_rdataclass_in;
+	subtract_rdatalist->ttl = 300;
+
+	/* Create subtract rdata: 192.168.1.1 (same as first record) */
+	dns_rdata_init(subtract_rdata);
+	CHECK(dns_test_rdatafromstring(subtract_rdata, dns_rdataclass_in,
+				       dns_rdatatype_a, subtract_data, 256,
+				       "192.168.1.1", false));
+	ISC_LIST_APPEND(subtract_rdatalist->rdata, subtract_rdata, link);
+
+	dns_rdatalist_tordataset(subtract_rdatalist, &subtract_rdataset);
+
+	/* Convert to vecheaders (each starts with refcount = 1) */
+	CHECK(dns_rdatavec_fromrdataset(&original_rdataset, mctx,
+					&original_region, 0));
+	original_header = (dns_vecheader_t *)original_region.base;
+
+	CHECK(dns_rdatavec_fromrdataset(&subtract_rdataset, mctx,
+					&subtract_region, 0));
+	subtract_header = (dns_vecheader_t *)subtract_region.base;
+
+	/*
+	 * This should cause assertion failure because dns_rdatavec_subtract()
+	 * copies the original header (including its mctx) with memmove(), then
+	 * tries to call isc_mem_attach() on the already-attached mctx field.
+	 * Since we're subtracting 1 record from 2, it should create a new
+	 * header and hit the problematic code path at rdatavec.c:759
+	 */
+	result = dns_rdatavec_subtract(original_header, subtract_header, mctx,
+				       dns_rdataclass_in, dns_rdatatype_a, 0,
+				       &result_header);
+
+	/* If we get here without assertion failure, the bug has been fixed */
+	assert_int_equal(result, ISC_R_SUCCESS);
+	assert_non_null(result_header);
+
+	/* Result should contain only the second record (192.168.1.2) */
+	unsigned int result_count = dns_rdatavec_count(result_header);
+	assert_int_equal(result_count, 1);
+
+cleanup:
+	/* Cleanup rdatasets */
+	if (DNS_RDATASET_VALID(&original_rdataset)) {
+		dns_rdataset_disassociate(&original_rdataset);
+	}
+	if (DNS_RDATASET_VALID(&subtract_rdataset)) {
+		dns_rdataset_disassociate(&subtract_rdataset);
+	}
+
+	/* Cleanup vecheaders */
+	if (original_header != NULL) {
+		dns_vecheader_unref(original_header);
+	}
+	if (subtract_header != NULL) {
+		dns_vecheader_unref(subtract_header);
+	}
+	if (result_header != NULL) {
+		dns_vecheader_unref(result_header);
+	}
+
+	/* Cleanup temporary structures for original */
+	if (original_rdata1 != NULL) {
+		isc_mem_put(mctx, original_rdata1, sizeof(*original_rdata1));
+	}
+	if (original_rdata2 != NULL) {
+		isc_mem_put(mctx, original_rdata2, sizeof(*original_rdata2));
+	}
+	if (original_rdatalist != NULL) {
+		isc_mem_put(mctx, original_rdatalist,
+			    sizeof(*original_rdatalist));
+	}
+	if (original_data1 != NULL) {
+		isc_mem_put(mctx, original_data1, 256);
+	}
+	if (original_data2 != NULL) {
+		isc_mem_put(mctx, original_data2, 256);
+	}
+
+	/* Cleanup temporary structures for subtract */
+	if (subtract_rdata != NULL) {
+		isc_mem_put(mctx, subtract_rdata, sizeof(*subtract_rdata));
+	}
+	if (subtract_rdatalist != NULL) {
+		isc_mem_put(mctx, subtract_rdatalist,
+			    sizeof(*subtract_rdatalist));
+	}
+	if (subtract_data != NULL) {
+		isc_mem_put(mctx, subtract_data, 256);
+	}
+}
+
+/* Test refcount functionality with merge and cleanup */
+ISC_RUN_TEST_IMPL(rdatavec_refcount_merge) {
+	isc_mem_t *mctx = isc_g_mctx;
+	UNUSED(state);
+	dns_vecheader_t *header1 = NULL, *header2 = NULL, *merged_header = NULL;
+	dns_rdataset_t rdataset1, rdataset2;
+	dns_rdatalist_t *rdatalist1 = NULL, *rdatalist2 = NULL;
+	dns_rdata_t *rdata1 = NULL, *rdata2 = NULL;
+	unsigned char *data1 = NULL, *data2 = NULL;
+	isc_region_t region1, region2;
+	isc_result_t result;
+
+	/* Allocate temporary structures for first rdatalist */
+	data1 = isc_mem_get(mctx, 256);
+	rdatalist1 = isc_mem_get(mctx, sizeof(*rdatalist1));
+	rdata1 = isc_mem_get(mctx, sizeof(*rdata1));
+
+	/* Allocate temporary structures for second rdatalist */
+	data2 = isc_mem_get(mctx, 256);
+	rdatalist2 = isc_mem_get(mctx, sizeof(*rdatalist2));
+	rdata2 = isc_mem_get(mctx, sizeof(*rdata2));
+
+	/* Initialize first rdataset and rdatalist */
+	dns_rdataset_init(&rdataset1);
+	dns_rdatalist_init(rdatalist1);
+	rdatalist1->type = dns_rdatatype_a;
+	rdatalist1->rdclass = dns_rdataclass_in;
+	rdatalist1->ttl = 300;
+
+	/* Create first rdata */
+	dns_rdata_init(rdata1);
+	CHECK(dns_test_rdatafromstring(rdata1, dns_rdataclass_in,
+				       dns_rdatatype_a, data1, 256,
+				       "192.168.1.1", false));
+
+	ISC_LIST_APPEND(rdatalist1->rdata, rdata1, link);
+	dns_rdatalist_tordataset(rdatalist1, &rdataset1);
+
+	/* Initialize second rdataset and rdatalist */
+	dns_rdataset_init(&rdataset2);
+	dns_rdatalist_init(rdatalist2);
+	rdatalist2->type = dns_rdatatype_a;
+	rdatalist2->rdclass = dns_rdataclass_in;
+	rdatalist2->ttl = 300;
+
+	/* Create second rdata */
+	dns_rdata_init(rdata2);
+	CHECK(dns_test_rdatafromstring(rdata2, dns_rdataclass_in,
+				       dns_rdatatype_a, data2, 256,
+				       "192.168.1.2", false));
+
+	ISC_LIST_APPEND(rdatalist2->rdata, rdata2, link);
+	dns_rdatalist_tordataset(rdatalist2, &rdataset2);
+
+	/* Convert to vecheaders (each starts with refcount = 1) */
+	CHECK(dns_rdatavec_fromrdataset(&rdataset1, mctx, &region1, 0));
+	header1 = (dns_vecheader_t *)region1.base;
+
+	CHECK(dns_rdatavec_fromrdataset(&rdataset2, mctx, &region2, 0));
+	header2 = (dns_vecheader_t *)region2.base;
+
+	/* Merge headers (this will create a new header with refcount = 1) */
+	CHECK(dns_rdatavec_merge(header1, header2, mctx, dns_rdataclass_in,
+				 dns_rdatatype_a, 0, 0, &merged_header));
+	assert_non_null(merged_header);
+
+	/* Test: merged header should have expected count */
+	unsigned int merged_count = dns_rdatavec_count(merged_header);
+	assert_int_equal(merged_count, 2);
+
+	/* Test: merged header should have expected size */
+	unsigned int merged_size = dns_rdatavec_size(merged_header);
+	assert_true(merged_size > sizeof(dns_vecheader_t));
+
+cleanup:
+	/* Cleanup rdatasets */
+	if (DNS_RDATASET_VALID(&rdataset1)) {
+		dns_rdataset_disassociate(&rdataset1);
+	}
+	if (DNS_RDATASET_VALID(&rdataset2)) {
+		dns_rdataset_disassociate(&rdataset2);
+	}
+
+	/* Cleanup using refcount - each header should be unreferenced once */
+	if (header1 != NULL) {
+		dns_vecheader_unref(header1);
+	}
+	if (header2 != NULL) {
+		dns_vecheader_unref(header2);
+	}
+	if (merged_header != NULL) {
+		dns_vecheader_unref(merged_header);
+	}
+
+	/* Cleanup temporary structures */
+	if (rdata1 != NULL) {
+		isc_mem_put(mctx, rdata1, sizeof(*rdata1));
+	}
+	if (rdatalist1 != NULL) {
+		isc_mem_put(mctx, rdatalist1, sizeof(*rdatalist1));
+	}
+	if (data1 != NULL) {
+		isc_mem_put(mctx, data1, 256);
+	}
+	if (rdata2 != NULL) {
+		isc_mem_put(mctx, rdata2, sizeof(*rdata2));
+	}
+	if (rdatalist2 != NULL) {
+		isc_mem_put(mctx, rdatalist2, sizeof(*rdatalist2));
+	}
+	if (data2 != NULL) {
+		isc_mem_put(mctx, data2, 256);
+	}
+}
+
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY_CUSTOM(merge_headers, setup_mctx, teardown_mctx)
 ISC_TEST_ENTRY_CUSTOM(merge_case_preservation, setup_mctx, teardown_mctx)
 ISC_TEST_ENTRY_CUSTOM(setcase_size_consistency, setup_mctx, teardown_mctx)
+ISC_TEST_ENTRY_CUSTOM(rdatavec_subtract_assertion_failure, setup_mctx,
+		      teardown_mctx)
+ISC_TEST_ENTRY_CUSTOM(rdatavec_refcount_merge, setup_mctx, teardown_mctx)
 ISC_TEST_LIST_END
 
 ISC_TEST_MAIN
