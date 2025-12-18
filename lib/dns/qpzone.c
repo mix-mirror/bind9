@@ -119,6 +119,7 @@ typedef struct qpz_changed {
 typedef ISC_LIST(qpz_changed_t) qpz_changedlist_t;
 
 typedef struct qpz_resigned {
+	qpznode_t *node;
 	dns_vecheader_t *header;
 	ISC_LINK(struct qpz_resigned) link;
 } qpz_resigned_t;
@@ -696,7 +697,7 @@ static void
 qpznode_acquire(qpznode_t *node DNS__DB_FLARG);
 
 static void
-resign_unregister_and_delete(qpzonedb_t *qpdb ISC_ATTR_UNUSED, qpznode_t *node, qpz_version_t *version,
+resign_unregister_and_delete(qpzonedb_t *qpdb, qpznode_t *node, qpz_version_t *version,
 	     dns_vecheader_t *header DNS__DB_FLARG) {
 	if (header == NULL || header->heap_index == 0) {
 		return;
@@ -709,6 +710,7 @@ resign_unregister_and_delete(qpzonedb_t *qpdb ISC_ATTR_UNUSED, qpznode_t *node, 
 	qpz_resigned_t *resigned = isc_mem_get(((dns_db_t *)qpdb)->mctx,
 					       sizeof(*resigned));
 	*resigned = (qpz_resigned_t){
+		.node = node,
 		.header = header,
 		.link = ISC_LINK_INITIALIZER,
 	};
