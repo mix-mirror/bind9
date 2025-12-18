@@ -82,12 +82,6 @@ struct dns_vecheader {
 	_Atomic(dns_trust_t) trust;
 
 	/*%
-	 * Locked by the heap lock. Can't be packed together with other fields
-	 * since it is protected by a different lock.
-	 */
-	unsigned int heap_index;
-
-	/*%
 	 * Locked by the owning node's lock.
 	 */
 	uint32_t       serial;
@@ -97,8 +91,7 @@ struct dns_vecheader {
 	/*
 	 * resigning (zone).
 	 */
-	isc_stdtime_t resign;
-	uint16_t      resign_lsb : 1;
+	int64_t resign;
 
 	/*%
 	 * Link to the other versions of this rdataset.
@@ -137,6 +130,8 @@ enum {
 	DNS_VECHEADERATTR_CASESET = 1 << 4,
 	DNS_VECHEADERATTR_ZEROTTL = 1 << 5,
 	DNS_VECHEADERATTR_CASEFULLYLOWER = 1 << 6,
+	
+	DNS_VECHEADERATTR_RESIGNHASHMAP = 1 << 7,
 };
 
 /* clang-format off : RemoveParentheses */
