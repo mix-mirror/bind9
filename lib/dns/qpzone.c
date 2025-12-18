@@ -2451,6 +2451,7 @@ static isc_result_t
 getsigningtime(dns_db_t *db, isc_stdtime_t *resign, dns_name_t *foundname,
 	       dns_typepair_t *typepair) {
 	qpzonedb_t *qpdb = (qpzonedb_t *)db;
+	qpz_heap_elem_t *elem = NULL;
 	dns_vecheader_t *header = NULL;
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 	isc_rwlock_t *nlock = NULL;
@@ -2462,31 +2463,33 @@ getsigningtime(dns_db_t *db, isc_stdtime_t *resign, dns_name_t *foundname,
 	REQUIRE(typepair != NULL);
 
 	LOCK(get_heap_lock(qpdb));
-	header = isc_heap_element(qpdb->heap->heap, 1);
-	if (header == NULL) {
+	elem = isc_heap_element(qpdb->heap->heap, 1);
+	if (elem == NULL) {
 		UNLOCK(get_heap_lock(qpdb));
 		return ISC_R_NOTFOUND;
 	}
-	nlock = qpzone_get_lock(HEADERNODE(header));
+	header = elem->header;
+	nlock = qpzone_get_lock(elem->node);
 	UNLOCK(get_heap_lock(qpdb));
 
 again:
 	NODE_RDLOCK(nlock, &nlocktype);
 
 	LOCK(get_heap_lock(qpdb));
-	header = isc_heap_element(qpdb->heap->heap, 1);
+	elem = isc_heap_element(qpdb->heap->heap, 1);
 
-	if (header != NULL && qpzone_get_lock(HEADERNODE(header)) != nlock) {
+	if (elem != NULL && qpzone_get_lock(elem->node) != nlock) {
 		UNLOCK(get_heap_lock(qpdb));
 		NODE_UNLOCK(nlock, &nlocktype);
 
-		nlock = qpzone_get_lock(HEADERNODE(header));
+		nlock = qpzone_get_lock(elem->node);
 		goto again;
 	}
 
-	if (header != NULL) {
+	if (elem != NULL) {
+		header = elem->header;
 		*resign = RESIGN(header) ? (uint32_t)header->resign : 0;
-		dns_name_copy(&HEADERNODE(header)->name, foundname);
+		dns_name_copy(&elem->node->name, foundname);
 		*typepair = header->typepair;
 		result = ISC_R_SUCCESS;
 	}
