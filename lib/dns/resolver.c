@@ -3599,49 +3599,62 @@ fctx_getaddresses_nameservers(fetchctx_t *fctx, isc_stdtime_t now,
 	dns_rdata_ns_t ns;
 	bool have_address = false;
 	unsigned int ns_processed = 0;
+	unsigned int skip =
+		isc_random_uniform(dns_rdataset_count(&fctx->nameservers));
+	unsigned int pass, server;
 
-	DNS_RDATASET_FOREACH(&fctx->nameservers) {
-		isc_result_t result = ISC_R_SUCCESS;
-		dns_rdata_t rdata = DNS_RDATA_INIT;
-		bool overquota = false;
-		unsigned int static_stub = 0;
-		unsigned int no_fetch = 0;
+	for (pass = 0, server = 0; pass < 2; pass++) {
+		DNS_RDATASET_FOREACH(&fctx->nameservers) {
+			isc_result_t result = ISC_R_SUCCESS;
+			dns_rdata_t rdata = DNS_RDATA_INIT;
+			bool overquota = false;
+			unsigned int static_stub = 0;
+			unsigned int no_fetch = 0;
 
-		dns_rdataset_current(&fctx->nameservers, &rdata);
-		/*
-		 * Extract the name from the NS record.
-		 */
-		result = dns_rdata_tostruct(&rdata, &ns, NULL);
-		if (result != ISC_R_SUCCESS) {
-			continue;
-		}
+			if (pass == 0 && server < skip) {
+				continue;
+			}
+			if (pass == 1 && server >= skip) {
+				break;
+			}
 
-		if (STATICSTUB(&fctx->nameservers) &&
-		    dns_name_equal(&ns.name, fctx->domain))
-		{
-			static_stub = DNS_ADBFIND_STATICSTUB;
-		}
+			dns_rdataset_current(&fctx->nameservers, &rdata);
+			/*
+			 * Extract the name from the NS record.
+			 */
+			result = dns_rdata_tostruct(&rdata, &ns, NULL);
+			if (result != ISC_R_SUCCESS) {
+				continue;
+			}
 
-		/*
-		 * Make sure we only launch a limited number of
-		 * outgoing fetches.
-		 */
-		if (fctx->pending_running >= fetches_allowed) {
-			no_fetch = DNS_ADBFIND_NOFETCH;
-		}
+			if (STATICSTUB(&fctx->nameservers) &&
+			    dns_name_equal(&ns.name, fctx->domain))
+			{
+				static_stub = DNS_ADBFIND_STATICSTUB;
+			}
 
-		findname(fctx, &ns.name, 0, stdoptions | static_stub | no_fetch,
-			 0, now, &overquota, need_alternatep, &have_address);
+			/*
+			 * Make sure we only launch a limited number of
+			 * outgoing fetches.
+			 */
+			if (fctx->pending_running >= fetches_allowed) {
+				no_fetch = DNS_ADBFIND_NOFETCH;
+			}
 
-		if (!overquota) {
-			*all_spilledp = false;
-		}
+			findname(fctx, &ns.name, 0,
+				 stdoptions | static_stub | no_fetch, 0, now,
+				 &overquota, need_alternatep, &have_address);
 
-		dns_rdata_reset(&rdata);
-		dns_rdata_freestruct(&ns);
+			if (!overquota) {
+				*all_spilledp = false;
+			}
 
-		if (++ns_processed >= NS_PROCESSING_LIMIT) {
-			break;
+			dns_rdata_reset(&rdata);
+			dns_rdata_freestruct(&ns);
+
+			if (++ns_processed >= NS_PROCESSING_LIMIT) {
+				break;
+			}
 		}
 	}
 
