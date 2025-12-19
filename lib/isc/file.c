@@ -353,7 +353,7 @@ isc_file_openuniquemode(char *templet, int mode, FILE **fp) {
 			return isc__errno2result(errno);
 		}
 		for (cp = x;;) {
-			char *t;
+			const char *t;
 			if (*cp == '\0') {
 				return ISC_R_FAILURE;
 			}
