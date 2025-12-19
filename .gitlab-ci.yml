@@ -375,6 +375,7 @@ stages:
   stage: quick-checks
   tags:
     - smalljob
+  needs: []
 
 .other-check: &other_checks_job
   <<: *default_triggering_rules
@@ -654,7 +655,6 @@ misc:
     # Check dangling symlinks in the repository
     - if find . -xtype l | grep .; then exit 1; fi
     - muon-meson analyze -Werror
-  needs: []
   artifacts:
     paths:
       - checklibs.out
@@ -663,7 +663,6 @@ misc:
 black:
   <<: *quick_checks_job
   <<: *python_triggering_rules
-  needs: []
   script:
     - black $(git ls-files '*.py')
     - git diff > black.patch
@@ -677,7 +676,6 @@ black:
 vulture:
   <<: *quick_checks_job
   <<: *python_triggering_rules
-  needs: []
   script:
     - vulture --exclude "*ans.py,conftest.py,isctest" --ignore-names "after_servers_start,bootstrap,pytestmark" bin/tests/system/
 
@@ -698,7 +696,6 @@ ci-orphaned-anchors:
   script:
     - git clone --depth 1 https://gitlab.isc.org/isc-projects/bind9-qa.git
     - bind9-qa/ci-orphaned-anchors/check-orphaned-anchors-ci.py .gitlab-ci.yml
-  needs: []
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
       changes:
@@ -716,7 +713,6 @@ clang-format:
     - *rule_mr_manual
     - *rule_tag
     - *rule_source_other_than_mr
-  needs: []
   script:
     - if [ -r .clang-format ]; then "${CLANG_FORMAT}" -i -style=file $(git ls-files '*.c' '*.h'); fi
     - git diff > clang-format.patch
@@ -736,7 +732,6 @@ meson-format:
     - *rule_mr_manual
     - *rule_tag
     - *rule_source_other_than_mr
-  needs: []
   script:
     - git ls-files "*meson.build" | xargs muon-meson fmt -i
     - git diff > meson-format.patch
@@ -753,7 +748,6 @@ meson-format:
 
 doctest:
   <<: *quick_checks_job
-  needs: []
   script:
     - *configure
     - meson compile -C build system-test-init
@@ -765,7 +759,6 @@ doctest:
 pylint:
   <<: *quick_checks_job
   <<: *python_triggering_rules
-  needs: []
   variables:
     PYTHONPATH: "${CI_PROJECT_DIR}/bin/tests/system"
   script:
@@ -775,7 +768,6 @@ pylint:
 
 reuse:
   <<: *quick_checks_job
-  needs: []
   image:
     name: docker.io/fsfe/reuse:latest
     entrypoint: [""]
@@ -785,7 +777,6 @@ reuse:
 shfmt:
   <<: *quick_checks_job
   <<: *shell_triggering_rules
-  needs: []
   script:
     - shfmt -w -i 2 -ci -bn . $(find . -name "*.sh.in")
     - git diff > shfmt.patch
@@ -798,7 +789,6 @@ shfmt:
 
 danger:
   <<: *quick_checks_job
-  needs: []
   script:
     - pip install git+https://gitlab.isc.org/isc-projects/hazard.git
     - hazard
@@ -824,7 +814,6 @@ linkcheck:
       - doc/arm/linkcheck_output/
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
-  needs: []
 
 generate-stress-test-configs:
   <<: *base_image
