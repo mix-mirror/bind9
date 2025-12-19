@@ -27,9 +27,6 @@ def test_ghost_nsec(ns2, ns3, ns4, templates):
         dump = ns4.rndc("dumpdb -deleg")
         print(dump)
         exit(1)
-    dump = ns4.rndc("dumpdb -deleg")
-    print(dump)
-    exit(1)
 
     # Sanity test: non existance proof works and is signed.
     msg = isctest.query.create("idonotexists", "A", dnssec=True)
