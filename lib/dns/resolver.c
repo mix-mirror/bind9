@@ -76,10 +76,18 @@
 #include <dns/validator.h>
 #include <dns/zone.h>
 
-#define DEBUG {\
-	char nameb[512];\
-	dns_name_format(name, nameb, 512);\
-	fprintf(stderr, "------ DELEG ------ %s %s\n", __func__, nameb);\
+#define DEBUGNS(ns) {\
+	char b0[512] = { 0 };\
+	char b1[512] = { 0 };\
+	if (ns) { dns_name_format(ns, b0, 512);}\
+	if (fctx->domain) { dns_name_format(fctx->domain, b1, 512);}\
+	fprintf(stderr, "DEBUGDELEG %s name:%s domain:%s\n", __func__, b0, b1);\
+}
+
+#define DEBUG(ns) {\
+	char b0[512] = { 0 };\
+	if (ns) { dns_name_format(ns, b0, 512);}\
+	fprintf(stderr, "DEBUGDELEG %s name:%s \n", __func__, b0);\
 }
 
 #ifdef WANT_QUERYTRACE
@@ -3326,6 +3334,7 @@ findname(fetchctx_t *fctx, const dns_name_t *name, in_port_t port,
 	isc_result_t result;
 
 	FCTXTRACE("FINDNAME");
+	DEBUGNS(name);
 
 	/*
 	 * If this name is a subdomain of the query domain, tell
@@ -3358,9 +3367,9 @@ findname(fetchctx_t *fctx, const dns_name_t *name, in_port_t port,
 	INSIST(!SHUTTINGDOWN(fctx));
 	fetchctx_ref(fctx);
 	result = dns_adb_createfind(fctx->adb, fctx->loop, fctx_finddone, fctx,
-				    name, options, now, res->view->dstport,
-				    fctx->depth + 1, fctx->qc, fctx->gqc, fctx,
-				    &find);
+				    name, fctx->domain, options, now,
+				    res->view->dstport, fctx->depth + 1,
+				    fctx->qc, fctx->gqc, fctx, &find);
 
 	isc_log_write(DNS_LOGCATEGORY_RESOLVER, DNS_LOGMODULE_RESOLVER,
 		      ISC_LOG_DEBUG(3), "fctx %p(%s): createfind for %s - %s",
@@ -3615,6 +3624,10 @@ fctx_getaddresses_nameservers(fetchctx_t *fctx, isc_stdtime_t now,
 		unsigned int no_fetch = 0;
 
 		dns_rdataset_current(&fctx->nameservers, &rdata);
+
+		char typeb[20];
+		dns_rdatatype_format(rdata.type, typeb, 20);
+		fprintf(stderr, "DEBUGDELEG rdata type %s\n", typeb);
 		/*
 		 * Extract the name from the NS record.
 		 */
@@ -3622,6 +3635,8 @@ fctx_getaddresses_nameservers(fetchctx_t *fctx, isc_stdtime_t now,
 		if (result != ISC_R_SUCCESS) {
 			continue;
 		}
+	
+		DEBUGNS(&ns.name);
 
 		if (STATICSTUB(&fctx->nameservers) &&
 		    dns_name_equal(&ns.name, fctx->domain))
@@ -6191,21 +6206,12 @@ rctx_cachename(respctx_t *rctx, dns_message_t *message, dns_name_t *name) {
 	bool need_validation = secure_domain &&
 			       ((fctx->options & DNS_FETCHOPT_NOVALIDATE) == 0);
 
-//	/*
-//	 * Find or create the cache node.
-//	 */
-//	if (name->attributes.deleg) {
-//		db = fctx->deleg;
-//	} else {
-//		db = fctx->cache;
-//	}
-//
-//	/* if it's a glue, it must be associated with the zonecut, not the
-//	 * nameserver */
-//	dns_name_t *n = name->attributes.deleg ? fctx->domain : name;
-//	RETERR(dns_db_findnode(db, n, true, &node));
-
-	// this is useless if there are only deleg tagged rrset
+	/*
+	 * TODO: this is harmless but useless if there are only deleg tagged
+	 * rrset. But not all RRset are going into the deleg DB. Perhaps another
+	 * way could be to have two nodes (one for the cache, one for the deleg)
+	 * and open those depending the rrsets
+	 */
 	RETERR(dns_db_findnode(fctx->cache, name, true, &node));
 
 	/*
@@ -6496,8 +6502,11 @@ mark_related(dns_name_t *name, dns_rdataset_t *rdataset, bool external,
 	name->attributes.cache = true;
 	if (gluing) {
 		rdataset->trust = dns_trust_glue;
+		/*
+		 * Valid glues needs to be added in the deleg database.
+		 */
 		rdataset->attributes.deleg = true;
-		DEBUG;
+		DEBUG(name);
 		/*
 		 * Glue with 0 TTL causes problems.  We force the TTL to
 		 * 1 second to prevent this.
@@ -8688,8 +8697,6 @@ rctx_authority_positive(respctx_t *rctx) {
 
 					if (rdataset->type == dns_rdatatype_ns)
 					{
-						rdataset->attributes.deleg = true;
-						DEBUG;
 						rctx->ns_name = name;
 						rctx->ns_rdataset = rdataset;
 					}
@@ -8909,8 +8916,6 @@ rctx_authority_negative(respctx_t *rctx) {
 					}
 					rctx->ns_name = name;
 					rctx->ns_rdataset = rdataset;
-					rdataset->attributes.deleg = true;
-					DEBUG;
 				}
 				name->attributes.cache = true;
 				rdataset->attributes.cache = true;
@@ -9115,6 +9120,13 @@ rctx_referral(respctx_t *rctx) {
 	(void)dns_rdataset_additionaldata(rctx->ns_rdataset, rctx->ns_name,
 					  check_related, rctx, 0);
 	FCTX_ATTR_CLR(fctx, FCTX_ATTR_GLUING);
+
+	/*
+	 * Referral NS must be added in the delegation cache, not the main
+	 * cache.
+	 */
+	rctx->ns_rdataset->attributes.deleg = true;
+	DEBUGNS(fctx->name);
 
 	/*
 	 * NS rdatasets with 0 TTL cause problems.

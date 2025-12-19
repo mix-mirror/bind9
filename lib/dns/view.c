@@ -749,17 +749,23 @@ dns_view_findzone(dns_view_t *view, const dns_name_t *name,
 
 isc_result_t
 dns_view_find(dns_view_t *view, const dns_name_t *name, dns_rdatatype_t type,
-	      isc_stdtime_t now, unsigned int options, bool use_hints,
-	      bool use_static_stub, dns_db_t **dbp, dns_dbnode_t **nodep,
-	      dns_name_t *foundname, dns_rdataset_t *rdataset,
-	      dns_rdataset_t *sigrdataset) {
+	      isc_stdtime_t now, unsigned int options, bool use_deleg,
+	      bool use_hints, bool use_static_stub, dns_db_t **dbp,
+	      dns_dbnode_t **nodep, dns_name_t *foundname,
+	      dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset) {
 	isc_result_t result;
-	dns_db_t *db = NULL, *zdb = NULL;
+	dns_db_t *db = NULL, *zdb = NULL, *cdb = NULL;
 	dns_dbnode_t *node = NULL, *znode = NULL;
 	bool is_cache, is_staticstub_zone;
 	dns_rdataset_t zrdataset, zsigrdataset;
 	dns_zone_t *zone = NULL;
 	dns_zt_t *zonetable = NULL;
+
+	if (use_deleg) {
+		cdb = view->delegdb;
+	} else {
+		cdb = view->cachedb;
+	}
 
 	/*
 	 * Find an rdataset whose owner name is 'name', and whose type is
@@ -797,8 +803,8 @@ dns_view_find(dns_view_t *view, const dns_name_t *name, dns_rdatatype_t type,
 	}
 	if (result == ISC_R_SUCCESS || result == DNS_R_PARTIALMATCH) {
 		result = dns_zone_getdb(zone, &db);
-		if (result != ISC_R_SUCCESS && view->cachedb != NULL) {
-			dns_db_attach(view->cachedb, &db);
+		if (result != ISC_R_SUCCESS && cdb != NULL) {
+			dns_db_attach(cdb, &db);
 		} else if (result != ISC_R_SUCCESS) {
 			goto cleanup;
 		}
@@ -807,8 +813,8 @@ dns_view_find(dns_view_t *view, const dns_name_t *name, dns_rdatatype_t type,
 		{
 			is_staticstub_zone = true;
 		}
-	} else if (result == ISC_R_NOTFOUND && view->cachedb != NULL) {
-		dns_db_attach(view->cachedb, &db);
+	} else if (result == ISC_R_NOTFOUND && cdb != NULL) {
+		dns_db_attach(cdb, &db);
 	} else {
 		goto cleanup;
 	}
@@ -830,7 +836,7 @@ db_find:
 		}
 		if (!is_cache) {
 			dns_db_detach(&db);
-			if (view->cachedb != NULL && !is_staticstub_zone) {
+			if (cdb != NULL && !is_staticstub_zone) {
 				/*
 				 * Either the answer is in the cache, or we
 				 * don't know it.
@@ -839,7 +845,7 @@ db_find:
 				 * (see the function description in view.h).
 				 */
 				is_cache = true;
-				dns_db_attach(view->cachedb, &db);
+				dns_db_attach(cdb, &db);
 				goto db_find;
 			}
 		} else {
@@ -961,9 +967,9 @@ dns_view_simplefind(dns_view_t *view, const dns_name_t *name,
 	dns_fixedname_t foundname;
 
 	dns_fixedname_init(&foundname);
-	result = dns_view_find(view, name, type, now, options, use_hints, false,
-			       NULL, NULL, dns_fixedname_name(&foundname),
-			       rdataset, sigrdataset);
+	result = dns_view_find(
+		view, name, type, now, options, false, use_hints, false, NULL,
+		NULL, dns_fixedname_name(&foundname), rdataset, sigrdataset);
 	if (result == DNS_R_NXDOMAIN) {
 		/*
 		 * The rdataset and sigrdataset of the relevant NSEC record
@@ -1186,17 +1192,17 @@ dns_view_findzonecut(dns_view_t *view, const dns_name_t *name,
 		dns_rdataset_cleanup(sigrdataset);
 	}
 
-	char b1[512] = { 0 };
-	char b2[512] = { 0 };
-	char b3[512] = { 0 };
+	char b1[1024] = { 0 };
+	char b2[1024] = { 0 };
+	char b3[1024] = { 0 };
 	if (name != NULL) {
-		dns_name_format(name, b1, 512);
+		dns_name_format(name, b1, 1024);
 	}
 	if (fname != NULL) {
-		dns_name_format(fname, b2, 512);
+		dns_name_format(fname, b2, 1024);
 	}
 	if (dcname != NULL) {
-		dns_name_format(dcname, b3, 512);
+		dns_name_format(dcname, b3, 1024);
 	}
 	fprintf(stderr, "DELEG findzonecut %s %s %s %s\n",
 		isc_result_totext(result), b1, b2, b3);

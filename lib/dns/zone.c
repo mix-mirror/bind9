@@ -20504,7 +20504,7 @@ checkds_find_address(dns_checkds_t *checkds) {
 
 	result = dns_adb_createfind(
 		adb, checkds->zone->loop, process_checkds_adb_event, checkds,
-		&checkds->ns, options, 0, checkds->zone->view->dstport, 0, NULL,
+		&checkds->ns, NULL, options, 0, checkds->zone->view->dstport, 0, NULL,
 		NULL, NULL, &checkds->find);
 	dns_adb_detach(&adb);
 
