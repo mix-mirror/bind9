@@ -792,7 +792,7 @@ dns_catz_zones_new(isc_mem_t *mctx, dns_catz_zonemodmethods_t *zmm) {
 
 	isc_mutex_init(&catzs->lock);
 	isc_refcount_init(&catzs->references, 1);
-	isc_ht_init(&catzs->zones, mctx, 4, ISC_HT_CASE_SENSITIVE);
+	isc_ht_init(&catzs->zones, mctx, 4, ISC_HT_CASE_INSENSITIVE);
 	isc_mem_attach(mctx, &catzs->mctx);
 
 	return catzs;
