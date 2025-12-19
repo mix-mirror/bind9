@@ -332,6 +332,7 @@ stages:
   <<: *default_triggering_rules
   <<: *base_image
   stage: quick-checks
+  needs: []
   tags:
     - smalljob
 
@@ -650,7 +651,6 @@ misc:
     - bash util/xmllint-html.sh
     # Check dangling symlinks in the repository
     - if find . -xtype l | grep .; then exit 1; fi
-  needs: []
   artifacts:
     paths:
       - checklibs.out
@@ -659,7 +659,6 @@ misc:
 black:
   <<: *quick_checks_job
   <<: *python_triggering_rules
-  needs: []
   script:
     - black $(git ls-files '*.py')
     - git diff > black.patch
@@ -673,7 +672,6 @@ black:
 vulture:
   <<: *quick_checks_job
   <<: *python_triggering_rules
-  needs: []
   script:
     - vulture --exclude "*ans.py,conftest.py,get_algorithms.py,re_compile_checker.py,isctest" --ignore-names "after_servers_start,bootstrap,pytestmark,autouse_*" bin/tests/system/
 
@@ -698,7 +696,6 @@ ci-orphaned-anchors:
   script:
     - *git_clone_bind9-qa
     - bind9-qa/ci-orphaned-anchors/check-orphaned-anchors-ci.py .gitlab-ci.yml
-  needs: []
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
       changes:
@@ -716,7 +713,6 @@ clang-format:
     - *rule_mr_manual
     - *rule_tag
     - *rule_source_other_than_mr
-  needs: []
   script:
     - if [ -r .clang-format ]; then "${CLANG_FORMAT}" -i -style=file $(git ls-files '*.c' '*.h'); fi
     - git diff > clang-format.patch
@@ -759,7 +755,6 @@ doctest:
 pylint:
   <<: *quick_checks_job
   <<: *python_triggering_rules
-  needs: []
   variables:
     PYTHONPATH: "${CI_PROJECT_DIR}/bin/tests/system"
   script:
@@ -769,7 +764,6 @@ pylint:
 
 reuse:
   <<: *quick_checks_job
-  needs: []
   image:
     name: docker.io/fsfe/reuse:latest
     entrypoint: [""]
@@ -779,7 +773,6 @@ reuse:
 shfmt:
   <<: *quick_checks_job
   <<: *shell_triggering_rules
-  needs: []
   script:
     - shfmt -w -i 2 -ci -bn . $(find . -name "*.sh.in")
     - git diff > shfmt.patch
@@ -792,7 +785,6 @@ shfmt:
 
 danger:
   <<: *quick_checks_job
-  needs: []
   script:
     - pip install git+https://gitlab.isc.org/isc-projects/hazard.git
     - hazard
@@ -818,7 +810,6 @@ linkcheck:
       - doc/arm/linkcheck_output/
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
-  needs: []
 
 generate-stress-test-configs:
   <<: *quick_checks_job
@@ -828,7 +819,6 @@ generate-stress-test-configs:
   artifacts:
     paths:
       - stress-test-configs.yml
-  needs: []
 
 generate-tsan-stress-test-configs:
   <<: *quick_checks_job
@@ -837,7 +827,6 @@ generate-tsan-stress-test-configs:
   artifacts:
     paths:
       - tsan-stress-test-configs.yml
-  needs: []
   when: manual
 
 # Jobs in the other-checks stage
