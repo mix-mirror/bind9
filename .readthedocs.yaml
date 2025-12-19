@@ -9,6 +9,8 @@ build:
   jobs:
     pre_build:
       - python -m pip install -r https://gitlab.isc.org/isc-projects/bind9/-/raw/main/doc/arm/requirements.txt
+    post_checkout:
+      - git checkout $READTHEDOCS_VERSION_NAME
 
 # Build documentation in doc/arm/ with Sphinx
 sphinx:
