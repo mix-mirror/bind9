@@ -534,10 +534,10 @@ dns_view_thaw(dns_view_t *view);
 
 isc_result_t
 dns_view_find(dns_view_t *view, const dns_name_t *name, dns_rdatatype_t type,
-	      isc_stdtime_t now, unsigned int options, bool use_hints,
-	      bool use_static_stub, dns_db_t **dbp, dns_dbnode_t **nodep,
-	      dns_name_t *foundname, dns_rdataset_t *rdataset,
-	      dns_rdataset_t *sigrdataset);
+	      isc_stdtime_t now, unsigned int options, bool use_deleg,
+	      bool use_hints, bool use_static_stub, dns_db_t **dbp,
+	      dns_dbnode_t **nodep, dns_name_t *foundname,
+	      dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset);
 /*%<
  * Find an rdataset whose owner name is 'name', and whose type is
  * 'type'.
@@ -586,6 +586,9 @@ dns_view_find(dns_view_t *view, const dns_name_t *name, dns_rdatatype_t type,
  *
  *\li	If 'sigrdataset' is not NULL, and there is a SIG rdataset which
  *	covers 'type', then 'sigrdataset' will be bound to it.
+ *
+ *\li   If 'use_deleg' is true, the delegation database will be used when
+ *      attempting to look up the cache.
  *
  * Requires:
  *

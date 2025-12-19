@@ -353,7 +353,7 @@ maybe_expire_entry(dns_adbentry_t *adbentry, isc_stdtime_t now);
 static void
 expire_entry(dns_adbentry_t *adbentry);
 static isc_result_t
-dbfind_name(dns_adbname_t *, isc_stdtime_t, dns_rdatatype_t);
+dbfind_name(dns_adbname_t *, const dns_name_t *, isc_stdtime_t, dns_rdatatype_t);
 static isc_result_t
 fetch_name(dns_adbname_t *, bool, bool, unsigned int, isc_counter_t *qc,
 	   isc_counter_t *gqc, fetchctx_t *parent, dns_rdatatype_t);
@@ -1713,10 +1713,10 @@ dns_adb_shutdown(dns_adb_t *adb) {
  */
 isc_result_t
 dns_adb_createfind(dns_adb_t *adb, isc_loop_t *loop, isc_job_cb cb, void *cbarg,
-		   const dns_name_t *name, unsigned int options,
-		   isc_stdtime_t now, in_port_t port, unsigned int depth,
-		   isc_counter_t *qc, isc_counter_t *gqc, fetchctx_t *parent,
-		   dns_adbfind_t **findp) {
+		   const dns_name_t *name, const dns_name_t *domain,
+		   unsigned int options, isc_stdtime_t now, in_port_t port,
+		   unsigned int depth, isc_counter_t *qc, isc_counter_t *gqc,
+		   fetchctx_t *parent, dns_adbfind_t **findp) {
 	isc_result_t result = ISC_R_UNEXPECTED;
 	dns_adbfind_t *find = NULL;
 	dns_adbname_t *adbname = NULL;
@@ -1801,7 +1801,7 @@ dns_adb_createfind(dns_adb_t *adb, isc_loop_t *loop, isc_job_cb cb, void *cbarg,
 	if (!NAME_HAS_V4(adbname) && EXPIRE_OK(adbname->expire_v4, now) &&
 	    WANT_INET(wanted_addresses))
 	{
-		result = dbfind_name(adbname, now, dns_rdatatype_a);
+		result = dbfind_name(adbname, domain, now, dns_rdatatype_a);
 		switch (result) {
 		case ISC_R_SUCCESS:
 			/* Found an A; now we proceed to check for AAAA */
@@ -1853,7 +1853,7 @@ dns_adb_createfind(dns_adb_t *adb, isc_loop_t *loop, isc_job_cb cb, void *cbarg,
 	if (!NAME_HAS_V6(adbname) && EXPIRE_OK(adbname->expire_v6, now) &&
 	    WANT_INET6(wanted_addresses))
 	{
-		result = dbfind_name(adbname, now, dns_rdatatype_aaaa);
+		result = dbfind_name(adbname, domain, now, dns_rdatatype_aaaa);
 		switch (result) {
 		case ISC_R_SUCCESS:
 			DP(DEF_LEVEL,
@@ -2395,7 +2395,8 @@ dns_adb_dumpquota(dns_adb_t *adb, isc_buffer_t *buf) {
 }
 
 static isc_result_t
-dbfind_name(dns_adbname_t *adbname, isc_stdtime_t now, dns_rdatatype_t rdtype) {
+dbfind_name(dns_adbname_t *adbname, const dns_name_t *domain, isc_stdtime_t now,
+	    dns_rdatatype_t rdtype) {
 	isc_result_t result;
 	dns_rdataset_t rdataset;
 	dns_adb_t *adb = NULL;
@@ -2430,10 +2431,28 @@ dbfind_name(dns_adbname_t *adbname, isc_stdtime_t now, dns_rdatatype_t rdtype) {
 	if ((adbname->type & DNS_ADBFIND_STARTATZONE) != 0) {
 		options |= DNS_DBFIND_PENDINGOK;
 	}
-	result = dns_view_find(adb->view, adbname->name, rdtype, now, options,
-			       true,
-			       (adbname->type & DNS_ADBFIND_STARTATZONE) != 0,
-			       NULL, NULL, fname, &rdataset, NULL);
+
+	char b[512];
+	char bt[512];
+	dns_rdatatype_format(rdtype, bt, 512);
+	if (domain != NULL && !dns_name_equal(domain, dns_rootname) &&
+	    dns_name_issubdomain(adbname->name, domain))
+	{
+		dns_name_format(domain, b, 512);
+		result = dns_view_find(
+			adb->view, domain, rdtype, now, options, true, true,
+			(adbname->type & DNS_ADBFIND_STARTATZONE) != 0, NULL,
+			NULL, fname, &rdataset, NULL);
+
+	} else {
+		dns_name_format(adbname->name, b, 512);
+		result = dns_view_find(
+			adb->view, adbname->name, rdtype, now, options, false,
+			true, (adbname->type & DNS_ADBFIND_STARTATZONE) != 0,
+			NULL, NULL, fname, &rdataset, NULL);
+	}
+	fprintf(stderr, "DEBUGDELEG dbfind_name %s %s %s\n", bt, b,
+		isc_result_totext(result));
 
 	switch (result) {
 	case DNS_R_GLUE:

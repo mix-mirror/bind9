@@ -2143,6 +2143,10 @@ run_server(void *arg) {
 	dns_view_setmaxrestarts(view, restarts);
 	dns_view_setmaxqueries(view, maxtotal);
 
+	CHECK(dns_db_create(isc_g_mctx, CACHEDB_DEFAULT, dns_rootname,
+			    dns_dbtype_cache, dns_rdataclass_in, 0, NULL,
+			    &view->delegdb));
+
 	CHECK(dns_rootns_create(isc_g_mctx, dns_rdataclass_in, hintfile,
 				&roothints));
 	dns_view_sethints(view, roothints);
