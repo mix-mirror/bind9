@@ -838,6 +838,15 @@ generate-stress-test-configs:
       - stress-test-configs.yml
   needs: []
 
+generate-tsan-stress-test-configs:
+  <<: *quick_checks_job
+  script:
+    - util/generate-tsan-stress-jobs.py > tsan-stress-test-configs.yml
+  artifacts:
+    paths:
+      - tsan-stress-test-configs.yml
+  when: manual
+
 # Jobs in the other-checks stage
 
 checkbashisms:
@@ -1636,16 +1645,6 @@ unit:clang:tsan:
   needs:
     - job: clang:tsan
       artifacts: true
-
-generate-tsan-stress-test-configs:
-  <<: *quick_checks_job
-  script:
-    - util/generate-tsan-stress-jobs.py > tsan-stress-test-configs.yml
-  artifacts:
-    paths:
-      - tsan-stress-test-configs.yml
-  needs: []
-  when: manual
 
 tsan:stress:
   <<: *default_triggering_rules
