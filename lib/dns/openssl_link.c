@@ -154,4 +154,21 @@ dst__openssl_keypair_destroy(dst_key_t *key) {
 	key->keydata.pkeypair.priv = NULL;
 }
 
+EVP_SIGNATURE *sig_alg_ml_dsa_44 = NULL;
+EVP_SIGNATURE *sig_alg_ml_dsa_65 = NULL;
+EVP_SIGNATURE *sig_alg_ml_dsa_87 = NULL;
+
+void
+dns__openssl_initialize(void) {
+	sig_alg_ml_dsa_44 = EVP_SIGNATURE_fetch(NULL, "ML-DSA-44", NULL);
+	sig_alg_ml_dsa_65 = EVP_SIGNATURE_fetch(NULL, "ML-DSA-65", NULL);
+	sig_alg_ml_dsa_87 = EVP_SIGNATURE_fetch(NULL, "ML-DSA-87", NULL);
+}
+void
+dns__openssl_shutdown(void) {
+	EVP_SIGNATURE_free(sig_alg_ml_dsa_87);
+	EVP_SIGNATURE_free(sig_alg_ml_dsa_65);
+	EVP_SIGNATURE_free(sig_alg_ml_dsa_44);
+}
+
 /*! \file */

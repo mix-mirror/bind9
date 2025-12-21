@@ -24,6 +24,10 @@
 #include <isc/result.h>
 #include <isc/tls.h>
 
+extern EVP_SIGNATURE *sig_alg_ml_dsa_44;
+extern EVP_SIGNATURE *sig_alg_ml_dsa_65;
+extern EVP_SIGNATURE *sig_alg_ml_dsa_87;
+
 #define dst__openssl_toresult(fallback)                                    \
 	isc__tlserr2result(ISC_LOGCATEGORY_INVALID, ISC_LOGMODULE_INVALID, \
 			   NULL, fallback, __FILE__, __LINE__)
@@ -46,3 +50,8 @@ dst__openssl_keypair_isprivate(const dst_key_t *key);
 
 void
 dst__openssl_keypair_destroy(dst_key_t *key);
+
+void
+dns__openssl_initialize(void);
+void
+dns__openssl_shutdown(void);

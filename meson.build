@@ -622,6 +622,30 @@ if cc.has_header_symbol('openssl/evp.h', 'NID_ED448', dependencies: openssl_dep)
     config.set('HAVE_OPENSSL_ED448', 1)
 endif
 
+# Check for ML-DSA support (requires OpenSSL 3.5+ with ML-DSA support)
+if cc.has_function('EVP_PKEY_CTX_new_from_name', dependencies: openssl_dep, prefix: '#include <openssl/evp.h>')
+    # Test if ML-DSA-44 is available by attempting to create a context
+    # ML-DSA was added in OpenSSL 3.5, so we check for the algorithm name
+    mldsa_test = '''
+    #include <openssl/evp.h>
+    #include <openssl/opensslv.h>
+    #if OPENSSL_VERSION_NUMBER < 0x30050000L
+    #error "ML-DSA requires OpenSSL 3.5 or later"
+    #endif
+    int main() {
+        EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new_from_name(NULL, "ML-DSA-44", NULL);
+        if (ctx != NULL) {
+            EVP_PKEY_CTX_free(ctx);
+            return 0;
+        }
+        return 1;
+    }
+    '''
+    if cc.compiles(mldsa_test, dependencies: openssl_dep, name: 'ML-DSA-44')
+        config.set('HAVE_OPENSSL_MLDSA44', 1)
+    endif
+endif
+
 foreach fn, header : {
     'ERR_get_error_all': '#include <openssl/err.h>',
     'BIO_read_ex': '#include <openssl/bio.h>',

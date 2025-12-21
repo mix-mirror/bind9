@@ -93,6 +93,9 @@ typedef enum dst_algorithm {
 	DST_ALG_ECDSA384 = 14,
 	DST_ALG_ED25519 = 15,
 	DST_ALG_ED448 = 16,
+	DST_ALG_MLDSA44 = 17,
+	DST_ALG_MLDSA65 = 18,
+	DST_ALG_MLDSA87 = 19,
 
 	/*
 	 * Do not renumber HMAC algorithms as they are used externally to named

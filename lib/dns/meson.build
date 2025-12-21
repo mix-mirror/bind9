@@ -127,6 +127,7 @@ dns_srcset.add(
         'openssl_link.c',
         'opensslecdsa_link.c',
         'openssleddsa_link.c',
+	'opensslmldsa_link.c',
         'opensslrsa_link.c',
         'order.c',
         'peer.c',
