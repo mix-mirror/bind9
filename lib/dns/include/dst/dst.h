@@ -23,6 +23,7 @@
 
 #include <dns/ds.h>
 #include <dns/dsdigest.h>
+#include <dns/keyvalues.h>
 #include <dns/name.h>
 #include <dns/secalg.h>
 #include <dns/types.h>
@@ -93,6 +94,7 @@ typedef enum dst_algorithm {
 	DST_ALG_ECDSA384 = 14,
 	DST_ALG_ED25519 = 15,
 	DST_ALG_ED448 = 16,
+	DST_ALG_MLDSA44 = 17,
 
 	/*
 	 * Do not renumber HMAC algorithms as they are used externally to named
@@ -121,14 +123,15 @@ typedef enum dst_algorithm {
 	DST_MAX_ALGS = 258,
 } dst_algorithm_t;
 
-/*% A buffer of this size is large enough to hold any key */
-#define DST_KEY_MAXSIZE 1280
+/*% A buffer of this size is large enough to hold any key (ML-DSA-44)
+ * We only support ML-DSA-44, so use its private key size. */
+#define DST_KEY_MAXSIZE DNS_PRIVKEY_MLDSA44SIZE
 
 /*%
  * A buffer of this size is large enough to hold the textual representation
  * of any key
  */
-#define DST_KEY_MAXTEXTSIZE 2048
+#define DST_KEY_MAXTEXTSIZE 8192
 
 /*% 'Type' for dst_read_key() */
 #define DST_TYPE_KEY	  0x1000000 /* KEY key */

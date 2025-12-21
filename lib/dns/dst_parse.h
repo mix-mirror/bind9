@@ -32,7 +32,7 @@
 
 #include <dst/dst.h>
 
-#define MAXFIELDSIZE 512
+#define MAXFIELDSIZE 32768
 
 /*
  * Maximum number of fields in a private file is 18 (12 algorithm-
@@ -66,6 +66,12 @@
 #define TAG_EDDSA_PRIVATEKEY ((DST_ALG_ED25519 << TAG_SHIFT) + 0)
 #define TAG_EDDSA_ENGINE     ((DST_ALG_ED25519 << TAG_SHIFT) + 1)
 #define TAG_EDDSA_LABEL	     ((DST_ALG_ED25519 << TAG_SHIFT) + 2)
+
+/* ML-DSA (CRYSTALS-Dilithium) tag definitions */
+#define MLDSA_NTAGS	     4
+#define TAG_MLDSA_PRIVATEKEY ((DST_ALG_MLDSA44 << TAG_SHIFT) + 0)
+#define TAG_MLDSA_ENGINE     ((DST_ALG_MLDSA44 << TAG_SHIFT) + 1)
+#define TAG_MLDSA_LABEL	     ((DST_ALG_MLDSA44 << TAG_SHIFT) + 2)
 
 #define OLD_HMACMD5_NTAGS 1
 #define HMACMD5_NTAGS	  2

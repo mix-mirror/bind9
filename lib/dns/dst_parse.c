@@ -106,6 +106,10 @@ static struct parse_map map[] = { { TAG_RSA_MODULUS, "Modulus:" },
 				  { TAG_EDDSA_ENGINE, "Engine:" },
 				  { TAG_EDDSA_LABEL, "Label:" },
 
+				  { TAG_MLDSA_PRIVATEKEY, "PrivateKey:" },
+				  { TAG_MLDSA_ENGINE, "Engine:" },
+				  { TAG_MLDSA_LABEL, "Label:" },
+
 				  { TAG_HMACMD5_KEY, "Key:" },
 				  { TAG_HMACMD5_BITS, "Bits:" },
 
@@ -291,6 +295,40 @@ check_eddsa(const dst_private_t *priv, bool external) {
 }
 
 static isc_result_t
+check_mldsa(const dst_private_t *priv, bool external) {
+	int i, j;
+	bool have[MLDSA_NTAGS];
+	bool ok;
+	unsigned int mask;
+
+	if (external) {
+		return (priv->nelements == 0) ? ISC_R_SUCCESS
+					      : DST_R_INVALIDPRIVATEKEY;
+	}
+
+	for (i = 0; i < MLDSA_NTAGS; i++) {
+		have[i] = false;
+	}
+	for (j = 0; j < priv->nelements; j++) {
+		for (i = 0; i < MLDSA_NTAGS; i++) {
+			if (priv->elements[j].tag == TAG(DST_ALG_MLDSA44, i)) {
+				break;
+			}
+		}
+		if (i == MLDSA_NTAGS) {
+			return DST_R_INVALIDPRIVATEKEY;
+		}
+		have[i] = true;
+	}
+
+	mask = (1ULL << TAG_SHIFT) - 1;
+
+	ok = have[TAG_MLDSA_LABEL & mask] || have[TAG_MLDSA_PRIVATEKEY & mask];
+
+	return ok ? ISC_R_SUCCESS : DST_R_INVALIDPRIVATEKEY;
+}
+
+static isc_result_t
 check_hmac_md5(const dst_private_t *priv, bool old) {
 	int i, j;
 
@@ -360,6 +398,8 @@ check_data(const dst_private_t *priv, const unsigned int alg, bool old,
 	case DST_ALG_ED25519:
 	case DST_ALG_ED448:
 		return check_eddsa(priv, external);
+	case DST_ALG_MLDSA44:
+		return check_mldsa(priv, external);
 	case DST_ALG_HMACMD5:
 		return check_hmac_md5(priv, old);
 	case DST_ALG_HMACSHA1:
@@ -412,9 +452,9 @@ dst__privstruct_parse(dst_key_t *key, unsigned int alg, isc_lex_t *lex,
 	memset(priv->elements, 0, sizeof(priv->elements));
 
 #define NEXTTOKEN(lex, opt, token)                        \
-	do {                                              \
+	{                                                 \
 		CHECK(isc_lex_gettoken(lex, opt, token)); \
-	} while (0)
+	}
 
 #define READLINE(lex, opt, token)                           \
 	do {                                                \
@@ -674,6 +714,9 @@ dst__privstruct_writefile(const dst_key_t *key, const dst_private_t *priv,
 		break;
 	case DST_ALG_ED448:
 		fprintf(fp, "(ED448)\n");
+		break;
+	case DST_ALG_MLDSA44:
+		fprintf(fp, "(MLDSA44)\n");
 		break;
 	case DST_ALG_HMACMD5:
 		fprintf(fp, "(HMAC_MD5)\n");

@@ -28,86 +28,69 @@
 
 #include <dns/keyvalues.h>
 
+#include "dst/dst.h"
 #include "dst_internal.h"
 #include "dst_openssl.h"
 #include "dst_parse.h"
-#include "openssl_shim.h"
 
-#ifndef NID_ED25519
-#error "Ed25519 group is not known (NID_ED25519)"
-#endif /* ifndef NID_ED25519 */
-
-#if HAVE_OPENSSL_ED448
-#ifndef NID_ED448
-#error "Ed448 group is not known (NID_ED448)"
-#endif /* ifndef NID_ED448 */
-#endif /* HAVE_OPENSSL_ED448 */
-
-typedef struct eddsa_alginfo {
+typedef struct mldsa_alginfo {
 	int pkey_type, nid;
-	unsigned int key_size, sig_size;
-} eddsa_alginfo_t;
+	size_t key_size, sig_size;
+} mldsa_alginfo_t;
 
-static const eddsa_alginfo_t *
-openssleddsa_alg_info(unsigned int key_alg) {
-	if (key_alg == DST_ALG_ED25519) {
-		static const eddsa_alginfo_t ed25519_alginfo = {
-			.pkey_type = EVP_PKEY_ED25519,
-			.nid = NID_ED25519,
-			.key_size = DNS_KEY_ED25519SIZE,
-			.sig_size = DNS_SIG_ED25519SIZE,
+static const mldsa_alginfo_t *
+opensslmldsa_alg_info(unsigned int key_alg) {
+	if (key_alg == DST_ALG_MLDSA44) {
+		static const mldsa_alginfo_t mldsa44_alginfo = {
+			.pkey_type = EVP_PKEY_ML_DSA_44,
+			.nid = NID_ML_DSA_44,
+			.key_size = DNS_KEY_MLDSA44SIZE,
+			.sig_size = DNS_SIG_MLDSA44SIZE,
 		};
-		return &ed25519_alginfo;
+		return &mldsa44_alginfo;
 	}
-#if HAVE_OPENSSL_ED448
-	if (key_alg == DST_ALG_ED448) {
-		static const eddsa_alginfo_t ed448_alginfo = {
-			.pkey_type = EVP_PKEY_ED448,
-			.nid = NID_ED448,
-			.key_size = DNS_KEY_ED448SIZE,
-			.sig_size = DNS_SIG_ED448SIZE,
-		};
-		return &ed448_alginfo;
-	}
-#endif /* HAVE_OPENSSL_ED448 */
 	return NULL;
 }
 
 static isc_result_t
-raw_key_to_ossl(const eddsa_alginfo_t *alginfo, int private,
+raw_key_to_ossl(const mldsa_alginfo_t *alginfo, int private,
 		const unsigned char *key, size_t *key_len, EVP_PKEY **pkey) {
 	isc_result_t result;
 	int pkey_type = alginfo->pkey_type;
-	size_t len = alginfo->key_size;
+	size_t len = private ? DNS_PRIVKEY_MLDSA44SIZE : alginfo->key_size;
 
 	result = (private ? DST_R_INVALIDPRIVATEKEY : DST_R_INVALIDPUBLICKEY);
-	if (*key_len < len) {
+
+	if (*key_len < len && !private) {
 		return result;
 	}
 
 	if (private) {
-		*pkey = EVP_PKEY_new_raw_private_key(pkey_type, NULL, key, len);
+		*pkey = EVP_PKEY_new_raw_private_key(pkey_type, NULL, key,
+						     *key_len);
 	} else {
 		*pkey = EVP_PKEY_new_raw_public_key(pkey_type, NULL, key, len);
 	}
+
 	if (*pkey == NULL) {
 		return dst__openssl_toresult(result);
 	}
 
-	*key_len = len;
+	if (!private) {
+		*key_len = len;
+	}
 	return ISC_R_SUCCESS;
 }
 
 static isc_result_t
-openssleddsa_fromlabel(dst_key_t *key, const char *label, const char *pin);
+opensslmldsa_fromlabel(dst_key_t *key, const char *label, const char *pin);
 
 static isc_result_t
-openssleddsa_createctx(dst_key_t *key, dst_context_t *dctx) {
+opensslmldsa_createctx(dst_key_t *key ISC_ATTR_UNUSED, dst_context_t *dctx) {
 	isc_buffer_t *buf = NULL;
-	const eddsa_alginfo_t *alginfo =
-		openssleddsa_alg_info(dctx->key->key_alg);
+	const mldsa_alginfo_t *alginfo =
+		opensslmldsa_alg_info(dctx->key->key_alg);
 
-	UNUSED(key);
 	REQUIRE(alginfo != NULL);
 
 	isc_buffer_allocate(dctx->mctx, &buf, 64);
@@ -117,10 +100,10 @@ openssleddsa_createctx(dst_key_t *key, dst_context_t *dctx) {
 }
 
 static void
-openssleddsa_destroyctx(dst_context_t *dctx) {
+opensslmldsa_destroyctx(dst_context_t *dctx) {
 	isc_buffer_t *buf = (isc_buffer_t *)dctx->ctxdata.generic;
-	const eddsa_alginfo_t *alginfo =
-		openssleddsa_alg_info(dctx->key->key_alg);
+	const mldsa_alginfo_t *alginfo =
+		opensslmldsa_alg_info(dctx->key->key_alg);
 
 	REQUIRE(alginfo != NULL);
 	if (buf != NULL) {
@@ -130,14 +113,14 @@ openssleddsa_destroyctx(dst_context_t *dctx) {
 }
 
 static isc_result_t
-openssleddsa_adddata(dst_context_t *dctx, const isc_region_t *data) {
+opensslmldsa_adddata(dst_context_t *dctx, const isc_region_t *data) {
 	isc_buffer_t *buf = (isc_buffer_t *)dctx->ctxdata.generic;
 	isc_buffer_t *nbuf = NULL;
 	isc_region_t r;
 	unsigned int length;
 	isc_result_t result;
-	const eddsa_alginfo_t *alginfo =
-		openssleddsa_alg_info(dctx->key->key_alg);
+	const mldsa_alginfo_t *alginfo =
+		opensslmldsa_alg_info(dctx->key->key_alg);
 
 	REQUIRE(alginfo != NULL);
 
@@ -158,82 +141,116 @@ openssleddsa_adddata(dst_context_t *dctx, const isc_region_t *data) {
 }
 
 static isc_result_t
-openssleddsa_sign(dst_context_t *dctx, isc_buffer_t *sig) {
+opensslmldsa_sign(dst_context_t *dctx, isc_buffer_t *sig) {
 	isc_result_t result;
 	dst_key_t *key = dctx->key;
 	isc_region_t tbsreg;
 	isc_region_t sigreg;
 	EVP_PKEY *pkey = key->keydata.pkeypair.priv;
-	EVP_MD_CTX *ctx = EVP_MD_CTX_new();
+	EVP_MD_CTX *ctx = NULL;
 	isc_buffer_t *buf = (isc_buffer_t *)dctx->ctxdata.generic;
-	const eddsa_alginfo_t *alginfo = openssleddsa_alg_info(key->key_alg);
+	const mldsa_alginfo_t *alginfo = opensslmldsa_alg_info(key->key_alg);
 	size_t siglen;
 
 	REQUIRE(alginfo != NULL);
 
-	if (ctx == NULL) {
-		return ISC_R_NOMEMORY;
+	if (pkey == NULL) {
+		return DST_R_NULLKEY;
 	}
 
-	siglen = alginfo->sig_size;
-	isc_buffer_availableregion(sig, &sigreg);
-	if (sigreg.length < (unsigned int)siglen) {
-		CLEANUP(ISC_R_NOSPACE);
+	EVP_PKEY_CTX *sctx = EVP_PKEY_CTX_new_from_pkey(NULL, pkey, NULL);
+	EVP_SIGNATURE *sig_alg = NULL;
+
+	/* FIXME: do this once in the initializer */
+	switch (alginfo->pkey_type) {
+	case EVP_PKEY_ML_DSA_44:
+		sig_alg = sig_alg_ml_dsa_44;
+		break;
+	default:
+		UNREACHABLE();
 	}
 
 	isc_buffer_usedregion(buf, &tbsreg);
 
-	if (EVP_DigestSignInit(ctx, NULL, NULL, NULL, pkey) != 1) {
-		CLEANUP(dst__openssl_toresult3(
-			dctx->category, "EVP_DigestSignInit", ISC_R_FAILURE));
+	if (EVP_PKEY_sign_message_init(sctx, sig_alg, NULL) != 1) {
+		result = dst__openssl_toresult3(dctx->category,
+						"EVP_PKEY_sign_message_init",
+						DST_R_SIGNFAILURE);
+		goto cleanup;
 	}
-	if (EVP_DigestSign(ctx, sigreg.base, &siglen, tbsreg.base,
-			   tbsreg.length) != 1)
+
+	if (EVP_PKEY_sign(sctx, NULL, &siglen, tbsreg.base, tbsreg.length) != 1)
 	{
-		CLEANUP(dst__openssl_toresult3(dctx->category, "EVP_DigestSign",
-					       DST_R_SIGNFAILURE));
+		result = dst__openssl_toresult3(dctx->category, "EVP_PKEY_sign",
+						DST_R_SIGNFAILURE);
+		goto cleanup;
 	}
+
+	isc_buffer_availableregion(sig, &sigreg);
+	if (sigreg.length < siglen) {
+		EVP_MD_CTX_free(ctx);
+		result = ISC_R_NOSPACE;
+		goto cleanup;
+	}
+
+	if (EVP_PKEY_sign(sctx, sigreg.base, &siglen, tbsreg.base,
+			  tbsreg.length) != 1)
+	{
+		result = dst__openssl_toresult3(dctx->category, "EVP_PKEY_sign",
+						DST_R_SIGNFAILURE);
+		goto cleanup;
+	}
+
 	isc_buffer_add(sig, (unsigned int)siglen);
 	result = ISC_R_SUCCESS;
 
 cleanup:
-	EVP_MD_CTX_free(ctx);
 	isc_buffer_free(&buf);
 	dctx->ctxdata.generic = NULL;
+
+	EVP_PKEY_CTX_free(sctx);
 
 	return result;
 }
 
 static isc_result_t
-openssleddsa_verify(dst_context_t *dctx, const isc_region_t *sig) {
+opensslmldsa_verify(dst_context_t *dctx, const isc_region_t *sig) {
 	isc_result_t result;
 	dst_key_t *key = dctx->key;
 	int status;
 	isc_region_t tbsreg;
 	EVP_PKEY *pkey = key->keydata.pkeypair.pub;
-	EVP_MD_CTX *ctx = EVP_MD_CTX_new();
 	isc_buffer_t *buf = (isc_buffer_t *)dctx->ctxdata.generic;
-	const eddsa_alginfo_t *alginfo = openssleddsa_alg_info(key->key_alg);
+	const mldsa_alginfo_t *alginfo = opensslmldsa_alg_info(key->key_alg);
 
 	REQUIRE(alginfo != NULL);
 
-	if (ctx == NULL) {
-		return dst__openssl_toresult(ISC_R_NOMEMORY);
+	if (pkey == NULL) {
+		return DST_R_NULLKEY;
 	}
 
-	if (sig->length != alginfo->sig_size) {
-		CLEANUP(DST_R_VERIFYFAILURE);
+	EVP_PKEY_CTX *sctx = EVP_PKEY_CTX_new_from_pkey(NULL, pkey, NULL);
+	EVP_SIGNATURE *sig_alg = NULL;
+
+	switch (alginfo->pkey_type) {
+	case EVP_PKEY_ML_DSA_44:
+		sig_alg = sig_alg_ml_dsa_44;
+		break;
+	default:
+		UNREACHABLE();
 	}
 
 	isc_buffer_usedregion(buf, &tbsreg);
 
-	if (EVP_DigestVerifyInit(ctx, NULL, NULL, NULL, pkey) != 1) {
-		CLEANUP(dst__openssl_toresult3(
-			dctx->category, "EVP_DigestVerifyInit", ISC_R_FAILURE));
+	if (EVP_PKEY_verify_message_init(sctx, sig_alg, NULL) != 1) {
+		result = dst__openssl_toresult3(dctx->category,
+						"EVP_PKEY_verify_message_init",
+						DST_R_VERIFYFAILURE);
+		goto cleanup;
 	}
 
-	status = EVP_DigestVerify(ctx, sig->base, sig->length, tbsreg.base,
-				  tbsreg.length);
+	status = EVP_PKEY_verify(sctx, sig->base, sig->length, tbsreg.base,
+				 tbsreg.length);
 
 	switch (status) {
 	case 1:
@@ -243,31 +260,28 @@ openssleddsa_verify(dst_context_t *dctx, const isc_region_t *sig) {
 		result = dst__openssl_toresult(DST_R_VERIFYFAILURE);
 		break;
 	default:
-		result = dst__openssl_toresult3(dctx->category,
-						"EVP_DigestVerify",
-						DST_R_VERIFYFAILURE);
+		result = dst__openssl_toresult3(
+			dctx->category, "EVP_PKEY_verify", DST_R_VERIFYFAILURE);
 		break;
 	}
 
 cleanup:
-	EVP_MD_CTX_free(ctx);
 	isc_buffer_free(&buf);
 	dctx->ctxdata.generic = NULL;
+	EVP_PKEY_CTX_free(sctx);
 
 	return result;
 }
 
 static isc_result_t
-openssleddsa_generate(dst_key_t *key, int unused, void (*callback)(int)) {
+opensslmldsa_generate(dst_key_t *key, int unused ISC_ATTR_UNUSED,
+		      void (*callback ISC_ATTR_UNUSED)(int)) {
 	isc_result_t result;
 	EVP_PKEY *pkey = NULL;
 	EVP_PKEY_CTX *ctx = NULL;
-	const eddsa_alginfo_t *alginfo = openssleddsa_alg_info(key->key_alg);
-	int status;
+	const mldsa_alginfo_t *alginfo = opensslmldsa_alg_info(key->key_alg);
 
 	REQUIRE(alginfo != NULL);
-	UNUSED(unused);
-	UNUSED(callback);
 
 	ctx = EVP_PKEY_CTX_new_id(alginfo->nid, NULL);
 	if (ctx == NULL) {
@@ -275,16 +289,16 @@ openssleddsa_generate(dst_key_t *key, int unused, void (*callback)(int)) {
 					      DST_R_OPENSSLFAILURE);
 	}
 
-	status = EVP_PKEY_keygen_init(ctx);
-	if (status != 1) {
-		CLEANUP(dst__openssl_toresult2("EVP_PKEY_keygen_init",
-					       DST_R_OPENSSLFAILURE));
+	if (EVP_PKEY_keygen_init(ctx) != 1) {
+		result = dst__openssl_toresult2("EVP_PKEY_keygen_init",
+						DST_R_OPENSSLFAILURE);
+		goto cleanup;
 	}
 
-	status = EVP_PKEY_keygen(ctx, &pkey);
-	if (status != 1) {
-		CLEANUP(dst__openssl_toresult2("EVP_PKEY_keygen",
-					       DST_R_OPENSSLFAILURE));
+	if (EVP_PKEY_keygen(ctx, &pkey) != 1) {
+		result = dst__openssl_toresult2("EVP_PKEY_keygen",
+						DST_R_OPENSSLFAILURE);
+		goto cleanup;
 	}
 
 	key->key_size = alginfo->key_size * 8;
@@ -298,8 +312,8 @@ cleanup:
 }
 
 static isc_result_t
-openssleddsa_todns(const dst_key_t *key, isc_buffer_t *data) {
-	const eddsa_alginfo_t *alginfo = openssleddsa_alg_info(key->key_alg);
+opensslmldsa_todns(const dst_key_t *key, isc_buffer_t *data) {
+	const mldsa_alginfo_t *alginfo = opensslmldsa_alg_info(key->key_alg);
 	EVP_PKEY *pkey = key->keydata.pkeypair.pub;
 	isc_region_t r;
 	size_t len;
@@ -322,8 +336,8 @@ openssleddsa_todns(const dst_key_t *key, isc_buffer_t *data) {
 }
 
 static isc_result_t
-openssleddsa_fromdns(dst_key_t *key, isc_buffer_t *data) {
-	const eddsa_alginfo_t *alginfo = openssleddsa_alg_info(key->key_alg);
+opensslmldsa_fromdns(dst_key_t *key, isc_buffer_t *data) {
+	const mldsa_alginfo_t *alginfo = opensslmldsa_alg_info(key->key_alg);
 	isc_region_t r;
 	size_t len;
 	EVP_PKEY *pkey = NULL;
@@ -345,8 +359,8 @@ openssleddsa_fromdns(dst_key_t *key, isc_buffer_t *data) {
 }
 
 static isc_result_t
-openssleddsa_tofile(const dst_key_t *key, const char *directory) {
-	const eddsa_alginfo_t *alginfo = openssleddsa_alg_info(key->key_alg);
+opensslmldsa_tofile(const dst_key_t *key, const char *directory) {
+	const mldsa_alginfo_t *alginfo = opensslmldsa_alg_info(key->key_alg);
 	isc_result_t result;
 	dst_private_t priv;
 	unsigned char *buf = NULL;
@@ -367,20 +381,27 @@ openssleddsa_tofile(const dst_key_t *key, const char *directory) {
 	i = 0;
 
 	if (dst__openssl_keypair_isprivate(key)) {
-		len = alginfo->key_size;
+		if (EVP_PKEY_get_raw_private_key(key->keydata.pkeypair.priv,
+						 NULL, &len) != 1)
+		{
+			result = dst__openssl_toresult(ISC_R_FAILURE);
+			goto cleanup;
+		}
 		buf = isc_mem_get(key->mctx, len);
 		if (EVP_PKEY_get_raw_private_key(key->keydata.pkeypair.priv,
 						 buf, &len) != 1)
 		{
-			CLEANUP(dst__openssl_toresult(ISC_R_FAILURE));
+			result = dst__openssl_toresult(ISC_R_FAILURE);
+			goto cleanup;
 		}
-		priv.elements[i].tag = TAG_EDDSA_PRIVATEKEY;
+		priv.elements[i].tag = TAG_MLDSA_PRIVATEKEY;
 		priv.elements[i].length = len;
 		priv.elements[i].data = buf;
 		i++;
 	}
+
 	if (key->label != NULL) {
-		priv.elements[i].tag = TAG_EDDSA_LABEL;
+		priv.elements[i].tag = TAG_MLDSA_LABEL;
 		priv.elements[i].length = (unsigned short)strlen(key->label) +
 					  1;
 		priv.elements[i].data = (unsigned char *)key->label;
@@ -399,8 +420,8 @@ cleanup:
 }
 
 static isc_result_t
-openssleddsa_parse(dst_key_t *key, isc_lex_t *lexer, dst_key_t *pub) {
-	const eddsa_alginfo_t *alginfo = openssleddsa_alg_info(key->key_alg);
+opensslmldsa_parse(dst_key_t *key, isc_lex_t *lexer, dst_key_t *pub) {
+	const mldsa_alginfo_t *alginfo = opensslmldsa_alg_info(key->key_alg);
 	dst_private_t priv;
 	isc_result_t result;
 	int i, privkey_index = -1;
@@ -412,31 +433,34 @@ openssleddsa_parse(dst_key_t *key, isc_lex_t *lexer, dst_key_t *pub) {
 	REQUIRE(alginfo != NULL);
 
 	/* read private key file */
-	CHECK(dst__privstruct_parse(key, DST_ALG_ED25519, lexer, mctx, &priv));
+	CHECK(dst__privstruct_parse(key, key->key_alg, lexer, mctx, &priv));
 
 	if (key->external) {
 		if (priv.nelements != 0) {
-			CLEANUP(DST_R_INVALIDPRIVATEKEY);
+			result = DST_R_INVALIDPRIVATEKEY;
+			goto cleanup;
 		}
 		if (pub == NULL) {
-			CLEANUP(DST_R_INVALIDPRIVATEKEY);
+			result = DST_R_INVALIDPRIVATEKEY;
+			goto cleanup;
 		}
 		key->keydata.pkeypair.priv = pub->keydata.pkeypair.priv;
 		key->keydata.pkeypair.pub = pub->keydata.pkeypair.pub;
 		pub->keydata.pkeypair.priv = NULL;
 		pub->keydata.pkeypair.pub = NULL;
-		CLEANUP(ISC_R_SUCCESS);
+		result = ISC_R_SUCCESS;
+		goto cleanup;
 	}
 
 	for (i = 0; i < priv.nelements; i++) {
 		switch (priv.elements[i].tag) {
-		case TAG_EDDSA_ENGINE:
+		case TAG_MLDSA_ENGINE:
 			/* The Engine: tag is explicitly ignored */
 			break;
-		case TAG_EDDSA_LABEL:
+		case TAG_MLDSA_LABEL:
 			label = (char *)priv.elements[i].data;
 			break;
-		case TAG_EDDSA_PRIVATEKEY:
+		case TAG_MLDSA_PRIVATEKEY:
 			privkey_index = i;
 			break;
 		default:
@@ -445,31 +469,36 @@ openssleddsa_parse(dst_key_t *key, isc_lex_t *lexer, dst_key_t *pub) {
 	}
 
 	if (label != NULL) {
-		CHECK(openssleddsa_fromlabel(key, label, NULL));
+		CHECK(opensslmldsa_fromlabel(key, label, NULL));
 		/* Check that the public component matches if given */
 		if (pub != NULL && EVP_PKEY_eq(key->keydata.pkeypair.pub,
 					       pub->keydata.pkeypair.pub) != 1)
 		{
-			CLEANUP(DST_R_INVALIDPRIVATEKEY);
+			result = DST_R_INVALIDPRIVATEKEY;
+			goto cleanup;
 		}
-		CLEANUP(ISC_R_SUCCESS);
+		result = ISC_R_SUCCESS;
+		goto cleanup;
 	}
 
 	if (privkey_index < 0) {
-		CLEANUP(DST_R_INVALIDPRIVATEKEY);
+		result = DST_R_INVALIDPRIVATEKEY;
+		goto cleanup;
 	}
 
 	len = priv.elements[privkey_index].length;
 	CHECK(raw_key_to_ossl(alginfo, 1, priv.elements[privkey_index].data,
 			      &len, &pkey));
+
 	/* Check that the public component matches if given */
 	if (pub != NULL && EVP_PKEY_eq(pkey, pub->keydata.pkeypair.pub) != 1) {
-		CLEANUP(DST_R_INVALIDPRIVATEKEY);
+		result = DST_R_INVALIDPRIVATEKEY;
+		goto cleanup;
 	}
 
 	key->keydata.pkeypair.priv = pkey;
 	key->keydata.pkeypair.pub = pkey;
-	key->key_size = len * 8;
+	key->key_size = alginfo->key_size * 8;
 	pkey = NULL;
 	result = ISC_R_SUCCESS;
 
@@ -481,8 +510,8 @@ cleanup:
 }
 
 static isc_result_t
-openssleddsa_fromlabel(dst_key_t *key, const char *label, const char *pin) {
-	const eddsa_alginfo_t *alginfo = openssleddsa_alg_info(key->key_alg);
+opensslmldsa_fromlabel(dst_key_t *key, const char *label, const char *pin) {
+	const mldsa_alginfo_t *alginfo = opensslmldsa_alg_info(key->key_alg);
 	EVP_PKEY *privpkey = NULL, *pubpkey = NULL;
 	isc_result_t result;
 
@@ -505,118 +534,107 @@ cleanup:
 	return result;
 }
 
-static dst_func_t openssleddsa_functions = {
-	.createctx = openssleddsa_createctx,
-	.destroyctx = openssleddsa_destroyctx,
-	.adddata = openssleddsa_adddata,
-	.sign = openssleddsa_sign,
-	.verify = openssleddsa_verify,
+static dst_func_t opensslmldsa_functions = {
+	.createctx = opensslmldsa_createctx,
+	.destroyctx = opensslmldsa_destroyctx,
+	.adddata = opensslmldsa_adddata,
+	.sign = opensslmldsa_sign,
+	.verify = opensslmldsa_verify,
 	.compare = dst__openssl_keypair_compare,
-	.generate = openssleddsa_generate,
+	.generate = opensslmldsa_generate,
 	.isprivate = dst__openssl_keypair_isprivate,
 	.destroy = dst__openssl_keypair_destroy,
-	.todns = openssleddsa_todns,
-	.fromdns = openssleddsa_fromdns,
-	.tofile = openssleddsa_tofile,
-	.parse = openssleddsa_parse,
-	.fromlabel = openssleddsa_fromlabel,
+	.todns = opensslmldsa_todns,
+	.fromdns = opensslmldsa_fromdns,
+	.tofile = opensslmldsa_tofile,
+	.parse = opensslmldsa_parse,
+	.fromlabel = opensslmldsa_fromlabel,
 };
-
-/*
- * The test vectors below where generated by util/gen-eddsa-vectors.c
- */
-#if HAVE_OPENSSL_ED448
-static unsigned char ed448_pub[] =
-	"\x0a\x19\x36\xf0\x4c\x2d\xc1\xfe\xbe\xdc\xfa\xf6\xeb\xd2\x8f\x3b\x04"
-	"\x14\x2e\x88\xc6\xb5\xdc\xe8\x2a\xc6\xb9\x7c\xa8\x22\xe8\x36\xfb\x06"
-	"\x55\xa3\x3c\xdb\x9d\x68\x59\x7e\xa9\x5f\x93\x96\x87\x83\x28\xce\xdd"
-	"\x12\xc9\xb8\x78\x02\x80";
-static unsigned char ed448_sig[] =
-	"\x7e\xec\x4e\x11\xd9\x79\x89\xd2\xe2\x85\x7a\x1c\xd7\x36\xe8\x24\x1f"
-	"\x90\xa0\x9c\x84\xfb\x51\xcd\xdc\xfd\x05\xcd\x8c\x08\x51\x05\x18\xc8"
-	"\x85\xb2\x28\x00\xea\xfe\x10\x46\xad\x52\xe6\xe9\x62\x35\x3b\x2a\x14"
-	"\x8b\xe7\xf0\x66\x5f\x00\x66\x3c\xa1\x4d\x03\x95\xcc\x73\xfc\xf2\x40"
-	"\x4b\x67\x85\x5b\x9f\xa9\x87\xb6\xbb\xa3\x9d\x73\x9f\xcb\x4e\x2c\xd2"
-	"\x46\xc7\x84\xd3\x7d\x94\x32\x30\x27\xb0\xa7\xf6\x6d\xf4\x77\xe8\xf5"
-	"\xb4\xee\x3f\x0e\x2b\x35\xdd\x5a\x35\xfe\x35\x00";
-#endif
-
-static unsigned char ed25519_pub[] =
-	"\x66\x5c\x21\x59\xe3\xa0\x6e\xa3\x7d\x82\x7c\xf1\xe7\xa3\xdd\xaf\xd1"
-	"\x6d\x92\x81\xfb\x09\x0c\x7c\xfe\x6d\xf8\x87\x24\x7e\x6e\x25";
-static unsigned char ed25519_sig[] =
-	"\x26\x70\x5c\xc1\x85\xb6\x5e\x65\xe5\xa7\xd5\x85\x63\xc9\x1d\x45\x56"
-	"\x38\xa3\x9c\xa3\x42\x4d\xc8\x89\xff\x84\xea\x2c\xa8\x8b\xfa\x2f\xab"
-	"\x75\x7c\x68\x95\xfd\xdf\x62\x60\x4e\x4d\x10\xf8\x3c\xae\xcf\x18\x93"
-	"\x90\x05\xa4\x54\x38\x45\x2f\x81\x71\x1e\x0f\x46\x04";
 
 static isc_result_t
 check_algorithm(unsigned char algorithm) {
-	EVP_MD_CTX *evp_md_ctx = EVP_MD_CTX_create();
+	EVP_MD_CTX *evp_md_ctx = NULL;
+	EVP_PKEY_CTX *pkey_ctx = NULL;
 	EVP_PKEY *pkey = NULL;
-	const eddsa_alginfo_t *alginfo = NULL;
-	const unsigned char *key = NULL;
-	const unsigned char *sig = NULL;
+	const mldsa_alginfo_t *alginfo = NULL;
+	unsigned char *sig = NULL;
+	size_t sig_len = 0;
 	const unsigned char test[] = "test";
 	isc_result_t result = ISC_R_SUCCESS;
-	size_t key_len, sig_len;
 
+	evp_md_ctx = EVP_MD_CTX_new();
 	if (evp_md_ctx == NULL) {
-		CLEANUP(ISC_R_NOMEMORY);
+		return ISC_R_NOMEMORY;
 	}
 
 	switch (algorithm) {
-#if HAVE_OPENSSL_ED448
-	case DST_ALG_ED448:
-		sig = ed448_sig;
-		sig_len = sizeof(ed448_sig) - 1;
-		key = ed448_pub;
-		key_len = sizeof(ed448_pub) - 1;
-		alginfo = openssleddsa_alg_info(algorithm);
-		break;
-#endif /* HAVE_OPENSSL_ED448 */
-	case DST_ALG_ED25519:
-		sig = ed25519_sig;
-		sig_len = sizeof(ed25519_sig) - 1;
-		key = ed25519_pub;
-		key_len = sizeof(ed25519_pub) - 1;
-		alginfo = openssleddsa_alg_info(algorithm);
+	case DST_ALG_MLDSA44:
+		alginfo = opensslmldsa_alg_info(algorithm);
 		break;
 	default:
-		CLEANUP(ISC_R_NOTIMPLEMENTED);
+		result = ISC_R_NOTIMPLEMENTED;
+		goto cleanup;
 	}
 
 	INSIST(alginfo != NULL);
-	CHECK(raw_key_to_ossl(alginfo, 0, key, &key_len, &pkey));
 
-	/*
-	 * Check that we can verify the signature.
-	 */
+	/* Key generation */
+	pkey_ctx = EVP_PKEY_CTX_new_id(alginfo->pkey_type, NULL);
+	if (pkey_ctx == NULL || EVP_PKEY_keygen_init(pkey_ctx) != 1 ||
+	    EVP_PKEY_keygen(pkey_ctx, &pkey) != 1)
+	{
+		result = ISC_R_NOTIMPLEMENTED;
+		goto cleanup;
+	}
+
+	/* Sign */
+	if (EVP_DigestSignInit(evp_md_ctx, NULL, NULL, NULL, pkey) != 1 ||
+	    EVP_DigestSign(evp_md_ctx, NULL, &sig_len, test,
+			   sizeof(test) - 1) != 1)
+	{
+		result = ISC_R_NOTIMPLEMENTED;
+		goto cleanup;
+	}
+
+	sig = OPENSSL_malloc(sig_len);
+	if (sig == NULL) {
+		result = ISC_R_NOMEMORY;
+		goto cleanup;
+	}
+
+	if (EVP_DigestSign(evp_md_ctx, sig, &sig_len, test, sizeof(test) - 1) !=
+	    1)
+	{
+		result = ISC_R_NOTIMPLEMENTED;
+		goto cleanup;
+	}
+
+	EVP_MD_CTX_reset(evp_md_ctx);
+
+	/* Verify */
 	if (EVP_DigestVerifyInit(evp_md_ctx, NULL, NULL, NULL, pkey) != 1 ||
 	    EVP_DigestVerify(evp_md_ctx, sig, sig_len, test,
 			     sizeof(test) - 1) != 1)
 	{
-		CLEANUP(ISC_R_NOTIMPLEMENTED);
+		result = ISC_R_NOTIMPLEMENTED;
 	}
 
 cleanup:
-	if (pkey != NULL) {
-		EVP_PKEY_free(pkey);
-	}
-	if (evp_md_ctx != NULL) {
-		EVP_MD_CTX_destroy(evp_md_ctx);
-	}
+	OPENSSL_free(sig);
+	EVP_PKEY_free(pkey);
+	EVP_PKEY_CTX_free(pkey_ctx);
+	EVP_MD_CTX_free(evp_md_ctx);
 	ERR_clear_error();
 	return result;
 }
 
 void
-dst__openssleddsa_init(dst_func_t **funcp, unsigned char algorithm) {
+dst__opensslmldsa_init(dst_func_t **funcp, unsigned char algorithm) {
 	REQUIRE(funcp != NULL);
 
 	if (*funcp == NULL) {
 		if (check_algorithm(algorithm) == ISC_R_SUCCESS) {
-			*funcp = &openssleddsa_functions;
+			*funcp = &opensslmldsa_functions;
 		}
 	}
 }

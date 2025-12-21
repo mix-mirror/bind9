@@ -217,6 +217,9 @@ dst__lib_initialize(void) {
 #ifdef HAVE_OPENSSL_ED448
 	dst__openssleddsa_init(&dst_t_func[DST_ALG_ED448], DST_ALG_ED448);
 #endif /* ifdef HAVE_OPENSSL_ED448 */
+#ifdef HAVE_OPENSSL_MLDSA44
+	dst__opensslmldsa_init(&dst_t_func[DST_ALG_MLDSA44], DST_ALG_MLDSA44);
+#endif /* ifdef HAVE_OPENSSL_MLDSA44 */
 
 #if HAVE_GSSAPI
 	dst__gssapi_init(&dst_t_func[DST_ALG_GSSAPI]);
@@ -1320,6 +1323,9 @@ dst_key_sigsize(const dst_key_t *key, unsigned int *n) {
 	case DST_ALG_ED448:
 		*n = DNS_SIG_ED448SIZE;
 		break;
+	case DST_ALG_MLDSA44:
+		*n = DNS_SIG_MLDSA44SIZE;
+		break;
 	case DST_ALG_HMACMD5:
 		*n = isc_md_type_get_size(ISC_MD_MD5);
 		break;
@@ -1486,8 +1492,7 @@ dst_key_read_public(const char *filename, int type, isc_mem_t *mctx,
 	 * <algorithm> <key>
 	 */
 
-	/* 1500 should be large enough for any key */
-	isc_lex_create(mctx, 1500, &lex);
+	isc_lex_create(mctx, ((DNS_PRIVKEY_MLDSA44SIZE + 1) * 4) / 3, &lex);
 
 	memset(specials, 0, sizeof(specials));
 	specials['('] = 1;

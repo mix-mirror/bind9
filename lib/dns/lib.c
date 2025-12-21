@@ -20,6 +20,7 @@
 #include "db_p.h"
 #include "dlz_p.h"
 #include "dst_internal.h"
+#include "dst_openssl.h"
 #include "dyndb_p.h"
 #include "qp_p.h"
 #include "qpzone_p.h"
@@ -48,6 +49,7 @@ dns__lib_initialize(void) {
 	dns__dyndb_initialize();
 	dns__qp_initialize();
 	dns__qpzone_initialize();
+	dns__openssl_initialize();
 }
 
 void
@@ -56,6 +58,7 @@ dns__lib_shutdown(void) {
 		return;
 	}
 
+	dns__openssl_shutdown();
 	dns__qpzone_shutdown();
 	dns__qp_shutdown();
 	dns__dyndb_shutdown();

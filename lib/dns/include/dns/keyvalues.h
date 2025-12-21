@@ -72,6 +72,7 @@ enum {
 	DNS_KEYALG_ECDSA384 = 14,
 	DNS_KEYALG_ED25519 = 15,
 	DNS_KEYALG_ED448 = 16,
+	DNS_KEYALG_MLDSA44 = 17, /*%< ML-DSA-44 (post-quantum) */
 	DNS_KEYALG_INDIRECT = 252,
 	DNS_KEYALG_PRIVATEDNS = 253,
 	DNS_KEYALG_PRIVATEOID = 254, /*%< Key begins with OID giving alg */
@@ -97,3 +98,11 @@ enum {
 
 #define DNS_KEY_ED448SIZE 57
 #define DNS_SIG_ED448SIZE 114
+
+/* ML-DSA-44 Constants */
+#define DNS_KEY_MLDSA44SIZE	1312
+#define DNS_SIG_MLDSA44SIZE	2420
+#define DNS_PRIVKEY_MLDSA44SIZE 2560
+
+/* Only ML-DSA-44 is supported in this build */
+
