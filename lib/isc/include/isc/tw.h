@@ -37,10 +37,10 @@
  * Priority queue element - embedded in user structures
  */
 typedef struct isc_tw_elt {
-	ISC_LINK(isc_tw_elt_t) link;
-	isc_stdtime_t	      expire;
-	uint32_t	      level;
-	uint32_t	      slot;
+	ISC_LINK(struct isc_tw_elt) link;
+	isc_stdtime_t expire;
+	uint32_t      level;
+	uint32_t      slot;
 } isc_tw_elt_t;
 
 /*
@@ -48,8 +48,8 @@ typedef struct isc_tw_elt {
  * concurrent access.
  */
 typedef struct isc_tw_slot {
-	ISC_LIST(isc_tw_elt_t) head;
-	size_t		      count;
+	ISC_LIST(isc_tw_elt_t) nodes;
+	size_t count;
 } isc_tw_slot_t;
 
 /*

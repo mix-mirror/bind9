@@ -19,7 +19,6 @@
 #include <isc/lib.h>
 #include <isc/mem.h>
 #include <isc/tw.h>
-#include <isc/urcu.h>
 #include <isc/util.h>
 
 #include <tests/isc.h>
@@ -48,13 +47,23 @@ ISC_RUN_TEST_IMPL(isc_tw_minimum_is_returned) {
 	assert_int_equal(isc_tw_insert(tw, &first.elt), ISC_R_SUCCESS);
 	assert_int_equal(isc_tw_insert(tw, &second.elt), ISC_R_SUCCESS);
 
-	rcu_read_lock();
 	isc_tw_elt_t *min = isc_tw_element(tw);
 	assert_ptr_equal(min, &second.elt);
-	rcu_read_unlock();
 
 	isc_tw_delete(tw, &first.elt);
 	isc_tw_delete(tw, &second.elt);
+	isc_tw_destroy(&tw);
+}
+
+ISC_RUN_TEST_IMPL(isc_tw_empty_returns_null) {
+	isc_tw_t *tw = NULL;
+
+	UNUSED(state);
+
+	assert_int_equal(isc_tw_create(isc_g_mctx, &tw), ISC_R_SUCCESS);
+
+	assert_null(isc_tw_element(tw));
+
 	isc_tw_destroy(&tw);
 }
 
@@ -72,6 +81,49 @@ ISC_RUN_TEST_IMPL(isc_tw_delete_marks_removed) {
 	isc_tw_delete(tw, &entry.elt);
 	assert_true(isc_tw_is_node_deleted(&entry.elt));
 	assert_int_equal(isc_tw_count(tw), 0);
+
+	isc_tw_destroy(&tw);
+}
+
+ISC_RUN_TEST_IMPL(isc_tw_delete_idempotent) {
+	isc_tw_t *tw = NULL;
+	struct tw_entry entry;
+
+	UNUSED(state);
+
+	assert_int_equal(isc_tw_create(isc_g_mctx, &tw), ISC_R_SUCCESS);
+
+	init_entry(&entry, 10);
+	assert_int_equal(isc_tw_insert(tw, &entry.elt), ISC_R_SUCCESS);
+
+	isc_tw_delete(tw, &entry.elt);
+	assert_true(isc_tw_is_node_deleted(&entry.elt));
+	assert_int_equal(isc_tw_count(tw), 0);
+
+	/* Second delete is a no-op */
+	isc_tw_delete(tw, &entry.elt);
+	assert_true(isc_tw_is_node_deleted(&entry.elt));
+	assert_int_equal(isc_tw_count(tw), 0);
+
+	isc_tw_destroy(&tw);
+}
+
+ISC_RUN_TEST_IMPL(isc_tw_delete_underflow_guard) {
+	isc_tw_t *tw = NULL;
+	struct tw_entry entry;
+
+	UNUSED(state);
+
+	assert_int_equal(isc_tw_create(isc_g_mctx, &tw), ISC_R_SUCCESS);
+
+	init_entry(&entry, 1);
+	assert_int_equal(isc_tw_insert(tw, &entry.elt), ISC_R_SUCCESS);
+	isc_tw_delete(tw, &entry.elt);
+
+#if ISC_CHECK_ALL || ISC_CHECK_NONE == 0
+	/* In debug/checked builds, a second delete should assert */
+	expect_assert_failure(isc_tw_delete(tw, &entry.elt));
+#endif
 
 	isc_tw_destroy(&tw);
 }
@@ -94,10 +146,8 @@ ISC_RUN_TEST_IMPL(isc_tw_increased_reorders_queue) {
 	isc_tw_delete(tw, &late.elt);
 	isc_tw_insert(tw, &late.elt);
 
-	rcu_read_lock();
 	isc_tw_elt_t *min = isc_tw_element(tw);
 	assert_ptr_equal(min, &late.elt);
-	rcu_read_unlock();
 
 	isc_tw_delete(tw, &early.elt);
 	isc_tw_delete(tw, &late.elt);
@@ -117,11 +167,9 @@ ISC_RUN_TEST_IMPL(isc_tw_settime_cascades) {
 
 	isc_tw_settime(tw, 400);
 
-	rcu_read_lock();
 	isc_tw_elt_t *min = isc_tw_element(tw);
 	assert_non_null(min);
 	assert_ptr_equal(min, &distant.elt);
-	rcu_read_unlock();
 
 	isc_tw_delete(tw, &distant.elt);
 	isc_tw_destroy(&tw);
@@ -130,7 +178,10 @@ ISC_RUN_TEST_IMPL(isc_tw_settime_cascades) {
 ISC_TEST_LIST_START
 
 ISC_TEST_ENTRY(isc_tw_minimum_is_returned)
+ISC_TEST_ENTRY(isc_tw_empty_returns_null)
 ISC_TEST_ENTRY(isc_tw_delete_marks_removed)
+ISC_TEST_ENTRY(isc_tw_delete_underflow_guard)
+ISC_TEST_ENTRY(isc_tw_delete_idempotent)
 ISC_TEST_ENTRY(isc_tw_increased_reorders_queue)
 ISC_TEST_ENTRY(isc_tw_settime_cascades)
 
