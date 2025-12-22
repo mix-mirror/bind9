@@ -20,6 +20,7 @@
 #include <isc/attributes.h>
 #include <isc/base32.h>
 #include <isc/commandline.h>
+#include <isc/file.h>
 #include <isc/hash.h>
 #include <isc/hex.h>
 #include <isc/lib.h>
@@ -89,7 +90,8 @@ report(const char *format, ...) {
  * Load the zone file from disk
  */
 static void
-loadzone(char *file, char *origin, dns_rdataclass_t rdclass, dns_db_t **db) {
+loadzone(char *file, const char *origin, dns_rdataclass_t rdclass,
+	 dns_db_t **db) {
 	isc_buffer_t b;
 	int len;
 	dns_fixedname_t fname;
@@ -97,7 +99,7 @@ loadzone(char *file, char *origin, dns_rdataclass_t rdclass, dns_db_t **db) {
 	isc_result_t result;
 
 	len = strlen(origin);
-	isc_buffer_init(&b, origin, len);
+	isc_buffer_constinit(&b, origin, len);
 	isc_buffer_add(&b, len);
 
 	name = dns_fixedname_initname(&fname);
@@ -164,7 +166,8 @@ usage(int ret) {
 
 int
 main(int argc, char *argv[]) {
-	char *origin = NULL, *file = NULL;
+	const char *origin = NULL;
+	char *file = NULL;
 	char *inputformatstr = NULL;
 	isc_result_t result;
 	char *classname = NULL;
@@ -295,7 +298,7 @@ main(int argc, char *argv[]) {
 	POST(argv);
 
 	if (origin == NULL) {
-		origin = file;
+		origin = isc_file_basename(file);
 	}
 
 	if (inputformatstr != NULL) {
