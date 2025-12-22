@@ -2652,7 +2652,9 @@ typedef enum { FORWARD, BACK } direction_t;
  */
 static bool
 step(qpz_search_t *search, dns_qpiter_t *it, direction_t direction,
-     dns_name_t *nextname) {
+     qpznode_t **node_p) {
+	REQUIRE(node_p != NULL && *node_p == NULL);
+
 	qpznode_t *node = NULL, *previous_node = NULL;
 	isc_result_t result = ISC_R_SUCCESS;
 
@@ -2682,7 +2684,7 @@ step(qpz_search_t *search, dns_qpiter_t *it, direction_t direction,
 
 	if (result == ISC_R_SUCCESS) {
 		if (previous_node != NULL) {
-			dns_name_copy(&previous_node->name, nextname);
+			*node_p = previous_node;
 		}
 		return true;
 	}
@@ -2692,8 +2694,7 @@ step(qpz_search_t *search, dns_qpiter_t *it, direction_t direction,
 
 static bool
 activeempty(qpz_search_t *search, dns_qpiter_t *it, const dns_name_t *current) {
-	dns_fixedname_t fnext;
-	dns_name_t *next = dns_fixedname_initname(&fnext);
+	qpznode_t *next = NULL;
 
 	/*
 	 * The iterator is currently pointed at the predecessor
@@ -2708,17 +2709,15 @@ activeempty(qpz_search_t *search, dns_qpiter_t *it, const dns_name_t *current) {
 		/* An ENT at the end of the zone is impossible */
 		return false;
 	}
-	return step(search, it, FORWARD, next) &&
-	       dns_name_issubdomain(next, current);
+	return step(search, it, FORWARD, &next) &&
+	       dns_name_issubdomain(&next->name, current);
 }
 
 static bool
 wildcard_blocked(qpz_search_t *search, const dns_name_t *qname,
 		 dns_name_t *wname) {
 	isc_result_t result;
-	dns_fixedname_t fnext;
-	dns_fixedname_t fprev;
-	dns_name_t *next = NULL, *prev = NULL;
+	qpznode_t *next = NULL, *prev = NULL;
 	dns_name_t name;
 	dns_name_t rname;
 	dns_name_t tname;
@@ -2730,8 +2729,6 @@ wildcard_blocked(qpz_search_t *search, const dns_name_t *qname,
 	dns_name_init(&name);
 	dns_name_init(&tname);
 	dns_name_init(&rname);
-	next = dns_fixedname_initname(&fnext);
-	prev = dns_fixedname_initname(&fprev);
 
 	/*
 	 * The qname seems to have matched a wildcard, but we
@@ -2745,13 +2742,13 @@ wildcard_blocked(qpz_search_t *search, const dns_name_t *qname,
 	 * data.
 	 */
 	it = search->iter;
-	check_prev = step(search, &it, BACK, prev);
+	check_prev = step(search, &it, BACK, &prev);
 
 	/* Now reset the iterator and look for a successor with data. */
 	it = search->iter;
 	result = dns_qpiter_next(&it, NULL, NULL);
 	if (result == ISC_R_SUCCESS) {
-		check_next = step(search, &it, FORWARD, next);
+		check_next = step(search, &it, FORWARD, &next);
 	}
 
 	if (!check_prev && !check_next) {
@@ -2768,8 +2765,8 @@ wildcard_blocked(qpz_search_t *search, const dns_name_t *qname,
 	dns_name_getlabelsequence(wname, 1, n - 1, &tname);
 
 	do {
-		if ((check_prev && dns_name_issubdomain(prev, &rname)) ||
-		    (check_next && dns_name_issubdomain(next, &rname)))
+		if ((check_prev && dns_name_issubdomain(&prev->name, &rname)) ||
+		    (check_next && dns_name_issubdomain(&next->name, &rname)))
 		{
 			return true;
 		}
