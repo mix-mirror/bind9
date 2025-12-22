@@ -6370,26 +6370,6 @@ dns_zone_setnotifysrc4(dns_zone_t *zone, dns_rdatatype_t type,
 }
 
 void
-dns_zone_getnotifysrc4(dns_zone_t *zone, dns_rdatatype_t type,
-		       isc_sockaddr_t *notifysrc) {
-	REQUIRE(DNS_ZONE_VALID(zone));
-	REQUIRE(notifysrc != NULL);
-
-	LOCK_ZONE(zone);
-	switch (type) {
-	case dns_rdatatype_soa:
-		*notifysrc = zone->notifysoa.notifysrc4;
-		break;
-	case dns_rdatatype_cds:
-		*notifysrc = zone->notifycds.notifysrc4;
-		break;
-	default:
-		UNREACHABLE();
-	}
-	UNLOCK_ZONE(zone);
-}
-
-void
 dns_zone_setnotifysrc6(dns_zone_t *zone, dns_rdatatype_t type,
 		       const isc_sockaddr_t *notifysrc) {
 	REQUIRE(DNS_ZONE_VALID(zone));
@@ -6402,26 +6382,6 @@ dns_zone_setnotifysrc6(dns_zone_t *zone, dns_rdatatype_t type,
 		break;
 	case dns_rdatatype_cds:
 		zone->notifycds.notifysrc6 = *notifysrc;
-		break;
-	default:
-		UNREACHABLE();
-	}
-	UNLOCK_ZONE(zone);
-}
-
-void
-dns_zone_getnotifysrc6(dns_zone_t *zone, dns_rdatatype_t type,
-		       isc_sockaddr_t *notifysrc) {
-	REQUIRE(DNS_ZONE_VALID(zone));
-	REQUIRE(notifysrc != NULL);
-
-	LOCK_ZONE(zone);
-	switch (type) {
-	case dns_rdatatype_soa:
-		*notifysrc = zone->notifysoa.notifysrc6;
-		break;
-	case dns_rdatatype_cds:
-		*notifysrc = zone->notifycds.notifysrc6;
 		break;
 	default:
 		UNREACHABLE();
@@ -19485,6 +19445,7 @@ dns_zone_setnotifydefer(dns_zone_t *zone, dns_rdatatype_t type,
 		zone->notifysoa.notifydefer = defer;
 		break;
 	case dns_rdatatype_cds:
+		/* not applicable to NOTIFY(CDS), unused */
 		zone->notifycds.notifydefer = defer;
 		break;
 	default:
@@ -19504,6 +19465,7 @@ dns_zone_setnotifydelay(dns_zone_t *zone, dns_rdatatype_t type,
 		zone->notifysoa.notifydelay = delay;
 		break;
 	case dns_rdatatype_cds:
+		/* not applicable to NOTIFY(CDS), unused */
 		zone->notifycds.notifydelay = delay;
 		break;
 	default:
