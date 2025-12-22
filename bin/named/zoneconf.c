@@ -823,8 +823,8 @@ isself(dns_view_t *myview, dns_tsigkey_t *mykey, const isc_sockaddr_t *srcaddr,
  * default configuration.
  */
 static dns_notifytype_t
-process_notifytype(dns_notifytype_t ntype, dns_zonetype_t ztype,
-		   const char *zname, const cfg_obj_t **maps) {
+process_notifysoatype(dns_notifytype_t ntype, dns_zonetype_t ztype,
+		      const char *zname, const cfg_obj_t **maps) {
 	const cfg_obj_t *obj = NULL;
 
 	/*
@@ -870,9 +870,9 @@ process_notify_options(dns_rdatatype_t type, const cfg_obj_t **maps,
 		} else {
 			dns_zone_setnotifytype(zone, type, dns_notifytype_no);
 		}
-	}
-	if (raw != NULL) {
-		dns_zone_setnotifytype(raw, type, dns_notifytype_no);
+		if (raw != NULL) {
+			dns_zone_setnotifytype(raw, type, dns_notifytype_no);
+		}
 	}
 
 	obj = NULL;
@@ -1305,8 +1305,8 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 				UNREACHABLE();
 			}
 		}
-		notifytype = process_notifytype(notifytype, ztype, zname,
-						nodefault);
+		notifytype = process_notifysoatype(notifytype, ztype, zname,
+						   nodefault);
 		if (raw != NULL) {
 			dns_zone_setnotifytype(raw, dns_rdatatype_soa,
 					       dns_notifytype_no);
