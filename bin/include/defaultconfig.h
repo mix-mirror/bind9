@@ -79,7 +79,7 @@ options {\n\
 	request-zoneversion false;\n\
 	resolver-query-timeout 10;\n\
 #	responselog <boolean>;\n\
-	rrset-order { order cyclic; };\n\
+#	rrset-order { order cyclic; };\n\
 	secroots-file \"named.secroots\";\n\
 	send-cookie true;\n\
 	serial-query-rate 20;\n\

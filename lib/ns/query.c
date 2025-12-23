@@ -2212,6 +2212,15 @@ query_setorder(query_ctx_t *qctx, dns_name_t *name, dns_rdataset_t *rdataset) {
 	if (order != NULL) {
 		rdataset->attributes.order = dns_order_find(
 			order, name, rdataset->type, rdataset->rdclass);
+	} else {
+		/*
+		 * For backward compatibility reasons, we need to behave as if
+		 * rrset-order: cyclic was set when no order is configured.
+		 *
+		 * This was done through the default config, but it came at a
+		 * speed penalty.
+		 */
+		rdataset->attributes.order = dns_order_cyclic;
 	}
 }
 

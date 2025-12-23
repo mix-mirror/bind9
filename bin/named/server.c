@@ -4660,20 +4660,27 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	 *	Configure the views rrset-order.
 	 */
 	{
-		const cfg_obj_t *rrsetorder = NULL;
-
-		(void)named_config_get(maps, "rrset-order", &rrsetorder);
-		dns_order_create(mctx, &order);
-		CFG_LIST_FOREACH(rrsetorder, element) {
-			const cfg_obj_t *ent = cfg_listelt_value(element);
-
-			CHECK(configure_order(order, ent));
-		}
+		/*
+		 * Detach the old order
+		 */
 		if (view->order != NULL) {
 			dns_order_detach(&view->order);
 		}
-		dns_order_attach(order, &view->order);
-		dns_order_detach(&order);
+
+		const cfg_obj_t *rrsetorder = NULL;
+		if (ISC_R_SUCCESS ==
+		    named_config_get(maps, "rrset-order", &rrsetorder))
+		{
+			dns_order_create(mctx, &order);
+			CFG_LIST_FOREACH(rrsetorder, element) {
+				const cfg_obj_t *ent =
+					cfg_listelt_value(element);
+
+				CHECK(configure_order(order, ent));
+			}
+			dns_order_attach(order, &view->order);
+			dns_order_detach(&order);
+		}
 	}
 	/*
 	 * Copy the aclenv object.
