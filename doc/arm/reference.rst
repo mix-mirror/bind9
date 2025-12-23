@@ -2142,8 +2142,8 @@ Boolean Options
     `child._dsync.example`.  In addition, the RRtype field of the record must be
     `CDS` and the Scheme field must be 1 (NOTIFY).
 
-    The options :any:`notify-defer` and :any:`notify-delay` are not applicable
-    to NOTIFY(CDS) messages and are in this case ignored.
+    The :any:`notify-defer` and :any:`notify-delay` options are not applicable
+    to NOTIFY(CDS) messages and they are ignored for that type.
 
     The :namedconf:ref:`notify-cfg` option may also be specified in the
     :any:`zone` statement, in which case it overrides the ``options notify-cfg``
