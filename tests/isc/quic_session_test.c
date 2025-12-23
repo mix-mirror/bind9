@@ -172,8 +172,7 @@ quic_sm_open_stream(quic_test_session_manager_t *restrict sm,
 
 static void
 quic_sm_send_cb(isc_quic_session_t *restrict session, const int64_t stream_id,
-		const isc_result_t result, void *cbarg,
-		quic_stream_data_t *stream);
+		const isc_result_t result, void *cbarg, void *stream_user_data);
 
 static void
 vwarn(const char *fmt, va_list args) {
@@ -311,7 +310,7 @@ quic_sm_uninit(quic_test_session_manager_t *sm) {
 }
 
 static uint64_t
-quic_sm_get_current_ts_cb(quic_test_session_manager_t *sm) {
+quic_sm_get_current_ts_cb(void *sm) {
 	UNUSED(sm);
 
 	if (ts_set) {
@@ -340,8 +339,9 @@ quic_sm_inc_ts(quic_test_session_manager_t *sm, uint64_t inc_ns) {
 
 static void
 quic_sm_timer_start_cb(isc_quic_session_t *restrict session,
-		       const uint32_t timeout_ms,
-		       quic_test_session_manager_t *sm) {
+		       const uint32_t timeout_ms, void *cbarg) {
+	quic_test_session_manager_t *sm = cbarg;
+
 	TRACE_CB(session);
 	if (timeout_ms != 0) {
 		warnconn(session, "timeout: %" PRIu32 "\n", timeout_ms);
@@ -355,8 +355,9 @@ quic_sm_timer_start_cb(isc_quic_session_t *restrict session,
 }
 
 static void
-quic_sm_timer_stop_cb(isc_quic_session_t *restrict session,
-		      quic_test_session_manager_t *sm) {
+quic_sm_timer_stop_cb(isc_quic_session_t *restrict session, void *cbarg) {
+	quic_test_session_manager_t *sm = cbarg;
+
 	TRACE_CB(session);
 	warnconn(session, "stop timer\n");
 
@@ -364,16 +365,12 @@ quic_sm_timer_stop_cb(isc_quic_session_t *restrict session,
 }
 
 static bool
-quic_sm_assoc_conn_cid_cb(isc_quic_session_t *restrict session,
-			  isc_region_t *restrict cid_data, const bool source,
-			  quic_test_session_manager_t *sm,
-			  isc_quic_cid_t **restrict pcid);
-
-static bool
 quic_sm_gen_unique_cid_cb(isc_quic_session_t *restrict session,
 			  const size_t cidlen, const bool source,
-			  quic_test_session_manager_t *sm,
+			  void *restrict cbarg,
 			  isc_quic_cid_t **restrict pcid) {
+	quic_test_session_manager_t *restrict sm = cbarg;
+
 	TRACE_CB(session);
 
 	if (source) {
@@ -390,8 +387,8 @@ quic_sm_gen_unique_cid_cb(isc_quic_session_t *restrict session,
 }
 
 static bool
-quic_sm_on_handshake_cb(isc_quic_session_t *session,
-			quic_test_session_manager_t *sm) {
+quic_sm_on_handshake_cb(isc_quic_session_t *session, void *cbarg) {
+	quic_test_session_manager_t *sm = cbarg;
 	isc_result_t result = ISC_R_FAILURE;
 
 	TRACE_CB(session);
@@ -426,9 +423,9 @@ quic_sm_on_handshake_cb(isc_quic_session_t *session,
 		isc_region_t data = { 0 };
 		isc_buffer_usedregion(databuf, &data);
 
-		result = isc_quic_session_send_data(
-			session, client_stream_id, &data, false,
-			(isc_quic_send_cb_t)quic_sm_send_cb, databuf);
+		result = isc_quic_session_send_data(session, client_stream_id,
+						    &data, false,
+						    quic_sm_send_cb, databuf);
 		assert_true(result == ISC_R_SUCCESS);
 
 		stream->sends++;
@@ -440,8 +437,8 @@ quic_sm_on_handshake_cb(isc_quic_session_t *session,
 
 static bool
 quic_sm_on_on_remote_stream_open_cb(isc_quic_session_t *session,
-				    const int64_t stream_id,
-				    quic_test_session_manager_t *sm) {
+				    const int64_t stream_id, void *cbarg) {
+	quic_test_session_manager_t *sm = cbarg;
 	quic_stream_data_t *stream = NULL;
 
 	TRACE_CB(session);
@@ -472,11 +469,13 @@ quic_sm_on_on_remote_stream_open_cb(isc_quic_session_t *session,
 }
 
 static bool
-quic_sm_on_stream_close_cb(isc_quic_session_t *session,
+quic_sm_on_stream_close_cb(isc_quic_session_t *restrict session,
 			   const int64_t streamd_id, const bool app_error_set,
-			   const uint64_t app_error_code,
-			   quic_test_session_manager_t *sm,
-			   quic_stream_data_t *stream_data) {
+			   const uint64_t app_error_code, void *cbarg,
+			   void *stream_user_data) {
+	quic_test_session_manager_t *sm = cbarg;
+	quic_stream_data_t *stream_data = stream_user_data;
+
 	UNUSED(app_error_set);
 	UNUSED(app_error_code);
 	UNUSED(stream_data);
@@ -510,9 +509,11 @@ static bool
 quic_sm_on_recv_stream_data_cb(isc_quic_session_t *session,
 			       const int64_t stream_id, const bool fin,
 			       const uint64_t offset,
-			       const isc_region_t *restrict data,
-			       quic_test_session_manager_t *sm,
-			       quic_stream_data_t *stream_data) {
+			       const isc_region_t *restrict data, void *cbarg,
+			       void *stream_user_data) {
+	quic_test_session_manager_t *sm = cbarg;
+	quic_stream_data_t *stream_data = stream_user_data;
+
 	UNUSED(offset);
 	UNUSED(data);
 	UNUSED(stream_data);
@@ -551,7 +552,9 @@ quic_sm_on_recv_stream_data_cb(isc_quic_session_t *session,
 static void
 quic_sm_on_conn_close_cb(isc_quic_session_t *session,
 			 const uint32_t closing_timeout_ms, const bool ver_neg,
-			 quic_test_session_manager_t *sm) {
+			 void *cbarg) {
+	quic_test_session_manager_t *sm = cbarg;
+
 	TRACE_CB(session);
 
 	if (ver_neg) {
@@ -571,8 +574,8 @@ quic_sm_on_conn_close_cb(isc_quic_session_t *session,
 static bool
 quic_sm_assoc_conn_cid_cb(isc_quic_session_t *restrict session,
 			  isc_region_t *restrict cid_data, const bool source,
-			  quic_test_session_manager_t *sm,
-			  isc_quic_cid_t **restrict pcid) {
+			  void *cbarg, isc_quic_cid_t **restrict pcid) {
+	quic_test_session_manager_t *sm = cbarg;
 	isc_quic_cid_t *new_cid = NULL;
 
 	TRACE_CB(session);
@@ -595,8 +598,10 @@ quic_sm_assoc_conn_cid_cb(isc_quic_session_t *restrict session,
 
 static void
 quic_sm_deassoc_conn_cid(isc_quic_session_t *restrict session,
-			 const bool source, quic_test_session_manager_t *sm,
+			 const bool source, void *cbarg,
 			 isc_quic_cid_t **restrict pcid) {
+	quic_test_session_manager_t *sm = cbarg;
+
 	isc_quic_cid_t *cid = NULL;
 
 	TRACE_CB(session);
@@ -620,8 +625,9 @@ quic_sm_deassoc_conn_cid(isc_quic_session_t *restrict session,
 
 static void
 quic_sm_send_cb(isc_quic_session_t *restrict session, const int64_t stream_id,
-		isc_result_t result, void *cbarg, quic_stream_data_t *stream) {
+		isc_result_t result, void *cbarg, void *stream_user_data) {
 	isc_buffer_t *databuf = (isc_buffer_t *)cbarg;
+	quic_stream_data_t *stream = stream_user_data;
 	isc_region_t data = { 0 };
 	uint64_t sent = 0;
 
@@ -675,7 +681,9 @@ quic_sm_on_new_regular_token_cb(isc_quic_session_t *restrict session,
 				isc_region_t *restrict token_data,
 				isc_sockaddr_t *restrict local,
 				const isc_sockaddr_t *restrict peer,
-				quic_test_session_manager_t *sm) {
+				void *cbarg) {
+	quic_test_session_manager_t *sm = cbarg;
+
 	REQUIRE(session != NULL);
 	REQUIRE(token_data != NULL);
 	REQUIRE(local != NULL);
@@ -1030,30 +1038,18 @@ quic_sm_open_stream(quic_test_session_manager_t *restrict sm,
 }
 
 static isc_quic_session_interface_t callbacks = {
-	.get_current_ts =
-		(isc_quic_get_current_ts_cb_t)quic_sm_get_current_ts_cb,
-	.expiry_timer_start =
-		(isc_quic_expiry_timer_start_cb_t)quic_sm_timer_start_cb,
-	.expiry_timer_stop =
-		(isc_quic_expiry_timer_stop_cb_t)quic_sm_timer_stop_cb,
-
-	.gen_unique_cid =
-		(isc_quic_gen_unique_cid_cb_t)quic_sm_gen_unique_cid_cb,
-	.assoc_conn_cid =
-		(isc_quic_assoc_conn_cid_cb_t)quic_sm_assoc_conn_cid_cb,
-	.deassoc_conn_cid =
-		(isc_quic_deassoc_conn_cid_cb_t)quic_sm_deassoc_conn_cid,
-
-	.on_handshake = (isc_quic_on_handshake_cb_t)quic_sm_on_handshake_cb,
-	.on_new_regular_token = (isc_quic_on_new_regular_token_cb_t)
-		quic_sm_on_new_regular_token_cb,
-	.on_remote_stream_open = (isc_quic_on_remote_stream_open_cb_t)
-		quic_sm_on_on_remote_stream_open_cb,
-	.on_stream_close =
-		(isc_quic_on_stream_close_cb_t)quic_sm_on_stream_close_cb,
-	.on_recv_stream_data = (isc_quic_on_recv_stream_data_cb_t)
-		quic_sm_on_recv_stream_data_cb,
-	.on_conn_close = (isc_quic_on_conn_close_cb_t)quic_sm_on_conn_close_cb
+	.get_current_ts = quic_sm_get_current_ts_cb,
+	.expiry_timer_start = quic_sm_timer_start_cb,
+	.expiry_timer_stop = quic_sm_timer_stop_cb,
+	.gen_unique_cid = quic_sm_gen_unique_cid_cb,
+	.assoc_conn_cid = quic_sm_assoc_conn_cid_cb,
+	.deassoc_conn_cid = quic_sm_deassoc_conn_cid,
+	.on_handshake = quic_sm_on_handshake_cb,
+	.on_new_regular_token = quic_sm_on_new_regular_token_cb,
+	.on_remote_stream_open = quic_sm_on_on_remote_stream_open_cb,
+	.on_stream_close = quic_sm_on_stream_close_cb,
+	.on_recv_stream_data = quic_sm_on_recv_stream_data_cb,
+	.on_conn_close = quic_sm_on_conn_close_cb
 };
 
 static isc_tlsctx_t *
