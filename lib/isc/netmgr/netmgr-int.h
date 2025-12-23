@@ -26,6 +26,7 @@
 #include <isc/mem.h>
 #include <isc/netmgr.h>
 #include <isc/proxy2.h>
+#include <isc/quic.h>
 #include <isc/quota.h>
 #include <isc/random.h>
 #include <isc/refcount.h>
@@ -551,6 +552,15 @@ struct isc_nmsocket {
 #if HAVE_LIBNGHTTP2
 	isc_nmsocket_h2_t *h2;
 #endif /* HAVE_LIBNGHTTP2 */
+
+#ifdef HAVE_LIBNGTCP2
+	struct quicstream {
+		int64_t id;
+		isc_tlsctx_t *tlsctx;
+		isc_quic_session_t *session;
+		isc_quic_sm_t *manager;
+	} quicstream;
+#endif /* HAVE_LIBNGTCP2 */
 
 	struct {
 		isc_dnsstream_assembler_t *input;

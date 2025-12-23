@@ -837,6 +837,16 @@ isc_nm_http_set_endpoints(isc_nmsocket_t	  *listener,
 
 #endif /* HAVE_LIBNGHTTP2 */
 
+#ifdef HAVE_LIBNGTCP2
+
+isc_result_t
+isc_nm_listenquic(uint32_t workers, isc_sockaddr_t *iface,
+		  isc_nm_accept_cb_t accept_cb, void *accept_cbarg, int backlog,
+		  isc_quota_t *quota, isc_tlsctx_t *tlsctx,
+		  isc_nmsocket_t **sockp);
+
+#endif /* HAVE_LIBNGTCP2 */
+
 void
 isc_nm_bad_request(isc_nmhandle_t *handle);
 /*%<

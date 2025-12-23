@@ -10,6 +10,7 @@
 # information regarding copyright ownership.
 
 isc_srcset.add(when: nghttp2_dep, if_true: files('http.c'))
+isc_srcset.add(when: ngtcp2_dep, if_true: files('quicstream.c'))
 
 isc_srcset.add(
     files(
