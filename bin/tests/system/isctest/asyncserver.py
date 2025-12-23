@@ -21,6 +21,7 @@ from typing import (
     List,
     Optional,
     Set,
+    Sequence,
     Tuple,
     Union,
     cast,
@@ -863,6 +864,14 @@ class AsyncDnsServer(AsyncServer):
         for handler in handlers:
             self.install_response_handler(handler)
 
+    def replace_response_handlers(self, *new_handlers: ResponseHandler) -> None:
+        """
+        Uninstall all currently installed handlers and install the provided ones.
+        """
+        logging.info("Uninstalling response handlers: %s", str(self._response_handlers))
+        self._response_handlers.clear()
+        self.install_response_handlers(*new_handlers)
+
     def uninstall_response_handler(self, handler: ResponseHandler) -> None:
         """
         Remove the specified handler from the list of response handlers.
@@ -1528,3 +1537,30 @@ class ToggleResponsesCommand(ControlCommand):
         logging.error("Unrecognized response sending mode '%s'", mode)
         qctx.response.set_rcode(dns.rcode.SERVFAIL)
         return f"unrecognized response sending mode '{mode}'"
+
+
+class SwitchControlCommand(ControlCommand):
+    """
+    Switch the server's response handlers based on the control query.
+
+    A sequence of response handlers is associated with each key.  When a
+    control query is received, the server's response handlers are replaced
+    with the sequence associated with the key extracted from the control
+    query.
+    """
+
+    control_subdomain = "switch"
+
+    def __init__(self, handler_mapping: Dict[str, Sequence[ResponseHandler]]):
+        self._handler_mapping = handler_mapping
+
+    def handle(
+        self, args: List[str], server: ControllableAsyncDnsServer, qctx: QueryContext
+    ) -> Optional[str]:
+        if len(args) != 1 or args[0] not in self._handler_mapping:
+            logging.error("Invalid %s query %s", self, qctx.qname)
+            qctx.response.set_rcode(dns.rcode.SERVFAIL)
+            return f"invalid query; exactly one of {list(self._handler_mapping.keys())} is expected in QNAME"
+
+        server.replace_response_handlers(*self._handler_mapping[args[0]])
+        return f"switched to handler set '{args[0]}'"
