@@ -1126,6 +1126,10 @@ ns_srcset = ss.source_set()
 
 named_srcset = ss.source_set()
 
+filter_a_srcset = ss.source_set()
+filter_aaaa_srcset = ss.source_set()
+synthrecord_srcset = ss.source_set()
+
 arm_srcset = ss.source_set()
 man_srcset = ss.source_set()
 manrst_srcset = ss.source_set()

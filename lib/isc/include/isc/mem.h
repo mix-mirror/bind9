@@ -78,7 +78,7 @@
  * A global 'default' memory context that can be used when we don't need more
  * specific memory context.  It is always available.
  */
-extern isc_mem_t *isc_g_mctx;
+extern __attribute__((visibility("default"))) isc_mem_t *isc_g_mctx;
 
 /*%
  * isc_mem_putanddetach() is a convenience function for use where you

@@ -92,6 +92,23 @@ typedef struct cfg_tuplefielddef cfg_tuplefielddef_t;
 typedef struct cfg_printer	 cfg_printer_t;
 typedef ISC_LIST(cfg_listelt_t) cfg_list_t;
 typedef struct cfg_map cfg_map_t;
+typedef enum {
+	CFG_REP_ID_UINT32,
+	CFG_REP_ID_UINT64,
+	CFG_REP_ID_STRING,
+	CFG_REP_ID_BOOLEAN,
+	CFG_REP_ID_MAP,
+	CFG_REP_ID_LIST,
+	CFG_REP_ID_TUPLE,
+	CFG_REP_ID_SOCKADDR,
+	CFG_REP_ID_SOCKADDRTLS,
+	CFG_REP_ID_NETPREFIX,
+	CFG_REP_ID_VOID,
+	CFG_REP_ID_FIXEDPOINT,
+	CFG_REP_ID_PERCENTAGE,
+	CFG_REP_ID_DURATION
+} cfg_rep_type_t;
+
 typedef struct cfg_rep cfg_rep_t;
 
 /*
@@ -188,6 +205,7 @@ struct cfg_netprefix {
  */
 struct cfg_rep {
 	const char    *name; /*%< For debugging only */
+	cfg_rep_type_t type_id; /*%< Type identifier */
 	cfg_freefunc_t free; /*%< How to free this kind of data. */
 	cfg_copyfunc_t copy; /*%< Deep copy of the node. */
 };

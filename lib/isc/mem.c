@@ -72,7 +72,7 @@ static unsigned int mem_debugging = ISC_MEM_DEBUGGING;
 
 volatile void *isc__mem_malloc = mallocx;
 
-isc_mem_t *isc_g_mctx = NULL;
+__attribute__((visibility("default"))) isc_mem_t *isc_g_mctx = NULL;
 
 /*
  * Constants.

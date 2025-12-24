@@ -608,7 +608,7 @@ static void
 print_keystore(cfg_printer_t *pctx, const cfg_obj_t *obj) {
 	REQUIRE(pctx != NULL);
 	REQUIRE(obj != NULL);
-	REQUIRE(obj->type->rep == &cfg_rep_string);
+	REQUIRE(obj->type->rep != NULL && obj->type->rep->type_id == CFG_REP_ID_STRING);
 
 	if (strcasecmp(cfg_obj_asstring(obj), "key-directory") != 0) {
 		cfg_print_cstr(pctx, "key-store ");
@@ -641,7 +641,7 @@ static void
 print_tagrange(cfg_printer_t *pctx, const cfg_obj_t *obj) {
 	REQUIRE(pctx != NULL);
 	REQUIRE(obj != NULL);
-	REQUIRE(obj->type->rep == &cfg_rep_tuple);
+	REQUIRE(obj->type->rep != NULL && obj->type->rep->type_id == CFG_REP_ID_TUPLE);
 
 	if (cfg_obj_istuple(obj)) {
 		cfg_print_cstr(pctx, "tag-range ");
@@ -1020,7 +1020,7 @@ cleanup:
 
 static void
 print_boolorauto(cfg_printer_t *pctx, const cfg_obj_t *obj) {
-	if (obj->type->rep == &cfg_rep_void) {
+	if (obj->type->rep != NULL && obj->type->rep->type_id == CFG_REP_ID_VOID) {
 		cfg_print_cstr(pctx, "auto");
 	} else if (obj->value.boolean) {
 		cfg_print_cstr(pctx, "yes");
