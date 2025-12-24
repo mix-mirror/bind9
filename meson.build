@@ -20,7 +20,7 @@ project(
         'b_pch': false,
         'b_pie': true,
         'c_std': 'gnu11',
-        'default_library': 'static',
+        'default_library': 'shared',
         'localstatedir': '/var',
         'strip': false,
         'warning_level': '2',
@@ -154,7 +154,6 @@ add_project_arguments(
         '-fstrict-flex-arrays=3',
 
         '-ffunction-sections',
-        '-fvisibility=hidden',
     ),
     language: 'c',
 )
@@ -1632,15 +1631,22 @@ else
     ]
     named_inc = [isc_inc, dns_inc, isccc_inc, isccfg_inc, ns_inc, named_inc_p]
 
-    named_srcset.add(dns_gen_headers)
+    # Add source files from each library's sourceset to named_srcset
+    named_srcset.add_all(dns_srcset)
+    named_srcset.add_all(isc_srcset)
+    named_srcset.add_all(isccc_srcset)
+    named_srcset.add_all(isccfg_srcset)
+    named_srcset.add_all(ns_srcset)
 
-    named_objects = [
-        libisc.extract_all_objects(recursive: true),
-        libdns.extract_all_objects(recursive: true),
-        libns.extract_all_objects(recursive: true),
-        libisccc.extract_all_objects(recursive: true),
-        libisccfg.extract_all_objects(recursive: true),
-    ]
+    # Add DTrace probe objects if needed
+    named_objects = []
+    if config.get('HAVE_DTRACE', false)
+        named_objects = [
+            dns_probe_objects,
+            isc_probe_objects,
+            ns_probe_objects,
+        ]
+    endif
 endif
 
 named_srcconf = named_srcset.apply(config, strict: false)
@@ -1649,7 +1655,7 @@ executable(
     'named',
     named_srcconf.sources(),
     objects: named_objects,
-    c_args: static_lto_c_args,
+    c_args: static_lto_c_args + ['-fvisibility=hidden'],
     link_args: static_lto_link_args,
     export_dynamic: true,
     implicit_include_directories: true,
