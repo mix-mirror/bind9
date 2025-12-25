@@ -2914,6 +2914,8 @@ previous_closest_nsec(dns_rdatatype_t type, qpz_search_t *search,
 			dns_name_copy(&(*nodep)->name, name);
 		}
 		return result;
+	} else {
+
 	}
 
 	dns_qpmulti_query(search->qpdb->tree, &qpr);
@@ -3046,24 +3048,25 @@ again:
 			/*
 			 * Look for an active, extant NSEC or RRSIG NSEC.
 			 */
-			dns_vecheader_t *header =
-				first_existing_header(top, search->serial);
-			if (header != NULL) {
+			if (top->typepair == typepair) {
 				/*
 				 * We now know that there is at least one
 				 * active rdataset at this node.
 				 */
 				empty_node = false;
-				if (top->typepair == typepair) {
-					found = header;
-					if (foundsig != NULL) {
-						break;
-					}
-				} else if (top->typepair == sigpair) {
-					foundsig = header;
-					if (found != NULL) {
-						break;
-					}
+				found = first_existing_header(top, search->serial);
+				if (foundsig != NULL) {
+					break;
+				}
+			} else if (top->typepair == sigpair) {
+				/*
+				 * We now know that there is at least one
+				 * active rdataset at this node.
+				 */
+				empty_node = false;
+				foundsig = first_existing_header(top, search->serial);
+				if (found != NULL) {
+					break;
 				}
 			}
 		}
