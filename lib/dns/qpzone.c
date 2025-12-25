@@ -2896,6 +2896,19 @@ find_wildcard(qpz_search_t *search, qpznode_t **nodep, const dns_name_t *qname,
 }
 
 /*
+ * Find the previous NSEC3 record and copy its name.
+ */
+static isc_result_t
+previous_closest_nsec3(qpz_search_t *search, qpznode_t **prevnode, dns_name_t *name) {
+	isc_result_t result = dns_qpiter_prev(&search->iter, (void **)prevnode, NULL);
+	if (result == ISC_R_SUCCESS) {
+		dns_name_copy(&(*prevnode)->name, name);
+	}
+
+	return (result);
+}
+
+/*
  * Find node of the NSEC/NSEC3 record preceding 'name'.
  */
 static isc_result_t
@@ -2906,17 +2919,7 @@ previous_closest_nsec(dns_rdatatype_t type, qpz_search_t *search,
 	dns_qpread_t qpr;
 
 	REQUIRE(nodep != NULL && *nodep == NULL);
-	REQUIRE(type == dns_rdatatype_nsec3 || firstp != NULL);
-
-	if (type == dns_rdatatype_nsec3) {
-		result = dns_qpiter_prev(&search->iter, (void **)nodep, NULL);
-		if (result == ISC_R_SUCCESS) {
-			dns_name_copy(&(*nodep)->name, name);
-		}
-		return result;
-	} else {
-
-	}
+	REQUIRE(type != dns_rdatatype_nsec3 && firstp != NULL);
 
 	dns_qpmulti_query(search->qpdb->tree, &qpr);
 
@@ -3079,9 +3082,9 @@ again:
 				empty_node = true;
 				found = NULL;
 				foundsig = NULL;
-				result = previous_closest_nsec(typepair, search,
-							       name, &prevnode,
-							       NULL, NULL);
+				if (typepair == dns_rdatatype_nsec3) {
+					result = previous_closest_nsec3(search, &prevnode, name);
+				}
 			} else if (found != NULL &&
 				   (foundsig != NULL || !need_sig))
 			{
@@ -3116,9 +3119,13 @@ again:
 				 * node as if it were empty and keep looking.
 				 */
 				empty_node = true;
-				result = previous_closest_nsec(
-					typepair, search, name, &prevnode,
-					&nseciter, &first);
+				if (typepair == dns_rdatatype_nsec3) {
+					result = previous_closest_nsec3(search, &prevnode, name);
+				} else {
+					result = previous_closest_nsec(
+						typepair, search, name, &prevnode,
+						&nseciter, &first);
+				}
 			} else {
 				/*
 				 * We found an active node, but either the
@@ -3127,6 +3134,8 @@ again:
 				 */
 				result = DNS_R_BADDB;
 			}
+		} else if (typepair == dns_rdatatype_nsec3) {
+			result = previous_closest_nsec3(search, &prevnode, name);
 		} else {
 			/*
 			 * This node isn't active.  We've got to keep
