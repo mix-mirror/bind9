@@ -3056,61 +3056,54 @@ again:
 				 * We now know that there is at least one
 				 * active rdataset at this node.
 				 */
-				empty_node = false;
 				found = first_existing_header(top, search->serial);
-				if (foundsig != NULL) {
-					break;
-				}
+				empty_node = empty_node && found == NULL;
 			} else if (top->typepair == sigpair) {
 				/*
 				 * We now know that there is at least one
 				 * active rdataset at this node.
 				 */
-				empty_node = false;
 				foundsig = first_existing_header(top, search->serial);
-				if (found != NULL) {
-					break;
-				}
+				empty_node = empty_node && foundsig == NULL;
+			}
+
+			if (found != NULL && foundsig != NULL) {
+				break;
 			}
 		}
-		if (!empty_node) {
-			if (found != NULL && search->version->havensec3 &&
-			    found->typepair ==
-				    DNS_TYPEPAIR(dns_rdatatype_nsec3) &&
-			    !matchparams(found, search))
-			{
-				empty_node = true;
-				found = NULL;
-				foundsig = NULL;
-				if (typepair == dns_rdatatype_nsec3) {
-					result = previous_closest_nsec3(search, &prevnode, name);
-				}
-			} else if (found != NULL &&
-				   (foundsig != NULL || !need_sig))
-			{
-				/*
-				 * We've found the right NSEC/NSEC3 record.
-				 *
-				 * Note: for this to really be the right
-				 * NSEC record, it's essential that the NSEC
-				 * records of any nodes obscured by a zone
-				 * cut have been removed; we assume this is
-				 * the case.
-				 */
-				dns_name_copy(name, foundname);
-				if (nodep != NULL) {
-					qpznode_acquire(
-						node DNS__DB_FLARG_PASS);
-					*nodep = (dns_dbnode_t *)node;
-				}
-				bindrdataset(search->qpdb, node, found,
-					     rdataset DNS__DB_FLARG_PASS);
-				if (foundsig != NULL) {
-					bindrdataset(
-						search->qpdb, node, foundsig,
-						sigrdataset DNS__DB_FLARG_PASS);
-				}
-			} else if (found == NULL && foundsig == NULL) {
+
+		if (found != NULL && search->version->havensec3 &&
+		    found->typepair == DNS_TYPEPAIR(dns_rdatatype_nsec3) &&
+		    !matchparams(found, search))
+		{
+			empty_node = true;
+			found = NULL;
+			foundsig = NULL;
+			result = previous_closest_nsec3(search, &prevnode,
+							name);
+		} else if (found != NULL && (foundsig != NULL || !need_sig)) {
+			/*
+			 * We've found the right NSEC/NSEC3 record.
+			 *
+			 * Note: for this to really be the right
+			 * NSEC record, it's essential that the NSEC
+			 * records of any nodes obscured by a zone
+			 * cut have been removed; we assume this is
+			 * the case.
+			 */
+			dns_name_copy(name, foundname);
+			if (nodep != NULL) {
+				qpznode_acquire(node DNS__DB_FLARG_PASS);
+				*nodep = (dns_dbnode_t *)node;
+			}
+			bindrdataset(search->qpdb, node, found,
+				     rdataset DNS__DB_FLARG_PASS);
+			if (foundsig != NULL) {
+				bindrdataset(search->qpdb, node, foundsig,
+					     sigrdataset DNS__DB_FLARG_PASS);
+			}
+		} else if (!empty_node) {
+			if (found == NULL && foundsig == NULL) {
 				/*
 				 * This node is active, but has no NSEC or
 				 * RRSIG NSEC.  That means it's glue or
@@ -3118,6 +3111,7 @@ again:
 				 * relevant for our search.  Treat the
 				 * node as if it were empty and keep looking.
 				 */
+				INSIST(false);
 				empty_node = true;
 				if (typepair == dns_rdatatype_nsec3) {
 					result = previous_closest_nsec3(search, &prevnode, name);
