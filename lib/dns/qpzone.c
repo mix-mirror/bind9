@@ -2959,7 +2959,7 @@ previous_closest_nsec(dns_rdatatype_t type, qpz_search_t *search,
 
 		*nodep = NULL;
 		result = dns_qp_lookup(&search->qpr, &nsec_node->name,
-				       DNS_DBNAMESPACE_NORMAL, &search->iter,
+				       DNS_DBNAMESPACE_NORMAL, NULL,
 				       NULL, (void **)nodep, NULL);
 		if (result == ISC_R_SUCCESS) {
 			dns_name_copy(&nsec_node->name, name);
