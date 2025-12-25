@@ -3103,31 +3103,12 @@ again:
 					     sigrdataset DNS__DB_FLARG_PASS);
 			}
 		} else if (!empty_node) {
-			if (found == NULL && foundsig == NULL) {
-				/*
-				 * This node is active, but has no NSEC or
-				 * RRSIG NSEC.  That means it's glue or
-				 * other obscured zone data that isn't
-				 * relevant for our search.  Treat the
-				 * node as if it were empty and keep looking.
-				 */
-				INSIST(false);
-				empty_node = true;
-				if (typepair == dns_rdatatype_nsec3) {
-					result = previous_closest_nsec3(search, &prevnode, name);
-				} else {
-					result = previous_closest_nsec(
-						typepair, search, name, &prevnode,
-						&nseciter, &first);
-				}
-			} else {
-				/*
-				 * We found an active node, but either the
-				 * NSEC or the RRSIG NSEC is missing.  This
-				 * shouldn't happen.
-				 */
-				result = DNS_R_BADDB;
-			}
+			/*
+			 * We found an active node, but either the
+			 * NSEC or the RRSIG NSEC is missing.  This
+			 * shouldn't happen.
+			 */
+			result = DNS_R_BADDB;
 		} else if (typepair == dns_rdatatype_nsec3) {
 			result = previous_closest_nsec3(search, &prevnode, name);
 		} else {
