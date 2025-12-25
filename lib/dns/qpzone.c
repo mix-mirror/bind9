@@ -3098,8 +3098,12 @@ again:
 			 * This node isn't active.  We've got to keep
 			 * looking.
 			 */
-			result = previous_closest_nsec(typepair, search, name,
-						       &prevnode, &nseciter);
+			// result = previous_closest_nsec(typepair, search, name,
+			// 			       &prevnode, &nseciter);
+			isc_result_t iresult = dns_qpiter_prev(&search->iter, (void **)&prevnode, NULL);
+			if (iresult == ISC_R_SUCCESS) {
+				dns_name_copy(&prevnode->name, name);
+			}
 		}
 		NODE_UNLOCK(nlock, &nlocktype);
 		node = prevnode;
