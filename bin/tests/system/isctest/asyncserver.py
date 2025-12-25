@@ -644,6 +644,8 @@ class DomainHandler(ResponseHandler):
     The derived class must specify a list of `domains` that it wants to handle.
     Queries for any of these domains (and their subdomains) will then be passed
     to the `get_response()` method in the derived class.
+
+    The most specific matching domain is stored in the `matching_domain` attribute.
     """
 
     @property
@@ -655,9 +657,10 @@ class DomainHandler(ResponseHandler):
         raise NotImplementedError
 
     def __init__(self) -> None:
-        self._domains: List[dns.name.Name] = [
-            dns.name.from_text(d) for d in self.domains
-        ]
+        self._domains: List[dns.name.Name] = sorted(
+            [dns.name.from_text(d) for d in self.domains], reverse=True
+        )
+        self.matching_domain: Optional[dns.name.Name] = None
 
     def __str__(self) -> str:
         return f"{self.__class__.__name__}(domains: {', '.join(self.domains)})"
@@ -669,6 +672,7 @@ class DomainHandler(ResponseHandler):
         """
         for domain in self._domains:
             if qctx.qname.is_subdomain(domain):
+                self.matching_domain = domain
                 return True
         return False
 
