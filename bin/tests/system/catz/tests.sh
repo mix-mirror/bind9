@@ -372,7 +372,7 @@ status=$((status + ret))
 n=$((n + 1))
 echo_i "waiting for secondary to sync up ($n)"
 ret=0
-wait_for_message ns2/named.run "catz: updating catalog zone 'catalog2.example' with serial 2670950425" \
+wait_for_message ns2/named.run "catz: updating catalog zone 'Catalog2.Example' with serial 2670950425" \
   && wait_for_message ns2/named.run "catz: adding zone 'dom2.example' from catalog 'catalog1.example'" \
   && wait_for_message ns2/named.run "catz: adding zone 'dom3.example' from catalog 'catalog1.example'" \
   && wait_for_message ns2/named.run "catz: adding zone 'dom4.example' from catalog 'catalog2.example'" \
@@ -445,7 +445,7 @@ n=$((n + 1))
 echo_i "waiting for secondary to sync up, and checking that the reused label has been caught ($n)"
 ret=0
 wait_for_message ns2/named.run "de26b88d855397a03f77ff1162fd055d8b419584.zones.catalog2.example IN PTR (failure)" \
-  && wait_for_message ns2/named.run "catz: new catalog zone 'catalog2.example' is broken and will not be processed" || ret=1
+  && wait_for_message ns2/named.run "catz: new catalog zone 'Catalog2.Example' is broken and will not be processed" || ret=1
 if [ $ret -ne 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
