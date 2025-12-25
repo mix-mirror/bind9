@@ -520,8 +520,8 @@ dns__catz_zones_merge(dns_catz_zone_t *catz, dns_catz_zone_t *newcatz) {
 
 	dns_name_format(&catz->name, czname, DNS_NAME_FORMATSIZE);
 
-	isc_ht_init(&toadd, catz->catzs->mctx, 1, ISC_HT_CASE_SENSITIVE);
-	isc_ht_init(&tomod, catz->catzs->mctx, 1, ISC_HT_CASE_SENSITIVE);
+	isc_ht_init(&toadd, catz->catzs->mctx, 1, ISC_HT_CASE_INSENSITIVE);
+	isc_ht_init(&tomod, catz->catzs->mctx, 1, ISC_HT_CASE_INSENSITIVE);
 	isc_ht_iter_create(newcatz->entries, &iter1);
 	isc_ht_iter_create(catz->entries, &iter2);
 
@@ -833,7 +833,7 @@ dns_catz_zone_new(dns_catz_zones_t *catzs, const dns_name_t *name) {
 	dns_catz_zones_attach(catzs, &catz->catzs);
 	isc_mutex_init(&catz->lock);
 	isc_refcount_init(&catz->references, 1);
-	isc_ht_init(&catz->entries, catzs->mctx, 4, ISC_HT_CASE_SENSITIVE);
+	isc_ht_init(&catz->entries, catzs->mctx, 4, ISC_HT_CASE_INSENSITIVE);
 	isc_ht_init(&catz->coos, catzs->mctx, 4, ISC_HT_CASE_INSENSITIVE);
 	isc_time_settoepoch(&catz->lastupdated);
 	dns_catz_options_init(&catz->defoptions);
