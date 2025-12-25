@@ -56,12 +56,7 @@ class BadCnameHandler(QnameHandler, StaticResponseHandler):
 class BadGoodDnameNsHandler(QnameQtypeHandler, StaticResponseHandler):
     qnames = ["baddname.example.net.", "gooddname.example.net."]
     qtypes = [dns.rdatatype.NS]
-    # XXX: This should really be, for brevity:
-    #      authority = [soa_rrset("example.net.")]
-    #      But we are reproducing the exact behavior of the original server.
-    authority = [
-        rrset("example.net.", dns.rdatatype.SOA, "1. 2. 3 4 5 1814400 3600", ttl=0)
-    ]
+    authority = [soa_rrset("example.net.")]
 
 
 class CnameSubHandler(QnameHandler, StaticResponseHandler):

@@ -107,10 +107,8 @@ class Gl6412Handler(QnameHandler):
         if qctx.qtype == dns.rdatatype.SOA:
             qctx.response.answer.append(soa_rrset(qctx.qname))
         elif qctx.qtype == dns.rdatatype.NS:
-            # XXX: The delegation is broken here; dot is missing from NS target names.
-            # I don't know if this is intentional, but for now we are chasing behavior parity.
-            ns2_rrset = rrset(qctx.qname, dns.rdatatype.NS, f"ns2{qctx.qname}")
-            ns3_rrset = rrset(qctx.qname, dns.rdatatype.NS, f"ns3{qctx.qname}")
+            ns2_rrset = rrset(qctx.qname, dns.rdatatype.NS, f"ns2.{qctx.qname}")
+            ns3_rrset = rrset(qctx.qname, dns.rdatatype.NS, f"ns3.{qctx.qname}")
             qctx.response.answer.append(ns2_rrset)
             qctx.response.answer.append(ns3_rrset)
         else:

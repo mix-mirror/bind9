@@ -179,16 +179,6 @@ class FallbackHandler(ResponseHandler):
         yield DnsResponseSend(qctx.response, authoritative=False)
 
 
-# XXX: This handler is here to provide bug-for-bug compatibility with the old server.
-class XXXBuggyTldNsHandler(QnameQtypeHandler, FallbackHandler):
-    qnames = [
-        "tld1.",
-        "tld2.",
-    ]
-
-    qtypes = [dns.rdatatype.NS]
-
-
 def main() -> None:
     server = AsyncDnsServer(default_rcode=dns.rcode.NOERROR)
 
@@ -205,7 +195,6 @@ def main() -> None:
         NoResponseExampleUdpHandler(),
         RootNsHandler(),
         ZoneVersionHandler(),
-        XXXBuggyTldNsHandler(),
     )
 
     # Then install DomainHandlers
