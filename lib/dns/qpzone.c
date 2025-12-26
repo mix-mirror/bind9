@@ -2642,6 +2642,16 @@ qpzone_setup_delegation(qpz_search_t *search, dns_dbnode_t **nodep,
 	return DNS_R_DELEGATION;
 }
 
+static bool
+node_active(qpz_search_t *search, qpznode_t *node) {
+	ISC_SLIST_FOREACH(top, node->next_type, next_type) {
+		if (first_existing_header(top, search->serial) != NULL) {
+			return true;
+		}
+	}
+	return false;
+}
+
 typedef enum { FORWARD, BACK } direction_t;
 
 /*
@@ -2662,17 +2672,15 @@ step(qpz_search_t *search, dns_qpiter_t *it, direction_t direction,
 	if (result == ISC_R_SUCCESS) {
 		dns_name_copy(&node->name, nodename);
 	}
+
 	while (result == ISC_R_SUCCESS) {
 		isc_rwlock_t *nlock = qpzone_get_lock(node);
 		isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
-		dns_vecheader_t *found = NULL;
 
 		NODE_RDLOCK(nlock, &nlocktype);
-		ISC_SLIST_FOREACH(top, node->next_type, next_type) {
-			found = first_existing_header(top, search->serial);
-		}
+		bool is_active = node_active(search, node);
 		NODE_UNLOCK(nlock, &nlocktype);
-		if (found != NULL) {
+		if (is_active) {
 			break;
 		}
 
@@ -2786,16 +2794,6 @@ wildcard_blocked(qpz_search_t *search, const dns_name_t *qname,
 		dns_name_getlabelsequence(&rname, 1, n - 1, &rname);
 	} while (!dns_name_equal(&rname, &tname));
 
-	return false;
-}
-
-static bool
-node_active(qpz_search_t *search, qpznode_t *node) {
-	ISC_SLIST_FOREACH(top, node->next_type, next_type) {
-		if (first_existing_header(top, search->serial) != NULL) {
-			return true;
-		}
-	}
 	return false;
 }
 
