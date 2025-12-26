@@ -669,6 +669,73 @@ class QnameQtypeHandler(QnameHandler):
         return qctx.qtype in self._qtypes and super().match(qctx)
 
 
+class StaticResponseHandler(ResponseHandler):
+    """
+    Base class used for deriving custom static response handlers.
+
+    The derived class can specify the RRsets to be included in the answer,
+    authority, and additional sections of the response, whether to set the AA
+    bit in the response, and a delay before sending the response.
+
+    The default implementation of `get_responses()` uses these properties to
+    prepare and yield a single response.
+    """
+
+    @property
+    def rcode(self) -> Optional[dns.rcode.Rcode]:
+        """
+        Optional RCODE to be set in the response.
+        """
+        return None
+
+    @property
+    def answer(self) -> Sequence[dns.rrset.RRset]:
+        """
+        RRsets to be included in the answer section of the response.
+        """
+        return []
+
+    @property
+    def authority(self) -> Sequence[dns.rrset.RRset]:
+        """
+        RRsets to be included in the authority section of the response.
+        """
+        return []
+
+    @property
+    def additional(self) -> Sequence[dns.rrset.RRset]:
+        """
+        RRsets to be included in the additional section of the response.
+        """
+        return []
+
+    @property
+    def authoritative(self) -> Optional[bool]:
+        """
+        Whether to set the AA bit in the response.
+        """
+        return None
+
+    @property
+    def delay(self) -> float:
+        """
+        Delay before sending the response.
+        """
+        return 0.0
+
+    async def get_responses(
+        self, qctx: QueryContext
+    ) -> AsyncGenerator[DnsResponseSend, None]:
+        qctx.response.answer.extend(self.answer)
+        qctx.response.authority.extend(self.authority)
+        qctx.response.additional.extend(self.additional)
+        if self.rcode is not None:
+            qctx.response.set_rcode(self.rcode)
+        yield DnsResponseSend(
+            qctx.response, authoritative=self.authoritative, delay=self.delay
+        )
+
+
 class DomainHandler(ResponseHandler):
     """
     Base class used for deriving custom domain handlers.
