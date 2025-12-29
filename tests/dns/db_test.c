@@ -178,7 +178,7 @@ ISC_LOOP_TEST_IMPL(dns_dbfind_staleok) {
 		count = 0;
 		do {
 			count++;
-			assert_in_range(count, 1, 21); /* loop sanity */
+			assert_int_in_range(count, 1, 21); /* loop sanity */
 			assert_int_equal(rdataset.attributes.stale, false);
 			assert_true(rdataset.ttl > 0);
 			dns_db_detachnode(&node);
@@ -211,7 +211,8 @@ ISC_LOOP_TEST_IMPL(dns_dbfind_staleok) {
 			count = 0;
 			do {
 				count++;
-				assert_in_range(count, 0, 49); /* loop sanity */
+				assert_int_in_range(count, 0, 49); /* loop
+								      sanity */
 				assert_int_equal(result, ISC_R_SUCCESS);
 				assert_int_equal(rdataset.attributes.stale,
 						 true);
@@ -229,7 +230,7 @@ ISC_LOOP_TEST_IMPL(dns_dbfind_staleok) {
 			 * usleep(100000) can be slightly less than 10ms so
 			 * allow the count to reach 11.
 			 */
-			assert_in_range(count, 1, 11);
+			assert_int_in_range(count, 1, 11);
 			assert_int_equal(result, ISC_R_NOTFOUND);
 			break;
 		case 2:

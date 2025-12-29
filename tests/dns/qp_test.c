@@ -283,7 +283,7 @@ ISC_RUN_TEST_IMPL(qpkey_sort) {
 static void
 check_leaf(void *uctx, void *pval, uint32_t ival) {
 	uint32_t *items = uctx;
-	assert_in_range(ival, 1, ITER_ITEMS - 1);
+	assert_uint_in_range(ival, 1, ITER_ITEMS - 1);
 	assert_ptr_equal(items + ival, pval);
 }
 
@@ -353,7 +353,7 @@ ISC_RUN_TEST_IMPL(qpiter) {
 		uint32_t prev = 0;
 		dns_qpiter_init(qp, &qpi);
 		while (dns_qpiter_next(&qpi, &pval, &ival) == ISC_R_SUCCESS) {
-			assert_in_range(ival, prev + 1, ITER_ITEMS - 1);
+			assert_uint_in_range(ival, prev + 1, ITER_ITEMS - 1);
 			assert_int_equal(ival, item[ival]);
 			assert_ptr_equal(pval, &item[ival]);
 			order[inserted++] = ival;

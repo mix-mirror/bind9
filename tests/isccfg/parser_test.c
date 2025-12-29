@@ -149,7 +149,7 @@ ISC_RUN_TEST_IMPL(parse_buffer) {
 
 	/* Check log values (and, specifically, line numbers). */
 	logfilelen = ftell(logfile);
-	assert_in_range(logfilelen, 0, sizeof(logfilebuf));
+	assert_uint_in_range(logfilelen, 0, sizeof(logfilebuf));
 
 	fresult = fseek(logfile, 0, SEEK_SET);
 	assert_int_equal(fresult, 0);

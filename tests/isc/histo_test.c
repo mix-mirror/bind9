@@ -214,9 +214,9 @@ ISC_RUN_TEST_IMPL(quantiles) {
 			uint i = (quantum + base - key) * 2;
 
 			/* check fenceposts */
-			assert_in_range(value[i - 0], lomin, himin);
-			assert_in_range(value[i - 1], lomid, himid);
-			assert_in_range(value[i - 2], lomax, himax);
+			assert_uint_in_range(value[i - 0], lomin, himin);
+			assert_uint_in_range(value[i - 1], lomid, himid);
+			assert_uint_in_range(value[i - 2], lomax, himax);
 
 			/* these tests can be slow */
 			if (isc_time_monotonic() > start + TIME_LIMIT) {
