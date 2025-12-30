@@ -15,7 +15,6 @@ from re import compile as Re
 
 import pytest
 
-pytest.importorskip("dns", minversion="2.0.0")
 import dns
 import dns.update
 

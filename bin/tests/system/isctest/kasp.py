@@ -25,12 +25,9 @@ import dns.rdatatype
 import dns.rrset
 import dns.tsig
 
-import pytest
-
 import isctest.log
 import isctest.query
 import isctest.util
-from isctest.compat import DSDigest
 from isctest.instance import NamedInstance
 from isctest.template import TrustAnchor
 from isctest.vars.algorithms import Algorithm, ALL_ALGORITHMS_BY_NUM
@@ -444,7 +441,6 @@ class Key:
 
     @property
     def dnskey(self) -> dns.rrset.RRset:
-        pytest.importorskip("dns", minversion="2.2.0")  # dns.zonefile.read_rrsets
         with open(self.keyfile, "r", encoding="utf-8") as file:
             rrsets = dns.zonefile.read_rrsets(
                 file.read(),
@@ -459,7 +455,7 @@ class Key:
         ), f"DNSKEY not found in {self.keyfile}"
         return dnskey_rr
 
-    def into_ta(self, ta_type: str, dsdigest=DSDigest.SHA256) -> TrustAnchor:
+    def into_ta(self, ta_type: str, dsdigest=dns.dnssec.DSDigest.SHA256) -> TrustAnchor:
         dnskey = self.dnskey
         if ta_type in ["static-ds", "initial-ds"]:
             ds = dns.dnssec.make_ds(dnskey.name, dnskey[0], dsdigest)

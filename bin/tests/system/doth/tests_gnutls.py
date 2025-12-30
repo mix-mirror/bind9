@@ -18,7 +18,7 @@ import time
 
 import pytest
 
-pytest.importorskip("dns")
+import dns
 import dns.exception
 import dns.name
 import dns.rdataclass
