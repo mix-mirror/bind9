@@ -117,6 +117,8 @@ typedef struct qpznode qpznode_t;
 typedef struct qpzone_updatectx {
        dns_updatectx_t base;
        dns_qp_t *qp;
+       dns_qp_t *nsec;
+       dns_qp_t *nsec3;
        dns_qpread_t qpr;
 } qpzone_updatectx_t;
 
@@ -5324,7 +5326,9 @@ qpzone_beginupdate(dns_db_t *db, dns_dbversion_t *ver, dns_rdatacallbacks_t *cal
 		.base.warn = true,
 		.qpr = (dns_qpread_t){ 0 },
 	};
-	ctx->qp = begin_transaction(qpdb, &ctx->qpr, true);
+	ctx->qp = begin_transaction(qpdb, qpdb->tree, &ctx->qpr, true);
+	ctx->nsec = begin_transaction(qpdb, qpdb->nsec, &ctx->qpr, true);
+	ctx->nsec3 = begin_transaction(qpdb, qpdb->nsec3, &ctx->qpr, true);
 
 	callbacks->update = qpzone_update_callback;
 	callbacks->add_private = ctx;
@@ -5342,7 +5346,9 @@ qpzone_commitupdate(dns_db_t *db, dns_rdatacallbacks_t *callbacks) {
 
 	ctx = (qpzone_updatectx_t *)callbacks->add_private;
 	if (ctx != NULL) {
-		end_transaction(qpdb, ctx->qp, true);
+		end_transaction(qpdb->nsec3, ctx->nsec3, true);
+		end_transaction(qpdb->nsec, ctx->nsec, true);
+		end_transaction(qpdb->tree, ctx->qp, true);
 
 		isc_mem_put(qpdb->common.mctx, ctx, sizeof(*ctx));
 		/*
@@ -5370,7 +5376,9 @@ qpzone_abortupdate(dns_db_t *db, dns_rdatacallbacks_t *callbacks) {
 
 	ctx = (qpzone_updatectx_t *)callbacks->add_private;
 	if (ctx != NULL) {
-		end_transaction(qpdb, ctx->qp, true);
+		end_transaction(qpdb->nsec3, ctx->nsec3, true);
+		end_transaction(qpdb->nsec, ctx->nsec, true);
+		end_transaction(qpdb->tree, ctx->qp, true);
 
 		isc_mem_put(qpdb->common.mctx, ctx, sizeof(*ctx));
 		/*
