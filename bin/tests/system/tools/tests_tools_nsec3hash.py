@@ -19,7 +19,6 @@ from isctest.hypothesis.strategies import dns_names
 
 from hypothesis import strategies, given, settings
 
-pytest.importorskip("dns.dnssectypes")
 from dns.dnssectypes import NSEC3Hash
 import dns.dnssec
 

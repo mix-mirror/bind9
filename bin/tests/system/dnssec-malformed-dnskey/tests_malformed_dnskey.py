@@ -16,9 +16,6 @@ import os
 import pytest
 
 pytest.importorskip("cryptography")
-pytest.importorskip(
-    "dns", minversion="2.7.0"
-)  # dns.dnssec.sign_zone(deterministic=...) needed
 
 from cryptography.hazmat.primitives.asymmetric import ec
 

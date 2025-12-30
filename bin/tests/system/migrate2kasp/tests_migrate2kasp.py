@@ -10,12 +10,10 @@
 # information regarding copyright ownership.
 
 import os
-
 from datetime import timedelta
 
 import pytest
 
-pytest.importorskip("dns", minversion="2.0.0")
 import isctest
 import isctest.mark
 

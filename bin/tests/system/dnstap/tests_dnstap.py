@@ -18,7 +18,6 @@ import isctest
 import isctest.mark
 import pytest
 
-pytest.importorskip("dns", minversion="2.0.0")
 import dns.rrset
 
 pytestmark = [

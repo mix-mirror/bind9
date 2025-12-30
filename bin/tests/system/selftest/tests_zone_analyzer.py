@@ -19,6 +19,7 @@ import collections
 import itertools
 from pathlib import Path
 
+import dns
 import dns.name
 from dns.name import Name
 import pytest
@@ -26,7 +27,6 @@ import pytest
 import isctest
 import isctest.name
 
-pytest.importorskip("dns", minversion="2.3.0")
 
 # set of properies present in the tested zone - read by tests_zone_analyzer.py
 CATEGORIES = frozenset(

@@ -15,10 +15,10 @@ import os
 import shutil
 import time
 
+import dns
 import dns.update
 import pytest
 
-pytest.importorskip("dns", minversion="2.0.0")
 import isctest
 import isctest.mark
 from isctest.vars.algorithms import RSASHA1

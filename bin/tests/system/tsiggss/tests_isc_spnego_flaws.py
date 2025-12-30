@@ -24,7 +24,7 @@ import pytest
 
 import isctest
 
-pytest.importorskip("dns")
+import dns
 import dns.message
 import dns.name
 import dns.rdata

@@ -18,7 +18,7 @@ import time
 
 import pytest
 
-pytest.importorskip("dns", minversion="2.0.0")
+import dns
 import dns.edns
 import dns.message
 import dns.name
