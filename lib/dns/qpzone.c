@@ -2449,7 +2449,7 @@ setgluecachestats(dns_db_t *db, isc_stats_t *stats) {
 }
 
 static dns_qp_t *
-begin_transaction(qpzonedb_t *qpdb, dns_qpread_t *qprp, bool create) {
+begin_transaction(qpzonedb_t *qpdb, dns_qpmulti_t *dbtree, dns_qpread_t *qprp, bool create) {
 	dns_qp_t *qp = NULL;
 
 	if (create) {
@@ -2464,13 +2464,13 @@ begin_transaction(qpzonedb_t *qpdb, dns_qpread_t *qprp, bool create) {
 }
 
 static void
-end_transaction(qpzonedb_t *qpdb, dns_qp_t *qp, bool create) {
+end_transaction(dns_qpmulti_t *dbtree, dns_qp_t *qp, bool create) {
 	if (create) {
 		dns_qp_compact(qp, DNS_QPGC_MAYBE);
-		dns_qpmulti_commit(qpdb->tree, &qp);
+		dns_qpmulti_commit(dbtree, &qp);
 	} else {
 		dns_qpread_t *qprp = (dns_qpread_t*) qp;
-		dns_qpread_destroy(qpdb->tree, qprp);
+		dns_qpread_destroy(dbtree, qprp);
 	}
 }
 
@@ -2479,8 +2479,7 @@ findnodeintree(qpzonedb_t *qpdb, dns_qp_t *qp, const dns_name_t *name, bool crea
 	       bool nsec3, dns_dbnode_t **nodep DNS__DB_FLARG) {
 	isc_result_t result;
 	qpznode_t *node = NULL;
-	dns_namespace_t nspace = nsec3 ? DNS_DBNAMESPACE_NSEC3
-				       : DNS_DBNAMESPACE_NORMAL;
+
 	/*
 	 * findnodeintree is a wrapper around dns_qp_getname that does some
 	 * qpzone-specific bookkeeping before returning the lookup result to the
@@ -2496,8 +2495,6 @@ findnodeintree(qpzonedb_t *qpdb, dns_qp_t *qp, const dns_name_t *name, bool crea
 		 * the caller. qpznode_acquire takes care of that.
 		 */
 		qpznode_acquire(qpdb, node DNS__DB_FLARG_PASS);
-
-		INSIST(node->nspace == DNS_DBNAMESPACE_NSEC3 || !nsec3);
 	} else if (result != ISC_R_SUCCESS && create) {
 		/*
 		 * ... if the lookup is unsuccesful, but the caller asked us to
@@ -2532,8 +2529,6 @@ findnodeintree(qpzonedb_t *qpdb, dns_qp_t *qp, const dns_name_t *name, bool crea
 				wildcardmagic(qpdb, qp, name);
 			}
 		}
-
-		INSIST(node->nspace == DNS_DBNAMESPACE_NSEC3 || !nsec3);
 	}
 
 	/*
@@ -2555,11 +2550,11 @@ findnode(dns_db_t *db, const dns_name_t *name, bool create,
 	REQUIRE(VALID_QPZONE(qpdb));
 
 	dns_qpread_t qpr = { 0 };
-	dns_qp_t *qp = begin_transaction(qpdb, &qpr, create);
+	dns_qp_t *qp = begin_transaction(qpdb, qpdb->tree, &qpr, create);
 
 	isc_result_t result =  findnodeintree(qpdb, qp, name, create, false, nodep DNS__DB_FLARG_PASS);
 
-	end_transaction(qpdb, qp, create);
+	end_transaction(qpdb->tree, qp, create);
 
 	return result;
 }
@@ -2572,11 +2567,11 @@ findnsec3node(dns_db_t *db, const dns_name_t *name, bool create,
 	REQUIRE(VALID_QPZONE(qpdb));
 
 	dns_qpread_t qpr = { 0 };
-	dns_qp_t *qp = begin_transaction(qpdb, &qpr, create);
+	dns_qp_t *qp = begin_transaction(qpdb, qpdb->nsec3, &qpr, create);
 
 	isc_result_t result =  findnodeintree(qpdb, qp, name, create, true, nodep DNS__DB_FLARG_PASS);
 
-	end_transaction(qpdb, qp, create);
+	end_transaction(qpdb->nsec3, qp, create);
 
 	return result;
 }
@@ -4726,7 +4721,7 @@ qpzone_addrdataset_inner(dns_db_t *db, dns_dbnode_t *dbnode,
 	 * Add to the auxiliary NSEC tree if we're adding an NSEC record.
 	 */
 
-	bool is_nsec = !node->havensec && rdataset->type == dns_rdatatype_nsec;
+	bool is_nsec = node->nsec != DNS_DB_NSEC_HAS_NSEC && rdataset->type == dns_rdatatype_nsec;
 	REQUIRE(!is_nsec || nsec != NULL);
 
 	/*
@@ -4745,15 +4740,14 @@ qpzone_addrdataset_inner(dns_db_t *db, dns_dbnode_t *dbnode,
 	result = ISC_R_SUCCESS;
 
 	if (is_nsec) {
-		node->havensec = true;
+		node->nsec = DNS_DB_NSEC_HAS_NSEC;
 
 		/*
 		 * If it fails, there was already an NSEC node,
 		 * so we can detach the new one we created and
 		 * move on.
 		 */
-		qpznode_t *nsecnode = new_qpznode(qpdb, name,
-						  DNS_DBNAMESPACE_NSEC);
+		qpznode_t *nsecnode = new_qpznode(qpdb, name);
 		/*
 		 * We don't need a separate transaction since the NSEC tree and
 		 * the normal tree are part of the same qp-tree.
@@ -4794,11 +4788,13 @@ addrdataset(dns_db_t *db, dns_dbnode_t *dbnode, dns_dbversion_t *dbversion,
 
 	REQUIRE(VALID_QPZONE(qpdb));
 
+	bool is_nsec = node->nsec != DNS_DB_NSEC_HAS_NSEC && rdataset->type == dns_rdatatype_nsec;
+
 	/*
 	 * Add to the auxiliary NSEC tree if we're adding an NSEC record.
 	 */
-	if (!node->havensec && rdataset->type == dns_rdatatype_nsec) {
-		dns_qpmulti_write(qpdb->tree, &nsec);
+	if (is_nsec) {
+		dns_qpmulti_write(qpdb->nsec, &nsec);
 	}
 
 	isc_result_t result = qpzone_addrdataset_inner(db, dbnode, dbversion,
