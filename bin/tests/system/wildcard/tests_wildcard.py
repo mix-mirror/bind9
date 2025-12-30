@@ -29,7 +29,7 @@ Limitations - untested properties:
 
 import pytest
 
-pytest.importorskip("dns", minversion="2.0.0")
+import dns
 import dns.message
 import dns.name
 import dns.query

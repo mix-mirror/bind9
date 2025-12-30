@@ -17,9 +17,6 @@ import pytest
 
 import isctest
 
-# isctest.asyncserver requires dnspython >= 2.0.0
-pytest.importorskip("dns", minversion="2.0.0")
-
 
 pytestmark = pytest.mark.extra_artifacts(
     [

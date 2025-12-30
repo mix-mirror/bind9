@@ -11,8 +11,9 @@
 
 import time
 
+from dns.edns import EDECode
+
 import isctest
-from isctest.compat import EDECode
 
 
 def check_sfcache_ede(ns, ede):

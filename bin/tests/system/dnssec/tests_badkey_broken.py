@@ -9,13 +9,9 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
-import pytest
 from dns import flags
 
 import isctest
-
-# isctest.asyncserver requires dnspython >= 2.0.0
-pytest.importorskip("dns", minversion="2.0.0")
 
 
 def bootstrap():

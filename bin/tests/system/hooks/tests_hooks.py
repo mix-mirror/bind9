@@ -17,7 +17,6 @@ import dns
 import pytest
 import isctest
 
-pytest.importorskip("dns")
 
 pytestmark = pytest.mark.extra_artifacts(["conf/*.conf"])
 

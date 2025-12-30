@@ -14,11 +14,6 @@ from re import compile as Re
 
 import isctest
 
-import pytest
-
-# isctest.asyncserver requires dnspython >= 2.0.0
-pytest.importorskip("dns", minversion="2.0.0")
-
 
 def bootstrap():
     return {

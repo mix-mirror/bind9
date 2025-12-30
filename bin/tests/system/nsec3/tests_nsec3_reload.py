@@ -15,9 +15,9 @@ import os
 import shutil
 import time
 
+import dns
 import pytest
 
-pytest.importorskip("dns", minversion="2.0.0")
 import isctest
 from nsec3.common import (
     ALGORITHM,

@@ -17,7 +17,7 @@ import os
 from pathlib import Path
 import re
 
-import dns.message
+import dns.update
 import dns.rcode
 
 from .log import debug, WatchLogFromStart, WatchLogFromHere
@@ -116,14 +116,11 @@ class NamedInstance:
         return self._rndc(command, timeout=timeout, **kwargs)
 
     def nsupdate(
-        self, update_msg: dns.message.Message, expected_rcode=dns.rcode.NOERROR
+        self, update_msg: dns.update.UpdateMessage, expected_rcode=dns.rcode.NOERROR
     ):
         """
         Issue a dynamic update to a server's zone.
         """
-        # FUTURE update_msg is actually dns.update.UpdateMessage, but it not
-        # typed properly here in order to support use of this module with
-        # dnspython<2.0.0
         zone = str(update_msg.zone[0].name)  # type: ignore[attr-defined]
         try:
             response = udp(
