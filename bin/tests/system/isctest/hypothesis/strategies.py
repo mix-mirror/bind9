@@ -143,13 +143,8 @@ def dns_names(
 
 
 RDATACLASS_MAX = RDATATYPE_MAX = 65535
-try:
-    dns_rdataclasses = builds(dns.rdataclass.RdataClass, integers(0, RDATACLASS_MAX))
-    dns_rdatatypes = builds(dns.rdatatype.RdataType, integers(0, RDATATYPE_MAX))
-except AttributeError:
-    # In old dnspython versions, RDataTypes and RDataClasses are int and not enums.
-    dns_rdataclasses = integers(0, RDATACLASS_MAX)  # type: ignore
-    dns_rdatatypes = integers(0, RDATATYPE_MAX)  # type: ignore
+dns_rdataclasses = builds(dns.rdataclass.RdataClass, integers(0, RDATACLASS_MAX))
+dns_rdatatypes = builds(dns.rdatatype.RdataType, integers(0, RDATATYPE_MAX))
 dns_rdataclasses_without_meta = dns_rdataclasses.filter(dns.rdataclass.is_metaclass)
 
 # NOTE: This should really be `dns_rdatatypes_without_meta = dns_rdatatypes_without_meta.filter(dns.rdatatype.is_metatype()`,

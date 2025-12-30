@@ -113,7 +113,6 @@ class AsyncServer:
         tcp_handler: Optional[_TcpHandler],
         pidfile: Optional[str] = None,
     ) -> None:
-        self._abort_if_on_dnspython_version_less_than_2_0_0()
         logging.basicConfig(
             format="%(asctime)s %(levelname)8s  %(message)s",
             level=os.environ.get("ANS_LOG_LEVEL", "INFO").upper(),
@@ -140,14 +139,6 @@ class AsyncServer:
         self._tcp_handler: Optional[_TcpHandler] = tcp_handler
         self._pidfile: Optional[str] = pidfile
         self._work_done: Optional[asyncio.Future] = None
-
-    @classmethod
-    def _abort_if_on_dnspython_version_less_than_2_0_0(cls) -> None:
-        if dns.version.MAJOR < 2:
-            error = f"Using {cls.__name__} requires dnspython >= 2.0.0; "
-            error += 'add `pytest.importorskip("dns", minversion="2.0.0")` '
-            error += "to the test module to skip this test."
-            raise RuntimeError(error)
 
     def _get_ipv4_address_from_directory_name(self) -> str:
         containing_directory = pathlib.Path().absolute().stem

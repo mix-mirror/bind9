@@ -12,11 +12,8 @@
 
 import dns.flags
 import dns.message
-import pytest
 
 import isctest
-
-pytest.importorskip("dns", minversion="2.0.0")
 
 
 def test_glue_full_glue_set():
