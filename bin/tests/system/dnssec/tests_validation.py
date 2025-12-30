@@ -15,16 +15,14 @@ import shutil
 import time
 
 from dns import flags, name, rdataclass, rdatatype
+from dns.edns import EDECode
 
 import pytest
 
 import isctest
-from isctest.compat import EDECode
 import isctest.mark
 from isctest.util import param
 
-# isctest.asyncserver requires dnspython >= 2.0.0
-pytest.importorskip("dns", minversion="2.0.0")
 
 pytestmark = pytest.mark.extra_artifacts(
     [

@@ -14,11 +14,6 @@ import shutil
 
 import isctest
 
-import pytest
-
-# isctest.asyncserver requires dnspython >= 2.0.0
-pytest.importorskip("dns", minversion="2.0.0")
-
 
 def bootstrap():
     assert not os.path.exists("ns4/managed-keys.bind.jnl")

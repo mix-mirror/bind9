@@ -9,8 +9,9 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
+from dns.edns import EDECode
+
 import isctest
-from isctest.compat import EDECode
 
 
 def check_soa_noerror():

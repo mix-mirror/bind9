@@ -15,13 +15,13 @@ import os
 from typing import cast, List, Optional
 
 import dns.edns
+from dns.edns import EDECode, EDEOption
 import dns.flags
 import dns.message
 import dns.rcode
 import dns.zone
 
 import isctest.log
-from isctest.compat import dns_rcode, EDECode, EDEOption
 
 
 def rcode(message: dns.message.Message, expected_rcode) -> None:
@@ -29,19 +29,19 @@ def rcode(message: dns.message.Message, expected_rcode) -> None:
 
 
 def noerror(message: dns.message.Message) -> None:
-    rcode(message, dns_rcode.NOERROR)
+    rcode(message, dns.rcode.NOERROR)
 
 
 def notimp(message: dns.message.Message) -> None:
-    rcode(message, dns_rcode.NOTIMP)
+    rcode(message, dns.rcode.NOTIMP)
 
 
 def refused(message: dns.message.Message) -> None:
-    rcode(message, dns_rcode.REFUSED)
+    rcode(message, dns.rcode.REFUSED)
 
 
 def servfail(message: dns.message.Message) -> None:
-    rcode(message, dns_rcode.SERVFAIL)
+    rcode(message, dns.rcode.SERVFAIL)
 
 
 def adflag(message: dns.message.Message) -> None:
@@ -84,10 +84,6 @@ def _extract_ede_options(
 
 def noede(message: dns.message.Message) -> None:
     """Check that message contains no EDE option."""
-    if not hasattr(dns.edns, "EDECode"):
-        # dnspython<2.2.0 doesn't support EDE, skip check
-        return
-
     ede_options = _extract_ede_options(message)
     assert not ede_options, f"unexpected EDE options {ede_options} in {message}"
 
@@ -96,10 +92,6 @@ def ede(
     message: dns.message.Message, code: EDECode, text: Optional[str] = None
 ) -> None:
     """Check if message contains expected EDE code (and its text)."""
-    if not hasattr(dns.edns, "EDECode"):
-        # dnspython<2.2.0 doesn't support EDE, skip check
-        return
-
     msg_opts = _extract_ede_options(message)
     matching_opts = [opt for opt in msg_opts if opt.code == code]
 
@@ -206,7 +198,7 @@ def is_executable(cmd: str, errmsg: str) -> None:
 def named_alive(named_proc, resolver_ip):
     assert named_proc.poll() is None, "named isn't running"
     msg = isctest.query.create("version.bind", "TXT", "CH")
-    isctest.query.tcp(msg, resolver_ip, expected_rcode=dns_rcode.NOERROR)
+    isctest.query.tcp(msg, resolver_ip, expected_rcode=dns.rcode.NOERROR)
 
 
 def notauth(message: dns.message.Message) -> None:

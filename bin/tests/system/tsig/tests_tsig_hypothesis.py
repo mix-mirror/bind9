@@ -15,8 +15,6 @@ import time
 
 import pytest
 
-pytest.importorskip("dns", minversion="2.7.0")  # TSIG parsing without validation
-
 import dns.exception
 import dns.message
 import dns.name

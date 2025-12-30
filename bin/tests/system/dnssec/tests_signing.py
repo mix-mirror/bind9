@@ -20,7 +20,6 @@ from dns import dnssec, name, rdataclass, rdatatype, update
 
 import pytest
 
-pytest.importorskip("dns", minversion="2.0.0")
 from isctest.kasp import SettimeOptions
 import isctest
 

@@ -11,15 +11,14 @@
 
 # pylint: disable=redefined-outer-name,unused-import
 
+from datetime import timedelta
 import os
 import shutil
 
-from datetime import timedelta
-
+import dns
 import dns.update
 import pytest
 
-pytest.importorskip("dns", minversion="2.0.0")
 import isctest
 import isctest.mark
 from isctest.vars.algorithms import RSASHA256
