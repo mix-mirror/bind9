@@ -5238,7 +5238,7 @@ setmaxtypepername(dns_db_t *db, uint32_t value) {
  * meant to reuse the same qp transaction for multiple operations.
  */
 static isc_result_t
-qpzone_update_rdataset(qpzonedb_t *qpdb, qpz_version_t *version, dns_qp_t *qp,
+qpzone_update_rdataset(qpzonedb_t *qpdb, qpz_version_t *version, qpzone_updatectx_t *ctx,
 		       dns_name_t *name, dns_rdataset_t *rds, dns_diffop_t op) {
 	isc_result_t result;
 	unsigned int options;
@@ -5249,8 +5249,9 @@ qpzone_update_rdataset(qpzonedb_t *qpdb, qpz_version_t *version, dns_qp_t *qp,
 	dns_rdataset_init(&ardataset);
 
 	is_nsec3 = (rds->type == dns_rdatatype_nsec3 || rds->covers == dns_rdatatype_nsec3);
+	dns_qp_t *dbtree = is_nsec3 ? ctx->nsec3 : ctx->qp;
 
-	result = findnodeintree(qpdb, qp, name, true, is_nsec3, &node DNS__DB_FLARG_PASS);
+	result = findnodeintree(qpdb, dbtree, name, true, is_nsec3, &node DNS__DB_FLARG_PASS);
 
 	if (result != ISC_R_SUCCESS) {
 		goto failure;
@@ -5268,7 +5269,7 @@ qpzone_update_rdataset(qpzonedb_t *qpdb, qpz_version_t *version, dns_qp_t *qp,
 		result = qpzone_addrdataset_inner((dns_db_t *)qpdb, node,
 					    (dns_dbversion_t *)version, 0,
 					    rds, options,
-					    &ardataset, qp DNS__DB_FLARG_PASS);
+					    &ardataset, ctx->nsec DNS__DB_FLARG_PASS);
 		break;
 	case DNS_DIFFOP_DEL:
 	case DNS_DIFFOP_DELRESIGN:
@@ -5308,7 +5309,7 @@ qpzone_update_callback(void *arg, const dns_name_t *name, dns_rdataset_t *rds,
 	qpzonedb_t *qpdb = (qpzonedb_t *)ctx->base.db;
 	qpz_version_t *version = (qpz_version_t *)ctx->base.ver;
 
-	return qpzone_update_rdataset(qpdb, version, ctx->qp, (dns_name_t *)name, rds, op);
+	return qpzone_update_rdataset(qpdb, version, ctx, (dns_name_t *)name, rds, op);
 }
 
 static isc_result_t
