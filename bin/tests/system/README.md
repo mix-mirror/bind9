@@ -46,16 +46,11 @@ nameserver and is listed in the hints file of the others.
 
 To run system tests, make sure you have the following dependencies installed:
 
-- python3
-- pytest
+- python3 (3.10 and newer)
 - perl
-- dnspython
-- pytest-xdist (for parallel execution)
-- python-jinja2
 
-Individual system tests might also require additional dependencies. If those
-are missing, the affected tests will be skipped and should produce a message
-specifying what additional prerequisites they expect.
+List of required python packages and their versions can be found in
+requirements.txt (can be installed with `pip3 install -r requirements.txt`).
 
 ### Network Setup
 
