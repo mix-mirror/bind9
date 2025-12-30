@@ -21,7 +21,7 @@ import time
 
 import pytest
 
-pytest.importorskip("dns", minversion="2.0.0")
+import dns
 import dns.exception
 
 import isctest

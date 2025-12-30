@@ -14,7 +14,6 @@
 import pytest
 import isctest
 
-pytest.importorskip("dns")
 import dns.message
 
 pytestmark = pytest.mark.extra_artifacts(

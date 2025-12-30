@@ -15,13 +15,13 @@ from datetime import datetime
 import xml.etree.ElementTree as ET
 
 import pytest
+import requests
 
 import isctest.mark
 
 pytest.register_assert_rewrite("generic")
 import generic
 
-requests = pytest.importorskip("requests")
 
 pytestmark = [
     isctest.mark.have_libxml2,

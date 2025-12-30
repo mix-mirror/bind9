@@ -18,7 +18,6 @@ from typing import Optional, Set, Tuple
 
 import pytest
 
-pytest.importorskip("dns", minversion="2.5.0")
 import dns.dnssec
 import dns.message
 import dns.name

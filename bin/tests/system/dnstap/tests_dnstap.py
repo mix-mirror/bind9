@@ -17,7 +17,6 @@ import re
 import isctest
 import pytest
 
-pytest.importorskip("dns", minversion="2.0.0")
 import dns.rrset
 
 pytestmark = pytest.mark.extra_artifacts(

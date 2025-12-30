@@ -17,7 +17,6 @@ import dns.query
 import dns.message
 
 import isctest.log
-from isctest.compat import dns_rcode
 
 QUERY_TIMEOUT = 10
 
@@ -30,7 +29,7 @@ def generic_query(
     source: Optional[str] = None,
     timeout: int = QUERY_TIMEOUT,
     attempts: int = 10,
-    expected_rcode: dns_rcode = None,
+    expected_rcode: Optional[dns.rcode.Rcode] = None,
     log_query: bool = True,
     log_response: bool = True,
 ) -> Any:
@@ -61,9 +60,9 @@ def generic_query(
                 return res
         time.sleep(1)
     if expected_rcode is not None:
-        last_rcode = dns_rcode.to_text(res.rcode()) if res else None
+        last_rcode = dns.rcode.to_text(res.rcode()) if res else None
         isctest.log.debug(
-            f"isc.query.{query_func.__name__}(): expected rcode={dns_rcode.to_text(expected_rcode)}, last rcode={last_rcode}"
+            f"isc.query.{query_func.__name__}(): expected rcode={dns.rcode.to_text(expected_rcode)}, last rcode={last_rcode}"
         )
     raise dns.exception.Timeout
 
