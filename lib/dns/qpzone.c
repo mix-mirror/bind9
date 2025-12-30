@@ -2522,7 +2522,9 @@ findnodeintree(qpzonedb_t *qpdb, dns_qp_t *qp, const dns_name_t *name, bool crea
 		qpznode_erefs_increment(qpdb, node DNS__DB_FLARG_PASS);
 
 
-		if (!nsec3) {
+		if (nsec3) {
+			node->nsec = DNS_DB_NSEC_NSEC3;
+		} else  {
 			/*
 			 * Add empty non-terminal nodes to help with wildcards.
 			 */
