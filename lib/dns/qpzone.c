@@ -4752,11 +4752,7 @@ qpzone_addrdataset_inner(dns_db_t *db, dns_dbnode_t *dbnode,
 		 * move on.
 		 */
 		qpznode_t *nsecnode = new_qpznode(qpdb, name);
-		/*
-		 * We don't need a separate transaction since the NSEC tree and
-		 * the normal tree are part of the same qp-tree.
-		 */
-
+		nsecnode->nsec = DNS_DB_NSEC_NSEC;
 		(void)dns_qp_insert(nsec, nsecnode, 0);
 		qpznode_detach(&nsecnode);
 	}
