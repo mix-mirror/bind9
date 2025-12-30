@@ -17,7 +17,6 @@ import shutil
 import subprocess
 import tempfile
 import time
-from typing import Any
 
 import pytest
 
@@ -34,20 +33,6 @@ from isctest.vars.dirs import SYSTEM_TEST_DIR_GIT_PATH
 isctest.log.init_conftest_logger()
 isctest.log.avoid_duplicated_logs()
 isctest.vars.init_vars()
-
-# ----------------- Older pytest / xdist compatibility -------------------
-# As of 2023-01-11, the minimal supported pytest / xdist versions are
-# determined by what is available in EL8/EPEL8:
-# - pytest 3.4.2
-# - pytest-xdist 1.24.1
-_pytest_ver = pytest.__version__.split(".")
-_pytest_major_ver = int(_pytest_ver[0])
-if _pytest_major_ver < 7:
-    # pytest.Stash/pytest.StashKey mechanism has been added in 7.0.0
-    # for older versions, use regular dictionary with string keys instead
-    FIXTURE_OK = "fixture_ok"  # type: Any
-else:
-    FIXTURE_OK = pytest.StashKey[bool]()  # pylint: disable=no-member
 
 # ----------------------- Globals definition -----------------------------
 
@@ -265,19 +250,10 @@ def system_test_name(request):
     return path.parent.name
 
 
-def _get_marker(node, marker):
-    try:
-        # pytest >= 4.x
-        return node.get_closest_marker(marker)
-    except AttributeError:
-        # pytest < 4.x
-        return node.get_marker(marker)
-
-
 @pytest.fixture(autouse=True)
 def wait_for_zones_loaded(request, servers):
     """Wait for all zones to be loaded by specified named instances."""
-    instances = _get_marker(request.node, "requires_zones_loaded")
+    instances = request.node.get_closest_marker("requires_zones_loaded")
     if not instances:
         return
 
@@ -289,7 +265,7 @@ def wait_for_zones_loaded(request, servers):
 @pytest.fixture(scope="module", autouse=True)
 def configure_algorithm_set(request):
     """Configure the algorithm set to use in tests."""
-    mark = _get_marker(request.node, "algorithm_set")
+    mark = request.node.get_closest_marker("algorithm_set")
     if not mark:
         name = None
     else:
@@ -434,7 +410,7 @@ def system_test_dir(request, system_test_name, expected_artifacts):
     isctest.vars.dirs.set_system_test_name(testdir.name)
 
     # Create a convenience symlink with a stable and predictable name
-    module_name = SYMLINK_REPLACEMENT_RE.sub(r"\1", str(_get_node_path(request.node)))
+    module_name = SYMLINK_REPLACEMENT_RE.sub(r"\1", str(request.node.path))
     symlink_dst = system_test_root / module_name
     unlink(symlink_dst)
     symlink_dst.symlink_to(os.path.relpath(testdir, start=system_test_root))
@@ -468,7 +444,7 @@ def system_test_dir(request, system_test_name, expected_artifacts):
                 "test failure detected, keeping temporary directory %s", testdir
             )
             keep = True
-        elif not request.node.stash[FIXTURE_OK]:
+        elif not request.node.stash["fixture_ok"]:
             isctest.log.debug(
                 "test setup/teardown issue detected, keeping temporary directory %s",
                 testdir,
@@ -491,15 +467,6 @@ def system_test_dir(request, system_test_name, expected_artifacts):
 @pytest.fixture(scope="module")
 def templates(system_test_dir: Path):
     return isctest.template.TemplateEngine(system_test_dir)
-
-
-def _get_node_path(node) -> Path:
-    if isinstance(node.parent, pytest.Session):
-        if _pytest_major_ver >= 8:
-            return Path()
-        return Path(node.name)
-    assert node.parent is not None
-    return _get_node_path(node.parent) / node.name
 
 
 @pytest.fixture(scope="module")
@@ -606,15 +573,13 @@ def system_test(
             isctest.log.error("Found core dumps or sanitizer reports")
             pytest.fail(f"get_core_dumps.sh exited with {exc.returncode}")
 
-    isctest.log.info(f"test started: {_get_node_path(request.node)}")
+    isctest.log.info(f"test started: {request.node.path}")
     port = int(os.environ["PORT"])
     isctest.log.info(
         "using port range: <%d, %d>", port, port + isctest.vars.ports.PORTS_PER_TEST - 1
     )
 
-    if not hasattr(request.node, "stash"):  # compatibility with pytest<7.0.0
-        request.node.stash = {}  # use regular dict instead of pytest.Stash
-    request.node.stash[FIXTURE_OK] = True
+    request.node.stash["fixture_ok"] = True
 
     # Perform checks which may skip this test.
     check_net_interfaces()
@@ -623,7 +588,7 @@ def system_test(
     # Store the fact that this fixture hasn't successfully finished yet.
     # This is checked before temporary directory teardown to decide whether
     # it's okay to remove the directory.
-    request.node.stash[FIXTURE_OK] = False
+    request.node.stash["fixture_ok"] = False
 
     setup_test()
     try:
@@ -634,7 +599,7 @@ def system_test(
         isctest.log.debug("test(s) finished")
         stop_servers()
         get_core_dumps()
-        request.node.stash[FIXTURE_OK] = True
+        request.node.stash["fixture_ok"] = True
 
 
 @pytest.fixture(scope="module")
