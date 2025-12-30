@@ -19,6 +19,7 @@ import subprocess
 import tempfile
 import time
 from typing import Dict, List, Optional
+import sys
 
 import pytest
 
@@ -30,6 +31,8 @@ import isctest
 # Silence warnings caused by passing a pytest fixture to another fixture.
 # pylint: disable=redefined-outer-name
 
+if sys.version_info[1] < 10:
+    raise RuntimeError("Python 3.10 or newer is required to run system tests.")
 
 # ----------------------- Globals definition -----------------------------
 
@@ -409,12 +412,6 @@ def system_test_dir(request, env, system_test_name, expected_artifacts):
         assert all(res.outcome == "passed" for res in test_results.values())
         return "passed"
 
-    def unlink(path):
-        try:
-            path.unlink()  # missing_ok=True isn't available on Python 3.6
-        except FileNotFoundError:
-            pass
-
     def check_artifacts(source_dir, run_dir):
         def check_artifacts_recursive(dcmp):
             def artifact_expected(path, expected):
@@ -459,7 +456,7 @@ def system_test_dir(request, env, system_test_name, expected_artifacts):
     # Create a convenience symlink with a stable and predictable name
     module_name = SYMLINK_REPLACEMENT_RE.sub(r"\1", str(request.node.path))
     symlink_dst = system_test_root / module_name
-    unlink(symlink_dst)
+    symlink_dst.unlink(missing_ok=True)
     symlink_dst.symlink_to(os.path.relpath(testdir, start=system_test_root))
 
     isctest.log.init_module_logger(system_test_name, testdir)
@@ -508,7 +505,7 @@ def system_test_dir(request, env, system_test_name, expected_artifacts):
         isctest.log.deinit_module_logger()
         if not keep:
             shutil.rmtree(testdir)
-            unlink(symlink_dst)
+            symlink_dst.unlink(missing_ok=True)
 
 
 @pytest.fixture(scope="module")
