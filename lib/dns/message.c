@@ -121,7 +121,7 @@ hexdump(const char *msg, const char *msg2, void *base, size_t len) {
  * of various block allocations used within the server.
  * XXXMLG These should come from a config setting.
  */
-#define SCRATCHPAD_SIZE	   1232
+#define SCRATCHPAD_SIZE	   4096
 #define NAME_FILLCOUNT	   1024
 #define NAME_FREEMAX	   8 * NAME_FILLCOUNT
 #define OFFSET_COUNT	   4
