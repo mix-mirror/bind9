@@ -31,7 +31,7 @@ options {\n\
 #	directory <none>\n\
 	dnssec-policy \"none\";\n\
 	dump-file \"named_dump.db\";\n\
-	edns-udp-size 1232;\n"
+	edns-udp-size 4096;\n"
 #if defined(HAVE_GEOIP2)
 					    "\
 	geoip-directory \"" MAXMINDDB_PREFIX "/share/GeoIP\";\n"
@@ -46,7 +46,7 @@ options {\n\
 	match-mapped-addresses no;\n\
 	max-ixfr-ratio 100%;\n\
 	max-rsa-exponent-size 0; /* no limit */\n\
-	max-udp-size 1232;\n\
+	max-udp-size 4096;\n\
 	memstatistics-file \"named.memstats\";\n\
 	nocookie-udp-size 4096;\n\
 	notify-rate 20;\n\

@@ -102,7 +102,7 @@
 
 #define DNSDEFAULTPORT 53
 
-#define DEFAULT_EDNS_BUFSIZE 1452
+#define DEFAULT_EDNS_BUFSIZE 4096
 
 /* Number of addresses to request from isc_getaddresses() */
 #define MAX_SERVERADDRS 4

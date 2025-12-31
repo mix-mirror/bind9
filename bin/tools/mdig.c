@@ -595,7 +595,7 @@ sendquery(struct query *query) {
 		}
 
 		if (query->udpsize == 0) {
-			query->udpsize = 1452;
+			query->udpsize = 4096;
 		}
 		if (query->edns < 0) {
 			query->edns = 0;

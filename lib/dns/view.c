@@ -77,7 +77,7 @@
 /*%
  * Default EDNS0 buffer size
  */
-#define DEFAULT_EDNS_BUFSIZE 1232
+#define DEFAULT_EDNS_BUFSIZE 4096
 
 /* Exponental backoff from 10 seconds to 640 seconds */
 #define UNREACH_HOLD_TIME_INITIAL_SEC ((uint16_t)10)
