@@ -8,6 +8,11 @@
 #
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
+
+# Silence incorrect warnings cause by hypothesis.assume()
+# https://github.com/pylint-dev/pylint/issues/10785#issuecomment-3677224217
+# pylint: disable=unreachable
+
 import glob
 import os
 import subprocess
