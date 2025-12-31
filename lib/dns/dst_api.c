@@ -217,6 +217,11 @@ dst__lib_initialize(void) {
 #ifdef HAVE_OPENSSL_ED448
 	dst__openssleddsa_init(&dst_t_func[DST_ALG_ED448], DST_ALG_ED448);
 #endif /* ifdef HAVE_OPENSSL_ED448 */
+#ifdef HAVE_OPENSSL_MLDSA44
+	dst__opensslmldsa_init(&dst_t_func[DST_ALG_MLDSA44], DST_ALG_MLDSA44);
+	dst__opensslmldsa_init(&dst_t_func[DST_ALG_MLDSA65], DST_ALG_MLDSA65);
+	dst__opensslmldsa_init(&dst_t_func[DST_ALG_MLDSA87], DST_ALG_MLDSA87);
+#endif /* ifdef HAVE_OPENSSL_MLDSA44 */
 
 #if HAVE_GSSAPI
 	dst__gssapi_init(&dst_t_func[DST_ALG_GSSAPI]);
