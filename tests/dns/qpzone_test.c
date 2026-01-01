@@ -118,7 +118,8 @@ const char *ownercase_vectors[12][2] = {
 };
 
 static unsigned char example_org_data[] = { 7, 'e', 'x', 'a', 'm', 'p', 'l', 'e', 3, 'o', 'r', 'g', 0 };
-static dns_name_t example_org_name = DNS_NAME_INITABSOLUTE(example_org_data);
+static unsigned char example_org_offsets[] = { 0, 8, 12 };
+static dns_name_t example_org_name = DNS_NAME_INITABSOLUTE(example_org_data, example_org_offsets);
 
 /* IPv6 test addresses */
 static unsigned char aaaa_test_data[][16] = {
@@ -159,7 +160,7 @@ static dns_rdata_rrsig_t rrsig_test_data1 = {
 	.timeexpire = 1695820800,
 	.timesigned = 1695744000,
 	.keyid = 0x1234,
-	.signer = DNS_NAME_INITABSOLUTE(example_org_data),
+	.signer = DNS_NAME_INITABSOLUTE(example_org_data, example_org_offsets),
 	.siglen = 64,
 	.signature = rrsig_signature1,
 };
@@ -173,7 +174,7 @@ static dns_rdata_rrsig_t rrsig_test_data2 = {
 	.timeexpire = 1695820800,
 	.timesigned = 1695744000,
 	.keyid = 0x5678,
-	.signer = DNS_NAME_INITABSOLUTE(example_org_data),
+	.signer = DNS_NAME_INITABSOLUTE(example_org_data, example_org_offsets),
 	.siglen = 64,
 	.signature = rrsig_signature2,
 };
@@ -311,7 +312,7 @@ verify_aaaa_records(dns_db_t *db, dns_dbversion_t *version,
 	dns_name_t *found_name = dns_fixedname_initname(&found_fname);
 
 	/* Allocate zero-initialized found flags array */
-	found_ips = isc_mem_cget(isc_g_mctx, (size_t)expected_count,
+	found_ips = isc_mem_cget(mctx, (size_t)expected_count,
 				 sizeof(bool));
 
 	dns_rdataset_init(&rdataset);
@@ -326,7 +327,8 @@ verify_aaaa_records(dns_db_t *db, dns_dbversion_t *version,
 	assert_int_equal(rdataset.ttl, expected_ttl);
 
 	/* Iterate through all AAAA records */
-	DNS_RDATASET_FOREACH(&rdataset) {
+	for (result = dns_rdataset_first(&rdataset); result == ISC_R_SUCCESS;
+	     result = dns_rdataset_next(&rdataset)) {
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		dns_rdataset_current(&rdataset, &rdata);
 
@@ -352,9 +354,9 @@ verify_aaaa_records(dns_db_t *db, dns_dbversion_t *version,
 	/* Verify we found exactly the expected number of records */
 	assert_int_equal(found_count, expected_count);
 
-	dns_db_detachnode(&node);
+	dns_db_detachnode(db, &node);
 	dns_rdataset_disassociate(&rdataset);
-	isc_mem_cput(isc_g_mctx, found_ips, (size_t)expected_count,
+	isc_mem_cput(mctx, found_ips, (size_t)expected_count,
 		     sizeof(bool));
 }
 
@@ -417,7 +419,7 @@ ISC_RUN_TEST_IMPL(diffop_add_sub) {
 	isc_result_t result;
 	dns_db_t *db = NULL;
 
-	result = dns__qpzone_create(isc_g_mctx, &example_org_name, dns_dbtype_zone,
+	result = dns__qpzone_create(mctx, &example_org_name, dns_dbtype_zone,
 				    dns_rdataclass_in, 0, NULL, NULL, &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_non_null(db);
@@ -470,7 +472,7 @@ ISC_RUN_TEST_IMPL(diffop_addresign) {
 	result = dns_rdata_fromstruct(&rdata2, dns_rdataclass_in, dns_rdatatype_rrsig, &rrsig_test_data2, &buffer2);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	result = dns__qpzone_create(isc_g_mctx, &example_org_name, dns_dbtype_zone,
+	result = dns__qpzone_create(mctx, &example_org_name, dns_dbtype_zone,
 				    dns_rdataclass_in, 0, NULL, NULL, &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_non_null(db);
