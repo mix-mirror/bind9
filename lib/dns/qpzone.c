@@ -2451,14 +2451,14 @@ setgluecachestats(dns_db_t *db, isc_stats_t *stats) {
 }
 
 static dns_qp_t *
-begin_transaction(qpzonedb_t *qpdb, dns_qpmulti_t *dbtree, dns_qpread_t *qprp, bool create) {
+begin_transaction(dns_qpmulti_t *dbtree, dns_qpread_t *qprp, bool create) {
 	dns_qp_t *qp = NULL;
 
 	if (create) {
 		dns_qpmulti_write(dbtree, &qp);
 	} else {
 
-		dns_qpmulti_query(qpdb->tree, qprp);
+		dns_qpmulti_query(dbtree, qprp);
 		qp = (dns_qp_t *)qprp;
 	}
 
@@ -2554,7 +2554,7 @@ findnode(dns_db_t *db, const dns_name_t *name, bool create,
 	REQUIRE(VALID_QPZONE(qpdb));
 
 	dns_qpread_t qpr = { 0 };
-	dns_qp_t *qp = begin_transaction(qpdb, qpdb->tree, &qpr, create);
+	dns_qp_t *qp = begin_transaction(qpdb->tree, &qpr, create);
 
 	isc_result_t result =  findnodeintree(qpdb, qp, name, create, false, nodep DNS__DB_FLARG_PASS);
 
@@ -2571,7 +2571,7 @@ findnsec3node(dns_db_t *db, const dns_name_t *name, bool create,
 	REQUIRE(VALID_QPZONE(qpdb));
 
 	dns_qpread_t qpr = { 0 };
-	dns_qp_t *qp = begin_transaction(qpdb, qpdb->nsec3, &qpr, create);
+	dns_qp_t *qp = begin_transaction(qpdb->nsec3, &qpr, create);
 
 	isc_result_t result =  findnodeintree(qpdb, qp, name, create, true, nodep DNS__DB_FLARG_PASS);
 
@@ -5325,9 +5325,9 @@ qpzone_beginupdate(dns_db_t *db, dns_dbversion_t *ver, dns_rdatacallbacks_t *cal
 		.base.warn = true,
 		.qpr = (dns_qpread_t){ 0 },
 	};
-	ctx->qp = begin_transaction(qpdb, qpdb->tree, &ctx->qpr, true);
-	ctx->nsec = begin_transaction(qpdb, qpdb->nsec, &ctx->qpr, true);
-	ctx->nsec3 = begin_transaction(qpdb, qpdb->nsec3, &ctx->qpr, true);
+	ctx->qp = begin_transaction(qpdb->tree, &ctx->qpr, true);
+	ctx->nsec = begin_transaction(qpdb->nsec, &ctx->qpr, true);
+	ctx->nsec3 = begin_transaction(qpdb->nsec3, &ctx->qpr, true);
 
 	callbacks->update = qpzone_update_callback;
 	callbacks->add_private = ctx;
