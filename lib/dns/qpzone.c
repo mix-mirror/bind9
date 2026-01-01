@@ -5268,6 +5268,17 @@ qpzone_update_rdataset(qpzonedb_t *qpdb, qpz_version_t *version, qpzone_updatect
 					    (dns_dbversion_t *)version, 0,
 					    rds, options,
 					    &ardataset, ctx->nsec DNS__DB_FLARG_PASS);
+		switch (result) {
+		case ISC_R_SUCCESS:
+		case DNS_R_UNCHANGED:
+		case DNS_R_NXRRSET:
+			dns_rdataset_setownercase(&ardataset, name);
+			CHECK(result);
+			break;
+		default:
+			CHECK(result);
+			break;
+		}
 		break;
 	case DNS_DIFFOP_DEL:
 	case DNS_DIFFOP_DELRESIGN:
