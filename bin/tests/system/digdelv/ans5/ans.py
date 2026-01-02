@@ -28,11 +28,13 @@ from isctest.asyncserver import (
 
 
 class ErraticAxfrHandler(ResponseHandler):
+    allowed_actions = ["no-response", "partial-axfr", "complete-axfr"]
+
     def __init__(self, actions: List[str]) -> None:
         self.actions = actions
         self.counter = 0
         for action in actions:
-            assert action in ["no-response", "partial-axfr", "complete-axfr"]
+            assert action in self.allowed_actions
 
     async def get_responses(
         self, qctx: QueryContext
@@ -71,14 +73,13 @@ class ResponseSequenceCommand(ControlCommand):
     def handle(
         self, args: List[str], server: ControllableAsyncDnsServer, qctx: QueryContext
     ) -> str:
-        actions = []
-
         for action in args:
-            if action not in ["no-response", "partial-axfr", "complete-axfr"]:
+            if action not in ErraticAxfrHandler.allowed_actions:
                 logging.error("invalid %s action '%s'", self, action)
                 qctx.response.set_rcode(dns.rcode.SERVFAIL)
-                return "invalid action; must be one of 'no-response', 'partial-axfr' or 'complete-axfr'"
-            actions.append(action)
+                return f"invalid action '{action}'; must be one of {ErraticAxfrHandler.allowed_actions}"
+
+        actions = args
 
         if self._current_handler is not None:
             server.uninstall_response_handler(self._current_handler)
