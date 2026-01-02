@@ -66,7 +66,7 @@ def send_delegation(
     ns_rrset = dns.rrset.from_text(zone_cut, 2, qctx.qclass, dns.rdatatype.NS, ns_name)
     a_rrset = dns.rrset.from_text(ns_name, 2, qctx.qclass, dns.rdatatype.A, target_addr)
 
-    response = dns.message.make_response(qctx.query)
+    response = qctx.prepare_new_response(with_zone_data=False)
     response.set_rcode(dns.rcode.NOERROR)
     response.authority.append(ns_rrset)
     response.additional.append(a_rrset)

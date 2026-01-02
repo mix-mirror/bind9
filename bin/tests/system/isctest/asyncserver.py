@@ -355,12 +355,28 @@ class DnsResponseSend(ResponseAction):
     response: dns.message.Message
     authoritative: Optional[bool] = None
     delay: float = 0.0
+    acknowledge_hand_rolled_response: bool = False
 
     async def perform(self) -> Optional[Union[dns.message.Message, bytes]]:
         """
         Yield a potentially delayed response that is a dns.message.Message.
         """
         assert isinstance(self.response, dns.message.Message)
+        if not (
+            _is_asyncserver_response(self.response)
+            or self.acknowledge_hand_rolled_response
+        ):
+            error = "The response you are trying to send was not created using "
+            error += "AsyncDnsServer's response preparation methods. "
+            error += "This will break features such as automatic AA flag "
+            error += "and RCODE handling. If you need a fresh copy of a "
+            error += "response, use `QueryContext.prepare_new_response` "
+            error += "instead of `dns.message.make_response`. "
+            error += "To acknowledge this and proceed anyway, set "
+            error += "`acknowledge_hand_rolled_response=True` in "
+            error += "DnsResponseSend's constructor."
+            raise RuntimeError(error)
+
         if self.authoritative is not None:
             if self.authoritative:
                 self.response.flags |= dns.flags.AA
@@ -802,6 +818,19 @@ class _NoKeyringType:
     pass
 
 
+_ASYNCSERVER_RESPONSE_MARKER = "__is_asyncserver_response__"
+
+
+def _make_asyncserver_response(query: dns.message.Message) -> dns.message.Message:
+    response = dns.message.make_response(query)
+    setattr(response, _ASYNCSERVER_RESPONSE_MARKER, True)
+    return response
+
+
+def _is_asyncserver_response(message: dns.message.Message) -> bool:
+    return getattr(message, _ASYNCSERVER_RESPONSE_MARKER, False)
+
+
 class AsyncDnsServer(AsyncServer):
     """
     DNS server which responds to queries based on zone data and/or custom
@@ -1119,7 +1148,7 @@ class AsyncDnsServer(AsyncServer):
         except dns.exception.DNSException as exc:
             logging.error("Invalid query from %s (%s): %s", peer, wire.hex(), exc)
             return
-        response_stub = dns.message.make_response(query)
+        response_stub = _make_asyncserver_response(query)
         qctx = QueryContext(query, response_stub, peer, protocol)
         self._log_query(qctx, peer, protocol)
         responses = self._prepare_responses(qctx)
