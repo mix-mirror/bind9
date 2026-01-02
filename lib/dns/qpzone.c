@@ -2940,8 +2940,8 @@ previous_closest_nsec(dns_rdatatype_t type, qpz_search_t *search,
 				 * NSEC record; we want the previous node
 				 * in the NSEC tree.
 				 */
-				result = dns_qpiter_prev(nit, (void **)&nsec_node,
-							 NULL);
+				result = dns_qpiter_prev(
+					nit, (void **)&nsec_node, NULL);
 			} else if (result == DNS_R_PARTIALMATCH) {
 				/*
 				 * This was a partial match, so the
@@ -2962,7 +2962,8 @@ previous_closest_nsec(dns_rdatatype_t type, qpz_search_t *search,
 			 * work; perhaps they lacked signature records.
 			 * Keep searching.
 			 */
-			result = dns_qpiter_prev(nit, (void **)&nsec_node, NULL);
+			result = dns_qpiter_prev(nit, (void **)&nsec_node,
+						 NULL);
 		}
 
 		if (result != ISC_R_SUCCESS) {
