@@ -60,7 +60,6 @@
  * timeexpire.
  */
 
-
 typedef struct dns_difftuple dns_difftuple_t;
 typedef ISC_LIST(dns_difftuple_t) dns_difftuplelist_t;
 
@@ -260,13 +259,14 @@ dns_diff_applysilently(const dns_diff_t *diff, dns_db_t *db,
  */
 
 typedef struct {
-	dns_db_t *db;
+	dns_db_t	*db;
 	dns_dbversion_t *ver;
-	bool warn;
+	bool		 warn;
 } dns_updatectx_t;
 
 isc_result_t
-dns_diff_apply_with_callbacks(const dns_diff_t *diff, dns_rdatacallbacks_t *callbacks);
+dns_diff_apply_with_callbacks(const dns_diff_t	   *diff,
+			      dns_rdatacallbacks_t *callbacks);
 /*%<
  * Apply 'diff' to the database using the provided callbacks and context.
  * The context contains the database, version, and warning flag.

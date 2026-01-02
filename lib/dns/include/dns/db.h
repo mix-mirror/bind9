@@ -83,12 +83,11 @@ typedef struct dns_dbmethods {
 	isc_result_t (*beginload)(dns_db_t	       *db,
 				  dns_rdatacallbacks_t *callbacks);
 	isc_result_t (*endload)(dns_db_t *db, dns_rdatacallbacks_t *callbacks);
-	isc_result_t (*beginupdate)(dns_db_t	       *db,
-				    dns_dbversion_t	       *ver,
+	isc_result_t (*beginupdate)(dns_db_t *db, dns_dbversion_t *ver,
 				    dns_rdatacallbacks_t *callbacks);
-	isc_result_t (*commitupdate)(dns_db_t	       *db,
+	isc_result_t (*commitupdate)(dns_db_t		  *db,
 				     dns_rdatacallbacks_t *callbacks);
-	isc_result_t (*abortupdate)(dns_db_t	      *db,
+	isc_result_t (*abortupdate)(dns_db_t		 *db,
 				    dns_rdatacallbacks_t *callbacks);
 	void (*currentversion)(dns_db_t *db, dns_dbversion_t **versionp);
 	isc_result_t (*newversion)(dns_db_t *db, dns_dbversion_t **versionp);
@@ -545,7 +544,8 @@ dns_db_endload(dns_db_t *db, dns_rdatacallbacks_t *callbacks);
  */
 
 isc_result_t
-dns_db_beginupdate(dns_db_t *db, dns_dbversion_t *ver, dns_rdatacallbacks_t *callbacks);
+dns_db_beginupdate(dns_db_t *db, dns_dbversion_t *ver,
+		   dns_rdatacallbacks_t *callbacks);
 /*%<
  * Begin updating 'db'.
  *
@@ -574,7 +574,7 @@ dns_db_beginupdate(dns_db_t *db, dns_dbversion_t *ver, dns_rdatacallbacks_t *cal
 isc_result_t
 dns_db_commitupdate(dns_db_t *db, dns_rdatacallbacks_t *callbacks);
 /*%<
- * Commit the update to 'db'. Must be safe to double-call or call after 
+ * Commit the update to 'db'. Must be safe to double-call or call after
  * dns_db_abortupdate.
  *
  * Requires:
@@ -583,11 +583,13 @@ dns_db_commitupdate(dns_db_t *db, dns_rdatacallbacks_t *callbacks);
  *
  * \li	'callbacks' is a valid dns_rdatacallbacks_t structure.
  *
- * \li	callbacks->add_private is not NULL and is a valid database update context.
+ * \li	callbacks->add_private is not NULL and is a valid database update
+ * context.
  *
  * Ensures:
  *
- * \li	'callbacks' is returned to its state prior to calling dns_db_beginupdate()
+ * \li	'callbacks' is returned to its state prior to calling
+ * dns_db_beginupdate()
  *
  * Returns:
  *
@@ -600,7 +602,7 @@ dns_db_commitupdate(dns_db_t *db, dns_rdatacallbacks_t *callbacks);
 isc_result_t
 dns_db_abortupdate(dns_db_t *db, dns_rdatacallbacks_t *callbacks);
 /*%<
- * Abort the update to 'db'. Must be safe to double-call or call after 
+ * Abort the update to 'db'. Must be safe to double-call or call after
  * dns_db_commitupdate.
  *
  * Requires:
@@ -609,11 +611,13 @@ dns_db_abortupdate(dns_db_t *db, dns_rdatacallbacks_t *callbacks);
  *
  * \li	'callbacks' is a valid dns_rdatacallbacks_t structure.
  *
- * \li	callbacks->add_private is not NULL and is a valid database update context.
+ * \li	callbacks->add_private is not NULL and is a valid database update
+ * context.
  *
  * Ensures:
  *
- * \li	'callbacks' is returned to its state prior to calling dns_db_beginupdate()
+ * \li	'callbacks' is returned to its state prior to calling
+ * dns_db_beginupdate()
  *
  * Returns:
  *

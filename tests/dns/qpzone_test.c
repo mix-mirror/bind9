@@ -52,19 +52,18 @@
 /*
  * Macro that uses a for loop to execute a cleanup at the end of scope.
  */
-#define WITH_NEWVERSION(db, version_var, should_commit) \
-    for (dns_dbversion_t *version_var = NULL, \
-         *_tmp = ({ \
-             isc_result_t _result = dns_db_newversion(db, &version_var); \
-             assert_int_equal(_result, ISC_R_SUCCESS); \
-             (dns_dbversion_t*)1; \
-         }); \
-         _tmp != NULL; \
-         _tmp = ({ \
-             dns_db_closeversion(db, &version_var, should_commit); \
-             (dns_dbversion_t*)NULL; \
-         }))
-
+#define WITH_NEWVERSION(db, version_var, should_commit)                      \
+	for (dns_dbversion_t *version_var = NULL, *_tmp = ({                 \
+		     isc_result_t _result = dns_db_newversion(db,            \
+							      &version_var); \
+		     assert_int_equal(_result, ISC_R_SUCCESS);               \
+		     (dns_dbversion_t *)1;                                   \
+	     });                                                             \
+	     _tmp != NULL;                                                   \
+	     _tmp = ({                                                       \
+		     dns_db_closeversion(db, &version_var, should_commit);   \
+		     (dns_dbversion_t *)NULL;                                \
+	     }))
 
 const char *ownercase_vectors[12][2] = {
 	{
@@ -117,42 +116,42 @@ const char *ownercase_vectors[12][2] = {
 	}
 };
 
-static unsigned char example_org_data[] = { 7, 'e', 'x', 'a', 'm', 'p', 'l', 'e', 3, 'o', 'r', 'g', 0 };
+static unsigned char example_org_data[] = { 7,	 'e', 'x', 'a', 'm', 'p', 'l',
+					    'e', 3,   'o', 'r', 'g', 0 };
 static unsigned char example_org_offsets[] = { 0, 8, 12 };
-static dns_name_t example_org_name = DNS_NAME_INITABSOLUTE(example_org_data, example_org_offsets);
+static dns_name_t example_org_name = DNS_NAME_INITABSOLUTE(example_org_data,
+							   example_org_offsets);
 
 /* IPv6 test addresses */
 static unsigned char aaaa_test_data[][16] = {
-	{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 }, /* ::1 */
-	{ 0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2 } /* 2001:db8::2 */
+	{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 },	       /* ::1 */
+	{ 0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2 } /* 2001:db8::2
+									*/
 };
 
 /* RRSIG test signatures */
 static unsigned char rrsig_signature1[64] = {
-	0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-	0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10,
-	0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
-	0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20,
-	0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28,
-	0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30,
-	0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38,
-	0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40
+	0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b,
+	0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16,
+	0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x21,
+	0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2c,
+	0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37,
+	0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40
 };
 
 static unsigned char rrsig_signature2[64] = {
-	0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48,
-	0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f, 0x50,
-	0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58,
-	0x59, 0x5a, 0x5b, 0x5c, 0x5d, 0x5e, 0x5f, 0x60,
-	0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68,
-	0x69, 0x6a, 0x6b, 0x6c, 0x6d, 0x6e, 0x6f, 0x70,
-	0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78,
-	0x79, 0x7a, 0x7b, 0x7c, 0x7d, 0x7e, 0x7f, 0x80
+	0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4a, 0x4b,
+	0x4c, 0x4d, 0x4e, 0x4f, 0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56,
+	0x57, 0x58, 0x59, 0x5a, 0x5b, 0x5c, 0x5d, 0x5e, 0x5f, 0x60, 0x61,
+	0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6a, 0x6b, 0x6c,
+	0x6d, 0x6e, 0x6f, 0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77,
+	0x78, 0x79, 0x7a, 0x7b, 0x7c, 0x7d, 0x7e, 0x7f, 0x80
 };
 
 /* RRSIG test structures */
 static dns_rdata_rrsig_t rrsig_test_data1 = {
-	.common = { .rdtype = dns_rdatatype_rrsig, .rdclass = dns_rdataclass_in },
+	.common = { .rdtype = dns_rdatatype_rrsig,
+		    .rdclass = dns_rdataclass_in },
 	.covered = dns_rdatatype_a,
 	.algorithm = DST_ALG_RSASHA256,
 	.labels = 2,
@@ -166,7 +165,8 @@ static dns_rdata_rrsig_t rrsig_test_data1 = {
 };
 
 static dns_rdata_rrsig_t rrsig_test_data2 = {
-	.common = { .rdtype = dns_rdatatype_rrsig, .rdclass = dns_rdataclass_in },
+	.common = { .rdtype = dns_rdatatype_rrsig,
+		    .rdclass = dns_rdataclass_in },
 	.covered = dns_rdatatype_a,
 	.algorithm = DST_ALG_RSASHA256,
 	.labels = 2,
@@ -289,7 +289,8 @@ apply_dns_update(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
 	dns_rdataset_init(&rdataset);
 	dns_rdatalist_tordataset(&rdatalist, &rdataset);
 
-	isc_result_t callback_result = callbacks.update(callbacks.add_private, name, &rdataset, op);
+	isc_result_t callback_result = callbacks.update(callbacks.add_private,
+							name, &rdataset, op);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	dns_rdataset_disassociate(&rdataset);
@@ -312,8 +313,7 @@ verify_aaaa_records(dns_db_t *db, dns_dbversion_t *version,
 	dns_name_t *found_name = dns_fixedname_initname(&found_fname);
 
 	/* Allocate zero-initialized found flags array */
-	found_ips = isc_mem_cget(mctx, (size_t)expected_count,
-				 sizeof(bool));
+	found_ips = isc_mem_cget(mctx, (size_t)expected_count, sizeof(bool));
 
 	dns_rdataset_init(&rdataset);
 
@@ -328,7 +328,8 @@ verify_aaaa_records(dns_db_t *db, dns_dbversion_t *version,
 
 	/* Iterate through all AAAA records */
 	for (result = dns_rdataset_first(&rdataset); result == ISC_R_SUCCESS;
-	     result = dns_rdataset_next(&rdataset)) {
+	     result = dns_rdataset_next(&rdataset))
+	{
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		dns_rdataset_current(&rdataset, &rdata);
 
@@ -356,8 +357,7 @@ verify_aaaa_records(dns_db_t *db, dns_dbversion_t *version,
 
 	dns_db_detachnode(db, &node);
 	dns_rdataset_disassociate(&rdataset);
-	isc_mem_cput(mctx, found_ips, (size_t)expected_count,
-		     sizeof(bool));
+	isc_mem_cput(mctx, found_ips, (size_t)expected_count, sizeof(bool));
 }
 
 ISC_RUN_TEST_IMPL(setownercase) {
@@ -425,29 +425,38 @@ ISC_RUN_TEST_IMPL(diffop_add_sub) {
 	assert_non_null(db);
 
 	WITH_NEWVERSION(db, version, true) {
-		apply_dns_update(db, version, &example_org_name, dns_rdatatype_aaaa,
-				 dns_rdataclass_in, 300, aaaa_test_data[0], 16, DNS_DIFFOP_ADD);
+		apply_dns_update(db, version, &example_org_name,
+				 dns_rdatatype_aaaa, dns_rdataclass_in, 300,
+				 aaaa_test_data[0], 16, DNS_DIFFOP_ADD);
 	}
 
 	WITH_NEWVERSION(db, version, true) {
-		result = apply_dns_update(db, version, &example_org_name, dns_rdatatype_aaaa,
-				 dns_rdataclass_in, 300, aaaa_test_data[1], 16, DNS_DIFFOP_ADD);
+		result = apply_dns_update(db, version, &example_org_name,
+					  dns_rdatatype_aaaa, dns_rdataclass_in,
+					  300, aaaa_test_data[1], 16,
+					  DNS_DIFFOP_ADD);
 		assert_int_equal(result, ISC_R_SUCCESS);
 
-		verify_aaaa_records(db, version, &example_org_name, aaaa_test_data, 2, 300);
+		verify_aaaa_records(db, version, &example_org_name,
+				    aaaa_test_data, 2, 300);
 	}
 
 	WITH_NEWVERSION(db, version, true) {
-		result = apply_dns_update(db, version, &example_org_name, dns_rdatatype_aaaa,
-				 dns_rdataclass_in, 300, aaaa_test_data[0], 16, DNS_DIFFOP_DEL);
+		result = apply_dns_update(db, version, &example_org_name,
+					  dns_rdatatype_aaaa, dns_rdataclass_in,
+					  300, aaaa_test_data[0], 16,
+					  DNS_DIFFOP_DEL);
 		assert_int_equal(result, ISC_R_SUCCESS);
 
-		verify_aaaa_records(db, version, &example_org_name, &aaaa_test_data[1], 1, 300);
+		verify_aaaa_records(db, version, &example_org_name,
+				    &aaaa_test_data[1], 1, 300);
 	}
 
 	WITH_NEWVERSION(db, version, false) {
-		result = apply_dns_update(db, version, &example_org_name, dns_rdatatype_aaaa,
-						       dns_rdataclass_in, 600, aaaa_test_data[0], 16, DNS_DIFFOP_ADD);
+		result = apply_dns_update(db, version, &example_org_name,
+					  dns_rdatatype_aaaa, dns_rdataclass_in,
+					  600, aaaa_test_data[0], 16,
+					  DNS_DIFFOP_ADD);
 		assert_int_equal(result, DNS_R_NOTEXACT);
 	}
 
@@ -465,11 +474,15 @@ ISC_RUN_TEST_IMPL(diffop_addresign) {
 	unsigned char rrsig_data1[512], rrsig_data2[512];
 
 	isc_buffer_init(&buffer1, rrsig_data1, sizeof(rrsig_data1));
-	result = dns_rdata_fromstruct(&rdata1, dns_rdataclass_in, dns_rdatatype_rrsig, &rrsig_test_data1, &buffer1);
+	result = dns_rdata_fromstruct(&rdata1, dns_rdataclass_in,
+				      dns_rdatatype_rrsig, &rrsig_test_data1,
+				      &buffer1);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	isc_buffer_init(&buffer2, rrsig_data2, sizeof(rrsig_data2));
-	result = dns_rdata_fromstruct(&rdata2, dns_rdataclass_in, dns_rdatatype_rrsig, &rrsig_test_data2, &buffer2);
+	result = dns_rdata_fromstruct(&rdata2, dns_rdataclass_in,
+				      dns_rdatatype_rrsig, &rrsig_test_data2,
+				      &buffer2);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	result = dns__qpzone_create(mctx, &example_org_name, dns_dbtype_zone,
@@ -478,26 +491,34 @@ ISC_RUN_TEST_IMPL(diffop_addresign) {
 	assert_non_null(db);
 
 	WITH_NEWVERSION(db, version, true) {
-		result = apply_dns_update(db, version, &example_org_name, dns_rdatatype_rrsig,
-					  dns_rdataclass_in, 300, rdata1.data, rdata1.length, DNS_DIFFOP_ADDRESIGN);
+		result = apply_dns_update(db, version, &example_org_name,
+					  dns_rdatatype_rrsig,
+					  dns_rdataclass_in, 300, rdata1.data,
+					  rdata1.length, DNS_DIFFOP_ADDRESIGN);
 		assert_int_equal(result, ISC_R_SUCCESS);
 	}
 
 	WITH_NEWVERSION(db, version, true) {
-		result = apply_dns_update(db, version, &example_org_name, dns_rdatatype_rrsig,
-					  dns_rdataclass_in, 300, rdata2.data, rdata2.length, DNS_DIFFOP_ADDRESIGN);
+		result = apply_dns_update(db, version, &example_org_name,
+					  dns_rdatatype_rrsig,
+					  dns_rdataclass_in, 300, rdata2.data,
+					  rdata2.length, DNS_DIFFOP_ADDRESIGN);
 		assert_int_equal(result, ISC_R_SUCCESS);
 	}
 
 	WITH_NEWVERSION(db, version, true) {
-		result = apply_dns_update(db, version, &example_org_name, dns_rdatatype_rrsig,
-					  dns_rdataclass_in, 300, rdata1.data, rdata1.length, DNS_DIFFOP_DELRESIGN);
+		result = apply_dns_update(db, version, &example_org_name,
+					  dns_rdatatype_rrsig,
+					  dns_rdataclass_in, 300, rdata1.data,
+					  rdata1.length, DNS_DIFFOP_DELRESIGN);
 		assert_int_equal(result, ISC_R_SUCCESS);
 	}
 
 	WITH_NEWVERSION(db, version, true) {
-		result = apply_dns_update(db, version, &example_org_name, dns_rdatatype_rrsig,
-					  dns_rdataclass_in, 300, rdata2.data, rdata2.length, DNS_DIFFOP_DELRESIGN);
+		result = apply_dns_update(db, version, &example_org_name,
+					  dns_rdatatype_rrsig,
+					  dns_rdataclass_in, 300, rdata2.data,
+					  rdata2.length, DNS_DIFFOP_DELRESIGN);
 		assert_int_equal(result, DNS_R_NXRRSET);
 	}
 

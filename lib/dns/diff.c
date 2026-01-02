@@ -260,7 +260,7 @@ update_rdataset(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 		options = DNS_DBADD_MERGE | DNS_DBADD_EXACT |
 			  DNS_DBADD_EXACTTTL;
 		CHECK(dns_db_addrdataset(db, node, ver, 0, rds, options,
-					    &ardataset));
+					 &ardataset));
 		switch (result) {
 		case ISC_R_SUCCESS:
 		case DNS_R_UNCHANGED:

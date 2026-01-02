@@ -1685,8 +1685,8 @@ done:
 }
 
 static isc_result_t
-loading_addrdataset(void *arg, const dns_name_t *name,
-		    dns_rdataset_t *rdataset, dns_diffop_t op ISC_ATTR_UNUSED DNS__DB_FLARG) {
+loading_addrdataset(void *arg, const dns_name_t *name, dns_rdataset_t *rdataset,
+		    dns_diffop_t op ISC_ATTR_UNUSED DNS__DB_FLARG) {
 	rbtdb_load_t *loadctx = arg;
 	dns_rbtdb_t *rbtdb = (dns_rbtdb_t *)loadctx->db;
 	dns_rbtnode_t *node = NULL;
