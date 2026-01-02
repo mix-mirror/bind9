@@ -32,7 +32,7 @@
 
 #include <dst/dst.h>
 
-#define MAXFIELDSIZE 512
+#define MAXFIELDSIZE 32768
 
 /*
  * Maximum number of fields in a private file is 18 (12 algorithm-

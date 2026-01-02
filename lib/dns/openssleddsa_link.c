@@ -392,6 +392,7 @@ openssleddsa_tofile(const dst_key_t *key, const char *directory) {
 
 cleanup:
 	if (buf != NULL) {
+		isc_safe_memwipe(buf, len);
 		isc_mem_put(key->mctx, buf, len);
 	}
 	return result;

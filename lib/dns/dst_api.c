@@ -1325,6 +1325,15 @@ dst_key_sigsize(const dst_key_t *key, unsigned int *n) {
 	case DST_ALG_ED448:
 		*n = DNS_SIG_ED448SIZE;
 		break;
+	case DST_ALG_MLDSA44:
+		*n = DNS_SIG_MLDSA44SIZE;
+		break;
+	case DST_ALG_MLDSA65:
+		*n = DNS_SIG_MLDSA65SIZE;
+		break;
+	case DST_ALG_MLDSA87:
+		*n = DNS_SIG_MLDSA87SIZE;
+		break;
 	case DST_ALG_HMACMD5:
 		*n = isc_md_type_get_size(ISC_MD_MD5);
 		break;
@@ -1491,8 +1500,7 @@ dst_key_read_public(const char *filename, int type, isc_mem_t *mctx,
 	 * <algorithm> <key>
 	 */
 
-	/* 1500 should be large enough for any key */
-	isc_lex_create(mctx, 1500, &lex);
+	isc_lex_create(mctx, ((DNS_PRIVKEY_MLDSA87SIZE + 1) * 4) / 3, &lex);
 
 	memset(specials, 0, sizeof(specials));
 	specials['('] = 1;

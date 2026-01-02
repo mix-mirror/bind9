@@ -454,9 +454,9 @@ dst__privstruct_parse(dst_key_t *key, unsigned int alg, isc_lex_t *lex,
 	memset(priv->elements, 0, sizeof(priv->elements));
 
 #define NEXTTOKEN(lex, opt, token)                        \
-	do {                                              \
+	{                                                 \
 		CHECK(isc_lex_gettoken(lex, opt, token)); \
-	} while (0)
+	}
 
 #define READLINE(lex, opt, token)                           \
 	do {                                                \

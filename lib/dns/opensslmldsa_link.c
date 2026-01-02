@@ -35,7 +35,7 @@
 
 typedef struct mldsa_alginfo {
 	int pkey_type, nid;
-	unsigned int key_size, sig_size;
+	size_t key_size, sig_size;
 } mldsa_alginfo_t;
 
 static const mldsa_alginfo_t *
@@ -75,7 +75,7 @@ raw_key_to_ossl(const mldsa_alginfo_t *alginfo, int private,
 		const unsigned char *key, size_t *key_len, EVP_PKEY **pkey) {
 	isc_result_t result;
 	int pkey_type = alginfo->pkey_type;
-	size_t len = private ? MAX_MLDSA_PRIVKEY_SIZE : alginfo->key_size;
+	size_t len = private ? DNS_PRIVKEY_MLDSA87SIZE : alginfo->key_size;
 
 	result = (private ? DST_R_INVALIDPRIVATEKEY : DST_R_INVALIDPUBLICKEY);
 
@@ -411,7 +411,13 @@ opensslmldsa_tofile(const dst_key_t *key, const char *directory) {
 	i = 0;
 
 	if (dst__openssl_keypair_isprivate(key)) {
-		len = MAX_MLDSA_PRIVKEY_SIZE;
+		if (EVP_PKEY_get_raw_private_key(key->keydata.pkeypair.priv,
+						 NULL, &len) != 1)
+		{
+			result = dst__openssl_toresult(ISC_R_FAILURE);
+			goto cleanup;
+		}
+		fprintf(stderr, "len: %zu\n", len);
 		buf = isc_mem_get(key->mctx, len);
 		if (EVP_PKEY_get_raw_private_key(key->keydata.pkeypair.priv,
 						 buf, &len) != 1)
@@ -438,8 +444,8 @@ opensslmldsa_tofile(const dst_key_t *key, const char *directory) {
 
 cleanup:
 	if (buf != NULL) {
-		isc_safe_memwipe(buf, MAX_MLDSA_PRIVKEY_SIZE);
-		isc_mem_put(key->mctx, buf, MAX_MLDSA_PRIVKEY_SIZE);
+		isc_safe_memwipe(buf, len);
+		isc_mem_put(key->mctx, buf, len);
 	}
 	return result;
 }
@@ -576,62 +582,26 @@ static dst_func_t opensslmldsa_functions = {
 	.fromlabel = opensslmldsa_fromlabel,
 };
 
-/*
- * Test vectors for ML-DSA validation
- * These should be updated with official NIST test vectors
- */
-static unsigned char mldsa44_pub[] = {
-	/* Placeholder for ML-DSA-44 public key test vector */
-	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-	/* ... rest of public key ... */
-};
-
-static unsigned char mldsa44_sig[] = {
-	/* Placeholder for ML-DSA-44 signature test vector */
-	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-	/* ... rest of signature ... */
-};
-
-static unsigned char mldsa65_pub[] = {
-	/* Placeholder for ML-DSA-65 public key test vector */
-	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-	/* ... rest of public key ... */
-};
-
-static unsigned char mldsa65_sig[] = {
-	/* Placeholder for ML-DSA-65 signature test vector */
-	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-	/* ... rest of signature ... */
-};
-
 static isc_result_t
 check_algorithm(unsigned char algorithm) {
-	EVP_MD_CTX *evp_md_ctx = EVP_MD_CTX_create();
+	EVP_MD_CTX *evp_md_ctx = NULL;
+	EVP_PKEY_CTX *pkey_ctx = NULL;
 	EVP_PKEY *pkey = NULL;
 	const mldsa_alginfo_t *alginfo = NULL;
-	const unsigned char *key = NULL;
-	const unsigned char *sig = NULL;
+	unsigned char *sig = NULL;
+	size_t sig_len = 0;
 	const unsigned char test[] = "test";
 	isc_result_t result = ISC_R_SUCCESS;
-	size_t key_len, sig_len;
 
+	evp_md_ctx = EVP_MD_CTX_new();
 	if (evp_md_ctx == NULL) {
 		return ISC_R_NOMEMORY;
 	}
 
 	switch (algorithm) {
 	case DST_ALG_MLDSA44:
-		sig = mldsa44_sig;
-		sig_len = sizeof(mldsa44_sig) - 1;
-		key = mldsa44_pub;
-		key_len = sizeof(mldsa44_pub) - 1;
-		alginfo = opensslmldsa_alg_info(algorithm);
-		break;
 	case DST_ALG_MLDSA65:
-		sig = mldsa65_sig;
-		sig_len = sizeof(mldsa65_sig) - 1;
-		key = mldsa65_pub;
-		key_len = sizeof(mldsa65_pub) - 1;
+	case DST_ALG_MLDSA87:
 		alginfo = opensslmldsa_alg_info(algorithm);
 		break;
 	default:
@@ -640,14 +610,41 @@ check_algorithm(unsigned char algorithm) {
 	}
 
 	INSIST(alginfo != NULL);
-	result = raw_key_to_ossl(alginfo, 0, key, &key_len, &pkey);
-	if (result != ISC_R_SUCCESS) {
+
+	/* Key generation */
+	pkey_ctx = EVP_PKEY_CTX_new_id(alginfo->pkey_type, NULL);
+	if (pkey_ctx == NULL || EVP_PKEY_keygen_init(pkey_ctx) != 1 ||
+	    EVP_PKEY_keygen(pkey_ctx, &pkey) != 1)
+	{
+		result = ISC_R_NOTIMPLEMENTED;
 		goto cleanup;
 	}
 
-	/*
-	 * Check that we can verify the signature.
-	 */
+	/* Sign */
+	if (EVP_DigestSignInit(evp_md_ctx, NULL, NULL, NULL, pkey) != 1 ||
+	    EVP_DigestSign(evp_md_ctx, NULL, &sig_len, test,
+			   sizeof(test) - 1) != 1)
+	{
+		result = ISC_R_NOTIMPLEMENTED;
+		goto cleanup;
+	}
+
+	sig = OPENSSL_malloc(sig_len);
+	if (sig == NULL) {
+		result = ISC_R_NOMEMORY;
+		goto cleanup;
+	}
+
+	if (EVP_DigestSign(evp_md_ctx, sig, &sig_len, test, sizeof(test) - 1) !=
+	    1)
+	{
+		result = ISC_R_NOTIMPLEMENTED;
+		goto cleanup;
+	}
+
+	EVP_MD_CTX_reset(evp_md_ctx);
+
+	/* Verify */
 	if (EVP_DigestVerifyInit(evp_md_ctx, NULL, NULL, NULL, pkey) != 1 ||
 	    EVP_DigestVerify(evp_md_ctx, sig, sig_len, test,
 			     sizeof(test) - 1) != 1)
@@ -656,12 +653,10 @@ check_algorithm(unsigned char algorithm) {
 	}
 
 cleanup:
-	if (pkey != NULL) {
-		EVP_PKEY_free(pkey);
-	}
-	if (evp_md_ctx != NULL) {
-		EVP_MD_CTX_destroy(evp_md_ctx);
-	}
+	OPENSSL_free(sig);
+	EVP_PKEY_free(pkey);
+	EVP_PKEY_CTX_free(pkey_ctx);
+	EVP_MD_CTX_free(evp_md_ctx);
 	ERR_clear_error();
 	return result;
 }

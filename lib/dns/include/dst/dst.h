@@ -23,6 +23,7 @@
 
 #include <dns/ds.h>
 #include <dns/dsdigest.h>
+#include <dns/keyvalues.h>
 #include <dns/name.h>
 #include <dns/secalg.h>
 #include <dns/types.h>
@@ -125,13 +126,13 @@ typedef enum dst_algorithm {
 } dst_algorithm_t;
 
 /*% A buffer of this size is large enough to hold any key */
-#define DST_KEY_MAXSIZE 1280
+#define DST_KEY_MAXSIZE DNS_PRIVKEY_MLDSA87SIZE
 
 /*%
  * A buffer of this size is large enough to hold the textual representation
  * of any key
  */
-#define DST_KEY_MAXTEXTSIZE 2048
+#define DST_KEY_MAXTEXTSIZE 8192
 
 /*% 'Type' for dst_read_key() */
 #define DST_TYPE_KEY	  0x1000000 /* KEY key */

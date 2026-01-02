@@ -980,6 +980,35 @@ create_fetch(dns_validator_t *val, dns_name_t *name, dns_rdatatype_t type,
 		fopts |= DNS_FETCHOPT_NONTA;
 	}
 
+	/*
+	 * Use TCP for DNSKEY fetches only when we know a large
+	 * post-quantum algorithm (ML-DSA) is in use (via DS).
+	 */
+	if (type == dns_rdatatype_dnskey) {
+		bool need_tcp = false;
+
+		if (val->dsset != NULL) {
+			DNS_RDATASET_FOREACH(val->dsset) {
+				dns_rdata_t dsrdata = DNS_RDATA_INIT;
+				dns_rdata_ds_t ds;
+
+				dns_rdataset_current(val->dsset, &dsrdata);
+				if (dns_rdata_tostruct(&dsrdata, &ds, NULL) == ISC_R_SUCCESS) {
+					if (ds.algorithm == DNS_KEYALG_MLDSA44 ||
+						ds.algorithm == DNS_KEYALG_MLDSA65 ||
+						ds.algorithm == DNS_KEYALG_MLDSA87) {
+						need_tcp = true;
+						break;
+					}
+				}
+			}
+		}
+
+		if (need_tcp) {
+			fopts |= DNS_FETCHOPT_TCP;
+		}
+	}
+
 	validator_logcreate(val, name, type, caller, "fetch");
 
 	dns_validator_ref(val);
