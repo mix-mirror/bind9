@@ -822,7 +822,7 @@ class AsyncDnsServer(AsyncServer):
         self,
         /,
         default_rcode: dns.rcode.Rcode = dns.rcode.REFUSED,
-        default_aa: bool = True,
+        default_aa: bool = False,
         keyring: Union[
             Dict[dns.name.Name, dns.tsig.Key], None, _NoKeyringType
         ] = _NoKeyringType(),
