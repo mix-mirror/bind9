@@ -147,7 +147,6 @@ opensslmldsa_sign(dst_context_t *dctx, isc_buffer_t *sig) {
 	isc_region_t tbsreg;
 	isc_region_t sigreg;
 	EVP_PKEY *pkey = key->keydata.pkeypair.priv;
-	EVP_MD_CTX *ctx = NULL;
 	isc_buffer_t *buf = (isc_buffer_t *)dctx->ctxdata.generic;
 	const mldsa_alginfo_t *alginfo = opensslmldsa_alg_info(key->key_alg);
 	size_t siglen;
@@ -188,7 +187,6 @@ opensslmldsa_sign(dst_context_t *dctx, isc_buffer_t *sig) {
 
 	isc_buffer_availableregion(sig, &sigreg);
 	if (sigreg.length < siglen) {
-		EVP_MD_CTX_free(ctx);
 		result = ISC_R_NOSPACE;
 		goto cleanup;
 	}
@@ -553,23 +551,21 @@ static dst_func_t opensslmldsa_functions = {
 
 static isc_result_t
 check_algorithm(unsigned char algorithm) {
-	EVP_MD_CTX *evp_md_ctx = NULL;
+	EVP_PKEY_CTX *sign_ctx = NULL;
+	EVP_PKEY_CTX *verify_ctx = NULL;
 	EVP_PKEY_CTX *pkey_ctx = NULL;
 	EVP_PKEY *pkey = NULL;
+	EVP_SIGNATURE *sig_alg = NULL;
 	const mldsa_alginfo_t *alginfo = NULL;
 	unsigned char *sig = NULL;
 	size_t sig_len = 0;
 	const unsigned char test[] = "test";
 	isc_result_t result = ISC_R_SUCCESS;
 
-	evp_md_ctx = EVP_MD_CTX_new();
-	if (evp_md_ctx == NULL) {
-		return ISC_R_NOMEMORY;
-	}
-
 	switch (algorithm) {
 	case DST_ALG_MLDSA44:
 		alginfo = opensslmldsa_alg_info(algorithm);
+		sig_alg = sig_alg_ml_dsa_44;
 		break;
 	default:
 		result = ISC_R_NOTIMPLEMENTED;
@@ -577,6 +573,7 @@ check_algorithm(unsigned char algorithm) {
 	}
 
 	INSIST(alginfo != NULL);
+	INSIST(sig_alg != NULL);
 
 	/* Key generation */
 	pkey_ctx = EVP_PKEY_CTX_new_id(alginfo->pkey_type, NULL);
@@ -588,9 +585,15 @@ check_algorithm(unsigned char algorithm) {
 	}
 
 	/* Sign */
-	if (EVP_DigestSignInit(evp_md_ctx, NULL, NULL, NULL, pkey) != 1 ||
-	    EVP_DigestSign(evp_md_ctx, NULL, &sig_len, test,
-			   sizeof(test) - 1) != 1)
+	sign_ctx = EVP_PKEY_CTX_new_from_pkey(NULL, pkey, NULL);
+	if (sign_ctx == NULL) {
+		result = ISC_R_NOMEMORY;
+		goto cleanup;
+	}
+
+	if (EVP_PKEY_sign_message_init(sign_ctx, sig_alg, NULL) != 1 ||
+	    EVP_PKEY_sign(sign_ctx, NULL, &sig_len, test, sizeof(test) - 1) !=
+		    1)
 	{
 		result = ISC_R_NOTIMPLEMENTED;
 		goto cleanup;
@@ -602,19 +605,22 @@ check_algorithm(unsigned char algorithm) {
 		goto cleanup;
 	}
 
-	if (EVP_DigestSign(evp_md_ctx, sig, &sig_len, test, sizeof(test) - 1) !=
-	    1)
+	if (EVP_PKEY_sign(sign_ctx, sig, &sig_len, test, sizeof(test) - 1) != 1)
 	{
 		result = ISC_R_NOTIMPLEMENTED;
 		goto cleanup;
 	}
 
-	EVP_MD_CTX_reset(evp_md_ctx);
-
 	/* Verify */
-	if (EVP_DigestVerifyInit(evp_md_ctx, NULL, NULL, NULL, pkey) != 1 ||
-	    EVP_DigestVerify(evp_md_ctx, sig, sig_len, test,
-			     sizeof(test) - 1) != 1)
+	verify_ctx = EVP_PKEY_CTX_new_from_pkey(NULL, pkey, NULL);
+	if (verify_ctx == NULL) {
+		result = ISC_R_NOMEMORY;
+		goto cleanup;
+	}
+
+	if (EVP_PKEY_verify_message_init(verify_ctx, sig_alg, NULL) != 1 ||
+	    EVP_PKEY_verify(verify_ctx, sig, sig_len, test, sizeof(test) - 1) !=
+		    1)
 	{
 		result = ISC_R_NOTIMPLEMENTED;
 	}
@@ -623,7 +629,8 @@ cleanup:
 	OPENSSL_free(sig);
 	EVP_PKEY_free(pkey);
 	EVP_PKEY_CTX_free(pkey_ctx);
-	EVP_MD_CTX_free(evp_md_ctx);
+	EVP_PKEY_CTX_free(sign_ctx);
+	EVP_PKEY_CTX_free(verify_ctx);
 	ERR_clear_error();
 	return result;
 }

@@ -211,8 +211,8 @@ dst__lib_initialize(void) {
 			     DST_ALG_NSEC3RSASHA1);
 	dst__opensslrsa_init(&dst_t_func[DST_ALG_RSASHA256], DST_ALG_RSASHA256);
 	dst__opensslrsa_init(&dst_t_func[DST_ALG_RSASHA512], DST_ALG_RSASHA512);
-	dst__opensslecdsa_init(&dst_t_func[DST_ALG_ECDSA256]);
-	dst__opensslecdsa_init(&dst_t_func[DST_ALG_ECDSA384]);
+	dst__opensslecdsa_init(&dst_t_func[DST_ALG_ECDSA256], DST_ALG_ECDSA256);
+	dst__opensslecdsa_init(&dst_t_func[DST_ALG_ECDSA384], DST_ALG_ECDSA384);
 	dst__openssleddsa_init(&dst_t_func[DST_ALG_ED25519], DST_ALG_ED25519);
 #ifdef HAVE_OPENSSL_ED448
 	dst__openssleddsa_init(&dst_t_func[DST_ALG_ED448], DST_ALG_ED448);

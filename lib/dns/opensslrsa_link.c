@@ -202,7 +202,7 @@ opensslrsa_createctx(dst_key_t *key, dst_context_t *dctx) {
 		UNREACHABLE();
 	}
 
-	evp_md_ctx = EVP_MD_CTX_create();
+	evp_md_ctx = EVP_MD_CTX_new();
 	if (evp_md_ctx == NULL) {
 		return dst__openssl_toresult(ISC_R_NOMEMORY);
 	}
@@ -225,7 +225,7 @@ opensslrsa_createctx(dst_key_t *key, dst_context_t *dctx) {
 	}
 
 	if (!EVP_DigestInit_ex(evp_md_ctx, type, NULL)) {
-		EVP_MD_CTX_destroy(evp_md_ctx);
+		EVP_MD_CTX_free(evp_md_ctx);
 		return dst__openssl_toresult3(
 			dctx->category, "EVP_DigestInit_ex", ISC_R_FAILURE);
 	}
@@ -244,7 +244,7 @@ opensslrsa_destroyctx(dst_context_t *dctx) {
 	evp_md_ctx = dctx->ctxdata.evp_md_ctx;
 
 	if (evp_md_ctx != NULL) {
-		EVP_MD_CTX_destroy(evp_md_ctx);
+		EVP_MD_CTX_free(evp_md_ctx);
 		dctx->ctxdata.evp_md_ctx = NULL;
 	}
 }
@@ -1302,12 +1302,17 @@ static const unsigned char sha512_sig[] =
 static isc_result_t
 check_algorithm(unsigned short algorithm) {
 	rsa_components_t c = { .bnfree = true };
-	EVP_MD_CTX *evp_md_ctx = EVP_MD_CTX_create();
+	EVP_MD_CTX *evp_md_ctx = EVP_MD_CTX_new();
 	EVP_PKEY *pkey = NULL;
 	const EVP_MD *type = NULL;
 	const unsigned char *sig = NULL;
 	isc_result_t result = ISC_R_SUCCESS;
 	size_t len;
+	int status;
+
+	if (evp_md_ctx == NULL) {
+		return ISC_R_NOMEMORY;
+	}
 
 	switch (algorithm) {
 	case DST_ALG_RSASHA1:
@@ -1344,17 +1349,23 @@ check_algorithm(unsigned short algorithm) {
 	/*
 	 * Check that we can verify the signature.
 	 */
-	if (EVP_DigestInit_ex(evp_md_ctx, type, NULL) != 1 ||
-	    EVP_DigestUpdate(evp_md_ctx, "test", 4) != 1 ||
-	    EVP_VerifyFinal(evp_md_ctx, sig, len, pkey) != 1)
-	{
+	if (EVP_DigestVerifyInit(evp_md_ctx, NULL, type, NULL, pkey) != 1) {
+		CLEANUP(ISC_R_NOTIMPLEMENTED);
+	}
+
+	if (EVP_DigestUpdate(evp_md_ctx, "test", 4) != 1) {
+		CLEANUP(ISC_R_NOTIMPLEMENTED);
+	}
+
+	status = EVP_DigestVerifyFinal(evp_md_ctx, sig, len);
+	if (status != 1) {
 		CLEANUP(ISC_R_NOTIMPLEMENTED);
 	}
 
 cleanup:
 	opensslrsa_components_free(&c);
 	EVP_PKEY_free(pkey);
-	EVP_MD_CTX_destroy(evp_md_ctx);
+	EVP_MD_CTX_free(evp_md_ctx);
 	ERR_clear_error();
 	return result;
 }

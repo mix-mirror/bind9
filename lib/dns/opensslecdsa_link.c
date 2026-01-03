@@ -679,7 +679,7 @@ opensslecdsa_createctx(dst_key_t *key, dst_context_t *dctx) {
 	REQUIRE(opensslecdsa_valid_key_alg(dctx->key->key_alg));
 	REQUIRE(dctx->use == DO_SIGN || dctx->use == DO_VERIFY);
 
-	evp_md_ctx = EVP_MD_CTX_create();
+	evp_md_ctx = EVP_MD_CTX_new();
 	if (evp_md_ctx == NULL) {
 		CLEANUP(dst__openssl_toresult(ISC_R_NOMEMORY));
 	}
@@ -693,7 +693,7 @@ opensslecdsa_createctx(dst_key_t *key, dst_context_t *dctx) {
 		if (EVP_DigestSignInit(evp_md_ctx, &pctx, type, NULL,
 				       dctx->key->keydata.pkeypair.priv) != 1)
 		{
-			EVP_MD_CTX_destroy(evp_md_ctx);
+			EVP_MD_CTX_free(evp_md_ctx);
 			CLEANUP(dst__openssl_toresult3(dctx->category,
 						       "EVP_DigestSignInit",
 						       ISC_R_FAILURE));
@@ -710,7 +710,7 @@ opensslecdsa_createctx(dst_key_t *key, dst_context_t *dctx) {
 		if (EVP_DigestVerifyInit(evp_md_ctx, NULL, type, NULL,
 					 dctx->key->keydata.pkeypair.pub) != 1)
 		{
-			EVP_MD_CTX_destroy(evp_md_ctx);
+			EVP_MD_CTX_free(evp_md_ctx);
 			CLEANUP(dst__openssl_toresult3(dctx->category,
 						       "EVP_DigestVerifyInit",
 						       ISC_R_FAILURE));
@@ -731,7 +731,7 @@ opensslecdsa_destroyctx(dst_context_t *dctx) {
 	REQUIRE(dctx->use == DO_SIGN || dctx->use == DO_VERIFY);
 
 	if (evp_md_ctx != NULL) {
-		EVP_MD_CTX_destroy(evp_md_ctx);
+		EVP_MD_CTX_free(evp_md_ctx);
 		dctx->ctxdata.evp_md_ctx = NULL;
 	}
 }
@@ -1155,11 +1155,140 @@ static dst_func_t opensslecdsa_functions = {
 	.fromlabel = opensslecdsa_fromlabel,
 };
 
+/* Test vector: ECDSA P-256 public key for "test" */
+static const unsigned char p256_pub[] =
+	"\x04\x8e\x8c\x56\x28\xe5\xd4\x7a\x52\xd8\x90\x7b\xdb\x3d\x85\x3e\x24"
+	"\xe8\x03\xf4\x3e\xd6\x8a\x8f\x58\x79\x0e\xde\x5c\xaa\xa5\x9c\xb3\xab"
+	"\xaa\x8f\x8d\x1e\x16\x9a\x70\x8f\x77\xaa\xb0\xf3\x89\xe8\x1d\x0e\xdf"
+	"\x14\x69\x7d\x70\x46\xfb\x79\x85\x44\x7c\x1e\x1a\x5c\x42\x0d\xfc\x95";
+
+/* Test vector: ECDSA P-256 signature for "test" */
+static const unsigned char p256_sig[] =
+	"\xc7\x79\x6d\x8f\xaa\x32\x72\x3d\x37\x14\x3d\xa1\xc1\x04\x50\x9e\xd5"
+	"\xe9\xc8\x4e\x8e\x3e\xc2\x03\x10\xd2\xe0\xb4\x82\x7e\x45\x33\x89\xd8"
+	"\x94\x44\xfc\x82\x6f\xf3\x4b\x21\x0d\x0e\xe1\x84\x2c\x0d\x90\xe2\x70"
+	"\x0b\x79\xc8\x84\x9a\x9d\x4c\xbb\xe0\xe5\x90\x96\x19\xc5\x53\xce";
+
+/* Test vector: ECDSA P-384 public key for "test" */
+static const unsigned char p384_pub[] =
+	"\x04\x76\x83\xa9\x5b\x3f\x3d\x1c\x73\xf5\x27\x8e\x21\x32\x2e\x8f\x0d"
+	"\xe9\x53\xfc\xa3\x8e\x5c\x78\xa9\xd5\x64\x83\x15\x0b\x61\x8f\x50\x10"
+	"\x43\x02\xba\x4e\x2c\xca\x6f\xa4\x98\x8c\xe7\xb3\x37\xba\x63\x97\x32"
+	"\x97\x58\xb9\x5f\x2c\xab\x6a\x6c\x8c\x4f\x88\x5c\x8e\x88\xd8\x3e\xb9"
+	"\x3d\x4c\xe1\x8f\x98\x5f\x8c\x88\xa8\x35\x5f\xf5\xf6\x3e\x4b\x02\xe2"
+	"\x7a\xe0\x0d\xd4\xd6\xe8\x16\x6c\x7f\x6a\x25\x7e\xfe\x5f\x8c\xf0\xd0"
+	"\x60\x0e\x52\x15\x0d\x59\x2e";
+
+/* Test vector: ECDSA P-384 signature for "test" */
+static const unsigned char p384_sig[] =
+	"\x82\x3f\x82\xd9\xf9\x12\x91\x5e\x7a\x70\xd0\x9b\x82\xd0\x81\xf4\xc3"
+	"\x0e\x8e\x8a\xa0\x65\x52\x1e\x37\xf0\x9a\xdb\x40\x31\x96\x9e\x85\xb1"
+	"\xde\x0c\xd0\xd4\x8f\xd2\xfa\x7b\x5b\x3a\xeb\x8c\x4f\xb1\x1c\x7a\x17"
+	"\xb6\xd2\x3c\x51\x1d\x0a\x6c\xd1\xfc\x81\x07\x06\x17\xf3\xe4\x83\x0c"
+	"\xb8\x86\x3e\xaa\xea\x82\x88\x9a\xa6\x5a\x45\x2c\xfc\x4b\x16\x5b\xe8"
+	"\xb4\xda\x6d\x4c\xaf\x04\x2e\x51\x37\xf2\x02\x3a\x32\x54\xa8\xb7";
+
+static isc_result_t
+check_algorithm(unsigned char algorithm) {
+	EVP_MD_CTX *evp_md_ctx = NULL;
+	EVP_PKEY *pkey = NULL;
+	const EVP_MD *type = NULL;
+	const unsigned char *pub = NULL;
+	const unsigned char *sig = NULL;
+	isc_result_t result = ISC_R_SUCCESS;
+	size_t pub_len, sig_len;
+	int status;
+
+	evp_md_ctx = EVP_MD_CTX_new();
+	if (evp_md_ctx == NULL) {
+		return ISC_R_NOMEMORY;
+	}
+
+	switch (algorithm) {
+	case DST_ALG_ECDSA256:
+		type = isc__crypto_sha256;
+		pub = p256_pub;
+		pub_len = sizeof(p256_pub) - 1;
+		sig = p256_sig;
+		sig_len = sizeof(p256_sig) - 1;
+		break;
+	case DST_ALG_ECDSA384:
+		type = isc__crypto_sha384;
+		pub = p384_pub;
+		pub_len = sizeof(p384_pub) - 1;
+		sig = p384_sig;
+		sig_len = sizeof(p384_sig) - 1;
+		break;
+	default:
+		CLEANUP(ISC_R_NOTIMPLEMENTED);
+	}
+
+	/* Create public key from test vector */
+	CHECK(opensslecdsa_create_pkey(algorithm, false, pub, pub_len, &pkey));
+
+	/* Check that we can verify the signature */
+	if (EVP_DigestVerifyInit(evp_md_ctx, NULL, type, NULL, pkey) != 1) {
+		CLEANUP(ISC_R_NOTIMPLEMENTED);
+	}
+
+	if (EVP_DigestUpdate(evp_md_ctx, "test", 4) != 1) {
+		CLEANUP(ISC_R_NOTIMPLEMENTED);
+	}
+
+	/* Convert raw signature to DER format */
+	ECDSA_SIG *ecdsasig = ECDSA_SIG_new();
+	if (ecdsasig == NULL) {
+		CLEANUP(ISC_R_NOMEMORY);
+	}
+
+	size_t half = sig_len / 2;
+	BIGNUM *r = BN_bin2bn(sig, half, NULL);
+	BIGNUM *s = BN_bin2bn(sig + half, half, NULL);
+	if (r == NULL || s == NULL) {
+		BN_free(r);
+		BN_free(s);
+		ECDSA_SIG_free(ecdsasig);
+		CLEANUP(ISC_R_NOMEMORY);
+	}
+	ECDSA_SIG_set0(ecdsasig, r, s);
+
+	/* Convert to DER */
+	int der_len = i2d_ECDSA_SIG(ecdsasig, NULL);
+	if (der_len < 0) {
+		ECDSA_SIG_free(ecdsasig);
+		CLEANUP(ISC_R_NOTIMPLEMENTED);
+	}
+
+	unsigned char *der = isc_mem_get(NULL, der_len);
+	unsigned char *der_copy = der;
+	if (i2d_ECDSA_SIG(ecdsasig, &der_copy) < 0) {
+		isc_mem_put(NULL, der, der_len);
+		ECDSA_SIG_free(ecdsasig);
+		CLEANUP(ISC_R_NOTIMPLEMENTED);
+	}
+	ECDSA_SIG_free(ecdsasig);
+
+	status = EVP_DigestVerifyFinal(evp_md_ctx, der, der_len);
+	isc_mem_put(NULL, der, der_len);
+
+	if (status != 1) {
+		CLEANUP(ISC_R_NOTIMPLEMENTED);
+	}
+
+cleanup:
+	EVP_PKEY_free(pkey);
+	EVP_MD_CTX_free(evp_md_ctx);
+	ERR_clear_error();
+	return result;
+}
+
 void
-dst__opensslecdsa_init(dst_func_t **funcp) {
+dst__opensslecdsa_init(dst_func_t **funcp, unsigned char algorithm) {
 	REQUIRE(funcp != NULL);
 
 	if (*funcp == NULL) {
-		*funcp = &opensslecdsa_functions;
+		if (check_algorithm(algorithm) == ISC_R_SUCCESS) {
+			*funcp = &opensslecdsa_functions;
+		}
 	}
 }

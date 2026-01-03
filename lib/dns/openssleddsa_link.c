@@ -552,7 +552,7 @@ static unsigned char ed25519_sig[] =
 
 static isc_result_t
 check_algorithm(unsigned char algorithm) {
-	EVP_MD_CTX *evp_md_ctx = EVP_MD_CTX_create();
+	EVP_MD_CTX *evp_md_ctx = EVP_MD_CTX_new();
 	EVP_PKEY *pkey = NULL;
 	const eddsa_alginfo_t *alginfo = NULL;
 	const unsigned char *key = NULL;
@@ -562,7 +562,7 @@ check_algorithm(unsigned char algorithm) {
 	size_t key_len, sig_len;
 
 	if (evp_md_ctx == NULL) {
-		CLEANUP(ISC_R_NOMEMORY);
+		return ISC_R_NOMEMORY;
 	}
 
 	switch (algorithm) {
@@ -603,9 +603,7 @@ cleanup:
 	if (pkey != NULL) {
 		EVP_PKEY_free(pkey);
 	}
-	if (evp_md_ctx != NULL) {
-		EVP_MD_CTX_destroy(evp_md_ctx);
-	}
+	EVP_MD_CTX_free(evp_md_ctx);
 	ERR_clear_error();
 	return result;
 }
