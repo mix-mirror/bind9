@@ -565,7 +565,9 @@ check_algorithm(unsigned char algorithm) {
 	switch (algorithm) {
 	case DST_ALG_MLDSA44:
 		alginfo = opensslmldsa_alg_info(algorithm);
-		sig_alg = sig_alg_ml_dsa_44;
+		/* Fetch locally since global sig_alg_ml_dsa_44 isn't
+		 * initialized yet during dst__lib_initialize */
+		sig_alg = EVP_SIGNATURE_fetch(NULL, "ML-DSA-44", NULL);
 		break;
 	default:
 		result = ISC_R_NOTIMPLEMENTED;
@@ -573,7 +575,10 @@ check_algorithm(unsigned char algorithm) {
 	}
 
 	INSIST(alginfo != NULL);
-	INSIST(sig_alg != NULL);
+	if (sig_alg == NULL) {
+		result = ISC_R_NOTIMPLEMENTED;
+		goto cleanup;
+	}
 
 	/* Key generation */
 	pkey_ctx = EVP_PKEY_CTX_new_id(alginfo->pkey_type, NULL);
@@ -626,6 +631,7 @@ check_algorithm(unsigned char algorithm) {
 	}
 
 cleanup:
+	EVP_SIGNATURE_free(sig_alg);
 	OPENSSL_free(sig);
 	EVP_PKEY_free(pkey);
 	EVP_PKEY_CTX_free(pkey_ctx);
