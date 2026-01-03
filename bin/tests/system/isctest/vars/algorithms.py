@@ -83,6 +83,7 @@ ECDSAP256SHA256 = Algorithm("ECDSAP256SHA256", 13, 13, 256)
 ECDSAP384SHA384 = Algorithm("ECDSAP384SHA384", 14, 14, 384)
 ED25519 = Algorithm("ED25519", 15, 15, 256)
 ED448 = Algorithm("ED448", 16, 16, 456)
+MLDSA44 = Algorithm("MLDSA44", 17, 17, 1312)
 RSASHA256OID = Algorithm("RSASHA256OID", 254, 256, 2048)
 RSASHA512OID = Algorithm("RSASHA512OID", 254, 257, 2048)
 
@@ -94,6 +95,7 @@ ALL_ALGORITHMS = [
     ECDSAP384SHA384,
     ED25519,
     ED448,
+    MLDSA44,
     RSASHA256OID,
     RSASHA512OID,
 ]
@@ -114,6 +116,12 @@ ALGORITHM_SETS = {
         alternative=RSASHA256,
         disabled=RSASHA512,
     ),
+    # RSA-only set for platforms lacking some ECC algorithms (e.g., no P-384).
+    "rsa_only": AlgorithmSet(
+        default=RSASHA256,
+        alternative=RSASHA512,
+        disabled=RSASHA512OID,
+    ),
     # FUTURE The system tests needs more work before they're ready for this.
     # "random": AlgorithmSet(
     #     default=ALL_ALGORITHMS,
@@ -126,12 +134,15 @@ ALGORITHM_SETS = {
 def is_crypto_supported(alg: Algorithm) -> bool:
     """Test whether a given algorithm is supported on the current platform."""
     assert alg in ALL_ALGORITHMS, f"unknown algorithm: {alg}"
+    keygen_alg = alg.name
+    if alg.name == "MLDSA44":
+        keygen_alg = "ML-DSA-44"
     with tempfile.TemporaryDirectory() as tmpdir:
         proc = subprocess.run(
             [
                 BASIC_VARS["KEYGEN"],
                 "-a",
-                alg.name,
+                keygen_alg,
                 "-b",
                 str(alg.bits),
                 "foo",
@@ -157,6 +168,7 @@ CRYPTO_SUPPORTED_VARS = {
     "ECDSAP384SHA384_SUPPORTED": "0",
     "ED25519_SUPPORTED": "0",
     "ED448_SUPPORTED": "0",
+    "MLDSA44_SUPPORTED": "0",
     "RSASHA256OID_SUPPORTED": "0",
     "RSASHA512OID_SUPPORTED": "0",
 }
