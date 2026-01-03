@@ -73,8 +73,6 @@
 
 #define QPDBITER_ORIGIN_NODE(qpdb, iterator) \
 	((iterator)->node == (qpdb)->origin)
-#define QPDBITER_NSEC_ORIGIN_NODE(qpdb, iterator) \
-	((iterator)->node == (qpdb)->nsec_origin)
 #define QPDBITER_NSEC3_ORIGIN_NODE(qpdb, iterator) \
 	((iterator)->node == (qpdb)->nsec3_origin)
 
@@ -738,15 +736,6 @@ dns__qpzone_create(isc_mem_t *mctx, const dns_name_t *origin, dns_dbtype_t type,
 				   DNS_DBNAMESPACE_NORMAL);
 
 	result = dns_qp_insert(qp, qpdb->origin, 0);
-	INSIST(result == ISC_R_SUCCESS);
-
-	/*
-	 * Add an apex node to the NSEC tree so that we can quickly skip over
-	 * the NSEC nodes while iterating over the full tree.
-	 */
-	qpdb->nsec_origin = new_qpznode(qpdb, &qpdb->common.origin,
-					DNS_DBNAMESPACE_NSEC);
-	result = dns_qp_insert(qp, qpdb->nsec_origin, 0);
 	INSIST(result == ISC_R_SUCCESS);
 
 	/*
@@ -1673,9 +1662,6 @@ loading_addnode(qpz_load_t *loadctx, const dns_name_t *name,
 	 * move on.
 	 */
 	node->havensec = true;
-	nsecnode = new_qpznode(qpdb, name, DNS_DBNAMESPACE_NSEC);
-	(void)dns_qp_insert(loadctx->tree, nsecnode, 0);
-	qpznode_detach(&nsecnode);
 
 done:
 	*nodep = node;
@@ -2908,83 +2894,6 @@ previous_closest_nsec3(qpz_search_t *search, qpznode_t **prevnode, dns_name_t *n
 	return (result);
 }
 
-/*
- * Find node of the NSEC/NSEC3 record preceding 'name'.
- */
-static isc_result_t
-previous_closest_nsec(dns_rdatatype_t type, qpz_search_t *search,
-		      dns_name_t *name, qpznode_t **nodep, dns_qpiter_t *nit) {
-	isc_result_t result;
-	dns_qpread_t qpr;
-
-	REQUIRE(nodep != NULL && *nodep == NULL);
-	REQUIRE(type != dns_rdatatype_nsec3);
-
-	dns_qpmulti_query(search->qpdb->tree, &qpr);
-
-	for (;;) {
-		qpznode_t *nsec_node = NULL;
-
-		result = dns_qp_lookup(&qpr, name, DNS_DBNAMESPACE_NSEC,
-				       nit, NULL, NULL, NULL);
-
-		INSIST(result != ISC_R_NOTFOUND);
-		if (result == ISC_R_SUCCESS) {
-			/*
-			 * If we find an exact match in the NSEC
-			 * namespace on our first attempt, it
-			 * implies that the corresponding node in
-			 * the normal namespace had an unacceptable
-			 * NSEC record; we want the previous node
-			 * in the NSEC tree.
-			 */
-			result = dns_qpiter_prev(nit, (void **)&nsec_node,
-						 NULL);
-		} else if (result == DNS_R_PARTIALMATCH) {
-			/*
-			 * This was a partial match, so the
-			 * iterator is already at the previous
-			 * node in the NSEC namespace, which is
-			 * what we want.
-			 */
-			isc_result_t iresult = dns_qpiter_current(
-				nit, (void **)&nsec_node, NULL);
-			REQUIRE(iresult == ISC_R_SUCCESS);
-			result = ISC_R_SUCCESS;
-		}
-
-		if (result != ISC_R_SUCCESS) {
-			break;
-		}
-
-		*nodep = NULL;
-		result = dns_qp_lookup(&search->qpr, &nsec_node->name,
-				       DNS_DBNAMESPACE_NORMAL, NULL,
-				       NULL, (void **)nodep, NULL);
-		if (result == ISC_R_SUCCESS) {
-			dns_name_copy(&nsec_node->name, name);
-			break;
-		}
-
-		/*
-		 * There should always be a node in the normal namespace
-		 * with the same name as the node in the NSEC namespace,
-		 * except when nodes in the NSEC namespace are awaiting
-		 * deletion.
-		 */
-		if (result != DNS_R_PARTIALMATCH && result != ISC_R_NOTFOUND) {
-			isc_log_write(DNS_LOGCATEGORY_DATABASE,
-				      DNS_LOGMODULE_DB, ISC_LOG_ERROR,
-				      "previous_closest_nsec(): %s",
-				      isc_result_totext(result));
-			result = DNS_R_BADDB;
-			break;
-		}
-	}
-
-	dns_qpread_destroy(search->qpdb->tree, &qpr);
-	return result;
-}
 
 /*
  * Find the NSEC/NSEC3 which is at or before the name being sought.
@@ -4114,17 +4023,7 @@ dbiterator_first(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 			qpdbiter->node = NULL;
 			break;
 		}
-
-		/*
-		 * If we hit an NSEC node, we need to start at the NSEC3 part of
-		 * the tree.
-		 */
-		if (qpdbiter->node->nspace != DNS_DBNAMESPACE_NSEC) {
-			break;
-		}
-		INSIST(qpdbiter->node->nspace == DNS_DBNAMESPACE_NSEC);
-
-		/* FALLTHROUGH */
+		break;
 	case nsec3only:
 		/*
 		 * NSEC3 follows after all non-nsec3 nodes, seek the NSEC3
@@ -4204,33 +4103,23 @@ dbiterator_last(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 			qpdbiter->node = NULL;
 			break;
 		}
-
-		/*
-		 * If we hit an NSEC node, we need to seek the final normal node
-		 * of the tree.
-		 */
-		if (qpdbiter->node->nspace != DNS_DBNAMESPACE_NSEC) {
-			break;
-		}
-		INSIST(qpdbiter->node->nspace == DNS_DBNAMESPACE_NSEC);
-
-		/* FALLTHROUGH */
+		break;
 	case nonsec3:
 		/*
 		 * The final non-nsec node is before the the NSEC origin node.
 		 */
 		result = dns_qp_lookup(qpdbiter->snap, &qpdb->common.origin,
-				       DNS_DBNAMESPACE_NSEC, &qpdbiter->iter,
+				       DNS_DBNAMESPACE_NSEC3, &qpdbiter->iter,
 				       NULL, (void **)&qpdbiter->node, NULL);
 		if (result == ISC_R_SUCCESS) {
-			INSIST(QPDBITER_NSEC_ORIGIN_NODE(qpdb, qpdbiter));
+			INSIST(QPDBITER_NSEC3_ORIGIN_NODE(qpdb, qpdbiter));
 			/* skip the NSEC origin node */
 			result = dns_qpiter_prev(&qpdbiter->iter,
 						 (void **)&qpdbiter->node,
 						 NULL);
 		} else {
 			/*
-			 * The NSEC origin node was not found, but the iterator
+			 * The NSEC3 origin node was not found, but the iterator
 			 * should point to its predecessor, which is the node we
 			 * want.
 			 */
@@ -4412,39 +4301,6 @@ dbiterator_prev(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 			qpdbiter->node = NULL;
 			break;
 		}
-
-		/*
-		 * If we hit an NSEC node, we need to seek the final normal node
-		 * of the tree.
-		 */
-		if (qpdbiter->node->nspace != DNS_DBNAMESPACE_NSEC) {
-			break;
-		}
-
-		INSIST(qpdbiter->node->nspace == DNS_DBNAMESPACE_NSEC);
-		result = dns_qp_lookup(qpdbiter->snap, &qpdb->common.origin,
-				       DNS_DBNAMESPACE_NSEC, &qpdbiter->iter,
-				       NULL, (void **)&qpdbiter->node, NULL);
-
-		if (result == ISC_R_SUCCESS) {
-			INSIST(QPDBITER_NSEC_ORIGIN_NODE(qpdb, qpdbiter));
-			/* skip the NSEC origin node */
-			result = dns_qpiter_prev(&qpdbiter->iter,
-						 (void **)&qpdbiter->node,
-						 NULL);
-		} else {
-			/*
-			 * The NSEC origin node was not found, but the iterator
-			 * should point to its predecessor, which is the node we
-			 * want.
-			 */
-			result = dns_qpiter_current(&qpdbiter->iter,
-						    (void **)&qpdbiter->node,
-						    NULL);
-			INSIST(result == ISC_R_SUCCESS);
-			INSIST(qpdbiter->node->nspace ==
-			       DNS_DBNAMESPACE_NORMAL);
-		}
 		break;
 	case nonsec3:
 		break;
@@ -4517,27 +4373,6 @@ dbiterator_next(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 		if (result != ISC_R_SUCCESS) {
 			qpdbiter->node = NULL;
 			break;
-		}
-
-		/*
-		 * If we hit an NSEC node, we need to start at the NSEC3 part of
-		 * the tree.
-		 */
-		if (qpdbiter->node->nspace != DNS_DBNAMESPACE_NSEC) {
-			break;
-		}
-		INSIST(qpdbiter->node->nspace == DNS_DBNAMESPACE_NSEC);
-
-		result = dns_qp_lookup(qpdbiter->snap, &qpdb->common.origin,
-				       DNS_DBNAMESPACE_NSEC3, &qpdbiter->iter,
-				       NULL, (void **)&qpdbiter->node, NULL);
-		if (result != ISC_R_SUCCESS ||
-		    QPDBITER_NSEC3_ORIGIN_NODE(qpdb, qpdbiter))
-		{
-			/* skip the NSEC3 origin node (or its predecessor). */
-			result = dns_qpiter_next(&qpdbiter->iter,
-						 (void **)&qpdbiter->node,
-						 NULL);
 		}
 		break;
 	case nsec3only:
@@ -4750,20 +4585,6 @@ qpzone_addrdataset_inner(dns_db_t *db, dns_dbnode_t *dbnode,
 	result = ISC_R_SUCCESS;
 	if (is_nsec) {
 		node->havensec = true;
-
-		/*
-		 * If it fails, there was already an NSEC node,
-		 * so we can detach the new one we created and
-		 * move on.
-		 */
-		qpznode_t *nsecnode = new_qpznode(qpdb, name,
-						  DNS_DBNAMESPACE_NSEC);
-		/*
-		 * We don't need a separate transaction since the NSEC tree and
-		 * the normal tree are part of the same qp-tree.
-		 */
-		(void)dns_qp_insert(nsec, nsecnode, 0);
-		qpznode_detach(&nsecnode);
 	}
 
 	if (result == ISC_R_SUCCESS) {
