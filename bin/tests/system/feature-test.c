@@ -54,6 +54,7 @@ usage(void) {
 	fprintf(stderr, "\t--have-libxml2\n");
 	fprintf(stderr, "\t--md5\n");
 	fprintf(stderr, "\t--rsasha1\n");
+	fprintf(stderr, "\t--mldsa44\n");
 	fprintf(stderr, "\t--tsan\n");
 	fprintf(stderr, "\t--with-libidn2\n");
 	fprintf(stderr, "\t--with-lmdb\n");
@@ -207,6 +208,15 @@ main(int argc, char **argv) {
 
 	if (strcasecmp(argv[1], "--rsasha1") == 0) {
 		if (!dst_algorithm_supported(DST_ALG_RSASHA1)) {
+			return 1;
+		}
+
+		return 0;
+	}
+
+	if (strcasecmp(argv[1], "--mldsa44") == 0) {
+		/* Requires OpenSSL with ML-DSA provider support. */
+		if (!dst_algorithm_supported(DST_ALG_MLDSA44)) {
 			return 1;
 		}
 
