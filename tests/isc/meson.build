@@ -72,6 +72,7 @@ if config.has('HAVE_LIBNGTCP2')
         'quic_session',
         'quic_sm',
         'quic_tls',
+        'quic',
     ]
 
     flaky_isc_test += 'quic_session'
