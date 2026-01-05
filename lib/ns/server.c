@@ -44,7 +44,7 @@ ns_server_create(isc_mem_t *mctx, ns_matchview_t matchingview,
 
 	sctx = isc_mem_get(mctx, sizeof(*sctx));
 	*sctx = (ns_server_t){
-		.udpsize = 4096,
+		.udpsize = 1232,
 		.transfer_tcp_message_size = 20480,
 
 		.fuzztype = isc_fuzz_none,
