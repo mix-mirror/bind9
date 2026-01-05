@@ -175,6 +175,10 @@ isc__quic_session_destroy(isc_quic_session_t *session) {
 	isc_mempool_destroy(&session->streams.pool);
 	isc_mempool_destroy(&session->sends.pool);
 
+	if (session->close_msg != NULL) {
+		isc_buffer_free(&session->close_msg);
+	}
+
 	isc_mem_putanddetach(&session->mctx, session, sizeof(*session));
 }
 
