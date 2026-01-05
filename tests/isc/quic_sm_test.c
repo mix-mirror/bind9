@@ -346,7 +346,8 @@ process_incoming_packet(isc_nmhandle_t *handle, isc_region_t *pkt,
 			isc_quic_sm_t *mgr);
 
 static void
-process_rerouted_packet(quic_io_req_t *req) {
+process_rerouted_packet(void *cbarg) {
+	quic_io_req_t *req = cbarg;
 	isc_region_t pkt;
 
 	isc_buffer_usedregion(req->buf, &pkt);
@@ -381,7 +382,7 @@ process_incoming_packet(isc_nmhandle_t *handle, isc_region_t *pkt,
 		quic_io_req_t *req = alloc_quic_reroute_req(
 			pkt, session_data->handle, mgr, session);
 		isc_async_run(isc_loop_get(session_tid),
-			      (isc_job_cb)process_rerouted_packet, req);
+			      process_rerouted_packet, req);
 		goto done;
 	}
 
@@ -524,7 +525,8 @@ udp_quic_connect_cb(isc_nmhandle_t *handle, isc_result_t eresult, void *cbarg) {
 }
 
 static void
-quic_udp_on_stop_cb(isc_quic_sm_t *sm) {
+quic_udp_on_stop_cb(void *cbarg) {
+	isc_quic_sm_t *sm = cbarg;
 	if (sm == client_quic_sm) {
 		client_quic_sm = NULL;
 	} else if (sm == server_quic_sm) {
@@ -537,7 +539,7 @@ quic_udp_on_stop_cb(isc_quic_sm_t *sm) {
 
 static void
 quic_udp_on_stop(isc_quic_sm_t *sm) {
-	isc_loop_teardown(isc_loop_main(), (isc_job_cb)quic_udp_on_stop_cb, sm);
+	isc_loop_teardown(isc_loop_main(), quic_udp_on_stop_cb, sm);
 }
 
 static void
@@ -610,7 +612,9 @@ udp_quic_shutdown_loopmgr_cb(void *arg) {
 }
 
 static void
-quic_shutdown_async_cb(isc_quic_session_t *session) {
+quic_shutdown_async_cb(void *arg) {
+	isc_quic_session_t *session = arg;
+
 	quic_session_user_data_t *session_data =
 		isc_quic_session_get_user_data(session);
 
@@ -660,7 +664,8 @@ quic_shutdown_async_cb(isc_quic_session_t *session) {
 static void
 udp_quic_stream_send_cb(isc_quic_session_t *restrict session,
 			const int64_t stream_id, isc_result_t result,
-			void *cbarg, udp_quic_stream_data_t *stream_data) {
+			void *cbarg, void *stream_user_data) {
+	udp_quic_stream_data_t *stream_data = stream_user_data;
 	isc_buffer_t *databuf = (isc_buffer_t *)cbarg;
 	isc_region_t data = { 0 };
 	uint64_t sent = 0;
@@ -695,9 +700,9 @@ udp_quic_stream_send_cb(isc_quic_session_t *restrict session,
 	databuf = get_data_buf(stream_data);
 	isc_buffer_usedregion(databuf, &data);
 
-	result = isc_quic_session_send_data(
-		session, stream_id, &data, stream_data->sends == MAX_SENDS,
-		(isc_quic_send_cb_t)udp_quic_stream_send_cb, databuf);
+	result = isc_quic_session_send_data(session, stream_id, &data,
+					    stream_data->sends == MAX_SENDS,
+					    udp_quic_stream_send_cb, databuf);
 	assert_true(result == ISC_R_SUCCESS);
 }
 
@@ -778,14 +783,14 @@ static bool
 quic_on_stream_close_cb(isc_quic_sm_t *restrict mgr,
 			isc_quic_session_t *session, const int64_t streamd_id,
 			const bool app_error_set, const uint64_t app_error_code,
-			isc_quic_sm_t *mgrarg,
-			udp_quic_stream_data_t *stream_data) {
+			void *cbarg, void *stream_user_data) {
 	int64_t total = 0;
 	UNUSED(app_error_set);
 	UNUSED(app_error_code);
-	UNUSED(stream_data);
 	UNUSED(mgr);
-	UNUSED(mgrarg);
+	UNUSED(cbarg);
+
+	udp_quic_stream_data_t *stream_data = stream_user_data;
 
 	quic_session_user_data_t *session_data =
 		isc_quic_session_get_user_data(session);
@@ -801,8 +806,7 @@ quic_on_stream_close_cb(isc_quic_sm_t *restrict mgr,
 	if (session_data->closed_streams == 2 * MAX_STREAMS) {
 		isc_quic_session_t *tmpsess = NULL;
 		isc_quic_session_attach(session, &tmpsess);
-		isc_async_run(isc_loop(), (isc_job_cb)quic_shutdown_async_cb,
-			      tmpsess);
+		isc_async_run(isc_loop(), quic_shutdown_async_cb, tmpsess);
 	}
 
 	if (stream_data->local) {
@@ -846,13 +850,12 @@ quic_sm_on_recv_stream_data_cb(isc_quic_sm_t *restrict mgr,
 			       isc_quic_session_t *session,
 			       const int64_t stream_id, const bool fin,
 			       const uint64_t offset,
-			       const isc_region_t *restrict data,
-			       isc_quic_sm_t *mgrarg,
-			       udp_quic_stream_data_t *stream_data) {
+			       const isc_region_t *restrict data, void *cbarg,
+			       void *stream_user_data) {
 	UNUSED(offset);
-	UNUSED(data);
-	UNUSED(stream_data);
-	UNUSED(mgrarg);
+	UNUSED(cbarg);
+
+	udp_quic_stream_data_t *stream_data = stream_user_data;
 
 	INSIST(isc_quic_session_get_stream_user_data(session, stream_id) ==
 	       stream_data);
@@ -880,11 +883,9 @@ static isc_quic_sm_interface_t callbacks = {
 	.on_handshake = quic_sm_on_handshake_cb,
 	.on_expiry_timer = quic_on_expiry_timer_cb,
 	.on_conn_close = quic_on_conn_close_cb,
-	.on_stream_close =
-		(isc_quic_sm_on_stream_close_cb_t)quic_on_stream_close_cb,
+	.on_stream_close = quic_on_stream_close_cb,
 	.on_remote_stream_open = quic_on_remote_stream_open_cb,
-	.on_recv_stream_data = (isc_quic_sm_on_recv_stream_data_cb_t)
-		quic_sm_on_recv_stream_data_cb,
+	.on_recv_stream_data = quic_sm_on_recv_stream_data_cb,
 };
 
 static isc_tlsctx_t *
