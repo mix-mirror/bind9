@@ -202,12 +202,6 @@ isc__quic_crypto_tls_cipher_hp(const isc_tls_cipher_t *tls_cipher);
  *\li	'tls_cipher' != NULL.
  */
 
-const EVP_MD *
-isc__quic_crypto_md_sha256(void);
-/*%<
- * Return the SHA256 message digest function.
- */
-
 const EVP_CIPHER *
 isc__quic_crypto_aead_aes_128_gcm(void);
 /*%<

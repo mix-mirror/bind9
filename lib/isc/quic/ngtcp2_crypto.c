@@ -16,6 +16,7 @@
 #include <unistd.h>
 
 #include <isc/buffer.h>
+#include <isc/crypto.h>
 #include <isc/endian.h>
 #include <isc/ngtcp2_crypto.h>
 #include <isc/random.h>
@@ -335,7 +336,7 @@ ngtcp2_crypto_md_sha256_init(ngtcp2_crypto_md *restrict md) {
 	REQUIRE(md != NULL);
 
 	*md = (ngtcp2_crypto_md){
-		.native_handle = (void *)isc__quic_crypto_md_sha256()
+		.native_handle = (void *)isc__crypto_sha256,
 	};
 }
 
@@ -362,7 +363,7 @@ ngtcp2_crypto_ctx_initial_init(ngtcp2_crypto_ctx *restrict ctx) {
 
 	ngtcp2_crypto_hp_cipher_init(&ctx->hp,
 				     isc__quic_crypto_cipher_aes_128_ctr());
-	ngtcp2_crypto_md_init(&ctx->md, isc__quic_crypto_md_sha256());
+	ngtcp2_crypto_md_init(&ctx->md, isc__crypto_sha256);
 	ngtcp2_crypto_aead_init(&ctx->aead,
 				isc__quic_crypto_aead_aes_128_gcm());
 }
@@ -1848,7 +1849,6 @@ isc_ngtcp2_crypto_generate_stateless_reset_token(uint8_t *token_buf,
 						 const size_t secretlen,
 						 const ngtcp2_cid *cid) {
 	static const uint8_t info[] = "stateless_reset";
-	const EVP_MD *sha256md = NULL;
 
 	REQUIRE(token_buf != NULL);
 	REQUIRE(token_buflen >= NGTCP2_STATELESS_RESET_TOKENLEN);
@@ -1856,11 +1856,10 @@ isc_ngtcp2_crypto_generate_stateless_reset_token(uint8_t *token_buf,
 	REQUIRE(secretlen > 0);
 	REQUIRE(cid != NULL && cid->data != NULL && cid->datalen > 0);
 
-	sha256md = isc__quic_crypto_md_sha256();
-
 	if (!isc__quic_crypto_hkdf(token_buf, NGTCP2_STATELESS_RESET_TOKENLEN,
-				   sha256md, secret, secretlen, cid->data,
-				   cid->datalen, info, sizeof(info) - 1))
+				   isc__crypto_sha256, secret, secretlen,
+				   cid->data, cid->datalen, info,
+				   sizeof(info) - 1))
 	{
 		return ISC_R_FAILURE;
 	}

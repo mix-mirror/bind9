@@ -79,9 +79,6 @@ static const EVP_CIPHER *crypto_cipher_chacha20 = NULL;
 static const EVP_CIPHER *crypto_cipher_aes_128_ctr = NULL;
 static const EVP_CIPHER *crypto_cipher_aes_256_ctr = NULL;
 
-static const EVP_MD *crypto_md_sha256 = NULL;
-static const EVP_MD *crypto_md_sha384 = NULL;
-
 #ifdef OPENSSL_3_API_OR_NEWER
 static EVP_KDF *crypto_kdf_hkdf = NULL;
 #endif /* OPENSSL_3_API_OR_NEWER */
@@ -124,12 +121,6 @@ quic_crypto_prefetch(void) {
 	crypto_cipher_aes_256_ctr = EVP_CIPHER_fetch(NULL, "AES-256-CTR", NULL);
 	RUNTIME_CHECK(crypto_cipher_aes_256_ctr != NULL);
 
-	crypto_md_sha256 = EVP_MD_fetch(NULL, "sha256", NULL);
-	RUNTIME_CHECK(crypto_md_sha256 != NULL);
-
-	crypto_md_sha384 = EVP_MD_fetch(NULL, "sha384", NULL);
-	RUNTIME_CHECK(crypto_md_sha384 != NULL);
-
 	crypto_kdf_hkdf = EVP_KDF_fetch(NULL, "hkdf", NULL);
 	RUNTIME_CHECK(crypto_kdf_hkdf != NULL);
 }
@@ -160,12 +151,6 @@ quic_crypto_prefetch(void) {
 
 	crypto_cipher_aes_256_ctr = EVP_aes_256_ctr();
 	RUNTIME_CHECK(crypto_cipher_aes_256_ctr != NULL);
-
-	crypto_md_sha256 = EVP_sha256();
-	RUNTIME_CHECK(crypto_md_sha256 != NULL);
-
-	crypto_md_sha384 = EVP_sha384();
-	RUNTIME_CHECK(crypto_md_sha384 != NULL);
 }
 
 #endif /* OPENSSL_3_API_OR_NEWER */
@@ -194,12 +179,6 @@ quic_crypto_prefetch_clear(void) {
 
 	RUNTIME_CHECK(crypto_cipher_aes_256_ctr != NULL);
 	crypto_cipher_aes_256_ctr = NULL;
-
-	RUNTIME_CHECK(crypto_md_sha256 != NULL);
-	crypto_md_sha256 = NULL;
-
-	RUNTIME_CHECK(crypto_md_sha384 != NULL);
-	crypto_md_sha384 = NULL;
 
 #ifdef OPENSSL_3_API_OR_NEWER
 	RUNTIME_CHECK(crypto_kdf_hkdf != NULL);
@@ -385,9 +364,9 @@ isc__quic_crypto_tls_cipher_md(const isc_tls_cipher_t *tls_cipher) {
 	case TLS1_3_CK_AES_128_GCM_SHA256:
 	case TLS1_3_CK_CHACHA20_POLY1305_SHA256:
 	case TLS1_3_CK_AES_128_CCM_SHA256:
-		return crypto_md_sha256;
+		return isc__crypto_sha256;
 	case TLS1_3_CK_AES_256_GCM_SHA384:
-		return crypto_md_sha384;
+		return isc__crypto_sha384;
 	}
 
 	return NULL;
@@ -424,13 +403,6 @@ isc__quic_crypto_tls_cipher_hp(const isc_tls_cipher_t *tls_cipher) {
 	}
 
 	return NULL;
-}
-
-const EVP_MD *
-isc__quic_crypto_md_sha256(void) {
-	RUNTIME_CHECK(quic_crypto_initialized);
-
-	return crypto_md_sha256;
 }
 
 const EVP_CIPHER *
