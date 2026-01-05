@@ -104,11 +104,12 @@ isc_quic_route_pkt(
 	}
 
 	if (send_verneg) {
-		ssize_t written = written = ngtcp2_pkt_write_version_negotiation(
-			out_pkt->pktbuf.base, out_pkt->pktbuf.length,
-			isc_random8(), pkt_scid->base, pkt_scid->length,
-			pkt_dcid->base, pkt_dcid->length,
-			(uint32_t *)available_versions, available_versions_len);
+		ssize_t written = written =
+			ngtcp2_pkt_write_version_negotiation(
+				out_pkt->pktbuf.base, out_pkt->pktbuf.length,
+				isc_random8(), pkt_scid->base, pkt_scid->length,
+				pkt_dcid->base, pkt_dcid->length,
+				available_versions, available_versions_len);
 		if (written > 0) {
 			out_pkt->pktsz = written;
 			out_pkt->local = *local;

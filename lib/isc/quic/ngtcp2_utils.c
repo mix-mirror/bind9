@@ -16,6 +16,7 @@
 #include <isc/mem.h>
 #include <isc/ngtcp2_utils.h>
 #include <isc/random.h>
+#include <isc/util.h>
 
 void
 isc_ngtcp2_gen_cid(ngtcp2_cid *restrict cid, const size_t size) {
@@ -133,11 +134,13 @@ isc_ngtcp2_mem_init(ngtcp2_mem *restrict mem, isc_mem_t *mctx) {
 	REQUIRE(mem != NULL);
 	REQUIRE(mctx != NULL);
 
-	*mem = (ngtcp2_mem){ .malloc = (ngtcp2_malloc)isc__ngtcp2_malloc,
-			     .calloc = (ngtcp2_calloc)isc__ngtcp2_calloc,
-			     .realloc = (ngtcp2_realloc)isc__ngtcp2_realloc,
-			     .free = (ngtcp2_free)isc__ngtcp2_free,
-			     .user_data = (void *)mctx };
+	*mem = (ngtcp2_mem){
+		.malloc = (ngtcp2_malloc)isc__ngtcp2_malloc,
+		.calloc = (ngtcp2_calloc)isc__ngtcp2_calloc,
+		.realloc = (ngtcp2_realloc)isc__ngtcp2_realloc,
+		.free = (ngtcp2_free)isc__ngtcp2_free,
+		.user_data = (void *)mctx,
+	};
 }
 
 bool
@@ -255,15 +258,19 @@ isc_ngtcp2_decode_pkt_header_data(const uint8_t *pkt_data, const size_t pkt_len,
 				  uint32_t *pkt_version) {
 	REQUIRE(pkt_data != NULL && pkt_len > 0);
 
-	isc_region_t pkt = { .base = (uint8_t *)pkt_data,
-			     .length = (unsigned int)pkt_len };
+	isc_region_t pkt = {
+		.base = (uint8_t *)pkt_data,
+		.length = (unsigned int)pkt_len,
+	};
 
 	return isc_ngtcp2_decode_pkt_header(&pkt, short_pkt_dcidlen, pkt_long,
 					    pkt_scid, pkt_dcid, pkt_version);
 }
 
-static const uint32_t default_protocols[] = { NGTCP2_PROTO_VER_V2,
-					      NGTCP2_PROTO_VER_V1 };
+static const uint32_t default_protocols[] = {
+	NGTCP2_PROTO_VER_V2,
+	NGTCP2_PROTO_VER_V1,
+};
 
 void
 isc_ngtcp2_get_default_quic_versions(const uint32_t **protocols,
@@ -272,6 +279,5 @@ isc_ngtcp2_get_default_quic_versions(const uint32_t **protocols,
 	REQUIRE(protocols_len != NULL && *protocols_len == 0);
 
 	*protocols = default_protocols;
-	*protocols_len = sizeof(default_protocols) /
-			 sizeof(default_protocols[0]);
+	*protocols_len = ARRAY_SIZE(default_protocols);
 }

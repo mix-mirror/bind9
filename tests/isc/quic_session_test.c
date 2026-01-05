@@ -296,6 +296,7 @@ quic_sm_uninit(quic_test_session_manager_t *sm) {
 			next = ISC_LIST_NEXT(current, link);
 
 			ISC_LIST_DEQUEUE(sm->streams, current, link);
+			INSIST(current->send_buf == NULL);
 			isc_mem_put(mctx, current, sizeof(quic_stream_data_t));
 			sm->opened_streams--;
 			sm->total_opened_streams++;
