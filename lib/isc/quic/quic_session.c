@@ -547,6 +547,7 @@ isc_quic_session_detach(isc_quic_session_t **sessionp) {
 		isc_buffer_invalidate(&session->regular_token);
 	}
 
+	isc_ht_destroy(&session->streams.idx);
 	isc_ht_destroy(&session->dst_cids.idx);
 	isc_ht_destroy(&session->src_cids.idx);
 
