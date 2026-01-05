@@ -167,14 +167,14 @@ isc_ngtcp2_select_version(const uint32_t client_original_chosen_version,
 			  const size_t client_preferred_versions_len,
 			  const uint32_t *server_preferred_versions,
 			  const size_t server_preferred_versions_len) {
+	uint32_t client_version, server_version;
 	size_t i, k;
 
 	REQUIRE(client_preferred_versions != NULL);
 	REQUIRE(server_preferred_versions != NULL);
 
 	/*
-	 * RFC RFC9368, Section 4. Version Downgrade Prevention:
-
+	 * RFC9368, Section 4. Version Downgrade Prevention:
 	 * Clients MUST ignore any received Version Negotiation packets
 	 * that contain the Original Version.
 	 * ...
@@ -193,10 +193,9 @@ isc_ngtcp2_select_version(const uint32_t client_original_chosen_version,
 
 	/* Choose a protocol version prioritising client's preferences. */
 	for (i = 0; i < client_preferred_versions_len; i++) {
-		const uint32_t client_version = client_preferred_versions[i];
+		client_version = client_preferred_versions[i];
 		for (k = 0; k < server_preferred_versions_len; k++) {
-			const uint32_t server_version =
-				server_preferred_versions[k];
+			server_version = server_preferred_versions[k];
 			if (client_version == server_version &&
 			    ngtcp2_is_supported_version(client_version) &&
 			    ngtcp2_is_supported_version(server_version))
