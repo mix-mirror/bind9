@@ -35,6 +35,7 @@
 #include <isc/random.h>
 #include <isc/time.h>
 #include <isc/tls.h>
+#include <isc/util.h>
 
 #include "../../lib/isc/quic/quic_session.h"
 
@@ -79,8 +80,7 @@ static const uint32_t proto_preference_list_reversed[] = {
 };
 
 static const size_t proto_preference_list_reversed_len =
-	(sizeof(proto_preference_list_reversed) /
-	 sizeof(proto_preference_list_reversed[0]));
+	ARRAY_SIZE(proto_preference_list_reversed);
 
 static const uint32_t proto_preference_list_v1_only[] = { NGTCP2_PROTO_VER_V1 };
 static const size_t proto_preference_list_v1_only_len = 1;
