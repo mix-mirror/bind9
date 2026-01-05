@@ -608,17 +608,7 @@ isc_quic_session_create(
  *\li	'sessionp' is not NULL and contains a pointer to a non-NULL pointer.
  */
 
-void
-isc_quic_session_attach(isc_quic_session_t *restrict source,
-			isc_quic_session_t **targetp);
-/*!<
- * \brief Creates a new QUIC session object reference and sets 'targetp'
- * accordingly.
- *
- * Requires:
- *\li	'source' is a valid QUIC session object;
- *\li	'targetp' is not NULL and points to a nullified pointer.
- */
+ISC_REFCOUNT_DECL(isc_quic_session);
 
 void
 isc_quic_session_finish(isc_quic_session_t *session);
@@ -633,17 +623,6 @@ isc_quic_session_finish(isc_quic_session_t *session);
  * Requires:
  *\li	'source' is a valid QUIC session object;
  *\li	'targetp' is not NULL and points to a nullified pointer.
- */
-
-void
-isc_quic_session_detach(isc_quic_session_t **sessionp);
-/*!<
- * \brief Removes a QUIC session object reference and then nullifies 'sessionp'.
- * Destroys the object upon the last reference removal.
- *
- * Requires:
- *\li	'sessionp' is not NULL and points to a pointer that points to a valid
- * QUIC session object.
  */
 
 isc_result_t

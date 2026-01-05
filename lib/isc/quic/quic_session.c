@@ -131,6 +131,53 @@ static inline void
 quic_session_drop(isc_quic_session_t *restrict session,
 		  const uint32_t close_timeout_ms, const bool ver_neg);
 
+static void
+isc__quic_session_destroy(isc_quic_session_t *session) {
+	REQUIRE(VALID_QUIC_SESSION(session));
+
+	isc_quic_session_finish(session);
+
+	session->magic = 0;
+
+	INSIST(ISC_LIST_EMPTY(session->streams.list));
+	INSIST(isc_ht_count(session->streams.idx) == 0);
+	INSIST(ISC_LIST_EMPTY(session->sends.queue));
+
+	if (session->tlsctx != NULL) {
+		isc_tlsctx_free(&session->tlsctx);
+	}
+
+	if (session->client_sess_cache != NULL) {
+		INSIST(!session->is_server);
+		isc_tlsctx_client_session_cache_detach(
+			&session->client_sess_cache);
+	}
+
+	if (session->sni_hostname != NULL) {
+		isc_mem_free(session->mctx, session->sni_hostname);
+	}
+
+	isc_buffer_clearmctx(&session->available_versions);
+	isc_buffer_invalidate(&session->available_versions);
+
+	isc_buffer_clearmctx(&session->secret);
+	isc_buffer_invalidate(&session->secret);
+
+	if (!session->is_server) {
+		isc_buffer_clearmctx(&session->regular_token);
+		isc_buffer_invalidate(&session->regular_token);
+	}
+
+	isc_ht_destroy(&session->streams.idx);
+	isc_ht_destroy(&session->dst_cids.idx);
+	isc_ht_destroy(&session->src_cids.idx);
+
+	isc_mempool_destroy(&session->streams.pool);
+	isc_mempool_destroy(&session->sends.pool);
+
+	isc_mem_putanddetach(&session->mctx, session, sizeof(*session));
+}
+
 ISC_ATTR_UNUSED static void
 validate_quic_streams(isc_quic_session_t *restrict session) {
 	isc__quic_stream_data_t *current = NULL;
@@ -482,17 +529,6 @@ isc_quic_session_create(
 }
 
 void
-isc_quic_session_attach(isc_quic_session_t *restrict source,
-			isc_quic_session_t **targetp) {
-	REQUIRE(VALID_QUIC_SESSION(source));
-	REQUIRE(targetp != NULL && *targetp == NULL);
-
-	isc_refcount_increment(&source->references);
-
-	*targetp = source;
-}
-
-void
 isc_quic_session_finish(isc_quic_session_t *session) {
 	REQUIRE(VALID_QUIC_SESSION(session));
 	if (session->fin) {
@@ -501,64 +537,7 @@ isc_quic_session_finish(isc_quic_session_t *session) {
 	quic_session_drop(session, 0, false);
 }
 
-void
-isc_quic_session_detach(isc_quic_session_t **sessionp) {
-	isc_quic_session_t *session = NULL;
-
-	REQUIRE(sessionp != NULL);
-
-	session = *sessionp;
-	*sessionp = NULL;
-
-	REQUIRE(VALID_QUIC_SESSION(session));
-
-	if (isc_refcount_decrement(&session->references) > 1) {
-		return;
-	}
-
-	isc_quic_session_finish(session);
-
-	INSIST(ISC_LIST_EMPTY(session->streams.list));
-	INSIST(isc_ht_count(session->streams.idx) == 0);
-	INSIST(ISC_LIST_EMPTY(session->sends.queue));
-
-	if (session->tlsctx != NULL) {
-		isc_tlsctx_free(&session->tlsctx);
-	}
-
-	if (session->client_sess_cache != NULL) {
-		INSIST(!session->is_server);
-		isc_tlsctx_client_session_cache_detach(
-			&session->client_sess_cache);
-	}
-
-	if (session->sni_hostname != NULL) {
-		isc_mem_free(session->mctx, session->sni_hostname);
-	}
-
-	isc_buffer_clearmctx(&session->available_versions);
-	isc_buffer_invalidate(&session->available_versions);
-
-	isc_buffer_clearmctx(&session->secret);
-	isc_buffer_invalidate(&session->secret);
-
-	if (!session->is_server) {
-		isc_buffer_clearmctx(&session->regular_token);
-		isc_buffer_invalidate(&session->regular_token);
-	}
-
-	isc_ht_destroy(&session->streams.idx);
-	isc_ht_destroy(&session->dst_cids.idx);
-	isc_ht_destroy(&session->src_cids.idx);
-
-	isc_mempool_destroy(&session->streams.pool);
-	isc_mempool_destroy(&session->sends.pool);
-
-	/* We need to acquire a memory barrier here */
-	(void)isc_refcount_current(&session->references);
-	session->magic = 0;
-	isc_mem_putanddetach(&session->mctx, session, sizeof(*session));
-}
+ISC_REFCOUNT_IMPL(isc_quic_session, isc__quic_session_destroy);
 
 static inline isc_quic_cid_t *
 quic_session_gen_new_cid(isc_quic_session_t *restrict session,
