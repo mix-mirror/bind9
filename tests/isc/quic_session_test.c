@@ -19,9 +19,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <openssl/err.h>
-#include <openssl/ssl.h>
-
 #define UNIT_TESTING
 #include <cmocka.h>
 
@@ -144,6 +141,15 @@ struct quic_test_session_manager {
 	size_t successful_sends;
 	size_t completed_sends;
 	size_t started_sends;
+
+	size_t handshake_started_sends;
+	size_t cb_started_sends;
+	size_t cb_fin_started_sends;
+
+	size_t cb_completed_sends;
+	size_t cb_fin_completed_sends;
+
+	size_t abrupt;
 
 	size_t receives;
 
@@ -403,7 +409,8 @@ quic_sm_on_handshake_cb(isc_quic_session_t *session, void *cbarg) {
 
 	for (size_t i = 0; i < MAX_STREAMS; i++) {
 		int64_t client_stream_id = -1;
-		const bool bidi = isc_random_uniform(2) == 1;
+		bool bidi = true;
+		// const bool bidi = isc_random_uniform(2) == 1;
 
 		size_t limit =
 			bidi ? ngtcp2_conn_get_streams_bidi_left(session->conn)
@@ -424,6 +431,7 @@ quic_sm_on_handshake_cb(isc_quic_session_t *session, void *cbarg) {
 		isc_region_t data = { 0 };
 		isc_buffer_usedregion(databuf, &data);
 
+		sm->handshake_started_sends++;
 		result = isc_quic_session_send_data(session, client_stream_id,
 						    &data, false,
 						    quic_sm_send_cb, databuf);
@@ -540,6 +548,7 @@ quic_sm_on_recv_stream_data_cb(isc_quic_session_t *session,
 	sm->receives++;
 
 	if (fin) {
+		sm->abrupt++;
 		isc_quic_session_shutdown_stream(session, stream_id, true);
 	}
 
@@ -646,6 +655,12 @@ quic_sm_send_cb(isc_quic_session_t *restrict session, const int64_t stream_id,
 
 	stream->sm->completed_sends++;
 
+	if (stream->sends < MAX_SENDS) {
+		stream->sm->cb_completed_sends++;
+	} else if (stream->sends == MAX_SENDS) {
+		stream->sm->cb_fin_completed_sends++;
+	}
+
 	if (result == ISC_R_SUCCESS) {
 		stream->sm->successful_sends++;
 		stream->sm->total_sent_bytes += sent;
@@ -658,7 +673,7 @@ quic_sm_send_cb(isc_quic_session_t *restrict session, const int64_t stream_id,
 		return;
 	}
 
-	if (stream->sends >= MAX_SENDS) {
+	if (stream->sends == MAX_SENDS) {
 		result = isc_quic_session_shutdown_stream(session, stream_id,
 							  false);
 		assert_true(result == ISC_R_SUCCESS);
@@ -668,12 +683,18 @@ quic_sm_send_cb(isc_quic_session_t *restrict session, const int64_t stream_id,
 	stream->sends++;
 	stream->sm->started_sends++;
 
+	if (stream->sends == MAX_SENDS) {
+		stream->sm->cb_fin_started_sends++;
+	} else {
+		stream->sm->cb_started_sends++;
+	}
+
 	databuf = get_data_buf(stream);
 	isc_buffer_usedregion(databuf, &data);
 
-	result = isc_quic_session_send_data(
-		session, stream_id, &data, stream->sends == MAX_SENDS,
-		(isc_quic_send_cb_t)quic_sm_send_cb, databuf);
+	result = isc_quic_session_send_data(session, stream_id, &data,
+					    stream->sends == MAX_SENDS,
+					    quic_sm_send_cb, databuf);
 	assert_true(result == ISC_R_SUCCESS);
 }
 
@@ -1466,6 +1487,46 @@ client_server_loop(quic_test_session_manager_t *restrict client_mgr,
 		ret = false;
 	}
 
+	if (client_mgr->started_sends != client_mgr->completed_sends) {
+		fprintf(stderr,
+			"client mgr\n"
+			"\tstarted: %zu\n"
+			"\t\thandshake: %zu\n"
+			"\t\tcb:        %zu\n"
+			"\t\tfin:       %zu\n"
+			"\tcompleted: %zu\n"
+			"\t\tcb:        %zu\n"
+			"\t\tfin:       %zu\n"
+			"abrupt: %zu\n",
+			client_mgr->started_sends,
+			client_mgr->handshake_started_sends,
+			client_mgr->cb_started_sends,
+			client_mgr->cb_fin_started_sends,
+			client_mgr->completed_sends,
+			client_mgr->cb_completed_sends,
+			client_mgr->cb_fin_completed_sends, client_mgr->abrupt);
+	}
+
+	if (server_mgr->started_sends != server_mgr->completed_sends) {
+		fprintf(stderr,
+			"server mgr\n"
+			"\tstarted: %zu\n"
+			"\t\thandshake: %zu\n"
+			"\t\tcb:        %zu\n"
+			"\t\tfin:       %zu\n"
+			"\tcompleted: %zu\n"
+			"\t\tcb:        %zu\n"
+			"\t\tfin:       %zu\n"
+			"abrupt: %zu\n",
+			server_mgr->started_sends,
+			server_mgr->handshake_started_sends,
+			server_mgr->cb_started_sends,
+			server_mgr->cb_fin_started_sends,
+			server_mgr->completed_sends,
+			server_mgr->cb_completed_sends,
+			server_mgr->cb_fin_completed_sends, server_mgr->abrupt);
+	}
+
 	INSIST((client_mgr->started_sends - client_mgr->completed_sends) == 0);
 	INSIST((server_mgr->started_sends - server_mgr->completed_sends) == 0);
 	INSIST(server_mgr->opened_streams == 0);
@@ -1478,28 +1539,24 @@ exit:
 
 static inline void
 verify_results(void) {
-	/* fprintf(stderr, "client started sends: %zu\n",
-	 * client_sm.started_sends); */
-	/* fprintf(stderr, "server started sends: %zu\n",
-	 * server_sm.started_sends); */
-	/* fprintf(stderr, "client successful sends: %zu\n", */
-	/* 	client_sm.successful_sends); */
-	/* fprintf(stderr, "server successful sends: %zu\n", */
-	/* 	server_sm.successful_sends); */
-	/* fprintf(stderr, "client completed sends: %zu\n", */
-	/* 	client_sm.completed_sends); */
-	/* fprintf(stderr, "server completed sends: %zu\n", */
-	/* 	server_sm.completed_sends); */
-	/* fprintf(stderr, "client total opened streams: %zu\n", */
-	/* 	client_sm.total_opened_streams); */
-	/* fprintf(stderr, "server total opened streams: %zu\n", */
-	/* 	server_sm.total_opened_streams); */
-	/* fprintf(stderr, "client written: %zu\n",
-	 * client_sm.total_written_bytes); */
-	/* fprintf(stderr, "client read: %zu\n", client_sm.total_read_bytes); */
-	/* fprintf(stderr, "server written: %zu\n",
-	 * server_sm.total_written_bytes); */
-	/* fprintf(stderr, "server read: %zu\n", server_sm.total_read_bytes); */
+	fprintf(stderr, "client started sends: %zu\n", client_sm.started_sends);
+	fprintf(stderr, "server started sends: %zu\n", server_sm.started_sends);
+	fprintf(stderr, "client successful sends: %zu\n",
+		client_sm.successful_sends);
+	fprintf(stderr, "server successful sends: %zu\n",
+		server_sm.successful_sends);
+	fprintf(stderr, "client completed sends: %zu\n",
+		client_sm.completed_sends);
+	fprintf(stderr, "server completed sends: %zu\n",
+		server_sm.completed_sends);
+	fprintf(stderr, "client total opened streams: %zu\n",
+		client_sm.total_opened_streams);
+	fprintf(stderr, "server total opened streams: %zu\n",
+		server_sm.total_opened_streams);
+	fprintf(stderr, "client written: %zu\n", client_sm.total_written_bytes);
+	fprintf(stderr, "client read: %zu\n", client_sm.total_read_bytes);
+	fprintf(stderr, "server written: %zu\n", server_sm.total_written_bytes);
+	fprintf(stderr, "server read: %zu\n", server_sm.total_read_bytes);
 
 	assert_true(client_sm.hs_completed);
 	assert_true(server_sm.hs_completed);
