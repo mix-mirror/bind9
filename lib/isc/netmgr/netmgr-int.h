@@ -559,6 +559,7 @@ struct isc_nmsocket {
 		isc_tlsctx_t *tlsctx;
 		isc_quic_session_t *session;
 		isc_quic_sm_t *manager;
+		isc_quic_cid_map_t *map;
 	} quicstream;
 #endif /* HAVE_LIBNGTCP2 */
 
