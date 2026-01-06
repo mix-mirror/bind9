@@ -18,7 +18,7 @@ from isctest.asyncserver import (
 
 def main() -> None:
     server = AsyncDnsServer()
-    server.install_response_handler(IgnoreAllConnections())
+    server.install_connection_handler(IgnoreAllConnections())
     server.install_response_handler(IgnoreAllQueries())
     server.run()
 
