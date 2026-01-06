@@ -11,12 +11,14 @@
 
 from isctest.asyncserver import (
     AsyncDnsServer,
+    IgnoreAllConnections,
     IgnoreAllQueries,
 )
 
 
 def main() -> None:
     server = AsyncDnsServer()
+    server.install_response_handler(IgnoreAllConnections())
     server.install_response_handler(IgnoreAllQueries())
     server.run()
 
