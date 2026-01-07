@@ -334,10 +334,11 @@ dns_cache_getservestalerefresh(dns_cache_t *cache) {
 
 isc_result_t
 dns_cache_flush(dns_cache_t *cache) {
-	dns_db_t *db = NULL, *olddb = NULL;
+	dns_db_t *db = NULL, *delegdb = NULL, *olddb = NULL, *olddelegdb = NULL;
 	isc_mem_t *tmctx = NULL, *oldtmctx = NULL;
 	isc_mem_t *hmctx = NULL, *oldhmctx = NULL;
 
+	RETERR(cache_create_db(cache, &db, &tmctx, &hmctx));
 	RETERR(cache_create_db(cache, &db, &tmctx, &hmctx));
 
 	LOCK(&cache->lock);
@@ -348,10 +349,13 @@ dns_cache_flush(dns_cache_t *cache) {
 	cache->tmctx = tmctx;
 	updatewater(cache);
 	olddb = cache->db;
+	olddelegdb = cache->delegdb;
 	cache->db = db;
+	cache->delegdb = delegdb;
 	UNLOCK(&cache->lock);
 
 	dns_db_detach(&olddb);
+	dns_db_detach(&olddelegdb);
 	isc_mem_detach(&oldhmctx);
 	isc_mem_detach(&oldtmctx);
 
@@ -459,6 +463,10 @@ dns_cache_flushname(dns_cache_t *cache, const dns_name_t *name) {
 	return dns_cache_flushnode(cache, name, false);
 }
 
+/*
+ * Do we need this for the deleg DB as well? Pobably needs a flag telling which
+ * cache we are talking about (i.e. the "nornal" one or the delegation one)
+ */
 isc_result_t
 dns_cache_flushnode(dns_cache_t *cache, const dns_name_t *name, bool tree) {
 	isc_result_t result;

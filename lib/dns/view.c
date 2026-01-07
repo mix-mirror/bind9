@@ -675,6 +675,7 @@ dns_view_freeze(dns_view_t *view) {
 
 	if (view->resolver != NULL) {
 		INSIST(view->cachedb != NULL);
+		INSIST(view->delegdb != NULL);
 		dns_resolver_freeze(view->resolver);
 	}
 	view->frozen = true;
@@ -1363,14 +1364,17 @@ dns_view_flushcache(dns_view_t *view, bool fixuponly) {
 
 	REQUIRE(DNS_VIEW_VALID(view));
 
-	if (view->cachedb == NULL) {
+	if (view->cachedb == NULL && view->delegdb == NULL) {
 		return ISC_R_SUCCESS;
 	}
+	INSIST(view->cachedb != NULL && view->delegdb != NULL);
+
 	if (!fixuponly) {
 		RETERR(dns_cache_flush(view->cache));
 	}
 	dns_db_detach(&view->cachedb);
-	dns_cache_attachdb(view->cache, &view->cachedb, NULL);
+	dns_db_detach(&view->delegdb);
+	dns_cache_attachdb(view->cache, &view->cachedb, &view->delegdb);
 	if (view->failcache != NULL) {
 		dns_badcache_flush(view->failcache);
 	}
