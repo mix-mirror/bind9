@@ -339,7 +339,7 @@ dns_cache_flush(dns_cache_t *cache) {
 	isc_mem_t *hmctx = NULL, *oldhmctx = NULL;
 
 	RETERR(cache_create_db(cache, &db, &tmctx, &hmctx));
-	RETERR(cache_create_db(cache, &db, &tmctx, &hmctx));
+	RETERR(cache_create_db(cache, &delegdb, &tmctx, &hmctx));
 
 	LOCK(&cache->lock);
 	isc_mem_clearwater(cache->tmctx);
@@ -463,15 +463,34 @@ dns_cache_flushname(dns_cache_t *cache, const dns_name_t *name) {
 	return dns_cache_flushnode(cache, name, false);
 }
 
-/*
- * Do we need this for the deleg DB as well? Pobably needs a flag telling which
- * cache we are talking about (i.e. the "nornal" one or the delegation one)
- */
-isc_result_t
-dns_cache_flushnode(dns_cache_t *cache, const dns_name_t *name, bool tree) {
+static isc_result_t
+flushnode(dns_db_t *db, const dns_name_t *name, bool tree) {
 	isc_result_t result;
 	dns_dbnode_t *node = NULL;
-	dns_db_t *db = NULL;
+
+	if (tree) {
+		result = cleartree(db, name);
+	} else {
+		result = dns_db_findnode(db, name, false, &node);
+		if (result == ISC_R_NOTFOUND) {
+			result = ISC_R_SUCCESS;
+			goto out;
+		}
+		if (result != ISC_R_SUCCESS) {
+			goto out;
+		}
+		result = clearnode(db, node);
+		dns_db_detachnode(&node);
+	}
+
+out:
+	return result;
+}
+
+isc_result_t
+dns_cache_flushnode(dns_cache_t *cache, const dns_name_t *name, bool tree) {
+	dns_db_t *db = NULL, *delegdb = NULL;
+	isc_result_t result = ISC_R_SUCCESS;
 
 	if (tree && dns_name_equal(name, dns_rootname)) {
 		return dns_cache_flush(cache);
@@ -481,28 +500,23 @@ dns_cache_flushnode(dns_cache_t *cache, const dns_name_t *name, bool tree) {
 	if (cache->db != NULL) {
 		dns_db_attach(cache->db, &db);
 	}
+	if (cache->delegdb != NULL) {
+		dns_db_attach(cache->delegdb, &delegdb);
+	}
 	UNLOCK(&cache->lock);
-	if (db == NULL) {
+
+	if (db == NULL && delegdb == NULL) {
 		return ISC_R_SUCCESS;
 	}
+	INSIST(db != NULL && delegdb != NULL);
 
-	if (tree) {
-		result = cleartree(cache->db, name);
-	} else {
-		result = dns_db_findnode(cache->db, name, false, &node);
-		if (result == ISC_R_NOTFOUND) {
-			result = ISC_R_SUCCESS;
-			goto cleanup_db;
-		}
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup_db;
-		}
-		result = clearnode(cache->db, node);
-		dns_db_detachnode(&node);
-	}
+	CHECK(flushnode(db, name, tree));
+	CHECK(flushnode(delegdb, name, tree));
 
-cleanup_db:
+cleanup:
 	dns_db_detach(&db);
+	dns_db_detach(&delegdb);
+
 	return result;
 }
 
