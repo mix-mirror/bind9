@@ -75,6 +75,7 @@ struct dns_cache {
 	/* Locked by 'lock'. */
 	dns_rdataclass_t rdclass;
 	dns_db_t *db;
+	dns_db_t *delegdb;
 	size_t size;
 	dns_ttl_t serve_stale_ttl;
 	dns_ttl_t serve_stale_refresh;
@@ -87,19 +88,13 @@ struct dns_cache {
  ***	Functions
  ***/
 
-static isc_result_t
-cache_create_db(dns_cache_t *cache, dns_db_t **dbp, isc_mem_t **tmctxp,
-		isc_mem_t **hmctxp) {
-	isc_result_t result;
-	char *argv[1] = { 0 };
-	dns_db_t *db = NULL;
-	isc_mem_t *tmctx = NULL, *hmctx = NULL;
-
+static void
+cache_create_mctx(isc_mem_t **tmctxp, isc_mem_t **hmctxp) {
 	/*
 	 * This will be the cache memory context, which is subject
 	 * to cleaning when the configured memory limits are exceeded.
 	 */
-	isc_mem_create("cache", &tmctx);
+	isc_mem_create("cache", tmctxp);
 
 	/*
 	 * This will be passed to RBTDB to use for heaps. This is separate
@@ -107,7 +102,15 @@ cache_create_db(dns_cache_t *cache, dns_db_t **dbp, isc_mem_t **tmctxp,
 	 * heavy load and could otherwise cause the cache to be cleaned too
 	 * aggressively.
 	 */
-	isc_mem_create("cache_heap", &hmctx);
+	isc_mem_create("cache_heap", hmctxp);
+}
+
+static isc_result_t
+cache_create_db(dns_cache_t *cache, dns_db_t **dbp, isc_mem_t *tmctx,
+		isc_mem_t *hmctx) {
+	isc_result_t result;
+	char *argv[1] = { 0 };
+	dns_db_t *db = NULL;
 
 	/*
 	 * For databases of type "qpcache" or "rbt" (which are the
@@ -115,15 +118,9 @@ cache_create_db(dns_cache_t *cache, dns_db_t **dbp, isc_mem_t **tmctxp,
 	 * hmctx to dns_db_create() via argv[0].
 	 */
 	argv[0] = (char *)hmctx;
-	result = dns_db_create(tmctx, CACHEDB_DEFAULT, dns_rootname,
-			       dns_dbtype_cache, cache->rdclass, 1, argv, &db);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup_mctx;
-	}
-	result = dns_db_setcachestats(db, cache->stats);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup_db;
-	}
+	CHECK(dns_db_create(tmctx, CACHEDB_DEFAULT, dns_rootname,
+			    dns_dbtype_cache, cache->rdclass, 1, argv, &db));
+	CHECK(dns_db_setcachestats(db, cache->stats));
 
 	dns_db_setservestalettl(db, cache->serve_stale_ttl);
 	dns_db_setservestalerefresh(db, cache->serve_stale_refresh);
@@ -131,16 +128,11 @@ cache_create_db(dns_cache_t *cache, dns_db_t **dbp, isc_mem_t **tmctxp,
 	dns_db_setmaxtypepername(db, cache->maxtypepername);
 
 	*dbp = db;
-	*hmctxp = hmctx;
-	*tmctxp = tmctx;
 
-	return ISC_R_SUCCESS;
-
-cleanup_db:
-	dns_db_detach(&db);
-cleanup_mctx:
-	isc_mem_detach(&hmctx);
-	isc_mem_detach(&tmctx);
+cleanup:
+	if (result != ISC_R_SUCCESS && db != NULL) {
+		dns_db_detach(&db);
+	}
 
 	return result;
 }
@@ -182,15 +174,24 @@ dns_cache_create(dns_rdataclass_t rdclass, const char *cachename,
 	isc_stats_create(mctx, &cache->stats, dns_cachestatscounter_max);
 
 	/*
-	 * Create the database
+	 * Create the databases memory context
 	 */
-	CHECK(cache_create_db(cache, &cache->db, &cache->tmctx, &cache->hmctx));
+	cache_create_mctx(&cache->tmctx, &cache->hmctx);
+
+	/*
+	 * Create the cache database, as well as the delegation database.
+	 */
+	CHECK(cache_create_db(cache, &cache->db, cache->tmctx, cache->hmctx));
+	CHECK(cache_create_db(cache, &cache->delegdb, cache->tmctx,
+			      cache->hmctx));
 
 	*cachep = cache;
-	return ISC_R_SUCCESS;
 
 cleanup:
-	cache_destroy(cache);
+	if (result != ISC_R_SUCCESS) {
+		cache_destroy(cache);
+	}
+
 	return result;
 }
 
@@ -203,6 +204,7 @@ cache_cleanup(dns_cache_t *cache) {
 
 	isc_mem_clearwater(cache->tmctx);
 	dns_db_detach(&cache->db);
+	dns_db_detach(&cache->delegdb);
 
 	cache_destroy(cache);
 }
@@ -214,13 +216,21 @@ ISC_REFCOUNT_IMPL(dns_cache, cache_cleanup);
 #endif
 
 void
-dns_cache_attachdb(dns_cache_t *cache, dns_db_t **dbp) {
+dns_cache_attachdb(dns_cache_t *cache, dns_db_t **dbp, dns_db_t **delegdbp) {
 	REQUIRE(VALID_CACHE(cache));
-	REQUIRE(dbp != NULL && *dbp == NULL);
+	REQUIRE(dbp != NULL || delegdbp != NULL);
+	REQUIRE(dbp == NULL || (dbp != NULL && *dbp == NULL));
+	REQUIRE(delegdbp == NULL || (delegdbp != NULL && *delegdbp == NULL));
 	REQUIRE(cache->db != NULL);
+	REQUIRE(cache->delegdb != NULL);
 
 	LOCK(&cache->lock);
-	dns_db_attach(cache->db, dbp);
+	if (dbp) {
+		dns_db_attach(cache->db, dbp);
+	}
+	if (delegdbp) {
+		dns_db_attach(cache->delegdb, delegdbp);
+	}
 	UNLOCK(&cache->lock);
 }
 
@@ -323,11 +333,14 @@ dns_cache_getservestalerefresh(dns_cache_t *cache) {
 
 isc_result_t
 dns_cache_flush(dns_cache_t *cache) {
-	dns_db_t *db = NULL, *olddb = NULL;
+	isc_result_t result;
+	dns_db_t *db = NULL, *delegdb = NULL, *olddb = NULL, *olddelegdb = NULL;
 	isc_mem_t *tmctx = NULL, *oldtmctx = NULL;
 	isc_mem_t *hmctx = NULL, *oldhmctx = NULL;
 
-	RETERR(cache_create_db(cache, &db, &tmctx, &hmctx));
+	cache_create_mctx(&tmctx, &hmctx);
+	CHECK(cache_create_db(cache, &db, tmctx, hmctx));
+	CHECK(cache_create_db(cache, &delegdb, tmctx, hmctx));
 
 	LOCK(&cache->lock);
 	isc_mem_clearwater(cache->tmctx);
@@ -337,14 +350,23 @@ dns_cache_flush(dns_cache_t *cache) {
 	cache->tmctx = tmctx;
 	updatewater(cache);
 	olddb = cache->db;
+	olddelegdb = cache->delegdb;
 	cache->db = db;
+	cache->delegdb = delegdb;
 	UNLOCK(&cache->lock);
 
 	dns_db_detach(&olddb);
+	dns_db_detach(&olddelegdb);
 	isc_mem_detach(&oldhmctx);
 	isc_mem_detach(&oldtmctx);
 
-	return ISC_R_SUCCESS;
+cleanup:
+	if (result != ISC_R_SUCCESS) {
+		isc_mem_detach(&tmctx);
+		isc_mem_detach(&hmctx);
+	}
+
+	return result;
 }
 
 static isc_result_t
@@ -448,11 +470,34 @@ dns_cache_flushname(dns_cache_t *cache, const dns_name_t *name) {
 	return dns_cache_flushnode(cache, name, false);
 }
 
-isc_result_t
-dns_cache_flushnode(dns_cache_t *cache, const dns_name_t *name, bool tree) {
+static isc_result_t
+flushnode(dns_db_t *db, const dns_name_t *name, bool tree) {
 	isc_result_t result;
 	dns_dbnode_t *node = NULL;
-	dns_db_t *db = NULL;
+
+	if (tree) {
+		result = cleartree(db, name);
+	} else {
+		result = dns_db_findnode(db, name, false, &node);
+		if (result == ISC_R_NOTFOUND) {
+			result = ISC_R_SUCCESS;
+			goto out;
+		}
+		if (result != ISC_R_SUCCESS) {
+			goto out;
+		}
+		result = clearnode(db, node);
+		dns_db_detachnode(&node);
+	}
+
+out:
+	return result;
+}
+
+isc_result_t
+dns_cache_flushnode(dns_cache_t *cache, const dns_name_t *name, bool tree) {
+	dns_db_t *db = NULL, *delegdb = NULL;
+	isc_result_t result = ISC_R_SUCCESS;
 
 	if (tree && dns_name_equal(name, dns_rootname)) {
 		return dns_cache_flush(cache);
@@ -462,28 +507,23 @@ dns_cache_flushnode(dns_cache_t *cache, const dns_name_t *name, bool tree) {
 	if (cache->db != NULL) {
 		dns_db_attach(cache->db, &db);
 	}
+	if (cache->delegdb != NULL) {
+		dns_db_attach(cache->delegdb, &delegdb);
+	}
 	UNLOCK(&cache->lock);
-	if (db == NULL) {
+
+	if (db == NULL && delegdb == NULL) {
 		return ISC_R_SUCCESS;
 	}
+	INSIST(db != NULL && delegdb != NULL);
 
-	if (tree) {
-		result = cleartree(cache->db, name);
-	} else {
-		result = dns_db_findnode(cache->db, name, false, &node);
-		if (result == ISC_R_NOTFOUND) {
-			result = ISC_R_SUCCESS;
-			goto cleanup_db;
-		}
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup_db;
-		}
-		result = clearnode(cache->db, node);
-		dns_db_detachnode(&node);
-	}
+	CHECK(flushnode(db, name, tree));
+	CHECK(flushnode(delegdb, name, tree));
 
-cleanup_db:
+cleanup:
 	dns_db_detach(&db);
+	dns_db_detach(&delegdb);
+
 	return result;
 }
 

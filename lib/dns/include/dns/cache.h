@@ -96,9 +96,9 @@ dns_cache_create(dns_rdataclass_t rdclass, const char *cachename,
  */
 
 void
-dns_cache_attachdb(dns_cache_t *cache, dns_db_t **dbp);
+dns_cache_attachdb(dns_cache_t *cache, dns_db_t **dbp, dns_db_t **delegdbp);
 /*%<
- * Attach *dbp to the cache's database.
+ * Attach *dbp to the cache's database and *delegdbp to the delegation database.
  *
  * Notes:
  *
@@ -114,11 +114,16 @@ dns_cache_attachdb(dns_cache_t *cache, dns_db_t **dbp);
  *
  *\li	'cache' is a valid cache.
  *
- *\li	'dbp' points to a NULL dns_db *.
+ *\li	'dbp' optionally points to a NULL dns_db_t *.
+ *\li   'delegdbp' optionally points to a NULL dns_db_t *.
+ *
+ * At last one of dbp or delegdpb must be not NULL.
  *
  * Ensures:
  *
- *\li	*dbp is attached to the database.
+ *\li	*dbp, if dbp is not NULL, is attached to the database.
+ *\li   *delegdbp, if delegdbp is not NULL, is attached to the delegation
+ *      database.
  */
 
 const char *

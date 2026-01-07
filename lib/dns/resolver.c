@@ -383,6 +383,7 @@ struct fetchctx {
 	ISC_LIST(struct tried) edns;
 	ISC_LIST(dns_validator_t) validators;
 	dns_db_t *cache;
+	dns_db_t *deleg;
 	dns_adb_t *adb;
 	dns_dispatchmgr_t *dispatchmgr;
 	bool ns_ttl_ok;
@@ -4616,6 +4617,7 @@ fctx__destroy(fetchctx_t *fctx, const char *func, const char *file,
 	dns_message_detach(&fctx->qmessage);
 	dns_rdataset_cleanup(&fctx->nameservers);
 	dns_db_detach(&fctx->cache);
+	dns_db_detach(&fctx->deleg);
 	dns_adb_detach(&fctx->adb);
 	dns_dispatchmgr_detach(&fctx->dispatchmgr);
 
@@ -5031,6 +5033,7 @@ fctx__create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 		goto cleanup_adb;
 	}
 	dns_db_attach(res->view->cachedb, &fctx->cache);
+	dns_db_attach(res->view->delegdb, &fctx->deleg);
 
 	ISC_LIST_INIT(fctx->resps);
 	fctx->magic = FCTX_MAGIC;
@@ -9835,7 +9838,7 @@ prime_done(void *arg) {
 	dns_fetchresponse_t *resp = (dns_fetchresponse_t *)arg;
 	dns_resolver_t *res = resp->arg;
 	dns_fetch_t *fetch = NULL;
-	dns_db_t *db = NULL;
+	dns_db_t *delegdb = NULL;
 
 	REQUIRE(VALID_RESOLVER(res));
 
@@ -9855,9 +9858,9 @@ prime_done(void *arg) {
 	if (resp->result == ISC_R_SUCCESS && res->view->cache != NULL &&
 	    res->view->hints != NULL)
 	{
-		dns_cache_attachdb(res->view->cache, &db);
-		dns_root_checkhints(res->view, res->view->hints, db);
-		dns_db_detach(&db);
+		dns_cache_attachdb(res->view->cache, NULL, &delegdb);
+		dns_root_checkhints(res->view, res->view->hints, delegdb);
+		dns_db_detach(&delegdb);
 	}
 
 	if (resp->node != NULL) {
