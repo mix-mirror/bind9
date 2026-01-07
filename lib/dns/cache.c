@@ -75,6 +75,7 @@ struct dns_cache {
 	/* Locked by 'lock'. */
 	dns_rdataclass_t rdclass;
 	dns_db_t *db;
+	dns_db_t *delegdb;
 	size_t size;
 	dns_ttl_t serve_stale_ttl;
 	dns_ttl_t serve_stale_refresh;
@@ -182,9 +183,11 @@ dns_cache_create(dns_rdataclass_t rdclass, const char *cachename,
 	isc_stats_create(mctx, &cache->stats, dns_cachestatscounter_max);
 
 	/*
-	 * Create the database
+	 * Create the "normal" database, as well as the delegation database.
 	 */
 	CHECK(cache_create_db(cache, &cache->db, &cache->tmctx, &cache->hmctx));
+	CHECK(cache_create_db(cache, &cache->delegdb, &cache->tmctx,
+			      &cache->hmctx));
 
 	*cachep = cache;
 	return ISC_R_SUCCESS;
@@ -214,13 +217,21 @@ ISC_REFCOUNT_IMPL(dns_cache, cache_cleanup);
 #endif
 
 void
-dns_cache_attachdb(dns_cache_t *cache, dns_db_t **dbp) {
+dns_cache_attachdb(dns_cache_t *cache, dns_db_t **dbp, dns_db_t **delegdbp) {
 	REQUIRE(VALID_CACHE(cache));
-	REQUIRE(dbp != NULL && *dbp == NULL);
+	REQUIRE(dbp != NULL || delegdbp != NULL);
+	REQUIRE(dbp == NULL || (dbp != NULL && *dbp == NULL));
+	REQUIRE(delegdbp == NULL || (delegdbp != NULL && *delegdbp == NULL));
 	REQUIRE(cache->db != NULL);
+	REQUIRE(cache->delegdb != NULL);
 
 	LOCK(&cache->lock);
-	dns_db_attach(cache->db, dbp);
+	if (dbp) {
+		dns_db_attach(cache->db, dbp);
+	}
+	if (delegdbp) {
+		dns_db_attach(cache->delegdb, delegdbp);
+	}
 	UNLOCK(&cache->lock);
 }
 

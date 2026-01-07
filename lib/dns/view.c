@@ -573,11 +573,13 @@ dns_view_setcache(dns_view_t *view, dns_cache_t *cache, bool shared) {
 	view->cacheshared = shared;
 	if (view->cache != NULL) {
 		dns_db_detach(&view->cachedb);
+		dns_db_detach(&view->delegdb);
 		dns_cache_detach(&view->cache);
 	}
 	dns_cache_attach(cache, &view->cache);
-	dns_cache_attachdb(cache, &view->cachedb);
+	dns_cache_attachdb(cache, &view->cachedb, &view->delegdb);
 	INSIST(DNS_DB_VALID(view->cachedb));
+	INSIST(DNS_DB_VALID(view->delegdb));
 
 	dns_cache_setmaxrrperset(view->cache, view->maxrrperset);
 	dns_cache_setmaxtypepername(view->cache, view->maxtypepername);
@@ -1368,7 +1370,7 @@ dns_view_flushcache(dns_view_t *view, bool fixuponly) {
 		RETERR(dns_cache_flush(view->cache));
 	}
 	dns_db_detach(&view->cachedb);
-	dns_cache_attachdb(view->cache, &view->cachedb);
+	dns_cache_attachdb(view->cache, &view->cachedb, NULL);
 	if (view->failcache != NULL) {
 		dns_badcache_flush(view->failcache);
 	}

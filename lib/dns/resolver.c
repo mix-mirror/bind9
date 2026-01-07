@@ -9885,7 +9885,7 @@ prime_done(void *arg) {
 	dns_fetchresponse_t *resp = (dns_fetchresponse_t *)arg;
 	dns_resolver_t *res = resp->arg;
 	dns_fetch_t *fetch = NULL;
-	dns_db_t *db = NULL;
+	dns_db_t *delegdb = NULL;
 
 	REQUIRE(VALID_RESOLVER(res));
 
@@ -9905,9 +9905,9 @@ prime_done(void *arg) {
 	if (resp->result == ISC_R_SUCCESS && res->view->cache != NULL &&
 	    res->view->hints != NULL)
 	{
-		dns_cache_attachdb(res->view->cache, &db);
-		dns_root_checkhints(res->view, res->view->hints, db);
-		dns_db_detach(&db);
+		dns_cache_attachdb(res->view->cache, NULL, &delegdb);
+		dns_root_checkhints(res->view, res->view->hints, delegdb);
+		dns_db_detach(&delegdb);
 	}
 
 	if (resp->node != NULL) {

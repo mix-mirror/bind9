@@ -4294,13 +4294,6 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	dns_cache_setservestalettl(cache, max_stale_ttl);
 	dns_cache_setservestalerefresh(cache, stale_refresh_time);
 
-	/*
-	 * Temporary hack
-	 */
-	CHECK(dns_db_create(mctx, CACHEDB_DEFAULT, dns_rootname,
-			    dns_dbtype_cache, view->rdclass, 0, NULL,
-			    &view->delegdb));
-
 	dns_cache_detach(&cache);
 
 	obj = NULL;
