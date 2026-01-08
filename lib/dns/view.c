@@ -1069,8 +1069,8 @@ findzonecut_cache(dns_view_t *view, const dns_name_t *name, dns_name_t *fname,
 		  dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset) {
 	isc_result_t result = DNS_R_NXDOMAIN;
 
-	if (view->cachedb != NULL) {
-		result = dns_db_findzonecut(view->cachedb, name, options, now,
+	if (view->delegdb != NULL) {
+		result = dns_db_findzonecut(view->delegdb, name, options, now,
 					    NULL, fname, dcname, rdataset,
 					    sigrdataset, NULL, NULL);
 	}
