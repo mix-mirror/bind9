@@ -5438,6 +5438,8 @@ cache_rrset(fetchctx_t *fctx, isc_stdtime_t now, dns_name_t *name,
 	isc_result_t result = ISC_R_SUCCESS;
 	unsigned int options = 0, equalok = 0;
 	dns_dbnode_t *node = NULL;
+	dns_db_t *db = fctx->cache;
+	bool usedeleg = rdataset->attributes.deleg;
 
 	if (rdataset == NULL) {
 		return ISC_R_NOTFOUND;
@@ -5477,16 +5479,23 @@ cache_rrset(fetchctx_t *fctx, isc_stdtime_t now, dns_name_t *name,
 	 *
 	 * If there's no node pointer at all, find the node, but
 	 * detach it before returning.
+	 *
+	 * When the RR to be cached is from a referral (deleg) then there is no
+	 * interest of attaching the node to the caller, as this is from the
+	 * the deleg database.
 	 */
-	if (nodep != NULL && *nodep != NULL) {
+	if (usedeleg) {
+		db = fctx->deleg;
+		result = dns_db_findnode(db, fctx->domain, true, &node);
+	} else if (nodep != NULL && *nodep != NULL) {
 		dns_db_attachnode(*nodep, &node);
 	} else {
-		result = dns_db_findnode(fctx->cache, name, true, &node);
+		result = dns_db_findnode(db, name, true, &node);
 	}
 
 	if (result == ISC_R_SUCCESS) {
-		result = dns_db_addrdataset(fctx->cache, node, NULL, now,
-					    rdataset, options | equalok, added);
+		result = dns_db_addrdataset(db, node, NULL, now, rdataset,
+					    options | equalok, added);
 	}
 
 	if (equalok == 0 && result == DNS_R_UNCHANGED) {
@@ -5511,7 +5520,9 @@ cache_rrset(fetchctx_t *fctx, isc_stdtime_t now, dns_name_t *name,
 	 * If we're passing a node that we looked up back to the
 	 * caller, then we don't detach it.
 	 */
-	if (nodep != NULL && *nodep == NULL) {
+	if (usedeleg) {
+		dns_db_detachnode(&node);
+	} else if (nodep != NULL && *nodep == NULL) {
 		*nodep = node;
 	} else if (node != NULL) {
 		dns_db_detachnode(&node);
