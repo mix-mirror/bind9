@@ -6467,6 +6467,13 @@ mark_related(dns_name_t *name, dns_rdataset_t *rdataset, bool external,
 	name->attributes.cache = true;
 	if (gluing) {
 		rdataset->trust = dns_trust_glue;
+
+		/*
+		 * This is a glue for a referral NS, this needs to be cached in
+		 * the delegation database, not the main cache database.
+		 */
+		rdataset->attributes.deleg = true;
+
 		/*
 		 * Glue with 0 TTL causes problems.  We force the TTL to
 		 * 1 second to prevent this.
@@ -9066,6 +9073,12 @@ rctx_referral(respctx_t *rctx) {
 		rctx->result = DNS_R_FORMERR;
 		return ISC_R_COMPLETE;
 	}
+
+	/*
+	 * Referral NS is marked to be cached in the delegation database, not
+	 * the cache database.
+	 */
+	rctx->ns_rdataset->attributes.deleg = true;
 
 	/*
 	 * Mark any additional data related to this rdataset.
