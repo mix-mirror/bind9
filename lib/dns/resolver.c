@@ -4499,7 +4499,7 @@ resume_qmin(void *arg) {
 	}
 	result = dns_view_findzonecut(res->view, fctx->name, fname, dcname,
 				      fctx->now, findoptions, true, true,
-				      &fctx->nameservers, NULL);
+				      &fctx->nameservers);
 	FCTXTRACEN("resume_qmin findzonecut", fname, result);
 
 	if (result != ISC_R_SUCCESS) {
@@ -4948,7 +4948,7 @@ fctx__create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 			result = dns_view_findzonecut(
 				res->view, name, fctx->fwdname, dcname,
 				fctx->now, findoptions, true, true,
-				&fctx->nameservers, NULL);
+				&fctx->nameservers);
 			if (result != ISC_R_SUCCESS) {
 				goto cleanup_nameservers;
 			}
@@ -9246,9 +9246,9 @@ rctx_nextserver(respctx_t *rctx, dns_message_t *message,
 		} else {
 			name = fctx->domain;
 		}
-		result = dns_view_findzonecut(
-			fctx->res->view, name, fname, dcname, fctx->now,
-			findoptions, true, true, &fctx->nameservers, NULL);
+		result = dns_view_findzonecut(fctx->res->view, name, fname,
+					      dcname, fctx->now, findoptions,
+					      true, true, &fctx->nameservers);
 		if (result != ISC_R_SUCCESS) {
 			FCTXTRACE("couldn't find a zonecut");
 			fctx_failure_detach(&rctx->fctx, DNS_R_SERVFAIL);

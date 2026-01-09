@@ -688,7 +688,7 @@ isc_result_t
 dns_view_findzonecut(dns_view_t *view, const dns_name_t *name,
 		     dns_name_t *fname, dns_name_t *dcname, isc_stdtime_t now,
 		     unsigned int options, bool use_hints, bool use_cache,
-		     dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset);
+		     dns_rdataset_t *rdataset);
 /*%<
  * Find the best known zonecut containing 'name'.
  *
@@ -704,9 +704,6 @@ dns_view_findzonecut(dns_view_t *view, const dns_name_t *name,
  *
  *\li	If 'use_cache' is true, and the view has a cache, then it will be
  *	searched.
- *
- *\li	If 'sigrdataset' is not NULL, and there is a SIG rdataset which
- *	covers 'type', then 'sigrdataset' will be bound to it.
  *
  *\li	If the DNS_DBFIND_NOEXACT option is set, then the zonecut returned
  *	(if any) will be the deepest known ancestor of 'name'.
