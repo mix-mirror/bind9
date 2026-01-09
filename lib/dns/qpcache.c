@@ -2023,8 +2023,9 @@ static isc_result_t
 qpcache_findzonecut(dns_db_t *db, const dns_name_t *name, unsigned int options,
 		    isc_stdtime_t __now, dns_dbnode_t **nodep,
 		    dns_name_t *foundname, dns_name_t *dcname,
-		    dns_rdataset_t *rdataset,
-		    dns_rdataset_t *sigrdataset DNS__DB_FLARG) {
+		    dns_rdataset_t *ns, dns_rdataset_t *signs,
+		    ISC_ATTR_UNUSED dns_rdataset_t *glue_a,
+		    ISC_ATTR_UNUSED dns_rdataset_t *glue_aaaa DNS__DB_FLARG) {
 	qpcnode_t *node = NULL;
 	isc_result_t result;
 	isc_rwlocktype_t tlocktype = isc_rwlocktype_none;
@@ -2052,8 +2053,8 @@ qpcache_findzonecut(dns_db_t *db, const dns_name_t *name, unsigned int options,
 				dns_name_copy(&node->name, dcname);
 			}
 			dns_name_copy(&node->name, foundname);
-			result = seek_ns_headers(&search, node, nodep, rdataset,
-						 sigrdataset, foundname, dcname,
+			result = seek_ns_headers(&search, node, nodep, ns,
+						 signs, foundname, dcname,
 						 &tlocktype);
 			break;
 		}
@@ -2081,8 +2082,7 @@ qpcache_findzonecut(dns_db_t *db, const dns_name_t *name, unsigned int options,
 		}
 
 		result = find_deepest_zonecut(&search, node, nodep, foundname,
-					      rdataset,
-					      sigrdataset DNS__DB_FLARG_PASS);
+					      ns, signs DNS__DB_FLARG_PASS);
 		break;
 	default:
 		break;

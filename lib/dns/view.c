@@ -1066,7 +1066,7 @@ findzonecut_cache(dns_view_t *view, const dns_name_t *name, dns_name_t *fname,
 	if (view->cachedb != NULL) {
 		result = dns_db_findzonecut(view->cachedb, name, options, now,
 					    NULL, fname, dcname, rdataset,
-					    sigrdataset);
+					    sigrdataset, NULL, NULL);
 	}
 
 	/*

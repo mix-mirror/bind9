@@ -530,8 +530,9 @@ isc_result_t
 dns__db_findzonecut(dns_db_t *db, const dns_name_t *name, unsigned int options,
 		    isc_stdtime_t now, dns_dbnode_t **nodep,
 		    dns_name_t *foundname, dns_name_t *dcname,
-		    dns_rdataset_t *rdataset,
-		    dns_rdataset_t *sigrdataset DNS__DB_FLARG) {
+		    dns_rdataset_t *ns, dns_rdataset_t *nssig,
+		    dns_rdataset_t *glue_a,
+		    dns_rdataset_t *glue_aaaa DNS__DB_FLARG) {
 	/*
 	 * Find the deepest known zonecut which encloses 'name' in 'db'.
 	 * foundname is the zonecut, dcname is the deepest name we have
@@ -542,14 +543,15 @@ dns__db_findzonecut(dns_db_t *db, const dns_name_t *name, unsigned int options,
 	REQUIRE((db->attributes & DNS_DBATTR_CACHE) != 0);
 	REQUIRE(nodep == NULL || *nodep == NULL);
 	REQUIRE(dns_name_hasbuffer(foundname));
-	REQUIRE(sigrdataset == NULL ||
-		(DNS_RDATASET_VALID(sigrdataset) &&
-		 !dns_rdataset_isassociated(sigrdataset)));
+	REQUIRE(nssig == NULL || (DNS_RDATASET_VALID(nssig) &&
+				  !dns_rdataset_isassociated(nssig)));
+	REQUIRE(glue_a == NULL || (DNS_RDATASET_VALID(glue_aaaa) &&
+				   !dns_rdataset_isassociated(glue_aaaa)));
 
 	if (db->methods->findzonecut != NULL) {
 		return (db->methods->findzonecut)(
-			db, name, options, now, nodep, foundname, dcname,
-			rdataset, sigrdataset DNS__DB_FLARG_PASS);
+			db, name, options, now, nodep, foundname, dcname, ns,
+			nssig, glue_a, glue_aaaa DNS__DB_FLARG_PASS);
 	}
 	return ISC_R_NOTIMPLEMENTED;
 }

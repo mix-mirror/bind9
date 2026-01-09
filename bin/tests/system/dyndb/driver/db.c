@@ -128,15 +128,15 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 static isc_result_t
 findzonecut(dns_db_t *db, const dns_name_t *name, unsigned int options,
 	    isc_stdtime_t now, dns_dbnode_t **nodep, dns_name_t *foundname,
-	    dns_name_t *dcname, dns_rdataset_t *rdataset,
-	    dns_rdataset_t *sigrdataset DNS__DB_FLARG) {
+	    dns_name_t *dcname, dns_rdataset_t *ns, dns_rdataset_t *nssig,
+	    dns_rdataset_t *glue_a, dns_rdataset_t *glue_aaaa DNS__DB_FLARG) {
 	sampledb_t *sampledb = (sampledb_t *)db;
 
 	REQUIRE(VALID_SAMPLEDB(sampledb));
 
 	return dns__db_findzonecut(sampledb->db, name, options, now, nodep,
-				   foundname, dcname, rdataset,
-				   sigrdataset DNS__DB_FLARG_PASS);
+				   foundname, dcname, ns, nssig, glue_a,
+				   glue_aaaa DNS__DB_FLARG_PASS);
 }
 
 static isc_result_t

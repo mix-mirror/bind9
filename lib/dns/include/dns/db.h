@@ -104,9 +104,10 @@ typedef struct dns_db_methods {
 	isc_result_t (*findzonecut)(dns_db_t *db, const dns_name_t *name,
 				    unsigned int options, isc_stdtime_t now,
 				    dns_dbnode_t **nodep, dns_name_t *foundname,
-				    dns_name_t		       *dcname,
-				    dns_rdataset_t	       *rdataset,
-				    dns_rdataset_t *sigrdataset DNS__DB_FLARG);
+				    dns_name_t *dcname, dns_rdataset_t *ns,
+				    dns_rdataset_t	     *signs,
+				    dns_rdataset_t	     *glue_a,
+				    dns_rdataset_t *glue_aaaa DNS__DB_FLARG);
 	isc_result_t (*createiterator)(dns_db_t *db, unsigned int options,
 				       dns_dbiterator_t **iteratorp);
 	isc_result_t (*findrdataset)(dns_db_t *db, dns_dbnode_t *node,
@@ -1009,15 +1010,16 @@ dns__db_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
  */
 
 #define dns_db_findzonecut(db, name, options, now, nodep, foundname, dcname,  \
-			   rdataset, sigrdataset)                             \
+			   ns, nssig, glue_a, glue_aaaa)                      \
 	dns__db_findzonecut(db, name, options, now, nodep, foundname, dcname, \
-			    rdataset, sigrdataset DNS__DB_FILELINE)
+			    ns, nssig, glue_a, glue_aaaa DNS__DB_FILELINE)
 isc_result_t
 dns__db_findzonecut(dns_db_t *db, const dns_name_t *name, unsigned int options,
 		    isc_stdtime_t now, dns_dbnode_t **nodep,
 		    dns_name_t *foundname, dns_name_t *dcname,
-		    dns_rdataset_t	       *rdataset,
-		    dns_rdataset_t *sigrdataset DNS__DB_FLARG);
+		    dns_rdataset_t *ns, dns_rdataset_t *nssig,
+		    dns_rdataset_t	     *glue_a,
+		    dns_rdataset_t *glue_aaaa DNS__DB_FLARG);
 /*%<
  * Find the deepest known zonecut which encloses 'name' in 'db'.
  *
@@ -1038,7 +1040,8 @@ dns__db_findzonecut(dns_db_t *db, const dns_name_t *name, unsigned int options,
  *
  * \li	'dcname' is a valid name with a dedicated buffer.
  *
- * \li	'rdataset' is NULL, or is a valid unassociated rdataset.
+ * \li	'ns', 'nssig', 'glue_a', 'glue_aaaa' is NULL, or is a valid unassociated
+ *      rdataset.
  *
  * Ensures, on a non-error completion:
  *
@@ -1050,10 +1053,16 @@ dns__db_findzonecut(dns_db_t *db, const dns_name_t *name, unsigned int options,
  * \li	If dcname != NULL, then it contains the deepest cached name
  *      that exists in the database.
  *
- * \li	If rdataset != NULL and type != dns_rdatatype_any, then
- *	rdataset is bound to the found rdataset.
+ * \li  If 'ns' != NULL, then it is associated to the zonecut NS.
  *
- * Non-error results are:
+ * \li  If 'nssig' != NULL, then it is associated to the zonecut NS signature
+ *      (if any).
+ *
+ * \li  If 'glue_a' != NULL, then it is associated to the A glues of the zonecut
+ *      (if any).
+ *
+ * \li  If 'glue_aaaa' != NULL, then it is associated to the AAAA glues of the
+ *      zonecut (if any). Non-error results are:
  *
  * \li	#ISC_R_SUCCESS
  *

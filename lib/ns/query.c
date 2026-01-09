@@ -10677,10 +10677,10 @@ db_find:
 			goto db_find;
 		}
 	} else {
-		result = dns_db_findzonecut(db, client->query.qname,
-					    client->query.dboptions,
-					    client->inner.now, &node, fname,
-					    NULL, rdataset, sigrdataset);
+		result = dns_db_findzonecut(
+			db, client->query.qname, client->query.dboptions,
+			client->inner.now, &node, fname, NULL, rdataset,
+			sigrdataset, NULL, NULL);
 		if (result == ISC_R_SUCCESS) {
 			if (zfname != NULL &&
 			    !dns_name_issubdomain(fname, zfname))
