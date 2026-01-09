@@ -117,10 +117,12 @@ class UDPDelayer(threading.Thread):
     response we get to a proper source, responses are not delayed.
     """
 
-    def __init__(self, usock, ip, port):
+    def __init__(self, usock, ip, port, source_ip):
         threading.Thread.__init__(self)
         self.sock = usock
         self.csock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.csock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.csock.bind((source_ip, 0))
         self.dst = (ip, port)
         self.queue = []
         self.qid_mapping = {}
@@ -187,7 +189,7 @@ def main():
     usock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     usock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     usock.bind((listenip, port))
-    thread = UDPDelayer(usock, serverip, port)
+    thread = UDPDelayer(usock, serverip, port, listenip)
     thread.start()
     THREADS.append(thread)
 
