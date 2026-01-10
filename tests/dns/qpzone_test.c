@@ -188,7 +188,7 @@ ownercase_test_one(const char *str1, const char *str2) {
 	};
 	qpznode_t node = { .methods = &qpznode_methods, .locknum = 0 };
 	dns_vecheader_t header = {
-		.node = (dns_dbnode_t *)&node,
+		// .node = (dns_dbnode_t *)&node,
 	};
 	dns_rdataset_t rdataset = {
 		.magic = DNS_RDATASET_MAGIC,
@@ -361,7 +361,7 @@ ISC_RUN_TEST_IMPL(setownercase) {
 	};
 	qpznode_t node = { .methods = &qpznode_methods, .locknum = 0 };
 	dns_vecheader_t header = {
-		.node = (dns_dbnode_t *)&node,
+		// .node = (dns_dbnode_t *)&node,
 	};
 	dns_rdataset_t rdataset = {
 		.magic = DNS_RDATASET_MAGIC,

@@ -338,6 +338,7 @@ qpz_resigned_init(isc_mem_t *mctx, qpznode_t *node, dns_vecheader_t *header) {
 		.link = ISC_LINK_INITIALIZER,
 	};
 	qpznode_ref(node);
+	dns_vecheader_ref(header);
 	return resigned;
 }
 
@@ -346,6 +347,7 @@ qpz_resigned_destroy(isc_mem_t *mctx, qpz_resigned_t **resignedp) {
 	qpz_resigned_t *resigned = *resignedp;
 	*resignedp = NULL;
 	qpznode_unref(resigned->node);
+	dns_vecheader_unref(resigned->header);
 	isc_mem_put(mctx, resigned, sizeof(qpz_resigned_t));
 }
 
@@ -361,6 +363,7 @@ qpz_heap_elem_init(isc_mem_t *mctx, qpznode_t *node, dns_vecheader_t *header) {
 		.heap_index = 0,
 	};
 	qpznode_ref(node);
+	dns_vecheader_ref(header);
 	return elem;
 }
 
@@ -369,6 +372,7 @@ qpz_heap_elem_destroy(isc_mem_t *mctx, qpz_heap_elem_t **elemp) {
 	qpz_heap_elem_t *elem = *elemp;
 	*elemp = NULL;
 	qpznode_unref(elem->node);
+	dns_vecheader_unref(elem->header);
 	isc_mem_put(mctx, elem, sizeof(qpz_heap_elem_t));
 }
 
@@ -1037,7 +1041,7 @@ clean_multiple_headers(qpz_heap_t *heap, qpznode_t *node, dns_vectop_t *top) {
 			LOCK(&heap->lock);
 			qpz_heap_remove_element(heap, node, header);
 			UNLOCK(&heap->lock);
-			dns_vecheader_destroy(&header);
+			dns_vecheader_unref(header);
 		} else {
 			parent_serial = header->serial;
 			ISC_SLIST_PTR_ADVANCE(p, next_header);
@@ -1063,7 +1067,7 @@ clean_multiple_versions(qpz_heap_t *heap, qpznode_t *node, dns_vectop_t *top, ui
 			LOCK(&heap->lock);
 			qpz_heap_remove_element(heap, node, header);
 			UNLOCK(&heap->lock);
-			dns_vecheader_destroy(&header);
+			dns_vecheader_unref(header);
 		} else {
 			multiple = true;
 			ISC_SLIST_PTR_ADVANCE(p, next_header);
@@ -1185,8 +1189,6 @@ bindrdataset(qpzonedb_t *qpdb, qpznode_t *node, dns_vecheader_t *header,
 		return;
 	}
 
-	qpznode_acquire(node DNS__DB_FLARG_PASS);
-
 	INSIST(rdataset->methods == NULL); /* We must be disassociated. */
 
 	rdataset->methods = &dns_rdatavec_rdatasetmethods;
@@ -1203,6 +1205,7 @@ bindrdataset(qpzonedb_t *qpdb, qpznode_t *node, dns_vecheader_t *header,
 	rdataset->vec.db = (dns_db_t *)qpdb;
 	rdataset->vec.node = (dns_dbnode_t *)node;
 	rdataset->vec.header = header;
+	dns_vecheader_ref(header);
 	rdataset->vec.iter.iter_pos = NULL;
 	rdataset->vec.iter.iter_count = 0;
 
@@ -2011,10 +2014,8 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 				LOCK(&qpdb->heap->lock);
 				qpz_heap_remove_element(qpdb->heap, node, newheader);
 				UNLOCK(&qpdb->heap->lock);
-				dns_vecheader_destroy(&newheader);
+				dns_vecheader_unref(newheader);
 				newheader = merged;
-				dns_vecheader_reset(newheader,
-						    (dns_dbnode_t *)node);
 				/*
 				 * dns_rdatavec_subtract takes the header from
 				 * the first argument, so it preserves the case
@@ -2036,7 +2037,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 				LOCK(&qpdb->heap->lock);
 				qpz_heap_remove_element(qpdb->heap, node, newheader);
 				UNLOCK(&qpdb->heap->lock);
-				dns_vecheader_destroy(&newheader);
+				dns_vecheader_unref(newheader);
 				return result;
 			}
 		}
@@ -2067,7 +2068,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 			LOCK(&qpdb->heap->lock);
 			qpz_heap_remove_element(qpdb->heap, node, header);
 			UNLOCK(&qpdb->heap->lock);
-			dns_vecheader_destroy(&header);
+			dns_vecheader_unref(header);
 		} else {
 			if (RESIGN(newheader)) {
 				LOCK(&qpdb->heap->lock);
@@ -2098,7 +2099,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 			LOCK(&qpdb->heap->lock);
 			qpz_heap_remove_element(qpdb->heap, node, newheader);
 			UNLOCK(&qpdb->heap->lock);
-			dns_vecheader_destroy(&newheader);
+			dns_vecheader_unref(newheader);
 			return DNS_R_UNCHANGED;
 		}
 
@@ -2138,7 +2139,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 				LOCK(&qpdb->heap->lock);
 				qpz_heap_remove_element(qpdb->heap, node, newheader);
 				UNLOCK(&qpdb->heap->lock);
-				dns_vecheader_destroy(&newheader);
+				dns_vecheader_unref(newheader);
 				return DNS_R_TOOMANYRECORDS;
 			}
 
@@ -2285,7 +2286,6 @@ loading_addrdataset(void *arg, const dns_name_t *name, dns_rdataset_t *rdataset,
 	}
 
 	dns_vecheader_t *newheader = (dns_vecheader_t *)region.base;
-	dns_vecheader_reset(newheader, (dns_dbnode_t *)node);
 	newheader->ttl = rdataset->ttl;
 	newheader->serial = 1;
 	atomic_store(&newheader->trust, rdataset->trust);
@@ -4903,7 +4903,6 @@ qpzone_addrdataset_inner(dns_db_t *db, dns_dbnode_t *dbnode,
 	dns_rdataset_getownercase(rdataset, name);
 
 	dns_vecheader_t *newheader = (dns_vecheader_t *)region.base;
-	dns_vecheader_reset(newheader, (dns_dbnode_t *)node);
 
 	dns_vecheader_setownercase(newheader, name);
 
@@ -5042,7 +5041,6 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 	}
 
 	newheader = (dns_vecheader_t *)region.base;
-	dns_vecheader_reset(newheader, (dns_dbnode_t *)node);
 	newheader->ttl = rdataset->ttl;
 	atomic_init(&newheader->attributes, 0);
 	newheader->serial = version->serial;
@@ -5096,9 +5094,8 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 			LOCK(&qpdb->heap->lock);
 			qpz_heap_remove_element(qpdb->heap, node, newheader);
 			UNLOCK(&qpdb->heap->lock);
-			dns_vecheader_destroy(&newheader);
+			dns_vecheader_unref(newheader);
 			newheader = subresult;
-			dns_vecheader_reset(newheader, (dns_dbnode_t *)node);
 			/*
 			 * dns_rdatavec_subtract takes the header from the first
 			 * argument, so it preserves the case
@@ -5132,9 +5129,8 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 			LOCK(&qpdb->heap->lock);
 			qpz_heap_remove_element(qpdb->heap, node, newheader);
 			UNLOCK(&qpdb->heap->lock);
-			dns_vecheader_destroy(&newheader);
-			newheader = dns_vecheader_new(db->mctx,
-						      (dns_dbnode_t *)node);
+			dns_vecheader_unref(newheader);
+			newheader = dns_vecheader_new(db->mctx);
 			newheader->ttl = 0;
 			newheader->typepair = foundtop->typepair;
 			atomic_init(&newheader->attributes,
@@ -5144,7 +5140,7 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 			LOCK(&qpdb->heap->lock);
 			qpz_heap_remove_element(qpdb->heap, node, newheader);
 			UNLOCK(&qpdb->heap->lock);
-			dns_vecheader_destroy(&newheader);
+			dns_vecheader_unref(newheader);
 			goto unlock;
 		}
 
@@ -5167,7 +5163,7 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 		LOCK(&qpdb->heap->lock);
 		qpz_heap_remove_element(qpdb->heap, node, newheader);
 		UNLOCK(&qpdb->heap->lock);
-		dns_vecheader_destroy(&newheader);
+		dns_vecheader_unref(newheader);
 		if ((options & DNS_DBSUB_EXACT) != 0) {
 			result = DNS_R_NOTEXACT;
 		} else {
@@ -5216,7 +5212,7 @@ qpzone_deleterdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 		return ISC_R_NOTIMPLEMENTED;
 	}
 
-	newheader = dns_vecheader_new(db->mctx, (dns_dbnode_t *)node);
+	newheader = dns_vecheader_new(db->mctx);
 	newheader->typepair = DNS_TYPEPAIR_VALUE(type, covers);
 	newheader->ttl = 0;
 	atomic_init(&newheader->attributes, DNS_VECHEADERATTR_NONEXISTENT);
@@ -5755,7 +5751,7 @@ static void
 destroy_qpznode(qpznode_t *node) {
 	ISC_SLIST_FOREACH(top, node->next_type, next_type) {
 		ISC_SLIST_FOREACH(header, top->headers, next_header) {
-			dns_vecheader_destroy(&header);
+			dns_vecheader_unref(header);
 		}
 
 		dns_vectop_destroy(node->mctx, &top);

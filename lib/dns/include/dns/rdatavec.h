@@ -81,12 +81,20 @@ struct dns_vecheader {
 	_Atomic(uint16_t)    attributes;
 	_Atomic(dns_trust_t) trust;
 
+	dns_typepair_t typepair;
+
+	isc_refcount_t references;
+
+	/*%
+	 * Memory context for this header.
+	 */
+	isc_mem_t *mctx;
+
 	/*%
 	 * Locked by the owning node's lock.
 	 */
 	uint32_t       serial;
 	dns_ttl_t      ttl;
-	dns_typepair_t typepair;
 
 	/*
 	 * resigning (zone).
@@ -97,11 +105,6 @@ struct dns_vecheader {
 	 * Link to the other versions of this rdataset.
 	 */
 	ISC_SLINK(dns_vecheader_t) next_header;
-
-	/*%
-	 * The database node objects containing this rdataset, if any.
-	 */
-	dns_dbnode_t *node;
 
 	/*%
 	 * Cached glue records for an rdataset of type NS (zone only).
@@ -235,18 +238,11 @@ dns_vecheader_setownercase(dns_vecheader_t *header, const dns_name_t *name);
  * \li	'name' is a valid name.
  */
 
-void
-dns_vecheader_reset(dns_vecheader_t *h, dns_dbnode_t *node);
-/*%<
- * Reset an rdatavec header 'h' so it can be used to store data in
- * database node 'node'.
- */
 
 dns_vecheader_t *
-dns_vecheader_new(isc_mem_t *mctx, dns_dbnode_t *node);
+dns_vecheader_new(isc_mem_t *mctx);
 /*%<
- * Allocate memory for an rdatavec header and initialize it for use
- * in database node 'node'.
+ * Allocate memory for an rdatavec header and initialize it.
  */
 
 void
@@ -267,3 +263,8 @@ dns_vectop_destroy(isc_mem_t *mctx, dns_vectop_t **topp);
 /*%<
  * Free all memory associated with '*vectopp'.
  */
+
+/*
+ * Reference counting for dns_vecheader_t
+ */
+ISC_REFCOUNT_DECL(dns_vecheader);
