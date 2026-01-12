@@ -21,6 +21,7 @@
 #include <isc/list.h>
 #include <isc/magic.h>
 #include <isc/mem.h>
+#include <isc/stdtime.h>
 #include <isc/tw.h>
 #include <isc/util.h>
 
@@ -104,6 +105,7 @@ isc_tw_create(isc_mem_t *mctx, isc_tw_t **twp) {
 	*tw = (isc_tw_t){
 		.magic = ISC_TW_MAGIC,
 		.mctx = isc_mem_ref(mctx),
+		.now = isc_stdtime_now(),
 	};
 
 	/*
@@ -299,6 +301,51 @@ isc_tw_settime(isc_tw_t *tw, isc_stdtime_t now) {
 	tw->now = now;
 
 	uint64_t ticks_elapsed = now - old_time;
+
+	/* Optimization for large time jumps or empty wheel */
+	if (tw->size == 0 || ticks_elapsed > ISC_TW_SLOTS * 2) {
+		uint64_t t = now;
+		for (size_t i = 0; i < ISC_TW_LEVELS; i++) {
+			tw->levels[i].current = t % ISC_TW_SLOTS;
+			t /= ISC_TW_SLOTS;
+			tw->levels[i].has_earliest = false;
+		}
+
+		if (tw->size > 0) {
+			ISC_LIST(isc_tw_elt_t) elements;
+			ISC_LIST_INIT(elements);
+			isc_tw_elt_t *elt;
+
+			for (size_t i = 0; i < ISC_TW_LEVELS; i++) {
+				isc_tw_level_t *lvl = &tw->levels[i];
+				for (size_t j = 0; j < ISC_TW_SLOTS; j++) {
+					isc_tw_slot_t *slot = &lvl->slots[j];
+					while ((elt = ISC_LIST_HEAD(
+							slot->nodes)) != NULL)
+					{
+						ISC_LIST_UNLINK(slot->nodes,
+								elt, link);
+						slot->count--;
+						tw->size--;
+						ISC_LIST_APPEND(elements, elt,
+								link);
+					}
+				}
+			}
+
+			while ((elt = ISC_LIST_HEAD(elements)) != NULL) {
+				ISC_LIST_UNLINK(elements, elt, link);
+				elt->level = (unsigned int)-1;
+				elt->slot = (unsigned int)-1;
+				insert_internal(tw, elt);
+			}
+		}
+
+		for (size_t i = 0; i < ISC_TW_LEVELS; i++) {
+			recalc_earliest(&tw->levels[i]);
+		}
+		return;
+	}
 
 	for (uint64_t tick = 0; tick < ticks_elapsed; tick++) {
 		/* Advance level 0 */
