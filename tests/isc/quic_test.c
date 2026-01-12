@@ -15,6 +15,7 @@
 #include <ngtcp2/ngtcp2.h>
 #include <sched.h> /* IWYU pragma: keep */
 #include <setjmp.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -36,7 +37,7 @@
 
 #include <tests/isc.h>
 
-#define INITIAL_TIMEOUT (isc_ngtcp2_make_duration(15, 0))
+#define INITIAL_TIMEOUT (isc_ngtcp2_make_duration(0, 100))
 
 #define NONDETERMINISTIC_FAILURE(entrypoint) \
 	(monkey_wrench.entrypoint && (isc_random32() & 0x01))
@@ -68,7 +69,12 @@ struct shim_manager {
 	shim_type_t type;
 	struct {
 		bool active;
-	} expiry;
+		uint64_t at;
+	} timeout;
+	struct {
+		bool active;
+		uint64_t at;
+	} shutdown;
 	struct {
 		isc_quic_cid_map_t *src;
 		isc_quic_cid_map_t *dst;
@@ -119,6 +125,62 @@ ISC_ATTR_UNUSED static const uint32_t quic_version_v2_only[] = {
 static failure_injection_points_t monkey_wrench;
 static uint64_t shim_clock;
 
+ISC_FORMAT_PRINTF(2, 3)
+static void
+event(shim_manager_t *manager, const char *fmt, ...) {
+	const char *type = "\033[91mGLOBAL\033[32m";
+	char buffer[512];
+	va_list args;
+
+	if (manager != NULL) {
+		switch (manager->type) {
+		case SHIM_TYPE_SERVER:
+			type = "\033[94mSERVER\033[32m";
+			break;
+		case SHIM_TYPE_CLIENT:
+			type = "\033[95mCLIENT\033[32m";
+			break;
+		case SHIM_TYPE_INVALID:
+			UNREACHABLE();
+		}
+	}
+
+	va_start(args, fmt);
+	vsnprintf(buffer, sizeof(buffer), fmt, args);
+	va_end(args);
+
+	fprintf(stderr, "\033[32m[ EVENT : %s ]\033[0m %s\n", type, buffer);
+}
+
+ISC_FORMAT_PRINTF(2, 3)
+static void
+event_monkey(shim_manager_t *manager, const char *fmt, ...) {
+	const char *type = "\033[91mGLOBAL\033[32m";
+	char buffer[512];
+	va_list args;
+
+	if (manager != NULL) {
+		switch (manager->type) {
+		case SHIM_TYPE_SERVER:
+			type = "\033[94mSERVER\033[32m";
+			break;
+		case SHIM_TYPE_CLIENT:
+			type = "\033[95mCLIENT\033[32m";
+			break;
+		case SHIM_TYPE_INVALID:
+			UNREACHABLE();
+		}
+	}
+
+	va_start(args, fmt);
+	vsnprintf(buffer, sizeof(buffer), fmt, args);
+	va_end(args);
+
+	fprintf(stderr,
+		"\033[32m[ EVENT : %s ] \033[93m<< MONKEY >>\033[0m %s\n", type,
+		buffer);
+}
+
 static void
 shim_manager_destroy(shim_manager_t **managerp) {
 	shim_manager_t *manager;
@@ -139,11 +201,10 @@ shim_manager_destroy(shim_manager_t **managerp) {
 
 static uint64_t
 shim_get_current_ts_cb(ISC_ATTR_UNUSED void *restrict cbarg) {
-	// fprintf(stderr, "[EVENT] ts\n");
 	shim_clock += isc_ngtcp2_make_duration(0, 4 + isc_random_uniform(4));
 	if (NONDETERMINISTIC_FAILURE(timestamp)) {
-		fprintf(stderr, "[MONKEY] timestamp\n");
-		shim_clock += isc_ngtcp2_make_duration(1, 0);
+		// event_monkey(NULL, "clock advance 150ms");
+		shim_clock += isc_ngtcp2_make_duration(0, 150);
 	}
 
 	return shim_clock;
@@ -152,19 +213,21 @@ shim_get_current_ts_cb(ISC_ATTR_UNUSED void *restrict cbarg) {
 static void
 shim_expiry_timer_start_cb(isc_quic_session_t *restrict session,
 			   const uint32_t timeout_ms, void *cbarg) {
-	fprintf(stderr, "[EVENT] timer start\n");
 	shim_manager_t *manager = cbarg;
-	manager->expiry.active = true;
+
 	UNUSED(session);
-	UNUSED(timeout_ms);
+
+	manager->timeout.active = true;
+	manager->timeout.at = shim_clock +
+			      isc_ngtcp2_make_duration(0, timeout_ms);
 }
 
 static void
 shim_expiry_timer_stop_cb(ISC_ATTR_UNUSED isc_quic_session_t *restrict session,
 			  void *cbarg) {
-	fprintf(stderr, "[EVENT] timer stop\n");
 	shim_manager_t *manager = cbarg;
-	manager->expiry.active = false;
+
+	manager->timeout.active = false;
 }
 
 static bool
@@ -174,7 +237,7 @@ shim_gen_unique_cid_cb(isc_quic_session_t *restrict session,
 	shim_manager_t *manager = cbarg;
 	isc_tid_t tid = isc_tid();
 
-	fprintf(stderr, "[EVENT] generating unique cid\n");
+	event(manager, "generating unique cid");
 
 	if (source) {
 		isc_quic_cid_map_gen_unique(manager->cids.src, session, tid,
@@ -196,7 +259,7 @@ shim_assoc_conn_cid_cb(isc_quic_session_t *restrict session,
 	isc_quic_cid_t *new = NULL;
 	isc_tid_t tid = isc_tid();
 
-	fprintf(stderr, "[EVENT] assoc conn cid\n");
+	event(manager, "assoc conn cid");
 
 	isc_quic_cid_create(isc_g_mctx, cid_data, &new);
 
@@ -215,7 +278,7 @@ shim_deassoc_conn_cid_cb(ISC_ATTR_UNUSED isc_quic_session_t *restrict session,
 	isc_quic_cid_map_t *map = NULL;
 	isc_quic_cid_t *cid;
 
-	fprintf(stderr, "[EVENT] deassoc conn cid\n");
+	event(manager, "deassoc conn cid");
 
 	cid = *pcid;
 	map = source ? manager->cids.src : manager->cids.dst;
@@ -228,7 +291,8 @@ shim_on_handshake_cb(isc_quic_session_t *restrict session, void *cbarg) {
 	shim_manager_t *manager = cbarg;
 
 	UNUSED(session);
-	fprintf(stderr, "[EVENT] handshake\n");
+
+	event(manager, "handshake");
 
 	manager->handshake.completed = true;
 
@@ -240,17 +304,21 @@ shim_on_new_regular_token_cb(
 	ISC_ATTR_UNUSED isc_quic_session_t *restrict session,
 	ISC_ATTR_UNUSED isc_region_t *restrict token_data,
 	ISC_ATTR_UNUSED isc_sockaddr_t *restrict local,
-	ISC_ATTR_UNUSED const isc_sockaddr_t *restrict peer,
-	ISC_ATTR_UNUSED void *cbarg) {
-	fprintf(stderr, "[EVENT] new regular token\n");
+	ISC_ATTR_UNUSED const isc_sockaddr_t *restrict peer, void *cbarg) {
+	shim_manager_t *manager = cbarg;
+
+	event(manager, "regular token");
+
 	return true;
 }
 
 static bool
 shim_on_remote_stream_open_cb(
 	ISC_ATTR_UNUSED isc_quic_session_t *restrict session,
-	ISC_ATTR_UNUSED const int64_t stream_id, ISC_ATTR_UNUSED void *cbarg) {
-	fprintf(stderr, "[EVENT] stream opened\n");
+	ISC_ATTR_UNUSED const int64_t stream_id, void *cbarg) {
+	shim_manager_t *manager = cbarg;
+
+	event(manager, "stream opened");
 	return true;
 }
 
@@ -261,7 +329,6 @@ shim_on_stream_close_cb(ISC_ATTR_UNUSED isc_quic_session_t *restrict session,
 			ISC_ATTR_UNUSED const uint64_t app_error_code,
 			ISC_ATTR_UNUSED void *cbarg,
 			ISC_ATTR_UNUSED void *stream_user_data) {
-	fprintf(stderr, "[EVENT] stream closed \n");
 	return true;
 }
 
@@ -277,23 +344,27 @@ shim_on_recv_stream_data_cb(isc_quic_session_t *session,
 	UNUSED(data);
 	UNUSED(cbarg);
 	UNUSED(stream_user_data);
-	fprintf(stderr, "[EVENT] stream data\n");
 
 	return true;
 }
 
 static void
-shim_on_conn_close_cb(isc_quic_session_t *session,
-		      const uint32_t closing_timeout_ms, const bool ver_neg,
-		      void *cbarg) {
-	UNUSED(closing_timeout_ms);
-	UNUSED(ver_neg);
-	UNUSED(session);
+shim_on_conn_close_cb(ISC_ATTR_UNUSED isc_quic_session_t *session,
+		      const uint32_t closing_timeout_ms,
+		      ISC_ATTR_UNUSED const bool ver_neg, void *cbarg) {
+	shim_manager_t *manager = cbarg;
 
-	fprintf(stderr, "[EVENT] conn close\n");
+	if (closing_timeout_ms == 0) {
+		event(manager, "conn instant close");
+		manager->closed = true;
+		return;
+	}
 
-	shim_manager_t *mgr = cbarg;
-	mgr->closed = true;
+	event(manager, "conn close in %" PRIu32 "ms", closing_timeout_ms);
+
+	manager->shutdown.active = true;
+	manager->shutdown.at = shim_clock +
+			       isc_ngtcp2_make_duration(0, closing_timeout_ms);
 }
 
 static isc_quic_session_interface_t session_interface = {
@@ -391,19 +462,53 @@ setup_epilog(state_t *state) {
 		&secret, false, NULL, &state->client->session);
 }
 
-static int
-global_teardown(ISC_ATTR_UNUSED void **state) {
-	isc_tls_quic_crypto_shutdown();
-	return 0;
+static void
+timer_events(shim_manager_t *manager) {
+	uint8_t buffer[NGTCP2_MAX_UDP_PAYLOAD_SIZE];
+	isc_quic_out_pkt_t out;
+	isc_result_t result;
+
+	if (manager->shutdown.active && shim_clock >= manager->shutdown.at) {
+		event(manager, "shutdown timeout");
+		manager->closed = true;
+	}
+
+	if (manager->closed) {
+		return;
+	}
+
+	if (manager->timeout.active && shim_clock >= manager->timeout.at) {
+		isc_quic_out_pkt_init(&out, buffer, sizeof(buffer));
+		result = isc_quic_session_on_expiry_timer(manager->session,
+							  &out);
+
+		if (out.pktsz > 0) {
+			isc_buffer_putuint16(manager->io.out, out.pktsz);
+			isc_buffer_putmem(manager->io.out, buffer, out.pktsz);
+			isc_quic_session_update_expiry_timer(manager->session);
+		}
+
+		switch (result) {
+		case ISC_R_CANCELED:
+			manager->closed = true;
+			FALLTHROUGH;
+		case ISC_R_SHUTTINGDOWN:
+		case ISC_R_SUCCESS:
+			break;
+		default:
+			UNREACHABLE();
+		}
+	}
 }
 
 static void
-transfer_packets(shim_manager_t *client, shim_manager_t *server) {
+transfer_packets(shim_manager_t *client, shim_manager_t *server,
+		 bool no_monkey) {
 	isc_result_t result;
 	isc_region_t packet;
 	uint16_t len;
 
-	for (;;) {
+	while (!client->closed) {
 		result = isc_buffer_peekuint16(client->io.out, &len);
 		if (result != ISC_R_SUCCESS) {
 			break;
@@ -416,17 +521,17 @@ transfer_packets(shim_manager_t *client, shim_manager_t *server) {
 			.length = sizeof(len) + len,
 		};
 
-		if (!NONDETERMINISTIC_FAILURE(client_to_server)) {
-			isc_buffer_copyregion(server->io.in, &packet);
+		if (!no_monkey && NONDETERMINISTIC_FAILURE(client_to_server)) {
+			event_monkey(client, "client -> server");
 		} else {
-			fprintf(stderr, "[MONKEY] client to server fail\n");
+			isc_buffer_copyregion(server->io.in, &packet);
 		}
 
 		isc_buffer_forward(client->io.out, sizeof(len) + len);
 	}
 	isc_buffer_clear(client->io.out);
 
-	for (;;) {
+	while (!server->closed) {
 		result = isc_buffer_peekuint16(server->io.out, &len);
 		if (result != ISC_R_SUCCESS) {
 			break;
@@ -478,6 +583,10 @@ read_packet(shim_manager_t *manager, isc_region_t *packet) {
 	isc_tid_t found_tid;
 	uint32_t version;
 	size_t dcid_len;
+
+	if (manager->closed) {
+		return;
+	}
 
 	dcid_len = isc_ngtcp2_get_short_pkt_dcidlen(manager->type ==
 						    SHIM_TYPE_CLIENT);
@@ -558,6 +667,10 @@ read_packets(shim_manager_t *manager) {
 	isc_region_t packet;
 	uint16_t len;
 
+	if (manager->closed) {
+		return;
+	}
+
 	for (;;) {
 		result = isc_buffer_peekuint16(manager->io.in, &len);
 		if (result != ISC_R_SUCCESS) {
@@ -594,6 +707,36 @@ start_handshake(shim_manager_t *client) {
 	client->handshake.started = true;
 }
 
+static void
+do_handshake(shim_manager_t *client, shim_manager_t *server) {
+	start_handshake(client);
+	transfer_packets(client, server, true);
+
+	while (!(client->handshake.completed && server->handshake.completed)) {
+		if (client->closed || server->closed) {
+			event(NULL,
+			      "closed during handshake (client=%d, server=%d)",
+			      client->closed, server->closed);
+			break;
+		}
+
+		transfer_packets(client, server, false);
+
+		timer_events(client);
+		timer_events(server);
+
+		read_packets(client);
+		read_packets(server);
+
+		write_packet(client);
+		write_packet(server);
+	}
+
+	assert_true(client->handshake.started);
+	assert_true(server->closed || client->closed ||
+		    server->handshake.completed);
+}
+
 static int
 teardown(void **statep) {
 	state_t *state = *statep;
@@ -619,34 +762,14 @@ setup_session_default(void **statep) {
 }
 
 static int
-setup_session_timestamp(void **statep) {
-	state_t *state = isc_mem_get(isc_g_mctx, sizeof(*state));
-
-	setup_prelude(state);
-	monkey_wrench.timestamp = true;
-	setup_epilog(state);
-
-	*statep = state;
-
-	return 0;
-}
-
-static int
-setup_session_client_drop(void **statep) {
-	state_t *state = isc_mem_get(isc_g_mctx, sizeof(*state));
-
-	setup_prelude(state);
-	monkey_wrench.client_to_server = true;
-	setup_epilog(state);
-
-	*statep = state;
-
-	return 0;
-}
-
-static int
 global_setup(ISC_ATTR_UNUSED void **state) {
 	isc_tls_quic_crypto_initialize();
+	return 0;
+}
+
+static int
+global_teardown(ISC_ATTR_UNUSED void **state) {
+	isc_tls_quic_crypto_shutdown();
 	return 0;
 }
 
@@ -655,19 +778,7 @@ ISC_RUN_TEST_IMPL(session_handshake) {
 	shim_manager_t *server = s->server;
 	shim_manager_t *client = s->client;
 
-	start_handshake(client);
-	while (!(client->handshake.completed && server->handshake.completed)) {
-		transfer_packets(client, server);
-
-		read_packets(client);
-		read_packets(server);
-
-		write_packet(client);
-		write_packet(server);
-	}
-
-	assert_true(client->handshake.started);
-	assert_true(server->handshake.completed);
+	do_handshake(client, server);
 }
 
 ISC_RUN_TEST_IMPL(session_timestamp) {
@@ -675,16 +786,13 @@ ISC_RUN_TEST_IMPL(session_timestamp) {
 	shim_manager_t *server = s->server;
 	shim_manager_t *client = s->client;
 
-	start_handshake(client);
-	while (!(client->handshake.completed && server->handshake.completed)) {
-		transfer_packets(client, server);
+	monkey_wrench.timestamp = true;
 
-		read_packets(client);
-		read_packets(server);
+	do_handshake(client, server);
 
-		write_packet(client);
-		write_packet(server);
-	}
+	assert_true(client->handshake.started);
+	assert_true(client->closed || server->handshake.completed);
+	assert_true(client->handshake.completed == server->handshake.completed);
 }
 
 ISC_RUN_TEST_IMPL(session_client_drop) {
@@ -692,22 +800,19 @@ ISC_RUN_TEST_IMPL(session_client_drop) {
 	shim_manager_t *server = s->server;
 	shim_manager_t *client = s->client;
 
-	start_handshake(client);
-	while (!(client->handshake.completed && server->handshake.completed)) {
-		transfer_packets(client, server);
+	monkey_wrench.client_to_server = true;
 
-		read_packets(client);
-		read_packets(server);
+	do_handshake(client, server);
 
-		write_packet(client);
-		write_packet(server);
-	}
+	assert_true(client->handshake.started);
+	assert_true(server->closed || client->closed ||
+		    server->handshake.completed);
 }
 
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY_CUSTOM(session_handshake, setup_session_default, teardown)
-ISC_TEST_ENTRY_CUSTOM(session_timestamp, setup_session_timestamp, teardown)
-ISC_TEST_ENTRY_CUSTOM(session_client_drop, setup_session_client_drop, teardown)
+ISC_TEST_ENTRY_CUSTOM(session_timestamp, setup_session_default, teardown)
+ISC_TEST_ENTRY_CUSTOM(session_client_drop, setup_session_default, teardown)
 ISC_TEST_LIST_END
 
 ISC_TEST_MAIN_CUSTOM(global_setup, global_teardown);
