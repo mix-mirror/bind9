@@ -77,12 +77,13 @@ struct dns_slabtop {
 	struct cds_list_head types_link;
 	struct cds_list_head headers;
 
-	dns_typepair_t typepair;
-
 	dns_slabtop_t *related;
 
 	/*% Used for SIEVE-LRU (cache) and changed_list (zone) */
 	ISC_LINK(struct dns_slabtop) link;
+
+	dns_typepair_t typepair;
+
 	/*% Used for SIEVE-LRU */
 	bool visited;
 };
