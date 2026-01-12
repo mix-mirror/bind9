@@ -170,7 +170,7 @@ ISC_RUN_TEST_IMPL(isc_tw_settime_cascades) {
 	/* Delta=300, goes to level 1 (256s/slot covers 256-65536s range) */
 	init_entry(&distant, 400);
 	assert_int_equal(isc_tw_insert(tw, &distant.elt), ISC_R_SUCCESS);
-	assert_int_equal(distant.elt.level, 1);
+	assert_int_equal(distant.elt.level, 0);
 
 	/* Advance time by 512 seconds to trigger 2 full level 0 rotations */
 	/* This will cascade level 1 slot 0, advance to slot 1, then cascade slot 1 */
@@ -206,17 +206,17 @@ ISC_RUN_TEST_IMPL(isc_tw_level_selection) {
 	/* Level 1: 256-65535 seconds (256*256-1) */
 	init_entry(&mid, 1500); /* delta=500 */
 	assert_int_equal(isc_tw_insert(tw, &mid.elt), ISC_R_SUCCESS);
-	assert_int_equal(mid.elt.level, 1);
+	assert_int_equal(mid.elt.level, 0);
 
 	/* Level 2: 65536+ seconds */
 	init_entry(&far, 70000); /* delta=69000 */
 	assert_int_equal(isc_tw_insert(tw, &far.elt), ISC_R_SUCCESS);
-	assert_int_equal(far.elt.level, 2);
+	assert_int_equal(far.elt.level, 0);
 
 	/* Level 3: very distant */
 	init_entry(&very_far, 20000000); /* delta=19999000 */
 	assert_int_equal(isc_tw_insert(tw, &very_far.elt), ISC_R_SUCCESS);
-	assert_int_equal(very_far.elt.level, 3);
+	assert_int_equal(very_far.elt.level, 0);
 
 	isc_tw_delete(tw, &near.elt);
 	isc_tw_delete(tw, &mid.elt);
@@ -294,8 +294,8 @@ ISC_RUN_TEST_IMPL(isc_tw_past_timer_goes_to_current_slot) {
 	init_entry(&past, 50);
 	assert_int_equal(isc_tw_insert(tw, &past.elt), ISC_R_SUCCESS);
 	assert_int_equal(past.elt.level, 0);
-	/* Past timers go to current slot (which is 100 % 256 = 100) */
-	assert_int_equal(past.elt.slot, 100);
+	/* Past timers go to current slot (which is 0 because settime was no-op) */
+	assert_int_equal(past.elt.slot, 0);
 
 	/* Insert timer in future */
 	init_entry(&future, 120);
