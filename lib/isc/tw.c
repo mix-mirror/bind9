@@ -18,12 +18,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <isc/list.h>
 #include <isc/magic.h>
 #include <isc/mem.h>
 #include <isc/tw.h>
 #include <isc/util.h>
-
-#include "isc/list.h"
 
 static inline void
 slot_add(isc_tw_slot_t *slot, isc_tw_elt_t *elt) {
@@ -78,6 +77,23 @@ insert_internal(isc_tw_t *tw, isc_tw_elt_t *elt) {
 	/* Add to the list */
 	slot_add(&lvl->slots[target_slot], elt);
 	tw->size++;
+
+	/* Update earliest_slot if this is earlier */
+	if (!lvl->has_earliest) {
+		lvl->earliest_slot = target_slot;
+		lvl->has_earliest = true;
+	} else {
+		/* Calculate distance from current considering wrap-around */
+		unsigned int dist_earliest =
+			(lvl->earliest_slot + ISC_TW_SLOTS - lvl->current) %
+			ISC_TW_SLOTS;
+		unsigned int dist_target =
+			(target_slot + ISC_TW_SLOTS - lvl->current) %
+			ISC_TW_SLOTS;
+		if (dist_target < dist_earliest) {
+			lvl->earliest_slot = target_slot;
+		}
+	}
 }
 
 isc_result_t
@@ -108,6 +124,8 @@ isc_tw_create(isc_mem_t *mctx, isc_tw_t **twp) {
 		}
 
 		lvl->current = 0;
+		lvl->earliest_slot = 0;
+		lvl->has_earliest = false;
 
 		for (size_t j = 0; j < ISC_TW_SLOTS; j++) {
 			ISC_LIST_INIT(lvl->slots[j].nodes);
@@ -137,8 +155,9 @@ isc_tw_destroy(isc_tw_t **twp) {
 		isc_tw_level_t *lvl = &tw->levels[i];
 		for (size_t j = 0; j < ISC_TW_SLOTS; j++) {
 			isc_tw_slot_t *slot = &lvl->slots[j];
+			isc_tw_elt_t *elt = NULL;
 
-			ISC_LIST_FOREACH(slot->nodes, elt, link) {
+			while ((elt = ISC_LIST_HEAD(slot->nodes)) != NULL) {
 				isc_tw_delete(tw, elt);
 			}
 		}
@@ -181,9 +200,27 @@ isc_tw_delete(isc_tw_t *tw, isc_tw_elt_t *elt) {
 	REQUIRE(elt->slot < ISC_TW_SLOTS);
 
 	isc_tw_level_t *lvl = &tw->levels[elt->level];
+	unsigned int deleted_slot = elt->slot;
 	slot_del(&lvl->slots[elt->slot], elt);
 	INSIST(tw->size > 0);
 	tw->size--;
+
+	/* Update earliest_slot if we just emptied the earliest slot */
+	if (lvl->has_earliest && deleted_slot == lvl->earliest_slot &&
+	    ISC_LIST_EMPTY(lvl->slots[deleted_slot].nodes))
+	{
+		/* Find next non-empty slot */
+		lvl->has_earliest = false;
+		for (size_t i = 0; i < ISC_TW_SLOTS; i++) {
+			unsigned int check_slot =
+				(deleted_slot + (unsigned int)i) % ISC_TW_SLOTS;
+			if (!ISC_LIST_EMPTY(lvl->slots[check_slot].nodes)) {
+				lvl->earliest_slot = check_slot;
+				lvl->has_earliest = true;
+				break;
+			}
+		}
+	}
 
 	elt->level = (unsigned int)-1;
 	elt->slot = (unsigned int)-1;
@@ -197,9 +234,14 @@ cascade_slot(isc_tw_t *tw, unsigned int level, unsigned int slot_idx) {
 
 	isc_tw_level_t *lvl = &tw->levels[level];
 	isc_tw_slot_t *slot = &lvl->slots[slot_idx];
+	isc_tw_elt_t *elt = NULL;
 
-	ISC_LIST_FOREACH(slot->nodes, elt, link) {
+	while ((elt = ISC_LIST_HEAD(slot->nodes)) != NULL) {
 		if (isc_tw_is_node_deleted(elt)) {
+			/* Remove deleted nodes we encounter */
+			slot_del(slot, elt);
+			INSIST(tw->size > 0);
+			tw->size--;
 			continue;
 		}
 
@@ -210,6 +252,37 @@ cascade_slot(isc_tw_t *tw, unsigned int level, unsigned int slot_idx) {
 		elt->level = (unsigned int)-1;
 		elt->slot = (unsigned int)-1;
 		insert_internal(tw, elt);
+	}
+
+	/* After cascading, slot is empty - update earliest tracking */
+	if (lvl->has_earliest && slot->count == 0 &&
+	    lvl->earliest_slot == slot_idx)
+	{
+		/* Find next non-empty slot */
+		lvl->has_earliest = false;
+		for (size_t i = 1; i < ISC_TW_SLOTS; i++) {
+			unsigned int check_slot = (slot_idx + (unsigned int)i) %
+						  ISC_TW_SLOTS;
+			if (!ISC_LIST_EMPTY(lvl->slots[check_slot].nodes)) {
+				lvl->earliest_slot = check_slot;
+				lvl->has_earliest = true;
+				break;
+			}
+		}
+	}
+}
+
+static inline void
+recalc_earliest(isc_tw_level_t *lvl) {
+	lvl->has_earliest = false;
+	for (size_t i = 0; i < ISC_TW_SLOTS; i++) {
+		unsigned int check_slot = (lvl->current + (unsigned int)i) %
+					 ISC_TW_SLOTS;
+		if (!ISC_LIST_EMPTY(lvl->slots[check_slot].nodes)) {
+			lvl->earliest_slot = check_slot;
+			lvl->has_earliest = true;
+			break;
+		}
 	}
 }
 
@@ -227,27 +300,33 @@ isc_tw_settime(isc_tw_t *tw, isc_stdtime_t now) {
 
 	uint64_t ticks_elapsed = now - old_time;
 
-	/* Limit iterations on huge time jumps */
-	uint64_t max_ticks = ticks_elapsed;
-	if (max_ticks > ISC_TW_SLOTS * 2) {
-		max_ticks = ISC_TW_SLOTS * 2;
-	}
-
-	for (uint64_t tick = 0; tick < max_ticks; tick++) {
+	for (uint64_t tick = 0; tick < ticks_elapsed; tick++) {
 		/* Advance level 0 */
 		isc_tw_level_t *lvl0 = &tw->levels[0];
-		unsigned int new_current = (lvl0->current + 1) % ISC_TW_SLOTS;
-		lvl0->current = new_current;
+		lvl0->current = (lvl0->current + 1) % ISC_TW_SLOTS;
+		recalc_earliest(lvl0);
 
-		/* Check cascading for higher levels */
-		for (size_t level = 1; level < ISC_TW_LEVELS; level++) {
-			isc_tw_level_t *lvl = &tw->levels[level];
-			isc_tw_level_t *prev_lvl = &tw->levels[level - 1];
+		/* Cascade higher levels when lower level completes full
+		 * rotation */
+		if (lvl0->current == 0) {
+			for (size_t level = 1; level < ISC_TW_LEVELS; level++) {
+				isc_tw_level_t *lvl = &tw->levels[level];
+				isc_tw_level_t *prev_lvl =
+					&tw->levels[level - 1];
 
-			if (prev_lvl->current == 0) {
-				unsigned int current = lvl->current;
-				cascade_slot(tw, (unsigned int)level, current);
-				lvl->current = (current + 1) % ISC_TW_SLOTS;
+				/* Only cascade if previous level just completed
+				 * rotation */
+				if (prev_lvl->current == 0) {
+					/* Cascade current slot before advancing
+					 */
+					cascade_slot(tw, (unsigned int)level,
+						     lvl->current);
+					lvl->current = (lvl->current + 1) %
+						       ISC_TW_SLOTS;
+					recalc_earliest(lvl);
+				} else {
+					break; /* No more cascading needed */
+				}
 			}
 		}
 	}
@@ -265,13 +344,29 @@ isc_tw_element(isc_tw_t *tw) {
 		isc_tw_level_t *lvl = &tw->levels[level];
 		unsigned int current = lvl->current;
 
-		/* Check current slot first */
-		if (!ISC_LIST_EMPTY(lvl->slots[current].nodes)) {
-			isc_tw_elt_t *min = NULL;
-			isc_tw_elt_t *elt;
+		/* Use earliest_slot as starting point if available */
+		unsigned int start_offset = 0;
 
-			for (elt = ISC_LIST_HEAD(lvl->slots[current].nodes);
-			     elt != NULL; elt = ISC_LIST_NEXT(elt, link))
+		if (lvl->has_earliest) {
+			/* Start from earliest non-empty slot */
+			start_offset =
+				(lvl->earliest_slot + ISC_TW_SLOTS - current) %
+				ISC_TW_SLOTS;
+		}
+
+		for (size_t offset = start_offset; offset < ISC_TW_SLOTS;
+		     offset++)
+		{
+			unsigned int slot_idx =
+				(current + (unsigned int)offset) % ISC_TW_SLOTS;
+
+			if (ISC_LIST_EMPTY(lvl->slots[slot_idx].nodes)) {
+				continue;
+			}
+
+			isc_tw_elt_t *min = NULL;
+
+			ISC_LIST_FOREACH(lvl->slots[slot_idx].nodes, elt, link)
 			{
 				if (isc_tw_is_node_deleted(elt)) {
 					continue;
@@ -284,45 +379,6 @@ isc_tw_element(isc_tw_t *tw) {
 
 			if (min != NULL) {
 				return min;
-			}
-		}
-
-		/* For higher levels we only inspect the current slot; lower
-		 * levels can walk forward slots to find the next earliest
-		 * element. Cascading of higher levels is driven by time
-		 * advancement in isc_tw_settime().
-		 */
-		if (level == 0) {
-			for (size_t offset = 1; offset < ISC_TW_SLOTS; offset++)
-			{
-				unsigned int slot_idx =
-					(current + (unsigned int)offset) %
-					ISC_TW_SLOTS;
-
-				if (ISC_LIST_EMPTY(lvl->slots[slot_idx].nodes))
-				{
-					continue;
-				}
-
-				isc_tw_elt_t *min = NULL;
-
-				ISC_LIST_FOREACH(lvl->slots[slot_idx].nodes,
-						 elt, link)
-				{
-					if (isc_tw_is_node_deleted(elt)) {
-						continue;
-					}
-
-					if (min == NULL ||
-					    elt->expire < min->expire)
-					{
-						min = elt;
-					}
-				}
-
-				if (min != NULL) {
-					return min;
-				}
 			}
 		}
 	}

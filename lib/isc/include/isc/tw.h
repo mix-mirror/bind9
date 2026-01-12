@@ -57,8 +57,10 @@ typedef struct isc_tw_slot {
  */
 typedef struct isc_tw_level {
 	isc_tw_slot_t slots[ISC_TW_SLOTS];
-	uint64_t      tick_size; /* Duration per slot in seconds */
-	uint_fast32_t current;
+	uint64_t      tick_size;      /* Duration per slot in seconds */
+	uint_fast32_t current;        /* Current slot position */
+	uint_fast32_t earliest_slot;  /* Earliest non-empty slot for O(1) access */
+	bool          has_earliest;   /* Whether earliest_slot is valid */
 } isc_tw_level_t;
 
 /*

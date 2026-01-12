@@ -516,7 +516,9 @@ qpcache_miss(qpcache_t *qpdb, dns_slabheader_t *newheader,
 	     isc_rwlocktype_t *tlocktypep DNS__DB_FLARG) {
 	uint32_t idx = HEADERNODE(newheader)->locknum;
 
-	isc_tw_insert(qpdb->buckets[idx].tw, &newheader->tw_elt);
+	if (isc_tw_getexpire(&newheader->tw_elt) != 0) {
+		isc_tw_insert(qpdb->buckets[idx].tw, &newheader->tw_elt);
+	}
 
 	if (isc_mem_isovermem(qpdb->common.mctx)) {
 		/*
