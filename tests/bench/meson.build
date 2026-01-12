@@ -12,6 +12,7 @@
 foreach bench : [
     'ascii',
     'compress',
+    'heap_vs_tw',
     'iterated_hash',
     'load-names',
     'qp-dump',
