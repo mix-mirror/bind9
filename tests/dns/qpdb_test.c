@@ -222,9 +222,172 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 	isc_loopmgr_shutdown();
 }
 
+static void
+insertrr(dns_db_t *db, isc_stdtime_t now, const char *namestr, int trust_a,
+	 int trust_aaaa) {
+	isc_result_t result;
+	dns_fixedname_t fname;
+	dns_dbnode_t *node = NULL;
+
+	dns_test_namefromstring(namestr, &fname);
+	result = dns_db_findnode(db, dns_fixedname_name(&fname), true, &node);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	const dns_rdatatype_t types[] = { dns_rdatatype_ns, dns_rdatatype_a,
+					  dns_rdatatype_aaaa };
+	for (size_t i = 0; i < ARRAY_SIZE(types); i++) {
+		dns_rdata_t rdata;
+		dns_rdatalist_t rdatalist;
+		size_t rdatalistttl = 3600;
+		dns_rdataset_t rdataset;
+
+		if (types[i] == dns_rdatatype_a && trust_a == -1) {
+			continue;
+		}
+
+		if (types[i] == dns_rdatatype_aaaa && trust_aaaa == -1) {
+			continue;
+		}
+
+		dns_rdata_init(&rdata);
+		rdata.type = types[i];
+		rdata.rdclass = dns_rdataclass_in;
+
+		dns_rdatalist_init(&rdatalist);
+		rdatalist.rdclass = dns_rdataclass_in;
+		rdatalist.type = types[i];
+		rdatalist.ttl = rdatalistttl;
+		ISC_LIST_APPEND(rdatalist.rdata, &rdata, link);
+
+		dns_rdataset_init(&rdataset);
+		dns_rdatalist_tordataset(&rdatalist, &rdataset);
+
+		switch (types[i]) {
+		case dns_rdatatype_ns:
+			rdataset.trust = dns_trust_glue;
+			break;
+		case dns_rdatatype_a:
+			rdataset.trust = trust_a;
+			break;
+		case dns_rdatatype_aaaa:
+			rdataset.trust = trust_aaaa;
+			break;
+		default:
+			UNREACHABLE();
+		}
+
+		result = dns_db_addrdataset(db, node, NULL, now, &rdataset, 0,
+					    NULL);
+		assert_int_equal(result, ISC_R_SUCCESS);
+	}
+
+	dns_db_detachnode(&node);
+}
+
+typedef struct {
+	const char *name;
+
+	/* -1 means no A RR is added. Otherwise, holds a dns_trust_t. */
+	int trust_a;
+
+	/* -1 means no AAAA RR is added. Otherwise, holds a dns_trust_t. */
+	int trust_aaaa;
+
+	/* Do not add the DB node */
+	bool readonly;
+} findzonecut_glue_test_t;
+
+const findzonecut_glue_test_t gluestest[] = {
+	/* No glues */
+	{ "example1.com", -1, -1 },
+
+	/* A/AAAA glues, all trusted */
+	{ "example2.com", dns_trust_glue, dns_trust_glue },
+
+	/*
+	 * Do not walk the qpchain up for the glues, only take the glues the
+	 * from the found NS node.
+	 */
+	{ "foo.example2.com", -1, -1 },
+
+	/*
+	 * "bar.example2.com" is not addded to the DB, so findzonecut flow will
+	 * go to the parent node, "example2.com", and get the glues from
+	 * "example2.com".
+	 */
+	{ "bar.example2.com", dns_trust_glue, dns_trust_glue, true },
+
+	/* Ignore A/AAAA glues below the dns_trust_glue trust level. */
+	{ "example3.com", dns_trust_additional, dns_trust_secure },
+
+	/* A only glue, and trusted */
+	{ "example4.com", dns_trust_glue, -1 }
+};
+
+ISC_LOOP_TEST_IMPL(findzonecut_glues) {
+	isc_result_t result;
+	dns_db_t *db = NULL;
+	isc_mem_t *mctx = NULL;
+	isc_stdtime_t now = isc_stdtime_now();
+
+	isc_mem_create("test", &mctx);
+
+	result = dns_db_create(mctx, CACHEDB_DEFAULT, dns_rootname,
+			       dns_dbtype_cache, dns_rdataclass_in, 0, NULL,
+			       &db);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	for (size_t i = 0; i < ARRAY_SIZE(gluestest); i++) {
+		const findzonecut_glue_test_t *glue = gluestest + i;
+
+		if (glue->readonly) {
+			continue;
+		}
+
+		insertrr(db, now, glue->name, glue->trust_a, glue->trust_aaaa);
+	}
+
+	for (size_t i = 0; i < ARRAY_SIZE(gluestest); i++) {
+		const findzonecut_glue_test_t *glue = gluestest + i;
+		dns_dbnode_t *node = NULL;
+		dns_fixedname_t fname, ffoundname;
+		dns_name_t *foundname = dns_fixedname_initname(&ffoundname);
+		dns_rdataset_t ns, glue_a, glue_aaaa;
+
+		dns_rdataset_init(&ns);
+		dns_rdataset_init(&glue_a);
+		dns_rdataset_init(&glue_aaaa);
+		dns_test_namefromstring(glue->name, &fname);
+		result = dns_db_findzonecut(db, dns_fixedname_name(&fname), 0,
+					    now, &node, foundname, NULL, &ns,
+					    NULL, &glue_a, &glue_aaaa);
+		assert_int_equal(result, ISC_R_SUCCESS);
+		assert_true(dns_rdataset_isassociated(&ns));
+
+		assert_true((glue->trust_a < dns_trust_glue &&
+			     !dns_rdataset_isassociated(&glue_a)) ||
+			    (glue->trust_a >= dns_trust_glue &&
+			     dns_rdataset_isassociated(&glue_a)));
+
+		assert_true((glue->trust_aaaa < dns_trust_glue &&
+			     !dns_rdataset_isassociated(&glue_aaaa)) ||
+			    (glue->trust_aaaa >= dns_trust_glue &&
+			     dns_rdataset_isassociated(&glue_aaaa)));
+
+		dns_rdataset_cleanup(&ns);
+		dns_rdataset_cleanup(&glue_a);
+		dns_rdataset_cleanup(&glue_aaaa);
+	}
+
+	dns_db_detach(&db);
+	isc_mem_detach(&mctx);
+	isc_loopmgr_shutdown();
+}
+
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY_CUSTOM(overmempurge_bigrdata, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(overmempurge_longname, setup_managers, teardown_managers)
+ISC_TEST_ENTRY_CUSTOM(findzonecut_glues, setup_managers, teardown_managers)
 ISC_TEST_LIST_END
 
 ISC_TEST_MAIN
