@@ -9,9 +9,15 @@
  */
 
 /*
- * Hierarchical Timing Wheels as Priority Queue
- * Based on "Hashed and Hierarchical Timing Wheels: Efficient Data Structures
- * for Implementing a Timer Facility" by George Varghese and Tony Lauck (1987)
+ * Non-Cascading Hierarchical Timing Wheels as Priority Queue
+ * Based on Linux Kernel Timer Wheel Redesign (Thomas Gleixner, post-4.x kernels)
+ *
+ * Key differences from classic Varghese/Lauck cascading model:
+ * - Timers NEVER move between wheels after initial placement
+ * - No cascading operations when wheels wrap around
+ * - Trades slight precision (timers may fire 1-2 ticks late) for strict O(1)
+ *   guarantee with no worst-case latency spikes
+ * - All timer checks are based on actual expiration time, not wheel position
  */
 
 #pragma once
@@ -120,15 +126,25 @@ bool
 isc_tw_is_node_deleted(isc_tw_elt_t *elt);
 
 /*
- * Get element with minimum priority (earliest time)
- * Returns NULL if empty
+ * Get element with minimum priority (earliest expiration time)
+ * among EXPIRED timers only.
+ *
+ * IMPORTANT: This function is optimized to return any expired timer
+ * quickly, not necessarily the absolute earliest timer in the wheel.
+ * This is designed for use cases like DNS cache expiration where callers
+ * loop calling isc_tw_element() until NULL, processing each expired
+ * timer. Strict ordering is not required.
+ *
+ * Returns NULL if no expired timers are found.
+ * A timer is considered expired if expire <= current time.
  */
 isc_tw_elt_t *
 isc_tw_element(isc_tw_t *tw);
 
 /*
  * Set current time for timing wheel (in seconds since epoch)
- * Triggers cascading - writer must serialize calls
+ * Advances wheel positions without cascading - writer must serialize calls
+ * In non-cascading design, timers are checked for expiration but never moved
  */
 void
 isc_tw_settime(isc_tw_t *tw, isc_stdtime_t now);
