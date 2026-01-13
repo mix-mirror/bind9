@@ -4772,6 +4772,7 @@ fctx__create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 	     unsigned int options, unsigned int depth, isc_counter_t *qc,
 	     isc_counter_t *gqc, fetchctx_t *parent, fetchctx_t **fctxp,
 	     const char *func, const char *file, const unsigned int line) {
+	UNUSED(nameservers);
 	fetchctx_t *fctx = NULL;
 	isc_result_t result;
 	isc_result_t iresult;
@@ -4957,9 +4958,20 @@ fctx__create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 			fctx->ns_ttl_ok = true;
 		}
 	} else {
-		dns_rdataset_clone(nameservers, &fctx->nameservers);
-		dns_name_copy(domain, fctx->domain);
-		dns_name_copy(domain, fctx->qmindcname);
+		/*
+		 * Just to prove that we can pass only the domain (when we
+		 * resume for recursion) and we get get NS back from the cache.
+		 * But of course, it's would badly slow down things as there
+		 * would be extra cache lookups.
+		 */
+		result = dns_view_findzonecut(res->view, domain, fctx->domain,
+					      fctx->qmindcname, fctx->now,
+					      findoptions, true, true,
+					      &fctx->nameservers, NULL);
+		if (result != ISC_R_SUCCESS) {
+			goto cleanup_nameservers;
+		}
+
 		fctx->ns_ttl = fctx->nameservers.ttl;
 		fctx->ns_ttl_ok = true;
 	}
