@@ -834,7 +834,6 @@ generate-tsan-stress-test-configs:
 checkbashisms:
   <<: *other_checks_job
   <<: *shell_triggering_rules
-  needs: []
   script:
     - checkbashisms $(find . -path './.git' -prune -o -type f -exec sh -c 'head -n 1 "{}" | grep -qsF "#!/bin/sh"' \; -print)
 
@@ -850,7 +849,6 @@ coccinelle:
     - *rule_mr_manual
     - *rule_tag
     - *rule_source_other_than_mr
-  needs: []
   script:
     - util/check-cocci.sh
     - if test "$(git status --porcelain | grep -Ev '\?\?' | wc -l)" -gt "0"; then git status --short; exit 1; fi
