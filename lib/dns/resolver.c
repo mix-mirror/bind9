@@ -4958,10 +4958,10 @@ fctx__create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 		 * The caller already knows the zonecut we need to query. Let's
 		 * get its nameservers.
 		 */
-		result = dns_view_findzonecut(res->view, domain, fctx->domain,
-					      fctx->qmindcname, fctx->now,
-					      findoptions, true, true,
-					      &fctx->nameservers, NULL);
+		isc_stdtime_t now = parent != NULL ? parent->now : fctx->now;
+		result = dns_view_findzonecut(
+			res->view, domain, fctx->domain, fctx->qmindcname, now,
+			findoptions, true, true, &fctx->nameservers, NULL);
 		if (result != ISC_R_SUCCESS) {
 			UNEXPECTED_ERROR(
 				"to be added  - but this should be "
