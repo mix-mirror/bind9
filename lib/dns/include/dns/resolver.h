@@ -276,7 +276,6 @@ isc_result_t
 dns_resolver_createfetch(dns_resolver_t *res, const dns_name_t *name,
 			 dns_rdatatype_t type, const dns_name_t *domain,
 			 dns_rdataset_t	      *nameservers,
-			 dns_forwarders_t     *forwarders,
 			 const isc_sockaddr_t *client, dns_messageid_t id,
 			 unsigned int options, unsigned int depth,
 			 isc_counter_t *qc, isc_counter_t *gqc,
@@ -295,9 +294,6 @@ dns_resolver_createfetch(dns_resolver_t *res, const dns_name_t *name,
  *	a set of name servers 'nameservers' is known.  If no
  *	such name server information is available, set
  * 	'domain' and 'nameservers' to NULL.
- *
- *\li	'forwarders' is unimplemented, and subject to change when
- *	we figure out how selective forwarding will work.
  *
  *\li	When the fetch completes (successfully or otherwise), a
  *	dns_fetchresponse_t option is sent to callback 'cb'.

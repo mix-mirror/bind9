@@ -74,7 +74,7 @@ dns_zonefetch_run(void *arg) {
 	INSIST((fetch->options & DNS_FETCHOPT_NOCACHED) != 0);
 
 	result = dns_resolver_createfetch(
-		resolver, fetch->qname, fetch->qtype, NULL, NULL, NULL, NULL, 0,
+		resolver, fetch->qname, fetch->qtype, NULL, NULL, NULL, 0,
 		fetch->options, 0, NULL, NULL, NULL, loop, dns_zonefetch_done,
 		fetch, NULL, &fetch->rrset, &fetch->sigset, &fetch->fetch);
 
