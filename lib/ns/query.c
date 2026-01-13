@@ -9187,6 +9187,8 @@ query_nxdomain(query_ctx_t *qctx, isc_result_t result) {
 	}
 
 	if (WANTDNSSEC(qctx->client)) {
+		bool is_nsec = dns_rdataset_isassociated(qctx->rdataset) && qctx->rdataset->type == dns_rdatatype_nsec;
+
 		/*
 		 * Add NSEC record if we found one.
 		 */
@@ -9195,7 +9197,10 @@ query_nxdomain(query_ctx_t *qctx, isc_result_t result) {
 				       &qctx->sigrdataset, NULL,
 				       DNS_SECTION_AUTHORITY);
 		}
-		query_addwildcardproof(qctx, false, false);
+
+		if (!is_nsec || !qctx->need_wildcardproof) {
+			query_addwildcardproof(qctx, false, false);
+		}
 	}
 
 	/*
