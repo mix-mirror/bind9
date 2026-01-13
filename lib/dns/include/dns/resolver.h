@@ -275,7 +275,6 @@ typedef struct fetchctx fetchctx_t;
 isc_result_t
 dns_resolver_createfetch(dns_resolver_t *res, const dns_name_t *name,
 			 dns_rdatatype_t type, const dns_name_t *domain,
-			 dns_rdataset_t	      *nameservers,
 			 const isc_sockaddr_t *client, dns_messageid_t id,
 			 unsigned int options, unsigned int depth,
 			 isc_counter_t *qc, isc_counter_t *gqc,
@@ -290,10 +289,9 @@ dns_resolver_createfetch(dns_resolver_t *res, const dns_name_t *name,
  *
  *\li	This call starts a query for 'name', type 'type'.
  *
- *\li	The 'domain' is a parent domain of 'name' for which
- *	a set of name servers 'nameservers' is known.  If no
- *	such name server information is available, set
- * 	'domain' and 'nameservers' to NULL.
+ *\li	The 'domain' is a parent domain of 'name' for which it is expected to
+ *      have known nameserver locally (either in hints, cache, or configured
+ *      zone).
  *
  *\li	When the fetch completes (successfully or otherwise), a
  *	dns_fetchresponse_t option is sent to callback 'cb'.

@@ -6553,7 +6553,6 @@ tat_send(void *arg) {
 	char namebuf[DNS_NAME_FORMATSIZE];
 	dns_fixedname_t fdomain;
 	dns_name_t *domain = NULL;
-	dns_rdataset_t nameservers;
 	isc_result_t result;
 	dns_name_t *keyname = NULL;
 	dns_name_t *tatname = NULL;
@@ -6571,39 +6570,30 @@ tat_send(void *arg) {
 	 * TAT queries should be sent to the authoritative servers for a given
 	 * zone.  If this function is called for a keytable node corresponding
 	 * to a locally served zone, calling dns_resolver_createfetch() with
-	 * NULL 'domain' and 'nameservers' arguments will cause 'tatname' to be
-	 * resolved locally, without sending any TAT queries upstream.
+	 * NULL 'domain' argument will cause 'tatname' to be resolved locally,
+	 * without sending any TAT queries upstream.
 	 *
 	 * Work around this issue by calling dns_view_findzonecut() first.  If
-	 * the zone is served locally, the NS RRset for the given domain name
-	 * will be retrieved from local data; if it is not, the deepest zone
-	 * cut we have for it will be retrieved from cache.  In either case,
-	 * passing the results to dns_resolver_createfetch() will prevent it
-	 * from returning NXDOMAIN for 'tatname' while still allowing it to
-	 * chase down any potential delegations returned by upstream servers in
-	 * order to eventually find the destination host to send the TAT query
-	 * to.
+	 * the zone is served locally, the domain name will be retrieved from
+	 * local data; if it is not, the deepest zone cut we have for it will be
+	 * retrieved from cache.  In either case, passing the results to
+	 * dns_resolver_createfetch() will prevent it from returning NXDOMAIN
+	 * for 'tatname' while still allowing it to chase down any potential
+	 * delegations returned by upstream servers in order to eventually find
+	 * the destination host to send the TAT query to.
 	 *
 	 * After the dns_view_findzonecut() call, 'domain' will hold the
-	 * deepest zone cut we can find for 'keyname' while 'nameservers' will
-	 * hold the NS RRset at that zone cut.
+	 * deepest zone cut we can find for 'keyname'.
 	 */
 	domain = dns_fixedname_initname(&fdomain);
-	dns_rdataset_init(&nameservers);
 	result = dns_view_findzonecut(tat->view, keyname, domain, NULL, 0, 0,
-				      true, true, &nameservers, NULL);
+				      true, true, NULL, NULL);
 	if (result == ISC_R_SUCCESS) {
 		result = dns_resolver_createfetch(
 			tat->view->resolver, tatname, dns_rdatatype_null,
-			domain, &nameservers, NULL, 0, 0, 0, NULL, NULL, NULL,
-			tat->loop, tat_done, tat, NULL, &tat->rdataset,
-			&tat->sigrdataset, &tat->fetch);
-
-		/*
-		 * dns_resolver_createfetch() will create its own copy of
-		 * nameservers.
-		 */
-		dns_rdataset_cleanup(&nameservers);
+			domain, NULL, 0, 0, 0, NULL, NULL, NULL, tat->loop,
+			tat_done, tat, NULL, &tat->rdataset, &tat->sigrdataset,
+			&tat->fetch);
 	}
 
 	/*

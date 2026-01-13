@@ -2839,10 +2839,10 @@ fetch_and_forget(ns_client_t *client, dns_name_t *qname, dns_rdatatype_t qtype,
 	isc_nmhandle_attach(client->inner.handle, handlep);
 	maybe_init_fetch_counter(client);
 	result = dns_resolver_createfetch(
-		client->inner.view->resolver, qname, qtype, NULL, NULL,
-		peeraddr, client->message->id, options, 0, NULL,
-		client->query.qc, NULL, client->manager->loop, cb, client, NULL,
-		tmprdataset, NULL, fetchp);
+		client->inner.view->resolver, qname, qtype, NULL, peeraddr,
+		client->message->id, options, 0, NULL, client->query.qc, NULL,
+		client->manager->loop, cb, client, NULL, tmprdataset, NULL,
+		fetchp);
 	if (result != ISC_R_SUCCESS) {
 		ns_client_putrdataset(client, &tmprdataset);
 		isc_nmhandle_detach(handlep);
@@ -3185,7 +3185,7 @@ rpz_rrset_find(ns_client_t *client, dns_name_t *name, dns_rdatatype_t type,
 		} else {
 			dns_name_copy(name, st->r_name);
 			result = ns_query_recurse(client, type, st->r_name,
-						  NULL, NULL, resuming);
+						  NULL, resuming);
 			if (result == ISC_R_SUCCESS) {
 				st->state |= DNS_RPZ_RECURSING;
 				result = DNS_R_DELEGATION;
@@ -4952,7 +4952,7 @@ redirect2(ns_client_t *client, dns_name_t *name, dns_rdataset_t *rdataset,
 		 */
 		if (!REDIRECT(client)) {
 			result = ns_query_recurse(client, qtype, redirectname,
-						  NULL, NULL, true);
+						  NULL, true);
 			if (result == ISC_R_SUCCESS) {
 				client->query.attributes |=
 					NS_QUERYATTR_RECURSING;
@@ -6244,8 +6244,7 @@ release_recursionquota(ns_client_t *client) {
 
 isc_result_t
 ns_query_recurse(ns_client_t *client, dns_rdatatype_t qtype, dns_name_t *qname,
-		 dns_name_t *qdomain, dns_rdataset_t *nameservers,
-		 bool resuming) {
+		 dns_name_t *qdomain, bool resuming) {
 	isc_result_t result;
 	dns_rdataset_t *rdataset, *sigrdataset;
 	isc_sockaddr_t *peeraddr = NULL;
@@ -6273,7 +6272,6 @@ ns_query_recurse(ns_client_t *client, dns_rdatatype_t qtype, dns_name_t *qname,
 	/*
 	 * Invoke the resolver.
 	 */
-	REQUIRE(nameservers == NULL || nameservers->type == dns_rdatatype_ns);
 	REQUIRE(FETCH_RECTYPE_NORMAL(client) == NULL);
 
 	rdataset = ns_client_newrdataset(client);
@@ -6296,11 +6294,11 @@ ns_query_recurse(ns_client_t *client, dns_rdatatype_t qtype, dns_name_t *qname,
 			    &HANDLE_RECTYPE_NORMAL(client));
 	maybe_init_fetch_counter(client);
 	result = dns_resolver_createfetch(
-		client->inner.view->resolver, qname, qtype, qdomain,
-		nameservers, peeraddr, client->message->id,
-		client->query.fetchoptions, 0, NULL, client->query.qc, NULL,
-		client->manager->loop, fetch_callback, client, &client->edectx,
-		rdataset, sigrdataset, &FETCH_RECTYPE_NORMAL(client));
+		client->inner.view->resolver, qname, qtype, qdomain, peeraddr,
+		client->message->id, client->query.fetchoptions, 0, NULL,
+		client->query.qc, NULL, client->manager->loop, fetch_callback,
+		client, &client->edectx, rdataset, sigrdataset,
+		&FETCH_RECTYPE_NORMAL(client));
 	if (result != ISC_R_SUCCESS) {
 		release_recursionquota(client);
 
@@ -8345,7 +8343,7 @@ query_notfound(query_ctx_t *qctx) {
 			INSIST(!REDIRECT(qctx->client));
 			result = ns_query_recurse(qctx->client, qctx->qtype,
 						  qctx->client->query.qname,
-						  NULL, NULL, qctx->resuming);
+						  NULL, qctx->resuming);
 			if (result == ISC_R_SUCCESS) {
 				CALL_HOOK(NS_QUERY_NOTFOUND_RECURSE, qctx);
 				qctx->client->query.attributes |=
@@ -8662,20 +8660,19 @@ query_delegation_recurse(query_ctx_t *qctx) {
 		 * Parent is authoritative for this RDATA type (i.e. DS).
 		 */
 		result = ns_query_recurse(qctx->client, qctx->qtype, qname,
-					  NULL, NULL, qctx->resuming);
+					  NULL, qctx->resuming);
 	} else if (qctx->dns64) {
 		/*
 		 * Look up an A record so we can synthesize DNS64.
 		 */
 		result = ns_query_recurse(qctx->client, dns_rdatatype_a, qname,
-					  NULL, NULL, qctx->resuming);
+					  NULL, qctx->resuming);
 	} else {
 		/*
 		 * Any other recursion.
 		 */
 		result = ns_query_recurse(qctx->client, qctx->qtype, qname,
-					  qctx->fname, qctx->rdataset,
-					  qctx->resuming);
+					  qctx->fname, qctx->resuming);
 	}
 
 	if (result == ISC_R_SUCCESS) {
@@ -9998,7 +9995,7 @@ query_zerottl_refetch(query_ctx_t *qctx) {
 	INSIST(!REDIRECT(qctx->client));
 
 	result = ns_query_recurse(qctx->client, qctx->qtype,
-				  qctx->client->query.qname, NULL, NULL,
+				  qctx->client->query.qname, NULL,
 				  qctx->resuming);
 	if (result == ISC_R_SUCCESS) {
 		CALL_HOOK(NS_QUERY_ZEROTTL_RECURSE, qctx);

@@ -1030,7 +1030,7 @@ findzonecut_zone(dns_view_t *view, const dns_name_t *name, dns_name_t *fname,
 	 * Tag static stub NS RRset so that when we look for
 	 * addresses we use the configured server addresses.
 	 */
-	if (dns_zone_gettype(zone) == dns_zone_staticstub) {
+	if (rdataset != NULL && dns_zone_gettype(zone) == dns_zone_staticstub) {
 		rdataset->attributes.staticstub = true;
 	}
 
@@ -1099,7 +1099,7 @@ findzonecut_zoneorcache(dns_view_t *view, const dns_name_t *name,
 				&crdataset, &csigrdataset));
 
 	bool cacheclosest = dns_name_issubdomain(cfname, fname);
-	bool staticstub = rdataset->attributes.staticstub &&
+	bool staticstub = rdataset != NULL && rdataset->attributes.staticstub &&
 			  dns_name_equal(fname, cfname);
 
 	if (cacheclosest && !staticstub) {

@@ -812,10 +812,9 @@ clone_results(fetchctx_t *fctx);
 static isc_result_t
 get_attached_fctx(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 		  dns_rdatatype_t type, const dns_name_t *domain,
-		  dns_rdataset_t *nameservers, const isc_sockaddr_t *client,
-		  unsigned int options, unsigned int depth, isc_counter_t *qc,
-		  isc_counter_t *gqc, fetchctx_t *parent, fetchctx_t **fctxp,
-		  bool *new_fctx);
+		  const isc_sockaddr_t *client, unsigned int options,
+		  unsigned int depth, isc_counter_t *qc, isc_counter_t *gqc,
+		  fetchctx_t *parent, fetchctx_t **fctxp, bool *new_fctx);
 
 /*%
  * The structure and functions defined below implement the resolver
@@ -4232,8 +4231,7 @@ fctx_try(fetchctx_t *fctx, bool retrying) {
 		fetchctx_ref(fctx);
 		result = dns_resolver_createfetch(
 			fctx->res, fctx->qminname, fctx->qmintype, fctx->domain,
-			&fctx->nameservers, NULL, 0,
-			options | DNS_FETCHOPT_QMINFETCH, 0, fctx->qc,
+			NULL, 0, options | DNS_FETCHOPT_QMINFETCH, 0, fctx->qc,
 			fctx->gqc, fctx, fctx->loop, resume_qmin, fctx,
 			&fctx->edectx, &fctx->qminrrset, &fctx->qminsigrrset,
 			&fctx->qminfetch);
@@ -4760,19 +4758,17 @@ log_ns_ttl(fetchctx_t *fctx, const char *where) {
 		      where, namebuf, domainbuf, fctx->ns_ttl_ok, fctx->ns_ttl);
 }
 
-#define fctx_create(res, loop, name, type, domain, nameservers, client,  \
-		    options, depth, qc, gqp, parent, fctxp)              \
-	fctx__create(res, loop, name, type, domain, nameservers, client, \
-		     options, depth, qc, gqp, parent, fctxp, __func__,   \
-		     __FILE__, __LINE__)
+#define fctx_create(res, loop, name, type, domain, client, options, depth, qc, \
+		    gqp, parent, fctxp)                                        \
+	fctx__create(res, loop, name, type, domain, client, options, depth,    \
+		     qc, gqp, parent, fctxp, __func__, __FILE__, __LINE__)
 static isc_result_t
 fctx__create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 	     dns_rdatatype_t type, const dns_name_t *domain,
-	     dns_rdataset_t *nameservers, const isc_sockaddr_t *client,
-	     unsigned int options, unsigned int depth, isc_counter_t *qc,
-	     isc_counter_t *gqc, fetchctx_t *parent, fetchctx_t **fctxp,
-	     const char *func, const char *file, const unsigned int line) {
-	UNUSED(nameservers);
+	     const isc_sockaddr_t *client, unsigned int options,
+	     unsigned int depth, isc_counter_t *qc, isc_counter_t *gqc,
+	     fetchctx_t *parent, fetchctx_t **fctxp, const char *func,
+	     const char *file, const unsigned int line) {
 	fetchctx_t *fctx = NULL;
 	isc_result_t result;
 	isc_result_t iresult;
@@ -4959,16 +4955,18 @@ fctx__create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 		}
 	} else {
 		/*
-		 * Just to prove that we can pass only the domain (when we
-		 * resume for recursion) and we get get NS back from the cache.
-		 * But of course, it's would badly slow down things as there
-		 * would be extra cache lookups.
+		 * The caller already knows the zonecut we need to query. Let's
+		 * get its nameservers.
 		 */
 		result = dns_view_findzonecut(res->view, domain, fctx->domain,
 					      fctx->qmindcname, fctx->now,
 					      findoptions, true, true,
 					      &fctx->nameservers, NULL);
 		if (result != ISC_R_SUCCESS) {
+			UNEXPECTED_ERROR(
+				"to be added  - but this should be "
+				"logged as it shouldn't occurs - unless "
+				"perhaps the zonecut expires in meantime?");
 			goto cleanup_nameservers;
 		}
 
@@ -6884,8 +6882,7 @@ resume_dslookup(void *arg) {
 	isc_loop_t *loop = resp->loop;
 	isc_result_t result;
 	dns_resolver_t *res = NULL;
-	dns_rdataset_t *frdataset = NULL, *nsrdataset = NULL;
-	dns_rdataset_t nameservers;
+	dns_rdataset_t *frdataset = NULL;
 	dns_fixedname_t fixed;
 	dns_name_t *domain = NULL;
 	unsigned int n;
@@ -6970,14 +6967,8 @@ resume_dslookup(void *arg) {
 			CLEANUP(DNS_R_SERVFAIL);
 		}
 
-		/* Get nameservers from fetch before we destroy it. */
-		dns_rdataset_init(&nameservers);
+		/* Get domain from fetch before we destroy it. */
 		if (dns_rdataset_isassociated(&fetch->private->nameservers)) {
-			dns_rdataset_clone(&fetch->private->nameservers,
-					   &nameservers);
-			nsrdataset = &nameservers;
-
-			/* Get domain from fetch before we destroy it. */
 			domain = dns_fixedname_initname(&fixed);
 			dns_name_copy(fetch->private->domain, domain);
 		}
@@ -6989,18 +6980,16 @@ resume_dslookup(void *arg) {
 
 		fetchctx_ref(fctx);
 		result = dns_resolver_createfetch(
-			res, fctx->nsname, dns_rdatatype_ns, domain, nsrdataset,
-			NULL, 0, fctx->options, 0, fctx->qc, fctx->gqc, fctx,
-			loop, resume_dslookup, fctx, &fctx->edectx,
-			&fctx->nsrrset, NULL, &fctx->nsfetch);
+			res, fctx->nsname, dns_rdatatype_ns, domain, NULL, 0,
+			fctx->options, 0, fctx->qc, fctx->gqc, fctx, loop,
+			resume_dslookup, fctx, &fctx->edectx, &fctx->nsrrset,
+			NULL, &fctx->nsfetch);
 		if (result != ISC_R_SUCCESS) {
 			fetchctx_unref(fctx);
 			if (result == DNS_R_DUPLICATE) {
 				result = DNS_R_SERVFAIL;
 			}
 		}
-
-		dns_rdataset_cleanup(&nameservers);
 	}
 
 cleanup:
@@ -9335,7 +9324,7 @@ rctx_chaseds(respctx_t *rctx, dns_message_t *message,
 
 	fetchctx_ref(fctx);
 	result = dns_resolver_createfetch(
-		fctx->res, fctx->nsname, dns_rdatatype_ns, NULL, NULL, NULL, 0,
+		fctx->res, fctx->nsname, dns_rdatatype_ns, NULL, NULL, 0,
 		fctx->options, 0, fctx->qc, fctx->gqc, fctx, fctx->loop,
 		resume_dslookup, fctx, &fctx->edectx, &fctx->nsrrset, NULL,
 		&fctx->nsfetch);
@@ -9919,9 +9908,9 @@ dns_resolver_prime(dns_resolver_t *res) {
 
 		LOCK(&res->primelock);
 		result = dns_resolver_createfetch(
-			res, dns_rootname, dns_rdatatype_ns, NULL, NULL, NULL,
-			0, DNS_FETCHOPT_NOFORWARD, 0, NULL, NULL, NULL,
-			isc_loop(), prime_done, res, NULL, rdataset, NULL,
+			res, dns_rootname, dns_rdatatype_ns, NULL, NULL, 0,
+			DNS_FETCHOPT_NOFORWARD, 0, NULL, NULL, NULL, isc_loop(),
+			prime_done, res, NULL, rdataset, NULL,
 			&res->primefetch);
 		UNLOCK(&res->primelock);
 
@@ -10103,10 +10092,9 @@ fctx_minimize_qname(fetchctx_t *fctx) {
 static isc_result_t
 get_attached_fctx(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 		  dns_rdatatype_t type, const dns_name_t *domain,
-		  dns_rdataset_t *nameservers, const isc_sockaddr_t *client,
-		  unsigned int options, unsigned int depth, isc_counter_t *qc,
-		  isc_counter_t *gqc, fetchctx_t *parent, fetchctx_t **fctxp,
-		  bool *new_fctx) {
+		  const isc_sockaddr_t *client, unsigned int options,
+		  unsigned int depth, isc_counter_t *qc, isc_counter_t *gqc,
+		  fetchctx_t *parent, fetchctx_t **fctxp, bool *new_fctx) {
 	isc_result_t result;
 	fetchctx_t key = {
 		.name = UNCONST(name),
@@ -10126,9 +10114,8 @@ get_attached_fctx(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 
 	if (fctx == NULL) {
 	create:
-		result = fctx_create(res, loop, name, type, domain, nameservers,
-				     client, options, depth, qc, gqc, parent,
-				     &fctx);
+		result = fctx_create(res, loop, name, type, domain, client,
+				     options, depth, qc, gqc, parent, &fctx);
 		if (result != ISC_R_SUCCESS) {
 			rcu_read_unlock();
 			return result;
@@ -10212,7 +10199,6 @@ waiting_for_fetch(fetchctx_t *fctx, const dns_name_t *name,
 isc_result_t
 dns_resolver_createfetch(dns_resolver_t *res, const dns_name_t *name,
 			 dns_rdatatype_t type, const dns_name_t *domain,
-			 dns_rdataset_t *nameservers,
 			 const isc_sockaddr_t *client, dns_messageid_t id,
 			 unsigned int options, unsigned int depth,
 			 isc_counter_t *qc, isc_counter_t *gqc,
@@ -10231,13 +10217,6 @@ dns_resolver_createfetch(dns_resolver_t *res, const dns_name_t *name,
 
 	REQUIRE(VALID_RESOLVER(res));
 	REQUIRE(res->frozen);
-	/* XXXRTH  Check for meta type */
-	if (domain != NULL) {
-		REQUIRE(DNS_RDATASET_VALID(nameservers));
-		REQUIRE(nameservers->type == dns_rdatatype_ns);
-	} else {
-		REQUIRE(nameservers == NULL);
-	}
 	REQUIRE(!dns_rdataset_isassociated(rdataset));
 	REQUIRE(sigrdataset == NULL || !dns_rdataset_isassociated(sigrdataset));
 	REQUIRE(fetchp != NULL && *fetchp == NULL);
@@ -10282,8 +10261,8 @@ dns_resolver_createfetch(dns_resolver_t *res, const dns_name_t *name,
 		UNLOCK(&res->lock);
 
 		result = get_attached_fctx(res, loop, name, type, domain,
-					   nameservers, client, options, depth,
-					   qc, gqc, parent, &fctx, &new_fctx);
+					   client, options, depth, qc, gqc,
+					   parent, &fctx, &new_fctx);
 		if (result != ISC_R_SUCCESS) {
 			goto fail;
 		}
@@ -10316,9 +10295,8 @@ dns_resolver_createfetch(dns_resolver_t *res, const dns_name_t *name,
 			}
 		}
 	} else {
-		result = fctx_create(res, loop, name, type, domain, nameservers,
-				     client, options, depth, qc, gqc, parent,
-				     &fctx);
+		result = fctx_create(res, loop, name, type, domain, client,
+				     options, depth, qc, gqc, parent, &fctx);
 		if (result != ISC_R_SUCCESS) {
 			goto fail;
 		}
