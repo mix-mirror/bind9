@@ -1065,13 +1065,14 @@ cleanup:
 static isc_result_t
 findzonecut_cache(dns_view_t *view, const dns_name_t *name, dns_name_t *fname,
 		  dns_name_t *dcname, isc_stdtime_t now, unsigned int options,
-		  dns_rdataset_t *rdataset) {
+		  dns_rdataset_t *ns, dns_rdataset_t *glue_a,
+		  dns_rdataset_t *glue_aaaa) {
 	isc_result_t result = DNS_R_NXDOMAIN;
 
 	if (view->delegdb != NULL) {
 		result = dns_db_findzonecut(view->delegdb, name, options, now,
-					    NULL, fname, dcname, rdataset, NULL,
-					    NULL, NULL);
+					    NULL, fname, dcname, ns, NULL,
+					    glue_a, glue_aaaa);
 	}
 
 	/*
@@ -1080,7 +1081,7 @@ findzonecut_cache(dns_view_t *view, const dns_name_t *name, dns_name_t *fname,
 	 * keep DNS_R_NXDOMAIN, so the hints can be checked.
 	 */
 	if (result != ISC_R_SUCCESS) {
-		dns_rdataset_cleanup(rdataset);
+		dns_rdataset_cleanup(ns);
 		result = DNS_R_NXDOMAIN;
 	}
 
@@ -1091,32 +1092,36 @@ static void
 findzonecut_zoneorcache(dns_view_t *view, const dns_name_t *name,
 			dns_name_t *fname, dns_name_t *dcname,
 			isc_stdtime_t now, unsigned int options,
-			dns_rdataset_t *rdataset) {
+			dns_rdataset_t *ns, dns_rdataset_t *glue_a,
+			dns_rdataset_t *glue_aaaa) {
 	isc_result_t result;
-	dns_rdataset_t crdataset = DNS_RDATASET_INIT;
+	dns_rdataset_t cns = DNS_RDATASET_INIT;
 	dns_fixedname_t f, dc;
 	dns_name_t *cfname = dns_fixedname_initname(&f);
 	dns_name_t *cdcname = dns_fixedname_initname(&dc);
 
-	CHECK(findzonecut_cache(view, name, cfname, cdcname, now, options,
-				&crdataset));
+	CHECK(findzonecut_cache(view, name, cfname, cdcname, now, options, &cns,
+				glue_a, glue_aaaa));
 
 	bool cacheclosest = dns_name_issubdomain(cfname, fname);
-	bool staticstub = rdataset->attributes.staticstub &&
+	bool staticstub = ns->attributes.staticstub &&
 			  dns_name_equal(fname, cfname);
 
 	if (cacheclosest && !staticstub) {
-		dns_rdataset_cleanup(rdataset);
-		dns_rdataset_clone(&crdataset, rdataset);
+		dns_rdataset_cleanup(ns);
+		dns_rdataset_clone(&cns, ns);
 
 		dns_name_copy(cfname, fname);
 		if (dcname != NULL) {
 			dns_name_copy(cdcname, dcname);
 		}
+	} else {
+		dns_rdataset_cleanup(glue_a);
+		dns_rdataset_cleanup(glue_aaaa);
 	}
 
 cleanup:
-	dns_rdataset_cleanup(&crdataset);
+	dns_rdataset_cleanup(&cns);
 }
 
 static isc_result_t
@@ -1143,14 +1148,14 @@ isc_result_t
 dns_view_findzonecut(dns_view_t *view, const dns_name_t *name,
 		     dns_name_t *fname, dns_name_t *dcname, isc_stdtime_t now,
 		     unsigned int options, bool usehints, bool usecache,
-		     dns_rdataset_t *rdataset) {
+		     dns_rdataset_t *ns, dns_rdataset_t *glue_a,
+		     dns_rdataset_t *glue_aaaa) {
 	isc_result_t result;
 
 	REQUIRE(DNS_VIEW_VALID(view));
 	REQUIRE(view->frozen);
 
-	result = findzonecut_zone(view, name, fname, dcname, now, options,
-				  rdataset);
+	result = findzonecut_zone(view, name, fname, dcname, now, options, ns);
 
 	if (result == DNS_R_NXDOMAIN && usecache) {
 		/*
@@ -1158,26 +1163,26 @@ dns_view_findzonecut(dns_view_t *view, const dns_name_t *name,
 		 * delegation.
 		 */
 		result = findzonecut_cache(view, name, fname, dcname, now,
-					   options, rdataset);
+					   options, ns, glue_a, glue_aaaa);
 	} else if (result == ISC_R_SUCCESS && usecache) {
 		/*
 		 * A zone with a (possibly partial) delegation match but the
 		 * cache can have a more precise delegation.
 		 */
 		findzonecut_zoneorcache(view, name, fname, dcname, now, options,
-					rdataset);
+					ns, glue_a, glue_aaaa);
 	}
 
 	/*
 	 * No local zone nor cache match. Last attempt with the hints.
 	 */
 	if (result == DNS_R_NXDOMAIN && usehints) {
-		result = findzonecut_hints(view, fname, dcname, now, rdataset);
+		result = findzonecut_hints(view, fname, dcname, now, ns);
 	}
 
 	if (result != ISC_R_SUCCESS) {
 		result = DNS_R_NXDOMAIN;
-		dns_rdataset_cleanup(rdataset);
+		dns_rdataset_cleanup(ns);
 	}
 
 	return result;

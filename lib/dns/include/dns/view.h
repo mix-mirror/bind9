@@ -688,7 +688,8 @@ isc_result_t
 dns_view_findzonecut(dns_view_t *view, const dns_name_t *name,
 		     dns_name_t *fname, dns_name_t *dcname, isc_stdtime_t now,
 		     unsigned int options, bool use_hints, bool use_cache,
-		     dns_rdataset_t *rdataset);
+		     dns_rdataset_t *ns, dns_rdataset_t *glue_a,
+		     dns_rdataset_t *glue_aaaa);
 /*%<
  * Find the best known zonecut containing 'name'.
  *
@@ -716,15 +717,21 @@ dns_view_findzonecut(dns_view_t *view, const dns_name_t *name,
  *
  *\li	'name' is valid name.
  *
- *\li	'rdataset' is a valid, disassociated rdataset.
+ *\li	'ns', is a valid, disassociated rdataset.
  *
- *\li	'sigrdataset' is NULL, or is a valid, disassociated rdataset.
+ *\li   'glue_a' is NULL or a valid, disassociated rdataset.
+ *
+ *\li   'glue_aaaa' is NULL or a valid, dissociated rdataset.
  *
  * Returns:
  *
  *\li	#ISC_R_SUCCESS  If a delegation is found;
  *\li   #DNS_R_NXDOMAIN	If no delegation is found; 'rdataset' and 'sigrdataset'
  *                      are disassociated.
+ *
+ * \li  Whenever a valid delegation is found, 'ns' is associated with the NS RR
+ *      of the zonecut, and if not NULL, 'glue_a' and 'glue_aaaa' are associated
+ *      with the glues of the NS RR, if provided.
  */
 
 isc_result_t
