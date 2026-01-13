@@ -4232,7 +4232,7 @@ fctx_try(fetchctx_t *fctx, bool retrying) {
 		fetchctx_ref(fctx);
 		result = dns_resolver_createfetch(
 			fctx->res, fctx->qminname, fctx->qmintype, fctx->domain,
-			&fctx->nameservers, NULL, NULL, 0,
+			&fctx->nameservers, NULL, 0,
 			options | DNS_FETCHOPT_QMINFETCH, 0, fctx->qc,
 			fctx->gqc, fctx, fctx->loop, resume_qmin, fctx,
 			&fctx->edectx, &fctx->qminrrset, &fctx->qminsigrrset,
@@ -6978,8 +6978,8 @@ resume_dslookup(void *arg) {
 		fetchctx_ref(fctx);
 		result = dns_resolver_createfetch(
 			res, fctx->nsname, dns_rdatatype_ns, domain, nsrdataset,
-			NULL, NULL, 0, fctx->options, 0, fctx->qc, fctx->gqc,
-			fctx, loop, resume_dslookup, fctx, &fctx->edectx,
+			NULL, 0, fctx->options, 0, fctx->qc, fctx->gqc, fctx,
+			loop, resume_dslookup, fctx, &fctx->edectx,
 			&fctx->nsrrset, NULL, &fctx->nsfetch);
 		if (result != ISC_R_SUCCESS) {
 			fetchctx_unref(fctx);
@@ -9323,10 +9323,10 @@ rctx_chaseds(respctx_t *rctx, dns_message_t *message,
 
 	fetchctx_ref(fctx);
 	result = dns_resolver_createfetch(
-		fctx->res, fctx->nsname, dns_rdatatype_ns, NULL, NULL, NULL,
-		NULL, 0, fctx->options, 0, fctx->qc, fctx->gqc, fctx,
-		fctx->loop, resume_dslookup, fctx, &fctx->edectx,
-		&fctx->nsrrset, NULL, &fctx->nsfetch);
+		fctx->res, fctx->nsname, dns_rdatatype_ns, NULL, NULL, NULL, 0,
+		fctx->options, 0, fctx->qc, fctx->gqc, fctx, fctx->loop,
+		resume_dslookup, fctx, &fctx->edectx, &fctx->nsrrset, NULL,
+		&fctx->nsfetch);
 	if (result != ISC_R_SUCCESS) {
 		if (result == DNS_R_DUPLICATE) {
 			result = DNS_R_SERVFAIL;
@@ -9908,7 +9908,7 @@ dns_resolver_prime(dns_resolver_t *res) {
 		LOCK(&res->primelock);
 		result = dns_resolver_createfetch(
 			res, dns_rootname, dns_rdatatype_ns, NULL, NULL, NULL,
-			NULL, 0, DNS_FETCHOPT_NOFORWARD, 0, NULL, NULL, NULL,
+			0, DNS_FETCHOPT_NOFORWARD, 0, NULL, NULL, NULL,
 			isc_loop(), prime_done, res, NULL, rdataset, NULL,
 			&res->primefetch);
 		UNLOCK(&res->primelock);
@@ -10201,7 +10201,6 @@ isc_result_t
 dns_resolver_createfetch(dns_resolver_t *res, const dns_name_t *name,
 			 dns_rdatatype_t type, const dns_name_t *domain,
 			 dns_rdataset_t *nameservers,
-			 dns_forwarders_t *forwarders,
 			 const isc_sockaddr_t *client, dns_messageid_t id,
 			 unsigned int options, unsigned int depth,
 			 isc_counter_t *qc, isc_counter_t *gqc,
@@ -10218,8 +10217,6 @@ dns_resolver_createfetch(dns_resolver_t *res, const dns_name_t *name,
 	unsigned int spillatmin;
 	isc_mem_t *mctx = isc_loop_getmctx(loop);
 
-	UNUSED(forwarders);
-
 	REQUIRE(VALID_RESOLVER(res));
 	REQUIRE(res->frozen);
 	/* XXXRTH  Check for meta type */
@@ -10229,7 +10226,6 @@ dns_resolver_createfetch(dns_resolver_t *res, const dns_name_t *name,
 	} else {
 		REQUIRE(nameservers == NULL);
 	}
-	REQUIRE(forwarders == NULL);
 	REQUIRE(!dns_rdataset_isassociated(rdataset));
 	REQUIRE(sigrdataset == NULL || !dns_rdataset_isassociated(sigrdataset));
 	REQUIRE(fetchp != NULL && *fetchp == NULL);
