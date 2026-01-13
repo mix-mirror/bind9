@@ -10368,7 +10368,6 @@ query_addsoa(query_ctx_t *qctx, unsigned int override_ttl,
 	     dns_section_t section) {
 	ns_client_t *client = qctx->client;
 	dns_name_t *name = NULL;
-	dns_dbnode_t *node = NULL;
 	isc_result_t result, eresult = ISC_R_SUCCESS;
 	dns_rdataset_t *rdataset = NULL, *sigrdataset = NULL;
 	dns_rdataset_t **sigrdatasetp = NULL;
@@ -10401,29 +10400,23 @@ query_addsoa(query_ctx_t *qctx, unsigned int override_ttl,
 	dns_name_clone(dns_db_origin(qctx->db), name);
 
 	rdataset = ns_client_newrdataset(client);
-	if (WANTDNSSEC(client) && dns_db_issecure(qctx->db)) {
+	if (WANTDNSSEC(client)) {
 		sigrdataset = ns_client_newrdataset(client);
 	}
 
 	/*
 	 * Find the SOA.
 	 */
-	result = dns_db_getoriginnode(qctx->db, &node);
-	if (result == ISC_R_SUCCESS) {
-		result = dns_db_findrdataset(
-			qctx->db, node, qctx->version, dns_rdatatype_soa, 0,
-			client->inner.now, rdataset, sigrdataset);
-	} else {
-		dns_fixedname_t foundname;
-		dns_name_t *fname;
+	dns_fixedname_t foundname;
+	dns_name_t *fname;
 
-		fname = dns_fixedname_initname(&foundname);
+	fname = dns_fixedname_initname(&foundname);
 
-		result = dns_db_findext(qctx->db, name, qctx->version,
-					dns_rdatatype_soa,
-					client->query.dboptions, 0, &node,
-					fname, &cm, &ci, rdataset, sigrdataset);
-	}
+	result = dns_db_findext(qctx->db, name, qctx->version,
+				dns_rdatatype_soa,
+				client->query.dboptions, 0, NULL,
+				fname, &cm, &ci, rdataset, sigrdataset);
+
 	if (result != ISC_R_SUCCESS) {
 		/*
 		 * This is bad.  We tried to get the SOA RR at the zone top
@@ -10481,9 +10474,6 @@ query_addsoa(query_ctx_t *qctx, unsigned int override_ttl,
 	}
 	if (name != NULL) {
 		ns_client_releasename(client, &name);
-	}
-	if (node != NULL) {
-		dns_db_detachnode(&node);
 	}
 
 	return eresult;
