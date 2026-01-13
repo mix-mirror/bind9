@@ -398,13 +398,17 @@ isc_tw_element(isc_tw_t *tw) {
 	}
 
 	/*
-	 * In non-cascading design, find the EARLIEST expired timer.
+	 * In non-cascading design, return ANY expired timer (not necessarily the earliest).
 	 *
-	 * Scan all levels looking for expired timers and return the one
-	 * with the minimum expiration time. Use slot count to skip empty slots.
+	 * This is optimized for the DNS cache use case where:
+	 * - isc_tw_settime() is called sparsely (not every second)
+	 * - isc_tw_element() is called in a tight loop after settime
+	 * - Callers check if the returned timer is actually expired
+	 * - Order doesn't matter, just need to find expired timers quickly
+	 *
+	 * We check slots near current position first since expired timers
+	 * are most likely to be there after time advancement.
 	 */
-
-	isc_tw_elt_t *earliest = NULL;
 
 	/* Check level 0 first - finest granularity (1-second) */
 	isc_tw_level_t *lvl0 = &tw->levels[0];
@@ -416,13 +420,11 @@ isc_tw_element(isc_tw_t *tw) {
 			continue;
 		}
 		
-		/* Check all timers in this non-empty slot */
+		/* Return first expired timer found in this slot */
 		ISC_LIST_FOREACH(lvl0->slots[slot].nodes, elt, link) {
 			if (!isc_tw_is_node_deleted(elt) && 
 			    elt->expire <= tw->now) {
-				if (earliest == NULL || elt->expire < earliest->expire) {
-					earliest = elt;
-				}
+				return elt;
 			}
 		}
 	}
@@ -442,13 +444,11 @@ isc_tw_element(isc_tw_t *tw) {
 			ISC_LIST_FOREACH(lvl->slots[slot].nodes, elt, link) {
 				if (!isc_tw_is_node_deleted(elt) && 
 				    elt->expire <= tw->now) {
-					if (earliest == NULL || elt->expire < earliest->expire) {
-						earliest = elt;
-					}
+					return elt;
 				}
 			}
 		}
 	}
 
-	return earliest;
+	return NULL;
 }
