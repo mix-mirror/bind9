@@ -2874,11 +2874,9 @@ qpcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	dns_slabheader_reset(newheader, node);
 
 	/*
-	 * By default, dns_rdataslab_fromrdataset() sets newheader->ttl
-	 * to the rdataset TTL. In the case of the cache, that's wrong;
-	 * we need it to be set to the expire time instead.
+	 * Set the correct expire time.
 	 */
-	setttl(newheader, rdataset->ttl + now);
+	setttl(newheader, now + rdataset->ttl);
 	if (rdataset->ttl == 0U) {
 		DNS_SLABHEADER_SETATTR(newheader, DNS_SLABHEADERATTR_ZEROTTL);
 	}

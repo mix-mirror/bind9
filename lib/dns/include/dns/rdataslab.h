@@ -191,10 +191,8 @@ dns_rdataslab_fromrdataset(dns_rdataset_t *rdataset, isc_mem_t *mctx,
  *
  * dns_rdataslab_fromrdataset() allocates space for a dns_slabheader object
  * and the memory needed for a raw slab, and partially initializes
- * it, setting the type, trust, and TTL fields to match rdataset->type,
- * rdataset->covers, rdataset->trust, and rdataset->ttl.  (Note that the
- * last field needs to be overridden when used in the cache database,
- * since cache headers use an expire time instead of a TTL.)
+ * it, setting the type, and trust fields to match rdataset->type,
+ * rdataset->covers, and rdataset->trust.
  *
  * Requires:
  *\li	'rdataset' is valid.
