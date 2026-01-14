@@ -45,7 +45,6 @@
 #include <stdbool.h>
 
 #include <isc/atomic.h>
-#include <isc/heap.h>
 #include <isc/stdtime.h>
 #include <isc/urcu.h>
 
@@ -96,10 +95,6 @@ struct dns_slabheader {
 	 */
 	isc_stdtime_t  expire;
 	dns_typepair_t typepair;
-
-	/* TTL-cleaning (cache) */
-	unsigned int heap_index;
-	isc_heap_t  *heap;
 
 	dns_slabheader_proof_t *noqname;
 	dns_slabheader_proof_t *closest;
