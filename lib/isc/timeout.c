@@ -200,6 +200,21 @@ timeouts_sched(timeouts_t *T, timeout_t *to, isc_stdtime_t expires) {
 		newpending = &T->expired;
 	}
 
+	/*
+	 * NON-CASCADING OPTIMIZATION:
+	 * Don't move timeouts between wheel slots. Only schedule if:
+	 * 1. Timeout is not currently scheduled (to->pending == NULL), OR
+	 * 2. Timeout needs to move to expired queue
+	 *
+	 * This eliminates expensive cascading operations. Timeouts may fire
+	 * up to one wheel period late, but this is acceptable for cache
+	 * expiration (QPDB_VIRTUAL already tolerates 10s imprecision).
+	 */
+	if (to->pending != NULL && newpending != &T->expired) {
+		/* Already scheduled on a wheel, don't move it */
+		return;
+	}
+
 	/* Fast path: if already in the correct slot, nothing to do */
 	if (to->pending == newpending) {
 		return;
@@ -280,12 +295,44 @@ timeouts_update(timeouts_t *T, isc_stdtime_t curtime) {
 			pending |= WHEEL_C(1) << nslot;
 		}
 
+		/*
+		 * NON-CASCADING: Check each timeout's actual expiry time.
+		 * Only truly expired timeouts go to expired queue; others
+		 * stay in their current slot for future checking.
+		 */
 		while (pending & T->pending[wheel]) {
 			/* ctz input cannot be zero: loop condition. */
 			int slot = stdc_trailing_zeros(pending &
 						       T->pending[wheel]);
-			ISC_LIST_APPENDLIST(todo, T->wheel[wheel][slot], link);
-			T->pending[wheel] &= ~(UINT64_C(1) << slot);
+			timeout_list_t *list = &T->wheel[wheel][slot];
+			timeout_t *to, *next;
+			bool slot_empty = true;
+
+			for (to = ISC_LIST_HEAD(*list); to != NULL; to = next)
+			{
+				next = ISC_LIST_NEXT(to, link);
+
+				if (to->expires <= curtime) {
+					/* Truly expired - move to todo */
+					ISC_LIST_UNLINK(*list, to, link);
+					ISC_LIST_APPEND(todo, to, link);
+				} else {
+					/* Not yet expired - leave in slot */
+					slot_empty = false;
+				}
+			}
+
+			/* Clear pending bit only if slot is now empty */
+			if (slot_empty) {
+				T->pending[wheel] &= ~(UINT64_C(1) << slot);
+			} else {
+				/*
+				 * Slot still has unexpired timeouts. Clear
+				 * this bit from pending so we can continue to
+				 * process other slots in this wheel.
+				 */
+				pending &= ~(UINT64_C(1) << slot);
+			}
 		}
 
 		if (!(0x1 & pending)) {
@@ -299,6 +346,7 @@ timeouts_update(timeouts_t *T, isc_stdtime_t curtime) {
 
 	T->curtime = curtime;
 
+	/* Move truly expired timeouts to expired queue */
 	while (!ISC_LIST_EMPTY(todo)) {
 		timeout_t *to = ISC_LIST_HEAD(todo);
 
