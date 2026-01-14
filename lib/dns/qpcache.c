@@ -915,19 +915,16 @@ setttl(dns_slabheader_t *header, isc_stdtime_t newts) {
 
 	header->expire = newts;
 
-	if (header->timeout.pending == NULL || newts == oldts) {
+	if (newts == oldts) {
 		return;
 	}
 
 	node = HEADERNODE(header);
 	wheel = node->qpdb->buckets[node->locknum].wheel;
 
-	if (newts == 0) {
-		timeouts_del(wheel, &header->timeout);
-		return;
+	if (timeouts_del(wheel, &header->timeout) && newts != 0) {
+		timeouts_add(wheel, &header->timeout, header->expire);
 	}
-
-	timeouts_update(wheel, newts);
 }
 
 static void
@@ -3768,7 +3765,9 @@ expire_ttl_headers(qpcache_t *qpdb, unsigned int locknum,
 		   isc_stdtime_t now DNS__DB_FLARG) {
 	timeouts_t *wheel = qpdb->buckets[locknum].wheel;
 
-	if (!timeouts_pending(wheel)) {
+	timeouts_update(wheel, now);
+
+	if (!timeouts_expired(wheel)) {
 		return;
 	}
 
