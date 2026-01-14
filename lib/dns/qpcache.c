@@ -216,8 +216,6 @@ struct qpcache {
 	/* Locked by tree_lock. */
 	dns_qp_t *tree;
 
-	isc_mem_t *hmctx; /* Memory context for the heaps */
-
 	size_t buckets_count;
 	qpcache_bucket_t buckets[]; /* attribute((counted_by(buckets_count))) */
 };
@@ -2281,7 +2279,6 @@ qpcache__destroy(qpcache_t *qpdb) {
 	isc_rwlock_destroy(&qpdb->lock);
 	qpdb->common.magic = 0;
 	qpdb->common.impmagic = 0;
-	isc_mem_detach(&qpdb->hmctx);
 
 	isc_mem_putanddetach(&qpdb->common.mctx, qpdb,
 			     sizeof(*qpdb) + qpdb->buckets_count *
@@ -3168,10 +3165,10 @@ nodecount(dns_db_t *db) {
 isc_result_t
 dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 		    dns_dbtype_t type, dns_rdataclass_t rdclass,
-		    unsigned int argc, char *argv[],
+		    unsigned int argc ISC_ATTR_UNUSED,
+		    char *argv ISC_ATTR_UNUSED[],
 		    void *driverarg ISC_ATTR_UNUSED, dns_db_t **dbp) {
 	qpcache_t *qpdb = NULL;
-	isc_mem_t *hmctx = mctx;
 	isc_loop_t *loop = isc_loop();
 	int i;
 	size_t nloops = isc_loopmgr_nloops();
@@ -3191,13 +3188,6 @@ dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 		.references = 1,
 		.buckets_count = nloops,
 	};
-
-	/*
-	 * If argv[0] exists, it points to a memory context to use for heap
-	 */
-	if (argc != 0) {
-		hmctx = (isc_mem_t *)argv[0];
-	}
 
 	isc_rwlock_init(&qpdb->lock);
 	TREE_INITLOCK(&qpdb->tree_lock);
@@ -3219,7 +3209,6 @@ dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 	 * mctx won't disappear out from under us.
 	 */
 	isc_mem_attach(mctx, &qpdb->common.mctx);
-	isc_mem_attach(hmctx, &qpdb->hmctx);
 
 	/*
 	 * Make a copy of the origin name.

@@ -67,7 +67,6 @@ struct dns_cache {
 	unsigned int magic;
 	isc_mutex_t lock;
 	isc_mem_t *mctx;  /* Memory context for the dns_cache object */
-	isc_mem_t *hmctx; /* Heap memory */
 	isc_mem_t *tmctx; /* Tree memory */
 	char *name;
 	isc_refcount_t references;
@@ -88,12 +87,10 @@ struct dns_cache {
  ***/
 
 static isc_result_t
-cache_create_db(dns_cache_t *cache, dns_db_t **dbp, isc_mem_t **tmctxp,
-		isc_mem_t **hmctxp) {
+cache_create_db(dns_cache_t *cache, dns_db_t **dbp, isc_mem_t **tmctxp) {
 	isc_result_t result;
-	char *argv[1] = { 0 };
 	dns_db_t *db = NULL;
-	isc_mem_t *tmctx = NULL, *hmctx = NULL;
+	isc_mem_t *tmctx = NULL;
 
 	/*
 	 * This will be the cache memory context, which is subject
@@ -101,22 +98,8 @@ cache_create_db(dns_cache_t *cache, dns_db_t **dbp, isc_mem_t **tmctxp,
 	 */
 	isc_mem_create("cache", &tmctx);
 
-	/*
-	 * This will be passed to RBTDB to use for heaps. This is separate
-	 * from the main cache memory because it can grow quite large under
-	 * heavy load and could otherwise cause the cache to be cleaned too
-	 * aggressively.
-	 */
-	isc_mem_create("cache_heap", &hmctx);
-
-	/*
-	 * For databases of type "qpcache" or "rbt" (which are the
-	 * only cache implementations currently in existence) we pass
-	 * hmctx to dns_db_create() via argv[0].
-	 */
-	argv[0] = (char *)hmctx;
 	result = dns_db_create(tmctx, CACHEDB_DEFAULT, dns_rootname,
-			       dns_dbtype_cache, cache->rdclass, 1, argv, &db);
+			       dns_dbtype_cache, cache->rdclass, 0, NULL, &db);
 	if (result != ISC_R_SUCCESS) {
 		goto cleanup_mctx;
 	}
@@ -131,7 +114,6 @@ cache_create_db(dns_cache_t *cache, dns_db_t **dbp, isc_mem_t **tmctxp,
 	dns_db_setmaxtypepername(db, cache->maxtypepername);
 
 	*dbp = db;
-	*hmctxp = hmctx;
 	*tmctxp = tmctx;
 
 	return ISC_R_SUCCESS;
@@ -139,7 +121,6 @@ cache_create_db(dns_cache_t *cache, dns_db_t **dbp, isc_mem_t **tmctxp,
 cleanup_db:
 	dns_db_detach(&db);
 cleanup_mctx:
-	isc_mem_detach(&hmctx);
 	isc_mem_detach(&tmctx);
 
 	return result;
@@ -150,9 +131,6 @@ cache_destroy(dns_cache_t *cache) {
 	isc_stats_detach(&cache->stats);
 	isc_mutex_destroy(&cache->lock);
 	isc_mem_free(cache->mctx, cache->name);
-	if (cache->hmctx != NULL) {
-		isc_mem_detach(&cache->hmctx);
-	}
 	if (cache->tmctx != NULL) {
 		isc_mem_detach(&cache->tmctx);
 	}
@@ -184,7 +162,7 @@ dns_cache_create(dns_rdataclass_t rdclass, const char *cachename,
 	/*
 	 * Create the database
 	 */
-	CHECK(cache_create_db(cache, &cache->db, &cache->tmctx, &cache->hmctx));
+	CHECK(cache_create_db(cache, &cache->db, &cache->tmctx));
 
 	*cachep = cache;
 	return ISC_R_SUCCESS;
@@ -325,14 +303,11 @@ isc_result_t
 dns_cache_flush(dns_cache_t *cache) {
 	dns_db_t *db = NULL, *olddb = NULL;
 	isc_mem_t *tmctx = NULL, *oldtmctx = NULL;
-	isc_mem_t *hmctx = NULL, *oldhmctx = NULL;
 
-	RETERR(cache_create_db(cache, &db, &tmctx, &hmctx));
+	RETERR(cache_create_db(cache, &db, &tmctx));
 
 	LOCK(&cache->lock);
 	isc_mem_clearwater(cache->tmctx);
-	oldhmctx = cache->hmctx;
-	cache->hmctx = hmctx;
 	oldtmctx = cache->tmctx;
 	cache->tmctx = tmctx;
 	updatewater(cache);
@@ -341,7 +316,6 @@ dns_cache_flush(dns_cache_t *cache) {
 	UNLOCK(&cache->lock);
 
 	dns_db_detach(&olddb);
-	isc_mem_detach(&oldhmctx);
 	isc_mem_detach(&oldtmctx);
 
 	return ISC_R_SUCCESS;
@@ -609,9 +583,6 @@ dns_cache_dumpstats(dns_cache_t *cache, FILE *fp) {
 
 	fprintf(fp, "%20" PRIu64 " %s\n", (uint64_t)isc_mem_inuse(cache->tmctx),
 		"cache tree memory in use");
-
-	fprintf(fp, "%20" PRIu64 " %s\n", (uint64_t)isc_mem_inuse(cache->hmctx),
-		"cache heap memory in use");
 }
 
 #ifdef HAVE_LIBXML2
@@ -664,8 +635,6 @@ dns_cache_renderxml(dns_cache_t *cache, void *writer0) {
 	TRY0(renderstat("CacheNodes", dns_db_nodecount(cache->db), writer));
 
 	TRY0(renderstat("TreeMemInUse", isc_mem_inuse(cache->tmctx), writer));
-
-	TRY0(renderstat("HeapMemInUse", isc_mem_inuse(cache->hmctx), writer));
 error:
 	return xmlrc;
 }
@@ -728,10 +697,6 @@ dns_cache_renderjson(dns_cache_t *cache, void *cstats0) {
 	obj = json_object_new_int64(isc_mem_inuse(cache->tmctx));
 	CHECKMEM(obj);
 	json_object_object_add(cstats, "TreeMemInUse", obj);
-
-	obj = json_object_new_int64(isc_mem_inuse(cache->hmctx));
-	CHECKMEM(obj);
-	json_object_object_add(cstats, "HeapMemInUse", obj);
 
 	result = ISC_R_SUCCESS;
 error:
