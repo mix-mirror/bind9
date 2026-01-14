@@ -27,6 +27,9 @@
  */
 typedef uint32_t isc_stdtime_t;
 
+#define ISC_STDTIME_C(n) UINT32_C(n)
+#define ISC_STDTIME_PRIu PRIu32
+
 isc_stdtime_t
 isc_stdtime_now(void);
 /*%<

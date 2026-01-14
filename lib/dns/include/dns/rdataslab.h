@@ -44,8 +44,8 @@
 #include <stdbool.h>
 
 #include <isc/atomic.h>
-#include <isc/heap.h>
 #include <isc/stdtime.h>
+#include <isc/timeout.h>
 #include <isc/urcu.h>
 
 #include <dns/name.h>
@@ -94,18 +94,11 @@ struct dns_slabheader {
 	/*%
 	 * Locked by the owning node's lock.
 	 */
-	uint32_t serial;
-	union {
-		isc_stdtime_t expire;
-		dns_ttl_t     ttl;
-	};
+	uint32_t       serial;
+	isc_stdtime_t  expire;
 	dns_typepair_t typepair;
 
-	/* resigning (zone) and TTL-cleaning (cache) */
-	uint16_t      resign_lsb : 1;
-	isc_stdtime_t resign;
-	isc_heap_t   *heap;
-	unsigned int  heap_index;
+	timeout_t timeout;
 
 	/* Used for stale refresh */
 	_Atomic(uint32_t) last_refresh_fail_ts;

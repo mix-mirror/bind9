@@ -34,6 +34,7 @@
 #include <dns/rdataslab.h>
 #include <dns/stats.h>
 
+#include "isc/timeout.h"
 #include "rdataslab_p.h"
 
 /*
@@ -110,8 +111,8 @@ newslab(dns_rdataset_t *rdataset, isc_mem_t *mctx, isc_region_t *region,
 	*header = (dns_slabheader_t){
 		.headers_link = CDS_LIST_HEAD_INIT(header->headers_link),
 		.trust = rdataset->trust,
-		.ttl = rdataset->ttl,
 		.dirtylink = ISC_LINK_INITIALIZER,
+		.timeout = TIMEOUT_INITIALIZER,
 	};
 
 	region->base = (unsigned char *)header;
@@ -831,8 +832,7 @@ dns_slabheader_copycase(dns_slabheader_t *dest, dns_slabheader_t *src) {
 
 void
 dns_slabheader_reset(dns_slabheader_t *h, dns_dbnode_t *node) {
-	h->heap_index = 0;
-	h->heap = NULL;
+	timeout_init(&h->timeout);
 	h->node = node;
 
 	atomic_init(&h->attributes, 0);
@@ -853,7 +853,9 @@ dns_slabheader_new(isc_mem_t *mctx, dns_dbnode_t *node) {
 	*h = (dns_slabheader_t){
 		.node = node,
 		.dirtylink = ISC_LINK_INITIALIZER,
+		.timeout = TIMEOUT_INITIALIZER,
 	};
+
 	return h;
 }
 

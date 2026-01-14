@@ -39,18 +39,20 @@
 #define stdc_leading_zeros(x) __builtin_clzg(x, (int)(sizeof(x) * 8))
 #else /* HAVE_BUILTIN_CLZG */
 #define stdc_leading_zeros(x)                           \
-	(((x) == 0) ? (sizeof(x) * 8)                   \
+	(((x) == 0) ? (int)(sizeof(x) * 8)              \
 		    : _Generic((x),                     \
 			 unsigned int: __builtin_clz,   \
 			 unsigned long: __builtin_clzl, \
 			 unsigned long long: __builtin_clzll)(x))
 #endif /* HAVE_BUILTIN_CLZG */
 
+#define stdc_bit_width(x) sizeof(x) * 8 - stdc_leading_zeros(x)
+
 #ifdef HAVE_BUILTIN_CTZG
 #define stdc_trailing_zeros(x) __builtin_ctzg(x, (int)sizeof(x) * 8)
 #else /* HAVE_BUILTIN_CTZG */
 #define stdc_trailing_zeros(x)                          \
-	(((x) == 0) ? (sizeof(x) * 8)                   \
+	(((x) == 0) ? (int)(sizeof(x) * 8)              \
 		    : _Generic((x),                     \
 			 unsigned int: __builtin_ctz,   \
 			 unsigned long: __builtin_ctzl, \

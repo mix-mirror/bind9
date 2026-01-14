@@ -131,6 +131,7 @@ isc_srcset.add(
         'thread.c',
         'tid.c',
         'time.c',
+	'timeout.c',
         'timer.c',
         'tls.c',
         'tm.c',

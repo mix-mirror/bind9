@@ -21,7 +21,6 @@
 #include <isc/async.h>
 #include <isc/atomic.h>
 #include <isc/file.h>
-#include <isc/heap.h>
 #include <isc/hex.h>
 #include <isc/list.h>
 #include <isc/log.h>
@@ -38,6 +37,7 @@
 #include <isc/stdio.h>
 #include <isc/string.h>
 #include <isc/time.h>
+#include <isc/timeout.h>
 #include <isc/urcu.h>
 #include <isc/util.h>
 
@@ -62,6 +62,7 @@
 #include "db_p.h"
 #include "qpcache_p.h"
 #include "rdataslab_p.h"
+#include "urcu/compiler.h"
 
 #ifndef DNS_QPCACHE_LOG_STATS_LEVEL
 #define DNS_QPCACHE_LOG_STATS_LEVEL 3
@@ -184,7 +185,7 @@ typedef struct qpcache_bucket {
 	 * is the memory context to use for heap memory; this differs from
 	 * the main database memory context, which is qpcache->common.mctx.
 	 */
-	isc_heap_t *heap;
+	timeouts_t *wheel;
 
 	/* SIEVE-LRU cache cleaning state. */
 	ISC_SIEVE(dns_slabtop_t) sieve;
@@ -192,7 +193,7 @@ typedef struct qpcache_bucket {
 	/* Padding to prevent false sharing between locks. */
 	uint8_t __padding[ISC_OS_CACHELINE_SIZE -
 			  (sizeof(isc_queue_t) + sizeof(isc_rwlock_t) +
-			   sizeof(isc_heap_t *) +
+			   sizeof(timeouts_t *) +
 			   sizeof(ISC_SIEVE(dns_slabtop_t))) %
 				  ISC_OS_CACHELINE_SIZE];
 
@@ -518,8 +519,8 @@ qpcache_miss(qpcache_t *qpdb, dns_slabheader_t *newheader,
 	     isc_rwlocktype_t *tlocktypep DNS__DB_FLARG) {
 	uint32_t idx = HEADERNODE(newheader)->locknum;
 
-	isc_heap_insert(qpdb->buckets[idx].heap, newheader);
-	newheader->heap = qpdb->buckets[idx].heap;
+	timeouts_add(qpdb->buckets[idx].wheel, &newheader->timeout,
+		     newheader->expire);
 
 	if (isc_mem_isovermem(qpdb->common.mctx)) {
 		/*
@@ -909,22 +910,24 @@ mark(dns_slabheader_t *header, uint_least16_t flag) {
 static void
 setttl(dns_slabheader_t *header, isc_stdtime_t newts) {
 	isc_stdtime_t oldts = header->expire;
+	qpcache_t *qpdb = NULL;
+	timeouts_t *wheel = NULL;
 
 	header->expire = newts;
 
-	if (header->heap == NULL || header->heap_index == 0 || newts == oldts) {
+	if (header->timeout.pending == NULL || newts == oldts) {
 		return;
 	}
 
-	if (newts < oldts) {
-		isc_heap_increased(header->heap, header->heap_index);
-	} else {
-		isc_heap_decreased(header->heap, header->heap_index);
-	}
+	qpdb = HEADERNODE(header)->qpdb;
+	wheel = qpdb->buckets[HEADERNODE(header)->locknum].wheel;
 
 	if (newts == 0) {
-		isc_heap_delete(header->heap, header->heap_index);
+		timeouts_del(wheel, &header->timeout);
+		return;
 	}
+
+	timeouts_update(wheel, newts);
 }
 
 static void
@@ -2282,28 +2285,6 @@ qpcnode_expiredata(dns_dbnode_t *node, void *data) {
 	INSIST(tlocktype == isc_rwlocktype_none);
 }
 
-/*%
- * These functions allow the heap code to rank the priority of each
- * element.  It returns true if v1 happens "sooner" than v2.
- */
-static bool
-ttl_sooner(void *v1, void *v2) {
-	dns_slabheader_t *h1 = v1;
-	dns_slabheader_t *h2 = v2;
-
-	return h1->expire < h2->expire;
-}
-
-/*%
- * This function sets the heap index into the header.
- */
-static void
-set_index(void *what, unsigned int idx) {
-	dns_slabheader_t *h = what;
-
-	h->heap_index = idx;
-}
-
 static void
 qpcache__destroy(qpcache_t *qpdb) {
 	unsigned int i;
@@ -2331,7 +2312,7 @@ qpcache__destroy(qpcache_t *qpdb) {
 		INSIST(isc_queue_empty(&qpdb->buckets[i].deadnodes));
 		isc_queue_destroy(&qpdb->buckets[i].deadnodes);
 
-		isc_heap_destroy(&qpdb->buckets[i].heap);
+		timeouts_destroy(&qpdb->buckets[i].wheel);
 	}
 
 	dns_stats_detach(&qpdb->rrsetstats);
@@ -3284,9 +3265,8 @@ dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 	for (i = 0; i < (int)qpdb->buckets_count; i++) {
 		ISC_SIEVE_INIT(qpdb->buckets[i].sieve);
 
-		qpdb->buckets[i].heap = NULL;
-		isc_heap_create(hmctx, ttl_sooner, set_index, 0,
-				&qpdb->buckets[i].heap);
+		qpdb->buckets[i].wheel = NULL;
+		timeouts_create(hmctx, &qpdb->buckets[i].wheel);
 
 		isc_queue_init(&qpdb->buckets[i].deadnodes);
 
@@ -3759,8 +3739,10 @@ qpcnode_deletedata(dns_dbnode_t *node ISC_ATTR_UNUSED, void *data) {
 		ISC_LIST_UNLINK(HEADERNODE(header)->dirty, header, dirtylink);
 	}
 
-	if (header->heap != NULL && header->heap_index != 0) {
-		isc_heap_delete(header->heap, header->heap_index);
+	if (header->timeout.pending != NULL) {
+		timeouts_t *wheel =
+			qpdb->buckets[HEADERNODE(header)->locknum].wheel;
+		timeouts_del(wheel, &header->timeout);
 	}
 
 	/*
@@ -3784,16 +3766,21 @@ static void
 expire_ttl_headers(qpcache_t *qpdb, unsigned int locknum,
 		   isc_rwlocktype_t *nlocktypep, isc_rwlocktype_t *tlocktypep,
 		   isc_stdtime_t now DNS__DB_FLARG) {
-	isc_heap_t *heap = qpdb->buckets[locknum].heap;
+	timeouts_t *wheel = qpdb->buckets[locknum].wheel;
+
+	if (!timeouts_pending(wheel)) {
+		return;
+	}
 
 	for (size_t i = 0; i < DNS_QPDB_EXPIRE_TTL_COUNT; i++) {
-		dns_slabheader_t *header = isc_heap_element(heap, 1);
-
-		if (header == NULL) {
+		timeout_t *timeout = timeouts_get(wheel);
+		if (timeout == NULL) {
 			/* No headers left on this TTL heap; exit cleaning */
 			return;
 		}
 
+		dns_slabheader_t *header =
+			caa_container_of(timeout, dns_slabheader_t, timeout);
 		dns_ttl_t ttl = header->expire + STALE_TTL(header, qpdb);
 
 		if (ttl >= now - QPDB_VIRTUAL) {
