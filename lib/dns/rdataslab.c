@@ -17,8 +17,6 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
-#include <urcu/list.h>
-
 #include <isc/ascii.h>
 #include <isc/atomic.h>
 #include <isc/list.h>
@@ -26,6 +24,7 @@
 #include <isc/region.h>
 #include <isc/result.h>
 #include <isc/string.h>
+#include <isc/urcu.h>
 #include <isc/util.h>
 
 #include <dns/db.h>
@@ -830,8 +829,6 @@ dns_slabheader_copycase(dns_slabheader_t *dest, dns_slabheader_t *src) {
 
 void
 dns_slabheader_reset(dns_slabheader_t *h, dns_dbnode_t *node) {
-	h->heap_index = 0;
-	h->heap = NULL;
 	h->node = node;
 
 	atomic_init(&h->attributes, 0);
