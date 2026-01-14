@@ -13,7 +13,6 @@
 
 #pragma once
 
-#include <isc/heap.h>
 #include <isc/urcu.h>
 
 #include <dns/nsec3.h>
@@ -36,10 +35,6 @@ dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *base, dns_dbtype_t type,
 /*%<
  * Create a new database of type "qpcache". Called via dns_db_create();
  * see documentation for that function for more details.
- *
- * If argv[0] is set, it points to a valid memory context to be used for
- * allocation of heap memory.  Generally this is used for cache databases
- * only.
  *
  * Requires:
  *
