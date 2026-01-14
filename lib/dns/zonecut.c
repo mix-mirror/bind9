@@ -38,7 +38,8 @@ dns_zonecut_init(dns_zonecut_t *zonecut) {
 	dns_rdataset_init(&zonecut->delegsig);
 }
 
-static void inline clone_associated(const dns_rdataset_t *from,
+inline static void 
+clone_associated(const dns_rdataset_t *from,
 				    dns_rdataset_t *to) {
 	if (dns_rdataset_isassociated(from)) {
 		dns_rdataset_clone(from, to);

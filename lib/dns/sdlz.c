@@ -1219,7 +1219,8 @@ disassociate(dns_rdataset_t *rdataset DNS__DB_FLARG) {
 }
 
 static void
-rdataset_clone(dns_rdataset_t *source, dns_rdataset_t *target DNS__DB_FLARG) {
+rdataset_clone(const dns_rdataset_t *source,
+	       dns_rdataset_t *target DNS__DB_FLARG) {
 	dns_dbnode_t *node = source->rdlist.node;
 
 	dns__rdatalist_clone(source, target DNS__DB_FLARG_PASS);

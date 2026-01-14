@@ -100,7 +100,7 @@ dns__rdataset_disassociate(dns_rdataset_t *rdataset DNS__DB_FLARG) {
 }
 
 bool
-dns_rdataset_isassociated(dns_rdataset_t *rdataset) {
+dns_rdataset_isassociated(const dns_rdataset_t *rdataset) {
 	/*
 	 * Is 'rdataset' associated?
 	 */
@@ -120,7 +120,7 @@ question_cursor(dns_rdataset_t *rdataset ISC_ATTR_UNUSED) {
 }
 
 static void
-question_clone(dns_rdataset_t *source, dns_rdataset_t *target DNS__DB_FLARG) {
+question_clone(const dns_rdataset_t *source, dns_rdataset_t *target DNS__DB_FLARG) {
 	*target = *source;
 }
 
@@ -161,7 +161,7 @@ dns_rdataset_count(dns_rdataset_t *rdataset) {
 }
 
 void
-dns__rdataset_clone(dns_rdataset_t *source,
+dns__rdataset_clone(const dns_rdataset_t *source,
 		    dns_rdataset_t *target DNS__DB_FLARG) {
 	/*
 	 * Make 'target' refer to the same rdataset as 'source'.

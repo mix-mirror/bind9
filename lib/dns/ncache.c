@@ -430,7 +430,8 @@ rdataset_current(dns_rdataset_t *rdataset, dns_rdata_t *rdata) {
 }
 
 static void
-rdataset_clone(dns_rdataset_t *source, dns_rdataset_t *target DNS__DB_FLARG) {
+rdataset_clone(const dns_rdataset_t *source,
+	       dns_rdataset_t *target DNS__DB_FLARG) {
 	*target = *source;
 	target->ncache.iter_pos = NULL;
 	target->ncache.iter_count = 0;

@@ -89,7 +89,8 @@ keynode_next(dns_rdataset_t *rdataset);
 static void
 keynode_current(dns_rdataset_t *rdataset, dns_rdata_t *rdata);
 static void
-keynode_clone(dns_rdataset_t *source, dns_rdataset_t *target DNS__DB_FLARG);
+keynode_clone(const dns_rdataset_t *source,
+	      dns_rdataset_t *target DNS__DB_FLARG);
 
 static dns_rdatasetmethods_t methods = {
 	.disassociate = keynode_disassociate,
@@ -800,7 +801,8 @@ keynode_current(dns_rdataset_t *rdataset, dns_rdata_t *rdata) {
 }
 
 static void
-keynode_clone(dns_rdataset_t *source, dns_rdataset_t *target DNS__DB_FLARG) {
+keynode_clone(const dns_rdataset_t *source,
+	      dns_rdataset_t *target DNS__DB_FLARG) {
 	dns_keynode_t *keynode = NULL;
 
 	keynode = source->keytable.node;

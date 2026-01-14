@@ -142,7 +142,7 @@ dns__rdatalist_current(dns_rdataset_t *rdataset, dns_rdata_t *rdata) {
 }
 
 void
-dns__rdatalist_clone(dns_rdataset_t *source,
+dns__rdatalist_clone(const dns_rdataset_t *source,
 		     dns_rdataset_t *target DNS__DB_FLARG) {
 	REQUIRE(source != NULL);
 	REQUIRE(target != NULL);

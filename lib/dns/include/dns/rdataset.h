@@ -69,7 +69,7 @@ struct dns_rdatasetmethods {
 	isc_result_t (*first)(dns_rdataset_t *rdataset);
 	isc_result_t (*next)(dns_rdataset_t *rdataset);
 	void (*current)(dns_rdataset_t *rdataset, dns_rdata_t *rdata);
-	void (*clone)(dns_rdataset_t	    *source,
+	void (*clone)(const dns_rdataset_t  *source,
 		      dns_rdataset_t *target DNS__DB_FLARG);
 	unsigned int (*count)(dns_rdataset_t *rdataset);
 	isc_result_t (*addnoqname)(dns_rdataset_t *rdataset, dns_name_t *name);
@@ -308,7 +308,7 @@ dns__rdataset_disassociate(dns_rdataset_t *rdataset DNS__DB_FLARG);
  */
 
 bool
-dns_rdataset_isassociated(dns_rdataset_t *rdataset);
+dns_rdataset_isassociated(const dns_rdataset_t *rdataset);
 /*%<
  * Is 'rdataset' associated?
  *
@@ -340,7 +340,7 @@ dns_rdataset_makequestion(dns_rdataset_t *rdataset, dns_rdataclass_t rdclass,
 #define dns_rdataset_clone(source, target) \
 	dns__rdataset_clone(source, target DNS__DB_FILELINE)
 void
-dns__rdataset_clone(dns_rdataset_t	  *source,
+dns__rdataset_clone(const dns_rdataset_t  *source,
 		    dns_rdataset_t *target DNS__DB_FLARG);
 /*%<
  * Make 'target' refer to the same rdataset as 'source'.
