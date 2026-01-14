@@ -49,6 +49,7 @@ isc_test = [
     'tcp',
     'tcpdns',
     'time',
+    'timeout',
     'timer',
     'tls',
     'tlsdns',
