@@ -29,7 +29,7 @@ isc_mem_t *isc_g_mctx = NULL;
  */
 #define BENCH_ENTRIES	     100000  /* Number of cache entries */
 #define BENCH_OPS_PER_UPDATE 10000   /* Add/del ops between updates */
-#define BENCH_UPDATES	     100     /* Number of update cycles */
+#define BENCH_UPDATES	     1000    /* Number of update cycles */
 #define BENCH_TTL_MIN	     30	     /* Minimum TTL in seconds */
 #define BENCH_TTL_MAX	     86400   /* Maximum TTL (24 hours) */
 #define BENCH_TIME_STEP	     10	     /* Seconds to advance per update */
@@ -44,6 +44,13 @@ typedef struct bench_entry {
 	isc_stdtime_t expire;
 	uint32_t id;
 } bench_entry_t;
+
+/* Pre-generated workload operation */
+typedef struct workload_op {
+	size_t entry_idx;	/* Which entry to operate on */
+	uint32_t action;	/* Random action (0-99) */
+	isc_stdtime_t ttl;	/* TTL to use for adds/updates */
+} workload_op_t;
 
 static isc_stdtime_t
 get_random_ttl(void) {
@@ -87,7 +94,7 @@ heap_index(void *p, unsigned int i) {
 }
 
 static void
-bench_heap(void) {
+bench_heap(workload_op_t *workload, size_t workload_size ISC_ATTR_UNUSED) {
 	isc_heap_t *heap = NULL;
 	bench_entry_t *entries = NULL;
 	isc_stdtime_t now = 1000000;
@@ -110,33 +117,58 @@ bench_heap(void) {
 	/* Initial population */
 	start_ns = get_time_ns();
 	for (size_t i = 0; i < BENCH_ENTRIES; i++) {
-		entries[i].expire = now + get_random_ttl();
+		entries[i].expire = now + workload[i].ttl;
 		isc_heap_insert(heap, &entries[i]);
 		total_adds++;
 	}
 	end_ns = get_time_ns();
 	add_time += (end_ns - start_ns);
 
-	/* Simulate workload: many add/del operations, occasional updates */
+	/* Simulate workload: realistic DNS cache pattern
+	 * - Mostly adds for empty slots (cache misses)
+	 * - ~5% TTL updates (prefetch, re-query)
+	 * - ~1% explicit deletes (rare)
+	 * - Most removals via expiration
+	 */
 	printf("Running workload: %d updates, %d ops/update\n", BENCH_UPDATES,
 	       BENCH_OPS_PER_UPDATE);
 
+	size_t op_idx = BENCH_ENTRIES;
 	for (size_t update = 0; update < BENCH_UPDATES; update++) {
-		/* Perform many add/del operations */
-		for (size_t op = 0; op < BENCH_OPS_PER_UPDATE; op++) {
-			size_t idx = isc_random_uniform(BENCH_ENTRIES);
-			bench_entry_t *entry = &entries[idx];
+		/* Perform operations from pre-generated workload */
+		for (size_t op = 0; op < BENCH_OPS_PER_UPDATE; op++, op_idx++) {
+			workload_op_t *wop = &workload[op_idx];
+			bench_entry_t *entry = &entries[wop->entry_idx];
 
-			if (entry->expire == 0) {
-				/* Entry not in heap, add it */
+			if (entry->expire == 0 || entry->expire <= now) {
+				/* Entry not scheduled or expired, add/re-add it */
+				if (entry->expire > 0) {
+					/* Remove expired entry first */
+					start_ns = get_time_ns();
+					isc_heap_delete(heap, entry->heapnode.index);
+					end_ns = get_time_ns();
+					del_time += (end_ns - start_ns);
+					total_dels++;
+					expired_count++;
+				}
 				start_ns = get_time_ns();
-				entry->expire = now + get_random_ttl();
+				entry->expire = now + wop->ttl;
 				isc_heap_insert(heap, entry);
 				end_ns = get_time_ns();
 				add_time += (end_ns - start_ns);
 				total_adds++;
-			} else {
-				/* Entry in heap, delete it */
+		} else if (wop->action < 100) {
+			/* 1% chance: Update TTL (prefetch/re-query) */
+			start_ns = get_time_ns();
+			isc_heap_delete(heap, entry->heapnode.index);
+			entry->expire = now + wop->ttl;
+			isc_heap_insert(heap, entry);
+			end_ns = get_time_ns();
+			del_time += (end_ns - start_ns);
+			total_dels++;
+			total_adds++;
+		} else if (wop->action == 100) {
+			/* 0.01% chance: Explicit delete (flush) */
 				start_ns = get_time_ns();
 				isc_heap_delete(heap, entry->heapnode.index);
 				end_ns = get_time_ns();
@@ -144,6 +176,7 @@ bench_heap(void) {
 				entry->expire = 0;
 				total_dels++;
 			}
+			/* else: ~99% - do nothing, just a cache hit/lookup */
 		}
 
 		/* Advance time and process expirations */
@@ -193,7 +226,7 @@ bench_heap(void) {
  */
 
 static void
-bench_timewheel(void) {
+bench_timewheel(workload_op_t *workload, size_t workload_size ISC_ATTR_UNUSED) {
 	timeouts_t *wheel = NULL;
 	bench_entry_t *entries = NULL;
 	isc_stdtime_t now = 1000000;
@@ -217,45 +250,63 @@ bench_timewheel(void) {
 	/* Initial population */
 	start_ns = get_time_ns();
 	for (size_t i = 0; i < BENCH_ENTRIES; i++) {
-		entries[i].expire = now + get_random_ttl();
+		entries[i].expire = now + workload[i].ttl;
 		timeouts_add(wheel, &entries[i].timeout, entries[i].expire);
 		total_adds++;
 	}
 	end_ns = get_time_ns();
 	add_time += (end_ns - start_ns);
 
-	/* Simulate workload: many add/del operations, occasional updates */
 	printf("Running workload: %d updates, %d ops/update\n", BENCH_UPDATES,
 	       BENCH_OPS_PER_UPDATE);
 
+	size_t op_idx = BENCH_ENTRIES;
 	for (size_t update = 0; update < BENCH_UPDATES; update++) {
-		/* Perform many add/del operations */
-		for (size_t op = 0; op < BENCH_OPS_PER_UPDATE; op++) {
-			size_t idx = isc_random_uniform(BENCH_ENTRIES);
-			bench_entry_t *entry = &entries[idx];
+		/* Perform operations from pre-generated workload */
+		for (size_t op = 0; op < BENCH_OPS_PER_UPDATE; op++, op_idx++) {
+			workload_op_t *wop = &workload[op_idx];
+			bench_entry_t *entry = &entries[wop->entry_idx];
 
-			if (entry->expire == 0) {
-				/* Entry not scheduled, add it */
+			if (entry->expire == 0 || entry->expire <= now) {
+				/* Entry not scheduled or expired, add/re-add it */
+				if (entry->expire > 0) {
+					/* Remove expired entry first */
+					start_ns = get_time_ns();
+					timeouts_del(wheel, &entry->timeout);
+					end_ns = get_time_ns();
+					del_time += (end_ns - start_ns);
+					total_dels++;
+					expired_count++;
+				}
 				start_ns = get_time_ns();
-				entry->expire = now + get_random_ttl();
+				entry->expire = now + wop->ttl;
 				timeouts_add(wheel, &entry->timeout,
 					     entry->expire);
 				end_ns = get_time_ns();
 				add_time += (end_ns - start_ns);
 				total_adds++;
-			} else {
-				/* Entry scheduled, delete it */
-				start_ns = get_time_ns();
-				timeouts_del(wheel, &entry->timeout);
-				end_ns = get_time_ns();
-				del_time += (end_ns - start_ns);
-				entry->expire = 0;
-				total_dels++;
-			}
-		}
-
-		/* Advance time and process expirations */
-		now += BENCH_TIME_STEP;
+		} else if (wop->action < 100) {
+			/* 1% chance: Update TTL (prefetch/re-query) */
+			start_ns = get_time_ns();
+			timeouts_del(wheel, &entry->timeout);
+			entry->expire = now + wop->ttl;
+			timeouts_add(wheel, &entry->timeout,
+				     entry->expire);
+			end_ns = get_time_ns();
+			del_time += (end_ns - start_ns);
+			total_dels++;
+			total_adds++;
+		} else if (wop->action == 100) {
+			/* 0.01% chance: Explicit delete (flush) */
+		start_ns = get_time_ns();
+		timeouts_del(wheel, &entry->timeout);
+		end_ns = get_time_ns();
+		del_time += (end_ns - start_ns);
+		entry->expire = 0;
+		total_dels++;
+	}
+	/* else: ~99% - do nothing, just a cache hit/lookup */
+}
 		start_ns = get_time_ns();
 
 		timeouts_update(wheel, now);
@@ -297,6 +348,8 @@ bench_timewheel(void) {
 int
 main(void) {
 	isc_mem_t *mctx = NULL;
+	workload_op_t *workload = NULL;
+	size_t workload_size = BENCH_ENTRIES + (BENCH_UPDATES * BENCH_OPS_PER_UPDATE);
 
 	isc_mem_create("heap_vs_tw", &mctx);
 
@@ -315,8 +368,31 @@ main(void) {
 	printf("  - TTL range: %d-%d seconds\n", BENCH_TTL_MIN, BENCH_TTL_MAX);
 	printf("\n");
 
-	bench_heap();
-	bench_timewheel();
+	/* Pre-generate workload with fixed seed for reproducibility */
+	printf("Pre-generating workload...\n");
+	workload = isc_mem_cget(mctx, workload_size, sizeof(*workload));
+	
+	/* Note: isc_random uses system entropy, not seedable */
+	/* Results will vary between runs but both tests use same sequence */
+	
+	/* Initial population TTLs */
+	for (size_t i = 0; i < BENCH_ENTRIES; i++) {
+		workload[i].entry_idx = i;
+		workload[i].action = 0; /* Initial add */
+		workload[i].ttl = get_random_ttl();
+	}
+	
+	/* Workload operations */
+	for (size_t i = BENCH_ENTRIES; i < workload_size; i++) {
+		workload[i].entry_idx = isc_random_uniform(BENCH_ENTRIES);
+		workload[i].action = isc_random_uniform(10000);
+		workload[i].ttl = get_random_ttl();
+	}
+
+	bench_heap(workload, workload_size);
+	bench_timewheel(workload, workload_size);
+
+	isc_mem_cput(mctx, workload, workload_size, sizeof(*workload));
 
 	printf("\n");
 	printf("========================================\n");
