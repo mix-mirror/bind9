@@ -100,6 +100,7 @@
 #include <dns/ttl.h>
 #include <dns/view.h>
 #include <dns/zone.h>
+#include <dns/zonecut.h>
 #include <dns/zt.h>
 
 #include <dst/dst.h>
@@ -6551,15 +6552,14 @@ static void
 tat_send(void *arg) {
 	ns_tat_t *tat = (ns_tat_t *)arg;
 	char namebuf[DNS_NAME_FORMATSIZE];
-	dns_fixedname_t fdomain;
-	dns_name_t *domain = NULL;
-	dns_rdataset_t nameservers;
 	isc_result_t result;
 	dns_name_t *keyname = NULL;
 	dns_name_t *tatname = NULL;
+	dns_zonecut_t zonecut;
 
 	keyname = dns_fixedname_name(&tat->keyname);
 	tatname = dns_fixedname_name(&tat->tatname);
+	dns_zonecut_init(&zonecut);
 
 	dns_name_format(tatname, namebuf, sizeof(namebuf));
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
@@ -6584,26 +6584,24 @@ tat_send(void *arg) {
 	 * order to eventually find the destination host to send the TAT query
 	 * to.
 	 *
-	 * After the dns_view_findzonecut() call, 'domain' will hold the
+	 * After the dns_view_findzonecut() call, 'zonecut.name' will hold the
 	 * deepest zone cut we can find for 'keyname' while 'nameservers' will
 	 * hold the NS RRset at that zone cut.
 	 */
-	domain = dns_fixedname_initname(&fdomain);
-	dns_rdataset_init(&nameservers);
-	result = dns_view_findzonecut(tat->view, keyname, domain, NULL, 0, 0,
-				      true, true, &nameservers, NULL);
+	result = dns_view_findzonecut(tat->view, keyname, zonecut.name, NULL, 0,
+				      0, true, true, &zonecut.ns, NULL);
 	if (result == ISC_R_SUCCESS) {
 		result = dns_resolver_createfetch(
 			tat->view->resolver, tatname, dns_rdatatype_null,
-			domain, &nameservers, NULL, 0, 0, 0, NULL, NULL, NULL,
-			tat->loop, tat_done, tat, NULL, &tat->rdataset,
-			&tat->sigrdataset, &tat->fetch);
+			&zonecut, NULL, 0, 0, 0, NULL, NULL, NULL, tat->loop,
+			tat_done, tat, NULL, &tat->rdataset, &tat->sigrdataset,
+			&tat->fetch);
 
 		/*
 		 * dns_resolver_createfetch() will create its own copy of
-		 * nameservers.
+		 * zonecut.
 		 */
-		dns_rdataset_cleanup(&nameservers);
+		dns_zonecut_cleanup(&zonecut);
 	}
 
 	/*

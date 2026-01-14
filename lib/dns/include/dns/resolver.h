@@ -274,8 +274,7 @@ typedef struct fetchctx fetchctx_t;
 
 isc_result_t
 dns_resolver_createfetch(dns_resolver_t *res, const dns_name_t *name,
-			 dns_rdatatype_t type, const dns_name_t *domain,
-			 dns_rdataset_t	      *nameservers,
+			 dns_rdatatype_t type, const dns_zonecut_t *zonecut,
 			 const isc_sockaddr_t *client, dns_messageid_t id,
 			 unsigned int options, unsigned int depth,
 			 isc_counter_t *qc, isc_counter_t *gqc,

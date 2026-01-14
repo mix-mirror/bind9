@@ -66,6 +66,7 @@
 #include <dns/types.h>
 #include <dns/view.h>
 #include <dns/zone.h>
+#include <dns/zonecut.h>
 #include <dns/zt.h>
 
 #include <ns/client.h>
@@ -2839,10 +2840,10 @@ fetch_and_forget(ns_client_t *client, dns_name_t *qname, dns_rdatatype_t qtype,
 	isc_nmhandle_attach(client->inner.handle, handlep);
 	maybe_init_fetch_counter(client);
 	result = dns_resolver_createfetch(
-		client->inner.view->resolver, qname, qtype, NULL, NULL,
-		peeraddr, client->message->id, options, 0, NULL,
-		client->query.qc, NULL, client->manager->loop, cb, client, NULL,
-		tmprdataset, NULL, fetchp);
+		client->inner.view->resolver, qname, qtype, NULL, peeraddr,
+		client->message->id, options, 0, NULL, client->query.qc, NULL,
+		client->manager->loop, cb, client, NULL, tmprdataset, NULL,
+		fetchp);
 	if (result != ISC_R_SUCCESS) {
 		ns_client_putrdataset(client, &tmprdataset);
 		isc_nmhandle_detach(handlep);
@@ -6295,12 +6296,26 @@ ns_query_recurse(ns_client_t *client, dns_rdatatype_t qtype, dns_name_t *qname,
 	isc_nmhandle_attach(client->inner.handle,
 			    &HANDLE_RECTYPE_NORMAL(client));
 	maybe_init_fetch_counter(client);
+
+	/*
+	 * Temporary - next changes in same commit will introduce the zonecut in
+	 * the querycontext.
+	 */
+	dns_zonecut_t zonecutdata, *zonecut = NULL;
+
+	if (qdomain != NULL) {
+		dns_zonecut_init(&zonecutdata);
+		zonecut = &zonecutdata;
+		dns_name_copy(qdomain, zonecutdata.name);
+		dns_rdataset_clone(nameservers, &zonecutdata.ns);
+	}
 	result = dns_resolver_createfetch(
-		client->inner.view->resolver, qname, qtype, qdomain,
-		nameservers, peeraddr, client->message->id,
-		client->query.fetchoptions, 0, NULL, client->query.qc, NULL,
-		client->manager->loop, fetch_callback, client, &client->edectx,
-		rdataset, sigrdataset, &FETCH_RECTYPE_NORMAL(client));
+		client->inner.view->resolver, qname, qtype, zonecut, peeraddr,
+		client->message->id, client->query.fetchoptions, 0, NULL,
+		client->query.qc, NULL, client->manager->loop, fetch_callback,
+		client, &client->edectx, rdataset, sigrdataset,
+		&FETCH_RECTYPE_NORMAL(client));
+	dns_zonecut_cleanup(zonecut);
 	if (result != ISC_R_SUCCESS) {
 		release_recursionquota(client);
 

@@ -46,6 +46,7 @@
 #include <dns/stats.h>
 #include <dns/transport.h>
 #include <dns/types.h>
+#include <dns/zonecut.h>
 
 #define DNS_ADB_MAGIC		 ISC_MAGIC('D', 'a', 'd', 'b')
 #define DNS_ADB_VALID(x)	 ISC_MAGIC_VALID(x, DNS_ADB_MAGIC)
@@ -2715,10 +2716,8 @@ fetch_name(dns_adbname_t *adbname, bool start_at_zone, bool no_validation,
 	isc_result_t result;
 	dns_adbfetch_t *fetch = NULL;
 	dns_adb_t *adb = NULL;
-	dns_fixedname_t fixed;
-	dns_name_t *name = NULL;
+	dns_zonecut_t zonecutdata, *zonecut = NULL;
 	dns_rdataset_t rdataset;
-	dns_rdataset_t *nameservers = NULL;
 	unsigned int options = no_validation ? DNS_FETCHOPT_NOVALIDATE : 0;
 
 	REQUIRE(DNS_ADBNAME_VALID(adbname));
@@ -2737,10 +2736,11 @@ fetch_name(dns_adbname_t *adbname, bool start_at_zone, bool no_validation,
 	if (start_at_zone) {
 		DP(ENTER_LEVEL, "fetch_name: starting at zone for name %p",
 		   adbname);
-		name = dns_fixedname_initname(&fixed);
-		CHECK(dns_view_findzonecut(adb->view, adbname->name, name, NULL,
-					   0, 0, true, false, &rdataset, NULL));
-		nameservers = &rdataset;
+		dns_zonecut_init(&zonecutdata);
+		zonecut = &zonecutdata;
+		CHECK(dns_view_findzonecut(adb->view, adbname->name,
+					   zonecutdata.name, NULL, 0, 0, true,
+					   false, &zonecutdata.ns, NULL));
 		options |= DNS_FETCHOPT_UNSHARED;
 	} else if (adb->view->qminimization) {
 		options |= DNS_FETCHOPT_QMINIMIZE | DNS_FETCHOPT_QMIN_SKIP_IP6A;
@@ -2761,9 +2761,10 @@ fetch_name(dns_adbname_t *adbname, bool start_at_zone, bool no_validation,
 	 */
 	dns_adbname_ref(adbname);
 	result = dns_resolver_createfetch(
-		adb->res, adbname->name, type, name, nameservers, NULL, 0,
-		options, depth, qc, gqc, parent, isc_loop(), fetch_callback,
-		adbname, NULL, &fetch->rdataset, NULL, &fetch->fetch);
+		adb->res, adbname->name, type, zonecut, NULL, 0, options, depth,
+		qc, gqc, parent, isc_loop(), fetch_callback, adbname, NULL,
+		&fetch->rdataset, NULL, &fetch->fetch);
+	dns_zonecut_cleanup(zonecut);
 	if (result != ISC_R_SUCCESS) {
 		DP(ENTER_LEVEL, "fetch_name: createfetch failed with %s",
 		   isc_result_totext(result));
