@@ -138,8 +138,6 @@ struct qpcnode {
 	struct cds_list_head types_list;
 	struct cds_list_head *data;
 
-	ISC_LIST(dns_slabheader_t) dirty;
-
 	/*%
 	 * Used for dead nodes cleaning.  This linked list is used to mark nodes
 	 * which have no data any longer, but we cannot unlink at that exact
@@ -147,6 +145,9 @@ struct qpcnode {
 	 * tree.
 	 */
 	isc_queue_node_t deadlink;
+
+	atomic_bool dirty;
+	struct cds_wfs_stack dirty_stack;
 };
 
 /*%
@@ -547,17 +548,14 @@ clean_cache_node(qpcache_t *qpdb, qpcnode_t *node) {
 	/*
 	 * Caller must be holding the node lock.
 	 */
+	struct cds_wfs_head *head = __cds_wfs_pop_all(&node->dirty_stack);
+	struct cds_wfs_node *wfs_node = NULL, *wfs_next = NULL;
 
-	/*
-	 * We can't use ordinary loop because multiple headers to be cleaned can
-	 * be stashed under a single slabtop.
-	 */
-	for (dns_slabheader_t *dirty = ISC_LIST_HEAD(node->dirty);
-	     dirty != NULL; dirty = ISC_LIST_HEAD(node->dirty))
-	{
-		dns_slabtop_t *top = dirty->top;
+	cds_wfs_for_each_blocking_safe(head, wfs_node, wfs_next) {
+		dns_slabtop_t *top = caa_container_of(wfs_node, dns_slabtop_t,
+						      wfs_node);
 
-		ISC_LIST_UNLINK(node->dirty, dirty, dirtylink);
+		cds_wfs_node_init(&top->wfs_node);
 
 		clean_cache_headers(top);
 
@@ -596,6 +594,8 @@ clean_cache_node(qpcache_t *qpdb, qpcnode_t *node) {
 			dns_slabtop_destroy(((dns_db_t *)qpdb)->mctx, &top);
 		}
 	}
+
+	atomic_store_relaxed(&node->dirty, false);
 }
 
 /*
@@ -743,8 +743,11 @@ qpcnode_release(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t *nlocktypep,
 		goto unref;
 	}
 
-	/* Handle easy and typical case first. */
-	if (ISC_LIST_EMPTY(node->dirty) && !cds_list_empty(node->data)) {
+	/*
+	 * Handle easy and typical case first, skip the cleaning if
+	 * node is not dirty && node is not empty
+	 */
+	if (!atomic_load_relaxed(&node->dirty) && !cds_list_empty(node->data)) {
 		goto unref;
 	}
 
@@ -771,7 +774,7 @@ qpcnode_release(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t *nlocktypep,
 		}
 	}
 
-	if (!ISC_LIST_EMPTY(node->dirty)) {
+	if (atomic_load_relaxed(&node->dirty)) {
 		clean_cache_node(qpdb, node);
 	}
 
@@ -884,12 +887,20 @@ setttl(dns_slabheader_t *header, isc_stdtime_t newts) {
 }
 
 static void
+mark_dirty(qpcnode_t *node, dns_slabtop_t *top) {
+	atomic_store_relaxed(&node->dirty, true);
+	if (atomic_compare_exchange_strong_relaxed(&top->dirty,
+						   &(bool){ false }, true))
+	{
+		cds_wfs_push(&node->dirty_stack, &top->wfs_node);
+	}
+}
+
+static void
 mark_ancient(dns_slabheader_t *header) {
 	setttl(header, 0);
 	mark(header, DNS_SLABHEADERATTR_ANCIENT);
-	if (!ISC_LINK_LINKED(header, dirtylink)) {
-		ISC_LIST_APPEND(HEADERNODE(header)->dirty, header, dirtylink);
-	}
+	mark_dirty(HEADERNODE(header), header->top);
 }
 
 /*
@@ -1185,6 +1196,11 @@ check_stale_header(dns_slabheader_t *header, qpc_search_t *search) {
 		}
 		return (search->options & DNS_DBFIND_STALEOK) == 0;
 	}
+
+	/*
+	 * Mark the node as dirty, so it gets cleaned up.
+	 */
+	mark_dirty(HEADERNODE(header), header->top);
 
 	return true;
 }
@@ -2363,8 +2379,9 @@ new_qpcnode(qpcache_t *qpdb, const dns_name_t *name, dns_namespace_t nspace) {
 		.nspace = nspace,
 		.references = ISC_REFCOUNT_INITIALIZER(1),
 		.locknum = isc_random_uniform(qpdb->buckets_count),
-		.dirty = ISC_LIST_INITIALIZER,
 	};
+
+	cds_wfs_init(&newdata->dirty_stack);
 
 	isc_mem_attach(qpdb->common.mctx, &newdata->mctx);
 	dns_name_dup(name, newdata->mctx, &newdata->name);
@@ -3664,10 +3681,6 @@ qpcnode_deletedata(dns_dbnode_t *node ISC_ATTR_UNUSED, void *data) {
 	dns_slabheader_t *header = data;
 	qpcache_t *qpdb = HEADERNODE(header)->qpdb;
 
-	if (ISC_LINK_LINKED(header, dirtylink)) {
-		ISC_LIST_UNLINK(HEADERNODE(header)->dirty, header, dirtylink);
-	}
-
 	/*
 	 * This place is the only place where we actually need header->typepair.
 	 */
@@ -3740,6 +3753,8 @@ qpcnode_destroy(qpcnode_t *qpnode) {
 		}
 		dns_slabtop_destroy(((dns_db_t *)qpdb)->mctx, &top);
 	}
+
+	cds_wfs_destroy(&qpnode->dirty_stack);
 
 	dns_name_free(&qpnode->name, qpnode->mctx);
 	isc_mem_putanddetach(&qpnode->mctx, qpnode, sizeof(qpcnode_t));

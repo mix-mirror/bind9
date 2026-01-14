@@ -109,7 +109,6 @@ newslab(dns_rdataset_t *rdataset, isc_mem_t *mctx, isc_region_t *region,
 	*header = (dns_slabheader_t){
 		.headers_link = CDS_LIST_HEAD_INIT(header->headers_link),
 		.trust = rdataset->trust,
-		.dirtylink = ISC_LINK_INITIALIZER,
 	};
 
 	region->base = (unsigned char *)header;
@@ -834,8 +833,6 @@ dns_slabheader_reset(dns_slabheader_t *h, dns_dbnode_t *node) {
 	atomic_init(&h->attributes, 0);
 	atomic_init(&h->last_refresh_fail_ts, 0);
 
-	ISC_LINK_INIT(h, dirtylink);
-
 	STATIC_ASSERT(sizeof(h->attributes) == 2,
 		      "The .attributes field of dns_slabheader_t needs to be "
 		      "16-bit int type exactly.");
@@ -848,8 +845,8 @@ dns_slabheader_new(isc_mem_t *mctx, dns_dbnode_t *node) {
 	h = isc_mem_get(mctx, sizeof(*h));
 	*h = (dns_slabheader_t){
 		.node = node,
-		.dirtylink = ISC_LINK_INITIALIZER,
 	};
+
 	return h;
 }
 

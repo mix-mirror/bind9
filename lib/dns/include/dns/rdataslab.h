@@ -80,10 +80,14 @@ struct dns_slabtop {
 
 	dns_slabtop_t *related;
 
+	struct cds_wfs_node wfs_node;
+
 	/*% Used for SIEVE-LRU (cache) and changed_list (zone) */
 	ISC_LINK(struct dns_slabtop) link;
 	/*% Used for SIEVE-LRU */
 	bool visited;
+
+	atomic_bool dirty;
 };
 
 struct dns_slabheader {
@@ -102,11 +106,6 @@ struct dns_slabheader {
 
 	dns_slabheader_proof_t *noqname;
 	dns_slabheader_proof_t *closest;
-
-	/*%
-	 * Used for cleaning.
-	 */
-	ISC_LINK(dns_slabheader_t) dirtylink;
 
 	/*%
 	 * Points to the top slabtop structure for the type.

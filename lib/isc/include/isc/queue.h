@@ -11,6 +11,8 @@
  * information regarding copyright ownership.
  */
 
+#pragma once
+
 #include <isc/os.h>
 #include <isc/urcu.h>
 
