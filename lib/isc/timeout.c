@@ -143,10 +143,10 @@ timeouts_destroy(timeouts_t **timeoutsp) {
 	isc_mem_putanddetach(&timeouts->mctx, timeouts, sizeof(*timeouts));
 }
 
-void
+bool
 timeouts_del(timeouts_t *T, timeout_t *to) {
 	if (!to->pending) {
-		return;
+		return false;
 	}
 
 	ISC_LIST_UNLINK(*(to->pending), to, link);
@@ -160,6 +160,8 @@ timeouts_del(timeouts_t *T, timeout_t *to) {
 	}
 
 	to->pending = NULL;
+
+	return true;
 }
 
 static isc_stdtime_t
@@ -180,28 +182,39 @@ timeout_slot(wheel_t wheel, isc_stdtime_t expires) {
 
 static void
 timeouts_sched(timeouts_t *T, timeout_t *to, isc_stdtime_t expires) {
-	timeouts_del(T, to);
+	timeout_list_t *newpending = NULL;
+	wheel_t newwheel = 0;
+	int newslot = 0;
 
+	/* Update expiration time */
 	to->expires = expires;
 
+	/* Calculate new position */
 	if (expires > T->curtime) {
 		isc_stdtime_t rem = timeout_rem(T, to);
-
-		/* rem is nonzero since:
-		 *   rem == timeout_rem(T,to),
-		 *       == to->expires - T->curtime
-		 *   and above we have expires > T->curtime.
-		 */
-		wheel_t wheel = timeout_wheel(rem);
-		int slot = timeout_slot(wheel, to->expires);
-
-		to->pending = &T->wheel[wheel][slot];
-		ISC_LIST_APPEND(*to->pending, to, link);
-
-		T->pending[wheel] |= WHEEL_C(1) << slot;
+		/* rem is nonzero since expires > T->curtime */
+		newwheel = timeout_wheel(rem);
+		newslot = timeout_slot(newwheel, to->expires);
+		newpending = &T->wheel[newwheel][newslot];
 	} else {
-		to->pending = &T->expired;
-		ISC_LIST_APPEND(*to->pending, to, link);
+		newpending = &T->expired;
+	}
+
+	/* Fast path: if already in the correct slot, nothing to do */
+	if (to->pending == newpending) {
+		return;
+	}
+
+	/* Remove from old position if needed */
+	timeouts_del(T, to);
+
+	/* Insert into new position */
+	to->pending = newpending;
+	ISC_LIST_APPEND(*newpending, to, link);
+
+	/* Update pending bitmask for wheel slots (not expired queue) */
+	if (newpending != &T->expired) {
+		T->pending[newwheel] |= WHEEL_C(1) << newslot;
 	}
 }
 
@@ -214,6 +227,10 @@ void
 timeouts_update(timeouts_t *T, isc_stdtime_t curtime) {
 	isc_stdtime_t elapsed = curtime - T->curtime;
 	timeout_list_t todo;
+
+	if (elapsed == 0) {
+		return;
+	}
 
 	ISC_LIST_INIT(todo);
 

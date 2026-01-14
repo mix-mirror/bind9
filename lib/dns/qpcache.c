@@ -910,7 +910,7 @@ mark(dns_slabheader_t *header, uint_least16_t flag) {
 static void
 setttl(dns_slabheader_t *header, isc_stdtime_t newts) {
 	isc_stdtime_t oldts = header->expire;
-	qpcache_t *qpdb = NULL;
+	qpcnode_t *node = NULL;
 	timeouts_t *wheel = NULL;
 
 	header->expire = newts;
@@ -919,8 +919,8 @@ setttl(dns_slabheader_t *header, isc_stdtime_t newts) {
 		return;
 	}
 
-	qpdb = HEADERNODE(header)->qpdb;
-	wheel = qpdb->buckets[HEADERNODE(header)->locknum].wheel;
+	node = HEADERNODE(header);
+	wheel = node->qpdb->buckets[node->locknum].wheel;
 
 	if (newts == 0) {
 		timeouts_del(wheel, &header->timeout);

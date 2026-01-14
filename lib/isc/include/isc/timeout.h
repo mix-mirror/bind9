@@ -98,7 +98,7 @@ void
 timeouts_add(timeouts_t *, timeout_t *, isc_stdtime_t);
 /* add timeout to timing wheel */
 
-void
+bool
 timeouts_del(timeouts_t *, timeout_t *);
 /* remove timeout from any timing wheel or expired queue (okay if on neither) */
 
