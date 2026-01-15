@@ -407,6 +407,18 @@ struct fetchctx {
 	dns_name_t *fwdname;
 
 	/*%
+	 * Results from the query needing to be copied to the fetch response
+	 * objects (dns_fetchresponse_t). (Single-thread access thanks to
+	 * loop serialization.)
+	 */
+	isc_result_t resp_result;
+	dns_fixedname_t resp_foundname;
+	dns_db_t *resp_db;
+	dns_dbnode_t *resp_node;
+	dns_rdataset_t resp_rdataset;
+	dns_rdataset_t resp_sigrdataset;
+
+	/*%
 	 * Used to track started ADB finds with event.
 	 */
 	size_t pending_running;
@@ -1614,8 +1626,6 @@ spillattimer_countdown(void *arg);
 
 static void
 clone_results(fetchctx_t *fctx) {
-	dns_fetchresponse_t *hresp = NULL;
-
 	REQUIRE(!ISC_LIST_EMPTY(fctx->resps));
 
 	/*
@@ -1626,29 +1636,21 @@ clone_results(fetchctx_t *fctx) {
 	FCTXTRACE("clone_results");
 
 	ISC_LIST_FOREACH(fctx->resps, resp, link) {
-		/* This is the head resp; keep a pointer and move on */
-		if (hresp == NULL) {
-			hresp = ISC_LIST_HEAD(fctx->resps);
-			FCTXTRACEN("clone_results", hresp->foundname,
-				   hresp->result);
-			continue;
+		resp->result = fctx->resp_result;
+		dns_name_copy(dns_fixedname_name(&fctx->resp_foundname),
+			      resp->foundname);
+		dns_db_attach(fctx->resp_db, &resp->db);
+		dns_db_attachnode(fctx->resp_node, &resp->node);
+
+		if (dns_rdataset_isassociated(&fctx->resp_rdataset)) {
+			dns_rdataset_clone(&fctx->resp_rdataset,
+					   resp->rdataset);
 		}
 
-		resp->result = hresp->result;
-		dns_name_copy(hresp->foundname, resp->foundname);
-		dns_db_attach(hresp->db, &resp->db);
-		dns_db_attachnode(hresp->node, &resp->node);
-
-		INSIST(hresp->rdataset != NULL && resp->rdataset != NULL);
-		if (dns_rdataset_isassociated(hresp->rdataset)) {
-			dns_rdataset_clone(hresp->rdataset, resp->rdataset);
-		}
-
-		INSIST(hresp->sigrdataset != NULL || resp->sigrdataset == NULL);
-		if (resp->sigrdataset != NULL && hresp->sigrdataset != NULL &&
-		    dns_rdataset_isassociated(hresp->sigrdataset))
+		if (resp->sigrdataset != NULL &&
+		    dns_rdataset_isassociated(&fctx->resp_sigrdataset))
 		{
-			dns_rdataset_clone(hresp->sigrdataset,
+			dns_rdataset_clone(&fctx->resp_sigrdataset,
 					   resp->sigrdataset);
 		}
 	}
@@ -4412,31 +4414,26 @@ resume_qmin(void *arg) {
 		if (result == DNS_R_NXDOMAIN &&
 		    fctx->qmin_labels == dns_name_countlabels(fctx->name))
 		{
-			LOCK(&fctx->lock);
-			resp = ISC_LIST_HEAD(fctx->resps);
-			if (resp != NULL) {
-				if (dns_rdataset_isassociated(&rdataset)) {
-					dns_rdataset_clone(&rdataset,
-							   resp->rdataset);
-				}
-				if (dns_rdataset_isassociated(&sigrdataset) &&
-				    resp->sigrdataset != NULL)
-				{
-					dns_rdataset_clone(&sigrdataset,
-							   resp->sigrdataset);
-				}
-				if (db != NULL) {
-					dns_db_attach(db, &resp->db);
-				}
-				if (node != NULL) {
-					dns_db_attachnode(node, &resp->node);
-				}
-				dns_name_copy(fname, resp->foundname);
-				fctx->state = fetchstate_done;
-				UNLOCK(&fctx->lock);
-				goto cleanup;
+			if (dns_rdataset_isassociated(&rdataset)) {
+				dns_rdataset_clone(&rdataset,
+						   &fctx->resp_rdataset);
 			}
+			if (dns_rdataset_isassociated(&sigrdataset)) {
+				dns_rdataset_clone(&sigrdataset,
+						   &fctx->resp_sigrdataset);
+			}
+			if (db != NULL) {
+				dns_db_attach(db, &fctx->resp_db);
+			}
+			if (node != NULL) {
+				dns_db_attachnode(node, &fctx->resp_node);
+			}
+			dns_name_copy(fname, dns_fixedname_name(
+						     &fctx->resp_foundname));
+			LOCK(&fctx->lock);
+			fctx->state = fetchstate_done;
 			UNLOCK(&fctx->lock);
+			goto cleanup;
 		}
 
 		/* ...or disable minimization in relaxed mode */
@@ -4479,39 +4476,42 @@ resume_qmin(void *arg) {
 		    fctx->type != dns_rdatatype_sig &&
 		    fctx->type != dns_rdatatype_rrsig)
 		{
-			LOCK(&fctx->lock);
-			resp = ISC_LIST_HEAD(fctx->resps);
-			if (resp != NULL) {
-				if (dns_rdataset_isassociated(&rdataset)) {
-					dns_rdataset_clone(&rdataset,
-							   resp->rdataset);
-				}
-				if (dns_rdataset_isassociated(&sigrdataset) &&
-				    resp->sigrdataset != NULL)
-				{
-					dns_rdataset_clone(&sigrdataset,
-							   resp->sigrdataset);
-				}
-				if (db != NULL) {
-					dns_db_attach(db, &resp->db);
-				}
-				if (node != NULL) {
-					dns_db_attachnode(node, &resp->node);
-				}
-				dns_name_copy(fname, resp->foundname);
-				fctx->state = fetchstate_done;
-				if (result == DNS_R_CNAME &&
-				    dns_rdataset_isassociated(&rdataset) &&
-				    fctx->type == dns_rdatatype_cname)
-				{
-					fctx_success_unref(fctx);
-					result = ISC_R_SUCCESS;
-				} else {
-					UNLOCK(&fctx->lock);
-				}
-				goto cleanup;
+			if (dns_rdataset_isassociated(&rdataset)) {
+				dns_rdataset_clone(&rdataset,
+						   &fctx->resp_rdataset);
 			}
-			UNLOCK(&fctx->lock);
+			if (dns_rdataset_isassociated(&sigrdataset)) {
+				dns_rdataset_clone(&sigrdataset,
+						   &fctx->resp_sigrdataset);
+			}
+			if (db != NULL) {
+				dns_db_attach(db, &fctx->resp_db);
+			}
+			if (node != NULL) {
+				dns_db_attachnode(node, &fctx->resp_node);
+			}
+			dns_name_copy(fname, dns_fixedname_name(
+						     &fctx->resp_foundname));
+
+			LOCK(&fctx->lock);
+			fctx->state = fetchstate_done;
+			if (result == DNS_R_CNAME &&
+			    dns_rdataset_isassociated(&rdataset) &&
+			    fctx->type == dns_rdatatype_cname)
+			{
+				fctx_success_unref(fctx);
+				result = ISC_R_SUCCESS;
+				/*
+				 * Yes, we're not releasing the lock, because
+				 * `fctx_success_unref()` directly goes into the
+				 * `fctx__done()` flow which expect fctx to be
+				 * locked in case of success. Spicy...
+				 */
+			} else {
+				UNLOCK(&fctx->lock);
+			}
+
+			goto cleanup;
 		}
 
 		/*
@@ -4664,6 +4664,15 @@ fctx__destroy(fetchctx_t *fctx, const char *func, const char *file,
 	dns_resolver_detach(&fctx->res);
 
 	dns_ede_invalidate(&fctx->edectx);
+
+	if (fctx->resp_db != NULL) {
+		dns_db_detach(&fctx->resp_db);
+	}
+	if (fctx->resp_node != NULL) {
+		dns_db_detachnode(&fctx->resp_node);
+	}
+	dns_rdataset_cleanup(&fctx->resp_rdataset);
+	dns_rdataset_cleanup(&fctx->resp_sigrdataset);
 
 	isc_mem_free(fctx->mctx, fctx->info);
 
@@ -4831,31 +4840,32 @@ fctx__create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 	REQUIRE(fctxp != NULL && *fctxp == NULL);
 
 	fctx = isc_mem_get(mctx, sizeof(*fctx));
-	*fctx = (fetchctx_t){
-		.type = type,
-		.qmintype = type,
-		.options = options,
-		.tid = isc_tid(),
-		.state = fetchstate_active,
-		.depth = depth,
-		.qmin_labels = 1,
-		.fwdpolicy = dns_fwdpolicy_none,
-		.result = ISC_R_FAILURE,
-		.loop = loop,
-		.queries = ISC_LIST_INITIALIZER,
-		.finds = ISC_LIST_INITIALIZER,
-		.altfinds = ISC_LIST_INITIALIZER,
-		.forwaddrs = ISC_LIST_INITIALIZER,
-		.altaddrs = ISC_LIST_INITIALIZER,
-		.forwarders = ISC_LIST_INITIALIZER,
-		.bad = ISC_LIST_INITIALIZER,
-		.edns = ISC_LIST_INITIALIZER,
-		.validators = ISC_LIST_INITIALIZER,
-		.nameservers = DNS_RDATASET_INIT,
-		.qminrrset = DNS_RDATASET_INIT,
-		.qminsigrrset = DNS_RDATASET_INIT,
-		.nsrrset = DNS_RDATASET_INIT,
-	};
+	*fctx = (fetchctx_t){ .type = type,
+			      .qmintype = type,
+			      .options = options,
+			      .tid = isc_tid(),
+			      .state = fetchstate_active,
+			      .depth = depth,
+			      .qmin_labels = 1,
+			      .fwdpolicy = dns_fwdpolicy_none,
+			      .result = ISC_R_FAILURE,
+			      .loop = loop,
+			      .queries = ISC_LIST_INITIALIZER,
+			      .finds = ISC_LIST_INITIALIZER,
+			      .altfinds = ISC_LIST_INITIALIZER,
+			      .forwaddrs = ISC_LIST_INITIALIZER,
+			      .altaddrs = ISC_LIST_INITIALIZER,
+			      .forwarders = ISC_LIST_INITIALIZER,
+			      .bad = ISC_LIST_INITIALIZER,
+			      .edns = ISC_LIST_INITIALIZER,
+			      .validators = ISC_LIST_INITIALIZER,
+			      .nameservers = DNS_RDATASET_INIT,
+			      .qminrrset = DNS_RDATASET_INIT,
+			      .qminsigrrset = DNS_RDATASET_INIT,
+			      .nsrrset = DNS_RDATASET_INIT,
+			      .resp_result = DNS_R_SERVFAIL,
+			      .resp_rdataset = DNS_RDATASET_INIT,
+			      .resp_sigrdataset = DNS_RDATASET_INIT };
 
 	isc_mem_attach(mctx, &fctx->mctx);
 	dns_resolver_attach(res, &fctx->res);
@@ -4870,6 +4880,7 @@ fctx__create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 	fctx->qminname = dns_fixedname_initname(&fctx->qminfname);
 	fctx->qmindcname = dns_fixedname_initname(&fctx->qmindcfname);
 	fctx->fwdname = dns_fixedname_initname(&fctx->fwdfname);
+	dns_fixedname_init(&fctx->resp_foundname);
 
 	dns_name_copy(name, fctx->name);
 	dns_name_copy(name, fctx->qminname);
@@ -5380,27 +5391,28 @@ has_000_label(dns_rdataset_t *nsecset) {
 	return false;
 }
 
-static isc_result_t
-fctx_setresult(fetchctx_t *fctx, dns_rdataset_t *rdataset) {
-	isc_result_t eresult = ISC_R_SUCCESS;
+static void
+fctx_setresult(fetchctx_t *fctx) {
+	isc_result_t result = ISC_R_SUCCESS;
+	dns_rdataset_t *rdataset = &fctx->resp_rdataset;
 
 	if (NEGATIVE(rdataset)) {
-		eresult = NXDOMAIN(rdataset) ? DNS_R_NCACHENXDOMAIN
-					     : DNS_R_NCACHENXRRSET;
-	} else if (eresult == ISC_R_SUCCESS && rdataset->type != fctx->type) {
+		result = NXDOMAIN(rdataset) ? DNS_R_NCACHENXDOMAIN
+					    : DNS_R_NCACHENXRRSET;
+	} else if (result == ISC_R_SUCCESS && rdataset->type != fctx->type) {
 		switch (rdataset->type) {
 		case dns_rdatatype_cname:
-			eresult = DNS_R_CNAME;
+			result = DNS_R_CNAME;
 			break;
 		case dns_rdatatype_dname:
-			eresult = DNS_R_DNAME;
+			result = DNS_R_DNAME;
 			break;
 		default:
 			break;
 		}
 	}
 
-	return eresult;
+	fctx->resp_result = result;
 }
 
 static inline dns_trust_t
@@ -5615,7 +5627,6 @@ validated(void *arg) {
 	dns_validator_t *nextval = NULL;
 	dns_adbaddrinfo_t *addrinfo = NULL;
 	dns_dbnode_t *node = NULL;
-	dns_fetchresponse_t *resp = NULL;
 	dns_rdataset_t *ardataset = NULL, *asigrdataset = NULL;
 	dns_message_t *message = NULL;
 	fetchctx_t *fctx = NULL;
@@ -5696,12 +5707,9 @@ validated(void *arg) {
 	 * we pass an rdataset back to the caller. Otherwise the caller
 	 * iterates the node.
 	 */
-	resp = ISC_LIST_HEAD(fctx->resps);
-	if (resp != NULL &&
-	    (negative || chaining || !dns_rdatatype_ismulti(fctx->type)))
-	{
-		ardataset = resp->rdataset;
-		asigrdataset = resp->sigrdataset;
+	if (negative || chaining || !dns_rdatatype_ismulti(fctx->type)) {
+		ardataset = &fctx->resp_rdataset;
+		asigrdataset = &fctx->resp_sigrdataset;
 	}
 
 	/*
@@ -5785,15 +5793,13 @@ answer_response:
 	 * We're responding with an answer, positive or negative,
 	 * not an error.
 	 */
-	if (resp != NULL) {
-		FCTX_ATTR_SET(fctx, FCTX_ATTR_HAVEANSWER);
+	FCTX_ATTR_SET(fctx, FCTX_ATTR_HAVEANSWER);
 
-		resp->result = fctx_setresult(fctx, resp->rdataset);
-		dns_name_copy(val->name, resp->foundname);
-		dns_db_attach(fctx->cache, &resp->db);
-		dns_db_transfernode(fctx->cache, &node, &resp->node);
-		fctx->state = fetchstate_done;
-	}
+	fctx_setresult(fctx);
+	dns_name_copy(val->name, dns_fixedname_name(&fctx->resp_foundname));
+	dns_db_attach(fctx->cache, &fctx->resp_db);
+	dns_db_transfernode(fctx->cache, &node, &fctx->resp_node);
+	fctx->state = fetchstate_done;
 
 	done = true;
 
@@ -6019,7 +6025,6 @@ rctx_cache_secure(respctx_t *rctx, dns_message_t *message, dns_name_t *name,
 	fetchctx_t *fctx = rctx->fctx;
 	resquery_t *query = rctx->query;
 	dns_rdataset_t *ardataset = NULL, *asigset = NULL;
-	dns_fetchresponse_t *resp = ISC_LIST_HEAD(fctx->resps);
 
 	/*
 	 * RRSIGs are validated as part of validating the type they cover.
@@ -6084,12 +6089,11 @@ rctx_cache_secure(respctx_t *rctx, dns_message_t *message, dns_name_t *name,
 			 * but we got a CNAME/DNAME - then we need to
 			 * set up rdatasets to send back to the caller.
 			 */
-			if (resp != NULL &&
-			    (!dns_rdatatype_ismulti(fctx->type) ||
-			     CHAINING(rdataset)))
+			if (!dns_rdatatype_ismulti(fctx->type) ||
+			    CHAINING(rdataset))
 			{
-				ardataset = resp->rdataset;
-				asigset = resp->sigrdataset;
+				ardataset = &fctx->resp_rdataset;
+				asigset = &fctx->resp_sigrdataset;
 			}
 		}
 
@@ -6112,7 +6116,6 @@ rctx_cache_insecure(respctx_t *rctx, dns_message_t *message, dns_name_t *name,
 		    dns_rdataset_t *sigrdataset) {
 	isc_result_t result;
 	fetchctx_t *fctx = rctx->fctx;
-	dns_fetchresponse_t *resp = ISC_LIST_HEAD(fctx->resps);
 	dns_rdataset_t *added = NULL;
 
 	/*
@@ -6120,13 +6123,11 @@ rctx_cache_insecure(respctx_t *rctx, dns_message_t *message, dns_name_t *name,
 	 * CNAME/DNAME - then we need to set up an rdataset to send
 	 * back to the caller.
 	 */
-	if (resp != NULL &&
-	    (!dns_rdatatype_ismulti(fctx->type) || CHAINING(rdataset)))
-	{
+	if (!dns_rdatatype_ismulti(fctx->type) || CHAINING(rdataset)) {
 		if (ANSWER(rdataset)) {
-			added = resp->rdataset;
+			added = &fctx->resp_rdataset;
 		} else if (ANSWERSIG(rdataset)) {
-			added = resp->sigrdataset;
+			added = &fctx->resp_sigrdataset;
 		}
 	}
 
@@ -6236,21 +6237,16 @@ rctx_cachename(respctx_t *rctx, dns_message_t *message, dns_name_t *name) {
 	 * it back to the caller.
 	 */
 	if (!need_validation && name->attributes.answer && !HAVE_ANSWER(fctx)) {
-		dns_fetchresponse_t *resp = ISC_LIST_HEAD(fctx->resps);
-		if (resp != NULL) {
-			isc_result_t eresult = ISC_R_SUCCESS;
+		fctx->resp_result = ISC_R_SUCCESS;
 
-			if (dns_rdataset_isassociated(resp->rdataset)) {
-				eresult = fctx_setresult(fctx, resp->rdataset);
-			}
-
-			resp->result = eresult;
-			dns_name_copy(name, resp->foundname);
-			dns_db_attach(fctx->cache, &resp->db);
-			dns_db_transfernode(fctx->cache, &node, &resp->node);
-			fctx->state = fetchstate_done;
-			FCTX_ATTR_SET(fctx, FCTX_ATTR_HAVEANSWER);
+		if (dns_rdataset_isassociated(&fctx->resp_rdataset)) {
+			fctx_setresult(fctx);
 		}
+		dns_name_copy(name, dns_fixedname_name(&fctx->resp_foundname));
+		dns_db_attach(fctx->cache, &fctx->resp_db);
+		dns_db_transfernode(fctx->cache, &node, &fctx->resp_node);
+		fctx->state = fetchstate_done;
+		FCTX_ATTR_SET(fctx, FCTX_ATTR_HAVEANSWER);
 	}
 
 cleanup:
@@ -6369,7 +6365,6 @@ rctx_ncache(respctx_t *rctx) {
 	dns_message_t *message = rctx->query->rmessage;
 	dns_adbaddrinfo_t *addrinfo = rctx->query->addrinfo;
 	dns_dbnode_t *node = NULL;
-	dns_fetchresponse_t *resp = NULL;
 	dns_rdataset_t *added = NULL;
 
 	FCTXTRACE("rctx_ncache");
@@ -6422,9 +6417,8 @@ rctx_ncache(respctx_t *rctx) {
 	 * Cache the negative answer, and copy it into the fetch response.
 	 */
 	LOCK(&fctx->lock);
-	resp = ISC_LIST_HEAD(fctx->resps);
-	if (!HAVE_ANSWER(fctx) && resp != NULL) {
-		added = resp->rdataset;
+	if (!HAVE_ANSWER(fctx)) {
+		added = &fctx->resp_rdataset;
 	}
 
 	result = negcache(message, fctx, name, rctx->now, false, false, added,
@@ -6434,13 +6428,11 @@ rctx_ncache(respctx_t *rctx) {
 	}
 
 	FCTX_ATTR_SET(fctx, FCTX_ATTR_HAVEANSWER);
-	if (resp != NULL) {
-		resp->result = fctx_setresult(fctx, resp->rdataset);
-		dns_name_copy(name, resp->foundname);
-		dns_db_attach(fctx->cache, &resp->db);
-		dns_db_transfernode(fctx->cache, &node, &resp->node);
-		fctx->state = fetchstate_done;
-	}
+	fctx_setresult(fctx);
+	dns_name_copy(name, dns_fixedname_name(&fctx->resp_foundname));
+	dns_db_attach(fctx->cache, &fctx->resp_db);
+	dns_db_transfernode(fctx->cache, &node, &fctx->resp_node);
+	fctx->state = fetchstate_done;
 
 unlock:
 	UNLOCK(&fctx->lock);
