@@ -1624,35 +1624,41 @@ static void
 spillattimer_countdown(void *arg);
 
 static void
-clone_results(fetchctx_t *fctx) {
-	REQUIRE(!ISC_LIST_EMPTY(fctx->resps));
+copy_to_resp(fetchctx_t *fctx, dns_fetchresponse_t *resp) {
+	resp->result = fctx->resp_result;
 
-	/*
-	 * Set up any other resps to have the same data as the first.
-	 * Caller must be holding the appropriate lock.
-	 */
+	dns_name_copy(dns_fixedname_name(&fctx->resp_foundname),
+		      resp->foundname);
 
-	FCTXTRACE("clone_results");
+	dns_db_attach(fctx->resp_db, &resp->db);
+	dns_db_attachnode(fctx->resp_node, &resp->node);
 
-	ISC_LIST_FOREACH(fctx->resps, resp, link) {
-		resp->result = fctx->resp_result;
-		dns_name_copy(dns_fixedname_name(&fctx->resp_foundname),
-			      resp->foundname);
-		dns_db_attach(fctx->resp_db, &resp->db);
-		dns_db_attachnode(fctx->resp_node, &resp->node);
-
-		if (dns_rdataset_isassociated(&fctx->resp_rdataset)) {
-			dns_rdataset_clone(&fctx->resp_rdataset,
-					   resp->rdataset);
-		}
-
-		if (resp->sigrdataset != NULL &&
-		    dns_rdataset_isassociated(&fctx->resp_sigrdataset))
-		{
-			dns_rdataset_clone(&fctx->resp_sigrdataset,
-					   resp->sigrdataset);
-		}
+	if (dns_rdataset_isassociated(&fctx->resp_rdataset)) {
+		dns_rdataset_clone(&fctx->resp_rdataset, resp->rdataset);
 	}
+	if (resp->sigrdataset != NULL &&
+	    dns_rdataset_isassociated(&fctx->resp_sigrdataset))
+	{
+		dns_rdataset_clone(&fctx->resp_sigrdataset, resp->sigrdataset);
+	}
+}
+
+static void
+pull_from_resp(dns_fetchresponse_t *resp, fetchctx_t *fctx) {
+	if (dns_rdataset_isassociated(resp->rdataset)) {
+		dns_rdataset_clone(resp->rdataset, &fctx->resp_rdataset);
+	}
+	if (dns_rdataset_isassociated(resp->sigrdataset)) {
+		dns_rdataset_clone(resp->sigrdataset, &fctx->resp_sigrdataset);
+	}
+	if (resp->db != NULL) {
+		dns_db_attach(resp->db, &fctx->resp_db);
+	}
+	if (resp->node != NULL) {
+		dns_db_attachnode(resp->node, &fctx->resp_node);
+	}
+	dns_name_copy(resp->foundname,
+		      dns_fixedname_name(&fctx->resp_foundname));
 }
 
 static void
@@ -1668,9 +1674,6 @@ fctx_sendevents(fetchctx_t *fctx, isc_result_t result) {
 
 	REQUIRE(fctx->state == fetchstate_done);
 
-	if (result == ISC_R_SUCCESS) {
-		clone_results(fctx);
-	}
 	FCTXTRACE("sendevents");
 
 	/*
@@ -1683,6 +1686,9 @@ fctx_sendevents(fetchctx_t *fctx, isc_result_t result) {
 	ISC_LIST_FOREACH(fctx->resps, resp, link) {
 		ISC_LIST_UNLINK(fctx->resps, resp, link);
 
+		if (result == ISC_R_SUCCESS) {
+			copy_to_resp(fctx, resp);
+		}
 		count++;
 
 		resp->vresult = fctx->vresult;
@@ -4332,6 +4338,26 @@ done:
 }
 
 static void
+clear_resp(dns_fetchresponse_t **respp) {
+	dns_fetchresponse_t *resp = *respp;
+
+	if (resp == NULL) {
+		return;
+	}
+
+	if (resp->node != NULL) {
+		dns_db_detachnode(&resp->node);
+	}
+	if (resp->db != NULL) {
+		dns_db_detach(&resp->db);
+	}
+	dns_rdataset_cleanup(resp->rdataset);
+	dns_rdataset_cleanup(resp->sigrdataset);
+
+	dns_resolver_freefresp(respp);
+}
+
+static void
 resume_qmin(void *arg) {
 	dns_fetchresponse_t *resp = (dns_fetchresponse_t *)arg;
 	fetchctx_t *fctx = resp->arg;
@@ -4340,10 +4366,6 @@ resume_qmin(void *arg) {
 	unsigned int findoptions = 0;
 	dns_name_t *fname = NULL, *dcname = NULL;
 	dns_fixedname_t ffixed, dcfixed;
-	dns_rdataset_t rdataset;
-	dns_rdataset_t sigrdataset;
-	dns_db_t *db = NULL;
-	dns_dbnode_t *node = NULL;
 
 	REQUIRE(VALID_FCTX(fctx));
 
@@ -4356,31 +4378,7 @@ resume_qmin(void *arg) {
 	fname = dns_fixedname_initname(&ffixed);
 	dcname = dns_fixedname_initname(&dcfixed);
 
-	dns_rdataset_init(&rdataset);
-	dns_rdataset_init(&sigrdataset);
-
-	if (resp->node != NULL) {
-		dns_db_attachnode(resp->node, &node);
-		dns_db_detachnode(&resp->node);
-	}
-	if (resp->db != NULL) {
-		dns_db_attach(resp->db, &db);
-		dns_db_detach(&resp->db);
-	}
-
-	if (dns_rdataset_isassociated(resp->rdataset)) {
-		dns_rdataset_clone(resp->rdataset, &rdataset);
-		dns_rdataset_disassociate(resp->rdataset);
-	}
-	if (dns_rdataset_isassociated(resp->sigrdataset)) {
-		dns_rdataset_clone(resp->sigrdataset, &sigrdataset);
-		dns_rdataset_disassociate(resp->sigrdataset);
-	}
-	dns_name_copy(resp->foundname, fname);
-
 	result = resp->result;
-
-	dns_resolver_freefresp(&resp);
 
 	LOCK(&fctx->lock);
 	if (SHUTTINGDOWN(fctx)) {
@@ -4413,22 +4411,7 @@ resume_qmin(void *arg) {
 		if (result == DNS_R_NXDOMAIN &&
 		    fctx->qmin_labels == dns_name_countlabels(fctx->name))
 		{
-			if (dns_rdataset_isassociated(&rdataset)) {
-				dns_rdataset_clone(&rdataset,
-						   &fctx->resp_rdataset);
-			}
-			if (dns_rdataset_isassociated(&sigrdataset)) {
-				dns_rdataset_clone(&sigrdataset,
-						   &fctx->resp_sigrdataset);
-			}
-			if (db != NULL) {
-				dns_db_attach(db, &fctx->resp_db);
-			}
-			if (node != NULL) {
-				dns_db_attachnode(node, &fctx->resp_node);
-			}
-			dns_name_copy(fname, dns_fixedname_name(
-						     &fctx->resp_foundname));
+			pull_from_resp(resp, fctx);
 			goto cleanup;
 		}
 
@@ -4472,25 +4455,10 @@ resume_qmin(void *arg) {
 		    fctx->type != dns_rdatatype_sig &&
 		    fctx->type != dns_rdatatype_rrsig)
 		{
-			if (dns_rdataset_isassociated(&rdataset)) {
-				dns_rdataset_clone(&rdataset,
-						   &fctx->resp_rdataset);
-			}
-			if (dns_rdataset_isassociated(&sigrdataset)) {
-				dns_rdataset_clone(&sigrdataset,
-						   &fctx->resp_sigrdataset);
-			}
-			if (db != NULL) {
-				dns_db_attach(db, &fctx->resp_db);
-			}
-			if (node != NULL) {
-				dns_db_attachnode(node, &fctx->resp_node);
-			}
-			dns_name_copy(fname, dns_fixedname_name(
-						     &fctx->resp_foundname));
+			pull_from_resp(resp, fctx);
 
 			if (result == DNS_R_CNAME &&
-			    dns_rdataset_isassociated(&rdataset) &&
+			    dns_rdataset_isassociated(resp->rdataset) &&
 			    fctx->type == dns_rdatatype_cname)
 			{
 				LOCK(&fctx->lock);
@@ -4525,6 +4493,7 @@ resume_qmin(void *arg) {
 		break;
 	}
 
+	clear_resp(&resp);
 	dns_rdataset_cleanup(&fctx->nameservers);
 
 	if (dns_rdatatype_atparent(fctx->type)) {
@@ -4564,14 +4533,8 @@ resume_qmin(void *arg) {
 	fctx_try(fctx, true);
 
 cleanup:
-	if (node != NULL) {
-		dns_db_detachnode(&node);
-	}
-	if (db != NULL) {
-		dns_db_detach(&db);
-	}
-	dns_rdataset_cleanup(&rdataset);
-	dns_rdataset_cleanup(&sigrdataset);
+	clear_resp(&resp);
+
 	if (result != ISC_R_SUCCESS) {
 		/* An error occurred, tear down whole fctx */
 		fctx_failure_unref(fctx, result);
@@ -10859,7 +10822,7 @@ dns_resolver_freefresp(dns_fetchresponse_t **frespp) {
 	}
 
 	dns_fetchresponse_t *fresp = *frespp;
-
 	*frespp = NULL;
+
 	isc_mem_putanddetach(&fresp->mctx, fresp, sizeof(*fresp));
 }
