@@ -299,9 +299,8 @@ struct tried {
 #define RESQUERY_SENDING(q)    ((q)->sends > 0)
 
 typedef enum {
-	fetchstate_active = 0,
-	fetchstate_done,
-	fetchstate_sendevents /*%< Fetch completion events posted. */
+	fetchstate_active,
+	fetchstate_done /*%< Fetch completion events posted. */
 } fetchstate_t;
 
 typedef enum {
@@ -508,7 +507,7 @@ struct fetchctx {
 	((atomic_load_acquire(&(f)->attributes) & FCTX_ATTR_GLUING) != 0)
 #define ADDRWAIT(f) \
 	((atomic_load_acquire(&(f)->attributes) & FCTX_ATTR_ADDRWAIT) != 0)
-#define SHUTTINGDOWN(f) ((f)->state >= fetchstate_done)
+#define SHUTTINGDOWN(f) ((f)->state == fetchstate_done)
 #define WANTCACHE(f) \
 	((atomic_load_acquire(&(f)->attributes) & FCTX_ATTR_WANTCACHE) != 0)
 #define WANTNCACHE(f) \
@@ -1667,7 +1666,7 @@ fctx_sendevents(fetchctx_t *fctx, isc_result_t result) {
 
 	LOCK(&fctx->lock);
 
-	REQUIRE(fctx->state == fetchstate_sendevents);
+	REQUIRE(fctx->state == fetchstate_done);
 
 	if (result == ISC_R_SUCCESS) {
 		clone_results(fctx);
@@ -1804,11 +1803,11 @@ fctx__done(fetchctx_t *fctx, isc_result_t result, const char *func,
 		LOCK(&fctx->lock);
 	}
 	/* We need to do this under the lock for intra-thread synchronization */
-	if (fctx->state == fetchstate_sendevents) {
+	if (fctx->state == fetchstate_done) {
 		UNLOCK(&fctx->lock);
 		return false;
 	}
-	fctx->state = fetchstate_sendevents;
+	fctx->state = fetchstate_done;
 	FCTX_ATTR_CLR(fctx, FCTX_ATTR_ADDRWAIT);
 
 	/* The fctx will get deleted either here or in get_attached_fctx() */
@@ -4430,9 +4429,6 @@ resume_qmin(void *arg) {
 			}
 			dns_name_copy(fname, dns_fixedname_name(
 						     &fctx->resp_foundname));
-			LOCK(&fctx->lock);
-			fctx->state = fetchstate_done;
-			UNLOCK(&fctx->lock);
 			goto cleanup;
 		}
 
@@ -4493,22 +4489,18 @@ resume_qmin(void *arg) {
 			dns_name_copy(fname, dns_fixedname_name(
 						     &fctx->resp_foundname));
 
-			LOCK(&fctx->lock);
-			fctx->state = fetchstate_done;
 			if (result == DNS_R_CNAME &&
 			    dns_rdataset_isassociated(&rdataset) &&
 			    fctx->type == dns_rdatatype_cname)
 			{
+				LOCK(&fctx->lock);
 				fctx_success_unref(fctx);
 				result = ISC_R_SUCCESS;
 				/*
-				 * Yes, we're not releasing the lock, because
 				 * `fctx_success_unref()` directly goes into the
 				 * `fctx__done()` flow which expect fctx to be
-				 * locked in case of success. Spicy...
+				 * locked in case of success.
 				 */
-			} else {
-				UNLOCK(&fctx->lock);
 			}
 
 			goto cleanup;
@@ -4770,16 +4762,7 @@ fctx_add_event(fetchctx_t *fctx, isc_loop_t *loop, const isc_sockaddr_t *client,
 	isc_mem_attach(fctx->mctx, &resp->mctx);
 
 	resp->foundname = dns_fixedname_initname(&resp->fname);
-
-	/*
-	 * Store the sigrdataset in the first resp in case it is needed
-	 * by any of the events.
-	 */
-	if (resp->sigrdataset != NULL) {
-		ISC_LIST_PREPEND(fctx->resps, resp, link);
-	} else {
-		ISC_LIST_APPEND(fctx->resps, resp, link);
-	}
+	ISC_LIST_APPEND(fctx->resps, resp, link);
 }
 
 static void
@@ -5799,7 +5782,6 @@ answer_response:
 	dns_name_copy(val->name, dns_fixedname_name(&fctx->resp_foundname));
 	dns_db_attach(fctx->cache, &fctx->resp_db);
 	dns_db_transfernode(fctx->cache, &node, &fctx->resp_node);
-	fctx->state = fetchstate_done;
 
 	done = true;
 
@@ -6245,7 +6227,6 @@ rctx_cachename(respctx_t *rctx, dns_message_t *message, dns_name_t *name) {
 		dns_name_copy(name, dns_fixedname_name(&fctx->resp_foundname));
 		dns_db_attach(fctx->cache, &fctx->resp_db);
 		dns_db_transfernode(fctx->cache, &node, &fctx->resp_node);
-		fctx->state = fetchstate_done;
 		FCTX_ATTR_SET(fctx, FCTX_ATTR_HAVEANSWER);
 	}
 
@@ -6432,7 +6413,6 @@ rctx_ncache(respctx_t *rctx) {
 	dns_name_copy(name, dns_fixedname_name(&fctx->resp_foundname));
 	dns_db_attach(fctx->cache, &fctx->resp_db);
 	dns_db_transfernode(fctx->cache, &node, &fctx->resp_node);
-	fctx->state = fetchstate_done;
 
 unlock:
 	UNLOCK(&fctx->lock);
@@ -10710,8 +10690,6 @@ dns_resolver_dumpfetches(dns_resolver_t *res, isc_statsformat_t format,
 		char typebuf[DNS_RDATATYPE_FORMATSIZE];
 		char timebuf[1024];
 		unsigned int resp_count = 0, query_count = 0;
-		const char *fetchstatestr[] = { "active", "done",
-						"sendevents" };
 
 		LOCK(&fctx->lock);
 		dns_name_print(fctx->name, fp);
@@ -10722,7 +10700,8 @@ dns_resolver_dumpfetches(dns_resolver_t *res, isc_statsformat_t format,
 		dns_rdatatype_format(fctx->type, typebuf, sizeof(typebuf));
 
 		fprintf(fp, "/%s (%s), 0x%x: started %s, ", typebuf,
-			fetchstatestr[fctx->state], fctx->options, timebuf);
+			fctx->state == fetchstate_done ? "done" : "active",
+			fctx->options, timebuf);
 
 		ISC_LIST_FOREACH(fctx->resps, resp, link) {
 			resp_count++;
