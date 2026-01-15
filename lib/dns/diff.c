@@ -249,7 +249,6 @@ update_rdataset(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 		case ISC_R_SUCCESS:
 		case DNS_R_UNCHANGED:
 		case DNS_R_NXRRSET:
-			getownercase(&ardataset, name);
 			CHECK(result);
 			break;
 		default:
