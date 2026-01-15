@@ -299,8 +299,9 @@ struct tried {
 #define RESQUERY_SENDING(q)    ((q)->sends > 0)
 
 typedef enum {
-	fetchstate_active,
-	fetchstate_done /*%< Fetch completion events posted. */
+	fetchstate_active = 0,
+	fetchstate_done,
+	fetchstate_sendevents /*%< Fetch completion events posted. */
 } fetchstate_t;
 
 typedef enum {
@@ -350,7 +351,6 @@ struct fetchctx {
 	/*% Locked by lock. */
 	isc_mutex_t lock;
 	fetchstate_t state;
-	bool cloned;
 	bool spilled;
 	uint_fast32_t allowed;
 	uint_fast32_t dropped;
@@ -496,7 +496,7 @@ struct fetchctx {
 	((atomic_load_acquire(&(f)->attributes) & FCTX_ATTR_GLUING) != 0)
 #define ADDRWAIT(f) \
 	((atomic_load_acquire(&(f)->attributes) & FCTX_ATTR_ADDRWAIT) != 0)
-#define SHUTTINGDOWN(f) ((f)->state == fetchstate_done)
+#define SHUTTINGDOWN(f) ((f)->state >= fetchstate_done)
 #define WANTCACHE(f) \
 	((atomic_load_acquire(&(f)->attributes) & FCTX_ATTR_WANTCACHE) != 0)
 #define WANTNCACHE(f) \
@@ -805,9 +805,6 @@ fctx__done(fetchctx_t *fctx, isc_result_t result, const char *func,
 
 static void
 resume_qmin(void *arg);
-
-static void
-clone_results(fetchctx_t *fctx);
 
 static isc_result_t
 get_attached_fctx(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
@@ -1616,6 +1613,48 @@ static void
 spillattimer_countdown(void *arg);
 
 static void
+clone_results(fetchctx_t *fctx) {
+	dns_fetchresponse_t *hresp = NULL;
+
+	REQUIRE(!ISC_LIST_EMPTY(fctx->resps));
+
+	/*
+	 * Set up any other resps to have the same data as the first.
+	 * Caller must be holding the appropriate lock.
+	 */
+
+	FCTXTRACE("clone_results");
+
+	ISC_LIST_FOREACH(fctx->resps, resp, link) {
+		/* This is the head resp; keep a pointer and move on */
+		if (hresp == NULL) {
+			hresp = ISC_LIST_HEAD(fctx->resps);
+			FCTXTRACEN("clone_results", hresp->foundname,
+				   hresp->result);
+			continue;
+		}
+
+		resp->result = hresp->result;
+		dns_name_copy(hresp->foundname, resp->foundname);
+		dns_db_attach(hresp->db, &resp->db);
+		dns_db_attachnode(hresp->node, &resp->node);
+
+		INSIST(hresp->rdataset != NULL && resp->rdataset != NULL);
+		if (dns_rdataset_isassociated(hresp->rdataset)) {
+			dns_rdataset_clone(hresp->rdataset, resp->rdataset);
+		}
+
+		INSIST(hresp->sigrdataset != NULL || resp->sigrdataset == NULL);
+		if (resp->sigrdataset != NULL && hresp->sigrdataset != NULL &&
+		    dns_rdataset_isassociated(hresp->sigrdataset))
+		{
+			dns_rdataset_clone(hresp->sigrdataset,
+					   resp->sigrdataset);
+		}
+	}
+}
+
+static void
 fctx_sendevents(fetchctx_t *fctx, isc_result_t result) {
 	unsigned int count = 0;
 	bool logit = false;
@@ -1626,8 +1665,11 @@ fctx_sendevents(fetchctx_t *fctx, isc_result_t result) {
 
 	LOCK(&fctx->lock);
 
-	REQUIRE(fctx->state == fetchstate_done);
+	REQUIRE(fctx->state == fetchstate_sendevents);
 
+	if (result == ISC_R_SUCCESS) {
+		clone_results(fctx);
+	}
 	FCTXTRACE("sendevents");
 
 	/*
@@ -1760,11 +1802,11 @@ fctx__done(fetchctx_t *fctx, isc_result_t result, const char *func,
 		LOCK(&fctx->lock);
 	}
 	/* We need to do this under the lock for intra-thread synchronization */
-	if (fctx->state == fetchstate_done) {
+	if (fctx->state == fetchstate_sendevents) {
 		UNLOCK(&fctx->lock);
 		return false;
 	}
-	fctx->state = fetchstate_done;
+	fctx->state = fetchstate_sendevents;
 	FCTX_ATTR_CLR(fctx, FCTX_ATTR_ADDRWAIT);
 
 	/* The fctx will get deleted either here or in get_attached_fctx() */
@@ -4390,7 +4432,7 @@ resume_qmin(void *arg) {
 					dns_db_attachnode(node, &resp->node);
 				}
 				dns_name_copy(fname, resp->foundname);
-				clone_results(fctx);
+				fctx->state = fetchstate_done;
 				UNLOCK(&fctx->lock);
 				goto cleanup;
 			}
@@ -4457,7 +4499,7 @@ resume_qmin(void *arg) {
 					dns_db_attachnode(node, &resp->node);
 				}
 				dns_name_copy(fname, resp->foundname);
-				clone_results(fctx);
+				fctx->state = fetchstate_done;
 				if (result == DNS_R_CNAME &&
 				    dns_rdataset_isassociated(&rdataset) &&
 				    fctx->type == dns_rdatatype_cname)
@@ -5243,50 +5285,6 @@ same_question(fetchctx_t *fctx, dns_message_t *message) {
 	return ISC_R_SUCCESS;
 }
 
-static void
-clone_results(fetchctx_t *fctx) {
-	dns_fetchresponse_t *hresp = NULL;
-
-	REQUIRE(!ISC_LIST_EMPTY(fctx->resps));
-
-	/*
-	 * Set up any other resps to have the same data as the first.
-	 * Caller must be holding the appropriate lock.
-	 */
-
-	FCTXTRACE("clone_results");
-
-	ISC_LIST_FOREACH(fctx->resps, resp, link) {
-		/* This is the head resp; keep a pointer and move on */
-		if (hresp == NULL) {
-			hresp = ISC_LIST_HEAD(fctx->resps);
-			FCTXTRACEN("clone_results", hresp->foundname,
-				   hresp->result);
-			continue;
-		}
-
-		resp->result = hresp->result;
-		dns_name_copy(hresp->foundname, resp->foundname);
-		dns_db_attach(hresp->db, &resp->db);
-		dns_db_attachnode(hresp->node, &resp->node);
-
-		INSIST(hresp->rdataset != NULL && resp->rdataset != NULL);
-		if (dns_rdataset_isassociated(hresp->rdataset)) {
-			dns_rdataset_clone(hresp->rdataset, resp->rdataset);
-		}
-
-		INSIST(hresp->sigrdataset != NULL || resp->sigrdataset == NULL);
-		if (resp->sigrdataset != NULL && hresp->sigrdataset != NULL &&
-		    dns_rdataset_isassociated(hresp->sigrdataset))
-		{
-			dns_rdataset_clone(hresp->sigrdataset,
-					   resp->sigrdataset);
-		}
-	}
-
-	fctx->cloned = true;
-}
-
 #define CACHE(r)      (((r)->attributes.cache))
 #define ANSWER(r)     (((r)->attributes.answer))
 #define ANSWERSIG(r)  (((r)->attributes.answersig))
@@ -5794,7 +5792,7 @@ answer_response:
 		dns_name_copy(val->name, resp->foundname);
 		dns_db_attach(fctx->cache, &resp->db);
 		dns_db_transfernode(fctx->cache, &node, &resp->node);
-		clone_results(fctx);
+		fctx->state = fetchstate_done;
 	}
 
 	done = true;
@@ -6250,8 +6248,7 @@ rctx_cachename(respctx_t *rctx, dns_message_t *message, dns_name_t *name) {
 			dns_name_copy(name, resp->foundname);
 			dns_db_attach(fctx->cache, &resp->db);
 			dns_db_transfernode(fctx->cache, &node, &resp->node);
-			clone_results(fctx);
-
+			fctx->state = fetchstate_done;
 			FCTX_ATTR_SET(fctx, FCTX_ATTR_HAVEANSWER);
 		}
 	}
@@ -6442,7 +6439,7 @@ rctx_ncache(respctx_t *rctx) {
 		dns_name_copy(name, resp->foundname);
 		dns_db_attach(fctx->cache, &resp->db);
 		dns_db_transfernode(fctx->cache, &node, &resp->node);
-		clone_results(fctx);
+		fctx->state = fetchstate_done;
 	}
 
 unlock:
@@ -10164,7 +10161,7 @@ get_attached_fctx(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 		goto create;
 	}
 
-	if (SHUTTINGDOWN(fctx) || fctx->cloned) {
+	if (SHUTTINGDOWN(fctx)) {
 		/* The fctx will get deleted either here or in fctx__done() */
 		cds_lfht_del(res->fctxs_ht, &fctx->ht_node);
 
@@ -10419,7 +10416,7 @@ dns_resolver_destroyfetch(dns_fetch_t **fetchp) {
 	 * Sanity check: the caller should have gotten its event before
 	 * trying to destroy the fetch.
 	 */
-	if (fctx->state != fetchstate_done) {
+	if (!SHUTTINGDOWN(fctx)) {
 		ISC_LIST_FOREACH(fctx->resps, resp, link) {
 			RUNTIME_CHECK(resp->fetch != fetch);
 		}
@@ -10721,6 +10718,8 @@ dns_resolver_dumpfetches(dns_resolver_t *res, isc_statsformat_t format,
 		char typebuf[DNS_RDATATYPE_FORMATSIZE];
 		char timebuf[1024];
 		unsigned int resp_count = 0, query_count = 0;
+		const char *fetchstatestr[] = { "active", "done",
+						"sendevents" };
 
 		LOCK(&fctx->lock);
 		dns_name_print(fctx->name, fp);
@@ -10731,10 +10730,7 @@ dns_resolver_dumpfetches(dns_resolver_t *res, isc_statsformat_t format,
 		dns_rdatatype_format(fctx->type, typebuf, sizeof(typebuf));
 
 		fprintf(fp, "/%s (%s), 0x%x: started %s, ", typebuf,
-			fctx->state == fetchstate_done ? "done"
-			: fctx->cloned		       ? "cloned"
-						       : "active",
-			fctx->options, timebuf);
+			fetchstatestr[fctx->state], fctx->options, timebuf);
 
 		ISC_LIST_FOREACH(fctx->resps, resp, link) {
 			resp_count++;
