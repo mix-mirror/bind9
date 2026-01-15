@@ -856,7 +856,7 @@ check_predecessors_withchain(dns_qp_t *qp, struct check_predecessors check[],
 	dns_name_t *name = dns_fixedname_initname(&fn1);
 	dns_name_t *pred = dns_fixedname_initname(&fn2);
 	char *namestr = NULL;
-	uint32_t ival;
+	uint32_t ival = 0;
 
 	for (int i = 0; check[i].query != NULL; i++) {
 		dns_qpiter_t it;
