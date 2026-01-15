@@ -680,8 +680,7 @@ foreach_rr(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 		add_rr_prepare_ctx_t *ctx = rr_action_data;
 
 		ctx->oldname = dns_fixedname_initname(&fixed);
-		dns_name_copy(name, ctx->oldname);
-		dns_rdataset_getownercase(&rdataset, ctx->oldname);
+		dns_name_copy(&node->name, ctx->oldname);
 	}
 
 	DNS_RDATASET_FOREACH(&rdataset) {
