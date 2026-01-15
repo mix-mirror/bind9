@@ -375,6 +375,8 @@ stages:
   <<: *default_triggering_rules
   <<: *base_image
   stage: autoconf
+  tags:
+    - smalljob
   script:
     - autoreconf -fi
   artifacts:
@@ -1912,6 +1914,8 @@ release:
       artifacts: true
     - job: docs
       artifacts: true
+  tags:
+    - smalljob
   rules:
     - *rule_tag
   artifacts:
@@ -2042,6 +2046,8 @@ publish:
   needs:
     - job: staging
       artifacts: false
+  tags:
+    - smalljob
 
 # Setting the FORCE_CVE_IDS environment variable to a comma-separated
 # list of CVE IDs enables overriding the autodetected ones.
@@ -2365,6 +2371,8 @@ pairwise:
   <<: *base_image
   stage: postmerge
   needs: []
+  tags:
+    - smalljob
   # post-merge processes should run even if another MR was merged while the job was running (or queued)
   interruptible: false
   variables:
