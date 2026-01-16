@@ -159,9 +159,6 @@ STATIC_ASSERT(6 <= QP_CHUNK_LOG_MAX && QP_CHUNK_LOG_MAX <= 20,
 #define QP_CHUNK_SIZE  (1U << QP_CHUNK_LOG_MAX)
 #define QP_CHUNK_BYTES (QP_CHUNK_SIZE * sizeof(dns_qpnode_t))
 
-STATIC_ASSERT(QP_SAFETY_MARGIN >= QP_CHUNK_BYTES,
-	      "qp-trie safety margin too small");
-
 /*
  * We need a bitfield this big to count how much of a chunk is in use:
  * it needs to count from 0 up to and including `1 << QP_CHUNK_LOG_MAX`.

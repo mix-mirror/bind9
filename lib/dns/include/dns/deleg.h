@@ -168,7 +168,7 @@ dns_delegdb_lookup(dns_delegdb_t *db, const dns_name_t *name, isc_stdtime_t now,
  *
  * Because all those API calls (dns_deleg_alloc* and dns_deleg_add*) use
  * the internal delegdb memory context, it _might_ in some circumstances
- * allocate above its hiwater mark without reclaiming memory. The flow
+ * allocate past its cleaning threshold without reclaiming memory. The flow
  * reclaiming memory is then run when adding the delegset into the database
  * (dns_deleg_writeanddetach()).
  *

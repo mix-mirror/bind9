@@ -91,12 +91,6 @@
 #include <dns/types.h>
 
 /*%
- * How many bytes a qp-trie might allocate as part of an insert. Needed for
- * overmem checks.
- */
-#define QP_SAFETY_MARGIN ((1ul << 12ul) * 12)
-
-/*%
  * A `dns_qp_t` supports single-threaded read/write access.
  */
 typedef struct dns_qp dns_qp_t;
