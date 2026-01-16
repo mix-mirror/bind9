@@ -139,8 +139,6 @@ struct isc_mem {
 	bool checkfree;
 	isc_refcount_t references;
 	char *name;
-	atomic_size_t hi_water;
-	atomic_size_t lo_water;
 	ISC_LIST(isc_mempool_t) pools;
 	unsigned int poolcnt;
 
@@ -626,9 +624,6 @@ mem_create(const char *name, isc_mem_t **ctxp, unsigned int debugging,
 	/* Reserve the [-1] index for ISC_TID_UNKNOWN */
 	ctx->stat = &ctx->stat_s[1];
 
-	atomic_init(&ctx->hi_water, 0);
-	atomic_init(&ctx->lo_water, 0);
-
 	ISC_LIST_INIT(ctx->pools);
 
 #if ISC_MEM_TRACKLINES
@@ -1000,52 +995,6 @@ isc_mem_inuse(isc_mem_t *ctx) {
 	return (size_t)inuse;
 }
 
-void
-isc_mem_clearwater(isc_mem_t *mctx) {
-	isc_mem_setwater(mctx, 0, 0);
-}
-
-void
-isc_mem_setwater(isc_mem_t *ctx, size_t hiwater, size_t lowater) {
-	REQUIRE(VALID_CONTEXT(ctx));
-	REQUIRE(hiwater >= lowater);
-
-	atomic_store_release(&ctx->hi_water, hiwater);
-	atomic_store_release(&ctx->lo_water, lowater);
-
-	return;
-}
-
-bool
-isc_mem_isovermem(isc_mem_t *ctx) {
-	REQUIRE(VALID_CONTEXT(ctx));
-
-	size_t hiwater = atomic_load_relaxed(&ctx->hi_water);
-	if (hiwater == 0) {
-		return false;
-	}
-
-	size_t inuse = isc_mem_inuse(ctx);
-	if (inuse >= hiwater) {
-		return true;
-	}
-
-	size_t lowater = atomic_load_relaxed(&ctx->lo_water);
-	if (inuse <= lowater) {
-		return false;
-	}
-
-	/*
-	 * Between lo_water and hi_water, return true with a probability
-	 * that ramps linearly from 0 at lo_water to 1 at hi_water.  This
-	 * spreads cache cleaning across many inserts instead of triggering
-	 * a thundering herd once the hi_water mark is crossed.
-	 */
-	uint32_t prob = (uint32_t)(((uint64_t)(inuse - lowater) * 256) /
-				   (hiwater - lowater));
-	return isc_random8() < prob;
-}
-
 const char *
 isc_mem_getname(isc_mem_t *ctx) {
 	REQUIRE(VALID_CONTEXT(ctx));
@@ -1391,18 +1340,6 @@ xml_renderctx(isc_mem_t *ctx, size_t *inuse, xmlTextWriterPtr writer) {
 	TRY0(xmlTextWriterWriteFormatString(writer, "%u", ctx->poolcnt));
 	TRY0(xmlTextWriterEndElement(writer)); /* pools */
 
-	TRY0(xmlTextWriterStartElement(writer, ISC_XMLCHAR "hiwater"));
-	TRY0(xmlTextWriterWriteFormatString(
-		writer, "%" PRIu64 "",
-		(uint64_t)atomic_load_relaxed(&ctx->hi_water)));
-	TRY0(xmlTextWriterEndElement(writer)); /* hiwater */
-
-	TRY0(xmlTextWriterStartElement(writer, ISC_XMLCHAR "lowater"));
-	TRY0(xmlTextWriterWriteFormatString(
-		writer, "%" PRIu64 "",
-		(uint64_t)atomic_load_relaxed(&ctx->lo_water)));
-	TRY0(xmlTextWriterEndElement(writer)); /* lowater */
-
 	TRY0(xmlTextWriterEndElement(writer)); /* context */
 
 error:
@@ -1494,14 +1431,6 @@ json_renderctx(isc_mem_t *ctx, size_t *inuse, json_object *array) {
 	obj = json_object_new_int64(ctx->poolcnt);
 	CHECKMEM(obj);
 	json_object_object_add(ctxobj, "pools", obj);
-
-	obj = json_object_new_int64(atomic_load_relaxed(&ctx->hi_water));
-	CHECKMEM(obj);
-	json_object_object_add(ctxobj, "hiwater", obj);
-
-	obj = json_object_new_int64(atomic_load_relaxed(&ctx->lo_water));
-	CHECKMEM(obj);
-	json_object_object_add(ctxobj, "lowater", obj);
 
 	MCTXUNLOCK(ctx);
 	json_object_array_add(array, ctxobj);
