@@ -3234,8 +3234,8 @@ seek_ds(dns_validator_t *val, isc_result_t *resp) {
 		 */
 		if (result == DNS_R_NXRRSET &&
 		    !dns_rdataset_isassociated(&val->frdataset) &&
-		    dns_view_finddeleg(val->view, tname, found, NULL, 0, 0,
-				       false, false, NULL) == ISC_R_SUCCESS &&
+		    dns_view_bestzonecut(val->view, tname, found, NULL, 0, 0,
+					 false, false, NULL) == ISC_R_SUCCESS &&
 		    dns_name_equal(tname, found))
 		{
 			*resp = markanswer(val, "seek_ds (2)");

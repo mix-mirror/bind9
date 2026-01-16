@@ -6590,8 +6590,8 @@ tat_send(void *arg) {
 	 */
 	domain = dns_fixedname_initname(&fdomain);
 	dns_rdataset_init(&nameservers);
-	result = dns_view_finddeleg(tat->view, keyname, domain, NULL, 0, 0,
-				    true, true, &nameservers);
+	result = dns_view_bestzonecut(tat->view, keyname, domain, NULL, 0, 0,
+				      true, true, &nameservers);
 	if (result == ISC_R_SUCCESS) {
 		result = dns_resolver_createfetch(
 			tat->view->resolver, tatname, dns_rdatatype_null,

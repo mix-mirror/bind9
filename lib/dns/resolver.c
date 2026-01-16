@@ -4496,9 +4496,9 @@ resume_qmin(void *arg) {
 	if (dns_rdatatype_atparent(fctx->type)) {
 		findoptions |= DNS_DBFIND_NOEXACT;
 	}
-	result = dns_view_finddeleg(res->view, fctx->name, fname, dcname,
-				    fctx->now, findoptions, true, true,
-				    &fctx->nameservers);
+	result = dns_view_bestzonecut(res->view, fctx->name, fname, dcname,
+				      fctx->now, findoptions, true, true,
+				      &fctx->nameservers);
 	FCTXTRACEN("resume_qmin findzonecut", fname, result);
 
 	if (result != ISC_R_SUCCESS) {
@@ -4943,7 +4943,7 @@ fctx__create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 			if (dns_rdatatype_atparent(fctx->type)) {
 				findoptions |= DNS_DBFIND_NOEXACT;
 			}
-			result = dns_view_finddeleg(
+			result = dns_view_bestzonecut(
 				res->view, name, fctx->fwdname, dcname,
 				fctx->now, findoptions, true, true,
 				&fctx->nameservers);
@@ -9219,9 +9219,9 @@ rctx_nextserver(respctx_t *rctx, dns_message_t *message,
 		} else {
 			name = fctx->domain;
 		}
-		result = dns_view_finddeleg(fctx->res->view, name, fname,
-					    dcname, fctx->now, findoptions,
-					    true, true, &fctx->nameservers);
+		result = dns_view_bestzonecut(fctx->res->view, name, fname,
+					      dcname, fctx->now, findoptions,
+					      true, true, &fctx->nameservers);
 		if (result != ISC_R_SUCCESS) {
 			FCTXTRACE("couldn't find a zonecut");
 			fctx_failure_detach(&rctx->fctx, DNS_R_SERVFAIL);

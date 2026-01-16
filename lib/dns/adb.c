@@ -2738,8 +2738,8 @@ fetch_name(dns_adbname_t *adbname, bool start_at_zone, bool no_validation,
 		DP(ENTER_LEVEL, "fetch_name: starting at zone for name %p",
 		   adbname);
 		name = dns_fixedname_initname(&fixed);
-		CHECK(dns_view_finddeleg(adb->view, adbname->name, name, NULL,
-					 0, 0, true, false, &rdataset));
+		CHECK(dns_view_bestzonecut(adb->view, adbname->name, name, NULL,
+					   0, 0, true, false, &rdataset));
 		nameservers = &rdataset;
 		options |= DNS_FETCHOPT_UNSHARED;
 	} else if (adb->view->qminimization) {

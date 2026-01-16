@@ -684,9 +684,10 @@ dns_view_simplefind(dns_view_t *view, const dns_name_t *name,
  */
 
 isc_result_t
-dns_view_finddeleg(dns_view_t *view, const dns_name_t *name, dns_name_t *fname,
-		   dns_name_t *dcname, isc_stdtime_t now, unsigned int options,
-		   bool use_hints, bool use_cache, dns_rdataset_t *rdataset);
+dns_view_bestzonecut(dns_view_t *view, const dns_name_t *name,
+		     dns_name_t *fname, dns_name_t *dcname, isc_stdtime_t now,
+		     unsigned int options, bool use_hints, bool use_cache,
+		     dns_rdataset_t *rdataset);
 /*%<
  * Find the best known zonecut containing 'name'.
  *
