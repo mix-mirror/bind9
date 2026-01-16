@@ -114,18 +114,7 @@ destructor idiom; use it instead of an open-coded put + detach.
   that's why stripes are signed. Only the sum (`isc_mem_inuse()`, which walks
   -1..isc_tid_count()) is meaningful.
 - `isc_mem_inuse()` is O(threads) and iterates all stripes — fine for
-  water-mark checks, don't put it in per-packet hot paths gratuitously.
-
-### Water marks / overmem
-
-- `isc_mem_setwater(mctx, hiwater, lowater)` (0,0 or `isc_mem_clearwater()`
-  disables). Used by the resolver/cache to bound cache memory.
-- `isc_mem_isovermem()` is **probabilistic**: false below lowater, true above
-  hiwater, and in between returns true with probability ramping linearly
-  0→1 (8-bit resolution, `isc_random8()`). This deliberately spreads cache
-  cleaning over many inserts instead of a thundering herd at the mark —
-  do not "fix" the randomness, and don't expect two consecutive calls to
-  agree.
+  cache-size checks, don't put it in per-packet hot paths gratuitously.
 
 ### Returning memory to the OS
 
@@ -155,7 +144,7 @@ Runtime flags (a context copies the global default at creation;
   table; freeing something never allocated hits `UNREACHABLE()`; leaks are
   dumped (`print_active`) with file:line when the context is destroyed. This
   is the tool for "inuse != 0 at destroy" hunts.
-- `ISC_MEM_DEBUGUSAGE` — log when usage crosses the water marks.
+- `ISC_MEM_DEBUGUSAGE` — accepted for compatibility, currently a no-op.
 
 Each flag can be enabled by simply **setting the environment variable of the
 same name** (existence is checked, not the value) before start; the file
@@ -165,7 +154,7 @@ safely.
 Observability: `isc_mem_stats(mctx, fp)` (pool table + active allocations),
 `isc__mem_printactive()` (unit tests), and the statistics channel renders all
 contexts via `isc_mem_renderxml()` / `isc_mem_renderjson()` (id, name,
-references, inuse, pool count, water marks).
+references, inuse, pool count).
 
 ## isc_mempool — fixed-size free-list pools
 

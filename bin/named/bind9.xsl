@@ -1018,8 +1018,6 @@
               <th>References</th>
               <th>InUse</th>
               <th>Pools</th>
-              <th>HiWater</th>
-              <th>LoWater</th>
             </tr>
             <xsl:for-each select="memory/contexts/context">
               <xsl:sort select="total" data-type="number" order="descending"/>
@@ -1044,12 +1042,6 @@
                 </td>
                 <td>
                   <xsl:value-of select="pools"/>
-                </td>
-                <td>
-                  <xsl:value-of select="hiwater"/>
-                </td>
-                <td>
-                  <xsl:value-of select="lowater"/>
                 </td>
               </tr>
             </xsl:for-each>

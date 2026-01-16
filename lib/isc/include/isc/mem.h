@@ -54,8 +54,7 @@
  *	Crash if a free doesn't match an allocation.
  *
  * \li #ISC_MEM_DEBUGUSAGE
- *	Every time the memory usage is greater (lower) than hi_water
- *	(lo_water) mark, print the current inuse memory.
+ *	Accepted for backward compatibility; currently has no effect.
  *
  * These flags are set in the static variable mem_debugging.
  * When a new memory context is created, its debugging flags
@@ -301,33 +300,6 @@ isc_mem_inuse(isc_mem_t *mctx);
  * Get an estimate of the amount of memory in use in 'mctx', in bytes.
  * This includes quantization overhead, but does not include memory
  * allocated from the system but not yet used.
- */
-
-bool
-isc_mem_isovermem(isc_mem_t *mctx);
-/*%<
- * Return true iff the memory context is in "over memory" state, i.e.,
- * a hiwater mark has been set and the used amount of memory has exceeds
- * the mark.
- */
-
-void
-isc_mem_clearwater(isc_mem_t *mctx);
-void
-isc_mem_setwater(isc_mem_t *mctx, size_t hiwater, size_t lowater);
-/*%<
- * Set high and low water marks for this memory context.
- *
- * When the memory usage of 'mctx' exceeds 'hiwater', the overmem condition
- * will be met and isc_mem_isovermem() will return true.
- *
- * If the 'hiwater' and 'lowater' is set to 0, the high- and low-water
- * processing are disabled for this memory context.
- *
- * There's a convenient function isc_mem_clearwater().
- *
- * Requires:
- *\li	'hiwater' >= 'lowater'
  */
 
 void
