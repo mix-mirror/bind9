@@ -398,8 +398,6 @@ struct fetchctx {
 	dns_name_t *qminname;
 	dns_rdatatype_t qmintype;
 	dns_fetch_t *qminfetch;
-	dns_rdataset_t qminrrset;
-	dns_rdataset_t qminsigrrset;
 	dns_fixedname_t qmindcfname;
 	dns_name_t *qmindcname;
 	dns_fixedname_t fwdfname;
@@ -4284,8 +4282,8 @@ fctx_try(fetchctx_t *fctx, bool retrying) {
 			&fctx->nameservers, NULL, NULL, 0,
 			options | DNS_FETCHOPT_QMINFETCH, 0, fctx->qc,
 			fctx->gqc, fctx, fctx->loop, resume_qmin, fctx,
-			&fctx->edectx, &fctx->qminrrset, &fctx->qminsigrrset,
-			&fctx->qminfetch);
+			&fctx->edectx, &fctx->resp_rdataset,
+			&fctx->resp_sigrdataset, &fctx->qminfetch);
 		if (result != ISC_R_SUCCESS) {
 			fetchctx_unref(fctx);
 			goto done;
@@ -4806,8 +4804,6 @@ fctx__create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 			      .edns = ISC_LIST_INITIALIZER,
 			      .validators = ISC_LIST_INITIALIZER,
 			      .nameservers = DNS_RDATASET_INIT,
-			      .qminrrset = DNS_RDATASET_INIT,
-			      .qminsigrrset = DNS_RDATASET_INIT,
 			      .nsrrset = DNS_RDATASET_INIT,
 			      .resp_result = DNS_R_SERVFAIL,
 			      .resp_rdataset = DNS_RDATASET_INIT,
