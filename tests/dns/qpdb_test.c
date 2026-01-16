@@ -20,6 +20,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "dns/db.h"
+
 #define UNIT_TESTING
 #include <cmocka.h>
 
@@ -40,9 +42,6 @@
 #pragma GCC diagnostic pop
 
 #include <tests/dns.h>
-
-/* Set to true (or use -v option) for verbose output */
-static bool verbose = false;
 
 /*
  * Add to a cache DB 'db' an rdataset of type 'rtype' at a name
@@ -122,8 +121,6 @@ cleanup_all_deadnodes(dns_db_t *db) {
 
 ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 	size_t maxcache = 2097152U; /* 2MB - same as DNS_CACHE_MINSIZE */
-	size_t hiwater = maxcache - (maxcache >> 3); /* borrowed from cache.c */
-	size_t lowater = maxcache - (maxcache >> 2); /* ditto */
 	isc_result_t result;
 	dns_db_t *db = NULL;
 	isc_mem_t *mctx = NULL;
@@ -137,29 +134,27 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 			       &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	isc_mem_setwater(mctx, hiwater, lowater);
+	dns_db_setcachesize(db, maxcache);
 
 	/*
-	 * Add cache entries with minimum size of data until 'overmem'
-	 * condition is triggered.
-	 * This should eventually happen, but we also limit the number of
-	 * iteration to avoid an infinite loop in case something gets wrong.
+	 * Add a number of records that definitely should fill the memory.
 	 */
-	for (i = 0; !isc_mem_isovermem(mctx) && i < (maxcache / 10); i++) {
+	for (i = 0; i < (maxcache / 10); i++) {
 		overmempurge_addrdataset(db, now, i, 50053, 0, false);
 	}
-	assert_true(isc_mem_isovermem(mctx));
+	cleanup_all_deadnodes(db);
+	assert_true(isc_mem_inuse(mctx) < maxcache);
 
 	/*
 	 * Then try to add the same number of entries, each has very large data.
-	 * 'overmem purge' should keep the total cache size from exceeding
-	 * the 'hiwater' mark too much. So we should be able to assume the
+	 * 'LRU cleaning' should keep the total cache size from exceeding
+	 * the max memory size. So we should be able to assume the
 	 * cache size doesn't reach the "max".
 	 */
 	while (i-- > 0) {
 		overmempurge_addrdataset(db, now, i, 50054, 65535, false);
 		cleanup_all_deadnodes(db);
-		if (verbose) {
+		if (debug) {
 			print_message("# inuse: %zd max: %zd\n",
 				      isc_mem_inuse(mctx), maxcache);
 		}
@@ -173,8 +168,6 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 
 ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 	size_t maxcache = 2097152U; /* 2MB - same as DNS_CACHE_MINSIZE */
-	size_t hiwater = maxcache - (maxcache >> 3); /* borrowed from cache.c */
-	size_t lowater = maxcache - (maxcache >> 2); /* ditto */
 	isc_result_t result;
 	dns_db_t *db = NULL;
 	isc_mem_t *mctx = NULL;
@@ -188,18 +181,16 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 			       &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	isc_mem_setwater(mctx, hiwater, lowater);
+	dns_db_setcachesize(db, maxcache);
 
 	/*
-	 * Add cache entries with minimum size of data until 'overmem'
-	 * condition is triggered.
-	 * This should eventually happen, but we also limit the number of
-	 * iteration to avoid an infinite loop in case something gets wrong.
+	 * Add a number of records that definitely should fill the memory.
 	 */
-	for (i = 0; !isc_mem_isovermem(mctx) && i < (maxcache / 10); i++) {
+	for (i = 0; i < (maxcache / 10); i++) {
 		overmempurge_addrdataset(db, now, i, 50053, 0, false);
 	}
-	assert_true(isc_mem_isovermem(mctx));
+	cleanup_all_deadnodes(db);
+	assert_true(isc_mem_inuse(mctx) < maxcache);
 
 	/*
 	 * Then try to add the same number of entries, each has very long name.
@@ -210,7 +201,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 	while (i-- > 0) {
 		overmempurge_addrdataset(db, now, i, 50054, 0, true);
 		cleanup_all_deadnodes(db);
-		if (verbose) {
+		if (debug) {
 			print_message("# inuse: %zd max: %zd\n",
 				      isc_mem_inuse(mctx), maxcache);
 		}

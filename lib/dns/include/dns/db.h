@@ -172,6 +172,7 @@ typedef struct dns_db_methods {
 	void (*setmaxrrperset)(dns_db_t *db, uint32_t value);
 	void (*setmaxtypepername)(dns_db_t *db, uint32_t value);
 	isc_result_t (*getzoneversion)(dns_db_t *db, isc_buffer_t *b);
+	void (*setcachesize)(dns_db_t *db, size_t size);
 } dns_dbmethods_t;
 
 typedef isc_result_t (*dns_dbcreatefunc_t)(isc_mem_t	    *mctx,
@@ -1815,4 +1816,14 @@ dns_db_getzoneversion(dns_db_t *db, isc_buffer_t *b);
  * \li ISC_R_NOTIMPLEMENTED if there is not a database specific
  *     ZONEVERSION
  * \li ISC_R_FAILURE other failures
+ */
+
+void
+dns_db_setcachesize(dns_db_t *db, size_t size);
+/*%<
+ * Set maximum cache size.
+ *
+ * Requires:
+ * \li 'db' is a valid database
+ * \li 'size' is a maximum memory size and not zero
  */
