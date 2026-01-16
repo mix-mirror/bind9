@@ -820,22 +820,6 @@ first_existing_header(dns_vectop_t *top, uint32_t serial) {
 	return NULL;
 }
 
-static dns_vecheader_t **
-first_existing_header_indirect(dns_vectop_t *top, uint32_t serial) {
-	REQUIRE(top != NULL);
-	dns_vecheader_t **result = &ISC_SLIST_HEAD(top->headers);
-
-	ISC_SLIST_FOREACH_PTR(p, &ISC_SLIST_HEAD(top->headers)) {
-		dns_vecheader_t *header = *p;
-		result = p;
-
-		if (header->serial <= serial && !IGNORE(header)) {
-			break;
-		}
-	}
-	return result;
-}
-
 static void
 clean_multiple_headers(dns_vectop_t *top) {
 	uint32_t parent_serial = UINT32_MAX;
@@ -1814,9 +1798,14 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 	dns_vecheader_t **header_p = NULL;
 	dns_vecheader_t *header = NULL;
 	if (foundtop != NULL) {
-		header_p = first_existing_header_indirect(foundtop, UINT32_MAX);
-		INSIST(header_p != NULL);
-		header = EXISTS(*header_p) ? *header_p : NULL;
+		ISC_SLIST_FOREACH_PTR(p, &ISC_SLIST_HEAD(foundtop->headers)) {
+			if (!IGNORE(*p)) {
+				header_p = p;
+				header = *p;
+				break;
+			}
+			ISC_SLIST_PTR_ADVANCE(p, next_header);
+		}
 	}
 
 	if (header != NULL) {
@@ -1901,7 +1890,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 			 * Since we don't generate changed records when
 			 * loading, we MUST clean up 'header' now.
 			 */
-			*header_p = ISC_SLIST_NEXT(header, next_header);
+			ISC_SLIST_PTR_REMOVE(header_p, header, next_header);
 			ISC_SLIST_PREPEND(foundtop->headers, newheader,
 					  next_header);
 			maybe_update_recordsandsize(false, version, header,
