@@ -1779,6 +1779,12 @@ loading_addnode(qpz_load_t *loadctx, const dns_name_t *name,
 	if (result == ISC_R_SUCCESS) {
 		if (type == dns_rdatatype_nsec && node->havensec) {
 			goto done;
+		} else if (type == dns_rdatatype_soa) {
+			// Case preservation
+			dns_name_t tmp_name = DNS_NAME_INITEMPTY;
+			dns_name_dup(name, node->mctx, &tmp_name);
+			ISC_SWAP(node->name, tmp_name);
+			dns_name_free(&tmp_name, node->mctx);
 		}
 	} else {
 		INSIST(node == NULL);
