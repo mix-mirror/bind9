@@ -154,7 +154,6 @@ synthrecord_respond(synthrecord_t *inst, query_ctx_t *qctx, void *rdata,
 	 */
 	dns_name_dup(qctx->client->query.qname, mctx, &aname);
 	dns_message_addname(msg, &aname, DNS_SECTION_ANSWER);
-	dns_rdataset_setownercase(synthset, &aname);
 	ISC_LIST_APPEND(aname.list, synthset, link);
 
 	/*

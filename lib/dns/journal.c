@@ -131,7 +131,6 @@ dns_db_createsoatuple(dns_db_t *db, dns_dbversion_t *ver, isc_mem_t *mctx,
 	}
 
 	dns_rdataset_current(&rdataset, &rdata);
-	dns_rdataset_getownercase(&rdataset, zonename);
 
 	dns_difftuple_create(mctx, op, zonename, rdataset.ttl, &rdata, tp);
 

@@ -8154,7 +8154,6 @@ query_dns64(query_ctx_t *qctx) {
 			      client->inner.signer, flags, qctx->rdataset,
 			      &dns64_rdataset));
 
-	dns_rdataset_setownercase(dns64_rdataset, mname);
 	client->query.attributes |= NS_QUERYATTR_NOADDITIONAL;
 
 	if (client->query.dns64_ttl != UINT32_MAX) {
@@ -8253,7 +8252,6 @@ query_filter64(query_ctx_t *qctx) {
 	}
 
 	dns_rdatalist_tordataset(myrdatalist, myrdataset);
-	dns_rdataset_setownercase(myrdataset, name);
 	client->query.attributes |= NS_QUERYATTR_NOADDITIONAL;
 	if (mname == name) {
 		if (qctx->dbuf != NULL) {
@@ -10322,7 +10320,6 @@ query_addcname(query_ctx_t *qctx, dns_trust_t trust, dns_ttl_t ttl) {
 	ISC_LIST_APPEND(rdatalist->rdata, rdata, link);
 	dns_rdatalist_tordataset(rdatalist, rdataset);
 	rdataset->trust = trust;
-	dns_rdataset_setownercase(rdataset, aname);
 
 	query_addrrset(qctx, &aname, &rdataset, NULL, NULL, DNS_SECTION_ANSWER);
 	if (rdataset != NULL) {

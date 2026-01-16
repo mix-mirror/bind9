@@ -76,8 +76,6 @@ static unsigned int
 rdataset_count(dns_rdataset_t *rdataset);
 static void
 rdataset_settrust(dns_rdataset_t *rdataset, dns_trust_t trust);
-static void
-rdataset_getownercase(const dns_rdataset_t *rdataset, dns_name_t *name);
 
 dns_rdatasetmethods_t dns_rdatavec_rdatasetmethods = {
 	.disassociate = rdataset_disassociate,
@@ -89,7 +87,6 @@ dns_rdatasetmethods_t dns_rdatavec_rdatasetmethods = {
 	.settrust = rdataset_settrust,
 	.expire = NULL,
 	.clearprefetch = NULL,
-	.getownercase = rdataset_getownercase,
 };
 
 /*% Note: the "const void *" are just to make qsort happy.  */
@@ -602,7 +599,6 @@ dns_rdatavec_merge(dns_vecheader_t *oheader, dns_vecheader_t *nheader,
 	isc_refcount_init(&as_header->references, 1);
 	atomic_init(&as_header->attributes, attrs);
 	atomic_init(&as_header->trust, atomic_load_acquire(&nheader->trust));
-	memmove(as_header->upper, oheader->upper, sizeof(oheader->upper));
 
 	tcurrent = tstart + header_size(nheader);
 
@@ -768,7 +764,6 @@ dns_rdatavec_subtract(dns_vecheader_t *oheader, dns_vecheader_t *sheader,
 	isc_refcount_init(&as_header->references, 1);
 	atomic_init(&as_header->attributes, attrs);
 	atomic_init(&as_header->trust, atomic_load_acquire(&oheader->trust));
-	memmove(as_header->upper, oheader->upper, sizeof(oheader->upper));
 
 	tcurrent = tstart + header_size(oheader);
 
@@ -797,28 +792,6 @@ cleanup:
 	return result;
 }
 
-void
-dns_vecheader_setownercase(dns_vecheader_t *header, const dns_name_t *name) {
-	REQUIRE(!CASESET(header));
-
-	bool casefullylower = true;
-
-	/*
-	 * We do not need to worry about label lengths as they are all
-	 * less than or equal to 63.
-	 */
-	memset(header->upper, 0, sizeof(header->upper));
-	for (size_t i = 0; i < name->length; i++) {
-		if (isupper(name->ndata[i])) {
-			header->upper[i / 8] |= 1 << (i % 8);
-			casefullylower = false;
-		}
-	}
-	if (casefullylower) {
-		DNS_VECHEADER_SETATTR(header, DNS_VECHEADERATTR_CASEFULLYLOWER);
-	}
-	DNS_VECHEADER_SETATTR(header, DNS_VECHEADERATTR_CASESET);
-}
 
 dns_vecheader_t *
 dns_vecheader_new(isc_mem_t *mctx) {
@@ -958,33 +931,6 @@ rdataset_settrust(dns_rdataset_t *rdataset, dns_trust_t trust) {
 	atomic_store(&header->trust, trust);
 }
 
-static void
-rdataset_getownercase(const dns_rdataset_t *rdataset, dns_name_t *name) {
-	dns_vecheader_t *header = dns_vecheader_getheader(rdataset);
-	uint8_t mask = (1 << 7);
-	uint8_t bits = 0;
-
-	if (!CASESET(header)) {
-		return;
-	}
-
-	if (CASEFULLYLOWER(header)) {
-		isc_ascii_lowercopy(name->ndata, name->ndata, name->length);
-		return;
-	}
-
-	uint8_t *nd = name->ndata;
-	for (size_t i = 0; i < name->length; i++) {
-		if (mask == (1 << 7)) {
-			bits = header->upper[i / 8];
-			mask = 1;
-		} else {
-			mask <<= 1;
-		}
-		nd[i] = (bits & mask) ? isc_ascii_toupper(nd[i])
-				      : isc_ascii_tolower(nd[i]);
-	}
-}
 
 dns_vecheader_t *
 dns_vecheader_getheader(const dns_rdataset_t *rdataset) {

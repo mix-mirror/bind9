@@ -1346,7 +1346,6 @@ getsection(isc_buffer_t *source, dns_message_t *msg, dns_decompress_t dctx,
 
 		dns_message_gettemprdataset(msg, &rdataset);
 		dns_rdatalist_tordataset(rdatalist, rdataset);
-		dns_rdataset_setownercase(rdataset, name);
 		rdatalist = NULL;
 
 		/*

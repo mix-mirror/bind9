@@ -158,130 +158,6 @@ cleanup:
 	}
 }
 
-/* Test case preservation during merge */
-ISC_RUN_TEST_IMPL(merge_case_preservation) {
-	isc_mem_t *mctx = isc_g_mctx;
-	UNUSED(state);
-	dns_vecheader_t *header1 = NULL, *header2 = NULL, *merged_header = NULL;
-	dns_fixedname_t fname1, fname2, fmerged_name;
-	dns_name_t *name1 = dns_fixedname_initname(&fname1);
-	dns_name_t *name2 = dns_fixedname_initname(&fname2);
-	dns_name_t *merged_name = dns_fixedname_initname(&fmerged_name);
-	unsigned int size1, size2, merged_size;
-	isc_result_t result;
-
-	dns_test_namefromstring("Example.COM", &fname1);
-	dns_test_namefromstring("example.com", &fname2);
-
-	/* Create vecheaders */
-	CHECK(create_vecheader(mctx, dns_rdatatype_a, dns_rdataclass_in, 300,
-			       "192.168.1.1", &header1));
-
-	CHECK(create_vecheader(mctx, dns_rdatatype_a, dns_rdataclass_in, 300,
-			       "192.168.1.2", &header2));
-
-	/* Set case on first header */
-	dns_vecheader_setownercase(header1, name1);
-
-	/* Set case on second header */
-	dns_vecheader_setownercase(header2, name2);
-
-	/* Get sizes */
-	size1 = dns_rdatavec_size(header1);
-	size2 = dns_rdatavec_size(header2);
-
-	/* Merge headers */
-	CHECK(dns_rdatavec_merge(header1, header2, mctx, dns_rdataclass_in,
-				 dns_rdatatype_a, 0, 0, &merged_header));
-	assert_non_null(merged_header);
-
-	/* Test: case should be the same as the first header */
-	/* Copy the name for testing */
-	dns_name_copy(name1, merged_name);
-
-	/* Create a test rdataset from merged header to test case */
-	dns_rdataset_t test_rdataset;
-	create_rdataset_from_vecheader(merged_header, dns_rdataclass_in,
-				       dns_rdatatype_a, &test_rdataset);
-
-	/* Apply case from merged header */
-	dns_rdataset_getownercase(&test_rdataset, merged_name);
-
-	/* The case should match the original first name */
-	assert_true(dns_name_caseequal(name1, merged_name));
-
-cleanup:
-	/* Cleanup */
-	if (header1 != NULL) {
-		size1 = dns_rdatavec_size(header1);
-		isc_mem_put(mctx, header1, size1);
-	}
-	if (header2 != NULL) {
-		size2 = dns_rdatavec_size(header2);
-		isc_mem_put(mctx, header2, size2);
-	}
-	if (merged_header != NULL) {
-		merged_size = dns_rdatavec_size(merged_header);
-		isc_mem_put(mctx, merged_header, merged_size);
-	}
-}
-
-/* Test size consistency after setting case */
-ISC_RUN_TEST_IMPL(setcase_size_consistency) {
-	isc_mem_t *mctx = isc_g_mctx;
-	UNUSED(state);
-	dns_vecheader_t *header = NULL;
-	dns_fixedname_t fname, flower_fname, fretrieved_fname;
-	dns_name_t *name = dns_fixedname_initname(&fname);
-	dns_name_t *lower_name = dns_fixedname_initname(&flower_fname);
-	dns_name_t *retrieved_name = dns_fixedname_initname(&fretrieved_fname);
-	unsigned int original_size, cased_size;
-	dns_rdataset_t test_rdataset;
-	isc_result_t result;
-
-	/* Initialize name */
-	dns_test_namefromstring("Example.COM", &fname);
-
-	/* Create vecheader */
-	CHECK(create_vecheader(mctx, dns_rdatatype_a, dns_rdataclass_in, 300,
-			       "192.168.1.1", &header));
-
-	/* Get original size */
-	original_size = dns_rdatavec_size(header);
-
-	/* Set case */
-	dns_vecheader_setownercase(header, name);
-
-	/* Get size after setting case */
-	cased_size = dns_rdatavec_size(header);
-
-	/* Test: size should be the same after setting case */
-	assert_int_equal(cased_size, original_size);
-
-	/* Create lowercase version of the original name */
-	dns_test_namefromstring("example.com", &flower_fname);
-
-	/* Copy lowercase name to retrieved_name for testing */
-	dns_name_copy(lower_name, retrieved_name);
-
-	/* Create a test rdataset from cased header */
-	create_rdataset_from_vecheader(header, dns_rdataclass_in,
-				       dns_rdatatype_a, &test_rdataset);
-
-	/* Apply case from cased header to retrieved_name */
-	dns_rdataset_getownercase(&test_rdataset, retrieved_name);
-
-	/* Test: retrieved case should match the original mixed case */
-	assert_true(dns_name_caseequal(name, retrieved_name));
-
-cleanup:
-	/* Cleanup */
-	if (header != NULL) {
-		cased_size = dns_rdatavec_size(header);
-		isc_mem_put(mctx, header, cased_size);
-	}
-}
-
 /* Test case where dns_rdatavec_subtract causes assertion failure */
 ISC_RUN_TEST_IMPL(rdatavec_subtract_assertion_failure) {
 	isc_mem_t *mctx = isc_g_mctx;
@@ -545,8 +421,6 @@ cleanup:
 
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY_CUSTOM(merge_headers, setup_mctx, teardown_mctx)
-ISC_TEST_ENTRY_CUSTOM(merge_case_preservation, setup_mctx, teardown_mctx)
-ISC_TEST_ENTRY_CUSTOM(setcase_size_consistency, setup_mctx, teardown_mctx)
 ISC_TEST_ENTRY_CUSTOM(rdatavec_subtract_assertion_failure, setup_mctx,
 		      teardown_mctx)
 ISC_TEST_ENTRY_CUSTOM(rdatavec_refcount_merge, setup_mctx, teardown_mctx)

@@ -2790,7 +2790,6 @@ qpcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 
 	name = dns_fixedname_initname(&fixed);
 	dns_name_copy(&qpnode->name, name);
-	dns_rdataset_getownercase(rdataset, name);
 
 	newheader = (dns_slabheader_t *)region.base;
 	dns_slabheader_reset(newheader, node);

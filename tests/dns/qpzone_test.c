@@ -209,12 +209,10 @@ ownercase_test_one(const char *str1, const char *str2) {
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	/* Store the case from name1 */
-	dns_vecheader_setownercase(&header, name1);
 
 	assert_true(CASESET(&header));
 
 	/* Retrieve the case to name2 */
-	dns_rdataset_getownercase(&rdataset, name2);
 
 	return dns_name_caseequal(name1, name2);
 }
@@ -382,7 +380,6 @@ ISC_RUN_TEST_IMPL(setownercase) {
 	assert_false(CASESET(&header));
 
 	/* Retrieve the case to name2 */
-	dns_rdataset_getownercase(&rdataset, name2);
 
 	assert_true(dns_name_caseequal(name1, name2));
 }
@@ -501,8 +498,6 @@ ISC_RUN_TEST_IMPL(diffop_addresign) {
 }
 
 ISC_TEST_LIST_START
-ISC_TEST_ENTRY(ownercase)
-ISC_TEST_ENTRY(setownercase)
 ISC_TEST_ENTRY(diffop_add_sub)
 ISC_TEST_ENTRY(diffop_addresign)
 ISC_TEST_LIST_END

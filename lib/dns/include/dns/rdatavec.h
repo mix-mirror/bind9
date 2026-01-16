@@ -111,12 +111,6 @@ struct dns_vecheader {
 	 */
 	dns_gluelist_t *gluelist;
 
-	/*%
-	 * Case vector.  If the bit is set then the corresponding
-	 * character in the owner name needs to be AND'd with 0x20,
-	 * rendering that character upper case.
-	 */
-	unsigned char upper[32];
 
 	/*%
 	 * Flexible member indicates the address of the raw data
@@ -226,15 +220,6 @@ dns_rdatavec_subtract(dns_vecheader_t *mheader, dns_vecheader_t *sheader,
  * valid flags are DNS_RDATAVEC_EXACT
  */
 
-void
-dns_vecheader_setownercase(dns_vecheader_t *header, const dns_name_t *name);
-/*%<
- * Store the casing of 'name', into a bitfield in 'header'.
- *
- * Requires:
- * \li	'header' is a valid vecheader.
- * \li	'name' is a valid name.
- */
 
 dns_vecheader_t *
 dns_vecheader_new(isc_mem_t *mctx);

@@ -2265,7 +2265,6 @@ loading_addrdataset(void *arg, const dns_name_t *name, dns_rdataset_t *rdataset,
 	newheader->serial = 1;
 	atomic_store(&newheader->trust, rdataset->trust);
 
-	dns_vecheader_setownercase(newheader, name);
 
 	if (rdataset->attributes.resign) {
 		DNS_VECHEADER_SETATTR(newheader, DNS_VECHEADERATTR_RESIGN);
@@ -4879,11 +4878,9 @@ qpzone_addrdataset_inner(qpzonedb_t *qpdb, qpznode_t *node,
 	}
 
 	dns_name_copy(&node->name, name);
-	dns_rdataset_getownercase(rdataset, name);
 
 	dns_vecheader_t *newheader = (dns_vecheader_t *)region.base;
 
-	dns_vecheader_setownercase(newheader, name);
 
 	newheader->ttl = rdataset->ttl;
 	if (rdataset->ttl == 0U) {

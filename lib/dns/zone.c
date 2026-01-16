@@ -14646,8 +14646,6 @@ checkandaddsoa(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	dns_rdataset_init(&temprdataset);
 	dns_rdatalist_tordataset(&temprdatalist, &temprdataset);
 
-	dns_rdataset_getownercase(rdataset, name);
-	dns_rdataset_setownercase(&temprdataset, name);
 	return dns_db_addrdataset(db, node, version, 0, &temprdataset, 0, NULL);
 }
 

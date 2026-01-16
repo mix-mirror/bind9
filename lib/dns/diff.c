@@ -203,12 +203,6 @@ dns_diff_appendminimal(dns_diff_t *diff, dns_difftuple_t **tuplep) {
 	}
 }
 
-static void
-getownercase(dns_rdataset_t *rdataset, dns_name_t *name) {
-	if (dns_rdataset_isassociated(rdataset)) {
-		dns_rdataset_getownercase(rdataset, name);
-	}
-}
 
 static isc_result_t
 update_rdataset(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
@@ -363,10 +357,6 @@ diff_apply(const dns_diff_t *diff, dns_rdatacallbacks_t *callbacks) {
 			       t->op == op && t->rdata.type == type &&
 			       rdata_covers(&t->rdata) == covers)
 			{
-				/*
-				 * Remember the add name for
-				 * dns_rdataset_setownercase.
-				 */
 				name = &t->name;
 				if (t->ttl != rdl.ttl && ctx->warn) {
 					dns_name_format(name, namebuf,
@@ -398,7 +388,6 @@ diff_apply(const dns_diff_t *diff, dns_rdatacallbacks_t *callbacks) {
 			 */
 			dns_rdataset_init(&rds);
 			dns_rdatalist_tordataset(&rdl, &rds);
-			dns_rdataset_setownercase(&rds, name);
 			rds.trust = dns_trust_ultimate;
 
 			/*

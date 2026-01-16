@@ -49,12 +49,6 @@ struct dns_rdatalist {
 	dns_ttl_t	 ttl;
 	ISC_LIST(dns_rdata_t) rdata;
 	ISC_LINK(dns_rdatalist_t) link;
-	/*%<
-	 * Case vector.  If the bit is set then the corresponding
-	 * character in the owner name needs to be AND'd with 0x20,
-	 * rendering that character upper case.
-	 */
-	unsigned char upper[32];
 };
 
 void
@@ -138,7 +132,3 @@ isc_result_t
 dns__rdatalist_getclosest(dns_rdataset_t *rdataset, dns_name_t *name,
 			  dns_rdataset_t	*neg,
 			  dns_rdataset_t *negsig DNS__DB_FLARG);
-void
-dns__rdatalist_setownercase(dns_rdataset_t *rdataset, const dns_name_t *name);
-void
-dns__rdatalist_getownercase(const dns_rdataset_t *rdataset, dns_name_t *name);

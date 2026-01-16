@@ -35,8 +35,6 @@ static dns_rdatasetmethods_t methods = {
 	.getnoqname = dns__rdatalist_getnoqname,
 	.addclosest = dns__rdatalist_addclosest,
 	.getclosest = dns__rdatalist_getclosest,
-	.setownercase = dns__rdatalist_setownercase,
-	.getownercase = dns__rdatalist_getownercase,
 };
 
 void
@@ -50,12 +48,6 @@ dns_rdatalist_init(dns_rdatalist_t *rdatalist) {
 		.rdata = ISC_LIST_INITIALIZER,
 		.link = ISC_LINK_INITIALIZER,
 	};
-	memset(rdatalist->upper, 0xeb, sizeof(rdatalist->upper));
-
-	/*
-	 * Clear upper set bit.
-	 */
-	rdatalist->upper[0] &= ~0x01;
 }
 
 void
@@ -68,8 +60,6 @@ dns_rdatalist_tordataset(dns_rdatalist_t *rdatalist, dns_rdataset_t *rdataset) {
 	REQUIRE(DNS_RDATASET_VALID(rdataset));
 	REQUIRE(!dns_rdataset_isassociated(rdataset));
 
-	/* Check if dns_rdatalist_init has was called. */
-	REQUIRE(rdatalist->upper[0] == 0xea);
 
 	*rdataset = (dns_rdataset_t){
 		.methods = &methods,
@@ -356,49 +346,4 @@ dns__rdatalist_getclosest(dns_rdataset_t *rdataset, dns_name_t *name,
 	return ISC_R_SUCCESS;
 }
 
-void
-dns__rdatalist_setownercase(dns_rdataset_t *rdataset, const dns_name_t *name) {
-	dns_rdatalist_t *rdatalist;
-	unsigned int i;
 
-	/*
-	 * We do not need to worry about label lengths as they are all
-	 * less than or equal to 63.
-	 */
-	rdatalist = rdataset->rdlist.list;
-	memset(rdatalist->upper, 0, sizeof(rdatalist->upper));
-	for (i = 1; i < name->length; i++) {
-		if (name->ndata[i] >= 0x41 && name->ndata[i] <= 0x5a) {
-			rdatalist->upper[i / 8] |= 1 << (i % 8);
-		}
-	}
-	/*
-	 * Record that upper has been set.
-	 */
-	rdatalist->upper[0] |= 0x01;
-}
-
-void
-dns__rdatalist_getownercase(const dns_rdataset_t *rdataset, dns_name_t *name) {
-	dns_rdatalist_t *rdatalist;
-	unsigned int i;
-
-	rdatalist = rdataset->rdlist.list;
-	if ((rdatalist->upper[0] & 0x01) == 0) {
-		return;
-	}
-	for (i = 0; i < name->length; i++) {
-		/*
-		 * Set the case bit if it does not match the recorded bit.
-		 */
-		if (name->ndata[i] >= 0x61 && name->ndata[i] <= 0x7a &&
-		    (rdatalist->upper[i / 8] & (1 << (i % 8))) != 0)
-		{
-			name->ndata[i] &= ~0x20; /* clear the lower case bit */
-		} else if (name->ndata[i] >= 0x41 && name->ndata[i] <= 0x5a &&
-			   (rdatalist->upper[i / 8] & (1 << (i % 8))) == 0)
-		{
-			name->ndata[i] |= 0x20; /* set the lower case bit */
-		}
-	}
-}

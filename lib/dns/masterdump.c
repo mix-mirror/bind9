@@ -586,7 +586,6 @@ rdataset_totext(dns_rdataset_t *rdataset, const dns_name_t *owner_name,
 	if (owner_name != NULL) {
 		name = dns_fixedname_initname(&fixed);
 		dns_name_copy(owner_name, name);
-		dns_rdataset_getownercase(rdataset, name);
 	}
 
 	DNS_RDATASET_FOREACH(rdataset) {
@@ -1302,7 +1301,6 @@ dump_rdatasets_raw(isc_mem_t *mctx, const dns_name_t *owner_name,
 		dns_rdataset_t rdataset = DNS_RDATASET_INIT;
 		dns_rdatasetiter_current(rdsiter, &rdataset);
 
-		dns_rdataset_getownercase(&rdataset, name);
 
 		if (rdataset.attributes.negative &&
 		    (ctx->style.flags & DNS_STYLEFLAG_NCACHE) == 0)

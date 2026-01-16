@@ -83,8 +83,6 @@ struct dns_rdatasetmethods {
 	void (*settrust)(dns_rdataset_t *rdataset, dns_trust_t trust);
 	void (*expire)(dns_rdataset_t *rdataset DNS__DB_FLARG);
 	void (*clearprefetch)(dns_rdataset_t *rdataset);
-	void (*setownercase)(dns_rdataset_t *rdataset, const dns_name_t *name);
-	void (*getownercase)(const dns_rdataset_t *rdataset, dns_name_t *name);
 	isc_result_t (*addglue)(dns_rdataset_t	*rdataset,
 				dns_dbversion_t *version, dns_message_t *msg);
 };
@@ -596,21 +594,6 @@ dns_rdataset_clearprefetch(dns_rdataset_t *rdataset);
  * It has no function in other databases.
  */
 
-void
-dns_rdataset_setownercase(dns_rdataset_t *rdataset, const dns_name_t *name);
-/*%<
- * Store the casing of 'name', the owner name of 'rdataset', into
- * a bitfield so that the name can be capitalized the same when when
- * the rdataset is used later. This sets the CASESET attribute.
- */
-
-void
-dns_rdataset_getownercase(const dns_rdataset_t *rdataset, dns_name_t *name);
-/*%<
- * If the CASESET attribute is set, retrieve the case bitfield that was
- * previously stored by dns_rdataset_getownername(), and capitalize 'name'
- * according to it. If CASESET is not set, do nothing.
- */
 
 void
 dns_rdataset_trimttl(dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset,

@@ -530,29 +530,6 @@ dns_rdataset_clearprefetch(dns_rdataset_t *rdataset) {
 	}
 }
 
-void
-dns_rdataset_setownercase(dns_rdataset_t *rdataset, const dns_name_t *name) {
-	REQUIRE(DNS_RDATASET_VALID(rdataset));
-	REQUIRE(rdataset->methods != NULL);
-
-	if (rdataset->methods->setownercase != NULL &&
-	    !rdataset->attributes.keepcase)
-	{
-		(rdataset->methods->setownercase)(rdataset, name);
-	}
-}
-
-void
-dns_rdataset_getownercase(const dns_rdataset_t *rdataset, dns_name_t *name) {
-	REQUIRE(DNS_RDATASET_VALID(rdataset));
-	REQUIRE(rdataset->methods != NULL);
-
-	if (rdataset->methods->getownercase != NULL &&
-	    !rdataset->attributes.keepcase)
-	{
-		(rdataset->methods->getownercase)(rdataset, name);
-	}
-}
 
 void
 dns_rdataset_trimttl(dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset,
