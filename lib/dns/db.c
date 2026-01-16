@@ -1128,3 +1128,13 @@ dns_db_getzoneversion(dns_db_t *db, isc_buffer_t *b) {
 	}
 	return ISC_R_NOTIMPLEMENTED;
 }
+
+void
+dns_db_setcachesize(dns_db_t *db, size_t size) {
+	REQUIRE(db != NULL);
+	REQUIRE(size > 0);
+
+	if (db->methods->setcachesize != NULL) {
+		return (db->methods->setcachesize)(db, size);
+	}
+}

@@ -61,6 +61,7 @@
 #include "db_p.h"
 #include "qpcache_p.h"
 #include "rdataslab_p.h"
+#include "size_p.h"
 
 #ifndef DNS_QPCACHE_LOG_STATS_LEVEL
 #define DNS_QPCACHE_LOG_STATS_LEVEL 3
@@ -215,6 +216,8 @@ struct qpcache {
 
 	/* Locked by tree_lock. */
 	dns_qp_t *tree;
+
+	dns_size_t size;
 
 	size_t buckets_count;
 	qpcache_bucket_t buckets[]; /* attribute((counted_by(buckets_count))) */
@@ -493,21 +496,18 @@ qpcache_miss(qpcache_t *qpdb, dns_slabheader_t *newheader,
 	     isc_rwlocktype_t *tlocktypep DNS__DB_FLARG) {
 	uint32_t idx = HEADERNODE(newheader)->locknum;
 
-	if (isc_mem_isovermem(qpdb->common.mctx)) {
-		/*
-		 * Maximum estimated size of the data being added: The size
-		 * of the rdataset, plus a new QP database node and nodename,
-		 * and a possible additional NSEC node and nodename. Also add
-		 * a 12k margin for a possible QP-trie chunk allocation.
-		 * (It's okay to overestimate, we want to get cache memory
-		 * down quickly.)
-		 */
+	/*
+	 * Maximum estimated size of the data being added: The size
+	 * of the rdataset, plus a new QP database node and nodename,
+	 * and a possible additional NSEC node.
+	 */
+	size_t purgesize = 2 * (sizeof(qpcnode_t) + sizeof(dns_fixedname_t) +
+				rdataset_size(newheader));
 
-		size_t purgesize =
-			2 * (sizeof(qpcnode_t) +
-			     dns_name_size(&HEADERNODE(newheader)->name)) +
-			rdataset_size(newheader) + QP_SAFETY_MARGIN;
+	size_t inuse = isc_mem_inuse(qpdb->common.mctx) + purgesize;
+	uint8_t prob = dns_size_cleaning_prob(&qpdb->size, inuse);
 
+	if (prob != 0 && isc_random8() < prob) {
 		expire_lru_headers(qpdb, idx, purgesize, nlocktypep,
 				   tlocktypep DNS__DB_FLARG_PASS);
 	}
@@ -3490,6 +3490,15 @@ setmaxtypepername(dns_db_t *db, uint32_t value) {
 	qpdb->maxtypepername = value;
 }
 
+static void
+setcachesize(dns_db_t *db, size_t size) {
+	qpcache_t *qpdb = (qpcache_t *)db;
+
+	REQUIRE(VALID_QPDB(qpdb));
+
+	dns_size_init(&qpdb->size, size);
+}
+
 static dns_dbmethods_t qpdb_cachemethods = {
 	.destroy = qpcache_destroy,
 	.findnode = qpcache_findnode,
@@ -3508,6 +3517,7 @@ static dns_dbmethods_t qpdb_cachemethods = {
 	.getservestalerefresh = getservestalerefresh,
 	.setmaxrrperset = setmaxrrperset,
 	.setmaxtypepername = setmaxtypepername,
+	.setcachesize = setcachesize,
 };
 
 static void

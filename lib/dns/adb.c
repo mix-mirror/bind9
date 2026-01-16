@@ -47,6 +47,8 @@
 #include <dns/transport.h>
 #include <dns/types.h>
 
+#include "size_p.h"
+
 #define DNS_ADB_MAGIC		 ISC_MAGIC('D', 'a', 'd', 'b')
 #define DNS_ADB_VALID(x)	 ISC_MAGIC_VALID(x, DNS_ADB_MAGIC)
 #define DNS_ADBNAME_MAGIC	 ISC_MAGIC('a', 'd', 'b', 'N')
@@ -121,6 +123,8 @@ struct dns_adb {
 	double atr_low;
 	double atr_high;
 	double atr_discount;
+
+	dns_size_t size;
 
 	struct rcu_head rcu_head;
 };
@@ -1202,8 +1206,12 @@ get_attached_and_locked_name(dns_adb_t *adb, const dns_name_t *name,
 		.type = type,
 	};
 	uint32_t hashval = hash_adbname(&key);
-	if (isc_mem_isovermem(adb->mctx)) {
-		purge_names_overmem(adb, 2 * sizeof(*adbname));
+	size_t purgesize = 2 * sizeof(*adbname);
+	size_t inuse = isc_mem_inuse(adb->mctx) + purgesize;
+	uint8_t prob = dns_size_cleaning_prob(&adb->size, inuse);
+
+	if (prob != 0 && isc_random8() < prob) {
+		purge_names_overmem(adb, purgesize);
 	}
 
 	struct cds_lfht_iter iter;
@@ -1284,7 +1292,10 @@ get_attached_and_locked_entry(dns_adb_t *adb, isc_stdtime_t now,
 	dns_adbentry_t *adbentry = NULL;
 	uint32_t hashval = isc_sockaddr_hash(addr, true);
 
-	if (isc_mem_isovermem(adb->mctx)) {
+	size_t inuse = isc_mem_inuse(adb->mctx) + 2 * sizeof(*adbentry);
+	uint8_t prob = dns_size_cleaning_prob(&adb->size, inuse);
+
+	if (prob != 0 && isc_random8() <= prob) {
 		purge_entries_overmem(adb, 2 * sizeof(*adbentry));
 	}
 
@@ -1717,8 +1728,6 @@ dns_adb_shutdown(dns_adb_t *adb) {
 	}
 
 	DP(DEF_LEVEL, "shutting down ADB %p", adb);
-
-	isc_mem_clearwater(adb->mctx);
 
 	/*
 	 * dns_adb_shutdown() can get called from call_rcu thread, so we need to
@@ -3402,22 +3411,14 @@ dns_adb_flushnames(dns_adb_t *adb, const dns_name_t *name) {
 
 void
 dns_adb_setadbsize(dns_adb_t *adb, size_t size) {
-	size_t hiwater, lowater;
-
 	REQUIRE(DNS_ADB_VALID(adb));
+	REQUIRE(size != 0);
 
-	if (size != 0U && size < DNS_ADB_MINADBSIZE) {
+	if (size < DNS_ADB_MINADBSIZE) {
 		size = DNS_ADB_MINADBSIZE;
 	}
 
-	hiwater = size - (size >> 3); /* Approximately 7/8ths. */
-	lowater = size - (size >> 2); /* Approximately 3/4ths. */
-
-	if (size == 0U || hiwater == 0U || lowater == 0U) {
-		isc_mem_clearwater(adb->mctx);
-	} else {
-		isc_mem_setwater(adb->mctx, hiwater, lowater);
-	}
+	dns_size_init(&adb->size, size);
 }
 
 void

@@ -173,7 +173,6 @@ cache_cleanup(dns_cache_t *cache) {
 	isc_refcount_destroy(&cache->references);
 	cache->magic = 0;
 
-	isc_mem_clearwater(cache->tmctx);
 	dns_db_detach(&cache->db);
 
 	cache_destroy(cache);
@@ -203,13 +202,6 @@ dns_cache_getname(dns_cache_t *cache) {
 	return cache->name;
 }
 
-static void
-updatewater(dns_cache_t *cache) {
-	size_t hi = cache->size - (cache->size >> 3); /* ~ 7/8ths. */
-	size_t lo = cache->size - (cache->size >> 2); /* ~ 3/4ths. */
-	isc_mem_setwater(cache->tmctx, hi, lo);
-}
-
 void
 dns_cache_setcachesize(dns_cache_t *cache, size_t size) {
 	REQUIRE(VALID_CACHE(cache));
@@ -224,7 +216,7 @@ dns_cache_setcachesize(dns_cache_t *cache, size_t size) {
 
 	LOCK(&cache->lock);
 	cache->size = size;
-	updatewater(cache);
+	dns_db_setcachesize(cache->db, size);
 	UNLOCK(&cache->lock);
 }
 
@@ -297,10 +289,9 @@ dns_cache_flush(dns_cache_t *cache) {
 	RETERR(cache_create_db(cache, &db, &tmctx));
 
 	LOCK(&cache->lock);
-	isc_mem_clearwater(cache->tmctx);
 	oldtmctx = cache->tmctx;
 	cache->tmctx = tmctx;
-	updatewater(cache);
+	dns_db_setcachesize(cache->db, cache->size);
 	olddb = cache->db;
 	cache->db = db;
 	UNLOCK(&cache->lock);

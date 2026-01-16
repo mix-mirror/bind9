@@ -20,6 +20,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "dns/db.h"
+
 #define UNIT_TESTING
 #include <cmocka.h>
 
@@ -40,9 +42,6 @@
 #pragma GCC diagnostic pop
 
 #include <tests/dns.h>
-
-/* Set to true (or use -v option) for verbose output */
-static bool verbose = false;
 
 /*
  * Add to a cache DB 'db' an rdataset of type 'rtype' at a name
@@ -122,13 +121,11 @@ cleanup_all_deadnodes(dns_db_t *db) {
 
 ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 	size_t maxcache = 2097152U; /* 2MB - same as DNS_CACHE_MINSIZE */
-	size_t hiwater = maxcache - (maxcache >> 3); /* borrowed from cache.c */
-	size_t lowater = maxcache - (maxcache >> 2); /* ditto */
 	isc_result_t result;
 	dns_db_t *db = NULL;
 	isc_mem_t *mctx = NULL;
 	isc_stdtime_t now = isc_stdtime_now();
-	size_t i = 0;
+	size_t i;
 
 	isc_mem_create("test", &mctx);
 
@@ -137,18 +134,14 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 			       &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	isc_mem_setwater(mctx, hiwater, lowater);
+	dns_db_setcachesize(db, maxcache);
 
 	/*
-	 * Add a lot of data entries sufficient to push the context
-	 * above the hi_water mark.
+	 * Add a number of records that definitely should fill the memory.
 	 */
-	while (isc_mem_inuse(mctx) < hiwater) {
-		overmempurge_addrdataset(db, now, i, 50053, 0, true);
-		i++;
+	for (i = 0; i < (maxcache / 10); i++) {
+		overmempurge_addrdataset(db, now, i, 50053, 0, false);
 	}
-	assert_true(isc_mem_inuse(mctx) >= hiwater);
-	assert_true(isc_mem_inuse(mctx) < maxcache);
 
 	/*
 	 * Then try to add the same number of entries, each has very large data.
@@ -159,13 +152,14 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 	while (i-- > 0) {
 		overmempurge_addrdataset(db, now, i, 50054,
 					 DNS_RDATA_MAXLENGTH - 2, false);
-		cleanup_all_deadnodes(db);
-		if (verbose) {
-			print_message("# inuse: %zd max: %zd\n",
-				      isc_mem_inuse(mctx), maxcache);
-		}
-		assert_true(isc_mem_inuse(mctx) < maxcache);
 	}
+	cleanup_all_deadnodes(db);
+	rcu_barrier();
+	if (debug) {
+		print_message("# inuse: %zd max: %zd\n", isc_mem_inuse(mctx),
+			      maxcache);
+	}
+	assert_true(isc_mem_inuse(mctx) < maxcache);
 
 	dns_db_detach(&db);
 	isc_mem_detach(&mctx);
@@ -174,13 +168,11 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 
 ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 	size_t maxcache = 2097152U; /* 2MB - same as DNS_CACHE_MINSIZE */
-	size_t hiwater = maxcache - (maxcache >> 3); /* borrowed from cache.c */
-	size_t lowater = maxcache - (maxcache >> 2); /* ditto */
 	isc_result_t result;
 	dns_db_t *db = NULL;
 	isc_mem_t *mctx = NULL;
 	isc_stdtime_t now = isc_stdtime_now();
-	size_t i = 0;
+	size_t i;
 
 	isc_mem_create("test", &mctx);
 
@@ -189,18 +181,15 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 			       &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	isc_mem_setwater(mctx, hiwater, lowater);
+	dns_db_setcachesize(db, maxcache);
 
 	/*
-	 * Add a lot of data entries sufficient to push the context
+	 * Add a number of small-data entries sufficient to push the context
 	 * above the hi_water mark.
 	 */
-	while (isc_mem_inuse(mctx) < hiwater) {
-		overmempurge_addrdataset(db, now, i, 50053, 0, true);
-		i++;
+	for (i = 0; i < (maxcache / 10); i++) {
+		overmempurge_addrdataset(db, now, i, 50053, 0, false);
 	}
-	assert_true(isc_mem_inuse(mctx) >= hiwater);
-	assert_true(isc_mem_inuse(mctx) < maxcache);
 
 	/*
 	 * Then try to add the same number of entries, each has very long name.
@@ -210,13 +199,14 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 	 */
 	while (i-- > 0) {
 		overmempurge_addrdataset(db, now, i, 50054, 0, true);
-		cleanup_all_deadnodes(db);
-		if (verbose) {
-			print_message("# inuse: %zd max: %zd\n",
-				      isc_mem_inuse(mctx), maxcache);
-		}
-		assert_true(isc_mem_inuse(mctx) < maxcache);
 	}
+	cleanup_all_deadnodes(db);
+	rcu_barrier();
+	if (debug) {
+		print_message("# inuse: %zd max: %zd\n", isc_mem_inuse(mctx),
+			      maxcache);
+	}
+	assert_true(isc_mem_inuse(mctx) < maxcache);
 
 	dns_db_detach(&db);
 	isc_mem_detach(&mctx);

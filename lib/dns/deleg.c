@@ -14,6 +14,7 @@
 #include <isc/magic.h>
 #include <isc/mem.h>
 #include <isc/netaddr.h>
+#include <isc/random.h>
 #include <isc/sieve.h>
 #include <isc/stdtime.h>
 #include <isc/urcu.h>
@@ -25,6 +26,7 @@
 #include <dns/view.h>
 
 #include "probes-dns.h"
+#include "size_p.h"
 
 #define DELEGDB_NODE_MAGIC	 ISC_MAGIC('D', 'e', 'G', 'N')
 #define VALID_DELEGDB_NODE(node) ISC_MAGIC_VALID(node, DELEGDB_NODE_MAGIC)
@@ -40,8 +42,8 @@ struct dns_delegdb {
 	unsigned int magic;
 
 	/*
-	 * The DB uses its own memory context in order to easily enforce
-	 * overmem policies based on allocations made from this memory context.
+	 * The DB uses its own memory context so its accounted memory usage
+	 * can drive probabilistic cleaning independently of other caches.
 	 */
 	isc_mem_t *mctx;
 	isc_refcount_t references;
@@ -50,6 +52,8 @@ struct dns_delegdb {
 	ISC_SIEVE(delegdb_node_t) * lru;
 
 	dns_qpmulti_t *nodes;
+
+	dns_size_t size;
 
 	/*
 	 * Keep track of now many owners are actually using the delegdb. For
@@ -492,10 +496,6 @@ delegdb_cleanup(dns_qp_t *qp, dns_delegdb_t *delegdb, size_t requested) {
 	delegdb_node_t *node = NULL;
 	size_t reclaimed = 0;
 
-	if (!isc_mem_isovermem(delegdb->mctx)) {
-		return;
-	}
-
 	LIBDNS_DELEGDB_CLEANUP_START(delegdb, (int)requested);
 
 	while (reclaimed < requested) {
@@ -628,9 +628,9 @@ dns_delegset_insert(dns_delegdb_t *delegdb, const dns_name_t *zonecut,
 	dns_qpread_destroy(nodes, &qpr);
 
 	/*
-	 * We're about to add a new delegation, check for state of overmem, and
-	 * clean up expired/least recently used delegation, then allocate and
-	 * initialize a new node.
+	 * We're about to add a new delegation.  Allocate and initialize the
+	 * new node first; we'll probabilistically evict least-recently-used
+	 * nodes to make room for it under the write transaction below.
 	 */
 	size_t requested = delegdb_node_prepare(delegdb, now, ttl, zonecut,
 						delegset, &node);
@@ -640,7 +640,13 @@ dns_delegset_insert(dns_delegdb_t *delegdb, const dns_name_t *zonecut,
 	 */
 	dns_qpmulti_write(nodes, &qp);
 
-	delegdb_cleanup(qp, delegdb, requested);
+	size_t purgesize = 2 * requested;
+	size_t inuse = isc_mem_inuse(delegdb->mctx) + purgesize;
+	uint8_t prob = dns_size_cleaning_prob(&delegdb->size, inuse);
+
+	if (prob != 0 && isc_random8() < prob) {
+		delegdb_cleanup(qp, delegdb, purgesize);
+	}
 
 	if (result == ISC_R_SUCCESS) {
 		/*
@@ -1035,26 +1041,12 @@ dns_delegdb_shutdown(dns_delegdb_t *delegdb) {
 
 void
 dns_delegdb_setsize(dns_delegdb_t *delegdb, size_t size) {
-	size_t lowater;
-	size_t hiwater;
-
 	REQUIRE(VALID_DELEGDB(delegdb));
+	REQUIRE(size != 0);
 
-	if (size != 0 && size < DELEGDB_MINSIZE) {
+	if (size < DELEGDB_MINSIZE) {
 		size = DELEGDB_MINSIZE;
 	}
 
-	hiwater = size - (size >> 3); /* Approximately 7/8ths. */
-	lowater = size - (size >> 2); /* Approximately 3/4ths. */
-
-	if (size == 0 || hiwater == 0 || lowater == 0) {
-		isc_mem_clearwater(delegdb->mctx);
-
-		/*
-		 * TODO: Is it worth a warning if size > 0? Sounds like
-		 * implicit overmem bypass, so the user should be warned...
-		 */
-	} else {
-		isc_mem_setwater(delegdb->mctx, hiwater, lowater);
-	}
+	dns_size_init(&delegdb->size, size);
 }
