@@ -3834,9 +3834,12 @@ system.
      - 2 MB for views with :any:`recursion` set to ``no``.
 
    Any positive value smaller than 2 MB is ignored and reset to 2 MB.
-   The keyword ``unlimited``, or the value ``0``, places no limit on the
-   cache size; records are then purged from the cache only when they
-   expire (according to their TTLs).
+
+   .. warning::
+
+       Previously, the keyword ``unlimited``, or the value ``0``, placed
+       no limit on the cache size; this is no longer permitted as
+       TTL-based cleaning has been removed from :iscman:`named`.
 
    .. note::
 
@@ -3849,7 +3852,7 @@ system.
    .. note::
 
        :any:`max-cache-size` does not work reliably for a maximum
-       amount of memory of 100 MB or lower.
+       amount of memory of 256 MB or lower.
 
    Upon startup and reconfiguration, caches with a limited size
    preallocate a small amount of memory (less than 1% of
@@ -3858,10 +3861,13 @@ system.
    internal cache structures.
 
    On systems where detection of the amount of physical memory is not
-   supported, percentage-based values fall back to ``unlimited``. Note
-   that the amount of physical memory available is only detected on
-   startup, so :iscman:`named` does not adjust the cache size limits if the
-   amount of physical memory is changed at runtime.
+   supported, the :iscman:`named` will fail to start.
+
+   .. note::
+
+       The amount of physical memory available is only detected on startup, so
+       :iscman:`named` does not adjust the cache size limits if the amount of
+       physical memory is changed at runtime.
 
    On Linux, the system administrator can use `cgroup`_ (Control Group)
    mechanism to limit the amount of available memory to the process.  This limit
