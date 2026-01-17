@@ -130,7 +130,7 @@ dns_cache_getname(dns_cache_t *cache);
 void
 dns_cache_setcachesize(dns_cache_t *cache, size_t size);
 /*%<
- * Set the maximum cache size.  0 means unlimited.
+ * Set the maximum cache size.
  */
 
 size_t

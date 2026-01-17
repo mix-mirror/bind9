@@ -213,11 +213,7 @@ static void
 updatewater(dns_cache_t *cache) {
 	size_t hi = cache->size - (cache->size >> 3); /* ~ 7/8ths. */
 	size_t lo = cache->size - (cache->size >> 2); /* ~ 3/4ths. */
-	if (cache->size == 0U || hi == 0U || lo == 0U) {
-		isc_mem_clearwater(cache->tmctx);
-	} else {
-		isc_mem_setwater(cache->tmctx, hi, lo);
-	}
+	isc_mem_setwater(cache->tmctx, hi, lo);
 }
 
 void
@@ -228,7 +224,7 @@ dns_cache_setcachesize(dns_cache_t *cache, size_t size) {
 	 * Impose a minimum cache size; pathological things happen if there
 	 * is too little room.
 	 */
-	if (size != 0U && size < DNS_CACHE_MINSIZE) {
+	if (size < DNS_CACHE_MINSIZE) {
 		size = DNS_CACHE_MINSIZE;
 	}
 

@@ -3872,17 +3872,27 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 		}
 	}
 
+	if (max_cache_size == 0) {
+		cfg_obj_log(obj, ISC_LOG_WARNING,
+			    "'max-cache-size' can't be zero or unlimited; "
+			    "falling back to default");
+		max_cache_size = SIZE_AS_PERCENT;
+		max_cache_size_percent = 90;
+	}
+
 	if (max_cache_size == SIZE_AS_PERCENT) {
 		uint64_t totalphys = isc_meminfo_totalphys();
 
-		max_cache_size =
-			(size_t)(totalphys * max_cache_size_percent / 100);
 		if (totalphys == 0) {
-			cfg_obj_log(obj, ISC_LOG_WARNING,
+			cfg_obj_log(obj, ISC_LOG_ERROR,
 				    "Unable to determine amount of physical "
-				    "memory, setting 'max-cache-size' to "
-				    "unlimited");
+				    "memory, setting 'max-cache-size' to the "
+				    "minimum value");
+			max_cache_size = 1;
 		} else {
+			max_cache_size = (size_t)(totalphys *
+						  max_cache_size_percent / 100);
+
 			cfg_obj_log(obj, ISC_LOG_INFO,
 				    "'max-cache-size %d%%' "
 				    "- setting to %" PRIu64 "MB "
