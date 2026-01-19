@@ -366,9 +366,9 @@ struct dns_zone {
 	bool locked;
 #endif /* ifdef DNS_ZONE_CHECKLOCK */
 	isc_mem_t *mctx;
-	isc_refcount_t references;
+	__attribute__ ((aligned(64))) isc_refcount_t references;
 
-	isc_rwlock_t dblock;
+	__attribute__ ((aligned(64))) isc_rwlock_t dblock;
 	dns_db_t *db; /* Locked by dblock */
 
 	isc_tid_t tid;
