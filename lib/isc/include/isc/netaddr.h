@@ -20,6 +20,7 @@
 #include <sys/types.h>
 #include <sys/un.h>
 
+#include <isc/list.h>
 #include <isc/net.h>
 #include <isc/types.h>
 
@@ -34,6 +35,11 @@ struct isc_netaddr {
 		struct in6_addr in6;
 	} type;
 	uint32_t zone;
+};
+
+struct isc_netaddrlink {
+	isc_netaddr_t addr;
+	ISC_LINK(isc_netaddrlink_t) link;
 };
 
 struct isc_netprefix {
