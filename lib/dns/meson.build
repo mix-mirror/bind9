@@ -88,6 +88,7 @@ dns_srcset.add(
         'clientinfo.c',
         'compress.c',
         'db.c',
+        'deleg.c',
         'dbiterator.c',
         'diff.c',
         'dispatch.c',
