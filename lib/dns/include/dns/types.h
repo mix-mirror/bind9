@@ -178,6 +178,9 @@ typedef ISC_LIST(dns_zone_t) dns_zonelist_t;
 typedef struct dns_zonemgr   dns_zonemgr_t;
 typedef struct dns_zt	     dns_zt_t;
 typedef struct dns_ipkeylist dns_ipkeylist_t;
+typedef struct dns_deleg     dns_deleg_t;
+typedef ISC_LIST(dns_deleg_t) dns_deleglist_t;
+typedef struct dns_delegset dns_delegset_t;
 
 typedef struct dst_gssapi_signverifyctx dst_gssapi_signverifyctx_t;
 
