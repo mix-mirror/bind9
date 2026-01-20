@@ -90,7 +90,7 @@ setup_test(void **state) {
 			    dns_dbtype_zone, dns_rdataclass_in, 0, NULL, &db2);
 	assert_int_equal(res, ISC_R_SUCCESS);
 	dns_db_newversion(db2, &v2);
-	assert_non_null(v1);
+	assert_non_null(v2);
 
 	return 0;
 }
@@ -525,6 +525,58 @@ ISC_RUN_TEST_IMPL(rollback) {
 	assert_null(node);
 }
 
+/*
+ * Test that closing a writer with a rollback, then opening another writer and
+ * adding a rdataset (while still holding the node reference) works correctly.
+ * See GL#5691.
+ */
+ISC_RUN_TEST_IMPL(rollback_then_commit) {
+	isc_result_t res;
+	dns_rdataset_t rdataset;
+	dns_rdata_t rdata = DNS_RDATA_INIT;
+	dns_dbnode_t *node = NULL;
+	dns_rdatalist_t rdatalist;
+	char *txt = (char *)"\004text";
+	size_t len = strlen(txt);
+
+	rdata.rdclass = dns_rdataclass_in;
+	rdata.type = dns_rdatatype_txt;
+
+	rdata.length = len;
+	rdata.data = (unsigned char *)txt;
+
+	dns_rdataset_init(&rdataset);
+	dns_rdatalist_init(&rdatalist);
+
+	rdatalist.rdclass = dns_rdataclass_in;
+	rdatalist.type = dns_rdatatype_txt;
+
+	ISC_LIST_APPEND(rdatalist.rdata, &rdata, link);
+
+	dns_rdatalist_tordataset(&rdatalist, &rdataset);
+
+	res = dns_db_findnode(db1, dns_rootname, false, &node);
+	assert_int_equal(res, ISC_R_SUCCESS);
+
+	res = dns_db_addrdataset(db1, node, v1, 0, &rdataset, 0, NULL);
+	assert_int_equal(res, ISC_R_SUCCESS);
+
+	dns_db_closeversion(db1, &v1, false);
+
+	dns_db_newversion(db1, &v1);
+	assert_non_null(v1);
+
+	res = dns_db_addrdataset(db1, node, v1, 0, &rdataset, 0, NULL);
+	assert_int_equal(res, ISC_R_SUCCESS);
+
+	dns_db_closeversion(db1, &v1, true);
+
+	dns_db_detachnode(&node);
+	assert_null(node);
+
+	dns_rdataset_cleanup(&rdataset);
+}
+
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY_CUSTOM(find, setup_test, teardown_test)
 ISC_TEST_ENTRY_CUSTOM(allrdatasets, setup_test, teardown_test)
@@ -536,6 +588,7 @@ ISC_TEST_ENTRY_CUSTOM(getnsec3parameters, setup_test, teardown_test)
 ISC_TEST_ENTRY_CUSTOM(attachversion, setup_test, teardown_test)
 ISC_TEST_ENTRY_CUSTOM(closeversion, setup_test, teardown_test)
 ISC_TEST_ENTRY_CUSTOM(rollback, setup_test, teardown_test)
+ISC_TEST_ENTRY_CUSTOM(rollback_then_commit, setup_test, teardown_test)
 ISC_TEST_LIST_END
 
 ISC_TEST_MAIN
