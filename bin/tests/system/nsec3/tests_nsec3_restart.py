@@ -28,7 +28,6 @@ from nsec3.common import (
     check_nsec3param,
 )
 
-
 # include the following zones when rendering named configs
 ZONES = {
     "nsec3.kasp",

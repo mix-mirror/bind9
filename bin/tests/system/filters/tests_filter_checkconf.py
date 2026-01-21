@@ -19,7 +19,6 @@ import isctest
 
 from filters.common import ARTIFACTS
 
-
 pytestmark = pytest.mark.extra_artifacts(ARTIFACTS)
 
 

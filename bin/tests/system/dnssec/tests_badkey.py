@@ -16,7 +16,6 @@ import pytest
 import isctest
 from isctest.util import param
 
-
 pytestmark = pytest.mark.extra_artifacts(
     [
         "*/K*",

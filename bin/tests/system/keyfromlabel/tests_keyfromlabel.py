@@ -18,7 +18,6 @@ import pytest
 
 import isctest.mark
 
-
 pytestmark = [
     isctest.mark.softhsm2_environment,
     pytest.mark.extra_artifacts(

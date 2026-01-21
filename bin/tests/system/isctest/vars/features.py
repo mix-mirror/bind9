@@ -14,7 +14,6 @@ import subprocess
 
 from .basic import BASIC_VARS
 
-
 FEATURES = {
     "DNSTAP": "--enable-dnstap",
     "EXTENDED_DS_DIGEST": "--extended-ds-digest",

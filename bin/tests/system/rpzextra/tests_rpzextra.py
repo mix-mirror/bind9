@@ -21,7 +21,6 @@ import dns.rrset
 
 import isctest
 
-
 pytestmark = pytest.mark.extra_artifacts(
     [
         "ns3/*-rpz-external.local.db",

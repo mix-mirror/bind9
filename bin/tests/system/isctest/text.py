@@ -16,7 +16,6 @@ import re
 from re import compile as Re
 from typing import Iterator, List, Match, Optional, Pattern, TextIO, Union
 
-
 FlexPattern = Union[str, Pattern]
 
 

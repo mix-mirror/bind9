@@ -34,7 +34,6 @@ from isctest.hypothesis.strategies import dns_names, uint
 from hypothesis import assume, example, given
 from hypothesis.strategies import binary, booleans, composite, just, sampled_from
 
-
 pytestmark = pytest.mark.extra_artifacts(
     [
         "ans*/ans.run",

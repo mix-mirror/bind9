@@ -20,7 +20,6 @@ from filters.common import (
     prime_cache,
 )
 
-
 pytestmark = pytest.mark.extra_artifacts(ARTIFACTS)
 
 

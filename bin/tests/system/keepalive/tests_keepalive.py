@@ -12,7 +12,6 @@
 import isctest
 import pytest
 
-
 pytestmark = pytest.mark.extra_artifacts(
     ["ns2/named.stats"],
 )

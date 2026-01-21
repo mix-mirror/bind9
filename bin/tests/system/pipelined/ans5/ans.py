@@ -199,7 +199,7 @@ def main():
 
     while True:
         try:
-            (clientsock, _) = sock.accept()
+            clientsock, _ = sock.accept()
             log("Accepted connection from %s" % clientsock)
             thread = TCPDelayer(clientsock, serverip, port)
             thread.start()

@@ -17,7 +17,6 @@ import time
 
 from isctest.text import compile_pattern, FlexPattern, LineReader
 
-
 T = TypeVar("T")
 OneOrMore = Union[T, List[T]]
 

@@ -20,7 +20,6 @@ import dns.rcode
 
 import isctest
 
-
 # ISO datetime format without msec
 fmt = "%Y-%m-%dT%H:%M:%SZ"
 
@@ -87,7 +86,7 @@ def test_zone_timers_primary(fetch_zones, load_timers, **kwargs):
     zones = fetch_zones(statsip, statsport)
 
     for zone in zones:
-        (name, loaded, expires, refresh) = load_timers(zone, True)
+        name, loaded, expires, refresh = load_timers(zone, True)
         mtime = zone_mtime(zonedir, name)
         check_zone_timers(loaded, expires, refresh, mtime)
 
@@ -103,7 +102,7 @@ def test_zone_timers_secondary(fetch_zones, load_timers, **kwargs):
         zones = fetch_zones(statsip, statsport)
         again = False
         for zone in zones:
-            (name, loaded, expires, refresh) = load_timers(zone, False)
+            name, loaded, expires, refresh = load_timers(zone, False)
             mtime = zone_mtime(zonedir, name)
             if (mtime != dayzero) or (tries == 0):
                 # mtime was either retrieved successfully or no tries were

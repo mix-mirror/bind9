@@ -12,7 +12,6 @@
 from pathlib import Path
 from typing import Dict
 
-
 SYSTEM_TEST_DIR_GIT_PATH = "bin/tests/system"
 
 

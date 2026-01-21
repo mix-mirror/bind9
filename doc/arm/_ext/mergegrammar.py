@@ -18,7 +18,6 @@ from pathlib import Path
 
 import parsegrammar
 
-
 misc_path = Path(__file__).resolve().parent.parent.parent / "misc"
 options_path = misc_path / "options"
 

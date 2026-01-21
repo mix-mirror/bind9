@@ -28,7 +28,6 @@ import dns.rcode
 import dns.rdataclass
 import dns.rdatatype
 
-
 pytestmark = [
     pytest.mark.skipif(
         sys.version_info < (3, 7), reason="Python >= 3.7 required [GL #3001]"

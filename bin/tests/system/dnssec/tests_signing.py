@@ -23,7 +23,6 @@ import pytest
 from isctest.kasp import SettimeOptions
 import isctest
 
-
 pytestmark = pytest.mark.extra_artifacts(
     [
         "*/K*",

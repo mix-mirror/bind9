@@ -30,7 +30,6 @@ from rollover.setup import (
     configure_ksk_3crowd,
 )
 
-
 CDSS = ["CDS (SHA-256)"]
 POLICY = "ksk-doubleksk-autosign"
 OFFSET1 = -int(timedelta(days=60).total_seconds())

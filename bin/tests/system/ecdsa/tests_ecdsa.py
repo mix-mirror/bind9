@@ -16,7 +16,6 @@ import dns.flags
 
 import isctest
 
-
 pytestmark = pytest.mark.extra_artifacts(
     [
         "ns*/trusted.conf",

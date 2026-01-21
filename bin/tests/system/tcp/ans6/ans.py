@@ -39,7 +39,6 @@ import socket
 import sys
 import time
 
-
 # Timeout for establishing all connections requested by a single 'open' command.
 OPEN_TIMEOUT = 2
 VERSION_QUERY = b"\x00\x1e\xaf\xb8\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00\x07version\x04bind\x00\x00\x10\x00\x03"
@@ -136,7 +135,7 @@ def main():
     ctlsock.listen(1)
 
     while True:
-        (clientsock, _) = ctlsock.accept()
+        clientsock, _ = ctlsock.accept()
         log("Accepted control connection from %s" % clientsock)
         cmdline = clientsock.recv(512).decode("ascii").strip()
         if cmdline:

@@ -15,7 +15,6 @@ import pytest
 
 import isctest
 
-
 pytestmark = pytest.mark.extra_artifacts(
     [
         "ns*/named.pid",

@@ -26,7 +26,6 @@ pytest.register_assert_rewrite("isctest")
 import isctest
 from isctest.vars.build import SYSTEM_TEST_DIR_GIT_PATH
 
-
 # Silence warnings caused by passing a pytest fixture to another fixture.
 # pylint: disable=redefined-outer-name
 

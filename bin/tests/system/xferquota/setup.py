@@ -20,8 +20,7 @@ zones = 300
 for z in range(zones):
     zn = f"zone{z:06d}.example"
     with open(f"ns1/{zn}.db", "w", encoding="utf-8") as f:
-        f.write(
-            """$TTL 300
+        f.write("""$TTL 300
 @    IN SOA    ns1 . 1 300 120 3600 86400
         NS      ns1
         NS      ns2
@@ -31,8 +30,7 @@ ns2     A       10.53.0.2
         MX      20 mail2.isp.example.
 www     A       10.0.0.1
 xyzzy   A       10.0.0.2
-"""
-        )
+""")
 
 with open("ns1/zones.conf", "w", encoding="utf-8") as priconf, open(
     "ns2/zones.conf", "w", encoding="utf-8"

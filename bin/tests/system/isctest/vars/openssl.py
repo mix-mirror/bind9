@@ -15,7 +15,6 @@ from typing import Optional
 
 from .. import log
 
-
 OPENSSL_VARS = {
     "OPENSSL_CONF": os.getenv("OPENSSL_CONF", None),
     "SOFTHSM2_CONF": os.getenv("SOFTHSM2_CONF", None),

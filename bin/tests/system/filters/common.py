@@ -14,7 +14,6 @@ from dns import rdataclass, rdatatype
 
 import isctest
 
-
 ARTIFACTS = [
     "conf/*.conf",
     "ns*/trusted.conf",

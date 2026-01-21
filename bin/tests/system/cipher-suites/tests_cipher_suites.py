@@ -18,7 +18,6 @@ import dns.message
 import isctest
 import isctest.mark
 
-
 pytestmark = pytest.mark.extra_artifacts(
     [
         "ns*/example*.db",

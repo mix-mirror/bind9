@@ -30,7 +30,6 @@ from nsec3.common import (
     check_nsec3_case,
 )
 
-
 # include the following zones when rendering named configs
 ZONES = {
     "nsec3-to-nsec.kasp",

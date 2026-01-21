@@ -35,7 +35,6 @@ from sphinx.util.nodes import make_refnode
 
 import checkgrammar
 
-
 logger = logging.getLogger(__name__)
 
 
