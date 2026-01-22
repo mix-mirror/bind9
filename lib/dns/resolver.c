@@ -47,6 +47,7 @@
 #include <dns/adb.h>
 #include <dns/cache.h>
 #include <dns/db.h>
+#include <dns/deleg.h>
 #include <dns/dispatch.h>
 #include <dns/dns64.h>
 #include <dns/dnstap.h>
@@ -6546,6 +6547,107 @@ name_external(const dns_name_t *name, dns_rdatatype_t type, respctx_t *rctx) {
 	return false;
 }
 
+static void
+cache_delegglue(dns_delegset_t *delegset, dns_deleg_t *deleg, dns_ttl_t *ttl,
+		dns_rdataset_t *rdataset) {
+	if (rdataset->ttl < *ttl) {
+		*ttl = rdataset->ttl;
+	}
+
+	DNS_RDATASET_FOREACH(rdataset) {
+		dns_rdata_t rdata = DNS_RDATA_INIT;
+		dns_rdata_in_a_t a;
+		isc_netaddr_t addr = { .family = AF_INET };
+
+		dns_rdataset_current(rdataset, &rdata);
+		dns_rdata_tostruct(&rdata, &a, NULL);
+		addr.type.in = a.in_addr;
+		dns_deleg_addaddr(delegset, deleg, &addr);
+	}
+}
+
+static void
+cache_delegglue6(dns_delegset_t *delegset, dns_deleg_t *deleg, dns_ttl_t *ttl,
+		 dns_rdataset_t *rdataset) {
+	if (rdataset->ttl < *ttl) {
+		*ttl = rdataset->ttl;
+	}
+
+	DNS_RDATASET_FOREACH(rdataset) {
+		dns_rdata_t rdata = DNS_RDATA_INIT;
+		dns_rdata_in_aaaa_t aaaa;
+		isc_netaddr_t addr = { .family = AF_INET6 };
+
+		dns_rdataset_current(rdataset, &rdata);
+		dns_rdata_tostruct(&rdata, &aaaa, NULL);
+		addr.type.in6 = aaaa.in6_addr;
+		dns_deleg_addaddr(delegset, deleg, &addr);
+	}
+}
+
+/*
+ * This is the entry point to store an NS-based RRset of a delegation. Currently
+ * the resolver doesn't really support DELEG so it doesn't matter, but once it
+ * gets supported, this code must somehow bail out if there is already a
+ * delegset from DELEG RRset in this zonecut. (See DELEG draft 5.1.3.)
+ */
+static void
+cache_delegns(respctx_t *rctx) {
+	fetchctx_t *fctx = rctx->fctx;
+	dns_delegdb_t *delegdb = fctx->res->view->deleg;
+	dns_delegset_t *delegset = NULL;
+	dns_deleg_t *deleg = NULL;
+	dns_ttl_t ttl = rctx->ns_rdataset->ttl;
+
+	FCTXTRACE("cache_delegns");
+
+	dns_deleg_allocset(delegdb, &delegset);
+	dns_deleg_allocdeleg(delegset, &deleg);
+
+	DNS_RDATASET_FOREACH(rctx->ns_rdataset) {
+		isc_result_t result;
+		dns_rdataset_t *gluerdataset = NULL;
+		dns_rdata_t rdata = DNS_RDATA_INIT;
+		dns_rdata_ns_t ns;
+
+		/*
+		 * TODO: Currently the nameserver name is added independently if
+		 * there are glues or not. What should be done instead, is to
+		 * add the nameserver name _only_ if no A/AAAA glues are found
+		 * for this name. Otherwise, the resolver would have to resolve
+		 * the name for nothing. (Because it has the IPs for this
+		 * server, so it will be queried anyway.)
+		 *
+		 * (Currently, I left it that way because it makes it easier to
+		 * test with minimal changes in the resolver
+		 * `fctx_getnameserver()` logic, but this will need to change
+		 * ASAP.)
+		 */
+		dns_rdataset_current(rctx->ns_rdataset, &rdata);
+		INSIST(rdata.type == dns_rdatatype_ns);
+		dns_rdata_tostruct(&rdata, &ns, NULL);
+		dns_deleg_addns(delegset, deleg, &ns.name);
+
+		result = dns_message_findname(
+			rctx->query->rmessage, DNS_SECTION_ADDITIONAL, &ns.name,
+			dns_rdatatype_a, 0, NULL, &gluerdataset);
+		if (result == ISC_R_SUCCESS) {
+			cache_delegglue(delegset, deleg, &ttl, gluerdataset);
+			gluerdataset = NULL;
+		}
+
+		result = dns_message_findname(
+			rctx->query->rmessage, DNS_SECTION_ADDITIONAL, &ns.name,
+			dns_rdatatype_aaaa, 0, NULL, &gluerdataset);
+		if (result == ISC_R_SUCCESS) {
+			cache_delegglue6(delegset, deleg, &ttl, gluerdataset);
+			gluerdataset = NULL;
+		}
+	}
+
+	dns_deleg_writeset(delegdb, rctx->ns_name, ttl, &delegset);
+}
+
 static isc_result_t
 check_section(void *arg, const dns_name_t *addname, dns_rdatatype_t type,
 	      dns_rdataset_t *found, dns_section_t section) {
@@ -8457,6 +8559,69 @@ rctx_answer_match(respctx_t *rctx) {
 		break;
 	}
 
+	/*
+	 * So far, I see one (good or bad?) reason to cache a delegation from a
+	 * positive response. Let's say we have:
+	 *
+	 *  zone	     	nameserver
+	 *  ----             	----------
+	 *  example		ns1
+	 *  foo.example	 	ns2
+	 *  bar.foo.example	ns2
+	 *
+	 * Then, to resolve a.bar.foo.example, the resolver will:
+	 *
+	 * 1. ask for example/NS to a root NS, which returns a negative answer
+	 *    with ns1 as referral
+	 *
+	 * 2. ask for foo.example/NS to ns1 which returns a negative answer with
+	 *    ns2 as referral
+	 *
+	 * 3. ask for bar.foo.example/NS to ns2 which returns a positive
+	 *    authoritative answer (AA set) with the NS in the answer section
+	 *    (and the glue).
+	 *
+	 * If we don't store the delegation here, we'll miss it. Of course, the
+	 * resolutions below bar.foo.example will still work, because the
+	 * closest zonecut we'll have locally is foo.example which turns out to
+	 * also make authority on bar.foo.example.
+	 *
+	 * Which raise the question: is that a good reason to do it (store the
+	 * delegation there) or not? I'd say not, but it's unclear...
+	 *
+	 * BTW, not storing it will break 2 system tests:
+	 *
+	 *   test_insecure_proof_optout
+	 *   test_insecure_proof_nsec3
+	 *
+	 * But only because minimal-response is disabled and there is a full
+	 * answer comparison at some point. Without this delegation, we are
+	 * missing a glue for bar.foo.example so it won't be part of the
+	 * additional sections of the responses (but in contexts where this is
+	 * not needed anyway). So it's easy to remove the additional check if we
+	 * decide we shouldn't store the delegation here.
+	 *
+	 * The following code "fixes" those two tests, but then breaks
+	 * "validation_recovery" DNSSEC test for a more obscure reason... Also,
+	 * with this code in, the resolver in "validation_recovery" does way
+	 * more egress queries than without it, which seems a bit a paradox. (Of
+	 * course, if we decide to keep this, I wouldn't "hack" using
+	 * ns_name/ns_rdataset temporary, and instead I would pass the name and
+	 * rdataset to store in the delegation DB as cache_delegns() parameter).
+	 *
+	 * if ((rctx->fctx->type == dns_rdatatype_ns) &&
+	 *     (rctx->query->rmessage->flags & DNS_MESSAGEFLAG_AA))
+	 * {
+	 *         INSIST(rctx->ns_name == NULL);
+	 * 	   INSIST(rctx->ns_rdataset == NULL);
+	 * 	   rctx->ns_name = rctx->aname;
+	 * 	   rctx->ns_rdataset = rctx->ardataset;
+	 * 	   cache_delegns(rctx);
+	 * 	   rctx->ns_name = NULL;
+	 * 	   rctx->ns_rdataset = NULL;
+	 * }
+	 */
+
 	return ISC_R_SUCCESS;
 }
 
@@ -9039,6 +9204,12 @@ rctx_referral(respctx_t *rctx) {
 	(void)dns_rdataset_additionaldata(rctx->ns_rdataset, rctx->ns_name,
 					  check_related, rctx, 0);
 	FCTX_ATTR_CLR(fctx, FCTX_ATTR_GLUING);
+
+	/*
+	 * An NS-based delegation can be cached immediately (i.e. there is no
+	 * DNSSEC validation).
+	 */
+	cache_delegns(rctx);
 
 	/*
 	 * NS rdatasets with 0 TTL cause problems.
