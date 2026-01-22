@@ -67,6 +67,7 @@
 #include <dns/acl.h>
 #include <dns/catz.h>
 #include <dns/clientinfo.h>
+#include <dns/deleg.h>
 #include <dns/dnstap.h>
 #include <dns/fixedname.h>
 #include <dns/nta.h>
@@ -98,6 +99,7 @@ struct dns_view {
 	dns_cache_t	  *cache;
 	dns_db_t	  *cachedb;
 	dns_db_t	  *hints;
+	dns_delegdb_t	  *deleg;
 
 	/*
 	 * security roots and negative trust anchors.
