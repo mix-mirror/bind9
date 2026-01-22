@@ -173,6 +173,10 @@ destroy(dns_view_t *view) {
 	isc_refcount_destroy(&view->references);
 	isc_refcount_destroy(&view->weakrefs);
 
+	if (view->deleg != NULL) {
+		dns_delegdb_detach(&view->deleg);
+	}
+
 	if (view->order != NULL) {
 		dns_order_detach(&view->order);
 	}
@@ -394,6 +398,10 @@ shutdown_view(dns_view_t *view) {
 		dns_resolver_shutdown(view->resolver);
 	}
 
+	if (view->deleg != NULL) {
+		dns_delegdb_shutdown(view->deleg);
+	}
+
 	rcu_read_lock();
 	adb = rcu_dereference(view->adb);
 	if (adb != NULL) {
@@ -534,6 +542,7 @@ dns_view_createresolver(dns_view_t *view, unsigned int options,
 
 	RETERR(dns_resolver_create(view, options, tlsctx_cache, dispatchv4,
 				   dispatchv6, &view->resolver));
+
 	isc_mem_create("ADB", &mctx);
 	dns_adb_create(mctx, view, &view->adb);
 	isc_mem_detach(&mctx);
