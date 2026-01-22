@@ -250,6 +250,9 @@ destroy(dns_view_t *view) {
 	if (view->cache != NULL) {
 		dns_cache_detach(&view->cache);
 	}
+	if (view->deleg != NULL) {
+		dns_deleg_shutdownanddetach(&view->deleg);
+	}
 	if (view->nocasecompress != NULL) {
 		dns_acl_detach(&view->nocasecompress);
 	}
