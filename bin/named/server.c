@@ -4257,6 +4257,16 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 
 	dns_cache_detach(&cache);
 
+	/*
+	 * TODO: for now, the delegation cache is replaced at reload and is not
+	 * shared between views. This needs to be fixed and persist cache on
+	 * restart (unless asked not to) and sharable cache option.
+	 */
+	if (view->deleg != NULL) {
+		dns_deleg_shutdownanddetach(&view->deleg);
+	}
+	dns_deleg_init(&view->deleg);
+
 	obj = NULL;
 	result = named_config_get(maps, "stale-answer-ttl", &obj);
 	INSIST(result == ISC_R_SUCCESS);
