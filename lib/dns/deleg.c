@@ -231,6 +231,16 @@ dns_delegdb_create(dns_delegdb_t **delegdbp) {
 	*delegdbp = delegdb;
 }
 
+void
+dns_delegdb_reuse(dns_view_t *oldview, dns_view_t *newview) {
+	REQUIRE(isc_loop_get(isc_tid()) == isc_loop_main());
+	REQUIRE(DNS_VIEW_VALID(oldview));
+	REQUIRE(DNS_VIEW_VALID(newview));
+
+	dns_delegdb_attach(oldview->deleg, &newview->deleg);
+	isc_refcount_increment(&oldview->deleg->owners);
+}
+
 typedef struct nodes_rcu_head {
 	isc_mem_t *mctx;
 	dns_qpmulti_t *nodes;

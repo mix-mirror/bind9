@@ -95,6 +95,13 @@ void
 dns_delegdb_create(dns_delegdb_t **delegdbp);
 
 /*
+ * Attach a delegation DB from an existing view to another view. Used when
+ * reloading the server and the delegation DB is reused.
+ */
+void
+dns_delegdb_reuse(dns_view_t *oldview, dns_view_t *newview);
+
+/*
  * Shutdown the delegation database. Must be called from any view shutting down
  * which either created a delegdb or reused a delegdb.
  */
