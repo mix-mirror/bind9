@@ -4278,6 +4278,11 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	CHECK(dns_view_createresolver(view, resopts, tlsctx_client_cache,
 				      dispatch4, dispatch6));
 
+	/*
+	 * Totally arbitrary decision for now. This might need its own knob.
+	 */
+	dns_delegdb_setsize(view->deleg, max_cache_size / 6);
+
 	if (resstats == NULL) {
 		isc_stats_create(mctx, &resstats, dns_resstatscounter_max);
 	}
