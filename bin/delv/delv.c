@@ -53,6 +53,7 @@
 #include <dns/byaddr.h>
 #include <dns/cache.h>
 #include <dns/client.h>
+#include <dns/deleg.h>
 #include <dns/dispatch.h>
 #include <dns/fixedname.h>
 #include <dns/keytable.h>
@@ -2154,6 +2155,8 @@ run_server(void *arg) {
 	dns_view_setdstport(view, destport);
 	dns_view_setmaxrestarts(view, restarts);
 	dns_view_setmaxqueries(view, maxtotal);
+
+	dns_deleg_init(&view->deleg);
 
 	CHECK(dns_rootns_create(isc_g_mctx, dns_rdataclass_in, hintfile,
 				&roothints));
