@@ -2731,8 +2731,8 @@ fetch_name(dns_adbname_t *adbname, bool start_at_zone, bool no_validation,
 	dns_adb_t *adb = NULL;
 	dns_fixedname_t fixed;
 	dns_name_t *name = NULL;
+	dns_delegset_t *delegset = NULL;
 	dns_rdataset_t rdataset;
-	dns_rdataset_t *nameservers = NULL;
 	unsigned int options = no_validation ? DNS_FETCHOPT_NOVALIDATE : 0;
 
 	REQUIRE(DNS_ADBNAME_VALID(adbname));
@@ -2753,8 +2753,7 @@ fetch_name(dns_adbname_t *adbname, bool start_at_zone, bool no_validation,
 		   adbname);
 		name = dns_fixedname_initname(&fixed);
 		CHECK(dns_view_bestzonecut(adb->view, adbname->name, name, NULL,
-					   0, 0, true, false, &rdataset));
-		nameservers = &rdataset;
+					   0, 0, true, false, &delegset));
 		options |= DNS_FETCHOPT_UNSHARED;
 	} else if (adb->view->qminimization) {
 		options |= DNS_FETCHOPT_QMINIMIZE | DNS_FETCHOPT_QMIN_SKIP_IP6A;
@@ -2775,7 +2774,7 @@ fetch_name(dns_adbname_t *adbname, bool start_at_zone, bool no_validation,
 	 */
 	dns_adbname_ref(adbname);
 	result = dns_resolver_createfetch(
-		adb->res, adbname->name, type, name, nameservers, NULL, NULL, 0,
+		adb->res, adbname->name, type, name, delegset, NULL, NULL, 0,
 		options, depth, qc, gqc, parent, isc_loop(), fetch_callback,
 		adbname, NULL, &fetch->rdataset, NULL, &fetch->fetch);
 	if (result != ISC_R_SUCCESS) {
@@ -2797,6 +2796,10 @@ fetch_name(dns_adbname_t *adbname, bool start_at_zone, bool no_validation,
 cleanup:
 	if (fetch != NULL) {
 		free_adbfetch(adb, &fetch);
+	}
+
+	if (delegset != NULL) {
+		dns_delegset_detach(&delegset);
 	}
 	dns_rdataset_cleanup(&rdataset);
 
