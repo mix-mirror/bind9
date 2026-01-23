@@ -2242,13 +2242,14 @@ respdiff-third-party:
   script:
     - cd ${CI_PROJECT_DIR}
     - mkdir version-under-test
-    - cp -ar bin version-under-test/
+    - export EXTRA_CONFIGURE="--prefix=${CI_PROJECT_DIR}/version-under-test"
     - BASELINE=${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-$BIND_BASELINE_VERSION}
     - git fetch --unshallow origin ${BASELINE}
     - git checkout FETCH_HEAD
     - autoreconf -fi
     - *configure
     - make -j${BUILD_PARALLEL_JOBS:-1} V=1
+    - make install
     - cd bind9-qa/respdiff
     - bash respdiff.sh -s named -q "${PWD}/100k_mixed.txt" -c 3 -w "${PWD}/rspworkdir" "${CI_PROJECT_DIR}/version-under-test" "${CI_PROJECT_DIR}/bin/named/named"
 
