@@ -163,8 +163,8 @@ fetch_done(void *arg) {
 	if (resp->node != NULL) {
 		dns_db_detachnode(&resp->node);
 	}
-	if (resp->db != NULL) {
-		dns_db_detach(&resp->db);
+	if (resp->cache != NULL) {
+		dns_db_detach(&resp->cache);
 	}
 
 	dns_resolver_freefresp(&resp);

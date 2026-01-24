@@ -2591,8 +2591,8 @@ free_fresp(ns_client_t *client, dns_fetchresponse_t **frespp) {
 	if (fresp->node != NULL) {
 		dns_db_detachnode(&fresp->node);
 	}
-	if (fresp->db != NULL) {
-		dns_db_detach(&fresp->db);
+	if (fresp->cache != NULL) {
+		dns_db_detach(&fresp->cache);
 	}
 	if (fresp->rdataset != NULL) {
 		ns_client_putrdataset(client, &fresp->rdataset);
@@ -6385,7 +6385,7 @@ query_resume(query_ctx_t *qctx) {
 		if (qctx->fresp->node != NULL) {
 			dns_db_detachnode(&qctx->fresp->node);
 		}
-		SAVE(qctx->rpz_st->r.db, qctx->fresp->db);
+		SAVE(qctx->rpz_st->r.db, qctx->fresp->cache);
 		qctx->rpz_st->r.r_type = qctx->fresp->qtype;
 		SAVE(qctx->rpz_st->r.r_rdataset, qctx->fresp->rdataset);
 		ns_client_putrdataset(qctx->client, &qctx->fresp->sigrdataset);
@@ -6423,15 +6423,15 @@ query_resume(query_ctx_t *qctx) {
 		if (qctx->fresp->node != NULL) {
 			dns_db_detachnode(&qctx->fresp->node);
 		}
-		if (qctx->fresp->db != NULL) {
-			dns_db_detach(&qctx->fresp->db);
+		if (qctx->fresp->cache != NULL) {
+			dns_db_detach(&qctx->fresp->cache);
 		}
 	} else {
 		CCTRACE(ISC_LOG_DEBUG(3), "resume from normal recursion");
 		qctx->authoritative = false;
 
 		qctx->qtype = qctx->fresp->qtype;
-		SAVE(qctx->db, qctx->fresp->db);
+		SAVE(qctx->db, qctx->fresp->cache);
 		SAVE(qctx->node, qctx->fresp->node);
 		SAVE(qctx->rdataset, qctx->fresp->rdataset);
 		SAVE(qctx->sigrdataset, qctx->fresp->sigrdataset);

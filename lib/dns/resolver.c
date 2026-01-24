@@ -1645,7 +1645,7 @@ copy_to_resp(fetchctx_t *fctx, dns_fetchresponse_t *resp) {
 
 	dns_name_copy(fctx->resp.foundname, resp->foundname);
 
-	dns_db_attach(fctx->cache, &resp->db);
+	dns_db_attach(fctx->cache, &resp->cache);
 	dns_db_attachnode(fctx->resp_node, &resp->node);
 
 	if (dns_rdataset_isassociated(&fctx->resp.rdataset)) {
@@ -1666,8 +1666,8 @@ pull_from_resp(dns_fetchresponse_t *resp, fetchctx_t *fctx) {
 	if (dns_rdataset_isassociated(resp->sigrdataset)) {
 		dns_rdataset_clone(resp->sigrdataset, &fctx->resp.sigrdataset);
 	}
-	if (resp->db != NULL) {
-		INSIST(resp->db == fctx->cache);
+	if (resp->cache != NULL) {
+		INSIST(resp->cache == fctx->cache);
 	}
 	if (resp->node != NULL) {
 		dns_db_attachnode(resp->node, &fctx->resp_node);
@@ -4362,8 +4362,8 @@ clear_resp(dns_fetchresponse_t **respp) {
 	if (resp->node != NULL) {
 		dns_db_detachnode(&resp->node);
 	}
-	if (resp->db != NULL) {
-		dns_db_detach(&resp->db);
+	if (resp->cache != NULL) {
+		dns_db_detach(&resp->cache);
 	}
 	dns_rdataset_cleanup(resp->rdataset);
 	dns_rdataset_cleanup(resp->sigrdataset);
@@ -6827,8 +6827,8 @@ resume_dslookup(void *arg) {
 	if (resp->node != NULL) {
 		dns_db_detachnode(&resp->node);
 	}
-	if (resp->db != NULL) {
-		dns_db_detach(&resp->db);
+	if (resp->cache != NULL) {
+		dns_db_detach(&resp->cache);
 	}
 
 	/* Preserve data from resp before freeing it. */
@@ -9804,8 +9804,8 @@ prime_done(void *arg) {
 	if (resp->node != NULL) {
 		dns_db_detachnode(&resp->node);
 	}
-	if (resp->db != NULL) {
-		dns_db_detach(&resp->db);
+	if (resp->cache != NULL) {
+		dns_db_detach(&resp->cache);
 	}
 	dns_rdataset_cleanup(resp->rdataset);
 	INSIST(resp->sigrdataset == NULL);

@@ -82,7 +82,7 @@ struct dns_fetchresponse {
 	isc_result_t	      vresult;
 	dns_edectx_t	     *edectx;
 	dns_rdatatype_t	      qtype;
-	dns_db_t	     *db;
+	dns_db_t	     *cache;
 	dns_dbnode_t	     *node;
 	dns_rdataset_t	     *rdataset;
 	dns_rdataset_t	     *sigrdataset;

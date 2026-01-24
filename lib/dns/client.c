@@ -531,7 +531,7 @@ client_resfind(resctx_t *rctx, dns_fetchresponse_t *resp) {
 			INSIST(resp != NULL);
 			INSIST(resp->fetch == rctx->fetch);
 			dns_resolver_destroyfetch(&rctx->fetch);
-			db = resp->db;
+			db = resp->cache;
 			node = resp->node;
 			result = resp->result;
 			vresult = resp->vresult;
