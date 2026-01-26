@@ -17559,7 +17559,7 @@ zone_loaddone(void *arg, isc_result_t result) {
 	 * If zone loading failed, remove the update db callbacks prior
 	 * to calling the list of callbacks in the zone load structure.
 	 */
-	if (result != ISC_R_SUCCESS) {
+	if (result != ISC_R_SUCCESS && result != DNS_R_SEENINCLUDE) {
 		dns_zone_rpz_disable_db(zone, load->db);
 		dns_zone_catz_disable_db(zone, load->db);
 	}
