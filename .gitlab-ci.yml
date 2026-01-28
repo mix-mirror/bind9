@@ -557,7 +557,7 @@ stages:
     - cd "$CI_PROJECT_DIR"
     - *find_python
     - >
-      "$PYTHON" bin/tests/convert-trs-to-junit.py . > "$CI_PROJECT_DIR"/junit_system.xml
+      "$PYTHON" bin/tests/convert_trs_to_junit.py . > "$CI_PROJECT_DIR"/junit_system.xml
     - *git_clone_bind9-qa
     - >
       "$PYTHON" "$CI_PROJECT_DIR"/bind9-qa/ci/postprocess_junit_files.py "$CI_PROJECT_DIR"/junit_system.xml --output "$CI_PROJECT_DIR"/junit.xml
@@ -586,9 +586,9 @@ stages:
     - RET=0
     - make -j${TEST_PARALLEL_JOBS:-1} -k unit V=1 || RET=$?
     - *find_python
-    - >
-      "$PYTHON" "$CI_PROJECT_DIR"/bin/tests/convert-trs-to-junit.py . > "$CI_PROJECT_DIR"/junit_unit.xml
     - *git_clone_bind9-qa
+    - >
+      "$PYTHON" "$CI_PROJECT_DIR"/bin/tests/convert_trs_to_junit.py . > "$CI_PROJECT_DIR"/junit_unit.xml
     - >
       "$PYTHON" "$CI_PROJECT_DIR"/bind9-qa/ci/postprocess_junit_files.py "$CI_PROJECT_DIR"/junit_unit.xml --output "$CI_PROJECT_DIR"/junit.xml
     - (exit $RET)

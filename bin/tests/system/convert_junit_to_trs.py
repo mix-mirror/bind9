@@ -16,7 +16,7 @@ def junit_to_trs(junit_xml):
     testcases = root.findall(".//testcase")
 
     if len(testcases) < 1:
-        print(":test-result: ERROR convert-junit-to-trs.py")
+        print(":test-result: ERROR convert_junit_to_trs.py")
         return 99
 
     has_fail = False
