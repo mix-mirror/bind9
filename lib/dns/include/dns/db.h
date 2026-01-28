@@ -83,6 +83,14 @@ typedef struct dns_dbmethods {
 	isc_result_t (*beginload)(dns_db_t	       *db,
 				  dns_rdatacallbacks_t *callbacks);
 	isc_result_t (*endload)(dns_db_t *db, dns_rdatacallbacks_t *callbacks);
+
+	isc_result_t (*beginupdate)(dns_db_t	       *db,
+				    dns_rdatacallbacks_t *callbacks);
+	isc_result_t (*commitupdate)(dns_db_t	       *db,
+				     dns_rdatacallbacks_t *callbacks);
+	isc_result_t (*abortupdate)(dns_db_t	      *db,
+				    dns_rdatacallbacks_t *callbacks);
+
 	void (*currentversion)(dns_db_t *db, dns_dbversion_t **versionp);
 	isc_result_t (*newversion)(dns_db_t *db, dns_dbversion_t **versionp);
 	void (*attachversion)(dns_db_t *db, dns_dbversion_t *source,
