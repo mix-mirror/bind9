@@ -379,7 +379,7 @@ stages:
 
 .parse_tsan: &parse_tsan
     - *find_python
-    - find -name 'tsan.*' -exec "$PYTHON" util/parse_tsan.py {} \;
+    - find -name 'tsan.*' -exec "$PYTHON" "$CI_PROJECT_DIR"/bind9-qa/ci/parse_tsan.py {} \;
 
 .check_readline_setup: &check_readline_setup
     - if [[ -n "${WITHOUT_READLINE}" ]]; then
@@ -493,7 +493,9 @@ stages:
         -F "variables[SHOTGUN_EVAL_THRESHOLD_LATENCY_PCTL_DRIFT_MIN]=$SHOTGUN_EVAL_THRESHOLD_LATENCY_PCTL_DRIFT_MIN"
         -F "variables[SHOTGUN_EVAL_THRESHOLD_LATENCY_PCTL_DRIFT_MAX]=$SHOTGUN_EVAL_THRESHOLD_LATENCY_PCTL_DRIFT_MAX"
         https://gitlab.isc.org/api/v4/projects/188/trigger/pipeline | jq .id)
-    - util/ci-wait-shotgun.py $PIPELINE_ID
+    - *git_clone_bind9-qa
+    - >
+      "$CI_PROJECT_DIR"/bind9-qa/ci/wait_shotgun.py $PIPELINE_ID
   needs:
     - job: ci-variables
       artifacts: true
@@ -514,12 +516,12 @@ stages:
   script:
     - *find_pytest
     - *find_python
-    - ( if [ "${CI_DISPOSABLE_ENVIRONMENT}" = "true" ]; then sleep 3000; "$PYTHON" "${CI_PROJECT_DIR}/util/get-running-system-tests.py"; fi ) &
+    - *git_clone_bind9-qa
+    - ( if [ "${CI_DISPOSABLE_ENVIRONMENT}" = "true" ]; then sleep 3000; "$PYTHON" "${CI_PROJECT_DIR}/bind9-qa/ci/get_running_system_tests.py"; fi ) &
     - cd bin/tests/system
     - RET=0
     - >
       ("$PYTEST" --junit-xml="$CI_PROJECT_DIR"/junit_pytest.xml -n "$TEST_PARALLEL_JOBS" | tee pytest.out.txt) || RET=1
-    - *git_clone_bind9-qa
     - >
       "$PYTHON" "$CI_PROJECT_DIR"/bind9-qa/ci/postprocess_junit_files.py "$CI_PROJECT_DIR"/junit_pytest.xml --output "$CI_PROJECT_DIR"/junit.xml
     - (exit $RET)
@@ -694,7 +696,7 @@ ci-orphaned-anchors:
   script:
     - *git_clone_bind9-qa
     - >
-      "$CI_PROJECT_DIR"/bind9-qa/ci-orphaned-anchors/check-orphaned-anchors-ci.py .gitlab-ci.yml
+      "$CI_PROJECT_DIR"/bind9-qa/ci-orphaned-anchors/check_orphaned_anchors_ci.py .gitlab-ci.yml
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
       changes:
@@ -815,7 +817,7 @@ generate-stress-test-configs:
   script:
     - *git_clone_bind9-qa
     - >
-      "$CI_PROJECT_DIR"/bind9-qa/stress/generate-stress-test-configs.py > stress-test-configs.yml
+      "$CI_PROJECT_DIR"/bind9-qa/stress/generate_stress_test_configs.py > stress-test-configs.yml
   artifacts:
     paths:
       - stress-test-configs.yml
@@ -823,7 +825,9 @@ generate-stress-test-configs:
 generate-tsan-stress-test-configs:
   <<: *quick_checks_job
   script:
-    - util/generate-tsan-stress-jobs.py > tsan-stress-test-configs.yml
+    - *git_clone_bind9-qa
+    - >
+      "$CI_PROJECT_DIR"/bind9-qa/ci/generate_tsan_stress_jobs.py > tsan-stress-test-configs.yml
   artifacts:
     paths:
       - tsan-stress-test-configs.yml
