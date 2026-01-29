@@ -142,13 +142,17 @@ def perl(script: str, args: Optional[List[str]] = None) -> None:
 def retry_with_timeout(func, timeout, delay=1, msg=None):
     start_time = time.monotonic()
     exc_msg = None
+    fname = f"{func.__module__}.{func.__qualname__}()"
     while time.monotonic() < start_time + timeout:
         exc_msg = None
+        isctest.log.debug(f"retry_with_timeout: {fname} called")
         try:
             if func():
+                isctest.log.debug(f"retry_with_timeout: {fname} succeeded")
                 return
         except AssertionError as exc:
             exc_msg = str(exc)
+        isctest.log.debug(f"retry_with_timeout: {fname} failed, sleep {delay}s")
         time.sleep(delay)
     if exc_msg is not None:
         isctest.log.error(exc_msg)
@@ -156,7 +160,7 @@ def retry_with_timeout(func, timeout, delay=1, msg=None):
         if exc_msg is not None:
             msg = exc_msg
         else:
-            msg = f"{func.__module__}.{func.__qualname__} timed out after {timeout} s"
+            msg = f"{fname} timed out after {timeout} s"
     assert False, msg
 
 
