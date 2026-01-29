@@ -39,6 +39,10 @@ extended_ds_digest = pytest.mark.skipif(
 )
 
 
+def is_host_freebsd(*_):
+    return platform.system() == "FreeBSD"
+
+
 def is_host_freebsd_13(*_):
     return platform.system() == "FreeBSD" and platform.release().startswith("13")
 
