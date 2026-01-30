@@ -9,6 +9,10 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
+import pytest
+
+pytest.importorskip("dns", minversion="2.7.0")
+
 import isctest
 
 
