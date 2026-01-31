@@ -2462,7 +2462,7 @@ findnodeintree(qpzonedb_t *qpdb, dns_qp_t *qp, const dns_name_t *name,
 		INSIST(node->nspace == DNS_DBNAMESPACE_NSEC3 || !nsec3);
 	} else if (result != ISC_R_SUCCESS && create) {
 		/*
-		 * ... if the lookup is unsuccesful, but the caller asked us to
+		 * ... if the lookup is unsuccessful, but the caller asked us to
 		 * create a new node, create one and insert it into the tree.
 		 */
 		node = new_qpznode(qpdb, name, nspace);
@@ -4683,14 +4683,11 @@ qpzone_createiterator(dns_db_t *db, unsigned int options,
  * nodes, only rdatasets.
  */
 static isc_result_t
-qpzone_addrdataset_inner(dns_db_t *db, dns_dbnode_t *dbnode,
-			 dns_dbversion_t *dbversion,
-			 isc_stdtime_t now ISC_ATTR_UNUSED,
-			 dns_rdataset_t *rdataset, unsigned int options,
-			 dns_rdataset_t *addedrdataset, dns_qp_t *nsec) {
+qpzone_addrdataset_inner(qpzonedb_t *qpdb, qpznode_t *node,
+			 dns_dbversion_t *dbversion, dns_rdataset_t *rdataset,
+			 unsigned int options, dns_rdataset_t *addedrdataset,
+			 dns_qp_t *nsec) {
 	isc_result_t result;
-	qpzonedb_t *qpdb = (qpzonedb_t *)db;
-	qpznode_t *node = (qpznode_t *)dbnode;
 	qpz_version_t *version = (qpz_version_t *)dbversion;
 	isc_region_t region;
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
@@ -4749,13 +4746,7 @@ qpzone_addrdataset_inner(dns_db_t *db, dns_dbnode_t *dbnode,
 	}
 
 	/*
-	 * Add to the auxiliary NSEC tree if we're adding an NSEC record.
-	 */
-	bool is_nsec = !node->havensec && rdataset->type == dns_rdatatype_nsec;
-	REQUIRE(!is_nsec || nsec != NULL);
-
-	/*
-	 * If we're adding a delegation type or adding to the auxiliary NSEC
+	 * If we're adding a delegation type or adding NSEC records
 	 * tree hold an exclusive lock on the tree.  In the latter case the
 	 * lock does not necessarily have to be acquired but it will help
 	 * purge ancient entries more effectively.
@@ -4768,7 +4759,7 @@ qpzone_addrdataset_inner(dns_db_t *db, dns_dbnode_t *dbnode,
 	NODE_WRLOCK(nlock, &nlocktype);
 
 	result = ISC_R_SUCCESS;
-	if (is_nsec) {
+	if (nsec != NULL) {
 		node->havensec = true;
 
 		/*
@@ -4819,15 +4810,14 @@ qpzone_addrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 	REQUIRE(VALID_QPZONE(qpdb));
 
 	/*
-	 * Add to the auxiliary NSEC tree if we're adding an NSEC record.
+	 * Open a new write transaction if we're adding an NSEC record.
 	 */
 	if (!node->havensec && rdataset->type == dns_rdatatype_nsec) {
 		dns_qpmulti_write(qpdb->tree, &nsec);
 	}
 
-	isc_result_t result = qpzone_addrdataset_inner(db, dbnode, dbversion,
-						       now, rdataset, options,
-						       addedrdataset, nsec);
+	isc_result_t result = qpzone_addrdataset_inner(
+		qpdb, node, dbversion, rdataset, options, addedrdataset, nsec);
 
 	if (nsec != NULL) {
 		dns_qpmulti_commit(qpdb->tree, &nsec);
@@ -5391,7 +5381,8 @@ qpzone_update_rdataset(qpzonedb_t *qpdb, qpz_version_t *version, dns_qp_t *qp,
 	isc_result_t result;
 	unsigned int options;
 	dns_rdataset_t ardataset;
-	dns_dbnode_t *node = NULL;
+	qpznode_t *node = NULL;
+	dns_qp_t *nsec = NULL;
 	bool is_nsec3;
 
 	dns_rdataset_init(&ardataset);
@@ -5400,7 +5391,7 @@ qpzone_update_rdataset(qpzonedb_t *qpdb, qpz_version_t *version, dns_qp_t *qp,
 		    rds->covers == dns_rdatatype_nsec3);
 
 	result = findnodeintree(qpdb, qp, name, true, is_nsec3,
-				&node DNS__DB_FLARG_PASS);
+				(dns_dbnode_t **)&node DNS__DB_FLARG_PASS);
 
 	if (result != ISC_R_SUCCESS) {
 		goto failure;
@@ -5415,16 +5406,20 @@ qpzone_update_rdataset(qpzonedb_t *qpdb, qpz_version_t *version, dns_qp_t *qp,
 		 */
 		options = DNS_DBADD_MERGE | DNS_DBADD_EXACT |
 			  DNS_DBADD_EXACTTTL;
+		if (!node->havensec && ardataset.type == dns_rdatatype_nsec) {
+			nsec = qp;
+		}
 		result = qpzone_addrdataset_inner(
-			(dns_db_t *)qpdb, node, (dns_dbversion_t *)version, 0,
-			rds, options, &ardataset, qp DNS__DB_FLARG_PASS);
+			qpdb, node, (dns_dbversion_t *)version, rds, options,
+			&ardataset, nsec DNS__DB_FLARG_PASS);
 		break;
 	case DNS_DIFFOP_DEL:
 	case DNS_DIFFOP_DELRESIGN:
 		options = DNS_DBSUB_EXACT | DNS_DBSUB_WANTOLD;
 		result = qpzone_subtractrdataset(
-			(dns_db_t *)qpdb, node, (dns_dbversion_t *)version, rds,
-			options, &ardataset DNS__DB_FLARG_PASS);
+			(dns_db_t *)qpdb, (dns_dbnode_t *)node,
+			(dns_dbversion_t *)version, rds, options,
+			&ardataset DNS__DB_FLARG_PASS);
 		break;
 	default:
 		UNREACHABLE();
@@ -5442,7 +5437,7 @@ qpzone_update_rdataset(qpzonedb_t *qpdb, qpz_version_t *version, dns_qp_t *qp,
 
 failure:
 	if (node != NULL) {
-		dns_db_detachnode(&node);
+		dns_db_detachnode((dns_dbnode_t **)&node);
 	}
 	dns_rdataset_cleanup(&ardataset);
 	return result;
