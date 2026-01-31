@@ -80,7 +80,13 @@ typedef enum {
  * Incoming zone transfer context.
  */
 
-typedef struct dns_ixfr dns_ixfr_t;
+typedef struct dns_ixfr {
+	uint32_t diffs;
+	uint32_t maxdiffs;
+	uint32_t request_serial;
+	uint32_t current_serial;
+	dns_journal_t *journal;
+} dns_ixfr_t;
 
 struct dns_xfrin {
 	unsigned int magic;
@@ -174,13 +180,7 @@ struct dns_xfrin {
 	 */
 	dns_rdatacallbacks_t axfr;
 
-	struct dns_ixfr {
-		uint32_t diffs;
-		uint32_t maxdiffs;
-		uint32_t request_serial;
-		uint32_t current_serial;
-		dns_journal_t *journal;
-	} ixfr;
+	dns_ixfr_t ixfr;
 
 	dns_rdata_t firstsoa;
 	unsigned char *firstsoa_data;

@@ -4679,6 +4679,9 @@ qpzone_createiterator(dns_db_t *db, unsigned int options,
  * The reason this is split from qpzone_addrdataset is to allow the reuse of
  * the same qp transaction for multiple adds.
  *
+ * If the rdataset is of type NSEC, 'nsec' must point to the qp trie for the
+ * zone, otherwise it must be NULL.
+ *
  * qpzone_subtractrdataset doesn't have the same problem since it cannot delete
  * nodes, only rdatasets.
  */
@@ -4746,9 +4749,9 @@ qpzone_addrdataset_inner(qpzonedb_t *qpdb, qpznode_t *node,
 	}
 
 	/*
-	 * If we're adding a delegation type or adding NSEC records
-	 * tree hold an exclusive lock on the tree.  In the latter case the
-	 * lock does not necessarily have to be acquired but it will help
+	 * If we're adding a delegation type or adding to the auxiliary NSEC
+	 * namespace, hold an exclusive lock on the tree.  In the latter case
+	 * the lock does not necessarily have to be acquired but it will help
 	 * purge ancient entries more effectively.
 	 *
 	 * (Note: node lock must be acquired after starting
@@ -4810,7 +4813,8 @@ qpzone_addrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 	REQUIRE(VALID_QPZONE(qpdb));
 
 	/*
-	 * Open a new write transaction if we're adding an NSEC record.
+	 * Open a new write transaction if we're adding to the auxiliary
+	 * NSEC namespace.
 	 */
 	if (!node->havensec && rdataset->type == dns_rdatatype_nsec) {
 		dns_qpmulti_write(qpdb->tree, &nsec);
