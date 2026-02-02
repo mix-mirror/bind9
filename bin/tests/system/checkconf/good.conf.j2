@@ -62,7 +62,10 @@ options {
 	blackhole {
 		10.0.0.0/8;
 	};
+	check-names primary warn;
+	check-names secondary ignore;
 	directory ".";
+	dnssec-policy "test";
 	dump-file "named_dumpdb";
 	hostname none;
 	interface-interval 30;
@@ -76,7 +79,13 @@ options {
 		"none";
 	};
 	match-mapped-addresses yes;
+	max-cache-size 20000000000000;
+	max-ixfr-ratio 90%;
+	max-query-count 100;
+	max-query-restarts 10;
 	memstatistics-file "named.memstats";
+	nta-lifetime 604800;
+	nta-recheck 604800;
 	pid-file none;
 	port 5300;
 	querylog yes;
@@ -84,20 +93,11 @@ options {
 	recursive-clients 3000;
 	serial-query-rate 100;
 	server-id none;
+	transfer-source 0.0.0.0;
 	update-quota 200;
-	check-names primary warn;
-	check-names secondary ignore;
-	max-cache-size 20000000000000;
-	max-query-count 100;
-	max-query-restarts 10;
-	nta-lifetime 604800;
-	nta-recheck 604800;
 	validate-except {
 		"corp";
 	};
-	dnssec-policy "test";
-	max-ixfr-ratio 90%;
-	transfer-source 0.0.0.0;
 	zone-statistics none;
 };
 remote-servers "parents" port 5353 source 10.10.10.10 source-v6 2001:db8::10 {
@@ -105,31 +105,32 @@ remote-servers "parents" port 5353 source 10.10.10.10 source-v6 2001:db8::10 {
 	2001:db8::11;
 };
 view "first" {
+	dnssec-validation auto;
 	match-clients {
 		"none";
 	};
+	max-query-restarts 15;
 	zone "example1" {
 		file "xxx";
-		type primary;
-		update-policy local;
 		max-ixfr-ratio 20%;
 		notify-source 10.10.10.10;
+		type primary;
+		update-policy local;
 	};
 	zone "clone" {
 		file "yyy";
-		type primary;
 		max-ixfr-ratio unlimited;
+		type primary;
 	};
 	zone "reports" {
 		file "reports";
-		type primary;
 		log-report-channel yes;
+		type primary;
 	};
-	dnssec-validation auto;
-	max-query-restarts 15;
 	zone-statistics terse;
 };
 view "second" {
+	dnssec-validation auto;
 	match-clients {
 		"any";
 	};
@@ -162,7 +163,6 @@ view "second" {
 		};
 		type redirect;
 	};
-	dnssec-validation auto;
 	zone-statistics full;
 };
 view "third" {
@@ -190,14 +190,16 @@ view "third" {
 	};
 	zone "s" {
 		file "sfile";
-		type secondary;
+		notify primary-only;
 		primaries {
 			1.2.3.4;
 		};
-		notify primary-only;
+		type secondary;
 	};
 };
 view "fourth" {
+	dnssec-policy "default";
+	key-directory ".";
 	zone "dnssec-test" {
 		checkds explicit;
 		dnssec-policy "test";
@@ -265,10 +267,9 @@ view "fourth" {
 		file "dnssec-view44.db";
 		type primary;
 	};
-	dnssec-policy "default";
-	key-directory ".";
 };
 view "fifth" {
+	key-directory ".";
 	zone "dnssec-view1" {
 		dnssec-policy "test";
 		file "dnssec-view51.db";
@@ -291,7 +292,6 @@ view "fifth" {
 		file "dnssec-view54.db";
 		type primary;
 	};
-	key-directory ".";
 };
 view "chaos" chaos {
 	zone "hostname.bind" chaos {
