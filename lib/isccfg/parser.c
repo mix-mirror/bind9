@@ -2699,11 +2699,15 @@ print_mapentry_sorted(cfg_printer_t *pctx, const char *key, cfg_obj_t *obj) {
 		for (elt = ISC_LIST_HEAD(*list); elt != NULL;
 		     elt = ISC_LIST_NEXT(elt, link))
 		{
-			print_symval(pctx, key, elt->obj);
+			if (elt->obj->type->print) {
+				print_symval(pctx, key, elt->obj);
+			}
 		}
 	} else {
 		/* Single-valued. */
-		print_symval(pctx, key, obj);
+		if (obj->type->print) {
+			print_symval(pctx, key, obj);
+		}
 	}
 }
 
