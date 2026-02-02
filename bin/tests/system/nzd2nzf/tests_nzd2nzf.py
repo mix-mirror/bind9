@@ -26,7 +26,7 @@ pytestmark = [
 
 
 def test_nzd2nzf(ns1):
-    zone_data = '"added.example" { type primary; file "added.db"; };'
+    zone_data = '"added.example" { file "added.db"; type primary; };'
     msg = isctest.query.create("a.added.example.", "A")
 
     # query for non-existing zone data

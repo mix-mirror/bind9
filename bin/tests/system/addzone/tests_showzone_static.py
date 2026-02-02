@@ -26,6 +26,6 @@ def test_showzone_static(ns1, templates, allow):
     ns1.rndc("reload")
     response = ns1.rndc("showzone inlinesec.example")
     assert (
-        'zone "inlinesec.example" { type primary; file "inlinesec.db"; };'
+        'zone "inlinesec.example" { file "inlinesec.db"; type primary; };'
         in response.out
     )

@@ -41,6 +41,19 @@ dnssec-policy "test" {
 	signatures-validity-dnskey P14D;
 	zone-propagation-delay PT5M;
 };
+dyndb "name" "library.so" {
+	this;
+	\};
+	is a {
+		"test" { \{ of; the; };
+	} bracketed;
+	"text \"";
+	system;
+};
+key "mykey" {
+	algorithm "@DEFAULT_HMAC@";
+	secret "qwertyuiopasdfgh";
+};
 key-store "hsm" {
 	directory ".";
 	pkcs11-uri "pkcs11:token=bind9;pin-value=1234";
@@ -96,20 +109,20 @@ view "first" {
 		"none";
 	};
 	zone "example1" {
-		type primary;
 		file "xxx";
+		type primary;
 		update-policy local;
 		max-ixfr-ratio 20%;
 		notify-source 10.10.10.10;
 	};
 	zone "clone" {
-		type primary;
 		file "yyy";
+		type primary;
 		max-ixfr-ratio unlimited;
 	};
 	zone "reports" {
-		type primary;
 		file "reports";
+		type primary;
 		log-report-channel yes;
 	};
 	dnssec-validation auto;
@@ -121,33 +134,33 @@ view "second" {
 		"any";
 	};
 	zone "example1" {
-		type primary;
 		file "zzz";
+		type primary;
 		update-policy local;
 		zone-statistics yes;
 	};
 	zone "example2" {
-		type static-stub;
 		forward only;
 		forwarders tls "ephemeral" {
 			10.53.0.4 port 8053 tls "ephemeral";
 		};
+		type static-stub;
 		zone-statistics no;
 	};
 	zone "example3" {
-		type static-stub;
 		server-addresses {
 			1.2.3.4;
 		};
+		type static-stub;
 	};
 	zone "clone" {
 		in-view "first";
 	};
 	zone "." {
-		type redirect;
 		primaries {
 			1.2.3.4;
 		};
+		type redirect;
 	};
 	dnssec-validation auto;
 	zone-statistics full;
@@ -157,27 +170,27 @@ view "third" {
 		"none";
 	};
 	zone "clone" {
-		in-view "first";
 		forward only;
 		forwarders {
 			10.0.0.100;
 		};
+		in-view "first";
 	};
 	zone "dnssec" {
-		type primary;
-		file "file";
 		allow-update {
 			"any";
 		};
 		dnssec-policy "default";
+		file "file";
+		type primary;
 	};
 	zone "p" {
-		type primary;
 		file "pfile";
+		type primary;
 	};
 	zone "s" {
-		type secondary;
 		file "sfile";
+		type secondary;
 		primaries {
 			1.2.3.4;
 		};
@@ -186,14 +199,9 @@ view "third" {
 };
 view "fourth" {
 	zone "dnssec-test" {
-		type primary;
 		checkds explicit;
-		file "dnssec-test.db";
-		parental-agents {
-			1.2.3.4;
-			1.2.3.5;
-		};
 		dnssec-policy "test";
+		file "dnssec-test.db";
 		notify-cfg "SOA" {
 			notify yes;
 			notify-defer 1;
@@ -204,15 +212,16 @@ view "fourth" {
 		notify-cfg "CDS" {
 			notify no;
 		};
+		parental-agents {
+			1.2.3.4;
+			1.2.3.5;
+		};
 		parental-source 10.10.10.10;
+		type primary;
 	};
 	zone "dnssec-default" {
-		type primary;
-		file "dnssec-default.db";
-		parental-agents {
-			"parents";
-		};
 		dnssec-policy "default";
+		file "dnssec-default.db";
 		notify-cfg "CDS" {
 			notify yes;
 			notify-defer 0;
@@ -220,82 +229,73 @@ view "fourth" {
 			notify-source 0.0.0.0;
 			notify-source-v6 ::;
 		};
+		parental-agents {
+			"parents";
+		};
+		type primary;
 	};
 	zone "dnssec-inherit" {
-		type primary;
 		checkds no;
 		file "dnssec-inherit.db";
+		type primary;
 	};
 	zone "dnssec-none" {
-		type primary;
-		file "dnssec-none.db";
 		dnssec-policy "none";
+		file "dnssec-none.db";
+		type primary;
 	};
 	zone "dnssec-view1" {
-		type primary;
 		checkds yes;
-		file "dnssec-view41.db";
 		dnssec-policy "test";
+		file "dnssec-view41.db";
+		type primary;
 	};
 	zone "dnssec-view2" {
-		type primary;
 		file "dnssec-view42.db";
+		type primary;
 	};
 	zone "dnssec-view3" {
-		type primary;
-		file "dnssec-view43.db";
 		dnssec-policy "none";
+		file "dnssec-view43.db";
 		key-directory "keys";
+		type primary;
 	};
 	zone "dnssec-view4" {
-		type primary;
-		file "dnssec-view44.db";
 		dnssec-policy "none";
+		file "dnssec-view44.db";
+		type primary;
 	};
 	dnssec-policy "default";
 	key-directory ".";
 };
 view "fifth" {
 	zone "dnssec-view1" {
-		type primary;
-		file "dnssec-view51.db";
 		dnssec-policy "test";
+		file "dnssec-view51.db";
+		type primary;
 	};
 	zone "dnssec-view2" {
-		type primary;
-		file "dnssec-view52.db";
 		dnssec-policy "test";
+		file "dnssec-view52.db";
 		key-directory "keys";
+		type primary;
 	};
 	zone "dnssec-view3" {
-		type primary;
-		file "dnssec-view53.db";
 		dnssec-policy "default";
+		file "dnssec-view53.db";
 		key-directory "keys";
+		type primary;
 	};
 	zone "dnssec-view4" {
-		type primary;
-		file "dnssec-view54.db";
 		dnssec-policy "none";
+		file "dnssec-view54.db";
+		type primary;
 	};
 	key-directory ".";
 };
 view "chaos" chaos {
 	zone "hostname.bind" chaos {
-		type primary;
 		database "_builtin hostname";
+		type primary;
 	};
-};
-dyndb "name" "library.so" {
-	this;
-	\};
-	is a {
-		"test" { \{ of; the; };
-	} bracketed;
-	"text \"";
-	system;
-};
-key "mykey" {
-	algorithm "@DEFAULT_HMAC@";
-	secret "qwertyuiopasdfgh";
 };
