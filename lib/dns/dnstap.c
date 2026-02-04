@@ -780,10 +780,12 @@ dns_dt_send(dns_view_t *view, dns_dtmsgtype_t msgtype, isc_sockaddr_t *qaddr,
 		dm.m.has_response_time_nsec = 1;
 
 		/*
-		 * Types RR and FR can fall through and get the query
+		 * Types RR, FR, CR, and AR can fall through and get the query
 		 * time set as well. Any other response type, break.
 		 */
-		if (msgtype != DNS_DTTYPE_RR && msgtype != DNS_DTTYPE_FR) {
+		if (msgtype != DNS_DTTYPE_RR && msgtype != DNS_DTTYPE_FR &&
+		    msgtype != DNS_DTTYPE_CR && msgtype != DNS_DTTYPE_AR)
+		{
 			break;
 		}
 
