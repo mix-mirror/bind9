@@ -1234,24 +1234,6 @@ dns_viewlist_findzone(dns_viewlist_t *list, const dns_name_t *name,
 }
 
 isc_result_t
-dns_view_load(dns_view_t *view, bool stop, bool newonly) {
-	isc_result_t result;
-	dns_zt_t *zonetable = NULL;
-
-	REQUIRE(DNS_VIEW_VALID(view));
-
-	rcu_read_lock();
-	zonetable = rcu_dereference(view->zonetable);
-	if (zonetable != NULL) {
-		result = dns_zt_load(zonetable, stop, newonly);
-	} else {
-		result = ISC_R_SUCCESS;
-	}
-	rcu_read_unlock();
-	return result;
-}
-
-isc_result_t
 dns_view_asyncload(dns_view_t *view, bool newonly, dns_zt_callback_t *callback,
 		   void *arg) {
 	isc_result_t result;

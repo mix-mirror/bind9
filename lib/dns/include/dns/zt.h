@@ -136,24 +136,17 @@ dns_zt_attach(dns_zt_t *zt, dns_zt_t **ztp);
  */
 
 isc_result_t
-dns_zt_load(dns_zt_t *zt, bool stop, bool newonly);
-
-isc_result_t
 dns_zt_asyncload(dns_zt_t *zt, bool newonly, dns_zt_callback_t alldone,
 		 void *arg);
 /*%<
- * Load all zones in the table. If 'stop' is true, stop on the first
- * error and return it. If 'stop' is false, ignore errors.
+ * Load all zones in the table asynchronously.  When all zones in the zone
+ * table have finished loaded (or failed due to errors), the caller is
+ * informed by calling 'alldone' with an argument of 'arg'.
  *
- * If newonly is set only zones that were never loaded are loaded.
- *
- * dns_zt_asyncload() loads zones asynchronously; when all
- * zones in the zone table have finished loaded (or failed due
- * to errors), the caller is informed by calling 'alldone'
- * with an argument of 'arg'.
+ * If 'newonly' is set only zones that were never loaded are loaded.
  *
  * Requires:
- * \li	'zt' to be valid
+ * \li	'zt' to be valid.
  */
 
 isc_result_t

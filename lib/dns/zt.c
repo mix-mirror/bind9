@@ -281,24 +281,6 @@ dns_zt_flush(dns_zt_t *zt) {
 	atomic_store_release(&zt->flush, true);
 }
 
-static isc_result_t
-load(dns_zone_t *zone, void *uap) {
-	isc_result_t result;
-	result = dns_zone_load(zone, uap != NULL);
-	if (result == DNS_R_CONTINUE || result == ISC_R_LOADING ||
-	    result == DNS_R_UPTODATE || result == DNS_R_DYNAMIC)
-	{
-		result = ISC_R_SUCCESS;
-	}
-	return result;
-}
-
-isc_result_t
-dns_zt_load(dns_zt_t *zt, bool stop, bool newonly) {
-	REQUIRE(VALID_ZT(zt));
-	return dns_zt_apply(zt, stop, NULL, load, newonly ? &newonly : NULL);
-}
-
 static void
 loaded_all(struct zt_load_params *params) {
 	if (params->loaddone != NULL) {
