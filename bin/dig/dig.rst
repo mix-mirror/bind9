@@ -231,7 +231,7 @@ the string ``no`` to negate the meaning of that keyword. Other keywords
 assign values to options, like the timeout interval. They have the form
 ``+keyword=value``. Keywords may be abbreviated, provided the
 abbreviation is unambiguous; for example, :option:`+cd` is equivalent to
-:option:`+cdflag`. The query options are:
+:option:`+cdflag`. Query options are order sensitive. The query options are:
 
 .. option:: +aaflag, +noaaflag
 
