@@ -111,6 +111,10 @@ command is one of the following:\n\
   dnssec -status zone [class [view]]\n\
 		Show the DNSSEC signing state for the specified zone.\n\
 		Requires the zone to have a dnssec-policy.\n\
+  dnssec -step zone [class [view]]\n\
+		Run the key manager for a zone configured with a\n\
+		dnssec-policy in manual mode, executing the operations that\n\
+		had previously been blocked (if any).\n\
   dnstap -reopen\n\
 		Close, truncate and re-open the DNSTAP output file.\n\
   dnstap -roll [count]\n\
