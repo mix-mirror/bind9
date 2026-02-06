@@ -186,6 +186,28 @@ Currently supported commands are:
    given zone.
 
    .. program:: rndc dnssec
+   .. option:: -checkds [-key id [-alg algorithm]] [-when time] (published | withdrawn) zone [class [view]]
+
+     This command informs :iscman:`named` that the DS for a specified zone's
+     key-signing key (KSK) has been confirmed to be published in, or withdrawn
+     from, the parent zone. This is required in order to complete a KSK
+     rollover.  The ``-key id`` and ``-alg algorithm`` arguments can be used to
+     specify a particular KSK, if necessary; if there is only one key acting
+     as a KSK for the zone, these arguments can be omitted. The time of
+     publication or withdrawal for the DS is set to the current time by
+     default, but can be overridden to a specific time with the argument
+     ``-when time``, where ``time`` is expressed in YYYYMMDDHHMMSS notation.
+
+   .. program:: rndc dnssec
+   .. option:: -rollover -key id [-alg algorithm] [-when time] zone [class [view]]
+
+     This command allows you to schedule key rollover for a specific key
+     (overriding the original key lifetime).  The ``-key id`` and
+     ``-alg algorithm`` arguments specify which key to roll.  The time to start
+     the rollover can be set with ``-when time``, where ``time`` is expressed in
+     YYYYMMDDHHMMSS. If not set the rollover will start immediately.
+
+   .. program:: rndc dnssec
    .. option:: -status [-v] zone [class [view]]
 
      This command shows the DNSSEC signing state for the specified zone.
@@ -201,28 +223,6 @@ Currently supported commands are:
      This gives the human operator a chance to review the log messages,
      understand what will happen next and then, using ``rndc dnssec -step``, to
      inform :iscman:`named` to proceed to the next stage.
-
-   .. program:: rndc dnssec
-   .. option:: -rollover -key id [-alg algorithm] [-when time] zone [class [view]]
-
-     This command allows you to schedule key rollover for a specific key
-     (overriding the original key lifetime).  The ``-key id`` and
-     ``-alg algorithm`` arguments specify which key to roll.  The time to start
-     the rollover can be set with ``-when time``, where ``time`` is expressed in
-     YYYYMMDDHHMMSS. If not set the rollover will start immediately.
-
-   .. program:: rndc dnssec
-   .. option:: -checkds [-key id [-alg algorithm]] [-when time] (published | withdrawn) zone [class [view]]
-
-     This command informs :iscman:`named` that the DS for a specified zone's
-     key-signing key (KSK) has been confirmed to be published in, or withdrawn
-     from, the parent zone. This is required in order to complete a KSK
-     rollover.  The ``-key id`` and ``-alg algorithm`` arguments can be used to
-     specify a particular KSK, if necessary; if there is only one key acting
-     as a KSK for the zone, these arguments can be omitted. The time of
-     publication or withdrawal for the DS is set to the current time by
-     default, but can be overridden to a specific time with the argument
-     ``-when time``, where ``time`` is expressed in YYYYMMDDHHMMSS notation.
 
 .. program:: rndc
 
