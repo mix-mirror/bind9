@@ -31,14 +31,6 @@
 #define TOKENSIZ (8 * 1024)
 #define MXNAME	 (DNS_NAME_MAXTEXT + 1)
 
-#define CHECK(x)                               \
-	{                                      \
-		result = (x);                  \
-		if (result != ISC_R_SUCCESS) { \
-			goto cleanup;          \
-		}                              \
-	}
-
 #define AS_STR(x) (x).value.as_textregion.base
 
 #ifdef HAVE_LIBIDN2
