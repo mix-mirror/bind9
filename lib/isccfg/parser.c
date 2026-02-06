@@ -2712,15 +2712,73 @@ print_mapentry_sorted(cfg_printer_t *pctx, const char *key, cfg_obj_t *obj) {
 }
 
 
+#define MAPENTRY_STACK_SIZE 16
+
 typedef struct {
+	cfg_mapentry_t stack_buffer[MAPENTRY_STACK_SIZE];
 	cfg_mapentry_t *entries;
-	size_t *count_ptr;
-	size_t max_size;
-} collect_context_t;
+	size_t size;
+	size_t capacity;
+} mapentry_buffer_t;
+
+static bool
+mapentry_buffer_is_heap_allocated(const mapentry_buffer_t *buffer) {
+	return (buffer->entries != buffer->stack_buffer);
+}
+
+static void
+init_mapentry_buffer(mapentry_buffer_t *buffer) {
+	*buffer = (mapentry_buffer_t){
+		.entries = buffer->stack_buffer,
+		.size = 0,
+		.capacity = MAPENTRY_STACK_SIZE,
+	};
+}
+
+static void
+cleanup_mapentry_buffer(mapentry_buffer_t *buffer) {
+	if (mapentry_buffer_is_heap_allocated(buffer)) {
+		isc_mem_put(isc_g_mctx, buffer->entries,
+			    buffer->capacity * sizeof(cfg_mapentry_t));
+	}
+}
+
+static void
+realloc_mapentry_buffer(mapentry_buffer_t *buffer, size_t new_capacity) {
+	cfg_mapentry_t *new_entries;
+	bool is_heap = mapentry_buffer_is_heap_allocated(buffer);
+
+	new_entries = isc_mem_reget(isc_g_mctx,
+				    is_heap ? buffer->entries : NULL,
+				    is_heap ? buffer->capacity * sizeof(cfg_mapentry_t) : 0,
+				    new_capacity * sizeof(cfg_mapentry_t));
+
+	/* Copy existing entries from stack buffer on first allocation */
+	if (!is_heap) {
+		memmove(new_entries, buffer->entries,
+			buffer->size * sizeof(cfg_mapentry_t));
+	}
+
+	buffer->entries = new_entries;
+	buffer->capacity = new_capacity;
+}
+
+static void
+push_mapentry(mapentry_buffer_t *buffer, const char *key, cfg_obj_t *obj) {
+	/* Expand buffer if needed */
+	if (buffer->size >= buffer->capacity) {
+		realloc_mapentry_buffer(buffer, buffer->capacity * 2);
+	}
+
+	/* Add the new entry */
+	buffer->entries[buffer->size].key = key;
+	buffer->entries[buffer->size].obj = obj;
+	buffer->size++;
+}
 
 static bool
 collect_mapentry(char *key, unsigned int type, isc_symvalue_t value, void *arg) {
-	collect_context_t *ctx = (collect_context_t *)arg;
+	mapentry_buffer_t *buffer = (mapentry_buffer_t *)arg;
 	cfg_obj_t *obj = value.as_pointer;
 
 	UNUSED(type);
@@ -2730,41 +2788,38 @@ collect_mapentry(char *key, unsigned int type, isc_symvalue_t value, void *arg) 
 		return (false); /* Continue iteration but skip this entry */
 	}
 
-	if (*ctx->count_ptr < ctx->max_size) {
-		ctx->entries[*ctx->count_ptr].key = key;
-		ctx->entries[*ctx->count_ptr].obj = obj;
-		(*ctx->count_ptr)++;
-	}
+	push_mapentry(buffer, key, obj);
 
 	return (false); /* Do NOT delete the entry from the hashmap! */
 }
 
 void
 cfg_print_mapbody(cfg_printer_t *pctx, const cfg_obj_t *obj) {
-	cfg_mapentry_t entries[256];
-	size_t count = 0;
-	collect_context_t ctx;
+	mapentry_buffer_t buffer;
 
 	REQUIRE(pctx != NULL);
 	REQUIRE(VALID_CFGOBJ(obj));
 
-	/* Setup collection context */
-	ctx.entries = entries;
-	ctx.count_ptr = &count;
-	ctx.max_size = 256;
+	/* Initialize the buffer */
+	init_mapentry_buffer(&buffer);
 
 	/* Collect all entries using isc_symtab_foreach */
-	isc_symtab_foreach(obj->value.map->symtab, collect_mapentry, &ctx);
+	isc_symtab_foreach(obj->value.map->symtab, collect_mapentry, &buffer);
 
 	/* Sort entries by key */
-	if (count > 1) {
-		qsort(entries, count, sizeof(cfg_mapentry_t), compare_mapentries);
+	if (buffer.size > 1) {
+		qsort(buffer.entries, buffer.size, sizeof(cfg_mapentry_t),
+		      compare_mapentries);
 	}
 
 	/* Print sorted entries */
-	for (size_t idx = 0; idx < count; ++idx) {
-		print_mapentry_sorted(pctx, entries[idx].key, entries[idx].obj);
+	for (size_t idx = 0; idx < buffer.size; ++idx) {
+		print_mapentry_sorted(pctx, buffer.entries[idx].key,
+				      buffer.entries[idx].obj);
 	}
+
+	/* Clean up the buffer */
+	cleanup_mapentry_buffer(&buffer);
 }
 
 static struct flagtext {
