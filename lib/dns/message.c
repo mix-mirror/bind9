@@ -219,12 +219,6 @@ msgblock_reset(dns_msgblock_t *);
 static void
 msgblock_free(isc_mem_t *, dns_msgblock_t *, unsigned int);
 
-static void
-logfmtpacket(dns_message_t *message, const char *description,
-	     const isc_sockaddr_t *from, const isc_sockaddr_t *to,
-	     isc_logcategory_t category, isc_logmodule_t module,
-	     const dns_master_style_t *style, int level, isc_mem_t *mctx);
-
 static isc_result_t
 buildopt(dns_message_t *message, dns_rdataset_t **rdatasetp);
 
@@ -4671,33 +4665,11 @@ dns_opcode_totext(dns_opcode_t opcode, isc_buffer_t *target) {
 }
 
 void
-dns_message_logpacketfrom(dns_message_t *message, const char *description,
-			  const isc_sockaddr_t *address,
-			  isc_logcategory_t category, isc_logmodule_t module,
-			  int level, isc_mem_t *mctx) {
-	REQUIRE(address != NULL);
-
-	logfmtpacket(message, description, address, NULL, category, module,
-		     &dns_master_style_debug, level, mctx);
-}
-
-void
-dns_message_logpacketfromto(dns_message_t *message, const char *description,
-			    const isc_sockaddr_t *from,
-			    const isc_sockaddr_t *to,
-			    isc_logcategory_t category, isc_logmodule_t module,
-			    int level, isc_mem_t *mctx) {
-	REQUIRE(from != NULL && to != NULL);
-
-	logfmtpacket(message, description, from, to, category, module,
-		     &dns_master_style_comment, level, mctx);
-}
-
-static void
-logfmtpacket(dns_message_t *message, const char *description,
-	     const isc_sockaddr_t *from, const isc_sockaddr_t *to,
-	     isc_logcategory_t category, isc_logmodule_t module,
-	     const dns_master_style_t *style, int level, isc_mem_t *mctx) {
+dns_message_logpacket(dns_message_t *message, const char *description,
+		      const isc_sockaddr_t *from, const isc_sockaddr_t *to,
+		      isc_logcategory_t category, isc_logmodule_t module,
+		      const dns_master_style_t *style, int level,
+		      isc_mem_t *mctx) {
 	char frombuf[ISC_SOCKADDR_FORMATSIZE] = { 0 };
 	char tobuf[ISC_SOCKADDR_FORMATSIZE] = { 0 };
 	isc_buffer_t *buf = NULL;

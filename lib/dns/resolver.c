@@ -2894,10 +2894,11 @@ resquery_send(resquery_t *query) {
 		la = &localaddr;
 	}
 
-	dns_message_logpacketfromto(
-		fctx->qmessage, "sending packet", la,
-		&query->addrinfo->sockaddr, DNS_LOGCATEGORY_RESOLVER,
-		DNS_LOGMODULE_PACKETS, ISC_LOG_DEBUG(11), fctx->mctx);
+	dns_message_logpacket(fctx->qmessage, "sending packet", la,
+			      &query->addrinfo->sockaddr,
+			      DNS_LOGCATEGORY_RESOLVER, DNS_LOGMODULE_PACKETS,
+			      &dns_master_style_comment, ISC_LOG_DEBUG(11),
+			      fctx->mctx);
 
 	/*
 	 * We're now done with the query message.
@@ -9962,10 +9963,11 @@ rctx_logpacket(respctx_t *rctx) {
 		la = &localaddr;
 	}
 
-	dns_message_logpacketfromto(
-		rctx->query->rmessage, "received packet",
-		&rctx->query->addrinfo->sockaddr, la, DNS_LOGCATEGORY_RESOLVER,
-		DNS_LOGMODULE_PACKETS, ISC_LOG_DEBUG(10), fctx->mctx);
+	dns_message_logpacket(rctx->query->rmessage, "received packet",
+			      &rctx->query->addrinfo->sockaddr, la,
+			      DNS_LOGCATEGORY_RESOLVER, DNS_LOGMODULE_PACKETS,
+			      &dns_master_style_comment, ISC_LOG_DEBUG(10),
+			      fctx->mctx);
 
 #ifdef HAVE_DNSTAP
 	/*
