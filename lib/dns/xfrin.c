@@ -1856,13 +1856,20 @@ xfrin_recv_done(isc_result_t result, isc_region_t *region, void *arg) {
 	isc_buffer_init(&buffer, region->base, region->length);
 	isc_buffer_add(&buffer, region->length);
 
+	/* Log the message */
+	isc_sockaddr_t localaddr, *la = NULL;
+	result = dns_dispentry_getlocaladdress(xfr->dispentry, &localaddr);
+	if (result == ISC_R_SUCCESS) {
+		la = &localaddr;
+	}
+
 	result = dns_message_parse(msg, &buffer,
 				   DNS_MESSAGEPARSE_PRESERVEORDER);
 	if (result == ISC_R_SUCCESS) {
-		dns_message_logpacketfrom(
-			msg, "received message", &xfr->primaryaddr,
+		dns_message_logpacket(
+			msg, "received message", &xfr->primaryaddr, la,
 			DNS_LOGCATEGORY_XFER_IN, DNS_LOGMODULE_XFER_IN,
-			ISC_LOG_DEBUG(10), xfr->mctx);
+			&dns_master_style_debug, ISC_LOG_DEBUG(10), xfr->mctx);
 	} else {
 		xfrin_log(xfr, ISC_LOG_DEBUG(10), "dns_message_parse: %s",
 			  isc_result_totext(result));
