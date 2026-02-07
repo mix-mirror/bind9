@@ -11,11 +11,7 @@
 
 import pytest
 
-pytestmark = pytest.mark.extra_artifacts(
-    [
-        "dig.out.*",
-    ]
-)
+pytestmark = pytest.mark.extra_artifacts(["dig.out.*", "log.*"])
 
 
 def test_legacy(run_tests_sh):

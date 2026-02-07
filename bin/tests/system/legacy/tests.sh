@@ -209,7 +209,11 @@ status=$((status + ret))
 n=$((n + 1))
 echo_i "checking recursive lookup to edns 512 server succeeds ($n)"
 ret=0
+nextpart ns1/named.run >/dev/null
 retry_quiet 3 resolution_succeeds edns512. || ret=1
+nextpart ns1/named.run | grep "sending packet" >log.$n
+[ $(wc -l <log.$n) -lt 8 ] || ret=1
+[ $(grep -c '(tcp)' log.$n) -ge 1 ] || ret=1
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 

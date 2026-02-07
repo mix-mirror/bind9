@@ -2568,16 +2568,14 @@ resquery_send(resquery_t *query) {
 			if (tried->count == 1U) {
 				hint = dns_adb_getudpsize(fctx->adb,
 							  query->addrinfo);
-			} else if (tried->count >= 2U) {
+			} else if (fctx->timeouts >= 2U && tried->count >= 2U) {
 				if ((query->options & DNS_FETCHOPT_TCP) == 0) {
 					/*
-					 * Inform the ADB that we're ending a
-					 * UDP fetch, and turn the query into
-					 * a TCP query.
+					 * Set the fctx so the next query will
+					 * be over TCP.
 					 */
-					dns_adb_endudpfetch(fctx->adb,
-							    query->addrinfo);
-					query->options |= DNS_FETCHOPT_TCP;
+					query->fctx->options |=
+						DNS_FETCHOPT_TCP;
 				}
 			}
 		}
@@ -2722,8 +2720,7 @@ resquery_send(resquery_t *query) {
 				}
 			}
 
-			/* Add PAD for current peer? Require TCP for now
-			 */
+			/* Add PAD for current peer? Require TCP for now */
 			if ((peer != NULL) && tcp) {
 				(void)dns_peer_getpadding(peer, &padding);
 			}
