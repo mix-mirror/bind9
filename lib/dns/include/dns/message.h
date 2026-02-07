@@ -25,6 +25,7 @@
 
 #include <dns/compress.h>
 #include <dns/masterdump.h>
+#include <dns/transport.h>
 #include <dns/types.h>
 
 #include <dst/dst.h>
@@ -1374,6 +1375,7 @@ dns_message_gettimeadjust(dns_message_t *msg);
 void
 dns_message_logpacket(dns_message_t *message, const char *description,
 		      const isc_sockaddr_t *from, const isc_sockaddr_t *to,
+		      dns_transport_type_t transport,
 		      isc_logcategory_t category, isc_logmodule_t module,
 		      const dns_master_style_t *style, int level,
 		      isc_mem_t *mctx);

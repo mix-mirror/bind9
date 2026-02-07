@@ -1833,6 +1833,7 @@ xfrin_recv_done(isc_result_t result, isc_region_t *region, void *arg) {
 	if (result == ISC_R_SUCCESS) {
 		dns_message_logpacket(
 			msg, "received message", &xfr->primaryaddr, la,
+			dns_xfrin_gettransporttype(xfr),
 			DNS_LOGCATEGORY_XFER_IN, DNS_LOGMODULE_XFER_IN,
 			&dns_master_style_debug, ISC_LOG_DEBUG(10), xfr->mctx);
 	} else {

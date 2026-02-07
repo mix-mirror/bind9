@@ -1213,9 +1213,6 @@ update_edns_stats(resquery_t *query) {
 	}
 }
 
-static void
-fctx_expired(void *arg);
-
 /*
  * Start the maximum lifetime timer for the fetch. This will
  * trigger if, for example, some ADB or validator dependency
@@ -2483,6 +2480,17 @@ issecuredomain(fetchctx_t *fctx, const dns_name_t *name, dns_rdatatype_t type,
 	return secure_domain;
 }
 
+static dns_transport_type_t
+transport_type(resquery_t *query) {
+	if (query->addrinfo->transport != NULL) {
+		return dns_transport_get_type(query->addrinfo->transport);
+	} else if ((query->options & DNS_FETCHOPT_TCP) != 0) {
+		return DNS_TRANSPORT_TCP;
+	} else {
+		return DNS_TRANSPORT_UDP;
+	}
+}
+
 static isc_result_t
 resquery_send(resquery_t *query) {
 	isc_result_t result;
@@ -2498,11 +2506,11 @@ resquery_send(resquery_t *query) {
 	dns_compress_t cctx;
 	bool useedns;
 	bool tcp = ((query->options & DNS_FETCHOPT_TCP) != 0);
+	dns_transport_type_t transport = transport_type(query);
 	uint16_t hint = 0, udpsize = 0; /* No EDNS */
 	isc_sockaddr_t localaddr, *la = NULL;
 #ifdef HAVE_DNSTAP
 	unsigned char zone[DNS_NAME_MAXWIRE];
-	dns_transport_type_t transport_type;
 	dns_dtmsgtype_t dtmsgtype;
 	isc_region_t zr;
 	isc_buffer_t zb;
@@ -2776,8 +2784,7 @@ resquery_send(resquery_t *query) {
 				}
 			}
 
-			/* Add PAD for current peer? Require TCP for now
-			 */
+			/* Add PAD for current peer? Require TCP for now */
 			if ((peer != NULL) && tcp) {
 				(void)dns_peer_getpadding(peer, &padding);
 			}
@@ -2886,19 +2893,24 @@ resquery_send(resquery_t *query) {
 		}
 	}
 
-	/*
-	 * Log the outgoing packet.
-	 */
-	result = dns_dispentry_getlocaladdress(query->dispentry, &localaddr);
-	if (result == ISC_R_SUCCESS) {
-		la = &localaddr;
-	}
+	if (isc_log_wouldlog(ISC_LOG_DEBUG(11))) {
+		/*
+		 * Log the outgoing packet.
+		 */
 
-	dns_message_logpacket(fctx->qmessage, "sending packet", la,
-			      &query->addrinfo->sockaddr,
-			      DNS_LOGCATEGORY_RESOLVER, DNS_LOGMODULE_PACKETS,
-			      &dns_master_style_comment, ISC_LOG_DEBUG(11),
-			      fctx->mctx);
+		result = dns_dispentry_getlocaladdress(query->dispentry,
+						       &localaddr);
+		if (result == ISC_R_SUCCESS) {
+			la = &localaddr;
+		}
+
+		dns_message_logpacket(fctx->qmessage, "sending packet", la,
+				      &query->addrinfo->sockaddr, transport,
+				      DNS_LOGCATEGORY_RESOLVER,
+				      DNS_LOGMODULE_PACKETS,
+				      &dns_master_style_comment,
+				      ISC_LOG_DEBUG(11), fctx->mctx);
+	}
 
 	/*
 	 * We're now done with the query message.
@@ -2923,17 +2935,8 @@ resquery_send(resquery_t *query) {
 		dtmsgtype = DNS_DTTYPE_RQ;
 	}
 
-	if (query->addrinfo->transport != NULL) {
-		transport_type =
-			dns_transport_get_type(query->addrinfo->transport);
-	} else if ((query->options & DNS_FETCHOPT_TCP) != 0) {
-		transport_type = DNS_TRANSPORT_TCP;
-	} else {
-		transport_type = DNS_TRANSPORT_UDP;
-	}
-
 	dns_dt_send(fctx->res->view, dtmsgtype, la, &query->addrinfo->sockaddr,
-		    transport_type, &zr, &query->start, NULL, &buffer);
+		    transport, &zr, &query->start, NULL, &buffer);
 #endif /* HAVE_DNSTAP */
 
 	return ISC_R_SUCCESS;
@@ -9950,7 +9953,6 @@ rctx_logpacket(respctx_t *rctx) {
 	isc_sockaddr_t localaddr, *la = NULL;
 #ifdef HAVE_DNSTAP
 	unsigned char zone[DNS_NAME_MAXWIRE];
-	dns_transport_type_t transport_type;
 	dns_dtmsgtype_t dtmsgtype;
 	dns_compress_t cctx;
 	isc_region_t zr;
@@ -9965,6 +9967,7 @@ rctx_logpacket(respctx_t *rctx) {
 
 	dns_message_logpacket(rctx->query->rmessage, "received packet",
 			      &rctx->query->addrinfo->sockaddr, la,
+			      transport_type(rctx->query),
 			      DNS_LOGCATEGORY_RESOLVER, DNS_LOGMODULE_PACKETS,
 			      &dns_master_style_comment, ISC_LOG_DEBUG(10),
 			      fctx->mctx);
@@ -9995,18 +9998,10 @@ rctx_logpacket(respctx_t *rctx) {
 		dtmsgtype = DNS_DTTYPE_RR;
 	}
 
-	if (rctx->query->addrinfo->transport != NULL) {
-		transport_type = dns_transport_get_type(
-			rctx->query->addrinfo->transport);
-	} else if ((rctx->query->options & DNS_FETCHOPT_TCP) != 0) {
-		transport_type = DNS_TRANSPORT_TCP;
-	} else {
-		transport_type = DNS_TRANSPORT_UDP;
-	}
-
 	dns_dt_send(fctx->res->view, dtmsgtype, la,
-		    &rctx->query->addrinfo->sockaddr, transport_type, &zr,
-		    &rctx->query->start, NULL, &rctx->buffer);
+		    &rctx->query->addrinfo->sockaddr,
+		    transport_type(rctx->query), &zr, &rctx->query->start, NULL,
+		    &rctx->buffer);
 #endif /* HAVE_DNSTAP */
 }
 

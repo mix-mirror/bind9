@@ -763,6 +763,8 @@ dns_transport_list_detach(dns_transport_list_t **listp) {
 const char *
 dns_transport_totext(dns_transport_type_t type) {
 	switch (type) {
+	case DNS_TRANSPORT_NONE:
+		return "none";
 	case DNS_TRANSPORT_UDP:
 		return "udp";
 	case DNS_TRANSPORT_TCP:
