@@ -4661,6 +4661,7 @@ dns_opcode_totext(dns_opcode_t opcode, isc_buffer_t *target) {
 void
 dns_message_logpacket(dns_message_t *message, const char *description,
 		      const isc_sockaddr_t *from, const isc_sockaddr_t *to,
+		      dns_transport_type_t transport,
 		      isc_logcategory_t category, isc_logmodule_t module,
 		      const dns_master_style_t *style, int level,
 		      isc_mem_t *mctx) {
@@ -4688,9 +4689,10 @@ dns_message_logpacket(dns_message_t *message, const char *description,
 	isc_buffer_allocate(mctx, &buf, 1024);
 	result = dns_message_totext(message, style, 0, buf);
 	if (result == ISC_R_SUCCESS) {
-		isc_log_write(category, module, level, "%s%s%s%s%s\n%.*s",
+		isc_log_write(category, module, level, "%s%s%s%s%s (%s)\n%.*s",
 			      description, from != NULL ? " from " : "",
 			      frombuf, to != NULL ? " to " : "", tobuf,
+			      dns_transport_totext(transport),
 			      (int)isc_buffer_usedlength(buf),
 			      (char *)isc_buffer_base(buf));
 	}
