@@ -4700,9 +4700,7 @@ logfmtpacket(dns_message_t *message, const char *description,
 	     const dns_master_style_t *style, int level, isc_mem_t *mctx) {
 	char frombuf[ISC_SOCKADDR_FORMATSIZE] = { 0 };
 	char tobuf[ISC_SOCKADDR_FORMATSIZE] = { 0 };
-	isc_buffer_t buffer;
-	char *buf = NULL;
-	int len = 1024;
+	isc_buffer_t *buf = NULL;
 	isc_result_t result;
 
 	if (!isc_log_wouldlog(level)) {
@@ -4721,25 +4719,17 @@ logfmtpacket(dns_message_t *message, const char *description,
 		isc_sockaddr_format(to, tobuf, sizeof(tobuf));
 	}
 
-	do {
-		buf = isc_mem_get(mctx, len);
-		isc_buffer_init(&buffer, buf, len);
-		result = dns_message_totext(message, style, 0, &buffer);
-		if (result == ISC_R_NOSPACE) {
-			isc_mem_put(mctx, buf, len);
-			len += 1024;
-		} else if (result == ISC_R_SUCCESS) {
-			isc_log_write(category, module, level,
-				      "%s%s%s%s%s\n%.*s", description,
-				      from != NULL ? " from " : "", frombuf,
-				      to != NULL ? " to " : "", tobuf,
-				      (int)isc_buffer_usedlength(&buffer), buf);
-		}
-	} while (result == ISC_R_NOSPACE);
-
-	if (buf != NULL) {
-		isc_mem_put(mctx, buf, len);
+	isc_buffer_allocate(mctx, &buf, 1024);
+	result = dns_message_totext(message, style, 0, buf);
+	if (result == ISC_R_SUCCESS) {
+		isc_log_write(category, module, level, "%s%s%s%s%s\n%.*s",
+			      description, from != NULL ? " from " : "",
+			      frombuf, to != NULL ? " to " : "", tobuf,
+			      (int)isc_buffer_usedlength(buf),
+			      (char *)isc_buffer_base(buf));
 	}
+
+	isc_buffer_free(&buf);
 }
 
 void
