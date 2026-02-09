@@ -15,6 +15,7 @@ import pytest
 import isctest
 import isctest.log
 import isctest.mark
+import isctest.run
 import isctest.vars
 
 pytest.importorskip("dns")
@@ -27,10 +28,11 @@ pytestmark = [
 
 def test_tcponly(ns2, templates):
     templates.render("ns2/named.conf", {"dnstap_supported": True})
-    ns2.reconfigure(log=False)
+    ns2.reconfigure()
     msg = dns.message.make_query("foo.tcp-only.", "A")
     res = isctest.query.udp(msg, "10.53.0.2")
-    ns2.rndc("dnstap -roll", log=False)
-    dnstap_read = isctest.run.cmd([isctest.vars.ALL["DNSTAPREAD"], "ns2/dnstap.log.0"])
-    isctest.log.info(dnstap_read.stdout.decode("utf-8"))
     isctest.check.noerror(res)
+
+    ns2.rndc("dnstap -roll")
+    dnstap = isctest.run.EnvCmd("DNSTAPREAD", "ns2/dnstap.log.0")
+    isctest.log.info(dnstap("").out.strip())
