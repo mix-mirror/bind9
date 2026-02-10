@@ -230,6 +230,13 @@
 #define DEFAULT_MAX_QUERIES 50
 #endif /* ifndef DEFAULT_MAX_QUERIES */
 
+/*
+ * This is the limit of ADB finds the resolver will accept for a given fetch. An
+ * ADB find can be either to lookup a NS address or server IP addresses.
+ * Limiting the number of finds avoids excessive processing of huge delegations.
+ */
+#define MAX_FIND_COUNT 20
+
 /* Hash table for zone counters */
 #ifndef RES_DOMAIN_HASH_BITS
 #define RES_DOMAIN_HASH_BITS 12
@@ -3655,30 +3662,87 @@ fctx_getaddresses_forwarders(fetchctx_t *fctx) {
 }
 
 static isc_result_t
-fctx_getaddresses_nameservers(fetchctx_t *fctx, isc_stdtime_t now,
-			      unsigned int stdoptions, size_t fetches_allowed,
-			      bool *need_alternatep, bool *all_spilledp) {
-	bool have_address = false;
-	unsigned int ns_processed = 0;
-	uint32_t ns_processing_limit = fctx->res->view->max_delegation_servers;
-	dns_namelist_t *availablens = NULL;
-	dns_name_t *nameservers[MAX_DELEGATION_SERVERS];
+fctx_getaddresses_addresses(fetchctx_t *fctx, isc_stdtime_t now,
+			    unsigned int options, size_t *findcount) {
+	isc_result_t result = ISC_R_SUCCESS;
+	dns_adbfindlist_t finds = ISC_LIST_INITIALIZER;
 
-	/*
-	 * For now, only NS-based deleg is supported, and this can be only in a
-	 * single list element.
-	 */
-	INSIST(ISC_LIST_HEAD(fctx->delegset->deleg) ==
-	       ISC_LIST_TAIL(fctx->delegset->deleg));
-	availablens = &ISC_LIST_HEAD(fctx->delegset->deleg)->nameserver;
+	ISC_LIST_FOREACH(fctx->delegset->deleg, deleg, link) {
+		dns_adbfind_t *find = NULL;
 
-	ISC_LIST_FOREACH(*availablens, ns, link) {
-		nameservers[ns_processed] = ns;
+		if (ISC_LIST_EMPTY(deleg->address)) {
+			continue;
+		}
+		INSIST(ISC_LIST_EMPTY(deleg->nameserver));
+		INSIST(ISC_LIST_EMPTY(deleg->delegi));
 
-		if (++ns_processed >= ns_processing_limit) {
+		fetchctx_ref(fctx);
+		result = dns_adb_createaddrinfosfind(fctx->adb, &deleg->address,
+						     fctx->res->view->dstport,
+						     options, now, &find);
+		if (result != ISC_R_SUCCESS) {
+			fetchctx_unref(fctx);
+			break;
+		}
+
+		ISC_LIST_APPEND(finds, find, publink);
+		if (++(*findcount) >= MAX_FIND_COUNT) {
 			break;
 		}
 	}
+
+	if (result == ISC_R_SUCCESS) {
+		ISC_LIST_APPENDLIST(fctx->finds, finds, publink);
+	} else {
+		ISC_LIST_FOREACH(finds, find, publink) {
+			ISC_LIST_UNLINK(finds, find, publink);
+			dns_adb_destroyfind(&find);
+		}
+	}
+	return result;
+}
+
+static isc_result_t
+fctx_getaddresses_nameservers(fetchctx_t *fctx, isc_stdtime_t now,
+			      unsigned int stdoptions, size_t fetches_allowed,
+			      bool *need_alternatep, bool *all_spilledp,
+			      size_t *findcount) {
+	bool have_address = false;
+	unsigned int ns_processed = 0;
+	dns_name_t *nameservers[MAX_FIND_COUNT];
+
+	/*
+	 * Lookup through each delegation for this zonecut (represented by
+	 * `delegset`).
+	 *
+	 * If this is an NS-based delegation, each `deleg` represents an NS RR
+	 * and will have a single server name.
+	 *
+	 * If this is a DELEG-based delegation, each `deleg` represents a DELEG
+	 * RR and might have multiple server names.
+	 *
+	 * Either way, there can't be more than `MAX_FIND_COUNT` name
+	 * server names to be looked up, so it bails out if the limit is reached,
+	 * even if there are other `deleg`.
+	 */
+	ISC_LIST_FOREACH(fctx->delegset->deleg, deleg, link) {
+		if (ISC_LIST_EMPTY(deleg->nameserver)) {
+			continue;
+		}
+		INSIST(ISC_LIST_EMPTY(deleg->address));
+		INSIST(ISC_LIST_EMPTY(deleg->delegi));
+
+		ISC_LIST_FOREACH(deleg->nameserver, ns, link) {
+			nameservers[ns_processed] = ns;
+
+			if (++ns_processed >= *findcount) {
+				goto shufflens;
+			}
+		}
+	}
+
+shufflens:
+	*findcount -= ns_processed;
 
 	if (ns_processed > 1 && ns_processed > fetches_allowed) {
 		/*
@@ -3782,6 +3846,7 @@ fctx_getaddresses(fetchctx_t *fctx) {
 	bool need_alternate = false;
 	bool all_spilled = false;
 	size_t fetches_allowed = 0;
+	size_t findcount = 0;
 
 	FCTXTRACE5("getaddresses", "fctx->depth=", fctx->depth);
 
@@ -3872,11 +3937,28 @@ fctx_getaddresses(fetchctx_t *fctx) {
 	INSIST(ISC_LIST_EMPTY(fctx->finds));
 	INSIST(ISC_LIST_EMPTY(fctx->altfinds));
 
+	/*
+	 * A dns_delegset_t can only have either
+	 *
+	 * - addresses (either from DELEG-based delegation with only addresses,
+	 *   or NS-based delegation with glues)
+	 * - name servers to lookup (either from DELEG-based delegation with
+	 *   only name servers, or NS-based delegation without glues)
+	 * - include delegi (from DELEG-based delegation only -- NYI).
+	 *
+	 * So let's try in this order. If nothing's found, then we can attempt
+	 * alternates.
+	 */
+
+	findcount = MAX_FIND_COUNT;
+
+	result = fctx_getaddresses_addresses(fctx, now, stdoptions, &findcount);
+
 	fetches_allowed = fctx_getaddresses_allowed(fctx);
 
 	result = fctx_getaddresses_nameservers(fctx, now, stdoptions,
 					       fetches_allowed, &need_alternate,
-					       &all_spilled);
+					       &all_spilled, &findcount);
 	if (result == DNS_R_CONTINUE && fetches_allowed == 0) {
 		/*
 		 * We have no addresses and we haven't allowed any
@@ -3885,7 +3967,7 @@ fctx_getaddresses(fetchctx_t *fctx) {
 		 */
 		(void)fctx_getaddresses_nameservers(fctx, now, stdoptions, 1,
 						    &need_alternate,
-						    &all_spilled);
+						    &all_spilled, &findcount);
 	}
 
 	/*
@@ -6580,46 +6662,44 @@ cache_delegglue6(dns_delegset_t *delegset, dns_deleg_t *deleg, dns_ttl_t *ttl,
 
 /*
  * This is the entry point to store an NS-based RRset of a delegation. Currently
- * the resolver doesn't really support DELEG so it doesn't matter, but once it
+ * the resolver doesn't support DELEG so it doesn't matter, but once it
  * gets supported, this code must somehow bail out if there is already a
  * delegset from DELEG RRset in this zonecut. (See DELEG draft 5.1.3.)
+ *
+ * Maybe the simplest way to enforce it could be to pass a boolean flag
+ * `nooverride` to `dns_deleg_writeset()` so it simply detaches the `delegset`
+ * if there is already a `delegset` at this zonecut in the DB. And the flag
+ * would be true only from `cache_delegns()`.
  */
 static void
 cache_delegns(respctx_t *rctx) {
 	fetchctx_t *fctx = rctx->fctx;
 	dns_delegdb_t *delegdb = fctx->res->view->deleg;
 	dns_delegset_t *delegset = NULL;
-	dns_deleg_t *deleg = NULL;
 	dns_ttl_t ttl = rctx->ns_rdataset->ttl;
 
 	FCTXTRACE("cache_delegns");
 
 	dns_deleg_allocset(delegdb, &delegset);
-	dns_deleg_allocdeleg(delegset, &deleg);
 
 	DNS_RDATASET_FOREACH(rctx->ns_rdataset) {
 		isc_result_t result;
 		dns_rdataset_t *gluerdataset = NULL;
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		dns_rdata_ns_t ns;
+		dns_deleg_t *deleg = NULL;
 
 		/*
-		 * TODO: Currently the nameserver name is added independently if
-		 * there are glues or not. What should be done instead, is to
-		 * add the nameserver name _only_ if no A/AAAA glues are found
-		 * for this name. Otherwise, the resolver would have to resolve
-		 * the name for nothing. (Because it has the IPs for this
-		 * server, so it will be queried anyway.)
-		 *
-		 * (Currently, I left it that way because it makes it easier to
-		 * test with minimal changes in the resolver
-		 * `fctx_getnameserver()` logic, but this will need to change
-		 * ASAP.)
+		 * We can't "group" all NS-based delegations into a single
+		 * `dns_deleg_t` because some of them might have glues, some
+		 * other might not. (And a `dns_deleg_t` can't have both
+		 * addresses and NS names.)
 		 */
+		dns_deleg_allocdeleg(delegset, &deleg);
+
 		dns_rdataset_current(rctx->ns_rdataset, &rdata);
 		INSIST(rdata.type == dns_rdatatype_ns);
 		dns_rdata_tostruct(&rdata, &ns, NULL);
-		dns_deleg_addns(delegset, deleg, &ns.name);
 
 		result = dns_message_findname(
 			rctx->query->rmessage, DNS_SECTION_ADDITIONAL, &ns.name,
@@ -6635,6 +6715,10 @@ cache_delegns(respctx_t *rctx) {
 		if (result == ISC_R_SUCCESS) {
 			cache_delegglue6(delegset, deleg, &ttl, gluerdataset);
 			gluerdataset = NULL;
+		}
+
+		if (ISC_LIST_EMPTY(deleg->address)) {
+			dns_deleg_addns(delegset, deleg, &ns.name);
 		}
 	}
 
@@ -6992,8 +7076,8 @@ resume_dslookup(void *arg) {
 		 * addresses" ISC_R_FAILURE in `fctx_getadresses()`.
 		 *
 		 * Could we actually fail immediately from here instead? This
-		 * seems to work. To be discussed if this is the right approach. I
-		 * like the idea that the resolver has the assumption that
+		 * seems to work. To be discussed if this is the right approach.
+		 * I like the idea that the resolver has the assumption that
 		 * `fctx->deleg` can never be NULL. But then we need to be
 		 * careful about such cases.
 		 */
