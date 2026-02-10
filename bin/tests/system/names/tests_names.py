@@ -11,6 +11,10 @@
 
 import isctest
 
+import pytest
+
+pytest.importorskip("dns", minversion="2.7.0")
+
 
 # The query answer sent with compression disabled should have a size that is
 # about twice as large as the answer with compression enabled, while
