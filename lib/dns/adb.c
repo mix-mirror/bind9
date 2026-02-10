@@ -696,7 +696,12 @@ expire_name(dns_adbname_t *adbname, dns_adbstatus_t astat) {
 
 	/* Remove the adbname from the hashtable... */
 	if (cds_lfht_del(adb->names_ht, &adbname->ht_node) == 0) {
-		isc_async_run(adbname->loop, expire_name_async, adbname);
+		if (adbname->loop == isc_loop()) {
+			expire_name_async(adbname);
+		} else {
+			isc_async_run(adbname->loop, expire_name_async,
+				      adbname);
+		}
 	}
 }
 
@@ -1467,7 +1472,12 @@ expire_entry(dns_adbentry_t *adbentry) {
 	dns_adb_t *adb = adbentry->adb;
 
 	if (cds_lfht_del(adb->entries_ht, &adbentry->ht_node) == 0) {
-		isc_async_run(adbentry->loop, expire_entry_async, adbentry);
+		if (adbentry->loop == isc_loop()) {
+			expire_entry_async(adbentry);
+		} else {
+			isc_async_run(adbentry->loop, expire_entry_async,
+				      adbentry);
+		}
 	}
 }
 
