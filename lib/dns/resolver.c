@@ -9299,26 +9299,6 @@ rctx_referral(respctx_t *rctx) {
 	}
 
 	/*
-	 * Mark any additional data related to this rdataset.
-	 * It's important that we do this before we change the
-	 * query domain.
-	 */
-	INSIST(rctx->ns_rdataset != NULL);
-	FCTX_ATTR_SET(fctx, FCTX_ATTR_GLUING);
-	/*
-	 * We want to append **all** the GLUE records here.
-	 */
-	(void)dns_rdataset_additionaldata(rctx->ns_rdataset, rctx->ns_name,
-					  check_related, rctx, 0);
-	FCTX_ATTR_CLR(fctx, FCTX_ATTR_GLUING);
-
-	/*
-	 * An NS-based delegation can be cached immediately (i.e. there is
-	 * no DNSSEC validation).
-	 */
-	cache_delegns(rctx);
-
-	/*
 	 * NS rdatasets with 0 TTL cause problems.
 	 * dns_view_findzonecut() will not find them when we
 	 * try to follow the referral, and we'll SERVFAIL
@@ -9328,6 +9308,13 @@ rctx_referral(respctx_t *rctx) {
 	if (rctx->ns_rdataset->ttl == 0) {
 		rctx->ns_rdataset->ttl = 1;
 	}
+
+	/*
+	 * An NS-based delegation can be cached immediately (i.e. there is no
+	 * DNSSEC validation).
+	 */
+	INSIST(rctx->ns_rdataset != NULL);
+	cache_delegns(rctx);
 
 	/*
 	 * Set the current query domain to the referral name.
@@ -9354,7 +9341,6 @@ rctx_referral(respctx_t *rctx) {
 		return ISC_R_COMPLETE;
 	}
 
-	FCTX_ATTR_SET(fctx, FCTX_ATTR_WANTCACHE);
 	fctx->ns_ttl_ok = false;
 	log_ns_ttl(fctx, "DELEGATION");
 	rctx->result = DNS_R_DELEGATION;
