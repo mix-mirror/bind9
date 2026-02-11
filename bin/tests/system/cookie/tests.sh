@@ -566,7 +566,7 @@ sys.exit(1)'; then
   ret=0
   pat='10\.53\.0\.10 .*\[cookie=................................\] \[ttl'
   # prime EDNS COOKIE state
-  $DIG $DIGOPTS @10.53.0.1 tsig. >dig.out.test$n.1 || ret=1
+  $DIG $DIGOPTS @10.53.0.1 NS tsig. >dig.out.test$n.1 || ret=1
   grep "status: NOERROR" dig.out.test$n.1 >/dev/null || ret=1
   rndc_dumpdb ns1
   # prime cache with NS response for QNAME minimisation

@@ -76,13 +76,21 @@ n=$((n + 1))
 echo_i "checking that the timeout didn't skew the resolver responses counters and did update the timeout counter ($n)"
 ret=0
 rndccmd 10.53.0.1 stats || ret=1
+# the timeout query triggers two extra queries, so we expect a small increase
 grep -F 'responses received' ns1/named.stats >ns1/named.stats.responses-after || true
+read before _ <ns1/named.stats.responses-before || true
+read after _ <ns1/named.stats.responses-after || true
+[ $((after - before)) -lt 3 ] || ret=1
 grep -F 'queries with RTT' ns1/named.stats >ns1/named.stats.rtt-after || true
+read before _ <ns1/named.stats.rtt-before || true
+read after _ <ns1/named.stats.rtt-after || true
+[ $((after - before)) -lt 3 ] || ret=1
+# ...but the timeout counter should increase by more
 grep -F 'query timeouts' ns1/named.stats >ns1/named.stats.timeouts-after || true
 mv ns1/named.stats ns1/named.stats-after
-diff ns1/named.stats.responses-before ns1/named.stats.responses-after >/dev/null || ret=1
-diff ns1/named.stats.rtt-before ns1/named.stats.rtt-after >/dev/null || ret=1
-diff ns1/named.stats.timeouts-before ns1/named.stats.timeouts-after >/dev/null && ret=1
+read before _ <ns1/named.stats.timeouts-before || true
+read after _ <ns1/named.stats.timeouts-after || true
+[ $((after - before)) -ge 3 ] || ret=1
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
