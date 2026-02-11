@@ -373,6 +373,8 @@ fi
 n=$((n + 1))
 echo_i "testing NS handling in ANY responses (recursive) ($n)"
 ret=0
+# pre-cache the address record
+$DIG $DIGOPTS -t A ns1.rt.example @10.53.0.3 >/dev/null || ret=1
 $DIG $DIGOPTS -t ANY rt.example @10.53.0.3 >dig.out.$n || ret=1
 grep "AUTHORITY: 0" dig.out.$n >/dev/null || ret=1
 grep "NS[ 	]*ns" dig.out.$n >/dev/null || ret=1
