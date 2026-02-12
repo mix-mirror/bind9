@@ -141,27 +141,27 @@ view "second" {
 		zone-statistics yes;
 	};
 	zone "example2" {
+		type static-stub;
 		forward only;
 		forwarders tls "ephemeral" {
 			10.53.0.4 port 8053 tls "ephemeral";
 		};
-		type static-stub;
 		zone-statistics no;
 	};
 	zone "example3" {
+		type static-stub;
 		server-addresses {
 			1.2.3.4;
 		};
-		type static-stub;
 	};
 	zone "clone" {
 		in-view "first";
 	};
 	zone "." {
+		type redirect;
 		primaries {
 			1.2.3.4;
 		};
-		type redirect;
 	};
 	zone-statistics full;
 };
@@ -201,9 +201,9 @@ view "fourth" {
 	dnssec-policy "default";
 	key-directory ".";
 	zone "dnssec-test" {
+		type primary;
 		checkds explicit;
 		dnssec-policy "test";
-		type primary;
 		file "dnssec-test.db";
 		notify-cfg "SOA" {
 			notify yes;
@@ -222,8 +222,8 @@ view "fourth" {
 		parental-source 10.10.10.10;
 	};
 	zone "dnssec-default" {
-		dnssec-policy "default";
 		type primary;
+		dnssec-policy "default";
 		file "dnssec-default.db";
 		notify-cfg "CDS" {
 			notify yes;
@@ -295,7 +295,7 @@ view "fifth" {
 };
 view "chaos" chaos {
 	zone "hostname.bind" chaos {
-		database "_builtin hostname";
 		type primary;
+		database "_builtin hostname";
 	};
 };
