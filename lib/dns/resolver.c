@@ -359,6 +359,7 @@ struct fetchctx {
 	dns_fixedname_t dfname;
 	dns_name_t *domain;
 	dns_rdataset_t nameservers;
+	size_t skipns;
 	atomic_uint_fast32_t attributes;
 	isc_timer_t *timer;
 	isc_time_t expires;
@@ -3561,10 +3562,8 @@ static unsigned int
 fctx_getaddresses_allowed(fetchctx_t *fctx) {
 	switch (fctx->depth) {
 	case 0:
-		return 3;
-	case 1:
 		return 2;
-	case 2:
+	case 1:
 		return 1;
 	default:
 		return 0;
@@ -3673,6 +3672,9 @@ fctx_getaddresses_nameservers(fetchctx_t *fctx, isc_stdtime_t now,
 	dns_rdata_ns_t ns;
 	bool have_address = false;
 	unsigned int ns_processed = 0;
+	size_t *skipns = fctx->parent != NULL ? &fctx->parent->skipns : NULL;
+	size_t curns = 0;
+	size_t maxns = dns_rdataset_count(&fctx->nameservers);
 
 	DNS_RDATASET_FOREACH(&fctx->nameservers) {
 		isc_result_t result = ISC_R_SUCCESS;
@@ -3688,6 +3690,13 @@ fctx_getaddresses_nameservers(fetchctx_t *fctx, isc_stdtime_t now,
 		result = dns_rdata_tostruct(&rdata, &ns, NULL);
 		if (result != ISC_R_SUCCESS) {
 			continue;
+		}
+
+		if (skipns != NULL) {
+			if (curns++ < ((*skipns) % maxns)) {
+				continue;
+			}
+			(*skipns)++;
 		}
 
 		if (STATICSTUB(&fctx->nameservers) &&

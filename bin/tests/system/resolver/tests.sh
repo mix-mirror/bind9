@@ -240,9 +240,9 @@ for nscount in 1 2 3 4 5 6 7 8 9 10; do
   test "${sourcerecs}" -eq "${nscount}" || ret=1
   test "${sourcerecs}" -eq "${nscount}" || echo_i "NS count incorrect for target${nscount}.sourcens"
 
-  # Expected queries = 2 * number of NS records allowed at the first level, up to a maximum of 6.
+  # Expected queries = 2 * number of NS records allowed at the first level, up to a maximum of 4.
   expected=$((nscount * 2))
-  if [ "$expected" -gt 6 ]; then expected=6; fi
+  if [ "$expected" -gt 4 ]; then expected=4; fi
   # Count the number of logged fetches
   nextpart ns5/named.run >/dev/null
   dig_with_opts @10.53.0.5 target${nscount}.sourcens A >dig.ns5.out.${nscount}.${n} || ret=1
