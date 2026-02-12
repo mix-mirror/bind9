@@ -3683,10 +3683,10 @@ fctx_getaddresses_nameservers(fetchctx_t *fctx, isc_stdtime_t now,
 			unsigned int static_stub = 0;
 			unsigned int no_fetch = 0;
 
-			if (pass == 0 && server < skip) {
+			if (pass == 0 && server++ < skip) {
 				continue;
 			}
-			if (pass == 1 && server >= skip) {
+			if (pass == 1 && server++ >= skip) {
 				break;
 			}
 
