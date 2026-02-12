@@ -61,13 +61,13 @@ ISC_RUN_TEST_IMPL(addzoneconf) {
 	isc_result_t result;
 	isc_buffer_t b;
 	const char *tests[] = {
-		"zone \"test4.baz\" { file \"e.db\"; type primary; };",
-		"zone \"test/.baz\" { file \"e.db\"; type primary; };",
-		"zone \"test\\\".baz\" { file \"e.db\"; type primary; };",
-		"zone \"test\\.baz\" { file \"e.db\"; type primary; };",
-		"zone \"test\\\\.baz\" { file \"e.db\"; type primary; };",
-		"zone \"test\\032.baz\" { file \"e.db\"; type primary; };",
-		"zone \"test\\010.baz\" { file \"e.db\"; type primary; };"
+		"zone \"test4.baz\" { type primary; file \"e.db\"; };",
+		"zone \"test/.baz\" { type primary; file \"e.db\"; };",
+		"zone \"test\\\".baz\" { type primary; file \"e.db\"; };",
+		"zone \"test\\.baz\" { type primary; file \"e.db\"; };",
+		"zone \"test\\\\.baz\" { type primary; file \"e.db\"; };",
+		"zone \"test\\032.baz\" { type primary; file \"e.db\"; };",
+		"zone \"test\\010.baz\" { type primary; file \"e.db\"; };"
 	};
 	char buf[1024];
 
@@ -256,8 +256,8 @@ view \"_bind\" chaos {\n\
 		slip 0;\n\
 	};\n\
 	zone \"version.bind\" chaos {\n\
-		database \"_builtin version\";\n\
 		type primary;\n\
+		database \"_builtin version\";\n\
 		update-policy {\n\
 			grant \"int\" zonesub \"any\";\n\
 		};\n\

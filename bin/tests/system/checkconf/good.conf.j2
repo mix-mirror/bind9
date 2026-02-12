@@ -111,21 +111,21 @@ view "first" {
 	};
 	max-query-restarts 15;
 	zone "example1" {
+		type primary;
 		file "xxx";
 		max-ixfr-ratio 20%;
 		notify-source 10.10.10.10;
-		type primary;
 		update-policy local;
 	};
 	zone "clone" {
+		type primary;
 		file "yyy";
 		max-ixfr-ratio unlimited;
-		type primary;
 	};
 	zone "reports" {
+		type primary;
 		file "reports";
 		log-report-channel yes;
-		type primary;
 	};
 	zone-statistics terse;
 };
@@ -135,8 +135,8 @@ view "second" {
 		"any";
 	};
 	zone "example1" {
-		file "zzz";
 		type primary;
+		file "zzz";
 		update-policy local;
 		zone-statistics yes;
 	};
@@ -177,24 +177,24 @@ view "third" {
 		in-view "first";
 	};
 	zone "dnssec" {
+		type primary;
 		allow-update {
 			"any";
 		};
 		dnssec-policy "default";
 		file "file";
-		type primary;
 	};
 	zone "p" {
-		file "pfile";
 		type primary;
+		file "pfile";
 	};
 	zone "s" {
+		type secondary;
 		file "sfile";
 		notify primary-only;
 		primaries {
 			1.2.3.4;
 		};
-		type secondary;
 	};
 };
 view "fourth" {
@@ -203,6 +203,7 @@ view "fourth" {
 	zone "dnssec-test" {
 		checkds explicit;
 		dnssec-policy "test";
+		type primary;
 		file "dnssec-test.db";
 		notify-cfg "SOA" {
 			notify yes;
@@ -219,10 +220,10 @@ view "fourth" {
 			1.2.3.5;
 		};
 		parental-source 10.10.10.10;
-		type primary;
 	};
 	zone "dnssec-default" {
 		dnssec-policy "default";
+		type primary;
 		file "dnssec-default.db";
 		notify-cfg "CDS" {
 			notify yes;
@@ -234,63 +235,62 @@ view "fourth" {
 		parental-agents {
 			"parents";
 		};
-		type primary;
 	};
 	zone "dnssec-inherit" {
+		type primary;
 		checkds no;
 		file "dnssec-inherit.db";
-		type primary;
 	};
 	zone "dnssec-none" {
+		type primary;
 		dnssec-policy "none";
 		file "dnssec-none.db";
-		type primary;
 	};
 	zone "dnssec-view1" {
+		type primary;
 		checkds yes;
 		dnssec-policy "test";
 		file "dnssec-view41.db";
-		type primary;
 	};
 	zone "dnssec-view2" {
-		file "dnssec-view42.db";
 		type primary;
+		file "dnssec-view42.db";
 	};
 	zone "dnssec-view3" {
+		type primary;
 		dnssec-policy "none";
 		file "dnssec-view43.db";
 		key-directory "keys";
-		type primary;
 	};
 	zone "dnssec-view4" {
+		type primary;
 		dnssec-policy "none";
 		file "dnssec-view44.db";
-		type primary;
 	};
 };
 view "fifth" {
 	key-directory ".";
 	zone "dnssec-view1" {
+		type primary;
 		dnssec-policy "test";
 		file "dnssec-view51.db";
-		type primary;
 	};
 	zone "dnssec-view2" {
+		type primary;
 		dnssec-policy "test";
 		file "dnssec-view52.db";
 		key-directory "keys";
-		type primary;
 	};
 	zone "dnssec-view3" {
+		type primary;
 		dnssec-policy "default";
 		file "dnssec-view53.db";
 		key-directory "keys";
-		type primary;
 	};
 	zone "dnssec-view4" {
+		type primary;
 		dnssec-policy "none";
 		file "dnssec-view54.db";
-		type primary;
 	};
 };
 view "chaos" chaos {

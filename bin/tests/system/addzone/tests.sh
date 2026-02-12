@@ -139,7 +139,7 @@ fi
 echo_i "checking rndc showzone with previously added zone ($n)"
 ret=0
 $RNDCCMD 10.53.0.2 showzone previous.example >rndc.out.ns2.$n
-expected='zone "previous.example" { file "previous.db"; type primary; };'
+expected='zone "previous.example" { type primary; file "previous.db"; };'
 [ "$(cat rndc.out.ns2.$n)" = "$expected" ] || ret=1
 n=$((n + 1))
 if [ $ret != 0 ]; then echo_i "failed"; fi
@@ -217,7 +217,7 @@ status=$((status + ret))
 echo_i "checking rndc showzone with a normally-loaded zone ($n)"
 ret=0
 $RNDCCMD 10.53.0.2 showzone normal.example >rndc.out.ns2.$n
-expected='zone "normal.example" { file "normal.db"; type primary; };'
+expected='zone "normal.example" { type primary; file "normal.db"; };'
 [ "$(cat rndc.out.ns2.$n)" = "$expected" ] || ret=1
 n=$((n + 1))
 if [ $ret != 0 ]; then echo_i "failed"; fi
@@ -226,7 +226,7 @@ status=$((status + ret))
 echo_i "checking rndc showzone with a normally-loaded zone with trailing dot ($n)"
 ret=0
 $RNDCCMD 10.53.0.2 showzone finaldot.example >rndc.out.ns2.$n
-expected='zone "finaldot.example." { file "normal.db"; type primary; };'
+expected='zone "finaldot.example." { type primary; file "normal.db"; };'
 [ "$(cat rndc.out.ns2.$n)" = "$expected" ] || ret=1
 n=$((n + 1))
 if [ $ret != 0 ]; then echo_i "failed"; fi
@@ -235,7 +235,7 @@ status=$((status + ret))
 echo_i "checking rndc showzone with a normally-loaded redirect zone ($n)"
 ret=0
 $RNDCCMD 10.53.0.1 showzone -redirect >rndc.out.ns1.$n
-expected='zone "." { file "redirect.db"; type redirect; };'
+expected='zone "." { type redirect; file "redirect.db"; };'
 [ "$(cat rndc.out.ns1.$n)" = "$expected" ] || ret=1
 n=$((n + 1))
 if [ $ret != 0 ]; then echo_i "failed"; fi
@@ -373,7 +373,7 @@ status=$((status + ret))
 
 echo_i "check that adding a 'primary redirect' zone works ($n)"
 ret=0
-$RNDCCMD 10.53.0.2 addzone '"." { file "redirect.db"; type redirect; };' >rndc.out.ns2.$n 2>&1 || ret=1
+$RNDCCMD 10.53.0.2 addzone '"." { type redirect; file "redirect.db"; };' >rndc.out.ns2.$n 2>&1 || ret=1
 _check_add_primary_redirect() (
   $RNDCCMD 10.53.0.2 showzone -redirect >showzone.out.ns2.$n 2>&1 \
     && grep "type redirect;" showzone.out.ns2.$n >/dev/null \
@@ -544,9 +544,9 @@ status=$((status + ret))
 echo_i "checking rndc showzone with newly added zone ($n)"
 _check_rndc_showzone_newly_added() (
   if ! $FEATURETEST --with-lmdb; then
-    expected='zone "added.example" in external { file "added.db"; type primary; };'
+    expected='zone "added.example" in external { type primary; file "added.db"; };'
   else
-    expected='zone "added.example" { file "added.db"; type primary; };'
+    expected='zone "added.example" { type primary; file "added.db"; };'
   fi
   $RNDCCMD 10.53.0.2 showzone added.example in external >rndc.out.ns2.$n 2>/dev/null \
     && [ "$(cat rndc.out.ns2.$n)" = "$expected" ]
