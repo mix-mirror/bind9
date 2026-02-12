@@ -43,6 +43,7 @@
 #include <glob.h>
 #include <inttypes.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -2683,11 +2684,32 @@ typedef struct {
 	cfg_obj_t *obj;
 } cfg_mapentry_t;
 
+/*
+ * Put certain values on the top regardless of alphabetical order for
+ * readability. Higher prio means the value is sorted earlier.
+ */
+static int
+clause_print_prio(const char* clause) {
+	switch (clause[0]) {
+	case 't':
+		return strcmp(clause, "type") ? 0 : 1;
+		break;
+	default:
+		return 0;
+	}
+}
+
 static int
 compare_mapentries(const void *a, const void *b) {
 	const cfg_mapentry_t *entry_a = (const cfg_mapentry_t *)a;
 	const cfg_mapentry_t *entry_b = (const cfg_mapentry_t *)b;
-	return strcmp(entry_a->key, entry_b->key);
+
+	int prio_a = clause_print_prio(entry_a->key);
+	int prio_b = clause_print_prio(entry_b->key);
+	int prio_diff = prio_b - prio_a;
+
+	int cmp_res = prio_diff ? prio_diff : strcmp(entry_a->key, entry_b->key);
+	return cmp_res;
 }
 
 static void
