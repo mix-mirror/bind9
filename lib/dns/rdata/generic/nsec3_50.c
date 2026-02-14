@@ -313,6 +313,7 @@ tostruct_nsec3(ARGS_TOSTRUCT) {
 	nsec3->len = region.length;
 	nsec3->typebits = mem_maybedup(mctx, region.base, region.length);
 	nsec3->mctx = mctx;
+
 	return ISC_R_SUCCESS;
 }
 

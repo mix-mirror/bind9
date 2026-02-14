@@ -340,6 +340,9 @@ trynsec3:
 			if (nsec3.hash != 1) {
 				continue;
 			}
+			if (nsec3.next_length > NSEC3_MAX_HASH_LENGTH) {
+				continue;
+			}
 			length = isc_iterated_hash(
 				hash, nsec3.hash, nsec3.iterations, nsec3.salt,
 				nsec3.salt_length, name->ndata, name->length);
