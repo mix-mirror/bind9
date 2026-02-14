@@ -324,6 +324,7 @@ tostruct_nsec3(ARGS_TOSTRUCT) {
 	}
 
 	nsec3->mctx = mctx;
+
 	return ISC_R_SUCCESS;
 
 cleanup:
