@@ -72,11 +72,13 @@ struct dns_rdatasetmethods {
 	void (*clone)(const dns_rdataset_t  *source,
 		      dns_rdataset_t *target DNS__DB_FLARG);
 	unsigned int (*count)(dns_rdataset_t *rdataset);
-	isc_result_t (*addnoqname)(dns_rdataset_t *rdataset, dns_name_t *name);
+	isc_result_t (*addnoqname)(dns_rdataset_t	       *rdataset,
+				   dns_name_with_links_t *name);
 	isc_result_t (*getnoqname)(dns_rdataset_t *rdataset, dns_name_t *name,
 				   dns_rdataset_t	 *neg,
 				   dns_rdataset_t *negsig DNS__DB_FLARG);
-	isc_result_t (*addclosest)(dns_rdataset_t *rdataset, dns_name_t *name);
+	isc_result_t (*addclosest)(dns_rdataset_t	       *rdataset,
+				   dns_name_with_links_t *name);
 	isc_result_t (*getclosest)(dns_rdataset_t *rdataset, dns_name_t *name,
 				   dns_rdataset_t	 *neg,
 				   dns_rdataset_t *negsig DNS__DB_FLARG);
@@ -226,7 +228,7 @@ struct dns_rdataset {
 			 * These refer to names passed in by the caller of
 			 * dns_rdataset_addnoqname() and _addclosest()
 			 */
-			struct dns_name *noqname, *closest;
+			struct dns_name_with_links *noqname, *closest;
 			dns_dbnode_t	*node;
 		} rdlist;
 	};
@@ -531,7 +533,7 @@ dns__rdataset_getnoqname(dns_rdataset_t *rdataset, dns_name_t *name,
  */
 
 isc_result_t
-dns_rdataset_addnoqname(dns_rdataset_t *rdataset, dns_name_t *name);
+dns_rdataset_addnoqname(dns_rdataset_t *rdataset, dns_name_with_links_t *name);
 /*%<
  * Associate a noqname proof with this record.
  * Sets 'noqname' attribute if successful.
@@ -560,7 +562,7 @@ dns__rdataset_getclosest(dns_rdataset_t *rdataset, dns_name_t *name,
  */
 
 isc_result_t
-dns_rdataset_addclosest(dns_rdataset_t *rdataset, dns_name_t *name);
+dns_rdataset_addclosest(dns_rdataset_t *rdataset, dns_name_with_links_t *name);
 /*%<
  * Associate a closest encloset proof with this record.
  * Sets 'closest' attribute if successful.

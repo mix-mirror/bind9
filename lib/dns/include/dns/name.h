@@ -65,6 +65,7 @@
 
 #include <inttypes.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdio.h>
 
 #include <isc/attributes.h>
@@ -113,7 +114,11 @@ struct dns_name {
 	} attributes;
 	unsigned char *ndata;
 	isc_buffer_t  *buffer;
-	ISC_LINK(dns_name_t) link;
+};
+
+struct dns_name_with_links {
+	dns_name_t name;
+	ISC_LINK(dns_name_with_links_t) link;
 	ISC_LIST(dns_rdataset_t) list;
 	isc_hashmap_t *hashmap;
 };
@@ -165,8 +170,6 @@ extern const dns_name_t *dns_inaddrarpa;
 		.ndata = (__ndata),                 \
 		.length = (sizeof(__ndata) - 1),    \
 		.attributes = { .readonly = true }, \
-		.link = ISC_LINK_INITIALIZER,       \
-		.list = ISC_LIST_INITIALIZER,       \
 	}
 
 #define DNS_NAME_INITABSOLUTE(__ndata)                                \
@@ -175,14 +178,10 @@ extern const dns_name_t *dns_inaddrarpa;
 		.ndata = (__ndata),                                   \
 		.length = sizeof(__ndata),                            \
 		.attributes = { .readonly = true, .absolute = true }, \
-		.link = ISC_LINK_INITIALIZER,                         \
-		.list = ISC_LIST_INITIALIZER,                         \
 	}
 
 #define DNS_NAME_INITEMPTY              \
-	{ .magic = DNS_NAME_MAGIC,      \
-	  .link = ISC_LINK_INITIALIZER, \
-	  .list = ISC_LIST_INITIALIZER }
+	{ .magic = DNS_NAME_MAGIC }
 
 /*%
  * Standard sizes of a wire format name
@@ -209,8 +208,6 @@ static inline void
 dns_name_init(dns_name_t *name) {
 	*name = (dns_name_t){
 		.magic = DNS_NAME_MAGIC,
-		.link = ISC_LINK_INITIALIZER,
-		.list = ISC_LIST_INITIALIZER,
 	};
 }
 /*%<
@@ -269,7 +266,6 @@ dns_name_invalidate(dns_name_t *name) {
 	name->length = 0;
 	name->attributes = (struct dns_name_attrs){};
 	name->buffer = NULL;
-	ISC_LINK_INIT(name, link);
 }
 /*%<
  * Make 'name' invalid.
@@ -288,6 +284,28 @@ bool
 dns_name_isvalid(const dns_name_t *name);
 /*%<
  * Check whether 'name' points to a valid dns_name
+ */
+
+static inline void
+dns_name_with_links_init(dns_name_with_links_t *name) {
+	dns_name_init(&name->name);
+	ISC_LINK_INIT(name, link);
+	ISC_LIST_INIT(name->list);
+	name->hashmap = NULL;
+}
+/*%<
+ * Initialize 'name' as a dns_name_with_links_t.
+ */
+
+static inline void
+dns_name_with_links_invalidate(dns_name_with_links_t *name) {
+	dns_name_invalidate(&name->name);
+	ISC_LINK_INIT(name, link);
+	ISC_LIST_INIT(name->list);
+	name->hashmap = NULL;
+}
+/*%<
+ * Make dns_name_with_links_t 'name' invalid.
  */
 
 /***

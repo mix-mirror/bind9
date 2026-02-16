@@ -135,10 +135,10 @@ struct dig_lookup {
 	char oname_space[BUFSIZE];
 	isc_buffer_t renderbuf;
 	char *sendspace;
-	dns_name_t *name;
+	dns_name_with_links_t *name;
 	isc_interval_t interval;
 	dns_message_t *sendmsg;
-	dns_name_t *oname;
+	dns_name_with_links_t *oname;
 	ISC_LINK(dig_lookup_t) link;
 	ISC_LIST(dig_query_t) q;
 	ISC_LIST(dig_query_t) connecting;

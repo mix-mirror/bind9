@@ -12688,7 +12688,7 @@ static void
 create_query(dns_zone_t *zone, dns_rdatatype_t rdtype, dns_name_t *name,
 	     dns_message_t **messagep) {
 	dns_message_t *message = NULL;
-	dns_name_t *qname = NULL;
+	dns_name_with_links_t *qname = NULL;
 	dns_rdataset_t *qrdataset = NULL;
 
 	dns_message_create(zone->mctx, NULL, NULL, DNS_MESSAGE_INTENTRENDER,
@@ -12704,7 +12704,7 @@ create_query(dns_zone_t *zone, dns_rdatatype_t rdtype, dns_name_t *name,
 	/*
 	 * Make question.
 	 */
-	dns_name_clone(name, qname);
+	dns_name_clone(name, &qname->name);
 	dns_rdataset_makequestion(qrdataset, zone->rdclass, rdtype);
 	ISC_LIST_APPEND(qname->list, qrdataset, link);
 	dns_message_addname(message, qname, DNS_SECTION_QUESTION);
@@ -13150,11 +13150,11 @@ save_nsrrset(dns_message_t *message, dns_name_t *name,
 		 * provided in this message will be used.
 		 */
 		if (!has_glue && dns_name_issubdomain(&ns.name, name)) {
-			dns_name_t *tmp_name;
+			dns_name_with_links_t *tmp_name;
 			tmp_name = isc_mem_get(cb_args->stub->mctx,
 					       sizeof(*tmp_name));
-			dns_name_init(tmp_name);
-			dns_name_dup(&ns.name, cb_args->stub->mctx, tmp_name);
+			dns_name_init(&tmp_name->name);
+			dns_name_dup(&ns.name, cb_args->stub->mctx, &tmp_name->name);
 			ISC_LIST_APPEND(ns_list, tmp_name, link);
 		}
 	}
@@ -13169,7 +13169,7 @@ save_nsrrset(dns_message_t *message, dns_name_t *name,
 			 * Resolve NS IPv4 address/A.
 			 */
 			result = stub_request_nameserver_address(cb_args, true,
-								 ns_name);
+								 &ns_name->name);
 			if (result != ISC_R_SUCCESS) {
 				goto done;
 			}
@@ -13177,7 +13177,7 @@ save_nsrrset(dns_message_t *message, dns_name_t *name,
 			 * Resolve NS IPv6 address/AAAA.
 			 */
 			result = stub_request_nameserver_address(cb_args, false,
-								 ns_name);
+								 &ns_name->name);
 			if (result != ISC_R_SUCCESS) {
 				goto done;
 			}
@@ -13189,7 +13189,7 @@ save_nsrrset(dns_message_t *message, dns_name_t *name,
 done:
 	ISC_LIST_FOREACH(ns_list, ns_name, link) {
 		ISC_LIST_UNLINK(ns_list, ns_name, link);
-		dns_name_free(ns_name, cb_args->stub->mctx);
+		dns_name_free(&ns_name->name, cb_args->stub->mctx);
 		isc_mem_put(cb_args->stub->mctx, ns_name, sizeof(*ns_name));
 	}
 	return result;
@@ -20241,7 +20241,7 @@ checkds_done(void *arg) {
 	/* Lookup DS RRset. */
 
 	MSG_SECTION_FOREACH(message, DNS_SECTION_ANSWER, name) {
-		if (dns_name_compare(&zone->origin, name) != 0) {
+		if (dns_name_compare(&zone->origin, &name->name) != 0) {
 			continue;
 		}
 
@@ -20435,7 +20435,7 @@ static void
 checkds_createmessage(dns_zone_t *zone, dns_message_t **messagep) {
 	dns_message_t *message = NULL;
 
-	dns_name_t *tempname = NULL;
+	dns_name_with_links_t *tempname = NULL;
 	dns_rdataset_t *temprdataset = NULL;
 
 	REQUIRE(DNS_ZONE_VALID(zone));
@@ -20455,8 +20455,8 @@ checkds_createmessage(dns_zone_t *zone, dns_message_t **messagep) {
 	/*
 	 * Make question.
 	 */
-	dns_name_init(tempname);
-	dns_name_clone(&zone->origin, tempname);
+	dns_name_init(&tempname->name);
+	dns_name_clone(&zone->origin, &tempname->name);
 	dns_rdataset_makequestion(temprdataset, zone->rdclass,
 				  dns_rdatatype_ds);
 	ISC_LIST_APPEND(tempname->list, temprdataset, link);

@@ -127,13 +127,15 @@ dns__rdatalist_clone(const dns_rdataset_t  *source,
 unsigned int
 dns__rdatalist_count(dns_rdataset_t *rdataset);
 isc_result_t
-dns__rdatalist_addnoqname(dns_rdataset_t *rdataset, dns_name_t *name);
+dns__rdatalist_addnoqname(dns_rdataset_t *rdataset,
+			  dns_name_with_links_t *name);
 isc_result_t
 dns__rdatalist_getnoqname(dns_rdataset_t *rdataset, dns_name_t *name,
 			  dns_rdataset_t	*neg,
 			  dns_rdataset_t *negsig DNS__DB_FLARG);
 isc_result_t
-dns__rdatalist_addclosest(dns_rdataset_t *rdataset, dns_name_t *name);
+dns__rdatalist_addclosest(dns_rdataset_t *rdataset,
+			  dns_name_with_links_t *name);
 isc_result_t
 dns__rdatalist_getclosest(dns_rdataset_t *rdataset, dns_name_t *name,
 			  dns_rdataset_t	*neg,

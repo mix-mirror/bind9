@@ -120,7 +120,7 @@ static isc_result_t
 sendquery(void) {
 	dns_request_t *request = NULL;
 	dns_message_t *message = NULL;
-	dns_name_t *qname = NULL;
+	dns_name_with_links_t *qname = NULL;
 	dns_rdataset_t *qrdataset = NULL;
 	isc_result_t result;
 	dns_fixedname_t queryname;
@@ -154,7 +154,7 @@ sendquery(void) {
 
 	dns_message_gettemprdataset(message, &qrdataset);
 
-	dns_name_clone(dns_fixedname_name(&queryname), qname);
+	dns_name_clone(dns_fixedname_name(&queryname), &qname->name);
 	dns_rdataset_makequestion(qrdataset, dns_rdataclass_in,
 				  dns_rdatatype_a);
 	ISC_LIST_APPEND(qname->list, qrdataset, link);

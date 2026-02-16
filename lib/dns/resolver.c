@@ -947,13 +947,13 @@ typedef struct respctx {
 				     * of
 				     * labels in a DNAME */
 
-	dns_name_t *aname;	   /* answer name */
+	dns_name_with_links_t *aname;	   /* answer name */
 	dns_rdataset_t *ardataset; /* answer rdataset */
 
-	dns_name_t *cname;	   /* CNAME name */
+	dns_name_with_links_t *cname;	   /* CNAME name */
 	dns_rdataset_t *crdataset; /* CNAME rdataset */
 
-	dns_name_t *dname;	   /* DNAME name */
+	dns_name_with_links_t *dname;	   /* DNAME name */
 	dns_rdataset_t *drdataset; /* DNAME rdataset */
 
 	dns_name_t *ns_name;	     /* NS name */
@@ -1092,8 +1092,8 @@ waiting_for_fetch(fetchctx_t *fctx, const dns_name_t *name,
 		  dns_rdatatype_t type, const dns_name_t *domain);
 static void
 valcreate(fetchctx_t *fctx, dns_message_t *message, dns_adbaddrinfo_t *addrinfo,
-	  dns_name_t *name, dns_rdatatype_t type, dns_rdataset_t *rdataset,
-	  dns_rdataset_t *sigrdataset) {
+	  dns_name_with_links_t *name, dns_rdatatype_t type,
+	  dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset) {
 	dns_validator_t *validator = NULL;
 	dns_valarg_t *valarg = NULL;
 	unsigned int valoptions = 0;
@@ -2440,7 +2440,7 @@ resquery_send(resquery_t *query) {
 	fetchctx_t *fctx = query->fctx;
 	dns_resolver_t *res = fctx->res;
 	isc_buffer_t buffer;
-	dns_name_t *qname = NULL;
+	dns_name_with_links_t *qname = NULL;
 	dns_rdataset_t *qrdataset = NULL;
 	isc_region_t r;
 	isc_netaddr_t ipaddr;
@@ -2474,7 +2474,7 @@ resquery_send(resquery_t *query) {
 	/*
 	 * Set up question.
 	 */
-	dns_name_clone(fctx->name, qname);
+	dns_name_clone(fctx->name, &qname->name);
 	dns_rdataset_makequestion(qrdataset, res->rdclass, fctx->type);
 	ISC_LIST_APPEND(qname->list, qrdataset, link);
 	dns_message_addname(fctx->qmessage, qname, DNS_SECTION_QUESTION);
@@ -5143,7 +5143,7 @@ is_lame(fetchctx_t *fctx, dns_message_t *message) {
 			if (rdataset->type != dns_rdatatype_ns) {
 				continue;
 			}
-			namereln = dns_name_fullcompare(name, fctx->domain,
+			namereln = dns_name_fullcompare(&name->name, fctx->domain,
 							&order, &labels);
 			if (namereln == dns_namereln_equal &&
 			    (message->flags & DNS_MESSAGEFLAG_AA) != 0)
@@ -5194,7 +5194,7 @@ log_formerr(fetchctx_t *fctx, const char *format, ...) {
 
 static isc_result_t
 same_question(fetchctx_t *fctx, dns_message_t *message) {
-	dns_name_t *name = NULL;
+	dns_name_with_links_t *name = NULL;
 	dns_rdataset_t *rdataset = NULL;
 
 	/*
@@ -5243,13 +5243,13 @@ same_question(fetchctx_t *fctx, dns_message_t *message) {
 
 	if (fctx->type != rdataset->type ||
 	    fctx->res->rdclass != rdataset->rdclass ||
-	    !dns_name_equal(fctx->name, name))
+	    !dns_name_equal(fctx->name, &name->name))
 	{
 		char namebuf[DNS_NAME_FORMATSIZE];
 		char classbuf[DNS_RDATACLASS_FORMATSIZE];
 		char typebuf[DNS_RDATATYPE_FORMATSIZE];
 
-		dns_name_format(name, namebuf, sizeof(namebuf));
+		dns_name_format(&name->name, namebuf, sizeof(namebuf));
 		dns_rdataclass_format(rdataset->rdclass, classbuf,
 				      sizeof(classbuf));
 		dns_rdatatype_format(rdataset->type, typebuf, sizeof(typebuf));
@@ -5390,7 +5390,7 @@ gettrust(dns_rdataset_t *rdataset) {
 }
 
 static inline dns_rdataset_t *
-getrrsig(dns_name_t *name, dns_rdatatype_t type) {
+getrrsig(dns_name_with_links_t *name, dns_rdatatype_t type) {
 	for (dns_rdataset_t *sig = ISC_LIST_HEAD(name->list); sig != NULL;
 	     sig = ISC_LIST_NEXT(sig, link))
 	{
@@ -5547,7 +5547,7 @@ fctx_cacheauthority(fetchctx_t *fctx, dns_message_t *message,
 			 * "black lies".
 			 */
 			if (rdataset->type == dns_rdatatype_nsec &&
-			    !dns_name_equal(fctx->name, name) &&
+			    !dns_name_equal(fctx->name, &name->name) &&
 			    is_minimal_nsec(rdataset))
 			{
 				continue;
@@ -5571,7 +5571,7 @@ fctx_cacheauthority(fetchctx_t *fctx, dns_message_t *message,
 				continue;
 			}
 
-			result = cache_rrset(fctx, now, name, rdataset,
+			result = cache_rrset(fctx, now, &name->name, rdataset,
 					     sigrdataset, NULL, NULL, NULL,
 					     false);
 			if (result != ISC_R_SUCCESS) {
@@ -5635,12 +5635,12 @@ validated(void *arg) {
 		fctx->valfail++;
 		result = fctx->vresult = val->result;
 		if (result != DNS_R_BROKENCHAIN) {
-			delete_rrset(fctx, val->name, val->type);
+			delete_rrset(fctx, &val->name->name, val->type);
 		} else if (!negative) {
 			/*
 			 * Cache the data as pending for later validation.
 			 */
-			cache_rrset(fctx, now, val->name, val->rdataset,
+			cache_rrset(fctx, now, &val->name->name, val->rdataset,
 				    val->sigrdataset, NULL, NULL, NULL, false);
 		}
 
@@ -5684,7 +5684,8 @@ validated(void *arg) {
 		FCTXTRACE("nonexistence validation OK");
 		inc_stats(res, dns_resstatscounter_valnegsuccess);
 
-		result = negcache(message, fctx, val->name, now, val->optout,
+		result = negcache(message, fctx, &val->name->name, now,
+				  val->optout,
 				  val->secure, ardataset, &node);
 		if (result != ISC_R_SUCCESS) {
 			done = true;
@@ -5712,14 +5713,14 @@ validated(void *arg) {
 			RUNTIME_CHECK(result == ISC_R_SUCCESS);
 		}
 	} else if (gettrust(val->rdataset) == dns_trust_answer) {
-		findnoqname(fctx, message, val->name, val->rdataset,
+		findnoqname(fctx, message, &val->name->name, val->rdataset,
 			    val->sigrdataset);
 	}
 
 	/*
 	 * The data was already cached as pending. Re-cache it as secure.
 	 */
-	result = cache_rrset(fctx, now, val->name, val->rdataset,
+	result = cache_rrset(fctx, now, &val->name->name, val->rdataset,
 			     val->sigrdataset, &node, ardataset, asigrdataset,
 			     true);
 	if (result != ISC_R_SUCCESS) {
@@ -5761,7 +5762,7 @@ answer_response:
 	FCTX_ATTR_SET(fctx, FCTX_ATTR_HAVEANSWER);
 
 	fctx_setresult(fctx);
-	dns_name_copy(val->name, fctx->resp.foundname);
+	dns_name_copy(&val->name->name, fctx->resp.foundname);
 	dns_db_transfernode(fctx->cache, &node, &fctx->resp_node);
 
 	done = true;
@@ -5825,7 +5826,7 @@ findnoqname(fetchctx_t *fctx, dns_message_t *message, dns_name_t *name,
 	dns_name_t *nearest = NULL;
 	dns_fixedname_t fnearest;
 	dns_rdatatype_t found = dns_rdatatype_none;
-	dns_name_t *noqname = NULL;
+	dns_name_with_links_t *noqname = NULL;
 	dns_rdatatype_t type = rdataset->type;
 
 	FCTXTRACE("findnoqname");
@@ -5873,7 +5874,7 @@ findnoqname(fetchctx_t *fctx, dns_message_t *message, dns_name_t *name,
 
 			if (nrdataset->type == dns_rdatatype_nsec &&
 			    NXND(dns_nsec_noexistnodata(
-				    type, name, nsec, nrdataset, &exists, &data,
+				    type, name, &nsec->name, nrdataset, &exists, &data,
 				    NULL, fctx_log, fctx)))
 			{
 				if (!exists) {
@@ -5884,7 +5885,7 @@ findnoqname(fetchctx_t *fctx, dns_message_t *message, dns_name_t *name,
 
 			if (nrdataset->type == dns_rdatatype_nsec3 &&
 			    NXND(dns_nsec3_noexistnodata(
-				    type, name, nsec, nrdataset, zonename,
+				    type, name, &nsec->name, nrdataset, zonename,
 				    &exists, &data, &optout, &unknown,
 				    &setclosest, &setnearest, closest, nearest,
 				    fctx_log, fctx)))
@@ -5982,9 +5983,10 @@ fixttls(dns_view_t *view, dns_rdataset_t *rdataset,
 }
 
 static isc_result_t
-rctx_cache_secure(respctx_t *rctx, dns_message_t *message, dns_name_t *name,
-		  dns_dbnode_t *node, dns_rdataset_t *rdataset,
-		  dns_rdataset_t *sigrdataset, bool need_validation) {
+rctx_cache_secure(respctx_t *rctx, dns_message_t *message,
+		  dns_name_with_links_t *name, dns_dbnode_t *node,
+		  dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset,
+		  bool need_validation) {
 	fetchctx_t *fctx = rctx->fctx;
 	resquery_t *query = rctx->query;
 	dns_rdataset_t *ardataset = NULL, *asigset = NULL;
@@ -6045,7 +6047,8 @@ rctx_cache_secure(respctx_t *rctx, dns_message_t *message, dns_name_t *name,
 			 * We're not validating, but the client might
 			 * be, so look for the NOQNAME proof.
 			 */
-			findnoqname(fctx, message, name, rdataset, sigrdataset);
+			findnoqname(fctx, message, &name->name,
+				    rdataset, sigrdataset);
 
 			/*
 			 * If this was not an ANY query - or if it was,
@@ -6066,8 +6069,9 @@ rctx_cache_secure(respctx_t *rctx, dns_message_t *message, dns_name_t *name,
 		 * in-between.
 		 */
 
-		RETERR(cache_rrset(fctx, rctx->now, name, rdataset, sigrdataset,
-				   &node, ardataset, asigset, need_validation));
+		RETERR(cache_rrset(fctx, rctx->now, &name->name, rdataset,
+				   sigrdataset, &node, ardataset, asigset,
+				   need_validation));
 	}
 
 	return ISC_R_SUCCESS;
@@ -6111,7 +6115,8 @@ rctx_cache_insecure(respctx_t *rctx, dns_message_t *message, dns_name_t *name,
 }
 
 static isc_result_t
-rctx_cachename(respctx_t *rctx, dns_message_t *message, dns_name_t *name) {
+rctx_cachename(respctx_t *rctx, dns_message_t *message,
+	       dns_name_with_links_t *name) {
 	isc_result_t result = ISC_R_SUCCESS;
 	fetchctx_t *fctx = rctx->fctx;
 	resquery_t *query = rctx->query;
@@ -6128,22 +6133,22 @@ rctx_cachename(respctx_t *rctx, dns_message_t *message, dns_name_t *name) {
 	/*
 	 * Is DNSSEC validation required for this name?
 	 */
-	bool secure_domain = issecuredomain(fctx, name, fctx->type, rctx->now,
-					    NULL);
+	bool secure_domain = issecuredomain(fctx, &name->name, fctx->type,
+					    rctx->now, NULL);
 	bool need_validation = secure_domain &&
 			       ((fctx->options & DNS_FETCHOPT_NOVALIDATE) == 0);
 
 	/*
 	 * Find or create the cache node.
 	 */
-	RETERR(dns_db_findnode(fctx->cache, name, true, &node));
+	RETERR(dns_db_findnode(fctx->cache, &name->name, true, &node));
 
 	/*
 	 * Cache or validate each cacheable rdataset.
 	 */
 	bool fail = ((res->options & DNS_RESOLVER_CHECKNAMESFAIL) != 0);
 	ISC_LIST_FOREACH(name->list, rdataset, link) {
-		result = check_cacheable(name, rdataset, fail);
+		result = check_cacheable(&name->name, rdataset, fail);
 		if (result == DNS_R_CONTINUE) {
 			result = ISC_R_SUCCESS;
 			continue;
@@ -6171,7 +6176,7 @@ rctx_cachename(respctx_t *rctx, dns_message_t *message, dns_name_t *name) {
 						   need_validation);
 		} else {
 			/* Insecure domain or glue: cache the data now. */
-			result = rctx_cache_insecure(rctx, message, name, node,
+			result = rctx_cache_insecure(rctx, message, &name->name, node,
 						     rdataset, sigrdataset);
 		}
 		CHECK(result);
@@ -6199,13 +6204,13 @@ rctx_cachename(respctx_t *rctx, dns_message_t *message, dns_name_t *name) {
 	 * We're not validating and have an answer ready; pass
 	 * it back to the caller.
 	 */
-	if (!need_validation && name->attributes.answer && !HAVE_ANSWER(fctx)) {
+	if (!need_validation && name->name.attributes.answer && !HAVE_ANSWER(fctx)) {
 		fctx->resp_result = ISC_R_SUCCESS;
 
 		if (dns_rdataset_isassociated(&fctx->resp.rdataset)) {
 			fctx_setresult(fctx);
 		}
-		dns_name_copy(name, fctx->resp.foundname);
+		dns_name_copy(&name->name, fctx->resp.foundname);
 		dns_db_transfernode(fctx->cache, &node, &fctx->resp_node);
 		FCTX_ATTR_SET(fctx, FCTX_ATTR_HAVEANSWER);
 	}
@@ -6235,7 +6240,7 @@ rctx_cachemessage(respctx_t *rctx) {
 	     section <= DNS_SECTION_ADDITIONAL; section++)
 	{
 		MSG_SECTION_FOREACH(message, section, name) {
-			if (name->attributes.cache) {
+			if (name->name.attributes.cache) {
 				CHECK(rctx_cachename(rctx, message, name));
 			}
 		}
@@ -6369,8 +6374,8 @@ rctx_ncache(respctx_t *rctx) {
 		 * will call validated() on completion; the caching of
 		 * negative answers will be done then.
 		 */
-		valcreate(fctx, message, addrinfo, name, fctx->type, NULL,
-			  NULL);
+		valcreate(fctx, message, addrinfo, &fctx->fname.name_wl, fctx->type,
+			  NULL, NULL);
 		goto done;
 	}
 
@@ -6538,7 +6543,7 @@ check_section(void *arg, const dns_name_t *addname, dns_rdatatype_t type,
 	respctx_t *rctx = arg;
 	fetchctx_t *fctx = rctx->fctx;
 	isc_result_t result;
-	dns_name_t *name = NULL;
+	dns_name_with_links_t *name = NULL;
 	bool external;
 	dns_rdatatype_t rtype;
 	bool gluing;
@@ -6551,7 +6556,7 @@ check_section(void *arg, const dns_name_t *addname, dns_rdatatype_t type,
 	result = dns_message_findname(rctx->query->rmessage, section, addname,
 				      dns_rdatatype_any, 0, &name, NULL);
 	if (result == ISC_R_SUCCESS) {
-		external = name_external(name, type, rctx);
+		external = name_external(&name->name, type, rctx);
 		if (type == dns_rdatatype_a) {
 			ISC_LIST_FOREACH(name->list, rdataset, link) {
 				if (dns_rdatatype_issig(rdataset->type)) {
@@ -6560,15 +6565,16 @@ check_section(void *arg, const dns_name_t *addname, dns_rdatatype_t type,
 					rtype = rdataset->type;
 				}
 				if (dns_rdatatype_isaddr(rtype)) {
-					mark_related(name, rdataset, external,
-						     gluing);
+					mark_related(&name->name, rdataset,
+						     external, gluing);
 				}
 			}
 		} else {
 			dns_rdataset_t *rdataset = NULL;
 			result = dns_message_findtype(name, type, 0, &rdataset);
 			if (result == ISC_R_SUCCESS) {
-				mark_related(name, rdataset, external, gluing);
+				mark_related(&name->name, rdataset, external,
+					     gluing);
 				if (found != NULL) {
 					dns_rdataset_clone(rdataset, found);
 				}
@@ -6580,8 +6586,8 @@ check_section(void *arg, const dns_name_t *addname, dns_rdatatype_t type,
 					name, dns_rdatatype_rrsig, type,
 					&rdataset);
 				if (result == ISC_R_SUCCESS) {
-					mark_related(name, rdataset, external,
-						     gluing);
+					mark_related(&name->name, rdataset,
+						     external, gluing);
 				}
 			}
 		}
@@ -6957,9 +6963,9 @@ checknamessection(dns_message_t *message, dns_section_t section) {
 			DNS_RDATASET_FOREACH(rdataset) {
 				dns_rdata_t rdata = DNS_RDATA_INIT;
 				dns_rdataset_current(rdataset, &rdata);
-				if (!dns_rdata_checkowner(name, rdata.rdclass,
+				if (!dns_rdata_checkowner(&name->name, rdata.rdclass,
 							  rdata.type, false) ||
-				    !dns_rdata_checknames(&rdata, name, NULL))
+				    !dns_rdata_checknames(&rdata, &name->name, NULL))
 				{
 					rdataset->attributes.checknames = true;
 				}
@@ -7137,7 +7143,7 @@ betterreferral(respctx_t *rctx) {
 	dns_message_t *msg = rctx->query->rmessage;
 
 	MSG_SECTION_FOREACH(msg, DNS_SECTION_AUTHORITY, name) {
-		if (!isstrictsubdomain(name, rctx->fctx->domain)) {
+		if (!isstrictsubdomain(&name->name, rctx->fctx->domain)) {
 			continue;
 		}
 
@@ -8254,7 +8260,7 @@ rctx_answer_scan(respctx_t *rctx) {
 		unsigned int nlabels;
 		dns_namereln_t namereln;
 
-		namereln = dns_name_fullcompare(fctx->name, name, &order,
+		namereln = dns_name_fullcompare(fctx->name, &name->name, &order,
 						&nlabels);
 		switch (namereln) {
 		case dns_namereln_equal:
@@ -8280,7 +8286,7 @@ rctx_answer_scan(respctx_t *rctx) {
 			/*
 			 * Don't accept DNAME from parent namespace.
 			 */
-			if (name_external(name, dns_rdatatype_dname, rctx)) {
+			if (name_external(&name->name, dns_rdatatype_dname, rctx)) {
 				continue;
 			}
 
@@ -8356,7 +8362,7 @@ rctx_answer_any(respctx_t *rctx) {
 		}
 
 		if (dns_rdatatype_isaddr(rdataset->type) &&
-		    !is_answeraddress_allowed(fctx->res->view, rctx->aname,
+		    !is_answeraddress_allowed(fctx->res->view, &rctx->aname->name,
 					      rdataset))
 		{
 			rctx->result = DNS_R_SERVFAIL;
@@ -8364,15 +8370,15 @@ rctx_answer_any(respctx_t *rctx) {
 		}
 
 		if (dns_rdatatype_isalias(rdataset->type) &&
-		    !is_answertarget_allowed(fctx, fctx->name, rctx->aname,
+		    !is_answertarget_allowed(fctx, fctx->name, &rctx->aname->name,
 					     rdataset, NULL))
 		{
 			rctx->result = DNS_R_SERVFAIL;
 			return ISC_R_COMPLETE;
 		}
 
-		rctx->aname->attributes.cache = true;
-		rctx->aname->attributes.answer = true;
+		rctx->aname->name.attributes.cache = true;
+		rctx->aname->name.attributes.answer = true;
 		if (dns_rdatatype_issig(rdataset->type)) {
 			rdataset->attributes.answersig = true;
 		} else {
@@ -8402,7 +8408,7 @@ rctx_answer_match(respctx_t *rctx) {
 	}
 
 	if (dns_rdatatype_isaddr(rctx->ardataset->type) &&
-	    !is_answeraddress_allowed(fctx->res->view, rctx->aname,
+	    !is_answeraddress_allowed(fctx->res->view, &rctx->aname->name,
 				      rctx->ardataset))
 	{
 		rctx->result = DNS_R_SERVFAIL;
@@ -8411,19 +8417,19 @@ rctx_answer_match(respctx_t *rctx) {
 	if (dns_rdatatype_isalias(rctx->ardataset->type) &&
 	    rctx->type != rctx->ardataset->type &&
 	    rctx->type != dns_rdatatype_any &&
-	    !is_answertarget_allowed(fctx, fctx->name, rctx->aname,
+	    !is_answertarget_allowed(fctx, fctx->name, &rctx->aname->name,
 				     rctx->ardataset, NULL))
 	{
 		rctx->result = DNS_R_SERVFAIL;
 		return ISC_R_COMPLETE;
 	}
 
-	rctx->aname->attributes.cache = true;
-	rctx->aname->attributes.answer = true;
+	rctx->aname->name.attributes.cache = true;
+	rctx->aname->name.attributes.answer = true;
 	rctx->ardataset->attributes.answer = true;
 	rctx->ardataset->attributes.cache = true;
 	rctx->ardataset->trust = rctx->trust;
-	(void)dns_rdataset_additionaldata(rctx->ardataset, rctx->aname,
+	(void)dns_rdataset_additionaldata(rctx->ardataset, &rctx->aname->name,
 					  check_related, rctx,
 					  DNS_RDATASET_MAXADDITIONAL);
 
@@ -8470,16 +8476,16 @@ rctx_answer_cname(respctx_t *rctx) {
 		return ISC_R_COMPLETE;
 	}
 
-	if (!is_answertarget_allowed(fctx, fctx->name, rctx->cname,
+	if (!is_answertarget_allowed(fctx, fctx->name, &rctx->cname->name,
 				     rctx->crdataset, NULL))
 	{
 		rctx->result = DNS_R_SERVFAIL;
 		return ISC_R_COMPLETE;
 	}
 
-	rctx->cname->attributes.cache = true;
-	rctx->cname->attributes.answer = true;
-	rctx->cname->attributes.chaining = true;
+	rctx->cname->name.attributes.cache = true;
+	rctx->cname->name.attributes.answer = true;
+	rctx->cname->name.attributes.chaining = true;
 	rctx->crdataset->attributes.answer = true;
 	rctx->crdataset->attributes.cache = true;
 	rctx->crdataset->attributes.chaining = true;
@@ -8520,16 +8526,16 @@ rctx_answer_dname(respctx_t *rctx) {
 		return ISC_R_COMPLETE;
 	}
 
-	if (!is_answertarget_allowed(fctx, fctx->name, rctx->dname,
+	if (!is_answertarget_allowed(fctx, fctx->name, &rctx->dname->name,
 				     rctx->drdataset, &rctx->chaining))
 	{
 		rctx->result = DNS_R_SERVFAIL;
 		return ISC_R_COMPLETE;
 	}
 
-	rctx->dname->attributes.cache = true;
-	rctx->dname->attributes.answer = true;
-	rctx->dname->attributes.chaining = true;
+	rctx->dname->name.attributes.cache = true;
+	rctx->dname->name.attributes.answer = true;
+	rctx->dname->name.attributes.chaining = true;
 	rctx->drdataset->attributes.answer = true;
 	rctx->drdataset->attributes.cache = true;
 	rctx->drdataset->attributes.chaining = true;
@@ -8578,8 +8584,8 @@ rctx_authority_positive(respctx_t *rctx) {
 	}
 
 	MSG_SECTION_FOREACH(msg, DNS_SECTION_AUTHORITY, name) {
-		if (!name_external(name, dns_rdatatype_ns, rctx) &&
-		    dns_name_issubdomain(fctx->name, name))
+		if (!name_external(&name->name, dns_rdatatype_ns, rctx) &&
+		    dns_name_issubdomain(fctx->name, &name->name))
 		{
 			/*
 			 * We expect to find NS or SIG NS rdatasets, and
@@ -8589,7 +8595,7 @@ rctx_authority_positive(respctx_t *rctx) {
 				if (dns_rdataset_matchestype(rdataset,
 							     dns_rdatatype_ns))
 				{
-					name->attributes.cache = true;
+					name->name.attributes.cache = true;
 					rdataset->attributes.cache = true;
 
 					if (rctx->aa) {
@@ -8602,7 +8608,7 @@ rctx_authority_positive(respctx_t *rctx) {
 
 					if (rdataset->type == dns_rdatatype_ns)
 					{
-						rctx->ns_name = name;
+						rctx->ns_name = &name->name;
 						rctx->ns_rdataset = rdataset;
 					}
 					/*
@@ -8610,7 +8616,7 @@ rctx_authority_positive(respctx_t *rctx) {
 					 * related to this rdataset.
 					 */
 					(void)dns_rdataset_additionaldata(
-						rdataset, name, check_related,
+						rdataset, &name->name, check_related,
 						rctx,
 						DNS_RDATASET_MAXADDITIONAL);
 					return;
@@ -8775,7 +8781,7 @@ rctx_authority_negative(respctx_t *rctx) {
 
 	dns_message_t *msg = rctx->query->rmessage;
 	MSG_SECTION_FOREACH(msg, section, name) {
-		if (!dns_name_issubdomain(name, fctx->domain)) {
+		if (!dns_name_issubdomain(&name->name, fctx->domain)) {
 			continue;
 		}
 
@@ -8786,13 +8792,13 @@ rctx_authority_negative(respctx_t *rctx) {
 			}
 			if ((type == dns_rdatatype_ns ||
 			     type == dns_rdatatype_soa) &&
-			    !dns_name_issubdomain(fctx->name, name))
+			    !dns_name_issubdomain(fctx->name, &name->name))
 			{
 				char qbuf[DNS_NAME_FORMATSIZE];
 				char nbuf[DNS_NAME_FORMATSIZE];
 				char tbuf[DNS_RDATATYPE_FORMATSIZE];
 				dns_rdatatype_format(type, tbuf, sizeof(tbuf));
-				dns_name_format(name, nbuf, sizeof(nbuf));
+				dns_name_format(&name->name, nbuf, sizeof(nbuf));
 				dns_name_format(fctx->name, qbuf, sizeof(qbuf));
 				log_formerr(fctx,
 					    "unrelated %s %s in "
@@ -8810,7 +8816,7 @@ rctx_authority_negative(respctx_t *rctx) {
 				 */
 				if (rdataset->type == dns_rdatatype_ns) {
 					if (rctx->ns_name != NULL &&
-					    name != rctx->ns_name)
+					    &name->name != rctx->ns_name)
 					{
 						log_formerr(
 							fctx,
@@ -8819,10 +8825,10 @@ rctx_authority_negative(respctx_t *rctx) {
 						rctx->result = DNS_R_FORMERR;
 						return ISC_R_COMPLETE;
 					}
-					rctx->ns_name = name;
+					rctx->ns_name = &name->name;
 					rctx->ns_rdataset = rdataset;
 				}
-				name->attributes.cache = true;
+				name->name.attributes.cache = true;
 				rdataset->attributes.cache = true;
 				rdataset->trust = dns_trust_glue;
 				break;
@@ -8834,7 +8840,7 @@ rctx_authority_negative(respctx_t *rctx) {
 				 */
 				if (rdataset->type == dns_rdatatype_soa) {
 					if (rctx->soa_name != NULL &&
-					    name != rctx->soa_name)
+					    &name->name != rctx->soa_name)
 					{
 						log_formerr(
 							fctx,
@@ -8843,9 +8849,9 @@ rctx_authority_negative(respctx_t *rctx) {
 						rctx->result = DNS_R_FORMERR;
 						return ISC_R_COMPLETE;
 					}
-					rctx->soa_name = name;
+					rctx->soa_name = &name->name;
 				}
-				name->attributes.ncache = true;
+				name->name.attributes.ncache = true;
 				rdataset->attributes.ncache = true;
 				if (rctx->aa) {
 					rdataset->trust =
@@ -8877,12 +8883,12 @@ rctx_authority_dnssec(respctx_t *rctx) {
 
 	dns_message_t *msg = rctx->query->rmessage;
 	MSG_SECTION_FOREACH(msg, DNS_SECTION_AUTHORITY, name) {
-		if (!dns_name_issubdomain(name, fctx->domain)) {
+		if (!dns_name_issubdomain(&name->name, fctx->domain)) {
 			/*
 			 * Invalid name found; preserve it for logging
 			 * later.
 			 */
-			rctx->found_name = name;
+			rctx->found_name = &name->name;
 			rctx->found_type = ISC_LIST_HEAD(name->list)->type;
 			continue;
 		}
@@ -8899,10 +8905,10 @@ rctx_authority_dnssec(respctx_t *rctx) {
 			case dns_rdatatype_nsec:
 			case dns_rdatatype_nsec3:
 				if (rctx->negative) {
-					name->attributes.ncache = true;
+					name->name.attributes.ncache = true;
 					rdataset->attributes.ncache = true;
 				} else if (type == dns_rdatatype_nsec) {
-					name->attributes.cache = true;
+					name->name.attributes.cache = true;
 					rdataset->attributes.cache = true;
 				}
 
@@ -8936,7 +8942,7 @@ rctx_authority_dnssec(respctx_t *rctx) {
 
 				if (rdataset->type == dns_rdatatype_ds) {
 					if (rctx->ds_name != NULL &&
-					    name != rctx->ds_name)
+					    &name->name != rctx->ds_name)
 					{
 						log_formerr(fctx,
 							    "DS doesn't match "
@@ -8944,13 +8950,13 @@ rctx_authority_dnssec(respctx_t *rctx) {
 						rctx->result = DNS_R_FORMERR;
 						return ISC_R_COMPLETE;
 					}
-					rctx->ds_name = name;
+					rctx->ds_name = &name->name;
 				}
 
-				name->attributes.cache = true;
+				name->name.attributes.cache = true;
 				rdataset->attributes.cache = true;
 
-				secure_domain = issecuredomain(fctx, name,
+				secure_domain = issecuredomain(fctx, &name->name,
 							       dns_rdatatype_ds,
 							       fctx->now, NULL);
 				if (secure_domain) {
@@ -9104,15 +9110,15 @@ again:
 
 	dns_message_t *msg = rctx->query->rmessage;
 	MSG_SECTION_FOREACH(msg, section, name) {
-		if (!name->attributes.chase) {
+		if (!name->name.attributes.chase) {
 			continue;
 		}
-		name->attributes.chase = false;
+		name->name.attributes.chase = false;
 		ISC_LIST_FOREACH(name->list, rdataset, link) {
 			if (CHASE(rdataset)) {
 				rdataset->attributes.chase = false;
 				(void)dns_rdataset_additionaldata(
-					rdataset, name, check_related, rctx,
+					rdataset, &name->name, check_related, rctx,
 					DNS_RDATASET_MAXADDITIONAL);
 				rescan = true;
 			}

@@ -66,7 +66,7 @@ static size_t
 item_makekey(dns_qpkey_t key, void *ctx, void *pval, uint32_t ival) {
 	UNUSED(ctx);
 	assert(pval == &item[ival]);
-	return dns_qpkey_fromname(key, &item[ival].fixed.name,
+	return dns_qpkey_fromname(key, &item[ival].fixed.name_wl.name,
 				  DNS_DBNAMESPACE_NORMAL);
 }
 
@@ -86,7 +86,7 @@ const dns_qpmethods_t qpmethods = {
 #define CHECKN(count, result)                                       \
 	do {                                                        \
 		if (result != ISC_R_SUCCESS) {                      \
-			dns_name_t *name = &item[count].fixed.name; \
+			dns_name_t *name = &item[count].fixed.name_wl.name; \
 			char buf[DNS_NAME_MAXTEXT] = { 0 };         \
 			dns_name_format(name, buf, sizeof(buf));    \
 			fprintf(stderr, "%s: %s\n", buf,            \
@@ -118,15 +118,15 @@ lfht_match(struct cds_lfht_node *ht_node, const void *_key) {
 						  ht_node);
 	const dns_name_t *key = _key;
 
-	return dns_name_equal(key, &i->fixed.name);
+	return dns_name_equal(key, &i->fixed.name_wl.name);
 }
 
 static isc_result_t
 add_lfht(void *lfht, size_t count) {
-	unsigned long hash = dns_name_hash(&item[count].fixed.name);
+	unsigned long hash = dns_name_hash(&item[count].fixed.name_wl.name);
 
 	struct cds_lfht_node *ht_node = cds_lfht_add_unique(
-		lfht, hash, lfht_match, &item[count].fixed.name,
+		lfht, hash, lfht_match, &item[count].fixed.name_wl.name,
 		&item[count].ht_node);
 
 	if (ht_node != &item[count].ht_node) {
@@ -138,10 +138,10 @@ add_lfht(void *lfht, size_t count) {
 
 static isc_result_t
 get_lfht(void *lfht, size_t count, void **pval) {
-	unsigned long hash = dns_name_hash(&item[count].fixed.name);
+	unsigned long hash = dns_name_hash(&item[count].fixed.name_wl.name);
 
 	struct cds_lfht_iter iter;
-	cds_lfht_lookup(lfht, hash, lfht_match, &item[count].fixed.name, &iter);
+	cds_lfht_lookup(lfht, hash, lfht_match, &item[count].fixed.name_wl.name, &iter);
 
 	struct cds_lfht_node *ht_node = cds_lfht_iter_get_node(&iter);
 	if (ht_node == NULL) {
@@ -195,22 +195,22 @@ new_hashmap(isc_mem_t *mem) {
 static bool
 name_match(void *node, const void *key) {
 	const struct item_s *i = node;
-	return dns_name_equal(&i->fixed.name, key);
+	return dns_name_equal(&i->fixed.name_wl.name, key);
 }
 
 static isc_result_t
 add_hashmap(void *hashmap, size_t count) {
 	isc_result_t result = isc_hashmap_add(
-		hashmap, dns_name_hash(&item[count].fixed.name), name_match,
-		&item[count].fixed.name, &item[count], NULL);
+		hashmap, dns_name_hash(&item[count].fixed.name_wl.name), name_match,
+		&item[count].fixed.name_wl.name, &item[count], NULL);
 	return result;
 }
 
 static isc_result_t
 get_hashmap(void *hashmap, size_t count, void **pval) {
 	isc_result_t result = isc_hashmap_find(
-		hashmap, dns_name_hash(&item[count].fixed.name), name_match,
-		&item[count].fixed.name, pval);
+		hashmap, dns_name_hash(&item[count].fixed.name_wl.name), name_match,
+		&item[count].fixed.name_wl.name, pval);
 	return result;
 }
 
@@ -258,16 +258,16 @@ new_ht(isc_mem_t *mem) {
 
 static isc_result_t
 add_ht(void *ht, size_t count) {
-	isc_result_t result = isc_ht_add(ht, item[count].fixed.name.ndata,
-					 item[count].fixed.name.length,
+	isc_result_t result = isc_ht_add(ht, item[count].fixed.name_wl.name.ndata,
+					 item[count].fixed.name_wl.name.length,
 					 &item[count]);
 	return result;
 }
 
 static isc_result_t
 get_ht(void *ht, size_t count, void **pval) {
-	isc_result_t result = isc_ht_find(ht, item[count].fixed.name.ndata,
-					  item[count].fixed.name.length, pval);
+	isc_result_t result = isc_ht_find(ht, item[count].fixed.name_wl.name.ndata,
+					  item[count].fixed.name_wl.name.length, pval);
 	return result;
 }
 
@@ -326,7 +326,7 @@ sqz_qp(void *qp) {
 
 static isc_result_t
 get_qp(void *qp, size_t count, void **pval) {
-	return dns_qp_getname(qp, &item[count].fixed.name,
+	return dns_qp_getname(qp, &item[count].fixed.name_wl.name,
 			      DNS_DBNAMESPACE_NORMAL, pval, NULL);
 }
 

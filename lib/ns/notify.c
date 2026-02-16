@@ -73,7 +73,7 @@ void
 ns_notify_start(ns_client_t *client, isc_nmhandle_t *handle) {
 	dns_message_t *request = client->message;
 	isc_result_t result;
-	dns_name_t *zonename;
+	dns_name_with_links_t *zonename;
 	dns_rdataset_t *zone_rdataset;
 	dns_zone_t *zone = NULL;
 	char namebuf[DNS_NAME_FORMATSIZE];
@@ -141,8 +141,8 @@ ns_notify_start(ns_client_t *client, isc_nmhandle_t *handle) {
 		tsigbuf[0] = '\0';
 	}
 
-	dns_name_format(zonename, namebuf, sizeof(namebuf));
-	result = dns_view_findzone(client->inner.view, zonename,
+	dns_name_format(&zonename->name, namebuf, sizeof(namebuf));
+	result = dns_view_findzone(client->inner.view, &zonename->name,
 				   DNS_ZTFIND_EXACT, &zone);
 	if (result == ISC_R_SUCCESS) {
 		dns_zonetype_t zonetype = dns_zone_gettype(zone);

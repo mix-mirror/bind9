@@ -623,7 +623,7 @@ isdotlocal(dns_message_t *msg) {
 	static dns_name_t local = DNS_NAME_INITABSOLUTE(local_ndata);
 
 	MSG_SECTION_FOREACH(msg, DNS_SECTION_QUESTION, name) {
-		if (dns_name_issubdomain(name, &local)) {
+		if (dns_name_issubdomain(&name->name, &local)) {
 			return true;
 		}
 	}

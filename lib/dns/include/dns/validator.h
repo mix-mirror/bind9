@@ -80,7 +80,7 @@ struct dns_validator {
 	isc_refcount_t references;
 
 	/* Name and type of the response to be validated. */
-	dns_name_t     *name;
+	dns_name_with_links_t *name;
 	dns_rdatatype_t type;
 
 	/*
@@ -111,7 +111,7 @@ struct dns_validator {
 	/*
 	 * Proofs to be cached.
 	 */
-	dns_name_t *proofs[4];
+	dns_name_with_links_t *proofs[4];
 	/*
 	 * Optout proof seen.
 	 */
@@ -139,6 +139,7 @@ struct dns_validator {
 	dns_rdataset_t	   fsigrdataset;
 	dns_rdataset_t	   dsrdataset;
 	dns_fixedname_t	   fname;
+	dns_name_with_links_t fname_wl;
 	dns_fixedname_t	   wild;
 	dns_fixedname_t	   closest;
 	ISC_LINK(dns_validator_t) link;
@@ -172,7 +173,8 @@ struct dns_validator {
 #define DNS_VALIDATOR_NONTA    0x0008U /*% Ignore NTA table */
 
 isc_result_t
-dns_validator_create(dns_view_t *view, dns_name_t *name, dns_rdatatype_t type,
+dns_validator_create(dns_view_t *view, dns_name_with_links_t *name,
+		     dns_rdatatype_t type,
 		     dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset,
 		     dns_message_t *message, unsigned int options,
 		     isc_loop_t *loop, isc_job_cb cb, void *arg,

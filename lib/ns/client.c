@@ -1020,7 +1020,7 @@ ns_client_error(ns_client_t *client, isc_result_t result) {
 		result = isc_time_nowplusinterval(&expire, &i);
 		if (result == ISC_R_SUCCESS) {
 			dns_badcache_add(client->inner.view->failcache,
-					 client->query.qname,
+					 &client->query.qname->name,
 					 client->query.qtype, flags,
 					 isc_time_seconds(&expire));
 		}
@@ -2775,8 +2775,8 @@ ns_client_logv(ns_client_t *client, isc_logcategory_t category,
 		signer = signerbuf;
 	}
 
-	q = client->query.origqname != NULL ? client->query.origqname
-					    : client->query.qname;
+	q = client->query.origqname != NULL ? &client->query.origqname->name
+					    : &client->query.qname->name;
 	if (q != NULL) {
 		dns_name_format(q, qnamebuf, sizeof(qnamebuf));
 		sep2 = " (";
@@ -2901,12 +2901,12 @@ ns_client_dumprecursing(FILE *f, ns_clientmgr_t *manager) {
 
 		LOCK(&client->query.fetchlock);
 		INSIST(client->query.qname != NULL);
-		dns_name_format(client->query.qname, namebuf, sizeof(namebuf));
+		dns_name_format(&client->query.qname->name, namebuf, sizeof(namebuf));
 		if (client->query.qname != client->query.origqname &&
 		    client->query.origqname != NULL)
 		{
 			origfor = " for ";
-			dns_name_format(client->query.origqname, original,
+			dns_name_format(&client->query.origqname->name, original,
 					sizeof(original));
 		} else {
 			origfor = "";
@@ -2939,7 +2939,7 @@ ns_client_dumprecursing(FILE *f, ns_clientmgr_t *manager) {
 }
 
 void
-ns_client_qnamereplace(ns_client_t *client, dns_name_t *name) {
+ns_client_qnamereplace(ns_client_t *client, dns_name_with_links_t *name) {
 	LOCK(&client->query.fetchlock);
 	if (client->query.restarts > 0) {
 		/*
@@ -3003,24 +3003,24 @@ ns_client_newnamebuf(ns_client_t *client) {
 	return ISC_R_SUCCESS;
 }
 
-dns_name_t *
+dns_name_with_links_t *
 ns_client_newname(ns_client_t *client, isc_buffer_t *dbuf, isc_buffer_t *nbuf) {
-	dns_name_t *name = NULL;
+	dns_name_with_links_t *name_links = NULL;
 	isc_region_t r;
 
 	REQUIRE((client->query.attributes & NS_QUERYATTR_NAMEBUFUSED) == 0);
 
 	CTRACE("ns_client_newname");
 
-	dns_message_gettempname(client->message, &name);
+	dns_message_gettempname(client->message, &name_links);
 	isc_buffer_availableregion(dbuf, &r);
 	isc_buffer_init(nbuf, r.base, r.length);
-	dns_name_setbuffer(name, NULL);
-	dns_name_setbuffer(name, nbuf);
+	dns_name_setbuffer(&name_links->name, NULL);
+	dns_name_setbuffer(&name_links->name, nbuf);
 	client->query.attributes |= NS_QUERYATTR_NAMEBUFUSED;
 
 	CTRACE("ns_client_newname: done");
-	return name;
+	return name_links;
 }
 
 isc_buffer_t *
@@ -3052,7 +3052,8 @@ ns_client_getnamebuf(ns_client_t *client) {
 }
 
 void
-ns_client_keepname(ns_client_t *client, dns_name_t *name, isc_buffer_t *dbuf) {
+ns_client_keepname(ns_client_t *client, dns_name_with_links_t *name,
+		   isc_buffer_t *dbuf) {
 	isc_region_t r;
 
 	CTRACE("ns_client_keepname");
@@ -3063,14 +3064,14 @@ ns_client_keepname(ns_client_t *client, dns_name_t *name, isc_buffer_t *dbuf) {
 	 */
 	REQUIRE((client->query.attributes & NS_QUERYATTR_NAMEBUFUSED) != 0);
 
-	dns_name_toregion(name, &r);
+	dns_name_toregion(&name->name, &r);
 	isc_buffer_add(dbuf, r.length);
-	dns_name_setbuffer(name, NULL);
+	dns_name_setbuffer(&name->name, NULL);
 	client->query.attributes &= ~NS_QUERYATTR_NAMEBUFUSED;
 }
 
 void
-ns_client_releasename(ns_client_t *client, dns_name_t **namep) {
+ns_client_releasename(ns_client_t *client, dns_name_with_links_t **namep) {
 	/*%
 	 * 'name' is no longer needed.  Return it to our pool of temporary
 	 * names.  If it is using a name buffer, relinquish its exclusive

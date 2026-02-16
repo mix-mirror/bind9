@@ -58,7 +58,7 @@
 *****/
 
 struct dns_fixedname {
-	dns_name_t    name;
+	dns_name_with_links_t name_wl;
 	isc_buffer_t  buffer;
 	unsigned char data[DNS_NAME_MAXWIRE];
 };
@@ -74,3 +74,9 @@ dns_fixedname_name(dns_fixedname_t *fixed);
 
 dns_name_t *
 dns_fixedname_initname(dns_fixedname_t *fixed);
+
+dns_name_with_links_t *
+dns_fixedname_name_with_links(dns_fixedname_t *fixed);
+
+dns_name_with_links_t *
+dns_fixedname_initname_with_links(dns_fixedname_t *fixed);

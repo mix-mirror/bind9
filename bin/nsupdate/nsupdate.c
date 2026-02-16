@@ -1269,7 +1269,7 @@ parse_args(int argc, char **argv) {
 }
 
 static uint16_t
-parse_name(char **cmdlinep, dns_message_t *msg, dns_name_t **namep) {
+parse_name(char **cmdlinep, dns_message_t *msg, dns_name_with_links_t **namep) {
 	isc_result_t result;
 	char *word;
 	isc_buffer_t source;
@@ -1283,7 +1283,7 @@ parse_name(char **cmdlinep, dns_message_t *msg, dns_name_t **namep) {
 	dns_message_gettempname(msg, namep);
 	isc_buffer_init(&source, word, strlen(word));
 	isc_buffer_add(&source, strlen(word));
-	result = dns_name_fromtext(*namep, &source, dns_rootname, 0);
+	result = dns_name_fromtext(&(*namep)->name, &source, dns_rootname, 0);
 	if (result != ISC_R_SUCCESS) {
 		error("invalid owner name: %s", isc_result_totext(result));
 		isc_buffer_invalidate(&source);
@@ -1350,7 +1350,7 @@ static uint16_t
 make_prereq(char *cmdline, bool ispositive, bool isrrset) {
 	isc_result_t result;
 	char *word;
-	dns_name_t *name = NULL;
+	dns_name_with_links_t *name = NULL;
 	isc_textregion_t region;
 	dns_rdataset_t *rdataset = NULL;
 	dns_rdatalist_t *rdatalist = NULL;
@@ -1864,7 +1864,7 @@ evaluate_class(char *cmdline) {
 static uint16_t
 update_addordelete(char *cmdline, bool isdelete) {
 	isc_result_t result;
-	dns_name_t *name = NULL;
+	dns_name_with_links_t *name = NULL;
 	uint32_t ttl;
 	char *word;
 	dns_rdataclass_t rdataclass;
@@ -2009,19 +2009,19 @@ parseclass:
 		dns_fixedname_t fixed;
 		dns_name_t *bad;
 
-		if (!dns_rdata_checkowner(name, rdata->rdclass, rdata->type,
+		if (!dns_rdata_checkowner(&name->name, rdata->rdclass, rdata->type,
 					  true))
 		{
 			char namebuf[DNS_NAME_FORMATSIZE];
 
-			dns_name_format(name, namebuf, sizeof(namebuf));
+			dns_name_format(&name->name, namebuf, sizeof(namebuf));
 			fprintf(stderr, "check-names failed: bad owner '%s'\n",
 				namebuf);
 			goto failure;
 		}
 
 		bad = dns_fixedname_initname(&fixed);
-		if (!dns_rdata_checknames(rdata, name, bad)) {
+		if (!dns_rdata_checknames(rdata, &name->name, bad)) {
 			char namebuf[DNS_NAME_FORMATSIZE];
 
 			dns_name_format(bad, namebuf, sizeof(namebuf));
@@ -2032,7 +2032,7 @@ parseclass:
 	}
 
 	if (!isdelete && checksvcb && rdata->type == dns_rdatatype_svcb) {
-		result = dns_rdata_checksvcb(name, rdata);
+		result = dns_rdata_checksvcb(&name->name, rdata);
 		if (result != ISC_R_SUCCESS) {
 			fprintf(stderr, "check-svcb failed: %s\n",
 				isc_result_totext(result));
@@ -2155,7 +2155,7 @@ evaluate_checksvcb(char *cmdline) {
 static void
 setzone(dns_name_t *zonename) {
 	dns_namelist_t *secs = updatemsg->sections;
-	dns_name_t *name = NULL;
+	dns_name_with_links_t *name = NULL;
 
 	if (!ISC_LIST_EMPTY(secs[DNS_SECTION_ZONE])) {
 		INSIST(updatemsg->from_to_wire == DNS_MESSAGE_INTENTRENDER);
@@ -2175,7 +2175,7 @@ setzone(dns_name_t *zonename) {
 		dns_rdataset_t *rdataset = NULL;
 
 		dns_message_gettempname(updatemsg, &name);
-		dns_name_clone(zonename, name);
+		dns_name_clone(zonename, &name->name);
 		dns_message_gettemprdataset(updatemsg, &rdataset);
 		dns_rdataset_makequestion(rdataset, getzoneclass(),
 					  dns_rdatatype_soa);
@@ -2625,7 +2625,7 @@ send_update(dns_name_t *zone, isc_sockaddr_t *primary) {
 
 	/* Windows doesn't like the tsig name to be compressed. */
 	if (updatemsg->tsigname) {
-		updatemsg->tsigname->attributes.nocompress = true;
+		updatemsg->tsigname->name.attributes.nocompress = true;
 	}
 
 	result = dns_request_create(requestmgr, updatemsg, srcaddr, primary,
@@ -2664,7 +2664,7 @@ recvsoa(void *arg) {
 	dns_message_t *soaquery = reqinfo->msg;
 	dns_message_t *rcvmsg = NULL;
 	dns_section_t section;
-	dns_name_t *name = NULL;
+	dns_name_with_links_t *name = NULL;
 	dns_rdataset_t *soaset = NULL;
 	dns_rdata_soa_t soa;
 	dns_rdata_t soarr = DNS_RDATA_INIT;
@@ -2831,7 +2831,7 @@ lookforsoa:
 
 	if (debugging) {
 		char namestr[DNS_NAME_FORMATSIZE];
-		dns_name_format(name, namestr, sizeof(namestr));
+		dns_name_format(&name->name, namestr, sizeof(namestr));
 		fprintf(stderr, "Found zone name: %s\n", namestr);
 	}
 
@@ -2854,7 +2854,7 @@ lookforsoa:
 		 * address.
 		 */
 		zname = dns_fixedname_initname(&fzname);
-		dns_name_copy(name, zname);
+		dns_name_copy(&name->name, zname);
 	}
 
 	if (debugging) {
@@ -2924,13 +2924,13 @@ out:
 droplabel:
 	INSIST(!ISC_LIST_EMPTY(soaquery->sections[DNS_SECTION_QUESTION]));
 	name = ISC_LIST_HEAD(soaquery->sections[DNS_SECTION_QUESTION]);
-	nlabels = dns_name_countlabels(name);
+	nlabels = dns_name_countlabels(&name->name);
 	if (nlabels == 1) {
 		fatal("could not find enclosing zone");
 	}
 	dns_name_init(&tname);
-	dns_name_getlabelsequence(name, 1, nlabels - 1, &tname);
-	dns_name_clone(&tname, name);
+	dns_name_getlabelsequence(&name->name, 1, nlabels - 1, &tname);
+	dns_name_clone(&tname, &name->name);
 	dns_request_destroy(&request);
 	dns_message_renderreset(soaquery);
 	dns_message_settsigkey(soaquery, NULL);
@@ -3312,7 +3312,7 @@ recvgss(void *arg) {
 static void
 start_update(void) {
 	dns_rdataset_t *rdataset = NULL;
-	dns_name_t *name = NULL;
+	dns_name_with_links_t *name = NULL;
 	dns_request_t *request = NULL;
 	dns_message_t *soaquery = NULL;
 
@@ -3350,7 +3350,7 @@ start_update(void) {
 	dns_rdataset_makequestion(rdataset, getzoneclass(), dns_rdatatype_soa);
 
 	if (userzone != NULL) {
-		dns_name_clone(userzone, name);
+		dns_name_clone(userzone, &name->name);
 	} else {
 		dns_rdataset_t *tmprdataset;
 
@@ -3372,9 +3372,9 @@ start_update(void) {
 			return;
 		}
 
-		dns_name_t *firstname =
+		dns_name_with_links_t *firstname =
 			ISC_LIST_HEAD(updatemsg->sections[section]);
-		dns_name_clone(firstname, name);
+		dns_name_clone(&firstname->name, &name->name);
 
 		/*
 		 * Looks to see if the first name references a DS record
@@ -3384,11 +3384,11 @@ start_update(void) {
 		 */
 		tmprdataset = ISC_LIST_HEAD(firstname->list);
 		if (section == DNS_SECTION_UPDATE &&
-		    !dns_name_equal(firstname, dns_rootname) &&
+		    !dns_name_equal(&firstname->name, dns_rootname) &&
 		    tmprdataset->type == dns_rdatatype_ds)
 		{
-			unsigned int labels = dns_name_countlabels(name);
-			dns_name_getlabelsequence(name, 1, labels - 1, name);
+			unsigned int labels = dns_name_countlabels(&name->name);
+			dns_name_getlabelsequence(&name->name, 1, labels - 1, &name->name);
 		}
 	}
 

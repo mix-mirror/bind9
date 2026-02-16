@@ -5378,7 +5378,7 @@ glue_nsdname_cb(void *arg, const dns_name_t *name, dns_rdatatype_t qtype,
 static void
 addglue_to_message(dns_glue_t *ge, dns_message_t *msg) {
 	for (; ge != NULL; ge = ge->next) {
-		dns_name_t *name = NULL;
+		dns_name_with_links_t *name = NULL;
 		dns_rdataset_t *rdataset_a = NULL;
 		dns_rdataset_t *sigrdataset_a = NULL;
 		dns_rdataset_t *rdataset_aaaa = NULL;
@@ -5387,7 +5387,7 @@ addglue_to_message(dns_glue_t *ge, dns_message_t *msg) {
 
 		dns_message_gettempname(msg, &name);
 
-		dns_name_copy(&ge->name, name);
+		dns_name_copy(&ge->name, &name->name);
 
 		if (dns_rdataset_isassociated(&ge->rdataset_a)) {
 			dns_message_gettemprdataset(msg, &rdataset_a);

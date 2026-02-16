@@ -526,7 +526,7 @@ dns_tsig_sign(dns_message_t *msg) {
 	unsigned char data[128];
 	isc_buffer_t databuf, sigbuf;
 	isc_buffer_t *dynbuf = NULL;
-	dns_name_t *owner = NULL;
+	dns_name_with_links_t *owner = NULL;
 	dns_rdata_t *rdata = NULL;
 	dns_rdatalist_t *datalist = NULL;
 	dns_rdataset_t *dataset = NULL;
@@ -769,7 +769,7 @@ dns_tsig_sign(dns_message_t *msg) {
 	}
 
 	dns_message_gettempname(msg, &owner);
-	dns_name_copy(key->name, owner);
+	dns_name_copy(key->name, &owner->name);
 
 	dns_message_gettemprdatalist(msg, &datalist);
 
@@ -782,7 +782,7 @@ dns_tsig_sign(dns_message_t *msg) {
 	msg->tsigname = owner;
 
 	/* Windows does not like the tsig name being compressed. */
-	msg->tsigname->attributes.nocompress = true;
+	msg->tsigname->name.attributes.nocompress = true;
 
 	return ISC_R_SUCCESS;
 
@@ -861,7 +861,7 @@ dns_tsig_verify(isc_buffer_t *source, dns_message_t *msg,
 	 * TSIG record.
 	 */
 
-	keyname = msg->tsigname;
+	keyname = &msg->tsigname->name;
 	RETERR(dns_rdataset_first(msg->tsig));
 	dns_rdataset_current(msg->tsig, &rdata);
 	RETERR(dns_rdata_tostruct(&rdata, &tsig, NULL));
@@ -1192,7 +1192,7 @@ tsig_verify_tcp(isc_buffer_t *source, dns_message_t *msg) {
 	if (msg->tsig != NULL) {
 		has_tsig = true;
 
-		keyname = msg->tsigname;
+		keyname = &msg->tsigname->name;
 		result = dns_rdataset_first(msg->tsig);
 		if (result != ISC_R_SUCCESS) {
 			goto cleanup_querystruct;

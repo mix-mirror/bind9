@@ -36,7 +36,7 @@ syncplugin__hook(void *arg, void *cbdata, isc_result_t *resp) {
 	UNUSED(resp);
 
 	if (inst->firstlbl != NULL) {
-		const dns_name_t *qname = qctx->client->query.qname;
+		const dns_name_t *qname = &qctx->client->query.qname->name;
 		dns_label_t label;
 
 		dns_name_getlabel(qname, 0, &label);

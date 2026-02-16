@@ -104,7 +104,7 @@ add_rdata_to_list(dns_message_t *msg, dns_name_t *name, dns_rdata_t *rdata,
 		  uint32_t ttl, dns_namelist_t *namelist) {
 	isc_region_t r, newr;
 	dns_rdata_t *newrdata = NULL;
-	dns_name_t *newname = NULL;
+	dns_name_with_links_t *newname = NULL;
 	dns_rdatalist_t *newlist = NULL;
 	dns_rdataset_t *newset = NULL;
 	isc_buffer_t *tmprdatabuf = NULL;
@@ -119,7 +119,7 @@ add_rdata_to_list(dns_message_t *msg, dns_name_t *name, dns_rdata_t *rdata,
 	dns_message_takebuffer(msg, &tmprdatabuf);
 
 	dns_message_gettempname(msg, &newname);
-	dns_name_copy(name, newname);
+	dns_name_copy(name, &newname->name);
 
 	dns_message_gettemprdatalist(msg, &newlist);
 	newlist->rdclass = newrdata->rdclass;
@@ -325,7 +325,7 @@ dns_tkey_processquery(dns_message_t *msg, dns_tkeyctx_t *tctx,
 		      dns_tsigkeyring_t *ring) {
 	isc_result_t result = ISC_R_SUCCESS;
 	dns_rdata_tkey_t tkeyin, tkeyout;
-	dns_name_t *qname = NULL;
+	dns_name_with_links_t *qname = NULL;
 	dns_name_t *keyname = NULL, *signer = NULL;
 	dns_name_t tsigner = DNS_NAME_INITEMPTY;
 	dns_fixedname_t fkeyname;
@@ -351,7 +351,7 @@ dns_tkey_processquery(dns_message_t *msg, dns_tkeyctx_t *tctx,
 
 	/* * Look for a TKEY record that matches the question.
 	 */
-	result = dns_message_findname(msg, DNS_SECTION_ADDITIONAL, qname,
+	result = dns_message_findname(msg, DNS_SECTION_ADDITIONAL, &qname->name,
 				      dns_rdatatype_tkey, 0, NULL, &tkeyset);
 	if (result != ISC_R_SUCCESS) {
 		tkey_log("dns_tkey_processquery: couldn't find a TKEY "
@@ -401,15 +401,15 @@ dns_tkey_processquery(dns_message_t *msg, dns_tkeyctx_t *tctx,
 		/*
 		 * A delete operation uses the fully specified qname.
 		 */
-		CHECK(process_deletetkey(signer, qname, &tkeyin, &tkeyout,
+		CHECK(process_deletetkey(signer, &qname->name, &tkeyin, &tkeyout,
 					 ring));
 		break;
 	case DNS_TKEYMODE_GSSAPI:
 		keyname = dns_fixedname_initname(&fkeyname);
 
-		if (!dns_name_equal(qname, dns_rootname)) {
-			unsigned int n = dns_name_countlabels(qname);
-			dns_name_copy(qname, keyname);
+		if (!dns_name_equal(&qname->name, dns_rootname)) {
+			unsigned int n = dns_name_countlabels(&qname->name);
+			dns_name_copy(&qname->name, keyname);
 			dns_name_getlabelsequence(keyname, 0, n - 1, keyname);
 		} else {
 			unsigned char randomdata[16];
@@ -472,7 +472,7 @@ cleanup:
 
 static isc_result_t
 buildquery(dns_message_t *msg, const dns_name_t *name, dns_rdata_tkey_t *tkey) {
-	dns_name_t *qname = NULL, *aname = NULL;
+	dns_name_with_links_t *qname = NULL, *aname = NULL;
 	dns_rdataset_t *question = NULL, *tkeyset = NULL;
 	dns_rdatalist_t *tkeylist = NULL;
 	dns_rdata_t *rdata = NULL;
@@ -511,8 +511,8 @@ buildquery(dns_message_t *msg, const dns_name_t *name, dns_rdata_tkey_t *tkey) {
 	dns_message_gettemprdataset(msg, &tkeyset);
 	dns_rdatalist_tordataset(tkeylist, tkeyset);
 
-	dns_name_copy(name, qname);
-	dns_name_copy(name, aname);
+	dns_name_copy(name, &qname->name);
+	dns_name_copy(name, &aname->name);
 
 	ISC_LIST_APPEND(qname->list, question, link);
 	ISC_LIST_APPEND(aname->list, tkeyset, link);
@@ -575,7 +575,7 @@ find_tkey(dns_message_t *msg, dns_name_t **name, dns_rdata_t *rdata,
 			RETERR(dns_rdataset_first(tkeyset));
 
 			dns_rdataset_current(tkeyset, rdata);
-			*name = cur;
+			*name = &cur->name;
 			return ISC_R_SUCCESS;
 		}
 	}
