@@ -170,7 +170,7 @@ dns__rdatalist_count(dns_rdataset_t *rdataset) {
 }
 
 isc_result_t
-dns__rdatalist_addnoqname(dns_rdataset_t *rdataset, dns_name_t *name) {
+dns__rdatalist_addnoqname(dns_rdataset_t *rdataset, dns_linkedname_t *name) {
 	dns_rdataset_t *neg = NULL;
 	dns_rdataset_t *negsig = NULL;
 	dns_ttl_t ttl;
@@ -223,7 +223,7 @@ dns__rdatalist_getnoqname(dns_rdataset_t *rdataset, dns_name_t *name,
 	dns_rdataclass_t rdclass;
 	dns_rdataset_t *tneg = NULL;
 	dns_rdataset_t *tnegsig = NULL;
-	dns_name_t *noqname = NULL;
+	dns_linkedname_t *noqname = NULL;
 
 	REQUIRE(rdataset != NULL);
 	REQUIRE(rdataset->attributes.noqname);
@@ -231,7 +231,8 @@ dns__rdatalist_getnoqname(dns_rdataset_t *rdataset, dns_name_t *name,
 	rdclass = rdataset->rdclass;
 	noqname = rdataset->rdlist.noqname;
 
-	(void)dns_name_dynamic(noqname); /* Sanity Check. */
+	(void)dns_name_dynamic(dns_linkedname_name(noqname)); /* Sanity Check.
+							       */
 
 	ISC_LIST_FOREACH(noqname->list, rdset, link) {
 		if (rdset->rdclass != rdclass) {
@@ -256,14 +257,14 @@ dns__rdatalist_getnoqname(dns_rdataset_t *rdataset, dns_name_t *name,
 		return ISC_R_NOTFOUND;
 	}
 
-	dns_name_clone(noqname, name);
+	dns_name_clone(dns_linkedname_name(noqname), name);
 	dns_rdataset_clone(tneg, neg);
 	dns_rdataset_clone(tnegsig, negsig);
 	return ISC_R_SUCCESS;
 }
 
 isc_result_t
-dns__rdatalist_addclosest(dns_rdataset_t *rdataset, dns_name_t *name) {
+dns__rdatalist_addclosest(dns_rdataset_t *rdataset, dns_linkedname_t *name) {
 	dns_rdataset_t *neg = NULL;
 	dns_rdataset_t *negsig = NULL;
 	dns_ttl_t ttl;
@@ -316,7 +317,7 @@ dns__rdatalist_getclosest(dns_rdataset_t *rdataset, dns_name_t *name,
 	dns_rdataclass_t rdclass;
 	dns_rdataset_t *tneg = NULL;
 	dns_rdataset_t *tnegsig = NULL;
-	dns_name_t *closest = NULL;
+	dns_linkedname_t *closest = NULL;
 
 	REQUIRE(rdataset != NULL);
 	REQUIRE(rdataset->attributes.closest);
@@ -324,7 +325,8 @@ dns__rdatalist_getclosest(dns_rdataset_t *rdataset, dns_name_t *name,
 	rdclass = rdataset->rdclass;
 	closest = rdataset->rdlist.closest;
 
-	(void)dns_name_dynamic(closest); /* Sanity Check. */
+	(void)dns_name_dynamic(dns_linkedname_name(closest)); /* Sanity Check.
+							       */
 
 	ISC_LIST_FOREACH(closest->list, rdset, link) {
 		if (rdset->rdclass != rdclass) {
@@ -349,7 +351,7 @@ dns__rdatalist_getclosest(dns_rdataset_t *rdataset, dns_name_t *name,
 		return ISC_R_NOTFOUND;
 	}
 
-	dns_name_clone(closest, name);
+	dns_name_clone(dns_linkedname_name(closest), name);
 	dns_rdataset_clone(tneg, neg);
 	dns_rdataset_clone(tnegsig, negsig);
 	return ISC_R_SUCCESS;

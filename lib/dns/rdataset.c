@@ -458,7 +458,7 @@ dns_rdataset_additionaldata(dns_rdataset_t *rdataset,
 }
 
 isc_result_t
-dns_rdataset_addnoqname(dns_rdataset_t *rdataset, dns_name_t *name) {
+dns_rdataset_addnoqname(dns_rdataset_t *rdataset, dns_linkedname_t *name) {
 	REQUIRE(DNS_RDATASET_VALID(rdataset));
 	REQUIRE(rdataset->methods != NULL);
 	if (rdataset->methods->addnoqname == NULL) {
@@ -482,7 +482,7 @@ dns__rdataset_getnoqname(dns_rdataset_t *rdataset, dns_name_t *name,
 }
 
 isc_result_t
-dns_rdataset_addclosest(dns_rdataset_t *rdataset, dns_name_t *name) {
+dns_rdataset_addclosest(dns_rdataset_t *rdataset, dns_linkedname_t *name) {
 	REQUIRE(DNS_RDATASET_VALID(rdataset));
 	REQUIRE(rdataset->methods != NULL);
 	if (rdataset->methods->addclosest == NULL) {
