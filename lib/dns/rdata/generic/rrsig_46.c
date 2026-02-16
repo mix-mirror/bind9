@@ -500,7 +500,7 @@ fromstruct_rrsig(ARGS_FROMSTRUCT) {
 	/*
 	 * Signer name.
 	 */
-	RETERR(name_tobuffer(&sig->signer, target));
+	RETERR(name_tobuffer(dns_linkedname_name(&sig->signer), target));
 
 	/*
 	 * Signature.
@@ -566,9 +566,9 @@ tostruct_rrsig(ARGS_TOSTRUCT) {
 
 	dns_name_init(&signer);
 	dns_name_fromregion(&signer, &sr);
-	dns_name_init(&sig->signer);
-	name_duporclone(&signer, mctx, &sig->signer);
-	isc_region_consume(&sr, name_length(&sig->signer));
+	dns_linkedname_init(&sig->signer);
+	name_duporclone(&signer, mctx, dns_linkedname_name(&sig->signer));
+	isc_region_consume(&sr, name_length(dns_linkedname_name(&sig->signer)));
 
 	/*
 	 * Signature.
@@ -590,7 +590,7 @@ freestruct_rrsig(ARGS_FREESTRUCT) {
 		return;
 	}
 
-	dns_name_free(&sig->signer, sig->mctx);
+	dns_linkedname_free(&sig->signer, sig->mctx);
 	if (sig->signature != NULL) {
 		isc_mem_free(sig->mctx, sig->signature);
 	}

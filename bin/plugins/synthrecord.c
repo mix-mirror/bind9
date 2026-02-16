@@ -124,7 +124,9 @@ synthrecord_respond(synthrecord_t *inst, query_ctx_t *qctx, void *rdata,
 	isc_result_t result;
 	isc_mem_t *mctx = qctx->client->inner.view->mctx;
 	dns_message_t *msg = qctx->client->message;
-	dns_name_t aname = DNS_NAME_INITEMPTY;
+	dns_linkedname_t aname;
+	dns_linkedname_init(&aname);
+	dns_name_t *name = dns_linkedname_name(&aname);
 	dns_rdataset_t *synthset = NULL;
 	dns_rdatalist_t *synthlist = NULL;
 	dns_rdata_t *synthdata = NULL;
@@ -158,9 +160,10 @@ synthrecord_respond(synthrecord_t *inst, query_ctx_t *qctx, void *rdata,
 	 * Then create the name in the ANSWER section and attach the
 	 * rdataset to it.
 	 */
-	dns_name_dup(qctx->client->query.qname, mctx, &aname);
+	dns_name_dup(dns_linkedname_name(qctx->client->query.qname), mctx,
+		     name);
 	dns_message_addname(msg, &aname, DNS_SECTION_ANSWER);
-	dns_rdataset_setownercase(synthset, &aname);
+	dns_rdataset_setownercase(synthset, name);
 	ISC_LIST_APPEND(aname.list, synthset, link);
 
 	/*
@@ -174,7 +177,7 @@ synthrecord_respond(synthrecord_t *inst, query_ctx_t *qctx, void *rdata,
 	 */
 	dns_message_removename(msg, &aname, DNS_SECTION_ANSWER);
 	ISC_LIST_UNLINK(aname.list, synthset, link);
-	dns_name_free(&aname, mctx);
+	dns_name_free(name, mctx);
 
 	dns_rdataset_disassociate(synthset);
 	dns_message_puttemprdataset(msg, &synthset);
@@ -263,7 +266,8 @@ static ns_hookresult_t
 synthrecord_forward(synthrecord_t *inst, query_ctx_t *qctx,
 		    isc_result_t *resp) {
 	isc_netaddr_t addr;
-	const dns_name_t *qname = qctx->client->query.qname;
+	const dns_name_t *qname =
+		dns_linkedname_name(qctx->client->query.qname);
 
 	*resp = ISC_R_UNSET;
 
@@ -328,7 +332,8 @@ synthrecord_reverse(synthrecord_t *inst, query_ctx_t *qctx,
 	char anamebdata[DNS_NAME_FORMATSIZE];
 	isc_buffer_t anameb;
 	isc_netaddr_t qaddr;
-	const dns_name_t *qname = qctx->client->query.qname;
+	const dns_name_t *qname =
+		dns_linkedname_name(qctx->client->query.qname);
 	dns_rdata_ptr_t synthptrdata;
 
 	*resp = ISC_R_UNSET;

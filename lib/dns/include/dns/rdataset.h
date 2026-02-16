@@ -72,7 +72,8 @@ struct dns_rdatasetmethods {
 	void (*clone)(const dns_rdataset_t  *source,
 		      dns_rdataset_t *target DNS__DB_FLARG);
 	unsigned int (*count)(dns_rdataset_t *rdataset);
-	isc_result_t (*addnoqname)(dns_rdataset_t *rdataset, dns_name_t *name);
+	isc_result_t (*addnoqname)(dns_rdataset_t   *rdataset,
+				   dns_linkedname_t *name);
 	isc_result_t (*getnoqname)(dns_rdataset_t *rdataset, dns_name_t *name,
 				   dns_rdataset_t	 *neg,
 				   dns_rdataset_t *negsig DNS__DB_FLARG);
@@ -234,8 +235,8 @@ struct dns_rdataset {
 			 * Refers to the name passed in by the caller of
 			 * dns_rdataset_addnoqname().
 			 */
-			struct dns_name *noqname;
-			dns_dbnode_t	*node;
+			struct dns_linkedname *noqname;
+			dns_dbnode_t	      *node;
 		} rdlist;
 	};
 };
@@ -539,7 +540,7 @@ dns__rdataset_getnoqname(dns_rdataset_t *rdataset, dns_name_t *name,
  */
 
 isc_result_t
-dns_rdataset_addnoqname(dns_rdataset_t *rdataset, dns_name_t *name);
+dns_rdataset_addnoqname(dns_rdataset_t *rdataset, dns_linkedname_t *name);
 /*%<
  * Associate a noqname proof with this record.
  * Sets 'noqname' attribute if successful.
