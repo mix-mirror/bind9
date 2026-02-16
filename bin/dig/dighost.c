@@ -1442,8 +1442,8 @@ save_opt(dig_lookup_t *lookup, char *code, char *value) {
  * type, and class.
  */
 static void
-add_question(dns_message_t *message, dns_name_t *name, dns_rdataclass_t rdclass,
-	     dns_rdatatype_t rdtype) {
+add_question(dns_message_t *message, dns_linkedname_t *name,
+	     dns_rdataclass_t rdclass, dns_rdatatype_t rdtype) {
 	dns_rdataset_t *rdataset;
 
 	debug("add_question()");
@@ -1817,8 +1817,9 @@ followup_lookup(dns_message_t *msg, dig_query_t *query, dns_section_t section) {
 			int order;
 
 			domain = dns_fixedname_name(&query->lookup->fdomain);
-			namereln = dns_name_fullcompare(name, domain, &order,
-							&nlabels);
+			namereln =
+				dns_name_fullcompare(dns_linkedname_name(name),
+						     domain, &order, &nlabels);
 			if (namereln == dns_namereln_equal) {
 				if (!horizontal) {
 					dighost_warning("BAD (HORIZONTAL) "
@@ -1875,7 +1876,8 @@ followup_lookup(dns_message_t *msg, dig_query_t *query, dns_section_t section) {
 					lookup->recurse = false;
 				}
 				domain = dns_fixedname_name(&lookup->fdomain);
-				dns_name_copy(name, domain);
+				dns_name_copy(dns_linkedname_name(name),
+					      domain);
 				lookup->edns = lookup->original_edns;
 			}
 			debug("adding server %s", namestr);
@@ -2007,7 +2009,7 @@ insert_soa(dig_lookup_t *lookup) {
 	dns_rdata_t *rdata = NULL;
 	dns_rdatalist_t *rdatalist = NULL;
 	dns_rdataset_t *rdataset = NULL;
-	dns_name_t *soaname = NULL;
+	dns_linkedname_t *soaname = NULL;
 
 	debug("insert_soa()");
 	soa.mctx = isc_g_mctx;
@@ -2044,7 +2046,8 @@ insert_soa(dig_lookup_t *lookup) {
 	dns_rdatalist_tordataset(rdatalist, rdataset);
 
 	dns_message_gettempname(lookup->sendmsg, &soaname);
-	dns_name_clone(lookup->name, soaname);
+	dns_name_clone(dns_linkedname_name(lookup->name),
+		       dns_linkedname_name(soaname));
 	ISC_LIST_INIT(soaname->list);
 	ISC_LIST_APPEND(soaname->list, rdataset, link);
 	dns_message_addname(lookup->sendmsg, soaname, DNS_SECTION_AUTHORITY);
@@ -2187,7 +2190,8 @@ setup_lookup(dig_lookup_t *lookup) {
 		len = (unsigned int)strlen(origin);
 		isc_buffer_init(&b, origin, len);
 		isc_buffer_add(&b, len);
-		result = dns_name_fromtext(lookup->oname, &b, dns_rootname, 0);
+		result = dns_name_fromtext(dns_linkedname_name(lookup->oname),
+					   &b, dns_rootname, 0);
 		if (result != ISC_R_SUCCESS) {
 			dns_message_puttempname(lookup->sendmsg, &lookup->name);
 			dns_message_puttempname(lookup->sendmsg,
@@ -2196,7 +2200,8 @@ setup_lookup(dig_lookup_t *lookup) {
 			      isc_result_totext(result));
 		}
 		if (lookup->trace && lookup->trace_root) {
-			dns_name_clone(dns_rootname, lookup->name);
+			dns_name_clone(dns_rootname,
+				       dns_linkedname_name(lookup->name));
 		} else {
 			dns_fixedname_t fixed;
 			dns_name_t *name;
@@ -2209,10 +2214,15 @@ setup_lookup(dig_lookup_t *lookup) {
 			if (result == ISC_R_SUCCESS) {
 				if (!dns_name_isabsolute(name)) {
 					result = dns_name_concatenate(
-						name, lookup->oname,
-						lookup->name);
+						name,
+						dns_linkedname_name(
+							lookup->oname),
+						dns_linkedname_name(
+							lookup->name));
 				} else {
-					dns_name_copy(name, lookup->name);
+					dns_name_copy(name,
+						      dns_linkedname_name(
+							      lookup->name));
 				}
 			}
 			if (result != ISC_R_SUCCESS) {
@@ -2232,13 +2242,15 @@ setup_lookup(dig_lookup_t *lookup) {
 	} else {
 		debug("using root origin");
 		if (lookup->trace && lookup->trace_root) {
-			dns_name_clone(dns_rootname, lookup->name);
+			dns_name_clone(dns_rootname,
+				       dns_linkedname_name(lookup->name));
 		} else {
 			len = (unsigned int)strlen(textname);
 			isc_buffer_init(&b, textname, len);
 			isc_buffer_add(&b, len);
-			result = dns_name_fromtext(lookup->name, &b,
-						   dns_rootname, 0);
+			result = dns_name_fromtext(
+				dns_linkedname_name(lookup->name), &b,
+				dns_rootname, 0);
 			if (result != ISC_R_SUCCESS) {
 				dns_message_puttempname(lookup->sendmsg,
 							&lookup->name);
@@ -2255,9 +2267,10 @@ setup_lookup(dig_lookup_t *lookup) {
 			}
 		}
 	}
-	dns_name_format(lookup->name, store, sizeof(store));
+	dns_name_format(dns_linkedname_name(lookup->name), store,
+			sizeof(store));
 	dighost_trying(store, lookup);
-	INSIST(dns_name_isabsolute(lookup->name));
+	INSIST(dns_name_isabsolute(dns_linkedname_name(lookup->name)));
 
 	lookup->sendmsg->id = (dns_messageid_t)isc_random16();
 	lookup->sendmsg->opcode = lookup->opcode;
@@ -4191,13 +4204,16 @@ recv_done(isc_nmhandle_t *handle, isc_result_t eresult, isc_region_t *region,
 			ISC_LIST_FOREACH(name->list, rdataset, link) {
 				if (l->rdtype != rdataset->type ||
 				    l->rdclass != rdataset->rdclass ||
-				    !dns_name_equal(l->name, name))
+				    !dns_name_equal(
+					    dns_linkedname_name(l->name),
+					    dns_linkedname_name(name)))
 				{
 					char namestr[DNS_NAME_FORMATSIZE];
 					char typebuf[DNS_RDATATYPE_FORMATSIZE];
 					char classbuf[DNS_RDATACLASS_FORMATSIZE];
-					dns_name_format(name, namestr,
-							sizeof(namestr));
+					dns_name_format(
+						dns_linkedname_name(name),
+						namestr, sizeof(namestr));
 					dns_rdatatype_format(rdataset->type,
 							     typebuf,
 							     sizeof(typebuf));
