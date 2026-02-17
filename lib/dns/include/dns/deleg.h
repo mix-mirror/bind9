@@ -28,6 +28,22 @@
  *
  * Must not be used by the caller without an attached `dns_delegset_t` owner.
  *
+ * TODO:
+ *
+ * because a `dns_deleg_t` can be of only one type, fields address, delegi and
+ * nameserver must be a union as:
+ *
+ *   union { isc_netaddrlist_t addresses, dns_namelist_t names } data;
+ *
+ * and there must be a type:
+ *
+ *   enum short type { DNS_DELEGTYPE_ADDRESS,
+ *                     DNS_DELEGTYPE_NS,
+ *                     DNS_DELEGTYPE_DELEGI }
+ *
+ * this saves 4 pointers (well, 3 pointers, with padding) and also makes clearer
+ * from the code the exclusivity of addresses, delegi and nameservers (which is
+ * exclusive in the protocol).
  */
 struct dns_deleg {
 	isc_netaddrlist_t address;
