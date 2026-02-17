@@ -3663,9 +3663,13 @@ fctx_getaddresses_forwarders(fetchctx_t *fctx) {
 
 static isc_result_t
 fctx_getaddresses_addresses(fetchctx_t *fctx, isc_stdtime_t now,
-			    unsigned int options) {
+			    unsigned int options, bool *allspilledp) {
 	isc_result_t result = ISC_R_SUCCESS;
 	dns_adbfindlist_t finds = ISC_LIST_INITIALIZER;
+
+	if ((fctx->options & DNS_FETCHOPT_PREFETCH) != 0) {
+		options |= DNS_ADBFIND_QUOTAEXEMPT;
+	}
 
 	ISC_LIST_FOREACH(fctx->delegset->deleg, deleg, link) {
 		dns_adbfind_t *find = NULL;
@@ -3681,8 +3685,14 @@ fctx_getaddresses_addresses(fetchctx_t *fctx, isc_stdtime_t now,
 						     fctx->res->view->dstport,
 						     options, now, &find);
 		if (result != ISC_R_SUCCESS) {
+			fctx->adberr++;
 			fetchctx_unref(fctx);
 			break;
+		}
+
+		if ((find->options & DNS_ADBFIND_OVERQUOTA) != 0) {
+			*allspilledp = true;
+			fctx->quotacount++;
 		}
 
 		ISC_LIST_APPEND(finds, find, publink);
@@ -3696,6 +3706,7 @@ fctx_getaddresses_addresses(fetchctx_t *fctx, isc_stdtime_t now,
 			dns_adb_destroyfind(&find);
 		}
 	}
+
 	return result;
 }
 
@@ -3942,7 +3953,8 @@ fctx_getaddresses(fetchctx_t *fctx) {
 	 * alternates.
 	 */
 
-	result = fctx_getaddresses_addresses(fctx, now, stdoptions);
+	result = fctx_getaddresses_addresses(fctx, now, stdoptions,
+					     &all_spilled);
 
 	fetches_allowed = fctx_getaddresses_allowed(fctx);
 
