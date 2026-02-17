@@ -3663,7 +3663,7 @@ fctx_getaddresses_forwarders(fetchctx_t *fctx) {
 
 static isc_result_t
 fctx_getaddresses_addresses(fetchctx_t *fctx, isc_stdtime_t now,
-			    unsigned int options, size_t *findcount) {
+			    unsigned int options) {
 	isc_result_t result = ISC_R_SUCCESS;
 	dns_adbfindlist_t finds = ISC_LIST_INITIALIZER;
 
@@ -3686,9 +3686,6 @@ fctx_getaddresses_addresses(fetchctx_t *fctx, isc_stdtime_t now,
 		}
 
 		ISC_LIST_APPEND(finds, find, publink);
-		if (++(*findcount) >= MAX_FIND_COUNT) {
-			break;
-		}
 	}
 
 	if (result == ISC_R_SUCCESS) {
@@ -3705,8 +3702,7 @@ fctx_getaddresses_addresses(fetchctx_t *fctx, isc_stdtime_t now,
 static isc_result_t
 fctx_getaddresses_nameservers(fetchctx_t *fctx, isc_stdtime_t now,
 			      unsigned int stdoptions, size_t fetches_allowed,
-			      bool *need_alternatep, bool *all_spilledp,
-			      size_t *findcount) {
+			      bool *need_alternatep, bool *all_spilledp) {
 	bool have_address = false;
 	unsigned int ns_processed = 0;
 	dns_name_t *nameservers[MAX_FIND_COUNT];
@@ -3735,15 +3731,13 @@ fctx_getaddresses_nameservers(fetchctx_t *fctx, isc_stdtime_t now,
 		ISC_LIST_FOREACH(deleg->nameserver, ns, link) {
 			nameservers[ns_processed] = ns;
 
-			if (++ns_processed >= *findcount) {
+			if (++ns_processed >= MAX_FIND_COUNT) {
 				goto shufflens;
 			}
 		}
 	}
 
 shufflens:
-	*findcount -= ns_processed;
-
 	if (ns_processed > 1 && ns_processed > fetches_allowed) {
 		/*
 		 * Skip the shuffle if:
@@ -3846,7 +3840,6 @@ fctx_getaddresses(fetchctx_t *fctx) {
 	bool need_alternate = false;
 	bool all_spilled = false;
 	size_t fetches_allowed = 0;
-	size_t findcount = 0;
 
 	FCTXTRACE5("getaddresses", "fctx->depth=", fctx->depth);
 
@@ -3932,7 +3925,6 @@ fctx_getaddresses(fetchctx_t *fctx) {
 	}
 
 	now = isc_stdtime_now();
-	all_spilled = true; /* resets to false below after the first success */
 
 	INSIST(ISC_LIST_EMPTY(fctx->finds));
 	INSIST(ISC_LIST_EMPTY(fctx->altfinds));
@@ -3950,15 +3942,13 @@ fctx_getaddresses(fetchctx_t *fctx) {
 	 * alternates.
 	 */
 
-	findcount = MAX_FIND_COUNT;
-
-	result = fctx_getaddresses_addresses(fctx, now, stdoptions, &findcount);
+	result = fctx_getaddresses_addresses(fctx, now, stdoptions);
 
 	fetches_allowed = fctx_getaddresses_allowed(fctx);
 
 	result = fctx_getaddresses_nameservers(fctx, now, stdoptions,
 					       fetches_allowed, &need_alternate,
-					       &all_spilled, &findcount);
+					       &all_spilled);
 	if (result == DNS_R_CONTINUE && fetches_allowed == 0) {
 		/*
 		 * We have no addresses and we haven't allowed any
@@ -3967,7 +3957,7 @@ fctx_getaddresses(fetchctx_t *fctx) {
 		 */
 		(void)fctx_getaddresses_nameservers(fctx, now, stdoptions, 1,
 						    &need_alternate,
-						    &all_spilled, &findcount);
+						    &all_spilled);
 	}
 
 	/*
