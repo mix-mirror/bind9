@@ -1716,13 +1716,20 @@ dns_adb_shutdown(dns_adb_t *adb) {
 
 static void
 findaddrinfo(dns_adb_t *adb, const isc_sockaddr_t *addr,
-	     dns_adbaddrinfo_t **adbaddrp, isc_stdtime_t now) {
+	     dns_adbaddrinfo_t **adbaddrp, isc_stdtime_t now,
+	     unsigned int options) {
 	dns_adbentry_t *adbentry = get_attached_and_locked_entry(adb, now,
 								 addr);
+	if ((options & DNS_ADBFIND_QUOTAEXEMPT) == 0 &&
+	    adbentry_overquota(adbentry))
+	{
+		goto out;
+	}
 
 	in_port_t port = isc_sockaddr_getport(addr);
 	*adbaddrp = new_adbaddrinfo(adb, adbentry, port);
 
+out:
 	UNLOCK(&adbentry->lock);
 	dns_adbentry_detach(&adbentry);
 }
@@ -1778,7 +1785,12 @@ dns_adb_createaddrinfosfind(dns_adb_t *adb, isc_netaddrlist_t *addrs,
 			UNREACHABLE();
 		}
 
-		findaddrinfo(adb, &sockaddr, &addrinfo, now);
+		findaddrinfo(adb, &sockaddr, &addrinfo, now, options);
+		if (addrinfo == NULL) {
+			find->options |= DNS_ADBFIND_OVERQUOTA;
+			continue;
+		}
+
 		ISC_LIST_APPEND(find->list, addrinfo, publink);
 
 		/*
@@ -3202,7 +3214,7 @@ dns_adb_findaddrinfo(dns_adb_t *adb, const isc_sockaddr_t *addr,
 		return ISC_R_SHUTTINGDOWN;
 	}
 
-	findaddrinfo(adb, addr, adbaddrp, now);
+	findaddrinfo(adb, addr, adbaddrp, now, DNS_ADBFIND_QUOTAEXEMPT);
 
 	rcu_read_unlock();
 
