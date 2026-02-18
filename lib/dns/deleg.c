@@ -41,7 +41,10 @@ static void
 delegdb_node_destroy(delegdb_node_t *node) {
 	REQUIRE(VALID_DELEGDB_NODE(node));
 
-	dns_delegset_detach(&node->delegset);
+	if (node->delegset != NULL) {
+		REQUIRE(DNS_DELEGSET_DBATTACHED_VALID(node->delegset));
+		dns_delegset_detach(&node->delegset);
+	}
 	dns_name_free(&node->zonecut, node->mctx);
 	isc_mem_putanddetach(&node->mctx, node, sizeof(*node));
 }
@@ -167,8 +170,13 @@ isactive(delegdb_node_t *node, dns_ttl_t now) {
 	 * which makes no sense.)
 	 */
 	REQUIRE(VALID_DELEGDB_NODE(node));
-	REQUIRE(DNS_DELEGSET_DBATTACHED_VALID(node->delegset));
-	return node->delegset->ttl > now;
+
+	if (node->delegset != NULL) {
+		REQUIRE(DNS_DELEGSET_DBATTACHED_VALID(node->delegset));
+		return node->delegset->ttl > now;
+	}
+
+	return false;
 }
 
 static void
@@ -229,12 +237,25 @@ dns_deleg_lookup(dns_delegdb_t *db, const dns_name_t *name,
 		dns_name_copy(&node->zonecut, deepestzonecut);
 	}
 
+	if (node->delegset == NULL) {
+		/*
+		 * The node has been removed.
+		 */
+		getparentnode(&chain, &node, now);
+
+		if (node->delegset == NULL) {
+			CLEANUP(ISC_R_NOTFOUND);
+		}
+		goto nodefound;
+	}
+
 	if (result == ISC_R_SUCCESS && (noexact || !isactive(node, now))) {
 		getparentnode(&chain, &node, now);
 	} else if (result == DNS_R_PARTIALMATCH && !isactive(node, now)) {
 		getparentnode(&chain, &node, now);
 	}
 
+nodefound:
 	result = isactive(node, now) ? ISC_R_SUCCESS : ISC_R_NOTFOUND;
 	if (result == ISC_R_SUCCESS) {
 		dns_name_copy(&node->zonecut, zonecut);
@@ -352,13 +373,17 @@ dns_deleg_writeset(dns_delegdb_t *db, const dns_name_t *zonecut,
 			       (void **)&node, NULL);
 
 	if (result == ISC_R_SUCCESS) {
-		/*
-		 * The zonecut already exists, so let's reuse it, but
-		 * replace the previous delegation set with a fresh one.
-		 * (Actually, should this enforces a check that the TTL
-		 * is expired? Otherwise, this is suspicious.)
-		 */
-		dns_delegset_detach(&node->delegset);
+		INSIST(VALID_DELEGDB_NODE(node));
+		if (node->delegset != NULL) {
+			/*
+			 * The zonecut already exists, so let's reuse it, but
+			 * replace the previous delegation set with a fresh one.
+			 *
+			 * TODO: enforce that the new TTL is not expired,
+			 * otherwise, we skip the write.
+			 */
+			dns_delegset_detach(&node->delegset);
+		}
 	} else {
 		node = isc_mem_get(db->mctx, sizeof(*node));
 		*node = (delegdb_node_t){
@@ -609,4 +634,88 @@ dns_deleg_fromrdataset(dns_rdataset_t *rdataset, dns_delegset_t **delegsetp) {
 	}
 
 	*delegsetp = delegset;
+}
+
+static isc_result_t
+deleg_deletetree(dns_delegdb_t *db, const dns_name_t *name) {
+	isc_result_t result;
+	delegdb_node_t *node = NULL;
+	dns_qp_t *qp = NULL;
+	dns_qpiter_t it;
+
+	dns_qpmulti_write(db->nodes, &qp);
+
+	result = dns_qp_lookup(qp, name, DNS_DBNAMESPACE_NORMAL, &it, NULL,
+			       (void **)&node, NULL);
+	if (result != ISC_R_SUCCESS) {
+		goto out;
+	}
+
+	INSIST(VALID_DELEGDB_NODE(node));
+	do {
+		/*
+		 * Because QP doesn't allow deleting a node while using the
+		 * iterator, the approach is different than `deleg_deletenode()`
+		 * here. Instead of removing the node, we detach its delegset,
+		 * which boils down to the same from user POV.
+		 */
+
+		if (node->delegset != NULL) {
+			dns_delegset_detach(&node->delegset);
+		}
+
+		result = dns_qpiter_next(&it, (void **)&node, NULL);
+		if (result == ISC_R_NOMORE) {
+			result = ISC_R_SUCCESS;
+			break;
+		}
+
+		INSIST(VALID_DELEGDB_NODE(node));
+		if (!dns_name_issubdomain(&node->zonecut, name)) {
+			break;
+		}
+	} while (result == ISC_R_SUCCESS);
+
+out:
+	if (result != ISC_R_SUCCESS) {
+		result = ISC_R_NOTFOUND;
+	}
+
+	dns_qp_compact(qp, DNS_QPGC_MAYBE);
+	dns_qpmulti_commit(db->nodes, &qp);
+	return result;
+}
+
+static isc_result_t
+deleg_deletenode(dns_delegdb_t *db, const dns_name_t *name) {
+	isc_result_t result;
+	dns_qp_t *qp = NULL;
+	delegdb_node_t *node = NULL;
+
+	dns_qpmulti_write(db->nodes, &qp);
+
+	result = dns_qp_deletename(qp, name, DNS_DBNAMESPACE_NORMAL,
+				   (void **)&node, NULL);
+
+	dns_qp_compact(qp, DNS_QPGC_MAYBE);
+	dns_qpmulti_commit(db->nodes, &qp);
+
+	/*
+	 * The node was deleted already.
+	 */
+	if (result == ISC_R_SUCCESS && node->delegset == NULL) {
+		result = ISC_R_NOTFOUND;
+	}
+	return result;
+}
+
+isc_result_t
+dns_deleg_delete(dns_delegdb_t *db, const dns_name_t *name, bool tree) {
+	REQUIRE(VALID_DELEGDB(db));
+	REQUIRE(DNS_NAME_VALID(name));
+
+	if (tree) {
+		return deleg_deletetree(db, name);
+	}
+	return deleg_deletenode(db, name);
 }

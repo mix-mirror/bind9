@@ -11490,6 +11490,18 @@ named_server_flushnode(named_server_t *server, isc_lex_t *lex, bool tree) {
 				      "failed: %s",
 				      tree ? "tree" : "name", target,
 				      view->name, isc_result_totext(result));
+		} else {
+			result = dns_deleg_delete(view->deleg, name, tree);
+			if (result != ISC_R_SUCCESS) {
+				flushed = false;
+				isc_log_write(
+					NAMED_LOGCATEGORY_GENERAL,
+					NAMED_LOGMODULE_SERVER, ISC_LOG_ERROR,
+					"flushing %s '%s' in delegation cache "
+					"view '%s' failed: %s",
+					tree ? "tree" : "name", target,
+					view->name, isc_result_totext(result));
+			}
 		}
 	}
 	if (flushed && found) {
