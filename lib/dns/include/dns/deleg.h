@@ -206,3 +206,10 @@ dns_deleg_fromrdataset(dns_rdataset_t *rdataset, dns_delegset_t **delegsetp);
  */
 void
 dns_deleg_flush(dns_delegdb_t *db);
+
+/*
+ * Delete a delegation matching a name. If `tree` is true, this will also delete
+ * all names below `name`.
+ */
+isc_result_t
+dns_deleg_delete(dns_delegdb_t *db, const dns_name_t *name, bool tree);
