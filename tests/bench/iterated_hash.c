@@ -21,6 +21,7 @@
 #include <isc/time.h>
 
 #include <dns/name.h>
+#include <dns/nsec3.h>
 
 static void
 time_it(const int count, const int iterations, const unsigned char *salt,

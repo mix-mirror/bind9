@@ -29,6 +29,12 @@
 #define DNS_NSEC3_MAXITERATIONS 50U
 
 /*
+ * The maximum hash that can be encoded in a single label using
+ * base32hexnp.  floor(63*5/8)
+ */
+#define NSEC3_MAX_HASH_LENGTH 39
+
+/*
  * hash = 1, flags =1, iterations = 2, salt length = 1, salt = 255 (max)
  * hash length = 1, hash = 255 (max), bitmap = 8192 + 512 (max)
  */
