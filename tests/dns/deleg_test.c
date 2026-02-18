@@ -327,6 +327,8 @@ ISC_RUN_TEST_IMPL(dns_deleg_ttl0tests) {
 
 	result = lookupdb(db, "baz.bar.stuff.", now + 1, 0, "", &delegset);
 	assert_int_equal(result, ISC_R_NOTFOUND);
+
+	dns_deleg_shutdownanddetach(&db);
 }
 
 ISC_RUN_TEST_IMPL(dns_deleg_noexacttests) {
@@ -382,12 +384,110 @@ ISC_RUN_TEST_IMPL(dns_deleg_noexacttests) {
 			  "foo.stuff.", &delegset);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	dns_delegset_detach(&delegset);
+
+	dns_deleg_shutdownanddetach(&db);
+}
+
+ISC_RUN_TEST_IMPL(dns_deleg_deletetests) {
+	isc_result_t result;
+	dns_delegdb_t *db = NULL;
+	dns_deleg_t *deleg = NULL;
+	dns_delegset_t *delegset = NULL;
+	dns_fixedname_t fname;
+	dns_name_t *name = dns_fixedname_initname(&fname);
+
+	dns_deleg_init(&db);
+	assert_non_null(db);
+
+	dns_deleg_allocset(db, &delegset);
+	dns_deleg_allocdeleg(delegset, &deleg);
+	addipdeleg(AF_INET6, "1111::2222", delegset, deleg);
+	writedb(db, "stuff.", 10, &delegset);
+	deleg = NULL;
+
+	dns_deleg_allocset(db, &delegset);
+	dns_deleg_allocdeleg(delegset, &deleg);
+	addipdeleg(AF_INET6, "1111::2222", delegset, deleg);
+	writedb(db, "baz.stuff.", 10, &delegset);
+	deleg = NULL;
+
+	dns_deleg_allocset(db, &delegset);
+	dns_deleg_allocdeleg(delegset, &deleg);
+	addipdeleg(AF_INET6, "1111::2222", delegset, deleg);
+	writedb(db, "bar.baz.stuff.", 10, &delegset);
+	deleg = NULL;
+
+	dns_deleg_allocset(db, &delegset);
+	dns_deleg_allocdeleg(delegset, &deleg);
+	addipdeleg(AF_INET6, "1111::2222", delegset, deleg);
+	writedb(db, "foo.bar.baz.stuff.", 10, &delegset);
+	deleg = NULL;
+
+	dns_name_fromstring(name, "foo.", NULL, 0, NULL);
+	result = dns_deleg_delete(db, name, false);
+	assert_int_equal(result, ISC_R_NOTFOUND);
+	result = dns_deleg_delete(db, name, true);
+	assert_int_equal(result, ISC_R_NOTFOUND);
+
+	dns_name_fromstring(name, "gee.foo.bar.stuff.", NULL, 0, NULL);
+	result = dns_deleg_delete(db, name, false);
+	assert_int_equal(result, ISC_R_NOTFOUND);
+
+	dns_name_fromstring(name, "foo.bar.baz.stuff.", NULL, 0, NULL);
+	result = dns_deleg_delete(db, name, false);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	dns_name_fromstring(name, "foo.bar.baz.stuff.", NULL, 0, NULL);
+	result = dns_deleg_delete(db, name, false);
+	assert_int_equal(result, ISC_R_NOTFOUND);
+
+	dns_name_fromstring(name, "baz.stuff.", NULL, 0, NULL);
+	result = dns_deleg_delete(db, name, false);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	result = lookupdb(db, "bar.baz.stuff.", 5, 0, "bar.baz.stuff.",
+			  &delegset);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	dns_delegset_detach(&delegset);
+
+	dns_name_fromstring(name, "stuff.", NULL, 0, NULL);
+	result = dns_deleg_delete(db, name, true);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	dns_name_fromstring(name, "stuff.", NULL, 0, NULL);
+	result = dns_deleg_delete(db, name, false);
+	assert_int_equal(result, ISC_R_NOTFOUND);
+
+	dns_name_fromstring(name, "bar.baz.stuff.", NULL, 0, NULL);
+	result = dns_deleg_delete(db, name, false);
+	assert_int_equal(result, ISC_R_NOTFOUND);
+
+	result = lookupdb(db, "bar.baz.stuff.", 5, 0, "bar.baz.stuff.",
+			  &delegset);
+	assert_int_equal(result, ISC_R_NOTFOUND);
+
+	/*
+	 * Let's add stuff. back and query bar.baz.stuff. again. Because the
+	 * node is NULL, it should go up until it finds stuff.
+	 */
+	dns_deleg_allocset(db, &delegset);
+	dns_deleg_allocdeleg(delegset, &deleg);
+	addipdeleg(AF_INET6, "1111::2222", delegset, deleg);
+	writedb(db, "stuff.", 10, &delegset);
+	deleg = NULL;
+
+	result = lookupdb(db, "bar.baz.stuff.", 5, 0, "stuff.", &delegset);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	dns_delegset_detach(&delegset);
+
+	dns_deleg_shutdownanddetach(&db);
 }
 
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY(dns_deleg_basictests)
 ISC_TEST_ENTRY(dns_deleg_ttl0tests)
 ISC_TEST_ENTRY(dns_deleg_noexacttests)
+ISC_TEST_ENTRY(dns_deleg_deletetests)
 ISC_TEST_LIST_END
 
 ISC_TEST_MAIN
