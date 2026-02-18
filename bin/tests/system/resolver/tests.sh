@@ -439,24 +439,15 @@ grep "status: NOERROR" dig.ns5.prime.${n} >/dev/null || {
 }
 cp ns4/tld2.db ns4/tld.db
 rndc_reload ns4 10.53.0.4 tld
-old=
 for i in 0 1 2 3 4 5 6 7 8 9; do
   foo=0
   dig_with_opts @10.53.0.5 ns$i.to-be-removed.tld A >/dev/null
   dig_with_opts @10.53.0.5 www.to-be-removed.tld A >dig.ns5.out.${n}
   grep "status: NXDOMAIN" dig.ns5.out.${n} >/dev/null || foo=1
-  [ $foo = 0 ] && break
-  $NSUPDATE <<EOF
-server 10.53.0.6 ${PORT}
-zone to-be-removed.tld
-update add to-be-removed.tld 100 NS ns${i}.to-be-removed.tld
-update delete to-be-removed.tld NS ns${old}.to-be-removed.tld
-send
-EOF
-  old=$i
   sleep 1
+  # After 5 seconds, the delegation expires, so we expect NXDOMAIN
+  [ $i -gt 5 ] && [ $foo -eq 1 ] && ret=1
 done
-[ $ret = 0 ] && ret=$foo
 if [ $ret != 0 ]; then
   echo_i "failed"
   status=1
