@@ -518,10 +518,8 @@ if [ -x "$DIG" ]; then
   echo_i "checking dig +ednsopt=8:00000000 (family=0, source=0, scope=0) ($n)"
   ret=0
   dig_with_opts +tcp @10.53.0.2 +ednsopt=8:00000000 A a.example >dig.out.test$n 2>&1 || ret=1
-  grep "status: NOERROR" <dig.out.test$n >/dev/null || ret=1
-  grep "CLIENT-SUBNET: 0/0/0" <dig.out.test$n >/dev/null || ret=1
-  grep "10.0.0.1" <dig.out.test$n >/dev/null || ret=1
-  check_ttl_range dig.out.test$n "A" 300 || ret=1
+  grep "status: FORMERR" <dig.out.test$n >/dev/null || ret=1
+  grep "CLIENT-SUBNET" <dig.out.test$n >/dev/null && ret=1
   if [ $ret -ne 0 ]; then echo_i "failed"; fi
   status=$((status + ret))
 
