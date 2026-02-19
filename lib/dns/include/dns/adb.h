@@ -83,6 +83,8 @@
 #define DNS_ADBADDRINFO_MAGIC	 ISC_MAGIC('a', 'd', 'A', 'I')
 #define DNS_ADBADDRINFO_VALID(x) ISC_MAGIC_VALID(x, DNS_ADBADDRINFO_MAGIC)
 
+#define DNS_ADB_MINADBSIZE (1024U * 1024U) /*%< 1 Megabyte */
+
 /***
  *** TYPES
  ***/

@@ -48,12 +48,6 @@
 #define CACHE_MAGIC	   ISC_MAGIC('$', '$', '$', '$')
 #define VALID_CACHE(cache) ISC_MAGIC_VALID(cache, CACHE_MAGIC)
 
-/*
- * DNS_CACHE_MINSIZE is how many bytes is the floor for
- * dns_cache_setcachesize().
- */
-#define DNS_CACHE_MINSIZE 2097152U /*%< Bytes.  2097152 = 2 MB */
-
 /***
  ***	Types
  ***/

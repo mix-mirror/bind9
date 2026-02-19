@@ -18,13 +18,12 @@
 #include <limits.h>
 #include <signal.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
-
-#include <dns/acl.h>
 
 #ifdef HAVE_DNSTAP
 #include <fstrm.h>
@@ -60,6 +59,7 @@
 #include <isc/timer.h>
 #include <isc/util.h>
 
+#include <dns/acl.h>
 #include <dns/adb.h>
 #include <dns/badcache.h>
 #include <dns/cache.h>
@@ -119,6 +119,7 @@
 
 #include <named/config.h>
 #include <named/control.h>
+#include <named/globals.h>
 #include <named/nzd.h>
 #if defined(HAVE_GEOIP2)
 #include <named/geoip.h>
@@ -151,10 +152,6 @@
 #ifndef SIZE_MAX
 #define SIZE_MAX ((size_t)(-1))
 #endif /* ifndef SIZE_MAX */
-
-#ifndef SIZE_AS_PERCENT
-#define SIZE_AS_PERCENT ((size_t)(-2))
-#endif /* ifndef SIZE_AS_PERCENT */
 
 /* RFC7828 defines timeout as 16-bit value specified in units of 100
  * milliseconds, so the maximum and minimum advertised and keepalive
@@ -3575,6 +3572,117 @@ named_register_one_plugin(const cfg_obj_t *config, const cfg_obj_t *obj,
 	return result;
 }
 
+static size_t
+sanitized_max_cache_size(const cfg_obj_t *obj, uint64_t value);
+
+static size_t
+max_cache_size_as_percent(const cfg_obj_t *obj, uint32_t percent) {
+	uint64_t totalphys = isc_meminfo_totalphys();
+
+	if (totalphys == 0) {
+		cfg_obj_log(obj, ISC_LOG_ERROR,
+			    "Unable to determine amount of physical "
+			    "memory, setting 'max-cache-size' to the "
+			    "minimum value");
+		return DNS_CACHE_MINSIZE;
+	}
+
+	uint64_t max_cache_size = totalphys * percent / 100;
+
+	cfg_obj_log(obj, ISC_LOG_INFO,
+		    "'max-cache-size %d%%' "
+		    "- setting to %" PRIu64 "MB "
+		    "(out of %" PRIu64 "MB)",
+		    percent, (uint64_t)(max_cache_size / (1024 * 1024)),
+		    totalphys / (1024 * 1024));
+
+	return sanitized_max_cache_size(obj, max_cache_size);
+}
+
+static size_t
+default_max_cache_size(const dns_view_t *view, const cfg_obj_t *obj) {
+	if (view->recursion) {
+		return max_cache_size_as_percent(obj, 90);
+	} else {
+		return DNS_CACHE_MINSIZE;
+	}
+}
+
+static size_t
+sanitized_max_cache_size(const cfg_obj_t *obj, uint64_t value) {
+	if (value >= DNS_CACHE_MINSIZE && value <= SIZE_MAX) {
+		return value;
+	}
+
+	if (value > SIZE_MAX) {
+		cfg_obj_log(obj, ISC_LOG_WARNING,
+			    "'max-cache-size %" PRIu64 "' "
+			    "is too large for this system; reducing to %lu",
+			    value, (unsigned long)SIZE_MAX);
+		return SIZE_MAX;
+	}
+
+	if (value < DNS_CACHE_MINSIZE) {
+		cfg_obj_log(obj, ISC_LOG_WARNING,
+			    "'max-cache-size' can't be less than %" PRIu64 "; "
+			    "setting 'max-cache-size' to the minimum value",
+			    DNS_CACHE_MINSIZE);
+		return DNS_CACHE_MINSIZE;
+	}
+
+	UNREACHABLE();
+}
+
+static size_t
+configure_max_cache_size(dns_view_t *view, const cfg_obj_t *maps[4]) {
+	isc_result_t result;
+	const cfg_obj_t *obj = NULL;
+	const char *str = NULL;
+
+	if (named_g_maxcachesize != 0) {
+		/*
+		 * If "-T maxcachesize=..." is in effect, it overrides any
+		 * other "max-cache-size" setting found in configuration,
+		 * either implicit or explicit.  For simplicity, the value
+		 * passed to that command line option is always treated as
+		 * the number of bytes to set "max-cache-size" to.
+		 */
+		return named_g_maxcachesize;
+	}
+
+	obj = NULL;
+	result = named_config_get(maps, "max-cache-size", &obj);
+	INSIST(result == ISC_R_SUCCESS);
+	if (cfg_obj_isstring(obj) &&
+	    strcasecmp(cfg_obj_asstring(obj), "default") == 0)
+	{
+		/*
+		 * The default for a view with recursion
+		 * is 90% of memory. With no recursion,
+		 * it's the minimum cache size allowed by
+		 * dns_cache_setcachesize().
+		 */
+		return default_max_cache_size(view, obj);
+	} else if (cfg_obj_isstring(obj)) {
+		str = cfg_obj_asstring(obj);
+		INSIST(strcasecmp(str, "unlimited") == 0);
+
+		cfg_obj_log(obj, ISC_LOG_WARNING,
+			    "'max-cache-size' can't be unlimited; "
+			    "falling back to default");
+
+		return default_max_cache_size(view, obj);
+	} else if (cfg_obj_ispercentage(obj)) {
+		return max_cache_size_as_percent(obj,
+						 cfg_obj_aspercentage(obj));
+	} else if (cfg_obj_isuint64(obj)) {
+		uint64_t value = cfg_obj_asuint64(obj);
+		return sanitized_max_cache_size(obj, value);
+	} else {
+		UNREACHABLE();
+	}
+}
+
 static const char *const response_synonyms[] = { "response", NULL };
 
 /*
@@ -3613,7 +3721,6 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	dns_cache_t *cache = NULL;
 	isc_result_t result;
 	size_t max_cache_size;
-	uint32_t max_cache_size_percent = 0;
 	size_t max_adb_size;
 	uint32_t lame_ttl, fail_ttl;
 	uint32_t max_stale_ttl = 0;
@@ -3820,88 +3927,7 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	INSIST(result == ISC_R_SUCCESS);
 	view->recursion = cfg_obj_asboolean(obj);
 
-	if (named_g_maxcachesize != 0) {
-		/*
-		 * If "-T maxcachesize=..." is in effect, it overrides any
-		 * other "max-cache-size" setting found in configuration,
-		 * either implicit or explicit.  For simplicity, the value
-		 * passed to that command line option is always treated as
-		 * the number of bytes to set "max-cache-size" to.
-		 */
-		max_cache_size = named_g_maxcachesize;
-	} else {
-		obj = NULL;
-		result = named_config_get(maps, "max-cache-size", &obj);
-		INSIST(result == ISC_R_SUCCESS);
-		if (cfg_obj_isstring(obj) &&
-		    strcasecmp(cfg_obj_asstring(obj), "default") == 0)
-		{
-			/*
-			 * The default for a view with recursion
-			 * is 90% of memory. With no recursion,
-			 * it's the minimum cache size allowed by
-			 * dns_cache_setcachesize().
-			 */
-			if (view->recursion) {
-				max_cache_size = SIZE_AS_PERCENT;
-				max_cache_size_percent = 90;
-			} else {
-				max_cache_size = 1;
-			}
-		} else if (cfg_obj_isstring(obj)) {
-			str = cfg_obj_asstring(obj);
-			INSIST(strcasecmp(str, "unlimited") == 0);
-			max_cache_size = 0;
-		} else if (cfg_obj_ispercentage(obj)) {
-			max_cache_size = SIZE_AS_PERCENT;
-			max_cache_size_percent = cfg_obj_aspercentage(obj);
-		} else if (cfg_obj_isuint64(obj)) {
-			uint64_t value = cfg_obj_asuint64(obj);
-			if (value > SIZE_MAX) {
-				cfg_obj_log(obj, ISC_LOG_WARNING,
-					    "'max-cache-size "
-					    "%" PRIu64 "' "
-					    "is too large for this "
-					    "system; reducing to %lu",
-					    value, (unsigned long)SIZE_MAX);
-				value = SIZE_MAX;
-			}
-			max_cache_size = (size_t)value;
-		} else {
-			UNREACHABLE();
-		}
-	}
-
-	if (max_cache_size == 0) {
-		cfg_obj_log(obj, ISC_LOG_WARNING,
-			    "'max-cache-size' can't be zero or unlimited; "
-			    "falling back to default");
-		max_cache_size = SIZE_AS_PERCENT;
-		max_cache_size_percent = 90;
-	}
-
-	if (max_cache_size == SIZE_AS_PERCENT) {
-		uint64_t totalphys = isc_meminfo_totalphys();
-
-		if (totalphys == 0) {
-			cfg_obj_log(obj, ISC_LOG_ERROR,
-				    "Unable to determine amount of physical "
-				    "memory, setting 'max-cache-size' to the "
-				    "minimum value");
-			max_cache_size = 1;
-		} else {
-			max_cache_size = (size_t)(totalphys *
-						  max_cache_size_percent / 100);
-
-			cfg_obj_log(obj, ISC_LOG_INFO,
-				    "'max-cache-size %d%%' "
-				    "- setting to %" PRIu64 "MB "
-				    "(out of %" PRIu64 "MB)",
-				    max_cache_size_percent,
-				    (uint64_t)(max_cache_size / (1024 * 1024)),
-				    totalphys / (1024 * 1024));
-		}
-	}
+	max_cache_size = configure_max_cache_size(view, maps);
 
 	/*
 	 * Since both the delegation DB and ADB uses 1/8 of the
@@ -4339,25 +4365,21 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	 * Set the ADB cache size to 1/8th of the max-cache-size or
 	 * MAX_ADB_SIZE_FOR_CACHESHARE when the cache is shared.
 	 */
-	max_adb_size = 0;
-	if (cache_size_slice != 0U) {
-		max_adb_size = cache_size_slice;
-		if (max_adb_size == 0U) {
-			max_adb_size = 1; /* Force minimum. */
-		}
-		if (view != nsc->primaryview &&
-		    max_adb_size > MAX_ADB_SIZE_FOR_CACHESHARE)
-		{
-			max_adb_size = MAX_ADB_SIZE_FOR_CACHESHARE;
-			if (!nsc->adbsizeadjusted) {
-				dns_view_getadb(nsc->primaryview, &adb);
-				if (adb != NULL) {
-					dns_adb_setadbsize(
-						adb,
-						MAX_ADB_SIZE_FOR_CACHESHARE);
-					nsc->adbsizeadjusted = true;
-					dns_adb_detach(&adb);
-				}
+	max_adb_size = cache_size_slice;
+	if (max_adb_size < DNS_ADB_MINADBSIZE) {
+		max_adb_size = DNS_ADB_MINADBSIZE; /* Force minimum. */
+	}
+	if (view != nsc->primaryview &&
+	    max_adb_size > MAX_ADB_SIZE_FOR_CACHESHARE)
+	{
+		max_adb_size = MAX_ADB_SIZE_FOR_CACHESHARE;
+		if (!nsc->adbsizeadjusted) {
+			dns_view_getadb(nsc->primaryview, &adb);
+			if (adb != NULL) {
+				dns_adb_setadbsize(adb,
+						   MAX_ADB_SIZE_FOR_CACHESHARE);
+				nsc->adbsizeadjusted = true;
+				dns_adb_detach(&adb);
 			}
 		}
 	}
