@@ -242,20 +242,23 @@ status=$((status + ret))
 n=$((n + 1))
 echo_i "check flushtree clears adb correctly ($n)"
 ret=0
-load_cache
+# Because the resolver is parent centric, no NS will be used from ADB using
+# flushtest.example, as the NS is in-domain. So force an NS lookup using
+# foo.bar.com domain.
+$DIG @10.53.0.2 -p ${PORT} A gee.foo.bar.com >/dev/null
 dump_cache
 mv ns2/named_dump.db.test$n ns2/named_dump.db.test$n.a
 sed -n '/plain success\/timeout/,/Unassociated entries/p' \
   ns2/named_dump.db.test$n.a >sed.out.$n.a
 grep 'plain success/timeout' sed.out.$n.a >/dev/null 2>&1 || ret=1
-grep 'ns.flushtest.example' sed.out.$n.a >/dev/null 2>&1 || ret=1
-$RNDC $RNDCOPTS flushtree flushtest.example || ret=1
+grep 'ns.somehost.com.' sed.out.$n.a >/dev/null 2>&1 || ret=1
+$RNDC $RNDCOPTS flushtree com. || ret=1
 dump_cache
 mv ns2/named_dump.db.test$n ns2/named_dump.db.test$n.b
 sed -n '/plain success\/timeout/,/Unassociated entries/p' \
   ns2/named_dump.db.test$n.b >sed.out.$n.b
 grep 'plain success/timeout' sed.out.$n.b >/dev/null 2>&1 || ret=1
-grep 'ns.flushtest.example' sed.out.$n.b >/dev/null 2>&1 && ret=1
+grep 'ns.somehost.com.' sed.out.$n.b >/dev/null 2>&1 && ret=1
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
