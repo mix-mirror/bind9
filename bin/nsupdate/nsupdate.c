@@ -749,11 +749,11 @@ set_source_ports(dns_dispatchmgr_t *manager) {
 	isc_result_t result;
 
 	isc_portset_create(isc_g_mctx, &v4portset);
-	isc_net_getudpportrange(AF_INET, &udpport_low, &udpport_high);
+	isc_net_getportrange(AF_INET, &udpport_low, &udpport_high);
 	isc_portset_addrange(v4portset, udpport_low, udpport_high);
 
 	isc_portset_create(isc_g_mctx, &v6portset);
-	isc_net_getudpportrange(AF_INET6, &udpport_low, &udpport_high);
+	isc_net_getportrange(AF_INET6, &udpport_low, &udpport_high);
 	isc_portset_addrange(v6portset, udpport_low, udpport_high);
 
 	result = dns_dispatchmgr_setavailports(manager, v4portset, v6portset);

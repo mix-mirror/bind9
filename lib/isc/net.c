@@ -101,7 +101,7 @@ isc_net_probeipv6(void) {
 #if defined(USE_SYSCTL_PORTRANGE)
 #if defined(HAVE_SYSCTLBYNAME)
 static isc_result_t
-getudpportrange_sysctl(int af, in_port_t *low, in_port_t *high) {
+getportrange_sysctl(int af, in_port_t *low, in_port_t *high) {
 	int port_low, port_high;
 	size_t portlen;
 	const char *sysctlname_lowport, *sysctlname_hiport;
@@ -134,7 +134,7 @@ getudpportrange_sysctl(int af, in_port_t *low, in_port_t *high) {
 }
 #else  /* !HAVE_SYSCTLBYNAME */
 static isc_result_t
-getudpportrange_sysctl(int af, in_port_t *low, in_port_t *high) {
+getportrange_sysctl(int af, in_port_t *low, in_port_t *high) {
 	int mib_lo4[4] = SYSCTL_V4PORTRANGE_LOW;
 	int mib_hi4[4] = SYSCTL_V4PORTRANGE_HIGH;
 	int mib_lo6[4] = SYSCTL_V6PORTRANGE_LOW;
@@ -176,17 +176,17 @@ getudpportrange_sysctl(int af, in_port_t *low, in_port_t *high) {
 #endif /* USE_SYSCTL_PORTRANGE */
 
 void
-isc_net_getudpportrange(int af, in_port_t *low, in_port_t *high) {
+isc_net_getportrange(int af, in_port_t *low, in_port_t *high) {
 	int result = ISC_R_FAILURE;
-#if !defined(USE_SYSCTL_PORTRANGE) && defined(__linux)
+#if !defined(USE_SYSCTL_PORTRANGE) && defined(__linux__)
 	FILE *fp;
-#endif /* if !defined(USE_SYSCTL_PORTRANGE) && defined(__linux) */
+#endif /* if !defined(USE_SYSCTL_PORTRANGE) && defined(__linux__) */
 
 	REQUIRE(low != NULL && high != NULL);
 
 #if defined(USE_SYSCTL_PORTRANGE)
-	result = getudpportrange_sysctl(af, low, high);
-#elif defined(__linux)
+	result = getportrange_sysctl(af, low, high);
+#elif defined(__linux__)
 
 	UNUSED(af);
 

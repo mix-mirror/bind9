@@ -247,10 +247,10 @@ isc_netmgr_create(isc_mem_t *mctx) {
 	/*
 	 * Set the initial port range for IP_LOCAL_PORT_RANGE.
 	 */
-	isc_net_getudpportrange(AF_INET, &port_low, &port_high);
+	isc_net_getportrange(AF_INET, &port_low, &port_high);
 	isc_netmgr_portrange(AF_INET, port_low, port_high);
 
-	isc_net_getudpportrange(AF_INET6, &port_low, &port_high);
+	isc_net_getportrange(AF_INET6, &port_low, &port_high);
 	isc_netmgr_portrange(AF_INET6, port_low, port_high);
 }
 

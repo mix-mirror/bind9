@@ -8048,7 +8048,7 @@ apply_configuration(cfg_obj_t *effectiveconfig, cfg_obj_t *bindkeys,
 	isc_portset_create(isc_g_mctx, &v4portset);
 	isc_portset_create(isc_g_mctx, &v6portset);
 
-	isc_net_getudpportrange(AF_INET, &port_low, &port_high);
+	isc_net_getportrange(AF_INET, &port_low, &port_high);
 	isc_netmgr_portrange(AF_INET, port_low, port_high);
 	isc_portset_addrange(v4portset, port_low, port_high);
 	if (!ns_server_getoption(server->sctx, NS_SERVER_DISABLE4)) {
@@ -8059,7 +8059,7 @@ apply_configuration(cfg_obj_t *effectiveconfig, cfg_obj_t *bindkeys,
 			      port_low, port_high);
 	}
 
-	isc_net_getudpportrange(AF_INET6, &port_low, &port_high);
+	isc_net_getportrange(AF_INET6, &port_low, &port_high);
 	isc_netmgr_portrange(AF_INET6, port_low, port_high);
 	isc_portset_addrange(v6portset, port_low, port_high);
 	if (!ns_server_getoption(server->sctx, NS_SERVER_DISABLE6)) {

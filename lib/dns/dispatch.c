@@ -914,7 +914,7 @@ static void
 create_default_portset(isc_mem_t *mctx, int family, isc_portset_t **portsetp) {
 	in_port_t low, high;
 
-	isc_net_getudpportrange(family, &low, &high);
+	isc_net_getportrange(family, &low, &high);
 
 	isc_portset_create(mctx, portsetp);
 	isc_portset_addrange(*portsetp, low, high);
