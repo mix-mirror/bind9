@@ -77,8 +77,6 @@
 #define ADB_STALE_MARGIN 1800
 #endif /* ifndef ADB_STALE_MARGIN */
 
-#define DNS_ADB_MINADBSIZE (1024U * 1024U) /*%< 1 Megabyte */
-
 typedef ISC_LIST(dns_adbname_t) dns_adbnamelist_t;
 typedef struct dns_adbnamehook dns_adbnamehook_t;
 typedef ISC_LIST(dns_adbnamehook_t) dns_adbnamehooklist_t;
