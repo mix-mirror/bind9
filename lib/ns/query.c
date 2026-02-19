@@ -3158,8 +3158,10 @@ rpz_rrset_find(ns_client_t *client, dns_name_t *name, dns_rdatatype_t type,
 				*rdatasetp, NULL);
 	if (result == DNS_R_DELEGATION && is_zone && USECACHE(client)) {
 		/*
-		 * Try the cache if we're authoritative for an
-		 * ancestor but not the domain itself.
+		 * If we're authoritative for an ancestor but not for
+		 * the domain itself, check the cache. If we don't find
+		 * anything, restore the result to DNS_R_DELEGATION,
+		 * then we can start recursion below.
 		 */
 		rpz_clean(NULL, dbp, &node, rdatasetp);
 		version = NULL;
@@ -3167,6 +3169,9 @@ rpz_rrset_find(ns_client_t *client, dns_name_t *name, dns_rdatatype_t type,
 		result = dns_db_findext(*dbp, name, version, type, 0,
 					client->inner.now, &node, found, &cm,
 					&ci, *rdatasetp, NULL);
+		if (result != ISC_R_SUCCESS) {
+			result = DNS_R_DELEGATION;
+		}
 	}
 	rpz_clean(NULL, dbp, &node, NULL);
 	if (result == DNS_R_DELEGATION) {
