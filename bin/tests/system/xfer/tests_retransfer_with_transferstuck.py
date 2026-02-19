@@ -18,7 +18,7 @@ def bootstrap():
     isctest.log.info("Restart ns1 with -T transferstuck")
     with open("ns1/named.args", "w", encoding="utf-8") as argsfile:
         argsfile.write(
-            "-D xfer-ns1 -m record -c named.conf -d 99 -g -T maxcachesize=2097152 -T transferinsecs -T transferstuck"
+            "-D xfer-ns1 -m record -c named.conf -d 99 -g -T maxcachesize=8388608 -T transferinsecs -T transferstuck"
         )
     return {
         "enable_some_zones": False,

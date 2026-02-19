@@ -272,7 +272,7 @@ sub construct_ns_command {
 			}
 		}
 
-		$command .= "-c named.conf -d 99 -g -T maxcachesize=2097152";
+		$command .= "-c named.conf -d 99 -g -T maxcachesize=8388608";
 	}
 
 	if (-e "$testdir/$server/named.notcp") {
