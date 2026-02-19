@@ -2001,18 +2001,12 @@ set_source_ports(dns_dispatchmgr_t *manager) {
 	isc_result_t result;
 
 	isc_portset_create(isc_g_mctx, &v4portset);
-	result = isc_net_getudpportrange(AF_INET, &udpport_low, &udpport_high);
-	if (result != ISC_R_SUCCESS) {
-		fatal("isc_net_getudpportrange (v4) failed");
-	}
+	isc_net_getudpportrange(AF_INET, &udpport_low, &udpport_high);
 
 	isc_portset_addrange(v4portset, udpport_low, udpport_high);
 
 	isc_portset_create(isc_g_mctx, &v6portset);
-	result = isc_net_getudpportrange(AF_INET6, &udpport_low, &udpport_high);
-	if (result != ISC_R_SUCCESS) {
-		fatal("isc_net_getudpportrange (v6) failed");
-	}
+	isc_net_getudpportrange(AF_INET6, &udpport_low, &udpport_high);
 
 	isc_portset_addrange(v6portset, udpport_low, udpport_high);
 
