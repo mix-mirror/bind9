@@ -6657,7 +6657,7 @@ cache_delegglue(dns_delegset_t *delegset, dns_deleg_t *deleg, dns_ttl_t *ttl,
 		dns_rdataset_current(rdataset, &rdata);
 		dns_rdata_tostruct(&rdata, &a, NULL);
 		addr.type.in = a.in_addr;
-		dns_deleg_addaddr(delegset, deleg, &addr);
+		dns_delegset_addaddr(delegset, deleg, &addr);
 	}
 }
 
@@ -6676,7 +6676,7 @@ cache_delegglue6(dns_delegset_t *delegset, dns_deleg_t *deleg, dns_ttl_t *ttl,
 		dns_rdataset_current(rdataset, &rdata);
 		dns_rdata_tostruct(&rdata, &aaaa, NULL);
 		addr.type.in6 = aaaa.in6_addr;
-		dns_deleg_addaddr(delegset, deleg, &addr);
+		dns_delegset_addaddr(delegset, deleg, &addr);
 	}
 }
 
@@ -6702,7 +6702,7 @@ cache_delegns(respctx_t *rctx) {
 
 	FCTXTRACE("cache_delegns");
 
-	dns_deleg_allocset(delegdb, &delegset);
+	dns_delegset_allocset(delegdb, &delegset);
 
 	DNS_RDATASET_FOREACH(rctx->ns_rdataset) {
 		dns_rdataset_t *gluerdataset = NULL;
@@ -6717,7 +6717,8 @@ cache_delegns(respctx_t *rctx) {
 		 * addresses and NS names. Let's assume this is a GLUE-based
 		 * deleg first.
 		 */
-		dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_NS_GLUES, &deleg);
+		dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_NS_GLUES,
+					&deleg);
 
 		dns_rdataset_current(rctx->ns_rdataset, &rdata);
 		INSIST(rdata.type == dns_rdatatype_ns);
