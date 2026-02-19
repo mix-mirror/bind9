@@ -3847,10 +3847,11 @@ system.
        default value of that option (90% of physical memory for each
        individual cache) may lead to memory exhaustion over time.
 
-   .. note::
+   .. warning::
 
-       :any:`max-cache-size` does not work reliably for a maximum
-       amount of memory of 256 MB or lower.
+       Setting :any:`max-cache-size` to a value lower than 256 MB is
+       permitted but not recommended; LRU-only cache eviction may cause
+       excessive churn under load.
 
    Upon startup and reconfiguration, caches with a limited size
    preallocate a small amount of memory (less than 1% of
@@ -3859,7 +3860,7 @@ system.
    internal cache structures.
 
    On systems where detection of the amount of physical memory is not
-   supported, the :iscman:`named` will fail to start.
+   supported, :iscman:`named` will fall back to the minimum value (2 MB).
 
    .. note::
 

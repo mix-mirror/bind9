@@ -56,7 +56,7 @@
  * DNS_CACHE_MINSIZE is how many bytes is the floor for
  * dns_cache_setcachesize().
  */
-#define DNS_CACHE_MINSIZE UINT64_C(2097152) /*%< Bytes.  2097152 = 2 MB */
+#define DNS_CACHE_MINSIZE UINT64_C(2 * 1024 * 1024) /*%< Bytes. 2 MB */
 
 /***
  ***	Functions

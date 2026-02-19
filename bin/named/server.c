@@ -3610,10 +3610,6 @@ default_max_cache_size(const dns_view_t *view, const cfg_obj_t *obj) {
 
 static size_t
 sanitized_max_cache_size(const cfg_obj_t *obj, uint64_t value) {
-	if (value >= DNS_CACHE_MINSIZE && value <= SIZE_MAX) {
-		return value;
-	}
-
 	if (value > SIZE_MAX) {
 		cfg_obj_log(obj, ISC_LOG_WARNING,
 			    "'max-cache-size %" PRIu64 "' "
@@ -3624,13 +3620,13 @@ sanitized_max_cache_size(const cfg_obj_t *obj, uint64_t value) {
 
 	if (value < DNS_CACHE_MINSIZE) {
 		cfg_obj_log(obj, ISC_LOG_WARNING,
-			    "'max-cache-size' can't be less than %" PRIu64 "; "
-			    "setting 'max-cache-size' to the minimum value",
-			    DNS_CACHE_MINSIZE);
+			    "'max-cache-size %" PRIu64 "' "
+			    "is too small; setting to %" PRIu64,
+			    value, DNS_CACHE_MINSIZE);
 		return DNS_CACHE_MINSIZE;
 	}
 
-	UNREACHABLE();
+	return value;
 }
 
 static size_t
