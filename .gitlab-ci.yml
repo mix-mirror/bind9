@@ -1991,6 +1991,39 @@ publish:
       - printing-press/
     when: on_failure
 
+# Job updating the Docker image for a specific release
+
+update-docker-image:
+  <<: *base_image
+  <<: *manual_release_job
+  variables:
+    RELEASE_DIRECTORY: "bind-${CI_COMMIT_TAG}-release"
+  script:
+    - VERSION="${CI_COMMIT_TAG#v}"
+    - CHECKSUM="$(sha256sum "${RELEASE_DIRECTORY}/bind-${VERSION}.tar.xz" | awk '{print $1}')"
+    - BRANCH="${CI_COMMIT_TAG%.*}"
+    - DOCKER_PROJECT="https://gitlab.isc.org/isc-projects/bind9-docker"
+    - CLONE_URL="https://oauth2:${BIND_TEAM_WRITE_TOKEN}@${DOCKER_PROJECT#https://}"
+    - git clone --depth 1 --branch "${BRANCH}" "${CLONE_URL}" docker-project
+    - cd docker-project
+    - sed -E -i Dockerfile -e "s/^(ARG BIND9_VERSION=).*/\1${VERSION}/"
+    - sed -E -i Dockerfile -e "s/^(ARG BIND9_CHECKSUM=).*/\1${CHECKSUM}/"
+    - git commit -m "Version bump to ${VERSION}" Dockerfile
+    - git push
+    - COMMIT_SHA="$(git log -n1 --format=%H)"
+    - MSG="Docker image for BIND ${BRANCH} updated to version ${CI_COMMIT_TAG}, commit [${COMMIT_SHA}](${DOCKER_PROJECT}/-/commit/${COMMIT_SHA})"
+    - |
+      curl -s -o /dev/null -X POST -H "Content-Type: application/json" -d '{"channel": "packaging", "text": "'"${MSG}"'"}' "${MATTERMOST_WEBHOOK_URL}"
+  needs:
+    - job: release
+      artifacts: true
+    - job: publish
+      artifacts: false
+  rules:
+    - *rule_tag_open_source
+  tags:
+    - smalljob
+
 # Job creating the release announcement MR in Printing Press
 
 prepare-release-announcement:
