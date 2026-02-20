@@ -200,18 +200,25 @@ def check_filter(addr, altaddr, ftype, break_dnssec, recursive):
     isctest.log.debug(
         f"check that {qtype} is omitted from additional section, qtype=MX, unsigned"
     )
-    check_additional(addr, addr, "unsigned", "mx", ftype, False, 2)
+    if recursive:
+        check_additional(addr, addr, "unsigned", "mx", ftype, False, 1)
+    else:
+        check_additional(addr, addr, "unsigned", "mx", ftype, False, 2)
 
     isctest.log.debug(
         f"check that {qtype} is included in additional section, qtype=MX, signed, unless break-dnssec is enabled"
     )
-    if break_dnssec:
+    if recursive and break_dnssec:
+        check_additional(addr, addr, "signed", "mx", ftype, False, 2)
+    elif recursive:
+        check_additional(addr, addr, "signed", "mx", ftype, True, 4)
+    elif break_dnssec:
         check_additional(addr, addr, "signed", "mx", ftype, False, 4)
     else:
         check_additional(addr, addr, "signed", "mx", ftype, True, 8)
 
 
-def check_filter_other_family(addr, ftype):
+def check_filter_other_family(addr, ftype, recursive):
     isctest.log.debug(
         "check that the filtered type is returned when both AAAA and A record exists, unsigned, over other family"
     )
@@ -220,4 +227,7 @@ def check_filter_other_family(addr, ftype):
     isctest.log.debug(
         "check that the filtered type is included in additional section, qtype=MX, unsigned, over other family"
     )
-    check_additional(addr, addr, "unsigned", "mx", ftype, True, 4)
+    if recursive:
+        check_additional(addr, addr, "unsigned", "mx", ftype, True, 2)
+    else:
+        check_additional(addr, addr, "unsigned", "mx", ftype, True, 4)
