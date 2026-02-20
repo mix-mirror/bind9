@@ -2059,7 +2059,8 @@ Boolean Options
    :any:`minimal-responses` takes one of four values:
 
    -  ``no``: the server is as complete as possible when generating
-      responses.
+      responses from authoritative zones. (Authority records are not
+      added when answering from the cache.)
    -  ``yes``: the server only adds records to the authority and additional
       sections when such records are required by the DNS protocol (for
       example, when returning delegations or negative responses). This

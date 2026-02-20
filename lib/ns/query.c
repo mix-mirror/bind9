@@ -10587,7 +10587,7 @@ query_addbestns(query_ctx_t *qctx) {
 	dns_name_t *fname = NULL, *zfname = NULL;
 	dns_rdataset_t *rdataset = NULL, *sigrdataset = NULL;
 	dns_rdataset_t *zrdataset = NULL, *zsigrdataset = NULL;
-	bool is_zone = false, use_zone = false;
+	bool is_zone = false;
 	isc_buffer_t *dbuf = NULL;
 	isc_result_t result;
 	dns_dbversion_t *version = NULL;
@@ -10678,33 +10678,7 @@ db_find:
 			is_zone = false;
 			goto db_find;
 		}
-	} else {
-		result = dns_db_findzonecut(db, client->query.qname,
-					    client->query.dboptions,
-					    client->inner.now, &node, fname,
-					    NULL, rdataset, sigrdataset);
-		if (result == ISC_R_SUCCESS) {
-			if (zfname != NULL &&
-			    !dns_name_issubdomain(fname, zfname))
-			{
-				/*
-				 * We found a zonecut in the cache, but our
-				 * zone delegation is better.
-				 */
-				use_zone = true;
-			}
-		} else if (result == ISC_R_NOTFOUND && zfname != NULL) {
-			/*
-			 * We didn't find anything in the cache, but we
-			 * have a zone delegation, so use it.
-			 */
-			use_zone = true;
-		} else {
-			goto cleanup;
-		}
-	}
-
-	if (use_zone) {
+	} else if (zfname != NULL) {
 		ns_client_releasename(client, &fname);
 		/*
 		 * We've already done ns_client_keepname() on
@@ -10727,6 +10701,8 @@ db_find:
 		RESTORE(fname, zfname);
 		RESTORE(rdataset, zrdataset);
 		RESTORE(sigrdataset, zsigrdataset);
+	} else {
+		goto cleanup;
 	}
 
 	/*
