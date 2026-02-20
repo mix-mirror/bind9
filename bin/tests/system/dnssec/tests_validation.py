@@ -88,21 +88,6 @@ def test_insecure_rrsig():
     assert res.authority[0].rdtype == rdatatype.SOA
 
 
-def test_insecure_glue():
-    # check that for a query against a validating resolver where the
-    # authoritative zone is unsigned (insecure delegation), glue is returned
-    # in the additional section
-    msg = isctest.query.create("a.insecure.example", "A")
-    res = isctest.query.tcp(msg, "10.53.0.4")
-    isctest.check.noerror(res)
-    isctest.check.rr_count_eq(res.answer, 1)
-    isctest.check.rr_count_eq(res.authority, 1)
-    isctest.check.rr_count_eq(res.additional, 1)
-    assert str(res.additional[0].name) == "ns3.insecure.example."
-    addrs = [str(a) for a in res.additional[0]]
-    assert "10.53.0.3" in addrs
-
-
 def test_adflag():
     # compare auth and recursive answers
     msg = isctest.query.create("a.example", "A", dnssec=False)
@@ -185,7 +170,7 @@ def test_positive_validation_nsec3():
     isctest.check.same_answer(res1, res2)
     isctest.check.noerror(res2)
     isctest.check.adflag(res2)
-    isctest.check.rr_count_eq(res2.authority, 4)
+    isctest.check.rr_count_eq(res2.authority, 2)
 
     # unknown NSEC3 hash algorithm
     msg = isctest.query.create("nsec3-unknown.example", "SOA", dnssec=False)
@@ -514,10 +499,10 @@ def test_excessive_nsec3_iterations(ns2, ns3):
     msg = isctest.query.create("wild.a.too-many-iterations", "A")
     res1 = isctest.query.tcp(msg, "10.53.0.2")
     res2 = isctest.query.tcp(msg, "10.53.0.4")
-    isctest.check.same_data(res1, res2)
+    isctest.check.section_equal(res1.answer, res2.answer)
     isctest.check.noadflag(res2)
     isctest.check.rr_count_eq(res2.answer, 2)
-    isctest.check.rr_count_eq(res2.authority, 4)
+    isctest.check.rr_count_eq(res2.authority, 2)
     a, _ = res2.answer
     assert str(a.name) == "wild.a.too-many-iterations."
     assert str(a[0]) == "10.0.0.3"
@@ -1269,12 +1254,13 @@ def test_pending_ds(ns4):
     msg = isctest.query.create("insecure.example", "DS", cd=True)
     res = isctest.query.tcp(msg, "10.53.0.4")
     isctest.check.noerror(res)
+    isctest.check.rr_count_eq(res.answer, 0)
     isctest.check.rr_count_eq(res.authority, 4)
     msg = isctest.query.create("a.insecure.example", "A")
     res = isctest.query.tcp(msg, "10.53.0.4")
     isctest.check.noerror(res)
     isctest.check.rr_count_eq(res.answer, 1)
-    isctest.check.rr_count_eq(res.authority, 1)
+    isctest.check.rr_count_eq(res.authority, 0)
     isctest.check.noadflag(res)
 
 

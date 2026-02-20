@@ -2054,21 +2054,19 @@ Boolean Options
    :any:`minimal-responses` takes one of four values:
 
    -  ``no``: the server is as complete as possible when generating
-      responses.
+      responses from authoritative zones. (Authority records are not
+      added when answering from the cache.)
    -  ``yes``: the server only adds records to the authority and additional
       sections when such records are required by the DNS protocol (for
       example, when returning delegations or negative responses). This
       provides the best server performance but may result in more client
       queries.
-   -  ``no-auth``: the server omits records from the authority section except
-      when they are required, but it may still add records to the
-      additional section.
-   -  ``no-auth-recursive``: the same as ``no-auth`` when recursion is requested
+   -  ``no-auth``: is a deprecated alias of ``yes``.
+   -  ``no-auth-recursive``: the same as ``yes`` when recursion is requested
       in the query (RD=1), or the same as ``no`` if recursion is not requested.
 
-   ``no-auth`` and ``no-auth-recursive`` are useful when answering stub
-   clients, which usually ignore the authority section.
-   ``no-auth-recursive`` is meant for use in mixed-mode servers that
+   ``no-auth-recursive`` is useful when answering stub clients, which usually
+   ignore the authority section. It is meant for use in mixed-mode servers that
    handle both authoritative and recursive queries.
 
    The default is ``no-auth-recursive``.
