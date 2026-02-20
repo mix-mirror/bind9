@@ -15,10 +15,13 @@ from functools import total_ordering
 from pathlib import Path
 from re import compile as Re
 
+import base64
 import glob
 import os
 import re
 import time
+
+from cryptography.hazmat.primitives.asymmetric import ec
 
 import dns.dnssec
 import dns.exception
@@ -35,7 +38,14 @@ import dns.zonefile
 from isctest.instance import NamedInstance
 from isctest.run import EnvCmd
 from isctest.template import TrustAnchor
-from isctest.vars.algorithms import ALL_ALGORITHMS_BY_NUM, Algorithm
+from isctest.vars.algorithms import (
+    ALL_ALGORITHMS_BY_NUM,
+    ECDSAP256SHA256,
+    ECDSAP384SHA384,
+    RSASHA256OID,
+    RSASHA512OID,
+    Algorithm,
+)
 
 import isctest.log
 import isctest.query
@@ -218,7 +228,7 @@ class KeyProperties:
     @staticmethod
     def default(with_state=True) -> "KeyProperties":
         metadata = {
-            "Algorithm": isctest.vars.algorithms.ECDSAP256SHA256.number,
+            "Algorithm": ECDSAP256SHA256.number,
             "Length": 256,
             "Lifetime": 0,
             "KSK": "yes",
@@ -500,11 +510,28 @@ class Key:
 
     def get_dnsalg(self) -> int:
         alg = int(self.get_metadata("Algorithm"))
-        if alg == isctest.vars.algorithms.RSASHA256OID.dst:
-            return isctest.vars.algorithms.RSASHA256OID.number
-        if alg == isctest.vars.algorithms.RSASHA512OID.dst:
-            return isctest.vars.algorithms.RSASHA512OID.number
+        if alg == RSASHA256OID.dst:
+            return RSASHA256OID.number
+        if alg == RSASHA512OID.dst:
+            return RSASHA512OID.number
         return alg
+
+    def get_private_key(self):
+        alg = self.algorithm
+        if alg == ECDSAP256SHA256:
+            curve = ec.SECP256R1()
+        elif alg == ECDSAP384SHA384:
+            curve = ec.SECP384R1()
+        else:
+            raise NotImplementedError("dnskey algorithm {alg} not implemented")
+
+        private_key_b64 = self.get_metadata("PrivateKey", file=self.privatefile)
+        secret = base64.b64decode(private_key_b64)
+
+        return ec.derive_private_key(
+            int.from_bytes(secret, "big"),
+            curve,
+        )
 
     def ttl(self) -> int:
         with open(self.keyfile, "r", encoding="utf-8") as file:
