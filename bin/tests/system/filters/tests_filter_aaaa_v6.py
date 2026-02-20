@@ -72,13 +72,13 @@ def test_filter_aaaa_on_v6(addr, altaddr, break_dnssec, recursive):
 
 @isctest.mark.with_ipv6
 @pytest.mark.parametrize(
-    "addr",
+    "addr, recursive",
     [
-        pytest.param("10.53.0.1", id="auth"),
-        pytest.param("10.53.0.4", id="auth-break-dnssec"),
-        pytest.param("10.53.0.2", id="recurs"),
-        pytest.param("10.53.0.3", id="recurs-break-dnssec"),
+        pytest.param("10.53.0.1", False, id="auth"),
+        pytest.param("10.53.0.4", False, id="auth-break-dnssec"),
+        pytest.param("10.53.0.2", True, id="recurs"),
+        pytest.param("10.53.0.3", True, id="recurs-break-dnssec"),
     ],
 )
-def test_filter_aaaa_on_v6_via_v4(addr):
-    check_filter_other_family(addr, "aaaa")
+def test_filter_aaaa_on_v6_via_v4(addr, recursive):
+    check_filter_other_family(addr, "aaaa", recursive)
