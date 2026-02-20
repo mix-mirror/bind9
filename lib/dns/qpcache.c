@@ -1975,131 +1975,6 @@ tree_exit:
 }
 
 static isc_result_t
-seek_ns_headers(qpc_search_t *search, qpcnode_t *node, dns_dbnode_t **nodep,
-		dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset,
-		dns_name_t *foundname, dns_name_t *dcname,
-		isc_rwlocktype_t *tlocktype) {
-	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
-	isc_rwlock_t *nlock = &search->qpdb->buckets[node->locknum].lock;
-	dns_slabheader_t *found = NULL, *foundsig = NULL;
-
-	NODE_RDLOCK(nlock, &nlocktype);
-
-	find_headers(node, search, dns_rdatatype_ns, &found, &foundsig);
-
-	if (found == NULL) {
-		isc_result_t result;
-
-		/*
-		 * No active NS records found. Call find_deepest_zonecut()
-		 * to look for them in nodes above this one.
-		 */
-		NODE_UNLOCK(nlock, &nlocktype);
-		result = find_deepest_zonecut(search, node, nodep, foundname,
-					      rdataset,
-					      sigrdataset DNS__DB_FLARG_PASS);
-		if (dcname != NULL) {
-			dns_name_copy(foundname, dcname);
-		}
-		return result;
-	}
-
-	if (nodep != NULL) {
-		qpcnode_acquire(search->qpdb, node, nlocktype,
-				*tlocktype DNS__DB_FLARG_PASS);
-		*nodep = (dns_dbnode_t *)node;
-	}
-
-	bindrdatasets(search->qpdb, node, found, foundsig, search->now,
-		      nlocktype, *tlocktype, rdataset,
-		      sigrdataset DNS__DB_FLARG_PASS);
-
-	NODE_UNLOCK(nlock, &nlocktype);
-
-	return ISC_R_SUCCESS;
-}
-
-static isc_result_t
-qpcache_findzonecut(dns_db_t *db, const dns_name_t *name, unsigned int options,
-		    isc_stdtime_t __now, dns_dbnode_t **nodep,
-		    dns_name_t *foundname, dns_name_t *dcname,
-		    dns_rdataset_t *rdataset,
-		    dns_rdataset_t *sigrdataset DNS__DB_FLARG) {
-	qpcnode_t *node = NULL;
-	isc_result_t result;
-	isc_rwlocktype_t tlocktype = isc_rwlocktype_none;
-	qpc_search_t search = (qpc_search_t){
-		.qpdb = (qpcache_t *)db,
-		.options = options,
-		.now = __now ? __now : isc_stdtime_now(),
-	};
-	unsigned int len = 0;
-
-	REQUIRE(VALID_QPDB((qpcache_t *)db));
-
-	TREE_RDLOCK(&search.qpdb->tree_lock, &tlocktype);
-
-	/*
-	 * Search down from the root of the tree.
-	 */
-	result = dns_qp_lookup(search.qpdb->tree, name, DNS_DBNAMESPACE_NORMAL,
-			       NULL, &search.chain, (void **)&node, NULL);
-
-	switch (result) {
-	case ISC_R_SUCCESS:
-		if ((options & DNS_DBFIND_NOEXACT) == 0) {
-			if (dcname != NULL) {
-				dns_name_copy(&node->name, dcname);
-			}
-			dns_name_copy(&node->name, foundname);
-			result = seek_ns_headers(&search, node, nodep, rdataset,
-						 sigrdataset, foundname, dcname,
-						 &tlocktype);
-			break;
-		}
-
-		len = dns_qpchain_length(&search.chain);
-		if (len < 2) {
-			result = ISC_R_NOTFOUND;
-			break;
-		}
-
-		FALLTHROUGH;
-	case DNS_R_PARTIALMATCH:
-		if (dcname != NULL) {
-			dns_name_copy(&node->name, dcname);
-		}
-
-		if (result == ISC_R_SUCCESS) {
-			/* Fell through from the previous case */
-			INSIST(len >= 2);
-
-			node = NULL;
-			dns_qpchain_node(&search.chain, len - 2, (void **)&node,
-					 NULL);
-			search.chain.len = len - 1;
-		}
-
-		result = find_deepest_zonecut(&search, node, nodep, foundname,
-					      rdataset,
-					      sigrdataset DNS__DB_FLARG_PASS);
-		break;
-	default:
-		break;
-	}
-
-	TREE_UNLOCK(&search.qpdb->tree_lock, &tlocktype);
-
-	INSIST(!search.need_cleanup);
-
-	if (result == DNS_R_DELEGATION) {
-		result = ISC_R_SUCCESS;
-	}
-
-	return result;
-}
-
-static isc_result_t
 qpcache_findrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 		     dns_rdatatype_t type, dns_rdatatype_t covers,
 		     isc_stdtime_t __now, dns_rdataset_t *rdataset,
@@ -3852,7 +3727,6 @@ static dns_dbmethods_t qpdb_cachemethods = {
 	.destroy = qpcache_destroy,
 	.findnode = qpcache_findnode,
 	.find = qpcache_find,
-	.findzonecut = qpcache_findzonecut,
 	.createiterator = qpcache_createiterator,
 	.findrdataset = qpcache_findrdataset,
 	.allrdatasets = qpcache_allrdatasets,

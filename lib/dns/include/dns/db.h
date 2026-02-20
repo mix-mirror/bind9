@@ -101,12 +101,6 @@ typedef struct dns_db_methods {
 			      dns_dbversion_t **targetp);
 	void (*closeversion)(dns_db_t *db, dns_dbversion_t **versionp,
 			     bool commit DNS__DB_FLARG);
-	isc_result_t (*findzonecut)(dns_db_t *db, const dns_name_t *name,
-				    unsigned int options, isc_stdtime_t now,
-				    dns_dbnode_t **nodep, dns_name_t *foundname,
-				    dns_name_t		       *dcname,
-				    dns_rdataset_t	       *rdataset,
-				    dns_rdataset_t *sigrdataset DNS__DB_FLARG);
 	isc_result_t (*createiterator)(dns_db_t *db, unsigned int options,
 				       dns_dbiterator_t **iteratorp);
 	isc_result_t (*findrdataset)(dns_db_t *db, dns_dbnode_t *node,
@@ -1006,61 +1000,6 @@ dns__db_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
  *
  *	\li	Other results are possible, and should all be treated as
  *		errors.
- */
-
-#define dns_db_findzonecut(db, name, options, now, nodep, foundname, dcname,  \
-			   rdataset, sigrdataset)                             \
-	dns__db_findzonecut(db, name, options, now, nodep, foundname, dcname, \
-			    rdataset, sigrdataset DNS__DB_FILELINE)
-isc_result_t
-dns__db_findzonecut(dns_db_t *db, const dns_name_t *name, unsigned int options,
-		    isc_stdtime_t now, dns_dbnode_t **nodep,
-		    dns_name_t *foundname, dns_name_t *dcname,
-		    dns_rdataset_t	       *rdataset,
-		    dns_rdataset_t *sigrdataset DNS__DB_FLARG);
-/*%<
- * Find the deepest known zonecut which encloses 'name' in 'db'.
- *
- * Notes:
- *
- * \li	If the #DNS_DBFIND_NOEXACT option is set, then the zonecut returned
- *	(if any) will be the deepest known ancestor of 'name'.
- *
- * \li	If 'now' is zero, then the current time will be used.
- *
- * Requires:
- *
- * \li	'db' is a valid database with cache semantics.
- *
- * \li	'nodep' is NULL, or nodep is a valid pointer and *nodep == NULL.
- *
- * \li	'foundname' is a valid name with a dedicated buffer.
- *
- * \li	'dcname' is a valid name with a dedicated buffer.
- *
- * \li	'rdataset' is NULL, or is a valid unassociated rdataset.
- *
- * Ensures, on a non-error completion:
- *
- * \li	If nodep != NULL, then it is bound to the found node.
- *
- * \li	If foundname != NULL, then it contains the full name of the
- *	found node.
- *
- * \li	If dcname != NULL, then it contains the deepest cached name
- *      that exists in the database.
- *
- * \li	If rdataset != NULL and type != dns_rdatatype_any, then
- *	rdataset is bound to the found rdataset.
- *
- * Non-error results are:
- *
- * \li	#ISC_R_SUCCESS
- *
- * \li	#ISC_R_NOTFOUND
- *
- * \li	Other results are possible, and should all be treated as
- *	errors.
  */
 
 #define dns_db_attachnode(source, targetp) \
