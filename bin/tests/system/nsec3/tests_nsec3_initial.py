@@ -9,7 +9,7 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
-# pylint: disable=redefined-outer-name,unused-import
+# pylint: disable=redefined-outer-name,unused-import,unspecified-encoding,multiple-statements,use-maxsplit-arg,broad-exception-caught,f-string-without-interpolation
 
 import os
 

@@ -12,21 +12,10 @@
 # information regarding copyright ownership.
 
 # shellcheck source=conf.sh
-. ../conf.sh
+. ../../conf.sh
 
-set -e
+echo_i "ns6/setup.sh"
 
-(
-  cd ns2
-  $SHELL setup.sh
-)
-
-(
-  cd ns3
-  $SHELL setup.sh
-)
-
-(
-  cd ns6
-  $SHELL setup.sh
-)
+$SIGNER -3 DEADBEEF -A -H 10 -o evil.test -t evil.test.db >/dev/null 2>&1
+$CHECKZONE -s full -f text -F text -o evil.test.db.signed2 evil.test evil.test.db.signed >/dev/null 2>&1
+mv evil.test.db.signed2 evil.test.db.signed
