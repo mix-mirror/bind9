@@ -34,6 +34,7 @@ pytestmark = pytest.mark.extra_artifacts(
         "past.test.*",
         "two-tone.test.*",
         "unlimited.test.*",
+        "invalid-skr.test.*",
         "ns1/K*",
         "ns1/_default.nzd",
         "ns1/_default.nzf",
@@ -77,6 +78,11 @@ pytestmark = pytest.mark.extra_artifacts(
         "ns1/unlimited.test.db.signed",
         "ns1/unlimited.test.db.signed.jnl",
         "ns1/unlimited.test.unlimited.skr.1",
+        "ns1/invalid-skr.test.db",
+        "ns1/invalid-skr.test.db.jbk",
+        "ns1/invalid-skr.test.db.signed",
+        "ns1/invalid-skr.test.db.signed.jnl",
+        "ns1/invalid-skr.test.skr.1",
     ]
 )
 
@@ -1298,3 +1304,21 @@ def test_ksr_kskroll(ns1):
     isctest.kasp.check_apex(ns1, zone, ksks, zsks, offline_ksk=True)
     # - check subdomain
     isctest.kasp.check_subdomain(ns1, zone, ksks, zsks, offline_ksk=True)
+
+
+def test_ksr_oversize(ns1):
+    zone = "invalid-skr.test"
+    n = 1
+
+    skr_fname = f"{zone}.skr.{n}"
+    token_len = 5000
+    with open(skr_fname, "w", encoding="utf-8") as skr:
+        huge_token = "A" * token_len
+        skr.write(f";; SignedKeyResponse 1.0 {huge_token}\n")
+
+    # - try importing invalid SKR file
+    shutil.copyfile(skr_fname, f"ns1/{skr_fname}")
+    ns1.rndc(f"skr -import {skr_fname} {zone}")
+
+    # - check if named is still running
+    ns1.rndc("status")
