@@ -93,9 +93,8 @@ def token_init_and_cleanup():
         ("rsasha512", "rsa", "2048"),
         ("ecdsap256sha256", "EC", "prime256v1"),
         ("ecdsap384sha384", "EC", "prime384v1"),
-        # Edwards curves are not yet supported by OpenSC
-        # ("ed25519","EC","edwards25519"),
-        # ("ed448","EC","edwards448")
+        ("ed25519", "EC", "Ed25519"),
+        ("ed448", "EC", "Ed448"),
     ],
 )
 def test_keyfromlabel(alg_name, alg_type, alg_bits):
