@@ -1,0 +1,4 @@
+ns1 is the root
+ns2 is auth only
+ns3 is resolver only
+ns4 is both auth and resolver
