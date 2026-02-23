@@ -1376,6 +1376,8 @@ selfsigned_dnskey(dns_validator_t *val) {
 					dst_key_free(&dstkey);
 					return ISC_R_QUOTA;
 				}
+				consume_validation(val);
+
 				result = dns_dnssec_verify(name, rdataset,
 							   dstkey, true, mctx,
 							   &sigrdata, NULL);
@@ -1388,7 +1390,6 @@ selfsigned_dnskey(dns_validator_t *val) {
 					 */
 					break;
 				case ISC_R_SUCCESS:
-					consume_validation(val);
 					/*
 					 * The key with the REVOKE flag has
 					 * self signed the RRset so it is no
@@ -1397,7 +1398,6 @@ selfsigned_dnskey(dns_validator_t *val) {
 					dns_view_untrust(val->view, name, &key);
 					break;
 				default:
-					consume_validation(val);
 					if (over_max_fails(val)) {
 						dst_key_free(&dstkey);
 						return ISC_R_QUOTA;
@@ -1446,6 +1446,7 @@ verify(dns_validator_t *val, dst_key_t *key, dns_rdata_t *rdata,
 	if (over_max_validations(val)) {
 		return ISC_R_QUOTA;
 	}
+	consume_validation(val);
 again:
 	result = dns_dnssec_verify(val->name, val->rdataset, key, ignore,
 				   val->view->mctx, rdata, wild);
@@ -1504,10 +1505,8 @@ again:
 				 NULL);
 		break;
 	case ISC_R_SUCCESS:
-		consume_validation(val);
 		break;
 	default:
-		consume_validation(val);
 		if (over_max_fails(val)) {
 			result = ISC_R_QUOTA;
 			break;
