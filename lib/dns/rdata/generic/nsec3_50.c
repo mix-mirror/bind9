@@ -287,7 +287,6 @@ fromstruct_nsec3(ARGS_FROMSTRUCT) {
 	REQUIRE(nsec3->common.rdtype == type);
 	REQUIRE(nsec3->common.rdclass == rdclass);
 	REQUIRE(nsec3->typebits != NULL || nsec3->len == 0);
-	REQUIRE(nsec3->hash == dns_hash_sha1);
 
 	UNUSED(type);
 	UNUSED(rdclass);
