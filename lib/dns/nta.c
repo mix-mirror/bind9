@@ -375,6 +375,7 @@ delete_expired(void *arg) {
 	isc_result_t result;
 	dns_qp_t *qp = NULL;
 	void *pval = NULL;
+	dns_view_t *view = NULL;
 
 	REQUIRE(VALID_NTATABLE(ntatable));
 
@@ -389,6 +390,17 @@ delete_expired(void *arg) {
 		isc_log_write(dns_lctx, DNS_LOGCATEGORY_DNSSEC,
 			      DNS_LOGMODULE_NTA, ISC_LOG_INFO,
 			      "deleting expired NTA at %s", nb);
+
+		/*
+		 * Delay the flushing to avoid lock-order-inversion, as
+		 * dns_view_flushnode()->dns_adb_flushnames() locks 'adbname',
+		 * and it can cause a problem e.g. in dns_ntatable_covered() in
+		 * another thread called by the resolver (also involving 'fctx'
+		 * lock), or in dns_ntatable_shutdown() (also involving 'view'
+		 * lock).
+		 */
+		dns_view_weakattach(ntatable->view, &view);
+
 		dns_qp_deletename(qp, &nta->name, NULL, NULL);
 		dns__nta_shutdown(nta);
 		dns__nta_unref(nta);
@@ -396,6 +408,10 @@ delete_expired(void *arg) {
 	dns_qp_compact(qp, DNS_QPGC_MAYBE);
 	dns_qpmulti_commit(ntatable->table, &qp);
 	RWUNLOCK(&ntatable->rwlock, isc_rwlocktype_write);
+	if (view != NULL) {
+		dns_view_flushnode(view, &nta->name, true);
+		dns_view_weakdetach(&view);
+	}
 	dns__nta_detach(&nta);
 	dns_ntatable_detach(&ntatable);
 }
