@@ -147,6 +147,13 @@ def test_nta_behavior(servers):
     isctest.check.noerror(res)
     isctest.check.noadflag(res)
 
+    # Expiry should also trigger a cache flush, so even if a.secure.example A
+    # was cached when its NTA was active, cached data should not be returned.
+    m = isctest.query.create("a.secure.example", "A")
+    res = isctest.query.tcp(m, "10.53.0.4")
+    isctest.check.noerror(res)
+    isctest.check.adflag(res)
+
     # bogus.example was set to expire in 20s, so at t=13
     # it should still be NTA'd, but badds.example used the default
     # lifetime of 12s, so it should revert to SERVFAIL now.
