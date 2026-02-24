@@ -843,7 +843,7 @@ generate-tsan-stress-test-configs:
   script:
     - *git_clone_bind9-qa
     - >
-      "$CI_PROJECT_DIR"/bind9-qa/ci/generate_tsan_stress_jobs.py > tsan-stress-test-configs.yml
+      "$CI_PROJECT_DIR"/bind9-qa/stress/generate_tsan_stress_jobs.py > tsan-stress-test-configs.yml
   artifacts:
     paths:
       - tsan-stress-test-configs.yml
