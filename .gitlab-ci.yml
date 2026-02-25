@@ -827,7 +827,7 @@ generate-stress-test-configs:
   <<: *quick_checks_job
   script:
     - *git_clone_bind9-qa
-    - bind9-qa/stress/generate-stress-test-configs.py > stress-test-configs.yml
+    - bind9-qa/stress/generate_stress_test_configs.py > stress-test-configs.yml
   artifacts:
     paths:
       - stress-test-configs.yml
