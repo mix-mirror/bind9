@@ -20,14 +20,21 @@ $TTL 300
 .			NS	a.root-servers.nil.
 a.root-servers.nil.	A	10.53.0.1
 
-example.		NS	ns2.example.
-ns2.example.		A	10.53.0.2
+example.		NS	ns2.1st.
+example.		NS	ns3.1st.
+example.		NS	ns4.1st.
+example.		NS	ns5.xxx.
 
-example.		NS	ns3.example.
-ns3.example.		A	10.53.0.3
+1st.			NS	ns2.2nd.
+1st.			NS	ns3.2nd.
+1st.			NS	ns5.xxx.
 
-example.		NS	ns4.example.
-ns4.example.		A	10.53.0.4
+2nd.			NS	ns2.3rd.
+2nd.			NS	ns5.xxx.
 
-example.		NS	ns5.example.
-ns5.example.		A	10.53.0.5
+3rd.			NS	ns2.1st.
+3rd.			NS	ns5.xxx.
+
+xxx.			NS	ns2.1st.
+xxx.			NS	ns2.xxx.
+ns2.xxx.		A	10.53.0.2

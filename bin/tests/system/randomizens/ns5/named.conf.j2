@@ -32,6 +32,21 @@ controls {
 	inet 10.53.0.5 port @CONTROLPORT@ allow { any; } keys { rndc_key; };
 };
 
+zone "1st" {
+	type primary;
+	file "1st.db";
+};
+
+zone "2nd" {
+	type primary;
+	file "2nd.db";
+};
+
+zone "3rd" {
+	type primary;
+	file "3rd.db";
+};
+
 zone "example" {
 	type primary;
 	file "example.db";
