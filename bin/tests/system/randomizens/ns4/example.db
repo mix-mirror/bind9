@@ -18,5 +18,8 @@ $TTL 300	; 5 minutes
 				3600       ; minimum (1 hour)
 				)
 
-example.		NS	ns4.example.
-ns4.example.		A	10.53.0.4
+example.		NS	ns2.1st.
+example.		NS	ns3.1st.
+example.		NS	ns4.1st.
+example.		NS	ns5.xxx.
+foo.example.		A	10.53.0.10

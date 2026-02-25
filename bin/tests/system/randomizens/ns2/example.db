@@ -17,5 +17,9 @@ $TTL 300	; 5 minutes
 				1814400    ; expire (3 weeks)
 				3600       ; minimum (1 hour)
 				)
-example.		NS	ns2.example.
-ns2.example.		A	10.53.0.2
+
+example.		NS	ns2.1st.
+example.		NS	ns3.1st.
+example.		NS	ns4.1st.
+example.		NS	ns5.xxx.
+foo.example.		A	10.53.0.10
