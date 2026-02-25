@@ -3673,8 +3673,10 @@ fctx_getaddresses_nameservers(fetchctx_t *fctx, isc_stdtime_t now,
 	dns_rdata_ns_t ns;
 	bool have_address = false;
 	unsigned int ns_processed = 0;
-	size_t startns =
-		isc_random_uniform(dns_rdataset_count(&fctx->nameservers));
+	size_t nscount = dns_rdataset_count(&fctx->nameservers);
+	size_t maxstartns = nscount > NS_PROCESSING_LIMIT ? NS_PROCESSING_LIMIT
+							  : nscount;
+	size_t startns = isc_random_uniform(maxstartns);
 
 	for (size_t pass = 0; pass < 2; pass++) {
 		size_t curns = 0;
