@@ -118,3 +118,13 @@
 #else
 #define ISC_ATTR_NONNULL(...)
 #endif
+
+#if __has_attribute(__access__)
+#if __STDC_VERSION__ >= 202311L
+#define ISC_ATTR_ACCESS(...) [[gnu::access(__VA_ARGS__)]]
+#else /* __STDC_VERSION__ >= 202311L */
+#define ISC_ATTR_ACCESS(...) __attribute__((__access__(__VA_ARGS__)))
+#endif /* __STDC_VERSION__ >= 202311L */
+#else  /* __has_attribute(__access__) */
+#define ISC_ATTR_ACCESS(...)
+#endif /* __has_attribute(__access__) */
