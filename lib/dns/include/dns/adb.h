@@ -349,7 +349,8 @@ dns_adb_createfind(dns_adb_t *adb, isc_loop_t *loop, isc_job_cb cb, void *cbarg,
 isc_result_t
 dns_adb_createaddrinfosfind(dns_adb_t *adb, isc_netaddrlist_t *addrs,
 			    in_port_t port, unsigned int options,
-			    isc_stdtime_t now, dns_adbfind_t **findp);
+			    isc_stdtime_t now, size_t maxaddrs,
+			    dns_adbfind_t **findp, size_t *findlen);
 /*%<
  * Variant of `dns_adb_createfind()` which actually internally looks up
  * addresses only using `dns_adb_findaddrinfo()`. This enables the caller to
