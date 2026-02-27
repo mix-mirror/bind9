@@ -9105,9 +9105,6 @@ rctx_authority_negative(respctx_t *rctx) {
 					rctx->ns_name = name;
 					rctx->ns_rdataset = rdataset;
 				}
-				name->attributes.cache = true;
-				rdataset->attributes.cache = true;
-				rdataset->trust = dns_trust_glue;
 				break;
 			case dns_rdatatype_soa:
 				/*
