@@ -990,14 +990,14 @@ def test_validation_recovery(ns2, ns4):
     msg = isctest.query.create("inconsistent", "NS", dnssec=False, cd=True)
     res = isctest.query.tcp(msg, "10.53.0.4")
     isctest.check.noadflag(res)
-    isctest.check.rr_count_eq(res.answer, 1)
-    isctest.check.rr_count_eq(res.additional, 1)
+    isctest.check.rr_count_eq(res.answer, 2)
+    isctest.check.rr_count_eq(res.additional, 0)
 
     msg = isctest.query.create("inconsistent", "NS", cd=True)
     res = isctest.query.tcp(msg, "10.53.0.4")
     isctest.check.noadflag(res)
-    isctest.check.rr_count_eq(res.answer, 1)
-    isctest.check.rr_count_eq(res.additional, 1)
+    isctest.check.rr_count_eq(res.answer, 3)
+    isctest.check.rr_count_eq(res.additional, 0)
 
     msg = isctest.query.create("inconsistent", "NS")
     res = isctest.query.tcp(msg, "10.53.0.4")
@@ -1058,7 +1058,7 @@ def test_validating_forwarder(ns4, ns9):
     msg = isctest.query.create("inconsistent", "NS", dnssec=False, cd=True)
     res = isctest.query.tcp(msg, "10.53.0.9")
     isctest.check.noerror(res)
-    isctest.check.rr_count_eq(res.answer, 1)
+    isctest.check.rr_count_eq(res.answer, 2)
     isctest.check.rr_count_eq(res.additional, 0)
     isctest.check.noadflag(res)
 
@@ -1066,7 +1066,7 @@ def test_validating_forwarder(ns4, ns9):
     res = isctest.query.tcp(msg, "10.53.0.9")
     isctest.check.rr_count_eq(res.additional, 0)
     isctest.check.noadflag(res)
-    isctest.check.rr_count_eq(res.answer, 1)
+    isctest.check.rr_count_eq(res.answer, 3)
     isctest.check.rr_count_eq(res.authority, 0)
     isctest.check.rr_count_eq(res.additional, 0)
 
