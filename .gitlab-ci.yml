@@ -608,6 +608,7 @@ stages:
 .docs: &docs_job
   stage: docs
   script:
+    - pip install -r doc/arm/requirements.txt
     - *configure
     - test -z "${DOC_CHECK_MISC_CHANGE}" || ninja -C build doc-misc
     - test -z "${DOC_CHECK_MISC_CHANGE}" || cp build/doc/misc/options build/doc/misc/rndc.grammar build/doc/misc/*.zoneopt doc/misc/
