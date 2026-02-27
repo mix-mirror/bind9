@@ -1737,7 +1737,8 @@ out:
 isc_result_t
 dns_adb_createaddrinfosfind(dns_adb_t *adb, isc_netaddrlist_t *addrs,
 			    in_port_t port, unsigned int options,
-			    isc_stdtime_t now, dns_adbfind_t **findp) {
+			    isc_stdtime_t now, size_t maxaddrs,
+			    dns_adbfind_t **findp, size_t *findlen) {
 	isc_result_t result = ISC_R_SUCCESS;
 	dns_adbfind_t *find = NULL;
 	isc_sockaddr_t sockaddr = {};
@@ -1792,10 +1793,11 @@ dns_adb_createaddrinfosfind(dns_adb_t *adb, isc_netaddrlist_t *addrs,
 		}
 
 		ISC_LIST_APPEND(find->list, addrinfo, publink);
+		(*findlen)++;
 
-		/*
-		 * TODO: break after 20 addresses
-		 */
+		if (maxaddrs - *findlen == 0) {
+			break;
+		}
 	}
 
 	*findp = find;
