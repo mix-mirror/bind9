@@ -2689,7 +2689,7 @@ typedef struct {
  * readability. Higher prio means the value is sorted earlier.
  */
 static int
-clause_print_prio(const char* clause) {
+clause_print_prio(const char *clause) {
 	switch (clause[0]) {
 	case 't':
 		return strcmp(clause, "type") ? 0 : 1;
@@ -2708,7 +2708,8 @@ compare_mapentries(const void *a, const void *b) {
 	int prio_b = clause_print_prio(entry_b->key);
 	int prio_diff = prio_b - prio_a;
 
-	int cmp_res = prio_diff ? prio_diff : strcmp(entry_a->key, entry_b->key);
+	int cmp_res = prio_diff ? prio_diff
+				: strcmp(entry_a->key, entry_b->key);
 	return cmp_res;
 }
 
