@@ -1157,7 +1157,7 @@ unref:
 }
 
 static void
-bindrdataset(qpzonedb_t *qpdb, qpznode_t *node, dns_vecheader_t *header,
+bindrdataset(qpzonedb_t *qpdb, dns_vecheader_t *header,
 	     dns_rdataset_t *rdataset DNS__DB_FLARG) {
 	if (rdataset == NULL) {
 		return;
@@ -1176,8 +1176,6 @@ bindrdataset(qpzonedb_t *qpdb, qpznode_t *node, dns_vecheader_t *header,
 		rdataset->attributes.optout = true;
 	}
 
-	rdataset->vec.db = (dns_db_t *)qpdb;
-	rdataset->vec.node = (dns_dbnode_t *)node;
 	rdataset->vec.header = header;
 	dns_vecheader_ref(header);
 	rdataset->vec.iter.iter_pos = NULL;
@@ -1724,9 +1722,9 @@ qpzone_findrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 		}
 	}
 	if (found != NULL) {
-		bindrdataset(qpdb, node, found, rdataset DNS__DB_FLARG_PASS);
+		bindrdataset(qpdb, found, rdataset DNS__DB_FLARG_PASS);
 		if (foundsig != NULL) {
-			bindrdataset(qpdb, node, foundsig,
+			bindrdataset(qpdb, foundsig,
 				     sigrdataset DNS__DB_FLARG_PASS);
 		}
 	}
@@ -2145,7 +2143,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 		return DNS_R_CNAMEANDOTHER;
 	}
 
-	bindrdataset(qpdb, node, newheader, addedrdataset DNS__DB_FLARG_PASS);
+	bindrdataset(qpdb, newheader, addedrdataset DNS__DB_FLARG_PASS);
 
 	return ISC_R_SUCCESS;
 }
@@ -2778,11 +2776,10 @@ qpzone_setup_delegation(qpz_search_t *search, dns_dbnode_t **nodep,
 		isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 		isc_rwlock_t *nlock = qpzone_get_lock(node);
 		NODE_RDLOCK(nlock, &nlocktype);
-		bindrdataset(search->qpdb, node, search->zonecut_header,
+		bindrdataset(search->qpdb, search->zonecut_header,
 			     rdataset DNS__DB_FLARG_PASS);
 		if (sigrdataset != NULL && search->zonecut_sigheader != NULL) {
-			bindrdataset(search->qpdb, node,
-				     search->zonecut_sigheader,
+			bindrdataset(search->qpdb, search->zonecut_sigheader,
 				     sigrdataset DNS__DB_FLARG_PASS);
 		}
 		NODE_UNLOCK(nlock, &nlocktype);
@@ -3252,11 +3249,11 @@ again:
 						node DNS__DB_FLARG_PASS);
 					*nodep = (dns_dbnode_t *)node;
 				}
-				bindrdataset(search->qpdb, node, found,
+				bindrdataset(search->qpdb, found,
 					     rdataset DNS__DB_FLARG_PASS);
 				if (foundsig != NULL) {
 					bindrdataset(
-						search->qpdb, node, foundsig,
+						search->qpdb, foundsig,
 						sigrdataset DNS__DB_FLARG_PASS);
 				}
 			} else if (found == NULL && foundsig == NULL) {
@@ -3869,10 +3866,10 @@ found:
 			*nodep = (dns_dbnode_t *)node;
 		}
 		if (search.version->secure && !search.version->havensec3) {
-			bindrdataset(search.qpdb, node, nsecheader,
+			bindrdataset(search.qpdb, nsecheader,
 				     rdataset DNS__DB_FLARG_PASS);
 			if (nsecsig != NULL) {
-				bindrdataset(search.qpdb, node, nsecsig,
+				bindrdataset(search.qpdb, nsecsig,
 					     sigrdataset DNS__DB_FLARG_PASS);
 			}
 		}
@@ -3936,10 +3933,9 @@ found:
 	}
 
 	if (type != dns_rdatatype_any) {
-		bindrdataset(search.qpdb, node, found,
-			     rdataset DNS__DB_FLARG_PASS);
+		bindrdataset(search.qpdb, found, rdataset DNS__DB_FLARG_PASS);
 		if (foundsig != NULL) {
-			bindrdataset(search.qpdb, node, foundsig,
+			bindrdataset(search.qpdb, foundsig,
 				     sigrdataset DNS__DB_FLARG_PASS);
 		}
 	}
@@ -4182,7 +4178,7 @@ rdatasetiter_current(dns_rdatasetiter_t *iterator,
 
 	NODE_RDLOCK(nlock, &nlocktype);
 
-	bindrdataset(qpdb, qpnode, header, rdataset DNS__DB_FLARG_PASS);
+	bindrdataset(qpdb, header, rdataset DNS__DB_FLARG_PASS);
 
 	NODE_UNLOCK(nlock, &nlocktype);
 }
@@ -5146,15 +5142,13 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 	}
 
 	if (result == ISC_R_SUCCESS && newrdataset != NULL) {
-		bindrdataset(qpdb, node, newheader,
-			     newrdataset DNS__DB_FLARG_PASS);
+		bindrdataset(qpdb, newheader, newrdataset DNS__DB_FLARG_PASS);
 	}
 
 	if (result == DNS_R_NXRRSET && newrdataset != NULL &&
 	    (options & DNS_DBSUB_WANTOLD) != 0)
 	{
-		bindrdataset(qpdb, node, header,
-			     newrdataset DNS__DB_FLARG_PASS);
+		bindrdataset(qpdb, header, newrdataset DNS__DB_FLARG_PASS);
 	}
 
 unlock:
@@ -5238,7 +5232,6 @@ glue_nsdname_cb(void *arg, const dns_name_t *name, dns_rdatatype_t qtype,
 	dns_fixedname_t fixedname_a;
 	dns_name_t *name_a = NULL;
 	dns_rdataset_t rdataset_a, sigrdataset_a;
-	const qpznode_t *node = NULL;
 	qpznode_t *node_a = NULL;
 	dns_fixedname_t fixedname_aaaa;
 	dns_name_t *name_aaaa = NULL;
@@ -5252,8 +5245,6 @@ glue_nsdname_cb(void *arg, const dns_name_t *name, dns_rdatatype_t qtype,
 	INSIST(qtype == dns_rdatatype_a);
 
 	ctx = (dns_glue_additionaldata_ctx_t *)arg;
-
-	node = (qpznode_t *)ctx->node;
 
 	name_a = dns_fixedname_initname(&fixedname_a);
 	dns_rdataset_init(&rdataset_a);
@@ -5314,7 +5305,7 @@ glue_nsdname_cb(void *arg, const dns_name_t *name, dns_rdatatype_t qtype,
 	 * attributes for the first rdataset associated with the first name
 	 * added to the ADDITIONAL section.
 	 */
-	if (glue != NULL && dns_name_issubdomain(name, &node->name)) {
+	if (glue != NULL && dns_name_issubdomain(name, ctx->owner_name)) {
 		if (dns_rdataset_isassociated(&glue->rdataset_a)) {
 			glue->rdataset_a.attributes.required = true;
 		}
@@ -5427,13 +5418,13 @@ addglue_to_message(dns_glue_t *ge, dns_message_t *msg) {
 }
 
 static dns_gluelist_t *
-create_gluelist(qpzonedb_t *qpdb, qpz_version_t *version, qpznode_t *node,
-		dns_rdataset_t *rdataset) {
+create_gluelist(qpzonedb_t *qpdb, qpz_version_t *version,
+		const dns_name_t *owner_name, dns_rdataset_t *rdataset) {
 	dns_vecheader_t *header = dns_vecheader_getheader(rdataset);
 	dns_glue_additionaldata_ctx_t ctx = {
 		.db = (dns_db_t *)qpdb,
 		.version = (dns_dbversion_t *)version,
-		.node = (dns_dbnode_t *)node,
+		.owner_name = owner_name,
 	};
 	dns_gluelist_t *gluelist = new_gluelist(ctx.db, header, ctx.version);
 
@@ -5453,17 +5444,15 @@ create_gluelist(qpzonedb_t *qpdb, qpz_version_t *version, qpznode_t *node,
 }
 
 static void
-addglue(dns_db_t *db, dns_dbversion_t *dbversion, dns_rdataset_t *rdataset,
-	dns_message_t *msg) {
+addglue(dns_db_t *db, dns_dbversion_t *dbversion, const dns_name_t *owner_name,
+	dns_rdataset_t *rdataset, dns_message_t *msg) {
 	qpzonedb_t *qpdb = (qpzonedb_t *)db;
 	qpz_version_t *version = (qpz_version_t *)dbversion;
-	qpznode_t *node = (qpznode_t *)rdataset->vec.node;
 	dns_vecheader_t *header = dns_vecheader_getheader(rdataset);
 	dns_glue_t *glue = NULL;
 	isc_statscounter_t counter = dns_gluecachestatscounter_hits_absent;
 
 	REQUIRE(rdataset->type == dns_rdatatype_ns);
-	REQUIRE(qpdb == (qpzonedb_t *)rdataset->vec.db);
 	REQUIRE(qpdb == version->qpdb);
 	REQUIRE(!IS_STUB(qpdb));
 
@@ -5475,8 +5464,8 @@ addglue(dns_db_t *db, dns_dbversion_t *dbversion, dns_rdataset_t *rdataset,
 
 		dns_gluelist_t *xchg_gluelist = gluelist;
 		dns_gluelist_t *old_gluelist = (void *)-1;
-		dns_gluelist_t *new_gluelist = create_gluelist(qpdb, version,
-							       node, rdataset);
+		dns_gluelist_t *new_gluelist =
+			create_gluelist(qpdb, version, owner_name, rdataset);
 
 		while (old_gluelist != xchg_gluelist &&
 		       (xchg_gluelist == NULL ||

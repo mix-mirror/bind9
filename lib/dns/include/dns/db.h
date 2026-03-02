@@ -167,7 +167,8 @@ typedef struct dns_db_methods {
 	isc_result_t (*getservestalerefresh)(dns_db_t *db, uint32_t *interval);
 	isc_result_t (*setgluecachestats)(dns_db_t *db, isc_stats_t *stats);
 	void (*addglue)(dns_db_t *db, dns_dbversion_t *version,
-			dns_rdataset_t *rdataset, dns_message_t *msg);
+			const dns_name_t *owner_name, dns_rdataset_t *rdataset,
+			dns_message_t *msg);
 	void (*setmaxrrperset)(dns_db_t *db, uint32_t value);
 	void (*setmaxtypepername)(dns_db_t *db, uint32_t value);
 	isc_result_t (*getzoneversion)(dns_db_t *db, isc_buffer_t *b);
@@ -1743,7 +1744,8 @@ dns_db_setgluecachestats(dns_db_t *db, isc_stats_t *stats);
  */
 
 isc_result_t
-dns_db_addglue(dns_db_t *db, dns_dbversion_t *version, dns_rdataset_t *rdataset,
+dns_db_addglue(dns_db_t *db, dns_dbversion_t *version,
+	       const dns_name_t *owner_name, dns_rdataset_t *rdataset,
 	       dns_message_t *msg);
 /*%<
  * Add glue records for rdataset to the additional section of message in
@@ -1752,6 +1754,7 @@ dns_db_addglue(dns_db_t *db, dns_dbversion_t *version, dns_rdataset_t *rdataset,
  * Requires:
  * \li	'db' is a database with 'zone' semantics.
  * \li	'version' is the DB version.
+ * \li	'owner_name' name of the rdataset.
  * \li	'rdataset' is a valid NS rdataset.
  * \li	'msg' is the DNS message to which the glue should be added.
  *

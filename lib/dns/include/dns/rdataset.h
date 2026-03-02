@@ -208,8 +208,6 @@ struct dns_rdataset {
 		 * methods; see comments in rdatavec.c for details.)
 		 */
 		struct {
-			struct dns_db	*db;
-			dns_dbnode_t	*node;
 			dns_vecheader_t *header;
 			rdatavec_iter_t	 iter;
 		} vec;

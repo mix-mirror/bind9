@@ -2233,8 +2233,8 @@ query_additional(query_ctx_t *qctx, dns_name_t *name,
 			goto regular;
 		}
 
-		result = dns_db_addglue(qctx->db, dbversion->version, rdataset,
-					client->message);
+		result = dns_db_addglue(qctx->db, dbversion->version, name,
+					rdataset, client->message);
 		if (result == ISC_R_SUCCESS) {
 			return;
 		}

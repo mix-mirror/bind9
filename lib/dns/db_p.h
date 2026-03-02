@@ -109,7 +109,7 @@ struct dns_gluelist {
 typedef struct dns_glue_additionaldata_ctx {
 	dns_db_t *db;
 	dns_dbversion_t *version;
-	dns_dbnode_t *node;
+	const dns_name_t *owner_name;
 
 	dns_glue_t *glue;
 } dns_glue_additionaldata_ctx_t;

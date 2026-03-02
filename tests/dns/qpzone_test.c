@@ -186,14 +186,10 @@ ownercase_test_one(const char *str1, const char *str2) {
 		.common.methods = &qpdb_zonemethods,
 		.common.mctx = isc_g_mctx,
 	};
-	qpznode_t node = { .methods = &qpznode_methods, .locknum = 0 };
 	dns_vecheader_t header = { 0 };
 	dns_rdataset_t rdataset = {
 		.magic = DNS_RDATASET_MAGIC,
-		.vec = { .db = (dns_db_t *)qpdb,
-			 .node = (dns_dbnode_t *)&node,
-			 .header = &header,
-		},
+		.vec = { .header = &header },
 		.methods = &dns_rdatavec_rdatasetmethods,
 	};
 	isc_buffer_t b;
@@ -357,14 +353,10 @@ ISC_RUN_TEST_IMPL(setownercase) {
 		.common.methods = &qpdb_zonemethods,
 		.common.mctx = isc_g_mctx,
 	};
-	qpznode_t node = { .methods = &qpznode_methods, .locknum = 0 };
 	dns_vecheader_t header = { 0 };
 	dns_rdataset_t rdataset = {
 		.magic = DNS_RDATASET_MAGIC,
-		.vec = { .db = (dns_db_t *)qpdb,
-			 .node = (dns_dbnode_t *)&node,
-			 .header = &header,
-		},
+		.vec = { .header = &header },
 		.methods = &dns_rdatavec_rdatasetmethods,
 	};
 	const char *str1 =
