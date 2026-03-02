@@ -90,6 +90,7 @@ typedef struct dns_dbmethods {
 	isc_result_t (*abortupdate)(dns_db_t		 *db,
 				    dns_rdatacallbacks_t *callbacks);
 	void (*currentversion)(dns_db_t *db, dns_dbversion_t **versionp);
+	void (*break_abi)(void);
 	isc_result_t (*newversion)(dns_db_t *db, dns_dbversion_t **versionp);
 	void (*attachversion)(dns_db_t *db, dns_dbversion_t *source,
 			      dns_dbversion_t **targetp);
