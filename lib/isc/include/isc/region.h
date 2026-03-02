@@ -15,6 +15,7 @@
 
 /*! \file isc/region.h */
 
+#include <isc/attributes.h>
 #include <isc/types.h>
 
 struct isc_region {
@@ -74,6 +75,8 @@ struct isc_consttextregion {
 	} while (0)
 /*@}*/
 
+ISC_ATTR_ACCESS(read_only, 1)
+ISC_ATTR_ACCESS(read_only, 2)
 int
 isc_region_compare(isc_region_t *r1, isc_region_t *r2);
 /*%<
