@@ -2722,13 +2722,13 @@ print_mapentry_sorted(cfg_printer_t *pctx, const char *key, cfg_obj_t *obj) {
 			 * The print function is NULL for values that should
 			 * only be present in the default config.
 			 */
-			if (elt->obj->type->print) {
+			if (elt->obj->type->print != NULL) {
 				print_symval(pctx, key, elt->obj);
 			}
 		}
 	} else {
 		/* Single-valued. Same observation about NULL print functions */
-		if (obj->type->print) {
+		if (obj->type->print != NULL) {
 			print_symval(pctx, key, obj);
 		}
 	}
