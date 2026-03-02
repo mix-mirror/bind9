@@ -2691,12 +2691,25 @@ typedef struct {
 static int
 clause_print_prio(const char *clause) {
 	switch (clause[0]) {
+	case 'f':
+		if (strcmp(clause, "file") == 0) {
+			return 2;
+		}
+		break;
 	case 't':
-		return strcmp(clause, "type") ? 0 : 1;
+		if (strcmp(clause, "type") == 0) {
+			return 3;
+		}
+		break;
+	case 'z':
+		if (strcmp(clause, "zone") == 0) {
+			return 0;
+		}
 		break;
 	default:
-		return 0;
+		break;
 	}
+	return 1;
 }
 
 static int
