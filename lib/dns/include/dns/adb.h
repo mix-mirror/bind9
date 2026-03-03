@@ -346,7 +346,7 @@ dns_adb_createfind(dns_adb_t *adb, isc_loop_t *loop, isc_job_cb cb, void *cbarg,
  *	returns.
  */
 
-isc_result_t
+void
 dns_adb_createaddrinfosfind(dns_adb_t *adb, isc_netaddrlist_t *addrs,
 			    in_port_t port, unsigned int options,
 			    isc_stdtime_t now, size_t maxaddrs,
