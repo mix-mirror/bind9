@@ -752,6 +752,11 @@ dns_rdatatype_isaddr(dns_rdatatype_t type) {
 	return type == dns_rdatatype_a || type == dns_rdatatype_aaaa;
 }
 
+static inline bool
+dns_rdatatype_issvcb(dns_rdatatype_t type) {
+	return type == dns_rdatatype_svcb || type == dns_rdatatype_https;
+}
+
 /*%
  * Return true iff the rdata type is an alias: either CNAME or DNAME.
  */

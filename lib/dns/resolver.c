@@ -7097,11 +7097,60 @@ check_related(void *arg, const dns_name_t *addname, dns_rdatatype_t type,
 	return check_section(arg, addname, type, found, DNS_SECTION_ADDITIONAL);
 }
 
+/*
+ * Look for IPv4 (key=4) and IPv6 (key=6) hints.
+ */
+static bool
+find_ips(dns_rdata_in_svcb_t *svcb, bool *ipv4, isc_region_t *region) {
+	isc_result_t result;
+
+	do {
+		switch (svcb->common.rdtype) {
+		case dns_rdatatype_https:
+			dns_rdata_in_https_current(svcb, region);
+			break;
+		case dns_rdatatype_svcb:
+			dns_rdata_in_svcb_current(svcb, region);
+			break;
+		default:
+			UNREACHABLE();
+		}
+
+		INSIST(region->length >= 4);
+		uint16_t key = region->base[0] << 8 | region->base[1];
+		if (region->length > 4) {
+			if (key == 4 || key == 6) {
+				*ipv4 = key == 4;
+				return true;
+			}
+		}
+
+		/* The keys are ordered so are we done. */
+		if (key > 6) {
+			return false;
+		}
+
+		/*
+		 * Look for the next parameter.
+		 */
+		switch (svcb->common.rdtype) {
+		case dns_rdatatype_https:
+			result = dns_rdata_in_https_next(svcb);
+			break;
+		case dns_rdatatype_svcb:
+			result = dns_rdata_in_svcb_next(svcb);
+			break;
+		default:
+			UNREACHABLE();
+		}
+	} while (result == ISC_R_SUCCESS);
+	return false;
+}
+
 static bool
 is_answeraddress_allowed(dns_view_t *view, dns_name_t *name,
 			 dns_rdataset_t *rdataset) {
 	isc_result_t result;
-	dns_rdata_t rdata = DNS_RDATA_INIT;
 	struct in_addr ina;
 	struct in6_addr in6a;
 	isc_netaddr_t netaddr;
@@ -7137,32 +7186,117 @@ is_answeraddress_allowed(dns_view_t *view, dns_name_t *name,
 	 * filtered, so should the entire answer.
 	 */
 	DNS_RDATASET_FOREACH(rdataset) {
-		dns_rdata_reset(&rdata);
+		unsigned int length;
+		unsigned char *data = NULL;
+		bool ipv4 = true;
+		dns_rdata_in_svcb_t svcb;
+		dns_rdata_t rdata = DNS_RDATA_INIT;
+		isc_region_t region;
+
 		dns_rdataset_current(rdataset, &rdata);
-		if (rdataset->type == dns_rdatatype_a) {
-			INSIST(rdata.length == sizeof(ina.s_addr));
-			memmove(&ina.s_addr, rdata.data, sizeof(ina.s_addr));
-			isc_netaddr_fromin(&netaddr, &ina);
-		} else {
-			INSIST(rdata.length == sizeof(in6a.s6_addr));
-			memmove(in6a.s6_addr, rdata.data, sizeof(in6a.s6_addr));
-			isc_netaddr_fromin6(&netaddr, &in6a);
+
+		switch (rdataset->type) {
+		case dns_rdatatype_a:
+		case dns_rdatatype_aaaa:
+			break;
+		case dns_rdatatype_https:
+			result = dns_rdata_tostruct(&rdata, &svcb, NULL);
+			RUNTIME_CHECK(result == ISC_R_SUCCESS);
+			result = dns_rdata_in_https_first(&svcb);
+			if (result != ISC_R_SUCCESS) {
+				continue;
+			}
+			break;
+		case dns_rdatatype_svcb:
+			result = dns_rdata_tostruct(&rdata, &svcb, NULL);
+			RUNTIME_CHECK(result == ISC_R_SUCCESS);
+			result = dns_rdata_in_svcb_first(&svcb);
+			if (result != ISC_R_SUCCESS) {
+				continue;
+			}
+			break;
+		default:
+			UNREACHABLE();
+		}
+	again:
+		switch (rdataset->type) {
+		case dns_rdatatype_a:
+		case dns_rdatatype_aaaa:
+			ipv4 = rdataset->type == dns_rdatatype_a;
+			data = rdata.data;
+			length = rdata.length;
+			break;
+		case dns_rdatatype_https:
+		case dns_rdatatype_svcb:
+			if (!find_ips(&svcb, &ipv4, &region)) {
+				continue;
+			}
+			/* Skip key and length. */
+			data = region.base + 4;
+			length = region.length - 4;
+			break;
+		default:
+			UNREACHABLE();
 		}
 
-		result = dns_acl_match(&netaddr, NULL, view->denyansweracl,
-				       view->aclenv, &match, NULL);
-		if (result == ISC_R_SUCCESS && match > 0) {
-			isc_netaddr_format(&netaddr, addrbuf, sizeof(addrbuf));
-			dns_name_format(name, namebuf, sizeof(namebuf));
-			dns_rdatatype_format(rdataset->type, typebuf,
-					     sizeof(typebuf));
-			dns_rdataclass_format(rdataset->rdclass, classbuf,
-					      sizeof(classbuf));
-			isc_log_write(DNS_LOGCATEGORY_RESOLVER,
-				      DNS_LOGMODULE_RESOLVER, ISC_LOG_NOTICE,
-				      "answer address %s denied for %s/%s/%s",
-				      addrbuf, namebuf, typebuf, classbuf);
-			return false;
+		/*
+		 * Test IPv4 / IPv6 addresses.
+		 */
+		do {
+			if (ipv4) {
+				INSIST(length >= sizeof(ina.s_addr));
+				memmove(&ina.s_addr, data, sizeof(ina.s_addr));
+				isc_netaddr_fromin(&netaddr, &ina);
+				length -= 4;
+			} else {
+				INSIST(length >= sizeof(in6a.s6_addr));
+				memmove(in6a.s6_addr, data,
+					sizeof(in6a.s6_addr));
+				isc_netaddr_fromin6(&netaddr, &in6a);
+				length -= 16;
+			}
+			result = dns_acl_match(&netaddr, NULL,
+					       view->denyansweracl,
+					       view->aclenv, &match, NULL);
+			if (result == ISC_R_SUCCESS && match > 0) {
+				isc_netaddr_format(&netaddr, addrbuf,
+						   sizeof(addrbuf));
+				dns_name_format(name, namebuf, sizeof(namebuf));
+				dns_rdatatype_format(rdataset->type, typebuf,
+						     sizeof(typebuf));
+				dns_rdataclass_format(rdataset->rdclass,
+						      classbuf,
+						      sizeof(classbuf));
+				isc_log_write(
+					DNS_LOGCATEGORY_RESOLVER,
+					DNS_LOGMODULE_RESOLVER, ISC_LOG_NOTICE,
+					"answer address %s denied for %s/%s/%s",
+					addrbuf, namebuf, typebuf, classbuf);
+				return false;
+			}
+		} while (length > 0);
+
+		/*
+		 * Look for next SVCB/HTTPS hint parameter.
+		 */
+		switch (rdataset->type) {
+		case dns_rdatatype_a:
+		case dns_rdatatype_aaaa:
+			break;
+		case dns_rdatatype_https:
+			result = dns_rdata_in_https_next(&svcb);
+			if (result == ISC_R_SUCCESS) {
+				goto again;
+			}
+			break;
+		case dns_rdatatype_svcb:
+			result = dns_rdata_in_svcb_next(&svcb);
+			if (result == ISC_R_SUCCESS) {
+				goto again;
+			}
+			break;
+		default:
+			UNREACHABLE();
 		}
 	}
 
@@ -8890,7 +9024,8 @@ rctx_answer_any(respctx_t *rctx) {
 			continue;
 		}
 
-		if (dns_rdatatype_isaddr(rdataset->type) &&
+		if ((dns_rdatatype_isaddr(rdataset->type) ||
+		     dns_rdatatype_issvcb(rdataset->type)) &&
 		    !is_answeraddress_allowed(fctx->res->view, rctx->aname,
 					      rdataset))
 		{
@@ -8949,13 +9084,15 @@ rctx_answer_match(respctx_t *rctx) {
 		return ISC_R_COMPLETE;
 	}
 
-	if (dns_rdatatype_isaddr(rctx->ardataset->type) &&
+	if ((dns_rdatatype_isaddr(rctx->ardataset->type) ||
+	     dns_rdatatype_issvcb(rctx->ardataset->type)) &&
 	    !is_answeraddress_allowed(fctx->res->view, rctx->aname,
 				      rctx->ardataset))
 	{
 		rctx->result = DNS_R_SERVFAIL;
 		return ISC_R_COMPLETE;
 	}
+
 	if (dns_rdatatype_isalias(rctx->ardataset->type) &&
 	    rctx->type != rctx->ardataset->type &&
 	    rctx->type != dns_rdatatype_any &&
