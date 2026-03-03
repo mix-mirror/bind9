@@ -973,7 +973,7 @@ create_fetch(dns_validator_t *val, dns_name_t *name, dns_rdatatype_t type,
 	if (check_deadlock(val, name, type, NULL, NULL)) {
 		validator_log(val, ISC_LOG_DEBUG(3),
 			      "deadlock found (create_fetch)");
-		return DNS_R_NOVALIDSIG;
+		return ISC_R_DEADLOCK;
 	}
 
 	if ((val->options & DNS_VALIDATOR_NOCDFLAG) != 0) {
@@ -1017,7 +1017,7 @@ create_validator(dns_validator_t *val, dns_name_t *name, dns_rdatatype_t type,
 	if (check_deadlock(val, name, type, rdataset, sig)) {
 		validator_log(val, ISC_LOG_DEBUG(3),
 			      "deadlock found (create_validator)");
-		return DNS_R_NOVALIDSIG;
+		return ISC_R_DEADLOCK;
 	}
 
 	/* OK to clear other options, but preserve NOCDFLAG and NONTA. */
