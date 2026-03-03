@@ -386,6 +386,7 @@ synthrecord_entry(void *arg, void *cbdata, isc_result_t *resp) {
 		return synthrecord_reverse(inst, qctx, resp);
 	default:
 		REQUIRE(false);
+		exit(1);
 	}
 }
 
