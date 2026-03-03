@@ -139,16 +139,40 @@ dig_with_opts +tcp www.example.com. a @10.53.0.1 >/dev/null || {
 n=$((n + 1))
 echo_i "checking answer IPv4 address filtering (deny) ($n)"
 ret=0
+nextpart ns1/named.run >/dev/null
 dig_with_opts +tcp www.example.net @10.53.0.1 a >dig.out.ns1.test${n} || ret=1
 grep "status: SERVFAIL" dig.out.ns1.test${n} >/dev/null || ret=1
+wait_for_log 5 "answer address 192.0.2.1 denied for www.example.net/A/IN" ns1/named.run || ret=1
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
 n=$((n + 1))
 echo_i "checking answer IPv6 address filtering (deny) ($n)"
 ret=0
+nextpart ns1/named.run >/dev/null
 dig_with_opts +tcp www.example.net @10.53.0.1 aaaa >dig.out.ns1.test${n} || ret=1
 grep "status: SERVFAIL" dig.out.ns1.test${n} >/dev/null || ret=1
+wait_for_log 5 "answer address 2001:db8:beef::1 denied for www.example.net/AAAA/IN" ns1/named.run || ret=1
+if [ $ret != 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
+
+n=$((n + 1))
+echo_i "checking answer IPv4 address filtering HTTPS (deny) ($n)"
+ret=0
+nextpart ns1/named.run >/dev/null
+dig_with_opts +tcp www.example.net @10.53.0.1 https >dig.out.ns1.test${n} || ret=1
+grep "status: SERVFAIL" dig.out.ns1.test${n} >/dev/null || ret=1
+wait_for_log 5 "answer address 192.0.2.1 denied for www.example.net/HTTPS/IN" ns1/named.run || ret=1
+if [ $ret != 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
+
+n=$((n + 1))
+echo_i "checking answer IPv6 address filtering SVCB (deny) ($n)"
+ret=0
+nextpart ns1/named.run >/dev/null
+dig_with_opts +tcp www.example.net @10.53.0.1 svcb >dig.out.ns1.test${n} || ret=1
+grep "status: SERVFAIL" dig.out.ns1.test${n} >/dev/null || ret=1
+wait_for_log 5 "answer address 2001:db8:beef::1 denied for www.example.net/SVCB/IN" ns1/named.run || ret=1
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -157,6 +181,7 @@ echo_i "checking answer IPv4 address filtering (accept) ($n)"
 ret=0
 dig_with_opts +tcp www.example.org @10.53.0.1 a >dig.out.ns1.test${n} || ret=1
 grep "status: NOERROR" dig.out.ns1.test${n} >/dev/null || ret=1
+grep 'IN.A.192\.0\.2\.1$' dig.out.ns1.test${n} >/dev/null || ret=1
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -165,6 +190,25 @@ echo_i "checking answer IPv6 address filtering (accept) ($n)"
 ret=0
 dig_with_opts +tcp www.example.org @10.53.0.1 aaaa >dig.out.ns1.test${n} || ret=1
 grep "status: NOERROR" dig.out.ns1.test${n} >/dev/null || ret=1
+grep 'IN.AAAA.2001:db8:beef::1$' dig.out.ns1.test${n} >/dev/null || ret=1
+if [ $ret != 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
+
+n=$((n + 1))
+echo_i "checking answer IPv4 address filtering HTTPS (accept) ($n)"
+ret=0
+dig_with_opts +tcp www.example.org @10.53.0.1 https >dig.out.ns1.test${n} || ret=1
+grep "status: NOERROR" dig.out.ns1.test${n} >/dev/null || ret=1
+grep 'IN.HTTPS.*key100$' dig.out.ns1.test${n} >/dev/null || ret=1
+if [ $ret != 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
+
+n=$((n + 1))
+echo_i "checking answer IPv6 address filtering SVCB (accept) ($n)"
+ret=0
+dig_with_opts +tcp www.example.org @10.53.0.1 svcb >dig.out.ns1.test${n} || ret=1
+grep "status: NOERROR" dig.out.ns1.test${n} >/dev/null || ret=1
+grep 'IN.SVCB.*key100$' dig.out.ns1.test${n} >/dev/null || ret=1
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 

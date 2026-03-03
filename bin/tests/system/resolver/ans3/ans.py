@@ -194,19 +194,40 @@ class WwwGoodDnameHandler(QnameHandler, StaticResponseHandler):
     answer = [rrset("gooddname.example.net.", dns.rdatatype.DNAME, "org.")]
 
 
-class WwwHandler(QnameHandler):
+class WwwExampleNetAHandler(QnameQtypeHandler, StaticResponseHandler):
     qnames = ["www.example.net."]
+    qtypes = [dns.rdatatype.A]
+    answer = [rrset(qnames[0], qtypes[0], "192.0.2.1")]
 
-    async def get_responses(
-        self, qctx: QueryContext
-    ) -> AsyncGenerator[DnsResponseSend, None]:
-        if qctx.qtype == dns.rdatatype.A:
-            qctx.response.answer.append(rrset(qctx.qname, dns.rdatatype.A, "192.0.2.1"))
-        elif qctx.qtype == dns.rdatatype.AAAA:
-            qctx.response.answer.append(
-                rrset(qctx.qname, dns.rdatatype.AAAA, "2001:db8:beef::1")
-            )
-        yield DnsResponseSend(qctx.response)
+
+class WwwExampleNetAaaaHandler(QnameQtypeHandler, StaticResponseHandler):
+    qnames = ["www.example.net."]
+    qtypes = [dns.rdatatype.AAAA]
+    answer = [rrset(qnames[0], qtypes[0], "2001:db8:beef::1")]
+
+
+class WwwExampleNetHttpsHandler(QnameQtypeHandler, StaticResponseHandler):
+    qnames = ["www.example.net."]
+    qtypes = [dns.rdatatype.HTTPS]
+    answer = [
+        rrset(
+            qnames[0],
+            qtypes[0],
+            "1 . port=60 ipv4hint=192.0.2.1 ipv6hint=2001:db8:beef::1",
+        )
+    ]
+
+
+class WwwExampleNetSvcbHandler(QnameQtypeHandler, StaticResponseHandler):
+    qnames = ["www.example.net."]
+    qtypes = [dns.rdatatype.SVCB]
+    answer = [
+        rrset(
+            qnames[0],
+            qtypes[0],
+            "1 . port=60 ipv4hint=10.53.0.1 ipv6hint=2001:db8:beef::1",
+        )
+    ]
 
 
 class FallbackHandler(StaticResponseHandler):
@@ -243,7 +264,10 @@ def main() -> None:
         PartialFormerrHandler(),
         WwwDnameSubHandler(),
         WwwGoodDnameHandler(),
-        WwwHandler(),
+        WwwExampleNetAHandler(),
+        WwwExampleNetAaaaHandler(),
+        WwwExampleNetHttpsHandler(),
+        WwwExampleNetSvcbHandler(),
     )
 
     server.install_response_handler(FallbackHandler())

@@ -76,9 +76,48 @@ class Cname2Handler(QnameHandler, StaticResponseHandler):
     authoritative = False
 
 
+class WwwExampleOrgAHandler(QnameQtypeHandler, StaticResponseHandler):
+    qnames = ["www.example.org."]
+    qtypes = [dns.rdatatype.A]
+    answer = [rrset(qnames[0], qtypes[0], "192.0.2.1")]
+    authoritative = True
+
+
+class WwwExampleOrgAaaaHandler(QnameQtypeHandler, StaticResponseHandler):
+    qnames = ["www.example.org."]
+    qtypes = [dns.rdatatype.AAAA]
+    answer = [rrset(qnames[0], qtypes[0], "2001:db8:beef::1")]
+    authoritative = True
+
+
+class WwwExampleOrgHttpsHandler(QnameQtypeHandler, StaticResponseHandler):
+    qnames = ["www.example.org."]
+    qtypes = [dns.rdatatype.HTTPS]
+    answer = [
+        rrset(
+            qnames[0],
+            qtypes[0],
+            "1 . port=60 ipv4hint=192.0.2.1 ipv6hint=2001:db8:beef::1 key100",
+        )
+    ]
+    authoritative = True
+
+
+class WwwExampleOrgSvcbHandler(QnameQtypeHandler, StaticResponseHandler):
+    qnames = ["www.example.org."]
+    qtypes = [dns.rdatatype.SVCB]
+    answer = [
+        rrset(
+            qnames[0],
+            qtypes[0],
+            "1 . port=60 ipv4hint=192.0.2.1 ipv6hint=2001:db8:beef::1 key100",
+        )
+    ]
+    authoritative = True
+
+
 class ExampleOrgHandler(QnameHandler):
     qnames = [
-        "www.example.org",
         "badcname.example.org",
         "goodcname.example.org",
         "foo.baddname.example.org",
@@ -207,6 +246,10 @@ def main() -> None:
         Gl6412Ns3Handler(),
         NoResponseExampleUdpHandler(),
         RootNsHandler(),
+        WwwExampleOrgAHandler(),
+        WwwExampleOrgAaaaHandler(),
+        WwwExampleOrgHttpsHandler(),
+        WwwExampleOrgSvcbHandler(),
         ZoneVersionHandler(),
     )
 
