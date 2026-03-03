@@ -4885,11 +4885,11 @@ Content Filtering
 
 .. namedconf:statement:: deny-answer-addresses
    :tags: query
-   :short: Rejects A or AAAA records if the corresponding IPv4 or IPv6 addresses match a given :any:`address_match_list`.
+   :short: Rejects A, AAAA, HTTPS and SVCB records if the corresponding IPv4 or IPv6 addresses match a given :any:`address_match_list`.
 
    BIND 9 provides the ability to filter out responses from external
    DNS servers containing certain types of data in the answer section.
-   Specifically, it can reject address (A or AAAA) records if the
+   Specifically, it can reject address (A, AAAA, HTTPS and SVCB) records if the
    corresponding IPv4 or IPv6 addresses match the given
    :term:`address_match_list` of the :any:`deny-answer-addresses` option.
 
