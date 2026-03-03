@@ -3660,11 +3660,10 @@ fctx_getaddresses_forwarders(fetchctx_t *fctx) {
 	return DNS_R_CONTINUE;
 }
 
-static isc_result_t
+static void
 fctx_getaddresses_addresses(fetchctx_t *fctx, isc_stdtime_t now,
 			    unsigned int options, bool *allspilledp,
 			    size_t *ns_processed) {
-	isc_result_t result = DNS_R_CONTINUE;
 	dns_adbfindlist_t finds = ISC_LIST_INITIALIZER;
 
 	if ((fctx->options & DNS_FETCHOPT_PREFETCH) != 0) {
@@ -3687,11 +3686,11 @@ fctx_getaddresses_addresses(fetchctx_t *fctx, isc_stdtime_t now,
 		INSIST(ISC_LIST_EMPTY(deleg->delegi));
 
 		fetchctx_ref(fctx);
-		result = dns_adb_createaddrinfosfind(
-			fctx->adb, &deleg->address, fctx->res->view->dstport,
-			options, now, maxaddrs, &find, &findlen);
-		if (result != ISC_R_SUCCESS) {
-			fctx->adberr++;
+		dns_adb_createaddrinfosfind(fctx->adb, &deleg->address,
+					    fctx->res->view->dstport, options,
+					    now, maxaddrs, &find, &findlen);
+
+		if (find == NULL) {
 			fetchctx_unref(fctx);
 			break;
 		}
@@ -3701,22 +3700,20 @@ fctx_getaddresses_addresses(fetchctx_t *fctx, isc_stdtime_t now,
 			fctx->quotacount++;
 		}
 
+		if (ISC_LIST_EMPTY(find->list)) {
+			fetchctx_unref(fctx);
+			dns_adb_destroyfind(&find);
+			break;
+		}
+
 		*ns_processed += findlen;
 		INSIST(*ns_processed <= MAX_FIND_COUNT);
 		ISC_LIST_APPEND(finds, find, publink);
 	}
 
-	if (result == ISC_R_SUCCESS) {
-		INSIST(!ISC_LIST_EMPTY(finds));
+	if (!ISC_LIST_EMPTY(finds)) {
 		ISC_LIST_APPENDLIST(fctx->finds, finds, publink);
-	} else {
-		ISC_LIST_FOREACH(finds, find, publink) {
-			ISC_LIST_UNLINK(finds, find, publink);
-			dns_adb_destroyfind(&find);
-		}
 	}
-
-	return result;
 }
 
 static isc_result_t
@@ -3968,8 +3965,8 @@ fctx_getaddresses(fetchctx_t *fctx) {
 	 * alternates.
 	 */
 
-	result = fctx_getaddresses_addresses(fctx, now, stdoptions,
-					     &all_spilled, &ns_processed);
+	fctx_getaddresses_addresses(fctx, now, stdoptions, &all_spilled,
+				    &ns_processed);
 
 	fetches_allowed = fctx_getaddresses_allowed(fctx);
 
