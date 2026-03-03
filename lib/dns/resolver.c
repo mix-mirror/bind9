@@ -9346,10 +9346,12 @@ rctx_referral(respctx_t *rctx) {
 		fctx_minimize_qname(fctx);
 	}
 
-	result = fcount_incr(fctx, false);
-	if (result != ISC_R_SUCCESS) {
-		rctx->result = result;
-		return ISC_R_COMPLETE;
+	if ((fctx->options & DNS_FETCHOPT_QMINFETCH) == 0) {
+		result = fcount_incr(fctx, false);
+		if (result != ISC_R_SUCCESS) {
+			rctx->result = result;
+			return ISC_R_COMPLETE;
+		}
 	}
 
 	FCTX_ATTR_SET(fctx, FCTX_ATTR_WANTCACHE);
