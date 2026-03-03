@@ -1734,12 +1734,11 @@ out:
 	dns_adbentry_detach(&adbentry);
 }
 
-isc_result_t
+void
 dns_adb_createaddrinfosfind(dns_adb_t *adb, isc_netaddrlist_t *addrs,
 			    in_port_t port, unsigned int options,
 			    isc_stdtime_t now, size_t maxaddrs,
 			    dns_adbfind_t **findp, size_t *findlen) {
-	isc_result_t result = ISC_R_SUCCESS;
 	dns_adbfind_t *find = NULL;
 	isc_sockaddr_t sockaddr = {};
 
@@ -1747,11 +1746,11 @@ dns_adb_createaddrinfosfind(dns_adb_t *adb, isc_netaddrlist_t *addrs,
 	REQUIRE(addrs != NULL);
 	REQUIRE(findp != NULL && *findp == NULL);
 
-	rcu_read_lock();
-
 	if (atomic_load(&adb->shuttingdown)) {
-		CLEANUP(ISC_R_SHUTTINGDOWN);
+		return;
 	}
+
+	rcu_read_lock();
 
 	if (now == 0) {
 		now = isc_stdtime_now();
@@ -1801,9 +1800,7 @@ dns_adb_createaddrinfosfind(dns_adb_t *adb, isc_netaddrlist_t *addrs,
 	}
 
 	*findp = find;
-cleanup:
 	rcu_read_unlock();
-	return result;
 }
 
 /*
