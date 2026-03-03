@@ -34,6 +34,8 @@ ns3.example.dname.	A	10.53.0.3
 jeff.dname.		NS	ns.jeff.dname.
 ns.jeff.dname.	        A	10.53.0.3
 
+mutt.dname.             NS      ns.jeff.dname.
+
 domain0.nil.		NS	ns2.domain0.nil
 domain1.nil.		NS	ns2.domain0.nil
 domain2.nil.		NS	ns2.domain0.nil
