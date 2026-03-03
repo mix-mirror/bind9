@@ -134,6 +134,22 @@ class ExampleOrgHandler(QnameHandler):
         elif qctx.qtype == dns.rdatatype.AAAA:
             aaaa_rrset = rrset(qctx.qname, dns.rdatatype.AAAA, "2001:db8:beef::1")
             qctx.response.answer.append(aaaa_rrset)
+        elif qctx.qtype == dns.rdatatype.HTTPS:
+            qctx.response.answer.append(
+                rrset(
+                    qctx.qname,
+                    dns.rdatatype.HTTPS,
+                    "1 . port=60 ipv4hint=192.0.2.1 ipv6hint=2001:db8:beef::1 key100",
+                )
+            )
+        elif qctx.qtype == dns.rdatatype.SVCB:
+            qctx.response.answer.append(
+                rrset(
+                    qctx.qname,
+                    dns.rdatatype.SVCB,
+                    "1 . port=60 ipv4hint=192.0.2.1 ipv6hint=2001:db8:beef::1 key100",
+                )
+            )
         yield DnsResponseSend(qctx.response, authoritative=True)
 
 
