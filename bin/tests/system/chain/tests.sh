@@ -647,7 +647,7 @@ echo_i "checking handling of illegal NS below DNAME ($n)"
 ret=0
 $DIG $DIGOPTS @10.53.0.7 DNAME jeff.dname. >dig.out.ns7.1.$n 2>&1
 grep 'status: NOERROR' dig.out.ns7.1.$n >/dev/null 2>&1 || ret=1
-$DIG $DIGOPTS @10.53.0.7 NS jeff.dname. >dig.out.ns7.2.$n 2>&1
+$DIG $DIGOPTS @10.53.0.7 NS mutt.dname. >dig.out.ns7.2.$n 2>&1
 grep 'status: SERVFAIL' dig.out.ns7.2.$n >/dev/null 2>&1 || ret=1
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
