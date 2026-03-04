@@ -1733,8 +1733,8 @@ dns_keymgr_key_init(dns_dnsseckey_t *key, dns_kasp_t *kasp, isc_stdtime_t now,
 		}
 		goal_state = OMNIPRESENT;
 	}
-	result = dst_key_gettime(key->key, DST_TIME_INACTIVE, &result);
-	if (result <= now && result == ISC_R_SUCCESS) {
+	result = dst_key_gettime(key->key, DST_TIME_INACTIVE, &retire);
+	if (retire <= now && result == ISC_R_SUCCESS) {
 		dns_ttl_t ttlsig = dns_kasp_zonemaxttl(kasp, true);
 		ttlsig += dns_kasp_zonepropagationdelay(kasp);
 		if ((retire + ttlsig) <= now) {
