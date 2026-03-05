@@ -7310,15 +7310,16 @@ is_answertarget_allowed(fetchctx_t *fctx, dns_name_t *qname, dns_name_t *rname,
 	dns_name_t *tname = NULL;
 	dns_rdata_cname_t cname;
 	dns_rdata_dname_t dname;
+	dns_rdata_in_svcb_t svcb;
 	dns_view_t *view = fctx->res->view;
-	dns_rdata_t rdata = DNS_RDATA_INIT;
 	unsigned int nlabels;
 	dns_fixedname_t fixed;
 	dns_name_t prefix;
 	int order;
 
 	REQUIRE(rdataset != NULL);
-	REQUIRE(dns_rdatatype_isalias(rdataset->type));
+	REQUIRE(dns_rdatatype_isalias(rdataset->type) ||
+		dns_rdatatype_issvcb(rdataset->type));
 
 	/*
 	 * By default, we allow any target name.
@@ -7328,82 +7329,111 @@ is_answertarget_allowed(fetchctx_t *fctx, dns_name_t *qname, dns_name_t *rname,
 		return true;
 	}
 
-	result = dns_rdataset_first(rdataset);
-	RUNTIME_CHECK(result == ISC_R_SUCCESS);
-	dns_rdataset_current(rdataset, &rdata);
-	switch (rdataset->type) {
-	case dns_rdatatype_cname:
-		result = dns_rdata_tostruct(&rdata, &cname, NULL);
-		RUNTIME_CHECK(result == ISC_R_SUCCESS);
-		tname = &cname.cname;
-		break;
-	case dns_rdatatype_dname:
-		if (dns_name_fullcompare(qname, rname, &order, &nlabels) !=
-		    dns_namereln_subdomain)
+	DNS_RDATASET_FOREACH(rdataset) {
+		dns_rdata_t rdata = DNS_RDATA_INIT;
+		dns_rdataset_current(rdataset, &rdata);
+		switch (rdataset->type) {
+		case dns_rdatatype_cname:
+			result = dns_rdata_tostruct(&rdata, &cname, NULL);
+			RUNTIME_CHECK(result == ISC_R_SUCCESS);
+			tname = &cname.cname;
+			break;
+		case dns_rdatatype_dname:
+			if (dns_name_fullcompare(qname, rname, &order,
+						 &nlabels) !=
+			    dns_namereln_subdomain)
+			{
+				return true;
+			}
+			result = dns_rdata_tostruct(&rdata, &dname, NULL);
+			RUNTIME_CHECK(result == ISC_R_SUCCESS);
+			dns_name_init(&prefix);
+			tname = dns_fixedname_initname(&fixed);
+			nlabels = dns_name_countlabels(rname);
+			dns_name_split(qname, nlabels, &prefix, NULL);
+			result = dns_name_concatenate(&prefix, &dname.dname,
+						      tname);
+			if (result == DNS_R_NAMETOOLONG) {
+				SET_IF_NOT_NULL(chainingp, true);
+				return true;
+			}
+			RUNTIME_CHECK(result == ISC_R_SUCCESS);
+			break;
+		case dns_rdatatype_https:
+		case dns_rdatatype_svcb:
+			if (rdataset->rdclass != dns_rdataclass_in) {
+				return true;
+			}
+			result = dns_rdata_tostruct(&rdata, &svcb, NULL);
+			RUNTIME_CHECK(result == ISC_R_SUCCESS);
+			if (dns_name_equal(&svcb.svcdomain, dns_rootname)) {
+				/*
+				 * No service indicator?
+				 */
+				if (svcb.priority == 0) {
+					continue;
+				}
+				tname = qname;
+			} else {
+				tname = &svcb.svcdomain;
+			}
+			break;
+		default:
+			UNREACHABLE();
+		}
+
+		SET_IF_NOT_NULL(chainingp, true);
+
+		if (view->denyanswernames == NULL) {
+			return true;
+		}
+
+		/*
+		 * If the owner name matches one in the exclusion list, either
+		 * exactly or partially, allow it.
+		 */
+		if (dns_nametree_covered(view->answernames_exclude, qname, NULL,
+					 0))
 		{
 			return true;
 		}
-		result = dns_rdata_tostruct(&rdata, &dname, NULL);
-		RUNTIME_CHECK(result == ISC_R_SUCCESS);
-		dns_name_init(&prefix);
-		tname = dns_fixedname_initname(&fixed);
-		nlabels = dns_name_countlabels(rname);
-		dns_name_split(qname, nlabels, &prefix, NULL);
-		result = dns_name_concatenate(&prefix, &dname.dname, tname);
-		if (result == DNS_R_NAMETOOLONG) {
-			SET_IF_NOT_NULL(chainingp, true);
+
+		/*
+		 * If the target name is a subdomain of the search domain, allow
+		 * it.
+		 *
+		 * Note that if BIND is configured as a forwarding DNS server,
+		 * the search domain will always match the root domain ("."), so
+		 * we must also check whether forwarding is enabled so that
+		 * filters can be applied; see GL #1574.
+		 */
+		if (!fctx->forwarding &&
+		    dns_name_issubdomain(tname, fctx->domain))
+		{
 			return true;
 		}
-		RUNTIME_CHECK(result == ISC_R_SUCCESS);
-		break;
-	default:
-		UNREACHABLE();
-	}
 
-	SET_IF_NOT_NULL(chainingp, true);
-
-	if (view->denyanswernames == NULL) {
-		return true;
-	}
-
-	/*
-	 * If the owner name matches one in the exclusion list, either
-	 * exactly or partially, allow it.
-	 */
-	if (dns_nametree_covered(view->answernames_exclude, qname, NULL, 0)) {
-		return true;
-	}
-
-	/*
-	 * If the target name is a subdomain of the search domain, allow
-	 * it.
-	 *
-	 * Note that if BIND is configured as a forwarding DNS server,
-	 * the search domain will always match the root domain ("."), so
-	 * we must also check whether forwarding is enabled so that
-	 * filters can be applied; see GL #1574.
-	 */
-	if (!fctx->forwarding && dns_name_issubdomain(tname, fctx->domain)) {
-		return true;
-	}
-
-	/*
-	 * Otherwise, apply filters.
-	 */
-	if (dns_nametree_covered(view->denyanswernames, tname, NULL, 0)) {
-		char qnamebuf[DNS_NAME_FORMATSIZE];
-		char tnamebuf[DNS_NAME_FORMATSIZE];
-		char classbuf[64];
-		char typebuf[64];
-		dns_name_format(qname, qnamebuf, sizeof(qnamebuf));
-		dns_name_format(tname, tnamebuf, sizeof(tnamebuf));
-		dns_rdatatype_format(rdataset->type, typebuf, sizeof(typebuf));
-		dns_rdataclass_format(view->rdclass, classbuf,
-				      sizeof(classbuf));
-		isc_log_write(DNS_LOGCATEGORY_RESOLVER, DNS_LOGMODULE_RESOLVER,
-			      ISC_LOG_NOTICE, "%s target %s denied for %s/%s",
-			      typebuf, tnamebuf, qnamebuf, classbuf);
-		return false;
+		/*
+		 * Otherwise, apply filters.
+		 */
+		if (dns_nametree_covered(view->denyanswernames, tname, NULL, 0))
+		{
+			char qnamebuf[DNS_NAME_FORMATSIZE];
+			char tnamebuf[DNS_NAME_FORMATSIZE];
+			char classbuf[64];
+			char typebuf[64];
+			dns_name_format(qname, qnamebuf, sizeof(qnamebuf));
+			dns_name_format(tname, tnamebuf, sizeof(tnamebuf));
+			dns_rdatatype_format(rdataset->type, typebuf,
+					     sizeof(typebuf));
+			dns_rdataclass_format(view->rdclass, classbuf,
+					      sizeof(classbuf));
+			isc_log_write(DNS_LOGCATEGORY_RESOLVER,
+				      DNS_LOGMODULE_RESOLVER, ISC_LOG_NOTICE,
+				      "%s target %s denied for %s/%s", typebuf,
+				      tnamebuf, qnamebuf, classbuf);
+			return false;
+		}
 	}
 
 	return true;
@@ -9033,7 +9063,8 @@ rctx_answer_any(respctx_t *rctx) {
 			return ISC_R_COMPLETE;
 		}
 
-		if (dns_rdatatype_isalias(rdataset->type) &&
+		if ((dns_rdatatype_isalias(rdataset->type) ||
+		     dns_rdatatype_issvcb(rdataset->type)) &&
 		    !is_answertarget_allowed(fctx, fctx->name, rctx->aname,
 					     rdataset, NULL))
 		{
@@ -9093,8 +9124,8 @@ rctx_answer_match(respctx_t *rctx) {
 		return ISC_R_COMPLETE;
 	}
 
-	if (dns_rdatatype_isalias(rctx->ardataset->type) &&
-	    rctx->type != rctx->ardataset->type &&
+	if ((dns_rdatatype_isalias(rctx->ardataset->type) ||
+	     dns_rdatatype_issvcb(rctx->ardataset->type)) &&
 	    rctx->type != dns_rdatatype_any &&
 	    !is_answertarget_allowed(fctx, fctx->name, rctx->aname,
 				     rctx->ardataset, NULL))
