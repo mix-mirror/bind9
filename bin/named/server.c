@@ -24,6 +24,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <dns/name.h>
+
 #ifdef HAVE_DNSTAP
 #include <fstrm.h>
 #endif
@@ -105,6 +107,7 @@
 
 #include <dst/dst.h>
 
+#include <isccfg/cfg.h>
 #include <isccfg/check.h>
 #include <isccfg/grammar.h>
 #include <isccfg/kaspconf.h>
@@ -114,6 +117,7 @@
 #include <ns/hooks.h>
 #include <ns/interfacemgr.h>
 #include <ns/listenlist.h>
+#include <ns/server.h>
 
 #include <named/config.h>
 #include <named/control.h>
@@ -6754,18 +6758,95 @@ setstring(named_server_t *server, char **field, const char *value) {
 	*field = copy;
 }
 
-/*
- * Replace the current value of '*field', a dynamically allocated
- * string or NULL, with another dynamically allocated string
- * or NULL if whether 'obj' is a string or void value, respectively.
- */
 static void
-setoptstring(named_server_t *server, char **field, const cfg_obj_t *obj) {
-	if (cfg_obj_isvoid(obj)) {
-		setstring(server, field, NULL);
-	} else {
-		setstring(server, field, cfg_obj_asstring(obj));
+clearregion(named_server_t *server, isc_region_t *field) {
+	if (field->base != NULL) {
+		isc_mem_free(server->mctx, field->base);
+		field->length = 0;
 	}
+}
+
+static void
+setregion(named_server_t *server, isc_region_t *field, const char *str) {
+	field->length = strlen(str);
+	field->base = (unsigned char *)isc_mem_strdup(server->mctx, str);
+}
+
+static void
+setversionfromobj(named_server_t *server, const cfg_obj_t *obj) {
+	clearregion(server, &server->version);
+
+	if (cfg_obj_isvoid(obj)) {
+		return;
+	}
+
+	setregion(server, &server->version, cfg_obj_asstring(obj));
+}
+
+static void
+setdefaultversion(named_server_t *server) {
+	clearregion(server, &server->version);
+
+	setregion(server, &server->version, PACKAGE_VERSION);
+}
+
+static void
+clearversion(named_server_t *server) {
+	clearregion(server, &server->version);
+}
+
+static void
+sethostnamefromobj(named_server_t *server, const cfg_obj_t *obj) {
+	clearregion(server, &server->hostname);
+
+	if (cfg_obj_isvoid(obj)) {
+		return;
+	}
+
+	setregion(server, &server->hostname, cfg_obj_asstring(obj));
+}
+
+static void
+clearhostname(named_server_t *server) {
+	clearregion(server, &server->hostname);
+}
+
+static void
+setdefaulthostname(named_server_t *server) {
+	clearregion(server, &server->hostname);
+
+	char hostname[DNS_NAME_MAXTEXT];
+	int r = gethostname(hostname, sizeof(hostname));
+	RUNTIME_CHECK(r == 0);
+
+	setregion(server, &server->hostname, hostname);
+}
+
+static void
+setserveridfromobj(named_server_t *server, const cfg_obj_t *obj) {
+	RUNTIME_CHECK(cfg_obj_isboolean(obj) || cfg_obj_isstring(obj) ||
+		      cfg_obj_isvoid(obj));
+
+	if (cfg_obj_isboolean(obj)) {
+		if (cfg_obj_asboolean(obj)) {
+			char hostname[DNS_NAME_MAXTEXT];
+			int r = gethostname(hostname, sizeof(hostname));
+			RUNTIME_CHECK(r == 0);
+
+			ns_server_setserverid(server->sctx, hostname);
+		} else {
+			ns_server_clearserverid(server->sctx);
+		}
+	} else if (cfg_obj_isstring(obj)) {
+		ns_server_setserverid(server->sctx, cfg_obj_asstring(obj));
+	} else if (cfg_obj_isvoid(obj)) {
+		ns_server_clearserverid(server->sctx);
+	}
+}
+
+static void
+clearserverid(named_server_t *server) {
+	ns_server_setserverid(server->sctx, NULL);
 }
 
 static isc_result_t
@@ -8590,36 +8671,26 @@ apply_configuration(cfg_obj_t *effectiveconfig, cfg_obj_t *bindkeys,
 	obj = NULL;
 	result = named_config_get(maps, "version", &obj);
 	if (result == ISC_R_SUCCESS) {
-		setoptstring(server, &server->version, obj);
-		server->version_set = true;
+		setversionfromobj(server, obj);
 	} else {
-		server->version_set = false;
+		setdefaultversion(server);
 	}
 
 	obj = NULL;
 	result = named_config_get(maps, "hostname", &obj);
 	if (result == ISC_R_SUCCESS) {
-		setoptstring(server, &server->hostname, obj);
-		server->hostname_set = true;
+		sethostnamefromobj(server, obj);
 	} else {
-		server->hostname_set = false;
+		setdefaulthostname(server);
 	}
 
 	obj = NULL;
 	result = named_config_get(maps, "server-id", &obj);
-	server->sctx->usehostname = false;
-	if (result == ISC_R_SUCCESS && cfg_obj_isboolean(obj)) {
-		/* The parser translates "hostname" to true */
-		server->sctx->usehostname = true;
-		result = ns_server_setserverid(server->sctx, NULL);
-	} else if (result == ISC_R_SUCCESS && !cfg_obj_isvoid(obj)) {
-		/* Found a quoted string */
-		result = ns_server_setserverid(server->sctx,
-					       cfg_obj_asstring(obj));
+	if (result == ISC_R_SUCCESS) {
+		setserveridfromobj(server, obj);
 	} else {
-		result = ns_server_setserverid(server->sctx, NULL);
+		clearserverid(server);
 	}
-	RUNTIME_CHECK(result == ISC_R_SUCCESS);
 
 	obj = NULL;
 	result = named_config_get(maps, "flush-zones-on-shutdown", &obj);
@@ -9571,12 +9642,8 @@ named_server_destroy(named_server_t **serverp) {
 	isc_mem_free(server->mctx, server->secrootsfile);
 	isc_mem_free(server->mctx, server->recfile);
 
-	if (server->version != NULL) {
-		isc_mem_free(server->mctx, server->version);
-	}
-	if (server->hostname != NULL) {
-		isc_mem_free(server->mctx, server->hostname);
-	}
+	clearversion(server);
+	clearhostname(server);
 
 	if (server->zonemgr != NULL) {
 		dns_zonemgr_detach(&server->zonemgr);
@@ -11523,13 +11590,13 @@ named_server_status(named_server_t *server, isc_buffer_t *text) {
 
 	REQUIRE(text != NULL);
 
-	if (named_g_server->version_set) {
+	if (named_g_server->version.base != NULL) {
 		ob = " (";
 		cb = ")";
-		if (named_g_server->version == NULL) {
+		if (named_g_server->version.length == 0) {
 			alt = "version.bind/txt/ch disabled";
 		} else {
-			alt = named_g_server->version;
+			alt = (char *)named_g_server->version.base;
 		}
 	}
 	zonecount = dns_zonemgr_getcount(server->zonemgr, DNS_ZONESTATE_ANY);
