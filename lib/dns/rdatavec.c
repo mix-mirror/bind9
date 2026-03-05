@@ -578,30 +578,31 @@ dns_rdatavec_merge(dns_vecheader_t *oheader, dns_vecheader_t *nheader,
 		CLEANUP(ISC_R_NOSPACE);
 	}
 
-	/* Allocate the target buffer and copy the new vec's header */
+	/*
+	 * Allocate the target buffer and initialize the header.
+	 * Preserve the case of the old header, but the rest from the
+	 * new header.
+	 */
 	unsigned char *tstart = isc_mem_get(mctx, tlength);
 	dns_vecheader_t *as_header = (dns_vecheader_t *)tstart;
-
-	/*
-	 * Preserve the case of the old header, but the rest from the new
-	 * header
-	 */
-	memmove(tstart, nheader, header_size(nheader));
-	memmove(as_header->upper, oheader->upper, sizeof(oheader->upper));
-	uint16_t case_attrs = DNS_VECHEADER_GETATTR(
+	uint16_t attrs = DNS_VECHEADER_GETATTR(
 		oheader,
 		DNS_VECHEADERATTR_CASESET | DNS_VECHEADERATTR_CASEFULLYLOWER);
-	atomic_init(&as_header->attributes, 0);
-	DNS_VECHEADER_SETATTR(as_header, case_attrs);
 	if (RESIGN(nheader)) {
-		DNS_VECHEADER_SETATTR(as_header, DNS_VECHEADERATTR_RESIGN);
+		attrs |= DNS_VECHEADERATTR_RESIGN;
 	}
-
-	/* Initialize refcount for the new header */
+	*as_header = (dns_vecheader_t){
+		.typepair = nheader->typepair,
+		.mctx = isc_mem_ref(mctx),
+		.serial = nheader->serial,
+		.ttl = nheader->ttl,
+		.resign = nheader->resign,
+		.next_header = ISC_SLINK_INITIALIZER,
+	};
 	isc_refcount_init(&as_header->references, 1);
-
-	/* We need to re-attach to the memory context for refcount reasons. */
-	as_header->mctx = isc_mem_ref(mctx);
+	atomic_init(&as_header->attributes, attrs);
+	atomic_init(&as_header->trust, atomic_load_acquire(&nheader->trust));
+	memmove(as_header->upper, oheader->upper, sizeof(oheader->upper));
 
 	tcurrent = tstart + header_size(nheader);
 
@@ -754,18 +755,20 @@ dns_rdatavec_subtract(dns_vecheader_t *oheader, dns_vecheader_t *sheader,
 	 * Allocate the target buffer and copy the old vec's header.
 	 */
 	tstart = isc_mem_get(mctx, tlength);
-	memmove(tstart, oheader, header_size(oheader));
-
-	/* Initialize refcount for the new header */
 	dns_vecheader_t *as_header = (dns_vecheader_t *)tstart;
+	uint16_t attrs = RESIGN(oheader) ? DNS_VECHEADERATTR_RESIGN : 0;
+	*as_header = (dns_vecheader_t){
+		.typepair = oheader->typepair,
+		.mctx = isc_mem_ref(mctx),
+		.serial = oheader->serial,
+		.ttl = oheader->ttl,
+		.resign = oheader->resign,
+		.next_header = ISC_SLINK_INITIALIZER,
+	};
 	isc_refcount_init(&as_header->references, 1);
-	atomic_init(&as_header->attributes, 0);
-	if (RESIGN(oheader)) {
-		DNS_VECHEADER_SETATTR(as_header, DNS_VECHEADERATTR_RESIGN);
-	}
-
-	/* We need to re-attach to the memory context for refcount reasons. */
-	as_header->mctx = isc_mem_ref(mctx);
+	atomic_init(&as_header->attributes, attrs);
+	atomic_init(&as_header->trust, atomic_load_acquire(&oheader->trust));
+	memmove(as_header->upper, oheader->upper, sizeof(oheader->upper));
 
 	tcurrent = tstart + header_size(oheader);
 
