@@ -4899,25 +4899,29 @@ Content Filtering
 
 .. namedconf:statement:: deny-answer-aliases
    :tags: query
-   :short: Rejects CNAME or DNAME records if the "alias" name matches a given list of :any:`domain_name` elements.
+   :short: Rejects CNAME, DNAME, HTTPS and SVCB records if the "alias" name matches a given list of :any:`domain_name` elements.
 
-   BIND can
-   also reject CNAME or DNAME records if the "alias" name (i.e., the CNAME
-   alias or the substituted query name due to DNAME) matches the given
-   list of :term:`domain_name` elements of the :any:`deny-answer-aliases` option,
-   where "match" means the alias name is a subdomain of one of the listed domain names. If
-   the optional list is specified in the ``except-from`` argument, records
-   whose query name matches the list are accepted regardless of the
-   filter setting. Likewise, if the alias name is a subdomain of the
-   corresponding zone, the :any:`deny-answer-aliases` filter does not apply;
-   for example, even if "example.com" is specified for
-   :any:`deny-answer-aliases`,
+   BIND can also reject CNAME, DNAME, HTTPS and SVCB records if the
+   "alias" name (i.e., the CNAME alias or the substituted query
+   name due to DNAME) matches the given list of :term:`domain_name`
+   elements of the :any:`deny-answer-aliases` option, where "match"
+   means the alias name is a subdomain of one of the listed domain
+   names. If the optional list is specified in the ``except-from``
+   argument, records whose query name matches the list are accepted
+   regardless of the filter setting. Likewise, if the alias name
+   is a subdomain of the corresponding zone, the :any:`deny-answer-aliases`
+   filter does not apply; for example, even if "example.com" is
+   specified for :any:`deny-answer-aliases`,
 
    ::
 
       www.example.com. CNAME xxx.example.com.
 
    returned by an "example.com" server is accepted.
+
+For HTTPS and SVCB records the target name is applied to both
+AliasMode and ServiceMode records.  No service indications are not
+filtered.  If filtering occurs the entire RRset is filtered.
 
 If a response message is rejected due to filtering, the entire
 message is discarded without being cached and a SERVFAIL error is
