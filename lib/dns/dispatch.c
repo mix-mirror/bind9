@@ -66,8 +66,8 @@ struct dns_dispatchmgr {
 
 	in_port_t *v4ports;    /*%< available ports for IPv4 */
 	unsigned int nv4ports; /*%< # of available ports for IPv4 */
-	in_port_t *v6ports;    /*%< available ports for IPv4 */
-	unsigned int nv6ports; /*%< # of available ports for IPv4 */
+	in_port_t *v6ports;    /*%< available ports for IPv6 */
+	unsigned int nv6ports; /*%< # of available ports for IPv6 */
 };
 
 typedef enum {
