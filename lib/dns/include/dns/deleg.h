@@ -100,7 +100,6 @@ ISC_REFCOUNT_DECL(dns_delegset);
 	 DNS_DELEGSET_DBDETACHED_VALID(delegset))
 
 typedef struct dns_delegdb dns_delegdb_t;
-ISC_REFCOUNT_DECL(dns_delegdb);
 
 /*
  * Allocate and initialize the delegation database. `db` is attached to the
@@ -110,11 +109,10 @@ void
 dns_deleg_init(dns_delegdb_t **db);
 
 /*
- * Shutdown and detach the delegation database. Allocated `dns_delegset_t`
- * still owned by callers will remain alive until they are detached.
+ * Shutdown and detach the delegation database.
  */
 void
-dns_deleg_shutdownanddetach(dns_delegdb_t **db);
+dns_deleg_shutdown(dns_delegdb_t **db);
 
 /*
  * Lookup for delegations of a given name in the DB. If found, the zonecut is
@@ -139,6 +137,13 @@ dns_deleg_lookup(dns_delegdb_t *db, const dns_name_t *name, isc_stdtime_t now,
  * Allocate and attach to the caller a new empty delegation set, but do not
  * attach it in the DB yet, so the following API can be used to set its various
  * properties.
+ *
+ * Because all those API (dns_deleg_alloc* and dns_deleg_add*) uses the internal
+ * delegdb memory context, it _might_ in some circumstances allocate above its
+ * hiwater mark without reclaiming memory. The flow reclaiming memory is then
+ * run when adding the delegset into the database (dns_deleg_writeset).
+ *
+ * This could be changed to run also through those API if needed.
  */
 void
 dns_deleg_allocset(dns_delegdb_t *db, dns_delegset_t **delegsetp);
@@ -196,7 +201,9 @@ dns_deleg_dump(dns_delegdb_t *db, const dns_name_t *name, isc_stdtime_t now,
 
 /*
  * Convert an NS rdataset into a delegset containing a single delegation (with
- * possibly multiple nameserver).
+ * possibly multiple nameserver). The allocated delegset is using the main
+ * memory context, thus, is not expected to be added into the deleg DB (which
+ * accepts only delegset allocated using `dns_deleg_alloc*()` APIs.
  */
 void
 dns_deleg_fromrdataset(dns_rdataset_t *rdataset, dns_delegset_t **delegsetp);
@@ -210,6 +217,31 @@ dns_deleg_flush(dns_delegdb_t *db);
 /*
  * Delete a delegation matching a name. If `tree` is true, this will also delete
  * all names below `name`.
+ *
+ * TODO: this is currenly run by `rndc flush` APIs and run both on the main
+ * cache and deleg DB. Should it requires a different API?
  */
 isc_result_t
 dns_deleg_delete(dns_delegdb_t *db, const dns_name_t *name, bool tree);
+
+/*
+ * Cleanup expired delegations and reclaim memory for expired or deleted
+ * delegations (deleted using `dns_deleg_delete(...,...,true)`).
+ *
+ * TODO: should it be called proactively from `dns_deleg_delete(...,...,true)`?
+ *
+ * Currently called internally when the cache is in an overmem condition. The
+ * API is public for now, as it's unclear if some external caller should also be
+ * able to call it (i.e. timer?) or if it's better to leave it done lazilly when
+ * hiwater level is reached (as today).
+ */
+void
+dns_deleg_maintenance(dns_delegdb_t *db);
+
+/*
+ * Defines the size of the delegation cache. Whenever the effective cache size
+ * come close to this size, least recently used cache entries are discarded.
+ * Value `0` means there is no limitations.
+ */
+void
+dns_deleg_setsize(dns_delegdb_t *db, size_t size);

@@ -10,9 +10,11 @@
  * See the COPYRIGHT file distributed with this work for additional
  * information regarding copyright ownership.
  */
+#include <isc/async.h>
 #include <isc/magic.h>
 #include <isc/mem.h>
 #include <isc/netaddr.h>
+#include <isc/sieve.h>
 #include <isc/stdtime.h>
 #include <isc/uv.h>
 
@@ -26,31 +28,10 @@
 #define DELEGDB_MAGIC	  ISC_MAGIC('D', 'e', 'G', 'D')
 #define VALID_DELEGDB(db) ISC_MAGIC_VALID(db, DELEGDB_MAGIC)
 
-#define DELEGDB_HASH_SIZE (1 << 12)
+#define DELEGDB_MINSIZE (1024 * 1024) /* 1MiB */
+#define OVERMEM_BATCH	50
 
 typedef struct delegdb_node delegdb_node_t;
-struct delegdb_node {
-	unsigned int magic;
-	isc_mem_t *mctx;
-	isc_refcount_t references;
-	dns_name_t zonecut;
-	dns_delegset_t *delegset;
-};
-
-static void
-delegdb_node_destroy(delegdb_node_t *node) {
-	REQUIRE(VALID_DELEGDB_NODE(node));
-
-	if (node->delegset != NULL) {
-		REQUIRE(DNS_DELEGSET_DBATTACHED_VALID(node->delegset));
-		dns_delegset_detach(&node->delegset);
-	}
-	dns_name_free(&node->zonecut, node->mctx);
-	isc_mem_putanddetach(&node->mctx, node, sizeof(*node));
-}
-
-ISC_REFCOUNT_STATIC_DECL(delegdb_node);
-ISC_REFCOUNT_STATIC_IMPL(delegdb_node, delegdb_node_destroy);
 
 struct dns_delegdb {
 	unsigned int magic;
@@ -64,19 +45,91 @@ struct dns_delegdb {
 	isc_mem_t *mctx;
 	isc_refcount_t references;
 
+	size_t nloops;
+	ISC_SIEVE(delegdb_node_t) * lru;
+
 	dns_qpmulti_t *nodes;
+
+	atomic_bool shuttingdown;
 };
+
+inline static bool
+shuttingdown(dns_delegdb_t *db) {
+	return atomic_load(&db->shuttingdown);
+}
 
 static void
 delegdb_destroy(dns_delegdb_t *db) {
 	REQUIRE(VALID_DELEGDB(db));
+	REQUIRE(db->nodes == NULL);
 
 	db->magic = 0;
-	dns_qpmulti_destroy(&db->nodes);
+	isc_mem_cput(db->mctx, db->lru, db->nloops, sizeof(db->lru[0]));
+
 	isc_mem_putanddetach(&db->mctx, db, sizeof(*db));
 }
 
-ISC_REFCOUNT_IMPL(dns_delegdb, delegdb_destroy);
+ISC_REFCOUNT_STATIC_DECL(dns_delegdb);
+ISC_REFCOUNT_STATIC_IMPL(dns_delegdb, delegdb_destroy);
+
+struct delegdb_node {
+	unsigned int magic;
+	dns_delegdb_t *db;
+	isc_refcount_t references;
+
+	/* LRU */
+	isc_loop_t *loop;
+	ISC_LINK(delegdb_node_t) link;
+	bool visited;
+
+	/*
+	 * Could we reuse the link used by RCU here? We could (i.e. unlinking
+	 * the node before putting it into the deadnode list, but the link might
+	 * have been done from a different thread, which might been using it for
+	 * LRU reclamation. That could be a source of problems... So let's take
+	 * the safe side for now.)
+	 */
+	ISC_LINK(delegdb_node_t) deadlink;
+
+	dns_name_t zonecut;
+	dns_delegset_t *delegset;
+};
+
+static void
+delegdb_node_destroy_async(void *arg) {
+	delegdb_node_t *node = arg;
+	isc_mem_t *mctx = NULL;
+
+	REQUIRE(VALID_DELEGDB_NODE(node));
+
+	node->magic = 0;
+	isc_mem_attach(node->db->mctx, &mctx);
+	ISC_SIEVE_UNLINK(node->db->lru[isc_tid()], node, link);
+
+	dns_delegdb_detach(&node->db);
+	isc_loop_unref(node->loop);
+	isc_mem_putanddetach(&mctx, node, sizeof(*node));
+}
+
+static void
+delegdb_node_destroy(delegdb_node_t *node) {
+	REQUIRE(VALID_DELEGDB_NODE(node));
+
+	if (node->delegset != NULL) {
+		REQUIRE(DNS_DELEGSET_DBATTACHED_VALID(node->delegset));
+		dns_delegset_detach(&node->delegset);
+	}
+	dns_name_free(&node->zonecut, node->db->mctx);
+
+	if (node->loop == isc_loop()) {
+		delegdb_node_destroy_async(node);
+	} else {
+		isc_async_run(node->loop, delegdb_node_destroy_async, node);
+	}
+}
+
+ISC_REFCOUNT_STATIC_DECL(delegdb_node);
+ISC_REFCOUNT_STATIC_IMPL(delegdb_node, delegdb_node_destroy);
 
 static void
 dbnode_attach(ISC_ATTR_UNUSED void *uctx, void *pval,
@@ -130,12 +183,17 @@ dns_deleg_init(dns_delegdb_t **dbp) {
 	isc_mem_setdebugging(mctx, isc_mem_debugon(0));
 
 	db = isc_mem_get(mctx, sizeof(*db));
-	*db = (dns_delegdb_t){
-		.magic = DELEGDB_MAGIC,
-		.references = ISC_REFCOUNT_INITIALIZER(1),
-	};
+	*db = (dns_delegdb_t){ .magic = DELEGDB_MAGIC,
+			       .references = ISC_REFCOUNT_INITIALIZER(1),
+			       .nloops = isc_loopmgr_nloops() };
 
 	dns_qpmulti_create(mctx, &qpmethods, &db->nodes, &db->nodes);
+
+	db->lru = isc_mem_cget(mctx, db->nloops, sizeof(db->lru[0]));
+	for (size_t i = 0; i < db->nloops; i++) {
+		ISC_SIEVE_INIT(db->lru[i]);
+	}
+
 	isc_mem_attach(mctx, &db->mctx);
 	isc_mem_detach(&mctx);
 
@@ -147,19 +205,12 @@ void
 dns_deleg_flush(dns_delegdb_t *db) {
 	REQUIRE(VALID_DELEGDB(db));
 
+	if (shuttingdown(db)) {
+		return;
+	}
+
 	dns_qpmulti_destroy(&db->nodes);
 	dns_qpmulti_create(db->mctx, &qpmethods, &db->nodes, &db->nodes);
-}
-
-void
-dns_deleg_shutdownanddetach(dns_delegdb_t **db) {
-	REQUIRE(db != NULL && VALID_DELEGDB(*db));
-
-	/*
-	 * For now, nothing to do really... But with LRU/SIEVE handling, things
-	 * might get more complicated here.
-	 */
-	dns_delegdb_detach(db);
 }
 
 inline static bool
@@ -219,6 +270,10 @@ dns_deleg_lookup(dns_delegdb_t *db, const dns_name_t *name,
 	bool noexact = (options & DNS_DBFIND_NOEXACT) != 0;
 
 	REQUIRE(VALID_DELEGDB(db));
+	if (shuttingdown(db)) {
+		return ISC_R_SHUTTINGDOWN;
+	}
+
 	REQUIRE(DNS_NAME_VALID(name));
 	REQUIRE(dns_name_hasbuffer(zonecut));
 	REQUIRE(deepestzonecut == NULL || dns_name_hasbuffer(deepestzonecut));
@@ -262,6 +317,7 @@ nodefound:
 		if (delegset != NULL) {
 			dns_delegset_attach(node->delegset, delegset);
 			INSIST(DNS_DELEGSET_DBATTACHED_VALID(*delegset));
+			ISC_SIEVE_MARK(node, visited);
 		}
 	}
 
@@ -352,6 +408,112 @@ dns_deleg_addns(dns_delegset_t *delegset, dns_deleg_t *deleg,
 	addname(delegset, &deleg->nameserver, name);
 }
 
+static void
+deleg_maintenance_lru(dns_delegdb_t *db) {
+	dns_qp_t *qp = NULL;
+	delegdb_node_t *node = NULL;
+
+	/*
+	 * Are we under overmem conditions? The RCU barrier is needed here to
+	 * ensure previously deleted nodes "destructors" have been called.
+	 *
+	 * Also, in order to use SIEVE, we need to be on a loop (as we'll clean
+	 * up nodes which registered on this loop only).
+	 *
+	 * Hence, this can't be called from the RCU thread.
+	 */
+	INSIST(isc_loop() != NULL);
+	rcu_barrier();
+
+again:
+	if (!isc_mem_isovermem(db->mctx)) {
+		return;
+	}
+
+	/*
+	 * Let's remove least recently used delegations per batch then see if
+	 * we're still under overmem conditions. If yes, let's do it again.
+	 */
+	dns_qpmulti_write(db->nodes, &qp);
+
+	for (size_t i = 0; i < OVERMEM_BATCH; i++) {
+		node = ISC_SIEVE_NEXT(db->lru[isc_tid()], visited, link);
+
+		if (node == NULL) {
+			break;
+		}
+		(void)dns_qp_deletename(qp, &node->zonecut,
+					DNS_DBNAMESPACE_NORMAL, NULL, NULL);
+	}
+
+	dns_qp_compact(qp, DNS_QPGC_ALL);
+	dns_qpmulti_commit(db->nodes, &qp);
+
+	if (node != NULL) {
+		goto again;
+	}
+
+	/*
+	 * Nothing left in the LRU list of this loop at this point. So even if
+	 * we are still on overmem conditions, there is nothing we can do
+	 * anymore.
+	 */
+}
+
+static void
+deleg_maintenance(dns_delegdb_t *db) {
+	dns_qp_t *qp = NULL;
+	dns_qpiter_t it;
+	delegdb_node_t *node = NULL;
+	isc_stdtime_t now = isc_stdtime_now();
+	ISC_LIST(delegdb_node_t) deadnodes = ISC_LIST_INITIALIZER;
+
+	dns_qpmulti_write(db->nodes, &qp);
+
+	/*
+	 * Go through the whole database to find expired nodes and deleted
+	 * nodes.
+	 */
+	dns_qpiter_init(qp, &it);
+	while (dns_qpiter_next(&it, (void **)&node, NULL) == ISC_R_SUCCESS) {
+		if (isactive(node, now)) {
+			continue;
+		}
+
+		/*
+		 * The node is expired or deleted, put it in the deadlist
+		 */
+		ISC_LIST_APPEND(deadnodes, node, deadlink);
+		node = NULL;
+	}
+
+	/*
+	 * Let's actually delete the deadnodes!
+	 */
+	ISC_LIST_FOREACH(deadnodes, deadnode, deadlink) {
+		/*
+		 * No point checking the return value: the node (i.e. if
+		 * expired) might have been deleted before using
+		 * `dns_deleg_delete()`
+		 */
+		(void)dns_qp_deletename(qp, &deadnode->zonecut,
+					DNS_DBNAMESPACE_NORMAL, NULL, NULL);
+	}
+
+	dns_qp_compact(qp, DNS_QPGC_ALL);
+	dns_qpmulti_commit(db->nodes, &qp);
+}
+
+void
+dns_deleg_maintenance(dns_delegdb_t *db) {
+	REQUIRE(VALID_DELEGDB(db));
+	if (shuttingdown(db)) {
+		return;
+	}
+
+	deleg_maintenance(db);
+}
+
 void
 dns_deleg_writeset(dns_delegdb_t *db, const dns_name_t *zonecut,
 		   dns_ttl_t expire, dns_delegset_t **delegset) {
@@ -360,8 +522,13 @@ dns_deleg_writeset(dns_delegdb_t *db, const dns_name_t *zonecut,
 	dns_qp_t *qp = NULL;
 
 	REQUIRE(VALID_DELEGDB(db));
+	if (shuttingdown(db)) {
+		return;
+	}
+
 	REQUIRE(DNS_NAME_VALID(zonecut));
 	REQUIRE(delegset != NULL && DNS_DELEGSET_DBDETACHED_VALID(*delegset));
+	REQUIRE((*delegset)->mctx == db->mctx);
 
 	if (expire == 0) {
 		expire = 1;
@@ -385,15 +552,29 @@ dns_deleg_writeset(dns_delegdb_t *db, const dns_name_t *zonecut,
 			dns_delegset_detach(&node->delegset);
 		}
 	} else {
-		node = isc_mem_get(db->mctx, sizeof(*node));
-		*node = (delegdb_node_t){
-			.magic = DELEGDB_NODE_MAGIC,
-			.references = ISC_REFCOUNT_INITIALIZER(1),
-			.zonecut = DNS_NAME_INITEMPTY,
-		};
+		if (isc_mem_isovermem(db->mctx)) {
+			/*
+			 * Free everything which might help to go down:
+			 * expired, deleted nodes and, if still needed, least
+			 * recently used.
+			 */
+			deleg_maintenance(db);
+			deleg_maintenance_lru(db);
+		}
 
-		isc_mem_attach(db->mctx, &node->mctx);
+		node = isc_mem_get(db->mctx, sizeof(*node));
+		*node = (delegdb_node_t){ .magic = DELEGDB_NODE_MAGIC,
+					  .references =
+						  ISC_REFCOUNT_INITIALIZER(1),
+					  .zonecut = DNS_NAME_INITEMPTY,
+					  .link = ISC_LINK_INITIALIZER,
+					  .deadlink = ISC_LINK_INITIALIZER,
+					  .loop = isc_loop_ref(isc_loop()) };
+
+		dns_delegdb_attach(db, &node->db);
 		dns_name_dup(zonecut, db->mctx, &node->zonecut);
+
+		ISC_SIEVE_INSERT(db->lru[isc_tid()], node, link);
 
 		result = dns_qp_insert(qp, node, 0);
 		INSIST(result == ISC_R_SUCCESS);
@@ -555,6 +736,10 @@ dns_deleg_dump(dns_delegdb_t *db, const dns_name_t *name, isc_stdtime_t optnow,
 	isc_stdtime_t now = optnow > 0 ? optnow : isc_stdtime_now();
 
 	REQUIRE(VALID_DELEGDB(db));
+	if (shuttingdown(db)) {
+		return;
+	}
+
 	REQUIRE(ISC_BUFFER_VALID(b));
 
 	isc_buffer_clear(b);
@@ -657,7 +842,9 @@ deleg_deletetree(dns_delegdb_t *db, const dns_name_t *name) {
 		 * Because QP doesn't allow deleting a node while using the
 		 * iterator, the approach is different than `deleg_deletenode()`
 		 * here. Instead of removing the node, we detach its delegset,
-		 * which boils down to the same from user POV.
+		 * which boils down to the same from user POV. Then,
+		 * dns_deleg_maintenance() code will detect this node as dead,
+		 * and remove it from QP.
 		 */
 
 		if (node->delegset != NULL) {
@@ -712,10 +899,77 @@ deleg_deletenode(dns_delegdb_t *db, const dns_name_t *name) {
 isc_result_t
 dns_deleg_delete(dns_delegdb_t *db, const dns_name_t *name, bool tree) {
 	REQUIRE(VALID_DELEGDB(db));
+	if (shuttingdown(db)) {
+		return ISC_R_SHUTTINGDOWN;
+	}
+
 	REQUIRE(DNS_NAME_VALID(name));
 
 	if (tree) {
 		return deleg_deletetree(db, name);
 	}
 	return deleg_deletenode(db, name);
+}
+
+static void
+delegdb_shutdown_async(void *arg) {
+	dns_delegdb_t *db = arg;
+
+	dns_qpmulti_destroy(&db->nodes);
+	dns_delegdb_detach(&db);
+}
+
+void
+dns_deleg_shutdown(dns_delegdb_t **db) {
+	REQUIRE(db != NULL && VALID_DELEGDB(*db));
+
+	if (!atomic_compare_exchange_strong(&(*db)->shuttingdown,
+					    &(bool){ false }, true))
+	{
+		return;
+	}
+
+	/*
+	 * The delegation DB is shutdown whenever the view it belongs to is
+	 * detached as well. This can occur from the RCU thread, hence, let's
+	 * go back to the main loop to shutdown the DB (as it needs to be done
+	 * from a UV loop because of `isc_loop()` calls to free the nodes from
+	 * their "respective" loop/threads).
+	 */
+	dns_delegdb_ref(*db);
+	if (isc_loop() == isc_loop_main()) {
+		delegdb_shutdown_async(*db);
+	} else {
+		isc_async_run(isc_loop_main(), delegdb_shutdown_async, *db);
+	}
+
+	dns_delegdb_detach(db);
+}
+
+void
+dns_deleg_setsize(dns_delegdb_t *db, size_t size) {
+	size_t hiwater, lowater;
+
+	REQUIRE(VALID_DELEGDB(db));
+	if (shuttingdown(db)) {
+		return;
+	}
+
+	if (size != 0 && size < DELEGDB_MINSIZE) {
+		size = DELEGDB_MINSIZE;
+	}
+
+	hiwater = size - (size >> 3); /* Approximately 7/8ths. */
+	lowater = size - (size >> 2); /* Approximately 3/4ths. */
+
+	if (size == 0 || hiwater == 0 || lowater == 0) {
+		isc_mem_clearwater(db->mctx);
+
+		/*
+		 * TODO: Is it worth a warning if size > 0? Sounds like
+		 * implicit overmem bypass, so the user should be warned...
+		 */
+	} else {
+		isc_mem_setwater(db->mctx, hiwater, lowater);
+	}
 }
