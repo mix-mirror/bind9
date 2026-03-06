@@ -4265,9 +4265,13 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	 * restart (unless asked not to) and sharable cache option.
 	 */
 	if (view->deleg != NULL) {
-		dns_deleg_shutdownanddetach(&view->deleg);
+		dns_deleg_shutdown(&view->deleg);
 	}
 	dns_deleg_init(&view->deleg);
+	/*
+	 * Totally arbitrary decision for now. This might need its own knob.
+	 */
+	dns_deleg_setsize(view->deleg, max_cache_size / 6);
 
 	obj = NULL;
 	result = named_config_get(maps, "stale-answer-ttl", &obj);
