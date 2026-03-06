@@ -12,7 +12,9 @@ options {
 		 except-from { "example.org"; };
 	deny-answer-aliases { "example.org"; }
 		except-from { "goodcname.example.net";
-			      "gooddname.example.net"; };
+			      "gooddname.example.net";
+			      "goodhttps.example.net";
+			      "goodsvcb.example.net"; };
 	allow-query {!10.53.0.8; any; };
 	max-zone-ttl unlimited;
 	resolver-query-timeout 5000; # 5 seconds

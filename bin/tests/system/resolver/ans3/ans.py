@@ -64,6 +64,18 @@ class BadGoodDnameNsHandler(QnameQtypeHandler, StaticResponseHandler):
     authority = [soa_rrset("example.net.")]
 
 
+class BadHttpsHandler(QnameQtypeHandler, StaticResponseHandler):
+    qnames = ["badhttps.example.net."]
+    qtypes = [dns.rdatatype.HTTPS]
+    answer = [rrset(qnames[0], qtypes[0], "0 badhttps.example.org.")]
+
+
+class BadSvcbHandler(QnameQtypeHandler, StaticResponseHandler):
+    qnames = ["badsvcb.example.net."]
+    qtypes = [dns.rdatatype.SVCB]
+    answer = [rrset(qnames[0], qtypes[0], "0 badsvcb.example.org.")]
+
+
 class CnameSubHandler(QnameHandler, StaticResponseHandler):
     qnames = ["cname.sub.example.org."]
     answer = [rrset(qnames[0], dns.rdatatype.CNAME, "ok.sub.example.org.")]
@@ -102,6 +114,18 @@ class FooGoodDnameHandler(QnameHandler, StaticResponseHandler):
 class GoodCnameHandler(QnameHandler, StaticResponseHandler):
     qnames = ["goodcname.example.net."]
     answer = [rrset(qnames[0], dns.rdatatype.CNAME, "goodcname.example.org.")]
+
+
+class GoodHttpsHandler(QnameQtypeHandler, StaticResponseHandler):
+    qnames = ["goodhttps.example.net."]
+    qtypes = [dns.rdatatype.HTTPS]
+    answer = [rrset(qnames[0], qtypes[0], "0 goodhttps.example.org.")]
+
+
+class GoodSvcbHandler(QnameQtypeHandler, StaticResponseHandler):
+    qnames = ["goodsvcb.example.net."]
+    qtypes = [dns.rdatatype.SVCB]
+    answer = [rrset(qnames[0], qtypes[0], "0 goodsvcb.example.org.")]
 
 
 class IscHandler(QnameQtypeHandler, StaticResponseHandler):
@@ -241,17 +265,21 @@ def main() -> None:
         AttackDnameHandler(),
         BadCnameHandler(),
         BadGoodDnameNsHandler(),
+        BadHttpsHandler(),
+        BadSvcbHandler(),
         CnameSubHandler(),
         ExampleOrgHandler(),
         FooBadDnameHandler(),
         FooBarSubTld1Handler(),
-        FooGoodDnameHandler(),
         FooGlueInAnswerHandler(),
+        FooGoodDnameHandler(),
         Gl6412AHandler(),
         Gl6412Handler(),
         Gl6412Ns2Handler(),
         Gl6412Ns3Handler(),
         GoodCnameHandler(),
+        GoodHttpsHandler(),
+        GoodSvcbHandler(),
         IscHandler(),
         LameExampleOrgDelegation(),
         LargeReferralHandler(),

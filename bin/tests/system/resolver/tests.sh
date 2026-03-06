@@ -265,6 +265,42 @@ if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
 n=$((n + 1))
+echo_i "checking HTTPS target filtering (deny) ($n)"
+ret=0
+dig_with_opts +tcp badhttps.example.net @10.53.0.1 https >dig.out.ns1.test${n} || ret=1
+grep "HTTPS target badhttps.example.org denied for badhttps.example.net/IN" ns1/named.run >/dev/null || ret=1
+grep "status: SERVFAIL" dig.out.ns1.test${n} >/dev/null || ret=1
+if [ $ret != 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
+
+n=$((n + 1))
+echo_i "checking HTTPS target filtering (accept) ($n)"
+ret=0
+dig_with_opts +tcp goodhttps.example.net @10.53.0.1 https >dig.out.ns1.test${n} || ret=1
+grep "status: NOERROR" dig.out.ns1.test${n} >/dev/null || ret=1
+grep 'IN.HTTPS.0 goodhttps.example.org.$' dig.out.ns1.test${n} >/dev/null || ret=1
+if [ $ret != 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
+
+n=$((n + 1))
+echo_i "checking SVCB target filtering (deny) ($n)"
+ret=0
+dig_with_opts +tcp badsvcb.example.net @10.53.0.1 svcb >dig.out.ns1.test${n} || ret=1
+grep "SVCB target badsvcb.example.org denied for badsvcb.example.net/IN" ns1/named.run >/dev/null || ret=1
+grep "status: SERVFAIL" dig.out.ns1.test${n} >/dev/null || ret=1
+if [ $ret != 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
+
+n=$((n + 1))
+echo_i "checking SVCB target filtering (accept) ($n)"
+ret=0
+dig_with_opts +tcp goodsvcb.example.net @10.53.0.1 svcb >dig.out.ns1.test${n} || ret=1
+grep "status: NOERROR" dig.out.ns1.test${n} >/dev/null || ret=1
+grep 'IN.SVCB.0 goodsvcb.example.org.$' dig.out.ns1.test${n} >/dev/null || ret=1
+if [ $ret != 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
+
+n=$((n + 1))
 echo_i "check that the resolver accepts a referral response with a non-empty ANSWER section ($n)"
 ret=0
 dig_with_opts @10.53.0.1 foo.glue-in-answer.example.org. A >dig.ns1.out.${n} || ret=1
