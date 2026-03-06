@@ -28,9 +28,11 @@
  * Mock isc_stdtime_now() as it makes testing easier (to compare
  * generated/expected deleg data).
  */
+static uint32_t stdtime_now = 100;
+
 static uint32_t
 isc_stdtime_now(void) {
-	return 100;
+	return stdtime_now;
 }
 
 #include <isc/lib.h>
@@ -49,6 +51,27 @@ isc_stdtime_now(void) {
 #include "../dns/deleg.c"
 
 #include <tests/isc.h>
+
+static void
+shutdownloop(ISC_ATTR_UNUSED void *arg) {
+	isc_loopmgr_shutdown();
+}
+
+static void
+shutdowntest(dns_delegdb_t **db) {
+	dns_deleg_shutdown(db);
+	shutdownloop(NULL);
+}
+
+static void
+rundelegtest(isc_job_cb testcb) {
+	isc_loopmgr_create(isc_g_mctx, 1);
+
+	isc_loop_setup(isc_loop_main(), testcb, NULL);
+	isc_loopmgr_run();
+
+	isc_loopmgr_destroy();
+}
 
 static void
 addnamedeleg(const char *addrstr, dns_delegset_t *delegset, dns_deleg_t *deleg,
@@ -116,7 +139,8 @@ dumpdb(dns_delegdb_t *db, const char *namestr, isc_stdtime_t now,
 	dns_deleg_dump(db, name, now, b);
 }
 
-ISC_RUN_TEST_IMPL(dns_deleg_basictests) {
+static void
+basictests(ISC_ATTR_UNUSED void *arg) {
 	isc_result_t result;
 	dns_delegdb_t *db = NULL;
 	dns_deleg_t *deleg = NULL;
@@ -295,10 +319,11 @@ ISC_RUN_TEST_IMPL(dns_deleg_basictests) {
 	assert_int_equal(isc_buffer_usedlength(&b), 1);
 	assert_string_equal(bdata, "");
 
-	dns_deleg_shutdownanddetach(&db);
+	shutdowntest(&db);
 }
 
-ISC_RUN_TEST_IMPL(dns_deleg_ttl0tests) {
+static void
+ttl0tests(ISC_ATTR_UNUSED void *arg) {
 	isc_result_t result;
 	dns_delegdb_t *db = NULL;
 	dns_deleg_t *deleg = NULL;
@@ -328,10 +353,11 @@ ISC_RUN_TEST_IMPL(dns_deleg_ttl0tests) {
 	result = lookupdb(db, "baz.bar.stuff.", now + 1, 0, "", &delegset);
 	assert_int_equal(result, ISC_R_NOTFOUND);
 
-	dns_deleg_shutdownanddetach(&db);
+	shutdowntest(&db);
 }
 
-ISC_RUN_TEST_IMPL(dns_deleg_noexacttests) {
+static void
+noexacttests(ISC_ATTR_UNUSED void *arg) {
 	isc_result_t result;
 	dns_delegdb_t *db = NULL;
 	dns_deleg_t *deleg = NULL;
@@ -385,10 +411,11 @@ ISC_RUN_TEST_IMPL(dns_deleg_noexacttests) {
 	assert_int_equal(result, ISC_R_SUCCESS);
 	dns_delegset_detach(&delegset);
 
-	dns_deleg_shutdownanddetach(&db);
+	shutdowntest(&db);
 }
 
-ISC_RUN_TEST_IMPL(dns_deleg_deletetests) {
+static void
+deletetests(ISC_ATTR_UNUSED void *arg) {
 	isc_result_t result;
 	dns_delegdb_t *db = NULL;
 	dns_deleg_t *deleg = NULL;
@@ -480,7 +507,105 @@ ISC_RUN_TEST_IMPL(dns_deleg_deletetests) {
 	assert_int_equal(result, ISC_R_SUCCESS);
 	dns_delegset_detach(&delegset);
 
-	dns_deleg_shutdownanddetach(&db);
+	shutdowntest(&db);
+}
+
+static void
+maintenancetests(ISC_ATTR_UNUSED void *arg) {
+	dns_delegdb_t *db = NULL;
+	dns_deleg_t *deleg = NULL;
+	dns_delegset_t *delegset = NULL;
+	isc_stdtime_t now = isc_stdtime_now();
+	dns_fixedname_t fname;
+	dns_name_t *name = dns_fixedname_initname(&fname);
+	isc_result_t result;
+
+	dns_deleg_init(&db);
+	assert_non_null(db);
+
+	/*
+	 * A valid record
+	 */
+	dns_deleg_allocset(db, &delegset);
+	dns_deleg_allocdeleg(delegset, &deleg);
+	addipdeleg(AF_INET6, "1111::2222", delegset, deleg);
+	writedb(db, "baz.", 300, &delegset);
+	deleg = NULL;
+
+	/*
+	 * An expired record
+	 */
+	dns_deleg_allocset(db, &delegset);
+	dns_deleg_allocdeleg(delegset, &deleg);
+
+	assert_int_in_range(isc_mem_inuse(db->mctx), 500, 2000);
+
+	for (size_t i = 0; i < 9999; i++) {
+		addipdeleg(AF_INET6, "1111::2222", delegset, deleg);
+	}
+
+	assert_int_in_range(isc_mem_inuse(db->mctx), 400000, 410000);
+
+	writedb(db, "stuff.", 10, &delegset);
+	deleg = NULL;
+	stdtime_now += 10;
+
+	/*
+	 * A deleted record
+	 */
+	dns_deleg_allocset(db, &delegset);
+	dns_deleg_allocdeleg(delegset, &deleg);
+
+	for (size_t i = 0; i < 9999; i++) {
+		addipdeleg(AF_INET6, "1111::2222", delegset, deleg);
+	}
+
+	writedb(db, "bar.", 30, &delegset);
+	deleg = NULL;
+
+	assert_int_in_range(isc_mem_inuse(db->mctx), 800000, 810000);
+
+	dns_name_fromstring(name, "bar.", NULL, 0, NULL);
+	(void)dns_deleg_delete(db, name, true);
+
+	/*
+	 * Bar delegset is immediately detached (hence, deleted). Although the
+	 * node remains in memory.
+	 *
+	 * Stuff node and delegset remain in memory, because the expiration is
+	 * not a condition for immediate delegset detach (there is no pro-active
+	 * detection of it).
+	 */
+	assert_int_in_range(isc_mem_inuse(db->mctx), 400000, 410000);
+
+	dns_deleg_maintenance(db);
+
+	/*
+	 * Bar internal node and stuff (internal node and delegset) are now
+	 * freed from memory.
+	 *
+	 * rcu_barrier() is needed to kick off QP reclamation flow (and run the
+	 * detaching functions from the DB nodes).
+	 */
+	rcu_barrier();
+	assert_int_in_range(isc_mem_inuse(db->mctx), 500, 2000);
+
+	/*
+	 * baz. is still there
+	 */
+	result = lookupdb(db, "baz.", now, 0, "baz.", &delegset);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	dns_delegset_detach(&delegset);
+
+	shutdowntest(&db);
+}
+
+ISC_RUN_TEST_IMPL(dns_deleg_basictests) { rundelegtest(basictests); }
+ISC_RUN_TEST_IMPL(dns_deleg_ttl0tests) { rundelegtest(ttl0tests); }
+ISC_RUN_TEST_IMPL(dns_deleg_noexacttests) { rundelegtest(noexacttests); }
+ISC_RUN_TEST_IMPL(dns_deleg_deletetests) { rundelegtest(deletetests); }
+ISC_RUN_TEST_IMPL(dns_deleg_maintenancetests) {
+	rundelegtest(maintenancetests);
 }
 
 ISC_TEST_LIST_START
@@ -488,6 +613,7 @@ ISC_TEST_ENTRY(dns_deleg_basictests)
 ISC_TEST_ENTRY(dns_deleg_ttl0tests)
 ISC_TEST_ENTRY(dns_deleg_noexacttests)
 ISC_TEST_ENTRY(dns_deleg_deletetests)
+ISC_TEST_ENTRY(dns_deleg_maintenancetests)
 ISC_TEST_LIST_END
 
 ISC_TEST_MAIN

@@ -250,9 +250,6 @@ destroy(dns_view_t *view) {
 	if (view->cache != NULL) {
 		dns_cache_detach(&view->cache);
 	}
-	if (view->deleg != NULL) {
-		dns_deleg_shutdownanddetach(&view->deleg);
-	}
 	if (view->nocasecompress != NULL) {
 		dns_acl_detach(&view->nocasecompress);
 	}
@@ -395,6 +392,10 @@ shutdown_view(dns_view_t *view) {
 	/* Shutdown the attached objects first */
 	if (view->resolver != NULL) {
 		dns_resolver_shutdown(view->resolver);
+	}
+
+	if (view->deleg != NULL) {
+		dns_deleg_shutdown(&view->deleg);
 	}
 
 	rcu_read_lock();
