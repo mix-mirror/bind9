@@ -520,6 +520,7 @@ stages:
 
 .system_test_common: &system_test_job
   <<: *default_triggering_rules
+  parallel: 10
   stage: system
   before_script:
     - *setup_interfaces
