@@ -176,11 +176,11 @@ def test_zone_with_many_keys_xml(statsport):
     )
 
 
-@pytest.mark.flaky(max_runs=2)
+#@pytest.mark.flaky(max_runs=2)
 def test_traffic_xml(statsport):
     generic.test_traffic(fetch_traffic_xml, statsip="10.53.0.2", statsport=statsport)
 
 
-@pytest.mark.flaky(max_runs=2)
+#@pytest.mark.flaky(max_runs=2)
 def test_rtt_xml(statsport):
     generic.test_rtt(fetch_rtt_xml, statsip="10.53.0.4", statsport=statsport)

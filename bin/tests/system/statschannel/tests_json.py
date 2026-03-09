@@ -130,11 +130,11 @@ def test_zone_with_many_keys_json(statsport):
     )
 
 
-@pytest.mark.flaky(max_runs=2)
+#@pytest.mark.flaky(max_runs=2)
 def test_traffic_json(statsport):
     generic.test_traffic(fetch_traffic_json, statsip="10.53.0.2", statsport=statsport)
 
 
-@pytest.mark.flaky(max_runs=2)
+#@pytest.mark.flaky(max_runs=2)
 def test_rtt_json(statsport):
     generic.test_rtt(fetch_rtt_json, statsip="10.53.0.4", statsport=statsport)
