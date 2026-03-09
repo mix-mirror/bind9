@@ -59,6 +59,8 @@ def check_zone_timers(loaded, expires, refresh, loaded_exp):
 
 
 def check_rtt(rtt, rtt_expected):
+    isctest.log.info(f"expected rtt: {rtt_expected}")
+    isctest.log.info(f"rtt: {rtt}")
     for bucket, count in rtt_expected:
         assert rtt[bucket] == count, f"bucket {bucket} ms got {rtt[bucket]} replies, expected {count}"
 
