@@ -20,7 +20,7 @@ use strict;
 use IO::File;
 
 sub usage {
-    print ("Usage: packet.pl [file]\n");
+    print ("Usage: fromhex.pl [file]\n");
     exit 1;
 }
 
