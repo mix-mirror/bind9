@@ -1947,6 +1947,9 @@ publish:
   variables:
     SSH_SCRIPT_CLIENT: |-
       ssh "${STAGING_USER_ACTIONS}@${STAGING_HOST}" "publish ${CI_COMMIT_TAG}"
+  after_script:
+    - >
+      "$CI_PROJECT_DIR"/bind9-qa/releng/manage_distros_token.py delete
   artifacts:
     paths:
       - publish-${CI_COMMIT_TAG}.log
