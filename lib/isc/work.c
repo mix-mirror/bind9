@@ -13,6 +13,7 @@
 
 #include <stdlib.h>
 
+#include <isc/async.h>
 #include <isc/iterated_hash.h>
 #include <isc/job.h>
 #include <isc/loop.h>
@@ -51,11 +52,18 @@ isc__after_work_cb(uv_work_t *req, int status) {
 	isc_loop_detach(&loop);
 }
 
+static void
+isc__work_enqueue(void *arg) {
+	isc_work_t *work = arg;
+	int r = uv_queue_work(&work->loop->loop, &work->work, isc__work_cb,
+			      isc__after_work_cb);
+	UV_RUNTIME_CHECK(uv_queue_work, r);
+}
+
 void
 isc_work_enqueue(isc_loop_t *loop, isc_work_cb work_cb,
 		 isc_after_work_cb after_work_cb, void *cbarg) {
 	isc_work_t *work = NULL;
-	int r;
 
 	REQUIRE(VALID_LOOP(loop));
 	REQUIRE(work_cb != NULL);
@@ -69,10 +77,10 @@ isc_work_enqueue(isc_loop_t *loop, isc_work_cb work_cb,
 	};
 
 	isc_loop_attach(loop, &work->loop);
-
 	uv_req_set_data((uv_req_t *)&work->work, work);
-
-	r = uv_queue_work(&loop->loop, &work->work, isc__work_cb,
-			  isc__after_work_cb);
-	UV_RUNTIME_CHECK(uv_queue_work, r);
+	if (loop == isc_loop()) {
+		isc__work_enqueue(work);
+	} else {
+		isc_async_run(loop, isc__work_enqueue, work);
+	}
 }
