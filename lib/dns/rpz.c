@@ -2272,7 +2272,8 @@ del_name(dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
 	result = dns_qp_getname(qp, trig_name, DNS_DBNAMESPACE_NORMAL,
 				(void **)&data, NULL);
 	if (result != ISC_R_SUCCESS) {
-		return;
+		INSIST(data == NULL);
+		goto done;
 	}
 
 	INSIST(data != NULL);
@@ -2315,6 +2316,7 @@ del_name(dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
 		RWUNLOCK(&rpz->rpzs->search_lock, isc_rwlocktype_write);
 	}
 
+done:
 	dns_qp_compact(qp, DNS_QPGC_MAYBE);
 	dns_qpmulti_commit(rpzs->table, &qp);
 }
