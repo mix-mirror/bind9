@@ -458,8 +458,8 @@ isc_radix_insert(isc_radix_tree_t *radix, isc_radix_node_t **target,
 		}
 		INSIST(node->data[RADIX_V4] == NULL &&
 		       node->node_num[RADIX_V4] == -1 &&
-		       node->data[RADIX_V4] == NULL &&
-		       node->node_num[RADIX_V4] == -1);
+		       node->data[RADIX_V6] == NULL &&
+		       node->node_num[RADIX_V6] == -1);
 		if (source != NULL) {
 			/* Merging node */
 			for (i = 0; i < RADIX_FAMILIES; i++) {
