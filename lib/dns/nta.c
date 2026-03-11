@@ -190,7 +190,9 @@ fetch_done(void *arg) {
 	 * as well stop the timer now.
 	 */
 	RWLOCK(&ntatable->rwlock, isc_rwlocktype_read);
-	if (nta->timer != NULL && nta->expiry - now < view->nta_recheck) {
+	if (nta->timer != NULL && nta->expiry > now &&
+	    nta->expiry - now < view->nta_recheck)
+	{
 		isc_timer_stop(nta->timer);
 	}
 	RWUNLOCK(&ntatable->rwlock, isc_rwlocktype_read);
