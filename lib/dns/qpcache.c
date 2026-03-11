@@ -1647,7 +1647,7 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 					 (void *)&search DNS__DB_FLARG_PASS);
 		if (zcresult != DNS_R_CONTINUE) {
 			result = DNS_R_PARTIALMATCH;
-			search.chain.len = i - 1;
+			search.chain.len = (i > 0) ? i - 1 : 0;
 			node = encloser;
 			if (foundname != NULL) {
 				dns_name_copy(&node->name, foundname);

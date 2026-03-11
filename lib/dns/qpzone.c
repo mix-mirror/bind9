@@ -3372,7 +3372,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		tresult = qpzone_check_zonecut(n, &search DNS__DB_FLARG_PASS);
 		if (tresult != DNS_R_CONTINUE) {
 			result = tresult;
-			search.chain.len = i - 1;
+			search.chain.len = (i > 0) ? i - 1 : 0;
 			dns_name_copy(&n->name, foundname);
 			node = n;
 		}
