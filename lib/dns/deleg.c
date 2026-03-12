@@ -29,7 +29,6 @@
 #define VALID_DELEGDB(db) ISC_MAGIC_VALID(db, DELEGDB_MAGIC)
 
 #define DELEGDB_MINSIZE (1024 * 1024) /* 1MiB */
-#define OVERMEM_BATCH	50
 
 typedef struct delegdb_node delegdb_node_t;
 
@@ -83,14 +82,18 @@ struct delegdb_node {
 	bool visited;
 
 	/*
-	 * Could we reuse the link used by RCU here? We could (i.e. unlinking
-	 * the node before putting it into the deadnode list, but the link might
-	 * have been done from a different thread, which might been using it for
-	 * LRU reclamation. That could be a source of problems... So let's take
-	 * the safe side for now.)
+	 * Used to build a list of nodes to be deleted (i.e. when running the
+	 * expired cleanup flow or the delete tree flow). It's safe to use
+	 * the same link for expired flow and delete tree flow because they
+	 * both run under the write QP transaction, and there can only
+	 * be one at a time.
 	 */
 	ISC_LINK(delegdb_node_t) deadlink;
 
+	/*
+	 * Immutable node data
+	 */
+	size_t size;
 	dns_name_t zonecut;
 	dns_delegset_t *delegset;
 };
@@ -103,8 +106,10 @@ delegdb_node_destroy_async(void *arg) {
 	REQUIRE(VALID_DELEGDB_NODE(node));
 
 	node->magic = 0;
+
 	isc_mem_attach(node->db->mctx, &mctx);
 	ISC_SIEVE_UNLINK(node->db->lru[isc_tid()], node, link);
+	dns_name_free(&node->zonecut, node->db->mctx);
 
 	dns_delegdb_detach(&node->db);
 	isc_loop_unref(node->loop);
@@ -114,12 +119,9 @@ delegdb_node_destroy_async(void *arg) {
 static void
 delegdb_node_destroy(delegdb_node_t *node) {
 	REQUIRE(VALID_DELEGDB_NODE(node));
+	REQUIRE(DNS_DELEGSET_VALID(node->delegset));
 
-	if (node->delegset != NULL) {
-		REQUIRE(DNS_DELEGSET_DBATTACHED_VALID(node->delegset));
-		dns_delegset_detach(&node->delegset);
-	}
-	dns_name_free(&node->zonecut, node->db->mctx);
+	dns_delegset_detach(&node->delegset);
 
 	if (node->loop == isc_loop()) {
 		delegdb_node_destroy_async(node);
@@ -215,19 +217,7 @@ dns_deleg_flush(dns_delegdb_t *db) {
 
 inline static bool
 isactive(delegdb_node_t *node, dns_ttl_t now) {
-	/*
-	 * Those two requires must go away, I just left them for now as I'm
-	 * trying to chase down a rare and random segfault here. (And a stack
-	 * which makes no sense.)
-	 */
-	REQUIRE(VALID_DELEGDB_NODE(node));
-
-	if (node->delegset != NULL) {
-		REQUIRE(DNS_DELEGSET_DBATTACHED_VALID(node->delegset));
-		return node->delegset->ttl > now;
-	}
-
-	return false;
+	return node->delegset->ttl > now;
 }
 
 static void
@@ -292,33 +282,18 @@ dns_deleg_lookup(dns_delegdb_t *db, const dns_name_t *name,
 		dns_name_copy(&node->zonecut, deepestzonecut);
 	}
 
-	if (node->delegset == NULL) {
-		/*
-		 * The node has been removed.
-		 */
-		getparentnode(&chain, &node, now);
-
-		if (node->delegset == NULL) {
-			CLEANUP(ISC_R_NOTFOUND);
-		}
-		goto nodefound;
-	}
-
 	if (result == ISC_R_SUCCESS && (noexact || !isactive(node, now))) {
 		getparentnode(&chain, &node, now);
 	} else if (result == DNS_R_PARTIALMATCH && !isactive(node, now)) {
 		getparentnode(&chain, &node, now);
 	}
 
-nodefound:
 	result = isactive(node, now) ? ISC_R_SUCCESS : ISC_R_NOTFOUND;
 	if (result == ISC_R_SUCCESS) {
 		dns_name_copy(&node->zonecut, zonecut);
-		if (delegset != NULL) {
-			dns_delegset_attach(node->delegset, delegset);
-			INSIST(DNS_DELEGSET_DBATTACHED_VALID(*delegset));
-			ISC_SIEVE_MARK(node, visited);
-		}
+		dns_delegset_attach(node->delegset, delegset);
+		INSIST(DNS_DELEGSET_VALID(*delegset));
+		ISC_SIEVE_MARK(node, visited);
 	}
 
 cleanup:
@@ -335,7 +310,7 @@ dns_deleg_allocset(dns_delegdb_t *db, dns_delegset_t **delegsetp) {
 	REQUIRE(delegsetp != NULL && *delegsetp == NULL);
 
 	delegset = isc_mem_get(db->mctx, sizeof(*delegset));
-	*delegset = (dns_delegset_t){ .magic = DNS_DELEGSET_DBDETACHED_MAGIC,
+	*delegset = (dns_delegset_t){ .magic = DNS_DELEGSET_MAGIC,
 				      .references = ISC_REFCOUNT_INITIALIZER(1),
 				      .deleg = ISC_LIST_INITIALIZER };
 	isc_mem_attach(db->mctx, &delegset->mctx);
@@ -347,7 +322,7 @@ void
 dns_deleg_allocdeleg(dns_delegset_t *delegset, dns_deleg_t **delegp) {
 	dns_deleg_t *deleg = NULL;
 
-	REQUIRE(DNS_DELEGSET_DBDETACHED_VALID(delegset));
+	REQUIRE(DNS_DELEGSET_VALID(delegset));
 	REQUIRE(delegp != NULL && *delegp == NULL);
 
 	deleg = isc_mem_get(delegset->mctx, sizeof(*deleg));
@@ -369,7 +344,7 @@ dns_deleg_addaddr(dns_delegset_t *delegset, dns_deleg_t *deleg,
 		  const isc_netaddr_t *addr) {
 	isc_netaddrlink_t *addrlink = NULL;
 
-	REQUIRE(DNS_DELEGSET_DBDETACHED_VALID(delegset));
+	REQUIRE(DNS_DELEGSET_VALID(delegset));
 	REQUIRE(deleg != NULL);
 	REQUIRE(addr != NULL);
 
@@ -385,7 +360,7 @@ addname(dns_delegset_t *delegset, dns_namelist_t *list,
 	const dns_name_t *name) {
 	dns_name_t *clone = NULL;
 
-	REQUIRE(DNS_DELEGSET_DBDETACHED_VALID(delegset));
+	REQUIRE(DNS_DELEGSET_VALID(delegset));
 	REQUIRE(DNS_NAME_VALID(name));
 
 	clone = isc_mem_get(delegset->mctx, sizeof(*clone));
@@ -409,70 +384,41 @@ dns_deleg_addns(dns_delegset_t *delegset, dns_deleg_t *deleg,
 }
 
 static void
-deleg_maintenance_lru(dns_delegdb_t *db) {
+deleg_cleanup_lru(dns_delegdb_t *db, size_t requested) {
 	dns_qp_t *qp = NULL;
 	delegdb_node_t *node = NULL;
+	size_t reclaimed = 0;
 
-	/*
-	 * Are we under overmem conditions? The RCU barrier is needed here to
-	 * ensure previously deleted nodes "destructors" have been called.
-	 *
-	 * Also, in order to use SIEVE, we need to be on a loop (as we'll clean
-	 * up nodes which registered on this loop only).
-	 *
-	 * Hence, this can't be called from the RCU thread.
-	 */
-	INSIST(isc_loop() != NULL);
-	rcu_barrier();
-
-again:
-	if (!isc_mem_isovermem(db->mctx)) {
-		return;
-	}
-
-	/*
-	 * Let's remove least recently used delegations per batch then see if
-	 * we're still under overmem conditions. If yes, let's do it again.
-	 */
 	dns_qpmulti_write(db->nodes, &qp);
 
-	for (size_t i = 0; i < OVERMEM_BATCH; i++) {
+	while (reclaimed < requested) {
 		node = ISC_SIEVE_NEXT(db->lru[isc_tid()], visited, link);
 
 		if (node == NULL) {
 			break;
 		}
+		reclaimed += node->size;
 		(void)dns_qp_deletename(qp, &node->zonecut,
 					DNS_DBNAMESPACE_NORMAL, NULL, NULL);
 	}
 
 	dns_qp_compact(qp, DNS_QPGC_ALL);
 	dns_qpmulti_commit(db->nodes, &qp);
-
-	if (node != NULL) {
-		goto again;
-	}
-
-	/*
-	 * Nothing left in the LRU list of this loop at this point. So even if
-	 * we are still on overmem conditions, there is nothing we can do
-	 * anymore.
-	 */
 }
 
-static void
-deleg_maintenance(dns_delegdb_t *db) {
+static size_t
+deleg_cleanup_expired(dns_delegdb_t *db) {
 	dns_qp_t *qp = NULL;
 	dns_qpiter_t it;
 	delegdb_node_t *node = NULL;
 	isc_stdtime_t now = isc_stdtime_now();
 	ISC_LIST(delegdb_node_t) deadnodes = ISC_LIST_INITIALIZER;
+	size_t reclaimed = 0;
 
 	dns_qpmulti_write(db->nodes, &qp);
 
 	/*
-	 * Go through the whole database to find expired nodes and deleted
-	 * nodes.
+	 * Go through the whole database to find expired nodes.
 	 */
 	dns_qpiter_init(qp, &it);
 	while (dns_qpiter_next(&it, (void **)&node, NULL) == ISC_R_SUCCESS) {
@@ -481,9 +427,10 @@ deleg_maintenance(dns_delegdb_t *db) {
 		}
 
 		/*
-		 * The node is expired or deleted, put it in the deadlist
+		 * The node is expired, put it in the deadlist
 		 */
 		ISC_LIST_APPEND(deadnodes, node, deadlink);
+		reclaimed += node->size;
 		node = NULL;
 	}
 
@@ -491,106 +438,158 @@ deleg_maintenance(dns_delegdb_t *db) {
 	 * Let's actually delete the deadnodes!
 	 */
 	ISC_LIST_FOREACH(deadnodes, deadnode, deadlink) {
-		/*
-		 * No point checking the return value: the node (i.e. if
-		 * expired) might have been deleted before using
-		 * `dns_deleg_delete()`
-		 */
-		(void)dns_qp_deletename(qp, &deadnode->zonecut,
-					DNS_DBNAMESPACE_NORMAL, NULL, NULL);
+		isc_result_t result = dns_qp_deletename(qp, &deadnode->zonecut,
+							DNS_DBNAMESPACE_NORMAL,
+							NULL, NULL);
+		INSIST(result == ISC_R_SUCCESS);
 	}
 
 	dns_qp_compact(qp, DNS_QPGC_ALL);
 	dns_qpmulti_commit(db->nodes, &qp);
+
+	return reclaimed;
 }
 
-void
-dns_deleg_maintenance(dns_delegdb_t *db) {
-	REQUIRE(VALID_DELEGDB(db));
-	if (shuttingdown(db)) {
-		return;
+static void
+deleg_cleanup(dns_delegdb_t *db, size_t requested) {
+	if (isc_mem_isovermem(db->mctx)) {
+		/*
+		 * Cleaning up expired node is done first and on its own QP
+		 * transaction so we can check if LRU cleaning is still needed
+		 * after. (Simpler, for now, than calculating the size of each
+		 * delegation.)
+		 */
+		size_t reclaimed = deleg_cleanup_expired(db);
+		if (reclaimed < requested) {
+			deleg_cleanup_lru(db, requested - reclaimed);
+		}
+	}
+}
+
+static size_t
+delegset_size(dns_delegset_t *delegset) {
+	size_t sz = 0;
+
+	sz += sizeof(*delegset);
+	ISC_LIST_FOREACH(delegset->deleg, deleg, link) {
+		ISC_LIST_FOREACH(deleg->address, address, link) {
+			sz += sizeof(*address);
+		}
+		ISC_LIST_FOREACH(deleg->nameserver, nameserver, link) {
+			sz += dns_name_size(nameserver);
+		}
+		/*
+		 * Omitting delegi here, as the layout of dns_deleg_t will
+		 * change with a union for the names, and delegi is unused at
+		 * the moment.
+		 */
 	}
 
-	deleg_maintenance(db);
+	return sz;
 }
 
-void
+static size_t
+delegdb_node_size(const dns_name_t *zonecut, dns_delegset_t *delegset) {
+	size_t sz = 0;
+
+	sz += sizeof(delegdb_node_t);
+	sz += dns_name_size(zonecut);
+	sz += delegset_size(delegset);
+
+	return sz;
+}
+
+isc_result_t
 dns_deleg_writeset(dns_delegdb_t *db, const dns_name_t *zonecut,
 		   dns_ttl_t expire, dns_delegset_t **delegset) {
 	isc_result_t result;
 	delegdb_node_t *node = NULL;
 	dns_qp_t *qp = NULL;
+	isc_stdtime_t now = isc_stdtime_now();
+	size_t nodesize = 0;
 
 	REQUIRE(VALID_DELEGDB(db));
 	if (shuttingdown(db)) {
-		return;
+		return ISC_R_SHUTTINGDOWN;
 	}
 
 	REQUIRE(DNS_NAME_VALID(zonecut));
-	REQUIRE(delegset != NULL && DNS_DELEGSET_DBDETACHED_VALID(*delegset));
+	REQUIRE(delegset != NULL && DNS_DELEGSET_VALID(*delegset));
 	REQUIRE((*delegset)->mctx == db->mctx);
+
+	/*
+	 * We're about to add a new delegation, check for state of overmem, and
+	 * clean up oldest/expired delegations first.
+	 */
+	nodesize = delegdb_node_size(zonecut, *delegset);
+	deleg_cleanup(db, nodesize);
 
 	if (expire == 0) {
 		expire = 1;
 	}
-	(*delegset)->ttl = expire + isc_stdtime_now();
+	(*delegset)->ttl = expire + now;
 
 	dns_qpmulti_write(db->nodes, &qp);
 	result = dns_qp_lookup(qp, zonecut, DNS_DBNAMESPACE_NORMAL, NULL, NULL,
 			       (void **)&node, NULL);
 
+	/*
+	 * Bail out if such delegation exists and is not expired.
+	 *
+	 * TODO once DELEG is supported, this part should also bail out if
+	 * the existing node is from a DELEG RR and the one which
+	 * replace it is from a NS. (The caller can't really atomically
+	 * do that without exposing transaction, etc.)
+	 */
 	if (result == ISC_R_SUCCESS) {
 		INSIST(VALID_DELEGDB_NODE(node));
-		if (node->delegset != NULL) {
-			/*
-			 * The zonecut already exists, so let's reuse it, but
-			 * replace the previous delegation set with a fresh one.
-			 *
-			 * TODO: enforce that the new TTL is not expired,
-			 * otherwise, we skip the write.
-			 */
-			dns_delegset_detach(&node->delegset);
+
+		if (node->delegset->ttl > now) {
+			result = ISC_R_EXISTS;
+			goto commit;
+		} else {
+			result = dns_qp_deletename(qp, zonecut,
+						   DNS_DBNAMESPACE_NORMAL, NULL,
+						   NULL);
+			INSIST(result == ISC_R_SUCCESS);
 		}
-	} else {
-		if (isc_mem_isovermem(db->mctx)) {
-			/*
-			 * Free everything which might help to go down:
-			 * expired, deleted nodes and, if still needed, least
-			 * recently used.
-			 */
-			deleg_maintenance(db);
-			deleg_maintenance_lru(db);
-		}
-
-		node = isc_mem_get(db->mctx, sizeof(*node));
-		*node = (delegdb_node_t){ .magic = DELEGDB_NODE_MAGIC,
-					  .references =
-						  ISC_REFCOUNT_INITIALIZER(1),
-					  .zonecut = DNS_NAME_INITEMPTY,
-					  .link = ISC_LINK_INITIALIZER,
-					  .deadlink = ISC_LINK_INITIALIZER,
-					  .loop = isc_loop_ref(isc_loop()) };
-
-		dns_delegdb_attach(db, &node->db);
-		dns_name_dup(zonecut, db->mctx, &node->zonecut);
-
-		ISC_SIEVE_INSERT(db->lru[isc_tid()], node, link);
-
-		result = dns_qp_insert(qp, node, 0);
-		INSIST(result == ISC_R_SUCCESS);
-		delegdb_node_unref(node);
 	}
 
-	dns_delegset_attach(*delegset, &node->delegset);
-	(*delegset)->magic = DNS_DELEGSET_DBATTACHED_MAGIC;
+	/*
+	 * Then let's add the new delegation.
+	 */
+	node = isc_mem_get(db->mctx, sizeof(*node));
+	*node = (delegdb_node_t){ .magic = DELEGDB_NODE_MAGIC,
+				  .references = ISC_REFCOUNT_INITIALIZER(1),
+				  .zonecut = DNS_NAME_INITEMPTY,
+				  .link = ISC_LINK_INITIALIZER,
+				  .deadlink = ISC_LINK_INITIALIZER,
+				  .size = nodesize,
+				  .loop = isc_loop_ref(isc_loop()) };
 
+	dns_delegdb_attach(db, &node->db);
+	dns_name_dup(zonecut, db->mctx, &node->zonecut);
+
+	ISC_SIEVE_INSERT(db->lru[isc_tid()], node, link);
+
+	result = dns_qp_insert(qp, node, 0);
+	INSIST(result == ISC_R_SUCCESS);
+	delegdb_node_unref(node);
+
+	dns_delegset_attach(*delegset, &node->delegset);
+
+commit:
 	/*
 	 * Probably shouldn't be run at every write?
 	 */
 	dns_qp_compact(qp, DNS_QPGC_MAYBE);
 	dns_qpmulti_commit(db->nodes, &qp);
 
-	dns_delegset_detach(delegset);
+	if (result == ISC_R_SUCCESS) {
+		dns_delegset_detach(delegset);
+	}
+
+	return result;
 }
 
 static void
@@ -794,7 +793,7 @@ dns_deleg_fromrdataset(dns_rdataset_t *rdataset, dns_delegset_t **delegsetp) {
 	REQUIRE(rdataset->type == dns_rdatatype_ns);
 
 	delegset = isc_mem_get(isc_g_mctx, sizeof(*delegset));
-	*delegset = (dns_delegset_t){ .magic = DNS_DELEGSET_DBDETACHED_MAGIC,
+	*delegset = (dns_delegset_t){ .magic = DNS_DELEGSET_MAGIC,
 				      .references = ISC_REFCOUNT_INITIALIZER(1),
 				      .deleg = ISC_LIST_INITIALIZER,
 				      .ttl = rdataset->ttl,
@@ -827,6 +826,7 @@ deleg_deletetree(dns_delegdb_t *db, const dns_name_t *name) {
 	delegdb_node_t *node = NULL;
 	dns_qp_t *qp = NULL;
 	dns_qpiter_t it;
+	ISC_LIST(delegdb_node_t) deadnodes = ISC_LIST_INITIALIZER;
 
 	dns_qpmulti_write(db->nodes, &qp);
 
@@ -841,15 +841,11 @@ deleg_deletetree(dns_delegdb_t *db, const dns_name_t *name) {
 		/*
 		 * Because QP doesn't allow deleting a node while using the
 		 * iterator, the approach is different than `deleg_deletenode()`
-		 * here. Instead of removing the node, we detach its delegset,
-		 * which boils down to the same from user POV. Then,
-		 * dns_deleg_maintenance() code will detect this node as dead,
-		 * and remove it from QP.
+		 * here. Instead of removing the node immediately, we add it
+		 * into a list that we'll go through after, then delete each
+		 * node.
 		 */
-
-		if (node->delegset != NULL) {
-			dns_delegset_detach(&node->delegset);
-		}
+		ISC_LIST_APPEND(deadnodes, node, deadlink);
 
 		result = dns_qpiter_next(&it, (void **)&node, NULL);
 		if (result == ISC_R_NOMORE) {
@@ -866,6 +862,16 @@ deleg_deletetree(dns_delegdb_t *db, const dns_name_t *name) {
 out:
 	if (result != ISC_R_SUCCESS) {
 		result = ISC_R_NOTFOUND;
+	} else {
+		/*
+		 * Let's actually delete the deadnodes!
+		 */
+		ISC_LIST_FOREACH(deadnodes, deadnode, deadlink) {
+			result = dns_qp_deletename(qp, &deadnode->zonecut,
+						   DNS_DBNAMESPACE_NORMAL, NULL,
+						   NULL);
+			INSIST(result == ISC_R_SUCCESS);
+		}
 	}
 
 	dns_qp_compact(qp, DNS_QPGC_MAYBE);
@@ -877,22 +883,15 @@ static isc_result_t
 deleg_deletenode(dns_delegdb_t *db, const dns_name_t *name) {
 	isc_result_t result;
 	dns_qp_t *qp = NULL;
-	delegdb_node_t *node = NULL;
 
 	dns_qpmulti_write(db->nodes, &qp);
 
-	result = dns_qp_deletename(qp, name, DNS_DBNAMESPACE_NORMAL,
-				   (void **)&node, NULL);
+	result = dns_qp_deletename(qp, name, DNS_DBNAMESPACE_NORMAL, NULL,
+				   NULL);
 
 	dns_qp_compact(qp, DNS_QPGC_MAYBE);
 	dns_qpmulti_commit(db->nodes, &qp);
 
-	/*
-	 * The node was deleted already.
-	 */
-	if (result == ISC_R_SUCCESS && node->delegset == NULL) {
-		result = ISC_R_NOTFOUND;
-	}
 	return result;
 }
 
