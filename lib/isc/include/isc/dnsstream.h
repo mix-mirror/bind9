@@ -378,7 +378,7 @@ static inline void
 isc__dnsstream_assembler_incoming_direct(
 	isc_dnsstream_assembler_t *restrict dnsasm, void *userarg,
 	void *restrict buf, const unsigned int		  buf_size) {
-	isc_buffer_t data = { 0 };
+	isc_buffer_t data;
 	isc_region_t remaining = { 0 };
 	INSIST(dnsasm->current == &dnsasm->dnsbuf);
 

@@ -675,7 +675,7 @@ isc_proxy2_handler_addresses(const isc_proxy2_handler_t *restrict handler,
 			     isc_sockaddr_t *restrict pdst_addr) {
 	size_t ret;
 	isc_region_t header_region = { 0 };
-	isc_buffer_t buf = { 0 };
+	isc_buffer_t buf;
 
 	REQUIRE(handler != NULL);
 
@@ -705,7 +705,7 @@ isc_result_t
 isc_proxy2_tlv_iterate(const isc_region_t *restrict tlv_data,
 		       const isc_proxy2_tlv_cb_t cb, void *cbarg) {
 	isc_result_t result = ISC_R_SUCCESS;
-	isc_buffer_t tlvs = { 0 };
+	isc_buffer_t tlvs;
 	size_t remaining;
 
 	/*

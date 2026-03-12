@@ -104,6 +104,7 @@
 #include <stdbool.h>
 
 #include <isc/assertions.h>
+#include <isc/attributes.h>
 #include <isc/endian.h>
 #include <isc/formatcheck.h>
 #include <isc/list.h>
@@ -184,7 +185,7 @@ struct isc_buffer {
 	ISC_LINK(isc_buffer_t) link;
 	/*! private internal elements */
 	isc_mem_t *mctx;
-};
+} ISC_ATTR_DESIGNATED_INIT;
 
 /***
  *** Functions
