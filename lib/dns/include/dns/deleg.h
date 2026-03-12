@@ -37,9 +37,11 @@
  *
  * and there must be a type:
  *
- *   enum short type { DNS_DELEGTYPE_ADDRESS,
- *                     DNS_DELEGTYPE_NS,
- *                     DNS_DELEGTYPE_DELEGI }
+ *   enum short type { DNS_DELEGTYPE_DELEG_ADDRESS,
+ *                     DNS_DELEGTYPE_DELEG_NAMES,
+ *                     DNS_DELEGTYPE_DELEG_PARAM, (new DELEGI?)
+ *                     DNS_DELEGTYPE_NS_GLUES,
+ *                     DNS_DELEGTYPE_NS_NAMES }
  *
  * this saves 4 pointers (well, 3 pointers, with padding) and also makes clearer
  * from the code the exclusivity of addresses, delegi and nameservers (which is
@@ -82,22 +84,9 @@ struct dns_delegset {
 };
 ISC_REFCOUNT_DECL(dns_delegset);
 
-/*
- * A dns_delegset_t can be used as a delegation database (in which case, it is
- * attached to the DB), or independently (for instance, when building a
- * dns_delegset_t object from a non-cached RR delegation).
- */
-#define DNS_DELEGSET_DBATTACHED_MAGIC ISC_MAGIC('D', 'e', 'G', 'S')
-#define DNS_DELEGSET_DBATTACHED_VALID(delegset) \
-	ISC_MAGIC_VALID(delegset, DNS_DELEGSET_DBATTACHED_MAGIC)
-
-#define DNS_DELEGSET_DBDETACHED_MAGIC ISC_MAGIC('D', 'e', 'G', 's')
-#define DNS_DELEGSET_DBDETACHED_VALID(delegset) \
-	ISC_MAGIC_VALID(delegset, DNS_DELEGSET_DBDETACHED_MAGIC)
-
-#define DNS_DELEGSET_VALID(delegset)                \
-	(DNS_DELEGSET_DBATTACHED_VALID(delegset) || \
-	 DNS_DELEGSET_DBDETACHED_VALID(delegset))
+#define DNS_DELEGSET_MAGIC ISC_MAGIC('D', 'e', 'G', 's')
+#define DNS_DELEGSET_VALID(delegset) \
+	ISC_MAGIC_VALID(delegset, DNS_DELEGSET_MAGIC)
 
 typedef struct dns_delegdb dns_delegdb_t;
 
@@ -182,8 +171,13 @@ dns_deleg_addns(dns_delegset_t *delegset, dns_deleg_t *deleg,
 /*
  * Attach a delegation set into the DB for the given zonecut and expiration
  * time. Then detach it from the caller. The delegation node is now read-only.
+ * If a delegation already exists and is not expired, ISC_R_EXISTS is returned
+ * and the DB is not altered and `*node` is not detached.
+ *
+ * TODO: once DELEG is supported, attempting to add a delegation from NS where a
+ * delegation from DELEG already exists would be rejected too.
  */
-void
+isc_result_t
 dns_deleg_writeset(dns_delegdb_t *db, const dns_name_t *zonecut,
 		   dns_ttl_t expire, dns_delegset_t **node);
 
@@ -218,30 +212,16 @@ dns_deleg_flush(dns_delegdb_t *db);
  * Delete a delegation matching a name. If `tree` is true, this will also delete
  * all names below `name`.
  *
- * TODO: this is currenly run by `rndc flush` APIs and run both on the main
- * cache and deleg DB. Should it requires a different API?
+ * TODO: this is currently run by `rndc flush` APIs and run both on the main
+ * cache and deleg DB. Should it require a different API?
  */
 isc_result_t
 dns_deleg_delete(dns_delegdb_t *db, const dns_name_t *name, bool tree);
 
 /*
- * Cleanup expired delegations and reclaim memory for expired or deleted
- * delegations (deleted using `dns_deleg_delete(...,...,true)`).
- *
- * TODO: should it be called proactively from `dns_deleg_delete(...,...,true)`?
- *
- * Currently called internally when the cache is in an overmem condition. The
- * API is public for now, as it's unclear if some external caller should also be
- * able to call it (i.e. timer?) or if it's better to leave it done lazilly when
- * hiwater level is reached (as today).
- */
-void
-dns_deleg_maintenance(dns_delegdb_t *db);
-
-/*
  * Defines the size of the delegation cache. Whenever the effective cache size
- * come close to this size, least recently used cache entries are discarded.
- * Value `0` means there is no limitations.
+ * comes close to this size, least recently used cache entries are discarded.
+ * Value `0` means there is no limitation.
  */
 void
 dns_deleg_setsize(dns_delegdb_t *db, size_t size);
