@@ -95,13 +95,21 @@ addipdeleg(unsigned int af, const char *addrstr, dns_delegset_t *delegset,
 
 static void
 writedb(dns_delegdb_t *db, const char *zonecutstr, dns_ttl_t expire,
-	dns_delegset_t **delegsetp) {
+	dns_delegset_t **delegsetp, bool expectsuccess) {
 	dns_fixedname_t fzonecut;
 	dns_name_t *zonecut = dns_fixedname_initname(&fzonecut);
+	isc_result_t result;
 
 	dns_name_fromstring(zonecut, zonecutstr, NULL, 0, NULL);
-	dns_deleg_writeset(db, zonecut, expire, delegsetp);
-	assert_null(*delegsetp);
+	result = dns_deleg_writeset(db, zonecut, expire, delegsetp);
+
+	if (expectsuccess) {
+		assert_null(*delegsetp);
+		assert_int_equal(result, ISC_R_SUCCESS);
+	} else {
+		assert_non_null(*delegsetp);
+		assert_int_equal(result, ISC_R_EXISTS);
+	}
 }
 
 static isc_result_t
@@ -169,7 +177,7 @@ basictests(ISC_ATTR_UNUSED void *arg) {
 	assert_non_null(deleg);
 	addnamedeleg("ns.example.", delegset, deleg, dns_deleg_addns);
 	deleg = NULL;
-	writedb(db, "foo.", 30, &delegset);
+	writedb(db, "foo.", 30, &delegset, true);
 
 	result = lookupdb(db, "baz.bar.gee.", 0, 0, "", &delegset);
 	assert_int_equal(result, ISC_R_NOTFOUND);
@@ -205,7 +213,7 @@ basictests(ISC_ATTR_UNUSED void *arg) {
 	addipdeleg(AF_INET6, "ABBA::ABBA", delegset, deleg);
 	addnamedeleg("delegns.gee.", delegset, deleg, dns_deleg_adddelegi);
 	addnamedeleg("delegns2.gee.", delegset, deleg, dns_deleg_adddelegi);
-	writedb(db, "bar.foo.", 25, &delegset);
+	writedb(db, "bar.foo.", 25, &delegset, true);
 	deleg = NULL;
 
 	result = lookupdb(db, "baz.bar.gee.", 0, 0, "", &delegset);
@@ -235,7 +243,7 @@ basictests(ISC_ATTR_UNUSED void *arg) {
 
 	addnamedeleg("ns.bar.stuff.", delegset, deleg, dns_deleg_addns);
 	addipdeleg(AF_INET6, "1111::2222", delegset, deleg);
-	writedb(db, "bar.stuff.", 10, &delegset);
+	writedb(db, "bar.stuff.", 10, &delegset, true);
 	deleg = NULL;
 
 	result = lookupdb(db, "baz.bar.stuff.", now + 10, 0, "", &delegset);
@@ -262,15 +270,29 @@ basictests(ISC_ATTR_UNUSED void *arg) {
 
 	/*
 	 * A non expired delegation for bar.stuff. zonecut replace the expired
-	 * one
+	 * one. Move the time forward 10 to make the entry expired.
 	 */
+	stdtime_now += 10;
 	dns_deleg_allocset(db, &delegset);
 	dns_deleg_allocdeleg(delegset, &deleg);
 	assert_non_null(deleg);
 
 	addnamedeleg("ns.bar.stuff.", delegset, deleg, dns_deleg_addns);
 	addipdeleg(AF_INET6, "1111::3333", delegset, deleg);
-	writedb(db, "bar.stuff.", 2, &delegset);
+	writedb(db, "bar.stuff.", 2, &delegset, true);
+	deleg = NULL;
+
+	/*
+	 * Attempt to override bar.stuff. even though the existing delegation is
+	 * not expired. This will be rejected.
+	 */
+	dns_deleg_allocset(db, &delegset);
+	dns_deleg_allocdeleg(delegset, &deleg);
+	assert_non_null(deleg);
+	addnamedeleg("wontbeindb.bar.stuff.", delegset, deleg, dns_deleg_addns);
+	addipdeleg(AF_INET6, "acdc::acdc", delegset, deleg);
+	writedb(db, "bar.stuff.", 2, &delegset, false);
+	dns_delegset_detach(&delegset);
 	deleg = NULL;
 
 	result = lookupdb(db, "stuff.", 0, 0, "", &delegset);
@@ -303,10 +325,25 @@ basictests(ISC_ATTR_UNUSED void *arg) {
 
 	/*
 	 * Dump API returns the whole DB if no zonecut is provided
+	 * (zonecuts below foo. included have smaller TTL, since we moved the
+	 * time forward 10, but bar.stuff. was added after, so we can reuse
+	 * expected_barstuffdeleg)
 	 */
 	char expected_wholedb[2048] = { 0 };
-	sprintf(expected_wholedb, "%s\n%s\n%s", expected_foodeleg,
-		expected_barfoodeleg, expected_barstuffdeleg);
+	sprintf(expected_wholedb, "%s\n%s",
+		"foo. DELEG 20"
+		"\n\tserver-ipv4=\n\t\t1.2.3.4"
+		"\n\tserver-ipv6=\n\t\t1111:2222:3333::4444"
+		"\n\tserver-name=\n\t\tns.foo.\n"
+		"foo. DELEG 20"
+		"\n\tserver-name=\n\t\tns.example.\n"
+		"bar.foo. DELEG 15"
+		"\n\tserver-ipv4=\n\t\t8.9.10.11,\n\t\t9.9.10.11"
+		"\n\tserver-ipv6=\n\t\tacdc::acdc,\n\t\tabba::abba"
+		"\n\tserver-name=\n\t\tns.bar.foo.,\n\t\tns2.bar.foo."
+		"\n\tinclude-delegi=\n\t\tdelegns.gee.,\n\t\tdelegns2."
+		"gee.",
+		expected_barstuffdeleg);
 	dns_deleg_dump(db, NULL, 0, &b);
 	assert_string_equal(bdata, expected_wholedb);
 	assert_true(isc_buffer_usedlength(&b) > 0);
@@ -342,7 +379,7 @@ ttl0tests(ISC_ATTR_UNUSED void *arg) {
 
 	addnamedeleg("ns.bar.stuff.", delegset, deleg, dns_deleg_addns);
 	addipdeleg(AF_INET6, "1111::2222", delegset, deleg);
-	writedb(db, "bar.stuff.", 0, &delegset);
+	writedb(db, "bar.stuff.", 0, &delegset, true);
 	deleg = NULL;
 
 	result = lookupdb(db, "baz.bar.stuff.", now, 0, "bar.stuff.",
@@ -389,7 +426,7 @@ noexacttests(ISC_ATTR_UNUSED void *arg) {
 		dns_deleg_allocset(db, &delegset);
 		dns_deleg_allocdeleg(delegset, &deleg);
 		addipdeleg(AF_INET6, "1111::1111", delegset, deleg);
-		writedb(db, zonecuts[i].name, zonecuts[i].ttl, &delegset);
+		writedb(db, zonecuts[i].name, zonecuts[i].ttl, &delegset, true);
 		deleg = NULL;
 	}
 
@@ -429,25 +466,25 @@ deletetests(ISC_ATTR_UNUSED void *arg) {
 	dns_deleg_allocset(db, &delegset);
 	dns_deleg_allocdeleg(delegset, &deleg);
 	addipdeleg(AF_INET6, "1111::2222", delegset, deleg);
-	writedb(db, "stuff.", 10, &delegset);
+	writedb(db, "stuff.", 10, &delegset, true);
 	deleg = NULL;
 
 	dns_deleg_allocset(db, &delegset);
 	dns_deleg_allocdeleg(delegset, &deleg);
 	addipdeleg(AF_INET6, "1111::2222", delegset, deleg);
-	writedb(db, "baz.stuff.", 10, &delegset);
+	writedb(db, "baz.stuff.", 10, &delegset, true);
 	deleg = NULL;
 
 	dns_deleg_allocset(db, &delegset);
 	dns_deleg_allocdeleg(delegset, &deleg);
 	addipdeleg(AF_INET6, "1111::2222", delegset, deleg);
-	writedb(db, "bar.baz.stuff.", 10, &delegset);
+	writedb(db, "bar.baz.stuff.", 10, &delegset, true);
 	deleg = NULL;
 
 	dns_deleg_allocset(db, &delegset);
 	dns_deleg_allocdeleg(delegset, &deleg);
 	addipdeleg(AF_INET6, "1111::2222", delegset, deleg);
-	writedb(db, "foo.bar.baz.stuff.", 10, &delegset);
+	writedb(db, "foo.bar.baz.stuff.", 10, &delegset, true);
 	deleg = NULL;
 
 	dns_name_fromstring(name, "foo.", NULL, 0, NULL);
@@ -500,7 +537,7 @@ deletetests(ISC_ATTR_UNUSED void *arg) {
 	dns_deleg_allocset(db, &delegset);
 	dns_deleg_allocdeleg(delegset, &deleg);
 	addipdeleg(AF_INET6, "1111::2222", delegset, deleg);
-	writedb(db, "stuff.", 10, &delegset);
+	writedb(db, "stuff.", 10, &delegset, true);
 	deleg = NULL;
 
 	result = lookupdb(db, "bar.baz.stuff.", 5, 0, "stuff.", &delegset);
@@ -511,17 +548,21 @@ deletetests(ISC_ATTR_UNUSED void *arg) {
 }
 
 static void
-maintenancetests(ISC_ATTR_UNUSED void *arg) {
+cleanuptests(ISC_ATTR_UNUSED void *arg) {
 	dns_delegdb_t *db = NULL;
 	dns_deleg_t *deleg = NULL;
 	dns_delegset_t *delegset = NULL;
 	isc_stdtime_t now = isc_stdtime_now();
-	dns_fixedname_t fname;
-	dns_name_t *name = dns_fixedname_initname(&fname);
 	isc_result_t result;
 
 	dns_deleg_init(&db);
 	assert_non_null(db);
+
+	/*
+	 * hiwater is 4375000 = 5000000 - (5000000 >> 3)
+	 * lowater is 3750000 = 5000000 - (5000000 >> 2)
+	 */
+	dns_deleg_setsize(db, 5000000);
 
 	/*
 	 * A valid record
@@ -529,7 +570,7 @@ maintenancetests(ISC_ATTR_UNUSED void *arg) {
 	dns_deleg_allocset(db, &delegset);
 	dns_deleg_allocdeleg(delegset, &deleg);
 	addipdeleg(AF_INET6, "1111::2222", delegset, deleg);
-	writedb(db, "baz.", 300, &delegset);
+	writedb(db, "baz.", 300, &delegset, true);
 	deleg = NULL;
 
 	/*
@@ -540,62 +581,57 @@ maintenancetests(ISC_ATTR_UNUSED void *arg) {
 
 	assert_int_in_range(isc_mem_inuse(db->mctx), 500, 2000);
 
-	for (size_t i = 0; i < 9999; i++) {
+	for (size_t i = 0; i < 99999; i++) {
 		addipdeleg(AF_INET6, "1111::2222", delegset, deleg);
 	}
 
-	assert_int_in_range(isc_mem_inuse(db->mctx), 400000, 410000);
+	assert_int_in_range(isc_mem_inuse(db->mctx), 4000000, 4100000);
 
-	writedb(db, "stuff.", 10, &delegset);
+	writedb(db, "stuff.", 10, &delegset, true);
 	deleg = NULL;
 	stdtime_now += 10;
 
 	/*
-	 * A deleted record
+	 * A non expired record
 	 */
 	dns_deleg_allocset(db, &delegset);
 	dns_deleg_allocdeleg(delegset, &deleg);
 
-	for (size_t i = 0; i < 9999; i++) {
+	for (size_t i = 0; i < 99999; i++) {
 		addipdeleg(AF_INET6, "1111::2222", delegset, deleg);
 	}
 
-	writedb(db, "bar.", 30, &delegset);
+	/*
+	 * The zonecut is not added yet but the delegset being huge (allocated
+	 * with DB mem context) overmem conditions will be detected, and the
+	 * expired node will be removed
+	 */
+	assert_int_in_range(isc_mem_inuse(db->mctx), 8000000, 8100000);
+	writedb(db, "bar.", 30, &delegset, true);
 	deleg = NULL;
 
-	assert_int_in_range(isc_mem_inuse(db->mctx), 800000, 810000);
-
-	dns_name_fromstring(name, "bar.", NULL, 0, NULL);
-	(void)dns_deleg_delete(db, name, true);
-
 	/*
-	 * Bar delegset is immediately detached (hence, deleted). Although the
-	 * node remains in memory.
-	 *
-	 * Stuff node and delegset remain in memory, because the expiration is
-	 * not a condition for immediate delegset detach (there is no pro-active
-	 * detection of it).
-	 */
-	assert_int_in_range(isc_mem_inuse(db->mctx), 400000, 410000);
-
-	dns_deleg_maintenance(db);
-
-	/*
-	 * Bar internal node and stuff (internal node and delegset) are now
-	 * freed from memory.
+	 * stuff. internal node (and delegset) are now freed from memory. The
+	 * cleanup_expired() flow will run, delete the other node, and because
+	 * the reclaimed size is the same as the requested one, LRU won't run
+	 * this time.
 	 *
 	 * rcu_barrier() is needed to kick off QP reclamation flow (and run the
 	 * detaching functions from the DB nodes).
 	 */
 	rcu_barrier();
-	assert_int_in_range(isc_mem_inuse(db->mctx), 500, 2000);
+	assert_int_in_range(isc_mem_inuse(db->mctx), 4000000, 4100000);
 
 	/*
-	 * baz. is still there
+	 * bar. is there
 	 */
-	result = lookupdb(db, "baz.", now, 0, "baz.", &delegset);
+	result = lookupdb(db, "bar.", now, 0, "bar.", &delegset);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	dns_delegset_detach(&delegset);
+
+	/*
+	 * TODO: LRU test
+	 */
 
 	shutdowntest(&db);
 }
@@ -604,16 +640,14 @@ ISC_RUN_TEST_IMPL(dns_deleg_basictests) { rundelegtest(basictests); }
 ISC_RUN_TEST_IMPL(dns_deleg_ttl0tests) { rundelegtest(ttl0tests); }
 ISC_RUN_TEST_IMPL(dns_deleg_noexacttests) { rundelegtest(noexacttests); }
 ISC_RUN_TEST_IMPL(dns_deleg_deletetests) { rundelegtest(deletetests); }
-ISC_RUN_TEST_IMPL(dns_deleg_maintenancetests) {
-	rundelegtest(maintenancetests);
-}
+ISC_RUN_TEST_IMPL(dns_deleg_cleanuptests) { rundelegtest(cleanuptests); }
 
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY(dns_deleg_basictests)
 ISC_TEST_ENTRY(dns_deleg_ttl0tests)
 ISC_TEST_ENTRY(dns_deleg_noexacttests)
 ISC_TEST_ENTRY(dns_deleg_deletetests)
-ISC_TEST_ENTRY(dns_deleg_maintenancetests)
+ISC_TEST_ENTRY(dns_deleg_cleanuptests)
 ISC_TEST_LIST_END
 
 ISC_TEST_MAIN

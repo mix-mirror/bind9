@@ -6675,19 +6675,19 @@ cache_delegglue6(dns_delegset_t *delegset, dns_deleg_t *deleg, dns_ttl_t *ttl,
  * `delegset` if there is already a `delegset` at this zonecut in the DB.
  * And the flag would be true only from `cache_delegns()`.
  */
-static void
+static isc_result_t
 cache_delegns(respctx_t *rctx) {
 	fetchctx_t *fctx = rctx->fctx;
 	dns_delegdb_t *delegdb = fctx->res->view->deleg;
 	dns_delegset_t *delegset = NULL;
 	dns_ttl_t ttl = rctx->ns_rdataset->ttl;
+	isc_result_t result;
 
 	FCTXTRACE("cache_delegns");
 
 	dns_deleg_allocset(delegdb, &delegset);
 
 	DNS_RDATASET_FOREACH(rctx->ns_rdataset) {
-		isc_result_t result;
 		dns_rdataset_t *gluerdataset = NULL;
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		dns_rdata_ns_t ns;
@@ -6726,7 +6726,12 @@ cache_delegns(respctx_t *rctx) {
 		}
 	}
 
-	dns_deleg_writeset(delegdb, rctx->ns_name, ttl, &delegset);
+	result = dns_deleg_writeset(delegdb, rctx->ns_name, ttl, &delegset);
+	if (result != ISC_R_SUCCESS) {
+		dns_delegset_detach(&delegset);
+	}
+
+	return result;
 }
 
 static isc_result_t
@@ -9305,9 +9310,13 @@ rctx_referral(respctx_t *rctx) {
 	/*
 	 * An NS-based delegation can be cached immediately (i.e. there is no
 	 * DNSSEC validation).
+	 *
+	 * For now we don't do anything if the delegation already exists and is
+	 * not expired in the DB. Might be worth a warning? This should never
+	 * happen.
 	 */
 	INSIST(rctx->ns_rdataset != NULL);
-	cache_delegns(rctx);
+	(void)cache_delegns(rctx);
 
 	/*
 	 * Set the current query domain to the referral name.
