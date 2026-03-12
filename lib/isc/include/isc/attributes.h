@@ -118,3 +118,9 @@
 #else
 #define ISC_ATTR_NONNULL(...)
 #endif
+
+#if __has_attribute(__designated_init__)
+#define ISC_ATTR_DESIGNATED_INIT __attribute__((__designated_init__))
+#else
+#define ISC_ATTR_DESIGNATED_INIT
+#endif
