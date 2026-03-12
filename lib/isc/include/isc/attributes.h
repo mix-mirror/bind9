@@ -124,3 +124,9 @@
 #else
 #define ISC_ATTR_DESIGNATED_INIT
 #endif
+
+#if __has_attribute(__transparent_union__)
+#define ISC_ATTR_TRANSPARENT_UNION __attribute__((__transparent_union__))
+#else
+#define ISC_ATTR_TRANSPARENT_UNION
+#endif

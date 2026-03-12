@@ -172,7 +172,7 @@ typedef union dns_qpreadable {
 	dns_qpread_t   *qpr;
 	dns_qpsnap_t   *qps;
 	dns_qp_t       *qpt;
-} dns_qpreadable_t __attribute__((__transparent_union__));
+} dns_qpreadable_t ISC_ATTR_TRANSPARENT_UNION;
 
 #define dns_qpreader(qpr) ((qpr).qp)
 
