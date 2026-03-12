@@ -49,7 +49,7 @@ def bootstrap():
     return data
 
 
-def test_rollover_ksk_three_is_a_crowd(ns3, default_algorithm):
+def test_rollover_ksk_three_is_a_crowd(ns2, ns3, default_algorithm):
     """Test #2375: Scheduled rollovers are happening faster than they can finish."""
     zone = "three-is-a-crowd.kasp"
 
@@ -114,3 +114,12 @@ def test_rollover_ksk_three_is_a_crowd(ns3, default_algorithm):
         watcher.wait_for_line(
             f"zone {zone}/IN (signed): dsyncfetch: send NOTIFY(CDS) query to scanner.kasp"
         )
+
+    # The DS should be updated.
+    def check_ds():
+        ret, msg = isctest.kasp.check_ds(ns3, ns2, zone)
+        if not ret:
+            isctest.log.debug(f"{msg}")
+        return ret
+
+    isctest.run.retry_with_timeout(check_ds, timeout=10)

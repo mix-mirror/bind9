@@ -157,7 +157,7 @@ def test_rollover_enable_dnssec_step2(tld, default_algorithm, ns3):
         param("manual"),
     ],
 )
-def test_rollover_enable_dnssec_step3(tld, default_algorithm, ns3):
+def test_rollover_enable_dnssec_step3(tld, default_algorithm, ns2, ns3):
     zone = f"step3.enable-dnssec.{tld}"
     policy = f"{POLICY}-{tld}"
 
@@ -207,6 +207,15 @@ def test_rollover_enable_dnssec_step3(tld, default_algorithm, ns3):
         watcher.wait_for_line(
             f"zone {zone}/IN (signed): dsyncfetch: send NOTIFY(CDS) query to scanner.{tld}"
         )
+
+    # The DS should be updated.
+    def check_ds():
+        ret, msg = isctest.kasp.check_ds(ns3, ns2, zone)
+        if not ret:
+            isctest.log.debug(f"{msg}")
+        return ret
+
+    isctest.run.retry_with_timeout(check_ds, timeout=10)
 
 
 @pytest.mark.parametrize(

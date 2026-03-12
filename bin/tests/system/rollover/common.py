@@ -18,6 +18,8 @@ from isctest.kasp import Ipub, IpubC, Iret
 ROLLOVER_MARK = pytest.mark.extra_artifacts(
     [
         "*.axfr*",
+        "ans5/ans.run",
+        "ans5/query.log",
         "dig.out*",
         "K*.key*",
         "K*.private*",

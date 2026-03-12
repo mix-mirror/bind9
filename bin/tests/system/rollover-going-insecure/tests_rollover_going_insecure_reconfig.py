@@ -55,7 +55,7 @@ def after_servers_start(ns3, templates):
         "going-insecure-dynamic.kasp",
     ],
 )
-def test_going_insecure_reconfig_step1(zone, ns3, default_algorithm):
+def test_going_insecure_reconfig_step1(zone, ns2, ns3, default_algorithm):
     config = DEFAULT_CONFIG
     policy = "insecure"
     szone = f"step1.{zone}"
@@ -89,6 +89,15 @@ def test_going_insecure_reconfig_step1(zone, ns3, default_algorithm):
             watcher.wait_for_line(
                 f"zone {szone}/IN (signed): dsyncfetch: send NOTIFY(CDS) query to scanner.kasp"
             )
+
+    # The DS should be updated.
+    def check_ds():
+        ret, msg = isctest.kasp.check_ds(ns3, ns2, szone)
+        if not ret:
+            isctest.log.debug(f"{msg}")
+        return ret
+
+    isctest.run.retry_with_timeout(check_ds, timeout=10)
 
 
 @pytest.mark.parametrize(

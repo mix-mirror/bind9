@@ -1139,6 +1139,42 @@ def check_dnskeys(rrset, ksks, zsks, cdnskey=False, manual_mode=False):
     assert numkeys == len(dnskeys)
 
 
+def check_ds(server, parent, fqdn) -> tuple[bool, str]:
+    cds, _ = _query_rrset(server, fqdn, dns.rdatatype.CDS)
+    cdsrrs = []
+    for rr in cds:
+        for rdata in rr:
+            if rdata.to_text() == "0 0 0 00":
+                cdrrs = []
+                break
+            rdclass = dns.rdataclass.to_text(rr.rdclass)
+            rdtype = dns.rdatatype.to_text(rr.rdtype)
+            assert rr.rdtype == dns.rdatatype.CDS
+            cdsrdata = f"{rr.name} {rr.ttl} {rdclass} DS {rdata}"
+            cdsrrs.append(cdsrdata)
+
+    ds, _ = _query_rrset(parent, fqdn, dns.rdatatype.DS)
+    dsrrs = []
+    for rr in ds:
+        for rdata in rr:
+            rdclass = dns.rdataclass.to_text(rr.rdclass)
+            rdtype = dns.rdatatype.to_text(rr.rdtype)
+            dsrdata = f"{rr.name} {rr.ttl} {rdclass} {rdtype} {rdata}"
+            dsrrs.append(dsrdata)
+
+    if len(cdsrrs) != len(dsrrs):
+        return (
+            False,
+            f"wrong number of DS records, expected {len(cdsrrs)}, got {len(dsrrs)}",
+        )
+
+    for rr in cdsrrs:
+        if rr not in dsrrs:
+            return False, f"expected record in DS RRset, not found: {rr}"
+
+    return True, "success"
+
+
 def check_cds(cdss, keys, alg, manual_mode=False):
     # Check if the correct CDS records are published. If the current time
     # is between the timing metadata 'publish' and 'delete', the key must have
@@ -1301,8 +1337,8 @@ def check_apex(
             for rdata in rr:
                 rdclass = dns.rdataclass.to_text(rr.rdclass)
                 rdtype = dns.rdatatype.to_text(rr.rdtype)
-                cds = f"{rr.name} {rr.ttl} {rdclass} {rdtype} {rdata}"
-                cdsrrs.append(cds)
+                cdsrdata = f"{rr.name} {rr.ttl} {rdclass} {rdtype} {rdata}"
+                cdsrrs.append(cdsrdata)
 
         numcds = 0
 

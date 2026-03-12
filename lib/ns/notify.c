@@ -117,8 +117,9 @@ ns_notify_start(ns_client_t *client, isc_nmhandle_t *handle) {
 
 	/* The one rdataset must be an SOA. */
 	if (zone_rdataset->type != dns_rdatatype_soa) {
+		dns_name_format(zonename, namebuf, sizeof(namebuf));
 		notify_log(client, ISC_LOG_NOTICE,
-			   "notify question section contains no SOA");
+			   "notify question section contains no SOA (%s)", namebuf);
 		result = DNS_R_FORMERR;
 		goto done;
 	}

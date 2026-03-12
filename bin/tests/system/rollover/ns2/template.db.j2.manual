@@ -25,7 +25,7 @@ $ORIGIN @fqdn@
 ns2				A	10.53.0.2
 ns3				A	10.53.0.3
 
-scanner				A	10.53.0.2
+scanner				A	10.53.0.5
 
 *._dsync			DSYNC	CDS NOTIFY @PORT@ scanner
 

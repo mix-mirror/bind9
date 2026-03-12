@@ -173,7 +173,7 @@ def test_ksk_doubleksk_step2(tld, ns3, default_algorithm):
         param("manual"),
     ],
 )
-def test_ksk_doubleksk_step3(tld, ns3, default_algorithm):
+def test_ksk_doubleksk_step3(tld, ns2, ns3, default_algorithm):
     zone = f"step3.ksk-doubleksk.{tld}"
     policy = f"{POLICY}-{tld}"
 
@@ -249,6 +249,15 @@ def test_ksk_doubleksk_step3(tld, ns3, default_algorithm):
         watcher.wait_for_line(
             f"zone {zone}/IN (signed): dsyncfetch: send NOTIFY(CDS) query to scanner.{tld}"
         )
+
+    # The DS should be updated.
+    def check_ds():
+        ret, msg = isctest.kasp.check_ds(ns3, ns2, zone)
+        if not ret:
+            isctest.log.debug(f"{msg}")
+        return ret
+
+    isctest.run.retry_with_timeout(check_ds, timeout=10)
 
 
 @pytest.mark.parametrize(

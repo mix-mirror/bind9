@@ -22,7 +22,6 @@ options {
 	listen-on { 10.53.0.2; };
 	listen-on-v6 { none; };
 	allow-transfer { any; };
-	allow-notify { 10.53.0.3; };
 	recursion no;
 	dnssec-validation no;
 };
@@ -45,5 +44,6 @@ zone "." {
 zone "@zone@" {
 	type primary;
 	file "@zone@.db.signed";
+	allow-update { any; };
 };
 {% endfor %}
