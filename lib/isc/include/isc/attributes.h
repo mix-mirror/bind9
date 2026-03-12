@@ -130,3 +130,9 @@
 #else
 #define ISC_ATTR_TRANSPARENT_UNION
 #endif
+
+#if __has_attribute(__packed__)
+#define ISC_ATTR_PACKED __attribute__((__packed__))
+#else
+#define ISC_ATTR_PACKED
+#endif

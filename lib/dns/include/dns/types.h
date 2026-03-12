@@ -26,6 +26,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+#include <isc/attributes.h>
 #include <isc/types.h>
 
 #include <dns/trace.h>
@@ -325,7 +326,7 @@ enum dns_opcode {
 	dns_opcode_update = 5, /* dynamic update */
 	dns_opcode_max = 6,
 	dns__opcode_expand = UINT16_MAX,
-} __attribute__((__packed__));
+} ISC_ATTR_PACKED;
 /* Absent attribute packed, the enum will be sized as an int */
 STATIC_ASSERT(sizeof(uint16_t) == sizeof(dns_opcode_t),
 	      "sizeof(dns_opecode)t) is not 16-bit");
