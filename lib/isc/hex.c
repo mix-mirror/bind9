@@ -165,8 +165,10 @@ isc_hex_tobuffer(isc_lex_t *lexer, isc_buffer_t *target, int length) {
 isc_result_t
 isc_hex_decodestring(const char *cstr, isc_buffer_t *target) {
 	isc_hex_decodectx_t ctx;
+	unsigned int before, after;
 
-	isc_hex_decodeinit(&ctx, isc_zero_or_more, target);
+	isc_hex_decodeinit(&ctx, isc_one_or_more, target);
+	before = isc_buffer_usedlength(target);
 	for (;;) {
 		int c = *cstr++;
 		if (c == '\0') {
@@ -177,7 +179,11 @@ isc_hex_decodestring(const char *cstr, isc_buffer_t *target) {
 		}
 		RETERR(isc_hex_decodechar(&ctx, c));
 	}
+	after = isc_buffer_usedlength(target);
 	RETERR(isc_hex_decodefinish(&ctx));
+	if (before == after) {
+		return ISC_R_UNEXPECTEDEND;
+	}
 	return ISC_R_SUCCESS;
 }
 

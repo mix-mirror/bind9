@@ -119,7 +119,7 @@ isc_hex_decodefinish(isc_hex_decodectx_t *ctx);
 isc_result_t
 isc_hex_decodestring(const char *cstr, isc_buffer_t *target);
 /*!<
- * \brief Decode a null-terminated hex string.
+ * \brief Decode a null-terminated, non-empty, hex string.
  *
  * Requires:
  *\li	'cstr' is non-null.

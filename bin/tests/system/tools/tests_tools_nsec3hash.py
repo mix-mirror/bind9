@@ -62,9 +62,7 @@ def test_nsec3_hashes(domain, nsec3hash):
 @pytest.mark.parametrize(
     "salt_emptiness_args",
     [
-        [""],
         ["-"],
-        ["--", ""],
         ["--", "-"],
     ],
 )
@@ -83,7 +81,6 @@ def test_nsec3_empty_salt(salt_emptiness_args):
 @pytest.mark.parametrize(
     "salt_emptiness_arg",
     [
-        "",
         "-",
     ],
 )
