@@ -2051,7 +2051,7 @@ prepare-preannouncement:
 
 # Job preparing a packager notification MR in Printing Press
 
-prepare-package-notification:
+prepare-packager-notification:
   <<: *printing_press_job
   before_script:
     - *git_clone_bind9-qa
