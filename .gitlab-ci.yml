@@ -1298,7 +1298,7 @@ gcc:tarball:nosphinx:
 gcc:bookworm:amd64:
   variables:
     CC: gcc
-    CFLAGS: "${CFLAGS_COMMON}"
+    CFLAGS: "${CFLAGS_COMMON} -fanalyzer"
     EXTRA_CONFIGURE: "-Didn=enabled"
   <<: *debian_bookworm_amd64_image
   <<: *build_job
