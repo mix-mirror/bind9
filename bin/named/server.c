@@ -12723,7 +12723,7 @@ cleanup:
 
 static isc_result_t
 delete_zoneconf(dns_view_t *view, const cfg_obj_t *config,
-		const dns_name_t *zname, nzfwriter_t nzfwriter) {
+		const dns_name_t *zname, nzfwriter_t nzfwriter, bool locked) {
 	isc_result_t result = ISC_R_NOTFOUND;
 	const cfg_obj_t *zl = NULL;
 
@@ -12731,7 +12731,9 @@ delete_zoneconf(dns_view_t *view, const cfg_obj_t *config,
 	REQUIRE(config != NULL);
 	REQUIRE(zname != NULL);
 
-	LOCK(&view->newzone.lock);
+	if (!locked) {
+		LOCK(&view->newzone.lock);
+	}
 
 	cfg_map_get(config, "zone", &zl);
 
@@ -12766,7 +12768,9 @@ delete_zoneconf(dns_view_t *view, const cfg_obj_t *config,
 	}
 
 cleanup:
-	UNLOCK(&view->newzone.lock);
+	if (!locked) {
+		UNLOCK(&view->newzone.lock);
+	}
 	return result;
 }
 
@@ -12777,13 +12781,13 @@ do_addzone(named_server_t *server, dns_view_t *view, dns_name_t *name,
 	isc_result_t result, tresult;
 	dns_zone_t *zone = NULL;
 	const cfg_obj_t *voptions = NULL;
+	bool locked = false;
 #ifndef HAVE_LMDB
 	FILE *fp = NULL;
 	bool cleanup_config = false;
 #else /* HAVE_LMDB */
 	MDB_txn *txn = NULL;
 	MDB_dbi dbi;
-	bool locked = false;
 
 	UNUSED(zoneconf);
 #endif
@@ -12946,7 +12950,7 @@ cleanup:
 	}
 	if (result != ISC_R_SUCCESS && cleanup_config) {
 		tresult = delete_zoneconf(view, view->newzone.nzconfig, name,
-					  NULL);
+					  NULL, locked);
 		RUNTIME_CHECK(tresult == ISC_R_SUCCESS);
 	}
 #else  /* HAVE_LMDB */
@@ -12973,13 +12977,13 @@ do_modzone(named_server_t *server, dns_view_t *view, dns_name_t *name,
 	dns_zone_t *zone = NULL;
 	const cfg_obj_t *voptions = NULL;
 	bool added;
+	bool locked = false;
 #ifndef HAVE_LMDB
 	FILE *fp = NULL;
 	cfg_obj_t *z;
 #else  /* HAVE_LMDB */
 	MDB_txn *txn = NULL;
 	MDB_dbi dbi;
-	bool locked = false;
 #endif /* HAVE_LMDB */
 
 	if (!view->newzone.allowed) {
@@ -13080,7 +13084,7 @@ do_modzone(named_server_t *server, dns_view_t *view, dns_name_t *name,
 	if (added) {
 		result = delete_zoneconf(view, view->newzone.nzconfig,
 					 dns_zone_getorigin(zone),
-					 nzf_writeconf);
+					 nzf_writeconf, locked);
 		if (result != ISC_R_SUCCESS) {
 			TCHECK(putstr(text, "former zone configuration "
 					    "not deleted: "));
@@ -13093,13 +13097,14 @@ do_modzone(named_server_t *server, dns_view_t *view, dns_name_t *name,
 	if (!added) {
 		if (view->newzone.vconfig == NULL) {
 			result = delete_zoneconf(view, server->effectiveconfig,
-						 dns_zone_getorigin(zone),
-						 NULL);
+						 dns_zone_getorigin(zone), NULL,
+						 locked);
 		} else {
 			voptions = cfg_tuple_get(server->effectiveconfig,
 						 "options");
-			result = delete_zoneconf(
-				view, voptions, dns_zone_getorigin(zone), NULL);
+			result = delete_zoneconf(view, voptions,
+						 dns_zone_getorigin(zone), NULL,
+						 locked);
 		}
 
 		if (result != ISC_R_SUCCESS) {
@@ -13316,6 +13321,7 @@ rmzone(void *arg) {
 	dns_view_t *view = NULL;
 	dns_db_t *dbp = NULL;
 	bool added;
+	bool locked = false;
 	isc_result_t result;
 #ifdef HAVE_LMDB
 	MDB_txn *txn = NULL;
@@ -13344,6 +13350,7 @@ rmzone(void *arg) {
 #ifdef HAVE_LMDB
 		/* Make sure we can open the NZD database */
 		LOCK(&view->newzone.lock);
+		locked = true;
 		result = nzd_open(view, 0, &txn, &dbi);
 		if (result != ISC_R_SUCCESS) {
 			isc_log_write(NAMED_LOGCATEGORY_GENERAL,
@@ -13365,10 +13372,11 @@ rmzone(void *arg) {
 			(void)nzd_close(&txn, false);
 		}
 		UNLOCK(&view->newzone.lock);
+		locked = false;
 #else  /* ifdef HAVE_LMDB */
 		result = delete_zoneconf(view, view->newzone.nzconfig,
 					 dns_zone_getorigin(zone),
-					 nzf_writeconf);
+					 nzf_writeconf, locked);
 		if (result != ISC_R_SUCCESS) {
 			isc_log_write(NAMED_LOGCATEGORY_GENERAL,
 				      NAMED_LOGMODULE_SERVER, ISC_LOG_ERROR,
@@ -13382,12 +13390,13 @@ rmzone(void *arg) {
 		if (view->newzone.vconfig != NULL) {
 			const cfg_obj_t *voptions =
 				cfg_tuple_get(view->newzone.vconfig, "options");
-			result = delete_zoneconf(
-				view, voptions, dns_zone_getorigin(zone), NULL);
+			result = delete_zoneconf(view, voptions,
+						 dns_zone_getorigin(zone), NULL,
+						 locked);
 		} else {
 			result = delete_zoneconf(
 				view, dz->server->effectiveconfig,
-				dns_zone_getorigin(zone), NULL);
+				dns_zone_getorigin(zone), NULL, locked);
 		}
 
 		if (result != ISC_R_SUCCESS) {
