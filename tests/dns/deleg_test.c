@@ -611,13 +611,9 @@ cleanuptests(ISC_ATTR_UNUSED void *arg) {
 	deleg = NULL;
 
 	/*
-	 * stuff. internal node (and delegset) are now freed from memory. The
-	 * cleanup_expired() flow will run, delete the other node, and because
-	 * the reclaimed size is the same as the requested one, LRU won't run
-	 * this time.
-	 *
-	 * rcu_barrier() is needed to kick off QP reclamation flow (and run the
-	 * detaching functions from the DB nodes).
+	 * stuff. internal node (and delegset) is now removed. rcu_barrier()
+	 * is needed to kick off QP reclamation flow (and run the detaching
+	 * functions from the DB nodes).
 	 */
 	rcu_barrier();
 	assert_int_in_range(isc_mem_inuse(db->mctx), 4000000, 4100000);
@@ -630,8 +626,32 @@ cleanuptests(ISC_ATTR_UNUSED void *arg) {
 	dns_delegset_detach(&delegset);
 
 	/*
-	 * TODO: LRU test
+	 * Add yet another non expired record. But LRU will have to get
+	 * rid of it because we're hitting the hiwater mark again.
 	 */
+	dns_deleg_allocset(db, &delegset);
+	dns_deleg_allocdeleg(delegset, &deleg);
+
+	for (size_t i = 0; i < 99999; i++) {
+		addipdeleg(AF_INET6, "1111::2222", delegset, deleg);
+	}
+	assert_int_in_range(isc_mem_inuse(db->mctx), 8000000, 8100000);
+	writedb(db, "baz.", 30, &delegset, true);
+	deleg = NULL;
+
+	rcu_barrier();
+	assert_int_in_range(isc_mem_inuse(db->mctx), 4000000, 4100000);
+
+	/*
+	 * baz. is there, but bar. is gone, as it has been
+	 * removed (even if it wasn't expired.)
+	 */
+	result = lookupdb(db, "baz.", now, 0, "baz.", &delegset);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	dns_delegset_detach(&delegset);
+
+	result = lookupdb(db, "bar.", now, 0, "bar.", &delegset);
+	assert_int_equal(result, ISC_R_NOTFOUND);
 
 	shutdowntest(&db);
 }
