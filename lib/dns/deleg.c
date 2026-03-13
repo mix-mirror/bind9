@@ -38,8 +38,6 @@ struct dns_delegdb {
 	/*
 	 * The DB uses its own memory context in order to easily enforce
 	 * overmem policies based on allocations made from this memory context.
-	 * (To be done: LRU/SIEVE, API to set a watermark in the mem context and
-	 * delete expired and less used nodes)
 	 */
 	isc_mem_t *mctx;
 	isc_refcount_t references;
@@ -82,11 +80,8 @@ struct delegdb_node {
 	bool visited;
 
 	/*
-	 * Used to build a list of nodes to be deleted (i.e. when running the
-	 * expired cleanup flow or the delete tree flow). It's safe to use
-	 * the same link for expired flow and delete tree flow because they
-	 * both run under the write QP transaction, and there can only
-	 * be one at a time.
+	 * Used to build a list of nodes to be deleted (when running the
+	 * delete tree flow).
 	 */
 	ISC_LINK(delegdb_node_t) deadlink;
 
@@ -108,8 +103,10 @@ delegdb_node_destroy_async(void *arg) {
 	node->magic = 0;
 
 	isc_mem_attach(node->db->mctx, &mctx);
-	ISC_SIEVE_UNLINK(node->db->lru[isc_tid()], node, link);
-	dns_name_free(&node->zonecut, node->db->mctx);
+
+	if (ISC_SIEVE_LINKED(node, link)) {
+		ISC_SIEVE_UNLINK(node->db->lru[isc_tid()], node, link);
+	}
 
 	dns_delegdb_detach(&node->db);
 	isc_loop_unref(node->loop);
@@ -121,6 +118,7 @@ delegdb_node_destroy(delegdb_node_t *node) {
 	REQUIRE(VALID_DELEGDB_NODE(node));
 	REQUIRE(DNS_DELEGSET_VALID(node->delegset));
 
+	dns_name_free(&node->zonecut, node->db->mctx);
 	dns_delegset_detach(&node->delegset);
 
 	if (node->loop == isc_loop()) {
@@ -384,12 +382,40 @@ dns_deleg_addns(dns_delegset_t *delegset, dns_deleg_t *deleg,
 }
 
 static void
+deleg_unmark_expired(dns_qp_t *qp) {
+	dns_qpiter_t it;
+	delegdb_node_t *node = NULL;
+	isc_stdtime_t now = isc_stdtime_now();
+
+	/*
+	 * Go through the whole database to find expired nodes and unmark them
+	 * to maximize the chances that LRU catches them early (i.e. before a
+	 * different unmarked non expired node).
+	 */
+	dns_qpiter_init(qp, &it);
+	while (dns_qpiter_next(&it, (void **)&node, NULL) == ISC_R_SUCCESS) {
+		if (isactive(node, now)) {
+			continue;
+		}
+
+		ISC_SIEVE_UNMARK(node, visited);
+		node = NULL;
+	}
+}
+
+static void
 deleg_cleanup_lru(dns_delegdb_t *db, size_t requested) {
 	dns_qp_t *qp = NULL;
 	delegdb_node_t *node = NULL;
 	size_t reclaimed = 0;
 
 	dns_qpmulti_write(db->nodes, &qp);
+
+	/*
+	 * Give a little help to SIEVE to avoid removing unmarked non expired
+	 * nodes. Is it worth it? (Considering it's a full DB node iteration.)
+	 */
+	deleg_unmark_expired(qp);
 
 	while (reclaimed < requested) {
 		node = ISC_SIEVE_NEXT(db->lru[isc_tid()], visited, link);
@@ -398,71 +424,49 @@ deleg_cleanup_lru(dns_delegdb_t *db, size_t requested) {
 			break;
 		}
 		reclaimed += node->size;
-		(void)dns_qp_deletename(qp, &node->zonecut,
-					DNS_DBNAMESPACE_NORMAL, NULL, NULL);
-	}
 
-	dns_qp_compact(qp, DNS_QPGC_ALL);
-	dns_qpmulti_commit(db->nodes, &qp);
-}
-
-static size_t
-deleg_cleanup_expired(dns_delegdb_t *db) {
-	dns_qp_t *qp = NULL;
-	dns_qpiter_t it;
-	delegdb_node_t *node = NULL;
-	isc_stdtime_t now = isc_stdtime_now();
-	ISC_LIST(delegdb_node_t) deadnodes = ISC_LIST_INITIALIZER;
-	size_t reclaimed = 0;
-
-	dns_qpmulti_write(db->nodes, &qp);
-
-	/*
-	 * Go through the whole database to find expired nodes.
-	 */
-	dns_qpiter_init(qp, &it);
-	while (dns_qpiter_next(&it, (void **)&node, NULL) == ISC_R_SUCCESS) {
-		if (isactive(node, now)) {
-			continue;
-		}
-
-		/*
-		 * The node is expired, put it in the deadlist
-		 */
-		ISC_LIST_APPEND(deadnodes, node, deadlink);
-		reclaimed += node->size;
-		node = NULL;
-	}
-
-	/*
-	 * Let's actually delete the deadnodes!
-	 */
-	ISC_LIST_FOREACH(deadnodes, deadnode, deadlink) {
-		isc_result_t result = dns_qp_deletename(qp, &deadnode->zonecut,
-							DNS_DBNAMESPACE_NORMAL,
-							NULL, NULL);
+		ISC_SIEVE_UNLINK(db->lru[isc_tid()], node, link);
+		isc_result_t result = dns_qp_deletename(
+			qp, &node->zonecut, DNS_DBNAMESPACE_NORMAL, NULL, NULL);
 		INSIST(result == ISC_R_SUCCESS);
 	}
 
 	dns_qp_compact(qp, DNS_QPGC_ALL);
 	dns_qpmulti_commit(db->nodes, &qp);
-
-	return reclaimed;
 }
 
 static void
 deleg_cleanup(dns_delegdb_t *db, size_t requested) {
+	/*
+	 * So... There used to be 2 cleanup flows here. The logic was (1) remove
+	 * all expired entries and (2) if we still need more space (requested <
+	 * reclaimed), remove last recently used node from the current
+	 * thread/loop (because of the lock-free pattern LRU/SIEVE).
+	 *
+	 * But! If an expired node is removed from a
+	 * loop/thread A and it was actually introduced from a
+	 * loop/thread B, it will come up from ISC_SIEVE_NEXT()
+	 * at some point in the loop/thread B if
+	 * delegdb_node_destroy() hasn't been run first... And
+	 * this would make us use a dangling pointer in
+	 * cleanup_lru() flow.
+	 *
+	 * So even if we were running rcu_barrier() here ensures
+	 * QP reclamation flow runs, nothing tells us if
+	 * delegdb_node_destroy() of the node from loop/thread B
+	 * (which has been scheduled) has run yet. And we might
+	 * then, still have the node in the DB LRU list of
+	 * loop/thread B, and dealing with a dangling pointer.
+	 * Huh!
+	 *
+	 * To solve the problem I end up with something simpler: just use
+	 * LRU/SIEVE. And too bad if we don't remove all expired entries right
+	 * now. The `deleg_unmark_expired()` flow still probably gives a little
+	 * bit help to SIEVE to remove the expired nodes.
+	 *
+	 */
 	if (isc_mem_isovermem(db->mctx)) {
-		/*
-		 * Cleaning up expired node is done first and on its own QP
-		 * transaction so we can check if LRU cleaning is still needed
-		 * after. (Simpler, for now, than calculating the size of each
-		 * delegation.)
-		 */
-		size_t reclaimed = deleg_cleanup_expired(db);
-		if (reclaimed < requested) {
-			deleg_cleanup_lru(db, requested - reclaimed);
-		}
+		deleg_cleanup_lru(db, requested);
 	}
 }
 
@@ -519,7 +523,7 @@ dns_deleg_writeset(dns_delegdb_t *db, const dns_name_t *zonecut,
 
 	/*
 	 * We're about to add a new delegation, check for state of overmem, and
-	 * clean up oldest/expired delegations first.
+	 * clean up expired/least recently used delegation.
 	 */
 	nodesize = delegdb_node_size(zonecut, *delegset);
 	deleg_cleanup(db, nodesize);
@@ -844,6 +848,10 @@ deleg_deletetree(dns_delegdb_t *db, const dns_name_t *name) {
 		 * here. Instead of removing the node immediately, we add it
 		 * into a list that we'll go through after, then delete each
 		 * node.
+		 *
+		 * TODO: Maybe a more lazy and simpler approach: let's put their
+		 * TTL to 0, so they are expired and next time we need memory
+		 * they'll go away thanks to cleanup_lru() flow?
 		 */
 		ISC_LIST_APPEND(deadnodes, node, deadlink);
 
