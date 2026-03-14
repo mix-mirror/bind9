@@ -206,10 +206,9 @@ for try in 1 2 3 4 5; do
   sleep 1
 done
 zspill=$(grep 'spilled due to zone' ns3/named.stats | sed 's/\([0-9][0-9]*\) spilled.*/\1/')
-[ -z "$zspill" ] && zspill=0
+[ "${zspill:-0}" -ne 0 ] || ret=1
 drops=$(grep 'queries dropped' ns3/named.stats | sed 's/\([0-9][0-9]*\) queries.*/\1/')
-[ -z "$drops" ] && drops=0
-[ "$drops" -ge "$zspill" ] || ret=1
+[ "${drops:-0}" -ne 0 ] || ret=1
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 

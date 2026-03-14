@@ -74,7 +74,8 @@
 /*%
  * Default EDNS0 buffer size
  */
-#define DEFAULT_EDNS_BUFSIZE 1232
+#define DEFAULT_EDNS_BUFSIZE	       1232
+#define DEFAULT_MAX_DELEGATION_SERVERS 13
 
 /* Exponental backoff from 10 seconds to 640 seconds */
 #define UNREACH_HOLD_TIME_INITIAL_SEC ((uint16_t)10)
@@ -117,6 +118,7 @@ dns_view_create(isc_mem_t *mctx, dns_dispatchmgr_t *dispatchmgr,
 		.root_key_sentinel = true,
 		.udpsize = DEFAULT_EDNS_BUFSIZE,
 		.max_restarts = DEFAULT_MAX_RESTARTS,
+		.max_delegation_servers = DEFAULT_MAX_DELEGATION_SERVERS,
 	};
 
 	isc_refcount_init(&view->references, 1);
