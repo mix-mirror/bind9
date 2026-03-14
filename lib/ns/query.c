@@ -8670,8 +8670,13 @@ query_delegation_recurse(query_ctx_t *qctx) {
 			fname = qctx->fname;
 		}
 
-		result = ns_query_recurse(qctx->client, qctx->qtype, qname,
-					  fname, delegset, qctx->resuming);
+		if (delegset == NULL) {
+			result = ISC_R_NOTFOUND;
+		} else {
+			result = ns_query_recurse(qctx->client, qctx->qtype,
+						  qname, fname, delegset,
+						  qctx->resuming);
+		}
 
 		if (delegset != NULL) {
 			dns_delegset_detach(&delegset);
