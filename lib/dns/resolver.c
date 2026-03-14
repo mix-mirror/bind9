@@ -7109,6 +7109,7 @@ resume_dslookup(void *arg) {
 
 	case ISC_R_SHUTTINGDOWN:
 	case ISC_R_CANCELED:
+		dns_rdataset_cleanup(frdataset);
 		goto cleanup;
 
 	default:
