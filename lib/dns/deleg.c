@@ -576,11 +576,11 @@ dns_deleg_writeset(dns_delegdb_t *db, const dns_name_t *zonecut,
 
 	ISC_SIEVE_INSERT(db->lru[isc_tid()], node, link);
 
+	dns_delegset_attach(*delegset, &node->delegset);
+
 	result = dns_qp_insert(qp, node, 0);
 	INSIST(result == ISC_R_SUCCESS);
 	delegdb_node_unref(node);
-
-	dns_delegset_attach(*delegset, &node->delegset);
 
 commit:
 	/*
