@@ -476,11 +476,12 @@ delegset_size(dns_delegset_t *delegset) {
 
 	sz += sizeof(*delegset);
 	ISC_LIST_FOREACH(delegset->deleg, deleg, link) {
+		sz += sizeof(*deleg);
 		ISC_LIST_FOREACH(deleg->address, address, link) {
 			sz += sizeof(*address);
 		}
 		ISC_LIST_FOREACH(deleg->nameserver, nameserver, link) {
-			sz += dns_name_size(nameserver);
+			sz += sizeof(*nameserver) + dns_name_size(nameserver);
 		}
 		/*
 		 * Omitting delegi here, as the layout of dns_deleg_t will
