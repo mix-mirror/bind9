@@ -93,12 +93,22 @@ struct delegdb_node {
 	dns_delegset_t *delegset;
 };
 
+/*
+ * All node cleanup is done on the node's owning loop so that the node
+ * remains fully valid (name, delegset, SIEVE link) until it is actually
+ * destroyed.  This is important because after a node is removed from the
+ * QP trie, it may still be linked in the owning loop's SIEVE list; if
+ * another thread's eviction could encounter a half-destroyed node, we
+ * would get a use-after-free.  By deferring everything to the owning
+ * loop, the node is intact until the SIEVE unlink happens.
+ */
 static void
 delegdb_node_destroy_async(void *arg) {
 	delegdb_node_t *node = arg;
 	isc_mem_t *mctx = NULL;
 
 	REQUIRE(VALID_DELEGDB_NODE(node));
+	REQUIRE(DNS_DELEGSET_VALID(node->delegset));
 
 	node->magic = 0;
 
@@ -108,6 +118,9 @@ delegdb_node_destroy_async(void *arg) {
 		ISC_SIEVE_UNLINK(node->db->lru[isc_tid()], node, link);
 	}
 
+	dns_name_free(&node->zonecut, mctx);
+	dns_delegset_detach(&node->delegset);
+
 	dns_delegdb_detach(&node->db);
 	isc_loop_unref(node->loop);
 	isc_mem_putanddetach(&mctx, node, sizeof(*node));
@@ -116,10 +129,6 @@ delegdb_node_destroy_async(void *arg) {
 static void
 delegdb_node_destroy(delegdb_node_t *node) {
 	REQUIRE(VALID_DELEGDB_NODE(node));
-	REQUIRE(DNS_DELEGSET_VALID(node->delegset));
-
-	dns_name_free(&node->zonecut, node->db->mctx);
-	dns_delegset_detach(&node->delegset);
 
 	if (node->loop == isc_loop()) {
 		delegdb_node_destroy_async(node);
