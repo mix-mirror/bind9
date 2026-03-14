@@ -230,13 +230,6 @@
 #define DEFAULT_MAX_QUERIES 50
 #endif /* ifndef DEFAULT_MAX_QUERIES */
 
-/*
- * This is the limit of ADB finds the resolver will accept for a given fetch. An
- * ADB find can be either to lookup a NS address or server IP addresses.
- * Limiting the number of finds avoids excessive processing of huge delegations.
- */
-#define MAX_FIND_COUNT 20
-
 /* Hash table for zone counters */
 #ifndef RES_DOMAIN_HASH_BITS
 #define RES_DOMAIN_HASH_BITS 12
@@ -3665,6 +3658,7 @@ fctx_getaddresses_addresses(fetchctx_t *fctx, isc_stdtime_t now,
 			    unsigned int options, bool *allspilledp,
 			    size_t *ns_processed) {
 	dns_adbfindlist_t finds = ISC_LIST_INITIALIZER;
+	size_t max_delegation_servers = fctx->res->view->max_delegation_servers;
 
 	if ((fctx->options & DNS_FETCHOPT_PREFETCH) != 0) {
 		options |= DNS_ADBFIND_QUOTAEXEMPT;
@@ -3672,10 +3666,10 @@ fctx_getaddresses_addresses(fetchctx_t *fctx, isc_stdtime_t now,
 
 	ISC_LIST_FOREACH(fctx->delegset->deleg, deleg, link) {
 		dns_adbfind_t *find = NULL;
-		size_t maxaddrs = MAX_FIND_COUNT - *ns_processed;
+		size_t maxaddrs = max_delegation_servers - *ns_processed;
 		size_t findlen = 0;
 
-		if (*ns_processed >= MAX_FIND_COUNT) {
+		if (*ns_processed >= max_delegation_servers) {
 			break;
 		}
 
@@ -3707,7 +3701,7 @@ fctx_getaddresses_addresses(fetchctx_t *fctx, isc_stdtime_t now,
 		}
 
 		*ns_processed += findlen;
-		INSIST(*ns_processed <= MAX_FIND_COUNT);
+		INSIST(*ns_processed <= max_delegation_servers);
 		ISC_LIST_APPEND(finds, find, publink);
 	}
 
@@ -3723,7 +3717,8 @@ fctx_getaddresses_nameservers(fetchctx_t *fctx, isc_stdtime_t now,
 			      size_t *ns_processed) {
 	bool have_address = false;
 	unsigned int name_processed = 0;
-	dns_name_t *nameservers[MAX_FIND_COUNT];
+	dns_name_t *nameservers[MAX_DELEGATION_SERVERS];
+	size_t max_delegation_servers = fctx->res->view->max_delegation_servers;
 
 	/*
 	 * Lookup through each delegation for this zonecut (represented by
@@ -3749,7 +3744,7 @@ fctx_getaddresses_nameservers(fetchctx_t *fctx, isc_stdtime_t now,
 		ISC_LIST_FOREACH(deleg->nameserver, ns, link) {
 			nameservers[name_processed++] = ns;
 
-			if (name_processed >= MAX_FIND_COUNT) {
+			if (name_processed >= max_delegation_servers) {
 				goto shufflens;
 			}
 		}
@@ -3797,7 +3792,7 @@ shufflens:
 			*all_spilledp = false;
 		}
 
-		if (++(*ns_processed) >= MAX_FIND_COUNT) {
+		if (++(*ns_processed) >= max_delegation_servers) {
 			break;
 		}
 	}
