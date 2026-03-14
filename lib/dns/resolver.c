@@ -9379,6 +9379,7 @@ rctx_nextserver(respctx_t *rctx, dns_message_t *message,
 		} else {
 			name = fctx->domain;
 		}
+		INSIST(fctx->delegset == NULL);
 		result = dns_view_bestzonecut(fctx->res->view, name, fname,
 					      dcname, fctx->now, findoptions,
 					      true, true, &fctx->delegset);
