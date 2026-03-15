@@ -17,15 +17,17 @@
 #include <stdbool.h>
 
 #include <isc/async.h>
+#include <isc/atomic.h>
 #include <isc/buffer.h>
 #include <isc/log.h>
 #include <isc/loop.h>
 #include <isc/mem.h>
+#include <isc/refcount.h>
 #include <isc/result.h>
-#include <isc/rwlock.h>
 #include <isc/string.h>
 #include <isc/time.h>
 #include <isc/timer.h>
+#include <isc/urcu.h>
 #include <isc/util.h>
 
 #include <dns/db.h>
@@ -41,10 +43,8 @@ struct dns_ntatable {
 	unsigned int magic;
 	isc_mem_t *mctx;
 	dns_view_t *view;
-	isc_rwlock_t rwlock;
 	isc_refcount_t references;
 	dns_qpmulti_t *table;
-	atomic_bool shuttingdown;
 };
 
 struct dns__nta {
@@ -60,7 +60,6 @@ struct dns__nta {
 	dns_rdataset_t sigrdataset;
 	dns_name_t name;
 	isc_stdtime_t expiry;
-	bool shuttingdown;
 };
 
 #define NTA_MAGIC     ISC_MAGIC('N', 'T', 'A', 'n')
@@ -115,25 +114,22 @@ dns_ntatable_create(dns_view_t *view, dns_ntatable_t **ntatablep) {
 
 	ntatable = isc_mem_get(view->mctx, sizeof(*ntatable));
 	*ntatable = (dns_ntatable_t){
+		.magic = NTATABLE_MAGIC,
 		.mctx = isc_mem_ref(view->mctx),
+		.references = ISC_REFCOUNT_INITIALIZER(1),
 	};
 
 	dns_view_weakattach(view, &ntatable->view);
 
-	isc_rwlock_init(&ntatable->rwlock);
 	dns_qpmulti_create(view->mctx, &qpmethods, view, &ntatable->table);
 
-	isc_refcount_init(&ntatable->references, 1);
-
-	ntatable->magic = NTATABLE_MAGIC;
 	*ntatablep = ntatable;
 }
 
 static void
 dns__ntatable_destroy(dns_ntatable_t *ntatable) {
 	ntatable->magic = 0;
-	isc_rwlock_destroy(&ntatable->rwlock);
-	dns_qpmulti_destroy(&ntatable->table);
+	INSIST(ntatable->table == NULL);
 	INSIST(ntatable->view == NULL);
 	isc_mem_putanddetach(&ntatable->mctx, ntatable, sizeof(*ntatable));
 }
@@ -150,8 +146,10 @@ fetch_done(void *arg) {
 	dns__nta_t *nta = resp->arg;
 	isc_result_t eresult = resp->result;
 	dns_ntatable_t *ntatable = nta->ntatable;
-	dns_view_t *view = ntatable->view;
 	isc_stdtime_t now = isc_stdtime_now();
+
+	rcu_read_lock();
+	dns_view_t *view = rcu_dereference(ntatable->view);
 
 	dns_rdataset_cleanup(&nta->rdataset);
 	dns_rdataset_cleanup(&nta->sigrdataset);
@@ -175,11 +173,9 @@ fetch_done(void *arg) {
 	case DNS_R_NXDOMAIN:
 	case DNS_R_NCACHENXRRSET:
 	case DNS_R_NXRRSET:
-		RWLOCK(&ntatable->rwlock, isc_rwlocktype_write);
 		if (nta->expiry > now) {
 			nta->expiry = now;
 		}
-		RWUNLOCK(&ntatable->rwlock, isc_rwlocktype_write);
 		break;
 	default:
 		break;
@@ -189,12 +185,13 @@ fetch_done(void *arg) {
 	 * If we're expiring before the next recheck, we might
 	 * as well stop the timer now.
 	 */
-	RWLOCK(&ntatable->rwlock, isc_rwlocktype_read);
-	if (nta->timer != NULL && nta->expiry - now < view->nta_recheck) {
+	if (nta->timer != NULL &&
+	    (view == NULL || nta->expiry - now < view->nta_recheck))
+	{
 		isc_timer_stop(nta->timer);
 	}
-	RWUNLOCK(&ntatable->rwlock, isc_rwlocktype_read);
 
+	rcu_read_unlock();
 	dns__nta_detach(&nta); /* for dns_resolver_createfetch() */
 }
 
@@ -212,13 +209,17 @@ checkbogus(void *arg) {
 	dns_rdataset_cleanup(&nta->rdataset);
 	dns_rdataset_cleanup(&nta->sigrdataset);
 
-	if (atomic_load(&ntatable->shuttingdown)) {
+	rcu_read_lock();
+	dns_view_t *view = rcu_dereference(ntatable->view);
+	if (view == NULL) {
 		isc_timer_stop(nta->timer);
+		rcu_read_unlock();
 		return;
 	}
 
-	result = dns_view_getresolver(ntatable->view, &resolver);
+	result = dns_view_getresolver(view, &resolver);
 	if (result != ISC_R_SUCCESS) {
+		rcu_read_unlock();
 		return;
 	}
 
@@ -232,23 +233,21 @@ checkbogus(void *arg) {
 		dns__nta_detach(&nta); /* for dns_resolver_createfetch() */
 	}
 	dns_resolver_detach(&resolver);
+	rcu_read_unlock();
 }
 
 static void
-settimer(dns_ntatable_t *ntatable, dns__nta_t *nta, uint32_t lifetime) {
-	dns_view_t *view = NULL;
-	isc_interval_t interval;
-
-	REQUIRE(VALID_NTATABLE(ntatable));
+settimer(dns_view_t *view, dns__nta_t *nta, uint32_t lifetime) {
 	REQUIRE(VALID_NTA(nta));
 
-	view = ntatable->view;
 	if (view->nta_recheck == 0 || lifetime <= view->nta_recheck) {
 		return;
 	}
 
-	isc_timer_create(nta->loop, checkbogus, nta, &nta->timer);
+	isc_interval_t interval;
 	isc_interval_set(&interval, view->nta_recheck, 0);
+
+	isc_timer_create(nta->loop, checkbogus, nta, &nta->timer);
 	isc_timer_start(nta->timer, isc_timertype_ticker, &interval);
 }
 
@@ -289,12 +288,15 @@ dns_ntatable_add(dns_ntatable_t *ntatable, const dns_name_t *name, bool force,
 
 	REQUIRE(VALID_NTATABLE(ntatable));
 
-	if (atomic_load(&ntatable->shuttingdown)) {
+	rcu_read_lock();
+	dns_view_t *view = rcu_dereference(ntatable->view);
+	dns_qpmulti_t *table = rcu_dereference(ntatable->table);
+	if (view == NULL || table == NULL) {
+		rcu_read_unlock();
 		return ISC_R_SUCCESS;
 	}
 
-	RWLOCK(&ntatable->rwlock, isc_rwlocktype_write);
-	dns_qpmulti_write(ntatable->table, &qp);
+	dns_qpmulti_write(table, &qp);
 	nta_create(ntatable, name, &nta);
 	nta->forced = force;
 
@@ -317,7 +319,7 @@ dns_ntatable_add(dns_ntatable_t *ntatable, const dns_name_t *name, bool force,
 	case ISC_R_SUCCESS:
 		nta->expiry = now + lifetime;
 		if (!force) {
-			settimer(ntatable, nta, lifetime);
+			settimer(view, nta, lifetime);
 		}
 		break;
 	default:
@@ -325,8 +327,9 @@ dns_ntatable_add(dns_ntatable_t *ntatable, const dns_name_t *name, bool force,
 	}
 
 	dns_qp_compact(qp, DNS_QPGC_MAYBE);
-	dns_qpmulti_commit(ntatable->table, &qp);
-	RWUNLOCK(&ntatable->rwlock, isc_rwlocktype_write);
+	dns_qpmulti_commit(table, &qp);
+
+	rcu_read_unlock();
 
 	return result;
 }
@@ -340,7 +343,14 @@ dns_ntatable_delete(dns_ntatable_t *ntatable, const dns_name_t *name) {
 	REQUIRE(VALID_NTATABLE(ntatable));
 	REQUIRE(name != NULL);
 
-	dns_qpmulti_write(ntatable->table, &qp);
+	rcu_read_lock();
+	dns_qpmulti_t *table = rcu_dereference(ntatable->table);
+	if (table == NULL) {
+		rcu_read_unlock();
+		return ISC_R_SUCCESS;
+	}
+
+	dns_qpmulti_write(table, &qp);
 	result = dns_qp_deletename(qp, name, DNS_DBNAMESPACE_NORMAL, &pval,
 				   NULL);
 	if (result == ISC_R_SUCCESS) {
@@ -349,7 +359,9 @@ dns_ntatable_delete(dns_ntatable_t *ntatable, const dns_name_t *name) {
 		dns__nta_detach(&n);
 	}
 	dns_qp_compact(qp, DNS_QPGC_MAYBE);
-	dns_qpmulti_commit(ntatable->table, &qp);
+	dns_qpmulti_commit(table, &qp);
+
+	rcu_read_unlock();
 
 	return result;
 }
@@ -361,44 +373,43 @@ delete_expired(void *arg) {
 	isc_result_t result;
 	dns_qp_t *qp = NULL;
 	void *pval = NULL;
-	dns_view_t *view = NULL;
+	bool flushnode = false;
 
 	REQUIRE(VALID_NTATABLE(ntatable));
 
-	RWLOCK(&ntatable->rwlock, isc_rwlocktype_write);
-	dns_qpmulti_write(ntatable->table, &qp);
+	rcu_read_lock();
+	dns_view_t *view = rcu_dereference(ntatable->view);
+	dns_qpmulti_t *table = rcu_dereference(ntatable->table);
+	if (view == NULL || table == NULL) {
+		goto unlock;
+	}
+
+	dns_qpmulti_write(table, &qp);
 	result = dns_qp_getname(qp, &nta->name, DNS_DBNAMESPACE_NORMAL, &pval,
 				NULL);
 	if (result == ISC_R_SUCCESS &&
-	    ((dns__nta_t *)pval)->expiry == nta->expiry && !nta->shuttingdown)
+	    ((dns__nta_t *)pval)->expiry == nta->expiry)
 	{
 		char nb[DNS_NAME_FORMATSIZE];
 		dns_name_format(&nta->name, nb, sizeof(nb));
 		isc_log_write(DNS_LOGCATEGORY_DNSSEC, DNS_LOGMODULE_NTA,
 			      ISC_LOG_INFO, "deleting expired NTA at %s", nb);
 
-		/*
-		 * Delay the flushing to avoid lock-order-inversion, as
-		 * dns_view_flushnode()->dns_adb_flushnames() locks 'adbname',
-		 * and it can cause a problem e.g. in dns_ntatable_covered() in
-		 * another thread called by the resolver (also involving 'fctx'
-		 * lock), or in dns_ntatable_shutdown() (also involving 'view'
-		 * lock).
-		 */
-		dns_view_weakattach(ntatable->view, &view);
+		flushnode = true;
 
-		dns_qp_deletename(qp, &nta->name, DNS_DBNAMESPACE_NORMAL, NULL,
-				  NULL);
+		result = dns_qp_deletename(qp, &nta->name,
+					   DNS_DBNAMESPACE_NORMAL, NULL, NULL);
+		RUNTIME_CHECK(result == ISC_R_SUCCESS);
 		dns__nta_shutdown(nta);
 		dns__nta_unref(nta);
 	}
 	dns_qp_compact(qp, DNS_QPGC_MAYBE);
-	dns_qpmulti_commit(ntatable->table, &qp);
-	RWUNLOCK(&ntatable->rwlock, isc_rwlocktype_write);
-	if (view != NULL) {
+	dns_qpmulti_commit(table, &qp);
+	if (flushnode) {
 		dns_view_flushnode(view, &nta->name, true);
-		dns_view_weakdetach(&view);
 	}
+unlock:
+	rcu_read_unlock();
 	dns__nta_detach(&nta);
 	dns_ntatable_detach(&ntatable);
 }
@@ -415,8 +426,14 @@ dns_ntatable_covered(dns_ntatable_t *ntatable, isc_stdtime_t now,
 	REQUIRE(VALID_NTATABLE(ntatable));
 	REQUIRE(dns_name_isabsolute(name));
 
-	RWLOCK(&ntatable->rwlock, isc_rwlocktype_read);
-	dns_qpmulti_query(ntatable->table, &qpr);
+	rcu_read_lock();
+	dns_qpmulti_t *table = rcu_dereference(ntatable->table);
+	if (table == NULL) {
+		rcu_read_unlock();
+		return false;
+	}
+
+	dns_qpmulti_query(table, &qpr);
 	result = dns_qp_lookup(&qpr, name, DNS_DBNAMESPACE_NORMAL, NULL, NULL,
 			       &pval, NULL);
 	nta = pval;
@@ -450,8 +467,9 @@ dns_ntatable_covered(dns_ntatable_t *ntatable, isc_stdtime_t now,
 
 	answer = true;
 done:
-	RWUNLOCK(&ntatable->rwlock, isc_rwlocktype_read);
-	dns_qpread_destroy(ntatable->table, &qpr);
+	dns_qpread_destroy(table, &qpr);
+	rcu_read_unlock();
+
 	return answer;
 }
 
@@ -475,8 +493,14 @@ dns_ntatable_totext(dns_ntatable_t *ntatable, const char *view,
 
 	REQUIRE(VALID_NTATABLE(ntatable));
 
-	RWLOCK(&ntatable->rwlock, isc_rwlocktype_read);
-	dns_qpmulti_query(ntatable->table, &qpr);
+	rcu_read_lock();
+	dns_qpmulti_t *table = rcu_dereference(ntatable->table);
+	if (table == NULL) {
+		rcu_read_unlock();
+		return ISC_R_SUCCESS;
+	}
+
+	dns_qpmulti_query(table, &qpr);
 	dns_qpiter_init(&qpr, &iter);
 
 	while (dns_qpiter_next(&iter, &pval, NULL) == ISC_R_SUCCESS) {
@@ -512,8 +536,8 @@ dns_ntatable_totext(dns_ntatable_t *ntatable, const char *view,
 	}
 
 cleanup:
-	dns_qpread_destroy(ntatable->table, &qpr);
-	RWUNLOCK(&ntatable->rwlock, isc_rwlocktype_read);
+	dns_qpread_destroy(table, &qpr);
+	rcu_read_unlock();
 	return result;
 }
 
@@ -528,8 +552,14 @@ dns_ntatable_save(dns_ntatable_t *ntatable, FILE *fp) {
 
 	REQUIRE(VALID_NTATABLE(ntatable));
 
-	RWLOCK(&ntatable->rwlock, isc_rwlocktype_read);
-	dns_qpmulti_query(ntatable->table, &qpr);
+	rcu_read_lock();
+	dns_qpmulti_t *table = rcu_dereference(ntatable->table);
+	if (table == NULL) {
+		rcu_read_unlock();
+		return ISC_R_SUCCESS;
+	}
+
+	dns_qpmulti_query(table, &qpr);
 	dns_qpiter_init(&qpr, &iter);
 
 	while (dns_qpiter_next(&iter, &pval, NULL) == ISC_R_SUCCESS) {
@@ -565,8 +595,8 @@ dns_ntatable_save(dns_ntatable_t *ntatable, FILE *fp) {
 		written = true;
 	}
 
-	dns_qpread_destroy(ntatable->table, &qpr);
-	RWUNLOCK(&ntatable->rwlock, isc_rwlocktype_read);
+	dns_qpread_destroy(table, &qpr);
+	rcu_read_unlock();
 
 	if (result == ISC_R_SUCCESS && !written) {
 		result = ISC_R_NOTFOUND;
@@ -602,20 +632,22 @@ dns__nta_shutdown(dns__nta_t *nta) {
 
 	dns__nta_ref(nta);
 	isc_async_run(nta->loop, dns__nta_shutdown_cb, nta);
-	nta->shuttingdown = true;
 }
 
 void
 dns_ntatable_shutdown(dns_ntatable_t *ntatable) {
+	REQUIRE(VALID_NTATABLE(ntatable));
+
+	dns_view_t *view = rcu_xchg_pointer(&ntatable->view, NULL);
+	dns_qpmulti_t *table = rcu_xchg_pointer(&ntatable->table, NULL);
+
+	synchronize_rcu();
+
 	dns_qpread_t qpr;
 	dns_qpiter_t iter;
 	void *pval = NULL;
 
-	REQUIRE(VALID_NTATABLE(ntatable));
-
-	RWLOCK(&ntatable->rwlock, isc_rwlocktype_write);
-	dns_qpmulti_query(ntatable->table, &qpr);
-	ntatable->shuttingdown = true;
+	dns_qpmulti_query(table, &qpr);
 
 	dns_qpiter_init(&qpr, &iter);
 	while (dns_qpiter_next(&iter, &pval, NULL) == ISC_R_SUCCESS) {
@@ -624,9 +656,9 @@ dns_ntatable_shutdown(dns_ntatable_t *ntatable) {
 		dns__nta_detach(&n);
 	}
 
-	dns_qpread_destroy(ntatable->table, &qpr);
-	dns_view_weakdetach(&ntatable->view);
-	RWUNLOCK(&ntatable->rwlock, isc_rwlocktype_write);
+	dns_qpread_destroy(table, &qpr);
+	dns_view_weakdetach(&view);
+	dns_qpmulti_destroy(&table);
 }
 
 static void
