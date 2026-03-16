@@ -9,17 +9,19 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
+from pathlib import Path
+
 import shutil
 
-from typing import Optional
-
-from .log import info, debug
 from .kasp import Key
+from .log import debug, info
 from .run import EnvCmd
 from .template import Nameserver, TemplateEngine, TrustAnchor, Zone
 from .vars.algorithms import Algorithm
 
 NS1 = Nameserver("ns1", "10.53.0.1")
+
+KEYDIR = "keys"
 
 
 def copy_dssets(delegations: list[Zone], ns: Nameserver):
@@ -32,22 +34,24 @@ def copy_dssets(delegations: list[Zone], ns: Nameserver):
             debug(f"{zone.name}: delegation is secure")
 
 
-def generate_key(zone: Zone, params: str = "", alg: Optional[Algorithm] = None) -> Key:
+def generate_key(zone: Zone, params: str = "", alg: Algorithm | None = None) -> Key:
     debug(f"{zone.name}: creating key")
+    keydir = Path(zone.ns.name) / KEYDIR
+    keydir.mkdir(exist_ok=True)
     if alg is None:
         alg = Algorithm.default()
-    keygen = EnvCmd("KEYGEN", f"-q -a {alg.number} -b {alg.bits} -L 3600")
+    keygen = EnvCmd("KEYGEN", f"-q -a {alg.number} -b {alg.bits} -K {KEYDIR} -L 3600")
     key_name = keygen(f"{params} {zone.name}", cwd=zone.ns.name).out.strip()
-    return Key(key_name, keydir=zone.ns.name)
+    return Key(key_name, keydir=keydir)
 
 
 def render_signed_zone(
-    zone: Zone, delegations: list[Zone], keys: list[Key], template: Optional[str] = None
+    zone: Zone, delegations: list[Zone], keys: list[Key], template: str | None = None
 ):
     debug(f"{zone.name}: rendering zone data and signing")
 
     templates = TemplateEngine(".")
-    signer = EnvCmd("SIGNER", "-S -g")
+    signer = EnvCmd("SIGNER", f"-S -g -K {KEYDIR}")
 
     assert zone.filename.endswith(".signed")
     basename = zone.filename[:-7]
@@ -70,7 +74,7 @@ def render_signed_zone(
 
 
 def configure_signed_zone(
-    zone: Zone, delegations: list[Zone], template: Optional[str] = None
+    zone: Zone, delegations: list[Zone], template: str | None = None
 ) -> list[Key]:
     info(f"{zone.name}: create zone with delegations and sign")
 
