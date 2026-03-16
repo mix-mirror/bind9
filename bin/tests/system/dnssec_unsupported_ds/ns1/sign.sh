@@ -34,4 +34,4 @@ cat "zones/root.db.in" "keys/$ksk.key" "keys/$zsk.key" ../ns2/dsset-example. >"z
 keyfile_to_static_ds "keys/$ksk" >trusted.conf
 cp trusted.conf ../ns2/trusted.conf
 cp trusted.conf ../ns3/trusted.conf
-cp trusted.conf ../ns4/trusted.conf
+cp trusted.conf ../ns9/trusted.conf
