@@ -26,11 +26,11 @@ pytestmark = pytest.mark.extra_artifacts(
 )
 
 
-def test_mixed_ds():
+def test_mixed_ds(ns9):
     msg = isctest.query.create("child.example.", "DNSKEY")
-    res = isctest.query.tcp(msg, "10.53.0.4")
+    res = isctest.query.tcp(msg, ns9.ip)
     isctest.check.servfail(res)
 
     msg = isctest.query.create("child.example.", "A")
-    res = isctest.query.tcp(msg, "10.53.0.4")
+    res = isctest.query.tcp(msg, ns9.ip)
     isctest.check.servfail(res)

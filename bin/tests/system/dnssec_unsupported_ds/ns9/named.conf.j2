@@ -11,15 +11,13 @@
  * information regarding copyright ownership.
  */
 
-// NS4
-
 options {
-	query-source address 10.53.0.4;
-	notify-source 10.53.0.4;
-	transfer-source 10.53.0.4;
+	query-source address 10.53.0.9;
+	notify-source 10.53.0.9;
+	transfer-source 10.53.0.9;
 	port @PORT@;
 	pid-file "named.pid";
-	listen-on { 10.53.0.4; };
+	listen-on { 10.53.0.9; };
 	listen-on-v6 { none; };
 	recursion yes;
 	dnssec-validation yes;
@@ -31,7 +29,7 @@ key rndc_key {
 };
 
 controls {
-        inet 10.53.0.4 port @CONTROLPORT@ allow { any; } keys { rndc_key; };
+        inet 10.53.0.9 port @CONTROLPORT@ allow { any; } keys { rndc_key; };
 };
 
 zone "." {
