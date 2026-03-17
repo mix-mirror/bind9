@@ -500,14 +500,41 @@ delegdb_node_size(const dns_name_t *zonecut, dns_delegset_t *delegset) {
 	return sz;
 }
 
+static void
+delegdb_node_prepare(dns_delegdb_t *db, isc_stdtime_t now, dns_ttl_t expire,
+		     const dns_name_t *zonecut, dns_delegset_t *delegset,
+		     delegdb_node_t **nodep) {
+	size_t nodesize = delegdb_node_size(zonecut, delegset);
+
+	deleg_cleanup(db, nodesize);
+
+	if (expire == 0) {
+		expire = 1;
+	}
+	delegset->ttl = expire + now;
+
+	*nodep = isc_mem_get(db->mctx, sizeof(**nodep));
+	**nodep = (delegdb_node_t){ .magic = DELEGDB_NODE_MAGIC,
+				    .references = ISC_REFCOUNT_INITIALIZER(1),
+				    .zonecut = DNS_NAME_INITEMPTY,
+				    .link = ISC_LINK_INITIALIZER,
+				    .deadlink = ISC_LINK_INITIALIZER,
+				    .size = nodesize,
+				    .loop = isc_loop_ref(isc_loop()) };
+
+	dns_delegdb_attach(db, &(*nodep)->db);
+	dns_delegset_attach(delegset, &(*nodep)->delegset);
+	dns_name_dup(zonecut, db->mctx, &(*nodep)->zonecut);
+}
+
 isc_result_t
-dns_deleg_writeset(dns_delegdb_t *db, const dns_name_t *zonecut,
-		   dns_ttl_t expire, dns_delegset_t **delegset) {
+dns_deleg_writeanddetach(dns_delegdb_t *db, const dns_name_t *zonecut,
+			 dns_ttl_t expire, dns_delegset_t **delegset) {
 	isc_result_t result;
 	delegdb_node_t *node = NULL;
 	dns_qp_t *qp = NULL;
+	dns_qpread_t qpr = {};
 	isc_stdtime_t now = isc_stdtime_now();
-	size_t nodesize = 0;
 
 	REQUIRE(VALID_DELEGDB(db));
 	if (shuttingdown(db)) {
@@ -519,77 +546,65 @@ dns_deleg_writeset(dns_delegdb_t *db, const dns_name_t *zonecut,
 	REQUIRE((*delegset)->mctx == db->mctx);
 
 	/*
-	 * We're about to add a new delegation, check for state of overmem, and
-	 * clean up expired/least recently used delegation.
+	 * First, check (without write txn) if the node already exists and is
+	 * still valid.
 	 */
-	nodesize = delegdb_node_size(zonecut, *delegset);
-	deleg_cleanup(db, nodesize);
-
-	if (expire == 0) {
-		expire = 1;
-	}
-	(*delegset)->ttl = expire + now;
-
-	dns_qpmulti_write(db->nodes, &qp);
-	result = dns_qp_lookup(qp, zonecut, DNS_DBNAMESPACE_NORMAL, NULL, NULL,
-			       (void **)&node, NULL);
-
-	/*
-	 * Bail out if such delegation exists and is not expired.
-	 *
-	 * TODO once DELEG is supported, this part should also bail out if
-	 * the existing node is from a DELEG RR and the one which
-	 * replace it is from a NS. (The caller can't really atomically
-	 * do that without exposing transaction, etc.)
-	 */
+	dns_qpmulti_query(db->nodes, &qpr);
+	result = dns_qp_lookup(&qpr, zonecut, DNS_DBNAMESPACE_NORMAL, NULL,
+			       NULL, (void **)&node, NULL);
 	if (result == ISC_R_SUCCESS) {
 		INSIST(VALID_DELEGDB_NODE(node));
-
 		if (node->delegset->ttl > now) {
-			result = ISC_R_EXISTS;
-			goto commit;
-		} else {
-			result = dns_qp_deletename(qp, zonecut,
-						   DNS_DBNAMESPACE_NORMAL, NULL,
-						   NULL);
-			INSIST(result == ISC_R_SUCCESS);
+			dns_qpread_destroy(db->nodes, &qpr);
+			CLEANUP(ISC_R_EXISTS);
 		}
+	}
+	dns_qpread_destroy(db->nodes, &qpr);
+
+	/*
+	 * We're about to add a new delegation, check for state of overmem, and
+	 * clean up expired/least recently used delegation, then allocate and
+	 * initialize a new node.
+	 */
+	delegdb_node_prepare(db, now, expire, zonecut, *delegset, &node);
+
+	/*
+	 * Add the node in the DB
+	 */
+	dns_qpmulti_write(db->nodes, &qp);
+	if (result == ISC_R_SUCCESS) {
+		/*
+		 * A node at the same zonecut exists, and it is expired. Ignore
+		 * the return value, in case the overriden node would be removed
+		 * in meantime by someone else.
+		 */
+		(void)dns_qp_deletename(qp, zonecut, DNS_DBNAMESPACE_NORMAL,
+					NULL, NULL);
+	}
+
+	result = dns_qp_insert(qp, node, 0);
+	if (result != ISC_R_SUCCESS) {
+		/*
+		 * Someone else added the node before (and there was no node to
+		 * delete).
+		 */
+
+		delegdb_node_unref(node);
+		dns_qpmulti_rollback(db->nodes, &qp);
+		CLEANUP(ISC_R_EXISTS);
 	}
 
 	/*
-	 * Then let's add the new delegation.
+	 * The new delegation is added, and can be referenced by SIEVE
 	 */
-	node = isc_mem_get(db->mctx, sizeof(*node));
-	*node = (delegdb_node_t){ .magic = DELEGDB_NODE_MAGIC,
-				  .references = ISC_REFCOUNT_INITIALIZER(1),
-				  .zonecut = DNS_NAME_INITEMPTY,
-				  .link = ISC_LINK_INITIALIZER,
-				  .deadlink = ISC_LINK_INITIALIZER,
-				  .size = nodesize,
-				  .loop = isc_loop_ref(isc_loop()) };
-
-	dns_delegdb_attach(db, &node->db);
-	dns_name_dup(zonecut, db->mctx, &node->zonecut);
-
 	ISC_SIEVE_INSERT(db->lru[isc_tid()], node, link);
 
-	dns_delegset_attach(*delegset, &node->delegset);
-
-	result = dns_qp_insert(qp, node, 0);
-	INSIST(result == ISC_R_SUCCESS);
 	delegdb_node_unref(node);
-
-commit:
-	/*
-	 * Probably shouldn't be run at every write?
-	 */
 	dns_qp_compact(qp, DNS_QPGC_MAYBE);
 	dns_qpmulti_commit(db->nodes, &qp);
 
-	if (result == ISC_R_SUCCESS) {
-		dns_delegset_detach(delegset);
-	}
-
+cleanup:
+	dns_delegset_detach(delegset);
 	return result;
 }
 

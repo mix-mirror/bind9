@@ -101,13 +101,12 @@ writedb(dns_delegdb_t *db, const char *zonecutstr, dns_ttl_t expire,
 	isc_result_t result;
 
 	dns_name_fromstring(zonecut, zonecutstr, NULL, 0, NULL);
-	result = dns_deleg_writeset(db, zonecut, expire, delegsetp);
+	result = dns_deleg_writeanddetach(db, zonecut, expire, delegsetp);
 
+	assert_null(*delegsetp);
 	if (expectsuccess) {
-		assert_null(*delegsetp);
 		assert_int_equal(result, ISC_R_SUCCESS);
 	} else {
-		assert_non_null(*delegsetp);
 		assert_int_equal(result, ISC_R_EXISTS);
 	}
 }
@@ -328,7 +327,6 @@ basictests(ISC_ATTR_UNUSED void *arg) {
 	deleg = NULL;
 
 	writedb(db, "bar.stuff.", 2, &delegset, false);
-	dns_delegset_detach(&delegset);
 	deleg = NULL;
 
 	result = lookupdb(db, "stuff.", 0, 0, "", &delegset);
