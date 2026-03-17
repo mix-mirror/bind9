@@ -11473,11 +11473,12 @@ named_server_flushnode(named_server_t *server, isc_lex_t *lex, bool tree) {
 
 	if (!flushedcache && !flusheddelegcache) {
 		if (!found) {
-			isc_log_write(NAMED_LOGCATEGORY_GENERAL,
-				      NAMED_LOGMODULE_SERVER, ISC_LOG_ERROR,
-				      "flushing %s '%s' in caches for view '%s' "
-				      "failed: view not found",
-				      tree ? "tree" : "name", target, viewname);
+			isc_log_write(
+				NAMED_LOGCATEGORY_GENERAL,
+				NAMED_LOGMODULE_SERVER, ISC_LOG_ERROR,
+				"flushing %s '%s' in caches for view '%s' "
+				"failed: view not found",
+				tree ? "tree" : "name", target, viewname);
 		}
 		result = ISC_R_FAILURE;
 	}

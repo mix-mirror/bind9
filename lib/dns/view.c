@@ -74,7 +74,7 @@
 /*%
  * Default EDNS0 buffer size
  */
-#define DEFAULT_EDNS_BUFSIZE		  1232
+#define DEFAULT_EDNS_BUFSIZE	       1232
 #define DEFAULT_MAX_DELEGATION_SERVERS 13
 
 /* Exponental backoff from 10 seconds to 640 seconds */
