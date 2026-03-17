@@ -44,7 +44,7 @@ AUTH = "10.53.0.1"
 RESOLVER = "10.53.0.2"
 TIMEOUT = 5
 ZONE = isctest.name.ZoneAnalyzer.read_path(
-    Path(os.environ["srcdir"]) / "nsec3-answer/ns1/root.db.in", origin=SUFFIX
+    Path(os.environ["srcdir"]) / "nsec3_answer/ns1/root.db.in", origin=SUFFIX
 )
 
 
