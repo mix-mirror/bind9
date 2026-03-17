@@ -1746,11 +1746,12 @@ dns_adb_createaddrinfosfind(dns_adb_t *adb, isc_netaddrlist_t *addrs,
 	REQUIRE(addrs != NULL);
 	REQUIRE(findp != NULL && *findp == NULL);
 
+	rcu_read_lock();
+
 	if (atomic_load(&adb->shuttingdown)) {
+		rcu_read_unlock();
 		return;
 	}
-
-	rcu_read_lock();
 
 	if (now == 0) {
 		now = isc_stdtime_now();

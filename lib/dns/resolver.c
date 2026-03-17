@@ -6724,7 +6724,7 @@ cache_delegns(respctx_t *rctx) {
 		}
 
 		/*
-		 * _Only_ to support RPZ NSID, but this name (if there are
+		 * _Only_ to support RPZ NSDNAME, but this name (if there are
 		 * glues) won't every be used anywhere else.
 		 */
 		dns_deleg_addns(delegset, deleg, &ns.name);
