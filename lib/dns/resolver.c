@@ -3721,7 +3721,7 @@ fctx_getaddresses_nameservers(fetchctx_t *fctx, isc_stdtime_t now,
 			      size_t *ns_processed) {
 	bool have_address = false;
 	unsigned int name_processed = 0;
-	dns_name_t *nameservers[MAX_DELEGATION_SERVERS];
+	static thread_local dns_name_t *nameservers[MAX_DELEGATION_SERVERS];
 	size_t max_delegation_servers = fctx->res->view->max_delegation_servers;
 
 	/*
