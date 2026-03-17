@@ -88,13 +88,13 @@ tkey_keydelete_LDADD =		\
 TESTS =				\
 	rpz			\
 	rpzrecurse		\
-	serve-stale		\
+	serve_stale		\
 	timeouts		\
 	upforwd			\
 	acl			\
 	additional		\
 	addzone			\
-	allow-query		\
+	allow_query		\
 	auth			\
 	autosign		\
 	builtin			\
@@ -117,7 +117,7 @@ TESTS =				\
 	dlzexternal		\
 	dns64			\
 	dnssec			\
-	dnssec-malformed-dnskey	\
+	dnssec_malformed_dnskey	\
 	dnstap			\
 	doth			\
 	dsdigest		\
@@ -128,14 +128,14 @@ TESTS =				\
 	ednscompliance		\
 	emptyzones		\
 	enginepkcs11		\
-	filter-aaaa		\
+	filter_aaaa		\
 	fetchlimit		\
 	formerr			\
 	forward			\
 	geoip2			\
 	glue			\
 	idna			\
-	include-multiplecfg	\
+	include_multiplecfg	\
 	inline			\
 	integrity		\
 	ixfr			\
@@ -189,7 +189,7 @@ TESTS =				\
 	tcp			\
 	tkey			\
 	tools			\
-	transport-acl		\
+	transport_acl		\
 	tsig			\
 	tsiggss			\
 	ttl			\
@@ -231,4 +231,4 @@ LOG_COMPILER = $(srcdir)/run.sh
 test-local: check
 
 clean-local::
-	-find -L . -mindepth 1 -maxdepth 1 -type d -name "*_*" -and -not -name "_common" -exec rm -rf {} \;
+	-find -L . -mindepth 1 -maxdepth 1 -type d -name "*-*" -exec rm -rf {} \;

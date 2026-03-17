@@ -494,10 +494,10 @@ for testname in testnames:
         or testname == "isctest"
     ):
         continue
-    if "_" in testname:
+    if "-" in testname:
         fail(
-            f"System test directory `{testname}` may not contain an underscore, "
-            "use hyphen instead."
+            f"System test directory `{testname}` may not contain a hyphen, "
+            "use underscore instead."
         )
     if not glob.glob(f"{dirpath}/**/tests_*.py", recursive=True):
         fail(

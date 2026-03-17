@@ -53,7 +53,7 @@ PRIORITY_TESTS = [
 PRIORITY_TESTS_RE = Re("|".join(PRIORITY_TESTS))
 SYSTEM_TEST_DIR_GIT_PATH = "bin/tests/system"
 SYSTEM_TEST_NAME_RE = Re(f"{SYSTEM_TEST_DIR_GIT_PATH}" + r"/([^/]+)")
-SYMLINK_REPLACEMENT_RE = Re(r"/tests(_.*)\.py")
+SYMLINK_REPLACEMENT_RE = Re(r"/tests_(.*)\.py")
 
 # ---------------------- Module initialization ---------------------------
 
@@ -132,14 +132,14 @@ def pytest_ignore_collect(collection_path):
     # ignore these during test collection phase. Otherwise, test artifacts
     # from previous runs could mess with the runner. Also ignore the
     # convenience symlinks to those test directories. In both of those
-    # cases, the system test name (directory) contains an underscore, which
+    # cases, the system test name (directory) contains a hyphen, which
     # is otherwise and invalid character for a system test name.
     match = SYSTEM_TEST_NAME_RE.search(str(collection_path))
     if match is None:
         isctest.log.warning("unexpected test path: %s (ignored)", collection_path)
         return True
     system_test_name = match.groups()[0]
-    return "_" in system_test_name
+    return "-" in system_test_name
 
 
 def pytest_collection_modifyitems(items):
@@ -449,13 +449,13 @@ def system_test_dir(request, env, system_test_name, expected_artifacts):
         f"{env['TOP_BUILDDIR']}/{SYSTEM_TEST_DIR_GIT_PATH}"
     ).resolve()
     testdir = Path(
-        tempfile.mkdtemp(prefix=f"{system_test_name}_tmp_", dir=system_test_root)
+        tempfile.mkdtemp(prefix=f"{system_test_name}-tmp-", dir=system_test_root)
     )
     shutil.rmtree(testdir)
     shutil.copytree(system_test_root / system_test_name, testdir)
 
     # Create a convenience symlink with a stable and predictable name
-    module_name = SYMLINK_REPLACEMENT_RE.sub(r"\1", str(request.node.path))
+    module_name = SYMLINK_REPLACEMENT_RE.sub(r"-\1", str(request.node.path))
     symlink_dst = system_test_root / module_name
     symlink_dst.unlink(missing_ok=True)
     symlink_dst.symlink_to(os.path.relpath(testdir, start=system_test_root))
