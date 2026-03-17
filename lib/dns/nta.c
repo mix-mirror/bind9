@@ -147,6 +147,7 @@ fetch_done(void *arg) {
 	isc_result_t eresult = resp->result;
 	dns_ntatable_t *ntatable = nta->ntatable;
 	isc_stdtime_t now = isc_stdtime_now();
+	isc_stdtime_t expiry;
 
 	rcu_read_lock();
 	dns_view_t *view = rcu_dereference(ntatable->view);
@@ -167,14 +168,17 @@ fetch_done(void *arg) {
 
 	dns_resolver_freefresp(&resp);
 
+	expiry = CMM_LOAD_SHARED(nta->expiry);
+
 	switch (eresult) {
 	case ISC_R_SUCCESS:
 	case DNS_R_NCACHENXDOMAIN:
 	case DNS_R_NXDOMAIN:
 	case DNS_R_NCACHENXRRSET:
 	case DNS_R_NXRRSET:
-		if (nta->expiry > now) {
-			nta->expiry = now;
+		if (expiry > now) {
+			CMM_STORE_SHARED(nta->expiry, now);
+			expiry = now;
 		}
 		break;
 	default:
@@ -186,7 +190,7 @@ fetch_done(void *arg) {
 	 * as well stop the timer now.
 	 */
 	if (nta->timer != NULL &&
-	    (view == NULL || nta->expiry - now < view->nta_recheck))
+	    (view == NULL || expiry - now < view->nta_recheck))
 	{
 		isc_timer_stop(nta->timer);
 	}
@@ -282,9 +286,8 @@ isc_result_t
 dns_ntatable_add(dns_ntatable_t *ntatable, const dns_name_t *name, bool force,
 		 isc_stdtime_t now, uint32_t lifetime) {
 	isc_result_t result = ISC_R_SUCCESS;
-	dns__nta_t *nta = NULL;
+	dns__nta_t *nta = NULL, *old_nta = NULL;
 	dns_qp_t *qp = NULL;
-	void *pval = NULL;
 
 	REQUIRE(VALID_NTATABLE(ntatable));
 
@@ -299,31 +302,28 @@ dns_ntatable_add(dns_ntatable_t *ntatable, const dns_name_t *name, bool force,
 	dns_qpmulti_write(table, &qp);
 	nta_create(ntatable, name, &nta);
 	nta->forced = force;
-
 	result = dns_qp_insert(qp, nta, 0);
 	switch (result) {
 	case ISC_R_EXISTS:
-		result = dns_qp_getname(qp, &nta->name, DNS_DBNAMESPACE_NORMAL,
-					&pval, NULL);
-		if (result == ISC_R_SUCCESS) {
-			/*
-			 * an NTA already existed: throw away the
-			 * new one and update the old one.
-			 */
-			dns__nta_detach(&nta); /* for nta_create */
-			nta = pval;
-			break;
-		}
-		/* update the NTA's timer as if it were new */
+		result = dns_qp_deletename(qp, name, DNS_DBNAMESPACE_NORMAL,
+					   (void *)&old_nta, NULL);
+		RUNTIME_CHECK(result == ISC_R_SUCCESS);
+
+		dns__nta_shutdown(old_nta);
+		dns__nta_detach(&old_nta);
+
+		result = dns_qp_insert(qp, nta, 0);
+		RUNTIME_CHECK(result == ISC_R_SUCCESS);
+
 		FALLTHROUGH;
 	case ISC_R_SUCCESS:
-		nta->expiry = now + lifetime;
+		CMM_STORE_SHARED(nta->expiry, now + lifetime);
 		if (!force) {
 			settimer(view, nta, lifetime);
 		}
 		break;
 	default:
-		break;
+		UNREACHABLE();
 	}
 
 	dns_qp_compact(qp, DNS_QPGC_MAYBE);
@@ -388,7 +388,8 @@ delete_expired(void *arg) {
 	result = dns_qp_getname(qp, &nta->name, DNS_DBNAMESPACE_NORMAL, &pval,
 				NULL);
 	if (result == ISC_R_SUCCESS &&
-	    ((dns__nta_t *)pval)->expiry == nta->expiry)
+	    CMM_LOAD_SHARED(((dns__nta_t *)pval)->expiry) ==
+		    CMM_LOAD_SHARED(nta->expiry))
 	{
 		char nb[DNS_NAME_FORMATSIZE];
 		dns_name_format(&nta->name, nb, sizeof(nb));
@@ -457,11 +458,11 @@ dns_ntatable_covered(dns_ntatable_t *ntatable, isc_stdtime_t now,
 		goto done;
 	}
 
-	if (nta->expiry <= now) {
+	if (CMM_LOAD_SHARED(nta->expiry) <= now) {
 		/* NTA is expired */
 		dns__nta_ref(nta);
 		dns_ntatable_ref(nta->ntatable);
-		isc_async_current(delete_expired, nta);
+		isc_async_run(nta->loop, delete_expired, nta);
 		goto done;
 	}
 
@@ -510,19 +511,20 @@ dns_ntatable_totext(dns_ntatable_t *ntatable, const char *view,
 		char obuf[DNS_NAME_FORMATSIZE + ISC_FORMATHTTPTIMESTAMP_SIZE +
 			  sizeof("expired:  \n")];
 		isc_time_t t;
+		isc_stdtime_t expiry = CMM_LOAD_SHARED(n->expiry);
 
 		dns_name_format(&n->name, nbuf, sizeof(nbuf));
 
-		if (n->expiry != 0xffffffffU) {
+		if (expiry != 0xffffffffU) {
 			/* Normal NTA entries */
-			isc_time_set(&t, n->expiry, 0);
+			isc_time_set(&t, expiry, 0);
 			isc_time_formattimestamp(&t, tbuf, sizeof(tbuf));
 
 			snprintf(obuf, sizeof(obuf), "%s%s%s%s: %s %s",
 				 first ? "" : "\n", nbuf,
 				 view != NULL ? "/" : "",
 				 view != NULL ? view : "",
-				 n->expiry <= now ? "expired" : "expiry", tbuf);
+				 expiry <= now ? "expired" : "expiry", tbuf);
 		} else {
 			/* "validate-except" entries */
 			snprintf(obuf, sizeof(obuf), "%s%s%s%s: %s",
@@ -566,12 +568,13 @@ dns_ntatable_save(dns_ntatable_t *ntatable, FILE *fp) {
 		dns__nta_t *n = pval;
 		isc_buffer_t b;
 		char nbuf[DNS_NAME_FORMATSIZE + 1], tbuf[80];
+		isc_stdtime_t expiry = CMM_LOAD_SHARED(n->expiry);
 
 		/*
 		 * Skip this node if the expiry is already in the
 		 * past, or if this is a "validate-except" entry.
 		 */
-		if (n->expiry <= now || n->expiry == 0xffffffffU) {
+		if (expiry <= now || expiry == 0xffffffffU) {
 			continue;
 		}
 
@@ -585,7 +588,7 @@ dns_ntatable_save(dns_ntatable_t *ntatable, FILE *fp) {
 		isc_buffer_putuint8(&b, 0);
 
 		isc_buffer_init(&b, tbuf, sizeof(tbuf));
-		dns_time32_totext(n->expiry, &b);
+		dns_time32_totext(expiry, &b);
 
 		/* Zero terminate */
 		isc_buffer_putuint8(&b, 0);
@@ -651,9 +654,10 @@ dns_ntatable_shutdown(dns_ntatable_t *ntatable) {
 
 	dns_qpiter_init(&qpr, &iter);
 	while (dns_qpiter_next(&iter, &pval, NULL) == ISC_R_SUCCESS) {
-		dns__nta_t *n = pval;
-		dns__nta_shutdown(n);
-		dns__nta_detach(&n);
+		dns__nta_t *nta = pval;
+
+		dns__nta_shutdown(nta);
+		dns__nta_detach(&nta);
 	}
 
 	dns_qpread_destroy(table, &qpr);
