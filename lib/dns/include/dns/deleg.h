@@ -22,43 +22,33 @@
  * Represents either:
  *
  * - a DELEG-based delegation, with associated IPv4/IPv6 addresses,
- *   include-delegi names as well as name server names.
+ *   delegparam names as well as name server names.
  *
  * - an NS-based delegation, where associated server names and A/AAAA glues.
  *
  * Must not be used by the caller without an attached `dns_delegset_t` owner.
- *
- * TODO:
- *
- * because a `dns_deleg_t` can be of only one type, fields address, delegi and
- * nameserver must be a union as:
- *
- *   union { isc_netaddrlist_t addresses, dns_namelist_t names } data;
- *
- * and there must be a type:
- *
- *   enum short type { DNS_DELEGTYPE_DELEG_ADDRESS,
- *                     DNS_DELEGTYPE_DELEG_NAMES,
- *                     DNS_DELEGTYPE_DELEG_PARAM, (new DELEGI?)
- *                     DNS_DELEGTYPE_NS_GLUES,
- *                     DNS_DELEGTYPE_NS_NAMES }
- *
- * this saves 4 pointers (well, 3 pointers, with padding) and also makes clearer
- * from the code the exclusivity of addresses, delegi and nameservers (which is
- * exclusive in the protocol).
  */
-struct dns_deleg {
-	isc_netaddrlist_t address;
-	dns_namelist_t	  delegi;
-	dns_namelist_t	  nameserver;
 
+typedef enum {
+	DNS_DELEGTYPE_UNDEFINED,
+	DNS_DELEGTYPE_DELEG_ADDRESSES,
+	DNS_DELEGTYPE_DELEG_NAMES,
+	DNS_DELEGTYPE_DELEG_PARAMS,
+	DNS_DELEGTYPE_NS_GLUES,
+	DNS_DELEGTYPE_NS_NAMES
+} dns_deleg_type_t;
+
+struct dns_deleg {
+	isc_netaddrlist_t addresses;
+	dns_namelist_t	  names;
+	dns_deleg_type_t  type;
 	ISC_LINK(dns_deleg_t) link;
 };
 
 /*
  * A delegation set. Once it's added to the delegation DB, it gets a
- * read-only object thus doesn't require any locking nor copying when the caller
- * gets it.
+ * read-only object thus doesn't require any locking nor copying when the
+ * caller gets it.
  *
  * The TTL is common to all the DELEG RR for the same zonecut
  * https://datatracker.ietf.org/doc/html/rfc2181#section-5.2
@@ -66,8 +56,8 @@ struct dns_deleg {
  * When the delegation is NS-based, the TTL is the lowest TTL of the referral
  * (either of the NS, A or AAAA glues).
  *
- * If a zone contains NS and DELEG delegations, this delegation must only store
- * the DELEG ones. (This is resolver responsibility to ensure that.)
+ * If a zone contains NS and DELEG delegations, this delegation must only
+ * store the DELEG ones. (This is resolver responsibility to ensure that.)
  */
 struct dns_delegset {
 	unsigned int   magic;
@@ -106,9 +96,10 @@ dns_deleg_shutdown(dns_delegdb_t **db);
 /*
  * Lookup for delegations of a given name in the DB. If found, the zonecut is
  * written and the delegation set is attached to the caller, so it must be
- * detached once the caller is done with it. Even though `delegset` is not const
- * (for convenience with ISC_LIST_FOREACH macros, _attach, _detach functions,
- * etc.) the `delegset` _is_ a read-only object, and must not be modified.
+ * detached once the caller is done with it. Even though `delegset` is not
+ * const (for convenience with ISC_LIST_FOREACH macros, _attach, _detach
+ * functions, etc.) the `delegset` _is_ a read-only object, and must not be
+ * modified.
  *
  * If only the zonecut is needed from the caller, `delegset` can be NULL, it
  * won't be attached.
@@ -124,13 +115,14 @@ dns_deleg_lookup(dns_delegdb_t *db, const dns_name_t *name, isc_stdtime_t now,
 
 /*
  * Allocate and attach to the caller a new empty delegation set, but do not
- * attach it in the DB yet, so the following API can be used to set its various
- * properties.
+ * attach it in the DB yet, so the following API can be used to set its
+ * various properties.
  *
- * Because all those API (dns_deleg_alloc* and dns_deleg_add*) uses the internal
- * delegdb memory context, it _might_ in some circumstances allocate above its
- * hiwater mark without reclaiming memory. The flow reclaiming memory is then run
- * when adding the delegset into the database (dns_deleg_writeset).
+ * Because all those API (dns_deleg_alloc* and dns_deleg_add*) uses the
+ * internal delegdb memory context, it _might_ in some circumstances allocate
+ * above its hiwater mark without reclaiming memory. The flow reclaiming
+ * memory is then run when adding the delegset into the database
+ * (dns_deleg_writeset).
  *
  * This could be changed to run also through those API if needed.
  */
@@ -138,11 +130,12 @@ void
 dns_deleg_allocset(dns_delegdb_t *db, dns_delegset_t **delegsetp);
 
 /*
- * Allocate a new deleg struct and insert it into the delegation set. Can't be
- * used on delegation set already attached in the DB.
+ * Allocate a new deleg struct and insert it into the delegation set. Can't
+ * be used on delegation set already attached in the DB.
  */
 void
-dns_deleg_allocdeleg(dns_delegset_t *delegset, dns_deleg_t **delegp);
+dns_deleg_allocdeleg(dns_delegset_t *delegset, dns_deleg_type_t type,
+		     dns_deleg_t **delegp);
 
 /*
  * Add a new IP into a delegation. Can't be used on a delegation from a
@@ -153,12 +146,12 @@ dns_deleg_addaddr(dns_delegset_t *delegset, dns_deleg_t *deleg,
 		  const isc_netaddr_t *addr);
 
 /*
- * Add a new DELEGI name into a delegation. Can't be used on a delegation from
- * a delegation set already attached in the DB.
+ * Add a new DELEGPARAM name into a delegation. Can't be used on a delegation
+ * from a delegation set already attached in the DB.
  */
 void
-dns_deleg_adddelegi(dns_delegset_t *delegset, dns_deleg_t *deleg,
-		    const dns_name_t *name);
+dns_deleg_adddelegparam(dns_delegset_t *delegset, dns_deleg_t *deleg,
+			const dns_name_t *name);
 
 /*
  * Add a new nameserver name into a delegation. Can't be used on a delegation
@@ -170,21 +163,21 @@ dns_deleg_addns(dns_delegset_t *delegset, dns_deleg_t *deleg,
 
 /*
  * Attach a delegation set into the DB for the given zonecut and expiration
- * time. Then detach it from the caller. The delegation node is now read-only.
- * If a delegation already exists and is not expired, ISC_R_EXISTS is returned
- * and the DB is not altered and `*node` is not detached.
+ * time. Then detach it from the caller. The delegation node is now
+ * read-only. If a delegation already exists and is not expired, ISC_R_EXISTS
+ * is returned and the DB is not altered and `*node` is not detached.
  *
- * TODO: once DELEG is supported, attempting to add a delegation from NS where a
- * delegation from DELEG already exists would be rejected too.
+ * TODO: once DELEG is supported, attempting to add a delegation from NS
+ * where a delegation from DELEG already exists would be rejected too.
  */
 isc_result_t
 dns_deleg_writeset(dns_delegdb_t *db, const dns_name_t *zonecut,
 		   dns_ttl_t expire, dns_delegset_t **node);
 
 /*
- * Dump the database in a textual format for a given name. If a closest zonecut
- * matching the name is found, its delegation data is dumped. If the name is
- * NULL, the whole database is dumped.
+ * Dump the database in a textual format for a given name. If a closest
+ * zonecut matching the name is found, its delegation data is dumped. If the
+ * name is NULL, the whole database is dumped.
  *
  * Only the non expired entries will be dumped. If `now` is 0, the actual
  * expiration time is `isc_stdtime_now()`.
@@ -194,10 +187,10 @@ dns_deleg_dump(dns_delegdb_t *db, const dns_name_t *name, isc_stdtime_t now,
 	       isc_buffer_t *b);
 
 /*
- * Convert an NS rdataset into a delegset containing a single delegation (with
- * possibly multiple nameserver). The allocated delegset is using the main
- * memory context, thus, is not expected to be added into the deleg DB (which
- * accepts only delegset allocated using `dns_deleg_alloc*()` APIs.
+ * Convert an NS rdataset into a delegset containing a single delegation
+ * (with possibly multiple nameserver). The allocated delegset is using the
+ * main memory context, thus, is not expected to be added into the deleg DB
+ * (which accepts only delegset allocated using `dns_deleg_alloc*()` APIs.
  */
 void
 dns_deleg_fromrdataset(dns_rdataset_t *rdataset, dns_delegset_t **delegsetp);
@@ -209,8 +202,8 @@ void
 dns_deleg_flush(dns_delegdb_t *db);
 
 /*
- * Delete a delegation matching a name. If `tree` is true, this will also delete
- * all names below `name`.
+ * Delete a delegation matching a name. If `tree` is true, this will also
+ * delete all names below `name`.
  *
  * TODO: this is currently run by `rndc flush` APIs and run both on the main
  * cache and deleg DB. Should it require a different API?
@@ -219,9 +212,9 @@ isc_result_t
 dns_deleg_delete(dns_delegdb_t *db, const dns_name_t *name, bool tree);
 
 /*
- * Defines the size of the delegation cache. Whenever the effective cache size
- * comes close to this size, least recently used cache entries are discarded.
- * Value `0` means there is no limitation.
+ * Defines the size of the delegation cache. Whenever the effective cache
+ * size comes close to this size, least recently used cache entries are
+ * discarded. Value `0` means there is no limitation.
  */
 void
 dns_deleg_setsize(dns_delegdb_t *db, size_t size);

@@ -165,7 +165,7 @@ basictests(ISC_ATTR_UNUSED void *arg) {
 	 * A non expired delegation for foo. zonecut
 	 */
 	dns_deleg_allocset(db, &delegset);
-	dns_deleg_allocdeleg(delegset, &deleg);
+	dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_NS_GLUES, &deleg);
 	assert_non_null(deleg);
 
 	addnamedeleg("ns.foo.", delegset, deleg, dns_deleg_addns);
@@ -173,7 +173,7 @@ basictests(ISC_ATTR_UNUSED void *arg) {
 	addipdeleg(AF_INET6, "1111:2222:3333::4444", delegset, deleg);
 	deleg = NULL;
 
-	dns_deleg_allocdeleg(delegset, &deleg);
+	dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_NS_NAMES, &deleg);
 	assert_non_null(deleg);
 	addnamedeleg("ns.example.", delegset, deleg, dns_deleg_addns);
 	deleg = NULL;
@@ -202,19 +202,29 @@ basictests(ISC_ATTR_UNUSED void *arg) {
 	 * A non expired delegation for bar.foo. zonecut
 	 */
 	dns_deleg_allocset(db, &delegset);
-	dns_deleg_allocdeleg(delegset, &deleg);
-	assert_non_null(deleg);
 
+	dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_NS_NAMES, &deleg);
 	addnamedeleg("ns.bar.foo.", delegset, deleg, dns_deleg_addns);
 	addnamedeleg("ns2.bar.foo.", delegset, deleg, dns_deleg_addns);
-	addipdeleg(AF_INET, "8.9.10.11", delegset, deleg);
-	addipdeleg(AF_INET, "9.9.10.11", delegset, deleg);
-	addipdeleg(AF_INET6, "ACDC::ACDC", delegset, deleg);
-	addipdeleg(AF_INET6, "ABBA::ABBA", delegset, deleg);
-	addnamedeleg("delegns.gee.", delegset, deleg, dns_deleg_adddelegi);
-	addnamedeleg("delegns2.gee.", delegset, deleg, dns_deleg_adddelegi);
-	writedb(db, "bar.foo.", 25, &delegset, true);
 	deleg = NULL;
+
+	dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_NS_GLUES, &deleg);
+	addipdeleg(AF_INET, "8.9.10.11", delegset, deleg);
+	addipdeleg(AF_INET, "9.9.10.12", delegset, deleg);
+	addipdeleg(AF_INET6, "ACDC::ACDC", delegset, deleg);
+	deleg = NULL;
+
+	dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_ADDRESSES, &deleg);
+	addipdeleg(AF_INET6, "ABBA::ABBA", delegset, deleg);
+	addipdeleg(AF_INET, "13.14.15.16", delegset, deleg);
+	deleg = NULL;
+
+	dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_PARAMS, &deleg);
+	addnamedeleg("delegns.gee.", delegset, deleg, dns_deleg_adddelegparam);
+	addnamedeleg("delegns2.gee.", delegset, deleg, dns_deleg_adddelegparam);
+	deleg = NULL;
+
+	writedb(db, "bar.foo.", 25, &delegset, true);
 
 	result = lookupdb(db, "baz.bar.gee.", 0, 0, "", &delegset);
 	assert_int_equal(result, ISC_R_NOTFOUND);
@@ -225,7 +235,7 @@ basictests(ISC_ATTR_UNUSED void *arg) {
 
 	const char expected_barfoodeleg[] =
 		"bar.foo. DELEG 25"
-		"\n\tserver-ipv4=\n\t\t8.9.10.11,\n\t\t9.9.10.11"
+		"\n\tserver-ipv4=\n\t\t8.9.10.11,\n\t\t9.9.10.12"
 		"\n\tserver-ipv6=\n\t\tacdc::acdc,\n\t\tabba::abba"
 		"\n\tserver-name=\n\t\tns.bar.foo.,\n\t\tns2.bar.foo."
 		"\n\tinclude-delegi=\n\t\tdelegns.gee.,\n\t\tdelegns2.gee.";
@@ -238,11 +248,15 @@ basictests(ISC_ATTR_UNUSED void *arg) {
 	 * A expired delegation for bar.stuff. zonecut
 	 */
 	dns_deleg_allocset(db, &delegset);
-	dns_deleg_allocdeleg(delegset, &deleg);
-	assert_non_null(deleg);
 
+	dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_NAMES, &deleg);
 	addnamedeleg("ns.bar.stuff.", delegset, deleg, dns_deleg_addns);
+	deleg = NULL;
+
+	dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_NS_GLUES, &deleg);
 	addipdeleg(AF_INET6, "1111::2222", delegset, deleg);
+	deleg = NULL;
+
 	writedb(db, "bar.stuff.", 10, &delegset, true);
 	deleg = NULL;
 
