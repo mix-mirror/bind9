@@ -3673,14 +3673,18 @@ fctx_getaddresses_addresses(fetchctx_t *fctx, isc_stdtime_t now,
 			break;
 		}
 
-		if (ISC_LIST_EMPTY(deleg->address)) {
+		if (deleg->type != DNS_DELEGTYPE_DELEG_ADDRESSES &&
+		    deleg->type != DNS_DELEGTYPE_NS_GLUES)
+		{
 			continue;
 		}
-		INSIST(ISC_LIST_EMPTY(deleg->nameserver));
-		INSIST(ISC_LIST_EMPTY(deleg->delegi));
+
+		if (ISC_LIST_EMPTY(deleg->addresses)) {
+			continue;
+		}
 
 		fetchctx_ref(fctx);
-		dns_adb_createaddrinfosfind(fctx->adb, &deleg->address,
+		dns_adb_createaddrinfosfind(fctx->adb, &deleg->addresses,
 					    fctx->res->view->dstport, options,
 					    now, maxaddrs, &find, &findlen);
 
@@ -3735,13 +3739,16 @@ fctx_getaddresses_nameservers(fetchctx_t *fctx, isc_stdtime_t now,
 	 * are used. (Hence `ns_processed` being shared)
 	 */
 	ISC_LIST_FOREACH(fctx->delegset->deleg, deleg, link) {
-		if (ISC_LIST_EMPTY(deleg->nameserver)) {
+		if (deleg->type != DNS_DELEGTYPE_DELEG_NAMES &&
+		    deleg->type != DNS_DELEGTYPE_NS_NAMES)
+		{
 			continue;
 		}
-		INSIST(ISC_LIST_EMPTY(deleg->address));
-		INSIST(ISC_LIST_EMPTY(deleg->delegi));
+		if (ISC_LIST_EMPTY(deleg->names)) {
+			continue;
+		}
 
-		ISC_LIST_FOREACH(deleg->nameserver, ns, link) {
+		ISC_LIST_FOREACH(deleg->names, ns, link) {
 			nameservers[name_processed++] = ns;
 
 			if (name_processed >= max_delegation_servers) {
@@ -6691,8 +6698,10 @@ cache_delegns(respctx_t *rctx) {
 		 * `dns_deleg_t` because some of them might have glues, some
 		 * other might not. (And a `dns_deleg_t` can't have both
 		 * addresses and NS names.)
+		 *
+		 * Let's assume this is a GLUE-based deleg first.
 		 */
-		dns_deleg_allocdeleg(delegset, &deleg);
+		dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_NS_GLUES, &deleg);
 
 		dns_rdataset_current(rctx->ns_rdataset, &rdata);
 		INSIST(rdata.type == dns_rdatatype_ns);
@@ -6714,8 +6723,18 @@ cache_delegns(respctx_t *rctx) {
 			gluerdataset = NULL;
 		}
 
-		if (ISC_LIST_EMPTY(deleg->address)) {
-			dns_deleg_addns(delegset, deleg, &ns.name);
+		/*
+		 * _Only_ to support RPZ NSID, but this name (if there are
+		 * glues) won't every be used anywhere else.
+		 */
+		dns_deleg_addns(delegset, deleg, &ns.name);
+
+		if (ISC_LIST_EMPTY(deleg->addresses)) {
+			/*
+			 * There is actually no glues for this NSRRset, so this
+			 * is actually a DNS_DELEGTYPE_NS_NAMES.
+			 */
+			deleg->type = DNS_DELEGTYPE_NS_NAMES;
 		}
 	}
 
