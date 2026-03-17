@@ -3721,7 +3721,7 @@ fctx_getaddresses_nameservers(fetchctx_t *fctx, isc_stdtime_t now,
 			      size_t *ns_processed) {
 	bool have_address = false;
 	unsigned int name_processed = 0;
-	dns_name_t *nameservers[MAX_DELEGATION_SERVERS];
+	static thread_local dns_name_t *nameservers[MAX_DELEGATION_SERVERS];
 	size_t max_delegation_servers = fctx->res->view->max_delegation_servers;
 
 	/*
@@ -6726,7 +6726,7 @@ cache_delegns(respctx_t *rctx) {
 		}
 
 		/*
-		 * _Only_ to support RPZ NSID, but this name (if there are
+		 * _Only_ to support RPZ NSDNAME, but this name (if there are
 		 * glues) won't every be used anywhere else.
 		 */
 		dns_deleg_addns(delegset, deleg, &ns.name);
@@ -6740,12 +6740,7 @@ cache_delegns(respctx_t *rctx) {
 		}
 	}
 
-	result = dns_deleg_writeset(delegdb, rctx->ns_name, ttl, &delegset);
-	if (result != ISC_R_SUCCESS) {
-		dns_delegset_detach(&delegset);
-	}
-
-	return result;
+	return dns_deleg_writeanddetach(delegdb, rctx->ns_name, ttl, &delegset);
 }
 
 static isc_result_t
