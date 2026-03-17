@@ -129,7 +129,7 @@ dns_deleg_lookup(dns_delegdb_t *db, const dns_name_t *name, isc_stdtime_t now,
  * the internal delegdb memory context, it _might_ in some circumstances
  * allocate above its hiwater mark without reclaiming memory. The flow
  * reclaiming memory is then run when adding the delegset into the database
- * (dns_deleg_writeset).
+ * (dns_deleg_writeanddetach()).
  *
  * This could be changed to run through those API calls also if needed.
  */
@@ -169,17 +169,22 @@ dns_deleg_addns(dns_delegset_t *delegset, dns_deleg_t *deleg,
 		const dns_name_t *name);
 
 /*
- * Attach a delegation set into the DB for the given zonecut and expiration
- * time. Then detach it from the caller. The delegation node is now
- * read-only. If a delegation already exists and is not expired, ISC_R_EXISTS
- * is returned and the DB is not altered and `*node` is not detached.
+ * Add a delegation set into the DB for the given zonecut and expiration
+ * time. If a delegation already exists and is not expired, ISC_R_EXISTS is
+ * returned and the DB is not altered.
+ *
+ * In any case, this function takes ownership of `delegset` and detach it, so
+ * the caller must not use it anymore afterwards.
+ *
+ * This function also cleanup least recently used delegation is the database in
+ * an overmemory conditions (See dns_deleg_setsize()).
  *
  * TODO: once DELEG is supported, attempting to add a delegation from NS
  * where a delegation from DELEG already exists would be rejected too.
  */
 isc_result_t
-dns_deleg_writeset(dns_delegdb_t *db, const dns_name_t *zonecut,
-		   dns_ttl_t expire, dns_delegset_t **node);
+dns_deleg_writeanddetach(dns_delegdb_t *db, const dns_name_t *zonecut,
+			 dns_ttl_t expire, dns_delegset_t **delegset);
 
 /*
  * Dump the database in a textual format for a given name. If a closest
