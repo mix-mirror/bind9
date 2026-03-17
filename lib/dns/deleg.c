@@ -590,7 +590,12 @@ dns_deleg_writeanddetach(dns_delegdb_t *db, const dns_name_t *zonecut,
 		 */
 
 		delegdb_node_unref(node);
-		dns_qpmulti_rollback(db->nodes, &qp);
+
+		/*
+		 * Since not using an update (but write) transaction,
+		 * _rollback() won't work here.
+		 */
+		dns_qpmulti_commit(db->nodes, &qp);
 		CLEANUP(ISC_R_EXISTS);
 	}
 
