@@ -185,12 +185,6 @@ dns_deleg_init(dns_delegdb_t **dbp) {
 	isc_mem_create("dns_delegdb", &mctx);
 	isc_mem_setdestroycheck(mctx, true);
 
-	/*
-	 * isc_mem_debugon(0) returns the memory debug flags set from
-	 * environment variables, command line option, etc.
-	 */
-	isc_mem_setdebugging(mctx, isc_mem_debugon(0));
-
 	db = isc_mem_get(mctx, sizeof(*db));
 	*db = (dns_delegdb_t){ .magic = DELEGDB_MAGIC,
 			       .references = ISC_REFCOUNT_INITIALIZER(1),
@@ -395,8 +389,8 @@ dns_deleg_addns(dns_delegset_t *delegset, dns_deleg_t *deleg,
 
 	/*
 	 * Adding an NS name into a DNS_DELEGTYPE_NS_GLUE is allowed because
-	 * this is needed for RPZ NSID. It must be seen just like a "hack" for
-	 * RPZ and not something anything else should rely on.
+	 * this is needed for RPZ NSDNAME. It must be seen just like a "hack"
+	 * for RPZ and not something anything else should rely on.
 	 *
 	 * _But_ the resolver will _never_ used any `deleg->names` (so, won't
 	 * try to resolve those names) when type is DNS_DELEGTYPE_NS_GLUES.
@@ -417,40 +411,12 @@ dns_deleg_addns(dns_delegset_t *delegset, dns_deleg_t *deleg,
 }
 
 static void
-deleg_unmark_expired(dns_qp_t *qp) {
-	dns_qpiter_t it;
-	delegdb_node_t *node = NULL;
-	isc_stdtime_t now = isc_stdtime_now();
-
-	/*
-	 * Go through the whole database to find expired nodes and unmark them
-	 * to maximize the chances that LRU catches them early (i.e. before a
-	 * different unmarked non expired node).
-	 */
-	dns_qpiter_init(qp, &it);
-	while (dns_qpiter_next(&it, (void **)&node, NULL) == ISC_R_SUCCESS) {
-		if (isactive(node, now)) {
-			continue;
-		}
-
-		ISC_SIEVE_UNMARK(node, visited);
-		node = NULL;
-	}
-}
-
-static void
 deleg_cleanup_lru(dns_delegdb_t *db, size_t requested) {
 	dns_qp_t *qp = NULL;
 	delegdb_node_t *node = NULL;
 	size_t reclaimed = 0;
 
 	dns_qpmulti_write(db->nodes, &qp);
-
-	/*
-	 * Give a little help to SIEVE to avoid removing unmarked non expired
-	 * nodes. Is it worth it? (Considering it's a full DB node iteration.)
-	 */
-	deleg_unmark_expired(qp);
 
 	while (reclaimed < requested) {
 		node = ISC_SIEVE_NEXT(db->lru[isc_tid()], visited, link);

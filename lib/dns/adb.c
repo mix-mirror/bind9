@@ -424,12 +424,12 @@ enum {
  */
 #define FIND_WANTEVENT(fn)	(((fn)->options & DNS_ADBFIND_WANTEVENT) != 0)
 #define FIND_WANTEMPTYEVENT(fn) (((fn)->options & DNS_ADBFIND_EMPTYEVENT) != 0)
-#define FIND_AVOIDFETCHES(fn)	(((fn)->options & DNS_ADBFIND_AVOIDFETCHES) != 0)
-#define FIND_STARTATZONE(fn)	(((fn)->options & DNS_ADBFIND_STARTATZONE) != 0)
-#define FIND_STATICSTUB(fn)	(((fn)->options & DNS_ADBFIND_STATICSTUB) != 0)
-#define FIND_NOVALIDATE(fn)	(((fn)->options & DNS_ADBFIND_NOVALIDATE) != 0)
-#define FIND_HAS_ADDRS(fn)	(!ISC_LIST_EMPTY((fn)->list))
-#define FIND_NOFETCH(fn)	(((fn)->options & DNS_ADBFIND_NOFETCH) != 0)
+#define FIND_AVOIDFETCHES(fn) (((fn)->options & DNS_ADBFIND_AVOIDFETCHES) != 0)
+#define FIND_STARTATZONE(fn)  (((fn)->options & DNS_ADBFIND_STARTATZONE) != 0)
+#define FIND_STATICSTUB(fn)   (((fn)->options & DNS_ADBFIND_STATICSTUB) != 0)
+#define FIND_NOVALIDATE(fn)   (((fn)->options & DNS_ADBFIND_NOVALIDATE) != 0)
+#define FIND_HAS_ADDRS(fn)    (!ISC_LIST_EMPTY((fn)->list))
+#define FIND_NOFETCH(fn)      (((fn)->options & DNS_ADBFIND_NOFETCH) != 0)
 
 #define ADBNAME_TYPE_MASK                                   \
 	(DNS_ADBFIND_STARTATZONE | DNS_ADBFIND_STATICSTUB | \
@@ -1746,11 +1746,12 @@ dns_adb_createaddrinfosfind(dns_adb_t *adb, isc_netaddrlist_t *addrs,
 	REQUIRE(addrs != NULL);
 	REQUIRE(findp != NULL && *findp == NULL);
 
+	rcu_read_lock();
+
 	if (atomic_load(&adb->shuttingdown)) {
+		rcu_read_unlock();
 		return;
 	}
-
-	rcu_read_lock();
 
 	if (now == 0) {
 		now = isc_stdtime_now();
