@@ -23,10 +23,9 @@ named.run
 /isctest/vars/.ac_vars/*
 !/isctest/vars/.ac_vars/*.in
 
-# Ignore file names with underscore in their name except python or shell files.
+# Ignore file names with a hyphen in their name except C files.
 # This is done to ignore the temporary directories and symlinks created by the
 # pytest runner, which contain underscore in their file names.
-/*_*
-!/*_*.py
-!/*_*.sh
-!/_common
+/*-*
+!/*-*.c
+!/custom-test-driver
