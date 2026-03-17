@@ -326,16 +326,18 @@ dns_deleg_allocset(dns_delegdb_t *db, dns_delegset_t **delegsetp) {
 }
 
 void
-dns_deleg_allocdeleg(dns_delegset_t *delegset, dns_deleg_t **delegp) {
+dns_deleg_allocdeleg(dns_delegset_t *delegset, dns_deleg_type_t type,
+		     dns_deleg_t **delegp) {
 	dns_deleg_t *deleg = NULL;
 
 	REQUIRE(DNS_DELEGSET_VALID(delegset));
 	REQUIRE(delegp != NULL && *delegp == NULL);
+	REQUIRE(type != DNS_DELEGTYPE_UNDEFINED);
 
 	deleg = isc_mem_get(delegset->mctx, sizeof(*deleg));
-	*deleg = (dns_deleg_t){ .address = ISC_LIST_INITIALIZER,
-				.delegi = ISC_LIST_INITIALIZER,
-				.nameserver = ISC_LIST_INITIALIZER,
+	*deleg = (dns_deleg_t){ .addresses = ISC_LIST_INITIALIZER,
+				.names = ISC_LIST_INITIALIZER,
+				.type = type,
 				.link = ISC_LINK_INITIALIZER };
 
 	ISC_LIST_APPEND(delegset->deleg, deleg, link);
@@ -354,12 +356,14 @@ dns_deleg_addaddr(dns_delegset_t *delegset, dns_deleg_t *deleg,
 	REQUIRE(DNS_DELEGSET_VALID(delegset));
 	REQUIRE(deleg != NULL);
 	REQUIRE(addr != NULL);
+	REQUIRE(deleg->type == DNS_DELEGTYPE_DELEG_ADDRESSES ||
+		deleg->type == DNS_DELEGTYPE_NS_GLUES);
 
 	addrlink = isc_mem_get(delegset->mctx, sizeof(*addrlink));
 	*addrlink = (isc_netaddrlink_t){ .addr = *addr,
 					 .link = ISC_LINK_INITIALIZER };
 
-	ISC_LIST_APPEND(deleg->address, addrlink, link);
+	ISC_LIST_APPEND(deleg->addresses, addrlink, link);
 }
 
 static void
@@ -377,17 +381,39 @@ addname(dns_delegset_t *delegset, dns_namelist_t *list,
 }
 
 void
-dns_deleg_adddelegi(dns_delegset_t *delegset, dns_deleg_t *deleg,
-		    const dns_name_t *name) {
+dns_deleg_adddelegparam(dns_delegset_t *delegset, dns_deleg_t *deleg,
+			const dns_name_t *name) {
 	REQUIRE(deleg != NULL);
-	addname(delegset, &deleg->delegi, name);
+	REQUIRE(deleg->type == DNS_DELEGTYPE_DELEG_PARAMS);
+	addname(delegset, &deleg->names, name);
 }
 
 void
 dns_deleg_addns(dns_delegset_t *delegset, dns_deleg_t *deleg,
 		const dns_name_t *name) {
 	REQUIRE(deleg != NULL);
-	addname(delegset, &deleg->nameserver, name);
+
+	/*
+	 * Adding an NS name into a DNS_DELEGTYPE_NS_GLUE is allowed because
+	 * this is needed for RPZ NSID. It must be seen just like a "hack" for
+	 * RPZ and not something anything else should rely on.
+	 *
+	 * _But_ the resolver will _never_ used any `deleg->names` (so, won't
+	 * try to resolve those names) when type is DNS_DELEGTYPE_NS_GLUES.
+	 *
+	 * Similarly, delegation DB dump won't show any names if the type is
+	 * DNS_DELEGTYPE_NS_GLUE.
+	 *
+	 * TODO: maybe we should actually have a different field `dns_namelist_t
+	 * rpznames` for this, so calling `dns_deleg_addns()` for a glue
+	 * delegation would fit the name in there. But would it make things
+	 * really simpler? It would also add 2 pointers size on the deleg
+	 * object...
+	 */
+	REQUIRE(deleg->type == DNS_DELEGTYPE_DELEG_NAMES ||
+		deleg->type == DNS_DELEGTYPE_NS_NAMES ||
+		deleg->type == DNS_DELEGTYPE_NS_GLUES);
+	addname(delegset, &deleg->names, name);
 }
 
 static void
@@ -486,17 +512,12 @@ delegset_size(dns_delegset_t *delegset) {
 	sz += sizeof(*delegset);
 	ISC_LIST_FOREACH(delegset->deleg, deleg, link) {
 		sz += sizeof(*deleg);
-		ISC_LIST_FOREACH(deleg->address, address, link) {
+		ISC_LIST_FOREACH(deleg->addresses, address, link) {
 			sz += sizeof(*address);
 		}
-		ISC_LIST_FOREACH(deleg->nameserver, nameserver, link) {
-			sz += sizeof(*nameserver) + dns_name_size(nameserver);
+		ISC_LIST_FOREACH(deleg->names, name, link) {
+			sz += sizeof(*name) + dns_name_size(name);
 		}
-		/*
-		 * Omitting delegi here, as the layout of dns_deleg_t will
-		 * change with a union for the names, and delegi is unused at
-		 * the moment.
-		 */
 	}
 
 	return sz;
@@ -612,21 +633,17 @@ delegset_destroy(dns_delegset_t *delegset) {
 
 	delegset->magic = 0;
 	ISC_LIST_FOREACH(delegset->deleg, deleg, link) {
+		deleg->type = DNS_DELEGTYPE_UNDEFINED;
+
 		ISC_LIST_UNLINK(delegset->deleg, deleg, link);
 
-		ISC_LIST_FOREACH(deleg->address, address, link) {
-			ISC_LIST_UNLINK(deleg->address, address, link);
+		ISC_LIST_FOREACH(deleg->addresses, address, link) {
+			ISC_LIST_UNLINK(deleg->addresses, address, link);
 			isc_mem_put(delegset->mctx, address, sizeof(*address));
 		}
 
-		ISC_LIST_FOREACH(deleg->delegi, delegi, link) {
-			ISC_LIST_UNLINK(deleg->delegi, delegi, link);
-			dns_name_free(delegi, delegset->mctx);
-			isc_mem_put(delegset->mctx, delegi, sizeof(*delegi));
-		}
-
-		ISC_LIST_FOREACH(deleg->nameserver, nameserver, link) {
-			ISC_LIST_UNLINK(deleg->nameserver, nameserver, link);
+		ISC_LIST_FOREACH(deleg->names, nameserver, link) {
+			ISC_LIST_UNLINK(deleg->names, nameserver, link);
 			dns_name_free(nameserver, delegset->mctx);
 			isc_mem_put(delegset->mctx, nameserver,
 				    sizeof(*nameserver));
@@ -659,11 +676,67 @@ tostring_namelist(dns_namelist_t *namelist, const char *id, isc_buffer_t *b) {
 }
 
 static void
+deleg_tostring_addresses(dns_deleg_t *deleg, isc_buffer_t *b) {
+	bool hasv4 = false;
+	bool hasv6 = false;
+
+	ISC_LIST_FOREACH(deleg->addresses, address, link) {
+		if (address->addr.family == AF_INET) {
+			hasv4 = true;
+		} else {
+			hasv6 = true;
+		}
+	}
+
+	if (hasv4) {
+		bool first = true;
+
+		isc_buffer_putstr(b, "\n\tserver-ipv4=\n\t\t");
+		ISC_LIST_FOREACH(deleg->addresses, address, link) {
+			char addrstr[] = "255.255.255.255";
+
+			if (address->addr.family == AF_INET6) {
+				continue;
+			}
+
+			if (!first) {
+				isc_buffer_putstr(b, ",\n\t\t");
+			}
+			first = false;
+
+			inet_ntop(AF_INET, &address->addr.type, addrstr,
+				  sizeof(addrstr));
+			isc_buffer_putstr(b, addrstr);
+		}
+	}
+
+	if (hasv6) {
+		bool first = true;
+
+		isc_buffer_putstr(b, "\n\tserver-ipv6=\n\t\t");
+		ISC_LIST_FOREACH(deleg->addresses, address, link) {
+			char addrstr[INET6_ADDRSTRLEN];
+
+			if (address->addr.family == AF_INET) {
+				continue;
+			}
+
+			if (!first) {
+				isc_buffer_putstr(b, ",\n\t\t");
+			}
+			first = false;
+
+			inet_ntop(AF_INET6, &address->addr.type, addrstr,
+				  sizeof(addrstr));
+			isc_buffer_putstr(b, addrstr);
+		}
+	}
+}
+
+static void
 delegset_tostring(const dns_name_t *zonecut, dns_delegset_t *delegset,
 		  isc_stdtime_t now, isc_buffer_t *b) {
 	ISC_LIST_FOREACH(delegset->deleg, deleg, link) {
-		bool hasv4 = false;
-		bool hasv6 = false;
 		isc_buffer_t zonecutb;
 		char bdata[DNS_NAME_MAXWIRE];
 		dns_ttl_t ttl = delegset->ttl - now;
@@ -672,60 +745,21 @@ delegset_tostring(const dns_name_t *zonecut, dns_delegset_t *delegset,
 		isc_buffer_init(&zonecutb, bdata, sizeof(bdata));
 		dns_name_totext(zonecut, 0, &zonecutb);
 		isc_buffer_printf(b, "%s DELEG %d", bdata, ttl);
-		ISC_LIST_FOREACH(deleg->address, address, link) {
-			if (address->addr.family == AF_INET) {
-				hasv4 = true;
-			} else {
-				hasv6 = true;
-			}
+
+		if (deleg->type == DNS_DELEGTYPE_DELEG_ADDRESSES ||
+		    deleg->type == DNS_DELEGTYPE_NS_GLUES)
+		{
+			deleg_tostring_addresses(deleg, b);
+		} else if (deleg->type == DNS_DELEGTYPE_DELEG_NAMES ||
+			   deleg->type == DNS_DELEGTYPE_NS_NAMES)
+		{
+			tostring_namelist(&deleg->names, "server-name", b);
+		} else if (deleg->type == DNS_DELEGTYPE_DELEG_PARAMS) {
+			tostring_namelist(&deleg->names, "include-delegparam",
+					  b);
+		} else {
+			UNREACHABLE();
 		}
-
-		if (hasv4) {
-			bool first = true;
-
-			isc_buffer_putstr(b, "\n\tserver-ipv4=\n\t\t");
-			ISC_LIST_FOREACH(deleg->address, address, link) {
-				char addrstr[] = "255.255.255.255";
-
-				if (address->addr.family == AF_INET6) {
-					continue;
-				}
-
-				if (!first) {
-					isc_buffer_putstr(b, ",\n\t\t");
-				}
-				first = false;
-
-				inet_ntop(AF_INET, &address->addr.type, addrstr,
-					  sizeof(addrstr));
-				isc_buffer_putstr(b, addrstr);
-			}
-		}
-
-		if (hasv6) {
-			bool first = true;
-
-			isc_buffer_putstr(b, "\n\tserver-ipv6=\n\t\t");
-			ISC_LIST_FOREACH(deleg->address, address, link) {
-				char addrstr[INET6_ADDRSTRLEN];
-
-				if (address->addr.family == AF_INET) {
-					continue;
-				}
-
-				if (!first) {
-					isc_buffer_putstr(b, ",\n\t\t");
-				}
-				first = false;
-
-				inet_ntop(AF_INET6, &address->addr.type,
-					  addrstr, sizeof(addrstr));
-				isc_buffer_putstr(b, addrstr);
-			}
-		}
-
-		tostring_namelist(&deleg->nameserver, "server-name", b);
-		tostring_namelist(&deleg->delegi, "include-delegi", b);
 
 		if (deleg != ISC_LIST_TAIL(delegset->deleg)) {
 			isc_buffer_putuint8(b, '\n');
@@ -816,9 +850,9 @@ dns_deleg_fromrdataset(dns_rdataset_t *rdataset, dns_delegset_t **delegsetp) {
 	isc_mem_attach(isc_g_mctx, &delegset->mctx);
 
 	deleg = isc_mem_get(isc_g_mctx, sizeof(*deleg));
-	*deleg = (dns_deleg_t){ .address = ISC_LIST_INITIALIZER,
-				.delegi = ISC_LIST_INITIALIZER,
-				.nameserver = ISC_LIST_INITIALIZER,
+	*deleg = (dns_deleg_t){ .addresses = ISC_LIST_INITIALIZER,
+				.names = ISC_LIST_INITIALIZER,
+				.type = DNS_DELEGTYPE_NS_NAMES,
 				.link = ISC_LINK_INITIALIZER };
 	ISC_LIST_APPEND(delegset->deleg, deleg, link);
 
