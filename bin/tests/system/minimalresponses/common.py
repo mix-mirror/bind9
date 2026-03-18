@@ -85,6 +85,10 @@ def check(ns, qname, qtype, rd, cached, rcode, answer, authority, additional):
     isctest.check.rcode(res, rcode)
     if answer:
         assert len(res.answer) == 1
+        # Clamp the answer TTL to 300 to match the expected answer
+        # (In case the server would be a bit slow to process the
+        # query, and we would end up with a TTL of ~299)
+        res.answer[0].ttl = 300
         assert str(res.answer[0]) == answer
     else:
         assert len(res.answer) == 0
@@ -95,6 +99,10 @@ def check(ns, qname, qtype, rd, cached, rcode, answer, authority, additional):
         assert len(res.authority) == 0
     if additional:
         assert len(res.additional) == 1
+        # Clamp the answer TTL to 300 to match the expected answer
+        # (In case the server would be a bit slow to process the
+        # query, and we would end up with a TTL of ~299)
+        res.additional[0].ttl = 300
         assert str(res.additional[0]) == additional
     else:
         assert len(res.additional) == 0
