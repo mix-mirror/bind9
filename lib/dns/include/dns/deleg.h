@@ -72,7 +72,7 @@ struct dns_delegset {
 	isc_refcount_t references;
 
 	dns_deleglist_t deleg;
-	dns_ttl_t	ttl;
+	isc_stdtime_t	expires;
 
 	/*
 	 * Used only when a delegation is built from a local zone.
@@ -169,9 +169,9 @@ dns_delegset_addns(dns_delegset_t *delegset, dns_deleg_t *deleg,
 		   const dns_name_t *name);
 
 /*
- * Add a delegation set into the DB for the given zonecut and expiration
- * time. If a delegation already exists and is not expired, ISC_R_EXISTS is
- * returned and the DB is not altered.
+ * Add a delegation set into the DB for the given zonecut and a time to live. If
+ * a delegation already exists and is not expired, ISC_R_EXISTS is returned and
+ * the DB is not altered.
  *
  * This function also cleanup least recently used delegation is the database in
  * an overmemory conditions (See dns_deleg_setsize()).
@@ -180,8 +180,8 @@ dns_delegset_addns(dns_delegset_t *delegset, dns_deleg_t *deleg,
  * where a delegation from DELEG already exists would be rejected too.
  */
 isc_result_t
-dns_delegset_write(dns_delegdb_t *db, const dns_name_t *zonecut,
-		   dns_ttl_t expire, dns_delegset_t *delegset);
+dns_delegset_write(dns_delegdb_t *db, const dns_name_t *zonecut, dns_ttl_t ttl,
+		   dns_delegset_t *delegset);
 
 /*
  * Dump the database in a textual format for a given name. If a closest

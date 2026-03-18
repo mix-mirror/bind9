@@ -4640,7 +4640,7 @@ resume_qmin(void *arg) {
 	CHECK(fcount_incr(fctx, false));
 
 	dns_name_copy(dcname, fctx->qmin.dcname);
-	fctx->ns_ttl = fctx->delegset->ttl;
+	fctx->ns_ttl = fctx->delegset->expires - fctx->now;
 	fctx->ns_ttl_ok = true;
 
 	fctx_minimize_qname(fctx);
@@ -5073,14 +5073,14 @@ fctx__create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 
 			dns_name_copy(fctx->fwdname, fctx->domain);
 			dns_name_copy(dcname, fctx->qmin.dcname);
-			fctx->ns_ttl = fctx->delegset->ttl;
+			fctx->ns_ttl = fctx->delegset->expires - fctx->now;
 			fctx->ns_ttl_ok = true;
 		}
 	} else {
 		dns_delegset_attach(delegset, &fctx->delegset);
 		dns_name_copy(domain, fctx->domain);
 		dns_name_copy(domain, fctx->qmin.dcname);
-		fctx->ns_ttl = fctx->delegset->ttl;
+		fctx->ns_ttl = fctx->delegset->expires - fctx->now;
 		fctx->ns_ttl_ok = true;
 	}
 
@@ -7110,7 +7110,7 @@ resume_dslookup(void *arg) {
 
 		dns_delegset_attach(delegset, &fctx->delegset);
 
-		fctx->ns_ttl = fctx->delegset->ttl;
+		fctx->ns_ttl = fctx->delegset->expires - fctx->now;
 		fctx->ns_ttl_ok = true;
 		log_ns_ttl(fctx, "resume_dslookup");
 
@@ -9495,7 +9495,7 @@ rctx_nextserver(respctx_t *rctx, dns_message_t *message,
 			fctx_failure_detach(&rctx->fctx, DNS_R_SERVFAIL);
 			return;
 		}
-		fctx->ns_ttl = fctx->delegset->ttl;
+		fctx->ns_ttl = fctx->delegset->expires - fctx->now;
 		fctx->ns_ttl_ok = true;
 		fctx_cancelqueries(fctx, true, false);
 		fctx_cleanup(fctx);
