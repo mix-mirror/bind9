@@ -58,8 +58,9 @@ shutdownloop(ISC_ATTR_UNUSED void *arg) {
 }
 
 static void
-shutdowntest(dns_delegdb_t **db) {
-	dns_deleg_shutdown(db);
+shutdowntest(dns_delegdb_t **dbp) {
+	dns_delegdb_shutdown(*dbp);
+	dns_delegdb_detach(dbp);
 	shutdownloop(NULL);
 }
 
@@ -101,9 +102,11 @@ writedb(dns_delegdb_t *db, const char *zonecutstr, dns_ttl_t expire,
 	isc_result_t result;
 
 	dns_name_fromstring(zonecut, zonecutstr, NULL, 0, NULL);
-	result = dns_deleg_writeanddetach(db, zonecut, expire, delegsetp);
+	result = dns_delegset_write(db, zonecut, expire, *delegsetp);
 
+	dns_delegset_detach(delegsetp);
 	assert_null(*delegsetp);
+
 	if (expectsuccess) {
 		assert_int_equal(result, ISC_R_SUCCESS);
 	} else {
@@ -157,7 +160,7 @@ basictests(ISC_ATTR_UNUSED void *arg) {
 	char bdata[2048];
 
 	isc_buffer_init(&b, bdata, sizeof(bdata));
-	dns_deleg_init(&db);
+	dns_delegdb_create(&db);
 	assert_non_null(db);
 
 	/*
@@ -410,7 +413,7 @@ ttl0tests(ISC_ATTR_UNUSED void *arg) {
 	char bdata[2048];
 
 	isc_buffer_init(&b, bdata, sizeof(bdata));
-	dns_deleg_init(&db);
+	dns_delegdb_create(&db);
 	assert_non_null(db);
 
 	dns_deleg_allocset(db, &delegset);
@@ -448,7 +451,7 @@ noexacttests(ISC_ATTR_UNUSED void *arg) {
 	char bdata[2048];
 
 	isc_buffer_init(&b, bdata, sizeof(bdata));
-	dns_deleg_init(&db);
+	dns_delegdb_create(&db);
 	assert_non_null(db);
 
 	struct {
@@ -504,7 +507,7 @@ deletetests(ISC_ATTR_UNUSED void *arg) {
 	dns_fixedname_t fname;
 	dns_name_t *name = dns_fixedname_initname(&fname);
 
-	dns_deleg_init(&db);
+	dns_delegdb_create(&db);
 	assert_non_null(db);
 
 	dns_deleg_allocset(db, &delegset);
@@ -672,7 +675,7 @@ cleanuptests(ISC_ATTR_UNUSED void *arg) {
 	dns_deleg_t *deleg = NULL;
 	dns_delegset_t *delegset = NULL;
 
-	dns_deleg_init(&db);
+	dns_delegdb_create(&db);
 	assert_non_null(db);
 
 	ctx = (cleanup_ctx_t){ .db = db, .now = isc_stdtime_now() };
