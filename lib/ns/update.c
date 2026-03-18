@@ -2773,8 +2773,9 @@ update_action(void *arg) {
 		dns_ttl_t ttl;
 		dns_rdataclass_t update_class;
 		bool flag;
+		size_t maxidx = update++;
 
-		INSIST(ssutable == NULL || update < maxbytypelen);
+		INSIST(ssutable == NULL || maxidx < maxbytypelen);
 
 		get_current_rr(zoneclass, name, &rdata, &covers, &ttl,
 			       &update_class);
@@ -2918,17 +2919,17 @@ update_action(void *arg) {
 				}
 			}
 
-			if (maxbytype != NULL && maxbytype[update] != 0) {
+			if (maxbytype != NULL && maxbytype[maxidx] != 0) {
 				unsigned int count = 0;
 				CHECK(foreach_rr(db, ver, name, rdata.type,
 						 covers, count_action, &count));
-				if (count >= maxbytype[update]) {
+				if (count >= maxbytype[maxidx]) {
 					update_log(client, zone,
 						   LOGLEVEL_PROTOCOL,
 						   "attempt to add more "
 						   "records than permitted by "
 						   "policy max=%u",
-						   maxbytype[update]);
+						   maxbytype[maxidx]);
 					continue;
 				}
 			}
@@ -3123,8 +3124,6 @@ update_action(void *arg) {
 			CHECK(delete_if(rr_equal_p, db, ver, name, rdata.type,
 					covers, &rdata, &diff));
 		}
-
-		++update;
 	}
 
 	/*
