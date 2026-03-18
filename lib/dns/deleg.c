@@ -254,7 +254,7 @@ dns_delegdb_flush(dns_delegdb_t *delegdb) {
 
 inline static bool
 isactive(delegdb_node_t *node, dns_ttl_t now) {
-	return node->delegset->ttl > now;
+	return node->delegset->expires > now;
 }
 
 static void
@@ -553,17 +553,17 @@ delegdb_node_size(const dns_name_t *zonecut, dns_delegset_t *delegset) {
 
 static void
 delegdb_node_prepare(dns_delegdb_t *delegdb, dns_qpmulti_t *nodes,
-		     isc_stdtime_t now, dns_ttl_t expire,
+		     isc_stdtime_t now, dns_ttl_t ttl,
 		     const dns_name_t *zonecut, dns_delegset_t *delegset,
 		     delegdb_node_t **nodep) {
 	size_t nodesize = delegdb_node_size(zonecut, delegset);
 
 	deleg_cleanup(delegdb, nodes, nodesize);
 
-	if (expire == 0) {
-		expire = 1;
+	if (ttl == 0) {
+		ttl = 1;
 	}
-	delegset->ttl = expire + now;
+	delegset->expires = ttl + now;
 
 	*nodep = isc_mem_get(delegdb->mctx, sizeof(**nodep));
 	**nodep = (delegdb_node_t){ .magic = DELEGDB_NODE_MAGIC,
@@ -581,7 +581,7 @@ delegdb_node_prepare(dns_delegdb_t *delegdb, dns_qpmulti_t *nodes,
 
 isc_result_t
 dns_delegset_write(dns_delegdb_t *delegdb, const dns_name_t *zonecut,
-		   dns_ttl_t expire, dns_delegset_t *delegset) {
+		   dns_ttl_t ttl, dns_delegset_t *delegset) {
 	isc_result_t result;
 	delegdb_node_t *node = NULL;
 	dns_qp_t *qp = NULL;
@@ -616,7 +616,7 @@ dns_delegset_write(dns_delegdb_t *delegdb, const dns_name_t *zonecut,
 			       NULL, (void **)&node, NULL);
 	if (result == ISC_R_SUCCESS) {
 		INSIST(VALID_DELEGDB_NODE(node));
-		if (node->delegset->ttl > now) {
+		if (node->delegset->expires > now) {
 			dns_qpread_destroy(nodes, &qpr);
 			CLEANUP(ISC_R_EXISTS);
 		}
@@ -628,7 +628,7 @@ dns_delegset_write(dns_delegdb_t *delegdb, const dns_name_t *zonecut,
 	 * clean up expired/least recently used delegation, then allocate and
 	 * initialize a new node.
 	 */
-	delegdb_node_prepare(delegdb, nodes, now, expire, zonecut, delegset,
+	delegdb_node_prepare(delegdb, nodes, now, ttl, zonecut, delegset,
 			     &node);
 
 	/*
@@ -789,7 +789,7 @@ delegset_tostring(const dns_name_t *zonecut, dns_delegset_t *delegset,
 	ISC_LIST_FOREACH(delegset->deleg, deleg, link) {
 		isc_buffer_t zonecutb;
 		char bdata[DNS_NAME_MAXWIRE];
-		dns_ttl_t ttl = delegset->ttl - now;
+		dns_ttl_t ttl = delegset->expires - now;
 
 		INSIST(ttl > 0);
 		isc_buffer_init(&zonecutb, bdata, sizeof(bdata));
@@ -903,12 +903,13 @@ dns_delegset_fromrdataset(dns_rdataset_t *rdataset,
 	REQUIRE(rdataset->type == dns_rdatatype_ns);
 
 	delegset = isc_mem_get(isc_g_mctx, sizeof(*delegset));
-	*delegset = (dns_delegset_t){ .magic = DNS_DELEGSET_MAGIC,
-				      .references = ISC_REFCOUNT_INITIALIZER(1),
-				      .deleg = ISC_LIST_INITIALIZER,
-				      .ttl = rdataset->ttl,
-				      .staticstub =
-					      rdataset->attributes.staticstub };
+	*delegset = (dns_delegset_t){
+		.magic = DNS_DELEGSET_MAGIC,
+		.references = ISC_REFCOUNT_INITIALIZER(1),
+		.deleg = ISC_LIST_INITIALIZER,
+		.expires = rdataset->ttl + isc_stdtime_now(),
+		.staticstub = rdataset->attributes.staticstub
+	};
 	isc_mem_attach(isc_g_mctx, &delegset->mctx);
 
 	deleg = isc_mem_get(isc_g_mctx, sizeof(*deleg));
