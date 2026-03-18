@@ -1858,8 +1858,8 @@ send_update(ns_client_t *client, dns_zone_t *zone) {
 	*uev = (update_t){
 		.zone = zone,
 		.client = client,
-		.ssutable = TAKE_OWNERSHIP(ssutable),
-		.maxbytype = TAKE_OWNERSHIP(maxbytype),
+		.ssutable = MOVE_OWNERSHIP(ssutable),
+		.maxbytype = MOVE_OWNERSHIP(maxbytype),
 		.maxbytypelen = maxbytypelen,
 		.result = ISC_R_SUCCESS,
 	};
