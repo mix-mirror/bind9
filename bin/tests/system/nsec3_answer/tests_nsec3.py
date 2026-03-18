@@ -48,7 +48,7 @@ ZONE = isctest.name.ZoneAnalyzer.read_path(
     / "bin"
     / "tests"
     / "system"
-    / "nsec3-answer/ns1/root.db.in",
+    / "nsec3_answer/ns1/root.db.in",
     origin=SUFFIX,
 )
 
