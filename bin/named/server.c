@@ -4281,7 +4281,7 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	/*
 	 * Totally arbitrary decision for now. This might need its own knob.
 	 */
-	dns_deleg_setsize(view->deleg, max_cache_size / 6);
+	dns_delegdb_setsize(view->deleg, max_cache_size / 6);
 
 	if (resstats == NULL) {
 		isc_stats_create(mctx, &resstats, dns_resstatscounter_max);
@@ -11288,7 +11288,7 @@ named_server_flushcache(named_server_t *server, isc_lex_t *lex) {
 	 * two views.  Then this will be a O(n^2/4) operation.
 	 */
 	ISC_LIST_FOREACH(server->viewlist, view, link) {
-		dns_deleg_flush(view->deleg);
+		dns_delegdb_flush(view->deleg);
 
 		if (!dns_view_iscacheshared(view)) {
 			continue;
@@ -11372,7 +11372,7 @@ flushnode_delegcache(dns_view_t *view, const dns_name_t *name,
 		     const char *target, bool tree) {
 	isc_result_t result;
 
-	result = dns_deleg_delete(view->deleg, name, tree);
+	result = dns_delegdb_delete(view->deleg, name, tree);
 	if (result != ISC_R_SUCCESS) {
 		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
 			      ISC_LOG_ERROR,

@@ -91,7 +91,7 @@ addipdeleg(unsigned int af, const char *addrstr, dns_delegset_t *delegset,
 
 	assert_true(af == AF_INET || af == AF_INET6);
 	assert_int_equal(inet_pton(af, addrstr, &addr.type), 1);
-	dns_deleg_addaddr(delegset, deleg, &addr);
+	dns_delegset_addaddr(delegset, deleg, &addr);
 }
 
 static void
@@ -126,8 +126,8 @@ lookupdb(dns_delegdb_t *db, const char *namestr, isc_stdtime_t now,
 
 	dns_name_fromstring(expectedzc, expectedzcstr, NULL, 0, NULL);
 	dns_name_fromstring(name, namestr, NULL, 0, NULL);
-	result = dns_deleg_lookup(db, name, now, options, zonecut, NULL,
-				  delegsetp);
+	result = dns_delegdb_lookup(db, name, now, options, zonecut, NULL,
+				    delegsetp);
 
 	if (result == ISC_R_SUCCESS) {
 		assert_non_null(*delegsetp);
@@ -146,7 +146,7 @@ dumpdb(dns_delegdb_t *db, const char *namestr, isc_stdtime_t now,
 	dns_name_t *name = dns_fixedname_initname(&fname);
 
 	dns_name_fromstring(name, namestr, NULL, 0, NULL);
-	dns_deleg_dump(db, name, now, b);
+	dns_delegdb_dump(db, name, now, b);
 }
 
 static void
@@ -166,25 +166,25 @@ basictests(ISC_ATTR_UNUSED void *arg) {
 	/*
 	 * A non expired delegation for foo. zonecut
 	 */
-	dns_deleg_allocset(db, &delegset);
+	dns_delegset_allocset(db, &delegset);
 
-	dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_NAMES, &deleg);
-	addnamedeleg("ns.foo.", delegset, deleg, dns_deleg_addns);
+	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_NAMES, &deleg);
+	addnamedeleg("ns.foo.", delegset, deleg, dns_delegset_addns);
 	deleg = NULL;
 
-	dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_NS_GLUES, &deleg);
+	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_NS_GLUES, &deleg);
 	/*
 	 * ns2.foo. won't be visible in the dump, because it has glues.
 	 * It won't be used anywhere except as a "hack" for RPZ
 	 */
-	addnamedeleg("ns2.foo.", delegset, deleg, dns_deleg_addns);
+	addnamedeleg("ns2.foo.", delegset, deleg, dns_delegset_addns);
 	addipdeleg(AF_INET, "1.2.3.4", delegset, deleg);
 	addipdeleg(AF_INET6, "1111:2222:3333::4444", delegset, deleg);
 	deleg = NULL;
 
-	dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_NS_NAMES, &deleg);
+	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_NS_NAMES, &deleg);
 	assert_non_null(deleg);
-	addnamedeleg("ns.example.", delegset, deleg, dns_deleg_addns);
+	addnamedeleg("ns.example.", delegset, deleg, dns_delegset_addns);
 	deleg = NULL;
 	writedb(db, "foo.", 30, &delegset, true);
 
@@ -211,27 +211,30 @@ basictests(ISC_ATTR_UNUSED void *arg) {
 	/*
 	 * A non expired delegation for bar.foo. zonecut
 	 */
-	dns_deleg_allocset(db, &delegset);
+	dns_delegset_allocset(db, &delegset);
 
-	dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_NS_NAMES, &deleg);
-	addnamedeleg("ns.bar.foo.", delegset, deleg, dns_deleg_addns);
-	addnamedeleg("ns2.bar.foo.", delegset, deleg, dns_deleg_addns);
+	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_NS_NAMES, &deleg);
+	addnamedeleg("ns.bar.foo.", delegset, deleg, dns_delegset_addns);
+	addnamedeleg("ns2.bar.foo.", delegset, deleg, dns_delegset_addns);
 	deleg = NULL;
 
-	dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_NS_GLUES, &deleg);
+	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_NS_GLUES, &deleg);
 	addipdeleg(AF_INET, "8.9.10.11", delegset, deleg);
 	addipdeleg(AF_INET, "9.9.10.12", delegset, deleg);
 	addipdeleg(AF_INET6, "ACDC::ACDC", delegset, deleg);
 	deleg = NULL;
 
-	dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_ADDRESSES, &deleg);
+	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_ADDRESSES,
+				&deleg);
 	addipdeleg(AF_INET6, "ABBA::ABBA", delegset, deleg);
 	addipdeleg(AF_INET, "13.14.15.16", delegset, deleg);
 	deleg = NULL;
 
-	dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_PARAMS, &deleg);
-	addnamedeleg("delegns.gee.", delegset, deleg, dns_deleg_adddelegparam);
-	addnamedeleg("delegns2.gee.", delegset, deleg, dns_deleg_adddelegparam);
+	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_PARAMS, &deleg);
+	addnamedeleg("delegns.gee.", delegset, deleg,
+		     dns_delegset_adddelegparam);
+	addnamedeleg("delegns2.gee.", delegset, deleg,
+		     dns_delegset_adddelegparam);
 	deleg = NULL;
 
 	writedb(db, "bar.foo.", 25, &delegset, true);
@@ -262,13 +265,13 @@ basictests(ISC_ATTR_UNUSED void *arg) {
 	/*
 	 * A expired delegation for bar.stuff. zonecut
 	 */
-	dns_deleg_allocset(db, &delegset);
+	dns_delegset_allocset(db, &delegset);
 
-	dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_NAMES, &deleg);
-	addnamedeleg("ns.bar.stuff.", delegset, deleg, dns_deleg_addns);
+	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_NAMES, &deleg);
+	addnamedeleg("ns.bar.stuff.", delegset, deleg, dns_delegset_addns);
 	deleg = NULL;
 
-	dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_NS_GLUES, &deleg);
+	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_NS_GLUES, &deleg);
 	addipdeleg(AF_INET6, "1111::2222", delegset, deleg);
 	deleg = NULL;
 
@@ -303,13 +306,13 @@ basictests(ISC_ATTR_UNUSED void *arg) {
 	 * one. Move the time forward 10 to make the entry expired.
 	 */
 	stdtime_now += 10;
-	dns_deleg_allocset(db, &delegset);
+	dns_delegset_allocset(db, &delegset);
 
-	dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_NAMES, &deleg);
-	addnamedeleg("ns.bar.stuff.", delegset, deleg, dns_deleg_addns);
+	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_NAMES, &deleg);
+	addnamedeleg("ns.bar.stuff.", delegset, deleg, dns_delegset_addns);
 	deleg = NULL;
 
-	dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_NS_GLUES, &deleg);
+	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_NS_GLUES, &deleg);
 	addipdeleg(AF_INET6, "1111::3333", delegset, deleg);
 	deleg = NULL;
 
@@ -319,13 +322,15 @@ basictests(ISC_ATTR_UNUSED void *arg) {
 	 * Attempt to override bar.stuff. even though the existing delegation is
 	 * not expired. This will be rejected.
 	 */
-	dns_deleg_allocset(db, &delegset);
+	dns_delegset_allocset(db, &delegset);
 
-	dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_NAMES, &deleg);
-	addnamedeleg("wontbeindb.bar.stuff.", delegset, deleg, dns_deleg_addns);
+	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_NAMES, &deleg);
+	addnamedeleg("wontbeindb.bar.stuff.", delegset, deleg,
+		     dns_delegset_addns);
 	deleg = NULL;
 
-	dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_ADDRESSES, &deleg);
+	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_ADDRESSES,
+				&deleg);
 	addipdeleg(AF_INET6, "acdc::acdc", delegset, deleg);
 	deleg = NULL;
 
@@ -387,7 +392,7 @@ basictests(ISC_ATTR_UNUSED void *arg) {
 		"bar.foo. DELEG 15"
 		"\n\tinclude-delegparam=\n\t\tdelegns.gee.,\n\t\tdelegns2.gee.",
 		expected_barstuffdeleg);
-	dns_deleg_dump(db, NULL, 0, &b);
+	dns_delegdb_dump(db, NULL, 0, &b);
 	assert_string_equal(bdata, expected_wholedb);
 	assert_true(isc_buffer_usedlength(&b) > 0);
 
@@ -395,7 +400,7 @@ basictests(ISC_ATTR_UNUSED void *arg) {
 	 * Dump in the "future", everything is seen as expired
 	 */
 	isc_buffer_clear(&b);
-	dns_deleg_dump(db, NULL, now + 300, &b);
+	dns_delegdb_dump(db, NULL, now + 300, &b);
 	assert_int_equal(isc_buffer_usedlength(&b), 1);
 	assert_string_equal(bdata, "");
 
@@ -416,13 +421,14 @@ ttl0tests(ISC_ATTR_UNUSED void *arg) {
 	dns_delegdb_create(&db);
 	assert_non_null(db);
 
-	dns_deleg_allocset(db, &delegset);
+	dns_delegset_allocset(db, &delegset);
 
-	dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_NAMES, &deleg);
-	addnamedeleg("ns.bar.stuff.", delegset, deleg, dns_deleg_addns);
+	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_NAMES, &deleg);
+	addnamedeleg("ns.bar.stuff.", delegset, deleg, dns_delegset_addns);
 	deleg = NULL;
 
-	dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_ADDRESSES, &deleg);
+	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_ADDRESSES,
+				&deleg);
 	addipdeleg(AF_INET6, "1111::2222", delegset, deleg);
 	deleg = NULL;
 
@@ -470,8 +476,9 @@ noexacttests(ISC_ATTR_UNUSED void *arg) {
 	};
 
 	for (size_t i = 0; i < ARRAY_SIZE(zonecuts); i++) {
-		dns_deleg_allocset(db, &delegset);
-		dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_NS_GLUES, &deleg);
+		dns_delegset_allocset(db, &delegset);
+		dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_NS_GLUES,
+					&deleg);
 		addipdeleg(AF_INET6, "1111::1111", delegset, deleg);
 		writedb(db, zonecuts[i].name, zonecuts[i].ttl, &delegset, true);
 		deleg = NULL;
@@ -510,50 +517,54 @@ deletetests(ISC_ATTR_UNUSED void *arg) {
 	dns_delegdb_create(&db);
 	assert_non_null(db);
 
-	dns_deleg_allocset(db, &delegset);
-	dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_ADDRESSES, &deleg);
+	dns_delegset_allocset(db, &delegset);
+	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_ADDRESSES,
+				&deleg);
 	addipdeleg(AF_INET6, "1111::2222", delegset, deleg);
 	writedb(db, "stuff.", 10, &delegset, true);
 	deleg = NULL;
 
-	dns_deleg_allocset(db, &delegset);
-	dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_ADDRESSES, &deleg);
+	dns_delegset_allocset(db, &delegset);
+	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_ADDRESSES,
+				&deleg);
 	addipdeleg(AF_INET6, "1111::2222", delegset, deleg);
 	writedb(db, "baz.stuff.", 10, &delegset, true);
 	deleg = NULL;
 
-	dns_deleg_allocset(db, &delegset);
-	dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_ADDRESSES, &deleg);
+	dns_delegset_allocset(db, &delegset);
+	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_ADDRESSES,
+				&deleg);
 	addipdeleg(AF_INET6, "1111::2222", delegset, deleg);
 	writedb(db, "bar.baz.stuff.", 10, &delegset, true);
 	deleg = NULL;
 
-	dns_deleg_allocset(db, &delegset);
-	dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_ADDRESSES, &deleg);
+	dns_delegset_allocset(db, &delegset);
+	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_ADDRESSES,
+				&deleg);
 	addipdeleg(AF_INET6, "1111::2222", delegset, deleg);
 	writedb(db, "foo.bar.baz.stuff.", 10, &delegset, true);
 	deleg = NULL;
 
 	dns_name_fromstring(name, "foo.", NULL, 0, NULL);
-	result = dns_deleg_delete(db, name, false);
+	result = dns_delegdb_delete(db, name, false);
 	assert_int_equal(result, ISC_R_NOTFOUND);
-	result = dns_deleg_delete(db, name, true);
+	result = dns_delegdb_delete(db, name, true);
 	assert_int_equal(result, ISC_R_NOTFOUND);
 
 	dns_name_fromstring(name, "gee.foo.bar.stuff.", NULL, 0, NULL);
-	result = dns_deleg_delete(db, name, false);
+	result = dns_delegdb_delete(db, name, false);
 	assert_int_equal(result, ISC_R_NOTFOUND);
 
 	dns_name_fromstring(name, "foo.bar.baz.stuff.", NULL, 0, NULL);
-	result = dns_deleg_delete(db, name, false);
+	result = dns_delegdb_delete(db, name, false);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	dns_name_fromstring(name, "foo.bar.baz.stuff.", NULL, 0, NULL);
-	result = dns_deleg_delete(db, name, false);
+	result = dns_delegdb_delete(db, name, false);
 	assert_int_equal(result, ISC_R_NOTFOUND);
 
 	dns_name_fromstring(name, "baz.stuff.", NULL, 0, NULL);
-	result = dns_deleg_delete(db, name, false);
+	result = dns_delegdb_delete(db, name, false);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	result = lookupdb(db, "bar.baz.stuff.", 5, 0, "bar.baz.stuff.",
@@ -562,15 +573,15 @@ deletetests(ISC_ATTR_UNUSED void *arg) {
 	dns_delegset_detach(&delegset);
 
 	dns_name_fromstring(name, "stuff.", NULL, 0, NULL);
-	result = dns_deleg_delete(db, name, true);
+	result = dns_delegdb_delete(db, name, true);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	dns_name_fromstring(name, "stuff.", NULL, 0, NULL);
-	result = dns_deleg_delete(db, name, false);
+	result = dns_delegdb_delete(db, name, false);
 	assert_int_equal(result, ISC_R_NOTFOUND);
 
 	dns_name_fromstring(name, "bar.baz.stuff.", NULL, 0, NULL);
-	result = dns_deleg_delete(db, name, false);
+	result = dns_delegdb_delete(db, name, false);
 	assert_int_equal(result, ISC_R_NOTFOUND);
 
 	result = lookupdb(db, "bar.baz.stuff.", 5, 0, "bar.baz.stuff.",
@@ -581,8 +592,9 @@ deletetests(ISC_ATTR_UNUSED void *arg) {
 	 * Let's add stuff. back and query bar.baz.stuff. again. Because the
 	 * node is NULL, it should go up until it finds stuff.
 	 */
-	dns_deleg_allocset(db, &delegset);
-	dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_ADDRESSES, &deleg);
+	dns_delegset_allocset(db, &delegset);
+	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_ADDRESSES,
+				&deleg);
 	addipdeleg(AF_INET6, "1111::2222", delegset, deleg);
 	writedb(db, "stuff.", 10, &delegset, true);
 	deleg = NULL;
@@ -654,8 +666,9 @@ cleanuptests_phase2(void *arg) {
 	 * Add yet another non expired record. But LRU will have to get
 	 * rid of it because we're hitting the hiwater mark again.
 	 */
-	dns_deleg_allocset(db, &delegset);
-	dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_ADDRESSES, &deleg);
+	dns_delegset_allocset(db, &delegset);
+	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_ADDRESSES,
+				&deleg);
 
 	for (size_t i = 0; i < 99999; i++) {
 		addipdeleg(AF_INET6, "1111::2222", delegset, deleg);
@@ -684,13 +697,14 @@ cleanuptests(ISC_ATTR_UNUSED void *arg) {
 	 * hiwater is 4375000 = 5000000 - (5000000 >> 3)
 	 * lowater is 3750000 = 5000000 - (5000000 >> 2)
 	 */
-	dns_deleg_setsize(db, 5000000);
+	dns_delegdb_setsize(db, 5000000);
 
 	/*
 	 * A valid record
 	 */
-	dns_deleg_allocset(db, &delegset);
-	dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_ADDRESSES, &deleg);
+	dns_delegset_allocset(db, &delegset);
+	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_ADDRESSES,
+				&deleg);
 	addipdeleg(AF_INET6, "1111::2222", delegset, deleg);
 	writedb(db, "baz.", 300, &delegset, true);
 	deleg = NULL;
@@ -698,8 +712,9 @@ cleanuptests(ISC_ATTR_UNUSED void *arg) {
 	/*
 	 * An expired record
 	 */
-	dns_deleg_allocset(db, &delegset);
-	dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_ADDRESSES, &deleg);
+	dns_delegset_allocset(db, &delegset);
+	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_ADDRESSES,
+				&deleg);
 
 	assert_int_in_range(isc_mem_inuse(db->mctx), 500, 2000);
 
@@ -716,8 +731,9 @@ cleanuptests(ISC_ATTR_UNUSED void *arg) {
 	/*
 	 * A non expired record
 	 */
-	dns_deleg_allocset(db, &delegset);
-	dns_deleg_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_ADDRESSES, &deleg);
+	dns_delegset_allocset(db, &delegset);
+	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_ADDRESSES,
+				&deleg);
 
 	for (size_t i = 0; i < 99999; i++) {
 		addipdeleg(AF_INET6, "1111::2222", delegset, deleg);

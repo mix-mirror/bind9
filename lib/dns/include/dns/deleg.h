@@ -116,9 +116,9 @@ dns_delegdb_shutdown(dns_delegdb_t *delegdb);
  * If `now` is 0, the actual expiration time is `isc_stdtime_now()`.
  */
 isc_result_t
-dns_deleg_lookup(dns_delegdb_t *db, const dns_name_t *name, isc_stdtime_t now,
-		 unsigned int options, dns_name_t *zonecut,
-		 dns_name_t *deepestzonecut, dns_delegset_t **delegset);
+dns_delegdb_lookup(dns_delegdb_t *db, const dns_name_t *name, isc_stdtime_t now,
+		   unsigned int options, dns_name_t *zonecut,
+		   dns_name_t *deepestzonecut, dns_delegset_t **delegset);
 
 /*
  * Allocate and attach to the caller a new empty delegation set, but do not
@@ -134,39 +134,39 @@ dns_deleg_lookup(dns_delegdb_t *db, const dns_name_t *name, isc_stdtime_t now,
  * This could be changed to run through those API calls also if needed.
  */
 void
-dns_deleg_allocset(dns_delegdb_t *db, dns_delegset_t **delegsetp);
+dns_delegset_allocset(dns_delegdb_t *db, dns_delegset_t **delegsetp);
 
 /*
  * Allocate a new deleg struct and insert it into the delegation set. Can't
  * be used on delegation set already attached in the DB.
  */
 void
-dns_deleg_allocdeleg(dns_delegset_t *delegset, dns_deleg_type_t type,
-		     dns_deleg_t **delegp);
+dns_delegset_allocdeleg(dns_delegset_t *delegset, dns_deleg_type_t type,
+			dns_deleg_t **delegp);
 
 /*
  * Add a new IP into a delegation. Can't be used on a delegation from a
  * delegation set already attached in the DB.
  */
 void
-dns_deleg_addaddr(dns_delegset_t *delegset, dns_deleg_t *deleg,
-		  const isc_netaddr_t *addr);
+dns_delegset_addaddr(dns_delegset_t *delegset, dns_deleg_t *deleg,
+		     const isc_netaddr_t *addr);
 
 /*
  * Add a new DELEGPARAM name into a delegation. Can't be used on a delegation
  * from a delegation set already attached in the DB.
  */
 void
-dns_deleg_adddelegparam(dns_delegset_t *delegset, dns_deleg_t *deleg,
-			const dns_name_t *name);
+dns_delegset_adddelegparam(dns_delegset_t *delegset, dns_deleg_t *deleg,
+			   const dns_name_t *name);
 
 /*
  * Add a new nameserver name into a delegation. Can't be used on a delegation
  * from a delegation set already attached in the DB.
  */
 void
-dns_deleg_addns(dns_delegset_t *delegset, dns_deleg_t *deleg,
-		const dns_name_t *name);
+dns_delegset_addns(dns_delegset_t *delegset, dns_deleg_t *deleg,
+		   const dns_name_t *name);
 
 /*
  * Add a delegation set into the DB for the given zonecut and expiration
@@ -192,8 +192,8 @@ dns_delegset_write(dns_delegdb_t *db, const dns_name_t *zonecut,
  * expiration time is `isc_stdtime_now()`.
  */
 void
-dns_deleg_dump(dns_delegdb_t *db, const dns_name_t *name, isc_stdtime_t now,
-	       isc_buffer_t *b);
+dns_delegdb_dump(dns_delegdb_t *db, const dns_name_t *name, isc_stdtime_t now,
+		 isc_buffer_t *b);
 
 /*
  * Convert an NS rdataset into a delegset containing a single delegation
@@ -202,13 +202,13 @@ dns_deleg_dump(dns_delegdb_t *db, const dns_name_t *name, isc_stdtime_t now,
  * (which accepts only delegset allocated using `dns_deleg_alloc*()` APIs.
  */
 void
-dns_deleg_fromrdataset(dns_rdataset_t *rdataset, dns_delegset_t **delegsetp);
+dns_delegset_fromrdataset(dns_rdataset_t *rdataset, dns_delegset_t **delegsetp);
 
 /*
  * Delete all the delegations.
  */
 void
-dns_deleg_flush(dns_delegdb_t *db);
+dns_delegdb_flush(dns_delegdb_t *db);
 
 /*
  * Delete a delegation matching a name. If `tree` is true, this will also
@@ -218,7 +218,7 @@ dns_deleg_flush(dns_delegdb_t *db);
  * cache and deleg DB. Should it require a different API?
  */
 isc_result_t
-dns_deleg_delete(dns_delegdb_t *db, const dns_name_t *name, bool tree);
+dns_delegdb_delete(dns_delegdb_t *db, const dns_name_t *name, bool tree);
 
 /*
  * Defines the size of the delegation cache. Whenever the effective cache
@@ -226,6 +226,6 @@ dns_deleg_delete(dns_delegdb_t *db, const dns_name_t *name, bool tree);
  * discarded. Value `0` means there is no limitation.
  */
 void
-dns_deleg_setsize(dns_delegdb_t *db, size_t size);
+dns_delegdb_setsize(dns_delegdb_t *db, size_t size);
 
 ISC_REFCOUNT_DECL(dns_delegdb);
