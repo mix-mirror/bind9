@@ -1071,8 +1071,8 @@ bestzonecut_delegdb(dns_view_t *view, const dns_name_t *name, dns_name_t *fname,
 	isc_result_t result = DNS_R_NXDOMAIN;
 
 	if (view->deleg != NULL) {
-		result = dns_deleg_lookup(view->deleg, name, now, options,
-					  fname, dcname, delegsetp);
+		result = dns_delegdb_lookup(view->deleg, name, now, options,
+					    fname, dcname, delegsetp);
 	}
 
 	/*
@@ -1184,7 +1184,7 @@ dns_view_bestzonecut(dns_view_t *view, const dns_name_t *name,
 	if (result != ISC_R_SUCCESS) {
 		result = DNS_R_NXDOMAIN;
 	} else {
-		dns_deleg_fromrdataset(rdataset, delegsetp);
+		dns_delegset_fromrdataset(rdataset, delegsetp);
 	}
 
 	dns_rdataset_cleanup(rdataset);

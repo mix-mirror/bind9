@@ -215,7 +215,7 @@ deleg_destroy_qpmulti(struct rcu_head *rcu_head) {
 }
 
 void
-dns_deleg_flush(dns_delegdb_t *delegdb) {
+dns_delegdb_flush(dns_delegdb_t *delegdb) {
 	REQUIRE(VALID_DELEGDB(delegdb));
 
 	dns_qpmulti_t *old_nodes = NULL;
@@ -333,9 +333,9 @@ dns__deleg_lookup(dns_delegdb_t *delegdb, dns_qpread_t *qpr,
 }
 
 isc_result_t
-dns_deleg_lookup(dns_delegdb_t *delegdb, const dns_name_t *name,
-		 isc_stdtime_t now, unsigned int options, dns_name_t *zonecut,
-		 dns_name_t *deepestzonecut, dns_delegset_t **delegsetp) {
+dns_delegdb_lookup(dns_delegdb_t *delegdb, const dns_name_t *name,
+		   isc_stdtime_t now, unsigned int options, dns_name_t *zonecut,
+		   dns_name_t *deepestzonecut, dns_delegset_t **delegsetp) {
 	isc_result_t result = ISC_R_SHUTTINGDOWN;
 	dns_qpmulti_t *nodes = NULL;
 	dns_qpread_t qpr = {};
@@ -355,7 +355,7 @@ dns_deleg_lookup(dns_delegdb_t *delegdb, const dns_name_t *name,
 }
 
 void
-dns_deleg_allocset(dns_delegdb_t *delegdb, dns_delegset_t **delegsetp) {
+dns_delegset_allocset(dns_delegdb_t *delegdb, dns_delegset_t **delegsetp) {
 	REQUIRE(VALID_DELEGDB(delegdb));
 	REQUIRE(delegsetp != NULL && *delegsetp == NULL);
 
@@ -370,8 +370,8 @@ dns_deleg_allocset(dns_delegdb_t *delegdb, dns_delegset_t **delegsetp) {
 }
 
 void
-dns_deleg_allocdeleg(dns_delegset_t *delegset, dns_deleg_type_t type,
-		     dns_deleg_t **delegp) {
+dns_delegset_allocdeleg(dns_delegset_t *delegset, dns_deleg_type_t type,
+			dns_deleg_t **delegp) {
 	dns_deleg_t *deleg = NULL;
 
 	REQUIRE(DNS_DELEGSET_VALID(delegset));
@@ -393,8 +393,8 @@ dns_deleg_allocdeleg(dns_delegset_t *delegset, dns_deleg_type_t type,
  * not already in the list.
  */
 void
-dns_deleg_addaddr(dns_delegset_t *delegset, dns_deleg_t *deleg,
-		  const isc_netaddr_t *addr) {
+dns_delegset_addaddr(dns_delegset_t *delegset, dns_deleg_t *deleg,
+		     const isc_netaddr_t *addr) {
 	isc_netaddrlink_t *addrlink = NULL;
 
 	REQUIRE(DNS_DELEGSET_VALID(delegset));
@@ -425,16 +425,16 @@ addname(dns_delegset_t *delegset, dns_namelist_t *list,
 }
 
 void
-dns_deleg_adddelegparam(dns_delegset_t *delegset, dns_deleg_t *deleg,
-			const dns_name_t *name) {
+dns_delegset_adddelegparam(dns_delegset_t *delegset, dns_deleg_t *deleg,
+			   const dns_name_t *name) {
 	REQUIRE(deleg != NULL);
 	REQUIRE(deleg->type == DNS_DELEGTYPE_DELEG_PARAMS);
 	addname(delegset, &deleg->names, name);
 }
 
 void
-dns_deleg_addns(dns_delegset_t *delegset, dns_deleg_t *deleg,
-		const dns_name_t *name) {
+dns_delegset_addns(dns_delegset_t *delegset, dns_deleg_t *deleg,
+		   const dns_name_t *name) {
 	REQUIRE(deleg != NULL);
 
 	/*
@@ -592,6 +592,13 @@ dns_delegset_write(dns_delegdb_t *delegdb, const dns_name_t *zonecut,
 	REQUIRE(VALID_DELEGDB(delegdb));
 	REQUIRE(DNS_NAME_VALID(zonecut));
 	REQUIRE(DNS_DELEGSET_VALID(delegset));
+
+	/*
+	 * Only delegset allocated by the delegdb memory context can be added in
+	 * the delegdb. This exclude transient delegset built from rdataset (see
+	 * dns_delegset_fromrdataset()).
+	 */
+	REQUIRE(delegset->mctx == delegdb->mctx);
 
 	rcu_read_lock();
 	nodes = rcu_dereference(delegdb->nodes);
@@ -818,8 +825,8 @@ delegset_tostring(const dns_name_t *zonecut, dns_delegset_t *delegset,
  * make it readable when debugging the DB/integration with the resolver.
  */
 void
-dns_deleg_dump(dns_delegdb_t *delegdb, const dns_name_t *name,
-	       isc_stdtime_t optnow, isc_buffer_t *b) {
+dns_delegdb_dump(dns_delegdb_t *delegdb, const dns_name_t *name,
+		 isc_stdtime_t optnow, isc_buffer_t *b) {
 	REQUIRE(VALID_DELEGDB(delegdb));
 	REQUIRE(ISC_BUFFER_VALID(b));
 
@@ -882,7 +889,8 @@ dns_deleg_dump(dns_delegdb_t *delegdb, const dns_name_t *name,
 }
 
 void
-dns_deleg_fromrdataset(dns_rdataset_t *rdataset, dns_delegset_t **delegsetp) {
+dns_delegset_fromrdataset(dns_rdataset_t *rdataset,
+			  dns_delegset_t **delegsetp) {
 	dns_delegset_t *delegset = NULL;
 	dns_deleg_t *deleg = NULL;
 
@@ -916,7 +924,7 @@ dns_deleg_fromrdataset(dns_rdataset_t *rdataset, dns_delegset_t **delegsetp) {
 
 		dns_rdataset_current(rdataset, &rdata);
 		dns_rdata_tostruct(&rdata, &ns, NULL);
-		dns_deleg_addns(delegset, deleg, &ns.name);
+		dns_delegset_addns(delegset, deleg, &ns.name);
 	}
 
 	*delegsetp = delegset;
@@ -986,7 +994,7 @@ deleg_deletenode(dns_qp_t *qp, const dns_name_t *name) {
 }
 
 isc_result_t
-dns_deleg_delete(dns_delegdb_t *delegdb, const dns_name_t *name, bool tree) {
+dns_delegdb_delete(dns_delegdb_t *delegdb, const dns_name_t *name, bool tree) {
 	REQUIRE(VALID_DELEGDB(delegdb));
 	REQUIRE(DNS_NAME_VALID(name));
 
@@ -1031,7 +1039,7 @@ dns_delegdb_shutdown(dns_delegdb_t *delegdb) {
 }
 
 void
-dns_deleg_setsize(dns_delegdb_t *delegdb, size_t size) {
+dns_delegdb_setsize(dns_delegdb_t *delegdb, size_t size) {
 	REQUIRE(VALID_DELEGDB(delegdb));
 
 	size_t hiwater, lowater;
