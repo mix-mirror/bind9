@@ -92,13 +92,13 @@ typedef struct dns_delegdb dns_delegdb_t;
  * caller.
  */
 void
-dns_deleg_init(dns_delegdb_t **db);
+dns_delegdb_create(dns_delegdb_t **delegdbp);
 
 /*
- * Shutdown and detach the delegation database.
+ * Shutdown the delegation database.
  */
 void
-dns_deleg_shutdown(dns_delegdb_t **db);
+dns_delegdb_shutdown(dns_delegdb_t *delegdb);
 
 /*
  * Lookup for delegations of a given name in the DB. If found, the zonecut is
@@ -173,9 +173,6 @@ dns_deleg_addns(dns_delegset_t *delegset, dns_deleg_t *deleg,
  * time. If a delegation already exists and is not expired, ISC_R_EXISTS is
  * returned and the DB is not altered.
  *
- * In any case, this function takes ownership of `delegset` and detach it, so
- * the caller must not use it anymore afterwards.
- *
  * This function also cleanup least recently used delegation is the database in
  * an overmemory conditions (See dns_deleg_setsize()).
  *
@@ -183,8 +180,8 @@ dns_deleg_addns(dns_delegset_t *delegset, dns_deleg_t *deleg,
  * where a delegation from DELEG already exists would be rejected too.
  */
 isc_result_t
-dns_deleg_writeanddetach(dns_delegdb_t *db, const dns_name_t *zonecut,
-			 dns_ttl_t expire, dns_delegset_t **delegset);
+dns_delegset_write(dns_delegdb_t *db, const dns_name_t *zonecut,
+		   dns_ttl_t expire, dns_delegset_t *delegset);
 
 /*
  * Dump the database in a textual format for a given name. If a closest
@@ -230,3 +227,5 @@ dns_deleg_delete(dns_delegdb_t *db, const dns_name_t *name, bool tree);
  */
 void
 dns_deleg_setsize(dns_delegdb_t *db, size_t size);
+
+ISC_REFCOUNT_DECL(dns_delegdb);

@@ -6740,7 +6740,10 @@ cache_delegns(respctx_t *rctx) {
 		}
 	}
 
-	return dns_deleg_writeanddetach(delegdb, rctx->ns_name, ttl, &delegset);
+	result = dns_delegset_write(delegdb, rctx->ns_name, ttl, delegset);
+	dns_delegset_detach(&delegset);
+
+	return result;
 }
 
 static isc_result_t
