@@ -12686,9 +12686,11 @@ again:
 		zone->xfrintime = isc_time_now();
 
 		if (isc_sockaddr_pf(&curraddr) == PF_INET) {
-			inc_stats(zone, dns_zonestatscounter_soaoutv4);
+			dns__zone_stats_increment(
+				zone, dns_zonestatscounter_soaoutv4);
 		} else {
-			inc_stats(zone, dns_zonestatscounter_soaoutv6);
+			dns__zone_stats_increment(
+				zone, dns_zonestatscounter_soaoutv6);
 		}
 	}
 	cancel = false;
@@ -13416,9 +13418,11 @@ dns_zone_notifyreceive(dns_zone_t *zone, isc_sockaddr_t *from,
 	 *  We only handle NOTIFY (SOA) at the present.
 	 */
 	if (isc_sockaddr_pf(from) == PF_INET) {
-		inc_stats(zone, dns_zonestatscounter_notifyinv4);
+		dns__zone_stats_increment(zone,
+					  dns_zonestatscounter_notifyinv4);
 	} else {
-		inc_stats(zone, dns_zonestatscounter_notifyinv6);
+		dns__zone_stats_increment(zone,
+					  dns_zonestatscounter_notifyinv6);
 	}
 	if (msg->counts[DNS_SECTION_QUESTION] == 0 ||
 	    dns_message_findname(msg, DNS_SECTION_QUESTION, &zone->origin,
@@ -13484,7 +13488,7 @@ dns_zone_notifyreceive(dns_zone_t *zone, isc_sockaddr_t *from,
 		UNLOCK_ZONE(zone);
 		dns_zone_logc(zone, DNS_LOGCATEGORY_XFER_IN, ISC_LOG_INFO,
 			      "refused notify from non-primary: %s", fromtext);
-		inc_stats(zone, dns_zonestatscounter_notifyrej);
+		dns__zone_stats_increment(zone, dns_zonestatscounter_notifyrej);
 		return DNS_R_REFUSED;
 	}
 
@@ -15473,7 +15477,8 @@ again:
 			}
 		}
 		DNS_ZONE_CLRFLAG(zone, DNS_ZONEFLG_NODELAY);
-		inc_stats(zone, dns_zonestatscounter_xfrsuccess);
+		dns__zone_stats_increment(zone,
+					  dns_zonestatscounter_xfrsuccess);
 		break;
 
 	case DNS_R_BADIXFR:
@@ -15484,7 +15489,7 @@ again:
 	case DNS_R_TOOMANYRECORDS:
 	case DNS_R_VERIFYFAILURE:
 		DNS_ZONE_JITTER_ADD(&now, zone->refresh, &zone->refreshtime);
-		inc_stats(zone, dns_zonestatscounter_xfrfail);
+		dns__zone_stats_increment(zone, dns_zonestatscounter_xfrfail);
 		break;
 
 	case ISC_R_SHUTTINGDOWN:
@@ -15504,7 +15509,7 @@ again:
 			DNS_ZONE_SETFLAG(zone, DNS_ZONEFLG_REFRESH);
 			again = true;
 		}
-		inc_stats(zone, dns_zonestatscounter_xfrfail);
+		dns__zone_stats_increment(zone, dns_zonestatscounter_xfrfail);
 		break;
 	}
 	dns__zone_settimer(zone, &now);

@@ -513,7 +513,6 @@ got_transfer_quota(void *arg) {
 		}
 	}
 
-	LOCK_ZONE(zone);
 	if (xfrtype != dns_rdatatype_soa) {
 		/*
 		 * If 'xfrtype' is dns_rdatatype_soa, then the SOA query will be
@@ -522,8 +521,10 @@ got_transfer_quota(void *arg) {
 		 * about the transport type used for that query, so that the
 		 * information can be presented in the statistics channel.
 		 */
-		soa_transport_type = get_request_transport_type(zone);
+		soa_transport_type = dns_zone_getrequesttransporttype(zone);
 	}
+
+	LOCK_ZONE(zone);
 	sourceaddr = zone->sourceaddr;
 	UNLOCK_ZONE(zone);
 
@@ -561,15 +562,19 @@ got_transfer_quota(void *arg) {
 	LOCK_ZONE(zone);
 	if (xfrtype == dns_rdatatype_axfr) {
 		if (isc_sockaddr_pf(&primaryaddr) == PF_INET) {
-			inc_stats(zone, dns_zonestatscounter_axfrreqv4);
+			dns__zone_stats_increment(
+				zone, dns_zonestatscounter_axfrreqv4);
 		} else {
-			inc_stats(zone, dns_zonestatscounter_axfrreqv6);
+			dns__zone_stats_increment(
+				zone, dns_zonestatscounter_axfrreqv6);
 		}
 	} else if (xfrtype == dns_rdatatype_ixfr) {
 		if (isc_sockaddr_pf(&primaryaddr) == PF_INET) {
-			inc_stats(zone, dns_zonestatscounter_ixfrreqv4);
+			dns__zone_stats_increment(
+				zone, dns_zonestatscounter_ixfrreqv4);
 		} else {
-			inc_stats(zone, dns_zonestatscounter_ixfrreqv6);
+			dns__zone_stats_increment(
+				zone, dns_zonestatscounter_ixfrreqv6);
 		}
 	}
 	UNLOCK_ZONE(zone);
