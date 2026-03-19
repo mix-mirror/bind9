@@ -1946,6 +1946,10 @@ publish-private:
 
 publish:
   <<: *signer_ssh_job
+  before_script:
+    - TODAY="$(date +%Y-%m-%d)"
+    - SCHEDULED_PUBLICATION="$(curl -m 5 -s "https://gitlab.isc.org/isc-projects/bind9-qa/-/raw/main/releng/metadata.json" | jq -r ".schedule.public")"
+    - if [ -z "${FORCE_PUBLICATION}" ] && [ "${TODAY}" != "${SCHEDULED_PUBLICATION}" ]; then echo "Unscheduled publication denied; publication is scheduled for ${SCHEDULED_PUBLICATION}"; exit 1; fi
   variables:
     SSH_SCRIPT_CLIENT: |-
       ssh "${STAGING_USER_ACTIONS}@${STAGING_HOST}" "publish ${CI_COMMIT_TAG}"
