@@ -297,6 +297,41 @@ typedef struct zone_settimer {
 } zone_settimer_t;
 
 /*%
+ * Zone manager structure.
+ */
+struct dns_zonemgr {
+	unsigned int magic;
+	isc_mem_t *mctx;
+	isc_refcount_t refs;
+	uint32_t workers;
+	isc_mem_t **mctxpool;
+	isc_ratelimiter_t *checkdsrl;
+	isc_ratelimiter_t *notifyrl;
+	isc_ratelimiter_t *refreshrl;
+	isc_ratelimiter_t *startupnotifyrl;
+	isc_ratelimiter_t *startuprefreshrl;
+	isc_rwlock_t rwlock;
+
+	/* Locked by rwlock. */
+	dns_zonelist_t zones;
+	dns_zonelist_t waiting_for_xfrin;
+	dns_zonelist_t xfrin_in_progress;
+
+	/* Configuration data. */
+	uint32_t transfersin;
+	uint32_t transfersperns;
+	unsigned int checkdsrate;
+	unsigned int notifyrate;
+	unsigned int startupnotifyrate;
+	unsigned int serialqueryrate;
+	unsigned int startupserialqueryrate;
+	dns_keystorelist_t *keystores;
+
+	isc_tlsctx_cache_t *tlsctx_cache;
+	isc_rwlock_t tlsctx_cache_rwlock;
+};
+
+/*%
  * Zone structure.
  */
 struct dns_zone {
@@ -823,4 +858,53 @@ dns__zone_set_resigntime(dns_zone_t *zone);
  * Requires:
  *
  *\li	'zone' to be a valid zone, locked.
+ */
+
+void
+forward_cancel(dns_zone_t *zone);
+/*%<
+ *	Cancel forwarding.
+ *
+ * Requires:
+ *
+ *\li	'zone' to be a valid zone, locked.
+ */
+
+void
+zone_xfrdone(dns_zone_t *zone, uint32_t *expireopt, isc_result_t result);
+/*%<
+ *	Process a finished zone transfer.
+ *
+ * Requires:
+ *
+ *\li	'zone' to be a valid zone.
+ */
+
+isc_result_t
+zmgr_start_xfrin_ifquota(dns_zonemgr_t *zmgr, dns_zone_t *zone);
+/*%<
+ *	Try to start an incoming zone transfer for 'zone', quota permitting.
+ *
+ * Requires:
+ *
+ *\li	'zmgr' to be a valid zone manager.
+ *
+ * Returns:
+ *
+ *\li #ISC_R_SUCCESS	There was enough quota and we attempted to
+ *			start a transfer.  zone_xfrdone() has been or will
+ *			be called.
+ *\li #ISC_R_QUOTA	Not enough quota.
+ *\li Other failure.
+ */
+
+void
+zmgr_resume_xfrs(dns_zonemgr_t *zmgr, bool multi);
+/*%<
+ *	Try to start a new incoming zone transfer to fill a quota
+ *	slot that was just vacated.
+ *
+ * Requires:
+ *
+ *\li	'zmgr' to be a valid zone manager.
  */

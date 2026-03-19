@@ -25,6 +25,7 @@
 #include <dns/types.h>
 #include <dns/view.h>
 #include <dns/zone.h>
+#include <dns/zonemgr.h>
 
 #include "dyndb_p.h"
 

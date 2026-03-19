@@ -45,6 +45,7 @@
 #include <dns/name.h>
 #include <dns/view.h>
 #include <dns/zone.h>
+#include <dns/zonemgr.h>
 
 #include "db.h"
 #include "log.h"

@@ -36,6 +36,7 @@
 #include <dns/transport.h>
 #include <dns/view.h>
 #include <dns/xfrin.h>
+#include <dns/zonemgr.h>
 #include <dns/zoneproperties.h>
 #include <dns/zt.h>
 

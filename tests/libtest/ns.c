@@ -43,6 +43,7 @@
 #include <dns/name.h>
 #include <dns/view.h>
 #include <dns/zone.h>
+#include <dns/zonemgr.h>
 #include <dns/zoneproperties.h>
 
 #include <ns/client.h>
