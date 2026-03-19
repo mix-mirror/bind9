@@ -10813,7 +10813,7 @@ checkds_cancel(dns_zone_t *zone) {
 }
 
 void
-forward_cancel(dns_zone_t *zone) {
+dns__zone_forward_cancel(dns_zone_t *zone) {
 	/*
 	 * 'zone' locked by caller.
 	 */
@@ -13021,16 +13021,16 @@ zone_shutdown(void *arg) {
 			ISC_LIST_UNLINK(zone->zmgr->xfrin_in_progress, zone,
 					statelink);
 			zone->statelist = NULL;
-			zmgr_resume_xfrs(zone->zmgr, false);
+			dns__zonemgr_resume_xfrs(zone->zmgr, false);
 		}
 		RWUNLOCK(&zone->zmgr->rwlock, isc_rwlocktype_write);
 	}
 
 	/*
-	 * In loop context, no locking required.  See zone_xfrdone().
+	 * In loop context, no locking required.  See dns__zone_xfrdone().
 	 */
 	if (zone->xfr != NULL) {
-		/* The final detach will happen in zone_xfrdone() */
+		/* The final detach will happen in dns__zone_xfrdone() */
 		dns_xfrin_shutdown(zone->xfr);
 	}
 
@@ -13079,7 +13079,7 @@ zone_shutdown(void *arg) {
 	dns_notify_cancel(&zone->notifysoa);
 	dns_notify_cancel(&zone->notifycds);
 
-	forward_cancel(zone);
+	dns__zone_forward_cancel(zone);
 
 	if (zone->timer != NULL) {
 		isc_refcount_decrement(&zone->irefs);
@@ -15262,7 +15262,7 @@ zone_detachdb(dns_zone_t *zone) {
 }
 
 void
-zone_xfrdone(dns_zone_t *zone, uint32_t *expireopt, isc_result_t result) {
+dns__zone_xfrdone(dns_zone_t *zone, uint32_t *expireopt, isc_result_t result) {
 	isc_time_t now, expiretime;
 	bool again = false;
 	unsigned int soacount;
@@ -15558,7 +15558,7 @@ again:
 		RWLOCK(&zone->zmgr->rwlock, isc_rwlocktype_write);
 		ISC_LIST_UNLINK(zone->zmgr->xfrin_in_progress, zone, statelink);
 		zone->statelist = NULL;
-		zmgr_resume_xfrs(zone->zmgr, false);
+		dns__zonemgr_resume_xfrs(zone->zmgr, false);
 		RWUNLOCK(&zone->zmgr->rwlock, isc_rwlocktype_write);
 		LOCK_ZONE(zone);
 	}
@@ -15664,7 +15664,7 @@ queue_xfrin(dns_zone_t *zone) {
 	ISC_LIST_APPEND(zmgr->waiting_for_xfrin, zone, statelink);
 	isc_refcount_increment0(&zone->irefs);
 	zone->statelist = &zmgr->waiting_for_xfrin;
-	result = zmgr_start_xfrin_ifquota(zmgr, zone);
+	result = dns__zonemgr_start_xfrin_ifquota(zmgr, zone);
 	RWUNLOCK(&zmgr->rwlock, isc_rwlocktype_write);
 
 	if (result == ISC_R_QUOTA) {

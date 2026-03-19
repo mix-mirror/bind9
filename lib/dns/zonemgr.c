@@ -241,7 +241,7 @@ dns_zonemgr_forcemaint(dns_zonemgr_t *zmgr) {
 	 * possible.
 	 */
 	RWLOCK(&zmgr->rwlock, isc_rwlocktype_write);
-	zmgr_resume_xfrs(zmgr, true);
+	dns__zonemgr_resume_xfrs(zmgr, true);
 	RWUNLOCK(&zmgr->rwlock, isc_rwlocktype_write);
 	return ISC_R_SUCCESS;
 }
@@ -263,7 +263,7 @@ dns_zonemgr_shutdown(dns_zonemgr_t *zmgr) {
 	RWLOCK(&zmgr->rwlock, isc_rwlocktype_read);
 	ISC_LIST_FOREACH(zmgr->zones, zone, link) {
 		LOCK_ZONE(zone);
-		forward_cancel(zone);
+		dns__zone_forward_cancel(zone);
 		UNLOCK_ZONE(zone);
 	}
 	RWUNLOCK(&zmgr->rwlock, isc_rwlocktype_read);
@@ -330,10 +330,10 @@ dns_zonemgr_gettransfersperns(dns_zonemgr_t *zmgr) {
  *	The zone manager is locked by the caller.
  */
 void
-zmgr_resume_xfrs(dns_zonemgr_t *zmgr, bool multi) {
+dns__zonemgr_resume_xfrs(dns_zonemgr_t *zmgr, bool multi) {
 	ISC_LIST_FOREACH(zmgr->waiting_for_xfrin, zone, statelink) {
 		isc_result_t result;
-		result = zmgr_start_xfrin_ifquota(zmgr, zone);
+		result = dns__zonemgr_start_xfrin_ifquota(zmgr, zone);
 		if (result == ISC_R_SUCCESS) {
 			if (multi) {
 				continue;
@@ -384,7 +384,7 @@ got_transfer_quota(void *arg) {
 	dns_xfrin_t *xfr = NULL;
 
 	if (DNS_ZONE_FLAG(zone, DNS_ZONEFLG_EXITING)) {
-		zone_xfrdone(zone, NULL, ISC_R_CANCELED);
+		dns__zone_xfrdone(zone, NULL, ISC_R_CANCELED);
 		return;
 	}
 
@@ -398,7 +398,7 @@ got_transfer_quota(void *arg) {
 			      "got_transfer_quota: skipping zone transfer as "
 			      "primary %s (source %s) is unreachable (cached)",
 			      primary, source);
-		zone_xfrdone(zone, NULL, ISC_R_CANCELED);
+		dns__zone_xfrdone(zone, NULL, ISC_R_CANCELED);
 		return;
 	}
 
@@ -553,9 +553,9 @@ got_transfer_quota(void *arg) {
 	 * zone transfer.  This ensures that we get removed from
 	 * zmgr->xfrin_in_progress.
 	 */
-	result = dns_xfrin_start(zone->xfr, zone_xfrdone);
+	result = dns_xfrin_start(zone->xfr, dns__zone_xfrdone);
 	if (result != ISC_R_SUCCESS) {
-		zone_xfrdone(zone, NULL, result);
+		dns__zone_xfrdone(zone, NULL, result);
 		return;
 	}
 
@@ -588,13 +588,13 @@ got_transfer_quota(void *arg) {
  *
  * Returns:
  *	ISC_R_SUCCESS	There was enough quota and we attempted to
- *			start a transfer.  zone_xfrdone() has been or will
+ *			start a transfer.  dns__zone_xfrdone() has been or will
  *			be called.
  *	ISC_R_QUOTA	Not enough quota.
  *	Others		Failure.
  */
 isc_result_t
-zmgr_start_xfrin_ifquota(dns_zonemgr_t *zmgr, dns_zone_t *zone) {
+dns__zonemgr_start_xfrin_ifquota(dns_zonemgr_t *zmgr, dns_zone_t *zone) {
 	dns_peer_t *peer = NULL;
 	isc_netaddr_t primaryip;
 	isc_sockaddr_t curraddr;

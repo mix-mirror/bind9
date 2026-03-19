@@ -861,7 +861,7 @@ dns__zone_set_resigntime(dns_zone_t *zone);
  */
 
 void
-forward_cancel(dns_zone_t *zone);
+dns__zone_forward_cancel(dns_zone_t *zone);
 /*%<
  *	Cancel forwarding.
  *
@@ -871,7 +871,7 @@ forward_cancel(dns_zone_t *zone);
  */
 
 void
-zone_xfrdone(dns_zone_t *zone, uint32_t *expireopt, isc_result_t result);
+dns__zone_xfrdone(dns_zone_t *zone, uint32_t *expireopt, isc_result_t result);
 /*%<
  *	Process a finished zone transfer.
  *
@@ -881,7 +881,7 @@ zone_xfrdone(dns_zone_t *zone, uint32_t *expireopt, isc_result_t result);
  */
 
 isc_result_t
-zmgr_start_xfrin_ifquota(dns_zonemgr_t *zmgr, dns_zone_t *zone);
+dns__zonemgr_start_xfrin_ifquota(dns_zonemgr_t *zmgr, dns_zone_t *zone);
 /*%<
  *	Try to start an incoming zone transfer for 'zone', quota permitting.
  *
@@ -899,7 +899,7 @@ zmgr_start_xfrin_ifquota(dns_zonemgr_t *zmgr, dns_zone_t *zone);
  */
 
 void
-zmgr_resume_xfrs(dns_zonemgr_t *zmgr, bool multi);
+dns__zonemgr_resume_xfrs(dns_zonemgr_t *zmgr, bool multi);
 /*%<
  *	Try to start a new incoming zone transfer to fill a quota
  *	slot that was just vacated.
