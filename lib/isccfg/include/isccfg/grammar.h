@@ -230,6 +230,7 @@ struct cfg_obj {
 		char		  *string; /*%< null terminated */
 		bool		   boolean;
 		cfg_map_t	  *map;
+		cfg_map_t	  *map_external;
 		cfg_list_t	  *list;
 		cfg_obj_t	 **tuple;
 		isc_sockaddr_t	  *sockaddr;
@@ -329,6 +330,7 @@ extern cfg_rep_t cfg_rep_uint64;
 extern cfg_rep_t cfg_rep_string;
 extern cfg_rep_t cfg_rep_boolean;
 extern cfg_rep_t cfg_rep_map;
+extern cfg_rep_t cfg_rep_map_external;
 extern cfg_rep_t cfg_rep_list;
 extern cfg_rep_t cfg_rep_tuple;
 extern cfg_rep_t cfg_rep_sockaddr;
@@ -544,6 +546,26 @@ cfg_print_mapbody(cfg_printer_t *pctx, const cfg_obj_t *obj);
 
 void
 cfg_doc_mapbody(cfg_printer_t *pctx, const cfg_type_t *type);
+
+isc_result_t
+cfg_parse_map_external(cfg_parser_t *pctx, const cfg_type_t *type,
+		       cfg_obj_t **ret);
+
+void
+cfg_print_map_external(cfg_printer_t *pctx, const cfg_obj_t *obj);
+
+void
+cfg_doc_map_external(cfg_printer_t *pctx, const cfg_type_t *type);
+
+isc_result_t
+cfg_parse_mapbody_external(cfg_parser_t *pctx, const cfg_type_t *type,
+			   cfg_obj_t **ret);
+
+void
+cfg_print_mapbody_external(cfg_printer_t *pctx, const cfg_obj_t *obj);
+
+void
+cfg_doc_mapbody_external(cfg_printer_t *pctx, const cfg_type_t *type);
 
 isc_result_t
 cfg_parse_void(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret);

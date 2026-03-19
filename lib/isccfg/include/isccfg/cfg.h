@@ -580,6 +580,40 @@ cfg_map_nextclause(const cfg_type_t *map, const void **clauses,
 const cfg_clausedef_t *
 cfg_map_findclause(const cfg_type_t *map, const char *name);
 
+bool
+cfg_obj_ismap_external(const cfg_obj_t *obj);
+/*%<
+ * Return true iff 'obj' is of a map_external type.
+ */
+
+isc_result_t
+cfg_map_external_get(const cfg_obj_t *mapobj, const char *name,
+		     const cfg_obj_t **obj);
+
+const cfg_obj_t *
+cfg_map_external_getname(const cfg_obj_t *mapobj);
+
+unsigned int
+cfg_map_external_count(const cfg_obj_t *mapobj);
+
+isc_result_t
+cfg_map_external_add(cfg_obj_t *mapobj, cfg_obj_t *obj, const char *clause);
+
+isc_result_t
+cfg_map_external_addclone(cfg_obj_t *map, const cfg_obj_t *obj,
+			  const cfg_clausedef_t *clause);
+
+const cfg_clausedef_t *
+cfg_map_external_firstclause(const cfg_type_t *map, const void **clauses,
+			     unsigned int *idx);
+
+const cfg_clausedef_t *
+cfg_map_external_nextclause(const cfg_type_t *map, const void **clauses,
+			    unsigned int *idx);
+
+const cfg_clausedef_t *
+cfg_map_external_findclause(const cfg_type_t *map, const char *name);
+
 typedef isc_result_t(pluginlist_cb_t)(
 	const cfg_obj_t *config, const cfg_obj_t *obj, cfg_aclconfctx_t *aclctx,
 	const char *plugin_path, const char *parameters, void *callback_data);

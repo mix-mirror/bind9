@@ -133,6 +133,13 @@ create_map(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **objp);
 static void
 free_map(cfg_obj_t *obj);
 
+static void
+create_map_external(cfg_parser_t *pctx, const cfg_type_t *type,
+		    cfg_obj_t **objp);
+
+static void
+free_map_external(cfg_obj_t *obj);
+
 static isc_result_t
 parse_symtab_elt(cfg_parser_t *pctx, const cfg_clausedef_t *clause,
 		 isc_symtab_t *symtab);
@@ -284,6 +291,42 @@ copy_map(cfg_obj_t *to, const cfg_obj_t *from) {
 	to->value.map->clausesets = from->value.map->clausesets;
 }
 
+static bool
+copy_map_external_add(char *key, unsigned int type, isc_symvalue_t value,
+		      void *arg) {
+	cfg_obj_t *to = arg;
+	cfg_obj_t *toelt = NULL;
+
+	REQUIRE(VALID_CFGOBJ(value.as_pointer));
+
+	cfg_obj_clone(value.as_pointer, &toelt);
+	value.as_pointer = toelt;
+
+	INSIST(isc_symtab_define(to->value.map_external->symtab, key, type,
+				 value, isc_symexists_reject) == ISC_R_SUCCESS);
+
+	return false;
+}
+
+static void
+copy_map_external(cfg_obj_t *to, const cfg_obj_t *from) {
+	to->value.map_external =
+		isc_mem_cget(isc_g_mctx, 1, sizeof(*to->value.map_external));
+
+	if (from->value.map_external->id != NULL) {
+		cfg_obj_clone(from->value.map_external->id,
+			      &to->value.map_external->id);
+	}
+
+	isc_symtab_create(isc_g_mctx, copy_map_destroy, NULL, false,
+			  &to->value.map_external->symtab);
+	isc_symtab_foreach(from->value.map_external->symtab,
+			   copy_map_external_add, to);
+
+	to->value.map_external->clausesets =
+		from->value.map_external->clausesets;
+}
+
 static void
 copy_list(cfg_obj_t *to, const cfg_obj_t *from) {
 	const cfg_listelt_t *fromelt = cfg_list_first(from);
@@ -337,6 +380,8 @@ cfg_rep_t cfg_rep_uint64 = { "uint64", free_noop, copy_uint64 };
 cfg_rep_t cfg_rep_string = { "string", free_string, copy_string };
 cfg_rep_t cfg_rep_boolean = { "boolean", free_noop, copy_boolean };
 cfg_rep_t cfg_rep_map = { "map", free_map, copy_map };
+cfg_rep_t cfg_rep_map_external = { "map_external", free_map_external,
+				   copy_map_external };
 cfg_rep_t cfg_rep_list = { "list", free_list, copy_list };
 cfg_rep_t cfg_rep_tuple = { "tuple", free_tuple, copy_tuple };
 cfg_rep_t cfg_rep_sockaddr = { "sockaddr", free_sockaddr, copy_sockaddr };
@@ -2955,6 +3000,463 @@ cfg_map_findclause(const cfg_type_t *map, const char *name) {
 	return ((cfg_clausedef_t *)clauses) + idx;
 }
 
+/*
+ * map_external variants — identical logic to map, but access
+ * obj->value.map_external and check &cfg_rep_map_external.
+ */
+
+isc_result_t
+cfg_parse_mapbody_external(cfg_parser_t *pctx, const cfg_type_t *type,
+			   cfg_obj_t **ret) {
+	const cfg_clausedef_t *const *clausesets;
+	isc_result_t result;
+	const cfg_clausedef_t *const *clauseset;
+	const cfg_clausedef_t *clause;
+	cfg_obj_t *value = NULL;
+	cfg_obj_t *obj = NULL;
+	cfg_obj_t *eltobj = NULL;
+	cfg_obj_t *includename = NULL;
+	isc_symvalue_t symval;
+
+	REQUIRE(pctx != NULL);
+	REQUIRE(type != NULL);
+	REQUIRE(ret != NULL && *ret == NULL);
+
+	clausesets = type->of;
+
+	create_map_external(pctx, type, &obj);
+
+	obj->value.map_external->clausesets = clausesets;
+
+	for (;;) {
+		CHECK(cfg_gettoken(pctx, 0));
+
+		if (pctx->token.type != isc_tokentype_string) {
+			cfg_ungettoken(pctx);
+			break;
+		}
+
+		if (strcasecmp(TOKEN_STRING(pctx), "include") == 0) {
+			glob_t g;
+			int rc;
+
+			CHECK(cfg_parse_obj(pctx, &cfg_type_qstring,
+					    &includename));
+			CHECK(parse_semicolon(pctx));
+
+			if (includename->value.string[0] == 0) {
+				CLEANUP(ISC_R_FILENOTFOUND);
+			}
+
+			rc = glob(cfg_obj_asstring(includename), GLOB_ERR, NULL,
+				  &g);
+
+			switch (rc) {
+			case 0:
+				break;
+			case GLOB_NOMATCH:
+				CLEANUP(ISC_R_FILENOTFOUND);
+				break;
+			case GLOB_NOSPACE:
+				CLEANUP(ISC_R_NOMEMORY);
+				break;
+			default:
+				if (errno == 0) {
+					CLEANUP(ISC_R_IOERROR);
+				}
+				CHECK(isc_errno_toresult(errno));
+			}
+
+			for (size_t i = 0; i < g.gl_pathc; ++i) {
+				CHECK(parser_openfile(pctx, g.gl_pathv[i]));
+			}
+
+			cfg_obj_detach(&includename);
+			globfree(&g);
+
+			continue;
+		}
+
+		clause = NULL;
+		for (clauseset = clausesets; *clauseset != NULL; clauseset++) {
+			for (clause = *clauseset; clause->name != NULL;
+			     clause++)
+			{
+				if (strcasecmp(TOKEN_STRING(pctx),
+					       clause->name) == 0)
+				{
+					goto done;
+				}
+			}
+		}
+	done:
+		if (clause == NULL || clause->name == NULL) {
+			cfg_parser_error(pctx, CFG_LOG_NOPREP,
+					 "unknown option");
+			CHECK(cfg_parse_obj(pctx, &cfg_type_unsupported,
+					    &eltobj));
+			cfg_obj_detach(&eltobj);
+			CHECK(parse_semicolon(pctx));
+			continue;
+		}
+
+		if ((clause->flags & CFG_CLAUSEFLAG_ANCIENT) != 0) {
+			cfg_parser_error(pctx, 0,
+					 "option '%s' no longer exists",
+					 clause->name);
+			CLEANUP(ISC_R_FAILURE);
+		}
+		if ((pctx->flags & CFG_PCTX_ALLCONFIGS) == 0 &&
+		    (clause->flags & CFG_CLAUSEFLAG_NOTCONFIGURED) != 0)
+		{
+			cfg_parser_error(pctx, 0,
+					 "option '%s' was not "
+					 "enabled at compile time",
+					 clause->name);
+			CLEANUP(ISC_R_FAILURE);
+		}
+		if ((pctx->flags & CFG_PCTX_BUILTIN) == 0 &&
+		    (clause->flags & CFG_CLAUSEFLAG_BUILTINONLY) != 0)
+		{
+			cfg_parser_error(pctx, 0,
+					 "option '%s' is allowed in the "
+					 "builtin configuration only",
+					 clause->name);
+			CHECK(ISC_R_FAILURE);
+		}
+
+		if ((pctx->flags & CFG_PCTX_NODEPRECATED) == 0 &&
+		    (clause->flags & CFG_CLAUSEFLAG_DEPRECATED) != 0)
+		{
+			cfg_parser_warning(pctx, 0, "option '%s' is deprecated",
+					   clause->name);
+		}
+		if ((pctx->flags & CFG_PCTX_NOOBSOLETE) == 0 &&
+		    (clause->flags & CFG_CLAUSEFLAG_OBSOLETE) != 0)
+		{
+			cfg_parser_warning(pctx, 0,
+					   "option '%s' is obsolete and "
+					   "should be removed ",
+					   clause->name);
+		}
+		if ((pctx->flags & CFG_PCTX_NOEXPERIMENTAL) == 0 &&
+		    (clause->flags & CFG_CLAUSEFLAG_EXPERIMENTAL) != 0)
+		{
+			cfg_parser_warning(pctx, 0,
+					   "option '%s' is experimental and "
+					   "subject to change in the future",
+					   clause->name);
+		}
+
+		if ((clause->flags & CFG_CLAUSEFLAG_MULTI) != 0) {
+			cfg_obj_t *listobj = NULL;
+			cfg_listelt_t *elt = NULL;
+
+			create_list(cfg_parser_currentfile(pctx), pctx->line,
+				    &cfg_type_implicitlist, &listobj);
+			symval.as_pointer = listobj;
+			result = isc_symtab_define_and_return(
+				obj->value.map_external->symtab, clause->name,
+				SYMTAB_DUMMY_TYPE, symval, isc_symexists_reject,
+				&symval);
+			if (result == ISC_R_EXISTS) {
+				CLEANUP_OBJ(listobj);
+				listobj = symval.as_pointer;
+			}
+
+			CHECK(cfg_parse_listelt(pctx, listobj, clause->type,
+						&elt));
+			ISC_LIST_APPEND(*listobj->value.list, elt, link);
+			CHECK(parse_semicolon(pctx));
+		} else {
+			result = parse_symtab_elt(
+				pctx, clause,
+				obj->value.map_external->symtab);
+			if (result == ISC_R_EXISTS) {
+				cfg_parser_error(pctx, CFG_LOG_NEAR,
+						 "'%s' redefined",
+						 clause->name);
+				CHECK(result);
+			} else if (result != ISC_R_SUCCESS) {
+				cfg_parser_error(pctx, CFG_LOG_NEAR,
+						 "isc_symtab_define() failed");
+				CHECK(result);
+			}
+			CHECK(parse_semicolon(pctx));
+		}
+	}
+
+	*ret = obj;
+	return ISC_R_SUCCESS;
+
+cleanup:
+	CLEANUP_OBJ(value);
+	CLEANUP_OBJ(obj);
+	CLEANUP_OBJ(eltobj);
+	CLEANUP_OBJ(includename);
+	return result;
+}
+
+isc_result_t
+cfg_parse_map_external(cfg_parser_t *pctx, const cfg_type_t *type,
+		       cfg_obj_t **ret) {
+	isc_result_t result;
+
+	REQUIRE(pctx != NULL);
+	REQUIRE(type != NULL);
+	REQUIRE(ret != NULL && *ret == NULL);
+
+	CHECK(cfg_parse_special(pctx, '{'));
+	CHECK(cfg_parse_mapbody_external(pctx, type, ret));
+	CHECK(cfg_parse_special(pctx, '}'));
+cleanup:
+	return result;
+}
+
+void
+cfg_print_mapbody_external(cfg_printer_t *pctx, const cfg_obj_t *obj) {
+	const cfg_clausedef_t *const *clauseset;
+
+	REQUIRE(pctx != NULL);
+	REQUIRE(VALID_CFGOBJ(obj));
+
+	for (clauseset = obj->value.map_external->clausesets;
+	     *clauseset != NULL; clauseset++)
+	{
+		isc_symvalue_t symval;
+		const cfg_clausedef_t *clause;
+
+		for (clause = *clauseset; clause->name != NULL; clause++) {
+			isc_result_t result;
+
+			if ((clause->flags & CFG_CLAUSEFLAG_BUILTINONLY) != 0) {
+				continue;
+			}
+
+			result = isc_symtab_lookup(
+				obj->value.map_external->symtab, clause->name,
+				SYMTAB_DUMMY_TYPE, &symval);
+			if (result == ISC_R_SUCCESS) {
+				cfg_obj_t *symobj = symval.as_pointer;
+				if (symobj->type == &cfg_type_implicitlist) {
+					cfg_list_t *list = symobj->value.list;
+					ISC_LIST_FOREACH(*list, elt, link) {
+						print_symval(pctx, clause->name,
+							     elt->obj);
+					}
+				} else {
+					print_symval(pctx, clause->name,
+						     symobj);
+				}
+			} else if (result == ISC_R_NOTFOUND) {
+				/* do nothing */
+			} else {
+				UNREACHABLE();
+			}
+		}
+	}
+}
+
+void
+cfg_print_map_external(cfg_printer_t *pctx, const cfg_obj_t *obj) {
+	REQUIRE(pctx != NULL);
+	REQUIRE(VALID_CFGOBJ(obj));
+
+	if (obj->value.map_external->id != NULL) {
+		cfg_print_obj(pctx, obj->value.map_external->id);
+		cfg_print_cstr(pctx, " ");
+	}
+	print_open(pctx);
+	cfg_print_mapbody_external(pctx, obj);
+	print_close(pctx);
+}
+
+void
+cfg_doc_mapbody_external(cfg_printer_t *pctx, const cfg_type_t *type) {
+	const cfg_clausedef_t *const *clauseset;
+	const cfg_clausedef_t *clause;
+
+	REQUIRE(pctx != NULL);
+	REQUIRE(type != NULL);
+
+	for (clauseset = type->of; *clauseset != NULL; clauseset++) {
+		for (clause = *clauseset; clause->name != NULL; clause++) {
+			if (((pctx->flags & CFG_PRINTER_ACTIVEONLY) != 0) &&
+			    (((clause->flags & CFG_CLAUSEFLAG_OBSOLETE) != 0) ||
+			     ((clause->flags & CFG_CLAUSEFLAG_TESTONLY) != 0)))
+			{
+				continue;
+			}
+			if ((clause->flags & CFG_CLAUSEFLAG_ANCIENT) != 0 ||
+			    (clause->flags & CFG_CLAUSEFLAG_NODOC) != 0)
+			{
+				continue;
+			}
+			cfg_print_cstr(pctx, clause->name);
+			cfg_print_cstr(pctx, " ");
+			cfg_doc_obj(pctx, clause->type);
+			cfg_print_cstr(pctx, ";");
+			cfg_print_clauseflags(pctx, clause->flags);
+			cfg_print_cstr(pctx, "\n\n");
+		}
+	}
+}
+
+void
+cfg_doc_map_external(cfg_printer_t *pctx, const cfg_type_t *type) {
+	const cfg_clausedef_t *const *clauseset;
+	const cfg_clausedef_t *clause;
+
+	REQUIRE(pctx != NULL);
+	REQUIRE(type != NULL);
+
+	if (type->parse == cfg_parse_named_map) {
+		cfg_doc_obj(pctx, &cfg_type_astring);
+		cfg_print_cstr(pctx, " ");
+	} else if (type->parse == cfg_parse_addressed_map) {
+		cfg_doc_obj(pctx, &cfg_type_netaddr);
+		cfg_print_cstr(pctx, " ");
+	} else if (type->parse == cfg_parse_netprefix_map) {
+		cfg_doc_obj(pctx, &cfg_type_netprefix);
+		cfg_print_cstr(pctx, " ");
+	}
+
+	print_open(pctx);
+
+	for (clauseset = type->of; *clauseset != NULL; clauseset++) {
+		for (clause = *clauseset; clause->name != NULL; clause++) {
+			if (((pctx->flags & CFG_PRINTER_ACTIVEONLY) != 0) &&
+			    (((clause->flags & CFG_CLAUSEFLAG_OBSOLETE) != 0) ||
+			     ((clause->flags & CFG_CLAUSEFLAG_TESTONLY) != 0)))
+			{
+				continue;
+			}
+			if ((clause->flags & CFG_CLAUSEFLAG_ANCIENT) != 0 ||
+			    (clause->flags & CFG_CLAUSEFLAG_NODOC) != 0)
+			{
+				continue;
+			}
+			cfg_print_indent(pctx);
+			cfg_print_cstr(pctx, clause->name);
+			if (clause->type->print != cfg_print_void) {
+				cfg_print_cstr(pctx, " ");
+			}
+			cfg_doc_obj(pctx, clause->type);
+			cfg_print_cstr(pctx, ";");
+			cfg_print_clauseflags(pctx, clause->flags);
+			cfg_print_cstr(pctx, "\n");
+		}
+	}
+	print_close(pctx);
+}
+
+bool
+cfg_obj_ismap_external(const cfg_obj_t *obj) {
+	REQUIRE(VALID_CFGOBJ(obj));
+	return obj->type->rep == &cfg_rep_map_external;
+}
+
+isc_result_t
+cfg_map_external_get(const cfg_obj_t *mapobj, const char *name,
+		     const cfg_obj_t **obj) {
+	isc_symvalue_t val;
+	const cfg_map_t *map;
+
+	REQUIRE(mapobj != NULL && mapobj->type->rep == &cfg_rep_map_external);
+	REQUIRE(name != NULL);
+	REQUIRE(obj != NULL && *obj == NULL);
+
+	map = mapobj->value.map_external;
+
+	RETERR(isc_symtab_lookup(map->symtab, name, SYMTAB_DUMMY_TYPE, &val));
+	*obj = val.as_pointer;
+	return ISC_R_SUCCESS;
+}
+
+const cfg_obj_t *
+cfg_map_external_getname(const cfg_obj_t *mapobj) {
+	REQUIRE(VALID_CFGOBJ(mapobj));
+	REQUIRE(mapobj->type->rep == &cfg_rep_map_external);
+	return mapobj->value.map_external->id;
+}
+
+unsigned int
+cfg_map_external_count(const cfg_obj_t *mapobj) {
+	const cfg_map_t *map;
+
+	REQUIRE(VALID_CFGOBJ(mapobj));
+	REQUIRE(mapobj->type->rep == &cfg_rep_map_external);
+
+	map = mapobj->value.map_external;
+	return isc_symtab_count(map->symtab);
+}
+
+const cfg_clausedef_t *
+cfg_map_external_firstclause(const cfg_type_t *map, const void **clauses,
+			     unsigned int *idx) {
+	cfg_clausedef_t *const *clauseset;
+
+	REQUIRE(map != NULL && map->rep == &cfg_rep_map_external);
+	REQUIRE(idx != NULL);
+	REQUIRE(clauses != NULL && *clauses == NULL);
+
+	clauseset = map->of;
+	if (*clauseset == NULL) {
+		return NULL;
+	}
+	*clauses = *clauseset;
+	*idx = 0;
+	while ((*clauseset)[*idx].name == NULL) {
+		*clauses = (*++clauseset);
+		if (*clauses == NULL) {
+			return NULL;
+		}
+	}
+	return &(*clauseset)[*idx];
+}
+
+const cfg_clausedef_t *
+cfg_map_external_nextclause(const cfg_type_t *map, const void **clauses,
+			    unsigned int *idx) {
+	cfg_clausedef_t *const *clauseset;
+
+	REQUIRE(map != NULL && map->rep == &cfg_rep_map_external);
+	REQUIRE(idx != NULL);
+	REQUIRE(clauses != NULL && *clauses != NULL);
+
+	clauseset = map->of;
+	while (*clauseset != NULL && *clauseset != *clauses) {
+		clauseset++;
+	}
+	INSIST(*clauseset == *clauses);
+	(*idx)++;
+	while ((*clauseset)[*idx].name == NULL) {
+		*idx = 0;
+		*clauses = (*++clauseset);
+		if (*clauses == NULL) {
+			return NULL;
+		}
+	}
+	return &(*clauseset)[*idx];
+}
+
+const cfg_clausedef_t *
+cfg_map_external_findclause(const cfg_type_t *map, const char *name) {
+	const cfg_clausedef_t *found = NULL;
+	const void *clauses = NULL;
+	unsigned int idx;
+
+	REQUIRE(map != NULL && map->rep == &cfg_rep_map_external);
+	REQUIRE(name != NULL);
+
+	found = cfg_map_external_firstclause(map, &clauses, &idx);
+	while (name != NULL && strcasecmp(name, found->name)) {
+		found = cfg_map_external_nextclause(map, &clauses, &idx);
+	}
+
+	return ((cfg_clausedef_t *)clauses) + idx;
+}
+
 static char *
 region_to_string(isc_region_t region) {
 	size_t len = region.length + 1;
@@ -3937,6 +4439,31 @@ free_map(cfg_obj_t *obj) {
 	isc_mem_put(isc_g_mctx, obj->value.map, sizeof(*obj->value.map));
 }
 
+static void
+create_map_external(cfg_parser_t *pctx, const cfg_type_t *type,
+		    cfg_obj_t **ret) {
+	isc_symtab_t *symtab = NULL;
+	cfg_obj_t *obj = NULL;
+
+	cfg_obj_create(cfg_parser_currentfile(pctx), pctx->line, type, &obj);
+	isc_symtab_create(isc_g_mctx, map_symtabitem_destroy, pctx, false,
+			  &symtab);
+
+	obj->value.map_external =
+		isc_mem_cget(isc_g_mctx, 1, sizeof(*obj->value.map_external));
+	obj->value.map_external->symtab = symtab;
+
+	*ret = obj;
+}
+
+static void
+free_map_external(cfg_obj_t *obj) {
+	CLEANUP_OBJ(obj->value.map_external->id);
+	isc_symtab_destroy(&obj->value.map_external->symtab);
+	isc_mem_put(isc_g_mctx, obj->value.map_external,
+		    sizeof(*obj->value.map_external));
+}
+
 bool
 cfg_obj_istype(const cfg_obj_t *obj, const cfg_type_t *type) {
 	REQUIRE(VALID_CFGOBJ(obj));
@@ -4098,6 +4625,106 @@ cfg_map_addclone(cfg_obj_t *map, const cfg_obj_t *obj,
 		cfg_obj_clone(obj, &clone);
 		clone->cloned = true;
 		result = map_define(map, clone, clause);
+	}
+
+	return result;
+}
+
+static isc_result_t
+map_define_external(cfg_obj_t *mapobj, cfg_obj_t *obj,
+		    const cfg_clausedef_t *clause) {
+	isc_result_t result;
+	const cfg_map_t *map;
+	isc_symvalue_t symval;
+
+	map = mapobj->value.map_external;
+	result = isc_symtab_lookup(map->symtab, clause->name, SYMTAB_DUMMY_TYPE,
+				   &symval);
+	if (result == ISC_R_NOTFOUND) {
+		if ((clause->flags & CFG_CLAUSEFLAG_MULTI) != 0) {
+			cfg_obj_t *destobj = NULL;
+			cfg_listelt_t *elt = NULL;
+
+			create_list(obj->file, obj->line,
+				    &cfg_type_implicitlist, &destobj);
+			cfg_listelt_create(&elt);
+			cfg_obj_attach(obj, &elt->obj);
+			ISC_LIST_APPEND(*destobj->value.list, elt, link);
+			symval.as_pointer = destobj;
+		} else {
+			symval.as_pointer = obj;
+		}
+
+		result = isc_symtab_define(map->symtab, clause->name,
+					   SYMTAB_DUMMY_TYPE, symval,
+					   isc_symexists_reject);
+		INSIST(result == ISC_R_SUCCESS);
+	} else {
+		cfg_obj_t *destobj = symval.as_pointer;
+		cfg_listelt_t *elt = NULL;
+
+		INSIST(result == ISC_R_SUCCESS);
+
+		if (destobj->type == &cfg_type_implicitlist) {
+			cfg_listelt_create(&elt);
+			cfg_obj_attach(obj, &elt->obj);
+			ISC_LIST_APPEND(*destobj->value.list, elt, link);
+		} else {
+			result = ISC_R_EXISTS;
+		}
+	}
+
+	return result;
+}
+
+isc_result_t
+cfg_map_external_add(cfg_obj_t *mapobj, cfg_obj_t *obj,
+		     const char *clausename) {
+	const cfg_clausedef_t *clause;
+
+	REQUIRE(VALID_CFGOBJ(obj));
+	REQUIRE(VALID_CFGOBJ(mapobj));
+	REQUIRE(mapobj->type->rep == &cfg_rep_map_external);
+	REQUIRE(clausename != NULL);
+
+	clause = cfg_map_external_findclause(mapobj->type, clausename);
+	if (clause == NULL || clause->name == NULL) {
+		return ISC_R_FAILURE;
+	}
+
+	return map_define_external(mapobj, obj, clause);
+}
+
+isc_result_t
+cfg_map_external_addclone(cfg_obj_t *map, const cfg_obj_t *obj,
+			  const cfg_clausedef_t *clause) {
+	isc_result_t result = ISC_R_SUCCESS;
+	cfg_obj_t *clone = NULL;
+
+	REQUIRE(VALID_CFGOBJ(obj));
+	REQUIRE(VALID_CFGOBJ(map));
+	REQUIRE(map->type->rep == &cfg_rep_map_external);
+	REQUIRE(clause != NULL && clause->name != NULL);
+
+	if ((clause->flags & CFG_CLAUSEFLAG_MULTI) != 0) {
+		const cfg_listelt_t *elt = NULL;
+
+		REQUIRE(cfg_obj_islist(obj));
+
+		elt = cfg_list_first(obj);
+		while (elt != NULL && result == ISC_R_SUCCESS) {
+			cfg_obj_clone(elt->obj, &clone);
+			clone->cloned = true;
+
+			result = map_define_external(map, clone, clause);
+			elt = cfg_list_next(elt);
+
+			cfg_obj_detach(&clone);
+		}
+	} else {
+		cfg_obj_clone(obj, &clone);
+		clone->cloned = true;
+		result = map_define_external(map, clone, clause);
 	}
 
 	return result;

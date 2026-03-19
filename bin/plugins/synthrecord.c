@@ -401,8 +401,9 @@ static cfg_clausedef_t *synthrecord_cfgparamsclausesets[] = {
 };
 
 static cfg_type_t synthrecord_cfgparams = {
-	"synthrecord-params", cfg_parse_mapbody, cfg_print_mapbody,
-	cfg_doc_mapbody,      &cfg_rep_map,	 synthrecord_cfgparamsclausesets
+	"synthrecord-params",	   cfg_parse_mapbody_external,
+	cfg_print_mapbody_external, cfg_doc_mapbody_external,
+	&cfg_rep_map_external,	   synthrecord_cfgparamsclausesets
 };
 
 static isc_result_t
@@ -411,7 +412,7 @@ synthrecord_initprefix(synthrecord_t *inst, const cfg_obj_t *synthrecordcfg) {
 	const char *base = NULL;
 	const cfg_obj_t *obj = NULL;
 
-	result = cfg_map_get(synthrecordcfg, "prefix", &obj);
+	result = cfg_map_external_get(synthrecordcfg, "prefix", &obj);
 	if (result != ISC_R_SUCCESS) {
 		isc_log_write(NS_LOGCATEGORY_GENERAL, NS_LOGMODULE_HOOKS,
 			      ISC_LOG_ERROR, "synthrecord: prefix not found");
@@ -448,7 +449,7 @@ synthrecord_initorigin(synthrecord_t *inst, const cfg_obj_t *synthrecordcfg,
 	const cfg_obj_t *obj = NULL;
 	const char *originstr = NULL;
 
-	result = cfg_map_get(synthrecordcfg, "origin", &obj);
+	result = cfg_map_external_get(synthrecordcfg, "origin", &obj);
 	if (inst->mode == REVERSE && result != ISC_R_SUCCESS) {
 		isc_log_write(NS_LOGCATEGORY_GENERAL, NS_LOGMODULE_HOOKS,
 			      ISC_LOG_ERROR,
@@ -496,7 +497,7 @@ synthrecord_parseallowsynth(synthrecord_t *inst, const cfg_obj_t *cfg,
 	const cfg_obj_t *obj = NULL;
 
 	INSIST(inst->allowedsynth == NULL);
-	result = cfg_map_get(synthrecordcfg, "allow-synth", &obj);
+	result = cfg_map_external_get(synthrecordcfg, "allow-synth", &obj);
 
 	if (result == ISC_R_NOTFOUND) {
 		return dns_acl_any(inst->mctx, &inst->allowedsynth);
@@ -532,7 +533,7 @@ synthrecord_parsettl(synthrecord_t *inst, const cfg_obj_t *synthrecordcfg) {
 	isc_result_t result;
 	const cfg_obj_t *obj = NULL;
 
-	result = cfg_map_get(synthrecordcfg, "ttl", &obj);
+	result = cfg_map_external_get(synthrecordcfg, "ttl", &obj);
 
 	if (result == ISC_R_NOTFOUND) {
 		inst->ttl = DEFAULT_TTL;

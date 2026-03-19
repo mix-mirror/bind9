@@ -68,8 +68,9 @@ static cfg_clausedef_t *syncplugin__cfgparamsclausesets[] = {
 };
 
 static cfg_type_t syncplugin__cfgparams = {
-	"syncplugin-params", cfg_parse_mapbody, cfg_print_mapbody,
-	cfg_doc_mapbody,     &cfg_rep_map,	syncplugin__cfgparamsclausesets
+	"syncplugin-params",	    cfg_parse_mapbody_external,
+	cfg_print_mapbody_external, cfg_doc_mapbody_external,
+	&cfg_rep_map_external,	    syncplugin__cfgparamsclausesets
 };
 
 static isc_result_t
@@ -78,7 +79,7 @@ syncplugin__parse_rcode(const cfg_obj_t *syncplugincfg, uint8_t *rcode) {
 	const cfg_obj_t *obj = NULL;
 	const char *rcodestr = NULL;
 
-	RETERR(cfg_map_get(syncplugincfg, "rcode", &obj));
+	RETERR(cfg_map_external_get(syncplugincfg, "rcode", &obj));
 
 	rcodestr = obj->value.string;
 
@@ -131,7 +132,7 @@ plugin_register(const char *parameters, const void *cfg, const char *cfgfile,
 
 	CHECK(syncplugin__parse_rcode(syncplugincfg, &inst->rcode));
 
-	if (cfg_map_get(syncplugincfg, "firstlbl", &obj) == ISC_R_SUCCESS) {
+	if (cfg_map_external_get(syncplugincfg, "firstlbl", &obj) == ISC_R_SUCCESS) {
 		const char *firstlbl = cfg_obj_asstring(obj);
 		size_t len = strlen(firstlbl) + 1;
 
@@ -140,7 +141,7 @@ plugin_register(const char *parameters, const void *cfg, const char *cfgfile,
 	}
 
 	obj = NULL;
-	CHECK(cfg_map_get(syncplugincfg, "source", &obj));
+	CHECK(cfg_map_external_get(syncplugincfg, "source", &obj));
 	sourcestr = obj->value.string;
 
 	if (strcmp(sourcestr, "zone") == 0) {
