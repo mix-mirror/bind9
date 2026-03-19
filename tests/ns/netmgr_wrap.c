@@ -46,17 +46,17 @@ isc_nmhandle_attach(isc_nmhandle_t *source, isc_nmhandle_t **targetp) {
 	int i;
 
 	for (i = 0; i < 32; i++) {
-		if (atomic_load(&client_addrs[i]) == (uintptr_t)client) {
+		if (atomic_load_acquire(&client_addrs[i]) == (uintptr_t)client)
+		{
 			break;
 		}
 	}
-	INSIST(i < 32);
-	INSIST(atomic_load(&client_refs[i]) > 0);
 
-	atomic_fetch_add(&client_refs[i], 1);
+	uint32_t refs = atomic_fetch_add_acq_rel(&client_refs[i], 1);
+	INSIST(refs > 0);
 #if 0
 	fprintf(stderr, "%s:%s:%s:%d -> %ld\n", __func__, func, file, line,
-		client_refs[i]);
+		refs + 1);
 #endif
 
 	*targetp = source;
@@ -77,17 +77,18 @@ isc_nmhandle_detach(isc_nmhandle_t **handlep) {
 	*handlep = NULL;
 
 	for (i = 0; i < 32; i++) {
-		if (atomic_load(&client_addrs[i]) == (uintptr_t)client) {
+		if (atomic_load_acquire(&client_addrs[i]) == (uintptr_t)client)
+		{
 			break;
 		}
 	}
 	INSIST(i < 32);
 
-	if (atomic_fetch_sub(&client_refs[i], 1) == 1) {
+	if (atomic_fetch_sub_acq_rel(&client_refs[i], 1) == 1) {
 		client->inner.state = 4;
 		ns__client_reset_cb(client);
 		ns__client_put_cb(client);
-		atomic_store(&client_addrs[i], (uintptr_t)NULL);
+		atomic_store_release(&client_addrs[i], (uintptr_t)NULL);
 	}
 #if 0
 	fprintf(stderr, "%s:%s:%s:%d -> %ld\n", __func__, func, file, line,

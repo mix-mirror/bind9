@@ -26,6 +26,8 @@
  */
 #include <openssl/err.h>
 
+#include "isc/atomic.h"
+
 #define UNIT_TESTING
 #include <cmocka.h>
 
@@ -50,7 +52,7 @@ shutdownconnect_connectcb(isc_nmhandle_t *handle, isc_result_t eresult,
 
 	isc_refcount_decrement(&active_cconnects);
 
-	atomic_fetch_add(&cconnects, 1);
+	atomic_fetch_add_acq_rel(&cconnects, 1);
 }
 
 int
@@ -123,7 +125,7 @@ shutdownread_readcb(isc_nmhandle_t *handle, isc_result_t eresult,
 	assert_non_null(region);
 	assert_null(cbarg);
 
-	atomic_fetch_add(&creads, 1);
+	atomic_fetch_add_acq_rel(&creads, 1);
 	isc_nmhandle_detach(&handle);
 	isc_refcount_decrement(&active_creads);
 }
@@ -136,7 +138,7 @@ shutdownread_sendcb(isc_nmhandle_t *handle, isc_result_t eresult, void *cbarg) {
 		    eresult == ISC_R_CONNECTIONRESET || eresult == ISC_R_EOF);
 	assert_null(cbarg);
 
-	atomic_fetch_add(&csends, 1);
+	atomic_fetch_add_acq_rel(&csends, 1);
 
 	isc_nmhandle_detach(&handle);
 	isc_refcount_decrement(&active_csends);
@@ -153,7 +155,7 @@ shutdownread_connectcb(isc_nmhandle_t *handle, isc_result_t eresult,
 
 	isc_refcount_decrement(&active_cconnects);
 
-	atomic_fetch_add(&cconnects, 1);
+	atomic_fetch_add_acq_rel(&cconnects, 1);
 
 	/* Schedule the shutdown before read and send */
 	isc_loopmgr_shutdown();

@@ -122,24 +122,24 @@ ISC_LOOP_TEST_IMPL(proxystream_recv_send_sendback) {
 /* TCP Quota */
 
 ISC_LOOP_TEST_IMPL(proxystream_recv_one_quota) {
-	atomic_store(&check_listener_quota, true);
+	atomic_store_release(&check_listener_quota, true);
 	stream_recv_one(arg);
 	return;
 }
 
 ISC_LOOP_TEST_IMPL(proxystream_recv_two_quota) {
-	atomic_store(&check_listener_quota, true);
+	atomic_store_release(&check_listener_quota, true);
 	stream_recv_two(arg);
 	return;
 }
 
 ISC_LOOP_TEST_IMPL(proxystream_recv_send_quota) {
-	atomic_store(&check_listener_quota, true);
+	atomic_store_release(&check_listener_quota, true);
 	stream_recv_send(arg);
 }
 
 ISC_LOOP_TEST_IMPL(proxystream_recv_send_quota_sendback) {
-	atomic_store(&check_listener_quota, true);
+	atomic_store_release(&check_listener_quota, true);
 	allow_send_back = true;
 	stream_recv_send(arg);
 }
@@ -201,24 +201,24 @@ ISC_LOOP_TEST_IMPL(proxystreamtls_recv_send_sendback) {
 /* TCP Quota */
 
 ISC_LOOP_TEST_IMPL(proxystreamtls_recv_one_quota) {
-	atomic_store(&check_listener_quota, true);
+	atomic_store_release(&check_listener_quota, true);
 	stream_recv_one(arg);
 	return;
 }
 
 ISC_LOOP_TEST_IMPL(proxystreamtls_recv_two_quota) {
-	atomic_store(&check_listener_quota, true);
+	atomic_store_release(&check_listener_quota, true);
 	stream_recv_two(arg);
 	return;
 }
 
 ISC_LOOP_TEST_IMPL(proxystreamtls_recv_send_quota) {
-	atomic_store(&check_listener_quota, true);
+	atomic_store_release(&check_listener_quota, true);
 	stream_recv_send(arg);
 }
 
 ISC_LOOP_TEST_IMPL(proxystreamtls_recv_send_quota_sendback) {
-	atomic_store(&check_listener_quota, true);
+	atomic_store_release(&check_listener_quota, true);
 	allow_send_back = true;
 	stream_recv_send(arg);
 }

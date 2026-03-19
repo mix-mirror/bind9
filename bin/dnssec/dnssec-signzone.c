@@ -1487,7 +1487,7 @@ signapex(void) {
 	dns_db_detachnode(&node);
 	result = dns_dbiterator_first(gdbiter);
 	if (result == ISC_R_NOMORE) {
-		atomic_store(&finished, true);
+		atomic_store_release(&finished, true);
 	} else if (result != ISC_R_SUCCESS) {
 		fatal("failure iterating database: %s",
 		      isc_result_totext(result));
@@ -1498,7 +1498,7 @@ static void
 abortwork(void *arg) {
 	UNUSED(arg);
 
-	atomic_store(&shuttingdown, true);
+	atomic_store_release(&shuttingdown, true);
 }
 
 /*%
@@ -1519,12 +1519,12 @@ assignwork(void *arg) {
 
 	UNUSED(arg);
 
-	if (atomic_load(&shuttingdown)) {
+	if (atomic_load_acquire(&shuttingdown)) {
 		return;
 	}
 
 	LOCK(&namelock);
-	if (atomic_load(&finished)) {
+	if (atomic_load_acquire(&finished)) {
 		ended++;
 		if (ended == nloops) {
 			isc_loopmgr_shutdown();
@@ -1591,7 +1591,7 @@ assignwork(void *arg) {
 	next:
 		result = dns_dbiterator_next(gdbiter);
 		if (result == ISC_R_NOMORE) {
-			atomic_store(&finished, true);
+			atomic_store_release(&finished, true);
 			break;
 		} else if (result != ISC_R_SUCCESS) {
 			fatal("failure iterating database: %s",
@@ -3179,23 +3179,24 @@ print_stats(isc_time_t *timer_start, isc_time_t *timer_finish,
 	FILE *out = output_stdout ? stderr : stdout;
 
 	fprintf(out, "Signatures generated:               %10" PRIuFAST32 "\n",
-		atomic_load(&nsigned));
+		atomic_load_acquire(&nsigned));
 	fprintf(out, "Signatures retained:                %10" PRIuFAST32 "\n",
-		atomic_load(&nretained));
+		atomic_load_acquire(&nretained));
 	fprintf(out, "Signatures dropped:                 %10" PRIuFAST32 "\n",
-		atomic_load(&ndropped));
+		atomic_load_acquire(&ndropped));
 	fprintf(out, "Signatures successfully verified:   %10" PRIuFAST32 "\n",
-		atomic_load(&nverified));
+		atomic_load_acquire(&nverified));
 	fprintf(out, "Signatures unsuccessfully verified: %10" PRIuFAST32 "\n",
-		atomic_load(&nverifyfailed));
+		atomic_load_acquire(&nverifyfailed));
 
 	time_us = isc_time_microdiff(sign_finish, sign_start);
 	time_ms = time_us / 1000;
 	fprintf(out, "Signing time in seconds:           %7u.%03u\n",
 		(unsigned int)(time_ms / 1000), (unsigned int)(time_ms % 1000));
 	if (time_us > 0) {
-		sig_ms = ((uint64_t)atomic_load(&nsigned) * 1000000000) /
-			 time_us;
+		sig_ms =
+			((uint64_t)atomic_load_acquire(&nsigned) * 1000000000) /
+			time_us;
 		fprintf(out, "Signatures per second:             %7u.%03u\n",
 			(unsigned int)sig_ms / 1000,
 			(unsigned int)sig_ms % 1000);
@@ -3880,7 +3881,7 @@ main(int argc, char *argv[]) {
 	presign();
 	sign_start = isc_time_now();
 	signapex();
-	if (!atomic_load(&finished)) {
+	if (!atomic_load_acquire(&finished)) {
 		/*
 		 * There is more work to do.  Spread it out over multiple
 		 * processors if possible.
@@ -3889,7 +3890,7 @@ main(int argc, char *argv[]) {
 		isc_loopmgr_teardown(abortwork, NULL);
 		isc_loopmgr_run();
 
-		if (!atomic_load(&finished)) {
+		if (!atomic_load_acquire(&finished)) {
 			fatal("process aborted by user");
 		}
 	}

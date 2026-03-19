@@ -286,7 +286,7 @@ static isc_result_t
 axfr_init(dns_xfrin_t *xfr) {
 	isc_result_t result;
 
-	atomic_store(&xfr->is_ixfr, false);
+	atomic_store_release(&xfr->is_ixfr, false);
 
 	if (xfr->db != NULL) {
 		dns_db_detach(&xfr->db);
@@ -353,7 +353,7 @@ axfr_apply(void *arg) {
 	isc_result_t result = ISC_R_SUCCESS;
 	uint64_t records;
 
-	if (atomic_load(&xfr->shuttingdown)) {
+	if (atomic_load_acquire(&xfr->shuttingdown)) {
 		CLEANUP(ISC_R_SHUTTINGDOWN);
 	}
 
@@ -379,7 +379,7 @@ axfr_apply_done(void *arg) {
 	REQUIRE(VALID_XFRIN(xfr));
 	REQUIRE(VALID_XFRIN_WORK(work));
 
-	if (atomic_load(&xfr->shuttingdown)) {
+	if (atomic_load_acquire(&xfr->shuttingdown)) {
 		result = ISC_R_SHUTTINGDOWN;
 	}
 
@@ -397,7 +397,7 @@ cleanup:
 	isc_mem_put(xfr->mctx, work, sizeof(*work));
 
 	if (result == ISC_R_SUCCESS) {
-		if (atomic_load(&xfr->state) == XFRST_AXFR_END) {
+		if (atomic_load_acquire(&xfr->state) == XFRST_AXFR_END) {
 			xfrin_end(xfr, result);
 		}
 	} else {
@@ -453,7 +453,7 @@ ixfr_init(dns_xfrin_t *xfr) {
 		return DNS_R_FORMERR;
 	}
 
-	atomic_store(&xfr->is_ixfr, true);
+	atomic_store_release(&xfr->is_ixfr, true);
 	INSIST(xfr->db != NULL);
 
 	journalfile = dns_zone_getjournal(xfr->zone);
@@ -591,7 +591,7 @@ ixfr_apply(void *arg) {
 		ixfr_apply_data_t *data =
 			caa_container_of(node, ixfr_apply_data_t, wfcq_node);
 
-		if (atomic_load(&xfr->shuttingdown)) {
+		if (atomic_load_acquire(&xfr->shuttingdown)) {
 			result = ISC_R_SHUTTINGDOWN;
 		}
 
@@ -619,7 +619,7 @@ ixfr_apply_done(void *arg) {
 
 	isc_result_t result = work->result;
 
-	if (atomic_load(&xfr->shuttingdown)) {
+	if (atomic_load_acquire(&xfr->shuttingdown)) {
 		result = ISC_R_SHUTTINGDOWN;
 	}
 
@@ -640,7 +640,7 @@ cleanup:
 		dns_db_closeversion(xfr->db, &xfr->ver, true);
 		dns_zone_markdirty(xfr->zone);
 
-		if (atomic_load(&xfr->state) == XFRST_IXFR_END) {
+		if (atomic_load_acquire(&xfr->state) == XFRST_IXFR_END) {
 			xfrin_end(xfr, result);
 		}
 	} else {
@@ -734,7 +734,7 @@ xfr_rr(dns_xfrin_t *xfr, dns_name_t *name, uint32_t ttl, dns_rdata_t *rdata) {
 	}
 
 redo:
-	switch (atomic_load(&xfr->state)) {
+	switch (atomic_load_acquire(&xfr->state)) {
 	case XFRST_SOAQUERY:
 		if (rdata->type != dns_rdatatype_soa) {
 			xfrin_log(xfr, ISC_LOG_NOTICE,
@@ -752,7 +752,7 @@ redo:
 				  xfr->ixfr.request_serial, end_serial);
 			CLEANUP(DNS_R_UPTODATE);
 		}
-		atomic_store(&xfr->state, XFRST_GOTSOA);
+		atomic_store_release(&xfr->state, XFRST_GOTSOA);
 		break;
 
 	case XFRST_GOTSOA:
@@ -795,7 +795,7 @@ redo:
 		xfr->firstsoa_data = isc_mem_allocate(xfr->mctx, rdata->length);
 		memcpy(xfr->firstsoa_data, rdata->data, rdata->length);
 		xfr->firstsoa.data = xfr->firstsoa_data;
-		atomic_store(&xfr->state, XFRST_FIRSTDATA);
+		atomic_store_release(&xfr->state, XFRST_FIRSTDATA);
 		break;
 
 	case XFRST_FIRSTDATA:
@@ -810,25 +810,25 @@ redo:
 			xfrin_log(xfr, ISC_LOG_DEBUG(3),
 				  "got incremental response");
 			CHECK(ixfr_init(xfr));
-			atomic_store(&xfr->state, XFRST_IXFR_DELSOA);
+			atomic_store_release(&xfr->state, XFRST_IXFR_DELSOA);
 		} else {
 			xfrin_log(xfr, ISC_LOG_DEBUG(3),
 				  "got nonincremental response");
 			CHECK(axfr_init(xfr));
-			atomic_store(&xfr->state, XFRST_AXFR);
+			atomic_store_release(&xfr->state, XFRST_AXFR);
 		}
 		goto redo;
 
 	case XFRST_IXFR_DELSOA:
 		INSIST(rdata->type == dns_rdatatype_soa);
 		CHECK(ixfr_putdata(xfr, DNS_DIFFOP_DEL, name, ttl, rdata));
-		atomic_store(&xfr->state, XFRST_IXFR_DEL);
+		atomic_store_release(&xfr->state, XFRST_IXFR_DEL);
 		break;
 
 	case XFRST_IXFR_DEL:
 		if (rdata->type == dns_rdatatype_soa) {
 			uint32_t soa_serial = dns_soa_getserial(rdata);
-			atomic_store(&xfr->state, XFRST_IXFR_ADDSOA);
+			atomic_store_release(&xfr->state, XFRST_IXFR_ADDSOA);
 			xfr->ixfr.current_serial = soa_serial;
 			goto redo;
 		}
@@ -838,7 +838,7 @@ redo:
 	case XFRST_IXFR_ADDSOA:
 		INSIST(rdata->type == dns_rdatatype_soa);
 		CHECK(ixfr_putdata(xfr, DNS_DIFFOP_ADD, name, ttl, rdata));
-		atomic_store(&xfr->state, XFRST_IXFR_ADD);
+		atomic_store_release(&xfr->state, XFRST_IXFR_ADD);
 		break;
 
 	case XFRST_IXFR_ADD:
@@ -847,7 +847,8 @@ redo:
 			if (soa_serial == atomic_load_relaxed(&xfr->end_serial))
 			{
 				CHECK(ixfr_commit(xfr));
-				atomic_store(&xfr->state, XFRST_IXFR_END);
+				atomic_store_release(&xfr->state,
+						     XFRST_IXFR_END);
 				break;
 			} else if (soa_serial != xfr->ixfr.current_serial) {
 				xfrin_log(xfr, ISC_LOG_NOTICE,
@@ -857,7 +858,8 @@ redo:
 				CLEANUP(DNS_R_FORMERR);
 			} else {
 				CHECK(ixfr_commit(xfr));
-				atomic_store(&xfr->state, XFRST_IXFR_DELSOA);
+				atomic_store_release(&xfr->state,
+						     XFRST_IXFR_DELSOA);
 				goto redo;
 			}
 		}
@@ -892,7 +894,7 @@ redo:
 				CLEANUP(DNS_R_FORMERR);
 			}
 			axfr_commit(xfr);
-			atomic_store(&xfr->state, XFRST_AXFR_END);
+			atomic_store_release(&xfr->state, XFRST_AXFR_END);
 			break;
 		}
 		break;
@@ -1020,10 +1022,10 @@ dns_xfrin_getstate(const dns_xfrin_t *xfr, const char **statestr,
 	REQUIRE(statestr != NULL && *statestr == NULL);
 	REQUIRE(is_ixfr != NULL);
 
-	state = atomic_load(&xfr->state);
+	state = atomic_load_acquire(&xfr->state);
 	*statestr = "";
 	*is_first_data_received = (state > XFRST_FIRSTDATA);
-	*is_ixfr = atomic_load(&xfr->is_ixfr);
+	*is_ixfr = atomic_load_acquire(&xfr->is_ixfr);
 
 	switch (state) {
 	case XFRST_SOAQUERY:
@@ -1204,13 +1206,13 @@ xfrin_fail(dns_xfrin_t *xfr, isc_result_t result, const char *msg) {
 	dns_xfrin_ref(xfr);
 
 	/* Make sure only the first xfrin_fail() trumps */
-	if (atomic_compare_exchange_strong(&xfr->shuttingdown, &(bool){ false },
-					   true))
+	if (atomic_compare_exchange_strong_acq_rel(&xfr->shuttingdown,
+						   &(bool){ false }, true))
 	{
 		if (result != DNS_R_UPTODATE) {
 			xfrin_log(xfr, ISC_LOG_ERROR, "%s: %s", msg,
 				  isc_result_totext(result));
-			if (atomic_load(&xfr->is_ixfr) &&
+			if (atomic_load_acquire(&xfr->is_ixfr) &&
 			    result != ISC_R_CANCELED &&
 			    result != ISC_R_SHUTTINGDOWN)
 			{
@@ -1340,7 +1342,7 @@ xfrin_start(dns_xfrin_t *xfr) {
 	 * SOA request, and 'soa_transport_type' is already correctly
 	 * set by the creator of the xfrin.
 	 */
-	if (atomic_load(&xfr->state) == XFRST_SOAQUERY) {
+	if (atomic_load_acquire(&xfr->state) == XFRST_SOAQUERY) {
 		/*
 		 * The "SOA before" mode is used, where the SOA request is
 		 * using the same transport as the XFR.
@@ -1435,7 +1437,7 @@ xfrin_connect_done(isc_result_t result, isc_region_t *region ISC_ATTR_UNUSED,
 
 	REQUIRE(VALID_XFRIN(xfr));
 
-	if (atomic_load(&xfr->shuttingdown)) {
+	if (atomic_load_acquire(&xfr->shuttingdown)) {
 		result = ISC_R_SHUTTINGDOWN;
 	}
 
@@ -1700,7 +1702,7 @@ xfrin_send_done(isc_result_t result, isc_region_t *region, void *arg) {
 
 	REQUIRE(VALID_XFRIN(xfr));
 
-	if (atomic_load(&xfr->shuttingdown)) {
+	if (atomic_load_acquire(&xfr->shuttingdown)) {
 		result = ISC_R_SHUTTINGDOWN;
 	}
 
@@ -1761,7 +1763,7 @@ xfrin_end(dns_xfrin_t *xfr, isc_result_t result) {
 		LIBDNS_XFRIN_DONE_CALLBACK_END(xfr, xfr->info, result);
 	}
 
-	atomic_store(&xfr->shuttingdown, true);
+	atomic_store_release(&xfr->shuttingdown, true);
 
 	if (xfr->max_time_timer != NULL) {
 		isc_timer_stop(xfr->max_time_timer);
@@ -1790,7 +1792,7 @@ xfrin_recv_done(isc_result_t result, isc_region_t *region, void *arg) {
 
 	REQUIRE(VALID_XFRIN(xfr));
 
-	if (atomic_load(&xfr->shuttingdown)) {
+	if (atomic_load_acquire(&xfr->shuttingdown)) {
 		result = ISC_R_SHUTTINGDOWN;
 	}
 
@@ -1838,8 +1840,8 @@ xfrin_recv_done(isc_result_t result, isc_region_t *region, void *arg) {
 	{
 		if (result == ISC_R_SUCCESS &&
 		    msg->rcode == dns_rcode_formerr && xfr->edns &&
-		    (atomic_load(&xfr->state) == XFRST_SOAQUERY ||
-		     atomic_load(&xfr->state) == XFRST_ZONEXFRREQUEST))
+		    (atomic_load_acquire(&xfr->state) == XFRST_SOAQUERY ||
+		     atomic_load_acquire(&xfr->state) == XFRST_ZONEXFRREQUEST))
 		{
 			xfr->edns = false;
 			dns_message_detach(&msg);
@@ -1874,7 +1876,7 @@ xfrin_recv_done(isc_result_t result, isc_region_t *region, void *arg) {
 		dns_message_detach(&msg);
 		xfrin_reset(xfr);
 		xfr->reqtype = dns_rdatatype_soa;
-		atomic_store(&xfr->state, XFRST_SOAQUERY);
+		atomic_store_release(&xfr->state, XFRST_SOAQUERY);
 	try_again:
 		result = xfrin_start(xfr);
 		if (result != ISC_R_SUCCESS) {
@@ -1897,8 +1899,8 @@ xfrin_recv_done(isc_result_t result, isc_region_t *region, void *arg) {
 		CLEANUP(DNS_R_FORMERR);
 	}
 
-	if ((atomic_load(&xfr->state) == XFRST_SOAQUERY ||
-	     atomic_load(&xfr->state) == XFRST_ZONEXFRREQUEST) &&
+	if ((atomic_load_acquire(&xfr->state) == XFRST_SOAQUERY ||
+	     atomic_load_acquire(&xfr->state) == XFRST_ZONEXFRREQUEST) &&
 	    msg->counts[DNS_SECTION_QUESTION] != 1)
 	{
 		xfrin_log(xfr, ISC_LOG_NOTICE, "missing question section");
@@ -1936,7 +1938,7 @@ xfrin_recv_done(isc_result_t result, isc_region_t *region, void *arg) {
 	 * if the first RR in the answer section is not a SOA record.
 	 */
 	if (xfr->reqtype == dns_rdatatype_ixfr &&
-	    atomic_load(&xfr->state) == XFRST_ZONEXFRREQUEST &&
+	    atomic_load_acquire(&xfr->state) == XFRST_ZONEXFRREQUEST &&
 	    msg->counts[DNS_SECTION_ANSWER] == 0)
 	{
 		xfrin_log(xfr, ISC_LOG_DEBUG(3),
@@ -2003,8 +2005,8 @@ xfrin_recv_done(isc_result_t result, isc_region_t *region, void *arg) {
 		xfr->sincetsig++;
 		if (xfr->sincetsig > 100 ||
 		    atomic_load_relaxed(&xfr->nmsg) == 0 ||
-		    atomic_load(&xfr->state) == XFRST_AXFR_END ||
-		    atomic_load(&xfr->state) == XFRST_IXFR_END)
+		    atomic_load_acquire(&xfr->state) == XFRST_AXFR_END ||
+		    atomic_load_acquire(&xfr->state) == XFRST_IXFR_END)
 		{
 			CLEANUP(DNS_R_EXPECTEDTSIG);
 		}
@@ -2027,10 +2029,10 @@ xfrin_recv_done(isc_result_t result, isc_region_t *region, void *arg) {
 		get_edns_expire(xfr, msg);
 	}
 
-	switch (atomic_load(&xfr->state)) {
+	switch (atomic_load_acquire(&xfr->state)) {
 	case XFRST_GOTSOA:
 		xfr->reqtype = dns_rdatatype_axfr;
-		atomic_store(&xfr->state, XFRST_ZONEXFRREQUEST);
+		atomic_store_release(&xfr->state, XFRST_ZONEXFRREQUEST);
 		CHECK(xfrin_start(xfr));
 		break;
 	case XFRST_AXFR_END:
@@ -2079,7 +2081,7 @@ xfrin_destroy(dns_xfrin_t *xfr) {
 	REQUIRE(VALID_XFRIN(xfr));
 
 	/* Safe-guards */
-	REQUIRE(atomic_load(&xfr->shuttingdown));
+	REQUIRE(atomic_load_acquire(&xfr->shuttingdown));
 
 	INSIST(xfr->shutdown_result != ISC_R_UNSET);
 

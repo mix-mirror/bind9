@@ -9693,7 +9693,7 @@ spillattimer_countdown(void *arg) {
 
 	REQUIRE(VALID_RESOLVER(res));
 
-	if (atomic_load(&res->exiting)) {
+	if (atomic_load_acquire(&res->exiting)) {
 		isc_timer_destroy(&res->spillattimer);
 		return;
 	}
@@ -9920,7 +9920,9 @@ dns_resolver_shutdown(dns_resolver_t *res) {
 
 	RTRACE("shutdown");
 
-	if (atomic_compare_exchange_strong(&res->exiting, &is_false, true)) {
+	if (atomic_compare_exchange_strong_acq_rel(&res->exiting, &is_false,
+						   true))
+	{
 		RTRACE("exiting");
 
 		fetchctx_t *fctx = NULL;
@@ -10670,13 +10672,13 @@ dns_resolver_settimeout(dns_resolver_t *resolver, unsigned int timeout) {
 void
 dns_resolver_setmaxvalidations(dns_resolver_t *resolver, uint32_t max) {
 	REQUIRE(VALID_RESOLVER(resolver));
-	atomic_store(&resolver->maxvalidations, max);
+	atomic_store_relaxed(&resolver->maxvalidations, max);
 }
 
 void
 dns_resolver_setmaxvalidationfails(dns_resolver_t *resolver, uint32_t max) {
 	REQUIRE(VALID_RESOLVER(resolver));
-	atomic_store(&resolver->maxvalidationfails, max);
+	atomic_store_relaxed(&resolver->maxvalidationfails, max);
 }
 
 void

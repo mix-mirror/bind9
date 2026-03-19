@@ -304,11 +304,11 @@ void
 isc_rwlock_destroy(isc_rwlock_t *rwl) {
 	LIBISC_RWLOCK_DESTROY(rwl);
 	/* Check whether write lock has been unlocked */
-	REQUIRE(atomic_load(&rwl->writers_lock) == ISC_RWLOCK_UNLOCKED);
+	REQUIRE(atomic_load_acquire(&rwl->writers_lock) == ISC_RWLOCK_UNLOCKED);
 	REQUIRE(read_indicator_isempty(rwl));
 }
 
 void
 isc_rwlock_setworkers(uint16_t workers) {
-	atomic_store(&isc__crwlock_workers, workers);
+	atomic_store_relaxed(&isc__crwlock_workers, workers);
 }

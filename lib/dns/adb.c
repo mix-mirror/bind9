@@ -858,7 +858,7 @@ clean_finds_at_name(dns_adbname_t *name, dns_adbstatus_t astat,
 
 			INSIST(!FIND_EVENTSENT(find));
 
-			atomic_store(&find->status, astat);
+			atomic_store_release(&find->status, astat);
 
 			DP(DEF_LEVEL, "cfan: sending find %p to caller", find);
 
@@ -1133,8 +1133,8 @@ new_adbaddrinfo(dns_adb_t *adb, dns_adbentry_t *entry, in_port_t port) {
 
 	ai = isc_mem_get(adb->hmctx, sizeof(*ai));
 	*ai = (dns_adbaddrinfo_t){
-		.srtt = atomic_load(&entry->srtt),
-		.flags = atomic_load(&entry->flags),
+		.srtt = atomic_load_relaxed(&entry->srtt),
+		.flags = atomic_load_relaxed(&entry->flags),
 		.publink = ISC_LINK_INITIALIZER,
 		.sockaddr = entry->sockaddr,
 		.entry = dns_adbentry_ref(entry),
@@ -1695,8 +1695,8 @@ dns_adb_shutdown_async(void *arg) {
 
 void
 dns_adb_shutdown(dns_adb_t *adb) {
-	if (!atomic_compare_exchange_strong(&adb->shuttingdown,
-					    &(bool){ false }, true))
+	if (!atomic_compare_exchange_strong_acq_rel(&adb->shuttingdown,
+						    &(bool){ false }, true))
 	{
 		return;
 	}
@@ -1760,7 +1760,7 @@ dns_adb_createfind(dns_adb_t *adb, isc_loop_t *loop, isc_job_cb cb, void *cbarg,
 
 	rcu_read_lock();
 
-	if (atomic_load(&adb->shuttingdown)) {
+	if (atomic_load_acquire(&adb->shuttingdown)) {
 		rcu_read_unlock();
 		return ISC_R_SHUTTINGDOWN;
 	}
@@ -2033,7 +2033,7 @@ post_copy:
 	if (want_event) {
 		INSIST((find->flags & DNS_ADBFIND_ADDRESSMASK) != 0);
 		find->loop = loop;
-		atomic_store(&find->status, DNS_ADB_UNSET);
+		atomic_store_release(&find->status, DNS_ADB_UNSET);
 		find->cb = cb;
 		find->cbarg = cbarg;
 	}
@@ -2090,7 +2090,7 @@ dns_adb_destroyfind(dns_adbfind_t **findp) {
 static void
 find_sendevent(dns_adbfind_t *find) {
 	if (!FIND_EVENTSENT(find)) {
-		atomic_store(&find->status, DNS_ADB_CANCELED);
+		atomic_store_release(&find->status, DNS_ADB_CANCELED);
 
 		DP(DEF_LEVEL, "sending find %p to caller", find);
 
@@ -2151,7 +2151,7 @@ unsigned int
 dns_adb_findstatus(dns_adbfind_t *find) {
 	REQUIRE(DNS_ADBFIND_VALID(find));
 
-	return atomic_load(&find->status);
+	return atomic_load_acquire(&find->status);
 }
 
 void
@@ -2163,7 +2163,7 @@ dns_adb_dump(dns_adb_t *adb, FILE *f) {
 
 	rcu_read_lock();
 
-	if (atomic_load(&adb->shuttingdown)) {
+	if (atomic_load_acquire(&adb->shuttingdown)) {
 		rcu_read_unlock();
 		return;
 	}
@@ -2261,8 +2261,9 @@ dump_entry(FILE *f, dns_adb_t *adb, dns_adbentry_t *entry, bool debug,
 	fprintf(f,
 		";\t%s [srtt %u] [flags %08x] [edns %u/%u] "
 		"[plain %u/%u]",
-		addrbuf, atomic_load(&entry->srtt), atomic_load(&entry->flags),
-		entry->edns, entry->ednsto, entry->plain, entry->plainto);
+		addrbuf, atomic_load_acquire(&entry->srtt),
+		atomic_load_acquire(&entry->flags), entry->edns, entry->ednsto,
+		entry->plain, entry->plainto);
 	if (entry->udpsize != 0U) {
 		fprintf(f, " [udpsize %u]", entry->udpsize);
 	}
@@ -2387,7 +2388,7 @@ dns_adb_dumpquota(dns_adb_t *adb, isc_buffer_t *buf) {
 	struct cds_lfht_iter iter;
 
 	rcu_read_lock();
-	if (atomic_load(&adb->shuttingdown)) {
+	if (atomic_load_acquire(&adb->shuttingdown)) {
 		rcu_read_unlock();
 		return ISC_R_SHUTTINGDOWN;
 	}
@@ -2614,7 +2615,7 @@ fetch_callback(void *arg) {
 		dns_db_detach(&resp->cache);
 	}
 
-	if (atomic_load(&adb->shuttingdown)) {
+	if (atomic_load_acquire(&adb->shuttingdown)) {
 		astat = DNS_ADB_SHUTTINGDOWN;
 		goto out;
 	}
@@ -2879,9 +2880,9 @@ dns_adb_changeflags(dns_adb_t *adb, dns_adbaddrinfo_t *addr, unsigned int bits,
 
 	dns_adbentry_t *entry = addr->entry;
 
-	unsigned int flags = atomic_load(&entry->flags);
-	while (!atomic_compare_exchange_strong(&entry->flags, &flags,
-					       (flags & ~mask) | (bits & mask)))
+	unsigned int flags = atomic_load_acquire(&entry->flags);
+	while (!atomic_compare_exchange_strong_acq_rel(
+		&entry->flags, &flags, (flags & ~mask) | (bits & mask)))
 	{
 		/* repeat */
 	}
@@ -3133,7 +3134,7 @@ dns_adb_findaddrinfo(dns_adb_t *adb, const isc_sockaddr_t *addr,
 	REQUIRE(adbaddrp != NULL && *adbaddrp == NULL);
 
 	rcu_read_lock();
-	if (atomic_load(&adb->shuttingdown)) {
+	if (atomic_load_acquire(&adb->shuttingdown)) {
 		rcu_read_unlock();
 		return ISC_R_SHUTTINGDOWN;
 	}
@@ -3178,7 +3179,7 @@ dns_adb_flush(dns_adb_t *adb) {
 
 	rcu_read_lock();
 
-	if (atomic_load(&adb->shuttingdown)) {
+	if (atomic_load_acquire(&adb->shuttingdown)) {
 		rcu_read_unlock();
 		return;
 	}
@@ -3205,7 +3206,7 @@ dns_adb_flushname(dns_adb_t *adb, const dns_name_t *name) {
 
 	rcu_read_lock();
 
-	if (atomic_load(&adb->shuttingdown)) {
+	if (atomic_load_acquire(&adb->shuttingdown)) {
 		rcu_read_unlock();
 		return;
 	}
@@ -3259,7 +3260,7 @@ dns_adb_flushnames(dns_adb_t *adb, const dns_name_t *name) {
 
 	rcu_read_lock();
 
-	if (atomic_load(&adb->shuttingdown)) {
+	if (atomic_load_acquire(&adb->shuttingdown)) {
 		rcu_read_unlock();
 		return;
 	}

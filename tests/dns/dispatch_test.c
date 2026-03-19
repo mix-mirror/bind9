@@ -417,7 +417,9 @@ response_getnext(isc_result_t result, isc_region_t *region ISC_ATTR_UNUSED,
 		 void *arg) {
 	test_dispatch_t *test = arg;
 
-	if (atomic_compare_exchange_strong(&first, &(bool){ true }, false)) {
+	if (atomic_compare_exchange_strong_acq_rel(&first, &(bool){ true },
+						   false))
+	{
 		result = dns_dispatch_getnext(test->dispentry);
 		assert_int_equal(result, ISC_R_SUCCESS);
 	} else {

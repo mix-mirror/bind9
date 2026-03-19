@@ -49,6 +49,8 @@
 #include <ns/interfacemgr.h>
 #include <ns/server.h>
 
+#include "isc/atomic.h"
+
 #include <tests/ns.h>
 
 dns_dispatchmgr_t *dispatchmgr = NULL;
@@ -218,16 +220,16 @@ ns_test_getclient(ns_interface_t *ifp0, bool tcp, ns_client_t **clientp) {
 	ns__client_setup(client, clientmgr, true);
 
 	for (i = 0; i < 32; i++) {
-		if (atomic_load(&client_addrs[i]) == (uintptr_t)NULL ||
-		    atomic_load(&client_addrs[i]) == (uintptr_t)client)
+		if (atomic_load_acquire(&client_addrs[i]) == (uintptr_t)NULL ||
+		    atomic_load_acquire(&client_addrs[i]) == (uintptr_t)client)
 		{
 			break;
 		}
 	}
 	REQUIRE(i < 32);
 
-	atomic_store(&client_refs[i], 2);
-	atomic_store(&client_addrs[i], (uintptr_t)client);
+	atomic_store_release(&client_refs[i], 2);
+	atomic_store_relaxed(&client_addrs[i], (uintptr_t)client);
 	client->inner.handle = (isc_nmhandle_t *)client; /* Hack */
 	*clientp = client;
 }

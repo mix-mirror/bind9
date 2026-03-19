@@ -236,10 +236,8 @@ isc__nm_dump_active_manager(void);
  * connections we have peer address here, so both TCP and UDP can be
  * handled with a simple send-like function
  */
-#define NMHANDLE_MAGIC ISC_MAGIC('N', 'M', 'H', 'D')
-#define VALID_NMHANDLE(t)                      \
-	(ISC_MAGIC_VALID(t, NMHANDLE_MAGIC) && \
-	 atomic_load(&(t)->references) > 0)
+#define NMHANDLE_MAGIC	  ISC_MAGIC('N', 'M', 'H', 'D')
+#define VALID_NMHANDLE(t) (ISC_MAGIC_VALID(t, NMHANDLE_MAGIC))
 
 typedef void (*isc__nm_closecb)(isc_nmhandle_t *);
 typedef struct isc_nm_http_session isc_nm_http_session_t;

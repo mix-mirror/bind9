@@ -494,8 +494,10 @@ static void *
 mem_thread(void *arg) {
 	isc_mem_t *mctx = (isc_mem_t *)arg;
 	void *items[NUM_ITEMS];
-	size_t size = atomic_load(&mem_size);
-	while (!atomic_compare_exchange_weak(&mem_size, &size, size / 2)) {
+	size_t size = atomic_load_acquire(&mem_size);
+	while (!atomic_compare_exchange_weak_acq_rel(&mem_size, &size,
+						     size / 2))
+	{
 		;
 	}
 

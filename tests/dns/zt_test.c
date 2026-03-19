@@ -265,7 +265,7 @@ ISC_LOOP_TEST_IMPL(asyncload_zt) {
 
 	assert_false(dns__zone_loadpending(zone1));
 	assert_false(dns__zone_loadpending(zone2));
-	assert_false(atomic_load(&done));
+	assert_false(atomic_load_acquire(&done));
 
 	rcu_read_lock();
 	zt = rcu_dereference(view->zonetable);

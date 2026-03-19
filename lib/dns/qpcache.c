@@ -1065,7 +1065,7 @@ bindrdataset(qpcache_t *qpdb, qpcnode_t *node, dns_slabheader_t *header,
 		rdataset->covers = DNS_TYPEPAIR_COVERS(header->typepair);
 	}
 	rdataset->ttl = !ZEROTTL(header) ? header->expire - now : 0;
-	rdataset->trust = atomic_load(&header->trust);
+	rdataset->trust = atomic_load_acquire(&header->trust);
 	rdataset->resign = 0;
 
 	if (NEGATIVE(header)) {
@@ -1381,8 +1381,9 @@ check_zonecut(qpcnode_t *node, void *arg DNS__DB_FLARG) {
 	 */
 	find_headers(node, search, dns_rdatatype_dname, &found, &foundsig);
 
-	if (found != NULL && (!DNS_TRUST_PENDING(atomic_load(&found->trust)) ||
-			      (search->options & DNS_DBFIND_PENDINGOK) != 0))
+	if (found != NULL &&
+	    (!DNS_TRUST_PENDING(atomic_load_acquire(&found->trust)) ||
+	     (search->options & DNS_DBFIND_PENDINGOK) != 0))
 	{
 		/*
 		 * We increment the reference count on node to ensure that
@@ -1550,7 +1551,7 @@ missing_answer(dns_slabheader_t *found, unsigned int options) {
 		return true;
 	}
 
-	dns_trust_t trust = atomic_load(&found->trust);
+	dns_trust_t trust = atomic_load_acquire(&found->trust);
 	return (DNS_TRUST_ADDITIONAL(trust) &&
 		(options & DNS_DBFIND_ADDITIONALOK) == 0) ||
 	       (DNS_TRUST_GLUE(trust) && (options & DNS_DBFIND_GLUEOK) == 0) ||
@@ -1751,7 +1752,7 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		empty_node = false;
 
 		if (header != NULL && header->noqname != NULL &&
-		    atomic_load(&header->trust) == dns_trust_secure)
+		    atomic_load_acquire(&header->trust) == dns_trust_secure)
 		{
 			found_noqname = true;
 		}
@@ -2763,7 +2764,7 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 		 * data will supersede it below. Unclear what the best
 		 * policy is here.
 		 */
-		dns_trust_t oldtrust = atomic_load(&oldheader->trust);
+		dns_trust_t oldtrust = atomic_load_acquire(&oldheader->trust);
 		if (trust < oldtrust &&
 		    (ACTIVE(oldheader, now) || !EXISTS(oldheader)))
 		{

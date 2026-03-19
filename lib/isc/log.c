@@ -755,8 +755,8 @@ assignchannel(isc_logconfig_t *lcfg, const isc_logcategory_t category,
 
 static void
 sync_highest_level(isc_logconfig_t *lcfg) {
-	atomic_store(&isc__lctx->highest_level, lcfg->highest_level);
-	atomic_store(&isc__lctx->dynamic, lcfg->dynamic);
+	atomic_store_release(&isc__lctx->highest_level, lcfg->highest_level);
+	atomic_store_release(&isc__lctx->dynamic, lcfg->dynamic);
 }
 
 static isc_result_t

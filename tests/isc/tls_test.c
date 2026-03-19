@@ -95,23 +95,23 @@ ISC_LOOP_TEST_IMPL(tls_recv_send_sendback) {
 /* TLS quota */
 
 ISC_LOOP_TEST_IMPL(tls_recv_one_quota) {
-	atomic_store(&check_listener_quota, true);
+	atomic_store_release(&check_listener_quota, true);
 	stream_recv_one(arg);
 }
 
 ISC_LOOP_TEST_IMPL(tls_recv_two_quota) {
-	atomic_store(&check_listener_quota, true);
+	atomic_store_release(&check_listener_quota, true);
 	stream_recv_two(arg);
 }
 
 ISC_LOOP_TEST_IMPL(tls_recv_send_quota) {
-	atomic_store(&check_listener_quota, true);
+	atomic_store_release(&check_listener_quota, true);
 	stream_recv_send(arg);
 }
 
 ISC_LOOP_TEST_IMPL(tls_recv_send_quota_sendback) {
 	allow_send_back = true;
-	atomic_store(&check_listener_quota, true);
+	atomic_store_release(&check_listener_quota, true);
 	stream_recv_send(arg);
 }
 

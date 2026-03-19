@@ -59,10 +59,10 @@ shutdown_cb(void *arg) {
 static void
 job_cb(void *arg) {
 	struct test_arg *ta = arg;
-	unsigned int n = atomic_fetch_add(&executed, 1);
+	unsigned int n = atomic_fetch_add_acq_rel(&executed, 1);
 
 	if (n <= MAX_EXECUTED) {
-		atomic_fetch_add(&scheduled, 1);
+		atomic_fetch_add_acq_rel(&scheduled, 1);
 		isc_job_run(isc_loop(), &ta->job, job_cb, ta);
 	} else {
 		isc_job_run(isc_loop(), &ta->job, shutdown_cb, ta);
@@ -72,7 +72,7 @@ job_cb(void *arg) {
 static void
 job_run_cb(void *arg) {
 	struct test_arg *ta = arg;
-	atomic_fetch_add(&scheduled, 1);
+	atomic_fetch_add_acq_rel(&scheduled, 1);
 
 	if (arg == NULL) {
 		ta = isc_mem_get(isc_g_mctx, sizeof(*ta));
@@ -90,7 +90,8 @@ ISC_RUN_TEST_IMPL(isc_job_run) {
 
 	isc_loopmgr_run();
 
-	assert_int_equal(atomic_load(&scheduled), atomic_load(&executed));
+	assert_int_equal(atomic_load_acquire(&scheduled),
+			 atomic_load_acquire(&executed));
 }
 
 static char string[32] = "";

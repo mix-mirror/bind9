@@ -24,6 +24,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "isc/atomic.h"
+
 #ifdef HAVE_DNSTAP
 #include <fstrm.h>
 #endif
@@ -8961,7 +8963,7 @@ destroy_zoneload(zoneload_t *zl) {
 				"MAINPID=%" PRId64 "\n",
 				(int64_t)getpid());
 
-	atomic_store(&server->reload_status, NAMED_RELOAD_DONE);
+	atomic_store_release(&server->reload_status, NAMED_RELOAD_DONE);
 
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
 		      ISC_LOG_NOTICE, "running");
@@ -9544,7 +9546,8 @@ loadconfig(named_server_t *server) {
 			      ISC_LOG_INFO,
 			      "reloading configuration succeeded");
 	} else {
-		atomic_store(&server->reload_status, NAMED_RELOAD_FAILED);
+		atomic_store_release(&server->reload_status,
+				     NAMED_RELOAD_FAILED);
 		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
 			      ISC_LOG_ERROR,
 			      "reloading configuration failed: %s",
@@ -9557,8 +9560,8 @@ loadconfig(named_server_t *server) {
 static isc_result_t
 reload(named_server_t *server) {
 	isc_result_t result;
-	int reloadstatus = atomic_exchange(&server->reload_status,
-					   NAMED_RELOAD_IN_PROGRESS);
+	int reloadstatus = atomic_exchange_acq_rel(&server->reload_status,
+						   NAMED_RELOAD_IN_PROGRESS);
 
 	if (reloadstatus == NAMED_RELOAD_IN_PROGRESS) {
 		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
@@ -9583,7 +9586,8 @@ reload(named_server_t *server) {
 		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
 			      ISC_LOG_ERROR, "reloading zones failed: %s",
 			      isc_result_totext(result));
-		atomic_store(&server->reload_status, NAMED_RELOAD_FAILED);
+		atomic_store_release(&server->reload_status,
+				     NAMED_RELOAD_FAILED);
 	}
 cleanup:
 	named_os_notify_systemd("READY=1\n"
@@ -10067,8 +10071,8 @@ named_server_resetstatscommand(named_server_t *server, isc_lex_t *lex,
 isc_result_t
 named_server_reconfigcommand(named_server_t *server, isc_buffer_t *text) {
 	isc_result_t result;
-	int reloadstatus = atomic_exchange(&server->reload_status,
-					   NAMED_RELOAD_IN_PROGRESS);
+	int reloadstatus = atomic_exchange_acq_rel(&server->reload_status,
+						   NAMED_RELOAD_IN_PROGRESS);
 
 	if (reloadstatus == NAMED_RELOAD_IN_PROGRESS) {
 		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
@@ -10096,7 +10100,8 @@ named_server_reconfigcommand(named_server_t *server, isc_buffer_t *text) {
 		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
 			      ISC_LOG_ERROR, "loading new zones failed: %s",
 			      isc_result_totext(result));
-		atomic_store(&server->reload_status, NAMED_RELOAD_FAILED);
+		atomic_store_release(&server->reload_status,
+				     NAMED_RELOAD_FAILED);
 	}
 cleanup:
 	named_os_notify_systemd("READY=1\n"
@@ -11550,7 +11555,7 @@ named_server_status(named_server_t *server, isc_buffer_t *text) {
 			 server->sctx->nsstats, ns_statscounter_tcphighwater));
 	CHECK(putstr(text, line));
 
-	reload_status = atomic_load(&server->reload_status);
+	reload_status = atomic_load_acquire(&server->reload_status);
 	if (reload_status != NAMED_RELOAD_DONE) {
 		snprintf(line, sizeof(line), "reload/reconfig %s\n",
 			 reload_status == NAMED_RELOAD_FAILED ? "failed"

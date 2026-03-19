@@ -37,6 +37,8 @@
 #include <dns/transport.h>
 #include <dns/tsig.h>
 
+#include "isc/atomic.h"
+
 #define REQUESTMGR_MAGIC      ISC_MAGIC('R', 'q', 'u', 'M')
 #define VALID_REQUESTMGR(mgr) ISC_MAGIC_VALID(mgr, REQUESTMGR_MAGIC)
 
@@ -187,17 +189,13 @@ requests_cancel(void *arg) {
 
 void
 dns_requestmgr_shutdown(dns_requestmgr_t *requestmgr) {
-	bool first;
 	REQUIRE(VALID_REQUESTMGR(requestmgr));
 
 	req_log(ISC_LOG_DEBUG(3), "%s: %p", __func__, requestmgr);
 
-	rcu_read_lock();
-	first = atomic_compare_exchange_strong(&requestmgr->shuttingdown,
-					       &(bool){ false }, true);
-	rcu_read_unlock();
-
-	if (!first) {
+	if (!atomic_compare_exchange_strong_acq_rel(&requestmgr->shuttingdown,
+						    &(bool){ false }, true))
+	{
 		return;
 	}
 
@@ -227,7 +225,7 @@ static void
 requestmgr_destroy(dns_requestmgr_t *requestmgr) {
 	req_log(ISC_LOG_DEBUG(3), "%s", __func__);
 
-	INSIST(atomic_load(&requestmgr->shuttingdown));
+	INSIST(atomic_load_acquire(&requestmgr->shuttingdown));
 
 	size_t nloops = isc_loopmgr_nloops();
 	for (size_t i = 0; i < nloops; i++) {

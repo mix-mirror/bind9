@@ -515,9 +515,9 @@ struct dns_zone {
 		(_z)->offline = false;     \
 	} while (0)
 
-#define DNS_ZONE_FLAG(z, f)    ((atomic_load_relaxed(&(z)->flags) & (f)) != 0)
-#define DNS_ZONE_SETFLAG(z, f) atomic_fetch_or(&(z)->flags, (f))
-#define DNS_ZONE_CLRFLAG(z, f) atomic_fetch_and(&(z)->flags, ~(f))
+#define DNS_ZONE_FLAG(z, f)    ((atomic_load_acquire(&(z)->flags) & (f)) != 0)
+#define DNS_ZONE_SETFLAG(z, f) atomic_fetch_or_acq_rel(&(z)->flags, (f))
+#define DNS_ZONE_CLRFLAG(z, f) atomic_fetch_and_acq_rel(&(z)->flags, ~(f))
 typedef enum {
 	DNS_ZONEFLG_REFRESH = 1U << 0,	    /*%< refresh check in progress */
 	DNS_ZONEFLG_NEEDDUMP = 1U << 1,	    /*%< zone need consolidation */
@@ -569,9 +569,9 @@ typedef enum {
 	DNS_ZONEFLG___MAX = UINT64_MAX, /* trick to make the ENUM 64-bit wide */
 } dns_zoneflg_t;
 
-#define DNS_ZONE_OPTION(z, o) ((atomic_load_relaxed(&(z)->options) & (o)) != 0)
-#define DNS_ZONE_SETOPTION(z, o) atomic_fetch_or(&(z)->options, (o))
-#define DNS_ZONE_CLROPTION(z, o) atomic_fetch_and(&(z)->options, ~(o))
+#define DNS_ZONE_OPTION(z, o) ((atomic_load_acquire(&(z)->options) & (o)) != 0)
+#define DNS_ZONE_SETOPTION(z, o) atomic_fetch_or_acq_rel(&(z)->options, (o))
+#define DNS_ZONE_CLROPTION(z, o) atomic_fetch_and_acq_rel(&(z)->options, ~(o))
 
 /* Flags for zone_load() */
 typedef enum {
@@ -11653,7 +11653,7 @@ zone_refresh(dns_zone_t *zone) {
 	 * in progress at a time.
 	 */
 
-	oldflags = atomic_load(&zone->flags);
+	oldflags = atomic_load_acquire(&zone->flags);
 	if (dns_remote_addresses(&zone->primaries) == NULL) {
 		DNS_ZONE_SETFLAG(zone, DNS_ZONEFLG_NOPRIMARIES);
 		if ((oldflags & DNS_ZONEFLG_NOPRIMARIES) == 0) {
@@ -13347,7 +13347,7 @@ stub_callback(void *arg) {
 		goto next_primary;
 	}
 
-	atomic_fetch_add(&stub->pending_requests, 1);
+	atomic_fetch_add_acq_rel(&stub->pending_requests, 1);
 
 	/*
 	 * Save answer.
@@ -13369,7 +13369,7 @@ stub_callback(void *arg) {
 	 * Check to see if there are no outstanding requests and
 	 * finish off if that is so.
 	 */
-	if (atomic_fetch_sub(&stub->pending_requests, 1) == 1) {
+	if (atomic_fetch_sub_acq_rel(&stub->pending_requests, 1) == 1) {
 		isc_mem_put(zone->mctx, cb_args, sizeof(*cb_args));
 		stub_finish_zone_update(stub, now);
 		goto free_stub;

@@ -127,9 +127,9 @@ typedef atomic_uint_fast32_t isc_spinlock_t;
 		atomic_store_release(sp, 0); \
 	}
 
-#define isc__spinlock_destroy(sp)             \
-	{                                     \
-		INSIST(atomic_load(sp) == 0); \
+#define isc__spinlock_destroy(sp)                     \
+	{                                             \
+		INSIST(atomic_load_acquire(sp) == 0); \
 	}
 
 #endif

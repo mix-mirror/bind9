@@ -63,8 +63,8 @@ ignore_signal(int sig, void (*handler)(int)) {
 void
 isc_loopmgr_shutdown(void) {
 	isc_loopmgr_t *loopmgr = isc__loopmgr;
-	if (!atomic_compare_exchange_strong(&loopmgr->shuttingdown,
-					    &(bool){ false }, true))
+	if (!atomic_compare_exchange_strong_acq_rel(&loopmgr->shuttingdown,
+						    &(bool){ false }, true))
 	{
 		return;
 	}
@@ -428,8 +428,9 @@ isc_loop_setup(isc_loop_t *loop, isc_job_cb cb, void *cbarg) {
 
 	cds_wfcq_node_init(&job->wfcq_node);
 
-	REQUIRE(loop->tid == isc_tid() || !atomic_load(&loopmgr->running) ||
-		atomic_load(&loopmgr->paused));
+	REQUIRE(loop->tid == isc_tid() ||
+		!atomic_load_acquire(&loopmgr->running) ||
+		atomic_load_acquire(&loopmgr->paused));
 
 	cds_wfcq_enqueue(&loop->setup_jobs.head, &loop->setup_jobs.tail,
 			 &job->wfcq_node);
@@ -449,8 +450,9 @@ isc_loop_teardown(isc_loop_t *loop, isc_job_cb cb, void *cbarg) {
 	};
 	cds_wfcq_node_init(&job->wfcq_node);
 
-	REQUIRE(loop->tid == isc_tid() || !atomic_load(&loopmgr->running) ||
-		atomic_load(&loopmgr->paused));
+	REQUIRE(loop->tid == isc_tid() ||
+		!atomic_load_acquire(&loopmgr->running) ||
+		atomic_load_acquire(&loopmgr->paused));
 
 	cds_wfcq_enqueue(&loop->teardown_jobs.head, &loop->teardown_jobs.tail,
 			 &job->wfcq_node);
@@ -461,8 +463,8 @@ isc_loop_teardown(isc_loop_t *loop, isc_job_cb cb, void *cbarg) {
 void
 isc_loopmgr_setup(isc_job_cb cb, void *cbarg) {
 	REQUIRE(VALID_LOOPMGR(isc__loopmgr));
-	REQUIRE(!atomic_load(&isc__loopmgr->running) ||
-		atomic_load(&isc__loopmgr->paused));
+	REQUIRE(!atomic_load_acquire(&isc__loopmgr->running) ||
+		atomic_load_acquire(&isc__loopmgr->paused));
 
 	for (size_t i = 0; i < isc__loopmgr->nloops; i++) {
 		isc_loop_t *loop = &isc__loopmgr->loops[i];
@@ -473,8 +475,8 @@ isc_loopmgr_setup(isc_job_cb cb, void *cbarg) {
 void
 isc_loopmgr_teardown(isc_job_cb cb, void *cbarg) {
 	REQUIRE(VALID_LOOPMGR(isc__loopmgr));
-	REQUIRE(!atomic_load(&isc__loopmgr->running) ||
-		atomic_load(&isc__loopmgr->paused));
+	REQUIRE(!atomic_load_acquire(&isc__loopmgr->running) ||
+		atomic_load_acquire(&isc__loopmgr->paused));
 
 	for (size_t i = 0; i < isc__loopmgr->nloops; i++) {
 		isc_loop_t *loop = &isc__loopmgr->loops[i];
@@ -485,8 +487,8 @@ isc_loopmgr_teardown(isc_job_cb cb, void *cbarg) {
 void
 isc_loopmgr_run(void) {
 	REQUIRE(VALID_LOOPMGR(isc__loopmgr));
-	RUNTIME_CHECK(atomic_compare_exchange_strong(&isc__loopmgr->running,
-						     &(bool){ false }, true));
+	RUNTIME_CHECK(atomic_compare_exchange_strong_acq_rel(
+		&isc__loopmgr->running, &(bool){ false }, true));
 
 	/*
 	 * Always ignore SIGPIPE.
@@ -541,8 +543,8 @@ isc_loopmgr_pause(void) {
 		UV_RUNTIME_CHECK(uv_async_send, r);
 	}
 
-	RUNTIME_CHECK(atomic_compare_exchange_strong(&isc__loopmgr->paused,
-						     &(bool){ false }, true));
+	RUNTIME_CHECK(atomic_compare_exchange_strong_acq_rel(
+		&isc__loopmgr->paused, &(bool){ false }, true));
 	pause_loop(CURRENT_LOOP(isc__loopmgr));
 
 	if (isc_log_wouldlog(ISC_LOG_DEBUG(1))) {
@@ -560,8 +562,8 @@ isc_loopmgr_resume(void) {
 			      ISC_LOG_DEBUG(1), "loop exclusive mode: ending");
 	}
 
-	RUNTIME_CHECK(atomic_compare_exchange_strong(&isc__loopmgr->paused,
-						     &(bool){ true }, false));
+	RUNTIME_CHECK(atomic_compare_exchange_strong_acq_rel(
+		&isc__loopmgr->paused, &(bool){ true }, false));
 	resume_loop(CURRENT_LOOP(isc__loopmgr));
 
 	if (isc_log_wouldlog(ISC_LOG_DEBUG(1))) {
@@ -574,15 +576,15 @@ bool
 isc_loopmgr_paused(void) {
 	REQUIRE(VALID_LOOPMGR(isc__loopmgr));
 
-	return atomic_load(&isc__loopmgr->paused);
+	return atomic_load_acquire(&isc__loopmgr->paused);
 }
 
 void
 isc_loopmgr_destroy(void) {
 	isc_loopmgr_t *loopmgr = isc__loopmgr;
 
-	RUNTIME_CHECK(atomic_compare_exchange_strong(&loopmgr->running,
-						     &(bool){ true }, false));
+	RUNTIME_CHECK(atomic_compare_exchange_strong_acq_rel(
+		&loopmgr->running, &(bool){ true }, false));
 
 	isc__loopmgr = NULL;
 

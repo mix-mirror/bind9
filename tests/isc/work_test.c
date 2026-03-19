@@ -41,14 +41,14 @@ static atomic_uint scheduled = 0;
 
 static void
 work_cb(void *arg ISC_ATTR_UNUSED) {
-	atomic_fetch_add(&scheduled, 1);
+	atomic_fetch_add_acq_rel(&scheduled, 1);
 
 	assert_int_equal(isc_tid(), ISC_TID_UNKNOWN);
 }
 
 static void
 after_work_cb(void *arg ISC_ATTR_UNUSED) {
-	assert_int_equal(atomic_load(&scheduled), 1);
+	assert_int_equal(atomic_load_acquire(&scheduled), 1);
 	isc_loopmgr_shutdown();
 }
 
@@ -64,7 +64,7 @@ ISC_RUN_TEST_IMPL(isc_work_enqueue) {
 
 	isc_loopmgr_run();
 
-	assert_int_equal(atomic_load(&scheduled), 1);
+	assert_int_equal(atomic_load_acquire(&scheduled), 1);
 }
 
 ISC_TEST_LIST_START

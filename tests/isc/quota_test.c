@@ -21,6 +21,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "isc/atomic.h"
+
 #define UNIT_TESTING
 #include <cmocka.h>
 
@@ -194,16 +196,16 @@ ISC_RUN_TEST_IMPL(isc_quota_callback) {
 		assert_int_equal(result, ISC_R_QUOTA);
 		assert_int_equal(isc_quota_getused(&quota), 20);
 	}
-	assert_int_equal(atomic_load(&cb_calls), 0);
+	assert_int_equal(atomic_load_acquire(&cb_calls), 0);
 
 	for (i = 0; i < 5; i++) {
 		isc_quota_release(&quota);
 		assert_int_equal(isc_quota_getused(&quota), 20);
-		assert_int_equal(atomic_load(&cb_calls), i + 1);
+		assert_int_equal(atomic_load_acquire(&cb_calls), i + 1);
 	}
 	/* That should cause a chain reaction */
 	isc_quota_release(&quota);
-	assert_int_equal(atomic_load(&cb_calls), 10);
+	assert_int_equal(atomic_load_acquire(&cb_calls), 10);
 
 	/* Release the quotas that we did not released in the callback */
 	for (i = 0; i < 5; i++) {
@@ -214,7 +216,7 @@ ISC_RUN_TEST_IMPL(isc_quota_callback) {
 		isc_quota_release(&quota);
 		assert_int_equal(isc_quota_getused(&quota), 19 - i);
 	}
-	assert_int_equal(atomic_load(&cb_calls), 10);
+	assert_int_equal(atomic_load_acquire(&cb_calls), 10);
 
 	assert_int_equal(isc_quota_getused(&quota), 0);
 	isc_quota_destroy(&quota);
@@ -286,14 +288,14 @@ ISC_RUN_TEST_IMPL(isc_quota_callback_mt) {
 		isc_thread_join(threads[i], NULL);
 	}
 
-	for (i = 0; i < (int)atomic_load(&g_tnum); i++) {
+	for (i = 0; i < (int)atomic_load_acquire(&g_tnum); i++) {
 		isc_thread_join(g_threads[i], NULL);
 	}
 	int direct = 0, ncallback = 0;
 
 	for (i = 0; i < 10; i++) {
-		direct += atomic_load(&qtis[i].direct);
-		ncallback += atomic_load(&qtis[i].callback);
+		direct += atomic_load_acquire(&qtis[i].direct);
+		ncallback += atomic_load_acquire(&qtis[i].callback);
 	}
 	/* Total quota gained must be 10 threads * 100 tries */
 	assert_int_equal(direct + ncallback, 10 * 100);

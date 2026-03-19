@@ -31,11 +31,12 @@
 
 #include <dns/catz.h>
 #include <dns/dbiterator.h>
+#include <dns/name.h>
 #include <dns/rdatasetiter.h>
 #include <dns/view.h>
 #include <dns/zone.h>
 
-#include "dns/name.h"
+#include "isc/atomic.h"
 
 #define DNS_CATZ_ZONE_MAGIC  ISC_MAGIC('c', 'a', 't', 'z')
 #define DNS_CATZ_ZONES_MAGIC ISC_MAGIC('c', 'a', 't', 's')
@@ -914,7 +915,7 @@ dns_catz_zone_add(dns_catz_zones_t *catzs, const dns_name_t *name,
 	 * 'catzs->zones' can become NULL only during shutdown.
 	 */
 	INSIST(catzs->zones != NULL);
-	INSIST(!atomic_load(&catzs->shuttingdown));
+	INSIST(!atomic_load_acquire(&catzs->shuttingdown));
 
 	result = isc_ht_find(catzs->zones, name->ndata, name->length,
 			     (void **)&catz);
@@ -1049,7 +1050,7 @@ dns__catz_zone_destroy(dns_catz_zone_t *catz) {
 
 static void
 dns__catz_zones_destroy(dns_catz_zones_t *catzs) {
-	REQUIRE(atomic_load(&catzs->shuttingdown));
+	REQUIRE(atomic_load_acquire(&catzs->shuttingdown));
 	REQUIRE(catzs->zones == NULL);
 
 	catzs->magic = 0;
@@ -1064,8 +1065,8 @@ void
 dns_catz_zones_shutdown(dns_catz_zones_t *catzs) {
 	REQUIRE(DNS_CATZ_ZONES_VALID(catzs));
 
-	if (!atomic_compare_exchange_strong(&catzs->shuttingdown,
-					    &(bool){ false }, true))
+	if (!atomic_compare_exchange_strong_acq_rel(&catzs->shuttingdown,
+						    &(bool){ false }, true))
 	{
 		return;
 	}
@@ -2013,7 +2014,7 @@ dns__catz_timer_cb(void *arg) {
 
 	REQUIRE(DNS_CATZ_ZONE_VALID(catz));
 
-	if (atomic_load(&catz->catzs->shuttingdown)) {
+	if (atomic_load_acquire(&catz->catzs->shuttingdown)) {
 		return;
 	}
 
@@ -2071,7 +2072,7 @@ dns_catz_dbupdate_callback(dns_db_t *db, void *fn_arg) {
 	REQUIRE(DNS_CATZ_ZONES_VALID(fn_arg));
 	catzs = (dns_catz_zones_t *)fn_arg;
 
-	if (atomic_load(&catzs->shuttingdown)) {
+	if (atomic_load_acquire(&catzs->shuttingdown)) {
 		return ISC_R_SHUTTINGDOWN;
 	}
 
@@ -2181,7 +2182,7 @@ dns__catz_update_cb(void *data) {
 	updb = catz->updb;
 	catzs = catz->catzs;
 
-	if (atomic_load(&catzs->shuttingdown)) {
+	if (atomic_load_acquire(&catzs->shuttingdown)) {
 		result = ISC_R_SHUTTINGDOWN;
 		goto exit;
 	}
@@ -2276,7 +2277,7 @@ dns__catz_update_cb(void *data) {
 	 * Iterate over database to fill the new zone.
 	 */
 	while (result == ISC_R_SUCCESS) {
-		if (atomic_load(&catzs->shuttingdown)) {
+		if (atomic_load_acquire(&catzs->shuttingdown)) {
 			result = ISC_R_SHUTTINGDOWN;
 			break;
 		}
@@ -2447,7 +2448,9 @@ dns__catz_done_cb(void *data) {
 
 	dns_name_format(&catz->name, dname, DNS_NAME_FORMATSIZE);
 
-	if (catz->updatepending && !atomic_load(&catz->catzs->shuttingdown)) {
+	if (catz->updatepending &&
+	    !atomic_load_acquire(&catz->catzs->shuttingdown))
+	{
 		/* Restart the timer */
 		dns__catz_timer_start(catz);
 	}

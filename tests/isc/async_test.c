@@ -43,7 +43,7 @@ static void
 async_cb(void *arg ISC_ATTR_UNUSED) {
 	isc_tid_t tid = isc_tid();
 
-	atomic_fetch_add(&scheduled, 1);
+	atomic_fetch_add_acq_rel(&scheduled, 1);
 
 	if (tid > 0) {
 		isc_loop_t *loop = isc_loop_get(tid - 1);
@@ -64,7 +64,7 @@ async_setup_cb(void *arg ISC_ATTR_UNUSED) {
 ISC_RUN_TEST_IMPL(isc_async_run) {
 	isc_loop_setup(isc_loop_main(), async_setup_cb, NULL);
 	isc_loopmgr_run();
-	assert_int_equal(atomic_load(&scheduled), isc_loopmgr_nloops());
+	assert_int_equal(atomic_load_acquire(&scheduled), isc_loopmgr_nloops());
 }
 
 static char string[32] = "";

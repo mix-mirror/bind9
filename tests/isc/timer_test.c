@@ -86,19 +86,19 @@ setup_test(isc_timertype_t timertype, isc_interval_t *interval,
 
 	isc_mutex_init(&lasttime_mx);
 
-	atomic_store(&errcnt, ISC_R_SUCCESS);
+	atomic_store_release(&errcnt, ISC_R_SUCCESS);
 
 	isc_loop_setup(isc_loop_main(), setup_test_run, &arg);
 	isc_loopmgr_run();
 
-	assert_int_equal(atomic_load(&errcnt), ISC_R_SUCCESS);
+	assert_int_equal(atomic_load_acquire(&errcnt), ISC_R_SUCCESS);
 
 	isc_mutex_destroy(&lasttime_mx);
 }
 
 static void
 set_global_error(isc_result_t result) {
-	(void)atomic_compare_exchange_strong(
+	(void)atomic_compare_exchange_strong_acq_rel(
 		&errcnt, &(uint_fast32_t){ ISC_R_SUCCESS }, result);
 }
 
@@ -133,7 +133,7 @@ ticktock(void *arg) {
 	isc_time_t ulim;
 	isc_time_t llim;
 	isc_interval_t interval;
-	int tick = atomic_fetch_add(&eventcnt, 1);
+	int tick = atomic_fetch_add_acq_rel(&eventcnt, 1);
 
 	UNUSED(arg);
 
@@ -165,7 +165,7 @@ ticktock(void *arg) {
 	isc_mutex_unlock(&lasttime_mx);
 	subthread_assert_result_equal(result, ISC_R_SUCCESS);
 
-	if (atomic_load(&eventcnt) == nevents) {
+	if (atomic_load_acquire(&eventcnt) == nevents) {
 		endtime = isc_time_now();
 		isc_timer_destroy(&timer);
 		isc_loopmgr_shutdown();
@@ -199,7 +199,7 @@ test_idle(void *arg) {
 	isc_time_t ulim;
 	isc_time_t llim;
 	isc_interval_t interval;
-	int tick = atomic_fetch_add(&eventcnt, 1);
+	int tick = atomic_fetch_add_acq_rel(&eventcnt, 1);
 
 	UNUSED(arg);
 
@@ -258,7 +258,7 @@ test_reset(void *arg) {
 	isc_time_t ulim;
 	isc_time_t llim;
 	isc_interval_t interval;
-	int tick = atomic_fetch_add(&eventcnt, 1);
+	int tick = atomic_fetch_add_acq_rel(&eventcnt, 1);
 
 	UNUSED(arg);
 
@@ -328,14 +328,14 @@ tick_event(void *arg) {
 
 	UNUSED(arg);
 
-	if (!atomic_load(&startflag)) {
+	if (!atomic_load_acquire(&startflag)) {
 		if (verbose) {
 			print_message("# tick_event %d\n", -1);
 		}
 		return;
 	}
 
-	tick = atomic_fetch_add(&eventcnt, 1);
+	tick = atomic_fetch_add_acq_rel(&eventcnt, 1);
 	if (verbose) {
 		print_message("# tick_event %d\n", tick);
 	}
@@ -360,19 +360,19 @@ once_event(void *arg) {
 	/*
 	 * Allow task1 to start processing events.
 	 */
-	atomic_store(&startflag, true);
+	atomic_store_release(&startflag, true);
 
 	isc_timer_destroy(&oncetimer);
 }
 
 ISC_LOOP_SETUP_IMPL(purge) {
 	atomic_init(&eventcnt, 0);
-	atomic_store(&errcnt, ISC_R_SUCCESS);
+	atomic_store_release(&errcnt, ISC_R_SUCCESS);
 }
 
 ISC_LOOP_TEARDOWN_IMPL(purge) {
-	assert_int_equal(atomic_load(&errcnt), ISC_R_SUCCESS);
-	assert_int_equal(atomic_load(&eventcnt), 1);
+	assert_int_equal(atomic_load_acquire(&errcnt), ISC_R_SUCCESS);
+	assert_int_equal(atomic_load_acquire(&eventcnt), 1);
 }
 
 /* timer events purged */

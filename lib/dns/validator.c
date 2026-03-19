@@ -110,7 +110,7 @@ enum valattr {
 #define FOUNDCLOSEST(val)    ((val->attributes & VALATTR_FOUNDCLOSEST) != 0)
 #define FOUNDOPTOUT(val)     ((val->attributes & VALATTR_FOUNDOPTOUT) != 0)
 
-#define CANCELING(v) atomic_load(&(v)->canceling)
+#define CANCELING(v) atomic_load_acquire(&(v)->canceling)
 #define CANCELED(v)  (((v)->attributes & VALATTR_CANCELED) != 0)
 #define OFFLOADED(v) (((v)->attributes & VALATTR_OFFLOADED) != 0)
 #define COMPLETE(v)  (((v)->attributes & VALATTR_COMPLETE) != 0)
@@ -3733,7 +3733,7 @@ dns_validator_cancel(dns_validator_t *validator) {
 
 	validator_log(validator, ISC_LOG_DEBUG(3), "dns_validator_cancel");
 
-	atomic_store(&validator->canceling, true);
+	atomic_store_release(&validator->canceling, true);
 
 	if (!OFFLOADED(validator)) {
 		validator_cancel_finish(validator);

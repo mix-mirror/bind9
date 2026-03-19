@@ -33,6 +33,8 @@
 #include <ns/server.h>
 #include <ns/stats.h>
 
+#include "isc/atomic.h"
+
 #ifdef HAVE_NET_ROUTE_H
 #include <net/route.h>
 #if defined(RTM_VERSION) && defined(RTM_NEWADDR) && defined(RTM_DELADDR)
@@ -420,7 +422,7 @@ ns_interfacemgr_shutdown(ns_interfacemgr_t *mgr) {
 	 * purge_old_interfaces() consider all interfaces "old".
 	 */
 	mgr->generation++;
-	atomic_store(&mgr->shuttingdown, true);
+	atomic_store_release(&mgr->shuttingdown, true);
 
 	purge_old_interfaces(mgr);
 
@@ -1317,7 +1319,7 @@ ns_interfacemgr_listeningon(ns_interfacemgr_t *mgr,
 	 * If the manager is shutting down it's safer to
 	 * return true.
 	 */
-	if (atomic_load(&mgr->shuttingdown)) {
+	if (atomic_load_acquire(&mgr->shuttingdown)) {
 		return true;
 	}
 	LOCK(&mgr->lock);

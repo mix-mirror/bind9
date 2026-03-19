@@ -45,6 +45,7 @@
 
 /*! \file */
 
+#include "isc/atomic.h"
 #ifndef HAVE_DNSTAP
 #error DNSTAP not configured.
 #endif /* HAVE_DNSTAP */
@@ -468,7 +469,7 @@ destroy(dns_dtenv_t *env) {
 		      ISC_LOG_INFO, "closing dnstap");
 	env->magic = 0;
 
-	atomic_fetch_add(&global_generation, 1);
+	atomic_fetch_add_acq_rel(&global_generation, 1);
 
 	if (env->iothr != NULL) {
 		fstrm_iothr_destroy(&env->iothr);

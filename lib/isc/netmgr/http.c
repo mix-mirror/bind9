@@ -19,6 +19,7 @@
 #include <string.h>
 
 #include <isc/async.h>
+#include <isc/atomic.h>
 #include <isc/base64.h>
 #include <isc/log.h>
 #include <isc/netmgr.h>
@@ -27,6 +28,7 @@
 #include <isc/url.h>
 #include <isc/util.h>
 
+#include "isc/atomic.h"
 #include "netmgr-int.h"
 
 #define AUTHEXTRA 7
@@ -2947,7 +2949,7 @@ isc_nm_listenhttp(uint32_t workers, isc_sockaddr_t *iface, int backlog,
 	isc__networker_t *worker = isc__networker_current();
 
 	REQUIRE(!ISC_LIST_EMPTY(eps->handlers));
-	REQUIRE(atomic_load(&eps->in_use) == false);
+	REQUIRE(atomic_load_acquire(&eps->in_use) == false);
 	REQUIRE(isc_tid() == 0);
 
 	sock = isc_mempool_get(worker->nmsocket_pool);
@@ -2958,7 +2960,7 @@ isc_nm_listenhttp(uint32_t workers, isc_sockaddr_t *iface, int backlog,
 
 	isc_nmsocket_set_max_streams(sock, max_concurrent_streams);
 
-	atomic_store(&eps->in_use, true);
+	atomic_store_release(&eps->in_use, true);
 	http_init_listener_endpoints(sock, eps);
 
 	switch (proxy_type) {
@@ -3095,7 +3097,7 @@ isc_nm_http_endpoints_add(isc_nm_http_endpoints_t *restrict eps,
 	REQUIRE(VALID_HTTP_ENDPOINTS(eps));
 	REQUIRE(isc_nm_http_path_isvalid(uri));
 	REQUIRE(cb != NULL);
-	REQUIRE(atomic_load(&eps->in_use) == false);
+	REQUIRE(atomic_load_acquire(&eps->in_use) == false);
 
 	mctx = eps->mctx;
 
@@ -3400,7 +3402,7 @@ isc_nm_http_set_endpoints(isc_nmsocket_t *listener,
 	REQUIRE(listener->type == isc_nm_httplistener);
 	REQUIRE(VALID_HTTP_ENDPOINTS(eps));
 
-	atomic_store(&eps->in_use, true);
+	atomic_store_release(&eps->in_use, true);
 
 	for (size_t i = 0; i < isc_loopmgr_nloops(); i++) {
 		isc__networker_t *worker = isc__networker_get(i);

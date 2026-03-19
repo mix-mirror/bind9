@@ -136,16 +136,16 @@ setup_netmgr_test(void **state) {
 
 	esends = NSENDS * workers;
 
-	atomic_store(&nsends, esends);
+	atomic_store_release(&nsends, esends);
 
-	atomic_store(&saccepts, 0);
-	atomic_store(&sreads, 0);
-	atomic_store(&ssends, 0);
+	atomic_store_release(&saccepts, 0);
+	atomic_store_release(&sreads, 0);
+	atomic_store_release(&ssends, 0);
 
-	atomic_store(&cconnects, 0);
-	atomic_store(&csends, 0);
-	atomic_store(&creads, 0);
-	atomic_store(&ctimeouts, 0);
+	atomic_store_release(&cconnects, 0);
+	atomic_store_release(&csends, 0);
+	atomic_store_release(&creads, 0);
+	atomic_store_release(&ctimeouts, 0);
 	allow_send_back = false;
 
 	expected_cconnects = -1;
@@ -183,7 +183,7 @@ setup_netmgr_test(void **state) {
 	isc_nm_setadvertisedtimeout(T_ADVERTISED);
 
 	isc_quota_init(&listener_quota, 0);
-	atomic_store(&check_listener_quota, false);
+	atomic_store_release(&check_listener_quota, false);
 
 	connect_readcb = connect_read_cb;
 	noanswer = false;
@@ -254,7 +254,7 @@ noop_accept_cb(isc_nmhandle_t *handle ISC_ATTR_UNUSED, isc_result_t eresult,
 	F();
 
 	if (eresult == ISC_R_SUCCESS) {
-		(void)atomic_fetch_add(&saccepts, 1);
+		(void)atomic_fetch_add_acq_rel(&saccepts, 1);
 	}
 
 	return ISC_R_SUCCESS;
@@ -287,7 +287,9 @@ connect_send_cb(isc_nmhandle_t *handle, isc_result_t eresult, void *cbarg) {
 		}
 		break;
 	case ISC_R_SUCCESS:
-		if (have_expected_csends(atomic_fetch_add(&csends, 1) + 1)) {
+		if (have_expected_csends(atomic_fetch_add_acq_rel(&csends, 1) +
+					 1))
+		{
 			do_csends_shutdown();
 		}
 		break;
@@ -329,7 +331,9 @@ connect_read_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 
 		assert_true(magic == send_magic);
 
-		if (have_expected_creads(atomic_fetch_add(&creads, 1) + 1)) {
+		if (have_expected_creads(atomic_fetch_add_acq_rel(&creads, 1) +
+					 1))
+		{
 			do_creads_shutdown();
 		}
 
@@ -377,7 +381,9 @@ connect_connect_cb(isc_nmhandle_t *handle, isc_result_t eresult, void *cbarg) {
 	}
 
 	/* We are finished, initiate the shutdown */
-	if (have_expected_cconnects(atomic_fetch_add(&cconnects, 1) + 1)) {
+	if (have_expected_cconnects(atomic_fetch_add_acq_rel(&cconnects, 1) +
+				    1))
+	{
 		do_cconnects_shutdown();
 	} else if (do_send) {
 		isc_async_current(stream_recv_send_connect,
@@ -415,7 +421,9 @@ listen_send_cb(isc_nmhandle_t *handle, isc_result_t eresult, void *cbarg) {
 	case ISC_R_SHUTTINGDOWN:
 		break;
 	case ISC_R_SUCCESS:
-		if (have_expected_ssends(atomic_fetch_add(&ssends, 1) + 1)) {
+		if (have_expected_ssends(atomic_fetch_add_acq_rel(&ssends, 1) +
+					 1))
+		{
 			do_ssends_shutdown();
 		}
 		break;
@@ -448,7 +456,9 @@ listen_read_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 		memmove(&magic, region->base, sizeof(magic));
 		assert_true(magic == send_magic);
 
-		if (have_expected_sreads(atomic_fetch_add(&sreads, 1) + 1)) {
+		if (have_expected_sreads(atomic_fetch_add_acq_rel(&sreads, 1) +
+					 1))
+		{
 			do_sreads_shutdown();
 		}
 
@@ -494,7 +504,8 @@ listen_accept_cb(isc_nmhandle_t *handle, isc_result_t eresult, void *cbarg) {
 		return eresult;
 	}
 
-	if (have_expected_saccepts(atomic_fetch_add(&saccepts, 1) + 1)) {
+	if (have_expected_saccepts(atomic_fetch_add_acq_rel(&saccepts, 1) + 1))
+	{
 		do_saccepts_shutdown();
 	}
 
@@ -516,7 +527,8 @@ stream_accept_cb(isc_nmhandle_t *handle, isc_result_t eresult, void *cbarg) {
 		return eresult;
 	}
 
-	if (have_expected_saccepts(atomic_fetch_add(&saccepts, 1) + 1)) {
+	if (have_expected_saccepts(atomic_fetch_add_acq_rel(&saccepts, 1) + 1))
+	{
 		do_saccepts_shutdown();
 	}
 
@@ -558,7 +570,7 @@ timeout_retry_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 	F();
 
 	if (eresult == ISC_R_TIMEDOUT &&
-	    atomic_fetch_add(&ctimeouts, 1) + 1 < expected_ctimeouts)
+	    atomic_fetch_add_acq_rel(&ctimeouts, 1) + 1 < expected_ctimeouts)
 	{
 		isc_nmhandle_settimeout(handle, T_SOFT);
 		connect_send(handle);
@@ -574,7 +586,7 @@ timeout_retry_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 isc_quota_t *
 tcp_listener_init_quota(size_t nthreads) {
 	isc_quota_t *quotap = NULL;
-	if (atomic_load(&check_listener_quota)) {
+	if (atomic_load_acquire(&check_listener_quota)) {
 		unsigned int max_quota = ISC_MAX(nthreads / 2, 1);
 		isc_quota_max(&listener_quota, max_quota);
 		quotap = &listener_quota;
@@ -721,7 +733,9 @@ connect_success_cb(isc_nmhandle_t *handle, isc_result_t eresult, void *cbarg) {
 	isc_refcount_decrement(&active_cconnects);
 	assert_int_equal(eresult, ISC_R_SUCCESS);
 
-	if (have_expected_cconnects(atomic_fetch_add(&cconnects, 1) + 1)) {
+	if (have_expected_cconnects(atomic_fetch_add_acq_rel(&cconnects, 1) +
+				    1))
+	{
 		do_cconnects_shutdown();
 		return;
 	}
@@ -810,7 +824,7 @@ noresponse_sendcb(isc_nmhandle_t *handle, isc_result_t eresult, void *cbarg) {
 	F();
 
 	assert_non_null(handle);
-	atomic_fetch_add(&csends, 1);
+	atomic_fetch_add_acq_rel(&csends, 1);
 	isc_nmhandle_detach(&handle);
 	isc_refcount_decrement(&active_csends);
 }
@@ -827,7 +841,7 @@ noresponse_connectcb(isc_nmhandle_t *handle, isc_result_t eresult,
 
 	assert_int_equal(eresult, ISC_R_SUCCESS);
 
-	atomic_fetch_add(&cconnects, 1);
+	atomic_fetch_add_acq_rel(&cconnects, 1);
 
 	isc_refcount_increment0(&active_creads);
 	isc_nmhandle_attach(handle, &readhandle);
@@ -1084,7 +1098,7 @@ stream_recv_one(void **state ISC_ATTR_UNUSED) {
 	isc_result_t result = ISC_R_SUCCESS;
 	isc_quota_t *quotap = tcp_listener_init_quota(1);
 
-	atomic_store(&nsends, 1);
+	atomic_store_release(&nsends, 1);
 
 	result = stream_listen(stream_accept_cb, NULL, 128, quotap,
 			       &listen_sock);
@@ -1162,7 +1176,7 @@ stream_recv_two(void **state ISC_ATTR_UNUSED) {
 	isc_result_t result = ISC_R_SUCCESS;
 	isc_quota_t *quotap = tcp_listener_init_quota(1);
 
-	atomic_store(&nsends, 2);
+	atomic_store_release(&nsends, 2);
 
 	result = stream_listen(stream_accept_cb, NULL, 128, quotap,
 			       &listen_sock);
@@ -1268,13 +1282,13 @@ setup_udp_test(void **state) {
 			     udp_use_PROXY ? PROXYUDP_TEST_PORT
 					   : UDP_TEST_PORT);
 
-	atomic_store(&sreads, 0);
-	atomic_store(&ssends, 0);
+	atomic_store_release(&sreads, 0);
+	atomic_store_release(&ssends, 0);
 
-	atomic_store(&cconnects, 0);
-	atomic_store(&csends, 0);
-	atomic_store(&creads, 0);
-	atomic_store(&ctimeouts, 0);
+	atomic_store_release(&cconnects, 0);
+	atomic_store_release(&csends, 0);
+	atomic_store_release(&creads, 0);
+	atomic_store_release(&ctimeouts, 0);
 
 	isc_refcount_init(&active_cconnects, 0);
 	isc_refcount_init(&active_csends, 0);
@@ -1365,7 +1379,9 @@ udp__send_cb(isc_nmhandle_t *handle, isc_result_t eresult, void *cbarg) {
 
 	switch (eresult) {
 	case ISC_R_SUCCESS:
-		if (have_expected_csends(atomic_fetch_add(&csends, 1) + 1)) {
+		if (have_expected_csends(atomic_fetch_add_acq_rel(&csends, 1) +
+					 1))
+		{
 			if (csends_shutdown) {
 				isc_nm_cancelread(handle);
 				isc_loopmgr_shutdown();
@@ -1425,7 +1441,9 @@ udp__connect_read_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 
 		assert_true(magic == send_magic);
 
-		if (have_expected_creads(atomic_fetch_add(&creads, 1) + 1)) {
+		if (have_expected_creads(atomic_fetch_add_acq_rel(&creads, 1) +
+					 1))
+		{
 			do_creads_shutdown();
 		}
 
@@ -1461,8 +1479,8 @@ udp__connect_cb(isc_nmhandle_t *handle, isc_result_t eresult, void *cbarg) {
 			assert_true(isc_nm_is_proxy_handle(handle));
 		}
 
-		if (have_expected_cconnects(atomic_fetch_add(&cconnects, 1) +
-					    1))
+		if (have_expected_cconnects(
+			    atomic_fetch_add_acq_rel(&cconnects, 1) + 1))
 		{
 			do_cconnects_shutdown();
 		} else if (do_send) {
@@ -1559,7 +1577,7 @@ udp_noresponse_read_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 
 	isc_refcount_decrement(&active_creads);
 
-	atomic_fetch_add(&creads, 1);
+	atomic_fetch_add_acq_rel(&creads, 1);
 
 	isc_nmhandle_detach(&handle);
 
@@ -1573,7 +1591,7 @@ udp_noresponse_send_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 
 	assert_non_null(handle);
 	assert_int_equal(eresult, ISC_R_SUCCESS);
-	atomic_fetch_add(&csends, 1);
+	atomic_fetch_add_acq_rel(&csends, 1);
 	isc_nmhandle_detach(&handle);
 	isc_refcount_decrement(&active_csends);
 }
@@ -1601,7 +1619,7 @@ udp_noresponse_connect_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 	isc_nm_send(sendhandle, (isc_region_t *)&send_msg,
 		    udp_noresponse_send_cb, cbarg);
 
-	atomic_fetch_add(&cconnects, 1);
+	atomic_fetch_add_acq_rel(&cconnects, 1);
 }
 
 int
@@ -1647,7 +1665,7 @@ udp_timeout_recovery_ssend_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 	isc_refcount_decrement(&active_ssends);
 	assert_non_null(handle);
 	assert_int_equal(eresult, ISC_R_SUCCESS);
-	atomic_fetch_add(&ssends, 1);
+	atomic_fetch_add_acq_rel(&ssends, 1);
 	isc_nmhandle_detach(&handle);
 }
 
@@ -1656,7 +1674,7 @@ udp_timeout_recovery_recv_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 			     isc_region_t *region, void *cbarg) {
 	uint64_t magic = 0;
 	isc_nmhandle_t *sendhandle = NULL;
-	int _creads = atomic_fetch_add(&creads, 1) + 1;
+	int _creads = atomic_fetch_add_acq_rel(&creads, 1) + 1;
 
 	assert_non_null(handle);
 
@@ -1688,7 +1706,7 @@ udp_timeout_recovery_read_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 	F();
 
 	if (eresult == ISC_R_TIMEDOUT &&
-	    atomic_fetch_add(&ctimeouts, 1) + 1 < expected_ctimeouts)
+	    atomic_fetch_add_acq_rel(&ctimeouts, 1) + 1 < expected_ctimeouts)
 	{
 		isc_nmhandle_settimeout(handle, T_SOFT);
 		return;
@@ -1697,7 +1715,7 @@ udp_timeout_recovery_read_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 	isc_refcount_decrement(&active_creads);
 	isc_nmhandle_detach(&handle);
 
-	atomic_fetch_add(&creads, 1);
+	atomic_fetch_add_acq_rel(&creads, 1);
 	isc_loopmgr_shutdown();
 }
 
@@ -1708,7 +1726,7 @@ udp_timeout_recovery_send_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 
 	assert_non_null(handle);
 	assert_int_equal(eresult, ISC_R_SUCCESS);
-	atomic_fetch_add(&csends, 1);
+	atomic_fetch_add_acq_rel(&csends, 1);
 
 	isc_nmhandle_detach(&handle);
 	isc_refcount_decrement(&active_csends);
@@ -1738,7 +1756,7 @@ udp_timeout_recovery_connect_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 	isc_nm_send(sendhandle, (isc_region_t *)&send_msg,
 		    udp_timeout_recovery_send_cb, cbarg);
 
-	atomic_fetch_add(&cconnects, 1);
+	atomic_fetch_add_acq_rel(&cconnects, 1);
 }
 
 int
@@ -1806,7 +1824,7 @@ udp_shutdown_connect_connect_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 	 * restart the UDP connect again and expect the failure only in the
 	 * second loop.
 	 */
-	if (atomic_fetch_add(&cconnects, 1) == 0) {
+	if (atomic_fetch_add_acq_rel(&cconnects, 1) == 0) {
 		assert_int_equal(eresult, ISC_R_SUCCESS);
 		isc_async_current(udp_shutdown_connect_async_cb, NULL);
 	} else {
@@ -1886,7 +1904,7 @@ udp_shutdown_read_send_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 	assert_non_null(handle);
 	assert_int_equal(eresult, ISC_R_SUCCESS);
 
-	atomic_fetch_add(&csends, 1);
+	atomic_fetch_add_acq_rel(&csends, 1);
 
 	isc_loopmgr_shutdown();
 
@@ -1904,7 +1922,7 @@ udp_shutdown_read_read_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 
 	isc_refcount_decrement(&active_creads);
 
-	atomic_fetch_add(&creads, 1);
+	atomic_fetch_add_acq_rel(&creads, 1);
 
 	isc_nmhandle_detach(&handle);
 }
@@ -1932,7 +1950,7 @@ udp_shutdown_read_connect_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 	isc_nm_send(sendhandle, (isc_region_t *)&send_msg,
 		    udp_shutdown_read_send_cb, cbarg);
 
-	atomic_fetch_add(&cconnects, 1);
+	atomic_fetch_add_acq_rel(&cconnects, 1);
 }
 
 int
@@ -2001,7 +2019,7 @@ udp_cancel_read_send_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 	assert_non_null(handle);
 	assert_int_equal(eresult, ISC_R_SUCCESS);
 
-	atomic_fetch_add(&csends, 1);
+	atomic_fetch_add_acq_rel(&csends, 1);
 
 	isc_nm_cancelread(handle);
 
@@ -2037,7 +2055,7 @@ udp_cancel_read_read_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 		break;
 	case ISC_R_CANCELED:
 		/* The read has been canceled */
-		atomic_fetch_add(&creads, 1);
+		atomic_fetch_add_acq_rel(&creads, 1);
 		isc_loopmgr_shutdown();
 		break;
 	default:
@@ -2062,7 +2080,7 @@ udp_cancel_read_connect_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 	isc_nmhandle_attach(handle, &readhandle);
 	isc_nm_read(handle, udp_cancel_read_read_cb, cbarg);
 
-	atomic_fetch_add(&cconnects, 1);
+	atomic_fetch_add_acq_rel(&cconnects, 1);
 }
 
 int
@@ -2275,7 +2293,9 @@ udp_double_read_send_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 
 	switch (eresult) {
 	case ISC_R_SUCCESS:
-		if (have_expected_ssends(atomic_fetch_add(&ssends, 1) + 1)) {
+		if (have_expected_ssends(atomic_fetch_add_acq_rel(&ssends, 1) +
+					 1))
+		{
 			do_ssends_shutdown();
 		} else {
 			isc_nmhandle_t *sendhandle = NULL;
@@ -2365,7 +2385,9 @@ udp_double_read_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 
 		assert_true(magic == send_magic);
 
-		if (have_expected_creads(atomic_fetch_add(&creads, 1) + 1)) {
+		if (have_expected_creads(atomic_fetch_add_acq_rel(&creads, 1) +
+					 1))
+		{
 			do_creads_shutdown();
 			detach = true;
 		}
