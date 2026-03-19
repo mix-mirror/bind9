@@ -230,7 +230,7 @@ check_syntax(cfg_obj_t *fmap, const void *cfg, isc_mem_t *mctx, void *aclctx) {
 	dns_acl_t *acl = NULL;
 	filter_aaaa_t f4 = NONE, f6 = NONE;
 
-	cfg_map_get(fmap, "filter-aaaa", &aclobj);
+	cfg_map_external_get(fmap, "filter-aaaa", &aclobj);
 	if (aclobj == NULL) {
 		return result;
 	}
