@@ -244,6 +244,7 @@ struct dumpcontext {
 	isc_mem_t *mctx;
 	bool dumpcache;
 	bool dumpzones;
+	bool dumpdeleg;
 	bool dumpadb;
 	bool dumpexpired;
 	bool dumpfail;
@@ -10762,6 +10763,16 @@ resume:
 		dns_db_attach(dctx->view->view->cachedb, &dctx->cache);
 	}
 
+	if (dctx->dumpdeleg) {
+		isc_buffer_t *text = NULL;
+		fprintf(dctx->fp, ";\n; Delegation cache\n;\n");
+		isc_buffer_allocate(isc_g_mctx, &text, BUFSIZ);
+		dns_delegdb_dump(dctx->view->view->deleg, NULL, 0, text);
+		fprintf(dctx->fp, "%.*s", (int)isc_buffer_usedlength(text),
+			(char *)isc_buffer_base(text));
+		isc_buffer_free(&text);
+	}
+
 	if (dctx->cache != NULL) {
 		if (dctx->dumpadb) {
 			dns_adb_t *adb = NULL;
@@ -10777,6 +10788,7 @@ resume:
 		}
 		dns_db_detach(&dctx->cache);
 	}
+
 	if (dctx->dumpzones) {
 		style = &dns_master_style_full;
 	nextzone:
@@ -10865,6 +10877,7 @@ named_server_dumpdb(named_server_t *server, isc_lex_t *lex,
 		.mctx = server->mctx,
 		.dumpcache = true,
 		.dumpadb = true,
+		.dumpdeleg = true,
 		.dumpfail = true,
 		.viewlist = ISC_LIST_INITIALIZER,
 	};
@@ -10893,23 +10906,27 @@ named_server_dumpdb(named_server_t *server, isc_lex_t *lex,
 		/* only dump zones, suppress caches */
 		dctx->dumpadb = false;
 		dctx->dumpcache = false;
+		dctx->dumpdeleg = false;
 		dctx->dumpfail = false;
 		dctx->dumpzones = true;
 		ptr = next_token(lex, NULL);
 	} else if (ptr != NULL && strcmp(ptr, "-adb") == 0) {
 		/* only dump adb, suppress other caches */
 		dctx->dumpcache = false;
+		dctx->dumpdeleg = false;
 		dctx->dumpfail = false;
 		ptr = next_token(lex, NULL);
 	} else if (ptr != NULL && strcmp(ptr, "-bad") == 0) {
 		/* only dump badcache, suppress other caches */
 		dctx->dumpadb = false;
+		dctx->dumpdeleg = false;
 		dctx->dumpcache = false;
 		dctx->dumpfail = false;
 		ptr = next_token(lex, NULL);
 	} else if (ptr != NULL && strcmp(ptr, "-fail") == 0) {
 		/* only dump servfail cache, suppress other caches */
 		dctx->dumpadb = false;
+		dctx->dumpdeleg = false;
 		dctx->dumpcache = false;
 		ptr = next_token(lex, NULL);
 	}
