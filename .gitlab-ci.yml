@@ -2009,6 +2009,7 @@ rpms-cloudsmith-build:
   artifacts:
     paths:
       - commit.txt
+    expire_in: "1 month"
 
 rpms-cloudsmith-build-private:
   <<: *rpm_build_job_private
@@ -2019,6 +2020,7 @@ rpms-cloudsmith-build-private:
   artifacts:
     paths:
       - commit.txt
+    expire_in: "1 month"
 
 # Publish Cloudsmith packages
 
