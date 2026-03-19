@@ -5626,13 +5626,14 @@ validated(void *arg) {
 	addrinfo = valarg->addrinfo;
 
 	message = val->message;
-	fctx->vresult = val->result;
 
 	FCTXTRACE("received validation completion event");
 
 	isc_mem_put(fctx->mctx, valarg, sizeof(*valarg));
 
 	LOCK(&fctx->lock);
+
+	fctx->vresult = val->result;
 
 	ISC_LIST_UNLINK(fctx->validators, val, link);
 
