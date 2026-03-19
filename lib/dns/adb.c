@@ -2840,22 +2840,35 @@ static void
 adjustsrtt(dns_adbaddrinfo_t *addr, unsigned int rtt, unsigned int factor,
 	   isc_stdtime_t now) {
 	unsigned int new_srtt;
+	unsigned int old_srtt;
 
 	if (factor == DNS_ADB_RTTADJAGE) {
-		if (atomic_load(&addr->entry->lastage) != now) {
-			new_srtt = (uint64_t)atomic_load(&addr->entry->srtt) *
-				   98 / 100;
-			atomic_store(&addr->entry->lastage, now);
-			atomic_store(&addr->entry->srtt, new_srtt);
-			addr->srtt = new_srtt;
+		isc_stdtime_t lastage =
+			atomic_load_acquire(&addr->entry->lastage);
+
+		/* prevent double aging */
+		if (lastage == now ||
+		    !atomic_compare_exchange_strong_acq_rel(
+			    &addr->entry->lastage, &lastage, now))
+		{
+			return;
 		}
-	} else {
-		new_srtt = ((uint64_t)atomic_load(&addr->entry->srtt) / 10 *
-			    factor) +
-			   ((uint64_t)rtt / 10 * (10 - factor));
-		atomic_store(&addr->entry->srtt, new_srtt);
-		addr->srtt = new_srtt;
 	}
+
+	/*
+	 * Correct CAS aging...
+	 */
+	old_srtt = atomic_load_acquire(&addr->entry->srtt);
+	do {
+		if (factor == DNS_ADB_RTTADJAGE) {
+			new_srtt = (uint64_t)old_srtt * 98 / 100;
+		} else {
+			new_srtt = ((uint64_t)old_srtt / 10 * factor) +
+				   ((uint64_t)rtt / 10 * (10 - factor));
+		}
+	} while (!atomic_compare_exchange_weak_acq_rel(&addr->entry->srtt,
+						       &old_srtt, new_srtt));
+	addr->srtt = new_srtt;
 }
 
 void
