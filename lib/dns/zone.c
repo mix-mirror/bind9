@@ -15678,63 +15678,6 @@ queue_xfrin(dns_zone_t *zone) {
 }
 
 /*
- * Get the transport type used for the SOA query to the current primary server
- * before an ongoing incoming zone transfer.
- *
- * Requires:
- *	The zone is locked by the caller.
- */
-static dns_transport_type_t
-get_request_transport_type(dns_zone_t *zone) {
-	dns_transport_type_t transport_type = DNS_TRANSPORT_NONE;
-
-	if (zone->transport != NULL) {
-		transport_type = dns_transport_get_type(zone->transport);
-	} else {
-		transport_type = (DNS_ZONE_FLAG(zone, DNS_ZONEFLG_USEVC))
-					 ? DNS_TRANSPORT_TCP
-					 : DNS_TRANSPORT_UDP;
-
-		/* Check if the peer is forced to always use TCP. */
-		if (transport_type != DNS_TRANSPORT_TCP &&
-		    !dns_remote_done(&zone->primaries))
-		{
-			isc_result_t result;
-			isc_sockaddr_t primaryaddr;
-			isc_netaddr_t primaryip;
-			dns_peer_t *peer = NULL;
-
-			primaryaddr = dns_remote_curraddr(&zone->primaries);
-			isc_netaddr_fromsockaddr(&primaryip, &primaryaddr);
-			result = dns_peerlist_peerbyaddr(zone->view->peers,
-							 &primaryip, &peer);
-			if (result == ISC_R_SUCCESS && peer != NULL) {
-				bool usetcp;
-				result = dns_peer_getforcetcp(peer, &usetcp);
-				if (result == ISC_R_SUCCESS && usetcp) {
-					transport_type = DNS_TRANSPORT_TCP;
-				}
-			}
-		}
-	}
-
-	return transport_type;
-}
-
-dns_transport_type_t
-dns_zone_getrequesttransporttype(dns_zone_t *zone) {
-	dns_transport_type_t transport_type;
-
-	REQUIRE(DNS_ZONE_VALID(zone));
-
-	LOCK_ZONE(zone);
-	transport_type = get_request_transport_type(zone);
-	UNLOCK_ZONE(zone);
-
-	return transport_type;
-}
-
-/*
  * Update forwarding support.
  */
 
@@ -16097,11 +16040,6 @@ zone_saveunique(dns_zone_t *zone, const char *path, const char *templat) {
 
 cleanup:
 	isc_mem_put(zone->mctx, buf, buflen);
-}
-
-dns_keystorelist_t *
-dns_zone_getkeystores(dns_zone_t *zone) {
-	return zone->zmgr->keystores;
 }
 
 void
@@ -20632,13 +20570,6 @@ dns_zone_setserial(dns_zone_t *zone, uint32_t serial) {
 cleanup:
 	UNLOCK_ZONE(zone);
 	return result;
-}
-
-isc_stats_t *
-dns_zone_getgluecachestats(dns_zone_t *zone) {
-	REQUIRE(DNS_ZONE_VALID(zone));
-
-	return zone->gluecachestats;
 }
 
 bool

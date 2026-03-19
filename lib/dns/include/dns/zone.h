@@ -502,18 +502,6 @@ dns_zone_replacedb(dns_zone_t *zone, dns_db_t *db, bool dump);
  *	Others
  */
 
-dns_transport_type_t
-dns_zone_getrequesttransporttype(dns_zone_t *zone);
-/*%<
- * Get the transport type used for the SOA query to the current primary server
- * before an ongoing incoming zone transfer is lanunched. When the transfer is
- * already running, this information should be retrieved from the xfrin object
- * instead, using the dns_xfrin_gettransporttype() function.
- *
- * Requires:
- * \li	'zone' to be a valid zone.
- */
-
 isc_result_t
 dns_zone_forwardupdate(dns_zone_t *zone, dns_message_t *msg,
 		       dns_updatecallback_t callback, void *callback_arg);
@@ -939,19 +927,6 @@ dns_zone_setserial(dns_zone_t *zone, uint32_t serial);
  * Set the zone's serial to 'serial'.
  */
 
-isc_stats_t *
-dns_zone_getgluecachestats(dns_zone_t *zone);
-/*%<
- * Get the glue cache statistics for zone.
- *
- * Requires:
- * \li	'zone' to be a valid zone.
- *
- * Returns:
- * \li	if present, a pointer to the statistics set installed in zone;
- *	otherwise NULL.
- */
-
 bool
 dns_zone_isloaded(dns_zone_t *zone);
 /*%<
@@ -1042,13 +1017,6 @@ dns_zonemgr_setkeystores(dns_zonemgr_t *zmgr, dns_keystorelist_t *keystores);
  * Requires:
  * \li	'zmgr' to be a valid.
  * \li  'keystores' to be a valid.
- */
-
-dns_keystorelist_t *
-dns_zone_getkeystores(dns_zone_t *zone);
-/**<
- * Get the keystores pointer, it should never be NULL once the server is
- * initialized.
  */
 
 void
