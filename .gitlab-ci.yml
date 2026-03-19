@@ -2160,6 +2160,10 @@ merge-tag:
   <<: *manual_release_job_qa
   variables:
     GIT_DEPTH: 100
+  needs:
+    # TODO: if necessary, update job name after pushing tags from within CI is implemented
+    - job: publish
+      artifacts: false
   script:
     - >
       "$CI_PROJECT_DIR"/bind9-qa/releng/merge_tag.py --tag "$CI_COMMIT_TAG"
@@ -2174,6 +2178,10 @@ update-stable-tag:
   <<: *manual_release_job_qa
   variables:
     GIT_DEPTH: 1
+  needs:
+    # TODO: if necessary, update job name after pushing tags from within CI is implemented
+    - job: publish
+      artifacts: false
   script:
     - >
       "$CI_PROJECT_DIR"/bind9-qa/releng/update_stable_tag.py --tag "$CI_COMMIT_TAG"
