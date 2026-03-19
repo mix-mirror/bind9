@@ -64,7 +64,7 @@ run_query() {
   LINE=$2
 
   NAME=$(sed -n -e "$LINE,"'$p' ns2/$TESTNAME.queries | head -n 1)
-  $DIG $DIGOPTS $NAME a @10.53.0.2 -p ${PORT} -b 127.0.0.1 >dig.out.${t}
+  $DIG $DIGOPTS $NAME a @10.53.0.2 -p ${PORT} -b 127.0.0.1 >dig.out.${t} || return 1
   grep "status: SERVFAIL" dig.out.${t} >/dev/null 2>&1 && return 1
   return 0
 }
@@ -111,7 +111,7 @@ add_test_marker() {
 t=$((t + 1))
 echo_i "testing that l1.l0 exists without RPZ (${t})"
 add_test_marker 10.53.0.2
-$DIG $DIGOPTS l1.l0 ns @10.53.0.2 -p ${PORT} >dig.out.${t}
+$DIG $DIGOPTS l1.l0 ns @10.53.0.2 -p ${PORT} >dig.out.${t} || status=1
 grep "status: NOERROR" dig.out.${t} >/dev/null 2>&1 || {
   echo_i "test ${t} failed"
   status=1
@@ -120,7 +120,7 @@ grep "status: NOERROR" dig.out.${t} >/dev/null 2>&1 || {
 t=$((t + 1))
 echo_i "testing that l2.l1.l0 returns SERVFAIL without RPZ (${t})"
 add_test_marker 10.53.0.2
-$DIG $DIGOPTS l2.l1.l0 ns @10.53.0.2 -p ${PORT} >dig.out.${t}
+$DIG $DIGOPTS l2.l1.l0 ns @10.53.0.2 -p ${PORT} >dig.out.${t} || status=1
 grep "status: SERVFAIL" dig.out.${t} >/dev/null 2>&1 || {
   echo_i "test ${t} failed"
   status=1
@@ -206,7 +206,7 @@ sleep 1
 t=$((t + 1))
 echo_i "running dig to cache CNAME record (${t})"
 add_test_marker 10.53.0.1 10.53.0.2
-$DIG $DIGOPTS @10.53.0.2 -p ${PORT} www.test.example.org CNAME >dig.out.${t}
+$DIG $DIGOPTS @10.53.0.2 -p ${PORT} www.test.example.org CNAME >dig.out.${t} || status=1
 sleep 1
 echo_i "suspending authority server"
 PID=$(cat ns1/named.pid)
@@ -248,7 +248,7 @@ sleep 1
 t=$((t + 1))
 echo_i "running dig to cache CNAME record (${t})"
 add_test_marker 10.53.0.1 10.53.0.2
-$DIG $DIGOPTS @10.53.0.2 -p ${PORT} www.test.example.org CNAME >dig.out.${t}
+$DIG $DIGOPTS @10.53.0.2 -p ${PORT} www.test.example.org CNAME >dig.out.${t} || status=1
 sleep 1
 echo_i "suspending authority server"
 PID=$(cat ns1/named.pid)
@@ -289,7 +289,7 @@ add_test_marker 10.53.0.2
 run_server max
 i=1
 while test $i -le 64; do
-  $DIG $DIGOPTS name$i a @10.53.0.2 -p ${PORT} -b 10.53.0.1 >dig.out.${t}.${i}
+  $DIG $DIGOPTS name$i a @10.53.0.2 -p ${PORT} -b 10.53.0.1 >dig.out.${t}.${i} || status=1
   grep "^name$i.[ 	]*[0-9]*[ 	]*IN[ 	]*A[ 	]*10.53.0.$i" dig.out.${t}.${i} >/dev/null 2>&1 || {
     echo_i "test $t failed: didn't get expected answer from policy zone $i"
     status=1
@@ -302,7 +302,7 @@ t=$((t + 1))
 echo_i "testing CLIENT-IP behavior (${t})"
 add_test_marker 10.53.0.2
 run_server clientip
-$DIG $DIGOPTS l2.l1.l0 a @10.53.0.2 -p ${PORT} -b 10.53.0.4 >dig.out.${t}
+$DIG $DIGOPTS l2.l1.l0 a @10.53.0.2 -p ${PORT} -b 10.53.0.4 >dig.out.${t} || status=1
 grep "status: NOERROR" dig.out.${t} >/dev/null 2>&1 || {
   echo_i "test $t failed: query failed"
   status=1
@@ -317,17 +317,17 @@ t=$((t + 1))
 echo_i "testing CLIENT-IP behavior #2 (${t})"
 add_test_marker 10.53.0.2
 run_server clientip2
-$DIG $DIGOPTS l2.l1.l0 a @10.53.0.2 -p ${PORT} -b 10.53.0.1 >dig.out.${t}.1
+$DIG $DIGOPTS l2.l1.l0 a @10.53.0.2 -p ${PORT} -b 10.53.0.1 >dig.out.${t}.1 || status=1
 grep "status: SERVFAIL" dig.out.${t}.1 >/dev/null 2>&1 || {
   echo_i "test $t failed: query failed"
   status=1
 }
-$DIG $DIGOPTS l2.l1.l0 a @10.53.0.2 -p ${PORT} -b 10.53.0.2 >dig.out.${t}.2
+$DIG $DIGOPTS l2.l1.l0 a @10.53.0.2 -p ${PORT} -b 10.53.0.2 >dig.out.${t}.2 || status=1
 grep "status: NXDOMAIN" dig.out.${t}.2 >/dev/null 2>&1 || {
   echo_i "test $t failed: query failed"
   status=1
 }
-$DIG $DIGOPTS l2.l1.l0 a @10.53.0.2 -p ${PORT} -b 10.53.0.3 >dig.out.${t}.3
+$DIG $DIGOPTS l2.l1.l0 a @10.53.0.2 -p ${PORT} -b 10.53.0.3 >dig.out.${t}.3 || status=1
 grep "status: NOERROR" dig.out.${t}.3 >/dev/null 2>&1 || {
   echo_i "test $t failed: query failed"
   status=1
@@ -336,7 +336,7 @@ grep "^l2.l1.l0.[ 	]*[0-9]*[ 	]*IN[ 	]*A[ 	]*10.53.0.1" dig.out.${t}.3 >/dev/nul
   echo_i "test $t failed: didn't get expected answer"
   status=1
 }
-$DIG $DIGOPTS l2.l1.l0 a @10.53.0.2 -p ${PORT} -b 10.53.0.4 >dig.out.${t}.4
+$DIG $DIGOPTS l2.l1.l0 a @10.53.0.2 -p ${PORT} -b 10.53.0.4 >dig.out.${t}.4 || status=1
 grep "status: SERVFAIL" dig.out.${t}.4 >/dev/null 2>&1 || {
   echo_i "test $t failed: query failed"
   status=1
@@ -348,7 +348,7 @@ echo_i "testing RPZ log clause (${t})"
 add_test_marker 10.53.0.2
 run_server log
 cur=$(awk 'BEGIN {l=0} /^/ {l++} END { print l }' ns2/named.run)
-$DIG $DIGOPTS l2.l1.l0 a @10.53.0.2 -p ${PORT} -b 10.53.0.4 >dig.out.${t}
+$DIG $DIGOPTS l2.l1.l0 a @10.53.0.2 -p ${PORT} -b 10.53.0.4 >dig.out.${t} || status=1
 $DIG $DIGOPTS l2.l1.l0 a @10.53.0.2 -p ${PORT} -b 10.53.0.3 >>dig.out.${t}
 $DIG $DIGOPTS l2.l1.l0 a @10.53.0.2 -p ${PORT} -b 10.53.0.2 >>dig.out.${t}
 sed -n "$cur,"'$p' <ns2/named.run | grep "view recursive: rpz CLIENT-IP Local-Data rewrite l2.l1.l0/A/IN via 32.4.0.53.10.rpz-client-ip.log1" >/dev/null && {
@@ -370,7 +370,7 @@ t=$((t + 1))
 echo_i "testing wildcard behavior with 1 RPZ zone (${t})"
 add_test_marker 10.53.0.2
 run_server wildcard1
-$DIG $DIGOPTS www.test1.example.net a @10.53.0.2 -p ${PORT} >dig.out.${t}.1
+$DIG $DIGOPTS www.test1.example.net a @10.53.0.2 -p ${PORT} >dig.out.${t}.1 || status=1
 grep "status: NXDOMAIN" dig.out.${t}.1 >/dev/null || {
   echo_i "test ${t} failed"
   status=1
@@ -385,7 +385,7 @@ t=$((t + 1))
 echo_i "testing wildcard behavior with 2 RPZ zones (${t})"
 add_test_marker 10.53.0.2
 run_server wildcard2
-$DIG $DIGOPTS www.test1.example.net a @10.53.0.2 -p ${PORT} >dig.out.${t}.1
+$DIG $DIGOPTS www.test1.example.net a @10.53.0.2 -p ${PORT} >dig.out.${t}.1 || status=1
 grep "status: NXDOMAIN" dig.out.${t}.1 >/dev/null || {
   echo_i "test ${t} failed"
   status=1
@@ -400,7 +400,7 @@ t=$((t + 1))
 echo_i "testing wildcard behavior with 1 RPZ zone and no non-wildcard triggers (${t})"
 add_test_marker 10.53.0.2
 run_server wildcard3
-$DIG $DIGOPTS www.test1.example.net a @10.53.0.2 -p ${PORT} >dig.out.${t}.1
+$DIG $DIGOPTS www.test1.example.net a @10.53.0.2 -p ${PORT} >dig.out.${t}.1 || status=1
 grep "status: NXDOMAIN" dig.out.${t}.1 >/dev/null || {
   echo_i "test ${t} failed"
   status=1
@@ -415,7 +415,7 @@ t=$((t + 1))
 echo_i "testing wildcard passthru before explicit drop (${t})"
 add_test_marker 10.53.0.2
 run_server wildcard4
-$DIG $DIGOPTS example.com a @10.53.0.2 -p ${PORT} >dig.out.${t}.1
+$DIG $DIGOPTS example.com a @10.53.0.2 -p ${PORT} >dig.out.${t}.1 || status=1
 grep "status: NOERROR" dig.out.${t}.1 >/dev/null || {
   echo_i "test ${t} failed"
   status=1
