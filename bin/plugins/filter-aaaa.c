@@ -186,8 +186,9 @@ static cfg_clausedef_t param_clauses[] = {
 static cfg_clausedef_t *param_clausesets[] = { param_clauses, NULL };
 
 static cfg_type_t cfg_type_parameters = {
-	"filter-aaaa-params", cfg_parse_mapbody, cfg_print_mapbody,
-	cfg_doc_mapbody,      &cfg_rep_map,	 param_clausesets
+	"filter-aaaa-params",	    cfg_parse_mapbody_external,
+	cfg_print_mapbody_external, cfg_doc_mapbody_external,
+	&cfg_rep_map_external,	    param_clausesets
 };
 
 static isc_result_t
@@ -196,7 +197,7 @@ parse_filter_aaaa_on(const cfg_obj_t *param_obj, const char *param_name,
 	const cfg_obj_t *obj = NULL;
 	isc_result_t result;
 
-	result = cfg_map_get(param_obj, param_name, &obj);
+	result = cfg_map_external_get(param_obj, param_name, &obj);
 	if (result != ISC_R_SUCCESS) {
 		return ISC_R_SUCCESS;
 	}
@@ -223,7 +224,7 @@ check_syntax(cfg_obj_t *fmap, const void *cfg, isc_mem_t *mctx, void *aclctx) {
 	dns_acl_t *acl = NULL;
 	filter_aaaa_t f4 = NONE, f6 = NONE;
 
-	cfg_map_get(fmap, "filter-aaaa", &aclobj);
+	cfg_map_external_get(fmap, "filter-aaaa", &aclobj);
 	if (aclobj == NULL) {
 		return result;
 	}
@@ -275,7 +276,7 @@ parse_parameters(filter_instance_t *inst, const char *parameters,
 	CHECK(parse_filter_aaaa_on(param_obj, "filter-aaaa-on-v6",
 				   &inst->v6_aaaa));
 
-	result = cfg_map_get(param_obj, "filter-aaaa", &obj);
+	result = cfg_map_external_get(param_obj, "filter-aaaa", &obj);
 	if (result == ISC_R_SUCCESS) {
 		CHECK(cfg_acl_fromconfig(obj, (const cfg_obj_t *)cfg,
 					 (cfg_aclconfctx_t *)aclctx, mctx, 0,
