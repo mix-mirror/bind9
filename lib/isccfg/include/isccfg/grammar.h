@@ -91,8 +91,9 @@ typedef struct cfg_clausedef	 cfg_clausedef_t;
 typedef struct cfg_tuplefielddef cfg_tuplefielddef_t;
 typedef struct cfg_printer	 cfg_printer_t;
 typedef ISC_LIST(cfg_listelt_t) cfg_list_t;
-typedef struct cfg_map cfg_map_t;
-typedef struct cfg_rep cfg_rep_t;
+typedef struct cfg_map	        cfg_map_t;
+typedef struct cfg_map_external cfg_map_external_t;
+typedef struct cfg_rep		cfg_rep_t;
 
 /*
  * Function types for configuration object methods
@@ -176,6 +177,15 @@ struct cfg_map {
 	isc_symtab_t *symtab;
 };
 
+struct cfg_map_external {
+	cfg_obj_t *id; /*%< Used for 'named maps' like
+			* keys, zones, &c */
+	const cfg_clausedef_t *const *clausesets; /*%< The clauses that
+						   * can occur in this map;
+						   * used for printing */
+	isc_symtab_t *symtab;
+};
+
 typedef struct cfg_netprefix cfg_netprefix_t;
 
 struct cfg_netprefix {
@@ -229,8 +239,8 @@ struct cfg_obj {
 		uint64_t	   uint64;
 		char		  *string; /*%< null terminated */
 		bool		   boolean;
-		cfg_map_t	  *map;
-		cfg_map_t	  *map_external;
+		cfg_map_t	    *map;
+		cfg_map_external_t  *map_external;
 		cfg_list_t	  *list;
 		cfg_obj_t	 **tuple;
 		isc_sockaddr_t	  *sockaddr;

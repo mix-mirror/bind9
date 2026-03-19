@@ -3360,7 +3360,7 @@ isc_result_t
 cfg_map_external_get(const cfg_obj_t *mapobj, const char *name,
 		     const cfg_obj_t **obj) {
 	isc_symvalue_t val;
-	const cfg_map_t *map;
+	const cfg_map_external_t *map;
 
 	REQUIRE(mapobj != NULL && mapobj->type->rep == &cfg_rep_map_external);
 	REQUIRE(name != NULL);
@@ -3382,7 +3382,7 @@ cfg_map_external_getname(const cfg_obj_t *mapobj) {
 
 unsigned int
 cfg_map_external_count(const cfg_obj_t *mapobj) {
-	const cfg_map_t *map;
+	const cfg_map_external_t *map;
 
 	REQUIRE(VALID_CFGOBJ(mapobj));
 	REQUIRE(mapobj->type->rep == &cfg_rep_map_external);
@@ -4634,7 +4634,7 @@ static isc_result_t
 map_define_external(cfg_obj_t *mapobj, cfg_obj_t *obj,
 		    const cfg_clausedef_t *clause) {
 	isc_result_t result;
-	const cfg_map_t *map;
+	const cfg_map_external_t *map;
 	isc_symvalue_t symval;
 
 	map = mapobj->value.map_external;
