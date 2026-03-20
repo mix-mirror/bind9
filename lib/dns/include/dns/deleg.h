@@ -71,7 +71,7 @@ struct dns_delegset {
 	isc_mem_t     *mctx;
 	isc_refcount_t references;
 
-	dns_deleglist_t deleg;
+	dns_deleglist_t delegs;
 	isc_stdtime_t	expires;
 
 	/*

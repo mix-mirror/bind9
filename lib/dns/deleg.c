@@ -363,7 +363,7 @@ dns_delegset_allocset(dns_delegdb_t *delegdb, dns_delegset_t **delegsetp) {
 					       sizeof(*delegset));
 	*delegset = (dns_delegset_t){ .magic = DNS_DELEGSET_MAGIC,
 				      .references = ISC_REFCOUNT_INITIALIZER(1),
-				      .deleg = ISC_LIST_INITIALIZER };
+				      .delegs = ISC_LIST_INITIALIZER };
 	isc_mem_attach(delegdb->mctx, &delegset->mctx);
 
 	*delegsetp = delegset;
@@ -384,7 +384,7 @@ dns_delegset_allocdeleg(dns_delegset_t *delegset, dns_deleg_type_t type,
 				.type = type,
 				.link = ISC_LINK_INITIALIZER };
 
-	ISC_LIST_APPEND(delegset->deleg, deleg, link);
+	ISC_LIST_APPEND(delegset->delegs, deleg, link);
 	*delegp = deleg;
 }
 
@@ -527,7 +527,7 @@ delegset_size(dns_delegset_t *delegset) {
 	size_t sz = 0;
 
 	sz += sizeof(*delegset);
-	ISC_LIST_FOREACH(delegset->deleg, deleg, link) {
+	ISC_LIST_FOREACH(delegset->delegs, deleg, link) {
 		sz += sizeof(*deleg);
 		ISC_LIST_FOREACH(deleg->addresses, address, link) {
 			sz += sizeof(*address);
@@ -682,10 +682,10 @@ delegset_destroy(dns_delegset_t *delegset) {
 	REQUIRE(DNS_DELEGSET_VALID(delegset));
 
 	delegset->magic = 0;
-	ISC_LIST_FOREACH(delegset->deleg, deleg, link) {
+	ISC_LIST_FOREACH(delegset->delegs, deleg, link) {
 		deleg->type = DNS_DELEGTYPE_UNDEFINED;
 
-		ISC_LIST_UNLINK(delegset->deleg, deleg, link);
+		ISC_LIST_UNLINK(delegset->delegs, deleg, link);
 
 		ISC_LIST_FOREACH(deleg->addresses, address, link) {
 			ISC_LIST_UNLINK(deleg->addresses, address, link);
@@ -786,7 +786,7 @@ deleg_tostring_addresses(dns_deleg_t *deleg, isc_buffer_t *b) {
 static void
 delegset_tostring(const dns_name_t *zonecut, dns_delegset_t *delegset,
 		  isc_stdtime_t now, isc_buffer_t *b) {
-	ISC_LIST_FOREACH(delegset->deleg, deleg, link) {
+	ISC_LIST_FOREACH(delegset->delegs, deleg, link) {
 		isc_buffer_t zonecutb;
 		char bdata[DNS_NAME_MAXWIRE];
 		dns_ttl_t ttl = delegset->expires - now;
@@ -811,7 +811,7 @@ delegset_tostring(const dns_name_t *zonecut, dns_delegset_t *delegset,
 			UNREACHABLE();
 		}
 
-		if (deleg != ISC_LIST_TAIL(delegset->deleg)) {
+		if (deleg != ISC_LIST_TAIL(delegset->delegs)) {
 			isc_buffer_putuint8(b, '\n');
 		}
 	}
@@ -906,7 +906,7 @@ dns_delegset_fromrdataset(dns_rdataset_t *rdataset,
 	*delegset = (dns_delegset_t){
 		.magic = DNS_DELEGSET_MAGIC,
 		.references = ISC_REFCOUNT_INITIALIZER(1),
-		.deleg = ISC_LIST_INITIALIZER,
+		.delegs = ISC_LIST_INITIALIZER,
 		.expires = rdataset->ttl + isc_stdtime_now(),
 		.staticstub = rdataset->attributes.staticstub
 	};
@@ -917,7 +917,7 @@ dns_delegset_fromrdataset(dns_rdataset_t *rdataset,
 				.names = ISC_LIST_INITIALIZER,
 				.type = DNS_DELEGTYPE_NS_NAMES,
 				.link = ISC_LINK_INITIALIZER };
-	ISC_LIST_APPEND(delegset->deleg, deleg, link);
+	ISC_LIST_APPEND(delegset->delegs, deleg, link);
 
 	DNS_RDATASET_FOREACH(rdataset) {
 		dns_rdata_t rdata = DNS_RDATA_INIT;

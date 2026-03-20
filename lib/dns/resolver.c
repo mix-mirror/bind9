@@ -3664,7 +3664,7 @@ fctx_getaddresses_addresses(fetchctx_t *fctx, isc_stdtime_t now,
 		options |= DNS_ADBFIND_QUOTAEXEMPT;
 	}
 
-	ISC_LIST_FOREACH(fctx->delegset->deleg, deleg, link) {
+	ISC_LIST_FOREACH(fctx->delegset->delegs, deleg, link) {
 		dns_adbfind_t *find = NULL;
 		size_t maxaddrs = max_delegation_servers - *ns_processed;
 		size_t findlen = 0;
@@ -3738,7 +3738,7 @@ fctx_getaddresses_nameservers(fetchctx_t *fctx, isc_stdtime_t now,
 	 * delegset, and at most `MAX_FIND_COUNT` glues and nameserver names
 	 * are used. (Hence `ns_processed` being shared)
 	 */
-	ISC_LIST_FOREACH(fctx->delegset->deleg, deleg, link) {
+	ISC_LIST_FOREACH(fctx->delegset->delegs, deleg, link) {
 		if (deleg->type != DNS_DELEGTYPE_DELEG_NAMES &&
 		    deleg->type != DNS_DELEGTYPE_NS_NAMES)
 		{
