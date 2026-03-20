@@ -35,10 +35,14 @@ class TemplateEngine:
         self.directory = Path(directory)
         self.env_vars = dict(env_vars)
         self.j2env = jinja2.Environment(
-            loader=jinja2.FileSystemLoader(str(self.directory)),
+            loader=jinja2.FileSystemLoader([
+                str(self.directory),
+                str(ALL["srcdir"]),  # to allow _common/ includes
+            ]),
             undefined=jinja2.StrictUndefined,
             variable_start_string="@",
             variable_end_string="@",
+            trim_blocks=True,
         )
 
     def render(

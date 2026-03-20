@@ -1,0 +1,23 @@
+; Copyright (C) Internet Systems Consortium, Inc. ("ISC")
+;
+; SPDX-License-Identifier: MPL-2.0
+;
+; This Source Code Form is subject to the terms of the Mozilla Public
+; License, v. 2.0.  If a copy of the MPL was not distributed with this
+; file, you can obtain one at https://mozilla.org/MPL/2.0/.
+;
+; See the COPYRIGHT file distributed with this work for additional
+; information regarding copyright ownership.
+
+{% include '_common/zones/soa.partial.db.j2' %}
+
+{% set zone = origin %}
+{% include '_common/zones/ns.partial.db.j2' %}
+
+{% include '_common/zones/keys.partial.db.j2' %}
+
+{% include '_common/zones/delegations.partial.db.j2' %}
+
+a			A	10.0.0.1
+b			A	10.0.0.2
+c			A	10.0.0.3

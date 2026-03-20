@@ -1,0 +1,5 @@
+{% if dnskeys is defined and dnskeys %}
+{% for dnskey in dnskeys %}
+@dnskey@
+{% endfor %}
+{% endif %}
