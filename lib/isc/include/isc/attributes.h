@@ -118,3 +118,9 @@
 #else
 #define ISC_ATTR_NONNULL(...)
 #endif
+
+#if __GNUC__ >= 8 && !defined(__clang__)
+#define ISC_NONSTRING __attribute__((nonstring))
+#else /* if __GNUC__ >= 8 && !defined(__clang__) */
+#define ISC_NONSTRING
+#endif /* __GNUC__ */
