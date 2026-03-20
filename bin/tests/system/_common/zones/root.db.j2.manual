@@ -16,16 +16,11 @@ $TTL 300
 				600		; retry
 				1200		; expire
 				600		; minimum
-				)
+)
+
 .			NS	a.root-servers.nil.
 a.root-servers.nil.	A	10.53.0.1
 
-{% for dnskey in dnskeys %}
-@dnskey@
-{% endfor %}
+{% include '_common/zones/keys.partial.db.j2' %}
 
-{% for zone in delegations %}
-{% set ns_name = zone.ns.name + "." + zone.name %}
-@zone.name@		NS	@ns_name@
-@ns_name@		A	@zone.ns.ip@
-{% endfor %}
+{% include '_common/zones/delegations.partial.db.j2' %}
