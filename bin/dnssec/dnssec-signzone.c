@@ -3316,7 +3316,7 @@ usage(int ret) {
 	fprintf(stderr, "\t-n ncpus (number of cpus present)\n");
 	fprintf(stderr, "\t-k key_signing_key\n");
 	fprintf(stderr, "\t-3 NSEC3 salt\n");
-	fprintf(stderr, "\t-H NSEC3 iterations (10)\n");
+	fprintf(stderr, "\t-H NSEC3 additional iterations (%d)\n", nsec3iter);
 	fprintf(stderr, "\t-A NSEC3 optout\n");
 
 	fprintf(stderr, "\n");
