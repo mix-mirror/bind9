@@ -13485,10 +13485,10 @@ dns_zone_notifyreceive(dns_zone_t *zone, isc_sockaddr_t *from,
 	{
 		/* Accept notify. */
 	} else if (i >= dns_remote_count(&zone->primaries)) {
-		UNLOCK_ZONE(zone);
 		dns_zone_logc(zone, DNS_LOGCATEGORY_XFER_IN, ISC_LOG_INFO,
 			      "refused notify from non-primary: %s", fromtext);
 		dns__zone_stats_increment(zone, dns_zonestatscounter_notifyrej);
+		UNLOCK_ZONE(zone);
 		return DNS_R_REFUSED;
 	}
 
