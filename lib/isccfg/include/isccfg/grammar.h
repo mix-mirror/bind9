@@ -25,6 +25,7 @@
 #include <isc/types.h>
 
 #include <isccfg/cfg.h>
+#include <isccfg/clause.h>
 #include <isccfg/duration.h>
 
 /*
@@ -87,11 +88,10 @@ enum {
 	CFG_ZONE_MIRROR = 1 << 23,
 };
 
-typedef struct cfg_clausedef	 cfg_clausedef_t;
 typedef struct cfg_tuplefielddef cfg_tuplefielddef_t;
-typedef struct cfg_printer	 cfg_printer_t;
+typedef struct cfg_printer	      cfg_printer_t;
 typedef ISC_LIST(cfg_listelt_t) cfg_list_t;
-typedef struct cfg_map	        cfg_map_t;
+typedef struct cfg_map		cfg_map_t;
 typedef struct cfg_map_external cfg_map_external_t;
 typedef struct cfg_rep		cfg_rep_t;
 
@@ -139,6 +139,13 @@ typedef void (*cfg_mergefunc_t)(const cfg_obj_t *config,
 				const cfg_obj_t *defaultobj);
 
 struct cfg_clausedef {
+	enum cfg_clause name;
+	cfg_type_t     *type;
+	unsigned int	flags;
+	cfg_mergefunc_t merge;
+};
+
+struct cfg_clausedef_external {
 	const char     *name;
 	cfg_type_t     *type;
 	unsigned int	flags;
@@ -180,9 +187,10 @@ struct cfg_map {
 struct cfg_map_external {
 	cfg_obj_t *id; /*%< Used for 'named maps' like
 			* keys, zones, &c */
-	const cfg_clausedef_t *const *clausesets; /*%< The clauses that
-						   * can occur in this map;
-						   * used for printing */
+	const cfg_clausedef_external_t *const *clausesets; /*%< The clauses that
+							    * can occur in this
+							    * map; used for
+							    * printing */
 	isc_symtab_t *symtab;
 };
 
@@ -653,7 +661,7 @@ cfg_is_enum(const char *s, const char *const *enums);
 /*%< Return true iff the string 's' is one of the strings in 'enums' */
 
 bool
-cfg_clause_validforzone(const char *name, unsigned int ztype);
+cfg_clause_validforzone(enum cfg_clause name, unsigned int ztype);
 /*%<
  * Check whether an option is legal for the specified zone type.
  */

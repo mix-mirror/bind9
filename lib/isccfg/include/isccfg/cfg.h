@@ -35,6 +35,8 @@
 #include <isc/refcount.h>
 #include <isc/types.h>
 
+#include <isccfg/clause.h>
+
 /***
  *** Types
  ***/
@@ -71,6 +73,11 @@ typedef struct cfg_listelt cfg_listelt_t;
  * A configuration clause definition.
  */
 typedef struct cfg_clausedef cfg_clausedef_t;
+
+/*%
+ * A configuration clause definition for external (plugin) maps.
+ */
+typedef struct cfg_clausedef_external cfg_clausedef_external_t;
 
 /*%
  * A callback function to be called when parsing an option
@@ -204,14 +211,15 @@ cfg_obj_ispercentage(const cfg_obj_t *obj);
  */
 
 isc_result_t
-cfg_map_get(const cfg_obj_t *mapobj, const char *name, const cfg_obj_t **obj);
+cfg_map_get(const cfg_obj_t *mapobj, enum cfg_clause name,
+	    const cfg_obj_t **obj);
 /*%<
  * Extract an element from a configuration object, which
  * must be of a map type.
  *
  * Requires:
  * \li     'mapobj' points to a valid configuration object of a map type.
- * \li     'name' points to a null-terminated string.
+ * \li     'name' is a valid enum cfg_clause value.
  * \li	'obj' is non-NULL and '*obj' is NULL.
  *
  * Returns:
@@ -220,7 +228,7 @@ cfg_map_get(const cfg_obj_t *mapobj, const char *name, const cfg_obj_t **obj);
  */
 
 isc_result_t
-cfg_map_add(cfg_obj_t *mapobj, cfg_obj_t *obj, const char *clause);
+cfg_map_add(cfg_obj_t *mapobj, cfg_obj_t *obj, enum cfg_clause clause);
 /*%<
  * Add the object 'obj' to the specified clause in mapbody 'mapobj'.
  * Used for adding new zones.
@@ -578,7 +586,7 @@ cfg_map_nextclause(const cfg_type_t *map, const void **clauses,
 		   unsigned int *idx);
 
 const cfg_clausedef_t *
-cfg_map_findclause(const cfg_type_t *map, const char *name);
+cfg_map_findclause(const cfg_type_t *map, enum cfg_clause name);
 
 bool
 cfg_obj_ismap_external(const cfg_obj_t *obj);
@@ -601,17 +609,17 @@ cfg_map_external_add(cfg_obj_t *mapobj, cfg_obj_t *obj, const char *clause);
 
 isc_result_t
 cfg_map_external_addclone(cfg_obj_t *map, const cfg_obj_t *obj,
-			  const cfg_clausedef_t *clause);
+			  const cfg_clausedef_external_t *clause);
 
-const cfg_clausedef_t *
+const cfg_clausedef_external_t *
 cfg_map_external_firstclause(const cfg_type_t *map, const void **clauses,
 			     unsigned int *idx);
 
-const cfg_clausedef_t *
+const cfg_clausedef_external_t *
 cfg_map_external_nextclause(const cfg_type_t *map, const void **clauses,
 			    unsigned int *idx);
 
-const cfg_clausedef_t *
+const cfg_clausedef_external_t *
 cfg_map_external_findclause(const cfg_type_t *map, const char *name);
 
 typedef isc_result_t(pluginlist_cb_t)(

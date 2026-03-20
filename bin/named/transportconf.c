@@ -22,6 +22,7 @@
 #include <dns/name.h>
 #include <dns/transport.h>
 
+#include <isccfg/clause.h>
 #include <isccfg/cfg.h>
 
 #include <named/log.h>
@@ -188,14 +189,14 @@ transport_list_fromconfig(const cfg_obj_t *config, dns_transport_list_t *list) {
 	isc_result_t result = ISC_R_SUCCESS;
 
 	if (result == ISC_R_SUCCESS &&
-	    cfg_map_get(config, "tls", &obj) == ISC_R_SUCCESS)
+	    cfg_map_get(config, CFG_CLAUSE_TLS, &obj) == ISC_R_SUCCESS)
 	{
 		result = add_tls_transports(obj, list);
 		obj = NULL;
 	}
 
 	if (result == ISC_R_SUCCESS &&
-	    cfg_map_get(config, "doh", &obj) == ISC_R_SUCCESS)
+	    cfg_map_get(config, CFG_CLAUSE_DOH, &obj) == ISC_R_SUCCESS)
 	{
 		result = add_doh_transports(obj, list);
 		obj = NULL;

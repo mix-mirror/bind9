@@ -183,13 +183,13 @@ static cfg_type_t cfg_type_filter_a = {
 	doc_filter_a, &cfg_rep_string, filter_a_enums,
 };
 
-static cfg_clausedef_t param_clauses[] = {
+static cfg_clausedef_external_t param_clauses[] = {
 	{ "filter-a", &cfg_type_bracketed_aml, 0, NULL },
 	{ "filter-a-on-v6", &cfg_type_filter_a, 0, NULL },
 	{ "filter-a-on-v4", &cfg_type_filter_a, 0, NULL },
 };
 
-static cfg_clausedef_t *param_clausesets[] = { param_clauses, NULL };
+static cfg_clausedef_external_t *param_clausesets[] = { param_clauses, NULL };
 
 static cfg_type_t cfg_type_parameters = {
 	"filter-a-params",	    cfg_parse_mapbody_external,

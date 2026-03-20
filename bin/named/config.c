@@ -41,6 +41,7 @@
 
 #include <dst/dst.h>
 
+#include <isccfg/clause.h>
 #include <isccfg/check.h>
 #include <isccfg/grammar.h>
 #include <isccfg/namedconf.h>
@@ -138,7 +139,7 @@ named_checknames_get(const cfg_obj_t **maps, const char *const names[],
 
 	for (i = 0; maps[i] != NULL; i++) {
 		checknames = NULL;
-		if (cfg_map_get(maps[i], "check-names", &checknames) ==
+		if (cfg_map_get(maps[i], CFG_CLAUSE_CHECK_NAMES, &checknames) ==
 		    ISC_R_SUCCESS)
 		{
 			/*
@@ -645,7 +646,7 @@ named_config_getport(const cfg_obj_t *config, const char *type,
 	isc_result_t result;
 	int i;
 
-	(void)cfg_map_get(config, "options", &options);
+	(void)cfg_map_get(config, CFG_CLAUSE_OPTIONS, &options);
 	i = 0;
 	if (options != NULL) {
 		maps[i++] = options;

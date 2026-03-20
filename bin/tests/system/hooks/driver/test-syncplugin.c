@@ -57,13 +57,13 @@ syncplugin__hook(void *arg, void *cbdata, isc_result_t *resp) {
 	return NS_HOOK_RETURN;
 }
 
-static cfg_clausedef_t syncplugin__cfgclauses[] = {
+static cfg_clausedef_external_t syncplugin__cfgclauses[] = {
 	{ "rcode", &cfg_type_astring, 0, NULL },
 	{ "source", &cfg_type_astring, 0, NULL },
 	{ "firstlbl", &cfg_type_qstring, CFG_CLAUSEFLAG_OPTIONAL, NULL }
 };
 
-static cfg_clausedef_t *syncplugin__cfgparamsclausesets[] = {
+static cfg_clausedef_external_t *syncplugin__cfgparamsclausesets[] = {
 	syncplugin__cfgclauses, NULL
 };
 

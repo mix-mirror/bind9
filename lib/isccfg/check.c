@@ -60,6 +60,7 @@
 
 #include <dst/dst.h>
 
+#include <isccfg/clause.h>
 #include <isccfg/aclconf.h>
 #include <isccfg/cfg.h>
 #include <isccfg/check.h>
@@ -189,7 +190,7 @@ check_order(const cfg_obj_t *options) {
 	isc_result_t tresult;
 	const cfg_obj_t *obj = NULL;
 
-	if (cfg_map_get(options, "rrset-order", &obj) != ISC_R_SUCCESS) {
+	if (cfg_map_get(options, CFG_CLAUSE_RRSET_ORDER, &obj) != ISC_R_SUCCESS) {
 		return result;
 	}
 
@@ -214,7 +215,7 @@ check_dual_stack(const cfg_obj_t *options) {
 	isc_result_t result = ISC_R_SUCCESS;
 	isc_result_t tresult;
 
-	(void)cfg_map_get(options, "dual-stack-servers", &alternates);
+	(void)cfg_map_get(options, CFG_CLAUSE_DUAL_STACK_SERVERS, &alternates);
 
 	if (alternates == NULL) {
 		return ISC_R_SUCCESS;
@@ -297,8 +298,8 @@ check_forward(const cfg_obj_t *config, const cfg_obj_t *options,
 	const cfg_obj_t *forwarders = NULL;
 	const cfg_obj_t *faddresses = NULL;
 
-	(void)cfg_map_get(options, "forward", &forward);
-	(void)cfg_map_get(options, "forwarders", &forwarders);
+	(void)cfg_map_get(options, CFG_CLAUSE_FORWARD, &forward);
+	(void)cfg_map_get(options, CFG_CLAUSE_FORWARDERS, &forwarders);
 
 	if (forwarders != NULL && global != NULL) {
 		const char *file = cfg_obj_file(global);
@@ -465,7 +466,7 @@ checkacl(const char *aclname, cfg_aclconfctx_t *aclctx,
 	}
 	if (config != NULL && aclobj == NULL) {
 		options = NULL;
-		cfg_map_get(config, "options", &options);
+		cfg_map_get(config, CFG_CLAUSE_OPTIONS, &options);
 		if (options != NULL) {
 			cfg_map_get(options, aclname, &aclobj);
 		}
@@ -571,13 +572,13 @@ check_dns64(cfg_aclconfctx_t *aclctx, const cfg_obj_t *voptions,
 	static const char *acls[] = { "clients", "exclude", "mapped", NULL };
 
 	if (voptions != NULL) {
-		cfg_map_get(voptions, "dns64", &dns64);
+		cfg_map_get(voptions, CFG_CLAUSE_DNS64, &dns64);
 	}
 	if (config != NULL && dns64 == NULL) {
 		options = NULL;
-		cfg_map_get(config, "options", &options);
+		cfg_map_get(config, CFG_CLAUSE_OPTIONS, &options);
 		if (options != NULL) {
-			cfg_map_get(options, "dns64", &dns64);
+			cfg_map_get(options, CFG_CLAUSE_DNS64, &dns64);
 		}
 	}
 	if (dns64 == NULL) {
@@ -630,7 +631,7 @@ check_dns64(cfg_aclconfctx_t *aclctx, const cfg_obj_t *voptions,
 		}
 
 		obj = NULL;
-		(void)cfg_map_get(map, "suffix", &obj);
+		(void)cfg_map_get(map, CFG_CLAUSE_SUFFIX, &obj);
 		if (obj != NULL) {
 			static const unsigned char zeros[16];
 			isc_netaddr_fromsockaddr(&sa, cfg_obj_assockaddr(obj));
@@ -698,13 +699,13 @@ check_ratelimit(cfg_aclconfctx_t *aclctx, const cfg_obj_t *voptions,
 	int slip;
 
 	if (voptions != NULL) {
-		cfg_map_get(voptions, "rate-limit", &map);
+		cfg_map_get(voptions, CFG_CLAUSE_RATE_LIMIT, &map);
 	}
 	if (config != NULL && map == NULL) {
 		options = NULL;
-		cfg_map_get(config, "options", &options);
+		cfg_map_get(config, CFG_CLAUSE_OPTIONS, &options);
 		if (options != NULL) {
-			cfg_map_get(options, "rate-limit", &map);
+			cfg_map_get(options, CFG_CLAUSE_RATE_LIMIT, &map);
 		}
 	}
 	if (map == NULL) {
@@ -713,7 +714,7 @@ check_ratelimit(cfg_aclconfctx_t *aclctx, const cfg_obj_t *voptions,
 
 	min_entries = 500;
 	obj = NULL;
-	mresult = cfg_map_get(map, "min-table-size", &obj);
+	mresult = cfg_map_get(map, CFG_CLAUSE_MIN_TABLE_SIZE, &obj);
 	if (mresult == ISC_R_SUCCESS) {
 		min_entries = cfg_obj_asuint32(obj);
 		if (min_entries < 1) {
@@ -722,7 +723,7 @@ check_ratelimit(cfg_aclconfctx_t *aclctx, const cfg_obj_t *voptions,
 	}
 
 	obj = NULL;
-	mresult = cfg_map_get(map, "max-table-size", &obj);
+	mresult = cfg_map_get(map, CFG_CLAUSE_MAX_TABLE_SIZE, &obj);
 	if (mresult == ISC_R_SUCCESS) {
 		i = cfg_obj_asuint32(obj);
 		CHECK_RRL(i >= min_entries,
@@ -747,7 +748,7 @@ check_ratelimit(cfg_aclconfctx_t *aclctx, const cfg_obj_t *voptions,
 	CHECK_RRL_RATE(slip, 2, DNS_RRL_MAX_SLIP, "slip");
 
 	obj = NULL;
-	mresult = cfg_map_get(map, "window", &obj);
+	mresult = cfg_map_get(map, CFG_CLAUSE_WINDOW, &obj);
 	if (mresult == ISC_R_SUCCESS) {
 		i = cfg_obj_asuint32(obj);
 		CHECK_RRL(i >= 1 && i <= DNS_RRL_MAX_WINDOW,
@@ -755,14 +756,14 @@ check_ratelimit(cfg_aclconfctx_t *aclctx, const cfg_obj_t *voptions,
 	}
 
 	obj = NULL;
-	mresult = cfg_map_get(map, "qps-scale", &obj);
+	mresult = cfg_map_get(map, CFG_CLAUSE_QPS_SCALE, &obj);
 	if (mresult == ISC_R_SUCCESS) {
 		i = cfg_obj_asuint32(obj);
 		CHECK_RRL(i >= 1, "invalid 'qps-scale %d'%s", i, "");
 	}
 
 	obj = NULL;
-	mresult = cfg_map_get(map, "ipv4-prefix-length", &obj);
+	mresult = cfg_map_get(map, CFG_CLAUSE_IPV4_PREFIX_LENGTH, &obj);
 	if (mresult == ISC_R_SUCCESS) {
 		i = cfg_obj_asuint32(obj);
 		CHECK_RRL(i >= 8 && i <= 32,
@@ -770,7 +771,7 @@ check_ratelimit(cfg_aclconfctx_t *aclctx, const cfg_obj_t *voptions,
 	}
 
 	obj = NULL;
-	mresult = cfg_map_get(map, "ipv6-prefix-length", &obj);
+	mresult = cfg_map_get(map, CFG_CLAUSE_IPV6_PREFIX_LENGTH, &obj);
 	if (mresult == ISC_R_SUCCESS) {
 		i = cfg_obj_asuint32(obj);
 		CHECK_RRL(i >= 16 && i <= DNS_RRL_MAX_PREFIX,
@@ -779,7 +780,7 @@ check_ratelimit(cfg_aclconfctx_t *aclctx, const cfg_obj_t *voptions,
 	}
 
 	obj = NULL;
-	(void)cfg_map_get(map, "exempt-clients", &obj);
+	(void)cfg_map_get(map, CFG_CLAUSE_EXEMPT_CLIENTS, &obj);
 	if (obj != NULL) {
 		dns_acl_t *acl = NULL;
 		isc_result_t tresult;
@@ -805,13 +806,13 @@ check_fetchlimit(const cfg_obj_t *voptions, const cfg_obj_t *config) {
 	double low, high, discount;
 
 	if (voptions != NULL) {
-		cfg_map_get(voptions, "fetch-quota-params", &map);
+		cfg_map_get(voptions, CFG_CLAUSE_FETCH_QUOTA_PARAMS, &map);
 	}
 	if (config != NULL && map == NULL) {
 		options = NULL;
-		cfg_map_get(config, "options", &options);
+		cfg_map_get(config, CFG_CLAUSE_OPTIONS, &options);
 		if (options != NULL) {
-			cfg_map_get(options, "fetch-quota-params", &map);
+			cfg_map_get(options, CFG_CLAUSE_FETCH_QUOTA_PARAMS, &map);
 		}
 	}
 	if (map == NULL) {
@@ -870,13 +871,13 @@ check_recursionacls(cfg_aclconfctx_t *aclctx, const cfg_obj_t *voptions,
 				      NULL };
 
 	if (voptions != NULL) {
-		cfg_map_get(voptions, "recursion", &obj);
+		cfg_map_get(voptions, CFG_CLAUSE_RECURSION, &obj);
 	}
 	if (obj == NULL && config != NULL) {
 		options = NULL;
-		cfg_map_get(config, "options", &options);
+		cfg_map_get(config, CFG_CLAUSE_OPTIONS, &options);
 		if (options != NULL) {
-			cfg_map_get(options, "recursion", &obj);
+			cfg_map_get(options, CFG_CLAUSE_RECURSION, &obj);
 		}
 	}
 	if (obj == NULL) {
@@ -899,7 +900,7 @@ check_recursionacls(cfg_aclconfctx_t *aclctx, const cfg_obj_t *voptions,
 		}
 		if (config != NULL && aclobj == NULL) {
 			options = NULL;
-			cfg_map_get(config, "options", &options);
+			cfg_map_get(config, CFG_CLAUSE_OPTIONS, &options);
 			if (options != NULL) {
 				cfg_map_get(options, acls[i], &aclobj);
 			}
@@ -1316,7 +1317,7 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 	ISC_LIST_INIT(kslist);
 
 	obj = NULL;
-	(void)cfg_map_get(options, "key-store", &obj);
+	(void)cfg_map_get(options, CFG_CLAUSE_KEY_STORE, &obj);
 	if (obj != NULL) {
 		if (optlevel != optlevel_config) {
 			cfg_obj_log(obj, ISC_LOG_ERROR,
@@ -1348,7 +1349,7 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 				}
 
 				kopt = cfg_tuple_get(kconfig, "options");
-				if (cfg_map_get(kopt, "directory", &kobj) ==
+				if (cfg_map_get(kopt, CFG_CLAUSE_DIRECTORY, &kobj) ==
 				    ISC_R_SUCCESS)
 				{
 					val = cfg_obj_asstring(kobj);
@@ -1409,7 +1410,7 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 	 * Check dnssec-policy.
 	 */
 	obj = NULL;
-	(void)cfg_map_get(options, "dnssec-policy", &obj);
+	(void)cfg_map_get(options, CFG_CLAUSE_DNSSEC_POLICY, &obj);
 	if (obj != NULL) {
 		bool bad_kasp = false;
 		bool bad_name = false;
@@ -1494,7 +1495,7 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 	 * Other checks.
 	 */
 	obj = NULL;
-	cfg_map_get(options, "max-rsa-exponent-size", &obj);
+	cfg_map_get(options, CFG_CLAUSE_MAX_RSA_EXPONENT_SIZE, &obj);
 	if (obj != NULL) {
 		uint32_t val;
 
@@ -1509,7 +1510,7 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 	}
 
 	obj = NULL;
-	(void)cfg_map_get(options, "preferred-glue", &obj);
+	(void)cfg_map_get(options, CFG_CLAUSE_PREFERRED_GLUE, &obj);
 	if (obj != NULL) {
 		str = cfg_obj_asstring(obj);
 		if (strcasecmp(str, "a") != 0 && strcasecmp(str, "aaaa") != 0 &&
@@ -1525,7 +1526,7 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 	 * Set supported DNSSEC algorithms.
 	 */
 	obj = NULL;
-	(void)cfg_map_get(options, "disable-algorithms", &obj);
+	(void)cfg_map_get(options, CFG_CLAUSE_DISABLE_ALGORITHMS, &obj);
 	if (obj != NULL) {
 		CFG_LIST_FOREACH(obj, element) {
 			obj = cfg_listelt_value(element);
@@ -1540,7 +1541,7 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 	 * Set supported DS digest types.
 	 */
 	obj = NULL;
-	(void)cfg_map_get(options, "disable-ds-digests", &obj);
+	(void)cfg_map_get(options, CFG_CLAUSE_DISABLE_DS_DIGESTS, &obj);
 	if (obj != NULL) {
 		CFG_LIST_FOREACH(obj, element) {
 			obj = cfg_listelt_value(element);
@@ -1557,7 +1558,7 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 	 */
 	if (optlevel != optlevel_zone) {
 		obj = NULL;
-		(void)cfg_map_get(options, "send-report-channel", &obj);
+		(void)cfg_map_get(options, CFG_CLAUSE_SEND_REPORT_CHANNEL, &obj);
 		if (obj != NULL) {
 			str = cfg_obj_asstring(obj);
 			tresult = check_name(str);
@@ -1594,7 +1595,7 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 	 * Check empty zone configuration.
 	 */
 	obj = NULL;
-	(void)cfg_map_get(options, "disable-empty-zone", &obj);
+	(void)cfg_map_get(options, CFG_CLAUSE_DISABLE_EMPTY_ZONE, &obj);
 	CFG_LIST_FOREACH(obj, element) {
 		obj = cfg_listelt_value(element);
 		str = cfg_obj_asstring(obj);
@@ -1613,7 +1614,7 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 	 * 1024 bytes should be big enough.
 	 */
 	obj = NULL;
-	(void)cfg_map_get(options, "server-id", &obj);
+	(void)cfg_map_get(options, CFG_CLAUSE_SERVER_ID, &obj);
 	if (obj != NULL && cfg_obj_isstring(obj) &&
 	    strlen(cfg_obj_asstring(obj)) > 1024U)
 	{
@@ -1625,7 +1626,7 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 	}
 
 	obj = NULL;
-	(void)cfg_map_get(options, "nta-lifetime", &obj);
+	(void)cfg_map_get(options, CFG_CLAUSE_NTA_LIFETIME, &obj);
 	if (obj != NULL) {
 		lifetime = cfg_obj_asduration(obj);
 		if (lifetime > 604800) { /* 7 days */
@@ -1644,7 +1645,7 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 	}
 
 	obj = NULL;
-	(void)cfg_map_get(options, "nta-recheck", &obj);
+	(void)cfg_map_get(options, CFG_CLAUSE_NTA_RECHECK, &obj);
 	if (obj != NULL) {
 		uint32_t recheck = cfg_obj_asduration(obj);
 		if (recheck > 604800) { /* 7 days */
@@ -1665,7 +1666,7 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 	}
 
 	obj = NULL;
-	(void)cfg_map_get(options, "cookie-algorithm", &obj);
+	(void)cfg_map_get(options, CFG_CLAUSE_COOKIE_ALGORITHM, &obj);
 	if (obj != NULL) {
 		ccalg = cfg_obj_asstring(obj);
 		if (strcasecmp(ccalg, "aes") == 0) {
@@ -1679,7 +1680,7 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 	}
 
 	obj = NULL;
-	(void)cfg_map_get(options, "cookie-secret", &obj);
+	(void)cfg_map_get(options, CFG_CLAUSE_COOKIE_SECRET, &obj);
 	if (obj != NULL) {
 		unsigned char secret[32];
 
@@ -1774,7 +1775,7 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 
 	/* Check that dnstap-ouput values are consistent */
 	obj = NULL;
-	(void)cfg_map_get(options, "dnstap-output", &obj);
+	(void)cfg_map_get(options, CFG_CLAUSE_DNSTAP_OUTPUT, &obj);
 	if (obj != NULL) {
 		const cfg_obj_t *obj2;
 		dns_dtmode_t dmode;
@@ -1833,7 +1834,7 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 #endif /* ifdef HAVE_DNSTAP */
 
 	obj = NULL;
-	(void)cfg_map_get(options, "lmdb-mapsize", &obj);
+	(void)cfg_map_get(options, CFG_CLAUSE_LMDB_MAPSIZE, &obj);
 	if (obj != NULL) {
 		uint64_t mapsize = cfg_obj_asuint64(obj);
 
@@ -1859,7 +1860,7 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 	}
 
 	obj = NULL;
-	(void)cfg_map_get(options, "max-ixfr-ratio", &obj);
+	(void)cfg_map_get(options, CFG_CLAUSE_MAX_IXFR_RATIO, &obj);
 	if (obj != NULL && cfg_obj_ispercentage(obj)) {
 		uint32_t percent = cfg_obj_aspercentage(obj);
 		if (percent == 0) {
@@ -1877,7 +1878,7 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 	}
 
 	obj = NULL;
-	(void)cfg_map_get(options, "check-names", &obj);
+	(void)cfg_map_get(options, CFG_CLAUSE_CHECK_NAMES, &obj);
 	if (obj != NULL && !cfg_obj_islist(obj)) {
 		obj = NULL;
 	}
@@ -1951,7 +1952,7 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 	}
 
 	obj = NULL;
-	(void)cfg_map_get(options, "stale-refresh-time", &obj);
+	(void)cfg_map_get(options, CFG_CLAUSE_STALE_REFRESH_TIME, &obj);
 	if (obj != NULL) {
 		uint32_t refresh_time = cfg_obj_asduration(obj);
 		if (refresh_time > 0 && refresh_time < 30) {
@@ -1964,7 +1965,7 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 	cfg_aclconfctx_create(mctx, &aclctx);
 
 	obj = NULL;
-	(void)cfg_map_get(options, "sig0checks-quota-exempt", &obj);
+	(void)cfg_map_get(options, CFG_CLAUSE_SIG0CHECKS_QUOTA_EXEMPT, &obj);
 	if (obj != NULL) {
 		dns_acl_t *acl = NULL;
 
@@ -1979,7 +1980,7 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 	}
 
 	obj = NULL;
-	(void)cfg_map_get(options, "listen-on", &obj);
+	(void)cfg_map_get(options, CFG_CLAUSE_LISTEN_ON, &obj);
 	if (obj != NULL) {
 		INSIST(config != NULL);
 		tresult = check_listeners(obj, config, aclctx, mctx);
@@ -1989,7 +1990,7 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 	}
 
 	obj = NULL;
-	(void)cfg_map_get(options, "listen-on-v6", &obj);
+	(void)cfg_map_get(options, CFG_CLAUSE_LISTEN_ON_V6, &obj);
 	if (obj != NULL) {
 		INSIST(config != NULL);
 		tresult = check_listeners(obj, config, aclctx, mctx);
@@ -2001,7 +2002,7 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 	check_range_uint32(options, &result, "max-query-restarts", 1, 255);
 
 	obj = NULL;
-	(void)cfg_map_get(options, "prefetch", &obj);
+	(void)cfg_map_get(options, CFG_CLAUSE_PREFETCH, &obj);
 	if (obj != NULL) {
 		const cfg_obj_t *trigger = cfg_tuple_get(obj, "trigger");
 		const cfg_obj_t *eligible = cfg_tuple_get(obj, "eligible");
@@ -2171,7 +2172,7 @@ check_httpserver(const cfg_obj_t *http, isc_symtab_t *symtab) {
 	}
 
 	/* Check endpoints are valid */
-	tresult = cfg_map_get(http, "endpoints", &eps);
+	tresult = cfg_map_get(http, CFG_CLAUSE_ENDPOINTS, &eps);
 	if (tresult == ISC_R_SUCCESS) {
 		CFG_LIST_FOREACH(eps, elt) {
 			const cfg_obj_t *ep = cfg_listelt_value(elt);
@@ -2199,7 +2200,7 @@ check_httpservers(const cfg_obj_t *config, isc_mem_t *mctx) {
 
 	isc_symtab_create(mctx, NULL, NULL, false, &symtab);
 
-	result = cfg_map_get(config, "http", &obj);
+	result = cfg_map_get(config, CFG_CLAUSE_HTTP, &obj);
 	if (result != ISC_R_SUCCESS) {
 		result = ISC_R_SUCCESS;
 		goto done;
@@ -2260,8 +2261,8 @@ check_tls_defintion(const cfg_obj_t *tlsobj, const char *name,
 		}
 	}
 
-	(void)cfg_map_get(tlsobj, "key-file", &tls_key);
-	(void)cfg_map_get(tlsobj, "cert-file", &tls_cert);
+	(void)cfg_map_get(tlsobj, CFG_CLAUSE_KEY_FILE, &tls_key);
+	(void)cfg_map_get(tlsobj, CFG_CLAUSE_CERT_FILE, &tls_cert);
 	if ((tls_key == NULL && tls_cert != NULL) ||
 	    (tls_cert == NULL && tls_key != NULL))
 	{
@@ -2273,7 +2274,7 @@ check_tls_defintion(const cfg_obj_t *tlsobj, const char *name,
 	}
 
 	/* Check protocols are valid */
-	tresult = cfg_map_get(tlsobj, "protocols", &tls_proto_list);
+	tresult = cfg_map_get(tlsobj, CFG_CLAUSE_PROTOCOLS, &tls_proto_list);
 	if (tresult == ISC_R_SUCCESS) {
 		INSIST(tls_proto_list != NULL);
 		CFG_LIST_FOREACH(tls_proto_list, proto) {
@@ -2321,7 +2322,7 @@ check_tls_defintion(const cfg_obj_t *tlsobj, const char *name,
 	}
 
 	/* Check cipher list string is valid */
-	tresult = cfg_map_get(tlsobj, "ciphers", &tls_ciphers);
+	tresult = cfg_map_get(tlsobj, CFG_CLAUSE_CIPHERS, &tls_ciphers);
 	if (tresult == ISC_R_SUCCESS) {
 		const char *ciphers = cfg_obj_asstring(tls_ciphers);
 		if (!isc_tls_cipherlist_valid(ciphers)) {
@@ -2335,7 +2336,7 @@ check_tls_defintion(const cfg_obj_t *tlsobj, const char *name,
 	}
 
 	/* Check if the cipher suites string is valid */
-	tresult = cfg_map_get(tlsobj, "cipher-suites", &tls_cipher_suites);
+	tresult = cfg_map_get(tlsobj, CFG_CLAUSE_CIPHER_SUITES, &tls_cipher_suites);
 	if (tresult == ISC_R_SUCCESS) {
 		const char *cipher_suites = cfg_obj_asstring(tls_cipher_suites);
 		if (!isc_tls_cipher_suites_valid(cipher_suites)) {
@@ -2357,7 +2358,7 @@ check_tls_definitions(const cfg_obj_t *config, isc_mem_t *mctx) {
 	const cfg_obj_t *obj = NULL;
 	isc_symtab_t *symtab = NULL;
 
-	result = cfg_map_get(config, "tls", &obj);
+	result = cfg_map_get(config, CFG_CLAUSE_TLS, &obj);
 	if (result != ISC_R_SUCCESS) {
 		result = ISC_R_SUCCESS;
 		return result;
@@ -2430,7 +2431,7 @@ lookup_key(const cfg_obj_t *config, const dns_name_t *keyname) {
 		return false;
 	}
 
-	(void)cfg_map_get(config, "key", &keys);
+	(void)cfg_map_get(config, CFG_CLAUSE_KEY, &keys);
 	CFG_LIST_FOREACH(keys, elt) {
 		/*
 		 * `key` are normalized TSIG which must be identified by
@@ -2821,7 +2822,7 @@ check_mirror_zone_notify(const cfg_obj_t *zoptions, const char *znamestr) {
 	bool notify_configuration_ok = true;
 	const cfg_obj_t *obj = NULL;
 
-	(void)cfg_map_get(zoptions, "notify", &obj);
+	(void)cfg_map_get(zoptions, CFG_CLAUSE_NOTIFY, &obj);
 	if (obj == NULL) {
 		/*
 		 * "notify" not set at zone level.  This is fine.
@@ -2879,10 +2880,10 @@ check_recursion(const cfg_obj_t *config, const cfg_obj_t *voptions,
 	obj = NULL;
 	result = ISC_R_NOTFOUND;
 	if (voptions != NULL) {
-		result = cfg_map_get(voptions, "recursion", &obj);
+		result = cfg_map_get(voptions, CFG_CLAUSE_RECURSION, &obj);
 	}
 	if (result != ISC_R_SUCCESS && goptions != NULL) {
-		result = cfg_map_get(goptions, "recursion", &obj);
+		result = cfg_map_get(goptions, CFG_CLAUSE_RECURSION, &obj);
 	}
 	if (result == ISC_R_SUCCESS && !cfg_obj_asboolean(obj)) {
 		retval = false;
@@ -2896,10 +2897,10 @@ check_recursion(const cfg_obj_t *config, const cfg_obj_t *voptions,
 	obj = NULL;
 	result = ISC_R_NOTFOUND;
 	if (voptions != NULL) {
-		result = cfg_map_get(voptions, "allow-recursion", &obj);
+		result = cfg_map_get(voptions, CFG_CLAUSE_ALLOW_RECURSION, &obj);
 	}
 	if (result != ISC_R_SUCCESS && goptions != NULL) {
-		result = cfg_map_get(goptions, "allow-recursion", &obj);
+		result = cfg_map_get(goptions, CFG_CLAUSE_ALLOW_RECURSION, &obj);
 	}
 	if (result == ISC_R_SUCCESS) {
 		CHECK(cfg_acl_fromconfig(obj, config, aclctx, mctx, 0, &acl));
@@ -2936,8 +2937,8 @@ check_keydir(const cfg_obj_t *config, const cfg_obj_t *zconfig,
 	timenow = isc_time_now();
 	now = isc_time_seconds(&timenow);
 
-	(void)cfg_map_get(config, "dnssec-policy", &kasps);
-	(void)cfg_map_get(config, "key-store", &keystores);
+	(void)cfg_map_get(config, CFG_CLAUSE_DNSSEC_POLICY, &kasps);
+	(void)cfg_map_get(config, CFG_CLAUSE_KEY_STORE, &keystores);
 	ISC_LIST_INIT(kasplist);
 	ISC_LIST_INIT(kslist);
 
@@ -3298,12 +3299,12 @@ isccfg_check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 	zoptions = cfg_tuple_get(zconfig, "options");
 
 	if (config != NULL) {
-		cfg_map_get(config, "options", &goptions);
+		cfg_map_get(config, CFG_CLAUSE_OPTIONS, &goptions);
 	}
 
 	/* If the zone specifies a template, find it too */
-	(void)cfg_map_get(config, "template", &templates);
-	(void)cfg_map_get(zoptions, "template", &obj);
+	(void)cfg_map_get(config, CFG_CLAUSE_TEMPLATE, &templates);
+	(void)cfg_map_get(zoptions, CFG_CLAUSE_TEMPLATE, &obj);
 	if (obj != NULL) {
 		tmplname = cfg_obj_asstring(obj);
 
@@ -3325,7 +3326,7 @@ isccfg_check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 		}
 	}
 
-	(void)cfg_map_get(zoptions, "in-view", &inviewobj);
+	(void)cfg_map_get(zoptions, CFG_CLAUSE_IN_VIEW, &inviewobj);
 	if (inviewobj != NULL) {
 		target = cfg_obj_asstring(inviewobj);
 		ztype = CFG_ZONE_INVIEW;
@@ -3491,12 +3492,12 @@ isccfg_check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 		const cfg_obj_t *fwd = NULL;
 		unsigned int maxopts = 1;
 
-		(void)cfg_map_get(zoptions, "forward", &fwd);
+		(void)cfg_map_get(zoptions, CFG_CLAUSE_FORWARD, &fwd);
 		if (fwd != NULL) {
 			maxopts++;
 		}
 		fwd = NULL;
-		(void)cfg_map_get(zoptions, "forwarders", &fwd);
+		(void)cfg_map_get(zoptions, CFG_CLAUSE_FORWARDERS, &fwd);
 		if (fwd != NULL) {
 			maxopts++;
 		}
@@ -3538,7 +3539,7 @@ isccfg_check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 			kasp_inlinesigning = false;
 		} else {
 			const cfg_obj_t *kasps = NULL;
-			(void)cfg_map_get(config, "dnssec-policy", &kasps);
+			(void)cfg_map_get(config, CFG_CLAUSE_DNSSEC_POLICY, &kasps);
 			CFG_LIST_FOREACH(kasps, element) {
 				const cfg_obj_t *kobj = cfg_tuple_get(
 					cfg_listelt_value(element), "name");
@@ -3549,7 +3550,7 @@ isccfg_check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 					const cfg_obj_t *kopt = cfg_tuple_get(
 						cfg_listelt_value(element),
 						"options");
-					if (cfg_map_get(kopt, "inline-signing",
+					if (cfg_map_get(kopt, CFG_CLAUSE_INLINE_SIGNING,
 							&inlinesigning) ==
 					    ISC_R_SUCCESS)
 					{
@@ -4277,7 +4278,7 @@ isccfg_check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 	if ((flags & BIND_CHECK_PLUGINS) != 0 && zoptions != NULL) {
 		const cfg_obj_t *plugins = NULL;
 
-		(void)cfg_map_get(zoptions, "plugin", &plugins);
+		(void)cfg_map_get(zoptions, CFG_CLAUSE_PLUGIN, &plugins);
 		tresult = check_plugins(plugins, config, aclctx, zname, mctx);
 		if (tresult != ISC_R_SUCCESS) {
 			result = tresult;
@@ -4315,8 +4316,8 @@ isccfg_check_key(const cfg_obj_t *key) {
 		{ NULL, 0 }
 	};
 
-	(void)cfg_map_get(key, "algorithm", &algobj);
-	(void)cfg_map_get(key, "secret", &secretobj);
+	(void)cfg_map_get(key, CFG_CLAUSE_ALGORITHM, &algobj);
+	(void)cfg_map_get(key, CFG_CLAUSE_SECRET, &secretobj);
 	if (secretobj == NULL || algobj == NULL) {
 		cfg_obj_log(key, ISC_LOG_ERROR,
 			    "key '%s' must have both 'secret' and "
@@ -4650,10 +4651,10 @@ check_servers(const cfg_obj_t *config, const cfg_obj_t *voptions,
 	dns_name_t *keyname = NULL;
 	servers = NULL;
 	if (voptions != NULL) {
-		(void)cfg_map_get(voptions, "server", &servers);
+		(void)cfg_map_get(voptions, CFG_CLAUSE_SERVER, &servers);
 	}
 	if (servers == NULL) {
-		(void)cfg_map_get(config, "server", &servers);
+		(void)cfg_map_get(config, CFG_CLAUSE_SERVER, &servers);
 	}
 	if (servers == NULL) {
 		return ISC_R_SUCCESS;
@@ -4764,7 +4765,7 @@ check_servers(const cfg_obj_t *config, const cfg_obj_t *voptions,
 		}
 
 		keys = NULL;
-		cfg_map_get(v1, "keys", &keys);
+		cfg_map_get(v1, CFG_CLAUSE_KEYS, &keys);
 		if (keys != NULL) {
 			/*
 			 * Normalize key name.
@@ -5410,7 +5411,7 @@ check_rpz_catz(const char *rpz_catz, const cfg_obj_t *rpz_obj,
 				zoneobj = cfg_tuple_get(zoneobj, "options");
 			}
 			if (zoneobj != NULL && cfg_obj_ismap(zoneobj)) {
-				(void)cfg_map_get(zoneobj, "type", &obj);
+				(void)cfg_map_get(zoneobj, CFG_CLAUSE_TYPE, &obj);
 			}
 			if (obj != NULL) {
 				zonetype = cfg_obj_asstring(obj);
@@ -5552,17 +5553,17 @@ check_dnstap(const cfg_obj_t *voptions, const cfg_obj_t *config) {
 	const cfg_obj_t *obj = NULL;
 
 	if (config != NULL) {
-		(void)cfg_map_get(config, "options", &options);
+		(void)cfg_map_get(config, CFG_CLAUSE_OPTIONS, &options);
 	}
 	if (options != NULL) {
-		(void)cfg_map_get(options, "dnstap-output", &obj);
+		(void)cfg_map_get(options, CFG_CLAUSE_DNSTAP_OUTPUT, &obj);
 	}
 	if (obj == NULL) {
 		if (voptions != NULL) {
-			(void)cfg_map_get(voptions, "dnstap", &obj);
+			(void)cfg_map_get(voptions, CFG_CLAUSE_DNSTAP, &obj);
 		}
 		if (options != NULL && obj == NULL) {
-			(void)cfg_map_get(options, "dnstap", &obj);
+			(void)cfg_map_get(options, CFG_CLAUSE_DNSTAP, &obj);
 		}
 		if (obj != NULL) {
 			cfg_obj_log(obj, ISC_LOG_ERROR,
@@ -5604,7 +5605,7 @@ check_viewconf(const cfg_obj_t *config, const cfg_obj_t *voptions,
 	/*
 	 * Get global options block
 	 */
-	(void)cfg_map_get(config, "options", &options);
+	(void)cfg_map_get(config, CFG_CLAUSE_OPTIONS, &options);
 
 	/*
 	 * The most relevant options for this view
@@ -5624,9 +5625,9 @@ check_viewconf(const cfg_obj_t *config, const cfg_obj_t *voptions,
 	cfg_aclconfctx_create(mctx, &aclctx);
 
 	if (voptions != NULL) {
-		(void)cfg_map_get(voptions, "zone", &zones);
+		(void)cfg_map_get(voptions, CFG_CLAUSE_ZONE, &zones);
 	} else {
-		(void)cfg_map_get(config, "zone", &zones);
+		(void)cfg_map_get(config, CFG_CLAUSE_ZONE, &zones);
 	}
 
 	CFG_LIST_FOREACH(zones, element) {
@@ -5646,7 +5647,7 @@ check_viewconf(const cfg_obj_t *config, const cfg_obj_t *voptions,
 	 */
 	if (opts != NULL) {
 		obj = NULL;
-		if ((cfg_map_get(opts, "response-policy", &obj) ==
+		if ((cfg_map_get(opts, CFG_CLAUSE_RESPONSE_POLICY, &obj) ==
 		     ISC_R_SUCCESS) &&
 		    (check_rpz_catz("response-policy zone", obj, viewname,
 				    symtab,
@@ -5656,7 +5657,7 @@ check_viewconf(const cfg_obj_t *config, const cfg_obj_t *voptions,
 		}
 
 		obj = NULL;
-		if ((cfg_map_get(opts, "catalog-zones", &obj) ==
+		if ((cfg_map_get(opts, CFG_CLAUSE_CATALOG_ZONES, &obj) ==
 		     ISC_R_SUCCESS) &&
 		    (check_rpz_catz("catalog zone", obj, viewname, symtab,
 
@@ -5671,7 +5672,7 @@ check_viewconf(const cfg_obj_t *config, const cfg_obj_t *voptions,
 	 */
 	if (opts != NULL) {
 		obj = NULL;
-		if ((cfg_map_get(opts, "response-policy", &obj) ==
+		if ((cfg_map_get(opts, CFG_CLAUSE_RESPONSE_POLICY, &obj) ==
 		     ISC_R_SUCCESS) &&
 		    (check_rpz(obj) != ISC_R_SUCCESS))
 		{
@@ -5684,7 +5685,7 @@ check_viewconf(const cfg_obj_t *config, const cfg_obj_t *voptions,
 	 */
 	if (opts != NULL) {
 		obj = NULL;
-		if (cfg_map_get(opts, "catalog-zones", &obj) == ISC_R_SUCCESS) {
+		if (cfg_map_get(opts, CFG_CLAUSE_CATALOG_ZONES, &obj) == ISC_R_SUCCESS) {
 			if (vclass != dns_rdataclass_in) {
 				cfg_obj_log(
 					obj, ISC_LOG_ERROR,
@@ -5742,7 +5743,7 @@ check_viewconf(const cfg_obj_t *config, const cfg_obj_t *voptions,
 	 */
 	isc_symtab_create(mctx, freekey, mctx, false, &symtab);
 
-	(void)cfg_map_get(config, "key", &keys);
+	(void)cfg_map_get(config, CFG_CLAUSE_KEY, &keys);
 	tresult = check_keylist(keys, symtab, mctx);
 	if (tresult == ISC_R_EXISTS) {
 		result = ISC_R_FAILURE;
@@ -5753,7 +5754,7 @@ check_viewconf(const cfg_obj_t *config, const cfg_obj_t *voptions,
 
 	if (voptions != NULL) {
 		keys = NULL;
-		(void)cfg_map_get(voptions, "key", &keys);
+		(void)cfg_map_get(voptions, CFG_CLAUSE_KEY, &keys);
 		tresult = check_keylist(keys, symtab, mctx);
 		if (tresult == ISC_R_EXISTS) {
 			result = ISC_R_FAILURE;
@@ -5776,9 +5777,9 @@ check_viewconf(const cfg_obj_t *config, const cfg_obj_t *voptions,
 	 * Load all DNSSEC keys.
 	 */
 	if (voptions != NULL) {
-		(void)cfg_map_get(voptions, "trust-anchors", &view_ta);
+		(void)cfg_map_get(voptions, CFG_CLAUSE_TRUST_ANCHORS, &view_ta);
 	}
-	(void)cfg_map_get(config, "trust-anchors", &global_ta);
+	(void)cfg_map_get(config, CFG_CLAUSE_TRUST_ANCHORS, &global_ta);
 
 	check_keys[0] = view_ta;
 	check_keys[1] = global_ta;
@@ -5830,10 +5831,10 @@ check_viewconf(const cfg_obj_t *config, const cfg_obj_t *voptions,
 
 	obj = NULL;
 	if (voptions != NULL) {
-		(void)cfg_map_get(voptions, "dnssec-validation", &obj);
+		(void)cfg_map_get(voptions, CFG_CLAUSE_DNSSEC_VALIDATION, &obj);
 	}
 	if (obj == NULL && options != NULL) {
-		(void)cfg_map_get(options, "dnssec-validation", &obj);
+		(void)cfg_map_get(options, CFG_CLAUSE_DNSSEC_VALIDATION, &obj);
 	}
 	if (obj != NULL) {
 		if (!cfg_obj_isboolean(obj)) {
@@ -5903,9 +5904,9 @@ check_viewconf(const cfg_obj_t *config, const cfg_obj_t *voptions,
 		const cfg_obj_t *plugins = NULL;
 
 		if (voptions != NULL) {
-			(void)cfg_map_get(voptions, "plugin", &plugins);
+			(void)cfg_map_get(voptions, CFG_CLAUSE_PLUGIN, &plugins);
 		} else {
-			(void)cfg_map_get(config, "plugin", &plugins);
+			(void)cfg_map_get(config, CFG_CLAUSE_PLUGIN, &plugins);
 		}
 
 		tresult = check_plugins(plugins, config, aclctx, NULL, mctx);
@@ -5947,7 +5948,7 @@ check_logging(const cfg_obj_t *config, isc_mem_t *mctx) {
 	isc_symvalue_t symvalue;
 	int i;
 
-	(void)cfg_map_get(config, "logging", &logobj);
+	(void)cfg_map_get(config, CFG_CLAUSE_LOGGING, &logobj);
 	if (logobj == NULL) {
 		return ISC_R_SUCCESS;
 	}
@@ -5961,16 +5962,16 @@ check_logging(const cfg_obj_t *config, isc_mem_t *mctx) {
 		RUNTIME_CHECK(tresult == ISC_R_SUCCESS);
 	}
 
-	cfg_map_get(logobj, "channel", &channels);
+	cfg_map_get(logobj, CFG_CLAUSE_CHANNEL, &channels);
 
 	CFG_LIST_FOREACH(channels, element) {
 		channel = cfg_listelt_value(element);
 		channelname = cfg_obj_asstring(cfg_map_getname(channel));
 		fileobj = syslogobj = nullobj = stderrobj = NULL;
-		(void)cfg_map_get(channel, "file", &fileobj);
-		(void)cfg_map_get(channel, "syslog", &syslogobj);
-		(void)cfg_map_get(channel, "null", &nullobj);
-		(void)cfg_map_get(channel, "stderr", &stderrobj);
+		(void)cfg_map_get(channel, CFG_CLAUSE_FILE, &fileobj);
+		(void)cfg_map_get(channel, CFG_CLAUSE_SYSLOG, &syslogobj);
+		(void)cfg_map_get(channel, CFG_CLAUSE_NULL, &nullobj);
+		(void)cfg_map_get(channel, CFG_CLAUSE_STDERR, &stderrobj);
 		i = 0;
 		if (fileobj != NULL) {
 			i++;
@@ -5997,7 +5998,7 @@ check_logging(const cfg_obj_t *config, isc_mem_t *mctx) {
 		RUNTIME_CHECK(tresult == ISC_R_SUCCESS);
 	}
 
-	cfg_map_get(logobj, "category", &categories);
+	cfg_map_get(logobj, CFG_CLAUSE_CATEGORY, &categories);
 
 	CFG_LIST_FOREACH(categories, element) {
 		category = cfg_listelt_value(element);
@@ -6067,12 +6068,12 @@ check_controls(const cfg_obj_t *config, isc_mem_t *mctx) {
 	dns_acl_t *acl = NULL;
 	isc_symtab_t *symtab = NULL;
 
-	(void)cfg_map_get(config, "controls", &controlslist);
+	(void)cfg_map_get(config, CFG_CLAUSE_CONTROLS, &controlslist);
 	if (controlslist == NULL) {
 		return ISC_R_SUCCESS;
 	}
 
-	(void)cfg_map_get(config, "key", &keylist);
+	(void)cfg_map_get(config, CFG_CLAUSE_KEY, &keylist);
 
 	cfg_aclconfctx_create(mctx, &aclctx);
 
@@ -6086,8 +6087,8 @@ check_controls(const cfg_obj_t *config, isc_mem_t *mctx) {
 		controls = cfg_listelt_value(element);
 		unixcontrols = NULL;
 		inetcontrols = NULL;
-		(void)cfg_map_get(controls, "unix", &unixcontrols);
-		(void)cfg_map_get(controls, "inet", &inetcontrols);
+		(void)cfg_map_get(controls, CFG_CLAUSE_UNIX, &unixcontrols);
+		(void)cfg_map_get(controls, CFG_CLAUSE_INET, &inetcontrols);
 		CFG_LIST_FOREACH(inetcontrols, element2) {
 			char socktext[ISC_SOCKADDR_FORMATSIZE];
 			isc_sockaddr_t addr;
@@ -6154,7 +6155,7 @@ isccfg_check_namedconf(const cfg_obj_t *config, unsigned int flags,
 	static const char *builtin[] = { "localhost", "localnets", "any",
 					 "none" };
 
-	(void)cfg_map_get(config, "options", &options);
+	(void)cfg_map_get(config, CFG_CLAUSE_OPTIONS, &options);
 
 	if (options != NULL &&
 	    check_options(options, config, check_algorithms, mctx,
@@ -6185,7 +6186,7 @@ isccfg_check_namedconf(const cfg_obj_t *config, unsigned int flags,
 		result = ISC_R_FAILURE;
 	}
 
-	(void)cfg_map_get(config, "view", &views);
+	(void)cfg_map_get(config, CFG_CLAUSE_VIEW, &views);
 
 	if (views != NULL && options != NULL) {
 		if (check_dual_stack(options) != ISC_R_SUCCESS) {
@@ -6219,7 +6220,7 @@ isccfg_check_namedconf(const cfg_obj_t *config, unsigned int flags,
 		const cfg_obj_t *zones = NULL;
 		const cfg_obj_t *plugins = NULL;
 
-		(void)cfg_map_get(config, "zone", &zones);
+		(void)cfg_map_get(config, CFG_CLAUSE_ZONE, &zones);
 		if (zones != NULL) {
 			cfg_obj_log(zones, ISC_LOG_ERROR,
 				    "when using 'view' statements, "
@@ -6227,7 +6228,7 @@ isccfg_check_namedconf(const cfg_obj_t *config, unsigned int flags,
 			result = ISC_R_FAILURE;
 		}
 
-		(void)cfg_map_get(config, "plugin", &plugins);
+		(void)cfg_map_get(config, CFG_CLAUSE_PLUGIN, &plugins);
 		if (plugins != NULL) {
 			cfg_obj_log(plugins, ISC_LOG_ERROR,
 				    "when using 'view' statements, "
@@ -6303,7 +6304,7 @@ isccfg_check_namedconf(const cfg_obj_t *config, unsigned int flags,
 		}
 	}
 
-	cfg_map_get(config, "acl", &acls);
+	cfg_map_get(config, CFG_CLAUSE_ACL, &acls);
 
 	if (acls != NULL) {
 		const char *aclname = NULL;

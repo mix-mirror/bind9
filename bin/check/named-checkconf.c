@@ -38,6 +38,7 @@
 #include <dns/rootns.h>
 #include <dns/zone.h>
 
+#include <isccfg/clause.h>
 #include <isccfg/check.h>
 #include <isccfg/grammar.h>
 #include <isccfg/namedconf.h>
@@ -83,7 +84,7 @@ get_checknames(const cfg_obj_t **maps, const cfg_obj_t **obj) {
 			return false;
 		}
 		checknames = NULL;
-		result = cfg_map_get(maps[i], "check-names", &checknames);
+		result = cfg_map_get(maps[i], CFG_CLAUSE_CHECK_NAMES, &checknames);
 		if (result != ISC_R_SUCCESS) {
 			continue;
 		}
@@ -164,14 +165,14 @@ configure_zone(const char *vclass, const char *view, const cfg_obj_t *zconfig,
 		maps[i++] = cfg_tuple_get(vconfig, "options");
 	}
 	if (config != NULL) {
-		cfg_map_get(config, "options", &obj);
+		cfg_map_get(config, CFG_CLAUSE_OPTIONS, &obj);
 		if (obj != NULL) {
 			maps[i++] = obj;
 		}
 	}
 	maps[i] = NULL;
 
-	cfg_map_get(zoptions, "in-view", &inviewobj);
+	cfg_map_get(zoptions, CFG_CLAUSE_IN_VIEW, &inviewobj);
 	if (inviewobj != NULL && list) {
 		const char *inview = cfg_obj_asstring(inviewobj);
 		printf("%s %s %s in-view %s\n", zname, zclass, view, inview);
@@ -180,7 +181,7 @@ configure_zone(const char *vclass, const char *view, const cfg_obj_t *zconfig,
 		return ISC_R_SUCCESS;
 	}
 
-	cfg_map_get(zoptions, "type", &typeobj);
+	cfg_map_get(zoptions, CFG_CLAUSE_TYPE, &typeobj);
 	if (typeobj == NULL) {
 		return ISC_R_FAILURE;
 	}
@@ -194,19 +195,19 @@ configure_zone(const char *vclass, const char *view, const cfg_obj_t *zconfig,
 	/*
 	 * Skip checks when using an alternate data source.
 	 */
-	cfg_map_get(zoptions, "database", &dbobj);
+	cfg_map_get(zoptions, CFG_CLAUSE_DATABASE, &dbobj);
 	if (dbobj != NULL &&
 	    strcmp(ZONEDB_DEFAULT, cfg_obj_asstring(dbobj)) != 0)
 	{
 		return ISC_R_SUCCESS;
 	}
 
-	cfg_map_get(zoptions, "dlz", &dlzobj);
+	cfg_map_get(zoptions, CFG_CLAUSE_DLZ, &dlzobj);
 	if (dlzobj != NULL) {
 		return ISC_R_SUCCESS;
 	}
 
-	cfg_map_get(zoptions, "file", &fileobj);
+	cfg_map_get(zoptions, CFG_CLAUSE_FILE, &fileobj);
 	if (fileobj != NULL) {
 		zfile = cfg_obj_asstring(fileobj);
 	}
@@ -229,9 +230,9 @@ configure_zone(const char *vclass, const char *view, const cfg_obj_t *zconfig,
 	 * Is the redirect zone configured as a secondary?
 	 */
 	if (strcasecmp(cfg_obj_asstring(typeobj), "redirect") == 0) {
-		cfg_map_get(zoptions, "primaries", &primariesobj);
+		cfg_map_get(zoptions, CFG_CLAUSE_PRIMARIES, &primariesobj);
 		if (primariesobj == NULL) {
-			cfg_map_get(zoptions, "masters", &primariesobj);
+			cfg_map_get(zoptions, CFG_CLAUSE_MASTERS, &primariesobj);
 		}
 
 		if (primariesobj != NULL) {
@@ -437,9 +438,9 @@ configure_view(const char *vclass, const char *view, const cfg_obj_t *config,
 
 	zonelist = NULL;
 	if (voptions != NULL) {
-		(void)cfg_map_get(voptions, "zone", &zonelist);
+		(void)cfg_map_get(voptions, CFG_CLAUSE_ZONE, &zonelist);
 	} else {
-		(void)cfg_map_get(config, "zone", &zonelist);
+		(void)cfg_map_get(config, CFG_CLAUSE_ZONE, &zonelist);
 	}
 
 	CFG_LIST_FOREACH(zonelist, element) {
@@ -477,7 +478,7 @@ load_zones_fromconfig(const cfg_obj_t *config, bool list_zones) {
 
 	views = NULL;
 
-	(void)cfg_map_get(config, "view", &views);
+	(void)cfg_map_get(config, CFG_CLAUSE_VIEW, &views);
 	CFG_LIST_FOREACH(views, element) {
 		const cfg_obj_t *classobj;
 		dns_rdataclass_t viewclass;

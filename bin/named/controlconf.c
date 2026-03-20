@@ -40,6 +40,7 @@
 #include <isccc/sexpr.h>
 #include <isccc/util.h>
 
+#include <isccfg/clause.h>
 #include <isccfg/check.h>
 #include <isccfg/namedconf.h>
 
@@ -722,8 +723,8 @@ register_keys(const cfg_obj_t *control, const cfg_obj_t *keylist,
 			const char *secretstr = NULL;
 			unsigned int algtype;
 
-			(void)cfg_map_get(keydef, "algorithm", &algobj);
-			(void)cfg_map_get(keydef, "secret", &secretobj);
+			(void)cfg_map_get(keydef, CFG_CLAUSE_ALGORITHM, &algobj);
+			(void)cfg_map_get(keydef, CFG_CLAUSE_SECRET, &secretobj);
 			INSIST(algobj != NULL && secretobj != NULL);
 
 			algstr = cfg_obj_asstring(algobj);
@@ -788,7 +789,7 @@ get_rndckey(isc_mem_t *mctx, controlkeylist_t *keyids) {
 	}
 
 	CHECK(cfg_parse_file(named_g_keyfile, &cfg_type_rndckey, 0, &config));
-	CHECK(cfg_map_get(config, "key", &key));
+	CHECK(cfg_map_get(config, CFG_CLAUSE_KEY, &key));
 
 	keyid = isc_mem_get(mctx, sizeof(*keyid));
 	*keyid = (controlkey_t){
@@ -800,8 +801,8 @@ get_rndckey(isc_mem_t *mctx, controlkeylist_t *keyids) {
 
 	CHECK(isccfg_check_key(key));
 
-	(void)cfg_map_get(key, "algorithm", &algobj);
-	(void)cfg_map_get(key, "secret", &secretobj);
+	(void)cfg_map_get(key, CFG_CLAUSE_ALGORITHM, &algobj);
+	(void)cfg_map_get(key, CFG_CLAUSE_SECRET, &secretobj);
 	INSIST(algobj != NULL && secretobj != NULL);
 
 	algstr = cfg_obj_asstring(algobj);
@@ -865,7 +866,7 @@ get_key_info(const cfg_obj_t *config, const cfg_obj_t *control,
 	if (!cfg_obj_isvoid(control_keylist) &&
 	    cfg_list_first(control_keylist) != NULL)
 	{
-		result = cfg_map_get(config, "key", &global_keylist);
+		result = cfg_map_get(config, CFG_CLAUSE_KEY, &global_keylist);
 
 		if (result == ISC_R_SUCCESS) {
 			*global_keylistp = global_keylist;
@@ -1121,7 +1122,7 @@ named_controls_configure(named_controls_t *cp, const cfg_obj_t *config,
 	/*
 	 * Get the list of named.conf 'controls' statements.
 	 */
-	(void)cfg_map_get(config, "controls", &controlslist);
+	(void)cfg_map_get(config, CFG_CLAUSE_CONTROLS, &controlslist);
 
 	/*
 	 * Run through the new control channel list, noting sockets that
@@ -1139,7 +1140,7 @@ named_controls_configure(named_controls_t *cp, const cfg_obj_t *config,
 
 			controls = cfg_listelt_value(element);
 
-			(void)cfg_map_get(controls, "unix", &unixcontrols);
+			(void)cfg_map_get(controls, CFG_CLAUSE_UNIX, &unixcontrols);
 			if (unixcontrols != NULL) {
 				cfg_obj_log(controls, ISC_LOG_ERROR,
 					    "UNIX domain sockets are not "
@@ -1147,7 +1148,7 @@ named_controls_configure(named_controls_t *cp, const cfg_obj_t *config,
 				return ISC_R_FAILURE;
 			}
 
-			(void)cfg_map_get(controls, "inet", &inetcontrols);
+			(void)cfg_map_get(controls, CFG_CLAUSE_INET, &inetcontrols);
 			if (inetcontrols == NULL) {
 				continue;
 			}

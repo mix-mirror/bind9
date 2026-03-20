@@ -42,6 +42,7 @@
 #include <dns/tsig.h>
 #include <dns/view.h>
 #include <dns/zone.h>
+#include <isccfg/clause.h>
 
 #include <ns/client.h>
 #include <ns/hooks.h>
@@ -158,7 +159,7 @@ configure_zone_acl(const cfg_obj_t *zconfig, const cfg_obj_t *vconfig,
 	}
 	if (config != NULL) {
 		const cfg_obj_t *options = NULL;
-		(void)cfg_map_get(config, "options", &options);
+		(void)cfg_map_get(config, CFG_CLAUSE_OPTIONS, &options);
 		if (options != NULL) {
 			maps[i++] = options;
 		}
@@ -863,7 +864,7 @@ process_notify_options(dns_rdatatype_t type, const cfg_obj_t **maps,
 	 */
 	if (notifycfg) {
 		obj = NULL;
-		result = cfg_map_get(maps[0], "notify", &obj);
+		result = cfg_map_get(maps[0], CFG_CLAUSE_NOTIFY, &obj);
 		if (result == ISC_R_SUCCESS && obj != NULL) {
 			dns_zone_setnotifytype(zone, type,
 					       cfg_obj_asboolean(obj));
@@ -1019,7 +1020,7 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 		i++;
 	}
 
-	(void)cfg_map_get(config, "options", &options);
+	(void)cfg_map_get(config, CFG_CLAUSE_OPTIONS, &options);
 	if (options != NULL) {
 		nodefault[i] = maps[i] = options;
 		i++;
@@ -2106,7 +2107,7 @@ named_zone_inlinesigning(const cfg_obj_t *zconfig, const cfg_obj_t *vconfig,
 	}
 	if (config != NULL) {
 		const cfg_obj_t *options = NULL;
-		(void)cfg_map_get(config, "options", &options);
+		(void)cfg_map_get(config, CFG_CLAUSE_OPTIONS, &options);
 		if (options != NULL) {
 			maps[i++] = options;
 		}
@@ -2150,8 +2151,8 @@ named_zone_templateopts(const cfg_obj_t *config, const cfg_obj_t *zoptions) {
 	const cfg_obj_t *templates = NULL;
 	const cfg_obj_t *obj = NULL;
 
-	(void)cfg_map_get(config, "template", &templates);
-	(void)cfg_map_get(zoptions, "template", &obj);
+	(void)cfg_map_get(config, CFG_CLAUSE_TEMPLATE, &templates);
+	(void)cfg_map_get(zoptions, CFG_CLAUSE_TEMPLATE, &obj);
 	if (obj != NULL && templates != NULL) {
 		const char *tmplname = cfg_obj_asstring(obj);
 		CFG_LIST_FOREACH(templates, e) {
@@ -2186,11 +2187,11 @@ named_zone_loadplugins(dns_zone_t *zone, const cfg_obj_t *config,
 	 * Load zone-specific plugin instances.
 	 */
 	if (toptions != NULL) {
-		(void)cfg_map_get(toptions, "plugin", &tpluginlist);
+		(void)cfg_map_get(toptions, CFG_CLAUSE_PLUGIN, &tpluginlist);
 	}
 
 	if (zoptions != NULL) {
-		(void)cfg_map_get(zoptions, "plugin", &zpluginlist);
+		(void)cfg_map_get(zoptions, CFG_CLAUSE_PLUGIN, &zpluginlist);
 	}
 
 	if (tpluginlist != NULL || zpluginlist != NULL) {
