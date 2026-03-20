@@ -33,6 +33,7 @@
 #include <isc/types.h>
 #include <isc/util.h>
 
+#include <isccfg/clause.h>
 #include <isccfg/cfg.h>
 #include <isccfg/grammar.h>
 #include <isccfg/namedconf.h>
@@ -87,7 +88,7 @@ ISC_RUN_TEST_IMPL(addzoneconf) {
 		 * Mimic calling nzf_append() from bin/named/server.c
 		 * and check that the output matches the input.
 		 */
-		result = cfg_map_get(conf, "zone", &zlist);
+		result = cfg_map_get(conf, CFG_CLAUSE_ZONE, &zlist);
 		assert_int_equal(result, ISC_R_SUCCESS);
 
 		obj = cfg_listelt_value(cfg_list_first(zlist));
@@ -349,7 +350,7 @@ static cfg_type_t cfg_type_empty_map = {
 
 ISC_RUN_TEST_IMPL(cfg_map_findclause_empty) {
 	const cfg_clausedef_t *result = cfg_map_findclause(&cfg_type_empty_map,
-							   "anything");
+							   CFG_CLAUSE_ZONE);
 	assert_null(result);
 }
 
