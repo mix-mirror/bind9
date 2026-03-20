@@ -595,7 +595,8 @@ configure_view_nametable(const cfg_obj_t *vconfig, const cfg_obj_t *config,
 		if (result != ISC_R_SUCCESS) {
 			cfg_obj_log(nameobj, ISC_LOG_ERROR,
 				    "failed to add %s for %s: %s", str,
-				    confname, isc_result_totext(result));
+				    cfg_clause_as_string[confname],
+				    isc_result_totext(result));
 			goto cleanup;
 		}
 	}

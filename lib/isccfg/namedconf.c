@@ -4336,7 +4336,7 @@ cfg_print_zonegrammar(const unsigned int zonetype, unsigned int flags,
 		UNREACHABLE();
 	}
 
-	for (clause = clauses; clause->name != NULL; clause++) {
+	for (clause = clauses; clause->name != CFG_CLAUSE__NONE; clause++) {
 		if (((pctx.flags & CFG_PRINTER_ACTIVEONLY) != 0) &&
 		    (((clause->flags & CFG_CLAUSEFLAG_OBSOLETE) != 0) ||
 		     ((clause->flags & CFG_CLAUSEFLAG_TESTONLY) != 0)))
