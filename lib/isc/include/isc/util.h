@@ -41,6 +41,13 @@
  *** General Macros.
  ***/
 
+#define MOVE_OWNERSHIP(source)                             \
+	({                                                 \
+		__typeof__(source) __ownership = (source); \
+		(source) = NULL;                           \
+		__ownership;                               \
+	})
+
 /*%
  * Legacy way how to hide unused function arguments, don't use in
  * the new code, rather use the ISC_ATTR_UNUSED macro that expands
