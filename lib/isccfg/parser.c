@@ -141,10 +141,6 @@ create_map_external(cfg_parser_t *pctx, const cfg_type_t *type,
 static void
 free_map_external(cfg_obj_t *obj);
 
-static isc_result_t
-parse_symtab_elt(cfg_parser_t *pctx, const cfg_clausedef_t *clause,
-		 isc_symtab_t *symtab);
-
 static void
 free_noop(cfg_obj_t *obj);
 
@@ -241,6 +237,106 @@ copy_string(cfg_obj_t *to, const cfg_obj_t *from) {
 	to->value.string = isc_mem_strdup(isc_g_mctx, from->value.string);
 }
 
+/*
+ * Flat map helpers: struct-of-arrays layout with uint16_t keys and
+ * cfg_obj_t* values in a single FAM allocation.
+ */
+
+static inline uint16_t *
+map_keys(const cfg_map_t *map) {
+	return (uint16_t *)(void *)map->entries;
+}
+
+static inline cfg_obj_t **
+map_values(const cfg_map_t *map) {
+	size_t keys_bytes = (size_t)map->capacity * sizeof(uint16_t);
+	size_t padded = (keys_bytes + sizeof(cfg_obj_t *) - 1) &
+			~(sizeof(cfg_obj_t *) - 1);
+	return (cfg_obj_t **)(void *)((char *)map->entries + padded);
+}
+
+static inline size_t
+map_alloc_size(uint16_t capacity) {
+	size_t keys_bytes = (size_t)capacity * sizeof(uint16_t);
+	size_t padded = (keys_bytes + sizeof(cfg_obj_t *) - 1) &
+			~(sizeof(cfg_obj_t *) - 1);
+	return sizeof(cfg_map_t) + padded +
+	       (size_t)capacity * sizeof(cfg_obj_t *);
+}
+
+static inline int
+map_find(const cfg_map_t *map, enum cfg_clause key) {
+	const uint16_t *keys = map_keys(map);
+	const uint16_t k = (uint16_t)key;
+	for (uint16_t i = 0; i < map->count; i++) {
+		if (keys[i] == k) {
+			return (int)i;
+		}
+	}
+	return -1;
+}
+
+static void
+map_grow(cfg_map_t **mapp, isc_mem_t *mctx) {
+	cfg_map_t *old = *mapp;
+	uint16_t newcap = (old->capacity == 0) ? 4 : (uint16_t)(old->capacity * 2);
+	size_t newsize = map_alloc_size(newcap);
+	cfg_map_t *new = isc_mem_get(mctx, newsize);
+
+	new->clausesets = old->clausesets;
+	new->count = old->count;
+	new->capacity = newcap;
+
+	/* Copy keys */
+	memmove(map_keys(new), map_keys(old),
+		(size_t)old->count * sizeof(uint16_t));
+	/* Copy values */
+	memmove(map_values(new), map_values(old),
+		(size_t)old->count * sizeof(cfg_obj_t *));
+
+	isc_mem_put(mctx, old, map_alloc_size(old->capacity));
+	*mapp = new;
+}
+
+static void
+map_insert(cfg_map_t **mapp, isc_mem_t *mctx, enum cfg_clause key,
+	   cfg_obj_t *value) {
+	cfg_map_t *map = *mapp;
+	if (map->count == map->capacity) {
+		map_grow(mapp, mctx);
+		map = *mapp;
+	}
+	map_keys(map)[map->count] = (uint16_t)key;
+	map_values(map)[map->count] = value;
+	map->count++;
+}
+
+static void
+copy_map(cfg_obj_t *to, const cfg_obj_t *from) {
+	const cfg_map_t *src = from->value.map;
+	uint16_t cap = src->count < 4 ? 4 : src->count;
+	size_t sz = map_alloc_size(cap);
+	cfg_map_t *dst = isc_mem_get(isc_g_mctx, sz);
+
+	dst->clausesets = src->clausesets;
+	dst->count = src->count;
+	dst->capacity = cap;
+
+	/* Copy keys */
+	memmove(map_keys(dst), map_keys(src),
+		(size_t)src->count * sizeof(uint16_t));
+
+	/* Clone each value */
+	cfg_obj_t **src_vals = map_values(src);
+	cfg_obj_t **dst_vals = map_values(dst);
+	for (uint16_t i = 0; i < src->count; i++) {
+		dst_vals[i] = NULL;
+		cfg_obj_clone(src_vals[i], &dst_vals[i]);
+	}
+
+	to->value.map = dst;
+}
+
 static void
 copy_map_destroy(char *key ISC_ATTR_UNUSED, unsigned int type ISC_ATTR_UNUSED,
 		 isc_symvalue_t symval, void *arg ISC_ATTR_UNUSED) {
@@ -249,47 +345,6 @@ copy_map_destroy(char *key ISC_ATTR_UNUSED, unsigned int type ISC_ATTR_UNUSED,
 	REQUIRE(VALID_CFGOBJ(obj));
 
 	cfg_obj_detach(&obj);
-}
-
-static bool
-copy_map_add(char *key, unsigned int type, isc_symvalue_t value, void *arg) {
-	cfg_obj_t *to = arg;
-	cfg_obj_t *toelt = NULL;
-
-	REQUIRE(VALID_CFGOBJ(value.as_pointer));
-
-	/*
-	 * Only `as_pointer` is used to store the cfg_obj_t object (see
-	 * cfg_map_parsebody)
-	 */
-	cfg_obj_clone(value.as_pointer, &toelt);
-	value.as_pointer = toelt;
-
-	INSIST(isc_symtab_define(to->value.map->symtab, key, type, value,
-				 isc_symexists_reject) == ISC_R_SUCCESS);
-
-	/*
-	 * Do not delete the existing element from `from` table.
-	 */
-	return false;
-}
-
-static void
-copy_map(cfg_obj_t *to, const cfg_obj_t *from) {
-	to->value.map = isc_mem_cget(isc_g_mctx, 1, sizeof(*to->value.map));
-
-	if (from->value.map->id != NULL) {
-		cfg_obj_clone(from->value.map->id, &to->value.map->id);
-	}
-
-	isc_symtab_create(isc_g_mctx, copy_map_destroy, NULL, false,
-			  &to->value.map->symtab);
-	isc_symtab_foreach(from->value.map->symtab, copy_map_add, to);
-
-	/*
-	 * clausesets are statically defined
-	 */
-	to->value.map->clausesets = from->value.map->clausesets;
 }
 
 static bool
@@ -2352,6 +2407,34 @@ cfg_listelt_value(const cfg_listelt_t *elt) {
  * Maps.
  */
 
+static isc_result_t
+change_directory(const cfg_obj_t *obj) {
+	isc_result_t result;
+	const char *directory = cfg_obj_asstring(obj);
+
+	if (!isc_file_ischdiridempotent(directory)) {
+		cfg_obj_log(obj, ISC_LOG_WARNING,
+			    "option 'directory' contains relative path '%s'",
+			    directory);
+	}
+
+	if (!isc_file_isdirwritable(directory)) {
+		cfg_obj_log(obj, ISC_LOG_ERROR,
+			    "directory '%s' is not writable", directory);
+		return ISC_R_NOPERM;
+	}
+
+	result = isc_dir_chdir(directory);
+	if (result != ISC_R_SUCCESS) {
+		cfg_obj_log(obj, ISC_LOG_ERROR,
+			    "change directory to '%s' failed: %s", directory,
+			    isc_result_totext(result));
+		return result;
+	}
+
+	return ISC_R_SUCCESS;
+}
+
 /*
  * Parse a map body.  That's something like
  *
@@ -2372,7 +2455,6 @@ cfg_parse_mapbody(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 	cfg_obj_t *obj = NULL;
 	cfg_obj_t *eltobj = NULL;
 	cfg_obj_t *includename = NULL;
-	isc_symvalue_t symval;
 
 	REQUIRE(pctx != NULL);
 	REQUIRE(type != NULL);
@@ -2535,17 +2617,17 @@ cfg_parse_mapbody(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 			/* Multivalued clause */
 			cfg_obj_t *listobj = NULL;
 			cfg_listelt_t *elt = NULL;
+			int idx;
 
-			create_list(cfg_parser_currentfile(pctx), pctx->line,
-				    &cfg_type_implicitlist, &listobj);
-			symval.as_pointer = listobj;
-			result = isc_symtab_define_and_return(
-				obj->value.map->symtab, "",
-				clause->name, symval, isc_symexists_reject,
-				&symval);
-			if (result == ISC_R_EXISTS) {
-				CLEANUP_OBJ(listobj);
-				listobj = symval.as_pointer;
+			idx = map_find(obj->value.map, clause->name);
+			if (idx >= 0) {
+				listobj = map_values(obj->value.map)[idx];
+			} else {
+				create_list(cfg_parser_currentfile(pctx),
+					    pctx->line,
+					    &cfg_type_implicitlist, &listobj);
+				map_insert(&obj->value.map, isc_g_mctx,
+					   clause->name, listobj);
 			}
 
 			CHECK(cfg_parse_listelt(pctx, listobj, clause->type,
@@ -2554,18 +2636,25 @@ cfg_parse_mapbody(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 			CHECK(parse_semicolon(pctx));
 		} else {
 			/* Single-valued clause */
-			result = parse_symtab_elt(pctx, clause,
-						  obj->value.map->symtab);
-			if (result == ISC_R_EXISTS) {
+			cfg_obj_t *parsed = NULL;
+			int idx;
+
+			idx = map_find(obj->value.map, clause->name);
+			if (idx >= 0) {
 				cfg_parser_error(
 					pctx, CFG_LOG_NEAR, "'%s' redefined",
 					cfg_clause_as_string[clause->name]);
-				CHECK(result);
-			} else if (result != ISC_R_SUCCESS) {
-				cfg_parser_error(pctx, CFG_LOG_NEAR,
-						 "isc_symtab_define() failed");
-				CHECK(result);
+				CHECK(ISC_R_EXISTS);
 			}
+
+			CHECK(cfg_parse_obj(pctx, clause->type, &parsed));
+
+			if ((clause->flags & CFG_CLAUSEFLAG_CHDIR) != 0) {
+				CHECK(change_directory(parsed));
+			}
+
+			map_insert(&obj->value.map, isc_g_mctx, clause->name,
+				   parsed);
 			CHECK(parse_semicolon(pctx));
 		}
 	}
@@ -2578,60 +2667,6 @@ cleanup:
 	CLEANUP_OBJ(obj);
 	CLEANUP_OBJ(eltobj);
 	CLEANUP_OBJ(includename);
-	return result;
-}
-
-static isc_result_t
-change_directory(const cfg_obj_t *obj) {
-	isc_result_t result;
-	const char *directory = cfg_obj_asstring(obj);
-
-	/*
-	 * Change directory.
-	 */
-	if (!isc_file_ischdiridempotent(directory)) {
-		cfg_obj_log(obj, ISC_LOG_WARNING,
-			    "option 'directory' contains relative path '%s'",
-			    directory);
-	}
-
-	if (!isc_file_isdirwritable(directory)) {
-		cfg_obj_log(obj, ISC_LOG_ERROR,
-			    "directory '%s' is not writable", directory);
-		return ISC_R_NOPERM;
-	}
-
-	result = isc_dir_chdir(directory);
-	if (result != ISC_R_SUCCESS) {
-		cfg_obj_log(obj, ISC_LOG_ERROR,
-			    "change directory to '%s' failed: %s", directory,
-			    isc_result_totext(result));
-		return result;
-	}
-
-	return ISC_R_SUCCESS;
-}
-
-static isc_result_t
-parse_symtab_elt(cfg_parser_t *pctx, const cfg_clausedef_t *clause,
-		 isc_symtab_t *symtab) {
-	isc_result_t result;
-	cfg_obj_t *obj = NULL;
-	isc_symvalue_t symval;
-
-	CHECK(cfg_parse_obj(pctx, clause->type, &obj));
-
-	if ((clause->flags & CFG_CLAUSEFLAG_CHDIR) != 0) {
-		CHECK(change_directory(obj));
-	}
-
-	symval.as_pointer = obj;
-	CHECK(isc_symtab_define(symtab, "", clause->name, symval,
-				isc_symexists_reject));
-	return ISC_R_SUCCESS;
-
-cleanup:
-	CLEANUP_OBJ(obj);
 	return result;
 }
 
@@ -2670,7 +2705,7 @@ parse_any_named_map(cfg_parser_t *pctx, cfg_type_t *nametype,
 
 	CHECK(cfg_parse_obj(pctx, nametype, &idobj));
 	CHECK(cfg_parse_map(pctx, type, &mapobj));
-	mapobj->value.map->id = idobj;
+	map_insert(&mapobj->value.map, isc_g_mctx, CFG_CLAUSE__ID, idobj);
 	*ret = mapobj;
 	return result;
 cleanup:
@@ -2729,29 +2764,28 @@ print_symval(cfg_printer_t *pctx, const char *name, cfg_obj_t *obj) {
 void
 cfg_print_mapbody(cfg_printer_t *pctx, const cfg_obj_t *obj) {
 	const cfg_clausedef_t *const *clauseset;
+	const cfg_map_t *map;
 
 	REQUIRE(pctx != NULL);
 	REQUIRE(VALID_CFGOBJ(obj));
 
-	for (clauseset = obj->value.map->clausesets; *clauseset != NULL;
-	     clauseset++)
-	{
-		isc_symvalue_t symval;
+	map = obj->value.map;
+
+	for (clauseset = map->clausesets; *clauseset != NULL; clauseset++) {
 		const cfg_clausedef_t *clause;
 
 		for (clause = *clauseset; clause->name != CFG_CLAUSE__NONE;
 		     clause++)
 		{
-			isc_result_t result;
+			int idx;
 
 			if ((clause->flags & CFG_CLAUSEFLAG_BUILTINONLY) != 0) {
 				continue;
 			}
 
-			result = isc_symtab_lookup(obj->value.map->symtab, "",
-						   clause->name, &symval);
-			if (result == ISC_R_SUCCESS) {
-				cfg_obj_t *symobj = symval.as_pointer;
+			idx = map_find(map, clause->name);
+			if (idx >= 0) {
+				cfg_obj_t *symobj = map_values(map)[idx];
 				const char *namestr =
 					cfg_clause_as_string[clause->name];
 				if (symobj->type == &cfg_type_implicitlist) {
@@ -2765,10 +2799,6 @@ cfg_print_mapbody(cfg_printer_t *pctx, const cfg_obj_t *obj) {
 					/* Single-valued. */
 					print_symval(pctx, namestr, symobj);
 				}
-			} else if (result == ISC_R_NOTFOUND) {
-				/* do nothing */
-			} else {
-				UNREACHABLE();
 			}
 		}
 	}
@@ -2842,11 +2872,14 @@ cfg_doc_mapbody(cfg_printer_t *pctx, const cfg_type_t *type) {
 
 void
 cfg_print_map(cfg_printer_t *pctx, const cfg_obj_t *obj) {
+	int idx;
+
 	REQUIRE(pctx != NULL);
 	REQUIRE(VALID_CFGOBJ(obj));
 
-	if (obj->value.map->id != NULL) {
-		cfg_print_obj(pctx, obj->value.map->id);
+	idx = map_find(obj->value.map, CFG_CLAUSE__ID);
+	if (idx >= 0) {
+		cfg_print_obj(pctx, map_values(obj->value.map)[idx]);
 		cfg_print_cstr(pctx, " ");
 	}
 	print_open(pctx);
@@ -2914,36 +2947,52 @@ cfg_obj_ismap(const cfg_obj_t *obj) {
 isc_result_t
 cfg_map_get(const cfg_obj_t *mapobj, enum cfg_clause name,
 	    const cfg_obj_t **obj) {
-	isc_symvalue_t val;
 	const cfg_map_t *map;
+	int idx;
 
 	REQUIRE(mapobj != NULL && mapobj->type->rep == &cfg_rep_map);
 	REQUIRE(name != CFG_CLAUSE__NONE);
 	REQUIRE(obj != NULL && *obj == NULL);
 
 	map = mapobj->value.map;
-
-	RETERR(isc_symtab_lookup(map->symtab, "", name, &val));
-	*obj = val.as_pointer;
+	idx = map_find(map, name);
+	if (idx < 0) {
+		return ISC_R_NOTFOUND;
+	}
+	*obj = map_values(map)[idx];
 	return ISC_R_SUCCESS;
 }
 
 const cfg_obj_t *
 cfg_map_getname(const cfg_obj_t *mapobj) {
+	int idx;
+
 	REQUIRE(VALID_CFGOBJ(mapobj));
 	REQUIRE(mapobj->type->rep == &cfg_rep_map);
-	return mapobj->value.map->id;
+
+	idx = map_find(mapobj->value.map, CFG_CLAUSE__ID);
+	if (idx < 0) {
+		return NULL;
+	}
+	return map_values(mapobj->value.map)[idx];
 }
 
 unsigned int
 cfg_map_count(const cfg_obj_t *mapobj) {
 	const cfg_map_t *map;
+	unsigned int count;
 
 	REQUIRE(VALID_CFGOBJ(mapobj));
 	REQUIRE(mapobj->type->rep == &cfg_rep_map);
 
 	map = mapobj->value.map;
-	return isc_symtab_count(map->symtab);
+	count = map->count;
+
+	/* Exclude the internal CFG_CLAUSE__ID entry from the count */
+	if (map_find(map, CFG_CLAUSE__ID) >= 0) {
+		count--;
+	}
+	return count;
 }
 
 const cfg_clausedef_t *
@@ -4449,26 +4498,34 @@ map_symtabitem_destroy(char *key ISC_ATTR_UNUSED,
 	cfg_obj_detach(&obj);
 }
 
+#define MAP_INITIAL_CAPACITY 4
+
 static void
 create_map(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
-	isc_symtab_t *symtab = NULL;
 	cfg_obj_t *obj = NULL;
+	size_t sz = map_alloc_size(MAP_INITIAL_CAPACITY);
 
 	cfg_obj_create(cfg_parser_currentfile(pctx), pctx->line, type, &obj);
-	isc_symtab_create(isc_g_mctx, map_symtabitem_destroy, pctx, false,
-			  &symtab);
 
-	obj->value.map = isc_mem_cget(isc_g_mctx, 1, sizeof(*obj->value.map));
-	obj->value.map->symtab = symtab;
+	obj->value.map = isc_mem_get(isc_g_mctx, sz);
+	*obj->value.map = (cfg_map_t){
+		.clausesets = NULL,
+		.count = 0,
+		.capacity = MAP_INITIAL_CAPACITY,
+	};
 
 	*ret = obj;
 }
 
 static void
 free_map(cfg_obj_t *obj) {
-	CLEANUP_OBJ(obj->value.map->id);
-	isc_symtab_destroy(&obj->value.map->symtab);
-	isc_mem_put(isc_g_mctx, obj->value.map, sizeof(*obj->value.map));
+	cfg_map_t *map = obj->value.map;
+	cfg_obj_t **vals = map_values(map);
+
+	for (uint16_t i = 0; i < map->count; i++) {
+		cfg_obj_detach(&vals[i]);
+	}
+	isc_mem_put(isc_g_mctx, map, map_alloc_size(map->capacity));
 }
 
 static void
@@ -4557,13 +4614,10 @@ cfg_print_grammar(const cfg_type_t *type, unsigned int flags,
 
 static isc_result_t
 map_define(cfg_obj_t *mapobj, cfg_obj_t *obj, const cfg_clausedef_t *clause) {
-	isc_result_t result;
-	const cfg_map_t *map;
-	isc_symvalue_t symval;
+	int idx;
 
-	map = mapobj->value.map;
-	result = isc_symtab_lookup(map->symtab, "", clause->name, &symval);
-	if (result == ISC_R_NOTFOUND) {
+	idx = map_find(mapobj->value.map, clause->name);
+	if (idx < 0) {
 		if ((clause->flags & CFG_CLAUSEFLAG_MULTI) != 0) {
 			cfg_obj_t *destobj = NULL;
 			cfg_listelt_t *elt = NULL;
@@ -4573,30 +4627,26 @@ map_define(cfg_obj_t *mapobj, cfg_obj_t *obj, const cfg_clausedef_t *clause) {
 			cfg_listelt_create(&elt);
 			cfg_obj_attach(obj, &elt->obj);
 			ISC_LIST_APPEND(*destobj->value.list, elt, link);
-			symval.as_pointer = destobj;
+			map_insert(&mapobj->value.map, isc_g_mctx,
+				   clause->name, destobj);
 		} else {
-			symval.as_pointer = obj;
+			map_insert(&mapobj->value.map, isc_g_mctx,
+				   clause->name, obj);
 		}
-
-		result = isc_symtab_define(map->symtab, "", clause->name,
-					   symval, isc_symexists_reject);
-		INSIST(result == ISC_R_SUCCESS);
 	} else {
-		cfg_obj_t *destobj = symval.as_pointer;
+		cfg_obj_t *destobj = map_values(mapobj->value.map)[idx];
 		cfg_listelt_t *elt = NULL;
-
-		INSIST(result == ISC_R_SUCCESS);
 
 		if (destobj->type == &cfg_type_implicitlist) {
 			cfg_listelt_create(&elt);
 			cfg_obj_attach(obj, &elt->obj);
 			ISC_LIST_APPEND(*destobj->value.list, elt, link);
 		} else {
-			result = ISC_R_EXISTS;
+			return ISC_R_EXISTS;
 		}
 	}
 
-	return result;
+	return ISC_R_SUCCESS;
 }
 
 isc_result_t

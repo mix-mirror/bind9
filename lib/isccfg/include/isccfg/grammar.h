@@ -16,6 +16,7 @@
 /*! \file isccfg/grammar.h */
 
 #include <inttypes.h>
+#include <stdalign.h>
 #include <stdbool.h>
 
 #include <isc/lex.h>
@@ -176,12 +177,17 @@ typedef struct {
 } keyword_type_t;
 
 struct cfg_map {
-	cfg_obj_t *id; /*%< Used for 'named maps' like
-			* keys, zones, &c */
 	const cfg_clausedef_t *const *clausesets; /*%< The clauses that
 						   * can occur in this map;
 						   * used for printing */
-	isc_symtab_t *symtab;
+	uint16_t count;
+	uint16_t capacity;
+	/*
+	 * Flexible array member with layout:
+	 *   [uint16_t keys[capacity]] [padding] [cfg_obj_t *values[capacity]]
+	 * Use map_keys()/map_values() helpers to access.
+	 */
+	alignas(cfg_obj_t *) char entries[];
 };
 
 struct cfg_map_external {

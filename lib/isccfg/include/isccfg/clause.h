@@ -634,6 +634,7 @@ enum cfg_clause {
 #define X(name, str) name,
 	CFG_CLAUSES
 #undef X
+	CFG_CLAUSE__ID,
 	CFG_CLAUSE__COUNT
 };
 
