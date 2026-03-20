@@ -96,7 +96,7 @@ out:
 }
 
 isc_result_t
-named_config_get(cfg_obj_t const *const *maps, const char *name,
+named_config_get(cfg_obj_t const *const *maps, enum cfg_clause name,
 		 const cfg_obj_t **obj) {
 	int i;
 
@@ -110,7 +110,7 @@ named_config_get(cfg_obj_t const *const *maps, const char *name,
 
 isc_result_t
 named_config_findopt(const cfg_obj_t *opts1, const cfg_obj_t *opts2,
-		     const char *name, const cfg_obj_t **objp) {
+		     enum cfg_clause name, const cfg_obj_t **objp) {
 	isc_result_t result = ISC_R_NOTFOUND;
 
 	REQUIRE(*objp == NULL);
@@ -246,7 +246,7 @@ named_config_getzonetype(const cfg_obj_t *zonetypeobj) {
 }
 
 isc_result_t
-named_config_getremotesdef(const cfg_obj_t *cctx, const char *list,
+named_config_getremotesdef(const cfg_obj_t *cctx, enum cfg_clause list,
 			   const char *name, const cfg_obj_t **ret) {
 	const cfg_obj_t *obj = NULL;
 
@@ -315,8 +315,10 @@ named_config_getname(isc_mem_t *mctx, const cfg_obj_t *obj,
 		oldlen = newlen;                                    \
 	}
 
-static const char *remotesnames[4] = { "remote-servers", "parental-agents",
-				       "primaries", "masters" };
+static const enum cfg_clause remotesnames[4] = {
+	CFG_CLAUSE_REMOTE_SERVERS, CFG_CLAUSE_PARENTAL_AGENTS,
+	CFG_CLAUSE_PRIMARIES, CFG_CLAUSE_MASTERS
+};
 
 typedef struct {
 	isc_sockaddr_t *addrs;
@@ -557,9 +559,9 @@ named_config_getipandkeylist(const cfg_obj_t *config, const cfg_obj_t *list,
 	/*
 	 * Get system defaults.
 	 */
-	CHECK(named_config_getport(config, "port", &def_port));
+	CHECK(named_config_getport(config, CFG_CLAUSE_PORT, &def_port));
 
-	CHECK(named_config_getport(config, "tls-port", &def_tlsport));
+	CHECK(named_config_getport(config, CFG_CLAUSE_TLS_PORT, &def_tlsport));
 
 	/*
 	 * Process the (nested) list(s).
@@ -638,7 +640,7 @@ cleanup:
 }
 
 isc_result_t
-named_config_getport(const cfg_obj_t *config, const char *type,
+named_config_getport(const cfg_obj_t *config, enum cfg_clause type,
 		     in_port_t *portp) {
 	const cfg_obj_t *maps[3];
 	const cfg_obj_t *options = NULL;

@@ -4350,12 +4350,12 @@ cfg_print_zonegrammar(const unsigned int zonetype, unsigned int flags,
 		}
 
 		if ((clause->flags & zonetype) == 0 ||
-		    strcasecmp(clause->name, "type") == 0)
+		    clause->name == CFG_CLAUSE_TYPE)
 		{
 			continue;
 		}
 		cfg_print_indent(&pctx);
-		cfg_print_cstr(&pctx, clause->name);
+		cfg_print_cstr(&pctx, cfg_clause_as_string[clause->name]);
 		cfg_print_cstr(&pctx, " ");
 		cfg_doc_obj(&pctx, clause->type);
 		cfg_print_cstr(&pctx, ";");

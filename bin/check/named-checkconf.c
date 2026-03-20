@@ -59,7 +59,7 @@ usage(void) {
 }
 
 static bool
-get_maps(const cfg_obj_t **maps, const char *name, const cfg_obj_t **obj) {
+get_maps(const cfg_obj_t **maps, enum cfg_clause name, const cfg_obj_t **obj) {
 	int i;
 	for (i = 0;; i++) {
 		if (maps[i] == NULL) {
@@ -245,7 +245,7 @@ configure_zone(const char *vclass, const char *view, const cfg_obj_t *zconfig,
 	}
 
 	obj = NULL;
-	if (get_maps(maps, "check-dup-records", &obj)) {
+	if (get_maps(maps, CFG_CLAUSE_CHECK_DUP_RECORDS, &obj)) {
 		if (strcasecmp(cfg_obj_asstring(obj), "warn") == 0) {
 			zone_options |= DNS_ZONEOPT_CHECKDUPRR;
 			zone_options &= ~DNS_ZONEOPT_CHECKDUPRRFAIL;
@@ -264,7 +264,7 @@ configure_zone(const char *vclass, const char *view, const cfg_obj_t *zconfig,
 	}
 
 	obj = NULL;
-	if (get_maps(maps, "check-mx", &obj)) {
+	if (get_maps(maps, CFG_CLAUSE_CHECK_MX, &obj)) {
 		if (strcasecmp(cfg_obj_asstring(obj), "warn") == 0) {
 			zone_options |= DNS_ZONEOPT_CHECKMX;
 			zone_options &= ~DNS_ZONEOPT_CHECKMXFAIL;
@@ -283,7 +283,7 @@ configure_zone(const char *vclass, const char *view, const cfg_obj_t *zconfig,
 	}
 
 	obj = NULL;
-	if (get_maps(maps, "check-integrity", &obj)) {
+	if (get_maps(maps, CFG_CLAUSE_CHECK_INTEGRITY, &obj)) {
 		if (cfg_obj_asboolean(obj)) {
 			zone_options |= DNS_ZONEOPT_CHECKINTEGRITY;
 		} else {
@@ -294,7 +294,7 @@ configure_zone(const char *vclass, const char *view, const cfg_obj_t *zconfig,
 	}
 
 	obj = NULL;
-	if (get_maps(maps, "check-mx-cname", &obj)) {
+	if (get_maps(maps, CFG_CLAUSE_CHECK_MX_CNAME, &obj)) {
 		if (strcasecmp(cfg_obj_asstring(obj), "warn") == 0) {
 			zone_options |= DNS_ZONEOPT_WARNMXCNAME;
 			zone_options &= ~DNS_ZONEOPT_IGNOREMXCNAME;
@@ -313,7 +313,7 @@ configure_zone(const char *vclass, const char *view, const cfg_obj_t *zconfig,
 	}
 
 	obj = NULL;
-	if (get_maps(maps, "check-srv-cname", &obj)) {
+	if (get_maps(maps, CFG_CLAUSE_CHECK_SRV_CNAME, &obj)) {
 		if (strcasecmp(cfg_obj_asstring(obj), "warn") == 0) {
 			zone_options |= DNS_ZONEOPT_WARNSRVCNAME;
 			zone_options &= ~DNS_ZONEOPT_IGNORESRVCNAME;
@@ -332,7 +332,7 @@ configure_zone(const char *vclass, const char *view, const cfg_obj_t *zconfig,
 	}
 
 	obj = NULL;
-	if (get_maps(maps, "check-sibling", &obj)) {
+	if (get_maps(maps, CFG_CLAUSE_CHECK_SIBLING, &obj)) {
 		if (cfg_obj_asboolean(obj)) {
 			zone_options |= DNS_ZONEOPT_CHECKSIBLING;
 		} else {
@@ -341,7 +341,7 @@ configure_zone(const char *vclass, const char *view, const cfg_obj_t *zconfig,
 	}
 
 	obj = NULL;
-	if (get_maps(maps, "check-spf", &obj)) {
+	if (get_maps(maps, CFG_CLAUSE_CHECK_SPF, &obj)) {
 		if (strcasecmp(cfg_obj_asstring(obj), "warn") == 0) {
 			zone_options |= DNS_ZONEOPT_CHECKSPF;
 		} else if (strcasecmp(cfg_obj_asstring(obj), "ignore") == 0) {
@@ -354,7 +354,7 @@ configure_zone(const char *vclass, const char *view, const cfg_obj_t *zconfig,
 	}
 
 	obj = NULL;
-	if (get_maps(maps, "check-svcb", &obj)) {
+	if (get_maps(maps, CFG_CLAUSE_CHECK_SVCB, &obj)) {
 		if (cfg_obj_asboolean(obj)) {
 			zone_options |= DNS_ZONEOPT_CHECKSVCB;
 		} else {
@@ -365,7 +365,7 @@ configure_zone(const char *vclass, const char *view, const cfg_obj_t *zconfig,
 	}
 
 	obj = NULL;
-	if (get_maps(maps, "check-wildcard", &obj)) {
+	if (get_maps(maps, CFG_CLAUSE_CHECK_WILDCARD, &obj)) {
 		if (cfg_obj_asboolean(obj)) {
 			zone_options |= DNS_ZONEOPT_CHECKWILDCARD;
 		} else {
@@ -396,7 +396,7 @@ configure_zone(const char *vclass, const char *view, const cfg_obj_t *zconfig,
 
 	masterformat = dns_masterformat_text;
 	fmtobj = NULL;
-	if (get_maps(maps, "masterfile-format", &fmtobj)) {
+	if (get_maps(maps, CFG_CLAUSE_MASTERFILE_FORMAT, &fmtobj)) {
 		const char *masterformatstr = cfg_obj_asstring(fmtobj);
 		if (strcasecmp(masterformatstr, "text") == 0) {
 			masterformat = dns_masterformat_text;
@@ -408,7 +408,7 @@ configure_zone(const char *vclass, const char *view, const cfg_obj_t *zconfig,
 	}
 
 	obj = NULL;
-	if (get_maps(maps, "max-zone-ttl", &obj)) {
+	if (get_maps(maps, CFG_CLAUSE_MAX_ZONE_TTL, &obj)) {
 		maxttl = cfg_obj_asduration(obj);
 		zone_options |= DNS_ZONEOPT_CHECKTTL;
 	}
