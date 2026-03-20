@@ -47,6 +47,13 @@
  *** General Macros.
  ***/
 
+#define MOVE_OWNERSHIP(source)                             \
+	({                                                 \
+		__typeof__(source) __ownership = (source); \
+		(source) = NULL;                           \
+		__ownership;                               \
+	})
+
 /*%
  * Use this to hide unused function arguments.
  * \code
