@@ -313,6 +313,7 @@ typedef struct {
 		dns_rdatatype_t r_type;
 		isc_result_t	r_result;
 		dns_rdataset_t *r_rdataset;
+		dns_delegset_t *delegset;
 	} r;
 
 	/*

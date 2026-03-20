@@ -2981,6 +2981,9 @@ rpz_st_clear(ns_client_t *client) {
 	if (st->r.ns_rdataset != NULL) {
 		ns_client_putrdataset(client, &st->r.ns_rdataset);
 	}
+	if (st->r.delegset != NULL) {
+		dns_delegset_detach(&st->r.delegset);
+	}
 	if (st->r.r_rdataset != NULL) {
 		ns_client_putrdataset(client, &st->r.r_rdataset);
 	}
@@ -3085,7 +3088,7 @@ static isc_result_t
 rpz_rrset_find(ns_client_t *client, dns_name_t *name, dns_rdatatype_t type,
 	       unsigned int options, dns_rpz_type_t rpz_type, dns_db_t **dbp,
 	       dns_dbversion_t *version, dns_rdataset_t **rdatasetp,
-	       bool resuming) {
+	       dns_delegset_t **delegsetp, bool resuming) {
 	dns_rpz_st_t *st;
 	bool is_zone;
 	dns_dbnode_t *node;
@@ -3169,8 +3172,47 @@ rpz_rrset_find(ns_client_t *client, dns_name_t *name, dns_rdatatype_t type,
 		result = dns_db_findext(*dbp, name, version, type, 0,
 					client->inner.now, &node, found, &cm,
 					&ci, *rdatasetp, NULL);
-		if (result != ISC_R_SUCCESS) {
+		if (result != ISC_R_SUCCESS && delegsetp != NULL) {
+			/*
+			 * Maybe we do have a delegation (the main cache won't
+			 * have any delegation stored).
+			 */
+			char qnamestr[512];
+			dns_name_format(name, qnamestr, sizeof(qnamestr));
+			result = dns_delegdb_lookup(client->inner.view->deleg,
+						    name, client->inner.now, 0,
+						    found, NULL, delegsetp);
+
+			fprintf(stderr, "COLIN qnamestr=%s result=%s\n",
+				qnamestr, isc_result_totext(result));
+			if (result != ISC_R_SUCCESS) {
+				result = DNS_R_DELEGATION;
+			} else {
+				isc_buffer_t b;
+				char names[512] = { 0 };
+				isc_buffer_init(&b, names, sizeof(names));
+				ISC_LIST_FOREACH((*delegsetp)->delegs, deleg,
+						 link)
+				{
+					ISC_LIST_FOREACH(deleg->names, nsname,
+							 link)
+					{
+						char n[128];
+						dns_name_format(nsname, n, 128);
+						isc_buffer_printf(&b, "%s,", n);
+					}
+				}
+				fprintf(stderr,
+					"COLIN delegset found names=%s\n",
+					names);
+			}
+		} else if (result != ISC_R_SUCCESS) {
 			result = DNS_R_DELEGATION;
+		} else {
+			/*
+			 * We got everything we needed from the main cache.
+			 */
+			dns_delegset_fromrdataset(*rdatasetp, delegsetp);
 		}
 	}
 	rpz_clean(NULL, dbp, &node, NULL);
@@ -3197,7 +3239,14 @@ rpz_rrset_find(ns_client_t *client, dns_name_t *name, dns_rdatatype_t type,
 				result = DNS_R_DELEGATION;
 			}
 		}
+	} else {
+		/*
+		 * We got everything we need from the local zone.
+		 */
+		dns_delegset_fromrdataset(*rdatasetp, delegsetp);
 	}
+	fprintf(stderr, "COLIN out of rpz_rrset_find() *delegsetp=%p\n",
+		delegsetp ? *delegsetp : NULL);
 	return result;
 }
 
@@ -3629,9 +3678,11 @@ rpz_rewrite_ip_rrset(ns_client_t *client, dns_name_t *name,
 		/*
 		 * Get the A or AAAA rdataset.
 		 */
+		fprintf(stderr, "COLIN >>> rpz_rewrite_ip_rrset\n");
 		result = rpz_rrset_find(client, name, ip_type, options,
 					rpz_type, ip_dbp, ip_version,
-					ip_rdatasetp, resuming);
+					ip_rdatasetp, NULL, resuming);
+		fprintf(stderr, "COLIN <<<\n");
 		switch (result) {
 		case ISC_R_SUCCESS:
 		case DNS_R_GLUE:
@@ -3937,6 +3988,9 @@ rpz_rewrite_ns_skip(ns_client_t *client, dns_name_t *nsname,
 				    DNS_RPZ_TYPE_NSDNAME, str, result);
 	}
 	dns_rdataset_cleanup(st->r.ns_rdataset);
+	if (st->r.delegset != NULL) {
+		dns_delegset_detach(&st->r.delegset);
+	}
 
 	st->r.label--;
 }
@@ -4218,18 +4272,26 @@ rpz_rewrite(ns_client_t *client, dns_rdatatype_t qtype, isc_result_t qresult,
 			dns_name_split(client->query.qname, st->r.label, NULL,
 				       nsname);
 		}
-		if (st->r.ns_rdataset == NULL ||
-		    !dns_rdataset_isassociated(st->r.ns_rdataset))
+		if (st->r.delegset == NULL &&
+		    (st->r.ns_rdataset == NULL ||
+		     !dns_rdataset_isassociated(st->r.ns_rdataset)))
 		{
 			dns_db_t *db = NULL;
-			result = rpz_rrset_find(client, nsname,
-						dns_rdatatype_ns, options,
-						DNS_RPZ_TYPE_NSDNAME, &db, NULL,
-						&st->r.ns_rdataset, resuming);
+			fprintf(stderr, "COLIN >>> rpz_rrset_find()\n");
+			result = rpz_rrset_find(
+				client, nsname, dns_rdatatype_ns, options,
+				DNS_RPZ_TYPE_NSDNAME, &db, NULL,
+				&st->r.ns_rdataset, &st->r.delegset, resuming);
+			fprintf(stderr,
+				"COLIN st->r.delegset=%p result=%s\nCOLIN "
+				"<<<\n",
+				st->r.delegset, isc_result_totext(result));
 			if (db != NULL) {
 				dns_db_detach(&db);
 			}
 			if (st->m.policy == DNS_RPZ_POLICY_ERROR) {
+				fprintf(stderr,
+					"COLIN, DNS_RPZ_POLICY_ERROR found\n");
 				goto cleanup;
 			}
 			switch (result) {
@@ -4237,9 +4299,15 @@ rpz_rewrite(ns_client_t *client, dns_rdatatype_t qtype, isc_result_t qresult,
 				was_glue = true;
 				FALLTHROUGH;
 			case ISC_R_SUCCESS:
-				CHECK(dns_rdataset_first(st->r.ns_rdataset));
+				if (st->r.delegset == NULL) {
+					CHECK(dns_rdataset_first(
+						st->r.ns_rdataset));
+				}
 				st->state &= ~(DNS_RPZ_DONE_NSDNAME |
 					       DNS_RPZ_DONE_IPv4);
+				fprintf(stderr, "COLIN, "
+						"DNS_RPZ_DONE_NSDNAME|DNS_RPZ_"
+						"DONE_IPv4 state\n");
 				break;
 			case DNS_R_DELEGATION:
 			case DNS_R_DUPLICATE:
@@ -4276,21 +4344,53 @@ rpz_rewrite(ns_client_t *client, dns_rdatatype_t qtype, isc_result_t qresult,
 		/*
 		 * Check all NS names.
 		 */
+		dns_deleg_t *deleg = NULL;
+		dns_name_t *delegnsname = NULL;
+
+		if (st->r.delegset != NULL) {
+			fprintf(stderr, "COLIN HAS DELEGSET\n");
+			deleg = ISC_LIST_HEAD(st->r.delegset->delegs);
+			INSIST(deleg->type == DNS_DELEGTYPE_NS_NAMES ||
+			       deleg->type == DNS_DELEGTYPE_NS_GLUES);
+		}
+
 		do {
 			dns_rdata_ns_t ns;
 			dns_rdata_t nsrdata = DNS_RDATA_INIT;
+			dns_name_t *name = NULL;
 
-			dns_rdataset_current(st->r.ns_rdataset, &nsrdata);
-			result = dns_rdata_tostruct(&nsrdata, &ns, NULL);
-			RUNTIME_CHECK(result == ISC_R_SUCCESS);
-			dns_rdata_reset(&nsrdata);
+			if (delegnsname == NULL && deleg != NULL) {
+				delegnsname = ISC_LIST_HEAD(deleg->names);
+				name = delegnsname;
+			}
 
+			if (delegnsname == NULL) {
+				dns_rdataset_current(st->r.ns_rdataset,
+						     &nsrdata);
+				result = dns_rdata_tostruct(&nsrdata, &ns,
+							    NULL);
+				name = &ns.name;
+				RUNTIME_CHECK(result == ISC_R_SUCCESS);
+				dns_rdata_reset(&nsrdata);
+			} else {
+				char strnsdelegname[512] = { 0 };
+				dns_name_format(delegnsname, strnsdelegname,
+						sizeof(strnsdelegname));
+				fprintf(stderr, "COLIN DELEGNSNAME %s\n",
+					strnsdelegname);
+			}
 			/*
 			 * Do nothing about "NS ."
 			 */
-			if (dns_name_equal(&ns.name, dns_rootname)) {
-				dns_rdata_freestruct(&ns);
-				result = dns_rdataset_next(st->r.ns_rdataset);
+			if (dns_name_equal(name, dns_rootname)) {
+				if (delegnsname == NULL) {
+					dns_rdata_freestruct(&ns);
+					result = dns_rdataset_next(
+						st->r.ns_rdataset);
+				} else {
+					delegnsname = ISC_LIST_NEXT(delegnsname,
+								    link);
+				}
 				continue;
 			}
 			/*
@@ -4298,12 +4398,14 @@ rpz_rewrite(ns_client_t *client, dns_rdatatype_t qtype, isc_result_t qresult,
 			 * during a previous recursion.
 			 */
 			if ((st->state & DNS_RPZ_DONE_NSDNAME) == 0) {
-				result = rpz_rewrite_name(
-					client, &ns.name, qtype,
-					DNS_RPZ_TYPE_NSDNAME, DNS_RPZ_ALL_ZBITS,
-					&rdataset);
+				result = rpz_rewrite_name(client, name, qtype,
+							  DNS_RPZ_TYPE_NSDNAME,
+							  DNS_RPZ_ALL_ZBITS,
+							  &rdataset);
 				if (result != ISC_R_SUCCESS) {
-					dns_rdata_freestruct(&ns);
+					if (delegnsname == NULL) {
+						dns_rdata_freestruct(&ns);
+					}
 					goto cleanup;
 				}
 				st->state |= DNS_RPZ_DONE_NSDNAME;
@@ -4311,18 +4413,31 @@ rpz_rewrite(ns_client_t *client, dns_rdatatype_t qtype, isc_result_t qresult,
 			/*
 			 * Check all IP addresses for this NS name.
 			 */
-			result = rpz_rewrite_ip_rrsets(client, &ns.name, qtype,
+			result = rpz_rewrite_ip_rrsets(client, name, qtype,
 						       DNS_RPZ_TYPE_NSIP,
 						       &rdataset, resuming);
-			dns_rdata_freestruct(&ns);
+
+			if (delegnsname == NULL) {
+				dns_rdata_freestruct(&ns);
+			}
 			if (result != ISC_R_SUCCESS) {
 				goto cleanup;
 			}
 			st->state &= ~(DNS_RPZ_DONE_NSDNAME |
 				       DNS_RPZ_DONE_IPv4);
-			result = dns_rdataset_next(st->r.ns_rdataset);
+
+			if (delegnsname == NULL) {
+				result = dns_rdataset_next(st->r.ns_rdataset);
+			} else {
+				delegnsname = ISC_LIST_NEXT(delegnsname, link);
+				result = delegnsname == NULL ? ISC_R_NOMORE
+							     : ISC_R_SUCCESS;
+			}
 		} while (result == ISC_R_SUCCESS);
-		dns_rdataset_disassociate(st->r.ns_rdataset);
+		dns_rdataset_cleanup(st->r.ns_rdataset);
+		if (st->r.delegset != NULL) {
+			dns_delegset_detach(&st->r.delegset);
+		}
 
 		/*
 		 * If we just checked a glue NS RRset retry without allowing
