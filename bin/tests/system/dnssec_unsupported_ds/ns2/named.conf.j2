@@ -11,8 +11,6 @@
  * information regarding copyright ownership.
  */
 
-// NS2
-
 options {
 	query-source address 10.53.0.2;
 	notify-source 10.53.0.2;
@@ -21,17 +19,20 @@ options {
 	pid-file "named.pid";
 	listen-on { 10.53.0.2; };
 	listen-on-v6 { none; };
+
+	key-directory "keys";
+
+	minimal-any no;
+	minimal-responses no;
 	recursion no;
+
 	dnssec-validation yes;
 };
 
-key rndc_key {
-        secret "1234abcd8765";
-        algorithm @DEFAULT_HMAC@;
-};
+include "../../_common/rndc.key";
 
 controls {
-        inet 10.53.0.2 port @CONTROLPORT@ allow { any; } keys { rndc_key; };
+	inet 10.53.0.2 port @CONTROLPORT@ allow { any; } keys { rndc_key; };
 };
 
 zone "." {
@@ -40,8 +41,8 @@ zone "." {
 };
 
 zone "example." {
-    type primary;
-    file "zones/example.db.signed";
+	type primary;
+	file "zones/example.db.signed";
 };
 
 include "trusted.conf";
