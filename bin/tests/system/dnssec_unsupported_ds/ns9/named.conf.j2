@@ -19,17 +19,16 @@ options {
 	pid-file "named.pid";
 	listen-on { 10.53.0.9; };
 	listen-on-v6 { none; };
+
 	recursion yes;
+
 	dnssec-validation yes;
 };
 
-key rndc_key {
-        secret "1234abcd8765";
-        algorithm @DEFAULT_HMAC@;
-};
+include "../../_common/rndc.key";
 
 controls {
-        inet 10.53.0.9 port @CONTROLPORT@ allow { any; } keys { rndc_key; };
+	inet 10.53.0.9 port @CONTROLPORT@ allow { any; } keys { rndc_key; };
 };
 
 zone "." {
