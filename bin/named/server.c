@@ -5857,28 +5857,6 @@ emit_text(void *arg, const char *buf, int len) {
 	}
 }
 
-static isc_result_t
-save_zoneconfig(dns_zone_t *zone, const cfg_obj_t *zconfig) {
-	isc_result_t result;
-	isc_buffer_t *text = NULL;
-
-	isc_buffer_allocate(isc_g_mctx, &text, 256);
-
-	ns_dzarg_t dzarg = {
-		.magic = DZARG_MAGIC,
-		.text = text,
-	};
-
-	cfg_printx(zconfig, CFG_PRINTER_ONELINE, emit_text, &dzarg);
-	CHECK(putnull(text));
-
-	dns_zone_setcfg(zone, isc_buffer_base(text));
-
-cleanup:
-	isc_buffer_free(&text);
-	return result;
-}
-
 /*
  * Configure or reconfigure a zone.
  */
@@ -6081,7 +6059,6 @@ configure_zone(const cfg_obj_t *config, const cfg_obj_t *zconfig,
 		}
 		CHECK(named_zone_configure(config, vconfig, zconfig, aclctx,
 					   kasplist, zone, NULL));
-		CHECK(save_zoneconfig(zone, zconfig));
 		dns_zone_attach(zone, &view->redirect);
 		goto cleanup;
 	}
@@ -6259,7 +6236,6 @@ configure_zone(const cfg_obj_t *config, const cfg_obj_t *zconfig,
 	 */
 	CHECK(named_zone_configure(config, vconfig, zconfig, aclctx, kasplist,
 				   zone, raw));
-	CHECK(save_zoneconfig(zone, zconfig));
 
 	/*
 	 * Add the zone to its view in the new view list.
@@ -8849,19 +8825,12 @@ load_configuration(named_server_t *server, bool first_time) {
 	effective = cfg_effective_config(config, builtin);
 
 	/*
-	 * Save the user configuration in text format, to display with "rndc
-	 * showconf". (Text takes up less memory than an object tree.)
+	 * Save the user configuration for later reference.
 	 */
-	if (server->userconftext != NULL) {
-		isc_buffer_free(&server->userconftext);
+	if (server->userconfig != NULL) {
+		cfg_obj_detach(&server->userconfig);
 	}
-	isc_buffer_allocate(isc_g_mctx, &server->userconftext, BUFSIZ);
-
-	dzarg = (ns_dzarg_t){
-		.magic = DZARG_MAGIC,
-		.text = server->userconftext,
-	};
-	cfg_printx(config, 0, emit_text, &dzarg);
+	cfg_obj_attach(config, &server->userconfig);
 
 	/*
 	 * And finally we apply the effective configuration.
@@ -9515,8 +9484,8 @@ named_server_destroy(named_server_t **serverp) {
 		isc_tlsctx_cache_detach(&server->tlsctx_client_cache);
 	}
 
-	if (server->userconftext != NULL) {
-		isc_buffer_free(&server->userconftext);
+	if (server->userconfig != NULL) {
+		cfg_obj_detach(&server->userconfig);
 	}
 
 	if (server->effectivetext != NULL) {
@@ -12770,7 +12739,11 @@ named_server_showzone(named_server_t *server, isc_lex_t *lex,
 	isc_result_t result;
 	char zonename[DNS_NAME_FORMATSIZE];
 	dns_zone_t *zone = NULL;
-	const char *zconfig = NULL;
+	const cfg_obj_t *zconfig = NULL;
+	ns_dzarg_t dzarg = {
+		.magic = DZARG_MAGIC,
+		.text = text,
+	};
 
 	REQUIRE(text != NULL);
 
@@ -12788,7 +12761,8 @@ named_server_showzone(named_server_t *server, isc_lex_t *lex,
 	}
 
 	CHECK(putstr(text, "zone "));
-	CHECK(putstr(text, zconfig));
+	cfg_printx(zconfig, CFG_PRINTER_ONELINE, emit_text, &dzarg);
+	CHECK(dzarg.result);
 	CHECK(putstr(text, ";"));
 
 	result = ISC_R_SUCCESS;
@@ -12823,8 +12797,8 @@ named_server_showconf(named_server_t *server, isc_lex_t *lex,
 	}
 
 	if (strcasecmp(arg, "-user") == 0) {
-		result = putmem(text, isc_buffer_base(server->userconftext),
-				isc_buffer_usedlength(server->userconftext));
+		cfg_printx(server->userconfig, 0, emit_text, &dzarg);
+		result = dzarg.result;
 	} else if (strcasecmp(arg, "-effective") == 0) {
 		if (server->effectivetext != NULL) {
 			result = putmem(
