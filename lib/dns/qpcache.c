@@ -1364,7 +1364,7 @@ find_headers(qpcnode_t *node, qpc_search_t *search, dns_rdatatype_t type,
 }
 
 static isc_result_t
-check_zonecut(qpcnode_t *node, void *arg DNS__DB_FLARG) {
+check_dname(qpcnode_t *node, void *arg DNS__DB_FLARG) {
 	qpc_search_t *search = arg;
 	dns_slabheader_t *found = NULL, *foundsig = NULL;
 	isc_result_t result;
@@ -1400,66 +1400,6 @@ check_zonecut(qpcnode_t *node, void *arg DNS__DB_FLARG) {
 	}
 
 	NODE_UNLOCK(nlock, &nlocktype);
-
-	return result;
-}
-
-static isc_result_t
-find_deepest_zonecut(qpc_search_t *search, qpcnode_t *node,
-		     dns_dbnode_t **nodep, dns_name_t *foundname,
-		     dns_rdataset_t *rdataset,
-		     dns_rdataset_t *sigrdataset DNS__DB_FLARG) {
-	isc_result_t result = ISC_R_NOTFOUND;
-	qpcache_t *qpdb = NULL;
-
-	/*
-	 * Caller must be holding the tree lock.
-	 */
-
-	qpdb = search->qpdb;
-
-	for (int i = dns_qpchain_length(&search->chain) - 1; i >= 0; i--) {
-		dns_slabheader_t *found = NULL, *foundsig = NULL;
-		isc_rwlock_t *nlock = NULL;
-		isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
-
-		dns_qpchain_node(&search->chain, i, (void **)&node, NULL);
-		nlock = &qpdb->buckets[node->locknum].lock;
-
-		NODE_RDLOCK(nlock, &nlocktype);
-
-		/*
-		 * Look for NS and RRSIG NS rdatasets.
-		 */
-		find_headers(node, search, dns_rdatatype_ns, &found, &foundsig);
-
-		if (found != NULL) {
-			/*
-			 * If we have to set foundname, we do it before
-			 * anything else.
-			 */
-			if (foundname != NULL) {
-				dns_name_copy(&node->name, foundname);
-			}
-			result = DNS_R_DELEGATION;
-			if (nodep != NULL) {
-				qpcnode_acquire(
-					search->qpdb, node, nlocktype,
-					isc_rwlocktype_none DNS__DB_FLARG_PASS);
-				*nodep = (dns_dbnode_t *)node;
-			}
-			bindrdatasets(search->qpdb, node, found, foundsig,
-				      search->now, nlocktype,
-				      isc_rwlocktype_none, rdataset,
-				      sigrdataset DNS__DB_FLARG_PASS);
-		}
-
-		NODE_UNLOCK(nlock, &nlocktype);
-
-		if (found != NULL) {
-			break;
-		}
-	}
 
 	return result;
 }
@@ -1594,14 +1534,13 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	bool cname_ok = true;
 	bool found_noqname = false;
 	bool all_negative = true;
-	bool empty_node;
+	bool empty_node = true;
 	isc_rwlock_t *nlock = NULL;
 	isc_rwlocktype_t tlocktype = isc_rwlocktype_none;
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 	dns_slabheader_t *found = NULL, *foundsig = NULL;
-	dns_slabheader_t *nsheader = NULL, *nssig = NULL;
 	dns_slabheader_t *nsecheader = NULL, *nsecsig = NULL;
-	dns_typepair_t typepair;
+	dns_typepair_t typepair = DNS_TYPEPAIR(type);
 
 	if (type == dns_rdatatype_none) {
 		/* We can't search negative cache directly */
@@ -1626,8 +1565,8 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	}
 
 	/*
-	 * Check the QP chain to see if there's a node above us with a
-	 * active DNAME or NS rdatasets.
+	 * Check the QP chain to see if there's a node above us with an
+	 * active DNAME rdataset.
 	 *
 	 * We're only interested in nodes above QNAME, so if the result
 	 * was success, then we skip the last item in the chain.
@@ -1638,14 +1577,14 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	}
 
 	for (unsigned int i = 0; i < len; i++) {
-		isc_result_t zcresult;
+		isc_result_t tresult;
 		qpcnode_t *encloser = NULL;
 
 		dns_qpchain_node(&search.chain, i, (void **)&encloser, NULL);
 
-		zcresult = check_zonecut(encloser,
-					 (void *)&search DNS__DB_FLARG_PASS);
-		if (zcresult != DNS_R_CONTINUE) {
+		tresult = check_dname(encloser,
+				      (void *)&search DNS__DB_FLARG_PASS);
+		if (tresult != DNS_R_CONTINUE) {
 			result = DNS_R_PARTIALMATCH;
 			search.chain.len = i - 1;
 			node = encloser;
@@ -1678,10 +1617,7 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 						  tlocktype DNS__DB_FLARG_PASS);
 			goto tree_exit;
 		} else {
-		find_ns:
-			result = find_deepest_zonecut(
-				&search, node, nodep, foundname, rdataset,
-				sigrdataset DNS__DB_FLARG_PASS);
+			result = ISC_R_NOTFOUND;
 			goto tree_exit;
 		}
 	} else if (result != ISC_R_SUCCESS) {
@@ -1704,19 +1640,6 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 
 	nlock = &search.qpdb->buckets[node->locknum].lock;
 	NODE_RDLOCK(nlock, &nlocktype);
-
-	/*
-	 * These pointers need to be reset here in case we did
-	 * 'goto find_ns' from somewhere below.
-	 */
-	found = NULL;
-	foundsig = NULL;
-	typepair = DNS_TYPEPAIR(type);
-	nsheader = NULL;
-	nsecheader = NULL;
-	nssig = NULL;
-	nsecsig = NULL;
-	empty_node = true;
 
 	DNS_SLABTOP_FOREACH(top, node->data) {
 		dns_slabheader_t *header = NULL, *sigheader = NULL;
@@ -1799,12 +1722,6 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 			}
 			break;
 
-		case dns_rdatatype_ns:
-		case DNS_SIGTYPEPAIR(dns_rdatatype_ns):
-			nsheader = header;
-			nssig = sigheader;
-			break;
-
 		case dns_rdatatype_nsec:
 		case DNS_SIGTYPEPAIR(dns_rdatatype_nsec):
 			nsecheader = header;
@@ -1839,7 +1756,9 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 				goto tree_exit;
 			}
 		}
-		goto find_ns;
+
+		result = ISC_R_NOTFOUND;
+		goto tree_exit;
 	}
 
 	/*
@@ -1874,34 +1793,14 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 			result = find_coveringnsec(
 				&search, name, nodep, foundname, rdataset,
 				sigrdataset DNS__DB_FLARG_PASS);
-			if (result == DNS_R_COVERINGNSEC) {
-				goto tree_exit;
+			if (result != DNS_R_COVERINGNSEC) {
+				result = ISC_R_NOTFOUND;
 			}
-			goto find_ns;
+			goto tree_exit;
 		}
 
-		/*
-		 * If there is an NS rdataset at this node, then this is the
-		 * deepest zone cut.
-		 */
-		if (nsheader != NULL) {
-			if (nodep != NULL) {
-				qpcnode_acquire(search.qpdb, node, nlocktype,
-						tlocktype DNS__DB_FLARG_PASS);
-				*nodep = (dns_dbnode_t *)node;
-			}
-			bindrdatasets(search.qpdb, node, nsheader, nssig,
-				      search.now, nlocktype, tlocktype,
-				      rdataset, sigrdataset DNS__DB_FLARG_PASS);
-			result = DNS_R_DELEGATION;
-			goto node_exit;
-		}
-
-		/*
-		 * Go find the deepest zone cut.
-		 */
-		NODE_UNLOCK(nlock, &nlocktype);
-		goto find_ns;
+		result = ISC_R_NOTFOUND;
+		goto node_exit;
 	}
 
 	/*

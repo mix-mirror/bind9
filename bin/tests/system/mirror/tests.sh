@@ -333,27 +333,6 @@ if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
 n=$((n + 1))
-echo_i "checking that delegations from cache which improve mirror zone delegations are properly handled ($n)"
-ret=0
-# First, issue a recursive query in order to cache an RRset which is not within
-# the mirror zone's bailiwick.
-$DIG $DIGOPTS @10.53.0.3 sub.example. NS >dig.out.ns3.test$n.1 2>&1 || ret=1
-# Ensure the child-side NS RRset is returned.
-grep "NOERROR" dig.out.ns3.test$n.1 >/dev/null || ret=1
-grep "ANSWER: 2" dig.out.ns3.test$n.1 >/dev/null || ret=1
-grep "sub.example.*IN.*NS" dig.out.ns3.test$n.1 >/dev/null || ret=1
-# Issue a non-recursive query for something below the cached zone cut.
-$DIG $DIGOPTS @10.53.0.3 +norec foo.sub.example. A >dig.out.ns3.test$n.2 2>&1 || ret=1
-# Ensure the cached NS RRset is returned in a delegation, along with the
-# parent-side DS RRset.
-grep "NOERROR" dig.out.ns3.test$n.2 >/dev/null || ret=1
-grep "ANSWER: 0" dig.out.ns3.test$n.2 >/dev/null || ret=1
-grep "sub.example.*IN.*NS" dig.out.ns3.test$n.2 >/dev/null || ret=1
-grep "sub.example.*IN.*DS" dig.out.ns3.test$n.2 >/dev/null || ret=1
-if [ $ret != 0 ]; then echo_i "failed"; fi
-status=$((status + ret))
-
-n=$((n + 1))
 echo_i "checking flags set in a DNSKEY response sourced from a mirror zone ($n)"
 ret=0
 $DIG $DIGOPTS @10.53.0.3 . DNSKEY >dig.out.ns3.test$n 2>&1 || ret=1
