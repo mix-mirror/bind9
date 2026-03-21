@@ -1,0 +1,12 @@
+ns1 simulates a root server
+
+ns2 is an auth server (over example.) which is also a resolver.
+
+ns3 is an auth server on `sub.example.`.
+
+The point of the test is to show that because ns2 knows the IP address of the
+NS delegating sub.example., there won't be any queries to resolve
+ns.sub.example.
+
+In order to prove it, ns2 also does a DNSTAP dump of its outgoing queries  and
+checks there is no NS queries to ns3 (but only an AAAA query).

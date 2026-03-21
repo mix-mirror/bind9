@@ -3146,6 +3146,8 @@ rpz_rrset_find(ns_client_t *client, dns_name_t *name, dns_rdatatype_t type,
 		if (result == ISC_R_NOTFOUND) {
 			result = DNS_R_DELEGATION;
 		}
+	} else if (result == ISC_R_NOTFOUND && !is_zone) {
+		result = DNS_R_DELEGATION;
 	}
 	rpz_clean(NULL, dbp, &node, NULL);
 	if (result == DNS_R_DELEGATION) {
@@ -6815,7 +6817,7 @@ query_checkrrl(query_ctx_t *qctx, isc_result_t result) {
 	if (qctx->view->rrl != NULL && !HAVECOOKIE(qctx->client) &&
 	    ((qctx->fname != NULL && dns_name_isabsolute(qctx->fname)) ||
 	     (result == ISC_R_NOTFOUND && !RECURSIONOK(qctx->client))) &&
-	    !(result == DNS_R_DELEGATION && !qctx->is_zone &&
+	    !(result == ISC_R_NOTFOUND && !qctx->is_zone &&
 	      RECURSIONOK(qctx->client)) &&
 	    (qctx->client->query.rpz_st == NULL ||
 	     (qctx->client->query.rpz_st->state & DNS_RPZ_REWRITTEN) == 0) &&
