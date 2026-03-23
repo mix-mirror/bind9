@@ -22,6 +22,7 @@ from .vars.algorithms import Algorithm
 NS1 = Nameserver("ns1", "10.53.0.1")
 
 KEYDIR = "keys"
+ZONEDIR = "zones"
 
 
 def copy_dssets(delegations: list[Zone], ns: Nameserver):
@@ -67,10 +68,15 @@ def render_signed_zone(
         "dnskeys": [key.dnskey for key in keys],
     }
     templates.render(
-        f"{zone.ns.name}/{infile}", data, template=f"{zone.ns.name}/{template}"
+        f"{zone.ns.name}/{zone.dir}/{infile}",
+        data,
+        template=f"{zone.ns.name}/{zone.dir}/{template}",
     )
 
-    signer(f"-P -x -O full -o {zone.name} -f {outfile} {infile}", cwd=zone.ns.name)
+    signer(
+        f"-P -x -O full -o {zone.name} -f {zone.dir}/{outfile} {zone.dir}/{infile}",
+        cwd=zone.ns.name,
+    )
 
 
 def configure_signed_zone(

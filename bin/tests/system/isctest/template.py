@@ -94,6 +94,7 @@ class Zone:
     filename: str
     ns: Nameserver
     type: str = "primary"
+    dir: str = "zones"
 
 
 @dataclass
