@@ -19,6 +19,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/prctl.h>
 
 #ifdef HAVE_DNSTAP
 #include <protobuf-c/protobuf-c.h>
@@ -1408,6 +1409,8 @@ main(int argc, char *argv[]) {
 	 * after the call, and no BIND 9 library calls must be made in between.
 	 */
 	setlocale(LC_ALL, "C");
+
+	prctl(PR_SET_THP_DISABLE, 1, 0, 0, 0);
 
 	/*
 	 * Record version in core image.
