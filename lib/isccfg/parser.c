@@ -46,6 +46,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef __SSE2__
+#include <x86intrin.h>
+#endif
+
 #include <isc/buffer.h>
 #include <isc/dir.h>
 #include <isc/errno.h>
@@ -267,19 +271,52 @@ map_alloc_size(uint16_t capacity) {
 static inline int
 map_find(const cfg_map_t *map, enum cfg_clause key) {
 	const uint16_t *keys = map_keys(map);
+	const uint16_t count = map->count;
 	const uint16_t k = (uint16_t)key;
-	for (uint16_t i = 0; i < map->count; i++) {
+
+#ifdef __SSE2__
+	const __m128i needle = _mm_set1_epi16((short)k);
+	const uint16_t full = (count / 8) * 8;
+
+	/* Process full 8-element (16-byte) chunks */
+	for (uint16_t i = 0; i < full; i += 8) {
+		__m128i chunk = _mm_loadu_si128((const __m128i *)(keys + i));
+		__m128i cmp = _mm_cmpeq_epi16(chunk, needle);
+		int mask = _mm_movemask_epi8(cmp);
+		if (mask != 0) {
+			return (int)(i + (unsigned)__builtin_ctz((unsigned)mask) / 2);
+		}
+	}
+
+	/* Process remaining elements (1..7) with tail mask */
+	uint16_t remaining = count - full;
+	if (remaining > 0) {
+		__m128i chunk = _mm_loadu_si128((const __m128i *)(keys + full));
+		__m128i cmp = _mm_cmpeq_epi16(chunk, needle);
+		int mask = _mm_movemask_epi8(cmp);
+		/* Each element contributes 2 bits to movemask;
+		 * keep only the first 'remaining' elements. */
+		mask &= (1 << (2 * remaining)) - 1;
+		if (mask != 0) {
+			return (int)(full + (unsigned)__builtin_ctz((unsigned)mask) / 2);
+		}
+	}
+
+	return -1;
+#else
+	for (uint16_t i = 0; i < count; i++) {
 		if (keys[i] == k) {
 			return (int)i;
 		}
 	}
 	return -1;
+#endif
 }
 
 static void
 map_grow(cfg_map_t **mapp, isc_mem_t *mctx) {
 	cfg_map_t *old = *mapp;
-	uint16_t newcap = (old->capacity == 0) ? 4 : (uint16_t)(old->capacity * 2);
+	uint16_t newcap = (old->capacity == 0) ? 8 : (uint16_t)(old->capacity * 2);
 	size_t newsize = map_alloc_size(newcap);
 	cfg_map_t *new = isc_mem_get(mctx, newsize);
 
@@ -314,7 +351,10 @@ map_insert(cfg_map_t **mapp, isc_mem_t *mctx, enum cfg_clause key,
 static void
 copy_map(cfg_obj_t *to, const cfg_obj_t *from) {
 	const cfg_map_t *src = from->value.map;
-	uint16_t cap = src->count < 4 ? 4 : src->count;
+	uint16_t cap = (src->count + 7) & ~(uint16_t)7;
+	if (cap < 8) {
+		cap = 8;
+	}
 	size_t sz = map_alloc_size(cap);
 	cfg_map_t *dst = isc_mem_get(isc_g_mctx, sz);
 
@@ -4498,7 +4538,7 @@ map_symtabitem_destroy(char *key ISC_ATTR_UNUSED,
 	cfg_obj_detach(&obj);
 }
 
-#define MAP_INITIAL_CAPACITY 4
+#define MAP_INITIAL_CAPACITY 8
 
 static void
 create_map(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
