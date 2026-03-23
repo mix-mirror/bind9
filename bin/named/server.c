@@ -10765,13 +10765,9 @@ resume:
 	}
 
 	if (dctx->dumpdeleg) {
-		isc_buffer_t *text = NULL;
 		fprintf(dctx->fp, ";\n; Delegation cache\n;\n");
-		isc_buffer_allocate(isc_g_mctx, &text, BUFSIZ);
-		dns_delegdb_dump(dctx->view->view->deleg, NULL, 0, text);
-		fprintf(dctx->fp, "%.*s", (int)isc_buffer_usedlength(text),
-			(char *)isc_buffer_base(text));
-		isc_buffer_free(&text);
+		dns_delegdb_dump(dctx->view->view->deleg, dctx->dumpexpired,
+				 dctx->fp);
 	}
 
 	if (dctx->cache != NULL) {
@@ -10910,6 +10906,12 @@ named_server_dumpdb(named_server_t *server, isc_lex_t *lex,
 		dctx->dumpdeleg = false;
 		dctx->dumpfail = false;
 		dctx->dumpzones = true;
+		ptr = next_token(lex, NULL);
+	} else if (ptr != NULL && strcmp(ptr, "-deleg") == 0) {
+		/* only dump deleg db, suppress other caches */
+		dctx->dumpcache = false;
+		dctx->dumpfail = false;
+		dctx->dumpadb = false;
 		ptr = next_token(lex, NULL);
 	} else if (ptr != NULL && strcmp(ptr, "-adb") == 0) {
 		/* only dump adb, suppress other caches */

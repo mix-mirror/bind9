@@ -140,13 +140,22 @@ lookupdb(dns_delegdb_t *db, const char *namestr, isc_stdtime_t now,
 }
 
 static void
-dumpdb(dns_delegdb_t *db, const char *namestr, isc_stdtime_t now,
-       isc_buffer_t *b) {
-	dns_fixedname_t fname;
-	dns_name_t *name = dns_fixedname_initname(&fname);
+dumpdb(dns_delegdb_t *db, isc_stdtime_t now, const char *expected) {
+	constexpr char *filename = "delegdb-dump-test.db";
+	char buffer[1024 * 4] = { 0 };
+	FILE *fp = fopen(filename, "w+");
 
-	dns_name_fromstring(name, namestr, NULL, 0, NULL);
-	dns_delegdb_dump(db, name, now, b);
+	REQUIRE(fp != NULL);
+	dns_delegdb_dump(db, now, fp);
+
+	fp = freopen(filename, "r", fp);
+	REQUIRE(fp != NULL);
+	REQUIRE(fread(buffer, sizeof(buffer) - 1, 1, fp) == 0);
+
+	assert_string_equal(expected, buffer);
+
+	REQUIRE(fclose(fp) == 0);
+	REQUIRE(unlink(filename) == 0);
 }
 
 static void
@@ -195,19 +204,6 @@ basictests(ISC_ATTR_UNUSED void *arg) {
 	assert_int_equal(result, ISC_R_SUCCESS);
 	dns_delegset_detach(&delegset);
 
-	const char expected_foodeleg[] =
-		"foo. DELEG 30"
-		"\n\tserver-name=\n\t\tns.foo.\n"
-		"foo. DELEG 30"
-		"\n\tserver-ipv4=\n\t\t1.2.3.4"
-		"\n\tserver-ipv6=\n\t\t1111:2222:3333::4444\n"
-		"foo. DELEG 30"
-		"\n\tserver-name=\n\t\tns.example.";
-	dumpdb(db, "foo.", 0, &b);
-	assert_string_equal(bdata, expected_foodeleg);
-	dumpdb(db, "idonotknowthis.foo.", 0, &b);
-	assert_string_equal(bdata, expected_foodeleg);
-
 	/*
 	 * A non expired delegation for bar.foo. zonecut
 	 */
@@ -246,22 +242,6 @@ basictests(ISC_ATTR_UNUSED void *arg) {
 	assert_int_equal(result, ISC_R_SUCCESS);
 	dns_delegset_detach(&delegset);
 
-	const char expected_barfoodeleg[] =
-		"bar.foo. DELEG 25"
-		"\n\tserver-name=\n\t\tns.bar.foo.,\n\t\tns2.bar.foo."
-		"\nbar.foo. DELEG 25"
-		"\n\tserver-ipv4=\n\t\t8.9.10.11,\n\t\t9.9.10.12"
-		"\n\tserver-ipv6=\n\t\tacdc::acdc\n"
-		"bar.foo. DELEG 25"
-		"\n\tserver-ipv4=\n\t\t13.14.15.16"
-		"\n\tserver-ipv6=\n\t\tabba::abba\n"
-		"bar.foo. DELEG 25"
-		"\n\tinclude-delegparam=\n\t\tdelegns.gee.,\n\t\tdelegns2.gee.";
-	dumpdb(db, "bar.foo.", 0, &b);
-	assert_string_equal(bdata, expected_barfoodeleg);
-	dumpdb(db, "i.really.donotknowthis.bar.foo.", 0, &b);
-	assert_string_equal(bdata, expected_barfoodeleg);
-
 	/*
 	 * A expired delegation for bar.stuff. zonecut
 	 */
@@ -290,16 +270,6 @@ basictests(ISC_ATTR_UNUSED void *arg) {
 			  &delegset);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	dns_delegset_detach(&delegset);
-	dumpdb(db, "baz.bar.stuff.", now + 9, &b);
-	assert_string_equal(bdata, "bar.stuff. DELEG 1"
-				   "\n\tserver-name="
-				   "\n\t\tns.bar.stuff."
-				   "\nbar.stuff. DELEG 1"
-				   "\n\tserver-ipv6="
-				   "\n\t\t1111::2222");
-	dumpdb(db, "bar.bar.stuff.", now + 10, &b);
-	assert_true(isc_buffer_usedlength(&b) == 1);
-	assert_string_equal(bdata, "");
 
 	/*
 	 * A non expired delegation for bar.stuff. zonecut replace the expired
@@ -348,61 +318,27 @@ basictests(ISC_ATTR_UNUSED void *arg) {
 	assert_int_equal(result, ISC_R_SUCCESS);
 	dns_delegset_detach(&delegset);
 
-	const char expected_barstuffdeleg[] =
-		"bar.stuff. DELEG 2"
-		"\n\tserver-name=\n\t\tns.bar.stuff."
-		"\nbar.stuff. DELEG 2"
-		"\n\tserver-ipv6=\n\t\t1111::3333";
-	dumpdb(db, "bar.stuff.", 0, &b);
-	assert_string_equal(bdata, expected_barstuffdeleg);
-	dumpdb(db, "idonotknowthis.bar.stuff.", 0, &b);
-	assert_string_equal(bdata, expected_barstuffdeleg);
-
-	/*
-	 * Dump API just returns a buffer with used=0 if a zonecut is provided
-	 * but not closest zonecut is found.
-	 */
-	dumpdb(db, "idonotknowthis.at.all.stuff.", 0, &b);
-	assert_true(isc_buffer_usedlength(&b) == 1);
-	assert_string_equal(bdata, "");
-
-	/*
-	 * Dump API returns the whole DB if no zonecut is provided
-	 * (zonecuts below foo. included have smaller TTL, since we moved the
-	 * time forward 10, but bar.stuff. was added after, so we can reuse
-	 * expected_barstuffdeleg)
-	 */
-	char expected_wholedb[2048] = { 0 };
-	sprintf(expected_wholedb, "%s\n%s",
-		"foo. DELEG 20"
-		"\n\tserver-name=\n\t\tns.foo.\n"
-		"foo. DELEG 20"
-		"\n\tserver-ipv4=\n\t\t1.2.3.4"
-		"\n\tserver-ipv6=\n\t\t1111:2222:3333::4444\n"
-		"foo. DELEG 20"
-		"\n\tserver-name=\n\t\tns.example."
-		"\nbar.foo. DELEG 15"
-		"\n\tserver-name=\n\t\tns.bar.foo.,\n\t\tns2.bar.foo."
-		"\nbar.foo. DELEG 15"
-		"\n\tserver-ipv4=\n\t\t8.9.10.11,\n\t\t9.9.10.12"
-		"\n\tserver-ipv6=\n\t\tacdc::acdc\n"
-		"bar.foo. DELEG 15"
-		"\n\tserver-ipv4=\n\t\t13.14.15.16"
-		"\n\tserver-ipv6=\n\t\tabba::abba\n"
-		"bar.foo. DELEG 15"
-		"\n\tinclude-delegparam=\n\t\tdelegns.gee.,\n\t\tdelegns2.gee.",
-		expected_barstuffdeleg);
-	dns_delegdb_dump(db, NULL, 0, &b);
-	assert_string_equal(bdata, expected_wholedb);
-	assert_true(isc_buffer_usedlength(&b) > 0);
+	char expected_dbdump[] =
+		"foo. 20 DELEG server-name=ns.foo.\n"
+		"foo. 20 DELEG server-ipv4=1.2.3.4 "
+		"server-ipv6=1111:2222:3333::4444\n"
+		"foo. 20 DELEG server-name=ns.example.\n"
+		"bar.foo. 15 DELEG server-name=ns.bar.foo.,ns2.bar.foo.\n"
+		"bar.foo. 15 DELEG server-ipv4=8.9.10.11,9.9.10.12 "
+		"server-ipv6=acdc::acdc\n"
+		"bar.foo. 15 DELEG server-ipv4=13.14.15.16 "
+		"server-ipv6=abba::abba\n"
+		"bar.foo. 15 DELEG "
+		"include-delegparam=delegns.gee.,delegns2.gee.\n"
+		"bar.stuff. 2 DELEG server-name=ns.bar.stuff.\n"
+		"bar.stuff. 2 DELEG server-ipv6=1111::3333\n";
+	dumpdb(db, 0, expected_dbdump);
 
 	/*
 	 * Dump in the "future", everything is seen as expired
 	 */
 	isc_buffer_clear(&b);
-	dns_delegdb_dump(db, NULL, now + 300, &b);
-	assert_int_equal(isc_buffer_usedlength(&b), 1);
-	assert_string_equal(bdata, "");
+	dumpdb(db, now + 300, "");
 
 	shutdowntest(&db);
 }

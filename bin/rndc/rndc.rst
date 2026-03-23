@@ -239,7 +239,7 @@ Currently supported commands are:
    output file is moved to ".1", and so on. If ``number`` is specified, then
    the number of backup log files is limited to that number.
 
-.. option:: dumpdb [-all | -cache | -zones | -adb | -deleg | -bad | -expired | -fail] [view ...]
+.. option:: dumpdb [-all | -cache | -deleg | -zones | -adb | -deleg | -bad | -expired | -fail] [view ...]
 
    This command dumps the server's caches (default) and/or zones to the
    dump file for the specified views. If no view is specified, all views

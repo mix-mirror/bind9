@@ -707,26 +707,26 @@ delegset_destroy(dns_delegset_t *delegset) {
 ISC_REFCOUNT_IMPL(dns_delegset, delegset_destroy);
 
 static void
-tostring_namelist(dns_namelist_t *namelist, const char *id, isc_buffer_t *b) {
+tostring_namelist(dns_namelist_t *namelist, const char *id, FILE *fp) {
 	if (!ISC_LIST_EMPTY(*namelist)) {
-		isc_buffer_printf(b, "\n\t%s=\n\t\t", id);
+		fprintf(fp, " %s=", id);
 		ISC_LIST_FOREACH(*namelist, name, link) {
 			isc_buffer_t nameb;
 			char bdata[DNS_NAME_MAXWIRE] = { 0 };
 
 			isc_buffer_init(&nameb, bdata, sizeof(bdata));
 			dns_name_totext(name, 0, &nameb);
-			isc_buffer_putstr(b, bdata);
+			fprintf(fp, "%s", bdata);
 
 			if (name != ISC_LIST_TAIL(*namelist)) {
-				isc_buffer_putstr(b, ",\n\t\t");
+				fprintf(fp, ",");
 			}
 		}
 	}
 }
 
 static void
-deleg_tostring_addresses(dns_deleg_t *deleg, isc_buffer_t *b) {
+deleg_tostring_addresses(dns_deleg_t *deleg, FILE *fp) {
 	bool hasv4 = false;
 	bool hasv6 = false;
 
@@ -741,7 +741,7 @@ deleg_tostring_addresses(dns_deleg_t *deleg, isc_buffer_t *b) {
 	if (hasv4) {
 		bool first = true;
 
-		isc_buffer_putstr(b, "\n\tserver-ipv4=\n\t\t");
+		fprintf(fp, " server-ipv4=");
 		ISC_LIST_FOREACH(deleg->addresses, address, link) {
 			char addrstr[] = "255.255.255.255";
 
@@ -750,20 +750,20 @@ deleg_tostring_addresses(dns_deleg_t *deleg, isc_buffer_t *b) {
 			}
 
 			if (!first) {
-				isc_buffer_putstr(b, ",\n\t\t");
+				fprintf(fp, ",");
 			}
 			first = false;
 
 			inet_ntop(AF_INET, &address->addr.type, addrstr,
 				  sizeof(addrstr));
-			isc_buffer_putstr(b, addrstr);
+			fprintf(fp, "%s", addrstr);
 		}
 	}
 
 	if (hasv6) {
 		bool first = true;
 
-		isc_buffer_putstr(b, "\n\tserver-ipv6=\n\t\t");
+		fprintf(fp, " server-ipv6=");
 		ISC_LIST_FOREACH(deleg->addresses, address, link) {
 			char addrstr[INET6_ADDRSTRLEN];
 
@@ -772,20 +772,20 @@ deleg_tostring_addresses(dns_deleg_t *deleg, isc_buffer_t *b) {
 			}
 
 			if (!first) {
-				isc_buffer_putstr(b, ",\n\t\t");
+				fprintf(fp, ",");
 			}
 			first = false;
 
 			inet_ntop(AF_INET6, &address->addr.type, addrstr,
 				  sizeof(addrstr));
-			isc_buffer_putstr(b, addrstr);
+			fprintf(fp, "%s", addrstr);
 		}
 	}
 }
 
 static void
 delegset_tostring(const dns_name_t *zonecut, dns_delegset_t *delegset,
-		  isc_stdtime_t now, isc_buffer_t *b) {
+		  isc_stdtime_t now, FILE *fp) {
 	ISC_LIST_FOREACH(delegset->delegs, deleg, link) {
 		isc_buffer_t zonecutb;
 		char bdata[DNS_NAME_MAXWIRE];
@@ -794,45 +794,35 @@ delegset_tostring(const dns_name_t *zonecut, dns_delegset_t *delegset,
 		INSIST(ttl > 0);
 		isc_buffer_init(&zonecutb, bdata, sizeof(bdata));
 		dns_name_totext(zonecut, 0, &zonecutb);
-		isc_buffer_printf(b, "%s DELEG %d", bdata, ttl);
+		fprintf(fp, "%s %u DELEG", bdata, ttl);
 
 		if (deleg->type == DNS_DELEGTYPE_DELEG_ADDRESSES ||
 		    deleg->type == DNS_DELEGTYPE_NS_GLUES)
 		{
-			deleg_tostring_addresses(deleg, b);
+			deleg_tostring_addresses(deleg, fp);
 		} else if (deleg->type == DNS_DELEGTYPE_DELEG_NAMES ||
 			   deleg->type == DNS_DELEGTYPE_NS_NAMES)
 		{
-			tostring_namelist(&deleg->names, "server-name", b);
+			tostring_namelist(&deleg->names, "server-name", fp);
 		} else if (deleg->type == DNS_DELEGTYPE_DELEG_PARAMS) {
 			tostring_namelist(&deleg->names, "include-delegparam",
-					  b);
+					  fp);
 		} else {
 			UNREACHABLE();
 		}
 
-		if (deleg != ISC_LIST_TAIL(delegset->delegs)) {
-			isc_buffer_putuint8(b, '\n');
-		}
+		fprintf(fp, "\n");
 	}
 }
 
-/*
- * TODO: This will require some small tweaks in order to have the same format
- * from `rndc dumpdb`, so a new `rndc dumpdb -deleg` output would be consistent
- * with the existing output.
- * Current formatting sort of mimic a zone file RR, but adds tabs and indents
- * make it readable when debugging the DB/integration with the resolver.
- */
 void
-dns_delegdb_dump(dns_delegdb_t *delegdb, const dns_name_t *name,
-		 isc_stdtime_t optnow, isc_buffer_t *b) {
+dns_delegdb_dump(dns_delegdb_t *delegdb, isc_stdtime_t optnow, FILE *fp) {
 	REQUIRE(VALID_DELEGDB(delegdb));
-	REQUIRE(ISC_BUFFER_VALID(b));
+	REQUIRE(fp != NULL);
 
 	dns_qpiter_t it;
 	dns_qpread_t qpr = {};
-	delegdb_node_t *pnode = NULL, *node = NULL;
+	delegdb_node_t *node = NULL;
 	isc_stdtime_t now = optnow > 0 ? optnow : isc_stdtime_now();
 	dns_qpmulti_t *nodes = NULL;
 
@@ -843,44 +833,15 @@ dns_delegdb_dump(dns_delegdb_t *delegdb, const dns_name_t *name,
 		return;
 	}
 
-	isc_buffer_clear(b);
-
 	dns_qpmulti_query(nodes, &qpr);
 
-	if (name != NULL) {
-		isc_result_t result;
-		dns_delegset_t *delegset = NULL;
-		dns_fixedname_t fzonecut;
-		dns_name_t *zonecut = dns_fixedname_initname(&fzonecut);
-
-		REQUIRE(DNS_NAME_VALID(name));
-
-		result = dns__deleg_lookup(delegdb, &qpr, name, now, 0, zonecut,
-					   NULL, &delegset);
-		if (result == ISC_R_SUCCESS) {
-			delegset_tostring(zonecut, delegset, now, b);
-			dns_delegset_detach(&delegset);
+	dns_qpiter_init(&qpr, &it);
+	while (dns_qpiter_next(&it, (void **)&node, NULL) == ISC_R_SUCCESS) {
+		if (!isactive(node, now)) {
+			continue;
 		}
 
-		isc_buffer_putuint8(b, 0);
-
-	} else {
-		dns_qpiter_init(&qpr, &it);
-		while (dns_qpiter_next(&it, (void **)&node, NULL) ==
-		       ISC_R_SUCCESS)
-		{
-			if (!isactive(node, now)) {
-				continue;
-			}
-
-			if (pnode != NULL) {
-				isc_buffer_putuint8(b, '\n');
-			}
-			delegset_tostring(&node->zonecut, node->delegset, now,
-					  b);
-			pnode = node;
-		}
-		isc_buffer_putuint8(b, 0);
+		delegset_tostring(&node->zonecut, node->delegset, now, fp);
 	}
 
 	dns_qpread_destroy(nodes, &qpr);
