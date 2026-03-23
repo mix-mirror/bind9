@@ -22,6 +22,7 @@
 #include <dns/deleg.h>
 #include <dns/name.h>
 #include <dns/qp.h>
+#include <dns/view.h>
 
 #define DELEGDB_NODE_MAGIC	 ISC_MAGIC('D', 'e', 'G', 'N')
 #define VALID_DELEGDB_NODE(node) ISC_MAGIC_VALID(node, DELEGDB_NODE_MAGIC)
@@ -47,6 +48,16 @@ struct dns_delegdb {
 	ISC_SIEVE(delegdb_node_t) * lru;
 
 	dns_qpmulti_t *nodes;
+
+	/*
+	 * This can be accessed _only_ from the main thread. This is used only
+	 * from `dns_delegdb_reuse()` or `dns_delegdb_shutdown()`. The former is
+	 * called when a new view is being initialized and the later when a view
+	 * is being shutting down, which has to occurs after (for two different
+	 * versions of the same view), as the old view is always kept alive in
+	 * case the configuration of the new view fails.
+	 */
+	size_t attachedviews;
 };
 
 static void
@@ -174,18 +185,18 @@ dns_delegdb_create(dns_delegdb_t **delegdbp) {
 	isc_mem_t *mctx = NULL;
 	dns_delegdb_t *delegdb = NULL;
 
+	REQUIRE(isc_loop_get(isc_tid()) == isc_loop_main());
 	REQUIRE(delegdbp != NULL && *delegdbp == NULL);
 
 	isc_mem_create("dns_delegdb", &mctx);
 	isc_mem_setdestroycheck(mctx, true);
 
 	delegdb = isc_mem_get(mctx, sizeof(*delegdb));
-	*delegdb = (dns_delegdb_t){
-		.magic = DELEGDB_MAGIC,
-		.mctx = mctx,
-		.references = ISC_REFCOUNT_INITIALIZER(1),
-		.nloops = isc_loopmgr_nloops(),
-	};
+	*delegdb = (dns_delegdb_t){ .magic = DELEGDB_MAGIC,
+				    .mctx = mctx,
+				    .references = ISC_REFCOUNT_INITIALIZER(1),
+				    .nloops = isc_loopmgr_nloops(),
+				    .attachedviews = 1 };
 
 	dns_qpmulti_create(mctx, &qpmethods, &delegdb->nodes, &delegdb->nodes);
 
@@ -196,6 +207,16 @@ dns_delegdb_create(dns_delegdb_t **delegdbp) {
 	}
 
 	*delegdbp = delegdb;
+}
+
+void
+dns_delegdb_reuse(dns_view_t *oldview, dns_view_t *newview) {
+	REQUIRE(isc_loop_get(isc_tid()) == isc_loop_main());
+	REQUIRE(DNS_VIEW_VALID(oldview));
+	REQUIRE(DNS_VIEW_VALID(newview));
+
+	dns_delegdb_attach(oldview->deleg, &newview->deleg);
+	oldview->deleg->attachedviews++;
 }
 
 typedef struct nodes_rcu_head {
@@ -989,20 +1010,33 @@ dns_delegdb_delete(dns_delegdb_t *delegdb, const dns_name_t *name, bool tree) {
 	return result;
 }
 
+static void
+delegdb_shutdown_async(void *arg) {
+	dns_delegdb_t *delegdb = arg;
+
+	REQUIRE(isc_loop_get(isc_tid()) == isc_loop_main());
+	REQUIRE(delegdb != NULL && VALID_DELEGDB(delegdb));
+	if (--delegdb->attachedviews == 0) {
+		dns_qpmulti_t *nodes = rcu_xchg_pointer(&delegdb->nodes, NULL);
+
+		if (nodes != NULL) {
+			nodes_rcu_head_t *nrh = isc_mem_get(delegdb->mctx,
+							    sizeof(*nrh));
+			*nrh = (nodes_rcu_head_t){
+				.mctx = isc_mem_ref(delegdb->mctx),
+				.nodes = nodes,
+			};
+			call_rcu(&nrh->rcu_head, deleg_destroy_qpmulti);
+		}
+	}
+}
+
 void
 dns_delegdb_shutdown(dns_delegdb_t *delegdb) {
-	REQUIRE(delegdb != NULL && VALID_DELEGDB(delegdb));
-
-	dns_qpmulti_t *nodes = rcu_xchg_pointer(&delegdb->nodes, NULL);
-
-	if (nodes != NULL) {
-		nodes_rcu_head_t *nrh = isc_mem_get(delegdb->mctx,
-						    sizeof(*nrh));
-		*nrh = (nodes_rcu_head_t){
-			.mctx = isc_mem_ref(delegdb->mctx),
-			.nodes = nodes,
-		};
-		call_rcu(&nrh->rcu_head, deleg_destroy_qpmulti);
+	if (isc_loop_get(isc_tid()) == isc_loop_main()) {
+		delegdb_shutdown_async(delegdb);
+	} else {
+		isc_async_run(isc_loop_main(), delegdb_shutdown_async, delegdb);
 	}
 }
 

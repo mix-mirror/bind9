@@ -2156,6 +2156,8 @@ run_server(void *arg) {
 	dns_view_setmaxrestarts(view, restarts);
 	dns_view_setmaxqueries(view, maxtotal);
 
+	dns_delegdb_create(&view->deleg);
+
 	CHECK(dns_rootns_create(isc_g_mctx, dns_rdataclass_in, hintfile,
 				&roothints));
 	dns_view_sethints(view, roothints);
