@@ -202,7 +202,8 @@ dns_delegdb_dump(dns_delegdb_t *db, const dns_name_t *name, isc_stdtime_t now,
  * (which accepts only delegset allocated using `dns_deleg_alloc*()` APIs.
  */
 void
-dns_delegset_fromrdataset(dns_rdataset_t *rdataset, dns_delegset_t **delegsetp);
+dns_delegset_fromnsrdataset(dns_rdataset_t  *rdataset,
+			    dns_delegset_t **delegsetp);
 
 /*
  * Delete all the delegations.

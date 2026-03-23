@@ -889,8 +889,8 @@ dns_delegdb_dump(dns_delegdb_t *delegdb, const dns_name_t *name,
 }
 
 void
-dns_delegset_fromrdataset(dns_rdataset_t *rdataset,
-			  dns_delegset_t **delegsetp) {
+dns_delegset_fromnsrdataset(dns_rdataset_t *rdataset,
+			    dns_delegset_t **delegsetp) {
 	dns_delegset_t *delegset = NULL;
 	dns_deleg_t *deleg = NULL;
 

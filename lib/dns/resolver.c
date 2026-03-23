@@ -7098,7 +7098,7 @@ resume_dslookup(void *arg) {
 		 * careful about such cases.
 		 */
 
-		dns_delegset_fromrdataset(frdataset, &delegset);
+		dns_delegset_fromnsrdataset(frdataset, &delegset);
 		dns_rdataset_cleanup(frdataset);
 
 		if (delegset == NULL) {
