@@ -58,7 +58,7 @@ class TemplateEngine:
             if not Path(template).is_file():
                 template = f"{output}.j2"
         if not Path(template).is_file():
-            raise RuntimeError('No jinja2 template found for "{output}"')
+            raise RuntimeError(f'No jinja2 template found for "{output}"')
 
         if data is None:
             data = self.env_vars
