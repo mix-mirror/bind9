@@ -35,3 +35,22 @@ def test_rndc_modzone_without_add(ns3):
         raise_on_exception=False,
     )
     assert cmd.rc == 0
+
+    # Confirm that the modzone took effect in 'rndc showzone'.
+    cmd = ns3.rndc("showzone .", raise_on_exception=False)
+    assert cmd.rc == 0
+    assert 'allow-query { "none"; }' in cmd.out
+
+    # Confirm that 'rndc modzone' still works after the first modzone.
+    # This was not the case before as the zone config was incorrectly
+    # removed in-memory after the first modzone.
+    cmd = ns3.rndc(
+        'modzone . {type primary; file "redirect.db"; allow-query {any;};};',
+        raise_on_exception=False,
+    )
+    assert cmd.rc == 0
+
+    # Confirm that the second modzone took effect in 'rndc showzone'.
+    cmd = ns3.rndc("showzone .", raise_on_exception=False)
+    assert cmd.rc == 0
+    assert 'allow-query { "any"; }' in cmd.out
