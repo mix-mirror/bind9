@@ -1490,6 +1490,24 @@ if [ -x "$DELV" ]; then
   status=$((status + ret))
 
   n=$((n + 1))
+  echo_i "checking delv +cookie works ($n)"
+  ret=0
+  delv_with_opts @10.53.0.3 +cookie a a.example -d 10 >delv.out.test$n 2>&1 || ret=1
+  grep "; COOKIE:" delv.out.test$n >/dev/null || ret=1
+  grep "; answer not validated" delv.out.test$n >/dev/null || ret=1
+  if [ $ret -ne 0 ]; then echo_i "failed"; fi
+  status=$((status + ret))
+
+  n=$((n + 1))
+  echo_i "checking delv +nocookie works ($n)"
+  ret=0
+  delv_with_opts @10.53.0.3 +nocookie +strace a a.example -d 10 >delv.out.test$n 2>&1 || ret=1
+  grep "; COOKIE:" delv.out.test$n >/dev/null && ret=1
+  grep "; answer not validated" delv.out.test$n >/dev/null || ret=1
+  if [ $ret -ne 0 ]; then echo_i "failed"; fi
+  status=$((status + ret))
+
+  n=$((n + 1))
   echo_i "checking delv split width works ($n)"
   ret=0
   delv_with_opts @10.53.0.3 +split=4 -t sshfp foo.example >delv.out.test$n || ret=1
@@ -1835,6 +1853,24 @@ if [ -x "$DELV" ]; then
     if [ $ret -ne 0 ]; then echo_i "failed"; fi
     status=$((status + ret))
   fi
+
+  n=$((n + 1))
+  echo_i "checking delv +ns +cookie adds DNS COOKIE options ($n)"
+  ret=0
+  delv_with_opts -a ns1/anchor.dnskey +root +ns +qmin +hint=root.hint +cookie -d 99 a a.example >delv.out.test$n 2>&1 || ret=1
+  grep -q '; COOKIE:' delv.out.test$n || ret=1
+  grep -q '; fully validated' delv.out.test$n || ret=1
+  if [ $ret -ne 0 ]; then echo_i "failed"; fi
+  status=$((status + ret))
+
+  n=$((n + 1))
+  echo_i "checking delv +ns +nocookie doesn't add DNS COOKIE options $n)"
+  ret=0
+  delv_with_opts -a ns1/anchor.dnskey +root +ns +qmin +hint=root.hint +nocookie -d 99 a a.example >delv.out.test$n 2>&1 || ret=1
+  grep -q '; COOKIE:' delv.out.test$n && ret=1
+  grep -q '; fully validated' delv.out.test$n || ret=1
+  if [ $ret -ne 0 ]; then echo_i "failed"; fi
+  status=$((status + ret))
 
 else
   echo_i "$DELV is needed, so skipping these delv tests"
