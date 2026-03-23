@@ -375,6 +375,13 @@ dns_client_setmaxqueries(dns_client_t *client, uint8_t max_queries) {
 	client->max_queries = max_queries;
 }
 
+void
+dns_client_setsendcookie(dns_client_t *client, bool sendcookie) {
+	REQUIRE(DNS_CLIENT_VALID(client));
+
+	client->view->sendcookie = sendcookie;
+}
+
 static isc_result_t
 getrdataset(isc_mem_t *mctx, dns_rdataset_t **rdatasetp) {
 	dns_rdataset_t *rdataset;

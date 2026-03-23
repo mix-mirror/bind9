@@ -198,6 +198,16 @@ dns_client_setmaxqueries(dns_client_t *client, uint8_t max_queries);
  *\li	'max_queries' is greater than 0.
  */
 
+void
+dns_client_setsendcookie(dns_client_t *client, bool sendcookie);
+/*%<
+ * Add EDNS COOKIE options to the DNS request.
+ *
+ * Requires:
+ *
+ *\li	'client' is a valid client.
+ */
+
 typedef void (*dns_client_resolve_cb)(dns_client_t     *client,
 				      const dns_name_t *name,
 				      dns_namelist_t   *namelist,

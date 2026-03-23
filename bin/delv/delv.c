@@ -141,6 +141,7 @@ static bool cdflag = false, no_sigs = false, root_validation = true;
 static bool qmin = false, qmin_strict = false;
 
 static bool use_tcp = false;
+static bool cookie = true;
 
 static char *anchorfile = NULL;
 static char *trust_anchor = NULL;
@@ -1081,9 +1082,19 @@ plus_option(char *option) {
 			FULLCHECK("class");
 			noclass = !state;
 			break;
-		case 'o': /* comments */
-			FULLCHECK("comments");
-			showcomments = state;
+		case 'o':
+			switch (cmd[2]) {
+			case 'm': /* comments */
+				FULLCHECK("comments");
+				showcomments = state;
+				break;
+			case 'o': /* cookie */
+				FULLCHECK("cookie");
+				cookie = state;
+				break;
+			default:
+				goto invalid_option;
+			}
 			break;
 		case 'r': /* crypto */
 			FULLCHECK("crypto");
@@ -1870,6 +1881,7 @@ run_resolve(void *arg) {
 				srcaddr4, srcaddr6));
 	dns_client_setmaxrestarts(client, restarts);
 	dns_client_setmaxqueries(client, maxtotal);
+	dns_client_setsendcookie(client, cookie);
 
 	/* Set the nameserver */
 	if (server != NULL) {
@@ -2150,6 +2162,7 @@ run_server(void *arg) {
 
 	view->qminimization = qmin;
 	view->qmin_strict = qmin_strict;
+	view->sendcookie = cookie;
 
 	dns_view_initsecroots(view);
 	CHECK(setup_dnsseckeys(NULL, view));
