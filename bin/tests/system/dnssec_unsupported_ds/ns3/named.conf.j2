@@ -40,9 +40,6 @@ zone "." {
 	file "../../_common/root.hint";
 };
 
-zone "child.example." {
-	type primary;
-	file "zones/child.example.db.signed";
-};
+{% include "_common/zones.conf.j2" %}
 
 include "trusted.conf";

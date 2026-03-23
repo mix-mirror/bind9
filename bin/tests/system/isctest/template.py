@@ -13,12 +13,16 @@
 
 from dataclasses import dataclass
 from pathlib import Path
+from re import compile as Re
 from typing import Any
 
 import jinja2
 
 from .log import debug
 from .vars import ALL
+
+
+NS_DIR_RE = Re(r"^(a?ns([0-9]+))/")
 
 
 class TemplateEngine:
@@ -68,6 +72,12 @@ class TemplateEngine:
             data = self.env_vars
         else:
             data = {**self.env_vars, **data}
+
+        # directory-specific vars
+        match = NS_DIR_RE.search(output)
+        if match:
+            data["NS_DIR"] = match.group(1)
+            data["NS_NUM"] = match.group(2)
 
         debug("rendering template `%s` to file `%s`", template, output)
         stream = self.j2env.get_template(template).stream(data)

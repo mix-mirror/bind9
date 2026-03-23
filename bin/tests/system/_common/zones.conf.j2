@@ -1,0 +1,10 @@
+{% if zones is defined and zones %}
+{% for zone in zones %}
+{% if zone.ns.name == NS_DIR %}
+zone "@zone.name@" {
+	type @zone.type@;
+	file "@zone.dir@/@zone.filename@";
+};
+{% endif %}
+{% endfor %}
+{% endif %}

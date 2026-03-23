@@ -60,6 +60,7 @@ def bootstrap():
     ta = isctest.setup.configure_signed_root([example])
     return {
         "trust_anchors": [ta],
+        "zones": [child, example],
     }
 
 
