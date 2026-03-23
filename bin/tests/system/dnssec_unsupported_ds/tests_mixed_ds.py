@@ -33,7 +33,7 @@ pytestmark = pytest.mark.extra_artifacts(
 
 
 def modify_dsset():
-    with open("ns3/dsset-child.example.", encoding="utf-8") as dsset_file:
+    with open("ns3/dsset-child.mixed-ds.", encoding="utf-8") as dsset_file:
         ds_orig = dsset_file.readline()
 
     alg = Algorithm.default().number
@@ -43,34 +43,34 @@ def modify_dsset():
     digest_re = Re(rf"\s+{alg}\s+2\s+.*")
     ds_bogus = digest_re.sub(f" {alg} 2 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", ds_orig)
 
-    with open("ns3/dsset-child.example.", "w", encoding="utf-8") as dsset_file:
+    with open("ns3/dsset-child.mixed-ds.", "w", encoding="utf-8") as dsset_file:
         dsset_file.writelines([ds_unsupported, ds_bogus])
 
 
 def bootstrap():
-    child = Zone("child.example", "child.example.db.signed", Nameserver("ns3", "10.53.0.3"))
+    child = Zone("child.mixed-ds", "child.mixed-ds.db.signed", Nameserver("ns3", "10.53.0.3"))
     isctest.setup.configure_signed_zone(child, [], template="template.db.j2.manual")
 
-    isctest.log.info("child.example: modify DS set to have unsupported and bogus DS records")
+    isctest.log.info("child.mixed-ds: modify DS set to have unsupported and bogus DS records")
     modify_dsset()
 
-    example = Zone("example", "example.db.signed", Nameserver("ns2", "10.53.0.2"))
-    isctest.setup.configure_signed_zone(example, [child], template="template.db.j2.manual")
+    mixed_ds = Zone("mixed-ds", "mixed-ds.db.signed", Nameserver("ns2", "10.53.0.2"))
+    isctest.setup.configure_signed_zone(mixed_ds, [child], template="template.db.j2.manual")
 
-    ta = isctest.setup.configure_signed_root([example])
+    ta = isctest.setup.configure_signed_root([mixed_ds])
     return {
         "trust_anchors": [ta],
-        "zones": [child, example],
+        "zones": [child, mixed_ds],
     }
 
 
 def test_mixed_ds(ns9):
-    msg = isctest.query.create("child.example.", "DNSKEY")
+    msg = isctest.query.create("child.mixed-ds.", "DNSKEY")
     with ns9.watch_log_from_here() as watcher:
         res = isctest.query.tcp(msg, ns9.ip)
-        watcher.wait_for_line("child.example/DNSKEY: insecurity proof failed")
+        watcher.wait_for_line("child.mixed-ds/DNSKEY: insecurity proof failed")
     isctest.check.servfail(res)
 
-    msg = isctest.query.create("a.child.example.", "A")
+    msg = isctest.query.create("a.child.mixed-ds.", "A")
     res = isctest.query.tcp(msg, ns9.ip)
     isctest.check.servfail(res)
