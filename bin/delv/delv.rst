@@ -234,6 +234,11 @@ assign values to options like the timeout interval. They have the form
    This option controls whether to display the CLASS when printing a record. The
    default is to display the CLASS.
 
+.. option:: +cookie, +nocookie
+
+   This option controls whether DNS COOKIE options are added to the
+   requests or not.  The default is to add the option.
+
 .. option:: +hint=FILE, +nohint
 
    This option specifies a filename from which to load root hints;
