@@ -12054,16 +12054,13 @@ delete_zoneconf(dns_view_t *view, const cfg_obj_t *config,
 
 static isc_result_t
 do_addzone(named_server_t *server, dns_view_t *view, dns_name_t *name,
-	   cfg_obj_t *zoneconf, const cfg_obj_t *zoneobj, bool redirect,
-	   isc_buffer_t *text) {
+	   const cfg_obj_t *zoneobj, bool redirect, isc_buffer_t *text) {
 	isc_result_t result, tresult;
 	dns_zone_t *zone = NULL;
 	const cfg_obj_t *voptions = NULL;
 	bool locked = false;
 	MDB_txn *txn = NULL;
 	MDB_dbi dbi;
-
-	UNUSED(zoneconf);
 
 	if (!view->newzone.allowed) {
 		result = ISC_R_NOPERM;
@@ -12415,8 +12412,8 @@ named_server_changezone(named_server_t *server, char *command,
 	}
 
 	if (addzone) {
-		CHECK(do_addzone(server, view, dnsname, zoneconf, zoneobj,
-				 redirect, text));
+		CHECK(do_addzone(server, view, dnsname, zoneobj, redirect,
+				 text));
 	} else {
 		CHECK(do_modzone(server, view, dnsname, zonename, zoneobj,
 				 redirect, text));
