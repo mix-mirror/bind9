@@ -27,6 +27,12 @@ options {
 	recursion no;
 
 	dnssec-validation yes;
+
+	rrset-order {
+		/* Keep the order of RRSIGs in the response static for
+		 * dnskey-malformed. zone. */
+		name "dnskey-malformed." order none;
+	};
 };
 
 include "../../_common/rndc.key";
