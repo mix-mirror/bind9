@@ -184,12 +184,12 @@ dns_delegset_write(dns_delegdb_t *db, const dns_name_t *zonecut, dns_ttl_t ttl,
 		   dns_delegset_t *delegset);
 
 /*
- * Dump the database in a textual format for a given name. Only the non expired
- * entries will be dumped. If `now` is 0, the actual expiration time is
- * `isc_stdtime_now()`.
+ * Dump the database in a textual format for a given name. If `expired` is
+ * false, only the non expired entries are shown. All entries are shown
+ * otherwise.
  */
 void
-dns_delegdb_dump(dns_delegdb_t *db, isc_stdtime_t now, FILE *fp);
+dns_delegdb_dump(dns_delegdb_t *db, bool expired, FILE *fp);
 
 /*
  * Convert an NS rdataset into a delegset containing a single delegation

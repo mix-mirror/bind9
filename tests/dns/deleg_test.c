@@ -140,13 +140,13 @@ lookupdb(dns_delegdb_t *db, const char *namestr, isc_stdtime_t now,
 }
 
 static void
-dumpdb(dns_delegdb_t *db, isc_stdtime_t now, const char *expected) {
+dumpdb(dns_delegdb_t *db, bool expired, const char *expected) {
 	constexpr char *filename = "delegdb-dump-test.db";
 	char buffer[1024 * 4] = { 0 };
 	FILE *fp = fopen(filename, "w+");
 
 	REQUIRE(fp != NULL);
-	dns_delegdb_dump(db, now, fp);
+	dns_delegdb_dump(db, expired, fp);
 
 	fp = freopen(filename, "r", fp);
 	REQUIRE(fp != NULL);
@@ -165,10 +165,7 @@ basictests(ISC_ATTR_UNUSED void *arg) {
 	dns_deleg_t *deleg = NULL;
 	dns_delegset_t *delegset = NULL;
 	isc_stdtime_t now = isc_stdtime_now();
-	isc_buffer_t b;
-	char bdata[2048];
 
-	isc_buffer_init(&b, bdata, sizeof(bdata));
 	dns_delegdb_create(&db);
 	assert_non_null(db);
 
@@ -332,13 +329,32 @@ basictests(ISC_ATTR_UNUSED void *arg) {
 		"include-delegparam=delegns.gee.,delegns2.gee.\n"
 		"bar.stuff. 2 DELEG server-name=ns.bar.stuff.\n"
 		"bar.stuff. 2 DELEG server-ipv6=1111::3333\n";
-	dumpdb(db, 0, expected_dbdump);
+	dumpdb(db, false, expected_dbdump);
 
 	/*
 	 * Dump in the "future", everything is seen as expired
 	 */
-	isc_buffer_clear(&b);
-	dumpdb(db, now + 300, "");
+	stdtime_now += 300;
+	dumpdb(db, false, "");
+
+	/*
+	 * Bump if we ask to dump expired entries, they'll be there (with TTL 0)
+	 */
+	char expected_expired_dbdump[] =
+		"foo. 0 DELEG server-name=ns.foo.\n"
+		"foo. 0 DELEG server-ipv4=1.2.3.4 "
+		"server-ipv6=1111:2222:3333::4444\n"
+		"foo. 0 DELEG server-name=ns.example.\n"
+		"bar.foo. 0 DELEG server-name=ns.bar.foo.,ns2.bar.foo.\n"
+		"bar.foo. 0 DELEG server-ipv4=8.9.10.11,9.9.10.12 "
+		"server-ipv6=acdc::acdc\n"
+		"bar.foo. 0 DELEG server-ipv4=13.14.15.16 "
+		"server-ipv6=abba::abba\n"
+		"bar.foo. 0 DELEG "
+		"include-delegparam=delegns.gee.,delegns2.gee.\n"
+		"bar.stuff. 0 DELEG server-name=ns.bar.stuff.\n"
+		"bar.stuff. 0 DELEG server-ipv6=1111::3333\n";
+	dumpdb(db, true, expected_expired_dbdump);
 
 	shutdowntest(&db);
 }

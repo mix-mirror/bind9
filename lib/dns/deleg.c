@@ -785,13 +785,18 @@ deleg_tostring_addresses(dns_deleg_t *deleg, FILE *fp) {
 
 static void
 delegset_tostring(const dns_name_t *zonecut, dns_delegset_t *delegset,
-		  isc_stdtime_t now, FILE *fp) {
+		  isc_stdtime_t now, bool expired, FILE *fp) {
 	ISC_LIST_FOREACH(delegset->delegs, deleg, link) {
 		isc_buffer_t zonecutb;
 		char bdata[DNS_NAME_MAXWIRE];
-		dns_ttl_t ttl = delegset->expires - now;
+		dns_ttl_t ttl = 0;
 
-		INSIST(ttl > 0);
+		if (delegset->expires > now) {
+			ttl = delegset->expires - now;
+		} else {
+			INSIST(expired);
+		}
+
 		isc_buffer_init(&zonecutb, bdata, sizeof(bdata));
 		dns_name_totext(zonecut, 0, &zonecutb);
 		fprintf(fp, "%s %u DELEG", bdata, ttl);
@@ -816,14 +821,14 @@ delegset_tostring(const dns_name_t *zonecut, dns_delegset_t *delegset,
 }
 
 void
-dns_delegdb_dump(dns_delegdb_t *delegdb, isc_stdtime_t optnow, FILE *fp) {
+dns_delegdb_dump(dns_delegdb_t *delegdb, bool expired, FILE *fp) {
 	REQUIRE(VALID_DELEGDB(delegdb));
 	REQUIRE(fp != NULL);
 
 	dns_qpiter_t it;
 	dns_qpread_t qpr = {};
 	delegdb_node_t *node = NULL;
-	isc_stdtime_t now = optnow > 0 ? optnow : isc_stdtime_now();
+	isc_stdtime_t now = isc_stdtime_now();
 	dns_qpmulti_t *nodes = NULL;
 
 	rcu_read_lock();
@@ -837,11 +842,12 @@ dns_delegdb_dump(dns_delegdb_t *delegdb, isc_stdtime_t optnow, FILE *fp) {
 
 	dns_qpiter_init(&qpr, &it);
 	while (dns_qpiter_next(&it, (void **)&node, NULL) == ISC_R_SUCCESS) {
-		if (!isactive(node, now)) {
+		if (!expired && !isactive(node, now)) {
 			continue;
 		}
 
-		delegset_tostring(&node->zonecut, node->delegset, now, fp);
+		delegset_tostring(&node->zonecut, node->delegset, now, expired,
+				  fp);
 	}
 
 	dns_qpread_destroy(nodes, &qpr);
