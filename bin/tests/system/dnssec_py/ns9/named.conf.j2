@@ -36,4 +36,11 @@ zone "." {
 	file "../../_common/root.hint";
 };
 
+{% if truncated_selfsigned is defined  %}
+zone "truncated.selfsigned." {
+	type static-stub;
+	server-addresses { 10.53.0.2; };
+};
+{% endif %}
+
 include "trusted.conf";
