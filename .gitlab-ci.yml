@@ -386,7 +386,7 @@ stages:
       build
 
 .git-clone-bind9-qa: &git_clone_bind9-qa
-  - git clone --depth 1 https://gitlab.isc.org/isc-projects/bind9-qa.git "$CI_PROJECT_DIR"/bind9-qa
+  - git clone --depth 1 https://gitlab.isc.org/isc-projects/bind9-qa.git "$CI_PROJECT_DIR"/bind9-qa --branch stepan/fix-parse-tsan-paths
 
 # change directory to the workspace before including this
 .find_python: &find_python
@@ -636,7 +636,7 @@ stages:
 
 # Jobs in the quick-checks stage
 
-misc:
+.disable.misc:
   <<: *quick_checks_job
   script:
     - sh util/checklibs.sh > checklibs.out
@@ -652,7 +652,7 @@ misc:
       - checklibs.out
     when: on_failure
 
-black:
+.disable.black:
   <<: *quick_checks_job
   <<: *python_triggering_rules
   script:
@@ -665,13 +665,13 @@ black:
     expire_in: "1 week"
     when: on_failure
 
-vulture:
+.disable.vulture:
   <<: *quick_checks_job
   <<: *python_triggering_rules
   script:
     - vulture
 
-ci-variables:
+.disable.ci-variables:
   <<: *quick_checks_job
   script:
     # When testing a .0 release, compare it against the previous development
@@ -683,7 +683,7 @@ ci-variables:
     reports:
       dotenv: ci_vars.env
 
-ci-orphaned-anchors:
+.disable.ci-orphaned-anchors:
   <<: *quick_checks_job
   script:
     - *git_clone_bind9-qa
@@ -694,7 +694,7 @@ ci-orphaned-anchors:
       changes:
         - .gitlab-ci.yml
 
-clang-format:
+.disable.clang-format:
   <<: *quick_checks_job
   rules:
     - if: '$CI_MERGE_REQUEST_DIFF_BASE_SHA != null'
@@ -716,7 +716,7 @@ clang-format:
     expire_in: "1 week"
     when: on_failure
 
-meson-format:
+.disable.meson-format:
   <<: *quick_checks_job
   rules:
     - if: '$CI_MERGE_REQUEST_DIFF_BASE_SHA != null'
@@ -739,7 +739,7 @@ meson-format:
       changes:
         - "**/meson.build"
 
-doctest:
+.disable.doctest:
   <<: *quick_checks_job
   # This script needs to: 1) fail if the doctest fails, 2) fail if
   # the junit.xml file is broken, 3) produce the junit.xml file even if
@@ -765,19 +765,19 @@ doctest:
       junit:
         - junit.xml
 
-pylint:
+.disable.pylint:
   <<: *quick_checks_job
   <<: *python_triggering_rules
   script:
     - pylint $(git ls-files '*.py')
 
-ruff:
+.disable.ruff:
   <<: *quick_checks_job
   <<: *python_triggering_rules
   script:
     - ruff check
 
-reuse:
+.disable.reuse:
   <<: *quick_checks_job
   image:
     name: docker.io/fsfe/reuse:latest
@@ -785,7 +785,7 @@ reuse:
   script:
     - reuse lint
 
-shfmt:
+.disable.shfmt:
   <<: *quick_checks_job
   <<: *shell_triggering_rules
   script:
@@ -798,7 +798,7 @@ shfmt:
     expire_in: "1 week"
     when: on_failure
 
-danger:
+.disable.danger:
   <<: *quick_checks_job
   script:
     - pip install git+https://gitlab.isc.org/isc-projects/hazard.git
@@ -806,13 +806,13 @@ danger:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
 
-mypy:
+.disable.mypy:
   <<: *quick_checks_job
   <<: *python_triggering_rules
   script:
     - mypy "bin/tests/system/isctest/"
 
-linkcheck:
+.disable.linkcheck:
   <<: *quick_checks_job
   script:
     # Some domains tested by linkchecker may think that we connect to them too
@@ -826,7 +826,7 @@ linkcheck:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
 
-generate-stress-test-configs:
+.disable.generate-stress-test-configs:
   <<: *quick_checks_job
   script:
     - *git_clone_bind9-qa
@@ -836,7 +836,7 @@ generate-stress-test-configs:
     paths:
       - stress-test-configs.yml
 
-generate-tsan-stress-test-configs:
+.disable.generate-tsan-stress-test-configs:
   <<: *quick_checks_job
   script:
     - *git_clone_bind9-qa
@@ -849,13 +849,13 @@ generate-tsan-stress-test-configs:
 
 # Jobs in the other-checks stage
 
-checkbashisms:
+.disable.checkbashisms:
   <<: *other_checks_job
   <<: *shell_triggering_rules
   script:
     - checkbashisms $(find . -path './.git' -prune -o -type f -exec sh -c 'head -n 1 "{}" | grep -qsF "#!/bin/sh"' \; -print)
 
-coccinelle:
+.disable.coccinelle:
   <<: *other_checks_job
   rules:
     - if: '$CI_MERGE_REQUEST_DIFF_BASE_SHA != null'
@@ -880,7 +880,7 @@ coccinelle:
                   --keep-going
                   -o scan-build.reports ninja -C build
 
-scan-build:
+.disable.scan-build:
   <<: *other_checks_job
   variables:
     CC: "${CLANG}"
@@ -922,7 +922,7 @@ scan-build:
         | tee curl-response.txt
   - grep -q 'Build successfully submitted' curl-response.txt
 
-coverity:
+.disable.coverity:
   <<: *other_checks_job
   variables:
     CC: gcc
@@ -944,7 +944,7 @@ coverity:
     - if: '$COVERITY_SCAN_PROJECT_NAME != null && $COVERITY_SCAN_TOKEN != null'
 
 # Simple reproductibilty test, needs an image with meson >=1.6.0
-reproducible-build:
+.disable.reproducible-build:
   <<: *other_checks_job
   <<: *alpine_3_23_amd64_image
   variables:
@@ -969,7 +969,7 @@ reproducible-build:
 # git fsck operates over the whole repository and is sufficient to schedule it
 # only in one branch, preferably "main". GitLab's clone strategy prevents us
 # from using the "bind9" repo clone; we need to clone it ourselves.
-fsck:
+.disable.fsck:
   <<: *other_checks_job
   variables:
     GIT_STRATEGY: none
@@ -980,7 +980,7 @@ fsck:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
 
-tarball-create:
+.disable.tarball-create:
   <<: *build_job
   <<: *base_image
   script:
@@ -995,7 +995,7 @@ tarball-create:
 
 # Jobs for doc builds on Debian 13 "trixie" (amd64)
 
-changelog:
+.disable.changelog:
   <<: *base_image
   <<: *docs_job
   rules:
@@ -1014,7 +1014,7 @@ changelog:
   artifacts:
     untracked: true
 
-docs:
+.disable.docs:
   <<: *default_triggering_rules
   <<: *base_image
   <<: *docs_job
@@ -1027,7 +1027,7 @@ docs:
     untracked: true
     when: always
 
-docs:tarball:
+.disable.docs:tarball:
   <<: *default_triggering_rules
   <<: *base_image
   <<: *docs_job
@@ -1039,7 +1039,7 @@ docs:tarball:
 
 # Job detecting named.conf breakage introduced since the previous point release
 
-cross-version-config-tests:
+.disable.cross-version-config-tests:
   stage: system
   <<: *base_image
   <<: *default_triggering_rules
@@ -1096,7 +1096,7 @@ cross-version-config-tests:
 
 # Jobs for regular GCC builds on Alpine Linux 3.23 (amd64)
 
-gcc:alpine3.23:amd64:
+.disable.gcc:alpine3.23:amd64:
   variables:
     CC: gcc
     CFLAGS: "${CFLAGS_COMMON}"
@@ -1104,14 +1104,14 @@ gcc:alpine3.23:amd64:
   <<: *alpine_3_23_amd64_image
   <<: *build_job
 
-system:gcc:alpine3.23:amd64:
+.disable.system:gcc:alpine3.23:amd64:
   <<: *alpine_3_23_amd64_image
   <<: *system_test_job
   needs:
     - job: gcc:alpine3.23:amd64
       artifacts: true
 
-unit:gcc:alpine3.23:amd64:
+.disable.unit:gcc:alpine3.23:amd64:
   <<: *alpine_3_23_amd64_image
   <<: *unit_test_job
   needs:
@@ -1120,7 +1120,7 @@ unit:gcc:alpine3.23:amd64:
 
 # Jobs for regular GCC builds on Alma Linux 8 (amd64)
 
-gcc:almalinux8:amd64:
+.disable.gcc:almalinux8:amd64:
   variables:
     CC: gcc
     CFLAGS: "${CFLAGS_COMMON}"
@@ -1128,7 +1128,7 @@ gcc:almalinux8:amd64:
   <<: *almalinux_8_amd64_image
   <<: *build_job
 
-system:gcc:almalinux8:amd64:
+.disable.system:gcc:almalinux8:amd64:
   <<: *almalinux_8_amd64_image
   <<: *system_test_job
   <<: *extra_system_tests_triggering_rules
@@ -1136,7 +1136,7 @@ system:gcc:almalinux8:amd64:
     - job: gcc:almalinux8:amd64
       artifacts: true
 
-unit:gcc:almalinux8:amd64:
+.disable.unit:gcc:almalinux8:amd64:
   <<: *almalinux_8_amd64_image
   <<: *unit_test_job
   <<: *api_pipelines_schedules_tags_triggers_web_triggering_rules
@@ -1146,7 +1146,7 @@ unit:gcc:almalinux8:amd64:
 
 # Jobs for regular GCC builds on Alma Linux 9 (amd64)
 
-gcc:almalinux9:amd64:
+.disable.gcc:almalinux9:amd64:
   variables:
     CC: gcc
     CFLAGS: "${CFLAGS_COMMON}"
@@ -1154,14 +1154,14 @@ gcc:almalinux9:amd64:
   <<: *almalinux_9_amd64_image
   <<: *build_job
 
-system:gcc:almalinux9:amd64:
+.disable.system:gcc:almalinux9:amd64:
   <<: *almalinux_9_amd64_image
   <<: *system_test_job
   needs:
     - job: gcc:almalinux9:amd64
       artifacts: true
 
-unit:gcc:almalinux9:amd64:
+.disable.unit:gcc:almalinux9:amd64:
   <<: *almalinux_9_amd64_image
   <<: *unit_test_job
   needs:
@@ -1170,7 +1170,7 @@ unit:gcc:almalinux9:amd64:
 
 # Jobs for regular GCC builds on Alma Linux 10 (amd64)
 
-gcc:almalinux10:amd64:
+.disable.gcc:almalinux10:amd64:
   variables:
     CC: gcc
     CFLAGS: "${CFLAGS_COMMON}"
@@ -1178,14 +1178,14 @@ gcc:almalinux10:amd64:
   <<: *almalinux_10_amd64_image
   <<: *build_job
 
-system:gcc:almalinux10:amd64:
+.disable.system:gcc:almalinux10:amd64:
   <<: *almalinux_10_amd64_image
   <<: *system_test_job
   needs:
     - job: gcc:almalinux10:amd64
       artifacts: true
 
-unit:gcc:almalinux10:amd64:
+.disable.unit:gcc:almalinux10:amd64:
   <<: *almalinux_10_amd64_image
   <<: *unit_test_job
   needs:
@@ -1195,7 +1195,7 @@ unit:gcc:almalinux10:amd64:
 # Jobs for scheduled GCC builds on AlmaLinux 8 & 9 FIPS-aware images with FIPS
 # mode in BIND 9 enabled
 
-gcc:8fips:amd64:
+.disable.gcc:8fips:amd64:
   variables:
     CC: gcc
     CFLAGS: "${CFLAGS_COMMON}"
@@ -1204,7 +1204,7 @@ gcc:8fips:amd64:
   <<: *almalinux_8fips_amd64_image
   <<: *build_job
 
-system:gcc:8fips:amd64:
+.disable.system:gcc:8fips:amd64:
   <<: *almalinux_8fips_amd64_image
   <<: *system_test_job
   <<: *extra_system_tests_triggering_rules
@@ -1214,7 +1214,7 @@ system:gcc:8fips:amd64:
     - job: gcc:8fips:amd64
       artifacts: true
 
-unit:gcc:8fips:amd64:
+.disable.unit:gcc:8fips:amd64:
   <<: *almalinux_8fips_amd64_image
   <<: *unit_test_job
   <<: *api_pipelines_schedules_tags_triggers_web_triggering_rules
@@ -1224,7 +1224,7 @@ unit:gcc:8fips:amd64:
     - job: gcc:8fips:amd64
       artifacts: true
 
-gcc:9fips:amd64:
+.disable.gcc:9fips:amd64:
   variables:
     CC: gcc
     CFLAGS: "${CFLAGS_COMMON}"
@@ -1233,7 +1233,7 @@ gcc:9fips:amd64:
   <<: *almalinux_9fips_amd64_image
   <<: *build_job
 
-system:gcc:9fips:amd64:
+.disable.system:gcc:9fips:amd64:
   <<: *almalinux_9fips_amd64_image
   <<: *system_test_job
   <<: *extra_system_tests_triggering_rules
@@ -1243,7 +1243,7 @@ system:gcc:9fips:amd64:
     - job: gcc:9fips:amd64
       artifacts: true
 
-unit:gcc:9fips:amd64:
+.disable.unit:gcc:9fips:amd64:
   <<: *almalinux_9fips_amd64_image
   <<: *unit_test_job
   <<: *api_pipelines_schedules_tags_triggers_web_triggering_rules
@@ -1253,7 +1253,7 @@ unit:gcc:9fips:amd64:
     - job: gcc:9fips:amd64
       artifacts: true
 
-gcc:10fips:amd64:
+.disable.gcc:10fips:amd64:
   variables:
     CC: gcc
     CFLAGS: "${CFLAGS_COMMON}"
@@ -1262,7 +1262,7 @@ gcc:10fips:amd64:
   <<: *almalinux_10fips_amd64_image
   <<: *build_job
 
-system:gcc:10fips:amd64:
+.disable.system:gcc:10fips:amd64:
   <<: *almalinux_10fips_amd64_image
   <<: *system_test_job
   variables:
@@ -1271,7 +1271,7 @@ system:gcc:10fips:amd64:
     - job: gcc:10fips:amd64
       artifacts: true
 
-unit:gcc:10fips:amd64:
+.disable.unit:gcc:10fips:amd64:
   <<: *almalinux_10fips_amd64_image
   <<: *unit_test_job
   variables:
@@ -1280,7 +1280,7 @@ unit:gcc:10fips:amd64:
     - job: gcc:10fips:amd64
       artifacts: true
 
-gcc:tarball:nosphinx:
+.disable.gcc:tarball:nosphinx:
   variables:
     CC: gcc
     CFLAGS: "${CFLAGS_COMMON}"
@@ -1298,7 +1298,7 @@ gcc:tarball:nosphinx:
 
 # Jobs for regular GCC builds on Debian 12 "bookworm" (amd64)
 
-gcc:bookworm:amd64:
+.disable.gcc:bookworm:amd64:
   variables:
     CC: gcc
     CFLAGS: "${CFLAGS_COMMON}"
@@ -1306,14 +1306,14 @@ gcc:bookworm:amd64:
   <<: *debian_bookworm_amd64_image
   <<: *build_job
 
-system:gcc:bookworm:amd64:
+.disable.system:gcc:bookworm:amd64:
   <<: *debian_bookworm_amd64_image
   <<: *system_test_job
   needs:
     - job: gcc:bookworm:amd64
       artifacts: true
 
-unit:gcc:bookworm:amd64:
+.disable.unit:gcc:bookworm:amd64:
   <<: *debian_bookworm_amd64_image
   <<: *unit_test_job
   needs:
@@ -1322,7 +1322,7 @@ unit:gcc:bookworm:amd64:
 
 # Jobs for regular GCC builds on Debian 13 "trixie" (amd64)
 
-gcc:trixie:amd64:
+.disable.gcc:trixie:amd64:
   variables:
     CC: gcc
     CFLAGS: "${CFLAGS_COMMON}"
@@ -1332,7 +1332,7 @@ gcc:trixie:amd64:
   <<: *debian_trixie_amd64_image
   <<: *build_job
 
-system:gcc:trixie:amd64:
+.disable.system:gcc:trixie:amd64:
   <<: *debian_trixie_amd64_image
   <<: *system_test_job
   variables:
@@ -1349,7 +1349,7 @@ system:gcc:trixie:amd64:
         CI_ENABLE_LIVE_INTERNET_TESTS: 1
     - *default_triggering_rules_list
 
-unit:gcc:trixie:amd64:
+.disable.unit:gcc:trixie:amd64:
   <<: *debian_trixie_amd64_image
   <<: *unit_test_job
   variables:
@@ -1361,7 +1361,7 @@ unit:gcc:trixie:amd64:
 
 # Minimal jobs for regular GCC builds on Debian 13 "trixie" (amd64)
 
-minimal:gcc:trixie:amd64:
+.disable.minimal:gcc:trixie:amd64:
   variables:
     CC: gcc
     CFLAGS: "${CFLAGS_COMMON}"
@@ -1369,14 +1369,14 @@ minimal:gcc:trixie:amd64:
   <<: *debian_trixie_amd64_image
   <<: *build_job
 
-system:minimal:gcc:trixie:amd64:
+.disable.system:minimal:gcc:trixie:amd64:
   <<: *debian_trixie_amd64_image
   <<: *system_test_job
   needs:
     - job: minimal:gcc:trixie:amd64
       artifacts: true
 
-unit:minimal:gcc:trixie:amd64:
+.disable.unit:minimal:gcc:trixie:amd64:
   <<: *debian_trixie_amd64_image
   <<: *unit_test_job
   needs:
@@ -1386,7 +1386,7 @@ unit:minimal:gcc:trixie:amd64:
 # Build job for cross-compiled GCC builds on 64-bit Debian 13 "trixie"
 # (amd64) with 32-bit BIND 9.
 
-gcc:trixie:amd64cross32:
+.disable.gcc:trixie:amd64cross32:
   variables:
     CFLAGS: "${CFLAGS_COMMON}"
     CROSS_COMPILATION: 1
@@ -1395,7 +1395,7 @@ gcc:trixie:amd64cross32:
   <<: *build_job
 
 # Run with pkcs11-provider tests
-gcc:ossl3:trixie:amd64:
+.disable.gcc:ossl3:trixie:amd64:
   <<: *debian_trixie_amd64_image
   <<: *build_job
   variables:
@@ -1405,7 +1405,7 @@ gcc:ossl3:trixie:amd64:
     EXTRA_CONFIGURE: "-Doptimization=3 -Djemalloc=disabled -Dleak-detection=disabled"
     RUN_MESON_INSTALL: 1
 
-system:gcc:ossl3:trixie:amd64:
+.disable.system:gcc:ossl3:trixie:amd64:
   # Set up environment variables to run pkcs11-provider based system tests
   variables:
     OPENSSL_CONF: "/var/tmp/etc/openssl-provider.cnf"
@@ -1416,7 +1416,7 @@ system:gcc:ossl3:trixie:amd64:
     - job: gcc:ossl3:trixie:amd64
       artifacts: true
 
-unit:gcc:ossl3:amd64:
+.disable.unit:gcc:ossl3:amd64:
   <<: *debian_trixie_amd64_image
   <<: *unit_test_job
   needs:
@@ -1425,7 +1425,7 @@ unit:gcc:ossl3:amd64:
 
 # Jobs for regular GCC builds on Debian "sid" (amd64)
 
-gcc:sid:amd64:
+.disable.gcc:sid:amd64:
   <<: *debian_sid_amd64_image
   <<: *build_job
   variables:
@@ -1433,7 +1433,7 @@ gcc:sid:amd64:
     CFLAGS: "${CFLAGS_COMMON}"
     EXTRA_CONFIGURE: "-Doptimization=3 -Didn=enabled"
 
-system:gcc:sid:amd64:
+.disable.system:gcc:sid:amd64:
   <<: *debian_sid_amd64_image
   <<: *system_test_job
   <<: *extra_system_tests_triggering_rules
@@ -1441,7 +1441,7 @@ system:gcc:sid:amd64:
     - job: gcc:sid:amd64
       artifacts: true
 
-unit:gcc:sid:amd64:
+.disable.unit:gcc:sid:amd64:
   <<: *debian_sid_amd64_image
   <<: *unit_test_job
   <<: *api_pipelines_schedules_tags_triggers_web_triggering_rules
@@ -1451,7 +1451,7 @@ unit:gcc:sid:amd64:
 
 # Jobs for tarball GCC builds on Debian 13 "trixie" (amd64)
 
-gcc:tarball:
+.disable.gcc:tarball:
   variables:
     CC: gcc
     EXTRA_CONFIGURE: "-Didn=enabled"
@@ -1465,7 +1465,7 @@ gcc:tarball:
     - job: tarball-create
       artifacts: true
 
-system:gcc:tarball:
+.disable.system:gcc:tarball:
   <<: *base_image
   <<: *system_test_job
   before_script:
@@ -1478,7 +1478,7 @@ system:gcc:tarball:
     - job: gcc:tarball
       artifacts: true
 
-unit:gcc:tarball:
+.disable.unit:gcc:tarball:
   <<: *base_image
   <<: *unit_test_job
   before_script:
@@ -1489,7 +1489,7 @@ unit:gcc:tarball:
 
 # Jobs for debug GCC builds on openSUSE Tumbleweed (amd64)
 
-gcc:tumbleweed:amd64:
+.disable.gcc:tumbleweed:amd64:
   <<: *tumbleweed_latest_amd64_image
   <<: *build_job
   variables:
@@ -1497,14 +1497,14 @@ gcc:tumbleweed:amd64:
     CFLAGS: "${CFLAGS_COMMON} -DDEBUG"
     EXTRA_CONFIGURE: "-Didn=enabled -Dgssapi=disabled ${WITH_LIBEDIT}"
 
-system:gcc:tumbleweed:amd64:
+.disable.system:gcc:tumbleweed:amd64:
   <<: *tumbleweed_latest_amd64_image
   <<: *system_test_job
   needs:
     - job: gcc:tumbleweed:amd64
       artifacts: true
 
-unit:gcc:tumbleweed:amd64:
+.disable.unit:gcc:tumbleweed:amd64:
   <<: *tumbleweed_latest_amd64_image
   <<: *unit_test_job
   needs:
@@ -1513,7 +1513,7 @@ unit:gcc:tumbleweed:amd64:
 
 # Jobs for regular GCC builds on Ubuntu 22.04 Jammy Jellyfish (amd64)
 
-gcc:jammy:amd64:
+.disable.gcc:jammy:amd64:
   variables:
     CC: gcc
     CFLAGS: "${CFLAGS_COMMON}"
@@ -1521,7 +1521,7 @@ gcc:jammy:amd64:
   <<: *ubuntu_jammy_amd64_image
   <<: *build_job
 
-system:gcc:jammy:amd64:
+.disable.system:gcc:jammy:amd64:
   <<: *ubuntu_jammy_amd64_image
   <<: *system_test_job
   <<: *extra_system_tests_triggering_rules
@@ -1529,7 +1529,7 @@ system:gcc:jammy:amd64:
     - job: gcc:jammy:amd64
       artifacts: true
 
-unit:gcc:jammy:amd64:
+.disable.unit:gcc:jammy:amd64:
   <<: *ubuntu_jammy_amd64_image
   <<: *unit_test_job
   <<: *api_pipelines_schedules_tags_triggers_web_triggering_rules
@@ -1539,7 +1539,7 @@ unit:gcc:jammy:amd64:
 
 # Jobs for regular GCC builds on Ubuntu 24.04 Noble Numbat (amd64)
 
-gcc:noble:amd64:
+.disable.gcc:noble:amd64:
   variables:
     CC: gcc
     CFLAGS: "${CFLAGS_COMMON}"
@@ -1547,14 +1547,14 @@ gcc:noble:amd64:
   <<: *ubuntu_noble_amd64_image
   <<: *build_job
 
-system:gcc:noble:amd64:
+.disable.system:gcc:noble:amd64:
   <<: *ubuntu_noble_amd64_image
   <<: *system_test_job
   needs:
     - job: gcc:noble:amd64
       artifacts: true
 
-unit:gcc:noble:amd64:
+.disable.unit:gcc:noble:amd64:
   <<: *ubuntu_noble_amd64_image
   <<: *unit_test_job
   needs:
@@ -1563,7 +1563,7 @@ unit:gcc:noble:amd64:
 
 # Jobs for ASAN builds on Fedora 43 (amd64)
 
-gcc:asan:
+.disable.gcc:asan:
   variables:
     CC: gcc
     CFLAGS: "${CFLAGS_COMMON}"
@@ -1571,7 +1571,7 @@ gcc:asan:
   <<: *fedora_43_amd64_image
   <<: *build_job
 
-system:gcc:asan:
+.disable.system:gcc:asan:
   variables:
     LSAN_OPTIONS: "suppressions=$CI_PROJECT_DIR/suppr-lsan.txt"
   <<: *fedora_43_amd64_image
@@ -1580,14 +1580,14 @@ system:gcc:asan:
     - job: gcc:asan
       artifacts: true
 
-unit:gcc:asan:
+.disable.unit:gcc:asan:
   <<: *fedora_43_amd64_image
   <<: *unit_test_job
   needs:
     - job: gcc:asan
       artifacts: true
 
-clang:asan:
+.disable.clang:asan:
   variables:
     CC: ${CLANG}
     CFLAGS: "${CFLAGS_COMMON}"
@@ -1595,7 +1595,7 @@ clang:asan:
   <<: *base_image
   <<: *build_job
 
-system:clang:asan:
+.disable.system:clang:asan:
   variables:
     LSAN_OPTIONS: "suppressions=$CI_PROJECT_DIR/suppr-lsan.txt"
   <<: *base_image
@@ -1605,7 +1605,7 @@ system:clang:asan:
     - job: clang:asan
       artifacts: true
 
-unit:clang:asan:
+.disable.unit:clang:asan:
   <<: *base_image
   <<: *unit_test_job
   <<: *api_pipelines_schedules_tags_triggers_web_triggering_rules
@@ -1634,7 +1634,7 @@ system:gcc:tsan:
     - job: gcc:tsan
       artifacts: true
 
-unit:gcc:tsan:
+.disable.unit:gcc:tsan:
   variables:
     TSAN_OPTIONS: "${TSAN_OPTIONS_FEDORA}"
   <<: *tsan_fedora_43_amd64_image
@@ -1644,7 +1644,7 @@ unit:gcc:tsan:
     - job: gcc:tsan
       artifacts: true
 
-clang:tsan:
+.disable.clang:tsan:
   <<: *tsan_debian_trixie_amd64_image
   <<: *build_job
   variables:
@@ -1654,7 +1654,7 @@ clang:tsan:
     EXTRA_CONFIGURE: "${TSAN_CONFIGURE_FLAGS_COMMON} -Db_lundef=false -Dnamed-lto=disabled --native-file ci/clang-trixie.ini"
   <<: *build_job
 
-system:clang:tsan:
+.disable.system:clang:tsan:
   variables:
     TSAN_OPTIONS: "${TSAN_OPTIONS_DEBIAN}"
   <<: *tsan_debian_trixie_amd64_image
@@ -1663,7 +1663,7 @@ system:clang:tsan:
     - job: clang:tsan
       artifacts: true
 
-unit:clang:tsan:
+.disable.unit:clang:tsan:
   variables:
     TSAN_OPTIONS: "${TSAN_OPTIONS_DEBIAN}"
   <<: *tsan_debian_trixie_amd64_image
@@ -1672,7 +1672,7 @@ unit:clang:tsan:
     - job: clang:tsan
       artifacts: true
 
-tsan:stress:
+.disable.tsan:stress:
   <<: *default_triggering_rules
   stage: system
   variables:
@@ -1691,7 +1691,7 @@ tsan:stress:
 
 # Jobs for Clang builds on Debian 13 "trixie" (amd64)
 
-clang:trixie:amd64:
+.disable.clang:trixie:amd64:
   variables:
     CC: ${CLANG}
     CFLAGS: "${CFLAGS_COMMON}"
@@ -1700,7 +1700,7 @@ clang:trixie:amd64:
   <<: *debian_trixie_amd64_image
   <<: *build_job
 
-system:clang:trixie:amd64:
+.disable.system:clang:trixie:amd64:
   <<: *debian_trixie_amd64_image
   <<: *system_test_job
   <<: *extra_system_tests_triggering_rules
@@ -1708,7 +1708,7 @@ system:clang:trixie:amd64:
     - job: clang:trixie:amd64
       artifacts: true
 
-unit:clang:trixie:amd64:
+.disable.unit:clang:trixie:amd64:
   <<: *debian_trixie_amd64_image
   <<: *unit_test_job
   <<: *api_pipelines_schedules_tags_triggers_web_triggering_rules
@@ -1718,7 +1718,7 @@ unit:clang:trixie:amd64:
 
 # Jobs for Clang builds on FreeBSD 13 (amd64)
 
-clang:freebsd13:amd64:
+.disable.clang:freebsd13:amd64:
   variables:
     CC: clang
     CFLAGS: "${CFLAGS_COMMON}"
@@ -1729,7 +1729,7 @@ clang:freebsd13:amd64:
   <<: *build_job
   <<: *freebsd_autoscaler_13_amd64_tags
 
-system:clang:freebsd13:amd64:
+.disable.system:clang:freebsd13:amd64:
   variables:
     GIT_CLONE_PATH: "${GIT_CLONE_PATH_INSTANCE_EXECUTOR}"
   needs:
@@ -1739,7 +1739,7 @@ system:clang:freebsd13:amd64:
   <<: *freebsd_autoscaler_13_amd64_tags
   <<: *extra_system_tests_triggering_rules
 
-unit:clang:freebsd13:amd64:
+.disable.unit:clang:freebsd13:amd64:
   variables:
     GIT_CLONE_PATH: "${GIT_CLONE_PATH_INSTANCE_EXECUTOR}"
   needs:
@@ -1751,7 +1751,7 @@ unit:clang:freebsd13:amd64:
 
 # Jobs for Clang builds on FreeBSD 14 (amd64)
 
-clang:freebsd14:amd64:
+.disable.clang:freebsd14:amd64:
   variables:
     CC: clang
     CFLAGS: "${CFLAGS_COMMON}"
@@ -1762,7 +1762,7 @@ clang:freebsd14:amd64:
   <<: *build_job
   <<: *freebsd_autoscaler_14_amd64_tags
 
-system:clang:freebsd14:amd64:
+.disable.system:clang:freebsd14:amd64:
   variables:
     GIT_CLONE_PATH: "${GIT_CLONE_PATH_INSTANCE_EXECUTOR}"
   needs:
@@ -1771,7 +1771,7 @@ system:clang:freebsd14:amd64:
   <<: *system_test_job
   <<: *freebsd_autoscaler_14_amd64_tags
 
-unit:clang:freebsd14:amd64:
+.disable.unit:clang:freebsd14:amd64:
   variables:
     GIT_CLONE_PATH: "${GIT_CLONE_PATH_INSTANCE_EXECUTOR}"
   needs:
@@ -1783,7 +1783,7 @@ unit:clang:freebsd14:amd64:
 
 # Jobs for Clang builds on FreeBSD 15 (amd64)
 
-clang:freebsd15:amd64:
+.disable.clang:freebsd15:amd64:
   variables:
     CC: clang
     CFLAGS: "${CFLAGS_COMMON}"
@@ -1794,7 +1794,7 @@ clang:freebsd15:amd64:
   <<: *build_job
   <<: *freebsd_autoscaler_15_amd64_tags
 
-system:clang:freebsd15:amd64:
+.disable.system:clang:freebsd15:amd64:
   variables:
     GIT_CLONE_PATH: "${GIT_CLONE_PATH_INSTANCE_EXECUTOR}"
   needs:
@@ -1803,7 +1803,7 @@ system:clang:freebsd15:amd64:
   <<: *system_test_job
   <<: *freebsd_autoscaler_15_amd64_tags
 
-unit:clang:freebsd15:amd64:
+.disable.unit:clang:freebsd15:amd64:
   variables:
     GIT_CLONE_PATH: "${GIT_CLONE_PATH_INSTANCE_EXECUTOR}"
   needs:
@@ -1814,7 +1814,7 @@ unit:clang:freebsd15:amd64:
 
 # Job producing a release directory
 
-release:
+.disable.release:
   <<: *base_image
   stage: release
   script:
@@ -1874,7 +1874,7 @@ release:
 
 # Job signing the source tarballs in the release directory
 
-sign:
+.disable.sign:
   <<: *signer_ssh_job
   before_script:
     - export SOURCE_TARBALL="bind-${CI_COMMIT_TAG#v}.tar.xz"
@@ -1901,7 +1901,7 @@ sign:
 
 # Job staging the signed tarballs
 
-staging:
+.disable.staging:
   <<: *signer_ssh_job
   variables:
     RELEASE_TARBALL: bind-${CI_COMMIT_TAG}-release.tar.gz
@@ -1924,7 +1924,7 @@ staging:
 
 # Job copying a staged release to a secret location
 
-publish-private:
+.disable.publish-private:
   <<: *signer_ssh_job
   variables:
     SSH_SCRIPT_CLIENT: |-
@@ -1944,7 +1944,7 @@ publish-private:
 
 # Job copying a staged release to a well-known location
 
-publish:
+.disable.publish:
   <<: *signer_ssh_job
   variables:
     SSH_SCRIPT_CLIENT: |-
@@ -2000,7 +2000,7 @@ publish:
 
 # Update Cloudsmith packages
 
-rpms-cloudsmith-build:
+.disable.rpms-cloudsmith-build:
   <<: *rpm_build_job
   variables:
     SERVICE: cloudsmith
@@ -2010,7 +2010,7 @@ rpms-cloudsmith-build:
     paths:
       - commit.txt
 
-rpms-cloudsmith-build-private:
+.disable.rpms-cloudsmith-build-private:
   <<: *rpm_build_job_private
   variables:
     SERVICE: cloudsmith
@@ -2022,7 +2022,7 @@ rpms-cloudsmith-build-private:
 
 # Publish Cloudsmith packages
 
-rpms-cloudsmith-publish:
+.disable.rpms-cloudsmith-publish:
   <<: *rpm_publish_job
   variables:
     SERVICE: cloudsmith
@@ -2032,7 +2032,7 @@ rpms-cloudsmith-publish:
   rules:
     - *rule_tag_open_source_maintenance
 
-rpms-cloudsmith-publish-private:
+.disable.rpms-cloudsmith-publish-private:
   <<: *rpm_publish_job
   variables:
     SERVICE: cloudsmith
@@ -2044,7 +2044,7 @@ rpms-cloudsmith-publish-private:
 
 # Update Copr packages
 
-rpms-copr:
+.disable.rpms-copr:
   <<: *rpm_build_job
   variables:
     SERVICE: copr
@@ -2071,7 +2071,7 @@ rpms-copr:
 
 # Job updating the Docker image for a specific release
 
-update-docker-image:
+.disable.update-docker-image:
   <<: *base_image
   <<: *manual_release_job
   variables:
@@ -2104,7 +2104,7 @@ update-docker-image:
 
 # Job creating the release announcement MR in Printing Press
 
-prepare-release-announcement:
+.disable.prepare-release-announcement:
   <<: *printing_press_job
   variables:
     DOCUMENT: release-announcement
@@ -2113,7 +2113,7 @@ prepare-release-announcement:
 
 # Job preparing an EVN MR in Printing Press
 
-prepare-evn:
+.disable.prepare-evn:
   <<: *printing_press_job
   variables:
     DOCUMENT: evn
@@ -2122,7 +2122,7 @@ prepare-evn:
 
 # Job preparing a security pre-announcement MR in Printing Press
 
-prepare-preannouncement:
+.disable.prepare-preannouncement:
   <<: *printing_press_job
   variables:
     DOCUMENT: security-preannouncement
@@ -2131,7 +2131,7 @@ prepare-preannouncement:
 
 # Job preparing a packager notification MR in Printing Press
 
-prepare-packager-notification:
+.disable.prepare-packager-notification:
   <<: *printing_press_job
   before_script:
     - *git_clone_bind9-qa
@@ -2145,7 +2145,7 @@ prepare-packager-notification:
 
 # Job preparing a post-disclosure notification MR in Printing Press
 
-prepare-post-disclosure-notification:
+.disable.prepare-post-disclosure-notification:
   <<: *printing_press_job
   variables:
     DOCUMENT: post-disclosure-notification
@@ -2154,7 +2154,7 @@ prepare-post-disclosure-notification:
 
 # Job merging the tag back into its base branch
 
-merge-tag:
+.disable.merge-tag:
   <<: *manual_release_job_qa
   variables:
     GIT_DEPTH: 100
@@ -2168,7 +2168,7 @@ merge-tag:
       - bind9/
     when: on_failure
 
-update-stable-tag:
+.disable.update-stable-tag:
   <<: *manual_release_job_qa
   variables:
     GIT_DEPTH: 1
@@ -2198,7 +2198,7 @@ update-stable-tag:
 # To trigger this job and push a branch to a customer, you must set the
 # CUSTOMER job variable by clicking on the manual job (not the play button) and
 # set it to the name of the target customer.
-customer-git:branch:
+.disable.customer-git:branch:
   <<: *customer_git
   needs: []
   rules:
@@ -2216,7 +2216,7 @@ customer-git:branch:
     - >
       "$CI_PROJECT_DIR"/bind9-qa/releng/push_to_customer_repository.py --branch "$BRANCH" --customer "$CUSTOMER" --force
 
-customer-git:tag:
+.disable.customer-git:tag:
   <<: *customer_git
   needs:
     - job: release
@@ -2232,7 +2232,7 @@ customer-git:tag:
 
 # Respdiff tests
 
-respdiff:
+.disable.respdiff:
   <<: *respdiff_job
   <<: *base_image
   variables:
@@ -2244,7 +2244,7 @@ respdiff:
     - bash respdiff.sh -m /usr/lib/x86_64-linux-gnu/libjemalloc.so.2 -s named -q "${PWD}/100k_mixed.txt" -c 3 -w "${PWD}/rspworkdir" "${CI_PROJECT_DIR}" "/usr/local/respdiff-reference-bind/sbin/named"
     - cd ../.. && ninja -C build clean >/dev/null 2>&1
 
-respdiff:asan:
+.disable.respdiff:asan:
   <<: *respdiff_job
   <<: *base_image
   variables:
@@ -2256,7 +2256,7 @@ respdiff:asan:
     - bash respdiff.sh -s named -q "${PWD}/100k_mixed.txt" -c 3 -w "${PWD}/rspworkdir" "${CI_PROJECT_DIR}" "/usr/local/respdiff-reference-bind/sbin/named"
     - cd ../.. && ninja -C build clean >/dev/null 2>&1
 
-respdiff:tsan:
+.disable.respdiff:tsan:
   <<: *respdiff_job
   <<: *tsan_debian_trixie_amd64_image
   variables:
@@ -2272,7 +2272,7 @@ respdiff:tsan:
   after_script:
     - *parse_tsan
 
-respdiff-third-party:
+.disable.respdiff-third-party:
   <<: *respdiff_job
   <<: *base_image
   variables:
@@ -2301,7 +2301,7 @@ respdiff-third-party:
     - cd "$CI_PROJECT_DIR"/bind9-qa/respdiff
     - bash respdiff.sh -s named -q "${PWD}/100k_mixed.txt" -c 3 -w "${PWD}/rspworkdir" "${CI_PROJECT_DIR}" "${CI_PROJECT_DIR}/baseline-build/build/named"
 
-respdiff:recent-named:
+.disable.respdiff:recent-named:
   <<: *respdiff_recent_named
   variables:
     CC: gcc
@@ -2311,32 +2311,32 @@ respdiff:recent-named:
 
 # Performance tests
 
-shotgun:udp:
+.disable.shotgun:udp:
   <<: *shotgun_job
   variables:
     SHOTGUN_SCENARIO: udp
     SHOTGUN_TRAFFIC_MULTIPLIER: 15
 
-shotgun:tcp:
+.disable.shotgun:tcp:
   <<: *shotgun_job
   variables:
     SHOTGUN_SCENARIO: tcp
     SHOTGUN_TRAFFIC_MULTIPLIER: 12
 
-shotgun:dot:
+.disable.shotgun:dot:
   <<: *shotgun_job
   variables:
     SHOTGUN_SCENARIO: dot
     SHOTGUN_TRAFFIC_MULTIPLIER: 5
 
-shotgun:doh-get:
+.disable.shotgun:doh-get:
   <<: *shotgun_job
   variables:
     SHOTGUN_SCENARIO: doh-get
     SHOTGUN_TRAFFIC_MULTIPLIER: 2
     SHOTGUN_EVAL_THRESHOLD_LATENCY_PCTL_MAX: 0.4  # bump from the default due to increased tail-end jitter
 
-stress-test-child-pipeline:
+.disable.stress-test-child-pipeline:
   <<: *default_triggering_rules
   stage: performance
   rules:
@@ -2357,7 +2357,7 @@ stress-test-child-pipeline:
     - job: generate-stress-test-configs
       artifacts: true
 
-gcov:
+.disable.gcov:
   <<: *default_triggering_rules
   <<: *base_image
   stage: system
@@ -2381,7 +2381,7 @@ gcov:
 
 # Pairwise testing of build options
 
-pairwise:
+.disable.pairwise:
   <<: *base_image
   stage: build
   needs: []
@@ -2422,7 +2422,7 @@ pairwise:
     - test -n "$MERGE_REQUEST_ID" || exit 0
     - *git_clone_bind9-qa
 
-backports:
+.disable.backports:
   <<: *post_merge
   rules:
     # -sub branches are handled manually
@@ -2433,7 +2433,7 @@ backports:
     - >
       "$CI_PROJECT_DIR"/bind9-qa/releng/backport_mr.py $CI_PROJECT_ID "$MERGE_REQUEST_ID"
 
-merged-metadata:
+.disable.merged-metadata:
   <<: *post_merge
   rules:
     - if: '$CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_REF_NAME =~ /^bind-9.[0-9]+(-sub)?$/ || $CI_COMMIT_REF_NAME =~ /^v9.[0-9]+.[0-9]+-release$/ || $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH)'
@@ -2441,7 +2441,7 @@ merged-metadata:
     - >
       "$CI_PROJECT_DIR"/bind9-qa/releng/after_merge.py "$CI_PROJECT_ID" "$MERGE_REQUEST_ID"
 
-auto-rebase-trigger:
+.disable.auto-rebase-trigger:
   stage: postmerge
   rules:
     - if: '$CI_PROJECT_NAMESPACE == "isc-projects" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_NAME =~ /^bind-9.[0-9]+$/'

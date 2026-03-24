@@ -27,6 +27,7 @@
 #include <defaultconfig.h>
 
 #include <isc/attributes.h>
+#include <isc/barrier.h>
 #include <isc/backtrace.h>
 #include <isc/commandline.h>
 #include <isc/crypto.h>
@@ -38,10 +39,12 @@
 #include <isc/managers.h>
 #include <isc/netmgr.h>
 #include <isc/os.h>
+#include <isc/pause.h>
 #include <isc/result.h>
 #include <isc/signal.h>
 #include <isc/stdio.h>
 #include <isc/string.h>
+#include <isc/thread.h>
 #include <isc/timer.h>
 #include <isc/util.h>
 #include <isc/uv.h>
@@ -129,6 +132,70 @@ static char saved_command_line[4096] = { 0 };
 static char ellipsis[5] = { 0 };
 static char version[512];
 static int maxudp = 0;
+
+#if defined(__SANITIZE_THREAD__)
+static isc_barrier_t named_tsan_race_barrier;
+static int named_tsan_race_counter;
+static int named_tsan_race_value;
+static volatile int named_tsan_race_sink;
+
+static void *
+named_tsan_race_writer(void *arg ISC_ATTR_UNUSED) {
+	isc_barrier_wait(&named_tsan_race_barrier);
+
+	for (int i = 0; i < 100000; i++) {
+		named_tsan_race_counter = i;
+		named_tsan_race_value = i * 2;
+		isc_pause_n(32);
+	}
+
+	return NULL;
+}
+
+static void *
+named_tsan_race_reader(void *arg ISC_ATTR_UNUSED) {
+	int local_reads = 0;
+
+	isc_barrier_wait(&named_tsan_race_barrier);
+
+	for (int i = 0; i < 100000; i++) {
+		int val1 = named_tsan_race_counter;
+		int val2 = named_tsan_race_value;
+
+		if (val1 >= 0 && val2 >= 0) {
+			local_reads++;
+		}
+
+		isc_pause_n(32);
+	}
+
+	named_tsan_race_sink = local_reads;
+	return NULL;
+}
+
+static void
+named_tsan_trigger_startup_race(void) {
+	isc_thread_t writer;
+	isc_thread_t reader;
+
+	/*
+	 * Intentionally race during startup so the system tests exercise the
+	 * TSAN reporting path through the named binary.
+	 */
+	named_tsan_race_counter = 0;
+	named_tsan_race_value = 0;
+	named_tsan_race_sink = 0;
+	isc_barrier_init(&named_tsan_race_barrier, 2);
+
+	isc_thread_create(named_tsan_race_writer, NULL, &writer);
+	isc_thread_create(named_tsan_race_reader, NULL, &reader);
+
+	isc_thread_join(writer, NULL);
+	isc_thread_join(reader, NULL);
+
+	isc_barrier_destroy(&named_tsan_race_barrier);
+}
+#endif /* if defined(__SANITIZE_THREAD__) */
 
 /*
  * -T options:
@@ -1458,6 +1525,10 @@ main(int argc, char *argv[]) {
 						named_g_chrootdir);
 		}
 	}
+
+#if defined(__SANITIZE_THREAD__)
+	named_tsan_trigger_startup_race();
+#endif /* if defined(__SANITIZE_THREAD__) */
 
 	setup();
 	INSIST(named_g_server != NULL);
