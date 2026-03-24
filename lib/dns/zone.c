@@ -423,6 +423,11 @@ struct dns_zone {
 	bool added;
 
 	/*%
+	 * True if modded by "rndc modzone"
+	 */
+	bool modded;
+
+	/*%
 	 * True if added by automatically by named.
 	 */
 	bool automatic;
@@ -22634,6 +22639,21 @@ bool
 dns_zone_getadded(dns_zone_t *zone) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 	return zone->added;
+}
+
+void
+dns_zone_setmodded(dns_zone_t *zone, bool modded) {
+	REQUIRE(DNS_ZONE_VALID(zone));
+
+	LOCK_ZONE(zone);
+	zone->modded = modded;
+	UNLOCK_ZONE(zone);
+}
+
+bool
+dns_zone_getmodded(dns_zone_t *zone) {
+	REQUIRE(DNS_ZONE_VALID(zone));
+	return zone->modded;
 }
 
 isc_result_t

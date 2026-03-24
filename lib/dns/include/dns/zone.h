@@ -2243,6 +2243,26 @@ dns_zone_getadded(dns_zone_t *zone);
  */
 
 void
+dns_zone_setmodded(dns_zone_t *zone, bool added);
+/*%
+ * Sets the value of zone->modded, which should be true for
+ * zones that were modified by "rndc modzone".
+ *
+ * Requires:
+ * \li	'zone' to be valid.
+ */
+
+bool
+dns_zone_getmodded(dns_zone_t *zone);
+/*%
+ * Returns true if the zone was modified at runtime
+ * using "rndc modzone".
+ *
+ * Requires:
+ * \li	'zone' to be valid.
+ */
+
+void
 dns_zone_setautomatic(dns_zone_t *zone, bool automatic);
 /*%
  * Sets the value of zone->automatic, which should be true for
