@@ -294,6 +294,20 @@ check_struct_conversions(dns_rdata_t *rdata, size_t structsize,
 	 * https/svcb parameters.
 	 */
 	switch (type) {
+	case dns_rdatatype_apl: {
+		dns_rdata_in_apl_t *apl = rdata_struct;
+
+		for (result = dns_rdata_apl_first(apl); result == ISC_R_SUCCESS;
+		     result = dns_rdata_apl_next(apl))
+		{
+			dns_rdata_apl_ent_t apl_ent;
+			dns_rdata_apl_current(apl, &apl_ent);
+			count++;
+		}
+		assert_int_equal(result, ISC_R_NOMORE);
+		assert_int_equal(count, loop);
+		break;
+	}
 	case dns_rdatatype_hip: {
 		dns_rdata_hip_t *hip = rdata_struct;
 
@@ -879,23 +893,26 @@ key_required(void **state, dns_rdatatype_t type, size_t size) {
 ISC_RUN_TEST_IMPL(apl) {
 	text_ok_t text_ok[] = {
 		/* empty list */
-		TEXT_VALID(""),
+		TEXT_VALID_LOOP(0, ""),
 		/* min,max prefix IPv4 */
-		TEXT_VALID("1:0.0.0.0/0"), TEXT_VALID("1:127.0.0.1/32"),
+		TEXT_VALID_LOOP(1, "1:0.0.0.0/0"),
+		TEXT_VALID_LOOP(1, "1:127.0.0.1/32"),
 		/* min,max prefix IPv6 */
-		TEXT_VALID("2:::/0"), TEXT_VALID("2:::1/128"),
+		TEXT_VALID_LOOP(1, "2:::/0"), TEXT_VALID_LOOP(1, "2:::1/128"),
 		/* negated */
-		TEXT_VALID("!1:0.0.0.0/0"), TEXT_VALID("!1:127.0.0.1/32"),
-		TEXT_VALID("!2:::/0"), TEXT_VALID("!2:::1/128"),
+		TEXT_VALID_LOOP(1, "!1:0.0.0.0/0"),
+		TEXT_VALID_LOOP(1, "!1:127.0.0.1/32"),
+		TEXT_VALID_LOOP(1, "!2:::/0"), TEXT_VALID_LOOP(1, "!2:::1/128"),
 		/* bits set after prefix length - not disallowed */
-		TEXT_VALID("1:127.0.0.0/0"), TEXT_VALID("2:8000::/0"),
+		TEXT_VALID_LOOP(1, "1:127.0.0.0/0"),
+		TEXT_VALID_LOOP(1, "2:8000::/0"),
 		/* multiple */
-		TEXT_VALID("1:0.0.0.0/0 1:127.0.0.1/32"),
-		TEXT_VALID("1:0.0.0.0/0 !1:127.0.0.1/32"),
+		TEXT_VALID_LOOP(2, "1:0.0.0.0/0 1:127.0.0.1/32"),
+		TEXT_VALID_LOOP(2, "1:0.0.0.0/0 !1:127.0.0.1/32"),
 		/* family 0, prefix 0, positive */
-		TEXT_VALID("\\# 4 00000000"),
+		TEXT_VALID_LOOP(1, "\\# 4 00000000"),
 		/* family 0, prefix 0, negative */
-		TEXT_VALID("\\# 4 00000080"),
+		TEXT_VALID_LOOP(1, "\\# 4 00000080"),
 		/* prefix too long */
 		TEXT_INVALID("1:0.0.0.0/33"), TEXT_INVALID("2:::/129"),
 		/*
