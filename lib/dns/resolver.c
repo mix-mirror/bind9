@@ -3733,10 +3733,6 @@ fctx_getaddresses_nameservers(fetchctx_t *fctx, isc_stdtime_t now,
 	 *
 	 * If this is a DELEG-based delegation, each `deleg` represents a DELEG
 	 * RR and might have multiple server names.
-	 *
-	 * Either way, at most the first `MAX_FIND_COUNT` are picked up
-	 * from the delegset, and at most `MAX_FIND_COUNT` glues and
-	 * nameserver names are used. (Hence `ns_processed` being shared.)
 	 */
 	ISC_LIST_FOREACH(fctx->delegset->delegs, deleg, link) {
 		if (deleg->type != DNS_DELEGTYPE_DELEG_NAMES &&
@@ -3961,11 +3957,16 @@ fctx_getaddresses(fetchctx_t *fctx) {
 	 *   or NS-based delegation with glues)
 	 * - name servers to lookup (either from DELEG-based delegation with
 	 *   only name servers, or NS-based delegation without glues)
-	 * - include delegi (from DELEG-based delegation only -- NYI).
+	 * - include-delegparam (from DELEG-based delegation only -- NYI).
 	 *
 	 * So let's try in this order. If nothing's found, then we can attempt
 	 * alternates.
-	 */
+	 *
+	 * Either way, the maximum number of nameserver names and addresses used
+	 * for this resolution is at most `max_delegation_servers`. This is why
+	 * `ns_processed` is shared with `fctx_getaddresses_addresses` and
+	 * `fctx_getaddresses_nameservers`.
+	 * */
 
 	fctx_getaddresses_addresses(fctx, now, stdoptions, &all_spilled,
 				    &ns_processed);
