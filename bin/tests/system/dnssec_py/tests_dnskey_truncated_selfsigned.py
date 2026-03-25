@@ -19,6 +19,7 @@ from isctest.template import Nameserver, TrustAnchor, Zone
 pytestmark = pytest.mark.extra_artifacts(
     [
         "ns*/trusted.conf",
+        "ns*/zones/*.db",
     ]
 )
 
