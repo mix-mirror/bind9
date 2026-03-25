@@ -46,35 +46,45 @@ def generate_key(zone: Zone, params: str = "", alg: Algorithm | None = None) -> 
     return Key(key_name, keydir=keydir)
 
 
-def render_signed_zone(
-    zone: Zone, delegations: list[Zone], keys: list[Key], template: str | None = None
+def render_zone(
+    zone: Zone, delegations: list[Zone], keys: list[Key] | None = None, template: str | None = None
 ):
-    debug(f"{zone.name}: rendering zone data and signing")
+    debug(f"{zone.name}: rendering zone file")
+
+    if keys is None:
+        keys = []
 
     templates = TemplateEngine(".")
-    signer = EnvCmd("SIGNER", f"-S -g -K {KEYDIR}")
 
-    assert zone.filename.endswith(".signed")
-    basename = zone.filename[:-7]
+    if zone.filename.endswith(".signed"):
+        zonefile = zone.filename[:-7]
+    else:
+        zonefile = zone.filename
 
     if template is None:
-        template = f"{basename}.j2.manual"
+        template = f"{zonefile}.j2.manual"
 
-    infile = f"{basename}.in"
-    outfile = f"{basename}.signed"
     data = {
         "origin": zone,
         "delegations": delegations,
         "dnskeys": [key.dnskey for key in keys],
     }
     templates.render(
-        f"{zone.ns.name}/{zone.dir}/{infile}",
+        f"{zone.ns.name}/{zone.dir}/{zonefile}",
         data,
         template=f"{zone.ns.name}/{zone.dir}/{template}",
     )
 
+
+def sign_zone(zone: Zone, params: str = ""):
+    debug(f"{zone.name}: signing zone file")
+
+    assert zone.filename.endswith(".signed")
+    zonefile = zone.filename[:-7]
+
+    signer = EnvCmd("SIGNER", f"-S -g -K {KEYDIR} {params}")
     signer(
-        f"-P -x -O full -o {zone.name} -f {zone.dir}/{outfile} {zone.dir}/{infile}",
+        f"-P -x -O full -o {zone.name} -f {zone.dir}/{zone.filename} {zone.dir}/{zonefile}",
         cwd=zone.ns.name,
     )
 
@@ -90,7 +100,8 @@ def configure_signed_zone(
     zsk = generate_key(zone)
     keys = [ksk, zsk]
 
-    render_signed_zone(zone, delegations, keys, template)
+    render_zone(zone, delegations, keys, template)
+    sign_zone(zone)
     return keys
 
 
