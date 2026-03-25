@@ -13,8 +13,7 @@
 
 #pragma once
 
-#if defined(__DragonFly__) || defined(__FreeBSD__) || defined(__NetBSD__) || \
-	defined(__OpenBSD__) || defined(__bsdi__)
+#ifdef HAVE_SYS_ENDIAN_H
 
 #include <sys/endian.h>
 
@@ -32,7 +31,7 @@
 #define le64toh(x) letoh64(x)
 #endif /* !be16toh */
 
-#elif defined __APPLE__
+#elif defined(__APPLE__)
 
 /*
  * macOS has its own byte-swapping routines, so use these.

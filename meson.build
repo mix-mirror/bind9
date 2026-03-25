@@ -538,6 +538,7 @@ foreach h : [
     'regex.h',
     'stdckdint.h',
     'sys/mman.h',
+    'sys/endian.h',
     'sys/select.h',
     'sys/sockio.h',
     'sys/sysctl.h',
