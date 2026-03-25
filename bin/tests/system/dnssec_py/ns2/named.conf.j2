@@ -29,9 +29,10 @@ options {
 	dnssec-validation yes;
 
 	rrset-order {
-		/* Keep the order of RRSIGs in the response static for
-		 * dnskey-malformed. zone. */
+		/* Keep the order of rrset in the response static for zones
+		 * that depend on it. */
 		name "dnskey-malformed." order none;
+		name "rrsigs-extra-expired." order none;
 	};
 };
 
