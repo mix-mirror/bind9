@@ -11,6 +11,8 @@
  * information regarding copyright ownership.
  */
 
+{% set max_validations_per_fetch = max_validations_per_fetch | default(16) %}
+
 options {
 	query-source address 10.53.0.9;
 	notify-source 10.53.0.9;
@@ -23,6 +25,8 @@ options {
 	recursion yes;
 
 	dnssec-validation yes;
+
+	max-validations-per-fetch @max_validations_per_fetch@;
 };
 
 include "../../_common/rndc.key";
