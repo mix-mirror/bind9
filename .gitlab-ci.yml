@@ -623,6 +623,9 @@ stages:
     - *setup_interfaces
     - *git_clone_bind9-qa
     - cd "$CI_PROJECT_DIR"/bind9-qa/respdiff
+    #- while [[ 1 ]]; do top -o %MEM --batch |head -n 20 && sleep 3; done&
+    #- top -o %MEM --batch --delay=1 | head -n 20 &
+    - top -o %MEM --batch --delay=1 > mem-top.txt &
   needs: []
   artifacts:
     paths:
@@ -2253,9 +2256,10 @@ respdiff:
   <<: *base_image
   variables:
     CC: gcc
-    CFLAGS: "${CFLAGS_COMMON} -DISC_TRACK_PTHREADS_OBJECTS"
+    CFLAGS: "${CFLAGS_COMMON} -DISC_TRACK_PTHREADS_OBJECTS -DDNS_DELEGDB_NODETRACE=1"
     EXTRA_CONFIGURE: "-Doptimization=g"
     MAX_DISAGREEMENTS_PERCENTAGE: "0.3"
+    RUNNER_SCRIPT_TIMEOUT: 2m
   script:
     - bash respdiff.sh -m /usr/lib/x86_64-linux-gnu/libjemalloc.so.2 -s named -q "${PWD}/100k_mixed.txt" -c 3 -w "${PWD}/rspworkdir" "${CI_PROJECT_DIR}" "/usr/local/respdiff-reference-bind/sbin/named"
     - cd ../.. && ninja -C build clean >/dev/null 2>&1
