@@ -107,9 +107,10 @@ newslab(dns_rdataset_t *rdataset, isc_mem_t *mctx, isc_region_t *region,
 	dns_slabheader_t *header = isc_mem_get(mctx, size);
 
 	*header = (dns_slabheader_t){
-		.headers_link = CDS_LIST_HEAD_INIT(header->headers_link),
+		.headerlink = CDS_LIST_HEAD_INIT(header->headerlink),
+		.dirtylink = CDS_LIST_HEAD_INIT(header->dirtylink),
 		.trust = rdataset->trust,
-		.dirtylink = ISC_LINK_INITIALIZER,
+		.sievelink = ISC_LINK_INITIALIZER,
 		.nitems = nitems,
 	};
 
@@ -471,7 +472,10 @@ dns_slabheader_reset(dns_slabheader_t *h, dns_dbnode_t *node) {
 	atomic_init(&h->attributes, 0);
 	atomic_init(&h->last_refresh_fail_ts, 0);
 
-	ISC_LINK_INIT(h, dirtylink);
+	CDS_INIT_LIST_HEAD(&h->headerlink);
+	CDS_INIT_LIST_HEAD(&h->dirtylink);
+
+	ISC_LINK_INIT(h, sievelink);
 
 	STATIC_ASSERT(sizeof(h->attributes) == 2,
 		      "The .attributes field of dns_slabheader_t needs to be "
@@ -479,15 +483,17 @@ dns_slabheader_reset(dns_slabheader_t *h, dns_dbnode_t *node) {
 }
 
 dns_slabheader_t *
-dns_slabheader_new(isc_mem_t *mctx, dns_dbnode_t *node) {
-	dns_slabheader_t *h = NULL;
-
-	h = isc_mem_get(mctx, sizeof(*h));
-	*h = (dns_slabheader_t){
+dns_slabheader_new(isc_mem_t *mctx, dns_dbnode_t *node,
+		   dns_typepair_t typepair) {
+	dns_slabheader_t *header = isc_mem_get(mctx, sizeof(*header));
+	*header = (dns_slabheader_t){
 		.node = node,
-		.dirtylink = ISC_LINK_INITIALIZER,
+		.headerlink = CDS_LIST_HEAD_INIT(header->headerlink),
+		.dirtylink = CDS_LIST_HEAD_INIT(header->dirtylink),
+		.sievelink = ISC_LINK_INITIALIZER,
+		.typepair = typepair,
 	};
-	return h;
+	return header;
 }
 
 void
@@ -807,25 +813,4 @@ static dns_slabheader_t *
 rdataset_getheader(const dns_rdataset_t *rdataset) {
 	uint8_t *rawbuf = rdataset->slab.raw;
 	return (dns_slabheader_t *)(rawbuf - offsetof(dns_slabheader_t, raw));
-}
-
-dns_slabtop_t *
-dns_slabtop_new(isc_mem_t *mctx, dns_typepair_t typepair) {
-	dns_slabtop_t *top = isc_mem_get(mctx, sizeof(*top));
-	*top = (dns_slabtop_t){
-		.types_link = CDS_LIST_HEAD_INIT(top->types_link),
-		.headers = CDS_LIST_HEAD_INIT(top->headers),
-		.typepair = typepair,
-		.link = ISC_LINK_INITIALIZER,
-	};
-
-	return top;
-}
-
-void
-dns_slabtop_destroy(isc_mem_t *mctx, dns_slabtop_t **topp) {
-	REQUIRE(topp != NULL && *topp != NULL);
-	dns_slabtop_t *top = *topp;
-	*topp = NULL;
-	isc_mem_put(mctx, top, sizeof(*top));
 }
