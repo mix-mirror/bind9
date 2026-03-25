@@ -26,7 +26,7 @@ pytestmark = pytest.mark.extra_artifacts(
         "ns*/keys/*.key",
         "ns*/keys/*.private",
         "ns*/trusted.conf",
-        "ns*/zones/*.db.in",
+        "ns*/zones/*.db",
         "ns*/zones/*.db.signed",
     ]
 )
