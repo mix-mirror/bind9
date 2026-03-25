@@ -64,35 +64,23 @@ struct dns_slabheader_proof {
 	dns_rdatatype_t type;
 };
 
-#define DNS_SLABTOP_FOREACH(pos, head)                 \
-	dns_slabtop_t *pos = NULL, *pos##_next = NULL; \
-	cds_list_for_each_entry_safe(pos, pos##_next, head, types_link)
+/*%
+ * Iterate over slabheaders in a node's flat data list.
+ * Used with node->data which is a cds_list_head of slabheaders
+ * linked via <member>.
+ */
+#define DNS_SLABHEADER_FOREACH(pos, head, member)         \
+	dns_slabheader_t *pos = NULL, *pos##_next = NULL; \
+	cds_list_for_each_entry_safe(pos, pos##_next, head, member)
 
-#define DNS_SLABTOP_FOREACH_FROM(pos, head, first)      \
-	dns_slabtop_t *pos = first, *pos##_next = NULL; \
-	cds_list_for_each_entry_safe_from(pos, pos##_next, head, types_link)
-
-typedef struct dns_slabtop dns_slabtop_t;
-struct dns_slabtop {
-	struct cds_list_head types_link;
-	struct cds_list_head headers;
-
-	dns_slabtop_t *related;
-
-	dns_typepair_t typepair;
-
-	/*% Used for SIEVE-LRU (cache) */
-	bool visited;
-	ISC_LINK(struct dns_slabtop) link;
-};
+#define DNS_SLABHEADER_FOREACH_FROM(pos, head, first, member) \
+	dns_slabheader_t *pos = first, *pos##_next = NULL;    \
+	cds_list_for_each_entry_safe_from(pos, pos##_next, head, member)
 
 struct dns_slabheader {
 	_Atomic(uint16_t)    attributes;
 	_Atomic(dns_trust_t) trust;
 
-	/*%
-	 * Locked by the owning node's lock.
-	 */
 	isc_stdtime_t  expire;
 	dns_typepair_t typepair;
 
@@ -100,19 +88,17 @@ struct dns_slabheader {
 	dns_slabheader_proof_t *closest;
 
 	/*%
-	 * Used for cleaning.
+	 * Link in the node's flat list of all cached rdatasets.
 	 */
-	ISC_LINK(dns_slabheader_t) dirtylink;
+	struct cds_list_head headerlink;
+	struct cds_list_head dirtylink;
 
 	/*%
-	 * Points to the top slabtop structure for the type.
+	 * Pointer to the related rdataset header (e.g. an RRtype
+	 * points to its RRSIG and vice versa).  Used for paired
+	 * expiry and to speed up reader lookups.
 	 */
-	dns_slabtop_t *top;
-
-	/*%
-	 * Link to the other versions of this rdataset.
-	 */
-	struct cds_list_head headers_link;
+	dns_slabheader_t *related;
 
 	/*%
 	 * The database node objects containing this rdataset, if any.
@@ -123,6 +109,12 @@ struct dns_slabheader {
 	 * Cached glue records for an rdataset of type NS (zone only).
 	 */
 	dns_gluelist_t *gluelist;
+
+	/*%
+	 * Used for SIEVE-LRU cache eviction.
+	 */
+	bool visited;
+	ISC_LINK(dns_slabheader_t) sievelink;
 
 	/*%
 	 * Case vector.  If the bit is set then the corresponding
@@ -261,7 +253,8 @@ dns_slabheader_reset(dns_slabheader_t *h, dns_dbnode_t *node);
  */
 
 dns_slabheader_t *
-dns_slabheader_new(isc_mem_t *mctx, dns_dbnode_t *node);
+dns_slabheader_new(isc_mem_t *mctx, dns_dbnode_t *node,
+		   dns_typepair_t typepair);
 /*%<
  * Allocate memory for an rdataslab header and initialize it for use
  * in database node 'node'.
@@ -277,17 +270,4 @@ void
 dns_slabheader_freeproof(isc_mem_t *mctx, dns_slabheader_proof_t **proof);
 /*%<
  * Free all memory associated with a nonexistence proof.
- */
-
-dns_slabtop_t *
-dns_slabtop_new(isc_mem_t *mctx, dns_typepair_t typepair);
-/*%<
- * Allocate memory for an rdataslab top and initialize it for use
- * with 'typepair' type and covers pair.
- */
-
-void
-dns_slabtop_destroy(isc_mem_t *mctx, dns_slabtop_t **topp);
-/*%<
- * Free all memory associated with '*slabtopp'.
  */

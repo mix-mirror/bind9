@@ -135,10 +135,9 @@ struct qpcnode {
 	isc_refcount_t references;
 	isc_refcount_t erefs;
 
-	struct cds_list_head types_list;
-	struct cds_list_head *data;
+	struct cds_list_head headers;
 
-	ISC_LIST(dns_slabheader_t) dirty;
+	struct cds_list_head dirty;
 
 	/*%
 	 * Used for dead nodes cleaning.  This linked list is used to mark nodes
@@ -165,12 +164,12 @@ typedef struct qpcache_bucket {
 	isc_rwlock_t lock;
 
 	/* SIEVE-LRU cache cleaning state. */
-	ISC_SIEVE(dns_slabtop_t) sieve;
+	ISC_SIEVE(dns_slabheader_t) sieve;
 
 	/* Padding to prevent false sharing between locks. */
 	uint8_t __padding[ISC_OS_CACHELINE_SIZE -
 			  (sizeof(isc_queue_t) + sizeof(isc_rwlock_t) +
-			   sizeof(ISC_SIEVE(dns_slabtop_t))) %
+			   sizeof(ISC_SIEVE(dns_slabheader_t))) %
 				  ISC_OS_CACHELINE_SIZE];
 
 } qpcache_bucket_t;
@@ -265,14 +264,12 @@ qpcnode_attachnode(dns_dbnode_t *source, dns_dbnode_t **targetp DNS__DB_FLARG);
 static void
 qpcnode_detachnode(dns_dbnode_t **nodep DNS__DB_FLARG);
 static void
-qpcnode_deletedata(dns_dbnode_t *node, void *data);
-static void
 qpcnode_expiredata(dns_dbnode_t *node, void *data);
 
 static dns_dbnode_methods_t qpcnode_methods = (dns_dbnode_methods_t){
 	.attachnode = qpcnode_attachnode,
 	.detachnode = qpcnode_detachnode,
-	.deletedata = qpcnode_deletedata,
+	.deletedata = NULL,
 	.expiredata = qpcnode_expiredata,
 };
 
@@ -336,7 +333,7 @@ static dns_rdatasetitermethods_t rdatasetiter_methods = {
 
 typedef struct qpc_rditer {
 	dns_rdatasetiter_t common;
-	dns_slabtop_t *current;
+	dns_slabheader_t *current;
 } qpc_rditer_t;
 
 static void
@@ -417,8 +414,9 @@ cleanup_deadnodes_cb(void *arg);
  */
 
 static size_t
-expireheader(dns_slabheader_t *header, isc_rwlocktype_t *nlocktypep,
-	     isc_rwlocktype_t *tlocktypep, dns_expire_t reason DNS__DB_FLARG);
+expireheader(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *header,
+	     isc_rwlocktype_t *nlocktypep, isc_rwlocktype_t *tlocktypep,
+	     dns_expire_t reason DNS__DB_FLARG);
 
 static size_t
 rdataset_size(dns_slabheader_t *header) {
@@ -429,60 +427,23 @@ rdataset_size(dns_slabheader_t *header) {
 	return sizeof(*header);
 }
 
-static dns_slabheader_t *
-first_header(dns_slabtop_t *top) {
-	dns_slabheader_t *header = NULL;
-	cds_list_for_each_entry(header, &top->headers, headers_link) {
-		return header;
-	}
-	return NULL;
-}
-
-static dns_slabheader_t *
-next_header(dns_slabheader_t *header) {
-	return cds_list_entry((header)->headers_link.next, dns_slabheader_t,
-			      headers_link);
-}
-
-static dns_slabheader_t *
-first_existing_header(dns_slabtop_t *top) {
-	dns_slabheader_t *header = first_header(top);
-	if (EXISTS(header)) {
-		return header;
-	}
-	return NULL;
-}
-
 static void
-expire_lru_headers(qpcache_t *qpdb, uint32_t idx, size_t requested,
+expire_lru_headers(qpcache_t *qpdb, uint32_t locknum, size_t requested,
 		   isc_rwlocktype_t *nlocktypep,
 		   isc_rwlocktype_t *tlocktypep DNS__DB_FLARG) {
 	size_t expired = 0;
 
 	do {
-		dns_slabtop_t *top = ISC_SIEVE_NEXT(qpdb->buckets[idx].sieve,
-						    visited, link);
-		if (top == NULL) {
+		dns_slabheader_t *header = ISC_SIEVE_NEXT(
+			qpdb->buckets[locknum].sieve, visited, sievelink);
+
+		if (header == NULL) {
 			return;
 		}
 
-		dns_slabtop_t *related = top->related;
-
-		if (ISC_SIEVE_LINKED(top, link)) {
-			ISC_SIEVE_UNLINK(qpdb->buckets[idx].sieve, top, link);
-		}
-
-		dns_slabheader_t *header = first_header(top);
-		expired += expireheader(header, nlocktypep, tlocktypep,
+		expired += expireheader(qpdb, HEADERNODE(header), header,
+					nlocktypep, tlocktypep,
 					dns_expire_lru DNS__DB_FLARG_PASS);
-
-		if (related != NULL) {
-			header = first_header(related);
-
-			expired +=
-				expireheader(header, nlocktypep, tlocktypep,
-					     dns_expire_lru DNS__DB_FLARG_PASS);
-		}
 
 	} while (expired < requested);
 }
@@ -491,7 +452,7 @@ static void
 qpcache_miss(qpcache_t *qpdb, dns_slabheader_t *newheader,
 	     isc_rwlocktype_t *nlocktypep,
 	     isc_rwlocktype_t *tlocktypep DNS__DB_FLARG) {
-	uint32_t idx = HEADERNODE(newheader)->locknum;
+	uint32_t locknum = HEADERNODE(newheader)->locknum;
 
 	if (isc_mem_isovermem(qpdb->common.mctx)) {
 		/*
@@ -508,11 +469,11 @@ qpcache_miss(qpcache_t *qpdb, dns_slabheader_t *newheader,
 			     dns_name_size(&HEADERNODE(newheader)->name)) +
 			rdataset_size(newheader) + QP_SAFETY_MARGIN;
 
-		expire_lru_headers(qpdb, idx, purgesize, nlocktypep,
+		expire_lru_headers(qpdb, locknum, purgesize, nlocktypep,
 				   tlocktypep DNS__DB_FLARG_PASS);
 	}
 
-	ISC_SIEVE_INSERT(qpdb->buckets[idx].sieve, newheader->top, link);
+	ISC_SIEVE_INSERT(qpdb->buckets[locknum].sieve, newheader, sievelink);
 }
 
 static void
@@ -520,7 +481,7 @@ qpcache_hit(qpcache_t *qpdb ISC_ATTR_UNUSED, dns_slabheader_t *header) {
 	/*
 	 * On cache hit, we only mark the header as seen.
 	 */
-	ISC_SIEVE_MARK(header->top, visited);
+	ISC_SIEVE_MARK(header, visited);
 }
 
 /*
@@ -528,73 +489,42 @@ qpcache_hit(qpcache_t *qpdb ISC_ATTR_UNUSED, dns_slabheader_t *header) {
  */
 
 static void
-clean_cache_headers(dns_slabtop_t *top) {
-	dns_slabheader_t *parent = first_header(top);
-	if (parent == NULL) {
-		return;
+update_rrsetstats(dns_stats_t *stats, const dns_typepair_t typepair,
+		  const uint_least16_t hattributes, const bool increment);
+
+static void
+delete_header(qpcache_t *qpdb, dns_slabheader_t **headerp) {
+	dns_slabheader_t *header = MOVE_OWNERSHIP(*headerp);
+
+	INSIST(!ISC_SIEVE_LINKED(header, sievelink));
+
+	if (header->related != NULL) {
+		INSIST(header->related->related == header);
+		header->related->related = NULL;
 	}
 
-	dns_slabheader_t *header = next_header(parent), *header_next = NULL;
-	cds_list_for_each_entry_safe_from(header, header_next, &top->headers,
-					  headers_link) {
-		cds_list_del(&header->headers_link);
-		dns_slabheader_destroy(&header);
+	update_rrsetstats(qpdb->rrsetstats, header->typepair,
+			  atomic_load_acquire(&header->attributes), false);
+
+	if (header->noqname != NULL) {
+		dns_slabheader_freeproof(qpdb->common.mctx, &header->noqname);
 	}
+	if (header->closest != NULL) {
+		dns_slabheader_freeproof(qpdb->common.mctx, &header->closest);
+	}
+
+	dns_slabheader_destroy(&header);
 }
 
 static void
-clean_cache_node(qpcache_t *qpdb, qpcnode_t *node) {
+clean_cache_node(qpcache_t *qpdb, qpcnode_t *qpnode) {
 	/*
 	 * Caller must be holding the node lock.
 	 */
 
-	/*
-	 * We can't use ordinary loop because multiple headers to be cleaned can
-	 * be stashed under a single slabtop.
-	 */
-	for (dns_slabheader_t *dirty = ISC_LIST_HEAD(node->dirty);
-	     dirty != NULL; dirty = ISC_LIST_HEAD(node->dirty))
-	{
-		dns_slabtop_t *top = dirty->top;
-
-		ISC_LIST_UNLINK(node->dirty, dirty, dirtylink);
-
-		clean_cache_headers(top);
-
-		/*
-		 * If current top header is nonexistent, ancient, or stale
-		 * and we are not keeping stale, we can clean it up too.
-		 */
-		dns_slabheader_t *header = first_header(top);
-		if (header == NULL) {
-			continue;
-		}
-
-		if (!EXISTS(header) || ANCIENT(header) ||
-		    (STALE(header) && !KEEPSTALE(qpdb)))
-		{
-			cds_list_del(&header->headers_link);
-			dns_slabheader_destroy(&header);
-		}
-
-		/*
-		 * If current slabtop is empty, we can clean it up.
-		 */
-		if (header == NULL) {
-			if (top->related != NULL) {
-				top->related->related = NULL;
-				top->related = NULL;
-			}
-
-			cds_list_del(&top->types_link);
-
-			if (ISC_SIEVE_LINKED(top, link)) {
-				ISC_SIEVE_UNLINK(
-					qpdb->buckets[node->locknum].sieve, top,
-					link);
-			}
-			dns_slabtop_destroy(((dns_db_t *)qpdb)->mctx, &top);
-		}
+	DNS_SLABHEADER_FOREACH(header, &qpnode->dirty, dirtylink) {
+		cds_list_del(&header->dirtylink);
+		delete_header(qpdb, &header);
 	}
 }
 
@@ -602,26 +532,26 @@ clean_cache_node(qpcache_t *qpdb, qpcnode_t *node) {
  * tree_lock(write) must be held.
  */
 static void
-delete_node(qpcache_t *qpdb, qpcnode_t *node) {
+delete_node(qpcache_t *qpdb, qpcnode_t *qpnode) {
 	isc_result_t result = ISC_R_UNEXPECTED;
 
 	if (isc_log_wouldlog(ISC_LOG_DEBUG(DNS_QPCACHE_LOG_STATS_LEVEL))) {
 		char printname[DNS_NAME_FORMATSIZE];
-		dns_name_format(&node->name, printname, sizeof(printname));
+		dns_name_format(&qpnode->name, printname, sizeof(printname));
 		isc_log_write(DNS_LOGCATEGORY_DATABASE, DNS_LOGMODULE_CACHE,
 			      ISC_LOG_DEBUG(DNS_QPCACHE_LOG_STATS_LEVEL),
-			      "delete_node(): %p %s (bucket %d)", node,
-			      printname, node->locknum);
+			      "delete_node(): %p %s (bucket %d)", qpnode,
+			      printname, qpnode->locknum);
 	}
 
-	switch (node->nspace) {
+	switch (qpnode->nspace) {
 	case DNS_DBNAMESPACE_NORMAL:
-		if (node->havensec) {
+		if (qpnode->havensec) {
 			/*
 			 * Delete the corresponding node from the auxiliary NSEC
 			 * tree before deleting from the main tree.
 			 */
-			result = dns_qp_deletename(qpdb->tree, &node->name,
+			result = dns_qp_deletename(qpdb->tree, &qpnode->name,
 						   DNS_DBNAMESPACE_NSEC, NULL,
 						   NULL);
 			if (result != ISC_R_SUCCESS) {
@@ -633,12 +563,12 @@ delete_node(qpcache_t *qpdb, qpcnode_t *node) {
 					      isc_result_totext(result));
 			}
 		}
-		result = dns_qp_deletename(qpdb->tree, &node->name,
-					   node->nspace, NULL, NULL);
+		result = dns_qp_deletename(qpdb->tree, &qpnode->name,
+					   qpnode->nspace, NULL, NULL);
 		break;
 	case DNS_DBNAMESPACE_NSEC:
-		result = dns_qp_deletename(qpdb->tree, &node->name,
-					   node->nspace, NULL, NULL);
+		result = dns_qp_deletename(qpdb->tree, &qpnode->name,
+					   qpnode->nspace, NULL, NULL);
 		break;
 	}
 	if (result != ISC_R_SUCCESS) {
@@ -744,7 +674,7 @@ qpcnode_release(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t *nlocktypep,
 	}
 
 	/* Handle easy and typical case first. */
-	if (ISC_LIST_EMPTY(node->dirty) && !cds_list_empty(node->data)) {
+	if (cds_list_empty(&node->dirty) && !cds_list_empty(&node->headers)) {
 		goto unref;
 	}
 
@@ -771,11 +701,11 @@ qpcnode_release(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t *nlocktypep,
 		}
 	}
 
-	if (!ISC_LIST_EMPTY(node->dirty)) {
+	if (!cds_list_empty(&node->dirty)) {
 		clean_cache_node(qpdb, node);
 	}
 
-	if (!cds_list_empty(node->data)) {
+	if (!cds_list_empty(&node->headers)) {
 		goto unref;
 	}
 
@@ -851,7 +781,7 @@ update_rrsetstats(dns_stats_t *stats, const dns_typepair_t typepair,
 	}
 }
 
-static void
+static bool
 mark(dns_slabheader_t *header, uint_least16_t flag) {
 	uint_least16_t attributes = atomic_load_acquire(&header->attributes);
 	uint_least16_t newattributes = 0;
@@ -862,7 +792,7 @@ mark(dns_slabheader_t *header, uint_least16_t flag) {
 	 */
 	do {
 		if ((attributes & flag) != 0) {
-			return;
+			return false;
 		}
 		newattributes = attributes | flag;
 	} while (!atomic_compare_exchange_weak_acq_rel(
@@ -876,6 +806,8 @@ mark(dns_slabheader_t *header, uint_least16_t flag) {
 			  false);
 	update_rrsetstats(qpdb->rrsetstats, header->typepair, newattributes,
 			  true);
+
+	return true;
 }
 
 static void
@@ -884,11 +816,20 @@ setttl(dns_slabheader_t *header, isc_stdtime_t newts) {
 }
 
 static void
-mark_ancient(dns_slabheader_t *header) {
-	setttl(header, 0);
-	mark(header, DNS_SLABHEADERATTR_ANCIENT);
-	if (!ISC_LINK_LINKED(header, dirtylink)) {
-		ISC_LIST_APPEND(HEADERNODE(header)->dirty, header, dirtylink);
+make_dirty(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *header) {
+	ISC_SIEVE_UNLINK(qpdb->buckets[qpnode->locknum].sieve, header,
+			 sievelink);
+	cds_list_del(&header->headerlink);
+	cds_list_add(&header->dirtylink, &qpnode->dirty);
+}
+
+static void
+mark_ancient(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *header) {
+	if (header != NULL) {
+		if (mark(header, DNS_SLABHEADERATTR_ANCIENT)) {
+			setttl(header, 0);
+			make_dirty(qpdb, qpnode, header);
+		}
 	}
 }
 
@@ -896,23 +837,23 @@ mark_ancient(dns_slabheader_t *header) {
  * Caller must hold the node (write) lock.
  */
 static size_t
-expireheader(dns_slabheader_t *header, isc_rwlocktype_t *nlocktypep,
-	     isc_rwlocktype_t *tlocktypep, dns_expire_t reason DNS__DB_FLARG) {
+expireheader(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *header,
+	     isc_rwlocktype_t *nlocktypep, isc_rwlocktype_t *tlocktypep,
+	     dns_expire_t reason DNS__DB_FLARG) {
 	size_t expired = rdataset_size(header);
 
-	mark_ancient(header);
+	mark_ancient(qpdb, qpnode, header);
+	mark_ancient(qpdb, qpnode, header->related);
 
-	if (isc_refcount_current(&HEADERNODE(header)->erefs) == 0) {
-		qpcache_t *qpdb = HEADERNODE(header)->qpdb;
-
+	if (isc_refcount_current(&qpnode->erefs) == 0) {
 		/*
 		 * If no one else is using the node, we can clean it up now.
 		 * We first need to gain a new reference to the node to meet a
 		 * requirement of qpcnode_release().
 		 */
-		qpcnode_acquire(qpdb, HEADERNODE(header), *nlocktypep,
+		qpcnode_acquire(qpdb, qpnode, *nlocktypep,
 				*tlocktypep DNS__DB_FLARG_PASS);
-		qpcnode_release(qpdb, HEADERNODE(header), nlocktypep,
+		qpcnode_release(qpdb, qpnode, nlocktypep,
 				tlocktypep DNS__DB_FLARG_PASS);
 
 		if (qpdb->cachestats == NULL) {
@@ -1189,10 +1130,40 @@ check_stale_header(dns_slabheader_t *header, qpc_search_t *search) {
 	return true;
 }
 
+static void
+fill_headers(dns_slabheader_t *source, dns_slabheader_t **headerp,
+	     dns_slabheader_t **sigheaderp) {
+	if (DNS_TYPEPAIR_TYPE(source->typepair) == dns_rdatatype_rrsig) {
+		*sigheaderp = source;
+		*headerp = source->related;
+		return;
+	}
+
+	*headerp = source;
+	*sigheaderp = source->related;
+}
+
 static bool
-check_header(dns_slabheader_t *header, qpc_search_t *search) {
+skip_header(dns_slabheader_t *header, qpc_search_t *search) {
 	return header == NULL || check_stale_header(header, search) ||
 	       !EXISTS(header) || ANCIENT(header);
+}
+
+static bool
+skip_headers(dns_slabheader_t **header, dns_slabheader_t **sigheader,
+	     qpc_search_t *search) {
+	if (skip_header(*header, search)) {
+		*header = NULL;
+	}
+	if (skip_header(*sigheader, search)) {
+		*sigheader = NULL;
+	}
+
+	if (*header == NULL && *sigheader == NULL) {
+		return true;
+	}
+
+	return false;
 }
 
 /*
@@ -1265,46 +1236,31 @@ related_headers(dns_slabheader_t *header, dns_slabheader_t *sigheader,
 static void
 find_headers(qpcnode_t *node, qpc_search_t *search, dns_rdatatype_t type,
 	     dns_slabheader_t **foundp, dns_slabheader_t **foundsigp) {
-	DNS_SLABTOP_FOREACH(top, node->data) {
+	DNS_SLABHEADER_FOREACH(tmp, &node->headers, headerlink) {
 		dns_slabheader_t *header = NULL, *sigheader = NULL;
-		dns_slabtop_t *related = top->related;
 
-		if (top->typepair == dns_typepair_any) {
-			INSIST(top->related == NULL);
-			header = first_header(top);
-			INSIST(NEGATIVE(header));
-			if (check_header(header, search)) {
+		if (tmp->typepair == dns_typepair_any) {
+			INSIST(tmp->related == NULL);
+			INSIST(NEGATIVE(tmp));
+			if (skip_header(tmp, search)) {
 				/*
 				 * NEGATIVE(ANY), but it is no longer valid.
 				 */
-				header = NULL;
 				continue;
 			}
-			*foundp = NULL;
-			*foundsigp = NULL;
-			return;
+			goto return_nothing;
 		}
 
-		if (top->typepair == DNS_TYPEPAIR(type)) {
-			header = first_header(top);
-			if (related != NULL) {
-				sigheader = first_header(related);
-			}
-		} else if (top->typepair == DNS_SIGTYPEPAIR(type)) {
-			sigheader = first_header(top);
-			if (related != NULL) {
-				header = first_header(related);
-			}
-		} else {
-			/* Not our type; continue with next slabtop */
+		if (tmp->typepair != DNS_TYPEPAIR(type) &&
+		    tmp->typepair != DNS_SIGTYPEPAIR(type))
+		{
 			continue;
 		}
 
-		if (check_header(header, search)) {
-			header = NULL;
-		}
-		if (check_header(sigheader, search)) {
-			sigheader = NULL;
+		fill_headers(tmp, &header, &sigheader);
+
+		if (skip_headers(&header, &sigheader, search)) {
+			goto return_nothing;
 		}
 
 		/*
@@ -1313,10 +1269,14 @@ find_headers(qpcnode_t *node, qpc_search_t *search, dns_rdatatype_t type,
 		if (header != NULL && !NEGATIVE(header)) {
 			*foundp = header;
 			*foundsigp = sigheader;
+			return;
 		}
-
-		return;
 	}
+return_nothing:
+	*foundp = NULL;
+	*foundsigp = NULL;
+
+	return;
 }
 
 static isc_result_t
@@ -1674,40 +1634,23 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	nsecsig = NULL;
 	empty_node = true;
 
-	DNS_SLABTOP_FOREACH(top, node->data) {
+	DNS_SLABHEADER_FOREACH(tmp, &node->headers, headerlink) {
 		dns_slabheader_t *header = NULL, *sigheader = NULL;
-		if (DNS_TYPEPAIR_TYPE(top->typepair) == dns_rdatatype_rrsig) {
-			sigheader = first_header(top);
-			if (top->related != NULL) {
-				header = first_header(top->related);
-			}
-		} else {
-			header = first_header(top);
-			if (top->related != NULL) {
-				sigheader = first_header(top->related);
-			}
-		}
 
-		if (check_header(header, &search)) {
-			header = NULL;
-		}
+		fill_headers(tmp, &header, &sigheader);
 
-		if (check_header(sigheader, &search)) {
-			sigheader = NULL;
-		}
-
-		if (header == NULL && sigheader == NULL) {
+		if (skip_headers(&header, &sigheader, &search)) {
 			continue;
 		}
 
 		/*
-		 * We now know that there is at least one active
-		 * non-stale rdataset at this node.
+		 * We now know that there is at least one active non-stale
+		 * rdataset at this node.
 		 */
 		empty_node = false;
 
 		if (header != NULL && header->noqname != NULL &&
-		    atomic_load(&header->trust) == dns_trust_secure)
+		    atomic_load_acquire(&header->trust) == dns_trust_secure)
 		{
 			found_noqname = true;
 		}
@@ -1746,7 +1689,7 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 			continue;
 		}
 
-		switch (top->typepair) {
+		switch (tmp->typepair) {
 		case dns_rdatatype_cname:
 		case DNS_SIGTYPEPAIR(dns_rdatatype_cname):
 			if (cname_ok) {
@@ -2088,37 +2031,20 @@ qpcache_findrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	sigpair = (type != dns_rdatatype_rrsig) ? DNS_SIGTYPEPAIR(type)
 						: dns_typepair_none;
 
-	DNS_SLABTOP_FOREACH(top, qpnode->data) {
+	DNS_SLABHEADER_FOREACH(tmp, &qpnode->headers, headerlink) {
 		dns_slabheader_t *header = NULL, *sigheader = NULL;
 
-		if (top->typepair != typepair && top->typepair != sigpair &&
-		    top->typepair != dns_typepair_any)
+		if (tmp->typepair != typepair && tmp->typepair != sigpair &&
+		    tmp->typepair != dns_typepair_any)
 		{
 			continue;
 		}
 
-		if (DNS_TYPEPAIR_TYPE(top->typepair) == dns_rdatatype_rrsig) {
-			sigheader = first_header(top);
-			if (top->related != NULL) {
-				header = first_header(top->related);
-			}
-		} else {
-			header = first_header(top);
-			if (top->related != NULL) {
-				sigheader = first_header(top->related);
-			}
+		fill_headers(tmp, &header, &sigheader);
+		if (!skip_headers(&header, &sigheader, &search)) {
+			(void)related_headers(header, sigheader, typepair,
+					      &found, &foundsig);
 		}
-
-		if (check_header(header, &search)) {
-			header = NULL;
-		}
-
-		if (check_header(sigheader, &search)) {
-			sigheader = NULL;
-		}
-
-		(void)related_headers(header, sigheader, typepair, &found,
-				      &foundsig);
 		break;
 	}
 
@@ -2217,22 +2143,16 @@ qpcnode_expiredata(dns_dbnode_t *node, void *data) {
 	qpcnode_t *qpnode = (qpcnode_t *)node;
 	qpcache_t *qpdb = (qpcache_t *)qpnode->qpdb;
 
-	dns_slabtop_t *related = NULL;
 	dns_slabheader_t *header = data;
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 	isc_rwlocktype_t tlocktype = isc_rwlocktype_none;
 
 	isc_rwlock_t *nlock = &qpdb->buckets[qpnode->locknum].lock;
 	NODE_WRLOCK(nlock, &nlocktype);
-	related = header->top->related;
 
-	(void)expireheader(header, &nlocktype, &tlocktype,
+	/* mark_ancient() handles the related header automatically */
+	(void)expireheader(qpdb, qpnode, header, &nlocktype, &tlocktype,
 			   dns_expire_flush DNS__DB_FILELINE);
-	if (related != NULL) {
-		header = first_header(related);
-		(void)expireheader(header, &nlocktype, &tlocktype,
-				   dns_expire_flush DNS__DB_FILELINE);
-	}
 
 	NODE_UNLOCK(nlock, &nlocktype);
 	INSIST(tlocktype == isc_rwlocktype_none);
@@ -2355,15 +2275,14 @@ static qpcnode_t *
 new_qpcnode(qpcache_t *qpdb, const dns_name_t *name, dns_namespace_t nspace) {
 	qpcnode_t *newdata = isc_mem_get(qpdb->common.mctx, sizeof(*newdata));
 	*newdata = (qpcnode_t){
-		.types_list = CDS_LIST_HEAD_INIT(newdata->types_list),
-		.data = &newdata->types_list,
+		.headers = CDS_LIST_HEAD_INIT(newdata->headers),
 		.methods = &qpcnode_methods,
 		.qpdb = qpdb,
 		.name = DNS_NAME_INITEMPTY,
 		.nspace = nspace,
 		.references = ISC_REFCOUNT_INITIALIZER(1),
 		.locknum = isc_random_uniform(qpdb->buckets_count),
-		.dirty = ISC_LIST_INITIALIZER,
+		.dirty = CDS_LIST_HEAD_INIT(newdata->dirty),
 	};
 
 	isc_mem_attach(qpdb->common.mctx, &newdata->mctx);
@@ -2477,11 +2396,6 @@ overmaxtype(qpcache_t *qpdb, uint32_t ntypes) {
 	return ntypes >= qpdb->maxtypepername;
 }
 
-static bool
-prio_header(dns_slabtop_t *top) {
-	return prio_type(top->typepair);
-}
-
 static void
 qpcnode_attachnode(dns_dbnode_t *source, dns_dbnode_t **targetp DNS__DB_FLARG) {
 	REQUIRE(targetp != NULL && *targetp == NULL);
@@ -2559,7 +2473,7 @@ check_ncache_block(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *header,
 		 * bind to it and leave the cache unchanged.
 		 */
 		if (trust >= header->trust) {
-			mark_ancient(header);
+			mark_ancient(qpdb, qpnode, header);
 		} else {
 			qpcache_hit(qpdb, header);
 			bindrdataset(qpdb, qpnode, header, now, nlocktype,
@@ -2576,8 +2490,8 @@ static isc_result_t
 add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
     unsigned int options, dns_rdataset_t *addedrdataset, isc_stdtime_t now,
     isc_rwlocktype_t nlocktype, isc_rwlocktype_t tlocktype DNS__DB_FLARG) {
-	dns_slabtop_t *priotop = NULL, *expiretop = NULL;
-	dns_slabtop_t *oldtop = NULL, *related = NULL;
+	dns_slabheader_t *expireheader = NULL;
+	dns_slabheader_t *oldheader = NULL, *related = NULL;
 	dns_trust_t trust;
 	uint32_t ntypes = 0;
 	dns_rdatatype_t rdtype = DNS_TYPEPAIR_TYPE(newheader->typepair);
@@ -2600,11 +2514,8 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 		trust = newheader->trust;
 	}
 
-	DNS_SLABTOP_FOREACH(top, qpnode->data) {
-		dns_slabheader_t *header = first_header(top);
-		if (header == NULL) {
-			continue;
-		}
+	DNS_SLABHEADER_FOREACH(tmp, &qpnode->headers, headerlink) {
+		dns_slabheader_t *header = tmp;
 
 		if (EXISTS(newheader) && NEGATIVE(newheader)) {
 			if (rdtype == dns_rdatatype_any) {
@@ -2617,7 +2528,7 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 				 * rdataset that can be found at this node is
 				 * the negative cache entry.
 				 */
-				mark_ancient(header);
+				mark_ancient(qpdb, qpnode, header);
 			} else if (rdtype == dns_rdatatype_rrsig) {
 				/*
 				 * We're adding a proof that a signature doesn't
@@ -2625,10 +2536,10 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 				 *
 				 * Mark all existing signatures as ancient.
 				 */
-				if (DNS_TYPEPAIR_TYPE(top->typepair) ==
+				if (DNS_TYPEPAIR_TYPE(tmp->typepair) ==
 				    dns_rdatatype_rrsig)
 				{
-					mark_ancient(header);
+					mark_ancient(qpdb, qpnode, header);
 				}
 			}
 		}
@@ -2652,34 +2563,33 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 
 		if (ACTIVE(header, now)) {
 			++ntypes;
-			expiretop = top;
-		}
-		if (prio_header(top)) {
-			priotop = top;
+			expireheader = tmp;
 		}
 
-		if (top->typepair == newheader->typepair) {
-			INSIST(oldtop == NULL);
-			oldtop = top;
+		/*
+		 * check_ncache_block()
+		 */
+		if (ANCIENT(newheader)) {
+			continue;
 		}
 
-		if (rdtype == dns_rdatatype_rrsig) {
-			if (DNS_TYPEPAIR_TYPE(top->typepair) == covers) {
-				INSIST(related == NULL);
-				related = top;
-			}
-		} else {
-			if (top->typepair == DNS_SIGTYPEPAIR(rdtype)) {
-				INSIST(related == NULL);
-				related = top;
-			}
+		if (tmp->typepair == newheader->typepair) {
+			INSIST(oldheader == NULL);
+			oldheader = tmp;
+		}
+
+		if (rdtype == dns_rdatatype_rrsig &&
+		    DNS_TYPEPAIR_TYPE(tmp->typepair) == covers)
+		{
+			INSIST(related == NULL);
+			related = tmp;
+		} else if (tmp->typepair == DNS_SIGTYPEPAIR(rdtype)) {
+			INSIST(related == NULL);
+			related = tmp;
 		}
 	}
 
-	if (oldtop != NULL) {
-		dns_slabheader_t *oldheader = first_header(oldtop);
-		INSIST(oldheader != NULL);
-
+	if (oldheader != NULL) {
 		/*
 		 * Deleting an already non-existent rdataset has no effect.
 		 */
@@ -2706,7 +2616,7 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 			    (options & DNS_DBADD_EQUALOK) != 0 &&
 			    dns_rdataslab_equalx(
 				    oldheader, newheader, qpdb->common.rdclass,
-				    DNS_TYPEPAIR_TYPE(oldtop->typepair)))
+				    DNS_TYPEPAIR_TYPE(oldheader->typepair)))
 			{
 				/*
 				 * Updated by caller to ISC_R_SUCCESS after
@@ -2726,13 +2636,13 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 		 * further down.
 		 */
 		if (ACTIVE(oldheader, now) &&
-		    oldtop->typepair == DNS_TYPEPAIR(dns_rdatatype_ns) &&
+		    oldheader->typepair == DNS_TYPEPAIR(dns_rdatatype_ns) &&
 		    EXISTS(oldheader) && EXISTS(newheader) &&
 		    newheader->trust < oldtrust &&
 		    oldheader->expire < newheader->expire &&
-		    dns_rdataslab_equalx(oldheader, newheader,
-					 qpdb->common.rdclass,
-					 DNS_TYPEPAIR_TYPE(oldtop->typepair)))
+		    dns_rdataslab_equalx(
+			    oldheader, newheader, qpdb->common.rdclass,
+			    DNS_TYPEPAIR_TYPE(oldheader->typepair)))
 		{
 			if (oldheader->noqname == NULL &&
 			    newheader->noqname != NULL)
@@ -2767,7 +2677,7 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 		 * ensures the delegations that are withdrawn are honoured.
 		 */
 		if (ACTIVE(oldheader, now) &&
-		    oldtop->typepair == DNS_TYPEPAIR(dns_rdatatype_ns) &&
+		    oldheader->typepair == DNS_TYPEPAIR(dns_rdatatype_ns) &&
 		    EXISTS(oldheader) && EXISTS(newheader) &&
 		    newheader->trust > oldtrust)
 		{
@@ -2782,10 +2692,11 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 		}
 		if (ACTIVE(oldheader, now) &&
 		    (options & DNS_DBADD_PREFETCH) == 0 &&
-		    (oldtop->typepair == DNS_TYPEPAIR(dns_rdatatype_a) ||
-		     oldtop->typepair == DNS_TYPEPAIR(dns_rdatatype_aaaa) ||
-		     oldtop->typepair == DNS_TYPEPAIR(dns_rdatatype_ds) ||
-		     oldtop->typepair == DNS_SIGTYPEPAIR(dns_rdatatype_ds)) &&
+		    (oldheader->typepair == DNS_TYPEPAIR(dns_rdatatype_a) ||
+		     oldheader->typepair == DNS_TYPEPAIR(dns_rdatatype_aaaa) ||
+		     oldheader->typepair == DNS_TYPEPAIR(dns_rdatatype_ds) ||
+		     oldheader->typepair ==
+			     DNS_SIGTYPEPAIR(dns_rdatatype_ds)) &&
 		    EXISTS(oldheader) && EXISTS(newheader) &&
 		    newheader->trust < oldtrust &&
 		    oldheader->expire < newheader->expire &&
@@ -2818,21 +2729,23 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 			return DNS_R_UNCHANGED;
 		}
 
-		newheader->top = oldheader->top;
-		cds_list_add(&newheader->headers_link,
-			     &oldheader->top->headers);
-
-		if (ISC_SIEVE_LINKED(oldheader->top, link)) {
-			ISC_SIEVE_UNLINK(qpdb->buckets[qpnode->locknum].sieve,
-					 oldheader->top, link);
+		/* Transfer the related pointer from old to new header */
+		if (oldheader->related != NULL) {
+			newheader->related = MOVE_OWNERSHIP(oldheader->related);
+			newheader->related->related = newheader;
+		} else if (related != NULL) {
+			newheader->related = related;
+			newheader->related->related = newheader;
 		}
+
+		cds_list_replace_init(&oldheader->headerlink,
+				      &newheader->headerlink);
 
 		qpcache_miss(qpdb, newheader, &nlocktype,
 			     &tlocktype DNS__DB_FLARG_PASS);
 
-		mark_ancient(oldheader);
-
-		INSIST(oldtop->related == related);
+		mark_ancient(qpdb, qpnode, oldheader);
+		/* oldheader->related moved to newheader->related */
 	} else if (!EXISTS(newheader)) {
 		/*
 		 * The type already doesn't exist; no point trying
@@ -2841,49 +2754,31 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 		return DNS_R_UNCHANGED;
 	} else {
 		/* No rdatasets of the given type exist at the node. */
-		dns_slabtop_t *newtop = dns_slabtop_new(
-			((dns_db_t *)qpdb)->mctx, newheader->typepair);
-
-		if (prio_header(newtop)) {
-			/* This is a priority type, prepend it */
-			cds_list_add(&newtop->types_link, qpnode->data);
-		} else if (priotop != NULL) {
-			/* Append after the priority headers */
-			cds_list_add(&newtop->types_link, &priotop->types_link);
-		} else {
-			/* There were no priority headers */
-			cds_list_add(&newtop->types_link, qpnode->data);
-		}
 
 		if (related != NULL) {
 			INSIST(related->related == NULL);
-			related->related = newtop;
-			newtop->related = related;
+			related->related = newheader;
+			newheader->related = related;
 		}
 
-		newheader->top = newtop;
-		cds_list_add(&newheader->headers_link, &newtop->headers);
-
+		cds_list_add(&newheader->headerlink, &qpnode->headers);
 		qpcache_miss(qpdb, newheader, &nlocktype,
 			     &tlocktype DNS__DB_FLARG_PASS);
 
 		if (overmaxtype(qpdb, ntypes)) {
-			if (expiretop == NULL) {
-				expiretop = newtop;
+			if (expireheader == NULL) {
+				expireheader = newheader;
 			}
-			if (NEGATIVE(newheader) && !prio_header(newtop)) {
+			if (NEGATIVE(newheader)) {
 				/*
-				 * Add the new non-priority negative
-				 * header to the database only
-				 * temporarily.
+				 * Add the new negative header to the
+				 * database only temporarily.
 				 */
-				expiretop = newtop;
+				expireheader = newheader;
 			}
 
-			mark_ancient(first_header(expiretop));
-			if (expiretop->related != NULL) {
-				mark_ancient(first_header(expiretop->related));
-			}
+			mark_ancient(qpdb, qpnode, expireheader);
+			mark_ancient(qpdb, qpnode, expireheader->related);
 		}
 	}
 
@@ -2895,8 +2790,7 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 	if (EXISTS(newheader) && NEGATIVE(newheader) &&
 	    !dns_rdatatype_issig(rdtype) && related != NULL)
 	{
-		dns_slabheader_t *relatedheader = first_header(related);
-		mark_ancient(relatedheader);
+		mark_ancient(qpdb, qpnode, related);
 	}
 
 	bindrdataset(qpdb, qpnode, newheader, now, nlocktype, tlocktype,
@@ -3085,7 +2979,7 @@ qpcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 		update_rrsetstats(qpdb->rrsetstats, newheader->typepair,
 				  newheader->attributes, true);
 	} else {
-		dns_slabheader_destroy(&newheader);
+		delete_header(qpdb, &newheader);
 	}
 
 	NODE_UNLOCK(nlock, &nlocktype);
@@ -3130,8 +3024,8 @@ qpcache_deleterdataset(dns_db_t *db, dns_dbnode_t *node,
 		attributes |= DNS_SLABHEADERATTR_NEGATIVE;
 	}
 
-	newheader = dns_slabheader_new(db->mctx, node);
-	newheader->typepair = DNS_TYPEPAIR_VALUE(type, covers);
+	newheader = dns_slabheader_new(db->mctx, node,
+				       DNS_TYPEPAIR_VALUE(type, covers));
 	setttl(newheader, 0);
 	atomic_init(&newheader->attributes, attributes);
 
@@ -3140,7 +3034,7 @@ qpcache_deleterdataset(dns_db_t *db, dns_dbnode_t *node,
 	result = add(qpdb, qpnode, newheader, DNS_DBADD_FORCE, NULL, 0,
 		     nlocktype, isc_rwlocktype_none DNS__DB_FLARG_PASS);
 	if (result != ISC_R_SUCCESS) {
-		dns_slabheader_destroy(&newheader);
+		delete_header(qpdb, &newheader);
 	}
 	NODE_UNLOCK(nlock, &nlocktype);
 
@@ -3279,13 +3173,16 @@ rdatasetiter_first(dns_rdatasetiter_t *it DNS__DB_FLARG) {
 
 	NODE_RDLOCK(nlock, &nlocktype);
 
-	DNS_SLABTOP_FOREACH(top, qpnode->data) {
-		dns_slabheader_t *header = first_existing_header(top);
+	DNS_SLABHEADER_FOREACH(tmp, &qpnode->headers, headerlink) {
+		if (!EXISTS(tmp) || ANCIENT(tmp)) {
+			if (!EXPIREDOK(iterator)) {
+				continue;
+			}
+		}
 
-		if (EXPIREDOK(iterator) ||
-		    (header != NULL && iterator_active(qpdb, iterator, header)))
+		if (EXPIREDOK(iterator) || iterator_active(qpdb, iterator, tmp))
 		{
-			iterator->current = top;
+			iterator->current = tmp;
 			break;
 		}
 	}
@@ -3306,7 +3203,7 @@ rdatasetiter_next(dns_rdatasetiter_t *it DNS__DB_FLARG) {
 	qpcnode_t *qpnode = (qpcnode_t *)iterator->common.node;
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 	isc_rwlock_t *nlock = &qpdb->buckets[qpnode->locknum].lock;
-	dns_slabtop_t *from = NULL;
+	dns_slabheader_t *from = NULL;
 
 	if (iterator->current == NULL) {
 		return ISC_R_NOMORE;
@@ -3314,19 +3211,23 @@ rdatasetiter_next(dns_rdatasetiter_t *it DNS__DB_FLARG) {
 
 	NODE_RDLOCK(nlock, &nlocktype);
 
-	from = cds_list_entry(iterator->current->types_link.next, dns_slabtop_t,
-			      types_link);
+	from = cds_list_entry(iterator->current->headerlink.next,
+			      dns_slabheader_t, headerlink);
 	iterator->current = NULL;
 
 	if (from != NULL) {
-		DNS_SLABTOP_FOREACH_FROM(top, qpnode->data, from) {
-			dns_slabheader_t *header = first_existing_header(top);
+		DNS_SLABHEADER_FOREACH_FROM(tmp, &qpnode->headers, from,
+					    headerlink) {
+			if (!EXISTS(tmp) || ANCIENT(tmp)) {
+				if (!EXPIREDOK(iterator)) {
+					continue;
+				}
+			}
 
 			if (EXPIREDOK(iterator) ||
-			    (header != NULL &&
-			     iterator_active(qpdb, iterator, header)))
+			    iterator_active(qpdb, iterator, tmp))
 			{
-				iterator->current = top;
+				iterator->current = tmp;
 				break;
 			}
 		}
@@ -3347,17 +3248,14 @@ rdatasetiter_current(dns_rdatasetiter_t *it,
 	qpc_rditer_t *iterator = (qpc_rditer_t *)it;
 	qpcache_t *qpdb = (qpcache_t *)(iterator->common.db);
 	qpcnode_t *qpnode = (qpcnode_t *)iterator->common.node;
-	dns_slabtop_t *top = NULL;
+	dns_slabheader_t *header = NULL;
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 	isc_rwlock_t *nlock = &qpdb->buckets[qpnode->locknum].lock;
 
-	top = iterator->current;
-	REQUIRE(top != NULL);
-
 	NODE_RDLOCK(nlock, &nlocktype);
 
-	dns_slabheader_t *header = first_existing_header(top);
-	INSIST(header != NULL);
+	header = iterator->current;
+	REQUIRE(header != NULL);
 
 	bindrdataset(qpdb, qpnode, header, iterator->common.now, nlocktype,
 		     isc_rwlocktype_none, rdataset DNS__DB_FLARG_PASS);
@@ -3661,29 +3559,6 @@ dbiterator_origin(dns_dbiterator_t *iterator, dns_name_t *name) {
 }
 
 static void
-qpcnode_deletedata(dns_dbnode_t *node ISC_ATTR_UNUSED, void *data) {
-	dns_slabheader_t *header = data;
-	qpcache_t *qpdb = HEADERNODE(header)->qpdb;
-
-	if (ISC_LINK_LINKED(header, dirtylink)) {
-		ISC_LIST_UNLINK(HEADERNODE(header)->dirty, header, dirtylink);
-	}
-
-	/*
-	 * This place is the only place where we actually need header->typepair.
-	 */
-	update_rrsetstats(qpdb->rrsetstats, header->typepair,
-			  atomic_load_acquire(&header->attributes), false);
-
-	if (header->noqname != NULL) {
-		dns_slabheader_freeproof(qpdb->common.mctx, &header->noqname);
-	}
-	if (header->closest != NULL) {
-		dns_slabheader_freeproof(qpdb->common.mctx, &header->closest);
-	}
-}
-
-static void
 setmaxrrperset(dns_db_t *db, uint32_t value) {
 	qpcache_t *qpdb = (qpcache_t *)db;
 
@@ -3726,20 +3601,15 @@ static void
 qpcnode_destroy(qpcnode_t *qpnode) {
 	qpcache_t *qpdb = qpnode->qpdb;
 
-	DNS_SLABTOP_FOREACH(top, qpnode->data) {
-		dns_slabheader_t *header = NULL, *header_next = NULL;
-		cds_list_for_each_entry_safe(header, header_next, &top->headers,
-					     headers_link)
-		{
-			cds_list_del(&header->headers_link);
-			dns_slabheader_destroy(&header);
-		}
+	clean_cache_node(qpdb, qpnode);
 
-		if (ISC_SIEVE_LINKED(top, link)) {
-			ISC_SIEVE_UNLINK(qpdb->buckets[qpnode->locknum].sieve,
-					 top, link);
-		}
-		dns_slabtop_destroy(((dns_db_t *)qpdb)->mctx, &top);
+	INSIST(cds_list_empty(&qpnode->dirty));
+
+	DNS_SLABHEADER_FOREACH(header, &qpnode->headers, headerlink) {
+		ISC_SIEVE_UNLINK(qpdb->buckets[qpnode->locknum].sieve, header,
+				 sievelink);
+		cds_list_del(&header->headerlink);
+		delete_header(qpdb, &header);
 	}
 
 	dns_name_free(&qpnode->name, qpnode->mctx);
