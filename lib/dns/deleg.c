@@ -58,6 +58,9 @@ struct dns_delegdb {
 	 * case the configuration of the new view fails.
 	 */
 	size_t attachedviews;
+
+	size_t lowater;
+	size_t hiwater;
 };
 
 static void
@@ -507,11 +510,16 @@ dns_delegset_addns(dns_delegset_t *delegset, dns_deleg_t *deleg,
 }
 
 static void
-deleg_cleanup_lru(dns_delegdb_t *delegdb, dns_qpmulti_t *nodes,
-		  size_t requested) {
+delegdb_cleanup(dns_delegdb_t *delegdb, dns_qpmulti_t *nodes) {
 	dns_qp_t *qp = NULL;
 	delegdb_node_t *node = NULL;
 	size_t reclaimed = 0;
+	size_t requested = 0;
+
+	if (!isc_mem_isovermem(delegdb->mctx)) {
+		return;
+	}
+	requested = delegdb->hiwater - delegdb->lowater;
 
 	dns_qpmulti_write(nodes, &qp);
 
@@ -530,41 +538,6 @@ deleg_cleanup_lru(dns_delegdb_t *delegdb, dns_qpmulti_t *nodes,
 
 	dns_qp_compact(qp, DNS_QPGC_ALL);
 	dns_qpmulti_commit(nodes, &qp);
-}
-
-static void
-deleg_cleanup(dns_delegdb_t *delegdb, dns_qpmulti_t *nodes, size_t requested) {
-	/*
-	 * So... There used to be 2 cleanup flows here. The logic was (1) remove
-	 * all expired entries and (2) if we still need more space (requested <
-	 * reclaimed), remove last recently used node from the current
-	 * thread/loop (because of the lock-free pattern LRU/SIEVE).
-	 *
-	 * But! If an expired node is removed from a
-	 * loop/thread A and it was actually introduced from a
-	 * loop/thread B, it will come up from ISC_SIEVE_NEXT()
-	 * at some point in the loop/thread B if
-	 * delegdb_node_destroy() hasn't been run first... And
-	 * this would make us use a dangling pointer in
-	 * cleanup_lru() flow.
-	 *
-	 * So even if we were running rcu_barrier() here ensures
-	 * QP reclamation flow runs, nothing tells us if
-	 * delegdb_node_destroy() of the node from loop/thread B
-	 * (which has been scheduled) has run yet. And we might
-	 * then, still have the node in the DB LRU list of
-	 * loop/thread B, and dealing with a dangling pointer.
-	 * Huh!
-	 *
-	 * To solve the problem I end up with something simpler: just use
-	 * LRU/SIEVE. And too bad if we don't remove all expired entries right
-	 * now. The `deleg_unmark_expired()` flow still probably gives a little
-	 * bit help to SIEVE to remove the expired nodes.
-	 *
-	 */
-	if (isc_mem_isovermem(delegdb->mctx)) {
-		deleg_cleanup_lru(delegdb, nodes, requested);
-	}
 }
 
 static size_t
@@ -601,9 +574,7 @@ delegdb_node_prepare(dns_delegdb_t *delegdb, dns_qpmulti_t *nodes,
 		     isc_stdtime_t now, dns_ttl_t ttl,
 		     const dns_name_t *zonecut, dns_delegset_t *delegset,
 		     delegdb_node_t **nodep) {
-	size_t nodesize = delegdb_node_size(zonecut, delegset);
-
-	deleg_cleanup(delegdb, nodes, nodesize);
+	delegdb_cleanup(delegdb, nodes);
 
 	if (ttl == 0) {
 		ttl = 1;
@@ -611,13 +582,14 @@ delegdb_node_prepare(dns_delegdb_t *delegdb, dns_qpmulti_t *nodes,
 	delegset->expires = ttl + now;
 
 	*nodep = isc_mem_get(delegdb->mctx, sizeof(**nodep));
-	**nodep = (delegdb_node_t){ .magic = DELEGDB_NODE_MAGIC,
-				    .references = ISC_REFCOUNT_INITIALIZER(1),
-				    .zonecut = DNS_NAME_INITEMPTY,
-				    .link = ISC_LINK_INITIALIZER,
-				    .deadlink = ISC_LINK_INITIALIZER,
-				    .size = nodesize,
-				    .loop = isc_loop_ref(isc_loop()) };
+	**nodep =
+		(delegdb_node_t){ .magic = DELEGDB_NODE_MAGIC,
+				  .references = ISC_REFCOUNT_INITIALIZER(1),
+				  .zonecut = DNS_NAME_INITEMPTY,
+				  .link = ISC_LINK_INITIALIZER,
+				  .deadlink = ISC_LINK_INITIALIZER,
+				  .size = delegdb_node_size(zonecut, delegset),
+				  .loop = isc_loop_ref(isc_loop()) };
 
 	dns_delegdb_attach(delegdb, &(*nodep)->delegdb);
 	dns_delegset_attach(delegset, &(*nodep)->delegset);
@@ -1068,16 +1040,14 @@ void
 dns_delegdb_setsize(dns_delegdb_t *delegdb, size_t size) {
 	REQUIRE(VALID_DELEGDB(delegdb));
 
-	size_t hiwater, lowater;
-
 	if (size != 0 && size < DELEGDB_MINSIZE) {
 		size = DELEGDB_MINSIZE;
 	}
 
-	hiwater = size - (size >> 3); /* Approximately 7/8ths. */
-	lowater = size - (size >> 2); /* Approximately 3/4ths. */
+	delegdb->hiwater = size - (size >> 3); /* Approximately 7/8ths. */
+	delegdb->lowater = size - (size >> 2); /* Approximately 3/4ths. */
 
-	if (size == 0 || hiwater == 0 || lowater == 0) {
+	if (size == 0 || delegdb->hiwater == 0 || delegdb->lowater == 0) {
 		isc_mem_clearwater(delegdb->mctx);
 
 		/*
@@ -1085,6 +1055,7 @@ dns_delegdb_setsize(dns_delegdb_t *delegdb, size_t size) {
 		 * implicit overmem bypass, so the user should be warned...
 		 */
 	} else {
-		isc_mem_setwater(delegdb->mctx, hiwater, lowater);
+		isc_mem_setwater(delegdb->mctx, delegdb->hiwater,
+				 delegdb->lowater);
 	}
 }
