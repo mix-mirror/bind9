@@ -243,6 +243,14 @@ dns_delegdb_flush(dns_delegdb_t *delegdb) {
 	dns_qpmulti_t *xchg_nodes = NULL;
 	dns_qpmulti_t *new_nodes = NULL;
 
+	/*
+	 * FIXME: The SIEVE lists need the same treatment, otherwise
+	 * the LRU has old nodes, but it points to a new database.
+	 * We might need to wrap the qpmulti + SIEVE lists into
+	 * a structure that gets swapped instead of the qpmulti
+	 * directly.
+	 */
+
 	rcu_read_lock();
 	old_nodes = rcu_dereference(delegdb->nodes);
 	if (old_nodes != NULL) {
@@ -348,6 +356,12 @@ dns__deleg_lookup(dns_delegdb_t *delegdb, dns_qpread_t *qpr,
 		INSIST(node->delegset);
 		dns_delegset_attach(node->delegset, delegsetp);
 		ISC_SIEVE_MARK(node, visited);
+	} else {
+		/*
+		 * FIXME: if we lookup something that has expired, we need
+		 * either the "deadnodes" (see qpcache) mechanism here - or call
+		 * something like isc_async_run(delete_me, node).
+		 */
 	}
 
 	return result;
@@ -382,9 +396,11 @@ dns_delegset_allocset(dns_delegdb_t *delegdb, dns_delegset_t **delegsetp) {
 
 	dns_delegset_t *delegset = isc_mem_get(delegdb->mctx,
 					       sizeof(*delegset));
-	*delegset = (dns_delegset_t){ .magic = DNS_DELEGSET_MAGIC,
-				      .references = ISC_REFCOUNT_INITIALIZER(1),
-				      .delegs = ISC_LIST_INITIALIZER };
+	*delegset = (dns_delegset_t){
+		.magic = DNS_DELEGSET_MAGIC,
+		.references = ISC_REFCOUNT_INITIALIZER(1),
+		.delegs = ISC_LIST_INITIALIZER,
+	};
 	isc_mem_attach(delegdb->mctx, &delegset->mctx);
 
 	*delegsetp = delegset;
@@ -994,7 +1010,7 @@ dns_delegdb_delete(dns_delegdb_t *delegdb, const dns_name_t *name, bool tree) {
 	rcu_read_lock();
 	nodes = rcu_dereference(delegdb->nodes);
 	if (nodes != NULL) {
-		dns_qpmulti_write(delegdb->nodes, &qp);
+		dns_qpmulti_write(nodes, &qp);
 		if (tree) {
 			result = deleg_deletetree(qp, name);
 		} else {
