@@ -262,7 +262,6 @@ check_struct_conversions(dns_rdata_t *rdata, size_t structsize,
 	isc_buffer_t target;
 	void *rdata_struct;
 	char buf[1024];
-	unsigned int count = 0;
 
 	rdata_struct = isc_mem_allocate(isc_g_mctx, structsize);
 	assert_non_null(rdata_struct);
@@ -297,64 +296,79 @@ check_struct_conversions(dns_rdata_t *rdata, size_t structsize,
 	case dns_rdatatype_apl: {
 		dns_rdata_in_apl_t *apl = rdata_struct;
 
-		for (result = dns_rdata_apl_first(apl); result == ISC_R_SUCCESS;
-		     result = dns_rdata_apl_next(apl))
-		{
-			dns_rdata_apl_ent_t apl_ent;
-			dns_rdata_apl_current(apl, &apl_ent);
-			count++;
+		for (size_t pass = 1; pass < 3; pass++) {
+			unsigned int count = 0;
+			for (result = dns_rdata_apl_first(apl);
+			     result == ISC_R_SUCCESS;
+			     result = dns_rdata_apl_next(apl))
+			{
+				dns_rdata_apl_ent_t apl_ent;
+				dns_rdata_apl_current(apl, &apl_ent);
+				count++;
+			}
+			assert_int_equal(result, ISC_R_NOMORE);
+			assert_int_equal(count, loop);
 		}
-		assert_int_equal(result, ISC_R_NOMORE);
-		assert_int_equal(count, loop);
 		break;
 	}
 	case dns_rdatatype_hip: {
 		dns_rdata_hip_t *hip = rdata_struct;
 
-		for (result = dns_rdata_hip_first(hip); result == ISC_R_SUCCESS;
-		     result = dns_rdata_hip_next(hip))
-		{
-			dns_name_t name;
-			dns_name_init(&name);
-			dns_rdata_hip_current(hip, &name);
-			assert_int_not_equal(dns_name_countlabels(&name), 0);
-			assert_true(dns_name_isabsolute(&name));
-			count++;
+		for (size_t pass = 1; pass < 3; pass++) {
+			unsigned int count = 0;
+			for (result = dns_rdata_hip_first(hip);
+			     result == ISC_R_SUCCESS;
+			     result = dns_rdata_hip_next(hip))
+			{
+				dns_name_t name;
+				dns_name_init(&name);
+				dns_rdata_hip_current(hip, &name);
+				assert_int_not_equal(
+					dns_name_countlabels(&name), 0);
+				assert_true(dns_name_isabsolute(&name));
+				count++;
+			}
+			assert_int_equal(result, ISC_R_NOMORE);
+			assert_int_equal(count, loop);
 		}
-		assert_int_equal(result, ISC_R_NOMORE);
-		assert_int_equal(count, loop);
 		break;
 	}
 	case dns_rdatatype_https: {
 		dns_rdata_in_https_t *https = rdata_struct;
 
-		for (result = dns_rdata_in_https_first(https);
-		     result == ISC_R_SUCCESS;
-		     result = dns_rdata_in_https_next(https))
-		{
-			isc_region_t region;
-			dns_rdata_in_https_current(https, &region);
-			assert_true(region.length >= 4);
-			count++;
+		for (size_t pass = 1; pass < 3; pass++) {
+			unsigned int count = 0;
+			for (result = dns_rdata_in_https_first(https);
+			     result == ISC_R_SUCCESS;
+			     result = dns_rdata_in_https_next(https))
+			{
+				isc_region_t region;
+				dns_rdata_in_https_current(https, &region);
+				assert_true(region.length >= 4);
+				count++;
+			}
+			assert_int_equal(result, ISC_R_NOMORE);
+			assert_int_equal(count, loop);
 		}
-		assert_int_equal(result, ISC_R_NOMORE);
-		assert_int_equal(count, loop);
 		break;
 	}
 	case dns_rdatatype_svcb: {
 		dns_rdata_in_svcb_t *svcb = rdata_struct;
 
-		for (result = dns_rdata_in_svcb_first(svcb);
-		     result == ISC_R_SUCCESS;
-		     result = dns_rdata_in_svcb_next(svcb))
-		{
-			isc_region_t region;
-			dns_rdata_in_svcb_current(svcb, &region);
-			assert_true(region.length >= 4);
-			count++;
+		for (size_t pass = 1; pass < 3; pass++) {
+			unsigned int count = 0;
+			for (result = dns_rdata_in_svcb_first(svcb);
+			     result == ISC_R_SUCCESS;
+			     result = dns_rdata_in_svcb_next(svcb))
+			{
+				isc_region_t region;
+				dns_rdata_in_svcb_current(svcb, &region);
+				assert_true(region.length >= 4);
+				count++;
+			}
+			assert_int_equal(result, ISC_R_NOMORE);
+			assert_int_equal(count, loop);
 		}
-		assert_int_equal(result, ISC_R_NOMORE);
-		assert_int_equal(count, loop);
 		break;
 	}
 	}
