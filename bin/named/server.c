@@ -4292,7 +4292,7 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	/*
 	 * Totally arbitrary decision for now. This might need its own knob.
 	 */
-	dns_delegdb_setsize(view->deleg, max_cache_size / 6);
+	dns_delegdb_setsize(view->deleg, 1024 * 16);
 
 	/*
 	 * The previous view isn't needed anymore.

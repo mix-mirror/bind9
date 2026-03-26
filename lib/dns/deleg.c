@@ -118,6 +118,7 @@ delegdb_node_destroy_async(void *arg) {
 	REQUIRE(VALID_DELEGDB_NODE(node));
 	REQUIRE(DNS_DELEGSET_VALID(node->delegset));
 
+	fprintf(stderr, "DELEGDB, delegdb_node_destroy_async %p\n", node);
 	node->magic = 0;
 
 	isc_mem_attach(node->delegdb->mctx, &mctx);
@@ -137,6 +138,7 @@ delegdb_node_destroy_async(void *arg) {
 static void
 delegdb_node_destroy(delegdb_node_t *node) {
 	REQUIRE(VALID_DELEGDB_NODE(node));
+	fprintf(stderr, "DELEGDB delegdb_node_destroy %p\n", node);
 
 	if (node->loop == isc_loop()) {
 		delegdb_node_destroy_async(node);
@@ -1048,9 +1050,9 @@ void
 dns_delegdb_setsize(dns_delegdb_t *delegdb, size_t size) {
 	REQUIRE(VALID_DELEGDB(delegdb));
 
-	if (size != 0 && size < DELEGDB_MINSIZE) {
-		size = DELEGDB_MINSIZE;
-	}
+	//	if (size != 0 && size < DELEGDB_MINSIZE) {
+	//		size = DELEGDB_MINSIZE;
+	//	}
 
 	delegdb->hiwater = size - (size >> 3); /* Approximately 7/8ths. */
 	delegdb->lowater = size - (size >> 2); /* Approximately 3/4ths. */
