@@ -88,8 +88,6 @@
 #define VALID_QPDB(qpdb) \
 	((qpdb) != NULL && (qpdb)->common.impmagic == QPDB_MAGIC)
 
-#define HEADERNODEX(h) ((qpcnode_t *)((h)->node))
-
 /*%
  * Forward declarations
  */
