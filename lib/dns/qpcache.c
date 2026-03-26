@@ -88,8 +88,6 @@
 #define VALID_QPDB(qpdb) \
 	((qpdb) != NULL && (qpdb)->common.impmagic == QPDB_MAGIC)
 
-#define HEADERNODE(h) ((qpcnode_t *)((h)->node))
-
 /*%
  * Forward declarations
  */
@@ -441,7 +439,7 @@ expire_lru_headers(qpcache_t *qpdb, uint32_t locknum, size_t requested,
 			return;
 		}
 
-		expired += expireheader(qpdb, HEADERNODE(header), header,
+		expired += expireheader(qpdb, (qpcnode_t *)header->node, header,
 					nlocktypep, tlocktypep,
 					dns_expire_lru DNS__DB_FLARG_PASS);
 
@@ -449,10 +447,10 @@ expire_lru_headers(qpcache_t *qpdb, uint32_t locknum, size_t requested,
 }
 
 static void
-qpcache_miss(qpcache_t *qpdb, dns_slabheader_t *newheader,
+qpcache_miss(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 	     isc_rwlocktype_t *nlocktypep,
 	     isc_rwlocktype_t *tlocktypep DNS__DB_FLARG) {
-	uint32_t locknum = HEADERNODE(newheader)->locknum;
+	uint32_t locknum = qpnode->locknum;
 
 	if (isc_mem_isovermem(qpdb->common.mctx)) {
 		/*
@@ -465,8 +463,7 @@ qpcache_miss(qpcache_t *qpdb, dns_slabheader_t *newheader,
 		 */
 
 		size_t purgesize =
-			2 * (sizeof(qpcnode_t) +
-			     dns_name_size(&HEADERNODE(newheader)->name)) +
+			2 * (sizeof(qpcnode_t) + dns_name_size(&qpnode->name)) +
 			rdataset_size(newheader) + QP_SAFETY_MARGIN;
 
 		expire_lru_headers(qpdb, locknum, purgesize, nlocktypep,
@@ -782,10 +779,9 @@ update_rrsetstats(dns_stats_t *stats, const dns_typepair_t typepair,
 }
 
 static bool
-mark(dns_slabheader_t *header, uint_least16_t flag) {
+mark(qpcache_t *qpdb, dns_slabheader_t *header, uint_least16_t flag) {
 	uint_least16_t attributes = atomic_load_acquire(&header->attributes);
 	uint_least16_t newattributes = 0;
-	qpcache_t *qpdb = HEADERNODE(header)->qpdb;
 
 	/*
 	 * If we are already ancient there is nothing to do.
@@ -826,7 +822,7 @@ make_dirty(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *header) {
 static void
 mark_ancient(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *header) {
 	if (header != NULL) {
-		if (mark(header, DNS_SLABHEADERATTR_ANCIENT)) {
+		if (mark(qpdb, header, DNS_SLABHEADERATTR_ANCIENT)) {
 			setttl(header, 0);
 			make_dirty(qpdb, qpnode, header);
 		}
@@ -1088,7 +1084,7 @@ check_stale_header(dns_slabheader_t *header, qpc_search_t *search) {
 	DNS_SLABHEADER_CLRATTR(header, DNS_SLABHEADERATTR_STALE_WINDOW);
 	if (!ZEROTTL(header) && KEEPSTALE(search->qpdb) && stale > search->now)
 	{
-		mark(header, DNS_SLABHEADERATTR_STALE);
+		mark(search->qpdb, header, DNS_SLABHEADERATTR_STALE);
 		/*
 		 * If DNS_DBFIND_STALESTART is set then it means we
 		 * failed to resolve the name during recursion, in
@@ -2511,7 +2507,7 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 		cds_list_replace_init(&oldheader->headerlink,
 				      &newheader->headerlink);
 
-		qpcache_miss(qpdb, newheader, &nlocktype,
+		qpcache_miss(qpdb, qpnode, newheader, &nlocktype,
 			     &tlocktype DNS__DB_FLARG_PASS);
 
 		mark_ancient(qpdb, qpnode, oldheader);
@@ -2532,7 +2528,7 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 		}
 
 		cds_list_add(&newheader->headerlink, &qpnode->headers);
-		qpcache_miss(qpdb, newheader, &nlocktype,
+		qpcache_miss(qpdb, qpnode, newheader, &nlocktype,
 			     &tlocktype DNS__DB_FLARG_PASS);
 
 		if (overmaxtype(qpdb, ntypes)) {
@@ -2598,10 +2594,12 @@ addnoqname(isc_mem_t *mctx, dns_slabheader_t *newheader, uint32_t maxrrperset,
 cleanup:
 	if (result != ISC_R_SUCCESS) {
 		if (r1.base != NULL) {
-			isc_mem_put(mctx, r1.base, r1.length);
+			dns_slabheader_t *h = (dns_slabheader_t *)r1.base;
+			dns_slabheader_destroy(&h);
 		}
 		if (r2.base != NULL) {
-			isc_mem_put(mctx, r2.base, r2.length);
+			dns_slabheader_t *h = (dns_slabheader_t *)r2.base;
+			dns_slabheader_destroy(&h);
 		}
 	}
 	dns_rdataset_disassociate(&neg);
@@ -2639,10 +2637,12 @@ addclosest(isc_mem_t *mctx, dns_slabheader_t *newheader, uint32_t maxrrperset,
 cleanup:
 	if (result != ISC_R_SUCCESS) {
 		if (r1.base != NULL) {
-			isc_mem_put(mctx, r1.base, r1.length);
+			dns_slabheader_t *h = (dns_slabheader_t *)r1.base;
+			dns_slabheader_destroy(&h);
 		}
 		if (r2.base != NULL) {
-			isc_mem_put(mctx, r2.base, r2.length);
+			dns_slabheader_t *h = (dns_slabheader_t *)r2.base;
+			dns_slabheader_destroy(&h);
 		}
 	}
 	dns_rdataset_disassociate(&neg);
@@ -2782,6 +2782,12 @@ qpcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 
 	return result;
 cleanup:
+	if (newheader->noqname != NULL) {
+		dns_slabheader_freeproof(qpnode->mctx, &newheader->noqname);
+	}
+	if (newheader->closest != NULL) {
+		dns_slabheader_freeproof(qpnode->mctx, &newheader->closest);
+	}
 	dns_slabheader_destroy(&newheader);
 	return result;
 }

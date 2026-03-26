@@ -78,6 +78,8 @@ struct dns_slabheader_proof {
 	cds_list_for_each_entry_safe_from(pos, pos##_next, head, member)
 
 struct dns_slabheader {
+	isc_mem_t *mctx;
+
 	_Atomic(uint16_t)    attributes;
 	_Atomic(dns_trust_t) trust;
 
