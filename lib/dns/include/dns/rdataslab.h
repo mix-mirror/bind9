@@ -78,6 +78,8 @@ struct dns_slabheader_proof {
 	cds_list_for_each_entry_safe_from(pos, pos##_next, head, member)
 
 struct dns_slabheader {
+	isc_mem_t *mctx;
+
 	_Atomic(uint16_t)    attributes;
 	_Atomic(dns_trust_t) trust;
 
@@ -104,11 +106,6 @@ struct dns_slabheader {
 	 * The database node objects containing this rdataset, if any.
 	 */
 	dns_dbnode_t *node;
-
-	/*%
-	 * Cached glue records for an rdataset of type NS (zone only).
-	 */
-	dns_gluelist_t *gluelist;
 
 	/*%
 	 * Used for SIEVE-LRU cache eviction.

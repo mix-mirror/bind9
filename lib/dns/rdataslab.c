@@ -107,6 +107,7 @@ newslab(dns_rdataset_t *rdataset, isc_mem_t *mctx, isc_region_t *region,
 	dns_slabheader_t *header = isc_mem_get(mctx, size);
 
 	*header = (dns_slabheader_t){
+		.mctx = isc_mem_ref(mctx),
 		.headerlink = CDS_LIST_HEAD_INIT(header->headerlink),
 		.dirtylink = CDS_LIST_HEAD_INIT(header->dirtylink),
 		.trust = rdataset->trust,
@@ -479,6 +480,7 @@ dns_slabheader_new(isc_mem_t *mctx, dns_dbnode_t *node,
 		   dns_typepair_t typepair) {
 	dns_slabheader_t *header = isc_mem_get(mctx, sizeof(*header));
 	*header = (dns_slabheader_t){
+		.mctx = isc_mem_ref(mctx),
 		.node = node,
 		.headerlink = CDS_LIST_HEAD_INIT(header->headerlink),
 		.dirtylink = CDS_LIST_HEAD_INIT(header->dirtylink),
@@ -491,12 +493,7 @@ dns_slabheader_new(isc_mem_t *mctx, dns_dbnode_t *node,
 void
 dns_slabheader_destroy(dns_slabheader_t **headerp) {
 	unsigned int size;
-	dns_slabheader_t *header = *headerp;
-
-	*headerp = NULL;
-
-	isc_mem_t *mctx = header->node->mctx;
-	dns_db_deletedata(header->node, header);
+	dns_slabheader_t *header = MOVE_OWNERSHIP(*headerp);
 
 	if (EXISTS(header)) {
 		size = dns_rdataslab_size(header);
@@ -504,7 +501,7 @@ dns_slabheader_destroy(dns_slabheader_t **headerp) {
 		size = sizeof(*header);
 	}
 
-	isc_mem_put(mctx, header, size);
+	isc_mem_putanddetach(&header->mctx, header, size);
 }
 
 void
