@@ -517,9 +517,11 @@ delegdb_cleanup(dns_delegdb_t *delegdb, dns_qpmulti_t *nodes) {
 	size_t requested = 0;
 
 	if (!isc_mem_isovermem(delegdb->mctx)) {
+		fprintf(stderr, "DELEGDB NO OVERMEM\n");
 		return;
 	}
 	requested = delegdb->hiwater - delegdb->lowater;
+	fprintf(stderr, "DELEGDB OVERMEM REQUESTED %zu\n", requested);
 
 	dns_qpmulti_write(nodes, &qp);
 
@@ -532,6 +534,7 @@ delegdb_cleanup(dns_delegdb_t *delegdb, dns_qpmulti_t *nodes) {
 		reclaimed += node->size;
 
 		ISC_SIEVE_UNLINK(delegdb->lru[isc_tid()], node, link);
+		fprintf(stderr, "DELEGDB LRU REMOVING NODE %p\n", node);
 		(void)dns_qp_deletename(qp, &node->zonecut,
 					DNS_DBNAMESPACE_NORMAL, NULL, NULL);
 	}
@@ -628,6 +631,7 @@ dns_delegset_write(dns_delegdb_t *delegdb, const dns_name_t *zonecut,
 	 * First, check (without write txn) if the node already exists and is
 	 * still valid.
 	 */
+	fprintf(stderr, "DELEGDB LOOKUP EXISTS\n");
 	dns_qpmulti_query(nodes, &qpr);
 	result = dns_qp_lookup(&qpr, zonecut, DNS_DBNAMESPACE_NORMAL, NULL,
 			       NULL, (void **)&node, NULL);
@@ -645,12 +649,14 @@ dns_delegset_write(dns_delegdb_t *delegdb, const dns_name_t *zonecut,
 	 * clean up expired/least recently used delegation, then allocate and
 	 * initialize a new node.
 	 */
+	fprintf(stderr, "DELEGDB PREPARE\n");
 	delegdb_node_prepare(delegdb, nodes, now, ttl, zonecut, delegset,
 			     &node);
 
 	/*
 	 * Add the node in the DB
 	 */
+	fprintf(stderr, "DELEGDB INSERT\n");
 	dns_qpmulti_write(nodes, &qp);
 	if (result == ISC_R_SUCCESS) {
 		/*
@@ -685,7 +691,9 @@ dns_delegset_write(dns_delegdb_t *delegdb, const dns_name_t *zonecut,
 	ISC_SIEVE_INSERT(delegdb->lru[isc_tid()], node, link);
 
 	delegdb_node_unref(node);
+	fprintf(stderr, "DELEGDB COMPACT\n");
 	dns_qp_compact(qp, DNS_QPGC_MAYBE);
+	fprintf(stderr, "DELEGDB COMMIT\n");
 	dns_qpmulti_commit(nodes, &qp);
 
 cleanup:
