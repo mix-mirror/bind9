@@ -142,8 +142,17 @@ delegdb_node_destroy(delegdb_node_t *node) {
 	}
 }
 
+#ifdef DNS_DELEGDB_NODETRACE
+#define delegdb_node_ref(ptr) \
+	delegdb_node__ref(ptr, __func__, __FILE__, __LINE__)
+#define delegdb_node_unref(ptr) \
+	delegdb_node__unref(ptr, __func__, __FILE__, __LINE__)
+ISC_REFCOUNT_STATIC_TRACE_DECL(delegdb_node);
+ISC_REFCOUNT_STATIC_TRACE_IMPL(delegdb_node, delegdb_node_destroy);
+#else
 ISC_REFCOUNT_STATIC_DECL(delegdb_node);
 ISC_REFCOUNT_STATIC_IMPL(delegdb_node, delegdb_node_destroy);
+#endif
 
 static void
 dbnode_attach(ISC_ATTR_UNUSED void *uctx, void *pval,
