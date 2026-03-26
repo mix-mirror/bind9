@@ -490,7 +490,6 @@ dns_zone_create(dns_zone_t **zonep, isc_mem_t *mctx, isc_tid_t tid) {
 		.minretry = DNS_ZONE_MINRETRY,
 		.checkdstype = dns_checkdstype_yes,
 		.zero_no_soa_ttl = true,
-		.check_names = dns_severity_ignore,
 		.idlein = DNS_DEFAULT_IDLEIN,
 		.idleout = DNS_DEFAULT_IDLEOUT,
 		.maxxfrin = MAX_XFER_TIME,
@@ -680,7 +679,6 @@ dns__zone_free(dns_zone_t *zone) {
 	dns_zone_setalsonotify(zone, NULL, NULL, NULL, NULL, 0);
 	dns_zone_setcdsendpoints(zone, NULL, NULL, NULL, NULL, 0);
 
-	zone->check_names = dns_severity_ignore;
 	if (zone->update_acl != NULL) {
 		dns_acl_detach(&zone->update_acl);
 	}
@@ -4249,15 +4247,15 @@ zone_postload(dns_zone_t *zone, dns_db_t *db, isc_time_t loadtime,
 			dns_zone_logc(zone, DNS_LOGCATEGORY_ZONELOAD,
 				      ISC_LOG_ERROR, "has %d SOA records",
 				      soacount);
-			result = DNS_R_BADZONE;
+			RETERR(DNS_R_BADZONE);
 		}
-		if (nscount == 0) {
+		if (nscount == 0 && DNS_ZONE_OPTION(zone, DNS_ZONEOPT_CHECKNS))
+		{
 			dns_zone_logc(zone, DNS_LOGCATEGORY_ZONELOAD,
 				      ISC_LOG_ERROR, "has no NS records");
-			result = DNS_R_BADZONE;
-		}
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup;
+			if (DNS_ZONE_OPTION(zone, DNS_ZONEOPT_FATALNS)) {
+				RETERR(DNS_R_BADZONE);
+			}
 		}
 		if (zone->type == dns_zone_primary && errors != 0) {
 			CLEANUP(DNS_R_BADZONE);
@@ -4657,7 +4655,7 @@ zone_check_ns(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *version,
 	dns_name_t *foundname;
 	int level;
 
-	if (DNS_ZONE_OPTION(zone, DNS_ZONEOPT_NOCHECKNS)) {
+	if (!DNS_ZONE_OPTION(zone, DNS_ZONEOPT_CHECKNS)) {
 		return true;
 	}
 
@@ -15235,14 +15233,14 @@ zone_replacedb(dns_zone_t *zone, dns_db_t *db, bool dump) {
 		if (soacount != 1) {
 			dns_zone_log(zone, ISC_LOG_ERROR, "has %d SOA records",
 				     soacount);
-			result = DNS_R_BADZONE;
+			RETERR(DNS_R_BADZONE);
 		}
-		if (nscount == 0 && zone->type != dns_zone_key) {
+		if (nscount == 0 && DNS_ZONE_OPTION(zone, DNS_ZONEOPT_CHECKNS))
+		{
 			dns_zone_log(zone, ISC_LOG_ERROR, "has no NS records");
-			result = DNS_R_BADZONE;
-		}
-		if (result != ISC_R_SUCCESS) {
-			return result;
+			if (DNS_ZONE_OPTION(zone, DNS_ZONEOPT_FATALNS)) {
+				RETERR(DNS_R_BADZONE);
+			}
 		}
 	} else {
 		dns_zone_log(zone, ISC_LOG_ERROR,
@@ -15505,19 +15503,29 @@ again:
 				zone_unload(zone);
 				goto next_primary;
 			}
-			if (nscount == 0) {
+			if (nscount == 0 &&
+			    DNS_ZONE_OPTION(zone, DNS_ZONEOPT_CHECKNS))
+			{
 				dns_zone_logc(zone, DNS_LOGCATEGORY_XFER_IN,
 					      ISC_LOG_ERROR,
 					      "transferred zone "
 					      "has no NS records");
-				if (DNS_ZONE_FLAG(zone, DNS_ZONEFLG_HAVETIMERS))
+				if (DNS_ZONE_OPTION(zone, DNS_ZONEOPT_FATALNS))
 				{
-					zone->refresh = DNS_ZONE_DEFAULTREFRESH;
-					zone->retry = DNS_ZONE_DEFAULTRETRY;
+					if (DNS_ZONE_FLAG(
+						    zone,
+						    DNS_ZONEFLG_HAVETIMERS))
+					{
+						zone->refresh =
+							DNS_ZONE_DEFAULTREFRESH;
+						zone->retry =
+							DNS_ZONE_DEFAULTRETRY;
+					}
+					DNS_ZONE_CLRFLAG(
+						zone, DNS_ZONEFLG_HAVETIMERS);
+					zone_unload(zone);
+					goto next_primary;
 				}
-				DNS_ZONE_CLRFLAG(zone, DNS_ZONEFLG_HAVETIMERS);
-				zone_unload(zone);
-				goto next_primary;
 			}
 			zone->refresh = RANGE(refresh, zone->minrefresh,
 					      zone->maxrefresh);
