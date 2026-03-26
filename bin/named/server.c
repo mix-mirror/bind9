@@ -5963,6 +5963,33 @@ cleanup:
 	return result;
 }
 
+static void
+configure_zone_nscheck(const cfg_obj_t *options, const cfg_obj_t *vconfig,
+		       dns_zone_t *zone) {
+	const cfg_obj_t *modeobj = NULL;
+	const cfg_obj_t *voptions = NULL;
+	const char *mode;
+
+	if (vconfig) {
+		voptions = cfg_tuple_get(vconfig, "options");
+	}
+	(void)named_config_findopt(voptions, options, "check-ns", &modeobj);
+	mode = cfg_obj_asstring(modeobj);
+
+	if (strcmp(mode, "fail") == 0) {
+		dns_zone_setoption(zone, DNS_ZONEOPT_CHECKNS, true);
+		dns_zone_setoption(zone, DNS_ZONEOPT_FATALNS, true);
+	} else if (strcmp(mode, "warn") == 0) {
+		dns_zone_setoption(zone, DNS_ZONEOPT_CHECKNS, true);
+		dns_zone_setoption(zone, DNS_ZONEOPT_FATALNS, false);
+	} else if (strcmp(mode, "ignore") == 0) {
+		dns_zone_setoption(zone, DNS_ZONEOPT_CHECKNS, false);
+		dns_zone_setoption(zone, DNS_ZONEOPT_FATALNS, false);
+	} else {
+		UNREACHABLE();
+	}
+}
+
 /*
  * Configure or reconfigure a zone.
  */
@@ -6277,8 +6304,7 @@ configure_zone(const cfg_obj_t *config, const cfg_obj_t *zconfig,
 		}
 	}
 
-	dns_zone_setoption(zone, DNS_ZONEOPT_CHECKNS, true);
-	dns_zone_setoption(zone, DNS_ZONEOPT_FATALNS, true);
+	configure_zone_nscheck(options, vconfig, zone);
 
 	if (zone_is_catz) {
 		dns_zone_catz_enable(zone, view->catzs);
