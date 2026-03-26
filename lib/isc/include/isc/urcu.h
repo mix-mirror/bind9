@@ -194,3 +194,15 @@
 #define _CMM_STORE_SHARED(x, v) CMM_STORE_SHARED(x, v)
 
 #endif /* __SANITIZE_THREAD__ */
+
+static inline int
+cds_list_empty_rcu(const struct cds_list_head *head) {
+	return head == rcu_dereference((head)->next);
+}
+
+#define cds_list_for_each_entry_rcu_from(pos, head, member)            \
+	for (pos = cds_list_entry(rcu_dereference((pos)->member.next), \
+				  __typeof__(*(pos)), member);         \
+	     &(pos)->member != (head);                                 \
+	     pos = cds_list_entry(rcu_dereference((pos)->member.next), \
+				  __typeof__(*(pos)), member))

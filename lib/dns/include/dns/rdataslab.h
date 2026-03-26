@@ -69,13 +69,17 @@ struct dns_slabheader_proof {
  * Used with node->data which is a cds_list_head of slabheaders
  * linked via <member>.
  */
-#define DNS_SLABHEADER_FOREACH(pos, head, member)         \
+#define DNS_SLABHEADER_FOREACH_SAFE(pos, head, member)    \
 	dns_slabheader_t *pos = NULL, *pos##_next = NULL; \
 	cds_list_for_each_entry_safe(pos, pos##_next, head, member)
 
-#define DNS_SLABHEADER_FOREACH_FROM(pos, head, first, member) \
-	dns_slabheader_t *pos = first, *pos##_next = NULL;    \
-	cds_list_for_each_entry_safe_from(pos, pos##_next, head, member)
+#define DNS_SLABHEADER_FOREACH_RCU(pos, head, member) \
+	dns_slabheader_t *pos = NULL;                 \
+	cds_list_for_each_entry_rcu(pos, head, member)
+
+#define DNS_SLABHEADER_FOREACH_RCU_FROM(pos, head, first, member) \
+	dns_slabheader_t *pos = first;                            \
+	cds_list_for_each_entry_rcu_from(pos, head, member)
 
 struct dns_slabheader {
 	isc_mem_t *mctx;
@@ -124,6 +128,8 @@ struct dns_slabheader {
 	_Atomic(isc_stdtime_t) last_refresh_fail_ts;
 
 	uint16_t nitems;
+
+	struct rcu_head rcu_head;
 
 	/*%
 	 * Flexible member indicates the address of the raw data
