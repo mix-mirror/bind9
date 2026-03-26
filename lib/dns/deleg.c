@@ -524,9 +524,8 @@ deleg_cleanup_lru(dns_delegdb_t *delegdb, dns_qpmulti_t *nodes,
 		reclaimed += node->size;
 
 		ISC_SIEVE_UNLINK(delegdb->lru[isc_tid()], node, link);
-		isc_result_t result = dns_qp_deletename(
-			qp, &node->zonecut, DNS_DBNAMESPACE_NORMAL, NULL, NULL);
-		INSIST(result == ISC_R_SUCCESS);
+		(void)dns_qp_deletename(qp, &node->zonecut,
+					DNS_DBNAMESPACE_NORMAL, NULL, NULL);
 	}
 
 	dns_qp_compact(qp, DNS_QPGC_ALL);
