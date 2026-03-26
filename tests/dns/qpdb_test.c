@@ -164,6 +164,9 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 			print_message("# inuse: %zd max: %zd\n",
 				      isc_mem_inuse(mctx), maxcache);
 		}
+		if (isc_mem_inuse(mctx) >= maxcache) {
+			rcu_barrier();
+		}
 		assert_true(isc_mem_inuse(mctx) < maxcache);
 	}
 
