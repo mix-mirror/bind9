@@ -543,8 +543,6 @@ dns_view_createresolver(dns_view_t *view, unsigned int options,
 	RETERR(dns_resolver_create(view, options, tlsctx_cache, dispatchv4,
 				   dispatchv6, &view->resolver));
 
-	dns_delegdb_create(&view->deleg);
-
 	isc_mem_create("ADB", &mctx);
 	dns_adb_create(mctx, view, &view->adb);
 	isc_mem_detach(&mctx);

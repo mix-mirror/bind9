@@ -4129,6 +4129,12 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	INSIST(result == ISC_R_SUCCESS);
 	stale_refresh_time = cfg_obj_asduration(obj);
 
+	result = dns_viewlist_find(&named_g_server->viewlist, view->name,
+				   view->rdclass, &pview);
+	if (result != ISC_R_NOTFOUND && result != ISC_R_SUCCESS) {
+		goto cleanup;
+	}
+
 	/*
 	 * Configure the view's cache.
 	 *
@@ -4194,11 +4200,6 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 			}
 		}
 	} else if (strcmp(cachename, view->name) == 0) {
-		result = dns_viewlist_find(&named_g_server->viewlist, cachename,
-					   view->rdclass, &pview);
-		if (result != ISC_R_NOTFOUND && result != ISC_R_SUCCESS) {
-			goto cleanup;
-		}
 		if (pview != NULL) {
 			if (!cache_reusable(pview, view, zero_no_soattl)) {
 				isc_log_write(NAMED_LOGCATEGORY_GENERAL,
@@ -4223,7 +4224,6 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 			dns_resolver_getqueryrttstats(pview->resolver,
 						      &resqueryinrttstats,
 						      &resqueryoutrttstats);
-			dns_view_detach(&pview);
 		}
 	}
 
@@ -4280,9 +4280,26 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 				      dispatch4, dispatch6));
 
 	/*
+	 * The deleg DB cache is preserved if reconfiguring/reloading the
+	 * server.
+	 */
+	if (pview != NULL) {
+		dns_delegdb_reuse(pview, view);
+	} else {
+		dns_delegdb_create(&view->deleg);
+	}
+
+	/*
 	 * Totally arbitrary decision for now. This might need its own knob.
 	 */
 	dns_delegdb_setsize(view->deleg, max_cache_size / 6);
+
+	/*
+	 * The previous view isn't needed anymore.
+	 */
+	if (pview != NULL) {
+		dns_view_detach(&pview);
+	}
 
 	if (resstats == NULL) {
 		isc_stats_create(mctx, &resstats, dns_resstatscounter_max);
@@ -10764,13 +10781,9 @@ resume:
 	}
 
 	if (dctx->dumpdeleg) {
-		isc_buffer_t *text = NULL;
 		fprintf(dctx->fp, ";\n; Delegation cache\n;\n");
-		isc_buffer_allocate(isc_g_mctx, &text, BUFSIZ);
-		dns_delegdb_dump(dctx->view->view->deleg, NULL, 0, text);
-		fprintf(dctx->fp, "%.*s", (int)isc_buffer_usedlength(text),
-			(char *)isc_buffer_base(text));
-		isc_buffer_free(&text);
+		dns_delegdb_dump(dctx->view->view->deleg, dctx->dumpexpired,
+				 dctx->fp);
 	}
 
 	if (dctx->cache != NULL) {
@@ -10909,6 +10922,12 @@ named_server_dumpdb(named_server_t *server, isc_lex_t *lex,
 		dctx->dumpdeleg = false;
 		dctx->dumpfail = false;
 		dctx->dumpzones = true;
+		ptr = next_token(lex, NULL);
+	} else if (ptr != NULL && strcmp(ptr, "-deleg") == 0) {
+		/* only dump deleg db, suppress other caches */
+		dctx->dumpcache = false;
+		dctx->dumpfail = false;
+		dctx->dumpadb = false;
 		ptr = next_token(lex, NULL);
 	} else if (ptr != NULL && strcmp(ptr, "-adb") == 0) {
 		/* only dump adb, suppress other caches */
