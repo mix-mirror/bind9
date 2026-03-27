@@ -437,6 +437,14 @@ grep "invalid rpz IP address \"1000.4.0.53.10.rpz-client-ip.invalidprefixlength\
 }
 
 t=$((t + 1))
+echo_i "checking NSDNAME policy being blocked' ($t)"
+$DIG $DIGOPTS www.bar. @10.53.0.3 -p ${PORT} >dig.out.${t}
+grep "status: NXDOMAIN" dig.out.${t} >/dev/null || {
+  echo_i "test ${t} failed"
+  status=1
+}
+
+t=$((t + 1))
 echo_i "checking 'nsip-wait-recurse no' is faster than 'nsip-wait-recurse yes' ($t)"
 add_test_marker 10.53.0.2 10.53.0.3
 echo_i "timing 'nsip-wait-recurse yes' (default)"
