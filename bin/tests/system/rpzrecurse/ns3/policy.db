@@ -13,3 +13,6 @@ $TTL 0
 @			SOA	. . 0 0 0 0 0
 @			NS	.
 32.100.0.53.10.rpz-nsip	CNAME	.
+
+; Return NXDOMAIN is the NS name of the zone is `ns6.foo.`
+ns6.foo.rpz-nsdname	CNAME   .

@@ -15,3 +15,5 @@ $TTL 0
 ns			A	10.53.0.3
 foo			NS	ns5.foo
 ns5.foo			A	10.53.0.5
+bar			NS	ns6.foo
+ns6.foo			A	10.53.0.6
