@@ -74,8 +74,9 @@ def test_xferquota(named_port, ns1, ns2):
 
     query_and_compare(axfr_msg)
     pattern = Re(
-        f"transfer of 'changing/IN' from 10.53.0.1#{named_port}: "
-        f"Transfer completed: .*\\(serial 2\\)"
+        isctest.transfer.transfer_message(
+            "changing", "10.53.0.1", r"Transfer completed: .*\(serial 2\)", named_port
+        )
     )
     with ns2.watch_log_from_start(timeout=30) as watcher:
         watcher.wait_for_line(pattern)
