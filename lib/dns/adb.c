@@ -1714,6 +1714,86 @@ dns_adb_shutdown(dns_adb_t *adb) {
 	isc_async_run(isc_loop_main(), dns_adb_shutdown_async, adb);
 }
 
+static void
+findaddrinfo(dns_adb_t *adb, const isc_sockaddr_t *addr,
+	     dns_adbaddrinfo_t **adbaddrp, isc_stdtime_t now) {
+	dns_adbentry_t *adbentry = get_attached_and_locked_entry(adb, now,
+								 addr);
+
+	in_port_t port = isc_sockaddr_getport(addr);
+	*adbaddrp = new_adbaddrinfo(adb, adbentry, port);
+
+	UNLOCK(&adbentry->lock);
+	dns_adbentry_detach(&adbentry);
+}
+
+isc_result_t
+dns_adb_createaddrinfosfind(dns_adb_t *adb, isc_netaddrlist_t *addrs,
+			    in_port_t port, unsigned int options,
+			    isc_stdtime_t now, size_t maxaddrs,
+			    dns_adbfind_t **findp, size_t *findlen) {
+	isc_result_t result = ISC_R_SUCCESS;
+	dns_adbfind_t *find = NULL;
+	isc_sockaddr_t sockaddr = {};
+
+	REQUIRE(DNS_ADB_VALID(adb));
+	REQUIRE(addrs != NULL);
+	REQUIRE(findp != NULL && *findp == NULL);
+
+	rcu_read_lock();
+
+	if (atomic_load(&adb->shuttingdown)) {
+		CLEANUP(ISC_R_SHUTTINGDOWN);
+	}
+
+	if (now == 0) {
+		now = isc_stdtime_now();
+	}
+
+	find = new_adbfind(adb, port);
+	ISC_LIST_FOREACH(*addrs, addrlink, link) {
+		dns_adbaddrinfo_t *addrinfo = NULL;
+
+		sockaddr.type.sa.sa_family = addrlink->addr.family;
+		switch (addrlink->addr.family) {
+		case AF_INET:
+			if ((options & DNS_ADBFIND_INET) == 0) {
+				continue;
+			}
+			sockaddr.type.sin.sin_addr = addrlink->addr.type.in;
+			sockaddr.type.sin.sin_port = htons(port);
+			break;
+		case AF_INET6:
+			if ((options & DNS_ADBFIND_INET6) == 0) {
+				continue;
+			}
+			/*
+			 * TODO: findaddrinfo() compares the scope, this might
+			 * be a problem...
+			 */
+			sockaddr.type.sin6.sin6_addr = addrlink->addr.type.in6;
+			sockaddr.type.sin6.sin6_port = htons(port);
+
+			break;
+		default:
+			UNREACHABLE();
+		}
+
+		findaddrinfo(adb, &sockaddr, &addrinfo, now);
+		ISC_LIST_APPEND(find->list, addrinfo, publink);
+		(*findlen)++;
+
+		if (maxaddrs - *findlen == 0) {
+			break;
+		}
+	}
+
+	*findp = find;
+cleanup:
+	rcu_read_unlock();
+	return result;
+}
+
 /*
  * Look up the name in our internal database.
  *
@@ -3137,14 +3217,7 @@ dns_adb_findaddrinfo(dns_adb_t *adb, const isc_sockaddr_t *addr,
 		return ISC_R_SHUTTINGDOWN;
 	}
 
-	dns_adbentry_t *adbentry = get_attached_and_locked_entry(adb, now,
-								 addr);
-
-	in_port_t port = isc_sockaddr_getport(addr);
-	*adbaddrp = new_adbaddrinfo(adb, adbentry, port);
-
-	UNLOCK(&adbentry->lock);
-	dns_adbentry_detach(&adbentry);
+	findaddrinfo(adb, addr, adbaddrp, now);
 
 	rcu_read_unlock();
 
