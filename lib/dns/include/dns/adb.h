@@ -347,6 +347,18 @@ dns_adb_createfind(dns_adb_t *adb, isc_loop_t *loop, isc_job_cb cb, void *cbarg,
  */
 
 void
+dns_adb_createaddrinfosfind(dns_adb_t *adb, isc_netaddrlist_t *addrs,
+			    in_port_t port, unsigned int options,
+			    isc_stdtime_t now, size_t maxaddrs,
+			    dns_adbfind_t **findp, size_t *findlen);
+/*%<
+ * Variant of `dns_adb_createfind()` which actually internally looks up
+ * addresses only using `dns_adb_findaddrinfo()`. This enables the caller to
+ * abstract the origin of the find (i.e. it needs to be names to be looked up
+ * into `dns_adbaddrinfo_t`, or from net addrs) and handle it the same way.
+ */
+
+void
 dns_adb_cancelfind(dns_adbfind_t *find);
 /*%<
  * Cancels the find, and sends the event off to the caller.
