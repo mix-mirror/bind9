@@ -53,6 +53,7 @@
 #include <dns/byaddr.h>
 #include <dns/cache.h>
 #include <dns/client.h>
+#include <dns/deleg.h>
 #include <dns/dispatch.h>
 #include <dns/fixedname.h>
 #include <dns/keytable.h>
@@ -89,6 +90,11 @@
 #define MAX_QUERIES  50
 #define MAX_TOTAL    200
 #define MAX_RESTARTS 11
+
+/*
+ * Also see max-delegation-servers default setting (bin/include/defaultconfig.h0
+ */
+#define DEFAULT_MAX_DELEGATION_SERVERS 13
 
 /* Variables used internally by delv. */
 static dns_view_t *view = NULL;
@@ -2154,6 +2160,8 @@ run_server(void *arg) {
 	dns_view_setdstport(view, destport);
 	dns_view_setmaxrestarts(view, restarts);
 	dns_view_setmaxqueries(view, maxtotal);
+	dns_view_setmaxdelegationservers(view, DEFAULT_MAX_DELEGATION_SERVERS);
+	dns_delegdb_create(&view->deleg);
 
 	CHECK(dns_rootns_create(isc_g_mctx, dns_rdataclass_in, hintfile,
 				&roothints));
