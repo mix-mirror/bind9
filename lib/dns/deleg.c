@@ -34,6 +34,17 @@
 
 typedef struct delegdb_node delegdb_node_t;
 
+typedef struct delegdb_data delegdb_data_t;
+struct delegdb_data {
+	isc_mem_t *mctx;
+
+	uint32_t nloops;
+	ISC_SIEVE(delegdb_node_t) * lru;
+	dns_qpmulti_t *nodes;
+
+	struct rcu_head rcu_head;
+};
+
 struct dns_delegdb {
 	unsigned int magic;
 
@@ -44,18 +55,19 @@ struct dns_delegdb {
 	isc_mem_t *mctx;
 	isc_refcount_t references;
 
-	size_t nloops;
-	ISC_SIEVE(delegdb_node_t) * lru;
-
-	dns_qpmulti_t *nodes;
+	/*
+	 * LRU lists and qpnodes are wrapped inside the same object to ensure an
+	 * atomic swap of the DB data when the DB is flushed.
+	 */
+	delegdb_data_t *data;
 
 	/*
-	 * This can be accessed _only_ from the main thread. This is used only
-	 * from `dns_delegdb_reuse()` or `dns_delegdb_shutdown()`. The former is
-	 * called when a new view is being initialized and the later when a view
-	 * is being shutting down, which has to occurs after (for two different
-	 * versions of the same view), as the old view is always kept alive in
-	 * case the configuration of the new view fails.
+	 * This is used only for `dns_delegdb_reuse()` or
+	 * `dns_delegdb_shutdown()`. The former is called when a new view is
+	 * being initialized and the later when a view is being shutting down,
+	 * which has to occurs after (for two different versions of the same
+	 * view), as the old view is always kept alive in case the configuration
+	 * of the new view fails.
 	 */
 	size_t attachedviews;
 
@@ -66,12 +78,9 @@ struct dns_delegdb {
 static void
 delegdb_destroy(dns_delegdb_t *delegdb) {
 	REQUIRE(VALID_DELEGDB(delegdb));
-	REQUIRE(delegdb->nodes == NULL);
+	REQUIRE(delegdb->data == NULL);
 
 	delegdb->magic = 0;
-	isc_mem_cput(delegdb->mctx, delegdb->lru, delegdb->nloops,
-		     sizeof(delegdb->lru[0]));
-
 	isc_mem_putanddetach(&delegdb->mctx, delegdb, sizeof(*delegdb));
 }
 
@@ -113,6 +122,7 @@ struct delegdb_node {
 static void
 delegdb_node_destroy_async(void *arg) {
 	delegdb_node_t *node = arg;
+	delegdb_data_t *data = NULL;
 	isc_mem_t *mctx = NULL;
 
 	REQUIRE(VALID_DELEGDB_NODE(node));
@@ -122,9 +132,14 @@ delegdb_node_destroy_async(void *arg) {
 
 	isc_mem_attach(node->delegdb->mctx, &mctx);
 
-	if (ISC_SIEVE_LINKED(node, link)) {
-		ISC_SIEVE_UNLINK(node->delegdb->lru[isc_tid()], node, link);
+	rcu_read_lock();
+	data = rcu_dereference(node->delegdb->data);
+	if (data != NULL) {
+		if (ISC_SIEVE_LINKED(node, link)) {
+			ISC_SIEVE_UNLINK(data->lru[isc_tid()], node, link);
+		}
 	}
+	rcu_read_unlock();
 
 	dns_name_free(&node->zonecut, mctx);
 	dns_delegset_detach(&node->delegset);
@@ -192,6 +207,42 @@ static dns_qpmethods_t qpmethods = { .attach = dbnode_attach,
 				     .makekey = makekey,
 				     .triename = triename };
 
+static void
+delegdb_data_destroy(delegdb_data_t **datap) {
+	delegdb_data_t *data = *datap;
+
+	dns_qpmulti_destroy(&data->nodes);
+	/*
+	 * Putting the barrier here ensures that all RCU reclamation runs and
+	 * all the delegdb_destroy_node_async() function has run (and won't hit
+	 * an de-allocated LRU list)... But that's obviously not the right thing
+	 * to do.
+	 *
+	 * rcu_barrier();
+	 */
+	isc_mem_cput(data->mctx, data->lru, data->nloops, sizeof(data->lru[0]));
+	isc_mem_putanddetach(&data->mctx, data, sizeof(*data));
+
+	*datap = NULL;
+}
+
+static void
+delegdb_data_create(isc_mem_t *mctx, delegdb_data_t **datap) {
+	delegdb_data_t *data = isc_mem_get(mctx, sizeof(**datap));
+
+	*data = (delegdb_data_t){ .nloops = isc_loopmgr_nloops() };
+
+	dns_qpmulti_create(mctx, &qpmethods, &data->nodes, &data->nodes);
+
+	data->lru = isc_mem_cget(mctx, data->nloops, sizeof(data->lru[0]));
+	for (size_t i = 0; i < data->nloops; i++) {
+		ISC_SIEVE_INIT(data->lru[i]);
+	}
+
+	isc_mem_attach(mctx, &data->mctx);
+	*datap = data;
+}
+
 void
 dns_delegdb_create(dns_delegdb_t **delegdbp) {
 	isc_mem_t *mctx = NULL;
@@ -207,17 +258,8 @@ dns_delegdb_create(dns_delegdb_t **delegdbp) {
 	*delegdb = (dns_delegdb_t){ .magic = DELEGDB_MAGIC,
 				    .mctx = mctx,
 				    .references = ISC_REFCOUNT_INITIALIZER(1),
-				    .nloops = isc_loopmgr_nloops(),
 				    .attachedviews = 1 };
-
-	dns_qpmulti_create(mctx, &qpmethods, &delegdb->nodes, &delegdb->nodes);
-
-	delegdb->lru = isc_mem_cget(mctx, delegdb->nloops,
-				    sizeof(delegdb->lru[0]));
-	for (size_t i = 0; i < delegdb->nloops; i++) {
-		ISC_SIEVE_INIT(delegdb->lru[i]);
-	}
-
+	delegdb_data_create(mctx, &delegdb->data);
 	*delegdbp = delegdb;
 }
 
@@ -231,65 +273,41 @@ dns_delegdb_reuse(dns_view_t *oldview, dns_view_t *newview) {
 	oldview->deleg->attachedviews++;
 }
 
-typedef struct nodes_rcu_head {
-	isc_mem_t *mctx;
-	dns_qpmulti_t *nodes;
-	struct rcu_head rcu_head;
-} nodes_rcu_head_t;
-
 static void
-deleg_destroy_qpmulti(struct rcu_head *rcu_head) {
-	nodes_rcu_head_t *nrh = caa_container_of(rcu_head, nodes_rcu_head_t,
-						 rcu_head);
-
-	dns_qpmulti_destroy(&nrh->nodes);
-
-	isc_mem_putanddetach(&nrh->mctx, nrh, sizeof(*nrh));
+delegdb_data_destroy_async(struct rcu_head *rcu_head) {
+	delegdb_data_t *data = caa_container_of(rcu_head, delegdb_data_t,
+						rcu_head);
+	delegdb_data_destroy(&data);
 }
 
 void
 dns_delegdb_flush(dns_delegdb_t *delegdb) {
 	REQUIRE(VALID_DELEGDB(delegdb));
 
-	dns_qpmulti_t *old_nodes = NULL;
-	dns_qpmulti_t *xchg_nodes = NULL;
-	dns_qpmulti_t *new_nodes = NULL;
-
-	/*
-	 * FIXME: The SIEVE lists need the same treatment, otherwise
-	 * the LRU has old nodes, but it points to a new database.
-	 * We might need to wrap the qpmulti + SIEVE lists into
-	 * a structure that gets swapped instead of the qpmulti
-	 * directly.
-	 */
+	delegdb_data_t *old_data = NULL;
+	delegdb_data_t *xchg_data = NULL;
+	delegdb_data_t *new_data = NULL;
 
 	rcu_read_lock();
-	old_nodes = rcu_dereference(delegdb->nodes);
-	if (old_nodes != NULL) {
-		dns_qpmulti_create(delegdb->mctx, &qpmethods, delegdb,
-				   &new_nodes);
+	old_data = rcu_dereference(delegdb->data);
+	if (old_data != NULL) {
+		delegdb_data_create(delegdb->mctx, &new_data);
 
-		xchg_nodes = rcu_cmpxchg_pointer(&delegdb->nodes, old_nodes,
-						 new_nodes);
-		if (xchg_nodes == old_nodes) {
+		xchg_data = rcu_cmpxchg_pointer(&delegdb->data, old_data,
+						new_data);
+		if (xchg_data == old_data) {
 			/* success */
-			new_nodes = NULL; /* owned by delegdb now */
+			new_data = NULL; /* owned by delegdb now */
 		} else {
 			/* other thread was faster or we are shutting down */
-			old_nodes = NULL;
-			dns_qpmulti_destroy(&new_nodes);
+			old_data = NULL;
+			delegdb_data_destroy(&new_data);
 		}
 	}
 	rcu_read_unlock();
 
-	if (old_nodes != NULL) {
-		nodes_rcu_head_t *nrh = isc_mem_get(delegdb->mctx,
-						    sizeof(*nrh));
-		*nrh = (nodes_rcu_head_t){
-			.mctx = isc_mem_ref(delegdb->mctx),
-			.nodes = old_nodes,
-		};
-		call_rcu(&nrh->rcu_head, deleg_destroy_qpmulti);
+	if (old_data != NULL) {
+		call_rcu(&old_data->rcu_head, delegdb_data_destroy_async);
 	}
 }
 
@@ -384,17 +402,17 @@ dns_delegdb_lookup(dns_delegdb_t *delegdb, const dns_name_t *name,
 		   isc_stdtime_t now, unsigned int options, dns_name_t *zonecut,
 		   dns_name_t *deepestzonecut, dns_delegset_t **delegsetp) {
 	isc_result_t result = ISC_R_SHUTTINGDOWN;
-	dns_qpmulti_t *nodes = NULL;
+	delegdb_data_t *data = NULL;
 	dns_qpread_t qpr = {};
 
 	rcu_read_lock();
-	nodes = rcu_dereference(delegdb->nodes);
-	if (nodes != NULL) {
-		dns_qpmulti_query(nodes, &qpr);
+	data = rcu_dereference(delegdb->data);
+	if (data != NULL) {
+		dns_qpmulti_query(data->nodes, &qpr);
 
 		result = dns__deleg_lookup(delegdb, &qpr, name, now, options,
 					   zonecut, deepestzonecut, delegsetp);
-		dns_qpread_destroy(nodes, &qpr);
+		dns_qpread_destroy(data->nodes, &qpr);
 	}
 	rcu_read_unlock();
 
@@ -492,7 +510,7 @@ dns_delegset_addns(dns_delegset_t *delegset, dns_deleg_t *deleg,
 }
 
 static void
-delegdb_cleanup(dns_delegdb_t *delegdb, dns_qpmulti_t *nodes) {
+delegdb_cleanup(dns_delegdb_t *delegdb, delegdb_data_t *data) {
 	dns_qp_t *qp = NULL;
 	delegdb_node_t *node = NULL;
 	size_t reclaimed = 0;
@@ -503,23 +521,23 @@ delegdb_cleanup(dns_delegdb_t *delegdb, dns_qpmulti_t *nodes) {
 	}
 	requested = delegdb->hiwater - delegdb->lowater;
 
-	dns_qpmulti_write(nodes, &qp);
+	dns_qpmulti_write(data->nodes, &qp);
 
 	while (reclaimed < requested) {
-		node = ISC_SIEVE_NEXT(delegdb->lru[isc_tid()], visited, link);
+		node = ISC_SIEVE_NEXT(data->lru[isc_tid()], visited, link);
 
 		if (node == NULL) {
 			break;
 		}
 		reclaimed += node->size;
 
-		ISC_SIEVE_UNLINK(delegdb->lru[isc_tid()], node, link);
+		ISC_SIEVE_UNLINK(data->lru[isc_tid()], node, link);
 		(void)dns_qp_deletename(qp, &node->zonecut,
 					DNS_DBNAMESPACE_NORMAL, NULL, NULL);
 	}
 
 	dns_qp_compact(qp, DNS_QPGC_ALL);
-	dns_qpmulti_commit(nodes, &qp);
+	dns_qpmulti_commit(data->nodes, &qp);
 }
 
 static size_t
@@ -552,11 +570,11 @@ delegdb_node_size(const dns_name_t *zonecut, dns_delegset_t *delegset) {
 }
 
 static void
-delegdb_node_prepare(dns_delegdb_t *delegdb, dns_qpmulti_t *nodes,
+delegdb_node_prepare(dns_delegdb_t *delegdb, delegdb_data_t *data,
 		     isc_stdtime_t now, dns_ttl_t ttl,
 		     const dns_name_t *zonecut, dns_delegset_t *delegset,
 		     delegdb_node_t **nodep) {
-	delegdb_cleanup(delegdb, nodes);
+	delegdb_cleanup(delegdb, data);
 
 	if (ttl == 0) {
 		ttl = 1;
@@ -586,7 +604,7 @@ dns_delegset_write(dns_delegdb_t *delegdb, const dns_name_t *zonecut,
 	dns_qp_t *qp = NULL;
 	dns_qpread_t qpr = {};
 	isc_stdtime_t now = isc_stdtime_now();
-	dns_qpmulti_t *nodes = NULL;
+	delegdb_data_t *data = NULL;
 
 	REQUIRE(VALID_DELEGDB(delegdb));
 	REQUIRE(DNS_NAME_VALID(zonecut));
@@ -600,8 +618,8 @@ dns_delegset_write(dns_delegdb_t *delegdb, const dns_name_t *zonecut,
 	REQUIRE(delegset->mctx == delegdb->mctx);
 
 	rcu_read_lock();
-	nodes = rcu_dereference(delegdb->nodes);
-	if (nodes == NULL) {
+	data = rcu_dereference(delegdb->data);
+	if (data == NULL) {
 		rcu_read_unlock();
 		return ISC_R_SHUTTINGDOWN;
 	}
@@ -610,30 +628,29 @@ dns_delegset_write(dns_delegdb_t *delegdb, const dns_name_t *zonecut,
 	 * First, check (without write txn) if the node already exists and is
 	 * still valid.
 	 */
-	dns_qpmulti_query(nodes, &qpr);
+	dns_qpmulti_query(data->nodes, &qpr);
 	result = dns_qp_lookup(&qpr, zonecut, DNS_DBNAMESPACE_NORMAL, NULL,
 			       NULL, (void **)&node, NULL);
 	if (result == ISC_R_SUCCESS) {
 		INSIST(VALID_DELEGDB_NODE(node));
 		if (node->delegset->expires > now) {
-			dns_qpread_destroy(nodes, &qpr);
+			dns_qpread_destroy(data->nodes, &qpr);
 			CLEANUP(ISC_R_EXISTS);
 		}
 	}
-	dns_qpread_destroy(nodes, &qpr);
+	dns_qpread_destroy(data->nodes, &qpr);
 
 	/*
 	 * We're about to add a new delegation, check for state of overmem, and
 	 * clean up expired/least recently used delegation, then allocate and
 	 * initialize a new node.
 	 */
-	delegdb_node_prepare(delegdb, nodes, now, ttl, zonecut, delegset,
-			     &node);
+	delegdb_node_prepare(delegdb, data, now, ttl, zonecut, delegset, &node);
 
 	/*
 	 * Add the node in the DB
 	 */
-	dns_qpmulti_write(nodes, &qp);
+	dns_qpmulti_write(data->nodes, &qp);
 	if (result == ISC_R_SUCCESS) {
 		/*
 		 * A node at the same zonecut exists, and it is expired. Ignore
@@ -657,18 +674,18 @@ dns_delegset_write(dns_delegdb_t *delegdb, const dns_name_t *zonecut,
 		 * Since not using an update (but write) transaction,
 		 * _rollback() won't work here.
 		 */
-		dns_qpmulti_commit(nodes, &qp);
+		dns_qpmulti_commit(data->nodes, &qp);
 		CLEANUP(ISC_R_EXISTS);
 	}
 
 	/*
 	 * The new delegation is added, and can be referenced by SIEVE
 	 */
-	ISC_SIEVE_INSERT(delegdb->lru[isc_tid()], node, link);
+	ISC_SIEVE_INSERT(data->lru[isc_tid()], node, link);
 
 	delegdb_node_unref(node);
 	dns_qp_compact(qp, DNS_QPGC_MAYBE);
-	dns_qpmulti_commit(nodes, &qp);
+	dns_qpmulti_commit(data->nodes, &qp);
 
 cleanup:
 	rcu_read_unlock();
@@ -828,16 +845,16 @@ dns_delegdb_dump(dns_delegdb_t *delegdb, bool expired, FILE *fp) {
 	dns_qpread_t qpr = {};
 	delegdb_node_t *node = NULL;
 	isc_stdtime_t now = isc_stdtime_now();
-	dns_qpmulti_t *nodes = NULL;
+	delegdb_data_t *data = NULL;
 
 	rcu_read_lock();
-	nodes = rcu_dereference(delegdb->nodes);
-	if (nodes == NULL) {
+	data = rcu_dereference(delegdb->data);
+	if (data == NULL) {
 		rcu_read_unlock();
 		return;
 	}
 
-	dns_qpmulti_query(nodes, &qpr);
+	dns_qpmulti_query(data->nodes, &qpr);
 
 	dns_qpiter_init(&qpr, &it);
 	while (dns_qpiter_next(&it, (void **)&node, NULL) == ISC_R_SUCCESS) {
@@ -849,7 +866,7 @@ dns_delegdb_dump(dns_delegdb_t *delegdb, bool expired, FILE *fp) {
 				  fp);
 	}
 
-	dns_qpread_destroy(nodes, &qpr);
+	dns_qpread_destroy(data->nodes, &qpr);
 
 	rcu_read_unlock();
 }
@@ -912,17 +929,6 @@ deleg_deletetree(dns_qp_t *qp, const dns_name_t *name) {
 
 	INSIST(VALID_DELEGDB_NODE(node));
 	do {
-		/*
-		 * Because QP doesn't allow deleting a node while using the
-		 * iterator, the approach is different than `deleg_deletenode()`
-		 * here. Instead of removing the node immediately, we add it
-		 * into a list that we'll go through after, then delete each
-		 * node.
-		 *
-		 * TODO: Maybe a more lazy and simpler approach: let's put their
-		 * TTL to 0, so they are expired and next time we need memory
-		 * they'll go away thanks to cleanup_lru() flow?
-		 */
 		ISC_LIST_APPEND(deadnodes, node, deadlink);
 
 		result = dns_qpiter_next(&it, (void **)&node, NULL);
@@ -965,14 +971,14 @@ dns_delegdb_delete(dns_delegdb_t *delegdb, const dns_name_t *name, bool tree) {
 	REQUIRE(VALID_DELEGDB(delegdb));
 	REQUIRE(DNS_NAME_VALID(name));
 
-	dns_qpmulti_t *nodes = NULL;
+	delegdb_data_t *data = NULL;
 	dns_qp_t *qp = NULL;
 	isc_result_t result = ISC_R_SHUTTINGDOWN;
 
 	rcu_read_lock();
-	nodes = rcu_dereference(delegdb->nodes);
-	if (nodes != NULL) {
-		dns_qpmulti_write(nodes, &qp);
+	data = rcu_dereference(delegdb->data);
+	if (data != NULL) {
+		dns_qpmulti_write(data->nodes, &qp);
 		if (tree) {
 			result = deleg_deletetree(qp, name);
 		} else {
@@ -981,13 +987,30 @@ dns_delegdb_delete(dns_delegdb_t *delegdb, const dns_name_t *name, bool tree) {
 		if (result == ISC_R_SUCCESS) {
 			dns_qp_compact(qp, DNS_QPGC_MAYBE);
 		}
-		dns_qpmulti_commit(nodes, &qp);
+		dns_qpmulti_commit(data->nodes, &qp);
 	}
 	rcu_read_unlock();
 
 	return result;
 }
 
+/*
+ * TODO
+ *
+ * This is dodgy -- shutdown should never be called asynchronously, in case of a
+ * flow would do
+ *
+ * 1. _shutdown()
+ * 2. (immediately after) _detach()
+ *
+ * At this point, delegdb->data wouldn't be NULL yet and things would go wrong
+ * in the _destroy function. (Because it enforces the fact that we shutdown
+ * first, so the data is NULL).
+ *
+ * `attachedviews` has then to be an atomic. (And _reuse and _shutdown can be
+ * called from anywhere).
+ *
+ */
 static void
 delegdb_shutdown_async(void *arg) {
 	dns_delegdb_t *delegdb = arg;
@@ -995,16 +1018,10 @@ delegdb_shutdown_async(void *arg) {
 	REQUIRE(isc_loop_get(isc_tid()) == isc_loop_main());
 	REQUIRE(delegdb != NULL && VALID_DELEGDB(delegdb));
 	if (--delegdb->attachedviews == 0) {
-		dns_qpmulti_t *nodes = rcu_xchg_pointer(&delegdb->nodes, NULL);
+		delegdb_data_t *data = rcu_xchg_pointer(&delegdb->data, NULL);
 
-		if (nodes != NULL) {
-			nodes_rcu_head_t *nrh = isc_mem_get(delegdb->mctx,
-							    sizeof(*nrh));
-			*nrh = (nodes_rcu_head_t){
-				.mctx = isc_mem_ref(delegdb->mctx),
-				.nodes = nodes,
-			};
-			call_rcu(&nrh->rcu_head, deleg_destroy_qpmulti);
+		if (data != NULL) {
+			call_rcu(&data->rcu_head, delegdb_data_destroy_async);
 		}
 	}
 }
