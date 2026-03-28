@@ -6226,8 +6226,7 @@ release_recursionquota(ns_client_t *client) {
 
 isc_result_t
 ns_query_recurse(ns_client_t *client, dns_rdatatype_t qtype, dns_name_t *qname,
-		 dns_name_t *qdomain, dns_rdataset_t *nameservers,
-		 bool resuming) {
+		 dns_name_t *qdomain, dns_delegset_t *delegset, bool resuming) {
 	isc_result_t result;
 	dns_rdataset_t *rdataset, *sigrdataset;
 	isc_sockaddr_t *peeraddr = NULL;
@@ -6255,7 +6254,6 @@ ns_query_recurse(ns_client_t *client, dns_rdatatype_t qtype, dns_name_t *qname,
 	/*
 	 * Invoke the resolver.
 	 */
-	REQUIRE(nameservers == NULL || nameservers->type == dns_rdatatype_ns);
 	REQUIRE(FETCH_RECTYPE_NORMAL(client) == NULL);
 
 	rdataset = ns_client_newrdataset(client);
@@ -6278,11 +6276,11 @@ ns_query_recurse(ns_client_t *client, dns_rdatatype_t qtype, dns_name_t *qname,
 			    &HANDLE_RECTYPE_NORMAL(client));
 	maybe_init_fetch_counter(client);
 	result = dns_resolver_createfetch(
-		client->inner.view->resolver, qname, qtype, qdomain,
-		nameservers, NULL, peeraddr, client->message->id,
-		client->query.fetchoptions, 0, NULL, client->query.qc, NULL,
-		client->manager->loop, fetch_callback, client, &client->edectx,
-		rdataset, sigrdataset, &FETCH_RECTYPE_NORMAL(client));
+		client->inner.view->resolver, qname, qtype, qdomain, delegset,
+		NULL, peeraddr, client->message->id, client->query.fetchoptions,
+		0, NULL, client->query.qc, NULL, client->manager->loop,
+		fetch_callback, client, &client->edectx, rdataset, sigrdataset,
+		&FETCH_RECTYPE_NORMAL(client));
 	if (result != ISC_R_SUCCESS) {
 		release_recursionquota(client);
 
@@ -8659,9 +8657,15 @@ query_delegation_recurse(query_ctx_t *qctx) {
 		/*
 		 * Any other recursion.
 		 */
+		dns_delegset_t *delegset = NULL;
+
+		dns_deleg_fromrdataset(qctx->rdataset, &delegset);
 		result = ns_query_recurse(qctx->client, qctx->qtype, qname,
-					  qctx->fname, qctx->rdataset,
+					  qctx->fname, delegset,
 					  qctx->resuming);
+		if (delegset != NULL) {
+			dns_delegset_detach(&delegset);
+		}
 	}
 
 	if (result == ISC_R_SUCCESS) {
