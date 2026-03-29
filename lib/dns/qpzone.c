@@ -300,7 +300,7 @@ qp_makekey(dns_qpkey_t key, void *uctx, void *pval, uint32_t ival);
 static void
 qp_triename(void *uctx, char *buf, size_t size);
 
-static dns_qpmethods_t qpmethods = {
+__attribute__((visibility("default"))) dns_qpmethods_t qpmethods = {
 	qp_attach,
 	qp_detach,
 	qp_makekey,

@@ -86,7 +86,7 @@ ztqptriename(void *uctx, char *buf, size_t size) {
 	snprintf(buf, size, "view %s zone table", view->name);
 }
 
-static dns_qpmethods_t ztqpmethods = {
+__attribute__((visibility("default"))) dns_qpmethods_t ztqpmethods = {
 	ztqpattach,
 	ztqpdetach,
 	ztqpmakekey,

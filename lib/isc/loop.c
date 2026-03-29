@@ -49,7 +49,7 @@
  */
 
 thread_local isc_loop_t *isc__loop_local = NULL;
-isc_loopmgr_t *isc__loopmgr = NULL;
+__attribute__((visibility("default"))) isc_loopmgr_t *isc__loopmgr = NULL;
 
 static void
 ignore_signal(int sig, void (*handler)(int)) {

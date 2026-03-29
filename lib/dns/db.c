@@ -66,8 +66,8 @@ struct dns_dbimplementation {
 
 unsigned int dns_pps = 0U;
 
-static ISC_LIST(dns_dbimplementation_t) implementations;
-static isc_rwlock_t implock;
+__attribute__((visibility("default"))) ISC_LIST(dns_dbimplementation_t) implementations;
+__attribute__((visibility("default"))) isc_rwlock_t implock;
 
 static dns_dbimplementation_t qpimp;
 static dns_dbimplementation_t qpzoneimp;
