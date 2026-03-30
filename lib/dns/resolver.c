@@ -7456,15 +7456,9 @@ inpsl(fetchctx_t *fctx) {
 	if (psl == NULL) {
 		return false;
 	}
-	result = dns_db_findnode(psl, fctx->domain, false, &node);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
-	result = dns_db_findrdataset(psl, node, NULL, dns_rdatatype_a, 0,
-				     (isc_stdtime_t)0, &rdataset, NULL);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
+	CHECK(dns_db_findnode(psl, fctx->domain, false, &node));
+	CHECK(dns_db_findrdataset(psl, node, NULL, dns_rdatatype_a, 0,
+				  (isc_stdtime_t)0, &rdataset, NULL));
 
 	/*
 	 * Check the 4th octet of the address record for the expected label
