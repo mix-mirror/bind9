@@ -3654,47 +3654,123 @@ fctx_getaddresses_forwarders(fetchctx_t *fctx) {
 	return DNS_R_CONTINUE;
 }
 
+static void
+fctx_getaddresses_addresses(fetchctx_t *fctx, isc_stdtime_t now,
+			    unsigned int options, bool *allspilledp,
+			    size_t *ns_processed) {
+	dns_adbfindlist_t finds = ISC_LIST_INITIALIZER;
+	size_t max_delegation_servers = fctx->res->view->max_delegation_servers;
+
+	if ((fctx->options & DNS_FETCHOPT_PREFETCH) != 0) {
+		options |= DNS_ADBFIND_QUOTAEXEMPT;
+	}
+
+	ISC_LIST_FOREACH(fctx->delegset->delegs, deleg, link) {
+		dns_adbfind_t *find = NULL;
+		size_t maxaddrs = max_delegation_servers - *ns_processed;
+		size_t findlen = 0;
+
+		if (*ns_processed >= max_delegation_servers) {
+			break;
+		}
+
+		if (deleg->type != DNS_DELEGTYPE_DELEG_ADDRESSES &&
+		    deleg->type != DNS_DELEGTYPE_NS_GLUES)
+		{
+			continue;
+		}
+
+		if (ISC_LIST_EMPTY(deleg->addresses)) {
+			continue;
+		}
+
+		fetchctx_ref(fctx);
+		dns_adb_createaddrinfosfind(fctx->adb, &deleg->addresses,
+					    fctx->res->view->dstport, options,
+					    now, maxaddrs, &find, &findlen);
+
+		if (find == NULL) {
+			fetchctx_unref(fctx);
+			break;
+		}
+
+		if ((find->options & DNS_ADBFIND_OVERQUOTA) != 0) {
+			*allspilledp = true;
+			fctx->quotacount++;
+		}
+
+		if (ISC_LIST_EMPTY(find->list)) {
+			fetchctx_unref(fctx);
+			dns_adb_destroyfind(&find);
+			break;
+		}
+
+		*ns_processed += findlen;
+		INSIST(*ns_processed <= max_delegation_servers);
+		ISC_LIST_APPEND(finds, find, publink);
+	}
+
+	if (!ISC_LIST_EMPTY(finds)) {
+		ISC_LIST_APPENDLIST(fctx->finds, finds, publink);
+	}
+}
+
 static isc_result_t
 fctx_getaddresses_nameservers(fetchctx_t *fctx, isc_stdtime_t now,
 			      unsigned int stdoptions, size_t fetches_allowed,
-			      bool *need_alternatep, bool *all_spilledp) {
+			      bool *need_alternatep, bool *all_spilledp,
+			      size_t *ns_processed) {
 	bool have_address = false;
-	unsigned int ns_processed = 0;
-	uint32_t ns_processing_limit = fctx->res->view->max_delegation_servers;
-	dns_namelist_t *availablens = NULL;
+	unsigned int name_processed = 0;
 	static thread_local dns_name_t *nameservers[MAX_DELEGATION_SERVERS];
+	size_t max_delegation_servers = fctx->res->view->max_delegation_servers;
 
 	/*
-	 * For now, only NS-based deleg is supported, and this can be only in a
-	 * single list element.
+	 * Lookup through each delegation for this zonecut (represented by
+	 * `delegset`).
+	 *
+	 * If this is an NS-based delegation, each `deleg` represents an NS RR
+	 * and will have a single server name.
+	 *
+	 * If this is a DELEG-based delegation, each `deleg` represents a DELEG
+	 * RR and might have multiple server names.
 	 */
-	INSIST(ISC_LIST_HEAD(fctx->delegset->deleg) ==
-	       ISC_LIST_TAIL(fctx->delegset->deleg));
-	availablens = &ISC_LIST_HEAD(fctx->delegset->deleg)->nameserver;
+	ISC_LIST_FOREACH(fctx->delegset->delegs, deleg, link) {
+		if (deleg->type != DNS_DELEGTYPE_DELEG_NAMES &&
+		    deleg->type != DNS_DELEGTYPE_NS_NAMES)
+		{
+			continue;
+		}
 
-	ISC_LIST_FOREACH(*availablens, ns, link) {
-		nameservers[ns_processed] = ns;
+		if (ISC_LIST_EMPTY(deleg->names)) {
+			continue;
+		}
 
-		if (++ns_processed >= ns_processing_limit) {
-			break;
+		ISC_LIST_FOREACH(deleg->names, ns, link) {
+			nameservers[name_processed++] = ns;
+
+			if (name_processed >= max_delegation_servers) {
+				goto shufflens;
+			}
 		}
 	}
 
-	if (ns_processed > 1 && ns_processed > fetches_allowed) {
+shufflens:
+	if (name_processed > 1 && name_processed > fetches_allowed) {
 		/*
 		 * Skip the shuffle if:
 		 * - there's nothing to shuffle (no or one nameserver)
 		 * - there are less nameserver than allowed fetches as
 		 *   we are going to start fetches for all of them.
 		 */
-		for (size_t i = 0; i < ns_processed - 1; i++) {
-			size_t j = i + isc_random_uniform(ns_processed - i);
+		for (size_t i = 0; i < name_processed - 1; i++) {
+			size_t j = i + isc_random_uniform(name_processed - i);
 
 			ISC_SWAP(nameservers[i], nameservers[j]);
 		}
 	}
 
-	for (size_t i = 0; i < ns_processed; i++) {
+	for (size_t i = 0; i < name_processed; i++) {
 		bool overquota = false;
 		unsigned int static_stub = 0;
 		unsigned int no_fetch = 0;
@@ -3719,6 +3795,10 @@ fctx_getaddresses_nameservers(fetchctx_t *fctx, isc_stdtime_t now,
 
 		if (!overquota) {
 			*all_spilledp = false;
+		}
+
+		if (++(*ns_processed) >= max_delegation_servers) {
+			break;
 		}
 	}
 
@@ -3782,6 +3862,7 @@ fctx_getaddresses(fetchctx_t *fctx) {
 	bool need_alternate = false;
 	bool all_spilled = false;
 	size_t fetches_allowed = 0;
+	size_t ns_processed = 0;
 
 	FCTXTRACE5("getaddresses", "fctx->depth=", fctx->depth);
 
@@ -3867,25 +3948,45 @@ fctx_getaddresses(fetchctx_t *fctx) {
 	}
 
 	now = isc_stdtime_now();
-	all_spilled = true; /* resets to false below after the first success */
 
 	INSIST(ISC_LIST_EMPTY(fctx->finds));
 	INSIST(ISC_LIST_EMPTY(fctx->altfinds));
+
+	/*
+	 * A dns_delegset_t can only have either
+	 *
+	 * - addresses (either from DELEG-based delegation with only addresses,
+	 *   or NS-based delegation with glues)
+	 * - name servers to lookup (either from DELEG-based delegation with
+	 *   only name servers, or NS-based delegation without glues)
+	 * - include-delegparam (from DELEG-based delegation only -- NYI).
+	 *
+	 * So let's try in this order. If nothing's found, then we can attempt
+	 * alternates.
+	 *
+	 * Either way, the maximum number of nameserver names and addresses used
+	 * for this resolution is at most `max_delegation_servers`. This is why
+	 * `ns_processed` is shared with `fctx_getaddresses_addresses` and
+	 * `fctx_getaddresses_nameservers`.
+	 * */
+
+	fctx_getaddresses_addresses(fctx, now, stdoptions, &all_spilled,
+				    &ns_processed);
 
 	fetches_allowed = fctx_getaddresses_allowed(fctx);
 
 	result = fctx_getaddresses_nameservers(fctx, now, stdoptions,
 					       fetches_allowed, &need_alternate,
-					       &all_spilled);
+					       &all_spilled, &ns_processed);
 	if (result == DNS_R_CONTINUE && fetches_allowed == 0) {
 		/*
 		 * We have no addresses and we haven't allowed any
 		 * fetches to be started.  Allow one extra fetch and try
 		 * again.
 		 */
-		(void)fctx_getaddresses_nameservers(fctx, now, stdoptions, 1,
-						    &need_alternate,
-						    &all_spilled);
+		(void)fctx_getaddresses_nameservers(
+			fctx, now, stdoptions, 1, &need_alternate, &all_spilled,
+			&ns_processed);
 	}
 
 	/*
@@ -6229,14 +6330,12 @@ cleanup:
 
 static isc_result_t
 rctx_cachemessage(respctx_t *rctx) {
-	isc_result_t result;
+	isc_result_t result = ISC_R_SUCCESS;
 	fetchctx_t *fctx = rctx->fctx;
 	resquery_t *query = rctx->query;
 	dns_message_t *message = query->rmessage;
 
 	FCTXTRACE("rctx_cachemessage");
-
-	FCTX_ATTR_CLR(fctx, FCTX_ATTR_WANTCACHE);
 
 	LOCK(&fctx->lock);
 
@@ -6249,6 +6348,8 @@ rctx_cachemessage(respctx_t *rctx) {
 			}
 		}
 	}
+
+	FCTX_ATTR_CLR(fctx, FCTX_ATTR_WANTCACHE);
 
 cleanup:
 	UNLOCK(&fctx->lock);
@@ -9137,26 +9238,6 @@ rctx_referral(respctx_t *rctx) {
 	}
 
 	/*
-	 * Mark any additional data related to this rdataset.
-	 * It's important that we do this before we change the
-	 * query domain.
-	 */
-	INSIST(rctx->ns_rdataset != NULL);
-	FCTX_ATTR_SET(fctx, FCTX_ATTR_GLUING);
-	/*
-	 * We want to append **all** the GLUE records here.
-	 */
-	(void)dns_rdataset_additionaldata(rctx->ns_rdataset, rctx->ns_name,
-					  check_related, rctx, 0);
-	FCTX_ATTR_CLR(fctx, FCTX_ATTR_GLUING);
-
-	/*
-	 * An NS-based delegation can be cached immediately (i.e. there is
-	 * no DNSSEC validation).
-	 */
-	cache_delegns(rctx);
-
-	/*
 	 * NS rdatasets with 0 TTL cause problems.
 	 * dns_view_findzonecut() will not find them when we
 	 * try to follow the referral, and we'll SERVFAIL
@@ -9166,6 +9247,17 @@ rctx_referral(respctx_t *rctx) {
 	if (rctx->ns_rdataset->ttl == 0) {
 		rctx->ns_rdataset->ttl = 1;
 	}
+
+	/*
+	 * An NS-based delegation can be cached immediately (i.e. there is no
+	 * DNSSEC validation).
+	 *
+	 * For now we don't do anything if the delegation already exists and is
+	 * not expired in the DB. Might be worth a warning? This should never
+	 * happen.
+	 */
+	INSIST(rctx->ns_rdataset != NULL);
+	(void)cache_delegns(rctx);
 
 	/*
 	 * Set the current query domain to the referral name.
@@ -9192,7 +9284,13 @@ rctx_referral(respctx_t *rctx) {
 		return ISC_R_COMPLETE;
 	}
 
+	/*
+	 * While NS and glue records in referral responses are stored in the
+	 * delegation database and not the main cache, other records, such as
+	 * DS, do still need to be stored in the main cache.
+	 */
 	FCTX_ATTR_SET(fctx, FCTX_ATTR_WANTCACHE);
+
 	fctx->ns_ttl_ok = false;
 	log_ns_ttl(fctx, "DELEGATION");
 	rctx->result = DNS_R_DELEGATION;
