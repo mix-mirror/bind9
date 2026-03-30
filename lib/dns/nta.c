@@ -414,7 +414,6 @@ dns_ntatable_covered(dns_ntatable_t *ntatable, isc_stdtime_t now,
 	bool answer = false;
 	dns_qpread_t qpr;
 	void *pval = NULL;
-	bool flushnode = false;
 
 	REQUIRE(VALID_NTATABLE(ntatable));
 	REQUIRE(dns_name_isabsolute(name));
@@ -454,7 +453,6 @@ dns_ntatable_covered(dns_ntatable_t *ntatable, isc_stdtime_t now,
 		/* NTA is expired */
 		dns__nta_ref(nta);
 		dns_ntatable_ref(nta->ntatable);
-		flushnode = true;
 		isc_async_run(nta->loop, delete_expired, nta);
 		goto done;
 	}
@@ -462,10 +460,6 @@ dns_ntatable_covered(dns_ntatable_t *ntatable, isc_stdtime_t now,
 	answer = true;
 done:
 	dns_qpread_destroy(table, &qpr);
-
-	if (nta != NULL && flushnode) {
-		dns_view_flushnode(view, &nta->name, true);
-	}
 unlock:
 	rcu_read_unlock();
 
