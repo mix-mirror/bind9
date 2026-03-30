@@ -1,0 +1,1 @@
+-m record -c named.conf -d 99 -D resolver-ns1 -g -T maxcachesize=3145728
