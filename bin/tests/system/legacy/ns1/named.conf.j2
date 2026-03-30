@@ -40,6 +40,10 @@ zone "." {
 	file "root.db";
 };
 
+server 10.53.0.5 {
+	require-cookie no;
+};
+
 {% if dnssec_validation != "no" %}
 include "trusted.conf";
 {% endif %}
