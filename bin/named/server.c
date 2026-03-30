@@ -6564,7 +6564,7 @@ tat_send(void *arg) {
 	char namebuf[DNS_NAME_FORMATSIZE];
 	dns_fixedname_t fdomain;
 	dns_name_t *domain = NULL;
-	dns_rdataset_t nameservers;
+	dns_delegset_t *delegset = NULL;
 	isc_result_t result;
 	dns_name_t *keyname = NULL;
 	dns_name_t *tatname = NULL;
@@ -6596,25 +6596,23 @@ tat_send(void *arg) {
 	 * to.
 	 *
 	 * After the dns_view_findzonecut() call, 'domain' will hold the
-	 * deepest zone cut we can find for 'keyname' while 'nameservers' will
-	 * hold the NS RRset at that zone cut.
+	 * deepest zone cut we can find for 'keyname' while 'delegset' will
+	 * hold the NS names at that zone cut.
 	 */
 	domain = dns_fixedname_initname(&fdomain);
-	dns_rdataset_init(&nameservers);
 	result = dns_view_bestzonecut(tat->view, keyname, domain, NULL, 0, 0,
-				      true, true, &nameservers);
+				      true, true, &delegset);
 	if (result == ISC_R_SUCCESS) {
 		result = dns_resolver_createfetch(
 			tat->view->resolver, tatname, dns_rdatatype_null,
-			domain, &nameservers, NULL, NULL, 0, 0, 0, NULL, NULL,
-			NULL, tat->loop, tat_done, tat, NULL, &tat->rdataset,
+			domain, delegset, NULL, NULL, 0, 0, 0, NULL, NULL, NULL,
+			tat->loop, tat_done, tat, NULL, &tat->rdataset,
 			&tat->sigrdataset, &tat->fetch);
 
 		/*
-		 * dns_resolver_createfetch() will create its own copy of
-		 * nameservers.
+		 * dns_resolver_createfetch() will internally attach delegset.
 		 */
-		dns_rdataset_cleanup(&nameservers);
+		dns_delegset_detach(&delegset);
 	}
 
 	/*
