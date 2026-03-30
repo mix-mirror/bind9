@@ -510,18 +510,17 @@ struct fetchctx {
 #define FCTX_MAGIC	 ISC_MAGIC('F', '!', '!', '!')
 #define VALID_FCTX(fctx) ISC_MAGIC_VALID(fctx, FCTX_MAGIC)
 
-#define FCTX_ATTR_HAVEANSWER 0x0001
-#define FCTX_ATTR_GLUING     0x0002
-#define FCTX_ATTR_ADDRWAIT   0x0004
-#define FCTX_ATTR_WANTCACHE  0x0010
-#define FCTX_ATTR_WANTNCACHE 0x0020
-#define FCTX_ATTR_TRIEDFIND  0x0080
-#define FCTX_ATTR_TRIEDALT   0x0100
+enum {
+	FCTX_ATTR_HAVEANSWER = 1 << 0,
+	FCTX_ATTR_ADDRWAIT = 1 << 1,
+	FCTX_ATTR_WANTCACHE = 1 << 2,
+	FCTX_ATTR_WANTNCACHE = 1 << 3,
+	FCTX_ATTR_TRIEDFIND = 1 << 4,
+	FCTX_ATTR_TRIEDALT = 1 << 5,
+};
 
 #define HAVE_ANSWER(f) \
 	((atomic_load_acquire(&(f)->attributes) & FCTX_ATTR_HAVEANSWER) != 0)
-#define GLUING(f) \
-	((atomic_load_acquire(&(f)->attributes) & FCTX_ATTR_GLUING) != 0)
 #define ADDRWAIT(f) \
 	((atomic_load_acquire(&(f)->attributes) & FCTX_ATTR_ADDRWAIT) != 0)
 #define SHUTTINGDOWN(f) ((f)->state == fetchstate_done)
@@ -6517,21 +6516,9 @@ done:
 }
 
 static void
-mark_related(dns_name_t *name, dns_rdataset_t *rdataset, bool external,
-	     bool gluing) {
+mark_related(dns_name_t *name, dns_rdataset_t *rdataset, bool external) {
 	name->attributes.cache = true;
-	if (gluing) {
-		rdataset->trust = dns_trust_glue;
-		/*
-		 * Glue with 0 TTL causes problems.  We force the TTL to
-		 * 1 second to prevent this.
-		 */
-		if (rdataset->ttl == 0) {
-			rdataset->ttl = 1;
-		}
-	} else {
-		rdataset->trust = dns_trust_additional;
-	}
+	rdataset->trust = dns_trust_additional;
 
 	/*
 	 * Avoid infinite loops by only marking new rdatasets.
@@ -6765,12 +6752,8 @@ check_section(void *arg, const dns_name_t *addname, dns_rdatatype_t type,
 	dns_name_t *name = NULL;
 	bool external;
 	dns_rdatatype_t rtype;
-	bool gluing;
 
 	REQUIRE(VALID_FCTX(fctx));
-
-	gluing = (GLUING(fctx) || (fctx->type == dns_rdatatype_ns &&
-				   dns_name_equal(fctx->name, dns_rootname)));
 
 	result = dns_message_findname(rctx->query->rmessage, section, addname,
 				      dns_rdatatype_any, 0, &name, NULL);
@@ -6784,15 +6767,14 @@ check_section(void *arg, const dns_name_t *addname, dns_rdatatype_t type,
 					rtype = rdataset->type;
 				}
 				if (dns_rdatatype_isaddr(rtype)) {
-					mark_related(name, rdataset, external,
-						     gluing);
+					mark_related(name, rdataset, external);
 				}
 			}
 		} else {
 			dns_rdataset_t *rdataset = NULL;
 			result = dns_message_findtype(name, type, 0, &rdataset);
 			if (result == ISC_R_SUCCESS) {
-				mark_related(name, rdataset, external, gluing);
+				mark_related(name, rdataset, external);
 				if (found != NULL) {
 					dns_rdataset_clone(rdataset, found);
 				}
@@ -6804,8 +6786,7 @@ check_section(void *arg, const dns_name_t *addname, dns_rdatatype_t type,
 					name, dns_rdatatype_rrsig, type,
 					&rdataset);
 				if (result == ISC_R_SUCCESS) {
-					mark_related(name, rdataset, external,
-						     gluing);
+					mark_related(name, rdataset, external);
 				}
 			}
 		}
