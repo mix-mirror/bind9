@@ -11227,6 +11227,13 @@ cleanup:
 	return result;
 }
 
+static void
+flush_delegdb(dns_view_t *view) {
+	dns_delegdb_shutdown(view->deleg);
+	dns_delegdb_detach(&view->deleg);
+	dns_delegdb_create(&view->deleg);
+}
+
 isc_result_t
 named_server_flushcache(named_server_t *server, isc_lex_t *lex) {
 	char *ptr = NULL;
@@ -11304,6 +11311,8 @@ named_server_flushcache(named_server_t *server, isc_lex_t *lex) {
 	 * two views.  Then this will be a O(n^2/4) operation.
 	 */
 	ISC_LIST_FOREACH(server->viewlist, view, link) {
+		flush_delegdb(view);
+
 		if (!dns_view_iscacheshared(view)) {
 			continue;
 		}
@@ -11358,11 +11367,73 @@ named_server_flushcache(named_server_t *server, isc_lex_t *lex) {
 	return result;
 }
 
+static bool
+flushnode_cache(dns_view_t *view, const dns_name_t *name, const char *target,
+		bool tree) {
+	isc_result_t result;
+
+	/*
+	 * It's a little inefficient to try flushing name for all views
+	 * if some of the views share a single cache.  But since the
+	 * operation is lightweight we prefer simplicity here.
+	 */
+	result = dns_view_flushnode(view, name, tree);
+	if (result != ISC_R_SUCCESS) {
+		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
+			      ISC_LOG_ERROR,
+			      "flushing %s '%s' in cache view '%s' "
+			      "failed: %s",
+			      tree ? "tree" : "name", target, view->name,
+			      isc_result_totext(result));
+	}
+
+	return result == ISC_R_SUCCESS;
+}
+
+static bool
+flushnode_delegcache(dns_view_t *view, const dns_name_t *name,
+		     const char *target, bool tree) {
+	isc_result_t result;
+
+	result = dns_delegdb_delete(view->deleg, name, tree);
+	if (result != ISC_R_SUCCESS) {
+		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
+			      ISC_LOG_ERROR,
+			      "flushing %s '%s' in delegation cache view '%s' "
+			      "failed: %s",
+			      tree ? "tree" : "name", target, view->name,
+			      isc_result_totext(result));
+	}
+
+	return result == ISC_R_SUCCESS;
+}
+
+static void
+logflushcachesuccess(const char *viewname, const char *target, bool tree,
+		     bool deleg) {
+	const char *cache =
+		deleg ? (viewname == NULL ? "delegation cache for all views"
+					  : "delegation cache for view")
+		      : (viewname == NULL ? "DNS cache for all views"
+					  : "DNS cache for view");
+
+	if (viewname == NULL) {
+		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
+			      ISC_LOG_INFO, "flushing %s '%s' in %s succeeded",
+			      tree ? "tree" : "name", target, cache);
+	} else {
+		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
+			      ISC_LOG_INFO,
+			      "flushing %s '%s' in %s %s succeeded",
+			      tree ? "tree" : "name", target, cache, viewname);
+	}
+}
+
 isc_result_t
 named_server_flushnode(named_server_t *server, isc_lex_t *lex, bool tree) {
 	char *ptr = NULL, *viewname = NULL;
 	char target[DNS_NAME_FORMATSIZE];
-	bool flushed;
+	bool flushedcache = false, flusheddelegcache = false;
 	bool found;
 	isc_result_t result = ISC_R_SUCCESS;
 	isc_buffer_t b;
@@ -11391,51 +11462,41 @@ named_server_flushnode(named_server_t *server, isc_lex_t *lex, bool tree) {
 	viewname = next_token(lex, NULL);
 
 	isc_loopmgr_pause();
-	flushed = true;
 	found = false;
 	ISC_LIST_FOREACH(server->viewlist, view, link) {
 		if (viewname != NULL && strcasecmp(viewname, view->name) != 0) {
 			continue;
 		}
+
 		found = true;
-		/*
-		 * It's a little inefficient to try flushing name for all views
-		 * if some of the views share a single cache.  But since the
-		 * operation is lightweight we prefer simplicity here.
-		 */
-		result = dns_view_flushnode(view, name, tree);
-		if (result != ISC_R_SUCCESS) {
-			flushed = false;
-			isc_log_write(NAMED_LOGCATEGORY_GENERAL,
-				      NAMED_LOGMODULE_SERVER, ISC_LOG_ERROR,
-				      "flushing %s '%s' in cache view '%s' "
-				      "failed: %s",
-				      tree ? "tree" : "name", target,
-				      view->name, isc_result_totext(result));
+
+		if (flushnode_cache(view, name, target, tree)) {
+			flushedcache = true;
+		}
+
+		if (flushnode_delegcache(view, name, target, tree)) {
+			flusheddelegcache = true;
 		}
 	}
-	if (flushed && found) {
-		if (viewname != NULL) {
-			isc_log_write(NAMED_LOGCATEGORY_GENERAL,
-				      NAMED_LOGMODULE_SERVER, ISC_LOG_INFO,
-				      "flushing %s '%s' in cache view '%s' "
-				      "succeeded",
-				      tree ? "tree" : "name", target, viewname);
-		} else {
-			isc_log_write(NAMED_LOGCATEGORY_GENERAL,
-				      NAMED_LOGMODULE_SERVER, ISC_LOG_INFO,
-				      "flushing %s '%s' in all cache views "
-				      "succeeded",
-				      tree ? "tree" : "name", target);
-		}
+
+	if (flushedcache && found) {
+		logflushcachesuccess(viewname, target, tree, false);
 		result = ISC_R_SUCCESS;
-	} else {
+	}
+
+	if (flusheddelegcache && found) {
+		logflushcachesuccess(viewname, target, tree, true);
+		result = ISC_R_SUCCESS;
+	}
+
+	if (!flushedcache && !flusheddelegcache) {
 		if (!found) {
-			isc_log_write(NAMED_LOGCATEGORY_GENERAL,
-				      NAMED_LOGMODULE_SERVER, ISC_LOG_ERROR,
-				      "flushing %s '%s' in cache view '%s' "
-				      "failed: view not found",
-				      tree ? "tree" : "name", target, viewname);
+			isc_log_write(
+				NAMED_LOGCATEGORY_GENERAL,
+				NAMED_LOGMODULE_SERVER, ISC_LOG_ERROR,
+				"flushing %s '%s' in caches for view '%s' "
+				"failed: view not found",
+				tree ? "tree" : "name", target, viewname);
 		}
 		result = ISC_R_FAILURE;
 	}
