@@ -3893,6 +3893,13 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 		}
 	}
 
+	/*
+	 * Since both the delegation DB and ADB uses 1/8 of the
+	 * `max_cache_size`, let's use 6/8 for the main cache DB.
+	 */
+	const size_t cache_size_slice = max_cache_size / 8;
+	const size_t main_cache_size = cache_size_slice * 6;
+
 	/* Check-names. */
 	obj = NULL;
 	result = named_checknames_get(maps, response_synonyms, &obj);
@@ -4178,7 +4185,7 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	}
 	if (nsc != NULL) {
 		if (!cache_sharable(nsc->primaryview, view, zero_no_soattl,
-				    max_cache_size, max_stale_ttl,
+				    main_cache_size, max_stale_ttl,
 				    stale_refresh_time))
 		{
 			isc_log_write(NAMED_LOGCATEGORY_GENERAL,
@@ -4254,7 +4261,7 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 
 	dns_view_setcache(view, cache, shared_cache);
 
-	dns_cache_setcachesize(cache, max_cache_size);
+	dns_cache_setcachesize(cache, main_cache_size);
 	dns_cache_setservestalettl(cache, max_stale_ttl);
 	dns_cache_setservestalerefresh(cache, stale_refresh_time);
 
@@ -4288,11 +4295,7 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	} else {
 		dns_delegdb_create(&view->deleg);
 	}
-
-	/*
-	 * Totally arbitrary decision for now. This might need its own knob.
-	 */
-	dns_delegdb_setsize(view->deleg, max_cache_size / 6);
+	dns_delegdb_setsize(view->deleg, cache_size_slice);
 
 	/*
 	 * The previous view isn't needed anymore.
@@ -4327,8 +4330,8 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	 * MAX_ADB_SIZE_FOR_CACHESHARE when the cache is shared.
 	 */
 	max_adb_size = 0;
-	if (max_cache_size != 0U) {
-		max_adb_size = max_cache_size / 8;
+	if (cache_size_slice != 0U) {
+		max_adb_size = cache_size_slice;
 		if (max_adb_size == 0U) {
 			max_adb_size = 1; /* Force minimum. */
 		}
