@@ -120,10 +120,9 @@ enum {
 	dns_cachestatscounter_queryhits = 3,
 	dns_cachestatscounter_querymisses = 4,
 	dns_cachestatscounter_deletelru = 5,
-	dns_cachestatscounter_deletettl = 6,
-	dns_cachestatscounter_coveringnsec = 7,
+	dns_cachestatscounter_coveringnsec = 6,
 
-	dns_cachestatscounter_max = 8,
+	dns_cachestatscounter_max = 7,
 
 	/*%
 	 * Query statistics counters (obsolete).

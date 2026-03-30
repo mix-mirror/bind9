@@ -920,10 +920,6 @@ expireheader(dns_slabheader_t *header, isc_rwlocktype_t *nlocktypep,
 		}
 
 		switch (reason) {
-		case dns_expire_ttl:
-			isc_stats_increment(qpdb->cachestats,
-					    dns_cachestatscounter_deletettl);
-			break;
 		case dns_expire_lru:
 			isc_stats_increment(qpdb->cachestats,
 					    dns_cachestatscounter_deletelru);

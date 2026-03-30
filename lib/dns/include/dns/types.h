@@ -249,8 +249,7 @@ typedef enum {
 
 typedef enum {
 	dns_expire_lru = 0,
-	dns_expire_ttl = 1,
-	dns_expire_flush = 2,
+	dns_expire_flush = 1,
 } dns_expire_t;
 
 /*
