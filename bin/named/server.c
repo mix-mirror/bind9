@@ -244,6 +244,7 @@ struct dumpcontext {
 	isc_mem_t *mctx;
 	bool dumpcache;
 	bool dumpzones;
+	bool dumpdeleg;
 	bool dumpadb;
 	bool dumpexpired;
 	bool dumpfail;
@@ -10779,6 +10780,12 @@ resume:
 		dns_db_attach(dctx->view->view->cachedb, &dctx->cache);
 	}
 
+	if (dctx->dumpdeleg) {
+		fprintf(dctx->fp, ";\n; Delegation cache\n;\n");
+		dns_delegdb_dump(dctx->view->view->deleg, dctx->dumpexpired,
+				 dctx->fp);
+	}
+
 	if (dctx->cache != NULL) {
 		if (dctx->dumpadb) {
 			dns_adb_t *adb = NULL;
@@ -10794,6 +10801,7 @@ resume:
 		}
 		dns_db_detach(&dctx->cache);
 	}
+
 	if (dctx->dumpzones) {
 		style = &dns_master_style_full;
 	nextzone:
@@ -10882,6 +10890,7 @@ named_server_dumpdb(named_server_t *server, isc_lex_t *lex,
 		.mctx = server->mctx,
 		.dumpcache = true,
 		.dumpadb = true,
+		.dumpdeleg = true,
 		.dumpfail = true,
 		.viewlist = ISC_LIST_INITIALIZER,
 	};
@@ -10910,23 +10919,33 @@ named_server_dumpdb(named_server_t *server, isc_lex_t *lex,
 		/* only dump zones, suppress caches */
 		dctx->dumpadb = false;
 		dctx->dumpcache = false;
+		dctx->dumpdeleg = false;
 		dctx->dumpfail = false;
 		dctx->dumpzones = true;
+		ptr = next_token(lex, NULL);
+	} else if (ptr != NULL && strcmp(ptr, "-deleg") == 0) {
+		/* only dump deleg db, suppress other caches */
+		dctx->dumpcache = false;
+		dctx->dumpfail = false;
+		dctx->dumpadb = false;
 		ptr = next_token(lex, NULL);
 	} else if (ptr != NULL && strcmp(ptr, "-adb") == 0) {
 		/* only dump adb, suppress other caches */
 		dctx->dumpcache = false;
+		dctx->dumpdeleg = false;
 		dctx->dumpfail = false;
 		ptr = next_token(lex, NULL);
 	} else if (ptr != NULL && strcmp(ptr, "-bad") == 0) {
 		/* only dump badcache, suppress other caches */
 		dctx->dumpadb = false;
+		dctx->dumpdeleg = false;
 		dctx->dumpcache = false;
 		dctx->dumpfail = false;
 		ptr = next_token(lex, NULL);
 	} else if (ptr != NULL && strcmp(ptr, "-fail") == 0) {
 		/* only dump servfail cache, suppress other caches */
 		dctx->dumpadb = false;
+		dctx->dumpdeleg = false;
 		dctx->dumpcache = false;
 		ptr = next_token(lex, NULL);
 	}
