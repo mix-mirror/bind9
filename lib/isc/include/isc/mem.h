@@ -179,7 +179,7 @@ extern isc_mem_t *isc_g_mctx;
  * see https://github.com/jemalloc/jemalloc/issues/2566
  * for more information.
  */
-#if HAVE_JEMALLOC
+#if JEMALLOC_API_SUPPORTED
 
 /*
  * cmocka.h has confliction definitions with the jemalloc header but we only

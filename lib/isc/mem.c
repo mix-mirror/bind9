@@ -31,6 +31,7 @@
 #include <isc/os.h>
 #include <isc/overflow.h>
 #include <isc/refcount.h>
+#include <isc/stdtime.h>
 #include <isc/strerr.h>
 #include <isc/string.h>
 #include <isc/tid.h>
@@ -80,6 +81,10 @@ isc_mem_t *isc_g_mctx = NULL;
 
 #define ZERO_ALLOCATION_SIZE sizeof(void *)
 #define DEBUG_TABLE_COUNT    512U
+
+#ifdef JEMALLOC_API_SUPPORTED
+static ssize_t default_dirty_decay_ms = 10000;
+#endif
 
 /*
  * Types.
@@ -213,8 +218,6 @@ write_size(int fd, size_t size) {
 
 	write_string(fd, str);
 }
-#undef TOSTRING
-#undef STRINGIFY
 
 static void
 write_errno(int fd, int errnum) {
@@ -398,6 +401,38 @@ mem_get(isc_mem_t *ctx, size_t size, int flags) {
 	return ptr;
 }
 
+static thread_local size_t freed_bytes = 0;
+static _Atomic(isc_stdtime_t) last_purge = 0;
+
+constexpr size_t purge_threshold = (16 * 1024 * 1024);
+
+#if defined(JEMALLOC_API_SUPPORTED) || defined(__GLIBC__)
+
+static void
+mem_purge(void) {
+	isc_stdtime_t now = isc_stdtime_now();
+	isc_stdtime_t last = atomic_load_relaxed(&last_purge);
+
+	if (now > last &&
+	    atomic_compare_exchange_strong_acq_rel(&last_purge, &last, now))
+	{
+#if defined(JEMALLOC_API_SUPPORTED)
+		(void)mallctl("arena." STRINGIFY(MALLCTL_ARENAS_ALL) ".decay",
+			      NULL, NULL, NULL, 0);
+#elif defined(__GLIBC__)
+		(void)malloc_trim(0);
+#endif
+	}
+}
+
+#else
+static void
+mem_purge(void) {
+	/* no-op */
+}
+
+#endif
+
 /*!
  * Perform a free, doing memory filling and overrun detection as necessary.
  */
@@ -407,6 +442,13 @@ mem_put(isc_mem_t *ctx, void *mem, size_t size, int flags) {
 	ADJUST_ZERO_ALLOCATION_SIZE(size);
 
 	sdallocx(mem, size, flags | ctx->jemalloc_flags);
+
+	freed_bytes += size;
+
+	if (freed_bytes >= purge_threshold) {
+		freed_bytes = 0;
+		mem_purge();
+	}
 }
 
 static void *
@@ -465,6 +507,22 @@ isc__mem_initialize(void) {
  */
 #ifdef JEMALLOC_API_SUPPORTED
 	RUNTIME_CHECK(ISC__MEM_ZERO == MALLOCX_ZERO);
+
+	/*
+	 * ignore errors — volumetric-based purge in mem_put handles the rest
+	 * regardless
+	 */
+
+	(void)mallctl("background_thread", NULL, NULL, &(bool){ true },
+		      sizeof(bool));
+
+	(void)mallctl("arenas.dirty_decay_ms", NULL, NULL,
+		      &default_dirty_decay_ms, sizeof(default_dirty_decay_ms));
+
+	(void)mallctl("arena." STRINGIFY(MALLCTL_ARENAS_ALL) ".dirty_decay_ms",
+		      NULL, NULL, &default_dirty_decay_ms,
+		      sizeof(default_dirty_decay_ms));
+
 #endif /* JEMALLOC_API_SUPPORTED */
 
 	isc_mutex_init(&contextslock);
@@ -804,7 +862,7 @@ isc__mem_reget(isc_mem_t *ctx, void *old_ptr, size_t old_size, size_t new_size,
 
 		ADJUST_ZERO_ALLOCATION_SIZE(new_size);
 
-#ifdef HAVE_JEMALLOC
+#ifdef JEMALLOC_API_SUPPORTED
 		new_ptr = mem_realloc(ctx, old_ptr, new_size, flags);
 #else
 		new_ptr = mem_realloc(ctx, old_ptr, new_size,
