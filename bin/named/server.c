@@ -12480,7 +12480,7 @@ rmzone(void *arg) {
 	char zonename[DNS_NAME_FORMATSIZE];
 	dns_view_t *view = NULL;
 	dns_db_t *dbp = NULL;
-	bool added;
+	bool added, modded;
 	isc_result_t result;
 	MDB_txn *txn = NULL;
 	MDB_dbi dbi;
@@ -12501,11 +12501,12 @@ rmzone(void *arg) {
 	 * (If this is a catalog zone member then nzf_config can be NULL)
 	 */
 	added = dns_zone_getadded(zone);
+	modded = dns_zone_getmodded(zone);
 	catz = dns_zone_get_parentcatz(zone);
 
 	LOCK(&view->newzone.lock);
 
-	if (added && catz == NULL) {
+	if ((added || modded) && catz == NULL) {
 		/* Make sure we can open the NZD database */
 		result = nzd_open(view, 0, &txn, &dbi);
 		if (result != ISC_R_SUCCESS) {
