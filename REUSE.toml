@@ -33,7 +33,7 @@ path = [
 	"Makefile.**",
 	"bin/tests/system/**/README*",
 	"bin/tests/system/_common/**",
-	"bin/tests/system/**named.conf*",
+	"bin/tests/system/**.conf*",
 	"bin/tests/system/dnstap/large-answer.fstrm",
 	"bin/tests/system/doth/CA/CA.cfg",
 	"bin/tests/system/doth/CA/index.txt",
