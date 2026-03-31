@@ -474,6 +474,18 @@ n=$((n + 1))
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
+echo_i "check that named restarts with previously deleted normal.example zone ($n)"
+ret=0
+stop_server ns2
+start_server --noclean --restart --port ${PORT} ns2 || ret=1
+ret=0
+$RNDCCMD 10.53.0.2 showzone normal.example >rndc.out.ns2.$n
+expected='zone "normal.example" { type primary; file "normal.db"; };'
+[ "$(cat rndc.out.ns2.$n)" = "$expected" ] || ret=1
+n=$((n + 1))
+if [ $ret != 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
+
 echo_i "reconfiguring server with multiple views"
 cp ns2/named2.conf ns2/named.conf
 rndc_reconfig ns2 10.53.0.2
