@@ -3331,5 +3331,59 @@ EOF
   }
 fi
 
+n=$((n + 1))
+ret=0
+echo_i "check adding APL with empty rdata works ($n)"
+$DIG $DIGOPTS update.nil apl @10.53.0.1 >dig.out.pre.ns1.$n || ret=1
+grep "status: NOERROR" dig.out.pre.ns1.$n >/dev/null || ret=1
+grep "ANSWER: 0," dig.out.pre.ns1.$n >/dev/null || ret=1
+
+$NSUPDATE -k ns1/ddns.key <<END >nsupdate.out.test$n 2>&1 || ret=1
+    server 10.53.0.1 ${PORT}
+    update add update.nil. 3600 IN APL
+    update add update.nil. 3600 IN APL 1:10.53.0.2/32
+    send
+END
+$DIG $DIGOPTS update.nil apl @10.53.0.1 >dig.out.post.ns1.$n || ret=1
+grep "status: NOERROR" dig.out.post.ns1.$n >/dev/null || ret=1
+grep "ANSWER: 2," dig.out.post.ns1.$n >/dev/null || ret=1
+[ $ret = 0 ] || {
+  echo_i "failed"
+  status=1
+}
+
+n=$((n + 1))
+ret=0
+echo_i "check APL with empty rdata yxrrset-exact prerequisite works ($n)"
+$NSUPDATE -k ns1/ddns.key <<END >nsupdate.out.test$n 2>&1 || ret=1
+    server 10.53.0.1 ${PORT}
+    prereq yxrrset-exact update.nil. APL
+    prereq yxrrset-exact update.nil. APL 1:10.53.0.2/32
+    update add update.nil 3600 IN TXT "APL empty rdata"
+    send
+END
+$DIG $DIGOPTS update.nil TXT @10.53.0.1 >dig.out.ns1.$n || ret=1
+grep "status: NOERROR" dig.out.ns1.$n >/dev/null || ret=1
+grep 'TXT."APL empty rdata"' dig.out.ns1.$n >/dev/null || ret=1
+[ $ret = 0 ] || {
+  echo_i "failed"
+  status=1
+}
+
+n=$((n + 1))
+ret=0
+echo_i "check APL with empty rdata delete-exact works ($n)"
+$NSUPDATE -k ns1/ddns.key <<END >nsupdate.out.test$n 2>&1 || ret=1
+    server 10.53.0.1 ${PORT}
+    update delete-exact update.nil IN APL
+    send
+END
+$DIG $DIGOPTS update.nil APL @10.53.0.1 >dig.out.ns1.$n || ret=1
+grep "status: NOERROR" dig.out.ns1.$n >/dev/null || ret=1
+grep "ANSWER: 1," dig.out.ns1.$n >/dev/null || ret=1
+[ $ret = 0 ] || {
+  echo_i "failed"
+  status=1
+}
 echo_i "exit status: $status"
 [ $status -eq 0 ] || exit 1
