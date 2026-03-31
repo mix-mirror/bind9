@@ -342,36 +342,46 @@ The command formats and their meanings are as follows:
    is assumed.
 
 ``prereq yxrrset domain-name class type``
-   This command requires that a resource record of the specified ``type``,
-   ``class`` and ``domain-name`` exist. If ``class`` is omitted, IN
-   (internet) is assumed.
+   This command requires that one or more resource records of the
+   specified ``type``, ``class`` and ``domain-name`` exist. If
+   ``class`` is omitted, IN (internet) is assumed.
 
 ``prereq yxrrset domain-name class type data``
-   With this command, the ``data`` from each set of prerequisites of this form sharing a
-   common ``type``, ``class``, and ``domain-name`` are combined to form
-   a set of RRs. This set of RRs must exactly match the set of RRs
-   existing in the zone at the given ``type``, ``class``, and
-   ``domain-name``. The ``data`` are written in the standard text
-   representation of the resource record's RDATA.
+   With this command, the ``data`` from each set of prerequisites
+   of this form sharing a common ``type``, ``class``, and ``domain-name``
+   are combined to form a set of RRs. This set of RRs must exactly
+   match the set of RRs existing in the zone at the given ``type``,
+   ``class``, and ``domain-name``. The ``data`` are written in the
+   standard text representation of the resource record's RDATA.
 
-   Note RDATA which is empty (e.g. APL with an zero length rdata)
-   needs to be entered using ``\# 0`` form.
+   RDATA which is empty (e.g. APL with a zero-length RDATA) can
+   be specified using the ``\# 0`` form, or with ``yxrrset-exact``.
 
-``update delete domain-name ttl class type data``
-   This command deletes any resource records named ``domain-name``. If ``type`` and
-   ``data`` are provided, only matching resource records are removed.
-   The Internet class is assumed if ``class`` is not supplied. The
-   ``ttl`` is ignored, and is only allowed for compatibility.
+``prereq yxrrset-exact domain-name class type [data]``
+   This command is similar to ``prereq yxrrset domain-name class type
+   data`` but it always specifies exactly one RR; the ``data`` field is
+   implicitly present. If ``data`` is omitted, then this references an
+   RR with empty RDATA, instead of referencing the entire RRset.
 
-   Note RDATA which is empty (e.g. APL with an zero length rdata)
-   needs to be entered using ``\# 0`` form.
+``update delete domain-name ttl class [type] [data]``
+   This command deletes any resource records named ``domain-name``.
+   If ``type`` and ``data`` are provided, only matching resource
+   records are removed.  The Internet class is assumed if ``class``
+   is not supplied. The ``ttl`` is ignored, and is only allowed for
+   compatibility.
+
+   RDATA which is empty (e.g. APL with a zero-length RDATA) can
+   be specified using the ``\# 0`` form, or with ``delete-exact``.
+
+``update delete-exact domain-name ttl class type [data]``
+   This command is similar to ``update delete domain-name class type
+   data`` but it always specifies exactly one RR; the ``data`` field is
+   implicitly present. If ``data`` is omitted, then this references an RR
+   with empty RDATA, instead of referencing the entire RRset.
 
 ``update add domain-name ttl class type data``
-   This command adds a new resource record with the specified ``ttl``, ``class``, and
-   ``data``.
-
-   Note RDATA which is empty (e.g. APL with an zero length rdata)
-   needs to be entered using ``\# 0`` form.
+   This command adds a new resource record with the specified
+   ``ttl``, ``class``, and ``data``.
 
 ``show``
    This command displays the current message, containing all of the prerequisites and

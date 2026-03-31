@@ -1294,7 +1294,7 @@ parse_name(char **cmdlinep, dns_message_t *msg, dns_name_t **namep) {
 }
 
 static uint16_t
-parse_rdata(char **cmdlinep, dns_rdataclass_t rdataclass,
+parse_rdata(char **cmdlinep, bool data, dns_rdataclass_t rdataclass,
 	    dns_rdatatype_t rdatatype, dns_message_t *msg, dns_rdata_t *rdata) {
 	char *cmdline = *cmdlinep;
 	isc_buffer_t source, *buf = NULL, *newbuf = NULL;
@@ -1302,6 +1302,11 @@ parse_rdata(char **cmdlinep, dns_rdataclass_t rdataclass,
 	isc_lex_t *lex = NULL;
 	dns_rdatacallbacks_t callbacks;
 	isc_result_t result;
+	char empty_cmdline = 0;
+
+	if (data && cmdline == NULL) {
+		cmdline = &empty_cmdline;
+	}
 
 	if (cmdline == NULL) {
 		rdata->flags = DNS_RDATA_UPDATE;
@@ -1312,7 +1317,7 @@ parse_rdata(char **cmdlinep, dns_rdataclass_t rdataclass,
 		cmdline++;
 	}
 
-	if (*cmdline != 0) {
+	if (*cmdline != 0 || data) {
 		dns_rdatacallbacks_init(&callbacks);
 		isc_lex_create(isc_g_mctx, strlen(cmdline), &lex);
 		isc_buffer_init(&source, cmdline, strlen(cmdline));
@@ -1346,7 +1351,7 @@ parse_rdata(char **cmdlinep, dns_rdataclass_t rdataclass,
 }
 
 static uint16_t
-make_prereq(char *cmdline, bool ispositive, bool isrrset) {
+make_prereq(char *cmdline, bool ispositive, bool isrrset, bool data) {
 	isc_result_t result;
 	char *word;
 	dns_name_t *name = NULL;
@@ -1415,8 +1420,8 @@ make_prereq(char *cmdline, bool ispositive, bool isrrset) {
 	dns_message_gettemprdata(updatemsg, &rdata);
 
 	if (isrrset && ispositive) {
-		retval = parse_rdata(&cmdline, rdataclass, rdatatype, updatemsg,
-				     rdata);
+		retval = parse_rdata(&cmdline, data, rdataclass, rdatatype,
+				     updatemsg, rdata);
 		if (retval != STATUS_MORE) {
 			goto failure;
 		}
@@ -1455,7 +1460,7 @@ failure:
 static uint16_t
 evaluate_prereq(char *cmdline) {
 	char *word;
-	bool ispositive, isrrset;
+	bool ispositive, isrrset, data;
 
 	ddebug("evaluate_prereq()");
 	word = nsu_strsep(&cmdline, " \t\r\n");
@@ -1466,20 +1471,28 @@ evaluate_prereq(char *cmdline) {
 	if (strcasecmp(word, "nxdomain") == 0) {
 		ispositive = false;
 		isrrset = false;
+		data = false;
 	} else if (strcasecmp(word, "yxdomain") == 0) {
 		ispositive = true;
 		isrrset = false;
+		data = false;
 	} else if (strcasecmp(word, "nxrrset") == 0) {
 		ispositive = false;
 		isrrset = true;
+		data = false;
 	} else if (strcasecmp(word, "yxrrset") == 0) {
 		ispositive = true;
 		isrrset = true;
+		data = false;
+	} else if (strcasecmp(word, "yxrrset-exact") == 0) {
+		ispositive = true;
+		isrrset = true;
+		data = true;
 	} else {
 		fprintf(stderr, "incorrect operation code: %s\n", word);
 		return STATUS_SYNTAX;
 	}
-	return make_prereq(cmdline, ispositive, isrrset);
+	return make_prereq(cmdline, ispositive, isrrset, data);
 }
 
 static void
@@ -1861,7 +1874,7 @@ evaluate_class(char *cmdline) {
 }
 
 static uint16_t
-update_addordelete(char *cmdline, bool isdelete) {
+update_addordelete(char *cmdline, bool data, bool isdelete) {
 	isc_result_t result;
 	dns_name_t *name = NULL;
 	uint32_t ttl;
@@ -1986,7 +1999,8 @@ parseclass:
 		}
 	}
 
-	retval = parse_rdata(&cmdline, rdataclass, rdatatype, updatemsg, rdata);
+	retval = parse_rdata(&cmdline, data, rdataclass, rdatatype, updatemsg,
+			     rdata);
 	if (retval != STATUS_MORE) {
 		goto failure;
 	}
@@ -2079,6 +2093,7 @@ static uint16_t
 evaluate_update(char *cmdline) {
 	char *word;
 	bool isdelete;
+	bool data;
 
 	ddebug("evaluate_update()");
 	word = nsu_strsep(&cmdline, " \t\r\n");
@@ -2088,15 +2103,24 @@ evaluate_update(char *cmdline) {
 	}
 	if (strcasecmp(word, "delete") == 0) {
 		isdelete = true;
+		data = false;
 	} else if (strcasecmp(word, "del") == 0) {
 		isdelete = true;
+		data = false;
+	} else if (strcasecmp(word, "delete-exact") == 0) {
+		isdelete = true;
+		data = true;
+	} else if (strcasecmp(word, "del-exact") == 0) {
+		isdelete = true;
+		data = true;
 	} else if (strcasecmp(word, "add") == 0) {
 		isdelete = false;
+		data = true;
 	} else {
 		fprintf(stderr, "incorrect operation code: %s\n", word);
 		return STATUS_SYNTAX;
 	}
-	return update_addordelete(cmdline, isdelete);
+	return update_addordelete(cmdline, data, isdelete);
 }
 
 static uint16_t
@@ -2239,28 +2263,37 @@ do_next_command(char *cmdline) {
 		return evaluate_prereq(cmdline);
 	}
 	if (strcasecmp(word, "nxdomain") == 0) {
-		return make_prereq(cmdline, false, false);
+		return make_prereq(cmdline, false, false, false);
 	}
 	if (strcasecmp(word, "yxdomain") == 0) {
-		return make_prereq(cmdline, true, false);
+		return make_prereq(cmdline, true, false, false);
 	}
 	if (strcasecmp(word, "nxrrset") == 0) {
-		return make_prereq(cmdline, false, true);
+		return make_prereq(cmdline, false, true, false);
 	}
 	if (strcasecmp(word, "yxrrset") == 0) {
-		return make_prereq(cmdline, true, true);
+		return make_prereq(cmdline, true, true, false);
+	}
+	if (strcasecmp(word, "yxrrset-exact") == 0) {
+		return make_prereq(cmdline, true, true, true);
 	}
 	if (strcasecmp(word, "update") == 0) {
 		return evaluate_update(cmdline);
 	}
 	if (strcasecmp(word, "delete") == 0) {
-		return update_addordelete(cmdline, true);
+		return update_addordelete(cmdline, false, true);
 	}
 	if (strcasecmp(word, "del") == 0) {
-		return update_addordelete(cmdline, true);
+		return update_addordelete(cmdline, false, true);
+	}
+	if (strcasecmp(word, "delete-exact") == 0) {
+		return update_addordelete(cmdline, true, true);
+	}
+	if (strcasecmp(word, "del-exact") == 0) {
+		return update_addordelete(cmdline, true, true);
 	}
 	if (strcasecmp(word, "add") == 0) {
-		return update_addordelete(cmdline, false);
+		return update_addordelete(cmdline, true, false);
 	}
 	if (strcasecmp(word, "lease") == 0) {
 		return evaluate_lease(cmdline);
@@ -2352,43 +2385,44 @@ do_next_command(char *cmdline) {
 		return STATUS_MORE;
 	}
 	if (strcasecmp(word, "help") == 0) {
-		fprintf(stdout, "nsupdate " PACKAGE_VERSION ":\n"
-				"local address [port]      (set local "
-				"resolver)\n"
-				"server address [port]     (set primary server "
-				"for zone)\n"
-				"send                      (send the update "
-				"request)\n"
-				"show                      (show the update "
-				"request)\n"
-				"answer                    (show the answer to "
-				"the last request)\n"
-				"quit                      (quit, any pending "
-				"update is not sent)\n"
-				"help                      (display this "
-				"message)\n"
-				"key [hmac:]keyname secret (use TSIG to sign "
-				"the request)\n"
-				"gsstsig                   (use GSS_TSIG to "
-				"sign the request)\n"
-				"zone name                 (set the zone to be "
-				"updated)\n"
-				"class CLASS               (set the zone's DNS "
-				"class, e.g. IN (default), CH)\n"
-				"check-names { on | off }  (enable / disable "
-				"check-names)\n"
-				"[prereq] nxdomain name    (require that this "
-				"name does not exist)\n"
-				"[prereq] yxdomain name    (require that this "
-				"name exists)\n"
-				"[prereq] nxrrset ....     (require that this "
-				"RRset does not exist)\n"
-				"[prereq] yxrrset ....     (require that this "
-				"RRset exists)\n"
-				"[update] add ....         (add the given "
-				"record to the zone)\n"
-				"[update] del[ete] ....    (remove the given "
-				"record(s) from the zone)\n");
+		fprintf(stdout,
+			"nsupdate " PACKAGE_VERSION ":\n"
+			"local address [port]          (set local "
+			"resolver)\n"
+			"server address [port]         (set primary server "
+			"for zone)\n"
+			"send                          (send the update "
+			"request)\n"
+			"show                          (show the update "
+			"request)\n"
+			"answer                        (show the answer to "
+			"the last request)\n"
+			"quit                          (quit, any pending "
+			"update is not sent)\n"
+			"help                          (display this "
+			"message)\n"
+			"key [hmac:]keyname secret     (use TSIG to sign "
+			"the request)\n"
+			"gsstsig                       (use GSS_TSIG to "
+			"sign the request)\n"
+			"zone name                     (set the zone to be "
+			"updated)\n"
+			"class CLASS                   (set the zone's DNS "
+			"class, e.g. IN (default), CH)\n"
+			"check-names { on | off }      (enable / disable "
+			"check-names)\n"
+			"[prereq] nxdomain name        (require that this "
+			"name does not exist)\n"
+			"[prereq] yxdomain name        (require that this "
+			"name exists)\n"
+			"[prereq] nxrrset ....         (require that this "
+			"RRset does not exist)\n"
+			"[prereq] yxrrset[-exact] .... (require that this "
+			"RRset exists)\n"
+			"[update] add ....             (add the given "
+			"record to the zone)\n"
+			"[update] del[ete][-exact] ....(remove the given "
+			"record(s) from the zone)\n");
 		return STATUS_MORE;
 	}
 	if (strcasecmp(word, "version") == 0) {
