@@ -12476,7 +12476,6 @@ static void
 rmzone(void *arg) {
 	ns_dzctx_t *dz = (ns_dzctx_t *)arg;
 	dns_zone_t *zone = NULL, *raw = NULL, *mayberaw = NULL;
-	dns_catz_zone_t *catz = NULL;
 	char zonename[DNS_NAME_FORMATSIZE];
 	dns_view_t *view = NULL;
 	dns_db_t *dbp = NULL;
@@ -12502,11 +12501,10 @@ rmzone(void *arg) {
 	 */
 	added = dns_zone_getadded(zone);
 	modded = dns_zone_getmodded(zone);
-	catz = dns_zone_get_parentcatz(zone);
 
 	LOCK(&view->newzone.lock);
 
-	if ((added || modded) && catz == NULL) {
+	if (added || modded) {
 		/* Make sure we can open the NZD database */
 		result = nzd_open(view, 0, &txn, &dbi);
 		if (result != ISC_R_SUCCESS) {
