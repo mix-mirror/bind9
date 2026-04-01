@@ -9,11 +9,231 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
+from pathlib import Path
+
+import os
 import time
 
 import dns.rcode
+import dns.rdatatype
 
 import isctest
+
+
+def set_ans_limit(ans_id, limit):
+    """Write the recursion chain limit for an ans server."""
+    Path(f"ans{ans_id}/ans.limit").write_text(f"{limit}\n")
+
+
+def reset_ans(ip):
+    """Send a reset query to an ans server."""
+    msg = isctest.query.create("reset", "A")
+    isctest.query.udp(msg, ip)
+
+
+def get_ans_count(ip):
+    """Get the query count from an ans server."""
+    msg = isctest.query.create("count", "TXT")
+    res = isctest.query.udp(msg, ip)
+    assert res.rcode() == dns.rcode.NOERROR
+    assert len(res.answer) > 0
+    # TXT rdata is quoted, strip quotes
+    return int(str(res.answer[0][0]).strip('"'))
+
+
+def ns3_sends_aaaa_queries(ns3):
+    """Check whether ns3 sends AAAA queries during resolution."""
+    log_path = os.path.join(ns3.identifier, "named.run")
+    with open(log_path) as f:
+        return "started AAAA fetch" in f.read()
+
+
+def ns3_reset(ns3, templates, config=None):
+    """Switch ns3 config and flush cache."""
+    if config is not None:
+        templates.render("ns3/named.conf", template=f"ns3/{config}.j2")
+    ns3.rndc("reconfig")
+    ns3.rndc("flush")
+
+
+# ---------------------------------------------------------------------------
+# Recursion depth and query limit tests
+# ---------------------------------------------------------------------------
+
+ANS2_IP = "10.53.0.2"
+ANS4_IP = "10.53.0.4"
+ANS7_IP = "10.53.0.7"
+
+
+def test_excessive_depth_12(ns3):
+    """max-recursion-depth=12: excessive depth lookup fails."""
+    set_ans_limit(2, 1000)
+    set_ans_limit(4, 1000)
+    reset_ans(ANS2_IP)
+    reset_ans(ANS4_IP)
+
+    msg = isctest.query.create("indirect1.example.org", "A")
+    res = isctest.query.udp(msg, ns3.ip)
+    isctest.check.servfail(res)
+
+    count = get_ans_count(ANS2_IP) + get_ans_count(ANS4_IP)
+    if ns3_sends_aaaa_queries(ns3):
+        assert count == 27, f"query count {count} != 27"
+    else:
+        assert count == 14, f"query count {count} != 14"
+
+
+def test_permissible_depth_12(ns3, templates):
+    """max-recursion-depth=12: permissible depth lookup succeeds."""
+    set_ans_limit(2, 12)
+    set_ans_limit(4, 12)
+    ns3_reset(ns3, templates)
+    reset_ans(ANS2_IP)
+    reset_ans(ANS4_IP)
+
+    msg = isctest.query.create("indirect2.example.org", "A")
+    res = isctest.query.udp(msg, ns3.ip)
+    isctest.check.noerror(res)
+
+    count = get_ans_count(ANS2_IP) + get_ans_count(ANS4_IP)
+    if ns3_sends_aaaa_queries(ns3):
+        assert count == 50, f"query count {count} != 50"
+    else:
+        assert count == 26, f"query count {count} != 26"
+
+
+def test_excessive_depth_5(ns3, templates):
+    """max-recursion-depth=5: excessive depth lookup fails."""
+    set_ans_limit(2, 12)
+    ns3_reset(ns3, templates, config="named2.conf")
+    reset_ans(ANS2_IP)
+    reset_ans(ANS4_IP)
+
+    msg = isctest.query.create("indirect3.example.org", "A")
+    res = isctest.query.udp(msg, ns3.ip)
+    isctest.check.servfail(res)
+
+    count = get_ans_count(ANS2_IP) + get_ans_count(ANS4_IP)
+    if ns3_sends_aaaa_queries(ns3):
+        assert count == 13, f"query count {count} != 13"
+    else:
+        assert count == 7, f"query count {count} != 7"
+
+
+def test_permissible_depth_5(ns3, templates):
+    """max-recursion-depth=5: permissible depth lookup succeeds."""
+    set_ans_limit(2, 5)
+    set_ans_limit(4, 5)
+    ns3_reset(ns3, templates)
+    reset_ans(ANS2_IP)
+    reset_ans(ANS4_IP)
+
+    msg = isctest.query.create("indirect4.example.org", "A")
+    res = isctest.query.udp(msg, ns3.ip)
+    isctest.check.noerror(res)
+
+    count = get_ans_count(ANS2_IP) + get_ans_count(ANS4_IP)
+    if ns3_sends_aaaa_queries(ns3):
+        assert count == 22, f"query count {count} != 22"
+    else:
+        assert count == 12, f"query count {count} != 12"
+
+
+def test_excessive_queries_50(ns3, templates):
+    """max-recursion-queries=50: excessive queries lookup fails."""
+    set_ans_limit(2, 13)
+    set_ans_limit(4, 13)
+    ns3_reset(ns3, templates, config="named3.conf")
+    reset_ans(ANS2_IP)
+    reset_ans(ANS4_IP)
+
+    msg = isctest.query.create("indirect5.example.org", "A")
+    res = isctest.query.udp(msg, ns3.ip)
+    if ns3_sends_aaaa_queries(ns3):
+        isctest.check.servfail(res)
+
+    count = get_ans_count(ANS2_IP)
+    assert count <= 50, f"query count {count} > 50"
+
+
+def test_permissible_queries_50(ns3, templates):
+    """max-recursion-queries=50: permissible queries lookup succeeds."""
+    set_ans_limit(2, 12)
+    ns3_reset(ns3, templates)
+    reset_ans(ANS2_IP)
+
+    msg = isctest.query.create("indirect6.example.org", "A")
+    res = isctest.query.udp(msg, ns3.ip)
+    isctest.check.noerror(res)
+
+    count = get_ans_count(ANS2_IP)
+    assert count <= 50, f"query count {count} > 50"
+
+
+def test_excessive_queries_40(ns3, templates):
+    """max-recursion-queries=40: excessive queries lookup fails."""
+    set_ans_limit(2, 11)
+    ns3_reset(ns3, templates, config="named4.conf")
+    reset_ans(ANS2_IP)
+
+    msg = isctest.query.create("indirect7.example.org", "A")
+    res = isctest.query.udp(msg, ns3.ip)
+    if ns3_sends_aaaa_queries(ns3):
+        isctest.check.servfail(res)
+
+    count = get_ans_count(ANS2_IP)
+    assert count <= 40, f"query count {count} > 40"
+
+
+def test_permissible_queries_40(ns3, templates):
+    """max-recursion-queries=40: permissible queries lookup succeeds."""
+    set_ans_limit(2, 9)
+    ns3_reset(ns3, templates)
+    reset_ans(ANS2_IP)
+
+    msg = isctest.query.create("indirect8.example.org", "A")
+    res = isctest.query.udp(msg, ns3.ip)
+    isctest.check.noerror(res)
+
+    count = get_ans_count(ANS2_IP)
+    assert count <= 40, f"query count {count} > 40"
+
+
+def test_ns_explosion(ns3, templates):
+    """NS explosion does not cause excessive queries."""
+    ns3_reset(ns3, templates)
+    reset_ans(ANS2_IP)
+
+    msg = isctest.query.create("ns1.1.example.net", "A", rd=True)
+    isctest.query.udp(msg, ns3.ip)
+
+    count2 = get_ans_count(ANS2_IP)
+    assert count2 < 50, f"ans2 query count {count2} >= 50"
+
+    count7 = get_ans_count(ANS7_IP)
+    assert count7 < 50, f"ans7 query count {count7} >= 50"
+
+
+def test_max_records_per_type(ns3, templates):
+    """RRset exceeding max-records-per-type returns SERVFAIL."""
+    msg = isctest.query.create("biganswer.big", "A")
+    res = isctest.query.udp(msg, ns3.ip)
+    isctest.check.servfail(res)
+
+    with ns3.watch_log_from_start() as watcher:
+        watcher.wait_for_line("too many records (must not exceed 100)")
+
+    # Switch to named5.conf (no max-records-per-type limit)
+    ns3_reset(ns3, templates, config="named5.conf")
+
+    msg = isctest.query.create("biganswer.big", "A")
+    res = isctest.query.udp(msg, ns3.ip)
+    isctest.check.noerror(res)
+
+
+# ---------------------------------------------------------------------------
+# Cache eviction tests (max-types-per-name)
+# ---------------------------------------------------------------------------
 
 
 def query_manytypes(ns3, name, rdtype):
