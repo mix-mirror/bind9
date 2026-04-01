@@ -267,7 +267,6 @@ qpcnode_expiredata(dns_dbnode_t *node, void *data);
 static dns_dbnode_methods_t qpcnode_methods = (dns_dbnode_methods_t){
 	.attachnode = qpcnode_attachnode,
 	.detachnode = qpcnode_detachnode,
-	.deletedata = NULL,
 	.expiredata = qpcnode_expiredata,
 };
 
