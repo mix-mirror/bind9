@@ -2470,3 +2470,8 @@ auto-rebase-trigger:
   trigger:
       project: isc-private/bind9
       branch: "${CI_COMMIT_BRANCH}-sub"
+
+include:
+  - project: 'isc-projects/bind9-qa'
+    ref: reset-approval-job
+    file: 'ci/yaml/reset-mr-approval-job.yaml'
