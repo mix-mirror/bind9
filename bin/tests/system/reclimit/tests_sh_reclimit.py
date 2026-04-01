@@ -24,7 +24,5 @@ pytestmark = pytest.mark.extra_artifacts(
 )
 
 
-# The reclimit is known to be quite unstable. GL #1587
-@pytest.mark.flaky(max_runs=2)
 def test_reclimit(run_tests_sh):
     run_tests_sh()
