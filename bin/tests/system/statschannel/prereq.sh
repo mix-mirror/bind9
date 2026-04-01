@@ -13,11 +13,6 @@
 
 . ../conf.sh
 
-if ! ${PERL} -MNet::DNS -e ''; then
-  echo_i "perl Net::DNS module is required"
-  exit 1
-fi
-
 if ! ${PERL} -MFile::Fetch -e ''; then
   echo_i "perl File::Fetch module is required"
   exit 1
