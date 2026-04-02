@@ -73,11 +73,6 @@ struct dns_delegset {
 
 	dns_deleglist_t delegs;
 	isc_stdtime_t	expires;
-
-	/*
-	 * Used only when a delegation is built from a local zone.
-	 */
-	bool staticstub;
 };
 ISC_REFCOUNT_DECL(dns_delegset);
 

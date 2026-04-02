@@ -823,7 +823,6 @@ dns_delegset_fromnsrdataset(dns_rdataset_t *rdataset,
 		.references = ISC_REFCOUNT_INITIALIZER(1),
 		.delegs = ISC_LIST_INITIALIZER,
 		.expires = rdataset->ttl + isc_stdtime_now(),
-		.staticstub = rdataset->attributes.staticstub
 	};
 	isc_mem_attach(isc_g_mctx, &delegset->mctx);
 

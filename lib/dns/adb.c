@@ -422,16 +422,13 @@ enum {
  */
 #define FIND_WANTEVENT(fn)	(((fn)->options & DNS_ADBFIND_WANTEVENT) != 0)
 #define FIND_WANTEMPTYEVENT(fn) (((fn)->options & DNS_ADBFIND_EMPTYEVENT) != 0)
-#define FIND_AVOIDFETCHES(fn) (((fn)->options & DNS_ADBFIND_AVOIDFETCHES) != 0)
-#define FIND_STARTATZONE(fn)  (((fn)->options & DNS_ADBFIND_STARTATZONE) != 0)
-#define FIND_STATICSTUB(fn)   (((fn)->options & DNS_ADBFIND_STATICSTUB) != 0)
-#define FIND_NOVALIDATE(fn)   (((fn)->options & DNS_ADBFIND_NOVALIDATE) != 0)
-#define FIND_HAS_ADDRS(fn)    (!ISC_LIST_EMPTY((fn)->list))
-#define FIND_NOFETCH(fn)      (((fn)->options & DNS_ADBFIND_NOFETCH) != 0)
+#define FIND_AVOIDFETCHES(fn)	(((fn)->options & DNS_ADBFIND_AVOIDFETCHES) != 0)
+#define FIND_STARTATZONE(fn)	(((fn)->options & DNS_ADBFIND_STARTATZONE) != 0)
+#define FIND_NOVALIDATE(fn)	(((fn)->options & DNS_ADBFIND_NOVALIDATE) != 0)
+#define FIND_HAS_ADDRS(fn)	(!ISC_LIST_EMPTY((fn)->list))
+#define FIND_NOFETCH(fn)	(((fn)->options & DNS_ADBFIND_NOFETCH) != 0)
 
-#define ADBNAME_TYPE_MASK                                   \
-	(DNS_ADBFIND_STARTATZONE | DNS_ADBFIND_STATICSTUB | \
-	 DNS_ADBFIND_NOVALIDATE)
+#define ADBNAME_TYPE_MASK (DNS_ADBFIND_STARTATZONE | DNS_ADBFIND_NOVALIDATE)
 
 #define ADBNAME_TYPE(options) ((options) & ADBNAME_TYPE_MASK)
 
@@ -1858,13 +1855,6 @@ dns_adb_createfind(dns_adb_t *adb, isc_loop_t *loop, isc_job_cb cb, void *cbarg,
 	}
 
 	/*
-	 * If STATICSTUB is set we always want to have STARTATZONE set.
-	 */
-	if (options & DNS_ADBFIND_STATICSTUB) {
-		options |= DNS_ADBFIND_STARTATZONE;
-	}
-
-	/*
 	 * Remember what types of addresses we are interested in.
 	 */
 	find = new_adbfind(adb, port);
@@ -1948,7 +1938,7 @@ dns_adb_createfind(dns_adb_t *adb, isc_loop_t *loop, isc_job_cb cb, void *cbarg,
 			 * Any other result, start a fetch for A, then fall
 			 * through to AAAA.
 			 */
-			if (!NAME_FETCH_A(adbname) && !FIND_STATICSTUB(find)) {
+			if (!NAME_FETCH_A(adbname)) {
 				wanted_fetches |= DNS_ADBFIND_INET;
 			}
 			break;
@@ -1991,8 +1981,7 @@ dns_adb_createfind(dns_adb_t *adb, isc_loop_t *loop, isc_job_cb cb, void *cbarg,
 			/*
 			 * Any other result, start a fetch for AAAA.
 			 */
-			if (!NAME_FETCH_AAAA(adbname) && !FIND_STATICSTUB(find))
-			{
+			if (!NAME_FETCH_AAAA(adbname)) {
 				wanted_fetches |= DNS_ADBFIND_INET6;
 			}
 			break;
@@ -3294,7 +3283,6 @@ void
 dns_adb_flushname(dns_adb_t *adb, const dns_name_t *name) {
 	dns_adbname_t *adbname = NULL;
 	bool start_at_zone = false;
-	bool static_stub = false;
 	bool novalidate = false;
 	dns_adbname_t key = { .name = UNCONST(name) };
 
@@ -3309,12 +3297,10 @@ dns_adb_flushname(dns_adb_t *adb, const dns_name_t *name) {
 	}
 again:
 	/*
-	 * Delete all entries - with and without DNS_ADBFIND_STARTATZONE set
-	 * with and without DNS_ADBFIND_STATICSTUB set and with and without
-	 * DNS_ADBFIND_NOVALIDATE set.
+	 * Delete all entries - with and without DNS_ADBFIND_STARTATZONE set and
+	 * with and without DNS_ADBFIND_NOVALIDATE set.
 	 */
-	key.type = ((static_stub) ? DNS_ADBFIND_STATICSTUB : 0) |
-		   ((start_at_zone) ? DNS_ADBFIND_STARTATZONE : 0) |
+	key.type = ((start_at_zone) ? DNS_ADBFIND_STARTATZONE : 0) |
 		   ((novalidate) ? DNS_ADBFIND_NOVALIDATE : 0);
 
 	uint32_t hashval = hash_adbname(&key);
@@ -3337,13 +3323,8 @@ again:
 		start_at_zone = true;
 		goto again;
 	}
-	if (!static_stub) {
-		static_stub = true;
-		goto again;
-	}
 	if (!novalidate) {
 		start_at_zone = false;
-		static_stub = false;
 		novalidate = true;
 		goto again;
 	}

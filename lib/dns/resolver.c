@@ -3771,15 +3771,8 @@ shufflens:
 
 	for (size_t i = 0; i < name_processed; i++) {
 		bool overquota = false;
-		unsigned int static_stub = 0;
 		unsigned int no_fetch = 0;
 		dns_name_t *ns = nameservers[i];
-
-		if (fctx->delegset->staticstub &&
-		    dns_name_equal(ns, fctx->domain))
-		{
-			static_stub = DNS_ADBFIND_STATICSTUB;
-		}
 
 		/*
 		 * Make sure we only launch a limited number of
@@ -3789,8 +3782,8 @@ shufflens:
 			no_fetch = DNS_ADBFIND_NOFETCH;
 		}
 
-		findname(fctx, ns, 0, stdoptions | static_stub | no_fetch, 0,
-			 now, &overquota, need_alternatep, &have_address);
+		findname(fctx, ns, 0, stdoptions | no_fetch, 0, now, &overquota,
+			 need_alternatep, &have_address);
 
 		if (!overquota) {
 			*all_spilledp = false;

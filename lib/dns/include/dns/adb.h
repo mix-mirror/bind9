@@ -192,9 +192,8 @@ struct dns_adbfind {
  */
 #define DNS_ADBFIND_NOFETCH 0x00000800
 /*%
- *	Only look for glue record for static stub.
+ *	Disable validation.
  */
-#define DNS_ADBFIND_STATICSTUB 0x00001000
 #define DNS_ADBFIND_NOVALIDATE 0x00002000
 /*%
  *      This specific find created a fetch
