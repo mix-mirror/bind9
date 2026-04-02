@@ -41,8 +41,15 @@
 #define ISC_HALFSIPHASH24_KEY_LENGTH 64 / 8
 #define ISC_HALFSIPHASH24_TAG_LENGTH 32 / 8
 
-#define cROUNDS 2
-#define dROUNDS 4
+#define cROUNDS_24 2
+#define dROUNDS_24 4
+
+#define cROUNDS_13 1
+#define dROUNDS_13 3
+
+/* Default rounds used by the siphash24 functions (cookies, MACs). */
+#define cROUNDS cROUNDS_24
+#define dROUNDS dROUNDS_24
 
 #define HALF_ROUND64(a, b, c, d, s, t) \
 	a += b;                        \
@@ -288,6 +295,58 @@ isc_siphash24(const uint8_t *key, const uint8_t *in, const size_t inlen,
 	isc_siphash24_finalize(&state, out);
 }
 
+/*
+ * SipHash-1-3: fewer rounds, suitable for hash tables where outputs
+ * are never exposed.  Uses the same state and init/hash functions as
+ * SipHash-2-4; only the round counts in _one and _finalize differ.
+ */
+typedef isc_siphash24_t isc_siphash13_t;
+
+#define ISC_SIPHASH13_KEY_LENGTH ISC_SIPHASH24_KEY_LENGTH
+#define ISC_SIPHASH13_TAG_LENGTH ISC_SIPHASH24_TAG_LENGTH
+
+#define isc_siphash13_init isc_siphash24_init
+#define isc_siphash13_hash isc_siphash24_hash
+
+static inline void
+isc_siphash13_one(isc_siphash13_t *restrict state, const uint64_t m) {
+	state->v3 ^= m;
+
+	for (size_t i = 0; i < cROUNDS_13; ++i) {
+		SIPROUND(state->v0, state->v1, state->v2, state->v3);
+	}
+
+	state->v0 ^= m;
+}
+
+static inline void
+isc_siphash13_finalize(isc_siphash13_t *restrict state, uint8_t *out) {
+	REQUIRE(out != NULL);
+
+	uint64_t b = ((uint64_t)state->inlen) << 56 | state->b;
+
+	isc_siphash13_one(state, b);
+
+	state->v2 ^= 0xff;
+
+	for (size_t i = 0; i < dROUNDS_13; ++i) {
+		SIPROUND(state->v0, state->v1, state->v2, state->v3);
+	}
+
+	b = state->v0 ^ state->v1 ^ state->v2 ^ state->v3;
+
+	ISC_U64TO8_LE(out, b);
+}
+
+static inline void
+isc_siphash13(const uint8_t *key, const uint8_t *in, const size_t inlen,
+	      bool case_sensitive, uint8_t *out) {
+	isc_siphash13_t state;
+	isc_siphash13_init(&state, key);
+	isc_siphash13_hash(&state, in, inlen, case_sensitive);
+	isc_siphash13_finalize(&state, out);
+}
+
 static inline void
 isc_halfsiphash24_init(isc_halfsiphash24_t *restrict state, const uint8_t *k) {
 	REQUIRE(k != NULL);
@@ -422,4 +481,54 @@ isc_halfsiphash24(const uint8_t *k, const uint8_t *in, const size_t inlen,
 	isc_halfsiphash24_init(&state, k);
 	isc_halfsiphash24_hash(&state, in, inlen, case_sensitive);
 	isc_halfsiphash24_finalize(&state, out);
+}
+
+/*
+ * HalfSipHash-1-3: fewer rounds for hash tables.
+ */
+typedef isc_halfsiphash24_t isc_halfsiphash13_t;
+
+#define ISC_HALFSIPHASH13_KEY_LENGTH ISC_HALFSIPHASH24_KEY_LENGTH
+#define ISC_HALFSIPHASH13_TAG_LENGTH ISC_HALFSIPHASH24_TAG_LENGTH
+
+#define isc_halfsiphash13_init isc_halfsiphash24_init
+#define isc_halfsiphash13_hash isc_halfsiphash24_hash
+
+static inline void
+isc_halfsiphash13_one(isc_halfsiphash13_t *restrict state, const uint32_t m) {
+	state->v3 ^= m;
+
+	for (size_t i = 0; i < cROUNDS_13; ++i) {
+		HALFSIPROUND(state->v0, state->v1, state->v2, state->v3);
+	}
+
+	state->v0 ^= m;
+}
+
+static inline void
+isc_halfsiphash13_finalize(isc_halfsiphash13_t *restrict state, uint8_t *out) {
+	REQUIRE(out != NULL);
+
+	uint32_t b = ((uint32_t)state->inlen) << 24 | state->b;
+
+	isc_halfsiphash13_one(state, b);
+
+	state->v2 ^= 0xff;
+
+	for (size_t i = 0; i < dROUNDS_13; ++i) {
+		HALFSIPROUND(state->v0, state->v1, state->v2, state->v3);
+	}
+
+	b = state->v1 ^ state->v3;
+	ISC_U32TO8_LE(out, b);
+}
+
+static inline void
+isc_halfsiphash13(const uint8_t *k, const uint8_t *in, const size_t inlen,
+		  bool case_sensitive, uint8_t *out) {
+	isc_halfsiphash13_t state;
+
+	isc_halfsiphash13_init(&state, k);
+	isc_halfsiphash13_hash(&state, in, inlen, case_sensitive);
+	isc_halfsiphash13_finalize(&state, out);
 }
