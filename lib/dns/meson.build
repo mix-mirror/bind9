@@ -138,6 +138,7 @@ dns_srcset.add(
         'qpzone.c',
         'rcode.c',
         'rdata.c',
+        'rdata_registry.c',
         'rdatalist.c',
         'rdataset.c',
         'rdatasetiter.c',

@@ -52,6 +52,8 @@
 #include <dns/time.h>
 #include <dns/ttl.h>
 
+#include "rdata_p.h"
+
 #define RETTOK(x)                                          \
 	do {                                               \
 		isc_result_t _r = (x);                     \
@@ -133,17 +135,9 @@
 
 #define CALL_CHECKNAMES rdata, owner, bad
 
-/*%
- * Context structure for the totext_ functions.
- * Contains formatting options for rdata-to-text
- * conversion.
+/*
+ * dns_rdata_textctx_t is defined in rdata_p.h.
  */
-typedef struct dns_rdata_textctx {
-	const dns_name_t *origin;      /*%< Current origin, or NULL. */
-	dns_masterstyle_flags_t flags; /*%< DNS_STYLEFLAG_*  */
-	unsigned int width;	       /*%< Width of rdata column. */
-	const char *linebreak;	       /*%< Line break string. */
-} dns_rdata_textctx_t;
 
 static isc_result_t
 txt_totext(isc_region_t *source, bool quote, isc_buffer_t *target);
@@ -868,6 +862,17 @@ dns_rdata_compare(const dns_rdata_t *rdata1, const dns_rdata_t *rdata2) {
 		return rdata1->type < rdata2->type ? -1 : 1;
 	}
 
+	{
+		const dns_rdata_typedesc_t *td;
+
+		td = dns__rdata_typedesc_lookup(rdata1->rdclass, rdata1->type);
+		if (td != NULL && td->methods != NULL &&
+		    td->methods->compare != NULL)
+		{
+			return td->methods->compare(rdata1, rdata2);
+		}
+	}
+
 	COMPARESWITCH
 
 	if (use_default) {
@@ -899,6 +904,17 @@ dns_rdata_casecompare(const dns_rdata_t *rdata1, const dns_rdata_t *rdata2) {
 
 	if (rdata1->type != rdata2->type) {
 		return rdata1->type < rdata2->type ? -1 : 1;
+	}
+
+	{
+		const dns_rdata_typedesc_t *td;
+
+		td = dns__rdata_typedesc_lookup(rdata1->rdclass, rdata1->type);
+		if (td != NULL && td->methods != NULL &&
+		    td->methods->casecompare != NULL)
+		{
+			return td->methods->casecompare(rdata1, rdata2);
+		}
 	}
 
 	CASECOMPARESWITCH
@@ -973,7 +989,21 @@ dns_rdata_fromwire(dns_rdata_t *rdata, dns_rdataclass_t rdclass,
 	activelength = isc_buffer_activelength(source);
 	INSIST(activelength < 65536);
 
+	{
+		const dns_rdata_typedesc_t *td;
+
+		td = dns__rdata_typedesc_lookup(rdclass, type);
+		if (td != NULL && td->methods != NULL &&
+		    td->methods->fromwire != NULL)
+		{
+			result = td->methods->fromwire(rdclass, type, source,
+						       dctx, target);
+			goto fromwire_done;
+		}
+	}
+
 	FROMWIRESWITCH
+fromwire_done:
 
 	if (use_default) {
 		if (activelength > isc_buffer_availablelength(target)) {
@@ -1036,6 +1066,18 @@ dns_rdata_towire(dns_rdata_t *rdata, dns_compress_t *cctx,
 
 	st = *target;
 
+	{
+		const dns_rdata_typedesc_t *td;
+
+		td = dns__rdata_typedesc_lookup(rdata->rdclass, rdata->type);
+		if (td != NULL && td->methods != NULL &&
+		    td->methods->towire != NULL)
+		{
+			result = td->methods->towire(rdata, cctx, target);
+			goto towire_done;
+		}
+	}
+
 	TOWIRESWITCH
 
 	if (use_default) {
@@ -1047,6 +1089,7 @@ dns_rdata_towire(dns_rdata_t *rdata, dns_compress_t *cctx,
 		isc_buffer_add(target, rdata->length);
 		return ISC_R_SUCCESS;
 	}
+towire_done:
 	if (result != ISC_R_SUCCESS) {
 		*target = st;
 		dns_compress_rollback(cctx, target->used);
@@ -1189,7 +1232,18 @@ dns_rdata_fromtext(dns_rdata_t *rdata, dns_rdataclass_t rdclass,
 	}
 
 	if (!unknown) {
-		FROMTEXTSWITCH
+		const dns_rdata_typedesc_t *td;
+
+		td = dns__rdata_typedesc_lookup(rdclass, type);
+		if (td != NULL && td->methods != NULL &&
+		    td->methods->fromtext != NULL)
+		{
+			result = td->methods->fromtext(rdclass, type, lexer,
+						       origin, options, target,
+						       callbacks);
+		} else {
+			FROMTEXTSWITCH
+		}
 
 		/*
 		 * Consume to end of line / file.
@@ -1310,6 +1364,18 @@ rdata_totext(dns_rdata_t *rdata, dns_rdata_textctx_t *tctx,
 
 	cur = isc_buffer_usedlength(target);
 
+	{
+		const dns_rdata_typedesc_t *td;
+
+		td = dns__rdata_typedesc_lookup(rdata->rdclass, rdata->type);
+		if (td != NULL && td->methods != NULL &&
+		    td->methods->totext != NULL)
+		{
+			result = td->methods->totext(rdata, tctx, target);
+			goto totext_done;
+		}
+	}
+
 	TOTEXTSWITCH
 
 	if (use_default || (result == ISC_R_NOTIMPLEMENTED)) {
@@ -1320,6 +1386,7 @@ rdata_totext(dns_rdata_t *rdata, dns_rdata_textctx_t *tctx,
 		result = unknown_totext(rdata, tctx, target);
 	}
 
+totext_done:
 	return result;
 }
 
@@ -1388,12 +1455,26 @@ dns_rdata_fromstruct(dns_rdata_t *rdata, dns_rdataclass_t rdclass,
 
 	st = *target;
 
+	{
+		const dns_rdata_typedesc_t *td;
+
+		td = dns__rdata_typedesc_lookup(rdclass, type);
+		if (td != NULL && td->methods != NULL &&
+		    td->methods->fromstruct != NULL)
+		{
+			result = td->methods->fromstruct(rdclass, type, source,
+							 target);
+			goto fromstruct_done;
+		}
+	}
+
 	FROMSTRUCTSWITCH
 
 	if (use_default) {
 		(void)NULL;
 	}
 
+fromstruct_done:
 	length = isc_buffer_usedlength(target) - isc_buffer_usedlength(&st);
 	if (result == ISC_R_SUCCESS && length > DNS_RDATA_MAXLENGTH) {
 		result = ISC_R_NOSPACE;
@@ -1419,6 +1500,17 @@ dns_rdata_tostruct(const dns_rdata_t *rdata, void *target, isc_mem_t *mctx) {
 	REQUIRE(DNS_RDATA_VALIDFLAGS(rdata));
 	REQUIRE((rdata->flags & DNS_RDATA_UPDATE) == 0);
 
+	{
+		const dns_rdata_typedesc_t *td;
+
+		td = dns__rdata_typedesc_lookup(rdata->rdclass, rdata->type);
+		if (td != NULL && td->methods != NULL &&
+		    td->methods->tostruct != NULL)
+		{
+			return td->methods->tostruct(rdata, target, mctx);
+		}
+	}
+
 	TOSTRUCTSWITCH
 
 	if (use_default) {
@@ -1432,6 +1524,19 @@ void
 dns_rdata_freestruct(void *source) {
 	dns_rdatacommon_t *common = source;
 	REQUIRE(common != NULL);
+
+	{
+		const dns_rdata_typedesc_t *td;
+
+		td = dns__rdata_typedesc_lookup(common->rdclass,
+						common->rdtype);
+		if (td != NULL && td->methods != NULL &&
+		    td->methods->freestruct != NULL)
+		{
+			td->methods->freestruct(source);
+			return;
+		}
+	}
 
 	FREESTRUCTSWITCH
 }
@@ -1450,6 +1555,18 @@ dns_rdata_additionaldata(dns_rdata_t *rdata, const dns_name_t *owner,
 	REQUIRE(rdata != NULL);
 	REQUIRE(add != NULL);
 	REQUIRE(DNS_RDATA_VALIDFLAGS(rdata));
+
+	{
+		const dns_rdata_typedesc_t *td;
+
+		td = dns__rdata_typedesc_lookup(rdata->rdclass, rdata->type);
+		if (td != NULL && td->methods != NULL &&
+		    td->methods->additionaldata != NULL)
+		{
+			return td->methods->additionaldata(rdata, owner, add,
+							   arg);
+		}
+	}
 
 	ADDITIONALDATASWITCH
 
@@ -1475,6 +1592,17 @@ dns_rdata_digest(dns_rdata_t *rdata, dns_digestfunc_t digest, void *arg) {
 	REQUIRE(digest != NULL);
 	REQUIRE(DNS_RDATA_VALIDFLAGS(rdata));
 
+	{
+		const dns_rdata_typedesc_t *td;
+
+		td = dns__rdata_typedesc_lookup(rdata->rdclass, rdata->type);
+		if (td != NULL && td->methods != NULL &&
+		    td->methods->digest != NULL)
+		{
+			return td->methods->digest(rdata, digest, arg);
+		}
+	}
+
 	DIGESTSWITCH
 
 	if (use_default) {
@@ -1490,6 +1618,18 @@ dns_rdata_checkowner(const dns_name_t *name, dns_rdataclass_t rdclass,
 		     dns_rdatatype_t type, bool wildcard) {
 	bool result;
 
+	{
+		const dns_rdata_typedesc_t *td;
+
+		td = dns__rdata_typedesc_lookup(rdclass, type);
+		if (td != NULL && td->methods != NULL &&
+		    td->methods->checkowner != NULL)
+		{
+			return td->methods->checkowner(name, rdclass, type,
+						       wildcard);
+		}
+	}
+
 	CHECKOWNERSWITCH
 	return result;
 }
@@ -1499,12 +1639,32 @@ dns_rdata_checknames(dns_rdata_t *rdata, const dns_name_t *owner,
 		     dns_name_t *bad) {
 	bool result;
 
+	{
+		const dns_rdata_typedesc_t *td;
+
+		td = dns__rdata_typedesc_lookup(rdata->rdclass, rdata->type);
+		if (td != NULL && td->methods != NULL &&
+		    td->methods->checknames != NULL)
+		{
+			return td->methods->checknames(rdata, owner, bad);
+		}
+	}
+
 	CHECKNAMESSWITCH
 	return result;
 }
 
 unsigned int
 dns_rdatatype_attributes(dns_rdatatype_t type) {
+	{
+		const dns_rdata_typedesc_t *td;
+
+		td = dns__rdata_typedesc_lookup(0, type);
+		if (td != NULL) {
+			return td->attributes;
+		}
+	}
+
 	RDATATYPE_ATTRIBUTE_SW
 	if (type >= (dns_rdatatype_t)128 && type <= (dns_rdatatype_t)255) {
 		return DNS_RDATATYPEATTR_UNKNOWN | DNS_RDATATYPEATTR_META;
@@ -1522,6 +1682,20 @@ dns_rdatatype_fromtext(dns_rdatatype_t *typep, isc_textregion_t *source) {
 
 	if (n == 0) {
 		return DNS_R_UNKNOWN;
+	}
+
+	{
+		const dns_rdata_typedesc_t *td;
+
+		td = dns__rdata_typedesc_fromtext(source->base, n);
+		if (td != NULL) {
+			if ((td->attributes & DNS_RDATATYPEATTR_RESERVED) != 0)
+			{
+				return ISC_R_NOTIMPLEMENTED;
+			}
+			*typep = td->type;
+			return ISC_R_SUCCESS;
+		}
 	}
 
 	a = isc_ascii_tolower(source->base[0]);
@@ -1561,6 +1735,15 @@ dns_rdatatype_fromtext(dns_rdatatype_t *typep, isc_textregion_t *source) {
 
 isc_result_t
 dns_rdatatype_totext(dns_rdatatype_t type, isc_buffer_t *target) {
+	{
+		const dns_rdata_typedesc_t *td;
+
+		td = dns__rdata_typedesc_lookup(0, type);
+		if (td != NULL && td->name != NULL) {
+			return str_totext(td->name, target);
+		}
+	}
+
 	RDATATYPE_TOTEXT_SW
 
 	return dns_rdatatype_tounknowntext(type, target);
