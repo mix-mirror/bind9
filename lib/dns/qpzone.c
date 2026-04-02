@@ -5555,7 +5555,7 @@ qpzone_update_rdataset(qpzonedb_t *qpdb, qpz_version_t *version, dns_qp_t *qp,
 		 */
 		options = DNS_DBADD_MERGE | DNS_DBADD_EXACT |
 			  DNS_DBADD_EXACTTTL;
-		if (!node->havensec && ardataset.type == dns_rdatatype_nsec) {
+		if (!node->havensec && rds->type == dns_rdatatype_nsec) {
 			nsec = qp;
 		}
 		result = qpzone_addrdataset_inner(
