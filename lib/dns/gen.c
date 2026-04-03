@@ -657,37 +657,12 @@ main(int argc, char **argv) {
 		}
 	}
 
+	/*
+	 * Scan the flat rdata/ directory for type files.
+	 * All types are treated as generic (rdclass=0) since class-specific
+	 * dispatch is handled by the vtable registry, not by gen.c.
+	 */
 	n = snprintf(buf, sizeof(buf), "%srdata", srcdir);
-	INSIST(n > 0 && (unsigned int)n < sizeof(srcdir));
-
-	INSIST(start_directory(buf, &dir));
-
-	while (next_file(&dir)) {
-		if (sscanf(dir.filename, TYPECLASSFMT, classbuf, &rdclass) != 2)
-		{
-			continue;
-		}
-
-		/*
-		 * sscanf accepts leading sign and zeros before type so
-		 * compare the scanned items against the filename. Filter
-		 * out mismatches.
-		 */
-		n = snprintf(buf, sizeof(buf), "%srdata/%s_%u", srcdir,
-			     classbuf, rdclass);
-		INSIST(n > 0 && (unsigned int)n < sizeof(buf));
-		if (strcmp(buf + 6 + strlen(srcdir), dir.filename) != 0) {
-			continue;
-		}
-		if (rdclass > 65535) {
-			fprintf(stderr, "Error: class value > 65535 (%s)\n",
-				dir.filename);
-			exit(EXIT_FAILURE);
-		}
-		sd(rdclass, classbuf, buf, filetype);
-	}
-	end_directory(&dir);
-	n = snprintf(buf, sizeof(buf), "%srdata/generic", srcdir);
 	INSIST(n > 0 && (unsigned int)n < sizeof(srcdir));
 	sd(0, "", buf, filetype);
 

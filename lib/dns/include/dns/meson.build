@@ -9,6 +9,7 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
+# enumclass.h is now a static file (DNS classes are protocol constants).
 dns_gen_headers += [
     custom_target(
         'dns-header-enumtype',
@@ -17,15 +18,6 @@ dns_gen_headers += [
         capture: true,
         install: false,
         command: [dns_header_gen, '-s', '@CURRENT_SOURCE_DIR@' / '..' / '..', '-t'],
-    ),
-
-    custom_target(
-        'dns-header-enumclass',
-        output: 'enumclass.h',
-        depend_files: dns_header_depfiles,
-        capture: true,
-        install: false,
-        command: [dns_header_gen, '-s', '@CURRENT_SOURCE_DIR@' / '..' / '..', '-c'],
     ),
 
     custom_target(
