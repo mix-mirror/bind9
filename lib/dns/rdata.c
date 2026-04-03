@@ -54,26 +54,11 @@
 
 #include "rdata_p.h"
 
-#define RETTOK(x)                                          \
-	do {                                               \
-		isc_result_t _r = (x);                     \
-		if (_r != ISC_R_SUCCESS) {                 \
-			isc_lex_ungettoken(lexer, &token); \
-			return (_r);                       \
-		}                                          \
-	} while (0)
-
-#define CHECKTOK(op)                                       \
-	do {                                               \
-		result = (op);                             \
-		if (result != ISC_R_SUCCESS) {             \
-			isc_lex_ungettoken(lexer, &token); \
-			goto cleanup;                      \
-		}                                          \
-	} while (0)
-
-#define DNS_AS_STR(t) ((t).value.as_textregion.base)
-
+/*
+ * ARGS_* macros define parameter lists for rdata type method functions.
+ * Used by the type .c files that are #included via code.h.
+ * CALL_* macros provide matching argument lists.
+ */
 #define ARGS_FROMTEXT                                           \
 	int rdclass, dns_rdatatype_t type, isc_lex_t *lexer,    \
 		const dns_name_t *origin, unsigned int options, \
@@ -134,6 +119,26 @@
 	dns_rdata_t *rdata, const dns_name_t *owner, dns_name_t *bad
 
 #define CALL_CHECKNAMES rdata, owner, bad
+
+#define RETTOK(x)                                          \
+	do {                                               \
+		isc_result_t _r = (x);                     \
+		if (_r != ISC_R_SUCCESS) {                 \
+			isc_lex_ungettoken(lexer, &token); \
+			return (_r);                       \
+		}                                          \
+	} while (0)
+
+#define CHECKTOK(op)                                       \
+	do {                                               \
+		result = (op);                             \
+		if (result != ISC_R_SUCCESS) {             \
+			isc_lex_ungettoken(lexer, &token); \
+			goto cleanup;                      \
+		}                                          \
+	} while (0)
+
+#define DNS_AS_STR(t) ((t).value.as_textregion.base)
 
 /*
  * dns_rdata_textctx_t is defined in rdata_p.h.
@@ -781,6 +786,11 @@ validate_dohpath(isc_region_t *region) {
 	return state == path && dns;
 }
 
+/*
+ * Include all rdata type implementation files.  These are still compiled
+ * as part of this translation unit until they are converted to standalone
+ * files with their own #include directives.
+ */
 #include "code.h"
 
 #define META	 0x0001
@@ -844,8 +854,7 @@ dns_rdata_clone(const dns_rdata_t *src, dns_rdata_t *target) {
 
 int
 dns_rdata_compare(const dns_rdata_t *rdata1, const dns_rdata_t *rdata2) {
-	int result = 0;
-	bool use_default = false;
+	const dns_rdata_typedesc_t *td;
 
 	REQUIRE(rdata1 != NULL);
 	REQUIRE(rdata2 != NULL);
@@ -862,34 +871,25 @@ dns_rdata_compare(const dns_rdata_t *rdata1, const dns_rdata_t *rdata2) {
 		return rdata1->type < rdata2->type ? -1 : 1;
 	}
 
-	{
-		const dns_rdata_typedesc_t *td;
-
-		td = dns__rdata_typedesc_lookup(rdata1->rdclass, rdata1->type);
-		if (td != NULL && td->methods != NULL &&
-		    td->methods->compare != NULL)
-		{
-			return td->methods->compare(rdata1, rdata2);
-		}
+	td = dns__rdata_typedesc_lookup(rdata1->rdclass, rdata1->type);
+	if (td != NULL && td->methods != NULL && td->methods->compare != NULL) {
+		return td->methods->compare(rdata1, rdata2);
 	}
 
-	COMPARESWITCH
-
-	if (use_default) {
+	/* Default: binary compare */
+	{
 		isc_region_t r1;
 		isc_region_t r2;
 
 		dns_rdata_toregion(rdata1, &r1);
 		dns_rdata_toregion(rdata2, &r2);
-		result = isc_region_compare(&r1, &r2);
+		return isc_region_compare(&r1, &r2);
 	}
-	return result;
 }
 
 int
 dns_rdata_casecompare(const dns_rdata_t *rdata1, const dns_rdata_t *rdata2) {
-	int result = 0;
-	bool use_default = false;
+	const dns_rdata_typedesc_t *td;
 
 	REQUIRE(rdata1 != NULL);
 	REQUIRE(rdata2 != NULL);
@@ -906,28 +906,22 @@ dns_rdata_casecompare(const dns_rdata_t *rdata1, const dns_rdata_t *rdata2) {
 		return rdata1->type < rdata2->type ? -1 : 1;
 	}
 
+	td = dns__rdata_typedesc_lookup(rdata1->rdclass, rdata1->type);
+	if (td != NULL && td->methods != NULL &&
+	    td->methods->casecompare != NULL)
 	{
-		const dns_rdata_typedesc_t *td;
-
-		td = dns__rdata_typedesc_lookup(rdata1->rdclass, rdata1->type);
-		if (td != NULL && td->methods != NULL &&
-		    td->methods->casecompare != NULL)
-		{
-			return td->methods->casecompare(rdata1, rdata2);
-		}
+		return td->methods->casecompare(rdata1, rdata2);
 	}
 
-	CASECOMPARESWITCH
-
-	if (use_default) {
+	/* Default: binary compare */
+	{
 		isc_region_t r1;
 		isc_region_t r2;
 
 		dns_rdata_toregion(rdata1, &r1);
 		dns_rdata_toregion(rdata2, &r2);
-		result = isc_region_compare(&r1, &r2);
+		return isc_region_compare(&r1, &r2);
 	}
-	return result;
 }
 
 /***
@@ -964,11 +958,11 @@ isc_result_t
 dns_rdata_fromwire(dns_rdata_t *rdata, dns_rdataclass_t rdclass,
 		   dns_rdatatype_t type, isc_buffer_t *source,
 		   dns_decompress_t dctx, isc_buffer_t *target) {
-	isc_result_t result = ISC_R_NOTIMPLEMENTED;
+	isc_result_t result;
 	isc_region_t region;
 	isc_buffer_t ss;
 	isc_buffer_t st;
-	bool use_default = false;
+	const dns_rdata_typedesc_t *td;
 	uint32_t activelength;
 	unsigned int length;
 
@@ -989,23 +983,13 @@ dns_rdata_fromwire(dns_rdata_t *rdata, dns_rdataclass_t rdclass,
 	activelength = isc_buffer_activelength(source);
 	INSIST(activelength < 65536);
 
+	td = dns__rdata_typedesc_lookup(rdclass, type);
+	if (td != NULL && td->methods != NULL && td->methods->fromwire != NULL)
 	{
-		const dns_rdata_typedesc_t *td;
-
-		td = dns__rdata_typedesc_lookup(rdclass, type);
-		if (td != NULL && td->methods != NULL &&
-		    td->methods->fromwire != NULL)
-		{
-			result = td->methods->fromwire(rdclass, type, source,
-						       dctx, target);
-			goto fromwire_done;
-		}
-	}
-
-	FROMWIRESWITCH
-fromwire_done:
-
-	if (use_default) {
+		result = td->methods->fromwire(rdclass, type, source, dctx,
+					       target);
+	} else {
+		/* Default: binary copy */
 		if (activelength > isc_buffer_availablelength(target)) {
 			result = ISC_R_NOSPACE;
 		} else {
@@ -1048,10 +1032,9 @@ fromwire_done:
 isc_result_t
 dns_rdata_towire(dns_rdata_t *rdata, dns_compress_t *cctx,
 		 isc_buffer_t *target) {
-	isc_result_t result = ISC_R_NOTIMPLEMENTED;
-	bool use_default = false;
-	isc_region_t tr;
+	isc_result_t result;
 	isc_buffer_t st;
+	const dns_rdata_typedesc_t *td;
 
 	REQUIRE(rdata != NULL);
 	REQUIRE(DNS_RDATA_VALIDFLAGS(rdata));
@@ -1066,21 +1049,13 @@ dns_rdata_towire(dns_rdata_t *rdata, dns_compress_t *cctx,
 
 	st = *target;
 
-	{
-		const dns_rdata_typedesc_t *td;
+	td = dns__rdata_typedesc_lookup(rdata->rdclass, rdata->type);
+	if (td != NULL && td->methods != NULL && td->methods->towire != NULL) {
+		result = td->methods->towire(rdata, cctx, target);
+	} else {
+		/* Default: binary copy */
+		isc_region_t tr;
 
-		td = dns__rdata_typedesc_lookup(rdata->rdclass, rdata->type);
-		if (td != NULL && td->methods != NULL &&
-		    td->methods->towire != NULL)
-		{
-			result = td->methods->towire(rdata, cctx, target);
-			goto towire_done;
-		}
-	}
-
-	TOWIRESWITCH
-
-	if (use_default) {
 		isc_buffer_availableregion(target, &tr);
 		if (tr.length < rdata->length) {
 			return ISC_R_NOSPACE;
@@ -1089,7 +1064,7 @@ dns_rdata_towire(dns_rdata_t *rdata, dns_compress_t *cctx,
 		isc_buffer_add(target, rdata->length);
 		return ISC_R_SUCCESS;
 	}
-towire_done:
+
 	if (result != ISC_R_SUCCESS) {
 		*target = st;
 		dns_compress_rollback(cctx, target->used);
@@ -1242,7 +1217,7 @@ dns_rdata_fromtext(dns_rdata_t *rdata, dns_rdataclass_t rdclass,
 						       origin, options, target,
 						       callbacks);
 		} else {
-			FROMTEXTSWITCH
+			result = DNS_R_UNKNOWN;
 		}
 
 		/*
@@ -1344,7 +1319,6 @@ static isc_result_t
 rdata_totext(dns_rdata_t *rdata, dns_rdata_textctx_t *tctx,
 	     isc_buffer_t *target) {
 	isc_result_t result = ISC_R_NOTIMPLEMENTED;
-	bool use_default = false;
 	unsigned int cur;
 
 	REQUIRE(rdata != NULL);
@@ -1372,12 +1346,10 @@ rdata_totext(dns_rdata_t *rdata, dns_rdata_textctx_t *tctx,
 		    td->methods->totext != NULL)
 		{
 			result = td->methods->totext(rdata, tctx, target);
-		} else {
-			TOTEXTSWITCH
 		}
 	}
 
-	if (use_default || (result == ISC_R_NOTIMPLEMENTED)) {
+	if (result == ISC_R_NOTIMPLEMENTED) {
 		unsigned int u = isc_buffer_usedlength(target);
 
 		INSIST(u >= cur);
@@ -1441,7 +1413,7 @@ dns_rdata_fromstruct(dns_rdata_t *rdata, dns_rdataclass_t rdclass,
 	isc_result_t result = ISC_R_NOTIMPLEMENTED;
 	isc_buffer_t st;
 	isc_region_t region;
-	bool use_default = false;
+	const dns_rdata_typedesc_t *td;
 	unsigned int length;
 
 	REQUIRE(source != NULL);
@@ -1452,26 +1424,13 @@ dns_rdata_fromstruct(dns_rdata_t *rdata, dns_rdataclass_t rdclass,
 
 	st = *target;
 
+	td = dns__rdata_typedesc_lookup(rdclass, type);
+	if (td != NULL && td->methods != NULL &&
+	    td->methods->fromstruct != NULL)
 	{
-		const dns_rdata_typedesc_t *td;
-
-		td = dns__rdata_typedesc_lookup(rdclass, type);
-		if (td != NULL && td->methods != NULL &&
-		    td->methods->fromstruct != NULL)
-		{
-			result = td->methods->fromstruct(rdclass, type, source,
-							 target);
-			goto fromstruct_done;
-		}
+		result = td->methods->fromstruct(rdclass, type, source, target);
 	}
 
-	FROMSTRUCTSWITCH
-
-	if (use_default) {
-		(void)NULL;
-	}
-
-fromstruct_done:
 	length = isc_buffer_usedlength(target) - isc_buffer_usedlength(&st);
 	if (result == ISC_R_SUCCESS && length > DNS_RDATA_MAXLENGTH) {
 		result = ISC_R_NOSPACE;
@@ -1490,59 +1449,40 @@ fromstruct_done:
 
 isc_result_t
 dns_rdata_tostruct(const dns_rdata_t *rdata, void *target, isc_mem_t *mctx) {
-	isc_result_t result = ISC_R_NOTIMPLEMENTED;
-	bool use_default = false;
+	const dns_rdata_typedesc_t *td;
 
 	REQUIRE(rdata != NULL);
 	REQUIRE(DNS_RDATA_VALIDFLAGS(rdata));
 	REQUIRE((rdata->flags & DNS_RDATA_UPDATE) == 0);
 
+	td = dns__rdata_typedesc_lookup(rdata->rdclass, rdata->type);
+	if (td != NULL && td->methods != NULL && td->methods->tostruct != NULL)
 	{
-		const dns_rdata_typedesc_t *td;
-
-		td = dns__rdata_typedesc_lookup(rdata->rdclass, rdata->type);
-		if (td != NULL && td->methods != NULL &&
-		    td->methods->tostruct != NULL)
-		{
-			return td->methods->tostruct(rdata, target, mctx);
-		}
+		return td->methods->tostruct(rdata, target, mctx);
 	}
 
-	TOSTRUCTSWITCH
-
-	if (use_default) {
-		(void)NULL;
-	}
-
-	return result;
+	return ISC_R_NOTIMPLEMENTED;
 }
 
 void
 dns_rdata_freestruct(void *source) {
 	dns_rdatacommon_t *common = source;
+	const dns_rdata_typedesc_t *td;
+
 	REQUIRE(common != NULL);
 
+	td = dns__rdata_typedesc_lookup(common->rdclass, common->rdtype);
+	if (td != NULL && td->methods != NULL &&
+	    td->methods->freestruct != NULL)
 	{
-		const dns_rdata_typedesc_t *td;
-
-		td = dns__rdata_typedesc_lookup(common->rdclass,
-						common->rdtype);
-		if (td != NULL && td->methods != NULL &&
-		    td->methods->freestruct != NULL)
-		{
-			td->methods->freestruct(source);
-			return;
-		}
+		td->methods->freestruct(source);
 	}
-
-	FREESTRUCTSWITCH
 }
 
 isc_result_t
 dns_rdata_additionaldata(dns_rdata_t *rdata, const dns_name_t *owner,
 			 dns_additionaldatafunc_t add, void *arg) {
-	isc_result_t result = ISC_R_NOTIMPLEMENTED;
-	bool use_default = false;
+	const dns_rdata_typedesc_t *td;
 
 	/*
 	 * Call 'add' for each name and type from 'rdata' which is subject to
@@ -1553,33 +1493,20 @@ dns_rdata_additionaldata(dns_rdata_t *rdata, const dns_name_t *owner,
 	REQUIRE(add != NULL);
 	REQUIRE(DNS_RDATA_VALIDFLAGS(rdata));
 
+	td = dns__rdata_typedesc_lookup(rdata->rdclass, rdata->type);
+	if (td != NULL && td->methods != NULL &&
+	    td->methods->additionaldata != NULL)
 	{
-		const dns_rdata_typedesc_t *td;
-
-		td = dns__rdata_typedesc_lookup(rdata->rdclass, rdata->type);
-		if (td != NULL && td->methods != NULL &&
-		    td->methods->additionaldata != NULL)
-		{
-			return td->methods->additionaldata(rdata, owner, add,
-							   arg);
-		}
+		return td->methods->additionaldata(rdata, owner, add, arg);
 	}
-
-	ADDITIONALDATASWITCH
 
 	/* No additional processing for unknown types */
-	if (use_default) {
-		result = ISC_R_SUCCESS;
-	}
-
-	return result;
+	return ISC_R_SUCCESS;
 }
 
 isc_result_t
 dns_rdata_digest(dns_rdata_t *rdata, dns_digestfunc_t digest, void *arg) {
-	isc_result_t result = ISC_R_NOTIMPLEMENTED;
-	bool use_default = false;
-	isc_region_t r;
+	const dns_rdata_typedesc_t *td;
 
 	/*
 	 * Send 'rdata' in DNSSEC canonical form to 'digest'.
@@ -1589,80 +1516,59 @@ dns_rdata_digest(dns_rdata_t *rdata, dns_digestfunc_t digest, void *arg) {
 	REQUIRE(digest != NULL);
 	REQUIRE(DNS_RDATA_VALIDFLAGS(rdata));
 
+	td = dns__rdata_typedesc_lookup(rdata->rdclass, rdata->type);
+	if (td != NULL && td->methods != NULL && td->methods->digest != NULL) {
+		return td->methods->digest(rdata, digest, arg);
+	}
+
+	/* Default: digest as opaque region */
 	{
-		const dns_rdata_typedesc_t *td;
+		isc_region_t r;
 
-		td = dns__rdata_typedesc_lookup(rdata->rdclass, rdata->type);
-		if (td != NULL && td->methods != NULL &&
-		    td->methods->digest != NULL)
-		{
-			return td->methods->digest(rdata, digest, arg);
-		}
-	}
-
-	DIGESTSWITCH
-
-	if (use_default) {
 		dns_rdata_toregion(rdata, &r);
-		result = (digest)(arg, &r);
+		return (digest)(arg, &r);
 	}
-
-	return result;
 }
 
 bool
 dns_rdata_checkowner(const dns_name_t *name, dns_rdataclass_t rdclass,
 		     dns_rdatatype_t type, bool wildcard) {
-	bool result;
+	const dns_rdata_typedesc_t *td;
 
+	td = dns__rdata_typedesc_lookup(rdclass, type);
+	if (td != NULL && td->methods != NULL &&
+	    td->methods->checkowner != NULL)
 	{
-		const dns_rdata_typedesc_t *td;
-
-		td = dns__rdata_typedesc_lookup(rdclass, type);
-		if (td != NULL && td->methods != NULL &&
-		    td->methods->checkowner != NULL)
-		{
-			return td->methods->checkowner(name, rdclass, type,
-						       wildcard);
-		}
+		return td->methods->checkowner(name, rdclass, type, wildcard);
 	}
 
-	CHECKOWNERSWITCH
-	return result;
+	return true;
 }
 
 bool
 dns_rdata_checknames(dns_rdata_t *rdata, const dns_name_t *owner,
 		     dns_name_t *bad) {
-	bool result;
+	const dns_rdata_typedesc_t *td;
 
+	td = dns__rdata_typedesc_lookup(rdata->rdclass, rdata->type);
+	if (td != NULL && td->methods != NULL &&
+	    td->methods->checknames != NULL)
 	{
-		const dns_rdata_typedesc_t *td;
-
-		td = dns__rdata_typedesc_lookup(rdata->rdclass, rdata->type);
-		if (td != NULL && td->methods != NULL &&
-		    td->methods->checknames != NULL)
-		{
-			return td->methods->checknames(rdata, owner, bad);
-		}
+		return td->methods->checknames(rdata, owner, bad);
 	}
 
-	CHECKNAMESSWITCH
-	return result;
+	return true;
 }
 
 unsigned int
 dns_rdatatype_attributes(dns_rdatatype_t type) {
-	{
-		const dns_rdata_typedesc_t *td;
+	const dns_rdata_typedesc_t *td;
 
-		td = dns__rdata_typedesc_lookup(0, type);
-		if (td != NULL) {
-			return td->attributes;
-		}
+	td = dns__rdata_typedesc_bytype(type);
+	if (td != NULL) {
+		return td->attributes;
 	}
 
-	RDATATYPE_ATTRIBUTE_SW
 	if (type >= (dns_rdatatype_t)128 && type <= (dns_rdatatype_t)255) {
 		return DNS_RDATATYPEATTR_UNKNOWN | DNS_RDATATYPEATTR_META;
 	}
@@ -1671,9 +1577,7 @@ dns_rdatatype_attributes(dns_rdatatype_t type) {
 
 isc_result_t
 dns_rdatatype_fromtext(dns_rdatatype_t *typep, isc_textregion_t *source) {
-	unsigned int hash;
 	unsigned int n;
-	unsigned char a, b;
 
 	n = source->length;
 
@@ -1694,18 +1598,6 @@ dns_rdatatype_fromtext(dns_rdatatype_t *typep, isc_textregion_t *source) {
 			return ISC_R_SUCCESS;
 		}
 	}
-
-	a = isc_ascii_tolower(source->base[0]);
-	b = isc_ascii_tolower(source->base[n - 1]);
-
-	hash = ((a + n) * b) % 256;
-
-	/*
-	 * This switch block is inlined via \#define, and will use "return"
-	 * to return a result to the caller if it is a valid (known)
-	 * rdatatype name.
-	 */
-	RDATATYPE_FROMTEXT_SW(hash, source->base, n, typep);
 
 	if (source->length > 4 && source->length < (4 + sizeof("65000")) &&
 	    strncasecmp("type", source->base, 4) == 0)
@@ -1732,22 +1624,16 @@ dns_rdatatype_fromtext(dns_rdatatype_t *typep, isc_textregion_t *source) {
 
 isc_result_t
 dns_rdatatype_totext(dns_rdatatype_t type, isc_buffer_t *target) {
-	{
-		const dns_rdata_typedesc_t *td;
+	const dns_rdata_typedesc_t *td;
 
-		td = dns__rdata_typedesc_lookup(0, type);
-		/*
-		 * KEYDATA (65533) is internal-only and must not
-		 * be displayed as a mnemonic (use TYPE65533).
-		 */
-		if (td != NULL && td->name != NULL &&
-		    type != dns_rdatatype_keydata)
-		{
-			return str_totext(td->name, target);
-		}
+	td = dns__rdata_typedesc_bytype(type);
+	/*
+	 * KEYDATA (65533) is internal-only and must not
+	 * be displayed as a mnemonic (use TYPE65533).
+	 */
+	if (td != NULL && td->name != NULL && type != dns_rdatatype_keydata) {
+		return str_totext(td->name, target);
 	}
-
-	RDATATYPE_TOTEXT_SW
 
 	return dns_rdatatype_tounknowntext(type, target);
 }

@@ -119,6 +119,16 @@ const dns_rdata_typedesc_t *
 dns__rdata_typedesc_lookup(dns_rdataclass_t rdclass, dns_rdatatype_t type);
 
 /*
+ * Look up a type descriptor by type code only (ignoring class).
+ * Returns the first matching entry regardless of rdclass.
+ * Used for type name, totext, and attribute lookups.
+ *
+ * Returns NULL if no descriptor is registered for the type.
+ */
+const dns_rdata_typedesc_t *
+dns__rdata_typedesc_bytype(dns_rdatatype_t type);
+
+/*
  * Look up a type descriptor by type name (case-insensitive).
  *
  * Returns NULL if the name is not recognized.

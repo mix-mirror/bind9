@@ -127,6 +127,30 @@ extern const dns_rdata_typedesc_t dns__rdata_dlv_typedesc;
 extern const dns_rdata_typedesc_t dns__rdata_keydata_typedesc;
 
 /*
+ * Meta-types and reserved types.  These have no rdata methods — they
+ * exist only so that dns_rdatatype_fromtext(), dns_rdatatype_totext(),
+ * and dns_rdatatype_attributes() recognize them.
+ */
+#define METAQUESTIONONLY \
+	(DNS_RDATATYPEATTR_META | DNS_RDATATYPEATTR_QUESTIONONLY)
+
+static const dns_rdata_typedesc_t typedesc_uinfo = { 100, 0, "UINFO", 0, NULL };
+static const dns_rdata_typedesc_t typedesc_uid = { 101, 0, "UID", 0, NULL };
+static const dns_rdata_typedesc_t typedesc_gid = { 102, 0, "GID", 0, NULL };
+static const dns_rdata_typedesc_t typedesc_unspec = { 103, 0, "UNSPEC", 0,
+						      NULL };
+static const dns_rdata_typedesc_t typedesc_ixfr = { 251, 0, "IXFR",
+						    METAQUESTIONONLY, NULL };
+static const dns_rdata_typedesc_t typedesc_axfr = { 252, 0, "AXFR",
+						    METAQUESTIONONLY, NULL };
+static const dns_rdata_typedesc_t typedesc_mailb = { 253, 0, "MAILB",
+						     METAQUESTIONONLY, NULL };
+static const dns_rdata_typedesc_t typedesc_maila = { 254, 0, "MAILA",
+						     METAQUESTIONONLY, NULL };
+static const dns_rdata_typedesc_t typedesc_any = { 255, 0, "ANY",
+						   METAQUESTIONONLY, NULL };
+
+/*
  * Type descriptor table, sorted by (type, rdclass).
  * All known rdata types are registered here.
  */
@@ -201,6 +225,10 @@ static const dns_rdata_typedesc_t *const typedesc_table[] = {
 	&dns__rdata_hhit_typedesc,	  /* 67 */
 	&dns__rdata_brid_typedesc,	  /* 68 */
 	&dns__rdata_spf_typedesc,	  /* 99 */
+	&typedesc_uinfo,		  /* 100 (reserved) */
+	&typedesc_uid,			  /* 101 (reserved) */
+	&typedesc_gid,			  /* 102 (reserved) */
+	&typedesc_unspec,		  /* 103 (reserved) */
 	&dns__rdata_nid_typedesc,	  /* 104 */
 	&dns__rdata_l32_typedesc,	  /* 105 */
 	&dns__rdata_l64_typedesc,	  /* 106 */
@@ -209,6 +237,11 @@ static const dns_rdata_typedesc_t *const typedesc_table[] = {
 	&dns__rdata_eui64_typedesc,	  /* 109 */
 	&dns__rdata_tkey_typedesc,	  /* 249 */
 	&dns__rdata_any_tsig_typedesc,	  /* 250/ANY */
+	&typedesc_ixfr,			  /* 251 (meta) */
+	&typedesc_axfr,			  /* 252 (meta) */
+	&typedesc_mailb,		  /* 253 (meta) */
+	&typedesc_maila,		  /* 254 (meta) */
+	&typedesc_any,			  /* 255 (meta) */
 	&dns__rdata_uri_typedesc,	  /* 256 */
 	&dns__rdata_caa_typedesc,	  /* 257 */
 	&dns__rdata_avc_typedesc,	  /* 258 */
@@ -251,6 +284,31 @@ typedesc_find(dns_rdataclass_t rdclass, dns_rdatatype_t type) {
 	return NULL;
 }
 
+/*
+ * Find any entry for a given type code, regardless of class.
+ * Used for type name/attribute lookups where class doesn't matter.
+ */
+static const dns_rdata_typedesc_t *
+typedesc_find_bytype(dns_rdatatype_t type) {
+	size_t lo = 0;
+	size_t hi = typedesc_count;
+
+	while (lo < hi) {
+		size_t mid = lo + (hi - lo) / 2;
+		const dns_rdata_typedesc_t *td = typedesc_table[mid];
+
+		if (td->type < type) {
+			lo = mid + 1;
+		} else if (td->type == type) {
+			return td;
+		} else {
+			hi = mid;
+		}
+	}
+
+	return NULL;
+}
+
 const dns_rdata_typedesc_t *
 dns__rdata_typedesc_lookup(dns_rdataclass_t rdclass, dns_rdatatype_t type) {
 	const dns_rdata_typedesc_t *td;
@@ -267,6 +325,11 @@ dns__rdata_typedesc_lookup(dns_rdataclass_t rdclass, dns_rdatatype_t type) {
 	}
 
 	return td;
+}
+
+const dns_rdata_typedesc_t *
+dns__rdata_typedesc_bytype(dns_rdatatype_t type) {
+	return typedesc_find_bytype(type);
 }
 
 const dns_rdata_typedesc_t *
