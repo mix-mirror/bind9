@@ -13,8 +13,7 @@
 
 /* RFC1183 */
 
-#ifndef RDATA_GENERIC_RP_17_C
-#define RDATA_GENERIC_RP_17_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_RP_ATTRIBUTES (0)
 
@@ -332,5 +331,3 @@ const dns_rdata_typedesc_t dns__rdata_rp_typedesc = {
 			.checknames = checknames_rp,
 		},
 };
-
-#endif /* RDATA_GENERIC_RP_17_C */

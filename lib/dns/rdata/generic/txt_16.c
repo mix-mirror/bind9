@@ -11,8 +11,7 @@
  * information regarding copyright ownership.
  */
 
-#ifndef RDATA_GENERIC_TXT_16_C
-#define RDATA_GENERIC_TXT_16_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_TXT_ATTRIBUTES (0)
 
@@ -366,5 +365,3 @@ const dns_rdata_typedesc_t dns__rdata_txt_typedesc = {
 			.checknames = checknames_txt,
 		},
 };
-
-#endif /* RDATA_GENERIC_TXT_16_C */

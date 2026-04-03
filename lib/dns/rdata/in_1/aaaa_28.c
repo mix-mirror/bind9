@@ -13,10 +13,9 @@
 
 /* RFC1886 */
 
-#ifndef RDATA_IN_1_AAAA_28_C
-#define RDATA_IN_1_AAAA_28_C
-
 #include <isc/net.h>
+
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_AAAA_ATTRIBUTES (0)
 
@@ -282,5 +281,3 @@ const dns_rdata_typedesc_t dns__rdata_in_aaaa_typedesc = {
 			.checknames = checknames_in_aaaa,
 		},
 };
-
-#endif /* RDATA_IN_1_AAAA_28_C */

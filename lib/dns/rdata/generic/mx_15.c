@@ -11,14 +11,13 @@
  * information regarding copyright ownership.
  */
 
-#ifndef RDATA_GENERIC_MX_15_C
-#define RDATA_GENERIC_MX_15_C
-
 #include <string.h>
 
 #include <isc/net.h>
 
 #include <dns/fixedname.h>
+
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_MX_ATTRIBUTES (0)
 
@@ -371,5 +370,3 @@ const dns_rdata_typedesc_t dns__rdata_mx_typedesc = {
 			.checknames = checknames_mx,
 		},
 };
-
-#endif /* RDATA_GENERIC_MX_15_C */

@@ -13,8 +13,7 @@
 
 /* RFC1348.  Obsoleted in RFC 1706 - use PTR instead. */
 
-#ifndef RDATA_IN_1_NSAP_PTR_23_C
-#define RDATA_IN_1_NSAP_PTR_23_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_NSAP_PTR_ATTRIBUTES (0)
 
@@ -258,5 +257,3 @@ const dns_rdata_typedesc_t dns__rdata_in_nsap_ptr_typedesc = {
 			.checknames = checknames_in_nsap_ptr,
 		},
 };
-
-#endif /* RDATA_IN_1_NSAP_PTR_23_C */

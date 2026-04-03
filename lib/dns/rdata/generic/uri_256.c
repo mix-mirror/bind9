@@ -11,6 +11,8 @@
  * information regarding copyright ownership.
  */
 
+#include "../../rdata_helpers.h"
+
 #ifndef GENERIC_URI_256_C
 #define GENERIC_URI_256_C 1
 

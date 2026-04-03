@@ -14,10 +14,9 @@
 /* by Bjorn.Victor@it.uu.se, 2005-05-07 */
 /* Based on generic/soa_6.c and generic/mx_15.c */
 
-#ifndef RDATA_CH_3_A_1_C
-#define RDATA_CH_3_A_1_C
-
 #include <isc/net.h>
+
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_A_ATTRIBUTES (0)
 
@@ -344,5 +343,3 @@ const dns_rdata_typedesc_t dns__rdata_ch_a_typedesc = {
 			.checknames = checknames_ch_a,
 		},
 };
-
-#endif /* RDATA_CH_3_A_1_C */

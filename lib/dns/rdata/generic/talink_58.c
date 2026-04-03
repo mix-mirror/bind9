@@ -11,8 +11,7 @@
  * information regarding copyright ownership.
  */
 
-#ifndef RDATA_GENERIC_TALINK_58_C
-#define RDATA_GENERIC_TALINK_58_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_TALINK_ATTRIBUTES 0
 
@@ -272,5 +271,3 @@ const dns_rdata_typedesc_t dns__rdata_talink_typedesc = {
 			.checknames = checknames_talink,
 		},
 };
-
-#endif /* RDATA_GENERIC_TALINK_58_C */

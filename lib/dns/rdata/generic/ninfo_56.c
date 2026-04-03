@@ -11,8 +11,7 @@
  * information regarding copyright ownership.
  */
 
-#ifndef RDATA_GENERIC_NINFO_56_C
-#define RDATA_GENERIC_NINFO_56_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_NINFO_ATTRIBUTES (0)
 
@@ -187,5 +186,3 @@ const dns_rdata_typedesc_t dns__rdata_ninfo_typedesc = {
 			.checknames = checknames_ninfo,
 		},
 };
-
-#endif /* RDATA_GENERIC_NINFO_56_C */

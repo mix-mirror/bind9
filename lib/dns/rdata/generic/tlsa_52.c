@@ -13,8 +13,7 @@
 
 /* rfc6698.txt */
 
-#ifndef RDATA_GENERIC_TLSA_52_C
-#define RDATA_GENERIC_TLSA_52_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_TLSA_ATTRIBUTES 0
 
@@ -351,5 +350,3 @@ const dns_rdata_typedesc_t dns__rdata_tlsa_typedesc = {
 			.checknames = checknames_tlsa,
 		},
 };
-
-#endif /* RDATA_GENERIC_TLSA_52_C */

@@ -11,8 +11,7 @@
  * information regarding copyright ownership.
  */
 
-#ifndef RDATA_GENERIC_NS_2_C
-#define RDATA_GENERIC_NS_2_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_NS_ATTRIBUTES (DNS_RDATATYPEATTR_ZONECUTAUTH)
 
@@ -272,5 +271,3 @@ const dns_rdata_typedesc_t dns__rdata_ns_typedesc = {
 			.checknames = checknames_ns,
 		},
 };
-
-#endif /* RDATA_GENERIC_NS_2_C */

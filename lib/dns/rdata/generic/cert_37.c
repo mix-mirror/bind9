@@ -13,8 +13,7 @@
 
 /* RFC2538 */
 
-#ifndef RDATA_GENERIC_CERT_37_C
-#define RDATA_GENERIC_CERT_37_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_CERT_ATTRIBUTES (0)
 
@@ -297,5 +296,3 @@ const dns_rdata_typedesc_t dns__rdata_cert_typedesc = {
 			.checknames = checknames_cert,
 		},
 };
-
-#endif /* RDATA_GENERIC_CERT_37_C */

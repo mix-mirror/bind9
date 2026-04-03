@@ -13,8 +13,7 @@
 
 /* RFC2782 */
 
-#ifndef RDATA_IN_1_SRV_33_C
-#define RDATA_IN_1_SRV_33_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_SRV_ATTRIBUTES (DNS_RDATATYPEATTR_FOLLOWADDITIONAL)
 
@@ -429,5 +428,3 @@ const dns_rdata_typedesc_t dns__rdata_in_srv_typedesc = {
 			.checknames = checknames_in_srv,
 		},
 };
-
-#endif /* RDATA_IN_1_SRV_33_C */

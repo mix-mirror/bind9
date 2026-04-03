@@ -13,8 +13,7 @@
 
 /* RFC3123 */
 
-#ifndef RDATA_IN_1_APL_42_C
-#define RDATA_IN_1_APL_42_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_APL_ATTRIBUTES (0)
 
@@ -497,5 +496,3 @@ const dns_rdata_typedesc_t dns__rdata_in_apl_typedesc = {
 			.checknames = checknames_in_apl,
 		},
 };
-
-#endif /* RDATA_IN_1_APL_42_C */

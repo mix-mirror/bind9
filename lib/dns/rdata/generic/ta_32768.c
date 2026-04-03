@@ -13,8 +13,7 @@
 
 /* http://www.watson.org/~weiler/INI1999-19.pdf */
 
-#ifndef RDATA_GENERIC_TA_32768_C
-#define RDATA_GENERIC_TA_32768_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_TA_ATTRIBUTES 0
 
@@ -180,5 +179,3 @@ const dns_rdata_typedesc_t dns__rdata_ta_typedesc = {
 			.checknames = checknames_ta,
 		},
 };
-
-#endif /* RDATA_GENERIC_TA_32768_C */

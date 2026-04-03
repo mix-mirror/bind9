@@ -13,8 +13,7 @@
 
 /* RFC2163 */
 
-#ifndef RDATA_IN_1_PX_26_C
-#define RDATA_IN_1_PX_26_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_PX_ATTRIBUTES (0)
 
@@ -380,5 +379,3 @@ const dns_rdata_typedesc_t dns__rdata_in_px_typedesc = {
 			.checknames = checknames_in_px,
 		},
 };
-
-#endif /* RDATA_IN_1_PX_26_C */

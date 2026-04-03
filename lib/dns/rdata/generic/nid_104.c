@@ -11,12 +11,11 @@
  * information regarding copyright ownership.
  */
 
-#ifndef RDATA_GENERIC_NID_104_C
-#define RDATA_GENERIC_NID_104_C
-
 #include <string.h>
 
 #include <isc/net.h>
+
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_NID_ATTRIBUTES (0)
 
@@ -241,5 +240,3 @@ const dns_rdata_typedesc_t dns__rdata_nid_typedesc = {
 			.checknames = checknames_nid,
 		},
 };
-
-#endif /* RDATA_GENERIC_NID_104_C */

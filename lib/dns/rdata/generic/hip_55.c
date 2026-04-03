@@ -11,9 +11,9 @@
  * information regarding copyright ownership.
  */
 
-/* RFC 5205 */
+#include "../../rdata_helpers.h"
 
-#pragma once
+/* RFC 5205 */
 
 #define RRTYPE_HIP_ATTRIBUTES (0)
 

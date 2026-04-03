@@ -11,15 +11,14 @@
  * information regarding copyright ownership.
  */
 
-#ifndef RDATA_GENERIC_DSYNC_66_C
-#define RDATA_GENERIC_DSYNC_66_C
-
 #include <string.h>
 
 #include <isc/net.h>
 
 #include <dns/dsync.h>
 #include <dns/fixedname.h>
+
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_DSYNC_ATTRIBUTES (0)
 
@@ -379,5 +378,3 @@ const dns_rdata_typedesc_t dns__rdata_dsync_typedesc = {
 			.checknames = checknames_dsync,
 		},
 };
-
-#endif /* RDATA_GENERIC_DSYNC_66_C */

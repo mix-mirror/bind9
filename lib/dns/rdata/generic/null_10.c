@@ -11,8 +11,7 @@
  * information regarding copyright ownership.
  */
 
-#ifndef RDATA_GENERIC_NULL_10_C
-#define RDATA_GENERIC_NULL_10_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_NULL_ATTRIBUTES (0)
 
@@ -199,5 +198,3 @@ const dns_rdata_typedesc_t dns__rdata_null_typedesc = {
 			.checknames = checknames_null,
 		},
 };
-
-#endif /* RDATA_GENERIC_NULL_10_C */

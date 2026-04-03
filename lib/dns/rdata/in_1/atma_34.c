@@ -13,8 +13,7 @@
 
 /* http://www.broadband-forum.org/ftp/pub/approved-specs/af-dans-0152.000.pdf */
 
-#ifndef RDATA_IN_1_ATMA_22_C
-#define RDATA_IN_1_ATMA_22_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_ATMA_ATTRIBUTES (0)
 
@@ -330,5 +329,3 @@ const dns_rdata_typedesc_t dns__rdata_in_atma_typedesc = {
 			.checknames = checknames_in_atma,
 		},
 };
-
-#endif /* RDATA_IN_1_atma_22_C */

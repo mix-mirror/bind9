@@ -13,8 +13,7 @@
 
 /* RFC1712 */
 
-#ifndef RDATA_GENERIC_GPOS_27_C
-#define RDATA_GENERIC_GPOS_27_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_GPOS_ATTRIBUTES (0)
 
@@ -253,5 +252,3 @@ const dns_rdata_typedesc_t dns__rdata_gpos_typedesc = {
 			.checknames = checknames_gpos,
 		},
 };
-
-#endif /* RDATA_GENERIC_GPOS_27_C */

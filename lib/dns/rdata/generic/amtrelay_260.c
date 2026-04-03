@@ -11,12 +11,11 @@
  * information regarding copyright ownership.
  */
 
-#ifndef RDATA_GENERIC_AMTRELAY_260_C
-#define RDATA_GENERIC_AMTRELAY_260_C
-
 #include <string.h>
 
 #include <isc/net.h>
+
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_AMTRELAY_ATTRIBUTES (0)
 
@@ -482,5 +481,3 @@ const dns_rdata_typedesc_t dns__rdata_amtrelay_typedesc = {
 			.checknames = checknames_amtrelay,
 		},
 };
-
-#endif /* RDATA_GENERIC_AMTRELAY_260_C */

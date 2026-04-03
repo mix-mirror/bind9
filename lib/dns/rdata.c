@@ -532,13 +532,6 @@ validate_dohpath(isc_region_t *region) {
 	return state == path && dns;
 }
 
-/*
- * Include all rdata type implementation files.  These are still compiled
- * as part of this translation unit until they are converted to standalone
- * files with their own #include directives.
- */
-#include "code.h"
-
 #define META	 0x0001
 #define RESERVED 0x0002
 
@@ -2143,10 +2136,15 @@ fromtext_error(void (*callback)(dns_rdatacallbacks_t *, const char *, ...),
 
 dns_rdatatype_t
 dns_rdata_covers(dns_rdata_t *rdata) {
-	if (rdata->type == dns_rdatatype_rrsig) {
-		return covers_rrsig(rdata);
+	if (rdata->type == dns_rdatatype_rrsig ||
+	    rdata->type == dns_rdatatype_sig)
+	{
+		isc_region_t r;
+
+		dns_rdata_toregion(rdata, &r);
+		return uint16_fromregion(&r);
 	}
-	return covers_sig(rdata);
+	return dns_rdatatype_none;
 }
 
 void

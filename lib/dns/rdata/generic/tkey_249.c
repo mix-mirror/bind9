@@ -13,8 +13,7 @@
 
 /* draft-ietf-dnsext-tkey-01.txt */
 
-#ifndef RDATA_GENERIC_TKEY_249_C
-#define RDATA_GENERIC_TKEY_249_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_TKEY_ATTRIBUTES (DNS_RDATATYPEATTR_META)
 
@@ -580,5 +579,3 @@ const dns_rdata_typedesc_t dns__rdata_tkey_typedesc = {
 			.checknames = checknames_tkey,
 		},
 };
-
-#endif /* RDATA_GENERIC_TKEY_249_C */

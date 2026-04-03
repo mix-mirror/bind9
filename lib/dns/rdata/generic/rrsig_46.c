@@ -13,8 +13,7 @@
 
 /* RFC2535 */
 
-#ifndef RDATA_GENERIC_RRSIG_46_C
-#define RDATA_GENERIC_RRSIG_46_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_RRSIG_ATTRIBUTES                                     \
 	(DNS_RDATATYPEATTR_DNSSEC | DNS_RDATATYPEATTR_ZONECUTAUTH | \
@@ -618,19 +617,6 @@ digest_rrsig(ARGS_DIGEST) {
 	return (digest)(arg, &r2);
 }
 
-static dns_rdatatype_t
-covers_rrsig(dns_rdata_t *rdata) {
-	dns_rdatatype_t type;
-	isc_region_t r;
-
-	REQUIRE(rdata->type == dns_rdatatype_rrsig);
-
-	dns_rdata_toregion(rdata, &r);
-	type = uint16_fromregion(&r);
-
-	return type;
-}
-
 static bool
 checkowner_rrsig(ARGS_CHECKOWNER) {
 	REQUIRE(type == dns_rdatatype_rrsig);
@@ -681,5 +667,3 @@ const dns_rdata_typedesc_t dns__rdata_rrsig_typedesc = {
 			.checknames = checknames_rrsig,
 		},
 };
-
-#endif /* RDATA_GENERIC_RRSIG_46_C */

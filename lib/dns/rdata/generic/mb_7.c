@@ -11,8 +11,7 @@
  * information regarding copyright ownership.
  */
 
-#ifndef RDATA_GENERIC_MB_7_C
-#define RDATA_GENERIC_MB_7_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_MB_ATTRIBUTES (0)
 
@@ -247,5 +246,3 @@ const dns_rdata_typedesc_t dns__rdata_mb_typedesc = {
 			.checknames = checknames_mb,
 		},
 };
-
-#endif /* RDATA_GENERIC_MB_7_C */

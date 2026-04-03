@@ -11,9 +11,9 @@
  * information regarding copyright ownership.
  */
 
-/* draft-ietf-dnsop-svcb-https-02 */
+#include "../../rdata_helpers.h"
 
-#pragma once
+/* draft-ietf-dnsop-svcb-https-02 */
 
 #define RRTYPE_HTTPS_ATTRIBUTES (DNS_RDATATYPEATTR_FOLLOWADDITIONAL)
 

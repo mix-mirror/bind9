@@ -11,8 +11,7 @@
  * information regarding copyright ownership.
  */
 
-#ifndef RDATA_GENERIC_DOA_259_C
-#define RDATA_GENERIC_DOA_259_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_DOA_ATTRIBUTES (0)
 
@@ -354,5 +353,3 @@ const dns_rdata_typedesc_t dns__rdata_doa_typedesc = {
 			.checknames = checknames_doa,
 		},
 };
-
-#endif /* RDATA_GENERIC_DOA_259_C */

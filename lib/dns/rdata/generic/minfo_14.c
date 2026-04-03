@@ -11,8 +11,7 @@
  * information regarding copyright ownership.
  */
 
-#ifndef RDATA_GENERIC_MINFO_14_C
-#define RDATA_GENERIC_MINFO_14_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_MINFO_ATTRIBUTES (0)
 
@@ -337,5 +336,3 @@ const dns_rdata_typedesc_t dns__rdata_minfo_typedesc = {
 			.checknames = checknames_minfo,
 		},
 };
-
-#endif /* RDATA_GENERIC_MINFO_14_C */

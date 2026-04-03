@@ -13,6 +13,10 @@
 
 #pragma once
 
+#include <isc/result.h>
+
+#include <dns/types.h>
+
 #define DNS_DSYNCSCHEME_NOTIFY (1)
 
 #define DNS_DSYNCSCHEMEFORMAT_SIZE (7)

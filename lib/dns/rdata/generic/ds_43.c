@@ -13,8 +13,7 @@
 
 /* RFC3658 */
 
-#ifndef RDATA_GENERIC_DS_43_C
-#define RDATA_GENERIC_DS_43_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_DS_ATTRIBUTES                                        \
 	(DNS_RDATATYPEATTR_DNSSEC | DNS_RDATATYPEATTR_ZONECUTAUTH | \
@@ -397,5 +396,3 @@ const dns_rdata_typedesc_t dns__rdata_ds_typedesc = {
 			.checknames = checknames_ds,
 		},
 };
-
-#endif /* RDATA_GENERIC_DS_43_C */

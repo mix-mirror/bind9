@@ -13,8 +13,7 @@
 
 /* RFC2915 */
 
-#ifndef RDATA_GENERIC_NAPTR_35_C
-#define RDATA_GENERIC_NAPTR_35_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_NAPTR_ATTRIBUTES (0)
 
@@ -727,5 +726,3 @@ const dns_rdata_typedesc_t dns__rdata_naptr_typedesc = {
 			.checknames = checknames_naptr,
 		},
 };
-
-#endif /* RDATA_GENERIC_NAPTR_35_C */

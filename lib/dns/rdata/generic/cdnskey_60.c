@@ -13,10 +13,9 @@
 
 /* draft-ietf-dnsop-delegation-trust-maintainance-14 */
 
-#ifndef RDATA_GENERIC_CDNSKEY_60_C
-#define RDATA_GENERIC_CDNSKEY_60_C
-
 #include <dst/dst.h>
+
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_CDNSKEY_ATTRIBUTES 0
 
@@ -181,5 +180,3 @@ const dns_rdata_typedesc_t dns__rdata_cdnskey_typedesc = {
 			.checknames = checknames_cdnskey,
 		},
 };
-
-#endif /* RDATA_GENERIC_CDNSKEY_60_C */

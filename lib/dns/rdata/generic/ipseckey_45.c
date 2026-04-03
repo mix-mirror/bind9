@@ -11,12 +11,11 @@
  * information regarding copyright ownership.
  */
 
-#ifndef RDATA_GENERIC_IPSECKEY_45_C
-#define RDATA_GENERIC_IPSECKEY_45_C
-
 #include <string.h>
 
 #include <isc/net.h>
+
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_IPSECKEY_ATTRIBUTES (0)
 
@@ -531,5 +530,3 @@ const dns_rdata_typedesc_t dns__rdata_ipseckey_typedesc = {
 			.checknames = checknames_ipseckey,
 		},
 };
-
-#endif /* RDATA_GENERIC_IPSECKEY_45_C */

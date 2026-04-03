@@ -11,8 +11,7 @@
  * information regarding copyright ownership.
  */
 
-#ifndef RDATA_GENERIC_WALLET_262_C
-#define RDATA_GENERIC_WALLET_262_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_WALLET_ATTRIBUTES (0)
 
@@ -187,5 +186,3 @@ const dns_rdata_typedesc_t dns__rdata_wallet_typedesc = {
 			.checknames = checknames_wallet,
 		},
 };
-
-#endif /* RDATA_GENERIC_WALLET_262_C */

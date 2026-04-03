@@ -13,10 +13,11 @@
 
 /* RFC2535 */
 
-#ifndef RDATA_GENERIC_KEY_25_C
-#define RDATA_GENERIC_KEY_25_C
+#include <openssl/objects.h>
 
 #include <dst/dst.h>
+
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_KEY_ATTRIBUTES \
 	(DNS_RDATATYPEATTR_ATCNAME | DNS_RDATATYPEATTR_ZONECUTAUTH)
@@ -505,5 +506,3 @@ const dns_rdata_typedesc_t dns__rdata_key_typedesc = {
 			.checknames = checknames_key,
 		},
 };
-
-#endif /* RDATA_GENERIC_KEY_25_C */

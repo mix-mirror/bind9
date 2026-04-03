@@ -11,15 +11,14 @@
  * information regarding copyright ownership.
  */
 
-#ifndef RDATA_IN_1_WKS_11_C
-#define RDATA_IN_1_WKS_11_C
-
 #include <limits.h>
 #include <netdb.h>
 
 #include <isc/ascii.h>
 #include <isc/net.h>
 #include <isc/once.h>
+
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_WKS_ATTRIBUTES (0)
 
@@ -412,5 +411,3 @@ const dns_rdata_typedesc_t dns__rdata_in_wks_typedesc = {
 			.checknames = checknames_in_wks,
 		},
 };
-
-#endif /* RDATA_IN_1_WKS_11_C */

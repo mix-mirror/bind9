@@ -13,8 +13,7 @@
 
 /* RFC2672 */
 
-#ifndef RDATA_GENERIC_DNAME_39_C
-#define RDATA_GENERIC_DNAME_39_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_DNAME_ATTRIBUTES (DNS_RDATATYPEATTR_SINGLETON)
 
@@ -245,5 +244,3 @@ const dns_rdata_typedesc_t dns__rdata_dname_typedesc = {
 			.checknames = checknames_dname,
 		},
 };
-
-#endif /* RDATA_GENERIC_DNAME_39_C */

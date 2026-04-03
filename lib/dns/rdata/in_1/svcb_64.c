@@ -13,15 +13,13 @@
 
 /* draft-ietf-dnsop-svcb-https-02 */
 
-#ifndef RDATA_IN_1_SVCB_64_C
-#define RDATA_IN_1_SVCB_64_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_SVCB_ATTRIBUTES (DNS_RDATATYPEATTR_FOLLOWADDITIONAL)
 
 #define SVCB_MAN_KEY		 0
-#define SVCB_ALPN_KEY		 1
+/* SVCB_ALPN_KEY and SVCB_DOHPATH_KEY are defined in rdata_helpers.h */
 #define SVCB_NO_DEFAULT_ALPN_KEY 2
-#define SVCB_DOHPATH_KEY	 7
 #define MAX_CNAMES		 16 /* See ns/query.c MAX_RESTARTS */
 
 /*
@@ -1326,5 +1324,3 @@ const dns_rdata_typedesc_t dns__rdata_in_svcb_typedesc = {
 			.checknames = checknames_in_svcb,
 		},
 };
-
-#endif /* RDATA_IN_1_SVCB_64_C */

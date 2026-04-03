@@ -11,10 +11,9 @@
  * information regarding copyright ownership.
  */
 
-#ifndef RDATA_GENERIC_EUI64_109_C
-#define RDATA_GENERIC_EUI64_109_C
-
 #include <string.h>
+
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_EUI64_ATTRIBUTES (0)
 
@@ -231,5 +230,3 @@ const dns_rdata_typedesc_t dns__rdata_eui64_typedesc = {
 			.checknames = checknames_eui64,
 		},
 };
-
-#endif /* RDATA_GENERIC_EUI64_109_C */

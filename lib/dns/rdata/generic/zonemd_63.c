@@ -13,8 +13,7 @@
 
 /* RFC 8976 */
 
-#ifndef RDATA_GENERIC_ZONEMD_63_C
-#define RDATA_GENERIC_ZONEMD_63_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_ZONEMD_ATTRIBUTES 0
 
@@ -363,5 +362,3 @@ const dns_rdata_typedesc_t dns__rdata_zonemd_typedesc = {
 			.checknames = checknames_zonemd,
 		},
 };
-
-#endif /* RDATA_GENERIC_ZONEMD_63_C */

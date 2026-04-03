@@ -11,8 +11,7 @@
  * information regarding copyright ownership.
  */
 
-#ifndef RDATA_GENERIC_SOA_6_C
-#define RDATA_GENERIC_SOA_6_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_SOA_ATTRIBUTES (DNS_RDATATYPEATTR_SINGLETON)
 
@@ -463,5 +462,3 @@ const dns_rdata_typedesc_t dns__rdata_soa_typedesc = {
 			.checknames = checknames_soa,
 		},
 };
-
-#endif /* RDATA_GENERIC_SOA_6_C */

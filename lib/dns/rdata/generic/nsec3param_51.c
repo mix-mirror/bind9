@@ -29,11 +29,10 @@
 
 /* RFC 5155 */
 
-#ifndef RDATA_GENERIC_NSEC3PARAM_51_C
-#define RDATA_GENERIC_NSEC3PARAM_51_C
-
 #include <isc/base32.h>
 #include <isc/iterated_hash.h>
+
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_NSEC3PARAM_ATTRIBUTES (DNS_RDATATYPEATTR_DNSSEC)
 
@@ -337,5 +336,3 @@ const dns_rdata_typedesc_t dns__rdata_nsec3param_typedesc = {
 			.checknames = checknames_nsec3param,
 		},
 };
-
-#endif /* RDATA_GENERIC_NSEC3PARAM_51_C */

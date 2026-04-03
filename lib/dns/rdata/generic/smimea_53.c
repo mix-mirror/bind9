@@ -11,8 +11,7 @@
  * information regarding copyright ownership.
  */
 
-#ifndef RDATA_GENERIC_SMIMEA_53_C
-#define RDATA_GENERIC_SMIMEA_53_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_SMIMEA_ATTRIBUTES 0
 
@@ -170,5 +169,3 @@ const dns_rdata_typedesc_t dns__rdata_smimea_typedesc = {
 			.checknames = checknames_smimea,
 		},
 };
-
-#endif /* RDATA_GENERIC_SMIMEA_53_C */

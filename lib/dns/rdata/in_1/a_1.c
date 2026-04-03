@@ -11,12 +11,11 @@
  * information regarding copyright ownership.
  */
 
-#ifndef RDATA_IN_1_A_1_C
-#define RDATA_IN_1_A_1_C
-
 #include <string.h>
 
 #include <isc/net.h>
+
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_A_ATTRIBUTES (0)
 
@@ -295,5 +294,3 @@ const dns_rdata_typedesc_t dns__rdata_in_a_typedesc = {
 			.checknames = checknames_in_a,
 		},
 };
-
-#endif /* RDATA_IN_1_A_1_C */

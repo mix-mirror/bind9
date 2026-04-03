@@ -11,8 +11,7 @@
  * information regarding copyright ownership.
  */
 
-#ifndef RDATA_GENERIC_SPF_99_C
-#define RDATA_GENERIC_SPF_99_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_SPF_ATTRIBUTES (0)
 
@@ -163,5 +162,3 @@ const dns_rdata_typedesc_t dns__rdata_spf_typedesc = {
 			.checknames = checknames_spf,
 		},
 };
-
-#endif /* RDATA_GENERIC_SPF_99_C */

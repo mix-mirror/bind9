@@ -11,12 +11,11 @@
  * information regarding copyright ownership.
  */
 
-#ifndef RDATA_GENERIC_L64_106_C
-#define RDATA_GENERIC_L64_106_C
-
 #include <string.h>
 
 #include <isc/net.h>
+
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_L64_ATTRIBUTES (0)
 
@@ -241,5 +240,3 @@ const dns_rdata_typedesc_t dns__rdata_l64_typedesc = {
 			.checknames = checknames_l64,
 		},
 };
-
-#endif /* RDATA_GENERIC_L64_106_C */

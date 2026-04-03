@@ -13,8 +13,7 @@
 
 /* RFC2230 */
 
-#ifndef RDATA_IN_1_KX_36_C
-#define RDATA_IN_1_KX_36_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_KX_ATTRIBUTES (0)
 
@@ -305,5 +304,3 @@ const dns_rdata_typedesc_t dns__rdata_in_kx_typedesc = {
 			.checknames = checknames_in_kx,
 		},
 };
-
-#endif /* RDATA_IN_1_KX_36_C */

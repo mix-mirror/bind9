@@ -13,7 +13,8 @@
 
 /* RFC 4701 */
 
-#ifndef RDATA_IN_1_DHCID_49_C
+#include "../../rdata_helpers.h"
+
 #define RDATA_IN_1_DHCID_49_C 1
 
 #define RRTYPE_DHCID_ATTRIBUTES 0
@@ -249,5 +250,3 @@ const dns_rdata_typedesc_t dns__rdata_in_dhcid_typedesc = {
 			.checknames = checknames_in_dhcid,
 		},
 };
-
-#endif /* RDATA_IN_1_DHCID_49_C */

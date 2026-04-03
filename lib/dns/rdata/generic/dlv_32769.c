@@ -13,8 +13,7 @@
 
 /* RFC3658 */
 
-#ifndef RDATA_GENERIC_DLV_32769_C
-#define RDATA_GENERIC_DLV_32769_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_DLV_ATTRIBUTES 0
 
@@ -180,5 +179,3 @@ const dns_rdata_typedesc_t dns__rdata_dlv_typedesc = {
 			.checknames = checknames_dlv,
 		},
 };
-
-#endif /* RDATA_GENERIC_DLV_32769_C */

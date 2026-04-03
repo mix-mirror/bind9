@@ -13,8 +13,7 @@
 
 /* RFC 7477 */
 
-#ifndef RDATA_GENERIC_CSYNC_62_C
-#define RDATA_GENERIC_CSYNC_62_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_CSYNC_ATTRIBUTES 0
 
@@ -283,5 +282,3 @@ const dns_rdata_typedesc_t dns__rdata_csync_typedesc = {
 			.checknames = checknames_csync,
 		},
 };
-
-#endif /* RDATA_GENERIC_CSYNC_62_C */

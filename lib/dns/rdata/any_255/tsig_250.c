@@ -11,8 +11,7 @@
  * information regarding copyright ownership.
  */
 
-#ifndef RDATA_ANY_255_TSIG_250_C
-#define RDATA_ANY_255_TSIG_250_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_TSIG_ATTRIBUTES \
 	(DNS_RDATATYPEATTR_META | DNS_RDATATYPEATTR_NOTQUESTION)
@@ -622,5 +621,3 @@ const dns_rdata_typedesc_t dns__rdata_any_tsig_typedesc = {
 			.checknames = checknames_any_tsig,
 		},
 };
-
-#endif /* RDATA_ANY_255_TSIG_250_C */

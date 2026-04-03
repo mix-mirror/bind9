@@ -11,6 +11,8 @@
  * information regarding copyright ownership.
  */
 
+#include "../../rdata_helpers.h"
+
 #ifndef GENERIC_KEYDATA_65533_C
 #define GENERIC_KEYDATA_65533_C 1
 

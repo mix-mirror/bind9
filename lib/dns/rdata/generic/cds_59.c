@@ -13,8 +13,7 @@
 
 /* draft-ietf-dnsop-delegation-trust-maintainance-14 */
 
-#ifndef RDATA_GENERIC_CDS_59_C
-#define RDATA_GENERIC_CDS_59_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_CDS_ATTRIBUTES 0
 
@@ -184,5 +183,3 @@ const dns_rdata_typedesc_t dns__rdata_cds_typedesc = {
 			.checknames = checknames_cds,
 		},
 };
-
-#endif /* RDATA_GENERIC_CDS_59_C */

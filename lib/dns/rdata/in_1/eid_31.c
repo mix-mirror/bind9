@@ -13,8 +13,7 @@
 
 /* http://ana-3.lcs.mit.edu/~jnc/nimrod/dns.txt */
 
-#ifndef RDATA_IN_1_EID_31_C
-#define RDATA_IN_1_EID_31_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_EID_ATTRIBUTES (0)
 
@@ -237,5 +236,3 @@ const dns_rdata_typedesc_t dns__rdata_in_eid_typedesc = {
 			.checknames = checknames_in_eid,
 		},
 };
-
-#endif /* RDATA_IN_1_EID_31_C */

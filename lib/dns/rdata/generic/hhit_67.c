@@ -11,10 +11,9 @@
  * information regarding copyright ownership.
  */
 
-#ifndef RDATA_GENERIC_HHIT_67_C
-#define RDATA_GENERIC_HHIT_67_C
-
 #include <dst/dst.h>
+
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_HHIT_ATTRIBUTES (0)
 
@@ -230,5 +229,3 @@ const dns_rdata_typedesc_t dns__rdata_hhit_typedesc = {
 			.checknames = checknames_hhit,
 		},
 };
-
-#endif /* RDATA_GENERIC_HHIT_67_C */

@@ -11,12 +11,11 @@
  * information regarding copyright ownership.
  */
 
-#ifndef RDATA_GENERIC_LP_107_C
-#define RDATA_GENERIC_LP_107_C
-
 #include <string.h>
 
 #include <isc/net.h>
+
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_LP_ATTRIBUTES (0)
 
@@ -289,5 +288,3 @@ const dns_rdata_typedesc_t dns__rdata_lp_typedesc = {
 			.checknames = checknames_lp,
 		},
 };
-
-#endif /* RDATA_GENERIC_LP_107_C */

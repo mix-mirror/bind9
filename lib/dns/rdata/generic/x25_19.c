@@ -13,8 +13,7 @@
 
 /* RFC1183 */
 
-#ifndef RDATA_GENERIC_X25_19_C
-#define RDATA_GENERIC_X25_19_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_X25_ATTRIBUTES (0)
 
@@ -245,5 +244,3 @@ const dns_rdata_typedesc_t dns__rdata_x25_typedesc = {
 			.checknames = checknames_x25,
 		},
 };
-
-#endif /* RDATA_GENERIC_X25_19_C */

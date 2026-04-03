@@ -13,8 +13,7 @@
 
 /* RFC2671 */
 
-#ifndef RDATA_GENERIC_OPT_41_C
-#define RDATA_GENERIC_OPT_41_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_OPT_ATTRIBUTES                                   \
 	(DNS_RDATATYPEATTR_SINGLETON | DNS_RDATATYPEATTR_META | \
@@ -527,5 +526,3 @@ const dns_rdata_typedesc_t dns__rdata_opt_typedesc = {
 			.checknames = checknames_opt,
 		},
 };
-
-#endif /* RDATA_GENERIC_OPT_41_C */

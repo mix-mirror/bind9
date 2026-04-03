@@ -11,8 +11,7 @@
  * information regarding copyright ownership.
  */
 
-#ifndef RDATA_GENERIC_AVC_258_C
-#define RDATA_GENERIC_AVC_258_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_AVC_ATTRIBUTES (0)
 
@@ -162,5 +161,3 @@ const dns_rdata_typedesc_t dns__rdata_avc_typedesc = {
 			.checknames = checknames_avc,
 		},
 };
-
-#endif /* RDATA_GENERIC_AVC_258_C */

@@ -11,7 +11,7 @@
  * information regarding copyright ownership.
  */
 
-#pragma once
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_HINFO_ATTRIBUTES (0)
 

@@ -11,8 +11,7 @@
  * information regarding copyright ownership.
  */
 
-#ifndef RDATA_GENERIC_PTR_12_C
-#define RDATA_GENERIC_PTR_12_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_PTR_ATTRIBUTES (0)
 
@@ -283,5 +282,3 @@ const dns_rdata_typedesc_t dns__rdata_ptr_typedesc = {
 			.checknames = checknames_ptr,
 		},
 };
-
-#endif /* RDATA_GENERIC_PTR_12_C */

@@ -13,10 +13,9 @@
 
 /* RFC2874 */
 
-#ifndef RDATA_IN_1_A6_28_C
-#define RDATA_IN_1_A6_28_C
-
 #include <isc/net.h>
+
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_A6_ATTRIBUTES (0)
 
@@ -503,5 +502,3 @@ const dns_rdata_typedesc_t dns__rdata_in_a6_typedesc = {
 			.checknames = checknames_in_a6,
 		},
 };
-
-#endif /* RDATA_IN_1_A6_38_C */

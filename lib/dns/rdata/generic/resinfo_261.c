@@ -11,8 +11,7 @@
  * information regarding copyright ownership.
  */
 
-#ifndef RDATA_GENERIC_RESINFO_261_C
-#define RDATA_GENERIC_RESINFO_261_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_RESINFO_ATTRIBUTES (DNS_RDATATYPEATTR_SINGLETON)
 
@@ -163,5 +162,3 @@ const dns_rdata_typedesc_t dns__rdata_resinfo_typedesc = {
 			.checknames = checknames_resinfo,
 		},
 };
-
-#endif /* RDATA_GENERIC_RESINFO_261_C */

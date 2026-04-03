@@ -11,8 +11,7 @@
  * information regarding copyright ownership.
  */
 
-#ifndef RDATA_GENERIC_MG_8_C
-#define RDATA_GENERIC_MG_8_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_MG_ATTRIBUTES (0)
 
@@ -243,5 +242,3 @@ const dns_rdata_typedesc_t dns__rdata_mg_typedesc = {
 			.checknames = checknames_mg,
 		},
 };
-
-#endif /* RDATA_GENERIC_MG_8_C */

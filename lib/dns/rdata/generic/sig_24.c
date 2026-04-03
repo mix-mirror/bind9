@@ -13,8 +13,7 @@
 
 /* RFC2535 */
 
-#ifndef RDATA_GENERIC_SIG_24_C
-#define RDATA_GENERIC_SIG_24_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_SIG_ATTRIBUTES (0)
 
@@ -582,19 +581,6 @@ digest_sig(ARGS_DIGEST) {
 	return (digest)(arg, &r2);
 }
 
-static dns_rdatatype_t
-covers_sig(dns_rdata_t *rdata) {
-	dns_rdatatype_t type;
-	isc_region_t r;
-
-	REQUIRE(rdata->type == dns_rdatatype_sig);
-
-	dns_rdata_toregion(rdata, &r);
-	type = uint16_fromregion(&r);
-
-	return type;
-}
-
 static bool
 checkowner_sig(ARGS_CHECKOWNER) {
 	REQUIRE(type == dns_rdatatype_sig);
@@ -644,5 +630,3 @@ const dns_rdata_typedesc_t dns__rdata_sig_typedesc = {
 			.checknames = checknames_sig,
 		},
 };
-
-#endif /* RDATA_GENERIC_SIG_24_C */

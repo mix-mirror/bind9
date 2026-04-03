@@ -11,8 +11,7 @@
  * information regarding copyright ownership.
  */
 
-#ifndef RDATA_GENERIC_RKEY_57_C
-#define RDATA_GENERIC_RKEY_57_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_RKEY_ATTRIBUTES 0
 
@@ -178,5 +177,3 @@ const dns_rdata_typedesc_t dns__rdata_rkey_typedesc = {
 			.checknames = checknames_rkey,
 		},
 };
-
-#endif /* RDATA_GENERIC_RKEY_57_C */

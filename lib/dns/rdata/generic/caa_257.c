@@ -11,6 +11,8 @@
  * information regarding copyright ownership.
  */
 
+#include "../../rdata_helpers.h"
+
 #ifndef GENERIC_CAA_257_C
 #define GENERIC_CAA_257_C 1
 

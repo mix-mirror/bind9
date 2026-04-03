@@ -21,21 +21,46 @@
  * files (when they are no longer #included via code.h).
  */
 
+#include <ctype.h>
+#include <inttypes.h>
 #include <stdbool.h>
+#include <string.h>
 
+#include <isc/ascii.h>
+#include <isc/base64.h>
 #include <isc/buffer.h>
+#include <isc/hex.h>
 #include <isc/lex.h>
+#include <isc/md.h>
 #include <isc/mem.h>
+#include <isc/net.h>
+#include <isc/parseint.h>
 #include <isc/region.h>
 #include <isc/result.h>
+#include <isc/string.h>
+#include <isc/utf8.h>
+#include <isc/util.h>
 
 #include <dns/callbacks.h>
+#include <dns/cert.h>
 #include <dns/compress.h>
+#include <dns/dsdigest.h>
+#include <dns/enumtype.h>
+#include <dns/fixedname.h>
+#include <dns/keyflags.h>
+#include <dns/keyvalues.h>
+#include <dns/message.h>
 #include <dns/name.h>
+#include <dns/rcode.h>
 #include <dns/rdata.h>
+#include <dns/rdataclass.h>
+#include <dns/rdataset.h>
 #include <dns/rdatastruct.h>
 #include <dns/rdatatype.h>
 #include <dns/secalg.h>
+#include <dns/secproto.h>
+#include <dns/time.h>
+#include <dns/ttl.h>
 #include <dns/types.h>
 
 #include "rdata_p.h"
@@ -265,6 +290,10 @@ extern dns_name_t const gc_msdcs;
 #define NS_INT16SZ 2
 /*% IPv6 Address Size */
 #define NS_LOCATORSZ 8
+
+/* SVCB parameter keys */
+#define SVCB_ALPN_KEY	 1
+#define SVCB_DOHPATH_KEY 7
 
 /*
  * Shared type-family implementations.

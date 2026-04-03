@@ -13,8 +13,7 @@
 
 /* RFC 3845 */
 
-#ifndef RDATA_GENERIC_NSEC_47_C
-#define RDATA_GENERIC_NSEC_47_C
+#include "../../rdata_helpers.h"
 
 /*
  * The attributes do not include DNS_RDATATYPEATTR_SINGLETON
@@ -295,5 +294,3 @@ const dns_rdata_typedesc_t dns__rdata_nsec_typedesc = {
 			.checknames = checknames_nsec,
 		},
 };
-
-#endif /* RDATA_GENERIC_NSEC_47_C */

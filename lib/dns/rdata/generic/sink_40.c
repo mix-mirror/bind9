@@ -11,10 +11,9 @@
  * information regarding copyright ownership.
  */
 
-#ifndef RDATA_GENERIC_SINK_40_C
-#define RDATA_GENERIC_SINK_40_C
-
 #include <dst/dst.h>
+
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_SINK_ATTRIBUTES (0)
 
@@ -295,5 +294,3 @@ const dns_rdata_typedesc_t dns__rdata_sink_typedesc = {
 			.checknames = checknames_sink,
 		},
 };
-
-#endif /* RDATA_GENERIC_SINK_40_C */

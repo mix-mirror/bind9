@@ -13,8 +13,7 @@
 
 /* RFC1183 */
 
-#ifndef RDATA_GENERIC_AFSDB_18_C
-#define RDATA_GENERIC_AFSDB_18_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_AFSDB_ATTRIBUTES (0)
 
@@ -334,5 +333,3 @@ const dns_rdata_typedesc_t dns__rdata_afsdb_typedesc = {
 			.checknames = checknames_afsdb,
 		},
 };
-
-#endif /* RDATA_GENERIC_AFSDB_18_C */

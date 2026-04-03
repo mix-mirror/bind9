@@ -13,8 +13,7 @@
 
 /* RFC1706 */
 
-#ifndef RDATA_IN_1_NSAP_22_C
-#define RDATA_IN_1_NSAP_22_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_NSAP_ATTRIBUTES (0)
 
@@ -272,5 +271,3 @@ const dns_rdata_typedesc_t dns__rdata_in_nsap_typedesc = {
 			.checknames = checknames_in_nsap,
 		},
 };
-
-#endif /* RDATA_IN_1_NSAP_22_C */

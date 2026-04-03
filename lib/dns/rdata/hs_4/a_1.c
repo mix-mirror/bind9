@@ -11,9 +11,9 @@
  * information regarding copyright ownership.
  */
 
-#pragma once
-
 #include <isc/net.h>
+
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_A_ATTRIBUTES (0)
 

@@ -11,10 +11,9 @@
  * information regarding copyright ownership.
  */
 
-#ifndef RDATA_GENERIC_EUI48_108_C
-#define RDATA_GENERIC_EUI48_108_C
-
 #include <string.h>
+
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_EUI48_ATTRIBUTES (0)
 
@@ -228,5 +227,3 @@ const dns_rdata_typedesc_t dns__rdata_eui48_typedesc = {
 			.checknames = checknames_eui48,
 		},
 };
-
-#endif /* RDATA_GENERIC_EUI48_108_C */

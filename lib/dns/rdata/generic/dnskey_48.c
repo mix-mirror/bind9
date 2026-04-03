@@ -13,10 +13,9 @@
 
 /* RFC2535 */
 
-#ifndef RDATA_GENERIC_DNSKEY_48_C
-#define RDATA_GENERIC_DNSKEY_48_C
-
 #include <dst/dst.h>
+
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_DNSKEY_ATTRIBUTES (DNS_RDATATYPEATTR_DNSSEC)
 
@@ -182,5 +181,3 @@ const dns_rdata_typedesc_t dns__rdata_dnskey_typedesc = {
 			.checknames = checknames_dnskey,
 		},
 };
-
-#endif /* RDATA_GENERIC_DNSKEY_48_C */

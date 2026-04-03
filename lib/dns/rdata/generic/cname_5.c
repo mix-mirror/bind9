@@ -11,8 +11,7 @@
  * information regarding copyright ownership.
  */
 
-#ifndef RDATA_GENERIC_CNAME_5_C
-#define RDATA_GENERIC_CNAME_5_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_CNAME_ATTRIBUTES \
 	(DNS_RDATATYPEATTR_EXCLUSIVE | DNS_RDATATYPEATTR_SINGLETON)
@@ -245,5 +244,3 @@ const dns_rdata_typedesc_t dns__rdata_cname_typedesc = {
 			.checknames = checknames_cname,
 		},
 };
-
-#endif /* RDATA_GENERIC_CNAME_5_C */

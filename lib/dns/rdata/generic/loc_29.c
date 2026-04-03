@@ -13,8 +13,7 @@
 
 /* RFC1876 */
 
-#ifndef RDATA_GENERIC_LOC_29_C
-#define RDATA_GENERIC_LOC_29_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_LOC_ATTRIBUTES (0)
 
@@ -855,5 +854,3 @@ const dns_rdata_typedesc_t dns__rdata_loc_typedesc = {
 			.checknames = checknames_loc,
 		},
 };
-
-#endif /* RDATA_GENERIC_LOC_29_C */

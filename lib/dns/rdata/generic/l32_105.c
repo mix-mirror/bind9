@@ -11,12 +11,11 @@
  * information regarding copyright ownership.
  */
 
-#ifndef RDATA_GENERIC_L32_105_C
-#define RDATA_GENERIC_L32_105_C
-
 #include <string.h>
 
 #include <isc/net.h>
+
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_L32_ATTRIBUTES (0)
 
@@ -247,5 +246,3 @@ const dns_rdata_typedesc_t dns__rdata_l32_typedesc = {
 			.checknames = checknames_l32,
 		},
 };
-
-#endif /* RDATA_GENERIC_L32_105_C */

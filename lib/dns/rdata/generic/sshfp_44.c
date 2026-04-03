@@ -13,8 +13,7 @@
 
 /* RFC 4255 */
 
-#ifndef RDATA_GENERIC_SSHFP_44_C
-#define RDATA_GENERIC_SSHFP_44_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_SSHFP_ATTRIBUTES (0)
 
@@ -309,5 +308,3 @@ const dns_rdata_typedesc_t dns__rdata_sshfp_typedesc = {
 			.checknames = checknames_sshfp,
 		},
 };
-
-#endif /* RDATA_GENERIC_SSHFP_44_C */

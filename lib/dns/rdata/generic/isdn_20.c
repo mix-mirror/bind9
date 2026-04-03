@@ -13,8 +13,7 @@
 
 /* RFC1183 */
 
-#ifndef RDATA_GENERIC_ISDN_20_C
-#define RDATA_GENERIC_ISDN_20_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_ISDN_ATTRIBUTES (0)
 
@@ -252,5 +251,3 @@ const dns_rdata_typedesc_t dns__rdata_isdn_typedesc = {
 			.checknames = checknames_isdn,
 		},
 };
-
-#endif /* RDATA_GENERIC_ISDN_20_C */

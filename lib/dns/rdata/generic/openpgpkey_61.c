@@ -11,8 +11,7 @@
  * information regarding copyright ownership.
  */
 
-#ifndef RDATA_GENERIC_OPENPGPKEY_61_C
-#define RDATA_GENERIC_OPENPGPKEY_61_C
+#include "../../rdata_helpers.h"
 
 #define RRTYPE_OPENPGPKEY_ATTRIBUTES 0
 
@@ -259,5 +258,3 @@ const dns_rdata_typedesc_t dns__rdata_openpgpkey_typedesc = {
 			.checknames = checknames_openpgpkey,
 		},
 };
-
-#endif /* RDATA_GENERIC_OPENPGPKEY_61_C */
