@@ -1263,7 +1263,6 @@ libdns = library(
 libdns_dep = declare_dependency(
     link_with: libdns,
     include_directories: dns_inc,
-    sources: dns_gen_headers,
     dependencies: [
         libisc_dep,
     ],
@@ -1679,8 +1678,6 @@ else
         ns_srcconf.dependencies(),
     ]
     named_inc = [isc_inc, dns_inc, isccc_inc, isccfg_inc, ns_inc, named_inc_p]
-
-    named_srcset.add(dns_gen_headers)
 
     named_objects = [
         libisc.extract_all_objects(recursive: true),

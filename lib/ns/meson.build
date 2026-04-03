@@ -16,7 +16,6 @@ if config.get('HAVE_DTRACE')
     ns_probe_objects += static_library(
         'ns-probe-target',
         probe_src,
-        sources: dns_gen_headers,
         build_by_default: false,
         dependencies: [uv_dep, urcu_dep],
         implicit_include_directories: false,

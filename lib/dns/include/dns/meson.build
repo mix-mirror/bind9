@@ -9,30 +9,4 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
-# enumclass.h is now a static file (DNS classes are protocol constants).
-dns_gen_headers += [
-    custom_target(
-        'dns-header-enumtype',
-        output: 'enumtype.h',
-        depend_files: dns_header_depfiles,
-        capture: true,
-        install: false,
-        command: [dns_header_gen, '-s', '@CURRENT_SOURCE_DIR@' / '..' / '..', '-t'],
-    ),
-
-    custom_target(
-        'dns-header-rdatastruct',
-        output: 'rdatastruct.h',
-        depend_files: dns_header_depfiles,
-        capture: true,
-        install: false,
-        install_dir: get_option('includedir') / 'dns',
-        command: [
-            dns_header_gen,
-            '-s', '@CURRENT_SOURCE_DIR@' / '..' / '..',
-            '-i',
-            '-P', '@CURRENT_SOURCE_DIR@' / '..' / '..' / 'rdata' / 'rdatastructpre.h',
-            '-S', '@CURRENT_SOURCE_DIR@' / '..' / '..' / 'rdata' / 'rdatastructsuf.h',
-        ],
-    ),
-]
+# enumtype.h, enumclass.h, and rdatastruct.h are now static files.

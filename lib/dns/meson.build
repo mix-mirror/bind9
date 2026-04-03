@@ -15,22 +15,7 @@ probe_src = [probe_hdr, files('xfrin.c')]
 # dns_inc += include_directories('include')
 dns_inc_p += include_directories('.')
 
-dns_header_depfiles = []
-subdir('rdata')
-
-dns_gen_headers = []
-
-dns_header_gen = executable(
-    'gen',
-    files('gen.c'),
-    sources: default_sanitize_options,
-    install: false,
-    native: true,
-)
-
 subdir('include')
-
-dns_srcset.add(dns_gen_headers)
 dns_srcset.add(when: dnstap_dep, if_true: files('dnstap.c'))
 dns_srcset.add(when: maxminddb_dep, if_true: files('geoip2.c'))
 dns_srcset.add(when: [gssapi_dep, krb5_dep], if_true: files('gssapi_link.c'))
@@ -43,7 +28,6 @@ if config.get('HAVE_DTRACE')
         dependencies: urcu_dep,
         implicit_include_directories: false,
         include_directories: [isc_inc, dns_inc, dns_inc_p],
-        sources: dns_gen_headers,
     ).extract_all_objects(recursive: false)
 endif
 
