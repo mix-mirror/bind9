@@ -108,28 +108,64 @@ typedef struct dns_rdata_typedesc {
 } dns_rdata_typedesc_t;
 
 /*
- * Look up the type descriptor for a given (rdclass, type) pair.
- *
- * For class-specific types, searches for an exact (rdclass, type) match
- * first; if not found, falls back to the generic (rdclass=0) entry.
- *
- * Returns NULL if no descriptor is registered for the type.
+ * Direct-indexed type descriptor table for types 0..262, defined in
+ * rdata_registry.c.  Types above 262 (TA, DLV, KEYDATA) are handled
+ * by explicit checks in the lookup functions.
  */
-const dns_rdata_typedesc_t *
-dns__rdata_typedesc_lookup(dns_rdataclass_t rdclass, dns_rdatatype_t type);
+#define DNS_RDATA_TYPEDESC_TABLE_SIZE 263
+
+extern const dns_rdata_typedesc_t *const
+	dns__rdata_typedesc_table[DNS_RDATA_TYPEDESC_TABLE_SIZE];
+
+/* Outlier type descriptors (sparse, above the dense table range) */
+extern const dns_rdata_typedesc_t dns__rdata_ta_typedesc;
+extern const dns_rdata_typedesc_t dns__rdata_dlv_typedesc;
+extern const dns_rdata_typedesc_t dns__rdata_keydata_typedesc;
 
 /*
  * Look up a type descriptor by type code only (ignoring class).
- * Returns the first matching entry regardless of rdclass.
- * Used for type name, totext, and attribute lookups.
- *
- * Returns NULL if no descriptor is registered for the type.
+ * Dense table for 0..262, explicit checks for outliers.
  */
-const dns_rdata_typedesc_t *
-dns__rdata_typedesc_bytype(dns_rdatatype_t type);
+static inline const dns_rdata_typedesc_t *
+dns__rdata_typedesc_bytype(dns_rdatatype_t type) {
+	if (type < DNS_RDATA_TYPEDESC_TABLE_SIZE) {
+		return dns__rdata_typedesc_table[type];
+	}
+	if (type == 32768) {
+		return &dns__rdata_ta_typedesc;
+	}
+	if (type == 32769) {
+		return &dns__rdata_dlv_typedesc;
+	}
+	if (type == 65533) {
+		return &dns__rdata_keydata_typedesc;
+	}
+	return NULL;
+}
+
+/*
+ * Look up the type descriptor for a given (rdclass, type) pair.
+ * Returns NULL for class mismatches on class-specific types.
+ */
+static inline const dns_rdata_typedesc_t *
+dns__rdata_typedesc_lookup(dns_rdataclass_t rdclass, dns_rdatatype_t type) {
+	const dns_rdata_typedesc_t *td = dns__rdata_typedesc_bytype(type);
+
+	/*
+	 * Class-specific types (rdclass != 0) are only valid for their
+	 * own class.  Return NULL for mismatches so the caller falls
+	 * through to default (unknown-type) handling.
+	 */
+	if (td != NULL && td->rdclass != 0 && td->rdclass != rdclass) {
+		return NULL;
+	}
+
+	return td;
+}
 
 /*
  * Look up a type descriptor by type name (case-insensitive).
+ * Uses first-character switch dispatch.
  *
  * Returns NULL if the name is not recognized.
  */
