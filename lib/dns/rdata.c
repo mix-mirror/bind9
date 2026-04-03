@@ -52,201 +52,19 @@
 #include <dns/time.h>
 #include <dns/ttl.h>
 
+#include "rdata_helpers.h"
 #include "rdata_p.h"
 
 /*
- * ARGS_* macros define parameter lists for rdata type method functions.
- * Used by the type .c files that are #included via code.h.
- * CALL_* macros provide matching argument lists.
- */
-#define ARGS_FROMTEXT                                           \
-	int rdclass, dns_rdatatype_t type, isc_lex_t *lexer,    \
-		const dns_name_t *origin, unsigned int options, \
-		isc_buffer_t *target, dns_rdatacallbacks_t *callbacks
-
-#define CALL_FROMTEXT rdclass, type, lexer, origin, options, target, callbacks
-
-#define ARGS_TOTEXT \
-	dns_rdata_t *rdata, dns_rdata_textctx_t *tctx, isc_buffer_t *target
-
-#define CALL_TOTEXT rdata, tctx, target
-
-#define ARGS_FROMWIRE                                            \
-	int rdclass, dns_rdatatype_t type, isc_buffer_t *source, \
-		dns_decompress_t dctx, isc_buffer_t *target
-
-#define CALL_FROMWIRE rdclass, type, source, dctx, target
-
-#define ARGS_TOWIRE \
-	dns_rdata_t *rdata, dns_compress_t *cctx, isc_buffer_t *target
-
-#define CALL_TOWIRE rdata, cctx, target
-
-#define ARGS_COMPARE const dns_rdata_t *rdata1, const dns_rdata_t *rdata2
-
-#define CALL_COMPARE rdata1, rdata2
-
-#define ARGS_FROMSTRUCT \
-	int rdclass, dns_rdatatype_t type, void *source, isc_buffer_t *target
-
-#define CALL_FROMSTRUCT rdclass, type, source, target
-
-#define ARGS_TOSTRUCT const dns_rdata_t *rdata, void *target, isc_mem_t *mctx
-
-#define CALL_TOSTRUCT rdata, target, mctx
-
-#define ARGS_FREESTRUCT void *source
-
-#define CALL_FREESTRUCT source
-
-#define ARGS_ADDLDATA                                \
-	dns_rdata_t *rdata, const dns_name_t *owner, \
-		dns_additionaldatafunc_t add, void *arg
-
-#define CALL_ADDLDATA rdata, owner, add, arg
-
-#define ARGS_DIGEST dns_rdata_t *rdata, dns_digestfunc_t digest, void *arg
-
-#define CALL_DIGEST rdata, digest, arg
-
-#define ARGS_CHECKOWNER                                   \
-	const dns_name_t *name, dns_rdataclass_t rdclass, \
-		dns_rdatatype_t type, bool wildcard
-
-#define CALL_CHECKOWNER name, rdclass, type, wildcard
-
-#define ARGS_CHECKNAMES \
-	dns_rdata_t *rdata, const dns_name_t *owner, dns_name_t *bad
-
-#define CALL_CHECKNAMES rdata, owner, bad
-
-#define RETTOK(x)                                          \
-	do {                                               \
-		isc_result_t _r = (x);                     \
-		if (_r != ISC_R_SUCCESS) {                 \
-			isc_lex_ungettoken(lexer, &token); \
-			return (_r);                       \
-		}                                          \
-	} while (0)
-
-#define CHECKTOK(op)                                       \
-	do {                                               \
-		result = (op);                             \
-		if (result != ISC_R_SUCCESS) {             \
-			isc_lex_ungettoken(lexer, &token); \
-			goto cleanup;                      \
-		}                                          \
-	} while (0)
-
-#define DNS_AS_STR(t) ((t).value.as_textregion.base)
-
-/*
+ * ARGS_*, CALL_*, RETTOK, CHECKTOK, DNS_AS_STR macros and helper
+ * function declarations are provided by rdata_helpers.h.
+ *
  * dns_rdata_textctx_t is defined in rdata_p.h.
  */
 
 static isc_result_t
-txt_totext(isc_region_t *source, bool quote, isc_buffer_t *target);
-
-static isc_result_t
-txt_fromtext(isc_textregion_t *source, isc_buffer_t *target);
-
-static isc_result_t
-txt_fromwire(isc_buffer_t *source, isc_buffer_t *target);
-
-static isc_result_t
-commatxt_fromtext(isc_textregion_t *source, bool comma, isc_buffer_t *target);
-
-static isc_result_t
-commatxt_totext(isc_region_t *source, bool quote, bool comma,
-		isc_buffer_t *target);
-
-static isc_result_t
-multitxt_totext(isc_region_t *source, isc_buffer_t *target);
-
-static isc_result_t
-multitxt_fromtext(isc_textregion_t *source, isc_buffer_t *target);
-
-static bool
-name_prefix(dns_name_t *name, const dns_name_t *origin, dns_name_t *target);
-
-static unsigned int
-name_length(const dns_name_t *name);
-
-static isc_result_t
-str_totext(const char *source, isc_buffer_t *target);
-
-static isc_result_t
-inet_totext(int af, uint32_t flags, isc_region_t *src, isc_buffer_t *target);
-
-static bool
-buffer_empty(isc_buffer_t *source);
-
-static void
-buffer_fromregion(isc_buffer_t *buffer, isc_region_t *region);
-
-static isc_result_t
-uint32_tobuffer(uint32_t, isc_buffer_t *target);
-
-static isc_result_t
-uint16_tobuffer(uint32_t, isc_buffer_t *target);
-
-static isc_result_t
-uint8_tobuffer(uint32_t, isc_buffer_t *target);
-
-static isc_result_t
-name_tobuffer(const dns_name_t *name, isc_buffer_t *target);
-
-static uint32_t
-uint32_fromregion(isc_region_t *region);
-
-static uint16_t
-uint16_fromregion(isc_region_t *region);
-
-static uint8_t
-uint8_fromregion(isc_region_t *region);
-
-static uint8_t
-uint8_consume_fromregion(isc_region_t *region);
-
-static isc_result_t
-mem_tobuffer(isc_buffer_t *target, void *base, unsigned int length);
-
-static int
-hexvalue(char value);
-
-static int
-decvalue(char value);
-
-static void
-default_fromtext_callback(dns_rdatacallbacks_t *callbacks, const char *, ...)
-	ISC_FORMAT_PRINTF(2, 3);
-
-static void
-fromtext_error(void (*callback)(dns_rdatacallbacks_t *, const char *, ...),
-	       dns_rdatacallbacks_t *callbacks, const char *name,
-	       unsigned long line, isc_token_t *token, isc_result_t result);
-
-static void
-fromtext_warneof(isc_lex_t *lexer, dns_rdatacallbacks_t *callbacks);
-
-static isc_result_t
 rdata_totext(dns_rdata_t *rdata, dns_rdata_textctx_t *tctx,
 	     isc_buffer_t *target);
-
-static void
-warn_badname(const dns_name_t *name, isc_lex_t *lexer,
-	     dns_rdatacallbacks_t *callbacks);
-
-static void
-warn_badmx(isc_token_t *token, isc_lex_t *lexer,
-	   dns_rdatacallbacks_t *callbacks);
-
-static uint16_t
-uint16_consume_fromregion(isc_region_t *region);
-
-static isc_result_t
-unknown_totext(dns_rdata_t *rdata, dns_rdata_textctx_t *tctx,
-	       isc_buffer_t *target);
 
 static isc_result_t generic_fromtext_key(ARGS_FROMTEXT);
 
@@ -327,9 +145,9 @@ generic_rdata_in_svcb_current(dns_rdata_in_svcb_t *, isc_region_t *);
 /*
  * Active Directory gc._msdcs.<forest> prefix.
  */
-static unsigned char gc_msdcs_data[] = "\002gc\006_msdcs";
+unsigned char gc_msdcs_data[] = "\002gc\006_msdcs";
 
-static dns_name_t const gc_msdcs = DNS_NAME_INITNONABSOLUTE(gc_msdcs_data);
+dns_name_t const gc_msdcs = DNS_NAME_INITNONABSOLUTE(gc_msdcs_data);
 
 /*%
  *	convert presentation level address to network order binary form.
@@ -338,7 +156,7 @@ static dns_name_t const gc_msdcs = DNS_NAME_INITNONABSOLUTE(gc_msdcs_data);
  * \note
  *	(1) does not touch `dst' unless it's returning 1.
  */
-static int
+int
 locator_pton(const char *src, unsigned char *dst) {
 	unsigned char tmp[NS_LOCATORSZ];
 	unsigned char *tp = tmp, *endp;
@@ -388,7 +206,7 @@ locator_pton(const char *src, unsigned char *dst) {
 	return 1;
 }
 
-static void
+void
 name_duporclone(const dns_name_t *source, isc_mem_t *mctx, dns_name_t *target) {
 	if (mctx != NULL) {
 		dns_name_dup(source, mctx, target);
@@ -397,7 +215,7 @@ name_duporclone(const dns_name_t *source, isc_mem_t *mctx, dns_name_t *target) {
 	}
 }
 
-static void *
+void *
 mem_maybedup(isc_mem_t *mctx, void *source, size_t length) {
 	void *copy = NULL;
 
@@ -413,7 +231,7 @@ mem_maybedup(isc_mem_t *mctx, void *source, size_t length) {
 	return copy;
 }
 
-static isc_result_t
+isc_result_t
 typemap_fromtext(isc_lex_t *lexer, isc_buffer_t *target, bool allow_empty) {
 	isc_token_t token;
 	unsigned char bm[8 * 1024]; /* 64k bits */
@@ -481,7 +299,7 @@ typemap_fromtext(isc_lex_t *lexer, isc_buffer_t *target, bool allow_empty) {
 	return ISC_R_SUCCESS;
 }
 
-static isc_result_t
+isc_result_t
 typemap_totext(isc_region_t *sr, dns_rdata_textctx_t *tctx,
 	       isc_buffer_t *target) {
 	unsigned int i, j, k;
@@ -528,7 +346,7 @@ typemap_totext(isc_region_t *sr, dns_rdata_textctx_t *tctx,
 	return ISC_R_SUCCESS;
 }
 
-static isc_result_t
+isc_result_t
 typemap_test(isc_region_t *sr, bool allow_empty) {
 	unsigned int window, lastwindow = 0;
 	unsigned int len;
@@ -581,7 +399,7 @@ typemap_test(isc_region_t *sr, bool allow_empty) {
 	return ISC_R_SUCCESS;
 }
 
-static isc_result_t
+isc_result_t
 check_private(isc_buffer_t *source, dns_secalg_t alg) {
 	isc_region_t sr;
 	if (alg == DNS_KEYALG_PRIVATEDNS) {
@@ -619,7 +437,7 @@ check_private(isc_buffer_t *source, dns_secalg_t alg) {
 /*
  * A relative URI template that has a "dns" variable.
  */
-static bool
+bool
 validate_dohpath(isc_region_t *region) {
 	const unsigned char *p;
 	const unsigned char *v = NULL;
@@ -1278,7 +1096,7 @@ dns_rdata_fromtext(dns_rdata_t *rdata, dns_rdataclass_t rdclass,
 	return result;
 }
 
-static isc_result_t
+isc_result_t
 unknown_totext(dns_rdata_t *rdata, dns_rdata_textctx_t *tctx,
 	       isc_buffer_t *target) {
 	isc_result_t result = ISC_R_SUCCESS;
@@ -1676,12 +1494,12 @@ dns_rdatatype_format(dns_rdatatype_t rdtype, char *array, unsigned int size) {
  * Private function.
  */
 
-static unsigned int
+unsigned int
 name_length(const dns_name_t *name) {
 	return name->length;
 }
 
-static isc_result_t
+isc_result_t
 commatxt_totext(isc_region_t *source, bool quote, bool comma,
 		isc_buffer_t *target) {
 	unsigned int tl;
@@ -1775,12 +1593,12 @@ commatxt_totext(isc_region_t *source, bool quote, bool comma,
 	return ISC_R_SUCCESS;
 }
 
-static isc_result_t
+isc_result_t
 txt_totext(isc_region_t *source, bool quote, isc_buffer_t *target) {
 	return commatxt_totext(source, quote, false, target);
 }
 
-static isc_result_t
+isc_result_t
 commatxt_fromtext(isc_textregion_t *source, bool comma, isc_buffer_t *target) {
 	isc_region_t tregion;
 	bool escape = false, comma_escape = false, seen_comma = false;
@@ -1900,12 +1718,12 @@ commatxt_fromtext(isc_textregion_t *source, bool comma, isc_buffer_t *target) {
 	return ISC_R_SUCCESS;
 }
 
-static isc_result_t
+isc_result_t
 txt_fromtext(isc_textregion_t *source, isc_buffer_t *target) {
 	return commatxt_fromtext(source, false, target);
 }
 
-static isc_result_t
+isc_result_t
 txt_fromwire(isc_buffer_t *source, isc_buffer_t *target) {
 	unsigned int n;
 	isc_region_t sregion;
@@ -1936,7 +1754,7 @@ txt_fromwire(isc_buffer_t *source, isc_buffer_t *target) {
 /*
  * Conversion of TXT-like rdata fields without length limits.
  */
-static isc_result_t
+isc_result_t
 multitxt_totext(isc_region_t *source, isc_buffer_t *target) {
 	unsigned int tl;
 	unsigned int n0, n;
@@ -1997,7 +1815,7 @@ multitxt_totext(isc_region_t *source, isc_buffer_t *target) {
 	return ISC_R_SUCCESS;
 }
 
-static isc_result_t
+isc_result_t
 multitxt_fromtext(isc_textregion_t *source, isc_buffer_t *target) {
 	isc_region_t tregion;
 	bool escape;
@@ -2065,7 +1883,7 @@ multitxt_fromtext(isc_textregion_t *source, isc_buffer_t *target) {
 	return ISC_R_SUCCESS;
 }
 
-static bool
+bool
 name_prefix(dns_name_t *name, const dns_name_t *origin, dns_name_t *target) {
 	int l1, l2;
 
@@ -2102,7 +1920,7 @@ return_false:
 	return false;
 }
 
-static isc_result_t
+isc_result_t
 str_totext(const char *source, isc_buffer_t *target) {
 	unsigned int l;
 	isc_region_t region;
@@ -2119,7 +1937,7 @@ str_totext(const char *source, isc_buffer_t *target) {
 	return ISC_R_SUCCESS;
 }
 
-static isc_result_t
+isc_result_t
 inet_totext(int af, uint32_t flags, isc_region_t *src, isc_buffer_t *target) {
 	char tmpbuf[64];
 
@@ -2151,19 +1969,19 @@ inet_totext(int af, uint32_t flags, isc_region_t *src, isc_buffer_t *target) {
 	return ISC_R_SUCCESS;
 }
 
-static bool
+bool
 buffer_empty(isc_buffer_t *source) {
 	return (source->current == source->active) ? true : false;
 }
 
-static void
+void
 buffer_fromregion(isc_buffer_t *buffer, isc_region_t *region) {
 	isc_buffer_init(buffer, region->base, region->length);
 	isc_buffer_add(buffer, region->length);
 	isc_buffer_setactive(buffer, region->length);
 }
 
-static isc_result_t
+isc_result_t
 uint32_tobuffer(uint32_t value, isc_buffer_t *target) {
 	isc_region_t region;
 
@@ -2175,7 +1993,7 @@ uint32_tobuffer(uint32_t value, isc_buffer_t *target) {
 	return ISC_R_SUCCESS;
 }
 
-static isc_result_t
+isc_result_t
 uint16_tobuffer(uint32_t value, isc_buffer_t *target) {
 	isc_region_t region;
 
@@ -2190,7 +2008,7 @@ uint16_tobuffer(uint32_t value, isc_buffer_t *target) {
 	return ISC_R_SUCCESS;
 }
 
-static isc_result_t
+isc_result_t
 uint8_tobuffer(uint32_t value, isc_buffer_t *target) {
 	isc_region_t region;
 
@@ -2205,14 +2023,14 @@ uint8_tobuffer(uint32_t value, isc_buffer_t *target) {
 	return ISC_R_SUCCESS;
 }
 
-static isc_result_t
+isc_result_t
 name_tobuffer(const dns_name_t *name, isc_buffer_t *target) {
 	isc_region_t r;
 	dns_name_toregion(name, &r);
 	return isc_buffer_copyregion(target, &r);
 }
 
-static uint32_t
+uint32_t
 uint32_fromregion(isc_region_t *region) {
 	uint32_t value;
 
@@ -2224,7 +2042,7 @@ uint32_fromregion(isc_region_t *region) {
 	return value;
 }
 
-static uint16_t
+uint16_t
 uint16_consume_fromregion(isc_region_t *region) {
 	uint16_t r = uint16_fromregion(region);
 
@@ -2232,21 +2050,21 @@ uint16_consume_fromregion(isc_region_t *region) {
 	return r;
 }
 
-static uint16_t
+uint16_t
 uint16_fromregion(isc_region_t *region) {
 	REQUIRE(region->length >= 2);
 
 	return (region->base[0] << 8) | region->base[1];
 }
 
-static uint8_t
+uint8_t
 uint8_fromregion(isc_region_t *region) {
 	REQUIRE(region->length >= 1);
 
 	return region->base[0];
 }
 
-static uint8_t
+uint8_t
 uint8_consume_fromregion(isc_region_t *region) {
 	uint8_t r = uint8_fromregion(region);
 
@@ -2254,7 +2072,7 @@ uint8_consume_fromregion(isc_region_t *region) {
 	return r;
 }
 
-static isc_result_t
+isc_result_t
 mem_tobuffer(isc_buffer_t *target, void *base, unsigned int length) {
 	isc_region_t tr;
 
@@ -2273,7 +2091,7 @@ mem_tobuffer(isc_buffer_t *target, void *base, unsigned int length) {
 	return ISC_R_SUCCESS;
 }
 
-static int
+int
 hexvalue(char value) {
 	int hexval = isc_hex_char(value);
 	if (hexval == 0) {
@@ -2283,7 +2101,7 @@ hexvalue(char value) {
 	}
 }
 
-static int
+int
 decvalue(char value) {
 	if (isdigit((unsigned char)value)) {
 		return value - '0';
@@ -2292,7 +2110,7 @@ decvalue(char value) {
 	}
 }
 
-static void
+void
 default_fromtext_callback(dns_rdatacallbacks_t *callbacks, const char *fmt,
 			  ...) {
 	va_list ap;
@@ -2305,7 +2123,7 @@ default_fromtext_callback(dns_rdatacallbacks_t *callbacks, const char *fmt,
 	fprintf(stderr, "\n");
 }
 
-static void
+void
 fromtext_warneof(isc_lex_t *lexer, dns_rdatacallbacks_t *callbacks) {
 	if (isc_lex_isfile(lexer) && callbacks != NULL) {
 		const char *name = isc_lex_getsourcename(lexer);
@@ -2318,7 +2136,7 @@ fromtext_warneof(isc_lex_t *lexer, dns_rdatacallbacks_t *callbacks) {
 	}
 }
 
-static void
+void
 warn_badmx(isc_token_t *token, isc_lex_t *lexer,
 	   dns_rdatacallbacks_t *callbacks) {
 	const char *file;
@@ -2333,7 +2151,7 @@ warn_badmx(isc_token_t *token, isc_lex_t *lexer,
 	}
 }
 
-static void
+void
 warn_badname(const dns_name_t *name, isc_lex_t *lexer,
 	     dns_rdatacallbacks_t *callbacks) {
 	const char *file;
@@ -2350,7 +2168,7 @@ warn_badname(const dns_name_t *name, isc_lex_t *lexer,
 	}
 }
 
-static void
+void
 fromtext_error(void (*callback)(dns_rdatacallbacks_t *, const char *, ...),
 	       dns_rdatacallbacks_t *callbacks, const char *name,
 	       unsigned long line, isc_token_t *token, isc_result_t result) {
