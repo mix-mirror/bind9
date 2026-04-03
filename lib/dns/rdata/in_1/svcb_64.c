@@ -549,7 +549,7 @@ svcsortkeys(isc_buffer_t *target, unsigned int used) {
 	}
 }
 
-static isc_result_t
+isc_result_t
 generic_fromtext_in_svcb(ARGS_FROMTEXT) {
 	isc_token_t token;
 	isc_buffer_t buffer;
@@ -633,7 +633,7 @@ fromtext_in_svcb(ARGS_FROMTEXT) {
 	return generic_fromtext_in_svcb(CALL_FROMTEXT);
 }
 
-static isc_result_t
+isc_result_t
 generic_totext_in_svcb(ARGS_TOTEXT) {
 	isc_region_t region;
 	dns_name_t name;
@@ -777,7 +777,7 @@ totext_in_svcb(ARGS_TOTEXT) {
 	return generic_totext_in_svcb(CALL_TOTEXT);
 }
 
-static isc_result_t
+isc_result_t
 generic_fromwire_in_svcb(ARGS_FROMWIRE) {
 	dns_name_t name;
 	isc_region_t region, man = { .base = NULL, .length = 0 };
@@ -922,7 +922,7 @@ fromwire_in_svcb(ARGS_FROMWIRE) {
 	return generic_fromwire_in_svcb(CALL_FROMWIRE);
 }
 
-static isc_result_t
+isc_result_t
 generic_towire_in_svcb(ARGS_TOWIRE) {
 	dns_name_t name;
 	isc_region_t region;
@@ -978,7 +978,7 @@ compare_in_svcb(ARGS_COMPARE) {
 	return isc_region_compare(&region1, &region2);
 }
 
-static isc_result_t
+isc_result_t
 generic_fromstruct_in_svcb(ARGS_FROMSTRUCT) {
 	dns_rdata_in_svcb_t *svcb = source;
 	isc_region_t region;
@@ -1010,7 +1010,7 @@ fromstruct_in_svcb(ARGS_FROMSTRUCT) {
 	return generic_fromstruct_in_svcb(CALL_FROMSTRUCT);
 }
 
-static isc_result_t
+isc_result_t
 generic_tostruct_in_svcb(ARGS_TOSTRUCT) {
 	isc_region_t region;
 	dns_rdata_in_svcb_t *svcb = target;
@@ -1053,7 +1053,7 @@ tostruct_in_svcb(ARGS_TOSTRUCT) {
 	return generic_tostruct_in_svcb(CALL_TOSTRUCT);
 }
 
-static void
+void
 generic_freestruct_in_svcb(ARGS_FREESTRUCT) {
 	dns_rdata_in_svcb_t *svcb = source;
 
@@ -1079,7 +1079,7 @@ freestruct_in_svcb(ARGS_FREESTRUCT) {
 	generic_freestruct_in_svcb(CALL_FREESTRUCT);
 }
 
-static isc_result_t
+isc_result_t
 generic_additionaldata_in_svcb(ARGS_ADDLDATA) {
 	bool alias, done = false;
 	dns_fixedname_t fixed;
@@ -1196,7 +1196,7 @@ checkowner_in_svcb(ARGS_CHECKOWNER) {
 	return true;
 }
 
-static bool
+bool
 generic_checknames_in_svcb(ARGS_CHECKNAMES) {
 	isc_region_t region;
 	dns_name_t name;
@@ -1232,7 +1232,7 @@ casecompare_in_svcb(ARGS_COMPARE) {
 	return compare_in_svcb(rdata1, rdata2);
 }
 
-static isc_result_t
+isc_result_t
 generic_rdata_in_svcb_first(dns_rdata_in_svcb_t *svcb) {
 	if (svcb->svclen == 0) {
 		return ISC_R_NOMORE;
@@ -1241,7 +1241,7 @@ generic_rdata_in_svcb_first(dns_rdata_in_svcb_t *svcb) {
 	return ISC_R_SUCCESS;
 }
 
-static isc_result_t
+isc_result_t
 generic_rdata_in_svcb_next(dns_rdata_in_svcb_t *svcb) {
 	isc_region_t region;
 	size_t len;
@@ -1260,7 +1260,7 @@ generic_rdata_in_svcb_next(dns_rdata_in_svcb_t *svcb) {
 	return svcb->offset >= svcb->svclen ? ISC_R_NOMORE : ISC_R_SUCCESS;
 }
 
-static void
+void
 generic_rdata_in_svcb_current(dns_rdata_in_svcb_t *svcb, isc_region_t *region) {
 	size_t len;
 

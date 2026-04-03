@@ -33,6 +33,7 @@
 #include <dns/compress.h>
 #include <dns/name.h>
 #include <dns/rdata.h>
+#include <dns/rdatastruct.h>
 #include <dns/rdatatype.h>
 #include <dns/secalg.h>
 #include <dns/types.h>
@@ -259,3 +260,69 @@ default_fromtext_callback(dns_rdatacallbacks_t *callbacks, const char *, ...)
 
 extern unsigned char gc_msdcs_data[];
 extern dns_name_t const gc_msdcs;
+
+/*% INT16 Size */
+#define NS_INT16SZ 2
+/*% IPv6 Address Size */
+#define NS_LOCATORSZ 8
+
+/*
+ * Shared type-family implementations.
+ * Defined in the "primary" type file, used by related types.
+ */
+
+/* KEY family (key_25.c) — used by dnskey, cdnskey, rkey */
+isc_result_t generic_fromtext_key(ARGS_FROMTEXT);
+isc_result_t generic_totext_key(ARGS_TOTEXT);
+isc_result_t generic_fromwire_key(ARGS_FROMWIRE);
+isc_result_t generic_fromstruct_key(ARGS_FROMSTRUCT);
+isc_result_t generic_tostruct_key(ARGS_TOSTRUCT);
+void generic_freestruct_key(ARGS_FREESTRUCT);
+bool
+generic_key_nokey(dns_rdatatype_t type, unsigned int flags);
+
+/* TXT family (txt_16.c) — used by spf, avc, ninfo, wallet, resinfo */
+isc_result_t generic_fromtext_txt(ARGS_FROMTEXT);
+isc_result_t generic_totext_txt(ARGS_TOTEXT);
+isc_result_t generic_fromwire_txt(ARGS_FROMWIRE);
+isc_result_t generic_fromstruct_txt(ARGS_FROMSTRUCT);
+isc_result_t generic_tostruct_txt(ARGS_TOSTRUCT);
+void generic_freestruct_txt(ARGS_FREESTRUCT);
+isc_result_t
+generic_txt_first(dns_rdata_txt_t *txt);
+isc_result_t
+generic_txt_next(dns_rdata_txt_t *txt);
+isc_result_t
+generic_txt_current(dns_rdata_txt_t *txt, dns_rdata_txt_string_t *string);
+
+/* DS family (ds_43.c) — used by cds, dlv, ta */
+isc_result_t generic_fromtext_ds(ARGS_FROMTEXT);
+isc_result_t generic_totext_ds(ARGS_TOTEXT);
+isc_result_t generic_fromwire_ds(ARGS_FROMWIRE);
+isc_result_t generic_fromstruct_ds(ARGS_FROMSTRUCT);
+isc_result_t generic_tostruct_ds(ARGS_TOSTRUCT);
+
+/* TLSA family (tlsa_52.c) — used by smimea */
+isc_result_t generic_fromtext_tlsa(ARGS_FROMTEXT);
+isc_result_t generic_totext_tlsa(ARGS_TOTEXT);
+isc_result_t generic_fromwire_tlsa(ARGS_FROMWIRE);
+isc_result_t generic_fromstruct_tlsa(ARGS_FROMSTRUCT);
+isc_result_t generic_tostruct_tlsa(ARGS_TOSTRUCT);
+void generic_freestruct_tlsa(ARGS_FREESTRUCT);
+
+/* SVCB family (svcb_64.c) — used by https */
+isc_result_t generic_fromtext_in_svcb(ARGS_FROMTEXT);
+isc_result_t generic_totext_in_svcb(ARGS_TOTEXT);
+isc_result_t generic_fromwire_in_svcb(ARGS_FROMWIRE);
+isc_result_t generic_towire_in_svcb(ARGS_TOWIRE);
+isc_result_t generic_fromstruct_in_svcb(ARGS_FROMSTRUCT);
+isc_result_t generic_tostruct_in_svcb(ARGS_TOSTRUCT);
+void generic_freestruct_in_svcb(ARGS_FREESTRUCT);
+isc_result_t generic_additionaldata_in_svcb(ARGS_ADDLDATA);
+bool generic_checknames_in_svcb(ARGS_CHECKNAMES);
+isc_result_t
+generic_rdata_in_svcb_first(dns_rdata_in_svcb_t *);
+isc_result_t
+generic_rdata_in_svcb_next(dns_rdata_in_svcb_t *);
+void
+generic_rdata_in_svcb_current(dns_rdata_in_svcb_t *, isc_region_t *);

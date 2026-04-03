@@ -66,81 +66,9 @@ static isc_result_t
 rdata_totext(dns_rdata_t *rdata, dns_rdata_textctx_t *tctx,
 	     isc_buffer_t *target);
 
-static isc_result_t generic_fromtext_key(ARGS_FROMTEXT);
-
-static isc_result_t generic_totext_key(ARGS_TOTEXT);
-
-static isc_result_t generic_fromwire_key(ARGS_FROMWIRE);
-
-static isc_result_t generic_fromstruct_key(ARGS_FROMSTRUCT);
-
-static isc_result_t generic_tostruct_key(ARGS_TOSTRUCT);
-
-static void generic_freestruct_key(ARGS_FREESTRUCT);
-
-static isc_result_t generic_fromtext_txt(ARGS_FROMTEXT);
-
-static isc_result_t generic_totext_txt(ARGS_TOTEXT);
-
-static isc_result_t generic_fromwire_txt(ARGS_FROMWIRE);
-
-static isc_result_t generic_fromstruct_txt(ARGS_FROMSTRUCT);
-
-static isc_result_t generic_tostruct_txt(ARGS_TOSTRUCT);
-
-static void generic_freestruct_txt(ARGS_FREESTRUCT);
-
-static isc_result_t
-generic_txt_first(dns_rdata_txt_t *txt);
-
-static isc_result_t
-generic_txt_next(dns_rdata_txt_t *txt);
-
-static isc_result_t
-generic_txt_current(dns_rdata_txt_t *txt, dns_rdata_txt_string_t *string);
-
-static isc_result_t generic_totext_ds(ARGS_TOTEXT);
-
-static isc_result_t generic_tostruct_ds(ARGS_TOSTRUCT);
-
-static isc_result_t generic_fromtext_ds(ARGS_FROMTEXT);
-
-static isc_result_t generic_fromwire_ds(ARGS_FROMWIRE);
-
-static isc_result_t generic_fromstruct_ds(ARGS_FROMSTRUCT);
-
-static isc_result_t generic_fromtext_tlsa(ARGS_FROMTEXT);
-
-static isc_result_t generic_totext_tlsa(ARGS_TOTEXT);
-
-static isc_result_t generic_fromwire_tlsa(ARGS_FROMWIRE);
-
-static isc_result_t generic_fromstruct_tlsa(ARGS_FROMSTRUCT);
-
-static isc_result_t generic_tostruct_tlsa(ARGS_TOSTRUCT);
-
-static void generic_freestruct_tlsa(ARGS_FREESTRUCT);
-
-static isc_result_t generic_fromtext_in_svcb(ARGS_FROMTEXT);
-static isc_result_t generic_totext_in_svcb(ARGS_TOTEXT);
-static isc_result_t generic_fromwire_in_svcb(ARGS_FROMWIRE);
-static isc_result_t generic_towire_in_svcb(ARGS_TOWIRE);
-static isc_result_t generic_fromstruct_in_svcb(ARGS_FROMSTRUCT);
-static isc_result_t generic_tostruct_in_svcb(ARGS_TOSTRUCT);
-static void generic_freestruct_in_svcb(ARGS_FREESTRUCT);
-static isc_result_t generic_additionaldata_in_svcb(ARGS_ADDLDATA);
-static bool generic_checknames_in_svcb(ARGS_CHECKNAMES);
-static isc_result_t
-generic_rdata_in_svcb_first(dns_rdata_in_svcb_t *);
-static isc_result_t
-generic_rdata_in_svcb_next(dns_rdata_in_svcb_t *);
-static void
-generic_rdata_in_svcb_current(dns_rdata_in_svcb_t *, isc_region_t *);
-
-/*% INT16 Size */
-#define NS_INT16SZ 2
-/*% IPv6 Address Size */
-#define NS_LOCATORSZ 8
+/*
+ * Shared generic_* function declarations are in rdata_helpers.h.
+ */
 
 /*
  * Active Directory gc._msdcs.<forest> prefix.

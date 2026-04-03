@@ -18,7 +18,7 @@
 
 #define RRTYPE_TLSA_ATTRIBUTES 0
 
-static isc_result_t
+isc_result_t
 generic_fromtext_tlsa(ARGS_FROMTEXT) {
 	isc_token_t token;
 
@@ -64,7 +64,7 @@ generic_fromtext_tlsa(ARGS_FROMTEXT) {
 	return isc_hex_tobuffer(lexer, target, isc_one_or_more);
 }
 
-static isc_result_t
+isc_result_t
 generic_totext_tlsa(ARGS_TOTEXT) {
 	isc_region_t sr;
 	char buf[sizeof("64000 ")];
@@ -119,7 +119,7 @@ generic_totext_tlsa(ARGS_TOTEXT) {
 	return ISC_R_SUCCESS;
 }
 
-static isc_result_t
+isc_result_t
 generic_fromwire_tlsa(ARGS_FROMWIRE) {
 	isc_region_t sr;
 
@@ -188,7 +188,7 @@ compare_tlsa(ARGS_COMPARE) {
 	return isc_region_compare(&r1, &r2);
 }
 
-static isc_result_t
+isc_result_t
 generic_fromstruct_tlsa(ARGS_FROMSTRUCT) {
 	dns_rdata_tlsa_t *tlsa = source;
 
@@ -206,7 +206,7 @@ generic_fromstruct_tlsa(ARGS_FROMSTRUCT) {
 	return mem_tobuffer(target, tlsa->data, tlsa->length);
 }
 
-static isc_result_t
+isc_result_t
 generic_tostruct_tlsa(ARGS_TOSTRUCT) {
 	dns_rdata_tlsa_t *tlsa = target;
 	isc_region_t region;
@@ -233,7 +233,7 @@ generic_tostruct_tlsa(ARGS_TOSTRUCT) {
 	return ISC_R_SUCCESS;
 }
 
-static void
+void
 generic_freestruct_tlsa(ARGS_FREESTRUCT) {
 	dns_rdata_tlsa_t *tlsa = source;
 

@@ -24,7 +24,7 @@
 
 #include <dns/ds.h>
 
-static isc_result_t
+isc_result_t
 generic_fromtext_ds(ARGS_FROMTEXT) {
 	isc_token_t token;
 	unsigned char c;
@@ -89,7 +89,7 @@ fromtext_ds(ARGS_FROMTEXT) {
 	return generic_fromtext_ds(CALL_FROMTEXT);
 }
 
-static isc_result_t
+isc_result_t
 generic_totext_ds(ARGS_TOTEXT) {
 	isc_region_t sr;
 	char buf[sizeof("64000 ")];
@@ -156,7 +156,7 @@ totext_ds(ARGS_TOTEXT) {
 	return generic_totext_ds(CALL_TOTEXT);
 }
 
-static isc_result_t
+isc_result_t
 generic_fromwire_ds(ARGS_FROMWIRE) {
 	isc_region_t sr;
 
@@ -233,7 +233,7 @@ compare_ds(ARGS_COMPARE) {
 	return isc_region_compare(&r1, &r2);
 }
 
-static isc_result_t
+isc_result_t
 generic_fromstruct_ds(ARGS_FROMSTRUCT) {
 	dns_rdata_ds_t *ds = source;
 
@@ -270,7 +270,7 @@ fromstruct_ds(ARGS_FROMSTRUCT) {
 	return generic_fromstruct_ds(CALL_FROMSTRUCT);
 }
 
-static isc_result_t
+isc_result_t
 generic_tostruct_ds(ARGS_TOSTRUCT) {
 	dns_rdata_ds_t *ds = target;
 	isc_region_t region;

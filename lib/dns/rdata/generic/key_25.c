@@ -31,7 +31,7 @@
  *     DNSKEY - RFC 4034
  *     RKEY - draft-reid-dnsext-rkey-00
  */
-static bool
+bool
 generic_key_nokey(dns_rdatatype_t type, unsigned int flags) {
 	switch (type) {
 	case dns_rdatatype_cdnskey:
@@ -44,7 +44,7 @@ generic_key_nokey(dns_rdatatype_t type, unsigned int flags) {
 	}
 }
 
-static isc_result_t
+isc_result_t
 generic_fromtext_key(ARGS_FROMTEXT) {
 	isc_token_t token;
 	dns_secalg_t alg;
@@ -107,7 +107,7 @@ generic_fromtext_key(ARGS_FROMTEXT) {
 	return ISC_R_SUCCESS;
 }
 
-static isc_result_t
+isc_result_t
 generic_totext_key(ARGS_TOTEXT) {
 	isc_region_t sr;
 	char buf[sizeof("[key id = 64000]")];
@@ -225,7 +225,7 @@ generic_totext_key(ARGS_TOTEXT) {
 	return ISC_R_SUCCESS;
 }
 
-static isc_result_t
+isc_result_t
 generic_fromwire_key(ARGS_FROMWIRE) {
 	unsigned char algorithm;
 	uint16_t flags;
@@ -322,7 +322,7 @@ compare_key(ARGS_COMPARE) {
 	return isc_region_compare(&r1, &r2);
 }
 
-static isc_result_t
+isc_result_t
 generic_fromstruct_key(ARGS_FROMSTRUCT) {
 	dns_rdata_key_t *key = source;
 
@@ -350,7 +350,7 @@ generic_fromstruct_key(ARGS_FROMSTRUCT) {
 	return mem_tobuffer(target, key->data, key->datalen);
 }
 
-static isc_result_t
+isc_result_t
 generic_tostruct_key(ARGS_TOSTRUCT) {
 	dns_rdata_key_t *key = target;
 	isc_region_t sr;
@@ -383,7 +383,7 @@ generic_tostruct_key(ARGS_TOSTRUCT) {
 	return ISC_R_SUCCESS;
 }
 
-static void
+void
 generic_freestruct_key(ARGS_FREESTRUCT) {
 	dns_rdata_key_t *key = (dns_rdata_key_t *)source;
 
