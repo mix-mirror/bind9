@@ -222,4 +222,27 @@ casecompare_mr(ARGS_COMPARE) {
 	return compare_mr(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_mr_typedesc = {
+	.type = 9,
+	.rdclass = 0,
+	.name = "MR",
+	.attributes = RRTYPE_MR_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_mr,
+			.totext = totext_mr,
+			.fromwire = fromwire_mr,
+			.towire = towire_mr,
+			.compare = compare_mr,
+			.casecompare = casecompare_mr,
+			.fromstruct = fromstruct_mr,
+			.tostruct = tostruct_mr,
+			.freestruct = freestruct_mr,
+			.additionaldata = additionaldata_mr,
+			.digest = digest_mr,
+			.checkowner = checkowner_mr,
+			.checknames = checknames_mr,
+		},
+};
+
 #endif /* RDATA_GENERIC_MR_9_C */

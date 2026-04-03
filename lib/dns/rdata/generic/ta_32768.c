@@ -158,4 +158,27 @@ casecompare_ta(ARGS_COMPARE) {
 	return compare_ta(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_ta_typedesc = {
+	.type = 32768,
+	.rdclass = 0,
+	.name = "TA",
+	.attributes = RRTYPE_TA_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_ta,
+			.totext = totext_ta,
+			.fromwire = fromwire_ta,
+			.towire = towire_ta,
+			.compare = compare_ta,
+			.casecompare = casecompare_ta,
+			.fromstruct = fromstruct_ta,
+			.tostruct = tostruct_ta,
+			.freestruct = freestruct_ta,
+			.additionaldata = additionaldata_ta,
+			.digest = digest_ta,
+			.checkowner = checkowner_ta,
+			.checknames = checknames_ta,
+		},
+};
+
 #endif /* RDATA_GENERIC_TA_32768_C */

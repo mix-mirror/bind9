@@ -390,4 +390,27 @@ casecompare_in_wks(ARGS_COMPARE) {
 	return compare_in_wks(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_in_wks_typedesc = {
+	.type = 11,
+	.rdclass = 1,
+	.name = "WKS",
+	.attributes = RRTYPE_WKS_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_in_wks,
+			.totext = totext_in_wks,
+			.fromwire = fromwire_in_wks,
+			.towire = towire_in_wks,
+			.compare = compare_in_wks,
+			.casecompare = casecompare_in_wks,
+			.fromstruct = fromstruct_in_wks,
+			.tostruct = tostruct_in_wks,
+			.freestruct = freestruct_in_wks,
+			.additionaldata = additionaldata_in_wks,
+			.digest = digest_in_wks,
+			.checkowner = checkowner_in_wks,
+			.checknames = checknames_in_wks,
+		},
+};
+
 #endif /* RDATA_IN_1_WKS_11_C */

@@ -341,4 +341,27 @@ casecompare_zonemd(ARGS_COMPARE) {
 	return compare_zonemd(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_zonemd_typedesc = {
+	.type = 63,
+	.rdclass = 0,
+	.name = "ZONEMD",
+	.attributes = RRTYPE_ZONEMD_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_zonemd,
+			.totext = totext_zonemd,
+			.fromwire = fromwire_zonemd,
+			.towire = towire_zonemd,
+			.compare = compare_zonemd,
+			.casecompare = casecompare_zonemd,
+			.fromstruct = fromstruct_zonemd,
+			.tostruct = tostruct_zonemd,
+			.freestruct = freestruct_zonemd,
+			.additionaldata = additionaldata_zonemd,
+			.digest = digest_zonemd,
+			.checkowner = checkowner_zonemd,
+			.checknames = checknames_zonemd,
+		},
+};
+
 #endif /* RDATA_GENERIC_ZONEMD_63_C */

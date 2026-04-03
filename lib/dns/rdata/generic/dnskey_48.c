@@ -160,4 +160,27 @@ casecompare_dnskey(ARGS_COMPARE) {
 	return compare_dnskey(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_dnskey_typedesc = {
+	.type = 48,
+	.rdclass = 0,
+	.name = "DNSKEY",
+	.attributes = RRTYPE_DNSKEY_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_dnskey,
+			.totext = totext_dnskey,
+			.fromwire = fromwire_dnskey,
+			.towire = towire_dnskey,
+			.compare = compare_dnskey,
+			.casecompare = casecompare_dnskey,
+			.fromstruct = fromstruct_dnskey,
+			.tostruct = tostruct_dnskey,
+			.freestruct = freestruct_dnskey,
+			.additionaldata = additionaldata_dnskey,
+			.digest = digest_dnskey,
+			.checkowner = checkowner_dnskey,
+			.checknames = checknames_dnskey,
+		},
+};
+
 #endif /* RDATA_GENERIC_DNSKEY_48_C */

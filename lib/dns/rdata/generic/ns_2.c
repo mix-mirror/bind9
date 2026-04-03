@@ -250,4 +250,27 @@ casecompare_ns(ARGS_COMPARE) {
 	return compare_ns(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_ns_typedesc = {
+	.type = 2,
+	.rdclass = 0,
+	.name = "NS",
+	.attributes = RRTYPE_NS_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_ns,
+			.totext = totext_ns,
+			.fromwire = fromwire_ns,
+			.towire = towire_ns,
+			.compare = compare_ns,
+			.casecompare = casecompare_ns,
+			.fromstruct = fromstruct_ns,
+			.tostruct = tostruct_ns,
+			.freestruct = freestruct_ns,
+			.additionaldata = additionaldata_ns,
+			.digest = digest_ns,
+			.checkowner = checkowner_ns,
+			.checknames = checknames_ns,
+		},
+};
+
 #endif /* RDATA_GENERIC_NS_2_C */

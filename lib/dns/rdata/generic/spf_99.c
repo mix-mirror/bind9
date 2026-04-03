@@ -141,4 +141,27 @@ static int
 casecompare_spf(ARGS_COMPARE) {
 	return compare_spf(rdata1, rdata2);
 }
+const dns_rdata_typedesc_t dns__rdata_spf_typedesc = {
+	.type = 99,
+	.rdclass = 0,
+	.name = "SPF",
+	.attributes = RRTYPE_SPF_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_spf,
+			.totext = totext_spf,
+			.fromwire = fromwire_spf,
+			.towire = towire_spf,
+			.compare = compare_spf,
+			.casecompare = casecompare_spf,
+			.fromstruct = fromstruct_spf,
+			.tostruct = tostruct_spf,
+			.freestruct = freestruct_spf,
+			.additionaldata = additionaldata_spf,
+			.digest = digest_spf,
+			.checkowner = checkowner_spf,
+			.checknames = checknames_spf,
+		},
+};
+
 #endif /* RDATA_GENERIC_SPF_99_C */

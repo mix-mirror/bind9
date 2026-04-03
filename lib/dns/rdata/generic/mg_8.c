@@ -221,4 +221,27 @@ casecompare_mg(ARGS_COMPARE) {
 	return compare_mg(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_mg_typedesc = {
+	.type = 8,
+	.rdclass = 0,
+	.name = "MG",
+	.attributes = RRTYPE_MG_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_mg,
+			.totext = totext_mg,
+			.fromwire = fromwire_mg,
+			.towire = towire_mg,
+			.compare = compare_mg,
+			.casecompare = casecompare_mg,
+			.fromstruct = fromstruct_mg,
+			.tostruct = tostruct_mg,
+			.freestruct = freestruct_mg,
+			.additionaldata = additionaldata_mg,
+			.digest = digest_mg,
+			.checkowner = checkowner_mg,
+			.checknames = checknames_mg,
+		},
+};
+
 #endif /* RDATA_GENERIC_MG_8_C */

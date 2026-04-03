@@ -215,4 +215,27 @@ casecompare_in_nimloc(ARGS_COMPARE) {
 	return compare_in_nimloc(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_in_nimloc_typedesc = {
+	.type = 32,
+	.rdclass = 1,
+	.name = "NIMLOC",
+	.attributes = RRTYPE_NIMLOC_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_in_nimloc,
+			.totext = totext_in_nimloc,
+			.fromwire = fromwire_in_nimloc,
+			.towire = towire_in_nimloc,
+			.compare = compare_in_nimloc,
+			.casecompare = casecompare_in_nimloc,
+			.fromstruct = fromstruct_in_nimloc,
+			.tostruct = tostruct_in_nimloc,
+			.freestruct = freestruct_in_nimloc,
+			.additionaldata = additionaldata_in_nimloc,
+			.digest = digest_in_nimloc,
+			.checkowner = checkowner_in_nimloc,
+			.checknames = checknames_in_nimloc,
+		},
+};
+
 #endif /* RDATA_IN_1_NIMLOC_32_C */

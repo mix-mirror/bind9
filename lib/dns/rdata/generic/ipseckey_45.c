@@ -509,4 +509,27 @@ casecompare_ipseckey(ARGS_COMPARE) {
 	return isc_region_compare(&region1, &region2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_ipseckey_typedesc = {
+	.type = 45,
+	.rdclass = 0,
+	.name = "IPSECKEY",
+	.attributes = RRTYPE_IPSECKEY_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_ipseckey,
+			.totext = totext_ipseckey,
+			.fromwire = fromwire_ipseckey,
+			.towire = towire_ipseckey,
+			.compare = compare_ipseckey,
+			.casecompare = casecompare_ipseckey,
+			.fromstruct = fromstruct_ipseckey,
+			.tostruct = tostruct_ipseckey,
+			.freestruct = freestruct_ipseckey,
+			.additionaldata = additionaldata_ipseckey,
+			.digest = digest_ipseckey,
+			.checkowner = checkowner_ipseckey,
+			.checknames = checknames_ipseckey,
+		},
+};
+
 #endif /* RDATA_GENERIC_IPSECKEY_45_C */

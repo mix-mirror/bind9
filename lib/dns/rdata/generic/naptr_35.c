@@ -705,4 +705,27 @@ casecompare_naptr(ARGS_COMPARE) {
 	return compare_naptr(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_naptr_typedesc = {
+	.type = 35,
+	.rdclass = 0,
+	.name = "NAPTR",
+	.attributes = RRTYPE_NAPTR_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_naptr,
+			.totext = totext_naptr,
+			.fromwire = fromwire_naptr,
+			.towire = towire_naptr,
+			.compare = compare_naptr,
+			.casecompare = casecompare_naptr,
+			.fromstruct = fromstruct_naptr,
+			.tostruct = tostruct_naptr,
+			.freestruct = freestruct_naptr,
+			.additionaldata = additionaldata_naptr,
+			.digest = digest_naptr,
+			.checkowner = checkowner_naptr,
+			.checknames = checknames_naptr,
+		},
+};
+
 #endif /* RDATA_GENERIC_NAPTR_35_C */

@@ -608,4 +608,27 @@ casecompare_caa(ARGS_COMPARE) {
 	return compare_caa(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_caa_typedesc = {
+	.type = 257,
+	.rdclass = 0,
+	.name = "CAA",
+	.attributes = RRTYPE_CAA_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_caa,
+			.totext = totext_caa,
+			.fromwire = fromwire_caa,
+			.towire = towire_caa,
+			.compare = compare_caa,
+			.casecompare = casecompare_caa,
+			.fromstruct = fromstruct_caa,
+			.tostruct = tostruct_caa,
+			.freestruct = freestruct_caa,
+			.additionaldata = additionaldata_caa,
+			.digest = digest_caa,
+			.checkowner = checkowner_caa,
+			.checknames = checknames_caa,
+		},
+};
+
 #endif /* GENERIC_CAA_257_C */

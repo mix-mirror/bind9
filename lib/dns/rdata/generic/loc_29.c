@@ -833,4 +833,27 @@ casecompare_loc(ARGS_COMPARE) {
 	return compare_loc(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_loc_typedesc = {
+	.type = 29,
+	.rdclass = 0,
+	.name = "LOC",
+	.attributes = RRTYPE_LOC_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_loc,
+			.totext = totext_loc,
+			.fromwire = fromwire_loc,
+			.towire = towire_loc,
+			.compare = compare_loc,
+			.casecompare = casecompare_loc,
+			.fromstruct = fromstruct_loc,
+			.tostruct = tostruct_loc,
+			.freestruct = freestruct_loc,
+			.additionaldata = additionaldata_loc,
+			.digest = digest_loc,
+			.checkowner = checkowner_loc,
+			.checknames = checknames_loc,
+		},
+};
+
 #endif /* RDATA_GENERIC_LOC_29_C */

@@ -273,4 +273,27 @@ casecompare_nsec(ARGS_COMPARE) {
 
 	return isc_region_compare(&region1, &region2);
 }
+const dns_rdata_typedesc_t dns__rdata_nsec_typedesc = {
+	.type = 47,
+	.rdclass = 0,
+	.name = "NSEC",
+	.attributes = RRTYPE_NSEC_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_nsec,
+			.totext = totext_nsec,
+			.fromwire = fromwire_nsec,
+			.towire = towire_nsec,
+			.compare = compare_nsec,
+			.casecompare = casecompare_nsec,
+			.fromstruct = fromstruct_nsec,
+			.tostruct = tostruct_nsec,
+			.freestruct = freestruct_nsec,
+			.additionaldata = additionaldata_nsec,
+			.digest = digest_nsec,
+			.checkowner = checkowner_nsec,
+			.checknames = checknames_nsec,
+		},
+};
+
 #endif /* RDATA_GENERIC_NSEC_47_C */

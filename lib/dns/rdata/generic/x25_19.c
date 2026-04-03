@@ -223,4 +223,27 @@ casecompare_x25(ARGS_COMPARE) {
 	return compare_x25(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_x25_typedesc = {
+	.type = 19,
+	.rdclass = 0,
+	.name = "X25",
+	.attributes = RRTYPE_X25_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_x25,
+			.totext = totext_x25,
+			.fromwire = fromwire_x25,
+			.towire = towire_x25,
+			.compare = compare_x25,
+			.casecompare = casecompare_x25,
+			.fromstruct = fromstruct_x25,
+			.tostruct = tostruct_x25,
+			.freestruct = freestruct_x25,
+			.additionaldata = additionaldata_x25,
+			.digest = digest_x25,
+			.checkowner = checkowner_x25,
+			.checknames = checknames_x25,
+		},
+};
+
 #endif /* RDATA_GENERIC_X25_19_C */

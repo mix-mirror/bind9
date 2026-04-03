@@ -158,4 +158,27 @@ casecompare_dlv(ARGS_COMPARE) {
 	return compare_dlv(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_dlv_typedesc = {
+	.type = 32769,
+	.rdclass = 0,
+	.name = "DLV",
+	.attributes = RRTYPE_DLV_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_dlv,
+			.totext = totext_dlv,
+			.fromwire = fromwire_dlv,
+			.towire = towire_dlv,
+			.compare = compare_dlv,
+			.casecompare = casecompare_dlv,
+			.fromstruct = fromstruct_dlv,
+			.tostruct = tostruct_dlv,
+			.freestruct = freestruct_dlv,
+			.additionaldata = additionaldata_dlv,
+			.digest = digest_dlv,
+			.checkowner = checkowner_dlv,
+			.checknames = checknames_dlv,
+		},
+};
+
 #endif /* RDATA_GENERIC_DLV_32769_C */

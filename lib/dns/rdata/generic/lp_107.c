@@ -267,4 +267,27 @@ casecompare_lp(ARGS_COMPARE) {
 	return dns_name_rdatacompare(&name1, &name2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_lp_typedesc = {
+	.type = 107,
+	.rdclass = 0,
+	.name = "LP",
+	.attributes = RRTYPE_LP_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_lp,
+			.totext = totext_lp,
+			.fromwire = fromwire_lp,
+			.towire = towire_lp,
+			.compare = compare_lp,
+			.casecompare = casecompare_lp,
+			.fromstruct = fromstruct_lp,
+			.tostruct = tostruct_lp,
+			.freestruct = freestruct_lp,
+			.additionaldata = additionaldata_lp,
+			.digest = digest_lp,
+			.checkowner = checkowner_lp,
+			.checknames = checknames_lp,
+		},
+};
+
 #endif /* RDATA_GENERIC_LP_107_C */

@@ -483,4 +483,27 @@ casecompare_key(ARGS_COMPARE) {
 	return compare_key(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_key_typedesc = {
+	.type = 25,
+	.rdclass = 0,
+	.name = "KEY",
+	.attributes = RRTYPE_KEY_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_key,
+			.totext = totext_key,
+			.fromwire = fromwire_key,
+			.towire = towire_key,
+			.compare = compare_key,
+			.casecompare = casecompare_key,
+			.fromstruct = fromstruct_key,
+			.tostruct = tostruct_key,
+			.freestruct = freestruct_key,
+			.additionaldata = additionaldata_key,
+			.digest = digest_key,
+			.checkowner = checkowner_key,
+			.checknames = checknames_key,
+		},
+};
+
 #endif /* RDATA_GENERIC_KEY_25_C */

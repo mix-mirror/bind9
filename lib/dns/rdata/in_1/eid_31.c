@@ -215,4 +215,27 @@ casecompare_in_eid(ARGS_COMPARE) {
 	return compare_in_eid(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_in_eid_typedesc = {
+	.type = 31,
+	.rdclass = 1,
+	.name = "EID",
+	.attributes = RRTYPE_EID_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_in_eid,
+			.totext = totext_in_eid,
+			.fromwire = fromwire_in_eid,
+			.towire = towire_in_eid,
+			.compare = compare_in_eid,
+			.casecompare = casecompare_in_eid,
+			.fromstruct = fromstruct_in_eid,
+			.tostruct = tostruct_in_eid,
+			.freestruct = freestruct_in_eid,
+			.additionaldata = additionaldata_in_eid,
+			.digest = digest_in_eid,
+			.checkowner = checkowner_in_eid,
+			.checknames = checknames_in_eid,
+		},
+};
+
 #endif /* RDATA_IN_1_EID_31_C */

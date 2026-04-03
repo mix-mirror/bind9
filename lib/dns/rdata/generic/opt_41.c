@@ -505,4 +505,27 @@ dns_rdata_opt_current(dns_rdata_opt_t *opt, dns_rdata_opt_opcode_t *opcode) {
 	return ISC_R_SUCCESS;
 }
 
+const dns_rdata_typedesc_t dns__rdata_opt_typedesc = {
+	.type = 41,
+	.rdclass = 0,
+	.name = "OPT",
+	.attributes = RRTYPE_OPT_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_opt,
+			.totext = totext_opt,
+			.fromwire = fromwire_opt,
+			.towire = towire_opt,
+			.compare = compare_opt,
+			.casecompare = casecompare_opt,
+			.fromstruct = fromstruct_opt,
+			.tostruct = tostruct_opt,
+			.freestruct = freestruct_opt,
+			.additionaldata = additionaldata_opt,
+			.digest = digest_opt,
+			.checkowner = checkowner_opt,
+			.checknames = checknames_opt,
+		},
+};
+
 #endif /* RDATA_GENERIC_OPT_41_C */

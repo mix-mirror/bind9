@@ -332,4 +332,27 @@ casecompare_doa(ARGS_COMPARE) {
 	return compare_doa(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_doa_typedesc = {
+	.type = 259,
+	.rdclass = 0,
+	.name = "DOA",
+	.attributes = RRTYPE_DOA_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_doa,
+			.totext = totext_doa,
+			.fromwire = fromwire_doa,
+			.towire = towire_doa,
+			.compare = compare_doa,
+			.casecompare = casecompare_doa,
+			.fromstruct = fromstruct_doa,
+			.tostruct = tostruct_doa,
+			.freestruct = freestruct_doa,
+			.additionaldata = additionaldata_doa,
+			.digest = digest_doa,
+			.checkowner = checkowner_doa,
+			.checknames = checknames_doa,
+		},
+};
+
 #endif /* RDATA_GENERIC_DOA_259_C */

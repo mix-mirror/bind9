@@ -622,4 +622,27 @@ static int
 casecompare_sig(ARGS_COMPARE) {
 	return compare_sig(rdata1, rdata2);
 }
+const dns_rdata_typedesc_t dns__rdata_sig_typedesc = {
+	.type = 24,
+	.rdclass = 0,
+	.name = "SIG",
+	.attributes = RRTYPE_SIG_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_sig,
+			.totext = totext_sig,
+			.fromwire = fromwire_sig,
+			.towire = towire_sig,
+			.compare = compare_sig,
+			.casecompare = casecompare_sig,
+			.fromstruct = fromstruct_sig,
+			.tostruct = tostruct_sig,
+			.freestruct = freestruct_sig,
+			.additionaldata = additionaldata_sig,
+			.digest = digest_sig,
+			.checkowner = checkowner_sig,
+			.checknames = checknames_sig,
+		},
+};
+
 #endif /* RDATA_GENERIC_SIG_24_C */

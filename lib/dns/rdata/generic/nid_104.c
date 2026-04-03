@@ -219,4 +219,27 @@ casecompare_nid(ARGS_COMPARE) {
 	return compare_nid(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_nid_typedesc = {
+	.type = 104,
+	.rdclass = 0,
+	.name = "NID",
+	.attributes = RRTYPE_NID_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_nid,
+			.totext = totext_nid,
+			.fromwire = fromwire_nid,
+			.towire = towire_nid,
+			.compare = compare_nid,
+			.casecompare = casecompare_nid,
+			.fromstruct = fromstruct_nid,
+			.tostruct = tostruct_nid,
+			.freestruct = freestruct_nid,
+			.additionaldata = additionaldata_nid,
+			.digest = digest_nid,
+			.checkowner = checkowner_nid,
+			.checknames = checknames_nid,
+		},
+};
+
 #endif /* RDATA_GENERIC_NID_104_C */

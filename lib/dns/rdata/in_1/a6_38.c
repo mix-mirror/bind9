@@ -481,4 +481,27 @@ casecompare_in_a6(ARGS_COMPARE) {
 	return compare_in_a6(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_in_a6_typedesc = {
+	.type = 38,
+	.rdclass = 1,
+	.name = "A6",
+	.attributes = RRTYPE_A6_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_in_a6,
+			.totext = totext_in_a6,
+			.fromwire = fromwire_in_a6,
+			.towire = towire_in_a6,
+			.compare = compare_in_a6,
+			.casecompare = casecompare_in_a6,
+			.fromstruct = fromstruct_in_a6,
+			.tostruct = tostruct_in_a6,
+			.freestruct = freestruct_in_a6,
+			.additionaldata = additionaldata_in_a6,
+			.digest = digest_in_a6,
+			.checkowner = checkowner_in_a6,
+			.checknames = checknames_in_a6,
+		},
+};
+
 #endif /* RDATA_IN_1_A6_38_C */

@@ -177,4 +177,27 @@ casecompare_null(ARGS_COMPARE) {
 	return compare_null(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_null_typedesc = {
+	.type = 10,
+	.rdclass = 0,
+	.name = "NULL",
+	.attributes = RRTYPE_NULL_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_null,
+			.totext = totext_null,
+			.fromwire = fromwire_null,
+			.towire = towire_null,
+			.compare = compare_null,
+			.casecompare = casecompare_null,
+			.fromstruct = fromstruct_null,
+			.tostruct = tostruct_null,
+			.freestruct = freestruct_null,
+			.additionaldata = additionaldata_null,
+			.digest = digest_null,
+			.checkowner = checkowner_null,
+			.checknames = checknames_null,
+		},
+};
+
 #endif /* RDATA_GENERIC_NULL_10_C */

@@ -441,4 +441,27 @@ casecompare_soa(ARGS_COMPARE) {
 	return compare_soa(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_soa_typedesc = {
+	.type = 6,
+	.rdclass = 0,
+	.name = "SOA",
+	.attributes = RRTYPE_SOA_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_soa,
+			.totext = totext_soa,
+			.fromwire = fromwire_soa,
+			.towire = towire_soa,
+			.compare = compare_soa,
+			.casecompare = casecompare_soa,
+			.fromstruct = fromstruct_soa,
+			.tostruct = tostruct_soa,
+			.freestruct = freestruct_soa,
+			.additionaldata = additionaldata_soa,
+			.digest = digest_soa,
+			.checkowner = checkowner_soa,
+			.checknames = checknames_soa,
+		},
+};
+
 #endif /* RDATA_GENERIC_SOA_6_C */

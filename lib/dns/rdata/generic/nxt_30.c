@@ -329,4 +329,27 @@ static int
 casecompare_nxt(ARGS_COMPARE) {
 	return compare_nxt(rdata1, rdata2);
 }
+const dns_rdata_typedesc_t dns__rdata_nxt_typedesc = {
+	.type = 30,
+	.rdclass = 0,
+	.name = "NXT",
+	.attributes = RRTYPE_NXT_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_nxt,
+			.totext = totext_nxt,
+			.fromwire = fromwire_nxt,
+			.towire = towire_nxt,
+			.compare = compare_nxt,
+			.casecompare = casecompare_nxt,
+			.fromstruct = fromstruct_nxt,
+			.tostruct = tostruct_nxt,
+			.freestruct = freestruct_nxt,
+			.additionaldata = additionaldata_nxt,
+			.digest = digest_nxt,
+			.checkowner = checkowner_nxt,
+			.checknames = checknames_nxt,
+		},
+};
+
 #endif /* RDATA_GENERIC_NXT_30_C */

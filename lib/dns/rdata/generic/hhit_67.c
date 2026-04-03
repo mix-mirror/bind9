@@ -208,4 +208,27 @@ static int
 casecompare_hhit(ARGS_COMPARE) {
 	return compare_hhit(rdata1, rdata2);
 }
+const dns_rdata_typedesc_t dns__rdata_hhit_typedesc = {
+	.type = 67,
+	.rdclass = 0,
+	.name = "HHIT",
+	.attributes = RRTYPE_HHIT_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_hhit,
+			.totext = totext_hhit,
+			.fromwire = fromwire_hhit,
+			.towire = towire_hhit,
+			.compare = compare_hhit,
+			.casecompare = casecompare_hhit,
+			.fromstruct = fromstruct_hhit,
+			.tostruct = tostruct_hhit,
+			.freestruct = freestruct_hhit,
+			.additionaldata = additionaldata_hhit,
+			.digest = digest_hhit,
+			.checkowner = checkowner_hhit,
+			.checknames = checknames_hhit,
+		},
+};
+
 #endif /* RDATA_GENERIC_HHIT_67_C */

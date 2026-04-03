@@ -558,4 +558,27 @@ static int
 casecompare_tkey(ARGS_COMPARE) {
 	return compare_tkey(rdata1, rdata2);
 }
+const dns_rdata_typedesc_t dns__rdata_tkey_typedesc = {
+	.type = 249,
+	.rdclass = 0,
+	.name = "TKEY",
+	.attributes = RRTYPE_TKEY_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_tkey,
+			.totext = totext_tkey,
+			.fromwire = fromwire_tkey,
+			.towire = towire_tkey,
+			.compare = compare_tkey,
+			.casecompare = casecompare_tkey,
+			.fromstruct = fromstruct_tkey,
+			.tostruct = tostruct_tkey,
+			.freestruct = freestruct_tkey,
+			.additionaldata = additionaldata_tkey,
+			.digest = digest_tkey,
+			.checkowner = checkowner_tkey,
+			.checknames = checknames_tkey,
+		},
+};
+
 #endif /* RDATA_GENERIC_TKEY_249_C */

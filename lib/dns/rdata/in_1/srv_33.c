@@ -407,4 +407,27 @@ casecompare_in_srv(ARGS_COMPARE) {
 	return compare_in_srv(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_in_srv_typedesc = {
+	.type = 33,
+	.rdclass = 1,
+	.name = "SRV",
+	.attributes = RRTYPE_SRV_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_in_srv,
+			.totext = totext_in_srv,
+			.fromwire = fromwire_in_srv,
+			.towire = towire_in_srv,
+			.compare = compare_in_srv,
+			.casecompare = casecompare_in_srv,
+			.fromstruct = fromstruct_in_srv,
+			.tostruct = tostruct_in_srv,
+			.freestruct = freestruct_in_srv,
+			.additionaldata = additionaldata_in_srv,
+			.digest = digest_in_srv,
+			.checkowner = checkowner_in_srv,
+			.checknames = checknames_in_srv,
+		},
+};
+
 #endif /* RDATA_IN_1_SRV_33_C */

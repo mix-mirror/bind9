@@ -287,4 +287,27 @@ casecompare_sshfp(ARGS_COMPARE) {
 	return compare_sshfp(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_sshfp_typedesc = {
+	.type = 44,
+	.rdclass = 0,
+	.name = "SSHFP",
+	.attributes = RRTYPE_SSHFP_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_sshfp,
+			.totext = totext_sshfp,
+			.fromwire = fromwire_sshfp,
+			.towire = towire_sshfp,
+			.compare = compare_sshfp,
+			.casecompare = casecompare_sshfp,
+			.fromstruct = fromstruct_sshfp,
+			.tostruct = tostruct_sshfp,
+			.freestruct = freestruct_sshfp,
+			.additionaldata = additionaldata_sshfp,
+			.digest = digest_sshfp,
+			.checkowner = checkowner_sshfp,
+			.checknames = checknames_sshfp,
+		},
+};
+
 #endif /* RDATA_GENERIC_SSHFP_44_C */

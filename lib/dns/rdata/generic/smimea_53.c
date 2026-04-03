@@ -148,4 +148,27 @@ casecompare_smimea(ARGS_COMPARE) {
 	return compare_smimea(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_smimea_typedesc = {
+	.type = 53,
+	.rdclass = 0,
+	.name = "SMIMEA",
+	.attributes = RRTYPE_SMIMEA_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_smimea,
+			.totext = totext_smimea,
+			.fromwire = fromwire_smimea,
+			.towire = towire_smimea,
+			.compare = compare_smimea,
+			.casecompare = casecompare_smimea,
+			.fromstruct = fromstruct_smimea,
+			.tostruct = tostruct_smimea,
+			.freestruct = freestruct_smimea,
+			.additionaldata = additionaldata_smimea,
+			.digest = digest_smimea,
+			.checkowner = checkowner_smimea,
+			.checknames = checknames_smimea,
+		},
+};
+
 #endif /* RDATA_GENERIC_SMIMEA_53_C */

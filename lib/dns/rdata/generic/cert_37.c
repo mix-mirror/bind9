@@ -275,4 +275,27 @@ static int
 casecompare_cert(ARGS_COMPARE) {
 	return compare_cert(rdata1, rdata2);
 }
+const dns_rdata_typedesc_t dns__rdata_cert_typedesc = {
+	.type = 37,
+	.rdclass = 0,
+	.name = "CERT",
+	.attributes = RRTYPE_CERT_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_cert,
+			.totext = totext_cert,
+			.fromwire = fromwire_cert,
+			.towire = towire_cert,
+			.compare = compare_cert,
+			.casecompare = casecompare_cert,
+			.fromstruct = fromstruct_cert,
+			.tostruct = tostruct_cert,
+			.freestruct = freestruct_cert,
+			.additionaldata = additionaldata_cert,
+			.digest = digest_cert,
+			.checkowner = checkowner_cert,
+			.checknames = checknames_cert,
+		},
+};
+
 #endif /* RDATA_GENERIC_CERT_37_C */

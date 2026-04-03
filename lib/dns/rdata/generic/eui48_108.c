@@ -206,4 +206,27 @@ casecompare_eui48(ARGS_COMPARE) {
 	return compare_eui48(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_eui48_typedesc = {
+	.type = 108,
+	.rdclass = 0,
+	.name = "EUI48",
+	.attributes = RRTYPE_EUI48_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_eui48,
+			.totext = totext_eui48,
+			.fromwire = fromwire_eui48,
+			.towire = towire_eui48,
+			.compare = compare_eui48,
+			.casecompare = casecompare_eui48,
+			.fromstruct = fromstruct_eui48,
+			.tostruct = tostruct_eui48,
+			.freestruct = freestruct_eui48,
+			.additionaldata = additionaldata_eui48,
+			.digest = digest_eui48,
+			.checkowner = checkowner_eui48,
+			.checknames = checknames_eui48,
+		},
+};
+
 #endif /* RDATA_GENERIC_EUI48_108_C */

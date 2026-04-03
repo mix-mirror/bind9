@@ -231,4 +231,27 @@ casecompare_gpos(ARGS_COMPARE) {
 	return compare_gpos(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_gpos_typedesc = {
+	.type = 27,
+	.rdclass = 0,
+	.name = "GPOS",
+	.attributes = RRTYPE_GPOS_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_gpos,
+			.totext = totext_gpos,
+			.fromwire = fromwire_gpos,
+			.towire = towire_gpos,
+			.compare = compare_gpos,
+			.casecompare = casecompare_gpos,
+			.fromstruct = fromstruct_gpos,
+			.tostruct = tostruct_gpos,
+			.freestruct = freestruct_gpos,
+			.additionaldata = additionaldata_gpos,
+			.digest = digest_gpos,
+			.checkowner = checkowner_gpos,
+			.checknames = checknames_gpos,
+		},
+};
+
 #endif /* RDATA_GENERIC_GPOS_27_C */

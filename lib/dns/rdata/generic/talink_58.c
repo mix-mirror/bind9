@@ -250,4 +250,27 @@ casecompare_talink(ARGS_COMPARE) {
 	return compare_talink(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_talink_typedesc = {
+	.type = 58,
+	.rdclass = 0,
+	.name = "TALINK",
+	.attributes = RRTYPE_TALINK_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_talink,
+			.totext = totext_talink,
+			.fromwire = fromwire_talink,
+			.towire = towire_talink,
+			.compare = compare_talink,
+			.casecompare = casecompare_talink,
+			.fromstruct = fromstruct_talink,
+			.tostruct = tostruct_talink,
+			.freestruct = freestruct_talink,
+			.additionaldata = additionaldata_talink,
+			.digest = digest_talink,
+			.checkowner = checkowner_talink,
+			.checknames = checknames_talink,
+		},
+};
+
 #endif /* RDATA_GENERIC_TALINK_58_C */

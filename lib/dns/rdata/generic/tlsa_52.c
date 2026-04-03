@@ -329,4 +329,27 @@ casecompare_tlsa(ARGS_COMPARE) {
 	return compare_tlsa(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_tlsa_typedesc = {
+	.type = 52,
+	.rdclass = 0,
+	.name = "TLSA",
+	.attributes = RRTYPE_TLSA_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_tlsa,
+			.totext = totext_tlsa,
+			.fromwire = fromwire_tlsa,
+			.towire = towire_tlsa,
+			.compare = compare_tlsa,
+			.casecompare = casecompare_tlsa,
+			.fromstruct = fromstruct_tlsa,
+			.tostruct = tostruct_tlsa,
+			.freestruct = freestruct_tlsa,
+			.additionaldata = additionaldata_tlsa,
+			.digest = digest_tlsa,
+			.checkowner = checkowner_tlsa,
+			.checknames = checknames_tlsa,
+		},
+};
+
 #endif /* RDATA_GENERIC_TLSA_52_C */

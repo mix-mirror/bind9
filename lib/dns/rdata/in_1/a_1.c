@@ -273,4 +273,27 @@ casecompare_in_a(ARGS_COMPARE) {
 	return compare_in_a(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_in_a_typedesc = {
+	.type = 1,
+	.rdclass = 1,
+	.name = "A",
+	.attributes = RRTYPE_A_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_in_a,
+			.totext = totext_in_a,
+			.fromwire = fromwire_in_a,
+			.towire = towire_in_a,
+			.compare = compare_in_a,
+			.casecompare = casecompare_in_a,
+			.fromstruct = fromstruct_in_a,
+			.tostruct = tostruct_in_a,
+			.freestruct = freestruct_in_a,
+			.additionaldata = additionaldata_in_a,
+			.digest = digest_in_a,
+			.checkowner = checkowner_in_a,
+			.checknames = checknames_in_a,
+		},
+};
+
 #endif /* RDATA_IN_1_A_1_C */

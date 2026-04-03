@@ -460,4 +460,27 @@ casecompare_amtrelay(ARGS_COMPARE) {
 	return dns_name_rdatacompare(&name1, &name2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_amtrelay_typedesc = {
+	.type = 260,
+	.rdclass = 0,
+	.name = "AMTRELAY",
+	.attributes = RRTYPE_AMTRELAY_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_amtrelay,
+			.totext = totext_amtrelay,
+			.fromwire = fromwire_amtrelay,
+			.towire = towire_amtrelay,
+			.compare = compare_amtrelay,
+			.casecompare = casecompare_amtrelay,
+			.fromstruct = fromstruct_amtrelay,
+			.tostruct = tostruct_amtrelay,
+			.freestruct = freestruct_amtrelay,
+			.additionaldata = additionaldata_amtrelay,
+			.digest = digest_amtrelay,
+			.checkowner = checkowner_amtrelay,
+			.checknames = checknames_amtrelay,
+		},
+};
+
 #endif /* RDATA_GENERIC_AMTRELAY_260_C */

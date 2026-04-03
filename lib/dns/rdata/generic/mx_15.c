@@ -349,4 +349,27 @@ casecompare_mx(ARGS_COMPARE) {
 	return compare_mx(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_mx_typedesc = {
+	.type = 15,
+	.rdclass = 0,
+	.name = "MX",
+	.attributes = RRTYPE_MX_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_mx,
+			.totext = totext_mx,
+			.fromwire = fromwire_mx,
+			.towire = towire_mx,
+			.compare = compare_mx,
+			.casecompare = casecompare_mx,
+			.fromstruct = fromstruct_mx,
+			.tostruct = tostruct_mx,
+			.freestruct = freestruct_mx,
+			.additionaldata = additionaldata_mx,
+			.digest = digest_mx,
+			.checkowner = checkowner_mx,
+			.checknames = checknames_mx,
+		},
+};
+
 #endif /* RDATA_GENERIC_MX_15_C */

@@ -181,3 +181,26 @@ dns_rdata_in_https_current(dns_rdata_in_https_t *https, isc_region_t *region) {
 
 	generic_rdata_in_svcb_current(https, region);
 }
+
+const dns_rdata_typedesc_t dns__rdata_in_https_typedesc = {
+	.type = 65,
+	.rdclass = 1,
+	.name = "HTTPS",
+	.attributes = RRTYPE_HTTPS_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_in_https,
+			.totext = totext_in_https,
+			.fromwire = fromwire_in_https,
+			.towire = towire_in_https,
+			.compare = compare_in_https,
+			.casecompare = casecompare_in_https,
+			.fromstruct = fromstruct_in_https,
+			.tostruct = tostruct_in_https,
+			.freestruct = freestruct_in_https,
+			.additionaldata = additionaldata_in_https,
+			.digest = digest_in_https,
+			.checkowner = checkowner_in_https,
+			.checknames = checknames_in_https,
+		},
+};

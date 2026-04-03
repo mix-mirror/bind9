@@ -225,4 +225,27 @@ casecompare_l32(ARGS_COMPARE) {
 	return compare_l32(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_l32_typedesc = {
+	.type = 105,
+	.rdclass = 0,
+	.name = "L32",
+	.attributes = RRTYPE_L32_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_l32,
+			.totext = totext_l32,
+			.fromwire = fromwire_l32,
+			.towire = towire_l32,
+			.compare = compare_l32,
+			.casecompare = casecompare_l32,
+			.fromstruct = fromstruct_l32,
+			.tostruct = tostruct_l32,
+			.freestruct = freestruct_l32,
+			.additionaldata = additionaldata_l32,
+			.digest = digest_l32,
+			.checkowner = checkowner_l32,
+			.checknames = checknames_l32,
+		},
+};
+
 #endif /* RDATA_GENERIC_L32_105_C */

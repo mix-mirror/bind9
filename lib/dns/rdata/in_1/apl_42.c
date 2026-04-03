@@ -475,4 +475,27 @@ casecompare_in_apl(ARGS_COMPARE) {
 	return compare_in_apl(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_in_apl_typedesc = {
+	.type = 42,
+	.rdclass = 1,
+	.name = "APL",
+	.attributes = RRTYPE_APL_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_in_apl,
+			.totext = totext_in_apl,
+			.fromwire = fromwire_in_apl,
+			.towire = towire_in_apl,
+			.compare = compare_in_apl,
+			.casecompare = casecompare_in_apl,
+			.fromstruct = fromstruct_in_apl,
+			.tostruct = tostruct_in_apl,
+			.freestruct = freestruct_in_apl,
+			.additionaldata = additionaldata_in_apl,
+			.digest = digest_in_apl,
+			.checkowner = checkowner_in_apl,
+			.checknames = checknames_in_apl,
+		},
+};
+
 #endif /* RDATA_IN_1_APL_42_C */

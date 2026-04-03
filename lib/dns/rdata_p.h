@@ -51,7 +51,7 @@ typedef struct dns_rdata_textctx {
  * for wire operations, RFC 3597 unknown format for text, etc.).
  */
 typedef struct dns_rdata_methods {
-	isc_result_t (*fromtext)(dns_rdataclass_t rdclass, dns_rdatatype_t type,
+	isc_result_t (*fromtext)(int rdclass, dns_rdatatype_t type,
 				 isc_lex_t *lexer, const dns_name_t *origin,
 				 unsigned int options, isc_buffer_t *target,
 				 dns_rdatacallbacks_t *callbacks);
@@ -59,7 +59,7 @@ typedef struct dns_rdata_methods {
 	isc_result_t (*totext)(dns_rdata_t *rdata, dns_rdata_textctx_t *tctx,
 			       isc_buffer_t *target);
 
-	isc_result_t (*fromwire)(dns_rdataclass_t rdclass, dns_rdatatype_t type,
+	isc_result_t (*fromwire)(int rdclass, dns_rdatatype_t type,
 				 isc_buffer_t *source, dns_decompress_t dctx,
 				 isc_buffer_t *target);
 
@@ -71,9 +71,8 @@ typedef struct dns_rdata_methods {
 	int (*casecompare)(const dns_rdata_t *rdata1,
 			   const dns_rdata_t *rdata2);
 
-	isc_result_t (*fromstruct)(dns_rdataclass_t rdclass,
-				   dns_rdatatype_t type, void *source,
-				   isc_buffer_t *target);
+	isc_result_t (*fromstruct)(int rdclass, dns_rdatatype_t type,
+				   void *source, isc_buffer_t *target);
 
 	isc_result_t (*tostruct)(const dns_rdata_t *rdata, void *target,
 				 isc_mem_t *mctx);

@@ -162,4 +162,27 @@ casecompare_cds(ARGS_COMPARE) {
 	return compare_cds(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_cds_typedesc = {
+	.type = 59,
+	.rdclass = 0,
+	.name = "CDS",
+	.attributes = RRTYPE_CDS_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_cds,
+			.totext = totext_cds,
+			.fromwire = fromwire_cds,
+			.towire = towire_cds,
+			.compare = compare_cds,
+			.casecompare = casecompare_cds,
+			.fromstruct = fromstruct_cds,
+			.tostruct = tostruct_cds,
+			.freestruct = freestruct_cds,
+			.additionaldata = additionaldata_cds,
+			.digest = digest_cds,
+			.checkowner = checkowner_cds,
+			.checknames = checknames_cds,
+		},
+};
+
 #endif /* RDATA_GENERIC_CDS_59_C */

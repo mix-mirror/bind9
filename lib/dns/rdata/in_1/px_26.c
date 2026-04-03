@@ -358,4 +358,27 @@ casecompare_in_px(ARGS_COMPARE) {
 	return compare_in_px(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_in_px_typedesc = {
+	.type = 26,
+	.rdclass = 1,
+	.name = "PX",
+	.attributes = RRTYPE_PX_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_in_px,
+			.totext = totext_in_px,
+			.fromwire = fromwire_in_px,
+			.towire = towire_in_px,
+			.compare = compare_in_px,
+			.casecompare = casecompare_in_px,
+			.fromstruct = fromstruct_in_px,
+			.tostruct = tostruct_in_px,
+			.freestruct = freestruct_in_px,
+			.additionaldata = additionaldata_in_px,
+			.digest = digest_in_px,
+			.checkowner = checkowner_in_px,
+			.checknames = checknames_in_px,
+		},
+};
+
 #endif /* RDATA_IN_1_PX_26_C */

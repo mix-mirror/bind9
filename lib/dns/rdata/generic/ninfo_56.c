@@ -165,4 +165,27 @@ dns_rdata_ninfo_current(dns_rdata_ninfo_t *ninfo,
 
 	return generic_txt_current(ninfo, string);
 }
+const dns_rdata_typedesc_t dns__rdata_ninfo_typedesc = {
+	.type = 56,
+	.rdclass = 0,
+	.name = "NINFO",
+	.attributes = RRTYPE_NINFO_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_ninfo,
+			.totext = totext_ninfo,
+			.fromwire = fromwire_ninfo,
+			.towire = towire_ninfo,
+			.compare = compare_ninfo,
+			.casecompare = casecompare_ninfo,
+			.fromstruct = fromstruct_ninfo,
+			.tostruct = tostruct_ninfo,
+			.freestruct = freestruct_ninfo,
+			.additionaldata = additionaldata_ninfo,
+			.digest = digest_ninfo,
+			.checkowner = checkowner_ninfo,
+			.checknames = checknames_ninfo,
+		},
+};
+
 #endif /* RDATA_GENERIC_NINFO_56_C */

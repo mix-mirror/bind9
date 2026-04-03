@@ -357,4 +357,27 @@ casecompare_dsync(ARGS_COMPARE) {
 	return compare_dsync(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_dsync_typedesc = {
+	.type = 66,
+	.rdclass = 0,
+	.name = "DSYNC",
+	.attributes = RRTYPE_DSYNC_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_dsync,
+			.totext = totext_dsync,
+			.fromwire = fromwire_dsync,
+			.towire = towire_dsync,
+			.compare = compare_dsync,
+			.casecompare = casecompare_dsync,
+			.fromstruct = fromstruct_dsync,
+			.tostruct = tostruct_dsync,
+			.freestruct = freestruct_dsync,
+			.additionaldata = additionaldata_dsync,
+			.digest = digest_dsync,
+			.checkowner = checkowner_dsync,
+			.checknames = checknames_dsync,
+		},
+};
+
 #endif /* RDATA_GENERIC_DSYNC_66_C */

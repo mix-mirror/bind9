@@ -315,4 +315,27 @@ casecompare_nsec3param(ARGS_COMPARE) {
 	return compare_nsec3param(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_nsec3param_typedesc = {
+	.type = 51,
+	.rdclass = 0,
+	.name = "NSEC3PARAM",
+	.attributes = RRTYPE_NSEC3PARAM_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_nsec3param,
+			.totext = totext_nsec3param,
+			.fromwire = fromwire_nsec3param,
+			.towire = towire_nsec3param,
+			.compare = compare_nsec3param,
+			.casecompare = casecompare_nsec3param,
+			.fromstruct = fromstruct_nsec3param,
+			.tostruct = tostruct_nsec3param,
+			.freestruct = freestruct_nsec3param,
+			.additionaldata = additionaldata_nsec3param,
+			.digest = digest_nsec3param,
+			.checkowner = checkowner_nsec3param,
+			.checknames = checknames_nsec3param,
+		},
+};
+
 #endif /* RDATA_GENERIC_NSEC3PARAM_51_C */

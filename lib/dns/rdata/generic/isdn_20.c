@@ -230,4 +230,27 @@ casecompare_isdn(ARGS_COMPARE) {
 	return compare_isdn(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_isdn_typedesc = {
+	.type = 20,
+	.rdclass = 0,
+	.name = "ISDN",
+	.attributes = RRTYPE_ISDN_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_isdn,
+			.totext = totext_isdn,
+			.fromwire = fromwire_isdn,
+			.towire = towire_isdn,
+			.compare = compare_isdn,
+			.casecompare = casecompare_isdn,
+			.fromstruct = fromstruct_isdn,
+			.tostruct = tostruct_isdn,
+			.freestruct = freestruct_isdn,
+			.additionaldata = additionaldata_isdn,
+			.digest = digest_isdn,
+			.checkowner = checkowner_isdn,
+			.checknames = checknames_isdn,
+		},
+};
+
 #endif /* RDATA_GENERIC_ISDN_20_C */

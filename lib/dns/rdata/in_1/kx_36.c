@@ -283,4 +283,27 @@ casecompare_in_kx(ARGS_COMPARE) {
 	return compare_in_kx(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_in_kx_typedesc = {
+	.type = 36,
+	.rdclass = 1,
+	.name = "KX",
+	.attributes = RRTYPE_KX_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_in_kx,
+			.totext = totext_in_kx,
+			.fromwire = fromwire_in_kx,
+			.towire = towire_in_kx,
+			.compare = compare_in_kx,
+			.casecompare = casecompare_in_kx,
+			.fromstruct = fromstruct_in_kx,
+			.tostruct = tostruct_in_kx,
+			.freestruct = freestruct_in_kx,
+			.additionaldata = additionaldata_in_kx,
+			.digest = digest_in_kx,
+			.checkowner = checkowner_in_kx,
+			.checknames = checknames_in_kx,
+		},
+};
+
 #endif /* RDATA_IN_1_KX_36_C */

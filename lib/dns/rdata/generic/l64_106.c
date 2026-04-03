@@ -219,4 +219,27 @@ casecompare_l64(ARGS_COMPARE) {
 	return compare_l64(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_l64_typedesc = {
+	.type = 106,
+	.rdclass = 0,
+	.name = "L64",
+	.attributes = RRTYPE_L64_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_l64,
+			.totext = totext_l64,
+			.fromwire = fromwire_l64,
+			.towire = towire_l64,
+			.compare = compare_l64,
+			.casecompare = casecompare_l64,
+			.fromstruct = fromstruct_l64,
+			.tostruct = tostruct_l64,
+			.freestruct = freestruct_l64,
+			.additionaldata = additionaldata_l64,
+			.digest = digest_l64,
+			.checkowner = checkowner_l64,
+			.checknames = checknames_l64,
+		},
+};
+
 #endif /* RDATA_GENERIC_L64_106_C */

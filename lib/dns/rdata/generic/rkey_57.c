@@ -156,4 +156,27 @@ casecompare_rkey(ARGS_COMPARE) {
 	return compare_rkey(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_rkey_typedesc = {
+	.type = 57,
+	.rdclass = 0,
+	.name = "RKEY",
+	.attributes = RRTYPE_RKEY_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_rkey,
+			.totext = totext_rkey,
+			.fromwire = fromwire_rkey,
+			.towire = towire_rkey,
+			.compare = compare_rkey,
+			.casecompare = casecompare_rkey,
+			.fromstruct = fromstruct_rkey,
+			.tostruct = tostruct_rkey,
+			.freestruct = freestruct_rkey,
+			.additionaldata = additionaldata_rkey,
+			.digest = digest_rkey,
+			.checkowner = checkowner_rkey,
+			.checknames = checknames_rkey,
+		},
+};
+
 #endif /* RDATA_GENERIC_RKEY_57_C */

@@ -141,4 +141,27 @@ static int
 casecompare_resinfo(ARGS_COMPARE) {
 	return compare_resinfo(rdata1, rdata2);
 }
+const dns_rdata_typedesc_t dns__rdata_resinfo_typedesc = {
+	.type = 261,
+	.rdclass = 0,
+	.name = "RESINFO",
+	.attributes = RRTYPE_RESINFO_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_resinfo,
+			.totext = totext_resinfo,
+			.fromwire = fromwire_resinfo,
+			.towire = towire_resinfo,
+			.compare = compare_resinfo,
+			.casecompare = casecompare_resinfo,
+			.fromstruct = fromstruct_resinfo,
+			.tostruct = tostruct_resinfo,
+			.freestruct = freestruct_resinfo,
+			.additionaldata = additionaldata_resinfo,
+			.digest = digest_resinfo,
+			.checkowner = checkowner_resinfo,
+			.checknames = checknames_resinfo,
+		},
+};
+
 #endif /* RDATA_GENERIC_RESINFO_261_C */

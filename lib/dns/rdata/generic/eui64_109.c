@@ -209,4 +209,27 @@ casecompare_eui64(ARGS_COMPARE) {
 	return compare_eui64(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_eui64_typedesc = {
+	.type = 109,
+	.rdclass = 0,
+	.name = "EUI64",
+	.attributes = RRTYPE_EUI64_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_eui64,
+			.totext = totext_eui64,
+			.fromwire = fromwire_eui64,
+			.towire = towire_eui64,
+			.compare = compare_eui64,
+			.casecompare = casecompare_eui64,
+			.fromstruct = fromstruct_eui64,
+			.tostruct = tostruct_eui64,
+			.freestruct = freestruct_eui64,
+			.additionaldata = additionaldata_eui64,
+			.digest = digest_eui64,
+			.checkowner = checkowner_eui64,
+			.checknames = checknames_eui64,
+		},
+};
+
 #endif /* RDATA_GENERIC_EUI64_109_C */

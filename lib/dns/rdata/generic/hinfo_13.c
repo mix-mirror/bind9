@@ -200,3 +200,26 @@ static int
 casecompare_hinfo(ARGS_COMPARE) {
 	return compare_hinfo(rdata1, rdata2);
 }
+
+const dns_rdata_typedesc_t dns__rdata_hinfo_typedesc = {
+	.type = 13,
+	.rdclass = 0,
+	.name = "HINFO",
+	.attributes = RRTYPE_HINFO_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_hinfo,
+			.totext = totext_hinfo,
+			.fromwire = fromwire_hinfo,
+			.towire = towire_hinfo,
+			.compare = compare_hinfo,
+			.casecompare = casecompare_hinfo,
+			.fromstruct = fromstruct_hinfo,
+			.tostruct = tostruct_hinfo,
+			.freestruct = freestruct_hinfo,
+			.additionaldata = additionaldata_hinfo,
+			.digest = digest_hinfo,
+			.checkowner = checkowner_hinfo,
+			.checknames = checknames_hinfo,
+		},
+};

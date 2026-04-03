@@ -308,4 +308,27 @@ casecompare_in_atma(ARGS_COMPARE) {
 	return compare_in_atma(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_in_atma_typedesc = {
+	.type = 34,
+	.rdclass = 1,
+	.name = "ATMA",
+	.attributes = RRTYPE_ATMA_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_in_atma,
+			.totext = totext_in_atma,
+			.fromwire = fromwire_in_atma,
+			.towire = towire_in_atma,
+			.compare = compare_in_atma,
+			.casecompare = casecompare_in_atma,
+			.fromstruct = fromstruct_in_atma,
+			.tostruct = tostruct_in_atma,
+			.freestruct = freestruct_in_atma,
+			.additionaldata = additionaldata_in_atma,
+			.digest = digest_in_atma,
+			.checkowner = checkowner_in_atma,
+			.checknames = checknames_in_atma,
+		},
+};
+
 #endif /* RDATA_IN_1_atma_22_C */

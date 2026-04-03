@@ -1304,4 +1304,27 @@ dns_rdata_in_svcb_current(dns_rdata_in_svcb_t *svcb, isc_region_t *region) {
 	generic_rdata_in_svcb_current(svcb, region);
 }
 
+const dns_rdata_typedesc_t dns__rdata_in_svcb_typedesc = {
+	.type = 64,
+	.rdclass = 1,
+	.name = "SVCB",
+	.attributes = RRTYPE_SVCB_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_in_svcb,
+			.totext = totext_in_svcb,
+			.fromwire = fromwire_in_svcb,
+			.towire = towire_in_svcb,
+			.compare = compare_in_svcb,
+			.casecompare = casecompare_in_svcb,
+			.fromstruct = fromstruct_in_svcb,
+			.tostruct = tostruct_in_svcb,
+			.freestruct = freestruct_in_svcb,
+			.additionaldata = additionaldata_in_svcb,
+			.digest = digest_in_svcb,
+			.checkowner = checkowner_in_svcb,
+			.checknames = checknames_in_svcb,
+		},
+};
+
 #endif /* RDATA_IN_1_SVCB_64_C */

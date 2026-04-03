@@ -1372,11 +1372,10 @@ rdata_totext(dns_rdata_t *rdata, dns_rdata_textctx_t *tctx,
 		    td->methods->totext != NULL)
 		{
 			result = td->methods->totext(rdata, tctx, target);
-			goto totext_done;
+		} else {
+			TOTEXTSWITCH
 		}
 	}
-
-	TOTEXTSWITCH
 
 	if (use_default || (result == ISC_R_NOTIMPLEMENTED)) {
 		unsigned int u = isc_buffer_usedlength(target);
@@ -1385,8 +1384,6 @@ rdata_totext(dns_rdata_t *rdata, dns_rdata_textctx_t *tctx,
 		isc_buffer_subtract(target, u - cur);
 		result = unknown_totext(rdata, tctx, target);
 	}
-
-totext_done:
 	return result;
 }
 
@@ -1739,7 +1736,13 @@ dns_rdatatype_totext(dns_rdatatype_t type, isc_buffer_t *target) {
 		const dns_rdata_typedesc_t *td;
 
 		td = dns__rdata_typedesc_lookup(0, type);
-		if (td != NULL && td->name != NULL) {
+		/*
+		 * KEYDATA (65533) is internal-only and must not
+		 * be displayed as a mnemonic (use TYPE65533).
+		 */
+		if (td != NULL && td->name != NULL &&
+		    type != dns_rdatatype_keydata)
+		{
 			return str_totext(td->name, target);
 		}
 	}

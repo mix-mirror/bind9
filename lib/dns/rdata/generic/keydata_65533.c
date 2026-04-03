@@ -457,4 +457,27 @@ casecompare_keydata(ARGS_COMPARE) {
 	return compare_keydata(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_keydata_typedesc = {
+	.type = 65533,
+	.rdclass = 0,
+	.name = "KEYDATA",
+	.attributes = RRTYPE_KEYDATA_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_keydata,
+			.totext = totext_keydata,
+			.fromwire = fromwire_keydata,
+			.towire = towire_keydata,
+			.compare = compare_keydata,
+			.casecompare = casecompare_keydata,
+			.fromstruct = fromstruct_keydata,
+			.tostruct = tostruct_keydata,
+			.freestruct = freestruct_keydata,
+			.additionaldata = additionaldata_keydata,
+			.digest = digest_keydata,
+			.checkowner = checkowner_keydata,
+			.checknames = checknames_keydata,
+		},
+};
+
 #endif /* GENERIC_KEYDATA_65533_C */

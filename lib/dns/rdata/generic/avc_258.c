@@ -140,4 +140,27 @@ static int
 casecompare_avc(ARGS_COMPARE) {
 	return compare_avc(rdata1, rdata2);
 }
+const dns_rdata_typedesc_t dns__rdata_avc_typedesc = {
+	.type = 258,
+	.rdclass = 0,
+	.name = "AVC",
+	.attributes = RRTYPE_AVC_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_avc,
+			.totext = totext_avc,
+			.fromwire = fromwire_avc,
+			.towire = towire_avc,
+			.compare = compare_avc,
+			.casecompare = casecompare_avc,
+			.fromstruct = fromstruct_avc,
+			.tostruct = tostruct_avc,
+			.freestruct = freestruct_avc,
+			.additionaldata = additionaldata_avc,
+			.digest = digest_avc,
+			.checkowner = checkowner_avc,
+			.checknames = checknames_avc,
+		},
+};
+
 #endif /* RDATA_GENERIC_AVC_258_C */

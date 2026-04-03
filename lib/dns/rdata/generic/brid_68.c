@@ -208,4 +208,27 @@ static int
 casecompare_brid(ARGS_COMPARE) {
 	return compare_brid(rdata1, rdata2);
 }
+const dns_rdata_typedesc_t dns__rdata_brid_typedesc = {
+	.type = 68,
+	.rdclass = 0,
+	.name = "BRID",
+	.attributes = RRTYPE_BRID_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_brid,
+			.totext = totext_brid,
+			.fromwire = fromwire_brid,
+			.towire = towire_brid,
+			.compare = compare_brid,
+			.casecompare = casecompare_brid,
+			.fromstruct = fromstruct_brid,
+			.tostruct = tostruct_brid,
+			.freestruct = freestruct_brid,
+			.additionaldata = additionaldata_brid,
+			.digest = digest_brid,
+			.checkowner = checkowner_brid,
+			.checknames = checknames_brid,
+		},
+};
+
 #endif /* RDATA_GENERIC_BRID_68_C */

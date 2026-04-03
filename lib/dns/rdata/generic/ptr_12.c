@@ -261,4 +261,27 @@ static int
 casecompare_ptr(ARGS_COMPARE) {
 	return compare_ptr(rdata1, rdata2);
 }
+const dns_rdata_typedesc_t dns__rdata_ptr_typedesc = {
+	.type = 12,
+	.rdclass = 0,
+	.name = "PTR",
+	.attributes = RRTYPE_PTR_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_ptr,
+			.totext = totext_ptr,
+			.fromwire = fromwire_ptr,
+			.towire = towire_ptr,
+			.compare = compare_ptr,
+			.casecompare = casecompare_ptr,
+			.fromstruct = fromstruct_ptr,
+			.tostruct = tostruct_ptr,
+			.freestruct = freestruct_ptr,
+			.additionaldata = additionaldata_ptr,
+			.digest = digest_ptr,
+			.checkowner = checkowner_ptr,
+			.checknames = checknames_ptr,
+		},
+};
+
 #endif /* RDATA_GENERIC_PTR_12_C */

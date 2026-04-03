@@ -250,4 +250,27 @@ casecompare_in_nsap(ARGS_COMPARE) {
 	return compare_in_nsap(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_in_nsap_typedesc = {
+	.type = 22,
+	.rdclass = 1,
+	.name = "NSAP",
+	.attributes = RRTYPE_NSAP_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_in_nsap,
+			.totext = totext_in_nsap,
+			.fromwire = fromwire_in_nsap,
+			.towire = towire_in_nsap,
+			.compare = compare_in_nsap,
+			.casecompare = casecompare_in_nsap,
+			.fromstruct = fromstruct_in_nsap,
+			.tostruct = tostruct_in_nsap,
+			.freestruct = freestruct_in_nsap,
+			.additionaldata = additionaldata_in_nsap,
+			.digest = digest_in_nsap,
+			.checkowner = checkowner_in_nsap,
+			.checknames = checknames_in_nsap,
+		},
+};
+
 #endif /* RDATA_IN_1_NSAP_22_C */

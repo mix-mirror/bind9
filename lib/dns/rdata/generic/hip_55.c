@@ -495,3 +495,26 @@ casecompare_hip(ARGS_COMPARE) {
 	}
 	return isc_region_compare(&r1, &r2);
 }
+
+const dns_rdata_typedesc_t dns__rdata_hip_typedesc = {
+	.type = 55,
+	.rdclass = 0,
+	.name = "HIP",
+	.attributes = RRTYPE_HIP_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_hip,
+			.totext = totext_hip,
+			.fromwire = fromwire_hip,
+			.towire = towire_hip,
+			.compare = compare_hip,
+			.casecompare = casecompare_hip,
+			.fromstruct = fromstruct_hip,
+			.tostruct = tostruct_hip,
+			.freestruct = freestruct_hip,
+			.additionaldata = additionaldata_hip,
+			.digest = digest_hip,
+			.checkowner = checkowner_hip,
+			.checknames = checknames_hip,
+		},
+};

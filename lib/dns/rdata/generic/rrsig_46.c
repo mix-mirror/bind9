@@ -659,4 +659,27 @@ casecompare_rrsig(ARGS_COMPARE) {
 	return compare_rrsig(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_rrsig_typedesc = {
+	.type = 46,
+	.rdclass = 0,
+	.name = "RRSIG",
+	.attributes = RRTYPE_RRSIG_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_rrsig,
+			.totext = totext_rrsig,
+			.fromwire = fromwire_rrsig,
+			.towire = towire_rrsig,
+			.compare = compare_rrsig,
+			.casecompare = casecompare_rrsig,
+			.fromstruct = fromstruct_rrsig,
+			.tostruct = tostruct_rrsig,
+			.freestruct = freestruct_rrsig,
+			.additionaldata = additionaldata_rrsig,
+			.digest = digest_rrsig,
+			.checkowner = checkowner_rrsig,
+			.checknames = checknames_rrsig,
+		},
+};
+
 #endif /* RDATA_GENERIC_RRSIG_46_C */

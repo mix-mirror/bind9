@@ -223,4 +223,27 @@ casecompare_cname(ARGS_COMPARE) {
 	return compare_cname(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_cname_typedesc = {
+	.type = 5,
+	.rdclass = 0,
+	.name = "CNAME",
+	.attributes = RRTYPE_CNAME_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_cname,
+			.totext = totext_cname,
+			.fromwire = fromwire_cname,
+			.towire = towire_cname,
+			.compare = compare_cname,
+			.casecompare = casecompare_cname,
+			.fromstruct = fromstruct_cname,
+			.tostruct = tostruct_cname,
+			.freestruct = freestruct_cname,
+			.additionaldata = additionaldata_cname,
+			.digest = digest_cname,
+			.checkowner = checkowner_cname,
+			.checknames = checknames_cname,
+		},
+};
+
 #endif /* RDATA_GENERIC_CNAME_5_C */

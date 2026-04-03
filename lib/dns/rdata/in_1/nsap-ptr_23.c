@@ -236,4 +236,27 @@ casecompare_in_nsap_ptr(ARGS_COMPARE) {
 	return compare_in_nsap_ptr(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_in_nsap_ptr_typedesc = {
+	.type = 23,
+	.rdclass = 1,
+	.name = "NSAP-PTR",
+	.attributes = RRTYPE_NSAP_PTR_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_in_nsap_ptr,
+			.totext = totext_in_nsap_ptr,
+			.fromwire = fromwire_in_nsap_ptr,
+			.towire = towire_in_nsap_ptr,
+			.compare = compare_in_nsap_ptr,
+			.casecompare = casecompare_in_nsap_ptr,
+			.fromstruct = fromstruct_in_nsap_ptr,
+			.tostruct = tostruct_in_nsap_ptr,
+			.freestruct = freestruct_in_nsap_ptr,
+			.additionaldata = additionaldata_in_nsap_ptr,
+			.digest = digest_in_nsap_ptr,
+			.checkowner = checkowner_in_nsap_ptr,
+			.checknames = checknames_in_nsap_ptr,
+		},
+};
+
 #endif /* RDATA_IN_1_NSAP_PTR_23_C */

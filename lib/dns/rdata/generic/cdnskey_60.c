@@ -159,4 +159,27 @@ casecompare_cdnskey(ARGS_COMPARE) {
 	return compare_cdnskey(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_cdnskey_typedesc = {
+	.type = 60,
+	.rdclass = 0,
+	.name = "CDNSKEY",
+	.attributes = RRTYPE_CDNSKEY_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_cdnskey,
+			.totext = totext_cdnskey,
+			.fromwire = fromwire_cdnskey,
+			.towire = towire_cdnskey,
+			.compare = compare_cdnskey,
+			.casecompare = casecompare_cdnskey,
+			.fromstruct = fromstruct_cdnskey,
+			.tostruct = tostruct_cdnskey,
+			.freestruct = freestruct_cdnskey,
+			.additionaldata = additionaldata_cdnskey,
+			.digest = digest_cdnskey,
+			.checkowner = checkowner_cdnskey,
+			.checknames = checknames_cdnskey,
+		},
+};
+
 #endif /* RDATA_GENERIC_CDNSKEY_60_C */

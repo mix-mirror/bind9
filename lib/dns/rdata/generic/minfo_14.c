@@ -315,4 +315,27 @@ casecompare_minfo(ARGS_COMPARE) {
 	return compare_minfo(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_minfo_typedesc = {
+	.type = 14,
+	.rdclass = 0,
+	.name = "MINFO",
+	.attributes = RRTYPE_MINFO_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_minfo,
+			.totext = totext_minfo,
+			.fromwire = fromwire_minfo,
+			.towire = towire_minfo,
+			.compare = compare_minfo,
+			.casecompare = casecompare_minfo,
+			.fromstruct = fromstruct_minfo,
+			.tostruct = tostruct_minfo,
+			.freestruct = freestruct_minfo,
+			.additionaldata = additionaldata_minfo,
+			.digest = digest_minfo,
+			.checkowner = checkowner_minfo,
+			.checknames = checknames_minfo,
+		},
+};
+
 #endif /* RDATA_GENERIC_MINFO_14_C */

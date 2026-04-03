@@ -312,4 +312,27 @@ static int
 casecompare_afsdb(ARGS_COMPARE) {
 	return compare_afsdb(rdata1, rdata2);
 }
+const dns_rdata_typedesc_t dns__rdata_afsdb_typedesc = {
+	.type = 18,
+	.rdclass = 0,
+	.name = "AFSDB",
+	.attributes = RRTYPE_AFSDB_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_afsdb,
+			.totext = totext_afsdb,
+			.fromwire = fromwire_afsdb,
+			.towire = towire_afsdb,
+			.compare = compare_afsdb,
+			.casecompare = casecompare_afsdb,
+			.fromstruct = fromstruct_afsdb,
+			.tostruct = tostruct_afsdb,
+			.freestruct = freestruct_afsdb,
+			.additionaldata = additionaldata_afsdb,
+			.digest = digest_afsdb,
+			.checkowner = checkowner_afsdb,
+			.checknames = checknames_afsdb,
+		},
+};
+
 #endif /* RDATA_GENERIC_AFSDB_18_C */

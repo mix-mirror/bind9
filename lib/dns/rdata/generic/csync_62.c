@@ -261,4 +261,27 @@ casecompare_csync(ARGS_COMPARE) {
 	dns_rdata_toregion(rdata2, &region2);
 	return isc_region_compare(&region1, &region2);
 }
+const dns_rdata_typedesc_t dns__rdata_csync_typedesc = {
+	.type = 62,
+	.rdclass = 0,
+	.name = "CSYNC",
+	.attributes = RRTYPE_CSYNC_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_csync,
+			.totext = totext_csync,
+			.fromwire = fromwire_csync,
+			.towire = towire_csync,
+			.compare = compare_csync,
+			.casecompare = casecompare_csync,
+			.fromstruct = fromstruct_csync,
+			.tostruct = tostruct_csync,
+			.freestruct = freestruct_csync,
+			.additionaldata = additionaldata_csync,
+			.digest = digest_csync,
+			.checkowner = checkowner_csync,
+			.checknames = checknames_csync,
+		},
+};
+
 #endif /* RDATA_GENERIC_CSYNC_62_C */

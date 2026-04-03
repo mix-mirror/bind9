@@ -600,4 +600,27 @@ casecompare_any_tsig(ARGS_COMPARE) {
 	return compare_any_tsig(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_any_tsig_typedesc = {
+	.type = 250,
+	.rdclass = 255,
+	.name = "TSIG",
+	.attributes = RRTYPE_TSIG_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_any_tsig,
+			.totext = totext_any_tsig,
+			.fromwire = fromwire_any_tsig,
+			.towire = towire_any_tsig,
+			.compare = compare_any_tsig,
+			.casecompare = casecompare_any_tsig,
+			.fromstruct = fromstruct_any_tsig,
+			.tostruct = tostruct_any_tsig,
+			.freestruct = freestruct_any_tsig,
+			.additionaldata = additionaldata_any_tsig,
+			.digest = digest_any_tsig,
+			.checkowner = checkowner_any_tsig,
+			.checknames = checknames_any_tsig,
+		},
+};
+
 #endif /* RDATA_ANY_255_TSIG_250_C */

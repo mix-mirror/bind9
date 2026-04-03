@@ -344,4 +344,27 @@ dns_rdata_txt_current(dns_rdata_txt_t *txt, dns_rdata_txt_string_t *string) {
 
 	return generic_txt_current(txt, string);
 }
+const dns_rdata_typedesc_t dns__rdata_txt_typedesc = {
+	.type = 16,
+	.rdclass = 0,
+	.name = "TXT",
+	.attributes = RRTYPE_TXT_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_txt,
+			.totext = totext_txt,
+			.fromwire = fromwire_txt,
+			.towire = towire_txt,
+			.compare = compare_txt,
+			.casecompare = casecompare_txt,
+			.fromstruct = fromstruct_txt,
+			.tostruct = tostruct_txt,
+			.freestruct = freestruct_txt,
+			.additionaldata = additionaldata_txt,
+			.digest = digest_txt,
+			.checkowner = checkowner_txt,
+			.checknames = checknames_txt,
+		},
+};
+
 #endif /* RDATA_GENERIC_TXT_16_C */

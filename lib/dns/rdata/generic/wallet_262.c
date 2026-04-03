@@ -165,4 +165,27 @@ dns_rdata_wallet_current(dns_rdata_wallet_t *wallet,
 
 	return generic_txt_current(wallet, string);
 }
+const dns_rdata_typedesc_t dns__rdata_wallet_typedesc = {
+	.type = 262,
+	.rdclass = 0,
+	.name = "WALLET",
+	.attributes = RRTYPE_WALLET_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_wallet,
+			.totext = totext_wallet,
+			.fromwire = fromwire_wallet,
+			.towire = towire_wallet,
+			.compare = compare_wallet,
+			.casecompare = casecompare_wallet,
+			.fromstruct = fromstruct_wallet,
+			.tostruct = tostruct_wallet,
+			.freestruct = freestruct_wallet,
+			.additionaldata = additionaldata_wallet,
+			.digest = digest_wallet,
+			.checkowner = checkowner_wallet,
+			.checknames = checknames_wallet,
+		},
+};
+
 #endif /* RDATA_GENERIC_WALLET_262_C */

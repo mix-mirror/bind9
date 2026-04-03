@@ -303,4 +303,27 @@ casecompare_uri(ARGS_COMPARE) {
 	return compare_uri(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_uri_typedesc = {
+	.type = 256,
+	.rdclass = 0,
+	.name = "URI",
+	.attributes = RRTYPE_URI_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_uri,
+			.totext = totext_uri,
+			.fromwire = fromwire_uri,
+			.towire = towire_uri,
+			.compare = compare_uri,
+			.casecompare = casecompare_uri,
+			.fromstruct = fromstruct_uri,
+			.tostruct = tostruct_uri,
+			.freestruct = freestruct_uri,
+			.additionaldata = additionaldata_uri,
+			.digest = digest_uri,
+			.checkowner = checkowner_uri,
+			.checknames = checknames_uri,
+		},
+};
+
 #endif /* GENERIC_URI_256_C */

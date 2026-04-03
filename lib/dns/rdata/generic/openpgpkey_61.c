@@ -237,4 +237,27 @@ casecompare_openpgpkey(ARGS_COMPARE) {
 	return isc_region_compare(&r1, &r2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_openpgpkey_typedesc = {
+	.type = 61,
+	.rdclass = 0,
+	.name = "OPENPGPKEY",
+	.attributes = RRTYPE_OPENPGPKEY_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_openpgpkey,
+			.totext = totext_openpgpkey,
+			.fromwire = fromwire_openpgpkey,
+			.towire = towire_openpgpkey,
+			.compare = compare_openpgpkey,
+			.casecompare = casecompare_openpgpkey,
+			.fromstruct = fromstruct_openpgpkey,
+			.tostruct = tostruct_openpgpkey,
+			.freestruct = freestruct_openpgpkey,
+			.additionaldata = additionaldata_openpgpkey,
+			.digest = digest_openpgpkey,
+			.checkowner = checkowner_openpgpkey,
+			.checknames = checknames_openpgpkey,
+		},
+};
+
 #endif /* RDATA_GENERIC_OPENPGPKEY_61_C */

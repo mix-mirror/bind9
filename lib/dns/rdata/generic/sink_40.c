@@ -273,4 +273,27 @@ static int
 casecompare_sink(ARGS_COMPARE) {
 	return compare_sink(rdata1, rdata2);
 }
+const dns_rdata_typedesc_t dns__rdata_sink_typedesc = {
+	.type = 40,
+	.rdclass = 0,
+	.name = "SINK",
+	.attributes = RRTYPE_SINK_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_sink,
+			.totext = totext_sink,
+			.fromwire = fromwire_sink,
+			.towire = towire_sink,
+			.compare = compare_sink,
+			.casecompare = casecompare_sink,
+			.fromstruct = fromstruct_sink,
+			.tostruct = tostruct_sink,
+			.freestruct = freestruct_sink,
+			.additionaldata = additionaldata_sink,
+			.digest = digest_sink,
+			.checkowner = checkowner_sink,
+			.checknames = checknames_sink,
+		},
+};
+
 #endif /* RDATA_GENERIC_SINK_40_C */

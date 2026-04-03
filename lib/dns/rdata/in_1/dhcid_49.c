@@ -227,4 +227,27 @@ casecompare_in_dhcid(ARGS_COMPARE) {
 	return compare_in_dhcid(rdata1, rdata2);
 }
 
+const dns_rdata_typedesc_t dns__rdata_in_dhcid_typedesc = {
+	.type = 49,
+	.rdclass = 1,
+	.name = "DHCID",
+	.attributes = RRTYPE_DHCID_ATTRIBUTES,
+	.methods =
+		&(const dns_rdata_methods_t){
+			.fromtext = fromtext_in_dhcid,
+			.totext = totext_in_dhcid,
+			.fromwire = fromwire_in_dhcid,
+			.towire = towire_in_dhcid,
+			.compare = compare_in_dhcid,
+			.casecompare = casecompare_in_dhcid,
+			.fromstruct = fromstruct_in_dhcid,
+			.tostruct = tostruct_in_dhcid,
+			.freestruct = freestruct_in_dhcid,
+			.additionaldata = additionaldata_in_dhcid,
+			.digest = digest_in_dhcid,
+			.checkowner = checkowner_in_dhcid,
+			.checknames = checknames_in_dhcid,
+		},
+};
+
 #endif /* RDATA_IN_1_DHCID_49_C */
