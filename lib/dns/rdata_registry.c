@@ -270,25 +270,164 @@ dns__rdata_typedesc_bytype(dns_rdatatype_t type) {
 	return typedesc_table[type];
 }
 
+/*
+ * First-character dispatch for type name lookup.
+ * Each case checks only the types starting with that letter.
+ */
+#define NAMECMP(_s, _td)                                \
+	if (sizeof(_s) - 1 == length &&                 \
+	    strncasecmp(_s, name, sizeof(_s) - 1) == 0) \
+	{                                               \
+		return (_td);                           \
+	}
+
 const dns_rdata_typedesc_t *
 dns__rdata_typedesc_fromtext(const char *name, unsigned int length) {
-	/*
-	 * Linear scan — only called during zone loading / config parsing,
-	 * not on the hot path.  With ~85 entries this is fast enough.
-	 */
-	for (unsigned int i = 0; i < 65536; i++) {
-		const dns_rdata_typedesc_t *td = typedesc_table[i];
+	if (length == 0) {
+		return NULL;
+	}
 
-		if (td == NULL || td->name == NULL) {
-			continue;
-		}
-
-		if (strlen(td->name) == length &&
-		    strncasecmp(td->name, name, length) == 0)
-		{
-			return td;
-		}
+	switch (isc_ascii_tolower(name[0])) {
+	case 'a':
+		NAMECMP("A", typedesc_table[1]);
+		NAMECMP("A6", typedesc_table[38]);
+		NAMECMP("AAAA", typedesc_table[28]);
+		NAMECMP("AFSDB", typedesc_table[18]);
+		NAMECMP("AMTRELAY", typedesc_table[260]);
+		NAMECMP("ANY", typedesc_table[255]);
+		NAMECMP("APL", typedesc_table[42]);
+		NAMECMP("ATMA", typedesc_table[34]);
+		NAMECMP("AVC", typedesc_table[258]);
+		NAMECMP("AXFR", typedesc_table[252]);
+		break;
+	case 'b':
+		NAMECMP("BRID", typedesc_table[68]);
+		break;
+	case 'c':
+		NAMECMP("CAA", typedesc_table[257]);
+		NAMECMP("CDNSKEY", typedesc_table[60]);
+		NAMECMP("CDS", typedesc_table[59]);
+		NAMECMP("CERT", typedesc_table[37]);
+		NAMECMP("CNAME", typedesc_table[5]);
+		NAMECMP("CSYNC", typedesc_table[62]);
+		break;
+	case 'd':
+		NAMECMP("DHCID", typedesc_table[49]);
+		NAMECMP("DLV", typedesc_table[32769]);
+		NAMECMP("DNAME", typedesc_table[39]);
+		NAMECMP("DNSKEY", typedesc_table[48]);
+		NAMECMP("DOA", typedesc_table[259]);
+		NAMECMP("DS", typedesc_table[43]);
+		NAMECMP("DSYNC", typedesc_table[66]);
+		break;
+	case 'e':
+		NAMECMP("EID", typedesc_table[31]);
+		NAMECMP("EUI48", typedesc_table[108]);
+		NAMECMP("EUI64", typedesc_table[109]);
+		break;
+	case 'g':
+		NAMECMP("GID", typedesc_table[102]);
+		NAMECMP("GPOS", typedesc_table[27]);
+		break;
+	case 'h':
+		NAMECMP("HHIT", typedesc_table[67]);
+		NAMECMP("HINFO", typedesc_table[13]);
+		NAMECMP("HIP", typedesc_table[55]);
+		NAMECMP("HTTPS", typedesc_table[65]);
+		break;
+	case 'i':
+		NAMECMP("IPSECKEY", typedesc_table[45]);
+		NAMECMP("ISDN", typedesc_table[20]);
+		NAMECMP("IXFR", typedesc_table[251]);
+		break;
+	case 'k':
+		NAMECMP("KEY", typedesc_table[25]);
+		NAMECMP("KEYDATA", typedesc_table[65533]);
+		NAMECMP("KX", typedesc_table[36]);
+		break;
+	case 'l':
+		NAMECMP("L32", typedesc_table[105]);
+		NAMECMP("L64", typedesc_table[106]);
+		NAMECMP("LOC", typedesc_table[29]);
+		NAMECMP("LP", typedesc_table[107]);
+		break;
+	case 'm':
+		NAMECMP("MAILA", typedesc_table[254]);
+		NAMECMP("MAILB", typedesc_table[253]);
+		NAMECMP("MB", typedesc_table[7]);
+		NAMECMP("MD", typedesc_table[3]);
+		NAMECMP("MF", typedesc_table[4]);
+		NAMECMP("MG", typedesc_table[8]);
+		NAMECMP("MINFO", typedesc_table[14]);
+		NAMECMP("MR", typedesc_table[9]);
+		NAMECMP("MX", typedesc_table[15]);
+		break;
+	case 'n':
+		NAMECMP("NAPTR", typedesc_table[35]);
+		NAMECMP("NID", typedesc_table[104]);
+		NAMECMP("NIMLOC", typedesc_table[32]);
+		NAMECMP("NINFO", typedesc_table[56]);
+		NAMECMP("NS", typedesc_table[2]);
+		NAMECMP("NSAP", typedesc_table[22]);
+		NAMECMP("NSAP-PTR", typedesc_table[23]);
+		NAMECMP("NSEC", typedesc_table[47]);
+		NAMECMP("NSEC3", typedesc_table[50]);
+		NAMECMP("NSEC3PARAM", typedesc_table[51]);
+		NAMECMP("NULL", typedesc_table[10]);
+		NAMECMP("NXT", typedesc_table[30]);
+		break;
+	case 'o':
+		NAMECMP("OPENPGPKEY", typedesc_table[61]);
+		NAMECMP("OPT", typedesc_table[41]);
+		break;
+	case 'p':
+		NAMECMP("PTR", typedesc_table[12]);
+		NAMECMP("PX", typedesc_table[26]);
+		break;
+	case 'r':
+		NAMECMP("RESINFO", typedesc_table[261]);
+		NAMECMP("RKEY", typedesc_table[57]);
+		NAMECMP("RP", typedesc_table[17]);
+		NAMECMP("RRSIG", typedesc_table[46]);
+		NAMECMP("RT", typedesc_table[21]);
+		break;
+	case 's':
+		NAMECMP("SIG", typedesc_table[24]);
+		NAMECMP("SINK", typedesc_table[40]);
+		NAMECMP("SMIMEA", typedesc_table[53]);
+		NAMECMP("SOA", typedesc_table[6]);
+		NAMECMP("SPF", typedesc_table[99]);
+		NAMECMP("SRV", typedesc_table[33]);
+		NAMECMP("SSHFP", typedesc_table[44]);
+		NAMECMP("SVCB", typedesc_table[64]);
+		break;
+	case 't':
+		NAMECMP("TA", typedesc_table[32768]);
+		NAMECMP("TALINK", typedesc_table[58]);
+		NAMECMP("TKEY", typedesc_table[249]);
+		NAMECMP("TLSA", typedesc_table[52]);
+		NAMECMP("TSIG", typedesc_table[250]);
+		NAMECMP("TXT", typedesc_table[16]);
+		break;
+	case 'u':
+		NAMECMP("UID", typedesc_table[101]);
+		NAMECMP("UINFO", typedesc_table[100]);
+		NAMECMP("UNSPEC", typedesc_table[103]);
+		NAMECMP("URI", typedesc_table[256]);
+		break;
+	case 'w':
+		NAMECMP("WALLET", typedesc_table[262]);
+		NAMECMP("WKS", typedesc_table[11]);
+		break;
+	case 'x':
+		NAMECMP("X25", typedesc_table[19]);
+		break;
+	case 'z':
+		NAMECMP("ZONEMD", typedesc_table[63]);
+		break;
 	}
 
 	return NULL;
 }
+
+#undef NAMECMP
