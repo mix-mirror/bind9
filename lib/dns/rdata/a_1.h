@@ -13,24 +13,7 @@
 
 #pragma once
 
-/* IN class A record */
 typedef struct dns_rdata_in_a {
 	dns_rdatacommon_t common;
 	struct in_addr in_addr;
 } dns_rdata_in_a_t;
-
-/* CH class A record */
-typedef uint16_t ch_addr_t;
-
-typedef struct dns_rdata_ch_a {
-	dns_rdatacommon_t common;
-	isc_mem_t *mctx;
-	dns_name_t ch_addr_dom;
-	ch_addr_t ch_addr;
-} dns_rdata_ch_a_t;
-
-/* HS class A record */
-typedef struct dns_rdata_hs_a {
-	dns_rdatacommon_t common;
-	struct in_addr in_addr;
-} dns_rdata_hs_a_t;

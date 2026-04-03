@@ -38,8 +38,6 @@
  * Sorted by (type, rdclass) to match the table order.
  */
 extern const dns_rdata_typedesc_t dns__rdata_in_a_typedesc;
-extern const dns_rdata_typedesc_t dns__rdata_ch_a_typedesc;
-extern const dns_rdata_typedesc_t dns__rdata_hs_a_typedesc;
 extern const dns_rdata_typedesc_t dns__rdata_ns_typedesc;
 extern const dns_rdata_typedesc_t dns__rdata_md_typedesc;
 extern const dns_rdata_typedesc_t dns__rdata_mf_typedesc;
@@ -156,8 +154,6 @@ static const dns_rdata_typedesc_t typedesc_any = { 255, 0, "ANY",
  */
 static const dns_rdata_typedesc_t *const typedesc_table[] = {
 	&dns__rdata_in_a_typedesc,	  /* 1/IN */
-	&dns__rdata_ch_a_typedesc,	  /* 1/CH */
-	&dns__rdata_hs_a_typedesc,	  /* 1/HS */
 	&dns__rdata_ns_typedesc,	  /* 2 */
 	&dns__rdata_md_typedesc,	  /* 3 */
 	&dns__rdata_mf_typedesc,	  /* 4 */
