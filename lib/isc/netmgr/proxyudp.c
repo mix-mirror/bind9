@@ -418,7 +418,7 @@ proxyudp_connect_cb(isc_nmhandle_t *handle, isc_result_t result, void *cbarg) {
 	sock->iface = isc_nmhandle_localaddr(handle);
 	sock->peer = isc_nmhandle_peeraddr(handle);
 	isc_nmhandle_attach(handle, &sock->outerhandle);
-	handle->sock->proxy.sock = sock;
+	handle->sock->overlay_socket = sock;
 	sock->active = true;
 	sock->connected = true;
 	sock->connecting = false;
@@ -429,7 +429,7 @@ proxyudp_connect_cb(isc_nmhandle_t *handle, isc_result_t result, void *cbarg) {
 
 	proxyudp_try_close_unused(sock);
 
-	isc__nmsocket_detach(&handle->sock->proxy.sock);
+	isc__nmsocket_detach(&handle->sock->overlay_socket);
 
 	return;
 error:
@@ -529,7 +529,7 @@ void
 isc__nm_proxyudp_stoplistening(isc_nmsocket_t *listener) {
 	REQUIRE(VALID_NMSOCK(listener));
 	REQUIRE(listener->type == isc_nm_proxyudplistener);
-	REQUIRE(listener->proxy.sock == NULL);
+	REQUIRE(listener->overlay_socket == NULL);
 
 	isc__nmsocket_stop(listener);
 
@@ -566,7 +566,7 @@ isc__nm_proxyudp_cleanup_data(isc_nmsocket_t *sock) {
 			     sizeof(isc_nmsocket_t *));
 		break;
 	case isc_nm_udpsocket:
-		INSIST(sock->proxy.sock == NULL);
+		INSIST(sock->overlay_socket == NULL);
 		break;
 	default:
 		break;
@@ -677,8 +677,8 @@ isc__nm_proxyudp_close(isc_nmsocket_t *sock) {
 		isc_nmhandle_detach(&sock->outerhandle);
 	}
 
-	if (sock->proxy.sock != NULL) {
-		isc__nmsocket_detach(&sock->proxy.sock);
+	if (sock->overlay_socket != NULL) {
+		isc__nmsocket_detach(&sock->overlay_socket);
 	}
 
 	/* Further cleanup performed in isc__nm_proxyudp_cleanup_data() */

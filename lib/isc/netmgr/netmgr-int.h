@@ -520,98 +520,31 @@ struct isc_nmsocket {
 	isc_nmsocket_type type;
 	isc__networker_t *worker;
 
-	isc_barrier_t listen_barrier;
-	isc_barrier_t stop_barrier;
-
 	/*% Parent socket for multithreaded listeners */
 	isc_nmsocket_t *parent;
 
-	/*% TLS stuff */
-	struct tlsstream {
-		bool server;
-		BIO *bio_in;
-		BIO *bio_out;
-		isc_tls_t *tls;
-		isc_tlsctx_t *ctx;
-		isc_tlsctx_t **listener_tls_ctx; /*%< A context reference per
-						    worker */
-		size_t n_listener_tls_ctx;
-		char *sni_hostname;
-		isc_tlsctx_client_session_cache_t *client_sess_cache;
-		bool client_session_saved;
-		isc_nmsocket_t *tlslistener;
-		isc_nmsocket_t *tlssocket;
-		atomic_bool result_updated;
-		enum {
-			TLS_INIT,
-			TLS_HANDSHAKE,
-			TLS_IO,
-			TLS_CLOSED
-		} state; /*%< The order of these is significant */
-		size_t nsending;
-		bool tcp_nodelay_value;
-		isc_nmsocket_tls_send_req_t *send_req; /*%< Send req to reuse */
-		bool reading;
-	} tlsstream;
+	/*%
+	 * Back-reference from an outer (base transport) socket to the
+	 * overlay socket layered on top of it.  Only one overlay per
+	 * socket, so a single pointer suffices for each role.
+	 */
+	isc_nmsocket_t *overlay_listener;
+	isc_nmsocket_t *overlay_socket;
 
 #if HAVE_LIBNGHTTP2
 	isc_nmsocket_h2_t *h2;
 #endif /* HAVE_LIBNGHTTP2 */
 
-	struct {
-		isc_dnsstream_assembler_t *input;
-		bool reading;
-		isc_nmsocket_t *listener;
-		isc_nmsocket_t *sock;
-		size_t nsending;
-		void *send_req;
-		bool dot_alpn_negotiated;
-		const char *tls_verify_error;
-	} streamdns;
-
-	struct {
-		isc_nmsocket_t *sock;
-		bool reading;
-		size_t nsending;
-		void *send_req;
-		union {
-			isc_proxy2_handler_t *handler; /* server */
-			isc_buffer_t *outbuf;	       /* client */
-		} proxy2;
-		bool header_processed;
-		bool extra_processed; /* data arrived past header processed */
-		isc_nmsocket_t **udp_server_socks; /* UDP sockets */
-		size_t udp_server_socks_num;
-	} proxy;
-
-	/*%
-	 * pquota is a non-attached pointer to the TCP client quota, stored in
-	 * listening sockets.
-	 */
+	/*% pquota: TCP client quota, stored in listening sockets */
 	isc_quota_t *pquota;
 	isc_job_t quotacb;
 
-	/*%
-	 * Socket statistics
-	 */
+	/*% Socket statistics */
 	const isc_statscounter_t *statsindex;
 
-	/*%
-	 * TCP read/connect timeout timers.
-	 */
-	uv_timer_t read_timer;
 	uint64_t read_timeout;
 	uint64_t connect_timeout;
-
-	/*%
-	 * TCP write timeout timer.
-	 */
 	uint64_t write_timeout;
-
-	/*
-	 * Reading was throttled over TCP as the peer does not read the
-	 * data we are sending back.
-	 */
 	bool reading_throttled;
 
 	/*% outer socket is for 'wrapped' sockets - e.g. tcpdns in tcp */
@@ -630,32 +563,13 @@ struct isc_nmsocket {
 	isc_nmhandle_t *statichandle;
 	isc_nmhandle_t *outerhandle;
 
-	/*% TCP backlog */
-	int backlog;
-
-	/*% libuv data */
-	uv_os_sock_t fd;
-	union uv_any_handle uv_handle;
-
 	/*% Peer address */
 	isc_sockaddr_t peer;
 
-	/*%
-	 * Socket is active if it's listening, working, etc. If it's
-	 * closing, then it doesn't make a sense, for example, to
-	 * push handles or reqs for reuse.
-	 */
+	/*% Socket state flags */
 	bool active;
 	bool destroying;
-
 	bool route_sock;
-
-	/*%
-	 * Socket is closed if it's not active and all the possible
-	 * callbacks were fired, there are no active handles, etc.
-	 * If active==false but closed==false, that means the socket
-	 * is closing.
-	 */
 	bool closing;
 	bool closed;
 	bool connecting;
@@ -664,56 +578,23 @@ struct isc_nmsocket {
 	bool reading;
 	bool timedout;
 
-	/*%
-	 * A timestamp of when the connection acceptance was delayed due
-	 * to quota.
-	 */
 	isc_nanosecs_t quota_accept_ts;
 
-	/*%
-	 * Established an outgoing connection, as client not server.
-	 */
 	bool client;
-
-	/*%
-	 * The socket is processing read callback, this is guard to not read
-	 * data before the readcb is back.
-	 */
 	bool processing;
-
-	/*%
-	 * A TCP or TCPDNS socket has been set to use the keepalive
-	 * timeout instead of the default idle timeout.
-	 */
 	bool keepalive;
 
-	/*%
-	 * 'spare' handles for that can be reused to avoid allocations, for UDP.
-	 */
+	/*% Handle management */
 	ISC_LIST(isc_nmhandle_t) inactive_handles;
-
 	size_t inactive_handles_cur;
 	size_t inactive_handles_max;
 
-	/*%
-	 * 'active' handles and uvreqs, mostly for debugging purposes.
-	 */
 	ISC_LIST(isc_nmhandle_t) active_handles;
 	ISC_LIST(isc__nm_uvreq_t) active_uvreqs;
-
 	size_t active_handles_cur;
 	size_t active_handles_max;
 
-	/*%
-	 * Used to pass a result back from listen or connect events.
-	 */
 	isc_result_t result;
-
-	/*%
-	 * This function will be called with handle->sock
-	 * as the argument whenever a handle's references drop
-	 * to zero, after its reset callback has been called.
-	 */
 	isc_nm_closehandlecb_t closehandle_cb;
 
 	isc_nmhandle_t *recv_handle;
@@ -726,16 +607,103 @@ struct isc_nmsocket {
 	isc_nm_accept_cb_t accept_cb;
 	void *accept_cbarg;
 
+	isc_barrier_t listen_barrier;
+	isc_barrier_t stop_barrier;
 	bool barriers_initialised;
 	bool manual_read_timer;
+
 #if ISC_NETMGR_TRACE
 	void *backtrace[TRACE_SIZE];
 	int backtrace_size;
 #endif
 	ISC_LINK(isc_nmsocket_t) active_link;
-
 	isc_job_t job;
+
+	/*%
+	 * Transport-specific data — MUST BE LAST.
+	 *
+	 * A socket is either a base transport (TCP/UDP — owns the libuv
+	 * handle and timer) or an overlay (TLS/StreamDNS/PROXY —
+	 * delegates I/O to an outer socket).  Only one variant is active
+	 * per socket, keyed on sock->type.
+	 *
+	 * Overlay types may be allocated smaller than sizeof(isc_nmsocket_t)
+	 * since they only need the common fields plus their overlay data.
+	 */
+	union {
+		/*% TCP/UDP base transport */
+		struct {
+			union {
+				uv_handle_t handle;
+				uv_stream_t stream;
+				uv_tcp_t tcp;
+				uv_udp_t udp;
+			} uv_handle;
+			uv_timer_t read_timer;
+			uv_os_sock_t fd;
+			int backlog; /*%< TCP listen backlog */
+		};
+
+		/*% TLS overlay */
+		struct tlsstream {
+			bool server;
+			BIO *bio_in;
+			BIO *bio_out;
+			isc_tls_t *tls;
+			isc_tlsctx_t *ctx;
+			isc_tlsctx_t **listener_tls_ctx; /*%< A context
+							    reference per
+							    worker */
+			size_t n_listener_tls_ctx;
+			char *sni_hostname;
+			isc_tlsctx_client_session_cache_t *client_sess_cache;
+			bool client_session_saved;
+			atomic_bool result_updated;
+			enum {
+				TLS_INIT,
+				TLS_HANDSHAKE,
+				TLS_IO,
+				TLS_CLOSED
+			} state; /*%< The order of these is significant */
+			size_t nsending;
+			bool tcp_nodelay_value;
+			isc_nmsocket_tls_send_req_t *send_req; /*%< Send req
+								   to reuse */
+			bool reading;
+		} tlsstream;
+
+		/*% StreamDNS overlay */
+		struct {
+			isc_dnsstream_assembler_t *input;
+			bool reading;
+			size_t nsending;
+			void *send_req;
+			bool dot_alpn_negotiated;
+			const char *tls_verify_error;
+		} streamdns;
+
+		/*% PROXY protocol overlay */
+		struct {
+			bool reading;
+			size_t nsending;
+			void *send_req;
+			union {
+				isc_proxy2_handler_t *handler; /* server */
+				isc_buffer_t *outbuf;	       /* client */
+			} proxy2;
+			bool header_processed;
+			bool extra_processed;
+			isc_nmsocket_t **udp_server_socks; /* UDP sockets */
+			size_t udp_server_socks_num;
+		} proxy;
+	};
 };
+
+STATIC_ASSERT(sizeof(((isc_nmsocket_t *)0)->uv_handle) == sizeof(uv_tcp_t),
+	      "nmsocket uv_handle union should be sized by uv_tcp_t");
+
+STATIC_ASSERT(sizeof(isc_nmsocket_t) <= 1024,
+	      "nmsocket should fit in 16 cachelines after transport union");
 
 void
 isc__nm_free_uvbuf(isc_nmsocket_t *sock, const uv_buf_t *buf);

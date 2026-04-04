@@ -357,7 +357,7 @@ streamdns_transport_connected(isc_nmhandle_t *handle, isc_result_t result,
 	isc_nmhandle_attach(handle, &sock->outerhandle);
 	sock->active = true;
 
-	handle->sock->streamdns.sock = sock;
+	handle->sock->overlay_socket = sock;
 
 	streamdns_save_alpn_status(sock, handle);
 	isc__nmhandle_set_manual_timer(sock->outerhandle, true);
@@ -735,7 +735,7 @@ streamdns_accept_cb(isc_nmhandle_t *handle, isc_result_t result, void *cbarg) {
 
 	isc__nmsocket_attach(handle->sock, &nsock->listener);
 	isc_nmhandle_attach(handle, &nsock->outerhandle);
-	handle->sock->streamdns.sock = nsock;
+	handle->sock->overlay_socket = nsock;
 
 	streamdns_save_alpn_status(nsock, handle);
 
@@ -834,9 +834,9 @@ isc_nm_listenstreamdns(uint32_t workers, isc_sockaddr_t *iface,
 
 	listener->result = result;
 	listener->active = true;
-	INSIST(listener->outer->streamdns.listener == NULL);
+	INSIST(listener->outer->overlay_listener == NULL);
 	listener->nchildren = listener->outer->nchildren;
-	isc__nmsocket_attach(listener, &listener->outer->streamdns.listener);
+	isc__nmsocket_attach(listener, &listener->outer->overlay_listener);
 
 	*sockp = listener;
 
@@ -865,15 +865,15 @@ isc__nm_streamdns_cleanup_data(isc_nmsocket_t *sock) {
 	case isc_nm_tlslistener:
 	case isc_nm_tcplistener:
 	case isc_nm_proxystreamlistener:
-		if (sock->streamdns.listener != NULL) {
-			isc__nmsocket_detach(&sock->streamdns.listener);
+		if (sock->overlay_listener != NULL) {
+			isc__nmsocket_detach(&sock->overlay_listener);
 		}
 		break;
 	case isc_nm_tlssocket:
 	case isc_nm_tcpsocket:
 	case isc_nm_proxystreamsocket:
-		if (sock->streamdns.sock != NULL) {
-			isc__nmsocket_detach(&sock->streamdns.sock);
+		if (sock->overlay_socket != NULL) {
+			isc__nmsocket_detach(&sock->overlay_socket);
 		}
 		break;
 	default:

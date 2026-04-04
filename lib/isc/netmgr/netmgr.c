@@ -709,17 +709,20 @@ isc___nmsocket_init(isc_nmsocket_t *sock, isc__networker_t *worker,
 	REQUIRE(sock != NULL);
 	REQUIRE(worker != NULL);
 
-	*sock = (isc_nmsocket_t){
-		.type = type,
-		.tid = worker->loop->tid,
-		.fd = -1,
-		.inactive_handles = ISC_LIST_INITIALIZER,
-		.result = ISC_R_UNSET,
-		.active_handles = ISC_LIST_INITIALIZER,
-		.active_handles_max = ISC_NETMGR_MAX_STREAM_CLIENTS_PER_CONN,
-		.active_link = ISC_LINK_INITIALIZER,
-		.active = true,
-	};
+	/*
+	 * Use memset instead of compound literal — overlay types may be
+	 * allocated smaller than sizeof(isc_nmsocket_t) in the future
+	 * (the transport union at the end is sized for the largest variant).
+	 */
+	memset(sock, 0, sizeof(*sock));
+	sock->type = type;
+	sock->tid = worker->loop->tid;
+	ISC_LIST_INIT(sock->inactive_handles);
+	sock->result = ISC_R_UNSET;
+	ISC_LIST_INIT(sock->active_handles);
+	sock->active_handles_max = ISC_NETMGR_MAX_STREAM_CLIENTS_PER_CONN;
+	ISC_LINK_INIT(sock, active_link);
+	sock->active = true;
 
 	if (iface != NULL) {
 		family = iface->type.sa.sa_family;
@@ -739,7 +742,6 @@ isc___nmsocket_init(isc_nmsocket_t *sock, isc__networker_t *worker,
 #endif
 
 	isc__networker_attach(worker, &sock->worker);
-	sock->uv_handle.handle.data = sock;
 
 	switch (type) {
 	case isc_nm_udpsocket:

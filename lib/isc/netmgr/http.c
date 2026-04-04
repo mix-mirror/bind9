@@ -3001,7 +3001,6 @@ isc_nm_listenhttp(uint32_t workers, isc_sockaddr_t *iface, int backlog,
 	}
 
 	sock->nchildren = sock->outer->nchildren;
-	sock->fd = (uv_os_sock_t)-1;
 
 	*sockp = sock;
 	return ISC_R_SUCCESS;

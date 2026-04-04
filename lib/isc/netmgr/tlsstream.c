@@ -948,7 +948,7 @@ tlslisten_acceptcb(isc_nmhandle_t *handle, isc_result_t result, void *cbarg) {
 	 * Hold a reference to tlssock in the TCP socket: it will
 	 * detached in isc__nm_tls_cleanup_data().
 	 */
-	handle->sock->tlsstream.tlssocket = tlssock;
+	handle->sock->overlay_socket = tlssock;
 
 	result = initialize_tls(tlssock, true);
 	RUNTIME_CHECK(result == ISC_R_SUCCESS);
@@ -1017,8 +1017,8 @@ isc_nm_listentls(uint32_t workers, isc_sockaddr_t *iface,
 	isc__nmsocket_attach(tlssock->outer, &tsock);
 	tlssock->result = result;
 	tlssock->active = true;
-	INSIST(tlssock->outer->tlsstream.tlslistener == NULL);
-	isc__nmsocket_attach(tlssock, &tlssock->outer->tlsstream.tlslistener);
+	INSIST(tlssock->outer->overlay_listener == NULL);
+	isc__nmsocket_attach(tlssock, &tlssock->outer->overlay_listener);
 	isc__nmsocket_detach(&tsock);
 	INSIST(result != ISC_R_UNSET);
 	tlssock->nchildren = tlssock->outer->nchildren;
@@ -1302,7 +1302,7 @@ tcp_connected(isc_nmhandle_t *handle, isc_result_t result, void *cbarg) {
 	 * Hold a reference to tlssock in the TCP socket: it will
 	 * detached in isc__nm_tls_cleanup_data().
 	 */
-	handle->sock->tlsstream.tlssocket = tlssock;
+	handle->sock->overlay_socket = tlssock;
 
 	tls_try_to_enable_tcp_nodelay(tlssock);
 
@@ -1321,9 +1321,9 @@ void
 isc__nm_tls_cleanup_data(isc_nmsocket_t *sock) {
 	if ((sock->type == isc_nm_tcplistener ||
 	     sock->type == isc_nm_proxystreamlistener) &&
-	    sock->tlsstream.tlslistener != NULL)
+	    sock->overlay_listener != NULL)
 	{
-		isc__nmsocket_detach(&sock->tlsstream.tlslistener);
+		isc__nmsocket_detach(&sock->overlay_listener);
 	} else if (sock->type == isc_nm_tlslistener) {
 		tls_cleanup_listener_tlsctx(sock);
 	} else if (sock->type == isc_nm_tlssocket) {
@@ -1361,13 +1361,13 @@ isc__nm_tls_cleanup_data(isc_nmsocket_t *sock) {
 		}
 	} else if ((sock->type == isc_nm_tcpsocket ||
 		    sock->type == isc_nm_proxystreamsocket) &&
-		   sock->tlsstream.tlssocket != NULL)
+		   sock->overlay_socket != NULL)
 	{
 		/*
 		 * The TLS socket can't be destroyed until its underlying TCP
 		 * socket is, to avoid possible use-after-free errors.
 		 */
-		isc__nmsocket_detach(&sock->tlsstream.tlssocket);
+		isc__nmsocket_detach(&sock->overlay_socket);
 	}
 }
 

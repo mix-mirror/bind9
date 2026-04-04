@@ -298,7 +298,7 @@ proxystream_accept_cb(isc_nmhandle_t *handle, isc_result_t result,
 
 	isc__nmsocket_attach(listensock, &nsock->listener);
 	isc_nmhandle_attach(handle, &nsock->outerhandle);
-	handle->sock->proxy.sock = nsock;
+	handle->sock->overlay_socket = nsock;
 
 	/*
 	 * We need to control the timer manually as we do *not* want it to
@@ -435,7 +435,7 @@ proxystream_connect_cb(isc_nmhandle_t *handle, isc_result_t result,
 	}
 
 	isc_nmhandle_attach(handle, &sock->outerhandle);
-	handle->sock->proxy.sock = sock;
+	handle->sock->overlay_socket = sock;
 	sock->active = true;
 
 	isc_buffer_usedregion(sock->proxy.proxy2.outbuf, &header);
@@ -530,7 +530,7 @@ void
 isc__nm_proxystream_stoplistening(isc_nmsocket_t *sock) {
 	REQUIRE(VALID_NMSOCK(sock));
 	REQUIRE(sock->type == isc_nm_proxystreamlistener);
-	REQUIRE(sock->proxy.sock == NULL);
+	REQUIRE(sock->overlay_socket == NULL);
 
 	isc__nmsocket_stop(sock);
 }
@@ -549,8 +549,8 @@ isc__nm_proxystream_cleanup_data(isc_nmsocket_t *sock) {
 	switch (sock->type) {
 	case isc_nm_tcpsocket:
 	case isc_nm_tlssocket:
-		if (sock->proxy.sock != NULL) {
-			isc__nmsocket_detach(&sock->proxy.sock);
+		if (sock->overlay_socket != NULL) {
+			isc__nmsocket_detach(&sock->overlay_socket);
 		}
 		break;
 	case isc_nm_proxystreamsocket:
