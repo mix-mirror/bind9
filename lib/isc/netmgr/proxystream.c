@@ -237,7 +237,7 @@ proxystream_sock_new(isc__networker_t *worker, const isc_nmsocket_type_t type,
 	INSIST(type == isc_nm_proxystreamsocket ||
 	       type == isc_nm_proxystreamlistener);
 
-	sock = isc_mempool_get(worker->nmsocket_pool);
+	sock = isc_mempool_get(worker->nmsocket_pool_overlay);
 	isc__nmsocket_init(sock, worker, type, addr, NULL);
 	sock->result = ISC_R_UNSET;
 	if (type == isc_nm_proxystreamsocket) {

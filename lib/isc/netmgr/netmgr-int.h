@@ -217,7 +217,9 @@ typedef struct isc__networker {
 
 	ISC_LIST(isc_nmsocket_t) active_sockets;
 
-	isc_mempool_t *nmsocket_pool;
+	isc_mempool_t *nmsocket_pool;	      /*%< TCP sockets (full size) */
+	isc_mempool_t *nmsocket_pool_udp;     /*%< UDP sockets (smaller) */
+	isc_mempool_t *nmsocket_pool_overlay; /*%< overlay sockets (smallest) */
 	isc_mempool_t *uvreq_pool;
 } isc__networker_t;
 
@@ -535,17 +537,11 @@ struct isc_nmsocket {
 	isc_nmsocket_h2_t *h2;
 #endif /* HAVE_LIBNGHTTP2 */
 
-	/*% pquota: TCP client quota, stored in listening sockets */
-	isc_quota_t *pquota;
-	isc_job_t quotacb;
-
 	/*% Socket statistics */
 	const isc_statscounter_t *statsindex;
 
 	uint64_t read_timeout;
 	uint64_t connect_timeout;
-	uint64_t write_timeout;
-	bool reading_throttled;
 
 	/*% outer socket is for 'wrapped' sockets - e.g. tcpdns in tcp */
 	isc_nmsocket_t *outer;
@@ -556,7 +552,6 @@ struct isc_nmsocket {
 	/*% client socket for connections */
 	isc_nmsocket_t *listener;
 
-	/*% Child sockets for multi-socket setups */
 	isc_nmsocket_t *children;
 	uint_fast32_t nchildren;
 	isc_sockaddr_t iface;
@@ -578,11 +573,8 @@ struct isc_nmsocket {
 	bool reading;
 	bool timedout;
 
-	isc_nanosecs_t quota_accept_ts;
-
 	bool client;
 	bool processing;
-	bool keepalive;
 
 	/*% Handle management */
 	ISC_LIST(isc_nmhandle_t) inactive_handles;
@@ -607,9 +599,6 @@ struct isc_nmsocket {
 	isc_nm_accept_cb_t accept_cb;
 	void *accept_cbarg;
 
-	isc_barrier_t listen_barrier;
-	isc_barrier_t stop_barrier;
-	bool barriers_initialised;
 	bool manual_read_timer;
 
 #if ISC_NETMGR_TRACE
@@ -631,18 +620,42 @@ struct isc_nmsocket {
 	 * since they only need the common fields plus their overlay data.
 	 */
 	union {
-		/*% TCP/UDP base transport */
+		/*% TCP base transport */
 		struct {
 			union {
 				uv_handle_t handle;
 				uv_stream_t stream;
 				uv_tcp_t tcp;
+			} uv_handle;
+			uv_timer_t read_timer;
+			uv_os_sock_t fd;
+			int backlog;
+			/*% TCP-specific fields */
+			isc_quota_t *pquota;
+			isc_job_t quotacb;
+			isc_nanosecs_t quota_accept_ts;
+			uint64_t write_timeout;
+			bool reading_throttled;
+			bool keepalive;
+			/*% Listener-only fields */
+			isc_barrier_t listen_barrier;
+			isc_barrier_t stop_barrier;
+			bool barriers_initialised;
+		} tcp;
+
+		/*% UDP base transport */
+		struct {
+			union {
+				uv_handle_t handle;
 				uv_udp_t udp;
 			} uv_handle;
 			uv_timer_t read_timer;
 			uv_os_sock_t fd;
-			int backlog; /*%< TCP listen backlog */
-		};
+			/*% Listener-only fields */
+			isc_barrier_t listen_barrier;
+			isc_barrier_t stop_barrier;
+			bool barriers_initialised;
+		} udp;
 
 		/*% TLS overlay */
 		struct tlsstream {
@@ -699,11 +712,102 @@ struct isc_nmsocket {
 	};
 };
 
-STATIC_ASSERT(sizeof(((isc_nmsocket_t *)0)->uv_handle) == sizeof(uv_tcp_t),
-	      "nmsocket uv_handle union should be sized by uv_tcp_t");
+STATIC_ASSERT(sizeof(((isc_nmsocket_t *)0)->tcp.uv_handle) == sizeof(uv_tcp_t),
+	      "TCP uv_handle union should be sized by uv_tcp_t");
 
 STATIC_ASSERT(sizeof(isc_nmsocket_t) <= 1024,
 	      "nmsocket should fit in 16 cachelines after transport union");
+
+/*%
+ * Common size: everything before the transport union.
+ * Overlay sockets only need this plus their type-specific data.
+ */
+#define ISC_NMSOCKET_COMMON_SIZE offsetof(isc_nmsocket_t, tcp)
+
+/*%
+ * Overlay pool element size: common fields + largest overlay (tlsstream).
+ */
+#define ISC_NMSOCKET_OVERLAY_SIZE \
+	(ISC_NMSOCKET_COMMON_SIZE + sizeof(struct tlsstream))
+
+/*%
+ * UDP pool element size: common fields + UDP transport data.
+ */
+#define ISC_NMSOCKET_UDP_SIZE \
+	(ISC_NMSOCKET_COMMON_SIZE + sizeof(((isc_nmsocket_t *)0)->udp))
+
+STATIC_ASSERT(ISC_NMSOCKET_OVERLAY_SIZE < sizeof(isc_nmsocket_t),
+	      "overlay size must be smaller than full nmsocket size");
+
+/*%
+ * Return the allocation size for a socket of the given type.
+ */
+static inline size_t
+isc__nmsocket_alloc_size(isc_nmsocket_type type) {
+	switch (type) {
+	case isc_nm_tcpsocket:
+	case isc_nm_tcplistener:
+		return sizeof(isc_nmsocket_t);
+	case isc_nm_udpsocket:
+	case isc_nm_udplistener:
+		return ISC_NMSOCKET_UDP_SIZE;
+	default:
+		return ISC_NMSOCKET_OVERLAY_SIZE;
+	}
+}
+
+/*%
+ * Return the appropriate mempool for a socket of the given type.
+ */
+static inline isc_mempool_t *
+isc__nmsocket_getpool(isc__networker_t *worker, isc_nmsocket_type type) {
+	switch (type) {
+	case isc_nm_tcpsocket:
+	case isc_nm_tcplistener:
+		return worker->nmsocket_pool;
+	case isc_nm_udpsocket:
+	case isc_nm_udplistener:
+		return worker->nmsocket_pool_udp;
+	default:
+		return worker->nmsocket_pool_overlay;
+	}
+}
+
+/*%
+ * Access the uv_timer for a base transport socket (TCP or UDP).
+ * Only valid for isc_nm_tcpsocket/listener and isc_nm_udpsocket/listener.
+ */
+static inline uv_timer_t *
+isc__nmsocket_timer_ptr(isc_nmsocket_t *sock) {
+	switch (sock->type) {
+	case isc_nm_tcpsocket:
+	case isc_nm_tcplistener:
+		return &sock->tcp.read_timer;
+	case isc_nm_udpsocket:
+	case isc_nm_udplistener:
+		return &sock->udp.read_timer;
+	default:
+		UNREACHABLE();
+	}
+}
+
+/*%
+ * Access the base uv_handle for a base transport socket (TCP or UDP).
+ * Only valid for isc_nm_tcpsocket/listener and isc_nm_udpsocket/listener.
+ */
+static inline uv_handle_t *
+isc__nmsocket_uv_handle_ptr(isc_nmsocket_t *sock) {
+	switch (sock->type) {
+	case isc_nm_tcpsocket:
+	case isc_nm_tcplistener:
+		return &sock->tcp.uv_handle.handle;
+	case isc_nm_udpsocket:
+	case isc_nm_udplistener:
+		return &sock->udp.uv_handle.handle;
+	default:
+		UNREACHABLE();
+	}
+}
 
 void
 isc__nm_free_uvbuf(isc_nmsocket_t *sock, const uv_buf_t *buf);

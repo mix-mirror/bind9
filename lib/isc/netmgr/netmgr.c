@@ -233,6 +233,18 @@ isc_netmgr_create(isc_mem_t *mctx) {
 		isc_mempool_setfreemax(worker->nmsocket_pool,
 				       ISC_NM_NMSOCKET_MAX);
 
+		isc_mempool_create(worker->mctx, ISC_NMSOCKET_UDP_SIZE,
+				   "nmsocket_pool_udp",
+				   &worker->nmsocket_pool_udp);
+		isc_mempool_setfreemax(worker->nmsocket_pool_udp,
+				       ISC_NM_NMSOCKET_MAX);
+
+		isc_mempool_create(worker->mctx, ISC_NMSOCKET_OVERLAY_SIZE,
+				   "nmsocket_pool_overlay",
+				   &worker->nmsocket_pool_overlay);
+		isc_mempool_setfreemax(worker->nmsocket_pool_overlay,
+				       ISC_NM_NMSOCKET_MAX);
+
 		isc_mempool_create(worker->mctx, sizeof(isc__nm_uvreq_t),
 				   "uvreq_pool", &worker->uvreq_pool);
 		isc_mempool_setfreemax(worker->uvreq_pool, ISC_NM_UVREQS_MAX);
@@ -300,8 +312,10 @@ isc_nmhandle_setwritetimeout(isc_nmhandle_t *handle, uint64_t write_timeout) {
 
 	switch (handle->sock->type) {
 	case isc_nm_tcpsocket:
+		handle->sock->tcp.write_timeout = write_timeout;
+		break;
 	case isc_nm_udpsocket:
-		handle->sock->write_timeout = write_timeout;
+		/* UDP does not use write_timeout */
 		break;
 	case isc_nm_tlssocket:
 		isc__nmhandle_tls_setwritetimeout(handle, write_timeout);
@@ -502,7 +516,6 @@ nmsocket_cleanup(void *arg) {
 	}
 
 	INSIST(sock->server == NULL);
-	sock->pquota = NULL;
 
 	isc__nm_tls_cleanup_data(sock);
 #if HAVE_LIBNGHTTP2
@@ -512,9 +525,21 @@ nmsocket_cleanup(void *arg) {
 	isc__nm_proxystream_cleanup_data(sock);
 	isc__nm_proxyudp_cleanup_data(sock);
 
-	if (sock->barriers_initialised) {
-		isc_barrier_destroy(&sock->listen_barrier);
-		isc_barrier_destroy(&sock->stop_barrier);
+	switch (sock->type) {
+	case isc_nm_tcplistener:
+		if (sock->tcp.barriers_initialised) {
+			isc_barrier_destroy(&sock->tcp.listen_barrier);
+			isc_barrier_destroy(&sock->tcp.stop_barrier);
+		}
+		break;
+	case isc_nm_udplistener:
+		if (sock->udp.barriers_initialised) {
+			isc_barrier_destroy(&sock->udp.listen_barrier);
+			isc_barrier_destroy(&sock->udp.stop_barrier);
+		}
+		break;
+	default:
+		break;
 	}
 
 	sock->magic = 0;
@@ -525,7 +550,8 @@ nmsocket_cleanup(void *arg) {
 
 		ISC_LIST_UNLINK(worker->active_sockets, sock, active_link);
 
-		isc_mempool_put(worker->nmsocket_pool, sock);
+		isc_mempool_put(isc__nmsocket_getpool(worker, sock->type),
+				sock);
 	}
 
 	isc__networker_detach(&worker);
@@ -714,7 +740,7 @@ isc___nmsocket_init(isc_nmsocket_t *sock, isc__networker_t *worker,
 	 * allocated smaller than sizeof(isc_nmsocket_t) in the future
 	 * (the transport union at the end is sized for the largest variant).
 	 */
-	memset(sock, 0, sizeof(*sock));
+	memset(sock, 0, isc__nmsocket_alloc_size(type));
 	sock->type = type;
 	sock->tid = worker->loop->tid;
 	ISC_LIST_INIT(sock->inactive_handles);
@@ -1064,7 +1090,7 @@ isc__nm_failed_connect_cb(isc_nmsocket_t *sock, isc__nm_uvreq_t *req,
 	isc__nm_incstats(sock, STATID_CONNECTFAIL);
 
 	isc__nmsocket_timer_stop(sock);
-	uv_handle_set_data((uv_handle_t *)&sock->read_timer, sock);
+	uv_handle_set_data((uv_handle_t *)isc__nmsocket_timer_ptr(sock), sock);
 
 	isc__nmsocket_clearcb(sock);
 	isc__nm_connectcb(sock, req, eresult, async);
@@ -1209,7 +1235,9 @@ isc__nmsocket_timer_restart(isc_nmsocket_t *sock) {
 		break;
 	}
 
-	if (uv_is_closing((uv_handle_t *)&sock->read_timer)) {
+	uv_timer_t *timer = isc__nmsocket_timer_ptr(sock);
+
+	if (uv_is_closing((uv_handle_t *)timer)) {
 		return;
 	}
 
@@ -1220,8 +1248,7 @@ isc__nmsocket_timer_restart(isc_nmsocket_t *sock) {
 			return;
 		}
 
-		r = uv_timer_start(&sock->read_timer,
-				   isc__nmsocket_connecttimeout_cb,
+		r = uv_timer_start(timer, isc__nmsocket_connecttimeout_cb,
 				   sock->connect_timeout + 10, 0);
 		UV_RUNTIME_CHECK(uv_timer_start, r);
 
@@ -1232,8 +1259,7 @@ isc__nmsocket_timer_restart(isc_nmsocket_t *sock) {
 			return;
 		}
 
-		r = uv_timer_start(&sock->read_timer,
-				   isc__nmsocket_readtimeout_cb,
+		r = uv_timer_start(timer, isc__nmsocket_readtimeout_cb,
 				   sock->read_timeout, 0);
 		UV_RUNTIME_CHECK(uv_timer_start, r);
 	}
@@ -1256,7 +1282,7 @@ isc__nmsocket_timer_running(isc_nmsocket_t *sock) {
 		break;
 	}
 
-	return uv_is_active((uv_handle_t *)&sock->read_timer);
+	return uv_is_active((uv_handle_t *)isc__nmsocket_timer_ptr(sock));
 }
 
 void
@@ -1295,7 +1321,7 @@ isc__nmsocket_timer_stop(isc_nmsocket_t *sock) {
 
 	/* uv_timer_stop() is idempotent, no need to check if running */
 
-	r = uv_timer_stop(&sock->read_timer);
+	r = uv_timer_stop(isc__nmsocket_timer_ptr(sock));
 	UV_RUNTIME_CHECK(uv_timer_stop, r);
 }
 
@@ -1389,17 +1415,17 @@ isc__nm_start_reading(isc_nmsocket_t *sock) {
 	isc_result_t result = ISC_R_SUCCESS;
 	int r;
 
-	if (uv_is_active(&sock->uv_handle.handle)) {
+	if (uv_is_active(isc__nmsocket_uv_handle_ptr(sock))) {
 		return ISC_R_SUCCESS;
 	}
 
 	switch (sock->type) {
 	case isc_nm_udpsocket:
-		r = uv_udp_recv_start(&sock->uv_handle.udp, isc__nm_alloc_cb,
-				      isc__nm_udp_read_cb);
+		r = uv_udp_recv_start(&sock->udp.uv_handle.udp,
+				      isc__nm_alloc_cb, isc__nm_udp_read_cb);
 		break;
 	case isc_nm_tcpsocket:
-		r = uv_read_start(&sock->uv_handle.stream, isc__nm_alloc_cb,
+		r = uv_read_start(&sock->tcp.uv_handle.stream, isc__nm_alloc_cb,
 				  isc__nm_tcp_read_cb);
 		break;
 	default:
@@ -1416,17 +1442,17 @@ void
 isc__nm_stop_reading(isc_nmsocket_t *sock) {
 	int r;
 
-	if (!uv_is_active(&sock->uv_handle.handle)) {
+	if (!uv_is_active(isc__nmsocket_uv_handle_ptr(sock))) {
 		return;
 	}
 
 	switch (sock->type) {
 	case isc_nm_udpsocket:
-		r = uv_udp_recv_stop(&sock->uv_handle.udp);
+		r = uv_udp_recv_stop(&sock->udp.uv_handle.udp);
 		UV_RUNTIME_CHECK(uv_udp_recv_stop, r);
 		break;
 	case isc_nm_tcpsocket:
-		r = uv_read_stop(&sock->uv_handle.stream);
+		r = uv_read_stop(&sock->tcp.uv_handle.stream);
 		UV_RUNTIME_CHECK(uv_read_stop, r);
 		break;
 	default:
@@ -1472,7 +1498,9 @@ isc_nmhandle_cleartimeout(isc_nmhandle_t *handle) {
 	default:
 		handle->sock->read_timeout = 0;
 
-		if (uv_is_active((uv_handle_t *)&handle->sock->read_timer)) {
+		if (uv_is_active((uv_handle_t *)isc__nmsocket_timer_ptr(
+			    handle->sock)))
+		{
 			isc__nmsocket_timer_stop(handle->sock);
 		}
 	}
@@ -1520,8 +1548,8 @@ isc_nmhandle_keepalive(isc_nmhandle_t *handle, bool value) {
 
 	switch (sock->type) {
 	case isc_nm_tcpsocket:;
-		sock->keepalive = value;
-		sock->read_timeout = sock->write_timeout =
+		sock->tcp.keepalive = value;
+		sock->read_timeout = sock->tcp.write_timeout =
 			value ? atomic_load_relaxed(&isc__netmgr->keepalive)
 			      : atomic_load_relaxed(&isc__netmgr->idle);
 		break;
@@ -1573,13 +1601,13 @@ isc_nmhandle_localaddr(isc_nmhandle_t *handle) {
 #ifdef ISC_SOCKET_DETAILS
 	switch (handle->sock->type) {
 	case isc_nm_tcpsocket:
-		uv_tcp_getsockname(&handle->sock->uv_handle.tcp,
+		uv_tcp_getsockname(&handle->sock->tcp.uv_handle.tcp,
 				   (struct sockaddr *)&addr.type,
 				   &(int){ sizeof(addr.type) });
 		break;
 
 	case isc_nm_udpsocket:
-		uv_udp_getsockname(&handle->sock->uv_handle.udp,
+		uv_udp_getsockname(&handle->sock->udp.uv_handle.udp,
 				   (struct sockaddr *)&addr.type,
 				   &(int){ sizeof(addr.type) });
 		break;
@@ -1871,9 +1899,25 @@ isc__nmsocket_stop(isc_nmsocket_t *listener) {
 void
 isc__nmsocket_barrier_init(isc_nmsocket_t *listener) {
 	REQUIRE(listener->nchildren > 0);
-	isc_barrier_init(&listener->listen_barrier, listener->nchildren);
-	isc_barrier_init(&listener->stop_barrier, listener->nchildren);
-	listener->barriers_initialised = true;
+
+	switch (listener->type) {
+	case isc_nm_tcplistener:
+		isc_barrier_init(&listener->tcp.listen_barrier,
+				 listener->nchildren);
+		isc_barrier_init(&listener->tcp.stop_barrier,
+				 listener->nchildren);
+		listener->tcp.barriers_initialised = true;
+		break;
+	case isc_nm_udplistener:
+		isc_barrier_init(&listener->udp.listen_barrier,
+				 listener->nchildren);
+		isc_barrier_init(&listener->udp.stop_barrier,
+				 listener->nchildren);
+		listener->udp.barriers_initialised = true;
+		break;
+	default:
+		UNREACHABLE();
+	}
 }
 
 static void
@@ -1989,22 +2033,22 @@ isc__nmsocket_reset(isc_nmsocket_t *sock) {
 		break;
 	}
 
-	if (!uv_is_closing(&sock->uv_handle.handle) &&
-	    uv_is_active(&sock->uv_handle.handle))
+	if (!uv_is_closing(&sock->tcp.uv_handle.handle) &&
+	    uv_is_active(&sock->tcp.uv_handle.handle))
 	{
 		/*
 		 * The real shutdown will be handled in the respective
 		 * close functions.
 		 */
 		isc__nmsocket_attach(sock, &(isc_nmsocket_t *){ NULL });
-		int r = uv_tcp_close_reset(&sock->uv_handle.tcp,
+		int r = uv_tcp_close_reset(&sock->tcp.uv_handle.tcp,
 					   reset_shutdown);
 		if (r != 0) {
 			isc_log_write(ISC_LOGCATEGORY_GENERAL,
 				      ISC_LOGMODULE_NETMGR, ISC_LOG_DEBUG(1),
 				      "TCP Reset (RST) failed: %s",
 				      uv_strerror(r));
-			reset_shutdown(&sock->uv_handle.handle);
+			reset_shutdown(&sock->tcp.uv_handle.handle);
 		}
 	} else {
 		isc__nmsocket_shutdown(sock);
@@ -2640,6 +2684,8 @@ isc__networker_destroy(isc__networker_t *worker) {
 	isc_loop_detach(&worker->loop);
 
 	isc_mempool_destroy(&worker->uvreq_pool);
+	isc_mempool_destroy(&worker->nmsocket_pool_overlay);
+	isc_mempool_destroy(&worker->nmsocket_pool_udp);
 	isc_mempool_destroy(&worker->nmsocket_pool);
 
 	isc_mem_putanddetach(&worker->mctx, worker->recvbuf,
@@ -2847,7 +2893,8 @@ isc_nmhandle_set_tcp_nodelay(isc_nmhandle_t *handle, const bool value) {
 	switch (sock->type) {
 	case isc_nm_tcpsocket: {
 		uv_os_fd_t tcp_fd = (uv_os_fd_t)-1;
-		(void)uv_fileno((uv_handle_t *)&sock->uv_handle.tcp, &tcp_fd);
+		(void)uv_fileno((uv_handle_t *)&sock->tcp.uv_handle.tcp,
+				&tcp_fd);
 		RUNTIME_CHECK(tcp_fd != (uv_os_fd_t)-1);
 		result = isc__nm_socket_tcp_nodelay((uv_os_sock_t)tcp_fd,
 						    value);

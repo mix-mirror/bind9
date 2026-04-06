@@ -1915,7 +1915,7 @@ isc_nm_httpconnect(isc_sockaddr_t *local, isc_sockaddr_t *peer, const char *uri,
 		local = &local_interface;
 	}
 
-	sock = isc_mempool_get(worker->nmsocket_pool);
+	sock = isc_mempool_get(worker->nmsocket_pool_overlay);
 	isc__nmsocket_init(sock, worker, isc_nm_httpsocket, local, NULL);
 	http_initsocket(sock);
 
@@ -2127,7 +2127,7 @@ server_on_begin_headers_callback(nghttp2_session *ngsession,
 	INSIST(session->handle->sock->tid == isc_tid());
 
 	worker = session->handle->sock->worker;
-	socket = isc_mempool_get(worker->nmsocket_pool);
+	socket = isc_mempool_get(worker->nmsocket_pool_overlay);
 	local = isc_nmhandle_localaddr(session->handle);
 	isc__nmsocket_init(socket, worker, isc_nm_httpsocket, &local, NULL);
 	http_initsocket(socket);
@@ -2950,7 +2950,7 @@ isc_nm_listenhttp(uint32_t workers, isc_sockaddr_t *iface, int backlog,
 	REQUIRE(atomic_load(&eps->in_use) == false);
 	REQUIRE(isc_tid() == 0);
 
-	sock = isc_mempool_get(worker->nmsocket_pool);
+	sock = isc_mempool_get(worker->nmsocket_pool_overlay);
 	isc__nmsocket_init(sock, worker, isc_nm_httplistener, iface, NULL);
 	http_initsocket(sock);
 	atomic_init(&sock->h2->max_concurrent_streams,

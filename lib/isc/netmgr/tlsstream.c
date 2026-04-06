@@ -919,7 +919,7 @@ tlslisten_acceptcb(isc_nmhandle_t *handle, isc_result_t result, void *cbarg) {
 	/*
 	 * We need to create a 'wrapper' tlssocket for this connection.
 	 */
-	tlssock = isc_mempool_get(handle->sock->worker->nmsocket_pool);
+	tlssock = isc_mempool_get(handle->sock->worker->nmsocket_pool_overlay);
 	isc__nmsocket_init(tlssock, handle->sock->worker, isc_nm_tlssocket,
 			   &local, NULL);
 	isc__nmsocket_attach(tlslistensock, &tlssock->server);
@@ -982,7 +982,7 @@ isc_nm_listentls(uint32_t workers, isc_sockaddr_t *iface,
 	}
 	REQUIRE(workers <= isc__netmgr->nloops);
 
-	tlssock = isc_mempool_get(worker->nmsocket_pool);
+	tlssock = isc_mempool_get(worker->nmsocket_pool_overlay);
 	isc__nmsocket_init(tlssock, worker, isc_nm_tlslistener, iface, NULL);
 	tlssock->accept_cb = accept_cb;
 	tlssock->accept_cbarg = accept_cbarg;
@@ -1221,7 +1221,7 @@ isc_nm_tlsconnect(isc_sockaddr_t *local, isc_sockaddr_t *peer,
 		return;
 	}
 
-	sock = isc_mempool_get(worker->nmsocket_pool);
+	sock = isc_mempool_get(worker->nmsocket_pool_overlay);
 	isc__nmsocket_init(sock, worker, isc_nm_tlssocket, local, NULL);
 	sock->connect_cb = connect_cb;
 	sock->connect_cbarg = connect_cbarg;
