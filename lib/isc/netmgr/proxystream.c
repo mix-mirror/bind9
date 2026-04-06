@@ -1160,3 +1160,33 @@ isc__nmhandle_proxystream_get_selected_alpn(isc_nmhandle_t *handle,
 
 	isc__nmhandle_get_selected_alpn(sock->outerhandle, alpn, alpnlen);
 }
+
+const isc_nmsocket_ops_t isc__nm_proxystream_ops = {
+	.close = isc__nm_proxystream_close,
+	.send = isc__nm_proxystream_send,
+	.senddns = isc__nm_proxystream_senddns,
+	.read = isc__nm_proxystream_read,
+	.read_stop = isc__nm_proxystream_read_stop,
+	.cleanup_data = isc__nm_proxystream_cleanup_data,
+	.settimeout = isc__nmhandle_proxystream_settimeout,
+	.cleartimeout = isc__nmhandle_proxystream_cleartimeout,
+	.keepalive = isc__nmhandle_proxystream_keepalive,
+	.setwritetimeout = isc__nmhandle_proxystream_setwritetimeout,
+	.set_manual_timer = isc__nmhandle_proxystream_set_manual_timer,
+	.reset = isc__nmsocket_proxystream_reset,
+	.failed_read_cb = isc__nm_proxystream_failed_read_cb,
+	.timer_running = isc__nmsocket_proxystream_timer_running,
+	.timer_restart = isc__nmsocket_proxystream_timer_restart,
+	.timer_stop = isc__nmsocket_proxystream_timer_stop,
+	.has_encryption = isc__nm_proxystream_has_encryption,
+	.verify_tls_peer = isc__nm_proxystream_verify_tls_peer_result_string,
+	/* set_tlsctx: different signature, dispatched manually */
+	.set_tcp_nodelay = isc__nmhandle_proxystream_set_tcp_nodelay,
+	.get_selected_alpn = isc__nmhandle_proxystream_get_selected_alpn,
+};
+
+const isc_nmsocket_ops_t isc__nm_proxystream_listener_ops = {
+	.stoplistening = isc__nm_proxystream_stoplistening,
+	.cleanup_data = isc__nm_proxystream_cleanup_data,
+	/* set_tlsctx: different signature, dispatched manually */
+};

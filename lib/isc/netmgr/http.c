@@ -276,7 +276,7 @@ server_send_error_response(const isc_http_error_responses_t error,
 			   nghttp2_session *ngsession, isc_nmsocket_t *socket);
 
 static isc_result_t
-client_send(isc_nmhandle_t *handle, const isc_region_t *region);
+client_send(isc_nmhandle_t *handle, isc_region_t *region);
 
 static void
 finish_http_session(isc_nm_http_session_t *session);
@@ -1991,7 +1991,7 @@ isc_nm_httpconnect(isc_sockaddr_t *local, isc_sockaddr_t *peer, const char *uri,
 }
 
 static isc_result_t
-client_send(isc_nmhandle_t *handle, const isc_region_t *region) {
+client_send(isc_nmhandle_t *handle, isc_region_t *region) {
 	isc_result_t result = ISC_R_SUCCESS;
 	isc_nmsocket_t *sock = handle->sock;
 	isc_mem_t *mctx = sock->worker->mctx;
@@ -2636,8 +2636,8 @@ static void
 http_send_cb(void *arg);
 
 void
-isc__nm_http_send(isc_nmhandle_t *handle, const isc_region_t *region,
-		  isc_nm_cb_t cb, void *cbarg) {
+isc__nm_http_send(isc_nmhandle_t *handle, isc_region_t *region, isc_nm_cb_t cb,
+		  void *cbarg) {
 	isc_nmsocket_t *sock = NULL;
 	isc__nm_uvreq_t *uvreq = NULL;
 
@@ -4172,3 +4172,18 @@ isc_nm_http_path_isvalid(const char *path) {
 
 	return rule_loc_path_absolute(&state);
 }
+
+const isc_nmsocket_ops_t isc__nm_http_ops = {
+	.close = isc__nm_http_close,
+	.send = isc__nm_http_send,
+	.read = isc__nm_http_read,
+	.cleanup_data = isc__nm_http_cleanup_data,
+	.settimeout = isc__nm_http_settimeout,
+	.cleartimeout = isc__nm_http_cleartimeout,
+	.keepalive = isc__nmhandle_http_keepalive,
+};
+
+const isc_nmsocket_ops_t isc__nm_http_listener_ops = {
+	.stoplistening = isc__nm_http_stoplistening,
+	.cleanup_data = isc__nm_http_cleanup_data,
+};

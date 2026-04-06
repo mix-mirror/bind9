@@ -514,12 +514,48 @@ typedef void (*isc_nm_closehandlecb_t)(void *arg);
  * callbacks.
  */
 
+/*%
+ * Transport operations vtable.  Each transport type provides a static
+ * instance of this struct.  Dispatch on sock->type is replaced by
+ * indirect calls through sock->ops.
+ *
+ * NULL entries mean the operation is not supported for that type.
+ */
+typedef struct isc_nmsocket_ops {
+	void (*close)(isc_nmsocket_t *);
+	void (*send)(isc_nmhandle_t *, isc_region_t *, isc_nm_cb_t, void *);
+	void (*senddns)(isc_nmhandle_t *, isc_region_t *, isc_nm_cb_t, void *);
+	void (*read)(isc_nmhandle_t *, isc_nm_recv_cb_t, void *);
+	void (*read_stop)(isc_nmhandle_t *);
+	void (*close_sock)(isc_nmsocket_t *);
+	void (*stoplistening)(isc_nmsocket_t *);
+	void (*cleanup_data)(isc_nmsocket_t *);
+	void (*settimeout)(isc_nmhandle_t *, uint32_t);
+	void (*cleartimeout)(isc_nmhandle_t *);
+	void (*keepalive)(isc_nmhandle_t *, bool);
+	void (*setwritetimeout)(isc_nmhandle_t *, uint64_t);
+	void (*set_manual_timer)(isc_nmhandle_t *, bool);
+	void (*shutdown)(isc_nmsocket_t *);
+	void (*reset)(isc_nmsocket_t *);
+	void (*failed_read_cb)(isc_nmsocket_t *, isc_result_t, bool);
+	bool (*timer_running)(isc_nmsocket_t *);
+	void (*timer_restart)(isc_nmsocket_t *);
+	void (*timer_stop)(isc_nmsocket_t *);
+	bool (*has_encryption)(const isc_nmhandle_t *);
+	const char *(*verify_tls_peer)(const isc_nmhandle_t *);
+	void (*set_tlsctx)(isc_nmsocket_t *, isc_tlsctx_t *, isc_tid_t);
+	isc_result_t (*set_tcp_nodelay)(isc_nmhandle_t *, bool);
+	void (*get_selected_alpn)(isc_nmhandle_t *, const unsigned char **,
+				  unsigned int *);
+} isc_nmsocket_ops_t;
+
 struct isc_nmsocket {
 	/*% Unlocked, RO */
 	int magic;
 	isc_tid_t tid;
 	isc_refcount_t references;
 	isc_nmsocket_type type;
+	const isc_nmsocket_ops_t *ops;
 	isc__networker_t *worker;
 
 	/*% Parent socket for multithreaded listeners */
@@ -552,7 +588,6 @@ struct isc_nmsocket {
 	/*% client socket for connections */
 	isc_nmsocket_t *listener;
 
-	isc_nmsocket_t *children;
 	uint_fast32_t nchildren;
 	isc_sockaddr_t iface;
 	isc_nmhandle_t *statichandle;
@@ -564,22 +599,13 @@ struct isc_nmsocket {
 	/*% Socket state flags */
 	bool active;
 	bool destroying;
-	bool route_sock;
 	bool closing;
 	bool closed;
 	bool connecting;
 	bool connected;
 	bool accepting;
 	bool reading;
-	bool timedout;
-
 	bool client;
-	bool processing;
-
-	/*% Handle management */
-	ISC_LIST(isc_nmhandle_t) inactive_handles;
-	size_t inactive_handles_cur;
-	size_t inactive_handles_max;
 
 	ISC_LIST(isc_nmhandle_t) active_handles;
 	ISC_LIST(isc__nm_uvreq_t) active_uvreqs;
@@ -637,7 +663,9 @@ struct isc_nmsocket {
 			uint64_t write_timeout;
 			bool reading_throttled;
 			bool keepalive;
+			bool timedout;
 			/*% Listener-only fields */
+			isc_nmsocket_t *children;
 			isc_barrier_t listen_barrier;
 			isc_barrier_t stop_barrier;
 			bool barriers_initialised;
@@ -651,7 +679,14 @@ struct isc_nmsocket {
 			} uv_handle;
 			uv_timer_t read_timer;
 			uv_os_sock_t fd;
+			bool route_sock;
+			bool processing;
+			/*% Handle reuse pool (UDP only) */
+			ISC_LIST(isc_nmhandle_t) inactive_handles;
+			size_t inactive_handles_cur;
+			size_t inactive_handles_max;
 			/*% Listener-only fields */
+			isc_nmsocket_t *children;
 			isc_barrier_t listen_barrier;
 			isc_barrier_t stop_barrier;
 			bool barriers_initialised;
@@ -715,6 +750,26 @@ struct isc_nmsocket {
 STATIC_ASSERT(sizeof(((isc_nmsocket_t *)0)->tcp.uv_handle) == sizeof(uv_tcp_t),
 	      "TCP uv_handle union should be sized by uv_tcp_t");
 
+/*%
+ * Per-transport ops tables.
+ */
+extern const isc_nmsocket_ops_t isc__nm_tcp_ops;
+extern const isc_nmsocket_ops_t isc__nm_tcp_listener_ops;
+extern const isc_nmsocket_ops_t isc__nm_udp_ops;
+extern const isc_nmsocket_ops_t isc__nm_udp_listener_ops;
+extern const isc_nmsocket_ops_t isc__nm_tls_ops;
+extern const isc_nmsocket_ops_t isc__nm_tls_listener_ops;
+extern const isc_nmsocket_ops_t isc__nm_streamdns_ops;
+extern const isc_nmsocket_ops_t isc__nm_streamdns_listener_ops;
+extern const isc_nmsocket_ops_t isc__nm_proxystream_ops;
+extern const isc_nmsocket_ops_t isc__nm_proxystream_listener_ops;
+extern const isc_nmsocket_ops_t isc__nm_proxyudp_ops;
+extern const isc_nmsocket_ops_t isc__nm_proxyudp_listener_ops;
+#if HAVE_LIBNGHTTP2
+extern const isc_nmsocket_ops_t isc__nm_http_ops;
+extern const isc_nmsocket_ops_t isc__nm_http_listener_ops;
+#endif
+
 STATIC_ASSERT(sizeof(isc_nmsocket_t) <= 1024,
 	      "nmsocket should fit in 16 cachelines after transport union");
 
@@ -738,6 +793,47 @@ STATIC_ASSERT(sizeof(isc_nmsocket_t) <= 1024,
 
 STATIC_ASSERT(ISC_NMSOCKET_OVERLAY_SIZE < sizeof(isc_nmsocket_t),
 	      "overlay size must be smaller than full nmsocket size");
+
+/*%
+ * Return the ops table for a socket of the given type.
+ */
+static inline const isc_nmsocket_ops_t *
+isc__nmsocket_get_ops(isc_nmsocket_type type) {
+	switch (type) {
+	case isc_nm_tcpsocket:
+		return &isc__nm_tcp_ops;
+	case isc_nm_tcplistener:
+		return &isc__nm_tcp_listener_ops;
+	case isc_nm_udpsocket:
+		return &isc__nm_udp_ops;
+	case isc_nm_udplistener:
+		return &isc__nm_udp_listener_ops;
+	case isc_nm_tlssocket:
+		return &isc__nm_tls_ops;
+	case isc_nm_tlslistener:
+		return &isc__nm_tls_listener_ops;
+	case isc_nm_streamdnssocket:
+		return &isc__nm_streamdns_ops;
+	case isc_nm_streamdnslistener:
+		return &isc__nm_streamdns_listener_ops;
+	case isc_nm_proxystreamsocket:
+		return &isc__nm_proxystream_ops;
+	case isc_nm_proxystreamlistener:
+		return &isc__nm_proxystream_listener_ops;
+	case isc_nm_proxyudpsocket:
+		return &isc__nm_proxyudp_ops;
+	case isc_nm_proxyudplistener:
+		return &isc__nm_proxyudp_listener_ops;
+#if HAVE_LIBNGHTTP2
+	case isc_nm_httpsocket:
+		return &isc__nm_http_ops;
+	case isc_nm_httplistener:
+		return &isc__nm_http_listener_ops;
+#endif
+	default:
+		UNREACHABLE();
+	}
+}
 
 /*%
  * Return the allocation size for a socket of the given type.
@@ -941,8 +1037,8 @@ isc__nm_sendcb(isc_nmsocket_t *sock, isc__nm_uvreq_t *uvreq,
  */
 
 void
-isc__nm_udp_send(isc_nmhandle_t *handle, const isc_region_t *region,
-		 isc_nm_cb_t cb, void *cbarg);
+isc__nm_udp_send(isc_nmhandle_t *handle, isc_region_t *region, isc_nm_cb_t cb,
+		 void *cbarg);
 /*%<
  * Back-end implementation of isc_nm_send() for UDP handles.
  */
@@ -979,8 +1075,8 @@ isc__nm_udp_settimeout(isc_nmhandle_t *handle, uint32_t timeout);
  */
 
 void
-isc__nm_tcp_send(isc_nmhandle_t *handle, const isc_region_t *region,
-		 isc_nm_cb_t cb, void *cbarg);
+isc__nm_tcp_send(isc_nmhandle_t *handle, isc_region_t *region, isc_nm_cb_t cb,
+		 void *cbarg);
 /*%<
  * Back-end implementation of isc_nm_send() for TCP handles.
  */
@@ -1025,7 +1121,7 @@ void
 isc__nmhandle_tcp_set_manual_timer(isc_nmhandle_t *handle, const bool manual);
 
 void
-isc__nm_tcp_senddns(isc_nmhandle_t *handle, const isc_region_t *region,
+isc__nm_tcp_senddns(isc_nmhandle_t *handle, isc_region_t *region,
 		    isc_nm_cb_t cb, void *cbarg);
 /*%<
  * The same as 'isc__nm_tcp_send()', but with data length sent
@@ -1033,15 +1129,15 @@ isc__nm_tcp_senddns(isc_nmhandle_t *handle, const isc_region_t *region,
  */
 
 void
-isc__nm_tls_send(isc_nmhandle_t *handle, const isc_region_t *region,
-		 isc_nm_cb_t cb, void *cbarg);
+isc__nm_tls_send(isc_nmhandle_t *handle, isc_region_t *region, isc_nm_cb_t cb,
+		 void *cbarg);
 
 /*%<
  * Back-end implementation of isc_nm_send() for TLSDNS handles.
  */
 
 void
-isc__nm_tls_senddns(isc_nmhandle_t *handle, const isc_region_t *region,
+isc__nm_tls_senddns(isc_nmhandle_t *handle, isc_region_t *region,
 		    isc_nm_cb_t cb, void *cbarg);
 /*%<
  * The same as 'isc__nm_tls_send()', but with data length sent
@@ -1155,8 +1251,8 @@ isc__nm_http_request(isc_nmhandle_t *handle, isc_region_t *region,
 		     isc_nm_recv_cb_t reply_cb, void *cbarg);
 
 void
-isc__nm_http_send(isc_nmhandle_t *handle, const isc_region_t *region,
-		  isc_nm_cb_t cb, void *cbarg);
+isc__nm_http_send(isc_nmhandle_t *handle, isc_region_t *region, isc_nm_cb_t cb,
+		  void *cbarg);
 
 void
 isc__nm_http_read(isc_nmhandle_t *handle, isc_nm_recv_cb_t cb, void *cbarg);
@@ -1218,7 +1314,7 @@ isc__nm_streamdns_read(isc_nmhandle_t *handle, isc_nm_recv_cb_t cb,
 		       void *cbarg);
 
 void
-isc__nm_streamdns_send(isc_nmhandle_t *handle, const isc_region_t *region,
+isc__nm_streamdns_send(isc_nmhandle_t *handle, isc_region_t *region,
 		       isc_nm_cb_t cb, void *cbarg);
 
 void

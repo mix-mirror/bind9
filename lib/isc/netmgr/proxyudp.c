@@ -875,3 +875,21 @@ isc__nm_proxyudp_send(isc_nmhandle_t *handle, isc_region_t *region,
 			    send_req);
 	}
 }
+
+const isc_nmsocket_ops_t isc__nm_proxyudp_ops = {
+	.close = isc__nm_proxyudp_close,
+	.send = isc__nm_proxyudp_send,
+	.read = isc__nm_proxyudp_read,
+	.cleanup_data = isc__nm_proxyudp_cleanup_data,
+	.settimeout = isc__nmhandle_proxyudp_settimeout,
+	.cleartimeout = isc__nmhandle_proxyudp_cleartimeout,
+	.failed_read_cb = isc__nm_proxyudp_failed_read_cb,
+	.timer_running = isc__nmsocket_proxyudp_timer_running,
+	.timer_restart = isc__nmsocket_proxyudp_timer_restart,
+	.timer_stop = isc__nmsocket_proxyudp_timer_stop,
+};
+
+const isc_nmsocket_ops_t isc__nm_proxyudp_listener_ops = {
+	.stoplistening = isc__nm_proxyudp_stoplistening,
+	.cleanup_data = isc__nm_proxyudp_cleanup_data,
+};

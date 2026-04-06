@@ -954,7 +954,7 @@ isc__nm_streamdns_read(isc_nmhandle_t *handle, isc_nm_recv_cb_t cb,
 }
 
 void
-isc__nm_streamdns_send(isc_nmhandle_t *handle, const isc_region_t *region,
+isc__nm_streamdns_send(isc_nmhandle_t *handle, isc_region_t *region,
 		       isc_nm_cb_t cb, void *cbarg) {
 	isc__nm_uvreq_t *uvreq = NULL;
 	isc_nmsocket_t *sock = NULL;
@@ -1185,3 +1185,29 @@ isc__nmsocket_streamdns_reset(isc_nmsocket_t *sock) {
 	INSIST(VALID_NMHANDLE(sock->outerhandle));
 	isc__nmsocket_reset(sock->outerhandle->sock);
 }
+
+const isc_nmsocket_ops_t isc__nm_streamdns_ops = {
+	.close = isc__nm_streamdns_close,
+	.send = isc__nm_streamdns_send,
+	.read = isc__nm_streamdns_read,
+	.cleanup_data = isc__nm_streamdns_cleanup_data,
+	.settimeout = isc__nmhandle_streamdns_settimeout,
+	.cleartimeout = isc__nmhandle_streamdns_cleartimeout,
+	.keepalive = isc__nmhandle_streamdns_keepalive,
+	/* setwritetimeout: signature mismatch (uint32_t), dispatched manually
+	 */
+	.reset = isc__nmsocket_streamdns_reset,
+	.failed_read_cb = isc__nm_streamdns_failed_read_cb,
+	.timer_running = isc__nmsocket_streamdns_timer_running,
+	.timer_restart = isc__nmsocket_streamdns_timer_restart,
+	.timer_stop = isc__nmsocket_streamdns_timer_stop,
+	.has_encryption = isc__nm_streamdns_has_encryption,
+	.verify_tls_peer = isc__nm_streamdns_verify_tls_peer_result_string,
+	/* set_tlsctx: different signature, dispatched manually */
+};
+
+const isc_nmsocket_ops_t isc__nm_streamdns_listener_ops = {
+	.stoplistening = isc__nm_streamdns_stoplistening,
+	.cleanup_data = isc__nm_streamdns_cleanup_data,
+	/* set_tlsctx: different signature, dispatched manually */
+};

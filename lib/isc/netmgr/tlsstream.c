@@ -1056,7 +1056,7 @@ done:
 }
 
 static void
-tls_send(isc_nmhandle_t *handle, const isc_region_t *region, isc_nm_cb_t cb,
+tls_send(isc_nmhandle_t *handle, isc_region_t *region, isc_nm_cb_t cb,
 	 void *cbarg, const bool dnsmsg) {
 	isc__nm_uvreq_t *uvreq = NULL;
 	isc_nmsocket_t *sock = NULL;
@@ -1082,13 +1082,13 @@ tls_send(isc_nmhandle_t *handle, const isc_region_t *region, isc_nm_cb_t cb,
 }
 
 void
-isc__nm_tls_send(isc_nmhandle_t *handle, const isc_region_t *region,
-		 isc_nm_cb_t cb, void *cbarg) {
+isc__nm_tls_send(isc_nmhandle_t *handle, isc_region_t *region, isc_nm_cb_t cb,
+		 void *cbarg) {
 	tls_send(handle, region, cb, cbarg, false);
 }
 
 void
-isc__nm_tls_senddns(isc_nmhandle_t *handle, const isc_region_t *region,
+isc__nm_tls_senddns(isc_nmhandle_t *handle, isc_region_t *region,
 		    isc_nm_cb_t cb, void *cbarg) {
 	tls_send(handle, region, cb, cbarg, true);
 }
@@ -1639,3 +1639,39 @@ isc__nmhandle_tls_set_tcp_nodelay(isc_nmhandle_t *handle, const bool value) {
 
 	return result;
 }
+
+static bool
+isc__nm_tls_has_encryption(const isc_nmhandle_t *handle) {
+	UNUSED(handle);
+	return true;
+}
+
+const isc_nmsocket_ops_t isc__nm_tls_ops = {
+	.close = isc__nm_tls_close,
+	.send = isc__nm_tls_send,
+	.senddns = isc__nm_tls_senddns,
+	.read = isc__nm_tls_read,
+	.read_stop = isc__nm_tls_read_stop,
+	.cleanup_data = isc__nm_tls_cleanup_data,
+	.settimeout = isc__nm_tls_settimeout,
+	.cleartimeout = isc__nm_tls_cleartimeout,
+	.keepalive = isc__nmhandle_tls_keepalive,
+	.setwritetimeout = isc__nmhandle_tls_setwritetimeout,
+	.set_manual_timer = isc__nmhandle_tls_set_manual_timer,
+	.reset = isc__nmsocket_tls_reset,
+	.failed_read_cb = isc__nm_tls_failed_read_cb,
+	.timer_running = isc__nmsocket_tls_timer_running,
+	.timer_restart = isc__nmsocket_tls_timer_restart,
+	.timer_stop = isc__nmsocket_tls_timer_stop,
+	.has_encryption = isc__nm_tls_has_encryption,
+	.verify_tls_peer = isc__nm_tls_verify_tls_peer_result_string,
+	/* set_tlsctx: extra tid param, dispatched manually */
+	.set_tcp_nodelay = isc__nmhandle_tls_set_tcp_nodelay,
+	.get_selected_alpn = isc__nmhandle_tls_get_selected_alpn,
+};
+
+const isc_nmsocket_ops_t isc__nm_tls_listener_ops = {
+	.stoplistening = isc__nm_tls_stoplistening,
+	.cleanup_data = isc__nm_tls_cleanup_data,
+	/* set_tlsctx: extra tid param, dispatched manually */
+};

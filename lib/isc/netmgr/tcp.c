@@ -189,7 +189,7 @@ tcp_connect_cb(uv_connect_t *uvreq, int status) {
 
 	INSIST(sock->connecting);
 
-	if (sock->timedout || status == UV_ETIMEDOUT) {
+	if (sock->tcp.timedout || status == UV_ETIMEDOUT) {
 		/* Connection timed-out */
 		result = ISC_R_TIMEDOUT;
 		goto error;
@@ -451,7 +451,7 @@ done_result:
 static void
 start_tcp_child(isc_sockaddr_t *iface, isc_nmsocket_t *sock, uv_os_sock_t fd,
 		isc_tid_t tid) {
-	isc_nmsocket_t *csock = &sock->children[tid];
+	isc_nmsocket_t *csock = &sock->tcp.children[tid];
 	isc__networker_t *worker = isc__networker_get(tid);
 
 	isc__nmsocket_init(csock, worker, isc_nm_tcpsocket, iface, sock);
@@ -501,8 +501,8 @@ isc_nm_listentcp(uint32_t workers, isc_sockaddr_t *iface,
 	sock->nchildren = (workers == ISC_NM_LISTEN_ALL)
 				  ? (uint32_t)isc__netmgr->nloops
 				  : workers;
-	sock->children = isc_mem_cget(worker->mctx, sock->nchildren,
-				      sizeof(sock->children[0]));
+	sock->tcp.children = isc_mem_cget(worker->mctx, sock->nchildren,
+					  sizeof(sock->tcp.children[0]));
 
 	isc__nmsocket_barrier_init(sock);
 
@@ -516,7 +516,7 @@ isc_nm_listentcp(uint32_t workers, isc_sockaddr_t *iface,
 	}
 
 	start_tcp_child(iface, sock, fd, 0);
-	result = sock->children[0].result;
+	result = sock->tcp.children[0].result;
 	INSIST(result != ISC_R_UNSET);
 
 	for (size_t i = 1; i < sock->nchildren; i++) {
@@ -535,9 +535,9 @@ isc_nm_listentcp(uint32_t workers, isc_sockaddr_t *iface,
 	 */
 	for (size_t i = 1; i < sock->nchildren; i++) {
 		if (result == ISC_R_SUCCESS &&
-		    sock->children[i].result != ISC_R_SUCCESS)
+		    sock->tcp.children[i].result != ISC_R_SUCCESS)
 		{
-			result = sock->children[i].result;
+			result = sock->tcp.children[i].result;
 		}
 	}
 
@@ -659,11 +659,11 @@ isc__nm_tcp_stoplistening(isc_nmsocket_t *sock) {
 
 	/* Stop all the other threads' children */
 	for (size_t i = 1; i < sock->nchildren; i++) {
-		stop_tcp_child(&sock->children[i]);
+		stop_tcp_child(&sock->tcp.children[i]);
 	}
 
 	/* Stop the child for the main thread */
-	stop_tcp_child(&sock->children[0]);
+	stop_tcp_child(&sock->tcp.children[0]);
 
 	/* Stop the parent */
 	sock->closed = true;
@@ -1022,7 +1022,7 @@ cleanup:
 }
 
 static void
-tcp_send(isc_nmhandle_t *handle, const isc_region_t *region, isc_nm_cb_t cb,
+tcp_send(isc_nmhandle_t *handle, isc_region_t *region, isc_nm_cb_t cb,
 	 void *cbarg, const bool dnsmsg) {
 	REQUIRE(VALID_NMHANDLE(handle));
 	REQUIRE(VALID_NMSOCK(handle->sock));
@@ -1063,13 +1063,13 @@ tcp_send(isc_nmhandle_t *handle, const isc_region_t *region, isc_nm_cb_t cb,
 }
 
 void
-isc__nm_tcp_send(isc_nmhandle_t *handle, const isc_region_t *region,
-		 isc_nm_cb_t cb, void *cbarg) {
+isc__nm_tcp_send(isc_nmhandle_t *handle, isc_region_t *region, isc_nm_cb_t cb,
+		 void *cbarg) {
 	tcp_send(handle, region, cb, cbarg, false);
 }
 
 void
-isc__nm_tcp_senddns(isc_nmhandle_t *handle, const isc_region_t *region,
+isc__nm_tcp_senddns(isc_nmhandle_t *handle, isc_region_t *region,
 		    isc_nm_cb_t cb, void *cbarg) {
 	tcp_send(handle, region, cb, cbarg, true);
 }
@@ -1362,3 +1362,79 @@ isc__nmhandle_tcp_set_manual_timer(isc_nmhandle_t *handle, const bool manual) {
 
 	sock->manual_read_timer = manual;
 }
+
+static isc_result_t
+isc__nmhandle_tcp_set_tcp_nodelay(isc_nmhandle_t *handle, const bool value) {
+	isc_nmsocket_t *sock = handle->sock;
+	uv_os_fd_t tcp_fd = (uv_os_fd_t)-1;
+
+	(void)uv_fileno((uv_handle_t *)&sock->tcp.uv_handle.tcp, &tcp_fd);
+	RUNTIME_CHECK(tcp_fd != (uv_os_fd_t)-1);
+	return isc__nm_socket_tcp_nodelay((uv_os_sock_t)tcp_fd, value);
+}
+
+static void
+isc__nmhandle_tcp_setwritetimeout(isc_nmhandle_t *handle,
+				  uint64_t write_timeout) {
+	handle->sock->tcp.write_timeout = write_timeout;
+}
+
+static void
+isc__nmhandle_tcp_keepalive(isc_nmhandle_t *handle, bool value) {
+	isc_nmsocket_t *sock = handle->sock;
+
+	sock->tcp.keepalive = value;
+	sock->read_timeout = sock->tcp.write_timeout =
+		value ? atomic_load_relaxed(&isc__netmgr->keepalive)
+		      : atomic_load_relaxed(&isc__netmgr->idle);
+}
+
+static void
+tcp_reset_shutdown(uv_handle_t *handle) {
+	isc_nmsocket_t *sock = uv_handle_get_data(handle);
+	isc__nmsocket_shutdown(sock);
+	isc__nmsocket_detach(&sock);
+}
+
+static void
+isc__nm_tcp_reset(isc_nmsocket_t *sock) {
+	REQUIRE(sock->parent == NULL);
+
+	if (!uv_is_closing(&sock->tcp.uv_handle.handle) &&
+	    uv_is_active(&sock->tcp.uv_handle.handle))
+	{
+		isc__nmsocket_attach(sock, &(isc_nmsocket_t *){ NULL });
+		int r = uv_tcp_close_reset(&sock->tcp.uv_handle.tcp,
+					   tcp_reset_shutdown);
+		if (r != 0) {
+			isc_log_write(ISC_LOGCATEGORY_GENERAL,
+				      ISC_LOGMODULE_NETMGR, ISC_LOG_DEBUG(1),
+				      "TCP Reset (RST) failed: %s",
+				      uv_strerror(r));
+			tcp_reset_shutdown(&sock->tcp.uv_handle.handle);
+		}
+	} else {
+		isc__nmsocket_shutdown(sock);
+	}
+}
+
+const isc_nmsocket_ops_t isc__nm_tcp_ops = {
+	.close = isc__nm_tcp_close,
+	.send = isc__nm_tcp_send,
+	.senddns = isc__nm_tcp_senddns,
+	.read = isc__nm_tcp_read,
+	.read_stop = isc__nm_tcp_read_stop,
+	.shutdown = isc__nm_tcp_shutdown,
+	.reset = isc__nm_tcp_reset,
+	.stoplistening = isc__nm_tcp_stoplistening,
+	.failed_read_cb = isc__nm_tcp_failed_read_cb,
+	/* settimeout: handled by generic code in netmgr.c */
+	.keepalive = isc__nmhandle_tcp_keepalive,
+	.setwritetimeout = isc__nmhandle_tcp_setwritetimeout,
+	.set_manual_timer = isc__nmhandle_tcp_set_manual_timer,
+	.set_tcp_nodelay = isc__nmhandle_tcp_set_tcp_nodelay,
+};
+
+const isc_nmsocket_ops_t isc__nm_tcp_listener_ops = {
+	.stoplistening = isc__nm_tcp_stoplistening,
+};

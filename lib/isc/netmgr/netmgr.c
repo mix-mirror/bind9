@@ -310,29 +310,8 @@ isc_nmhandle_setwritetimeout(isc_nmhandle_t *handle, uint64_t write_timeout) {
 	REQUIRE(VALID_NMSOCK(handle->sock));
 	REQUIRE(handle->sock->tid == isc_tid());
 
-	switch (handle->sock->type) {
-	case isc_nm_tcpsocket:
-		handle->sock->tcp.write_timeout = write_timeout;
-		break;
-	case isc_nm_udpsocket:
-		/* UDP does not use write_timeout */
-		break;
-	case isc_nm_tlssocket:
-		isc__nmhandle_tls_setwritetimeout(handle, write_timeout);
-		break;
-	case isc_nm_streamdnssocket:
-		isc__nmhandle_streamdns_setwritetimeout(handle, write_timeout);
-		break;
-	case isc_nm_proxystreamsocket:
-		isc__nmhandle_proxystream_setwritetimeout(handle,
-							  write_timeout);
-		break;
-	case isc_nm_proxyudpsocket:
-		isc__nmhandle_proxyudp_setwritetimeout(handle, write_timeout);
-		break;
-	default:
-		UNREACHABLE();
-		break;
+	if (handle->sock->ops->setwritetimeout != NULL) {
+		handle->sock->ops->setwritetimeout(handle, write_timeout);
 	}
 }
 
@@ -482,22 +461,29 @@ nmsocket_cleanup(void *arg) {
 	REQUIRE(!sock->destroying);
 	sock->destroying = true;
 
-	if (sock->parent == NULL && sock->children != NULL) {
-		/*
-		 * We shouldn't be here unless there are no active handles,
-		 * so we can clean up and free the children.
-		 */
-		for (size_t i = 0; i < sock->nchildren; i++) {
-			isc_refcount_decrementz(&sock->children[i].references);
-			nmsocket_cleanup(&sock->children[i]);
+	if (sock->parent == NULL) {
+		isc_nmsocket_t **childrenp = NULL;
+		switch (sock->type) {
+		case isc_nm_tcplistener:
+			childrenp = &sock->tcp.children;
+			break;
+		case isc_nm_udplistener:
+			childrenp = &sock->udp.children;
+			break;
+		default:
+			break;
 		}
-
-		/*
-		 * Now free them.
-		 */
-		isc_mem_cput(sock->worker->mctx, sock->children,
-			     sock->nchildren, sizeof(*sock));
-		sock->nchildren = 0;
+		if (childrenp != NULL && *childrenp != NULL) {
+			for (size_t i = 0; i < sock->nchildren; i++) {
+				isc_refcount_decrementz(
+					&(*childrenp)[i].references);
+				nmsocket_cleanup(&(*childrenp)[i]);
+			}
+			isc_mem_cput(sock->worker->mctx, *childrenp,
+				     sock->nchildren, sizeof(*sock));
+			*childrenp = NULL;
+			sock->nchildren = 0;
+		}
 	}
 
 	sock->statichandle = NULL;
@@ -510,9 +496,15 @@ nmsocket_cleanup(void *arg) {
 		isc__nmsocket_detach(&sock->outer);
 	}
 
-	ISC_LIST_FOREACH(sock->inactive_handles, handle, inactive_link) {
-		ISC_LIST_DEQUEUE(sock->inactive_handles, handle, inactive_link);
-		nmhandle_free(sock, handle);
+	if (sock->type == isc_nm_udpsocket || sock->type == isc_nm_udplistener)
+	{
+		ISC_LIST_FOREACH(sock->udp.inactive_handles, handle,
+				 inactive_link)
+		{
+			ISC_LIST_DEQUEUE(sock->udp.inactive_handles, handle,
+					 inactive_link);
+			nmhandle_free(sock, handle);
+		}
 	}
 
 	INSIST(sock->server == NULL);
@@ -563,9 +555,20 @@ nmsocket_has_active_handles(isc_nmsocket_t *sock) {
 		return true;
 	}
 
-	if (sock->children != NULL) {
+	isc_nmsocket_t *children = NULL;
+	switch (sock->type) {
+	case isc_nm_tcplistener:
+		children = sock->tcp.children;
+		break;
+	case isc_nm_udplistener:
+		children = sock->udp.children;
+		break;
+	default:
+		break;
+	}
+	if (children != NULL) {
 		for (size_t i = 0; i < sock->nchildren; i++) {
-			isc_nmsocket_t *csock = &sock->children[i];
+			isc_nmsocket_t *csock = &children[i];
 			if (!ISC_LIST_EMPTY(csock->active_handles)) {
 				return true;
 			}
@@ -650,34 +653,9 @@ isc___nmsocket_prep_destroy(isc_nmsocket_t *sock FLARG) {
 	 *
 	 * If it's a regular socket we may need to close it.
 	 */
-	if (!sock->closing && !sock->closed) {
-		switch (sock->type) {
-		case isc_nm_udpsocket:
-			isc__nm_udp_close(sock);
-			return;
-		case isc_nm_tcpsocket:
-			isc__nm_tcp_close(sock);
-			return;
-		case isc_nm_streamdnssocket:
-			isc__nm_streamdns_close(sock);
-			return;
-		case isc_nm_tlssocket:
-			isc__nm_tls_close(sock);
-			return;
-#if HAVE_LIBNGHTTP2
-		case isc_nm_httpsocket:
-			isc__nm_http_close(sock);
-			return;
-#endif
-		case isc_nm_proxystreamsocket:
-			isc__nm_proxystream_close(sock);
-			return;
-		case isc_nm_proxyudpsocket:
-			isc__nm_proxyudp_close(sock);
-			return;
-		default:
-			break;
-		}
+	if (!sock->closing && !sock->closed && sock->ops->close != NULL) {
+		sock->ops->close(sock);
+		return;
 	}
 
 	nmsocket_maybe_destroy(sock FLARG_PASS);
@@ -742,8 +720,8 @@ isc___nmsocket_init(isc_nmsocket_t *sock, isc__networker_t *worker,
 	 */
 	memset(sock, 0, isc__nmsocket_alloc_size(type));
 	sock->type = type;
+	sock->ops = isc__nmsocket_get_ops(type);
 	sock->tid = worker->loop->tid;
-	ISC_LIST_INIT(sock->inactive_handles);
 	sock->result = ISC_R_UNSET;
 	ISC_LIST_INIT(sock->active_handles);
 	sock->active_handles_max = ISC_NETMGR_MAX_STREAM_CLIENTS_PER_CONN;
@@ -859,18 +837,24 @@ alloc_handle(isc_nmsocket_t *sock) {
 static isc_nmhandle_t *
 dequeue_handle(isc_nmsocket_t *sock) {
 #if !__SANITIZE_ADDRESS__ && !__SANITIZE_THREAD__
-	isc_nmhandle_t *handle = ISC_LIST_HEAD(sock->inactive_handles);
-	if (handle != NULL) {
-		ISC_LIST_DEQUEUE(sock->inactive_handles, handle, inactive_link);
-
-		sock->inactive_handles_cur--;
-
-		isc_refcount_init(&handle->references, 1);
-		INSIST(VALID_NMHANDLE(handle));
-		return handle;
+	if (sock->type == isc_nm_udpsocket || sock->type == isc_nm_udplistener)
+	{
+		isc_nmhandle_t *handle =
+			ISC_LIST_HEAD(sock->udp.inactive_handles);
+		if (handle != NULL) {
+			ISC_LIST_DEQUEUE(sock->udp.inactive_handles, handle,
+					 inactive_link);
+			sock->udp.inactive_handles_cur--;
+			isc_refcount_init(&handle->references, 1);
+			INSIST(VALID_NMHANDLE(handle));
+			return handle;
+		}
 	}
 #else
-	INSIST(ISC_LIST_EMPTY(sock->inactive_handles));
+	if (sock->type == isc_nm_udpsocket || sock->type == isc_nm_udplistener)
+	{
+		INSIST(ISC_LIST_EMPTY(sock->udp.inactive_handles));
+	}
 #endif /* !__SANITIZE_ADDRESS__ && !__SANITIZE_THREAD__ */
 	return NULL;
 }
@@ -977,10 +961,13 @@ nmhandle__destroy(isc_nmhandle_t *handle) {
 	nmhandle_free(sock, handle);
 #else
 	if (sock->active &&
-	    sock->inactive_handles_cur < sock->inactive_handles_max)
+	    (sock->type == isc_nm_udpsocket ||
+	     sock->type == isc_nm_udplistener) &&
+	    sock->udp.inactive_handles_cur < sock->udp.inactive_handles_max)
 	{
-		sock->inactive_handles_cur++;
-		ISC_LIST_APPEND(sock->inactive_handles, handle, inactive_link);
+		sock->udp.inactive_handles_cur++;
+		ISC_LIST_APPEND(sock->udp.inactive_handles, handle,
+				inactive_link);
 	} else {
 		nmhandle_free(sock, handle);
 	}
@@ -1102,28 +1089,8 @@ void
 isc__nm_failed_read_cb(isc_nmsocket_t *sock, isc_result_t result, bool async) {
 	REQUIRE(VALID_NMSOCK(sock));
 	UNUSED(async);
-	switch (sock->type) {
-	case isc_nm_udpsocket:
-		isc__nm_udp_failed_read_cb(sock, result, async);
-		return;
-	case isc_nm_tcpsocket:
-		isc__nm_tcp_failed_read_cb(sock, result, async);
-		return;
-	case isc_nm_tlssocket:
-		isc__nm_tls_failed_read_cb(sock, result, async);
-		return;
-	case isc_nm_streamdnssocket:
-		isc__nm_streamdns_failed_read_cb(sock, result, async);
-		return;
-	case isc_nm_proxystreamsocket:
-		isc__nm_proxystream_failed_read_cb(sock, result, async);
-		return;
-	case isc_nm_proxyudpsocket:
-		isc__nm_proxyudp_failed_read_cb(sock, result, async);
-		return;
-	default:
-		UNREACHABLE();
-	}
+	REQUIRE(sock->ops->failed_read_cb != NULL);
+	sock->ops->failed_read_cb(sock, result, async);
 }
 
 void
@@ -1143,8 +1110,8 @@ isc__nmsocket_connecttimeout_cb(uv_timer_t *timer) {
 	/*
 	 * Mark the connection as timed out and shutdown the socket.
 	 */
-	REQUIRE(!sock->timedout);
-	sock->timedout = true;
+	REQUIRE(!sock->tcp.timedout);
+	sock->tcp.timedout = true;
 	isc__nmsocket_shutdown(sock);
 }
 
@@ -1218,21 +1185,9 @@ void
 isc__nmsocket_timer_restart(isc_nmsocket_t *sock) {
 	REQUIRE(VALID_NMSOCK(sock));
 
-	switch (sock->type) {
-	case isc_nm_tlssocket:
-		isc__nmsocket_tls_timer_restart(sock);
+	if (sock->ops->timer_restart != NULL) {
+		sock->ops->timer_restart(sock);
 		return;
-	case isc_nm_streamdnssocket:
-		isc__nmsocket_streamdns_timer_restart(sock);
-		return;
-	case isc_nm_proxystreamsocket:
-		isc__nmsocket_proxystream_timer_restart(sock);
-		return;
-	case isc_nm_proxyudpsocket:
-		isc__nmsocket_proxyudp_timer_restart(sock);
-		return;
-	default:
-		break;
 	}
 
 	uv_timer_t *timer = isc__nmsocket_timer_ptr(sock);
@@ -1269,17 +1224,8 @@ bool
 isc__nmsocket_timer_running(isc_nmsocket_t *sock) {
 	REQUIRE(VALID_NMSOCK(sock));
 
-	switch (sock->type) {
-	case isc_nm_tlssocket:
-		return isc__nmsocket_tls_timer_running(sock);
-	case isc_nm_streamdnssocket:
-		return isc__nmsocket_streamdns_timer_running(sock);
-	case isc_nm_proxystreamsocket:
-		return isc__nmsocket_proxystream_timer_running(sock);
-	case isc_nm_proxyudpsocket:
-		return isc__nmsocket_proxyudp_timer_running(sock);
-	default:
-		break;
+	if (sock->ops->timer_running != NULL) {
+		return sock->ops->timer_running(sock);
 	}
 
 	return uv_is_active((uv_handle_t *)isc__nmsocket_timer_ptr(sock));
@@ -1302,21 +1248,9 @@ isc__nmsocket_timer_stop(isc_nmsocket_t *sock) {
 
 	REQUIRE(VALID_NMSOCK(sock));
 
-	switch (sock->type) {
-	case isc_nm_tlssocket:
-		isc__nmsocket_tls_timer_stop(sock);
+	if (sock->ops->timer_stop != NULL) {
+		sock->ops->timer_stop(sock);
 		return;
-	case isc_nm_streamdnssocket:
-		isc__nmsocket_streamdns_timer_stop(sock);
-		return;
-	case isc_nm_proxystreamsocket:
-		isc__nmsocket_proxystream_timer_stop(sock);
-		return;
-	case isc_nm_proxyudpsocket:
-		isc__nmsocket_proxyudp_timer_stop(sock);
-		return;
-	default:
-		break;
 	}
 
 	/* uv_timer_stop() is idempotent, no need to check if running */
@@ -1477,32 +1411,16 @@ isc_nmhandle_cleartimeout(isc_nmhandle_t *handle) {
 	REQUIRE(VALID_NMHANDLE(handle));
 	REQUIRE(VALID_NMSOCK(handle->sock));
 
-	switch (handle->sock->type) {
-#if HAVE_LIBNGHTTP2
-	case isc_nm_httpsocket:
-		isc__nm_http_cleartimeout(handle);
+	if (handle->sock->ops->cleartimeout != NULL) {
+		handle->sock->ops->cleartimeout(handle);
 		return;
-#endif
-	case isc_nm_tlssocket:
-		isc__nm_tls_cleartimeout(handle);
-		return;
-	case isc_nm_streamdnssocket:
-		isc__nmhandle_streamdns_cleartimeout(handle);
-		return;
-	case isc_nm_proxystreamsocket:
-		isc__nmhandle_proxystream_cleartimeout(handle);
-		return;
-	case isc_nm_proxyudpsocket:
-		isc__nmhandle_proxyudp_cleartimeout(handle);
-		return;
-	default:
-		handle->sock->read_timeout = 0;
+	}
 
-		if (uv_is_active((uv_handle_t *)isc__nmsocket_timer_ptr(
-			    handle->sock)))
-		{
-			isc__nmsocket_timer_stop(handle->sock);
-		}
+	/* Default for TCP/UDP: clear timeout and stop timer */
+	handle->sock->read_timeout = 0;
+	if (uv_is_active((uv_handle_t *)isc__nmsocket_timer_ptr(handle->sock)))
+	{
+		isc__nmsocket_timer_stop(handle->sock);
 	}
 }
 
@@ -1511,28 +1429,14 @@ isc_nmhandle_settimeout(isc_nmhandle_t *handle, uint32_t timeout) {
 	REQUIRE(VALID_NMHANDLE(handle));
 	REQUIRE(VALID_NMSOCK(handle->sock));
 
-	switch (handle->sock->type) {
-#if HAVE_LIBNGHTTP2
-	case isc_nm_httpsocket:
-		isc__nm_http_settimeout(handle, timeout);
+	if (handle->sock->ops->settimeout != NULL) {
+		handle->sock->ops->settimeout(handle, timeout);
 		return;
-#endif
-	case isc_nm_tlssocket:
-		isc__nm_tls_settimeout(handle, timeout);
-		return;
-	case isc_nm_streamdnssocket:
-		isc__nmhandle_streamdns_settimeout(handle, timeout);
-		return;
-	case isc_nm_proxystreamsocket:
-		isc__nmhandle_proxystream_settimeout(handle, timeout);
-		return;
-	case isc_nm_proxyudpsocket:
-		isc__nmhandle_proxyudp_settimeout(handle, timeout);
-		return;
-	default:
-		handle->sock->read_timeout = timeout;
-		isc__nmsocket_timer_restart(handle->sock);
 	}
+
+	/* Default for TCP/UDP: set timeout and restart timer */
+	handle->sock->read_timeout = timeout;
+	isc__nmsocket_timer_restart(handle->sock);
 }
 
 void
@@ -1546,32 +1450,8 @@ isc_nmhandle_keepalive(isc_nmhandle_t *handle, bool value) {
 
 	REQUIRE(sock->tid == isc_tid());
 
-	switch (sock->type) {
-	case isc_nm_tcpsocket:;
-		sock->tcp.keepalive = value;
-		sock->read_timeout = sock->tcp.write_timeout =
-			value ? atomic_load_relaxed(&isc__netmgr->keepalive)
-			      : atomic_load_relaxed(&isc__netmgr->idle);
-		break;
-	case isc_nm_streamdnssocket:
-		isc__nmhandle_streamdns_keepalive(handle, value);
-		break;
-	case isc_nm_tlssocket:
-		isc__nmhandle_tls_keepalive(handle, value);
-		break;
-#if HAVE_LIBNGHTTP2
-	case isc_nm_httpsocket:
-		isc__nmhandle_http_keepalive(handle, value);
-		break;
-#endif /* HAVE_LIBNGHTTP2 */
-	case isc_nm_proxystreamsocket:
-		isc__nmhandle_proxystream_keepalive(handle, value);
-		break;
-	default:
-		/*
-		 * For any other protocol, this is a no-op.
-		 */
-		return;
+	if (sock->ops->keepalive != NULL) {
+		sock->ops->keepalive(handle, value);
 	}
 }
 
@@ -1689,34 +1569,8 @@ isc_nm_send(isc_nmhandle_t *handle, isc_region_t *region, isc_nm_cb_t cb,
 	    void *cbarg) {
 	REQUIRE(VALID_NMHANDLE(handle));
 
-	switch (handle->sock->type) {
-	case isc_nm_udpsocket:
-	case isc_nm_udplistener:
-		isc__nm_udp_send(handle, region, cb, cbarg);
-		break;
-	case isc_nm_tcpsocket:
-		isc__nm_tcp_send(handle, region, cb, cbarg);
-		break;
-	case isc_nm_streamdnssocket:
-		isc__nm_streamdns_send(handle, region, cb, cbarg);
-		break;
-	case isc_nm_tlssocket:
-		isc__nm_tls_send(handle, region, cb, cbarg);
-		break;
-#if HAVE_LIBNGHTTP2
-	case isc_nm_httpsocket:
-		isc__nm_http_send(handle, region, cb, cbarg);
-		break;
-#endif
-	case isc_nm_proxystreamsocket:
-		isc__nm_proxystream_send(handle, region, cb, cbarg);
-		break;
-	case isc_nm_proxyudpsocket:
-		isc__nm_proxyudp_send(handle, region, cb, cbarg);
-		break;
-	default:
-		UNREACHABLE();
-	}
+	REQUIRE(handle->sock->ops->send != NULL);
+	handle->sock->ops->send(handle, region, cb, cbarg);
 }
 
 void
@@ -1724,52 +1578,16 @@ isc__nm_senddns(isc_nmhandle_t *handle, isc_region_t *region, isc_nm_cb_t cb,
 		void *cbarg) {
 	REQUIRE(VALID_NMHANDLE(handle));
 
-	switch (handle->sock->type) {
-	case isc_nm_tcpsocket:
-		isc__nm_tcp_senddns(handle, region, cb, cbarg);
-		break;
-	case isc_nm_tlssocket:
-		isc__nm_tls_senddns(handle, region, cb, cbarg);
-		break;
-	case isc_nm_proxystreamsocket:
-		isc__nm_proxystream_senddns(handle, region, cb, cbarg);
-		break;
-	default:
-		UNREACHABLE();
-	}
+	REQUIRE(handle->sock->ops->senddns != NULL);
+	handle->sock->ops->senddns(handle, region, cb, cbarg);
 }
 
 void
 isc_nm_read(isc_nmhandle_t *handle, isc_nm_recv_cb_t cb, void *cbarg) {
 	REQUIRE(VALID_NMHANDLE(handle));
 
-	switch (handle->sock->type) {
-	case isc_nm_udpsocket:
-		isc__nm_udp_read(handle, cb, cbarg);
-		break;
-	case isc_nm_tcpsocket:
-		isc__nm_tcp_read(handle, cb, cbarg);
-		break;
-	case isc_nm_streamdnssocket:
-		isc__nm_streamdns_read(handle, cb, cbarg);
-		break;
-	case isc_nm_tlssocket:
-		isc__nm_tls_read(handle, cb, cbarg);
-		break;
-#if HAVE_LIBNGHTTP2
-	case isc_nm_httpsocket:
-		isc__nm_http_read(handle, cb, cbarg);
-		break;
-#endif
-	case isc_nm_proxystreamsocket:
-		isc__nm_proxystream_read(handle, cb, cbarg);
-		break;
-	case isc_nm_proxyudpsocket:
-		isc__nm_proxyudp_read(handle, cb, cbarg);
-		break;
-	default:
-		UNREACHABLE();
-	}
+	REQUIRE(handle->sock->ops->read != NULL);
+	handle->sock->ops->read(handle, cb, cbarg);
 }
 
 static void
@@ -1782,16 +1600,7 @@ cancelread_cb(void *arg) {
 
 	REQUIRE(handle->sock->tid == isc_tid());
 
-	switch (handle->sock->type) {
-	case isc_nm_udpsocket:
-	case isc_nm_proxyudpsocket:
-	case isc_nm_streamdnssocket:
-	case isc_nm_httpsocket:
-		isc__nm_failed_read_cb(handle->sock, ISC_R_CANCELED, false);
-		break;
-	default:
-		UNREACHABLE();
-	}
+	isc__nm_failed_read_cb(handle->sock, ISC_R_CANCELED, false);
 
 	isc_nmhandle_detach(&handle);
 }
@@ -1810,21 +1619,8 @@ void
 isc_nm_read_stop(isc_nmhandle_t *handle) {
 	REQUIRE(VALID_NMHANDLE(handle));
 
-	isc_nmsocket_t *sock = handle->sock;
-
-	switch (sock->type) {
-	case isc_nm_tcpsocket:
-		isc__nm_tcp_read_stop(handle);
-		break;
-	case isc_nm_tlssocket:
-		isc__nm_tls_read_stop(handle);
-		break;
-	case isc_nm_proxystreamsocket:
-		isc__nm_proxystream_read_stop(handle);
-		break;
-	default:
-		UNREACHABLE();
-	}
+	REQUIRE(handle->sock->ops->read_stop != NULL);
+	handle->sock->ops->read_stop(handle);
 }
 
 void
@@ -1840,33 +1636,8 @@ void
 isc_nm_stoplistening(isc_nmsocket_t *sock) {
 	REQUIRE(VALID_NMSOCK(sock));
 
-	switch (sock->type) {
-	case isc_nm_udplistener:
-		isc__nm_udp_stoplistening(sock);
-		break;
-	case isc_nm_tcplistener:
-		isc__nm_tcp_stoplistening(sock);
-		break;
-	case isc_nm_streamdnslistener:
-		isc__nm_streamdns_stoplistening(sock);
-		break;
-	case isc_nm_tlslistener:
-		isc__nm_tls_stoplistening(sock);
-		break;
-#if HAVE_LIBNGHTTP2
-	case isc_nm_httplistener:
-		isc__nm_http_stoplistening(sock);
-		break;
-#endif
-	case isc_nm_proxystreamlistener:
-		isc__nm_proxystream_stoplistening(sock);
-		break;
-	case isc_nm_proxyudplistener:
-		isc__nm_proxyudp_stoplistening(sock);
-		break;
-	default:
-		UNREACHABLE();
-	}
+	REQUIRE(sock->ops->stoplistening != NULL);
+	sock->ops->stoplistening(sock);
 }
 
 void
@@ -2000,76 +1771,19 @@ isc__nm_sendcb(isc_nmsocket_t *sock, isc__nm_uvreq_t *uvreq,
 	isc_job_run(sock->worker->loop, &uvreq->job, isc___nm_sendcb, uvreq);
 }
 
-static void
-reset_shutdown(uv_handle_t *handle) {
-	isc_nmsocket_t *sock = uv_handle_get_data(handle);
-
-	isc__nmsocket_shutdown(sock);
-	isc__nmsocket_detach(&sock);
-}
-
 void
 isc__nmsocket_reset(isc_nmsocket_t *sock) {
 	REQUIRE(VALID_NMSOCK(sock));
 
-	switch (sock->type) {
-	case isc_nm_tcpsocket:
-		/*
-		 * This can be called from the TCP write timeout.
-		 */
-		REQUIRE(sock->parent == NULL);
-		break;
-	case isc_nm_tlssocket:
-		isc__nmsocket_tls_reset(sock);
-		return;
-	case isc_nm_streamdnssocket:
-		isc__nmsocket_streamdns_reset(sock);
-		return;
-	case isc_nm_proxystreamsocket:
-		isc__nmsocket_proxystream_reset(sock);
-		return;
-	default:
-		UNREACHABLE();
-		break;
-	}
-
-	if (!uv_is_closing(&sock->tcp.uv_handle.handle) &&
-	    uv_is_active(&sock->tcp.uv_handle.handle))
-	{
-		/*
-		 * The real shutdown will be handled in the respective
-		 * close functions.
-		 */
-		isc__nmsocket_attach(sock, &(isc_nmsocket_t *){ NULL });
-		int r = uv_tcp_close_reset(&sock->tcp.uv_handle.tcp,
-					   reset_shutdown);
-		if (r != 0) {
-			isc_log_write(ISC_LOGCATEGORY_GENERAL,
-				      ISC_LOGMODULE_NETMGR, ISC_LOG_DEBUG(1),
-				      "TCP Reset (RST) failed: %s",
-				      uv_strerror(r));
-			reset_shutdown(&sock->tcp.uv_handle.handle);
-		}
-	} else {
-		isc__nmsocket_shutdown(sock);
-	}
+	REQUIRE(sock->ops->reset != NULL);
+	sock->ops->reset(sock);
 }
 
 void
 isc__nmsocket_shutdown(isc_nmsocket_t *sock) {
 	REQUIRE(VALID_NMSOCK(sock));
-	switch (sock->type) {
-	case isc_nm_udpsocket:
-		isc__nm_udp_shutdown(sock);
-		break;
-	case isc_nm_tcpsocket:
-		isc__nm_tcp_shutdown(sock);
-		break;
-	case isc_nm_udplistener:
-	case isc_nm_tcplistener:
-		return;
-	default:
-		UNREACHABLE();
+	if (sock->ops->shutdown != NULL) {
+		sock->ops->shutdown(sock);
 	}
 }
 
@@ -2517,20 +2231,9 @@ isc_nm_has_encryption(const isc_nmhandle_t *handle) {
 	REQUIRE(VALID_NMHANDLE(handle));
 	REQUIRE(VALID_NMSOCK(handle->sock));
 
-	switch (handle->sock->type) {
-	case isc_nm_tlssocket:
-		return true;
-#if HAVE_LIBNGHTTP2
-	case isc_nm_httpsocket:
-		return isc__nm_http_has_encryption(handle);
-#endif /* HAVE_LIBNGHTTP2 */
-	case isc_nm_streamdnssocket:
-		return isc__nm_streamdns_has_encryption(handle);
-	case isc_nm_proxystreamsocket:
-		return isc__nm_proxystream_has_encryption(handle);
-	default:
-		return false;
-	};
+	if (handle->sock->ops->has_encryption != NULL) {
+		return handle->sock->ops->has_encryption(handle);
+	}
 
 	return false;
 }
@@ -2543,24 +2246,8 @@ isc_nm_verify_tls_peer_result_string(const isc_nmhandle_t *handle) {
 	REQUIRE(VALID_NMSOCK(handle->sock));
 
 	sock = handle->sock;
-	switch (sock->type) {
-	case isc_nm_tlssocket:
-		return isc__nm_tls_verify_tls_peer_result_string(handle);
-		break;
-	case isc_nm_proxystreamsocket:
-		return isc__nm_proxystream_verify_tls_peer_result_string(
-			handle);
-		break;
-#if HAVE_LIBNGHTTP2
-	case isc_nm_httpsocket:
-		return isc__nm_http_verify_tls_peer_result_string(handle);
-		break;
-#endif /* HAVE_LIBNGHTTP2 */
-	case isc_nm_streamdnssocket:
-		return isc__nm_streamdns_verify_tls_peer_result_string(handle);
-		break;
-	default:
-		break;
+	if (sock->ops->verify_tls_peer != NULL) {
+		return sock->ops->verify_tls_peer(handle);
 	}
 
 	return NULL;
@@ -2843,21 +2530,8 @@ isc__nmhandle_set_manual_timer(isc_nmhandle_t *handle, const bool manual) {
 
 	isc_nmsocket_t *sock = handle->sock;
 
-	switch (sock->type) {
-	case isc_nm_tcpsocket:
-		isc__nmhandle_tcp_set_manual_timer(handle, manual);
-		return;
-	case isc_nm_tlssocket:
-		isc__nmhandle_tls_set_manual_timer(handle, manual);
-		return;
-	case isc_nm_proxystreamsocket:
-		isc__nmhandle_proxystream_set_manual_timer(handle, manual);
-		return;
-	default:
-		break;
-	};
-
-	UNREACHABLE();
+	REQUIRE(sock->ops->set_manual_timer != NULL);
+	sock->ops->set_manual_timer(handle, manual);
 }
 
 void
@@ -2869,17 +2543,9 @@ isc__nmhandle_get_selected_alpn(isc_nmhandle_t *handle,
 
 	isc_nmsocket_t *sock = handle->sock;
 
-	switch (sock->type) {
-	case isc_nm_tlssocket:
-		isc__nmhandle_tls_get_selected_alpn(handle, alpn, alpnlen);
-		return;
-	case isc_nm_proxystreamsocket:
-		isc__nmhandle_proxystream_get_selected_alpn(handle, alpn,
-							    alpnlen);
-		return;
-	default:
-		break;
-	};
+	if (sock->ops->get_selected_alpn != NULL) {
+		sock->ops->get_selected_alpn(handle, alpn, alpnlen);
+	}
 }
 
 isc_result_t
@@ -2890,26 +2556,8 @@ isc_nmhandle_set_tcp_nodelay(isc_nmhandle_t *handle, const bool value) {
 	isc_result_t result = ISC_R_FAILURE;
 	isc_nmsocket_t *sock = handle->sock;
 
-	switch (sock->type) {
-	case isc_nm_tcpsocket: {
-		uv_os_fd_t tcp_fd = (uv_os_fd_t)-1;
-		(void)uv_fileno((uv_handle_t *)&sock->tcp.uv_handle.tcp,
-				&tcp_fd);
-		RUNTIME_CHECK(tcp_fd != (uv_os_fd_t)-1);
-		result = isc__nm_socket_tcp_nodelay((uv_os_sock_t)tcp_fd,
-						    value);
-	} break;
-	case isc_nm_tlssocket:
-		result = isc__nmhandle_tls_set_tcp_nodelay(handle, value);
-		break;
-	case isc_nm_proxystreamsocket:
-		result = isc__nmhandle_proxystream_set_tcp_nodelay(handle,
-								   value);
-		break;
-	default:
-		UNREACHABLE();
-		break;
-	};
+	REQUIRE(sock->ops->set_tcp_nodelay != NULL);
+	result = sock->ops->set_tcp_nodelay(handle, value);
 
 	return result;
 }

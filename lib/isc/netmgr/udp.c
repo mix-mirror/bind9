@@ -184,12 +184,12 @@ static void
 start_udp_child(isc_sockaddr_t *iface, isc_nmsocket_t *sock, uv_os_sock_t fd,
 		isc_tid_t tid) {
 	isc__networker_t *worker = isc__networker_get(tid);
-	isc_nmsocket_t *csock = &sock->children[tid];
+	isc_nmsocket_t *csock = &sock->udp.children[tid];
 
 	isc__nmsocket_init(csock, worker, isc_nm_udpsocket, iface, sock);
 	csock->recv_cb = sock->recv_cb;
 	csock->recv_cbarg = sock->recv_cbarg;
-	csock->inactive_handles_max = ISC_NM_NMHANDLES_MAX;
+	csock->udp.inactive_handles_max = ISC_NM_NMHANDLES_MAX;
 
 	if (isc__netmgr->load_balance_sockets) {
 		csock->udp.fd = isc__nm_udp_lb_socket(iface->type.sa.sa_family);
@@ -229,8 +229,8 @@ isc_nm_listenudp(uint32_t workers, isc_sockaddr_t *iface, isc_nm_recv_cb_t cb,
 	}
 	REQUIRE(sock->nchildren <= isc__netmgr->nloops);
 
-	sock->children = isc_mem_cget(worker->mctx, sock->nchildren,
-				      sizeof(sock->children[0]));
+	sock->udp.children = isc_mem_cget(worker->mctx, sock->nchildren,
+					  sizeof(sock->udp.children[0]));
 
 	isc__nmsocket_barrier_init(sock);
 
@@ -242,7 +242,7 @@ isc_nm_listenudp(uint32_t workers, isc_sockaddr_t *iface, isc_nm_recv_cb_t cb,
 	}
 
 	start_udp_child(iface, sock, fd, 0);
-	result = sock->children[0].result;
+	result = sock->udp.children[0].result;
 	INSIST(result != ISC_R_UNSET);
 
 	for (size_t i = 1; i < sock->nchildren; i++) {
@@ -261,9 +261,9 @@ isc_nm_listenudp(uint32_t workers, isc_sockaddr_t *iface, isc_nm_recv_cb_t cb,
 	 */
 	for (size_t i = 1; i < sock->nchildren; i++) {
 		if (result == ISC_R_SUCCESS &&
-		    sock->children[i].result != ISC_R_SUCCESS)
+		    sock->udp.children[i].result != ISC_R_SUCCESS)
 		{
-			result = sock->children[i].result;
+			result = sock->udp.children[i].result;
 		}
 	}
 
@@ -368,7 +368,7 @@ isc_nm_routeconnect(isc_nm_cb_t cb, void *cbarg) {
 	sock->connect_cb = cb;
 	sock->connect_cbarg = cbarg;
 	sock->client = true;
-	sock->route_sock = true;
+	sock->udp.route_sock = true;
 	sock->udp.fd = fd;
 
 	req = isc__nm_uvreq_get(sock);
@@ -442,11 +442,11 @@ isc__nm_udp_stoplistening(isc_nmsocket_t *sock) {
 
 	/* Stop all the other threads' children */
 	for (size_t i = 1; i < sock->nchildren; i++) {
-		stop_udp_child(&sock->children[i]);
+		stop_udp_child(&sock->udp.children[i]);
 	}
 
 	/* Stop the child for the main thread */
-	stop_udp_child(&sock->children[0]);
+	stop_udp_child(&sock->udp.children[0]);
 
 	/* Stop the parent */
 	sock->closed = true;
@@ -542,7 +542,7 @@ isc__nm_udp_read_cb(uv_udp_t *handle, ssize_t nrecv, const uv_buf_t *buf,
 	 */
 	INSIST(addr != NULL);
 
-	if (!sock->route_sock) {
+	if (!sock->udp.route_sock) {
 		result = isc_sockaddr_fromsockaddr(&sockaddr, addr);
 		RUNTIME_CHECK(result == ISC_R_SUCCESS);
 		sa = &sockaddr;
@@ -570,10 +570,10 @@ isc__nm_udp_read_cb(uv_udp_t *handle, ssize_t nrecv, const uv_buf_t *buf,
 		isc__nmsocket_clearcb(sock);
 	}
 
-	REQUIRE(!sock->processing);
-	sock->processing = true;
+	REQUIRE(!sock->udp.processing);
+	sock->udp.processing = true;
 	isc__nm_readcb(sock, req, ISC_R_SUCCESS, false);
-	sock->processing = false;
+	sock->udp.processing = false;
 
 free:
 #if HAVE_DECL_UV_UDP_MMSG_CHUNK
@@ -646,8 +646,8 @@ can_log_udp_sends(void) {
  * another thread.
  */
 void
-isc__nm_udp_send(isc_nmhandle_t *handle, const isc_region_t *region,
-		 isc_nm_cb_t cb, void *cbarg) {
+isc__nm_udp_send(isc_nmhandle_t *handle, isc_region_t *region, isc_nm_cb_t cb,
+		 void *cbarg) {
 	isc_nmsocket_t *sock = handle->sock;
 	const isc_sockaddr_t *peer = &handle->peer;
 	const struct sockaddr *sa = NULL;
@@ -1043,3 +1043,17 @@ isc__nm_udp_shutdown(isc_nmsocket_t *sock) {
 		isc__nmsocket_prep_destroy(sock->parent);
 	}
 }
+
+const isc_nmsocket_ops_t isc__nm_udp_ops = {
+	.close = isc__nm_udp_close,
+	.send = isc__nm_udp_send,
+	.read = isc__nm_udp_read,
+	.shutdown = isc__nm_udp_shutdown,
+	.stoplistening = isc__nm_udp_stoplistening,
+	.failed_read_cb = isc__nm_udp_failed_read_cb,
+	/* settimeout: handled by generic code in netmgr.c */
+};
+
+const isc_nmsocket_ops_t isc__nm_udp_listener_ops = {
+	.stoplistening = isc__nm_udp_stoplistening,
+};
