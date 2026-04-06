@@ -290,7 +290,7 @@ dns__rdata_typedesc_fromtext(const char *name, unsigned int length) {
 		break;
 	case 'd':
 		NAMECMP("DHCID", dns__rdata_typedesc_table[49]);
-		NAMECMP("DLV", dns__rdata_typedesc_table[32769]);
+		NAMECMP("DLV", &dns__rdata_dlv_typedesc);
 		NAMECMP("DNAME", dns__rdata_typedesc_table[39]);
 		NAMECMP("DNSKEY", dns__rdata_typedesc_table[48]);
 		NAMECMP("DOA", dns__rdata_typedesc_table[259]);
@@ -319,7 +319,7 @@ dns__rdata_typedesc_fromtext(const char *name, unsigned int length) {
 		break;
 	case 'k':
 		NAMECMP("KEY", dns__rdata_typedesc_table[25]);
-		NAMECMP("KEYDATA", dns__rdata_typedesc_table[65533]);
+		NAMECMP("KEYDATA", &dns__rdata_keydata_typedesc);
 		NAMECMP("KX", dns__rdata_typedesc_table[36]);
 		break;
 	case 'l':
@@ -379,7 +379,7 @@ dns__rdata_typedesc_fromtext(const char *name, unsigned int length) {
 		NAMECMP("SVCB", dns__rdata_typedesc_table[64]);
 		break;
 	case 't':
-		NAMECMP("TA", dns__rdata_typedesc_table[32768]);
+		NAMECMP("TA", &dns__rdata_ta_typedesc);
 		NAMECMP("TALINK", dns__rdata_typedesc_table[58]);
 		NAMECMP("TKEY", dns__rdata_typedesc_table[249]);
 		NAMECMP("TLSA", dns__rdata_typedesc_table[52]);
