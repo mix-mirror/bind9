@@ -717,9 +717,13 @@ dns_view_addzone_batch(dns_view_t *view, dns_zone_t **zones,
 	}
 	rcu_read_unlock();
 
+	const dns_name_t **names =
+		isc_mem_cget(view->mctx, count, sizeof(*names));
 	for (unsigned int i = 0; i < count; i++) {
-		dns_view_sfd_add(view, dns_zone_getorigin(zones[i]));
+		names[i] = dns_zone_getorigin(zones[i]);
 	}
+	dns_view_sfd_add_batch(view, names, count);
+	isc_mem_cput(view->mctx, names, count, sizeof(*names));
 }
 
 isc_result_t
@@ -1977,6 +1981,14 @@ dns_view_sfd_add(dns_view_t *view, const dns_name_t *name) {
 
 	result = dns_nametree_add(view->sfd, name, 0);
 	RUNTIME_CHECK(result == ISC_R_SUCCESS);
+}
+
+void
+dns_view_sfd_add_batch(dns_view_t *view, const dns_name_t **names,
+		       unsigned int count) {
+	REQUIRE(DNS_VIEW_VALID(view));
+
+	dns_nametree_add_batch(view->sfd, names, count, 0);
 }
 
 void

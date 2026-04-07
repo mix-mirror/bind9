@@ -1168,6 +1168,18 @@ dns_view_sfd_add(dns_view_t *view, const dns_name_t *name);
  */
 
 void
+dns_view_sfd_add_batch(dns_view_t *view, const dns_name_t **names,
+		       unsigned int count);
+/*%<
+ * Add multiple names to the synth-from-dnssec namespace tree in a
+ * single QP transaction.
+ *
+ * Requires:
+ *\li	'view' to be valid.
+ *\li	'names' to be non-NULL.
+ */
+
+void
 dns_view_sfd_del(dns_view_t *view, const dns_name_t *name);
 /*%<
  * Delete 'name' to the synth-from-dnssec namespace tree for
