@@ -13,5 +13,6 @@ isc_srcset.add(
     when: ngtcp2_dep,
     if_true: files(
         'cid.c',
+        'connection.c',
     ),
 )

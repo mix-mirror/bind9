@@ -339,6 +339,8 @@ if developer_mode
     config.set('DNS_TYPEPAIR_CHECK', 1)
 endif
 
+config.set('ISC_QUIC_STATE_CHECK', developer_mode)
+
 # mandatory builtins
 foreach fn : [
     '__builtin_add_overflow',
