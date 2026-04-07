@@ -810,3 +810,29 @@ dns_zonemgr_getcount(dns_zonemgr_t *zmgr, dns_zonestate_t state) {
 
 	return count;
 }
+
+isc_result_t
+dns_zonemgr_next_zone(dns_zone_t *zone, dns_zone_t **next) {
+	REQUIRE(DNS_ZONE_VALID(zone));
+	REQUIRE(next != NULL && *next == NULL);
+
+	*next = ISC_LIST_NEXT(zone, link);
+	if (*next == NULL) {
+		return ISC_R_NOMORE;
+	} else {
+		return ISC_R_SUCCESS;
+	}
+}
+
+isc_result_t
+dns_zonemgr_first_zone(dns_zonemgr_t *zmgr, dns_zone_t **first) {
+	REQUIRE(DNS_ZONEMGR_VALID(zmgr));
+	REQUIRE(first != NULL && *first == NULL);
+
+	*first = ISC_LIST_HEAD(zmgr->zones);
+	if (*first == NULL) {
+		return ISC_R_NOMORE;
+	} else {
+		return ISC_R_SUCCESS;
+	}
+}

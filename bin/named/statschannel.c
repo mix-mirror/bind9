@@ -60,11 +60,11 @@
 
 #define STATS_XML_VERSION_MAJOR "3"
 #define STATS_XML_VERSION_MINOR "14"
-#define STATS_XML_VERSION STATS_XML_VERSION_MAJOR "." STATS_XML_VERSION_MINOR
+#define STATS_XML_VERSION	STATS_XML_VERSION_MAJOR "." STATS_XML_VERSION_MINOR
 
 #define STATS_JSON_VERSION_MAJOR "1"
 #define STATS_JSON_VERSION_MINOR "8"
-#define STATS_JSON_VERSION STATS_JSON_VERSION_MAJOR "." STATS_JSON_VERSION_MINOR
+#define STATS_JSON_VERSION	 STATS_JSON_VERSION_MAJOR "." STATS_JSON_VERSION_MINOR
 
 struct named_statschannel {
 	/* Unlocked */
@@ -4295,9 +4295,9 @@ named_stats_dump(named_server_t *server, FILE *fp) {
 
 	fprintf(fp, "++ Per Zone Query Statistics ++\n");
 	zone = NULL;
-	for (result = dns_zone_first(server->zonemgr, &zone);
-	     result == ISC_R_SUCCESS;
-	     next = NULL, result = dns_zone_next(zone, &next), zone = next)
+	for (result = dns_zonemgr_first_zone(server->zonemgr, &zone);
+	     result == ISC_R_SUCCESS; next = NULL,
+	    result = dns_zonemgr_next_zone(zone, &next), zone = next)
 	{
 		isc_stats_t *zonestats = dns_zone_getrequeststats(zone);
 		if (zonestats != NULL) {
@@ -4324,9 +4324,9 @@ named_stats_dump(named_server_t *server, FILE *fp) {
 
 	fprintf(fp, "++ Per Zone Glue Cache Statistics ++\n");
 	zone = NULL;
-	for (result = dns_zone_first(server->zonemgr, &zone);
-	     result == ISC_R_SUCCESS;
-	     next = NULL, result = dns_zone_next(zone, &next), zone = next)
+	for (result = dns_zonemgr_first_zone(server->zonemgr, &zone);
+	     result == ISC_R_SUCCESS; next = NULL,
+	    result = dns_zonemgr_next_zone(zone, &next), zone = next)
 	{
 		isc_stats_t *gluecachestats = dns_zone_getgluecachestats(zone);
 		if (gluecachestats != NULL) {

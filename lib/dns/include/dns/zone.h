@@ -524,38 +524,6 @@ dns_zone_forwardupdate(dns_zone_t *zone, dns_message_t *msg,
  */
 
 isc_result_t
-dns_zone_next(dns_zone_t *zone, dns_zone_t **next);
-/*%<
- * Find the next zone in the list of managed zones.
- *
- * Requires:
- *\li	'zone' to be valid
- *\li	The zone manager for the indicated zone MUST be locked
- *	by the caller.  This is not checked.
- *\li	'next' be non-NULL, and '*next' be NULL.
- *
- * Ensures:
- *\li	'next' points to a valid zone (result ISC_R_SUCCESS) or to NULL
- *	(result ISC_R_NOMORE).
- */
-
-isc_result_t
-dns_zone_first(dns_zonemgr_t *zmgr, dns_zone_t **first);
-/*%<
- * Find the first zone in the list of managed zones.
- *
- * Requires:
- *\li	'zonemgr' to be valid
- *\li	The zone manager for the indicated zone MUST be locked
- *	by the caller.  This is not checked.
- *\li	'first' be non-NULL, and '*first' be NULL
- *
- * Ensures:
- *\li	'first' points to a valid zone (result ISC_R_SUCCESS) or to NULL
- *	(result ISC_R_NOMORE).
- */
-
-isc_result_t
 dns_zone_getdnsseckeys(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *ver,
 		       isc_stdtime_t now, dns_dnsseckeylist_t *keys);
 /*%<

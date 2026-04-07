@@ -223,3 +223,35 @@ dns_zonemgr_set_tlsctx_cache(dns_zonemgr_t	*zmgr,
  *\li	'zmgr' is a valid zone manager.
  *\li	'tlsctx_cache' is a valid TLS context cache.
  */
+
+isc_result_t
+dns_zonemgr_next_zone(dns_zone_t *zone, dns_zone_t **next);
+/*%<
+ * Find the next zone in the list of managed zones.
+ *
+ * Requires:
+ *\li	'zone' to be valid
+ *\li	The zone manager for the indicated zone MUST be locked
+ *	by the caller.  This is not checked.
+ *\li	'next' be non-NULL, and '*next' be NULL.
+ *
+ * Ensures:
+ *\li	'next' points to a valid zone (result ISC_R_SUCCESS) or to NULL
+ *	(result ISC_R_NOMORE).
+ */
+
+isc_result_t
+dns_zonemgr_first_zone(dns_zonemgr_t *zmgr, dns_zone_t **first);
+/*%<
+ * Find the first zone in the list of managed zones.
+ *
+ * Requires:
+ *\li	'zonemgr' to be valid
+ *\li	The zone manager for the indicated zone MUST be locked
+ *	by the caller.  This is not checked.
+ *\li	'first' be non-NULL, and '*first' be NULL
+ *
+ * Ensures:
+ *\li	'first' points to a valid zone (result ISC_R_SUCCESS) or to NULL
+ *	(result ISC_R_NOMORE).
+ */
