@@ -40,7 +40,12 @@ class TemplateEngine:
         self.directory = Path(directory)
         self.env_vars = dict(env_vars)
         self.j2env = jinja2.Environment(
-            loader=jinja2.FileSystemLoader(str(self.directory)),
+            loader=jinja2.FileSystemLoader(
+                [
+                    str(self.directory),
+                    str(ALL["srcdir"]),  # to allow _common/ includes
+                ]
+            ),
             undefined=jinja2.StrictUndefined,
             variable_start_string="@",
             variable_end_string="@",
@@ -52,6 +57,10 @@ class TemplateEngine:
         self.j2env.globals["Nameserver"] = Nameserver
         self.j2env.globals["TrustAnchor"] = TrustAnchor
         self.j2env.globals["Zone"] = Zone
+
+    def _template_exists(self, path: str) -> bool:
+        """Return True if a template file exists locally or under srcdir."""
+        return Path(path).is_file() or (Path(str(ALL["srcdir"])) / path).is_file()
 
     def render(
         self,
@@ -67,10 +76,10 @@ class TemplateEngine:
         """
         if template is None:
             template = f"{output}.j2.manual"
-            if not Path(template).is_file():
+            if not self._template_exists(template):
                 template = f"{output}.j2"
-        if not Path(template).is_file():
-            raise RuntimeError('No jinja2 template found for "{output}"')
+        if not self._template_exists(template):
+            raise RuntimeError(f'No jinja2 template found for "{output}"')
 
         if data is None:
             data = {**self.env_vars}
