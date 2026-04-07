@@ -695,7 +695,31 @@ dns_view_addzone(dns_view_t *view, dns_zone_t *zone) {
 	}
 	rcu_read_unlock();
 
+	if (result == ISC_R_SUCCESS) {
+		dns_view_sfd_add(view, dns_zone_getorigin(zone));
+	}
+
 	return result;
+}
+
+void
+dns_view_addzone_batch(dns_view_t *view, dns_zone_t **zones,
+		       unsigned int count) {
+	dns_zt_t *zonetable = NULL;
+
+	REQUIRE(DNS_VIEW_VALID(view));
+	REQUIRE(!view->frozen);
+
+	rcu_read_lock();
+	zonetable = rcu_dereference(view->zonetable);
+	if (zonetable != NULL) {
+		dns_zt_mount_batch(zonetable, zones, count);
+	}
+	rcu_read_unlock();
+
+	for (unsigned int i = 0; i < count; i++) {
+		dns_view_sfd_add(view, dns_zone_getorigin(zones[i]));
+	}
 }
 
 isc_result_t
@@ -715,6 +739,10 @@ dns_view_delzone(dns_view_t *view, dns_zone_t *zone) {
 		result = ISC_R_SUCCESS;
 	}
 	rcu_read_unlock();
+
+	if (result == ISC_R_SUCCESS) {
+		dns_view_sfd_del(view, dns_zone_getorigin(zone));
+	}
 
 	return result;
 }

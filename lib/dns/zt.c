@@ -148,6 +148,21 @@ dns_zt_mount(dns_zt_t *zt, dns_zone_t *zone) {
 	return result;
 }
 
+void
+dns_zt_mount_batch(dns_zt_t *zt, dns_zone_t **zones, unsigned int count) {
+	dns_qp_t *qp = NULL;
+
+	REQUIRE(VALID_ZT(zt));
+	REQUIRE(zones != NULL);
+
+	dns_qpmulti_write(zt->multi, &qp);
+	for (unsigned int i = 0; i < count; i++) {
+		(void)dns_qp_insert(qp, zones[i], 0);
+	}
+	dns_qp_compact(qp, DNS_QPGC_ALL);
+	dns_qpmulti_commit(zt->multi, &qp);
+}
+
 isc_result_t
 dns_zt_unmount(dns_zt_t *zt, dns_zone_t *zone) {
 	isc_result_t result;

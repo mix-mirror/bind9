@@ -496,6 +496,20 @@ dns_view_addzone(dns_view_t *view, dns_zone_t *zone);
  *\li	'zone' is a valid zone.
  */
 
+void
+dns_view_addzone_batch(dns_view_t *view, dns_zone_t **zones,
+		       unsigned int count);
+/*%<
+ * Add multiple zones to 'view' in a single QP transaction.
+ * Duplicate zones are silently ignored.
+ *
+ * Requires:
+ *
+ *\li	'view' is a valid, unfrozen view.
+ *
+ *\li	'zones' is non-NULL.
+ */
+
 isc_result_t
 dns_view_delzone(dns_view_t *view, dns_zone_t *zone);
 /*%<

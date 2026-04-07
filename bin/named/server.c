@@ -457,7 +457,7 @@ configure_zone(const cfg_obj_t *config, const cfg_obj_t *zconfig,
 	       const cfg_obj_t *vconfig, dns_view_t *view,
 	       dns_viewlist_t *viewlist, dns_kasplist_t *kasplist,
 	       cfg_aclconfctx_t *aclconf, bool added, bool old_rpz_ok,
-	       bool is_catz_member, bool modify);
+	       bool is_catz_member, bool modify, dns_zone_t **zonep);
 
 static void
 configure_zone_setviewcommit(isc_result_t result, const cfg_obj_t *zconfig,
@@ -2328,7 +2328,7 @@ catz_addmodzone_cb(void *arg) {
 		cz->cbd->server->effectiveconfig, zoneobj,
 		view->newzone.vconfig, view, &cz->cbd->server->viewlist,
 		&cz->cbd->server->kasplist, cz->cbd->server->aclctx, true,
-		false, true, cz->mod);
+		false, true, cz->mod, NULL);
 	dns_view_freeze(view);
 	isc_loopmgr_resume();
 
@@ -2594,7 +2594,7 @@ catz_reconfigure(dns_catz_entry_t *entry, void *arg1, void *arg2) {
 	result = configure_zone(
 		data->config, zoneobj, view->newzone.vconfig, view,
 		&data->cbd->server->viewlist, &data->cbd->server->kasplist,
-		data->cbd->server->aclctx, true, false, true, true);
+		data->cbd->server->aclctx, true, false, true, true, NULL);
 	if (result != ISC_R_SUCCESS) {
 		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
 			      ISC_LOG_ERROR,
@@ -3638,6 +3638,8 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	const char *str = NULL;
 	const char *cachename = NULL;
 	dns_order_t *order = NULL;
+	dns_zone_t **pending = NULL;
+	unsigned int npending = 0, pending_cap = 0;
 	unsigned int resopts = 0;
 	dns_zone_t *zone = NULL;
 	uint32_t clients_per_query, max_clients_per_query;
@@ -3723,10 +3725,33 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	 */
 	CFG_LIST_FOREACH(zonelist, element) {
 		const cfg_obj_t *zconfig = cfg_listelt_value(element);
+		dns_zone_t *newzone = NULL;
 		CHECK(configure_zone(config, zconfig, vconfig, view, viewlist,
 				     kasplist, aclctx, false, old_rpz_ok, false,
-				     false));
+				     false, &newzone));
 		zone_element_latest = element;
+		if (newzone != NULL) {
+			if (npending == pending_cap) {
+				pending_cap = (pending_cap == 0) ? 256
+								 : pending_cap * 2;
+				pending = isc_mem_creget(mctx, pending,
+							npending, pending_cap,
+							sizeof(*pending));
+			}
+			pending[npending++] = newzone;
+		}
+	}
+
+	if (npending > 0) {
+		dns_view_addzone_batch(view, pending, npending);
+		for (unsigned int zi = 0; zi < npending; zi++) {
+			dns_zone_detach(&pending[zi]);
+		}
+		npending = 0;
+	}
+	if (pending != NULL) {
+		isc_mem_cput(mctx, pending, pending_cap, sizeof(*pending));
+		pending = NULL;
 	}
 
 	/*
@@ -5360,6 +5385,14 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	result = ISC_R_SUCCESS;
 
 cleanup:
+	if (pending != NULL) {
+		for (unsigned int zi = 0; zi < npending; zi++) {
+			dns_zone_detach(&pending[zi]);
+		}
+		isc_mem_cput(mctx, pending, pending_cap, sizeof(*pending));
+		pending = NULL;
+	}
+
 	/*
 	 * Revert to the old view if there was an error.
 	 */
@@ -5865,7 +5898,7 @@ configure_zone(const cfg_obj_t *config, const cfg_obj_t *zconfig,
 	       const cfg_obj_t *vconfig, dns_view_t *view,
 	       dns_viewlist_t *viewlist, dns_kasplist_t *kasplist,
 	       cfg_aclconfctx_t *aclctx, bool added, bool old_rpz_ok,
-	       bool is_catz_member, bool modify) {
+	       bool is_catz_member, bool modify, dns_zone_t **zonep) {
 	dns_view_t *pview = NULL; /* Production view */
 	dns_zone_t *zone = NULL;  /* New or reused zone */
 	dns_zone_t *raw = NULL;	  /* New or reused raw zone */
@@ -5957,7 +5990,11 @@ configure_zone(const cfg_obj_t *config, const cfg_obj_t *zconfig,
 			CLEANUP(ISC_R_FAILURE);
 		}
 
-		CHECK(dns_view_addzone(view, zone));
+		if (zonep != NULL) {
+			dns_zone_attach(zone, zonep);
+		} else {
+			CHECK(dns_view_addzone(view, zone));
+		}
 		dns_zone_detach(&zone);
 
 		/*
@@ -6063,7 +6100,7 @@ configure_zone(const cfg_obj_t *config, const cfg_obj_t *zconfig,
 		goto cleanup;
 	}
 
-	if (!modify) {
+	if (!modify && zonep == NULL) {
 		/*
 		 * Check for duplicates in the new zone table.
 		 */
@@ -6241,7 +6278,11 @@ configure_zone(const cfg_obj_t *config, const cfg_obj_t *zconfig,
 	 * Add the zone to its view in the new view list.
 	 */
 	if (!modify) {
-		CHECK(dns_view_addzone(view, zone));
+		if (zonep != NULL) {
+			dns_zone_attach(zone, zonep);
+		} else {
+			CHECK(dns_view_addzone(view, zone));
+		}
 	}
 
 	if (zone_is_catz) {
@@ -7327,7 +7368,7 @@ configure_newzone(const cfg_obj_t *zconfig, cfg_obj_t *config,
 		  cfg_aclconfctx_t *aclctx, dns_kasplist_t *kasplist) {
 	return configure_zone(config, zconfig, vconfig, view,
 			      &named_g_server->viewlist, kasplist, aclctx, true,
-			      false, false, false);
+			      false, false, false, NULL);
 }
 
 /*%
@@ -12098,7 +12139,7 @@ do_addzone(named_server_t *server, dns_view_t *view, dns_name_t *name,
 	result = configure_zone(server->effectiveconfig, zoneobj,
 				view->newzone.vconfig, view, &server->viewlist,
 				&server->kasplist, server->aclctx, true, false,
-				false, false);
+				false, false, NULL);
 	dns_view_freeze(view);
 
 	isc_loopmgr_resume();
@@ -12241,7 +12282,7 @@ do_modzone(named_server_t *server, dns_view_t *view, dns_name_t *name,
 	result = configure_zone(server->effectiveconfig, zoneobj,
 				view->newzone.vconfig, view, &server->viewlist,
 				&server->kasplist, server->aclctx, false, false,
-				false, true);
+				false, true, NULL);
 	dns_view_freeze(view);
 
 	isc_loopmgr_resume();
