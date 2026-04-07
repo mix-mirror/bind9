@@ -5680,9 +5680,9 @@ zone_postload(dns_zone_t *zone, dns_db_t *db, isc_time_t loadtime,
 	}
 
 	if (!dns_db_ispersistent(db)) {
-		dns_zone_logc(zone, DNS_LOGCATEGORY_ZONELOAD, ISC_LOG_INFO,
-			      "loaded serial %u%s", serial,
-			      dns_db_issecure(db) ? " (DNSSEC signed)" : "");
+		// dns_zone_logc(zone, DNS_LOGCATEGORY_ZONELOAD, ISC_LOG_INFO,
+		// 	      "loaded serial %u%s", serial,
+		// 	      dns_db_issecure(db) ? " (DNSSEC signed)" : "");
 	}
 
 	if (!had_db && zone->type == dns_zone_mirror) {
