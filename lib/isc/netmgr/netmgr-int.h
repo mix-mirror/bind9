@@ -220,7 +220,9 @@ typedef struct isc__networker {
 	isc_mempool_t *nmsocket_pool;	      /*%< TCP sockets (full size) */
 	isc_mempool_t *nmsocket_pool_udp;     /*%< UDP sockets (smaller) */
 	isc_mempool_t *nmsocket_pool_overlay; /*%< overlay sockets (smallest) */
-	isc_mempool_t *uvreq_pool;
+	isc_mempool_t *uvreq_pool;	      /*%< TCP uvreqs */
+	isc_mempool_t *uvreq_pool_udp;	      /*%< UDP uvreqs */
+	isc_mempool_t *uvreq_pool_overlay;    /*%< overlay uvreqs (small) */
 } isc__networker_t;
 
 ISC_REFCOUNT_DECL(isc__networker);
@@ -295,31 +297,57 @@ typedef union {
 
 typedef struct isc__nm_uvreq isc__nm_uvreq_t;
 struct isc__nm_uvreq {
+	/*% Common fields — used by all transports */
 	int magic;
 	isc_nmsocket_t *sock;
 	isc_nmhandle_t *handle;
-	char tcplen[2];	       /* The TCP DNS message length */
-	uv_buf_t uvbuf;	       /* translated isc_region_t, to be
-				* sent or received */
-	isc_sockaddr_t local;  /* local address */
-	isc_sockaddr_t peer;   /* peer address */
+	char tcplen[2];	       /* DNS message length prefix */
+	uv_buf_t uvbuf;	       /* translated isc_region_t */
 	isc__nm_cb_t cb;       /* callback */
 	void *cbarg;	       /* callback argument */
-	isc_nm_timer_t *timer; /* TCP write timer */
-	int connect_tries;     /* connect retries */
 	isc_result_t result;
-
-	union {
-		uv_handle_t handle;
-		uv_write_t write;
-		uv_connect_t connect;
-		uv_udp_send_t udp_send;
-	} uv_req;
 	ISC_LINK(isc__nm_uvreq_t) link;
 	ISC_LINK(isc__nm_uvreq_t) active_link;
-
 	isc_job_t job;
+
+	/*%
+	 * Transport-specific data — MUST BE LAST.
+	 * Overlay transports (TLS, StreamDNS, PROXY, HTTP) only need
+	 * common fields above.  TCP/UDP add libuv request data below.
+	 */
+	union {
+		struct {
+			union {
+				uv_handle_t handle;
+				uv_write_t write;
+				uv_connect_t connect;
+			} uv_req;
+			isc_sockaddr_t local;
+			isc_sockaddr_t peer;
+			isc_nm_timer_t *timer;
+			int connect_tries;
+		} tcp;
+
+		struct {
+			union {
+				uv_handle_t handle;
+				uv_connect_t connect;
+				uv_udp_send_t udp_send;
+			} uv_req;
+			isc_sockaddr_t local;
+			isc_sockaddr_t peer;
+			int connect_tries;
+		} udp;
+	};
 };
+
+#define ISC_NM_UVREQ_COMMON_SIZE offsetof(isc__nm_uvreq_t, tcp)
+
+#define ISC_NM_UVREQ_TCP_SIZE \
+	(ISC_NM_UVREQ_COMMON_SIZE + sizeof(((isc__nm_uvreq_t *)0)->tcp))
+
+#define ISC_NM_UVREQ_UDP_SIZE \
+	(ISC_NM_UVREQ_COMMON_SIZE + sizeof(((isc__nm_uvreq_t *)0)->udp))
 
 typedef struct isc__netmgr {
 	int magic;

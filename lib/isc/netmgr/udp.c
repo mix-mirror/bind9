@@ -724,7 +724,7 @@ isc__nm_udp_send(isc_nmhandle_t *handle, isc_region_t *region, isc_nm_cb_t cb,
 
 	} else {
 		/* Send the message asynchronously */
-		r = uv_udp_send(&uvreq->uv_req.udp_send,
+		r = uv_udp_send(&uvreq->udp.uv_req.udp_send,
 				&sock->udp.uv_handle.udp, &uvreq->uvbuf, 1, sa,
 				udp_send_cb);
 		if (r < 0) {
@@ -790,8 +790,8 @@ udp_connect_direct(isc_nmsocket_t *sock, isc__nm_uvreq_t *req) {
 	 */
 	do {
 		r = uv_udp_connect(&sock->udp.uv_handle.udp,
-				   &req->peer.type.sa);
-	} while (r == UV_EADDRINUSE && --req->connect_tries > 0);
+				   &req->udp.peer.type.sa);
+	} while (r == UV_EADDRINUSE && --req->udp.connect_tries > 0);
 	if (r != 0) {
 		isc__nm_incstats(sock, STATID_CONNECTFAIL);
 		return isc_uverr2result(r);
@@ -847,9 +847,9 @@ isc_nm_udpconnect(isc_sockaddr_t *local, isc_sockaddr_t *peer, isc_nm_cb_t cb,
 	req = isc__nm_uvreq_get(sock);
 	req->cb.connect = cb;
 	req->cbarg = cbarg;
-	req->peer = *peer;
-	req->local = *local;
-	req->handle = isc__nmhandle_get(sock, &req->peer, &sock->iface);
+	req->udp.peer = *peer;
+	req->udp.local = *local;
+	req->handle = isc__nmhandle_get(sock, &req->udp.peer, &sock->iface);
 
 	sock->active = true;
 	sock->connecting = true;

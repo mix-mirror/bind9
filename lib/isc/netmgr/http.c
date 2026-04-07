@@ -1929,9 +1929,7 @@ isc_nm_httpconnect(isc_sockaddr_t *local, isc_sockaddr_t *peer, const char *uri,
 
 		req->cb.connect = cb;
 		req->cbarg = cbarg;
-		req->peer = *peer;
-		req->local = *local;
-		req->handle = isc__nmhandle_get(sock, &req->peer, &sock->iface);
+		req->handle = isc__nmhandle_get(sock, peer, local);
 
 		isc__nmsocket_clearcb(sock);
 		isc__nm_connectcb(sock, req, ISC_R_SHUTTINGDOWN, true);

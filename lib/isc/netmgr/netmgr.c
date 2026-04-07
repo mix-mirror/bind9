@@ -245,9 +245,20 @@ isc_netmgr_create(isc_mem_t *mctx) {
 		isc_mempool_setfreemax(worker->nmsocket_pool_overlay,
 				       ISC_NM_NMSOCKET_MAX);
 
-		isc_mempool_create(worker->mctx, sizeof(isc__nm_uvreq_t),
+		isc_mempool_create(worker->mctx, ISC_NM_UVREQ_TCP_SIZE,
 				   "uvreq_pool", &worker->uvreq_pool);
 		isc_mempool_setfreemax(worker->uvreq_pool, ISC_NM_UVREQS_MAX);
+
+		isc_mempool_create(worker->mctx, ISC_NM_UVREQ_UDP_SIZE,
+				   "uvreq_pool_udp", &worker->uvreq_pool_udp);
+		isc_mempool_setfreemax(worker->uvreq_pool_udp,
+				       ISC_NM_UVREQS_MAX);
+
+		isc_mempool_create(worker->mctx, ISC_NM_UVREQ_COMMON_SIZE,
+				   "uvreq_pool_overlay",
+				   &worker->uvreq_pool_overlay);
+		isc_mempool_setfreemax(worker->uvreq_pool_overlay,
+				       ISC_NM_UVREQS_MAX);
 
 		isc_loop_attach(loop, &worker->loop);
 		isc_loop_teardown(loop, networker_teardown, worker);
@@ -1520,14 +1531,46 @@ isc___nm_uvreq_get(isc_nmsocket_t *sock FLARG) {
 
 	isc__networker_t *worker = sock->worker;
 
-	isc__nm_uvreq_t *req = isc_mempool_get(worker->uvreq_pool);
-	*req = (isc__nm_uvreq_t){
-		.connect_tries = 3,
-		.link = ISC_LINK_INITIALIZER,
-		.active_link = ISC_LINK_INITIALIZER,
-		.magic = UVREQ_MAGIC,
-	};
-	uv_handle_set_data(&req->uv_req.handle, req);
+	isc_mempool_t *pool;
+	size_t alloc_size;
+
+	switch (sock->type) {
+	case isc_nm_tcpsocket:
+	case isc_nm_tcplistener:
+		pool = worker->uvreq_pool;
+		alloc_size = ISC_NM_UVREQ_TCP_SIZE;
+		break;
+	case isc_nm_udpsocket:
+	case isc_nm_udplistener:
+		pool = worker->uvreq_pool_udp;
+		alloc_size = ISC_NM_UVREQ_UDP_SIZE;
+		break;
+	default:
+		pool = worker->uvreq_pool_overlay;
+		alloc_size = ISC_NM_UVREQ_COMMON_SIZE;
+		break;
+	}
+
+	isc__nm_uvreq_t *req = isc_mempool_get(pool);
+	memset(req, 0, alloc_size);
+	req->magic = UVREQ_MAGIC;
+	ISC_LINK_INIT(req, link);
+	ISC_LINK_INIT(req, active_link);
+
+	switch (sock->type) {
+	case isc_nm_tcpsocket:
+	case isc_nm_tcplistener:
+		req->tcp.connect_tries = 3;
+		uv_handle_set_data(&req->tcp.uv_req.handle, req);
+		break;
+	case isc_nm_udpsocket:
+	case isc_nm_udplistener:
+		req->udp.connect_tries = 3;
+		uv_handle_set_data(&req->udp.uv_req.handle, req);
+		break;
+	default:
+		break;
+	}
 
 	isc___nmsocket_attach(sock, &req->sock FLARG_PASS);
 
@@ -1559,7 +1602,21 @@ isc___nm_uvreq_put(isc__nm_uvreq_t **reqp FLARG) {
 #endif
 	}
 
-	isc_mempool_put(sock->worker->uvreq_pool, req);
+	isc_mempool_t *pool;
+	switch (sock->type) {
+	case isc_nm_tcpsocket:
+	case isc_nm_tcplistener:
+		pool = sock->worker->uvreq_pool;
+		break;
+	case isc_nm_udpsocket:
+	case isc_nm_udplistener:
+		pool = sock->worker->uvreq_pool_udp;
+		break;
+	default:
+		pool = sock->worker->uvreq_pool_overlay;
+		break;
+	}
+	isc_mempool_put(pool, req);
 
 	isc___nmsocket_detach(&sock FLARG_PASS);
 }
@@ -2370,6 +2427,8 @@ isc__networker_destroy(isc__networker_t *worker) {
 
 	isc_loop_detach(&worker->loop);
 
+	isc_mempool_destroy(&worker->uvreq_pool_overlay);
+	isc_mempool_destroy(&worker->uvreq_pool_udp);
 	isc_mempool_destroy(&worker->uvreq_pool);
 	isc_mempool_destroy(&worker->nmsocket_pool_overlay);
 	isc_mempool_destroy(&worker->nmsocket_pool_udp);

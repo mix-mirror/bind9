@@ -142,9 +142,9 @@ tcp_connect_direct(isc_nmsocket_t *sock, isc__nm_uvreq_t *req) {
 	}
 	isc__nm_incstats(sock, STATID_OPEN);
 
-	if (req->local.length != 0) {
-		r = uv_tcp_bind(&sock->tcp.uv_handle.tcp, &req->local.type.sa,
-				0);
+	if (req->tcp.local.length != 0) {
+		r = uv_tcp_bind(&sock->tcp.uv_handle.tcp,
+				&req->tcp.local.type.sa, 0);
 		if (r != 0) {
 			isc__nm_incstats(sock, STATID_BINDFAIL);
 			return isc_uverr2result(r);
@@ -153,16 +153,16 @@ tcp_connect_direct(isc_nmsocket_t *sock, isc__nm_uvreq_t *req) {
 
 	isc__nm_set_network_buffers(&sock->tcp.uv_handle.handle);
 
-	uv_handle_set_data(&req->uv_req.handle, req);
-	r = uv_tcp_connect(&req->uv_req.connect, &sock->tcp.uv_handle.tcp,
-			   &req->peer.type.sa, tcp_connect_cb);
+	uv_handle_set_data(&req->tcp.uv_req.handle, req);
+	r = uv_tcp_connect(&req->tcp.uv_req.connect, &sock->tcp.uv_handle.tcp,
+			   &req->tcp.peer.type.sa, tcp_connect_cb);
 	if (r != 0) {
 		isc__nm_incstats(sock, STATID_CONNECTFAIL);
 		return isc_uverr2result(r);
 	}
 
 	uv_handle_set_data((uv_handle_t *)&sock->tcp.read_timer,
-			   &req->uv_req.connect);
+			   &req->tcp.uv_req.connect);
 	isc__nmsocket_timer_start(sock);
 
 	return ISC_R_SUCCESS;
@@ -207,10 +207,11 @@ tcp_connect_cb(uv_connect_t *uvreq, int status) {
 		 * spurious transient EADDRINUSE. Try a few more times before
 		 * giving up.
 		 */
-		if (--req->connect_tries > 0) {
-			r = uv_tcp_connect(&req->uv_req.connect,
+		if (--req->tcp.connect_tries > 0) {
+			r = uv_tcp_connect(&req->tcp.uv_req.connect,
 					   &sock->tcp.uv_handle.tcp,
-					   &req->peer.type.sa, tcp_connect_cb);
+					   &req->tcp.peer.type.sa,
+					   tcp_connect_cb);
 			if (r != 0) {
 				result = isc_uverr2result(r);
 				goto error;
@@ -285,9 +286,9 @@ isc_nm_tcpconnect(isc_sockaddr_t *local, isc_sockaddr_t *peer,
 	req = isc__nm_uvreq_get(sock);
 	req->cb.connect = connect_cb;
 	req->cbarg = connect_cbarg;
-	req->peer = *peer;
-	req->local = *local;
-	req->handle = isc__nmhandle_get(sock, &req->peer, &sock->iface);
+	req->tcp.peer = *peer;
+	req->tcp.local = *local;
+	req->handle = isc__nmhandle_get(sock, &req->tcp.peer, &sock->iface);
 
 	(void)isc__nm_socket_min_mtu(sock->tcp.fd, sa_family);
 	(void)isc__nm_socket_tcp_maxseg(sock->tcp.fd, NM_MAXSEG);
@@ -1111,8 +1112,8 @@ tcp_send_cb(uv_write_t *req, int status) {
 
 	sock = uvreq->sock;
 
-	isc_nm_timer_stop(uvreq->timer);
-	isc_nm_timer_detach(&uvreq->timer);
+	isc_nm_timer_stop(uvreq->tcp.timer);
+	isc_nm_timer_detach(&uvreq->tcp.timer);
 
 	if (status < 0) {
 		isc__nm_incstats(sock, STATID_SENDFAIL);
@@ -1208,16 +1209,16 @@ tcp_send_direct(isc_nmsocket_t *sock, isc__nm_uvreq_t *req) {
 				  ? "throttling TCP connection, "
 				  : "");
 
-	r = uv_write(&req->uv_req.write, &sock->tcp.uv_handle.stream, bufs,
+	r = uv_write(&req->tcp.uv_req.write, &sock->tcp.uv_handle.stream, bufs,
 		     nbufs, tcp_send_cb);
 	if (r < 0) {
 		return isc_uverr2result(r);
 	}
 
 	isc_nm_timer_create(req->handle, isc__nmsocket_writetimeout_cb, req,
-			    &req->timer);
+			    &req->tcp.timer);
 	if (sock->tcp.write_timeout > 0) {
-		isc_nm_timer_start(req->timer, sock->tcp.write_timeout);
+		isc_nm_timer_start(req->tcp.timer, sock->tcp.write_timeout);
 	}
 
 	return ISC_R_SUCCESS;
