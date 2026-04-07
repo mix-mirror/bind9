@@ -4179,6 +4179,8 @@ const isc_nmsocket_ops_t isc__nm_http_ops = {
 	.settimeout = isc__nm_http_settimeout,
 	.cleartimeout = isc__nm_http_cleartimeout,
 	.keepalive = isc__nmhandle_http_keepalive,
+	.has_encryption = isc__nm_http_has_encryption,
+	.verify_tls_peer = isc__nm_http_verify_tls_peer_result_string,
 };
 
 const isc_nmsocket_ops_t isc__nm_http_listener_ops = {

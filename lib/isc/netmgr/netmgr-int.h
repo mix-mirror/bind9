@@ -802,6 +802,32 @@ STATIC_ASSERT(sizeof(isc_nmsocket_t) <= 1024,
 	      "nmsocket should fit in 16 cachelines after transport union");
 
 /*%
+ * Convenience typedefs and checked cast helpers for transport-specific
+ * socket data.  Use nmsock_tcp(sock)/nmsock_udp(sock) in transport .c
+ * files for cleaner field access:
+ *
+ *   isc_nm_tcptransport_t *t = nmsock_tcp(sock);
+ *   r = uv_tcp_init(&loop, &t->uv_handle.tcp);
+ *   t->fd = fd;
+ */
+typedef typeof(((isc_nmsocket_t *)0)->tcp) isc_nm_tcptransport_t;
+typedef typeof(((isc_nmsocket_t *)0)->udp) isc_nm_udptransport_t;
+
+static inline isc_nm_tcptransport_t *
+nmsock_tcp(isc_nmsocket_t *sock) {
+	REQUIRE(sock->type == isc_nm_tcpsocket ||
+		sock->type == isc_nm_tcplistener);
+	return &sock->tcp;
+}
+
+static inline isc_nm_udptransport_t *
+nmsock_udp(isc_nmsocket_t *sock) {
+	REQUIRE(sock->type == isc_nm_udpsocket ||
+		sock->type == isc_nm_udplistener);
+	return &sock->udp;
+}
+
+/*%
  * Common size: everything before the transport union.
  * Overlay sockets only need this plus their type-specific data.
  */
