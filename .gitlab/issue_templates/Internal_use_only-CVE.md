@@ -54,7 +54,6 @@ confidential!
 ### Earlier Than T-5
 
   - [ ] [:link:][step_merge_fixes]       **(QA)** Merge the CVE fixes in CVE identifier order
-  - [ ] [:link:][step_patches]           **(QA)** Prepare a standalone patch for the last stable release of each affected (and still maintained) product branch
   - [ ] [:link:][step_evn_releases]      **(QA)** Prepare EVN releases (as outlined in the Release Checklist)
 
 ### At T-5
@@ -111,7 +110,6 @@ confidential!
 [step_meta_issue]:        https://gitlab.isc.org/isc-private/isc-wiki/-/wikis/Security-Incident-Handling-Checklist-Explanations#create-or-update-the-private-issue-containing-links-to-fixes--reproducers-for-all-cves-fixed-in-a-given-release-cycle
 [step_coordinate_check]:  https://gitlab.isc.org/isc-private/isc-wiki/-/wikis/Security-Incident-Handling-Checklist-Explanations#make-sure-other-vendors-are-able-to-release-on-the-date-that-was-previously-agreed-upon
 [step_merge_fixes]:       https://gitlab.isc.org/isc-private/isc-wiki/-/wikis/Security-Incident-Handling-Checklist-Explanations#merge-the-cve-fixes-in-cve-identifier-order
-[step_patches]:           https://gitlab.isc.org/isc-private/isc-wiki/-/wikis/Security-Incident-Handling-Checklist-Explanations#prepare-a-standalone-patch-for-the-last-stable-release-of-each-affected-and-still-maintained-product-branch
 [step_evn_releases]:      https://gitlab.isc.org/isc-private/isc-wiki/-/wikis/Security-Incident-Handling-Checklist-Explanations#prepare-evn-releases-as-outlined-in-the-release-checklist
 [step_evn_links]:         https://gitlab.isc.org/isc-private/isc-wiki/-/wikis/Security-Incident-Handling-Checklist-Explanations#bind-9-only-update-the-bind--s-information-document-in-the-support-portal-with-download-links-to-the-new-versions
 [step_evn_send_t_5]:      https://gitlab.isc.org/isc-private/isc-wiki/-/wikis/Security-Incident-Handling-Checklist-Explanations#notify-eligible-customers-by-adding-a-ticket-to-the-5-day-queue-in-rt-with-the-text-of-the-advisory-earliest-and-t-5
