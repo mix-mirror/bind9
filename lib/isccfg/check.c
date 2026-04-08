@@ -3603,28 +3603,28 @@ isccfg_check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 	/*
 	 * Check validity of the zone options.
 	 */
-	option = cfg_map_firstclause(&cfg_type_zoneopts, &clauses, &i);
-	while (option != NULL) {
-		obj = NULL;
-		bool topt = false;
-		(void)cfg_map_get(zoptions, option->name, &obj);
-		if (obj == NULL && toptions != NULL) {
-			(void)cfg_map_get(toptions, option->name, &obj);
-			topt = true;
-		}
-		if (obj != NULL &&
-		    !cfg_clause_validforzone(option->name, ztype))
-		{
-			cfg_obj_log(obj, ISC_LOG_WARNING,
-				    "option '%s' is not allowed "
-				    "in '%s' zone '%s'%s%s%s",
-				    cfg_clause_as_string[option->name], typestr, znamestr,
-				    topt ? " (referencing template '" : "",
-				    topt ? tmplname : "", topt ? "')" : "");
-			result = ISC_R_FAILURE;
-		}
-		option = cfg_map_nextclause(&cfg_type_zoneopts, &clauses, &i);
-	}
+	// option = cfg_map_firstclause(&cfg_type_zoneopts, &clauses, &i);
+	// while (option != NULL) {
+	// 	obj = NULL;
+	// 	bool topt = false;
+	// 	(void)cfg_map_get(zoptions, option->name, &obj);
+	// 	if (obj == NULL && toptions != NULL) {
+	// 		(void)cfg_map_get(toptions, option->name, &obj);
+	// 		topt = true;
+	// 	}
+	// 	if (obj != NULL &&
+	// 	    !cfg_clause_validforzone(option->name, ztype))
+	// 	{
+	// 		cfg_obj_log(obj, ISC_LOG_WARNING,
+	// 			    "option '%s' is not allowed "
+	// 			    "in '%s' zone '%s'%s%s%s",
+	// 			    cfg_clause_as_string[option->name], typestr, znamestr,
+	// 			    topt ? " (referencing template '" : "",
+	// 			    topt ? tmplname : "", topt ? "')" : "");
+	// 		result = ISC_R_FAILURE;
+	// 	}
+	// 	option = cfg_map_nextclause(&cfg_type_zoneopts, &clauses, &i);
+	// }
 
 	/*
 	 * Check that ACLs expand correctly.
