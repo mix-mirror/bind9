@@ -1743,6 +1743,7 @@ dns_adb_createaddrinfosfind(dns_adb_t *adb, isc_netaddrlist_t *addrs,
 	REQUIRE(DNS_ADB_VALID(adb));
 	REQUIRE(addrs != NULL);
 	REQUIRE(findp != NULL && *findp == NULL);
+	REQUIRE(maxaddrs > 0);
 
 	rcu_read_lock();
 
