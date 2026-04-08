@@ -58,7 +58,7 @@ confidential!
 
 ### At T-5
 
-  - [ ] [:link:][step_evn_links]         **(Marketing)** (BIND 9 only) Update the BIND -S information document in the support portal with download links to the new versions
+  - [ ] [:link:][step_evn_links]         **(Marketing)** (BIND 9 only) Update the BIND -S [ticket](https://techsupport.isc.org/Ticket/Display.html?id=23796) in the support portal with download links to the new versions
   - [ ] [:link:][step_evn_send_t_5]      **(Support)** Notify eligible customers by adding a ticket to the 5-Day queue in RT with the text of the advisory (earliest, and T-5)
   - [ ] [:link:][step_preannouncement]   **(Marketing)** Send a pre-announcement email to the appropriate *-announce* mailing list to alert users that the upcoming release will include security fixes
 
