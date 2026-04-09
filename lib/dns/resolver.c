@@ -9472,7 +9472,11 @@ static void
 rctx_chaseds(respctx_t *rctx, dns_message_t *message,
 	     dns_adbaddrinfo_t *addrinfo, isc_result_t result) {
 	fetchctx_t *fctx = rctx->fctx;
+	dns_fixedname_t fixed;
+	dns_name_t *fname = NULL;
+	dns_delegset_t *delegset = NULL;
 	unsigned int n;
+	isc_result_t tresult;
 
 	add_bad(fctx, message, addrinfo, result, rctx->broken_type);
 	fctx_cancelqueries(fctx, true, false);
@@ -9480,6 +9484,56 @@ rctx_chaseds(respctx_t *rctx, dns_message_t *message,
 
 	n = dns_name_countlabels(fctx->name);
 	dns_name_getlabelsequence(fctx->name, 1, n - 1, fctx->nsname);
+
+	/*
+	 * Before launching a fresh fetch for the parent zone's NS
+	 * records, see whether the delegation database already knows a
+	 * usable delegation for the parent.  With the parent-centric
+	 * resolver, NS records from referrals live in the delegation
+	 * database rather than the main cache, so this lookup will
+	 * succeed in the common case and we can resume the DS query in
+	 * place without spending an extra round trip rediscovering what
+	 * we already know.
+	 *
+	 * Only take this shortcut if the resulting delegation differs
+	 * from the one fctx is currently using; otherwise we would just
+	 * retry the same query against the same servers we just talked
+	 * to and could loop.
+	 */
+	fname = dns_fixedname_initname(&fixed);
+	tresult = dns_view_bestzonecut(fctx->res->view, fctx->nsname, fname,
+				       NULL, fctx->now, 0, true, true,
+				       &delegset);
+	if (tresult == ISC_R_SUCCESS && delegset != NULL &&
+	    !dns_name_equal(fname, fctx->domain))
+	{
+		FCTXTRACE("resuming DS lookup using delegation database");
+
+		if (fctx->delegset != NULL) {
+			dns_delegset_detach(&fctx->delegset);
+		}
+		fctx->delegset = delegset;
+		delegset = NULL;
+
+		fctx->ns_ttl = fctx->delegset->expires - fctx->now;
+		fctx->ns_ttl_ok = true;
+		log_ns_ttl(fctx, "rctx_chaseds");
+
+		fcount_decr(fctx);
+		dns_name_copy(fname, fctx->domain);
+		dns_name_copy(fname, fctx->nsname);
+		tresult = fcount_incr(fctx, false);
+		if (tresult != ISC_R_SUCCESS) {
+			fctx_failure_detach(&rctx->fctx, DNS_R_SERVFAIL);
+			return;
+		}
+
+		fctx_try(fctx, true);
+		return;
+	}
+	if (delegset != NULL) {
+		dns_delegset_detach(&delegset);
+	}
 
 	FCTXTRACE("suspending DS lookup to find parent's NS records");
 
