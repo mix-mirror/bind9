@@ -465,7 +465,6 @@ delegdb_cleanup(dns_qp_t *qp, dns_delegdb_t *delegdb, size_t requested) {
 	if (!isc_mem_isovermem(delegdb->mctx)) {
 		return;
 	}
-	requested = delegdb->hiwater - delegdb->lowater;
 
 	while (reclaimed < requested) {
 		node = ISC_SIEVE_NEXT(delegdb->lru[isc_tid()], visited, link);
