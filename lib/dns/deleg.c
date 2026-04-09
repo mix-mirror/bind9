@@ -458,18 +458,14 @@ dns_delegset_addns(dns_delegset_t *delegset, dns_deleg_t *deleg,
 }
 
 static void
-delegdb_cleanup(dns_delegdb_t *delegdb, dns_qpmulti_t *nodes) {
-	dns_qp_t *qp = NULL;
+delegdb_cleanup(dns_qp_t *qp, dns_delegdb_t *delegdb, size_t requested) {
 	delegdb_node_t *node = NULL;
 	size_t reclaimed = 0;
-	size_t requested = 0;
 
 	if (!isc_mem_isovermem(delegdb->mctx)) {
 		return;
 	}
 	requested = delegdb->hiwater - delegdb->lowater;
-
-	dns_qpmulti_write(nodes, &qp);
 
 	while (reclaimed < requested) {
 		node = ISC_SIEVE_NEXT(delegdb->lru[isc_tid()], visited, link);
@@ -483,9 +479,6 @@ delegdb_cleanup(dns_delegdb_t *delegdb, dns_qpmulti_t *nodes) {
 		(void)dns_qp_deletename(qp, &node->zonecut,
 					DNS_DBNAMESPACE_NORMAL, NULL, NULL);
 	}
-
-	dns_qp_compact(qp, DNS_QPGC_ALL);
-	dns_qpmulti_commit(nodes, &qp);
 }
 
 static size_t
@@ -517,13 +510,10 @@ delegdb_node_size(const dns_name_t *zonecut, dns_delegset_t *delegset) {
 	return sz;
 }
 
-static void
-delegdb_node_prepare(dns_delegdb_t *delegdb, dns_qpmulti_t *nodes,
-		     isc_stdtime_t now, dns_ttl_t ttl,
+static size_t
+delegdb_node_prepare(dns_delegdb_t *delegdb, isc_stdtime_t now, dns_ttl_t ttl,
 		     const dns_name_t *zonecut, dns_delegset_t *delegset,
 		     delegdb_node_t **nodep) {
-	delegdb_cleanup(delegdb, nodes);
-
 	if (ttl == 0) {
 		ttl = 1;
 	}
@@ -542,6 +532,8 @@ delegdb_node_prepare(dns_delegdb_t *delegdb, dns_qpmulti_t *nodes,
 	dns_delegdb_attach(delegdb, &(*nodep)->delegdb);
 	dns_delegset_attach(delegset, &(*nodep)->delegset);
 	dns_name_dup(zonecut, delegdb->mctx, &(*nodep)->zonecut);
+
+	return sizeof(**nodep) + (*nodep)->size;
 }
 
 isc_result_t
@@ -593,13 +585,16 @@ dns_delegset_insert(dns_delegdb_t *delegdb, const dns_name_t *zonecut,
 	 * clean up expired/least recently used delegation, then allocate and
 	 * initialize a new node.
 	 */
-	delegdb_node_prepare(delegdb, nodes, now, ttl, zonecut, delegset,
-			     &node);
+	size_t requested = delegdb_node_prepare(delegdb, now, ttl, zonecut,
+						delegset, &node);
 
 	/*
 	 * Add the node in the DB
 	 */
 	dns_qpmulti_write(nodes, &qp);
+
+	delegdb_cleanup(qp, delegdb, requested);
+
 	if (result == ISC_R_SUCCESS) {
 		/*
 		 * A node at the same zonecut exists, and it is expired. Ignore
@@ -821,7 +816,7 @@ dns_delegdb_dump(dns_delegdb_t *delegdb, bool expired, FILE *fp) {
 }
 
 void
-dns_delegset_fromnsrdataset(dns_rdataset_t *rdataset,
+dns_delegset_fromnsrdataset(isc_mem_t *mctx, dns_rdataset_t *rdataset,
 			    dns_delegset_t **delegsetp) {
 	dns_delegset_t *delegset = NULL;
 	dns_deleg_t *deleg = NULL;
@@ -834,17 +829,17 @@ dns_delegset_fromnsrdataset(dns_rdataset_t *rdataset,
 
 	REQUIRE(rdataset->type == dns_rdatatype_ns);
 
-	delegset = isc_mem_get(isc_g_mctx, sizeof(*delegset));
+	delegset = isc_mem_get(mctx, sizeof(*delegset));
 	*delegset = (dns_delegset_t){
 		.magic = DNS_DELEGSET_MAGIC,
+		.mctx = isc_mem_ref(mctx),
 		.references = ISC_REFCOUNT_INITIALIZER(1),
 		.delegs = ISC_LIST_INITIALIZER,
 		.expires = rdataset->ttl + isc_stdtime_now(),
 		.staticstub = rdataset->attributes.staticstub
 	};
-	isc_mem_attach(isc_g_mctx, &delegset->mctx);
 
-	deleg = isc_mem_get(isc_g_mctx, sizeof(*deleg));
+	deleg = isc_mem_get(delegset->mctx, sizeof(*deleg));
 	*deleg = (dns_deleg_t){ .addresses = ISC_LIST_INITIALIZER,
 				.names = ISC_LIST_INITIALIZER,
 				.type = DNS_DELEGTYPE_NS_NAMES,

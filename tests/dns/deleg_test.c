@@ -587,7 +587,7 @@ cleanuptests_phase3(void *arg) {
 	dns_delegset_t *delegset = NULL;
 	isc_result_t result;
 
-	assert_int_in_range(isc_mem_inuse(db->mctx), 4000000, 4100000);
+	assert_int_in_range(isc_mem_inuse(db->mctx), 8000000, 8100000);
 
 	/*
 	 * baz. is there, but bar. is gone, as it has been

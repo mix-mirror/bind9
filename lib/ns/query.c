@@ -8669,7 +8669,8 @@ query_delegation_recurse(query_ctx_t *qctx) {
 					       qctx->client->inner.now, 0, true,
 					       true, &delegset);
 		if (tresult != ISC_R_SUCCESS) {
-			dns_delegset_fromnsrdataset(qctx->rdataset, &delegset);
+			dns_delegset_fromnsrdataset(qctx->client->manager->mctx,
+						    qctx->rdataset, &delegset);
 			fname = qctx->fname;
 		}
 
