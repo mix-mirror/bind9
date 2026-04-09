@@ -267,14 +267,22 @@ getparentnode(dns_qpchain_t *chain, delegdb_node_t **node, dns_ttl_t now) {
 	size_t len = dns_qpchain_length(chain);
 
 	while (len >= 2) {
-		*node = NULL;
-		dns_qpchain_node(chain, len - 2, (void **)node, NULL);
+		delegdb_node_t *parent = NULL;
+		dns_qpchain_node(chain, len - 2, (void **)&parent, NULL);
 
-		if (isactive(*node, now)) {
-			break;
+		if (isactive(parent, now)) {
+			*node = parent;
+			return;
 		}
 		len--;
 	}
+
+	/*
+	 * No active proper ancestor was found in the chain.  Signal
+	 * "no parent" so the caller does not mistake the original
+	 * matched node for an ancestor.
+	 */
+	*node = NULL;
 }
 
 /*
@@ -309,27 +317,36 @@ dns__deleg_lookup(dns_delegdb_t *delegdb, dns_qpread_t *qpr,
 		dns_name_copy(&node->zonecut, deepestzonecut);
 	}
 
-	if (result == ISC_R_SUCCESS && (noexact || !isactive(node, now))) {
-		getparentnode(&chain, &node, now);
-	} else if (result == DNS_R_PARTIALMATCH && !isactive(node, now)) {
+	/*
+	 * Walk up the chain when:
+	 *  - we have an exact match but the caller asked for NOEXACT
+	 *    (i.e. the caller wants the deepest *proper* ancestor), or
+	 *  - the matched node is no longer active and we need to fall
+	 *    back to the closest still-active ancestor (this applies
+	 *    equally to exact and partial matches).
+	 *
+	 * getparentnode() sets 'node' to NULL when no active ancestor
+	 * exists in the chain, so we must NULL-check before dereferencing
+	 * 'node' below.
+	 */
+	if ((result == ISC_R_SUCCESS && noexact) || !isactive(node, now)) {
 		getparentnode(&chain, &node, now);
 	}
 
-	result = isactive(node, now) ? ISC_R_SUCCESS : ISC_R_NOTFOUND;
-	if (result == ISC_R_SUCCESS) {
+	if (node != NULL && isactive(node, now)) {
 		dns_name_copy(&node->zonecut, zonecut);
 		INSIST(node->delegset);
 		dns_delegset_attach(node->delegset, delegsetp);
 		ISC_SIEVE_MARK(node, visited);
-	} else {
-		/*
-		 * FIXME: if we lookup something that has expired, we need
-		 * either the "deadnodes" (see qpcache) mechanism here - or call
-		 * something like isc_async_run(delete_me, node).
-		 */
+		return ISC_R_SUCCESS;
 	}
 
-	return result;
+	/*
+	 * FIXME: if we lookup something that has expired, we need
+	 * either the "deadnodes" (see qpcache) mechanism here - or call
+	 * something like isc_async_run(delete_me, node).
+	 */
+	return ISC_R_NOTFOUND;
 }
 
 isc_result_t
