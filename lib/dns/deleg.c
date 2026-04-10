@@ -68,9 +68,6 @@ struct dns_delegdb {
 	 * (After decrementing `owners`.)
 	 */
 	isc_refcount_t owners;
-
-	size_t lowater;
-	size_t hiwater;
 };
 
 static void
@@ -976,16 +973,19 @@ dns_delegdb_shutdown(dns_delegdb_t *delegdb) {
 
 void
 dns_delegdb_setsize(dns_delegdb_t *delegdb, size_t size) {
+	size_t lowater;
+	size_t hiwater;
+
 	REQUIRE(VALID_DELEGDB(delegdb));
 
 	if (size != 0 && size < DELEGDB_MINSIZE) {
 		size = DELEGDB_MINSIZE;
 	}
 
-	delegdb->hiwater = size - (size >> 3); /* Approximately 7/8ths. */
-	delegdb->lowater = size - (size >> 2); /* Approximately 3/4ths. */
+	hiwater = size - (size >> 3); /* Approximately 7/8ths. */
+	lowater = size - (size >> 2); /* Approximately 3/4ths. */
 
-	if (size == 0 || delegdb->hiwater == 0 || delegdb->lowater == 0) {
+	if (size == 0 || hiwater == 0 || lowater == 0) {
 		isc_mem_clearwater(delegdb->mctx);
 
 		/*
@@ -993,7 +993,6 @@ dns_delegdb_setsize(dns_delegdb_t *delegdb, size_t size) {
 		 * implicit overmem bypass, so the user should be warned...
 		 */
 	} else {
-		isc_mem_setwater(delegdb->mctx, delegdb->hiwater,
-				 delegdb->lowater);
+		isc_mem_setwater(delegdb->mctx, hiwater, lowater);
 	}
 }
