@@ -160,8 +160,7 @@ synthrecord_respond(synthrecord_t *inst, query_ctx_t *qctx, void *rdata,
 	 * Then create the name in the ANSWER section and attach the
 	 * rdataset to it.
 	 */
-	dns_name_dup(dns_linkedname_name(qctx->client->query.qname), mctx,
-		     name);
+	dns_name_dup(qctx->client->query.qname, mctx, name);
 	dns_message_addname(msg, &aname, DNS_SECTION_ANSWER);
 	dns_rdataset_setownercase(synthset, name);
 	ISC_LIST_APPEND(aname.list, synthset, link);

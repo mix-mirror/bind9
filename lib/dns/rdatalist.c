@@ -229,8 +229,7 @@ dns__rdatalist_getnoqname(dns_rdataset_t *rdataset, dns_name_t *name,
 	rdclass = rdataset->rdclass;
 	noqname = rdataset->rdlist.noqname;
 
-	(void)dns_name_dynamic(dns_linkedname_name(noqname)); /* Sanity Check.
-							       */
+	(void)dns_name_dynamic(noqname); /* Sanity Check. */
 
 	ISC_LIST_FOREACH(noqname->list, rdset, link) {
 		if (rdset->rdclass != rdclass) {
@@ -255,7 +254,7 @@ dns__rdatalist_getnoqname(dns_rdataset_t *rdataset, dns_name_t *name,
 		return ISC_R_NOTFOUND;
 	}
 
-	dns_name_clone(dns_linkedname_name(noqname), name);
+	dns_name_clone(noqname, name);
 	dns_rdataset_clone(tneg, neg);
 	dns_rdataset_clone(tnegsig, negsig);
 	return ISC_R_SUCCESS;

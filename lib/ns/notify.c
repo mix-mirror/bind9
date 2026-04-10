@@ -142,8 +142,7 @@ ns_notify_start(ns_client_t *client, isc_nmhandle_t *handle) {
 		tsigbuf[0] = '\0';
 	}
 
-	dns_name_format(dns_linkedname_name(zonename), namebuf,
-			sizeof(namebuf));
+	dns_name_format(zonename, namebuf, sizeof(namebuf));
 	result = dns_view_findzone(client->inner.view,
 				   dns_linkedname_name(zonename),
 				   DNS_ZTFIND_EXACT, &zone);
