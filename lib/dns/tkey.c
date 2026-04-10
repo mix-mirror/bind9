@@ -407,10 +407,9 @@ dns_tkey_processquery(dns_message_t *msg, dns_tkeyctx_t *tctx,
 	case DNS_TKEYMODE_GSSAPI:
 		keyname = dns_fixedname_initname(&fkeyname);
 
-		if (!dns_name_equal(dns_linkedname_name(qname), dns_rootname)) {
-			unsigned int n = dns_name_countlabels(
-				dns_linkedname_name(qname));
-			dns_name_copy(dns_linkedname_name(qname), keyname);
+		if (!dns_name_equal(qname, dns_rootname)) {
+			unsigned int n = dns_name_countlabels(qname);
+			dns_name_copy(qname, keyname);
 			dns_name_getlabelsequence(keyname, 0, n - 1, keyname);
 		} else {
 			unsigned char randomdata[16];

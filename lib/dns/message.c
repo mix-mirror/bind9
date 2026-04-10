@@ -771,14 +771,15 @@ ISC_REFCOUNT_IMPL(dns_message, dns__message_destroy);
 
 static bool
 name_match(void *node, const void *key) {
-	return dns_name_equal(node, key);
+	return dns_name_equal((dns_linkedname_t *)node,
+			      (const dns_linkedname_t *)key);
 }
 
 static isc_result_t
 findname(dns_linkedname_t **foundname, const dns_name_t *target,
 	 dns_namelist_t *section) {
 	ISC_LIST_FOREACH_REV(*section, name, link) {
-		if (dns_name_equal(dns_linkedname_name(name), target)) {
+		if (dns_name_equal(name, target)) {
 			SET_IF_NOT_NULL(foundname, name);
 			return ISC_R_SUCCESS;
 		}
@@ -1179,8 +1180,7 @@ getsection(isc_buffer_t *source, dns_message_t *msg, dns_decompress_t dctx,
 			 * must be in the additional data section, and
 			 * it must be the first OPT we've seen.
 			 */
-			if (!dns_name_equal(dns_rootname,
-					    dns_linkedname_name(name)) ||
+			if (!dns_name_equal(dns_rootname, name) ||
 			    sectionid != DNS_SECTION_ADDITIONAL ||
 			    msg->opt != NULL)
 			{
@@ -1278,8 +1278,7 @@ getsection(isc_buffer_t *source, dns_message_t *msg, dns_decompress_t dctx,
 			if (covers == dns_rdatatype_none) {
 				if (sectionid != DNS_SECTION_ADDITIONAL ||
 				    count != msg->counts[sectionid] - 1 ||
-				    !dns_name_equal(dns_linkedname_name(name),
-						    dns_rootname))
+				    !dns_name_equal(name, dns_rootname))
 				{
 					DO_ERROR(DNS_R_BADSIG0);
 				} else {
@@ -1328,10 +1327,9 @@ getsection(isc_buffer_t *source, dns_message_t *msg, dns_decompress_t dctx,
 			 * allocated name since we no longer need it, and set
 			 * our name pointer to point to the name we found.
 			 */
-			result = isc_hashmap_add(
-				name_map,
-				dns_name_hash(dns_linkedname_name(name)),
-				name_match, name, name, (void **)&found_name);
+			result = isc_hashmap_add(name_map, dns_name_hash(name),
+						 name_match, name, name,
+						 (void **)&found_name);
 
 			/*
 			 * If it is a new name, append to the section.
@@ -2394,7 +2392,7 @@ dns_message_addname(dns_message_t *msg, dns_linkedname_t *name,
 		    dns_section_t section) {
 	REQUIRE(msg != NULL);
 	REQUIRE(msg->from_to_wire == DNS_MESSAGE_INTENTRENDER);
-	REQUIRE(dns_name_isabsolute(dns_linkedname_name(name)));
+	REQUIRE(dns_name_isabsolute(name));
 	REQUIRE(VALID_NAMED_SECTION(section));
 
 	ISC_LIST_APPEND(msg->sections[section], name, link);
@@ -2405,7 +2403,7 @@ dns_message_removename(dns_message_t *msg, dns_linkedname_t *name,
 		       dns_section_t section) {
 	REQUIRE(msg != NULL);
 	REQUIRE(msg->from_to_wire == DNS_MESSAGE_INTENTRENDER);
-	REQUIRE(dns_name_isabsolute(dns_linkedname_name(name)));
+	REQUIRE(dns_name_isabsolute(name));
 	REQUIRE(VALID_NAMED_SECTION(section));
 
 	ISC_LIST_UNLINK(msg->sections[section], name, link);
@@ -2469,7 +2467,7 @@ dns_message_puttempname(dns_message_t *msg, dns_linkedname_t **itemp) {
 	/*
 	 * we need to check this in case dns_name_dup() was used.
 	 */
-	if (dns_name_dynamic(dns_linkedname_name(item))) {
+	if (dns_name_dynamic(item)) {
 		dns_name_free(dns_linkedname_name(item), msg->mctx);
 	}
 
