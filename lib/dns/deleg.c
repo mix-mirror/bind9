@@ -339,9 +339,11 @@ dns__deleg_lookup(dns_delegdb_t *delegdb, dns_qpread_t *qpr,
 	}
 
 	/*
-	 * FIXME: if we lookup something that has expired, we need
-	 * either the "deadnodes" (see qpcache) mechanism here - or call
-	 * something like isc_async_run(delete_me, node).
+	 * The expired node will be replaced when the resolver fetches
+	 * a fresh delegation, so there is no need to schedule explicit
+	 * cleanup here.  Stale nodes that are never replaced will
+	 * eventually be evicted by the SIEVE policy under memory
+	 * pressure.
 	 */
 	return ISC_R_NOTFOUND;
 }
