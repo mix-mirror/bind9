@@ -1996,9 +1996,7 @@ recvresponse(void *arg) {
 			 * duplicate output, so we check here whether we've
 			 * already printed this name and type.
 			 */
-			if (prev != NULL &&
-			    dns_name_equal(prev, dns_linkedname_name(name)))
-			{
+			if (prev != NULL && dns_name_equal(prev, name)) {
 				continue;
 			}
 			prev = name;
