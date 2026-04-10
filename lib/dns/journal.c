@@ -103,17 +103,11 @@ isc_result_t
 dns_db_createsoatuple(dns_db_t *db, dns_dbversion_t *ver, isc_mem_t *mctx,
 		      dns_diffop_t op, dns_difftuple_t **tp) {
 	isc_result_t result;
-	dns_dbnode_t *node;
+	dns_dbnode_t *node = NULL;
 	dns_rdataset_t rdataset;
 	dns_rdata_t rdata = DNS_RDATA_INIT;
-	dns_fixedname_t fixed;
-	dns_name_t *zonename;
 
-	zonename = dns_fixedname_initname(&fixed);
-	dns_name_copy(dns_db_origin(db), zonename);
-
-	node = NULL;
-	result = dns_db_findnode(db, zonename, false, &node);
+	result = dns_db_getoriginnode(db, &node);
 	if (result != ISC_R_SUCCESS) {
 		goto nonode;
 	}
@@ -132,7 +126,11 @@ dns_db_createsoatuple(dns_db_t *db, dns_dbversion_t *ver, isc_mem_t *mctx,
 
 	dns_rdataset_current(&rdataset, &rdata);
 
-	dns_difftuple_create(mctx, op, zonename, rdataset.ttl, &rdata, tp);
+	/*
+	 * Use node->name rather than dns_db_origin() so that the
+	 * owner-name case of the SOA record is preserved.
+	 */
+	dns_difftuple_create(mctx, op, &node->name, rdataset.ttl, &rdata, tp);
 
 	dns_rdataset_disassociate(&rdataset);
 	dns_db_detachnode(&node);
