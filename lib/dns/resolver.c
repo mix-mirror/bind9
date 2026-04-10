@@ -1195,9 +1195,6 @@ update_edns_stats(resquery_t *query) {
 	}
 }
 
-static void
-fctx_expired(void *arg);
-
 /*
  * Start the maximum lifetime timer for the fetch. This will
  * trigger if, for example, some ADB or validator dependency
@@ -4345,6 +4342,8 @@ fctx_try(fetchctx_t *fctx, bool retrying) {
 			FCTX_ATTR_SET(fctx, FCTX_ATTR_ADDRWAIT);
 			return;
 		default:
+			dns_ede_add(&fctx->edectx, DNS_EDE_NOREACHABLEAUTH,
+				    NULL);
 			goto done;
 		}
 
@@ -4362,6 +4361,8 @@ fctx_try(fetchctx_t *fctx, bool retrying) {
 		 */
 		if (addrinfo == NULL) {
 			result = DNS_R_SERVFAIL;
+			dns_ede_add(&fctx->edectx, DNS_EDE_NOREACHABLEAUTH,
+				    NULL);
 			goto done;
 		}
 	}
