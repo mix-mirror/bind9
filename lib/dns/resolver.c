@@ -980,7 +980,6 @@ typedef struct respctx {
 	dns_rdataset_t *ns_rdataset; /* NS rdataset */
 
 	dns_name_t *soa_name; /* SOA name in a negative answer */
-	dns_name_t *ds_name;  /* DS name in a negative answer */
 
 	dns_name_t *found_name;	    /* invalid name in negative
 				     * response */
@@ -8192,7 +8191,6 @@ rctx_answer_init(respctx_t *rctx) {
 	rctx->ns_rdataset = NULL;
 
 	rctx->soa_name = NULL;
-	rctx->ds_name = NULL;
 	rctx->found_name = NULL;
 
 	rctx->vrdataset = NULL;
@@ -9379,19 +9377,18 @@ rctx_authority_dnssec(respctx_t *rctx) {
 					return ISC_R_COMPLETE;
 				}
 
-				if (rdataset->type == dns_rdatatype_ds) {
-					if (rctx->ds_name != NULL &&
-					    name != rctx->ds_name)
+				if (name != rctx->ns_name) {
+					if (rdataset->type == dns_rdatatype_ds)
 					{
 						log_formerr(fctx,
 							    "DS doesn't match "
-							    "referral (NS)");
+							    "the delegation "
+							    "owner name");
 						rctx->result = DNS_R_FORMERR;
 						return ISC_R_COMPLETE;
 					}
-					rctx->ds_name = name;
+					continue;
 				}
-
 				name->attributes.cache = true;
 				rdataset->attributes.cache = true;
 
