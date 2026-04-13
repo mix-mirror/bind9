@@ -27,7 +27,8 @@ ans2_control() {
 ans8_control() {
   control_name=$1
   shift
-  $DIG +time=1 +tries=1 -p "${PORT}" @10.53.0.8 "${control_name}.switch._control" TXT "$@" >/dev/null 2>&1 || true
+  $DIG -p "${PORT}" @10.53.0.8 "${control_name}.switch._control" TXT "$@" >dig.out.ans8_control || return 1
+  grep "status: NOERROR" dig.out.ans8_control >/dev/null || return 1
 }
 
 ans2_control enable
@@ -133,10 +134,7 @@ status=$((status + ret))
 n=$((n + 1))
 echo_i "update target authoritative server ($n)"
 ret=0
-$DIG -p ${PORT} @10.53.0.8 txt update >dig.out.test$n || ret=1
-grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
-grep "TXT.\"update\"" dig.out.test$n >/dev/null || ret=1
-ans8_control update
+ans8_control update || ret=1
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 # Query via stale CNAME — triggers the bug
@@ -174,10 +172,7 @@ status=$((status + ret))
 n=$((n + 1))
 echo_i "update target authoritative server ($n)"
 ret=0
-$DIG -p ${PORT} @10.53.0.8 txt restore >dig.out.test$n || ret=1
-grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
-grep "TXT.\"restore\"" dig.out.test$n >/dev/null || ret=1
-ans8_control restore
+ans8_control restore || ret=1
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
