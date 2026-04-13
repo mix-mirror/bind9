@@ -711,7 +711,7 @@ dns_view_bestzonecut(dns_view_t *view, const dns_name_t *name,
  *\li	If 'use_cache' is true, and the view has a cache, then it will be
  *	searched.
  *
- *\li	If the DNS_DBFIND_NOEXACT option is set, then the zonecut returned
+ *\li	If the DNS_DBFIND_ABOVE option is set, then the zonecut returned
  *	(if any) will be the deepest known ancestor of 'name'.
  *
  *\li	If dcname is not NULL the deepest cached name is copied to it.

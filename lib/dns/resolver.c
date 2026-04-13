@@ -4626,7 +4626,7 @@ resume_qmin(void *arg) {
 	dns_delegset_detach(&fctx->delegset);
 
 	if (dns_rdatatype_atparent(fctx->type)) {
-		findoptions |= DNS_DBFIND_NOEXACT;
+		findoptions |= DNS_DBFIND_ABOVE;
 	}
 	result = dns_view_bestzonecut(res->view, fctx->name, fname, dcname,
 				      fctx->now, findoptions, true, true,
@@ -5064,7 +5064,7 @@ fctx__create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 			 * mode, so find the best nameservers to use.
 			 */
 			if (dns_rdatatype_atparent(fctx->type)) {
-				findoptions |= DNS_DBFIND_NOEXACT;
+				findoptions |= DNS_DBFIND_ABOVE;
 			}
 			result = dns_view_bestzonecut(
 				res->view, name, fctx->fwdname, dcname,
@@ -9372,7 +9372,7 @@ rctx_nextserver(respctx_t *rctx, dns_message_t *message,
 			return;
 		}
 		if (dns_rdatatype_atparent(fctx->type)) {
-			findoptions |= DNS_DBFIND_NOEXACT;
+			findoptions |= DNS_DBFIND_ABOVE;
 		}
 		/* FIXME: Why??? */
 		if ((rctx->retryopts & DNS_FETCHOPT_UNSHARED) == 0) {

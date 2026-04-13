@@ -295,7 +295,7 @@ dns__deleg_lookup(dns_delegdb_t *delegdb, dns_qpread_t *qpr,
 	isc_stdtime_t now = optnow > 0 ? optnow : isc_stdtime_now();
 
 	dns_qpchain_t chain = {};
-	bool noexact = (options & DNS_DBFIND_NOEXACT) != 0;
+	bool above = (options & DNS_DBFIND_ABOVE) != 0;
 
 	REQUIRE(VALID_DELEGDB(delegdb));
 	REQUIRE(DNS_NAME_VALID(name));
@@ -316,7 +316,7 @@ dns__deleg_lookup(dns_delegdb_t *delegdb, dns_qpread_t *qpr,
 
 	/*
 	 * Walk up the chain when:
-	 *  - we have an exact match but the caller asked for NOEXACT
+	 *  - we have an exact match but the caller asked for DNS_DBFIND_ABOVE
 	 *    (i.e. the caller wants the deepest *proper* ancestor), or
 	 *  - the matched node is no longer active and we need to fall
 	 *    back to the closest still-active ancestor (this applies
@@ -326,7 +326,7 @@ dns__deleg_lookup(dns_delegdb_t *delegdb, dns_qpread_t *qpr,
 	 * exists in the chain, so we must NULL-check before dereferencing
 	 * 'node' below.
 	 */
-	if ((result == ISC_R_SUCCESS && noexact) || !isactive(node, now)) {
+	if ((result == ISC_R_SUCCESS && above) || !isactive(node, now)) {
 		getparentnode(&chain, &node, now);
 	}
 

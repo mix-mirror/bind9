@@ -448,8 +448,8 @@ noexacttests(ISC_ATTR_UNUSED void *arg) {
 		dns_delegset_detach(&delegset);
 
 		result = lookupdb(db, zonecuts[i].name, now + 1,
-				  DNS_DBFIND_NOEXACT,
-				  zonecuts[i].noexactexpected, &delegset);
+				  DNS_DBFIND_ABOVE, zonecuts[i].noexactexpected,
+				  &delegset);
 		assert_int_equal(result, zonecuts[i].noexactresult);
 		if (result == ISC_R_SUCCESS) {
 			dns_delegset_detach(&delegset);
