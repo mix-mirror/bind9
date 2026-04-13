@@ -366,7 +366,7 @@ tokenparse_label(const token_names_t *names, const foundtoken_t *token,
 	dns_name_copy(dns_rootname, target);
 	labels = dns_name_countlabels(names->zonename);
 
-	labeltokidx = token->pos[token->len - 1];
+	labeltokidx = isc_ascii_tolower(token->pos[token->len - 1]);
 	if (token->len == 2) {
 		/*
 		 * %z, %y, %x pattern
