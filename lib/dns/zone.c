@@ -10182,6 +10182,23 @@ cleanup:
 	zone_unload(zone);
 }
 
+static bool
+check_primaries(dns_zone_t *zone, uint32_t flags) {
+	if (dns_remote_addresses(&zone->primaries) == NULL ||
+	    dns_remote_count(&zone->primaries) == 0)
+	{
+		DNS_ZONE_SETFLAG(zone, DNS_ZONEFLG_NOPRIMARIES);
+		if ((flags & DNS_ZONEFLG_NOPRIMARIES) == 0) {
+			dns_zone_logc(zone, DNS_LOGCATEGORY_XFER_IN,
+				      ISC_LOG_ERROR,
+				      "cannot refresh: no primaries");
+		}
+		return false;
+	}
+
+	return true;
+}
+
 static void
 zone_refresh(dns_zone_t *zone) {
 	isc_interval_t i;
@@ -10201,13 +10218,7 @@ zone_refresh(dns_zone_t *zone) {
 	 */
 
 	oldflags = atomic_load(&zone->flags);
-	if (dns_remote_addresses(&zone->primaries) == NULL) {
-		DNS_ZONE_SETFLAG(zone, DNS_ZONEFLG_NOPRIMARIES);
-		if ((oldflags & DNS_ZONEFLG_NOPRIMARIES) == 0) {
-			dns_zone_logc(zone, DNS_LOGCATEGORY_XFER_IN,
-				      ISC_LOG_ERROR,
-				      "cannot refresh: no primaries");
-		}
+	if (!check_primaries(zone, oldflags)) {
 		return;
 	}
 	DNS_ZONE_SETFLAG(zone, DNS_ZONEFLG_REFRESH);
@@ -12521,6 +12532,10 @@ soa_query(void *arg) {
 		if (DNS_ZONE_FLAG(zone, DNS_ZONEFLG_EXITING)) {
 			cancel = false;
 		}
+		goto cleanup;
+	}
+
+	if (!check_primaries(zone, atomic_load(&zone->flags))) {
 		goto cleanup;
 	}
 
