@@ -18,6 +18,21 @@ set -e
 RNDCCMD="$RNDC -c ../_common/rndc.conf -p ${CONTROLPORT} -s"
 DIG="$DIG +time=12 +tries=1"
 
+ans2_control() {
+  control_name=$1
+  shift
+  $DIG +time=1 +tries=1 -p "${PORT}" @10.53.0.2 "${control_name}.switch._control" TXT "$@" >/dev/null 2>&1 || true
+}
+
+ans8_control() {
+  control_name=$1
+  shift
+  $DIG +time=1 +tries=1 -p "${PORT}" @10.53.0.8 "${control_name}.switch._control" TXT "$@" >/dev/null 2>&1 || true
+}
+
+ans2_control enable
+ans8_control restore
+
 max_stale_ttl=$(sed -ne 's,^[[:space:]]*max-stale-ttl \([[:digit:]]*\).*,\1,p' $TOP_SRCDIR/bin/include/defaultconfig.h)
 stale_answer_ttl=$(sed -ne 's,^[[:space:]]*stale-answer-ttl \([[:digit:]]*\).*,\1,p' $TOP_SRCDIR/bin/include/defaultconfig.h)
 
@@ -52,6 +67,7 @@ ret=0
 $DIG -p ${PORT} @10.53.0.2 txt disable >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"0\"" dig.out.test$n >/dev/null || ret=1
+ans2_control disable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 # Query via stale CNAME — triggers the bug
@@ -70,6 +86,7 @@ ret=0
 $DIG -p ${PORT} @10.53.0.2 txt enable >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"1\"" dig.out.test$n >/dev/null || ret=1
+ans2_control enable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -109,6 +126,7 @@ ret=0
 $DIG -p ${PORT} @10.53.0.2 txt disable >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"0\"" dig.out.test$n >/dev/null || ret=1
+ans2_control disable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 # Kill target auth, restart with NEW IP (10.0.0.2)
@@ -118,6 +136,7 @@ ret=0
 $DIG -p ${PORT} @10.53.0.8 txt update >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"update\"" dig.out.test$n >/dev/null || ret=1
+ans8_control update
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 # Query via stale CNAME — triggers the bug
@@ -148,6 +167,7 @@ ret=0
 $DIG -p ${PORT} @10.53.0.2 txt enable >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"1\"" dig.out.test$n >/dev/null || ret=1
+ans2_control enable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -157,6 +177,7 @@ ret=0
 $DIG -p ${PORT} @10.53.0.8 txt restore >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"restore\"" dig.out.test$n >/dev/null || ret=1
+ans8_control restore
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -191,6 +212,7 @@ ret=0
 $DIG -p ${PORT} @10.53.0.2 txt disable >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"0\"" dig.out.test$n >/dev/null || ret=1
+ans2_control disable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 # Flush target's negative cache entry (simulates cache eviction/pressure)
@@ -227,6 +249,7 @@ ret=0
 $DIG -p ${PORT} @10.53.0.2 txt enable >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"1\"" dig.out.test$n >/dev/null || ret=1
+ans2_control enable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -303,6 +326,7 @@ ret=0
 $DIG -p ${PORT} @10.53.0.2 txt disable >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"0\"" dig.out.test$n >/dev/null || ret=1
+ans2_control disable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -449,6 +473,7 @@ ret=0
 $DIG -p ${PORT} @10.53.0.2 txt enable >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"1\"" dig.out.test$n >/dev/null || ret=1
+ans2_control enable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -522,6 +547,7 @@ ret=0
 $DIG -p ${PORT} @10.53.0.2 txt disable >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"0\"" dig.out.test$n >/dev/null || ret=1
+ans2_control disable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -787,6 +813,7 @@ ret=0
 $DIG -p ${PORT} @10.53.0.2 txt enable >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"1\"" dig.out.test$n >/dev/null || ret=1
+ans2_control enable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -862,6 +889,7 @@ ret=0
 $DIG -p ${PORT} @10.53.0.2 txt disable >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"0\"" dig.out.test$n >/dev/null || ret=1
+ans2_control disable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -1015,6 +1043,7 @@ $RNDCCMD 10.53.0.1 flushtree example >rndc.out.test$n.1 2>&1 || ret=1
 $DIG -p ${PORT} @10.53.0.2 txt enable >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"1\"" dig.out.test$n >/dev/null || ret=1
+ans2_control enable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -1044,6 +1073,7 @@ ret=0
 $DIG -p ${PORT} @10.53.0.2 txt disable >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"0\"" dig.out.test$n >/dev/null || ret=1
+ans2_control disable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -1072,6 +1102,7 @@ ret=0
 $DIG -p ${PORT} @10.53.0.2 txt enable >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"1\"" dig.out.test$n >/dev/null || ret=1
+ans2_control enable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -1129,6 +1160,7 @@ $RNDCCMD 10.53.0.1 flushtree example >rndc.out.test$n.1 2>&1 || ret=1
 $DIG -p ${PORT} @10.53.0.2 txt enable >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"1\"" dig.out.test$n >/dev/null || ret=1
+ans2_control enable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -1151,6 +1183,7 @@ ret=0
 $DIG -p ${PORT} @10.53.0.2 txt disable >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"0\"" dig.out.test$n >/dev/null || ret=1
+ans2_control disable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -1179,6 +1212,7 @@ ret=0
 $DIG -p ${PORT} @10.53.0.2 txt enable >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"1\"" dig.out.test$n >/dev/null || ret=1
+ans2_control enable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -1219,6 +1253,7 @@ ret=0
 $DIG -p ${PORT} @10.53.0.2 txt enable >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"1\"" dig.out.test$n >/dev/null || ret=1
+ans2_control enable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -1294,6 +1329,7 @@ ret=0
 $DIG -p ${PORT} @10.53.0.2 txt disable >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"0\"" dig.out.test$n >/dev/null || ret=1
+ans2_control disable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -1460,6 +1496,7 @@ ret=0
 $DIG -p ${PORT} @10.53.0.2 txt enable >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"1\"" dig.out.test$n >/dev/null || ret=1
+ans2_control enable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -1535,6 +1572,7 @@ ret=0
 $DIG -p ${PORT} @10.53.0.2 txt disable >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"0\"" dig.out.test$n >/dev/null || ret=1
+ans2_control disable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -1675,6 +1713,7 @@ ret=0
 $DIG -p ${PORT} @10.53.0.2 txt enable >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"1\"" dig.out.test$n >/dev/null || ret=1
+ans2_control enable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -1750,6 +1789,7 @@ ret=0
 $DIG -p ${PORT} @10.53.0.2 txt disable >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"0\"" dig.out.test$n >/dev/null || ret=1
+ans2_control disable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -1940,6 +1980,7 @@ ret=0
 $DIG -p ${PORT} @10.53.0.2 txt enable >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"1\"" dig.out.test$n >/dev/null || ret=1
+ans2_control enable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -1963,6 +2004,7 @@ ret=0
 $DIG -p ${PORT} @10.53.0.2 txt disable >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"0\"" dig.out.test$n >/dev/null || ret=1
+ans2_control disable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -1987,6 +2029,7 @@ ret=0
 $DIG -p ${PORT} @10.53.0.2 txt enable >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"1\"" dig.out.test$n >/dev/null || ret=1
+ans2_control enable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -2041,6 +2084,7 @@ ret=0
 $DIG -p ${PORT} @10.53.0.2 txt disable >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"0\"" dig.out.test$n >/dev/null || ret=1
+ans2_control disable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -2079,6 +2123,7 @@ ret=0
 $DIG -p ${PORT} @10.53.0.2 txt enable >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"1\"" dig.out.test$n >/dev/null || ret=1
+ans2_control enable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -2140,6 +2185,7 @@ while [ $ret -eq 0 ] && [ $attempt -lt 2 ]; do
   $DIG -p ${PORT} @10.53.0.2 slowdown TXT >dig.out.test$n || ret=1
   grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
   grep "TXT.\"1\"" dig.out.test$n >/dev/null || ret=1
+  ans2_control slowdown
   if [ $ret != 0 ]; then echo_i "failed"; fi
   status=$((status + ret))
 
@@ -2431,6 +2477,7 @@ $RNDCCMD 10.53.0.3 flushtree example >rndc.out.test$n.1 2>&1 || ret=1
 $DIG -p ${PORT} @10.53.0.2 txt enable >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"1\"" dig.out.test$n >/dev/null || ret=1
+ans2_control enable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -2453,6 +2500,7 @@ ret=0
 $DIG -p ${PORT} @10.53.0.2 txt disable >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"0\"" dig.out.test$n >/dev/null || ret=1
+ans2_control disable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -2475,6 +2523,7 @@ ret=0
 $DIG -p ${PORT} @10.53.0.2 txt enable >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"1\"" dig.out.test$n >/dev/null || ret=1
+ans2_control enable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -2497,6 +2546,7 @@ ret=0
 $DIG -p ${PORT} @10.53.0.2 txt disable >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"0\"" dig.out.test$n >/dev/null || ret=1
+ans2_control disable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -2540,6 +2590,7 @@ ret=0
 $DIG -p ${PORT} @10.53.0.2 txt enable >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"1\"" dig.out.test$n >/dev/null || ret=1
+ans2_control enable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -2617,6 +2668,7 @@ ret=0
 $DIG -p ${PORT} @10.53.0.2 txt disable >dig.out.test$n || ret=1
 grep "ANSWER: 1," dig.out.test$n >/dev/null || ret=1
 grep "TXT.\"0\"" dig.out.test$n >/dev/null || ret=1
+ans2_control disable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -2795,6 +2847,7 @@ rndc_reload ns3 10.53.0.3
 # flush cache, enable ans2 responses, make sure serve-stale is on
 $RNDCCMD 10.53.0.3 flush >rndc.out.test$n.1 2>&1 || ret=1
 $DIG -p ${PORT} @10.53.0.2 txt enable >/dev/null || ret=1
+ans2_control enable
 $RNDCCMD 10.53.0.3 serve-stale on >rndc.out.test$n.2 2>&1 || ret=1
 # prime the cache with an AAAA NXRRSET response
 $DIG -p ${PORT} @10.53.0.3 a-only.example AAAA >dig.out.1.test$n || ret=1
@@ -2802,6 +2855,7 @@ grep "status: NOERROR" dig.out.1.test$n >/dev/null || ret=1
 grep "2001:aaaa" dig.out.1.test$n >/dev/null || ret=1
 # disable responses from the auth server
 $DIG -p ${PORT} @10.53.0.2 txt disable >/dev/null || ret=1
+ans2_control disable
 # wait two seconds for the previous answer to become stale
 sleep 2
 # resend the query and wait in the background; we should get a stale answer
@@ -2809,6 +2863,7 @@ $DIG -p ${PORT} @10.53.0.3 a-only.example AAAA >dig.out.2.test$n &
 # re-enable queries after a pause, so the server gets a real answer too
 sleep 2
 $DIG -p ${PORT} @10.53.0.2 txt enable >/dev/null || ret=1
+ans2_control enable
 wait
 grep "status: NOERROR" dig.out.2.test$n >/dev/null || ret=1
 grep "2001:aaaa" dig.out.2.test$n >/dev/null || ret=1
@@ -2825,6 +2880,7 @@ ret=0
 # flush cache, enable ans2 responses, make sure serve-stale is on
 $RNDCCMD 10.53.0.3 flush >rndc.out.test$n.1 2>&1 || ret=1
 $DIG -p ${PORT} @10.53.0.2 txt enable >/dev/null || ret=1
+ans2_control enable
 $RNDCCMD 10.53.0.3 serve-stale on >rndc.out.test$n.2 2>&1 || ret=1
 # prime the cache with the A response
 $DIG -p ${PORT} @10.53.0.3 www.delegated.serve.stale >dig.out.1.test$n || ret=1
@@ -2832,6 +2888,7 @@ grep -F "status: NOERROR" dig.out.1.test$n >/dev/null || ret=1
 grep -F "10.53.0.99" dig.out.1.test$n >/dev/null || ret=1
 # disable responses from the auth server
 $DIG -p ${PORT} @10.53.0.2 txt disable >/dev/null || ret=1
+ans2_control disable
 # wait two seconds for the previous answer to become stale
 sleep 2
 # resend the query; we should immediately get a stale answer
@@ -2841,6 +2898,7 @@ grep -F "EDE: 3 (Stale Answer): (stale data prioritized over lookup)" dig.out.2.
 grep -F "10.53.0.99" dig.out.2.test$n >/dev/null || ret=1
 # re-enable responses
 $DIG -p ${PORT} @10.53.0.2 txt enable >/dev/null || ret=1
+ans2_control enable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -2850,6 +2908,7 @@ ret=0
 # flush cache, enable ans2 responses, make sure serve-stale is on
 $RNDCCMD 10.53.0.3 flush >rndc.out.test$n.1 2>&1 || ret=1
 $DIG -p ${PORT} @10.53.0.2 txt enable >/dev/null || ret=1
+ans2_control enable
 $RNDCCMD 10.53.0.3 serve-stale on >rndc.out.test$n.2 2>&1 || ret=1
 # prime the cache with the A response
 $DIG -p ${PORT} @10.53.0.3 cname.delegated.serve.stale >dig.out.1.test$n || ret=1
@@ -2857,6 +2916,7 @@ grep -F "status: NOERROR" dig.out.1.test$n >/dev/null || ret=1
 grep -F "10.53.0.99" dig.out.1.test$n >/dev/null || ret=1
 # disable responses from the auth server
 $DIG -p ${PORT} @10.53.0.2 txt disable >/dev/null || ret=1
+ans2_control disable
 # wait two seconds for the previous answer to become stale
 sleep 2
 # resend the query; we should immediately get a stale answer
@@ -2866,6 +2926,7 @@ grep -F "EDE: 3 (Stale Answer): (stale data prioritized over lookup)" dig.out.2.
 grep -F "10.53.0.99" dig.out.2.test$n >/dev/null || ret=1
 # re-enable responses
 $DIG -p ${PORT} @10.53.0.2 txt enable >/dev/null || ret=1
+ans2_control enable
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 

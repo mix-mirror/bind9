@@ -46,6 +46,7 @@ def upstream_queries(ans2: AnsInstance, qname: str) -> int:
 
 def enable_ans2_responses(ans2: AnsInstance) -> None:
     isctest.query.udp(dns.message.make_query("enable.", "TXT"), ans2.ip)
+    isctest.query.udp(dns.message.make_query("enable.switch._control.", "TXT"), ans2.ip)
 
 
 @pytest.fixture(name="resolver")
