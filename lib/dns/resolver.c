@@ -10057,6 +10057,8 @@ dns_resolver_prime(dns_resolver_t *res) {
 	REQUIRE(VALID_RESOLVER(res));
 	REQUIRE(res->frozen);
 
+	return;
+
 	RTRACE("dns_resolver_prime");
 
 	if (!atomic_load_acquire(&res->exiting)) {
