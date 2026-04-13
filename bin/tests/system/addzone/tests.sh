@@ -45,7 +45,17 @@ expected='zone "normal.example" { type primary; file "normal.db"; };'
 n=$((n + 1))
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
-# modzone
+
+# modzone (non-existing)
+echo_i "modzone non-existing loaded zone ($n)"
+ret=0
+$RNDCCMD 10.53.0.2 modzone non-existing.example '{ type primary; file "non-existing.db"; };' >rndc.out.ns2.$n 2>&1 && ret=1
+grep "rndc: 'modzone' failed: not found" rndc.out.ns2.$n >/dev/null || ret=1
+n=$((n + 1))
+if [ $ret != 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
+
+# modzone (normal)
 echo_i "modzone normally loaded zone ($n)"
 ret=0
 $RNDCCMD 10.53.0.2 modzone normal.example '{ type primary; file "normal.db"; };' >rndc.out.ns2.$n
