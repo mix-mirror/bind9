@@ -12341,8 +12341,11 @@ do_modzone(named_server_t *server, dns_view_t *view, dns_name_t *name,
 
 	if (!view->newzone.allowed) {
 		result = ISC_R_NOPERM;
-		TCHECK(putstr(text, "new zone configuration is not allowed"));
-		goto cleanup;
+		tresult = putstr(text, "new zone configuration is not allowed");
+		if (tresult != ISC_R_SUCCESS) {
+			isc_buffer_clear(text);
+		}
+		return result;
 	}
 
 	/* Zone must already exist */
@@ -12357,7 +12360,7 @@ do_modzone(named_server_t *server, dns_view_t *view, dns_name_t *name,
 		result = dns_view_findzone(view, name, DNS_ZTFIND_EXACT, &zone);
 	}
 	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
+		return result;
 	}
 
 	added = dns_zone_getadded(zone);
