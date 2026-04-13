@@ -7335,19 +7335,11 @@ root_key_sentinel_return_servfail(query_ctx_t *qctx, isc_result_t result) {
  * return true; otherwise, return false.
  */
 static bool
-query_usestale(query_ctx_t *qctx, isc_result_t result) {
+query_usestale(query_ctx_t *qctx) {
 	if ((qctx->client->query.dboptions & DNS_DBFIND_STALEOK) != 0) {
 		/*
 		 * Query was already using stale, if that didn't work the
 		 * last time, it won't work this time either.
-		 */
-		return false;
-	}
-
-	if (result == DNS_R_DUPLICATE || result == DNS_R_DROP) {
-		/*
-		 * Don't enable serve-stale if the result signals a duplicate
-		 * query or query that is being dropped.
 		 */
 		return false;
 	}
@@ -7381,6 +7373,7 @@ query_usestale(query_ctx_t *qctx, isc_result_t result) {
 		if (qctx->resuming) {
 			qctx->client->query.dboptions |= DNS_DBFIND_STALESTART;
 		}
+
 		return true;
 	}
 
@@ -7492,7 +7485,9 @@ root_key_sentinel:
 			 "query_gotanswer: unexpected error: %s",
 			 isc_result_totext(result));
 		CCTRACE(ISC_LOG_ERROR, errmsg);
-		if (query_usestale(qctx, result)) {
+		if (result != DNS_R_DROP && result != DNS_R_DUPLICATE &&
+		    query_usestale(qctx))
+		{
 			/*
 			 * If serve-stale is enabled, query_usestale() already
 			 * set up 'qctx' for looking up a stale response.
@@ -8347,7 +8342,10 @@ query_notfound(query_ctx_t *qctx) {
 					qctx->client->query.attributes |=
 						NS_QUERYATTR_DNS64EXCLUDE;
 				}
-			} else if (query_usestale(qctx, result)) {
+			} else if (result != DNS_R_DROP &&
+				   result != DNS_R_DUPLICATE &&
+				   query_usestale(qctx))
+			{
 				/*
 				 * If serve-stale is enabled, query_usestale()
 				 * already set up 'qctx' for looking up a
@@ -8695,7 +8693,9 @@ query_delegation_recurse(query_ctx_t *qctx) {
 			qctx->client->query.attributes |=
 				NS_QUERYATTR_DNS64EXCLUDE;
 		}
-	} else if (query_usestale(qctx, result)) {
+	} else if (result != DNS_R_DROP && result != DNS_R_DUPLICATE &&
+		   query_usestale(qctx))
+	{
 		/*
 		 * If serve-stale is enabled, query_usestale() already set up
 		 * 'qctx' for looking up a stale response.
