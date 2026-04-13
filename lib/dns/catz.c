@@ -1855,7 +1855,7 @@ dns_catz_generate_masterfilename(dns_catz_zone_t *catz, dns_catz_entry_t *entry,
 	 * remove it.
 	 */
 	isc_buffer_putuint8(tbuf, 0);
-	if (strpbrk(isc_buffer_base(tbuf), "\\/:") != NULL) {
+	if (strpbrk(isc_buffer_base(tbuf), "\\/:%$") != NULL) {
 		special = true;
 	}
 	isc_buffer_subtract(tbuf, 1);
