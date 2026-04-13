@@ -2974,5 +2974,57 @@ if [ $ret -ne 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
 ##########################################################################
+# GL #5849
+
+n=$((n + 1))
+echo_i "Adding a domain token%Xname.example. to primary via RNDC ($n)"
+ret=0
+# enough initial content for IXFR response when TXT record is added below
+echo "@ 3600 IN SOA . . 1 3600 3600 3600 3600" >ns1/tokenXname.example.db
+echo "@ 3600 IN NS invalid." >>ns1/tokenXname.example.db
+echo "foo 3600 IN TXT some content here" >>ns1/tokenXname.example.db
+echo "bar 3600 IN TXT some content here" >>ns1/tokenXname.example.db
+echo "xxx 3600 IN TXT some content here" >>ns1/tokenXname.example.db
+echo "yyy 3600 IN TXT some content here" >>ns1/tokenXname.example.db
+rndccmd 10.53.0.1 addzone token%Xname.example. in default '{ type primary; file "tokenXname.example.db"; allow-transfer { any; }; allow-update { any; }; notify explicit; also-notify { 10.53.0.4; }; };' || ret=1
+if [ $ret -ne 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
+
+n=$((n + 1))
+echo_i "checking that token%Xname.example. is now served by primary ($n)"
+ret=0
+wait_for_soa @10.53.0.1 token%Xname.example. dig.out.test$n || ret=1
+if [ $ret -ne 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
+
+nextpart ns4/named.run >/dev/null
+
+n=$((n + 1))
+echo_i "Adding domain token%Xname.example. to catalog-misc zone ($n)"
+ret=0
+$NSUPDATE -d <<END >>nsupdate.out.test$n 2>&1 || ret=1
+    server 10.53.0.1 ${PORT}
+    update add tokenXname.zones.catalog-misc.example. 3600 IN PTR token%Xname.example.
+    send
+END
+if [ $ret -ne 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
+
+n=$((n + 1))
+echo_i "waiting for secondary to sync up ($n)"
+ret=0
+wait_for_message ns4/named.run "catz: adding zone 'token%Xname.example' from catalog 'catalog-misc.example'" \
+  && wait_for_message ns4/named.run "transfer of 'token%Xname.example/IN' from 10.53.0.1#${PORT}: Transfer status: success" || ret=1
+if [ $ret -ne 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
+
+n=$((n + 1))
+echo_i "checking that token%Xname.example. is served by secondary ($n)"
+ret=0
+wait_for_soa @10.53.0.4 token%Xname.example. dig.out.test$n || ret=1
+if [ $ret -ne 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
+
+##########################################################################
 echo_i "exit status: $status"
 [ $status -eq 0 ] || exit 1
