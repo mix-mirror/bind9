@@ -3146,8 +3146,6 @@ rpz_rrset_find(ns_client_t *client, dns_name_t *name, dns_rdatatype_t type,
 		if (result == ISC_R_NOTFOUND) {
 			result = DNS_R_DELEGATION;
 		}
-	} else if (result == ISC_R_NOTFOUND && !is_zone) {
-		result = DNS_R_DELEGATION;
 	}
 	rpz_clean(NULL, dbp, &node, NULL);
 	if (result == DNS_R_DELEGATION) {
@@ -6228,7 +6226,8 @@ release_recursionquota(ns_client_t *client) {
 
 isc_result_t
 ns_query_recurse(ns_client_t *client, dns_rdatatype_t qtype, dns_name_t *qname,
-		 dns_name_t *qdomain, dns_delegset_t *delegset, bool resuming) {
+		 dns_name_t *qdomain, dns_rdataset_t *nameservers,
+		 bool resuming) {
 	isc_result_t result;
 	dns_rdataset_t *rdataset, *sigrdataset;
 	isc_sockaddr_t *peeraddr = NULL;
@@ -6256,6 +6255,7 @@ ns_query_recurse(ns_client_t *client, dns_rdatatype_t qtype, dns_name_t *qname,
 	/*
 	 * Invoke the resolver.
 	 */
+	REQUIRE(nameservers == NULL || nameservers->type == dns_rdatatype_ns);
 	REQUIRE(FETCH_RECTYPE_NORMAL(client) == NULL);
 
 	rdataset = ns_client_newrdataset(client);
@@ -6278,11 +6278,11 @@ ns_query_recurse(ns_client_t *client, dns_rdatatype_t qtype, dns_name_t *qname,
 			    &HANDLE_RECTYPE_NORMAL(client));
 	maybe_init_fetch_counter(client);
 	result = dns_resolver_createfetch(
-		client->inner.view->resolver, qname, qtype, qdomain, delegset,
-		NULL, peeraddr, client->message->id, client->query.fetchoptions,
-		0, NULL, client->query.qc, NULL, client->manager->loop,
-		fetch_callback, client, &client->edectx, rdataset, sigrdataset,
-		&FETCH_RECTYPE_NORMAL(client));
+		client->inner.view->resolver, qname, qtype, qdomain,
+		nameservers, NULL, peeraddr, client->message->id,
+		client->query.fetchoptions, 0, NULL, client->query.qc, NULL,
+		client->manager->loop, fetch_callback, client, &client->edectx,
+		rdataset, sigrdataset, &FETCH_RECTYPE_NORMAL(client));
 	if (result != ISC_R_SUCCESS) {
 		release_recursionquota(client);
 
@@ -6817,7 +6817,7 @@ query_checkrrl(query_ctx_t *qctx, isc_result_t result) {
 	if (qctx->view->rrl != NULL && !HAVECOOKIE(qctx->client) &&
 	    ((qctx->fname != NULL && dns_name_isabsolute(qctx->fname)) ||
 	     (result == ISC_R_NOTFOUND && !RECURSIONOK(qctx->client))) &&
-	    !(result == ISC_R_NOTFOUND && !qctx->is_zone &&
+	    !(result == DNS_R_DELEGATION && !qctx->is_zone &&
 	      RECURSIONOK(qctx->client)) &&
 	    (qctx->client->query.rpz_st == NULL ||
 	     (qctx->client->query.rpz_st->state & DNS_RPZ_REWRITTEN) == 0) &&
@@ -8659,30 +8659,9 @@ query_delegation_recurse(query_ctx_t *qctx) {
 		/*
 		 * Any other recursion.
 		 */
-		dns_delegset_t *delegset = NULL;
-		dns_fixedname_t ffname;
-		dns_name_t *fname = dns_fixedname_initname(&ffname);
-		isc_result_t tresult;
-
-		tresult = dns_view_bestzonecut(qctx->view, qname, fname, NULL,
-					       qctx->client->inner.now, 0, true,
-					       true, &delegset);
-		if (tresult != ISC_R_SUCCESS) {
-			dns_delegset_fromnsrdataset(qctx->rdataset, &delegset);
-			fname = qctx->fname;
-		}
-
-		if (delegset == NULL) {
-			result = ISC_R_NOTFOUND;
-		} else {
-			result = ns_query_recurse(qctx->client, qctx->qtype,
-						  qname, fname, delegset,
-						  qctx->resuming);
-		}
-
-		if (delegset != NULL) {
-			dns_delegset_detach(&delegset);
-		}
+		result = ns_query_recurse(qctx->client, qctx->qtype, qname,
+					  qctx->fname, qctx->rdataset,
+					  qctx->resuming);
 	}
 
 	if (result == ISC_R_SUCCESS) {
@@ -10595,7 +10574,7 @@ query_addbestns(query_ctx_t *qctx) {
 	dns_name_t *fname = NULL, *zfname = NULL;
 	dns_rdataset_t *rdataset = NULL, *sigrdataset = NULL;
 	dns_rdataset_t *zrdataset = NULL, *zsigrdataset = NULL;
-	bool is_zone = false;
+	bool is_zone = false, use_zone = false;
 	isc_buffer_t *dbuf = NULL;
 	isc_result_t result;
 	dns_dbversion_t *version = NULL;
@@ -10686,7 +10665,33 @@ db_find:
 			is_zone = false;
 			goto db_find;
 		}
-	} else if (zfname != NULL) {
+	} else {
+		result = dns_db_findzonecut(db, client->query.qname,
+					    client->query.dboptions,
+					    client->inner.now, &node, fname,
+					    NULL, rdataset, sigrdataset);
+		if (result == ISC_R_SUCCESS) {
+			if (zfname != NULL &&
+			    !dns_name_issubdomain(fname, zfname))
+			{
+				/*
+				 * We found a zonecut in the cache, but our
+				 * zone delegation is better.
+				 */
+				use_zone = true;
+			}
+		} else if (result == ISC_R_NOTFOUND && zfname != NULL) {
+			/*
+			 * We didn't find anything in the cache, but we
+			 * have a zone delegation, so use it.
+			 */
+			use_zone = true;
+		} else {
+			goto cleanup;
+		}
+	}
+
+	if (use_zone) {
 		ns_client_releasename(client, &fname);
 		/*
 		 * We've already done ns_client_keepname() on
@@ -10709,8 +10714,6 @@ db_find:
 		fname = MOVE_OWNERSHIP(zfname);
 		rdataset = MOVE_OWNERSHIP(zrdataset);
 		sigrdataset = MOVE_OWNERSHIP(zsigrdataset);
-	} else {
-		goto cleanup;
 	}
 
 	/*

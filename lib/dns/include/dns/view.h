@@ -67,7 +67,6 @@
 #include <dns/acl.h>
 #include <dns/catz.h>
 #include <dns/clientinfo.h>
-#include <dns/deleg.h>
 #include <dns/dnstap.h>
 #include <dns/fixedname.h>
 #include <dns/nta.h>
@@ -99,7 +98,6 @@ struct dns_view {
 	dns_cache_t	  *cache;
 	dns_db_t	  *cachedb;
 	dns_db_t	  *hints;
-	dns_delegdb_t	  *deleg;
 
 	/*
 	 * security roots and negative trust anchors.
@@ -694,7 +692,7 @@ isc_result_t
 dns_view_bestzonecut(dns_view_t *view, const dns_name_t *name,
 		     dns_name_t *fname, dns_name_t *dcname, isc_stdtime_t now,
 		     unsigned int options, bool use_hints, bool use_cache,
-		     dns_delegset_t **delegsetp);
+		     dns_rdataset_t *rdataset);
 /*%<
  * Find the best known zonecut containing 'name'.
  *
@@ -722,16 +720,15 @@ dns_view_bestzonecut(dns_view_t *view, const dns_name_t *name,
  *
  *\li	'name' is valid name.
  *
- *\li	'delegsetp' is a valid pointer to a NULL `dns_delegset_t` pointer. It
- *      can also be NULL if the caller doesn't need the delegation data (but
- *      just the zonecut name).
- *      Note: if a delegation is found, `*delegsetp` is not NULL and must be
- *      detached from the caller once it doesn't need it anymore.
+ *\li	'rdataset' is a valid, disassociated rdataset.
+ *
+ *\li	'sigrdataset' is NULL, or is a valid, disassociated rdataset.
  *
  * Returns:
  *
  *\li	#ISC_R_SUCCESS  If a delegation is found;
- *\li   #DNS_R_NXDOMAIN	If no delegation is found; '*delegsetp' remains NULL.
+ *\li   #DNS_R_NXDOMAIN	If no delegation is found; 'rdataset' and 'sigrdataset'
+ *                      are disassociated.
  */
 
 isc_result_t

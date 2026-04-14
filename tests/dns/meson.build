@@ -17,7 +17,6 @@ dns_tests = [
     'dbdiff',
     'dbiterator',
     'dbversion',
-    'deleg',
     'dispatch',
     'dns64',
     'dst',
