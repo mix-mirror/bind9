@@ -704,28 +704,23 @@ elif cc.has_header_symbol('sys/socket.h', 'SO_REUSEPORT_LB')
 endif
 
 ## userspace-rcu
-urcu_dep = [dependency('liburcu-cds', version: '>=0.10.0')]
+# liburcu >= 0.17.0 is required for <urcu/fractal-trie.h>, used by
+# dns_nametree and future DNS data structures.
+urcu_dep = [dependency('liburcu-cds', version: '>=0.17.0')]
 if rcu_flavor == 'membarrier'
     config.set('RCU_MEMBARRIER', true)
-    urcu_dep += dependency('liburcu', version: '>=0.10.0')
+    urcu_dep += dependency('liburcu', version: '>=0.17.0')
 elif not developer_mode
     error('Changing Userspace-RCU flavor is allowed only in development mode')
 elif rcu_flavor == 'bp'
     config.set('RCU_BP', true)
-    urcu_dep += dependency('liburcu-bp', version: '>=0.10.0')
+    urcu_dep += dependency('liburcu-bp', version: '>=0.17.0')
 elif rcu_flavor == 'mb'
     config.set('RCU_MB', true)
-    urcu_dep += dependency('liburcu-mb', version: '>=0.10.0')
+    urcu_dep += dependency('liburcu-mb', version: '>=0.17.0')
 elif rcu_flavor == 'qsbr'
     config.set('RCU_QSBR', true)
-    urcu_dep += dependency('liburcu-qsbr', version: '>=0.10.0')
-endif
-
-# liburcu << v0.13.0 didn't add -lurcu-common and some toolchains would
-# not add it automatically - we need to add it explicitly in such case.
-
-if urcu_dep[1].version().version_compare('<0.13.0')
-    urcu_dep += cc.find_library('liburcu-common')
+    urcu_dep += dependency('liburcu-qsbr', version: '>=0.17.0')
 endif
 
 config.set_quoted('RCU_FLAVOR', f'liburcu-@rcu_flavor@')

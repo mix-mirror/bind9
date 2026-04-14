@@ -87,6 +87,7 @@
 #include <isc/attributes.h>
 
 #include <dns/db.h>
+#include <dns/dbkey.h>
 #include <dns/name.h>
 #include <dns/types.h>
 
@@ -176,34 +177,11 @@ typedef union dns_qpreadable {
 
 #define dns_qpreader(qpr) ((qpr).qp)
 
-/*%
- * The maximum size of a key is also the maximum depth of a trie.
- *
- * A domain name can be up to 255 bytes. When converted to a key, each
- * character in the name corresponds to one byte in the key if it is a
- * common hostname character; otherwise unusual characters are escaped,
- * using two bytes in the key. Because the maximum label length is 63
- * characters, the actual max is (255 - 5) * 2 + 6 == 506. Then, we need
- * one more byte to prepend the namespace.
- *
- * Note: this gives us 5 bytes available space to store more data.
- */
-#define DNS_QP_MAXKEY 512
-
 /*
- * C is not strict enough with its integer types for the following typedefs
- * to improve type safety, but it helps to have annotations saying what
- * particular kind of number we are dealing with.
+ * DNS_QP_MAXKEY, dns_qpshift_t, and dns_qpkey_t are defined in
+ * <dns/dbkey.h> (included above).  They describe the trie-neutral key
+ * encoding used by this and other DNS data structures.
  */
-
-/*%
- * The bit number, or position of a bit inside a word. (Valid values 0..63)
- * A dns_qpkey_t (below) is an array of these; each element within dns_qpkey
- * must satisfy:
- *
- *	SHIFT_NOBYTE <= key[off] && key[off] < SHIFT_OFFSET
- */
-typedef uint8_t dns_qpshift_t;
 
 /*%
  * The number of bits set in a word (i.e, Hamming weight or popcount).
@@ -220,14 +198,6 @@ typedef uint8_t dns_qpweight_t;
  */
 typedef uint32_t dns_qpchunk_t;
 typedef uint32_t dns_qpcell_t;
-
-/*%
- * A trie lookup key is a small array, allocated on the stack during trie
- * searches. Keys are usually created on demand from DNS names using
- * `dns_qpkey_fromname()`, but in principle you can define your own
- * functions to convert other types to trie lookup keys.
- */
-typedef dns_qpshift_t dns_qpkey_t[DNS_QP_MAXKEY];
 
 /*%
  * A QP iterator traverses a trie starting with the root and passing
@@ -473,34 +443,9 @@ dns_qpmulti_memusage(dns_qpmulti_t *multi);
  * richer modification such as dns_qp_replace{key,name}
  */
 
-size_t
-dns_qpkey_fromname(dns_qpkey_t key, const dns_name_t *name,
-		   dns_namespace_t space);
-/*%<
- * Convert a DNS name into a trie lookup key in the right namespace.
- *
- * Requires:
- * \li  `name` is a pointer to a valid `dns_name_t`
- *
- * Ensures:
- * \li	returned length is less than `sizeof(dns_qpkey_t)`
- *
- * Returns:
- * \li  the length of the key
- */
-
-void
-dns_qpkey_toname(const dns_qpkey_t key, size_t keylen, dns_name_t *name,
-		 dns_namespace_t *space);
-/*%<
- * Convert a trie lookup key back into a DNS name.
- *
- * 'space' stores whether the key is for a normal name, or denial of existence.
- *
- * Requires:
- * \li  `name` is a pointer to a valid `dns_name_t`
- * \li  `name->buffer` is not NULL
- * \li  `name->offsets` is not NULL
+/*
+ * dns_qpkey_fromname() and dns_qpkey_toname() are declared in
+ * <dns/dbkey.h>.
  */
 
 isc_result_t

@@ -322,6 +322,44 @@ ISC_RUN_TEST_IMPL(find) {
 	dns_ntnode_detach(&node);
 }
 
+/*
+ * Stress the delete-then-reinsert cycle to exercise the RCU
+ * reclamation path.  After many iterations, memory must not leak and
+ * the trie must remain consistent.  A reference held from an earlier
+ * find() must remain valid even after the node is removed from the
+ * trie: the caller's reference keeps the node alive until detach,
+ * independent of the trie's own reclamation.  Under AddressSanitizer
+ * this also exercises the call_rcu grace-period contract.
+ */
+ISC_RUN_TEST_IMPL(rcu_reclamation) {
+	dns_fixedname_t fn;
+	dns_name_t *name = dns_fixedname_name(&fn);
+	dns_ntnode_t *held = NULL;
+
+	dns_test_namefromstring("churn.example.", &fn);
+
+	/* Acquire a reference and hold it across remove/reinsert. */
+	assert_int_equal(dns_nametree_add(booltree, name, true),
+			 ISC_R_SUCCESS);
+	assert_int_equal(dns_nametree_find(booltree, name, &held),
+			 ISC_R_SUCCESS);
+
+	for (int i = 0; i < 1000; i++) {
+		assert_int_equal(dns_nametree_delete(booltree, name),
+				 ISC_R_SUCCESS);
+		assert_int_equal(dns_nametree_add(booltree, name, true),
+				 ISC_R_SUCCESS);
+	}
+
+	/*
+	 * Detaching the held reference must still be safe.  If RCU
+	 * reclamation were broken, the node backing `held` would have
+	 * been freed during one of the delete iterations above and this
+	 * detach would trip ASAN / produce a double-free.
+	 */
+	dns_ntnode_detach(&held);
+}
+
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY_CUSTOM(add_bool, setup, teardown)
 ISC_TEST_ENTRY_CUSTOM(add_bits, setup, teardown)
@@ -330,6 +368,7 @@ ISC_TEST_ENTRY_CUSTOM(covered_bool, setup, teardown)
 ISC_TEST_ENTRY_CUSTOM(covered_bits, setup, teardown)
 ISC_TEST_ENTRY_CUSTOM(delete, setup, teardown)
 ISC_TEST_ENTRY_CUSTOM(find, setup, teardown)
+ISC_TEST_ENTRY_CUSTOM(rcu_reclamation, setup, teardown)
 ISC_TEST_LIST_END
 
 ISC_TEST_MAIN

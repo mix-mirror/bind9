@@ -16,15 +16,16 @@
 #include <stdbool.h>
 
 #include <isc/mem.h>
+#include <isc/mutex.h>
 #include <isc/refcount.h>
 #include <isc/result.h>
 #include <isc/string.h>
 #include <isc/urcu.h>
 #include <isc/util.h>
 
+#include <dns/dbkey.h>
 #include <dns/fixedname.h>
 #include <dns/nametree.h>
-#include <dns/qp.h>
 
 #define NAMETREE_MAGIC	   ISC_MAGIC('N', 'T', 'r', 'e')
 #define VALID_NAMETREE(kt) ISC_MAGIC_VALID(kt, NAMETREE_MAGIC)
@@ -34,7 +35,10 @@ struct dns_nametree {
 	isc_mem_t *mctx;
 	isc_refcount_t references;
 	dns_nametree_type_t type;
-	dns_qpmulti_t *table;
+	isc_mutex_t writer_mutex;
+	struct cds_ft_group *group;
+	struct cds_ft *tree;
+	struct cds_ft_iter *writer_iter;
 	char name[64];
 };
 
@@ -44,24 +48,15 @@ struct dns_ntnode {
 	dns_name_t name;
 	bool set;
 	uint8_t *bits;
+	uint32_t count;
+	struct cds_ft_node ft_node;
+	struct rcu_head rcu_head;
 };
 
-/* QP trie methods */
-static void
-qp_attach(void *uctx, void *pval, uint32_t ival);
-static void
-qp_detach(void *uctx, void *pval, uint32_t ival);
 static size_t
-qp_makekey(dns_qpkey_t key, void *uctx, void *pval, uint32_t ival);
-static void
-qp_triename(void *uctx, char *buf, size_t size);
-
-static dns_qpmethods_t qpmethods = {
-	qp_attach,
-	qp_detach,
-	qp_makekey,
-	qp_triename,
-};
+ntkey_fromname(dns_qpkey_t key, const dns_name_t *name) {
+	return dns_qpkey_fromname(key, name, DNS_DBNAMESPACE_NORMAL);
+}
 
 static void
 destroy_ntnode(dns_ntnode_t *node) {
@@ -79,10 +74,31 @@ ISC_REFCOUNT_TRACE_IMPL(dns_ntnode, destroy_ntnode);
 ISC_REFCOUNT_IMPL(dns_ntnode, destroy_ntnode);
 #endif
 
+static void
+ntnode_free_rcu(struct rcu_head *rcu_head) {
+	dns_ntnode_t *node = caa_container_of(rcu_head, dns_ntnode_t, rcu_head);
+	dns_ntnode_detach(&node);
+}
+
+static dns_ntnode_t *
+newnode(isc_mem_t *mctx, const dns_name_t *name) {
+	dns_ntnode_t *node = isc_mem_get(mctx, sizeof(*node));
+	*node = (dns_ntnode_t){
+		.name = DNS_NAME_INITEMPTY,
+		.mctx = isc_mem_ref(mctx),
+		.references = 1,
+	};
+	dns_name_dup(name, mctx, &node->name);
+	cds_ft_node_init(&node->ft_node);
+	return node;
+}
+
 void
 dns_nametree_create(isc_mem_t *mctx, dns_nametree_type_t type, const char *name,
 		    dns_nametree_t **ntp) {
 	dns_nametree_t *nametree = NULL;
+	struct cds_ft_attr *attr = NULL;
+	enum cds_ft_status status;
 
 	REQUIRE(ntp != NULL && *ntp == NULL);
 
@@ -90,23 +106,69 @@ dns_nametree_create(isc_mem_t *mctx, dns_nametree_type_t type, const char *name,
 	*nametree = (dns_nametree_t){
 		.magic = NAMETREE_MAGIC,
 		.type = type,
+		.mctx = isc_mem_ref(mctx),
+		.references = 1,
 	};
-	isc_mem_attach(mctx, &nametree->mctx);
-	isc_refcount_init(&nametree->references, 1);
+	isc_mutex_init(&nametree->writer_mutex);
 
 	if (name != NULL) {
 		strlcpy(nametree->name, name, sizeof(nametree->name));
 	}
 
-	dns_qpmulti_create(mctx, &qpmethods, nametree, &nametree->table);
+	status = cds_ft_attr_create(&attr);
+	RUNTIME_CHECK(status == CDS_FT_STATUS_OK);
+	status = cds_ft_group_create(attr, &nametree->group);
+	RUNTIME_CHECK(status == CDS_FT_STATUS_OK);
+	cds_ft_attr_destroy(attr);
+
+	status = cds_ft_create(nametree->group, &nametree->tree);
+	RUNTIME_CHECK(status == CDS_FT_STATUS_OK);
+
+	status = cds_ft_iter_create(nametree->tree, &nametree->writer_iter);
+	RUNTIME_CHECK(status == CDS_FT_STATUS_OK);
+
 	*ntp = nametree;
 }
 
 static void
 destroy_nametree(dns_nametree_t *nametree) {
+	enum cds_ft_status status;
+
 	nametree->magic = 0;
 
-	dns_qpmulti_destroy(&nametree->table);
+	/*
+	 * The last nametree reference is gone; no new reader can observe
+	 * this nametree.  Drain any remaining entries directly: readers
+	 * must hold a nametree reference to be in flight, and none can
+	 * be.  The ntnode_free_rcu callbacks queued by earlier mutations
+	 * do not touch the trie itself, so no grace-period wait is
+	 * required here.
+	 *
+	 * We must NOT call synchronize_rcu() or rcu_barrier() here:
+	 * destroy_nametree may itself run from a call_rcu worker thread
+	 * (e.g., when a dns_view is reclaimed asynchronously), and
+	 * waiting for RCU from within that thread deadlocks.
+	 */
+	rcu_read_lock();
+	while ((status = cds_ft_lookup_first(nametree->tree,
+					     nametree->writer_iter)) ==
+	       CDS_FT_STATUS_OK)
+	{
+		struct cds_ft_node *ft_node =
+			cds_ft_iter_node(nametree->writer_iter);
+		dns_ntnode_t *node = caa_container_of(ft_node, dns_ntnode_t,
+						      ft_node);
+		status = cds_ft_remove(nametree->tree, nametree->writer_iter,
+				       ft_node);
+		INSIST(status == CDS_FT_STATUS_OK);
+		dns_ntnode_detach(&node);
+	}
+	rcu_read_unlock();
+
+	cds_ft_iter_destroy(nametree->writer_iter);
+	cds_ft_destroy(nametree->tree);
+	cds_ft_group_destroy(nametree->group);
+	isc_mutex_destroy(&nametree->writer_mutex);
 
 	isc_mem_putanddetach(&nametree->mctx, nametree, sizeof(*nametree));
 }
@@ -116,20 +178,6 @@ ISC_REFCOUNT_TRACE_IMPL(dns_nametree, destroy_nametree);
 #else
 ISC_REFCOUNT_IMPL(dns_nametree, destroy_nametree);
 #endif
-
-static dns_ntnode_t *
-newnode(isc_mem_t *mctx, const dns_name_t *name) {
-	dns_ntnode_t *node = isc_mem_get(mctx, sizeof(*node));
-	*node = (dns_ntnode_t){
-		.name = DNS_NAME_INITEMPTY,
-	};
-	isc_mem_attach(mctx, &node->mctx);
-	isc_refcount_init(&node->references, 1);
-
-	dns_name_dup(name, mctx, &node->name);
-
-	return node;
-}
 
 static bool
 matchbit(unsigned char *bits, uint32_t val) {
@@ -142,132 +190,197 @@ matchbit(unsigned char *bits, uint32_t val) {
 	return false;
 }
 
+static isc_result_t
+add_bool(dns_nametree_t *nametree, const dns_name_t *name, bool value) {
+	dns_qpkey_t key;
+	size_t keylen = ntkey_fromname(key, name);
+	struct cds_ft_node *existing = NULL;
+	enum cds_ft_status status;
+	dns_ntnode_t *new = newnode(nametree->mctx, name);
+
+	new->set = value;
+	status = cds_ft_insert_unique(nametree->tree, key, keylen,
+				      &new->ft_node, &existing);
+	if (status == CDS_FT_STATUS_DUPLICATE_FOUND) {
+		dns_ntnode_detach(&new);
+		return ISC_R_EXISTS;
+	}
+	INSIST(status == CDS_FT_STATUS_OK);
+	/* The trie now holds the node's reference. */
+	return ISC_R_SUCCESS;
+}
+
+static isc_result_t
+add_count(dns_nametree_t *nametree, const dns_name_t *name) {
+	dns_qpkey_t key;
+	size_t keylen = ntkey_fromname(key, name);
+	struct cds_ft_node *ft_node = NULL;
+	enum cds_ft_status status;
+
+	dns_ntnode_t *new = newnode(nametree->mctx, name);
+	new->set = true;
+	new->count = 1;
+	rcu_read_lock();
+	status = cds_ft_insert_unique(nametree->tree, key, keylen,
+				      &new->ft_node, &ft_node);
+	if (status == CDS_FT_STATUS_DUPLICATE_FOUND) {
+		dns_ntnode_t *existing = caa_container_of(ft_node, dns_ntnode_t,
+							  ft_node);
+		existing->count++;
+		rcu_read_unlock();
+		dns_ntnode_detach(&new);
+		return ISC_R_SUCCESS;
+	}
+	rcu_read_unlock();
+	INSIST(status == CDS_FT_STATUS_OK);
+	return ISC_R_SUCCESS;
+}
+
+static isc_result_t
+add_bits(dns_nametree_t *nametree, const dns_name_t *name, uint32_t value) {
+	dns_qpkey_t key;
+	size_t keylen = ntkey_fromname(key, name);
+	struct cds_ft_node *ft_node = NULL;
+	struct cds_ft_node *replaced = NULL;
+	enum cds_ft_status status;
+	dns_ntnode_t *old = NULL;
+	dns_ntnode_t *new = NULL;
+	uint32_t size, pos, mask;
+
+	pos = value / 8 + 2;
+	mask = 1 << (value % 8);
+	size = pos;
+
+	rcu_read_lock();
+	status = cds_ft_lookup_key(nametree->tree, key, keylen, &ft_node);
+	if (status == CDS_FT_STATUS_OK) {
+		old = caa_container_of(ft_node, dns_ntnode_t, ft_node);
+		if (matchbit(old->bits, value)) {
+			rcu_read_unlock();
+			return ISC_R_SUCCESS;
+		}
+		if (old->bits[0] > pos) {
+			size = old->bits[0];
+		}
+	}
+	rcu_read_unlock();
+
+	new = newnode(nametree->mctx, name);
+	new->bits = isc_mem_cget(nametree->mctx, size, sizeof(char));
+	if (old != NULL) {
+		memmove(new->bits, old->bits, old->bits[0]);
+	}
+	new->bits[pos - 1] |= mask;
+	new->bits[0] = size;
+
+	status = cds_ft_insert_replace(nametree->tree, key, keylen,
+				       &new->ft_node, &replaced);
+	if (status == CDS_FT_STATUS_DUPLICATE_FOUND) {
+		INSIST(replaced != NULL);
+		dns_ntnode_t *replaced_node =
+			caa_container_of(replaced, dns_ntnode_t, ft_node);
+		call_rcu(&replaced_node->rcu_head, ntnode_free_rcu);
+	} else {
+		INSIST(status == CDS_FT_STATUS_OK);
+	}
+	return ISC_R_SUCCESS;
+}
+
 isc_result_t
 dns_nametree_add(dns_nametree_t *nametree, const dns_name_t *name,
 		 uint32_t value) {
 	isc_result_t result;
-	dns_qp_t *qp = NULL;
-	uint32_t size, pos, mask, count = 0;
-	dns_ntnode_t *old = NULL, *new = NULL;
 
 	REQUIRE(VALID_NAMETREE(nametree));
 	REQUIRE(name != NULL);
 
-	dns_qpmulti_write(nametree->table, &qp);
-
+	LOCK(&nametree->writer_mutex);
 	switch (nametree->type) {
 	case DNS_NAMETREE_BOOL:
-		new = newnode(nametree->mctx, name);
-		new->set = value;
+		result = add_bool(nametree, name, value);
 		break;
-
 	case DNS_NAMETREE_COUNT:
-		new = newnode(nametree->mctx, name);
-		new->set = true;
-		result = dns_qp_deletename(qp, name, DNS_DBNAMESPACE_NORMAL,
-					   (void **)&old, &count);
-		if (result == ISC_R_SUCCESS) {
-			count += 1;
-		}
+		result = add_count(nametree, name);
 		break;
-
 	case DNS_NAMETREE_BITS:
-		result = dns_qp_getname(qp, name, DNS_DBNAMESPACE_NORMAL,
-					(void **)&old, NULL);
-		if (result == ISC_R_SUCCESS && matchbit(old->bits, value)) {
-			goto out;
-		}
-
-		size = pos = value / 8 + 2;
-		mask = 1 << (value % 8);
-
-		if (old != NULL && old->bits[0] > pos) {
-			size = old->bits[0];
-		}
-
-		new = newnode(nametree->mctx, name);
-		new->bits = isc_mem_cget(nametree->mctx, size, sizeof(char));
-		if (result == ISC_R_SUCCESS) {
-			memmove(new->bits, old->bits, old->bits[0]);
-			result = dns_qp_deletename(
-				qp, name, DNS_DBNAMESPACE_NORMAL, NULL, NULL);
-			INSIST(result == ISC_R_SUCCESS);
-		}
-
-		new->bits[pos - 1] |= mask;
-		new->bits[0] = size;
+		result = add_bits(nametree, name, value);
 		break;
 	default:
 		UNREACHABLE();
 	}
+	UNLOCK(&nametree->writer_mutex);
 
-	result = dns_qp_insert(qp, new, count);
-	/*
-	 * We detach the node here, so any dns_qp_deletename() will
-	 * destroy the node directly.
-	 */
-	dns_ntnode_detach(&new);
-
-out:
-	dns_qp_compact(qp, DNS_QPGC_MAYBE);
-	dns_qpmulti_commit(nametree->table, &qp);
 	return result;
 }
 
 isc_result_t
 dns_nametree_delete(dns_nametree_t *nametree, const dns_name_t *name) {
-	isc_result_t result;
-	dns_qp_t *qp = NULL;
-	dns_ntnode_t *old = NULL;
-	uint32_t count;
+	dns_qpkey_t key;
+	size_t keylen;
+	struct cds_ft_node *ft_node = NULL;
+	enum cds_ft_status status;
+	isc_result_t result = ISC_R_NOTFOUND;
+	dns_ntnode_t *node = NULL;
 
 	REQUIRE(VALID_NAMETREE(nametree));
 	REQUIRE(name != NULL);
 
-	dns_qpmulti_write(nametree->table, &qp);
-	result = dns_qp_deletename(qp, name, DNS_DBNAMESPACE_NORMAL,
-				   (void **)&old, &count);
-	switch (nametree->type) {
-	case DNS_NAMETREE_BOOL:
-	case DNS_NAMETREE_BITS:
-		break;
+	keylen = ntkey_fromname(key, name);
 
-	case DNS_NAMETREE_COUNT:
-		if (result == ISC_R_SUCCESS && count-- != 0) {
-			dns_ntnode_t *new = newnode(nametree->mctx, name);
-			new->set = true;
-			result = dns_qp_insert(qp, new, count);
-			INSIST(result == ISC_R_SUCCESS);
-			dns_ntnode_detach(&new);
-		}
-		break;
-	default:
-		UNREACHABLE();
+	LOCK(&nametree->writer_mutex);
+	rcu_read_lock();
+	status = cds_ft_iter_set_key(nametree->writer_iter, key, keylen);
+	INSIST(status == CDS_FT_STATUS_OK);
+	status = cds_ft_lookup(nametree->tree, nametree->writer_iter);
+	if (status != CDS_FT_STATUS_OK) {
+		rcu_read_unlock();
+		goto out;
 	}
-	dns_qp_compact(qp, DNS_QPGC_MAYBE);
-	dns_qpmulti_commit(nametree->table, &qp);
+	ft_node = cds_ft_iter_node(nametree->writer_iter);
+	node = caa_container_of(ft_node, dns_ntnode_t, ft_node);
 
+	if (nametree->type == DNS_NAMETREE_COUNT && --node->count != 0) {
+		rcu_read_unlock();
+		result = ISC_R_SUCCESS;
+		goto out;
+	}
+
+	status = cds_ft_remove(nametree->tree, nametree->writer_iter, ft_node);
+	rcu_read_unlock();
+	INSIST(status == CDS_FT_STATUS_OK);
+
+	call_rcu(&node->rcu_head, ntnode_free_rcu);
+	result = ISC_R_SUCCESS;
+
+out:
+	UNLOCK(&nametree->writer_mutex);
 	return result;
 }
 
 isc_result_t
 dns_nametree_find(dns_nametree_t *nametree, const dns_name_t *name,
 		  dns_ntnode_t **ntnodep) {
-	isc_result_t result;
-	dns_ntnode_t *node = NULL;
-	dns_qpread_t qpr;
+	dns_qpkey_t key;
+	size_t keylen;
+	struct cds_ft_node *ft_node = NULL;
+	enum cds_ft_status status;
+	isc_result_t result = ISC_R_NOTFOUND;
 
 	REQUIRE(VALID_NAMETREE(nametree));
 	REQUIRE(name != NULL);
 	REQUIRE(ntnodep != NULL && *ntnodep == NULL);
 
-	dns_qpmulti_query(nametree->table, &qpr);
-	result = dns_qp_getname(&qpr, name, DNS_DBNAMESPACE_NORMAL,
-				(void **)&node, NULL);
-	if (result == ISC_R_SUCCESS) {
+	keylen = ntkey_fromname(key, name);
+
+	rcu_read_lock();
+	status = cds_ft_lookup_key(nametree->tree, key, keylen, &ft_node);
+	if (status == CDS_FT_STATUS_OK) {
+		dns_ntnode_t *node = caa_container_of(ft_node, dns_ntnode_t,
+						      ft_node);
 		dns_ntnode_attach(node, ntnodep);
+		result = ISC_R_SUCCESS;
 	}
-	dns_qpread_destroy(nametree->table, &qpr);
+	rcu_read_unlock();
 
 	return result;
 }
@@ -275,17 +388,27 @@ dns_nametree_find(dns_nametree_t *nametree, const dns_name_t *name,
 bool
 dns_nametree_covered(dns_nametree_t *nametree, const dns_name_t *name,
 		     dns_name_t *found, uint32_t bit) {
-	isc_result_t result;
-	dns_qpread_t qpr;
-	dns_ntnode_t *node = NULL;
+	dns_qpkey_t key;
+	size_t keylen;
+	size_t match_len;
+	struct cds_ft_node *ft_node = NULL;
+	enum cds_ft_status status;
 	bool ret = false;
+
+	if (nametree == NULL) {
+		return false;
+	}
 
 	REQUIRE(VALID_NAMETREE(nametree));
 
-	dns_qpmulti_query(nametree->table, &qpr);
-	result = dns_qp_lookup(&qpr, name, DNS_DBNAMESPACE_NORMAL, NULL, NULL,
-			       (void **)&node, NULL);
-	if (result == ISC_R_SUCCESS || result == DNS_R_PARTIALMATCH) {
+	keylen = ntkey_fromname(key, name);
+
+	rcu_read_lock();
+	status = cds_ft_lookup_partial_key(nametree->tree, key, keylen,
+					   &match_len, &ft_node);
+	if (status == CDS_FT_STATUS_OK) {
+		dns_ntnode_t *node = caa_container_of(ft_node, dns_ntnode_t,
+						      ft_node);
 		if (found != NULL) {
 			dns_name_copy(&node->name, found);
 		}
@@ -301,34 +424,7 @@ dns_nametree_covered(dns_nametree_t *nametree, const dns_name_t *name,
 			break;
 		}
 	}
+	rcu_read_unlock();
 
-	dns_qpread_destroy(nametree->table, &qpr);
 	return ret;
-}
-
-static void
-qp_attach(void *uctx ISC_ATTR_UNUSED, void *pval,
-	  uint32_t ival ISC_ATTR_UNUSED) {
-	dns_ntnode_t *ntnode = pval;
-	dns_ntnode_ref(ntnode);
-}
-
-static void
-qp_detach(void *uctx ISC_ATTR_UNUSED, void *pval,
-	  uint32_t ival ISC_ATTR_UNUSED) {
-	dns_ntnode_t *ntnode = pval;
-	dns_ntnode_detach(&ntnode);
-}
-
-static size_t
-qp_makekey(dns_qpkey_t key, void *uctx ISC_ATTR_UNUSED, void *pval,
-	   uint32_t ival ISC_ATTR_UNUSED) {
-	dns_ntnode_t *ntnode = pval;
-	return dns_qpkey_fromname(key, &ntnode->name, DNS_DBNAMESPACE_NORMAL);
-}
-
-static void
-qp_triename(void *uctx, char *buf, size_t size) {
-	dns_nametree_t *nametree = uctx;
-	snprintf(buf, size, "%s nametree", nametree->name);
 }
