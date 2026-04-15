@@ -224,4 +224,15 @@ dns_delegdb_delete(dns_delegdb_t *db, const dns_name_t *name, bool tree);
 void
 dns_delegdb_setsize(dns_delegdb_t *db, size_t size);
 
+void
+dns_delegdb_sweep(dns_delegdb_t *db, size_t target);
+/*%<
+ * Evict up to `target` bytes from the calling loop's SIEVE, independent
+ * of insert traffic.  Called by the cache-budget arbiter to make idle
+ * delegdb pools shed expired / least-recently-used entries under shared
+ * memory pressure.
+ *
+ * Must be called from a loop thread (isc_tid() valid).
+ */
+
 ISC_REFCOUNT_DECL(dns_delegdb);

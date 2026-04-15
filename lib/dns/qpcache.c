@@ -3509,6 +3509,29 @@ setcachesize(dns_db_t *db, size_t size) {
 	dns_size_init(&qpdb->size, size);
 }
 
+static void
+sweep(dns_db_t *db, size_t target) {
+	qpcache_t *qpdb = (qpcache_t *)db;
+	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
+	isc_rwlocktype_t tlocktype = isc_rwlocktype_none;
+	uint16_t idx = isc_tid();
+	isc_rwlock_t *nlock;
+
+	REQUIRE(VALID_QPDB(qpdb));
+	REQUIRE(idx < qpdb->buckets_count);
+
+	nlock = &qpdb->buckets[idx].lock;
+
+	TREE_RDLOCK(&qpdb->tree_lock, &tlocktype);
+	NODE_WRLOCK(nlock, &nlocktype);
+
+	expire_lru_headers(qpdb, idx, target, &nlocktype,
+			   &tlocktype DNS__DB_FILELINE);
+
+	NODE_UNLOCK(nlock, &nlocktype);
+	TREE_UNLOCK(&qpdb->tree_lock, &tlocktype);
+}
+
 static dns_dbmethods_t qpdb_cachemethods = {
 	.destroy = qpcache_destroy,
 	.findnode = qpcache_findnode,
@@ -3528,6 +3551,7 @@ static dns_dbmethods_t qpdb_cachemethods = {
 	.setmaxrrperset = setmaxrrperset,
 	.setmaxtypepername = setmaxtypepername,
 	.setcachesize = setcachesize,
+	.sweep = sweep,
 };
 
 static void

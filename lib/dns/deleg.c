@@ -999,3 +999,25 @@ dns_delegdb_setsize(dns_delegdb_t *delegdb, size_t size) {
 
 	dns_size_init(&delegdb->size, size);
 }
+
+void
+dns_delegdb_sweep(dns_delegdb_t *delegdb, size_t target) {
+	dns_qpmulti_t *nodes = NULL;
+	dns_qp_t *qp = NULL;
+
+	REQUIRE(VALID_DELEGDB(delegdb));
+
+	if (target == 0) {
+		return;
+	}
+
+	rcu_read_lock();
+	nodes = rcu_dereference(delegdb->nodes);
+	if (nodes != NULL) {
+		dns_qpmulti_write(nodes, &qp);
+		delegdb_cleanup(qp, delegdb, target);
+		dns_qp_compact(qp, DNS_QPGC_MAYBE);
+		dns_qpmulti_commit(nodes, &qp);
+	}
+	rcu_read_unlock();
+}

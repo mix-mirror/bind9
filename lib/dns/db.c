@@ -1138,3 +1138,16 @@ dns_db_setcachesize(dns_db_t *db, size_t size) {
 		return (db->methods->setcachesize)(db, size);
 	}
 }
+
+void
+dns_db_sweep(dns_db_t *db, size_t target) {
+	REQUIRE(db != NULL);
+
+	if (target == 0) {
+		return;
+	}
+
+	if (db->methods->sweep != NULL) {
+		(db->methods->sweep)(db, target);
+	}
+}

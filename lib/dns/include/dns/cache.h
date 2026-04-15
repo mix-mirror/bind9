@@ -146,6 +146,17 @@ dns_cache_getcachesize(dns_cache_t *cache);
  */
 
 void
+dns_cache_sweep(dns_cache_t *cache, size_t target);
+/*%<
+ * Evict up to `target` bytes from the bucket owned by the calling loop,
+ * independent of insert traffic.  Called by the cache-budget arbiter to
+ * make idle cache pools shed expired / least-recently-used entries
+ * under shared memory pressure.
+ *
+ * Must be called from a loop thread (isc_tid() valid).
+ */
+
+void
 dns_cache_setservestalettl(dns_cache_t *cache, dns_ttl_t ttl);
 /*%<
  * Sets the maximum length of time that cached answers may be retained

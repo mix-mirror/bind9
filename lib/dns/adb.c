@@ -3407,6 +3407,23 @@ dns_adb_setadbsize(dns_adb_t *adb, size_t size) {
 }
 
 void
+dns_adb_sweep(dns_adb_t *adb, size_t target) {
+	REQUIRE(DNS_ADB_VALID(adb));
+
+	if (target == 0) {
+		return;
+	}
+
+	/*
+	 * Split the eviction budget between names and entries so both
+	 * sub-pools are exercised on each sweep.
+	 */
+	size_t half = target / 2;
+	purge_names_overmem(adb, half);
+	purge_entries_overmem(adb, target - half);
+}
+
+void
 dns_adb_setquota(dns_adb_t *adb, uint32_t quota, uint32_t freq, double low,
 		 double high, double discount) {
 	REQUIRE(DNS_ADB_VALID(adb));

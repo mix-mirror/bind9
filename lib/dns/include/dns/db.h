@@ -173,6 +173,7 @@ typedef struct dns_db_methods {
 	void (*setmaxtypepername)(dns_db_t *db, uint32_t value);
 	isc_result_t (*getzoneversion)(dns_db_t *db, isc_buffer_t *b);
 	void (*setcachesize)(dns_db_t *db, size_t size);
+	void (*sweep)(dns_db_t *db, size_t target);
 } dns_dbmethods_t;
 
 typedef isc_result_t (*dns_dbcreatefunc_t)(isc_mem_t	    *mctx,
@@ -1826,4 +1827,20 @@ dns_db_setcachesize(dns_db_t *db, size_t size);
  * Requires:
  * \li 'db' is a valid database
  * \li 'size' is a maximum memory size and not zero
+ */
+
+void
+dns_db_sweep(dns_db_t *db, size_t target);
+/*%<
+ * Evict up to `target` bytes from the bucket owned by the calling
+ * loop, independent of insert traffic.  Called by the cache-budget
+ * arbiter to make idle cache pools shed expired / least-recently-used
+ * entries under shared memory pressure.
+ *
+ * Implementations may be no-ops for database types that do not
+ * maintain an LRU (e.g. zone databases).
+ *
+ * Requires:
+ * \li 'db' is a valid database
+ * \li Called from a loop thread (isc_tid() valid).
  */

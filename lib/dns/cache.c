@@ -220,6 +220,13 @@ dns_cache_setcachesize(dns_cache_t *cache, size_t size) {
 	UNLOCK(&cache->lock);
 }
 
+void
+dns_cache_sweep(dns_cache_t *cache, size_t target) {
+	REQUIRE(VALID_CACHE(cache));
+
+	dns_db_sweep(cache->db, target);
+}
+
 size_t
 dns_cache_getcachesize(dns_cache_t *cache) {
 	size_t size;

@@ -612,6 +612,17 @@ dns_adb_setadbsize(dns_adb_t *adb, size_t size);
  */
 
 void
+dns_adb_sweep(dns_adb_t *adb, size_t target);
+/*%<
+ * Evict up to `target` bytes from the calling loop's names and entries
+ * SIEVE lists, independent of insert traffic.  Called by the
+ * cache-budget arbiter to make idle adb pools shed expired /
+ * least-recently-used entries under shared memory pressure.
+ *
+ * Must be called from a loop thread (isc_tid() valid).
+ */
+
+void
 dns_adb_flushname(dns_adb_t *adb, const dns_name_t *name);
 /*%<
  * Flush 'name' from the adb cache.
