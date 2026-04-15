@@ -35,6 +35,7 @@
 #include <dns/adb.h>
 #include <dns/badcache.h>
 #include <dns/cache.h>
+#include <dns/cache_arbiter.h>
 #include <dns/db.h>
 #include <dns/dispatch.h>
 #include <dns/dlz.h>
@@ -418,6 +419,15 @@ shutdown_view(dns_view_t *view) {
 	dns_dispatchmgr_t *dispatchmgr = NULL;
 
 	isc_refcount_destroy(&view->references);
+
+	/*
+	 * The arbiter must be stopped first: its timer can fire rebalance
+	 * actions against the pools, and fanout sweeps are queued on other
+	 * loops' async queues.  Stop + destroy before any pool shutdown.
+	 */
+	if (view->arbiter != NULL) {
+		dns_cache_arbiter_destroy(&view->arbiter);
+	}
 
 	/* Shutdown the attached objects first */
 	if (view->resolver != NULL) {

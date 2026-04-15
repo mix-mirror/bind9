@@ -53,6 +53,7 @@ typedef void			       dns_clientrestrans_t;
 typedef void			       dns_clientreqtrans_t;
 typedef void			       dns_clientupdatetrans_t;
 typedef struct dns_cache	       dns_cache_t;
+typedef struct dns_cache_arbiter       dns_cache_arbiter_t;
 typedef uint16_t		       dns_cert_t;
 typedef struct dns_compress	       dns_compress_t;
 typedef enum dns_compress_flags	       dns_compress_flags_t;

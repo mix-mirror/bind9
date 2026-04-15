@@ -83,6 +83,7 @@ dns_srcset.add(
         'badcache.c',
         'byaddr.c',
         'cache.c',
+        'cache_arbiter.c',
         'callbacks.c',
         'catz.c',
         'client.c',

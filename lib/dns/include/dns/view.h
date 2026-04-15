@@ -102,6 +102,7 @@ struct dns_view {
 	dns_db_t	    *rootdb;
 	atomic_uint_fast32_t rootdb_expires;
 	dns_delegdb_t	    *deleg;
+	dns_cache_arbiter_t *arbiter;
 
 	/*
 	 * security roots and negative trust anchors.

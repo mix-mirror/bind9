@@ -63,6 +63,7 @@
 #include <dns/adb.h>
 #include <dns/badcache.h>
 #include <dns/cache.h>
+#include <dns/cache_arbiter.h>
 #include <dns/catz.h>
 #include <dns/db.h>
 #include <dns/dispatch.h>
@@ -4389,6 +4390,16 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 		dns_adb_setadbsize(adb, max_adb_size);
 		dns_adb_detach(&adb);
 	}
+
+	/*
+	 * Now that cache, adb and delegdb are all attached and sized,
+	 * create the budget arbiter.  It starts in observe-only mode and
+	 * only logs proposed rebalances; the apply-mode switch lands in
+	 * a follow-up commit once the config option wiring is in place.
+	 */
+	INSIST(view->arbiter == NULL);
+	dns_cache_arbiter_create(view, max_cache_size, &view->arbiter);
+	dns_cache_arbiter_start(view->arbiter);
 
 	/*
 	 * Set up ADB quotas
