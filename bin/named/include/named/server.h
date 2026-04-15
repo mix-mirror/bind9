@@ -67,7 +67,6 @@ struct named_server {
 	dns_kasplist_t	   kasplist;
 	dns_keystorelist_t keystorelist;
 	ns_interfacemgr_t *interfacemgr;
-	dns_db_t	  *in_roothints;
 
 	isc_timer_t *interface_timer;
 	isc_timer_t *heartbeat_timer;

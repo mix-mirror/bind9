@@ -138,6 +138,11 @@ enum {
 						 * CD=0, but retry with CD=1
 						 * if it returns SERVFAIL.
 						 */
+	DNS_FETCHOPT_PRIMING = 1 << 19,		/*%< Root priming fetch.
+						 * Copies the '.' NS answer
+						 * and root-server glue from
+						 * the response into
+						 * view->rootdb. */
 
 	/*% EDNS version bits: */
 	DNS_FETCHOPT_EDNSVERSIONSET = 1 << 23,

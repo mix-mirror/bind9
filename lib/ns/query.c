@@ -8286,7 +8286,7 @@ query_filter64(query_ctx_t *qctx) {
  */
 static isc_result_t
 query_notfound(query_ctx_t *qctx) {
-	isc_result_t result = ISC_R_UNSET;
+	isc_result_t result = ISC_R_FAILURE;
 
 	CCTRACE(ISC_LOG_DEBUG(3), "query_notfound");
 
@@ -8299,24 +8299,21 @@ query_notfound(query_ctx_t *qctx) {
 	}
 
 	/*
-	 * If the cache doesn't even have the root NS,
-	 * try to get that from the hints DB.
+	 * If the cache doesn't even have the root NS, try to get that from
+	 * the rootdb (root hints, refreshed by priming).
 	 */
-	if (qctx->view->hints != NULL) {
+	if (qctx->view->rootdb != NULL) {
 		dns_clientinfomethods_t cm;
 		dns_clientinfo_t ci;
 
 		dns_clientinfomethods_init(&cm, ns_client_sourceip);
 		dns_clientinfo_init(&ci, qctx->client, NULL);
 
-		dns_db_attach(qctx->view->hints, &qctx->db);
+		dns_db_attach(qctx->view->rootdb, &qctx->db);
 		result = dns_db_findext(
 			qctx->db, dns_rootname, NULL, dns_rdatatype_ns, 0,
 			qctx->client->inner.now, &qctx->node, qctx->fname, &cm,
 			&ci, qctx->rdataset, qctx->sigrdataset);
-	} else {
-		/* We have no hints. */
-		result = ISC_R_FAILURE;
 	}
 	if (result != ISC_R_SUCCESS) {
 		/*

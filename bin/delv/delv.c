@@ -2165,7 +2165,7 @@ run_server(void *arg) {
 
 	CHECK(dns_rootns_create(isc_g_mctx, dns_rdataclass_in, hintfile,
 				&roothints));
-	dns_view_sethints(view, roothints);
+	dns_view_setrootdb(view, roothints);
 	dns_db_detach(&roothints);
 
 	view->qminimization = qmin;

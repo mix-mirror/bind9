@@ -82,6 +82,31 @@
 #define UNREACH_HOLD_TIME_MAX_SEC     (UNREACH_HOLD_TIME_INITIAL_SEC << 6)
 #define UNREACH_BACKOFF_ELIGIBLE_SEC  ((uint16_t)120)
 
+/*
+ * True when rootdb has never been primed, or when its stored TTL has
+ * elapsed.  A stale rootdb still serves records; this is just the
+ * signal that the resolver should kick off a fresh priming fetch.
+ */
+static inline bool
+rootdb_stale(dns_view_t *view) {
+	uint32_t exp = atomic_load_relaxed(&view->rootdb_expires);
+	return exp == 0 || exp <= (uint32_t)isc_stdtime_now();
+}
+
+static inline void
+maybe_prime(dns_view_t *view) {
+	dns_resolver_t *res = NULL;
+
+	if (!rootdb_stale(view)) {
+		return;
+	}
+	if (dns_view_getresolver(view, &res) != ISC_R_SUCCESS) {
+		return;
+	}
+	dns_resolver_prime(res);
+	dns_resolver_detach(&res);
+}
+
 void
 dns_view_create(isc_mem_t *mctx, dns_dispatchmgr_t *dispatchmgr,
 		dns_rdataclass_t rdclass, const char *name,
@@ -246,8 +271,8 @@ destroy(dns_view_t *view) {
 		ISC_LIST_UNLINK(view->dlz_unsearched, dlzdb, link);
 		dns_dlzdestroy(&dlzdb);
 	}
-	if (view->hints != NULL) {
-		dns_db_detach(&view->hints);
+	if (view->rootdb != NULL) {
+		dns_db_detach(&view->rootdb);
 	}
 	if (view->cachedb != NULL) {
 		dns_db_detach(&view->cachedb);
@@ -593,13 +618,13 @@ dns_view_iscacheshared(dns_view_t *view) {
 }
 
 void
-dns_view_sethints(dns_view_t *view, dns_db_t *hints) {
+dns_view_setrootdb(dns_view_t *view, dns_db_t *rootdb) {
 	REQUIRE(DNS_VIEW_VALID(view));
 	REQUIRE(!view->frozen);
-	REQUIRE(view->hints == NULL);
-	REQUIRE(dns_db_iszone(hints));
+	REQUIRE(view->rootdb == NULL);
+	REQUIRE(dns_db_iszone(rootdb));
 
-	dns_db_attach(hints, &view->hints);
+	dns_db_attach(rootdb, &view->rootdb);
 }
 
 void
@@ -878,7 +903,7 @@ db_find:
 	}
 
 	if (result == ISC_R_NOTFOUND && !is_staticstub_zone && use_hints &&
-	    view->hints != NULL)
+	    view->rootdb != NULL)
 	{
 		dns_rdataset_cleanup(rdataset);
 		dns_rdataset_cleanup(sigrdataset);
@@ -888,31 +913,29 @@ db_find:
 			}
 			dns_db_detach(&db);
 		}
-		result = dns_db_find(view->hints, name, NULL, type, options,
+		result = dns_db_find(view->rootdb, name, NULL, type, options,
 				     now, &node, foundname, rdataset,
 				     sigrdataset);
 		if (result == ISC_R_SUCCESS || result == DNS_R_GLUE) {
 			/*
-			 * We just used a hint.  Let the resolver know it
-			 * should consider priming.
+			 * Lazily rearm priming if the rootdb's
+			 * stored TTL has elapsed.  The stale
+			 * record is still returned; it is better
+			 * than nothing until the fresh priming
+			 * fetch completes.
 			 */
-			dns_resolver_t *res = NULL;
-			result = dns_view_getresolver(view, &res);
-			if (result == ISC_R_SUCCESS) {
-				dns_resolver_prime(res);
-				dns_db_attach(view->hints, &db);
-				dns_resolver_detach(&res);
-				result = DNS_R_HINT;
-			}
+			maybe_prime(view);
+			dns_db_attach(view->rootdb, &db);
+			result = DNS_R_HINT;
 		} else if (result == DNS_R_NXRRSET) {
-			dns_db_attach(view->hints, &db);
+			dns_db_attach(view->rootdb, &db);
 			result = DNS_R_HINTNXRRSET;
 		} else if (result == DNS_R_NXDOMAIN) {
 			result = ISC_R_NOTFOUND;
 		}
 
 		/*
-		 * Cleanup if non-standard hints are used.
+		 * Cleanup if the rootdb lookup failed.
 		 */
 		if (db == NULL && node != NULL) {
 			dns_db_detachnode(&node);
@@ -1116,21 +1139,29 @@ bestzonecut_zoneorcache(dns_view_t *view, const dns_name_t *name,
 }
 
 static isc_result_t
-bestzonecut_hints(dns_view_t *view, dns_name_t *fname, dns_name_t *dcname,
-		  isc_stdtime_t now, dns_rdataset_t *rdataset) {
-	isc_result_t result = ISC_R_NOTFOUND;
+bestzonecut_rootdb(dns_view_t *view, dns_name_t *fname, dns_name_t *dcname,
+		   isc_stdtime_t now, dns_rdataset_t *rdataset) {
+	if (view->rootdb == NULL) {
+		return ISC_R_NOTFOUND;
+	}
 
-	if (view->hints == NULL) {
+	isc_result_t result = dns_db_find(view->rootdb, dns_rootname, NULL,
+					  dns_rdatatype_ns, 0, now, NULL, fname,
+					  rdataset, NULL);
+	if (result != ISC_R_SUCCESS) {
+		dns_rdataset_cleanup(rdataset);
 		return result;
 	}
 
-	result = dns_db_find(view->hints, dns_rootname, NULL, dns_rdatatype_ns,
-			     0, now, NULL, fname, rdataset, NULL);
-	if (result != ISC_R_SUCCESS) {
-		dns_rdataset_cleanup(rdataset);
-	} else if (dcname != NULL) {
+	if (dcname != NULL) {
 		dns_name_copy(fname, dcname);
 	}
+	/*
+	 * Returned record may be stale by TTL; that's fine — it
+	 * is better than nothing until the next priming fetch.
+	 * Kick off priming if the stored expiry has elapsed.
+	 */
+	maybe_prime(view);
 
 	return result;
 }
@@ -1167,10 +1198,11 @@ dns_view_bestzonecut(dns_view_t *view, const dns_name_t *name,
 	}
 
 	/*
-	 * No local zone nor cache match. Last attempt with the hints.
+	 * No local zone nor cache match. Last attempt with the rootdb.
 	 */
 	if (result == DNS_R_NXDOMAIN && usehints) {
-		result = bestzonecut_hints(view, fname, dcname, now, &rdataset);
+		result = bestzonecut_rootdb(view, fname, dcname, now,
+					    &rdataset);
 	}
 
 	if (result != ISC_R_SUCCESS) {

@@ -25,7 +25,7 @@ EXAMPLE4_NS = "example4. 300 IN NS ns.example4."
 AEXAMPLE4_A = "a.example4. 300 IN A 10.53.0.40"
 NSEXAMPLE4_A = "ns.example4. 300 IN A 10.53.0.4"
 
-AROOTSERVER_NS = ". 999999 IN NS a.root-servers.nil."
+AROOTSERVER_NS = ". 300 IN NS a.root-servers.nil."
 
 INPUTPARAMS = "ns, qname, qtype, rd, cached, rcode, answer, authority, additional"
 
