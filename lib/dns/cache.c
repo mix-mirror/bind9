@@ -582,6 +582,10 @@ dns_cache_dumpstats(dns_cache_t *cache, FILE *fp) {
 
 	fprintf(fp, "%20" PRIu64 " %s\n", (uint64_t)isc_mem_inuse(cache->tmctx),
 		"cache tree memory in use");
+	fprintf(fp, "%20" PRIu64 " %s\n", (uint64_t)cache->size,
+		"cache memory budget");
+	fprintf(fp, "%20" PRIu64 " %s\n", dns_db_getevictions(cache->db),
+		"cache evictions");
 }
 
 #ifdef HAVE_LIBXML2

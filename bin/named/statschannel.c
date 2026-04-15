@@ -25,6 +25,7 @@
 #include <isc/util.h>
 
 #include <dns/adb.h>
+#include <dns/deleg.h>
 #include <dns/cache.h>
 #include <dns/db.h>
 #include <dns/opcode.h>
@@ -192,6 +193,44 @@ static const char *queryrttoutstats_xmldesc[dns_queryrttcounter_in_max];
 		if (xmlrc < 0)        \
 			goto cleanup; \
 	} while (0)
+
+#ifdef HAVE_LIBXML2
+/*
+ * Emit a single named XML counter element.  Returns the xmlTextWriter
+ * return code directly; the caller checks with TRY0.
+ */
+static int
+xml_named_counter(xmlTextWriterPtr writer, const char *name, uint64_t val) {
+	int xmlrc;
+
+	xmlrc = xmlTextWriterStartElement(writer, ISC_XMLCHAR "counter");
+	if (xmlrc < 0) {
+		return xmlrc;
+	}
+	xmlrc = xmlTextWriterWriteAttribute(writer, ISC_XMLCHAR "name",
+					    ISC_XMLCHAR name);
+	if (xmlrc < 0) {
+		return xmlrc;
+	}
+	xmlrc = xmlTextWriterWriteFormatString(writer, "%" PRIu64, val);
+	if (xmlrc < 0) {
+		return xmlrc;
+	}
+	return xmlTextWriterEndElement(writer);
+}
+#endif /* HAVE_LIBXML2 */
+
+#ifdef HAVE_JSON_C
+static isc_result_t
+json_named_counter(json_object *obj, const char *name, uint64_t val) {
+	json_object *j = json_object_new_int64(val);
+	if (j == NULL) {
+		return ISC_R_NOMEMORY;
+	}
+	json_object_object_add(obj, name, j);
+	return ISC_R_SUCCESS;
+}
+#endif /* HAVE_JSON_C */
 
 /*%
  * Mapping arrays to represent statistics counters in the order of our
@@ -2229,6 +2268,16 @@ generatexml(named_server_t *server, uint32_t flags, int *buflen,
 					    adbstats_xmldesc, dns_adbstats_max,
 					    adbstats_index, adbstat_values,
 					    ISC_STATSDUMP_VERBOSE);
+			if (result == ISC_R_SUCCESS) {
+				TRY0(xml_named_counter(writer, "ADBInUse",
+						       dns_adb_getinuse(adb)));
+				TRY0(xml_named_counter(writer, "ADBBudget",
+						       dns_adb_getadbsize(
+							       adb)));
+				TRY0(xml_named_counter(
+					writer, "ADBEvictions",
+					dns_adb_getevictions(adb)));
+			}
 			dns_adb_detach(&adb);
 			CHECK(result);
 		}
@@ -2240,6 +2289,25 @@ generatexml(named_server_t *server, uint32_t flags, int *buflen,
 						 ISC_XMLCHAR "cachestats"));
 		TRY0(dns_cache_renderxml(view->cache, writer));
 		TRY0(xmlTextWriterEndElement(writer)); /* </cachestats> */
+
+		/* <delegdbstats> */
+		if (view->deleg != NULL) {
+			TRY0(xmlTextWriterStartElement(writer,
+						       ISC_XMLCHAR "counters"));
+			TRY0(xmlTextWriterWriteAttribute(
+				writer, ISC_XMLCHAR "type",
+				ISC_XMLCHAR "delegdbstats"));
+			TRY0(xml_named_counter(
+				writer, "DelegDBInUse",
+				dns_delegdb_getinuse(view->deleg)));
+			TRY0(xml_named_counter(
+				writer, "DelegDBBudget",
+				dns_delegdb_getsize(view->deleg)));
+			TRY0(xml_named_counter(
+				writer, "DelegDBEvictions",
+				dns_delegdb_getevictions(view->deleg)));
+			TRY0(xmlTextWriterEndElement(writer));
+		}
 
 		TRY0(xmlTextWriterStartElement(writer, ISC_XMLCHAR "rtt"));
 
@@ -3320,9 +3388,6 @@ generatejson(named_server_t *server, size_t *msglen, const char **msg,
 				dns_view_getadb(view, &adb);
 				if (adb != NULL) {
 					istats = dns_adb_getstats(adb);
-					dns_adb_detach(&adb);
-				}
-				if (istats != NULL) {
 					counters = json_object_new_object();
 					CHECKMEM(counters);
 
@@ -3333,12 +3398,61 @@ generatejson(named_server_t *server, size_t *msglen, const char **msg,
 						dns_adbstats_max,
 						adbstats_index, adbstat_values,
 						0);
+					if (result == ISC_R_SUCCESS) {
+						result = json_named_counter(
+							counters, "ADBInUse",
+							dns_adb_getinuse(adb));
+					}
+					if (result == ISC_R_SUCCESS) {
+						result = json_named_counter(
+							counters, "ADBBudget",
+							dns_adb_getadbsize(adb));
+					}
+					if (result == ISC_R_SUCCESS) {
+						result = json_named_counter(
+							counters,
+							"ADBEvictions",
+							dns_adb_getevictions(
+								adb));
+					}
+					dns_adb_detach(&adb);
 					if (result != ISC_R_SUCCESS) {
 						json_object_put(counters);
-						CHECK(dumparg.result);
+						CHECK(result);
 					}
 
 					json_object_object_add(res, "adb",
+							       counters);
+				}
+
+				if (view->deleg != NULL) {
+					counters = json_object_new_object();
+					CHECKMEM(counters);
+
+					result = json_named_counter(
+						counters, "DelegDBInUse",
+						dns_delegdb_getinuse(
+							view->deleg));
+					if (result == ISC_R_SUCCESS) {
+						result = json_named_counter(
+							counters,
+							"DelegDBBudget",
+							dns_delegdb_getsize(
+								view->deleg));
+					}
+					if (result == ISC_R_SUCCESS) {
+						result = json_named_counter(
+							counters,
+							"DelegDBEvictions",
+							dns_delegdb_getevictions(
+								view->deleg));
+					}
+					if (result != ISC_R_SUCCESS) {
+						json_object_put(counters);
+						CHECK(result);
+					}
+
+					json_object_object_add(res, "delegdb",
 							       counters);
 				}
 
@@ -4271,11 +4385,32 @@ named_stats_dump(named_server_t *server, FILE *fp) {
 		isc_stats_t *adbstats = NULL;
 
 		dns_view_getadb(view, &adb);
-		if (adb != NULL) {
-			adbstats = dns_adb_getstats(adb);
-			dns_adb_detach(&adb);
+		if (adb == NULL) {
+			continue;
 		}
-		if (adbstats == NULL) {
+		adbstats = dns_adb_getstats(adb);
+		if (strcmp(view->name, "_default") == 0) {
+			fprintf(fp, "[View: default]\n");
+		} else {
+			fprintf(fp, "[View: %s]\n", view->name);
+		}
+		if (adbstats != NULL) {
+			(void)dump_stats(adbstats, isc_statsformat_file, fp,
+					 NULL, adbstats_desc, dns_adbstats_max,
+					 adbstats_index, adbstat_values, 0);
+		}
+		fprintf(fp, "%20" PRIu64 " %s\n",
+			(uint64_t)dns_adb_getinuse(adb), "adb memory in use");
+		fprintf(fp, "%20" PRIu64 " %s\n",
+			(uint64_t)dns_adb_getadbsize(adb), "adb memory budget");
+		fprintf(fp, "%20" PRIu64 " %s\n", dns_adb_getevictions(adb),
+			"adb evictions");
+		dns_adb_detach(&adb);
+	}
+
+	fprintf(fp, "++ Delegdb stats ++\n");
+	ISC_LIST_FOREACH(server->viewlist, view, link) {
+		if (view->deleg == NULL) {
 			continue;
 		}
 		if (strcmp(view->name, "_default") == 0) {
@@ -4283,9 +4418,15 @@ named_stats_dump(named_server_t *server, FILE *fp) {
 		} else {
 			fprintf(fp, "[View: %s]\n", view->name);
 		}
-		(void)dump_stats(adbstats, isc_statsformat_file, fp, NULL,
-				 adbstats_desc, dns_adbstats_max,
-				 adbstats_index, adbstat_values, 0);
+		fprintf(fp, "%20" PRIu64 " %s\n",
+			(uint64_t)dns_delegdb_getinuse(view->deleg),
+			"delegdb memory in use");
+		fprintf(fp, "%20" PRIu64 " %s\n",
+			(uint64_t)dns_delegdb_getsize(view->deleg),
+			"delegdb memory budget");
+		fprintf(fp, "%20" PRIu64 " %s\n",
+			dns_delegdb_getevictions(view->deleg),
+			"delegdb evictions");
 	}
 
 	fprintf(fp, "++ Socket I/O Statistics ++\n");
