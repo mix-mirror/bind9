@@ -15,6 +15,7 @@
 
 #include <stdbool.h>
 
+#include <isc/async.h>
 #include <isc/mem.h>
 #include <isc/mutex.h>
 #include <isc/refcount.h>
@@ -29,6 +30,46 @@
 
 #define NAMETREE_MAGIC	   ISC_MAGIC('N', 'T', 'r', 'e')
 #define VALID_NAMETREE(kt) ISC_MAGIC_VALID(kt, NAMETREE_MAGIC)
+
+static void
+print_key(dns_qpkey_t key, size_t keylen) {
+	fprintf(stderr, "KEY: '");
+	for (size_t i = 0; i < keylen; i++) {
+		fprintf(stderr, "%02x", key[i]);
+	}
+	fprintf(stderr, "\n");
+}
+
+static const char *
+status2str(enum cds_ft_status status) {
+	switch (status) {
+	case CDS_FT_STATUS_OK:
+		return "CDS_FT_STATUS_OK";
+	case CDS_FT_STATUS_NOT_FOUND:
+		return "CDS_FT_STATUS_NOT_FOUND";
+	case CDS_FT_STATUS_DUPLICATE_FOUND:
+		return "CDS_FT_STATUS_DUPLICATE_FOUND";
+	case CDS_FT_STATUS_INTERNAL_MATCH:
+		return "CDS_FT_STATUS_INTERNAL_MATCH";
+
+	case CDS_FT_STATUS_INVALID_ARGUMENT_ERROR:
+		return "CDS_FT_STATUS_INVALID_ARGUMENT_ERROR";
+	case CDS_FT_STATUS_MEMORY_ERROR:
+		return "CDS_FT_STATUS_MEMORY_ERROR";
+	case CDS_FT_STATUS_OVERFLOW_ERROR:
+		return "CDS_FT_STATUS_OVERFLOW_ERROR";
+	case CDS_FT_STATUS_BUSY_ERROR:
+		return "CDS_FT_STATUS_BUSY_ERROR";
+	case CDS_FT_STATUS_POPULATED_ERROR:
+		return "CDS_FT_STATUS_POPULATED_ERROR";
+	case CDS_FT_STATUS_INTEGRITY_ERROR:
+		return "CDS_FT_STATUS_INTEGRITY_ERROR";
+	case CDS_FT_STATUS_NOT_SUPPORTED:
+		return "CDS_FT_STATUS_NOT_SUPPORTED";
+	default:
+		return "CDS_FT_STATUS_UNKNOWN";
+	}
+}
 
 struct dns_nametree {
 	unsigned int magic;
@@ -77,6 +118,10 @@ ISC_REFCOUNT_IMPL(dns_ntnode, destroy_ntnode);
 static void
 ntnode_free_rcu(struct rcu_head *rcu_head) {
 	dns_ntnode_t *node = caa_container_of(rcu_head, dns_ntnode_t, rcu_head);
+	char namebuf[DNS_NAME_FORMATSIZE];
+
+	dns_name_format(&node->name, namebuf, sizeof(namebuf));
+	fprintf(stderr, "dns_ntnode_detach(%p, %s)\n", node, namebuf);
 	dns_ntnode_detach(&node);
 }
 
@@ -133,8 +178,12 @@ dns_nametree_create(isc_mem_t *mctx, dns_nametree_type_t type, const char *name,
 static void
 destroy_nametree(dns_nametree_t *nametree) {
 	enum cds_ft_status status;
+	struct cds_ft_iter *iter = NULL;
 
 	nametree->magic = 0;
+
+	status = cds_ft_iter_create(nametree->tree, &iter);
+	RUNTIME_CHECK(status == CDS_FT_STATUS_OK);
 
 	/*
 	 * The last nametree reference is gone; no new reader can observe
@@ -149,30 +198,37 @@ destroy_nametree(dns_nametree_t *nametree) {
 	 * (e.g., when a dns_view is reclaimed asynchronously), and
 	 * waiting for RCU from within that thread deadlocks.
 	 */
-	rcu_read_lock();
-	cds_ft_for_each_rcu(nametree->tree, nametree->writer_iter) {
-		struct cds_ft_node *ft_node =
-			cds_ft_iter_node(nametree->writer_iter);
-
-		status = cds_ft_remove_all(nametree->tree,
-					   nametree->writer_iter, &ft_node);
+	status = cds_ft_lookup_first(nametree->tree, iter);
+	fprintf(stderr, "cleaning up fractal-trie %p (iter %p) -> %s\n",
+		nametree->tree, iter, status2str(status));
+	while (nametree->tree == CDS_FT_STATUS_OK) {
+		struct cds_ft_node *ft_node = NULL;
+		status = cds_ft_remove_all(nametree->tree, iter, &ft_node);
 		INSIST(status == CDS_FT_STATUS_OK);
 
+		fprintf(stderr, "cleaning up fractal-trie %p (node %p)\n",
+			nametree->tree, ft_node);
+
+		dns_ntnode_t *node = NULL;
 		struct cds_ft_node *tmp = NULL;
-		cds_ft_for_each_duplicate_safe_rcu(ft_node, tmp) {
-			dns_ntnode_t *node = caa_container_of(
-				ft_node, dns_ntnode_t, ft_node);
+		cds_ft_for_each_duplicate_entry_safe_rcu(node, ft_node, tmp,
+							 ft_node) {
+			char namebuf[DNS_NAME_FORMATSIZE];
+
+			dns_name_format(&node->name, namebuf, sizeof(namebuf));
+			fprintf(stderr, "dns_ntnode_detach(%p, %s)\n", node,
+				namebuf);
+
 			dns_ntnode_detach(&node);
 		}
+		status = cds_ft_lookup_first(nametree->tree, iter);
 	}
-	rcu_read_unlock();
 
-	INSIST(!rcu_read_ongoing());
-
+	cds_ft_iter_destroy(iter);
 	cds_ft_iter_destroy(nametree->writer_iter);
-	fprintf(stderr, "cds_ft_destroy() start\n");
+	fprintf(stderr, "cds_ft_destroy(%p) start\n", nametree->tree);
 	cds_ft_destroy(nametree->tree);
-	fprintf(stderr, "cds_ft_destroy() end\n");
+	fprintf(stderr, "cds_ft_destroy(%p) end\n", nametree->tree);
 	cds_ft_group_destroy(nametree->group);
 	isc_mutex_destroy(&nametree->writer_mutex);
 
@@ -203,10 +259,17 @@ add_bool(dns_nametree_t *nametree, const dns_name_t *name, bool value) {
 	struct cds_ft_node *existing = NULL;
 	enum cds_ft_status status;
 	dns_ntnode_t *new = newnode(nametree->mctx, name);
+	char namebuf[DNS_NAME_FORMATSIZE];
+
+	dns_name_format(&new->name, namebuf, sizeof(namebuf));
+
+	print_key(key, keylen);
 
 	new->set = value;
 	status = cds_ft_insert_unique(nametree->tree, key, keylen,
 				      &new->ft_node, &existing);
+	fprintf(stderr, "cds_ft_insert_unique(%p, %p, %s) -> %s\n",
+		nametree->tree, new, namebuf, status2str(status));
 	if (status == CDS_FT_STATUS_DUPLICATE_FOUND) {
 		dns_ntnode_detach(&new);
 		return ISC_R_EXISTS;
@@ -227,8 +290,17 @@ add_count(dns_nametree_t *nametree, const dns_name_t *name) {
 	new->set = true;
 	new->count = 1;
 	rcu_read_lock();
+
+	char namebuf[DNS_NAME_FORMATSIZE];
+
+	dns_name_format(&new->name, namebuf, sizeof(namebuf));
+
+	print_key(key, keylen);
+
 	status = cds_ft_insert_unique(nametree->tree, key, keylen,
 				      &new->ft_node, &ft_node);
+	fprintf(stderr, "cds_ft_insert_unique(%p, %p, %s) -> %s\n",
+		nametree->tree, new, namebuf, status2str(status));
 	if (status == CDS_FT_STATUS_DUPLICATE_FOUND) {
 		dns_ntnode_t *existing = caa_container_of(ft_node, dns_ntnode_t,
 							  ft_node);
@@ -279,8 +351,17 @@ add_bits(dns_nametree_t *nametree, const dns_name_t *name, uint32_t value) {
 	new->bits[pos - 1] |= mask;
 	new->bits[0] = size;
 
+	print_key(key, keylen);
+
 	status = cds_ft_insert_replace(nametree->tree, key, keylen,
 				       &new->ft_node, &replaced);
+
+	char namebuf[DNS_NAME_FORMATSIZE];
+
+	dns_name_format(&new->name, namebuf, sizeof(namebuf));
+
+	fprintf(stderr, "cds_ft_insert_replace(%p, %p, %s) -> %s\n",
+		nametree->tree, new, namebuf, status2str(status));
 	if (status == CDS_FT_STATUS_DUPLICATE_FOUND) {
 		INSIST(replaced != NULL);
 		dns_ntnode_t *replaced_node =
@@ -351,6 +432,7 @@ dns_nametree_delete(dns_nametree_t *nametree, const dns_name_t *name) {
 		goto out;
 	}
 
+	fprintf(stderr, "cds_ft_delete(%p, %p)\n", nametree->tree, node);
 	status = cds_ft_remove(nametree->tree, nametree->writer_iter, ft_node);
 	rcu_read_unlock();
 	INSIST(status == CDS_FT_STATUS_OK);
