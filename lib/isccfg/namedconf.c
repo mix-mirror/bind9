@@ -2339,6 +2339,8 @@ static cfg_clausedef_t view_clauses[] = {
 	{ "allow-v6-synthesis", NULL, CFG_CLAUSEFLAG_ANCIENT, NULL },
 	{ "attach-cache", &cfg_type_astring, 0, NULL },
 	{ "auth-nxdomain", &cfg_type_boolean, 0, NULL },
+	{ "cache-budget-rebalance", &cfg_type_boolean,
+	  CFG_CLAUSEFLAG_EXPERIMENTAL, NULL },
 	{ "cache-file", NULL, CFG_CLAUSEFLAG_ANCIENT, NULL },
 	{ "catalog-zones", &cfg_type_catz, 0, NULL },
 	{ "check-names", &cfg_type_checknames, CFG_CLAUSEFLAG_MULTI,

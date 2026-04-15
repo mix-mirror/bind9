@@ -4393,12 +4393,18 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 
 	/*
 	 * Now that cache, adb and delegdb are all attached and sized,
-	 * create the budget arbiter.  It starts in observe-only mode and
-	 * only logs proposed rebalances; the apply-mode switch lands in
-	 * a follow-up commit once the config option wiring is in place.
+	 * create the budget arbiter.  The apply-mode toggle reads the
+	 * 'cache-budget-rebalance' option (default: no) which keeps the
+	 * arbiter in observe-only mode until the operator opts in.
 	 */
 	INSIST(view->arbiter == NULL);
 	dns_cache_arbiter_create(view, max_cache_size, &view->arbiter);
+
+	obj = NULL;
+	result = named_config_get(maps, "cache-budget-rebalance", &obj);
+	INSIST(result == ISC_R_SUCCESS);
+	dns_cache_arbiter_setapply(view->arbiter, cfg_obj_asboolean(obj));
+
 	dns_cache_arbiter_start(view->arbiter);
 
 	/*

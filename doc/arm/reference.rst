@@ -3874,6 +3874,30 @@ system.
 
 .. _`cgroup`: https://www.kernel.org/doc/html/latest/admin-guide/cgroup-v2.html
 
+.. namedconf:statement:: cache-budget-rebalance
+   :tags: server, experimental
+   :short: Dynamically rebalance memory between the response cache, address database, and delegation cache.
+
+   *Experimental.*  By default, :any:`max-cache-size` is split statically
+   across the three caches a recursive view maintains: the DNS response
+   cache, the address database (ADB), and the delegation cache.  Setting
+   ``cache-budget-rebalance yes`` enables a per-view budget arbiter that
+   periodically reshapes those three budgets based on observed eviction
+   pressure, subject to per-pool floors (at least 6.25% of the total for
+   ADB and delegdb, 50% for the response cache) and ceilings (at most 25%
+   for ADB and delegdb, 87.5% for the response cache).
+
+   Each pool keeps its own SIEVE-based scan-resistant eviction, so an
+   attacker who floods one pool with one-shot entries cannot skew the
+   budget past that pool's ceiling or evict legitimate entries from the
+   other pools.
+
+   The default is ``no``; observers can consult the ``CacheBudget``,
+   ``CacheEvictions``, ``ADBBudget``, ``ADBEvictions``, ``DelegDBBudget``,
+   and ``DelegDBEvictions`` counters in the statistics channel to
+   evaluate whether the rebalancer would help their workload before
+   enabling it.
+
 .. namedconf:statement:: tcp-listen-queue
    :tags: server
    :short: Sets the listen-queue depth.
