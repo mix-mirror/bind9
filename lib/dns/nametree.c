@@ -150,23 +150,29 @@ destroy_nametree(dns_nametree_t *nametree) {
 	 * waiting for RCU from within that thread deadlocks.
 	 */
 	rcu_read_lock();
-	while ((status = cds_ft_lookup_first(nametree->tree,
-					     nametree->writer_iter)) ==
-	       CDS_FT_STATUS_OK)
-	{
+	cds_ft_for_each_rcu(nametree->tree, nametree->writer_iter) {
 		struct cds_ft_node *ft_node =
 			cds_ft_iter_node(nametree->writer_iter);
-		dns_ntnode_t *node = caa_container_of(ft_node, dns_ntnode_t,
-						      ft_node);
-		status = cds_ft_remove(nametree->tree, nametree->writer_iter,
-				       ft_node);
+
+		status = cds_ft_remove_all(nametree->tree,
+					   nametree->writer_iter, &ft_node);
 		INSIST(status == CDS_FT_STATUS_OK);
-		dns_ntnode_detach(&node);
+
+		struct cds_ft_node *tmp = NULL;
+		cds_ft_for_each_duplicate_safe_rcu(ft_node, tmp) {
+			dns_ntnode_t *node = caa_container_of(
+				ft_node, dns_ntnode_t, ft_node);
+			dns_ntnode_detach(&node);
+		}
 	}
 	rcu_read_unlock();
 
+	INSIST(!rcu_read_ongoing());
+
 	cds_ft_iter_destroy(nametree->writer_iter);
+	fprintf(stderr, "cds_ft_destroy() start\n");
 	cds_ft_destroy(nametree->tree);
+	fprintf(stderr, "cds_ft_destroy() end\n");
 	cds_ft_group_destroy(nametree->group);
 	isc_mutex_destroy(&nametree->writer_mutex);
 
