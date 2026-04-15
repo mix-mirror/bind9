@@ -219,6 +219,14 @@ struct qpcache {
 
 	dns_size_t size;
 
+	/*
+	 * Monotonic counter incremented once per entry evicted by the
+	 * probabilistic cleaner.  Read by the cache-budget arbiter to
+	 * estimate per-pool memory pressure between ticks.  Relaxed ordering
+	 * is sufficient — the arbiter only needs ballpark deltas.
+	 */
+	atomic_uint_fast64_t evictions;
+
 	size_t buckets_count;
 	qpcache_bucket_t buckets[]; /* attribute((counted_by(buckets_count))) */
 };
@@ -478,6 +486,7 @@ expire_lru_headers(qpcache_t *qpdb, uint32_t idx, size_t requested,
 		dns_slabheader_t *header = first_header(top);
 		expired += expireheader(header, nlocktypep, tlocktypep,
 					dns_expire_lru DNS__DB_FLARG_PASS);
+		atomic_fetch_add_relaxed(&qpdb->evictions, 1);
 
 		if (related != NULL) {
 			header = first_header(related);
@@ -485,6 +494,7 @@ expire_lru_headers(qpcache_t *qpdb, uint32_t idx, size_t requested,
 			expired +=
 				expireheader(header, nlocktypep, tlocktypep,
 					     dns_expire_lru DNS__DB_FLARG_PASS);
+			atomic_fetch_add_relaxed(&qpdb->evictions, 1);
 		}
 
 	} while (expired < requested);

@@ -11,6 +11,7 @@
  * information regarding copyright ownership.
  */
 #include <isc/async.h>
+#include <isc/atomic.h>
 #include <isc/magic.h>
 #include <isc/mem.h>
 #include <isc/netaddr.h>
@@ -53,6 +54,14 @@ struct dns_delegdb {
 	dns_qpmulti_t *nodes;
 
 	dns_size_t size;
+
+	/*
+	 * Monotonic counter incremented once per node evicted by the
+	 * probabilistic cleaner.  Read by the cache-budget arbiter to
+	 * estimate per-pool memory pressure between ticks.  Relaxed ordering
+	 * is sufficient.
+	 */
+	atomic_uint_fast64_t evictions;
 
 	/*
 	 * Keep track of now many owners are actually using the delegdb. For
@@ -477,6 +486,7 @@ delegdb_cleanup(dns_qp_t *qp, dns_delegdb_t *delegdb, size_t requested) {
 		ISC_SIEVE_UNLINK(delegdb->lru[isc_tid()], node, link);
 		(void)dns_qp_deletename(qp, &node->zonecut,
 					DNS_DBNAMESPACE_NORMAL, NULL, NULL);
+		atomic_fetch_add_relaxed(&delegdb->evictions, 1);
 	}
 }
 

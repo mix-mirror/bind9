@@ -126,6 +126,14 @@ struct dns_adb {
 
 	dns_size_t size;
 
+	/*
+	 * Monotonic counter incremented once per entry evicted by the
+	 * probabilistic cleaner (either names or entries).  Read by the
+	 * cache-budget arbiter to estimate per-pool memory pressure between
+	 * ticks.  Relaxed ordering is sufficient.
+	 */
+	atomic_uint_fast64_t evictions;
+
 	struct rcu_head rcu_head;
 };
 
@@ -1535,6 +1543,7 @@ purge_names_overmem(dns_adb_t *adb, size_t requested) {
 		maybe_expire_namehooks(adbname, INT_MAX);
 		expire_name(adbname, DNS_ADB_CANCELED);
 		expired += sizeof(*adbname);
+		atomic_fetch_add_relaxed(&adb->evictions, 1);
 
 		UNLOCK(&adbname->lock);
 		dns_adbname_detach(&adbname);
@@ -1578,6 +1587,7 @@ purge_entries_overmem(dns_adb_t *adb, size_t requested) {
 
 		expire_entry(adbentry);
 		expired += sizeof(*adbentry);
+		atomic_fetch_add_relaxed(&adb->evictions, 1);
 
 		UNLOCK(&adbentry->lock);
 		dns_adbentry_detach(&adbentry);
