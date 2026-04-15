@@ -235,4 +235,24 @@ dns_delegdb_sweep(dns_delegdb_t *db, size_t target);
  * Must be called from a loop thread (isc_tid() valid).
  */
 
+size_t
+dns_delegdb_getsize(dns_delegdb_t *db);
+/*%<
+ * Get the current target memory size (budget) of the delegdb.
+ */
+
+size_t
+dns_delegdb_getinuse(dns_delegdb_t *db);
+/*%<
+ * Get the amount of memory currently accounted to the delegdb's
+ * memory context.
+ */
+
+uint64_t
+dns_delegdb_getevictions(dns_delegdb_t *db);
+/*%<
+ * Get the total number of nodes evicted by the probabilistic cleaner
+ * since the delegdb was created.
+ */
+
 ISC_REFCOUNT_DECL(dns_delegdb);

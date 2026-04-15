@@ -174,6 +174,7 @@ typedef struct dns_db_methods {
 	isc_result_t (*getzoneversion)(dns_db_t *db, isc_buffer_t *b);
 	void (*setcachesize)(dns_db_t *db, size_t size);
 	void (*sweep)(dns_db_t *db, size_t target);
+	uint64_t (*getevictions)(dns_db_t *db);
 } dns_dbmethods_t;
 
 typedef isc_result_t (*dns_dbcreatefunc_t)(isc_mem_t	    *mctx,
@@ -1843,4 +1844,16 @@ dns_db_sweep(dns_db_t *db, size_t target);
  * Requires:
  * \li 'db' is a valid database
  * \li Called from a loop thread (isc_tid() valid).
+ */
+
+uint64_t
+dns_db_getevictions(dns_db_t *db);
+/*%<
+ * Get the total number of entries evicted by the database's
+ * probabilistic cleaner since the database was created.  Returns 0 for
+ * databases that do not maintain an eviction counter (e.g. zone
+ * databases).
+ *
+ * Requires:
+ * \li 'db' is a valid database
  */

@@ -156,6 +156,20 @@ dns_cache_sweep(dns_cache_t *cache, size_t target);
  * Must be called from a loop thread (isc_tid() valid).
  */
 
+size_t
+dns_cache_getinuse(dns_cache_t *cache);
+/*%<
+ * Get the amount of memory currently accounted to the cache's tree
+ * memory context.
+ */
+
+uint64_t
+dns_cache_getevictions(dns_cache_t *cache);
+/*%<
+ * Get the total number of entries evicted by the cache's probabilistic
+ * cleaner since the cache was created.
+ */
+
 void
 dns_cache_setservestalettl(dns_cache_t *cache, dns_ttl_t ttl);
 /*%<

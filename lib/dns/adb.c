@@ -3423,6 +3423,27 @@ dns_adb_sweep(dns_adb_t *adb, size_t target) {
 	purge_entries_overmem(adb, target - half);
 }
 
+size_t
+dns_adb_getadbsize(dns_adb_t *adb) {
+	REQUIRE(DNS_ADB_VALID(adb));
+
+	return adb->size.cached_size;
+}
+
+size_t
+dns_adb_getinuse(dns_adb_t *adb) {
+	REQUIRE(DNS_ADB_VALID(adb));
+
+	return isc_mem_inuse(adb->mctx);
+}
+
+uint64_t
+dns_adb_getevictions(dns_adb_t *adb) {
+	REQUIRE(DNS_ADB_VALID(adb));
+
+	return atomic_load_relaxed(&adb->evictions);
+}
+
 void
 dns_adb_setquota(dns_adb_t *adb, uint32_t quota, uint32_t freq, double low,
 		 double high, double discount) {

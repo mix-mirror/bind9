@@ -228,6 +228,20 @@ dns_cache_sweep(dns_cache_t *cache, size_t target) {
 }
 
 size_t
+dns_cache_getinuse(dns_cache_t *cache) {
+	REQUIRE(VALID_CACHE(cache));
+
+	return isc_mem_inuse(cache->tmctx);
+}
+
+uint64_t
+dns_cache_getevictions(dns_cache_t *cache) {
+	REQUIRE(VALID_CACHE(cache));
+
+	return dns_db_getevictions(cache->db);
+}
+
+size_t
 dns_cache_getcachesize(dns_cache_t *cache) {
 	size_t size;
 
@@ -618,6 +632,9 @@ dns_cache_renderxml(dns_cache_t *cache, void *writer0) {
 	TRY0(renderstat("CacheNodes", dns_db_nodecount(cache->db), writer));
 
 	TRY0(renderstat("TreeMemInUse", isc_mem_inuse(cache->tmctx), writer));
+	TRY0(renderstat("CacheBudget", cache->size, writer));
+	TRY0(renderstat("CacheEvictions", dns_db_getevictions(cache->db),
+			writer));
 error:
 	return xmlrc;
 }
@@ -676,6 +693,14 @@ dns_cache_renderjson(dns_cache_t *cache, void *cstats0) {
 	obj = json_object_new_int64(isc_mem_inuse(cache->tmctx));
 	CHECKMEM(obj);
 	json_object_object_add(cstats, "TreeMemInUse", obj);
+
+	obj = json_object_new_int64(cache->size);
+	CHECKMEM(obj);
+	json_object_object_add(cstats, "CacheBudget", obj);
+
+	obj = json_object_new_int64(dns_db_getevictions(cache->db));
+	CHECKMEM(obj);
+	json_object_object_add(cstats, "CacheEvictions", obj);
 
 	result = ISC_R_SUCCESS;
 error:

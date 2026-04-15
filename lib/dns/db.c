@@ -1151,3 +1151,13 @@ dns_db_sweep(dns_db_t *db, size_t target) {
 		(db->methods->sweep)(db, target);
 	}
 }
+
+uint64_t
+dns_db_getevictions(dns_db_t *db) {
+	REQUIRE(db != NULL);
+
+	if (db->methods->getevictions != NULL) {
+		return (db->methods->getevictions)(db);
+	}
+	return 0;
+}

@@ -622,6 +622,26 @@ dns_adb_sweep(dns_adb_t *adb, size_t target);
  * Must be called from a loop thread (isc_tid() valid).
  */
 
+size_t
+dns_adb_getadbsize(dns_adb_t *adb);
+/*%<
+ * Get the current target memory size (budget) of the adb.
+ */
+
+size_t
+dns_adb_getinuse(dns_adb_t *adb);
+/*%<
+ * Get the amount of memory currently accounted to the adb's memory
+ * context.
+ */
+
+uint64_t
+dns_adb_getevictions(dns_adb_t *adb);
+/*%<
+ * Get the total number of names and entries evicted by the
+ * probabilistic cleaner since the adb was created.
+ */
+
 void
 dns_adb_flushname(dns_adb_t *adb, const dns_name_t *name);
 /*%<

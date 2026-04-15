@@ -3532,6 +3532,15 @@ sweep(dns_db_t *db, size_t target) {
 	TREE_UNLOCK(&qpdb->tree_lock, &tlocktype);
 }
 
+static uint64_t
+getevictions(dns_db_t *db) {
+	qpcache_t *qpdb = (qpcache_t *)db;
+
+	REQUIRE(VALID_QPDB(qpdb));
+
+	return atomic_load_relaxed(&qpdb->evictions);
+}
+
 static dns_dbmethods_t qpdb_cachemethods = {
 	.destroy = qpcache_destroy,
 	.findnode = qpcache_findnode,
@@ -3552,6 +3561,7 @@ static dns_dbmethods_t qpdb_cachemethods = {
 	.setmaxtypepername = setmaxtypepername,
 	.setcachesize = setcachesize,
 	.sweep = sweep,
+	.getevictions = getevictions,
 };
 
 static void

@@ -1021,3 +1021,24 @@ dns_delegdb_sweep(dns_delegdb_t *delegdb, size_t target) {
 	}
 	rcu_read_unlock();
 }
+
+size_t
+dns_delegdb_getsize(dns_delegdb_t *delegdb) {
+	REQUIRE(VALID_DELEGDB(delegdb));
+
+	return delegdb->size.cached_size;
+}
+
+size_t
+dns_delegdb_getinuse(dns_delegdb_t *delegdb) {
+	REQUIRE(VALID_DELEGDB(delegdb));
+
+	return isc_mem_inuse(delegdb->mctx);
+}
+
+uint64_t
+dns_delegdb_getevictions(dns_delegdb_t *delegdb) {
+	REQUIRE(VALID_DELEGDB(delegdb));
+
+	return atomic_load_relaxed(&delegdb->evictions);
+}
