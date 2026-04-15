@@ -1,0 +1,9 @@
+;	This is a zone which has two DNSKEY records, both of which have
+; existing private key files available.  They should be loaded automatically
+; and the zone correctly signed.
+;
+$TTL 3600
+example.com.	IN	SOA ns hostmaster 00100000 1200 3600 604800 300
+extra.example.com. IN   A   1.2.3.4
+$include Kexample.com.+008+63613.key
+$include Kexample.com.+008+15002.key

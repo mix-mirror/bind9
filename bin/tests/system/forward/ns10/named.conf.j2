@@ -12,22 +12,22 @@ options {
 
 zone "net." {
 	type master;
-	file "fakenet.zone";
+	file "fakenet.db";
 };
 
 zone "spoofed.net." {
 	type master;
-	file "spoofednet.zone";
+	file "spoofednet.db";
 };
 
 zone "sub.local.net." {
 	type master;
-	file "fakesublocalnet.zone";
+	file "fakesublocalnet.db";
 };
 
 zone "net2" {
 	type master;
-	file "fakenet2.zone";
+	file "fakenet2.db";
 };
 
 zone "net.example.lll" {
@@ -37,5 +37,5 @@ zone "net.example.lll" {
 
 zone "sub.local.tld." {
 	type master;
-	file "fakesublocaltld.zone";
+	file "fakesublocaltld.db";
 };

@@ -43,7 +43,7 @@ ret=0
 (
   cd signer/general || exit 1
   rm -f signed.zone
-  $SIGNER -f signed.zone -o example.com. test1.zone >signer.out.$n
+  $SIGNER -f signed.zone -o example.com. test1.db >signer.out.$n
   test -f signed.zone
 ) || ret=1
 n=$((n + 1))
@@ -55,7 +55,7 @@ ret=0
 (
   cd signer/general || exit 1
   rm -f signed.zone
-  $SIGNER -s now-1mo -e now+2d -P -x -f signed.zone -O full -o example.com. test1.zone >signer.out.$n
+  $SIGNER -s now-1mo -e now+2d -P -x -f signed.zone -O full -o example.com. test1.db >signer.out.$n
   test -f signed.zone
 ) || ret=1
 n=$((n + 1))
@@ -82,7 +82,7 @@ ret=0
 (
   cd signer/general || exit 0
   rm -f signed.zone
-  $SIGNER -f signed.zone -o example.com. test2.zone >signer.out.$n
+  $SIGNER -f signed.zone -o example.com. test2.db >signer.out.$n
   test -f signed.zone
 ) && ret=1
 n=$((n + 1))
@@ -94,7 +94,7 @@ ret=0
 (
   cd signer/general || exit 0
   rm -f signed.zone
-  $SIGNER -f signed.zone -o example.com. test3.zone >signer.out.$n 2>/dev/null
+  $SIGNER -f signed.zone -o example.com. test3.db >signer.out.$n 2>/dev/null
   test -f signed.zone
 ) && ret=1
 n=$((n + 1))
@@ -106,7 +106,7 @@ ret=0
 (
   cd signer/general || exit 1
   rm -f signed.zone
-  $SIGNER -f signed.zone -o example.com. test4.zone >signer.out.$n 2>/dev/null
+  $SIGNER -f signed.zone -o example.com. test4.db >signer.out.$n 2>/dev/null
   test -f signed.zone
 ) || ret=1
 n=$((n + 1))
@@ -118,7 +118,7 @@ ret=0
 (
   cd signer/general || exit 1
   rm -f signed.zone
-  $SIGNER -f signed.zone -o example.com. test5.zone >signer.out.$n 2>/dev/null
+  $SIGNER -f signed.zone -o example.com. test5.db >signer.out.$n 2>/dev/null
   test -f signed.zone
 ) || ret=1
 n=$((n + 1))
@@ -130,7 +130,7 @@ ret=0
 (
   cd signer/general || exit 1
   rm -f signed.zone
-  $SIGNER -f signed.zone -o example.com. test6.zone >signer.out.$n 2>/dev/null
+  $SIGNER -f signed.zone -o example.com. test6.db >signer.out.$n 2>/dev/null
   test -f signed.zone
 ) || ret=1
 n=$((n + 1))
@@ -142,7 +142,7 @@ ret=0
 (
   cd signer/general || exit 0
   rm -f signed.zone
-  $SIGNER -f signed.zone -o example.com. test7.zone >signer.out.$n 2>/dev/null
+  $SIGNER -f signed.zone -o example.com. test7.db >signer.out.$n 2>/dev/null
   test -f signed.zone
 ) && ret=1
 n=$((n + 1))
@@ -154,7 +154,7 @@ ret=0
 (
   cd signer/general || exit 0
   rm -f signed.zone
-  $SIGNER -f signed.zone -o example.com. test8.zone >signer.out.$n 2>/dev/null
+  $SIGNER -f signed.zone -o example.com. test8.db >signer.out.$n 2>/dev/null
   test -f signed.zone
 ) && ret=1
 n=$((n + 1))
@@ -167,7 +167,7 @@ if $FEATURETEST --fips-provider; then
   (
     cd signer/general || exit 1
     rm -f signed.zone
-    $SIGNER -F -f signed.zone -o example.com. test1.zone >signer.out.$n
+    $SIGNER -F -f signed.zone -o example.com. test1.db >signer.out.$n
     test -f signed.zone
   ) || ret=1
 else
@@ -187,7 +187,7 @@ else
   (
     cd signer/general || exit 1
     rm -f signed.zone
-    $SIGNER -F -f signed.zone -o example.com. test11.zone >signer.out.$n 2>&1 && exit 1
+    $SIGNER -F -f signed.zone -o example.com. test11.db >signer.out.$n 2>&1 && exit 1
     grep -F -e "fatal: No signing keys specified or found" \
       -e "fatal: dnskey 'example.com/RSASHA1/19857' failed to sign data" signer.out.$n >/dev/null
   ) || ret=1
@@ -202,7 +202,7 @@ ret=0
 (
   cd signer/general || exit 0
   rm -f signed.zone
-  $SIGNER -S -f signed.zone -o . test12.zone >signer.out.$n 2>/dev/null
+  $SIGNER -S -f signed.zone -o . test12.db >signer.out.$n 2>/dev/null
 ) && ret=1
 n=$((n + 1))
 test "$ret" -eq 0 || echo_i "failed"
@@ -213,7 +213,7 @@ ret=0
 (
   cd signer/general || exit 0
   rm -f signed.zone
-  $SIGNER -f signed.zone -3 - -H 51 -o example.com. test9.zone >signer.out.$n
+  $SIGNER -f signed.zone -3 - -H 51 -o example.com. test9.db >signer.out.$n
   test -f signed.zone
 ) && ret=1
 n=$((n + 1))
@@ -225,8 +225,8 @@ ret=0
 (
   cd signer/general || exit 0
   rm -f signed.zone
-  $MAKEJOURNAL example.com. test9.zone test10.zone test9.zone.jnl
-  $SIGNER -f signed.zone -o example.com. -J test9.zone.jnl test9.zone >signer.out.$n
+  $MAKEJOURNAL example.com. test9.db test10.db test9.db.jnl
+  $SIGNER -f signed.zone -o example.com. -J test9.db.jnl test9.db >signer.out.$n
   grep -q extra signed.zone
 ) || ret=1
 n=$((n + 1))
@@ -238,7 +238,7 @@ ret=0
 (
   cd signer/general || exit 1
   rm -f signed.zone
-  $SIGNER -f signed.zone -3 - -H 50 -o example.com. test9.zone >signer.out.$n
+  $SIGNER -f signed.zone -3 - -H 50 -o example.com. test9.db >signer.out.$n
   test -f signed.zone
 ) || ret=1
 n=$((n + 1))
@@ -791,7 +791,7 @@ status=$((status + ret))
 
 echo_i "checking dnssec-signzone without -o and zone is in directory (incorrect basename) ($n)"
 ret=0
-cp signer/general/test13.zone signer/bad.db
+cp signer/general/test13.db signer/bad.db
 $SIGNER -O full -S signer/bad.db 2>signer.err.$n && ret=1
 grep "example.com: not at top of zone" signer.err.$n >/dev/null || ret=1
 n=$((n + 1))
@@ -800,7 +800,7 @@ status=$((status + ret))
 
 echo_i "checking dnssec-signzone without -o and zone is in directory ($n)"
 ret=0
-cp signer/general/test13.zone signer/example.com
+cp signer/general/test13.db signer/example.com
 $SIGNER -S -K signer/general -O full signer/example.com >signer.out.$n || ret=1
 test -f signer/example.com.signed
 n=$((n + 1))
