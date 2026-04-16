@@ -1336,6 +1336,9 @@ libisccfg = library(
 libisccfg_dep = declare_dependency(
     link_with: libisccfg,
     include_directories: isccfg_inc,
+    dependencies: [
+        libdns_dep,
+    ],
 )
 
 executable(
