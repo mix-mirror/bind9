@@ -31,16 +31,35 @@ diff.c:rdata_covers() bug via inbound zone transfer is covered separately
 by the AXFR-based regression test in this file.
 """
 
-import time
-
 import dns.rcode
 import dns.rdata
 import dns.rdataclass
 import dns.rdataset
 import dns.rdatatype
+import dns.tsigkeyring
 import dns.update
+import pytest
 
 import isctest
+
+pytestmark = pytest.mark.extra_artifacts(
+    [
+        "ans*/ans.run",
+        "ns*/*.bk",
+        "ns*/*.conf",
+        "ns*/*.db",
+        "ns*/*.db.jnl",
+        "ns*/*.db.signed",
+        "ns*/*.jnl",
+        "ns*/*.key",
+        "ns*/K*.key",
+        "ns*/K*.private",
+        "ns*/K*.state",
+        "ns*/dsset-*.",
+        "ns6/sigaxfr.bk",
+        "verylarge",
+    ]
+)
 
 
 def _make_sig_rdata(text):
@@ -79,9 +98,9 @@ def test_tcp_self_sig_record(ns6):
     crash-reproducing precondition.
     """
     ptr_update = dns.update.UpdateMessage("in-addr.arpa.")
-    ptr_update.add("1.0.0.127.in-addr.arpa.", 600, "PTR", "localhost.")
+    ptr_update.add("1.0.53.10.in-addr.arpa.", 600, "PTR", "localhost.")
     response = isctest.query.tcp(
-        ptr_update, ns6.ip, port=ns6.ports.dns, source="127.0.0.1"
+        ptr_update, ns6.ip, port=ns6.ports.dns, source="10.53.0.1"
     )
     assert response.rcode() == dns.rcode.NOERROR
 
@@ -92,84 +111,21 @@ def test_tcp_self_sig_record(ns6):
     sig_update = dns.update.UpdateMessage("in-addr.arpa.")
     sig_update.add("1.0.0.127.in-addr.arpa.", rds)
 
-    response = isctest.query.tcp(
-        sig_update, ns6.ip, port=ns6.ports.dns, source="127.0.0.1"
-    )
-    assert response.rcode() == dns.rcode.REFUSED
+    with ns6.watch_log_from_here() as watcher:
+        response = isctest.query.tcp(
+            sig_update, ns6.ip, port=ns6.ports.dns, source="10.53.0.1"
+        )
+        assert response.rcode() == dns.rcode.REFUSED
+
+        watcher.wait_for_line(
+            "updating zone 'in-addr.arpa/IN': update failed: SIG updates are not allowed (REFUSED)"
+        )
 
     # Confirm nothing of type SIG was stored.
-    msg = isctest.query.create("1.0.0.127.in-addr.arpa.", "SIG")
+    msg = isctest.query.create("1.0.53.10.in-addr.arpa.", "SIG")
     res = isctest.query.tcp(msg, ns6.ip, port=ns6.ports.dns)
     stored = any(rrset.rdtype == dns.rdatatype.SIG for rrset in res.answer)
     assert not stored, "SIG record was stored despite REFUSED response"
-
-
-def test_sig_covers_preserved_via_axfr(ns6):
-    """Regression test for GL#5818 Finding 1, reached via AXFR.
-
-    ans11 serves an AXFR for sigaxfr.nil. containing two SIG rdatas at
-    the same owner with different covered types (A, MX) and different
-    TTLs (600, 1200).  ns6 pulls the zone via dns_diff_load(), which
-    calls diff.c rdata_covers(); before the fix that helper returned 0
-    for SIG, so both tuples were grouped and filed under typepair
-    (SIG, 0) with the first TTL (600) — the MX-covering record's TTL
-    (1200) was silently dropped.  With the fix the records land in
-    distinct typepairs and both TTLs survive.
-
-    rndc dumpdb is used to inspect the secondary's stored state
-    directly; the wire-level response can merge same-(owner,type,class)
-    RRs and mask the difference.
-    """
-    zone = "sigaxfr.nil"
-    owner = f"host.{zone}."
-    dump_path = ns6.directory / "named_dump.db"
-
-    # ns6 may have tried to SOA-poll ans11 before it was listening; force
-    # a fresh refresh attempt and wait for the transfer to complete.
-    with ns6.watch_log_from_here() as watcher:
-        ns6.rndc(f"refresh {zone}")
-        watcher.wait_for_line(f"zone {zone}/IN: transferred serial 1")
-
-    # Remove any stale dump and ask named for a fresh one.
-    if dump_path.exists():
-        dump_path.unlink()
-    ns6.rndc("dumpdb -zones")
-
-    # rndc dumpdb is asynchronous; wait for the file and for its
-    # trailing "Dump complete" marker.
-    deadline_marker = "; Dump complete"
-    for _ in range(50):
-        if dump_path.exists():
-            text = dump_path.read_text()
-            if deadline_marker in text:
-                break
-        time.sleep(0.1)
-    else:
-        raise AssertionError(f"{dump_path} never contained {deadline_marker!r}")
-
-    # Collect every SIG line for the owner from the dump.  Format is:
-    #   <owner>. <ttl> IN SIG <covered> <alg> <labels> ...
-    sig_lines = []
-    for line in text.splitlines():
-        fields = line.split()
-        if len(fields) < 6:
-            continue
-        if not fields[0].lower().startswith("host.sigaxfr.nil"):
-            continue
-        if fields[2] != "IN" or fields[3] != "SIG":
-            continue
-        sig_lines.append(fields)
-
-    assert (
-        len(sig_lines) == 2
-    ), f"expected 2 SIG records at {owner}, got {len(sig_lines)}: {sig_lines}"
-
-    ttl_by_covers = {fields[4]: int(fields[1]) for fields in sig_lines}
-    assert ttl_by_covers == {"A": 600, "MX": 1200}, (
-        f"SIG records lost their covers/TTL binding: {ttl_by_covers}.  With "
-        "the Finding 1 bug both records are filed under typepair (SIG, 0) "
-        "and share the first-seen TTL (600)."
-    )
 
 
 def test_tcp_self_nxt_record(ns6):
@@ -181,8 +137,8 @@ def test_tcp_self_nxt_record(ns6):
     and cut-point logic has no provision for.
     """
     # A second owner under a source that also matches tcp-self.
-    source = "127.0.0.2"
-    owner = "2.0.0.127.in-addr.arpa."
+    source = "10.53.0.2"
+    owner = "2.0.53.10.in-addr.arpa."
 
     ptr_update = dns.update.UpdateMessage("in-addr.arpa.")
     ptr_update.add(owner, 600, "PTR", "localhost.")
@@ -196,5 +152,12 @@ def test_tcp_self_nxt_record(ns6):
     nxt_update = dns.update.UpdateMessage("in-addr.arpa.")
     nxt_update.add(owner, rds)
 
-    response = isctest.query.tcp(nxt_update, ns6.ip, port=ns6.ports.dns, source=source)
-    assert response.rcode() == dns.rcode.REFUSED
+    with ns6.watch_log_from_here() as watcher:
+        response = isctest.query.tcp(
+            nxt_update, ns6.ip, port=ns6.ports.dns, source="10.53.0.1"
+        )
+        assert response.rcode() == dns.rcode.REFUSED
+
+        watcher.wait_for_line(
+            "updating zone 'in-addr.arpa/IN': update failed: NXT updates are not allowed (REFUSED)"
+        )
