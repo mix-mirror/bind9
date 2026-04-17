@@ -58,7 +58,9 @@ pytestmark = pytest.mark.extra_artifacts(
         "ns*/*.key",
         "ns*/K*.key",
         "ns*/K*.private",
+        "ns*/K*.state",
         "ns*/dsset-*.",
+        "ns6/sigaxfr.bk",
         "verylarge",
     ]
 )
