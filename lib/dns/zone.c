@@ -9763,6 +9763,24 @@ zone_refreshkeys(dns_zone_t *zone) {
 			dns_zonefetch_t *fetch = NULL;
 			dns_keyfetch_t *kfetch = NULL;
 
+			/*
+			 * This is a special query for RFC5011 maintenance
+			 * of a trust anchor. We will be validating it
+			 * in keyfetch_done() against a previously-known
+			 * trust anchor; we do not want the normal
+			 * validation process to occur.  We set
+			 * DNS_FETCHOPT_NOVALIDATE to suppress validation
+			 * in the resolver, and DNS_FETCHOPT_UNSHARED so
+			 * this fetch isn't combined with another one that
+			 * might be validating.
+			 *
+			 * We must also use DNS_FETCHOPT_NOCACHED, because
+			 * if it was not set and the cache still held a
+			 * non-expired, validated version of the DNSKEY,
+			 * then we'd receive the old, cached version
+			 * instead of the new response - the old version
+			 * would have a higher trust level.
+			 */
 			fetch = isc_mem_get(zone->mctx,
 					    sizeof(dns_zonefetch_t));
 			*fetch = (dns_zonefetch_t){
@@ -17855,8 +17873,6 @@ zone_checkds(dns_zone_t *zone) {
 		fetch = isc_mem_get(zone->mctx, sizeof(dns_zonefetch_t));
 		*fetch = (dns_zonefetch_t){
 			.zone = zone,
-			.options = DNS_FETCHOPT_UNSHARED |
-				   DNS_FETCHOPT_NOCACHED,
 			.fetchtype = ZONEFETCHTYPE_NS,
 			.fetchmethods =
 				(dns_zonefetch_methods_t){
@@ -18167,8 +18183,6 @@ nsfetch_dsync(dns_zonefetch_t *fetch, isc_result_t eresult) {
 		zfetch = isc_mem_get(zone->mctx, sizeof(dns_zonefetch_t));
 		*zfetch = (dns_zonefetch_t){
 			.zone = zone,
-			.options = DNS_FETCHOPT_UNSHARED |
-				   DNS_FETCHOPT_NOCACHED,
 			.fetchtype = ZONEFETCHTYPE_DSYNC,
 			.fetchmethods =
 				(dns_zonefetch_methods_t){
@@ -18221,8 +18235,6 @@ zone_notifycds(dns_zone_t *zone) {
 		fetch = isc_mem_get(zone->mctx, sizeof(dns_zonefetch_t));
 		*fetch = (dns_zonefetch_t){
 			.zone = zone,
-			.options = DNS_FETCHOPT_UNSHARED |
-				   DNS_FETCHOPT_NOCACHED,
 			.fetchtype = ZONEFETCHTYPE_NS,
 			.fetchmethods =
 				(dns_zonefetch_methods_t){

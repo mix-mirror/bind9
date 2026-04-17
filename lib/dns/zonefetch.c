@@ -63,17 +63,6 @@ dns_zonefetch_run(void *arg) {
 			      "Do fetch for %s/%s request", namebuf, typebuf);
 	}
 
-	/*
-	 * Use of DNS_FETCHOPT_NOCACHED is essential here.  If it is not
-	 * set and the cache still holds a non-expired, validated version
-	 * of the RRset being queried for by the time the response is
-	 * received, the cached RRset will be passed to dns_zonefetch_done()
-	 * instead of the one received in the response as the latter will
-	 * have a lower trust level due to not being validated until
-	 * dns_zonefetch_done() is called.
-	 */
-	INSIST((fetch->options & DNS_FETCHOPT_NOCACHED) != 0);
-
 	result = dns_resolver_createfetch(
 		resolver, fetch->qname, fetch->qtype, NULL, NULL, NULL, NULL, 0,
 		fetch->options, 0, NULL, NULL, NULL, loop, dns_zonefetch_done,
