@@ -55,6 +55,7 @@ pytestmark = pytest.mark.extra_artifacts(
         "ns*/*.db",
         "ns*/*.db.jnl",
         "ns*/*.db.signed",
+        "ns*/*.jnl",
         "ns*/*.key",
         "ns*/K*.key",
         "ns*/K*.private",
