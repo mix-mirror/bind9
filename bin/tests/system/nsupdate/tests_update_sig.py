@@ -115,10 +115,15 @@ def test_tcp_self_sig_record(ns6):
     sig_update = dns.update.UpdateMessage("in-addr.arpa.")
     sig_update.add("1.0.0.127.in-addr.arpa.", rds)
 
-    response = isctest.query.tcp(
-        sig_update, ns6.ip, port=ns6.ports.dns, source="127.0.0.1"
-    )
-    assert response.rcode() == dns.rcode.REFUSED
+    with ns6.watch_log_from_here() as watcher:
+        response = isctest.query.tcp(
+            sig_update, ns6.ip, port=ns6.ports.dns, source="127.0.0.1"
+        )
+        assert response.rcode() == dns.rcode.REFUSED
+
+        watcher.wait_for_line(
+            "updating zone 'in-addr.arpa/IN': update failed: SIG updates are not allowed (REFUSED)"
+        )
 
     # Confirm nothing of type SIG was stored.
     msg = isctest.query.create("1.0.0.127.in-addr.arpa.", "SIG")
@@ -219,8 +224,15 @@ def test_tcp_self_nxt_record(ns6):
     nxt_update = dns.update.UpdateMessage("in-addr.arpa.")
     nxt_update.add(owner, rds)
 
-    response = isctest.query.tcp(nxt_update, ns6.ip, port=ns6.ports.dns, source=source)
-    assert response.rcode() == dns.rcode.REFUSED
+    with ns6.watch_log_from_here() as watcher:
+        response = isctest.query.tcp(
+            nxt_update, ns6.ip, port=ns6.ports.dns, source="127.0.0.1"
+        )
+        assert response.rcode() == dns.rcode.REFUSED
+
+        watcher.wait_for_line(
+            "updating zone 'in-addr.arpa/IN': update failed: NXT updates are not allowed (REFUSED)"
+        )
 
 
 def parse_named_conf_keys(conf_text):
