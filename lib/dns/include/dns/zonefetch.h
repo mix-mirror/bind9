@@ -34,12 +34,14 @@ typedef enum {
 	DNS_ZONEFETCHTYPE_DSYNC,
 	DNS_ZONEFETCHTYPE_KEY,
 	DNS_ZONEFETCHTYPE_NS,
+	DNS_ZONEFETCHTYPE_DS,
 	DNS_ZONEFETCHTYPE_COUNT,
 } dns_zonefetch_type_t;
 
 typedef struct dns_dsyncfetch dns_dsyncfetch_t;
 typedef struct dns_keyfetch   dns_keyfetch_t;
 typedef struct dns_nsfetch    dns_nsfetch_t;
+typedef struct dns_dsfetch    dns_dsfetch_t;
 typedef struct dns_zonefetch  dns_zonefetch_t;
 
 /*
@@ -71,10 +73,15 @@ struct dns_nsfetch {
 	dns_name_t pname;
 };
 
+struct dns_dsfetch {
+	dns_xfrin_t *xfr;
+};
+
 typedef union dns_fetchdata {
 	dns_dsyncfetch_t dsyncfetch;
 	dns_keyfetch_t	 keyfetch;
 	dns_nsfetch_t	 nsfetch;
+	dns_dsfetch_t	 dsfetch;
 } dns_zonefetch_data_t;
 
 struct dns_zonefetch {
