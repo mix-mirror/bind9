@@ -47,11 +47,13 @@
 #include <dns/view.h>
 #include <dns/xfrin.h>
 #include <dns/zone.h>
+#include <dns/zonefetch.h>
 #include <dns/zoneproperties.h>
 
 #include <dst/dst.h>
 
 #include "probes-dns.h"
+#include "zone_p.h"
 
 /*
  * Incoming AXFR and IXFR.
@@ -274,10 +276,145 @@ xfrin_log(dns_xfrin_t *xfr, int level, const char *fmt, ...)
 	ISC_FORMAT_PRINTF(3, 4);
 
 /**************************************************************************/
+
+/*
+ * Routines to fetch the DS RRset from the parent zone, if needed for
+ * ZONEMD verification.
+ */
+static isc_result_t
+dsfetch_start(dns_zonefetch_t *fetch) {
+	REQUIRE(fetch->fetchtype == DNS_ZONEFETCHTYPE_DS);
+
+	fetch->qtype = dns_rdatatype_ds;
+	fetch->qname = dns_zone_getorigin(fetch->zone);
+
+	return ISC_R_SUCCESS;
+}
+
+static void
+dsfetch_continue(dns_zonefetch_t *fetch) {
+	REQUIRE(fetch->fetchtype == DNS_ZONEFETCHTYPE_DS);
+	/* No continue path for dsfetch exists. */
+	REQUIRE(0);
+}
+
+static void
+dsfetch_cancel(dns_zonefetch_t *fetch) {
+	dns_dsfetch_t *dsfetch = NULL;
+
+	REQUIRE(fetch->fetchtype == DNS_ZONEFETCHTYPE_DS);
+
+	dsfetch = &fetch->fetchdata.dsfetch;
+	dns_xfrin_detach(&dsfetch->xfr);
+}
+
+static void
+dsfetch_cleanup(dns_zonefetch_t *fetch) {
+	dns_dsfetch_t *dsfetch = NULL;
+
+	REQUIRE(fetch->fetchtype == DNS_ZONEFETCHTYPE_DS);
+
+	dsfetch = &fetch->fetchdata.dsfetch;
+	dns_xfrin_detach(&dsfetch->xfr);
+}
+
+static isc_result_t
+dsfetch_done(dns_zonefetch_t *fetch, isc_result_t eresult) {
+	isc_result_t result;
+	dns_dsfetch_t *dsfetch = NULL;
+
+	REQUIRE(fetch->fetchtype == DNS_ZONEFETCHTYPE_DS);
+
+	dsfetch = &fetch->fetchdata.dsfetch;
+
+	if (eresult == ISC_R_SUCCESS) {
+		result = dns_zone_validatezonemd(
+			dsfetch->xfr->zone, dsfetch->xfr->db, dsfetch->xfr->ver,
+			&fetch->rrset);
+		if (result != ISC_R_SUCCESS && result != ISC_R_NOTFOUND) {
+			xfrin_fail(dsfetch->xfr, result,
+				   "failed validating ZONEMD");
+			return result;
+		}
+	}
+
+	/*
+	 * dns_zonefetch_done() locks the zone, but dns__zone_xfrdone()
+	 * needs it to be unlocked.
+	 */
+	dns__zone_unlock(dsfetch->xfr->zone);
+	xfrin_end(dsfetch->xfr, ISC_R_SUCCESS);
+	dns__zone_lock(dsfetch->xfr->zone);
+
+	return ISC_R_SUCCESS;
+}
+
+static void
+xfrin_fetchds(dns_xfrin_t *xfr) {
+#ifdef ENABLE_AFL
+	if (!dns_fuzzing_resolver) {
+#endif /* ifdef ENABLE_AFL */
+		dns_zonefetch_t *fetch = NULL;
+		dns_dsfetch_t *dsfetch = NULL;
+
+		fetch = isc_mem_get(xfr->mctx, sizeof(dns_zonefetch_t));
+		*fetch = (dns_zonefetch_t){
+			.zone = xfr->zone,
+			.fetchtype = DNS_ZONEFETCHTYPE_DS,
+			.fetchmethods =
+				(dns_zonefetch_methods_t){
+					.start_fetch = dsfetch_start,
+					.continue_fetch = dsfetch_continue,
+					.cancel_fetch = dsfetch_cancel,
+					.cleanup_fetch = dsfetch_cleanup,
+					.done_fetch = dsfetch_done,
+				},
+		};
+		isc_mem_attach(xfr->mctx, &fetch->mctx);
+
+		dsfetch = &fetch->fetchdata.dsfetch;
+		dns_xfrin_attach(xfr, &dsfetch->xfr);
+
+		dns_zone_schedulefetch(xfr->zone, fetch,
+				       dns_zone_getorigin(xfr->zone));
+#ifdef ENABLE_AFL
+	}
+#endif /* ifdef ENABLE_AFL */
+}
+
+static void
+xfrin_finalcheck(dns_xfrin_t *xfr) {
+	dns_zone_t *zone = xfr->zone;
+	dns_rdataset_t dsset = DNS_RDATASET_INIT;
+
+	/* We don't need to check ZONEMD so just end the xfr now */
+	if (!dns_db_issecure(xfr->db) || !dns_db_haszonemd(xfr->db)) {
+		xfrin_end(xfr, ISC_R_SUCCESS);
+		return;
+	}
+
+	dns_view_trustanchor(xfr->view, dns_zone_getorigin(zone), &dsset);
+	if (dns_rdataset_isassociated(&dsset)) {
+		isc_result_t result;
+		result = dns_zone_validatezonemd(zone, xfr->db, xfr->ver,
+						 &dsset);
+		dns_rdataset_cleanup(&dsset);
+		if (result != ISC_R_SUCCESS && result != ISC_R_NOTFOUND) {
+			xfrin_fail(xfr, result, "failed validating ZONEMD");
+			return;
+		}
+
+		xfrin_end(xfr, ISC_R_SUCCESS);
+	} else {
+		/* No trust anchor found, so try to fetch the parent DS */
+		xfrin_fetchds(xfr);
+		return;
+	}
+}
+
 /*
  * AXFR handling
  */
-
 static isc_result_t
 axfr_init(dns_xfrin_t *xfr) {
 	isc_result_t result;
@@ -383,12 +520,6 @@ axfr_apply_done(void *arg, isc_result_t result) {
 	}
 
 	if (result == ISC_R_SUCCESS) {
-		result = dns_zone_validatezonemd(xfr->zone, xfr->db, xfr->ver,
-						 NULL);
-		if (result != ISC_R_NOTFOUND) {
-			CHECK(result);
-		}
-
 		CHECK(dns_db_endload(xfr->db, &xfr->axfr));
 		CHECK(axfr_finalize(xfr));
 	} else {
@@ -400,7 +531,7 @@ cleanup:
 
 	if (result == ISC_R_SUCCESS) {
 		if (atomic_load(&xfr->state) == XFRST_AXFR_END) {
-			xfrin_end(xfr, result);
+			xfrin_finalcheck(xfr);
 		}
 	} else {
 		xfrin_fail(xfr, result, "failed while processing responses");
@@ -624,12 +755,6 @@ ixfr_apply_done(void *arg, isc_result_t result) {
 	}
 	CHECK(result);
 
-	result = dns_zone_validatezonemd(xfr->zone, xfr->db, xfr->ver, NULL);
-	if (result == ISC_R_NOTFOUND) {
-		result = ISC_R_SUCCESS;
-	}
-	CHECK(result);
-
 	/* Reschedule */
 	if (!xfr->retry_axfr && !isc_queue_empty(&xfr->diff_queue)) {
 		isc_work_enqueue(xfr->loop, ISC_WORKLANE_SLOW, ixfr_apply,
@@ -656,7 +781,7 @@ cleanup:
 		dns_zone_markdirty(xfr->zone);
 
 		if (atomic_load(&xfr->state) == XFRST_IXFR_END) {
-			xfrin_end(xfr, result);
+			xfrin_finalcheck(xfr);
 		}
 	} else {
 		dns_db_closeversion(xfr->db, &xfr->ver, false);
