@@ -103,9 +103,9 @@ def test_tcp_self_sig_record(ns6):
     crash-reproducing precondition.
     """
     ptr_update = dns.update.UpdateMessage("in-addr.arpa.")
-    ptr_update.add("1.0.0.127.in-addr.arpa.", 600, "PTR", "localhost.")
+    ptr_update.add("1.0.53.10.in-addr.arpa.", 600, "PTR", "localhost.")
     response = isctest.query.tcp(
-        ptr_update, ns6.ip, port=ns6.ports.dns, source="127.0.0.1"
+        ptr_update, ns6.ip, port=ns6.ports.dns, source="10.53.0.1"
     )
     assert response.rcode() == dns.rcode.NOERROR
 
@@ -118,7 +118,7 @@ def test_tcp_self_sig_record(ns6):
 
     with ns6.watch_log_from_here() as watcher:
         response = isctest.query.tcp(
-            sig_update, ns6.ip, port=ns6.ports.dns, source="127.0.0.1"
+            sig_update, ns6.ip, port=ns6.ports.dns, source="10.53.0.1"
         )
         assert response.rcode() == dns.rcode.REFUSED
 
@@ -127,7 +127,7 @@ def test_tcp_self_sig_record(ns6):
         )
 
     # Confirm nothing of type SIG was stored.
-    msg = isctest.query.create("1.0.0.127.in-addr.arpa.", "SIG")
+    msg = isctest.query.create("1.0.53.10.in-addr.arpa.", "SIG")
     res = isctest.query.tcp(msg, ns6.ip, port=ns6.ports.dns)
     stored = any(rrset.rdtype == dns.rdatatype.SIG for rrset in res.answer)
     assert not stored, "SIG record was stored despite REFUSED response"
@@ -142,8 +142,8 @@ def test_tcp_self_nxt_record(ns6):
     and cut-point logic has no provision for.
     """
     # A second owner under a source that also matches tcp-self.
-    source = "127.0.0.2"
-    owner = "2.0.0.127.in-addr.arpa."
+    source = "10.53.0.2"
+    owner = "2.0.53.10.in-addr.arpa."
 
     ptr_update = dns.update.UpdateMessage("in-addr.arpa.")
     ptr_update.add(owner, 600, "PTR", "localhost.")
@@ -159,7 +159,7 @@ def test_tcp_self_nxt_record(ns6):
 
     with ns6.watch_log_from_here() as watcher:
         response = isctest.query.tcp(
-            nxt_update, ns6.ip, port=ns6.ports.dns, source="127.0.0.1"
+            nxt_update, ns6.ip, port=ns6.ports.dns, source="10.53.0.1"
         )
         assert response.rcode() == dns.rcode.REFUSED
 
@@ -286,7 +286,7 @@ def test_prereq_sig_record(ns1):
     node_update = dns.update.UpdateMessage("example.nil.", keyring=keyring)
     node_update.add("sig.example.nil.", 600, "A", "10.53.0.11")
     response = isctest.query.tcp(
-        node_update, ns1.ip, port=ns1.ports.dns, source="127.0.0.1"
+        node_update, ns1.ip, port=ns1.ports.dns, source="10.53.0.1"
     )
     assert response.rcode() == dns.rcode.NOERROR
 
@@ -304,13 +304,13 @@ def test_prereq_sig_record(ns1):
 
     with ns1.watch_log_from_here() as watcher:
         response = isctest.query.tcp(
-            sig_update, ns1.ip, port=ns1.ports.dns, source="127.0.0.1"
+            sig_update, ns1.ip, port=ns1.ports.dns, source="10.53.0.1"
         )
         assert response.rcode() == dns.rcode.REFUSED
 
         watcher.wait_for_sequence(
             [
-                "update-policy: using: signer= name=sig.example.nil addr=127.0.0.1 tcp=1 type=TXT target=",
+                "update-policy: using: signer= name=sig.example.nil addr=10.53.0.1 tcp=1 type=TXT target=",
                 "update-policy: trying: grant zonesub-key.example.nil zonesub TXT",
                 "update-policy: trying: grant ddns-key.example.nil subdomain example.nil ANY",
                 "update-policy: no match found",
@@ -325,13 +325,13 @@ def test_prereq_sig_record(ns1):
 
     with ns1.watch_log_from_here() as watcher:
         response = isctest.query.tcp(
-            sig_update, ns1.ip, port=ns1.ports.dns, source="127.0.0.1"
+            sig_update, ns1.ip, port=ns1.ports.dns, source="10.53.0.1"
         )
         assert response.rcode() == dns.rcode.NXRRSET
 
         watcher.wait_for_sequence(
             [
-                "update-policy: using: signer=ddns-key.example.nil name=sig.example.nil addr=127.0.0.1 tcp=1 type=TXT target=",
+                "update-policy: using: signer=ddns-key.example.nil name=sig.example.nil addr=10.53.0.1 tcp=1 type=TXT target=",
                 "update-policy: trying: grant zonesub-key.example.nil zonesub TXT",
                 "update-policy: trying: grant ddns-key.example.nil subdomain example.nil ANY",
                 "update-policy: matched: grant ddns-key.example.nil subdomain example.nil ANY",
