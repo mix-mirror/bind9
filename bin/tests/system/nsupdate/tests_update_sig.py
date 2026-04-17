@@ -132,6 +132,41 @@ def test_tcp_self_sig_record(ns6):
     assert not stored, "SIG record was stored despite REFUSED response"
 
 
+def test_tcp_self_nxt_record(ns6):
+    """NXT (type 30) updates must be refused at the front door.
+
+    NXT is the legacy DNSSEC denial-of-existence type, obsolete since
+    RFC 3755 replaced it with NSEC.  Accepting it via dynamic update
+    would let an authorised updater inject records that the signing
+    and cut-point logic has no provision for.
+    """
+    # A second owner under a source that also matches tcp-self.
+    source = "127.0.0.2"
+    owner = "2.0.0.127.in-addr.arpa."
+
+    ptr_update = dns.update.UpdateMessage("in-addr.arpa.")
+    ptr_update.add(owner, 600, "PTR", "localhost.")
+    response = isctest.query.tcp(ptr_update, ns6.ip, port=ns6.ports.dns, source=source)
+    assert response.rcode() == dns.rcode.NOERROR
+
+    nxt = _make_nxt_rdata()
+    rds = dns.rdataset.Rdataset(dns.rdataclass.IN, dns.rdatatype.NXT)
+    rds.update_ttl(600)
+    rds.add(nxt)
+    nxt_update = dns.update.UpdateMessage("in-addr.arpa.")
+    nxt_update.add(owner, rds)
+
+    with ns6.watch_log_from_here() as watcher:
+        response = isctest.query.tcp(
+            nxt_update, ns6.ip, port=ns6.ports.dns, source="127.0.0.1"
+        )
+        assert response.rcode() == dns.rcode.REFUSED
+
+        watcher.wait_for_line(
+            "updating zone 'in-addr.arpa/IN': update failed: NXT updates are not allowed (REFUSED)"
+        )
+
+
 def test_sig_covers_preserved_via_axfr(ns6):
     """Regression test for GL#5818 Finding 1, reached via AXFR.
 
@@ -198,41 +233,6 @@ def test_sig_covers_preserved_via_axfr(ns6):
         "the Finding 1 bug both records are filed under typepair (SIG, 0) "
         "and share the first-seen TTL (600)."
     )
-
-
-def test_tcp_self_nxt_record(ns6):
-    """NXT (type 30) updates must be refused at the front door.
-
-    NXT is the legacy DNSSEC denial-of-existence type, obsolete since
-    RFC 3755 replaced it with NSEC.  Accepting it via dynamic update
-    would let an authorised updater inject records that the signing
-    and cut-point logic has no provision for.
-    """
-    # A second owner under a source that also matches tcp-self.
-    source = "127.0.0.2"
-    owner = "2.0.0.127.in-addr.arpa."
-
-    ptr_update = dns.update.UpdateMessage("in-addr.arpa.")
-    ptr_update.add(owner, 600, "PTR", "localhost.")
-    response = isctest.query.tcp(ptr_update, ns6.ip, port=ns6.ports.dns, source=source)
-    assert response.rcode() == dns.rcode.NOERROR
-
-    nxt = _make_nxt_rdata()
-    rds = dns.rdataset.Rdataset(dns.rdataclass.IN, dns.rdatatype.NXT)
-    rds.update_ttl(600)
-    rds.add(nxt)
-    nxt_update = dns.update.UpdateMessage("in-addr.arpa.")
-    nxt_update.add(owner, rds)
-
-    with ns6.watch_log_from_here() as watcher:
-        response = isctest.query.tcp(
-            nxt_update, ns6.ip, port=ns6.ports.dns, source="127.0.0.1"
-        )
-        assert response.rcode() == dns.rcode.REFUSED
-
-        watcher.wait_for_line(
-            "updating zone 'in-addr.arpa/IN': update failed: NXT updates are not allowed (REFUSED)"
-        )
 
 
 def parse_named_conf_keys(conf_text):
