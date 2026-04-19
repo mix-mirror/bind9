@@ -74,7 +74,7 @@ static atomic_uint_fast16_t isc__crwlock_workers = 128;
  * guidance on patience level
  */
 #ifndef RWLOCK_MAX_READER_PATIENCE
-#define RWLOCK_MAX_READER_PATIENCE 500
+#define RWLOCK_MAX_READER_PATIENCE 10
 #endif /* ifndef RWLOCK_MAX_READER_PATIENCE */
 
 static void
