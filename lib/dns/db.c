@@ -236,6 +236,21 @@ dns_db_issecure(dns_db_t *db) {
 }
 
 bool
+dns_db_haszonemd(dns_db_t *db) {
+	/*
+	 * Is 'db' secure?
+	 */
+
+	REQUIRE(DNS_DB_VALID(db));
+	REQUIRE((db->attributes & DNS_DBATTR_CACHE) == 0);
+
+	if (db->methods->haszonemd != NULL) {
+		return (db->methods->haszonemd)(db);
+	}
+	return false;
+}
+
+bool
 dns_db_ispersistent(dns_db_t *db) {
 	/*
 	 * Is 'db' persistent?

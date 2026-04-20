@@ -126,6 +126,7 @@ typedef struct dns_db_methods {
 				       dns_rdatatype_t	      type,
 				       dns_rdatatype_t covers DNS__DB_FLARG);
 	bool (*issecure)(dns_db_t *db);
+	bool (*haszonemd)(dns_db_t *db);
 	unsigned int (*nodecount)(dns_db_t *db);
 	isc_result_t (*getoriginnode)(dns_db_t		  *db,
 				      dns_dbnode_t **nodep DNS__DB_FLARG);
@@ -438,17 +439,17 @@ dns_db_issecure(dns_db_t *db);
  */
 
 bool
-dns_db_isdnssec(dns_db_t *db);
+dns_db_haszonemd(dns_db_t *db);
 /*%<
- * Is 'db' secure or partially secure?
+ * Does 'db' have a ZONEMD at the zone apex?
  *
  * Requires:
  *
  * \li	'db' is a valid database with zone semantics.
  *
  * Returns:
- * \li	#true	'db' is secure or is partially.
- * \li	#false	'db' is not secure.
+ * \li	#true	'db' has ZONEMD.
+ * \li	#false	'db' does not have ZONEMD.
  */
 
 dns_name_t *

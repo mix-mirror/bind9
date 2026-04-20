@@ -4181,7 +4181,7 @@ cleanup:
 }
 
 static bool
-haszonemdbit(dns_rdataset_t *set) {
+havezonemdbit(dns_rdataset_t *set) {
 	isc_result_t result;
 	dns_rdata_t rdata = DNS_RDATA_INIT;
 
@@ -4397,7 +4397,7 @@ dns_zone_validatezonemd(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *ver,
 
 			if (signed_by_dnskey(zone, origin, &dnskeyset, &nsecset,
 					     &signsecset) &&
-			    !haszonemdbit(&nsecset))
+			    !havezonemdbit(&nsecset))
 			{
 				CHECK(ISC_R_NOTFOUND);
 			}
@@ -4407,7 +4407,7 @@ dns_zone_validatezonemd(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *ver,
 			    signed_by_dnskey(zone, origin, &dnskeyset,
 					     &nsec3paramset,
 					     &signsec3paramset) &&
-			    !haszonemdbit(&nsec3set))
+			    !havezonemdbit(&nsec3set))
 			{
 				CHECK(ISC_R_NOTFOUND);
 			}
