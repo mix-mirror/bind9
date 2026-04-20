@@ -137,6 +137,7 @@ struct qpz_version {
 	ISC_LINK(qpz_version_t) link;
 	bool secure;
 	bool havensec3;
+	bool haszonemd;
 	/* NSEC3 parameters */
 	dns_hash_t hash;
 	uint8_t flags;
@@ -1290,16 +1291,18 @@ cleanup_nondirty(qpz_version_t *version, qpz_changedlist_t *cleanup_list) {
 
 static void
 setsecure(dns_db_t *db, qpz_version_t *version, dns_dbnode_t *origin) {
-	dns_rdataset_t keyset;
-	dns_rdataset_t nsecset, signsecset;
+	dns_rdataset_t keyset = DNS_RDATASET_INIT;
+	dns_rdataset_t nsecset = DNS_RDATASET_INIT;
+	dns_rdataset_t signsecset = DNS_RDATASET_INIT;
+	dns_rdataset_t zmset = DNS_RDATASET_INIT;
 	bool haszonekey = false;
 	bool hasnsec = false;
 	isc_result_t result;
 
 	version->secure = false;
+	version->haszonemd = false;
 	version->havensec3 = false;
 
-	dns_rdataset_init(&keyset);
 	result = dns_db_findrdataset(db, origin, (dns_dbversion_t *)version,
 				     dns_rdatatype_dnskey, 0, 0, &keyset, NULL);
 	if (result == ISC_R_SUCCESS) {
@@ -1310,8 +1313,6 @@ setsecure(dns_db_t *db, qpz_version_t *version, dns_dbnode_t *origin) {
 		return;
 	}
 
-	dns_rdataset_init(&nsecset);
-	dns_rdataset_init(&signsecset);
 	result = dns_db_findrdataset(db, origin, (dns_dbversion_t *)version,
 				     dns_rdatatype_nsec, 0, 0, &nsecset,
 				     &signsecset);
@@ -1324,6 +1325,13 @@ setsecure(dns_db_t *db, qpz_version_t *version, dns_dbnode_t *origin) {
 	}
 
 	setnsec3parameters(db, version);
+
+	result = dns_db_findrdataset(db, origin, (dns_dbversion_t *)version,
+				     dns_rdatatype_zonemd, 0, 0, &zmset, NULL);
+	if (result == ISC_R_SUCCESS) {
+		version->haszonemd = true;
+		dns_rdataset_cleanup(&zmset);
+	}
 
 	/*
 	 * If we don't have a valid NSEC/NSEC3 chain,
@@ -1378,6 +1386,7 @@ newversion(dns_db_t *db, dns_dbversion_t **versionp) {
 				   true);
 	version->qpdb = qpdb;
 	version->secure = qpdb->current_version->secure;
+	version->haszonemd = qpdb->current_version->haszonemd;
 	version->havensec3 = qpdb->current_version->havensec3;
 	if (version->havensec3) {
 		version->flags = qpdb->current_version->flags;
@@ -2389,6 +2398,22 @@ issecure(dns_db_t *db) {
 	RWUNLOCK(&qpdb->lock, isc_rwlocktype_read);
 
 	return secure;
+}
+
+static bool
+haszonemd(dns_db_t *db) {
+	qpzonedb_t *qpdb = NULL;
+	bool haszonemd;
+
+	qpdb = (qpzonedb_t *)db;
+
+	REQUIRE(VALID_QPZONE(qpdb));
+
+	RWLOCK(&qpdb->lock, isc_rwlocktype_read);
+	haszonemd = qpdb->current_version->haszonemd;
+	RWUNLOCK(&qpdb->lock, isc_rwlocktype_read);
+
+	return haszonemd;
 }
 
 static isc_result_t
@@ -5658,6 +5683,7 @@ static dns_dbmethods_t qpdb_zonemethods = {
 	.subtractrdataset = qpzone_subtractrdataset,
 	.deleterdataset = qpzone_deleterdataset,
 	.issecure = issecure,
+	.haszonemd = haszonemd,
 	.nodecount = nodecount,
 	.getoriginnode = getoriginnode,
 	.getnsec3parameters = getnsec3parameters,
