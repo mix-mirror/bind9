@@ -329,6 +329,17 @@ if not cc.compiles(constexpr_test, name: 'usage of constexpr')
     config.set('constexpr', 'static const')
 endif
 
+c23_test = '''
+#if __STDC_VERSION__ < 202311L
+#error "no"
+#endif
+int main() {}
+'''
+
+if not cc.compiles(c23_test, name: '__STDC_VERSION__ >= 202311L')
+    config.set('auto', '__auto_type')
+endif
+
 if developer_mode
     config.set('ISC_LIST_CHECKINIT', 1)
     config.set('ISC_MEM_TRACKLINES', 1)
