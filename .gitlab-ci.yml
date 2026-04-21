@@ -98,6 +98,7 @@ stages:
   - unit
   - system
   - performance
+  - packaging
   - docs
   - postmerge
   - release
@@ -2529,3 +2530,72 @@ auto-rebase-trigger:
   trigger:
       project: isc-private/bind9
       branch: "${CI_COMMIT_BRANCH}-sub"
+
+.deb_job: &deb_job
+  <<: *debian_trixie_amd64_image
+  <<: *default_triggering_rules
+  needs: []
+  stage: packaging
+  before_script:
+    - apt -y update
+    - apt -y dist-upgrade
+    - apt -y install devscripts git-buildpackage build-essential sbuild mmdebstrap uidmap debian-archive-keyring ubuntu-keyring distro-info dh-apparmor dh-exec
+    - 'cp contrib/config.pl /etc/sbuild/sbuild.conf'
+    - 'mkdir -p /build && chmod 1777 /build'
+    - 'usermod --add-subuids 100000-165535 --add-subgids 100000-165535 sbuild'
+    - 'sudo -u sbuild -H mkdir -p /var/lib/sbuild/.cache/sbuild/'
+    - 'echo sudo -u sbuild -H mmdebstrap --mode=unshare --include=ca-certificates --skip=output/dev --variant=buildd "${DIST}" "/var/lib/sbuild/.cache/sbuild/${DIST}-${ARCH}.tar.zst"'
+    - 'sudo -u sbuild -H mmdebstrap --mode=unshare --include=ca-certificates --skip=output/dev --variant=buildd "${DIST}" "/var/lib/sbuild/.cache/sbuild/${DIST}-${ARCH}.tar.zst"'
+  script:
+    - ./contrib/prepare-tarball.sh "${UPSTREAM_BRANCH}" "${DEBIAN_BRANCH}"
+    - cd /build/bind9 && sudo -u sbuild -H env DEBEMAIL="$DEBEMAIL" DEBFULLNAME="$DEBFULLNAME" DEB_BUILD_OPTIONS="nocheck parallel" gbp buildpackage --git-debian-branch="${DEBIAN_BRANCH}" --git-pristine-tar --git-upstream-branch="${UPSTREAM_BRANCH}" --git-force-create --git-export-dir=/build/export/ --git-builder=sbuild --dist="$DIST" --arch="$ARCH" -A -v -s --force-orig-source
+  after_script:
+    - mkdir -p "${CI_PROJECT_DIR}/export"
+    - cp -v /build/export/*.build "${CI_PROJECT_DIR}/export/" 2>/dev/null || true
+    - cp -v /build/export/*.changes "${CI_PROJECT_DIR}/export/" 2>/dev/null || true
+    - cp -v /build/export/*.deb "${CI_PROJECT_DIR}/export/" 2>/dev/null || true
+    - cp -v /build/export/*.dsc "${CI_PROJECT_DIR}/export/" 2>/dev/null || true
+    - cp -v /build/export/*.orig.tar.* "${CI_PROJECT_DIR}/export/" 2>/dev/null || true
+  artifacts:
+    paths:
+      - export/
+
+deb:trixie:amd64:
+  variables:
+    DEBEMAIL: "Ondřej Surý <ondrej@debian.org>"
+    DEBFULLNAME: "Ondřej Surý"
+    DIST: trixie
+    ARCH: amd64
+    UPSTREAM_BRANCH: upstream/9.21
+    DEBIAN_BRANCH: debian/9.21
+  <<: *deb_job
+
+deb:bullseye:amd64:
+  variables:
+    DEBEMAIL: "Ondřej Surý <ondrej@debian.org>"
+    DEBFULLNAME: "Ondřej Surý"
+    DIST: bullseye
+    ARCH: amd64
+    UPSTREAM_BRANCH: upstream/9.21
+    DEBIAN_BRANCH: debian/9.21
+  <<: *deb_job
+
+deb:noble:amd64:
+  variables:
+    DEBEMAIL: "Ondřej Surý <ondrej@debian.org>"
+    DEBFULLNAME: "Ondřej Surý"
+    DIST: noble
+    ARCH: amd64
+    UPSTREAM_BRANCH: upstream/9.21
+    DEBIAN_BRANCH: debian/9.21
+  <<: *deb_job
+
+deb:jammy:amd64:
+  variables:
+    DEBEMAIL: "Ondřej Surý <ondrej@debian.org>"
+    DEBFULLNAME: "Ondřej Surý"
+    DIST: jammy
+    ARCH: amd64
+    UPSTREAM_BRANCH: upstream/9.21
+    DEBIAN_BRANCH: debian/9.21
+  <<: *deb_job
