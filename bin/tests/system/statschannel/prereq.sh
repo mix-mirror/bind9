@@ -13,16 +13,6 @@
 
 . ../conf.sh
 
-if ! ${PERL} -MNet::DNS -e ''; then
-  echo_i "perl Net::DNS module is required"
-  exit 1
-fi
-
-if ! ${PERL} -MFile::Fetch -e ''; then
-  echo_i "perl File::Fetch module is required"
-  exit 1
-fi
-
 if ! $FEATURETEST --have-libxml2 && ! $FEATURETEST --have-json-c; then
   echo_i "skip: one or both of --with-libxml2 and --with-json-c required"
   exit 255
