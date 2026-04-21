@@ -15,6 +15,8 @@
 
 /*! \file isc/magic.h */
 
+#include <stdint.h>
+
 typedef struct {
 	unsigned int magic;
 } isc__magic_t;
@@ -28,4 +30,5 @@ typedef struct {
 #define ISC_MAGIC_VALID(a, b) \
 	((a) != NULL && ((const isc__magic_t *)(a))->magic == (b))
 
-#define ISC_MAGIC(a, b, c, d) ((a) << 24 | (b) << 16 | (c) << 8 | (d))
+#define ISC_MAGIC(a, b, c, d) \
+	((uint32_t)((a) << 24 | (b) << 16 | (c) << 8 | (d)))
