@@ -404,7 +404,7 @@ mem_get(isc_mem_t *ctx, size_t size, int flags) {
 static thread_local size_t freed_bytes = 0;
 static _Atomic(isc_stdtime_t) last_purge = 0;
 
-constexpr size_t purge_threshold = (16 * 1024 * 1024);
+constexpr auto purge_threshold = (16 * 1024 * 1024);
 
 #if defined(JEMALLOC_API_SUPPORTED) || defined(__GLIBC__)
 

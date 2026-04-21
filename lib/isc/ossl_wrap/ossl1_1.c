@@ -75,11 +75,11 @@
 		return ec_secret_region(pkey, sec);                            \
 	}
 
-constexpr size_t p256_public_key_size = 64;
-constexpr size_t p384_public_key_size = 96;
+constexpr auto p256_public_key_size = 64;
+constexpr auto p384_public_key_size = 96;
 
-constexpr size_t p256_secret_key_size = 32;
-constexpr size_t p384_secret_key_size = 48;
+constexpr auto p256_secret_key_size = 32;
+constexpr auto p384_secret_key_size = 48;
 
 static int
 BN_bn2bin_fixed(const BIGNUM *bn, unsigned char *buf, int size) {

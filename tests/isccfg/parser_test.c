@@ -116,7 +116,7 @@ ISC_RUN_TEST_IMPL(parse_buffer) {
 	 * Redirect parser errors into a specific file for checking the output
 	 * later.
 	 */
-	constexpr char logfilename[] = "./cfglog.out";
+	constexpr auto logfilename = "./cfglog.out";
 	FILE *logfile = fopen(logfilename, "w+");
 	assert_non_null(logfile);
 

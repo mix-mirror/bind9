@@ -87,11 +87,11 @@
 
 static char pkcs11_key_usage[] = "digitalSignature";
 
-constexpr size_t p256_public_key_size = 64;
-constexpr size_t p384_public_key_size = 96;
+constexpr auto p256_public_key_size = 64;
+constexpr auto p384_public_key_size = 96;
 
-constexpr size_t p256_secret_key_size = 32;
-constexpr size_t p384_secret_key_size = 48;
+constexpr auto p256_secret_key_size = 32;
+constexpr auto p384_secret_key_size = 48;
 
 /*
  * "group" MUST be the first parameter, we rely on it to get the group name.

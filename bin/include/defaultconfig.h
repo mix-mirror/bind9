@@ -22,7 +22,7 @@
 #define DEFAULT_IANA_ROOT_ZONE_PRIMARIES "_default_iana_root_zone_primaries"
 
 /*% default configuration */
-constexpr char common_named_defaultconf[] = "\
+constexpr auto common_named_defaultconf = "\
 options {\n\
 	answer-cookie true;\n\
 	automatic-interface-scan yes;\n\
@@ -33,13 +33,13 @@ options {\n\
 	dump-file \"named_dump.db\";\n\
 	edns-udp-size 1232;\n"
 #if defined(HAVE_GEOIP2)
-					    "\
+					  "\
 	geoip-directory \"" MAXMINDDB_PREFIX "/share/GeoIP\";\n"
 #elif defined(HAVE_GEOIP2)
-					    "\
+					  "\
 	geoip-directory \".\";\n"
 #endif /* if defined(HAVE_GEOIP2) */
-					    "\
+					  "\
 	interface-interval 60m;\n\
 	listen-on {any;};\n\
 	listen-on-v6 {any;};\n\
@@ -55,22 +55,22 @@ options {\n\
 #	pid-file \"" NAMED_LOCALSTATEDIR "/run/named/named.pid\"; \n\
 	port 53;\n"
 #if HAVE_SO_REUSEPORT_LB
-					    "\
+					  "\
 	reuseport yes;\n"
 #else
-					    "\
+					  "\
 	reuseport no;\n"
 #endif
-					    "\
+					  "\
 	tls-port 853;\n"
 #if HAVE_LIBNGHTTP2
-					    "\
+					  "\
 	http-port 80;\n\
 	https-port 443;\n\
 	http-listener-clients 300;\n\
 	http-streams-per-connection 100;\n"
 #endif
-					    "\
+					  "\
 	prefetch 2 9;\n\
 #	querylog <boolean>;\n\
 	recursing-file \"named.recursing\";\n\
@@ -132,9 +132,9 @@ options {\n\
 	dnssec-accept-expired no;\n\
 	dnssec-validation " VALIDATION_DEFAULT "; \n"
 #ifdef HAVE_DNSTAP
-					    "	dnstap-identity hostname;\n"
+					  "	dnstap-identity hostname;\n"
 #endif /* ifdef HAVE_DNSTAP */
-					    "\
+					  "\
 	fetch-quota-params 100 0.1 0.3 0.7;\n\
 	fetches-per-server 0;\n\
 	fetches-per-zone 0;\n\
@@ -231,7 +231,7 @@ options {\n\
 };\n\
 "
 
-					    "#\n\
+					  "#\n\
 #  Zones in the \"_bind\" view are NOT counted in the count of zones.\n\
 #\n\
 view \"_bind\" chaos {\n\
@@ -269,7 +269,7 @@ view \"_bind\" chaos {\n\
 	};\n\
 };\n\
 "
-					    "#\n\
+					  "#\n\
 #  Built-in DNSSEC key and signing policies.\n\
 #\n\
 dnssec-policy \"default\" {\n\
@@ -304,7 +304,7 @@ dnssec-policy \"insecure\" {\n\
 };\n\
 \n\
 "
-					    "#\n\
+					  "#\n\
 #  Default trusted key(s), used if \n\
 # \"dnssec-validation auto;\" is set and\n\
 #  " NAMED_SYSCONFDIR "/bind.keys doesn't exist).\n\
@@ -314,7 +314,7 @@ dnssec-policy \"insecure\" {\n\
 	/* Imported from bind.keys.h: */
 	TRUST_ANCHORS
 
-					    "# END TRUST ANCHORS\n\
+					  "# END TRUST ANCHORS\n\
 \n\
 remote-servers " DEFAULT_IANA_ROOT_ZONE_PRIMARIES " {\n\
 	2801:1b8:10::b;		# b.root-servers.net\n\

@@ -42,7 +42,7 @@ struct isc_hmac_key {
 	uint8_t secret[];
 };
 
-constexpr uint32_t hmac_key_magic = ISC_MAGIC('H', 'M', 'A', 'C');
+constexpr auto hmac_key_magic = ISC_MAGIC('H', 'M', 'A', 'C');
 
 static isc_mem_t *isc__crypto_mctx = NULL;
 

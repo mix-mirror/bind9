@@ -2374,7 +2374,7 @@ setup_lookup(dig_lookup_t *lookup) {
 		 * set by +ednsopt, plus DNS_EDNSOPTIONS to be set
 		 * by other arguments (+nsid, +cookie, etc).
 		 */
-		constexpr size_t MAXOPTS =
+		constexpr auto MAXOPTS =
 			(EDNSOPT_OPTIONS + DNS_EDNS_MAX_OPTIONS);
 
 		dns_message_ednsinit(lookup->sendmsg, lookup->edns,

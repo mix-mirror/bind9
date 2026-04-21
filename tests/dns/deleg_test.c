@@ -144,7 +144,7 @@ lookupdb(dns_delegdb_t *db, const char *namestr, isc_stdtime_t now,
 
 static void
 dumpdb(dns_delegdb_t *db, bool expired, const char *expected) {
-	constexpr char *filename = "delegdb-dump-test.db";
+	constexpr auto filename = "delegdb-dump-test.db";
 	char buffer[1024 * 4] = { 0 };
 	FILE *fp = fopen(filename, "w+");
 
