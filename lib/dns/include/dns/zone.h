@@ -36,6 +36,7 @@
 #include <dns/skr.h>
 #include <dns/types.h>
 #include <dns/xfrin.h>
+#include <dns/zonefetch.h>
 #include <dns/zt.h>
 
 /* Add -DDNS_ZONE_TRACE=1 to CFLAGS for detailed reference tracing */
@@ -1061,7 +1062,19 @@ dns_zone_isexpired(dns_zone_t *zone);
  * Return true if a (secondary, mirror, etc.) zone is expired
  *
  * Requires:
- * \li  'zone\ to be a valid zone.
+ * \li  'zone` to be a valid zone.
+ */
+
+void
+dns_zone_schedulefetch(dns_zone_t *zone, dns_zonefetch_t *fetch,
+		       dns_name_t *name);
+/*%<
+ * Schedules a zonefetch 'fetch' for zone 'zone'.
+ *
+ * Requires:
+ * \li  'zone` to be a valid zone.
+ * \li  'fetch` and 'name' are valid arguments to * `dns_zonefetch_schedule()`
+ * \li  'fetch->fetchtype` is set to a valid fetch type.
  */
 
 #if DNS_ZONE_TRACE

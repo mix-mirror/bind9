@@ -40,6 +40,8 @@
 #include <dns/secalg.h>
 #include <dns/skr.h>
 #include <dns/time.h>
+#include <dns/types.h>
+#include <dns/zone.h>
 
 #include "zone_p.h"
 

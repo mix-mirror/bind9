@@ -436,7 +436,7 @@ struct dns_zone {
 	dns_checkdstype_t checkdstype;
 	uint32_t parent_nscount;
 
-	uint32_t fetchcount[ZONEFETCHTYPE_COUNT];
+	uint32_t fetchcount[DNS_ZONEFETCHTYPE_COUNT];
 
 	dns_remote_t alsonotify;
 	dns_notifyctx_t notifysoa;
