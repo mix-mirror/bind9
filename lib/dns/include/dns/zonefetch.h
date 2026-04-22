@@ -27,14 +27,14 @@
  * Fetch type; various features can initiate fetching and this enum value
  * allows common code paths to differentiate between them.
  *
- * ZONEFETCHTYPE_COUNT is not actually a zonefetch type and needs to be in
+ * DNS_ZONEFETCHTYPE_COUNT is not actually a zonefetch type and needs to be in
  * the last position of the enum.
  */
 typedef enum {
-	ZONEFETCHTYPE_DSYNC,
-	ZONEFETCHTYPE_KEY,
-	ZONEFETCHTYPE_NS,
-	ZONEFETCHTYPE_COUNT,
+	DNS_ZONEFETCHTYPE_DSYNC,
+	DNS_ZONEFETCHTYPE_KEY,
+	DNS_ZONEFETCHTYPE_NS,
+	DNS_ZONEFETCHTYPE_COUNT,
 } dns_zonefetch_type_t;
 
 typedef struct dns_dsyncfetch dns_dsyncfetch_t;
