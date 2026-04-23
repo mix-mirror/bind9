@@ -2079,3 +2079,30 @@ dns_view_setmaxdelegationservers(dns_view_t *view, uint32_t max_servers) {
 
 	return ISC_R_SUCCESS;
 }
+
+void
+dns_view_trustanchor(dns_view_t *view, const dns_name_t *name,
+		     dns_rdataset_t *dsset) {
+	isc_result_t result;
+	dns_keytable_t *secroots = NULL;
+	dns_keynode_t *keynode = NULL;
+
+	REQUIRE(DNS_VIEW_VALID(view));
+	REQUIRE(name != NULL);
+	REQUIRE(!dns_rdataset_isassociated(dsset));
+
+	result = dns_view_getsecroots(view, &secroots);
+	if (result == ISC_R_SUCCESS) {
+		result = dns_keytable_find(secroots, name, &keynode);
+	}
+	if (result == ISC_R_SUCCESS) {
+		(void)dns_keynode_dsset(keynode, dsset);
+	}
+
+	if (keynode != NULL) {
+		dns_keynode_detach(&keynode);
+	}
+	if (secroots != NULL) {
+		dns_keytable_detach(&secroots);
+	}
+}
