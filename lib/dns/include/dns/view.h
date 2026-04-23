@@ -1264,3 +1264,17 @@ dns_view_setmaxdelegationservers(dns_view_t *view, uint32_t max_servers);
  * Set the maximum number of delegation nameservers processed when looking up
  * their IP addresses.
  */
+
+void
+dns_view_trustanchor(dns_view_t *view, const dns_name_t *name,
+		     dns_rdataset_t *dsset);
+/*%
+ * Get the trust anchor for name 'name', if any, and store it in a DS RRset
+ * in 'dsset'.  If no trust anchor is found, 'dsset' will be left
+ * unassociated.
+ *
+ * Requires:
+ *\li	'view' is valid;
+ *\li	'name' is non-NULL;
+ *\li	'dsset' is a valid, non-associated rdataset.
+ */

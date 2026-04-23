@@ -4247,35 +4247,6 @@ cleanup:
 	return result;
 }
 
-static void
-zonemd_trustanchor(dns_zone_t *zone, dns_rdataset_t *dsset) {
-	isc_result_t result;
-	dns_keytable_t *secroots = NULL;
-	dns_keynode_t *keynode = NULL;
-
-	if (zone->view == NULL) {
-		return;
-	}
-
-	result = dns_view_getsecroots(zone->view, &secroots);
-	if (result == ISC_R_SUCCESS) {
-		result = dns_keytable_find(secroots, &zone->origin, &keynode);
-	}
-	if (result == ISC_R_SUCCESS) {
-		if (dns_keynode_dsset(keynode, dsset)) {
-			dns_zone_log(zone, ISC_LOG_INFO,
-				     "ZONEMD with trust anchor");
-		}
-	}
-
-	if (keynode != NULL) {
-		dns_keynode_detach(&keynode);
-	}
-	if (secroots != NULL) {
-		dns_keytable_detach(&secroots);
-	}
-}
-
 isc_result_t
 dns_zone_validatezonemd(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *ver,
 			dns_rdataset_t *dsset) {
@@ -4864,7 +4835,9 @@ zone_postload(dns_zone_t *zone, dns_db_t *db, isc_time_t loadtime,
 		 * that's provably correct, or that we aren't checking
 		 * for it.
 		 */
-		zonemd_trustanchor(zone, &dsset);
+		if (zone->view != NULL) {
+			dns_view_trustanchor(zone->view, &zone->origin, &dsset);
+		}
 		result = dns_zone_validatezonemd(zone, db, NULL, &dsset);
 		dns_rdataset_cleanup(&dsset);
 		if (result != ISC_R_NOTFOUND) {
