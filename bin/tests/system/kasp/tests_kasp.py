@@ -83,6 +83,8 @@ pytestmark = pytest.mark.extra_artifacts(
         "ns1/managed-keys.*",
         "ns3/legacy-keys.*",
         "ns3/dynamic-signed-inline-signing.kasp.db.signed.signed",
+        "ns3/template.db",
+        "ns3/zonemd.kasp.db",
         "ns4/purgekeys.conf",
         "ns4/purgekeys2.conf",
     ]
@@ -1851,8 +1853,75 @@ def test_root_case(ns1):
     isctest.kasp.check_keys(zone, keys, expected)
 
 
-def test_kasp_zonemd(ns3):
-    msg = isctest.query.create("zonemd.kasp", "zonemd")
-    res = isctest.query.tcp(msg, ns3.ip)
-    isctest.check.noerror(res)
-    isctest.check.rr_count_eq(res.answer, 2)
+def test_kasp_zonemd(templates, ns3):
+    def soa_serial():
+        msg = isctest.query.create("zonemd.kasp", "soa")
+        res = isctest.query.tcp(msg, ns3.ip)
+        try:
+            isctest.check.noerror(res)
+            soa = res.get_rrset(res.answer, "zonemd.kasp", "in", "soa")
+        except Exception:  # pylint: disable=broad-except
+            return None
+        return soa[0].serial
+
+    # return the ZONEMD serial, and also check that the expected
+    # number of records are in the answer section.
+    def zonemd_serial(expected):
+        msg = isctest.query.create("zonemd.kasp", "zonemd")
+        res = isctest.query.tcp(msg, ns3.ip)
+        try:
+            isctest.check.noerror(res)
+            isctest.check.rr_count_eq(res.answer, expected)
+        except Exception:  # pylint: disable=broad-except
+            return None
+        zonemd = res.get_rrset(res.answer, "zonemd.kasp", "in", "zonemd")
+        return zonemd[0].serial
+
+    def zonemd_hash():
+        msg = isctest.query.create("zonemd.kasp", "zonemd")
+        res = isctest.query.tcp(msg, ns3.ip)
+        try:
+            isctest.check.noerror(res)
+            zonemd = res.get_rrset(res.answer, "zonemd.kasp", "in", "zonemd")
+        except Exception:  # pylint: disable=broad-except
+            return None
+        return zonemd[0].hash_algorithm
+
+    def check_serials():
+        return soa_serial() == zonemd_serial(3)
+
+    # SOA and ZONEMD serial numbers should match and there should be
+    # three records in the answer section (two ZONEMD, one RRSIG),
+    # because we're configured to use two ZONEMD hash algorithms.
+    isctest.run.retry_with_timeout(check_serials, timeout=5)
+
+    # update the zone and change the dnssec-policy to use only
+    # the default scheme/hash ("zonemd yes").
+    templates.render("ns3/named-fips.conf", {"hashes": 1})
+    templates.render("ns3/zonemd.kasp.db", {"serial": 2})
+    ns3.reload()
+
+    # we now expect only two records: one ZONEMD, one RRSIG
+    def recheck_serials():
+        return soa_serial() == zonemd_serial(2)
+
+    isctest.run.retry_with_timeout(recheck_serials, timeout=5)
+
+    def check_sha384():
+        return zonemd_hash() == 1
+
+    def check_sha512():
+        return zonemd_hash() == 2
+
+    isctest.run.retry_with_timeout(check_sha384, timeout=5)
+
+    # update the zone again to use a specific hash ("zonemd simple sha512")
+    templates.render("ns3/named-fips.conf", {"hashes": 512})
+    templates.render("ns3/zonemd.kasp.db", {"serial": 3})
+    ns3.reload()
+
+    # we still expect two records...
+    isctest.run.retry_with_timeout(recheck_serials, timeout=5)
+
+    # and hash SHA512
+    isctest.run.retry_with_timeout(check_sha512, timeout=5)
