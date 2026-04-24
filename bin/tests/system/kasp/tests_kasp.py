@@ -83,6 +83,7 @@ pytestmark = pytest.mark.extra_artifacts(
         "ns1/managed-keys.*",
         "ns3/legacy-keys.*",
         "ns3/dynamic-signed-inline-signing.kasp.db.signed.signed",
+        "ns3/template.db.in",
         "ns4/purgekeys.conf",
         "ns4/purgekeys2.conf",
     ]
@@ -1851,8 +1852,43 @@ def test_root_case(ns1):
     isctest.kasp.check_keys(zone, keys, expected)
 
 
-def test_kasp_zonemd(ns3):
-    msg = isctest.query.create("zonemd.kasp", "zonemd")
-    res = isctest.query.tcp(msg, ns3.ip)
-    isctest.check.noerror(res)
-    isctest.check.rr_count_eq(res.answer, 2)
+def test_kasp_zonemd(templates, ns3):
+    def soa_serial():
+        msg = isctest.query.create("zonemd.kasp", "soa")
+        res = isctest.query.tcp(msg, ns3.ip)
+        try:
+            isctest.check.noerror(res)
+            soa = res.get_rrset(res.answer, "zonemd.kasp", "in", "soa")
+        except Exception:  # pylint: disable=broad-except
+            return None
+        return soa[0].serial
+
+    def zonemd_serial(expected):
+        msg = isctest.query.create("zonemd.kasp", "zonemd")
+        res = isctest.query.tcp(msg, ns3.ip)
+        try:
+            isctest.check.noerror(res)
+            isctest.check.rr_count_eq(res.answer, expected)
+        except Exception:  # pylint: disable=broad-except
+            return None
+        zonemd = res.get_rrset(res.answer, "zonemd.kasp", "in", "zonemd")
+        return zonemd[0].serial
+
+    # by default we use two ZONEMD schemes, so there should be three
+    # records in the response: two ZONEMD, one RRSIG
+    def check_serials():
+        return soa_serial() == zonemd_serial(3)
+
+    isctest.run.retry_with_timeout(check_serials, timeout=5)
+
+    # update the zone and change the dnssec-policy to use only
+    # one ZONEMD scheme...
+    templates.render("ns3/named-fips.conf", {"schemes": 1})
+    shutil.copyfile("ns3/template2.db.in", "ns3/zonemd.kasp.db")
+    ns3.reload()
+
+    # we now expect only two records: one ZONEMD, one RRSIG
+    def recheck_serials():
+        return soa_serial() == zonemd_serial(2)
+
+    isctest.run.retry_with_timeout(recheck_serials, timeout=5)

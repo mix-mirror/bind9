@@ -140,9 +140,20 @@ dnssec-policy "cds-cdnskey-alt" {
 	cds-digest-types { "sha-384"; };
 };
 
-dnssec-policy "zonemd" {
+dnssec-policy "zonemd-1" {
 	dnskey-ttl 305;
-        zonemd yes;
+	zonemd yes;
+
+	keys {
+		ksk key-store "ksk" lifetime unlimited algorithm @DEFAULT_ALGORITHM@;
+		zsk key-store "zsk" lifetime unlimited algorithm @DEFAULT_ALGORITHM@;
+	};
+};
+
+dnssec-policy "zonemd-2" {
+	dnskey-ttl 305;
+	zonemd simple sha384;
+	zonemd simple sha512;
 
 	keys {
 		ksk key-store "ksk" lifetime unlimited algorithm @DEFAULT_ALGORITHM@;

@@ -198,16 +198,6 @@ zone "max-zone-ttl.kasp" {
 	dnssec-policy "ttl";
 };
 
-
-/*
- * Zone that uses ZONEMD.
- */
-zone "zonemd.kasp" {
-	type primary;
-	file "zonemd.kasp.db";
-	dnssec-policy "zonemd";
-};
-
 /*
  * Zones in different signing states.
  */
@@ -291,4 +281,14 @@ zone "zsk-retired.autosign" {
 	type primary;
 	file "zsk-retired.autosign.db";
 	dnssec-policy "autosign";
+};
+
+/*
+ * Zone that uses ZONEMD.
+ */
+{% set schemes = schemes | default(2) %}
+zone "zonemd.kasp" {
+	type primary;
+	file "zonemd.kasp.db";
+	dnssec-policy "zonemd-@schemes@";
 };
