@@ -12,6 +12,8 @@
  */
 
 #include <lmdb.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include <isc/file.h>
 
@@ -235,6 +237,7 @@ nzd_env_close(dns_view_t *view) {
 	const char *dbpath = NULL;
 	char dbpath_copy[PATH_MAX];
 	char lockpath[PATH_MAX];
+	struct stat sb;
 	int status, ret;
 
 	if (view->newzone.dbenv == NULL) {
@@ -249,9 +252,13 @@ nzd_env_close(dns_view_t *view) {
 
 	/*
 	 * Database files must be owned by the eventual user, not by root.
+	 * Use lstat()/S_ISREG/lchown() so a symlink at the path cannot
+	 * redirect the chown to an unrelated file.
 	 */
-	ret = chown(dbpath_copy, named_os_uid(), -1);
-	UNUSED(ret);
+	if (lstat(dbpath_copy, &sb) == 0 && S_ISREG(sb.st_mode)) {
+		ret = lchown(dbpath_copy, named_os_uid(), -1);
+		UNUSED(ret);
+	}
 
 	/*
 	 * Some platforms need the lockfile not to exist when we reopen the
