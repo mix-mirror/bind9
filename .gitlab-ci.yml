@@ -2664,8 +2664,9 @@ merged-metadata:
     - git remote add base-project "https://oauth2:${BIND_TEAM_API_TOKEN}@gitlab.isc.org/${BASE_PROJECT}.git"
     - git fetch --depth=1000 base-project "${BASE_COMMIT}"
     - git rebase --rebase-merges "${BASE_COMMIT}"
+    - autoreconf -fi
     - *configure
-    - meson compile -C build
+    - make -j${BUILD_PARALLEL_JOBS:-1} V=1
     - git range-diff --color=always "${BASE_COMMIT}" "${CI_COMMIT_SHA}" HEAD
     - git push -f origin "HEAD:${CI_COMMIT_REF_NAME}"
   after_script:
@@ -2714,3 +2715,19 @@ autorebase-security:
   <<: *autorebase
   rules:
     - if: '$CI_PROJECT_NAMESPACE == "isc-private" && $CI_PIPELINE_SOURCE == "pipeline" && $CI_COMMIT_REF_NAME =~ /^security-(main|bind-9\.[0-9]+)$/ && $REBASE_ONLY == "1" && $CI_COMMIT_REF_NAME =~ $AUTOREBASED_BRANCHES'
+
+autorebase-trigger-sub:
+  <<: *autorebase_common
+  <<: *base_image
+  rules:
+    - if: '$CI_PROJECT_NAMESPACE == "isc-private" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_NAME =~ /^security-bind-9\.[0-9]+$/'
+  tags:
+    - smalljob
+  script:
+    - >
+      curl -X POST --fail --header "PRIVATE-TOKEN: ${BIND_TEAM_WRITE_TOKEN}" --header "Content-Type: application/json" --data '{ "ref": "'"${CI_COMMIT_BRANCH#security-}"'-sub", "variables": [ {"key": "REBASE_ONLY", "value": "1"}, {"key": "BASE_PROJECT", "value": "isc-private/bind9"}, {"key": "BASE_COMMIT", "value": "'"${CI_COMMIT_SHA}"'"} ] }' https://gitlab.isc.org/api/v4/projects/9/pipeline
+
+autorebase-sub:
+  <<: *autorebase
+  rules:
+    - if: '$CI_PROJECT_NAMESPACE == "isc-private" && $CI_PIPELINE_SOURCE == "api" && $CI_COMMIT_REF_NAME =~ /^bind-9\.[0-9]+-sub$/ && $REBASE_ONLY == "1" && $CI_COMMIT_REF_NAME =~ $AUTOREBASED_BRANCHES'
