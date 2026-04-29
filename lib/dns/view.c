@@ -997,7 +997,7 @@ bestzonecut_zone(dns_view_t *view, const dns_name_t *name, dns_name_t *fname,
 	unsigned int ztoptions = DNS_ZTFIND_MIRROR;
 	isc_result_t result;
 
-	if ((options & DNS_DBFIND_ABOVE) != 0) {
+	if ((options & DNS_DBFIND_NOEXACT) != 0) {
 		ztoptions |= DNS_ZTFIND_NOEXACT;
 	}
 
@@ -1186,7 +1186,7 @@ dns_view_bestzonecut(dns_view_t *view, const dns_name_t *name,
 		 * the same, and this avoid adding extra code here to extract
 		 * A/AAAA rdataset if any.
 		 */
-		dns_delegset_fromnsrdataset(view->mctx, &rdataset, delegsetp);
+		dns_delegset_fromnsrdataset(&rdataset, delegsetp);
 	}
 
 	dns_rdataset_cleanup(&rdataset);

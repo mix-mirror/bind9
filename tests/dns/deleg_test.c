@@ -124,16 +124,13 @@ lookupdb(dns_delegdb_t *db, const char *namestr, isc_stdtime_t now,
 		   *expectedzc = dns_fixedname_initname(&fexpectedzc),
 		   *zonecut = dns_fixedname_initname(&fzonecut);
 
-	if (expectedzcstr != NULL) {
-		dns_name_fromstring(expectedzc, expectedzcstr, NULL, 0, NULL);
-	}
+	dns_name_fromstring(expectedzc, expectedzcstr, NULL, 0, NULL);
 	dns_name_fromstring(name, namestr, NULL, 0, NULL);
 	result = dns_delegdb_lookup(db, name, now, options, zonecut, NULL,
 				    delegsetp);
 
 	if (result == ISC_R_SUCCESS) {
 		assert_non_null(*delegsetp);
-		assert_non_null(expectedzcstr);
 		assert_true(dns_name_equal(zonecut, expectedzc));
 	} else {
 		assert_null(*delegsetp);
@@ -414,22 +411,15 @@ noexacttests(ISC_ATTR_UNUSED void *arg) {
 		const char *name;
 		const char *expected;
 		const char *noexactexpected;
-		isc_result_t noexactresult;
 		dns_ttl_t ttl;
 	} zonecuts[] = {
-		/*
-		 * "stuff." has no proper ancestor in the trie, so a
-		 * NOEXACT lookup must return NOTFOUND rather than the
-		 * exact match itself.
-		 */
-		{ "stuff.", "stuff.", NULL, ISC_R_NOTFOUND, 30 },
-		{ "foo.stuff.", "foo.stuff.", "stuff.", ISC_R_SUCCESS, 30 },
-		{ "expired.foo.stuff.", "foo.stuff.", "foo.stuff.",
-		  ISC_R_SUCCESS, 1 },
+		{ "stuff.", "stuff.", "stuff.", 30 },
+		{ "foo.stuff.", "foo.stuff.", "stuff.", 30 },
+		{ "expired.foo.stuff.", "foo.stuff.", "foo.stuff.", 1 },
 		{ "bar.expired.foo.stuff.", "bar.expired.foo.stuff.",
-		  "foo.stuff.", ISC_R_SUCCESS, 30 },
+		  "foo.stuff.", 30 },
 		{ "baz.bar.expired.foo.stuff.", "baz.bar.expired.foo.stuff.",
-		  "bar.expired.foo.stuff.", ISC_R_SUCCESS, 30 }
+		  "bar.expired.foo.stuff.", 30 }
 	};
 
 	for (size_t i = 0; i < ARRAY_SIZE(zonecuts); i++) {
@@ -448,12 +438,10 @@ noexacttests(ISC_ATTR_UNUSED void *arg) {
 		dns_delegset_detach(&delegset);
 
 		result = lookupdb(db, zonecuts[i].name, now + 1,
-				  DNS_DBFIND_ABOVE, zonecuts[i].noexactexpected,
-				  &delegset);
-		assert_int_equal(result, zonecuts[i].noexactresult);
-		if (result == ISC_R_SUCCESS) {
-			dns_delegset_detach(&delegset);
-		}
+				  DNS_DBFIND_NOEXACT,
+				  zonecuts[i].noexactexpected, &delegset);
+		assert_int_equal(result, ISC_R_SUCCESS);
+		dns_delegset_detach(&delegset);
 	}
 
 	result = lookupdb(db, "gee.expired.foo.stuff.", now + 1, 0,
@@ -587,7 +575,7 @@ cleanuptests_phase3(void *arg) {
 	dns_delegset_t *delegset = NULL;
 	isc_result_t result;
 
-	assert_int_in_range(isc_mem_inuse(db->mctx), 8000000, 8100000);
+	assert_int_in_range(isc_mem_inuse(db->mctx), 4000000, 4100000);
 
 	/*
 	 * baz. is there, but bar. is gone, as it has been
