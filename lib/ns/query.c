@@ -4900,7 +4900,7 @@ redirect2(ns_client_t *client, dns_name_t *name, dns_rdataset_t *rdataset,
 			return ISC_R_NOTFOUND;
 		}
 	} else {
-		dns_name_copy(redirectname, client->inner.view->redirectzone);
+		dns_name_copy(client->inner.view->redirectzone, redirectname);
 	}
 
 	result = query_getdb(client, redirectname, qtype,
