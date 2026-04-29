@@ -6689,25 +6689,11 @@ cache_delegns(respctx_t *rctx) {
 	dns_delegdb_t *delegdb = fctx->res->view->deleg;
 	dns_delegset_t *delegset = NULL;
 	dns_ttl_t ttl = rctx->ns_rdataset->ttl;
-	dns_fixedname_t fparent;
-	dns_name_t *parent = dns_fixedname_initname(&fparent);
-	size_t labels;
 	isc_result_t result;
 
 	FCTXTRACE("cache_delegns");
 
 	dns_delegset_allocset(delegdb, &delegset);
-
-	/*
-	 * The top of the delegated zone is `rctx->ns_name`. So truncating
-	 * the first label gives the common parent domain allowed to get
-	 * glues (this allows in-domain and sibling, but not different
-	 * parents).
-	 */
-	labels = dns_name_countlabels(rctx->ns_name);
-	if (labels > 1) {
-		dns_name_getlabelsequence(rctx->ns_name, 1, labels - 1, parent);
-	}
 
 	DNS_RDATASET_FOREACH(rctx->ns_rdataset) {
 		dns_rdataset_t *gluerdataset = NULL;
@@ -6729,26 +6715,20 @@ cache_delegns(respctx_t *rctx) {
 		INSIST(rdata.type == dns_rdatatype_ns);
 		dns_rdata_tostruct(&rdata, &ns, NULL);
 
-		if (labels > 1 && dns_name_issubdomain(&ns.name, parent)) {
-			result = dns_message_findname(rctx->query->rmessage,
-						      DNS_SECTION_ADDITIONAL,
-						      &ns.name, dns_rdatatype_a,
-						      0, NULL, &gluerdataset);
-			if (result == ISC_R_SUCCESS) {
-				cache_delegglue(delegset, deleg, &ttl,
-						gluerdataset);
-				gluerdataset = NULL;
-			}
+		result = dns_message_findname(
+			rctx->query->rmessage, DNS_SECTION_ADDITIONAL, &ns.name,
+			dns_rdatatype_a, 0, NULL, &gluerdataset);
+		if (result == ISC_R_SUCCESS) {
+			cache_delegglue(delegset, deleg, &ttl, gluerdataset);
+			gluerdataset = NULL;
+		}
 
-			result = dns_message_findname(
-				rctx->query->rmessage, DNS_SECTION_ADDITIONAL,
-				&ns.name, dns_rdatatype_aaaa, 0, NULL,
-				&gluerdataset);
-			if (result == ISC_R_SUCCESS) {
-				cache_delegglue6(delegset, deleg, &ttl,
-						 gluerdataset);
-				gluerdataset = NULL;
-			}
+		result = dns_message_findname(
+			rctx->query->rmessage, DNS_SECTION_ADDITIONAL, &ns.name,
+			dns_rdatatype_aaaa, 0, NULL, &gluerdataset);
+		if (result == ISC_R_SUCCESS) {
+			cache_delegglue6(delegset, deleg, &ttl, gluerdataset);
+			gluerdataset = NULL;
 		}
 
 		if (ISC_LIST_EMPTY(deleg->addresses)) {
