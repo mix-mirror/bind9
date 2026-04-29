@@ -2695,12 +2695,12 @@ merged-metadata:
       MSG="${MSG}\n**First bad commit**: [${CONFLICT_COMMIT}](https://gitlab.isc.org/${OLDEST_MERGE_REQUEST_PROJECT}/-/commit/${CONFLICT_COMMIT}) (authored by ${CONFLICT_COMMIT_AUTHOR})"
       MSG="${MSG}\n**First bad merge request**: https://gitlab.isc.org/${OLDEST_MERGE_REQUEST_PROJECT}/-/merge_requests/${OLDEST_MERGE_REQUEST_ID}"
     - |
-      curl -s -o /dev/null -X POST -H content-type:application/json -d '{"channel":"bind-9-team", "text": "'"${MSG}"'" }' "${MATTERMOST_WEBHOOK_URL}"
+      curl -s -o /dev/null -X POST -H content-type:application/json -d '{"channel":"pspacek-test", "text": "'"${MSG}"'" }' "${MATTERMOST_WEBHOOK_URL}"
 
 autorebase-trigger-security:
   <<: *autorebase_common
   rules:
-    - if: '$CI_PROJECT_NAMESPACE == "isc-projects" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_NAME =~ /^(main|bind-9\.[0-9]+)$/'
+    - if: '$CI_PROJECT_NAMESPACE == "isc-projects" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_NAME =~ /^michal\/(main|bind-9\.[0-9]+)$/'
   inherit:
       variables: false
   variables:
@@ -2709,7 +2709,7 @@ autorebase-trigger-security:
     BASE_COMMIT: "${CI_COMMIT_SHA}"
   trigger:
       project: isc-private/bind9
-      branch: "security-${CI_COMMIT_BRANCH}"
+      branch: "security-bind-9.20"
 
 autorebase-security:
   <<: *autorebase
@@ -2725,9 +2725,9 @@ autorebase-trigger-sub:
     - smalljob
   script:
     - >
-      curl -X POST --fail --header "PRIVATE-TOKEN: ${BIND_TEAM_WRITE_TOKEN}" --header "Content-Type: application/json" --data '{ "ref": "'"${CI_COMMIT_BRANCH#security-}"'-sub", "variables": [ {"key": "REBASE_ONLY", "value": "1"}, {"key": "BASE_PROJECT", "value": "isc-private/bind9"}, {"key": "BASE_COMMIT", "value": "'"${CI_COMMIT_SHA}"'"} ] }' https://gitlab.isc.org/api/v4/projects/9/pipeline
+      curl -X POST --fail --header "PRIVATE-TOKEN: ${BIND_TEAM_WRITE_TOKEN}" --header "Content-Type: application/json" --data '{ "ref": "michal/'"${CI_COMMIT_BRANCH#security-}"'-sub-AUTOREBASE", "variables": [ {"key": "REBASE_ONLY", "value": "1"}, {"key": "BASE_PROJECT", "value": "isc-private/bind9"}, {"key": "BASE_COMMIT", "value": "'"${CI_COMMIT_SHA}"'"} ] }' https://gitlab.isc.org/api/v4/projects/9/pipeline
 
 autorebase-sub:
   <<: *autorebase
   rules:
-    - if: '$CI_PROJECT_NAMESPACE == "isc-private" && $CI_PIPELINE_SOURCE == "api" && $CI_COMMIT_REF_NAME =~ /^bind-9\.[0-9]+-sub$/ && $REBASE_ONLY == "1" && $CI_COMMIT_REF_NAME =~ $AUTOREBASED_BRANCHES'
+    - if: '$CI_PROJECT_NAMESPACE == "isc-private" && $CI_PIPELINE_SOURCE == "api" && $CI_COMMIT_REF_NAME =~ /^michal\/bind-9\.[0-9]+-sub-AUTOREBASE$/ && $REBASE_ONLY == "1" && $CI_COMMIT_REF_NAME =~ $AUTOREBASED_BRANCHES'
