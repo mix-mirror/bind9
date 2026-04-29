@@ -2725,9 +2725,9 @@ autorebase-trigger-sub:
     - smalljob
   script:
     - >
-      curl -X POST --fail --header "PRIVATE-TOKEN: ${BIND_TEAM_WRITE_TOKEN}" --header "Content-Type: application/json" --data '{ "ref": "michal/'"${CI_COMMIT_BRANCH#security-}"'-sub-AUTOREBASE", "variables": [ {"key": "REBASE_ONLY", "value": "1"}, {"key": "BASE_PROJECT", "value": "isc-private/bind9"}, {"key": "BASE_COMMIT", "value": "'"${CI_COMMIT_SHA}"'"} ] }' https://gitlab.isc.org/api/v4/projects/9/pipeline
+      curl -X POST --fail --header "Content-Type: application/json" --data '{ "token": "'"${CI_JOB_TOKEN}"'", "ref": "michal/'"${CI_COMMIT_BRANCH#security-}"'-sub-AUTOREBASE", "variables": { "REBASE_ONLY": "1", "BASE_PROJECT": "isc-private/bind9", "BASE_COMMIT": "'"${CI_COMMIT_SHA}"'" } }' https://gitlab.isc.org/api/v4/projects/9/trigger/pipeline
 
 autorebase-sub:
   <<: *autorebase
   rules:
-    - if: '$CI_PROJECT_NAMESPACE == "isc-private" && $CI_PIPELINE_SOURCE == "api" && $CI_COMMIT_REF_NAME =~ /^michal\/bind-9\.[0-9]+-sub-AUTOREBASE$/ && $REBASE_ONLY == "1" && $CI_COMMIT_REF_NAME =~ $AUTOREBASED_BRANCHES'
+    - if: '$CI_PROJECT_NAMESPACE == "isc-private" && $CI_PIPELINE_SOURCE == "pipeline" && $CI_COMMIT_REF_NAME =~ /^michal\/bind-9\.[0-9]+-sub-AUTOREBASE$/ && $REBASE_ONLY == "1" && $CI_COMMIT_REF_NAME =~ $AUTOREBASED_BRANCHES'
