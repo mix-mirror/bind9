@@ -249,7 +249,7 @@ hmac_generate(isc_md_type_t type, dst_key_t *key) {
 	isc_buffer_t b;
 	isc_result_t result;
 	unsigned int bytes, len;
-	unsigned char data[ISC_MAX_MD_SIZE] = { 0 };
+	unsigned char data[ISC_MAX_BLOCK_SIZE] = { 0 };
 
 	len = isc_md_type_get_block_size(type);
 
