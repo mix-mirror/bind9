@@ -12,17 +12,6 @@
  */
 
 provider libdns {
-	probe delegdb_cleanup_done(void *, int);
-	probe delegdb_cleanup_start(void *, int);
-	probe delegdb_create(void *);
-	probe delegdb_delete(void *, char *, int, int);
-	probe delegdb_evict(void *, void *, char *);
-	probe delegdb_insert_done(void *, char *, int);
-	probe delegdb_insert_start(void *, char *);
-	probe delegdb_lookup_done(void *, char *, int);
-	probe delegdb_lookup_start(void *, char *);
-	probe delegdb_reuse(void *);
-	probe delegdb_shutdown(void *);
 	probe xfrin_axfr_finalize_begin(void *, char *);
 	probe xfrin_axfr_finalize_end(void *, char *, int);
 	probe xfrin_connected(void *, char *, int);

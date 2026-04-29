@@ -24,8 +24,6 @@
 #include <dns/qp.h>
 #include <dns/view.h>
 
-#include "probes-dns.h"
-
 #define DELEGDB_NODE_MAGIC	 ISC_MAGIC('D', 'e', 'G', 'N')
 #define VALID_DELEGDB_NODE(node) ISC_MAGIC_VALID(node, DELEGDB_NODE_MAGIC)
 
@@ -227,8 +225,6 @@ dns_delegdb_create(dns_delegdb_t **delegdbp) {
 		ISC_SIEVE_INIT(delegdb->lru[i]);
 	}
 
-	LIBDNS_DELEGDB_CREATE(delegdb);
-
 	*delegdbp = delegdb;
 }
 
@@ -240,8 +236,6 @@ dns_delegdb_reuse(dns_view_t *oldview, dns_view_t *newview) {
 
 	dns_delegdb_attach(oldview->deleg, &newview->deleg);
 	isc_refcount_increment(&oldview->deleg->owners);
-
-	LIBDNS_DELEGDB_REUSE(newview->deleg);
 }
 
 typedef struct nodes_rcu_head {
@@ -361,14 +355,6 @@ dns_delegdb_lookup(dns_delegdb_t *delegdb, const dns_name_t *name,
 	isc_result_t result = ISC_R_SHUTTINGDOWN;
 	dns_qpmulti_t *nodes = NULL;
 	dns_qpread_t qpr = {};
-	char namebuf[DNS_NAME_FORMATSIZE];
-
-	if (LIBDNS_DELEGDB_LOOKUP_START_ENABLED() ||
-	    LIBDNS_DELEGDB_LOOKUP_DONE_ENABLED())
-	{
-		dns_name_format(name, namebuf, sizeof(namebuf));
-	}
-	LIBDNS_DELEGDB_LOOKUP_START(delegdb, namebuf);
 
 	rcu_read_lock();
 	nodes = rcu_dereference(delegdb->nodes);
@@ -380,8 +366,6 @@ dns_delegdb_lookup(dns_delegdb_t *delegdb, const dns_name_t *name,
 		dns_qpread_destroy(nodes, &qpr);
 	}
 	rcu_read_unlock();
-
-	LIBDNS_DELEGDB_LOOKUP_DONE(delegdb, namebuf, result);
 
 	return result;
 }
@@ -481,8 +465,6 @@ delegdb_cleanup(dns_qp_t *qp, dns_delegdb_t *delegdb, size_t requested) {
 		return;
 	}
 
-	LIBDNS_DELEGDB_CLEANUP_START(delegdb, (int)requested);
-
 	while (reclaimed < requested) {
 		node = ISC_SIEVE_NEXT(delegdb->lru[isc_tid()], visited, link);
 
@@ -491,19 +473,10 @@ delegdb_cleanup(dns_qp_t *qp, dns_delegdb_t *delegdb, size_t requested) {
 		}
 		reclaimed += node->size;
 
-		if (LIBDNS_DELEGDB_EVICT_ENABLED()) {
-			char namebuf[DNS_NAME_FORMATSIZE];
-			dns_name_format(&node->zonecut, namebuf,
-					sizeof(namebuf));
-			LIBDNS_DELEGDB_EVICT(delegdb, node, namebuf);
-		}
-
 		ISC_SIEVE_UNLINK(delegdb->lru[isc_tid()], node, link);
 		(void)dns_qp_deletename(qp, &node->zonecut,
 					DNS_DBNAMESPACE_NORMAL, NULL, NULL);
 	}
-
-	LIBDNS_DELEGDB_CLEANUP_DONE(delegdb, (int)reclaimed);
 }
 
 static size_t
@@ -570,7 +543,6 @@ dns_delegset_insert(dns_delegdb_t *delegdb, const dns_name_t *zonecut,
 	dns_qpread_t qpr = {};
 	isc_stdtime_t now = isc_stdtime_now();
 	dns_qpmulti_t *nodes = NULL;
-	char zonecutbuf[DNS_NAME_FORMATSIZE];
 
 	REQUIRE(VALID_DELEGDB(delegdb));
 	REQUIRE(DNS_NAME_VALID(zonecut));
@@ -583,17 +555,11 @@ dns_delegset_insert(dns_delegdb_t *delegdb, const dns_name_t *zonecut,
 	 */
 	REQUIRE(delegset->mctx == delegdb->mctx);
 
-	if (LIBDNS_DELEGDB_INSERT_START_ENABLED() ||
-	    LIBDNS_DELEGDB_INSERT_DONE_ENABLED())
-	{
-		dns_name_format(zonecut, zonecutbuf, sizeof(zonecutbuf));
-	}
-	LIBDNS_DELEGDB_INSERT_START(delegdb, zonecutbuf);
-
 	rcu_read_lock();
 	nodes = rcu_dereference(delegdb->nodes);
 	if (nodes == NULL) {
-		CLEANUP(ISC_R_SHUTTINGDOWN);
+		rcu_read_unlock();
+		return ISC_R_SHUTTINGDOWN;
 	}
 
 	/*
@@ -665,8 +631,6 @@ dns_delegset_insert(dns_delegdb_t *delegdb, const dns_name_t *zonecut,
 
 cleanup:
 	rcu_read_unlock();
-
-	LIBDNS_DELEGDB_INSERT_DONE(delegdb, zonecutbuf, result);
 
 	return result;
 }
@@ -959,11 +923,6 @@ dns_delegdb_delete(dns_delegdb_t *delegdb, const dns_name_t *name, bool tree) {
 	dns_qpmulti_t *nodes = NULL;
 	dns_qp_t *qp = NULL;
 	isc_result_t result = ISC_R_SHUTTINGDOWN;
-	char namebuf[DNS_NAME_FORMATSIZE];
-
-	if (LIBDNS_DELEGDB_DELETE_ENABLED()) {
-		dns_name_format(name, namebuf, sizeof(namebuf));
-	}
 
 	rcu_read_lock();
 	nodes = rcu_dereference(delegdb->nodes);
@@ -981,8 +940,6 @@ dns_delegdb_delete(dns_delegdb_t *delegdb, const dns_name_t *name, bool tree) {
 	}
 	rcu_read_unlock();
 
-	LIBDNS_DELEGDB_DELETE(delegdb, namebuf, (int)tree, result);
-
 	return result;
 }
 
@@ -992,7 +949,6 @@ delegdb_shutdown_async(void *arg) {
 
 	REQUIRE(isc_loop_get(isc_tid()) == isc_loop_main());
 	REQUIRE(delegdb != NULL && VALID_DELEGDB(delegdb));
-
 	if (isc_refcount_decrement(&delegdb->owners) == 1) {
 		dns_qpmulti_t *nodes = rcu_xchg_pointer(&delegdb->nodes, NULL);
 
@@ -1005,7 +961,6 @@ delegdb_shutdown_async(void *arg) {
 			};
 			call_rcu(&nrh->rcu_head, deleg_destroy_qpmulti);
 		}
-		LIBDNS_DELEGDB_SHUTDOWN(delegdb);
 	}
 }
 
