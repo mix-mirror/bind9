@@ -136,7 +136,6 @@ def create(
     qtype,
     qclass=dns.rdataclass.IN,
     dnssec: bool = True,
-    rd: bool = True,
     cd: bool = False,
     ad: bool = True,
 ) -> dns.message.Message:
@@ -144,9 +143,7 @@ def create(
     msg = dns.message.make_query(
         qname, qtype, qclass, use_edns=True, want_dnssec=dnssec
     )
-    msg.flags = 0
-    if rd:
-        msg.flags = dns.flags.RD
+    msg.flags = dns.flags.RD
     if ad:
         msg.flags |= dns.flags.AD
     if cd:

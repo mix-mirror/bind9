@@ -422,12 +422,12 @@ enum {
  */
 #define FIND_WANTEVENT(fn)	(((fn)->options & DNS_ADBFIND_WANTEVENT) != 0)
 #define FIND_WANTEMPTYEVENT(fn) (((fn)->options & DNS_ADBFIND_EMPTYEVENT) != 0)
-#define FIND_AVOIDFETCHES(fn) (((fn)->options & DNS_ADBFIND_AVOIDFETCHES) != 0)
-#define FIND_STARTATZONE(fn)  (((fn)->options & DNS_ADBFIND_STARTATZONE) != 0)
-#define FIND_STATICSTUB(fn)   (((fn)->options & DNS_ADBFIND_STATICSTUB) != 0)
-#define FIND_NOVALIDATE(fn)   (((fn)->options & DNS_ADBFIND_NOVALIDATE) != 0)
-#define FIND_HAS_ADDRS(fn)    (!ISC_LIST_EMPTY((fn)->list))
-#define FIND_NOFETCH(fn)      (((fn)->options & DNS_ADBFIND_NOFETCH) != 0)
+#define FIND_AVOIDFETCHES(fn)	(((fn)->options & DNS_ADBFIND_AVOIDFETCHES) != 0)
+#define FIND_STARTATZONE(fn)	(((fn)->options & DNS_ADBFIND_STARTATZONE) != 0)
+#define FIND_STATICSTUB(fn)	(((fn)->options & DNS_ADBFIND_STATICSTUB) != 0)
+#define FIND_NOVALIDATE(fn)	(((fn)->options & DNS_ADBFIND_NOVALIDATE) != 0)
+#define FIND_HAS_ADDRS(fn)	(!ISC_LIST_EMPTY((fn)->list))
+#define FIND_NOFETCH(fn)	(((fn)->options & DNS_ADBFIND_NOFETCH) != 0)
 
 #define ADBNAME_TYPE_MASK                                   \
 	(DNS_ADBFIND_STARTATZONE | DNS_ADBFIND_STATICSTUB | \
@@ -1712,97 +1712,6 @@ dns_adb_shutdown(dns_adb_t *adb) {
 	isc_async_run(isc_loop_main(), dns_adb_shutdown_async, adb);
 }
 
-static void
-findaddrinfo(dns_adb_t *adb, const isc_sockaddr_t *addr,
-	     dns_adbaddrinfo_t **adbaddrp, isc_stdtime_t now,
-	     unsigned int options) {
-	dns_adbentry_t *adbentry = get_attached_and_locked_entry(adb, now,
-								 addr);
-	if ((options & DNS_ADBFIND_QUOTAEXEMPT) == 0 &&
-	    adbentry_overquota(adbentry))
-	{
-		goto out;
-	}
-
-	in_port_t port = isc_sockaddr_getport(addr);
-	*adbaddrp = new_adbaddrinfo(adb, adbentry, port);
-
-out:
-	UNLOCK(&adbentry->lock);
-	dns_adbentry_detach(&adbentry);
-}
-
-void
-dns_adb_createaddrinfosfind(dns_adb_t *adb, isc_netaddrlist_t *addrs,
-			    in_port_t port, unsigned int options,
-			    isc_stdtime_t now, size_t maxaddrs,
-			    dns_adbfind_t **findp, size_t *findlen) {
-	dns_adbfind_t *find = NULL;
-	isc_sockaddr_t sockaddr = {};
-
-	REQUIRE(DNS_ADB_VALID(adb));
-	REQUIRE(addrs != NULL);
-	REQUIRE(findp != NULL && *findp == NULL);
-	REQUIRE(maxaddrs > 0);
-
-	rcu_read_lock();
-
-	if (atomic_load(&adb->shuttingdown)) {
-		rcu_read_unlock();
-		return;
-	}
-
-	if (now == 0) {
-		now = isc_stdtime_now();
-	}
-
-	find = new_adbfind(adb, port);
-	ISC_LIST_FOREACH(*addrs, addrlink, link) {
-		dns_adbaddrinfo_t *addrinfo = NULL;
-
-		sockaddr.type.sa.sa_family = addrlink->addr.family;
-		switch (addrlink->addr.family) {
-		case AF_INET:
-			if ((options & DNS_ADBFIND_INET) == 0) {
-				continue;
-			}
-			sockaddr.type.sin.sin_addr = addrlink->addr.type.in;
-			sockaddr.type.sin.sin_port = htons(port);
-			break;
-		case AF_INET6:
-			if ((options & DNS_ADBFIND_INET6) == 0) {
-				continue;
-			}
-			/*
-			 * TODO: findaddrinfo() compares the scope, this might
-			 * be a problem...
-			 */
-			sockaddr.type.sin6.sin6_addr = addrlink->addr.type.in6;
-			sockaddr.type.sin6.sin6_port = htons(port);
-
-			break;
-		default:
-			UNREACHABLE();
-		}
-
-		findaddrinfo(adb, &sockaddr, &addrinfo, now, options);
-		if (addrinfo == NULL) {
-			find->options |= DNS_ADBFIND_OVERQUOTA;
-			continue;
-		}
-
-		ISC_LIST_APPEND(find->list, addrinfo, publink);
-		(*findlen)++;
-
-		if (maxaddrs - *findlen == 0) {
-			break;
-		}
-	}
-
-	*findp = find;
-	rcu_read_unlock();
-}
-
 /*
  * Look up the name in our internal database.
  *
@@ -2853,7 +2762,8 @@ fetch_name(dns_adbname_t *adbname, bool start_at_zone, bool no_validation,
 	dns_adb_t *adb = NULL;
 	dns_fixedname_t fixed;
 	dns_name_t *name = NULL;
-	dns_delegset_t *delegset = NULL;
+	dns_rdataset_t rdataset;
+	dns_rdataset_t *nameservers = NULL;
 	unsigned int options = no_validation ? DNS_FETCHOPT_NOVALIDATE : 0;
 
 	REQUIRE(DNS_ADBNAME_VALID(adbname));
@@ -2867,12 +2777,15 @@ fetch_name(dns_adbname_t *adbname, bool start_at_zone, bool no_validation,
 
 	adbname->fetch_err = FIND_ERR_NOTFOUND;
 
+	dns_rdataset_init(&rdataset);
+
 	if (start_at_zone) {
 		DP(ENTER_LEVEL, "fetch_name: starting at zone for name %p",
 		   adbname);
 		name = dns_fixedname_initname(&fixed);
 		CHECK(dns_view_bestzonecut(adb->view, adbname->name, name, NULL,
-					   0, 0, true, false, &delegset));
+					   0, 0, true, false, &rdataset));
+		nameservers = &rdataset;
 		options |= DNS_FETCHOPT_UNSHARED;
 	} else if (adb->view->qminimization) {
 		options |= DNS_FETCHOPT_QMINIMIZE | DNS_FETCHOPT_QMIN_SKIP_IP6A;
@@ -2893,7 +2806,7 @@ fetch_name(dns_adbname_t *adbname, bool start_at_zone, bool no_validation,
 	 */
 	dns_adbname_ref(adbname);
 	result = dns_resolver_createfetch(
-		adb->res, adbname->name, type, name, delegset, NULL, NULL, 0,
+		adb->res, adbname->name, type, name, nameservers, NULL, NULL, 0,
 		options, depth, qc, gqc, parent, isc_loop(), fetch_callback,
 		adbname, NULL, &fetch->rdataset, NULL, &fetch->fetch);
 	if (result != ISC_R_SUCCESS) {
@@ -2916,10 +2829,7 @@ cleanup:
 	if (fetch != NULL) {
 		free_adbfetch(adb, &fetch);
 	}
-
-	if (delegset != NULL) {
-		dns_delegset_detach(&delegset);
-	}
+	dns_rdataset_cleanup(&rdataset);
 
 	return result;
 }
@@ -3249,7 +3159,14 @@ dns_adb_findaddrinfo(dns_adb_t *adb, const isc_sockaddr_t *addr,
 		return ISC_R_SHUTTINGDOWN;
 	}
 
-	findaddrinfo(adb, addr, adbaddrp, now, DNS_ADBFIND_QUOTAEXEMPT);
+	dns_adbentry_t *adbentry = get_attached_and_locked_entry(adb, now,
+								 addr);
+
+	in_port_t port = isc_sockaddr_getport(addr);
+	*adbaddrp = new_adbaddrinfo(adb, adbentry, port);
+
+	UNLOCK(&adbentry->lock);
+	dns_adbentry_detach(&adbentry);
 
 	rcu_read_unlock();
 

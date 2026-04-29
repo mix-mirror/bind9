@@ -243,7 +243,6 @@ struct dumpcontext {
 	isc_mem_t *mctx;
 	bool dumpcache;
 	bool dumpzones;
-	bool dumpdeleg;
 	bool dumpadb;
 	bool dumpexpired;
 	bool dumpfail;
@@ -3927,13 +3926,6 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 
 	max_cache_size = configure_max_cache_size(view, maps);
 
-	/*
-	 * Since both the delegation DB and ADB uses 1/8 of the
-	 * `max_cache_size`, let's use 6/8 for the main cache DB.
-	 */
-	const size_t cache_size_slice = max_cache_size / 8;
-	const size_t main_cache_size = cache_size_slice * 6;
-
 	/* Check-names. */
 	obj = NULL;
 	result = named_checknames_get(maps, response_synonyms, &obj);
@@ -4170,12 +4162,6 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	INSIST(result == ISC_R_SUCCESS);
 	stale_refresh_time = cfg_obj_asduration(obj);
 
-	result = dns_viewlist_find(&named_g_server->viewlist, view->name,
-				   view->rdclass, &pview);
-	if (result != ISC_R_NOTFOUND && result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
-
 	/*
 	 * Configure the view's cache.
 	 *
@@ -4219,7 +4205,7 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	}
 	if (nsc != NULL) {
 		if (!cache_sharable(nsc->primaryview, view, zero_no_soattl,
-				    main_cache_size, max_stale_ttl,
+				    max_cache_size, max_stale_ttl,
 				    stale_refresh_time))
 		{
 			isc_log_write(NAMED_LOGCATEGORY_GENERAL,
@@ -4241,6 +4227,11 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 			}
 		}
 	} else if (strcmp(cachename, view->name) == 0) {
+		result = dns_viewlist_find(&named_g_server->viewlist, cachename,
+					   view->rdclass, &pview);
+		if (result != ISC_R_NOTFOUND && result != ISC_R_SUCCESS) {
+			goto cleanup;
+		}
 		if (pview != NULL) {
 			if (!cache_reusable(pview, view, zero_no_soattl)) {
 				isc_log_write(NAMED_LOGCATEGORY_GENERAL,
@@ -4265,6 +4256,7 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 			dns_resolver_getqueryrttstats(pview->resolver,
 						      &resqueryinrttstats,
 						      &resqueryoutrttstats);
+			dns_view_detach(&pview);
 		}
 	}
 
@@ -4295,7 +4287,7 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 
 	dns_view_setcache(view, cache, shared_cache);
 
-	dns_cache_setcachesize(cache, main_cache_size);
+	dns_cache_setcachesize(cache, max_cache_size);
 	dns_cache_setservestalettl(cache, max_stale_ttl);
 	dns_cache_setservestalerefresh(cache, stale_refresh_time);
 
@@ -4319,24 +4311,6 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 
 	CHECK(dns_view_createresolver(view, resopts, tlsctx_client_cache,
 				      dispatch4, dispatch6));
-
-	/*
-	 * The deleg DB cache is preserved if reconfiguring/reloading the
-	 * server.
-	 */
-	if (pview != NULL) {
-		dns_delegdb_reuse(pview, view);
-	} else {
-		dns_delegdb_create(&view->deleg);
-	}
-	dns_delegdb_setsize(view->deleg, cache_size_slice);
-
-	/*
-	 * The previous view isn't needed anymore.
-	 */
-	if (pview != NULL) {
-		dns_view_detach(&pview);
-	}
 
 	if (resstats == NULL) {
 		isc_stats_create(mctx, &resstats, dns_resstatscounter_max);
@@ -4363,7 +4337,7 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	 * Set the ADB cache size to 1/8th of the max-cache-size or
 	 * MAX_ADB_SIZE_FOR_CACHESHARE when the cache is shared.
 	 */
-	max_adb_size = cache_size_slice;
+	max_adb_size = max_cache_size / 8;
 	if (max_adb_size < DNS_ADB_MINADBSIZE) {
 		max_adb_size = DNS_ADB_MINADBSIZE; /* Force minimum. */
 	}
@@ -6598,7 +6572,7 @@ tat_send(void *arg) {
 	char namebuf[DNS_NAME_FORMATSIZE];
 	dns_fixedname_t fdomain;
 	dns_name_t *domain = NULL;
-	dns_delegset_t *delegset = NULL;
+	dns_rdataset_t nameservers;
 	isc_result_t result;
 	dns_name_t *keyname = NULL;
 	dns_name_t *tatname = NULL;
@@ -6630,23 +6604,25 @@ tat_send(void *arg) {
 	 * to.
 	 *
 	 * After the dns_view_findzonecut() call, 'domain' will hold the
-	 * deepest zone cut we can find for 'keyname' while 'delegset' will
-	 * hold the NS names at that zone cut.
+	 * deepest zone cut we can find for 'keyname' while 'nameservers' will
+	 * hold the NS RRset at that zone cut.
 	 */
 	domain = dns_fixedname_initname(&fdomain);
+	dns_rdataset_init(&nameservers);
 	result = dns_view_bestzonecut(tat->view, keyname, domain, NULL, 0, 0,
-				      true, true, &delegset);
+				      true, true, &nameservers);
 	if (result == ISC_R_SUCCESS) {
 		result = dns_resolver_createfetch(
 			tat->view->resolver, tatname, dns_rdatatype_null,
-			domain, delegset, NULL, NULL, 0, 0, 0, NULL, NULL, NULL,
-			tat->loop, tat_done, tat, NULL, &tat->rdataset,
+			domain, &nameservers, NULL, NULL, 0, 0, 0, NULL, NULL,
+			NULL, tat->loop, tat_done, tat, NULL, &tat->rdataset,
 			&tat->sigrdataset, &tat->fetch);
 
 		/*
-		 * dns_resolver_createfetch() will internally attach delegset.
+		 * dns_resolver_createfetch() will create its own copy of
+		 * nameservers.
 		 */
-		dns_delegset_detach(&delegset);
+		dns_rdataset_cleanup(&nameservers);
 	}
 
 	/*
@@ -10813,12 +10789,6 @@ resume:
 		dns_db_attach(dctx->view->view->cachedb, &dctx->cache);
 	}
 
-	if (dctx->dumpdeleg) {
-		fprintf(dctx->fp, ";\n; Delegation cache\n;\n");
-		dns_delegdb_dump(dctx->view->view->deleg, dctx->dumpexpired,
-				 dctx->fp);
-	}
-
 	if (dctx->cache != NULL) {
 		if (dctx->dumpadb) {
 			dns_adb_t *adb = NULL;
@@ -10834,7 +10804,6 @@ resume:
 		}
 		dns_db_detach(&dctx->cache);
 	}
-
 	if (dctx->dumpzones) {
 		style = &dns_master_style_full;
 	nextzone:
@@ -10923,7 +10892,6 @@ named_server_dumpdb(named_server_t *server, isc_lex_t *lex,
 		.mctx = server->mctx,
 		.dumpcache = true,
 		.dumpadb = true,
-		.dumpdeleg = true,
 		.dumpfail = true,
 		.viewlist = ISC_LIST_INITIALIZER,
 	};
@@ -10952,33 +10920,23 @@ named_server_dumpdb(named_server_t *server, isc_lex_t *lex,
 		/* only dump zones, suppress caches */
 		dctx->dumpadb = false;
 		dctx->dumpcache = false;
-		dctx->dumpdeleg = false;
 		dctx->dumpfail = false;
 		dctx->dumpzones = true;
-		ptr = next_token(lex, NULL);
-	} else if (ptr != NULL && strcmp(ptr, "-deleg") == 0) {
-		/* only dump deleg db, suppress other caches */
-		dctx->dumpcache = false;
-		dctx->dumpfail = false;
-		dctx->dumpadb = false;
 		ptr = next_token(lex, NULL);
 	} else if (ptr != NULL && strcmp(ptr, "-adb") == 0) {
 		/* only dump adb, suppress other caches */
 		dctx->dumpcache = false;
-		dctx->dumpdeleg = false;
 		dctx->dumpfail = false;
 		ptr = next_token(lex, NULL);
 	} else if (ptr != NULL && strcmp(ptr, "-bad") == 0) {
 		/* only dump badcache, suppress other caches */
 		dctx->dumpadb = false;
-		dctx->dumpdeleg = false;
 		dctx->dumpcache = false;
 		dctx->dumpfail = false;
 		ptr = next_token(lex, NULL);
 	} else if (ptr != NULL && strcmp(ptr, "-fail") == 0) {
 		/* only dump servfail cache, suppress other caches */
 		dctx->dumpadb = false;
-		dctx->dumpdeleg = false;
 		dctx->dumpcache = false;
 		ptr = next_token(lex, NULL);
 	}
@@ -11279,13 +11237,6 @@ cleanup:
 	return result;
 }
 
-static void
-flush_delegdb(dns_view_t *view) {
-	dns_delegdb_shutdown(view->deleg);
-	dns_delegdb_detach(&view->deleg);
-	dns_delegdb_create(&view->deleg);
-}
-
 isc_result_t
 named_server_flushcache(named_server_t *server, isc_lex_t *lex) {
 	char *ptr = NULL;
@@ -11363,8 +11314,6 @@ named_server_flushcache(named_server_t *server, isc_lex_t *lex) {
 	 * two views.  Then this will be a O(n^2/4) operation.
 	 */
 	ISC_LIST_FOREACH(server->viewlist, view, link) {
-		flush_delegdb(view);
-
 		if (!dns_view_iscacheshared(view)) {
 			continue;
 		}
@@ -11419,73 +11368,11 @@ named_server_flushcache(named_server_t *server, isc_lex_t *lex) {
 	return result;
 }
 
-static bool
-flushnode_cache(dns_view_t *view, const dns_name_t *name, const char *target,
-		bool tree) {
-	isc_result_t result;
-
-	/*
-	 * It's a little inefficient to try flushing name for all views
-	 * if some of the views share a single cache.  But since the
-	 * operation is lightweight we prefer simplicity here.
-	 */
-	result = dns_view_flushnode(view, name, tree);
-	if (result != ISC_R_SUCCESS) {
-		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
-			      ISC_LOG_ERROR,
-			      "flushing %s '%s' in cache view '%s' "
-			      "failed: %s",
-			      tree ? "tree" : "name", target, view->name,
-			      isc_result_totext(result));
-	}
-
-	return result == ISC_R_SUCCESS;
-}
-
-static bool
-flushnode_delegcache(dns_view_t *view, const dns_name_t *name,
-		     const char *target, bool tree) {
-	isc_result_t result;
-
-	result = dns_delegdb_delete(view->deleg, name, tree);
-	if (result != ISC_R_SUCCESS) {
-		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
-			      ISC_LOG_ERROR,
-			      "flushing %s '%s' in delegation cache view '%s' "
-			      "failed: %s",
-			      tree ? "tree" : "name", target, view->name,
-			      isc_result_totext(result));
-	}
-
-	return result == ISC_R_SUCCESS;
-}
-
-static void
-logflushcachesuccess(const char *viewname, const char *target, bool tree,
-		     bool deleg) {
-	const char *cache =
-		deleg ? (viewname == NULL ? "delegation cache for all views"
-					  : "delegation cache for view")
-		      : (viewname == NULL ? "DNS cache for all views"
-					  : "DNS cache for view");
-
-	if (viewname == NULL) {
-		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
-			      ISC_LOG_INFO, "flushing %s '%s' in %s succeeded",
-			      tree ? "tree" : "name", target, cache);
-	} else {
-		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
-			      ISC_LOG_INFO,
-			      "flushing %s '%s' in %s %s succeeded",
-			      tree ? "tree" : "name", target, cache, viewname);
-	}
-}
-
 isc_result_t
 named_server_flushnode(named_server_t *server, isc_lex_t *lex, bool tree) {
 	char *ptr = NULL, *viewname = NULL;
 	char target[DNS_NAME_FORMATSIZE];
-	bool flushedcache = false, flusheddelegcache = false;
+	bool flushed;
 	bool found;
 	isc_result_t result = ISC_R_SUCCESS;
 	isc_buffer_t b;
@@ -11514,41 +11401,51 @@ named_server_flushnode(named_server_t *server, isc_lex_t *lex, bool tree) {
 	viewname = next_token(lex, NULL);
 
 	isc_loopmgr_pause();
+	flushed = true;
 	found = false;
 	ISC_LIST_FOREACH(server->viewlist, view, link) {
 		if (viewname != NULL && strcasecmp(viewname, view->name) != 0) {
 			continue;
 		}
-
 		found = true;
-
-		if (flushnode_cache(view, name, target, tree)) {
-			flushedcache = true;
+		/*
+		 * It's a little inefficient to try flushing name for all views
+		 * if some of the views share a single cache.  But since the
+		 * operation is lightweight we prefer simplicity here.
+		 */
+		result = dns_view_flushnode(view, name, tree);
+		if (result != ISC_R_SUCCESS) {
+			flushed = false;
+			isc_log_write(NAMED_LOGCATEGORY_GENERAL,
+				      NAMED_LOGMODULE_SERVER, ISC_LOG_ERROR,
+				      "flushing %s '%s' in cache view '%s' "
+				      "failed: %s",
+				      tree ? "tree" : "name", target,
+				      view->name, isc_result_totext(result));
 		}
-
-		if (flushnode_delegcache(view, name, target, tree)) {
-			flusheddelegcache = true;
+	}
+	if (flushed && found) {
+		if (viewname != NULL) {
+			isc_log_write(NAMED_LOGCATEGORY_GENERAL,
+				      NAMED_LOGMODULE_SERVER, ISC_LOG_INFO,
+				      "flushing %s '%s' in cache view '%s' "
+				      "succeeded",
+				      tree ? "tree" : "name", target, viewname);
+		} else {
+			isc_log_write(NAMED_LOGCATEGORY_GENERAL,
+				      NAMED_LOGMODULE_SERVER, ISC_LOG_INFO,
+				      "flushing %s '%s' in all cache views "
+				      "succeeded",
+				      tree ? "tree" : "name", target);
 		}
-	}
-
-	if (flushedcache && found) {
-		logflushcachesuccess(viewname, target, tree, false);
 		result = ISC_R_SUCCESS;
-	}
-
-	if (flusheddelegcache && found) {
-		logflushcachesuccess(viewname, target, tree, true);
-		result = ISC_R_SUCCESS;
-	}
-
-	if (!flushedcache && !flusheddelegcache) {
+	} else {
 		if (!found) {
-			isc_log_write(
-				NAMED_LOGCATEGORY_GENERAL,
-				NAMED_LOGMODULE_SERVER, ISC_LOG_ERROR,
-				"flushing %s '%s' in caches for view '%s' "
-				"failed: view not found",
-				tree ? "tree" : "name", target, viewname);
+			isc_log_write(NAMED_LOGCATEGORY_GENERAL,
+				      NAMED_LOGMODULE_SERVER, ISC_LOG_ERROR,
+				      "flushing %s '%s' in cache view '%s' "
+				      "failed: view not found",
+				      tree ? "tree" : "name", target, viewname);
 		}
 		result = ISC_R_FAILURE;
 	}

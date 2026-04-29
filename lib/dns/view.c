@@ -174,10 +174,6 @@ destroy(dns_view_t *view) {
 	isc_refcount_destroy(&view->references);
 	isc_refcount_destroy(&view->weakrefs);
 
-	if (view->deleg != NULL) {
-		dns_delegdb_detach(&view->deleg);
-	}
-
 	if (view->order != NULL) {
 		dns_order_detach(&view->order);
 	}
@@ -399,10 +395,6 @@ shutdown_view(dns_view_t *view) {
 		dns_resolver_shutdown(view->resolver);
 	}
 
-	if (view->deleg != NULL) {
-		dns_delegdb_shutdown(view->deleg);
-	}
-
 	rcu_read_lock();
 	adb = rcu_dereference(view->adb);
 	if (adb != NULL) {
@@ -543,7 +535,6 @@ dns_view_createresolver(dns_view_t *view, unsigned int options,
 
 	RETERR(dns_resolver_create(view, options, tlsctx_cache, dispatchv4,
 				   dispatchv6, &view->resolver));
-
 	isc_mem_create("ADB", &mctx);
 	dns_adb_create(mctx, view, &view->adb);
 	isc_mem_detach(&mctx);
@@ -989,7 +980,7 @@ dns_view_simplefind(dns_view_t *view, const dns_name_t *name,
 }
 
 static isc_result_t
-bestzonecut_zone(dns_view_t *view, const dns_name_t *name, dns_name_t *fname,
+findzonecut_zone(dns_view_t *view, const dns_name_t *name, dns_name_t *fname,
 		 dns_name_t *dcname, isc_stdtime_t now, unsigned int options,
 		 dns_rdataset_t *rdataset) {
 	dns_db_t *db = NULL;
@@ -1062,14 +1053,15 @@ cleanup:
 }
 
 static isc_result_t
-bestzonecut_delegdb(dns_view_t *view, const dns_name_t *name, dns_name_t *fname,
-		    dns_name_t *dcname, isc_stdtime_t now, unsigned int options,
-		    dns_delegset_t **delegsetp) {
+findzonecut_cache(dns_view_t *view, const dns_name_t *name, dns_name_t *fname,
+		  dns_name_t *dcname, isc_stdtime_t now, unsigned int options,
+		  dns_rdataset_t *rdataset) {
 	isc_result_t result = DNS_R_NXDOMAIN;
 
-	if (view->deleg != NULL) {
-		result = dns_delegdb_lookup(view->deleg, name, now, options,
-					    fname, dcname, delegsetp);
+	if (view->cachedb != NULL) {
+		result = dns_db_findzonecut(view->cachedb, name, options, now,
+					    NULL, fname, dcname, rdataset,
+					    NULL);
 	}
 
 	/*
@@ -1078,26 +1070,26 @@ bestzonecut_delegdb(dns_view_t *view, const dns_name_t *name, dns_name_t *fname,
 	 * keep DNS_R_NXDOMAIN, so the hints can be checked.
 	 */
 	if (result != ISC_R_SUCCESS) {
+		dns_rdataset_cleanup(rdataset);
 		result = DNS_R_NXDOMAIN;
 	}
+
 	return result;
 }
 
 static void
-bestzonecut_zoneorcache(dns_view_t *view, const dns_name_t *name,
+findzonecut_zoneorcache(dns_view_t *view, const dns_name_t *name,
 			dns_name_t *fname, dns_name_t *dcname,
 			isc_stdtime_t now, unsigned int options,
-			dns_rdataset_t *rdataset, dns_delegset_t **delegsetp) {
+			dns_rdataset_t *rdataset) {
 	isc_result_t result;
+	dns_rdataset_t crdataset = DNS_RDATASET_INIT;
 	dns_fixedname_t f, dc;
 	dns_name_t *cfname = dns_fixedname_initname(&f);
 	dns_name_t *cdcname = dns_fixedname_initname(&dc);
 
-	result = bestzonecut_delegdb(view, name, cfname, cdcname, now, options,
-				     delegsetp);
-	if (result != ISC_R_SUCCESS) {
-		return;
-	}
+	CHECK(findzonecut_cache(view, name, cfname, cdcname, now, options,
+				&crdataset));
 
 	bool cacheclosest = dns_name_issubdomain(cfname, fname);
 	bool staticstub = rdataset->attributes.staticstub &&
@@ -1105,18 +1097,20 @@ bestzonecut_zoneorcache(dns_view_t *view, const dns_name_t *name,
 
 	if (cacheclosest && !staticstub) {
 		dns_rdataset_cleanup(rdataset);
+		dns_rdataset_clone(&crdataset, rdataset);
 
 		dns_name_copy(cfname, fname);
 		if (dcname != NULL) {
 			dns_name_copy(cdcname, dcname);
 		}
-	} else {
-		dns_delegset_detach(delegsetp);
 	}
+
+cleanup:
+	dns_rdataset_cleanup(&crdataset);
 }
 
 static isc_result_t
-bestzonecut_hints(dns_view_t *view, dns_name_t *fname, dns_name_t *dcname,
+findzonecut_hints(dns_view_t *view, dns_name_t *fname, dns_name_t *dcname,
 		  isc_stdtime_t now, dns_rdataset_t *rdataset) {
 	isc_result_t result = ISC_R_NOTFOUND;
 
@@ -1139,20 +1133,13 @@ isc_result_t
 dns_view_bestzonecut(dns_view_t *view, const dns_name_t *name,
 		     dns_name_t *fname, dns_name_t *dcname, isc_stdtime_t now,
 		     unsigned int options, bool usehints, bool usecache,
-		     dns_delegset_t **delegsetp) {
+		     dns_rdataset_t *rdataset) {
 	isc_result_t result;
-	dns_rdataset_t rdatasetdata = DNS_RDATASET_INIT;
-	dns_rdataset_t *rdataset = NULL;
 
 	REQUIRE(DNS_VIEW_VALID(view));
 	REQUIRE(view->frozen);
 
-	if (delegsetp != NULL) {
-		REQUIRE(*delegsetp == NULL);
-		rdataset = &rdatasetdata;
-	}
-
-	result = bestzonecut_zone(view, name, fname, dcname, now, options,
+	result = findzonecut_zone(view, name, fname, dcname, now, options,
 				  rdataset);
 
 	if (result == DNS_R_NXDOMAIN && usecache) {
@@ -1160,41 +1147,29 @@ dns_view_bestzonecut(dns_view_t *view, const dns_name_t *name,
 		 * No local zone matches `name`, but the cache might have a
 		 * delegation.
 		 */
-		result = bestzonecut_delegdb(view, name, fname, dcname, now,
-					     options, delegsetp);
+		result = findzonecut_cache(view, name, fname, dcname, now,
+					   options, rdataset);
 	} else if (result == ISC_R_SUCCESS && usecache) {
 		/*
 		 * A zone with a (possibly partial) delegation match but the
 		 * cache can have a more precise delegation.
 		 */
-		bestzonecut_zoneorcache(view, name, fname, dcname, now, options,
-					rdataset, delegsetp);
+		findzonecut_zoneorcache(view, name, fname, dcname, now, options,
+					rdataset);
 	}
 
 	/*
 	 * No local zone nor cache match. Last attempt with the hints.
 	 */
 	if (result == DNS_R_NXDOMAIN && usehints) {
-		result = bestzonecut_hints(view, fname, dcname, now, rdataset);
+		result = findzonecut_hints(view, fname, dcname, now, rdataset);
 	}
 
 	if (result != ISC_R_SUCCESS) {
 		result = DNS_R_NXDOMAIN;
-	} else {
-		/*
-		 * The rdataset came either from a local zone or a hint. Either
-		 * way, we only considering the NS rdataset here, so if there
-		 * are glues, they'll be ignored. This is okay: the delegation
-		 * type will be DNS_DELEGSET_NS_NAMES, so ADB will do a NS name
-		 * lookup but immediately find the results locally (because this
-		 * came from a local zone or hint). So the resolution will be
-		 * the same, and this avoid adding extra code here to extract
-		 * A/AAAA rdataset if any.
-		 */
-		dns_delegset_fromnsrdataset(rdataset, delegsetp);
+		dns_rdataset_cleanup(rdataset);
 	}
 
-	dns_rdataset_cleanup(rdataset);
 	return result;
 }
 

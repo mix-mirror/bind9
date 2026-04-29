@@ -10,7 +10,8 @@
 # information regarding copyright ownership.
 
 
-# from dns.edns import EDECode
+from dns.edns import EDECode
+
 import pytest
 
 from isctest.util import param
@@ -73,9 +74,7 @@ def test_trust_anchors():
     res1 = isctest.query.tcp(msg, "10.53.0.3")
     res2 = isctest.query.tcp(msg, "10.53.0.5")
     isctest.check.noerror(res1)
-    # This EDE code should be added by the validator, but currently it isn't.
-    # See issue #5832
-    # isctest.check.ede(res2, EDECode.UNSUPPORTED_DNSKEY_ALGORITHM)
+    isctest.check.ede(res2, EDECode.UNSUPPORTED_DNSKEY_ALGORITHM)
     isctest.check.noerror(res2)
     isctest.check.noadflag(res2)
 
@@ -83,10 +82,7 @@ def test_trust_anchors():
     res1 = isctest.query.tcp(msg, "10.53.0.3")
     res2 = isctest.query.tcp(msg, "10.53.0.5")
     isctest.check.noerror(res1)
-    # This EDE code should be added by the validator, but currently it isn't.
-    # See issue #5832
-    # isctest.check.ede(res2, EDECode.UNSUPPORTED_DNSKEY_ALGORITHM)
-    print(res2)
+    isctest.check.ede(res2, EDECode.UNSUPPORTED_DNSKEY_ALGORITHM)
     isctest.check.noerror(res2)
     isctest.check.noadflag(res2)
 

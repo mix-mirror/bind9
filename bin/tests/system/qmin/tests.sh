@@ -124,6 +124,7 @@ sort ans2/query.log >ans2/query.log.sorted
 cat <<__EOF | diff ans2/query.log.sorted - >/dev/null || ret=1
 ADDR a.bit.longer.ns.name.good.
 ADDR a.bit.longer.ns.name.good.
+ADDR ns2.good.
 ADDR ns3.good.
 ADDR ns3.good.
 NS bit.longer.ns.name.good.
@@ -161,6 +162,7 @@ sort ans2/query.log >ans2/query.log.sorted
 cat <<__EOF | diff ans2/query.log.sorted - >/dev/null || ret=1
 ADDR a.bit.longer.ns.name.good.
 ADDR a.bit.longer.ns.name.good.
+ADDR ns2.good.
 ADDR ns3.good.
 ADDR ns3.good.
 NS bit.longer.ns.name.good.
@@ -192,6 +194,7 @@ grep "status: NXDOMAIN" dig.out.test$n >/dev/null || ret=1
 sleep 1
 sort ans2/query.log >ans2/query.log.sorted
 cat <<__EOF | diff ans2/query.log.sorted - >/dev/null || ret=1
+ADDR ns2.bad.
 NS bad.
 NS boing.bad.
 __EOF
@@ -213,6 +216,7 @@ cat <<__EOF | diff ans2/query.log.sorted - >/dev/null || ret=1
 ADDR a.bit.longer.ns.name.bad.
 ADDR a.bit.longer.ns.name.bad.
 ADDR icky.icky.icky.ptang.zoop.boing.bad.
+ADDR ns2.bad.
 ADDR ns3.bad.
 ADDR ns3.bad.
 NS boing.bad.
@@ -238,6 +242,7 @@ grep "status: SERVFAIL" dig.out.test$n >/dev/null || ret=1
 sleep 1
 sort ans2/query.log >ans2/query.log.sorted
 cat <<__EOF | diff ans2/query.log.sorted - >/dev/null || ret=1
+ADDR ns2.ugly.
 NS boing.ugly.
 NS ugly.
 __EOF
@@ -260,9 +265,11 @@ cat <<__EOF | diff ans2/query.log.sorted - >/dev/null || ret=1
 ADDR a.bit.longer.ns.name.ugly.
 ADDR a.bit.longer.ns.name.ugly.
 ADDR icky.icky.icky.ptang.zoop.boing.ugly.
+ADDR ns2.ugly.
 ADDR ns3.ugly.
 ADDR ns3.ugly.
 NS boing.ugly.
+NS name.ugly.
 NS name.ugly.
 __EOF
 echo "ADDR icky.icky.icky.ptang.zoop.boing.ugly." | diff ans3/query.log - >/dev/null || ret=1
@@ -292,6 +299,7 @@ sort ans2/query.log >ans2/query.log.sorted
 cat <<__EOF | diff ans2/query.log.sorted - >/dev/null || ret=1
 ADDR a.bit.longer.ns.name.slow.
 ADDR a.bit.longer.ns.name.slow.
+ADDR ns2.slow.
 ADDR ns3.slow.
 ADDR ns3.slow.
 NS bit.longer.ns.name.slow.
@@ -351,6 +359,7 @@ sort ans2/query.log >ans2/query.log.sorted
 cat <<__EOF | diff ans2/query.log.sorted - >/dev/null || ret=1
 ADDR a.bit.longer.ns.name.good.
 ADDR a.bit.longer.ns.name.good.
+ADDR ns2.good.
 ADDR ns3.good.
 ADDR ns3.good.
 NS bit.longer.ns.name.good.
@@ -440,12 +449,15 @@ grep "a\.b\.stale\..*1.*IN.*TXT.*hooray" dig.out.test$n >/dev/null || ret=1
 sleep 1
 sort ans2/query.log >ans2/query.log.sorted
 cat <<__EOF | diff ans2/query.log.sorted - >/dev/null || ret=1
+ADDR ns.b.stale.
+ADDR ns2.stale.
 NS b.stale.
 NS stale.
 __EOF
 test -f ans3/query.log && ret=1
 sort ans4/query.log >ans4/query.log.sorted
 cat <<__EOF | diff ans4/query.log.sorted - >/dev/null || ret=1
+ADDR ns.b.stale.
 NS b.stale.
 TXT a.b.stale.
 __EOF
@@ -464,11 +476,14 @@ grep "a\.b\.stale\..*1.*IN.*TXT.*hooray" dig.out.test$n >/dev/null || ret=1
 sleep 1
 sort ans2/query.log >ans2/query.log.sorted
 cat <<__EOF | diff ans2/query.log.sorted - >/dev/null || ret=1
+ADDR ns.b.stale.
+ADDR ns2.stale.
 NS b.stale.
 __EOF
 test -f ans3/query.log && ret=1
 sort ans4/query.log >ans4/query.log.sorted
 cat <<__EOF | diff ans4/query.log.sorted - >/dev/null || ret=1
+ADDR ns.b.stale.
 TXT a.b.stale.
 __EOF
 for ans in ans2 ans3 ans4; do mv -f $ans/query.log query-$ans-$n.log 2>/dev/null || true; done
@@ -504,12 +519,15 @@ grep "a\.b\.stale\..*1.*IN.*TXT.*hooray" dig.out.test$n >/dev/null || ret=1
 sleep 1
 sort ans2/query.log >ans2/query.log.sorted
 cat <<__EOF | diff ans2/query.log.sorted - >/dev/null || ret=1
+ADDR ns.b.stale.
+ADDR ns2.stale.
 NS b.stale.
 NS stale.
 __EOF
 test -f ans3/query.log && ret=1
 sort ans4/query.log >ans4/query.log.sorted
 cat <<__EOF | diff ans4/query.log.sorted - >/dev/null || ret=1
+ADDR ns.b.stale.
 NS b.stale.
 TXT a.b.stale.
 __EOF
@@ -528,11 +546,14 @@ grep "a\.b\.stale\..*1.*IN.*TXT.*hooray" dig.out.test$n >/dev/null || ret=1
 sleep 1
 sort ans2/query.log >ans2/query.log.sorted
 cat <<__EOF | diff ans2/query.log.sorted - >/dev/null || ret=1
+ADDR ns.b.stale.
+ADDR ns2.stale.
 NS b.stale.
 __EOF
 test -f ans3/query.log && ret=1
 sort ans4/query.log >ans4/query.log.sorted
 cat <<__EOF | diff ans4/query.log.sorted - >/dev/null || ret=1
+ADDR ns.b.stale.
 TXT a.b.stale.
 __EOF
 for ans in ans2 ans3 ans4; do mv -f $ans/query.log query-$ans-$n.log 2>/dev/null || true; done

@@ -76,21 +76,13 @@ n=$((n + 1))
 echo_i "checking that the timeout didn't skew the resolver responses counters and did update the timeout counter ($n)"
 ret=0
 rndccmd 10.53.0.1 stats || ret=1
-# the timeout query triggers two extra queries, so we expect a small increase
 grep -F 'responses received' ns1/named.stats >ns1/named.stats.responses-after || true
-read before _ <ns1/named.stats.responses-before || true
-read after _ <ns1/named.stats.responses-after || true
-[ $((after - before)) -lt 3 ] || ret=1
 grep -F 'queries with RTT' ns1/named.stats >ns1/named.stats.rtt-after || true
-read before _ <ns1/named.stats.rtt-before || true
-read after _ <ns1/named.stats.rtt-after || true
-[ $((after - before)) -lt 3 ] || ret=1
-# ...but the timeout counter should increase by more
 grep -F 'query timeouts' ns1/named.stats >ns1/named.stats.timeouts-after || true
 mv ns1/named.stats ns1/named.stats-after
-read before _ <ns1/named.stats.timeouts-before || true
-read after _ <ns1/named.stats.timeouts-after || true
-[ $((after - before)) -ge 3 ] || ret=1
+diff ns1/named.stats.responses-before ns1/named.stats.responses-after >/dev/null || ret=1
+diff ns1/named.stats.rtt-before ns1/named.stats.rtt-after >/dev/null || ret=1
+diff ns1/named.stats.timeouts-before ns1/named.stats.timeouts-after >/dev/null && ret=1
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -439,15 +431,24 @@ grep "status: NOERROR" dig.ns5.prime.${n} >/dev/null || {
 }
 cp ns4/tld2.db ns4/tld.db
 rndc_reload ns4 10.53.0.4 tld
+old=
 for i in 0 1 2 3 4 5 6 7 8 9; do
   foo=0
   dig_with_opts @10.53.0.5 ns$i.to-be-removed.tld A >/dev/null
   dig_with_opts @10.53.0.5 www.to-be-removed.tld A >dig.ns5.out.${n}
   grep "status: NXDOMAIN" dig.ns5.out.${n} >/dev/null || foo=1
+  [ $foo = 0 ] && break
+  $NSUPDATE <<EOF
+server 10.53.0.6 ${PORT}
+zone to-be-removed.tld
+update add to-be-removed.tld 100 NS ns${i}.to-be-removed.tld
+update delete to-be-removed.tld NS ns${old}.to-be-removed.tld
+send
+EOF
+  old=$i
   sleep 1
-  # After 5 seconds, the delegation expires, so we expect NXDOMAIN
-  [ $i -gt 5 ] && [ $foo -eq 1 ] && ret=1
 done
+[ $ret = 0 ] && ret=$foo
 if [ $ret != 0 ]; then
   echo_i "failed"
   status=1
