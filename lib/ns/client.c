@@ -62,6 +62,10 @@
 #include <ns/server.h>
 #include <ns/stats.h>
 #include <ns/update.h>
+#include "dns/name.h"
+#include "dns/rdatatype.h"
+#include "isc/buffer.h"
+#include "isc/types.h"
 
 /***
  *** Client
@@ -326,6 +330,27 @@ client_senddone(isc_nmhandle_t *handle, isc_result_t result, void *cbarg) {
 	client->inner.sendhandle = NULL;
 
 	if (result == ISC_R_SUCCESS) {
+		const unsigned int rtt = (unsigned int)
+			isc_time_microdiff(&client->inner.tnow,
+					   &client->inner.requesttime);
+		if (rtt >= 200000) {
+		isc_buffer_t *logline = NULL;
+		isc_buffer_allocate(client->message->mctx, &logline, 2048);
+		isc_buffer_putstr(logline, "SLOW ANSWER: ");
+		dns_name_totext(client->query.origqname, 0, logline);
+		isc_buffer_putstr(logline, " ");
+		dns_rdatatype_totext(client->query.qtype, logline);
+		isc_buffer_putstr(logline, " ");
+		dns_rcode_totext(client->message->rcode, logline);
+		isc_buffer_putstr(logline, " ");
+		isc_buffer_printf(logline, "%d ms", rtt / 1000); // ms
+		isc_log_write(DNS_LOGCATEGORY_SECURITY,
+			      NS_LOGMODULE_CLIENT, ISC_LOG_INFO,
+			      "%s",
+			      (char *)isc_buffer_base(logline));
+		isc_buffer_free(&logline);
+		}
+
 		isc_histomulti_t *hmpin = NULL;
 
 		if (client->inner.view != NULL &&
@@ -335,9 +360,6 @@ client_senddone(isc_nmhandle_t *handle, isc_result_t result, void *cbarg) {
 				client->inner.view->resolver, &hmpin, NULL);
 		}
 		if (hmpin != NULL) {
-			const unsigned int rtt = (unsigned int)
-				isc_time_microdiff(&client->inner.tnow,
-						   &client->inner.requesttime);
 			const unsigned int rttms = rtt / US_PER_MS;
 			isc_histomulti_inc(hmpin, rttms);
 			isc_histomulti_detach(&hmpin);
