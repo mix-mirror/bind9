@@ -8656,19 +8656,34 @@ query_delegation_recurse(query_ctx_t *qctx) {
 	} else {
 		/*
 		 * Any other recursion.
+		 *
+		 * The NS rdataset that led us here came from the main
+		 * cache and can be a stale copy; if the delegation DB
+		 * has an entry for qname, prefer that as a fresher and
+		 * more authoritative source.  The zonecut and the
+		 * "zone-better-than-cache" override have already been
+		 * resolved by query_lookup() and the static-stub
+		 * handling above, so we do not need a full
+		 * dns_view_bestzonecut() walk here.
 		 */
 		dns_delegset_t *delegset = NULL;
 		dns_fixedname_t ffname;
-		dns_name_t *fname = dns_fixedname_initname(&ffname);
-		isc_result_t tresult;
+		dns_name_t *delegfname = dns_fixedname_initname(&ffname);
+		dns_name_t *fname = qctx->fname;
 
-		tresult = dns_view_bestzonecut(qctx->view, qname, fname, NULL,
-					       qctx->client->inner.now, 0, true,
-					       true, &delegset);
-		if (tresult != ISC_R_SUCCESS) {
+		if (qctx->view->deleg != NULL) {
+			isc_result_t tresult =
+				dns_delegdb_lookup(qctx->view->deleg, qname,
+						   qctx->client->inner.now, 0,
+						   delegfname, NULL, &delegset);
+			if (tresult == ISC_R_SUCCESS) {
+				fname = delegfname;
+			}
+		}
+
+		if (delegset == NULL) {
 			dns_delegset_fromnsrdataset(qctx->client->manager->mctx,
 						    qctx->rdataset, &delegset);
-			fname = qctx->fname;
 		}
 
 		if (delegset == NULL) {
