@@ -583,7 +583,7 @@ sys.exit(1)'; then
   count=$(grep -c ') [0-9][0-9]* NOERROR 0' named.run.test$n)
   test $count -eq 2 || ret=1
   count=$(grep -c '^; COOKIE: ................................' named.run.test$n)
-  test $count -eq 1 || ret=1
+  test $count -eq 3 || ret=1
   if [ $ret != 0 ]; then echo_i "failed"; fi
   status=$((status + ret))
 fi
