@@ -465,13 +465,10 @@ main(int argc, char **argv) {
 		} else if (strcasecmp(outputformatstr, "raw") == 0) {
 			outputformat = dns_masterformat_raw;
 		} else if (strncasecmp(outputformatstr, "raw=", 4) == 0) {
-			char *end;
-
 			outputformat = dns_masterformat_raw;
-			rawversion = strtol(outputformatstr + 4, &end, 10);
-			if (end == outputformatstr + 4 || *end != '\0' ||
-			    rawversion > 1U)
-			{
+			result = isc_parse_uint32(&rawversion,
+						  outputformatstr + 4, 10);
+			if (result != ISC_R_SUCCESS || rawversion > 1U) {
 				fprintf(stderr, "unknown raw format version\n");
 				exit(EXIT_FAILURE);
 			}

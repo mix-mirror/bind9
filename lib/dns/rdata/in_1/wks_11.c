@@ -62,7 +62,6 @@ fromtext_in_wks(ARGS_FROMTEXT) {
 	isc_token_t token;
 	isc_region_t region;
 	struct in_addr addr;
-	char *e = NULL;
 	long proto;
 	unsigned char bm[8 * 1024]; /* 64k bits */
 	long port;
@@ -105,12 +104,14 @@ fromtext_in_wks(ARGS_FROMTEXT) {
 	CHECK(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				     false));
 
-	proto = strtol(DNS_AS_STR(token), &e, 10);
-	if (*e != '\0' && !mygetprotobyname(DNS_AS_STR(token), &proto)) {
+	result = isc_parse_signed_number(&proto, DNS_AS_STR(token), 10);
+	if (result != ISC_R_SUCCESS &&
+	    !mygetprotobyname(DNS_AS_STR(token), &proto))
+	{
 		CHECKTOK(DNS_R_UNKNOWNPROTO);
 	}
 
-	if (proto < 0 || proto > 0xff) {
+	if (proto < 0 || proto > UINT8_MAX) {
 		CHECKTOK(ISC_R_RANGE);
 	}
 
@@ -137,8 +138,9 @@ fromtext_in_wks(ARGS_FROMTEXT) {
 		strlcpy(service, DNS_AS_STR(token), sizeof(service));
 		isc_ascii_strtolower(service);
 
-		port = strtol(DNS_AS_STR(token), &e, 10);
-		if (*e != 0 && !mygetservbyname(service, ps, &port) &&
+		result = isc_parse_signed_number(&port, DNS_AS_STR(token), 10);
+		if (result != ISC_R_SUCCESS &&
+		    !mygetservbyname(service, ps, &port) &&
 		    !mygetservbyname(DNS_AS_STR(token), ps, &port))
 		{
 			CHECKTOK(DNS_R_UNKNOWNSERVICE);
