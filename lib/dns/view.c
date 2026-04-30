@@ -1180,7 +1180,7 @@ dns_view_bestzonecut(dns_view_t *view, const dns_name_t *name,
 	if (result != ISC_R_SUCCESS) {
 		result = DNS_R_NXDOMAIN;
 	} else {
-		dns_delegset_fromrdataset(rdataset, delegsetp);
+		dns_delegset_fromnsrdataset(rdataset, delegsetp);
 	}
 
 	dns_rdataset_cleanup(rdataset);
