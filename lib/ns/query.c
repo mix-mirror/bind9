@@ -8659,7 +8659,7 @@ query_delegation_recurse(query_ctx_t *qctx) {
 		 */
 		dns_delegset_t *delegset = NULL;
 
-		dns_deleg_fromrdataset(qctx->rdataset, &delegset);
+		dns_delegset_fromnsrdataset(qctx->rdataset, &delegset);
 		result = ns_query_recurse(qctx->client, qctx->qtype, qname,
 					  qctx->fname, delegset,
 					  qctx->resuming);
