@@ -1795,7 +1795,7 @@ zone_check_mx(dns_zone_t *zone, dns_db_t *db, dns_name_t *name,
 	/*
 	 * "." means the services does not exist.
 	 */
-	if (dns_name_equal(name, dns_rootname)) {
+	if (dns_name_isroot(name)) {
 		return true;
 	}
 
@@ -1896,7 +1896,7 @@ zone_check_srv(dns_zone_t *zone, dns_db_t *db, dns_name_t *name,
 	/*
 	 * "." means the services does not exist.
 	 */
-	if (dns_name_equal(name, dns_rootname)) {
+	if (dns_name_isroot(name)) {
 		return true;
 	}
 
