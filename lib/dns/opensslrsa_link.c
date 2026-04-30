@@ -711,6 +711,9 @@ opensslrsa_fromdns(dst_key_t *key, isc_buffer_t *data) {
 	if (e == NULL || n == NULL) {
 		DST_RET(ISC_R_NOMEMORY);
 	}
+	if (BN_num_bits(c.e) > RSA_MAX_PUBEXP_BITS) {
+		CLEANUP(ISC_R_RANGE);
+	}
 
 	key->key_size = BN_num_bits(n);
 
