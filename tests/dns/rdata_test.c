@@ -2259,7 +2259,9 @@ ISC_RUN_TEST_IMPL(key) {
 		 * 0-1 of Flags are both set, the RR stops after
 		 * the algorithm octet and thus its length must
 		 * be 4 octets.  In any other case, though, the
-		 * Public Key part must not be empty.
+		 * Public Key part must not be empty.  This is
+		 * then modified by RFC 3445 which removed the
+		 * flags 0-1 and hence the concept of NOKEY.
 		 *
 		 * Algorithms PRIVATEDNS (253) and PRIVATEOID (254)
 		 * have an algorithm identifier embedded and the start
@@ -2267,8 +2269,8 @@ ISC_RUN_TEST_IMPL(key) {
 		 */
 		WIRE_INVALID(0x00), WIRE_INVALID(0x00, 0x00),
 		WIRE_INVALID(0x00, 0x00, 0x00),
-		WIRE_VALID(0xc0, 0x00, 0x00, 0x00),
-		WIRE_INVALID(0xc0, 0x00, 0x00, 0x00, 0x00),
+		WIRE_INVALID(0xc0, 0x00, 0x00, 0x00),
+		WIRE_VALID(0xc0, 0x00, 0x00, 0x00, 0x00),
 		WIRE_INVALID(0x00, 0x00, 0x00, 0x00),
 		WIRE_VALID(0x00, 0x00, 0x00, 0x00, 0x00),
 		/* PRIVATEDNS example. without key data */

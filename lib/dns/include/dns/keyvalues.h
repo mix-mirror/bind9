@@ -19,38 +19,38 @@
  * Flags field of the KEY rdata. Also used by DNSKEY, CDNSKEY, RKEY,
  * KEYDATA. Some values are only defined for KEY and not the others,
  * and vice versa.
+ *
+ * Using the DONOTUSE flags will break backwards compatibilty with
+ * old software.  As long as these are zero they are safe.
  */
 enum {
-	/* valid for KEY only. if both are set, there is no key data. */
-	DNS_KEYTYPE_NOAUTH = 1 << 15, /* cannot be used for authentication. */
-	DNS_KEYTYPE_NOCONF = 1 << 14, /* cannot be used for confidentiality. */
-
+	DNS_KEYFLAG_DONOTUSE0 = 1 << 15, /* reserved: must be zero;
+					    formally DNS_KEYTYPE_NOAUTH,
+					    which was removed by RFC 3445 */
+	DNS_KEYFLAG_DONOTUSE1 = 1 << 14, /* reserved: must be zero;
+					    formally DNS_KEYTYPE_NOCONF,
+					    which was removed by RFC 3445 */
 	DNS_KEYFLAG_RESERVED2 = 1 << 13, /* reserved: must be zero. */
 	DNS_KEYFLAG_DONOTUSE3 = 1 << 12, /* unused: must be zero.
 					    formerly DNS_KEYFLAG_EXTENDED,
 					    which was removed by RFC 3445 */
 	DNS_KEYFLAG_RESERVED4 = 1 << 11, /* reserved: must be zero. */
 	DNS_KEYFLAG_RESERVED5 = 1 << 10, /* reserved: must be zero. */
-
-	/* if nether of these is set, this is a user key (valid for KEY only) */
-	DNS_KEYOWNER_ENTITY = 1 << 9, /* host key (valid for KEY only). */
-	DNS_KEYOWNER_ZONE = 1 << 8,   /* zone key (mandatory for DNSKEY). */
-
+	DNS_KEYFLAG_TAINTED6 = 1 << 9,	 /* reserved: must be zero;
+					    formally DNS_KEYOWNER_ENTITY,
+					    which was removed by RFC 3445 */
+	DNS_KEYOWNER_ZONE = 1 << 8,	 /* zone key (mandatory for DNSKEY). */
 	DNS_KEYFLAG_REVOKE = 1 << 7,	 /* key revoked (per rfc5011) */
 	DNS_KEYFLAG_RESERVED9 = 1 << 6,	 /* reserved: must be zero. */
 	DNS_KEYFLAG_RESERVED10 = 1 << 5, /* reserved: must be zero. */
 	DNS_KEYFLAG_RESERVED11 = 1 << 4, /* reserved: must be zero. */
-
 	DNS_KEYFLAG_RESERVED12 = 1 << 3, /* reserved: must be zero. */
 	DNS_KEYFLAG_RESERVED13 = 1 << 4, /* reserved: must be zero. */
 	DNS_KEYFLAG_RESERVED14 = 1 << 2, /* reserved: must be zero. */
-
-	DNS_KEYFLAG_KSK = 1 << 0, /* key signing key */
+	DNS_KEYFLAG_KSK = 1 << 0,	 /* key signing key */
 };
 
-#define DNS_KEYFLAG_OWNERMASK (DNS_KEYOWNER_ENTITY | DNS_KEYOWNER_ZONE)
-#define DNS_KEYFLAG_TYPEMASK  (DNS_KEYTYPE_NOAUTH | DNS_KEYTYPE_NOCONF)
-#define DNS_KEYTYPE_NOKEY     DNS_KEYFLAG_TYPEMASK
+#define DNS_KEYFLAG_OWNERMASK DNS_KEYOWNER_ZONE
 
 /* The Algorithm field of the KEY and SIG RR's is an integer, {1..254} */
 enum {
