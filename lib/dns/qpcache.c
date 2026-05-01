@@ -2368,6 +2368,31 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 		trust = newheader->trust;
 	}
 
+	/*
+	 * An unvalidated negative entry covering all types (NXDOMAIN or
+	 * NODATA(QTYPE=ANY)) must not purge secure data. Check for it in a
+	 * separate pass first: evicting as we go and bailing out later would
+	 * destroy lower-trust siblings before we found the secure header.
+	 */
+	if (EXISTS(newheader) && NEGATIVE(newheader) &&
+	    rdtype == dns_rdatatype_any && trust < dns_trust_secure)
+	{
+		DNS_SLABTOP_FOREACH(top, qpnode->data) {
+			dns_slabheader_t *header = first_header(top);
+			if (header == NULL) {
+				continue;
+			}
+
+			if (header->trust >= dns_trust_secure) {
+				qpcache_hit(qpdb, header);
+				bindrdataset(qpdb, qpnode, header, now,
+					     nlocktype, tlocktype,
+					     addedrdataset DNS__DB_FLARG_PASS);
+				return DNS_R_UNCHANGED;
+			}
+		}
+	}
+
 	DNS_SLABTOP_FOREACH(top, qpnode->data) {
 		dns_slabheader_t *header = first_header(top);
 		if (header == NULL) {
