@@ -2255,16 +2255,16 @@ ISC_RUN_TEST_IMPL(key) {
 		 *   - 1 octet for Algorithm,
 		 *   - variable number of octets for Public Key.
 		 *
-		 * RFC 2535 section 3.1.2 states that if bits
+		 * RFC 2535 section 3.1.2 stated that if bits
 		 * 0-1 of Flags are both set, the RR stops after
 		 * the algorithm octet and thus its length must
 		 * be 4 octets.  In any other case, though, the
-		 * Public Key part must not be empty.  This is
-		 * then modified by RFC 3445 which removed the
-		 * flags 0-1 and hence the concept of NOKEY.
+		 * Public Key part must not be empty.  This was
+		 * modified by RFC 3445 which removed
+		 * flags 0-1, and hence the concept of NOKEY.
 		 *
 		 * Algorithms PRIVATEDNS (253) and PRIVATEOID (254)
-		 * have an algorithm identifier embedded and the start
+		 * have an algorithm identifier embedded at the start
 		 * of the public key.
 		 */
 		WIRE_INVALID(0x00), WIRE_INVALID(0x00, 0x00),

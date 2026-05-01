@@ -24,10 +24,10 @@
  * old software.  As long as these are zero they are safe.
  */
 enum {
-	DNS_KEYFLAG_DONOTUSE0 = 1 << 15, /* reserved: must be zero;
+	DNS_KEYFLAG_DONOTUSE0 = 1 << 15, /* unused: must be zero.
 					    formally DNS_KEYTYPE_NOAUTH,
 					    which was removed by RFC 3445 */
-	DNS_KEYFLAG_DONOTUSE1 = 1 << 14, /* reserved: must be zero;
+	DNS_KEYFLAG_DONOTUSE1 = 1 << 14, /* unused: must be zero.
 					    formally DNS_KEYTYPE_NOCONF,
 					    which was removed by RFC 3445 */
 	DNS_KEYFLAG_RESERVED2 = 1 << 13, /* reserved: must be zero. */
@@ -36,7 +36,7 @@ enum {
 					    which was removed by RFC 3445 */
 	DNS_KEYFLAG_RESERVED4 = 1 << 11, /* reserved: must be zero. */
 	DNS_KEYFLAG_RESERVED5 = 1 << 10, /* reserved: must be zero. */
-	DNS_KEYFLAG_TAINTED6 = 1 << 9,	 /* reserved: must be zero;
+	DNS_KEYFLAG_DONOTUSE6 = 1 << 9,	 /* unused: must be zero.
 					    formally DNS_KEYOWNER_ENTITY,
 					    which was removed by RFC 3445 */
 	DNS_KEYOWNER_ZONE = 1 << 8,	 /* zone key (mandatory for DNSKEY). */
