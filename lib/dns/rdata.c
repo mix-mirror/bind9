@@ -1021,7 +1021,6 @@ dns_rdata_towire(dns_rdata_t *rdata, dns_compress_t *cctx,
 	isc_result_t result = ISC_R_NOTIMPLEMENTED;
 	bool use_default = false;
 	isc_region_t tr;
-	isc_buffer_t st;
 
 	REQUIRE(rdata != NULL);
 	REQUIRE(DNS_RDATA_VALIDFLAGS(rdata));
@@ -1034,8 +1033,6 @@ dns_rdata_towire(dns_rdata_t *rdata, dns_compress_t *cctx,
 		return ISC_R_SUCCESS;
 	}
 
-	st = *target;
-
 	TOWIRESWITCH
 
 	if (use_default) {
@@ -1047,10 +1044,7 @@ dns_rdata_towire(dns_rdata_t *rdata, dns_compress_t *cctx,
 		isc_buffer_add(target, rdata->length);
 		return ISC_R_SUCCESS;
 	}
-	if (result != ISC_R_SUCCESS) {
-		*target = st;
-		dns_compress_rollback(cctx, target->used);
-	}
+
 	return result;
 }
 

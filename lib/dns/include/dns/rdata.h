@@ -354,6 +354,8 @@ dns_rdata_towire(dns_rdata_t *rdata, dns_compress_t *cctx,
  *
  * Notes:
  *\li	If compression is permitted, then the cctx table may be updated.
+ *\li	On failure the caller is responsible for restoring `target` and
+ *	calling dns_compress_rollback().
  *
  * Requires:
  *\li	'rdata' is a valid, non-empty rdata

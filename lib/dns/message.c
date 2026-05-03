@@ -1872,7 +1872,6 @@ dns_message_rendersection(dns_message_t *msg, dns_section_t sectionid,
 	dns_rdataset_t *rdataset = NULL;
 	unsigned int count, total;
 	isc_result_t result;
-	isc_buffer_t st; /* for rollbacks */
 	int pass;
 	bool partial = false;
 	unsigned int rd_options;
@@ -1928,7 +1927,6 @@ dns_message_rendersection(dns_message_t *msg, dns_section_t sectionid,
 		if (rdataset != NULL && rdataset->attributes.required &&
 		    !rdataset->attributes.rendered)
 		{
-			st = *(msg->buffer);
 			count = 0;
 			result = dns_rdataset_towire(
 				rdataset, name, msg->id, msg->cctx, msg->buffer,
@@ -1944,8 +1942,12 @@ dns_message_rendersection(dns_message_t *msg, dns_section_t sectionid,
 				msg->flags |= DNS_MESSAGEFLAG_TC;
 			}
 			if (result != ISC_R_SUCCESS) {
-				dns_compress_rollback(msg->cctx, st.used);
-				*(msg->buffer) = st; /* rollback */
+				/*
+				 * dns_rdataset_towire() already restored
+				 * the buffer and rolled back the compression
+				 * context with the same scope, so we don't
+				 * repeat that work here.
+				 */
 				msg->buffer->length += msg->reserved;
 				msg->counts[sectionid] += total;
 				return result;
@@ -1979,8 +1981,6 @@ dns_message_rendersection(dns_message_t *msg, dns_section_t sectionid,
 					continue;
 				}
 
-				st = *(msg->buffer);
-
 				count = 0;
 				result = dns_rdataset_towire(
 					rds, n, msg->id, msg->cctx, msg->buffer,
@@ -2007,10 +2007,12 @@ dns_message_rendersection(dns_message_t *msg, dns_section_t sectionid,
 					return result;
 				}
 				if (result != ISC_R_SUCCESS) {
-					INSIST(st.used < 65536);
-					dns_compress_rollback(
-						msg->cctx, (uint16_t)st.used);
-					*(msg->buffer) = st; /* rollback */
+					/*
+					 * dns_rdataset_towire() already
+					 * restored the buffer and rolled
+					 * back the compression context with
+					 * the same scope.
+					 */
 					msg->buffer->length += msg->reserved;
 					msg->counts[sectionid] += total;
 					maybe_clear_ad(msg, sectionid);
