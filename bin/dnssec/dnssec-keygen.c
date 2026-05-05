@@ -678,11 +678,6 @@ keygen(keygen_ctx_t *ctx, const char *keyname) {
 		}
 	} while (conflict);
 
-	if (conflict) {
-		fatal("cannot generate a null key due to possible key ID "
-		      "collision");
-	}
-
 	if (ctx->predecessor != NULL && prevkey != NULL) {
 		dst_key_setnum(prevkey, DST_NUM_SUCCESSOR, dst_key_id(key));
 		dst_key_setnum(key, DST_NUM_PREDECESSOR, dst_key_id(prevkey));

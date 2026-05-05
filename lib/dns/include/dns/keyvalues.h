@@ -16,33 +16,26 @@
 /*! \file dns/keyvalues.h */
 
 /*
- * Flags field of the KEY rdata. Also used by DNSKEY, CDNSKEY, RKEY,
- * KEYDATA. Some values are only defined for KEY and not the others,
- * and vice versa.
+ * Flags field of the DNSKEY rdata. Also used by KEY, CDNSKEY, RKEY,
+ * and KEYDATA, which share DNSKEY's wire format.
+ *
+ * Using following flags will break backwards compatibility with old
+ * software.  As long as these are zero they are safe.
+ *
+ * The following flags were removed by RFC 3445 and must be zero:
+ * - 1 << 15: Formerly DNS_KEYTYPE_NOAUTH.
+ * - 1 << 14: Formerly DNS_KEYTYPE_NOCONF.
+ * - 1 << 12: Formerly DNS_KEYFLAG_EXTENDED.
+ * - 1 <<  9: Formerly DNS_KEYOWNER_ENTITY.
+ *
+ * The following flags are reserved and must be zero.
+ * - 1 << 13, 1 << 11, 1 << 10, 1 << 6 .. 1 << 2
  */
 enum {
-	/*
-	 * Using following flags will break backwards compatibilty with
-	 * old software.  As long as these are zero they are safe.
-	 *
-	 * Following flags were removed by RFC 3445:
-	 * - 1 << 15: Formerly DNS_KEYTYPE_NOAUTH.
-	 * - 1 << 14: Formerly DNS_KEYTYPE_NOCONF.
-	 * - 1 << 12: Formerly DNS_KEYFLAG_EXTENDED.
-	 * - 1 << 9: Formerly DNS_KEYOWNER_ENTITY.
-	 */
-
-	/*
-	 * Following flags are reserved and must be zero.
-	 * - 1 << 13, 1 << 11, 1 << 10, 1 << 6 - 1 << 2
-	 */
-
 	DNS_KEYOWNER_ZONE = 1 << 8,  /* zone key (mandatory for DNSKEY). */
 	DNS_KEYFLAG_REVOKE = 1 << 7, /* key revoked (per rfc5011) */
 	DNS_KEYFLAG_KSK = 1 << 0,    /* key signing key */
 };
-
-#define DNS_KEYFLAG_OWNERMASK DNS_KEYOWNER_ZONE
 
 /* The Algorithm field of the KEY and SIG RR's is an integer, {1..254} */
 enum {

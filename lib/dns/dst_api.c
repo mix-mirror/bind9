@@ -648,7 +648,7 @@ dst_key_todns(const dst_key_t *key, isc_buffer_t *target) {
 	isc_buffer_putuint8(target,
 			    (uint8_t)dst_algorithm_tosecalg(key->key_alg));
 
-	if (key->keydata.generic == NULL) { /*%< NULL KEY */
+	if (key->keydata.generic == NULL) {
 		return ISC_R_SUCCESS;
 	}
 
