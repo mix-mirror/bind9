@@ -3844,7 +3844,7 @@ tree_exit:
 		dns_qpread_destroy(qpdb->nsec3, &search.qpr);
 	} else {
 		dns_qpread_destroy(qpdb->tree, &search.qpr);
-		dns_qpread_destroy(qpdb->tree, &search.nqpr);
+		dns_qpread_destroy(qpdb->nsec, &search.nqpr);
 	}
 
 	/*
