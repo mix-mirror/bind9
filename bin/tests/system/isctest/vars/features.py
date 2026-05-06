@@ -15,6 +15,7 @@ import subprocess
 from .basic import BASIC_VARS
 
 FEATURES = {
+    "AWS_LC": "--with-aws-lc",
     "DNSTAP": "--enable-dnstap",
     "EXTENDED_DS_DIGEST": "--extended-ds-digest",
     "FIPS_DH": "--have-fips-dh",
@@ -57,3 +58,25 @@ def init_features():
         val = "1" if supported else "0"
         FEATURE_VARS[envvar] = val
         os.environ[envvar] = val
+
+    # Cipher lists used by tests configuring forward-secret TLS.  AWS-LC
+    # supports fewer ciphers than OpenSSL, so the SHA1/SHA256/SHA384
+    # exclusions used to constrain OpenSSL to AEAD ciphers leave AWS-LC
+    # with an empty cipher list.
+    if FEATURE_VARS["FEATURE_AWS_LC"] == "1":
+        exclusions = (
+            "!kRSA:!aNULL:!eNULL:!RC4:!3DES:!MD5:!EXP:!PSK:!SRP:!DSS"
+        )
+    else:
+        exclusions = (
+            "!kRSA:!aNULL:!eNULL:!RC4:!3DES:!MD5:!EXP:!PSK:!SRP:!DSS"
+            ":!SHA1:!SHA256:!SHA384"
+        )
+    for prefix, varname in (
+        ("HIGH", "FORWARD_SECRECY_CIPHERS"),
+        ("AES256", "FORWARD_SECRECY_AES256_CIPHERS"),
+        ("AES128", "FORWARD_SECRECY_AES128_CIPHERS"),
+    ):
+        value = f"{prefix}:{exclusions}"
+        FEATURE_VARS[varname] = value
+        os.environ[varname] = value

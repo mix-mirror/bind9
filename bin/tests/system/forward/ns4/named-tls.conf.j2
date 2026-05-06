@@ -1,6 +1,6 @@
 tls tls-forward-secrecy {
     protocols { TLSv1.2; };
-    ciphers "HIGH:!kRSA:!aNULL:!eNULL:!RC4:!3DES:!MD5:!EXP:!PSK:!SRP:!DSS:!SHA1:!SHA256:!SHA384";
+    ciphers "@FORWARD_SECRECY_CIPHERS@";
     dhparam-file "../dhparam3072.pem";
     ca-file "../CA/CA.pem";
 };
@@ -19,7 +19,7 @@ tls tls-forward-secrecy-bad-remote-hostname {
 
 tls tls-forward-secrecy-mutual-tls {
     protocols { TLSv1.2; };
-    ciphers "HIGH:!kRSA:!aNULL:!eNULL:!RC4:!3DES:!MD5:!EXP:!PSK:!SRP:!DSS:!SHA1:!SHA256:!SHA384";
+    ciphers "@FORWARD_SECRECY_CIPHERS@";
     key-file "../CA/certs/srv04.crt01.example.nil.key";
     cert-file "../CA/certs/srv04.crt01.example.nil.pem";
     dhparam-file "../dhparam3072.pem";
@@ -28,7 +28,7 @@ tls tls-forward-secrecy-mutual-tls {
 
 tls tls-expired {
     protocols { TLSv1.2; };
-    ciphers "HIGH:!kRSA:!aNULL:!eNULL:!RC4:!3DES:!MD5:!EXP:!PSK:!SRP:!DSS:!SHA1:!SHA256:!SHA384";
+    ciphers "@FORWARD_SECRECY_CIPHERS@";
     prefer-server-ciphers yes;
     dhparam-file "../dhparam3072.pem";
     ca-file "../CA/CA.pem";

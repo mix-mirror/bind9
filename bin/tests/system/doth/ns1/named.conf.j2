@@ -11,7 +11,7 @@ http local {
 
 tls tls-forward-secrecy {
 	protocols { TLSv1.2; };
-	ciphers "HIGH:!kRSA:!aNULL:!eNULL:!RC4:!3DES:!MD5:!EXP:!PSK:!SRP:!DSS:!SHA1:!SHA256:!SHA384";
+	ciphers "@FORWARD_SECRECY_CIPHERS@";
 	prefer-server-ciphers yes;
 	key-file "../CA/certs/srv01.crt01.example.com.key";
 	cert-file "../CA/certs/srv01.crt01.example.com.pem";
@@ -20,7 +20,7 @@ tls tls-forward-secrecy {
 
 tls tls-pfs-aes256 {
 	protocols { TLSv1.2; };
-	ciphers "AES256:!kRSA:!aNULL:!eNULL:!RC4:!3DES:!MD5:!EXP:!PSK:!SRP:!DSS:!SHA1:!SHA256:!SHA384";
+	ciphers "@FORWARD_SECRECY_AES256_CIPHERS@";
 	prefer-server-ciphers yes;
 	key-file "../CA/certs/srv01.crt01.example.com.key";
 	cert-file "../CA/certs/srv01.crt01.example.com.pem";
@@ -29,7 +29,7 @@ tls tls-pfs-aes256 {
 
 tls tls-no-subject-alt-name {
 	protocols { TLSv1.2; };
-	ciphers "HIGH:!kRSA:!aNULL:!eNULL:!RC4:!3DES:!MD5:!EXP:!PSK:!SRP:!DSS:!SHA1:!SHA256:!SHA384";
+	ciphers "@FORWARD_SECRECY_CIPHERS@";
 	prefer-server-ciphers yes;
 	key-file "../CA/certs/srv01.crt02-no-san.example.com.key";
 	cert-file "../CA/certs/srv01.crt02-no-san.example.com.pem";
@@ -38,7 +38,7 @@ tls tls-no-subject-alt-name {
 
 tls tls-expired {
 	protocols { TLSv1.2; };
-	ciphers "HIGH:!kRSA:!aNULL:!eNULL:!RC4:!3DES:!MD5:!EXP:!PSK:!SRP:!DSS:!SHA1:!SHA256:!SHA384";
+	ciphers "@FORWARD_SECRECY_CIPHERS@";
 	prefer-server-ciphers yes;
 	key-file "../CA/certs/srv01.crt03-expired.example.com.key";
 	cert-file "../CA/certs/srv01.crt03-expired.example.com.pem";
@@ -47,7 +47,7 @@ tls tls-expired {
 
 tls tls-forward-secrecy-mutual-tls {
 	protocols { TLSv1.2; };
-	ciphers "HIGH:!kRSA:!aNULL:!eNULL:!RC4:!3DES:!MD5:!EXP:!PSK:!SRP:!DSS:!SHA1:!SHA256:!SHA384";
+	ciphers "@FORWARD_SECRECY_CIPHERS@";
 	prefer-server-ciphers yes;
 	key-file "../CA/certs/srv01.crt01.example.com.key";
 	cert-file "../CA/certs/srv01.crt01.example.com.pem";

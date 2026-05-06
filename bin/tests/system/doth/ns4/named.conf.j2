@@ -50,7 +50,7 @@ zone "." {
 
 tls tls-v1.2-pfs {
 	protocols { TLSv1.2; };
-	ciphers "HIGH:!kRSA:!aNULL:!eNULL:!RC4:!3DES:!MD5:!EXP:!PSK:!SRP:!DSS:!SHA1:!SHA256:!SHA384";
+	ciphers "@FORWARD_SECRECY_CIPHERS@";
 	prefer-server-ciphers no;
 };
 
