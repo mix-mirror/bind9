@@ -340,9 +340,23 @@ isc_crypto_fips_enable(void) {
 }
 #endif
 
+/*
+ * AWS-LC's OPENSSL_cleanup() does not free the memory allocated through
+ * the custom allocator installed via CRYPTO_set_mem_functions(), which is
+ * incompatible with BIND 9's memory leak detection code (the same reason
+ * tracking is disabled for OpenSSL 3+ in ossl3.c).  The custom memory
+ * functions cannot simply be skipped for AWS-LC, because AWS-LC uses libc
+ * malloc() to allocate but jemalloc's sdallocx() to free (via a weak
+ * symbol), which corrupts jemalloc's state.  Disable the destroy check
+ * instead, leaving the custom allocator in place.
+ */
 void
 isc__crypto_setdestroycheck(bool check) {
+#ifdef AWSLC_VERSION_NAME
+	UNUSED(check);
+#else
 	isc_mem_setdestroycheck(isc__crypto_mctx, check);
+#endif
 }
 
 void
