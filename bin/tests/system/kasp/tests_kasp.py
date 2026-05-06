@@ -353,7 +353,10 @@ def cb_remove_keyfiles(params, ksks=None, zsks=None):
                 "key-properties": rsa1_properties(5),
             },
             id="rsasha1.kasp",
-            marks=isctest.mark.with_algorithm("RSASHA1"),
+            marks=[
+                isctest.mark.with_algorithm("RSASHA1"),
+                isctest.mark.without_aws_lc,
+            ],
         ),
         pytest.param(
             {
@@ -363,7 +366,10 @@ def cb_remove_keyfiles(params, ksks=None, zsks=None):
                 "key-properties": rsa1_properties(7),
             },
             id="rsasha1-nsec3.kasp",
-            marks=isctest.mark.with_algorithm("RSASHA1"),
+            marks=[
+                isctest.mark.with_algorithm("RSASHA1"),
+                isctest.mark.without_aws_lc,
+            ],
         ),
         pytest.param(
             {

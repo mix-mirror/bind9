@@ -11,22 +11,27 @@
 
 import pytest
 
-pytestmark = pytest.mark.extra_artifacts(
-    [
-        "dig.out.*",
-        "statschannel.out.*",
-        "ans*/ans.run",
-        "ns*/trusted.conf",
-        "ns1/K*",
-        "ns1/dsset-*",
-        "ns1/root.db",
-        "ns1/root.db.signed",
-        "ns2/named-tls.conf",
-        "ns3/trusted.conf",
-        "ns4/named-tls.conf",
-        "ns9/named_dump.db",
-    ]
-)
+import isctest.mark
+
+pytestmark = [
+    isctest.mark.without_aws_lc,
+    pytest.mark.extra_artifacts(
+        [
+            "dig.out.*",
+            "statschannel.out.*",
+            "ans*/ans.run",
+            "ns*/trusted.conf",
+            "ns1/K*",
+            "ns1/dsset-*",
+            "ns1/root.db",
+            "ns1/root.db.signed",
+            "ns2/named-tls.conf",
+            "ns3/trusted.conf",
+            "ns4/named-tls.conf",
+            "ns9/named_dump.db",
+        ]
+    ),
+]
 
 
 def test_forward(run_tests_sh):

@@ -62,6 +62,10 @@ without_fips = pytest.mark.skipif(
     os.getenv("FEATURE_FIPS_MODE") == "1", reason="FIPS support enabled in the build"
 )
 
+without_aws_lc = pytest.mark.skipif(
+    os.getenv("FEATURE_AWS_LC") == "1", reason="incompatible with AWS-LC"
+)
+
 with_libxml2 = pytest.mark.skipif(
     os.getenv("FEATURE_LIBXML2") != "1", reason="libxml2 support disabled in the build"
 )

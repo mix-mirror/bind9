@@ -13,7 +13,11 @@ import platform
 
 import pytest
 
-pytestmark = pytest.mark.extra_artifacts(
+import isctest.mark
+
+pytestmark = [
+    isctest.mark.without_aws_lc,
+    pytest.mark.extra_artifacts(
     [
         "Kxxx*",
         "dig.out.*",
@@ -74,8 +78,8 @@ pytestmark = pytest.mark.extra_artifacts(
         "ns10/_default.tsigkeys",
         "ns10/example.com.db",
         "ns10/in-addr.db",
-    ]
-)
+    ]),
+]
 
 
 MAX_RUNS = 2 if platform.system() == "FreeBSD" else 1  # GL#3846

@@ -19,12 +19,15 @@ import pytest
 
 import isctest
 
-pytestmark = pytest.mark.extra_artifacts(
-    [
-        "sslyze.log.*",
-        "ns*/example*.db",
-    ]
-)
+pytestmark = [
+    isctest.mark.without_aws_lc,
+    pytest.mark.extra_artifacts(
+        [
+            "sslyze.log.*",
+            "ns*/example*.db",
+        ]
+    ),
+]
 
 
 def is_pid_alive(pid):

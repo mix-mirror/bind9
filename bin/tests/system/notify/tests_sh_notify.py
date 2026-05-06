@@ -11,7 +11,11 @@
 
 import pytest
 
-pytestmark = pytest.mark.extra_artifacts(
+import isctest.mark
+
+pytestmark = [
+    isctest.mark.without_aws_lc,
+    pytest.mark.extra_artifacts(
     [
         "awk.out.*",
         "dig.out.*",
@@ -30,8 +34,8 @@ pytestmark = pytest.mark.extra_artifacts(
         "ns5/x21.bk-c",
         "ns5/x21.bk-c.jnl",
         "ns5/x21.db.jnl",
-    ]
-)
+    ]),
+]
 
 
 def test_notify(run_tests_sh):

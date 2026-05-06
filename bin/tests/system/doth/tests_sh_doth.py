@@ -11,13 +11,18 @@
 
 import pytest
 
-pytestmark = pytest.mark.extra_artifacts(
-    [
-        "dig.out.*",
-        "headers.*",
-        "ns*/example*.db",
-    ]
-)
+import isctest.mark
+
+pytestmark = [
+    isctest.mark.without_aws_lc,
+    pytest.mark.extra_artifacts(
+        [
+            "dig.out.*",
+            "headers.*",
+            "ns*/example*.db",
+        ]
+    ),
+]
 
 
 def test_doth(run_tests_sh):

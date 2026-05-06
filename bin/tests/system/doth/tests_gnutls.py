@@ -25,12 +25,15 @@ import pytest
 
 import isctest
 
-pytestmark = pytest.mark.extra_artifacts(
-    [
-        "gnutls-cli.*",
-        "ns*/example*.db",
-    ]
-)
+pytestmark = [
+    isctest.mark.without_aws_lc,
+    pytest.mark.extra_artifacts(
+        [
+            "gnutls-cli.*",
+            "ns*/example*.db",
+        ]
+    ),
+]
 
 
 def test_gnutls_cli_query(gnutls_cli_executable, named_tlsport):
