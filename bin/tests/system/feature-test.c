@@ -55,6 +55,7 @@ usage(void) {
 	fprintf(stderr, "\t--md5\n");
 	fprintf(stderr, "\t--rsasha1\n");
 	fprintf(stderr, "\t--tsan\n");
+	fprintf(stderr, "\t--with-aws-lc\n");
 	fprintf(stderr, "\t--with-libidn2\n");
 	fprintf(stderr, "\t--with-libnghttp2\n");
 	fprintf(stderr, "\t--with-zlib\n");
@@ -210,6 +211,14 @@ main(int argc, char **argv) {
 		}
 
 		return 0;
+	}
+
+	if (strcmp(argv[1], "--with-aws-lc") == 0) {
+#ifdef AWSLC_VERSION_NAME
+		return 0;
+#else  /* ifdef AWSLC_VERSION_NAME */
+		return 1;
+#endif /* ifdef AWSLC_VERSION_NAME */
 	}
 
 	if (strcmp(argv[1], "--with-libidn2") == 0) {

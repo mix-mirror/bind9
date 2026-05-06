@@ -54,6 +54,13 @@ for bad in bad-*.conf; do
   n=$((n + 1))
   echo_i "checking that named-checkconf detects error in $bad ($n)"
   ret=0
+  if $FEATURETEST --with-aws-lc; then
+    # AWS-LC's SSL_CTX_set_ciphersuites() accepts cipher list format
+    # strings (e.g. "HIGH:!aNULL:!MD5:!RC4") that OpenSSL rejects.
+    case $bad in
+      bad-tls-cipher-suites-ciphers-string.conf) continue ;;
+    esac
+  fi
   {
     $CHECKCONF $bad >checkconf.out$n 2>&1
     rc=$?
@@ -92,6 +99,16 @@ for good in good-*.conf; do
   else
     case $good in
       good-tls-cipher-suites-*.conf) continue ;;
+    esac
+  fi
+  if $FEATURETEST --with-aws-lc; then
+    # AWS-LC supports fewer ciphers than OpenSSL, so cipher list
+    # strings that exclude common ciphers (e.g. "HIGH:!kRSA:!aNULL:
+    # !eNULL:!RC4:!3DES:!MD5:!EXP:!PSK:!SRP:!DSS:!SHA1:!SHA256:!SHA384")
+    # resolve to an empty list under AWS-LC and are rejected.
+    case $good in
+      good-dot-primaries.conf) continue ;;
+      good-forwarders-dot.conf) continue ;;
     esac
   fi
   {
