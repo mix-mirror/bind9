@@ -1462,20 +1462,40 @@ static void
 zone_asyncload(void *arg) {
 	dns_asyncload_t *asl = arg;
 	dns_zone_t *zone = asl->zone;
+	dns_zt_callback_t *loaded = NULL;
+	void *loaded_arg = NULL;
 	isc_result_t result;
 
 	REQUIRE(DNS_ZONE_VALID(zone));
 
 	LOCK_ZONE(zone);
+	/*
+	 * Stash the "loaded" callback on the zone so that, if the load
+	 * proceeds asynchronously, zone_loaddone() can invoke it once
+	 * the zone data has actually been read in. dns_zone_asyncload()
+	 * guarantees that no other async load is pending for this zone.
+	 */
+	INSIST(zone->async_loaded == NULL);
+	zone->async_loaded = asl->loaded;
+	zone->async_loaded_arg = asl->loaded_arg;
+
 	result = zone_load(zone, asl->flags, true);
 	if (result != DNS_R_CONTINUE && result != ISC_R_LOADING) {
 		DNS_ZONE_CLRFLAG(zone, DNS_ZONEFLG_LOADPENDING);
+		loaded = zone->async_loaded;
+		loaded_arg = zone->async_loaded_arg;
+		zone->async_loaded = NULL;
+		zone->async_loaded_arg = NULL;
 	}
 	UNLOCK_ZONE(zone);
 
-	/* Inform the zone table we've finished loading */
-	if (asl->loaded != NULL) {
-		asl->loaded(asl->loaded_arg);
+	/*
+	 * For synchronous outcomes, fire the callback now. For
+	 * DNS_R_CONTINUE / ISC_R_LOADING, zone_loaddone() will fire it
+	 * after the asynchronous load finishes.
+	 */
+	if (loaded != NULL) {
+		loaded(loaded_arg);
 	}
 
 	isc_mem_put(zone->mctx, asl, sizeof(*asl));
@@ -15600,6 +15620,10 @@ zone_loaddone(void *arg, isc_result_t result) {
 	dns_zone_t *zone;
 	isc_result_t tresult;
 	dns_zone_t *secure = NULL;
+	dns_zt_callback_t *loaded = NULL;
+	void *loaded_arg = NULL;
+	dns_zt_callback_t *secure_loaded = NULL;
+	void *secure_loaded_arg = NULL;
 
 	zone = load->zone;
 
@@ -15651,12 +15675,37 @@ again:
 		zone->update_disabled = false;
 	}
 	DNS_ZONE_CLRFLAG(zone, DNS_ZONEFLG_THAW);
+
+	/*
+	 * Hand off any deferred async-load callbacks now that the zone
+	 * data is in place. zone_postload() also clears LOADPENDING on
+	 * the inline-signed secure counterpart of a raw zone, so its
+	 * deferred callback (if any) needs to fire here as well.
+	 */
+	loaded = zone->async_loaded;
+	loaded_arg = zone->async_loaded_arg;
+	zone->async_loaded = NULL;
+	zone->async_loaded_arg = NULL;
+	if (secure != NULL) {
+		secure_loaded = secure->async_loaded;
+		secure_loaded_arg = secure->async_loaded_arg;
+		secure->async_loaded = NULL;
+		secure->async_loaded_arg = NULL;
+	}
+
 	if (dns__zone_inline_secure(zone)) {
 		UNLOCK_ZONE(zone->raw);
 	} else if (secure != NULL) {
 		UNLOCK_ZONE(secure);
 	}
 	UNLOCK_ZONE(zone);
+
+	if (loaded != NULL) {
+		loaded(loaded_arg);
+	}
+	if (secure_loaded != NULL) {
+		secure_loaded(secure_loaded_arg);
+	}
 
 	dns_db_detach(&load->db);
 	if (zone->loadctx != NULL) {

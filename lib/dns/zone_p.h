@@ -23,6 +23,7 @@
 #include <dns/remote.h>
 #include <dns/update.h>
 #include <dns/zonefetch.h>
+#include <dns/zt.h>
 
 /*%
  *	Types and functions below meant to be used for internal zone
@@ -437,6 +438,8 @@ struct dns_zone {
 	ISC_LIST(dns_checkds_t) checkds_requests;
 	dns_request_t *request;
 	dns_loadctx_t *loadctx;
+	dns_zt_callback_t *async_loaded;
+	void *async_loaded_arg;
 	dns_dumpctx_t *dumpctx;
 	uint32_t minxfrratebytesin;
 	uint32_t minxfrratesecondsin;
