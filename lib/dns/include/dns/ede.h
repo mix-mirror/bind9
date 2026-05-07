@@ -44,6 +44,7 @@ enum {
 	DNS_EDE_NOREACHABLEAUTH = 22,	  /*%< No Reachable Authority */
 	DNS_EDE_NETWORKERROR = 23,	  /*%< Network Error */
 	DNS_EDE_INVALIDDATA = 24,	  /*%< Invalid Data */
+	DNS_EDE_QUERYCOUNT = 49152,	  /*%< Private; Query Count */
 	DNS_EDE_MAX_CODE
 };
 
