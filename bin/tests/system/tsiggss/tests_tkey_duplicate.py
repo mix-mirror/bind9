@@ -27,16 +27,20 @@ import subprocess
 import pytest
 
 import isctest
+import isctest.mark
 
-pytestmark = pytest.mark.extra_artifacts(
-    [
-        "nsupdate.out*",
-        "ns1/K*",
-        "ns1/_default.tsigkeys",
-        "ns1/example.nil.db",
-        "ns1/example.nil.db.jnl",
-    ]
-)
+pytestmark = [
+    isctest.mark.without_aws_lc,
+    pytest.mark.extra_artifacts(
+        [
+            "nsupdate.out*",
+            "ns1/K*",
+            "ns1/_default.tsigkeys",
+            "ns1/example.nil.db",
+            "ns1/example.nil.db.jnl",
+        ]
+    ),
+]
 
 TKEY_NAME = "duptest.sig-example.nil."
 
