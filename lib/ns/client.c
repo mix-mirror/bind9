@@ -64,6 +64,8 @@
 #include <ns/stats.h>
 #include <ns/update.h>
 
+#include "isc/counter.h"
+
 /***
  *** Client
  ***/
@@ -1175,6 +1177,16 @@ no_nsid:
 		ednsopts[count].value = advtimo;
 		count++;
 	}
+
+	char txt[DNS_NAME_FORMATSIZE + 32];
+	isc_buffer_t buf;
+
+	isc_buffer_init(&buf, txt, sizeof(txt));
+	isc_buffer_printf(&buf, "queries: %u",
+			  isc_counter_used(client->query.qc));
+	isc_buffer_putuint8(&buf, 0);
+
+	dns_ede_add(&client->edectx, 49152, isc_buffer_base(&buf));
 
 	for (size_t i = 0; i < DNS_EDE_MAX_ERRORS; i++) {
 		dns_ednsopt_t *ede = client->edectx.ede[i];

@@ -18,33 +18,34 @@
 #include <dns/message.h>
 
 /*%< EDNS0 extended DNS errors */
-#define DNS_EDE_OTHER		     0	/*%< Other Error */
-#define DNS_EDE_DNSKEYALG	     1	/*%< Unsupported DNSKEY Algorithm */
-#define DNS_EDE_DSDIGESTTYPE	     2	/*%< Unsupported DS Digest Type */
-#define DNS_EDE_STALEANSWER	     3	/*%< Stale Answer */
-#define DNS_EDE_FORGEDANSWER	     4	/*%< Forged Answer */
-#define DNS_EDE_DNSSECINDETERMINATE  5	/*%< DNSSEC Indeterminate */
-#define DNS_EDE_DNSSECBOGUS	     6	/*%< DNSSEC Bogus */
-#define DNS_EDE_SIGNATUREEXPIRED     7	/*%< Signature Expired */
-#define DNS_EDE_SIGNATURENOTYETVALID 8	/*%< Signature Not Yet Valid */
-#define DNS_EDE_DNSKEYMISSING	     9	/*%< DNSKEY Missing */
-#define DNS_EDE_RRSIGSMISSING	     10 /*%< RRSIGs Missing */
-#define DNS_EDE_NOZONEKEYBITSET	     11 /*%< No Zone Key Bit Set */
-#define DNS_EDE_NSECMISSING	     12 /*%< NSEC Missing */
-#define DNS_EDE_CACHEDERROR	     13 /*%< Cached Error */
-#define DNS_EDE_NOTREADY	     14 /*%< Not Ready */
-#define DNS_EDE_BLOCKED		     15 /*%< Blocked */
-#define DNS_EDE_CENSORED	     16 /*%< Censored */
-#define DNS_EDE_FILTERED	     17 /*%< Filtered */
-#define DNS_EDE_PROHIBITED	     18 /*%< Prohibited */
-#define DNS_EDE_STALENXANSWER	     19 /*%< Stale NXDomain Answer */
-#define DNS_EDE_NOTAUTH		     20 /*%< Not Authoritative */
-#define DNS_EDE_NOTSUPPORTED	     21 /*%< Not Supported */
-#define DNS_EDE_NOREACHABLEAUTH	     22 /*%< No Reachable Authority */
-#define DNS_EDE_NETWORKERROR	     23 /*%< Network Error */
-#define DNS_EDE_INVALIDDATA	     24 /*%< Invalid Data */
+#define DNS_EDE_OTHER		     0	   /*%< Other Error */
+#define DNS_EDE_DNSKEYALG	     1	   /*%< Unsupported DNSKEY Algorithm */
+#define DNS_EDE_DSDIGESTTYPE	     2	   /*%< Unsupported DS Digest Type */
+#define DNS_EDE_STALEANSWER	     3	   /*%< Stale Answer */
+#define DNS_EDE_FORGEDANSWER	     4	   /*%< Forged Answer */
+#define DNS_EDE_DNSSECINDETERMINATE  5	   /*%< DNSSEC Indeterminate */
+#define DNS_EDE_DNSSECBOGUS	     6	   /*%< DNSSEC Bogus */
+#define DNS_EDE_SIGNATUREEXPIRED     7	   /*%< Signature Expired */
+#define DNS_EDE_SIGNATURENOTYETVALID 8	   /*%< Signature Not Yet Valid */
+#define DNS_EDE_DNSKEYMISSING	     9	   /*%< DNSKEY Missing */
+#define DNS_EDE_RRSIGSMISSING	     10	   /*%< RRSIGs Missing */
+#define DNS_EDE_NOZONEKEYBITSET	     11	   /*%< No Zone Key Bit Set */
+#define DNS_EDE_NSECMISSING	     12	   /*%< NSEC Missing */
+#define DNS_EDE_CACHEDERROR	     13	   /*%< Cached Error */
+#define DNS_EDE_NOTREADY	     14	   /*%< Not Ready */
+#define DNS_EDE_BLOCKED		     15	   /*%< Blocked */
+#define DNS_EDE_CENSORED	     16	   /*%< Censored */
+#define DNS_EDE_FILTERED	     17	   /*%< Filtered */
+#define DNS_EDE_PROHIBITED	     18	   /*%< Prohibited */
+#define DNS_EDE_STALENXANSWER	     19	   /*%< Stale NXDomain Answer */
+#define DNS_EDE_NOTAUTH		     20	   /*%< Not Authoritative */
+#define DNS_EDE_NOTSUPPORTED	     21	   /*%< Not Supported */
+#define DNS_EDE_NOREACHABLEAUTH	     22	   /*%< No Reachable Authority */
+#define DNS_EDE_NETWORKERROR	     23	   /*%< Network Error */
+#define DNS_EDE_INVALIDDATA	     24	   /*%< Invalid Data */
+#define DNS_EDE_QUERYCOUNT	     49152 /*%< Private; Query Count */
 
-#define DNS_EDE_MAX_CODE DNS_EDE_INVALIDDATA
+#define DNS_EDE_MAX_CODE DNS_EDE_QUERYCOUNT
 
 /*
  * From RFC 8914:
