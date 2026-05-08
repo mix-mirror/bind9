@@ -234,6 +234,7 @@ static char tabs[N_TABS + 1] = "\t\t\t\t\t\t\t\t\t\t";
 struct dns_dumpctx {
 	unsigned int magic;
 	isc_mem_t *mctx;
+	isc_loop_t *loop;
 	isc_mutex_t lock;
 	isc_refcount_t references;
 	atomic_bool canceled;
@@ -1478,6 +1479,15 @@ master_dump_cb(void *data) {
 	dctx->result = result;
 }
 
+static void
+master_dump_callback(void *data) {
+	dns_dumpctx_t *dctx = data;
+
+	(dctx->done)(dctx->done_arg, dctx->result);
+	isc_loop_unref(dctx->loop);
+	dns_dumpctx_detach(&dctx);
+}
+
 /*
  * This will run in a loop manager thread when the dump is complete.
  */
@@ -1485,8 +1495,8 @@ static void
 master_dump_done_cb(void *data) {
 	dns_dumpctx_t *dctx = data;
 
-	(dctx->done)(dctx->done_arg, dctx->result);
-	dns_dumpctx_detach(&dctx);
+	/* enqueue callback on the correct loop */
+	isc_async_run(dctx->loop, master_dump_callback, dctx);
 }
 
 static isc_result_t
@@ -1707,21 +1717,6 @@ cleanup:
 	return result;
 }
 
-static void
-master_dump_enqueue(void *dctx) {
-	isc_work_enqueue(isc_loop(), master_dump_cb, master_dump_done_cb, dctx);
-}
-
-static void
-dns_dumpctx_enqueue(isc_loop_t *loop, dns_dumpctx_t *dctx) {
-	dns_dumpctx_ref(dctx);
-	if (loop == isc_loop()) {
-		master_dump_enqueue(dctx);
-	} else {
-		isc_async_run(loop, master_dump_enqueue, dctx);
-	}
-}
-
 isc_result_t
 dns_master_dumptostreamasync(isc_mem_t *mctx, dns_db_t *db,
 			     dns_dbversion_t *version,
@@ -1739,7 +1734,10 @@ dns_master_dumptostreamasync(isc_mem_t *mctx, dns_db_t *db,
 	dctx->done = done;
 	dctx->done_arg = done_arg;
 
-	dns_dumpctx_enqueue(loop, dctx);
+	dns_dumpctx_ref(dctx);
+	isc_loop_attach(loop, &dctx->loop);
+	isc_work_enqueue(isc_loop(), master_dump_cb, master_dump_done_cb, dctx);
+
 	*dctxp = dctx;
 
 	return ISC_R_SUCCESS;
@@ -1828,7 +1826,10 @@ dns_master_dumpasync(isc_mem_t *mctx, dns_db_t *db, dns_dbversion_t *version,
 	dctx->file = file;
 	dctx->tmpfile = tempname;
 
-	dns_dumpctx_enqueue(loop, dctx);
+	dns_dumpctx_ref(dctx);
+	isc_loop_attach(loop, &dctx->loop);
+	isc_work_enqueue(isc_loop(), master_dump_cb, master_dump_done_cb, dctx);
+
 	*dctxp = dctx;
 
 	return ISC_R_SUCCESS;

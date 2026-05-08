@@ -108,6 +108,8 @@ struct dns_loadctx {
 	dns_loaddonefunc_t done;
 	void *done_arg;
 
+	isc_loop_t *loop;
+
 	/* Common methods */
 	isc_result_t (*openfile)(dns_loadctx_t *lctx, const char *filename);
 	isc_result_t (*load)(dns_loadctx_t *lctx);
@@ -2584,26 +2586,20 @@ load(void *arg) {
 }
 
 static void
-load_done(void *arg) {
+load_callback(void *arg) {
 	dns_loadctx_t *lctx = arg;
 
 	(lctx->done)(lctx->done_arg, lctx->result);
+	isc_loop_unref(lctx->loop);
 	dns_loadctx_detach(&lctx);
 }
 
 static void
-load_enqueue(void *lctx) {
-	isc_work_enqueue(isc_loop(), load, load_done, lctx);
-}
+load_done(void *arg) {
+	dns_loadctx_t *lctx = arg;
 
-static void
-dns_loadctx_enqueue(isc_loop_t *loop, dns_loadctx_t *lctx) {
-	dns_loadctx_ref(lctx);
-	if (loop == isc_loop()) {
-		load_enqueue(lctx);
-	} else {
-		isc_async_run(loop, load_enqueue, lctx);
-	}
+	/* enqueue callback on the correct loop */
+	isc_async_run(lctx->loop, load_callback, lctx);
 }
 
 isc_result_t
@@ -2634,7 +2630,10 @@ dns_master_loadfileasync(const char *master_file, dns_name_t *top,
 		return result;
 	}
 
-	dns_loadctx_enqueue(loop, lctx);
+	dns_loadctx_ref(lctx);
+	isc_loop_attach(loop, &lctx->loop);
+	isc_work_enqueue(isc_loop(), load, load_done, lctx);
+
 	*lctxp = lctx;
 
 	return ISC_R_SUCCESS;
