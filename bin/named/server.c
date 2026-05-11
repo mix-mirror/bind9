@@ -8217,37 +8217,6 @@ apply_configuration(cfg_obj_t *effectiveconfig, cfg_obj_t *bindkeys,
 		}
 	}
 
-	if (first_time) {
-		/*
-		 * Rescan the interface list to pick up changes in the
-		 * listen-on option. This requires the loopmgr to be
-		 * temporarily resumed.
-		 *
-		 * The reason we're doing this the first time (instead of having
-		 * only one scan later) is because we're are dropping root
-		 * privileges shortly after and FreeBSD doesn't have Linux
-		 * capabilities so can't listen to a privileged port without
-		 * being root.
-		 */
-		isc_loopmgr_resume();
-		result = ns_interfacemgr_scan(server->interfacemgr, true, true);
-		isc_loopmgr_pause();
-
-		/*
-		 * Check that named is able to TCP listen on at least one
-		 * interface. Otherwise, another named process could be running
-		 * and we should fail.
-		 */
-		if (result == ISC_R_ADDRINUSE) {
-			isc_log_write(NAMED_LOGCATEGORY_GENERAL,
-				      NAMED_LOGMODULE_SERVER, ISC_LOG_ERROR,
-				      "unable to listen on any configured "
-				      "interfaces");
-			result = ISC_R_FAILURE;
-			goto cleanup_portsets;
-		}
-	}
-
 	/*
 	 * Arrange for further interface scanning to occur periodically
 	 * as specified by the "interface-interval" option.
@@ -8766,14 +8735,34 @@ apply_configuration(cfg_obj_t *effectiveconfig, cfg_obj_t *bindkeys,
 		goto cleanup_altsecrets;
 	}
 
-	(void)ns_interfacemgr_scan(server->interfacemgr, true, true);
-
-	/*
-	 * Permanently drop root privileges now.
-	 */
+	result = ns_interfacemgr_scan(server->interfacemgr, true, true);
 	if (first_time) {
+		/*
+		 * Check that named is able to TCP listen on at least one
+		 * interface. Otherwise, another named process could be running
+		 * and we should fail.
+		 *
+		 * The reason it is checked only during initial configuration is
+		 * because BSD doesn't have Linux capabilities, thus can't
+		 * listen to a privileged port without being root. Any reload
+		 * would then fail.
+		 *
+		 */
+		if (result != ISC_R_SUCCESS) {
+			isc_log_write(NAMED_LOGCATEGORY_GENERAL,
+				      NAMED_LOGMODULE_SERVER, ISC_LOG_ERROR,
+				      "unable to listen on any configured "
+				      "interfaces");
+			result = ISC_R_FAILURE;
+			goto cleanup_altsecrets;
+		}
+
+		/*
+		 * Permanently drop root privileges now.
+		 */
 		named_os_changeuser(true);
 	}
+	result = ISC_R_SUCCESS;
 
 	/*
 	 * These cleans up either the old production view list
