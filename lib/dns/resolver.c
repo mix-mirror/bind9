@@ -3786,6 +3786,10 @@ shufflens:
 		unsigned int no_fetch = 0;
 		dns_name_t *ns = nameservers[i];
 
+		if (*ns_processed >= max_delegation_servers) {
+			break;
+		}
+
 		if (fctx->delegset->staticstub &&
 		    dns_name_equal(ns, fctx->domain))
 		{
@@ -3807,9 +3811,7 @@ shufflens:
 			*all_spilledp = false;
 		}
 
-		if (++(*ns_processed) >= max_delegation_servers) {
-			break;
-		}
+		(*ns_processed)++;
 	}
 
 	if (fctx->pending_running == 0 && !have_address) {
