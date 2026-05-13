@@ -3553,9 +3553,6 @@ qpzone_find_scan_node(qpz_search_t *search, qpznode_t *node,
 			if (candidates->cname == NULL) {
 				candidates->cname = header;
 			}
-			if (!maybe_zonecut && candidates->cnamesig != NULL) {
-				break;
-			}
 		} else if (top->typepair == answersigpair) {
 			/*
 			 * We've found the RRSIG rdataset for our target type.
@@ -3572,9 +3569,6 @@ qpzone_find_scan_node(qpz_search_t *search, qpznode_t *node,
 			 * signature.
 			 */
 			candidates->cnamesig = header;
-			if (!maybe_zonecut && candidates->cname != NULL) {
-				break;
-			}
 		} else if (top->typepair == DNS_TYPEPAIR(dns_rdatatype_nsec) &&
 			   !search->version->havensec3)
 		{
