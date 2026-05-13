@@ -3474,11 +3474,15 @@ typedef struct qpzone_find_candidates {
 
 static void
 qpzone_find_scan_node(qpz_search_t *search, qpznode_t *node,
-		      dns_rdatatype_t type, bool maybe_zonecut,
+		      dns_rdatatype_t type, bool check_zonecut,
 		      qpzone_find_candidates_t *candidates) {
 	dns_vecheader_t *answer = NULL, *answersig = NULL;
 	dns_vecheader_t *cname = NULL, *cnamesig = NULL;
 	dns_typepair_t answersigpair = DNS_SIGTYPEPAIR(type);
+	bool maybe_zonecut =
+		check_zonecut &&
+		((node != search->qpdb->origin && !dns_rdatatype_atparent(type)) ||
+		 IS_STUB(search->qpdb));
 	bool cname_ok = type != dns_rdatatype_cname &&
 			type != dns_rdatatype_key && type != dns_rdatatype_nsec;
 
@@ -3662,21 +3666,12 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	}
 
 	if (result == ISC_R_SUCCESS) {
-		bool maybe_zonecut = false;
-
 		exact_node = node;
 		exact_scanned = true;
 
-		if (node->delegating && ((node != search.qpdb->origin &&
-					  !dns_rdatatype_atparent(type)) ||
-					 IS_STUB(search.qpdb)))
-		{
-			maybe_zonecut = true;
-		}
-
 		nlock = qpzone_get_lock(node);
 		NODE_RDLOCK(nlock, &nlocktype);
-		qpzone_find_scan_node(&search, node, type, maybe_zonecut,
+		qpzone_find_scan_node(&search, node, type, true,
 				      &exact_candidates);
 		NODE_UNLOCK(nlock, &nlocktype);
 	} else if (result != DNS_R_PARTIALMATCH) {
