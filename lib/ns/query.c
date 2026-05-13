@@ -8661,34 +8661,8 @@ query_delegation_recurse(query_ctx_t *qctx) {
 		/*
 		 * Any other recursion.
 		 */
-		dns_delegset_t *delegset = NULL;
-		dns_fixedname_t ffname;
-		dns_name_t *fname = dns_fixedname_initname(&ffname);
-		isc_result_t tresult;
-
-		tresult = dns_view_bestzonecut(qctx->view, qname, fname, NULL,
-					       qctx->client->inner.now, 0, true,
-					       true, &delegset);
-		if (tresult != ISC_R_SUCCESS) {
-			if (dns_rdataset_isassociated(qctx->rdataset)) {
-				UNREACHABLE();
-			}
-			dns_delegset_fromnsrdataset(qctx->client->manager->mctx,
-						    qctx->rdataset, &delegset);
-			fname = qctx->fname;
-		}
-
-		if (delegset == NULL) {
-			result = ISC_R_NOTFOUND;
-		} else {
-			result = ns_query_recurse(qctx->client, qctx->qtype,
-						  qname, fname, delegset,
-						  qctx->resuming);
-		}
-
-		if (delegset != NULL) {
-			dns_delegset_detach(&delegset);
-		}
+		result = ns_query_recurse(qctx->client, qctx->qtype, qname,
+					  NULL, NULL, qctx->resuming);
 	}
 
 	if (result == ISC_R_SUCCESS) {
