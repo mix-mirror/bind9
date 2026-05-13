@@ -2748,64 +2748,6 @@ matchparams(dns_vecheader_t *header, qpz_search_t *search) {
 	return false;
 }
 
-static isc_result_t
-qpzone_setup_delegation(qpz_search_t *search,
-			qpzone_find_candidates_t *zonecut, dns_dbnode_t **nodep,
-			dns_name_t *foundname, dns_rdataset_t *rdataset,
-			dns_rdataset_t *sigrdataset DNS__DB_FLARG) {
-	dns_typepair_t typepair;
-	qpznode_t *node = NULL;
-
-	REQUIRE(search != NULL);
-	REQUIRE(zonecut != NULL);
-	REQUIRE(zonecut->node != NULL);
-	REQUIRE(zonecut->found != NULL);
-
-	/*
-	 * The caller MUST NOT be holding any node locks.
-	 */
-
-	node = zonecut->node;
-	typepair = zonecut->found->typepair;
-
-	/*
-	 * If we have to set foundname, we do it before anything else.
-	 * If we were to set foundname after we had set nodep or bound the
-	 * rdataset, then we'd have to undo that work if dns_name_copy()
-	 * failed.  By setting foundname first, there's nothing to undo if
-	 * we have trouble.
-	 */
-	if (foundname != NULL) {
-		dns_name_copy(&node->name, foundname);
-	}
-	if (nodep != NULL) {
-		/*
-		 * Note that we don't have to increment the node's reference
-		 * count here because we're going to use the reference we
-		 * already have in the search block.
-		 */
-		*nodep = (dns_dbnode_t *)node;
-		zonecut->owns_node_ref = false;
-	}
-	if (rdataset != NULL) {
-		isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
-		isc_rwlock_t *nlock = qpzone_get_lock(node);
-		NODE_RDLOCK(nlock, &nlocktype);
-		bindrdataset(search->qpdb, zonecut->found,
-			     rdataset DNS__DB_FLARG_PASS);
-		if (sigrdataset != NULL && zonecut->foundsig != NULL) {
-			bindrdataset(search->qpdb, zonecut->foundsig,
-				     sigrdataset DNS__DB_FLARG_PASS);
-		}
-		NODE_UNLOCK(nlock, &nlocktype);
-	}
-
-	if (typepair == DNS_TYPEPAIR(dns_rdatatype_dname)) {
-		return DNS_R_DNAME;
-	}
-	return DNS_R_DELEGATION;
-}
-
 static void
 qpzone_find_candidate_cleanup(qpzone_find_candidates_t *candidates DNS__DB_FLARG) {
 	qpznode_t *node = NULL;
@@ -3567,6 +3509,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	qpznode_t *exact_node = NULL;
 	qpznode_t *selected_node = NULL;
 	bool close_version = false;
+	bool selected_zonecut = false;
 	bool wild = false;
 	bool nsec3 = false;
 	dns_vecheader_t *found = NULL, *nsecheader = NULL;
@@ -3706,10 +3649,11 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	}
 
 	if (zonecut_candidates.found != NULL && !exact_answer_under_zonecut) {
-		result = qpzone_setup_delegation(
-			&search, &zonecut_candidates, nodep, foundname, rdataset,
-			sigrdataset DNS__DB_FLARG_PASS);
-		goto tree_exit;
+		found = zonecut_candidates.found;
+		foundsig = zonecut_candidates.foundsig;
+		selected_node = zonecut_candidates.node;
+		selected_zonecut = true;
+		goto finalize_node;
 	}
 
 	if (exact_answer_under_zonecut) {
@@ -3819,19 +3763,6 @@ finalize_node:
 	 * If we didn't find what we were looking for...
 	 */
 	if (found == NULL) {
-		if (zonecut_candidates.found != NULL) {
-			/*
-			 * We were trying to find glue at a node beneath a
-			 * zone cut, but didn't.
-			 *
-			 * Return the delegation.
-			 */
-			NODE_UNLOCK(nlock, &nlocktype);
-			result = qpzone_setup_delegation(
-				&search, &zonecut_candidates, nodep, foundname, rdataset,
-				sigrdataset DNS__DB_FLARG_PASS);
-			goto tree_exit;
-		}
 		/*
 		 * The desired type doesn't exist.
 		 */
@@ -3879,7 +3810,13 @@ finalize_node:
 	/*
 	 * We found what we were looking for, or we found a CNAME.
 	 */
-	if (type != found->typepair && type != dns_rdatatype_any &&
+	if (selected_zonecut) {
+		if (found->typepair == DNS_TYPEPAIR(dns_rdatatype_dname)) {
+			result = DNS_R_DNAME;
+		} else {
+			result = DNS_R_DELEGATION;
+		}
+	} else if (type != found->typepair && type != dns_rdatatype_any &&
 	    found->typepair == DNS_TYPEPAIR(dns_rdatatype_cname))
 	{
 		/*
@@ -3920,12 +3857,20 @@ finalize_node:
 		result = ISC_R_SUCCESS;
 	}
 
+	if (selected_zonecut && foundname != NULL) {
+		dns_name_copy(&node->name, foundname);
+	}
+
 	if (nodep != NULL) {
-		qpznode_acquire(node DNS__DB_FLARG_PASS);
+		if (selected_zonecut && zonecut_candidates.owns_node_ref) {
+			zonecut_candidates.owns_node_ref = false;
+		} else {
+			qpznode_acquire(node DNS__DB_FLARG_PASS);
+		}
 		*nodep = (dns_dbnode_t *)node;
 	}
 
-	if (type != dns_rdatatype_any) {
+	if (selected_zonecut || type != dns_rdatatype_any) {
 		bindrdataset(search.qpdb, found, rdataset DNS__DB_FLARG_PASS);
 		if (foundsig != NULL) {
 			bindrdataset(search.qpdb, foundsig,
