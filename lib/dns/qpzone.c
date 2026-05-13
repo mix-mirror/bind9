@@ -273,6 +273,7 @@ typedef struct qpzone_find_candidates {
 	dns_vecheader_t *foundsig;
 	dns_vecheader_t *nsecheader;
 	dns_vecheader_t *nsecsig;
+	isc_result_t result;
 	bool owns_node_ref;
 	bool empty_node;
 	bool nsec3_mismatch;
@@ -3295,7 +3296,7 @@ qpzone_check_zonecut(qpz_search_t *search, qpznode_t *node,
 	dns_vecheader_t *found = NULL;
 	bool maybe_zonecut = false;
 
-	*candidates = (qpzone_find_candidates_t){};
+	*candidates = (qpzone_find_candidates_t){ .result = ISC_R_NOTFOUND };
 	if (exact) {
 		maybe_zonecut = (node != search->qpdb->origin &&
 				 !dns_rdatatype_atparent(type)) ||
@@ -3352,6 +3353,11 @@ qpzone_check_zonecut(qpz_search_t *search, qpznode_t *node,
 	if (found != NULL) {
 		candidates->node = node;
 		candidates->found = found;
+		if (found == dname_header) {
+			candidates->result = DNS_R_DNAME;
+		} else {
+			candidates->result = DNS_R_DELEGATION;
+		}
 	} else {
 		/*
 		 * There is no zonecut at this node which is active in this
@@ -3400,7 +3406,10 @@ qpzone_find_scan_node(qpz_search_t *search, qpznode_t *node,
 	bool cname_ok = type != dns_rdatatype_cname &&
 			type != dns_rdatatype_key && type != dns_rdatatype_nsec;
 
-	*candidates = (qpzone_find_candidates_t){ .empty_node = true };
+	*candidates = (qpzone_find_candidates_t){
+		.result = ISC_R_NOTFOUND,
+		.empty_node = true,
+	};
 
 	ISC_SLIST_FOREACH(top, node->next_type, next_type) {
 		/*
@@ -3488,9 +3497,11 @@ qpzone_find_scan_node(qpz_search_t *search, qpznode_t *node,
 	if (answer != NULL) {
 		candidates->found = answer;
 		candidates->foundsig = answersig;
+		candidates->result = ISC_R_SUCCESS;
 	} else if (cname != NULL) {
 		candidates->found = cname;
 		candidates->foundsig = cnamesig;
+		candidates->result = DNS_R_CNAME;
 	}
 }
 
@@ -3508,6 +3519,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	qpznode_t *node = NULL;
 	qpznode_t *exact_node = NULL;
 	qpznode_t *selected_node = NULL;
+	isc_result_t selected_result = ISC_R_SUCCESS;
 	bool close_version = false;
 	bool selected_zonecut = false;
 	bool wild = false;
@@ -3652,6 +3664,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		found = zonecut_candidates.found;
 		foundsig = zonecut_candidates.foundsig;
 		selected_node = zonecut_candidates.node;
+		selected_result = zonecut_candidates.result;
 		selected_zonecut = true;
 		goto finalize_node;
 	}
@@ -3685,6 +3698,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		}
 
 		selected_node = exact_node;
+		selected_result = exact_candidates.result;
 		nsecheader = exact_candidates.nsecheader;
 		nsecsig = exact_candidates.nsecsig;
 		goto finalize_node;
@@ -3717,6 +3731,7 @@ wildcard_or_negative:
 			found = wild_candidates.found;
 			foundsig = wild_candidates.foundsig;
 			selected_node = node;
+			selected_result = wild_candidates.result;
 			nsecheader = wild_candidates.nsecheader;
 			nsecsig = wild_candidates.nsecsig;
 			goto finalize_node;
@@ -3810,22 +3825,7 @@ finalize_node:
 	/*
 	 * We found what we were looking for, or we found a CNAME.
 	 */
-	if (selected_zonecut) {
-		if (found->typepair == DNS_TYPEPAIR(dns_rdatatype_dname)) {
-			result = DNS_R_DNAME;
-		} else {
-			result = DNS_R_DELEGATION;
-		}
-	} else if (type != found->typepair && type != dns_rdatatype_any &&
-	    found->typepair == DNS_TYPEPAIR(dns_rdatatype_cname))
-	{
-		/*
-		 * We weren't doing an ANY query and we found a CNAME instead
-		 * of the type we were looking for, so we need to indicate
-		 * that result to the caller.
-		 */
-		result = DNS_R_CNAME;
-	} else if (zonecut_candidates.found != NULL) {
+	if (!selected_zonecut && zonecut_candidates.found != NULL) {
 		/*
 		 * If we're beneath a zone cut, we must indicate that the
 		 * result is glue, unless we're actually at the zone cut
@@ -3851,10 +3851,7 @@ finalize_node:
 			result = DNS_R_GLUE;
 		}
 	} else {
-		/*
-		 * An ordinary successful query!
-		 */
-		result = ISC_R_SUCCESS;
+		result = selected_result;
 	}
 
 	if (selected_zonecut && foundname != NULL) {
