@@ -371,14 +371,21 @@ openssleddsa_tofile(const dst_key_t *key, const char *directory) {
 		len = alginfo->key_size;
 		buf = isc_mem_get(key->mctx, len);
 		if (EVP_PKEY_get_raw_private_key(key->keydata.pkeypair.priv,
-						 buf, &len) != 1)
+						 buf, &len) == 1)
 		{
-			CLEANUP(dst__openssl_toresult(ISC_R_FAILURE));
+			priv.elements[i].tag = TAG_EDDSA_PRIVATEKEY;
+			priv.elements[i].length = len;
+			priv.elements[i].data = buf;
+			i++;
+		} else {
+			/*
+			 * The raw private key is not extractable
+			 * (e.g. HSM-backed via PKCS#11); fall through to
+			 * writing only the label.
+			 */
+			isc_mem_put(key->mctx, buf, len);
+			ERR_clear_error();
 		}
-		priv.elements[i].tag = TAG_EDDSA_PRIVATEKEY;
-		priv.elements[i].length = len;
-		priv.elements[i].data = buf;
-		i++;
 	}
 	if (key->label != NULL) {
 		priv.elements[i].tag = TAG_EDDSA_LABEL;
@@ -391,7 +398,6 @@ openssleddsa_tofile(const dst_key_t *key, const char *directory) {
 	priv.nelements = i;
 	result = dst__privstruct_writefile(key, &priv, directory);
 
-cleanup:
 	if (buf != NULL) {
 		isc_mem_put(key->mctx, buf, len);
 	}
