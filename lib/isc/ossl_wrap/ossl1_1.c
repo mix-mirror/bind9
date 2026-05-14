@@ -411,8 +411,23 @@ isc_result_t
 isc_ossl_wrap_generate_pkcs11_rsa_key(char *uri, size_t bit_size,
 				      EVP_PKEY **pkeyp) {
 	UNUSED(uri);
+	UNUSED(bit_size);
+	UNUSED(pkeyp);
+	return ISC_R_NOTIMPLEMENTED;
+}
 
-	return isc_ossl_wrap_generate_rsa_key(NULL, bit_size, pkeyp);
+isc_result_t
+isc_ossl_wrap_generate_pkcs11_ed25519_key(char *uri, EVP_PKEY **pkeyp) {
+	UNUSED(uri);
+	UNUSED(pkeyp);
+	return ISC_R_NOTIMPLEMENTED;
+}
+
+isc_result_t
+isc_ossl_wrap_generate_pkcs11_ed448_key(char *uri, EVP_PKEY **pkeyp) {
+	UNUSED(uri);
+	UNUSED(pkeyp);
+	return ISC_R_NOTIMPLEMENTED;
 }
 
 bool
