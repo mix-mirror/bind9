@@ -2305,6 +2305,24 @@ retry_quiet 5 has_positive_response multisigner.test CDNSKEY 10.53.0.3 || ret=1
 
 n=$((n + 1))
 ret=0
+echo_i "check that DNSKEY removal in dnssec-policy zone is rejected ($n)"
+$DIG $DIGOPTS +tcp +norec multisigner.test DNSKEY @10.53.0.3 >dig.out.pre.test$n || ret=1
+grep "status: NOERROR" dig.out.pre.test$n >/dev/null || ret=1
+grep "ANSWER: 1," dig.out.pre.test$n >/dev/null || ret=1
+$NSUPDATE -d <<END >nsupdate.out.test$n 2>&1 || ret=1
+server 10.53.0.3 ${PORT}
+zone multisigner.test
+update delete multisigner.test DNSKEY
+send
+END
+retry_quiet 5 has_positive_response multisigner.test DNSKEY 10.53.0.3 || ret=1
+[ $ret = 0 ] || {
+  echo_i "failed"
+  status=1
+}
+
+n=$((n + 1))
+ret=0
 echo_i "check that excessive NSEC3PARAM iterations are rejected by nsupdate ($n)"
 $NSUPDATE -d <<END >nsupdate.out.test$n 2>&1 && ret=1
 server 10.53.0.3 ${PORT}

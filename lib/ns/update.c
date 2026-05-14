@@ -3044,32 +3044,45 @@ update_action(void *arg) {
 							dns_rdatatype_none,
 							&rdata, &diff));
 				}
-			} else if (dns_name_equal(name, zonename) &&
-				   (rdata.type == dns_rdatatype_soa ||
-				    rdata.type == dns_rdatatype_ns))
-			{
-				update_log(client, zone, LOGLEVEL_PROTOCOL,
-					   "attempt to delete all SOA or NS "
-					   "records ignored");
 				continue;
-			} else {
-				if (isc_log_wouldlog(LOGLEVEL_PROTOCOL)) {
-					char namestr[DNS_NAME_FORMATSIZE];
-					char typestr[DNS_RDATATYPE_FORMATSIZE];
-					dns_name_format(name, namestr,
-							sizeof(namestr));
-					dns_rdatatype_format(rdata.type,
-							     typestr,
-							     sizeof(typestr));
+			} else if (dns_name_equal(name, zonename)) {
+				char typestr[DNS_RDATATYPE_FORMATSIZE];
+				dns_rdatatype_format(rdata.type, typestr,
+						     sizeof(typestr));
+				if (rdata.type == dns_rdatatype_soa ||
+				    rdata.type == dns_rdatatype_ns)
+				{
 					update_log(client, zone,
 						   LOGLEVEL_PROTOCOL,
-						   "deleting rrset at '%s' %s",
-						   namestr, typestr);
+						   "attempt to delete all %s "
+						   "records ignored",
+						   typestr);
+					continue;
+				} else if (dns_zone_getkasp(zone) != NULL &&
+					   dns_rdatatype_iskeymaterial(
+						   rdata.type))
+				{
+					update_log(client, zone,
+						   LOGLEVEL_PROTOCOL,
+						   "attempt to delete %s "
+						   "records in dnssec-policy "
+						   "zone ignored",
+						   typestr);
+					continue;
 				}
-				CHECK(delete_if(true_p, db, ver, name,
-						rdata.type, covers, &rdata,
-						&diff));
 			}
+			if (isc_log_wouldlog(LOGLEVEL_PROTOCOL)) {
+				char namestr[DNS_NAME_FORMATSIZE];
+				char typestr[DNS_RDATATYPE_FORMATSIZE];
+				dns_name_format(name, namestr, sizeof(namestr));
+				dns_rdatatype_format(rdata.type, typestr,
+						     sizeof(typestr));
+				update_log(client, zone, LOGLEVEL_PROTOCOL,
+					   "deleting rrset at '%s' %s", namestr,
+					   typestr);
+			}
+			CHECK(delete_if(true_p, db, ver, name, rdata.type,
+					covers, &rdata, &diff));
 		} else if (update_class == dns_rdataclass_none) {
 			char namestr[DNS_NAME_FORMATSIZE];
 			char typestr[DNS_RDATATYPE_FORMATSIZE];
