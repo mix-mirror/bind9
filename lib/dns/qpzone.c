@@ -3575,6 +3575,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	qpz_search_init(&search, (qpzonedb_t *)db, (qpz_version_t *)version,
 			options);
 
+	bool glueok_opt = (options & DNS_DBFIND_GLUEOK) != 0;
 	if ((options & DNS_DBFIND_FORCENSEC3) != 0) {
 		/*
 		 * NSEC3 and RRSIG(NSEC3) rdatasets are stored only in the
@@ -3595,26 +3596,12 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 				  &search.chain, (void **)&node, NULL);
 	if (qp_result != ISC_R_NOTFOUND) {
 		dns_name_copy(&node->name, foundname);
-	}
-
-	if (qp_result == ISC_R_SUCCESS) {
-		exact_node = node;
-
-		nlock = qpzone_get_lock(node);
-		NODE_RDLOCK(nlock, &nlocktype);
-		qpzone_find_scan_node(&search, node, type,
-				      &exact_candidates DNS__DB_FLARG_PASS);
-		if (!dns_rdatatype_isnsec(type) &&
-		    type != dns_rdatatype_key)
-		{
-			qpzone_check_zonecut(
-				&search, node, type, true,
-				&exact_zonecut_candidates DNS__DB_FLARG_PASS);
-		}
-		NODE_UNLOCK(nlock, &nlocktype);
-	} else if (qp_result != DNS_R_PARTIALMATCH) {
+	} else {
 		result = qp_result;
 		goto tree_exit;
+	}
+	if (qp_result == ISC_R_SUCCESS) {
+		exact_node = node;
 	}
 
 	/*
@@ -3654,14 +3641,27 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		}
 	}
 
-	zonecut_candidates = qpzone_find_candidate_prefer(
-		&zonecut_candidates,
-		&exact_zonecut_candidates DNS__DB_FLARG_PASS);
+	bool no_zonecut = !qpzone_find_candidate_attached(&zonecut_candidates);
+
+	if ((qp_result == ISC_R_SUCCESS) && (no_zonecut || glueok_opt)) {
+		nlock = qpzone_get_lock(exact_node);
+		NODE_RDLOCK(nlock, &nlocktype);
+		qpzone_find_scan_node(&search, exact_node, type,
+				      &exact_candidates DNS__DB_FLARG_PASS);
+		if (!dns_rdatatype_isnsec(type) &&
+		    type != dns_rdatatype_key && no_zonecut)
+		{
+			qpzone_check_zonecut(
+				&search, exact_node, type, true,
+				&zonecut_candidates DNS__DB_FLARG_PASS);
+		}
+		NODE_UNLOCK(nlock, &nlocktype);
+	}
 
 	bool exact_wins_zonecut =
 		qp_result == ISC_R_SUCCESS &&
 		exact_candidates.result == ISC_R_SUCCESS &&
-		(options & DNS_DBFIND_GLUEOK) != 0;
+		glueok_opt != 0;
 
 	if (exact_wins_zonecut && zonecut_candidates.node != NULL) {
 		if (zonecut_candidates.node == exact_node) {
