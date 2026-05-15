@@ -3552,6 +3552,7 @@ qpzone_find_scan_node(qpz_search_t *search, qpznode_t *node,
 	} else if (!candidates->empty_node && !candidates->nsec3_mismatch) {
 		qpzone_find_candidate_attach(candidates,
 					     node DNS__DB_FLARG_PASS);
+		candidates->result = DNS_R_NXRRSET;
 	}
 }
 
@@ -3784,11 +3785,11 @@ finalize_node:
 	/*
 	 * If we didn't find what we were looking for...
 	 */
+	result = selected_candidates.result;
 	if (selected_candidates.found == NULL) {
 		/*
 		 * The desired type doesn't exist.
 		 */
-		result = DNS_R_NXRRSET;
 		if (search.version->secure && !search.version->havensec3 &&
 		    (selected_candidates.nsecheader == NULL ||
 		     selected_candidates.nsecsig == NULL))
@@ -3861,8 +3862,6 @@ finalize_node:
 		} else {
 			result = DNS_R_GLUE;
 		}
-	} else {
-		result = selected_candidates.result;
 	}
 
 	if (selected_candidates.zonecut && foundname != NULL) {
