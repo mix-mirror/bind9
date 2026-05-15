@@ -2666,7 +2666,6 @@ autorebase-merge-request:
     - git fetch --depth="${GIT_DEPTH}" origin "${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME}" "${CI_MERGE_REQUEST_TARGET_BRANCH_NAME}"
     - export BASE_PROJECT="isc-private/bind9"
     - export BASE_COMMIT="$(git rev-parse "origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME}")"
-    - export REWRITE_CHERRY_PICKS_FROM="security-main"
   rules:
     - if: '$CI_PROJECT_NAMESPACE == "isc-private" && $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME =~ /^security-(bind-9\.[0-9]+)$/'
       when: manual
