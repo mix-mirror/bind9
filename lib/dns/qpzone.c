@@ -3673,32 +3673,17 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		zonecut_candidates = qpzone_find_candidate_prefer(
 			&zonecut_candidates,
 			&exact_zonecut_candidates DNS__DB_FLARG_PASS);
-
-		if (qpzone_find_candidate_attached(&zonecut_candidates) &&
-		    exact_candidates.found != NULL &&
-		    type != dns_rdatatype_cname && type != dns_rdatatype_any &&
-		    exact_candidates.found->typepair ==
-			    DNS_TYPEPAIR(dns_rdatatype_cname))
-		{
-			qpzone_find_candidate_cleanup(
-				&exact_candidates DNS__DB_FLARG_PASS);
-		}
 	}
 
-	bool exact_answer_under_zonecut = false;
+	bool exact_wins_zonecut =
+		result == ISC_R_SUCCESS && exact_candidates.found != NULL &&
+		exact_candidates.result != DNS_R_CNAME &&
+		!exact_candidates.nsec3_mismatch &&
+		((options & DNS_DBFIND_GLUEOK) != 0 ||
+		 (zonecut_candidates.node == exact_node &&
+		  (dns_rdatatype_isnsec(type) || type == dns_rdatatype_key)));
 	if (qpzone_find_candidate_attached(&zonecut_candidates) &&
-	    result == ISC_R_SUCCESS && !exact_candidates.nsec3_mismatch &&
-	    !exact_candidates.empty_node && exact_candidates.found != NULL)
-	{
-		exact_answer_under_zonecut =
-			((options & DNS_DBFIND_GLUEOK) != 0 ||
-			 (zonecut_candidates.node == exact_node &&
-			  (dns_rdatatype_isnsec(type) ||
-			   type == dns_rdatatype_key)));
-	}
-
-	if (qpzone_find_candidate_attached(&zonecut_candidates) &&
-	    !exact_answer_under_zonecut)
+	    !exact_wins_zonecut)
 	{
 		selected_candidates = qpzone_find_candidate_move(&zonecut_candidates);
 		goto finalize_node;
