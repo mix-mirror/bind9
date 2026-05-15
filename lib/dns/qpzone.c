@@ -3627,8 +3627,13 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		NODE_RDLOCK(nlock, &nlocktype);
 		qpzone_find_scan_node(&search, node, type,
 				      &exact_candidates DNS__DB_FLARG_PASS);
-		qpzone_check_zonecut(&search, node, type, true,
-				     &exact_zonecut_candidates DNS__DB_FLARG_PASS);
+		if (!dns_rdatatype_isnsec(type) &&
+		    type != dns_rdatatype_key)
+		{
+			qpzone_check_zonecut(
+				&search, node, type, true,
+				&exact_zonecut_candidates DNS__DB_FLARG_PASS);
+		}
 		NODE_UNLOCK(nlock, &nlocktype);
 	} else if (qp_result != DNS_R_PARTIALMATCH) {
 		result = qp_result;
@@ -3682,22 +3687,11 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	bool exact_wins_zonecut =
 		qp_result == ISC_R_SUCCESS && exact_candidates.header != NULL &&
 		exact_candidates.result != DNS_R_CNAME &&
-		((options & DNS_DBFIND_GLUEOK) != 0 ||
-		 (zonecut_candidates.node == exact_node &&
-		  (dns_rdatatype_isnsec(type) || type == dns_rdatatype_key)));
+		(options & DNS_DBFIND_GLUEOK) != 0;
 
 	if (exact_wins_zonecut && zonecut_candidates.node != NULL) {
 		if (zonecut_candidates.node == exact_node) {
-			/*
-			 * It is not clear if KEY should still be allowed at the
-			 * parent side of the zone cut or not.  It is needed for
-			 * RFC3007 validated updates.
-			 */
-			if (dns_rdatatype_isnsec(type) ||
-			    type == dns_rdatatype_key)
-			{
-				exact_candidates.result = ISC_R_SUCCESS;
-			} else if (type == dns_rdatatype_any) {
+			if (type == dns_rdatatype_any) {
 				exact_candidates.result = DNS_R_ZONECUT;
 			} else {
 				exact_candidates.result = DNS_R_GLUE;
