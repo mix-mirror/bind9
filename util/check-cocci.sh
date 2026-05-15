@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 #
 # Copyright (C) Internet Systems Consortium, Inc. ("ISC")
 #
@@ -11,22 +11,26 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
+if ! command -v spatch >/dev/null 2>&1; then
+  echo "$0: spatch is not installed" >&2
+  exit 2
+fi
+
 ret=0
 
 run_spatch() {
-  local spatch=$1
+  local spatch="$1"
   shift
-  local spatchargs="$@"
-  local patch="$(dirname "$spatch")/$(basename "$spatch" .spatch).patch"
+  local patch
+  patch="$(dirname "$spatch")/$(basename "$spatch" .spatch).patch"
 
-  : >"$patch"
   echo "Applying semantic patch $spatch..."
-  spatch --jobs "${TEST_PARALLEL_JOBS:-1}" --sp-file "$spatch" --use-gitgrep --dir "." --include-headers $spatchargs >>"$patch" 2>cocci.stderr
+  spatch --jobs "${TEST_PARALLEL_JOBS:-1}" --sp-file "$spatch" --use-gitgrep --dir "." --include-headers "$@" >"$patch" 2>cocci.stderr
   cat cocci.stderr
-  if grep -q -e "parse error" -e "EXN: Failure" -e "WARNING" cocci.stderr; then
+  if grep -q -i -e "error" -e "warning" -e "failure" cocci.stderr; then
     ret=1
   fi
-  if [ "$(wc <"$patch" -l)" -gt "0" ]; then
+  if [ -s "$patch" ]; then
     cat "$patch"
     ret=1
   else
@@ -34,18 +38,16 @@ run_spatch() {
   fi
 }
 
-spatchargs=""
 spatchfile=""
 
-for arg in "$@"; do
-  if [ "$arg" = "--" ]; then
+while [ $# -gt 0 ]; do
+  if [ "$1" = "--" ]; then
     shift
-    spatchargs="$@"
     break
   fi
 
   if [ -z "$spatchfile" ]; then
-    spatchfile="$arg"
+    spatchfile=$1
     shift
   else
     echo "USAGE: $0 [spatch-file] [-- spatch arguments]"
@@ -54,10 +56,10 @@ for arg in "$@"; do
 done
 
 if [ -n "$spatchfile" ]; then
-  run_spatch $spatchfile $spatchargs
+  run_spatch "$spatchfile" "$@"
 else
   for spatch in cocci/*.spatch; do
-    run_spatch $spatch --very-quiet $spatchargs
+    run_spatch "$spatch" --very-quiet "$@"
   done
 fi
 
