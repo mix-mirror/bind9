@@ -3550,7 +3550,6 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	bool nsec3 = false;
 	qpzone_find_candidates_t selected_candidates = {};
 	qpzone_find_candidates_t exact_candidates = {};
-	qpzone_find_candidates_t exact_zonecut_candidates = {};
 	qpzone_find_candidates_t zonecut_candidates = {};
 	qpzone_find_candidates_t wild_candidates = {};
 	bool active;
@@ -3641,15 +3640,16 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		}
 	}
 
-	bool no_zonecut = !qpzone_find_candidate_attached(&zonecut_candidates);
+	bool no_ancestor_zonecut =
+		!qpzone_find_candidate_attached(&zonecut_candidates);
 
-	if ((qp_result == ISC_R_SUCCESS) && (no_zonecut || glueok_opt)) {
+	if (qp_result == ISC_R_SUCCESS && (no_ancestor_zonecut || glueok_opt)) {
 		nlock = qpzone_get_lock(exact_node);
 		NODE_RDLOCK(nlock, &nlocktype);
 		qpzone_find_scan_node(&search, exact_node, type,
 				      &exact_candidates DNS__DB_FLARG_PASS);
-		if (!dns_rdatatype_isnsec(type) &&
-		    type != dns_rdatatype_key && no_zonecut)
+		if (no_ancestor_zonecut && !dns_rdatatype_isnsec(type) &&
+		    type != dns_rdatatype_key)
 		{
 			qpzone_check_zonecut(
 				&search, exact_node, type, true,
@@ -3661,7 +3661,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	bool exact_wins_zonecut =
 		qp_result == ISC_R_SUCCESS &&
 		exact_candidates.result == ISC_R_SUCCESS &&
-		glueok_opt != 0;
+		glueok_opt;
 
 	if (exact_wins_zonecut && zonecut_candidates.node != NULL) {
 		if (zonecut_candidates.node == exact_node) {
@@ -3836,8 +3836,6 @@ tree_exit:
 	qpzone_find_candidate_cleanup(&exact_candidates DNS__DB_FLARG_PASS);
 	qpzone_find_candidate_cleanup(&wild_candidates DNS__DB_FLARG_PASS);
 	qpzone_find_candidate_cleanup(&zonecut_candidates DNS__DB_FLARG_PASS);
-	qpzone_find_candidate_cleanup(
-		&exact_zonecut_candidates DNS__DB_FLARG_PASS);
 	qpzone_find_candidate_cleanup(&selected_candidates DNS__DB_FLARG_PASS);
 
 	if (close_version) {
