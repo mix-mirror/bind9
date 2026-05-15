@@ -1,4 +1,5 @@
 @replacement@
+symbol dns_rdatatype_rrsig;
 expression e;
 @@
 -DNS_TYPEPAIR_VALUE(dns_rdatatype_rrsig,

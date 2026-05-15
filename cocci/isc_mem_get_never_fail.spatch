@@ -1,4 +1,5 @@
 @deletion@
+symbol isc_mem_get;
 type T;
 statement S1, S2;
 expression V, E1, E2;
