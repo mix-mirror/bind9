@@ -3357,6 +3357,64 @@ ISC_RUN_TEST_IMPL(zonemd) {
 		    dns_rdatatype_zonemd, sizeof(dns_rdata_zonemd_t));
 }
 
+/*
+ * Compression pointers are only permitted in the rdata of types
+ * enumerated in RFC 3597 section 4. A pointer encountered in any
+ * other type while parsing a DNS message must be rejected with
+ * DNS_R_DISALLOWED. Exercise dns_rdata_fromwire() with
+ * DNS_DECOMPRESS_DEFAULT (the mode used by dns_message_parse()) for
+ * both a permitted type (MX) and a disallowed type (SRV).
+ *
+ * Each wire buffer starts with the name "example.com." at offset 0
+ * so the trailing 0xc0 0x00 compression pointer in the rdata refers
+ * back to a syntactically valid name. Parsing of the rdata starts
+ * at the OWNER_LEN offset.
+ */
+ISC_RUN_TEST_IMPL(decompression_permitted) {
+#define OWNER 0x07, 'e', 'x', 'a', 'm', 'p', 'l', 'e', 0x03, 'c', 'o', 'm', 0x00
+	static const size_t OWNER_LEN = 13;
+	static const unsigned char srv_wire[] = {
+		OWNER, 0x00, 0x0a, 0x00,
+		0x14,  0x00, 0x50, /* priority/weight/port */
+		0xc0,  0x00,	   /* target: pointer */
+	};
+	static const unsigned char mx_wire[] = {
+		OWNER, 0x00, 0x0a, /* preference */
+		0xc0,  0x00,	   /* exchange: pointer */
+	};
+#undef OWNER
+
+	const struct {
+		const unsigned char *wire;
+		size_t wire_len;
+		dns_rdatatype_t type;
+		isc_result_t expected;
+	} cases[] = {
+		{ srv_wire, sizeof(srv_wire), dns_rdatatype_srv,
+		  DNS_R_DISALLOWED },
+		{ mx_wire, sizeof(mx_wire), dns_rdatatype_mx, ISC_R_SUCCESS },
+	};
+
+	for (size_t i = 0; i < ARRAY_SIZE(cases); i++) {
+		isc_buffer_t source, target;
+		unsigned char buf[256];
+		dns_rdata_t rdata = DNS_RDATA_INIT;
+		isc_result_t result;
+
+		isc_buffer_constinit(&source, cases[i].wire, cases[i].wire_len);
+		isc_buffer_add(&source, cases[i].wire_len);
+		isc_buffer_forward(&source, OWNER_LEN);
+		isc_buffer_setactive(&source, cases[i].wire_len - OWNER_LEN);
+
+		isc_buffer_init(&target, buf, sizeof(buf));
+
+		result = dns_rdata_fromwire(&rdata, dns_rdataclass_in,
+					    cases[i].type, &source,
+					    DNS_DECOMPRESS_DEFAULT, &target);
+		assert_int_equal(result, cases[i].expected);
+	}
+}
+
 ISC_RUN_TEST_IMPL(atcname) {
 	unsigned int i;
 
@@ -3468,6 +3526,7 @@ ISC_TEST_ENTRY(zonemd)
 /* other tests */
 ISC_TEST_ENTRY(edns_client_subnet)
 ISC_TEST_ENTRY(edns_rad)
+ISC_TEST_ENTRY(decompression_permitted)
 ISC_TEST_ENTRY(atcname)
 ISC_TEST_ENTRY(atparent)
 ISC_TEST_ENTRY(iszonecutauth)
