@@ -3565,6 +3565,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	    dns_rdataset_t *rdataset,
 	    dns_rdataset_t *sigrdataset DNS__DB_FLARG) {
 	isc_result_t result;
+	isc_result_t qp_result;
 	qpzonedb_t *qpdb = (qpzonedb_t *)db;
 	qpznode_t *node = NULL;
 	qpznode_t *exact_node = NULL;
@@ -3609,13 +3610,13 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	/*
 	 * Search down from the root of the tree.
 	 */
-	result = dns_qp_lookup(&search.qpr, name, nspace, &search.iter,
-			       &search.chain, (void **)&node, NULL);
-	if (result != ISC_R_NOTFOUND) {
+	qp_result = dns_qp_lookup(&search.qpr, name, nspace, &search.iter,
+				  &search.chain, (void **)&node, NULL);
+	if (qp_result != ISC_R_NOTFOUND) {
 		dns_name_copy(&node->name, foundname);
 	}
 
-	if (result == ISC_R_SUCCESS) {
+	if (qp_result == ISC_R_SUCCESS) {
 		exact_node = node;
 
 		nlock = qpzone_get_lock(node);
@@ -3625,7 +3626,8 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		qpzone_check_zonecut(&search, node, type, true,
 				     &exact_zonecut_candidates DNS__DB_FLARG_PASS);
 		NODE_UNLOCK(nlock, &nlocktype);
-	} else if (result != DNS_R_PARTIALMATCH) {
+	} else if (qp_result != DNS_R_PARTIALMATCH) {
+		result = qp_result;
 		goto tree_exit;
 	}
 
@@ -3637,7 +3639,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	 * was success, then we skip the last item in the chain.
 	 */
 	unsigned int clen = dns_qpchain_length(&search.chain);
-	if (result == ISC_R_SUCCESS) {
+	if (qp_result == ISC_R_SUCCESS) {
 		clen--;
 	}
 	for (unsigned int i = 0; i < clen &&
@@ -3659,9 +3661,6 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 				&current_zonecut,
 				&zonecut_candidates DNS__DB_FLARG_PASS);
 			search.wild = false;
-			if ((options & DNS_DBFIND_GLUEOK) == 0) {
-				result = DNS_R_PARTIALMATCH;
-			}
 			search.chain.len = i - 1;
 			node = n;
 		} else if (current_zonecut.wild) {
@@ -3669,14 +3668,14 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		}
 	}
 
-	if (result == ISC_R_SUCCESS) {
+	if (qp_result == ISC_R_SUCCESS) {
 		zonecut_candidates = qpzone_find_candidate_prefer(
 			&zonecut_candidates,
 			&exact_zonecut_candidates DNS__DB_FLARG_PASS);
 	}
 
 	bool exact_wins_zonecut =
-		result == ISC_R_SUCCESS && exact_candidates.found != NULL &&
+		qp_result == ISC_R_SUCCESS && exact_candidates.found != NULL &&
 		exact_candidates.result != DNS_R_CNAME &&
 		!exact_candidates.nsec3_mismatch &&
 		((options & DNS_DBFIND_GLUEOK) != 0 ||
@@ -3689,7 +3688,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		goto finalize_node;
 	}
 
-	if (result == ISC_R_SUCCESS) {
+	if (qp_result == ISC_R_SUCCESS) {
 		if (exact_candidates.nsec3_mismatch) {
 			goto wildcard_or_negative;
 		}
@@ -3715,8 +3714,6 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		INSIST(qpzone_find_candidate_attached(&exact_candidates));
 		selected_candidates = qpzone_find_candidate_move(&exact_candidates);
 		goto finalize_node;
-	} else if (result != DNS_R_PARTIALMATCH) {
-		goto tree_exit;
 	}
 
 wildcard_or_negative:
