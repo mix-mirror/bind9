@@ -577,6 +577,9 @@ isc_ossl_wrap_generate_pkcs11_rsa_key(char *uri, size_t bit_size,
 	int status;
 	size_t len;
 
+	REQUIRE(uri != NULL);
+	REQUIRE(pkeyp != NULL && *pkeyp == NULL);
+
 	len = strlen(uri);
 	INSIST(len != 0);
 
