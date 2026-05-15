@@ -3672,30 +3672,12 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		}
 	}
 
-	if (qp_result == ISC_R_SUCCESS) {
-		zonecut_candidates = qpzone_find_candidate_prefer(
-			&zonecut_candidates,
-			&exact_zonecut_candidates DNS__DB_FLARG_PASS);
-	}
+	zonecut_candidates = qpzone_find_candidate_prefer(
+		&zonecut_candidates,
+		&exact_zonecut_candidates DNS__DB_FLARG_PASS);
 
-	if (!qpzone_find_candidate_attached(&zonecut_candidates) &&
-	    qp_result == ISC_R_SUCCESS && exact_candidates.empty_node)
-	{
-		/*
-		 * We have an exact match for the name, but there are no active
-		 * rdatasets in the desired version.  That means that this node
-		 * doesn't exist in the desired version.  If there's a node above
-		 * this one, reassign the foundname to the parent and treat this
-		 * as a partial match.
-		 */
-		unsigned int len = search.chain.len - 1;
-		if (len > 0) {
-			dns_qpchain_node(&search.chain, len - 1, (void **)&node,
-					 NULL);
-			dns_name_copy(&node->name, foundname);
-		}
-		goto wildcard_or_negative;
-	}
+	bool exact_empty = qp_result == ISC_R_SUCCESS &&
+			   exact_candidates.empty_node;
 
 	bool exact_wins_zonecut =
 		qp_result == ISC_R_SUCCESS && exact_candidates.header != NULL &&
@@ -3704,9 +3686,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		 (zonecut_candidates.node == exact_node &&
 		  (dns_rdatatype_isnsec(type) || type == dns_rdatatype_key)));
 
-	if (exact_wins_zonecut &&
-	    qpzone_find_candidate_attached(&zonecut_candidates))
-	{
+	if (exact_wins_zonecut && zonecut_candidates.node != NULL) {
 		if (zonecut_candidates.node == exact_node) {
 			/*
 			 * It is not clear if KEY should still be allowed at the
@@ -3740,38 +3720,23 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		goto finalize_node;
 	}
 
-	if (nsec3) {
+	if (nsec3 || qp_result != ISC_R_SUCCESS || exact_empty) {
 		goto wildcard_or_negative;
 	}
 
-	if (qp_result == ISC_R_SUCCESS) {
-		nlock = qpzone_get_lock(exact_node);
-		NODE_RDLOCK(nlock, &nlocktype);
-		qpzone_find_scan_nxrrset(&search, exact_node,
-					 &exact_candidates DNS__DB_FLARG_PASS);
-		NODE_UNLOCK(nlock, &nlocktype);
+	nlock = qpzone_get_lock(exact_node);
+	NODE_RDLOCK(nlock, &nlocktype);
+	qpzone_find_scan_nxrrset(&search, exact_node,
+				 &exact_candidates DNS__DB_FLARG_PASS);
+	NODE_UNLOCK(nlock, &nlocktype);
 
-		if (exact_candidates.empty_node) {
-			/*
-			 * We have an exact match for the name, but there are no
-			 * active rdatasets in the desired version.  That means
-			 * that this node doesn't exist in the desired version.  If
-			 * there's a node above this one, reassign the foundname to
-			 * the parent and treat this as a partial match.
-			 */
-			unsigned int len = search.chain.len - 1;
-			if (len > 0) {
-				dns_qpchain_node(&search.chain, len - 1,
-						 (void **)&node, NULL);
-				dns_name_copy(&node->name, foundname);
-			}
-			goto wildcard_or_negative;
-		}
-
-		INSIST(qpzone_find_candidate_attached(&exact_candidates));
-		selected_candidates = qpzone_find_candidate_move(&exact_candidates);
-		goto finalize_node;
+	if (exact_candidates.empty_node) {
+		goto wildcard_or_negative;
 	}
+
+	INSIST(qpzone_find_candidate_attached(&exact_candidates));
+	selected_candidates = qpzone_find_candidate_move(&exact_candidates);
+	goto finalize_node;
 
 wildcard_or_negative:
 	if (wildcard_possible) {
