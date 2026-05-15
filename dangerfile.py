@@ -296,7 +296,7 @@ if is_backport:
                 if not is_full_backport:
                     message(msg)
                 else:
-                    if not target_branch.startswith("security-"):
+                    if target_branch.startswith("security-"):
                         msg += ":bulb: Try running the `autorebase-merge-request` job. "
                     msg += (
                         "Please use `-x` when cherry-picking to include "
