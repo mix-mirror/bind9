@@ -264,19 +264,15 @@ typedef struct {
 	unsigned int options;
 	dns_qpchain_t chain;
 	dns_qpiter_t iter;
-	bool wild;
 } qpz_search_t;
 
 typedef struct qpzone_find_candidates {
 	qpznode_t *node;
-	dns_vecheader_t *found;
-	dns_vecheader_t *foundsig;
-	dns_vecheader_t *nsecheader;
-	dns_vecheader_t *nsecsig;
+	dns_vecheader_t *header;
+	dns_vecheader_t *sigheader;
 	isc_result_t result;
 	bool zonecut;
 	bool empty_node;
-	bool nsec3_mismatch;
 	bool wild;
 } qpzone_find_candidates_t;
 
@@ -3386,7 +3382,7 @@ qpzone_check_zonecut(qpz_search_t *search, qpznode_t *node,
 		found = ns_header;
 	} else if (dname_header != NULL) {
 		found = dname_header;
-		candidates->foundsig = sigdname_header;
+		candidates->sigheader = sigdname_header;
 	} else if (ns_header != NULL) {
 		found = ns_header;
 	}
@@ -3394,25 +3390,12 @@ qpzone_check_zonecut(qpz_search_t *search, qpznode_t *node,
 	if (found != NULL) {
 		qpzone_find_candidate_attach(candidates,
 					     node DNS__DB_FLARG_PASS);
-		candidates->found = found;
+		candidates->header = found;
 		candidates->zonecut = true;
 		if (found == dname_header) {
 			candidates->result = DNS_R_DNAME;
 		} else {
 			candidates->result = DNS_R_DELEGATION;
-		}
-	} else {
-		/*
-		 * There is no zonecut at this node which is active in this
-		 * version.
-		 *
-		 * If this is a "wild" node and the caller hasn't disabled
-		 * wildcard matching, remember that we've seen a wild node
-		 * in case we need to go searching for wildcard matches
-		 * later on.
-		 */
-		if (node->wild && (search->options & DNS_DBFIND_NOWILD) == 0) {
-			candidates->wild = true;
 		}
 	}
 }
@@ -3436,7 +3419,6 @@ qpz_search_init(qpz_search_t *search, qpzonedb_t *db, qpz_version_t *version,
 	 * qpch->in -- init in dns_qp_lookup
 	 * qpiter -- init in dns_qp_lookup
 	 */
-	search->wild = false;
 }
 
 static void
@@ -3465,21 +3447,20 @@ qpzone_find_scan_node(qpz_search_t *search, qpznode_t *node,
 		}
 
 		/*
-		 * We now know that there is at least one active rdataset at
-		 * this node.
-		 */
-		candidates->empty_node = false;
-
-		/*
 		 * If the NSEC3 record doesn't match the chain we are using
 		 * behave as if it isn't here.
 		 */
 		if (top->typepair == DNS_TYPEPAIR(dns_rdatatype_nsec3) &&
 		    !matchparams(header, search))
 		{
-			candidates->nsec3_mismatch = true;
-			break;
+			continue;
 		}
+
+		/*
+		 * We now know that there is at least one active rdataset at
+		 * this node.
+		 */
+		candidates->empty_node = false;
 
 		if (top->typepair == type || type == dns_rdatatype_any) {
 			/*
@@ -3517,39 +3498,56 @@ qpzone_find_scan_node(qpz_search_t *search, qpznode_t *node,
 			 * signature.
 			 */
 			cnamesig = header;
-		} else if (top->typepair == DNS_TYPEPAIR(dns_rdatatype_nsec) &&
-			   !search->version->havensec3)
-		{
-			/*
-			 * Remember a NSEC rdataset even if we're not
-			 * specifically looking for it, because we might need it
-			 * later.
-			 */
-			candidates->nsecheader = header;
-		} else if (top->typepair == DNS_SIGTYPEPAIR(dns_rdatatype_nsec) &&
-			   !search->version->havensec3)
-		{
-			/*
-			 * If we need the NSEC rdataset, we'll also need its
-			 * signature.
-			 */
-			candidates->nsecsig = header;
 		}
 	}
 
 	if (answer != NULL) {
 		qpzone_find_candidate_attach(candidates,
 					     node DNS__DB_FLARG_PASS);
-		candidates->found = answer;
-		candidates->foundsig = answersig;
+		candidates->header = answer;
+		candidates->sigheader = answersig;
 		candidates->result = ISC_R_SUCCESS;
 	} else if (cname != NULL) {
 		qpzone_find_candidate_attach(candidates,
 					     node DNS__DB_FLARG_PASS);
-		candidates->found = cname;
-		candidates->foundsig = cnamesig;
+		candidates->header = cname;
+		candidates->sigheader = cnamesig;
 		candidates->result = DNS_R_CNAME;
-	} else if (!candidates->empty_node && !candidates->nsec3_mismatch) {
+	}
+}
+
+static void
+qpzone_find_scan_nxrrset(qpz_search_t *search, qpznode_t *node,
+			 qpzone_find_candidates_t *candidates DNS__DB_FLARG) {
+	*candidates = (qpzone_find_candidates_t){
+		.result = ISC_R_NOTFOUND,
+		.empty_node = true,
+	};
+
+	ISC_SLIST_FOREACH(top, node->next_type, next_type) {
+		/*
+		 * Look for an active, extant rdataset.
+		 */
+		dns_vecheader_t *header = first_existing_header(top,
+								search->serial);
+		if (header == NULL) {
+			continue;
+		}
+
+		candidates->empty_node = false;
+
+		if (top->typepair == DNS_TYPEPAIR(dns_rdatatype_nsec) &&
+		    !search->version->havensec3)
+		{
+			candidates->header = header;
+		} else if (top->typepair == DNS_SIGTYPEPAIR(dns_rdatatype_nsec) &&
+			   !search->version->havensec3)
+		{
+			candidates->sigheader = header;
+		}
+	}
+
+	if (!candidates->empty_node) {
 		qpzone_find_candidate_attach(candidates,
 					     node DNS__DB_FLARG_PASS);
 		candidates->result = DNS_R_NXRRSET;
@@ -3571,7 +3569,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	qpznode_t *node = NULL;
 	qpznode_t *exact_node = NULL;
 	bool close_version = false;
-	bool wild = false;
+	bool wildcard_possible = false;
 	bool nsec3 = false;
 	qpzone_find_candidates_t selected_candidates = {};
 	qpzone_find_candidates_t exact_candidates = {};
@@ -3601,6 +3599,11 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 			options);
 
 	if ((options & DNS_DBFIND_FORCENSEC3) != 0) {
+		/*
+		 * NSEC3 and RRSIG(NSEC3) rdatasets are stored only in the
+		 * NSEC3 namespace. Without FORCENSEC3, NSEC3 records are not
+		 * visible to this lookup.
+		 */
 		nsec3 = true;
 		nspace = DNS_DBNAMESPACE_NSEC3;
 	} else {
@@ -3661,11 +3664,11 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 			zonecut_candidates = qpzone_find_candidate_prefer(
 				&current_zonecut,
 				&zonecut_candidates DNS__DB_FLARG_PASS);
-			search.wild = false;
+			wildcard_possible = false;
 			search.chain.len = i - 1;
 			node = n;
-		} else if (current_zonecut.wild) {
-			search.wild = true;
+		} else if (n->wild && (options & DNS_DBFIND_NOWILD) == 0) {
+			wildcard_possible = true;
 		}
 	}
 
@@ -3675,33 +3678,86 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 			&exact_zonecut_candidates DNS__DB_FLARG_PASS);
 	}
 
+	if (!qpzone_find_candidate_attached(&zonecut_candidates) &&
+	    qp_result == ISC_R_SUCCESS && exact_candidates.empty_node)
+	{
+		/*
+		 * We have an exact match for the name, but there are no active
+		 * rdatasets in the desired version.  That means that this node
+		 * doesn't exist in the desired version.  If there's a node above
+		 * this one, reassign the foundname to the parent and treat this
+		 * as a partial match.
+		 */
+		unsigned int len = search.chain.len - 1;
+		if (len > 0) {
+			dns_qpchain_node(&search.chain, len - 1, (void **)&node,
+					 NULL);
+			dns_name_copy(&node->name, foundname);
+		}
+		goto wildcard_or_negative;
+	}
+
 	bool exact_wins_zonecut =
-		qp_result == ISC_R_SUCCESS && exact_candidates.found != NULL &&
+		qp_result == ISC_R_SUCCESS && exact_candidates.header != NULL &&
 		exact_candidates.result != DNS_R_CNAME &&
-		!exact_candidates.nsec3_mismatch &&
 		((options & DNS_DBFIND_GLUEOK) != 0 ||
 		 (zonecut_candidates.node == exact_node &&
 		  (dns_rdatatype_isnsec(type) || type == dns_rdatatype_key)));
-	if (qpzone_find_candidate_attached(&zonecut_candidates) &&
-	    !exact_wins_zonecut)
+
+	if (exact_wins_zonecut &&
+	    qpzone_find_candidate_attached(&zonecut_candidates))
 	{
-		selected_candidates = qpzone_find_candidate_move(&zonecut_candidates);
+		if (zonecut_candidates.node == exact_node) {
+			/*
+			 * It is not clear if KEY should still be allowed at the
+			 * parent side of the zone cut or not.  It is needed for
+			 * RFC3007 validated updates.
+			 */
+			if (dns_rdatatype_isnsec(type) ||
+			    type == dns_rdatatype_key)
+			{
+				exact_candidates.result = ISC_R_SUCCESS;
+			} else if (type == dns_rdatatype_any) {
+				exact_candidates.result = DNS_R_ZONECUT;
+			} else {
+				exact_candidates.result = DNS_R_GLUE;
+			}
+		} else {
+			exact_candidates.result = DNS_R_GLUE;
+		}
+	}
+
+	if (exact_wins_zonecut) {
+		selected_candidates = qpzone_find_candidate_prefer(
+			&exact_candidates,
+			&zonecut_candidates DNS__DB_FLARG_PASS);
+	} else {
+		selected_candidates = qpzone_find_candidate_prefer(
+			&zonecut_candidates,
+			&exact_candidates DNS__DB_FLARG_PASS);
+	}
+	if (qpzone_find_candidate_attached(&selected_candidates)) {
 		goto finalize_node;
 	}
 
+	if (nsec3) {
+		goto wildcard_or_negative;
+	}
+
 	if (qp_result == ISC_R_SUCCESS) {
-		if (exact_candidates.nsec3_mismatch) {
-			goto wildcard_or_negative;
-		}
+		nlock = qpzone_get_lock(exact_node);
+		NODE_RDLOCK(nlock, &nlocktype);
+		qpzone_find_scan_nxrrset(&search, exact_node,
+					 &exact_candidates DNS__DB_FLARG_PASS);
+		NODE_UNLOCK(nlock, &nlocktype);
 
 		if (exact_candidates.empty_node) {
 			/*
-			 * We have an exact match for the name, but there are
-			 * no active rdatasets in the desired version.  That
-			 * means that this node doesn't exist in the desired
-			 * version.  If there's a node above this one, reassign
-			 * the foundname to the parent and treat this as a
-			 * partial match.
+			 * We have an exact match for the name, but there are no
+			 * active rdatasets in the desired version.  That means
+			 * that this node doesn't exist in the desired version.  If
+			 * there's a node above this one, reassign the foundname to
+			 * the parent and treat this as a partial match.
 			 */
 			unsigned int len = search.chain.len - 1;
 			if (len > 0) {
@@ -3718,7 +3774,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	}
 
 wildcard_or_negative:
-	if (search.wild) {
+	if (wildcard_possible) {
 		/*
 		 * At least one of the levels in the search chain potentially
 		 * has a wildcard.  For each such level, we must see if there's
@@ -3727,7 +3783,6 @@ wildcard_or_negative:
 		result = find_wildcard(&search, &node, name, nspace);
 		if (result == ISC_R_SUCCESS) {
 			dns_name_copy(name, foundname);
-			wild = true;
 
 			nlock = qpzone_get_lock(node);
 			NODE_RDLOCK(nlock, &nlocktype);
@@ -3735,20 +3790,29 @@ wildcard_or_negative:
 					      &wild_candidates DNS__DB_FLARG_PASS);
 			NODE_UNLOCK(nlock, &nlocktype);
 
-			if (wild_candidates.nsec3_mismatch) {
-				goto negative_answer;
+			if (!qpzone_find_candidate_attached(&wild_candidates) &&
+			    !wild_candidates.empty_node)
+			{
+				nlock = qpzone_get_lock(node);
+				NODE_RDLOCK(nlock, &nlocktype);
+				qpzone_find_scan_nxrrset(
+					&search, node,
+					&wild_candidates DNS__DB_FLARG_PASS);
+				NODE_UNLOCK(nlock, &nlocktype);
 			}
 
-			INSIST(qpzone_find_candidate_attached(&wild_candidates));
-			selected_candidates =
-				qpzone_find_candidate_move(&wild_candidates);
-			goto finalize_node;
+			if (qpzone_find_candidate_attached(&wild_candidates)) {
+				wild_candidates.wild = true;
+				selected_candidates =
+					qpzone_find_candidate_move(
+						&wild_candidates);
+				goto finalize_node;
+			}
 		} else if (result != ISC_R_NOTFOUND) {
 			goto tree_exit;
 		}
 	}
 
-negative_answer:
 	active = false;
 	if (!nsec3) {
 		/*
@@ -3786,19 +3850,19 @@ finalize_node:
 	 * If we didn't find what we were looking for...
 	 */
 	result = selected_candidates.result;
-	if (selected_candidates.found == NULL) {
+	if (result == DNS_R_NXRRSET) {
 		/*
 		 * The desired type doesn't exist.
 		 */
 		if (search.version->secure && !search.version->havensec3 &&
-		    (selected_candidates.nsecheader == NULL ||
-		     selected_candidates.nsecsig == NULL))
+		    (selected_candidates.header == NULL ||
+		     selected_candidates.sigheader == NULL))
 		{
 			/*
 			 * The zone is secure but there's no NSEC,
 			 * or the NSEC has no signature!
 			 */
-			if (!wild) {
+			if (!selected_candidates.wild) {
 				result = DNS_R_BADDB;
 				goto node_exit;
 			}
@@ -3818,51 +3882,21 @@ finalize_node:
 			selected_candidates.node = NULL;
 		}
 		if (search.version->secure && !search.version->havensec3) {
-			bindrdataset(search.qpdb, selected_candidates.nsecheader,
+			bindrdataset(search.qpdb, selected_candidates.header,
 				     rdataset DNS__DB_FLARG_PASS);
-			if (selected_candidates.nsecsig != NULL) {
+			if (selected_candidates.sigheader != NULL) {
 				bindrdataset(search.qpdb,
-					     selected_candidates.nsecsig,
+					     selected_candidates.sigheader,
 					     sigrdataset DNS__DB_FLARG_PASS);
 			}
 		}
-		if (wild) {
+		if (selected_candidates.wild) {
 			foundname->attributes.wildcard = true;
 		}
 		goto node_exit;
 	}
 
-	/*
-	 * We found what we were looking for, or we found a CNAME.
-	 */
-	if (!selected_candidates.zonecut &&
-	    qpzone_find_candidate_attached(&zonecut_candidates))
-	{
-		/*
-		 * If we're beneath a zone cut, we must indicate that the
-		 * result is glue, unless we're actually at the zone cut
-		 * and the type is NSEC or KEY.
-		 */
-		if (zonecut_candidates.node == node) {
-			/*
-			 * It is not clear if KEY should still be
-			 * allowed at the parent side of the zone
-			 * cut or not.  It is needed for RFC3007
-			 * validated updates.
-			 */
-			if (dns_rdatatype_isnsec(type) ||
-			    type == dns_rdatatype_key)
-			{
-				result = ISC_R_SUCCESS;
-			} else if (type == dns_rdatatype_any) {
-				result = DNS_R_ZONECUT;
-			} else {
-				result = DNS_R_GLUE;
-			}
-		} else {
-			result = DNS_R_GLUE;
-		}
-	}
+	INSIST(selected_candidates.header != NULL);
 
 	if (selected_candidates.zonecut && foundname != NULL) {
 		dns_name_copy(&node->name, foundname);
@@ -3874,15 +3908,15 @@ finalize_node:
 	}
 
 	if (selected_candidates.zonecut || type != dns_rdatatype_any) {
-		bindrdataset(search.qpdb, selected_candidates.found,
+		bindrdataset(search.qpdb, selected_candidates.header,
 			     rdataset DNS__DB_FLARG_PASS);
-		if (selected_candidates.foundsig != NULL) {
-			bindrdataset(search.qpdb, selected_candidates.foundsig,
+		if (selected_candidates.sigheader != NULL) {
+			bindrdataset(search.qpdb, selected_candidates.sigheader,
 				     sigrdataset DNS__DB_FLARG_PASS);
 		}
 	}
 
-	if (wild) {
+	if (selected_candidates.wild) {
 		foundname->attributes.wildcard = true;
 	}
 
