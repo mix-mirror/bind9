@@ -35,6 +35,7 @@ dns_tests = [
     'qpmulti',
     'qpzone',
     'rdata',
+    'rdata_towire',
     'rdataset',
     'rdatasetstats',
     'resconf',
