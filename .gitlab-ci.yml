@@ -759,6 +759,13 @@ ci-variables:
     - if [ "$(sed -n -E "s|^m4_define\(\[bind_VERSION_PATCH\], ([0-9]+)\)dnl$|\1|p" configure.ac)" = "0" ]; then export BIND_BASELINE_BRANCH=$((BIND_BASELINE_BRANCH - 1 - (BIND_BASELINE_BRANCH % 2))); fi
     - BIND_BASELINE_VERSION="$(curl -s "https://gitlab.isc.org/api/v4/projects/1/repository/tags?search=^v9.${BIND_BASELINE_BRANCH}&order_by=version" | jq -r ".[0].name")"
     - echo "BIND_BASELINE_VERSION=$BIND_BASELINE_VERSION" >> ci_vars.env
+    - export MR_URL="$CI_MERGE_REQUEST_PROJECT_URL/-/merge_requests/$CI_MERGE_REQUEST_IID"
+    - echo "CI_PIPELINE_SOURCE=$CI_PIPELINE_SOURCE"
+    - echo "CI_MERGE_REQUEST_SOURCE_PROJECT_PATH=$CI_MERGE_REQUEST_SOURCE_PROJECT_PATH"
+    - echo "CI_PROJECT_PATH=$CI_PROJECT_PATH"
+    - echo "MR_URL=$MR_URL"
+    - if [ -n "$OPENAI_KEY" ]; then echo OpenAI Key Set; else echo "OpenAI Key Not Set"; fi
+    - if [ -n "GITLAB_PERSONAL_ACCESS_TOKEN" ]; then echo PAT Set; else echo "PAT Not Set"; fi
   needs:
     - job: autoreconf
       artifacts: true
