@@ -55,6 +55,12 @@ for algtypebits in rsasha256:rsa:2048 rsasha512:rsa:2048 \
   alg=$(echo "$algtypebits" | cut -f 1 -d :)
   type=$(echo "$algtypebits" | cut -f 2 -d :)
   bits=$(echo "$algtypebits" | cut -f 3 -d :)
+  alg_upper=$(echo "$alg" | tr '[:lower:]' '[:upper:]')
+  supported=$(eval "echo \$${alg_upper}_SUPPORTED")
+  if [ "${supported}" != 1 ]; then
+    echo_i "skipping test for ${alg}:${type}:${bits}, not supported by this build"
+    continue
+  fi
   zone="${alg}.example"
   zonefile="zone.${zone}.db.signed"
 
