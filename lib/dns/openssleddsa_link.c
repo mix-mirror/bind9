@@ -399,7 +399,7 @@ openssleddsa_tofile(const dst_key_t *key, const char *directory) {
 			priv.elements[i].length = len;
 			priv.elements[i].data = buf;
 			i++;
-		} else {
+		} else if (key->label != NULL) {
 			/*
 			 * The raw private key is not extractable
 			 * (e.g. HSM-backed via PKCS#11); fall through to
@@ -407,6 +407,9 @@ openssleddsa_tofile(const dst_key_t *key, const char *directory) {
 			 */
 			isc_mem_put(key->mctx, buf, len);
 			ERR_clear_error();
+		} else {
+			isc_mem_put(key->mctx, buf, len);
+			return dst__openssl_toresult(DST_R_OPENSSLFAILURE);
 		}
 	}
 	if (key->label != NULL) {
