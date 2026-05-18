@@ -17,8 +17,9 @@ import shutil
 
 import pytest
 
-import isctest.mark
 from isctest.util import param
+
+import isctest.mark
 
 pytestmark = [
     isctest.mark.softhsm2_environment,
