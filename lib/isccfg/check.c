@@ -3980,7 +3980,7 @@ check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 		if (res1 == ISC_R_SUCCESS) {
 			signing = cfg_obj_asboolean(obj);
 		} else if (has_dnssecpolicy) {
-			signing = kasp_inlinesigning;
+			inline_signing = signing = kasp_inlinesigning;
 		}
 
 		if (has_dnssecpolicy) {
