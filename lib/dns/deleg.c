@@ -19,9 +19,13 @@
 #include <isc/urcu.h>
 #include <isc/uv.h>
 
+#include <dns/db.h>
 #include <dns/deleg.h>
+#include <dns/fixedname.h>
 #include <dns/name.h>
 #include <dns/qp.h>
+#include <dns/rdataset.h>
+#include <dns/rdatastruct.h>
 #include <dns/view.h>
 
 #include "probes-dns.h"
@@ -864,11 +868,53 @@ dns_delegdb_dump(dns_delegdb_t *delegdb, bool expired, FILE *fp) {
 	rcu_read_unlock();
 }
 
+static size_t
+fromns_lookup_glue(dns_delegset_t *delegset, dns_deleg_t *deleg,
+		   dns_db_t *gluedb, const dns_name_t *name,
+		   dns_rdatatype_t type, isc_stdtime_t now) {
+	dns_rdataset_t rdataset = DNS_RDATASET_INIT;
+	dns_fixedname_t ffound;
+	dns_name_t *foundname = dns_fixedname_initname(&ffound);
+	size_t count = 0;
+	isc_result_t result;
+
+	result = dns_db_find(gluedb, name, NULL, type, DNS_DBFIND_GLUEOK, now,
+			     NULL, foundname, &rdataset, NULL);
+	if (result != ISC_R_SUCCESS && result != DNS_R_GLUE) {
+		dns_rdataset_cleanup(&rdataset);
+		return 0;
+	}
+
+	DNS_RDATASET_FOREACH(&rdataset) {
+		dns_rdata_t rdata = DNS_RDATA_INIT;
+		isc_netaddr_t addr = { 0 };
+
+		dns_rdataset_current(&rdataset, &rdata);
+		if (type == dns_rdatatype_a) {
+			dns_rdata_in_a_t a;
+			dns_rdata_tostruct(&rdata, &a, NULL);
+			addr.family = AF_INET;
+			addr.type.in = a.in_addr;
+		} else {
+			dns_rdata_in_aaaa_t aaaa;
+			dns_rdata_tostruct(&rdata, &aaaa, NULL);
+			addr.family = AF_INET6;
+			addr.type.in6 = aaaa.in6_addr;
+		}
+		dns_delegset_addaddr(delegset, deleg, &addr);
+		count++;
+	}
+
+	dns_rdataset_disassociate(&rdataset);
+	return count;
+}
+
 void
 dns_delegset_fromnsrdataset(isc_mem_t *mctx, dns_rdataset_t *rdataset,
+			    dns_db_t *gluedb, isc_stdtime_t now,
 			    dns_delegset_t **delegsetp) {
 	dns_delegset_t *delegset = NULL;
-	dns_deleg_t *deleg = NULL;
+	dns_deleg_t *names_deleg = NULL;
 
 	if (rdataset == NULL || !dns_rdataset_isassociated(rdataset) ||
 	    delegsetp == NULL || *delegsetp != NULL)
@@ -878,30 +924,67 @@ dns_delegset_fromnsrdataset(isc_mem_t *mctx, dns_rdataset_t *rdataset,
 
 	REQUIRE(rdataset->type == dns_rdatatype_ns);
 
+	if (now == 0) {
+		now = isc_stdtime_now();
+	}
+
 	delegset = isc_mem_get(mctx, sizeof(*delegset));
 	*delegset = (dns_delegset_t){
 		.magic = DNS_DELEGSET_MAGIC,
 		.mctx = isc_mem_ref(mctx),
 		.references = ISC_REFCOUNT_INITIALIZER(1),
 		.delegs = ISC_LIST_INITIALIZER,
-		.expires = rdataset->ttl + isc_stdtime_now(),
+		.expires = rdataset->ttl + now,
 		.staticstub = rdataset->attributes.staticstub
 	};
-
-	deleg = isc_mem_get(delegset->mctx, sizeof(*deleg));
-	*deleg = (dns_deleg_t){ .addresses = ISC_LIST_INITIALIZER,
-				.names = ISC_LIST_INITIALIZER,
-				.type = DNS_DELEGTYPE_NS_NAMES,
-				.link = ISC_LINK_INITIALIZER };
-	ISC_LIST_APPEND(delegset->delegs, deleg, link);
 
 	DNS_RDATASET_FOREACH(rdataset) {
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		dns_rdata_ns_t ns;
+		dns_deleg_t *deleg = NULL;
+		size_t naddrs = 0;
 
 		dns_rdataset_current(rdataset, &rdata);
 		dns_rdata_tostruct(&rdata, &ns, NULL);
-		dns_delegset_addns(delegset, deleg, &ns.name);
+
+		if (gluedb != NULL) {
+			deleg = isc_mem_get(delegset->mctx, sizeof(*deleg));
+			*deleg = (dns_deleg_t){
+				.addresses = ISC_LIST_INITIALIZER,
+				.names = ISC_LIST_INITIALIZER,
+				.type = DNS_DELEGTYPE_NS_GLUES,
+				.link = ISC_LINK_INITIALIZER
+			};
+			ISC_LIST_APPEND(delegset->delegs, deleg, link);
+
+			naddrs += fromns_lookup_glue(delegset, deleg, gluedb,
+						     &ns.name,
+						     dns_rdatatype_a, now);
+			naddrs += fromns_lookup_glue(delegset, deleg, gluedb,
+						     &ns.name,
+						     dns_rdatatype_aaaa, now);
+
+			if (naddrs > 0) {
+				continue;
+			}
+
+			/* No glue: drop this stub deleg and fall through. */
+			ISC_LIST_UNLINK(delegset->delegs, deleg, link);
+			isc_mem_put(delegset->mctx, deleg, sizeof(*deleg));
+		}
+
+		if (names_deleg == NULL) {
+			names_deleg = isc_mem_get(delegset->mctx,
+						  sizeof(*names_deleg));
+			*names_deleg = (dns_deleg_t){
+				.addresses = ISC_LIST_INITIALIZER,
+				.names = ISC_LIST_INITIALIZER,
+				.type = DNS_DELEGTYPE_NS_NAMES,
+				.link = ISC_LINK_INITIALIZER
+			};
+			ISC_LIST_APPEND(delegset->delegs, names_deleg, link);
+		}
+		dns_delegset_addns(delegset, names_deleg, &ns.name);
 	}
 
 	*delegsetp = delegset;

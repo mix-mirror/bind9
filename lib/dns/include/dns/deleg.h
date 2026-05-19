@@ -206,13 +206,21 @@ void
 dns_delegdb_dump(dns_delegdb_t *db, bool expired, FILE *fp);
 
 /*
- * Convert an NS rdataset into a delegset containing a single delegation
- * (with possibly multiple nameserver). The allocated delegset is using the
- * main memory context, thus, is not expected to be added into the deleg DB
- * (which accepts only delegset allocated using `dns_deleg_alloc*()` APIs.
+ * Convert an NS rdataset into a delegset. If `gluedb` is non-NULL, look up
+ * an A and AAAA record for each NS target name in it; names that yield at
+ * least one address become an NS_GLUES delegation carrying those addresses,
+ * names that yield none are grouped into a single NS_NAMES delegation. When
+ * `gluedb` is NULL (or returns no addresses for any name), the result is a
+ * single NS_NAMES delegation with every NS target name, matching the
+ * previous behavior.
+ *
+ * The allocated delegset is using the main memory context, thus, is not
+ * expected to be added into the deleg DB (which accepts only delegset
+ * allocated using `dns_deleg_alloc*()` APIs.)
  */
 void
 dns_delegset_fromnsrdataset(isc_mem_t *mctx, dns_rdataset_t *rdataset,
+			    dns_db_t *gluedb, isc_stdtime_t now,
 			    dns_delegset_t **delegsetp);
 
 /*

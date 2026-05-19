@@ -7242,7 +7242,8 @@ resume_dslookup(void *arg) {
 	case ISC_R_SUCCESS:
 		FCTXTRACE("resuming DS lookup");
 
-		dns_delegset_fromnsrdataset(fctx->mctx, frdataset, &delegset);
+		dns_delegset_fromnsrdataset(fctx->mctx, frdataset, NULL, 0,
+					    &delegset);
 		dns_rdataset_cleanup(frdataset);
 
 		if (delegset == NULL) {
