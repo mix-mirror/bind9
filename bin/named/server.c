@@ -454,6 +454,9 @@ configure_alternates(const cfg_obj_t *config, dns_view_t *view,
 		     const cfg_obj_t *alternates);
 
 static isc_result_t
+configure_rootdb(dns_view_t *view, const char *filename);
+
+static isc_result_t
 configure_zone(const cfg_obj_t *config, const cfg_obj_t *zconfig,
 	       const cfg_obj_t *vconfig, dns_view_t *view,
 	       dns_viewlist_t *viewlist, dns_kasplist_t *kasplist,
@@ -4538,20 +4541,22 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	}
 
 	/*
-	 * We have default hints for class IN if we need them.
+	 * We have default root hints for class IN if we need them.
+	 * Each view gets its own rootdb so a priming response only
+	 * writes into that view's copy.
 	 */
-	if (view->rdclass == dns_rdataclass_in && view->hints == NULL) {
-		dns_view_sethints(view, named_g_server->in_roothints);
+	if (view->rdclass == dns_rdataclass_in && view->rootdb == NULL) {
+		CHECK(configure_rootdb(view, NULL));
 	}
 
 	/*
-	 * If we still have no hints, this is a non-IN view with no
+	 * If we still have no root hints, this is a non-IN view with no
 	 * "hints zone" configured.  Issue a warning, except if this
 	 * is a root server.  Root servers never need to consult
 	 * their hints, so it's no point requiring users to configure
 	 * them.
 	 */
-	if (view->hints == NULL) {
+	if (view->rootdb == NULL) {
 		dns_zone_t *rootzone = NULL;
 		(void)dns_view_findzone(view, dns_rootname, DNS_ZTFIND_EXACT,
 					&rootzone);
@@ -5543,14 +5548,14 @@ cleanup:
 }
 
 static isc_result_t
-configure_hints(dns_view_t *view, const char *filename) {
+configure_rootdb(dns_view_t *view, const char *filename) {
 	isc_result_t result;
 	dns_db_t *db;
 
 	db = NULL;
 	result = dns_rootns_create(view->mctx, view->rdclass, filename, &db);
 	if (result == ISC_R_SUCCESS) {
-		dns_view_sethints(view, db);
+		dns_view_setrootdb(view, db);
 		dns_db_detach(&db);
 	}
 
@@ -6071,7 +6076,7 @@ configure_zone(const cfg_obj_t *config, const cfg_obj_t *zconfig,
 		if (dns_name_equal(origin, dns_rootname)) {
 			const char *hintsfile = cfg_obj_asstring(fileobj);
 
-			CHECK(configure_hints(view, hintsfile));
+			CHECK(configure_rootdb(view, hintsfile));
 		} else {
 			isc_log_write(NAMED_LOGCATEGORY_GENERAL,
 				      NAMED_LOGMODULE_SERVER, ISC_LOG_WARNING,
@@ -9207,8 +9212,6 @@ shutdown_server(void *arg) {
 	named_geoip_shutdown();
 #endif /* HAVE_GEOIP2 */
 
-	dns_db_detach(&server->in_roothints);
-
 	isc_loopmgr_resume();
 }
 
@@ -9456,10 +9459,6 @@ named_server_create(isc_mem_t *mctx, named_server_t **serverp) {
 	ISC_LIST_INIT(server->kasplist);
 	ISC_LIST_INIT(server->keystorelist);
 	ISC_LIST_INIT(server->viewlist);
-
-	CHECKFATAL(dns_rootns_create(mctx, dns_rdataclass_in, NULL,
-				     &server->in_roothints),
-		   "setting up root hints");
 
 	atomic_init(&server->reload_status, NAMED_RELOAD_IN_PROGRESS);
 
