@@ -10258,6 +10258,44 @@ update_rootdb_glue(dns_db_t *rootdb, dns_dbversion_t *ver,
 }
 
 /*
+ * Return true if 'rootdb' under 'ver' has an A or AAAA rdataset for
+ * 'target' — either newly added from the current priming response or
+ * already present (carried over from hints or a previous priming).
+ */
+static bool
+rootdb_has_address(dns_db_t *rootdb, dns_dbversion_t *ver,
+		   const dns_name_t *target, isc_stdtime_t now) {
+	dns_dbnode_t *node = NULL;
+	dns_rdataset_t rdataset = DNS_RDATASET_INIT;
+	isc_result_t result;
+	bool found = false;
+
+	result = dns_db_findnode(rootdb, target, false, &node);
+	if (result != ISC_R_SUCCESS) {
+		return false;
+	}
+
+	result = dns_db_findrdataset(rootdb, node, ver, dns_rdatatype_a, 0, now,
+				     &rdataset, NULL);
+	if (result == ISC_R_SUCCESS) {
+		found = true;
+		dns_rdataset_disassociate(&rdataset);
+	}
+	if (!found) {
+		result = dns_db_findrdataset(rootdb, node, ver,
+					     dns_rdatatype_aaaa, 0, now,
+					     &rdataset, NULL);
+		if (result == ISC_R_SUCCESS) {
+			found = true;
+			dns_rdataset_disassociate(&rdataset);
+		}
+	}
+
+	dns_db_detachnode(&node);
+	return found;
+}
+
+/*
  * Refresh 'view->rootdb' from a priming response message.  The '.' NS
  * rdataset is replaced with the fetched one and, for each nameserver
  * it lists, the matching A/AAAA glue from the response's ADDITIONAL
@@ -10283,6 +10321,7 @@ update_rootdb(dns_view_t *view, dns_message_t *message) {
 	isc_stdtime_t now = isc_stdtime_now();
 	dns_ttl_t minttl = UINT32_MAX;
 	isc_result_t result;
+	bool resolvable = false;
 
 	if (rootdb == NULL) {
 		return;
@@ -10323,6 +10362,27 @@ update_rootdb(dns_view_t *view, dns_message_t *message) {
 					 dns_rdatatype_a, now, &minttl));
 		CHECK(update_rootdb_glue(rootdb, ver, message, &ns.name,
 					 dns_rdatatype_aaaa, now, &minttl));
+
+		if (!resolvable &&
+		    rootdb_has_address(rootdb, ver, &ns.name, now))
+		{
+			resolvable = true;
+		}
+	}
+
+	/*
+	 * A priming response that replaces the root NS rdataset but
+	 * leaves every NS target without a resolvable address — neither
+	 * new glue from the response nor pre-existing glue in rootdb —
+	 * would force bestzonecut's NS_GLUES extraction to fall through
+	 * to NS_NAMES, and the resolver would loop on the very name it
+	 * is trying to find (see lib/dns/resolver.c:3490).  Roll the
+	 * update back rather than commit a half-broken rootdb; the
+	 * previous (hints-file or earlier-priming) state stays valid.
+	 */
+	if (!resolvable) {
+		result = ISC_R_FAILURE;
+		goto cleanup;
 	}
 
 	atomic_store_relaxed(&view->rootdb_expires, (uint32_t)(now + minttl));
