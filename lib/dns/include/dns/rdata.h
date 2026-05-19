@@ -724,8 +724,7 @@ dns_rdatatype_isknown(dns_rdatatype_t type) {
  */
 static inline bool
 dns_rdatatype_ismulti(dns_rdatatype_t type) {
-	return type == dns_rdatatype_any || type == dns_rdatatype_rrsig ||
-	       type == dns_rdatatype_sig;
+	return type == dns_rdatatype_any || type == dns_rdatatype_rrsig;
 }
 
 /*%
@@ -733,7 +732,7 @@ dns_rdatatype_ismulti(dns_rdatatype_t type) {
  */
 static inline bool
 dns_rdatatype_issig(dns_rdatatype_t type) {
-	return type == dns_rdatatype_rrsig || type == dns_rdatatype_sig;
+	return type == dns_rdatatype_rrsig;
 }
 
 /*%

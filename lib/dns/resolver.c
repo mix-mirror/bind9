@@ -4601,7 +4601,6 @@ resume_qmin(void *arg) {
 		    fctx->type != dns_rdatatype_key &&
 		    fctx->type != dns_rdatatype_nsec &&
 		    fctx->type != dns_rdatatype_any &&
-		    fctx->type != dns_rdatatype_sig &&
 		    fctx->type != dns_rdatatype_rrsig)
 		{
 			pull_from_resp(resp, fctx);
@@ -5604,12 +5603,10 @@ evict_cname_other(fetchctx_t *fctx, dns_name_t *name) {
 		dns_typepair_t typepair = DNS_TYPEPAIR_VALUE(rdataset.type,
 							     rdataset.covers);
 		switch (typepair) {
-		/* KEY, NSEC and NXT records are allowed */
+		/* KEY and NSEC records are allowed */
 		case DNS_TYPEPAIR(dns_rdatatype_nsec):
-		case DNS_TYPEPAIR(dns_rdatatype_nxt):
 		case DNS_TYPEPAIR(dns_rdatatype_key):
 		case DNS_SIGTYPEPAIR(dns_rdatatype_nsec):
-		case DNS_SIGTYPEPAIR(dns_rdatatype_nxt):
 		case DNS_SIGTYPEPAIR(dns_rdatatype_key):
 		/* Keep the CNAME and its signature */
 		case DNS_TYPEPAIR(dns_rdatatype_cname):
@@ -5691,8 +5688,7 @@ cache_rrset(fetchctx_t *fctx, isc_stdtime_t now, dns_name_t *name,
 	 */
 	if (!dns_rdataset_matchestype(rdataset, dns_rdatatype_cname) &&
 	    !dns_rdataset_matchestype(rdataset, dns_rdatatype_key) &&
-	    !dns_rdataset_matchestype(rdataset, dns_rdatatype_nsec) &&
-	    !dns_rdataset_matchestype(rdataset, dns_rdatatype_nxt))
+	    !dns_rdataset_matchestype(rdataset, dns_rdatatype_nsec))
 	{
 		delete_rrset(fctx, name, dns_rdatatype_cname);
 	}
