@@ -1,0 +1,7 @@
+$TTL 120
+@		SOA	ns. hostmaster. ( 1 3600 1200 604800 60 )
+@		NS	ns.
+ns.		A	10.53.0.1
+
+example.	NS	ns.example.
+ns.example.	A	10.53.0.1
