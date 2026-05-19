@@ -21,7 +21,5 @@ pytestmark = pytest.mark.extra_artifacts(
 )
 
 
-# The rrl is known to be quite unstable. GL #172
-@pytest.mark.flaky(max_runs=2)
 def test_rrl(run_tests_sh):
     run_tests_sh()
