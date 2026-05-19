@@ -934,8 +934,9 @@ dns__db_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
  *						a zone cut.  node, foundname,
  *						and rdataset reference the
  *						NS RRset of the zone cut.
- *						This result can only occur
- *						if 'db' is a zone database.
+ *						If 'db' is a cache database,
+ *						then this is the deepest known
+ *						delegation.
  *
  *	\li	#DNS_R_ZONECUT			type == dns_rdatatype_any, and
  *						the desired node is a zonecut.
@@ -964,10 +965,12 @@ dns__db_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
  *						the desired type does not.
  *
  *	\li	#ISC_R_NOTFOUND			The desired name does not
- *						exist.  This result can only
+ *						exist, and no delegation could
+ *						be found.  This result can only
  *						occur if 'db' is a cache
  *						database.  The caller should
- *						recurse for the data.
+ *						use its nameserver(s) of last
+ *						resort (e.g. root hints).
  *
  *	\li	#DNS_R_NCACHENXDOMAIN		The desired name does not
  *						exist.  'node' is bound to the
