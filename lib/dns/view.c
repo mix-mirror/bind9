@@ -1173,6 +1173,7 @@ dns_view_bestzonecut(dns_view_t *view, const dns_name_t *name,
 		     dns_delegset_t **delegsetp) {
 	isc_result_t result;
 	dns_rdataset_t rdataset = DNS_RDATASET_INIT;
+	dns_db_t *gluedb = NULL;
 
 	REQUIRE(DNS_VIEW_VALID(view));
 	REQUIRE(view->frozen);
@@ -1203,22 +1204,24 @@ dns_view_bestzonecut(dns_view_t *view, const dns_name_t *name,
 	if (result == DNS_R_NXDOMAIN && usehints) {
 		result = bestzonecut_rootdb(view, fname, dcname, now,
 					    &rdataset);
+		if (result == ISC_R_SUCCESS) {
+			/*
+			 * rootdb has the priming-response glue (or, until
+			 * priming completes, the hints-file glue). Extracting
+			 * it into the delegset turns the resulting deleg into
+			 * NS_GLUES so the resolver can skip an ADB lookup for
+			 * the root server name — which would otherwise loop
+			 * back here at depth>0 with the same delegset.
+			 */
+			gluedb = view->rootdb;
+		}
 	}
 
 	if (result != ISC_R_SUCCESS) {
 		result = DNS_R_NXDOMAIN;
 	} else {
-		/*
-		 * The rdataset came either from a local zone or a hint. Either
-		 * way, we only considering the NS rdataset here, so if there
-		 * are glues, they'll be ignored. This is okay: the delegation
-		 * type will be DNS_DELEGSET_NS_NAMES, so ADB will do a NS name
-		 * lookup but immediately find the results locally (because this
-		 * came from a local zone or hint). So the resolution will be
-		 * the same, and this avoid adding extra code here to extract
-		 * A/AAAA rdataset if any.
-		 */
-		dns_delegset_fromnsrdataset(view->mctx, &rdataset, delegsetp);
+		dns_delegset_fromnsrdataset(view->mctx, &rdataset, gluedb, now,
+					    delegsetp);
 	}
 
 	dns_rdataset_cleanup(&rdataset);
