@@ -918,16 +918,62 @@ named_os_tzset(void) {
 }
 
 #ifdef HAVE_UNAME
-static char unamebuf[sizeof(struct utsname)];
+static char unamebuf[sizeof(struct utsname) + 256];
 #else
 static const char unamebuf[] = { "unknown architecture" };
 #endif
 static const char *unamep = NULL;
 
+#ifdef HAVE_UNAME
+static const char *
+getosrelease(void) {
+	static char osreleasebuf[256];
+	FILE *fp;
+	char line[512];
+	char *value;
+	size_t len;
+
+	fp = fopen("/etc/os-release", "r");
+	if (fp == NULL) {
+		fp = fopen("/usr/lib/os-release", "r");
+	}
+	if (fp == NULL) {
+		return NULL;
+	}
+
+	while (fgets(line, sizeof(line), fp) != NULL) {
+		if (strncmp(line, "PRETTY_NAME=", 12) != 0) {
+			continue;
+		}
+		value = line + 12;
+		len = strlen(value);
+		if (len > 0 && value[len - 1] == '\n') {
+			value[--len] = '\0';
+		}
+		if (len >= 2 && (*value == '"' || *value == '\'') &&
+		    value[len - 1] == *value)
+		{
+			value[len - 1] = '\0';
+			value++;
+		}
+		if (*value == '\0') {
+			continue;
+		}
+		strlcpy(osreleasebuf, value, sizeof(osreleasebuf));
+		fclose(fp);
+		return osreleasebuf;
+	}
+	fclose(fp);
+	return NULL;
+}
+#endif /* ifdef HAVE_UNAME */
+
 static void
 getuname(void) {
 #ifdef HAVE_UNAME
 	struct utsname uts;
+	const char *osrelease;
+	size_t cur;
 
 	memset(&uts, 0, sizeof(uts));
 	if (uname(&uts) < 0) {
@@ -937,6 +983,13 @@ getuname(void) {
 
 	snprintf(unamebuf, sizeof(unamebuf), "%s %s %s %s", uts.sysname,
 		 uts.machine, uts.release, uts.version);
+
+	osrelease = getosrelease();
+	if (osrelease != NULL) {
+		cur = strlen(unamebuf);
+		snprintf(unamebuf + cur, sizeof(unamebuf) - cur, " (%s)",
+			 osrelease);
+	}
 #endif /* ifdef HAVE_UNAME */
 	unamep = unamebuf;
 }
