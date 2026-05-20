@@ -147,7 +147,7 @@ class Zone:
     name: str
     ns: Nameserver
     type: str = "primary"
-    filepath: Path = field(default=None)  # type: ignore[assignment]
+    filepath: Path | None = field(default=None)
 
     def __post_init__(self) -> None:
         if self.filepath is None:
