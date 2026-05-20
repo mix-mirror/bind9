@@ -26,14 +26,24 @@
 #include <dns/diff.h>
 #include <dns/types.h>
 
+/* Add -DDNS_SKR_TRACE=1 to CFLAGS for detailed reference tracing */
+
+#if DNS_SKR_TRACE
+#define dns_skr_ref(ptr)   dns_skr_ref(ptr, __func__, __FILE__, __LINE__)
+#define dns_skr_unref(ptr) dns_skr__unref(ptr, __func__, __FILE__, __LINE__)
+#define dns_skr_attach(ptr, ptrp) \
+	dns_skr__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
+#define dns_skr_detach(ptrp) dns_skr__detach(ptrp, __func__, __FILE__, __LINE__)
+ISC_REFCOUNT_TRACE_DECL(dns_skr);
+#else
+ISC_REFCOUNT_DECL(dns_skr);
+#endif
+
 #define DNS_SKR_MAGIC	 ISC_MAGIC('S', 'K', 'R', '-')
 #define DNS_SKR_VALID(t) ISC_MAGIC_VALID(t, DNS_SKR_MAGIC)
 
 #define DNS_SKRBUNDLE_MAGIC    ISC_MAGIC('S', 'K', 'R', 'B')
 #define DNS_SKRBUNDLE_VALID(t) ISC_MAGIC_VALID(t, DNS_SKRBUNDLE_MAGIC)
-
-typedef struct dns_skrbundle dns_skrbundle_t;
-typedef ISC_LIST(dns_skrbundle_t) dns_skrbundlelist_t;
 
 /* Stores a Signed Key Response (SKR) */
 struct dns_skr {

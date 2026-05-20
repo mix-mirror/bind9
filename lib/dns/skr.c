@@ -379,27 +379,6 @@ dns_skr_lookup(dns_skr_t *skr, isc_stdtime_t time, uint32_t sigval) {
 }
 
 void
-dns_skr_attach(dns_skr_t *source, dns_skr_t **targetp) {
-	REQUIRE(DNS_SKR_VALID(source));
-	REQUIRE(targetp != NULL && *targetp == NULL);
-
-	isc_refcount_increment(&source->references);
-	*targetp = source;
-}
-
-void
-dns_skr_detach(dns_skr_t **skrp) {
-	REQUIRE(skrp != NULL && DNS_SKR_VALID(*skrp));
-
-	dns_skr_t *skr = *skrp;
-	*skrp = NULL;
-
-	if (isc_refcount_decrement(&skr->references) == 1) {
-		dns_skr_destroy(skr);
-	}
-}
-
-void
 dns_skr_destroy(dns_skr_t *skr) {
 	REQUIRE(DNS_SKR_VALID(skr));
 
@@ -413,3 +392,9 @@ dns_skr_destroy(dns_skr_t *skr) {
 	isc_mem_free(skr->mctx, skr->filename);
 	isc_mem_putanddetach(&skr->mctx, skr, sizeof(*skr));
 }
+
+#if DNS_SKR_TRACE
+ISC_REFCOUNT_TRACE_IMPL(dns_skr, dns_skr_destroy);
+#else
+ISC_REFCOUNT_IMPL(dns_skr, dns_skr_destroy);
+#endif
