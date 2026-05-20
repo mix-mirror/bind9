@@ -58,10 +58,6 @@ class TemplateEngine:
         self.j2env.globals["TrustAnchor"] = TrustAnchor
         self.j2env.globals["Zone"] = Zone
 
-    def _template_exists(self, path: str) -> bool:
-        """Return True if a template file exists locally or under srcdir."""
-        return Path(path).is_file() or (Path(str(ALL["srcdir"])) / path).is_file()
-
     def render(
         self,
         output: str,
@@ -74,11 +70,12 @@ class TemplateEngine:
         variables which the engine was initialized with are also filled in. In
         case of a variable name clash, `data` has precedence.
         """
+        available = self.j2env.list_templates()
         if template is None:
             template = f"{output}.j2.manual"
-            if not self._template_exists(template):
+            if template not in available:
                 template = f"{output}.j2"
-        if not self._template_exists(template):
+        if template not in available:
             raise RuntimeError(f'No jinja2 template found for "{output}"')
 
         if data is None:
