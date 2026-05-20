@@ -9,8 +9,9 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
-import shutil
 from pathlib import Path
+
+import shutil
 
 from isctest.kasp import SettimeOptions, private_type_record
 from isctest.run import EnvCmd
