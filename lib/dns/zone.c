@@ -18543,15 +18543,19 @@ zone_rekey(dns_zone_t *zone) {
 
 	if (offlineksk) {
 		/* Lookup the correct bundle in the SKR. */
+		dns_skr_t *skr = NULL;
 		LOCK_ZONE(zone);
-		if (zone->skr == NULL) {
+		if (zone->skr != NULL) {
+			dns_skr_attach(zone->skr, &skr);
+		}
+		if (skr == NULL) {
 			UNLOCK_ZONE(zone);
 			dnssec_log(zone, ISC_LOG_DEBUG(1),
 				   "zone_rekey:dns_skr_lookup failed: "
 				   "no SKR available");
 			CLEANUP(DNS_R_NOSKRFILE);
 		}
-		bundle = dns_skr_lookup(zone->skr, now, sigval);
+		bundle = dns_skr_lookup(skr, now, sigval);
 		zone->skrbundle = bundle;
 		UNLOCK_ZONE(zone);
 
