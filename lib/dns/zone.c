@@ -18574,6 +18574,7 @@ zone_rekey(dns_zone_t *zone) {
 				   "no available SKR bundle for time "
 				   "%.*s (%s)",
 				   (int)r.length, r.base, nowstr);
+			dns_skr_detach(&skr);
 			CLEANUP(DNS_R_NOSKRBUNDLE);
 		}
 
@@ -18590,6 +18591,7 @@ zone_rekey(dns_zone_t *zone) {
 				   "zone_rekey: last bundle in skr, please "
 				   "import new skr file");
 		}
+		dns_skr_detach(&skr);
 	}
 
 	/*
