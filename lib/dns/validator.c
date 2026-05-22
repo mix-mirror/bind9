@@ -171,6 +171,9 @@ static isc_result_t
 create_ds_fetch(dns_validator_t *val, dns_name_t *name, isc_job_cb callback,
 		const char *caller);
 
+static isc_result_t
+view_find(dns_validator_t *val, dns_name_t *name, dns_rdatatype_t type);
+
 /*%
  * Ensure the validator's rdatasets are marked as expired.
  */
@@ -248,6 +251,29 @@ validator_done(dns_validator_t *val, isc_result_t result) {
 	isc_async_run(val->loop, val->cb, val);
 }
 
+static bool
+closer_secure_ds_exists(dns_validator_t *val, const dns_name_t *signer,
+			const dns_name_t *name) {
+	dns_fixedname_t fl;
+	dns_name_t *l = dns_fixedname_initname(&fl);
+	unsigned int n = dns_name_countlabels(name);
+	unsigned int s = dns_name_countlabels(signer);
+
+	for (unsigned int i = n - 1; i > s; i--) {
+		isc_result_t result;
+		dns_name_getlabelsequence(name, n - i, i, l);
+		result = view_find(val, l, dns_rdatatype_ds);
+		if (result == ISC_R_SUCCESS &&
+		    val->frdataset.trust >= dns_trust_secure)
+		{
+			disassociate_rdatasets(val);
+			return true;
+		}
+	}
+
+	return false;
+}
+
 /*%
  * The is_insecure_referral() function is called as part of seeking the DS
  * record. Look in the NSEC or NSEC3 record returned from a DS query to see if
@@ -273,22 +299,27 @@ is_insecure_referral(dns_validator_t *val, dns_name_t *name,
 	dns_label_t hashlabel;
 	dns_name_t nsec3name;
 	dns_rdata_nsec3_t nsec3;
-	dns_rdataset_t set;
+	dns_rdataset_t set = DNS_RDATASET_INIT;
 	int order;
 	int scope;
-	bool found;
+	bool found = false;
 	isc_buffer_t buffer;
 	isc_result_t result;
 	unsigned char hash[NSEC3_MAX_HASH_LENGTH];
 	unsigned char owner[NSEC3_MAX_HASH_LENGTH];
 	unsigned int length;
+	dns_fixedname_t fsigner;
+	dns_name_t *signer = NULL;
 
 	REQUIRE(dbresult == DNS_R_NXRRSET || dbresult == DNS_R_NCACHENXRRSET);
 
-	dns_rdataset_init(&set);
 	if (dbresult == DNS_R_NXRRSET) {
 		dns_rdataset_clone(rdataset, &set);
 	} else {
+		dns_rdataset_t sigset = DNS_RDATASET_INIT;
+		dns_rdata_t srdata = DNS_RDATA_INIT;
+		dns_rdata_rrsig_t sig;
+
 		result = dns_ncache_getrdataset(rdataset, name,
 						dns_rdatatype_nsec, &set);
 		if (result == ISC_R_NOTFOUND) {
@@ -297,11 +328,25 @@ is_insecure_referral(dns_validator_t *val, dns_name_t *name,
 		if (result != ISC_R_SUCCESS) {
 			return false;
 		}
+
+		result = dns_ncache_getsigrdataset(rdataset, name,
+						   dns_rdatatype_nsec, &sigset);
+		if (result == ISC_R_SUCCESS) {
+			result = dns_rdataset_first(&sigset);
+		}
+		if (result == ISC_R_SUCCESS) {
+			dns_rdataset_current(&sigset, &srdata);
+			result = dns_rdata_tostruct(&srdata, &sig, NULL);
+		}
+		if (result == ISC_R_SUCCESS) {
+			signer = dns_fixedname_initname(&fsigner);
+			dns_name_copy(&sig.signer, signer);
+		}
+		dns_rdataset_cleanup(&sigset);
 	}
 
 	INSIST(set.type == dns_rdatatype_nsec);
 
-	found = false;
 	result = dns_rdataset_first(&set);
 	if (result == ISC_R_SUCCESS) {
 		dns_rdata_t rdata = DNS_RDATA_INIT;
@@ -309,13 +354,20 @@ is_insecure_referral(dns_validator_t *val, dns_name_t *name,
 		found = dns_nsec_typepresent(&rdata, dns_rdatatype_ns);
 	}
 	dns_rdataset_disassociate(&set);
+	if (found && signer != NULL &&
+	    closer_secure_ds_exists(val, signer, name))
+	{
+		validator_log(val, ISC_LOG_DEBUG(3),
+			      "is_insecure_referral: NSEC signer above known "
+			      "secure DS; refusing insecure-delegation proof");
+		found = false;
+	}
 	return found;
 
 trynsec3:
 	/*
 	 * Iterate over the ncache entry.
 	 */
-	found = false;
 	dns_name_init(&nsec3name);
 	dns_fixedname_init(&fixed);
 	dns_name_downcase(name, dns_fixedname_name(&fixed));
