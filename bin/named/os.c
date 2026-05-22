@@ -919,7 +919,8 @@ named_os_tzset(void) {
 
 #ifdef HAVE_UNAME
 static char osreleasebuf[256];
-static char unamebuf[sizeof(struct utsname) + 256];
+static char unamebuf[sizeof(struct utsname) + sizeof(osreleasebuf) +
+		     sizeof(" ()")];
 #else
 static const char unamebuf[] = { "unknown architecture" };
 #endif
