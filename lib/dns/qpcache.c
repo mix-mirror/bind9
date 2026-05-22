@@ -1417,7 +1417,9 @@ find_coveringnsec(qpc_search_t *search, const dns_name_t *name,
 
 	find_headers(node, search, dns_rdatatype_nsec, &found, &foundsig);
 
-	if (found != NULL) {
+	if (found != NULL && found->trust >= dns_trust_secure &&
+	    (foundsig == NULL || foundsig->trust >= dns_trust_secure))
+	{
 		if (nodep != NULL) {
 			qpcnode_acquire(search->qpdb, node, nlocktype,
 					isc_rwlocktype_none DNS__DB_FLARG_PASS);

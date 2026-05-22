@@ -9542,6 +9542,13 @@ query_coveringnsec(query_ctx_t *qctx) {
 	}
 
 	if (exists) {
+		/* NSEC isn't validated */
+		if (qctx->rdataset->trust < dns_trust_secure &&
+		    qctx->sigrdataset->trust < dns_trust_secure)
+		{
+			goto cleanup;
+		}
+
 		if (qctx->type == dns_rdatatype_any) { /* XXX not yet */
 			goto cleanup;
 		}
@@ -9568,6 +9575,12 @@ query_coveringnsec(query_ctx_t *qctx) {
 				     qctx->client->inner.now, &node, fname, &cm,
 				     &ci, soardataset, sigsoardataset));
 
+		if (soardataset->trust < dns_trust_secure ||
+		    sigsoardataset->trust < dns_trust_secure)
+		{
+			goto cleanup;
+		}
+
 		(void)query_synthnodata(qctx, signer, &soardataset,
 					&sigsoardataset);
 		done = true;
@@ -9583,8 +9596,8 @@ query_coveringnsec(query_ctx_t *qctx) {
 				qctx->client->inner.now, &node, nowild, &cm,
 				&ci, &rdataset, &sigrdataset);
 
-	if (rdataset.trust != dns_trust_secure ||
-	    sigrdataset.trust != dns_trust_secure)
+	if (rdataset.trust < dns_trust_secure ||
+	    sigrdataset.trust < dns_trust_secure)
 	{
 		goto cleanup;
 	}
@@ -9686,6 +9699,12 @@ query_coveringnsec(query_ctx_t *qctx) {
 	CHECK(dns_db_findext(db, signer, qctx->version, dns_rdatatype_soa,
 			     dboptions, qctx->client->inner.now, &node, fname,
 			     &cm, &ci, soardataset, sigsoardataset));
+
+	if (soardataset->trust < dns_trust_secure ||
+	    sigsoardataset->trust < dns_trust_secure)
+	{
+		goto cleanup;
+	}
 
 	(void)query_synthnxdomainnodata(qctx, exists, nowild, &rdataset,
 					&sigrdataset, signer, &soardataset,
