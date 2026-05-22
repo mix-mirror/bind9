@@ -939,7 +939,7 @@ getosrelease(void) {
 		fp = fopen("/usr/lib/os-release", "r");
 	}
 	if (fp == NULL) {
-		return NULL;
+		return "";
 	}
 
 	while (fgets(line, sizeof(line), fp) != NULL) {
@@ -960,12 +960,12 @@ getosrelease(void) {
 		if (*value == '\0') {
 			continue;
 		}
-		strlcpy(osreleasebuf, value, sizeof(osreleasebuf));
+		snprintf(osreleasebuf, sizeof(osreleasebuf), " (%s)", value);
 		fclose(fp);
 		return osreleasebuf;
 	}
 	fclose(fp);
-	return NULL;
+	return "";
 }
 #endif /* ifdef HAVE_UNAME */
 
@@ -973,8 +973,6 @@ static void
 getuname(void) {
 #ifdef HAVE_UNAME
 	struct utsname uts;
-	const char *osrelease;
-	size_t cur;
 
 	memset(&uts, 0, sizeof(uts));
 	if (uname(&uts) < 0) {
@@ -982,15 +980,8 @@ getuname(void) {
 		return;
 	}
 
-	snprintf(unamebuf, sizeof(unamebuf), "%s %s %s %s", uts.sysname,
-		 uts.machine, uts.release, uts.version);
-
-	osrelease = getosrelease();
-	if (osrelease != NULL) {
-		cur = strlen(unamebuf);
-		snprintf(unamebuf + cur, sizeof(unamebuf) - cur, " (%s)",
-			 osrelease);
-	}
+	snprintf(unamebuf, sizeof(unamebuf), "%s %s %s %s%s", uts.sysname,
+		 uts.machine, uts.release, uts.version, getosrelease());
 #endif /* ifdef HAVE_UNAME */
 	unamep = unamebuf;
 }
