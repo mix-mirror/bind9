@@ -930,7 +930,7 @@ static const char *unamep = NULL;
 static const char *
 getosrelease(void) {
 	FILE *fp;
-	char line[512];
+	char line[sizeof(osreleasebuf)];
 	char *value;
 	size_t len;
 
