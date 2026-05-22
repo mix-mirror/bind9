@@ -1,5 +1,6 @@
 {% set disablev4 = disablev4 | default(False) %}
 {% set disablev6 = disablev6 | default(False) %}
+{% set dns64 = dns64 | default(False) %}
 
 options {
 {% if disablev4 %}
@@ -26,6 +27,15 @@ options {
 	pid-file "named.pid";
 	recursion yes;
 	dnssec-validation no;
+
+{% if dns64 %}
+	resolver-use-dns64 yes;
+	dns64 fd92:7065:b8e:fffe::/96 {
+		clients { any; };
+		mapped { 10.53.0.4; any; };
+		suffix ::;
+	};
+{% endif %}
 };
 
 zone "." {

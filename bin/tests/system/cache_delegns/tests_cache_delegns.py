@@ -33,9 +33,10 @@ def nfound(dump, txt):
     assert len(dump.grep(Re(txt))) == 0
 
 
-def reconfig(ns, templates, disablev4, disablev6):
+def reconfig(ns, templates, disablev4, disablev6, dns64=False):
     templates.render(
-        f"{ns.identifier}/named.conf", {"disablev4": disablev4, "disablev6": disablev6}
+        f"{ns.identifier}/named.conf",
+        {"disablev4": disablev4, "disablev6": disablev6, "dns64": dns64},
     )
     with ns.watch_log_from_here() as watcher:
         ns.rndc("flush")
@@ -84,3 +85,18 @@ def test_cache_delegns(ns2, templates):
     # Nor IPv4 (provided by not used) nor IPv6 (not provided) nor NS name
     # (as no point storing it, we can't resolve it).
     nfound(dump, "test-a. .* DELEG .*")
+
+    # This is now testing a specific case, where the resolver is IPv6 only
+    # but uses resolver-use-dns64 to resolve IPv4 glues only. In this
+    # specific case, the IPv4 glues must _still_ be added in the database.
+    # So in practice, the result is the same as if both IPv4 and IPv6 are
+    # enabled.
+    reconfig(ns2, templates, disablev4=True, disablev6=False, dns64=True)
+    dump = query_and_dump(ns2)
+
+    found(dump, "test-a. .* DELEG server-ipv4=10.10.10.10")
+    found(dump, "test-aaaa. .* DELEG server-ipv6=acdc::acdc")
+    found(dump, "test-both. .* DELEG server-ipv4=11.11.11.11 server-ipv6=ffac::dcff")
+    nfound(dump, "test-a. .* DELEG server-name=.*")
+    nfound(dump, "test-aaaa. .* DELEG server-name=.*")
+    nfound(dump, "test-both. .* DELEG server-name=.*")
