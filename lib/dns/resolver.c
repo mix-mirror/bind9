@@ -7781,7 +7781,23 @@ resquery_response_continue(void *arg, isc_result_t result) {
 		if (result == DNS_R_UNEXPECTEDTSIG ||
 		    result == DNS_R_EXPECTEDTSIG)
 		{
-			rctx->nextitem = true;
+			/*
+			 * If the response was truncated, a missing or
+			 * incomplete TSIG record is expected because TSIG
+			 * goes at the end of the wire format and may have
+			 * been cut off.  Treat this as a regular truncated
+			 * response and retry over TCP, instead of waiting
+			 * (until resolver-query-timeout) on the dispatch
+			 * for additional UDP responses that will never come.
+			 */
+			if (rctx->truncated &&
+			    (rctx->retryopts & DNS_FETCHOPT_TCP) == 0)
+			{
+				rctx->retryopts |= DNS_FETCHOPT_TCP;
+				rctx->resend = true;
+			} else {
+				rctx->nextitem = true;
+			}
 		}
 		rctx_done(rctx, result);
 		goto cleanup;
