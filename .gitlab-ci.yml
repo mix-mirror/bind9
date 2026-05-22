@@ -1881,6 +1881,7 @@ clang:freebsd13:amd64:
   <<: *freebsd_autoscaler_13_amd64_tags
 
 system:clang:freebsd13:amd64:
+  parallel: 10
   variables:
     GIT_CLONE_PATH: "${GIT_CLONE_PATH_INSTANCE_EXECUTOR}"
   needs:
@@ -1914,6 +1915,7 @@ clang:freebsd14:amd64:
   <<: *freebsd_autoscaler_14_amd64_tags
 
 system:clang:freebsd14:amd64:
+  parallel: 10
   variables:
     GIT_CLONE_PATH: "${GIT_CLONE_PATH_INSTANCE_EXECUTOR}"
   needs:
@@ -1948,6 +1950,7 @@ clang:freebsd15:amd64:
   <<: *freebsd_autoscaler_15_amd64_tags
 
 system:clang:freebsd15:amd64:
+  parallel: 10
   variables:
     GIT_CLONE_PATH: "${GIT_CLONE_PATH_INSTANCE_EXECUTOR}"
   needs:
