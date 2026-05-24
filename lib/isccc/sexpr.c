@@ -39,7 +39,6 @@
 #include <isccc/sexpr.h>
 #include <isccc/util.h>
 
-static isccc_sexpr_t sexpr_t = { ISCCC_SEXPRTYPE_T, { NULL } };
 
 #define CAR(s) (s)->value.as_dottedpair.car
 #define CDR(s) (s)->value.as_dottedpair.cdr
@@ -57,11 +56,6 @@ isccc_sexpr_cons(isccc_sexpr_t *car, isccc_sexpr_t *cdr) {
 	CDR(sexpr) = cdr;
 
 	return sexpr;
-}
-
-isccc_sexpr_t *
-isccc_sexpr_tconst(void) {
-	return &sexpr_t;
 }
 
 isccc_sexpr_t *
@@ -215,34 +209,6 @@ isccc_sexpr_print(isccc_sexpr_t *sexpr, FILE *stream) {
 }
 
 isccc_sexpr_t *
-isccc_sexpr_car(isccc_sexpr_t *list) {
-	REQUIRE(list->type == ISCCC_SEXPRTYPE_DOTTEDPAIR);
-
-	return CAR(list);
-}
-
-isccc_sexpr_t *
-isccc_sexpr_cdr(isccc_sexpr_t *list) {
-	REQUIRE(list->type == ISCCC_SEXPRTYPE_DOTTEDPAIR);
-
-	return CDR(list);
-}
-
-void
-isccc_sexpr_setcar(isccc_sexpr_t *pair, isccc_sexpr_t *car) {
-	REQUIRE(pair->type == ISCCC_SEXPRTYPE_DOTTEDPAIR);
-
-	CAR(pair) = car;
-}
-
-void
-isccc_sexpr_setcdr(isccc_sexpr_t *pair, isccc_sexpr_t *cdr) {
-	REQUIRE(pair->type == ISCCC_SEXPRTYPE_DOTTEDPAIR);
-
-	CDR(pair) = cdr;
-}
-
-isccc_sexpr_t *
 isccc_sexpr_addtolist(isccc_sexpr_t **l1p, isccc_sexpr_t *l2) {
 	isccc_sexpr_t *last, *elt, *l1;
 
@@ -269,14 +235,6 @@ isccc_sexpr_addtolist(isccc_sexpr_t **l1p, isccc_sexpr_t *l2) {
 bool
 isccc_sexpr_listp(isccc_sexpr_t *sexpr) {
 	if (sexpr == NULL || sexpr->type == ISCCC_SEXPRTYPE_DOTTEDPAIR) {
-		return true;
-	}
-	return false;
-}
-
-bool
-isccc_sexpr_emptyp(isccc_sexpr_t *sexpr) {
-	if (sexpr == NULL) {
 		return true;
 	}
 	return false;

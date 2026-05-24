@@ -211,18 +211,6 @@ isc_sockaddr_isexperimental(const isc_sockaddr_t *sa);
  */
 
 bool
-isc_sockaddr_islinklocal(const isc_sockaddr_t *sa);
-/*%<
- * Returns true if the address is a link local address.
- */
-
-bool
-isc_sockaddr_issitelocal(const isc_sockaddr_t *sa);
-/*%<
- * Returns true if the address is a sitelocal address.
- */
-
-bool
 isc_sockaddr_isnetzero(const isc_sockaddr_t *sa);
 /*%<
  * Returns true if the address is in net zero.

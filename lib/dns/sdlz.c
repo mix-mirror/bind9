@@ -1717,24 +1717,6 @@ dns_sdlz_putnamedrr(dns_sdlzallnodes_t *allnodes, const char *name,
 }
 
 isc_result_t
-dns_sdlz_putsoa(dns_sdlzlookup_t *lookup, const char *mname, const char *rname,
-		uint32_t serial) {
-	char str[2 * DNS_NAME_MAXTEXT + 5 * (sizeof("2147483647")) + 7];
-	int n;
-
-	REQUIRE(mname != NULL);
-	REQUIRE(rname != NULL);
-
-	n = snprintf(str, sizeof str, "%s %s %u %u %u %u %u", mname, rname,
-		     serial, SDLZ_DEFAULT_REFRESH, SDLZ_DEFAULT_RETRY,
-		     SDLZ_DEFAULT_EXPIRE, SDLZ_DEFAULT_MINIMUM);
-	if (n >= (int)sizeof(str) || n < 0) {
-		return ISC_R_NOSPACE;
-	}
-	return dns_sdlz_putrr(lookup, "SOA", SDLZ_DEFAULT_TTL, str);
-}
-
-isc_result_t
 dns_sdlzregister(const char *drivername, const dns_sdlzmethods_t *methods,
 		 void *driverarg, unsigned int flags, isc_mem_t *mctx,
 		 dns_sdlzimplementation_t **sdlzimp) {

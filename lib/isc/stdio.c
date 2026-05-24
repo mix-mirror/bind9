@@ -57,21 +57,6 @@ isc_stdio_seek(FILE *f, off_t offset, int whence) {
 }
 
 isc_result_t
-isc_stdio_tell(FILE *f, off_t *offsetp) {
-	off_t r;
-
-	REQUIRE(offsetp != NULL);
-
-	r = ftello(f);
-	if (r >= 0) {
-		*offsetp = r;
-		return ISC_R_SUCCESS;
-	} else {
-		return isc__errno2result(errno);
-	}
-}
-
-isc_result_t
 isc_stdio_read(void *ptr, size_t size, size_t nmemb, FILE *f, size_t *nret) {
 	isc_result_t result = ISC_R_SUCCESS;
 	size_t r;

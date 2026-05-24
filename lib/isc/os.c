@@ -200,11 +200,6 @@ isc_os_ncpus(void) {
 	return isc__os_ncpus;
 }
 
-unsigned long
-isc_os_cacheline(void) {
-	return isc__os_cacheline;
-}
-
 mode_t
 isc_os_umask(void) {
 	return isc__os_umask;

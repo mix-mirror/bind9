@@ -46,37 +46,10 @@ dns_remote_addresses(dns_remote_t *remote);
  *		'remote' is a valid remote structure.
  */
 
-isc_sockaddr_t *
-dns_remote_sources(dns_remote_t *remote);
-/*%<
- *	Return the source addresses to be used for the remote server.
- *
- *	Requires:
- *		'remote' is a valid remote structure.
- */
-
 unsigned int
 dns_remote_count(dns_remote_t *remote);
 /*%<
  *	Return the number of addresses of the remote server.
- *
- *	Requires:
- *		'remote' is a valid remote structure.
- */
-
-dns_name_t **
-dns_remote_keynames(dns_remote_t *remote);
-/*%<
- *	Return the keynames of the remote server.
- *
- *	Requires:
- *		'remote' is a valid remote structure.
- */
-
-dns_name_t **
-dns_remote_tlsnames(dns_remote_t *remote);
-/*%<
- *	Return the tlsnames of the remote server.
  *
  *	Requires:
  *		'remote' is a valid remote structure.

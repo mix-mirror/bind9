@@ -49,7 +49,3 @@ isc_serial_eq(uint32_t a, uint32_t b) {
 	return (a == b) ? true : false;
 }
 
-bool
-isc_serial_ne(uint32_t a, uint32_t b) {
-	return (a != b) ? true : false;
-}

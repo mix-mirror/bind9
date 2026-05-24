@@ -1214,31 +1214,10 @@ dns_zone_setzeronosoattl(dns_zone_t *zone, bool state) {
 }
 
 void
-dns_zone_setchecknames(dns_zone_t *zone, dns_severity_t severity) {
-	REQUIRE(DNS_ZONE_VALID(zone));
-
-	zone->check_names = severity;
-}
-
-dns_severity_t
-dns_zone_getchecknames(dns_zone_t *zone) {
-	REQUIRE(DNS_ZONE_VALID(zone));
-
-	return zone->check_names;
-}
-
-void
 dns_zone_setjournalsize(dns_zone_t *zone, int32_t size) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 
 	zone->journalsize = size;
-}
-
-int32_t
-dns_zone_getjournalsize(dns_zone_t *zone) {
-	REQUIRE(DNS_ZONE_VALID(zone));
-
-	return zone->journalsize;
 }
 
 static void
@@ -1807,12 +1786,6 @@ dns_zone_setautomatic(dns_zone_t *zone, bool automatic) {
 	UNLOCK_ZONE(zone);
 }
 
-bool
-dns_zone_getautomatic(dns_zone_t *zone) {
-	REQUIRE(DNS_ZONE_VALID(zone));
-	return zone->automatic;
-}
-
 void
 dns_zone_setadded(dns_zone_t *zone, bool added) {
 	REQUIRE(DNS_ZONE_VALID(zone));
@@ -1864,22 +1837,10 @@ dns_zone_setrequestixfr(dns_zone_t *zone, bool flag) {
 	zone->requestixfr = flag;
 }
 
-bool
-dns_zone_getrequestixfr(dns_zone_t *zone) {
-	REQUIRE(DNS_ZONE_VALID(zone));
-	return zone->requestixfr;
-}
-
 void
 dns_zone_setrequestixfrmaxdiffs(dns_zone_t *zone, uint32_t maxdiffs) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 	zone->requestixfr_maxdiffs = maxdiffs;
-}
-
-bool
-dns_zone_getrequestixfrmaxdiffs(dns_zone_t *zone) {
-	REQUIRE(DNS_ZONE_VALID(zone));
-	return zone->requestixfr_maxdiffs;
 }
 
 void

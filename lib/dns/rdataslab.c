@@ -362,13 +362,6 @@ dns_rdataslab_size(dns_slabheader_t *header) {
 	return (unsigned int)(current - slab) + sizeof(dns_slabheader_t);
 }
 
-unsigned int
-dns_rdataslab_count(dns_slabheader_t *header) {
-	REQUIRE(header != NULL);
-
-	return header->nitems;
-}
-
 /*
  * Make the dns_rdata_t 'rdata' refer to the slab item
  * beginning at '*current' (which is part of a slab of type

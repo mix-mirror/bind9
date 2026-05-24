@@ -184,27 +184,6 @@ isc_result_t
 isc_file_isplainfile(const char *name);
 
 isc_result_t
-isc_file_isplainfilefd(int fd);
-/*!<
- * \brief Check that the file is a plain file
- *
- * Returns:
- *\li	#ISC_R_SUCCESS
- *		Success. The file is a plain file.
- *\li	#ISC_R_INVALIDFILE
- *		The path specified was not usable by the operating system.
- *\li	#ISC_R_FILENOTFOUND
- *		The file does not exist. This return code comes from
- *		errno=ENOENT when stat returns -1. This code is mentioned
- *		here, because in logconf.c, it is the one rcode that is
- *		permitted in addition to ISC_R_SUCCESS. This is done since
- *		the next call in logconf.c is to isc_stdio_open(), which
- *		will create the file if it can.
- *\li	other ISC_R_* errors translated from errno
- *		These occur when stat returns -1 and an errno.
- */
-
-isc_result_t
 isc_file_isdirectory(const char *name);
 /*!<
  * \brief Check that 'name' exists and is a directory.
@@ -277,12 +256,6 @@ isc_file_absolutepath(const char *filename, char *path, size_t pathlen);
  * XXX We should also have a isc_file_writeeopen() function
  * for safely open a file in a publicly writable directory
  * (see write_open() in BIND 8's ns_config.c).
- */
-
-isc_result_t
-isc_file_truncate(const char *filename, off_t size);
-/*%<
- * Truncate/extend the file specified to 'size' bytes.
  */
 
 isc_result_t

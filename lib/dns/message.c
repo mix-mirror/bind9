@@ -1749,35 +1749,6 @@ dns_message_renderbegin(dns_message_t *msg, dns_compress_t *cctx,
 	return ISC_R_SUCCESS;
 }
 
-isc_result_t
-dns_message_renderchangebuffer(dns_message_t *msg, isc_buffer_t *buffer) {
-	isc_region_t r, rn;
-
-	REQUIRE(DNS_MESSAGE_VALID(msg));
-	REQUIRE(buffer != NULL);
-	REQUIRE(msg->buffer != NULL);
-
-	/*
-	 * Ensure that the new buffer is empty, and has enough space to
-	 * hold the current contents.
-	 */
-	isc_buffer_clear(buffer);
-
-	isc_buffer_availableregion(buffer, &rn);
-	isc_buffer_usedregion(msg->buffer, &r);
-	REQUIRE(rn.length > r.length);
-
-	/*
-	 * Copy the contents from the old to the new buffer.
-	 */
-	isc_buffer_add(buffer, r.length);
-	memmove(rn.base, r.base, r.length);
-
-	msg->buffer = buffer;
-
-	return ISC_R_SUCCESS;
-}
-
 void
 dns_message_renderrelease(dns_message_t *msg, unsigned int space) {
 	REQUIRE(DNS_MESSAGE_VALID(msg));
@@ -4653,18 +4624,6 @@ isc_region_t *
 dns_message_getrawmessage(dns_message_t *msg) {
 	REQUIRE(DNS_MESSAGE_VALID(msg));
 	return &msg->saved;
-}
-
-void
-dns_message_settimeadjust(dns_message_t *msg, int timeadjust) {
-	REQUIRE(DNS_MESSAGE_VALID(msg));
-	msg->timeadjust = timeadjust;
-}
-
-int
-dns_message_gettimeadjust(dns_message_t *msg) {
-	REQUIRE(DNS_MESSAGE_VALID(msg));
-	return msg->timeadjust;
 }
 
 isc_result_t

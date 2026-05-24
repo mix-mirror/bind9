@@ -133,17 +133,6 @@ isc_lex_destroy(isc_lex_t **lexp) {
 	isc_mem_put(lex->mctx, lex, sizeof(*lex));
 }
 
-unsigned int
-isc_lex_getcomments(isc_lex_t *lex) {
-	/*
-	 * Return the current lexer commenting styles.
-	 */
-
-	REQUIRE(VALID_LEX(lex));
-
-	return lex->comments;
-}
-
 void
 isc_lex_setcomments(isc_lex_t *lex, unsigned int comments) {
 	/*
@@ -153,17 +142,6 @@ isc_lex_setcomments(isc_lex_t *lex, unsigned int comments) {
 	REQUIRE(VALID_LEX(lex));
 
 	lex->comments = comments;
-}
-
-void
-isc_lex_getspecials(isc_lex_t *lex, isc_lexspecials_t specials) {
-	/*
-	 * Put the current list of specials into 'specials'.
-	 */
-
-	REQUIRE(VALID_LEX(lex));
-
-	memmove(specials, lex->specials, 256);
 }
 
 void
@@ -1055,23 +1033,6 @@ isc_lex_getsourceline(isc_lex_t *lex) {
 	}
 
 	return source->line;
-}
-
-isc_result_t
-isc_lex_setsourcename(isc_lex_t *lex, const char *name) {
-	inputsource *source;
-	char *newname;
-
-	REQUIRE(VALID_LEX(lex));
-	source = ISC_LIST_HEAD(lex->sources);
-
-	if (source == NULL) {
-		return ISC_R_NOTFOUND;
-	}
-	newname = isc_mem_strdup(lex->mctx, name);
-	isc_mem_free(lex->mctx, source->name);
-	source->name = newname;
-	return ISC_R_SUCCESS;
 }
 
 isc_result_t

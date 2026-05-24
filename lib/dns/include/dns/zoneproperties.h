@@ -705,37 +705,9 @@ dns_zone_setzeronosoattl(dns_zone_t *zone, bool state);
  */
 
 void
-dns_zone_setchecknames(dns_zone_t *zone, dns_severity_t severity);
-/*%<
- * 	Set the severity of name checking when loading a zone.
- *
- * Require:
- * \li     'zone' to be a valid zone.
- */
-
-dns_severity_t
-dns_zone_getchecknames(dns_zone_t *zone);
-/*%<
- *	Return the current severity of name checking.
- *
- * Require:
- *\li	'zone' to be a valid zone.
- */
-
-void
 dns_zone_setjournalsize(dns_zone_t *zone, int32_t size);
 /*%<
  *	Sets the journal size for the zone.
- *
- * Requires:
- *\li	'zone' to be a valid zone.
- */
-
-int32_t
-dns_zone_getjournalsize(dns_zone_t *zone);
-/*%<
- *	Return the journal size as set with a previous call to
- *	dns_zone_setjournalsize().
  *
  * Requires:
  *\li	'zone' to be a valid zone.
@@ -1293,15 +1265,6 @@ dns_zone_setautomatic(dns_zone_t *zone, bool automatic);
  * \li	'zone' to be valid.
  */
 
-bool
-dns_zone_getautomatic(dns_zone_t *zone);
-/*%
- * Returns true if the zone was added automatically by named.
- *
- * Requires:
- * \li	'zone' to be valid.
- */
-
 isc_result_t
 dns_zone_setrefreshkeyinterval(dns_zone_t *zone, uint32_t interval);
 /*%
@@ -1333,29 +1296,11 @@ dns_zone_setrequestexpire(dns_zone_t *zone, bool flag);
  * \li	'zone' to be valid.
  */
 
-bool
-dns_zone_getrequestixfr(dns_zone_t *zone);
-/*%
- * Returns the true/false value of the request-ixfr option in the zone.
- *
- * Requires:
- * \li	'zone' to be valid.
- */
-
 void
 dns_zone_setrequestixfr(dns_zone_t *zone, bool flag);
 /*%
  * Sets the request-ixfr option for the zone. Either true or false. The
  * default value is determined by the setting of this option in the view.
- *
- * Requires:
- * \li	'zone' to be valid.
- */
-
-bool
-dns_zone_getrequestixfrmaxdiffs(dns_zone_t *zone);
-/*%
- * Returns the value of the request-ixfr-max-diffs option in the zone.
  *
  * Requires:
  * \li	'zone' to be valid.

@@ -192,12 +192,6 @@ cfg_obj_ismap(const cfg_obj_t *obj);
  */
 
 bool
-cfg_obj_isfixedpoint(const cfg_obj_t *obj);
-/*%<
- * Return true iff 'obj' is of a fixedpoint type.
- */
-
-bool
 cfg_obj_ispercentage(const cfg_obj_t *obj);
 /*%<
  * Return true iff 'obj' is of a percentage type.
@@ -381,12 +375,6 @@ bool
 cfg_obj_issockaddr(const cfg_obj_t *obj);
 /*%<
  * Return true iff 'obj' is a socket address.
- */
-
-bool
-cfg_obj_issockaddrtls(const cfg_obj_t *obj);
-/*%<
- * Return true iff 'obj' is a socket address with an optional tls configuration.
  */
 
 const isc_sockaddr_t *

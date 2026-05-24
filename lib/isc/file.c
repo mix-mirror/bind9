@@ -454,25 +454,6 @@ isc_file_isplainfile(const char *filename) {
 }
 
 isc_result_t
-isc_file_isplainfilefd(int fd) {
-	/*
-	 * This function returns success if filename is a plain file.
-	 */
-	struct stat filestat;
-	memset(&filestat, 0, sizeof(struct stat));
-
-	if ((fstat(fd, &filestat)) == -1) {
-		return isc__errno2result(errno);
-	}
-
-	if (!S_ISREG(filestat.st_mode)) {
-		return ISC_R_INVALIDFILE;
-	}
-
-	return ISC_R_SUCCESS;
-}
-
-isc_result_t
 isc_file_isdirectory(const char *filename) {
 	/*
 	 * This function returns success if filename exists and is a
@@ -598,16 +579,6 @@ isc_file_absolutepath(const char *filename, char *path, size_t pathlen) {
 	strlcat(path, filename, pathlen);
 
 	return ISC_R_SUCCESS;
-}
-
-isc_result_t
-isc_file_truncate(const char *filename, off_t size) {
-	isc_result_t result = ISC_R_SUCCESS;
-
-	if (truncate(filename, size) < 0) {
-		result = isc__errno2result(errno);
-	}
-	return result;
 }
 
 isc_result_t

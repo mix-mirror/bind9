@@ -281,15 +281,6 @@ isc_rwlock_trywrlock(isc_rwlock_t *rwl) {
 }
 
 void
-isc_rwlock_downgrade(isc_rwlock_t *rwl) {
-	read_indicator_arrive(rwl);
-
-	writers_lock_release(rwl);
-
-	LIBISC_RWLOCK_DOWNGRADE(rwl);
-}
-
-void
 isc_rwlock_init(isc_rwlock_t *rwl) {
 	REQUIRE(rwl != NULL);
 

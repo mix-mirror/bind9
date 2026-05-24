@@ -112,37 +112,10 @@ dns_zonemgr_settransfersin(dns_zonemgr_t *zmgr, uint32_t value);
  *\li	'zmgr' to be a valid zone manager.
  */
 
-uint32_t
-dns_zonemgr_gettransfersin(dns_zonemgr_t *zmgr);
-/*%<
- *	Return the maximum number of simultaneous transfers in allowed.
- *
- * Requires:
- *\li	'zmgr' to be a valid zone manager.
- */
-
 void
 dns_zonemgr_settransfersperns(dns_zonemgr_t *zmgr, uint32_t value);
 /*%<
  *	Set the number of zone transfers allowed per nameserver.
- *
- * Requires:
- *\li	'zmgr' to be a valid zone manager
- */
-
-uint32_t
-dns_zonemgr_gettransfersperns(dns_zonemgr_t *zmgr);
-/*%<
- *	Return the number of transfers allowed per nameserver.
- *
- * Requires:
- *\li	'zmgr' to be a valid zone manager.
- */
-
-void
-dns_zonemgr_setcheckdsrate(dns_zonemgr_t *zmgr, unsigned int value);
-/*%<
- *	Set the number of parental DS queries sent per second.
  *
  * Requires:
  *\li	'zmgr' to be a valid zone manager
@@ -173,33 +146,6 @@ dns_zonemgr_setserialqueryrate(dns_zonemgr_t *zmgr, unsigned int value);
  *
  * Requires:
  *\li	'zmgr' to be a valid zone manager
- */
-
-unsigned int
-dns_zonemgr_getnotifyrate(dns_zonemgr_t *zmgr);
-/*%<
- *	Return the number of NOTIFY requests sent per second.
- *
- * Requires:
- *\li	'zmgr' to be a valid zone manager.
- */
-
-unsigned int
-dns_zonemgr_getstartupnotifyrate(dns_zonemgr_t *zmgr);
-/*%<
- *	Return the number of startup NOTIFY requests sent per second.
- *
- * Requires:
- *\li	'zmgr' to be a valid zone manager.
- */
-
-unsigned int
-dns_zonemgr_getserialqueryrate(dns_zonemgr_t *zmgr);
-/*%<
- *	Return the number of SOA queries sent per second.
- *
- * Requires:
- *\li	'zmgr' to be a valid zone manager.
  */
 
 unsigned int

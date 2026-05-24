@@ -211,18 +211,6 @@ dns_rdataslab_size(dns_slabheader_t *header);
  *\li	The number of bytes in the slab, plus the header.
  */
 
-unsigned int
-dns_rdataslab_count(dns_slabheader_t *header);
-/*%<
- * Return the number of records in the rdataslab following 'header'.
- *
- * Requires:
- *\li	'header' points to a slabheader with an rdataslab following it.
- *
- * Returns:
- *\li	The number of records in the slab.
- */
-
 bool
 dns_rdataslab_equal(dns_slabheader_t *header1, dns_slabheader_t *header2);
 /*%<

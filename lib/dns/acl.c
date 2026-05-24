@@ -125,14 +125,6 @@ dns_acl_isanyornone(dns_acl_t *acl, bool pos) {
 }
 
 /*
- * Test whether acl is set to "{ any; }"
- */
-bool
-dns_acl_isany(dns_acl_t *acl) {
-	return dns_acl_isanyornone(acl, true);
-}
-
-/*
  * Test whether acl is set to "{ none; }"
  */
 bool

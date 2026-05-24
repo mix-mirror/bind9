@@ -18,21 +18,6 @@
 #include <dns/types.h>
 
 isc_result_t
-dns_rcode_fromtext(dns_rcode_t *rcodep, isc_textregion_t *source);
-/*%<
- * Convert the text 'source' refers to into a DNS error value.
- *
- * Requires:
- *\li	'rcodep' is a valid pointer.
- *
- *\li	'source' is a valid text region.
- *
- * Returns:
- *\li	#ISC_R_SUCCESS			on success
- *\li	#DNS_R_UNKNOWN			type is unknown
- */
-
-isc_result_t
 dns_rcode_totext(dns_rcode_t rcode, isc_buffer_t *target);
 /*%<
  * Put a textual representation of error 'rcode' into 'target'.

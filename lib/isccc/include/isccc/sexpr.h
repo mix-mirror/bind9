@@ -65,9 +65,6 @@ isccc_sexpr_t *
 isccc_sexpr_cons(isccc_sexpr_t *car, isccc_sexpr_t *cdr);
 
 isccc_sexpr_t *
-isccc_sexpr_tconst(void);
-
-isccc_sexpr_t *
 isccc_sexpr_fromstring(const char *str);
 
 isccc_sexpr_t *
@@ -80,25 +77,10 @@ void
 isccc_sexpr_print(isccc_sexpr_t *sexpr, FILE *stream);
 
 isccc_sexpr_t *
-isccc_sexpr_car(isccc_sexpr_t *list);
-
-isccc_sexpr_t *
-isccc_sexpr_cdr(isccc_sexpr_t *list);
-
-void
-isccc_sexpr_setcar(isccc_sexpr_t *pair, isccc_sexpr_t *car);
-
-void
-isccc_sexpr_setcdr(isccc_sexpr_t *pair, isccc_sexpr_t *cdr);
-
-isccc_sexpr_t *
 isccc_sexpr_addtolist(isccc_sexpr_t **l1p, isccc_sexpr_t *l2);
 
 bool
 isccc_sexpr_listp(isccc_sexpr_t *sexpr);
-
-bool
-isccc_sexpr_emptyp(isccc_sexpr_t *sexpr);
 
 bool
 isccc_sexpr_stringp(isccc_sexpr_t *sexpr);

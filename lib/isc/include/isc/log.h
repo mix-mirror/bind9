@@ -582,25 +582,6 @@ isc_log_setdebuglevel(unsigned int level);
  *\li	The debugging level is set to the requested value.
  */
 
-unsigned int
-isc_log_getdebuglevel(void);
-/*%<
- * Get the current debugging level.
- *
- * Notes:
- *\li	This is provided so that a program can have a notion of
- *	"increment debugging level" or "decrement debugging level"
- *	without needing to keep track of what the current level is.
- *
- *\li	A return value of 0 indicates that debugging messages are disabled.
- *
- * Requires:
- *\li	lctx is a valid logging context.
- *
- * Ensures:
- *\li	The current logging debugging level is returned.
- */
-
 bool
 isc_log_wouldlog(int level);
 /*%<
@@ -628,72 +609,11 @@ isc_log_settag(isc_logconfig_t *lcfg, const char *tag);
  *	the program name (which is pretty impossible to infer portably).
  *
  *\li	Setting the tag to NULL or the empty string will also cause the
- *	#ISC_LOG_PRINTTAG channel flag to not print anything.  If tag equals the
- *	empty string, calls to isc_log_gettag will return NULL.
+ *	#ISC_LOG_PRINTTAG channel flag to not print anything.
  *
  * XXXDCL when creating a new isc_logconfig_t, it might be nice if the tag
  * of the currently active isc_logconfig_t was inherited.  this does not
  * currently happen.
- */
-
-char *
-isc_log_gettag(isc_logconfig_t *lcfg);
-/*%<
- * Get the current identifier printed with #ISC_LOG_PRINTTAG.
- *
- * Requires:
- *\li	lcfg is a valid logging configuration.
- *
- * Notes:
- *\li	Since isc_log_settag() will not associate a zero-length string
- *	with the logging configuration, attempts to do so will cause
- *	this function to return NULL.  However, a determined programmer
- *	will observe that (currently) a tag of length greater than zero
- *	could be set, and then modified to be zero length.
- *
- * Returns:
- *\li	A pointer to the current identifier, or NULL if none has been set.
- */
-
-void
-isc_log_opensyslog(const char *tag, int options, int facility);
-/*%<
- * Initialize syslog logging.
- *
- * Notes:
- *\li	XXXDCL NT
- *	This is currently equivalent to openlog(), but is not going to remain
- *	that way.  In the meantime, the arguments are all identical to
- *	those used by openlog(3), as follows:
- *
- * \code
- *		tag: The string to use in the position of the program
- *			name in syslog messages.  Most (all?) syslogs
- *			will use basename(argv[0]) if tag is NULL.
- *
- *		options: LOG_CONS, LOG_PID, LOG_NDELAY ... whatever your
- *			syslog supports.
- *
- *		facility: The default syslog facility.  This is irrelevant
- *			since isc_log_write will ALWAYS use the channel's
- *			declared facility.
- * \endcode
- *
- *\li	Zero effort has been made (yet) to accommodate systems with openlog()
- *	that only takes two arguments, or to identify valid syslog
- *	facilities or options for any given architecture.
- *
- *\li	It is necessary to call isc_log_opensyslog() to initialize
- *	syslogging on machines which do not support network connections to
- *	syslogd because they require a Unix domain socket to be used.  Since
- *	this is a chore to determine at run-time, it is suggested that it
- *	always be called by programs using the ISC logging system.
- *
- * Requires:
- *\li	Nothing.
- *
- * Ensures:
- *\li	openlog() is called to initialize the syslog system.
  */
 
 void

@@ -40,10 +40,6 @@ isc_stdio_close(FILE *f);
 isc_result_t
 isc_stdio_seek(FILE *f, off_t offset, int whence);
 
-/*% Tell */
-isc_result_t
-isc_stdio_tell(FILE *f, off_t *offsetp);
-
 /*% Read */
 isc_result_t
 isc_stdio_read(void *ptr, size_t size, size_t nmemb, FILE *f, size_t *nret);

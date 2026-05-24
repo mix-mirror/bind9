@@ -23,5 +23,3 @@ dns_dsyncscheme_fromtext(dns_dsyncscheme_t *schemep, isc_textregion_t *source);
 isc_result_t
 dns_dsyncscheme_totext(dns_dsyncscheme_t scheme, isc_buffer_t *target);
 
-void
-dns_dsyncscheme_format(dns_dsyncscheme_t scheme, char *cp, unsigned int size);

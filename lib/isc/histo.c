@@ -116,12 +116,6 @@ isc_histo_destroy(isc_histo_t **hgp) {
 
 /**********************************************************************/
 
-uint
-isc_histo_sigbits(isc_histo_t *hg) {
-	REQUIRE(HISTO_VALID(hg));
-	return hg->sigbits;
-}
-
 /*
  * use precomputed logs and builtins to avoid linking with libm
  */

@@ -11095,18 +11095,6 @@ dns_resolver_ds_digest_supported(dns_resolver_t *resolver,
 }
 
 void
-dns_resolver_getclientsperquery(dns_resolver_t *resolver, uint32_t *cur,
-				uint32_t *min, uint32_t *max) {
-	REQUIRE(VALID_RESOLVER(resolver));
-
-	LOCK(&resolver->lock);
-	SET_IF_NOT_NULL(cur, resolver->spillat);
-	SET_IF_NOT_NULL(min, resolver->spillatmin);
-	SET_IF_NOT_NULL(max, resolver->spillatmax);
-	UNLOCK(&resolver->lock);
-}
-
-void
 dns_resolver_setclientsperquery(dns_resolver_t *resolver, uint32_t min,
 				uint32_t max) {
 	REQUIRE(VALID_RESOLVER(resolver));
@@ -11143,13 +11131,6 @@ dns_resolver_setzeronosoattl(dns_resolver_t *resolver, bool state) {
 	REQUIRE(VALID_RESOLVER(resolver));
 
 	resolver->zero_no_soa_ttl = state;
-}
-
-unsigned int
-dns_resolver_getoptions(dns_resolver_t *resolver) {
-	REQUIRE(VALID_RESOLVER(resolver));
-
-	return resolver->options;
 }
 
 unsigned int
@@ -11198,22 +11179,10 @@ dns_resolver_setmaxdepth(dns_resolver_t *resolver, unsigned int maxdepth) {
 	resolver->maxdepth = maxdepth;
 }
 
-unsigned int
-dns_resolver_getmaxdepth(dns_resolver_t *resolver) {
-	REQUIRE(VALID_RESOLVER(resolver));
-	return resolver->maxdepth;
-}
-
 void
 dns_resolver_setmaxqueries(dns_resolver_t *resolver, unsigned int queries) {
 	REQUIRE(VALID_RESOLVER(resolver));
 	resolver->maxqueries = queries;
-}
-
-unsigned int
-dns_resolver_getmaxqueries(dns_resolver_t *resolver) {
-	REQUIRE(VALID_RESOLVER(resolver));
-	return resolver->maxqueries;
 }
 
 void
@@ -11340,14 +11309,6 @@ dns_resolver_setquotaresponse(dns_resolver_t *resolver, dns_quotatype_t which,
 	REQUIRE(resp == DNS_R_DROP || resp == DNS_R_SERVFAIL);
 
 	resolver->quotaresp[which] = resp;
-}
-
-isc_result_t
-dns_resolver_getquotaresponse(dns_resolver_t *resolver, dns_quotatype_t which) {
-	REQUIRE(VALID_RESOLVER(resolver));
-	REQUIRE(which == dns_quotatype_zone || which == dns_quotatype_server);
-
-	return resolver->quotaresp[which];
 }
 
 void

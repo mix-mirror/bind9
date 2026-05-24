@@ -1386,11 +1386,6 @@ dns_view_flushcache(dns_view_t *view, bool fixuponly) {
 }
 
 isc_result_t
-dns_view_flushname(dns_view_t *view, const dns_name_t *name) {
-	return dns_view_flushnode(view, name, false);
-}
-
-isc_result_t
 dns_view_flushnode(dns_view_t *view, const dns_name_t *name, bool tree) {
 	isc_result_t result = ISC_R_SUCCESS;
 	dns_adb_t *adb = NULL;
@@ -1721,12 +1716,6 @@ dns_view_searchdlz(dns_view_t *view, const dns_name_t *name,
 	}
 
 	return ISC_R_NOTFOUND;
-}
-
-uint32_t
-dns_view_getfailttl(dns_view_t *view) {
-	REQUIRE(DNS_VIEW_VALID(view));
-	return view->fail_ttl;
 }
 
 void

@@ -112,15 +112,6 @@ isc_histo_destroy(isc_histo_t **hgp);
  */
 
 uint
-isc_histo_sigbits(isc_histo_t *hg);
-/*%<
- * Get the histogram's `sigbits` setting
- *
- * Requires:
- *\li	`hg` is a pointer to a valid histogram
- */
-
-uint
 isc_histo_bits_to_digits(uint bits);
 /*%<
  * Convert binary significant figures to decimal significant figures,

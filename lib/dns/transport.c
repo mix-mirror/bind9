@@ -129,20 +129,6 @@ dns_transport_get_remote_hostname(const dns_transport_t *transport) {
 	return transport->tls.remote_hostname;
 }
 
-char *
-dns_transport_get_endpoint(const dns_transport_t *transport) {
-	REQUIRE(VALID_TRANSPORT(transport));
-
-	return transport->doh.endpoint;
-}
-
-dns_http_mode_t
-dns_transport_get_mode(const dns_transport_t *transport) {
-	REQUIRE(VALID_TRANSPORT(transport));
-
-	return transport->doh.mode;
-}
-
 dns_transport_t *
 dns_transport_new(const dns_name_t *name, dns_transport_type_t type,
 		  dns_transport_list_t *list) {
@@ -220,29 +206,6 @@ dns_transport_set_remote_hostname(dns_transport_t *transport,
 		transport->tls.remote_hostname = isc_mem_strdup(transport->mctx,
 								hostname);
 	}
-}
-
-void
-dns_transport_set_endpoint(dns_transport_t *transport, const char *endpoint) {
-	REQUIRE(VALID_TRANSPORT(transport));
-	REQUIRE(transport->type == DNS_TRANSPORT_HTTP);
-
-	if (transport->doh.endpoint != NULL) {
-		isc_mem_free(transport->mctx, transport->doh.endpoint);
-	}
-
-	if (endpoint != NULL) {
-		transport->doh.endpoint = isc_mem_strdup(transport->mctx,
-							 endpoint);
-	}
-}
-
-void
-dns_transport_set_mode(dns_transport_t *transport, dns_http_mode_t mode) {
-	REQUIRE(VALID_TRANSPORT(transport));
-	REQUIRE(transport->type == DNS_TRANSPORT_HTTP);
-
-	transport->doh.mode = mode;
 }
 
 void

@@ -315,14 +315,6 @@ dns_mnemonic_totext(unsigned int value, isc_buffer_t *target,
 }
 
 isc_result_t
-dns_rcode_fromtext(dns_rcode_t *rcodep, isc_textregion_t *source) {
-	unsigned int value;
-	RETERR(dns_mnemonic_fromtext(&value, source, rcodes, 0xffff));
-	*rcodep = value;
-	return ISC_R_SUCCESS;
-}
-
-isc_result_t
 dns_rcode_totext(dns_rcode_t rcode, isc_buffer_t *target) {
 	return dns_mnemonic_totext(rcode, target, rcodes);
 }
@@ -395,22 +387,6 @@ dns_privatedns_totext(dst_algorithm_t alg, isc_buffer_t *target) {
 	return dns_mnemonic_totext(alg, target, privatednss);
 }
 
-void
-dns_privatedns_format(dst_algorithm_t alg, char *cp, unsigned int size) {
-	isc_buffer_t b;
-	isc_region_t r;
-	isc_result_t result;
-
-	REQUIRE(cp != NULL && size > 0);
-	isc_buffer_init(&b, cp, size - 1);
-	result = dns_privatedns_totext(alg, &b);
-	isc_buffer_usedregion(&b, &r);
-	r.base[r.length] = 0;
-	if (result != ISC_R_SUCCESS) {
-		r.base[0] = 0;
-	}
-}
-
 isc_result_t
 dst_privateoid_fromtext(dst_algorithm_t *dstalgp, isc_textregion_t *source) {
 	unsigned int value;
@@ -424,33 +400,12 @@ dns_privateoid_totext(dst_algorithm_t alg, isc_buffer_t *target) {
 	return dns_mnemonic_totext(alg, target, privateoids);
 }
 
-void
-dns_privateoid_format(dst_algorithm_t alg, char *cp, unsigned int size) {
-	isc_buffer_t b;
-	isc_region_t r;
-	isc_result_t result;
-
-	REQUIRE(cp != NULL && size > 0);
-	isc_buffer_init(&b, cp, size - 1);
-	result = dns_privateoid_totext(alg, &b);
-	isc_buffer_usedregion(&b, &r);
-	r.base[r.length] = 0;
-	if (result != ISC_R_SUCCESS) {
-		r.base[0] = 0;
-	}
-}
-
 isc_result_t
 dns_secproto_fromtext(dns_secproto_t *secprotop, isc_textregion_t *source) {
 	unsigned int value;
 	RETERR(dns_mnemonic_fromtext(&value, source, secprotos, 0xff));
 	*secprotop = value;
 	return ISC_R_SUCCESS;
-}
-
-isc_result_t
-dns_secproto_totext(dns_secproto_t secproto, isc_buffer_t *target) {
-	return dns_mnemonic_totext(secproto, target, secprotos);
 }
 
 isc_result_t
@@ -561,22 +516,6 @@ dns_dsyncscheme_fromtext(dns_dsyncscheme_t *schemep, isc_textregion_t *source) {
 isc_result_t
 dns_dsyncscheme_totext(dns_dsyncscheme_t scheme, isc_buffer_t *target) {
 	return dns_mnemonic_totext(scheme, target, dsyncschemes);
-}
-
-void
-dns_dsyncscheme_format(dns_dsyncscheme_t scheme, char *cp, unsigned int size) {
-	isc_buffer_t b;
-	isc_region_t r;
-	isc_result_t result;
-
-	REQUIRE(cp != NULL && size > 0);
-	isc_buffer_init(&b, cp, size - 1);
-	result = dns_dsyncscheme_totext(scheme, &b);
-	isc_buffer_usedregion(&b, &r);
-	r.base[r.length] = 0;
-	if (result != ISC_R_SUCCESS) {
-		r.base[0] = 0;
-	}
 }
 
 /*

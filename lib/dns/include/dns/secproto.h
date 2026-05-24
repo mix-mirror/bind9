@@ -35,22 +35,3 @@ dns_secproto_fromtext(dns_secproto_t *secprotop, isc_textregion_t *source);
  *\li	DNS_R_UNKNOWN			mnemonic type is unknown
  */
 
-isc_result_t
-dns_secproto_totext(dns_secproto_t secproto, isc_buffer_t *target);
-/*%<
- * Put a textual representation of the DNSSEC security protocol 'secproto'
- * into 'target'.
- *
- * Requires:
- *\li	'secproto' is a valid secproto.
- *
- *\li	'target' is a valid text buffer.
- *
- * Ensures,
- *	if the result is success:
- *	\li	The used space in 'target' is updated.
- *
- * Returns:
- *\li	ISC_R_SUCCESS			on success
- *\li	ISC_R_NOSPACE			target buffer is too small
- */

@@ -183,13 +183,6 @@ create_stats(isc_mem_t *mctx, dns_statstype_t type, int ncounters,
 }
 
 void
-dns_generalstats_create(isc_mem_t *mctx, dns_stats_t **statsp, int ncounters) {
-	REQUIRE(statsp != NULL && *statsp == NULL);
-
-	create_stats(mctx, dns_statstype_general, ncounters, statsp);
-}
-
-void
 dns_rdatatypestats_create(isc_mem_t *mctx, isc_statsmulti_t **statsp) {
 	REQUIRE(statsp != NULL && *statsp == NULL);
 
@@ -233,13 +226,6 @@ dns_dnssecsignstats_create(isc_mem_t *mctx, dns_stats_t **statsp) {
 /*%
  * Increment/Decrement methods
  */
-void
-dns_generalstats_increment(dns_stats_t *stats, isc_statscounter_t counter) {
-	REQUIRE(DNS_STATS_VALID(stats) && stats->type == dns_statstype_general);
-
-	isc_stats_increment(stats->counters, counter);
-}
-
 static isc_statscounter_t
 rdatatype2counter(dns_rdatatype_t type) {
 	if (type > (dns_rdatatype_t)RDTYPECOUNTER_MAXTYPE) {
@@ -422,15 +408,6 @@ dns_dnssecsignstats_clear(dns_stats_t *stats, dns_keytag_t id, uint8_t alg) {
 /*%
  * Dump methods
  */
-void
-dns_generalstats_dump(dns_stats_t *stats, dns_generalstats_dumper_t dump_fn,
-		      void *arg, unsigned int options) {
-	REQUIRE(DNS_STATS_VALID(stats) && stats->type == dns_statstype_general);
-
-	isc_stats_dump(stats->counters, (isc_stats_dumper_t)dump_fn, arg,
-		       options);
-}
-
 static void
 dump_rdentry(int rdcounter, uint64_t value, dns_rdatastatstype_t attributes,
 	     dns_rdatatypestats_dumper_t dump_fn, void *arg) {

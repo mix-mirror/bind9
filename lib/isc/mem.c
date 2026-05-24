@@ -1046,17 +1046,6 @@ isc_mem_isovermem(isc_mem_t *ctx) {
 	return isc_random8() < prob;
 }
 
-const char *
-isc_mem_getname(isc_mem_t *ctx) {
-	REQUIRE(VALID_CONTEXT(ctx));
-
-	if (ctx->name[0] == 0) {
-		return "";
-	}
-
-	return ctx->name;
-}
-
 /*
  * Memory pool stuff
  */
@@ -1259,13 +1248,6 @@ isc_mempool_setfreemax(isc_mempool_t *restrict mpctx,
 }
 
 unsigned int
-isc_mempool_getfreemax(isc_mempool_t *restrict mpctx) {
-	REQUIRE(VALID_MEMPOOL(mpctx));
-
-	return mpctx->freemax;
-}
-
-unsigned int
 isc_mempool_getfreecount(isc_mempool_t *restrict mpctx) {
 	REQUIRE(VALID_MEMPOOL(mpctx));
 
@@ -1286,13 +1268,6 @@ isc_mempool_setfillcount(isc_mempool_t *restrict mpctx,
 	REQUIRE(limit > 0);
 
 	mpctx->fillcount = limit;
-}
-
-unsigned int
-isc_mempool_getfillcount(isc_mempool_t *restrict mpctx) {
-	REQUIRE(VALID_MEMPOOL(mpctx));
-
-	return mpctx->fillcount;
 }
 
 /*
@@ -1336,11 +1311,6 @@ isc__mem_checkdestroyed(void) {
 		UNREACHABLE();
 	}
 	UNLOCK(&contextslock);
-}
-
-unsigned int
-isc_mem_references(isc_mem_t *ctx) {
-	return isc_refcount_current(&ctx->references);
 }
 
 #ifdef HAVE_LIBXML2

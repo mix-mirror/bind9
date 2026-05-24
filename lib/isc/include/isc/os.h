@@ -32,14 +32,6 @@ isc_os_ncpus(void);
  * be determined.
  */
 
-unsigned long
-isc_os_cacheline(void);
-/*%<
- * Return L1 cacheline size of the CPU.
- * If L1 cache is greater than ISC_OS_CACHELINE_SIZE, ensure it is used
- * instead of constant. Is common on ppc64le architecture.
- */
-
 mode_t
 isc_os_umask(void);
 /*%<

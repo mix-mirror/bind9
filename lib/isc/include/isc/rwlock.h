@@ -240,9 +240,6 @@ isc_result_t
 isc_rwlock_tryupgrade(isc_rwlock_t *rwl);
 
 void
-isc_rwlock_downgrade(isc_rwlock_t *rwl);
-
-void
 isc_rwlock_destroy(isc_rwlock_t *rwl);
 
 void

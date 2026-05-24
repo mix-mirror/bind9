@@ -328,18 +328,6 @@ dns_dlzregister(const char *drivername, const dns_dlzmethods_t *methods,
 }
 
 /*%
- * Tokenize the string "s" into whitespace-separated words,
- * return the number of words in '*argcp' and an array
- * of pointers to the words in '*argvp'.  The caller
- * must free the array using isc_mem_put().  The string
- * is modified in-place.
- */
-isc_result_t
-dns_dlzstrtoargv(isc_mem_t *mctx, char *s, unsigned int *argcp, char ***argvp) {
-	return isc_commandline_strtoargv(mctx, s, argcp, argvp, 0);
-}
-
-/*%
  * Unregisters a DLZ driver.  This basically just removes the dlz
  * driver from the list of available drivers in the dlz_implementations list.
  */

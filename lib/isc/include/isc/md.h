@@ -158,15 +158,6 @@ isc_md_get_size(isc_md_t *md);
  * isc_md_block_size:
  *
  * This function return the block size of the message digest when passed an
- * isc_md_t structure.
- */
-size_t
-isc_md_get_block_size(isc_md_t *md);
-
-/**
- * isc_md_block_size:
- *
- * This function return the block size of the message digest when passed an
  * isc_md_type_t.
  */
 size_t

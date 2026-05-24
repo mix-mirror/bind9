@@ -47,13 +47,6 @@ portset_add(isc_portset_t *portset, in_port_t port) {
 	}
 }
 
-static void
-portset_remove(isc_portset_t *portset, in_port_t port) {
-	if (portset_isset(portset, port)) {
-		portset->nports--;
-		portset->buf[port >> 5] &= ~((uint32_t)1 << (port & 31));
-	}
-}
 
 void
 isc_portset_create(isc_mem_t *mctx, isc_portset_t **portsetp) {
@@ -91,18 +84,6 @@ isc_portset_nports(isc_portset_t *portset) {
 }
 
 void
-isc_portset_add(isc_portset_t *portset, in_port_t port) {
-	REQUIRE(portset != NULL);
-
-	portset_add(portset, port);
-}
-
-void
-isc_portset_remove(isc_portset_t *portset, in_port_t port) {
-	portset_remove(portset, port);
-}
-
-void
 isc_portset_addrange(isc_portset_t *portset, in_port_t port_lo,
 		     in_port_t port_hi) {
 	in_port_t p;
@@ -116,16 +97,3 @@ isc_portset_addrange(isc_portset_t *portset, in_port_t port_lo,
 	} while (p++ < port_hi);
 }
 
-void
-isc_portset_removerange(isc_portset_t *portset, in_port_t port_lo,
-			in_port_t port_hi) {
-	in_port_t p;
-
-	REQUIRE(portset != NULL);
-	REQUIRE(port_lo <= port_hi);
-
-	p = port_lo;
-	do {
-		portset_remove(portset, p);
-	} while (p++ < port_hi);
-}

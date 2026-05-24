@@ -108,13 +108,6 @@ isc_md_get_size(isc_md_t *md) {
 }
 
 size_t
-isc_md_get_block_size(isc_md_t *md) {
-	REQUIRE(md != NULL);
-
-	return EVP_MD_CTX_block_size(md);
-}
-
-size_t
 isc_md_type_get_block_size(isc_md_type_t type) {
 	EVP_MD *evp;
 

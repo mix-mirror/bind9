@@ -186,7 +186,7 @@ typedef isc_result_t (*dns_sdlzlookupfunc_t)(const char *zone, const char *name,
  * supply a lookup method.  This method is called when the
  * DNS server is performing a query, after the find zone and before any
  * other methods have been called.  This function returns DNS record
- * information using the dns_sdlz_putrr and dns_sdlz_putsoa functions.
+ * information using the dns_sdlz_putrr function.
  * If this function supplies authority information for the DNS record
  * the authority method is not required.  If it does not, the
  * authority function is required.
@@ -327,20 +327,6 @@ dns_sdlz_putrr_t dns_sdlz_putrr;
 /*%<
  * Add a single resource record to the lookup structure to be later
  * parsed into a query response.
- */
-
-typedef isc_result_t
-dns_sdlz_putsoa_t(dns_sdlzlookup_t *lookup, const char *mname,
-		  const char *rname, uint32_t serial);
-dns_sdlz_putsoa_t dns_sdlz_putsoa;
-/*%<
- * This function may optionally be called from the 'authority'
- * callback to simplify construction of the SOA record for 'zone'.  It
- * will provide a SOA listing 'mname' as as the primary server and
- * 'rname' as the responsible person mailbox.  It is the
- * responsibility of the driver to increment the serial number between
- * responses if necessary.  All other SOA fields will have reasonable
- * default values.
  */
 
 typedef isc_result_t

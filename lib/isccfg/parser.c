@@ -1040,12 +1040,6 @@ cfg_type_t cfg_type_fixedpoint = { "fixedpoint",	 cfg_parse_fixedpoint,
 				   cfg_print_fixedpoint, cfg_doc_terminal,
 				   &cfg_rep_fixedpoint,	 NULL };
 
-bool
-cfg_obj_isfixedpoint(const cfg_obj_t *obj) {
-	REQUIRE(VALID_CFGOBJ(obj));
-	return obj->type->rep == &cfg_rep_fixedpoint;
-}
-
 /*
  * uint32
  */
@@ -3627,12 +3621,6 @@ bool
 cfg_obj_issockaddr(const cfg_obj_t *obj) {
 	REQUIRE(VALID_CFGOBJ(obj));
 	return obj->type->rep == &cfg_rep_sockaddr;
-}
-
-bool
-cfg_obj_issockaddrtls(const cfg_obj_t *obj) {
-	REQUIRE(VALID_CFGOBJ(obj));
-	return obj->type->rep == &cfg_rep_sockaddrtls;
 }
 
 const isc_sockaddr_t *

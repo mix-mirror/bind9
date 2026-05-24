@@ -891,22 +891,6 @@ dns_view_flushnode(dns_view_t *view, const dns_name_t *name, bool tree);
  */
 
 isc_result_t
-dns_view_flushname(dns_view_t *view, const dns_name_t *name);
-/*%<
- * Flush the given name from the view's cache, ADB and badcache.
- * Equivalent to dns_view_flushnode(view, name, false).
- *
- *
- * Requires:
- *\li	'view' is valid.
- *\li	'name' is valid.
- *
- * Returns:
- *\li	#ISC_R_SUCCESS
- *	other returns are failures.
- */
-
-isc_result_t
 dns_view_freezezones(dns_view_t *view, bool freeze);
 /*%<
  * Freeze/thaw updates to primary zones.
@@ -1075,15 +1059,6 @@ dns_view_searchdlz(dns_view_t *view, const dns_name_t *name,
  * \li 'view' is valid.
  * \li 'name' is not NULL.
  * \li 'dbp' is not NULL and *dbp is NULL.
- */
-
-uint32_t
-dns_view_getfailttl(dns_view_t *view);
-/*%<
- * Get the view's servfail-ttl.  zero => no servfail caching.
- *
- * Requires:
- *\li	'view' to be valid.
  */
 
 void

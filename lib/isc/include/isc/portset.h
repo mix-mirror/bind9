@@ -83,26 +83,6 @@ isc_portset_nports(isc_portset_t *portset);
  */
 
 void
-isc_portset_add(isc_portset_t *portset, in_port_t port);
-/*%<
- * Add the given port to the portset.  The port may or may not be stored in
- * the portset.
- *
- * Requires:
- *\li	'portlist' to be valid.
- */
-
-void
-isc_portset_remove(isc_portset_t *portset, in_port_t port);
-/*%<
- * Remove the given port to the portset.  The port may or may not be stored in
- * the portset.
- *
- * Requires:
- *\li	'portlist' to be valid.
- */
-
-void
 isc_portset_addrange(isc_portset_t *portset, in_port_t port_lo,
 		     in_port_t port_hi);
 /*%<
@@ -114,14 +94,3 @@ isc_portset_addrange(isc_portset_t *portset, in_port_t port_lo,
  *\li	port_lo <= port_hi
  */
 
-void
-isc_portset_removerange(isc_portset_t *portset, in_port_t port_lo,
-			in_port_t port_hi);
-/*%<
- * Subtract a subset of [port_lo, port_hi] (inclusive) from the portset.  Ports
- * in the subset may or may not be stored in portset.
- *
- * Requires:
- *\li	'portlist' to be valid.
- *\li	port_lo <= port_hi
- */

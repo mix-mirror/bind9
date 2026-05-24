@@ -49,9 +49,6 @@ void
 dns_peerlist_new(isc_mem_t *mem, dns_peerlist_t **list);
 
 void
-dns_peerlist_attach(dns_peerlist_t *source, dns_peerlist_t **target);
-
-void
 dns_peerlist_detach(dns_peerlist_t **list);
 
 /*
@@ -65,12 +62,6 @@ dns_peerlist_addpeer(dns_peerlist_t *peers, dns_peer_t *peer);
 isc_result_t
 dns_peerlist_peerbyaddr(dns_peerlist_t *peers, const isc_netaddr_t *addr,
 			dns_peer_t **retval);
-
-/*
- * What he said.
- */
-isc_result_t
-dns_peerlist_currpeer(dns_peerlist_t *peers, dns_peer_t **retval);
 
 isc_result_t
 dns_peer_new(isc_mem_t *mem, const isc_netaddr_t *ipaddr, dns_peer_t **peer);

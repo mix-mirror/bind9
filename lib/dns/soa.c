@@ -91,18 +91,6 @@ dns_soa_getserial(dns_rdata_t *rdata) {
 	return soa_get(rdata, 0);
 }
 uint32_t
-dns_soa_getrefresh(dns_rdata_t *rdata) {
-	return soa_get(rdata, 4);
-}
-uint32_t
-dns_soa_getretry(dns_rdata_t *rdata) {
-	return soa_get(rdata, 8);
-}
-uint32_t
-dns_soa_getexpire(dns_rdata_t *rdata) {
-	return soa_get(rdata, 12);
-}
-uint32_t
 dns_soa_getminimum(dns_rdata_t *rdata) {
 	return soa_get(rdata, 16);
 }
@@ -118,20 +106,4 @@ soa_set(dns_rdata_t *rdata, uint32_t val, int offset) {
 void
 dns_soa_setserial(uint32_t val, dns_rdata_t *rdata) {
 	soa_set(rdata, val, 0);
-}
-void
-dns_soa_setrefresh(uint32_t val, dns_rdata_t *rdata) {
-	soa_set(rdata, val, 4);
-}
-void
-dns_soa_setretry(uint32_t val, dns_rdata_t *rdata) {
-	soa_set(rdata, val, 8);
-}
-void
-dns_soa_setexpire(uint32_t val, dns_rdata_t *rdata) {
-	soa_set(rdata, val, 12);
-}
-void
-dns_soa_setminimum(uint32_t val, dns_rdata_t *rdata) {
-	soa_set(rdata, val, 16);
 }

@@ -139,19 +139,6 @@ dns_catz_entry_new(isc_mem_t *mctx, const dns_name_t *domain);
  * \li	ISC_R_SUCCESS on success
  */
 
-dns_catz_entry_t *
-dns_catz_entry_copy(dns_catz_zone_t *catz, const dns_catz_entry_t *entry);
-/*%<
- * Allocate a new catz_entry and deep copy 'entry' into 'nentryp'.
- *
- * Requires:
- * \li	'mctx' to be a valid memory context.
- * \li	'entry' to be non NULL.
- *
- * Returns:
- * \li	ISC_R_SUCCESS on success
- */
-
 void
 dns_catz_entry_attach(dns_catz_entry_t *entry, dns_catz_entry_t **entryp);
 /*%<
@@ -170,16 +157,6 @@ dns_catz_entry_detach(dns_catz_zone_t *catz, dns_catz_entry_t **entryp);
  * Requires:
  * \li	'catz' is a valid dns_catz_zone_t.
  * \li	'entryp' is not NULL and '*entryp' is not NULL.
- */
-
-bool
-dns_catz_entry_validate(const dns_catz_entry_t *entry);
-/*%<
- * Validate whether entry is correct.
- * (NOT YET IMPLEMENTED: always returns true)
- *
- * Requires:
- *\li	'entry' is a valid dns_catz_entry_t.
  */
 
 bool
@@ -208,14 +185,6 @@ dns_catz_zone_new(dns_catz_zones_t *catzs, const dns_name_t *name);
  *
  */
 
-dns_name_t *
-dns_catz_zone_getname(dns_catz_zone_t *catz);
-/*%<
- * Get catalog zone name
- *
- * Requires:
- * \li	'catz' is a valid dns_catz_zone_t.
- */
 
 dns_catz_options_t *
 dns_catz_zone_getdefoptions(dns_catz_zone_t *catz);

@@ -301,25 +301,11 @@ dns_zonemgr_settransfersin(dns_zonemgr_t *zmgr, uint32_t value) {
 	zmgr->transfersin = value;
 }
 
-uint32_t
-dns_zonemgr_gettransfersin(dns_zonemgr_t *zmgr) {
-	REQUIRE(DNS_ZONEMGR_VALID(zmgr));
-
-	return zmgr->transfersin;
-}
-
 void
 dns_zonemgr_settransfersperns(dns_zonemgr_t *zmgr, uint32_t value) {
 	REQUIRE(DNS_ZONEMGR_VALID(zmgr));
 
 	zmgr->transfersperns = value;
-}
-
-uint32_t
-dns_zonemgr_gettransfersperns(dns_zonemgr_t *zmgr) {
-	REQUIRE(DNS_ZONEMGR_VALID(zmgr));
-
-	return zmgr->transfersperns;
 }
 
 /*
@@ -681,13 +667,6 @@ gotquota:
 }
 
 void
-dns_zonemgr_setcheckdsrate(dns_zonemgr_t *zmgr, unsigned int value) {
-	REQUIRE(DNS_ZONEMGR_VALID(zmgr));
-
-	setrl(zmgr->checkdsrl, &zmgr->checkdsrate, value);
-}
-
-void
 dns_zonemgr_setnotifyrate(dns_zonemgr_t *zmgr, unsigned int value) {
 	REQUIRE(DNS_ZONEMGR_VALID(zmgr));
 
@@ -715,13 +694,6 @@ dns_zonemgr_setserialqueryrate(dns_zonemgr_t *zmgr, unsigned int value) {
 	setrl(zmgr->startuprefreshrl, &zmgr->startupserialqueryrate, value);
 }
 
-unsigned int
-dns_zonemgr_getnotifyrate(dns_zonemgr_t *zmgr) {
-	REQUIRE(DNS_ZONEMGR_VALID(zmgr));
-
-	return zmgr->notifyrate;
-}
-
 void
 dns__zonemgr_getnotifyrl(dns_zonemgr_t *zmgr, isc_ratelimiter_t **prl) {
 	REQUIRE(DNS_ZONEMGR_VALID(zmgr));
@@ -729,25 +701,11 @@ dns__zonemgr_getnotifyrl(dns_zonemgr_t *zmgr, isc_ratelimiter_t **prl) {
 	*prl = zmgr->notifyrl;
 }
 
-unsigned int
-dns_zonemgr_getstartupnotifyrate(dns_zonemgr_t *zmgr) {
-	REQUIRE(DNS_ZONEMGR_VALID(zmgr));
-
-	return zmgr->startupnotifyrate;
-}
-
 void
 dns__zonemgr_getstartupnotifyrl(dns_zonemgr_t *zmgr, isc_ratelimiter_t **prl) {
 	REQUIRE(DNS_ZONEMGR_VALID(zmgr));
 
 	*prl = zmgr->startupnotifyrl;
-}
-
-unsigned int
-dns_zonemgr_getserialqueryrate(dns_zonemgr_t *zmgr) {
-	REQUIRE(DNS_ZONEMGR_VALID(zmgr));
-
-	return zmgr->serialqueryrate;
 }
 
 unsigned int

@@ -603,29 +603,6 @@ dns_message_renderbegin(dns_message_t *msg, dns_compress_t *cctx,
  */
 
 isc_result_t
-dns_message_renderchangebuffer(dns_message_t *msg, isc_buffer_t *buffer);
-/*%<
- * Reset the buffer.  This can be used after growing the old buffer
- * on a ISC_R_NOSPACE return from most of the render functions.
- *
- * On successful completion, the old buffer is no longer used by the
- * library.  The new buffer is owned by the library until
- * dns_message_renderend() is called.
- *
- * Requires:
- *
- *\li	'msg' be valid.
- *
- *\li	dns_message_renderbegin() was called.
- *
- *\li	buffer != NULL.
- *
- * Returns:
- *\li	#ISC_R_NOSPACE		-- new buffer is too small
- *\li	#ISC_R_SUCCESS		-- all is well.
- */
-
-isc_result_t
 dns_message_renderreserve(dns_message_t *msg, unsigned int space);
 /*%<
  * XXXMLG should use size_t rather than unsigned int once the buffer
@@ -1350,25 +1327,6 @@ dns_message_getrawmessage(dns_message_t *msg);
  * Returns:
  *\li	NULL	if there is no saved message.
  *	a pointer to a region which refers the dns message.
- */
-
-void
-dns_message_settimeadjust(dns_message_t *msg, int timeadjust);
-/*%<
- * Adjust the time used to sign/verify a message by timeadjust.
- * Currently only TSIG.
- *
- * Requires:
- *\li	msg be a valid message.
- */
-
-int
-dns_message_gettimeadjust(dns_message_t *msg);
-/*%<
- * Return the current time adjustment.
- *
- * Requires:
- *\li	msg be a valid message.
  */
 
 void

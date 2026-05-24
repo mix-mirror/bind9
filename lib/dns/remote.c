@@ -31,28 +31,10 @@ dns_remote_addresses(dns_remote_t *remote) {
 	return remote->addresses;
 }
 
-isc_sockaddr_t *
-dns_remote_sources(dns_remote_t *remote) {
-	REQUIRE(DNS_REMOTE_VALID(remote));
-	return remote->sources;
-}
-
 unsigned int
 dns_remote_count(dns_remote_t *remote) {
 	REQUIRE(DNS_REMOTE_VALID(remote));
 	return remote->addrcnt;
-}
-
-dns_name_t **
-dns_remote_keynames(dns_remote_t *remote) {
-	REQUIRE(DNS_REMOTE_VALID(remote));
-	return remote->keynames;
-}
-
-dns_name_t **
-dns_remote_tlsnames(dns_remote_t *remote) {
-	REQUIRE(DNS_REMOTE_VALID(remote));
-	return remote->tlsnames;
 }
 
 void

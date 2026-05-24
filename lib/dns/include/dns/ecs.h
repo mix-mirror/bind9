@@ -54,17 +54,6 @@ dns_ecs_init(dns_ecs_t *ecs);
  * \li 'ecs' is not NULL and points to a valid dns_ecs structure.
  */
 
-bool
-dns_ecs_equals(const dns_ecs_t *ecs1, const dns_ecs_t *ecs2);
-/*%<
- * Determine whether two ECS address prefixes are equal (except the
- * scope prefix-length field).
- *
- * 'ecs1->source' must exactly match 'ecs2->source'; the address families
- * must match; and the first 'ecs1->source' bits of the addresses must
- * match. Subsequent address bits and the 'scope' values are ignored.
- */
-
 void
 dns_ecs_format(const dns_ecs_t *ecs, char *buf, size_t size);
 /*%<

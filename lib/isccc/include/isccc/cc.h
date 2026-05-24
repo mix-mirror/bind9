@@ -81,14 +81,6 @@ isccc_cc_createmessage(uint32_t version, const char *from, const char *to,
 		       uint32_t serial, isccc_time_t now, isccc_time_t expires,
 		       isccc_sexpr_t **alistp);
 
-/*% Create Acknowledgment */
-isc_result_t
-isccc_cc_createack(isccc_sexpr_t *message, bool ok, isccc_sexpr_t **ackp);
-
-/*% Is Ack? */
-bool
-isccc_cc_isack(isccc_sexpr_t *message);
-
 /*% Is Reply? */
 bool
 isccc_cc_isreply(isccc_sexpr_t *message);

@@ -116,24 +116,6 @@ dns_zt_create(isc_mem_t *mctx, dns_view_t *view, dns_zt_t **ztp) {
 	*ztp = zt;
 }
 
-/*
- * XXXFANF it isn't clear whether this function will be useful. There
- * is only one zone table per view, so it is probably enough to let
- * the qp-trie auto-GC do its thing. However it might be problematic
- * if a very large zone is replaced, and its database memory is
- * retained for a long time.
- */
-void
-dns_zt_compact(dns_zt_t *zt) {
-	dns_qp_t *qp = NULL;
-
-	REQUIRE(VALID_ZT(zt));
-
-	dns_qpmulti_write(zt->multi, &qp);
-	dns_qp_compact(qp, DNS_QPGC_ALL);
-	dns_qpmulti_commit(zt->multi, &qp);
-}
-
 isc_result_t
 dns_zt_mount(dns_zt_t *zt, dns_zone_t *zone) {
 	isc_result_t result;
@@ -232,15 +214,6 @@ dns_zt_find(dns_zt_t *zt, const dns_name_t *name, dns_ztfind_t options,
 	return result;
 }
 
-void
-dns_zt_attach(dns_zt_t *zt, dns_zt_t **ztp) {
-	REQUIRE(VALID_ZT(zt));
-	REQUIRE(ztp != NULL && *ztp == NULL);
-
-	isc_refcount_increment(&zt->references);
-
-	*ztp = zt;
-}
 
 static isc_result_t
 flush(dns_zone_t *zone, void *uap) {

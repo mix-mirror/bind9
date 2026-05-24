@@ -324,19 +324,6 @@ dns_catz_entry_getname(dns_catz_entry_t *entry) {
 	return &entry->name;
 }
 
-dns_catz_entry_t *
-dns_catz_entry_copy(dns_catz_zone_t *catz, const dns_catz_entry_t *entry) {
-	REQUIRE(DNS_CATZ_ZONE_VALID(catz));
-	REQUIRE(DNS_CATZ_ENTRY_VALID(entry));
-
-	dns_catz_entry_t *nentry = dns_catz_entry_new(catz->catzs->mctx,
-						      &entry->name);
-
-	dns_catz_options_copy(catz->catzs->mctx, &entry->opts, &nentry->opts);
-
-	return nentry;
-}
-
 void
 dns_catz_entry_attach(dns_catz_entry_t *entry, dns_catz_entry_t **entryp) {
 	REQUIRE(DNS_CATZ_ENTRY_VALID(entry));
@@ -365,14 +352,6 @@ dns_catz_entry_detach(dns_catz_zone_t *catz, dns_catz_entry_t **entryp) {
 		}
 		isc_mem_put(mctx, entry, sizeof(*entry));
 	}
-}
-
-bool
-dns_catz_entry_validate(const dns_catz_entry_t *entry) {
-	REQUIRE(DNS_CATZ_ENTRY_VALID(entry));
-	UNUSED(entry);
-
-	return true;
 }
 
 bool
@@ -460,12 +439,6 @@ dns_catz_entry_cmp(const dns_catz_entry_t *ea, const dns_catz_entry_t *eb) {
 	return true;
 }
 
-dns_name_t *
-dns_catz_zone_getname(dns_catz_zone_t *catz) {
-	REQUIRE(DNS_CATZ_ZONE_VALID(catz));
-
-	return &catz->name;
-}
 
 dns_catz_options_t *
 dns_catz_zone_getdefoptions(dns_catz_zone_t *catz) {

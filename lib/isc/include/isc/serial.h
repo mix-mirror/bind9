@@ -57,8 +57,3 @@ isc_serial_eq(uint32_t a, uint32_t b);
  *	Return true if 'a' == 'b' otherwise false.
  */
 
-bool
-isc_serial_ne(uint32_t a, uint32_t b);
-/*%<
- *	Return true if 'a' != 'b' otherwise false.
- */

@@ -41,13 +41,6 @@ ns_stats_increment(isc_statsmulti_t *stats, isc_statscounter_t counter) {
 }
 
 void
-ns_stats_decrement(isc_statsmulti_t *stats, isc_statscounter_t counter) {
-	REQUIRE(stats != NULL);
-
-	isc_statsmulti_decrement(stats, counter);
-}
-
-void
 ns_stats_update_if_greater(isc_stats_t *hwstats, isc_statscounter_t counter,
 			   isc_statscounter_t value) {
 	REQUIRE(hwstats != NULL);

@@ -268,31 +268,6 @@ dns_dlzregister(const char *drivername, const dns_dlzmethods_t *methods,
  * will later be used to identify the driver when deregistering it.
  */
 
-isc_result_t
-dns_dlzstrtoargv(isc_mem_t *mctx, char *s, unsigned int *argcp, char ***argvp);
-
-/*%<
- * This method is called when the name server is starting up to parse
- * the DLZ driver command line from named.conf.  Basically it splits
- * up a string into and argc / argv.  The primary difference of this
- * method is items between braces { } are considered only 1 word.  for
- * example the command line "this is { one grouped phrase } and this
- * isn't" would be parsed into:
- *
- * \li	argv[0]: "this"
- * \li	argv[1]: "is"
- * \li	argv{2]: " one grouped phrase "
- * \li	argv[3]: "and"
- * \li	argv[4]: "this"
- * \li	argv{5}: "isn't"
- *
- * braces should NOT be nested, more than one grouping in the command
- * line is allowed.  Notice, argv[2] has an extra space at the
- * beginning and end.  Extra spaces are not stripped between a
- * grouping.  You can do so in your driver if needed, or be sure not
- * to put extra spaces before / after the braces.
- */
-
 void
 dns_dlzunregister(dns_dlzimplementation_t **dlzimp);
 

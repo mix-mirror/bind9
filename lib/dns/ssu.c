@@ -983,38 +983,6 @@ dns_ssutable_checkrules(dns_ssutable_t *table, const dns_name_t *signer,
 	return false;
 }
 
-bool
-dns_ssurule_isgrant(const dns_ssurule_t *rule) {
-	REQUIRE(VALID_SSURULE(rule));
-	return rule->grant;
-}
-
-dns_name_t *
-dns_ssurule_identity(const dns_ssurule_t *rule) {
-	REQUIRE(VALID_SSURULE(rule));
-	return rule->identity;
-}
-
-unsigned int
-dns_ssurule_matchtype(const dns_ssurule_t *rule) {
-	REQUIRE(VALID_SSURULE(rule));
-	return rule->matchtype;
-}
-
-dns_name_t *
-dns_ssurule_name(const dns_ssurule_t *rule) {
-	REQUIRE(VALID_SSURULE(rule));
-	return rule->name;
-}
-
-unsigned int
-dns_ssurule_types(const dns_ssurule_t *rule, dns_ssuruletype_t **types) {
-	REQUIRE(VALID_SSURULE(rule));
-	REQUIRE(types != NULL && *types != NULL);
-	*types = rule->types;
-	return rule->ntypes;
-}
-
 unsigned int
 dns_ssurule_max(const dns_ssurule_t *rule, dns_rdatatype_t type) {
 	unsigned int i;
@@ -1031,22 +999,6 @@ dns_ssurule_max(const dns_ssurule_t *rule, dns_rdatatype_t type) {
 		}
 	}
 	return max;
-}
-
-isc_result_t
-dns_ssutable_firstrule(const dns_ssutable_t *table, dns_ssurule_t **rule) {
-	REQUIRE(VALID_SSUTABLE(table));
-	REQUIRE(rule != NULL && *rule == NULL);
-	*rule = ISC_LIST_HEAD(table->rules);
-	return *rule != NULL ? ISC_R_SUCCESS : ISC_R_NOMORE;
-}
-
-isc_result_t
-dns_ssutable_nextrule(dns_ssurule_t *rule, dns_ssurule_t **nextrule) {
-	REQUIRE(VALID_SSURULE(rule));
-	REQUIRE(nextrule != NULL && *nextrule == NULL);
-	*nextrule = ISC_LIST_NEXT(rule, link);
-	return *nextrule != NULL ? ISC_R_SUCCESS : ISC_R_NOMORE;
 }
 
 /*

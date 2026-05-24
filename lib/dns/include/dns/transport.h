@@ -50,10 +50,6 @@ dns_transport_get_cafile(const dns_transport_t *transport);
 char *
 dns_transport_get_remote_hostname(const dns_transport_t *transport);
 char *
-dns_transport_get_endpoint(const dns_transport_t *transport);
-dns_http_mode_t
-dns_transport_get_mode(const dns_transport_t *transport);
-char *
 dns_transport_get_ciphers(const dns_transport_t *transport);
 char *
 dns_transport_get_cipher_suites(const dns_transport_t *transport);
@@ -68,9 +64,8 @@ bool
 dns_transport_get_always_verify_remote(dns_transport_t *transport);
 /*%<
  * Getter functions: return the type, cert file, key file, CA file,
- * hostname, HTTP endpoint, HTTP mode (GET or POST), ciphers, cipher suites,
- * TLS name, TLS version, server ciphers preference mode, and always enabling
- * authentication mode for 'transport'.
+ * hostname, ciphers, cipher suites, TLS name, TLS version, server ciphers
+ * preference mode, and always enabling authentication mode for 'transport'.
  *
  * dns_transport_get_prefer_server_ciphers() returns 'true' is value
  * was set, 'false' otherwise. The actual value is returned via
@@ -112,10 +107,6 @@ void
 dns_transport_set_remote_hostname(dns_transport_t *transport,
 				  const char	  *hostname);
 void
-dns_transport_set_endpoint(dns_transport_t *transport, const char *endpoint);
-void
-dns_transport_set_mode(dns_transport_t *transport, dns_http_mode_t mode);
-void
 dns_transport_set_ciphers(dns_transport_t *transport, const char *ciphers);
 void
 dns_transport_set_cipher_suites(dns_transport_t *transport,
@@ -134,15 +125,13 @@ dns_transport_set_always_verify_remote(dns_transport_t *transport,
 				       const bool	always_verify_remote);
 /*%<
  * Setter functions: set the type, cert file, key file, CA file,
- * hostname, HTTP endpoint, HTTP mode (GET or POST), ciphers, cipher suites, TLS
- *name, TLS version, server ciphers preference mode, and always enabling
- * authentication mode for 'transport'.
+ * hostname, ciphers, cipher suites, TLS name, TLS version, server ciphers
+ * preference mode, and always enabling authentication mode for 'transport'.
  *
  * Requires:
  *\li	'transport' is valid.
  *\li	'transport' is of type DNS_TRANSPORT_TLS or DNS_TRANSPORT_HTTP
  *	(for certfile, keyfile, cafile, or hostname).
- *\li	'transport' is of type DNS_TRANSPORT_HTTP (for endpoint or mode).
  */
 
 void

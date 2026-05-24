@@ -55,12 +55,6 @@ dns_soa_buildrdata(const dns_name_t *origin, const dns_name_t *contact,
 uint32_t
 dns_soa_getserial(dns_rdata_t *rdata);
 uint32_t
-dns_soa_getrefresh(dns_rdata_t *rdata);
-uint32_t
-dns_soa_getretry(dns_rdata_t *rdata);
-uint32_t
-dns_soa_getexpire(dns_rdata_t *rdata);
-uint32_t
 dns_soa_getminimum(dns_rdata_t *rdata);
 /*
  * Extract an integer field from the rdata of a SOA record.
@@ -71,14 +65,6 @@ dns_soa_getminimum(dns_rdata_t *rdata);
 
 void
 dns_soa_setserial(uint32_t val, dns_rdata_t *rdata);
-void
-dns_soa_setrefresh(uint32_t val, dns_rdata_t *rdata);
-void
-dns_soa_setretry(uint32_t val, dns_rdata_t *rdata);
-void
-dns_soa_setexpire(uint32_t val, dns_rdata_t *rdata);
-void
-dns_soa_setminimum(uint32_t val, dns_rdata_t *rdata);
 /*
  * Change an integer field of a SOA record by modifying the
  * rdata in-place.

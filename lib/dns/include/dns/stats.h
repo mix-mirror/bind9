@@ -264,26 +264,11 @@ typedef enum {
 /*%<
  * Types of dump callbacks.
  */
-typedef void (*dns_generalstats_dumper_t)(isc_statscounter_t, uint64_t, void *);
 typedef void (*dns_rdatatypestats_dumper_t)(dns_rdatastatstype_t, uint64_t,
 					    void *);
 typedef void (*dns_dnssecsignstats_dumper_t)(uint32_t, uint64_t, void *);
 typedef void (*dns_opcodestats_dumper_t)(dns_opcode_t, uint64_t, void *);
 typedef void (*dns_rcodestats_dumper_t)(dns_rcode_t, uint64_t, void *);
-
-void
-dns_generalstats_create(isc_mem_t *mctx, dns_stats_t **statsp, int ncounters);
-/*%<
- * Create a statistics counter structure of general type.  It counts a general
- * set of counters indexed by an ID between 0 and ncounters -1.
- * This function is obsolete.  A more general function, isc_stats_create(),
- * should be used.
- *
- * Requires:
- *\li	'mctx' must be a valid memory context.
- *
- *\li	'statsp' != NULL && '*statsp' == NULL.
- */
 
 void
 dns_rdatatypestats_create(isc_mem_t *mctx, isc_statsmulti_t **statsp);
@@ -361,19 +346,6 @@ dns_stats_detach(dns_stats_t **statsp);
  */
 
 void
-dns_generalstats_increment(dns_stats_t *stats, isc_statscounter_t counter);
-/*%<
- * Increment the counter-th counter of stats.  This function is obsolete.
- * A more general function, isc_stats_increment(), should be used.
- *
- * Requires:
- *\li	'stats' is a valid dns_stats_t created by dns_generalstats_create().
- *
- *\li	counter is less than the maximum available ID for the stats specified
- *	on creation.
- */
-
-void
 dns_rdatatypestats_increment(isc_statsmulti_t *stats, dns_rdatatype_t type);
 /*%<
  * Increment the statistics counter for 'type'.
@@ -440,22 +412,6 @@ dns_dnssecsignstats_clear(dns_stats_t *stats, dns_keytag_t id, uint8_t alg);
  *
  * Requires:
  *\li	'stats' is a valid dns_stats_t created by dns_dnssecsignstats_create().
- */
-
-void
-dns_generalstats_dump(dns_stats_t *stats, dns_generalstats_dumper_t dump_fn,
-		      void *arg, unsigned int options);
-/*%<
- * Dump the current statistics counters in a specified way.  For each counter
- * in stats, dump_fn is called with its current value and the given argument
- * arg.  By default counters that have a value of 0 is skipped; if options has
- * the ISC_STATSDUMP_VERBOSE flag, even such counters are dumped.
- *
- * This function is obsolete.  A more general function, isc_stats_dump(),
- * should be used.
- *
- * Requires:
- *\li	'stats' is a valid dns_stats_t created by dns_generalstats_create().
  */
 
 void

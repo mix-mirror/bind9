@@ -408,11 +408,6 @@ cleanup:
 }
 
 isc_result_t
-dns_cache_flushname(dns_cache_t *cache, const dns_name_t *name) {
-	return dns_cache_flushnode(cache, name, false);
-}
-
-isc_result_t
 dns_cache_flushnode(dns_cache_t *cache, const dns_name_t *name, bool tree) {
 	isc_result_t result;
 	dns_dbnode_t *node = NULL;
@@ -449,12 +444,6 @@ dns_cache_flushnode(dns_cache_t *cache, const dns_name_t *name, bool tree) {
 cleanup_db:
 	dns_db_detach(&db);
 	return result;
-}
-
-isc_stats_t *
-dns_cache_getstats(dns_cache_t *cache) {
-	REQUIRE(VALID_CACHE(cache));
-	return cache->stats;
 }
 
 void

@@ -484,24 +484,11 @@ dns_resolver_setfetchesperzone(dns_resolver_t *resolver, uint32_t clients);
 uint32_t
 dns_resolver_getfetchesperzone(dns_resolver_t *resolver);
 
-void
-dns_resolver_getclientsperquery(dns_resolver_t *resolver, uint32_t *cur,
-				uint32_t *min, uint32_t *max);
-
 bool
 dns_resolver_getzeronosoattl(dns_resolver_t *resolver);
 
 void
 dns_resolver_setzeronosoattl(dns_resolver_t *resolver, bool state);
-
-unsigned int
-dns_resolver_getoptions(dns_resolver_t *resolver);
-/*%<
- * Get the resolver options.
- *
- * Requires:
- * \li	resolver to be valid.
- */
 
 void
 dns_resolver_setmaxvalidations(dns_resolver_t *resolver, uint32_t max);
@@ -513,10 +500,8 @@ dns_resolver_setmaxvalidationfails(dns_resolver_t *resolver, uint32_t max);
 
 void
 dns_resolver_setmaxdepth(dns_resolver_t *resolver, unsigned int maxdepth);
-unsigned int
-dns_resolver_getmaxdepth(dns_resolver_t *resolver);
 /*%
- * Get and set how many NS indirections will be followed when looking for
+ * Set how many NS indirections will be followed when looking for
  * nameserver addresses.
  *
  * Requires:
@@ -525,10 +510,8 @@ dns_resolver_getmaxdepth(dns_resolver_t *resolver);
 
 void
 dns_resolver_setmaxqueries(dns_resolver_t *resolver, unsigned int queries);
-unsigned int
-dns_resolver_getmaxqueries(dns_resolver_t *resolver);
 /*%
- * Get and set how many iterative queries will be allowed before
+ * Set how many iterative queries will be allowed before
  * terminating a recursive query.
  *
  * Requires:
@@ -538,10 +521,8 @@ dns_resolver_getmaxqueries(dns_resolver_t *resolver);
 void
 dns_resolver_setquotaresponse(dns_resolver_t *resolver, dns_quotatype_t which,
 			      isc_result_t resp);
-isc_result_t
-dns_resolver_getquotaresponse(dns_resolver_t *resolver, dns_quotatype_t which);
 /*%
- * Get and set the result code that will be used when quotas
+ * Set the result code that will be used when quotas
  * are exceeded. If 'which' is set to quotatype "zone", then the
  * result specified in 'resp' will be used when the fetches-per-zone
  * quota is exceeded by a fetch.  If 'which' is set to quotatype "server",

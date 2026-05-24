@@ -1266,17 +1266,11 @@ dst_privatedns_fromtext(dst_algorithm_t *algp, isc_textregion_t *source);
 isc_result_t
 dns_privatedns_totext(dst_algorithm_t alg, isc_buffer_t *b);
 
-void
-dns_privatedns_format(dst_algorithm_t alg, char *buf, unsigned int size);
-
 isc_result_t
 dst_privateoid_fromtext(dst_algorithm_t *algp, isc_textregion_t *source);
 
 isc_result_t
 dns_privateoid_totext(dst_algorithm_t alg, isc_buffer_t *b);
-
-void
-dns_privateoid_format(dst_algorithm_t alg, char *buf, unsigned int size);
 
 dst_algorithm_t
 dst_algorithm_fromdata(dns_secalg_t algorithm, unsigned char *data,

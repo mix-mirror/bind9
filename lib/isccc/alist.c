@@ -83,15 +83,6 @@ isccc_alist_alistp(isccc_sexpr_t *alist) {
 	return true;
 }
 
-bool
-isccc_alist_emptyp(isccc_sexpr_t *alist) {
-	REQUIRE(isccc_alist_alistp(alist));
-
-	if (CDR(alist) == NULL) {
-		return true;
-	}
-	return false;
-}
 
 isccc_sexpr_t *
 isccc_alist_first(isccc_sexpr_t *alist) {
@@ -189,23 +180,6 @@ isccc_alist_define(isccc_sexpr_t *alist, const char *key,
 }
 
 isccc_sexpr_t *
-isccc_alist_definestring(isccc_sexpr_t *alist, const char *key,
-			 const char *str) {
-	isccc_sexpr_t *v, *kv;
-
-	v = isccc_sexpr_fromstring(str);
-	if (v == NULL) {
-		return NULL;
-	}
-	kv = isccc_alist_define(alist, key, v);
-	if (kv == NULL) {
-		isccc_sexpr_free(&v);
-	}
-
-	return kv;
-}
-
-isccc_sexpr_t *
 isccc_alist_definebinary(isccc_sexpr_t *alist, const char *key,
 			 isccc_region_t *r) {
 	isccc_sexpr_t *v, *kv;
@@ -231,43 +205,6 @@ isccc_alist_lookup(isccc_sexpr_t *alist, const char *key) {
 		return CDR(kv);
 	}
 	return NULL;
-}
-
-isc_result_t
-isccc_alist_lookupstring(isccc_sexpr_t *alist, const char *key, char **strp) {
-	isccc_sexpr_t *kv, *v;
-
-	kv = isccc_alist_assq(alist, key);
-	if (kv != NULL) {
-		v = CDR(kv);
-		if (isccc_sexpr_stringp(v)) {
-			SET_IF_NOT_NULL(strp, isccc_sexpr_tostring(v));
-			return ISC_R_SUCCESS;
-		} else {
-			return ISC_R_EXISTS;
-		}
-	}
-
-	return ISC_R_NOTFOUND;
-}
-
-isc_result_t
-isccc_alist_lookupbinary(isccc_sexpr_t *alist, const char *key,
-			 isccc_region_t **r) {
-	isccc_sexpr_t *kv, *v;
-
-	kv = isccc_alist_assq(alist, key);
-	if (kv != NULL) {
-		v = CDR(kv);
-		if (isccc_sexpr_binaryp(v)) {
-			SET_IF_NOT_NULL(r, isccc_sexpr_tobinary(v));
-			return ISC_R_SUCCESS;
-		} else {
-			return ISC_R_EXISTS;
-		}
-	}
-
-	return ISC_R_NOTFOUND;
 }
 
 void

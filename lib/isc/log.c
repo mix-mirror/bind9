@@ -658,13 +658,6 @@ isc_log_setdebuglevel(unsigned int level) {
 	}
 }
 
-unsigned int
-isc_log_getdebuglevel(void) {
-	REQUIRE(VALID_CONTEXT(isc__lctx));
-
-	return atomic_load_acquire(&isc__lctx->debug_level);
-}
-
 void
 isc_log_settag(isc_logconfig_t *lcfg, const char *tag) {
 	REQUIRE(VALID_CONFIG(lcfg));
@@ -679,19 +672,6 @@ isc_log_settag(isc_logconfig_t *lcfg, const char *tag) {
 			isc_mem_free(lcfg->lctx->mctx, lcfg->tag);
 		}
 	}
-}
-
-char *
-isc_log_gettag(isc_logconfig_t *lcfg) {
-	REQUIRE(VALID_CONFIG(lcfg));
-
-	return lcfg->tag;
-}
-
-/* XXXDCL NT  -- This interface will assuredly be changing. */
-void
-isc_log_opensyslog(const char *tag, int options, int facility) {
-	(void)openlog(tag, options, facility);
 }
 
 void

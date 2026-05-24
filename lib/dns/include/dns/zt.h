@@ -42,15 +42,6 @@ dns_zt_create(isc_mem_t *mctx, dns_view_t *view, dns_zt_t **ztp);
  * \li	'*ztp' is NULL
  */
 
-void
-dns_zt_compact(dns_zt_t *zt);
-/*%<
- * Reclaim unused memory in the zone table
- *
- * Requires:
- * \li	'zt' to be valid
- */
-
 isc_result_t
 dns_zt_mount(dns_zt_t *zt, dns_zone_t *zone);
 /*%<
@@ -123,16 +114,6 @@ dns_zt_flush(dns_zt_t *ztp);
  *
  * Requires:
  * \li	'ztp' to be valid
- */
-
-void
-dns_zt_attach(dns_zt_t *zt, dns_zt_t **ztp);
-/*%<
- * Attach 'zt' to '*ztp'.
- *
- * Requires:
- * \li	'zt' to be valid
- * \li	'*ztp' to be NULL
  */
 
 isc_result_t

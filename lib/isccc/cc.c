@@ -693,69 +693,6 @@ isccc_cc_createmessage(uint32_t version, const char *from, const char *to,
 			     true);
 }
 
-isc_result_t
-isccc_cc_createack(isccc_sexpr_t *message, bool ok, isccc_sexpr_t **ackp) {
-	char *_frm, *_to;
-	uint32_t serial;
-	isccc_sexpr_t *ack, *_ctrl;
-	isc_result_t result;
-	isccc_time_t t;
-
-	REQUIRE(ackp != NULL && *ackp == NULL);
-
-	_ctrl = isccc_alist_lookup(message, "_ctrl");
-	if (!isccc_alist_alistp(_ctrl) ||
-	    isccc_cc_lookupuint32(_ctrl, "_ser", &serial) != ISC_R_SUCCESS ||
-	    isccc_cc_lookupuint32(_ctrl, "_tim", &t) != ISC_R_SUCCESS)
-	{
-		return ISC_R_FAILURE;
-	}
-	/*
-	 * _frm and _to are optional.
-	 */
-	_frm = NULL;
-	(void)isccc_cc_lookupstring(_ctrl, "_frm", &_frm);
-	_to = NULL;
-	(void)isccc_cc_lookupstring(_ctrl, "_to", &_to);
-	/*
-	 * Create the ack.
-	 */
-	ack = NULL;
-	RETERR(createmessage(1, _to, _frm, serial, t, 0, &ack, false));
-
-	_ctrl = isccc_alist_lookup(ack, "_ctrl");
-	if (_ctrl == NULL) {
-		result = ISC_R_FAILURE;
-		goto bad;
-	}
-	if (isccc_cc_definestring(ack, "_ack", (ok) ? "1" : "0") == NULL) {
-		result = ISC_R_NOMEMORY;
-		goto bad;
-	}
-
-	*ackp = ack;
-
-	return ISC_R_SUCCESS;
-
-bad:
-	isccc_sexpr_free(&ack);
-
-	return result;
-}
-
-bool
-isccc_cc_isack(isccc_sexpr_t *message) {
-	isccc_sexpr_t *_ctrl;
-
-	_ctrl = isccc_alist_lookup(message, "_ctrl");
-	if (!isccc_alist_alistp(_ctrl)) {
-		return false;
-	}
-	if (isccc_cc_lookupstring(_ctrl, "_ack", NULL) == ISC_R_SUCCESS) {
-		return true;
-	}
-	return false;
-}
 
 bool
 isccc_cc_isreply(isccc_sexpr_t *message) {

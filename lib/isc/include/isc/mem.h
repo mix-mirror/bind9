@@ -302,26 +302,6 @@ isc_mem_checkdestroyed(FILE *file);
  * Fatally fails if there are still active contexts.
  */
 
-unsigned int
-isc_mem_references(isc_mem_t *ctx);
-/*%<
- * Return the current reference count.
- */
-
-const char *
-isc_mem_getname(isc_mem_t *ctx);
-/*%<
- * Get the name of 'ctx', as previously set using isc_mem_setname().
- *
- * Requires:
- *\li	'ctx' is a valid ctx.
- *
- * Returns:
- *\li	A non-NULL pointer to a null-terminated string.
- * 	If the ctx has not been named, the string is
- * 	empty.
- */
-
 #ifdef HAVE_LIBXML2
 int
 isc_mem_renderxml(void *writer0);
@@ -383,12 +363,6 @@ isc__mempool_destroy(isc_mempool_t **restrict mpctxp _ISC_MEM_FLARG);
  *	mpctx is a valid memory pool
  */
 
-unsigned int
-isc_mempool_getfreemax(isc_mempool_t *restrict mpctx);
-/*%<
- * Returns the maximum allowed size of the free list.
- */
-
 void
 isc_mempool_setfreemax(isc_mempool_t *restrict mpctx, const unsigned int limit);
 /*%<
@@ -405,13 +379,6 @@ unsigned int
 isc_mempool_getallocated(isc_mempool_t *restrict mpctx);
 /*%<
  * Returns the number of items allocated from this pool.
- */
-
-unsigned int
-isc_mempool_getfillcount(isc_mempool_t *restrict mpctx);
-/*%<
- * Returns the number of items allocated as a block from the parent
- * memory context when the free list is empty.
  */
 
 void

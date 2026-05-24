@@ -165,18 +165,6 @@ isc_lex_destroy(isc_lex_t **lexp);
  *\li	*lexp == NULL
  */
 
-unsigned int
-isc_lex_getcomments(isc_lex_t *lex);
-/*%<
- * Return the current lexer commenting styles.
- *
- * Requires:
- *\li	'lex' is a valid lexer.
- *
- * Returns:
- *\li	The commenting styles which are currently allowed.
- */
-
 void
 isc_lex_setcomments(isc_lex_t *lex, unsigned int comments);
 /*%<
@@ -186,15 +174,6 @@ isc_lex_setcomments(isc_lex_t *lex, unsigned int comments);
  *\li	'lex' is a valid lexer.
  *
  *\li	'comments' has meaningful values.
- */
-
-void
-isc_lex_getspecials(isc_lex_t *lex, isc_lexspecials_t specials);
-/*%<
- * Put the current list of specials into 'specials'.
- *
- * Requires:
- *\li	'lex' is a valid lexer.
  */
 
 void
@@ -380,20 +359,6 @@ isc_lex_getsourceline(isc_lex_t *lex);
  *
  * Returns:
  *\li 	Current line number or 0 if no current source.
- */
-
-isc_result_t
-isc_lex_setsourcename(isc_lex_t *lex, const char *name);
-/*%<
- * Assigns a new name to the input source.
- *
- * Requires:
- *
- * \li	'lex' is a valid lexer.
- *
- * Returns:
- * \li	#ISC_R_SUCCESS
- * \li	#ISC_R_NOTFOUND - there are no sources.
  */
 
 isc_result_t
