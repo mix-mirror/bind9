@@ -938,6 +938,8 @@ dns_zone_isdynamic(dns_zone_t *zone, bool ignore_freeze) {
 isc_result_t
 dns_zone_rpz_enable(dns_zone_t *zone, dns_rpz_zones_t *rpzs,
 		    dns_rpz_num_t rpz_num) {
+	REQUIRE(DNS_ZONE_VALID(zone));
+
 	/*
 	 * This must happen only once or be redundant.
 	 */
@@ -957,6 +959,8 @@ dns_zone_rpz_enable(dns_zone_t *zone, dns_rpz_zones_t *rpzs,
 
 dns_rpz_num_t
 dns_zone_get_rpz_num(dns_zone_t *zone) {
+	REQUIRE(DNS_ZONE_VALID(zone));
+
 	return zone->rpz_num;
 }
 
@@ -965,6 +969,9 @@ dns_zone_get_rpz_num(dns_zone_t *zone) {
  */
 void
 dns_zone_rpz_enable_db(dns_zone_t *zone, dns_db_t *db) {
+	REQUIRE(DNS_ZONE_VALID(zone));
+	REQUIRE(db != NULL);
+
 	if (zone->rpz_num == DNS_RPZ_INVALID_NUM) {
 		return;
 	}
@@ -1526,6 +1533,8 @@ isc_result_t
 dns_zone_loadandthaw(dns_zone_t *zone) {
 	isc_result_t result;
 	bool inline_raw;
+
+	REQUIRE(DNS_ZONE_VALID(zone));
 
 	LOCK_ZONE(zone);
 	inline_raw = dns__zone_inline_raw(zone);
@@ -3947,6 +3956,8 @@ isc_result_t
 dns_zone_synckeyzone(dns_zone_t *zone) {
 	isc_result_t result;
 	dns_db_t *db = NULL;
+
+	REQUIRE(DNS_ZONE_VALID(zone));
 
 	if (zone->type != dns_zone_key) {
 		return DNS_R_BADZONE;
@@ -10098,6 +10109,8 @@ zone_maintenance(dns_zone_t *zone) {
 
 void
 dns_zone_markdirty(dns_zone_t *zone) {
+	REQUIRE(DNS_ZONE_VALID(zone));
+
 	uint32_t serial;
 	isc_result_t result = ISC_R_SUCCESS;
 	dns_zone_t *secure = NULL;
@@ -19198,6 +19211,8 @@ cleanup:
 
 void
 dns_zone_rekey(dns_zone_t *zone, bool fullsign, bool forcekeymgr) {
+	REQUIRE(DNS_ZONE_VALID(zone));
+
 	isc_time_t now;
 
 	if (zone->type == dns_zone_primary && zone->loop != NULL) {
@@ -19503,6 +19518,8 @@ cleanup:
 
 isc_result_t
 dns_zone_dlzpostload(dns_zone_t *zone, dns_db_t *db) {
+	REQUIRE(DNS_ZONE_VALID(zone));
+
 	isc_time_t loadtime;
 	isc_result_t result;
 	dns_zone_t *secure = NULL;
@@ -20731,6 +20748,8 @@ dns_zone_setplugins(dns_zone_t *zone, void *plugins,
 
 void
 dns_zone_unloadplugins(dns_zone_t *zone) {
+	REQUIRE(DNS_ZONE_VALID(zone));
+
 	if (zone->hooktable != NULL) {
 		INSIST(zone->hooktable_free);
 		zone->hooktable_free(zone->mctx, &zone->hooktable);

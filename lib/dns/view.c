@@ -1304,6 +1304,7 @@ isc_result_t
 dns_view_gettsig(dns_view_t *view, const dns_name_t *keyname,
 		 dns_tsigkey_t **keyp) {
 	isc_result_t result;
+	REQUIRE(DNS_VIEW_VALID(view));
 	REQUIRE(keyp != NULL && *keyp == NULL);
 
 	result = dns_tsigkey_find(keyp, keyname, NULL, view->statickeys);
@@ -1336,6 +1337,8 @@ dns_view_getpeertsig(dns_view_t *view, const isc_netaddr_t *peeraddr,
 	isc_result_t result;
 	dns_name_t *keyname = NULL;
 	dns_peer_t *peer = NULL;
+
+	REQUIRE(DNS_VIEW_VALID(view));
 
 	RETERR(dns_peerlist_peerbyaddr(view->peers, peeraddr, &peer));
 

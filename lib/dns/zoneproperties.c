@@ -738,6 +738,7 @@ dns_zone_getparentalsrc4(dns_zone_t *zone, isc_sockaddr_t *parentalsrc) {
 void
 dns_zone_setparentalsrc6(dns_zone_t *zone, const isc_sockaddr_t *parentalsrc) {
 	REQUIRE(DNS_ZONE_VALID(zone));
+	REQUIRE(parentalsrc != NULL);
 
 	LOCK_ZONE(zone);
 	zone->parentalsrc6 = *parentalsrc;
@@ -1625,6 +1626,8 @@ dns_zone_getdnssecsignstats(dns_zone_t *zone) {
 
 isc_stats_t *
 dns_zone_getrequeststats(dns_zone_t *zone) {
+	REQUIRE(DNS_ZONE_VALID(zone));
+
 	/*
 	 * We don't lock zone for efficiency reason.  This is not catastrophic
 	 * because requeststats must always be valid when requeststats_on is
@@ -1646,6 +1649,8 @@ dns_zone_getrequeststats(dns_zone_t *zone) {
  */
 isc_statsmulti_t *
 dns_zone_getrcvquerystats(dns_zone_t *zone) {
+	REQUIRE(DNS_ZONE_VALID(zone));
+
 	if (zone->requeststats_on) {
 		return zone->rcvquerystats;
 	} else {
@@ -1974,11 +1979,15 @@ dns_zone_getstatlevel(dns_zone_t *zone) {
 
 unsigned int
 dns_zone_gettid(dns_zone_t *zone) {
+	REQUIRE(DNS_ZONE_VALID(zone));
+
 	return zone->tid;
 }
 
 isc_loop_t *
 dns_zone_getloop(dns_zone_t *zone) {
+	REQUIRE(DNS_ZONE_VALID(zone));
+
 	return zone->loop;
 }
 
@@ -2119,6 +2128,8 @@ dns_zone_getrequesttransporttype(dns_zone_t *zone) {
 
 dns_keystorelist_t *
 dns_zone_getkeystores(dns_zone_t *zone) {
+	REQUIRE(DNS_ZONE_VALID(zone));
+
 	return zone->zmgr->keystores;
 }
 

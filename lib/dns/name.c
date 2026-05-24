@@ -1837,6 +1837,8 @@ static dns_name_t const dns_sd[] = {
 
 bool
 dns_name_isdnssd(const dns_name_t *name) {
+	REQUIRE(DNS_NAME_VALID(name));
+
 	size_t i;
 	dns_name_t prefix;
 
@@ -1888,6 +1890,8 @@ static dns_name_t const rfc1918names[] = {
 
 bool
 dns_name_isrfc1918(const dns_name_t *name) {
+	REQUIRE(DNS_NAME_VALID(name));
+
 	size_t i;
 
 	for (i = 0; i < (sizeof(rfc1918names) / sizeof(*rfc1918names)); i++) {
@@ -1906,6 +1910,8 @@ static dns_name_t const ulanames[] = { DNS_NAME_INITABSOLUTE(ip6fc),
 
 bool
 dns_name_isula(const dns_name_t *name) {
+	REQUIRE(DNS_NAME_VALID(name));
+
 	size_t i;
 
 	for (i = 0; i < (sizeof(ulanames) / sizeof(*ulanames)); i++) {

@@ -440,6 +440,7 @@ isc_loop_setup(isc_loop_t *loop, isc_job_cb cb, void *cbarg) {
 isc_job_t *
 isc_loop_teardown(isc_loop_t *loop, isc_job_cb cb, void *cbarg) {
 	REQUIRE(VALID_LOOP(loop));
+	REQUIRE(cb != NULL);
 
 	isc_loopmgr_t *loopmgr = isc__loopmgr;
 	isc_job_t *job = isc_mem_get(loop->mctx, sizeof(*job));
@@ -579,6 +580,8 @@ isc_loopmgr_paused(void) {
 
 void
 isc_loopmgr_destroy(void) {
+	REQUIRE(VALID_LOOPMGR(isc__loopmgr));
+
 	isc_loopmgr_t *loopmgr = isc__loopmgr;
 
 	RUNTIME_CHECK(atomic_compare_exchange_strong(&loopmgr->running,

@@ -877,6 +877,8 @@ dns_db_getsize(dns_db_t *db, dns_dbversion_t *version, uint64_t *records,
 isc_result_t
 dns_db_setsigningtime(dns_db_t *db, dns_dbnode_t *node,
 		      dns_rdataset_t *rdataset, isc_stdtime_t resign) {
+	REQUIRE(DNS_DB_VALID(db));
+
 	if (db->methods->setsigningtime != NULL) {
 		return (db->methods->setsigningtime)(db, node, rdataset,
 						     resign);
@@ -887,6 +889,8 @@ dns_db_setsigningtime(dns_db_t *db, dns_dbnode_t *node,
 isc_result_t
 dns_db_getsigningtime(dns_db_t *db, isc_stdtime_t *resign, dns_name_t *name,
 		      dns_typepair_t *typepair) {
+	REQUIRE(DNS_DB_VALID(db));
+
 	if (db->methods->getsigningtime != NULL) {
 		return (db->methods->getsigningtime)(db, resign, name,
 						     typepair);
@@ -965,6 +969,7 @@ void
 dns_db_updatenotify_unregister(dns_db_t *db, dns_dbupdate_callback_t fn,
 			       void *fn_arg) {
 	REQUIRE(db != NULL);
+	REQUIRE(fn != NULL);
 
 	dns_dbonupdatelistener_t key = { .onupdate = fn,
 					 .onupdate_arg = fn_arg };

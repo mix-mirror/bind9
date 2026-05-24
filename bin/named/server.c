@@ -10104,6 +10104,8 @@ named_server_resetstatscommand(named_server_t *server, isc_lex_t *lex,
  */
 isc_result_t
 named_server_reconfigcommand(named_server_t *server, isc_buffer_t *text) {
+	REQUIRE(text != NULL);
+
 	isc_result_t result;
 	int reloadstatus = atomic_exchange(&server->reload_status,
 					   NAMED_RELOAD_IN_PROGRESS);
@@ -14518,6 +14520,8 @@ named_server_dnstap(named_server_t *server, isc_lex_t *lex,
 
 isc_result_t
 named_server_tcptimeouts(isc_lex_t *lex, isc_buffer_t *text) {
+	REQUIRE(text != NULL);
+
 	char *ptr;
 	isc_result_t result = ISC_R_SUCCESS;
 	uint32_t initial, idle, keepalive, advertised, primaries;
@@ -14873,6 +14877,8 @@ cleanup:
 
 isc_result_t
 named_server_skr(named_server_t *server, isc_lex_t *lex, isc_buffer_t *text) {
+	REQUIRE(text != NULL);
+
 	isc_result_t result = ISC_R_SUCCESS;
 	dns_zone_t *zone = NULL;
 	dns_kasp_t *kasp = NULL;

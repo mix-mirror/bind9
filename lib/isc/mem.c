@@ -1340,6 +1340,8 @@ isc__mem_checkdestroyed(void) {
 
 unsigned int
 isc_mem_references(isc_mem_t *ctx) {
+	REQUIRE(VALID_CONTEXT(ctx));
+
 	return isc_refcount_current(&ctx->references);
 }
 

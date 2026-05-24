@@ -281,6 +281,7 @@ dns_nametree_covered(dns_nametree_t *nametree, const dns_name_t *name,
 	bool ret = false;
 
 	REQUIRE(VALID_NAMETREE(nametree));
+	REQUIRE(name != NULL);
 
 	dns_qpmulti_query(nametree->table, &qpr);
 	result = dns_qp_lookup(&qpr, name, DNS_DBNAMESPACE_NORMAL, NULL, NULL,

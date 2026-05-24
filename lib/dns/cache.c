@@ -291,6 +291,8 @@ dns_cache_getservestalerefresh(dns_cache_t *cache) {
 
 isc_result_t
 dns_cache_flush(dns_cache_t *cache) {
+	REQUIRE(VALID_CACHE(cache));
+
 	dns_db_t *db = NULL, *olddb = NULL;
 	isc_mem_t *tmctx = NULL, *oldtmctx = NULL;
 
@@ -409,6 +411,8 @@ cleanup:
 
 isc_result_t
 dns_cache_flushname(dns_cache_t *cache, const dns_name_t *name) {
+	REQUIRE(VALID_CACHE(cache));
+
 	return dns_cache_flushnode(cache, name, false);
 }
 
@@ -417,6 +421,8 @@ dns_cache_flushnode(dns_cache_t *cache, const dns_name_t *name, bool tree) {
 	isc_result_t result;
 	dns_dbnode_t *node = NULL;
 	dns_db_t *db = NULL;
+
+	REQUIRE(VALID_CACHE(cache));
 
 	if (tree && dns_name_equal(name, dns_rootname)) {
 		return dns_cache_flush(cache);

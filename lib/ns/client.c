@@ -2700,17 +2700,23 @@ ns_clientmgr_shutdown(ns_clientmgr_t *manager) {
 
 isc_sockaddr_t *
 ns_client_getsockaddr(ns_client_t *client) {
+	REQUIRE(NS_CLIENT_VALID(client));
+
 	return &client->inner.peeraddr;
 }
 
 isc_sockaddr_t *
 ns_client_getdestaddr(ns_client_t *client) {
+	REQUIRE(NS_CLIENT_VALID(client));
+
 	return &client->inner.destsockaddr;
 }
 
 isc_result_t
 ns_client_checkaclsilent(ns_client_t *client, isc_netaddr_t *netaddr,
 			 dns_acl_t *acl, bool default_allow) {
+	REQUIRE(NS_CLIENT_VALID(client));
+
 	isc_result_t result;
 	dns_aclenv_t *env = client->manager->aclenv;
 	isc_netaddr_t tmpnetaddr;
@@ -2977,6 +2983,8 @@ ns_client_dumprecursing(FILE *f, ns_clientmgr_t *manager) {
 
 void
 ns_client_qnamereplace(ns_client_t *client, dns_name_t *name) {
+	REQUIRE(NS_CLIENT_VALID(client));
+
 	LOCK(&client->query.fetchlock);
 	if (client->query.restarts > 0) {
 		/*

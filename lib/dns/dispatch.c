@@ -1294,6 +1294,7 @@ dns_dispatch_createtcp(dns_dispatchmgr_t *mgr, const isc_sockaddr_t *localaddr,
 		       dns_dispatchopt_t options, dns_dispatch_t **dispp) {
 	REQUIRE(VALID_DISPATCHMGR(mgr));
 	REQUIRE(destaddr != NULL);
+	REQUIRE(dispp != NULL && *dispp == NULL);
 
 	isc_result_t result;
 
