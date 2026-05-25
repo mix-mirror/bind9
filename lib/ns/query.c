@@ -6629,7 +6629,7 @@ query_hookresume(void *arg) {
 		case NS_QUERY_NOTFOUND_RECURSE:	 /* in recursion */
 		case NS_QUERY_ZEROTTL_RECURSE:	 /* in recursion */
 		default:			 /* catch-all just in case */
-			INSIST(false);
+			UNREACHABLE();
 		}
 	}
 

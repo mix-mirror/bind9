@@ -385,7 +385,7 @@ synthrecord_entry(void *arg, void *cbdata, isc_result_t *resp) {
 	case REVERSE:
 		return synthrecord_reverse(inst, qctx, resp);
 	default:
-		REQUIRE(false);
+		UNREACHABLE();
 	}
 }
 

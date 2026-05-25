@@ -2488,7 +2488,6 @@ catz_run(dns_catz_entry_t *entry, dns_catz_zone_t *origin, dns_view_t *view,
 		action = catz_delzone_cb;
 		break;
 	default:
-		REQUIRE(0);
 		UNREACHABLE();
 	}
 

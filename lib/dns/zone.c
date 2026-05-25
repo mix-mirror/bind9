@@ -9021,7 +9021,7 @@ static void
 keyfetch_continue(dns_zonefetch_t *fetch) {
 	REQUIRE(fetch->fetchtype == ZONEFETCHTYPE_KEY);
 	/* No continue path for keyfetch exists. */
-	REQUIRE(0);
+	UNREACHABLE();
 }
 
 static void
@@ -18407,7 +18407,7 @@ zone_apply_skrbundle(dns_zone_t *zone, dns_skrbundle_t *bundle,
 			/* Not interested in right now */
 			break;
 		default:
-			INSIST(0);
+			UNREACHABLE();
 		}
 	}
 }

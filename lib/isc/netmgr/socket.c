@@ -411,7 +411,7 @@ isc__nm_socket_max_port_range(uv_os_sock_t fd ISC_ATTR_UNUSED,
 		port_high = isc__netmgr->port_high6;
 		break;
 	default:
-		INSIST(0);
+		UNREACHABLE();
 	}
 
 	/*
