@@ -405,11 +405,9 @@ openssleddsa_tofile(const dst_key_t *key, const char *directory) {
 			 * (e.g. HSM-backed via PKCS#11); fall through to
 			 * writing only the label.
 			 */
-			isc_mem_put(key->mctx, buf, len);
 			ERR_clear_error();
 		} else {
-			isc_mem_put(key->mctx, buf, len);
-			return dst__openssl_toresult(DST_R_OPENSSLFAILURE);
+			CLEANUP(dst__openssl_toresult(DST_R_OPENSSLFAILURE));
 		}
 	}
 	if (key->label != NULL) {
@@ -423,8 +421,9 @@ openssleddsa_tofile(const dst_key_t *key, const char *directory) {
 	priv.nelements = i;
 	result = dst__privstruct_writefile(key, &priv, directory);
 
+cleanup:
 	if (buf != NULL) {
-		isc_mem_put(key->mctx, buf, len);
+		isc_mem_put(key->mctx, buf, alginfo->key_size);
 	}
 	return result;
 }
