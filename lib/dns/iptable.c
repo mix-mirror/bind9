@@ -51,8 +51,8 @@ dns_iptable_addprefix(dns_iptable_t *tab, const isc_netaddr_t *addr,
 	isc_radix_node_t *node = NULL;
 	int i;
 
-	INSIST(DNS_IPTABLE_VALID(tab));
-	INSIST(tab->radix != NULL);
+	REQUIRE(DNS_IPTABLE_VALID(tab));
+	REQUIRE(tab->radix != NULL);
 
 	NETADDR_TO_PREFIX_T(addr, pfx, bitlen);
 
