@@ -664,7 +664,7 @@ class StaticResponseHandler(ResponseHandler):
 
     The derived class can specify the RRsets to be included in the answer,
     authority, and additional sections of the response, whether to set the AA
-    bit in the response, and a delay before sending the response.
+    bit and other flags in the response, and a delay before sending the response.
 
     The default implementation of `get_responses()` uses these properties to
     prepare and yield a single response.
@@ -674,6 +674,8 @@ class StaticResponseHandler(ResponseHandler):
     def rcode(self) -> dns.rcode.Rcode | None:
         """
         Optional RCODE to be set in the response.
+
+        Note that `rcode` is set AFTER `flags`.
         """
         return None
 
@@ -699,9 +701,20 @@ class StaticResponseHandler(ResponseHandler):
         return []
 
     @property
+    def set_flags(self) -> dns.flags.Flags | None:
+        """
+        DNS flags to be set in the response.
+
+        Note that `flags` are set BEFORE `rcode`.
+        """
+        return None
+
+    @property
     def authoritative(self) -> bool | None:
         """
         Whether to set the AA bit in the response.
+
+        This is applied after `flags` and `rcode`.
         """
         return None
 
@@ -719,6 +732,8 @@ class StaticResponseHandler(ResponseHandler):
         qctx.response.answer.extend(self.answer)
         qctx.response.authority.extend(self.authority)
         qctx.response.additional.extend(self.additional)
+        if self.set_flags is not None:
+            qctx.response.flags |= self.set_flags
         if self.rcode is not None:
             qctx.response.set_rcode(self.rcode)
         yield DnsResponseSend(
