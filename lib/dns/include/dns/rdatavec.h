@@ -107,11 +107,6 @@ struct dns_vecheader {
 	ISC_SLINK(dns_vecheader_t) next_header;
 
 	/*%
-	 * Cached glue records for an rdataset of type NS (zone only).
-	 */
-	dns_gluelist_t *gluelist;
-
-	/*%
 	 * Case vector.  If the bit is set then the corresponding
 	 * character in the owner name needs to be AND'd with 0x20,
 	 * rendering that character upper case.
