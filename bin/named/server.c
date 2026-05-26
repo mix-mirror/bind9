@@ -10103,6 +10103,7 @@ named_server_resetstatscommand(named_server_t *server, isc_lex_t *lex,
  */
 isc_result_t
 named_server_reconfigcommand(named_server_t *server, isc_buffer_t *text) {
+	REQUIRE(server != NULL);
 	REQUIRE(text != NULL);
 
 	isc_result_t result;
@@ -14876,6 +14877,7 @@ cleanup:
 
 isc_result_t
 named_server_skr(named_server_t *server, isc_lex_t *lex, isc_buffer_t *text) {
+	REQUIRE(server != NULL);
 	REQUIRE(text != NULL);
 
 	isc_result_t result = ISC_R_SUCCESS;

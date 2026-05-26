@@ -939,6 +939,7 @@ isc_result_t
 dns_zone_rpz_enable(dns_zone_t *zone, dns_rpz_zones_t *rpzs,
 		    dns_rpz_num_t rpz_num) {
 	REQUIRE(DNS_ZONE_VALID(zone));
+	REQUIRE(rpzs != NULL);
 
 	/*
 	 * This must happen only once or be redundant.
