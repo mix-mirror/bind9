@@ -5118,27 +5118,61 @@ qpzone_deleterdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 }
 
 typedef struct glue_additionaldata_ctx {
-	dns_db_t *db;
-	dns_dbversion_t *version;
+	qpzonedb_t *qpdb;
+	qpz_version_t *version;
 	const dns_name_t *owner_name;
 	dns_message_t *msg;
 } glue_additionaldata_ctx_t;
 
 static void
-append_glue_rdataset(qpzonedb_t *qpdb, dns_message_t *msg, dns_name_t *name,
-		     dns_rdataset_t *source, bool required,
-		     bool *prepend_name) {
-	if (!dns_rdataset_isassociated(source)) {
+glue_header_unref(dns_vecheader_t **headerp) {
+	if (*headerp != NULL) {
+		dns_vecheader_unref(*headerp);
+	}
+	*headerp = NULL;
+}
+
+static void
+bind_glue_rdataset(qpzonedb_t *qpdb, dns_vecheader_t **headerp,
+		   dns_rdataset_t *rdataset) {
+	dns_vecheader_t *header = *headerp;
+
+	if (header == NULL) {
 		return;
 	}
 
-	dns_rdataset_t *target = NULL;
-	dns_message_gettemprdataset(msg, &target);
-	bindrdataset(qpdb, dns_vecheader_getheader(source), target);
-	ISC_LIST_APPEND(name->list, target, link);
+	INSIST(rdataset->methods == NULL);
+
+	rdataset->methods = &dns_rdatavec_rdatasetmethods;
+	rdataset->rdclass = qpdb->common.rdclass;
+	rdataset->type = DNS_TYPEPAIR_TYPE(header->typepair);
+	rdataset->covers = DNS_TYPEPAIR_COVERS(header->typepair);
+	rdataset->ttl = header->ttl;
+	rdataset->trust = atomic_load(&header->trust);
+	rdataset->attributes.optout = OPTOUT(header);
+	rdataset->resign = 0;
+	rdataset->vec.header = header;
+	rdataset->vec.iter.iter_pos = NULL;
+	rdataset->vec.iter.iter_count = 0;
+
+	*headerp = NULL;
+}
+
+static void
+append_glue_rdataset(qpzonedb_t *qpdb, dns_message_t *msg, dns_name_t *name,
+		     dns_vecheader_t **headerp, bool required,
+		     bool *prepend_name) {
+	if (*headerp == NULL) {
+		return;
+	}
+
+	dns_rdataset_t *rdataset = NULL;
+	dns_message_gettemprdataset(msg, &rdataset);
+	bind_glue_rdataset(qpdb, headerp, rdataset);
+	ISC_LIST_APPEND(name->list, rdataset, link);
 
 	if (required) {
-		target->attributes.required = true;
+		rdataset->attributes.required = true;
 		*prepend_name = true;
 	}
 }
@@ -5147,74 +5181,96 @@ static isc_result_t
 glue_nsdname_cb(void *arg, const dns_name_t *name, dns_rdatatype_t qtype,
 		dns_rdataset_t *rdataset ISC_ATTR_UNUSED DNS__DB_FLARG) {
 	glue_additionaldata_ctx_t *ctx = arg;
-	qpzonedb_t *qpdb = (qpzonedb_t *)ctx->db;
+	qpzonedb_t *qpdb = ctx->qpdb;
 	isc_result_t result;
-	dns_fixedname_t fixedname_a;
-	dns_name_t *name_a = NULL;
-	dns_rdataset_t rdataset_a, sigrdataset_a;
-	dns_fixedname_t fixedname_aaaa;
-	dns_name_t *name_aaaa = NULL;
-	dns_rdataset_t rdataset_aaaa, sigrdataset_aaaa;
-	dns_name_t *glue_name = NULL;
+	dns_qpread_t qpr;
+	qpznode_t *node = NULL;
 	dns_name_t *msg_name = NULL;
-	bool glue_a = false;
-	bool glue_aaaa = false;
+	dns_vecheader_t *glue_a = NULL;
+	dns_vecheader_t *gluesig_a = NULL;
+	dns_vecheader_t *glue_aaaa = NULL;
+	dns_vecheader_t *gluesig_aaaa = NULL;
 	bool required = false;
 	bool prepend_name = false;
+	bool qpr_active = false;
+	isc_rwlock_t *nlock = NULL;
+	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 
 	/*
 	 * NS records want addresses in additional records.
 	 */
 	INSIST(qtype == dns_rdatatype_a);
 
-	name_a = dns_fixedname_initname(&fixedname_a);
-	dns_rdataset_init(&rdataset_a);
-	dns_rdataset_init(&sigrdataset_a);
-
-	name_aaaa = dns_fixedname_initname(&fixedname_aaaa);
-	dns_rdataset_init(&rdataset_aaaa);
-	dns_rdataset_init(&sigrdataset_aaaa);
-
-	result = qpzone_find(ctx->db, name, ctx->version, dns_rdatatype_a,
-			     DNS_DBFIND_GLUEOK, 0, NULL, name_a, NULL, NULL,
-			     &rdataset_a, &sigrdataset_a DNS__DB_FLARG_PASS);
-	if (result == DNS_R_GLUE) {
-		glue_a = true;
-		glue_name = name_a;
+	dns_qpmulti_query(qpdb->tree, &qpr);
+	qpr_active = true;
+	result = dns_qp_lookup(&qpr, name, DNS_DBNAMESPACE_NORMAL, NULL, NULL,
+			       (void **)&node, NULL);
+	if (result != ISC_R_SUCCESS) {
+		goto cleanup;
 	}
 
-	result = qpzone_find(ctx->db, name, ctx->version, dns_rdatatype_aaaa,
-			     DNS_DBFIND_GLUEOK, 0, NULL, name_aaaa, NULL, NULL,
-			     &rdataset_aaaa,
-			     &sigrdataset_aaaa DNS__DB_FLARG_PASS);
-	if (result == DNS_R_GLUE) {
-		glue_aaaa = true;
-		if (glue_name != NULL) {
-			INSIST(dns_name_equal(glue_name, name_aaaa));
+	nlock = qpzone_get_lock(node);
+	NODE_RDLOCK(nlock, &nlocktype);
+
+	ISC_SLIST_FOREACH(top, node->next_type, next_type) {
+		dns_vecheader_t *header = first_existing_header(
+			top, ctx->version->serial);
+		if (header == NULL) {
+			continue;
 		}
-		glue_name = name_aaaa;
+
+		if (top->typepair == DNS_TYPEPAIR(dns_rdatatype_a) &&
+		    glue_a == NULL)
+		{
+			dns_vecheader_ref(header);
+			glue_a = header;
+		} else if (top->typepair == DNS_TYPEPAIR(dns_rdatatype_aaaa) &&
+			   glue_aaaa == NULL)
+		{
+			dns_vecheader_ref(header);
+			glue_aaaa = header;
+		} else if (top->typepair == DNS_SIGTYPEPAIR(dns_rdatatype_a) &&
+			   gluesig_a == NULL)
+		{
+			dns_vecheader_ref(header);
+			gluesig_a = header;
+		} else if (top->typepair ==
+				   DNS_SIGTYPEPAIR(dns_rdatatype_aaaa) &&
+			   gluesig_aaaa == NULL)
+		{
+			dns_vecheader_ref(header);
+			gluesig_aaaa = header;
+		}
+
+		if (glue_a != NULL && gluesig_a != NULL &&
+		    glue_aaaa != NULL && gluesig_aaaa != NULL)
+		{
+			break;
+		}
 	}
 
-	if (glue_name != NULL) {
+	NODE_UNLOCK(nlock, &nlocktype);
+	dns_qpread_destroy(qpdb->tree, &qpr);
+	qpr_active = false;
+
+	if (glue_a != NULL || glue_aaaa != NULL) {
 		required = dns_name_issubdomain(name, ctx->owner_name);
 
 		dns_message_gettempname(ctx->msg, &msg_name);
-		dns_name_copy(glue_name, msg_name);
+		dns_name_copy(name, msg_name);
 
-		if (glue_a) {
+		if (glue_a != NULL) {
+			append_glue_rdataset(qpdb, ctx->msg, msg_name, &glue_a,
+					     required, &prepend_name);
 			append_glue_rdataset(qpdb, ctx->msg, msg_name,
-					     &rdataset_a, required,
-					     &prepend_name);
-			append_glue_rdataset(qpdb, ctx->msg, msg_name,
-					     &sigrdataset_a, false,
+					     &gluesig_a, false,
 					     &prepend_name);
 		}
-		if (glue_aaaa) {
+		if (glue_aaaa != NULL) {
 			append_glue_rdataset(qpdb, ctx->msg, msg_name,
-					     &rdataset_aaaa, required,
-					     &prepend_name);
+					     &glue_aaaa, required, &prepend_name);
 			append_glue_rdataset(qpdb, ctx->msg, msg_name,
-					     &sigrdataset_aaaa, false,
+					     &gluesig_aaaa, false,
 					     &prepend_name);
 		}
 
@@ -5239,14 +5295,14 @@ glue_nsdname_cb(void *arg, const dns_name_t *name, dns_rdatatype_t qtype,
 		}
 	}
 
-	/*
-	 * Clean up rdatasets returned by qpzone_find().  Message rdatasets
-	 * hold their own header references after append_glue_rdataset().
-	 */
-	dns_rdataset_cleanup(&rdataset_a);
-	dns_rdataset_cleanup(&sigrdataset_a);
-	dns_rdataset_cleanup(&rdataset_aaaa);
-	dns_rdataset_cleanup(&sigrdataset_aaaa);
+cleanup:
+	if (qpr_active) {
+		dns_qpread_destroy(qpdb->tree, &qpr);
+	}
+	glue_header_unref(&glue_a);
+	glue_header_unref(&gluesig_a);
+	glue_header_unref(&glue_aaaa);
+	glue_header_unref(&gluesig_aaaa);
 
 	return ISC_R_SUCCESS;
 }
@@ -5256,8 +5312,8 @@ addglue_to_message(qpzonedb_t *qpdb, qpz_version_t *version,
 		   const dns_name_t *owner_name, dns_rdataset_t *rdataset,
 		   dns_message_t *msg) {
 	glue_additionaldata_ctx_t ctx = {
-		.db = (dns_db_t *)qpdb,
-		.version = (dns_dbversion_t *)version,
+		.qpdb = qpdb,
+		.version = version,
 		.owner_name = owner_name,
 		.msg = msg,
 	};
@@ -5283,9 +5339,7 @@ addglue(dns_db_t *db, dns_dbversion_t *dbversion, const dns_name_t *owner_name,
 	REQUIRE(qpdb == version->qpdb);
 	REQUIRE(!IS_STUB(qpdb));
 
-	rcu_read_lock();
 	addglue_to_message(qpdb, version, owner_name, rdataset, msg);
-	rcu_read_unlock();
 }
 
 static void
