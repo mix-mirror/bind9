@@ -1799,6 +1799,7 @@ system:clang:trixie:amd64:
   needs:
     - job: clang:trixie:amd64
       artifacts: true
+  parallel: 100
 
 unit:clang:trixie:amd64:
   <<: *debian_trixie_amd64_image
