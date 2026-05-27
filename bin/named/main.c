@@ -548,6 +548,9 @@ format_features(char *buf, size_t bufsize) {
 #ifdef HAVE_GSSAPI
 	n = append_feature(buf, bufsize, n, "GSS-API");
 #endif
+#ifdef HAVE_DTRACE
+	n = append_feature(buf, bufsize, n, "tracing");
+#endif
 #ifdef HAVE_ZLIB
 	n = append_feature(buf, bufsize, n, "zlib");
 #endif
