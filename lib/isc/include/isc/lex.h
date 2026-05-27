@@ -147,7 +147,7 @@ isc_lex_create(isc_mem_t *mctx, size_t max_token, isc_lex_t **lexp);
  * 'max_token' is a hint of the number of bytes in the largest token.
  *
  * Requires:
- *\li	'*lexp' is a valid lexer.
+ *\li	'lexp' is non NULL && '*lexp' is NULL.
  *
  * Ensures:
  *\li	On success, *lexp is attached to the newly created lexer.

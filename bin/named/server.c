@@ -6448,6 +6448,8 @@ static void
 interface_timer_tick(void *arg) {
 	named_server_t *server = (named_server_t *)arg;
 
+	INSIST(NAMED_SERVER_VALID(server));
+
 	(void)ns_interfacemgr_scan(server->interfacemgr, false, false);
 }
 
@@ -6699,6 +6701,8 @@ tat_timer_tick(void *arg) {
 	named_server_t *server = (named_server_t *)arg;
 	struct dotat_arg dotat_arg = { 0 };
 	dns_keytable_t *secroots = NULL;
+
+	INSIST(NAMED_SERVER_VALID(server));
 
 	ISC_LIST_FOREACH(server->viewlist, view, link) {
 		if (!view->trust_anchor_telemetry || !view->enablevalidation) {
@@ -9427,6 +9431,9 @@ named_server_create(isc_mem_t *mctx, named_server_t **serverp) {
 	isc_result_t result;
 	named_server_t *server = isc_mem_get(mctx, sizeof(*server));
 
+	REQUIRE(serverp != NULL && *serverp == NULL);
+	REQUIRE(mctx != NULL);
+
 	*server = (named_server_t){
 		.mctx = mctx,
 		.statsfile = isc_mem_strdup(mctx, "named.stats"),
@@ -9493,7 +9500,8 @@ named_server_create(isc_mem_t *mctx, named_server_t **serverp) {
 
 void
 named_server_destroy(named_server_t **serverp) {
-	named_server_t *server = *serverp;
+	REQUIRE(serverp != NULL);
+	named_server_t *server = MOVE_OWNERSHIP(*serverp);
 	REQUIRE(NAMED_SERVER_VALID(server));
 
 #ifdef HAVE_DNSTAP
@@ -9555,7 +9563,6 @@ named_server_destroy(named_server_t **serverp) {
 
 	server->magic = 0;
 	isc_mem_put(server->mctx, server, sizeof(*server));
-	*serverp = NULL;
 }
 
 static void
@@ -9934,6 +9941,8 @@ named_server_retransfercommand(named_server_t *server, isc_lex_t *lex,
 	dns_zonetype_t type;
 	bool force = false;
 
+	REQUIRE(NAMED_SERVER_VALID(server));
+	REQUIRE(lex != NULL);
 	REQUIRE(text != NULL);
 
 	/* Skip the command name. */
@@ -9993,6 +10002,8 @@ named_server_reloadcommand(named_server_t *server, isc_lex_t *lex,
 	dns_zonetype_t type;
 	const char *msg = NULL;
 
+	REQUIRE(NAMED_SERVER_VALID(server));
+	REQUIRE(lex != NULL);
 	REQUIRE(text != NULL);
 
 	RETERR(zone_from_args(server, lex, NULL, &zone, NULL, text, true));
@@ -10060,6 +10071,8 @@ named_server_resetstatscommand(named_server_t *server, isc_lex_t *lex,
 	bool recursive_high_water = false;
 	bool tcp_high_water = false;
 
+	REQUIRE(NAMED_SERVER_VALID(server));
+	REQUIRE(lex != NULL);
 	REQUIRE(text != NULL);
 
 	/* Skip the command name. */
@@ -10103,7 +10116,7 @@ named_server_resetstatscommand(named_server_t *server, isc_lex_t *lex,
  */
 isc_result_t
 named_server_reconfigcommand(named_server_t *server, isc_buffer_t *text) {
-	REQUIRE(server != NULL);
+	REQUIRE(NAMED_SERVER_VALID(server));
 	REQUIRE(text != NULL);
 
 	isc_result_t result;
@@ -10155,6 +10168,8 @@ named_server_notifycommand(named_server_t *server, isc_lex_t *lex,
 	dns_zone_t *zone = NULL;
 	const char msg[] = "zone notify queued";
 
+	REQUIRE(NAMED_SERVER_VALID(server));
+	REQUIRE(lex != NULL);
 	REQUIRE(text != NULL);
 
 	RETERR(zone_from_args(server, lex, NULL, &zone, NULL, text, true));
@@ -10182,6 +10197,8 @@ named_server_refreshcommand(named_server_t *server, isc_lex_t *lex,
 	const char msg2[] = "not a secondary, mirror, or stub zone";
 	dns_zonetype_t type;
 
+	REQUIRE(NAMED_SERVER_VALID(server));
+	REQUIRE(lex != NULL);
 	REQUIRE(text != NULL);
 
 	RETERR(zone_from_args(server, lex, NULL, &zone, NULL, text, true));
@@ -10219,6 +10236,10 @@ named_server_setortoggle(named_server_t *server, const char *optname,
 			 unsigned int option, isc_lex_t *lex) {
 	bool prev, value;
 	char *ptr = NULL;
+
+	REQUIRE(NAMED_SERVER_VALID(server));
+	REQUIRE(optname != NULL);
+	REQUIRE(lex != NULL);
 
 	/* Skip the command name. */
 	ptr = next_token(lex, NULL);
@@ -10641,6 +10662,8 @@ named_server_dumpstats(named_server_t *server) {
 	isc_result_t result;
 	FILE *fp = NULL;
 
+	REQUIRE(NAMED_SERVER_VALID(server));
+
 	CHECKMF(isc_stdio_open(server->statsfile, "a", &fp),
 		"could not open statistics dump file", server->statsfile);
 
@@ -10892,6 +10915,8 @@ named_server_dumpdb(named_server_t *server, isc_lex_t *lex,
 	const char *sep = NULL;
 	bool found;
 
+	REQUIRE(NAMED_SERVER_VALID(server));
+	REQUIRE(lex != NULL);
 	REQUIRE(text != NULL);
 
 	/* Skip the command name. */
@@ -11010,6 +11035,8 @@ named_server_dumpsecroots(named_server_t *server, isc_lex_t *lex,
 	unsigned int used = isc_buffer_usedlength(text);
 	bool first = true;
 
+	REQUIRE(NAMED_SERVER_VALID(server));
+	REQUIRE(lex != NULL);
 	REQUIRE(text != NULL);
 
 	/* Skip the command name. */
@@ -11119,6 +11146,8 @@ named_server_dumprecursing(named_server_t *server) {
 	FILE *fp = NULL;
 	isc_result_t result;
 
+	REQUIRE(NAMED_SERVER_VALID(server));
+
 	CHECKMF(isc_stdio_open(server->recfile, "w", &fp),
 		"could not open dump file", server->recfile);
 	fprintf(fp, ";\n; Recursing Queries\n;\n");
@@ -11153,6 +11182,9 @@ named_server_setdebuglevel(named_server_t *server, isc_lex_t *lex) {
 	char *ptr;
 	char *endp;
 	long newlevel;
+
+	REQUIRE(NAMED_SERVER_VALID(server));
+	REQUIRE(lex != NULL);
 
 	UNUSED(server);
 
@@ -11190,6 +11222,8 @@ named_server_validation(named_server_t *server, isc_lex_t *lex,
 	isc_result_t result;
 	bool enable = true, set = true, first = true;
 
+	REQUIRE(NAMED_SERVER_VALID(server));
+	REQUIRE(lex != NULL);
 	REQUIRE(text != NULL);
 
 	/* Skip the command name. */
@@ -11274,6 +11308,9 @@ named_server_flushcache(named_server_t *server, isc_lex_t *lex) {
 	bool flushed;
 	bool found;
 	isc_result_t result;
+
+	REQUIRE(NAMED_SERVER_VALID(server));
+	REQUIRE(lex != NULL);
 
 	/* Skip the command name. */
 	ptr = next_token(lex, NULL);
@@ -11474,6 +11511,9 @@ named_server_flushnode(named_server_t *server, isc_lex_t *lex, bool tree) {
 	dns_fixedname_t fixed;
 	dns_name_t *name = NULL;
 
+	REQUIRE(NAMED_SERVER_VALID(server));
+	REQUIRE(lex != NULL);
+
 	/* Skip the command name. */
 	ptr = next_token(lex, NULL);
 	if (ptr == NULL) {
@@ -11549,6 +11589,7 @@ named_server_status(named_server_t *server, isc_buffer_t *text) {
 	char line[1024], hostname[256];
 	named_reload_t reload_status;
 
+	REQUIRE(NAMED_SERVER_VALID(server));
 	REQUIRE(text != NULL);
 
 	if (named_g_server->version_set) {
@@ -11696,6 +11737,8 @@ named_server_rekey(named_server_t *server, isc_lex_t *lex, isc_buffer_t *text) {
 	bool fullsign = false;
 	char *ptr = NULL;
 
+	REQUIRE(NAMED_SERVER_VALID(server));
+	REQUIRE(lex != NULL);
 	REQUIRE(text != NULL);
 
 	ptr = next_token(lex, text);
@@ -11773,6 +11816,8 @@ named_server_sync(named_server_t *server, isc_lex_t *lex, isc_buffer_t *text) {
 	const char *vname = NULL, *sep = NULL, *arg = NULL;
 	bool cleanup = false;
 
+	REQUIRE(NAMED_SERVER_VALID(server));
+	REQUIRE(lex != NULL);
 	REQUIRE(text != NULL);
 
 	(void)next_token(lex, text);
@@ -11849,6 +11894,8 @@ named_server_freeze(named_server_t *server, bool freeze, isc_lex_t *lex,
 	bool frozen;
 	const char *msg = NULL;
 
+	REQUIRE(NAMED_SERVER_VALID(server));
+	REQUIRE(lex != NULL);
 	REQUIRE(text != NULL);
 
 	RETERR(zone_from_args(server, lex, NULL, &mayberaw, NULL, text, true));
@@ -12470,6 +12517,7 @@ named_server_changezone(named_server_t *server, char *command,
 	dns_fixedname_t fname;
 	dns_name_t *dnsname;
 
+	REQUIRE(NAMED_SERVER_VALID(server));
 	REQUIRE(text != NULL);
 
 	if (strncasecmp(command, "add", 3) == 0) {
@@ -12716,6 +12764,8 @@ named_server_delzone(named_server_t *server, isc_lex_t *lex,
 	bool added;
 	ns_dzctx_t *dz = NULL;
 
+	REQUIRE(NAMED_SERVER_VALID(server));
+	REQUIRE(lex != NULL);
 	REQUIRE(text != NULL);
 
 	/* Skip the command name. */
@@ -12850,6 +12900,8 @@ named_server_showzone(named_server_t *server, isc_lex_t *lex,
 	dns_zone_t *zone = NULL;
 	const char *zconfig = NULL;
 
+	REQUIRE(NAMED_SERVER_VALID(server));
+	REQUIRE(lex != NULL);
 	REQUIRE(text != NULL);
 
 	/* Parse parameters */
@@ -12890,6 +12942,8 @@ named_server_showconf(named_server_t *server, isc_lex_t *lex,
 		.text = text,
 	};
 
+	REQUIRE(NAMED_SERVER_VALID(server));
+	REQUIRE(lex != NULL);
 	REQUIRE(text != NULL);
 
 	/* Skip the command name */
@@ -12955,6 +13009,8 @@ named_server_signing(named_server_t *server, isc_lex_t *lex,
 	size_t n;
 	bool kasp = false;
 
+	REQUIRE(NAMED_SERVER_VALID(server));
+	REQUIRE(lex != NULL);
 	REQUIRE(text != NULL);
 
 	dns_rdataset_init(&privset);
@@ -13188,6 +13244,8 @@ named_server_dnssec(named_server_t *server, isc_lex_t *lex,
 	dns_db_t *db = NULL;
 	dns_dbversion_t *version = NULL;
 
+	REQUIRE(NAMED_SERVER_VALID(server));
+	REQUIRE(lex != NULL);
 	REQUIRE(text != NULL);
 
 	/* Skip the command name. */
@@ -13556,6 +13614,8 @@ named_server_zonestatus(named_server_t *server, isc_lex_t *lex,
 	char **incfiles = NULL;
 	int nfiles = 0;
 
+	REQUIRE(NAMED_SERVER_VALID(server));
+	REQUIRE(lex != NULL);
 	REQUIRE(text != NULL);
 
 	isc_time_settoepoch(&loadtime);
@@ -13813,6 +13873,8 @@ named_server_nta(named_server_t *server, isc_lex_t *lex, bool readonly,
 	dns_rdataclass_t rdclass = dns_rdataclass_in;
 	bool first = true;
 
+	REQUIRE(NAMED_SERVER_VALID(server));
+	REQUIRE(lex != NULL);
 	REQUIRE(text != NULL);
 
 	UNUSED(force);
@@ -14086,6 +14148,7 @@ cleanup:
 
 isc_result_t
 named_server_saventa(named_server_t *server) {
+	REQUIRE(NAMED_SERVER_VALID(server));
 	ISC_LIST_FOREACH(server->viewlist, view, link) {
 		isc_result_t result = dns_view_saventa(view);
 
@@ -14103,6 +14166,7 @@ named_server_saventa(named_server_t *server) {
 
 isc_result_t
 named_server_loadnta(named_server_t *server) {
+	REQUIRE(NAMED_SERVER_VALID(server));
 	ISC_LIST_FOREACH(server->viewlist, view, link) {
 		isc_result_t result = dns_view_loadnta(view);
 
@@ -14350,6 +14414,8 @@ named_server_mkeys(named_server_t *server, isc_lex_t *lex, isc_buffer_t *text) {
 	bool found = false;
 	bool first = true;
 
+	REQUIRE(NAMED_SERVER_VALID(server));
+	REQUIRE(lex != NULL);
 	REQUIRE(text != NULL);
 
 	/* Skip rndc command name */
@@ -14467,6 +14533,8 @@ named_server_dnstap(named_server_t *server, isc_lex_t *lex,
 	bool reopen = false;
 	int backups = 0;
 
+	REQUIRE(NAMED_SERVER_VALID(server));
+	REQUIRE(lex != NULL);
 	REQUIRE(text != NULL);
 
 	if (server->dtenv == NULL) {
@@ -14520,6 +14588,7 @@ named_server_dnstap(named_server_t *server, isc_lex_t *lex,
 
 isc_result_t
 named_server_tcptimeouts(isc_lex_t *lex, isc_buffer_t *text) {
+	REQUIRE(lex != NULL);
 	REQUIRE(text != NULL);
 
 	char *ptr;
@@ -14639,6 +14708,8 @@ named_server_servestale(named_server_t *server, isc_lex_t *lex,
 	bool wantstatus = false;
 	isc_result_t result = ISC_R_SUCCESS;
 
+	REQUIRE(NAMED_SERVER_VALID(server));
+	REQUIRE(lex != NULL);
 	REQUIRE(text != NULL);
 
 	/* Skip the command name. */
@@ -14799,6 +14870,8 @@ named_server_fetchlimit(named_server_t *server, isc_lex_t *lex,
 	bool first = true;
 	dns_adb_t *adb = NULL;
 
+	REQUIRE(NAMED_SERVER_VALID(server));
+	REQUIRE(lex != NULL);
 	REQUIRE(text != NULL);
 
 	/* Skip the command name. */
@@ -14877,7 +14950,8 @@ cleanup:
 
 isc_result_t
 named_server_skr(named_server_t *server, isc_lex_t *lex, isc_buffer_t *text) {
-	REQUIRE(server != NULL);
+	REQUIRE(NAMED_SERVER_VALID(server));
+	REQUIRE(lex != NULL);
 	REQUIRE(text != NULL);
 
 	isc_result_t result = ISC_R_SUCCESS;
@@ -14948,6 +15022,8 @@ named_server_togglememprof(isc_lex_t *lex) {
 	isc_result_t result = ISC_R_FAILURE;
 	bool active;
 	char *ptr;
+
+	REQUIRE(lex != NULL);
 
 	/* Skip the command name. */
 	ptr = next_token(lex, NULL);

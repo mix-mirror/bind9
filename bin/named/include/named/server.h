@@ -123,12 +123,20 @@ named_server_create(isc_mem_t *mctx, named_server_t **serverp);
  * Create a server object with default settings.
  * This function either succeeds or causes the program to exit
  * with a fatal error.
+ *
+ * Require:
+ *\li	'serverp' is non NULL and '*serverp' is NULL
+ *\li	'mctx' is non NULL
  */
 
 void
 named_server_destroy(named_server_t **serverp);
 /*%<
- * Destroy a server object, freeing its memory.
+ * Destroy a server object, freeing its memory.  '*serverp' is set to
+ * NULL.
+ *
+ * Require:
+ *\li	'serverp' is non NULL and '*serverp' is a valid named_server_t
  */
 
 void
@@ -145,12 +153,18 @@ named_server_scan_interfaces(named_server_t *server);
 /*%<
  * Trigger a interface scan.
  * Must only be called when running under server->task.
+ *
+ * Requires:
+ *\li	'server' point to a valid named_server_t
  */
 
 void
 named_server_flushonshutdown(named_server_t *server, bool flush);
 /*%<
  * Inform the server that the zones should be flushed to disk on shutdown.
+ *
+ * Requires:
+ *\li	'server' point to a valid named_server_t
  */
 
 isc_result_t
@@ -158,6 +172,11 @@ named_server_reloadcommand(named_server_t *server, isc_lex_t *lex,
 			   isc_buffer_t *text);
 /*%<
  * Act on a "reload" command from the command channel.
+ *
+ * Requires:
+ *\li	'server' points to a valid named_server_t
+ *\li	'lex'	 is a valid lexer
+ *\li	'text'	 is non NULL
  */
 
 isc_result_t
@@ -165,12 +184,21 @@ named_server_resetstatscommand(named_server_t *server, isc_lex_t *lex,
 			       isc_buffer_t *text);
 /*%<
  * Act on a "reset-stats" command from the command channel.
+ *
+ * Requires:
+ *\li	'server' points to a valid named_server_t
+ *\li	'lex'	 is a valid lexer
+ *\li	'text'	 is non NULL
  */
 
 isc_result_t
 named_server_reconfigcommand(named_server_t *server, isc_buffer_t *text);
 /*%<
  * Act on a "reconfig" command from the command channel.
+ *
+ * Requires:
+ *\li	'server' points to a valid named_server_t
+ *\li	'text'	 is non NULL
  */
 
 isc_result_t
@@ -178,6 +206,11 @@ named_server_notifycommand(named_server_t *server, isc_lex_t *lex,
 			   isc_buffer_t *text);
 /*%<
  * Act on a "notify" command from the command channel.
+ *
+ * Requires:
+ *\li	'server' points to a valid named_server_t
+ *\li	'lex'	 is a valid lexer
+ *\li	'text'	 is non NULL
  */
 
 isc_result_t
@@ -185,6 +218,11 @@ named_server_refreshcommand(named_server_t *server, isc_lex_t *lex,
 			    isc_buffer_t *text);
 /*%<
  * Act on a "refresh" command from the command channel.
+ *
+ * Requires:
+ *\li	'server' points to a valid named_server_t
+ *\li	'lex'	 is a valid lexer
+ *\li	'text'	 is non NULL
  */
 
 isc_result_t
@@ -192,6 +230,11 @@ named_server_retransfercommand(named_server_t *server, isc_lex_t *lex,
 			       isc_buffer_t *text);
 /*%<
  * Act on a "retransfer" command from the command channel.
+ *
+ * Requires:
+ *\li	'server' points to a valid named_server_t
+ *\li	'lex'	 is a valid lexer
+ *\li	'text'	 is non NULL
  */
 
 isc_result_t
@@ -209,34 +252,58 @@ named_server_setortoggle(named_server_t *server, const char *optname,
  * to disable it ("off", "disable", "false", or "no"), it will be used.
  *
  * If no argument is provided, the option's current state will be reversed.
+ *
+ * Requires:
+ *\li	'server' points to a valid named_server_t
+ *\li	'optname' is non NULL
+ *\li	'lex' is a valid lexer
  */
 
 /*%
  * Save the current NTAs for all views to files.
+ *
+ * Requires:
+ *\li	'server' point to a valid named_server_t
  */
 isc_result_t
 named_server_saventa(named_server_t *server);
 
 /*%
  * Load NTAs for all views from files.
+ *
+ * Requires:
+ *\li	'server' point to a valid named_server_t
  */
 isc_result_t
 named_server_loadnta(named_server_t *server);
 
 /*%
  * Dump the current statistics to the statistics file.
+ *
+ * Requires:
+ *\li	'server' point to a valid named_server_t
  */
 isc_result_t
 named_server_dumpstats(named_server_t *server);
 
 /*%
  * Dump the current cache to the dump file.
+ *
+ * Requires:
+ *\li	'server' points to a valid named_server_t
+ *\li	'lex'	 is a valid lexer
+ *\li	'text'	 is non NULL
  */
 isc_result_t
 named_server_dumpdb(named_server_t *server, isc_lex_t *lex, isc_buffer_t *text);
 
 /*%
  * Dump the current security roots to the secroots file.
+ *
+ * Requires:
+ *\li	'server' points to a valid named_server_t
+ *\li	'lex'	 is a valid lexer
+ *\li	'text'	 is non NULL
  */
 isc_result_t
 named_server_dumpsecroots(named_server_t *server, isc_lex_t *lex,
@@ -244,12 +311,20 @@ named_server_dumpsecroots(named_server_t *server, isc_lex_t *lex,
 
 /*%
  * Change or increment the server debug level.
+ *
+ * Requires:
+ *\li	'server' points to a valid named_server_t
+ *\li	'lex'	 is a valid lexer
  */
 isc_result_t
 named_server_setdebuglevel(named_server_t *server, isc_lex_t *lex);
 
 /*%
  * Flush the server's cache(s)
+ *
+ * Requires:
+ *\li	'server' points to a valid named_server_t
+ *\li	'lex'	 is a valid lexer
  */
 isc_result_t
 named_server_flushcache(named_server_t *server, isc_lex_t *lex);
@@ -258,18 +333,31 @@ named_server_flushcache(named_server_t *server, isc_lex_t *lex);
  * Flush a particular name from the server's cache.  If 'tree' is false,
  * also flush the name from the ADB and badcache.  If 'tree' is true, also
  * flush all the names under the specified name.
+ *
+ * Requires:
+ *\li	'server' points to a valid named_server_t
+ *\li	'lex'	 is a valid lexer
  */
 isc_result_t
 named_server_flushnode(named_server_t *server, isc_lex_t *lex, bool tree);
 
 /*%
  * Report the server's status.
+ *
+ * Requires:
+ *\li	'server' points to a valid named_server_t
+ *\li	'lex'	 is a valid lexer
  */
 isc_result_t
 named_server_status(named_server_t *server, isc_buffer_t *text);
 
 /*%
  * Enable or disable updates for a zone.
+ *
+ * Requires:
+ *\li	'server' points to a valid named_server_t
+ *\li	'lex'	 is a valid lexer
+ *\li	'text'	 is non NULL
  */
 isc_result_t
 named_server_freeze(named_server_t *server, bool freeze, isc_lex_t *lex,
@@ -277,6 +365,11 @@ named_server_freeze(named_server_t *server, bool freeze, isc_lex_t *lex,
 
 /*%
  * Dump zone updates to disk, optionally removing the journal file
+ *
+ * Requires:
+ *\li	'server' points to a valid named_server_t
+ *\li	'lex'	 is a valid lexer
+ *\li	'text'	 is non NULL
  */
 isc_result_t
 named_server_sync(named_server_t *server, isc_lex_t *lex, isc_buffer_t *text);
@@ -287,6 +380,11 @@ named_server_sync(named_server_t *server, isc_lex_t *lex, isc_buffer_t *text);
  * then force a full signing of the zone.  If it was "loadkeys",
  * then don't sign the zone; any needed changes to signatures can
  * take place incrementally.
+ *
+ * Requires:
+ *\li	'server' points to a valid named_server_t
+ *\li	'lex'	 is a valid lexer
+ *\li	'text'	 is non NULL
  */
 isc_result_t
 named_server_rekey(named_server_t *server, isc_lex_t *lex, isc_buffer_t *text);
@@ -299,6 +397,11 @@ named_server_dumprecursing(named_server_t *server);
 
 /*%
  * Enable or disable dnssec validation.
+ *
+ * Requires:
+ *\li	'server' points to a valid named_server_t
+ *\li	'lex'	 is a valid lexer
+ *\li	'text'	 is non NULL
  */
 isc_result_t
 named_server_validation(named_server_t *server, isc_lex_t *lex,
@@ -306,6 +409,10 @@ named_server_validation(named_server_t *server, isc_lex_t *lex,
 
 /*%
  * Add a zone to a running process, or modify an existing zone
+ *
+ * Requires:
+ *\li	'server' points to a valid named_server_t
+ *\li	'text'	 is non NULL
  */
 isc_result_t
 named_server_changezone(named_server_t *server, char *command,
@@ -313,6 +420,11 @@ named_server_changezone(named_server_t *server, char *command,
 
 /*%
  * Deletes a zone from a running process
+ *
+ * Requires:
+ *\li	'server' points to a valid named_server_t
+ *\li	'lex'	 is a valid lexer
+ *\li	'text'	 is non NULL
  */
 isc_result_t
 named_server_delzone(named_server_t *server, isc_lex_t *lex,
@@ -320,6 +432,11 @@ named_server_delzone(named_server_t *server, isc_lex_t *lex,
 
 /*%
  * Show current configuration for a given zone
+ *
+ * Requires:
+ *\li	'server' points to a valid named_server_t
+ *\li	'lex'	 is a valid lexer
+ *\li	'text'	 is non NULL
  */
 isc_result_t
 named_server_showzone(named_server_t *server, isc_lex_t *lex,
@@ -327,6 +444,11 @@ named_server_showzone(named_server_t *server, isc_lex_t *lex,
 
 /*%
  * Show the full current user configuration.
+ *
+ * Requires:
+ *\li	'server' points to a valid named_server_t
+ *\li	'lex'	 is a valid lexer
+ *\li	'text'	 is non NULL
  */
 isc_result_t
 named_server_showconf(named_server_t *server, isc_lex_t *lex,
@@ -334,6 +456,11 @@ named_server_showconf(named_server_t *server, isc_lex_t *lex,
 
 /*%
  * Lists the status of the signing records for a given zone.
+ *
+ * Requires:
+ *\li	'server' points to a valid named_server_t
+ *\li	'lex'	 is a valid lexer
+ *\li	'text'	 is non NULL
  */
 isc_result_t
 named_server_signing(named_server_t *server, isc_lex_t *lex,
@@ -341,6 +468,11 @@ named_server_signing(named_server_t *server, isc_lex_t *lex,
 
 /*%
  * Lists the DNSSEC status for a given zone.
+ *
+ * Requires:
+ *\li	'server' points to a valid named_server_t
+ *\li	'lex'	 is a valid lexer
+ *\li	'text'	 is non NULL
  */
 isc_result_t
 named_server_dnssec(named_server_t *server, isc_lex_t *lex, isc_buffer_t *text);
@@ -348,6 +480,11 @@ named_server_dnssec(named_server_t *server, isc_lex_t *lex, isc_buffer_t *text);
 /*%
  * Lists status information for a given zone (e.g., name, type, files,
  * load time, expiry, etc).
+ *
+ * Requires:
+ *\li	'server' points to a valid named_server_t
+ *\li	'lex'	 is a valid lexer
+ *\li	'text'	 is non NULL
  */
 isc_result_t
 named_server_zonestatus(named_server_t *server, isc_lex_t *lex,
@@ -356,6 +493,11 @@ named_server_zonestatus(named_server_t *server, isc_lex_t *lex,
 /*%
  * Adds/updates a Negative Trust Anchor (NTA) for a specified name and
  * duration, in a particular view if specified, or in all views.
+ *
+ * Requires:
+ *\li	'server' points to a valid named_server_t
+ *\li	'lex'	 is a valid lexer
+ *\li	'text'	 is non NULL
  */
 isc_result_t
 named_server_nta(named_server_t *server, isc_lex_t *lex, bool readonly,
@@ -363,18 +505,32 @@ named_server_nta(named_server_t *server, isc_lex_t *lex, bool readonly,
 
 /*%
  * Force fefresh or print status for managed keys zones.
+ *
+ * Requires:
+ *\li	'server' points to a valid named_server_t
+ *\li	'lex'	 is a valid lexer
+ *\li	'text'	 is non NULL
  */
 isc_result_t
 named_server_mkeys(named_server_t *server, isc_lex_t *lex, isc_buffer_t *text);
 
 /*%
  * Close and reopen DNSTAP output file.
+ *
+ * Requires:
+ *\li	'server' points to a valid named_server_t
+ *\li	'lex'	 is a valid lexer
+ *\li	'text'	 is non NULL
  */
 isc_result_t
 named_server_dnstap(named_server_t *server, isc_lex_t *lex, isc_buffer_t *text);
 
 /*%
  * Display or update tcp-{initial,idle,keepalive,advertised}-timeout options.
+ *
+ * Requires:
+ *\li	'server' point to a valid named_server_t
+ *\li	'text' be non NULL
  */
 isc_result_t
 named_server_tcptimeouts(isc_lex_t *lex, isc_buffer_t *text);
@@ -382,6 +538,11 @@ named_server_tcptimeouts(isc_lex_t *lex, isc_buffer_t *text);
 /*%
  * Control whether stale answers are served or not when configured in
  * named.conf.
+ *
+ * Requires:
+ *\li	'server' points to a valid named_server_t
+ *\li	'lex'	 is a valid lexer
+ *\li	'text'	 is non NULL
  */
 isc_result_t
 named_server_servestale(named_server_t *server, isc_lex_t *lex,
@@ -389,6 +550,11 @@ named_server_servestale(named_server_t *server, isc_lex_t *lex,
 
 /*%
  * Report fetch-limited ADB server addresses.
+ *
+ * Requires:
+ *\li	'server' points to a valid named_server_t
+ *\li	'lex'	 is a valid lexer
+ *\li	'text'	 is non NULL
  */
 isc_result_t
 named_server_fetchlimit(named_server_t *server, isc_lex_t *lex,
@@ -396,12 +562,20 @@ named_server_fetchlimit(named_server_t *server, isc_lex_t *lex,
 
 /*%
  * Import SKR file for offline KSK signing.
+ *
+ * Requires:
+ *\li	'server' point to a valid named_server_t
+ *\li	'lex'	 is a valid lexer
+ *\li	'text' be non NULL
  */
 isc_result_t
 named_server_skr(named_server_t *server, isc_lex_t *lex, isc_buffer_t *text);
 
 /*%
  * Toggle memory profiling if supported.
+ *
+ * Requires:
+ *\li	'lex'	 is a valid lexer
  */
 isc_result_t
 named_server_togglememprof(isc_lex_t *lex);
