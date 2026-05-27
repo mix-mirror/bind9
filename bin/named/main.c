@@ -631,7 +631,6 @@ printversion(bool verbose) {
 	printf("linked to zlib version: %s\n", zlibVersion());
 #endif /* ifdef HAVE_ZLIB */
 #ifdef HAVE_GEOIP2
-	/* Unfortunately, no version define on link time */
 	printf("linked to maxminddb version: %s\n", MMDB_lib_version());
 #endif /* ifdef HAVE_GEOIP2 */
 #ifdef HAVE_DNSTAP
@@ -1236,7 +1235,6 @@ setup(void) {
 		      zlibVersion());
 #endif /* ifdef HAVE_ZLIB */
 #ifdef HAVE_GEOIP2
-	/* Unfortunately, no version define on link time */
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
 		      ISC_LOG_NOTICE, "linked to maxminddb version: %s",
 		      MMDB_lib_version());
