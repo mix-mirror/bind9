@@ -626,10 +626,10 @@ printversion(bool verbose) {
 	printf("compiled with json-c version: %s\n", JSON_C_VERSION);
 	printf("linked to json-c version: %s\n", json_c_version());
 #endif /* ifdef HAVE_JSON_C */
-#if defined(HAVE_ZLIB) && defined(ZLIB_VERSION)
+#ifdef HAVE_ZLIB
 	printf("compiled with zlib version: %s\n", ZLIB_VERSION);
 	printf("linked to zlib version: %s\n", zlibVersion());
-#endif /* if defined(HAVE_ZLIB) && defined(ZLIB_VERSION) */
+#endif /* ifdef HAVE_ZLIB */
 #ifdef HAVE_GEOIP2
 	/* Unfortunately, no version define on link time */
 	printf("linked to maxminddb version: %s\n", MMDB_lib_version());
@@ -1227,14 +1227,14 @@ setup(void) {
 		      ISC_LOG_NOTICE, "linked to json-c version: %s",
 		      json_c_version());
 #endif /* ifdef HAVE_JSON_C */
-#if defined(HAVE_ZLIB) && defined(ZLIB_VERSION)
+#ifdef HAVE_ZLIB
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
 		      ISC_LOG_NOTICE, "compiled with zlib version: %s",
 		      ZLIB_VERSION);
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
 		      ISC_LOG_NOTICE, "linked to zlib version: %s",
 		      zlibVersion());
-#endif /* if defined(HAVE_ZLIB) && defined(ZLIB_VERSION) */
+#endif /* ifdef HAVE_ZLIB */
 #ifdef HAVE_GEOIP2
 	/* Unfortunately, no version define on link time */
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
