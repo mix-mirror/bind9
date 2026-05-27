@@ -193,6 +193,9 @@ dns_cache_flush(dns_cache_t *cache);
 /*%<
  * Flushes all data from the cache.
  *
+ * Requires:
+ *\li	'cache' to be valid.
+ *
  * Returns:
  *\li	#ISC_R_SUCCESS
  */

@@ -411,8 +411,7 @@ cleanup:
 
 isc_result_t
 dns_cache_flushname(dns_cache_t *cache, const dns_name_t *name) {
-	REQUIRE(VALID_CACHE(cache));
-
+	/* Requires handled by dns_cache_flushnode. */
 	return dns_cache_flushnode(cache, name, false);
 }
 
@@ -423,6 +422,7 @@ dns_cache_flushnode(dns_cache_t *cache, const dns_name_t *name, bool tree) {
 	dns_db_t *db = NULL;
 
 	REQUIRE(VALID_CACHE(cache));
+	REQUIRE(DNS_NAME_VALID(name));
 
 	if (tree && dns_name_equal(name, dns_rootname)) {
 		return dns_cache_flush(cache);

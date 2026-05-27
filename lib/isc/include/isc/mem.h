@@ -306,6 +306,9 @@ unsigned int
 isc_mem_references(isc_mem_t *ctx);
 /*%<
  * Return the current reference count.
+ *
+ * Requires:
+ *\li	'ctx' is a valid ctx.
  */
 
 const char *
