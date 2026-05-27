@@ -1177,6 +1177,15 @@ setup(void) {
 		      ISC_LOG_NOTICE, "linked to libnghttp2 version: %s",
 		      nginfo->version_str);
 #endif
+#ifdef HAVE_LIBNGTCP2
+	const ngtcp2_info *ngtcpinfo = ngtcp2_version(0);
+	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
+		      ISC_LOG_NOTICE, "compiled with libngtcp2 version: %s",
+		      NGTCP2_VERSION);
+	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
+		      ISC_LOG_NOTICE, "linked to libngtcp2 version: %s",
+		      ngtcpinfo->version_str);
+#endif /* HAVE_LIBNGTCP2 */
 #ifdef HAVE_LIBXML2
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
 		      ISC_LOG_NOTICE, "compiled with libxml2 version: %s",
