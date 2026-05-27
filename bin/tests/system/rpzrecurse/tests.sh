@@ -447,6 +447,7 @@ grep "status: NXDOMAIN" dig.out.${t} >/dev/null || {
 t=$((t + 1))
 echo_i "checking 'nsip-wait-recurse no' is faster than 'nsip-wait-recurse yes' ($t)"
 add_test_marker 10.53.0.2 10.53.0.3
+$RNDC -c ../_common/rndc.conf -s 10.53.0.3 -p ${CONTROLPORT} flush
 echo_i "timing 'nsip-wait-recurse yes' (default)"
 ret=0
 t1=$($PERL -e 'print time()."\n";')
