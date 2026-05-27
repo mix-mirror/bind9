@@ -554,6 +554,9 @@ format_features(char *buf, size_t bufsize) {
 #ifdef HAVE_ZLIB
 	n = append_feature(buf, bufsize, n, "zlib");
 #endif
+	if (n == 0) {
+		snprintf(buf, bufsize, " none");
+	}
 	(void)n;
 }
 
