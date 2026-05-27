@@ -516,11 +516,40 @@ format_supported_algorithms(void (*emit)(isc_buffer_t *b)) {
 	(*emit)(&b);
 }
 
+static size_t
+append_feature(char *buf, size_t bufsize, size_t pos, const char *feature) {
+	if (pos < bufsize) {
+		pos += snprintf(buf + pos, bufsize - pos, " %s", feature);
+	}
+	return pos;
+}
+
+static void
+format_features(char *buf, size_t bufsize) {
+	size_t n = 0;
+
+	buf[0] = '\0';
+#if HAVE_LIBNGHTTP2
+	n = append_feature(buf, bufsize, n, "DoH");
+#endif
+#ifdef HAVE_LIBNGTCP2
+	n = append_feature(buf, bufsize, n, "DoQ");
+#endif
+#if defined(HAVE_DNSTAP)
+	n = append_feature(buf, bufsize, n, "dnstap");
+#endif
+#if defined(HAVE_GEOIP2)
+	n = append_feature(buf, bufsize, n, "GeoIP2");
+#endif
+#ifdef HAVE_ZLIB
+	n = append_feature(buf, bufsize, n, "zlib");
+#endif
+	(void)n;
+}
+
 static void
 printversion(bool verbose) {
 	char rndcconf[PATH_MAX], *dot = NULL;
-	isc_buffer_t b;
-	char buf[512];
 
 	printf("%s (%s) <id:%s>\n", PACKAGE_STRING, PACKAGE_DESCRIPTION,
 	       PACKAGE_SRCID);
@@ -531,6 +560,13 @@ printversion(bool verbose) {
 
 	printf("running on %s\n", named_os_uname());
 	printf("built by %s with %s\n", PACKAGE_BUILDER, PACKAGE_CONFIGARGS);
+
+	char features[256];
+	format_features(features, sizeof(features));
+	printf("features:%s\n", features);
+	printf("FIPS mode: %s\n",
+	       isc_crypto_fips_mode() ? "active" : "not active");
+
 #ifdef __clang__
 	printf("compiled by CLANG %s\n", __VERSION__);
 #else /* ifdef __clang__ */
@@ -593,9 +629,7 @@ printversion(bool verbose) {
 	printf("compiled with LMDB version: %d.%d.%d\n", MDB_VERSION_MAJOR,
 	       MDB_VERSION_MINOR, MDB_VERSION_PATCH);
 	printf("linked to LMDB version: %s\n", mdb_version(NULL, NULL, NULL));
-	printf("threads support is enabled\n");
 
-	isc_buffer_init(&b, buf, sizeof(buf));
 	format_supported_algorithms(printit);
 	printf("\n");
 
@@ -1077,6 +1111,14 @@ setup(void) {
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
 		      ISC_LOG_NOTICE, "built with %s", PACKAGE_CONFIGARGS);
 
+	char features[256];
+	format_features(features, sizeof(features));
+	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
+		      ISC_LOG_NOTICE, "features:%s", features);
+	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
+		      ISC_LOG_NOTICE, "FIPS mode: %s",
+		      isc_crypto_fips_mode() ? "active" : "not active");
+
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
 		      ISC_LOG_NOTICE, "running as: %s%s%s",
 		      isc_commandline_progname, saved_command_line, ellipsis);
@@ -1179,6 +1221,7 @@ setup(void) {
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
 		      ISC_LOG_NOTICE, "linked to LMDB version: %s",
 		      mdb_version(NULL, NULL, NULL));
+
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
 		      ISC_LOG_NOTICE,
 		      "----------------------------------------------------");
