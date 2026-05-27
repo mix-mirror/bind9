@@ -22,7 +22,7 @@
 
 #ifdef HAVE_DNSTAP
 #include <protobuf-c/protobuf-c.h>
-#endif
+#endif /* ifdef HAVE_DNSTAP */
 
 #include <defaultconfig.h>
 
@@ -62,7 +62,7 @@
 
 #ifdef HAVE_JSON_C
 #include <json_c_version.h>
-#endif /* HAVE_JSON_C */
+#endif /* ifdef HAVE_JSON_C */
 
 #ifdef HAVE_GEOIP2
 #include <maxminddb.h>
@@ -101,11 +101,11 @@
 #endif /* ifdef HAVE_ZLIB */
 #ifdef HAVE_LIBNGHTTP2
 #include <nghttp2/nghttp2.h>
-#endif
+#endif /* ifdef HAVE_LIBNGHTTP2 */
 
 #ifdef HAVE_LIBNGTCP2
 #include <ngtcp2/ngtcp2.h>
-#endif /* HAVE_LIBNGTCP2 */
+#endif /* ifdef HAVE_LIBNGTCP2 */
 
 #include <lmdb.h>
 
@@ -533,18 +533,18 @@ format_features(char *buf, size_t bufsize) {
 	size_t n = 0;
 
 	buf[0] = '\0';
-#if HAVE_LIBNGHTTP2
+#ifdef HAVE_LIBNGHTTP2
 	n = append_feature(buf, bufsize, n, "DoH");
-#endif
+#endif /* ifdef HAVE_LIBNGHTTP2 */
 #ifdef HAVE_LIBNGTCP2
 	n = append_feature(buf, bufsize, n, "DoQ");
-#endif
-#if defined(HAVE_DNSTAP)
+#endif /* ifdef HAVE_LIBNGTCP2 */
+#ifdef HAVE_DNSTAP
 	n = append_feature(buf, bufsize, n, "dnstap");
-#endif
-#if defined(HAVE_GEOIP2)
+#endif /* ifdef HAVE_DNSTAP */
+#ifdef HAVE_GEOIP2
 	n = append_feature(buf, bufsize, n, "GeoIP2");
-#endif
+#endif /* ifdef HAVE_GEOIP2 */
 #ifdef HAVE_GSSAPI
 	n = append_feature(buf, bufsize, n, "GSS-API");
 #endif
@@ -605,40 +605,40 @@ printversion(bool verbose) {
 #elif defined(M_VERSION)
 	printf("compiled with system jemalloc version: %u\n", M_VERSION);
 #endif
-#if HAVE_LIBNGHTTP2
+#ifdef HAVE_LIBNGHTTP2
 	nghttp2_info *nginfo = NULL;
 	printf("compiled with libnghttp2 version: %s\n", NGHTTP2_VERSION);
 	nginfo = nghttp2_version(1);
 	printf("linked to libnghttp2 version: %s\n", nginfo->version_str);
-#endif
+#endif /* ifdef HAVE_LIBNGHTTP2 */
 #ifdef HAVE_LIBNGTCP2
 	const ngtcp2_info *ngtcpinfo = ngtcp2_version(0);
 	printf("compiled with libngtcp2 version: %s\n", NGTCP2_VERSION);
 	printf("linked to libngtcp2 version: %s\n", ngtcpinfo->version_str);
-#endif /* HAVE_LIBNGTCP2 */
+#endif /* ifdef HAVE_LIBNGTCP2 */
 #ifdef HAVE_LIBXML2
 	int xmlver = atoi(xmlParserVersion);
 	printf("compiled with libxml2 version: %s\n", LIBXML_DOTTED_VERSION);
 	printf("linked to libxml2 version: %d.%d.%d\n", xmlver / 10000,
 	       xmlver % 10000 / 100, xmlver % 100);
 #endif /* ifdef HAVE_LIBXML2 */
-#if defined(HAVE_JSON_C)
+#ifdef HAVE_JSON_C
 	printf("compiled with json-c version: %s\n", JSON_C_VERSION);
 	printf("linked to json-c version: %s\n", json_c_version());
-#endif /* if defined(HAVE_JSON_C) */
+#endif /* ifdef HAVE_JSON_C */
 #if defined(HAVE_ZLIB) && defined(ZLIB_VERSION)
 	printf("compiled with zlib version: %s\n", ZLIB_VERSION);
 	printf("linked to zlib version: %s\n", zlibVersion());
 #endif /* if defined(HAVE_ZLIB) && defined(ZLIB_VERSION) */
-#if defined(HAVE_GEOIP2)
+#ifdef HAVE_GEOIP2
 	/* Unfortunately, no version define on link time */
 	printf("linked to maxminddb version: %s\n", MMDB_lib_version());
-#endif /* if defined(HAVE_GEOIP2) */
-#if defined(HAVE_DNSTAP)
+#endif /* ifdef HAVE_GEOIP2 */
+#ifdef HAVE_DNSTAP
 	printf("compiled with libfstrm version: %s\n", FSTRM_VERSION);
 	printf("compiled with protobuf-c version: %s\n", PROTOBUF_C_VERSION);
 	printf("linked to protobuf-c version: %s\n", protobuf_c_version());
-#endif /* if defined(HAVE_DNSTAP) */
+#endif /* ifdef HAVE_DNSTAP */
 	printf("compiled with LMDB version: %d.%d.%d\n", MDB_VERSION_MAJOR,
 	       MDB_VERSION_MINOR, MDB_VERSION_PATCH);
 	printf("linked to LMDB version: %s\n", mdb_version(NULL, NULL, NULL));
@@ -677,11 +677,11 @@ printversion(bool verbose) {
 	printf("  rndc configuration:   %s\n", rndcconf);
 	printf("  nsupdate session key: %s\n", named_g_defaultsessionkeyfile);
 	printf("  named PID file:       %s\n", named_g_defaultpidfile);
-#if defined(HAVE_GEOIP2)
+#ifdef HAVE_GEOIP2
 #define RTC(x) RUNTIME_CHECK((x) == ISC_R_SUCCESS)
 	printf("  geoip-directory:      %s\n",
 	       MAXMINDDB_PREFIX "/share/GeoIP\n");
-#endif /* HAVE_GEOIP2 */
+#endif /* ifdef HAVE_GEOIP2 */
 }
 
 static void
@@ -1191,7 +1191,7 @@ setup(void) {
 		      ISC_LOG_NOTICE,
 		      "compiled with system jemalloc version: %u", M_VERSION);
 #endif
-#if HAVE_LIBNGHTTP2
+#ifdef HAVE_LIBNGHTTP2
 	nghttp2_info *nginfo = NULL;
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
 		      ISC_LOG_NOTICE, "compiled with libnghttp2 version: %s",
@@ -1200,7 +1200,7 @@ setup(void) {
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
 		      ISC_LOG_NOTICE, "linked to libnghttp2 version: %s",
 		      nginfo->version_str);
-#endif
+#endif /* ifdef HAVE_LIBNGHTTP2 */
 #ifdef HAVE_LIBNGTCP2
 	const ngtcp2_info *ngtcpinfo = ngtcp2_version(0);
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
@@ -1209,7 +1209,7 @@ setup(void) {
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
 		      ISC_LOG_NOTICE, "linked to libngtcp2 version: %s",
 		      ngtcpinfo->version_str);
-#endif /* HAVE_LIBNGTCP2 */
+#endif /* ifdef HAVE_LIBNGTCP2 */
 #ifdef HAVE_LIBXML2
 	int xmlver = atoi(xmlParserVersion);
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
@@ -1219,14 +1219,14 @@ setup(void) {
 		      ISC_LOG_NOTICE, "linked to libxml2 version: %d.%d.%d",
 		      xmlver / 10000, xmlver % 10000 / 100, xmlver % 100);
 #endif /* ifdef HAVE_LIBXML2 */
-#if defined(HAVE_JSON_C)
+#ifdef HAVE_JSON_C
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
 		      ISC_LOG_NOTICE, "compiled with json-c version: %s",
 		      JSON_C_VERSION);
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
 		      ISC_LOG_NOTICE, "linked to json-c version: %s",
 		      json_c_version());
-#endif /* if defined(HAVE_JSON_C) */
+#endif /* ifdef HAVE_JSON_C */
 #if defined(HAVE_ZLIB) && defined(ZLIB_VERSION)
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
 		      ISC_LOG_NOTICE, "compiled with zlib version: %s",
@@ -1235,13 +1235,13 @@ setup(void) {
 		      ISC_LOG_NOTICE, "linked to zlib version: %s",
 		      zlibVersion());
 #endif /* if defined(HAVE_ZLIB) && defined(ZLIB_VERSION) */
-#if defined(HAVE_GEOIP2)
+#ifdef HAVE_GEOIP2
 	/* Unfortunately, no version define on link time */
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
 		      ISC_LOG_NOTICE, "linked to maxminddb version: %s",
 		      MMDB_lib_version());
-#endif /* if defined(HAVE_GEOIP2) */
-#if defined(HAVE_DNSTAP)
+#endif /* ifdef HAVE_GEOIP2 */
+#ifdef HAVE_DNSTAP
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
 		      ISC_LOG_NOTICE, "compiled with libfstrm version: %s",
 		      FSTRM_VERSION);
@@ -1251,7 +1251,7 @@ setup(void) {
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
 		      ISC_LOG_NOTICE, "linked to protobuf-c version: %s",
 		      protobuf_c_version());
-#endif /* if defined(HAVE_DNSTAP) */
+#endif /* ifdef HAVE_DNSTAP */
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
 		      ISC_LOG_NOTICE, "compiled with LMDB version: %d.%d.%d",
 		      MDB_VERSION_MAJOR, MDB_VERSION_MINOR, MDB_VERSION_PATCH);
