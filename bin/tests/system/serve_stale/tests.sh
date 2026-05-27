@@ -2428,16 +2428,20 @@ grep "cname2\.stale\.test\..*3.*IN.*A.*192\.0\.0\.2" dig.out.test$n >/dev/null |
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
+wait_for_cname_refresh() {
+  $DIG -p ${PORT} @10.53.0.3 cname2.stale.test A >dig.out.test$n || return 1
+  grep "status: NOERROR" dig.out.test$n >/dev/null || return 1
+  grep "ANSWER: 2," dig.out.test$n >/dev/null || return 1
+  # We can't reliably test the TTL of the these records.
+  grep "cname2\.stale\.test\..*IN.*CNAME.*a2\.stale\.test\." dig.out.test$n >/dev/null || return 1
+  grep "a2\.stale\.test\..*IN.*A.*192\.0\.2\.2" dig.out.test$n >/dev/null || return 1
+}
+
 n=$((n + 1))
 ret=0
 echo_i "check stale cname2.stale.test A is refreshed (stale-answer-client-timeout 0) ($n)"
 nextpart ns3/named.run >/dev/null
-$DIG -p ${PORT} @10.53.0.3 cname2.stale.test A >dig.out.test$n || ret=1
-grep "status: NOERROR" dig.out.test$n >/dev/null || ret=1
-grep "ANSWER: 2," dig.out.test$n >/dev/null || ret=1
-# We can't reliably test the TTL of the these records.
-grep "cname2\.stale\.test\..*IN.*CNAME.*a2\.stale\.test\." dig.out.test$n >/dev/null || ret=1
-grep "a2\.stale\.test\..*IN.*A.*192\.0\.2\.2" dig.out.test$n >/dev/null || ret=1
+retry 10 wait_for_cname_refresh || ret=1
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
