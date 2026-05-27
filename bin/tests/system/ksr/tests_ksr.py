@@ -1464,6 +1464,36 @@ def test_ksr_fast(ns1):
     # - check subdomain
     isctest.kasp.check_subdomain(ns1, zone, ksks, zsks, offline_ksk=True)
 
+    # create fat skr
+    cmd = ksr(zone, policy, "keygen", options=f"-K {kskdir} -i now -e +7d -o")
+    ksks = isctest.kasp.keystr_to_keylist(cmd.out, kskdir)
+    cmd = ksr(zone, policy, "keygen", options=f"-K {zskdir} -i now -e +7d")
+    zsks = isctest.kasp.keystr_to_keylist(cmd.out, zskdir)
+    now = zsks[0].get_timing("Created")
+    until = now + timedelta(days=7)
+    fat_ksr_fname = f"{zone}.ksr.fat"
+    ksr(
+        zone,
+        policy,
+        "request",
+        options=f"-K {zskdir} -i {now} -e +7d",
+        to_file=fat_ksr_fname,
+    )
+    fat_skr_fname = f"{zone}.skr.fat"
+    ksr(
+        zone,
+        policy,
+        "sign",
+        options=f"-K {kskdir} -f {ksr_fname} -i {now} -e +7d",
+        to_file=fat_skr_fname,
+    )
+    # import fat skr
+    shutil.copyfile(fat_skr_fname, f"ns1/{fat_skr_fname}")
+    # load fat skr, twice in quick succession
+    ns1.rndc(f"skr -import {fat_skr_fname} {zone}")
+    ns1.rndc(f"skr -import {fat_skr_fname} {zone}")
+    # check apex
+    isctest.kasp.check_apex(ns1, zone, ksks, zsks, offline_ksk=True)
 
 def test_ksr_oversize(ns1):
     zone = "invalid-skr.test"
