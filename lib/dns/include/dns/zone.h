@@ -684,12 +684,15 @@ dns_zone_rekey(dns_zone_t *zone, bool fullsign, bool forcekeymgr);
  *
  * If 'forcekeymgr' is true, trigger a rekey event and allow the
  * next steps in the run to happen.
+ *
+ * Requires:
+ * \li	'zone' to be valid.
  */
 
 isc_result_t
 dns_zone_nscheck(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *version,
 		 unsigned int *errors);
-/*%
+/*%<
  * Check if the name servers for the zone are sane (have address, don't
  * refer to CNAMEs/DNAMEs.  The number of constiancy errors detected in
  * returned in '*errors'
@@ -706,7 +709,7 @@ dns_zone_nscheck(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *version,
 
 isc_result_t
 dns_zone_cdscheck(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *version);
-/*%
+/*%<
  * Check if CSD, CDNSKEY and DNSKEY are consistent.
  *
  * Requires:
@@ -723,13 +726,16 @@ dns_zone_cdscheck(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *version);
 
 isc_result_t
 dns_zone_dlzpostload(dns_zone_t *zone, dns_db_t *db);
-/*%
+/*%<
  * Load the origin names for a writeable DLZ database.
+ *
+ * Requires:
+ * \li	'zone' to be valid.
  */
 
 bool
 dns_zone_isdynamic(dns_zone_t *zone, bool ignore_freeze);
-/*%
+/*%<
  * Return true iff the zone is "dynamic", in the sense that the zone's
  * master file (if any) is written by the server, rather than being
  * updated manually and read by the server.
@@ -747,6 +753,13 @@ dns_zone_isdynamic(dns_zone_t *zone, bool ignore_freeze);
 
 isc_result_t
 dns_zone_link(dns_zone_t *zone, dns_zone_t *raw);
+/*%<
+ * Link zone and its raw instance.
+ *
+ * Requires:
+ * \li	'zone' to be valid.
+ * \li	'raw' to be valid.
+ */
 
 void
 dns_zone_getraw(dns_zone_t *zone, dns_zone_t **raw);
@@ -786,21 +799,24 @@ dns_zone_setnsec3param(dns_zone_t *zone, uint8_t hash, uint8_t flags,
 
 void
 dns_zone_setrawdata(dns_zone_t *zone, dns_masterrawheader_t *header);
-/*%
+/*%<
  * Set the data to be included in the header when the zone is dumped in
  * binary format.
  */
 
 isc_result_t
 dns_zone_synckeyzone(dns_zone_t *zone);
-/*%
+/*%<
  * Force the managed key zone to synchronize, and start the key
  * maintenance timer.
+ *
+ * Requires:
+ * \li	'zone' to be valid.
  */
 
 unsigned int
 dns_zone_getincludes(dns_zone_t *zone, char ***includesp);
-/*%
+/*%<
  * Return the number include files that were encountered
  * during load.  If the number is greater than zero, 'includesp'
  * will point to an array containing the filenames.
@@ -811,18 +827,28 @@ dns_zone_getincludes(dns_zone_t *zone, char ***includesp);
 isc_result_t
 dns_zone_rpz_enable(dns_zone_t *zone, dns_rpz_zones_t *rpzs,
 		    dns_rpz_num_t rpz_num);
-/*%
+/*%<
  * Set the response policy associated with a zone.
  */
 
 void
 dns_zone_rpz_enable_db(dns_zone_t *zone, dns_db_t *db);
-/*%
+/*%<
  * If a zone is a response policy zone, mark its new database.
+ *
+ * Requires:
+ * \li	'zone' is a valid zone object
+ * \li	'db' is a valid database.
  */
 
 dns_rpz_num_t
 dns_zone_get_rpz_num(dns_zone_t *zone);
+/*%<
+ * Return the rpz zone number or DNS_RPZ_INVALID_NUM.
+ *
+ * Requires:
+ * \li	'zone' is a valid zone object
+ */
 
 void
 dns_zone_catz_enable(dns_zone_t *zone, dns_catz_zones_t *catzs);
@@ -868,6 +894,7 @@ dns_zone_catz_enable_db(dns_zone_t *zone, dns_db_t *db);
  * \li	'zone' is a valid zone object
  * \li	'db' is not NULL
  */
+
 void
 dns_zone_set_parentcatz(dns_zone_t *zone, dns_catz_zone_t *catz);
 /*%<
@@ -891,8 +918,12 @@ dns_zone_get_parentcatz(dns_zone_t *zone);
 
 isc_result_t
 dns_zone_setserial(dns_zone_t *zone, uint32_t serial);
-/*%
+/*%<
  * Set the zone's serial to 'serial'.
+ *
+ * Requires:
+ *
+ * \li	'zone' is a valid zone object
  */
 
 bool
@@ -932,7 +963,7 @@ bool
 dns_zone_check_dnskey_nsec3(dns_zone_t *zone, dns_db_t *db,
 			    dns_dbversion_t *ver, dns_diff_t *diff,
 			    dst_key_t **keys, unsigned int numkeys);
-/**<
+/*%<
  * Return whether the zone would enter an inconsistent state where NSEC only
  * DNSKEYs are present along NSEC3 chains.
  *
@@ -947,7 +978,7 @@ dns_zone_check_dnskey_nsec3(dns_zone_t *zone, dns_db_t *db,
 
 isc_result_t
 dns_zone_import_skr(dns_zone_t *zone, const char *file);
-/**<
+/*%<
  * Import a Signed Key Response (SKR) from file.
  *
  * Requires:
@@ -960,7 +991,7 @@ dns_zone_import_skr(dns_zone_t *zone, const char *file);
 
 isc_result_t
 dns_zone_getzoneversion(dns_zone_t *zone, isc_buffer_t *b);
-/**<
+/*%<
  * Return the EDNS ZONEVERSION for this zone.
  *
  * Note: For type SERIAL a buffer of at least 6 octets is required.
@@ -978,7 +1009,7 @@ dns_zone_getzoneversion(dns_zone_t *zone, isc_buffer_t *b);
 
 void
 dns_zonemgr_setkeystores(dns_zonemgr_t *zmgr, dns_keystorelist_t *keystores);
-/**<
+/*%<
  * Set the global setting keystores into the zonemgr, so it can be used from the
  * DNS code.
  *
@@ -990,7 +1021,7 @@ dns_zonemgr_setkeystores(dns_zonemgr_t *zmgr, dns_keystorelist_t *keystores);
 void
 dns_zone_setplugins(dns_zone_t *zone, void *plugins,
 		    void (*plugins_free)(isc_mem_t *, void **));
-/**<
+/*%<
  * Initialize zone plugins owning list and free callback
  *
  * Requires:
@@ -1001,7 +1032,7 @@ dns_zone_setplugins(dns_zone_t *zone, void *plugins,
 
 void
 dns_zone_unloadplugins(dns_zone_t *zone);
-/**<
+/*%<
  * Unload all plugins attached to this zone, and free the hooktable as well as
  * the plugins list.
  *
