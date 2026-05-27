@@ -1311,27 +1311,39 @@ dns_name_internalwildcard(const dns_name_t *name);
  */
 
 bool
-dns_name_isdnssd(const dns_name_t *owner);
+dns_name_isdnssd(const dns_name_t *name);
 /*%<
- * Determine if the 'owner' is a DNS-SD prefix.
+ * Determine if the 'name' is a DNS-SD prefix.
+ *
+ * Requires:
+ * \li	'name' to be valid.
  */
 
 bool
-dns_name_isrfc1918(const dns_name_t *owner);
+dns_name_isrfc1918(const dns_name_t *name);
 /*%<
  * Determine if the 'name' is in the RFC 1918 reverse namespace.
+ *
+ * Requires:
+ * \li	'name' to be valid.
  */
 
 bool
-dns_name_isula(const dns_name_t *owner);
+dns_name_isula(const dns_name_t *name);
 /*%<
  * Determine if the 'name' is in the ULA reverse namespace.
+ *
+ * Requires:
+ * \li	'name' to be valid.
  */
 
 bool
 dns_name_istat(const dns_name_t *name);
 /*%<
  * Determine if 'name' is a potential 'trust-anchor-telemetry' name.
+ *
+ * Requires:
+ * \li	'name' to be valid.
  */
 
 bool
@@ -1339,6 +1351,9 @@ dns_name_isdnssvcb(const dns_name_t *name);
 /*%<
  * Determine if 'name' is a dns service name,
  * i.e. it starts with and optional _port label followed by a _dns label.
+ *
+ * Requires:
+ * \li	'name' to be valid.
  */
 
 size_t
@@ -1346,6 +1361,9 @@ dns_name_size(const dns_name_t *name);
 /*%<
  * Return the amount of dynamically allocated memory associated with
  * 'name' (which is 0 if 'name' is not dynamic).
+ *
+ * Requires:
+ * \li	'name' to be valid.
  */
 
 bool
