@@ -617,8 +617,10 @@ printversion(bool verbose) {
 	printf("linked to libngtcp2 version: %s\n", ngtcpinfo->version_str);
 #endif /* HAVE_LIBNGTCP2 */
 #ifdef HAVE_LIBXML2
+	int xmlver = atoi(xmlParserVersion);
 	printf("compiled with libxml2 version: %s\n", LIBXML_DOTTED_VERSION);
-	printf("linked to libxml2 version: %s\n", xmlParserVersion);
+	printf("linked to libxml2 version: %d.%d.%d\n", xmlver / 10000,
+	       xmlver % 10000 / 100, xmlver % 100);
 #endif /* ifdef HAVE_LIBXML2 */
 #if defined(HAVE_JSON_C)
 	printf("compiled with json-c version: %s\n", JSON_C_VERSION);
@@ -1209,12 +1211,13 @@ setup(void) {
 		      ngtcpinfo->version_str);
 #endif /* HAVE_LIBNGTCP2 */
 #ifdef HAVE_LIBXML2
+	int xmlver = atoi(xmlParserVersion);
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
 		      ISC_LOG_NOTICE, "compiled with libxml2 version: %s",
 		      LIBXML_DOTTED_VERSION);
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
-		      ISC_LOG_NOTICE, "linked to libxml2 version: %s",
-		      xmlParserVersion);
+		      ISC_LOG_NOTICE, "linked to libxml2 version: %d.%d.%d",
+		      xmlver / 10000, xmlver % 10000 / 100, xmlver % 100);
 #endif /* ifdef HAVE_LIBXML2 */
 #if defined(HAVE_JSON_C)
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
