@@ -107,6 +107,8 @@
 #include <ngtcp2/ngtcp2.h>
 #endif /* HAVE_LIBNGTCP2 */
 
+#include <lmdb.h>
+
 /* On DragonFly BSD the header does not provide jemalloc API */
 #if defined(HAVE_MALLOC_NP_H) && !defined(__DragonFly__)
 #include <malloc_np.h>
@@ -588,6 +590,9 @@ printversion(bool verbose) {
 	printf("compiled with protobuf-c version: %s\n", PROTOBUF_C_VERSION);
 	printf("linked to protobuf-c version: %s\n", protobuf_c_version());
 #endif /* if defined(HAVE_DNSTAP) */
+	printf("compiled with LMDB version: %d.%d.%d\n", MDB_VERSION_MAJOR,
+	       MDB_VERSION_MINOR, MDB_VERSION_PATCH);
+	printf("linked to LMDB version: %s\n", mdb_version(NULL, NULL, NULL));
 	printf("threads support is enabled\n");
 
 	isc_buffer_init(&b, buf, sizeof(buf));
@@ -1168,6 +1173,12 @@ setup(void) {
 		      ISC_LOG_NOTICE, "linked to protobuf-c version: %s",
 		      protobuf_c_version());
 #endif /* if defined(HAVE_DNSTAP) */
+	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
+		      ISC_LOG_NOTICE, "compiled with LMDB version: %d.%d.%d",
+		      MDB_VERSION_MAJOR, MDB_VERSION_MINOR, MDB_VERSION_PATCH);
+	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
+		      ISC_LOG_NOTICE, "linked to LMDB version: %s",
+		      mdb_version(NULL, NULL, NULL));
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
 		      ISC_LOG_NOTICE,
 		      "----------------------------------------------------");
