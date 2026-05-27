@@ -633,6 +633,7 @@ printversion(bool verbose) {
 	printf("linked to maxminddb version: %s\n", MMDB_lib_version());
 #endif /* if defined(HAVE_GEOIP2) */
 #if defined(HAVE_DNSTAP)
+	printf("compiled with libfstrm version: %s\n", FSTRM_VERSION);
 	printf("compiled with protobuf-c version: %s\n", PROTOBUF_C_VERSION);
 	printf("linked to protobuf-c version: %s\n", protobuf_c_version());
 #endif /* if defined(HAVE_DNSTAP) */
@@ -1238,6 +1239,9 @@ setup(void) {
 		      MMDB_lib_version());
 #endif /* if defined(HAVE_GEOIP2) */
 #if defined(HAVE_DNSTAP)
+	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
+		      ISC_LOG_NOTICE, "compiled with libfstrm version: %s",
+		      FSTRM_VERSION);
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
 		      ISC_LOG_NOTICE, "compiled with protobuf-c version: %s",
 		      PROTOBUF_C_VERSION);

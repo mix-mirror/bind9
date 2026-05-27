@@ -794,6 +794,7 @@ if dnstap_opt.allowed()
     proto_dep = dependency('libprotobuf-c', required: dnstap_opt)
     if protoc.found() and fstrm_dep.found() and proto_dep.found()
         config.set('HAVE_DNSTAP', 1)
+        config.set_quoted('FSTRM_VERSION', fstrm_dep.version())
     endif
 endif
 
