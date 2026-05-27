@@ -464,6 +464,9 @@ stages:
   <<: *default_triggering_rules
   stage: build
   before_script:
+    - cat /proc/cpuinfo
+    - nproc
+    - exit 1
     - test -w "${CCACHE_DIR}" && export PATH="/usr/lib/ccache:${PATH}"
     - *list_installed_package_versions
   script:
