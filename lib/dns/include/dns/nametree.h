@@ -89,6 +89,7 @@ dns_nametree_add(dns_nametree_t *nametree, const dns_name_t *name,
  * Requires:
  *
  *\li	'nametree' points to a valid nametree.
+ *\li	'name' points to a valid name.
  *
  * Returns:
  *
@@ -110,7 +111,7 @@ dns_nametree_delete(dns_nametree_t *nametree, const dns_name_t *name);
  * Requires:
  *
  *\li	'nametree' points to a valid nametree.
- *\li	'name' is not NULL
+ *\li	'name' points to a valid name.
  *
  * Returns:
  *
@@ -128,9 +129,7 @@ dns_nametree_find(dns_nametree_t *nametree, const dns_name_t *name,
  * Requires:
  *
  *\li	'nametree' is a valid nametree.
- *
  *\li	'name' is a valid name.
- *
  *\li	ntp != NULL && *ntp == NULL
  *
  * Returns:
@@ -162,7 +161,9 @@ dns_nametree_covered(dns_nametree_t *nametree, const dns_name_t *name,
  *
  * Requires:
  *
- *\li	'nametree' is a valid nametree, or is NULL.
+ *\li	'nametree' is a valid nametree.
+ *\li	'name' is a valid name.
+ *\li	'found' is a valid name, or is NULL.
  */
 
 #if DNS_NAMETREE_TRACE

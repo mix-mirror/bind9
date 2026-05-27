@@ -151,7 +151,7 @@ dns_nametree_add(dns_nametree_t *nametree, const dns_name_t *name,
 	dns_ntnode_t *old = NULL, *new = NULL;
 
 	REQUIRE(VALID_NAMETREE(nametree));
-	REQUIRE(name != NULL);
+	REQUIRE(DNS_NAME_VALID(name));
 
 	dns_qpmulti_write(nametree->table, &qp);
 
@@ -222,7 +222,7 @@ dns_nametree_delete(dns_nametree_t *nametree, const dns_name_t *name) {
 	uint32_t count;
 
 	REQUIRE(VALID_NAMETREE(nametree));
-	REQUIRE(name != NULL);
+	REQUIRE(DNS_NAME_VALID(name));
 
 	dns_qpmulti_write(nametree->table, &qp);
 	result = dns_qp_deletename(qp, name, DNS_DBNAMESPACE_NORMAL,
@@ -258,7 +258,7 @@ dns_nametree_find(dns_nametree_t *nametree, const dns_name_t *name,
 	dns_qpread_t qpr;
 
 	REQUIRE(VALID_NAMETREE(nametree));
-	REQUIRE(name != NULL);
+	REQUIRE(DNS_NAME_VALID(name));
 	REQUIRE(ntnodep != NULL && *ntnodep == NULL);
 
 	dns_qpmulti_query(nametree->table, &qpr);
@@ -281,7 +281,7 @@ dns_nametree_covered(dns_nametree_t *nametree, const dns_name_t *name,
 	bool ret = false;
 
 	REQUIRE(VALID_NAMETREE(nametree));
-	REQUIRE(name != NULL);
+	REQUIRE(DNS_NAME_VALID(name));
 
 	dns_qpmulti_query(nametree->table, &qpr);
 	result = dns_qp_lookup(&qpr, name, DNS_DBNAMESPACE_NORMAL, NULL, NULL,
