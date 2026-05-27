@@ -545,6 +545,9 @@ format_features(char *buf, size_t bufsize) {
 #if defined(HAVE_GEOIP2)
 	n = append_feature(buf, bufsize, n, "GeoIP2");
 #endif
+#ifdef HAVE_GSSAPI
+	n = append_feature(buf, bufsize, n, "GSS-API");
+#endif
 #ifdef HAVE_ZLIB
 	n = append_feature(buf, bufsize, n, "zlib");
 #endif
@@ -641,6 +644,9 @@ printversion(bool verbose) {
 	printf("compiled with libcap version: %s\n", LIBCAP_VERSION);
 #endif
 #endif /* ifdef HAVE_LIBCAP */
+#ifdef HAVE_GSSAPI
+	printf("compiled with GSS-API version: %s\n", GSSAPI_VERSION);
+#endif /* ifdef HAVE_GSSAPI */
 
 	format_supported_algorithms(printit);
 	printf("\n");
@@ -1253,6 +1259,11 @@ setup(void) {
 		      LIBCAP_VERSION);
 #endif
 #endif /* ifdef HAVE_LIBCAP */
+#ifdef HAVE_GSSAPI
+	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
+		      ISC_LOG_NOTICE, "compiled with GSS-API version: %s",
+		      GSSAPI_VERSION);
+#endif /* ifdef HAVE_GSSAPI */
 
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
 		      ISC_LOG_NOTICE,

@@ -887,6 +887,7 @@ if gssapi_opt.allowed() and krb5_config.found()
 
     if krb5_dep.found() and gssapi_dep.found()
         config.set('HAVE_GSSAPI', 1)
+        config.set_quoted('GSSAPI_VERSION', gssapi_dep.version())
     endif
 endif
 
