@@ -895,6 +895,7 @@ cap_dep = null_dep
 cap_dep = dependency('libcap', required: host_machine.system() == 'linux')
 if cap_dep.found()
     config.set('HAVE_LIBCAP', 1)
+    config.set_quoted('LIBCAP_VERSION', cap_dep.version())
 endif
 
 ## IDN

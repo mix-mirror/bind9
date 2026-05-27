@@ -109,6 +109,10 @@
 
 #include <lmdb.h>
 
+#ifdef HAVE_LIBCAP
+#include <sys/capability.h>
+#endif /* ifdef HAVE_LIBCAP */
+
 /* On DragonFly BSD the header does not provide jemalloc API */
 #if defined(HAVE_MALLOC_NP_H) && !defined(__DragonFly__)
 #include <malloc_np.h>
@@ -629,6 +633,14 @@ printversion(bool verbose) {
 	printf("compiled with LMDB version: %d.%d.%d\n", MDB_VERSION_MAJOR,
 	       MDB_VERSION_MINOR, MDB_VERSION_PATCH);
 	printf("linked to LMDB version: %s\n", mdb_version(NULL, NULL, NULL));
+#ifdef HAVE_LIBCAP
+#if defined(LIBCAP_MAJOR) && defined(LIBCAP_MINOR)
+	printf("compiled with libcap version: %d.%d\n", LIBCAP_MAJOR,
+	       LIBCAP_MINOR);
+#else
+	printf("compiled with libcap version: %s\n", LIBCAP_VERSION);
+#endif
+#endif /* ifdef HAVE_LIBCAP */
 
 	format_supported_algorithms(printit);
 	printf("\n");
@@ -1230,6 +1242,17 @@ setup(void) {
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
 		      ISC_LOG_NOTICE, "linked to LMDB version: %s",
 		      mdb_version(NULL, NULL, NULL));
+#ifdef HAVE_LIBCAP
+#if defined(LIBCAP_MAJOR) && defined(LIBCAP_MINOR)
+	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
+		      ISC_LOG_NOTICE, "compiled with libcap version: %d.%d",
+		      LIBCAP_MAJOR, LIBCAP_MINOR);
+#else
+	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
+		      ISC_LOG_NOTICE, "compiled with libcap version: %s",
+		      LIBCAP_VERSION);
+#endif
+#endif /* ifdef HAVE_LIBCAP */
 
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
 		      ISC_LOG_NOTICE,
