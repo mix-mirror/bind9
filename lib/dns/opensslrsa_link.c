@@ -208,7 +208,15 @@ opensslrsa_sign(dst_context_t *dctx, isc_buffer_t *sig) {
 		break;
 	}
 
-	if (!EVP_SignFinal(evp_md_ctx, r.base, &siglen, pkey)) {
+	/* Serialize the token op against concurrent key loads (see ecdsa). */
+	if (key->label != NULL) {
+		dst__openssl_toklock();
+	}
+	int rv = EVP_SignFinal(evp_md_ctx, r.base, &siglen, pkey);
+	if (key->label != NULL) {
+		dst__openssl_tokunlock();
+	}
+	if (!rv) {
 		return dst__openssl_toresult3(dctx->category, "EVP_SignFinal",
 					      ISC_R_FAILURE);
 	}
@@ -262,7 +270,13 @@ opensslrsa_verify(dst_context_t *dctx, const isc_region_t *sig) {
 		break;
 	}
 
+	if (key->label != NULL) {
+		dst__openssl_toklock();
+	}
 	status = EVP_VerifyFinal(evp_md_ctx, base, length, pkey);
+	if (key->label != NULL) {
+		dst__openssl_tokunlock();
+	}
 	switch (status) {
 	case 1:
 		return ISC_R_SUCCESS;
@@ -311,8 +325,11 @@ opensslrsa_generate(dst_key_t *key, int unused, void (*callback)(int)) {
 	}
 
 	if (key->label != NULL) {
-		CHECK(isc_ossl_wrap_generate_pkcs11_rsa_key(
-			key->label, key->key_size, &pkey));
+		dst__openssl_toklock();
+		result = isc_ossl_wrap_generate_pkcs11_rsa_key(
+			key->label, key->key_size, &pkey);
+		dst__openssl_tokunlock();
+		CHECK(result);
 	} else {
 		CHECK(isc_ossl_wrap_generate_rsa_key(callback, key->key_size,
 						     &pkey));
@@ -595,7 +612,8 @@ cleanup:
 }
 
 static isc_result_t
-opensslrsa_fromlabel(dst_key_t *key, const char *label, const char *pin);
+opensslrsa_fromlabel_cmp(dst_key_t *key, const char *label, const char *pin,
+			 EVP_PKEY *cmp_pub);
 
 static isc_result_t
 opensslrsa_parse(dst_key_t *key, isc_lex_t *lexer, dst_key_t *pub) {
@@ -645,13 +663,11 @@ opensslrsa_parse(dst_key_t *key, isc_lex_t *lexer, dst_key_t *pub) {
 	 * See if we can fetch it.
 	 */
 	if (label != NULL) {
-		CHECK(opensslrsa_fromlabel(key, label, NULL));
-		/* Check that the public component matches if given */
-		if (pub != NULL && EVP_PKEY_eq(key->keydata.pkeypair.pub,
-					       pub->keydata.pkeypair.pub) != 1)
-		{
-			CLEANUP(DST_R_INVALIDPRIVATEKEY);
-		}
+		/* Pass the file's public key to retry past a transient
+		 * token mismatch. */
+		CHECK(opensslrsa_fromlabel_cmp(
+			key, label, NULL,
+			pub != NULL ? pub->keydata.pkeypair.pub : NULL));
 		CLEANUP(ISC_R_SUCCESS);
 	}
 
@@ -737,12 +753,13 @@ cleanup:
 }
 
 static isc_result_t
-opensslrsa_fromlabel(dst_key_t *key, const char *label, const char *pin) {
+opensslrsa_fromlabel_cmp(dst_key_t *key, const char *label, const char *pin,
+			 EVP_PKEY *cmp_pub) {
 	EVP_PKEY *privpkey = NULL, *pubpkey = NULL;
 	isc_result_t result;
 
-	CHECK(dst__openssl_fromlabel(EVP_PKEY_RSA, label, pin, &pubpkey,
-				     &privpkey));
+	CHECK(dst__openssl_fromlabel(EVP_PKEY_RSA, label, pin, cmp_pub,
+				     &pubpkey, &privpkey));
 
 	if (!isc_ossl_wrap_rsa_key_bits_leq(pubpkey, RSA_MAX_PUBEXP_BITS)) {
 		CLEANUP(ISC_R_RANGE);
@@ -762,6 +779,11 @@ cleanup:
 	EVP_PKEY_free(privpkey);
 	EVP_PKEY_free(pubpkey);
 	return result;
+}
+
+static isc_result_t
+opensslrsa_fromlabel(dst_key_t *key, const char *label, const char *pin) {
+	return opensslrsa_fromlabel_cmp(key, label, pin, NULL);
 }
 
 static dst_func_t opensslrsa_functions = {

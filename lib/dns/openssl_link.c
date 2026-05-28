@@ -27,9 +27,12 @@
  * IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <time.h>
+
 #include <isc/log.h>
 #include <isc/mem.h>
 #include <isc/mutex.h>
+#include <isc/once.h>
 #include <isc/result.h>
 #include <isc/string.h>
 #include <isc/thread.h>
@@ -39,6 +42,25 @@
 #include "dst_internal.h"
 #include "dst_openssl.h"
 
+static isc_once_t toklock_once = ISC_ONCE_INITIALIZER;
+static isc_mutex_t toklock;
+
+static void
+toklock_initialize(void) {
+	isc_mutex_init(&toklock);
+}
+
+void
+dst__openssl_toklock(void) {
+	isc_once_do(&toklock_once, toklock_initialize);
+	isc_mutex_lock(&toklock);
+}
+
+void
+dst__openssl_tokunlock(void) {
+	isc_mutex_unlock(&toklock);
+}
+
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
 #include <openssl/core_names.h>
 #include <openssl/store.h>
@@ -46,15 +68,12 @@
 
 #include "openssl_shim.h"
 
-static isc_result_t
-dst__openssl_fromlabel_provider(int key_base_id, const char *label,
-				const char *pin, EVP_PKEY **ppub,
-				EVP_PKEY **ppriv) {
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
+static isc_result_t
+fromlabel_provider_once(int key_base_id, const char *label, EVP_PKEY **ppub,
+			EVP_PKEY **ppriv) {
 	isc_result_t result = DST_R_OPENSSLFAILURE;
 	OSSL_STORE_CTX *ctx = NULL;
-
-	UNUSED(pin);
 
 	ctx = OSSL_STORE_open(label, NULL, NULL, NULL, NULL);
 	if (!ctx) {
@@ -92,16 +111,66 @@ dst__openssl_fromlabel_provider(int key_base_id, const char *label,
 		}
 		OSSL_STORE_INFO_free(info);
 	}
+	if (*ppriv != NULL && *ppub == NULL) {
+		/* No separate public object; the private key carries it. */
+		EVP_PKEY_up_ref(*ppriv);
+		*ppub = *ppriv;
+	}
 	if (*ppriv != NULL && *ppub != NULL) {
 		result = ISC_R_SUCCESS;
 	}
 cleanup:
-	OSSL_STORE_close(ctx);
+	if (ctx != NULL) {
+		OSSL_STORE_close(ctx);
+	}
+	return result;
+}
+#endif
+
+static isc_result_t
+dst__openssl_fromlabel_provider(int key_base_id, const char *label,
+				const char *pin, EVP_PKEY *cmp_pub,
+				EVP_PKEY **ppub, EVP_PKEY **ppriv) {
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+	isc_result_t result = DST_R_OPENSSLFAILURE;
+
+	UNUSED(pin);
+
+	/*
+	 * A token load can transiently return an empty set or, for a freshly
+	 * created key, an object whose public key does not match 'cmp_pub'.
+	 * Retry with a short backoff, dropping the lock while sleeping.
+	 */
+	for (unsigned int attempt = 0;; attempt++) {
+		dst__openssl_toklock();
+		result = fromlabel_provider_once(key_base_id, label, ppub,
+						 ppriv);
+		dst__openssl_tokunlock();
+		if (result == ISC_R_SUCCESS && cmp_pub != NULL &&
+		    EVP_PKEY_eq(*ppub, cmp_pub) != 1)
+		{
+			result = DST_R_INVALIDPRIVATEKEY;
+		}
+		if (result == ISC_R_SUCCESS || attempt >= 199) {
+			break;
+		}
+		if (*ppub != NULL) {
+			EVP_PKEY_free(*ppub);
+			*ppub = NULL;
+		}
+		if (*ppriv != NULL) {
+			EVP_PKEY_free(*ppriv);
+			*ppriv = NULL;
+		}
+		(void)nanosleep(&(struct timespec){ .tv_nsec = 10000000 },
+				NULL);
+	}
 	return result;
 #else
 	UNUSED(key_base_id);
 	UNUSED(label);
 	UNUSED(pin);
+	UNUSED(cmp_pub);
 	UNUSED(ppub);
 	UNUSED(ppriv);
 	return DST_R_OPENSSLFAILURE;
@@ -110,9 +179,9 @@ cleanup:
 
 isc_result_t
 dst__openssl_fromlabel(int key_base_id, const char *label, const char *pin,
-		       EVP_PKEY **ppub, EVP_PKEY **ppriv) {
-	return dst__openssl_fromlabel_provider(key_base_id, label, pin, ppub,
-					       ppriv);
+		       EVP_PKEY *cmp_pub, EVP_PKEY **ppub, EVP_PKEY **ppriv) {
+	return dst__openssl_fromlabel_provider(key_base_id, label, pin, cmp_pub,
+					       ppub, ppriv);
 }
 
 bool

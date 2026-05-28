@@ -18,6 +18,8 @@
 #include <isc/assertions.h>
 #include <isc/buffer.h>
 #include <isc/dir.h>
+#include <isc/hex.h>
+#include <isc/md.h>
 #include <isc/mem.h>
 #include <isc/time.h>
 #include <isc/util.h>
@@ -134,8 +136,11 @@ buildpkcs11label(const char *uri, const dns_name_t *zname, const char *policy,
 	bool ksk = ((flags & DNS_KEYFLAG_KSK) != 0);
 	char timebuf[18];
 	isc_time_t now = isc_time_now();
-	dns_fixedname_t fname;
-	dns_name_t *pname = dns_fixedname_initname(&fname);
+	unsigned char digest[ISC_MAX_MD_SIZE];
+	unsigned int digestlen = sizeof(digest);
+	char hexbuf[ISC_MAX_MD_SIZE * 2 + 1];
+	isc_buffer_t hexb;
+	isc_region_t hexr;
 
 	/* uri + object */
 	if (isc_buffer_availablelength(buf) < strlen(uri) + strlen(";object="))
@@ -144,21 +149,40 @@ buildpkcs11label(const char *uri, const dns_name_t *zname, const char *policy,
 	}
 	isc_buffer_putstr(buf, uri);
 	isc_buffer_putstr(buf, ";object=");
-	/* zone name */
-	RETERR(dns_name_tofilenametext(zname, false, buf));
+
 	/*
-	 * policy name
-	 *
-	 * Note that strlen(policy) is not the actual length, but if this
-	 * already does not fit, the escaped version returned from
-	 * dns_name_tofilenametext() certainly won't fit.
+	 * Object identifier: SHA-1 of the zone wire name + policy.  A
+	 * fixed-length digest avoids pkcs11-provider label-length limits.
 	 */
-	if (isc_buffer_availablelength(buf) < (strlen(policy) + 1)) {
+	{
+		isc_md_t *md = isc_md_new();
+		isc_result_t r;
+
+		r = isc_md_init(md, ISC_MD_SHA1);
+		if (r == ISC_R_SUCCESS) {
+			r = isc_md_update(md, zname->ndata, zname->length);
+		}
+		if (r == ISC_R_SUCCESS) {
+			r = isc_md_update(md, (const unsigned char *)policy,
+					  strlen(policy));
+		}
+		if (r == ISC_R_SUCCESS) {
+			r = isc_md_final(md, digest, &digestlen);
+		}
+		isc_md_free(md);
+		RETERR(r);
+	}
+
+	isc_buffer_init(&hexb, hexbuf, sizeof(hexbuf));
+	hexr = (isc_region_t){ digest, digestlen };
+	RETERR(isc_hex_totext(&hexr, 0, "", &hexb));
+
+	if (isc_buffer_availablelength(buf) < isc_buffer_usedlength(&hexb)) {
 		return ISC_R_NOSPACE;
 	}
-	isc_buffer_putstr(buf, "-");
-	RETERR(dns_name_fromstring(pname, policy, dns_rootname, 0, NULL));
-	RETERR(dns_name_tofilenametext(pname, false, buf));
+	isc_buffer_putmem(buf, isc_buffer_base(&hexb),
+			  isc_buffer_usedlength(&hexb));
+
 	/* key type + current time */
 	isc_time_formatshorttimestamp(&now, timebuf, sizeof(timebuf));
 	return isc_buffer_printf(buf, "-%s-%s", ksk ? "ksk" : "zsk", timebuf);
@@ -182,21 +206,9 @@ dns_keystore_keygen(dns_keystore_t *keystore, const dns_name_t *origin,
 	uri = dns_keystore_pkcs11uri(keystore);
 	if (uri != NULL) {
 		/*
-		 * Create the PKCS#11 label.
-		 * The label consists of the configured URI, and the object
-		 * parameter.  The object parameter needs to be unique.  We
-		 * know that for a given point in time, there will be at most
-		 * one key per type created for each zone in a given DNSSEC
-		 * policy.  Hence the object is constructed out of the following
-		 * parts: the zone name, policy name, key type, and the
-		 * current time.
-		 *
-		 * The object may not contain any characters that conflict with
-		 * special characters in the PKCS#11 URI scheme syntax (see
-		 * RFC 7512, Section 2.3). Therefore, we mangle the zone name
-		 * and policy name through 'dns_name_tofilenametext()'. We
-		 * could create a new function to convert a name to PKCS#11
-		 * text, but this existing function will suffice.
+		 * Build the PKCS#11 object label.  At most one key per type
+		 * exists for a zone in a policy at a given time, so the label
+		 * (zone + policy + key type + time) is unique.
 		 */
 		char label[NAME_MAX];
 		isc_buffer_t buf;
@@ -214,10 +226,15 @@ dns_keystore_keygen(dns_keystore_t *keystore, const dns_name_t *origin,
 			return result;
 		}
 
-		/* Generate the key */
-		result = dst_key_generate(origin, alg, size, 0, flags,
-					  DNS_KEYPROTO_DNSSEC, rdclass, label,
-					  mctx, &newkey, NULL);
+		/* Retry: concurrent token keygen can fail transiently. */
+		for (unsigned int attempt = 0; attempt < 3; attempt++) {
+			result = dst_key_generate(origin, alg, size, 0, flags,
+						  DNS_KEYPROTO_DNSSEC, rdclass,
+						  label, mctx, &newkey, NULL);
+			if (result == ISC_R_SUCCESS) {
+				break;
+			}
+		}
 
 		if (result != ISC_R_SUCCESS) {
 			isc_log_write(
