@@ -2573,6 +2573,19 @@ pairwise:
   <<: *base_image
   stage: build
   needs: []
+  variables:
+    # meson uses ccache automatically when it is in PATH; persist its cache
+    # across combinations and pipelines to avoid recompiling the (mostly
+    # unchanged) sources for every option combination.  CCACHE_BASEDIR
+    # normalizes absolute paths under the project directory so cached objects
+    # are reused regardless of the build directory's absolute location.
+    CCACHE_DIR: "${CI_PROJECT_DIR}/.ccache"
+    CCACHE_BASEDIR: "${CI_PROJECT_DIR}"
+    CCACHE_MAXSIZE: "2G"
+  cache:
+    key: pairwise-ccache
+    paths:
+      - .ccache
   script:
       - util/pairwise-testing.sh
   artifacts:

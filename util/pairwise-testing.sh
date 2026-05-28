@@ -51,23 +51,29 @@ meson introspect build-pairwise-default --buildoptions | ./util/pairwise-constru
 
 pict pairwise-model.txt | tr "\t" " " | sed "1d" >pairwise-commands.txt
 
-rm -rf build-pairwire-default
+rm -rf build-pairwise-default
 
+# Build every combination in the same fixed directory.  Using a stable build
+# path (instead of a random per-combination one) lets ccache - which meson
+# picks up automatically when it is in PATH - reuse the many translation units
+# that do not change between combinations instead of recompiling them every
+# time.  The directory is recreated from scratch on each iteration, so every
+# combination is still a clean build.
 while read -r -a configure_switches; do
   runid=${RANDOM}
-  mkdir "pairwise-${runid}"
-  cd "pairwise-${runid}"
-  echo "Configuration:" "${configure_switches[@]}" | tee "../pairwise-output.${runid}.txt"
-  meson setup build .. "${configure_switches[@]}" >>"../pairwise-output.${runid}.txt" 2>&1
-  # ../configure --enable-option-checking=fatal "${configure_switches[@]}" >>"../pairwise-output.${runid}.txt" 2>&1
+  output="pairwise-output.${runid}.txt"
+  rm -rf pairwise-build
+  mkdir pairwise-build
+  cd pairwise-build
+  echo "Configuration:" "${configure_switches[@]}" | tee "../${output}"
+  meson setup build .. "${configure_switches[@]}" >>"../${output}" 2>&1
   echo "Building..."
-  ninja -C build >>"../pairwise-output.${runid}.txt" 2>&1
-  # make "-j${BUILD_PARALLEL_JOBS:-1}" all >>"../pairwise-output.${runid}.txt" 2>&1
+  ninja -C build >>"../${output}" 2>&1
   echo "Running..."
   echo "${NAMED_CONF}" >named.conf
   echo "${ZONE_CONTENTS}" >zone.db
   ret=0
-  timeout --kill-after=5s 5s build/named -c named.conf -g >>"../pairwise-output.${runid}.txt" 2>&1 || ret=$?
+  timeout --kill-after=5s 5s build/named -c named.conf -g >>"../${output}" 2>&1 || ret=$?
   # "124" is the exit code "timeout" returns when it terminates
   # the command; in other words, the command-under-test times
   # out, i.e., was still running and didn't crash.
@@ -75,8 +81,8 @@ while read -r -a configure_switches; do
     echo "Unexpected exit code from the 'timeout' utility (${ret})"
     exit 1
   fi
-  rm -rf build
   # "timeout" is unable to report a crash on shutdown via its exit
   # code.
   cd ..
+  rm -rf pairwise-build
 done <pairwise-commands.txt
