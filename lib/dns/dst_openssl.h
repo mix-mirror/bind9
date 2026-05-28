@@ -38,7 +38,17 @@
 
 isc_result_t
 dst__openssl_fromlabel(int key_base_id, const char *label, const char *pin,
-		       EVP_PKEY **ppub, EVP_PKEY **ppriv);
+		       EVP_PKEY *cmp_pub, EVP_PKEY **ppub, EVP_PKEY **ppriv);
+
+/*%
+ * Serialize PKCS#11 token operations within the process; the
+ * pkcs11-provider/SoftHSM2 stack does not tolerate concurrent access.
+ */
+void
+dst__openssl_toklock(void);
+
+void
+dst__openssl_tokunlock(void);
 
 bool
 dst__openssl_keypair_compare(const dst_key_t *key1, const dst_key_t *key2);
