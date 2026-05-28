@@ -124,9 +124,6 @@ struct dns_slabheader {
 	 */
 	unsigned char upper[32];
 
-	/* Used for stale refresh */
-	_Atomic(isc_stdtime_t) last_refresh_fail_ts;
-
 	uint16_t nitems;
 
 	struct rcu_head rcu_head;

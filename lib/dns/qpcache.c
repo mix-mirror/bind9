@@ -40,6 +40,7 @@
 #include <isc/urcu.h>
 #include <isc/util.h>
 
+#include <dns/badcache.h>
 #include <dns/callbacks.h>
 #include <dns/db.h>
 #include <dns/dbiterator.h>
@@ -209,6 +210,11 @@ struct qpcache {
 	 * new iterative lookup.
 	 */
 	uint32_t serve_stale_refresh;
+
+	/*
+	 *
+	 */
+	dns_badcache_t *serve_stale_cache;
 
 	/* Locked by tree_lock. */
 	dns_qp_t *tree;
@@ -1083,7 +1089,8 @@ setup_delegation(qpc_search_t *search, dns_dbnode_t **nodep,
 }
 
 static bool
-check_stale_header(dns_slabheader_t *header, qpc_search_t *search) {
+check_stale_header(qpcache_t *qpdb, qpcnode_t *node, dns_slabheader_t *header,
+		   qpc_search_t *search) {
 	if (ACTIVE(header, search->now)) {
 		return false;
 	}
@@ -1106,23 +1113,20 @@ check_stale_header(dns_slabheader_t *header, qpc_search_t *search) {
 		 * this case we mark the time in which the refresh
 		 * failed.
 		 */
+
 		if ((search->options & DNS_DBFIND_STALESTART) != 0) {
-			atomic_store_release(&header->last_refresh_fail_ts,
-					     search->now);
-		} else if ((search->options & DNS_DBFIND_STALEENABLED) != 0 &&
-			   search->now <
-				   (atomic_load_acquire(
-					    &header->last_refresh_fail_ts) +
-				    search->qpdb->serve_stale_refresh))
-		{
-			/*
-			 * If we are within interval between last
-			 * refresh failure time + 'stale-refresh-time',
-			 * then don't skip this stale entry but use it
-			 * instead.
-			 */
-			DNS_SLABHEADER_SETATTR(header,
-					       DNS_SLABHEADERATTR_STALE_WINDOW);
+			dns_badcache_add(qpdb->serve_stale_cache, &node->name,
+					 header->typepair, 0, search->now);
+		} else if ((search->options & DNS_DBFIND_STALEENABLED) != 0) {
+			isc_result_t serve_stale_result = dns_badcache_find(
+				qpdb->serve_stale_cache, &node->name,
+				header->typepair, NULL, search->now);
+
+			if (serve_stale_result == ISC_R_SUCCESS) {
+				DNS_SLABHEADER_SETATTR(
+					header,
+					DNS_SLABHEADERATTR_STALE_WINDOW);
+			}
 			return false;
 		} else if ((search->options & DNS_DBFIND_STALETIMEOUT) != 0) {
 			/*
@@ -1151,18 +1155,20 @@ fill_headers(dns_slabheader_t *source, dns_slabheader_t **headerp,
 }
 
 static bool
-skip_header(dns_slabheader_t *header, qpc_search_t *search) {
-	return header == NULL || check_stale_header(header, search) ||
+skip_header(qpcache_t *qpdb, qpcnode_t *node, dns_slabheader_t *header,
+	    qpc_search_t *search) {
+	return header == NULL ||
+	       check_stale_header(qpdb, node, header, search) ||
 	       !EXISTS(header) || ANCIENT(header);
 }
 
 static bool
-skip_headers(dns_slabheader_t **header, dns_slabheader_t **sigheader,
-	     qpc_search_t *search) {
-	if (skip_header(*header, search)) {
+skip_headers(qpcache_t *qpdb, qpcnode_t *node, dns_slabheader_t **header,
+	     dns_slabheader_t **sigheader, qpc_search_t *search) {
+	if (skip_header(qpdb, node, *header, search)) {
 		*header = NULL;
 	}
-	if (skip_header(*sigheader, search)) {
+	if (skip_header(qpdb, node, *sigheader, search)) {
 		*sigheader = NULL;
 	}
 
@@ -1249,7 +1255,7 @@ find_headers(qpcnode_t *node, qpc_search_t *search, dns_rdatatype_t type,
 		if (tmp->typepair == dns_typepair_any) {
 			INSIST(rcu_dereference(tmp->related) == NULL);
 			INSIST(NEGATIVE(tmp));
-			if (skip_header(tmp, search)) {
+			if (skip_header(search->qpdb, node, tmp, search)) {
 				/*
 				 * NEGATIVE(ANY), but it is no longer valid.
 				 */
@@ -1266,7 +1272,9 @@ find_headers(qpcnode_t *node, qpc_search_t *search, dns_rdatatype_t type,
 
 		fill_headers(tmp, &header, &sigheader);
 
-		if (skip_headers(&header, &sigheader, search)) {
+		if (skip_headers(search->qpdb, node, &header, &sigheader,
+				 search))
+		{
 			goto return_nothing;
 		}
 
@@ -1574,7 +1582,9 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 
 		fill_headers(tmp, &header, &sigheader);
 
-		if (skip_headers(&header, &sigheader, &search)) {
+		if (skip_headers(search.qpdb, node, &header, &sigheader,
+				 &search))
+		{
 			continue;
 		}
 
@@ -1831,7 +1841,9 @@ qpcache_findrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 		}
 
 		fill_headers(tmp, &header, &sigheader);
-		if (!skip_headers(&header, &sigheader, &search)) {
+		if (!skip_headers(search.qpdb, qpnode, &header, &sigheader,
+				  &search))
+		{
 			(void)related_headers(header, sigheader, typepair,
 					      &found, &foundsig);
 		}
@@ -1986,6 +1998,8 @@ qpcache__destroy(qpcache_t *qpdb) {
 	TREE_DESTROYLOCK(&qpdb->tree_lock);
 	isc_refcount_destroy(&qpdb->references);
 	isc_refcount_destroy(&qpdb->common.references);
+
+	dns_badcache_destroy(&qpdb->serve_stale_cache);
 
 	isc_rwlock_destroy(&qpdb->lock);
 	qpdb->common.magic = 0;
@@ -2938,6 +2952,8 @@ dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 	 * Make the qp trie.
 	 */
 	dns_qp_create(mctx, &qpmethods, qpdb, &qpdb->tree);
+
+	qpdb->serve_stale_cache = dns_badcache_new(mctx);
 
 	qpdb->common.magic = DNS_DB_MAGIC;
 	qpdb->common.impmagic = QPDB_MAGIC;
