@@ -2594,8 +2594,8 @@ pairwise:
       - pairwise-model.txt
       - pairwise-output.*.txt
     when: on_failure
-  rules:
-    - if: '$PAIRWISE_TESTING != null'
+  #rules:
+  #  - if: '$PAIRWISE_TESTING != null'
 
 .post_merge_template: &post_merge
   <<: *base_image
