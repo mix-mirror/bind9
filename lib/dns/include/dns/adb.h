@@ -601,16 +601,16 @@ dns_adb_flush(dns_adb_t *adb);
  */
 
 void
-dns_adb_setadbsize(dns_adb_t *adb, size_t size);
+dns_adb_attachbudget(dns_adb_t *adb, dns_membudget_t *budget);
 /*%<
- * Set a target memory size.  If memory usage exceeds the target
- * size entries will be removed before they would have expired on
- * a random basis.
- *
- * If 'size' is 0 then memory usage is unlimited.
+ * Register the ADB as a tenant of the shared memory budget.  When the
+ * pool approaches its configured cap, this ADB will probabilistically
+ * evict entries before they would have expired, with intensity
+ * proportional to its share of the in-use total.
  *
  * Requires:
  *\li	'adb' is valid.
+ *\li	'budget' is valid.
  */
 
 void

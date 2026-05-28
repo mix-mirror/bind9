@@ -81,6 +81,7 @@
 #include <dns/keyvalues.h>
 #include <dns/master.h>
 #include <dns/masterdump.h>
+#include <dns/membudget.h>
 #include <dns/nametree.h>
 #include <dns/nsec3.h>
 #include <dns/nta.h>
@@ -217,14 +218,6 @@
 		}                              \
 	}
 
-/*%
- * Maximum ADB size for views that share a cache.  Use this limit to suppress
- * the total of memory footprint, which should be the main reason for sharing
- * a cache.  Only effective when a finite max-cache-size is specified.
- * This is currently defined to be 8MB.
- */
-#define MAX_ADB_SIZE_FOR_CACHESHARE 8388608U
-
 struct named_dispatch {
 	isc_sockaddr_t addr;
 	unsigned int dispatchgen;
@@ -234,9 +227,9 @@ struct named_dispatch {
 
 struct named_cache {
 	dns_cache_t *cache;
+	dns_membudget_t *budget;
 	dns_view_t *primaryview;
 	bool needflush;
-	bool adbsizeadjusted;
 	dns_rdataclass_t rdclass;
 	ISC_LINK(named_cache_t) link;
 };
@@ -3673,8 +3666,7 @@ configure_max_cache_size(dns_view_t *view, const cfg_obj_t *maps[4]) {
 		/*
 		 * The default for a view with recursion
 		 * is 90% of memory. With no recursion,
-		 * it's the minimum cache size allowed by
-		 * dns_cache_setcachesize().
+		 * it's DNS_CACHE_MINSIZE.
 		 */
 		return default_max_cache_size(view, obj);
 	} else if (cfg_obj_isstring(obj)) {
@@ -3699,7 +3691,7 @@ configure_max_cache_size(dns_view_t *view, const cfg_obj_t *maps[4]) {
 
 static isc_result_t
 configure_view_delegdb(const cfg_obj_t **maps, dns_view_t *pview,
-		       dns_view_t *view, size_t cachesz,
+		       dns_view_t *view, dns_membudget_t *budget,
 		       const char *hintsfilename) {
 	isc_result_t result;
 	const cfg_obj_t *obj;
@@ -3735,7 +3727,7 @@ configure_view_delegdb(const cfg_obj_t **maps, dns_view_t *pview,
 		return ISC_R_RANGE;
 	}
 
-	dns_delegdb_config_t config = { .dbsize = cachesz,
+	dns_delegdb_config_t config = { .budget = budget,
 					.minttl = minttl,
 					.maxttl = maxttl };
 	dns_delegdb_setconfig(view->deleg, &config);
@@ -3790,7 +3782,6 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	dns_cache_t *cache = NULL;
 	isc_result_t result;
 	size_t max_cache_size;
-	size_t max_adb_size;
 	uint32_t lame_ttl, fail_ttl;
 	uint32_t max_stale_ttl = 0;
 	uint32_t stale_refresh_time = 0;
@@ -3999,13 +3990,6 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 			   cfg_obj_asboolean(obj));
 
 	max_cache_size = configure_max_cache_size(view, maps);
-
-	/*
-	 * Since both the delegation DB and ADB uses 1/8 of the
-	 * `max_cache_size`, let's use 6/8 for the main cache DB.
-	 */
-	const size_t cache_size_slice = max_cache_size / 8;
-	const size_t main_cache_size = cache_size_slice * 6;
 
 	/* Check-names. */
 	obj = NULL;
@@ -4292,7 +4276,7 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	}
 	if (nsc != NULL) {
 		if (!cache_sharable(nsc->primaryview, view, zero_no_soattl,
-				    main_cache_size, max_stale_ttl,
+				    max_cache_size, max_stale_ttl,
 				    stale_refresh_time))
 		{
 			isc_log_write(NAMED_LOGCATEGORY_GENERAL,
@@ -4362,13 +4346,14 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 			.link = ISC_LINK_INITIALIZER,
 		};
 
+		dns_membudget_create(mctx, max_cache_size, &nsc->budget);
 		dns_cache_attach(cache, &nsc->cache);
 		ISC_LIST_APPEND(*cachelist, nsc, link);
 	}
 
 	dns_view_setcache(view, cache, shared_cache);
 
-	dns_cache_setcachesize(cache, main_cache_size);
+	dns_cache_attachbudget(cache, nsc->budget);
 	dns_cache_setservestalettl(cache, max_stale_ttl);
 	dns_cache_setservestalerefresh(cache, stale_refresh_time);
 
@@ -4397,7 +4382,7 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	 * Configure delegdb and detatch the previous viw which isn't needed
 	 * afterwards.
 	 */
-	result = configure_view_delegdb(maps, pview, view, cache_size_slice,
+	result = configure_view_delegdb(maps, pview, view, nsc->budget,
 					hintsfilename);
 	if (pview != NULL) {
 		dns_view_detach(&pview);
@@ -4426,30 +4411,13 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 				      resqueryoutrttstats);
 
 	/*
-	 * Set the ADB cache size to 1/8th of the max-cache-size or
-	 * MAX_ADB_SIZE_FOR_CACHESHARE when the cache is shared.
+	 * Attach the ADB to the shared memory budget; the proportional
+	 * pressure algorithm lets it absorb capacity left idle by the
+	 * other tenants.
 	 */
-	max_adb_size = cache_size_slice;
-	if (max_adb_size < DNS_ADB_MINADBSIZE) {
-		max_adb_size = DNS_ADB_MINADBSIZE; /* Force minimum. */
-	}
-	if (view != nsc->primaryview &&
-	    max_adb_size > MAX_ADB_SIZE_FOR_CACHESHARE)
-	{
-		max_adb_size = MAX_ADB_SIZE_FOR_CACHESHARE;
-		if (!nsc->adbsizeadjusted) {
-			dns_view_getadb(nsc->primaryview, &adb);
-			if (adb != NULL) {
-				dns_adb_setadbsize(adb,
-						   MAX_ADB_SIZE_FOR_CACHESHARE);
-				nsc->adbsizeadjusted = true;
-				dns_adb_detach(&adb);
-			}
-		}
-	}
 	dns_view_getadb(view, &adb);
 	if (adb != NULL) {
-		dns_adb_setadbsize(adb, max_adb_size);
+		dns_adb_attachbudget(adb, nsc->budget);
 		dns_adb_detach(&adb);
 	}
 
@@ -8840,6 +8808,9 @@ cleanup_cachelist:
 	ISC_LIST_FOREACH(cachelist, nsc, link) {
 		ISC_LIST_UNLINK(cachelist, nsc, link);
 		dns_cache_detach(&nsc->cache);
+		if (nsc->budget != NULL) {
+			dns_membudget_detach(&nsc->budget);
+		}
 		isc_mem_put(server->mctx, nsc, sizeof(*nsc));
 	}
 
@@ -9240,6 +9211,9 @@ shutdown_server(void *arg) {
 	ISC_LIST_FOREACH(server->cachelist, nsc, link) {
 		ISC_LIST_UNLINK(server->cachelist, nsc, link);
 		dns_cache_detach(&nsc->cache);
+		if (nsc->budget != NULL) {
+			dns_membudget_detach(&nsc->budget);
+		}
 		isc_mem_put(server->mctx, nsc, sizeof(*nsc));
 	}
 

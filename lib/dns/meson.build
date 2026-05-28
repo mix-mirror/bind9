@@ -117,6 +117,7 @@ dns_srcset.add(
         'lib.c',
         'master.c',
         'masterdump.c',
+        'membudget.c',
         'message.c',
         'name.c',
         'nametree.c',

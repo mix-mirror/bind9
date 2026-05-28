@@ -26,6 +26,7 @@ dns_tests = [
     'ede',
     'keytable',
     'master',
+    'membudget',
     'name',
     'nametree',
     'nsec3',

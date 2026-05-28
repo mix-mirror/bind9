@@ -15,6 +15,7 @@
 
 #include <isc/urcu.h>
 
+#include <dns/membudget.h>
 #include <dns/nsec3.h>
 #include <dns/qp.h>
 #include <dns/types.h>
@@ -39,4 +40,14 @@ dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *base, dns_dbtype_t type,
  * Requires:
  *
  * \li argc == 0 or argv[0] is a valid memory context.
+ */
+
+void
+dns__qpcache_attachbudget(dns_db_t *db, dns_membudget_t *budget,
+			  const char *name);
+/*%<
+ * Register the qpcache as a tenant of the shared memory budget.  Must be
+ * called once after dns__qpcache_create() before any inserts that should
+ * be subject to cleaning.  Unregistration happens automatically when the
+ * cache is destroyed.
  */

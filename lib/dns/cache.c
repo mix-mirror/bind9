@@ -31,10 +31,13 @@
 #include <dns/db.h>
 #include <dns/dbiterator.h>
 #include <dns/masterdump.h>
+#include <dns/membudget.h>
 #include <dns/rdata.h>
 #include <dns/rdataset.h>
 #include <dns/rdatasetiter.h>
 #include <dns/stats.h>
+
+#include "qpcache_p.h"
 
 #ifdef HAVE_JSON_C
 #include <json_object.h>
@@ -68,7 +71,7 @@ struct dns_cache {
 	/* Locked by 'lock'. */
 	dns_rdataclass_t rdclass;
 	dns_db_t *db;
-	size_t size;
+	dns_membudget_t *budget;
 	dns_ttl_t serve_stale_ttl;
 	dns_ttl_t serve_stale_refresh;
 	isc_stats_t *stats;
@@ -127,6 +130,9 @@ cache_destroy(dns_cache_t *cache) {
 	isc_mem_free(cache->mctx, cache->name);
 	if (cache->tmctx != NULL) {
 		isc_mem_detach(&cache->tmctx);
+	}
+	if (cache->budget != NULL) {
+		dns_membudget_detach(&cache->budget);
 	}
 	isc_mem_putanddetach(&cache->mctx, cache, sizeof(*cache));
 }
@@ -203,31 +209,28 @@ dns_cache_getname(dns_cache_t *cache) {
 }
 
 void
-dns_cache_setcachesize(dns_cache_t *cache, size_t size) {
+dns_cache_attachbudget(dns_cache_t *cache, dns_membudget_t *budget) {
 	REQUIRE(VALID_CACHE(cache));
-
-	/*
-	 * Impose a minimum cache size; pathological things happen if there
-	 * is too little room.
-	 */
-	if (size < DNS_CACHE_MINSIZE) {
-		size = DNS_CACHE_MINSIZE;
-	}
+	REQUIRE(budget != NULL);
 
 	LOCK(&cache->lock);
-	cache->size = size;
-	dns_db_setcachesize(cache->db, size);
+	if (cache->budget == NULL) {
+		dns_membudget_attach(budget, &cache->budget);
+		dns__qpcache_attachbudget(cache->db, cache->budget, "cache");
+	}
 	UNLOCK(&cache->lock);
 }
 
 size_t
 dns_cache_getcachesize(dns_cache_t *cache) {
-	size_t size;
+	size_t size = 0;
 
 	REQUIRE(VALID_CACHE(cache));
 
 	LOCK(&cache->lock);
-	size = cache->size;
+	if (cache->budget != NULL) {
+		size = (size_t)dns_membudget_max(cache->budget);
+	}
 	UNLOCK(&cache->lock);
 
 	return size;
@@ -291,7 +294,9 @@ dns_cache_flush(dns_cache_t *cache) {
 	LOCK(&cache->lock);
 	oldtmctx = cache->tmctx;
 	cache->tmctx = tmctx;
-	dns_db_setcachesize(cache->db, cache->size);
+	if (cache->budget != NULL) {
+		dns__qpcache_attachbudget(db, cache->budget, "cache");
+	}
 	olddb = cache->db;
 	cache->db = db;
 	UNLOCK(&cache->lock);

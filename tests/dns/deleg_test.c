@@ -47,6 +47,7 @@ isc_stdtime_now(void) {
 #include <dns/fixedname.h>
 #include <dns/lib.h>
 #include <dns/master.h>
+#include <dns/membudget.h>
 #include <dns/name.h>
 
 /*
@@ -637,17 +638,18 @@ cleanuptests(ISC_ATTR_UNUSED void *arg) {
 	isc_result_t result;
 
 	/*
-	 * hiwater is 4375000 = 5000000 - (5000000 >> 3)
-	 * lowater is 3750000 = 5000000 - (5000000 >> 2)
+	 * Cleaning ramp runs between 75% and 87.5% of the budget; with 5 MB
+	 * configured, cleaning starts at 3.75 MB and is certain from 4.375 MB.
 	 */
-	dns_delegdb_config_t config = { .dbsize = 5000000 };
+	dns_membudget_t *budget = NULL;
 
 	dns_delegdb_create(&db);
 	assert_non_null(db);
 
 	now = isc_stdtime_now();
 
-	dns_delegdb_setconfig(db, &config);
+	dns_membudget_create(db->mctx, 5000000, &budget);
+	dns_delegdb_setconfig(db, &(dns_delegdb_config_t){ .budget = budget });
 
 	/*
 	 * A valid record
@@ -754,6 +756,7 @@ cleanuptests(ISC_ATTR_UNUSED void *arg) {
 	result = lookupdb(db, "bar.", now, 0, "bar.", &delegset);
 	assert_int_equal(result, ISC_R_NOTFOUND);
 
+	dns_membudget_detach(&budget);
 	shutdowntest(&db);
 }
 

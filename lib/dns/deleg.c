@@ -21,20 +21,18 @@
 
 #include <dns/callbacks.h>
 #include <dns/deleg.h>
+#include <dns/membudget.h>
 #include <dns/name.h>
 #include <dns/qp.h>
 #include <dns/view.h>
 
 #include "probes-dns.h"
-#include "size_p.h"
 
 #define DELEGDB_NODE_MAGIC	 ISC_MAGIC('D', 'e', 'G', 'N')
 #define VALID_DELEGDB_NODE(node) ISC_MAGIC_VALID(node, DELEGDB_NODE_MAGIC)
 
 #define DELEGDB_MAGIC	  ISC_MAGIC('D', 'e', 'G', 'D')
 #define VALID_DELEGDB(db) ISC_MAGIC_VALID(db, DELEGDB_MAGIC)
-
-#define DELEGDB_MINSIZE (1024 * 1024) /* 1MiB */
 
 typedef struct delegdb_node delegdb_node_t;
 
@@ -66,8 +64,8 @@ struct dns_delegdb {
 	unsigned int magic;
 
 	/*
-	 * The DB uses its own memory context so its accounted memory usage
-	 * can drive probabilistic cleaning independently of other caches.
+	 * The DB uses its own memory context so the shared cache budget can
+	 * attribute its in-use bytes separately from the other tenants.
 	 */
 	isc_mem_t *mctx;
 	isc_refcount_t references;
@@ -76,7 +74,7 @@ struct dns_delegdb {
 
 	dns_delegdb_config_t config;
 
-	dns_size_t size;
+	dns_membudget_tenant_t tenant;
 };
 
 static void
@@ -87,6 +85,10 @@ delegdb_destroy(dns_delegdb_t *delegdb) {
 	REQUIRE(VALID_DELEGDB(delegdb));
 
 	delegdb->magic = 0;
+
+	if (delegdb->tenant.budget != NULL) {
+		dns_membudget_unregister(&delegdb->tenant);
+	}
 
 	qplru_t *qplru = rcu_xchg_pointer(&delegdb->qplru, NULL);
 	INSIST(qplru != NULL);
@@ -692,8 +694,7 @@ dns_delegset_insert(dns_delegdb_t *delegdb, const dns_name_t *zonecut,
 	dns_qpmulti_write(delegdb->qplru->nodes, &qp);
 
 	size_t purgesize = 2 * requested;
-	size_t inuse = isc_mem_inuse(delegdb->mctx) + purgesize;
-	uint8_t prob = dns_size_cleaning_prob(&delegdb->size, inuse);
+	uint8_t prob = dns_membudget_cleaning_prob(&delegdb->tenant, purgesize);
 
 	if (prob != 0 && isc_random8() < prob) {
 		delegdb_cleanup(delegdb, qp, purgesize);
@@ -1106,23 +1107,6 @@ qplru_shutdown_rcu(struct rcu_head *rcu_head) {
 	qplru_detach(&qplru);
 }
 
-static void
-delegdb_setsize(dns_delegdb_t *delegdb, size_t size) {
-	REQUIRE(VALID_DELEGDB(delegdb));
-
-	if (size == 0) {
-		/* No limit: cleaning is never triggered. */
-		delegdb->size = (dns_size_t){ 0 };
-		return;
-	}
-
-	if (size < DELEGDB_MINSIZE) {
-		size = DELEGDB_MINSIZE;
-	}
-
-	dns_size_init(&delegdb->size, size);
-}
-
 dns_delegdb_config_t
 dns_delegdb_getconfig(dns_delegdb_t *delegdb) {
 	REQUIRE(VALID_DELEGDB(delegdb));
@@ -1137,7 +1121,19 @@ dns_delegdb_setconfig(dns_delegdb_t *delegdb,
 
 	delegdb->config = *config;
 
-	delegdb_setsize(delegdb, delegdb->config.dbsize);
+	/*
+	 * The configuration is applied again on every reload and flush, so
+	 * only re-register when the budget actually changed.
+	 */
+	if (delegdb->tenant.budget != NULL &&
+	    delegdb->tenant.budget != config->budget)
+	{
+		dns_membudget_unregister(&delegdb->tenant);
+	}
+	if (config->budget != NULL && delegdb->tenant.budget == NULL) {
+		dns_membudget_register(config->budget, &delegdb->tenant,
+				       "deleg", delegdb->mctx);
+	}
 }
 
 typedef struct {

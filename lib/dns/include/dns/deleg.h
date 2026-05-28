@@ -24,11 +24,14 @@
  */
 typedef struct {
 	/*
-	 * Defines the size of the delegation cache. Whenever the effective
-	 * cache size comes close to this size, least recently used cache
-	 * entries are discarded. Value `0` means there is no limitation.
+	 * The shared cache memory budget this delegation database is a
+	 * tenant of (see <dns/membudget.h>).  Least recently used entries
+	 * are discarded probabilistically as the budget nears its cap, in
+	 * proportion to this database's share of the in-use total.  NULL
+	 * means there is no limitation.  The pointer is borrowed; the
+	 * database holds its own reference while it is registered.
 	 */
-	size_t dbsize;
+	dns_membudget_t *budget;
 
 	/*
 	 * Confgure minimum and maximum TTL of a delegation. A value of 0 means

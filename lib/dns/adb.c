@@ -40,14 +40,13 @@
 
 #include <dns/adb.h>
 #include <dns/db.h>
+#include <dns/membudget.h>
 #include <dns/rdata.h>
 #include <dns/rdatastruct.h>
 #include <dns/rdatatype.h>
 #include <dns/stats.h>
 #include <dns/transport.h>
 #include <dns/types.h>
-
-#include "size_p.h"
 
 #define DNS_ADB_MAGIC		 ISC_MAGIC('D', 'a', 'd', 'b')
 #define DNS_ADB_VALID(x)	 ISC_MAGIC_VALID(x, DNS_ADB_MAGIC)
@@ -124,7 +123,7 @@ struct dns_adb {
 	double atr_high;
 	double atr_discount;
 
-	dns_size_t size;
+	dns_membudget_tenant_t tenant;
 
 	struct rcu_head rcu_head;
 };
@@ -1207,8 +1206,7 @@ get_attached_and_locked_name(dns_adb_t *adb, const dns_name_t *name,
 	};
 	uint32_t hashval = hash_adbname(&key);
 	size_t purgesize = 2 * sizeof(*adbname);
-	size_t inuse = isc_mem_inuse(adb->mctx) + purgesize;
-	uint8_t prob = dns_size_cleaning_prob(&adb->size, inuse);
+	uint8_t prob = dns_membudget_cleaning_prob(&adb->tenant, purgesize);
 
 	if (prob != 0 && isc_random8() < prob) {
 		purge_names_overmem(adb, purgesize);
@@ -1292,11 +1290,11 @@ get_attached_and_locked_entry(dns_adb_t *adb, isc_stdtime_t now,
 	dns_adbentry_t *adbentry = NULL;
 	uint32_t hashval = isc_sockaddr_hash(addr, true);
 
-	size_t inuse = isc_mem_inuse(adb->mctx) + 2 * sizeof(*adbentry);
-	uint8_t prob = dns_size_cleaning_prob(&adb->size, inuse);
+	size_t purgesize = 2 * sizeof(*adbentry);
+	uint8_t prob = dns_membudget_cleaning_prob(&adb->tenant, purgesize);
 
-	if (prob != 0 && isc_random8() <= prob) {
-		purge_entries_overmem(adb, 2 * sizeof(*adbentry));
+	if (prob != 0 && isc_random8() < prob) {
+		purge_entries_overmem(adb, purgesize);
 	}
 
 	struct cds_lfht_iter iter;
@@ -1621,6 +1619,10 @@ dns_adb_destroy(dns_adb_t *adb) {
 	DP(DEF_LEVEL, "destroying ADB %p", adb);
 
 	adb->magic = 0;
+
+	if (adb->tenant.budget != NULL) {
+		dns_membudget_unregister(&adb->tenant);
+	}
 
 	RUNTIME_CHECK(!cds_lfht_destroy(adb->names_ht, NULL));
 	adb->names_ht = NULL;
@@ -3409,15 +3411,11 @@ dns_adb_flushnames(dns_adb_t *adb, const dns_name_t *name) {
 }
 
 void
-dns_adb_setadbsize(dns_adb_t *adb, size_t size) {
+dns_adb_attachbudget(dns_adb_t *adb, dns_membudget_t *budget) {
 	REQUIRE(DNS_ADB_VALID(adb));
-	REQUIRE(size != 0);
+	REQUIRE(budget != NULL);
 
-	if (size < DNS_ADB_MINADBSIZE) {
-		size = DNS_ADB_MINADBSIZE;
-	}
-
-	dns_size_init(&adb->size, size);
+	dns_membudget_register(budget, &adb->tenant, "adb", adb->mctx);
 }
 
 void

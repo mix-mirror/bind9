@@ -134,15 +134,17 @@ dns_cache_getname(dns_cache_t *cache);
  */
 
 void
-dns_cache_setcachesize(dns_cache_t *cache, size_t size);
+dns_cache_attachbudget(dns_cache_t *cache, dns_membudget_t *budget);
 /*%<
- * Set the maximum cache size.
+ * Attach the cache to a shared memory budget.  After this call,
+ * insertions into the cache will probabilistically evict entries when
+ * the budget approaches its configured cap.
  */
 
 size_t
 dns_cache_getcachesize(dns_cache_t *cache);
 /*%<
- * Get the maximum cache size.
+ * Get the maximum cache size from the attached budget, or 0 if none.
  */
 
 void

@@ -20,7 +20,8 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "dns/db.h"
+#include <dns/db.h>
+#include <dns/membudget.h>
 
 #define UNIT_TESTING
 #include <cmocka.h>
@@ -317,6 +318,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 	isc_result_t result;
 	dns_db_t *db = NULL;
 	isc_mem_t *mctx = NULL;
+	dns_membudget_t *budget = NULL;
 	isc_stdtime_t now = isc_stdtime_now();
 	size_t i;
 
@@ -327,7 +329,8 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 			       &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	dns_db_setcachesize(db, maxcache);
+	dns_membudget_create(mctx, maxcache, &budget);
+	dns__qpcache_attachbudget(db, budget, "cache");
 
 	/*
 	 * Add a number of records that definitely should fill the memory.
@@ -355,6 +358,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 	assert_true(isc_mem_inuse(mctx) < maxcache);
 
 	dns_db_detach(&db);
+	dns_membudget_detach(&budget);
 	isc_mem_detach(&mctx);
 	isc_loopmgr_shutdown();
 }
@@ -364,6 +368,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 	isc_result_t result;
 	dns_db_t *db = NULL;
 	isc_mem_t *mctx = NULL;
+	dns_membudget_t *budget = NULL;
 	isc_stdtime_t now = isc_stdtime_now();
 	size_t i;
 
@@ -374,7 +379,8 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 			       &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	dns_db_setcachesize(db, maxcache);
+	dns_membudget_create(mctx, maxcache, &budget);
+	dns__qpcache_attachbudget(db, budget, "cache");
 
 	/*
 	 * Add a number of small-data entries sufficient to push the context
@@ -402,6 +408,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 	assert_true(isc_mem_inuse(mctx) < maxcache);
 
 	dns_db_detach(&db);
+	dns_membudget_detach(&budget);
 	isc_mem_detach(&mctx);
 	isc_loopmgr_shutdown();
 }

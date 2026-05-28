@@ -45,6 +45,7 @@
 #include <dns/dbiterator.h>
 #include <dns/fixedname.h>
 #include <dns/masterdump.h>
+#include <dns/membudget.h>
 #include <dns/nsec.h>
 #include <dns/qp.h>
 #include <dns/rdata.h>
@@ -61,7 +62,6 @@
 #include "db_p.h"
 #include "qpcache_p.h"
 #include "rdataslab_p.h"
-#include "size_p.h"
 
 #ifndef DNS_QPCACHE_LOG_STATS_LEVEL
 #define DNS_QPCACHE_LOG_STATS_LEVEL 3
@@ -213,7 +213,7 @@ struct qpcache {
 	/* Locked by tree_lock. */
 	dns_qp_t *tree;
 
-	dns_size_t size;
+	dns_membudget_tenant_t tenant;
 
 	size_t buckets_count;
 	qpcache_bucket_t buckets[]; /* attribute((counted_by(buckets_count))) */
@@ -476,8 +476,7 @@ qpcache_miss(qpcache_t *qpdb, dns_slabheader_t *newheader,
 	size_t purgesize = 2 * (sizeof(qpcnode_t) + sizeof(dns_fixedname_t) +
 				dns_rdataslab_size(newheader));
 
-	size_t inuse = isc_mem_inuse(qpdb->common.mctx) + purgesize;
-	uint8_t prob = dns_size_cleaning_prob(&qpdb->size, inuse);
+	uint8_t prob = dns_membudget_cleaning_prob(&qpdb->tenant, purgesize);
 
 	if (prob != 0 && isc_random8() < prob) {
 		expire_lru_headers(qpdb, newheader, idx, purgesize, nlocktypep,
@@ -1832,6 +1831,10 @@ static void
 qpcache__destroy(qpcache_t *qpdb) {
 	unsigned int i;
 	char buf[DNS_NAME_FORMATSIZE];
+
+	if (qpdb->tenant.budget != NULL) {
+		dns_membudget_unregister(&qpdb->tenant);
+	}
 
 	dns_qp_destroy(&qpdb->tree);
 
@@ -3213,13 +3216,15 @@ setmaxtypepername(dns_db_t *db, uint32_t value) {
 	qpdb->maxtypepername = value;
 }
 
-static void
-setcachesize(dns_db_t *db, size_t size) {
+void
+dns__qpcache_attachbudget(dns_db_t *db, dns_membudget_t *budget,
+			  const char *name) {
 	qpcache_t *qpdb = (qpcache_t *)db;
 
 	REQUIRE(VALID_QPDB(qpdb));
+	REQUIRE(budget != NULL);
 
-	dns_size_init(&qpdb->size, size);
+	dns_membudget_register(budget, &qpdb->tenant, name, qpdb->common.mctx);
 }
 
 static dns_dbmethods_t qpdb_cachemethods = {
@@ -3240,7 +3245,6 @@ static dns_dbmethods_t qpdb_cachemethods = {
 	.getservestalerefresh = getservestalerefresh,
 	.setmaxrrperset = setmaxrrperset,
 	.setmaxtypepername = setmaxtypepername,
-	.setcachesize = setcachesize,
 };
 
 static void
