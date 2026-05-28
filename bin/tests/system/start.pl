@@ -201,9 +201,23 @@ sub start_server {
 
 	chdir "$testdir/$server" or die "unable to chdir \"$testdir/$server\" ($OS_ERROR)\n";
 
+	# If the server has its own "named.softhsm2.conf", point SOFTHSM2_CONF
+	# at it so independent servers can use separate SoftHSM2 token stores.
+	my $saved_softhsm2_conf = $ENV{'SOFTHSM2_CONF'};
+	my $had_softhsm2_conf = exists $ENV{'SOFTHSM2_CONF'};
+	if (-e "named.softhsm2.conf") {
+		$ENV{'SOFTHSM2_CONF'} = abs_path("named.softhsm2.conf");
+	}
+
 	# start the server
 	my $child = `$command`;
 	chomp($child);
+
+	if ($had_softhsm2_conf) {
+		$ENV{'SOFTHSM2_CONF'} = $saved_softhsm2_conf;
+	} else {
+		delete $ENV{'SOFTHSM2_CONF'};
+	}
 
 	# wait up to 90 seconds for the server to start and to write the
 	# pid file otherwise kill this server and any others that have

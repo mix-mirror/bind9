@@ -43,12 +43,12 @@ pytestmark = pytest.mark.extra_artifacts(
         "ns1/*.weird.db",
         "ns1/*.weird.db.signed",
         "ns2/keys",
+        "ns2/softhsm2-tokens",
         "ns2/*.view*.db",
         "ns2/*.view*.db.signed",
     ]
 )
 
 
-@pytest.mark.flaky(max_runs=5)  # GL#4605
 def test_enginepkcs11(run_tests_sh):
     run_tests_sh()
