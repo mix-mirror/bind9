@@ -2984,6 +2984,7 @@ ns_client_dumprecursing(FILE *f, ns_clientmgr_t *manager) {
 void
 ns_client_qnamereplace(ns_client_t *client, dns_name_t *name) {
 	REQUIRE(NS_CLIENT_VALID(client));
+	REQUIRE(DNS_NAME_VALID(name));
 
 	LOCK(&client->query.fetchlock);
 	if (client->query.restarts > 0) {

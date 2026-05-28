@@ -353,6 +353,9 @@ ns_client_getsockaddr(ns_client_t *client);
 /*%<
  * Get the socket address of the client whose request is
  * currently being processed.
+ *
+ * Requires:
+ * \li	'client' points to a valid client.
  */
 
 isc_sockaddr_t *
@@ -360,6 +363,9 @@ ns_client_getdestaddr(ns_client_t *client);
 /*%<
  * Get the destination address (server) for the request that is
  * currently being processed.
+ *
+ * Requires:
+ * \li	'client' points to a valid client.
  */
 
 isc_result_t
@@ -448,6 +454,10 @@ void
 ns_client_qnamereplace(ns_client_t *client, dns_name_t *name);
 /*%<
  * Replace the qname.
+ *
+ * Requires:
+ * \li	'client' points to a valid client.
+ * \li	'name' points to a valid name.
  */
 
 isc_result_t
