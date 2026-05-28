@@ -33,6 +33,17 @@ keygen() {
   OPENSSL_CONF= pkcs11-tool --module $SOFTHSM2_MODULE --token-label "softhsm2-enginepkcs11" -l -k --key-type $type:$bits --label "${label}" --id "${p11id}" --pin $(cat $PWD/ns1/pin) >pkcs11-tool.out.$zone.$id 2>pkcs11-tool.err.$zone.$id || return 1
 }
 
+keydelete() {
+  zone="$1"
+  id="$2"
+
+  label="${id}-${zone}"
+  p11id=$(echo "${label}" | openssl sha1 -r | awk '{print $1}')
+  for objtype in privkey pubkey; do
+    OPENSSL_CONF= pkcs11-tool --module $SOFTHSM2_MODULE --token-label "softhsm2-enginepkcs11" -l --pin $(cat $PWD/ns1/pin) --delete-object --type $objtype --id "${p11id}" >/dev/null 2>&1 || true
+  done
+}
+
 keyfromlabel() {
   alg="$1"
   zone="$2"
@@ -40,8 +51,20 @@ keyfromlabel() {
   dir="$4"
   shift 4
 
-  $KEYFRLAB -K $dir -a $alg -y -l "pkcs11:token=softhsm2-enginepkcs11;object=${id}-${zone};pin-source=$PWD/ns1/pin" "$@" $zone >>keyfromlabel.out.$zone.$id 2>keyfromlabel.err.$zone.$id || return 1
-  cat keyfromlabel.out.$zone.$id
+  # On a 16-bit key-tag collision the import fails ("already exists");
+  # dnssec-keyfromlabel can't regenerate, so make a fresh HSM key and retry.
+  _attempt=0
+  while :; do
+    if $KEYFRLAB -K $dir -a $alg -y -l "pkcs11:token=softhsm2-enginepkcs11;object=${id}-${zone};pin-source=$PWD/ns1/pin" "$@" $zone >keyfromlabel.out.$zone.$id 2>keyfromlabel.err.$zone.$id; then
+      cat keyfromlabel.out.$zone.$id
+      return 0
+    fi
+    grep -q "already exists" keyfromlabel.err.$zone.$id || return 1
+    _attempt=$((_attempt + 1))
+    test "$_attempt" -ge 5 && return 1
+    keydelete "$zone" "$id"
+    keygen "$type" "$bits" "$zone" "$id" || return 1
+  done
 }
 
 mkdir ns1/keys
@@ -177,6 +200,21 @@ EOF
 done
 
 mkdir ns2/keys
+
+# Give ns2 its own token store so it does not contend with ns1 on a
+# shared token across processes (no in-process lock can serialize that).
+# A separate store, not a second token in the shared store: the provider's
+# lookup by token label is unreliable when several tokens are present.
+# start.pl points ns2's named at the config written here.
+mkdir -p "$PWD/ns2/softhsm2-tokens"
+cat >ns2/named.softhsm2.conf <<EOF
+directories.tokendir = $PWD/ns2/softhsm2-tokens
+objectstore.backend = file
+log.level = ERROR
+EOF
+export SOFTHSM2_CONF="$PWD/ns2/named.softhsm2.conf"
+OPENSSL_CONF= softhsm2-util --delete-token --token "softhsm2-enginepkcs11" >/dev/null 2>&1 || true
+OPENSSL_CONF= softhsm2-util --init-token --free --pin 1234 --so-pin 1234 --label "softhsm2-enginepkcs11" | awk '/^The token has been initialized and is reassigned to slot/ { print $NF }'
 
 dir="ns2"
 infile="${dir}/template.db.in"
