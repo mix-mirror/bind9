@@ -50,9 +50,6 @@
 #define STALE(header)                                  \
 	((atomic_load_acquire(&(header)->attributes) & \
 	  DNS_SLABHEADERATTR_STALE) != 0)
-#define STALE_WINDOW(header)                           \
-	((atomic_load_acquire(&(header)->attributes) & \
-	  DNS_SLABHEADERATTR_STALE_WINDOW) != 0)
 #define STATCOUNT(header)                              \
 	((atomic_load_acquire(&(header)->attributes) & \
 	  DNS_SLABHEADERATTR_STATCOUNT) != 0)

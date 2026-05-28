@@ -998,7 +998,12 @@ bindrdataset(qpcache_t *qpdb, qpcnode_t *node, dns_slabheader_t *header,
 		} else {
 			rdataset->ttl = 0;
 		}
-		if (STALE_WINDOW(header)) {
+
+		isc_result_t stale_result =
+			dns_badcache_find(qpdb->serve_stale_cache, &node->name,
+					  header->typepair, NULL, now);
+
+		if (stale_result == ISC_R_SUCCESS) {
 			rdataset->attributes.stale_window = true;
 		}
 		rdataset->attributes.stale = true;
@@ -1089,10 +1094,14 @@ setup_delegation(qpc_search_t *search, dns_dbnode_t **nodep,
 }
 
 static bool
-check_stale_header(qpcache_t *qpdb, qpcnode_t *node, dns_slabheader_t *header,
+check_stale_header(qpcnode_t *node, dns_slabheader_t *header,
 		   qpc_search_t *search) {
 	if (ACTIVE(header, search->now)) {
 		return false;
+	}
+
+	if (ZEROTTL(header) || !KEEPSTALE(search->qpdb)) {
+		return true;
 	}
 
 	isc_stdtime_t stale = header->expire + STALE_TTL(header, search->qpdb);
@@ -1102,43 +1111,36 @@ check_stale_header(qpcache_t *qpdb, qpcnode_t *node, dns_slabheader_t *header,
 	 * skip this record.  We skip the records with ZEROTTL
 	 * (these records should not be cached anyway).
 	 */
-
-	DNS_SLABHEADER_CLRATTR(header, DNS_SLABHEADERATTR_STALE_WINDOW);
-	if (!ZEROTTL(header) && KEEPSTALE(search->qpdb) && stale > search->now)
-	{
-		mark(search->qpdb, header, DNS_SLABHEADERATTR_STALE);
-		/*
-		 * If DNS_DBFIND_STALESTART is set then it means we
-		 * failed to resolve the name during recursion, in
-		 * this case we mark the time in which the refresh
-		 * failed.
-		 */
-
-		if ((search->options & DNS_DBFIND_STALESTART) != 0) {
-			dns_badcache_add(qpdb->serve_stale_cache, &node->name,
-					 header->typepair, 0, search->now);
-		} else if ((search->options & DNS_DBFIND_STALEENABLED) != 0) {
-			isc_result_t serve_stale_result = dns_badcache_find(
-				qpdb->serve_stale_cache, &node->name,
-				header->typepair, NULL, search->now);
-
-			if (serve_stale_result == ISC_R_SUCCESS) {
-				DNS_SLABHEADER_SETATTR(
-					header,
-					DNS_SLABHEADERATTR_STALE_WINDOW);
-			}
-			return false;
-		} else if ((search->options & DNS_DBFIND_STALETIMEOUT) != 0) {
-			/*
-			 * We want stale RRset due to timeout, so we
-			 * don't skip it.
-			 */
-			return false;
-		}
-		return (search->options & DNS_DBFIND_STALEOK) == 0;
+	if (stale <= search->now) {
+		return true;
 	}
 
-	return true;
+	mark(search->qpdb, header, DNS_SLABHEADERATTR_STALE);
+	/*
+	 * If DNS_DBFIND_STALESTART is set then it means we
+	 * failed to resolve the name during recursion, in
+	 * this case we mark the time in which the refresh
+	 * failed.
+	 */
+
+	if ((search->options & DNS_DBFIND_STALESTART) != 0) {
+		dns_badcache_add(search->qpdb->serve_stale_cache, &node->name,
+				 header->typepair, 0, search->now);
+	} else if ((search->options & DNS_DBFIND_STALEENABLED) != 0 &&
+		   dns_badcache_find(search->qpdb->serve_stale_cache,
+				     &node->name, header->typepair, NULL,
+				     search->now) == ISC_R_SUCCESS)
+	{
+		return false;
+	} else if ((search->options & DNS_DBFIND_STALETIMEOUT) != 0) {
+		/*
+		 * We want stale RRset due to timeout, so we
+		 * don't skip it.
+		 */
+		return false;
+	}
+
+	return (search->options & DNS_DBFIND_STALEOK) == 0;
 }
 
 static void
@@ -1155,20 +1157,18 @@ fill_headers(dns_slabheader_t *source, dns_slabheader_t **headerp,
 }
 
 static bool
-skip_header(qpcache_t *qpdb, qpcnode_t *node, dns_slabheader_t *header,
-	    qpc_search_t *search) {
-	return header == NULL ||
-	       check_stale_header(qpdb, node, header, search) ||
+skip_header(qpcnode_t *node, dns_slabheader_t *header, qpc_search_t *search) {
+	return header == NULL || check_stale_header(node, header, search) ||
 	       !EXISTS(header) || ANCIENT(header);
 }
 
 static bool
-skip_headers(qpcache_t *qpdb, qpcnode_t *node, dns_slabheader_t **header,
+skip_headers(qpcnode_t *node, dns_slabheader_t **header,
 	     dns_slabheader_t **sigheader, qpc_search_t *search) {
-	if (skip_header(qpdb, node, *header, search)) {
+	if (skip_header(node, *header, search)) {
 		*header = NULL;
 	}
-	if (skip_header(qpdb, node, *sigheader, search)) {
+	if (skip_header(node, *sigheader, search)) {
 		*sigheader = NULL;
 	}
 
@@ -1255,7 +1255,7 @@ find_headers(qpcnode_t *node, qpc_search_t *search, dns_rdatatype_t type,
 		if (tmp->typepair == dns_typepair_any) {
 			INSIST(rcu_dereference(tmp->related) == NULL);
 			INSIST(NEGATIVE(tmp));
-			if (skip_header(search->qpdb, node, tmp, search)) {
+			if (skip_header(node, tmp, search)) {
 				/*
 				 * NEGATIVE(ANY), but it is no longer valid.
 				 */
@@ -1272,9 +1272,7 @@ find_headers(qpcnode_t *node, qpc_search_t *search, dns_rdatatype_t type,
 
 		fill_headers(tmp, &header, &sigheader);
 
-		if (skip_headers(search->qpdb, node, &header, &sigheader,
-				 search))
-		{
+		if (skip_headers(node, &header, &sigheader, search)) {
 			goto return_nothing;
 		}
 
@@ -1582,9 +1580,7 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 
 		fill_headers(tmp, &header, &sigheader);
 
-		if (skip_headers(search.qpdb, node, &header, &sigheader,
-				 &search))
-		{
+		if (skip_headers(node, &header, &sigheader, &search)) {
 			continue;
 		}
 
@@ -1841,9 +1837,7 @@ qpcache_findrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 		}
 
 		fill_headers(tmp, &header, &sigheader);
-		if (!skip_headers(search.qpdb, qpnode, &header, &sigheader,
-				  &search))
-		{
+		if (!skip_headers(qpnode, &header, &sigheader, &search)) {
 			(void)related_headers(header, sigheader, typepair,
 					      &found, &foundsig);
 		}

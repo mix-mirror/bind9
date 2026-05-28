@@ -471,7 +471,6 @@ dns_slabheader_reset(dns_slabheader_t *h, dns_dbnode_t *node) {
 	h->node = node;
 
 	atomic_init(&h->attributes, 0);
-	atomic_init(&h->last_refresh_fail_ts, 0);
 
 	CDS_INIT_LIST_HEAD(&h->headerlink);
 	CDS_INIT_LIST_HEAD(&h->dirtylink);
