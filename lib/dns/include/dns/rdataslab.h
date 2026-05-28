@@ -90,6 +90,14 @@ struct dns_slabheader {
 	isc_stdtime_t  expire;
 	dns_typepair_t typepair;
 
+	uint16_t nitems;
+
+	/*%
+	 * Used for SIEVE-LRU cache eviction.
+	 */
+	bool visited;
+	ISC_LINK(dns_slabheader_t) sievelink;
+
 	dns_slabheader_proof_t *noqname;
 	dns_slabheader_proof_t *closest;
 
@@ -112,19 +120,11 @@ struct dns_slabheader {
 	dns_dbnode_t *node;
 
 	/*%
-	 * Used for SIEVE-LRU cache eviction.
-	 */
-	bool visited;
-	ISC_LINK(dns_slabheader_t) sievelink;
-
-	/*%
 	 * Case vector.  If the bit is set then the corresponding
 	 * character in the owner name needs to be AND'd with 0x20,
 	 * rendering that character upper case.
 	 */
 	unsigned char upper[32];
-
-	uint16_t nitems;
 
 	struct rcu_head rcu_head;
 
