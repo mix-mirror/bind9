@@ -1472,11 +1472,6 @@ system:gcc:ossl3:trixie:amd64:
     SOFTHSM2_CONF: "/var/tmp/softhsm2/softhsm2.conf"
   <<: *debian_trixie_amd64_image
   <<: *system_test_job
-  before_script:
-    - *setup_interfaces
-    # GL#4605: pkcs11-provider's key cache can return stale key handles
-    # under load and break key loading; disable it for the PKCS#11 tests.
-    - sudo sed -i '/^\[pkcs11_init\]/a pkcs11-module-cache-keys = false' "$OPENSSL_CONF"
   needs:
     - job: gcc:ossl3:trixie:amd64
       artifacts: true
