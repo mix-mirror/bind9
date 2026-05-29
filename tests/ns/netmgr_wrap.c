@@ -23,6 +23,8 @@
 
 #include <tests/ns.h>
 
+#undef FLARG
+
 #if ISC_NETMGR_TRACE
 #define FLARG                                                                 \
 	, const char *func ISC_ATTR_UNUSED, const char *file ISC_ATTR_UNUSED, \
