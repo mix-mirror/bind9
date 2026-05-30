@@ -49,6 +49,5 @@ pytestmark = pytest.mark.extra_artifacts(
 )
 
 
-@pytest.mark.flaky(max_runs=5)  # GL#4605
 def test_enginepkcs11(run_tests_sh):
     run_tests_sh()
