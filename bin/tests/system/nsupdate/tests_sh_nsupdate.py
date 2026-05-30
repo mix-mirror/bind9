@@ -78,9 +78,5 @@ pytestmark = pytest.mark.extra_artifacts(
 )
 
 
-MAX_RUNS = 2 if platform.system() == "FreeBSD" else 1  # GL#3846
-
-
-@pytest.mark.flaky(max_runs=MAX_RUNS)
 def test_nsupdate(run_tests_sh):
     run_tests_sh()

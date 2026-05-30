@@ -548,6 +548,7 @@ stages:
       artifacts: true
 
 .system_test_common: &system_test_job
+  parallel: 3
   <<: *default_triggering_rules
   stage: system
   before_script:

@@ -601,9 +601,6 @@ def cb_remove_keyfiles(params, ksks=None, zsks=None):
                 ],
             },
             id="secondary.kasp",
-            marks=pytest.mark.flaky(
-                max_runs=2, rerun_filter=isctest.mark.is_host_freebsd
-            ),
         ),
         pytest.param(
             {

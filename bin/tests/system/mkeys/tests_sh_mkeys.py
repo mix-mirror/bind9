@@ -50,6 +50,5 @@ pytestmark = [
 ]
 
 
-@pytest.mark.flaky(max_runs=2)  # GL#3098
 def test_mkeys(run_tests_sh):
     run_tests_sh()
