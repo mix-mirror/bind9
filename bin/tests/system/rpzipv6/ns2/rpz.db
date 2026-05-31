@@ -1,0 +1,32 @@
+; Copyright (C) Internet Systems Consortium, Inc. ("ISC")
+;
+; SPDX-License-Identifier: MPL-2.0
+;
+; This Source Code Form is subject to the terms of the Mozilla Public
+; License, v. 2.0.  If a copy of the MPL was not distributed with this
+; file, you can obtain one at https://mozilla.org/MPL/2.0/.
+;
+; See the COPYRIGHT file distributed with this work for additional
+; information regarding copyright ownership.
+
+; RPZ policy zone with IPv6 rpz-ip triggers, owner names in the reversed,
+; prefix-first RPZ form:
+;
+;   128.1.1.1.1.zz.1.db8.2001  <-> 2001:db8:1:0:1:1:1:1  (single isolated zero)
+;   128.zz.1.1.1.1.1.db8.2001  <-> 2001:db8:1:1:1:1:1:0  (single trailing zero)
+;   128.1.1.1.1.zz.db8.2001    <-> 2001:db8:0:0:1:1:1:1  (two consecutive zeros)
+;
+; Each rule maps to "CNAME ." (the RPZ NXDOMAIN action).  The two single-zero
+; rules use "zz" for a single isolated zero group, which is not the canonical
+; form ip2name() generates (a single zero group renders as ".0").  They load
+; with a non-canonical-name warning; the resolver still enforces them by
+; retrying the policy lookup under the "zz" spelling when the canonical lookup
+; misses.  The two-consecutive-zeros rule is canonical and matches directly.
+
+$TTL 300
+@		IN SOA	ns2.lab. hostmaster.lab. ( 1 3600 1200 604800 60 )
+@		IN NS	ns2.lab.
+
+128.1.1.1.1.zz.1.db8.2001.rpz-ip	IN CNAME .
+128.zz.1.1.1.1.1.db8.2001.rpz-ip	IN CNAME .
+128.1.1.1.1.zz.db8.2001.rpz-ip		IN CNAME .
