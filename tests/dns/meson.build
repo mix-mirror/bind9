@@ -38,6 +38,7 @@ dns_tests = [
     'rdatasetstats',
     'resconf',
     'resolver',
+    'rpz',
     'rsa',
     'sigs',
     'time',

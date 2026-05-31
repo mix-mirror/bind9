@@ -3450,8 +3450,8 @@ rpz_rewrite_ip(ns_client_t *client, const isc_netaddr_t *netaddr,
 	dns_rpz_zone_t *rpz;
 	dns_rpz_prefix_t prefix;
 	dns_rpz_num_t rpz_num;
-	dns_fixedname_t ip_namef, p_namef;
-	dns_name_t *ip_name, *p_name;
+	dns_fixedname_t ip_namef, ip_name_altf, p_namef;
+	dns_name_t *ip_name, *ip_name_alt, *p_name;
 	dns_zone_t *p_zone;
 	dns_db_t *p_db;
 	dns_dbversion_t *p_version;
@@ -3465,6 +3465,7 @@ rpz_rewrite_ip(ns_client_t *client, const isc_netaddr_t *netaddr,
 	st = client->query.rpz_st;
 
 	ip_name = dns_fixedname_initname(&ip_namef);
+	ip_name_alt = dns_fixedname_initname(&ip_name_altf);
 
 	p_zone = NULL;
 	p_db = NULL;
@@ -3472,7 +3473,7 @@ rpz_rewrite_ip(ns_client_t *client, const isc_netaddr_t *netaddr,
 
 	while (zbits != 0) {
 		rpz_num = dns_rpz_find_ip(rpzs, rpz_type, zbits, netaddr,
-					  ip_name, &prefix);
+					  ip_name, ip_name_alt, &prefix);
 		if (rpz_num == DNS_RPZ_INVALID_NUM) {
 			break;
 		}
@@ -3508,6 +3509,28 @@ rpz_rewrite_ip(ns_client_t *client, const isc_netaddr_t *netaddr,
 		result = rpz_find_p(client, ip_name, qtype, p_name, rpz,
 				    rpz_type, &p_zone, &p_db, &p_version,
 				    &p_node, p_rdatasetp, &policy);
+		/*
+		 * The trigger name was regenerated from the matched address in
+		 * canonical form.  An operator may have authored the policy
+		 * record under the non-canonical IPv6 spelling that writes a
+		 * single isolated zero group as ".zz" instead of ".0"; on a
+		 * miss, retry once under that spelling.  This recovers only the
+		 * single-".zz" spelling, not every non-canonical form.
+		 */
+		if (result == DNS_R_NXDOMAIN && netaddr->family == AF_INET6 &&
+		    !dns_name_equal(ip_name, ip_name_alt))
+		{
+			result = rpz_get_p_name(client, p_name, rpz, rpz_type,
+						ip_name_alt);
+			if (result == ISC_R_SUCCESS) {
+				result = rpz_find_p(
+					client, ip_name_alt, qtype, p_name, rpz,
+					rpz_type, &p_zone, &p_db, &p_version,
+					&p_node, p_rdatasetp, &policy);
+			} else {
+				result = DNS_R_NXDOMAIN;
+			}
+		}
 		switch (result) {
 		case DNS_R_NXDOMAIN:
 			/*

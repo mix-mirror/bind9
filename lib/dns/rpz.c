@@ -739,10 +739,16 @@ badname(int level, const dns_name_t *name, const char *str1, const char *str2) {
  * 0 fields are equal (e.g., 1.0.0.1.0.0.db8.2001 corresponding to
  * 2001:db8:0:0:1:0:0:1), we shorted the last instead of the first
  * (e.g., 1.0.0.1.zz.db8.2001 corresponding to 2001:db8::1:0:0:1).
+ *
+ * The canonical form (single == false) leaves a single isolated zero group
+ * as a literal "0", since RFC 5952 forbids "::" for one group.  With
+ * single == true a single zero group is also compressed to "zz"; this yields
+ * the non-canonical spelling an operator may have authored, so a caller can
+ * retry a policy-record lookup that missed under the canonical name.
  */
 static isc_result_t
 ip2name(const dns_rpz_cidr_key_t *tgt_ip, dns_rpz_prefix_t tgt_prefix,
-	const dns_name_t *base_name, dns_name_t *ip_name) {
+	const dns_name_t *base_name, dns_name_t *ip_name, bool single) {
 #ifndef INET6_ADDRSTRLEN
 #define INET6_ADDRSTRLEN 46
 #endif /* ifndef INET6_ADDRSTRLEN */
@@ -792,7 +798,16 @@ ip2name(const dns_rpz_cidr_key_t *tgt_ip, dns_rpz_prefix_t tgt_prefix,
 				++cur_len;
 				if (cur_first < 0) {
 					cur_first = n;
-				} else if (cur_len >= best_len) {
+				}
+				/*
+				 * Record runs of >= 2 zeros; with 'single' a
+				 * length-1 run counts too.  The '>=' keeps the
+				 * documented tie-break (shorten the last of two
+				 * equal-length runs).
+				 */
+				if (cur_len >= best_len &&
+				    (single || cur_len >= 2))
+				{
 					best_first = cur_first;
 					best_len = cur_len;
 				}
@@ -1008,7 +1023,11 @@ name2ipkey(int log_level, dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
 	}
 
 	/*
-	 * Complain about bad names but be generous and accept them.
+	 * Warn about non-canonical names but accept them.  The query-time
+	 * policy lookup regenerates the trigger name in canonical form, so a
+	 * non-canonical name may not match; only a single isolated zero group
+	 * written ".zz" instead of ".0" is recovered (by an extra lookup),
+	 * and the operator should rewrite the rule to the canonical name.
 	 */
 	if (log_level < DNS_RPZ_DEBUG_QUIET && isc_log_wouldlog(log_level)) {
 		/*
@@ -1017,17 +1036,19 @@ name2ipkey(int log_level, dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
 		 */
 		dns_name_t *ip_name2 = dns_fixedname_initname(&ip_name2f);
 		result = ip2name(tgt_ip, (dns_rpz_prefix_t)prefix_num, NULL,
-				 ip_name2);
+				 ip_name2, false);
 		if (result != ISC_R_SUCCESS ||
 		    !dns_name_equal(&ip_name, ip_name2))
 		{
 			char ip2_str[DNS_NAME_FORMATSIZE];
 			dns_name_format(ip_name2, ip2_str, sizeof(ip2_str));
-			isc_log_write(DNS_LOGCATEGORY_RPZ, DNS_LOGMODULE_RPZ,
-				      log_level,
-				      "rpz IP address \"%s\""
-				      " is not the canonical \"%s\"",
-				      ip_str, ip2_str);
+			isc_log_write(
+				DNS_LOGCATEGORY_RPZ, DNS_LOGMODULE_RPZ,
+				log_level,
+				"rpz IP address \"%s\" is not the "
+				"canonical \"%s\"; the rule may not match "
+				"unless rewritten to the canonical name",
+				ip_str, ip2_str);
 		}
 	}
 
@@ -2360,11 +2381,15 @@ rpz_del(dns_rpz_zone_t *rpz, const dns_name_t *src_name) {
  *	return the policy zone's number or DNS_RPZ_INVALID_NUM
  *	ip_name is the relative owner name found and
  *	*prefixp is its prefix length.
+ *	if ip_name_alt is not NULL and the match is an IPv6 address, it
+ *	receives the non-canonical "zz" spelling of a single isolated zero
+ *	group, so the caller can retry a lookup that missed under ip_name.
  */
 dns_rpz_num_t
 dns_rpz_find_ip(dns_rpz_zones_t *rpzs, dns_rpz_type_t rpz_type,
 		dns_rpz_zbits_t zbits, const isc_netaddr_t *netaddr,
-		dns_name_t *ip_name, dns_rpz_prefix_t *prefixp) {
+		dns_name_t *ip_name, dns_name_t *ip_name_alt,
+		dns_rpz_prefix_t *prefixp) {
 	dns_rpz_cidr_key_t tgt_ip;
 	dns_rpz_addr_zbits_t tgt_set;
 	dns_rpz_cidr_node_t *found = NULL;
@@ -2462,7 +2487,14 @@ dns_rpz_find_ip(dns_rpz_zones_t *rpzs, dns_rpz_type_t rpz_type,
 	default:
 		UNREACHABLE();
 	}
-	result = ip2name(&found->ip, found->prefix, dns_rootname, ip_name);
+	result = ip2name(&found->ip, found->prefix, dns_rootname, ip_name,
+			 false);
+	if (result == ISC_R_SUCCESS && ip_name_alt != NULL &&
+	    !KEY_IS_IPV4(found->prefix, &found->ip))
+	{
+		result = ip2name(&found->ip, found->prefix, dns_rootname,
+				 ip_name_alt, true);
+	}
 	RWUNLOCK(&rpzs->search_lock, isc_rwlocktype_read);
 	if (result != ISC_R_SUCCESS) {
 		/*
