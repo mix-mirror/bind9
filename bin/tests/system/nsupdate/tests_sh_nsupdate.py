@@ -9,7 +9,6 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
-import platform
 
 import pytest
 
