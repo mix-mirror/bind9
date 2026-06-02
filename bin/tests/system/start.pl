@@ -399,7 +399,7 @@ sub verify_ns_server {
 			exit 1;
 		}
 
-		sleep 2;
+		sleep 4;
 	}
 
 	$tries = 0;
