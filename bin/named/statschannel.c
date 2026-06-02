@@ -3708,7 +3708,6 @@ render_xsl(const isc_httpd_t *httpd, const isc_httpdurl_t *urlinfo, void *args,
 	   unsigned int *retcode, const char **retmsg, const char **mimetype,
 	   isc_buffer_t *b, isc_httpdfree_t **freecb, void **freecb_args) {
 	isc_result_t result;
-	char *p = NULL;
 
 	UNUSED(httpd);
 	UNUSED(args);
@@ -3752,8 +3751,7 @@ render_xsl(const isc_httpd_t *httpd, const isc_httpdurl_t *urlinfo, void *args,
 send:
 	*retcode = 200;
 	*retmsg = "OK";
-	p = UNCONST(xslmsg);
-	isc_buffer_reinit(b, p, strlen(xslmsg));
+	isc_buffer_constinit(b, xslmsg, strlen(xslmsg));
 	isc_buffer_add(b, strlen(xslmsg));
 end:
 	return ISC_R_SUCCESS;
