@@ -44,10 +44,8 @@ def assert_used_auth(ns, authip):
         queries += 1
         if ip == authip:
             matches += 1
-    # Loose thresholds: under load, scheduling jitter perturbs SRTT and adds
-    # retransmissions. Just confirm most queries still hit the preferred auth.
-    assert matches > 50
-    assert queries <= 150
+    assert matches > 85
+    assert queries <= 115
 
 
 def test_srtt(ns6):
