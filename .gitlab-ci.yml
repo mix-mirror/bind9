@@ -22,8 +22,8 @@ variables:
   GIT_CLEAN_FLAGS: -ffdxq
 
   # The following values may be overwritten in GitLab's CI/CD Variables Settings.
-  BUILD_PARALLEL_JOBS: 8
-  TEST_PARALLEL_JOBS: 8
+  BUILD_PARALLEL_JOBS: 6
+  TEST_PARALLEL_JOBS: 4
 
   CLANG_VERSION: 22
   CLANG: "clang-${CLANG_VERSION}"
