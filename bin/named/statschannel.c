@@ -3704,13 +3704,13 @@ render_json_traffic(const isc_httpd_t *httpd, const isc_httpdurl_t *urlinfo,
  * neither of libxml2 or json-c is configured.
  */
 static isc_result_t
-render_xsl(const isc_httpd_t *httpd, const isc_httpdurl_t *urlinfo, void *args,
-	   unsigned int *retcode, const char **retmsg, const char **mimetype,
-	   isc_buffer_t *b, isc_httpdfree_t **freecb, void **freecb_args) {
-	isc_result_t result;
+render_xsl(const isc_httpd_t *httpd, const isc_httpdurl_t *urlinfo,
+	   void *args ISC_ATTR_UNUSED, unsigned int *retcode,
+	   const char **retmsg, const char **mimetype, isc_buffer_t *b,
+	   isc_httpdfree_t **freecb, void **freecb_args) {
+	REQUIRE(isc_buffer_length(b) == 0);
 
-	UNUSED(httpd);
-	UNUSED(args);
+	isc_result_t result;
 
 	*freecb = NULL;
 	*freecb_args = NULL;
