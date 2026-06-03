@@ -183,14 +183,21 @@ if optimization != 'plain'
         endif
     endif
 
-    add_project_arguments(
-        cc.get_supported_arguments(
-            '-fcf-protection=full',
-            '-fstack-clash-protection',
-            '-fstack-protector-strong',
+    hardening_args = [
+        '-fstack-clash-protection',
+        '-fstack-protector-strong',
 
-            '-mbranch-protection=standard',
-        ),
+        '-mbranch-protection=standard',
+    ]
+
+    # afl-cc switches to LTO (emitting bitcode the default linker can't
+    # handle) as soon as it sees -fcf-protection. Drop it for the AFL backend.
+    if fuzzing_backend_opt != 'afl'
+        hardening_args += '-fcf-protection=full'
+    endif
+
+    add_project_arguments(
+        cc.get_supported_arguments(hardening_args),
         language: 'c',
     )
 
