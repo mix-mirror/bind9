@@ -46,7 +46,8 @@ PrivateKey: TypeAlias = (
 
 
 class ZoneKey(ABC):
-    """Abstract base for a DNSSEC key attached to a Zone.
+    """
+    Abstract base for a DNSSEC key attached to a Zone.
 
     Two concrete implementations exist:
       FileZoneKey    — wraps a dnssec-keygen-managed key file pair (kasp.Key).
@@ -71,7 +72,8 @@ class ZoneKey(ABC):
         target_dir: Path | str,
         dsdigest: dns.dnssec.DSDigest = dns.dnssec.DSDigest.SHA256,
     ) -> None:
-        """Write or copy dsset-{zone}. into target_dir.
+        """
+        Write or copy dsset-{zone}. into target_dir.
 
         For FileZoneKey: copies the dsset file produced by dnssec-signzone.
         For PythonZoneKey: derives the DS from the in-memory key and writes it.
@@ -82,7 +84,8 @@ class ZoneKey(ABC):
         ta_type: str = "static-ds",
         dsdigest: dns.dnssec.DSDigest = dns.dnssec.DSDigest.SHA256,
     ) -> TrustAnchor:
-        """Build a named.conf trust-anchor stanza from this key.
+        """
+        Build a named.conf trust-anchor stanza from this key.
 
         ta_type must be one of: static-ds, initial-ds, static-key, initial-key.
         Implemented once here; both subclasses inherit it via self.dnskey.
@@ -101,7 +104,8 @@ class ZoneKey(ABC):
 
 
 class FileZoneKey(ZoneKey):
-    """A ZoneKey backed by dnssec-keygen-managed key files.
+    """
+    A ZoneKey backed by dnssec-keygen-managed key files.
 
     Constructed by FileZoneKey.generate(); callers normally do not
     instantiate this directly.  The underlying kasp.Key is accessible via
@@ -121,6 +125,15 @@ class FileZoneKey(ZoneKey):
         target_dir: Path | str,
         dsdigest: dns.dnssec.DSDigest = dns.dnssec.DSDigest.SHA256,
     ) -> None:
+        """
+        Copy the dnssec-signzone-produced dsset-{zone}. into target_dir.
+
+        dsdigest is accepted for interface compatibility but ignored: the dsset
+        file is produced by dnssec-signzone (SHA-256). This copy overwrites any
+        existing dsset file, so a zone must not mix FileZoneKey and
+        PythonZoneKey KSKs (PythonZoneKey appends to the same file);
+        Zone.copy_dssets enforces this.
+        """
         src = Path(self.zone.ns.name) / f"dsset-{self.zone.name}."
         shutil.copy(src, Path(target_dir))
         debug(f"{self.zone.name}: dsset copied to {target_dir}")
@@ -131,7 +144,8 @@ class FileZoneKey(ZoneKey):
         params: str = "",
         alg: Algorithm | None = None,
     ) -> FileZoneKey:
-        """Generate a DNSSEC key via dnssec-keygen for zone and return it.
+        """
+        Generate a DNSSEC key via dnssec-keygen for zone and return it.
 
         Runs dnssec-keygen in zone.ns.name/keys/, stores the key there, and
         returns the resulting FileZoneKey.  Pass params="-f KSK" to generate a
@@ -150,7 +164,8 @@ class FileZoneKey(ZoneKey):
 
 
 class PythonZoneKey(ZoneKey):
-    """A ZoneKey holding a Python-native keypair.
+    """
+    A ZoneKey holding a Python-native keypair.
 
     Construct via PythonZoneKey.generate() to create fresh key
     material, or instantiate directly when you already have a private key and
@@ -223,7 +238,8 @@ class PythonZoneKey(ZoneKey):
         alg: Algorithm | None = None,
         ttl: int = DNSKEY_TTL,
     ) -> PythonZoneKey:
-        """Generate a Python-native DNSSEC keypair for the given algorithm.
+        """
+        Generate a Python-native DNSSEC keypair for the given algorithm.
 
         Unlike FileZoneKey.generate(), this does not invoke
         dnssec-keygen and produces no on-disk key files.  The returned
@@ -326,6 +342,14 @@ class Zone:
         """Write dsset-* files for each signed delegation into self.ns dir."""
         for zone in self.delegations:
             ksks = [k for k in zone.keys if k.is_ksk()]
+            has_file = any(isinstance(k, FileZoneKey) for k in ksks)
+            has_python = any(isinstance(k, PythonZoneKey) for k in ksks)
+            if has_file and has_python:
+                raise TypeError(
+                    f"{zone.name}: cannot mix FileZoneKey and PythonZoneKey KSKs; "
+                    "dsset writing is order-dependent (FileZoneKey overwrites, "
+                    "PythonZoneKey appends)"
+                )
             if ksks:
                 for key in ksks:
                     key.write_dsset(Path(self.ns.name))
@@ -351,7 +375,8 @@ class Zone:
         templates.render(str(output), data, template=template)
 
     def sign(self, params: str = "") -> None:
-        """Sign the rendered zone file via dnssec-signzone.
+        """
+        Sign the rendered zone file via dnssec-signzone.
 
         Requires self.signed == True.  Raises TypeError if self.keys contains
         any PythonZoneKey — dnssec-signzone cannot use in-memory keys; use
@@ -383,13 +408,11 @@ class Zone:
         if self.signed:
             self.sign(sign_params)
 
-    def trust_anchors(
-        self, type: str = "static-ds"  # pylint: disable=redefined-builtin
-    ) -> list[TrustAnchor]:
+    def trust_anchors(self, type_: str = "static-ds") -> list[TrustAnchor]:
         """Return a trust-anchor stanza for every KSK in zone.keys."""
         ksks = [k for k in self.keys if k.is_ksk()]
         assert ksks, f"{self.name}: no KSK in zone.keys"
-        return [k.into_ta(type) for k in ksks]
+        return [k.into_ta(type_) for k in ksks]
 
 
 def configure_root(
