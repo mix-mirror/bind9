@@ -24,6 +24,14 @@ The tests in this directory can be operated in three modes:
 * LibFuzzer - `meson setup -Dfuzzing=libfuzzer` will disable `main.c`
   completely and it uses the standard LibFuzzer mechanims to feed
   `LLVMFuzzerTestOneInput` with the fuzzer
+* OSS-Fuzz - `meson setup -Dfuzzing=enabled -Dfuzzing-backend=oss-fuzz
+  -Doss-fuzz-args="$LIB_FUZZING_ENGINE"` behaves like the LibFuzzer mode
+  (it disables `main.c`), but instead of hard-coding the sanitizer flags it
+  links the fuzzing engine passed by the OSS-Fuzz environment via
+  `$LIB_FUZZING_ENGINE`. The build itself is expected to set the compiler
+  and sanitizer flags through `CFLAGS`/`CXXFLAGS`. Combined with
+  `-Ddefault_library=static`, this produces self-contained fuzzer binaries
+  that need no patching from the OSS-Fuzz side.
 
 == Test Cases
 
