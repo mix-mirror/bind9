@@ -26,10 +26,7 @@ def bootstrap():
 
     parent = Zone("nsec3-iter-too-many", NS2, signed=True)
     parent.delegations = [sub]
-    parent.copy_dssets()
-    parent.add_keys()
-    parent.render()
-    parent.sign("-3 A1B2C3D4 -H too-many -H 51")
+    parent.configure(sign_params="-3 A1B2C3D4 -H too-many -H 51")
 
     root = configure_root([parent])
 
