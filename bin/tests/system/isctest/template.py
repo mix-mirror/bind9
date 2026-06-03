@@ -168,8 +168,9 @@ class TrustAnchor:
     contents: str
 
 
-def zones(zone_list: "list[_SetupZone]") -> "dict[str, Zone]":
-    """Convert a list of zone.Zone instances to a {name: Zone} dict for templates.
+def zones(zone_list: "list[_SetupZone]") -> dict[str, Zone]:
+    """
+    Convert a list of zone.Zone instances to a {name: Zone} dict for templates.
 
     The returned dict maps zone names to plain template Zone instances, suitable
     for use as the ``zones`` variable in jinja2 templates. The ``filepath`` of

@@ -285,7 +285,7 @@ class Zone:
         subdir: str | None = "zones",
         filepath_unsigned: Path | str | None = None,
         filepath_signed: Path | str | None = None,
-        type: str = "primary",  # pylint: disable=redefined-builtin
+        type_: str = "primary",
     ) -> None:
         self.dname: dns.name.Name = (
             dns.name.from_text(name) if isinstance(name, str) else name
@@ -296,7 +296,8 @@ class Zone:
         self.ns = ns
         self.signed = signed
         self.subdir = subdir
-        self.type = type
+        self.type = type_
+        self._configured = False
 
         prefix = f"{subdir}/" if subdir else ""
         self.filepath_unsigned: Path = Path(
@@ -371,14 +372,16 @@ class Zone:
             cwd=self.ns.name,
         )
 
-    def configure(self, template: str | None = None) -> None:
+    def configure(self, template: str | None = None, sign_params: str = "") -> None:
         """Perform full zone setup."""
+        assert not self._configured, f"{self.name}: configure() already called"
+        self._configured = True
         self.copy_dssets()
         if self.signed:
             self.add_keys()
         self.render(template)
         if self.signed:
-            self.sign()
+            self.sign(sign_params)
 
     def trust_anchors(
         self, type: str = "static-ds"  # pylint: disable=redefined-builtin
