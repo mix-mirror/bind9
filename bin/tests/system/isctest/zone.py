@@ -408,13 +408,11 @@ class Zone:
         if self.signed:
             self.sign(sign_params)
 
-    def trust_anchors(
-        self, type: str = "static-ds"  # pylint: disable=redefined-builtin
-    ) -> list[TrustAnchor]:
+    def trust_anchors(self, ta_type: str = "static-ds") -> list[TrustAnchor]:
         """Return a trust-anchor stanza for every KSK in zone.keys."""
         ksks = [k for k in self.keys if k.is_ksk()]
         assert ksks, f"{self.name}: no KSK in zone.keys"
-        return [k.into_ta(type) for k in ksks]
+        return [k.into_ta(ta_type) for k in ksks]
 
 
 def configure_root(
