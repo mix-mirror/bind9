@@ -301,7 +301,7 @@ class Zone:
         subdir: str | None = "zones",
         filepath_unsigned: Path | str | None = None,
         filepath_signed: Path | str | None = None,
-        type_: str = "primary",
+        type: str = "primary",  # pylint: disable=redefined-builtin
     ) -> None:
         self.dname: dns.name.Name = (
             dns.name.from_text(name) if isinstance(name, str) else name
@@ -312,7 +312,7 @@ class Zone:
         self.ns = ns
         self.signed = signed
         self.subdir = subdir
-        self.type = type_
+        self.type = type
         self._configured = False
 
         prefix = f"{subdir}/" if subdir else ""
