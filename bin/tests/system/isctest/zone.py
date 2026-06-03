@@ -291,6 +291,14 @@ class Zone:
     This is the operational counterpart to isctest.template.Zone, which is a
     plain data container for template rendering. Use isctest.template.zones()
     to convert a list of Zone instances into template data.
+
+    The normal entrypoint is configure(), which runs the full setup once.
+    The individual steps (copy_dssets, add_keys, render, sign) are public so
+    that tests needing finer-grained control can drive them directly, but they
+    are order-dependent and write to the same on-disk locations as configure().
+    Pick one or the other for a given Zone: calling a step method and
+    configure() on the same Zone leaves the zone directory in an inconsistent
+    state.
     """
 
     def __init__(
@@ -398,7 +406,14 @@ class Zone:
         )
 
     def configure(self, template: str | None = None, sign_params: str = "") -> None:
-        """Perform full zone setup."""
+        """
+        Perform full zone setup: copy DS sets, generate keys, render, sign.
+
+        This is the standard single-call entrypoint and may be called only once
+        per Zone. Use the individual step methods directly only when a test
+        needs finer-grained control, and do not mix them with configure() on the
+        same Zone (see the class docstring).
+        """
         assert not self._configured, f"{self.name}: configure() already called"
         self._configured = True
         self.copy_dssets()
