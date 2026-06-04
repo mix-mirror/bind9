@@ -144,6 +144,7 @@ cleanup:
 
 int
 LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
+	FUZZ_CANARY(data, size);
 	isc_buffer_t buffer;
 	isc_result_t result;
 	dns_message_t *message = NULL;

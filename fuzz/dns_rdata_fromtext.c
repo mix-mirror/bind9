@@ -45,6 +45,7 @@ isc_lexspecials_t specials = { ['('] = 1, [')'] = 1, ['"'] = 1 };
 
 int
 LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
+	FUZZ_CANARY(data, size);
 	isc_mem_t *mctx = NULL;
 	isc_mem_create("fuzz", &mctx);
 

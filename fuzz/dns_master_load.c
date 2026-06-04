@@ -36,6 +36,7 @@ LLVMFuzzerInitialize(int *argc, char ***argv) {
 
 int
 LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
+	FUZZ_CANARY(data, size);
 	isc_buffer_t buf;
 	isc_result_t result;
 	isc_mem_t *mctx = NULL;

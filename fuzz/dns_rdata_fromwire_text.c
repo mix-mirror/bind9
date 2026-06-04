@@ -75,6 +75,8 @@ nullmsg(dns_rdatacallbacks_t *cb, const char *fmt, ...) {
 
 int
 LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
+	FUZZ_CANARY(data, size);
+
 	char totext[64 * 1044 * 4];
 	dns_compress_t cctx;
 	dns_rdatatype_t rdtype;

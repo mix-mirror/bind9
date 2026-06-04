@@ -39,6 +39,8 @@ LLVMFuzzerInitialize(int *argc, char ***argv) {
 
 int
 LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
+	FUZZ_CANARY(data, size);
+
 	dns_fixedname_t fixedin, fixedout, fixedcmp;
 	dns_name_t *namein, *nameout, *namecmp;
 	isc_buffer_t buf;

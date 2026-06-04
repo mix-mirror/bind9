@@ -138,6 +138,8 @@ LLVMFuzzerInitialize(int *argc, char ***argv) {
 
 int
 LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
+	FUZZ_CANARY(data, size);
+
 	isc_result_t result;
 
 	TRACE("------------------------------------------------");

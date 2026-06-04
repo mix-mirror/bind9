@@ -315,6 +315,7 @@ create_message(dns_message_t **messagep, const uint8_t *data, size_t size,
 
 int
 LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
+	FUZZ_CANARY(data, size);
 	isc_result_t result;
 	dns_message_t *message = NULL;
 	unsigned char query_tsig[23 + 32 + 6] = { 0 };

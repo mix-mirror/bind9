@@ -56,6 +56,7 @@ doc_opt = get_option('doc')
 doh_opt = get_option('doh')
 fips_opt = get_option('fips')
 fuzzing_backend_opt = get_option('fuzzing-backend')
+fuzzing_canary_opt = get_option('fuzzing-canary')
 fuzzing_opt = get_option('fuzzing')
 geoip_opt = get_option('geoip')
 gssapi_opt = get_option('gssapi')
@@ -1879,6 +1880,11 @@ shared_library(
 subdir('doc')
 subdir('tests')
 
+fuzz_c_args = ['-Wno-vla']
+if fuzzing_canary_opt.enabled()
+    fuzz_c_args += '-DFUZZING_CANARY'
+endif
+
 foreach name, sources : fuzz_binaries
     fuzz_bin = executable(
         name,
@@ -1886,7 +1892,7 @@ foreach name, sources : fuzz_binaries
         export_dynamic: true,
         implicit_include_directories: true,
         install: false,
-        c_args: ['-Wno-vla'],
+        c_args: fuzz_c_args,
         link_args: fuzz_link_args,
         sources: default_sanitize_options,
         dependencies: [

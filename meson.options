@@ -169,6 +169,13 @@ option(
 )
 
 option(
+    'fuzzing-canary',
+    type: 'feature',
+    value: 'disabled',
+    description: 'Plant findable canary bugs in the fuzz targets to self-test the fuzzers',
+)
+
+option(
     'oss-fuzz-args',
     type: 'string',
     description: 'Fuzzing linking arguments for OSS-Fuzz',
