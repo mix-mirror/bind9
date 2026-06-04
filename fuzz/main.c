@@ -125,8 +125,9 @@ main(int argc, char **argv) {
 	}
 
 	target = (target != NULL) ? target + 1 : argv[0];
-	if (strncmp(target, "lt-", 3) == 0) {
-		target += 3;
+	/* The binaries are named fuzz_<name>, the corpora are <name>.in. */
+	if (strncmp(target, "fuzz_", 5) == 0) {
+		target += 5;
 	}
 
 	snprintf(corpusdir, sizeof(corpusdir), FUZZDIR "/%s.in", target);
