@@ -40,10 +40,14 @@ def name(text: str) -> dns.name.Name:
 
 def load_keys() -> dict[str, Key]:
     path = Path(".") / "keys.json"
-    with path.open(encoding="utf-8") as keys_file:
-        raw_keys = json.load(keys_file)
+    keys = raw_keys = {}
 
-    keys = {}
+    try:
+        with path.open(encoding="utf-8") as keys_file:
+            raw_keys = json.load(keys_file)
+    except Exception:  # pylint: disable=broad-except
+        pass
+
     for zone, raw_key in raw_keys.items():
         private_key = serialization.load_pem_private_key(
             raw_key["private_pem"].encode("ascii"),
