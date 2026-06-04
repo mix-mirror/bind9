@@ -87,7 +87,8 @@ delegdb_destroy(dns_delegdb_t *delegdb) {
 	INSIST(qplru != NULL);
 
 	/*
-	 * Offload the node deletion to rcu thread.
+	 * Offload the LRU list node deletion to RCU thread (as well as qptrie
+	 * deletion).
 	 */
 	call_rcu(&qplru->rcu_head, qplru_shutdown_rcu);
 
@@ -126,6 +127,7 @@ struct delegdb_node {
 static void
 delegdb_node_destroy(delegdb_node_t *node) {
 	REQUIRE(VALID_DELEGDB_NODE(node));
+	REQUIRE(DNS_DELEGSET_VALID(node->delegset));
 
 	qplru_t *qplru = node->qplru;
 
