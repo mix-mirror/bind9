@@ -30,17 +30,19 @@
 
 #include <dirent.h>
 
-static void
+/* Returns 1 if the input was fed to the target, 0 otherwise. */
+static int
 test_one_file(const char *filename) {
 	int fd;
 	struct stat st;
 	char *data;
 	ssize_t n;
+	int tested = 0;
 
 	if ((fd = open(filename, O_RDONLY)) == -1) {
 		fprintf(stderr, "Failed to open %s: %s\n", filename,
 			strerror(errno));
-		return;
+		return 0;
 	}
 
 	if (fstat(fd, &st) != 0) {
@@ -56,6 +58,7 @@ test_one_file(const char *filename) {
 		fflush(stdout);
 		LLVMFuzzerTestOneInput((const uint8_t *)data, n);
 		fflush(stderr);
+		tested = 1;
 	} else {
 		if (n < 0) {
 			fprintf(stderr,
@@ -70,16 +73,21 @@ test_one_file(const char *filename) {
 	free(data);
 closefd:
 	close(fd);
+	return tested;
 }
 
-static void
+/* Returns the number of inputs that were fed to the target. */
+static size_t
 test_all_from(const char *dirname) {
 	DIR *dirp;
 	struct dirent *dp;
+	size_t tested = 0;
 
 	dirp = opendir(dirname);
 	if (dirp == NULL) {
-		return;
+		fprintf(stderr, "Failed to open %s: %s\n", dirname,
+			strerror(errno));
+		return 0;
 	}
 
 	while ((dp = readdir(dirp)) != NULL) {
@@ -90,10 +98,11 @@ test_all_from(const char *dirname) {
 		}
 		snprintf(filename, sizeof(filename), "%s/%s", dirname,
 			 dp->d_name);
-		test_one_file(filename);
+		tested += test_one_file(filename);
 	}
 
 	closedir(dirp);
+	return tested;
 }
 
 int
@@ -115,12 +124,17 @@ main(int argc, char **argv) {
 	}
 
 	if (argv[1] != NULL) {
+		size_t tested = 0;
 		while (argv[1] != NULL) {
-			test_one_file(argv[1]);
+			tested += test_one_file(argv[1]);
 			argv++;
 			argc--;
 		}
 		POST(argc);
+		if (tested == 0) {
+			fprintf(stderr, "no test cases could be read\n");
+			return 1;
+		}
 		return 0;
 	}
 
@@ -135,7 +149,15 @@ main(int argc, char **argv) {
 
 	snprintf(corpusdir, sizeof(corpusdir), FUZZDIR "/%s.in", target);
 
-	test_all_from(corpusdir);
+	/*
+	 * Fail instead of silently passing if the corpus directory is missing
+	 * or empty, so that a naming mismatch cannot turn the regression test
+	 * into a no-op.
+	 */
+	if (test_all_from(corpusdir) == 0) {
+		fprintf(stderr, "no test cases found in %s\n", corpusdir);
+		return 1;
+	}
 
 	return 0;
 }
