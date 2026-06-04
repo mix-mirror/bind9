@@ -28,10 +28,18 @@
 set -eu
 
 FUZZ_TIME="${FUZZ_TIME:-60}"
-FUZZ_BUILD_DIR="${FUZZ_BUILD_DIR:-build-afl}"
 FUZZ_FINDINGS="${FUZZ_FINDINGS:-fuzz-findings}"
 FUZZ_SKIP="${FUZZ_SKIP:-}"
+FUZZ_EXPECT_CRASH="${FUZZ_EXPECT_CRASH:-0}"
 CC="${CC:-afl-clang-fast}"
+
+# Self-test builds carry the canary define, so keep them in a separate build
+# directory by default to avoid reusing a normal (canary-less) build.
+if [ "$FUZZ_EXPECT_CRASH" = "1" ]; then
+  FUZZ_BUILD_DIR="${FUZZ_BUILD_DIR:-build-afl-canary}"
+else
+  FUZZ_BUILD_DIR="${FUZZ_BUILD_DIR:-build-afl}"
+fi
 
 srcdir=$(cd "$(dirname "$0")/.." && pwd)
 
@@ -49,13 +57,33 @@ for corpus in "$srcdir"/fuzz/*.in; do
   targets="$targets fuzz_$(basename "$corpus" .in)"
 done
 
+setup_args=""
+if [ "$FUZZ_EXPECT_CRASH" = "1" ]; then
+  # Self-test mode: build the targets with their planted canary bug.
+  setup_args="-Dfuzzing-canary=enabled"
+fi
 if [ ! -f "$FUZZ_BUILD_DIR/build.ninja" ]; then
-  CC="$CC" meson setup "$FUZZ_BUILD_DIR" --cross-file "$srcdir/fuzz/afl.ini"
+  # shellcheck disable=SC2086
+  CC="$CC" meson setup "$FUZZ_BUILD_DIR" --cross-file "$srcdir/fuzz/afl.ini" \
+    $setup_args
 fi
 # shellcheck disable=SC2086
 ninja -C "$FUZZ_BUILD_DIR" $targets
 
 mkdir -p "$FUZZ_FINDINGS"
+
+# In self-test mode the corpus is a single seed that already contains the
+# canary's magic prefix, so every target must crash on it during AFL's dry
+# run.  This deterministically exercises each fuzzer end to end - build,
+# instrumentation, the forkserver executing the target, and crash detection -
+# without depending on AFL getting lucky enough to mutate its way to the magic
+# (which is unreliable, especially for slow targets like dns_qp).
+canary_seeds="$FUZZ_FINDINGS/.canary-seed"
+if [ "$FUZZ_EXPECT_CRASH" = "1" ]; then
+  rm -rf "$canary_seeds"
+  mkdir -p "$canary_seeds"
+  printf 'FUZZcanary' >"$canary_seeds/seed"
+fi
 
 # Replay a single input through the target and, if it crashes (killed by a
 # signal, i.e. exit status >= 128), print a report.  Returns 1 on crash.
@@ -96,37 +124,69 @@ for corpus in "$srcdir"/fuzz/*.in; do
   out="$FUZZ_FINDINGS/$name"
   rm -rf "$out"
 
+  seeds="$corpus"
+  [ "$FUZZ_EXPECT_CRASH" = "1" ] && seeds="$canary_seeds"
+
   echo "=== $name: fuzzing for ${FUZZ_TIME}s ==="
   # -V bounds the run; AFL_BENCH_UNTIL_CRASH stops it as soon as a crash is
   # saved.  afl-fuzz also exits non-zero when a seed already crashes the
   # target, so tolerate failure and work out below what actually happened.
   afl_rc=0
   AFL_BENCH_UNTIL_CRASH=1 AFL_NO_UI=1 AFL_NO_AFFINITY=1 AFL_SKIP_CPUFREQ=1 \
-    afl-fuzz -V "$FUZZ_TIME" -m none -i "$corpus" -o "$out" -- "$bin" || afl_rc=$?
+    afl-fuzz -V "$FUZZ_TIME" -m none -i "$seeds" -o "$out" -- "$bin" || afl_rc=$?
 
-  # Crashes that AFL discovered while fuzzing.
+  # Did this target crash?  Either AFL saved a crash while fuzzing, or a seed
+  # already crashed the target during the dry run (afl-fuzz then exits != 0).
+  crashed=0
   if find "$out/default/crashes" -name 'id:*' 2>/dev/null | grep -q .; then
-    for input in "$out"/default/crashes/id:*; do
-      replay "$bin" "$input" || fail=1
-    done
+    crashed=1
+    # In normal mode replay the crashes to put a report in the log; in
+    # self-test mode the crash is the expected canary, so stay quiet.
+    if [ "$FUZZ_EXPECT_CRASH" != "1" ]; then
+      for input in "$out"/default/crashes/id:*; do
+        replay "$bin" "$input" || true
+      done
+    fi
   elif [ "$afl_rc" -ne 0 ]; then
     # afl-fuzz could not run.  The usual cause is a seed that crashes the
-    # target during the dry run; replay the seeds to pinpoint and report it.
+    # target during the dry run (always the case in self-test mode); replay the
+    # seeds to pinpoint and report it.
     echo "afl-fuzz exited with status $afl_rc; checking seeds"
-    found=0
-    for input in "$corpus"/*; do
+    for input in "$seeds"/*; do
       test -f "$input" || continue
-      replay "$bin" "$input" || {
-        fail=1
-        found=1
-      }
+      replay "$bin" "$input" || crashed=1
     done
-    if [ "$found" -eq 0 ]; then
+    if [ "$crashed" -eq 0 ]; then
       echo "ERROR: afl-fuzz failed to start for $name and no crashing seed was found"
       fail=1
     fi
   fi
+
+  if [ "$FUZZ_EXPECT_CRASH" = "1" ]; then
+    # Self-test: every target must rediscover its planted canary.
+    if [ "$crashed" -eq 1 ]; then
+      echo "$name: canary found"
+    else
+      echo "ERROR: $name did not find its canary within ${FUZZ_TIME}s"
+      fail=1
+    fi
+  elif [ "$crashed" -eq 1 ]; then
+    fail=1
+  fi
 done
+
+if [ "$FUZZ_EXPECT_CRASH" = "1" ]; then
+  if [ "$fail" -eq 0 ]; then
+    echo
+    echo "Self-test passed: every fuzzer found its canary."
+    exit 0
+  fi
+  echo
+  echo "########################################################################"
+  echo "# SELF-TEST FAILED - a fuzzer did not find its canary (see above)"
+  echo "########################################################################"
+  exit 1
+fi
 
 if [ "$fail" -eq 0 ]; then
   echo
