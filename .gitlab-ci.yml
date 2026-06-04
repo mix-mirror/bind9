@@ -950,6 +950,7 @@ afl-fuzz:
     - *rule_branch_after_autorebase
   before_script:
     - *list_installed_package_versions
+    - apt-get -qq update && apt-get -qq install -y afl++ clang
   script:
     - util/fuzz-afl.sh
   artifacts:
@@ -977,6 +978,7 @@ fuzz-canary:
     - *rule_branch_after_autorebase
   before_script:
     - *list_installed_package_versions
+    - apt-get -qq update && apt-get -qq install -y afl++ clang
   script:
     - util/fuzz-afl.sh
   artifacts:
