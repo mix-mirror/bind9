@@ -727,6 +727,16 @@ doh_receive_send_reply_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 	isc_nm_t *connect_nm = (isc_nm_t *)cbarg;
 
 	if (eresult != ISC_R_SUCCESS) {
+		/*
+		 * The request failed (e.g. a transient connection/TLS error,
+		 * more common under load on FreeBSD).  Relaunch a connection to
+		 * keep the work pipeline alive; otherwise all chains can die
+		 * before 'nsends' reaches zero, leaving the loops idle forever
+		 * (GL #4924).
+		 */
+		if (connect_nm != NULL && atomic_load(&nsends) > 0) {
+			isc_async_current(doh_connect_thread, connect_nm);
+		}
 		return;
 	}
 
