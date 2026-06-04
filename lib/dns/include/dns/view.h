@@ -547,16 +547,14 @@ dns_view_thaw(dns_view_t *view);
 
 isc_result_t
 dns_view_find(dns_view_t *view, const dns_name_t *name, dns_rdatatype_t type,
-	      isc_stdtime_t now, unsigned int options, bool use_hints,
-	      bool use_static_stub, dns_db_t **dbp, dns_dbnode_t **nodep,
-	      dns_name_t *foundname, dns_rdataset_t *rdataset,
-	      dns_rdataset_t *sigrdataset);
+	      isc_stdtime_t now, unsigned int options, bool use_static_stub,
+	      dns_db_t **dbp, dns_dbnode_t **nodep, dns_name_t *foundname,
+	      dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset);
 /*%<
  * Find an rdataset whose owner name is 'name', and whose type is
  * 'type'.
  * In general, this function first searches view's zone and cache DBs for the
- * best match data against 'name'.  If nothing found there, and if 'use_hints'
- * is true, the view's hint DB (if configured) is searched.
+ * best match data against 'name'.
  * If the view is configured with a static-stub zone which gives the longest
  * match for 'name' among the zones, however, the cache DB is not consulted
  * unless 'use_static_stub' is false (see below about this argument).
@@ -572,14 +570,9 @@ dns_view_find(dns_view_t *view, const dns_name_t *name, dns_rdatatype_t type,
  *
  *\li	If 'now' is zero, then the current time will be used.
  *
- *\li	If 'use_hints' is true, and the view has a hints database, then
- *	it will be searched last.  If the answer is found in the hints
- *	database, the result code will be DNS_R_HINT.  If the name is found
- *	in the hints database but not the type, the result code will be
- *	#DNS_R_HINTNXRRSET.
  *
  *\li	If 'use_static_stub' is false and the longest match zone for 'name'
- *	is a static-stub zone, it's ignored and the cache and/or hints will be
+ *	is a static-stub zone, it's ignored and the cache  will be
  *	searched.  In the majority of the cases this argument should be
  *	false.  The only known usage of this argument being true is
  *	if this search is for a "bailiwick" glue A or AAAA RRset that may
@@ -639,8 +632,8 @@ dns_view_find(dns_view_t *view, const dns_name_t *name, dns_rdatatype_t type,
 isc_result_t
 dns_view_simplefind(dns_view_t *view, const dns_name_t *name,
 		    dns_rdatatype_t type, isc_stdtime_t now,
-		    unsigned int options, bool use_hints,
-		    dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset);
+		    unsigned int options, dns_rdataset_t *rdataset,
+		    dns_rdataset_t *sigrdataset);
 /*%<
  * Find an rdataset whose owner name is 'name', and whose type is
  * 'type'.
@@ -657,11 +650,6 @@ dns_view_simplefind(dns_view_t *view, const dns_name_t *name,
  *
  *\li	If 'now' is zero, then the current time will be used.
  *
- *\li	If 'use_hints' is true, and the view has a hints database, then
- *	it will be searched last.  If the answer is found in the hints
- *	database, the result code will be DNS_R_HINT.  If the name is found
- *	in the hints database but not the type, the result code will be
- *	DNS_R_HINTNXRRSET.
  *
  *\li	If 'sigrdataset' is not NULL, and there is a SIG rdataset which
  *	covers 'type', then 'sigrdataset' will be bound to it.
@@ -688,7 +676,6 @@ dns_view_simplefind(dns_view_t *view, const dns_name_t *name,
  *
  *\li	#ISC_R_SUCCESS			Success; result is desired type.
  *\li	DNS_R_GLUE			Success; result is glue.
- *\li	DNS_R_HINT			Success; result is a hint.
  *\li	DNS_R_NCACHENXDOMAIN		Success; result is a ncache entry.
  *\li	DNS_R_NCACHENXRRSET		Success; result is a ncache entry.
  *\li	DNS_R_NXDOMAIN			The name does not exist.

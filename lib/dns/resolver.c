@@ -5062,6 +5062,31 @@ fctx__create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 				goto cleanup_nameservers;
 			}
 
+			char strname[DNS_NAME_FORMATSIZE];
+			dns_name_format(name, strname, sizeof(strname));
+			fprintf(stderr,
+				"------------------\n"
+				"COLIN delegset for %s\n",
+				strname);
+			ISC_LIST_FOREACH(fctx->delegset->delegs, deleg, link) {
+				ISC_LIST_FOREACH(deleg->names, eachname, link) {
+					char streachname[DNS_NAME_FORMATSIZE];
+					dns_name_format(eachname, streachname,
+							sizeof(streachname));
+					fprintf(stderr, "%s, ", streachname);
+				}
+				fprintf(stderr, "\n");
+				ISC_LIST_FOREACH(deleg->addresses, addr, link) {
+					char straddr[128];
+					inet_ntop(addr->addr.family,
+						  &addr->addr.type, straddr,
+						  sizeof(straddr));
+					fprintf(stderr, "%s, ", straddr);
+				}
+				fprintf(stderr, "\n");
+			}
+			fprintf(stderr, "--------------------\n");
+
 			dns_name_copy(fctx->fwdname, fctx->domain);
 			dns_name_copy(dcname, fctx->qmin.dcname);
 			fctx->ns_ttl = fctx->delegset->expires - fctx->now;
@@ -7231,7 +7256,7 @@ resume_dslookup(void *arg) {
 	case ISC_R_SUCCESS:
 		FCTXTRACE("resuming DS lookup");
 
-		dns_delegset_fromnsrdataset(fctx->mctx, frdataset, &delegset);
+		dns_delegset_fromrdataset(fctx->mctx, frdataset, &delegset);
 		dns_rdataset_cleanup(frdataset);
 
 		if (delegset == NULL) {

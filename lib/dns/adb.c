@@ -1855,6 +1855,12 @@ dns_adb_createfind(dns_adb_t *adb, isc_loop_t *loop, isc_job_cb cb, void *cbarg,
 	unsigned int query_pending = 0;
 	char namebuf[DNS_NAME_FORMATSIZE] = { 0 };
 
+	/*
+	 * ADB should never has look up for '.' since it should always be
+	 * returned from the delegset.
+	 */
+	REQUIRE(!dns_name_equal(name, dns_rootname));
+
 	REQUIRE(DNS_ADB_VALID(adb));
 	if (loop != NULL) {
 		REQUIRE(cb != NULL);
@@ -2585,7 +2591,6 @@ dbfind_name(dns_adbname_t *adbname, isc_stdtime_t now, dns_rdatatype_t rdtype) {
 		options |= DNS_DBFIND_PENDINGOK;
 	}
 	result = dns_view_find(adb->view, adbname->name, rdtype, now, options,
-			       true,
 			       (adbname->type & DNS_ADBFIND_STARTATZONE) != 0,
 			       NULL, NULL, fname, &rdataset, NULL);
 

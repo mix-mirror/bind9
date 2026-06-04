@@ -220,14 +220,22 @@ void
 dns_delegdb_dump(dns_delegdb_t *db, bool expired, FILE *fp);
 
 /*
- * Convert an NS rdataset into a delegset containing a single delegation
- * (with possibly multiple nameserver). The allocated delegset is using the
- * main memory context, thus, is not expected to be added into the deleg DB
- * (which accepts only delegset allocated using `dns_deleg_alloc*()` APIs.
+ * Convert an rdataset into a delegset. If `*delegsetp` is NULL, an instance of
+ * `dns_delegset_t` is allocated and attached to `*delegsetp`, otherwise, the
+ * existing instance of `*delegsetp` is used.
+ *
+ * If an existing instance of `*delegsetp` is used, `mctx` can be NULL (if
+ * provided, it must be the same memory context used in `*delegsetp`)
+ *
+ * Only rdataset of type `dns_rdatatype_ns`, `dns_rdatatype_a` and
+ * `dns_rdatatype_aaaa` are supported.
+ *
+ * /!\ `*delegsetp` must not came from the delegation database.
+ * /!\ `*delegsetp` must not be added to the delegation database.
  */
 void
-dns_delegset_fromnsrdataset(isc_mem_t *mctx, dns_rdataset_t *rdataset,
-			    dns_delegset_t **delegsetp);
+dns_delegset_fromrdataset(isc_mem_t *mctx, dns_rdataset_t *rdataset,
+			  dns_delegset_t **delegsetp);
 
 /*
  * Delete a delegation matching a name. If `tree` is true, this will also

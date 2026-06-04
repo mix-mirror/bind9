@@ -461,9 +461,8 @@ view_find(resctx_t *rctx, dns_db_t **dbp, dns_dbnode_t **nodep,
 		type = rctx->type;
 	}
 
-	result = dns_view_find(rctx->view, name, type, 0, 0, false, false, dbp,
-			       nodep, foundname, rctx->rdataset,
-			       rctx->sigrdataset);
+	result = dns_view_find(rctx->view, name, type, 0, 0, false, dbp, nodep,
+			       foundname, rctx->rdataset, rctx->sigrdataset);
 
 	return result;
 }

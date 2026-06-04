@@ -772,10 +772,9 @@ dns_view_findzone(dns_view_t *view, const dns_name_t *name,
 
 isc_result_t
 dns_view_find(dns_view_t *view, const dns_name_t *name, dns_rdatatype_t type,
-	      isc_stdtime_t now, unsigned int options, bool use_hints,
-	      bool use_static_stub, dns_db_t **dbp, dns_dbnode_t **nodep,
-	      dns_name_t *foundname, dns_rdataset_t *rdataset,
-	      dns_rdataset_t *sigrdataset) {
+	      isc_stdtime_t now, unsigned int options, bool use_static_stub,
+	      dns_db_t **dbp, dns_dbnode_t **nodep, dns_name_t *foundname,
+	      dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset) {
 	isc_result_t result;
 	dns_db_t *db = NULL, *zdb = NULL;
 	dns_dbnode_t *node = NULL, *znode = NULL;
@@ -898,46 +897,6 @@ db_find:
 		result = ISC_R_SUCCESS;
 	}
 
-	if (result == ISC_R_NOTFOUND && !is_staticstub_zone && use_hints &&
-	    view->rootdb != NULL)
-	{
-		dns_rdataset_cleanup(rdataset);
-		dns_rdataset_cleanup(sigrdataset);
-		if (db != NULL) {
-			if (node != NULL) {
-				dns_db_detachnode(&node);
-			}
-			dns_db_detach(&db);
-		}
-		result = dns_db_find(view->rootdb, name, NULL, type, options,
-				     now, &node, foundname, rdataset,
-				     sigrdataset);
-		if (result == ISC_R_SUCCESS || result == DNS_R_GLUE) {
-			/*
-			 * Lazily rearm priming if the rootdb's
-			 * stored TTL has elapsed.  The stale
-			 * record is still returned; it is better
-			 * than nothing until the fresh priming
-			 * fetch completes.
-			 */
-			maybe_prime(view);
-			dns_db_attach(view->rootdb, &db);
-			result = DNS_R_HINT;
-		} else if (result == DNS_R_NXRRSET) {
-			dns_db_attach(view->rootdb, &db);
-			result = DNS_R_HINTNXRRSET;
-		} else if (result == DNS_R_NXDOMAIN) {
-			result = ISC_R_NOTFOUND;
-		}
-
-		/*
-		 * Cleanup if the rootdb lookup failed.
-		 */
-		if (db == NULL && node != NULL) {
-			dns_db_detachnode(&node);
-		}
-	}
-
 cleanup:
 	dns_rdataset_cleanup(&zrdataset);
 	dns_rdataset_cleanup(&zsigrdataset);
@@ -976,15 +935,15 @@ cleanup:
 isc_result_t
 dns_view_simplefind(dns_view_t *view, const dns_name_t *name,
 		    dns_rdatatype_t type, isc_stdtime_t now,
-		    unsigned int options, bool use_hints,
-		    dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset) {
+		    unsigned int options, dns_rdataset_t *rdataset,
+		    dns_rdataset_t *sigrdataset) {
 	isc_result_t result;
 	dns_fixedname_t foundname;
 
 	dns_fixedname_init(&foundname);
-	result = dns_view_find(view, name, type, now, options, use_hints, false,
-			       NULL, NULL, dns_fixedname_name(&foundname),
-			       rdataset, sigrdataset);
+	result = dns_view_find(view, name, type, now, options, false, NULL,
+			       NULL, dns_fixedname_name(&foundname), rdataset,
+			       sigrdataset);
 	if (result == DNS_R_NXDOMAIN) {
 		/*
 		 * The rdataset and sigrdataset of the relevant NSEC record
@@ -1136,22 +1095,47 @@ bestzonecut_zoneorcache(dns_view_t *view, const dns_name_t *name,
 
 static isc_result_t
 bestzonecut_rootdb(dns_view_t *view, dns_name_t *fname, dns_name_t *dcname,
-		   isc_stdtime_t now, dns_rdataset_t *rdataset) {
+		   isc_stdtime_t now, dns_delegset_t **delegsetp) {
+	dns_rdataset_t rdataset = DNS_RDATASET_INIT;
+	isc_result_t result = ISC_R_NOTFOUND;
+	const dns_rdatatype_t types[] = {
+		dns_rdatatype_a,
+		dns_rdatatype_aaaa,
+	};
+
 	if (view->rootdb == NULL) {
-		return ISC_R_NOTFOUND;
+		return result;
 	}
 
-	isc_result_t result = dns_db_find(view->rootdb, dns_rootname, NULL,
-					  dns_rdatatype_ns, 0, now, NULL, fname,
-					  rdataset, NULL);
-	if (result != ISC_R_SUCCESS) {
-		dns_rdataset_cleanup(rdataset);
-		return result;
+	CHECK(dns_db_find(view->rootdb, dns_rootname, NULL, dns_rdatatype_ns, 0,
+			  now, NULL, fname, &rdataset, NULL));
+	INSIST(*delegsetp == NULL);
+	dns_delegset_fromrdataset(view->mctx, &rdataset, delegsetp);
+	dns_rdataset_cleanup(&rdataset);
+
+	INSIST(*delegsetp != NULL);
+	INSIST((*delegsetp)->delegs.head == (*delegsetp)->delegs.tail);
+	ISC_LIST_FOREACH((dns_namelist_t)(*delegsetp)->delegs.head->names, name,
+			 link)
+	{
+		/*
+		 * TODO check there is at least one glue found
+		 */
+		for (size_t i = 0; i < ARRAY_SIZE(types); i++) {
+			dns_db_find(view->rootdb, name, NULL, types[i], 0, now,
+				    NULL, fname, &rdataset, NULL);
+			dns_delegset_fromrdataset(NULL, &rdataset, delegsetp);
+			dns_rdataset_cleanup(&rdataset);
+		}
 	}
 
 	if (dcname != NULL) {
 		dns_name_copy(fname, dcname);
 	}
+
+cleanup:
+	dns_rdataset_cleanup(&rdataset);
+
 	/*
 	 * Returned record may be stale by TTL; that's fine — it
 	 * is better than nothing until the next priming fetch.
@@ -1198,23 +1182,25 @@ dns_view_bestzonecut(dns_view_t *view, const dns_name_t *name,
 	 */
 	if (result == DNS_R_NXDOMAIN && usehints) {
 		result = bestzonecut_rootdb(view, fname, dcname, now,
-					    &rdataset);
+					    delegsetp);
 	}
 
 	if (result != ISC_R_SUCCESS) {
 		result = DNS_R_NXDOMAIN;
 	} else {
 		/*
-		 * The rdataset came either from a local zone or a hint. Either
-		 * way, we only considering the NS rdataset here, so if there
-		 * are glues, they'll be ignored. This is okay: the delegation
-		 * type will be DNS_DELEGSET_NS_NAMES, so ADB will do a NS name
-		 * lookup but immediately find the results locally (because this
-		 * came from a local zone or hint). So the resolution will be
-		 * the same, and this avoid adding extra code here to extract
-		 * A/AAAA rdataset if any.
+		 * TOOD: remove this to handle in the zone cases specifically.
+		 *
+		 * The rdataset came either from a local zone. we only
+		 * considering the NS rdataset here, so if there are glues,
+		 * they'll be ignored. This is okay: the delegation type will be
+		 * DNS_DELEGSET_NS_NAMES, so ADB will do a NS name lookup but
+		 * immediately find the results locally (because this came from
+		 * a local zone or hint). So the resolution will be the same,
+		 * and this avoid adding extra code here to extract A/AAAA
+		 * rdataset if any.
 		 */
-		dns_delegset_fromnsrdataset(view->mctx, &rdataset, delegsetp);
+		dns_delegset_fromrdataset(view->mctx, &rdataset, delegsetp);
 	}
 
 	dns_rdataset_cleanup(&rdataset);
