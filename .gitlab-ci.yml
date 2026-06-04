@@ -1912,7 +1912,7 @@ gcc:tumbleweed:libuv-git:amd64:
   before_script:
     - *list_installed_package_versions
     - zypper --non-interactive rm --clean-deps libuv-devel
-    - git clone --depth 1 https://github.com/libuv/libuv.git /tmp/libuv
+    - git clone --depth 1 --branch revert-4585-fix4584 https://github.com/libuv/libuv.git /tmp/libuv
     - cd /tmp/libuv
     - sh autogen.sh
     - ./configure --prefix="$CI_PROJECT_DIR/libuv"
@@ -1921,7 +1921,7 @@ gcc:tumbleweed:libuv-git:amd64:
     - cd "$CI_PROJECT_DIR"
     - export PKG_CONFIG_PATH="$CI_PROJECT_DIR/libuv/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
   rules:
-    - *rule_source_other_than_mr
+    - *rule_source_all
 
 system:gcc:tumbleweed:libuv-git:amd64:
   <<: *tumbleweed_latest_amd64_image
@@ -1930,7 +1930,7 @@ system:gcc:tumbleweed:libuv-git:amd64:
     - job: gcc:tumbleweed:libuv-git:amd64
       artifacts: true
   rules:
-    - *rule_source_other_than_mr
+    - *rule_source_all
 
 unit:gcc:tumbleweed:libuv-git:amd64:
   <<: *tumbleweed_latest_amd64_image
@@ -1943,7 +1943,7 @@ unit:gcc:tumbleweed:libuv-git:amd64:
     - job: gcc:tumbleweed:libuv-git:amd64
       artifacts: true
   rules:
-    - *rule_source_other_than_mr
+    - *rule_source_all
 
 # Job producing a release directory
 
