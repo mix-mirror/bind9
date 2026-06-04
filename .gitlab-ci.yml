@@ -958,6 +958,33 @@ afl-fuzz:
     when: on_failure
     expire_in: "1 week"
 
+# Fuzzer self-test: build the targets with a planted canary bug and confirm
+# every fuzzer detects it (otherwise fuzzing is silently broken).
+fuzz-canary:
+  <<: *base_image
+  stage: other-checks
+  needs: []
+  variables:
+    FUZZ_EXPECT_CRASH: "1"
+    # Each target crashes on the canary seed within seconds; the budget only
+    # bounds how long a broken (non-crashing) target is fuzzed before failing.
+    FUZZ_TIME: 30
+    CC: afl-clang-fast
+  rules:
+    - *rule_mr_manual
+    - *rule_tag
+    - *rule_source_other_than_mr
+    - *rule_branch_after_autorebase
+  before_script:
+    - *list_installed_package_versions
+  script:
+    - util/fuzz-afl.sh
+  artifacts:
+    paths:
+      - fuzz-findings/
+    when: on_failure
+    expire_in: "1 week"
+
 # Coverity Scan analysis upload
 
 .coverity_prep: &coverity_prep
