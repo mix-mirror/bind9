@@ -931,6 +931,33 @@ scan-build:
       - scan-build.reports/
     when: on_failure
 
+# AFL fuzzing of the fuzz/ targets on Debian 13 "trixie" (amd64)
+
+afl-fuzz:
+  <<: *base_image
+  stage: other-checks
+  needs: []
+  variables:
+    # Seconds to fuzz each target; see util/fuzz-afl.sh.
+    FUZZ_TIME: 60
+    CC: afl-clang-fast
+  rules:
+    # Heavy job: opt-in (manual) on merge requests, automatic and blocking
+    # on scheduled/web/API pipelines.
+    - *rule_mr_manual
+    - *rule_tag
+    - *rule_source_other_than_mr
+    - *rule_branch_after_autorebase
+  before_script:
+    - *list_installed_package_versions
+  script:
+    - util/fuzz-afl.sh
+  artifacts:
+    paths:
+      - fuzz-findings/
+    when: on_failure
+    expire_in: "1 week"
+
 # Coverity Scan analysis upload
 
 .coverity_prep: &coverity_prep
