@@ -969,7 +969,7 @@ isc__mem_strndup(isc_mem_t *mctx, const char *s, size_t size FLARG) {
 	REQUIRE(s != NULL);
 	REQUIRE(size != 0);
 
-	len = strlen(s) + 1;
+	len = strnlen(s, size) + 1;
 	if (len > size) {
 		len = size;
 	}
