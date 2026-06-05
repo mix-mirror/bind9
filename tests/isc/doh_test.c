@@ -855,10 +855,22 @@ ISC_LOOP_TEST_IMPL(doh_recv_one_GET_TLS_quota) {
 }
 
 static void
+doh_connect_two(void);
+
+static void
 doh_connect_send_two_requests_cb(isc_nmhandle_t *handle, isc_result_t result,
 				 void *arg) {
 	REQUIRE(VALID_NMHANDLE(handle));
 	if (result != ISC_R_SUCCESS) {
+		/*
+		 * The connection failed (e.g. a transient TLS/PROXY error,
+		 * more common under load on FreeBSD).  Retry while work
+		 * remains; otherwise the replies never arrive, nothing calls
+		 * isc_loopmgr_shutdown() and the loop hangs (GL #4924).
+		 */
+		if (atomic_load(&nsends) > 0) {
+			doh_connect_two();
+		}
 		return;
 	}
 
@@ -882,11 +894,26 @@ doh_connect_send_two_requests_cb(isc_nmhandle_t *handle, isc_result_t result,
 }
 
 static void
+doh_connect_two(void) {
+	char req_url[256];
+	isc_tlsctx_t *ctx = NULL;
+
+	sockaddr_to_url(&tcp_listen_addr, atomic_load(&use_TLS), req_url,
+			sizeof(req_url), ISC_NM_HTTP_DEFAULT_PATH);
+
+	if (atomic_load(&use_TLS)) {
+		ctx = client_tlsctx;
+	}
+
+	isc_nm_httpconnect(NULL, &tcp_listen_addr, req_url, atomic_load(&POST),
+			   doh_connect_send_two_requests_cb, NULL, ctx, NULL,
+			   client_sess_cache, 5000, get_proxy_type(), NULL);
+}
+
+static void
 doh_recv_two(void *arg ISC_ATTR_UNUSED) {
 	isc_result_t result = ISC_R_SUCCESS;
 	isc_nmsocket_t *listen_sock = NULL;
-	char req_url[256];
-	isc_tlsctx_t *ctx = NULL;
 	isc_quota_t *quotap = init_listener_quota(workers);
 
 	atomic_store(&total_sends, 2);
@@ -904,16 +931,7 @@ doh_recv_two(void *arg ISC_ATTR_UNUSED) {
 		get_proxy_type(), &listen_sock);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	sockaddr_to_url(&tcp_listen_addr, atomic_load(&use_TLS), req_url,
-			sizeof(req_url), ISC_NM_HTTP_DEFAULT_PATH);
-
-	if (atomic_load(&use_TLS)) {
-		ctx = client_tlsctx;
-	}
-
-	isc_nm_httpconnect(NULL, &tcp_listen_addr, req_url, atomic_load(&POST),
-			   doh_connect_send_two_requests_cb, NULL, ctx, NULL,
-			   client_sess_cache, 5000, get_proxy_type(), NULL);
+	doh_connect_two();
 
 	isc_loop_teardown(isc_loop_main(), listen_sock_close, listen_sock);
 }
