@@ -192,7 +192,7 @@ struct qpznode {
 	 * and the database have both released the object) the object
 	 * is freed.
 	 *
-	 * Whenever 'erefs' is incremented from zero, we also aquire a
+	 * Whenever 'erefs' is incremented from zero, we also acquire a
 	 * node use reference (see 'qpzonedb->references' below), and
 	 * release it when 'erefs' goes back to zero. This prevents the
 	 * database from being shut down until every caller has released
@@ -1831,9 +1831,7 @@ cname_and_other(qpznode_t *node, uint32_t serial) {
 			if (first_existing_header(top, serial) != NULL) {
 				cname = true;
 			}
-		} else if (rdtype != dns_rdatatype_key &&
-			   rdtype != dns_rdatatype_sig &&
-			   rdtype != dns_rdatatype_nsec &&
+		} else if (rdtype != dns_rdatatype_nsec &&
 			   rdtype != dns_rdatatype_rrsig)
 		{
 			if (first_existing_header(top, serial) != NULL) {
@@ -2669,7 +2667,7 @@ findnodeintree(qpzonedb_t *qpdb, dns_qp_t *qp, const dns_name_t *name,
 		INSIST(node->nspace == DNS_DBNAMESPACE_NSEC3 || !nsec3);
 	}
 	/*
-	 * ... if the lookup is unsucessful, and the caller didn't ask us
+	 * ... if the lookup is unsuccessful, and the caller didn't ask us
 	 * to create a new node, there is nothing to do. Return the result
 	 * of the lookup to the caller, and set *nodep to NULL
 	 */
@@ -3429,7 +3427,7 @@ qpzone_find_scan_node(qpz_search_t *search, qpznode_t *node,
 	dns_vecheader_t *cname = NULL, *cnamesig = NULL;
 	dns_typepair_t answersigpair = DNS_SIGTYPEPAIR(type);
 	bool cname_ok = type != dns_rdatatype_cname &&
-			type != dns_rdatatype_key && type != dns_rdatatype_nsec;
+			type != dns_rdatatype_nsec;
 	bool nsec3 = (search->options & DNS_DBFIND_FORCENSEC3) != 0;
 
 	*candidates = (qpzone_find_candidates_t){
@@ -3648,8 +3646,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		NODE_RDLOCK(nlock, &nlocktype);
 		qpzone_find_scan_node(&search, exact_node, type,
 				      &exact_candidates DNS__DB_FLARG_PASS);
-		if (no_ancestor_zonecut && !dns_rdatatype_isnsec(type) &&
-		    type != dns_rdatatype_key)
+		if (no_ancestor_zonecut && !dns_rdatatype_isnsec(type))
 		{
 			qpzone_check_zonecut(
 				&search, exact_node, type, true,
