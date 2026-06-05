@@ -98,6 +98,7 @@ struct dns_catz_zone {
 	dns_dbversion_t *dbversion;   /* version we will be updating to */
 	dns_db_t *updb;		      /* zones database we're working on */
 	dns_dbversion_t *updbversion; /* version we're working on */
+	dns_catz_zone_t *newcatz;     /* new version that will be merged soon */
 
 	isc_timer_t *updatetimer;
 
@@ -1019,6 +1020,9 @@ dns__catz_zone_destroy(dns_catz_zone_t *catz) {
 		/* The hashtable has to be empty now. */
 		INSIST(isc_ht_count(catz->coos) == 0);
 		isc_ht_destroy(&catz->coos);
+	}
+	if (catz->newcatz != NULL) {
+		dns_catz_zone_detach(&catz->newcatz);
 	}
 	catz->magic = 0;
 	isc_mutex_destroy(&catz->lock);
@@ -2381,6 +2385,9 @@ dns__catz_update_cb(void *data) {
 			result = dns_dbiterator_next(updbit);
 		}
 	}
+	if (result == ISC_R_NOMORE) {
+		result = ISC_R_SUCCESS;
+	}
 
 	dns_dbiterator_destroy(&updbit);
 	isc_log_write(DNS_LOGCATEGORY_GENERAL, DNS_LOGMODULE_CATZ,
@@ -2423,21 +2430,13 @@ dns__catz_update_cb(void *data) {
 	}
 
 	/*
-	 * Finally merge new zone into old zone.
+	 * 'newcatz' will be merged in the final callback after this worker
+	 * thread is finished.
 	 */
-	result = dns__catz_zones_merge(oldcatz, newcatz);
-	dns_catz_zone_detach(&newcatz);
-	if (result != ISC_R_SUCCESS) {
-		isc_log_write(DNS_LOGCATEGORY_GENERAL, DNS_LOGMODULE_CATZ,
-			      ISC_LOG_ERROR, "catz: failed merging zones: %s",
-			      isc_result_totext(result));
-
-		goto exit;
+	if (catz->newcatz != NULL) {
+		dns_catz_zone_detach(&catz->newcatz);
 	}
-
-	isc_log_write(DNS_LOGCATEGORY_GENERAL, DNS_LOGMODULE_CATZ,
-		      ISC_LOG_DEBUG(3),
-		      "catz: update_from_db: new zone merged");
+	catz->newcatz = MOVE_OWNERSHIP(newcatz);
 
 exit:
 	catz->updateresult = result;
@@ -2450,10 +2449,42 @@ dns__catz_done_cb(void *data) {
 
 	REQUIRE(DNS_CATZ_ZONE_VALID(catz));
 
+	dns_name_format(&catz->name, dname, DNS_NAME_FORMATSIZE);
+
+	if (atomic_load(&catz->catzs->shuttingdown)) {
+		catz->updateresult = ISC_R_SHUTTINGDOWN;
+		if (catz->newcatz != NULL) {
+			dns_catz_zone_detach(&catz->newcatz); /* Discard */
+		}
+	}
+
+	/*
+	 * Finally merge new zone into old zone.
+	 */
+	if (catz->updateresult == ISC_R_SUCCESS) {
+		INSIST(catz->newcatz != NULL);
+
+		catz->updateresult = dns__catz_zones_merge(catz, catz->newcatz);
+		dns_catz_zone_detach(&catz->newcatz);
+
+		if (catz->updateresult != ISC_R_SUCCESS) {
+			isc_log_write(DNS_LOGCATEGORY_GENERAL,
+				      DNS_LOGMODULE_CATZ, ISC_LOG_ERROR,
+				      "catz: %s: "
+				      "failed merging zones: %s",
+				      dname,
+				      isc_result_totext(catz->updateresult));
+		} else {
+			isc_log_write(DNS_LOGCATEGORY_GENERAL,
+				      DNS_LOGMODULE_CATZ, ISC_LOG_DEBUG(3),
+				      "catz: %s: "
+				      "new zone merged",
+				      dname);
+		}
+	}
+
 	LOCK(&catz->catzs->lock);
 	catz->updaterunning = false;
-
-	dns_name_format(&catz->name, dname, DNS_NAME_FORMATSIZE);
 
 	if (catz->updatepending && !atomic_load(&catz->catzs->shuttingdown)) {
 		/* Restart the timer */
