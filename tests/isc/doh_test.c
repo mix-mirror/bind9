@@ -887,10 +887,24 @@ ISC_LOOP_TEST_IMPL(doh_recv_one_GET_TLS_quota) {
 }
 
 static void
+doh_connect_two(isc_nm_t *connect_nm);
+
+static void
 doh_connect_send_two_requests_cb(isc_nmhandle_t *handle, isc_result_t result,
 				 void *arg) {
+	isc_nm_t *connect_nm = (isc_nm_t *)arg;
+
 	REQUIRE(VALID_NMHANDLE(handle));
 	if (result != ISC_R_SUCCESS) {
+		/*
+		 * The connection failed (e.g. a transient TLS/PROXY error,
+		 * more common under load on FreeBSD).  Retry while work
+		 * remains; otherwise the replies never arrive, nothing calls
+		 * isc_loopmgr_shutdown() and the loop hangs (GL #4924).
+		 */
+		if (connect_nm != NULL && atomic_load(&nsends) > 0) {
+			doh_connect_two(connect_nm);
+		}
 		return;
 	}
 
@@ -914,13 +928,29 @@ doh_connect_send_two_requests_cb(isc_nmhandle_t *handle, isc_result_t result,
 }
 
 static void
+doh_connect_two(isc_nm_t *connect_nm) {
+	char req_url[256];
+	isc_tlsctx_t *ctx = NULL;
+
+	sockaddr_to_url(&tcp_listen_addr, atomic_load(&use_TLS), req_url,
+			sizeof(req_url), ISC_NM_HTTP_DEFAULT_PATH);
+
+	if (atomic_load(&use_TLS)) {
+		ctx = client_tlsctx;
+	}
+
+	isc_nm_httpconnect(connect_nm, NULL, &tcp_listen_addr, req_url,
+			   atomic_load(&POST), doh_connect_send_two_requests_cb,
+			   connect_nm, ctx, NULL, client_sess_cache, 5000,
+			   get_proxy_type(), NULL);
+}
+
+static void
 doh_recv_two(void *arg ISC_ATTR_UNUSED) {
 	isc_nm_t *listen_nm = nm[0];
 	isc_nm_t *connect_nm = nm[1];
 	isc_result_t result = ISC_R_SUCCESS;
 	isc_nmsocket_t *listen_sock = NULL;
-	char req_url[256];
-	isc_tlsctx_t *ctx = NULL;
 	isc_quota_t *quotap = init_listener_quota(workers);
 
 	atomic_store(&total_sends, 2);
@@ -938,17 +968,7 @@ doh_recv_two(void *arg ISC_ATTR_UNUSED) {
 		get_proxy_type(), &listen_sock);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	sockaddr_to_url(&tcp_listen_addr, atomic_load(&use_TLS), req_url,
-			sizeof(req_url), ISC_NM_HTTP_DEFAULT_PATH);
-
-	if (atomic_load(&use_TLS)) {
-		ctx = client_tlsctx;
-	}
-
-	isc_nm_httpconnect(connect_nm, NULL, &tcp_listen_addr, req_url,
-			   atomic_load(&POST), doh_connect_send_two_requests_cb,
-			   NULL, ctx, NULL, client_sess_cache, 5000,
-			   get_proxy_type(), NULL);
+	doh_connect_two(connect_nm);
 
 	isc_loop_teardown(mainloop, listen_sock_close, listen_sock);
 }
