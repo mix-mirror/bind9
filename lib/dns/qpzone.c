@@ -3646,8 +3646,9 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		NODE_RDLOCK(nlock, &nlocktype);
 		qpzone_find_scan_node(&search, exact_node, type,
 				      &exact_candidates DNS__DB_FLARG_PASS);
-		if (no_ancestor_zonecut && !dns_rdatatype_isnsec(type))
-		{
+		bool exact_nsec_found = dns_rdatatype_isnsec(type) &&
+					exact_candidates.result == ISC_R_SUCCESS;
+		if (no_ancestor_zonecut && !exact_nsec_found) {
 			qpzone_check_zonecut(
 				&search, exact_node, type, true,
 				&zonecut_candidates DNS__DB_FLARG_PASS);
