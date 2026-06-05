@@ -336,6 +336,20 @@ ISC_RUN_TEST_IMPL(isc_mem_overmem) {
 	isc_mem_detach(&mctx);
 }
 
+ISC_RUN_TEST_IMPL(isc_mem_str) {
+	isc_mem_t *mctx = NULL;
+	isc_mem_create("test", &mctx);
+	assert_non_null(mctx);
+
+	const char src[] = { 'a', 'b', 'b', 'd' };
+	char *dst = isc_mem_strndup(mctx, src, 2);
+
+	assert_string_equal(dst, "a");
+	isc_mem_free(mctx, dst);
+
+	isc_mem_detach(&mctx);
+}
+
 #if ISC_MEM_TRACKLINES
 
 /* test mem with no flags */
@@ -564,6 +578,7 @@ ISC_TEST_ENTRY(isc_mem_zeroget)
 ISC_TEST_ENTRY(isc_mem_reget)
 ISC_TEST_ENTRY(isc_mem_reallocate)
 ISC_TEST_ENTRY(isc_mem_overmem)
+ISC_TEST_ENTRY(isc_mem_str)
 
 #if ISC_MEM_TRACKLINES
 ISC_TEST_ENTRY(isc_mem_noflags)
