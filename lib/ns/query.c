@@ -1555,6 +1555,36 @@ query_isduplicate(ns_client_t *client, dns_name_t *name, dns_rdatatype_t type,
 	return false;
 }
 
+static bool
+query_wildcard_result(isc_result_t result) {
+	switch (result) {
+	case ISC_R_SUCCESS:
+	case DNS_R_CNAME:
+	case DNS_R_DNAME:
+	case DNS_R_GLUE:
+	case DNS_R_ZONECUT:
+	case DNS_R_NXRRSET:
+	case DNS_R_EMPTYWILD:
+		return true;
+	default:
+		return false;
+	}
+}
+
+static void
+query_fix_wildcardname(isc_result_t result, const dns_name_t *qname,
+		       dns_name_t *fname) {
+	if (query_wildcard_result(result) && dns_name_iswildcard(fname) &&
+	    !dns_name_equal(qname, fname) &&
+	    dns_name_matcheswildcard(qname, fname))
+	{
+		dns_name_copy(qname, fname);
+		fname->attributes.wildcard = true;
+	} else {
+		fname->attributes.wildcard = false;
+	}
+}
+
 /*
  * Look up data for given 'name' and 'type' in given 'version' of 'db' for
  * 'client'. Called from query_additionalauth().
@@ -1878,6 +1908,7 @@ found:
 	 * We have found a potential additional data rdataset, or
 	 * at least a node to iterate over.
 	 */
+	query_fix_wildcardname(result, name, fname);
 	ns_client_keepname(client, fname, dbuf);
 
 	/*
@@ -4502,6 +4533,7 @@ redirect(ns_client_t *client, dns_name_t *name, dns_rdataset_t *rdataset,
 	result = dns_db_findext(db, client->query.qname, dbversion->version,
 				qtype, DNS_DBFIND_NOZONECUT, client->inner.now,
 				&node, found, &cm, &ci, &trdataset, NULL);
+	query_fix_wildcardname(result, client->query.qname, found);
 	if (result == DNS_R_NXRRSET || result == DNS_R_NCACHENXRRSET) {
 		dns_rdataset_cleanup(rdataset);
 		dns_rdataset_cleanup(&trdataset);
@@ -4640,6 +4672,7 @@ redirect2(ns_client_t *client, dns_name_t *name, dns_rdataset_t *rdataset,
 	result = dns_db_findext(db, redirectname, version, qtype, 0,
 				client->inner.now, &node, found, &cm, &ci,
 				&trdataset, NULL);
+	query_fix_wildcardname(result, redirectname, found);
 	if (result == DNS_R_NXRRSET || result == DNS_R_NCACHENXRRSET) {
 		dns_rdataset_cleanup(rdataset);
 		dns_rdataset_cleanup(&trdataset);
@@ -5583,7 +5616,10 @@ query_lookup(query_ctx_t *qctx) {
 	 */
 	if (qctx->dns64 && qctx->rpz) {
 		dns_name_copy(qctx->client->query.qname, qctx->fname);
+		qctx->fname->attributes.wildcard = false;
 		dns_rdataset_cleanup(qctx->sigrdataset);
+	} else {
+		query_fix_wildcardname(result, rpzqname, qctx->fname);
 	}
 
 	if (!qctx->is_zone) {

@@ -3559,7 +3559,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 			 */
 			result = find_wildcard(&search, &node, name, nspace);
 			if (result == ISC_R_SUCCESS) {
-				dns_name_copy(name, foundname);
+				dns_name_copy(&node->name, foundname);
 				wild = true;
 				goto found;
 			} else if (result != ISC_R_NOTFOUND) {
@@ -3870,9 +3870,6 @@ found:
 					     sigrdataset DNS__DB_FLARG_PASS);
 			}
 		}
-		if (wild) {
-			foundname->attributes.wildcard = true;
-		}
 		goto node_exit;
 	}
 
@@ -3927,10 +3924,6 @@ found:
 			bindrdataset(search.qpdb, foundsig,
 				     sigrdataset DNS__DB_FLARG_PASS);
 		}
-	}
-
-	if (wild) {
-		foundname->attributes.wildcard = true;
 	}
 
 node_exit:
