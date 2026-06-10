@@ -2433,10 +2433,23 @@ dns__catz_update_cb(void *data) {
 	 * 'newcatz' will be merged in the final callback after this worker
 	 * thread is finished.
 	 */
-	if (catz->newcatz != NULL) {
-		dns_catz_zone_detach(&catz->newcatz);
+	if (catz->newcatz == NULL) {
+		catz->newcatz = MOVE_OWNERSHIP(newcatz);
+	} else {
+		/*
+		 * This shouldn't be possible unless there is a coding error:
+		 * catz->newcatz is set only here, in a worker thread, while
+		 * catz->updaterunning is true. catz->newcatz is detached only
+		 * in the destructor (if still set) and in the callback function
+		 * following this worker thread, which then turns
+		 * catz->updaterunning to false. While catz->updaterunning was
+		 * true, there shouldn't had been any other worker thread
+		 * processing the same catz as this worker thread, which means
+		 * catz->newcatz must be NULL.
+		 */
+		dns_catz_zone_detach(&newcatz);
+		result = ISC_R_UNEXPECTED;
 	}
-	catz->newcatz = MOVE_OWNERSHIP(newcatz);
 
 exit:
 	catz->updateresult = result;
@@ -2465,7 +2478,6 @@ dns__catz_done_cb(void *data) {
 		INSIST(catz->newcatz != NULL);
 
 		catz->updateresult = dns__catz_zones_merge(catz, catz->newcatz);
-		dns_catz_zone_detach(&catz->newcatz);
 
 		if (catz->updateresult != ISC_R_SUCCESS) {
 			isc_log_write(DNS_LOGCATEGORY_GENERAL,
@@ -2484,6 +2496,11 @@ dns__catz_done_cb(void *data) {
 	}
 
 	LOCK(&catz->catzs->lock);
+
+	if (catz->newcatz != NULL) {
+		dns_catz_zone_detach(&catz->newcatz);
+	}
+
 	catz->updaterunning = false;
 
 	if (catz->updatepending && !atomic_load(&catz->catzs->shuttingdown)) {
