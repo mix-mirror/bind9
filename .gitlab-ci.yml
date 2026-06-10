@@ -1103,7 +1103,7 @@ tarball-create:
     # isc-bind-* dependency packages is added by the bind-rpms Makefile
     # instead.
     - sed -i "/^config_opts\['yum.conf'\] += '''/,/'''$/d" /etc/mock/alma+epel-{8,9,10}-x86_64.cfg
-    - git clone --depth 1 "${BIND_RPMS_GIT_URL}" bind-rpms
+    - git clone --branch mnowak/mock-rpm-building --depth 1 "${BIND_RPMS_GIT_URL}" bind-rpms
     - SOURCE_TARBALL="$(readlink -e bind-*.tar.xz)"
     - PACKAGE_REVISION="$(date --utc --date "${CI_PIPELINE_CREATED_AT}" +%Y%m%d%H%M%S).${CI_COMMIT_SHORT_SHA}"
     - make -C bind-rpms "rpms/${TARGET_OS}" BIND_EDITION="${BIND_EDITION}" SOURCE_URL="${SOURCE_TARBALL}" PACKAGE_REVISION="${PACKAGE_REVISION}"
