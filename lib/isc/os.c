@@ -11,7 +11,6 @@
  * information regarding copyright ownership.
  */
 
-#include <ctype.h>
 #include <inttypes.h>
 #include <sys/stat.h>
 #include <sys/utsname.h>
@@ -26,7 +25,6 @@
 #include "thread_p.h"
 
 static unsigned int isc__os_ncpus = 0;
-static unsigned long isc__os_cacheline = ISC_OS_CACHELINE_SIZE;
 static mode_t isc__os_umask = 0;
 static int kernel_major = -1, kernel_minor = -1, kernel_patch = -1;
 static char kernel_name[64];
@@ -200,11 +198,6 @@ isc_os_ncpus(void) {
 	return isc__os_ncpus;
 }
 
-unsigned long
-isc_os_cacheline(void) {
-	return isc__os_cacheline;
-}
-
 mode_t
 isc_os_umask(void) {
 	return isc__os_umask;
@@ -223,12 +216,6 @@ isc__os_initialize(void) {
 	umask_initialize();
 	ncpus_initialize();
 	kernel_initialize();
-#if defined(_SC_LEVEL1_DCACHE_LINESIZE)
-	long s = sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
-	if (s > 0 && (unsigned long)s > isc__os_cacheline) {
-		isc__os_cacheline = s;
-	}
-#endif
 
 	pthread_attr_init(&isc__thread_attr);
 
