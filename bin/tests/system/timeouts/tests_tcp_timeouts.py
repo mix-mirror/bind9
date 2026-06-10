@@ -15,6 +15,7 @@ import socket
 import time
 
 import dns.edns
+import dns.exception
 import dns.message
 import dns.name
 import dns.query
@@ -208,7 +209,15 @@ def test_send_timeout(named_port):
         with pytest.raises(EOFError):
             try:
                 while time.time() < deadline:
-                    dns.query.send_tcp(sock, msg, timeout())
+                    try:
+                        dns.query.send_tcp(sock, msg, timeout())
+                    except dns.exception.Timeout:
+                        # a blocked send is backpressure from named, not the
+                        # close we are waiting for; keep probing
+                        pass
+                    # pace the probes; the pressure comes from the unread
+                    # responses, not from the send rate
+                    time.sleep(0.5)
             except ConnectionError as e:
                 raise EOFError from e
 
