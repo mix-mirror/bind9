@@ -869,7 +869,9 @@ linkcheck:
 generate-stress-test-configs:
   <<: *quick_checks_job
   script:
-    - *git_clone_bind9-qa
+    # Testing only - drop before merging: use the bind9-qa branch carrying
+    # the Python rewrite of the stress test.
+    - git clone --depth 1 --branch mnowak/stress-python-rewrite https://gitlab.isc.org/isc-projects/bind9-qa.git "$CI_PROJECT_DIR"/bind9-qa
     - >
       "$CI_PROJECT_DIR"/bind9-qa/stress/generate_stress_test_configs.py > stress-test-configs.yml
   artifacts:
