@@ -657,6 +657,7 @@ stages:
   before_script:
     - *configure
     - meson compile -C build
+    - *find_python
     - *setup_interfaces
     - *git_clone_bind9-qa
     - cd "$CI_PROJECT_DIR"/bind9-qa/respdiff
@@ -2426,7 +2427,7 @@ respdiff:
     EXTRA_CONFIGURE: "-Doptimization=g"
     MAX_DISAGREEMENTS_PERCENTAGE: "0.3"
   script:
-    - bash respdiff.sh -m /usr/lib/x86_64-linux-gnu/libjemalloc.so.2 -s named -q "${PWD}/100k_mixed.txt" -c 3 -w "${PWD}/rspworkdir" -r "${PWD}/respdiff" "${CI_PROJECT_DIR}" "/usr/local/respdiff-reference-bind/sbin/named"
+    - $PYTHON respdiff.py --jemalloc /usr/lib/x86_64-linux-gnu/libjemalloc.so.2 --ref-type named --ref-count 3 --queries "${PWD}/100k_mixed.txt" --workdir "${PWD}/rspworkdir" --respdiff-repo "${PWD}/respdiff" "${CI_PROJECT_DIR}" "/usr/local/respdiff-reference-bind/sbin/named"
     - cd ../.. && ninja -C build clean >/dev/null 2>&1
 
 respdiff:asan:
@@ -2438,7 +2439,7 @@ respdiff:asan:
     EXTRA_CONFIGURE: "-Doptimization=g -Db_sanitize=address,undefined -Djemalloc=disabled"
     MAX_DISAGREEMENTS_PERCENTAGE: "0.3"
   script:
-    - bash respdiff.sh -s named -q "${PWD}/100k_mixed.txt" -c 3 -w "${PWD}/rspworkdir" -r "${PWD}/respdiff" "${CI_PROJECT_DIR}" "/usr/local/respdiff-reference-bind/sbin/named"
+    - $PYTHON respdiff.py --ref-type named --ref-count 3 --queries "${PWD}/100k_mixed.txt" --workdir "${PWD}/rspworkdir" --respdiff-repo "${PWD}/respdiff" "${CI_PROJECT_DIR}" "/usr/local/respdiff-reference-bind/sbin/named"
     - cd ../.. && ninja -C build clean >/dev/null 2>&1
 
 respdiff:tsan:
@@ -2452,7 +2453,7 @@ respdiff:tsan:
     MAX_DISAGREEMENTS_PERCENTAGE: "0.3"
     TSAN_SYMBOLIZER_PATH: "${TSAN_SYMBOLIZER_PATH_DEBIAN}"
   script:
-    - bash respdiff.sh -s named -q "${PWD}/100k_mixed.txt" -c 3 -w "${PWD}/rspworkdir" -r "${PWD}/respdiff" "${CI_PROJECT_DIR}" "/usr/local/respdiff-reference-bind/sbin/named"
+    - $PYTHON respdiff.py --ref-type named --ref-count 3 --queries "${PWD}/100k_mixed.txt" --workdir "${PWD}/rspworkdir" --respdiff-repo "${PWD}/respdiff" "${CI_PROJECT_DIR}" "/usr/local/respdiff-reference-bind/sbin/named"
     - cd ../.. && ninja -C build clean >/dev/null 2>&1
 
 respdiff-third-party:
@@ -2464,7 +2465,7 @@ respdiff-third-party:
     EXTRA_CONFIGURE: "-Doptimization=g"
     MAX_DISAGREEMENTS_PERCENTAGE: "0.4"
   script:
-    - bash respdiff.sh -s third_party -q "${PWD}/100k_mixed.txt" -c 1 -w "${PWD}/rspworkdir" -r "${PWD}/respdiff" "${CI_PROJECT_DIR}"
+    - $PYTHON respdiff.py --ref-type third_party --ref-count 1 --queries "${PWD}/100k_mixed.txt" --workdir "${PWD}/rspworkdir" --respdiff-repo "${PWD}/respdiff" "${CI_PROJECT_DIR}"
     - cd ../.. && ninja -C build clean >/dev/null 2>&1
 
 .respdiff-recent-named: &respdiff_recent_named
@@ -2482,7 +2483,7 @@ respdiff-third-party:
     - *configure
     - meson compile -C build
     - cd "$CI_PROJECT_DIR"/bind9-qa/respdiff
-    - bash respdiff.sh -s named -q "${PWD}/100k_mixed.txt" -c 3 -w "${PWD}/rspworkdir" -r "${PWD}/respdiff" "${CI_PROJECT_DIR}" "${CI_PROJECT_DIR}/baseline-build/build/named"
+    - $PYTHON respdiff.py --ref-type named --ref-count 3 --queries "${PWD}/100k_mixed.txt" --workdir "${PWD}/rspworkdir" --respdiff-repo "${PWD}/respdiff" "${CI_PROJECT_DIR}" "${CI_PROJECT_DIR}/baseline-build/build/named"
 
 respdiff:recent-named:
   <<: *respdiff_recent_named
