@@ -19,7 +19,6 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 
 import dns.dnssec
-import dns.flags
 import dns.name
 import dns.rdataclass
 import dns.rdatatype
@@ -28,7 +27,7 @@ import pytest
 import isctest
 import isctest.mark
 
-PARENT = "parent.hack."
+PARENT = "f045.test."
 CHILD = f"child.{PARENT}"
 QUERY = f"q.{PARENT}"
 SERVICE = f"svc.{CHILD}"
@@ -135,7 +134,7 @@ def test_malicious_replay():
     assert _rrset(response, response.answer, QUERY, dns.rdatatype.MX)
     _check_signed_rrset(response, response.answer, QUERY, dns.rdatatype.MX, PARENT)
 
-    # The reply carries in ADDITIONAL.  Note Labels=2, signer=parent.hack.
+    # The reply carries in ADDITIONAL.  Note Labels=2, signer=f045.test.
     assert _has_a(response, response.additional, SERVICE, FORGED_A), response.to_text()
     _check_signed_rrset(
         response,
