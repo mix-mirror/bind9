@@ -249,17 +249,9 @@ class AnsInstance(ServerInstance):
     log_filename = "ans.run"
     identifier_prefix = "ans"
 
-    def __init__(
-        self,
-        identifier: str,
-        num: int | None = None,
-    ) -> None:
+    def __init__(self, identifier: str) -> None:
         """
         `identifier` is the name of the instance's directory
-
-        `num` is optional if the identifier is in a form of `ans<X>`, in which
-        case `<X>` is assumed to be numeric identifier; otherwise it must be
-        provided to assign a numeric identification to the server
         """
-        super().__init__(identifier, num)
+        super().__init__(identifier)
         self.ports = AnsPorts.from_env()
