@@ -161,7 +161,6 @@ class NamedInstance(ServerInstance):
         self,
         identifier: str,
         num: int | None = None,
-        ports: NamedPorts | None = None,
     ) -> None:
         """
         `identifier` is the name of the instance's directory
@@ -169,16 +168,9 @@ class NamedInstance(ServerInstance):
         `num` is optional if the identifier is in a form of `ns<X>`, in which
         case `<X>` is assumed to be numeric identifier; otherwise it must be
         provided to assign a numeric identification to the server
-
-        `ports` is the `NamedPorts` instance listing the UDP/TCP ports on which
-        this `named` instance is listening for various types of traffic (both
-        DNS traffic and RNDC commands). Defaults to ports set by the test
-        framework.
         """
         super().__init__(identifier, num)
-        if ports is None:
-            ports = NamedPorts.from_env()
-        self.ports = ports
+        self.ports = NamedPorts.from_env()
 
         self._rndc_conf = Path("../_common/rndc.conf").absolute()
         self._rndc = EnvCmd("RNDC", self.rndc_args)
@@ -261,7 +253,6 @@ class AnsInstance(ServerInstance):
         self,
         identifier: str,
         num: int | None = None,
-        ports: AnsPorts | None = None,
     ) -> None:
         """
         `identifier` is the name of the instance's directory
@@ -269,12 +260,6 @@ class AnsInstance(ServerInstance):
         `num` is optional if the identifier is in a form of `ans<X>`, in which
         case `<X>` is assumed to be numeric identifier; otherwise it must be
         provided to assign a numeric identification to the server
-
-        `ports` is the `AnsPorts` instance listing the ports on which this
-        `ans` instance is listening for DNS traffic. Defaults to ports set by
-        the test framework.
         """
         super().__init__(identifier, num)
-        if ports is None:
-            ports = AnsPorts.from_env()
-        self.ports = ports
+        self.ports = AnsPorts.from_env()
