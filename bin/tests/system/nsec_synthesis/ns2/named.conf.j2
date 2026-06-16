@@ -24,11 +24,22 @@ zone "." {
 	file "../../_common/root.hint";
 };
 
-zone "tld.test" {
+zone "f004.test" {
+	type static-stub;
+	server-addresses { 10.53.0.1; };
+};
+
+zone "f023.test" {
+	type static-stub;
+	server-addresses { 10.53.0.1; };
+};
+
+zone "evil.f023.test" {
 	type static-stub;
 	server-addresses { 10.53.0.1; };
 };
 
 trust-anchors {
-	tld.test. static-key 257 3 13 "@PARENT_DNSKEY@";
+	f004.test. static-key 257 3 13 "@DNSKEY@";
+	f023.test. static-key 257 3 13 "@DNSKEY@";
 };
