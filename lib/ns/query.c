@@ -3127,6 +3127,12 @@ rpz_find_p(ns_client_t *client, dns_name_t *self_name, dns_rdatatype_t qtype,
 					*dbp, p_name, *versionp, qtype, 0,
 					client->inner.now, NULL, found, &cm,
 					&ci, *rdatasetp, NULL);
+				/*
+				 * This fallback used to repopulate nodep via
+				 * dns_db_findext(). Preserve that contract so
+				 * rpz_save_p() can keep the node for later
+				 * pickup in query_checkrpz().
+				 */
 				if (result == ISC_R_SUCCESS ||
 				    result == DNS_R_NXRRSET)
 				{
