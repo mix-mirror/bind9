@@ -6730,8 +6730,9 @@ cache_delegglue(dns_delegset_t *delegset, dns_deleg_t *deleg, dns_ttl_t *ttl,
 	dns_rdataset_t *rdataset = NULL;
 	size_t naddrs = 0;
 	isc_result_t result;
-	bool hasv4 = rctx->fctx->res->dispatches4 != NULL;
-	bool dns64 = !ISC_LIST_EMPTY(rctx->fctx->res->view->dns64);
+	dns_resolver_t *res = rctx->fctx->res;
+	bool hasv4 = res->dispatches4 != NULL;
+	bool dns64 = !ISC_LIST_EMPTY(res->view->dns64) && res->view->usedns64;
 
 	if (!hasv4 && !dns64) {
 		return 0;
