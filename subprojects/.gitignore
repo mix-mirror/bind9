@@ -1,0 +1,6 @@
+# Ignore everything meson extracts or downloads under subprojects/ (extracted
+# subproject sources and the packagecache download cache); keep only the
+# wrap files.
+/*
+!/.gitignore
+!/*.wrap

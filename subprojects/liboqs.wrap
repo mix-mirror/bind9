@@ -1,0 +1,9 @@
+# liboqs built (MAYO only) as a CMake subproject when no suitable system
+# liboqs is found. Meson downloads the source tarball from source_url on the
+# first configure and caches it under subprojects/packagecache/. For builds
+# without network access, pre-populate that cache or use a system liboqs.
+[wrap-file]
+directory = liboqs-0.15.0
+source_filename = liboqs-0.15.0.tar.gz
+source_url = https://github.com/open-quantum-safe/liboqs/archive/refs/tags/0.15.0.tar.gz
+source_hash = 3983f7cd1247f37fb76a040e6fd684894d44a84cecdcfbdb90559b3216684b5c

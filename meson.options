@@ -117,6 +117,14 @@ option(
 )
 
 option(
+    'liboqs',
+    type: 'combo',
+    choices: ['auto', 'system', 'bundled'],
+    value: 'auto',
+    description: 'liboqs for post-quantum signatures (MAYO): use the system library, build the bundled subproject, or auto-detect',
+)
+
+option(
     'rcu-flavor',
     type: 'combo',
     choices: ['membarrier', 'bp', 'mb', 'qsbr'],

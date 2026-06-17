@@ -25,7 +25,7 @@ project(
         'strip': false,
         'warning_level': '2',
         'werror': false,
-        'wrap_mode': 'nodownload',
+        'wrap_mode': 'default',
     },
 )
 
@@ -677,8 +677,41 @@ foreach fn, header : {
     )
 endforeach
 
-## liboqs (post-quantum signatures: MAYO)
-oqs_dep = dependency('liboqs', version: '>=0.12.0')
+## liboqs (post-quantum signatures: MAYO).
+##
+## Prefer a system library; otherwise build a minimal copy (MAYO only) from
+## the bundled CMake subproject. The 'liboqs' option forces one path:
+##   auto    - system if found, else bundled
+##   system  - system only (error if missing)
+##   bundled - always build the bundled subproject
+liboqs_kind = get_option('liboqs')
+oqs_dep = dependency('', required: false)
+if liboqs_kind != 'bundled'
+    oqs_dep = dependency(
+        'liboqs',
+        version: '>=0.12.0',
+        required: liboqs_kind == 'system',
+    )
+endif
+
+if not oqs_dep.found()
+    cmake = import('cmake')
+    oqs_options = cmake.subproject_options()
+    oqs_options.add_cmake_defines(
+        {
+            'BUILD_SHARED_LIBS': false,
+            'CMAKE_BUILD_TYPE': 'Release',
+            'CMAKE_POSITION_INDEPENDENT_CODE': true,
+            'OQS_BUILD_ONLY_LIB': true,
+            'OQS_USE_OPENSSL': false,
+            'OQS_MINIMAL_BUILD': 'SIG_mayo_2',
+        },
+    )
+    oqs_options.set_install(false)
+    oqs_subproject = cmake.subproject('liboqs', options: oqs_options)
+    oqs_dep = oqs_subproject.dependency('oqs')
+    message('liboqs: using bundled MAYO-only subproject')
+endif
 
 ## libuv
 uv_dep = dependency('libuv', version: '>=1.34.0')
