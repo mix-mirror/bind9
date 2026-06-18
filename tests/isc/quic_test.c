@@ -59,6 +59,8 @@ typedef struct map_test_worker_state {
 	isc_quic_cid_t *cid[128];
 } map_test_worker_state_t;
 
+constexpr uint8_t alpn[] = { 0x03, 'u', 'w', 'u' };
+
 static isc_sockaddr_t client_addr;
 static isc_sockaddr_t server_addr;
 
@@ -123,6 +125,7 @@ client_init(client_context_t *client) {
 		.tlsctx = tlsctx,
 		.local = &client_addr,
 		.peer = &server_addr,
+		.alpn = { alpn, sizeof(alpn) },
 	};
 
 	result = isc_quic_conn_client_create(isc_g_mctx, map, NULL, &opts,
@@ -163,6 +166,7 @@ server_init(server_context_t *server, isc_constregion_t scid,
 		.peer = &server_addr,
 		.initial_dcid = dcid,
 		.initial_scid = scid,
+		.alpn = { alpn, sizeof(alpn) },
 	};
 
 	result = isc_quic_conn_server_create(isc_g_mctx, map, NULL, &opts,

@@ -15,10 +15,17 @@
 #include <stdint.h>
 
 #include <ngtcp2/ngtcp2.h>
-#include <openssl/ssl.h>
-// TODO(aydin) drop this
 #include <ngtcp2/ngtcp2_crypto.h>
+#include <openssl/opensslv.h>
+#include <openssl/ssl.h>
+
+#ifdef HAVE_OPENSSL_3
 #include <ngtcp2/ngtcp2_crypto_ossl.h>
+#elif defined(LIBRESSL_VERSION_NUMBER)
+#include <ngtcp2/ngtcp2_crypto_quictls.h>
+#else
+#include <ngtcp2/ngtcp2_crypto_boringssl.h>
+#endif
 
 #include <isc/bit.h>
 #include <isc/hashmap.h>
@@ -75,13 +82,21 @@ struct isc_quic_conn {
 	uint32_t magic;
 	quic_conn_state_t state;
 	isc_quic_cid_map_t *cidmap;
+#ifdef HAVE_OPENSSL_3
 	ngtcp2_crypto_ossl_ctx *ossl_ctx;
+#else
+	isc_tls_t *tls;
+#endif
 	ngtcp2_crypto_conn_ref crypto_ref;
 	isc_quic_conn_callbacks_t *cb;
 	void *cbarg;
 	ISC_LIST(isc_quic_stream_data_t) incoming_stream_data;
 	ISC_LIST(isc_quic_stream_data_t) outgoing_stream_data;
 	ISC_LIST(quic_stream_t) streams;
+	struct {
+		uint8_t len;
+		uint8_t buf[7];
+	} alpn;
 	/*
 	 * isc_mem_t is stored inside `mem.user_data`
 	 */
@@ -205,6 +220,24 @@ static const ngtcp2_callbacks server_cb = {
 	.get_path_challenge_data2 = get_path_challenge_data2_cb,
 #endif /* NGTCP2_VERSION_NUM >= 0x011600 */
 };
+
+/*
+ * Server ALPN
+ */
+static int
+quic_alpn_select(isc_tls_t *tls ISC_ATTR_UNUSED, const unsigned char **out,
+		 unsigned char *outlen, const unsigned char *in,
+		 unsigned int inlen, void *arg) {
+	isc_quic_conn_t *conn = arg;
+	int r = SSL_select_next_proto(UNCONST(out), outlen, in, inlen,
+				      conn->alpn.buf, conn->alpn.len);
+
+	if (r != OPENSSL_NPN_NEGOTIATED) {
+		return SSL_TLSEXT_ERR_ALERT_FATAL;
+	}
+
+	return SSL_TLSEXT_ERR_OK;
+}
 
 /*
  * isc_quic_conn_t state functions
@@ -695,6 +728,7 @@ isc_quic_conn_client_create(isc_mem_t *mctx, isc_quic_cid_map_t *cidmap,
 
 	REQUIRE(connp != NULL && *connp == NULL);
 	REQUIRE(options != NULL);
+	REQUIRE(options->alpn.length <= sizeof(conn->alpn.buf));
 
 	common_settings(&settings);
 	settings.initial_ts = timestamp;
@@ -711,6 +745,7 @@ isc_quic_conn_client_create(isc_mem_t *mctx, isc_quic_cid_map_t *cidmap,
 		.incoming_stream_data = ISC_LIST_INITIALIZER,
 		.outgoing_stream_data = ISC_LIST_INITIALIZER,
 		.streams = ISC_LIST_INITIALIZER,
+		.alpn = { .len = options->alpn.length },
 		.mem = { .user_data = isc_mem_ref(mctx),
 			 .malloc = quic_malloc,
 			 .free = quic_free,
@@ -724,16 +759,24 @@ isc_quic_conn_client_create(isc_mem_t *mctx, isc_quic_cid_map_t *cidmap,
 			   NULL, 0 },
 	};
 
+#ifdef LIBRESSL_VERSION_NUMBER
+	ngtcp2_crypto_quictls_configure_client_context(options->tlsctx);
+#elif !defined(HAVE_OPENSSL_3)
+	ngtcp2_crypto_boringssl_configure_client_context(options->tlsctx);
+#endif
+
 	tls = isc_tls_create(options->tlsctx);
+#ifdef HAVE_OPENSSL_3
 	ngtcp2_crypto_ossl_ctx_new(&conn->ossl_ctx, tls);
 	ngtcp2_crypto_ossl_configure_client_session(tls);
+#endif
 	SSL_set_connect_state(tls);
 	SSL_set_app_data(tls, &conn->crypto_ref);
 	SSL_set_tlsext_host_name(tls, options->sni);
 
 	if (options->alpn.base != NULL) {
-		SSL_set_alpn_protos(tls, options->alpn.base,
-				    options->alpn.length);
+		memcpy(conn->alpn.buf, options->alpn.base, conn->alpn.len);
+		SSL_set_alpn_protos(tls, conn->alpn.buf, conn->alpn.len);
 	}
 
 	dcid.datalen = NGTCP2_MIN_INITIAL_DCIDLEN;
@@ -748,7 +791,11 @@ isc_quic_conn_client_create(isc_mem_t *mctx, isc_quic_cid_map_t *cidmap,
 		return ISC_R_FAILURE;
 	}
 
+#ifdef HAVE_OPENSSL_3
 	ngtcp2_conn_set_tls_native_handle(conn->inner, conn->ossl_ctx);
+#else
+	ngtcp2_conn_set_tls_native_handle(conn->inner, tls);
+#endif
 
 	*connp = conn;
 
@@ -771,6 +818,7 @@ isc_quic_conn_server_create(isc_mem_t *mctx, isc_quic_cid_map_t *cidmap,
 
 	REQUIRE(connp != NULL && *connp == NULL);
 	REQUIRE(options != NULL);
+	REQUIRE(options->alpn.length <= sizeof(conn->alpn.buf));
 
 	scid.datalen = 8;
 	isc_random_buf(scid.data, 8);
@@ -796,6 +844,7 @@ isc_quic_conn_server_create(isc_mem_t *mctx, isc_quic_cid_map_t *cidmap,
 		.incoming_stream_data = ISC_LIST_INITIALIZER,
 		.outgoing_stream_data = ISC_LIST_INITIALIZER,
 		.streams = ISC_LIST_INITIALIZER,
+		.alpn = { .len = options->alpn.length },
 		.mem = { .user_data = isc_mem_ref(mctx),
 			 .malloc = quic_malloc,
 			 .free = quic_free,
@@ -809,16 +858,26 @@ isc_quic_conn_server_create(isc_mem_t *mctx, isc_quic_cid_map_t *cidmap,
 			   NULL, 0 },
 	};
 
-	tls = isc_tls_create(options->tlsctx);
-	ngtcp2_crypto_ossl_ctx_new(&conn->ossl_ctx, tls);
-	ngtcp2_crypto_ossl_configure_server_session(tls);
-	SSL_set_app_data(tls, &conn->crypto_ref);
-	SSL_set_accept_state(tls);
+#ifdef LIBRESSL_VERSION_NUMBER
+	ngtcp2_crypto_quictls_configure_server_context(options->tlsctx);
+#elif !defined(HAVE_OPENSSL_3)
+	ngtcp2_crypto_boringssl_configure_server_context(options->tlsctx);
+#endif
 
 	if (options->alpn.base != NULL) {
-		SSL_set_alpn_protos(tls, options->alpn.base,
-				    options->alpn.length);
+		memcpy(conn->alpn.buf, options->alpn.base, conn->alpn.len);
+		SSL_CTX_set_alpn_select_cb(options->tlsctx, quic_alpn_select,
+					   conn);
 	}
+
+	tls = isc_tls_create(options->tlsctx);
+
+#ifdef HAVE_OPENSSL_3
+	ngtcp2_crypto_ossl_ctx_new(&conn->ossl_ctx, tls);
+	ngtcp2_crypto_ossl_configure_server_session(tls);
+#endif
+	SSL_set_app_data(tls, &conn->crypto_ref);
+	SSL_set_accept_state(tls);
 
 	if (ngtcp2_conn_server_new(&conn->inner, &dcid, &scid, &conn->path,
 				   NGTCP2_PROTO_VER_V2, &server_cb, &settings,
@@ -827,7 +886,11 @@ isc_quic_conn_server_create(isc_mem_t *mctx, isc_quic_cid_map_t *cidmap,
 		return ISC_R_FAILURE;
 	}
 
+#ifdef HAVE_OPENSSL_3
 	ngtcp2_conn_set_tls_native_handle(conn->inner, conn->ossl_ctx);
+#else
+	ngtcp2_conn_set_tls_native_handle(conn->inner, tls);
+#endif
 
 	*connp = conn;
 
@@ -851,7 +914,6 @@ isc_quic_conn_pull_packet(isc_quic_conn_t *conn, uint8_t *out, size_t len,
 
 void
 isc_quic_conn_destroy(isc_quic_conn_t **connp) {
-	ngtcp2_crypto_ossl_ctx *ossl_ctx;
 	isc_quic_conn_t *conn;
 	isc_mem_t *mctx;
 	isc_tls_t *tls;
@@ -865,8 +927,13 @@ isc_quic_conn_destroy(isc_quic_conn_t **connp) {
 	conn->magic = 0x00;
 	mctx = conn->mem.user_data;
 
-	ossl_ctx = ngtcp2_conn_get_tls_native_handle(conn->inner);
+#ifdef HAVE_OPENSSL_3
+	ngtcp2_crypto_ossl_ctx *ossl_ctx =
+		ngtcp2_conn_get_tls_native_handle(conn->inner);
 	tls = ngtcp2_crypto_ossl_ctx_get_ssl(ossl_ctx);
+#else
+	tls = ngtcp2_conn_get_tls_native_handle(conn->inner);
+#endif
 
 	ISC_LIST_FOREACH(conn->streams, stream, link) {
 		ISC_LIST_DEQUEUE(conn->streams, stream, link);
@@ -896,7 +963,9 @@ isc_quic_conn_destroy(isc_quic_conn_t **connp) {
 	SSL_set_app_data(tls, NULL);
 	isc_tls_free(&tls);
 
+#ifdef HAVE_OPENSSL_3
 	ngtcp2_crypto_ossl_ctx_del(conn->ossl_ctx);
+#endif
 
 	ngtcp2_conn_del(conn->inner);
 
