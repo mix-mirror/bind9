@@ -84,3 +84,18 @@ def test_cd1_nxdomain_uncached_type_answer(ns1, ns2, system_test_dir):
     )
     isctest.check.servfail(res)
     isctest.check.empty_answer(res)
+
+    # a CD=0 query should now validate the NXDOMAIN, ejecting the A.
+    res = isctest.query.tcp(
+        isctest.query.create("a.example", "AAAA"), RESOLVER
+    )
+    isctest.check.nxdomain(res)
+    isctest.check.adflag(res)
+    isctest.check.empty_answer(res)
+
+    res = isctest.query.tcp(
+        isctest.query.create("a.example", "A"), RESOLVER
+    )
+    isctest.check.nxdomain(res)
+    isctest.check.adflag(res)
+    isctest.check.empty_answer(res)
