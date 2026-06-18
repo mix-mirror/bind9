@@ -21,13 +21,56 @@ that makes the resolver cache an unvalidated NXDOMAIN for a.example.  The
 originally cached, more-trusted A record must survive.
 """
 
+import os
 import shutil
+
+import dns.zone
 
 import isctest
 
 RESOLVER = "10.53.0.1"
 AUTH = "10.53.0.2"
 A_RDATA = "10.53.0.99"
+
+
+def bootstrap():
+    alg = os.environ["DEFAULT_ALGORITHM"]
+    bits = os.environ["DEFAULT_BITS"]
+    keygen = isctest.run.EnvCmd("KEYGEN", f"-a {alg} -b {bits} -Kns2 -q")
+    signer = isctest.run.EnvCmd("SIGNER", "-S -g")
+
+    name = "example"
+
+    zsk_name = keygen(name).out.strip()
+    isctest.kasp.Key(zsk_name, keydir="ns2")
+    ksk_name = keygen(f"-f KSK {name}").out.strip()
+    ksk = isctest.kasp.Key(ksk_name, keydir="ns2")
+
+    zonetext = """
+@ 300 IN SOA ns2.example. admin.example. 0 3600 1800 604800 300
+@ NS ns2.example.
+ns2 A 10.53.0.2
+"""
+    zone = dns.zone.from_text(zonetext, origin=name)
+    zone.to_file(f"ns2/{name}-empty.db", sorted=True)
+    signer(
+        f"-P -x -O full -o {name} -f {name}-empty.db.signed {name}-empty.db", cwd="ns2"
+    )
+
+    zonetext += "a A 10.53.0.99"
+    zone = dns.zone.from_text(zonetext, origin=name)
+    zone.to_file(f"ns2/{name}-full.db", sorted=True)
+    signer(
+        f"-P -x -O full -o {name} -f {name}-full.db.signed {name}-full.db", cwd="ns2"
+    )
+
+    shutil.copyfile(f"ns2/{name}-full.db.signed", f"ns2/{name}.db.signed")
+
+    return {
+        "trust_anchors": [
+            ksk.into_ta("static-key"),
+        ],
+    }
 
 
 def _serve(ns2, system_test_dir, variant):
@@ -86,16 +129,12 @@ def test_cd1_nxdomain_uncached_type_answer(ns1, ns2, system_test_dir):
     isctest.check.empty_answer(res)
 
     # a CD=0 query should now validate the NXDOMAIN, ejecting the A.
-    res = isctest.query.tcp(
-        isctest.query.create("a.example", "AAAA"), RESOLVER
-    )
+    res = isctest.query.tcp(isctest.query.create("a.example", "AAAA"), RESOLVER)
     isctest.check.nxdomain(res)
     isctest.check.adflag(res)
     isctest.check.empty_answer(res)
 
-    res = isctest.query.tcp(
-        isctest.query.create("a.example", "A"), RESOLVER
-    )
+    res = isctest.query.tcp(isctest.query.create("a.example", "A"), RESOLVER)
     isctest.check.nxdomain(res)
     isctest.check.adflag(res)
     isctest.check.empty_answer(res)
