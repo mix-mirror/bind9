@@ -23,8 +23,6 @@ originally cached, more-trusted A record must survive.
 
 import shutil
 
-import dns.rcode
-
 import isctest
 
 RESOLVER = "10.53.0.1"
@@ -60,13 +58,12 @@ def test_cd1_nxdomain_keeps_secure_rrset(ns1, ns2, system_test_dir):
     isctest.check.nxdomain(isctest.query.tcp(direct, AUTH))
 
     # A CD=1 query elicits an unvalidated NXDOMAIN for a.example, cached at
-    # trust=pending_answer.  The buggy code evicts the secure A record here.
+    # trust=pending_answer.  The the secure A record should not be evicted.
     cd_msg = isctest.query.create("a.example", "TXT", cd=True)
     isctest.query.tcp(cd_msg, RESOLVER)
 
-    # The validated A record must still be served from cache.  With the bug
-    # present it has been evicted, the resolver refetches from the now
-    # a.example-less zone and returns NXDOMAIN instead.
+    # The resolver should not refetch from the zone; the validated A
+    # record should still be served from cache.
     res = isctest.query.tcp(isctest.query.create("a.example", "A"), RESOLVER)
     isctest.check.noerror(res)
     isctest.check.adflag(res)
@@ -81,11 +78,9 @@ def test_cd1_nxdomain_uncached_type_answer(ns1, ns2, system_test_dir):
 
     # CD=1 query for an UNCACHED type (AAAA): the unvalidated NXDOMAIN is
     # rejected in favour of the secure A.  Returning the cached A record (the
-    # wrong type) in the answer section is incorrect; the answer must be empty
-    # (a NODATA-style NOERROR or a SERVFAIL), never a positive record of a type
-    # the client did not ask for.
+    # wrong type) in the answer section is incorrect; the answer must be empty.
     res = isctest.query.tcp(
         isctest.query.create("a.example", "AAAA", cd=True), RESOLVER
     )
-    assert res.rcode() in (dns.rcode.SERVFAIL, dns.rcode.NOERROR), res.rcode()
-    assert len(res.answer) == 0, res.answer
+    isctest.check.servfail(res)
+    isctest.check.empty_answer(res)
