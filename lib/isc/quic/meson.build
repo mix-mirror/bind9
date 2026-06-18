@@ -19,3 +19,8 @@ isc_srcset.add(
         ),
     ],
 )
+
+isc_srcset.add(
+    when: 'HAVE_OPENSSL_3',
+    if_false: files('boringlike.c'),
+)

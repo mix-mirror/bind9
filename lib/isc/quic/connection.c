@@ -44,6 +44,8 @@
 #include <isc/types.h>
 #include <isc/util.h>
 
+#include "quic_p.h"
+
 #define QUIC_STREAM_LIMIT 16
 
 #ifdef ISC_QUIC_STATE_CHECK
@@ -64,47 +66,10 @@
 #endif /* ISC_QUIC_STATE_CHECK */
 
 typedef struct quic_conn_state_node quic_conn_state_node_t;
-typedef struct quic_stream quic_stream_t;
 
 typedef isc_result_t (*pull_packet_fn)(isc_quic_conn_t *conn, uint8_t *out,
 				       size_t len, size_t *written,
 				       isc_nanosecs_t (*timestamp_fn)(void));
-
-typedef enum quic_conn_state {
-	QUIC_CONN_STATE_INVALID = 0x00,
-	QUIC_CONN_STATE_HANDSHAKE = 0x01,
-	QUIC_CONN_STATE_CONNECTED = 0x02,
-	QUIC_CONN_STATE_CLOSED = 0x03,
-	QUIC_CONN_STATE_TERMINATED = 0x04,
-} quic_conn_state_t;
-
-struct isc_quic_conn {
-	uint32_t magic;
-	quic_conn_state_t state;
-	isc_quic_cid_map_t *cidmap;
-#ifdef HAVE_OPENSSL_3
-	ngtcp2_crypto_ossl_ctx *ossl_ctx;
-#else
-	isc_tls_t *tls;
-#endif
-	ngtcp2_crypto_conn_ref crypto_ref;
-	isc_quic_conn_callbacks_t *cb;
-	void *cbarg;
-	ISC_LIST(isc_quic_stream_data_t) incoming_stream_data;
-	ISC_LIST(isc_quic_stream_data_t) outgoing_stream_data;
-	ISC_LIST(quic_stream_t) streams;
-	struct {
-		uint8_t len;
-		uint8_t buf[7];
-	} alpn;
-	/*
-	 * isc_mem_t is stored inside `mem.user_data`
-	 */
-	ngtcp2_mem mem;
-	ngtcp2_path path;
-	ngtcp2_ccerr ccerr;
-	ngtcp2_conn *inner;
-};
 
 struct quic_conn_state_node {
 	pull_packet_fn pull_packet;
@@ -173,11 +138,11 @@ get_path_challenge_data2_cb(ngtcp2_conn *ngconn,
 #endif /* NGTCP2_VERSION_NUM >= 0x011600 */
 
 static const ngtcp2_callbacks client_cb = {
-	.client_initial = ngtcp2_crypto_client_initial_cb,
+	.client_initial = isc__quic_client_initial_cb,
 	.recv_crypto_data = ngtcp2_crypto_recv_crypto_data_cb,
 	.handshake_completed = handshake_completed_cb,
-	.encrypt = ngtcp2_crypto_encrypt_cb,
-	.decrypt = ngtcp2_crypto_decrypt_cb,
+	.encrypt = isc__quic_encrypt_cb,
+	.decrypt = isc__quic_decrypt_cb,
 	.hp_mask = ngtcp2_crypto_hp_mask_cb,
 	.recv_stream_data = recv_stream_data_cb,
 	.acked_stream_data_offset = acked_stream_data_offset_cb,
@@ -201,8 +166,8 @@ static const ngtcp2_callbacks server_cb = {
 	.recv_client_initial = ngtcp2_crypto_recv_client_initial_cb,
 	.recv_crypto_data = ngtcp2_crypto_recv_crypto_data_cb,
 	.handshake_completed = handshake_completed_cb,
-	.encrypt = ngtcp2_crypto_encrypt_cb,
-	.decrypt = ngtcp2_crypto_decrypt_cb,
+	.encrypt = isc__quic_encrypt_cb,
+	.decrypt = isc__quic_decrypt_cb,
 	.hp_mask = ngtcp2_crypto_hp_mask_cb,
 	.recv_stream_data = recv_stream_data_cb,
 	.acked_stream_data_offset = acked_stream_data_offset_cb,
