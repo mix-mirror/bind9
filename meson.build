@@ -839,9 +839,22 @@ endif
 
 ## DNS-over-QUIC (DoQ) [IN PROGRESS, DEVELOPER MODE ONLY]
 ngtcp2_dep = null_dep
+ngtcp2_crypto_dep = null_dep
 if developer_mode
     ngtcp2_dep = dependency('libngtcp2', required: false)
     config.set('HAVE_LIBNGTCP2', ngtcp2_dep.found())
+
+    if config.get('HAVE_OPENSSL_3')
+        ngtcp2_crypto_dep = dependency('libngtcp2_crypto_ossl', required: ngtcp2_dep.found())
+    elif cc.has_header_symbol(
+        'openssl/opensslv.h',
+        'LIBRESSL_VERSION_NUMBER',
+        dependencies: openssl_dep,
+    )
+        ngtcp2_crypto_dep = dependency('libngtcp2_crypto_libressl', required: ngtcp2_dep.found())
+    else
+        ngtcp2_crypto_dep = dependency('libngtcp2_crypto_boringssl', required: ngtcp2_dep.found())
+    endif
 endif
 
 ## GeoIP
