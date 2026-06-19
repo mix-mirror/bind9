@@ -652,6 +652,7 @@ stages:
     - find build/man/ -maxdepth 2 -name "*.[0-9]" -exec mandoc -T lint "{}" \; | ( ! grep -v -e "skipping paragraph macro. sp after" -e "unknown font, skipping request. ft C" -e "input text line longer than 80 bytes" )
 
 .respdiff: &respdiff_job
+  parallel: 5
   rules:
     - when: on_success
   stage: system
