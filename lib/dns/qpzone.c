@@ -3542,6 +3542,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	qpznode_t *exact_node = NULL;
 	bool close_version = false;
 	bool wildcard_possible = false;
+	bool wild = false;
 	bool nsec3 = false;
 	qpzone_find_candidates_t selected_candidates = {};
 	qpzone_find_candidates_t exact_candidates = {};
@@ -3700,7 +3701,41 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 					      &wild_candidates DNS__DB_FLARG_PASS);
 			NODE_UNLOCK(nlock, &nlocktype);
 
-			if (qpzone_find_candidate_attached(&wild_candidates)) {
+			bool wild_attached =
+				qpzone_find_candidate_attached(&wild_candidates);
+			bool wildcard_nodata =
+				wild_attached
+					? wild_candidates.result == DNS_R_NXRRSET
+					: wild_candidates.empty_node;
+			bool secure_nsec = search.version->secure &&
+					   !search.version->havensec3;
+			bool missing_nsec_proof =
+				!wild_attached || wild_candidates.header == NULL ||
+				wild_candidates.sigheader == NULL;
+			bool emptywild_proof_needed =
+				wildcard_nodata && secure_nsec &&
+				missing_nsec_proof;
+
+			if (emptywild_proof_needed) {
+				qpzone_find_candidate_cleanup(
+					&wild_candidates DNS__DB_FLARG_PASS);
+				wild = true;
+				goto negative_answer;
+			}
+
+			if (!wild_attached && wildcard_nodata) {
+				nlock = qpzone_get_lock(node);
+				NODE_RDLOCK(nlock, &nlocktype);
+				qpzone_find_candidate_attach(
+					&wild_candidates,
+					node DNS__DB_FLARG_PASS);
+				NODE_UNLOCK(nlock, &nlocktype);
+
+				wild_candidates.result = DNS_R_NXRRSET;
+				wild_attached = true;
+			}
+
+			if (wild_attached) {
 				wild_candidates.wild = true;
 				selected_candidates =
 					qpzone_find_candidate_move(
@@ -3712,34 +3747,41 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		}
 	}
 
+negative_answer:
 	active = false;
-	if (!nsec3) {
+	if (!nsec3 && !wild) {
 		/*
 		 * The NSEC3 tree won't have empty nodes, so it isn't necessary
-		 * to check for them.
+		 * to check for them. If a wildcard matched, activeempty()
+		 * for the original QNAME is not relevant to the result.
 		 */
 		dns_qpiter_t iter = search.iter;
 		active = activeempty(&search, &iter, name);
 	}
 
 	/*
-	 * If we're here, then the name does not exist, is not beneath a
-	 * zonecut, and there's no matching wildcard.
+	 * If we're here, then the name does not exist or a matching wildcard
+	 * needs the closest-NSEC negative proof.
 	 */
-	if ((search.version->secure && !search.version->havensec3) || nsec3) {
+	bool secure_nsec = search.version->secure && !search.version->havensec3;
+	bool closest_nsec3 = nsec3 && !wild;
+	isc_result_t negative_result = wild     ? DNS_R_EMPTYWILD
+				     : active ? DNS_R_EMPTYNAME
+					      : DNS_R_NXDOMAIN;
+
+	if (secure_nsec || nsec3) {
 		nsec_candidates = qpzone_find_closest_nsec(
-			&search, foundname, nsec3,
+			&search, foundname, closest_nsec3,
 			search.version->secure DNS__DB_FLARG_PASS);
 		if (qpzone_find_candidate_attached(&nsec_candidates)) {
-			nsec_candidates.result = active ? DNS_R_EMPTYNAME
-							: DNS_R_NXDOMAIN;
+			nsec_candidates.result = negative_result;
 			selected_candidates =
 				qpzone_find_candidate_move(&nsec_candidates);
 			goto finalize_node;
 		}
 		result = nsec_candidates.result;
 	} else {
-		result = active ? DNS_R_EMPTYNAME : DNS_R_NXDOMAIN;
+		result = negative_result;
 	}
 	goto tree_exit;
 
@@ -3766,25 +3808,8 @@ finalize_node:
 			 * The zone is secure but there's no NSEC,
 			 * or the NSEC has no signature!
 			 */
-			if (!selected_candidates.wild) {
-				result = DNS_R_BADDB;
-				goto node_exit;
-			}
-
-			NODE_UNLOCK(nlock, &nlocktype);
-			nsec_candidates = qpzone_find_closest_nsec(
-				&search, foundname, false,
-				search.version->secure DNS__DB_FLARG_PASS);
-			qpzone_find_candidate_cleanup(
-				&selected_candidates DNS__DB_FLARG_PASS);
-			if (qpzone_find_candidate_attached(&nsec_candidates)) {
-				nsec_candidates.result = DNS_R_EMPTYWILD;
-				selected_candidates = qpzone_find_candidate_move(
-					&nsec_candidates);
-				goto finalize_node;
-			}
-			result = nsec_candidates.result;
-			goto tree_exit;
+			result = DNS_R_BADDB;
+			goto node_exit;
 		}
 		if (nodep != NULL) {
 			*nodep = (dns_dbnode_t *)node;
