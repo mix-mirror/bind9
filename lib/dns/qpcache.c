@@ -904,7 +904,7 @@ bindrdataset(qpcache_t *qpdb, qpcnode_t *node, dns_slabheader_t *header,
 	INSIST(rdataset->methods == NULL); /* We must be disassociated. */
 
 	/*
-	 * Mark header stale or ancient if the RRset is no longer active.
+	 * Mark header stale if the RRset is no longer active.
 	 */
 	if (!ACTIVE(header, now)) {
 		dns_ttl_t stale_ttl = header->expire + STALE_TTL(header, qpdb);
@@ -1529,7 +1529,7 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 
 		/*
 		 * We now know that there is at least one active
-		 * non-stale rdataset at this node.
+		 * rdataset at this node.
 		 */
 		empty_node = false;
 
@@ -2306,7 +2306,7 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 				 * covers all types (NXDOMAIN,
 				 * NODATA(QTYPE=ANY)).
 				 *
-				 * Make all other data ancient so that the only
+				 * Delete all other data so that the only
 				 * rdataset that can be found at this node is
 				 * the negative cache entry.
 				 */
@@ -2317,7 +2317,7 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 				 * We're adding a proof that a signature doesn't
 				 * exist.
 				 *
-				 * Mark all existing signatures as ancient.
+				 * Delete all existing signatures.
 				 */
 				if (DNS_TYPEPAIR_TYPE(header->typepair) ==
 				    dns_rdatatype_rrsig)
@@ -2584,7 +2584,7 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 	/*
 	 * We've added a proof that a rdtype doesn't exist.
 	 *
-	 * Mark the related rrsig in the cache as ancient.
+	 * Delete the related rrsig in the cache.
 	 */
 	if (EXISTS(newheader) && NEGATIVE(newheader) &&
 	    !dns_rdatatype_issig(rdtype) && related != NULL)
