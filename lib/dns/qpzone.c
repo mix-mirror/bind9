@@ -2778,6 +2778,16 @@ qpzone_find_candidate_attached(const qpzone_find_candidates_t *candidates) {
 }
 
 static qpzone_find_candidates_t
+qpzone_find_candidate_make_nxrrset(qpznode_t *node DNS__DB_FLARG) {
+	/* The caller must hold the node lock. */
+	qpzone_find_candidates_t candidates = { .result = DNS_R_NXRRSET };
+
+	qpzone_find_candidate_attach(&candidates, node DNS__DB_FLARG_PASS);
+
+	return candidates;
+}
+
+static qpzone_find_candidates_t
 qpzone_find_candidate_prefer(qpzone_find_candidates_t *lhs,
 			     qpzone_find_candidates_t *rhs DNS__DB_FLARG) {
 	qpzone_find_candidates_t selected = {};
@@ -3548,6 +3558,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	qpzone_find_candidates_t exact_candidates = {};
 	qpzone_find_candidates_t zonecut_candidates = {};
 	qpzone_find_candidates_t wild_candidates = {};
+	qpzone_find_candidates_t nxrrset_candidates = {};
 	qpzone_find_candidates_t nsec_candidates = {};
 	bool active;
 	isc_rwlock_t *nlock = NULL;
@@ -3699,49 +3710,35 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 			NODE_RDLOCK(nlock, &nlocktype);
 			qpzone_find_scan_node(&search, node, type,
 					      &wild_candidates DNS__DB_FLARG_PASS);
+			nxrrset_candidates = qpzone_find_candidate_make_nxrrset(
+				node DNS__DB_FLARG_PASS);
 			NODE_UNLOCK(nlock, &nlocktype);
 
-			bool wild_attached =
-				qpzone_find_candidate_attached(&wild_candidates);
 			bool wildcard_nodata =
-				wild_attached
-					? wild_candidates.result == DNS_R_NXRRSET
-					: wild_candidates.empty_node;
+				wild_candidates.result == DNS_R_NXRRSET ||
+				wild_candidates.empty_node;
 			bool secure_nsec = search.version->secure &&
 					   !search.version->havensec3;
 			bool missing_nsec_proof =
-				!wild_attached || wild_candidates.header == NULL ||
+				wild_candidates.header == NULL ||
 				wild_candidates.sigheader == NULL;
 			bool emptywild_proof_needed =
 				wildcard_nodata && secure_nsec &&
 				missing_nsec_proof;
 
 			if (emptywild_proof_needed) {
-				qpzone_find_candidate_cleanup(
-					&wild_candidates DNS__DB_FLARG_PASS);
 				wild = true;
 				goto negative_answer;
 			}
 
-			if (!wild_attached && wildcard_nodata) {
-				nlock = qpzone_get_lock(node);
-				NODE_RDLOCK(nlock, &nlocktype);
-				qpzone_find_candidate_attach(
-					&wild_candidates,
-					node DNS__DB_FLARG_PASS);
-				NODE_UNLOCK(nlock, &nlocktype);
+			wild_candidates = qpzone_find_candidate_prefer(
+				&wild_candidates,
+				&nxrrset_candidates DNS__DB_FLARG_PASS);
 
-				wild_candidates.result = DNS_R_NXRRSET;
-				wild_attached = true;
-			}
-
-			if (wild_attached) {
-				wild_candidates.wild = true;
-				selected_candidates =
-					qpzone_find_candidate_move(
-						&wild_candidates);
-				goto finalize_node;
-			}
+			wild_candidates.wild = true;
+			selected_candidates =
+				qpzone_find_candidate_move(&wild_candidates);
+			goto finalize_node;
 		} else if (result != ISC_R_NOTFOUND) {
 			goto tree_exit;
 		}
@@ -3871,6 +3868,7 @@ tree_exit:
 	 */
 	qpzone_find_candidate_cleanup(&exact_candidates DNS__DB_FLARG_PASS);
 	qpzone_find_candidate_cleanup(&wild_candidates DNS__DB_FLARG_PASS);
+	qpzone_find_candidate_cleanup(&nxrrset_candidates DNS__DB_FLARG_PASS);
 	qpzone_find_candidate_cleanup(&nsec_candidates DNS__DB_FLARG_PASS);
 	qpzone_find_candidate_cleanup(&zonecut_candidates DNS__DB_FLARG_PASS);
 	qpzone_find_candidate_cleanup(&selected_candidates DNS__DB_FLARG_PASS);
