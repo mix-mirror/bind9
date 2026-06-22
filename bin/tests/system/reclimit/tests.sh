@@ -279,9 +279,9 @@ check_manytypes() (
 
 n=$((n + 1))
 ret=0
-echo_i "checking that priority names under the max-types-per-name limit get cached ($n)"
+echo_i "checking that well-known types under the max-types-per-name limit get cached ($n)"
 
-# Query for NXDOMAIN for items on our priority list - these should get cached
+# Query well-known types that return NODATA - these should get cached
 for rrtype in AAAA MX NS; do
   check_manytypes 1 manytypes.big "${rrtype}" NOERROR big SOA 120 || ret=1
 done
@@ -359,9 +359,9 @@ if [ $status -ne 0 ]; then exit 1; fi
 
 n=$((n + 1))
 ret=0
-echo_i "checking that priority NXDOMAIN names over the max-types-per-name limit get cached ($n)"
+echo_i "checking that well-known types over the max-types-per-name limit get cached ($n)"
 
-# Query for NXDOMAIN for items on our priority list - these should get cached
+# Query well-known types that return NODATA - these should get cached
 for rrtype in AAAA MX NS; do
   check_manytypes 1 manytypes.big "${rrtype}" NOERROR big SOA 120 || ret=1
 done
@@ -377,9 +377,9 @@ if [ $status -ne 0 ]; then exit 1; fi
 
 n=$((n + 1))
 ret=0
-echo_i "checking that priority name over the max-types-per-name get cached ($n)"
+echo_i "checking that a well-known type over the max-types-per-name limit gets cached ($n)"
 
-# Query for an item on our priority list - it should get cached
+# Query a well-known type - it should get cached
 check_manytypes 1 manytypes.big "A" NOERROR manytypes.big A 120 || ret=1
 # Wait at least 1 second
 sleep 1
@@ -394,20 +394,21 @@ ns3_flush
 
 n=$((n + 1))
 ret=0
-echo_i "checking that priority name over the max-types-per-name don't get evicted ($n)"
+echo_i "checking that the oldest type over the max-types-per-name limit gets evicted ($n)"
 
-# Query for an item on our priority list - it should get cached
+# Query an A record first - it becomes the oldest entry for the name.  The cache
+# evicts the oldest entry regardless of its type.
 check_manytypes 1 manytypes.big "A" NOERROR manytypes.big A 120 || ret=1
-# Query for 10 more types - this should not evict A record
+# Query for 10 more types - exceeding the limit evicts the oldest entry (A).
 for ntype in $(seq 65280 65289); do
   check_manytypes 1 manytypes.big "TYPE${ntype}" NOERROR manytypes.big || ret=1
 done
 # Wait at least 1 second
 sleep 1
-# Query the same name again - it should be in the cache
-check_manytypes 2 manytypes.big "A" NOERROR manytypes.big A "" 120 || ret=1
-# This one was first in the list and should have been evicted
-check_manytypes 2 manytypes.big "TYPE65280" NOERROR manytypes.big TYPE65280 120 || ret=1
+# The most recently added type is still cached (decremented TTL).
+check_manytypes 2 manytypes.big "TYPE65289" NOERROR manytypes.big TYPE65289 "" 120 || ret=1
+# A was the oldest entry and should have been evicted (re-fetched at full TTL).
+check_manytypes 2 manytypes.big "A" NOERROR manytypes.big A 120 || ret=1
 
 if [ $ret -ne 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
@@ -417,7 +418,7 @@ ns3_flush
 
 n=$((n + 1))
 ret=0
-echo_i "checking that non-priority types cause eviction ($n)"
+echo_i "checking that exceeding the max-types-per-name limit causes eviction ($n)"
 
 # Everything on top of that will cause the cache eviction
 for ntype in $(seq 65280 65299); do

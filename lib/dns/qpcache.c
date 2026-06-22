@@ -135,7 +135,7 @@ struct qpcnode {
 	isc_refcount_t references;
 	isc_refcount_t erefs;
 
-	struct cds_list_head headers;
+	ISC_SIEVE(dns_slabheader_t) headers;
 
 	/*%
 	 * Used for dead nodes cleaning.  This linked list is used to mark nodes
@@ -655,7 +655,7 @@ qpcnode_release(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t *nlocktypep,
 	}
 
 	/* Handle easy and typical case first. */
-	if (!cds_list_empty(&node->headers)) {
+	if (!ISC_SIEVE_EMPTY(node->headers)) {
 		goto unref;
 	}
 
@@ -682,7 +682,7 @@ qpcnode_release(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t *nlocktypep,
 		}
 	}
 
-	if (!cds_list_empty(&node->headers)) {
+	if (!ISC_SIEVE_EMPTY(node->headers)) {
 		goto unref;
 	}
 
@@ -790,18 +790,15 @@ setttl(dns_slabheader_t *header, isc_stdtime_t newts) {
 static size_t
 header_delete(qpcnode_t *node, dns_slabheader_t *header) {
 	/* The slabheader has already been removed from the node headers */
-	if (cds_list_empty(&header->headers_link)) {
+	if (!ISC_SIEVE_LINKED(header, hlink)) {
 		return 0;
 	}
 
 	size_t expired = rdataset_size(header);
 	qpcache_t *qpdb = node->qpdb;
 
-	cds_list_del_init(&header->headers_link);
+	ISC_SIEVE_UNLINK(node->headers, header, hlink);
 
-	/*
-	 * This place is the only place where we actually need header->typepair.
-	 */
 	update_rrsetstats(qpdb->rrsetstats, header->typepair,
 			  atomic_load_acquire(&header->attributes), false);
 
@@ -1204,7 +1201,7 @@ store_headers(dns_slabheader_t *tmp, dns_slabheader_t **headerp,
 static void
 find_headers(qpcnode_t *node, qpc_search_t *search, dns_rdatatype_t type,
 	     dns_slabheader_t **foundp, dns_slabheader_t **foundsigp) {
-	DNS_SLABHEADER_FOREACH(tmp, &node->headers) {
+	ISC_SIEVE_FOREACH(node->headers, tmp, hlink) {
 		dns_slabheader_t *header = NULL, *sigheader = NULL;
 
 		if (tmp->typepair == dns_typepair_any) {
@@ -1518,7 +1515,7 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	nlock = &search.qpdb->buckets[node->locknum].lock;
 	NODE_RDLOCK(nlock, &nlocktype);
 
-	DNS_SLABHEADER_FOREACH(tmp, &node->headers) {
+	ISC_SIEVE_FOREACH(node->headers, tmp, hlink) {
 		dns_slabheader_t *header = NULL, *sigheader = NULL;
 
 		store_headers(tmp, &header, &sigheader, &search);
@@ -1766,7 +1763,7 @@ qpcache_findrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	sigpair = (type != dns_rdatatype_rrsig) ? DNS_SIGTYPEPAIR(type)
 						: dns_typepair_none;
 
-	DNS_SLABHEADER_FOREACH(tmp, &qpnode->headers) {
+	ISC_SIEVE_FOREACH(qpnode->headers, tmp, hlink) {
 		dns_slabheader_t *header = NULL, *sigheader = NULL;
 
 		if (tmp->typepair != typepair && tmp->typepair != sigpair &&
@@ -2006,7 +2003,6 @@ static qpcnode_t *
 new_qpcnode(qpcache_t *qpdb, const dns_name_t *name, dns_namespace_t nspace) {
 	qpcnode_t *newdata = isc_mem_get(qpdb->common.mctx, sizeof(*newdata));
 	*newdata = (qpcnode_t){
-		.headers = CDS_LIST_HEAD_INIT(newdata->headers),
 		.methods = &qpcnode_methods,
 		.qpdb = qpdb,
 		.name = DNS_NAME_INITEMPTY,
@@ -2014,6 +2010,8 @@ new_qpcnode(qpcache_t *qpdb, const dns_name_t *name, dns_namespace_t nspace) {
 		.references = ISC_REFCOUNT_INITIALIZER(1),
 		.locknum = isc_random_uniform(qpdb->buckets_count),
 	};
+
+	ISC_SIEVE_INIT(newdata->headers);
 
 	isc_mem_attach(qpdb->common.mctx, &newdata->mctx);
 	dns_name_dup(name, newdata->mctx, &newdata->name);
@@ -2139,7 +2137,7 @@ qpcache_allrdatasets(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 
 	NODE_RDLOCK(nlock, &nlocktype);
 
-	DNS_SLABHEADER_FOREACH(header, &qpnode->headers) {
+	DNS_SLABHEADER_FOREACH(header, qpnode->headers) {
 		if (EXPIREDOK(iterator) ||
 		    iterator_active(qpdb, iterator, header))
 		{
@@ -2169,11 +2167,6 @@ overmaxtype(qpcache_t *qpdb, uint32_t ntypes) {
 	}
 
 	return ntypes >= qpdb->maxtypepername;
-}
-
-static bool
-prio_header(dns_slabheader_t *header) {
-	return prio_type(header->typepair);
 }
 
 static void
@@ -2270,7 +2263,6 @@ static isc_result_t
 add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
     unsigned int options, dns_rdataset_t *addedrdataset, isc_stdtime_t now,
     isc_rwlocktype_t nlocktype, isc_rwlocktype_t tlocktype DNS__DB_FLARG) {
-	dns_slabheader_t *prioheader = NULL, *evictheader = NULL;
 	dns_slabheader_t *oldheader = NULL, *related = NULL;
 	dns_trust_t trust;
 	uint32_t ntypes = 0;
@@ -2298,7 +2290,7 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 		trust = newheader->trust;
 	}
 
-	DNS_SLABHEADER_FOREACH(header, &qpnode->headers) {
+	DNS_SLABHEADER_FOREACH(header, qpnode->headers) {
 		if (EXISTS(newheader) && NEGATIVE(newheader)) {
 			if (rdtype == dns_rdatatype_any) {
 				/*
@@ -2356,10 +2348,6 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 
 		++ntypes;
 
-		if (prio_header(header)) {
-			prioheader = header;
-		}
-
 		if (header->typepair == newheader->typepair) {
 			INSIST(oldheader == NULL);
 			oldheader = header;
@@ -2371,19 +2359,6 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 		{
 			INSIST(related == NULL);
 			related = header;
-		}
-
-		/*
-		 * This simple condition works here because:
-		 *
-		 * 1. if related is the last header then we won't progress
-		 * evictheader
-		 *
-		 * 2. if related is not the last header then we progress
-		 * evictheader.
-		 */
-		if (header != related) {
-			evictheader = header;
 		}
 	}
 
@@ -2543,18 +2518,6 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 	 * oldheader.
 	 */
 
-	if (prio_header(newheader)) {
-		/* This is a priority type, prepend it */
-		cds_list_add(&newheader->headers_link, &qpnode->headers);
-	} else if (prioheader != NULL) {
-		/* Append after the priority headers */
-		cds_list_add(&newheader->headers_link,
-			     &prioheader->headers_link);
-	} else {
-		/* There were no priority headers */
-		cds_list_add(&newheader->headers_link, &qpnode->headers);
-	}
-
 	if (related != NULL) {
 		INSIST(related->related == NULL);
 		/* protect the related from LRU eviction */
@@ -2566,17 +2529,36 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 	bindrdataset(qpdb, qpnode, newheader, now, nlocktype, tlocktype,
 		     addedrdataset DNS__DB_FLARG_PASS);
 
-	if (oldheader == NULL && overmaxtype(qpdb, ntypes)) {
-		INSIST(evictheader != newheader);
+	while (oldheader == NULL && overmaxtype(qpdb, ntypes)) {
+		dns_slabheader_t *evictheader = ISC_SIEVE_NEXT(qpnode->headers,
+							       visited, hlink);
 
-		if (evictheader != NULL) {
-			INSIST(evictheader->related != newheader);
-			if (evictheader->related != NULL) {
-				header_delete(qpnode, evictheader->related);
-			}
-			header_delete(qpnode, evictheader);
+		INSIST(evictheader != newheader);
+		if (evictheader == related) {
+			/*
+			 * The newheader hasn't been inserted yet, so only
+			 * 'related' could be blocking the cleaning.  This could
+			 * lead to a situation where the limit is 'soft' and we
+			 * can have +1 headers in the cache, it will get cleaned
+			 * during the next insert.
+			 */
+			evictheader = NULL;
 		}
+		if (evictheader == NULL) {
+			/* no more headers to clean */
+			break;
+		}
+
+		INSIST(evictheader->related != newheader);
+		if (evictheader->related != NULL) {
+			header_delete(qpnode, evictheader->related);
+			ntypes--;
+		}
+		header_delete(qpnode, evictheader);
+		ntypes--;
 	}
+
+	ISC_SIEVE_INSERT(qpnode->headers, newheader, hlink);
 
 	qpcache_miss(qpdb, newheader, &nlocktype,
 		     &tlocktype DNS__DB_FLARG_PASS);
@@ -3339,10 +3321,7 @@ static dns_dbmethods_t qpdb_cachemethods = {
 
 static void
 qpcnode_destroy(qpcnode_t *qpnode) {
-	dns_slabheader_t *header = NULL, *header_next = NULL;
-	cds_list_for_each_entry_safe(header, header_next, &qpnode->headers,
-				     headers_link)
-	{
+	DNS_SLABHEADER_FOREACH(header, qpnode->headers) {
 		header_delete(qpnode, header);
 	}
 

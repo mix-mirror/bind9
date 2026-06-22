@@ -139,12 +139,12 @@ newslab(dns_rdataset_t *rdataset, isc_mem_t *mctx, isc_region_t *region,
 	dns_slabheader_t *header = isc_mem_get(mctx, size);
 
 	*header = (dns_slabheader_t){
-		.headers_link = CDS_LIST_HEAD_INIT(header->headers_link),
 		.trust = rdataset->trust,
 		.nitems = nitems,
 		.references = ISC_REFCOUNT_INITIALIZER(1),
 		.mctx = isc_mem_ref(mctx),
 		.lrulink = ISC_LINK_INITIALIZER,
+		.hlink = ISC_LINK_INITIALIZER,
 	};
 
 #if DNS_SLABHEADER_TRACE
@@ -546,11 +546,11 @@ dns_slabheader__new(isc_mem_t *mctx, dns_dbnode_t *node, const char *func,
 
 	h = isc_mem_get(mctx, sizeof(*h));
 	*h = (dns_slabheader_t){
-		.headers_link = CDS_LIST_HEAD_INIT(h->headers_link),
 		.node = node,
 		.references = ISC_REFCOUNT_INITIALIZER(1),
 		.mctx = isc_mem_ref(mctx),
 		.lrulink = ISC_LINK_INITIALIZER,
+		.hlink = ISC_LINK_INITIALIZER,
 	};
 
 #if DNS_SLABHEADER_TRACE

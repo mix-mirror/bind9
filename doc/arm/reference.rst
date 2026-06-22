@@ -3618,13 +3618,11 @@ system.
 
    In a cache, if :any:`max-types-per-name` is set to a positive number, an
    attempt to add a new resource record set to a name that already has the
-   specified number of types will temporarily succeed, so that the query can
-   be answered. However, the newly added RRset will immediately be purged.
+   specified number of types will succeed, so that the query can be answered
+   and a least-recently used type will be deleted.
 
-   Certain high-priority types, including SOA, CNAME, DNSKEY, and their
-   corresponding signatures, are always cached. If :any:`max-types-per-name`
-   is set to a very low value, then it may be ignored to allow high-priority
-   types to be cached.
+   If :any:`max-types-per-name` is set to a very low value, then it may be
+   ignored to allow types needed to process the current query to be cached.
 
    When :any:`max-types-per-name` is set to 0, there is no cap on the number
    of RR types.  The default is 100.

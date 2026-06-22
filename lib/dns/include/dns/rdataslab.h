@@ -47,6 +47,7 @@
 #include <stdbool.h>
 
 #include <isc/atomic.h>
+#include <isc/sieve.h>
 #include <isc/stdtime.h>
 #include <isc/urcu.h>
 
@@ -66,9 +67,8 @@ struct dns_slabheader_proof {
 	dns_rdatatype_t type;
 };
 
-#define DNS_SLABHEADER_FOREACH(pos, head)                 \
-	dns_slabheader_t *pos = NULL, *pos##_next = NULL; \
-	cds_list_for_each_entry_safe(pos, pos##_next, head, headers_link)
+#define DNS_SLABHEADER_FOREACH(entry, sieve) \
+	ISC_SIEVE_FOREACH(sieve, entry, hlink)
 
 struct dns_slabheader {
 	_Atomic(uint16_t)    attributes;
@@ -89,7 +89,7 @@ struct dns_slabheader {
 
 	dns_slabheader_t *related;
 
-	struct cds_list_head headers_link;
+	ISC_LINK(struct dns_slabheader) hlink;
 
 	/*%
 	 * The database node objects containing this rdataset, if any.
