@@ -56,40 +56,33 @@ typedef enum {
  *
  * If the 8 bits for RRtype are all zero, this is an Other RRtype.
  */
-#define RDTYPECOUNTER_MAXTYPE 0x00ff
+#define RDTYPECOUNTER_MAXTYPE ((1 << 8) - 1)
 
 /*
  *
- * Bit 7 is the NXRRSET (NX) flag and indicates whether this is a
+ * Bit 8 is the NXRRSET (NX) flag and indicates whether this is a
  * positive (0) or a negative (1) RRset.
  */
-#define RDTYPECOUNTER_NXRRSET 0x0100
+#define RDTYPECOUNTER_NXRRSET (1 << 8)
 
 /*
- * Then bit 5 mostly tell you if this counter is for an active,
+ * Then bit 9 tells you if this counter is for an active,
  * or stale RRtype:
  *
  *     S = 0 (0b00) means Active
  *     S = 1 (0b01) means Stale
  */
-#define RDTYPECOUNTER_STALE    (1 << 9)
-#define RDTYPECOUNTER_NXDOMAIN (1 << 10)
+#define RDTYPECOUNTER_STALE (1 << 9)
 
 /*
- * S = 0b01 indicates an NXDOMAIN counter and in this case the RRtype
- * field signals the expiry of this cached item:
- *
- *     RRType = 0 (0b00) means Active
- *     RRType = 1 (0b01) means Stale
- *
+ * Bit 10 tells you if this is NXDOMAIN counter.
  */
-#define RDTYPECOUNTER_NXDOMAIN_STALE 1
+#define RDTYPECOUNTER_NXDOMAIN (1 << 10)
 
 /*
  * The maximum value for rdtypecounter is for a stale NXDOMAIN.
  */
-#define RDTYPECOUNTER_MAXVAL \
-	(RDTYPECOUNTER_NXDOMAIN + RDTYPECOUNTER_NXDOMAIN_STALE)
+#define RDTYPECOUNTER_MAXVAL RDTYPECOUNTER_NXDOMAIN
 
 /*
  * DNSSEC sign statistics.
@@ -269,7 +262,7 @@ update_rdatasetstats(dns_stats_t *stats, dns_rdatastatstype_t rrsettype,
 		if ((DNS_RDATASTATSTYPE_ATTR(rrsettype) &
 		     DNS_RDATASTATSTYPE_ATTR_STALE) != 0)
 		{
-			counter += RDTYPECOUNTER_NXDOMAIN_STALE;
+			counter += RDTYPECOUNTER_STALE;
 		}
 	} else {
 		counter = rdatatype2counter(DNS_RDATASTATSTYPE_BASE(rrsettype));
@@ -460,13 +453,7 @@ rdataset_dumpcb(isc_statscounter_t counter, uint64_t value, void *arg) {
 	if ((counter & RDTYPECOUNTER_NXDOMAIN) != 0) {
 		attributes |= DNS_RDATASTATSTYPE_ATTR_NXDOMAIN;
 
-		/*
-		 * This is an NXDOMAIN counter, check the RRtype part for the
-		 * expiry value (active, or stale).
-		 */
-		if ((counter & RDTYPECOUNTER_MAXTYPE) ==
-		    RDTYPECOUNTER_NXDOMAIN_STALE)
-		{
+		if ((counter & RDTYPECOUNTER_MAXTYPE) != 0) {
 			attributes |= DNS_RDATASTATSTYPE_ATTR_STALE;
 		}
 	} else {
