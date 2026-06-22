@@ -61,11 +61,11 @@ Options
 .. option:: -k keyname
 
    This option specifies the key name of the DDNS authentication key. The
-   default is ``ddns-key`` when neither the :option:`-s` nor :option:`-z` option is
-   specified; otherwise, the default is ``ddns-key`` as a separate label
-   followed by the argument of the option, e.g., ``ddns-key.example.com.``
-   The key name must have the format of a valid domain name, consisting of
-   letters, digits, hyphens, and periods.
+   default is ``ddns-key`` when neither the :option:`-s` nor :option:`-z`
+   option is specified; otherwise, the default is ``ddns-key`` as a
+   separate label followed by the argument of the option, e.g.,
+   ``ddns-key.example.com.`` The key name must be a valid DNS name
+   consisting of letters, digits, hyphens, underscores and periods.
 
 .. option:: -q
 

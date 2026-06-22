@@ -72,8 +72,9 @@ Options
 
 .. option:: -k keyname
 
-   This option specifies the key name of the :iscman:`rndc` authentication key. This must be a
-   valid domain name. The default is ``rndc-key``.
+   This option specifies the key name of the :iscman:`rndc` authentication
+   key.  The key name must be a valid DNS name consisting of letters,
+   digits, hyphens, underscores and periods.  The default is ``rndc-key``.
 
 .. option:: -p port
 

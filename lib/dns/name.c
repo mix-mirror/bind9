@@ -142,19 +142,47 @@ dns_name_isabsolute(const dns_name_t *name) {
 }
 
 #define hyphenchar(c) ((c) == 0x2d)
+#define underscore(c) ((c) == 0x5f)
 #define asterchar(c)  ((c) == 0x2a)
+#define domainchar(c) ((c) > 0x20 && (c) < 0x7f)
 #define alphachar(c) \
 	(((c) >= 0x41 && (c) <= 0x5a) || ((c) >= 0x61 && (c) <= 0x7a))
-#define digitchar(c)  ((c) >= 0x30 && (c) <= 0x39)
+#define digitchar(c) ((c) >= 0x30 && (c) <= 0x39)
+
+/* rules for hostnames: letter, digit, hyphen */
 #define borderchar(c) (alphachar(c) || digitchar(c))
 #define middlechar(c) (borderchar(c) || hyphenchar(c))
-#define domainchar(c) ((c) > 0x20 && (c) < 0x7f)
+
+static inline bool
+hostname(const dns_name_t *name, unsigned char *ndata, bool key) {
+	bool first;
+
+	while (ndata < (name->ndata + name->length)) {
+		unsigned int n = *ndata++;
+		unsigned char ch;
+
+		INSIST(n <= DNS_NAME_LABELLEN);
+		first = true;
+		while (n--) {
+			ch = *ndata++;
+			if (first || n == 0) {
+				first = false;
+				if (borderchar(ch) || (key && underscore(ch))) {
+					continue;
+				}
+			} else if (middlechar(ch) || (key && underscore(ch))) {
+				continue;
+			}
+			return false;
+		}
+	}
+	return true;
+}
 
 bool
 dns_name_ismailbox(const dns_name_t *name) {
 	unsigned char *ndata, ch;
 	unsigned int n;
-	bool first;
 
 	REQUIRE(DNS_NAME_VALID(name));
 	REQUIRE(name->length > 0);
@@ -184,32 +212,12 @@ dns_name_ismailbox(const dns_name_t *name) {
 	/*
 	 * RFC952/RFC1123 hostname.
 	 */
-	while (ndata < (name->ndata + name->length)) {
-		n = *ndata++;
-		INSIST(n <= DNS_NAME_LABELLEN);
-		first = true;
-		while (n--) {
-			ch = *ndata++;
-			if (first || n == 0) {
-				if (!borderchar(ch)) {
-					return false;
-				}
-			} else {
-				if (!middlechar(ch)) {
-					return false;
-				}
-			}
-			first = false;
-		}
-	}
-	return true;
+	return hostname(name, ndata, false);
 }
 
 bool
 dns_name_ishostname(const dns_name_t *name, bool wildcard) {
-	unsigned char *ndata, ch;
-	unsigned int n;
-	bool first;
+	unsigned char *ndata = NULL;
 
 	REQUIRE(DNS_NAME_VALID(name));
 	REQUIRE(name->length > 0);
@@ -233,25 +241,26 @@ dns_name_ishostname(const dns_name_t *name, bool wildcard) {
 	/*
 	 * RFC952/RFC1123 hostname.
 	 */
-	while (ndata < (name->ndata + name->length)) {
-		n = *ndata++;
-		INSIST(n <= DNS_NAME_LABELLEN);
-		first = true;
-		while (n--) {
-			ch = *ndata++;
-			if (first || n == 0) {
-				if (!borderchar(ch)) {
-					return false;
-				}
-			} else {
-				if (!middlechar(ch)) {
-					return false;
-				}
-			}
-			first = false;
-		}
+	return hostname(name, ndata, false);
+}
+
+bool
+dns_name_iskeyname(const dns_name_t *name) {
+	REQUIRE(DNS_NAME_VALID(name));
+	REQUIRE(name->length > 0);
+	REQUIRE(name->attributes.absolute);
+
+	/*
+	 * Root label.
+	 */
+	if (name->length == 1) {
+		return true;
 	}
-	return true;
+
+	/*
+	 * Like an RFC952/RFC1123 hostname, but also allowing underscore.
+	 */
+	return hostname(name, name->ndata, true);
 }
 
 bool

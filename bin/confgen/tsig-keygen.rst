@@ -33,7 +33,9 @@ for example, to secure dynamic DNS updates to a zone, or for the :iscman:`rndc`
 command channel.
 
 A domain name can be specified on the command line to be used as the name
-of the generated key. If no name is specified, the default is ``tsig-key``.
+of the generated key.  This must be a valid DNS name, consisting of
+letters, digits, hyphens, underscores and periods.  If no name is
+specified, the default is ``tsig-key``.
 
 Options
 ~~~~~~~

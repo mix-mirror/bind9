@@ -92,7 +92,8 @@ alg_bits(dns_secalg_t alg) {
 
 /*%
  * Reject key names that would not embed safely into a named.conf
- * 'key "<name>" { ... };' clause. Allowed: alphanumerics, '.', '-', '_'.
+ * 'key "<name>" { ... };' clause. Only RFC952/RFC1123 hostnames
+ * are allowed.
  */
 void
 validate_keyname(const char *keyname) {
@@ -107,6 +108,12 @@ validate_keyname(const char *keyname) {
 	result = dns_name_fromstring(name, keyname, dns_rootname, 0, NULL);
 	if (result != ISC_R_SUCCESS) {
 		fatal("invalid key name: %s", isc_result_totext(result));
+	}
+
+	if (!dns_name_iskeyname(name)) {
+		fatal("'%s' is not a legal keyname: only letters, "
+		      "digits, '-', '_' and '.' are allowed",
+		      keyname);
 	}
 }
 
