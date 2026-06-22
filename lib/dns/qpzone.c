@@ -3821,45 +3821,23 @@ finalize_node:
 	 * If we didn't find what we were looking for...
 	 */
 	result = selected_candidates.result;
-	if (result == DNS_R_NXRRSET) {
-		/*
-		 * The desired type doesn't exist.
-		 */
-		if (nodep != NULL) {
-			*nodep = (dns_dbnode_t *)node;
-			selected_candidates.node = NULL;
-		}
-		if (secure_nsec) {
-			INSIST(selected_candidates.header != NULL);
-			INSIST(selected_candidates.sigheader != NULL);
-			bindrdataset(search.qpdb, selected_candidates.header,
-				     rdataset DNS__DB_FLARG_PASS);
-			bindrdataset(search.qpdb, selected_candidates.sigheader,
-				     sigrdataset DNS__DB_FLARG_PASS);
-		}
-		if (selected_candidates.wild) {
-			foundname->attributes.wildcard = true;
-		}
-		goto node_exit;
-	}
+	bool do_not_bind = type == dns_rdatatype_any &&
+			   (result == ISC_R_SUCCESS ||
+			    result == DNS_R_CNAME ||
+			    result == DNS_R_GLUE ||
+			    result == DNS_R_ZONECUT);
 
-	INSIST(selected_candidates.header != NULL);
-	bool negative_proof = result == DNS_R_NXDOMAIN ||
-			      result == DNS_R_EMPTYNAME ||
-			      result == DNS_R_EMPTYWILD;
-
-	if (selected_candidates.zonecut && foundname != NULL) {
+	if (selected_candidates.zonecut) {
 		dns_name_copy(&node->name, foundname);
 	}
+	foundname->attributes.wildcard = selected_candidates.wild;
 
 	if (nodep != NULL) {
-		*nodep = (dns_dbnode_t *)node;
-		selected_candidates.node = NULL;
+		*nodep = (dns_dbnode_t *)MOVE_OWNERSHIP(
+			selected_candidates.node);
 	}
 
-	if (selected_candidates.zonecut || negative_proof ||
-	    type != dns_rdatatype_any)
-	{
+	if (selected_candidates.header != NULL && !do_not_bind) {
 		bindrdataset(search.qpdb, selected_candidates.header,
 			     rdataset DNS__DB_FLARG_PASS);
 		if (selected_candidates.sigheader != NULL) {
@@ -3868,11 +3846,6 @@ finalize_node:
 		}
 	}
 
-	if (selected_candidates.wild) {
-		foundname->attributes.wildcard = true;
-	}
-
-node_exit:
 	NODE_UNLOCK(nlock, &nlocktype);
 
 tree_exit:
