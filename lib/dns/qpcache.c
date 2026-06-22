@@ -37,6 +37,7 @@
 #include <isc/stdio.h>
 #include <isc/string.h>
 #include <isc/time.h>
+#include <isc/tree.h>
 #include <isc/urcu.h>
 #include <isc/util.h>
 
@@ -135,7 +136,7 @@ struct qpcnode {
 	isc_refcount_t references;
 	isc_refcount_t erefs;
 
-	struct cds_list_head headers;
+	dns_slabheader_tree_t headers;
 
 	/*%
 	 * Used for dead nodes cleaning.  This linked list is used to mark nodes
@@ -655,7 +656,7 @@ qpcnode_release(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t *nlocktypep,
 	}
 
 	/* Handle easy and typical case first. */
-	if (!cds_list_empty(&node->headers)) {
+	if (!RB_EMPTY(&node->headers)) {
 		goto unref;
 	}
 
@@ -682,7 +683,7 @@ qpcnode_release(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t *nlocktypep,
 		}
 	}
 
-	if (!cds_list_empty(&node->headers)) {
+	if (!RB_EMPTY(&node->headers)) {
 		goto unref;
 	}
 
@@ -790,14 +791,15 @@ setttl(dns_slabheader_t *header, isc_stdtime_t newts) {
 static size_t
 header_delete(qpcnode_t *node, dns_slabheader_t *header) {
 	/* The slabheader has already been removed from the node headers */
-	if (cds_list_empty(&header->headers_link)) {
+	if (RB_PARENT(header, entry) == header) {
 		return 0;
 	}
 
 	size_t expired = rdataset_size(header);
 	qpcache_t *qpdb = node->qpdb;
 
-	cds_list_del_init(&header->headers_link);
+	RB_REMOVE(slabheader, &node->headers, header);
+	RB_PARENT(header, entry) = header; /* sentinel */
 
 	/*
 	 * This place is the only place where we actually need header->typepair.
@@ -2006,7 +2008,7 @@ static qpcnode_t *
 new_qpcnode(qpcache_t *qpdb, const dns_name_t *name, dns_namespace_t nspace) {
 	qpcnode_t *newdata = isc_mem_get(qpdb->common.mctx, sizeof(*newdata));
 	*newdata = (qpcnode_t){
-		.headers = CDS_LIST_HEAD_INIT(newdata->headers),
+		.headers = RB_INITIALIZER(newdata->headers),
 		.methods = &qpcnode_methods,
 		.qpdb = qpdb,
 		.name = DNS_NAME_INITEMPTY,
@@ -2171,11 +2173,6 @@ overmaxtype(qpcache_t *qpdb, uint32_t ntypes) {
 	return ntypes >= qpdb->maxtypepername;
 }
 
-static bool
-prio_header(dns_slabheader_t *header) {
-	return prio_type(header->typepair);
-}
-
 static void
 qpcnode_attachnode(dns_dbnode_t *source, dns_dbnode_t **targetp DNS__DB_FLARG) {
 	REQUIRE(targetp != NULL && *targetp == NULL);
@@ -2270,7 +2267,7 @@ static isc_result_t
 add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
     unsigned int options, dns_rdataset_t *addedrdataset, isc_stdtime_t now,
     isc_rwlocktype_t nlocktype, isc_rwlocktype_t tlocktype DNS__DB_FLARG) {
-	dns_slabheader_t *prioheader = NULL, *evictheader = NULL;
+	dns_slabheader_t *evictheader = NULL;
 	dns_slabheader_t *oldheader = NULL, *related = NULL;
 	dns_trust_t trust;
 	uint32_t ntypes = 0;
@@ -2355,10 +2352,6 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 		}
 
 		++ntypes;
-
-		if (prio_header(header)) {
-			prioheader = header;
-		}
 
 		if (header->typepair == newheader->typepair) {
 			INSIST(oldheader == NULL);
@@ -2542,18 +2535,9 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 	 * No rdatasets of the given type exist at the node or we removed the
 	 * oldheader.
 	 */
-
-	if (prio_header(newheader)) {
-		/* This is a priority type, prepend it */
-		cds_list_add(&newheader->headers_link, &qpnode->headers);
-	} else if (prioheader != NULL) {
-		/* Append after the priority headers */
-		cds_list_add(&newheader->headers_link,
-			     &prioheader->headers_link);
-	} else {
-		/* There were no priority headers */
-		cds_list_add(&newheader->headers_link, &qpnode->headers);
-	}
+	dns_slabheader_t *existing = RB_INSERT(slabheader, &qpnode->headers,
+					       newheader);
+	RUNTIME_CHECK(existing == NULL);
 
 	if (related != NULL) {
 		INSIST(related->related == NULL);
@@ -3340,9 +3324,7 @@ static dns_dbmethods_t qpdb_cachemethods = {
 static void
 qpcnode_destroy(qpcnode_t *qpnode) {
 	dns_slabheader_t *header = NULL, *header_next = NULL;
-	cds_list_for_each_entry_safe(header, header_next, &qpnode->headers,
-				     headers_link)
-	{
+	RB_FOREACH_SAFE(header, slabheader, &qpnode->headers, header_next) {
 		header_delete(qpnode, header);
 	}
 

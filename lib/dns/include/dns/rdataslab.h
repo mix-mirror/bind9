@@ -48,6 +48,7 @@
 
 #include <isc/atomic.h>
 #include <isc/stdtime.h>
+#include <isc/tree.h>
 #include <isc/urcu.h>
 
 #include <dns/name.h>
@@ -68,7 +69,7 @@ struct dns_slabheader_proof {
 
 #define DNS_SLABHEADER_FOREACH(pos, head)                 \
 	dns_slabheader_t *pos = NULL, *pos##_next = NULL; \
-	cds_list_for_each_entry_safe(pos, pos##_next, head, headers_link)
+	RB_FOREACH_SAFE(pos, slabheader, (head), pos##_next)
 
 struct dns_slabheader {
 	_Atomic(uint16_t)    attributes;
@@ -89,7 +90,7 @@ struct dns_slabheader {
 
 	dns_slabheader_t *related;
 
-	struct cds_list_head headers_link;
+	RB_ENTRY(dns_slabheader) entry;
 
 	/*%
 	 * The database node objects containing this rdataset, if any.
@@ -120,6 +121,8 @@ struct dns_slabheader {
 	 */
 	alignas(sizeof(void *)) unsigned char raw[];
 };
+
+typedef RB_HEAD(slabheader, dns_slabheader) dns_slabheader_tree_t;
 
 #if DNS_SLABHEADER_TRACE
 #define dns_slabheader_ref(ptr) \
@@ -272,3 +275,9 @@ dns_slabheader_freeproof(isc_mem_t *mctx, dns_slabheader_proof_t **proof);
 /*%<
  * Free all memory associated with a nonexistence proof.
  */
+
+int
+dns_slabheader__compare(const dns_slabheader_t *left,
+			const dns_slabheader_t *right);
+
+RB_PROTOTYPE(slabheader, dns_slabheader, entry, dns_slabheader__compare);
