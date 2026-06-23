@@ -276,7 +276,8 @@ typedef struct qpzone_find_candidates {
 	dns_vecheader_t *header;
 	dns_vecheader_t *sigheader;
 	isc_result_t result;
-	bool zonecut;
+	bool glue;
+	bool exact_zonecut;
 	bool empty_node;
 	bool wild;
 } qpzone_find_candidates_t;
@@ -3406,7 +3407,6 @@ qpzone_check_zonecut(qpz_search_t *search, qpznode_t *node,
 		qpzone_find_candidate_attach(candidates,
 					     node DNS__DB_FLARG_PASS);
 		candidates->header = found;
-		candidates->zonecut = true;
 		if (found == dname_header) {
 			candidates->result = DNS_R_DNAME;
 		} else {
@@ -3697,19 +3697,11 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	bool exact_wins_zonecut = exact_candidates.result == ISC_R_SUCCESS &&
 				  glueok_opt;
 
-	if (exact_wins_zonecut && zonecut_candidates.node != NULL) {
-		if (zonecut_candidates.node == exact_node) {
-			if (type == dns_rdatatype_any) {
-				exact_candidates.result = DNS_R_ZONECUT;
-			} else {
-				exact_candidates.result = DNS_R_GLUE;
-			}
-		} else {
-			exact_candidates.result = DNS_R_GLUE;
-		}
-	}
-
 	if (exact_wins_zonecut) {
+		exact_candidates.glue = zonecut_candidates.node != NULL;
+		exact_candidates.exact_zonecut =
+			exact_candidates.glue &&
+			zonecut_candidates.node == exact_candidates.node;
 		selected_candidates = qpzone_find_candidate_prefer(
 			&exact_candidates,
 			&zonecut_candidates DNS__DB_FLARG_PASS);
@@ -3816,6 +3808,15 @@ finalize_node:
 	 * If we didn't find what we were looking for...
 	 */
 	result = selected_candidates.result;
+	if (selected_candidates.glue) {
+		if (selected_candidates.exact_zonecut &&
+		    type == dns_rdatatype_any)
+		{
+			result = DNS_R_ZONECUT;
+		} else {
+			result = DNS_R_GLUE;
+		}
+	}
 	bool do_not_bind = type == dns_rdatatype_any &&
 			   (result == ISC_R_SUCCESS ||
 			    result == DNS_R_CNAME ||
