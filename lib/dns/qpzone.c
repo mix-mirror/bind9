@@ -283,7 +283,7 @@ typedef struct qpzone_find_candidates {
 } qpzone_find_candidates_t;
 
 #define QPZONE_FIND_CANDIDATES_INIT \
-	(qpzone_find_candidates_t) { .result = DNS_R_BADDB }
+	(qpzone_find_candidates_t) { .result = ISC_R_NOTFOUND }
 
 /*%
  * Load Context
@@ -2791,9 +2791,10 @@ qpzone_find_candidate_attached(const qpzone_find_candidates_t *candidates) {
 static qpzone_find_candidates_t
 qpzone_find_candidate_make_nxrrset(qpznode_t *node DNS__DB_FLARG) {
 	/* The caller must hold the node lock. */
-	qpzone_find_candidates_t candidates = { .result = DNS_R_NXRRSET };
+	qpzone_find_candidates_t candidates = QPZONE_FIND_CANDIDATES_INIT;
 
 	qpzone_find_candidate_attach(&candidates, node DNS__DB_FLARG_PASS);
+	candidates.result = DNS_R_NXRRSET;
 
 	return candidates;
 }
@@ -3194,7 +3195,7 @@ qpzone_find_closest_nsec(qpz_search_t *search, bool nsec3,
 	dns_qpiter_t nseciter;
 	bool empty_node;
 	isc_result_t result;
-	qpzone_find_candidates_t candidates = { .result = ISC_R_NOTFOUND };
+	qpzone_find_candidates_t candidates = QPZONE_FIND_CANDIDATES_INIT;
 	dns_fixedname_t fname;
 	dns_name_t *name = dns_fixedname_initname(&fname);
 	dns_rdatatype_t matchtype = nsec3 ? dns_rdatatype_nsec3
@@ -3349,7 +3350,7 @@ qpzone_check_zonecut(qpz_search_t *search, qpznode_t *node,
 	dns_vecheader_t *found = NULL;
 	bool maybe_zonecut = false;
 
-	*candidates = (qpzone_find_candidates_t){ .result = ISC_R_NOTFOUND };
+	*candidates = QPZONE_FIND_CANDIDATES_INIT;
 	if (exact) {
 		maybe_zonecut = (node != search->qpdb->origin &&
 				 !dns_rdatatype_atparent(type)) ||
@@ -3448,10 +3449,8 @@ qpzone_find_scan_node(qpz_search_t *search, qpznode_t *node,
 			type != dns_rdatatype_nsec;
 	bool nsec3 = (search->options & DNS_DBFIND_FORCENSEC3) != 0;
 
-	*candidates = (qpzone_find_candidates_t){
-		.result = ISC_R_NOTFOUND,
-		.empty_node = true,
-	};
+	*candidates = QPZONE_FIND_CANDIDATES_INIT;
+	candidates->empty_node = true;
 
 	ISC_SLIST_FOREACH(top, node->next_type, next_type) {
 		/*
@@ -3575,12 +3574,10 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	bool nsec3 = false;
 	qpzone_find_candidates_t selected_candidates =
 		QPZONE_FIND_CANDIDATES_INIT;
-	qpzone_find_candidates_t exact_candidates = {
-		.result = ISC_R_NOTFOUND,
-	};
-	qpzone_find_candidates_t zonecut_candidates = {
-		.result = ISC_R_NOTFOUND,
-	};
+	qpzone_find_candidates_t exact_candidates =
+		QPZONE_FIND_CANDIDATES_INIT;
+	qpzone_find_candidates_t zonecut_candidates =
+		QPZONE_FIND_CANDIDATES_INIT;
 	qpzone_find_candidates_t wild_candidates =
 		QPZONE_FIND_CANDIDATES_INIT;
 	qpzone_find_candidates_t nsec_candidates =
