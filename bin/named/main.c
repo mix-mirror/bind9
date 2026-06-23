@@ -537,7 +537,7 @@ format_features(isc_buffer_t *b) {
 	isc_buffer_putstr(b, " GeoIP2");
 #endif /* ifdef HAVE_GEOIP2 */
 #ifdef HAVE_GSSAPI
-	n = append_feature(buf, bufsize, n, "GSS-API");
+	isc_buffer_putstr(b, " GSS-API");
 #endif
 #ifdef HAVE_DTRACE
 	n = append_feature(buf, bufsize, n, "tracing");
