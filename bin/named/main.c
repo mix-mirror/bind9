@@ -540,7 +540,7 @@ format_features(isc_buffer_t *b) {
 	isc_buffer_putstr(b, " GSS-API");
 #endif
 #ifdef HAVE_DTRACE
-	n = append_feature(buf, bufsize, n, "tracing");
+	isc_buffer_putstr(b, " tracing");
 #endif
 #ifdef HAVE_ZLIB
 	isc_buffer_putstr(b, " zlib");
