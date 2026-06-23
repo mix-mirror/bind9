@@ -545,8 +545,8 @@ format_features(isc_buffer_t *b) {
 #ifdef HAVE_ZLIB
 	isc_buffer_putstr(b, " zlib");
 #endif
-	if (n == 0) {
-		snprintf(buf, bufsize, " none");
+	if (isc_buffer_usedlength(b) == start) {
+		isc_buffer_putstr(b, " none");
 	}
 }
 
