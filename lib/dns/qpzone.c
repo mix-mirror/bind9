@@ -3187,8 +3187,8 @@ previous_closest_nsec(dns_rdatatype_t type, qpz_search_t *search,
  * current NSEC3PARAM record are considered.
  */
 static qpzone_find_candidates_t
-qpzone_find_closest_nsec(qpz_search_t *search, dns_name_t *foundname,
-			 bool nsec3, bool secure DNS__DB_FLARG) {
+qpzone_find_closest_nsec(qpz_search_t *search, bool nsec3,
+			 bool secure DNS__DB_FLARG) {
 	qpznode_t *node = NULL, *prevnode = NULL;
 	dns_qpiter_t nseciter;
 	bool empty_node;
@@ -3275,7 +3275,6 @@ again:
 				 * cut have been removed; we assume this is
 				 * the case.
 				 */
-				dns_name_copy(name, foundname);
 				qpzone_find_candidate_attach(
 					&candidates, node DNS__DB_FLARG_PASS);
 				candidates.header = found;
@@ -3631,9 +3630,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	 */
 	qp_result = dns_qp_lookup(&search.qpr, name, nspace, &search.iter,
 				  &search.chain, (void **)&node, NULL);
-	if (qp_result != ISC_R_NOTFOUND) {
-		dns_name_copy(&node->name, foundname);
-	} else {
+	if (qp_result == ISC_R_NOTFOUND) {
 		result = qp_result;
 		goto tree_exit;
 	}
@@ -3737,8 +3734,6 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		 */
 		result = find_wildcard(&search, &node, name, nspace);
 		if (result == ISC_R_SUCCESS) {
-			dns_name_copy(name, foundname);
-
 			nlock = qpzone_get_lock(node);
 			NODE_RDLOCK(nlock, &nlocktype);
 			qpzone_find_scan_node(&search, node, type,
@@ -3794,8 +3789,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 
 	if (secure_nsec || nsec3) {
 		nsec_candidates = qpzone_find_closest_nsec(
-			&search, foundname, closest_nsec3,
-			secure DNS__DB_FLARG_PASS);
+			&search, closest_nsec3, secure DNS__DB_FLARG_PASS);
 		if (nsec_candidates.result == ISC_R_SUCCESS) {
 			INSIST(qpzone_find_candidate_attached(
 				&nsec_candidates));
@@ -3807,6 +3801,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		result = nsec_candidates.result;
 	} else {
 		result = negative_result;
+		dns_name_copy(wild ? name : &node->name, foundname);
 	}
 	goto tree_exit;
 
@@ -3827,9 +3822,7 @@ finalize_node:
 			    result == DNS_R_GLUE ||
 			    result == DNS_R_ZONECUT);
 
-	if (selected_candidates.zonecut) {
-		dns_name_copy(&node->name, foundname);
-	}
+	dns_name_copy(selected_candidates.wild ? name : &node->name, foundname);
 	foundname->attributes.wildcard = selected_candidates.wild;
 
 	if (nodep != NULL) {
