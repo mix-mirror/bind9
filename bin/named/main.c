@@ -520,30 +520,21 @@ format_supported_algorithms(void (*emit)(isc_buffer_t *b)) {
 	(*emit)(&b);
 }
 
-static size_t
-append_feature(char *buf, size_t bufsize, size_t pos, const char *feature) {
-	if (pos < bufsize) {
-		pos += snprintf(buf + pos, bufsize - pos, " %s", feature);
-	}
-	return pos;
-}
-
 static void
-format_features(char *buf, size_t bufsize) {
-	size_t n = 0;
+format_features(isc_buffer_t *b) {
+	size_t start = isc_buffer_usedlength(b);
 
-	buf[0] = '\0';
 #ifdef HAVE_LIBNGHTTP2
-	n = append_feature(buf, bufsize, n, "DoH");
+	isc_buffer_putstr(b, " DoH");
 #endif /* ifdef HAVE_LIBNGHTTP2 */
 #ifdef HAVE_LIBNGTCP2
-	n = append_feature(buf, bufsize, n, "DoQ");
+	isc_buffer_putstr(b, " DoQ");
 #endif /* ifdef HAVE_LIBNGTCP2 */
 #ifdef HAVE_DNSTAP
-	n = append_feature(buf, bufsize, n, "dnstap");
+	isc_buffer_putstr(b, " dnstap");
 #endif /* ifdef HAVE_DNSTAP */
 #ifdef HAVE_GEOIP2
-	n = append_feature(buf, bufsize, n, "GeoIP2");
+	isc_buffer_putstr(b, " GeoIP2");
 #endif /* ifdef HAVE_GEOIP2 */
 #ifdef HAVE_GSSAPI
 	n = append_feature(buf, bufsize, n, "GSS-API");
@@ -552,12 +543,11 @@ format_features(char *buf, size_t bufsize) {
 	n = append_feature(buf, bufsize, n, "tracing");
 #endif
 #ifdef HAVE_ZLIB
-	n = append_feature(buf, bufsize, n, "zlib");
+	isc_buffer_putstr(b, " zlib");
 #endif
 	if (n == 0) {
 		snprintf(buf, bufsize, " none");
 	}
-	(void)n;
 }
 
 static void
@@ -574,9 +564,13 @@ printversion(bool verbose) {
 	printf("running on %s\n", named_os_uname());
 	printf("built by %s with %s\n", PACKAGE_BUILDER, PACKAGE_CONFIGARGS);
 
+	isc_buffer_t b;
 	char features[256];
-	format_features(features, sizeof(features));
-	printf("features:%s\n", features);
+	isc_buffer_init(&b, features, sizeof(features));
+	isc_buffer_putstr(&b, "features:");
+	format_features(&b);
+	printf("%.*s\n", (int)isc_buffer_usedlength(&b),
+	       (char *)isc_buffer_base(&b));
 	printf("FIPS mode: %s\n",
 	       isc_crypto_fips_mode() ? "active" : "not active");
 
@@ -1137,10 +1131,14 @@ setup(void) {
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
 		      ISC_LOG_NOTICE, "built with %s", PACKAGE_CONFIGARGS);
 
+	isc_buffer_t b;
 	char features[256];
-	format_features(features, sizeof(features));
+	isc_buffer_init(&b, features, sizeof(features));
+	isc_buffer_putstr(&b, "features:");
+	format_features(&b);
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
-		      ISC_LOG_NOTICE, "features:%s", features);
+		      ISC_LOG_NOTICE, "%.*s", (int)isc_buffer_usedlength(&b),
+		      (char *)isc_buffer_base(&b));
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_MAIN,
 		      ISC_LOG_NOTICE, "FIPS mode: %s",
 		      isc_crypto_fips_mode() ? "active" : "not active");
