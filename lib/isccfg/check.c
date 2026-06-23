@@ -4545,7 +4545,7 @@ keydirexist(const cfg_obj_t *zcfg, const char *optname, dns_name_t *zname,
 }
 
 /*
- * Check key list for duplicates key names and that the key names
+ * Check key list for duplicate key names and that the key names
  * are valid domain names as these keys are used for TSIG.
  *
  * Check the key contents for validity.
@@ -4573,6 +4573,15 @@ check_keylist(const cfg_obj_t *keys, isc_symtab_t *symtab, isc_mem_t *mctx) {
 			cfg_obj_log(key, ISC_LOG_ERROR,
 				    "key '%s': bad key name", keyid);
 			result = tresult;
+			continue;
+		}
+		if (!dns_name_iskeyname(name)) {
+			cfg_obj_log(key, ISC_LOG_ERROR,
+				    "'%s' not a valid key name: only "
+				    "letters, digits, '-', '_' and '.' "
+				    "are allowed",
+				    keyid);
+			result = ISC_R_FAILURE;
 			continue;
 		}
 		RETERR(isccfg_check_key(key));
