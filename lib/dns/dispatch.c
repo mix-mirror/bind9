@@ -1810,9 +1810,9 @@ tcp_dispentry_cancel(dns_dispentry_t *resp, isc_result_t result) {
 				tcp_startrecv_idle(disp);
 			} else if (disp->reading) {
 				dispentry_log(resp, ISC_LOG_DEBUG(90),
-					      "keeping idle read on %p",
+					      "canceling read on %p",
 					      disp->handle);
-				tcp_startrecv(disp, NULL);
+				isc_nm_cancelread(disp->handle);
 			}
 		}
 		break;
