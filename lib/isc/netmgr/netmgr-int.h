@@ -37,6 +37,7 @@
 #include <isc/tid.h>
 #include <isc/time.h>
 #include <isc/tls.h>
+#include <isc/trace.h>
 #include <isc/util.h>
 #include <isc/uv.h>
 
@@ -154,52 +155,28 @@ STATIC_ASSERT(ISC_NETMGR_TCP_RECVBUF_SIZE <= ISC_NETMGR_RECVBUF_SIZE,
 #define NETMGR_TRACE_LOG(format, ...)                                         \
 	fprintf(stderr, "%" PRIu64 ":%" PRItid ":%s:%u:%s:" format, gettid(), \
 		isc_tid(), file, line, func, __VA_ARGS__)
-
-#define FLARG                                                                 \
-	, const char *func ISC_ATTR_UNUSED, const char *file ISC_ATTR_UNUSED, \
-		unsigned int line ISC_ATTR_UNUSED
-
-#define FLARG_PASS , func, file, line
-#define isc__nm_uvreq_get(sock) \
-	isc___nm_uvreq_get(sock, __func__, __FILE__, __LINE__)
-#define isc__nm_uvreq_put(req) \
-	isc___nm_uvreq_put(req, __func__, __FILE__, __LINE__)
-#define isc__nmsocket_init(sock, mgr, type, iface, parent)            \
-	isc___nmsocket_init(sock, mgr, type, iface, parent, __func__, \
-			    __FILE__, __LINE__)
-#define isc__nmsocket_put(sockp) \
-	isc___nmsocket_put(sockp, __func__, __FILE__, __LINE__)
-#define isc__nmsocket_attach(sock, target) \
-	isc___nmsocket_attach(sock, target, __func__, __FILE__, __LINE__)
-#define isc__nmsocket_detach(socketp) \
-	isc___nmsocket_detach(socketp, __func__, __FILE__, __LINE__)
-#define isc__nmsocket_close(socketp) \
-	isc___nmsocket_close(socketp, __func__, __FILE__, __LINE__)
-#define isc__nmhandle_get(sock, peer, local) \
-	isc___nmhandle_get(sock, peer, local, __func__, __FILE__, __LINE__)
-#define isc__nmsocket_prep_destroy(sock) \
-	isc___nmsocket_prep_destroy(sock, __func__, __FILE__, __LINE__)
-#define isc__nm_get_read_req(sock, sockaddr) \
-	isc___nm_get_read_req(sock, sockaddr, __func__, __FILE__, __LINE__)
 #else
 #define NETMGR_TRACE_LOG(format, ...)
-
-#define FLARG
-#define FLARG_PASS
-#define isc__nm_uvreq_get(sock) isc___nm_uvreq_get(sock)
-#define isc__nm_uvreq_put(req)	isc___nm_uvreq_put(req)
-#define isc__nmsocket_init(sock, mgr, type, iface, parent) \
-	isc___nmsocket_init(sock, mgr, type, iface, parent)
-#define isc__nmsocket_put(sockp)	   isc___nmsocket_put(sockp)
-#define isc__nmsocket_attach(sock, target) isc___nmsocket_attach(sock, target)
-#define isc__nmsocket_detach(socketp)	   isc___nmsocket_detach(socketp)
-#define isc__nmsocket_close(socketp)	   isc___nmsocket_close(socketp)
-#define isc__nmhandle_get(sock, peer, local) \
-	isc___nmhandle_get(sock, peer, local)
-#define isc__nmsocket_prep_destroy(sock) isc___nmsocket_prep_destroy(sock)
-#define isc__nm_get_read_req(sock, sockaddr) \
-	isc___nm_get_read_req(sock, sockaddr)
 #endif
+
+#define isc__nm_uvreq_get(sock) isc___nm_uvreq_get((sock)ISC_NETMGR__FILELINE)
+#define isc__nm_uvreq_put(req)	isc___nm_uvreq_put((req)ISC_NETMGR__FILELINE)
+#define isc__nmsocket_init(sock, mgr, type, iface, parent)  \
+	isc___nmsocket_init((sock), (mgr), (type), (iface), \
+			    (parent)ISC_NETMGR__FILELINE)
+#define isc__nmsocket_put(sockp) isc___nmsocket_put((sockp)ISC_NETMGR__FILELINE)
+#define isc__nmsocket_attach(sock, target) \
+	isc___nmsocket_attach((sock), (target)ISC_NETMGR__FILELINE)
+#define isc__nmsocket_detach(socketp) \
+	isc___nmsocket_detach((socketp)ISC_NETMGR__FILELINE)
+#define isc__nmsocket_close(socketp) \
+	isc___nmsocket_close((socketp)ISC_NETMGR__FILELINE)
+#define isc__nmhandle_get(sock, peer, local) \
+	isc___nmhandle_get((sock), (peer), (local)ISC_NETMGR__FILELINE)
+#define isc__nmsocket_prep_destroy(sock) \
+	isc___nmsocket_prep_destroy((sock)ISC_NETMGR__FILELINE)
+#define isc__nm_get_read_req(sock, sockaddr) \
+	isc___nm_get_read_req((sock), (sockaddr)ISC_NETMGR__FILELINE)
 
 typedef struct isc__nm_uvreq isc__nm_uvreq_t;
 
@@ -749,7 +726,7 @@ isc__nm_free_uvbuf(isc_nmsocket_t *sock, const uv_buf_t *buf);
 
 isc_nmhandle_t *
 isc___nmhandle_get(isc_nmsocket_t *sock, isc_sockaddr_t const *peer,
-		   isc_sockaddr_t const *local FLARG);
+		   isc_sockaddr_t const *local ISC_NETMGR__FLARG);
 /*%<
  * Get a handle for the socket 'sock', allocating a new one
  * if there isn't one available in 'sock->inactivehandles'.
@@ -765,14 +742,14 @@ isc___nmhandle_get(isc_nmsocket_t *sock, isc_sockaddr_t const *peer,
  */
 
 isc__nm_uvreq_t *
-isc___nm_uvreq_get(isc_nmsocket_t *sock FLARG);
+isc___nm_uvreq_get(isc_nmsocket_t *sock ISC_NETMGR__FLARG);
 /*%<
  * Get a UV request structure for the socket 'sock', allocating a
  * new one if there isn't one available in 'sock->inactivereqs'.
  */
 
 void
-isc___nm_uvreq_put(isc__nm_uvreq_t **req FLARG);
+isc___nm_uvreq_put(isc__nm_uvreq_t **req ISC_NETMGR__FLARG);
 /*%<
  * Completes the use of a UV request structure, setting '*req' to NULL.
  *
@@ -783,27 +760,28 @@ isc___nm_uvreq_put(isc__nm_uvreq_t **req FLARG);
 void
 isc___nmsocket_init(isc_nmsocket_t *sock, isc__networker_t *worker,
 		    isc_nmsocket_type type, isc_sockaddr_t *iface,
-		    isc_nmsocket_t *parent FLARG);
+		    isc_nmsocket_t *parent ISC_NETMGR__FLARG);
 /*%<
  * Initialize socket 'sock', attach it to 'mgr', and set it to type 'type'
  * and its interface to 'iface'.
  */
 
 void
-isc___nmsocket_attach(isc_nmsocket_t *sock, isc_nmsocket_t **target FLARG);
+isc___nmsocket_attach(isc_nmsocket_t *sock,
+		      isc_nmsocket_t **target ISC_NETMGR__FLARG);
 /*%<
  * Attach to a socket, increasing refcount
  */
 
 void
-isc___nmsocket_detach(isc_nmsocket_t **socketp FLARG);
+isc___nmsocket_detach(isc_nmsocket_t **socketp ISC_NETMGR__FLARG);
 /*%<
  * Detach from socket, decreasing refcount and possibly destroying the
  * socket if it's no longer referenced.
  */
 
 void
-isc___nmsocket_prep_destroy(isc_nmsocket_t *sock FLARG);
+isc___nmsocket_prep_destroy(isc_nmsocket_t *sock ISC_NETMGR__FLARG);
 /*%<
  * Market 'sock' as inactive, close it if necessary, and destroy it
  * if there are no remaining references or active handles.
@@ -1435,7 +1413,8 @@ isc__nm_tcp_failed_read_cb(isc_nmsocket_t *sock, isc_result_t result,
 			   bool async);
 
 isc__nm_uvreq_t *
-isc___nm_get_read_req(isc_nmsocket_t *sock, isc_sockaddr_t *sockaddr FLARG);
+isc___nm_get_read_req(isc_nmsocket_t *sock,
+		      isc_sockaddr_t *sockaddr ISC_NETMGR__FLARG);
 
 void
 isc__nm_alloc_cb(uv_handle_t *handle, size_t size, uv_buf_t *buf);

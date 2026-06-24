@@ -27,6 +27,16 @@
 
 /* Add -DISC_NETMGR_TRACE=1 to CFLAGS for detailed reference tracing */
 
+#if ISC_NETMGR_TRACE
+#define ISC_NETMGR__FLARG      ISC_TRACE_FLARG
+#define ISC_NETMGR__FLARG_PASS ISC_TRACE_FLARG_PASS
+#define ISC_NETMGR__FILELINE   ISC_TRACE_FILELINE
+#else
+#define ISC_NETMGR__FLARG
+#define ISC_NETMGR__FLARG_PASS
+#define ISC_NETMGR__FILELINE
+#endif
+
 /*
  * Convenience macros to specify on how many threads should socket listen
  */
@@ -177,6 +187,8 @@ isc_nmsocket_set_max_streams(isc_nmsocket_t *listener,
 	isc_nmhandle__detach(ptrp, __func__, __FILE__, __LINE__)
 ISC_REFCOUNT_TRACE_DECL(isc_nmhandle);
 #else
+#define isc_nmhandle__attach(ptr, ptrp) isc_nmhandle_attach(ptr, ptrp)
+#define isc_nmhandle__detach(ptrp)	isc_nmhandle_detach(ptrp)
 ISC_REFCOUNT_DECL(isc_nmhandle);
 #endif
 /*%<

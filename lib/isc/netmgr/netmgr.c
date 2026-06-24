@@ -102,7 +102,7 @@ static const isc_statscounter_t tcp6statsindex[] = {
 };
 
 static void
-nmsocket_maybe_destroy(isc_nmsocket_t *sock FLARG);
+nmsocket_maybe_destroy(isc_nmsocket_t *sock ISC_NETMGR__FLARG);
 static void
 nmhandle_free(isc_nmsocket_t *sock, isc_nmhandle_t *handle);
 
@@ -427,7 +427,8 @@ isc__nmsocket_active(isc_nmsocket_t *sock) {
 }
 
 void
-isc___nmsocket_attach(isc_nmsocket_t *sock, isc_nmsocket_t **target FLARG) {
+isc___nmsocket_attach(isc_nmsocket_t *sock,
+		      isc_nmsocket_t **target ISC_NETMGR__FLARG) {
 	REQUIRE(VALID_NMSOCK(sock));
 	REQUIRE(target != NULL && *target == NULL);
 
@@ -550,7 +551,7 @@ nmsocket_has_active_handles(isc_nmsocket_t *sock) {
 }
 
 static void
-nmsocket_maybe_destroy(isc_nmsocket_t *sock FLARG) {
+nmsocket_maybe_destroy(isc_nmsocket_t *sock ISC_NETMGR__FLARG) {
 	NETMGR_TRACE_LOG("%s():%p->references = %" PRIuFAST32 "\n", __func__,
 			 sock, isc_refcount_current(&sock->references));
 
@@ -560,7 +561,7 @@ nmsocket_maybe_destroy(isc_nmsocket_t *sock FLARG) {
 		 * as a side effect of destroying the parent, so let's go
 		 * see if the parent is ready to be destroyed.
 		 */
-		nmsocket_maybe_destroy(sock->parent FLARG_PASS);
+		nmsocket_maybe_destroy(sock->parent ISC_NETMGR__FLARG_PASS);
 		return;
 	}
 
@@ -599,7 +600,7 @@ nmsocket_maybe_destroy(isc_nmsocket_t *sock FLARG) {
 }
 
 void
-isc___nmsocket_prep_destroy(isc_nmsocket_t *sock FLARG) {
+isc___nmsocket_prep_destroy(isc_nmsocket_t *sock ISC_NETMGR__FLARG) {
 	REQUIRE(sock->parent == NULL);
 
 	NETMGR_TRACE_LOG("isc___nmsocket_prep_destroy():%p->references = "
@@ -654,11 +655,11 @@ isc___nmsocket_prep_destroy(isc_nmsocket_t *sock FLARG) {
 		}
 	}
 
-	nmsocket_maybe_destroy(sock FLARG_PASS);
+	nmsocket_maybe_destroy(sock ISC_NETMGR__FLARG_PASS);
 }
 
 void
-isc___nmsocket_detach(isc_nmsocket_t **sockp FLARG) {
+isc___nmsocket_detach(isc_nmsocket_t **sockp ISC_NETMGR__FLARG) {
 	REQUIRE(sockp != NULL && *sockp != NULL);
 	REQUIRE(VALID_NMSOCK(*sockp));
 
@@ -681,7 +682,7 @@ isc___nmsocket_detach(isc_nmsocket_t **sockp FLARG) {
 			 rsock, isc_refcount_current(&rsock->references) - 1);
 
 	if (isc_refcount_decrement(&rsock->references) == 1) {
-		isc___nmsocket_prep_destroy(rsock FLARG_PASS);
+		isc___nmsocket_prep_destroy(rsock ISC_NETMGR__FLARG_PASS);
 	}
 }
 
@@ -703,7 +704,7 @@ isc_nmsocket_close(isc_nmsocket_t **sockp) {
 void
 isc___nmsocket_init(isc_nmsocket_t *sock, isc__networker_t *worker,
 		    isc_nmsocket_type type, isc_sockaddr_t *iface,
-		    isc_nmsocket_t *parent FLARG) {
+		    isc_nmsocket_t *parent ISC_NETMGR__FLARG) {
 	uint16_t family;
 
 	REQUIRE(sock != NULL);
@@ -849,7 +850,7 @@ dequeue_handle(isc_nmsocket_t *sock) {
 
 isc_nmhandle_t *
 isc___nmhandle_get(isc_nmsocket_t *sock, isc_sockaddr_t const *peer,
-		   isc_sockaddr_t const *local FLARG) {
+		   isc_sockaddr_t const *local ISC_NETMGR__FLARG) {
 	REQUIRE(VALID_NMSOCK(sock));
 
 	isc_nmhandle_t *handle = dequeue_handle(sock);
@@ -861,7 +862,7 @@ isc___nmhandle_get(isc_nmsocket_t *sock, isc_sockaddr_t const *peer,
 		"isc__nmhandle_get():handle %p->references = %" PRIuFAST32 "\n",
 		handle, isc_refcount_current(&handle->references));
 
-	isc___nmsocket_attach(sock, &handle->sock FLARG_PASS);
+	isc___nmsocket_attach(sock, &handle->sock ISC_NETMGR__FLARG_PASS);
 
 #if ISC_NETMGR_TRACE
 	handle->backtrace_size = isc_backtrace(handle->backtrace, TRACE_SIZE);
@@ -1298,7 +1299,8 @@ isc__nmsocket_timer_stop(isc_nmsocket_t *sock) {
 }
 
 isc__nm_uvreq_t *
-isc___nm_get_read_req(isc_nmsocket_t *sock, isc_sockaddr_t *sockaddr FLARG) {
+isc___nm_get_read_req(isc_nmsocket_t *sock,
+		      isc_sockaddr_t *sockaddr ISC_NETMGR__FLARG) {
 	isc__nm_uvreq_t *req = NULL;
 
 	req = isc__nm_uvreq_get(sock);
@@ -1309,32 +1311,21 @@ isc___nm_get_read_req(isc_nmsocket_t *sock, isc_sockaddr_t *sockaddr FLARG) {
 	case isc_nm_tcpsocket:
 	case isc_nm_tlssocket:
 	case isc_nm_proxystreamsocket:
-#if ISC_NETMGR_TRACE
 		isc_nmhandle__attach(sock->statichandle,
-				     &req->handle FLARG_PASS);
-#else
-		isc_nmhandle_attach(sock->statichandle, &req->handle);
-#endif
+				     &req->handle ISC_NETMGR__FLARG_PASS);
 		break;
 	case isc_nm_streamdnssocket:
-#if ISC_NETMGR_TRACE
 		isc_nmhandle__attach(sock->recv_handle,
-				     &req->handle FLARG_PASS);
-#else
-		isc_nmhandle_attach(sock->recv_handle, &req->handle);
-#endif
+				     &req->handle ISC_NETMGR__FLARG_PASS);
 		break;
 	default:
 		if (sock->client && sock->statichandle != NULL) {
-#if ISC_NETMGR_TRACE
-			isc_nmhandle__attach(sock->statichandle,
-					     &req->handle FLARG_PASS);
-#else
-			isc_nmhandle_attach(sock->statichandle, &req->handle);
-#endif
+			isc_nmhandle__attach(
+				sock->statichandle,
+				&req->handle ISC_NETMGR__FLARG_PASS);
 		} else {
-			req->handle = isc___nmhandle_get(sock, sockaddr,
-							 NULL FLARG_PASS);
+			req->handle = isc___nmhandle_get(
+				sock, sockaddr, NULL ISC_NETMGR__FLARG_PASS);
 		}
 		break;
 	}
@@ -1604,7 +1595,7 @@ isc_nmhandle_localaddr(isc_nmhandle_t *handle) {
 }
 
 isc__nm_uvreq_t *
-isc___nm_uvreq_get(isc_nmsocket_t *sock FLARG) {
+isc___nm_uvreq_get(isc_nmsocket_t *sock ISC_NETMGR__FLARG) {
 	REQUIRE(VALID_NMSOCK(sock));
 	REQUIRE(sock->tid == isc_tid());
 
@@ -1619,7 +1610,7 @@ isc___nm_uvreq_get(isc_nmsocket_t *sock FLARG) {
 	};
 	uv_handle_set_data(&req->uv_req.handle, req);
 
-	isc___nmsocket_attach(sock, &req->sock FLARG_PASS);
+	isc___nmsocket_attach(sock, &req->sock ISC_NETMGR__FLARG_PASS);
 
 	ISC_LIST_APPEND(sock->active_uvreqs, req, active_link);
 
@@ -1627,7 +1618,7 @@ isc___nm_uvreq_get(isc_nmsocket_t *sock FLARG) {
 }
 
 void
-isc___nm_uvreq_put(isc__nm_uvreq_t **reqp FLARG) {
+isc___nm_uvreq_put(isc__nm_uvreq_t **reqp ISC_NETMGR__FLARG) {
 	REQUIRE(reqp != NULL && VALID_UVREQ(*reqp));
 
 	isc__nm_uvreq_t *req = *reqp;
@@ -1642,16 +1633,12 @@ isc___nm_uvreq_put(isc__nm_uvreq_t **reqp FLARG) {
 	ISC_LIST_UNLINK(sock->active_uvreqs, req, active_link);
 
 	if (handle != NULL) {
-#if ISC_NETMGR_TRACE
-		isc_nmhandle__detach(&handle, func, file, line);
-#else
-		isc_nmhandle_detach(&handle);
-#endif
+		isc_nmhandle__detach(&handle ISC_NETMGR__FLARG_PASS);
 	}
 
 	isc_mempool_put(sock->worker->uvreq_pool, req);
 
-	isc___nmsocket_detach(&sock FLARG_PASS);
+	isc___nmsocket_detach(&sock ISC_NETMGR__FLARG_PASS);
 }
 
 void
