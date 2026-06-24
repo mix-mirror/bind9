@@ -2843,8 +2843,7 @@ qpz_node_find_rrset(qpz_search_t *search, qpznode_t *node,
 		    dns_typepair_t typepair, bool require_sig DNS__DB_FLARG) {
 	qpz_match_t match = QPZ_MATCH_INIT;
 	dns_vecheader_t *found = NULL, *foundsig = NULL;
-	dns_typepair_t sigpair =
-		DNS_SIGTYPEPAIR(DNS_TYPEPAIR_TYPE(typepair));
+	dns_typepair_t sigpair = DNS_SIGTYPEPAIR(DNS_TYPEPAIR_TYPE(typepair));
 
 	ISC_SLIST_FOREACH(top, node->next_type, next_type) {
 		if (top->typepair == typepair) {
@@ -3219,8 +3218,8 @@ qpzone_find_closest_nsec(qpz_search_t *search DNS__DB_FLARG) {
 			 */
 			first_nsec = false;
 			result = dns_qp_lookup(&search->qpr, name,
-					       DNS_DBNAMESPACE_NSEC,
-					       &nseciter, NULL, NULL, NULL);
+					       DNS_DBNAMESPACE_NSEC, &nseciter,
+					       NULL, NULL, NULL);
 
 			INSIST(result != ISC_R_NOTFOUND);
 			if (result == ISC_R_SUCCESS) {
@@ -3231,9 +3230,8 @@ qpzone_find_closest_nsec(qpz_search_t *search DNS__DB_FLARG) {
 				 * namespace had an unacceptable NSEC record;
 				 * we want the previous node in the NSEC tree.
 				 */
-				CHECK(dns_qpiter_prev(&nseciter,
-						       (void **)&nsec_node,
-						       NULL));
+				CHECK(dns_qpiter_prev(
+					&nseciter, (void **)&nsec_node, NULL));
 			} else if (result == DNS_R_PARTIALMATCH) {
 				/*
 				 * This was a partial match, so the iterator is
@@ -3253,18 +3251,18 @@ qpzone_find_closest_nsec(qpz_search_t *search DNS__DB_FLARG) {
 			 * perhaps they lacked signature records. Keep
 			 * searching.
 			 */
-			CHECK(dns_qpiter_prev(&nseciter,
-					       (void **)&nsec_node, NULL));
+			CHECK(dns_qpiter_prev(&nseciter, (void **)&nsec_node,
+					      NULL));
 		}
 		CHECK(result);
 
 		for (;;) {
 			qpznode_t *normal_node = NULL;
 
-			result = dns_qp_lookup(
-				&search->qpr, &nsec_node->name,
-				DNS_DBNAMESPACE_NORMAL, &search->iter,
-				&search->chain, (void **)&normal_node, NULL);
+			result = dns_qp_lookup(&search->qpr, &nsec_node->name,
+					       DNS_DBNAMESPACE_NORMAL,
+					       &search->iter, &search->chain,
+					       (void **)&normal_node, NULL);
 			if (result == ISC_R_SUCCESS) {
 				dns_name_copy(&nsec_node->name, name);
 				node = normal_node;
@@ -3288,8 +3286,8 @@ qpzone_find_closest_nsec(qpz_search_t *search DNS__DB_FLARG) {
 				goto cleanup;
 			}
 
-			CHECK(dns_qpiter_prev(&nseciter,
-					       (void **)&nsec_node, NULL));
+			CHECK(dns_qpiter_prev(&nseciter, (void **)&nsec_node,
+					      NULL));
 		}
 	}
 
@@ -3338,8 +3336,7 @@ again:
 					    is_secure_zone DNS__DB_FLARG_PASS);
 		if (proof.header != NULL && !matchparams(proof.header, search))
 		{
-			qpz_match_release_unlocked(
-				&proof DNS__DB_FLARG_PASS);
+			qpz_match_release_unlocked(&proof DNS__DB_FLARG_PASS);
 		}
 		NODE_UNLOCK(nlock, &nlocktype);
 
@@ -3579,8 +3576,8 @@ qpzone_find_scan_node(qpz_search_t *search, qpznode_t *node,
 			match->result = DNS_R_BADDB;
 			return;
 		}
-		*match = qpz_match_bind_nxrrset(
-			node, nsecheader, nsecsig DNS__DB_FLARG_PASS);
+		*match = qpz_match_bind_nxrrset(node, nsecheader,
+						nsecsig DNS__DB_FLARG_PASS);
 	}
 }
 
@@ -3794,8 +3791,8 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		nsec_match = qpzone_find_closest_nsec3(
 			&search, is_secure_zone DNS__DB_FLARG_PASS);
 	} else if (zone_uses_nsec) {
-		nsec_match = qpzone_find_closest_nsec(
-			&search DNS__DB_FLARG_PASS);
+		nsec_match =
+			qpzone_find_closest_nsec(&search DNS__DB_FLARG_PASS);
 	} else {
 		result = negative_result;
 		dns_name_copy(wild ? name : &node->name, foundname);
