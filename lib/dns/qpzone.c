@@ -278,7 +278,7 @@ typedef struct qpz_match {
 	isc_result_t result;
 	bool glue;
 	bool exact_zonecut;
-	bool empty_node;
+	bool active;
 	bool wild;
 } qpz_match_t;
 
@@ -2811,6 +2811,7 @@ qpz_match_bind(isc_result_t result, qpznode_t *node, dns_vecheader_t *header,
 	match.result = result;
 	match.header = header;
 	match.sigheader = sigheader;
+	match.active = true;
 
 	return match;
 }
@@ -2826,6 +2827,7 @@ qpz_match_bind_nxrrset(qpznode_t *node, dns_vecheader_t *header,
 	match.result = DNS_R_NXRRSET;
 	match.header = header;
 	match.sigheader = sigheader;
+	match.active = true;
 
 	return match;
 }
@@ -2844,7 +2846,6 @@ qpz_node_find_rrset(qpz_search_t *search, qpznode_t *node,
 	dns_typepair_t sigpair =
 		DNS_SIGTYPEPAIR(DNS_TYPEPAIR_TYPE(typepair));
 
-	match.empty_node = true;
 	ISC_SLIST_FOREACH(top, node->next_type, next_type) {
 		if (top->typepair == typepair) {
 			found = first_existing_header(top, search->serial);
@@ -2864,7 +2865,7 @@ qpz_node_find_rrset(qpz_search_t *search, qpznode_t *node,
 	match.header = found;
 	match.sigheader = foundsig;
 	if (found != NULL || foundsig != NULL) {
-		match.empty_node = false;
+		match.active = true;
 		match.result = DNS_R_BADDB;
 	}
 
@@ -3188,6 +3189,10 @@ qpzone_find_closest_nsec(qpz_search_t *search DNS__DB_FLARG) {
 		qpz_match_t proof = QPZ_MATCH_INIT;
 
 		NODE_RDLOCK(nlock, &nlocktype);
+		/*
+		 * The auxiliary NSEC tree contains only NSEC owner names, so
+		 * activity for this scan is activity in the proof pair.
+		 */
 		proof = qpz_node_find_rrset(search, node, typepair,
 					    true DNS__DB_FLARG_PASS);
 		NODE_UNLOCK(nlock, &nlocktype);
@@ -3201,7 +3206,7 @@ qpzone_find_closest_nsec(qpz_search_t *search DNS__DB_FLARG) {
 			 * this is the case.
 			 */
 			return proof;
-		} else if (!proof.empty_node) {
+		} else if (proof.active) {
 			match.result = proof.result;
 			return match;
 		}
@@ -3325,19 +3330,22 @@ again:
 		qpz_match_t proof = QPZ_MATCH_INIT;
 
 		NODE_RDLOCK(nlock, &nlocktype);
+		/*
+		 * The NSEC3 namespace contains only NSEC3 data, so activity
+		 * for this scan is activity in the proof pair.
+		 */
 		proof = qpz_node_find_rrset(search, node, typepair,
 					    is_secure_zone DNS__DB_FLARG_PASS);
 		if (proof.header != NULL && !matchparams(proof.header, search))
 		{
 			qpz_match_release_unlocked(
 				&proof DNS__DB_FLARG_PASS);
-			proof.empty_node = true;
 		}
 		NODE_UNLOCK(nlock, &nlocktype);
 
 		if (qpz_match_attached(&proof)) {
 			return proof;
-		} else if (!proof.empty_node) {
+		} else if (proof.active) {
 			match.result = proof.result;
 			return match;
 		}
@@ -3479,7 +3487,6 @@ qpzone_find_scan_node(qpz_search_t *search, qpznode_t *node,
 	bool nsec3 = (search->options & DNS_DBFIND_FORCENSEC3) != 0;
 
 	*match = QPZ_MATCH_INIT;
-	match->empty_node = true;
 
 	ISC_SLIST_FOREACH(top, node->next_type, next_type) {
 		/*
@@ -3505,7 +3512,7 @@ qpzone_find_scan_node(qpz_search_t *search, qpznode_t *node,
 		 * We now know that there is at least one active rdataset at
 		 * this node.
 		 */
-		match->empty_node = false;
+		match->active = true;
 
 		if (top->typepair == type || type == dns_rdatatype_any) {
 			/*
@@ -3565,7 +3572,7 @@ qpzone_find_scan_node(qpz_search_t *search, qpznode_t *node,
 	} else if (cname != NULL) {
 		*match = qpz_match_bind(DNS_R_CNAME, node, cname,
 					cnamesig DNS__DB_FLARG_PASS);
-	} else if (!match->empty_node && !nsec3) {
+	} else if (match->active && !nsec3) {
 		if (search->version->secure == QPZ_SECURITY_NSEC &&
 		    (nsecheader == NULL || nsecsig == NULL))
 		{
@@ -3747,7 +3754,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 					&nxrrset_match DNS__DB_FLARG_PASS);
 			}
 
-			if (wild_match.empty_node) {
+			if (!wild_match.active) {
 				wild = true;
 			} else if (wild_match.result == DNS_R_BADDB) {
 				result = wild_match.result;
