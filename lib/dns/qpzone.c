@@ -3080,103 +3080,14 @@ find_wildcard(qpz_search_t *search, qpznode_t **nodep, const dns_name_t *qname,
 	return result;
 }
 
-static isc_result_t
-previous_closest_nsec(qpz_search_t *search, dns_name_t *name,
-		      qpznode_t **nodep, dns_qpiter_t *nit, bool *firstp) {
-	isc_result_t result;
-
-	REQUIRE(nodep != NULL && *nodep == NULL);
-	REQUIRE(firstp != NULL);
-
-	for (;;) {
-		qpznode_t *nsec_node = NULL;
-
-		if (*firstp) {
-			/*
-			 * This is the first attempt to find 'name' in the
-			 * NSEC namespace.
-			 */
-			*firstp = false;
-			result = dns_qp_lookup(&search->qpr, name,
-					       DNS_DBNAMESPACE_NSEC, nit, NULL,
-					       NULL, NULL);
-
-			INSIST(result != ISC_R_NOTFOUND);
-			if (result == ISC_R_SUCCESS) {
-				/*
-				 * If we find an exact match in the NSEC
-				 * namespace on our first attempt, it
-				 * implies that the corresponding node in
-				 * the normal namespace had an unacceptable
-				 * NSEC record; we want the previous node
-				 * in the NSEC tree.
-				 */
-				result = dns_qpiter_prev(
-					nit, (void **)&nsec_node, NULL);
-			} else if (result == DNS_R_PARTIALMATCH) {
-				/*
-				 * This was a partial match, so the
-				 * iterator is already at the previous
-				 * node in the NSEC namespace, which is
-				 * what we want.
-				 */
-				isc_result_t iresult = dns_qpiter_current(
-					nit, (void **)&nsec_node, NULL);
-				REQUIRE(iresult == ISC_R_SUCCESS);
-				result = ISC_R_SUCCESS;
-			}
-		} else {
-			/*
-			 * We've taken at least two steps back through the
-			 * NSEC namespace. The previous steps must have
-			 * found nodes with NSEC records, but they didn't
-			 * work; perhaps they lacked signature records.
-			 * Keep searching.
-			 */
-			result = dns_qpiter_prev(nit, (void **)&nsec_node,
-						 NULL);
-		}
-
-		if (result != ISC_R_SUCCESS) {
-			break;
-		}
-
-		*nodep = NULL;
-		result = dns_qp_lookup(&search->qpr, &nsec_node->name,
-				       DNS_DBNAMESPACE_NORMAL, &search->iter,
-				       &search->chain, (void **)nodep, NULL);
-		if (result == ISC_R_SUCCESS) {
-			dns_name_copy(&nsec_node->name, name);
-			break;
-		}
-
-		/*
-		 * There should always be a node in the normal namespace
-		 * with the same name as the node in the NSEC namespace,
-		 * except when nodes in the NSEC namespace are awaiting
-		 * deletion.
-		 */
-		if (result != DNS_R_PARTIALMATCH && result != ISC_R_NOTFOUND) {
-			isc_log_write(DNS_LOGCATEGORY_DATABASE,
-				      DNS_LOGMODULE_DB, ISC_LOG_ERROR,
-				      "previous_closest_nsec(): %s",
-				      isc_result_totext(result));
-			result = DNS_R_BADDB;
-			break;
-		}
-	}
-
-	return result;
-}
-
 /*
  * Find the NSEC which is at or before the name being sought.
  */
 static qpz_match_t
 qpzone_find_closest_nsec(qpz_search_t *search DNS__DB_FLARG) {
-	qpznode_t *node = NULL, *prevnode = NULL;
+	qpznode_t *node = NULL;
 	dns_qpiter_t nseciter;
-	bool first = true;
+	bool first_nsec = true;
 	isc_result_t result;
 	qpz_match_t match = QPZ_MATCH_INIT;
 	dns_typepair_t typepair = DNS_TYPEPAIR(dns_rdatatype_nsec);
@@ -3244,15 +3155,89 @@ qpzone_find_closest_nsec(qpz_search_t *search DNS__DB_FLARG) {
 		}
 		NODE_UNLOCK(nlock, &nlocktype);
 
-		result = previous_closest_nsec(search, name, &prevnode,
-					       &nseciter, &first);
-		if (result != ISC_R_SUCCESS) {
-			break;
+		qpznode_t *nsec_node = NULL;
+		if (first_nsec) {
+			/*
+			 * This is the first attempt to find 'name' in the
+			 * NSEC namespace.
+			 */
+			first_nsec = false;
+			result = dns_qp_lookup(&search->qpr, name,
+					       DNS_DBNAMESPACE_NSEC,
+					       &nseciter, NULL, NULL, NULL);
+
+			INSIST(result != ISC_R_NOTFOUND);
+			if (result == ISC_R_SUCCESS) {
+				/*
+				 * If we find an exact match in the NSEC
+				 * namespace on our first attempt, it implies
+				 * that the corresponding node in the normal
+				 * namespace had an unacceptable NSEC record;
+				 * we want the previous node in the NSEC tree.
+				 */
+				CHECK(dns_qpiter_prev(&nseciter,
+						       (void **)&nsec_node,
+						       NULL));
+			} else if (result == DNS_R_PARTIALMATCH) {
+				/*
+				 * This was a partial match, so the iterator is
+				 * already at the previous node in the NSEC
+				 * namespace, which is what we want.
+				 */
+				isc_result_t iresult = dns_qpiter_current(
+					&nseciter, (void **)&nsec_node, NULL);
+				REQUIRE(iresult == ISC_R_SUCCESS);
+				result = ISC_R_SUCCESS;
+			}
+		} else {
+			/*
+			 * We've taken at least two steps back through the
+			 * NSEC namespace. The previous steps must have found
+			 * nodes with NSEC records, but they didn't work;
+			 * perhaps they lacked signature records. Keep
+			 * searching.
+			 */
+			CHECK(dns_qpiter_prev(&nseciter,
+					       (void **)&nsec_node, NULL));
 		}
-		node = prevnode;
-		prevnode = NULL;
+		CHECK(result);
+
+		for (;;) {
+			qpznode_t *normal_node = NULL;
+
+			result = dns_qp_lookup(
+				&search->qpr, &nsec_node->name,
+				DNS_DBNAMESPACE_NORMAL, &search->iter,
+				&search->chain, (void **)&normal_node, NULL);
+			if (result == ISC_R_SUCCESS) {
+				dns_name_copy(&nsec_node->name, name);
+				node = normal_node;
+				break;
+			}
+
+			/*
+			 * There should always be a node in the normal
+			 * namespace with the same name as the node in the
+			 * NSEC namespace, except when nodes in the NSEC
+			 * namespace are awaiting deletion.
+			 */
+			if (result != DNS_R_PARTIALMATCH &&
+			    result != ISC_R_NOTFOUND)
+			{
+				isc_log_write(DNS_LOGCATEGORY_DATABASE,
+					      DNS_LOGMODULE_DB, ISC_LOG_ERROR,
+					      "qpzone_find_closest_nsec(): %s",
+					      isc_result_totext(result));
+				result = DNS_R_BADDB;
+				goto cleanup;
+			}
+
+			CHECK(dns_qpiter_prev(&nseciter,
+					       (void **)&nsec_node, NULL));
+		}
 	}
 
+cleanup:
 	if (result == ISC_R_NOMORE) {
 		result = DNS_R_BADDB;
 	}
