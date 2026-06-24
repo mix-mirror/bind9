@@ -2891,7 +2891,7 @@ qpz_match_coalesce(qpz_match_t *primary, qpz_match_t *fallback DNS__DB_FLARG) {
 }
 
 static qpz_match_t
-qpz_match_take(qpz_match_t *match) {
+qpz_match_move(qpz_match_t *match) {
 	qpz_match_t selected = *match;
 
 	*match = QPZ_MATCH_INIT;
@@ -3755,7 +3755,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 			} else {
 				INSIST(qpz_match_attached(&wild_match));
 				wild_match.wild = true;
-				selected_match = qpz_match_take(&wild_match);
+				selected_match = qpz_match_move(&wild_match);
 				goto finalize_node;
 			}
 		} else if (result != ISC_R_NOTFOUND) {
@@ -3798,7 +3798,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	if (nsec_match.result == ISC_R_SUCCESS) {
 		INSIST(qpz_match_attached(&nsec_match));
 		nsec_match.result = negative_result;
-		selected_match = qpz_match_take(&nsec_match);
+		selected_match = qpz_match_move(&nsec_match);
 		goto finalize_node;
 	}
 	result = nsec_match.result;
