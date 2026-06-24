@@ -278,6 +278,20 @@ typedef struct {
 	dns_fixedname_t zonecut_name;
 } qpz_search_t;
 
+typedef struct qpz_match {
+	qpznode_t *node;
+	dns_vecheader_t *header;
+	dns_vecheader_t *sigheader;
+	isc_result_t result;
+	bool glue;
+	bool exact_zonecut;
+	bool active;
+	bool wild;
+} qpz_match_t;
+
+#define QPZ_MATCH_INIT \
+	(qpz_match_t) { .result = ISC_R_NOTFOUND }
+
 /*%
  * Load Context
  */
@@ -2745,6 +2759,156 @@ matchparams(dns_vecheader_t *header, qpz_version_t *version) {
 	}
 
 	return false;
+}
+
+static void
+qpz_match_release(qpz_match_t *match DNS__DB_FLARG) {
+	qpznode_t *node = NULL;
+	isc_rwlock_t *nlock = NULL;
+	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
+
+	if (match->node == NULL) {
+		return;
+	}
+
+	node = match->node;
+	nlock = qpzone_get_lock(node);
+
+	NODE_RDLOCK(nlock, &nlocktype);
+	(void)qpznode_release(node DNS__DB_FLARG_PASS);
+	NODE_UNLOCK(nlock, &nlocktype);
+
+	*match = QPZ_MATCH_INIT;
+}
+
+static void
+qpz_match_release_unlocked(qpz_match_t *match DNS__DB_FLARG) {
+	/* The caller must hold the node lock if match is attached. */
+	if (match->node != NULL) {
+		(void)qpznode_release(match->node DNS__DB_FLARG_PASS);
+	}
+
+	*match = QPZ_MATCH_INIT;
+}
+
+static void
+qpz_match_attach(qpz_match_t *match, qpznode_t *node DNS__DB_FLARG) {
+	INSIST(match->node == NULL);
+
+	qpznode_acquire(node DNS__DB_FLARG_PASS);
+	match->node = node;
+}
+
+static bool
+qpz_match_attached(const qpz_match_t *match) {
+	return match->node != NULL;
+}
+
+static qpz_match_t
+qpz_match_bind(isc_result_t result, qpznode_t *node, dns_vecheader_t *header,
+	       dns_vecheader_t *sigheader DNS__DB_FLARG) {
+	qpz_match_t match = QPZ_MATCH_INIT;
+
+	INSIST(node != NULL);
+	INSIST(header != NULL);
+	INSIST(result == ISC_R_SUCCESS || result == DNS_R_CNAME ||
+	       result == DNS_R_DNAME || result == DNS_R_DELEGATION);
+
+	qpz_match_attach(&match, node DNS__DB_FLARG_PASS);
+	match.result = result;
+	match.header = header;
+	match.sigheader = sigheader;
+	match.active = true;
+
+	return match;
+}
+
+static qpz_match_t
+qpz_match_bind_nxrrset(qpznode_t *node, dns_vecheader_t *header,
+		       dns_vecheader_t *sigheader DNS__DB_FLARG) {
+	qpz_match_t match = QPZ_MATCH_INIT;
+
+	INSIST(node != NULL);
+
+	qpz_match_attach(&match, node DNS__DB_FLARG_PASS);
+	match.result = DNS_R_NXRRSET;
+	match.header = header;
+	match.sigheader = sigheader;
+	match.active = true;
+
+	return match;
+}
+
+static qpz_match_t
+qpz_match_make_nxrrset(qpznode_t *node DNS__DB_FLARG) {
+	/* The caller must hold the node lock. */
+	return qpz_match_bind_nxrrset(node, NULL, NULL DNS__DB_FLARG_PASS);
+}
+
+static qpz_match_t
+qpznode_find_rrset(qpznode_t *node, qpz_version_t *version,
+		   dns_typepair_t typepair, bool require_sig DNS__DB_FLARG) {
+	qpz_match_t match = QPZ_MATCH_INIT;
+	dns_vecheader_t *found = NULL, *foundsig = NULL;
+	dns_typepair_t sigpair = DNS_SIGTYPEPAIR(DNS_TYPEPAIR_TYPE(typepair));
+
+	ISC_SLIST_FOREACH(top, node->next_type, next_type) {
+		dns_vecheader_t *header = first_existing_header(
+			top, version->serial);
+		if (header == NULL) {
+			continue;
+		}
+
+		match.active = true;
+		if (top->typepair == typepair) {
+			found = header;
+		} else if (top->typepair == sigpair) {
+			foundsig = header;
+		}
+		if (found != NULL && foundsig != NULL) {
+			break;
+		}
+	}
+
+	if (found != NULL && (foundsig != NULL || !require_sig)) {
+		return qpz_match_bind(ISC_R_SUCCESS, node, found,
+				      foundsig DNS__DB_FLARG_PASS);
+	}
+
+	match.header = found;
+	match.sigheader = foundsig;
+	if (found != NULL || foundsig != NULL) {
+		match.result = DNS_R_BADDB;
+	}
+
+	return match;
+}
+
+static qpz_match_t
+qpz_match_coalesce(qpz_match_t *primary, qpz_match_t *fallback DNS__DB_FLARG) {
+	qpz_match_t selected = QPZ_MATCH_INIT;
+
+	/* Move the primary match out if present; release the fallback. */
+	if (qpz_match_attached(primary)) {
+		selected = *primary;
+		*primary = QPZ_MATCH_INIT;
+		qpz_match_release(fallback DNS__DB_FLARG_PASS);
+		*fallback = QPZ_MATCH_INIT;
+		return selected;
+	}
+
+	selected = *fallback;
+	*primary = QPZ_MATCH_INIT;
+	*fallback = QPZ_MATCH_INIT;
+	return selected;
+}
+
+static qpz_match_t
+qpz_match_move(qpz_match_t *match) {
+	qpz_match_t selected = *match;
+
+	*match = QPZ_MATCH_INIT;
+	return selected;
 }
 
 static isc_result_t
