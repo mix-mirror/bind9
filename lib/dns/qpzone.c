@@ -2775,6 +2775,16 @@ qpz_match_release(qpz_match_t *match DNS__DB_FLARG) {
 }
 
 static void
+qpz_match_release_unlocked(qpz_match_t *match DNS__DB_FLARG) {
+	/* The caller must hold the node lock if match is attached. */
+	if (match->node != NULL) {
+		(void)qpznode_release(match->node DNS__DB_FLARG_PASS);
+	}
+
+	*match = QPZ_MATCH_INIT;
+}
+
+static void
 qpz_match_attach(qpz_match_t *match, qpznode_t *node DNS__DB_FLARG) {
 	INSIST(match->node == NULL);
 
@@ -2824,6 +2834,41 @@ static qpz_match_t
 qpz_match_make_nxrrset(qpznode_t *node DNS__DB_FLARG) {
 	/* The caller must hold the node lock. */
 	return qpz_match_bind_nxrrset(node, NULL, NULL DNS__DB_FLARG_PASS);
+}
+
+static qpz_match_t
+qpz_node_find_rrset(qpz_search_t *search, qpznode_t *node,
+		    dns_typepair_t typepair, bool require_sig DNS__DB_FLARG) {
+	qpz_match_t match = QPZ_MATCH_INIT;
+	dns_vecheader_t *found = NULL, *foundsig = NULL;
+	dns_typepair_t sigpair =
+		DNS_SIGTYPEPAIR(DNS_TYPEPAIR_TYPE(typepair));
+
+	match.empty_node = true;
+	ISC_SLIST_FOREACH(top, node->next_type, next_type) {
+		if (top->typepair == typepair) {
+			found = first_existing_header(top, search->serial);
+		} else if (top->typepair == sigpair) {
+			foundsig = first_existing_header(top, search->serial);
+		}
+		if (found != NULL && foundsig != NULL) {
+			break;
+		}
+	}
+
+	if (found != NULL && (foundsig != NULL || !require_sig)) {
+		return qpz_match_bind(ISC_R_SUCCESS, node, found,
+				      foundsig DNS__DB_FLARG_PASS);
+	}
+
+	match.header = found;
+	match.sigheader = foundsig;
+	if (found != NULL || foundsig != NULL) {
+		match.empty_node = false;
+		match.result = DNS_R_BADDB;
+	}
+
+	return match;
 }
 
 static qpz_match_t
@@ -3119,7 +3164,6 @@ qpzone_find_closest_nsec(qpz_search_t *search DNS__DB_FLARG) {
 	isc_result_t result;
 	qpz_match_t match = QPZ_MATCH_INIT;
 	dns_typepair_t typepair = DNS_TYPEPAIR(dns_rdatatype_nsec);
-	dns_typepair_t sigpair = DNS_SIGTYPEPAIR(dns_rdatatype_nsec);
 	dns_fixedname_t fname;
 	dns_name_t *name = dns_fixedname_initname(&fname);
 
@@ -3139,29 +3183,15 @@ qpzone_find_closest_nsec(qpz_search_t *search DNS__DB_FLARG) {
 	dns_name_copy(&node->name, name);
 
 	for (;;) {
-		dns_vecheader_t *found = NULL, *foundsig = NULL;
 		isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 		isc_rwlock_t *nlock = qpzone_get_lock(node);
-		bool proof_missing = true;
+		qpz_match_t proof = QPZ_MATCH_INIT;
 
 		NODE_RDLOCK(nlock, &nlocktype);
-		ISC_SLIST_FOREACH(top, node->next_type, next_type) {
-			if (top->typepair == typepair) {
-				found = first_existing_header(top,
-							      search->serial);
-				proof_missing = proof_missing && found == NULL;
-			} else if (top->typepair == sigpair) {
-				foundsig = first_existing_header(
-					top, search->serial);
-				proof_missing = proof_missing &&
-						foundsig == NULL;
-			}
-			if (found != NULL && foundsig != NULL) {
-				break;
-			}
-		}
-
-		if (found != NULL && foundsig != NULL) {
+		proof = qpz_node_find_rrset(search, node, typepair,
+					    true DNS__DB_FLARG_PASS);
+		NODE_UNLOCK(nlock, &nlocktype);
+		if (qpz_match_attached(&proof)) {
 			/*
 			 * We've found the right NSEC record.
 			 *
@@ -3170,16 +3200,11 @@ qpzone_find_closest_nsec(qpz_search_t *search DNS__DB_FLARG) {
 			 * obscured by a zone cut have been removed; we assume
 			 * this is the case.
 			 */
-			match = qpz_match_bind(ISC_R_SUCCESS, node, found,
-					       foundsig DNS__DB_FLARG_PASS);
-			NODE_UNLOCK(nlock, &nlocktype);
-			return match;
-		} else if (!proof_missing) {
-			match.result = DNS_R_BADDB;
-			NODE_UNLOCK(nlock, &nlocktype);
+			return proof;
+		} else if (!proof.empty_node) {
+			match.result = proof.result;
 			return match;
 		}
-		NODE_UNLOCK(nlock, &nlocktype);
 
 		qpznode_t *nsec_node = NULL;
 		if (first_nsec) {
@@ -3283,7 +3308,6 @@ qpzone_find_closest_nsec3(qpz_search_t *search,
 	isc_result_t result;
 	qpz_match_t match = QPZ_MATCH_INIT;
 	dns_typepair_t typepair = DNS_TYPEPAIR(dns_rdatatype_nsec3);
-	dns_typepair_t sigpair = DNS_SIGTYPEPAIR(dns_rdatatype_nsec3);
 	dns_fixedname_t fname;
 	dns_name_t *name = dns_fixedname_initname(&fname);
 
@@ -3296,45 +3320,27 @@ qpzone_find_closest_nsec3(qpz_search_t *search,
 
 again:
 	for (;;) {
-		dns_vecheader_t *found = NULL, *foundsig = NULL;
 		isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 		isc_rwlock_t *nlock = qpzone_get_lock(node);
-		bool proof_missing = true;
+		qpz_match_t proof = QPZ_MATCH_INIT;
 
 		NODE_RDLOCK(nlock, &nlocktype);
-		ISC_SLIST_FOREACH(top, node->next_type, next_type) {
-			if (top->typepair == typepair) {
-				found = first_existing_header(top,
-							      search->serial);
-				proof_missing = proof_missing && found == NULL;
-			} else if (top->typepair == sigpair) {
-				foundsig = first_existing_header(
-					top, search->serial);
-				proof_missing = proof_missing &&
-						foundsig == NULL;
-			}
-			if (found != NULL && foundsig != NULL) {
-				break;
-			}
-		}
-
-		if (found != NULL && !matchparams(found, search)) {
-			proof_missing = true;
-			found = NULL;
-			foundsig = NULL;
-		} else if (found != NULL &&
-			   (foundsig != NULL || !is_secure_zone))
+		proof = qpz_node_find_rrset(search, node, typepair,
+					    is_secure_zone DNS__DB_FLARG_PASS);
+		if (proof.header != NULL && !matchparams(proof.header, search))
 		{
-			match = qpz_match_bind(ISC_R_SUCCESS, node, found,
-					       foundsig DNS__DB_FLARG_PASS);
-			NODE_UNLOCK(nlock, &nlocktype);
-			return match;
-		} else if (!proof_missing) {
-			match.result = DNS_R_BADDB;
-			NODE_UNLOCK(nlock, &nlocktype);
-			return match;
+			qpz_match_release_unlocked(
+				&proof DNS__DB_FLARG_PASS);
+			proof.empty_node = true;
 		}
 		NODE_UNLOCK(nlock, &nlocktype);
+
+		if (qpz_match_attached(&proof)) {
+			return proof;
+		} else if (!proof.empty_node) {
+			match.result = proof.result;
+			return match;
+		}
 
 		result = dns_qpiter_prev(&search->iter, (void **)&prevnode,
 					 NULL);
