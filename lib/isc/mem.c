@@ -102,12 +102,6 @@ struct debuglink {
 };
 
 typedef ISC_LIST(debuglink_t) debuglist_t;
-
-#define FLARG_PASS , func, file, line
-#define FLARG	   , const char *func, const char *file, unsigned int line
-#else /* if ISC_MEM_TRACKLINES */
-#define FLARG_PASS
-#define FLARG
 #endif /* if ISC_MEM_TRACKLINES */
 
 typedef struct element element;
@@ -284,7 +278,7 @@ print_active(isc_mem_t *ctx, FILE *out);
  * mctx must not be locked.
  */
 static void
-add_trace_entry(isc_mem_t *mctx, const void *ptr, size_t size FLARG) {
+add_trace_entry(isc_mem_t *mctx, const void *ptr, size_t size ISC_MEM__FLARG) {
 	debuglink_t *dl = NULL;
 	uint32_t hash;
 	uint32_t idx;
@@ -338,7 +332,8 @@ unlock:
 }
 
 static void
-delete_trace_entry(isc_mem_t *mctx, const void *ptr, size_t size FLARG) {
+delete_trace_entry(isc_mem_t *mctx, const void *ptr,
+		   size_t size ISC_MEM__FLARG) {
 	uint32_t hash;
 	uint32_t idx;
 
@@ -347,7 +342,7 @@ delete_trace_entry(isc_mem_t *mctx, const void *ptr, size_t size FLARG) {
 	if ((mctx->debugging & ISC_MEM_DEBUGTRACE) != 0) {
 		fprintf(stderr,
 			"del %p size %zu func %s file %s line %u mctx %p\n",
-			ptr, size, func, file, line, mctx);
+			ptr, size ISC_MEM__FLARG_PASS, mctx);
 	}
 
 	if (mctx->debuglist == NULL) {
@@ -727,7 +722,7 @@ ISC_REFCOUNT_IMPL(isc_mem, mem_destroy);
 
 void
 isc__mem_putanddetach(isc_mem_t **ctxp, void *ptr, size_t size,
-		      int flags FLARG) {
+		      int flags ISC_MEM__FLARG) {
 	REQUIRE(ctxp != NULL && VALID_CONTEXT(*ctxp));
 	REQUIRE(ptr != NULL);
 	REQUIRE(size != 0);
@@ -735,7 +730,7 @@ isc__mem_putanddetach(isc_mem_t **ctxp, void *ptr, size_t size,
 	isc_mem_t *ctx = *ctxp;
 	*ctxp = NULL;
 
-	isc__mem_put(ctx, ptr, size, flags FLARG_PASS);
+	isc__mem_put(ctx, ptr, size, flags ISC_MEM__FLARG_PASS);
 #if ISC_MEM_TRACE
 	isc_mem__detach(&ctx, func, file, line);
 #else
@@ -744,7 +739,7 @@ isc__mem_putanddetach(isc_mem_t **ctxp, void *ptr, size_t size,
 }
 
 void *
-isc__mem_get(isc_mem_t *ctx, size_t size, int flags FLARG) {
+isc__mem_get(isc_mem_t *ctx, size_t size, int flags ISC_MEM__FLARG) {
 	void *ptr = NULL;
 
 	REQUIRE(VALID_CONTEXT(ctx));
@@ -758,7 +753,7 @@ isc__mem_get(isc_mem_t *ctx, size_t size, int flags FLARG) {
 }
 
 void
-isc__mem_put(isc_mem_t *ctx, void *ptr, size_t size, int flags FLARG) {
+isc__mem_put(isc_mem_t *ctx, void *ptr, size_t size, int flags ISC_MEM__FLARG) {
 	REQUIRE(VALID_CONTEXT(ctx));
 
 	DELETE_TRACE(ctx, ptr, size, func, file, line);
@@ -836,7 +831,7 @@ isc_mem_stats(isc_mem_t *ctx, FILE *out) {
 }
 
 void *
-isc__mem_allocate(isc_mem_t *ctx, size_t size, int flags FLARG) {
+isc__mem_allocate(isc_mem_t *ctx, size_t size, int flags ISC_MEM__FLARG) {
 	void *ptr = NULL;
 
 	REQUIRE(VALID_CONTEXT(ctx));
@@ -854,14 +849,15 @@ isc__mem_allocate(isc_mem_t *ctx, size_t size, int flags FLARG) {
 
 void *
 isc__mem_reget(isc_mem_t *ctx, void *old_ptr, size_t old_size, size_t new_size,
-	       int flags FLARG) {
+	       int flags ISC_MEM__FLARG) {
 	void *new_ptr = NULL;
 
 	if (old_ptr == NULL) {
 		REQUIRE(old_size == 0);
-		new_ptr = isc__mem_get(ctx, new_size, flags FLARG_PASS);
+		new_ptr = isc__mem_get(ctx, new_size,
+				       flags ISC_MEM__FLARG_PASS);
 	} else if (new_size == 0) {
-		isc__mem_put(ctx, old_ptr, old_size, flags FLARG_PASS);
+		isc__mem_put(ctx, old_ptr, old_size, flags ISC_MEM__FLARG_PASS);
 	} else {
 		DELETE_TRACE(ctx, old_ptr, old_size, func, file, line);
 		mem_putstats(ctx, old_size);
@@ -897,15 +893,16 @@ isc__mem_reget(isc_mem_t *ctx, void *old_ptr, size_t old_size, size_t new_size,
 
 void *
 isc__mem_reallocate(isc_mem_t *ctx, void *old_ptr, size_t new_size,
-		    int flags FLARG) {
+		    int flags ISC_MEM__FLARG) {
 	void *new_ptr = NULL;
 
 	REQUIRE(VALID_CONTEXT(ctx));
 
 	if (old_ptr == NULL) {
-		new_ptr = isc__mem_allocate(ctx, new_size, flags FLARG_PASS);
+		new_ptr = isc__mem_allocate(ctx, new_size,
+					    flags ISC_MEM__FLARG_PASS);
 	} else if (new_size == 0) {
-		isc__mem_free(ctx, old_ptr, flags FLARG_PASS);
+		isc__mem_free(ctx, old_ptr, flags ISC_MEM__FLARG_PASS);
 	} else {
 		size_t size = sallocx(old_ptr, flags | ctx->jemalloc_flags);
 
@@ -925,7 +922,7 @@ isc__mem_reallocate(isc_mem_t *ctx, void *old_ptr, size_t new_size,
 }
 
 void
-isc__mem_free(isc_mem_t *ctx, void *ptr, int flags FLARG) {
+isc__mem_free(isc_mem_t *ctx, void *ptr, int flags ISC_MEM__FLARG) {
 	size_t size = 0;
 
 	REQUIRE(VALID_CONTEXT(ctx));
@@ -944,7 +941,7 @@ isc__mem_free(isc_mem_t *ctx, void *ptr, int flags FLARG) {
  */
 
 char *
-isc__mem_strdup(isc_mem_t *mctx, const char *s FLARG) {
+isc__mem_strdup(isc_mem_t *mctx, const char *s ISC_MEM__FLARG) {
 	size_t len;
 	char *ns = NULL;
 
@@ -953,7 +950,7 @@ isc__mem_strdup(isc_mem_t *mctx, const char *s FLARG) {
 
 	len = strlen(s) + 1;
 
-	ns = isc__mem_allocate(mctx, len, 0 FLARG_PASS);
+	ns = isc__mem_allocate(mctx, len, 0 ISC_MEM__FLARG_PASS);
 
 	strlcpy(ns, s, len);
 
@@ -1048,7 +1045,8 @@ isc_mem_getname(isc_mem_t *ctx) {
 
 void
 isc__mempool_create(isc_mem_t *restrict mctx, const size_t element_size,
-		    const char *name, isc_mempool_t **restrict mpctxp FLARG) {
+		    const char *name,
+		    isc_mempool_t **restrict mpctxp ISC_MEM__FLARG) {
 	isc_mempool_t *restrict mpctx = NULL;
 	size_t size = element_size;
 
@@ -1097,7 +1095,7 @@ isc__mempool_create(isc_mem_t *restrict mctx, const size_t element_size,
 }
 
 void
-isc__mempool_destroy(isc_mempool_t **restrict mpctxp FLARG) {
+isc__mempool_destroy(isc_mempool_t **restrict mpctxp ISC_MEM__FLARG) {
 	isc_mempool_t *restrict mpctx = NULL;
 	isc_mem_t *mctx = NULL;
 	element *restrict item = NULL;
@@ -1153,7 +1151,7 @@ isc__mempool_destroy(isc_mempool_t **restrict mpctxp FLARG) {
 }
 
 void *
-isc__mempool_get(isc_mempool_t *restrict mpctx FLARG) {
+isc__mempool_get(isc_mempool_t *restrict mpctx ISC_MEM__FLARG) {
 	element *restrict item = NULL;
 
 	REQUIRE(VALID_MEMPOOL(mpctx));
@@ -1189,13 +1187,12 @@ isc__mempool_get(isc_mempool_t *restrict mpctx FLARG) {
 	mpctx->gets++;
 
 	ADD_TRACE(mpctx->mctx, item, mpctx->size, func, file, line);
-
 	return item;
 }
 
 /* coverity[+free : arg-1] */
 void
-isc__mempool_put(isc_mempool_t *restrict mpctx, void *mem FLARG) {
+isc__mempool_put(isc_mempool_t *restrict mpctx, void *mem ISC_MEM__FLARG) {
 	element *restrict item = NULL;
 
 	REQUIRE(VALID_MEMPOOL(mpctx));
@@ -1533,7 +1530,7 @@ error:
 #endif /* HAVE_JSON_C */
 
 void
-isc__mem_create(const char *name, isc_mem_t **mctxp FLARG) {
+isc__mem_create(const char *name, isc_mem_t **mctxp ISC_MEM__FLARG) {
 	mem_create(name, mctxp, mem_debugging, 0);
 #if ISC_MEM_TRACKLINES
 	if ((mem_debugging & ISC_MEM_DEBUGTRACE) != 0) {
