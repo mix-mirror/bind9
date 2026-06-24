@@ -124,6 +124,12 @@ typedef struct qpz_resigned {
 
 typedef ISC_LIST(qpz_resigned_t) qpz_resignedlist_t;
 
+typedef enum {
+	QPZ_SECURITY_INSECURE,
+	QPZ_SECURITY_NSEC,
+	QPZ_SECURITY_NSEC3,
+} qpz_security_t;
+
 typedef struct qpz_version qpz_version_t;
 struct qpz_version {
 	/* Not locked */
@@ -135,8 +141,7 @@ struct qpz_version {
 	qpz_changedlist_t changed_list;
 	qpz_resignedlist_t resigned_list;
 	ISC_LINK(qpz_version_t) link;
-	bool secure;
-	bool havensec3;
+	qpz_security_t secure;
 	/* NSEC3 parameters */
 	dns_hash_t hash;
 	uint8_t flags;
@@ -1201,7 +1206,7 @@ bindrdataset(qpzonedb_t *qpdb, dns_vecheader_t *header,
 	}
 }
 
-static void
+static bool
 setnsec3parameters(dns_db_t *db, qpz_version_t *version) {
 	qpznode_t *node = NULL;
 	dns_rdata_nsec3param_t nsec3param;
@@ -1209,8 +1214,8 @@ setnsec3parameters(dns_db_t *db, qpz_version_t *version) {
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 	isc_rwlock_t *nlock = NULL;
 	dns_vecheader_t *found = NULL;
+	bool havensec3 = false;
 
-	version->havensec3 = false;
 	node = qpdb->origin;
 	nlock = qpzone_get_lock(node);
 
@@ -1253,7 +1258,7 @@ setnsec3parameters(dns_db_t *db, qpz_version_t *version) {
 			version->salt_length = nsec3param.salt.length;
 			version->iterations = nsec3param.iterations;
 			version->flags = nsec3param.flags;
-			version->havensec3 = true;
+			havensec3 = true;
 			/*
 			 * Look for a better algorithm than the
 			 * unknown test algorithm.
@@ -1265,6 +1270,8 @@ setnsec3parameters(dns_db_t *db, qpz_version_t *version) {
 	}
 
 	NODE_UNLOCK(nlock, &nlocktype);
+
+	return havensec3;
 }
 
 static void
@@ -1296,8 +1303,7 @@ setsecure(dns_db_t *db, qpz_version_t *version, dns_dbnode_t *origin) {
 	bool hasnsec = false;
 	isc_result_t result;
 
-	version->secure = false;
-	version->havensec3 = false;
+	version->secure = QPZ_SECURITY_INSECURE;
 
 	dns_rdataset_init(&keyset);
 	result = dns_db_findrdataset(db, origin, (dns_dbversion_t *)version,
@@ -1323,14 +1329,16 @@ setsecure(dns_db_t *db, qpz_version_t *version, dns_dbnode_t *origin) {
 		dns_rdataset_disassociate(&nsecset);
 	}
 
-	setnsec3parameters(db, version);
+	bool hasnsec3 = setnsec3parameters(db, version);
 
 	/*
 	 * If we don't have a valid NSEC/NSEC3 chain,
 	 * clear the secure flag.
 	 */
-	if (version->havensec3 || hasnsec) {
-		version->secure = true;
+	if (hasnsec3) {
+		version->secure = QPZ_SECURITY_NSEC3;
+	} else if (hasnsec) {
+		version->secure = QPZ_SECURITY_NSEC;
 	}
 }
 
@@ -1378,8 +1386,7 @@ newversion(dns_db_t *db, dns_dbversion_t **versionp) {
 				   true);
 	version->qpdb = qpdb;
 	version->secure = qpdb->current_version->secure;
-	version->havensec3 = qpdb->current_version->havensec3;
-	if (version->havensec3) {
+	if (version->secure == QPZ_SECURITY_NSEC3) {
 		version->flags = qpdb->current_version->flags;
 		version->iterations = qpdb->current_version->iterations;
 		version->hash = qpdb->current_version->hash;
@@ -2381,7 +2388,7 @@ issecure(dns_db_t *db) {
 	REQUIRE(VALID_QPZONE(qpdb));
 
 	RWLOCK(&qpdb->lock, isc_rwlocktype_read);
-	secure = qpdb->current_version->secure;
+	secure = qpdb->current_version->secure != QPZ_SECURITY_INSECURE;
 	RWUNLOCK(&qpdb->lock, isc_rwlocktype_read);
 
 	return secure;
@@ -2405,7 +2412,7 @@ getnsec3parameters(dns_db_t *db, dns_dbversion_t *dbversion, dns_hash_t *hash,
 		version = qpdb->current_version;
 	}
 
-	if (version->havensec3) {
+	if (version->secure == QPZ_SECURITY_NSEC3) {
 		SET_IF_NOT_NULL(hash, version->hash);
 		if (salt != NULL && salt_length != NULL) {
 			REQUIRE(*salt_length >= version->salt_length);
@@ -3224,7 +3231,8 @@ again:
 			}
 		}
 		if (!empty_node) {
-			if (found != NULL && search->version->havensec3 &&
+			if (found != NULL &&
+			    search->version->secure == QPZ_SECURITY_NSEC3 &&
 			    found->typepair ==
 				    DNS_TYPEPAIR(dns_rdatatype_nsec3) &&
 			    !matchparams(found, search))
@@ -3582,13 +3590,13 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		 * If we're here, then the name does not exist, is not
 		 * beneath a zonecut, and there's no matching wildcard.
 		 */
-		if ((search.version->secure && !search.version->havensec3) ||
-		    nsec3)
+		if (search.version->secure == QPZ_SECURITY_NSEC || nsec3)
 		{
 			result = find_closest_nsec(
 				&search, nodep, foundname, rdataset,
 				sigrdataset, nsec3,
-				search.version->secure DNS__DB_FLARG_PASS);
+				search.version->secure != QPZ_SECURITY_INSECURE
+					DNS__DB_FLARG_PASS);
 			if (result == ISC_R_SUCCESS) {
 				result = active ? DNS_R_EMPTYNAME
 						: DNS_R_NXDOMAIN;
@@ -3764,7 +3772,7 @@ found:
 				}
 			} else if (top->typepair ==
 					   DNS_TYPEPAIR(dns_rdatatype_nsec) &&
-				   !search.version->havensec3)
+				   search.version->secure == QPZ_SECURITY_NSEC)
 			{
 				/*
 				 * Remember a NSEC rdataset even if we're
@@ -3775,7 +3783,7 @@ found:
 			} else if (top->typepair ==
 					   DNS_SIGTYPEPAIR(
 						   dns_rdatatype_nsec) &&
-				   !search.version->havensec3)
+				   search.version->secure == QPZ_SECURITY_NSEC)
 			{
 				/*
 				 * If we need the NSEC rdataset, we'll also
@@ -3837,7 +3845,7 @@ found:
 		 * The desired type doesn't exist.
 		 */
 		result = DNS_R_NXRRSET;
-		if (search.version->secure && !search.version->havensec3 &&
+		if (search.version->secure == QPZ_SECURITY_NSEC &&
 		    (nsecheader == NULL || nsecsig == NULL))
 		{
 			/*
@@ -3853,7 +3861,8 @@ found:
 			result = find_closest_nsec(
 				&search, nodep, foundname, rdataset,
 				sigrdataset, false,
-				search.version->secure DNS__DB_FLARG_PASS);
+				search.version->secure != QPZ_SECURITY_INSECURE
+					DNS__DB_FLARG_PASS);
 			if (result == ISC_R_SUCCESS) {
 				result = DNS_R_EMPTYWILD;
 			}
@@ -3863,7 +3872,7 @@ found:
 			qpznode_acquire(node DNS__DB_FLARG_PASS);
 			*nodep = (dns_dbnode_t *)node;
 		}
-		if (search.version->secure && !search.version->havensec3) {
+		if (search.version->secure == QPZ_SECURITY_NSEC) {
 			bindrdataset(search.qpdb, nsecheader,
 				     rdataset DNS__DB_FLARG_PASS);
 			if (nsecsig != NULL) {
