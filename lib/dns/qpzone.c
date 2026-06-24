@@ -2846,10 +2846,17 @@ qpz_node_find_rrset(qpz_search_t *search, qpznode_t *node,
 	dns_typepair_t sigpair = DNS_SIGTYPEPAIR(DNS_TYPEPAIR_TYPE(typepair));
 
 	ISC_SLIST_FOREACH(top, node->next_type, next_type) {
+		dns_vecheader_t *header = first_existing_header(
+			top, search->serial);
+		if (header == NULL) {
+			continue;
+		}
+
+		match.active = true;
 		if (top->typepair == typepair) {
-			found = first_existing_header(top, search->serial);
+			found = header;
 		} else if (top->typepair == sigpair) {
-			foundsig = first_existing_header(top, search->serial);
+			foundsig = header;
 		}
 		if (found != NULL && foundsig != NULL) {
 			break;
@@ -2864,7 +2871,6 @@ qpz_node_find_rrset(qpz_search_t *search, qpznode_t *node,
 	match.header = found;
 	match.sigheader = foundsig;
 	if (found != NULL || foundsig != NULL) {
-		match.active = true;
 		match.result = DNS_R_BADDB;
 	}
 
@@ -3189,8 +3195,10 @@ qpzone_find_closest_nsec(qpz_search_t *search DNS__DB_FLARG) {
 
 		NODE_RDLOCK(nlock, &nlocktype);
 		/*
-		 * The auxiliary NSEC tree contains only NSEC owner names, so
-		 * activity for this scan is activity in the proof pair.
+		 * Candidates from the auxiliary NSEC tree contain only NSEC
+		 * owner names. The first predecessor check can still be a
+		 * normal-tree node, so proof.result, not proof.active, drives
+		 * whether an incomplete proof is BADDB.
 		 */
 		proof = qpz_node_find_rrset(search, node, typepair,
 					    true DNS__DB_FLARG_PASS);
@@ -3205,7 +3213,7 @@ qpzone_find_closest_nsec(qpz_search_t *search DNS__DB_FLARG) {
 			 * this is the case.
 			 */
 			return proof;
-		} else if (proof.active) {
+		} else if (proof.result != ISC_R_NOTFOUND) {
 			match.result = proof.result;
 			return match;
 		}
@@ -3329,8 +3337,8 @@ again:
 
 		NODE_RDLOCK(nlock, &nlocktype);
 		/*
-		 * The NSEC3 namespace contains only NSEC3 data, so activity
-		 * for this scan is activity in the proof pair.
+		 * The NSEC3 namespace contains only NSEC3 data; mismatched
+		 * NSEC3PARAM records are ignored after the scan.
 		 */
 		proof = qpz_node_find_rrset(search, node, typepair,
 					    is_secure_zone DNS__DB_FLARG_PASS);
@@ -3342,7 +3350,7 @@ again:
 
 		if (qpz_match_attached(&proof)) {
 			return proof;
-		} else if (proof.active) {
+		} else if (proof.result != ISC_R_NOTFOUND) {
 			match.result = proof.result;
 			return match;
 		}
