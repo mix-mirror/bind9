@@ -3160,25 +3160,27 @@ find_wildcard(qpz_search_t *search, qpznode_t **nodep, const dns_name_t *qname,
 }
 
 /*
- * Find the NSEC/NSEC3 which is at or before the name being sought.
- * For NSEC3 records only NSEC3 records that match the
- * current NSEC3PARAM record are considered.
+ * Find the NSEC which is at or before the name being sought.
  */
 static qpz_match_t
-qpzone_find_closest_nsec(qpz_search_t *search, bool use_nsec3_chain,
-			 bool is_secure_zone DNS__DB_FLARG) {
-	qpznode_t *node = NULL, *prevnode = NULL;
+qpz_search_closest_nsec(qpz_search_t *search DNS__DB_FLARG) {
+	qpznode_t *node = NULL;
 	dns_qpiter_t nseciter;
 	bool first_nsec = true;
-	bool wraps = use_nsec3_chain;
 	isc_result_t result;
 	qpz_match_t match = QPZ_MATCH_INIT;
-	dns_rdatatype_t matchtype = use_nsec3_chain ? dns_rdatatype_nsec3
-						    : dns_rdatatype_nsec;
-	dns_typepair_t typepair = DNS_TYPEPAIR(matchtype);
+	dns_typepair_t typepair = DNS_TYPEPAIR(dns_rdatatype_nsec);
 	dns_fixedname_t fname;
 	dns_name_t *name = dns_fixedname_initname(&fname);
 
+	/*
+	 * When a lookup is unsuccessful, the QP iterator will already
+	 * be pointing at the node preceding the searched-for name in
+	 * the normal namespace. We'll check there first, assuming it will
+	 * be right much of the time. If we don't find an NSEC there,
+	 * then we start using the auxiliary NSEC namespace to find
+	 * the next predecessor.
+	 */
 	result = dns_qpiter_current(&search->iter, (void **)&node, NULL);
 	if (result != ISC_R_SUCCESS) {
 		match.result = result;
@@ -3186,39 +3188,34 @@ qpzone_find_closest_nsec(qpz_search_t *search, bool use_nsec3_chain,
 	}
 	dns_name_copy(&node->name, name);
 
-again:
 	for (;;) {
 		isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 		isc_rwlock_t *nlock = qpzone_get_lock(node);
 		qpz_match_t proof = QPZ_MATCH_INIT;
 
 		NODE_RDLOCK(nlock, &nlocktype);
+		/*
+		 * Candidates from the auxiliary NSEC tree contain only NSEC
+		 * owner names. The first predecessor check can still be a
+		 * normal-tree node, so proof.result, not proof.active, drives
+		 * whether an incomplete proof is BADDB.
+		 */
 		proof = qpznode_find_rrset(node, search->version, typepair,
-					   is_secure_zone DNS__DB_FLARG_PASS);
-		if (use_nsec3_chain && proof.header != NULL &&
-		    !matchparams(proof.header, search->version))
-		{
-			qpz_match_release_unlocked(&proof DNS__DB_FLARG_PASS);
-		}
+					   true DNS__DB_FLARG_PASS);
 		NODE_UNLOCK(nlock, &nlocktype);
-
 		if (qpz_match_attached(&proof)) {
+			/*
+			 * We've found the right NSEC record.
+			 *
+			 * Note: for this to really be the right NSEC record,
+			 * it's essential that the NSEC records of any nodes
+			 * obscured by a zone cut have been removed; we assume
+			 * this is the case.
+			 */
 			return proof;
 		} else if (proof.result != ISC_R_NOTFOUND) {
 			match.result = proof.result;
 			return match;
-		}
-
-		if (use_nsec3_chain) {
-			result = dns_qpiter_prev(&search->iter,
-						 (void **)&prevnode, NULL);
-			if (result != ISC_R_SUCCESS) {
-				break;
-			}
-			dns_name_copy(&prevnode->name, name);
-			node = prevnode;
-			prevnode = NULL;
-			continue;
 		}
 
 		qpznode_t *nsec_node = NULL;
@@ -3291,7 +3288,7 @@ again:
 			{
 				isc_log_write(DNS_LOGCATEGORY_DATABASE,
 					      DNS_LOGMODULE_DB, ISC_LOG_ERROR,
-					      "qpzone_find_closest_nsec(): %s",
+					      "qpz_search_closest_nsec(): %s",
 					      isc_result_totext(result));
 				result = DNS_R_BADDB;
 				goto cleanup;
@@ -3300,6 +3297,73 @@ again:
 			CHECK(dns_qpiter_prev(&nseciter, (void **)&nsec_node,
 					      NULL));
 		}
+	}
+
+cleanup:
+	if (result == ISC_R_NOMORE) {
+		result = DNS_R_BADDB;
+	}
+
+	match.result = result;
+	return match;
+}
+
+/*
+ * Find the NSEC3 which is at or before the name being sought.
+ */
+static qpz_match_t
+qpz_search_closest_nsec3(qpz_search_t *search,
+			  bool is_secure_zone DNS__DB_FLARG) {
+	qpznode_t *node = NULL, *prevnode = NULL;
+	bool wraps = true;
+	isc_result_t result;
+	qpz_match_t match = QPZ_MATCH_INIT;
+	dns_typepair_t typepair = DNS_TYPEPAIR(dns_rdatatype_nsec3);
+	dns_fixedname_t fname;
+	dns_name_t *name = dns_fixedname_initname(&fname);
+
+	result = dns_qpiter_current(&search->iter, (void **)&node, NULL);
+	if (result != ISC_R_SUCCESS) {
+		match.result = result;
+		return match;
+	}
+	dns_name_copy(&node->name, name);
+
+again:
+	for (;;) {
+		isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
+		isc_rwlock_t *nlock = qpzone_get_lock(node);
+		qpz_match_t proof = QPZ_MATCH_INIT;
+
+		NODE_RDLOCK(nlock, &nlocktype);
+		/*
+		 * The NSEC3 namespace contains only NSEC3 data; mismatched
+		 * NSEC3PARAM records are ignored after the scan.
+		 */
+		proof = qpznode_find_rrset(node, search->version, typepair,
+					   is_secure_zone DNS__DB_FLARG_PASS);
+		if (proof.header != NULL &&
+		    !matchparams(proof.header, search->version))
+		{
+			qpz_match_release_unlocked(&proof DNS__DB_FLARG_PASS);
+		}
+		NODE_UNLOCK(nlock, &nlocktype);
+
+		if (qpz_match_attached(&proof)) {
+			return proof;
+		} else if (proof.result != ISC_R_NOTFOUND) {
+			match.result = proof.result;
+			return match;
+		}
+
+		result = dns_qpiter_prev(&search->iter, (void **)&prevnode,
+					 NULL);
+		if (result != ISC_R_SUCCESS) {
+			break;
+		}
+		dns_name_copy(&prevnode->name, name);
+		node = prevnode;
+		prevnode = NULL;
 	}
 
 	if (result == ISC_R_NOMORE && wraps) {
@@ -3311,10 +3375,9 @@ again:
 		}
 	}
 
-cleanup:
 	/*
 	 * If the result is ISC_R_NOMORE, then we got to the beginning of
-	 * the database and didn't find a NSEC/NSEC3 record.  This shouldn't
+	 * the database and didn't find a NSEC3 record.  This shouldn't
 	 * happen.
 	 */
 	if (result == ISC_R_NOMORE) {
@@ -3737,10 +3800,12 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 				       : active ? DNS_R_EMPTYNAME
 						: DNS_R_NXDOMAIN;
 
-	if (zone_uses_nsec || nsec3) {
-		nsec_match = qpzone_find_closest_nsec(
-			&search, nsec3_lookup,
-			is_secure_zone DNS__DB_FLARG_PASS);
+	if (nsec3_lookup) {
+		nsec_match = qpz_search_closest_nsec3(
+			&search, is_secure_zone DNS__DB_FLARG_PASS);
+	} else if (zone_uses_nsec) {
+		nsec_match =
+			qpz_search_closest_nsec(&search DNS__DB_FLARG_PASS);
 	} else {
 		result = negative_result;
 		dns_name_copy(wild ? name : &node->name, foundname);
