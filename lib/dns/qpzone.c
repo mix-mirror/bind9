@@ -2788,14 +2788,42 @@ qpz_match_attached(const qpz_match_t *match) {
 }
 
 static qpz_match_t
-qpz_match_make_nxrrset(qpznode_t *node DNS__DB_FLARG) {
-	/* The caller must hold the node lock. */
+qpz_match_bind(isc_result_t result, qpznode_t *node, dns_vecheader_t *header,
+	       dns_vecheader_t *sigheader DNS__DB_FLARG) {
 	qpz_match_t match = QPZ_MATCH_INIT;
+
+	INSIST(node != NULL);
+	INSIST(header != NULL);
+	INSIST(result == ISC_R_SUCCESS || result == DNS_R_CNAME ||
+	       result == DNS_R_DNAME || result == DNS_R_DELEGATION);
+
+	qpz_match_attach(&match, node DNS__DB_FLARG_PASS);
+	match.result = result;
+	match.header = header;
+	match.sigheader = sigheader;
+
+	return match;
+}
+
+static qpz_match_t
+qpz_match_bind_nxrrset(qpznode_t *node, dns_vecheader_t *header,
+		       dns_vecheader_t *sigheader DNS__DB_FLARG) {
+	qpz_match_t match = QPZ_MATCH_INIT;
+
+	INSIST(node != NULL);
 
 	qpz_match_attach(&match, node DNS__DB_FLARG_PASS);
 	match.result = DNS_R_NXRRSET;
+	match.header = header;
+	match.sigheader = sigheader;
 
 	return match;
+}
+
+static qpz_match_t
+qpz_match_make_nxrrset(qpznode_t *node DNS__DB_FLARG) {
+	/* The caller must hold the node lock. */
+	return qpz_match_bind_nxrrset(node, NULL, NULL DNS__DB_FLARG_PASS);
 }
 
 static qpz_match_t
@@ -3142,10 +3170,8 @@ qpzone_find_closest_nsec(qpz_search_t *search DNS__DB_FLARG) {
 			 * obscured by a zone cut have been removed; we assume
 			 * this is the case.
 			 */
-			qpz_match_attach(&match, node DNS__DB_FLARG_PASS);
-			match.header = found;
-			match.sigheader = foundsig;
-			match.result = ISC_R_SUCCESS;
+			match = qpz_match_bind(ISC_R_SUCCESS, node, found,
+					       foundsig DNS__DB_FLARG_PASS);
 			NODE_UNLOCK(nlock, &nlocktype);
 			return match;
 		} else if (!proof_missing) {
@@ -3299,10 +3325,8 @@ again:
 		} else if (found != NULL &&
 			   (foundsig != NULL || !is_secure_zone))
 		{
-			qpz_match_attach(&match, node DNS__DB_FLARG_PASS);
-			match.header = found;
-			match.sigheader = foundsig;
-			match.result = ISC_R_SUCCESS;
+			match = qpz_match_bind(ISC_R_SUCCESS, node, found,
+					       foundsig DNS__DB_FLARG_PASS);
 			NODE_UNLOCK(nlock, &nlocktype);
 			return match;
 		} else if (!proof_missing) {
@@ -3394,6 +3418,7 @@ qpzone_check_zonecut(qpz_search_t *search, qpznode_t *node,
 	/*
 	 * Did we find anything?
 	 */
+	dns_vecheader_t *foundsig = NULL;
 	if (!IS_STUB(search->qpdb) && ns_header != NULL) {
 		/*
 		 * Note that NS has precedence over DNAME if both exist
@@ -3402,19 +3427,16 @@ qpzone_check_zonecut(qpz_search_t *search, qpznode_t *node,
 		found = ns_header;
 	} else if (dname_header != NULL) {
 		found = dname_header;
-		match->sigheader = sigdname_header;
+		foundsig = sigdname_header;
 	} else if (ns_header != NULL) {
 		found = ns_header;
 	}
 
 	if (found != NULL) {
-		qpz_match_attach(match, node DNS__DB_FLARG_PASS);
-		match->header = found;
-		if (found == dname_header) {
-			match->result = DNS_R_DNAME;
-		} else {
-			match->result = DNS_R_DELEGATION;
-		}
+		isc_result_t result = found == dname_header ? DNS_R_DNAME
+							    : DNS_R_DELEGATION;
+		*match = qpz_match_bind(result, node, found,
+					foundsig DNS__DB_FLARG_PASS);
 	}
 }
 
@@ -3532,15 +3554,11 @@ qpzone_find_scan_node(qpz_search_t *search, qpznode_t *node,
 	}
 
 	if (answer != NULL) {
-		qpz_match_attach(match, node DNS__DB_FLARG_PASS);
-		match->header = answer;
-		match->sigheader = answersig;
-		match->result = ISC_R_SUCCESS;
+		*match = qpz_match_bind(ISC_R_SUCCESS, node, answer,
+					answersig DNS__DB_FLARG_PASS);
 	} else if (cname != NULL) {
-		qpz_match_attach(match, node DNS__DB_FLARG_PASS);
-		match->header = cname;
-		match->sigheader = cnamesig;
-		match->result = DNS_R_CNAME;
+		*match = qpz_match_bind(DNS_R_CNAME, node, cname,
+					cnamesig DNS__DB_FLARG_PASS);
 	} else if (!match->empty_node && !nsec3) {
 		if (search->version->secure == QPZ_SECURITY_NSEC &&
 		    (nsecheader == NULL || nsecsig == NULL))
@@ -3548,10 +3566,8 @@ qpzone_find_scan_node(qpz_search_t *search, qpznode_t *node,
 			match->result = DNS_R_BADDB;
 			return;
 		}
-		qpz_match_attach(match, node DNS__DB_FLARG_PASS);
-		match->header = nsecheader;
-		match->sigheader = nsecsig;
-		match->result = DNS_R_NXRRSET;
+		*match = qpz_match_bind_nxrrset(
+			node, nsecheader, nsecsig DNS__DB_FLARG_PASS);
 	}
 }
 
