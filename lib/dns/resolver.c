@@ -10862,6 +10862,8 @@ dns_resolver_createfetch(dns_resolver_t *res, const dns_name_t *name,
 
 	UNUSED(forwarders);
 
+	options |= DNS_FETCHOPT_TCP;
+
 	REQUIRE(VALID_RESOLVER(res));
 	REQUIRE(res->frozen);
 	/* XXXRTH  Check for meta type */
