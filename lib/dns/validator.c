@@ -1265,6 +1265,10 @@ create_fetch(dns_validator_t *val, dns_name_t *name, dns_rdatatype_t type,
 		fopts |= DNS_FETCHOPT_NONTA;
 	}
 
+	if (type == dns_rdatatype_dnskey) {
+		fopts |= DNS_FETCHOPT_TCP;
+	}
+
 	validator_logcreate(val, name, type, caller, "fetch");
 
 	dns_validator_ref(val);
