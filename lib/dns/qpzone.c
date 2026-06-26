@@ -3170,8 +3170,6 @@ qpz_search_closest_nsec(qpz_search_t *search DNS__DB_FLARG) {
 	isc_result_t result;
 	qpz_match_t match = QPZ_MATCH_INIT;
 	dns_typepair_t typepair = DNS_TYPEPAIR(dns_rdatatype_nsec);
-	dns_fixedname_t fname;
-	dns_name_t *name = dns_fixedname_initname(&fname);
 
 	/*
 	 * When a lookup is unsuccessful, the QP iterator will already
@@ -3186,7 +3184,13 @@ qpz_search_closest_nsec(qpz_search_t *search DNS__DB_FLARG) {
 		match.result = result;
 		return match;
 	}
-	dns_name_copy(&node->name, name);
+	/*
+	 * Nodes reached via search->qpr are protected until
+	 * dns_qpread_destroy() closes the QP reader; this also covers the
+	 * nsec_node and normal_node pointers returned below. Node names are
+	 * immutable, so a borrowed name pointer is sufficient here.
+	 */
+	const dns_name_t *candidate_name = &node->name;
 
 	for (;;) {
 		isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
@@ -3221,11 +3225,11 @@ qpz_search_closest_nsec(qpz_search_t *search DNS__DB_FLARG) {
 		qpznode_t *nsec_node = NULL;
 		if (first_nsec) {
 			/*
-			 * This is the first attempt to find 'name' in the
-			 * NSEC namespace.
+			 * This is the first attempt to find candidate_name
+			 * in the NSEC namespace.
 			 */
 			first_nsec = false;
-			result = dns_qp_lookup(&search->qpr, name,
+			result = dns_qp_lookup(&search->qpr, candidate_name,
 					       DNS_DBNAMESPACE_NSEC, &nseciter,
 					       NULL, NULL, NULL);
 
@@ -3272,7 +3276,6 @@ qpz_search_closest_nsec(qpz_search_t *search DNS__DB_FLARG) {
 					       &search->iter, &search->chain,
 					       (void **)&normal_node, NULL);
 			if (result == ISC_R_SUCCESS) {
-				dns_name_copy(&nsec_node->name, name);
 				node = normal_node;
 				break;
 			}
