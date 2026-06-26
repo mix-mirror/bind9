@@ -3319,15 +3319,12 @@ qpz_search_closest_nsec3(qpz_search_t *search,
 	isc_result_t result;
 	qpz_match_t match = QPZ_MATCH_INIT;
 	dns_typepair_t typepair = DNS_TYPEPAIR(dns_rdatatype_nsec3);
-	dns_fixedname_t fname;
-	dns_name_t *name = dns_fixedname_initname(&fname);
 
 	result = dns_qpiter_current(&search->iter, (void **)&node, NULL);
 	if (result != ISC_R_SUCCESS) {
 		match.result = result;
 		return match;
 	}
-	dns_name_copy(&node->name, name);
 
 again:
 	for (;;) {
@@ -3361,7 +3358,6 @@ again:
 		if (result != ISC_R_SUCCESS) {
 			break;
 		}
-		dns_name_copy(&prevnode->name, name);
 		node = prevnode;
 		prevnode = NULL;
 	}
@@ -3369,7 +3365,6 @@ again:
 	if (result == ISC_R_NOMORE && wraps) {
 		result = dns_qpiter_prev(&search->iter, (void **)&node, NULL);
 		if (result == ISC_R_SUCCESS) {
-			dns_name_copy(&node->name, name);
 			wraps = false;
 			goto again;
 		}
