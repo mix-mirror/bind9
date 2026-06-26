@@ -1174,12 +1174,8 @@ unref:
 }
 
 static void
-bindrdataset(qpzonedb_t *qpdb, dns_vecheader_t *header,
-	     dns_rdataset_t *rdataset DNS__DB_FLARG) {
-	if (rdataset == NULL) {
-		return;
-	}
-
+bindrdataset_header(qpzonedb_t *qpdb, dns_vecheader_t *header,
+		    dns_rdataset_t *rdataset DNS__DB_FLARG) {
 	INSIST(rdataset->methods == NULL); /* We must be disassociated. */
 
 	rdataset->methods = &dns_rdatavec_rdatasetmethods;
@@ -1194,7 +1190,6 @@ bindrdataset(qpzonedb_t *qpdb, dns_vecheader_t *header,
 	}
 
 	rdataset->vec.header = header;
-	dns_vecheader_ref(header);
 	rdataset->vec.iter.iter_pos = NULL;
 	rdataset->vec.iter.iter_count = 0;
 
@@ -1211,6 +1206,28 @@ bindrdataset(qpzonedb_t *qpdb, dns_vecheader_t *header,
 	} else {
 		rdataset->resign = 0;
 	}
+}
+
+static void
+bindrdataset(qpzonedb_t *qpdb, dns_vecheader_t *header,
+	     dns_rdataset_t *rdataset DNS__DB_FLARG) {
+	if (rdataset == NULL) {
+		return;
+	}
+
+	bindrdataset_header(qpdb, header, rdataset DNS__DB_FLARG_PASS);
+	dns_vecheader_ref(header);
+}
+
+static void
+bindrdataset_move_header(qpzonedb_t *qpdb, dns_vecheader_t **headerp,
+			 dns_rdataset_t *rdataset DNS__DB_FLARG) {
+	if (*headerp == NULL || rdataset == NULL) {
+		return;
+	}
+
+	bindrdataset_header(qpdb, *headerp, rdataset DNS__DB_FLARG_PASS);
+	rdataset->vec.header = MOVE_OWNERSHIP(*headerp);
 }
 
 static bool
@@ -2755,27 +2772,57 @@ matchparams(dns_vecheader_t *header, qpz_version_t *version) {
 }
 
 static void
+qpz_match_set_header(qpz_match_t *match, dns_vecheader_t *header,
+		     dns_vecheader_t *sigheader) {
+	INSIST(match->header == NULL);
+	INSIST(match->sigheader == NULL);
+
+	if (header != NULL) {
+		dns_vecheader_ref(header);
+	}
+	if (sigheader != NULL) {
+		dns_vecheader_ref(sigheader);
+	}
+	match->header = header;
+	match->sigheader = sigheader;
+}
+
+static void
+qpz_match_release_header(qpz_match_t *match) {
+	if (match->header != NULL) {
+		dns_vecheader_unref(match->header);
+	}
+	if (match->sigheader != NULL) {
+		dns_vecheader_unref(match->sigheader);
+	}
+	match->header = NULL;
+	match->sigheader = NULL;
+}
+
+static void
 qpz_match_release(qpz_match_t *match DNS__DB_FLARG) {
 	qpznode_t *node = NULL;
 	isc_rwlock_t *nlock = NULL;
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 
-	if (match->node == NULL) {
-		return;
+	qpz_match_release_header(match);
+
+	if (match->node != NULL) {
+		node = match->node;
+		nlock = qpzone_get_lock(node);
+
+		NODE_RDLOCK(nlock, &nlocktype);
+		(void)qpznode_release(node DNS__DB_FLARG_PASS);
+		NODE_UNLOCK(nlock, &nlocktype);
 	}
-
-	node = match->node;
-	nlock = qpzone_get_lock(node);
-
-	NODE_RDLOCK(nlock, &nlocktype);
-	(void)qpznode_release(node DNS__DB_FLARG_PASS);
-	NODE_UNLOCK(nlock, &nlocktype);
 
 	*match = QPZ_MATCH_INIT;
 }
 
 static void
 qpz_match_release_unlocked(qpz_match_t *match DNS__DB_FLARG) {
+	qpz_match_release_header(match);
+
 	/* The caller must hold the node lock if match is attached. */
 	if (match->node != NULL) {
 		(void)qpznode_release(match->node DNS__DB_FLARG_PASS);
@@ -2785,16 +2832,28 @@ qpz_match_release_unlocked(qpz_match_t *match DNS__DB_FLARG) {
 }
 
 static void
-qpz_match_attach(qpz_match_t *match, qpznode_t *node DNS__DB_FLARG) {
+qpz_match_attach(qpz_match_t *match, qpznode_t *node, dns_vecheader_t *header,
+		 dns_vecheader_t *sigheader DNS__DB_FLARG) {
 	INSIST(match->node == NULL);
 
 	qpznode_acquire(node DNS__DB_FLARG_PASS);
 	match->node = node;
+	qpz_match_set_header(match, header, sigheader);
 }
 
 static bool
 qpz_match_attached(const qpz_match_t *match) {
 	return match->node != NULL;
+}
+
+static void
+qpz_match_unpack_header(qpz_match_t *match, qpzonedb_t *qpdb,
+			dns_rdataset_t *rdataset,
+			dns_rdataset_t *sigrdataset DNS__DB_FLARG) {
+	bindrdataset_move_header(qpdb, &match->header,
+				 rdataset DNS__DB_FLARG_PASS);
+	bindrdataset_move_header(qpdb, &match->sigheader,
+				 sigrdataset DNS__DB_FLARG_PASS);
 }
 
 static qpz_match_t
@@ -2807,10 +2866,8 @@ qpz_match_bind(isc_result_t result, qpznode_t *node, dns_vecheader_t *header,
 	INSIST(result == ISC_R_SUCCESS || result == DNS_R_CNAME ||
 	       result == DNS_R_DNAME || result == DNS_R_DELEGATION);
 
-	qpz_match_attach(&match, node DNS__DB_FLARG_PASS);
+	qpz_match_attach(&match, node, header, sigheader DNS__DB_FLARG_PASS);
 	match.result = result;
-	match.header = header;
-	match.sigheader = sigheader;
 	match.active = true;
 
 	return match;
@@ -2823,10 +2880,8 @@ qpz_match_bind_nxrrset(qpznode_t *node, dns_vecheader_t *header,
 
 	INSIST(node != NULL);
 
-	qpz_match_attach(&match, node DNS__DB_FLARG_PASS);
+	qpz_match_attach(&match, node, header, sigheader DNS__DB_FLARG_PASS);
 	match.result = DNS_R_NXRRSET;
-	match.header = header;
-	match.sigheader = sigheader;
 	match.active = true;
 
 	return match;
@@ -2868,8 +2923,7 @@ qpznode_find_rrset(qpznode_t *node, qpz_version_t *version,
 				      foundsig DNS__DB_FLARG_PASS);
 	}
 
-	match.header = found;
-	match.sigheader = foundsig;
+	qpz_match_set_header(&match, found, foundsig);
 	if (found != NULL || foundsig != NULL) {
 		match.result = DNS_R_BADDB;
 	}
@@ -2886,12 +2940,11 @@ qpz_match_coalesce(qpz_match_t *primary, qpz_match_t *fallback DNS__DB_FLARG) {
 		selected = *primary;
 		*primary = QPZ_MATCH_INIT;
 		qpz_match_release(fallback DNS__DB_FLARG_PASS);
-		*fallback = QPZ_MATCH_INIT;
 		return selected;
 	}
 
 	selected = *fallback;
-	*primary = QPZ_MATCH_INIT;
+	qpz_match_release(primary DNS__DB_FLARG_PASS);
 	*fallback = QPZ_MATCH_INIT;
 	return selected;
 }
@@ -3215,6 +3268,7 @@ qpz_search_closest_nsec(qpz_search_t *search DNS__DB_FLARG) {
 			return proof;
 		} else if (proof.result != ISC_R_NOTFOUND) {
 			match.result = proof.result;
+			qpz_match_release(&proof DNS__DB_FLARG_PASS);
 			return match;
 		}
 
@@ -3353,6 +3407,7 @@ again:
 			return proof;
 		} else if (proof.result != ISC_R_NOTFOUND) {
 			match.result = proof.result;
+			qpz_match_release(&proof DNS__DB_FLARG_PASS);
 			return match;
 		}
 
@@ -3851,12 +3906,8 @@ finalize_node:
 	}
 
 	if (selected_match.header != NULL && should_bind) {
-		bindrdataset(search.qpdb, selected_match.header,
-			     rdataset DNS__DB_FLARG_PASS);
-		if (selected_match.sigheader != NULL) {
-			bindrdataset(search.qpdb, selected_match.sigheader,
-				     sigrdataset DNS__DB_FLARG_PASS);
-		}
+		qpz_match_unpack_header(&selected_match, search.qpdb, rdataset,
+					sigrdataset DNS__DB_FLARG_PASS);
 	}
 
 	NODE_UNLOCK(nlock, &nlocktype);
