@@ -2720,24 +2720,24 @@ qpzone_findnsec3node(dns_db_t *db, const dns_name_t *name, bool create,
 }
 
 static bool
-matchparams(dns_vecheader_t *header, qpz_search_t *search) {
+matchparams(dns_vecheader_t *header, qpz_version_t *version) {
 	dns_rdata_nsec3_t nsec3;
 	isc_result_t result;
 
 	REQUIRE(header->typepair == DNS_TYPEPAIR(dns_rdatatype_nsec3));
 
 	rdatavec_iter_t iter;
-	DNS_VECHEADER_FOREACH(&iter, header, search->qpdb->common.rdclass) {
+	DNS_VECHEADER_FOREACH(&iter, header, version->qpdb->common.rdclass) {
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		vecheader_current(&iter, &rdata);
 
 		result = dns_rdata_tostruct(&rdata, &nsec3, NULL);
 		INSIST(result == ISC_R_SUCCESS);
 
-		if (nsec3.hash == search->version->hash &&
-		    nsec3.iterations == search->version->iterations &&
-		    nsec3.salt.length == search->version->salt_length &&
-		    memcmp(nsec3.salt.base, search->version->salt,
+		if (nsec3.hash == version->hash &&
+		    nsec3.iterations == version->iterations &&
+		    nsec3.salt.length == version->salt_length &&
+		    memcmp(nsec3.salt.base, version->salt,
 			   nsec3.salt.length) == 0)
 		{
 			return true;
@@ -3235,7 +3235,7 @@ again:
 			    search->version->secure == QPZ_SECURITY_NSEC3 &&
 			    found->typepair ==
 				    DNS_TYPEPAIR(dns_rdatatype_nsec3) &&
-			    !matchparams(found, search))
+			    !matchparams(found, search->version))
 			{
 				empty_node = true;
 				found = NULL;
@@ -3714,7 +3714,7 @@ found:
 			 */
 			if (top->typepair ==
 				    DNS_TYPEPAIR(dns_rdatatype_nsec3) &&
-			    !matchparams(header, &search))
+			    !matchparams(header, search.version))
 			{
 				NODE_UNLOCK(nlock, &nlocktype);
 				goto partial_match;
