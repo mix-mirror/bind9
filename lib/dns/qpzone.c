@@ -2801,33 +2801,13 @@ qpz_match_release_header(qpz_match_t *match) {
 
 static void
 qpz_match_release(qpz_match_t *match DNS__DB_FLARG) {
-	qpznode_t *node = NULL;
-	isc_rwlock_t *nlock = NULL;
-	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
-
 	qpz_match_release_header(match);
-
-	if (match->node != NULL) {
-		node = match->node;
-		nlock = qpzone_get_lock(node);
-
-		NODE_RDLOCK(nlock, &nlocktype);
-		(void)qpznode_release(node DNS__DB_FLARG_PASS);
-		NODE_UNLOCK(nlock, &nlocktype);
-	}
-
 	*match = QPZ_MATCH_INIT;
 }
 
 static void
 qpz_match_release_unlocked(qpz_match_t *match DNS__DB_FLARG) {
 	qpz_match_release_header(match);
-
-	/* The caller must hold the node lock if match is attached. */
-	if (match->node != NULL) {
-		(void)qpznode_release(match->node DNS__DB_FLARG_PASS);
-	}
-
 	*match = QPZ_MATCH_INIT;
 }
 
@@ -2836,7 +2816,7 @@ qpz_match_attach(qpz_match_t *match, qpznode_t *node, dns_vecheader_t *header,
 		 dns_vecheader_t *sigheader DNS__DB_FLARG) {
 	INSIST(match->node == NULL);
 
-	qpznode_acquire(node DNS__DB_FLARG_PASS);
+	/* The node is borrowed from the active QP reader. */
 	match->node = node;
 	qpz_match_set_header(match, header, sigheader);
 }
@@ -3880,9 +3860,6 @@ finalize_node:
 	node = selected_match.node;
 	INSIST(node != NULL);
 
-	nlock = qpzone_get_lock(node);
-	NODE_RDLOCK(nlock, &nlocktype);
-
 	/*
 	 * If we didn't find what we were looking for...
 	 */
@@ -3902,15 +3879,18 @@ finalize_node:
 	foundname->attributes.wildcard = selected_match.wild;
 
 	if (nodep != NULL) {
-		*nodep = (dns_dbnode_t *)MOVE_OWNERSHIP(selected_match.node);
+		nlock = qpzone_get_lock(node);
+		NODE_RDLOCK(nlock, &nlocktype);
+		qpznode_acquire(node DNS__DB_FLARG_PASS);
+		NODE_UNLOCK(nlock, &nlocktype);
+
+		*nodep = (dns_dbnode_t *)node;
 	}
 
 	if (selected_match.header != NULL && should_bind) {
 		qpz_match_unpack_header(&selected_match, search.qpdb, rdataset,
 					sigrdataset DNS__DB_FLARG_PASS);
 	}
-
-	NODE_UNLOCK(nlock, &nlocktype);
 
 tree_exit:
 	dns_qpread_destroy(qpdb->tree, &search.qpr);
