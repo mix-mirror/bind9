@@ -5555,6 +5555,7 @@ query_lookup(query_ctx_t *qctx) {
 	bool stale_found = false;
 	bool stale_refresh_window = false;
 	uint16_t ede = 0;
+	dns_dbnode_t **nodep = NULL;
 
 	CCTRACE(ISC_LOG_DEBUG(3), "query_lookup");
 
@@ -5611,8 +5612,14 @@ query_lookup(query_ctx_t *qctx) {
 		dboptions |= DNS_DBFIND_COVERINGNSEC;
 	}
 
+	if (qctx->type == dns_rdatatype_any || qctx->dns64 || qctx->rpz ||
+	    qctx->findcoveringnsec)
+	{
+		nodep = &qctx->node;
+	}
+
 	result = dns_db_findext(qctx->db, rpzqname, qctx->version, qctx->type,
-				dboptions, qctx->client->inner.now, &qctx->node,
+				dboptions, qctx->client->inner.now, nodep,
 				qctx->fname, &cm, &ci, qctx->rdataset,
 				qctx->sigrdataset);
 
@@ -7775,7 +7782,9 @@ query_respond(query_ctx_t *qctx) {
 		qctx->client->query.dns64_sigaaaa =
 			MOVE_OWNERSHIP(qctx->sigrdataset);
 		ns_client_releasename(qctx->client, &qctx->fname);
-		dns_db_detachnode(&qctx->node);
+		if (qctx->node != NULL) {
+			dns_db_detachnode(&qctx->node);
+		}
 		qctx->type = qctx->qtype = dns_rdatatype_a;
 		qctx->dns64_exclude = qctx->dns64 = true;
 
@@ -8381,7 +8390,9 @@ query_delegation(query_ctx_t *qctx) {
 		}
 		qctx->version = NULL;
 
-		dns_db_detachnode(&qctx->node);
+		if (qctx->node != NULL) {
+			dns_db_detachnode(&qctx->node);
+		}
 		dns_db_detach(&qctx->db);
 		qctx->db = MOVE_OWNERSHIP(qctx->zdb);
 		qctx->node = MOVE_OWNERSHIP(qctx->znode);
@@ -8517,6 +8528,9 @@ query_addds(query_ctx_t *qctx) {
 	 * DS not needed.
 	 */
 	if (!WANTDNSSEC(client)) {
+		return;
+	}
+	if (qctx->node == NULL) {
 		return;
 	}
 
@@ -8711,7 +8725,9 @@ query_nodata(query_ctx_t *qctx, isc_result_t res) {
 		qctx->client->query.dns64_sigaaaa =
 			MOVE_OWNERSHIP(qctx->sigrdataset);
 		ns_client_releasename(qctx->client, &qctx->fname);
-		dns_db_detachnode(&qctx->node);
+		if (qctx->node != NULL) {
+			dns_db_detachnode(&qctx->node);
+		}
 		qctx->type = qctx->qtype = dns_rdatatype_a;
 		qctx->dns64 = true;
 		return query_lookup(qctx);
