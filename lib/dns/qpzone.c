@@ -3610,11 +3610,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	bool wild = false;
 	bool nsec3 = false;
 	qpz_match_t selected_match = QPZ_MATCH_INIT;
-	qpz_match_t exact_match = QPZ_MATCH_INIT;
 	qpz_match_t zonecut_match = QPZ_MATCH_INIT;
-	qpz_match_t wild_match = QPZ_MATCH_INIT;
-	qpz_match_t nsec_match = QPZ_MATCH_INIT;
-	qpz_match_t nxrrset_match = QPZ_MATCH_INIT;
 	bool active;
 	isc_rwlock_t *nlock = NULL;
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
@@ -3681,7 +3677,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	     i < clen && !qpz_match_attached(&zonecut_match); i++)
 	{
 		qpznode_t *n = NULL;
-		qpz_match_t candidate_zonecut = QPZ_MATCH_INIT;
+		qpz_match_t candidate_zonecut;
 
 		dns_qpchain_node(&search.chain, i, (void **)&n, NULL);
 		nlock = qpzone_get_lock(n);
@@ -3705,6 +3701,8 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	bool no_ancestor_zonecut = !qpz_match_attached(&zonecut_match);
 
 	if (lookup_result == ISC_R_SUCCESS && (no_ancestor_zonecut || glueok)) {
+		qpz_match_t exact_match;
+
 		nlock = qpzone_get_lock(exact_node);
 		NODE_RDLOCK(nlock, &nlocktype);
 		exact_match = qpznode_find_answer(exact_node, search.version,
@@ -3718,20 +3716,23 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 				true DNS__DB_FLARG_PASS);
 		}
 		NODE_UNLOCK(nlock, &nlocktype);
-	}
 
-	bool exact_wins_zonecut = exact_match.result == ISC_R_SUCCESS && glueok;
+		bool exact_wins_zonecut = exact_match.result == ISC_R_SUCCESS &&
+					   glueok;
 
-	if (exact_wins_zonecut) {
-		exact_match.glue = zonecut_match.node != NULL;
-		exact_match.exact_zonecut = exact_match.glue &&
-					    zonecut_match.node ==
-						    exact_match.node;
-		selected_match = qpz_match_coalesce(
-			&exact_match, &zonecut_match DNS__DB_FLARG_PASS);
+		if (exact_wins_zonecut) {
+			exact_match.glue = zonecut_match.node != NULL;
+			exact_match.exact_zonecut = exact_match.glue &&
+						    zonecut_match.node ==
+							    exact_match.node;
+			selected_match = qpz_match_coalesce(
+				&exact_match, &zonecut_match DNS__DB_FLARG_PASS);
+		} else {
+			selected_match = qpz_match_coalesce(
+				&zonecut_match, &exact_match DNS__DB_FLARG_PASS);
+		}
 	} else {
-		selected_match = qpz_match_coalesce(
-			&zonecut_match, &exact_match DNS__DB_FLARG_PASS);
+		selected_match = qpz_match_move(&zonecut_match);
 	}
 	if (qpz_match_attached(&selected_match)) {
 		goto finalize_node;
@@ -3749,25 +3750,35 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		 */
 		result = find_wildcard(&search, &node, name, nspace);
 		if (result == ISC_R_SUCCESS) {
-			nlock = qpzone_get_lock(node);
-			NODE_RDLOCK(nlock, &nlocktype);
-			wild_match = qpznode_find_answer(
-				node, search.version, type,
-				nsec3 DNS__DB_FLARG_PASS);
-			nxrrset_match =
-				qpz_match_make_nxrrset(node DNS__DB_FLARG_PASS);
-			NODE_UNLOCK(nlock, &nlocktype);
+			qpz_match_t wild_match;
 
 			if (!zone_uses_nsec) {
+				nlock = qpzone_get_lock(node);
+				NODE_RDLOCK(nlock, &nlocktype);
+				wild_match = qpznode_find_answer(
+					node, search.version, type,
+					nsec3 DNS__DB_FLARG_PASS);
+				qpz_match_t nxrrset_match = qpz_match_make_nxrrset(
+					node DNS__DB_FLARG_PASS);
+				NODE_UNLOCK(nlock, &nlocktype);
+
 				wild_match = qpz_match_coalesce(
 					&wild_match,
 					&nxrrset_match DNS__DB_FLARG_PASS);
+			} else {
+				nlock = qpzone_get_lock(node);
+				NODE_RDLOCK(nlock, &nlocktype);
+				wild_match = qpznode_find_answer(
+					node, search.version, type,
+					nsec3 DNS__DB_FLARG_PASS);
+				NODE_UNLOCK(nlock, &nlocktype);
 			}
 
 			if (!wild_match.active) {
 				wild = true;
 			} else if (wild_match.result == DNS_R_BADDB) {
 				result = wild_match.result;
+				qpz_match_release(&wild_match DNS__DB_FLARG_PASS);
 				goto tree_exit;
 			} else {
 				INSIST(qpz_match_attached(&wild_match));
@@ -3800,26 +3811,28 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 				       : active ? DNS_R_EMPTYNAME
 						: DNS_R_NXDOMAIN;
 
-	if (nsec3_lookup) {
-		nsec_match = qpz_search_closest_nsec3(
-			&search, is_secure_zone DNS__DB_FLARG_PASS);
-	} else if (zone_uses_nsec) {
-		nsec_match =
-			qpz_search_closest_nsec(&search DNS__DB_FLARG_PASS);
+	if (nsec3_lookup || zone_uses_nsec) {
+		qpz_match_t nsec_match =
+			nsec3_lookup
+				? qpz_search_closest_nsec3(
+					  &search, is_secure_zone DNS__DB_FLARG_PASS)
+				: qpz_search_closest_nsec(
+					  &search DNS__DB_FLARG_PASS);
+
+		if (nsec_match.result == ISC_R_SUCCESS) {
+			INSIST(qpz_match_attached(&nsec_match));
+			nsec_match.result = negative_result;
+			selected_match = qpz_match_move(&nsec_match);
+			goto finalize_node;
+		}
+		result = nsec_match.result;
+		qpz_match_release(&nsec_match DNS__DB_FLARG_PASS);
+		goto tree_exit;
 	} else {
 		result = negative_result;
 		dns_name_copy(wild ? name : &node->name, foundname);
 		goto tree_exit;
 	}
-
-	if (nsec_match.result == ISC_R_SUCCESS) {
-		INSIST(qpz_match_attached(&nsec_match));
-		nsec_match.result = negative_result;
-		selected_match = qpz_match_move(&nsec_match);
-		goto finalize_node;
-	}
-	result = nsec_match.result;
-	goto tree_exit;
 
 finalize_node:
 	node = selected_match.node;
@@ -3868,11 +3881,7 @@ tree_exit:
 	 * If we found a zonecut but aren't going to use it, we have to
 	 * let go of it.
 	 */
-	qpz_match_release(&exact_match DNS__DB_FLARG_PASS);
-	qpz_match_release(&wild_match DNS__DB_FLARG_PASS);
-	qpz_match_release(&nsec_match DNS__DB_FLARG_PASS);
 	qpz_match_release(&zonecut_match DNS__DB_FLARG_PASS);
-	qpz_match_release(&nxrrset_match DNS__DB_FLARG_PASS);
 	qpz_match_release(&selected_match DNS__DB_FLARG_PASS);
 
 	if (close_version) {
