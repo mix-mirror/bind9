@@ -2727,24 +2727,24 @@ qpzone_findnsec3node(dns_db_t *db, const dns_name_t *name, bool create,
 }
 
 static bool
-matchparams(dns_vecheader_t *header, qpz_version_t *version) {
+matchparams(dns_vecheader_t *header, qpz_search_t *search) {
 	dns_rdata_nsec3_t nsec3;
 	isc_result_t result;
 
 	REQUIRE(header->typepair == DNS_TYPEPAIR(dns_rdatatype_nsec3));
 
 	rdatavec_iter_t iter;
-	DNS_VECHEADER_FOREACH(&iter, header, version->qpdb->common.rdclass) {
+	DNS_VECHEADER_FOREACH(&iter, header, search->qpdb->common.rdclass) {
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		vecheader_current(&iter, &rdata);
 
 		result = dns_rdata_tostruct(&rdata, &nsec3, NULL);
 		INSIST(result == ISC_R_SUCCESS);
 
-		if (nsec3.hash == version->hash &&
-		    nsec3.iterations == version->iterations &&
-		    nsec3.salt.length == version->salt_length &&
-		    memcmp(nsec3.salt.base, version->salt,
+		if (nsec3.hash == search->version->hash &&
+		    nsec3.iterations == search->version->iterations &&
+		    nsec3.salt.length == search->version->salt_length &&
+		    memcmp(nsec3.salt.base, search->version->salt,
 			   nsec3.salt.length) == 0)
 		{
 			return true;
@@ -2839,7 +2839,7 @@ qpz_match_make_nxrrset(qpznode_t *node DNS__DB_FLARG) {
 }
 
 static qpz_match_t
-qpznode_find_rrset(qpznode_t *node, qpz_version_t *version,
+qpznode_find_rrset(qpz_search_t *search, qpznode_t *node,
 		   dns_typepair_t typepair, bool require_sig DNS__DB_FLARG) {
 	qpz_match_t match = QPZ_MATCH_INIT;
 	dns_vecheader_t *found = NULL, *foundsig = NULL;
@@ -2847,7 +2847,7 @@ qpznode_find_rrset(qpznode_t *node, qpz_version_t *version,
 
 	ISC_SLIST_FOREACH(top, node->next_type, next_type) {
 		dns_vecheader_t *header = first_existing_header(
-			top, version->serial);
+			top, search->serial);
 		if (header == NULL) {
 			continue;
 		}
@@ -3200,7 +3200,7 @@ qpz_search_closest_nsec(qpz_search_t *search DNS__DB_FLARG) {
 		 * normal-tree node, so proof.result, not proof.active, drives
 		 * whether an incomplete proof is BADDB.
 		 */
-		proof = qpznode_find_rrset(node, search->version, typepair,
+		proof = qpznode_find_rrset(search, node, typepair,
 					   true DNS__DB_FLARG_PASS);
 		NODE_UNLOCK(nlock, &nlocktype);
 		if (qpz_match_attached(&proof)) {
@@ -3340,10 +3340,10 @@ again:
 		 * The NSEC3 namespace contains only NSEC3 data; mismatched
 		 * NSEC3PARAM records are ignored after the scan.
 		 */
-		proof = qpznode_find_rrset(node, search->version, typepair,
+		proof = qpznode_find_rrset(search, node, typepair,
 					   is_secure_zone DNS__DB_FLARG_PASS);
 		if (proof.header != NULL &&
-		    !matchparams(proof.header, search->version))
+		    !matchparams(proof.header, search))
 		{
 			qpz_match_release_unlocked(&proof DNS__DB_FLARG_PASS);
 		}
@@ -3389,7 +3389,7 @@ again:
 }
 
 static void
-qpznode_find_zonecut(qpznode_t *node, qpz_version_t *version,
+qpznode_find_zonecut(qpz_search_t *search, qpznode_t *node,
 		     dns_rdatatype_t type, bool exact,
 		     qpz_match_t *match DNS__DB_FLARG) {
 	dns_vecheader_t *dname_header = NULL, *sigdname_header = NULL;
@@ -3399,12 +3399,12 @@ qpznode_find_zonecut(qpznode_t *node, qpz_version_t *version,
 
 	*match = QPZ_MATCH_INIT;
 	if (exact) {
-		maybe_zonecut = (node != version->qpdb->origin &&
+		maybe_zonecut = (node != search->qpdb->origin &&
 				 !dns_rdatatype_atparent(type)) ||
-				IS_STUB(version->qpdb);
+				IS_STUB(search->qpdb);
 	} else {
-		maybe_zonecut = node != version->qpdb->origin ||
-				IS_STUB(version->qpdb);
+		maybe_zonecut = node != search->qpdb->origin ||
+				IS_STUB(search->qpdb);
 	}
 
 	/*
@@ -3418,7 +3418,7 @@ qpznode_find_zonecut(qpznode_t *node, qpz_version_t *version,
 		      top->typepair == DNS_SIGTYPEPAIR(dns_rdatatype_dname))))
 		{
 			dns_vecheader_t *header =
-				first_existing_header(top, version->serial);
+				first_existing_header(top, search->serial);
 			if (header != NULL) {
 				if (top->typepair ==
 				    DNS_TYPEPAIR(dns_rdatatype_dname))
@@ -3439,7 +3439,7 @@ qpznode_find_zonecut(qpznode_t *node, qpz_version_t *version,
 	 * Did we find anything?
 	 */
 	dns_vecheader_t *foundsig = NULL;
-	if (!IS_STUB(version->qpdb) && ns_header != NULL) {
+	if (!IS_STUB(search->qpdb) && ns_header != NULL) {
 		/*
 		 * Note that NS has precedence over DNAME if both exist
 		 * in a zone.  Otherwise DNAME take precedence over NS.
@@ -3482,7 +3482,7 @@ qpz_search_init(qpz_search_t *search, qpzonedb_t *db, qpz_version_t *version,
 }
 
 static void
-qpznode_find_answer(qpznode_t *node, qpz_version_t *version,
+qpznode_find_answer(qpz_search_t *search, qpznode_t *node,
 		    dns_rdatatype_t type, bool force_nsec3,
 		    qpz_match_t *match DNS__DB_FLARG) {
 	dns_vecheader_t *answer = NULL, *answersig = NULL;
@@ -3498,7 +3498,7 @@ qpznode_find_answer(qpznode_t *node, qpz_version_t *version,
 		 * Look for an active, extant rdataset.
 		 */
 		dns_vecheader_t *header = first_existing_header(top,
-								version->serial);
+								search->serial);
 		if (header == NULL) {
 			continue;
 		}
@@ -3508,7 +3508,7 @@ qpznode_find_answer(qpznode_t *node, qpz_version_t *version,
 		 * behave as if it isn't here.
 		 */
 		if (top->typepair == DNS_TYPEPAIR(dns_rdatatype_nsec3) &&
-		    !matchparams(header, version))
+		    !matchparams(header, search))
 		{
 			continue;
 		}
@@ -3559,13 +3559,13 @@ qpznode_find_answer(qpznode_t *node, qpz_version_t *version,
 			cnamesig = header;
 		} else if (!force_nsec3 &&
 			   top->typepair == DNS_TYPEPAIR(dns_rdatatype_nsec) &&
-			   version->secure == QPZ_SECURITY_NSEC)
+			   search->version->secure == QPZ_SECURITY_NSEC)
 		{
 			nsecheader = header;
 		} else if (!force_nsec3 &&
 			   top->typepair ==
 				   DNS_SIGTYPEPAIR(dns_rdatatype_nsec) &&
-			   version->secure == QPZ_SECURITY_NSEC)
+			   search->version->secure == QPZ_SECURITY_NSEC)
 		{
 			nsecsig = header;
 		}
@@ -3582,7 +3582,7 @@ qpznode_find_answer(qpznode_t *node, qpz_version_t *version,
 		return;
 	}
 	if (match->active && !force_nsec3) {
-		if (version->secure == QPZ_SECURITY_NSEC &&
+		if (search->version->secure == QPZ_SECURITY_NSEC &&
 		    (nsecheader == NULL || nsecsig == NULL))
 		{
 			match->result = DNS_R_BADDB;
@@ -3688,7 +3688,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		dns_qpchain_node(&search.chain, i, (void **)&n, NULL);
 		nlock = qpzone_get_lock(n);
 		NODE_RDLOCK(nlock, &nlocktype);
-		qpznode_find_zonecut(n, search.version, type, false,
+		qpznode_find_zonecut(&search, n, type, false,
 				     &candidate_zonecut DNS__DB_FLARG_PASS);
 		NODE_UNLOCK(nlock, &nlocktype);
 
@@ -3709,12 +3709,12 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	if (lookup_result == ISC_R_SUCCESS && (no_ancestor_zonecut || glueok)) {
 		nlock = qpzone_get_lock(exact_node);
 		NODE_RDLOCK(nlock, &nlocktype);
-		qpznode_find_answer(exact_node, search.version, type, nsec3,
+		qpznode_find_answer(&search, exact_node, type, nsec3,
 				    &exact_match DNS__DB_FLARG_PASS);
 		bool exact_nsec_found = dns_rdatatype_isnsec(type) &&
 					exact_match.result == ISC_R_SUCCESS;
 		if (no_ancestor_zonecut && !exact_nsec_found) {
-			qpznode_find_zonecut(exact_node, search.version, type,
+			qpznode_find_zonecut(&search, exact_node, type,
 					     true,
 					     &zonecut_match DNS__DB_FLARG_PASS);
 		}
@@ -3752,7 +3752,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		if (result == ISC_R_SUCCESS) {
 			nlock = qpzone_get_lock(node);
 			NODE_RDLOCK(nlock, &nlocktype);
-			qpznode_find_answer(node, search.version, type, nsec3,
+			qpznode_find_answer(&search, node, type, nsec3,
 					    &wild_match DNS__DB_FLARG_PASS);
 			nxrrset_match =
 				qpz_match_make_nxrrset(node DNS__DB_FLARG_PASS);
