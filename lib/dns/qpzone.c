@@ -2846,16 +2846,27 @@ qpznode_find_rrset(qpznode_t *node, qpz_version_t *version,
 	dns_typepair_t sigpair = DNS_SIGTYPEPAIR(DNS_TYPEPAIR_TYPE(typepair));
 
 	ISC_SLIST_FOREACH(top, node->next_type, next_type) {
-		dns_vecheader_t *header = first_existing_header(
-			top, version->serial);
+		bool is_type = top->typepair == typepair;
+		bool is_sig = top->typepair == sigpair;
+
+		if (!is_type && !is_sig) {
+			match.active = match.active ||
+				       first_existing_header(top,
+							     version->serial) !=
+					       NULL;
+			continue;
+		}
+
+		dns_vecheader_t *header =
+			first_existing_header(top, version->serial);
 		if (header == NULL) {
 			continue;
 		}
 
 		match.active = true;
-		if (top->typepair == typepair) {
+		if (is_type) {
 			found = header;
-		} else if (top->typepair == sigpair) {
+		} else if (is_sig) {
 			foundsig = header;
 		}
 		if (found != NULL && foundsig != NULL) {
@@ -2931,6 +2942,9 @@ step(qpz_search_t *search, dns_qpiter_t *it, direction_t direction,
 		NODE_RDLOCK(nlock, &nlocktype);
 		ISC_SLIST_FOREACH(top, node->next_type, next_type) {
 			found = first_existing_header(top, search->serial);
+			if (found != NULL) {
+				break;
+			}
 		}
 		NODE_UNLOCK(nlock, &nlocktype);
 		if (found != NULL) {
@@ -3493,11 +3507,35 @@ qpznode_find_answer(qpznode_t *node, qpz_version_t *version,
 			type != dns_rdatatype_nsec;
 
 	ISC_SLIST_FOREACH(top, node->next_type, next_type) {
-		/*
-		 * Look for an active, extant rdataset.
-		 */
-		dns_vecheader_t *header = first_existing_header(top,
-								version->serial);
+		bool is_answer = top->typepair == type ||
+				 type == dns_rdatatype_any;
+		bool is_cname = cname_ok &&
+				top->typepair == DNS_TYPEPAIR(dns_rdatatype_cname);
+		bool is_answersig = top->typepair == answersigpair;
+		bool is_cnamesig =
+			cname_ok &&
+			top->typepair == DNS_SIGTYPEPAIR(dns_rdatatype_cname);
+		bool is_nsec = !force_nsec3 &&
+			       top->typepair == DNS_TYPEPAIR(dns_rdatatype_nsec) &&
+			       version->secure == QPZ_SECURITY_NSEC;
+		bool is_nsecsig =
+			!force_nsec3 &&
+			top->typepair == DNS_SIGTYPEPAIR(dns_rdatatype_nsec) &&
+			version->secure == QPZ_SECURITY_NSEC;
+		bool is_nsec3 = top->typepair == DNS_TYPEPAIR(dns_rdatatype_nsec3);
+
+		if (!is_answer && !is_cname && !is_answersig && !is_cnamesig &&
+		    !is_nsec && !is_nsecsig && !is_nsec3)
+		{
+			match.active = match.active ||
+				       first_existing_header(top,
+							     version->serial) !=
+					       NULL;
+			continue;
+		}
+
+		dns_vecheader_t *header =
+			first_existing_header(top, version->serial);
 		if (header == NULL) {
 			continue;
 		}
@@ -3518,7 +3556,7 @@ qpznode_find_answer(qpznode_t *node, qpz_version_t *version,
 		 */
 		match.active = true;
 
-		if (top->typepair == type || type == dns_rdatatype_any) {
+		if (is_answer) {
 			/*
 			 * We've found the requested answer.
 			 */
@@ -3528,9 +3566,7 @@ qpznode_find_answer(qpznode_t *node, qpz_version_t *version,
 			if (answersig != NULL) {
 				break;
 			}
-		} else if (cname_ok &&
-			   top->typepair == DNS_TYPEPAIR(dns_rdatatype_cname))
-		{
+		} else if (is_cname) {
 			/*
 			 * We may use the CNAME if there is no matching
 			 * requested type. Zone-cut precedence is applied after
@@ -3539,7 +3575,7 @@ qpznode_find_answer(qpznode_t *node, qpz_version_t *version,
 			if (cname == NULL) {
 				cname = header;
 			}
-		} else if (top->typepair == answersigpair) {
+		} else if (is_answersig) {
 			/*
 			 * We've found the RRSIG rdataset for our target type.
 			 */
@@ -3547,25 +3583,15 @@ qpznode_find_answer(qpznode_t *node, qpz_version_t *version,
 			if (answer != NULL) {
 				break;
 			}
-		} else if (cname_ok &&
-			   top->typepair ==
-				   DNS_SIGTYPEPAIR(dns_rdatatype_cname))
-		{
+		} else if (is_cnamesig) {
 			/*
 			 * If we get a CNAME match, we'll also need its
 			 * signature.
 			 */
 			cnamesig = header;
-		} else if (!force_nsec3 &&
-			   top->typepair == DNS_TYPEPAIR(dns_rdatatype_nsec) &&
-			   version->secure == QPZ_SECURITY_NSEC)
-		{
+		} else if (is_nsec) {
 			nsecheader = header;
-		} else if (!force_nsec3 &&
-			   top->typepair ==
-				   DNS_SIGTYPEPAIR(dns_rdatatype_nsec) &&
-			   version->secure == QPZ_SECURITY_NSEC)
-		{
+		} else if (is_nsecsig) {
 			nsecsig = header;
 		}
 	}
