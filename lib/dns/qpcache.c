@@ -332,11 +332,6 @@ typedef struct qpc_rditer {
 	ISC_LIST(dns_rdataset_t) rdatasets;
 } qpc_rditer_t;
 
-typedef struct qpc_batchdelete {
-	dns_typepair_t typepair;
-	dns_db_rdataset_meta_t meta;
-} qpc_batchdelete_t;
-
 static void
 dbiterator_destroy(dns_dbiterator_t **iteratorp DNS__DB_FLARG);
 static isc_result_t
@@ -2769,9 +2764,6 @@ qpcache_batchdeleterdatasets(dns_db_t *db, dns_dbnode_t *node,
 			     void *arg DNS__DB_FLARG) {
 	qpcache_t *qpdb = (qpcache_t *)db;
 	qpcnode_t *qpnode = (qpcnode_t *)node;
-	qpc_batchdelete_t *deletions = NULL;
-	size_t ndeletions = 0;
-	size_t deletions_size = 0;
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 	isc_rwlock_t *nlock = NULL;
 	qpc_rditer_t iterator = {
@@ -2784,82 +2776,37 @@ qpcache_batchdeleterdatasets(dns_db_t *db, dns_dbnode_t *node,
 	REQUIRE(predicate != NULL);
 
 	nlock = &qpdb->buckets[qpnode->locknum].lock;
-	NODE_RDLOCK(nlock, &nlocktype);
-
-	DNS_SLABHEADER_FOREACH(header, &qpnode->headers) {
-		dns_db_rdataset_meta_t meta = { .negative = NEGATIVE(header) };
-
-		if (!EXPIREDOK(&iterator) &&
-		    !iterator_active(qpdb, &iterator, header))
-		{
-			continue;
-		}
-
-		if (!predicate(header->typepair, meta, arg)) {
-			continue;
-		}
-
-		if (ndeletions == deletions_size) {
-			size_t oldsize = deletions_size;
-			deletions_size = oldsize == 0 ? 16 : oldsize * 2;
-			if (oldsize == 0) {
-				deletions = isc_mem_get(
-					db->mctx,
-					deletions_size * sizeof(*deletions));
-			} else {
-				deletions = isc_mem_reget(
-					db->mctx, deletions,
-					oldsize * sizeof(*deletions),
-					deletions_size * sizeof(*deletions));
-			}
-		}
-
-		deletions[ndeletions++] = (qpc_batchdelete_t){
-			.typepair = header->typepair,
-			.meta = meta,
-		};
-	}
-
-	NODE_UNLOCK(nlock, &nlocktype);
-
 	NODE_WRLOCK(nlock, &nlocktype);
 
-	for (size_t i = 0; i < ndeletions; i++) {
-		dns_slabheader_t *newheader = dns_slabheader_new(db->mctx, node);
-		uint16_t attributes = DNS_SLABHEADERATTR_NONEXISTENT;
-		isc_result_t result;
+	for (;;) {
+		bool deleted = false;
 
-		if (deletions[i].meta.negative) {
-			attributes |= DNS_SLABHEADERATTR_NEGATIVE;
-		}
+		DNS_SLABHEADER_FOREACH(header, &qpnode->headers) {
+			dns_db_rdataset_meta_t meta = {
+				.negative = NEGATIVE(header),
+			};
 
-		newheader->typepair = deletions[i].typepair;
-		setttl(newheader, 0);
-		atomic_init(&newheader->attributes, attributes);
-
-		result = add(qpdb, qpnode, newheader, DNS_DBADD_FORCE, NULL, 0,
-			     nlocktype,
-			     isc_rwlocktype_none DNS__DB_FLARG_PASS);
-		if (result != ISC_R_SUCCESS) {
-			dns_slabheader_detach(&newheader);
-		}
-		if (result != ISC_R_SUCCESS && result != DNS_R_UNCHANGED) {
-			NODE_UNLOCK(nlock, &nlocktype);
-			if (deletions != NULL) {
-				isc_mem_put(db->mctx, deletions,
-					    deletions_size *
-						    sizeof(*deletions));
+			if (!EXPIREDOK(&iterator) &&
+			    !iterator_active(qpdb, &iterator, header))
+			{
+				continue;
 			}
-			return result;
+
+			if (!predicate(header->typepair, meta, arg)) {
+				continue;
+			}
+
+			header_delete(qpnode, header);
+			deleted = true;
+			break;
+		}
+
+		if (!deleted) {
+			break;
 		}
 	}
 
 	NODE_UNLOCK(nlock, &nlocktype);
-
-	if (deletions != NULL) {
-		isc_mem_put(db->mctx, deletions,
-			    deletions_size * sizeof(*deletions));
-	}
 
 	return ISC_R_SUCCESS;
 }
