@@ -1796,15 +1796,10 @@ remove_records(dns_dbnode_t *node, dns_rdatatype_t which, bool checknsec) {
  * then remove all signatures, unless this is a delegation, in
  * which case remove all signatures except for DS or nsec_datatype
  */
-typedef struct remove_all_sigs_ctx {
-	bool delegation;
-} remove_all_sigs_ctx_t;
-
 static bool
-delete_removable_signature(dns_typepair_t typepair,
-			   dns_db_rdataset_meta_t meta ISC_ATTR_UNUSED,
-			   void *arg) {
-	remove_all_sigs_ctx_t *ctx = arg;
+delete_non_delegation_signature(dns_typepair_t typepair,
+				dns_db_rdataset_meta_t meta ISC_ATTR_UNUSED,
+				void *arg ISC_ATTR_UNUSED) {
 	dns_rdatatype_t type = DNS_TYPEPAIR_TYPE(typepair);
 	dns_rdatatype_t covers = DNS_TYPEPAIR_COVERS(typepair);
 
@@ -1812,9 +1807,8 @@ delete_removable_signature(dns_typepair_t typepair,
 		return false;
 	}
 
-	if (ctx->delegation &&
-	    (dns_rdatatype_atparent(covers) ||
-	     (nsec_datatype == dns_rdatatype_nsec && covers == nsec_datatype)))
+	if (dns_rdatatype_atparent(covers) ||
+	    (nsec_datatype == dns_rdatatype_nsec && covers == nsec_datatype))
 	{
 		return false;
 	}
@@ -1823,32 +1817,28 @@ delete_removable_signature(dns_typepair_t typepair,
 }
 
 static bool
-delete_signature_covering(dns_typepair_t typepair,
-			  dns_db_rdataset_meta_t meta ISC_ATTR_UNUSED,
-			  void *arg) {
-	dns_rdatatype_t *which = arg;
-	dns_rdatatype_t type = DNS_TYPEPAIR_TYPE(typepair);
-	dns_rdatatype_t covers = DNS_TYPEPAIR_COVERS(typepair);
-
-	return type == dns_rdatatype_rrsig && covers == *which;
+delete_signature(dns_typepair_t typepair,
+		 dns_db_rdataset_meta_t meta ISC_ATTR_UNUSED,
+		 void *arg ISC_ATTR_UNUSED) {
+	return DNS_TYPEPAIR_TYPE(typepair) == dns_rdatatype_rrsig;
 }
 
 static void
-remove_sigs(dns_dbnode_t *node, bool delegation, dns_rdatatype_t which) {
+remove_all_sigs(dns_dbnode_t *node) {
 	isc_result_t result;
-	remove_all_sigs_ctx_t ctx = {
-		.delegation = delegation,
-	};
 
-	if (which == 0) {
-		result = dns_db_batchdeleterdatasets(gdb, node, gversion, 0, 0,
-						     delete_removable_signature,
-						     &ctx);
-	} else {
-		result = dns_db_batchdeleterdatasets(gdb, node, gversion, 0, 0,
-						     delete_signature_covering,
-						     &which);
-	}
+	result = dns_db_batchdeleterdatasets(gdb, node, gversion, 0, 0,
+					     delete_signature, NULL);
+	check_result(result, "dns_db_batchdeleterdatasets()");
+}
+
+static void
+remove_non_delegation_sigs(dns_dbnode_t *node) {
+	isc_result_t result;
+
+	result = dns_db_batchdeleterdatasets(gdb, node, gversion, 0, 0,
+					     delete_non_delegation_signature,
+					     NULL);
 	check_result(result, "dns_db_batchdeleterdatasets()");
 }
 
@@ -1914,7 +1904,7 @@ nsecify(void) {
 
 		if (is_delegation(gdb, gversion, gorigin, name, node, &nsttl)) {
 			zonecut = savezonecut(&fzonecut, name);
-			remove_sigs(node, true, 0);
+			remove_non_delegation_sigs(node);
 			if (generateds) {
 				add_ds(name, node, nsttl);
 			}
@@ -1939,7 +1929,7 @@ nsecify(void) {
 			    (zonecut != NULL &&
 			     dns_name_issubdomain(nextname, zonecut)))
 			{
-				remove_sigs(nextnode, false, 0);
+				remove_all_sigs(nextnode);
 				remove_records(nextnode, dns_rdatatype_nsec,
 					       false);
 				dns_db_detachnode(&nextnode);
@@ -2354,7 +2344,7 @@ nsec3ify(unsigned int hashalg, dns_iterations_t iterations,
 			    (zonecut != NULL &&
 			     dns_name_issubdomain(nextname, zonecut)))
 			{
-				remove_sigs(nextnode, false, 0);
+				remove_all_sigs(nextnode);
 				dns_db_detachnode(&nextnode);
 				result = dns_dbiterator_next(dbiter);
 				continue;
@@ -2363,7 +2353,7 @@ nsec3ify(unsigned int hashalg, dns_iterations_t iterations,
 					  nextnode, &nsttl))
 			{
 				zonecut = savezonecut(&fzonecut, nextname);
-				remove_sigs(nextnode, true, 0);
+				remove_non_delegation_sigs(nextnode);
 				if (generateds) {
 					add_ds(nextname, nextnode, nsttl);
 				}
