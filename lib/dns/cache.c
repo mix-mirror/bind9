@@ -311,28 +311,18 @@ dns_cache_flush(dns_cache_t *cache) {
 	return ISC_R_SUCCESS;
 }
 
+static bool
+delete_all_rdatasets(dns_typepair_t typepair ISC_ATTR_UNUSED,
+		     dns_db_rdataset_meta_t meta ISC_ATTR_UNUSED,
+		     void *arg ISC_ATTR_UNUSED) {
+	return true;
+}
+
 static isc_result_t
 clearnode(dns_db_t *db, dns_dbnode_t *node) {
-	dns_rdatasetiter_t *iter = NULL;
-
-	RETERR(dns_db_allrdatasets(db, node, NULL, DNS_DB_STALEOK,
-				   (isc_stdtime_t)0, &iter));
-
-	DNS_RDATASETITER_FOREACH(iter) {
-		isc_result_t result;
-		dns_rdataset_t rdataset = DNS_RDATASET_INIT;
-
-		dns_rdatasetiter_current(iter, &rdataset);
-		result = dns_db_deleterdataset(db, node, NULL, rdataset.type,
-					       rdataset.covers);
-		dns_rdataset_disassociate(&rdataset);
-		if (result != ISC_R_SUCCESS && result != DNS_R_UNCHANGED) {
-			break;
-		}
-	}
-
-	dns_rdatasetiter_destroy(&iter);
-	return ISC_R_SUCCESS;
+	return dns_db_batchdeleterdatasets(db, node, NULL, DNS_DB_STALEOK,
+					   (isc_stdtime_t)0,
+					   delete_all_rdatasets, NULL);
 }
 
 static isc_result_t
