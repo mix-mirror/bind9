@@ -850,6 +850,17 @@ dns_vecheader_new(isc_mem_t *mctx) {
 	return h;
 }
 
+dns_vecheader_t *
+dns_vecheader_tombstone(isc_mem_t *mctx, dns_typepair_t typepair) {
+	dns_vecheader_t *h = dns_vecheader_new(mctx);
+
+	h->typepair = typepair;
+	h->ttl = 0;
+	atomic_init(&h->attributes, DNS_VECHEADERATTR_NONEXISTENT);
+
+	return h;
+}
+
 /* Iterators for already bound rdatavec */
 
 isc_result_t
