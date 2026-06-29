@@ -2822,20 +2822,29 @@ qpcache_batchdeleterdatasets(dns_db_t *db, dns_dbnode_t *node,
 
 	NODE_UNLOCK(nlock, &nlocktype);
 
+	NODE_WRLOCK(nlock, &nlocktype);
+
 	for (size_t i = 0; i < ndeletions; i++) {
-		dns_rdatatype_t type = DNS_TYPEPAIR_TYPE(deletions[i].typepair);
-		dns_rdatatype_t covers =
-			DNS_TYPEPAIR_COVERS(deletions[i].typepair);
+		dns_slabheader_t *newheader = dns_slabheader_new(db->mctx, node);
+		uint16_t attributes = DNS_SLABHEADERATTR_NONEXISTENT;
 		isc_result_t result;
 
 		if (deletions[i].meta.negative) {
-			covers = type;
-			type = dns_rdatatype_none;
+			attributes |= DNS_SLABHEADERATTR_NEGATIVE;
 		}
 
-		result = qpcache_deleterdataset(db, node, version, type, covers
-							DNS__DB_FLARG_PASS);
+		newheader->typepair = deletions[i].typepair;
+		setttl(newheader, 0);
+		atomic_init(&newheader->attributes, attributes);
+
+		result = add(qpdb, qpnode, newheader, DNS_DBADD_FORCE, NULL, 0,
+			     nlocktype,
+			     isc_rwlocktype_none DNS__DB_FLARG_PASS);
+		if (result != ISC_R_SUCCESS) {
+			dns_slabheader_detach(&newheader);
+		}
 		if (result != ISC_R_SUCCESS && result != DNS_R_UNCHANGED) {
+			NODE_UNLOCK(nlock, &nlocktype);
 			if (deletions != NULL) {
 				isc_mem_put(db->mctx, deletions,
 					    deletions_size *
@@ -2844,6 +2853,8 @@ qpcache_batchdeleterdatasets(dns_db_t *db, dns_dbnode_t *node,
 			return result;
 		}
 	}
+
+	NODE_UNLOCK(nlock, &nlocktype);
 
 	if (deletions != NULL) {
 		isc_mem_put(db->mctx, deletions,
