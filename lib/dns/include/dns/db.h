@@ -1402,6 +1402,14 @@ dns__db_deleterdataset(dns_db_t *db, dns_dbnode_t *node,
  *	implementation used.
  */
 
+bool
+dns_db_rdataset_matchall(dns_typepair_t typepair, dns_db_rdataset_meta_t meta,
+			 void *arg);
+/*%<
+ * Predicate matching every rdataset considered by
+ * dns_db_batchdeleterdatasets().
+ */
+
 #define dns_db_batchdeleterdatasets(db, node, version, options, now, predicate, \
 				    arg)                                      \
 	dns__db_batchdeleterdatasets(db, node, version, options, now,          \

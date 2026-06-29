@@ -717,6 +717,13 @@ dns__db_deleterdataset(dns_db_t *db, dns_dbnode_t *node,
 	return ISC_R_NOTIMPLEMENTED;
 }
 
+bool
+dns_db_rdataset_matchall(dns_typepair_t typepair ISC_ATTR_UNUSED,
+			 dns_db_rdataset_meta_t meta ISC_ATTR_UNUSED,
+			 void *arg ISC_ATTR_UNUSED) {
+	return true;
+}
+
 isc_result_t
 dns__db_batchdeleterdatasets(dns_db_t *db, dns_dbnode_t *node,
 			     dns_dbversion_t *version, unsigned int options,
