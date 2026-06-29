@@ -114,9 +114,7 @@ static void
 cleanup_all_deadnodes(dns_db_t *db) {
 	qpcache_t *qpdb = (qpcache_t *)db;
 	qpcache_ref(qpdb);
-	for (uint16_t locknum = 0; locknum < qpdb->buckets_count; locknum++) {
-		cleanup_deadnodes(qpdb, locknum);
-	}
+	cleanup_deadnodes(qpdb);
 	qpcache_unref(qpdb);
 }
 
@@ -357,6 +355,9 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 			print_message("# inuse: %zd max: %zd\n",
 				      isc_mem_inuse(mctx), maxcache);
 		}
+		if (isc_mem_inuse(mctx) >= maxcache) {
+			rcu_barrier();
+		}
 		assert_true(isc_mem_inuse(mctx) < maxcache);
 	}
 
@@ -407,6 +408,9 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 		if (verbose) {
 			print_message("# inuse: %zd max: %zd\n",
 				      isc_mem_inuse(mctx), maxcache);
+		}
+		if (isc_mem_inuse(mctx) >= maxcache) {
+			rcu_barrier();
 		}
 		assert_true(isc_mem_inuse(mctx) < maxcache);
 	}
