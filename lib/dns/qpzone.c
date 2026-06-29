@@ -5064,11 +5064,8 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 			resign_unregister(qpdb->heap, node, newheader);
 			UNLOCK(&qpdb->heap->lock);
 			dns_vecheader_unref(newheader);
-			newheader = dns_vecheader_new(db->mctx);
-			newheader->ttl = 0;
-			newheader->typepair = foundtop->typepair;
-			atomic_init(&newheader->attributes,
-				    DNS_VECHEADERATTR_NONEXISTENT);
+			newheader = dns_vecheader_tombstone(db->mctx,
+							    foundtop->typepair);
 			newheader->serial = version->serial;
 		} else {
 			LOCK(&qpdb->heap->lock);
@@ -5147,10 +5144,8 @@ qpzone_deleterdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 		return ISC_R_NOTIMPLEMENTED;
 	}
 
-	newheader = dns_vecheader_new(db->mctx);
-	newheader->typepair = DNS_TYPEPAIR_VALUE(type, covers);
-	newheader->ttl = 0;
-	atomic_init(&newheader->attributes, DNS_VECHEADERATTR_NONEXISTENT);
+	newheader = dns_vecheader_tombstone(db->mctx,
+					    DNS_TYPEPAIR_VALUE(type, covers));
 	newheader->serial = version->serial;
 
 	dns_name_copy(&node->name, nodename);

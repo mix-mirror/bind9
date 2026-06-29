@@ -242,6 +242,12 @@ dns_vecheader_new(isc_mem_t *mctx);
  * Allocate memory for an rdatavec header and initialize it.
  */
 
+dns_vecheader_t *
+dns_vecheader_tombstone(isc_mem_t *mctx, dns_typepair_t typepair);
+/*%<
+ * Allocate memory for a nonexistent rdatavec header and initialize it.
+ */
+
 dns_vectop_t *
 dns_vectop_new(isc_mem_t *mctx, dns_typepair_t typepair);
 /*%<
