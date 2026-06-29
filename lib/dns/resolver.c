@@ -5599,53 +5599,37 @@ delete_rrset(fetchctx_t *fctx, dns_name_t *name, dns_rdatatype_t type) {
  *
  * So types allowed next to CNAME are: KEY, SIG, NXT, RRSIG, and NSEC.
  */
+static bool
+delete_non_cname_rdataset(dns_typepair_t typepair,
+			  dns_db_rdataset_meta_t meta,
+			  void *arg ISC_ATTR_UNUSED) {
+	if (meta.negative) {
+		return false;
+	}
+
+	switch (typepair) {
+	case DNS_TYPEPAIR(dns_rdatatype_nsec):
+	case DNS_SIGTYPEPAIR(dns_rdatatype_nsec):
+	case DNS_TYPEPAIR(dns_rdatatype_cname):
+	case DNS_SIGTYPEPAIR(dns_rdatatype_cname):
+		return false;
+	default:
+		return true;
+	}
+}
+
 static void
 evict_cname_other(fetchctx_t *fctx, dns_name_t *name) {
 	isc_result_t result;
 	dns_dbnode_t *node = NULL;
-	dns_rdatasetiter_t *rdsiter = NULL;
 
 	result = dns_db_findnode(fctx->cache, name, false, &node);
 	if (result != ISC_R_SUCCESS) {
 		return;
 	}
 
-	result = dns_db_allrdatasets(fctx->cache, node, NULL, 0, 0, &rdsiter);
-	if (result != ISC_R_SUCCESS) {
-		dns_db_detachnode(&node);
-		return;
-	}
-
-	DNS_RDATASETITER_FOREACH(rdsiter) {
-		dns_rdataset_t rdataset = DNS_RDATASET_INIT;
-		dns_rdatasetiter_current(rdsiter, &rdataset);
-
-		if (NEGATIVE(&rdataset)) {
-			/* Keep all negative entries */
-			dns_rdataset_disassociate(&rdataset);
-			continue;
-		}
-
-		dns_typepair_t typepair = DNS_TYPEPAIR_VALUE(rdataset.type,
-							     rdataset.covers);
-		switch (typepair) {
-		/* NSEC records are allowed */
-		case DNS_TYPEPAIR(dns_rdatatype_nsec):
-		case DNS_SIGTYPEPAIR(dns_rdatatype_nsec):
-		/* Keep the CNAME and its signature */
-		case DNS_TYPEPAIR(dns_rdatatype_cname):
-		case DNS_SIGTYPEPAIR(dns_rdatatype_cname):
-			dns_rdataset_disassociate(&rdataset);
-			continue;
-		default:
-			/* Evict everything else */
-			dns_db_deleterdataset(fctx->cache, node, NULL,
-					      rdataset.type, rdataset.covers);
-			dns_rdataset_disassociate(&rdataset);
-		}
-	}
-
-	dns_rdatasetiter_destroy(&rdsiter);
+	(void)dns_db_batchdeleterdatasets(fctx->cache, node, NULL, 0, 0,
+					  delete_non_cname_rdataset, NULL);
 	dns_db_detachnode(&node);
 }
 

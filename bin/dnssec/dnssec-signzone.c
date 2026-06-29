@@ -1735,42 +1735,60 @@ add_ds(dns_name_t *name, dns_dbnode_t *node, uint32_t nsttl) {
 /*
  * Remove records of the given type and their signatures.
  */
+static bool
+delete_all_rdatasets(dns_typepair_t typepair ISC_ATTR_UNUSED,
+		     dns_db_rdataset_meta_t meta ISC_ATTR_UNUSED,
+		     void *arg ISC_ATTR_UNUSED) {
+	return true;
+}
+
+typedef struct remove_records_ctx {
+	dns_rdatatype_t which;
+	bool checknsec;
+} remove_records_ctx_t;
+
+static bool
+delete_matching_typepair(dns_typepair_t typepair,
+			 dns_db_rdataset_meta_t meta ISC_ATTR_UNUSED,
+			 void *arg) {
+	remove_records_ctx_t *ctx = arg;
+	dns_rdatatype_t type = DNS_TYPEPAIR_TYPE(typepair);
+	dns_rdatatype_t covers = DNS_TYPEPAIR_COVERS(typepair);
+
+	if (type != ctx->which && covers != ctx->which) {
+		return false;
+	}
+
+	if (ctx->which == dns_rdatatype_nsec && ctx->checknsec &&
+	    !update_chain)
+	{
+		fatal("Zone contains NSEC records.  Use -u "
+		      "to update to NSEC3.");
+	}
+	if (ctx->which == dns_rdatatype_nsec3param && ctx->checknsec &&
+	    !update_chain)
+	{
+		fatal("Zone contains NSEC3 chains.  Use -u "
+		      "to update to NSEC.");
+	}
+
+	return true;
+}
+
 static void
 remove_records(dns_dbnode_t *node, dns_rdatatype_t which, bool checknsec) {
 	isc_result_t result;
-	dns_rdatatype_t type, covers;
-	dns_rdatasetiter_t *rdsiter = NULL;
+	remove_records_ctx_t ctx = {
+		.which = which,
+		.checknsec = checknsec,
+	};
 
 	/*
 	 * Delete any records of the given type at the apex.
 	 */
-	result = dns_db_allrdatasets(gdb, node, gversion, 0, 0, &rdsiter);
-	check_result(result, "dns_db_allrdatasets()");
-	DNS_RDATASETITER_FOREACH(rdsiter) {
-		dns_rdataset_t rdataset = DNS_RDATASET_INIT;
-		dns_rdatasetiter_current(rdsiter, &rdataset);
-		type = rdataset.type;
-		covers = rdataset.covers;
-		dns_rdataset_disassociate(&rdataset);
-		if (type == which || covers == which) {
-			if (which == dns_rdatatype_nsec && checknsec &&
-			    !update_chain)
-			{
-				fatal("Zone contains NSEC records.  Use -u "
-				      "to update to NSEC3.");
-			}
-			if (which == dns_rdatatype_nsec3param && checknsec &&
-			    !update_chain)
-			{
-				fatal("Zone contains NSEC3 chains.  Use -u "
-				      "to update to NSEC.");
-			}
-			result = dns_db_deleterdataset(gdb, node, gversion,
-						       type, covers);
-			check_result(result, "dns_db_deleterdataset()");
-		}
-	}
-	dns_rdatasetiter_destroy(&rdsiter);
+	result = dns_db_batchdeleterdatasets(gdb, node, gversion, 0, 0,
+					     delete_matching_typepair, &ctx);
+	check_result(result, "dns_db_batchdeleterdatasets()");
 }
 
 /*
@@ -1778,42 +1796,60 @@ remove_records(dns_dbnode_t *node, dns_rdatatype_t which, bool checknsec) {
  * then remove all signatures, unless this is a delegation, in
  * which case remove all signatures except for DS or nsec_datatype
  */
+typedef struct remove_all_sigs_ctx {
+	bool delegation;
+} remove_all_sigs_ctx_t;
+
+static bool
+delete_removable_signature(dns_typepair_t typepair,
+			   dns_db_rdataset_meta_t meta ISC_ATTR_UNUSED,
+			   void *arg) {
+	remove_all_sigs_ctx_t *ctx = arg;
+	dns_rdatatype_t type = DNS_TYPEPAIR_TYPE(typepair);
+	dns_rdatatype_t covers = DNS_TYPEPAIR_COVERS(typepair);
+
+	if (type != dns_rdatatype_rrsig) {
+		return false;
+	}
+
+	if (ctx->delegation &&
+	    (dns_rdatatype_atparent(covers) ||
+	     (nsec_datatype == dns_rdatatype_nsec && covers == nsec_datatype)))
+	{
+		return false;
+	}
+
+	return true;
+}
+
+static bool
+delete_signature_covering(dns_typepair_t typepair,
+			  dns_db_rdataset_meta_t meta ISC_ATTR_UNUSED,
+			  void *arg) {
+	dns_rdatatype_t *which = arg;
+	dns_rdatatype_t type = DNS_TYPEPAIR_TYPE(typepair);
+	dns_rdatatype_t covers = DNS_TYPEPAIR_COVERS(typepair);
+
+	return type == dns_rdatatype_rrsig && covers == *which;
+}
+
 static void
 remove_sigs(dns_dbnode_t *node, bool delegation, dns_rdatatype_t which) {
 	isc_result_t result;
-	dns_rdatatype_t type, covers;
-	dns_rdatasetiter_t *rdsiter = NULL;
+	remove_all_sigs_ctx_t ctx = {
+		.delegation = delegation,
+	};
 
-	result = dns_db_allrdatasets(gdb, node, gversion, 0, 0, &rdsiter);
-	check_result(result, "dns_db_allrdatasets()");
-	DNS_RDATASETITER_FOREACH(rdsiter) {
-		dns_rdataset_t rdataset = DNS_RDATASET_INIT;
-		dns_rdatasetiter_current(rdsiter, &rdataset);
-		type = rdataset.type;
-		covers = rdataset.covers;
-		dns_rdataset_disassociate(&rdataset);
-
-		if (type != dns_rdatatype_rrsig) {
-			continue;
-		}
-
-		if (which == 0 && delegation &&
-		    (dns_rdatatype_atparent(covers) ||
-		     (nsec_datatype == dns_rdatatype_nsec &&
-		      covers == nsec_datatype)))
-		{
-			continue;
-		}
-
-		if (which != 0 && covers != which) {
-			continue;
-		}
-
-		result = dns_db_deleterdataset(gdb, node, gversion, type,
-					       covers);
-		check_result(result, "dns_db_deleterdataset()");
+	if (which == 0) {
+		result = dns_db_batchdeleterdatasets(gdb, node, gversion, 0, 0,
+						     delete_removable_signature,
+						     &ctx);
+	} else {
+		result = dns_db_batchdeleterdatasets(gdb, node, gversion, 0, 0,
+						     delete_signature_covering,
+						     &which);
 	}
-	dns_rdatasetiter_destroy(&rdsiter);
+	check_result(result, "dns_db_batchdeleterdatasets()");
 }
 
 /*%
@@ -1827,8 +1863,6 @@ nsecify(void) {
 	dns_name_t *name = dns_fixedname_initname(&fname);
 	dns_name_t *nextname = dns_fixedname_initname(&fnextname);
 	dns_name_t *zonecut = NULL;
-	dns_rdatasetiter_t *rdsiter = NULL;
-	dns_rdatatype_t type, covers;
 	bool done = false;
 	isc_result_t result;
 	uint32_t nsttl = 0;
@@ -1839,23 +1873,12 @@ nsecify(void) {
 	result = dns_db_createiterator(gdb, DNS_DB_NSEC3ONLY, &dbiter);
 	check_result(result, "dns_db_createiterator()");
 	DNS_DBITERATOR_FOREACH(dbiter) {
-		dns_rdataset_t rdataset = DNS_RDATASET_INIT;
 		result = dns_dbiterator_current(dbiter, &node, name);
 		check_dns_dbiterator_current(result);
-		result = dns_db_allrdatasets(gdb, node, gversion, 0, 0,
-					     &rdsiter);
-		check_result(result, "dns_db_allrdatasets()");
-		DNS_RDATASETITER_FOREACH(rdsiter) {
-			dns_rdatasetiter_current(rdsiter, &rdataset);
-			type = rdataset.type;
-			covers = rdataset.covers;
-			dns_rdataset_disassociate(&rdataset);
-			result = dns_db_deleterdataset(gdb, node, gversion,
-						       type, covers);
-			check_result(result, "dns_db_deleterdataset(nsec3param/"
-					     "rrsig)");
-		}
-		dns_rdatasetiter_destroy(&rdsiter);
+		result = dns_db_batchdeleterdatasets(gdb, node, gversion, 0, 0,
+						     delete_all_rdatasets,
+						     NULL);
+		check_result(result, "dns_db_batchdeleterdatasets(nsec3)");
 		dns_db_detachnode(&node);
 	}
 	dns_dbiterator_destroy(&dbiter);
