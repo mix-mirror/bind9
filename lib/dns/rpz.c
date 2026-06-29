@@ -1377,6 +1377,8 @@ static isc_result_t
 add_nm(dns_rpz_zones_t *rpzs, dns_name_t *trig_name, const nmdata_t *new_data) {
 	isc_result_t result;
 	nmdata_t *data = NULL;
+	nmdata_t *newdata = NULL;
+	nmdata_t merged;
 	dns_qp_t *qp = NULL;
 
 	dns_qpmulti_write(rpzs->table, &qp);
@@ -1401,11 +1403,23 @@ add_nm(dns_rpz_zones_t *rpzs, dns_name_t *trig_name, const nmdata_t *new_data) {
 		result = ISC_R_EXISTS;
 	}
 
-	/* copy in the bits from the new data */
-	data->set.qname |= new_data->set.qname;
-	data->set.ns |= new_data->set.ns;
-	data->wild.qname |= new_data->wild.qname;
-	data->wild.ns |= new_data->wild.ns;
+	/*
+	 * Queries read nmdata lock-free via a qpmulti snapshot, so replace
+	 * the node with a copy holding the merged bits instead of mutating
+	 * it in place.
+	 */
+	merged = (nmdata_t){
+		.set.qname = data->set.qname | new_data->set.qname,
+		.set.ns = data->set.ns | new_data->set.ns,
+		.wild.qname = data->wild.qname | new_data->wild.qname,
+		.wild.ns = data->wild.ns | new_data->wild.ns,
+	};
+	newdata = new_nmdata(rpzs->mctx, trig_name, &merged);
+
+	INSIST(dns_qp_deletename(qp, trig_name, DNS_DBNAMESPACE_NORMAL, NULL,
+				 NULL) == ISC_R_SUCCESS);
+	INSIST(dns_qp_insert(qp, newdata, 0) == ISC_R_SUCCESS);
+	nmdata_detach(&newdata);
 
 done:
 	dns_qp_compact(qp, DNS_QPGC_MAYBE);
@@ -2256,7 +2270,9 @@ del_name(dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
 	dns_name_t *trig_name = NULL;
 	dns_rpz_zones_t *rpzs = rpz->rpzs;
 	nmdata_t *data = NULL;
+	nmdata_t *newdata = NULL;
 	nmdata_t del_data;
+	nmdata_t remaining;
 	dns_qp_t *qp = NULL;
 	bool exists;
 
@@ -2287,14 +2303,19 @@ del_name(dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
 	exists = (del_data.set.qname != 0 || del_data.set.ns != 0 ||
 		  del_data.wild.qname != 0 || del_data.wild.ns != 0);
 
-	data->set.qname &= ~del_data.set.qname;
-	data->set.ns &= ~del_data.set.ns;
-	data->wild.qname &= ~del_data.wild.qname;
-	data->wild.ns &= ~del_data.wild.ns;
+	/*
+	 * Queries read nmdata lock-free via a qpmulti snapshot, so instead
+	 * of mutating it in place, remove the node and re-insert a copy with
+	 * the remaining bits (or leave it deleted if none remain).
+	 */
+	if (exists) {
+		remaining = (nmdata_t){
+			.set.qname = data->set.qname & ~del_data.set.qname,
+			.set.ns = data->set.ns & ~del_data.set.ns,
+			.wild.qname = data->wild.qname & ~del_data.wild.qname,
+			.wild.ns = data->wild.ns & ~del_data.wild.ns,
+		};
 
-	if (data->set.qname == 0 && data->set.ns == 0 &&
-	    data->wild.qname == 0 && data->wild.ns == 0)
-	{
 		result = dns_qp_deletename(qp, trig_name,
 					   DNS_DBNAMESPACE_NORMAL, NULL, NULL);
 		if (result != ISC_R_SUCCESS) {
@@ -2308,10 +2329,14 @@ del_name(dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
 				      "rpz del_name(%s) node delete "
 				      "failed: %s",
 				      namebuf, isc_result_totext(result));
+		} else if (remaining.set.qname != 0 || remaining.set.ns != 0 ||
+			   remaining.wild.qname != 0 || remaining.wild.ns != 0)
+		{
+			newdata = new_nmdata(rpzs->mctx, trig_name, &remaining);
+			INSIST(dns_qp_insert(qp, newdata, 0) == ISC_R_SUCCESS);
+			nmdata_detach(&newdata);
 		}
-	}
 
-	if (exists) {
 		RWLOCK(&rpz->rpzs->search_lock, isc_rwlocktype_write);
 		adj_trigger_cnt(rpz, rpz_type, NULL, 0, false);
 		RWUNLOCK(&rpz->rpzs->search_lock, isc_rwlocktype_write);
