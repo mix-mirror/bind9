@@ -114,7 +114,9 @@ static void
 cleanup_all_deadnodes(dns_db_t *db) {
 	qpcache_t *qpdb = (qpcache_t *)db;
 	qpcache_ref(qpdb);
-	cleanup_deadnodes(qpdb);
+	for (uint16_t locknum = 0; locknum < qpdb->buckets_count; locknum++) {
+		cleanup_deadnodes(qpdb, locknum);
+	}
 	qpcache_unref(qpdb);
 }
 
