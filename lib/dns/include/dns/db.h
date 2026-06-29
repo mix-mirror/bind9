@@ -83,6 +83,13 @@ typedef struct dns_dbnode_methods {
 	void (*expiredata)(dns_dbnode_t *node, void *data);
 } dns_dbnode_methods_t;
 
+typedef struct dns_db_rdataset_meta {
+	bool negative : 1;
+} dns_db_rdataset_meta_t;
+
+typedef bool (*dns_db_rdataset_predicate_t)(
+	dns_typepair_t typepair, dns_db_rdataset_meta_t meta, void *arg);
+
 typedef struct dns_db_methods {
 	void (*destroy)(dns_db_t *db);
 	isc_result_t (*beginload)(dns_db_t	       *db,
@@ -125,6 +132,11 @@ typedef struct dns_db_methods {
 				       dns_dbversion_t	     *version,
 				       dns_rdatatype_t	      type,
 				       dns_rdatatype_t covers DNS__DB_FLARG);
+	isc_result_t (*batchdeleterdatasets)(
+		dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
+		unsigned int options, isc_stdtime_t now,
+		dns_db_rdataset_predicate_t predicate,
+		void *arg DNS__DB_FLARG);
 	bool (*issecure)(dns_db_t *db);
 	unsigned int (*nodecount)(dns_db_t *db);
 	isc_result_t (*getoriginnode)(dns_db_t		  *db,
@@ -1383,6 +1395,43 @@ dns__db_deleterdataset(dns_db_t *db, dns_dbnode_t *node,
  * \li	#ISC_R_NOTIMPLEMENTED	'type' is dns_rdatatype_any; or the
  *				database has zone semantics and 'type'
  *				is RRSIG with 'covers' == 0.
+ *
+ * \li	Other results are possible, depending upon the database
+ *	implementation used.
+ */
+
+#define dns_db_batchdeleterdatasets(db, node, version, options, now, predicate, \
+				    arg)                                      \
+	dns__db_batchdeleterdatasets(db, node, version, options, now,          \
+				     predicate, arg DNS__DB_FILELINE)
+isc_result_t
+dns__db_batchdeleterdatasets(dns_db_t *db, dns_dbnode_t *node,
+			     dns_dbversion_t *version, unsigned int options,
+			     isc_stdtime_t now,
+			     dns_db_rdataset_predicate_t predicate,
+			     void *arg DNS__DB_FLARG);
+/*%<
+ * Make it so that no rdatasets matching 'predicate' exist at 'node' in
+ * version 'version' of 'db'.
+ *
+ * The predicate is called for each visible rdataset with its type pair and
+ * metadata.  It must not make DB calls or retain references to DB internals.
+ *
+ * Requires:
+ *
+ * \li	'db' is a valid database.
+ *
+ * \li	'node' is a valid node.
+ *
+ * \li	The database has zone semantics and 'version' is a valid
+ *	read-write version, or the database has cache semantics
+ *	and version is NULL.
+ *
+ * \li	'predicate' is not NULL.
+ *
+ * Returns:
+ *
+ * \li	#ISC_R_SUCCESS
  *
  * \li	Other results are possible, depending upon the database
  *	implementation used.

@@ -718,6 +718,31 @@ dns__db_deleterdataset(dns_db_t *db, dns_dbnode_t *node,
 }
 
 isc_result_t
+dns__db_batchdeleterdatasets(dns_db_t *db, dns_dbnode_t *node,
+			     dns_dbversion_t *version, unsigned int options,
+			     isc_stdtime_t now,
+			     dns_db_rdataset_predicate_t predicate,
+			     void *arg DNS__DB_FLARG) {
+	/*
+	 * Make it so that no rdatasets matching 'predicate' exist at 'node' in
+	 * version 'version' of 'db'.
+	 */
+
+	REQUIRE(DNS_DB_VALID(db));
+	REQUIRE(node != NULL);
+	REQUIRE(((db->attributes & DNS_DBATTR_CACHE) == 0 && version != NULL) ||
+		((db->attributes & DNS_DBATTR_CACHE) != 0 && version == NULL));
+	REQUIRE(predicate != NULL);
+
+	if (db->methods->batchdeleterdatasets != NULL) {
+		return (db->methods->batchdeleterdatasets)(
+			db, node, version, options, now, predicate,
+			arg DNS__DB_FLARG_PASS);
+	}
+	return ISC_R_NOTIMPLEMENTED;
+}
+
+isc_result_t
 dns_db_getsoaserial(dns_db_t *db, dns_dbversion_t *ver, uint32_t *serialp) {
 	isc_result_t result;
 	dns_dbnode_t *node = NULL;
