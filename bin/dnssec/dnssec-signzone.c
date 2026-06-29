@@ -62,6 +62,7 @@
 #include <isc/string.h>
 #include <isc/tid.h>
 #include <isc/time.h>
+#include <isc/u16bitmap.h>
 #include <isc/util.h>
 
 #include <dns/db.h>
@@ -1310,91 +1311,81 @@ signname(dns_dbnode_t *node, bool apex, dns_name_t *name) {
  * caller.  Clean out extraneous RRSIG records for node.
  */
 static bool
+delete_all_rdatasets(dns_typepair_t typepair ISC_ATTR_UNUSED,
+		     dns_db_rdataset_meta_t meta ISC_ATTR_UNUSED,
+		     void *arg ISC_ATTR_UNUSED);
+
+static bool
+delete_inactive_node_rdataset(dns_typepair_t typepair,
+			      dns_db_rdataset_meta_t meta ISC_ATTR_UNUSED,
+			      void *arg) {
+	isc_u16bitmap_t *types = arg;
+	dns_rdatatype_t type = DNS_TYPEPAIR_TYPE(typepair);
+	dns_rdatatype_t covers = DNS_TYPEPAIR_COVERS(typepair);
+
+	/*
+	 * Delete the NSEC chain if we are signing with NSEC3.
+	 */
+	if (nsec_datatype == dns_rdatatype_nsec3 &&
+	    (type == dns_rdatatype_nsec || covers == dns_rdatatype_nsec))
+	{
+		return true;
+	}
+
+	if (type != dns_rdatatype_rrsig) {
+		return false;
+	}
+
+	return !isc_u16bitmap_isset(types, covers);
+}
+
+static bool
 active_node(dns_dbnode_t *node) {
 	dns_rdatasetiter_t *rdsiter = NULL;
-	dns_rdatasetiter_t *rdsiter2 = NULL;
+	isc_u16bitmap_t types;
 	bool active = false;
 	isc_result_t result;
 	dns_rdataset_t rdataset = DNS_RDATASET_INIT;
-	dns_rdatatype_t type;
-	dns_rdatatype_t covers;
-	bool found;
+
+	isc_u16bitmap_reinit(&types);
 
 	result = dns_db_allrdatasets(gdb, node, gversion, 0, 0, &rdsiter);
 	check_result(result, "dns_db_allrdatasets()");
-	DNS_RDATASETITER_FOREACH(rdsiter) {
+	for (result = dns_rdatasetiter_first(rdsiter);
+	     result == ISC_R_SUCCESS;
+	     result = dns_rdatasetiter_next(rdsiter))
+	{
 		dns_rdatasetiter_current(rdsiter, &rdataset);
 		dns_rdatatype_t t = rdataset.type;
+		isc_u16bitmap_set(&types, t);
 		dns_rdataset_disassociate(&rdataset);
 
 		if (!dns_rdatatype_isnsec(t) && t != dns_rdatatype_rrsig) {
 			active = true;
-			break;
 		}
+	}
+	dns_rdatasetiter_destroy(&rdsiter);
+	if (result != ISC_R_NOMORE) {
+		fatal("rdataset iteration failed: %s",
+		      isc_result_totext(result));
 	}
 
 	if (!active && nsec_datatype == dns_rdatatype_nsec) {
 		/*%
 		 * The node is empty of everything but NSEC / RRSIG records.
 		 */
-		DNS_RDATASETITER_FOREACH(rdsiter) {
-			dns_rdatasetiter_current(rdsiter, &rdataset);
-			result = dns_db_deleterdataset(gdb, node, gversion,
-						       rdataset.type,
-						       rdataset.covers);
-			check_result(result, "dns_db_deleterdataset()");
-			dns_rdataset_disassociate(&rdataset);
-		}
+		result = dns_db_batchdeleterdatasets(gdb, node, gversion, 0, 0,
+						     delete_all_rdatasets, NULL);
+		check_result(result, "dns_db_batchdeleterdatasets()");
 	} else {
 		/*
 		 * Delete RRSIGs for types that no longer exist.
 		 */
-		result = dns_db_allrdatasets(gdb, node, gversion, 0, 0,
-					     &rdsiter2);
-		check_result(result, "dns_db_allrdatasets()");
-		DNS_RDATASETITER_FOREACH(rdsiter) {
-			dns_rdatasetiter_current(rdsiter, &rdataset);
-			type = rdataset.type;
-			covers = rdataset.covers;
-			dns_rdataset_disassociate(&rdataset);
-			/*
-			 * Delete the NSEC chain if we are signing with
-			 * NSEC3.
-			 */
-			if (nsec_datatype == dns_rdatatype_nsec3 &&
-			    (type == dns_rdatatype_nsec ||
-			     covers == dns_rdatatype_nsec))
-			{
-				result = dns_db_deleterdataset(
-					gdb, node, gversion, type, covers);
-				check_result(result, "dns_db_deleterdataset("
-						     "nsec/rrsig)");
-				continue;
-			}
-			if (type != dns_rdatatype_rrsig) {
-				continue;
-			}
-			found = false;
-			DNS_RDATASETITER_FOREACH(rdsiter2) {
-				dns_rdatasetiter_current(rdsiter2, &rdataset);
-				if (rdataset.type == covers) {
-					found = true;
-				}
-				dns_rdataset_disassociate(&rdataset);
-			}
-			if (!found) {
-				result = dns_db_deleterdataset(
-					gdb, node, gversion, type, covers);
-				check_result(result, "dns_db_deleterdataset("
-						     "rrsig)");
-			} else if (result != ISC_R_SUCCESS) {
-				fatal("rdataset iteration failed: %s",
-				      isc_result_totext(result));
-			}
-		}
-		dns_rdatasetiter_destroy(&rdsiter2);
+		result = dns_db_batchdeleterdatasets(
+			gdb, node, gversion, 0, 0,
+			delete_inactive_node_rdataset, &types);
+		check_result(result, "dns_db_batchdeleterdatasets()");
 	}
-	dns_rdatasetiter_destroy(&rdsiter);
 
 	return active;
 }
