@@ -74,11 +74,6 @@
 	(((header)->expire > (now)) || \
 	 ((header)->expire == (now) && ZEROTTL(header)))
 
-#define EXPIREDOK(iterator) \
-	(((iterator)->common.options & DNS_DB_EXPIREDOK) != 0)
-
-#define STALEOK(iterator) (((iterator)->common.options & DNS_DB_STALEOK) != 0)
-
 #define KEEPSTALE(qpdb) ((qpdb)->common.serve_stale_ttl > 0)
 
 /*%
@@ -2063,12 +2058,12 @@ qpcache_createiterator(dns_db_t *db, unsigned int options ISC_ATTR_UNUSED,
 }
 
 static bool
-iterator_active(qpcache_t *qpdb, qpc_rditer_t *iterator,
-		dns_slabheader_t *header) {
+header_visible(qpcache_t *qpdb, dns_slabheader_t *header, unsigned int options,
+	       isc_stdtime_t now) {
 	/*
-	 * If this header is still active then return it.
+	 * Include active headers, or any header when expired data is requested.
 	 */
-	if (ACTIVE(header, iterator->common.now)) {
+	if ((options & DNS_DB_EXPIREDOK) != 0 || ACTIVE(header, now)) {
 		return true;
 	}
 
@@ -2078,7 +2073,7 @@ iterator_active(qpcache_t *qpdb, qpc_rditer_t *iterator,
 	 * If we are not returning stale records or the rdataset is
 	 * too old don't return it.
 	 */
-	if (!STALEOK(iterator) || (iterator->common.now > stale_ttl)) {
+	if ((options & DNS_DB_STALEOK) == 0 || now > stale_ttl) {
 		return false;
 	}
 	return true;
@@ -2086,7 +2081,7 @@ iterator_active(qpcache_t *qpdb, qpc_rditer_t *iterator,
 
 static isc_result_t
 qpcache_allrdatasets(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
-		     unsigned int options, isc_stdtime_t __now,
+		     unsigned int options, isc_stdtime_t now,
 		     dns_rdatasetiter_t **iteratorp DNS__DB_FLARG) {
 	qpcache_t *qpdb = (qpcache_t *)db;
 	qpcnode_t *qpnode = (qpcnode_t *)node;
@@ -2097,14 +2092,14 @@ qpcache_allrdatasets(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	REQUIRE(VALID_QPDB(qpdb));
 	REQUIRE(version == NULL);
 
+	now = now ? now : isc_stdtime_now();
+
 	iterator = isc_mem_get(qpdb->common.mctx, sizeof(*iterator));
 	*iterator = (qpc_rditer_t){
 		.common.magic = DNS_RDATASETITER_MAGIC,
 		.common.methods = &rdatasetiter_methods,
 		.common.db = db,
 		.common.node = node,
-		.common.options = options,
-		.common.now = __now ? __now : isc_stdtime_now(),
 		.rdatasets = ISC_LIST_INITIALIZER,
 	};
 
@@ -2114,15 +2109,13 @@ qpcache_allrdatasets(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	NODE_RDLOCK(nlock, &nlocktype);
 
 	DNS_SLABHEADER_FOREACH(header, &qpnode->headers) {
-		if (EXPIREDOK(iterator) ||
-		    iterator_active(qpdb, iterator, header))
-		{
+		if (header_visible(qpdb, header, options, now)) {
 			dns_rdataset_t *rdataset =
 				isc_mem_get(qpnode->mctx, sizeof(*rdataset));
 			dns_rdataset_init(rdataset);
 
-			bindrdataset(qpdb, qpnode, header, iterator->common.now,
-				     nlocktype, isc_rwlocktype_none,
+			bindrdataset(qpdb, qpnode, header, now, nlocktype,
+				     isc_rwlocktype_none,
 				     rdataset DNS__DB_FLARG_PASS);
 
 			ISC_LIST_APPEND(iterator->rdatasets, rdataset, link);
@@ -2791,6 +2784,44 @@ qpcache_deleterdataset(dns_db_t *db, dns_dbnode_t *node,
 	return result;
 }
 
+static isc_result_t
+qpcache_batchdeleterdatasets(dns_db_t *db, dns_dbnode_t *node,
+			     dns_dbversion_t *version, unsigned int options,
+			     isc_stdtime_t now,
+			     dns_db_rdataset_predicate_t predicate,
+			     void *arg DNS__DB_FLARG) {
+	qpcache_t *qpdb = (qpcache_t *)db;
+	qpcnode_t *qpnode = (qpcnode_t *)node;
+	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
+	isc_rwlock_t *nlock = NULL;
+	now = now ? now : isc_stdtime_now();
+
+	REQUIRE(VALID_QPDB(qpdb));
+	REQUIRE(version == NULL);
+	REQUIRE(predicate != NULL);
+
+	nlock = &qpdb->buckets[qpnode->locknum].lock;
+	NODE_WRLOCK(nlock, &nlocktype);
+
+	DNS_SLABHEADER_FOREACH(header, &qpnode->headers) {
+		dns_db_rdataset_meta_t meta = {
+			.negative = NEGATIVE(header),
+		};
+
+		if (!header_visible(qpdb, header, options, now)) {
+			continue;
+		}
+
+		if (predicate(header->typepair, meta, arg)) {
+			header_delete(qpnode, header);
+		}
+	}
+
+	NODE_UNLOCK(nlock, &nlocktype);
+
+	return ISC_R_SUCCESS;
+}
+
 static unsigned int
 nodecount(dns_db_t *db) {
 	qpcache_t *qpdb = (qpcache_t *)db;
@@ -3257,6 +3288,7 @@ static dns_dbmethods_t qpdb_cachemethods = {
 	.allrdatasets = qpcache_allrdatasets,
 	.addrdataset = qpcache_addrdataset,
 	.deleterdataset = qpcache_deleterdataset,
+	.batchdeleterdatasets = qpcache_batchdeleterdatasets,
 	.nodecount = nodecount,
 	.getrrsetstats = getrrsetstats,
 	.setcachestats = setcachestats,

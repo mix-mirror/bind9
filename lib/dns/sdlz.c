@@ -1177,6 +1177,38 @@ sdlz_addglue_cb(void *arg, const dns_name_t *name, dns_rdatatype_t qtype,
 	return ISC_R_SUCCESS;
 }
 
+static isc_result_t
+batchdeleterdatasets(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
+		     unsigned int options ISC_ATTR_UNUSED,
+		     isc_stdtime_t now ISC_ATTR_UNUSED,
+		     dns_db_rdataset_predicate_t predicate,
+		     void *arg DNS__DB_FLARG) {
+	dns_sdlz_db_t *sdlz = (dns_sdlz_db_t *)db;
+	dns_sdlznode_t *sdlznode = (dns_sdlznode_t *)node;
+
+	REQUIRE(VALID_SDLZDB(sdlz));
+	REQUIRE(predicate != NULL);
+
+	ISC_LIST_FOREACH(sdlznode->lists, list, link) {
+		dns_db_rdataset_meta_t meta = { .negative = false };
+		dns_typepair_t typepair =
+			DNS_TYPEPAIR_VALUE(list->type, list->covers);
+
+		if (!predicate(typepair, meta, arg)) {
+			continue;
+		}
+
+		isc_result_t result =
+			deleterdataset(db, node, version, list->type,
+				       list->covers DNS__DB_FLARG_PASS);
+		if (result != ISC_R_SUCCESS && result != DNS_R_UNCHANGED) {
+			return result;
+		}
+	}
+
+	return ISC_R_SUCCESS;
+}
+
 static void
 sdlz_addglue(dns_db_t *db, dns_dbversion_t *version,
 	     const dns_name_t *owner_name, dns_rdataset_t *rdataset,
@@ -1215,6 +1247,7 @@ static dns_dbmethods_t sdlzdb_methods = {
 	.subtractrdataset = subtractrdataset,
 	.deleterdataset = deleterdataset,
 	.addglue = sdlz_addglue,
+	.batchdeleterdatasets = batchdeleterdatasets,
 };
 
 /*
