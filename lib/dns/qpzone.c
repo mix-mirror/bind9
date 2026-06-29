@@ -405,6 +405,11 @@ typedef struct qpdb_rdatasetiter {
 	dns_vecheader_t *current;
 } qpdb_rdatasetiter_t;
 
+typedef struct qpdb_batchdelete {
+	dns_typepair_t typepair;
+	dns_db_rdataset_meta_t meta;
+} qpdb_batchdelete_t;
+
 /*
  * Note that these iterators, unless created with either DNS_DB_NSEC3ONLY
  * or DNS_DB_NONSEC3, will transparently move between the last node of the
@@ -5158,6 +5163,91 @@ qpzone_deleterdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 	return result;
 }
 
+static isc_result_t
+qpzone_batchdeleterdatasets(dns_db_t *db, dns_dbnode_t *dbnode,
+			    dns_dbversion_t *dbversion, unsigned int options,
+			    isc_stdtime_t now,
+			    dns_db_rdataset_predicate_t predicate,
+			    void *arg DNS__DB_FLARG) {
+	qpzonedb_t *qpdb = (qpzonedb_t *)db;
+	qpznode_t *node = (qpznode_t *)dbnode;
+	qpz_version_t *version = (qpz_version_t *)dbversion;
+	qpdb_batchdelete_t *deletions = NULL;
+	size_t ndeletions = 0;
+	size_t deletions_size = 0;
+	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
+	isc_rwlock_t *nlock = NULL;
+
+	REQUIRE(VALID_QPZONE(qpdb));
+	REQUIRE(version != NULL && version->qpdb == qpdb);
+	REQUIRE(predicate != NULL);
+
+	UNUSED(options);
+	UNUSED(now);
+
+	nlock = qpzone_get_lock(node);
+	NODE_RDLOCK(nlock, &nlocktype);
+
+	ISC_SLIST_FOREACH(top, node->next_type, next_type) {
+		dns_vecheader_t *header =
+			first_existing_header(top, version->serial);
+		dns_db_rdataset_meta_t meta = { .negative = false };
+
+		if (header == NULL) {
+			continue;
+		}
+
+		if (!predicate(header->typepair, meta, arg)) {
+			continue;
+		}
+
+		if (ndeletions == deletions_size) {
+			size_t oldsize = deletions_size;
+			deletions_size = oldsize == 0 ? 16 : oldsize * 2;
+			if (oldsize == 0) {
+				deletions = isc_mem_get(
+					db->mctx,
+					deletions_size * sizeof(*deletions));
+			} else {
+				deletions = isc_mem_reget(
+					db->mctx, deletions,
+					oldsize * sizeof(*deletions),
+					deletions_size * sizeof(*deletions));
+			}
+		}
+
+		deletions[ndeletions++] = (qpdb_batchdelete_t){
+			.typepair = header->typepair,
+			.meta = meta,
+		};
+	}
+
+	NODE_UNLOCK(nlock, &nlocktype);
+
+	for (size_t i = 0; i < ndeletions; i++) {
+		isc_result_t result = qpzone_deleterdataset(
+			db, dbnode, dbversion,
+			DNS_TYPEPAIR_TYPE(deletions[i].typepair),
+			DNS_TYPEPAIR_COVERS(deletions[i].typepair)
+				DNS__DB_FLARG_PASS);
+		if (result != ISC_R_SUCCESS && result != DNS_R_UNCHANGED) {
+			if (deletions != NULL) {
+				isc_mem_put(db->mctx, deletions,
+					    deletions_size *
+						    sizeof(*deletions));
+			}
+			return result;
+		}
+	}
+
+	if (deletions != NULL) {
+		isc_mem_put(db->mctx, deletions,
+			    deletions_size * sizeof(*deletions));
+	}
+
+	return ISC_R_SUCCESS;
+}
+
 static dns_glue_t *
 new_glue(isc_mem_t *mctx, const dns_name_t *name) {
 	dns_glue_t *glue = isc_mem_get(mctx, sizeof(*glue));
@@ -5652,6 +5742,7 @@ static dns_dbmethods_t qpdb_zonemethods = {
 	.addrdataset = qpzone_addrdataset,
 	.subtractrdataset = qpzone_subtractrdataset,
 	.deleterdataset = qpzone_deleterdataset,
+	.batchdeleterdatasets = qpzone_batchdeleterdatasets,
 	.issecure = issecure,
 	.nodecount = nodecount,
 	.getoriginnode = getoriginnode,
