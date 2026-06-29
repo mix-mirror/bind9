@@ -226,7 +226,8 @@ ref_cell(dns_qpref_t ref) {
  * to a value that should trigger an obvious bug. See qp_init()
  * and get_root() below.
  */
-#define INVALID_REF ((dns_qpref_t)~0UL)
+#define INVALID_REF   ((dns_qpref_t)~0UL)
+#define INVALID_CHUNK ((dns_qpchunk_t)~0U)
 
 /***********************************************************************
  *
@@ -265,17 +266,23 @@ ref_cell(dns_qpref_t ref) {
  * The `exists` flag allows the chunk scanning loops to look at the
  * usage array only.
  *
- * In multithreaded code, we mark chunks as `immutable` when a modify
- * transaction is opened. (We don't mark them immutable on commit,
- * because the old bump chunk must remain mutable between write
- * transactions, but it must become immutable when an update
- * transaction is opened.)
+ * In multithreaded code, we record the transaction generation in which
+ * a chunk was allocated. When a modify transaction is opened, we advance
+ * the trie's generation instead of stamping every existing chunk.
+ * Chunks from older generations are immutable; chunks allocated in the
+ * current generation are mutable. The bump chunk is a special case:
+ * its prefix before `fender` is immutable, and its suffix remains
+ * mutable so lightweight write transactions can keep appending to it.
  *
  * There are a few flags used to mark which chunks are still needed by
  * snapshots after the chunks have passed their normal reclamation
  * phase.
  */
 typedef struct qp_usage {
+	/*% transaction generation in which this chunk was allocated [MT] */
+	uint64_t generation;
+	/*% next chunk waiting for RCU reclamation [MT] */
+	dns_qpchunk_t reclaim_next;
 	/*% the allocation point, increases monotonically */
 	dns_qpcell_t used : QP_USAGE_BITS;
 	/*% the actual size of the allocation */
@@ -284,10 +291,10 @@ typedef struct qp_usage {
 	dns_qpcell_t free : QP_USAGE_BITS;
 	/*% qp->base->ptr[chunk] != NULL */
 	bool exists : 1;
-	/*% is this chunk shared? [MT] */
-	bool immutable : 1;
 	/*% already subtracted from multi->*_count [MT] */
 	bool discounted : 1;
+	/*% listed for reclamation after a grace period [MT] */
+	bool reclaim_candidate : 1;
 	/*% is a snapshot using this chunk? [MT] */
 	bool snapshot : 1;
 	/*% tried to free it but a snapshot needs it [MT] */
@@ -494,6 +501,10 @@ struct dns_qp {
 	dns_qpcell_t hold_count;
 	/*% capacity of last allocated chunk, for exponential chunk growth */
 	dns_qpcell_t chunk_capacity;
+	/*% chunks waiting to be reclaimed after readers drain [MT] */
+	dns_qpchunk_t reclaim_head, reclaim_tail, reclaim_count;
+	/*% current mutable transaction generation [MT] */
+	uint64_t generation;
 	/*% what kind of transaction was most recently started [MT] */
 	enum { QP_NONE, QP_WRITE, QP_UPDATE } transaction_mode : 2;
 	/*% compact the entire trie [MT] */

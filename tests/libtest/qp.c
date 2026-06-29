@@ -182,10 +182,14 @@ qp_test_dumpchunks(dns_qp_t *qp) {
 	dumpqp(qp, "qp");
 	for (dns_qpchunk_t c = 0; c < qp->chunk_max; c++) {
 		printf("qp %p chunk %u base %p "
-		       "used %u free %u immutable %u discounted %u\n",
+		       "used %u free %u generation %llu discounted %u "
+		       "reclaim_candidate %u reclaim_next %u\n",
 		       qp, c, qp->base->ptr[c], qp->usage[c].used,
-		       qp->usage[c].free, qp->usage[c].immutable,
-		       qp->usage[c].discounted);
+		       qp->usage[c].free,
+		       (unsigned long long)qp->usage[c].generation,
+		       qp->usage[c].discounted,
+		       qp->usage[c].reclaim_candidate,
+		       qp->usage[c].reclaim_next);
 		used_count += qp->usage[c].used;
 		free_count += qp->usage[c].free;
 	}

@@ -477,14 +477,32 @@ write_protect(dns_qp_t *qp, dns_qpchunk_t chunk) {
  * it can have an immutable prefix and a mutable suffix.
  */
 static inline bool
+chunk_immutable(dns_qp_t *qp, dns_qpchunk_t chunk) {
+	return qp->transaction_mode != QP_NONE &&
+	       qp->usage[chunk].generation < qp->generation;
+}
+
+static inline bool
 cells_immutable(dns_qp_t *qp, dns_qpref_t ref) {
 	dns_qpchunk_t chunk = ref_chunk(ref);
 	dns_qpcell_t cell = ref_cell(ref);
+	if (qp->transaction_mode == QP_NONE) {
+		return false;
+	}
 	if (chunk == qp->bump) {
 		return cell < qp->fender;
 	} else {
-		return qp->usage[chunk].immutable;
+		return chunk_immutable(qp, chunk);
 	}
+}
+
+static void
+maybe_reclaim_chunk(dns_qp_t *qp, dns_qpchunk_t chunk);
+
+static void
+qp_init_reclaim(dns_qp_t *qp) {
+	qp->reclaim_head = INVALID_CHUNK;
+	qp->reclaim_tail = INVALID_CHUNK;
 }
 
 /*
@@ -517,7 +535,9 @@ chunk_alloc(dns_qp_t *qp, dns_qpchunk_t chunk, dns_qpweight_t size) {
 	qp->base->ptr[chunk] =
 		chunk_get_raw(qp, qp->chunk_capacity * sizeof(dns_qpnode_t));
 
-	qp->usage[chunk] = (qp_usage_t){ .exists = true,
+	qp->usage[chunk] = (qp_usage_t){ .generation = qp->generation,
+					 .reclaim_next = INVALID_CHUNK,
+					 .exists = true,
 					 .used = size,
 					 .capacity = qp->chunk_capacity };
 	qp->used_count += size;
@@ -588,7 +608,15 @@ alloc_slow(dns_qp_t *qp, dns_qpweight_t size) {
  */
 static void
 alloc_reset(dns_qp_t *qp) {
+	dns_qpchunk_t old_bump = qp->bump;
+	bool had_old_bump = old_bump < qp->chunk_max &&
+			    qp->usage[old_bump].exists;
+
 	(void)alloc_slow(qp, 0);
+
+	if (had_old_bump && old_bump != qp->bump) {
+		maybe_reclaim_chunk(qp, old_bump);
+	}
 }
 
 /*
@@ -630,6 +658,9 @@ free_twigs(dns_qp_t *qp, dns_qpref_t twigs, dns_qpweight_t size) {
 	if (cells_immutable(qp, twigs)) {
 		qp->hold_count += size;
 		ENSURE(qp->free_count >= qp->hold_count);
+		if (qp->usage[chunk].used == qp->usage[chunk].free) {
+			maybe_reclaim_chunk(qp, chunk);
+		}
 		return false;
 	} else {
 		zero_twigs(ref_ptr(qp, twigs), size);
@@ -662,6 +693,28 @@ attach_twigs(dns_qp_t *qp, dns_qpnode_t *twigs, dns_qpweight_t size) {
 static inline dns_qpcell_t
 chunk_usage(dns_qp_t *qp, dns_qpchunk_t chunk) {
 	return qp->usage[chunk].used - qp->usage[chunk].free;
+}
+
+static void
+maybe_reclaim_chunk(dns_qp_t *qp, dns_qpchunk_t chunk) {
+	qp_usage_t *usage = &qp->usage[chunk];
+
+	if (chunk == qp->bump || !usage->exists || usage->discounted ||
+	    usage->reclaim_candidate || chunk_usage(qp, chunk) != 0 ||
+	    !chunk_immutable(qp, chunk))
+	{
+		return;
+	}
+
+	usage->reclaim_candidate = true;
+	usage->reclaim_next = INVALID_CHUNK;
+	if (qp->reclaim_tail != INVALID_CHUNK) {
+		qp->usage[qp->reclaim_tail].reclaim_next = chunk;
+	} else {
+		qp->reclaim_head = chunk;
+	}
+	qp->reclaim_tail = chunk;
+	qp->reclaim_count++;
 }
 
 /*
@@ -723,7 +776,7 @@ recycle(dns_qp_t *qp) {
 
 	for (dns_qpchunk_t chunk = 0; chunk < qp->chunk_max; chunk++) {
 		if (chunk != qp->bump && chunk_usage(qp, chunk) == 0 &&
-		    qp->usage[chunk].exists && !qp->usage[chunk].immutable)
+		    qp->usage[chunk].exists && !chunk_immutable(qp, chunk))
 		{
 			chunk_free(qp, chunk);
 			nfree++;
@@ -803,39 +856,42 @@ static void
 reclaim_chunks(dns_qpmulti_t *multi) {
 	dns_qp_t *qp = &multi->writer;
 
-	unsigned int count = 0;
-	for (dns_qpchunk_t chunk = 0; chunk < qp->chunk_max; chunk++) {
-		if (chunk != qp->bump && chunk_usage(qp, chunk) == 0 &&
-		    qp->usage[chunk].exists && qp->usage[chunk].immutable &&
-		    !qp->usage[chunk].discounted)
-		{
-			count++;
-		}
-	}
-
-	if (count == 0) {
+	if (qp->reclaim_count == 0) {
 		return;
 	}
 
 	qp_rcuctx_t *rcuctx =
-		isc_mem_get(qp->mctx, STRUCT_FLEX_SIZE(rcuctx, chunk, count));
+		isc_mem_get(qp->mctx, STRUCT_FLEX_SIZE(rcuctx, chunk,
+						       qp->reclaim_count));
 	*rcuctx = (qp_rcuctx_t){
 		.magic = QPRCU_MAGIC,
 		.multi = multi,
-		.count = count,
+		.count = qp->reclaim_count,
 	};
 	isc_mem_attach(qp->mctx, &rcuctx->mctx);
 
 	unsigned int i = 0;
-	for (dns_qpchunk_t chunk = 0; chunk < qp->chunk_max; chunk++) {
-		if (chunk != qp->bump && chunk_usage(qp, chunk) == 0 &&
-		    qp->usage[chunk].exists && qp->usage[chunk].immutable &&
-		    !qp->usage[chunk].discounted)
-		{
-			rcuctx->chunk[i++] = chunk;
-			chunk_discount(qp, chunk);
-		}
+	for (dns_qpchunk_t chunk = qp->reclaim_head; chunk != INVALID_CHUNK;) {
+		qp_usage_t *usage = &qp->usage[chunk];
+		dns_qpchunk_t next = usage->reclaim_next;
+
+		INSIST(chunk != qp->bump);
+		INSIST(chunk_usage(qp, chunk) == 0);
+		INSIST(usage->exists);
+		INSIST(chunk_immutable(qp, chunk));
+		INSIST(!usage->discounted);
+		INSIST(usage->reclaim_candidate);
+
+		usage->reclaim_candidate = false;
+		usage->reclaim_next = INVALID_CHUNK;
+		rcuctx->chunk[i++] = chunk;
+		chunk_discount(qp, chunk);
+		chunk = next;
 	}
+	INSIST(i == rcuctx->count);
+	qp->reclaim_head = INVALID_CHUNK;
+	qp->reclaim_tail = INVALID_CHUNK;
+	qp->reclaim_count = 0;
 
 	/*
 	 * Reference the qpmulti object to keep it from being
@@ -844,7 +900,7 @@ reclaim_chunks(dns_qpmulti_t *multi) {
 	dns_qpmulti_ref(multi);
 	call_rcu(&rcuctx->rcu_head, reclaim_chunks_cb);
 
-	LOG_STATS("qp will reclaim %u chunks", count);
+	LOG_STATS("qp will reclaim %u chunks", rcuctx->count);
 }
 
 /*
@@ -1158,19 +1214,19 @@ transaction_open(dns_qpmulti_t *multi, dns_qp_t **qptp) {
 	INSIST(QP_VALID(qp));
 
 	/*
-	 * Mark existing chunks as immutable.
-	 *
-	 * Aside: The bump chunk is special: in a series of write
-	 * transactions the bump chunk is reused; the first part (up
-	 * to fender) is immutable, the rest mutable. But we set its
-	 * immutable flag so that when the bump chunk fills up, the
-	 * first part continues to be treated as immutable. (And the
-	 * rest of the chunk too, but that's OK.)
+	 * Mark existing chunks as immutable by advancing the mutable
+	 * generation. The bump chunk is special: in a series of write
+	 * transactions the prefix up to fender is immutable, while the suffix
+	 * stays mutable so the allocator can keep appending to it.
 	 */
-	for (dns_qpchunk_t chunk = 0; chunk < qp->chunk_max; chunk++) {
-		if (qp->usage[chunk].exists) {
-			qp->usage[chunk].immutable = true;
-			write_protect(qp, chunk);
+	INSIST(qp->generation < UINT64_MAX);
+	qp->generation++;
+
+	if (qp->write_protect) {
+		for (dns_qpchunk_t chunk = 0; chunk < qp->chunk_max; chunk++) {
+			if (qp->usage[chunk].exists) {
+				write_protect(qp, chunk);
+			}
 		}
 	}
 
@@ -1332,7 +1388,7 @@ dns_qpmulti_rollback(dns_qpmulti_t *multi, dns_qp_t **qptp) {
 	isc_nanosecs_t start = isc_time_monotonic();
 
 	for (dns_qpchunk_t chunk = 0; chunk < qp->chunk_max; chunk++) {
-		if (qp->base->ptr[chunk] != NULL && !qp->usage[chunk].immutable)
+		if (qp->base->ptr[chunk] != NULL && !chunk_immutable(qp, chunk))
 		{
 			chunk_free(qp, chunk);
 			/*
@@ -1500,6 +1556,7 @@ dns_qp_create(isc_mem_t *mctx, const dns_qpmethods_t *methods, void *uctx,
 
 	dns_qp_t *qp = isc_mem_get(mctx, sizeof(*qp));
 	QP_INIT(qp, methods, uctx);
+	qp_init_reclaim(qp);
 	isc_mem_attach(mctx, &qp->mctx);
 	alloc_reset(qp);
 	TRACE("");
@@ -1526,6 +1583,7 @@ dns_qpmulti_create(isc_mem_t *mctx, const dns_qpmethods_t *methods, void *uctx,
 	 */
 	dns_qp_t *qp = &multi->writer;
 	QP_INIT(qp, methods, uctx);
+	qp_init_reclaim(qp);
 	isc_mem_attach(mctx, &qp->mctx);
 	qp->transaction_mode = QP_UPDATE;
 	TRACE("");
