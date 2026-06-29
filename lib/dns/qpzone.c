@@ -3409,12 +3409,20 @@ qpznode_find_zonecut(qpznode_t *node, qpz_version_t *version,
 	dns_vecheader_t *dname_header = NULL, *sigdname_header = NULL;
 	dns_vecheader_t *ns_header = NULL;
 	dns_vecheader_t *found = NULL;
+	bool delegating = node->delegating;
 	bool maybe_zonecut = false;
+
+	if (!delegating) {
+		return match;
+	}
 
 	if (exact) {
 		maybe_zonecut = (node != version->qpdb->origin &&
 				 !dns_rdatatype_atparent(type)) ||
 				IS_STUB(version->qpdb);
+		if (!maybe_zonecut) {
+			return match;
+		}
 	} else {
 		maybe_zonecut = node != version->qpdb->origin ||
 				IS_STUB(version->qpdb);
