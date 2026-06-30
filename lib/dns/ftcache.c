@@ -2986,8 +2986,15 @@ dns__ftcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 		RUNTIME_CHECK(cds_ft_group_attr_set_key_len(
 				      attr, CDS_FT_LEN_VARIABLE) ==
 			      CDS_FT_STATUS_OK);
-		RUNTIME_CHECK(cds_ft_group_attr_set_max_key_len(
-				      attr, DNS_QP_MAXKEY) == CDS_FT_STATUS_OK);
+		/*
+		 * cds_ft caps keys at FT_MAX_KEY_LEN (256), which is below
+		 * DNS_QP_MAXKEY (512): a worst-case DNS name's qp key (escape
+		 * bytes cost two each) does not fit. Names whose key exceeds
+		 * 256 bytes currently fail to insert (RUNTIME_CHECK); raising
+		 * the cds_ft limit or skipping such names is a TODO.
+		 */
+		RUNTIME_CHECK(cds_ft_group_attr_set_max_key_len(attr, 256) ==
+			      CDS_FT_STATUS_OK);
 		RUNTIME_CHECK(cds_ft_group_create(attr, &ftdb->ftgroup) ==
 			      CDS_FT_STATUS_OK);
 		cds_ft_group_attr_destroy(attr);
