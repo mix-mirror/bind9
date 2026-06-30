@@ -398,7 +398,7 @@ stages:
       build
 
 .git-clone-bind9-qa: &git_clone_bind9-qa
-  - git clone --depth 1 https://gitlab.isc.org/isc-projects/bind9-qa.git "$CI_PROJECT_DIR"/bind9-qa
+  - git clone --depth 1 --branch mnowak/stress-tsan-tests https://gitlab.isc.org/isc-projects/bind9-qa.git "$CI_PROJECT_DIR"/bind9-qa
 
 # change directory to the workspace before including this
 .find_python: &find_python
