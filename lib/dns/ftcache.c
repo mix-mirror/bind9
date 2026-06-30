@@ -62,6 +62,9 @@
 #include "ftcache_p.h"
 #include "rdataslab_p.h"
 
+/* after the RCU flavor is set up via <isc/urcu.h> in ftcache_p.h */
+#include <urcu/fractal-trie.h>
+
 #ifndef DNS_FTCACHE_LOG_STATS_LEVEL
 #define DNS_FTCACHE_LOG_STATS_LEVEL 3
 #endif
@@ -139,10 +142,17 @@ struct ftcnode {
 	struct cds_list_head headers;
 
 	/*%
+	 * Intrusive linkage into the cds_ft trie. The trie holds one
+	 * internal reference to the node; it is dropped through 'rcu_head'
+	 * (call_rcu) once the node has been removed from the trie.
+	 */
+	struct cds_ft_node ftnode;
+	struct rcu_head	   rcu_head;
+
+	/*%
 	 * Used for dead nodes cleaning.  This linked list is used to mark nodes
 	 * which have no data any longer, but we cannot unlink at that exact
-	 * moment because we did not or could not obtain a write lock on the
-	 * tree.
+	 * moment because we did not or could not obtain the tree write lock.
 	 */
 	isc_queue_node_t deadlink;
 };
@@ -208,7 +218,14 @@ struct ftcache {
 	 */
 	uint32_t serve_stale_refresh;
 
-	dns_qpmulti_t *tree; /* QPmulti trie for data storage */
+	/*
+	 * The cds_ft trie holding the cache nodes, its enclosing group,
+	 * and the single-writer mutex serialising structural mutations.
+	 * Reads run lock-free under the RCU read-side lock.
+	 */
+	struct cds_ft_group *ftgroup;
+	struct cds_ft	    *ft;
+	isc_mutex_t	     wmutex;
 
 	struct rcu_head rcu_head;
 
@@ -269,49 +286,6 @@ static dns_dbnode_methods_t ftcnode_methods = (dns_dbnode_methods_t){
 	.detachnode = ftcnode_detachnode,
 	.expiredata = ftcnode_expiredata,
 };
-
-/* QP methods */
-static void
-qp_attach(void *uctx, void *pval, uint32_t ival);
-static void
-qp_detach(void *uctx, void *pval, uint32_t ival);
-static size_t
-qp_makekey(dns_qpkey_t key, void *uctx, void *pval, uint32_t ival);
-static void
-qp_triename(void *uctx, char *buf, size_t size);
-
-static dns_qpmethods_t qpmethods = {
-	qp_attach,
-	qp_detach,
-	qp_makekey,
-	qp_triename,
-};
-
-static void
-qp_attach(void *uctx ISC_ATTR_UNUSED, void *pval,
-	  uint32_t ival ISC_ATTR_UNUSED) {
-	ftcnode_t *data = pval;
-	ftcnode_ref(data);
-}
-
-static void
-qp_detach(void *uctx ISC_ATTR_UNUSED, void *pval,
-	  uint32_t ival ISC_ATTR_UNUSED) {
-	ftcnode_t *data = pval;
-	ftcnode_detach(&data);
-}
-
-static size_t
-qp_makekey(dns_qpkey_t key, void *uctx ISC_ATTR_UNUSED, void *pval,
-	   uint32_t ival ISC_ATTR_UNUSED) {
-	ftcnode_t *data = pval;
-	return dns_qpkey_fromname(key, &data->name, data->nspace);
-}
-
-static void
-qp_triename(void *uctx ISC_ATTR_UNUSED, char *buf, size_t size) {
-	snprintf(buf, size, "ftdb-lite");
-}
 
 static void
 rdatasetiter_destroy(dns_rdatasetiter_t **iteratorp DNS__DB_FLARG);
@@ -1934,7 +1908,15 @@ ftcache__destroy_rcu(struct rcu_head *rcu_head) {
 
 static void
 ftcache__destroy(ftcache_t *ftdb) {
-	dns_qpmulti_destroy(&ftdb->tree);
+	/*
+	 * TODO: drain the trie first -- remove every external node, wait
+	 * one grace period, and drop the trie's reference -- once the
+	 * remove path and iterator exist. cds_ft_destroy() does not reclaim
+	 * a populated trie's external nodes.
+	 */
+	cds_ft_destroy(ftdb->ft);
+	RUNTIME_CHECK(cds_ft_group_destroy(ftdb->ftgroup) == CDS_FT_STATUS_OK);
+	isc_mutex_destroy(&ftdb->wmutex);
 
 	call_rcu(&ftdb->rcu_head, ftcache__destroy_rcu);
 }
@@ -2928,9 +2910,25 @@ dns__ftcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 	dns_name_dup(origin, mctx, &ftdb->common.origin);
 
 	/*
-	 * Make the qp trie.
+	 * Make the cds_ft trie: a single variable-length-key trie in its
+	 * own group, with a mutex serialising structural writes.
 	 */
-	dns_qpmulti_create(mctx, &qpmethods, ftdb, &ftdb->tree);
+	isc_mutex_init(&ftdb->wmutex);
+	{
+		struct cds_ft_group_attr *attr = NULL;
+		RUNTIME_CHECK(cds_ft_group_attr_create(&attr) ==
+			      CDS_FT_STATUS_OK);
+		RUNTIME_CHECK(cds_ft_group_attr_set_key_len(
+				      attr, CDS_FT_LEN_VARIABLE) ==
+			      CDS_FT_STATUS_OK);
+		RUNTIME_CHECK(cds_ft_group_attr_set_max_key_len(
+				      attr, DNS_QP_MAXKEY) == CDS_FT_STATUS_OK);
+		RUNTIME_CHECK(cds_ft_group_create(attr, &ftdb->ftgroup) ==
+			      CDS_FT_STATUS_OK);
+		cds_ft_group_attr_destroy(attr);
+	}
+	RUNTIME_CHECK(cds_ft_create(ftdb->ftgroup, NULL, &ftdb->ft) ==
+		      CDS_FT_STATUS_OK);
 
 	ftdb->common.magic = DNS_DB_MAGIC;
 	ftdb->common.impmagic = FTDB_MAGIC;
