@@ -2019,6 +2019,32 @@ new_ftcnode(ftcache_t *ftdb, const dns_name_t *name, dns_namespace_t nspace) {
 	return newdata;
 }
 
+/*
+ * Exact lookup of 'name' in namespace 'space'. cds_ft's candidate descent
+ * may land on a near-miss, so the result is verified by name. The caller
+ * must hold the RCU read-side lock, or exclude concurrent writers.
+ */
+static isc_result_t
+ftc_lookup(struct cds_ft *ft, const dns_name_t *name, dns_namespace_t space,
+	   ftcnode_t **nodep) {
+	dns_qpkey_t key;
+	size_t keylen = dns_qpkey_fromname(key, name, space);
+	struct cds_ft_node *ftn = NULL;
+
+	if (cds_ft_lookup_candidate_key(ft, key, keylen, 0, &ftn) !=
+	    CDS_FT_STATUS_OK) {
+		return ISC_R_NOTFOUND;
+	}
+
+	ftcnode_t *node = caa_container_of(ftn, ftcnode_t, ftnode);
+	if (!dns_name_equal(name, &node->name)) {
+		return ISC_R_NOTFOUND;
+	}
+
+	*nodep = node;
+	return ISC_R_SUCCESS;
+}
+
 static isc_result_t
 ftcache_findnode(dns_db_t *db, const dns_name_t *name, bool create,
 		 dns_clientinfomethods_t *methods ISC_ATTR_UNUSED,
@@ -2028,17 +2054,15 @@ ftcache_findnode(dns_db_t *db, const dns_name_t *name, bool create,
 	ftcnode_t *node = NULL;
 	isc_result_t result;
 	dns_namespace_t nspace = DNS_DBNAMESPACE_NORMAL;
-	dns_qpread_t qpr;
-	dns_qp_t *qp = NULL;
 
 	/* lookup the node */
-	dns_qpmulti_query(ftdb->tree, &qpr);
-	result = dns_qp_getname(&qpr, name, nspace, (void **)&node, NULL);
+	rcu_read_lock();
+	result = ftc_lookup(ftdb->ft, name, nspace, &node);
 	if (result == ISC_R_SUCCESS) {
-		/* maybe we found already deleted node */
+		/* maybe we found an already deleted node */
 		result = reactivate_node(ftdb, node DNS__DB_FLARG_PASS);
 	}
-	dns_qpread_destroy(ftdb->tree, &qpr);
+	rcu_read_unlock();
 
 	if (result == ISC_R_SUCCESS) {
 		*nodep = (dns_dbnode_t *)node;
@@ -2048,19 +2072,31 @@ ftcache_findnode(dns_db_t *db, const dns_name_t *name, bool create,
 		return ISC_R_NOTFOUND;
 	}
 
-	/* create the new node */
-	dns_qpmulti_write(ftdb->tree, &qp);
-	result = dns_qp_getname(qp, name, nspace, (void **)&node, NULL);
+	/*
+	 * Create the new node under the single-writer mutex. Re-check first:
+	 * another writer may have created it since the lock-free lookup.
+	 */
+	LOCK(&ftdb->wmutex);
+	rcu_read_lock();
+	result = ftc_lookup(ftdb->ft, name, nspace, &node);
+	rcu_read_unlock();
 	if (result != ISC_R_SUCCESS) {
+		dns_qpkey_t key;
+		size_t keylen = dns_qpkey_fromname(key, name, nspace);
+
 		node = new_ftcnode(ftdb, name, nspace);
-		result = dns_qp_insert(qp, node, 0);
-		INSIST(result == ISC_R_SUCCESS);
-		ftcnode_unref(node);
+		RUNTIME_CHECK(cds_ft_insert_unique(ftdb->ft, key, keylen,
+						   &node->ftnode) ==
+			      CDS_FT_STATUS_OK);
+		/*
+		 * The node's initial reference becomes the trie's reference;
+		 * it is dropped via call_rcu once the node is removed.
+		 */
 	}
 	RUNTIME_CHECK(reactivate_node(ftdb, node DNS__DB_FLARG_PASS) ==
 		      ISC_R_SUCCESS);
 	*nodep = (dns_dbnode_t *)node;
-	dns_qpmulti_commit(ftdb->tree, &qp);
+	UNLOCK(&ftdb->wmutex);
 	return ISC_R_SUCCESS;
 }
 
