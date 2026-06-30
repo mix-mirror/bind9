@@ -2770,7 +2770,9 @@ ftcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 
 	struct cds_ft_iter *iter = NULL;
 	if (newnsec) {
-		dns_qpmulti_write(ftdb->tree, &iter);
+		LOCK(&ftdb->wmutex);
+		RUNTIME_CHECK(cds_ft_iter_create(ftdb->ft, &iter) ==
+			      CDS_FT_STATUS_OK);
 	}
 
 	NODE_WRLOCK(nlock, &nlocktype);
@@ -2778,15 +2780,19 @@ ftcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	if (newnsec && !qpnode->havensec) {
 		ftcnode_t *nsecnode = NULL;
 
-		result = dns_qp_getname(iter, name, DNS_DBNAMESPACE_NSEC,
-					(void **)&nsecnode, NULL);
-		if (result != ISC_R_SUCCESS) {
-			INSIST(nsecnode == NULL);
+		if (ftc_lookup(ftdb->ft, name, DNS_DBNAMESPACE_NSEC,
+			       &nsecnode) != ISC_R_SUCCESS) {
+			dns_qpkey_t key;
+			size_t keylen = dns_qpkey_fromname(
+				key, name, DNS_DBNAMESPACE_NSEC);
+
 			nsecnode = new_ftcnode(ftdb, name,
 					       DNS_DBNAMESPACE_NSEC);
-			result = dns_qp_insert(iter, nsecnode, 0);
-			INSIST(result == ISC_R_SUCCESS);
-			ftcnode_detach(&nsecnode);
+			RUNTIME_CHECK(cds_ft_insert_unique(
+					      ftdb->ft, key, keylen,
+					      &nsecnode->ftnode) ==
+				      CDS_FT_STATUS_OK);
+			/* the creation reference becomes the trie's */
 		}
 		qpnode->havensec = true;
 	}
@@ -2805,7 +2811,8 @@ ftcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	NODE_UNLOCK(nlock, &nlocktype);
 
 	if (newnsec) {
-		dns_qpmulti_commit(ftdb->tree, &iter);
+		cds_ft_iter_destroy(iter);
+		UNLOCK(&ftdb->wmutex);
 	}
 
 	if (result == ISC_R_EXISTS) {
@@ -2865,13 +2872,15 @@ ftcache_deleterdataset(dns_db_t *db, dns_dbnode_t *node,
 static unsigned int
 nodecount(dns_db_t *db) {
 	ftcache_t *ftdb = (ftcache_t *)db;
-	dns_qp_memusage_t mu;
+	unsigned int count;
 
 	REQUIRE(VALID_FTDB(ftdb));
 
-	mu = dns_qpmulti_memusage(ftdb->tree);
+	rcu_read_lock();
+	count = (unsigned int)cds_ft_count_keys(ftdb->ft);
+	rcu_read_unlock();
 
-	return mu.leaves;
+	return count;
 }
 
 isc_result_t
