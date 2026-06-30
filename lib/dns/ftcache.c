@@ -99,7 +99,7 @@
 typedef struct ftcache ftcache_t;
 
 /*%
- * This is the structure that is used for each node in the qp trie of
+ * This is the structure that is used for each node in the iter trie of
  * trees.
  */
 typedef struct ftcnode ftcnode_t;
@@ -399,11 +399,11 @@ rdataset_size(dns_slabheader_t *header) {
 
 static void
 flush_node(ftcache_t *ftdb, ftcnode_t *node, isc_rwlocktype_t *nlocktypep,
-	   dns_qp_t *qp, dns_expire_t reason DNS__DB_FLARG);
+	   struct cds_ft_iter *iter, dns_expire_t reason DNS__DB_FLARG);
 
 static size_t
 expire_header(ftcache_t *ftdb, ftcnode_t *node, dns_slabheader_t *header,
-	      isc_rwlocktype_t *nlocktypep, dns_qp_t *qp DNS__DB_FLARG) {
+	      isc_rwlocktype_t *nlocktypep, struct cds_ft_iter *iter DNS__DB_FLARG) {
 	size_t expired = 0;
 
 	if (header->related != NULL) {
@@ -411,7 +411,7 @@ expire_header(ftcache_t *ftdb, ftcnode_t *node, dns_slabheader_t *header,
 	}
 	expired += header_delete(node, header);
 
-	flush_node(ftdb, node, nlocktypep, qp,
+	flush_node(ftdb, node, nlocktypep, iter,
 		   dns_expire_lru DNS__DB_FLARG_PASS);
 
 	return expired;
@@ -420,7 +420,7 @@ expire_header(ftcache_t *ftdb, ftcnode_t *node, dns_slabheader_t *header,
 static void
 expire_lru_headers(ftcache_t *ftdb, dns_slabheader_t *newheader, uint32_t idx,
 		   size_t requested, isc_rwlocktype_t *nlocktypep,
-		   dns_qp_t *qp DNS__DB_FLARG) {
+		   struct cds_ft_iter *iter DNS__DB_FLARG) {
 	size_t expired = 0;
 
 	do {
@@ -438,14 +438,14 @@ expire_lru_headers(ftcache_t *ftdb, dns_slabheader_t *newheader, uint32_t idx,
 		ftcnode_t *node = HEADERNODE(header);
 
 		expired += expire_header(ftdb, node, header, nlocktypep,
-					 qp DNS__DB_FLARG_PASS);
+					 iter DNS__DB_FLARG_PASS);
 
 	} while (expired < requested);
 }
 
 static void
 ftcache_miss(ftcache_t *ftdb, dns_slabheader_t *newheader,
-	     isc_rwlocktype_t *nlocktypep, dns_qp_t *qp DNS__DB_FLARG) {
+	     isc_rwlocktype_t *nlocktypep, struct cds_ft_iter *iter DNS__DB_FLARG) {
 	uint32_t idx = HEADERNODE(newheader)->locknum;
 
 	if (isc_mem_isovermem(ftdb->common.mctx)) {
@@ -464,7 +464,7 @@ ftcache_miss(ftcache_t *ftdb, dns_slabheader_t *newheader,
 			rdataset_size(newheader) + QP_SAFETY_MARGIN;
 
 		expire_lru_headers(ftdb, newheader, idx, purgesize, nlocktypep,
-				   qp DNS__DB_FLARG_PASS);
+				   iter DNS__DB_FLARG_PASS);
 	}
 
 	ISC_SIEVE_INSERT(ftdb->buckets[idx].sieve, newheader, lrulink);
@@ -485,10 +485,15 @@ ftcache_hit(ftcache_t *ftdb ISC_ATTR_UNUSED, dns_slabheader_t *header) {
 /*
  * Write transaction must be open.
  */
+/* RCU callback: drop the trie's reference once readers have drained. */
 static void
-delete_node(dns_qp_t *qp, ftcnode_t *node) {
-	isc_result_t result = ISC_R_UNEXPECTED;
+ftc_drop_tree_ref(struct rcu_head *rcu_head) {
+	ftcnode_t *node = caa_container_of(rcu_head, ftcnode_t, rcu_head);
+	ftcnode_detach(&node);
+}
 
+static void
+delete_node(ftcache_t *ftdb, struct cds_ft_iter *iter, ftcnode_t *node) {
 	INSIST(!node->deleted);
 	node->deleted = true;
 
@@ -501,40 +506,15 @@ delete_node(dns_qp_t *qp, ftcnode_t *node) {
 			      printname, node->locknum);
 	}
 
-	switch (node->nspace) {
-	case DNS_DBNAMESPACE_NORMAL:
-		if (node->havensec) {
-			/*
-			 * Delete the corresponding node from the auxiliary NSEC
-			 * tree before deleting from the main tree.
-			 */
-			result = dns_qp_deletename(qp, &node->name,
-						   DNS_DBNAMESPACE_NSEC, NULL,
-						   NULL);
-			if (result != ISC_R_SUCCESS) {
-				isc_log_write(DNS_LOGCATEGORY_DATABASE,
-					      DNS_LOGMODULE_CACHE,
-					      ISC_LOG_WARNING,
-					      "delete_node(): "
-					      "dns_qp_deletename: %s",
-					      isc_result_totext(result));
-			}
-		}
-		result = dns_qp_deletename(qp, &node->name, node->nspace, NULL,
-					   NULL);
-		break;
-	case DNS_DBNAMESPACE_NSEC:
-		result = dns_qp_deletename(qp, &node->name, node->nspace, NULL,
-					   NULL);
-		break;
-	}
-	if (result != ISC_R_SUCCESS) {
-		isc_log_write(DNS_LOGCATEGORY_DATABASE, DNS_LOGMODULE_CACHE,
-			      ISC_LOG_WARNING,
-			      "delete_node(): "
-			      "dns_qp_deletename: %s",
-			      isc_result_totext(result));
-	}
+	/*
+	 * TODO: a havensec NORMAL node also has an NSEC auxiliary node; for
+	 * now that node is reclaimed independently on its own eviction
+	 * rather than being co-deleted here.
+	 */
+	RUNTIME_CHECK(cds_ft_remove(ftdb->ft, iter, &node->ftnode) ==
+		      CDS_FT_STATUS_OK);
+
+	call_rcu(&node->rcu_head, ftc_drop_tree_ref);
 }
 
 /*
@@ -619,7 +599,7 @@ ftcnode_erefs_decrement(ftcache_t *ftdb, ftcnode_t *node DNS__DB_FLARG) {
  */
 static void
 ftcnode_release(ftcache_t *ftdb, ftcnode_t *node, isc_rwlocktype_t *nlocktypep,
-		dns_qp_t *qp DNS__DB_FLARG) {
+		struct cds_ft_iter *iter DNS__DB_FLARG) {
 	REQUIRE(*nlocktypep != isc_rwlocktype_none);
 
 	if (!ftcnode_erefs_decrement(ftdb, node DNS__DB_FLARG_PASS)) {
@@ -658,11 +638,12 @@ ftcnode_release(ftcache_t *ftdb, ftcnode_t *node, isc_rwlocktype_t *nlocktypep,
 		goto unref;
 	}
 
-	if (qp != NULL) {
+	if (iter != NULL) {
 		/*
-		 * We can delete the node if we have the tree write lock.
+		 * We can delete the node if we hold the writer mutex (carried
+		 * as a removal iterator).
 		 */
-		delete_node(qp, node);
+		delete_node(ftdb, iter, node);
 	} else if (!node->deleted) {
 		/*
 		 * If we don't have the tree lock, we will add this node to a
@@ -795,7 +776,7 @@ header_delete(ftcnode_t *node, dns_slabheader_t *header) {
 
 static void
 flush_node(ftcache_t *ftdb, ftcnode_t *node, isc_rwlocktype_t *nlocktypep,
-	   dns_qp_t *qp, dns_expire_t reason DNS__DB_FLARG) {
+	   struct cds_ft_iter *iter, dns_expire_t reason DNS__DB_FLARG) {
 	if (isc_refcount_current(&node->erefs) != 0) {
 		return;
 	}
@@ -806,7 +787,7 @@ flush_node(ftcache_t *ftdb, ftcnode_t *node, isc_rwlocktype_t *nlocktypep,
 	 * requirement of ftcnode_release().
 	 */
 	ftcnode_acquire(ftdb, node, *nlocktypep DNS__DB_FLARG_PASS);
-	ftcnode_release(ftdb, node, nlocktypep, qp DNS__DB_FLARG_PASS);
+	ftcnode_release(ftdb, node, nlocktypep, iter DNS__DB_FLARG_PASS);
 
 	if (ftdb->cachestats == NULL) {
 		return;
@@ -1940,26 +1921,27 @@ cleanup_deadnodes(ftcache_t *ftdb, uint16_t locknum) {
 	isc_rwlock_t *nlock = &ftdb->buckets[locknum].lock;
 	ftcnode_t *qpnode = NULL, *qpnext = NULL;
 	isc_queue_t deadnodes;
-	dns_qp_t *qp = NULL;
+	struct cds_ft_iter *iter = NULL;
 
 	INSIST(locknum < ftdb->buckets_count);
 
 	isc_queue_init(&deadnodes);
 
-	dns_qpmulti_write(ftdb->tree, &qp);
+	LOCK(&ftdb->wmutex);
+	RUNTIME_CHECK(cds_ft_iter_create(ftdb->ft, &iter) == CDS_FT_STATUS_OK);
 
 	NODE_WRLOCK(nlock, &nlocktype);
 
 	isc_queue_splice(&deadnodes, &ftdb->buckets[locknum].deadnodes);
 
 	isc_queue_for_each_entry_safe(&deadnodes, qpnode, qpnext, deadlink) {
-		ftcnode_release(ftdb, qpnode, &nlocktype, qp DNS__DB_FILELINE);
+		ftcnode_release(ftdb, qpnode, &nlocktype, iter DNS__DB_FILELINE);
 	}
 
 	NODE_UNLOCK(nlock, &nlocktype);
 
-	dns_qp_compact(qp, DNS_QPGC_MAYBE);
-	dns_qpmulti_commit(ftdb->tree, &qp);
+	cds_ft_iter_destroy(iter);
+	UNLOCK(&ftdb->wmutex);
 }
 
 static void
@@ -2299,7 +2281,7 @@ check_ncache_block(ftcache_t *ftdb, ftcnode_t *qpnode, dns_slabheader_t *header,
 static isc_result_t
 add(ftcache_t *ftdb, ftcnode_t *qpnode, dns_slabheader_t *newheader,
     unsigned int options, dns_rdataset_t *addedrdataset, isc_stdtime_t now,
-    isc_rwlocktype_t nlocktype, dns_qp_t *qp DNS__DB_FLARG) {
+    isc_rwlocktype_t nlocktype, struct cds_ft_iter *iter DNS__DB_FLARG) {
 	dns_slabheader_t *prioheader = NULL, *evictheader = NULL;
 	dns_slabheader_t *oldheader = NULL, *related = NULL;
 	dns_trust_t trust;
@@ -2605,7 +2587,7 @@ add(ftcache_t *ftdb, ftcnode_t *qpnode, dns_slabheader_t *newheader,
 		}
 	}
 
-	ftcache_miss(ftdb, newheader, &nlocktype, qp DNS__DB_FLARG_PASS);
+	ftcache_miss(ftdb, newheader, &nlocktype, iter DNS__DB_FLARG_PASS);
 
 	/*
 	 * We've added a proof that a rdtype doesn't exist.
@@ -2786,9 +2768,9 @@ ftcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 		NODE_UNLOCK(nlock, &nlocktype);
 	}
 
-	dns_qp_t *qp = NULL;
+	struct cds_ft_iter *iter = NULL;
 	if (newnsec) {
-		dns_qpmulti_write(ftdb->tree, &qp);
+		dns_qpmulti_write(ftdb->tree, &iter);
 	}
 
 	NODE_WRLOCK(nlock, &nlocktype);
@@ -2796,13 +2778,13 @@ ftcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	if (newnsec && !qpnode->havensec) {
 		ftcnode_t *nsecnode = NULL;
 
-		result = dns_qp_getname(qp, name, DNS_DBNAMESPACE_NSEC,
+		result = dns_qp_getname(iter, name, DNS_DBNAMESPACE_NSEC,
 					(void **)&nsecnode, NULL);
 		if (result != ISC_R_SUCCESS) {
 			INSIST(nsecnode == NULL);
 			nsecnode = new_ftcnode(ftdb, name,
 					       DNS_DBNAMESPACE_NSEC);
-			result = dns_qp_insert(qp, nsecnode, 0);
+			result = dns_qp_insert(iter, nsecnode, 0);
 			INSIST(result == ISC_R_SUCCESS);
 			ftcnode_detach(&nsecnode);
 		}
@@ -2810,7 +2792,7 @@ ftcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	}
 
 	result = add(ftdb, qpnode, newheader, options, addedrdataset, now,
-		     nlocktype, qp DNS__DB_FLARG_PASS);
+		     nlocktype, iter DNS__DB_FLARG_PASS);
 
 	if (result == ISC_R_SUCCESS) {
 		DNS_SLABHEADER_SETATTR(newheader, DNS_SLABHEADERATTR_STATCOUNT);
@@ -2823,7 +2805,7 @@ ftcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	NODE_UNLOCK(nlock, &nlocktype);
 
 	if (newnsec) {
-		dns_qpmulti_commit(ftdb->tree, &qp);
+		dns_qpmulti_commit(ftdb->tree, &iter);
 	}
 
 	if (result == ISC_R_EXISTS) {
