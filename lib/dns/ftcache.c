@@ -257,6 +257,10 @@ typedef struct {
 	isc_stdtime_t now;
 } ftc_search_t;
 
+static isc_result_t
+ftc_lookup(struct cds_ft *ft, const dns_name_t *name, dns_namespace_t space,
+	   ftcnode_t **nodep);
+
 #ifdef DNS_DB_NODETRACE
 #define ftcnode_ref(ptr)   ftcnode__ref(ptr, __func__, __FILE__, __LINE__)
 #define ftcnode_unref(ptr) ftcnode__unref(ptr, __func__, __FILE__, __LINE__)
