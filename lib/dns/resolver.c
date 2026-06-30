@@ -5977,7 +5977,7 @@ answer_response:
 
 	fctx_setresult(fctx);
 	dns_name_copy(val->name, fctx->resp.foundname);
-	dns_db_transfernode(fctx->cache, &node, &fctx->resp_node);
+	fctx->resp_node = MOVE_OWNERSHIP(node);
 
 	done = true;
 
@@ -6432,8 +6432,7 @@ rctx_cachename(respctx_t *rctx, dns_message_t *message, dns_name_t *name) {
 		}
 		dns_name_copy(name, fctx->resp.foundname);
 		if (node != NULL) {
-			dns_db_transfernode(fctx->cache, &node,
-					    &fctx->resp_node);
+			fctx->resp_node = MOVE_OWNERSHIP(node);
 		} else {
 			CHECK(dns_db_findnode(fctx->cache, name, true,
 					      &fctx->resp_node));
@@ -6622,7 +6621,7 @@ rctx_ncache(respctx_t *rctx) {
 	FCTX_ATTR_SET(fctx, FCTX_ATTR_HAVEANSWER);
 	fctx_setresult(fctx);
 	dns_name_copy(name, fctx->resp.foundname);
-	dns_db_transfernode(fctx->cache, &node, &fctx->resp_node);
+	fctx->resp_node = MOVE_OWNERSHIP(node);
 
 unlock:
 	UNLOCK(&fctx->lock);

@@ -1038,27 +1038,6 @@ dns__db_detachnode(dns_dbnode_t **nodep DNS__DB_FLARG);
  */
 
 void
-dns_db_transfernode(dns_db_t *db, dns_dbnode_t **sourcep,
-		    dns_dbnode_t **targetp);
-/*%<
- * Transfer a node between pointer.
- *
- * This is equivalent to calling dns_db_attachnode() then dns_db_detachnode().
- *
- * Requires:
- *
- * \li	'db' is a valid database.
- *
- * \li	'*sourcep' is a valid node.
- *
- * \li	'targetp' points to a NULL dns_dbnode_t *.
- *
- * Ensures:
- *
- * \li	'*sourcep' is NULL.
- */
-
-void
 dns_db_printnode(dns_db_t *db, dns_dbnode_t *node, FILE *out);
 /*%<
  * Print a textual representation of the contents of the node to

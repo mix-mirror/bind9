@@ -554,17 +554,6 @@ dns__db_detachnode(dns_dbnode_t **nodep DNS__DB_FLARG) {
 	ENSURE(*nodep == NULL);
 }
 
-void
-dns_db_transfernode(dns_db_t *db, dns_dbnode_t **sourcep,
-		    dns_dbnode_t **targetp) {
-	REQUIRE(DNS_DB_VALID(db));
-	REQUIRE(targetp != NULL && *targetp == NULL);
-	REQUIRE(sourcep != NULL && *sourcep != NULL);
-
-	*targetp = *sourcep;
-	*sourcep = NULL;
-}
-
 /***
  *** DB Iterator Creation
  ***/
