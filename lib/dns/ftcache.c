@@ -1907,12 +1907,32 @@ ftcache__destroy_rcu(struct rcu_head *rcu_head) {
 
 static void
 ftcache__destroy(ftcache_t *ftdb) {
+	struct cds_ft_iter *iter = NULL;
+
 	/*
-	 * TODO: drain the trie first -- remove every external node, wait
-	 * one grace period, and drop the trie's reference -- once the
-	 * remove path and iterator exist. cds_ft_destroy() does not reclaim
-	 * a populated trie's external nodes.
+	 * cds_ft_destroy() does not reclaim a populated trie's external
+	 * nodes, so drain the trie first: remove every node and drop the
+	 * trie's reference to it. The drops are deferred with call_rcu (as
+	 * in delete_node); being queued before ftcache__destroy_rcu, they
+	 * run first, so each node is freed -- emptying the buckets' sieves --
+	 * before the teardown asserts they are empty.
 	 */
+	RUNTIME_CHECK(cds_ft_iter_create(ftdb->ft, &iter) == CDS_FT_STATUS_OK);
+
+	LOCK(&ftdb->wmutex);
+	rcu_read_lock();
+	while (cds_ft_lookup_first(ftdb->ft, iter) == CDS_FT_STATUS_OK) {
+		struct cds_ft_node *ftn = cds_ft_iter_node(iter);
+		ftcnode_t *node = caa_container_of(ftn, ftcnode_t, ftnode);
+
+		RUNTIME_CHECK(cds_ft_remove(ftdb->ft, iter, ftn) ==
+			      CDS_FT_STATUS_OK);
+		call_rcu(&node->rcu_head, ftc_drop_tree_ref);
+	}
+	rcu_read_unlock();
+	UNLOCK(&ftdb->wmutex);
+
+	cds_ft_iter_destroy(iter);
 	cds_ft_destroy(ftdb->ft);
 	RUNTIME_CHECK(cds_ft_group_destroy(ftdb->ftgroup) == CDS_FT_STATUS_OK);
 	isc_mutex_destroy(&ftdb->wmutex);
