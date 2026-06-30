@@ -6198,7 +6198,7 @@ fixttls(dns_view_t *view, dns_rdataset_t *rdataset,
 
 static isc_result_t
 rctx_cache_secure(respctx_t *rctx, dns_message_t *message, dns_name_t *name,
-		  dns_dbnode_t *node, dns_rdataset_t *rdataset,
+		  dns_dbnode_t **nodep, dns_rdataset_t *rdataset,
 		  dns_rdataset_t *sigrdataset, bool need_validation) {
 	fetchctx_t *fctx = rctx->fctx;
 	resquery_t *query = rctx->query;
@@ -6282,7 +6282,7 @@ rctx_cache_secure(respctx_t *rctx, dns_message_t *message, dns_name_t *name,
 		 */
 
 		RETERR(cache_rrset(fctx, rctx->now, name, rdataset, sigrdataset,
-				   &node, ardataset, asigset, need_validation));
+				   nodep, ardataset, asigset, need_validation));
 	}
 
 	return ISC_R_SUCCESS;
@@ -6290,7 +6290,7 @@ rctx_cache_secure(respctx_t *rctx, dns_message_t *message, dns_name_t *name,
 
 static isc_result_t
 rctx_cache_insecure(respctx_t *rctx, dns_message_t *message, dns_name_t *name,
-		    dns_dbnode_t *node, dns_rdataset_t *rdataset,
+		    dns_dbnode_t **nodep, dns_rdataset_t *rdataset,
 		    dns_rdataset_t *sigrdataset) {
 	isc_result_t result;
 	fetchctx_t *fctx = rctx->fctx;
@@ -6319,7 +6319,7 @@ rctx_cache_insecure(respctx_t *rctx, dns_message_t *message, dns_name_t *name,
 	/*
 	 * Cache the rdataset.
 	 */
-	result = cache_rrset(fctx, rctx->now, name, rdataset, NULL, &node,
+	result = cache_rrset(fctx, rctx->now, name, rdataset, NULL, nodep,
 			     added, NULL, false);
 
 	return result;
@@ -6349,9 +6349,11 @@ rctx_cachename(respctx_t *rctx, dns_message_t *message, dns_name_t *name) {
 			       ((fctx->options & DNS_FETCHOPT_NOVALIDATE) == 0);
 
 	/*
-	 * Find or create the cache node.
+	 * The cache node is created lazily -- the first time a cacheable
+	 * rdataset is actually added below. For a validated answer the data
+	 * is cached later by the validator, so creating the node here would
+	 * just leave an empty node that is immediately reaped.
 	 */
-	RETERR(dns_db_findnode(fctx->cache, name, true, &node));
 
 	/*
 	 * Cache or validate each cacheable rdataset.
@@ -6389,12 +6391,12 @@ rctx_cachename(respctx_t *rctx, dns_message_t *message, dns_name_t *name) {
 			 * isn't glue, start a validator. The data will
 			 * be cached when the validator finishes.
 			 */
-			result = rctx_cache_secure(rctx, message, name, node,
+			result = rctx_cache_secure(rctx, message, name, &node,
 						   rdataset, sigrdataset,
 						   need_validation);
 		} else {
 			/* Insecure domain or glue: cache the data now. */
-			result = rctx_cache_insecure(rctx, message, name, node,
+			result = rctx_cache_insecure(rctx, message, name, &node,
 						     rdataset, sigrdataset);
 		}
 		CHECK(result);
@@ -6429,7 +6431,13 @@ rctx_cachename(respctx_t *rctx, dns_message_t *message, dns_name_t *name) {
 			fctx_setresult(fctx);
 		}
 		dns_name_copy(name, fctx->resp.foundname);
-		dns_db_transfernode(fctx->cache, &node, &fctx->resp_node);
+		if (node != NULL) {
+			dns_db_transfernode(fctx->cache, &node,
+					    &fctx->resp_node);
+		} else {
+			CHECK(dns_db_findnode(fctx->cache, name, true,
+					      &fctx->resp_node));
+		}
 		FCTX_ATTR_SET(fctx, FCTX_ATTR_HAVEANSWER);
 	}
 
