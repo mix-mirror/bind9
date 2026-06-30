@@ -1,0 +1,42 @@
+/*
+ * Copyright (C) Internet Systems Consortium, Inc. ("ISC")
+ *
+ * SPDX-License-Identifier: MPL-2.0
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, you can obtain one at https://mozilla.org/MPL/2.0/.
+ *
+ * See the COPYRIGHT file distributed with this work for additional
+ * information regarding copyright ownership.
+ */
+
+#pragma once
+
+#include <isc/urcu.h>
+
+#include <dns/nsec3.h>
+#include <dns/qp.h>
+#include <dns/types.h>
+
+/*****
+***** Module Info
+*****/
+
+/*! \file
+ * \brief
+ * DNS FTDB Implementation (minimally adapted from RBTDB)
+ */
+
+isc_result_t
+dns__ftcache_create(isc_mem_t *mctx, const dns_name_t *base, dns_dbtype_t type,
+		    dns_rdataclass_t rdclass, unsigned int argc, char *argv[],
+		    void *driverarg, dns_db_t **dbp);
+/*%<
+ * Create a new database of type "ftcache". Called via dns_db_create();
+ * see documentation for that function for more details.
+ *
+ * Requires:
+ *
+ * \li argc == 0 or argv[0] is a valid memory context.
+ */

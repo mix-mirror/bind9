@@ -61,6 +61,7 @@ struct dns_dbimplementation {
  */
 
 #include "db_p.h"
+#include "ftcache_p.h"
 #include "qpcache_p.h"
 #include "qpzone_p.h"
 
@@ -71,6 +72,7 @@ static isc_rwlock_t implock;
 
 static dns_dbimplementation_t qpimp;
 static dns_dbimplementation_t qpzoneimp;
+static dns_dbimplementation_t ftcacheimp;
 
 void
 dns__db_initialize(void) {
@@ -90,8 +92,15 @@ dns__db_initialize(void) {
 		.link = ISC_LINK_INITIALIZER,
 	};
 
+	ftcacheimp = (dns_dbimplementation_t){
+		.name = "ftcache",
+		.create = dns__ftcache_create,
+		.link = ISC_LINK_INITIALIZER,
+	};
+
 	ISC_LIST_APPEND(implementations, &qpimp, link);
 	ISC_LIST_APPEND(implementations, &qpzoneimp, link);
+	ISC_LIST_APPEND(implementations, &ftcacheimp, link);
 }
 
 void

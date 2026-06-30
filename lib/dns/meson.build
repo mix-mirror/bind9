@@ -130,6 +130,7 @@ dns_srcset.add(
         'openssleddsa_link.c',
         'opensslrsa_link.c',
         'order.c',
+        'ftcache.c',
         'peer.c',
         'private.c',
         'qp.c',
