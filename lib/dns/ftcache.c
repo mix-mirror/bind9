@@ -349,8 +349,7 @@ typedef struct ftc_dbit {
 	isc_result_t result;
 	dns_fixedname_t fixed;
 	dns_name_t *name;
-	dns_qpsnap_t *snap;
-	dns_qpiter_t iter;
+	struct cds_ft_iter *iter;
 	ftcnode_t *node;
 } ftc_dbit_t;
 
@@ -2112,8 +2111,8 @@ ftcache_createiterator(dns_db_t *db, unsigned int options ISC_ATTR_UNUSED,
 
 	ftdbiter->name = dns_fixedname_initname(&ftdbiter->fixed);
 	dns_db_attach(db, &ftdbiter->common.db);
-	dns_qpmulti_snapshot(ftdb->tree, &ftdbiter->snap);
-	dns_qpiter_init(ftdbiter->snap, &ftdbiter->iter);
+	RUNTIME_CHECK(cds_ft_iter_create(ftdb->ft, &ftdbiter->iter) ==
+		      CDS_FT_STATUS_OK);
 
 	*iteratorp = (dns_dbiterator_t *)ftdbiter;
 	return ISC_R_SUCCESS;
@@ -3044,6 +3043,12 @@ rdatasetiter_current(dns_rdatasetiter_t *it,
  * Database Iterator Methods
  */
 
+static ftcnode_t *
+ftc_iter_node(struct cds_ft_iter *iter) {
+	struct cds_ft_node *ftn = cds_ft_iter_node(iter);
+	return (ftn == NULL) ? NULL : caa_container_of(ftn, ftcnode_t, ftnode);
+}
+
 static void
 reference_iter_node(ftc_dbit_t *ftdbiter DNS__DB_FLARG) {
 	ftcache_t *ftdb = (ftcache_t *)ftdbiter->common.db;
@@ -3095,11 +3100,15 @@ resume_iteration(ftc_dbit_t *ftdbiter, bool continuing) {
 	 * so the lookup should always succeed.
 	 */
 	if (continuing && ftdbiter->node != NULL) {
-		isc_result_t result;
-		result = dns_qp_lookup(ftdbiter->snap, ftdbiter->name,
-				       DNS_DBNAMESPACE_NORMAL, &ftdbiter->iter,
-				       NULL, NULL, NULL);
-		INSIST(result == ISC_R_SUCCESS);
+		ftcache_t *ftdb = (ftcache_t *)ftdbiter->common.db;
+		dns_qpkey_t key;
+		size_t keylen = dns_qpkey_fromname(key, ftdbiter->name,
+						   DNS_DBNAMESPACE_NORMAL);
+		rcu_read_lock();
+		RUNTIME_CHECK(cds_ft_lookup_ge(ftdb->ft, key, keylen,
+					       ftdbiter->iter) ==
+			      CDS_FT_STATUS_OK);
+		rcu_read_unlock();
 	}
 
 	ftdbiter->paused = false;
@@ -3108,10 +3117,9 @@ resume_iteration(ftc_dbit_t *ftdbiter, bool continuing) {
 static void
 dbiterator_destroy(dns_dbiterator_t **iteratorp DNS__DB_FLARG) {
 	ftc_dbit_t *ftdbiter = (ftc_dbit_t *)(*iteratorp);
-	ftcache_t *ftdb = (ftcache_t *)ftdbiter->common.db;
 	dns_db_t *db = NULL;
 
-	dns_qpsnap_destroy(ftdb->tree, &ftdbiter->snap);
+	cds_ft_iter_destroy(ftdbiter->iter);
 
 	dereference_iter_node(ftdbiter DNS__DB_FLARG_PASS);
 
@@ -3143,23 +3151,31 @@ dbiterator_first(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 
 	dereference_iter_node(ftdbiter DNS__DB_FLARG_PASS);
 
-	dns_qpiter_init(ftdbiter->snap, &ftdbiter->iter);
-	result = dns_qpiter_next(&ftdbiter->iter, (void **)&ftdbiter->node,
-				 NULL);
+	ftcache_t *ftdb = (ftcache_t *)ftdbiter->common.db;
 
-	if (result == ISC_R_SUCCESS &&
+	rcu_read_lock();
+	if (cds_ft_first(ftdb->ft, ftdbiter->iter) == CDS_FT_STATUS_OK) {
+		ftdbiter->node = ftc_iter_node(ftdbiter->iter);
+	} else {
+		ftdbiter->node = NULL;
+	}
+
+	if (ftdbiter->node != NULL &&
 	    ftdbiter->node->nspace == DNS_DBNAMESPACE_NORMAL)
 	{
 		dns_name_copy(&ftdbiter->node->name, ftdbiter->name);
 		reference_iter_node(ftdbiter DNS__DB_FLARG_PASS);
-	} else if (result == ISC_R_SUCCESS) {
+		result = ISC_R_SUCCESS;
+	} else if (ftdbiter->node != NULL) {
+		/* Crossed out of the normal namespace. */
 		result = ISC_R_NOMORE;
 		ftdbiter->node = NULL;
 	} else {
 		/* The tree is empty. */
-		INSIST(result == ISC_R_NOMORE);
+		result = ISC_R_NOMORE;
 		ftdbiter->node = NULL;
 	}
+	rcu_read_unlock();
 
 	ftdbiter->result = result;
 
@@ -3195,16 +3211,31 @@ dbiterator_seek(dns_dbiterator_t *iterator,
 
 	dereference_iter_node(ftdbiter DNS__DB_FLARG_PASS);
 
-	result = dns_qp_lookup(ftdbiter->snap, name, DNS_DBNAMESPACE_NORMAL,
-			       &ftdbiter->iter, NULL, (void **)&ftdbiter->node,
-			       NULL);
+	ftcache_t *ftdb = (ftcache_t *)ftdbiter->common.db;
+	dns_qpkey_t key;
+	size_t keylen = dns_qpkey_fromname(key, name, DNS_DBNAMESPACE_NORMAL);
 
-	if (result == ISC_R_SUCCESS || result == DNS_R_PARTIALMATCH) {
-		dns_name_copy(&ftdbiter->node->name, ftdbiter->name);
-		reference_iter_node(ftdbiter DNS__DB_FLARG_PASS);
+	rcu_read_lock();
+	if (cds_ft_lookup_ge(ftdb->ft, key, keylen, ftdbiter->iter) ==
+	    CDS_FT_STATUS_OK)
+	{
+		ftdbiter->node = ftc_iter_node(ftdbiter->iter);
 	} else {
 		ftdbiter->node = NULL;
 	}
+
+	if (ftdbiter->node != NULL &&
+	    ftdbiter->node->nspace == DNS_DBNAMESPACE_NORMAL)
+	{
+		bool exact = dns_name_equal(name, &ftdbiter->node->name);
+		dns_name_copy(&ftdbiter->node->name, ftdbiter->name);
+		reference_iter_node(ftdbiter DNS__DB_FLARG_PASS);
+		result = exact ? ISC_R_SUCCESS : DNS_R_PARTIALMATCH;
+	} else {
+		result = ISC_R_NOMORE;
+		ftdbiter->node = NULL;
+	}
+	rcu_read_unlock();
 
 	ftdbiter->result = (result == DNS_R_PARTIALMATCH) ? ISC_R_SUCCESS
 							  : result;
@@ -3239,21 +3270,28 @@ dbiterator_next(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 
 	dereference_iter_node(ftdbiter DNS__DB_FLARG_PASS);
 
-	result = dns_qpiter_next(&ftdbiter->iter, (void **)&ftdbiter->node,
-				 NULL);
+	rcu_read_lock();
+	if (cds_ft_iter_next(ftdbiter->iter) == CDS_FT_STATUS_OK) {
+		ftdbiter->node = ftc_iter_node(ftdbiter->iter);
+	} else {
+		ftdbiter->node = NULL;
+	}
 
-	if (result == ISC_R_SUCCESS &&
+	if (ftdbiter->node != NULL &&
 	    ftdbiter->node->nspace == DNS_DBNAMESPACE_NORMAL)
 	{
 		dns_name_copy(&ftdbiter->node->name, ftdbiter->name);
 		reference_iter_node(ftdbiter DNS__DB_FLARG_PASS);
-	} else if (result == ISC_R_SUCCESS) {
+		result = ISC_R_SUCCESS;
+	} else if (ftdbiter->node != NULL) {
+		/* Crossed out of the normal namespace. */
 		result = ISC_R_NOMORE;
 		ftdbiter->node = NULL;
 	} else {
-		INSIST(result == ISC_R_NOMORE);
+		result = ISC_R_NOMORE;
 		ftdbiter->node = NULL;
 	}
+	rcu_read_unlock();
 
 	ftdbiter->result = result;
 	return result;
