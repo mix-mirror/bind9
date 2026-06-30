@@ -46,7 +46,6 @@
 #include <dns/fixedname.h>
 #include <dns/masterdump.h>
 #include <dns/nsec.h>
-#include <dns/qp.h>
 #include <dns/rdata.h>
 #include <dns/rdataset.h>
 #include <dns/rdatasetiter.h>
@@ -260,6 +259,45 @@ typedef struct {
 static isc_result_t
 ftc_lookup(struct cds_ft *ft, const dns_name_t *name, dns_namespace_t space,
 	   ftcnode_t **nodep);
+
+/*
+ * cds_ft key for a cache node. Unlike the qp key, this is a plain byte
+ * key -- cds_ft is a full 256-ary trie -- so it needs no escape coding:
+ * a leading namespace byte, then one case-folded octet per name byte with
+ * labels emitted root-first and each closed by a 0x00 separator. This
+ * preserves DNS canonical order (for cds_ft_lookup_lt) and the ancestor-
+ * prefix property (for cds_ft_lookup_longest_match_key), and stays within
+ * cds_ft's 256-byte limit for every valid name (key length == 1 + wire
+ * length <= 256). Label octets equal to the 0x00 separator (binary
+ * labels) are not disambiguated -- a TODO, but they do not occur in
+ * hostname traffic.
+ */
+#define FTC_KEY_MAXLEN 256
+typedef uint8_t ftc_key_t[FTC_KEY_MAXLEN];
+
+static size_t
+ftc_key_fromname(uint8_t *key, const dns_name_t *name, dns_namespace_t space) {
+	REQUIRE(ISC_MAGIC_VALID(name, DNS_NAME_MAGIC));
+
+	dns_offsets_t offsets;
+	size_t labels = dns_name_offsets(name, offsets);
+	size_t len = 0;
+
+	key[len++] = (uint8_t)space;
+
+	size_t label = labels;
+	while (label-- > 0) {
+		const uint8_t *ldata = name->ndata + offsets[label];
+		size_t label_len = *ldata++;
+		while (label_len-- > 0) {
+			key[len++] = isc_ascii_tolower(*ldata++);
+		}
+		key[len++] = 0x00; /* label separator (sorts before any octet) */
+	}
+
+	INSIST(len <= FTC_KEY_MAXLEN);
+	return len;
+}
 
 #ifdef DNS_DB_NODETRACE
 #define ftcnode_ref(ptr)   ftcnode__ref(ptr, __func__, __FILE__, __LINE__)
@@ -1248,7 +1286,7 @@ find_coveringnsec(ftc_search_t *search, const dns_name_t *name,
 	ftcnode_t *node = NULL;
 	ftcnode_t *exact = NULL;
 	struct cds_ft_iter *iter = NULL;
-	dns_qpkey_t key;
+	ftc_key_t key;
 	size_t keylen;
 	isc_result_t result;
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
@@ -1270,7 +1308,7 @@ find_coveringnsec(ftc_search_t *search, const dns_name_t *name,
 	 * Find the predecessor in the NSEC namespace: the largest NSEC owner
 	 * strictly below the query name.
 	 */
-	keylen = dns_qpkey_fromname(key, name, DNS_DBNAMESPACE_NSEC);
+	keylen = ftc_key_fromname(key, name, DNS_DBNAMESPACE_NSEC);
 	RUNTIME_CHECK(cds_ft_iter_create(search->ftdb->ft, &iter) ==
 		      CDS_FT_STATUS_OK);
 	cds_ft_iter_set_key(iter, key, keylen);
@@ -1405,8 +1443,8 @@ ftcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	result = ftc_lookup(search.ftdb->ft, name, DNS_DBNAMESPACE_NORMAL,
 			    &node);
 	if (result != ISC_R_SUCCESS) {
-		dns_qpkey_t key;
-		size_t keylen = dns_qpkey_fromname(key, name,
+		ftc_key_t key;
+		size_t keylen = ftc_key_fromname(key, name,
 						   DNS_DBNAMESPACE_NORMAL);
 		size_t match_len;
 		struct cds_ft_node *ftn = NULL;
@@ -2047,8 +2085,8 @@ new_ftcnode(ftcache_t *ftdb, const dns_name_t *name, dns_namespace_t nspace) {
 static isc_result_t
 ftc_lookup(struct cds_ft *ft, const dns_name_t *name, dns_namespace_t space,
 	   ftcnode_t **nodep) {
-	dns_qpkey_t key;
-	size_t keylen = dns_qpkey_fromname(key, name, space);
+	ftc_key_t key;
+	size_t keylen = ftc_key_fromname(key, name, space);
 	struct cds_ft_node *ftn = NULL;
 
 	if (cds_ft_lookup_candidate_key(ft, key, keylen, 0, &ftn) !=
@@ -2101,8 +2139,8 @@ ftcache_findnode(dns_db_t *db, const dns_name_t *name, bool create,
 	result = ftc_lookup(ftdb->ft, name, nspace, &node);
 	rcu_read_unlock();
 	if (result != ISC_R_SUCCESS) {
-		dns_qpkey_t key;
-		size_t keylen = dns_qpkey_fromname(key, name, nspace);
+		ftc_key_t key;
+		size_t keylen = ftc_key_fromname(key, name, nspace);
 
 		node = new_ftcnode(ftdb, name, nspace);
 		RUNTIME_CHECK(cds_ft_insert_unique(ftdb->ft, key, keylen,
@@ -2820,8 +2858,8 @@ ftcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 
 		if (ftc_lookup(ftdb->ft, name, DNS_DBNAMESPACE_NSEC,
 			       &nsecnode) != ISC_R_SUCCESS) {
-			dns_qpkey_t key;
-			size_t keylen = dns_qpkey_fromname(
+			ftc_key_t key;
+			size_t keylen = ftc_key_fromname(
 				key, name, DNS_DBNAMESPACE_NSEC);
 
 			nsecnode = new_ftcnode(ftdb, name,
@@ -2987,14 +3025,12 @@ dns__ftcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 				      attr, CDS_FT_LEN_VARIABLE) ==
 			      CDS_FT_STATUS_OK);
 		/*
-		 * cds_ft caps keys at FT_MAX_KEY_LEN (256), which is below
-		 * DNS_QP_MAXKEY (512): a worst-case DNS name's qp key (escape
-		 * bytes cost two each) does not fit. Names whose key exceeds
-		 * 256 bytes currently fail to insert (RUNTIME_CHECK); raising
-		 * the cds_ft limit or skipping such names is a TODO.
+		 * cds_ft caps keys at FT_MAX_KEY_LEN (256). ftc_key_fromname()
+		 * keeps every valid name within that bound (1 + wire length),
+		 * so the cache uses the full limit.
 		 */
-		RUNTIME_CHECK(cds_ft_group_attr_set_max_key_len(attr, 256) ==
-			      CDS_FT_STATUS_OK);
+		RUNTIME_CHECK(cds_ft_group_attr_set_max_key_len(
+				      attr, FTC_KEY_MAXLEN) == CDS_FT_STATUS_OK);
 		RUNTIME_CHECK(cds_ft_group_create(attr, &ftdb->ftgroup) ==
 			      CDS_FT_STATUS_OK);
 		cds_ft_group_attr_destroy(attr);
@@ -3134,8 +3170,8 @@ resume_iteration(ftc_dbit_t *ftdbiter, bool continuing) {
 	 */
 	if (continuing && ftdbiter->node != NULL) {
 		ftcache_t *ftdb = (ftcache_t *)ftdbiter->common.db;
-		dns_qpkey_t key;
-		size_t keylen = dns_qpkey_fromname(key, ftdbiter->name,
+		ftc_key_t key;
+		size_t keylen = ftc_key_fromname(key, ftdbiter->name,
 						   DNS_DBNAMESPACE_NORMAL);
 		rcu_read_lock();
 		cds_ft_iter_set_key(ftdbiter->iter, key, keylen);
@@ -3245,8 +3281,8 @@ dbiterator_seek(dns_dbiterator_t *iterator,
 	dereference_iter_node(ftdbiter DNS__DB_FLARG_PASS);
 
 	ftcache_t *ftdb = (ftcache_t *)ftdbiter->common.db;
-	dns_qpkey_t key;
-	size_t keylen = dns_qpkey_fromname(key, name, DNS_DBNAMESPACE_NORMAL);
+	ftc_key_t key;
+	size_t keylen = ftc_key_fromname(key, name, DNS_DBNAMESPACE_NORMAL);
 
 	rcu_read_lock();
 	cds_ft_iter_set_key(ftdbiter->iter, key, keylen);
