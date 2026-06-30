@@ -40,6 +40,8 @@
 #include <isc/urcu.h>
 #include <isc/util.h>
 
+#include <urcu/ref.h>
+
 #include <dns/callbacks.h>
 #include <dns/db.h>
 #include <dns/dbiterator.h>
@@ -108,6 +110,8 @@ struct qpcnode {
 	uint8_t		      : 0;
 	unsigned int nspace   : 2; /*%< range is 0..3 */
 	unsigned int havensec : 1;
+	atomic_bool deleted;
+	bool linked;
 	uint8_t		      : 0;
 
 	/*
@@ -115,25 +119,28 @@ struct qpcnode {
 	 * example, it could be incremented by dns_db_findnode(),
 	 * and decremented by dns_db_detachnode().
 	 *
+	 * The counter includes a live sentinel reference. When 'erefs'
+	 * is 1, the node is live but has no external users. When 'erefs'
+	 * is 0, the node has been logically deleted and cannot be acquired
+	 * again.
+	 *
 	 * 'references' counts internal references to the node object,
 	 * including the one held by the QP trie so the node won't be
-	 * deleted while it's quiescently stored in the database - even
-	 * though 'erefs' may be zero because no external caller is
+	 * deleted while it's quiescently stored in the database, when
+	 * 'erefs' only has the live sentinel because no external caller is
 	 * using it at the time.
 	 *
-	 * Generally when 'erefs' is incremented or decremented,
-	 * 'references' is too. When both go to zero (meaning callers
-	 * and the database have both released the object) the object
-	 * is freed.
+	 * External references also hold object references. When all object
+	 * references are gone (meaning callers, the database, and any cleanup
+	 * queue have released the object) the object is freed.
 	 *
-	 * Whenever 'erefs' is incremented from zero, we also acquire a
-	 * node use reference (see 'qpcache->references' below), and
-	 * release it when 'erefs' goes back to zero. This prevents the
-	 * database from being shut down until every caller has released
-	 * all nodes.
+	 * Every external reference also acquires a node use reference
+	 * (see 'qpcache->references' below), and releases it when the
+	 * external reference is released. This prevents the database from
+	 * being shut down until every caller has released all nodes.
 	 */
 	isc_refcount_t references;
-	isc_refcount_t erefs;
+	struct urcu_ref erefs;
 
 	struct cds_list_head headers;
 
@@ -184,15 +191,11 @@ struct qpcache {
 	 * the database object handled by dns_db_attach() and _detach();
 	 * that one is 'common.references'.
 	 *
-	 * Instead, 'references' counts the number of nodes being used by
-	 * at least one external caller. (It's called 'references' to
-	 * leverage the ISC_REFCOUNT_STATIC macros, but 'nodes_in_use'
-	 * might be a clearer name.)
-	 *
-	 * One additional reference to this counter is held by the database
-	 * object itself. When 'common.references' goes to zero, that
-	 * reference is released. When in turn 'references' goes to zero,
-	 * the database is shut down and freed.
+	 * Instead, 'references' counts live database-use pins: one held by
+	 * the database object itself, one per external node reference, and
+	 * transient pins held by async cleanup. When 'common.references'
+	 * goes to zero, the database object's pin is released. When in turn
+	 * 'references' goes to zero, the database is shut down and freed.
 	 */
 	isc_refcount_t references;
 
@@ -513,15 +516,22 @@ qpcache_hit(qpcache_t *qpdb ISC_ATTR_UNUSED, dns_slabheader_t *header) {
  * tree_lock(write) must be held.
  */
 static void
-delete_node(qpcache_t *qpdb, qpcnode_t *node) {
+unlink_node(qpcache_t *qpdb, qpcnode_t *node) {
 	isc_result_t result = ISC_R_UNEXPECTED;
+
+	if (!node->linked) {
+		return;
+	}
+
+	INSIST(atomic_load_acquire(&node->deleted));
+	node->linked = false;
 
 	if (isc_log_wouldlog(ISC_LOG_DEBUG(DNS_QPCACHE_LOG_STATS_LEVEL))) {
 		char printname[DNS_NAME_FORMATSIZE];
 		dns_name_format(&node->name, printname, sizeof(printname));
 		isc_log_write(DNS_LOGCATEGORY_DATABASE, DNS_LOGMODULE_CACHE,
 			      ISC_LOG_DEBUG(DNS_QPCACHE_LOG_STATS_LEVEL),
-			      "delete_node(): %p %s (bucket %d)", node,
+			      "unlink_node(): %p %s (bucket %d)", node,
 			      printname, node->locknum);
 	}
 
@@ -539,7 +549,7 @@ delete_node(qpcache_t *qpdb, qpcnode_t *node) {
 				isc_log_write(DNS_LOGCATEGORY_DATABASE,
 					      DNS_LOGMODULE_CACHE,
 					      ISC_LOG_WARNING,
-					      "delete_node(): "
+					      "unlink_node(): "
 					      "dns_qp_deletename: %s",
 					      isc_result_totext(result));
 			}
@@ -555,80 +565,72 @@ delete_node(qpcache_t *qpdb, qpcnode_t *node) {
 	if (result != ISC_R_SUCCESS) {
 		isc_log_write(DNS_LOGCATEGORY_DATABASE, DNS_LOGMODULE_CACHE,
 			      ISC_LOG_WARNING,
-			      "delete_node(): "
+			      "unlink_node(): "
 			      "dns_qp_deletename: %s",
 			      isc_result_totext(result));
 	}
 }
 
-/*
- * The caller must specify its currect node and tree lock status.
- * It's okay for neither lock to be held if there are existing external
- * references to the node, but if this is the first external reference,
- * then the caller must be holding at least one lock.
- *
- * If incrementing erefs from zero, we also increment the node use counter
- * in the qpcache object.
- *
- * This function is called from qpcnode_acquire(), so that internal
- * and external references are acquired at the same time, and from
- * qpcnode_release() when we only need to increase the internal references.
- */
-static void
-qpcnode_erefs_increment(qpcache_t *qpdb, qpcnode_t *node,
-			isc_rwlocktype_t nlocktype,
-			isc_rwlocktype_t tlocktype DNS__DB_FLARG) {
-	uint_fast32_t refs = isc_refcount_increment0(&node->erefs);
-
-#if DNS_DB_NODETRACE
-	fprintf(stderr, "incr:node:%s:%s:%u:%p->erefs = %" PRIuFAST32 "\n",
-		func, file, line, node, refs + 1);
-#endif
-
-	if (refs > 0) {
-		return;
+static bool
+qpcnode_try_acquire(qpcache_t *qpdb, qpcnode_t *node,
+		    isc_rwlocktype_t nlocktype ISC_ATTR_UNUSED,
+		    isc_rwlocktype_t tlocktype ISC_ATTR_UNUSED DNS__DB_FLARG) {
+	if (!urcu_ref_get_unless_zero(&node->erefs)) {
+		return false;
 	}
 
-	/*
-	 * this is the first external reference to the node.
-	 *
-	 * we need to hold the node or tree lock to avoid
-	 * incrementing the reference count while also deleting
-	 * the node. delete_node() is always protected by both
-	 * tree and node locks being write-locked.
-	 */
-	INSIST(nlocktype != isc_rwlocktype_none ||
-	       tlocktype != isc_rwlocktype_none);
+#if DNS_DB_NODETRACE
+	fprintf(stderr, "incr:node:%s:%s:%u:%p->erefs = %ld\n", func, file,
+		line, node, uatomic_load(&node->erefs.refcount));
+#endif
 
+	qpcnode_ref(node);
 	qpcache_ref(qpdb);
+
+	return true;
 }
 
 static void
 qpcnode_acquire(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t nlocktype,
 		isc_rwlocktype_t tlocktype DNS__DB_FLARG) {
-	qpcnode_ref(node);
-	qpcnode_erefs_increment(qpdb, node, nlocktype,
-				tlocktype DNS__DB_FLARG_PASS);
+	RUNTIME_CHECK(qpcnode_try_acquire(qpdb, node, nlocktype,
+					  tlocktype DNS__DB_FLARG_PASS));
 }
 
 /*
- * Decrement the external references to a node. If the counter
- * goes to zero, decrement the node use counter in the qpcache object
- * as well, and return true. Otherwise return false.
+ * Decrement the external references to a node. If the last external
+ * reference was released and only the live sentinel remains, return
+ * true. Otherwise return false.
  */
+static void
+qpcnode_erefs_zero(struct urcu_ref *ref ISC_ATTR_UNUSED) {
+	UNREACHABLE();
+}
+
 static bool
 qpcnode_erefs_decrement(qpcache_t *qpdb, qpcnode_t *node DNS__DB_FLARG) {
-	uint_fast32_t refs = isc_refcount_decrement(&node->erefs);
+	urcu_ref_put(&node->erefs, qpcnode_erefs_zero);
+	long refs = uatomic_load(&node->erefs.refcount);
+	INSIST(refs >= 1);
 
 #if DNS_DB_NODETRACE
-	fprintf(stderr, "decr:node:%s:%s:%u:%p->erefs = %" PRIuFAST32 "\n",
-		func, file, line, node, refs - 1);
+	fprintf(stderr, "decr:node:%s:%s:%u:%p->erefs = %ld\n", func, file,
+		line, node, refs);
 #endif
-	if (refs > 1) {
+
+	qpcache_unref(qpdb);
+	return refs == 1;
+}
+
+static bool
+qpcnode_mark_deleted(qpcnode_t *node) {
+	long refs = 1;
+
+	if (uatomic_cmpxchg(&node->erefs.refcount, refs, 0) != refs) {
 		return false;
 	}
 
-	qpcache_unref(qpdb);
+	atomic_store_release(&node->deleted, true);
 	return true;
 }
 
@@ -641,9 +643,9 @@ qpcnode_erefs_decrement(qpcache_t *qpdb, qpcnode_t *node DNS__DB_FLARG) {
  * threads are decreasing the reference to zero simultaneously and at least
  * one of them is going to free the node.
  *
- * This calls dec_erefs() to decrement the external node reference counter,
- * (and possibly the node use counter), cleans up and deletes the node
- * if necessary, then decrements the internal reference counter as well.
+ * This decrements the external node reference counter and the matching
+ * database-use pin, cleans up and deletes the node if necessary, then
+ * decrements the internal reference counter as well.
  */
 static void
 qpcnode_release(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t *nlocktypep,
@@ -663,26 +665,20 @@ qpcnode_release(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t *nlocktypep,
 		/*
 		 * The external reference count went to zero and the node
 		 * is dirty or has no data, so we might want to delete it.
-		 * To do that, we'll need a write lock. If we don't already
-		 * have one, we have to make sure nobody else has
-		 * acquired a reference in the meantime, so we increment
-		 * erefs (but NOT references!), upgrade the node lock,
-		 * decrement erefs again, and see if it's still zero.
-		 *
-		 * We can't really assume anything about the result code of
-		 * erefs_increment.  If another thread acquires reference it
-		 * will be larger than 0, if it doesn't it is going to be 0.
+		 * To do that, we'll need a write lock. A concurrent lookup
+		 * can still acquire the live sentinel while the lock is being
+		 * upgraded; the final compare/exchange below decides whether
+		 * deletion wins.
 		 */
 		isc_rwlock_t *nlock = &qpdb->buckets[node->locknum].lock;
-		qpcnode_erefs_increment(qpdb, node, *nlocktypep,
-					*tlocktypep DNS__DB_FLARG_PASS);
 		NODE_FORCEUPGRADE(nlock, nlocktypep);
-		if (!qpcnode_erefs_decrement(qpdb, node DNS__DB_FLARG_PASS)) {
-			goto unref;
-		}
 	}
 
 	if (!cds_list_empty(&node->headers)) {
+		goto unref;
+	}
+
+	if (!qpcnode_mark_deleted(node)) {
 		goto unref;
 	}
 
@@ -690,15 +686,14 @@ qpcnode_release(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t *nlocktypep,
 		/*
 		 * We can delete the node if we have the tree write lock.
 		 */
-		delete_node(qpdb, node);
+		unlink_node(qpdb, node);
 	} else {
 		/*
 		 * If we don't have the tree lock, we will add this node to a
 		 * linked list of nodes in this locking bucket which we will
 		 * free later.
 		 */
-		qpcnode_acquire(qpdb, node, *nlocktypep,
-				*tlocktypep DNS__DB_FLARG_PASS);
+		qpcnode_ref(node);
 
 		isc_queue_node_init(&node->deadlink);
 		if (!isc_queue_enqueue_entry(
@@ -825,7 +820,7 @@ header_delete(qpcnode_t *node, dns_slabheader_t *header) {
 static void
 flush_node(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t *nlocktypep,
 	   isc_rwlocktype_t *tlocktypep, dns_expire_t reason DNS__DB_FLARG) {
-	if (isc_refcount_current(&node->erefs) != 0) {
+	if (uatomic_load(&node->erefs.refcount) != 1) {
 		return;
 	}
 
@@ -1944,10 +1939,10 @@ qpcache_destroy(dns_db_t *arg) {
 }
 
 /*%
- * Clean up dead nodes.  These are nodes which have no references, and
- * have no data.  They are dead but we could not or chose not to delete
- * them when we deleted all the data at that node because we did not want
- * to wait for the tree write lock.
+ * Clean up dead nodes.  These are nodes which have no external references,
+ * have no data, and have already been marked deleted.  They are dead but
+ * still physically linked in the tree because we did not want to wait for
+ * the tree write lock when we deleted all the data at that node.
  */
 static void
 cleanup_deadnodes(qpcache_t *qpdb, uint16_t locknum) {
@@ -1965,12 +1960,14 @@ cleanup_deadnodes(qpcache_t *qpdb, uint16_t locknum) {
 	NODE_WRLOCK(nlock, &nlocktype);
 
 	isc_queue_splice(&deadnodes, &qpdb->buckets[locknum].deadnodes);
-	isc_queue_for_each_entry_safe(&deadnodes, qpnode, qpnext, deadlink) {
-		qpcnode_release(qpdb, qpnode, &nlocktype,
-				&tlocktype DNS__DB_FILELINE);
-	}
 
 	NODE_UNLOCK(nlock, &nlocktype);
+
+	isc_queue_for_each_entry_safe(&deadnodes, qpnode, qpnext, deadlink) {
+		unlink_node(qpdb, qpnode);
+		qpcnode_unref(qpnode);
+	}
+
 	TREE_UNLOCK(&qpdb->tree_lock, &tlocktype);
 }
 
@@ -1982,26 +1979,6 @@ cleanup_deadnodes_cb(void *arg) {
 	cleanup_deadnodes(qpdb, locknum);
 	qpcache_unref(qpdb);
 }
-/*
- * This function is assumed to be called when a node is newly referenced
- * and can be in the deadnode list.  In that case the node will be references
- * and cleanup_deadnodes() will remove it from the list when the cleaning
- * happens.
- * Note: while a new reference is gained in multiple places, there are only very
- * few cases where the node can be in the deadnode list (only empty nodes can
- * have been added to the list).
- */
-static void
-reactivate_node(qpcache_t *qpdb, qpcnode_t *node,
-		isc_rwlocktype_t tlocktype ISC_ATTR_UNUSED DNS__DB_FLARG) {
-	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
-	isc_rwlock_t *nlock = &qpdb->buckets[node->locknum].lock;
-
-	NODE_RDLOCK(nlock, &nlocktype);
-	qpcnode_acquire(qpdb, node, nlocktype, tlocktype DNS__DB_FLARG_PASS);
-	NODE_UNLOCK(nlock, &nlocktype);
-}
-
 static qpcnode_t *
 new_qpcnode(qpcache_t *qpdb, const dns_name_t *name, dns_namespace_t nspace) {
 	qpcnode_t *newdata = isc_mem_get(qpdb->common.mctx, sizeof(*newdata));
@@ -2012,8 +1989,11 @@ new_qpcnode(qpcache_t *qpdb, const dns_name_t *name, dns_namespace_t nspace) {
 		.name = DNS_NAME_INITEMPTY,
 		.nspace = nspace,
 		.references = ISC_REFCOUNT_INITIALIZER(1),
+		.deleted = false,
+		.linked = true,
 		.locknum = isc_random_uniform(qpdb->buckets_count),
 	};
+	urcu_ref_init(&newdata->erefs);
 
 	isc_mem_attach(qpdb->common.mctx, &newdata->mctx);
 	dns_name_dup(name, newdata->mctx, &newdata->name);
@@ -2038,26 +2018,47 @@ qpcache_findnode(dns_db_t *db, const dns_name_t *name, bool create,
 
 	TREE_RDLOCK(&qpdb->tree_lock, &tlocktype);
 	result = dns_qp_getname(qpdb->tree, name, nspace, (void **)&node, NULL);
-	if (result != ISC_R_SUCCESS) {
-		if (!create) {
-			goto unlock;
+	if (result == ISC_R_SUCCESS &&
+	    qpcnode_try_acquire(qpdb, node, isc_rwlocktype_none,
+				tlocktype DNS__DB_FLARG_PASS))
+	{
+		goto found;
+	}
+
+	if (!create) {
+		result = ISC_R_NOTFOUND;
+		goto unlock;
+	}
+
+	/*
+	 * Try to upgrade the lock and if that fails unlock then relock.
+	 */
+	TREE_FORCEUPGRADE(&qpdb->tree_lock, &tlocktype);
+	result = dns_qp_getname(qpdb->tree, name, nspace, (void **)&node, NULL);
+	if (result == ISC_R_SUCCESS) {
+		if (qpcnode_try_acquire(qpdb, node, isc_rwlocktype_none,
+					tlocktype DNS__DB_FLARG_PASS))
+		{
+			goto found;
 		}
-		/*
-		 * Try to upgrade the lock and if that fails unlock then relock.
-		 */
-		TREE_FORCEUPGRADE(&qpdb->tree_lock, &tlocktype);
-		result = dns_qp_getname(qpdb->tree, name, nspace,
-					(void **)&node, NULL);
-		if (result != ISC_R_SUCCESS) {
-			node = new_qpcnode(qpdb, name, nspace);
-			result = dns_qp_insert(qpdb->tree, node, 0);
-			INSIST(result == ISC_R_SUCCESS);
-			qpcnode_unref(node);
+		unlink_node(qpdb, node);
+		node = NULL;
+		result = ISC_R_NOTFOUND;
+	}
+	if (result != ISC_R_SUCCESS) {
+		node = new_qpcnode(qpdb, name, nspace);
+		result = dns_qp_insert(qpdb->tree, node, 0);
+		INSIST(result == ISC_R_SUCCESS);
+		qpcnode_unref(node);
+		if (!qpcnode_try_acquire(qpdb, node, isc_rwlocktype_none,
+					 tlocktype DNS__DB_FLARG_PASS))
+		{
+			result = ISC_R_NOTFOUND;
+			goto unlock;
 		}
 	}
 
-	reactivate_node(qpdb, node, tlocktype DNS__DB_FLARG_PASS);
-
+found:
 	*nodep = (dns_dbnode_t *)node;
 unlock:
 	TREE_UNLOCK(&qpdb->tree_lock, &tlocktype);
@@ -3008,17 +3009,18 @@ rdatasetiter_current(dns_rdatasetiter_t *it,
  * Database Iterator Methods
  */
 
-static void
+static bool
 reference_iter_node(qpc_dbit_t *qpdbiter DNS__DB_FLARG) {
 	qpcache_t *qpdb = (qpcache_t *)qpdbiter->common.db;
 	qpcnode_t *node = qpdbiter->node;
 
 	if (node == NULL) {
-		return;
+		return false;
 	}
 
-	INSIST(qpdbiter->tree_locked != isc_rwlocktype_none);
-	reactivate_node(qpdb, node, qpdbiter->tree_locked DNS__DB_FLARG_PASS);
+	INSIST(qpdbiter->tree_locked == isc_rwlocktype_read);
+	return qpcnode_try_acquire(qpdb, node, isc_rwlocktype_none,
+				   qpdbiter->tree_locked DNS__DB_FLARG_PASS);
 }
 
 static void
@@ -3047,7 +3049,7 @@ dereference_iter_node(qpc_dbit_t *qpdbiter DNS__DB_FLARG) {
 }
 
 static void
-resume_iteration(qpc_dbit_t *qpdbiter, bool continuing) {
+dbiterator_resume(qpc_dbit_t *qpdbiter, bool continuing) {
 	qpcache_t *qpdb = (qpcache_t *)qpdbiter->common.db;
 
 	REQUIRE(qpdbiter->paused);
@@ -3055,25 +3057,37 @@ resume_iteration(qpc_dbit_t *qpdbiter, bool continuing) {
 
 	TREE_RDLOCK(&qpdb->tree_lock, &qpdbiter->tree_locked);
 
-	/*
-	 * If we're being called from dbiterator_next, we may need
-	 * to reinitialize the iterator to the current name. The
-	 * tree could have changed while it was unlocked, which
-	 * would make the iterator traversal inconsistent.
-	 *
-	 * As long as the iterator is holding a reference to
-	 * qpdbiter->node, the node won't be removed from the tree,
-	 * so the lookup should always succeed.
-	 */
 	if (continuing && qpdbiter->node != NULL) {
-		isc_result_t result;
-		result = dns_qp_lookup(qpdb->tree, qpdbiter->name,
-				       DNS_DBNAMESPACE_NORMAL, &qpdbiter->iter,
-				       NULL, NULL, NULL);
-		INSIST(result == ISC_R_SUCCESS);
+		(void)dns_qp_lookup(qpdb->tree, qpdbiter->name,
+				    DNS_DBNAMESPACE_NORMAL, &qpdbiter->iter,
+				    NULL, NULL, NULL);
 	}
 
 	qpdbiter->paused = false;
+}
+
+static isc_result_t
+dbiterator_next_node(qpc_dbit_t *qpdbiter DNS__DB_FLARG) {
+	isc_result_t result;
+
+	do {
+		result = dns_qpiter_next(&qpdbiter->iter,
+					 (void **)&qpdbiter->node, NULL);
+		if (result != ISC_R_SUCCESS) {
+			INSIST(result == ISC_R_NOMORE);
+			qpdbiter->node = NULL;
+			return result;
+		}
+
+		if (qpdbiter->node->nspace != DNS_DBNAMESPACE_NORMAL) {
+			qpdbiter->node = NULL;
+			return ISC_R_NOMORE;
+		}
+
+		dns_name_copy(&qpdbiter->node->name, qpdbiter->name);
+	} while (!reference_iter_node(qpdbiter DNS__DB_FLARG_PASS));
+
+	return ISC_R_SUCCESS;
 }
 
 static void
@@ -3113,28 +3127,13 @@ dbiterator_first(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 	}
 
 	if (qpdbiter->paused) {
-		resume_iteration(qpdbiter, false);
+		dbiterator_resume(qpdbiter, false);
 	}
 
 	dereference_iter_node(qpdbiter DNS__DB_FLARG_PASS);
 
 	dns_qpiter_init(qpdb->tree, &qpdbiter->iter);
-	result = dns_qpiter_next(&qpdbiter->iter, (void **)&qpdbiter->node,
-				 NULL);
-
-	if (result == ISC_R_SUCCESS &&
-	    qpdbiter->node->nspace == DNS_DBNAMESPACE_NORMAL)
-	{
-		dns_name_copy(&qpdbiter->node->name, qpdbiter->name);
-		reference_iter_node(qpdbiter DNS__DB_FLARG_PASS);
-	} else if (result == ISC_R_SUCCESS) {
-		result = ISC_R_NOMORE;
-		qpdbiter->node = NULL;
-	} else {
-		/* The tree is empty. */
-		INSIST(result == ISC_R_NOMORE);
-		qpdbiter->node = NULL;
-	}
+	result = dbiterator_next_node(qpdbiter DNS__DB_FLARG_PASS);
 
 	qpdbiter->result = result;
 
@@ -3166,7 +3165,7 @@ dbiterator_seek(dns_dbiterator_t *iterator,
 	}
 
 	if (qpdbiter->paused) {
-		resume_iteration(qpdbiter, false);
+		dbiterator_resume(qpdbiter, false);
 	}
 
 	dereference_iter_node(qpdbiter DNS__DB_FLARG_PASS);
@@ -3177,7 +3176,10 @@ dbiterator_seek(dns_dbiterator_t *iterator,
 
 	if (result == ISC_R_SUCCESS || result == DNS_R_PARTIALMATCH) {
 		dns_name_copy(&qpdbiter->node->name, qpdbiter->name);
-		reference_iter_node(qpdbiter DNS__DB_FLARG_PASS);
+		if (!reference_iter_node(qpdbiter DNS__DB_FLARG_PASS)) {
+			result = dbiterator_next_node(
+				qpdbiter DNS__DB_FLARG_PASS);
+		}
 	} else {
 		qpdbiter->node = NULL;
 	}
@@ -3210,26 +3212,12 @@ dbiterator_next(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 	}
 
 	if (qpdbiter->paused) {
-		resume_iteration(qpdbiter, true);
+		dbiterator_resume(qpdbiter, true);
 	}
 
 	dereference_iter_node(qpdbiter DNS__DB_FLARG_PASS);
 
-	result = dns_qpiter_next(&qpdbiter->iter, (void **)&qpdbiter->node,
-				 NULL);
-
-	if (result == ISC_R_SUCCESS &&
-	    qpdbiter->node->nspace == DNS_DBNAMESPACE_NORMAL)
-	{
-		dns_name_copy(&qpdbiter->node->name, qpdbiter->name);
-		reference_iter_node(qpdbiter DNS__DB_FLARG_PASS);
-	} else if (result == ISC_R_SUCCESS) {
-		result = ISC_R_NOMORE;
-		qpdbiter->node = NULL;
-	} else {
-		INSIST(result == ISC_R_NOMORE);
-		qpdbiter->node = NULL;
-	}
+	result = dbiterator_next_node(qpdbiter DNS__DB_FLARG_PASS);
 
 	qpdbiter->result = result;
 	return result;
@@ -3244,10 +3232,6 @@ dbiterator_current(dns_dbiterator_t *iterator, dns_dbnode_t **nodep,
 
 	REQUIRE(qpdbiter->result == ISC_R_SUCCESS);
 	REQUIRE(node != NULL);
-
-	if (qpdbiter->paused) {
-		resume_iteration(qpdbiter, false);
-	}
 
 	if (name != NULL) {
 		dns_name_copy(&node->name, name);
