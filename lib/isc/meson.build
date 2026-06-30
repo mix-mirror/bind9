@@ -133,6 +133,7 @@ isc_srcset.add(
         'time.c',
         'timer.c',
         'tls.c',
+        'u16bitmap.c',
         'url.c',
         'utf8.c',
         'uv.c',
