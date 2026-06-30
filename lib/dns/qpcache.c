@@ -602,15 +602,9 @@ qpcnode_acquire(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t nlocktype,
  * reference was released and only the live sentinel remains, return
  * true. Otherwise return false.
  */
-static void
-qpcnode_erefs_zero(struct urcu_ref *ref ISC_ATTR_UNUSED) {
-	UNREACHABLE();
-}
-
 static bool
 qpcnode_erefs_decrement(qpcache_t *qpdb, qpcnode_t *node DNS__DB_FLARG) {
-	urcu_ref_put(&node->erefs, qpcnode_erefs_zero);
-	long refs = uatomic_load(&node->erefs.refcount);
+	long refs = uatomic_sub_return(&node->erefs.refcount, 1);
 	INSIST(refs >= 1);
 
 #if DNS_DB_NODETRACE
@@ -632,6 +626,40 @@ qpcnode_mark_deleted(qpcnode_t *node) {
 
 	atomic_store_release(&node->deleted, true);
 	return true;
+}
+
+static void
+qpcnode_unlink_or_enqueue(qpcache_t *qpdb, qpcnode_t *node,
+			  isc_rwlocktype_t tlocktype) {
+	INSIST(atomic_load_acquire(&node->deleted));
+
+	if (tlocktype == isc_rwlocktype_write) {
+		/*
+		 * We can delete the node if we have the tree write lock.
+		 */
+		unlink_node(qpdb, node);
+	} else {
+		/*
+		 * If we don't have the tree lock, we will add this node to a
+		 * linked list of nodes in this locking bucket which we will
+		 * free later.  Enqueue is wait-free; cleanup takes the bucket
+		 * write lock before splicing the queue, so the current read
+		 * lock is sufficient producer-side coordination.
+		 */
+		qpcnode_ref(node);
+
+		isc_queue_node_init(&node->deadlink);
+		if (!isc_queue_enqueue_entry(
+			    &qpdb->buckets[node->locknum].deadnodes, node,
+			    deadlink))
+		{
+			/* Queue was empty, trigger new cleaning */
+			isc_loop_t *loop = isc_loop_get(node->locknum);
+
+			qpcache_ref(qpdb);
+			isc_async_run(loop, cleanup_deadnodes_cb, qpdb);
+		}
+	}
 }
 
 /*
@@ -670,33 +698,7 @@ qpcnode_release(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t *nlocktypep,
 		goto unref;
 	}
 
-	if (*tlocktypep == isc_rwlocktype_write) {
-		/*
-		 * We can delete the node if we have the tree write lock.
-		 */
-		unlink_node(qpdb, node);
-	} else {
-		/*
-		 * If we don't have the tree lock, we will add this node to a
-		 * linked list of nodes in this locking bucket which we will
-		 * free later.  Enqueue is wait-free; cleanup takes the bucket
-		 * write lock before splicing the queue, so the current read
-		 * lock is sufficient producer-side coordination.
-		 */
-		qpcnode_ref(node);
-
-		isc_queue_node_init(&node->deadlink);
-		if (!isc_queue_enqueue_entry(
-			    &qpdb->buckets[node->locknum].deadnodes, node,
-			    deadlink))
-		{
-			/* Queue was empty, trigger new cleaning */
-			isc_loop_t *loop = isc_loop_get(node->locknum);
-
-			qpcache_ref(qpdb);
-			isc_async_run(loop, cleanup_deadnodes_cb, qpdb);
-		}
-	}
+	qpcnode_unlink_or_enqueue(qpdb, node, *tlocktypep);
 
 unref:
 	qpcnode_unref(node);
@@ -810,18 +812,25 @@ header_delete(qpcnode_t *node, dns_slabheader_t *header) {
 static void
 flush_node(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t *nlocktypep,
 	   isc_rwlocktype_t *tlocktypep, dns_expire_t reason DNS__DB_FLARG) {
-	if (uatomic_load(&node->erefs.refcount) != 1) {
+	REQUIRE(*nlocktypep == isc_rwlocktype_write);
+
+	if (!cds_list_empty(&node->headers)) {
 		return;
 	}
 
 	/*
-	 * If no one else is using the node, we can clean it up now.
-	 * We first need to gain a new reference to the node to meet a
-	 * requirement of qpcnode_release().
+	 * Take a temporary object reference before publishing the terminal
+	 * tombstone.  Once erefs reaches zero, findnode(create=true) can
+	 * unlink this node from the tree without taking the node lock.
 	 */
-	qpcnode_acquire(qpdb, node, *nlocktypep,
-			*tlocktypep DNS__DB_FLARG_PASS);
-	qpcnode_release(qpdb, node, nlocktypep, tlocktypep DNS__DB_FLARG_PASS);
+	qpcnode_ref(node);
+	if (!qpcnode_mark_deleted(node)) {
+		qpcnode_unref(node);
+		return;
+	}
+
+	qpcnode_unlink_or_enqueue(qpdb, node, *tlocktypep);
+	qpcnode_unref(node);
 
 	if (qpdb->cachestats == NULL) {
 		return;

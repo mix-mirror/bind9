@@ -144,12 +144,18 @@ matching cache-use reference. The release path can then check whether
 only the live sentinel remains:
 
 ```c
-urcu_ref_put(&node->live_refs, unexpected_zero);
-last_external = (uatomic_load(&node->live_refs.refcount) == 1);
+refs = uatomic_sub_return(&node->live_refs.refcount, 1);
+INSIST(refs >= 1);
+last_external = (refs == 1);
 
 qpcache_unref(qpdb);
 qpcnode_unref(node);
 ```
+
+The last-external decision must use the value returned by the atomic
+decrement. Loading the counter afterwards is racy: another releaser can
+observe the sentinel and tombstone the node with `1 -> 0` before the
+current releaser performs its load.
 
 Deleting an empty node wins only if no external users exist:
 
