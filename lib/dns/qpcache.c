@@ -661,23 +661,11 @@ qpcnode_release(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t *nlocktypep,
 		goto unref;
 	}
 
-	if (*nlocktypep == isc_rwlocktype_read) {
-		/*
-		 * The external reference count went to zero and the node
-		 * is dirty or has no data, so we might want to delete it.
-		 * To do that, we'll need a write lock. A concurrent lookup
-		 * can still acquire the live sentinel while the lock is being
-		 * upgraded; the final compare/exchange below decides whether
-		 * deletion wins.
-		 */
-		isc_rwlock_t *nlock = &qpdb->buckets[node->locknum].lock;
-		NODE_FORCEUPGRADE(nlock, nlocktypep);
-	}
-
-	if (!cds_list_empty(&node->headers)) {
-		goto unref;
-	}
-
+	/*
+	 * The node lock, even held for reading, keeps the headers list stable.
+	 * The terminal 1 -> 0 erefs transition below arbitrates against any
+	 * concurrent lookup that tries to acquire the live sentinel.
+	 */
 	if (!qpcnode_mark_deleted(node)) {
 		goto unref;
 	}
@@ -691,7 +679,9 @@ qpcnode_release(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t *nlocktypep,
 		/*
 		 * If we don't have the tree lock, we will add this node to a
 		 * linked list of nodes in this locking bucket which we will
-		 * free later.
+		 * free later.  Enqueue is wait-free; cleanup takes the bucket
+		 * write lock before splicing the queue, so the current read
+		 * lock is sufficient producer-side coordination.
 		 */
 		qpcnode_ref(node);
 

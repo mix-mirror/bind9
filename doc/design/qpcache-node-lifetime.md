@@ -174,10 +174,11 @@ instead of trying to preserve first-external-user accounting.
 deadnode cleanup
 ----------------
 
-With final tombstoning, `cleanup_deadnodes()` no longer needs to take
-the node lock to protect against reactivation. It only needs
-synchronization for the deadnode queue itself and the qp write
-transaction needed for physical unlink.
+With final tombstoning, `qpcnode_release()` no longer needs to upgrade
+the node lock just to add a tombstoned node to `deadnodes`. The queue is
+backed by `cds_wfcq`, so enqueue itself does not require exclusive
+access. The existing node read lock is enough producer-side coordination
+when cleanup takes the bucket write lock before splicing.
 
 The cleanup path should not call the normal `qpcnode_release()` state
 machine. By the time a node is queued, logical deletion has already
@@ -312,4 +313,4 @@ immediately everywhere". It is:
   membership.
 
 That removes the reactivation race and lets cleanup unlink dead nodes
-without taking the node lock.
+without taking the node lock for each dead node.
