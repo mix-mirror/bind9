@@ -140,6 +140,11 @@ and system tests on various platforms. You should pay attention to any failures,
 as some can only occur in specific environments. Getting the CI to pass is a
 good start when preparing the merge request for the review.
 
+To reproduce a CI build's configuration locally, open the build job's log and
+copy the fully-expanded `meson setup` command printed there, along with the
+`CC`/`CFLAGS`/`LDFLAGS` values echoed alongside it (meson reads those from
+the environment).
+
 #### <a name="systest"></a> System tests
 
 If you want to run the system tests locally, please refer to [BIND9 System Test

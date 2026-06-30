@@ -402,7 +402,7 @@ stages:
   needs: []
 
 .configure: &configure
-    - meson setup
+    - setup="meson setup
       --libdir=lib
       -Dcmocka=enabled
       -Ddeveloper=enabled
@@ -410,7 +410,11 @@ stages:
       -Doptimization=1
       -Dnamed-lto=thin
       $EXTRA_CONFIGURE
-      build
+      build"
+    # For local reproducibility, display the expanded variables and meson setup.
+    - echo "environment -- CC=$CC CFLAGS=$CFLAGS LDFLAGS=$LDFLAGS"
+    - echo "$setup"
+    - $setup
 
 .git-clone-bind9-qa: &git_clone_bind9-qa
   - git clone --depth 1 https://gitlab.isc.org/isc-projects/bind9-qa.git "$CI_PROJECT_DIR"/bind9-qa
