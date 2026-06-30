@@ -249,10 +249,7 @@ ISC_REFCOUNT_STATIC_DECL(ftcache);
  */
 typedef struct {
 	ftcache_t *ftdb;
-	dns_qpread_t qpr;
 	unsigned int options;
-	dns_qpchain_t chain;
-	dns_qpiter_t iter;
 	bool need_cleanup;
 	ftcnode_t *zonecut;
 	dns_slabheader_t *zonecut_header;
@@ -1246,24 +1243,20 @@ find_coveringnsec(ftc_search_t *search, const dns_name_t *name,
 	dns_fixedname_t fpredecessor, fixed;
 	dns_name_t *predecessor = NULL, *fname = NULL;
 	ftcnode_t *node = NULL;
-	dns_qpiter_t iter;
+	ftcnode_t *exact = NULL;
+	struct cds_ft_iter *iter = NULL;
+	dns_qpkey_t key;
+	size_t keylen;
 	isc_result_t result;
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 	isc_rwlock_t *nlock = NULL;
 	dns_slabheader_t *found = NULL, *foundsig = NULL;
 
 	/*
-	 * Look for the node in the auxiliary NSEC namespace.
+	 * An exact match in the NSEC namespace is not a covering NSEC.
 	 */
-	result = dns_qp_lookup(&search->qpr, name, DNS_DBNAMESPACE_NSEC, &iter,
-			       NULL, (void **)&node, NULL);
-	/*
-	 * When DNS_R_PARTIALMATCH or ISC_R_NOTFOUND is returned from
-	 * dns_qp_lookup there is potentially a covering NSEC present
-	 * in the cache so we need to search for it.  Otherwise we are
-	 * done here.
-	 */
-	if (result != DNS_R_PARTIALMATCH && result != ISC_R_NOTFOUND) {
+	if (ftc_lookup(search->ftdb->ft, name, DNS_DBNAMESPACE_NSEC, &exact) ==
+	    ISC_R_SUCCESS) {
 		return ISC_R_NOTFOUND;
 	}
 
@@ -1271,10 +1264,22 @@ find_coveringnsec(ftc_search_t *search, const dns_name_t *name,
 	predecessor = dns_fixedname_initname(&fpredecessor);
 
 	/*
-	 * Extract predecessor from iterator.
+	 * Find the predecessor in the NSEC namespace: the largest NSEC owner
+	 * strictly below the query name.
 	 */
-	result = dns_qpiter_current(&iter, (void **)&node, NULL);
-	if (result != ISC_R_SUCCESS) {
+	keylen = dns_qpkey_fromname(key, name, DNS_DBNAMESPACE_NSEC);
+	RUNTIME_CHECK(cds_ft_iter_create(search->ftdb->ft, &iter) ==
+		      CDS_FT_STATUS_OK);
+	if (cds_ft_lookup_lt(search->ftdb->ft, key, keylen, iter) !=
+	    CDS_FT_STATUS_OK) {
+		cds_ft_iter_destroy(iter);
+		return ISC_R_NOTFOUND;
+	}
+	node = caa_container_of(cds_ft_iter_node(iter), ftcnode_t, ftnode);
+	cds_ft_iter_destroy(iter);
+
+	/* The predecessor must itself be in the NSEC namespace. */
+	if (node->nspace != DNS_DBNAMESPACE_NSEC) {
 		return ISC_R_NOTFOUND;
 	}
 	dns_name_copy(&node->name, predecessor);
@@ -1283,8 +1288,8 @@ find_coveringnsec(ftc_search_t *search, const dns_name_t *name,
 	 * Lookup the predecessor in the normal namespace.
 	 */
 	node = NULL;
-	RETERR(dns_qp_getname(&search->qpr, predecessor, DNS_DBNAMESPACE_NORMAL,
-			      (void **)&node, NULL));
+	RETERR(ftc_lookup(search->ftdb->ft, predecessor, DNS_DBNAMESPACE_NORMAL,
+			  &node));
 	dns_name_copy(&node->name, fname);
 
 	nlock = &search->ftdb->buckets[node->locknum].lock;
@@ -1328,31 +1333,19 @@ missing_answer(dns_slabheader_t *found, unsigned int options) {
 static void
 ftc_search_init(ftc_search_t *search, ftcache_t *db, unsigned int options,
 		isc_stdtime_t now) {
-	/*
-	 * ftc_search_t contains two structures with large buffers (dns_qpiter_t
-	 * and dns_qpchain_t). Those two structures will be initialized later by
-	 * dns_qp_lookup anyway.
-	 * To avoid the overhead of zero initialization, we avoid designated
-	 * initializers and initialize all "small" fields manually.
-	 */
-	search->ftdb = (ftcache_t *)db;
-	search->options = options;
-	/*
-	 * qpch->in - Init by dns_qp_lookup
-	 * qpiter - Init by dns_qp_lookup
-	 */
-	search->need_cleanup = false;
-	search->now = now ? now : isc_stdtime_now();
-	search->zonecut = NULL;
-	search->zonecut_header = NULL;
-	search->zonecut_sigheader = NULL;
+	*search = (ftc_search_t){
+		.ftdb = (ftcache_t *)db,
+		.options = options,
+		.now = now ? now : isc_stdtime_now(),
+	};
 
-	dns_qpmulti_query(search->ftdb->tree, &search->qpr);
+	/* Reads run under the RCU read-side lock for the whole search. */
+	rcu_read_lock();
 }
 
 static void
 ftc_search_deinit(ftc_search_t *search DNS__DB_FLARG) {
-	dns_qpread_destroy(search->ftdb->tree, &search->qpr);
+	rcu_read_unlock();
 
 	if (!search->need_cleanup) {
 		return;
@@ -1402,37 +1395,57 @@ ftcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	REQUIRE(version == NULL);
 
 	/*
-	 * Search down from the root of the tree.
+	 * Search down from the root of the tree. cds_ft has no search chain,
+	 * so we take the exact match if present, otherwise the closest
+	 * enclosing ancestor (longest prefix match).
 	 */
-	result = dns_qp_lookup(&search.qpr, name, DNS_DBNAMESPACE_NORMAL, NULL,
-			       &search.chain, (void **)&node, NULL);
+	result = ftc_lookup(search.ftdb->ft, name, DNS_DBNAMESPACE_NORMAL,
+			    &node);
+	if (result != ISC_R_SUCCESS) {
+		dns_qpkey_t key;
+		size_t keylen = dns_qpkey_fromname(key, name,
+						   DNS_DBNAMESPACE_NORMAL);
+		struct cds_ft_node *ftn = NULL;
+
+		if (cds_ft_lookup_longest_match(search.ftdb->ft, key, keylen,
+						&ftn) == CDS_FT_STATUS_OK) {
+			node = caa_container_of(ftn, ftcnode_t, ftnode);
+			result = DNS_R_PARTIALMATCH;
+		} else {
+			node = NULL;
+			result = ISC_R_NOTFOUND;
+		}
+	}
 	if (result != ISC_R_NOTFOUND && foundname != NULL) {
 		dns_name_copy(&node->name, foundname);
 	}
 
 	/*
-	 * Check the QP chain to see if there's a node above us with an
-	 * active DNAME rdataset.
+	 * Walk the ancestors of QNAME, shallowest first, looking for a node
+	 * above us with an active DNAME rdataset. We consider only nodes
+	 * strictly above QNAME.
 	 *
-	 * We're only interested in nodes above QNAME, so if the result
-	 * was success, then we skip the last item in the chain.
+	 * TODO: this does one trie lookup per ancestor label, whereas the qp
+	 * version got the whole chain for free from a single descent.
 	 */
-	unsigned int len = dns_qpchain_length(&search.chain);
-	if (result == ISC_R_SUCCESS) {
-		len--;
-	}
-
-	for (unsigned int i = 0; i < len; i++) {
+	unsigned int nlabels = dns_name_countlabels(name);
+	for (unsigned int k = 2; k < nlabels; k++) {
 		isc_result_t tresult;
 		ftcnode_t *encloser = NULL;
+		dns_fixedname_t fanc;
+		dns_name_t *anc = dns_fixedname_initname(&fanc);
 
-		dns_qpchain_node(&search.chain, i, (void **)&encloser, NULL);
+		dns_name_getlabelsequence(name, nlabels - k, k, anc);
+
+		if (ftc_lookup(search.ftdb->ft, anc, DNS_DBNAMESPACE_NORMAL,
+			       &encloser) != ISC_R_SUCCESS) {
+			continue;
+		}
 
 		tresult = check_dname(encloser,
 				      (void *)&search DNS__DB_FLARG_PASS);
 		if (tresult != DNS_R_CONTINUE) {
 			result = DNS_R_PARTIALMATCH;
-			search.chain.len = i - 1;
 			node = encloser;
 			if (foundname != NULL) {
 				dns_name_copy(&node->name, foundname);
