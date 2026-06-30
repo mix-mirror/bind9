@@ -1269,8 +1269,8 @@ find_coveringnsec(ftc_search_t *search, const dns_name_t *name,
 	keylen = dns_qpkey_fromname(key, name, DNS_DBNAMESPACE_NSEC);
 	RUNTIME_CHECK(cds_ft_iter_create(search->ftdb->ft, &iter) ==
 		      CDS_FT_STATUS_OK);
-	if (cds_ft_lookup_lt(search->ftdb->ft, key, keylen, iter) !=
-	    CDS_FT_STATUS_OK) {
+	cds_ft_iter_set_key(iter, key, keylen);
+	if (cds_ft_lookup_lt(search->ftdb->ft, iter) != CDS_FT_STATUS_OK) {
 		cds_ft_iter_destroy(iter);
 		return ISC_R_NOTFOUND;
 	}
@@ -1404,10 +1404,12 @@ ftcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		dns_qpkey_t key;
 		size_t keylen = dns_qpkey_fromname(key, name,
 						   DNS_DBNAMESPACE_NORMAL);
+		size_t match_len;
 		struct cds_ft_node *ftn = NULL;
 
-		if (cds_ft_lookup_longest_match(search.ftdb->ft, key, keylen,
-						&ftn) == CDS_FT_STATUS_OK) {
+		if (cds_ft_lookup_longest_match_key(search.ftdb->ft, key, keylen,
+						    &match_len,
+						    &ftn) == CDS_FT_STATUS_OK) {
 			node = caa_container_of(ftn, ftcnode_t, ftnode);
 			result = DNS_R_PARTIALMATCH;
 		} else {
@@ -2080,7 +2082,7 @@ ftcache_findnode(dns_db_t *db, const dns_name_t *name, bool create,
 
 		node = new_ftcnode(ftdb, name, nspace);
 		RUNTIME_CHECK(cds_ft_insert_unique(ftdb->ft, key, keylen,
-						   &node->ftnode) ==
+						   &node->ftnode, NULL) ==
 			      CDS_FT_STATUS_OK);
 		/*
 		 * The node's initial reference becomes the trie's reference;
@@ -2802,7 +2804,7 @@ ftcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 					       DNS_DBNAMESPACE_NSEC);
 			RUNTIME_CHECK(cds_ft_insert_unique(
 					      ftdb->ft, key, keylen,
-					      &nsecnode->ftnode) ==
+					      &nsecnode->ftnode, NULL) ==
 				      CDS_FT_STATUS_OK);
 			/* the creation reference becomes the trie's */
 		}
@@ -3105,8 +3107,8 @@ resume_iteration(ftc_dbit_t *ftdbiter, bool continuing) {
 		size_t keylen = dns_qpkey_fromname(key, ftdbiter->name,
 						   DNS_DBNAMESPACE_NORMAL);
 		rcu_read_lock();
-		RUNTIME_CHECK(cds_ft_lookup_ge(ftdb->ft, key, keylen,
-					       ftdbiter->iter) ==
+		cds_ft_iter_set_key(ftdbiter->iter, key, keylen);
+		RUNTIME_CHECK(cds_ft_lookup_ge(ftdb->ft, ftdbiter->iter) ==
 			      CDS_FT_STATUS_OK);
 		rcu_read_unlock();
 	}
@@ -3154,7 +3156,7 @@ dbiterator_first(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 	ftcache_t *ftdb = (ftcache_t *)ftdbiter->common.db;
 
 	rcu_read_lock();
-	if (cds_ft_first(ftdb->ft, ftdbiter->iter) == CDS_FT_STATUS_OK) {
+	if (cds_ft_lookup_first(ftdb->ft, ftdbiter->iter) == CDS_FT_STATUS_OK) {
 		ftdbiter->node = ftc_iter_node(ftdbiter->iter);
 	} else {
 		ftdbiter->node = NULL;
@@ -3216,9 +3218,8 @@ dbiterator_seek(dns_dbiterator_t *iterator,
 	size_t keylen = dns_qpkey_fromname(key, name, DNS_DBNAMESPACE_NORMAL);
 
 	rcu_read_lock();
-	if (cds_ft_lookup_ge(ftdb->ft, key, keylen, ftdbiter->iter) ==
-	    CDS_FT_STATUS_OK)
-	{
+	cds_ft_iter_set_key(ftdbiter->iter, key, keylen);
+	if (cds_ft_lookup_ge(ftdb->ft, ftdbiter->iter) == CDS_FT_STATUS_OK) {
 		ftdbiter->node = ftc_iter_node(ftdbiter->iter);
 	} else {
 		ftdbiter->node = NULL;
@@ -3270,8 +3271,10 @@ dbiterator_next(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 
 	dereference_iter_node(ftdbiter DNS__DB_FLARG_PASS);
 
+	ftcache_t *ftdb = (ftcache_t *)ftdbiter->common.db;
+
 	rcu_read_lock();
-	if (cds_ft_iter_next(ftdbiter->iter) == CDS_FT_STATUS_OK) {
+	if (cds_ft_next(ftdb->ft, ftdbiter->iter) == CDS_FT_STATUS_OK) {
 		ftdbiter->node = ftc_iter_node(ftdbiter->iter);
 	} else {
 		ftdbiter->node = NULL;
