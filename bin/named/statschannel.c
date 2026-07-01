@@ -66,6 +66,13 @@
 #define STATS_JSON_VERSION_MINOR "8"
 #define STATS_JSON_VERSION STATS_JSON_VERSION_MAJOR "." STATS_JSON_VERSION_MINOR
 
+#if __STDC_VERSION__ >= 202311L
+const char xslmsg[] = {
+#embed "bind9.xsl"
+	, '\0'
+};
+#endif
+
 struct named_statschannel {
 	/* Unlocked */
 	isc_httpdmgr_t *httpdmgr;

@@ -13,15 +13,21 @@ named_inc_p += include_directories('include')
 
 named_srcset.add(when: maxminddb_dep, if_true: files('geoip.c'))
 
-named_srcset.add(
-    configure_file(
-        input: 'xsl_c.in',
-        output: 'xsl.c',
-        configuration: {
-            'XSL': '\\n'.join(fs.read('bind9.xsl').strip().replace('"', '\\"').split('\n')),
-        },
-    ),
+if is_pre_c23
+    named_srcset.add(
+        configure_file(
+            input: 'xsl_c.in',
+            output: 'xsl.c',
+            configuration: {
+                'XSL': '\\n'.join(
+                    fs.read('bind9.xsl').strip().replace('"', '\\"').split('\n'),
+                ),
+            },
+        ),
+    )
+endif
 
+named_srcset.add(
     files(
         'builtin.c',
         'config.c',
