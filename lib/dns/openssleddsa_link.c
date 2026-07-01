@@ -101,8 +101,7 @@ raw_key_to_ossl(const eddsa_alginfo_t *alginfo, int private,
 }
 
 static isc_result_t
-openssleddsa_fromlabel_cmp(dst_key_t *key, const char *label, const char *pin,
-			   EVP_PKEY *cmp_pub);
+openssleddsa_fromlabel(dst_key_t *key, const char *label, const char *pin);
 
 static isc_result_t
 openssleddsa_createctx(dst_key_t *key, dst_context_t *dctx) {
@@ -186,28 +185,18 @@ openssleddsa_sign(dst_context_t *dctx, isc_buffer_t *sig) {
 
 	isc_buffer_usedregion(buf, &tbsreg);
 
-	/* Serialize the token op against concurrent key loads (see ecdsa). */
-	if (key->label != NULL) {
-		dst__openssl_toklock();
-	}
 	if (EVP_DigestSignInit(ctx, NULL, NULL, NULL, pkey) != 1) {
-		result = dst__openssl_toresult3(
-			dctx->category, "EVP_DigestSignInit", ISC_R_FAILURE);
-	} else if (EVP_DigestSign(ctx, sigreg.base, &siglen, tbsreg.base,
-				  tbsreg.length) != 1)
+		CLEANUP(dst__openssl_toresult3(
+			dctx->category, "EVP_DigestSignInit", ISC_R_FAILURE));
+	}
+	if (EVP_DigestSign(ctx, sigreg.base, &siglen, tbsreg.base,
+			   tbsreg.length) != 1)
 	{
-		result = dst__openssl_toresult3(
-			dctx->category, "EVP_DigestSign", DST_R_SIGNFAILURE);
-	} else {
-		result = ISC_R_SUCCESS;
-	}
-	if (key->label != NULL) {
-		dst__openssl_tokunlock();
-	}
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
+		CLEANUP(dst__openssl_toresult3(dctx->category, "EVP_DigestSign",
+					       DST_R_SIGNFAILURE));
 	}
 	isc_buffer_add(sig, (unsigned int)siglen);
+	result = ISC_R_SUCCESS;
 
 cleanup:
 	EVP_MD_CTX_free(ctx);
@@ -240,22 +229,13 @@ openssleddsa_verify(dst_context_t *dctx, const isc_region_t *sig) {
 
 	isc_buffer_usedregion(buf, &tbsreg);
 
-	if (key->label != NULL) {
-		dst__openssl_toklock();
-	}
 	if (EVP_DigestVerifyInit(ctx, NULL, NULL, NULL, pkey) != 1) {
-		if (key->label != NULL) {
-			dst__openssl_tokunlock();
-		}
 		CLEANUP(dst__openssl_toresult3(
 			dctx->category, "EVP_DigestVerifyInit", ISC_R_FAILURE));
 	}
 
 	status = EVP_DigestVerify(ctx, sig->base, sig->length, tbsreg.base,
 				  tbsreg.length);
-	if (key->label != NULL) {
-		dst__openssl_tokunlock();
-	}
 
 	switch (status) {
 	case 1:
@@ -292,24 +272,19 @@ openssleddsa_generate(dst_key_t *key, int unused, void (*callback)(int)) {
 	UNUSED(callback);
 
 	if (key->label != NULL) {
-		dst__openssl_toklock();
 		switch (key->key_alg) {
 		case DST_ALG_ED25519:
-			result = isc_ossl_wrap_generate_pkcs11_ed25519_key(
-				key->label, &pkey);
+			RETERR(isc_ossl_wrap_generate_pkcs11_ed25519_key(
+				key->label, &pkey));
 			break;
 #if HAVE_OPENSSL_ED448
 		case DST_ALG_ED448:
-			result = isc_ossl_wrap_generate_pkcs11_ed448_key(
-				key->label, &pkey);
+			RETERR(isc_ossl_wrap_generate_pkcs11_ed448_key(
+				key->label, &pkey));
 			break;
 #endif /* HAVE_OPENSSL_ED448 */
 		default:
 			UNREACHABLE();
-		}
-		dst__openssl_tokunlock();
-		if (result != ISC_R_SUCCESS) {
-			return result;
 		}
 		key->key_size = alginfo->key_size * 8;
 		key->keydata.pkeypair.priv = pkey;
@@ -500,11 +475,13 @@ openssleddsa_parse(dst_key_t *key, isc_lex_t *lexer, dst_key_t *pub) {
 	}
 
 	if (label != NULL) {
-		/* Pass the file's public key to retry past a transient
-		 * token mismatch. */
-		CHECK(openssleddsa_fromlabel_cmp(
-			key, label, NULL,
-			pub != NULL ? pub->keydata.pkeypair.pub : NULL));
+		CHECK(openssleddsa_fromlabel(key, label, NULL));
+		/* Check that the public component matches if given */
+		if (pub != NULL && EVP_PKEY_eq(key->keydata.pkeypair.pub,
+					       pub->keydata.pkeypair.pub) != 1)
+		{
+			CLEANUP(DST_R_INVALIDPRIVATEKEY);
+		}
 		CLEANUP(ISC_R_SUCCESS);
 	}
 
@@ -534,8 +511,7 @@ cleanup:
 }
 
 static isc_result_t
-openssleddsa_fromlabel_cmp(dst_key_t *key, const char *label, const char *pin,
-			   EVP_PKEY *cmp_pub) {
+openssleddsa_fromlabel(dst_key_t *key, const char *label, const char *pin) {
 	const eddsa_alginfo_t *alginfo = openssleddsa_alg_info(key->key_alg);
 	EVP_PKEY *privpkey = NULL, *pubpkey = NULL;
 	isc_result_t result;
@@ -543,8 +519,8 @@ openssleddsa_fromlabel_cmp(dst_key_t *key, const char *label, const char *pin,
 	REQUIRE(alginfo != NULL);
 	UNUSED(pin);
 
-	CHECK(dst__openssl_fromlabel(alginfo->pkey_type, label, pin, cmp_pub,
-				     &pubpkey, &privpkey));
+	CHECK(dst__openssl_fromlabel(alginfo->pkey_type, label, pin, &pubpkey,
+				     &privpkey));
 
 	key->label = isc_mem_strdup(key->mctx, label);
 	key->key_size = EVP_PKEY_bits(privpkey);
@@ -557,11 +533,6 @@ cleanup:
 	EVP_PKEY_free(privpkey);
 	EVP_PKEY_free(pubpkey);
 	return result;
-}
-
-static isc_result_t
-openssleddsa_fromlabel(dst_key_t *key, const char *label, const char *pin) {
-	return openssleddsa_fromlabel_cmp(key, label, pin, NULL);
 }
 
 static dst_func_t openssleddsa_functions = {
