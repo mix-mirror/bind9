@@ -208,6 +208,42 @@ typedef struct ftcache_bucket {
 	};
 } ftcache_bucket_t;
 
+/*
+ * Locking discipline
+ * ==================
+ *
+ * Three mechanisms protect the cache:
+ *
+ *   - 'wmutex' serialises every cds_ft structural write
+ *     (cds_ft_insert_unique, cds_ft_remove): there is a single writer.
+ *   - 'buckets[n].lock', a per-bucket rwlock, protects each node's header
+ *     list, reference counts and 'deleted' flag. A node's bucket is chosen
+ *     at random when the node is created, so it is not known until the node
+ *     has been found.
+ *   - the RCU read-side keeps a lock-free reader's view of the trie, and the
+ *     nodes it reaches, alive for the duration of the read.
+ *
+ * cds_ft writes drain readers with synchronize_rcu() before reclaiming the
+ * memory they unlink, so the overriding rule is: a thread inside the RCU
+ * read-side must never wait, directly or indirectly, for a grace period.
+ * Concretely:
+ *
+ *   - Never do a cds_ft write while holding a node lock. A reader parked on
+ *     that node lock inside rcu_read_lock() could never leave its read-side,
+ *     so the writer's synchronize_rcu() would hang. cds_ft writes take
+ *     'wmutex' ALONE -- see ftcache_findnode() and the NSEC path in
+ *     ftcache_addrdataset().
+ *   - Take 'wmutex' BEFORE entering the read-side, never after. A thread
+ *     holding rcu_read_lock() that then blocks on 'wmutex' would deadlock a
+ *     writer draining readers under it -- see cleanup_deadnodes() and the
+ *     drain in the database teardown.
+ *
+ * The read path is the one place that legitimately takes a node lock inside
+ * the read-side: ftc_lookup() finds a node lock-free under RCU, then
+ * reactivate_node() locks its bucket to take a reference. That is safe only
+ * because node-lock sections never wait for a grace period, so the reader
+ * always leaves its read-side promptly.
+ */
 struct ftcache {
 	/* Unlocked. */
 	dns_db_t common;
@@ -2074,15 +2110,21 @@ cleanup_deadnodes(ftcache_t *ftdb, uint16_t locknum) {
 	RUNTIME_CHECK(cds_ft_iter_create(ftdb->ft, &iter) == CDS_FT_STATUS_OK);
 	cds_ft_iter_set_cache_mode(iter, CDS_FT_ITER_UNCACHED);
 
-	rcu_read_lock();
+	/*
+	 * Acquire the writer mutex before entering the RCU read-side, never
+	 * the other way round: a writer holding the mutex may wait for an RCU
+	 * grace period, so a thread that parked on the mutex while inside
+	 * rcu_read_lock() would deadlock it (its read-side could never end).
+	 */
 	LOCK(&ftdb->wmutex);
+	rcu_read_lock();
 	isc_queue_for_each_entry_safe(&deadnodes, qpnode, qpnext, deadlink) {
 		if (qpnode->deleted) {
 			delete_node_trie(ftdb, iter, qpnode);
 		}
 	}
-	UNLOCK(&ftdb->wmutex);
 	rcu_read_unlock();
+	UNLOCK(&ftdb->wmutex);
 
 	cds_ft_iter_destroy(iter);
 }
@@ -2391,15 +2433,17 @@ ftcnode_detachnode(dns_dbnode_t **nodep DNS__DB_FLARG) {
 	 * reference it before acquiring the lock and release it afterward.
 	 * Additionally, we must ensure that we don't destroy the database while
 	 * the NODE_LOCK is locked.
+	 *
+	 * No RCU read-side is needed here: the caller still holds a reference,
+	 * so the node cannot be reclaimed, and ftcnode_release() touches only
+	 * node-lock-protected state and the wait-free deadnodes queue -- it
+	 * performs no cds_ft operation.
 	 */
 	ftcache_ref(ftdb);
 
-	rcu_read_lock();
 	NODE_RDLOCK(nlock, &nlocktype);
-
 	ftcnode_release(ftdb, node, &nlocktype, false DNS__DB_FLARG_PASS);
 	NODE_UNLOCK(nlock, &nlocktype);
-	rcu_read_unlock();
 
 	ftcache_detach(&ftdb);
 }
@@ -2926,40 +2970,47 @@ ftcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	nlock = &ftdb->buckets[qpnode->locknum].lock;
 
 	/*
-	 * Add to the auxiliary NSEC tree if we're adding an NSEC record.
+	 * When we add an NSEC record we also need the auxiliary node in the
+	 * NSEC namespace to exist. Its cds_ft insert must run under the writer
+	 * mutex ALONE -- never under a NODE lock: a cds_ft write drains RCU
+	 * readers with synchronize_rcu(), so a reader parked on this node's
+	 * lock while inside rcu_read_lock() would deadlock it. We therefore
+	 * do the insert before taking the node lock, and only record the
+	 * 'havensec' hint under it. cds_ft_insert_unique() dedups if a
+	 * concurrent update races us to the same NSEC node.
 	 */
 	if (rdataset->type == dns_rdatatype_nsec) {
 		NODE_RDLOCK(nlock, &nlocktype);
-		if (!qpnode->havensec) {
-			newnsec = true;
-		}
+		newnsec = !qpnode->havensec;
 		NODE_UNLOCK(nlock, &nlocktype);
 	}
 
-	NODE_WRLOCK(nlock, &nlocktype);
-
-	if (newnsec && !qpnode->havensec) {
-		LOCK(&ftdb->wmutex);
+	if (newnsec) {
 		ftcnode_t *nsecnode = new_ftcnode(ftdb, name,
 						  DNS_DBNAMESPACE_NSEC);
 		struct cds_ft_node *found = NULL;
 
+		LOCK(&ftdb->wmutex);
 		int r = cds_ft_insert_unique(ftdb->ft, nsecnode->key,
 					     nsecnode->keylen, &nsecnode->ftnode,
 					     &found);
+		UNLOCK(&ftdb->wmutex);
+
 		switch (r) {
 		case CDS_FT_STATUS_OK:
 			break;
 		case CDS_FT_STATUS_DUPLICATE_FOUND:
 			ftcnode_destroy(nsecnode);
-			nsecnode = caa_container_of(found, ftcnode_t, ftnode);
 			break;
 		default:
 			UNREACHABLE();
 		}
-		qpnode->havensec = true;
+	}
 
-		UNLOCK(&ftdb->wmutex);
+	NODE_WRLOCK(nlock, &nlocktype);
+
+	if (newnsec) {
+		qpnode->havensec = true;
 	}
 
 	result = add(ftdb, qpnode, newheader, options, addedrdataset, now,
