@@ -35,6 +35,10 @@
 #define __has_feature(x) 0
 #endif /* if !defined(__has_feature) */
 
+#ifndef __has_extension
+#define __has_extension(x) 0
+#endif
+
 #ifndef __has_header
 #define __has_header(x) 0
 #endif
@@ -95,7 +99,15 @@
  */
 #define UNCONST(ptr) ((void *)(uintptr_t)(ptr))
 
-#define ARRAY_SIZE(x) (sizeof(x) / sizeof(x[0]))
+#if __STDC_VERSION__ > 202311L
+#include <stdcountof.h>
+#elif __has_extension(c_countof) || __GNUC__ >= 16
+#define countof(x) _Countof(x)
+#else
+#define countof(x) (sizeof(x) / sizeof(x[0]))
+#endif
+
+#define ARRAY_SIZE(x) countof(x)
 
 /*
  * Optional return values, or out-arguments
