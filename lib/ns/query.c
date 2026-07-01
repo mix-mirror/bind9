@@ -4873,11 +4873,20 @@ qctx_save(query_ctx_t *src, query_ctx_t **targetp) {
  * Log detailed information about the query immediately after
  * the client request or a return from recursion.
  */
+#ifdef WANT_QUERYTRACE
+static void
+attrs_tohex(char *dst, size_t dstsize, const uint8_t *src, size_t srclen) {
+	for (size_t i = 0; i < srclen; i++) {
+		snprintf(&dst[i * 2], dstsize - i * 2, "%02x", src[i]);
+	}
+}
+
 static void
 query_trace(query_ctx_t *qctx) {
-#ifdef WANT_QUERYTRACE
 	char mbuf[2 * DNS_NAME_FORMATSIZE];
 	char qbuf[DNS_NAME_FORMATSIZE];
+	char iabuf[sizeof(qctx->client->inner.attrs) * 2 + 1] = { 0 };
+	char qabuf[sizeof(qctx->client->query.attrs) * 2 + 1] = { 0 };
 
 	if (qctx->client->query.origqname != NULL) {
 		dns_name_format(qctx->client->query.origqname, qbuf,
@@ -4886,19 +4895,27 @@ query_trace(query_ctx_t *qctx) {
 		snprintf(qbuf, sizeof(qbuf), "<unset>");
 	}
 
+	attrs_tohex(iabuf, sizeof(iabuf), (uint8_t *)&qctx->client->inner.attrs,
+		    sizeof(qctx->client->inner.attrs));
+	attrs_tohex(qabuf, sizeof(qabuf), (uint8_t *)&qctx->client->query.attrs,
+		    sizeof(qctx->client->query.attrs));
+
 	snprintf(mbuf, sizeof(mbuf) - 1,
-		 "restarts:%u, "
+		 "client attr:0x%s, query attr:0x%s, restarts:%u, "
 		 "origqname:%s, timer:%d, authdb:%d, referral:%d, id:%hu",
-		 qctx->client->query.restarts, qbuf,
+		 iabuf, qabuf, qctx->client->query.restarts, qbuf,
 		 (int)qctx->client->query.timerset,
 		 (int)qctx->client->query.authdbset,
 		 (int)qctx->client->query.isreferral,
 		 qctx->client->message->id);
 	CCTRACE(ISC_LOG_DEBUG(3), mbuf);
-#else  /* ifdef WANT_QUERYTRACE */
-	UNUSED(qctx);
-#endif /* ifdef WANT_QUERYTRACE */
 }
+#else  /* ifdef WANT_QUERYTRACE */
+static void
+query_trace(query_ctx_t *qctx ISC_ATTR_UNUSED) {
+	/* noop */
+}
+#endif /* ifdef WANT_QUERYTRACE */
 
 /*
  * Set up query processing for the current query of 'client'.
@@ -5028,7 +5045,7 @@ qctx_reportquery(query_ctx_t *qctx) {
 	 * back BADCOOKIE or TC=1.
 	 */
 	if (!client->inner.tcp && !client->inner.havecookie) {
-		if (client->inner.havecookie) {
+		if (client->inner.wantcookie) {
 			client->inner.badcookie = true;
 		} else {
 			client->inner.needtcp = true;

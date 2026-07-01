@@ -86,8 +86,8 @@
 #define CTRACE(m)                                                         \
 	ns_client_log(client, NS_LOGCATEGORY_CLIENT, NS_LOGMODULE_CLIENT, \
 		      ISC_LOG_DEBUG(3), "%s", (m))
-#define MTRACE(m)                                                          \
-	isc_log_write(ns_lctx, NS_LOGCATEGORY_CLIENT, NS_LOGMODULE_CLIENT, \
+#define MTRACE(m)                                                 \
+	isc_log_write(NS_LOGCATEGORY_CLIENT, NS_LOGMODULE_CLIENT, \
 		      ISC_LOG_DEBUG(3), "clientmgr @%p: %s", manager, (m))
 #else /* ifdef NS_CLIENT_TRACE */
 #define CTRACE(m) ((void)(m))
@@ -271,9 +271,13 @@ ns_client_endrequest(ns_client_t *client) {
 	dns_message_reset(client->message, DNS_MESSAGE_INTENTPARSE);
 
 	/*
-	 * Clear all client attributes that are specific to the request
+	 * Clear all client attributes that are specific to the request,
+	 * but keep the async attribute needed for reseting the async
+	 * state later.
 	 */
+	bool async = client->inner.async;
 	memset(&client->inner.attrs, 0, sizeof(client->inner.attrs));
+	client->inner.async = async;
 #ifdef ENABLE_AFL
 	if (client->manager->sctx->fuzznotify != NULL &&
 	    (client->manager->sctx->fuzztype == isc_fuzz_client ||
