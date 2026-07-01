@@ -12,7 +12,7 @@
 project(
     'userspace-rcu',
     'c',
-    version: '0.15.0',
+    version: '0.16.0',
     license: 'LGPL-2.1-or-later',
     meson_version: '>=1.3.0',
 )
