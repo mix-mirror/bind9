@@ -2486,8 +2486,22 @@ ISC_RUN_TEST_IMPL(nsec) {
 				WIRE_INVALID(0x00, 0x00, 0x00),
 				WIRE_VALID(0x00, 0x00, 0x01, 0x02),
 				WIRE_SENTINEL() };
+	compare_ok_t compare_ok[] = {
+		COMPARE("a. A RRSIG", "a. A RRSIG", 0),
+		/*
+		 * Records that differ only in the case of the next
+		 * name should be equal.
+		 */
+		COMPARE("A. A RRSIG", "a. A RRSIG", 0),
+		COMPARE("A. A RRSIG", "b. A RRSIG", -1),
+		COMPARE("b. A RRSIG", "A. A RRSIG", 1),
+		COMPARE("b. A RRSIG", "b. A AAAA RRSIG", -1),
+		/* order of bit map does not matter */
+		COMPARE("b. A RRSIG AAAA", "b. A AAAA RRSIG", 0),
+		COMPARE_SENTINEL()
+	};
 
-	check_rdata(text_ok, wire_ok, NULL, false, dns_rdataclass_in,
+	check_rdata(text_ok, wire_ok, compare_ok, false, dns_rdataclass_in,
 		    dns_rdatatype_nsec, sizeof(dns_rdata_nsec_t));
 }
 

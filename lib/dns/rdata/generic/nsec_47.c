@@ -117,6 +117,8 @@ static int
 compare_nsec(ARGS_COMPARE) {
 	isc_region_t r1;
 	isc_region_t r2;
+	dns_name_t name1 = DNS_NAME_INITEMPTY;
+	dns_name_t name2 = DNS_NAME_INITEMPTY;
 
 	REQUIRE(rdata1->type == rdata2->type);
 	REQUIRE(rdata1->rdclass == rdata2->rdclass);
@@ -126,6 +128,17 @@ compare_nsec(ARGS_COMPARE) {
 
 	dns_rdata_toregion(rdata1, &r1);
 	dns_rdata_toregion(rdata2, &r2);
+
+	dns_name_fromregion(&name1, &r1);
+	dns_name_fromregion(&name2, &r2);
+
+	int order = dns_name_rdatacompare(&name1, &name2);
+	if (order != 0) {
+		return order;
+	}
+
+	isc_region_consume(&r1, name_length(&name1));
+	isc_region_consume(&r2, name_length(&name2));
 	return isc_region_compare(&r1, &r2);
 }
 
@@ -210,10 +223,14 @@ additionaldata_nsec(ARGS_ADDLDATA) {
 static isc_result_t
 digest_nsec(ARGS_DIGEST) {
 	isc_region_t r;
+	dns_name_t name = DNS_NAME_INITEMPTY;
 
 	REQUIRE(rdata->type == dns_rdatatype_nsec);
 
 	dns_rdata_toregion(rdata, &r);
+	dns_name_fromregion(&name, &r);
+	RETERR(dns_name_digest(&name, digest, arg));
+	isc_region_consume(&r, name_length(&name));
 	return (digest)(arg, &r);
 }
 
