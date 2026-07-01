@@ -591,10 +591,9 @@ ftcache_miss(ftcache_t *ftdb, dns_slabheader_t *newheader,
 		 * down quickly.)
 		 */
 
-		size_t purgesize =
-			2 * (sizeof(ftcnode_t) +
-			     HEADERNODE(newheader)->keylen) +
-			rdataset_size(newheader) + QP_SAFETY_MARGIN;
+		size_t purgesize = 2 * (sizeof(ftcnode_t) +
+					HEADERNODE(newheader)->keylen) +
+				   rdataset_size(newheader) + QP_SAFETY_MARGIN;
 
 		expire_lru_headers(ftdb, newheader, idx, purgesize,
 				   nlocktypep DNS__DB_FLARG_PASS);
@@ -633,9 +632,10 @@ ftc_drop_tree_ref(struct rcu_head *rcu_head) {
  * lock and holds NO node lock -- the writer mutex only ever wraps the
  * structural cds_ft call. 'iter' is a scratch iterator (UNCACHED).
  *
- * TODO: a havensec NORMAL node also has an NSEC auxiliary node; for now
- * that node is reclaimed independently on its own eviction rather than
- * being co-deleted here.
+ * A 'havensec' node also owns an auxiliary node of the same name in the
+ * NSEC namespace (see ftcache_addrdataset()). That node carries no data
+ * and no external references, so it never reaches the deadnodes queue on
+ * its own; co-deleting it here is the only thing that reclaims it.
  */
 static void
 delete_node_trie(ftcache_t *ftdb, struct cds_ft_iter *iter, ftcnode_t *node) {
@@ -655,6 +655,28 @@ delete_node_trie(ftcache_t *ftdb, struct cds_ft_iter *iter, ftcnode_t *node) {
 	INSIST(status == CDS_FT_STATUS_OK);
 
 	call_rcu(&node->rcu_head, ftc_drop_tree_ref);
+
+	if (node->havensec) {
+		ftc_key_t nseckey;
+
+		/* Same name, NSEC namespace: only the namespace byte differs. */
+		memcpy(nseckey, node->key, node->keylen);
+		nseckey[0] = DNS_DBNAMESPACE_NSEC;
+
+		status = cds_ft_iter_set_key(iter, nseckey, node->keylen);
+		INSIST(status == CDS_FT_STATUS_OK);
+
+		if (cds_ft_lookup(ftdb->ft, iter) == CDS_FT_STATUS_OK) {
+			struct cds_ft_node *ftn = cds_ft_iter_node(iter);
+			ftcnode_t *nsecnode = caa_container_of(ftn, ftcnode_t,
+							       ftnode);
+
+			status = cds_ft_remove(ftdb->ft, iter, ftn);
+			INSIST(status == CDS_FT_STATUS_OK);
+
+			call_rcu(&nsecnode->rcu_head, ftc_drop_tree_ref);
+		}
+	}
 }
 
 /*
@@ -2992,8 +3014,8 @@ ftcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 
 		LOCK(&ftdb->wmutex);
 		int r = cds_ft_insert_unique(ftdb->ft, nsecnode->key,
-					     nsecnode->keylen, &nsecnode->ftnode,
-					     &found);
+					     nsecnode->keylen,
+					     &nsecnode->ftnode, &found);
 		UNLOCK(&ftdb->wmutex);
 
 		switch (r) {
