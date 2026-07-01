@@ -92,6 +92,7 @@ option(
     'cachedb',
     type: 'combo',
     choices: ['qpcache', 'ftcache'],
+    value: 'ftcache',
     description: 'Default cache database type',
 )
 

@@ -704,27 +704,41 @@ elif cc.has_header_symbol('sys/socket.h', 'SO_REUSEPORT_LB')
 endif
 
 ## userspace-rcu
-urcu_dep = [dependency('liburcu-cds', version: '>=0.10.0')]
+# The fractal-trie cache (ftcache) needs the cds fractal trie, which
+# first appears in liburcu 0.15.0; every other build only needs 0.10.0.
+# Requiring 0.15.0 makes a too-old system liburcu fail the check and
+# fall back to the pinned userspace-rcu subproject.
+urcu_min = get_option('cachedb') == 'ftcache' ? '>=0.15.0' : '>=0.10.0'
+
+urcu_dep = [dependency('liburcu-cds', version: urcu_min)]
 if rcu_flavor == 'membarrier'
     config.set('RCU_MEMBARRIER', true)
-    urcu_dep += dependency('liburcu', version: '>=0.10.0')
+    urcu_dep += dependency('liburcu', version: urcu_min)
 elif not developer_mode
     error('Changing Userspace-RCU flavor is allowed only in development mode')
 elif rcu_flavor == 'bp'
     config.set('RCU_BP', true)
-    urcu_dep += dependency('liburcu-bp', version: '>=0.10.0')
+    urcu_dep += dependency('liburcu-bp', version: urcu_min)
 elif rcu_flavor == 'mb'
     config.set('RCU_MB', true)
-    urcu_dep += dependency('liburcu-mb', version: '>=0.10.0')
+    urcu_dep += dependency('liburcu-mb', version: urcu_min)
 elif rcu_flavor == 'qsbr'
     config.set('RCU_QSBR', true)
-    urcu_dep += dependency('liburcu-qsbr', version: '>=0.10.0')
+    urcu_dep += dependency('liburcu-qsbr', version: urcu_min)
 endif
+
+# When liburcu comes from the wrapped subproject it is built by ninja,
+# not at configure time, so its headers and libraries don't exist yet
+# while the probes below run. Detect that case and substitute the values
+# known to hold for the pinned version instead of probing.
+urcu_from_subproject = urcu_dep[0].type_name() == 'internal'
 
 # liburcu << v0.13.0 didn't add -lurcu-common and some toolchains would
 # not add it automatically - we need to add it explicitly in such case.
 
-if urcu_dep[1].version().version_compare('<0.13.0')
+if not urcu_from_subproject and urcu_dep[1].version().version_compare(
+    '<0.13.0',
+)
     urcu_dep += cc.find_library('urcu-common')
 endif
 
@@ -733,7 +747,7 @@ foreach h : [
     'urcu/assert.h',
     'urcu/pointer.h',
 ]
-    if cc.has_header(h, dependencies: urcu_dep)
+    if urcu_from_subproject or cc.has_header(h, dependencies: urcu_dep)
         config.set('HAVE_@0@'.format(h.underscorify().to_upper()), 1)
     endif
 endforeach
@@ -751,7 +765,7 @@ int main(void) {
     return b != NULL;
 }
 '''
-if cc.compiles(
+if urcu_from_subproject or cc.compiles(
     urcu_inline_test,
     dependencies: urcu_dep,
     name: 'usage of opaque urcu inlining',

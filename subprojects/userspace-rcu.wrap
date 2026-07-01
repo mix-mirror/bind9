@@ -1,0 +1,12 @@
+[wrap-git]
+directory = userspace-rcu
+url = https://github.com/compudj/userspace-rcu-dev.git
+revision = bda5522cac911647cf6bfb1a7e973c34d89a4c2d
+patch_directory = userspace-rcu
+
+[provide]
+liburcu-cds = urcu_cds_dep
+liburcu = urcu_memb_dep
+liburcu-mb = urcu_mb_dep
+liburcu-bp = urcu_bp_dep
+liburcu-qsbr = urcu_qsbr_dep
