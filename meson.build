@@ -25,7 +25,6 @@ project(
         'strip': false,
         'warning_level': '2',
         'werror': false,
-        'wrap_mode': 'nodownload',
     },
 )
 

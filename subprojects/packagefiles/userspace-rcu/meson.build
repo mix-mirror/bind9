@@ -47,24 +47,50 @@ urcu = emod.add_project(
 # project's `dependency(..., version: ...)` checks and RCU_VERSION rely
 # on. The library names are liburcu's installed sonames without the
 # 'lib' prefix; 'urcu' is the default (membarrier) flavour.
+#
+# liburcu-common holds the wait-free queue/stack primitives (cds_wfcq_*,
+# cds_wfs_*, ...) that both the flavours and callers link against. A
+# system liburcu chains it in via liburcu-cds.pc's Libs line, but the
+# external_project dependencies are flat (just -l<name>), so fold it into
+# every flavour explicitly.
 _ver = meson.project_version()
+urcu_common_dep = urcu.dependency('urcu-common')
+
+# external_project emits -L/-l for link time but no runpath, so a
+# build-tree binary would resolve liburcu-* through the loader cache
+# (a distro copy without the fractal trie) instead of these freshly
+# built libraries. Point a runpath at the subproject's install libdir,
+# where external_project stages the shared objects (DESTDIR 'dist' under
+# the subproject build dir, then prefix/libdir). NOTE: this is a
+# build-tree path; an installed BIND additionally needs the subproject
+# libraries installed and its own install_rpath.
+_urcu_libdir = (meson.current_build_dir() / 'dist') + (
+    get_option('prefix') / get_option('libdir')
+)
+_urcu_rpath = ['-Wl,-rpath,' + _urcu_libdir]
+
 urcu_cds_dep = declare_dependency(
     version: _ver,
-    dependencies: urcu.dependency('urcu-cds'),
+    dependencies: [urcu.dependency('urcu-cds'), urcu_common_dep],
+    link_args: _urcu_rpath,
 )
 urcu_memb_dep = declare_dependency(
     version: _ver,
-    dependencies: urcu.dependency('urcu'),
+    dependencies: [urcu.dependency('urcu'), urcu_common_dep],
+    link_args: _urcu_rpath,
 )
 urcu_mb_dep = declare_dependency(
     version: _ver,
-    dependencies: urcu.dependency('urcu-mb'),
+    dependencies: [urcu.dependency('urcu-mb'), urcu_common_dep],
+    link_args: _urcu_rpath,
 )
 urcu_bp_dep = declare_dependency(
     version: _ver,
-    dependencies: urcu.dependency('urcu-bp'),
+    dependencies: [urcu.dependency('urcu-bp'), urcu_common_dep],
+    link_args: _urcu_rpath,
 )
 urcu_qsbr_dep = declare_dependency(
     version: _ver,
-    dependencies: urcu.dependency('urcu-qsbr'),
+    dependencies: [urcu.dependency('urcu-qsbr'), urcu_common_dep],
+    link_args: _urcu_rpath,
 )
