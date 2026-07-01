@@ -159,7 +159,8 @@ class FileZoneKey(ZoneKey):
         ), f"DNSKEY not found in {self.keyfile}"
         return dnskey_rr
 
-    def get_private_key(self) -> PrivateKey:
+    @property
+    def private_key(self) -> PrivateKey:
         """
         Read the .private file and build the corresponding cryptography
         private-key object, dispatching on the DNSKEY algorithm.
@@ -204,10 +205,6 @@ class FileZoneKey(ZoneKey):
         if alg == ED448:
             return ed448.Ed448PrivateKey.from_private_bytes(secret)
         raise NotImplementedError(f"dnskey algorithm {alg.name} not implemented")
-
-    @property
-    def private_key(self) -> PrivateKey:
-        return self.get_private_key()
 
     def write_dsset(
         self,
