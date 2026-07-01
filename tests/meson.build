@@ -56,6 +56,7 @@ check_test_registration = [python, files('../util/check_test_registration.py')]
 
 subdir('bench')
 subdir('dns')
+subdir('hypothesis')
 subdir('isc')
 subdir('isccfg')
 subdir('ns')
