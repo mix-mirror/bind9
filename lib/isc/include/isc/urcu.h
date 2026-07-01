@@ -41,6 +41,7 @@
 #else
 #include <urcu-pointer.h>
 #endif
+#include <urcu/fractal-trie.h>
 #include <urcu/rculfhash.h>
 #include <urcu/rculist.h>
 #include <urcu/ref.h>
