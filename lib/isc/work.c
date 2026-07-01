@@ -272,7 +272,7 @@ workthread_thread(void *arg) {
 			continue;
 		}
 
-		isc_work_t *work = caa_container_of(node, isc_work_t, node);
+		auto work = caa_container_of(node, isc_work_t, node);
 		work_run(work);
 	}
 

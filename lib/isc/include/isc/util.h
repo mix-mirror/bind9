@@ -51,11 +51,11 @@
  *** General Macros.
  ***/
 
-#define MOVE_OWNERSHIP(source)                             \
-	({                                                 \
-		__typeof__(source) __ownership = (source); \
-		(source) = NULL;                           \
-		__ownership;                               \
+#define MOVE_OWNERSHIP(source)               \
+	({                                   \
+		auto __ownership = (source); \
+		(source) = NULL;             \
+		__ownership;                 \
 	})
 
 /*%
@@ -313,11 +313,11 @@ mock_assert(const int result, const char *const expression,
 /*%
  * Swap
  */
-#define ISC_SWAP(a, b)                    \
-	{                                 \
-		typeof(a) __tmp_swap = a; \
-		a = b;                    \
-		b = __tmp_swap;           \
+#define ISC_SWAP(a, b)               \
+	{                            \
+		auto __tmp_swap = a; \
+		a = b;               \
+		b = __tmp_swap;      \
 	}
 
 #if __has_builtin(__builtin_types_compatible_p)

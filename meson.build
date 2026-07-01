@@ -44,6 +44,7 @@ endif
 ### Build Options
 developer_mode = get_option('developer').enabled()
 
+c_std = get_option('c_std')
 lundef = get_option('b_lundef')
 optimization = get_option('optimization')
 sanitizer = get_option('b_sanitize')
@@ -349,6 +350,24 @@ int main(void) {
 '''
 if not cc.compiles(constexpr_test, name: 'usage of constexpr')
     config.set('constexpr', 'static const')
+endif
+
+# pre-C23 shims
+is_pre_c23 = c_std in [
+    'c89',
+    'c99',
+    'c11',
+    'c17',
+    'c18',
+    'gnu89',
+    'gnu99',
+    'gnu11',
+    'gnu17',
+    'gnu18',
+]
+
+if is_pre_c23
+    config.set('auto', '__auto_type')
 endif
 
 if developer_mode

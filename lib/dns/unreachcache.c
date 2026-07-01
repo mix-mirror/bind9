@@ -134,8 +134,7 @@ dns_unreachcache_destroy(dns_unreachcache_t **ucp) {
 static int
 ucentry_match(struct cds_lfht_node *ht_node, const void *key0) {
 	const dns__uckey_t *key = key0;
-	dns_ucentry_t *unreach = caa_container_of(ht_node, dns_ucentry_t,
-						  ht_node);
+	auto unreach = caa_container_of(ht_node, dns_ucentry_t, ht_node);
 
 	return isc_sockaddr_equal(&unreach->remote, key->remote) &&
 	       isc_sockaddr_equal(&unreach->local, key->local);
@@ -177,8 +176,7 @@ ucentry_new(isc_loop_t *loop, const isc_sockaddr_t *remote,
 
 static void
 ucentry_destroy(struct rcu_head *rcu_head) {
-	dns_ucentry_t *unreach = caa_container_of(rcu_head, dns_ucentry_t,
-						  rcu_head);
+	auto unreach = caa_container_of(rcu_head, dns_ucentry_t, rcu_head);
 	isc_mem_putanddetach(&unreach->mctx, unreach, sizeof(*unreach));
 }
 
@@ -295,8 +293,8 @@ dns_unreachcache_add(dns_unreachcache_t *uc, const isc_sockaddr_t *remote,
 					      &key, &unreach->ht_node);
 		if (ht_node != &unreach->ht_node) {
 			/* The entry already exists, get it. */
-			dns_ucentry_t *found = caa_container_of(
-				ht_node, dns_ucentry_t, ht_node);
+			auto found = caa_container_of(ht_node, dns_ucentry_t,
+						      ht_node);
 
 			/*
 			 * Consider unreachability as confirmed only if

@@ -125,7 +125,7 @@
  */
 #define ISC_SIEVE_NEXT(sieve, visited, link)                                  \
 	({                                                                    \
-		__typeof__((sieve).hand) __hand = ((sieve).hand);             \
+		auto __hand = ((sieve).hand);                                 \
 		if (__hand == NULL && !ISC_LIST_EMPTY((sieve).list)) {        \
 			__hand = ISC_LIST_TAIL((sieve).list);                 \
 		}                                                             \
@@ -147,7 +147,7 @@
 
 #define ISC_SIEVE_UNLINK(sieve, entry, link)                                 \
 	({                                                                   \
-		__typeof__((sieve).hand) __hand = (sieve).hand;              \
+		auto __hand = (sieve).hand;                                  \
 		/* 1. Go to the previous node (possibly head of the list) */ \
 		if (entry == __hand) {                                       \
 			__hand = ISC_LIST_PREV(entry, link);                 \
