@@ -704,10 +704,10 @@ endif
 
 ## userspace-rcu
 # The fractal-trie cache (ftcache) needs the cds fractal trie, which
-# first appears in liburcu 0.15.0; every other build only needs 0.10.0.
-# Requiring 0.15.0 makes a too-old system liburcu fail the check and
+# first appears in liburcu 0.16.0; every other build only needs 0.10.0.
+# Requiring 0.16.0 makes a too-old system liburcu fail the check and
 # fall back to the pinned userspace-rcu subproject.
-urcu_min = get_option('cachedb') == 'ftcache' ? '>=0.15.0' : '>=0.10.0'
+urcu_min = get_option('cachedb') == 'ftcache' ? '>=0.16.0' : '>=0.10.0'
 
 urcu_dep = [dependency('liburcu-cds', version: urcu_min)]
 if rcu_flavor == 'membarrier'
