@@ -1,7 +1,7 @@
 [wrap-git]
 directory = userspace-rcu
-url = https://github.com/compudj/userspace-rcu-dev.git
-revision = bda5522cac911647cf6bfb1a7e973c34d89a4c2d
+url = https://github.com/oerdnj/userspace-rcu-dev
+revision = 7a05997725fa36a9c6360c6c64e23e0e5e829f20
 patch_directory = userspace-rcu
 
 [provide]
