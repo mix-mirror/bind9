@@ -822,8 +822,32 @@ ftcnode_release(ftcache_t *ftdb, ftcnode_t *node, isc_rwlocktype_t *nlocktypep,
 		goto unref;
 	}
 
+	if (*nlocktypep == isc_rwlocktype_read) {
+		/*
+		 * The decision to enqueue the node -- and the enqueue
+		 * itself, which re-initialises the node's deadlink -- must
+		 * be made under the node WRITE lock. Under the shared read
+		 * lock, another thread can reactivate the node in the window
+		 * after our decrement and run its own release to completion,
+		 * enqueueing the node first; our enqueue would then insert
+		 * it a second time and reset its deadlink while it is
+		 * already linked, corrupting the queue. So: raise erefs
+		 * again (but NOT references), force-upgrade the lock, and
+		 * re-check that nobody else revived the node meanwhile.
+		 */
+		isc_rwlock_t *nlock = &ftdb->buckets[node->locknum].lock;
+		ftcnode_erefs_increment(ftdb, node,
+					*nlocktypep DNS__DB_FLARG_PASS);
+		NODE_FORCEUPGRADE(nlock, nlocktypep);
+		if (!ftcnode_erefs_decrement(ftdb, node DNS__DB_FLARG_PASS)) {
+			goto unref;
+		}
+		if (!cds_list_empty(&node->headers)) {
+			goto unref;
+		}
+	}
+
 	if (reclaim) {
-		REQUIRE(*nlocktypep == isc_rwlocktype_write);
 		/*
 		 * Mark the node deleted under the NODE lock; this blocks any
 		 * new reactivate_node() reference. The structural cds_ft
