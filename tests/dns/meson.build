@@ -23,6 +23,7 @@ dns_tests = [
     'dns64',
     'dst',
     'ede',
+    'ftcache',
     'keytable',
     'master',
     'name',
