@@ -9,6 +9,10 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
+import dns.name
+import dns.rdataclass
+import dns.rdatatype
+import dns.rcode
 import pytest
 
 from isctest.kasp import KeyTimingMetadata
@@ -63,6 +67,33 @@ def bootstrap():
     data["trust_anchors"].append(ta)
 
     return data
+
+
+def wait_for_old_zrrsigs_gone(server, zone, key):
+    def old_zrrsigs_gone():
+        qname = f"a.{zone}."
+        query = isctest.query.create(qname, dns.rdatatype.A)
+        response = isctest.query.tcp(
+            query, server.ip, server.ports.dns, timeout=3
+        )
+        assert response.rcode() == dns.rcode.NOERROR
+
+        for rrset in response.answer:
+            if not rrset.match(
+                dns.name.from_text(qname),
+                dns.rdataclass.IN,
+                dns.rdatatype.RRSIG,
+                dns.rdatatype.A,
+            ):
+                continue
+
+            for rdata in rrset:
+                if rdata.algorithm == key.get_dnsalg() and rdata.key_tag == key.tag:
+                    return False
+
+        return True
+
+    isctest.run.retry_with_timeout(old_zrrsigs_gone, timeout=10, delay=0.1)
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -278,7 +309,8 @@ def test_algoroll_csk_reconfig_step4(tld, ns3, default_algorithm):
         keys = isctest.kasp.check_rollover_step(ns3, CONFIG, policy, step)
 
         # Check logs.
-        tag = keys[0].key.tag
+        old_key = keys[0].key
+        tag = old_key.tag
         msg = f"keymgr-manual-mode: block transition CSK {zone}/RSASHA256/{tag} type DNSKEY state OMNIPRESENT to state UNRETENTIVE"
         assert msg in ns3.log
 
@@ -289,6 +321,7 @@ def test_algoroll_csk_reconfig_step4(tld, ns3, default_algorithm):
             watcher.wait_for_line(
                 f"zone {zone}/IN (signed): zone_rekey done: key {tag}/ECDSAP256SHA256"
             )
+        wait_for_old_zrrsigs_gone(ns3, zone, old_key)
 
     step = {
         "zone": zone,
