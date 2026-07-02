@@ -22,11 +22,11 @@
 #include <isc/mem.h>
 #include <isc/mutex.h>
 #include <isc/netmgr.h>
-#include <isc/portset.h>
 #include <isc/refcount.h>
 #include <isc/result.h>
 #include <isc/safe.h>
 #include <isc/sockaddr.h>
+#include <isc/u16bitmap.h>
 #include <isc/util.h>
 
 #include <dns/adb.h>
@@ -136,25 +136,18 @@ destroyrestrans(dns_clientrestrans_t **transp);
  * Try honoring the operating system's preferred ephemeral port range.
  */
 static isc_result_t
-setsourceports(isc_mem_t *mctx, dns_dispatchmgr_t *manager) {
-	isc_portset_t *v4portset = NULL, *v6portset = NULL;
+setsourceports(dns_dispatchmgr_t *manager) {
+	isc_u16bitmap_t v4ports = { 0 };
+	isc_u16bitmap_t v6ports = { 0 };
 	in_port_t udpport_low, udpport_high;
-	isc_result_t result;
 
-	isc_portset_create(mctx, &v4portset);
 	isc_net_getportrange(AF_INET, &udpport_low, &udpport_high);
-	isc_portset_addrange(v4portset, udpport_low, udpport_high);
+	isc_u16bitmap_setrange(&v4ports, udpport_low, udpport_high);
 
-	isc_portset_create(mctx, &v6portset);
 	isc_net_getportrange(AF_INET6, &udpport_low, &udpport_high);
-	isc_portset_addrange(v6portset, udpport_low, udpport_high);
+	isc_u16bitmap_setrange(&v6ports, udpport_low, udpport_high);
 
-	result = dns_dispatchmgr_setavailports(manager, v4portset, v6portset);
-
-	isc_portset_destroy(mctx, &v4portset);
-	isc_portset_destroy(mctx, &v6portset);
-
-	return result;
+	return dns_dispatchmgr_setavailports(manager, &v4ports, &v6ports);
 }
 
 static isc_result_t
@@ -232,7 +225,7 @@ dns_client_create(isc_mem_t *mctx, unsigned int options,
 	if (result != ISC_R_SUCCESS) {
 		goto cleanup_client;
 	}
-	(void)setsourceports(mctx, client->dispatchmgr);
+	(void)setsourceports(client->dispatchmgr);
 
 	/*
 	 * If only one address family is specified, use it.
