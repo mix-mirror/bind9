@@ -172,9 +172,8 @@ servestale_setup(isc_mem_t *mctx, dns_fixedname_t *fname, dns_name_t **namep) {
 	isc_result_t result;
 	dns_db_t *db = NULL;
 
-	result = dns_db_create(mctx, CACHEDB_DEFAULT, dns_rootname,
-			       dns_dbtype_cache, dns_rdataclass_in, 0, NULL,
-			       &db);
+	result = dns_db_create(mctx, "qpcache", dns_rootname, dns_dbtype_cache,
+			       dns_rdataclass_in, 0, NULL, &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	/* Keep expired entries for a day as a last-resort fallback. */
@@ -281,9 +280,8 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 
 	isc_mem_create("test", &mctx);
 
-	result = dns_db_create(mctx, CACHEDB_DEFAULT, dns_rootname,
-			       dns_dbtype_cache, dns_rdataclass_in, 0, NULL,
-			       &db);
+	result = dns_db_create(mctx, "qpcache", dns_rootname, dns_dbtype_cache,
+			       dns_rdataclass_in, 0, NULL, &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	isc_mem_setwater(mctx, hiwater, lowater);
@@ -333,9 +331,8 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 
 	isc_mem_create("test", &mctx);
 
-	result = dns_db_create(mctx, CACHEDB_DEFAULT, dns_rootname,
-			       dns_dbtype_cache, dns_rdataclass_in, 0, NULL,
-			       &db);
+	result = dns_db_create(mctx, "qpcache", dns_rootname, dns_dbtype_cache,
+			       dns_rdataclass_in, 0, NULL, &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	isc_mem_setwater(mctx, hiwater, lowater);
