@@ -296,42 +296,22 @@ done:
 	return result;
 }
 
-static isc_result_t
-check_no_rrsig(const vctx_t *vctx, const dns_rdataset_t *rdataset,
-	       const dns_name_t *name, dns_dbnode_t *node) {
+static void
+check_no_rrsig(const vctx_t *vctx, dns_rdatatype_t type,
+	       const dns_name_t *name, const isc_u16bitmap_t *sigtypes) {
 	char namebuf[DNS_NAME_FORMATSIZE];
 	char typebuf[DNS_RDATATYPE_FORMATSIZE];
-	dns_rdatasetiter_t *rdsiter = NULL;
-	isc_result_t result;
 
-	result = dns_db_allrdatasets(vctx->db, node, vctx->ver, 0, 0, &rdsiter);
-	if (result != ISC_R_SUCCESS) {
-		zoneverify_log_error(vctx, "dns_db_allrdatasets(): %s",
-				     isc_result_totext(result));
-		return result;
+	if (!isc_u16bitmap_isset(sigtypes, type)) {
+		return;
 	}
-	DNS_RDATASETITER_FOREACH(rdsiter) {
-		dns_rdataset_t sigrdataset = DNS_RDATASET_INIT;
-		dns_rdatasetiter_current(rdsiter, &sigrdataset);
-		if (sigrdataset.type == dns_rdatatype_rrsig &&
-		    sigrdataset.covers == rdataset->type)
-		{
-			dns_rdataset_disassociate(&sigrdataset);
-			dns_name_format(name, namebuf, sizeof(namebuf));
-			dns_rdatatype_format(rdataset->type, typebuf,
-					     sizeof(typebuf));
-			zoneverify_log_error(
-				vctx,
-				"Warning: Found unexpected signatures "
-				"for %s/%s",
-				namebuf, typebuf);
-			break;
-		}
-		dns_rdataset_disassociate(&sigrdataset);
-	}
-	dns_rdatasetiter_destroy(&rdsiter);
 
-	return ISC_R_SUCCESS;
+	dns_name_format(name, namebuf, sizeof(namebuf));
+	dns_rdatatype_format(type, typebuf, sizeof(typebuf));
+	zoneverify_log_error(vctx,
+			     "Warning: Found unexpected signatures "
+			     "for %s/%s",
+			     namebuf, typebuf);
 }
 
 static bool
@@ -781,37 +761,27 @@ verifynsec3s(const vctx_t *vctx, const dns_name_t *name,
 }
 
 static isc_result_t
-verifyset(vctx_t *vctx, dns_rdataset_t *rdataset, const dns_name_t *name,
-	  dns_dbnode_t *node, dst_key_t **dstkeys, size_t nkeys) {
+verifyset(vctx_t *vctx, const dns_name_t *name, dns_dbnode_t *node,
+	  dns_rdatatype_t type, dst_key_t **dstkeys, size_t nkeys) {
 	unsigned char set_algorithms[DST_MAX_ALGS] = { 0 };
 	char namebuf[DNS_NAME_FORMATSIZE];
 	char algbuf[DNS_SECALG_FORMATSIZE];
 	char typebuf[DNS_RDATATYPE_FORMATSIZE];
+	dns_rdataset_t rdataset = DNS_RDATASET_INIT;
 	dns_rdataset_t sigrdataset = DNS_RDATASET_INIT;
-	dns_rdatasetiter_t *rdsiter = NULL;
-	bool match = false;
 	isc_result_t result;
 
-	result = dns_db_allrdatasets(vctx->db, node, vctx->ver, 0, 0, &rdsiter);
+	result = dns_db_findrdataset(vctx->db, node, vctx->ver, type, 0, 0,
+				     &rdataset, &sigrdataset);
 	if (result != ISC_R_SUCCESS) {
-		zoneverify_log_error(vctx, "dns_db_allrdatasets(): %s",
+		zoneverify_log_error(vctx, "dns_db_findrdataset(): %s",
 				     isc_result_totext(result));
 		return result;
 	}
-	DNS_RDATASETITER_FOREACH(rdsiter) {
-		dns_rdatasetiter_current(rdsiter, &sigrdataset);
-		if (sigrdataset.type == dns_rdatatype_rrsig &&
-		    sigrdataset.covers == rdataset->type)
-		{
-			match = true;
-			break;
-		}
-		dns_rdataset_disassociate(&sigrdataset);
-	}
 
-	if (!match) {
+	if (!dns_rdataset_isassociated(&sigrdataset)) {
 		dns_name_format(name, namebuf, sizeof(namebuf));
-		dns_rdatatype_format(rdataset->type, typebuf, sizeof(typebuf));
+		dns_rdatatype_format(type, typebuf, sizeof(typebuf));
 		zoneverify_log_error(vctx, "No signatures for %s/%s", namebuf,
 				     typebuf);
 		for (size_t i = 0; i < ARRAY_SIZE(set_algorithms); i++) {
@@ -831,10 +801,9 @@ verifyset(vctx_t *vctx, dns_rdataset_t *rdataset, const dns_name_t *name,
 		dns_rdataset_current(&sigrdataset, &rdata);
 		result = dns_rdata_tostruct(&rdata, &sig, NULL);
 		RUNTIME_CHECK(result == ISC_R_SUCCESS);
-		if (rdataset->ttl != sig.originalttl) {
+		if (rdataset.ttl != sig.originalttl) {
 			dns_name_format(name, namebuf, sizeof(namebuf));
-			dns_rdatatype_format(rdataset->type, typebuf,
-					     sizeof(typebuf));
+			dns_rdatatype_format(type, typebuf, sizeof(typebuf));
 			zoneverify_log_error(vctx,
 					     "TTL mismatch for "
 					     "%s %s keytag %u",
@@ -848,8 +817,8 @@ verifyset(vctx_t *vctx, dns_rdataset_t *rdataset, const dns_name_t *name,
 		{
 			continue;
 		}
-		if (goodsig(vctx, &rdata, name, dstkeys, nkeys, rdataset)) {
-			dns_rdataset_settrust(rdataset, dns_trust_secure);
+		if (goodsig(vctx, &rdata, name, dstkeys, nkeys, &rdataset)) {
+			dns_rdataset_settrust(&rdataset, dns_trust_secure);
 			dns_rdataset_settrust(&sigrdataset, dns_trust_secure);
 			set_algorithms[algorithm] = 1;
 		}
@@ -860,7 +829,7 @@ verifyset(vctx_t *vctx, dns_rdataset_t *rdataset, const dns_name_t *name,
 		   sizeof(set_algorithms)) != 0)
 	{
 		dns_name_format(name, namebuf, sizeof(namebuf));
-		dns_rdatatype_format(rdataset->type, typebuf, sizeof(typebuf));
+		dns_rdatatype_format(type, typebuf, sizeof(typebuf));
 		for (size_t i = 0; i < ARRAY_SIZE(set_algorithms); i++) {
 			if ((vctx->act_algorithms[i] != 0) &&
 			    (set_algorithms[i] == 0))
@@ -876,10 +845,21 @@ verifyset(vctx_t *vctx, dns_rdataset_t *rdataset, const dns_name_t *name,
 	}
 
 done:
+	dns_rdataset_cleanup(&rdataset);
 	dns_rdataset_cleanup(&sigrdataset);
-	dns_rdatasetiter_destroy(&rdsiter);
 
 	return result;
+}
+
+static void
+filter_delegation_types(isc_u16bitmap_t *types) {
+	ISC_U16BITMAP_FOREACH(types, value) {
+		dns_rdatatype_t type = (dns_rdatatype_t)value;
+
+		if (!dns_rdatatype_iszonecutauth(type)) {
+			isc_u16bitmap_unset(types, (uint16_t)type);
+		}
+	}
 }
 
 static isc_result_t
@@ -888,6 +868,7 @@ verifynode(vctx_t *vctx, const dns_name_t *name, dns_dbnode_t *node,
 	   dns_rdataset_t *nsecset, dns_rdataset_t *nsec3paramset,
 	   const dns_name_t *nextname, isc_result_t *vresult) {
 	isc_u16bitmap_t types = { 0 };
+	isc_u16bitmap_t sigtypes = { 0 };
 	dns_rdatasetiter_t *rdsiter = NULL;
 	isc_result_t result, tvresult = ISC_R_UNSET;
 
@@ -904,6 +885,18 @@ verifynode(vctx_t *vctx, const dns_name_t *name, dns_dbnode_t *node,
 		dns_rdataset_t rdataset = DNS_RDATASET_INIT;
 		dns_rdatasetiter_current(rdsiter, &rdataset);
 
+		isc_u16bitmap_set(&types, rdataset.type);
+		if (rdataset.type == dns_rdatatype_rrsig) {
+			isc_u16bitmap_set(&sigtypes, rdataset.covers);
+		}
+
+		dns_rdataset_disassociate(&rdataset);
+	}
+	dns_rdatasetiter_destroy(&rdsiter);
+
+	ISC_U16BITMAP_FOREACH(&types, value) {
+		dns_rdatatype_t type = (dns_rdatatype_t)value;
+
 		/*
 		 * If we are not at a delegation then everything should be
 		 * signed.  If we are at a delegation then only the DS set
@@ -911,34 +904,24 @@ verifynode(vctx_t *vctx, const dns_name_t *name, dns_dbnode_t *node,
 		 * its existence is recorded in the bit map.  Anything else
 		 * other than NSEC and DS is not signed at a delegation.
 		 */
-		if (rdataset.type != dns_rdatatype_rrsig &&
-		    (!delegation || rdataset.type == dns_rdatatype_ds ||
-		     rdataset.type == dns_rdatatype_nsec))
+		if (type == dns_rdatatype_rrsig) {
+			continue;
+		}
+		if (!delegation || type == dns_rdatatype_ds ||
+		    type == dns_rdatatype_nsec)
 		{
-			result = verifyset(vctx, &rdataset, name, node, dstkeys,
-					   nkeys);
+			result = verifyset(vctx, name, node, type, dstkeys, nkeys);
 			if (result != ISC_R_SUCCESS) {
-				dns_rdataset_disassociate(&rdataset);
-				dns_rdatasetiter_destroy(&rdsiter);
-				return result;
-			}
-			isc_u16bitmap_set(&types, rdataset.type);
-		} else if (rdataset.type != dns_rdatatype_rrsig) {
-			if (rdataset.type == dns_rdatatype_ns) {
-				isc_u16bitmap_set(&types, rdataset.type);
-			}
-			result = check_no_rrsig(vctx, &rdataset, name, node);
-			if (result != ISC_R_SUCCESS) {
-				dns_rdataset_disassociate(&rdataset);
-				dns_rdatasetiter_destroy(&rdsiter);
 				return result;
 			}
 		} else {
-			isc_u16bitmap_set(&types, rdataset.type);
+			check_no_rrsig(vctx, type, name, &sigtypes);
 		}
-		dns_rdataset_disassociate(&rdataset);
 	}
-	dns_rdatasetiter_destroy(&rdsiter);
+
+	if (delegation) {
+		filter_delegation_types(&types);
+	}
 
 	if (vresult == NULL) {
 		return ISC_R_SUCCESS;
