@@ -190,10 +190,41 @@ valid_value(uint32_t value) {
 	return value <= UINT16_MAX;
 }
 
+static void
+bitmap_check_equal(const isc_u16bitmap_t *zero, const isc_u16bitmap_t *normal) {
+	ssize_t znext = ISC_U16BITMAP_BEGIN;
+	ssize_t nnext = ISC_U16BITMAP_BEGIN;
+
+	if (isc_u16bitmap_count(zero) != isc_u16bitmap_count(normal)) {
+		exit(1);
+	}
+
+	for (;;) {
+		znext = isc_u16bitmap_next(zero, znext);
+		nnext = isc_u16bitmap_next(normal, nnext);
+
+		if (znext != nnext) {
+			exit(1);
+		}
+		if (znext == ISC_U16BITMAP_END) {
+			break;
+		}
+		if (isc_u16bitmap_isset(zero, (uint16_t)znext) !=
+		    isc_u16bitmap_isset(normal, (uint16_t)nnext))
+		{
+			exit(1);
+		}
+	}
+}
+
 int
 main(void) {
-	isc_u16bitmap_t bitmap = { 0 };
+	isc_u16bitmap_t zero = { 0 };
+	isc_u16bitmap_t normal;
 	Command *command = NULL;
+
+	isc_u16bitmap_reinit(&normal);
+	bitmap_check_equal(&zero, &normal);
 
 	while ((command = read_command()) != NULL) {
 		switch ((CommandCase)command->command_case) {
@@ -201,7 +232,9 @@ main(void) {
 			if (!valid_value(command->set->value)) {
 				reply_error("set-argument");
 			} else {
-				isc_u16bitmap_set(&bitmap,
+				isc_u16bitmap_set(&zero,
+						  (uint16_t)command->set->value);
+				isc_u16bitmap_set(&normal,
 						  (uint16_t)command->set->value);
 				reply_ok();
 			}
@@ -210,31 +243,35 @@ main(void) {
 			if (!valid_value(command->unset->value)) {
 				reply_error("unset-argument");
 			} else {
-				isc_u16bitmap_unset(&bitmap,
+				isc_u16bitmap_unset(&zero,
+						    (uint16_t)command->unset->value);
+				isc_u16bitmap_unset(&normal,
 						    (uint16_t)command->unset->value);
 				reply_ok();
 			}
 			break;
 		case COMMAND_GET:
-			reply_get(&bitmap);
+			reply_get(&normal);
 			break;
 		case COMMAND_POPCOUNT:
-			reply_count(&bitmap);
+			reply_count(&normal);
 			break;
 		case COMMAND_ISSET:
 			if (!valid_value(command->isset->value)) {
 				reply_error("isset-argument");
 			} else {
 				reply_value(isc_u16bitmap_isset(
-					&bitmap, (uint16_t)command->isset->value));
+					&normal,
+					(uint16_t)command->isset->value));
 			}
 			break;
 		case COMMAND_RESET:
-			isc_u16bitmap_reinit(&bitmap);
+			isc_u16bitmap_reinit(&zero);
+			isc_u16bitmap_reinit(&normal);
 			reply_ok();
 			break;
 		case COMMAND_NEXT:
-			reply_next(isc_u16bitmap_next(&bitmap,
+			reply_next(isc_u16bitmap_next(&normal,
 						      (ssize_t)command->next->value));
 			break;
 		default:
@@ -242,6 +279,7 @@ main(void) {
 			break;
 		}
 
+		bitmap_check_equal(&zero, &normal);
 		u16bitmap__command__free_unpacked(command, NULL);
 	}
 
