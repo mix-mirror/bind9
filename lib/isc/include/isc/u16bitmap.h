@@ -66,8 +66,7 @@ uint32_t
 isc_u16bitmap_count(const isc_u16bitmap_t *bitmap);
 
 size_t
-isc_u16bitmap_compress(const isc_u16bitmap_t *bitmap, uint8_t *target,
-		       uint16_t max_type);
+isc_u16bitmap_compress(const isc_u16bitmap_t *bitmap, uint8_t *target);
 
 #define ISC_U16BITMAP_FOREACH(bitmap, value)                         \
 	for (ssize_t value = isc_u16bitmap_next(bitmap,                 \
