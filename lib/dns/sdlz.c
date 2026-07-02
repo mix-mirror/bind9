@@ -143,11 +143,6 @@ typedef struct sdlz_addglue_ctx {
 	dns_clientinfo_t *clientinfo;
 } sdlz_addglue_ctx_t;
 
-typedef struct sdlz_batchdelete {
-	dns_typepair_t typepair;
-	dns_db_rdataset_meta_t meta;
-} sdlz_batchdelete_t;
-
 #define SDLZDB_MAGIC ISC_MAGIC('D', 'L', 'Z', 'S')
 
 /*
@@ -1196,9 +1191,6 @@ batchdeleterdatasets(dns_db_t *db, dns_dbnode_t *node,
 		     void *arg DNS__DB_FLARG) {
 	dns_sdlz_db_t *sdlz = (dns_sdlz_db_t *)db;
 	dns_sdlznode_t *sdlznode = (dns_sdlznode_t *)node;
-	sdlz_batchdelete_t *deletions = NULL;
-	size_t ndeletions = 0;
-	size_t deletions_size = 0;
 
 	REQUIRE(VALID_SDLZDB(sdlz));
 	REQUIRE(predicate != NULL);
@@ -1217,45 +1209,12 @@ batchdeleterdatasets(dns_db_t *db, dns_dbnode_t *node,
 			continue;
 		}
 
-		if (ndeletions == deletions_size) {
-			size_t oldsize = deletions_size;
-			deletions_size = oldsize == 0 ? 16 : oldsize * 2;
-			if (oldsize == 0) {
-				deletions = isc_mem_get(
-					db->mctx,
-					deletions_size * sizeof(*deletions));
-			} else {
-				deletions = isc_mem_reget(
-					db->mctx, deletions,
-					oldsize * sizeof(*deletions),
-					deletions_size * sizeof(*deletions));
-			}
-		}
-
-		deletions[ndeletions++] = (sdlz_batchdelete_t){
-			.typepair = typepair,
-			.meta = meta,
-		};
-	}
-
-	for (size_t i = 0; i < ndeletions; i++) {
 		isc_result_t result = deleterdataset(
-			db, node, version, DNS_TYPEPAIR_TYPE(deletions[i].typepair),
-			DNS_TYPEPAIR_COVERS(deletions[i].typepair)
-				DNS__DB_FLARG_PASS);
+			db, node, version, DNS_TYPEPAIR_TYPE(typepair),
+			DNS_TYPEPAIR_COVERS(typepair) DNS__DB_FLARG_PASS);
 		if (result != ISC_R_SUCCESS && result != DNS_R_UNCHANGED) {
-			if (deletions != NULL) {
-				isc_mem_put(db->mctx, deletions,
-					    deletions_size *
-						    sizeof(*deletions));
-			}
 			return result;
 		}
-	}
-
-	if (deletions != NULL) {
-		isc_mem_put(db->mctx, deletions,
-			    deletions_size * sizeof(*deletions));
 	}
 
 	return ISC_R_SUCCESS;
