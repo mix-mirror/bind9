@@ -31,7 +31,6 @@
 #include <isc/netmgr.h>
 #include <isc/nonce.h>
 #include <isc/parseint.h>
-#include <isc/portset.h>
 #include <isc/random.h>
 #include <isc/result.h>
 #include <isc/sockaddr.h>
@@ -2032,31 +2031,6 @@ parse_args(bool is_batchfile, int argc, char **argv) {
  * Try honoring the operating system's preferred ephemeral port range.
  */
 static void
-set_source_ports(dns_dispatchmgr_t *manager) {
-	isc_portset_t *v4portset = NULL, *v6portset = NULL;
-	in_port_t udpport_low, udpport_high;
-	isc_result_t result;
-
-	isc_portset_create(isc_g_mctx, &v4portset);
-	isc_net_getportrange(AF_INET, &udpport_low, &udpport_high);
-
-	isc_portset_addrange(v4portset, udpport_low, udpport_high);
-
-	isc_portset_create(isc_g_mctx, &v6portset);
-	isc_net_getportrange(AF_INET6, &udpport_low, &udpport_high);
-
-	isc_portset_addrange(v6portset, udpport_low, udpport_high);
-
-	result = dns_dispatchmgr_setavailports(manager, v4portset, v6portset);
-	if (result != ISC_R_SUCCESS) {
-		fatal("dns_dispatchmgr_setavailports failed");
-	}
-
-	isc_portset_destroy(isc_g_mctx, &v4portset);
-	isc_portset_destroy(isc_g_mctx, &v6portset);
-}
-
-static void
 teardown(void *arg ISC_ATTR_UNUSED) {
 	dns_view_detach(&view);
 	dns_requestmgr_shutdown(requestmgr);
@@ -2068,8 +2042,6 @@ teardown(void *arg ISC_ATTR_UNUSED) {
 static void
 setup(void *arg ISC_ATTR_UNUSED) {
 	RUNCHECK(dns_dispatchmgr_create(isc_g_mctx, &dispatchmgr));
-
-	set_source_ports(dispatchmgr);
 
 	if (have_ipv4) {
 		isc_sockaddr_any(&bind_any);

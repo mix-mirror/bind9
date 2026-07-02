@@ -22,7 +22,6 @@
 #include <isc/mem.h>
 #include <isc/mutex.h>
 #include <isc/netmgr.h>
-#include <isc/portset.h>
 #include <isc/refcount.h>
 #include <isc/result.h>
 #include <isc/safe.h>
@@ -136,28 +135,6 @@ destroyrestrans(dns_clientrestrans_t **transp);
  * Try honoring the operating system's preferred ephemeral port range.
  */
 static isc_result_t
-setsourceports(isc_mem_t *mctx, dns_dispatchmgr_t *manager) {
-	isc_portset_t *v4portset = NULL, *v6portset = NULL;
-	in_port_t udpport_low, udpport_high;
-	isc_result_t result;
-
-	isc_portset_create(mctx, &v4portset);
-	isc_net_getportrange(AF_INET, &udpport_low, &udpport_high);
-	isc_portset_addrange(v4portset, udpport_low, udpport_high);
-
-	isc_portset_create(mctx, &v6portset);
-	isc_net_getportrange(AF_INET6, &udpport_low, &udpport_high);
-	isc_portset_addrange(v6portset, udpport_low, udpport_high);
-
-	result = dns_dispatchmgr_setavailports(manager, v4portset, v6portset);
-
-	isc_portset_destroy(mctx, &v4portset);
-	isc_portset_destroy(mctx, &v6portset);
-
-	return result;
-}
-
-static isc_result_t
 getudpdispatch(int family, dns_dispatchmgr_t *dispatchmgr,
 	       dns_dispatch_t **dispp, const isc_sockaddr_t *localaddr) {
 	dns_dispatch_t *disp = NULL;
@@ -232,8 +209,6 @@ dns_client_create(isc_mem_t *mctx, unsigned int options,
 	if (result != ISC_R_SUCCESS) {
 		goto cleanup_client;
 	}
-	(void)setsourceports(mctx, client->dispatchmgr);
-
 	/*
 	 * If only one address family is specified, use it.
 	 * If neither family is specified, or if both are, use both.

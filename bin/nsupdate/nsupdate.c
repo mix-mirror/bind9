@@ -38,7 +38,6 @@
 #include <isc/netmgr.h>
 #include <isc/nonce.h>
 #include <isc/parseint.h>
-#include <isc/portset.h>
 #include <isc/random.h>
 #include <isc/readline.h>
 #include <isc/region.h>
@@ -756,27 +755,6 @@ shutdown_program(void *arg) {
 /*
  * Try honoring the operating system's preferred ephemeral port range.
  */
-static void
-set_source_ports(dns_dispatchmgr_t *manager) {
-	isc_portset_t *v4portset = NULL, *v6portset = NULL;
-	in_port_t udpport_low, udpport_high;
-	isc_result_t result;
-
-	isc_portset_create(isc_g_mctx, &v4portset);
-	isc_net_getportrange(AF_INET, &udpport_low, &udpport_high);
-	isc_portset_addrange(v4portset, udpport_low, udpport_high);
-
-	isc_portset_create(isc_g_mctx, &v6portset);
-	isc_net_getportrange(AF_INET6, &udpport_low, &udpport_high);
-	isc_portset_addrange(v6portset, udpport_low, udpport_high);
-
-	result = dns_dispatchmgr_setavailports(manager, v4portset, v6portset);
-	check_result(result, "dns_dispatchmgr_setavailports");
-
-	isc_portset_destroy(isc_g_mctx, &v4portset);
-	isc_portset_destroy(isc_g_mctx, &v6portset);
-}
-
 static isc_result_t
 create_name(const char *str, dns_name_t *name) {
 	isc_buffer_t namesrc;
@@ -907,8 +885,6 @@ setup_system(void *arg ISC_ATTR_UNUSED) {
 
 	result = dns_dispatchmgr_create(isc_g_mctx, &dispatchmgr);
 	check_result(result, "dns_dispatchmgr_create");
-
-	set_source_ports(dispatchmgr);
 
 	if (have_ipv6) {
 		isc_sockaddr_any6(&bind_any6);

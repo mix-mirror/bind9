@@ -54,6 +54,7 @@
 #include <isc/netmgr.h>
 #include <isc/refcount.h>
 #include <isc/types.h>
+#include <isc/u16bitmap.h>
 
 #include <dns/types.h>
 
@@ -140,15 +141,16 @@ dns_dispatchmgr_getblackhole(dns_dispatchmgr_t *mgr);
  */
 
 isc_result_t
-dns_dispatchmgr_setavailports(dns_dispatchmgr_t *mgr, isc_portset_t *v4portset,
-			      isc_portset_t *v6portset);
+dns_dispatchmgr_setavailports(dns_dispatchmgr_t *mgr,
+			      const isc_u16bitmap_t *v4ports,
+			      const isc_u16bitmap_t *v6ports);
 /*%<
  * Sets a list of UDP ports that can be used for outgoing UDP messages.
  *
  * Requires:
  *\li	mgr is a valid dispatchmgr
- *\li	v4portset is NULL or a valid port set
- *\li	v6portset is NULL or a valid port set
+ *\li	v4ports is a valid port bitmap
+ *\li	v6ports is a valid port bitmap
  */
 
 void
