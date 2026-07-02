@@ -10,11 +10,13 @@
 # information regarding copyright ownership.
 
 import os
+from io import BytesIO
 import struct
 import subprocess
 import sys
 
 try:
+    from dns.rdtypes.util import Bitmap
     import google.protobuf  # noqa: F401
     import hypothesis
     import hypothesis.strategies as strategies
@@ -31,7 +33,16 @@ settings = hypothesis.settings
 def bitmap_operations(draw):
     command = draw(
         strategies.sampled_from(
-            ["SET", "UNSET", "ISSET", "NEXT", "POPCOUNT", "GET", "RESET"]
+            [
+                "SET",
+                "UNSET",
+                "ISSET",
+                "NEXT",
+                "POPCOUNT",
+                "GET",
+                "COMPRESS",
+                "RESET",
+            ]
         )
     )
     if command in {"SET", "UNSET", "ISSET"}:
@@ -91,6 +102,8 @@ def make_command(command, value=None):
         request.popcount.SetInParent()
     elif command == "GET":
         request.get.SetInParent()
+    elif command == "COMPRESS":
+        request.compress.SetInParent()
     elif command == "RESET":
         request.reset.SetInParent()
     else:
@@ -119,6 +132,14 @@ def assert_next(response, model, value):
     assert response.next.value == expected
 
 
+def assert_compress(response, model):
+    assert response.WhichOneof("response") == "wire"
+    expected = BytesIO()
+    # dnspython's NSEC bitmap builder silently ignores type 0.
+    Bitmap.from_rdtypes(sorted(model)).to_wire(expected)
+    assert response.wire.wire == expected.getvalue()
+
+
 @given(strategies.lists(bitmap_operations(), min_size=1, max_size=500))
 @settings(deadline=None)
 def test_u16bitmap_matches_python_set(operations):
@@ -144,6 +165,9 @@ def test_u16bitmap_matches_python_set(operations):
                 assert_count(server.command(make_command("POPCOUNT")), len(model))
             elif command == "GET":
                 assert_values(server.command(make_command("GET")), sorted(model))
+            elif command == "COMPRESS":
+                response = server.command(make_command("COMPRESS"))
+                assert_compress(response, model)
             elif command == "RESET":
                 assert_ok(server.command(make_command("RESET")))
                 model.clear()

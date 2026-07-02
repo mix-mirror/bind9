@@ -34,6 +34,8 @@ message Command {
     int64 value = 1;
   }
 
+  message Compress {}
+
   message Reset {}
 
   oneof command {
@@ -44,6 +46,7 @@ message Command {
     Isset isset = 5;
     Reset reset = 6;
     Next next = 7;
+    Compress compress = 8;
   }
 }
 
@@ -67,6 +70,10 @@ message Response {
     int64 value = 1;
   }
 
+  message Wire {
+    bytes wire = 1;
+  }
+
   message Error {
     string error = 1;
   }
@@ -78,5 +85,6 @@ message Response {
     Count count = 4;
     Error error = 5;
     Next next = 6;
+    Wire wire = 7;
   }
 }
