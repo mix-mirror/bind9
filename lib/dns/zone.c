@@ -8033,6 +8033,7 @@ del_sig(dns_db_t *db, dns_dbversion_t *version, dns_name_t *name,
 	dns_rdata_rrsig_t rrsig;
 	dns_rdataset_t rdataset;
 	dns_rdatasetiter_t *iterator = NULL;
+	dns_diff_t del_diff;
 	isc_result_t result;
 	bool alg_missed = false;
 	bool alg_found = false;
@@ -8048,6 +8049,7 @@ del_sig(dns_db_t *db, dns_dbversion_t *version, dns_name_t *name,
 		return result;
 	}
 
+	dns_diff_init(diff->mctx, &del_diff);
 	dns_rdataset_init(&rdataset);
 	DNS_RDATASETITER_FOREACH(iterator) {
 		bool has_alg = false;
@@ -8056,9 +8058,8 @@ del_sig(dns_db_t *db, dns_dbversion_t *version, dns_name_t *name,
 			DNS_RDATASET_FOREACH(&rdataset) {
 				dns_rdata_t rdata = DNS_RDATA_INIT;
 				dns_rdataset_current(&rdataset, &rdata);
-				CHECK(update_one_rr(db, version, diff,
-						    DNS_DIFFOP_DEL, name,
-						    rdataset.ttl, &rdata));
+				append_one_rr(&del_diff, DNS_DIFFOP_DEL, name,
+					      rdataset.ttl, &rdata);
 			}
 			dns_rdataset_disassociate(&rdataset);
 			continue;
@@ -8084,9 +8085,8 @@ del_sig(dns_db_t *db, dns_dbversion_t *version, dns_name_t *name,
 				}
 				continue;
 			}
-			CHECK(update_one_rr(db, version, diff,
-					    DNS_DIFFOP_DELRESIGN, name,
-					    rdataset.ttl, &rdata));
+			append_one_rr(&del_diff, DNS_DIFFOP_DELRESIGN, name,
+				      rdataset.ttl, &rdata);
 		}
 		dns_rdataset_disassociate(&rdataset);
 
@@ -8106,9 +8106,19 @@ del_sig(dns_db_t *db, dns_dbversion_t *version, dns_name_t *name,
 	 * i.e., found in at least one, and not missing from any.
 	 */
 	*has_algp = (alg_found && !alg_missed);
+
+	dns_rdataset_cleanup(&rdataset);
+	dns_rdatasetiter_destroy(&iterator);
+	if (!ISC_LIST_EMPTY(del_diff.tuples)) {
+		result = apply_and_move_diff(db, version, &del_diff, diff);
+	}
+	dns_diff_clear(&del_diff);
+	return result;
+
 cleanup:
 	dns_rdataset_cleanup(&rdataset);
 	dns_rdatasetiter_destroy(&iterator);
+	dns_diff_clear(&del_diff);
 	return result;
 }
 
