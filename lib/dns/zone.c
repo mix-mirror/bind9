@@ -44,6 +44,7 @@
 #include <isc/tid.h>
 #include <isc/timer.h>
 #include <isc/tls.h>
+#include <isc/u16bitmap.h>
 #include <isc/util.h>
 
 #include <dns/acl.h>
@@ -6194,25 +6195,19 @@ cleanup:
 }
 
 static bool
-signed_with_good_key(dns_zone_t *zone, dns_db_t *db, dns_dbnode_t *node,
-		     dns_dbversion_t *version, dns_rdatatype_t type,
-		     dst_key_t *key, bool fullsign) {
+signed_with_good_key(dns_zone_t *zone, dns_rdatatype_t type,
+		     dns_rdataset_t *sigset, dst_key_t *key, bool fullsign) {
 	isc_result_t result;
-	dns_rdataset_t rdataset;
 	dns_rdata_rrsig_t rrsig;
 	int count = 0;
 	dns_kasp_t *kasp = zone->kasp;
 
-	dns_rdataset_init(&rdataset);
-	result = dns_db_findrdataset(db, node, version, dns_rdatatype_rrsig,
-				     type, 0, &rdataset, NULL);
-	if (result != ISC_R_SUCCESS) {
-		INSIST(!dns_rdataset_isassociated(&rdataset));
+	if (!dns_rdataset_isassociated(sigset)) {
 		return false;
 	}
-	DNS_RDATASET_FOREACH(&rdataset) {
+	DNS_RDATASET_FOREACH(sigset) {
 		dns_rdata_t rdata = DNS_RDATA_INIT;
-		dns_rdataset_current(&rdataset, &rdata);
+		dns_rdataset_current(sigset, &rdata);
 		result = dns_rdata_tostruct(&rdata, &rrsig);
 		INSIST(result == ISC_R_SUCCESS);
 		dst_algorithm_t algorithm;
@@ -6221,7 +6216,6 @@ signed_with_good_key(dns_zone_t *zone, dns_db_t *db, dns_dbnode_t *node,
 		if (algorithm == dst_key_alg(key) &&
 		    rrsig.keyid == dst_key_id(key))
 		{
-			dns_rdataset_disassociate(&rdataset);
 			return true;
 		}
 		if (algorithm == dst_key_alg(key)) {
@@ -6256,11 +6250,9 @@ signed_with_good_key(dns_zone_t *zone, dns_db_t *db, dns_dbnode_t *node,
 			approved = (zsk_count == count);
 		}
 
-		dns_rdataset_disassociate(&rdataset);
 		return approved;
 	}
 
-	dns_rdataset_disassociate(&rdataset);
 	return false;
 }
 
@@ -6335,42 +6327,42 @@ typedef struct seen {
 	bool dname;
 } seen_t;
 
+static void
+seen_from_types(seen_t *seen, const isc_u16bitmap_t *types) {
+	*seen = (seen_t){
+		.rr = isc_u16bitmap_next(types, ISC_U16BITMAP_BEGIN) !=
+		      ISC_U16BITMAP_END,
+		.soa = isc_u16bitmap_isset(types, dns_rdatatype_soa),
+		.ns = isc_u16bitmap_isset(types, dns_rdatatype_ns),
+		.nsec = isc_u16bitmap_isset(types, dns_rdatatype_nsec),
+		.nsec3 = isc_u16bitmap_isset(types, dns_rdatatype_nsec3),
+		.ds = isc_u16bitmap_isset(types, dns_rdatatype_ds),
+		.dname = isc_u16bitmap_isset(types, dns_rdatatype_dname),
+	};
+}
+
 static isc_result_t
-allrdatasets(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
-	     dns_rdatasetiter_t **iterp, seen_t *seen) {
+collect_types(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
+	      seen_t *seen, isc_u16bitmap_t *types) {
+	dns_rdatasetiter_t *iterator = NULL;
 	dns_rdataset_t rdataset = DNS_RDATASET_INIT;
 
-	*seen = (seen_t){};
+	isc_u16bitmap_reinit(types);
 
-	RETERR(dns_db_allrdatasets(db, node, version, 0, 0, iterp));
+	RETERR(dns_db_allrdatasets(db, node, version, 0, 0, &iterator));
 
-	DNS_RDATASETITER_FOREACH(*iterp) {
-		dns_rdatasetiter_current(*iterp, &rdataset);
+	DNS_RDATASETITER_FOREACH(iterator) {
+		dns_rdatasetiter_current(iterator, &rdataset);
 
-		if (rdataset.type == dns_rdatatype_rrsig) {
-			dns_rdataset_disassociate(&rdataset);
-			continue;
-		}
-
-		(*seen).rr = true;
-
-		if (rdataset.type == dns_rdatatype_soa) {
-			(*seen).soa = true;
-		} else if (rdataset.type == dns_rdatatype_ns) {
-			(*seen).ns = true;
-		} else if (rdataset.type == dns_rdatatype_ds) {
-			(*seen).ds = true;
-		} else if (rdataset.type == dns_rdatatype_dname) {
-			(*seen).dname = true;
-		} else if (rdataset.type == dns_rdatatype_nsec) {
-			(*seen).nsec = true;
-		} else if (rdataset.type == dns_rdatatype_nsec3) {
-			(*seen).nsec3 = true;
+		if (rdataset.type != dns_rdatatype_rrsig) {
+			isc_u16bitmap_set(types, rdataset.type);
 		}
 
 		dns_rdataset_disassociate(&rdataset);
 	}
 
+	dns_rdatasetiter_destroy(&iterator);
+	seen_from_types(seen, types);
 	return ISC_R_SUCCESS;
 }
 
@@ -6383,20 +6375,21 @@ sign_a_node(dns_db_t *db, dns_zone_t *zone, dns_name_t *name,
 	    bool is_bottom_of_zone, dns_diff_t *diff, int32_t *signatures,
 	    isc_mem_t *mctx) {
 	isc_result_t result;
-	dns_rdatasetiter_t *iterator = NULL;
 	dns_rdataset_t rdataset = DNS_RDATASET_INIT;
+	dns_rdataset_t sigset = DNS_RDATASET_INIT;
 	dns_rdata_t rdata = DNS_RDATA_INIT;
 	dns_stats_t *dnssecsignstats;
 	bool offlineksk = false;
 	isc_buffer_t buffer;
 	unsigned char data[DNS_RDATA_MAXLENGTH];
 	seen_t seen;
+	isc_u16bitmap_t types;
 
 	if (zone->kasp != NULL) {
 		offlineksk = dns_kasp_offlineksk(zone->kasp);
 	}
 
-	result = allrdatasets(db, node, version, &iterator, &seen);
+	result = collect_types(db, node, version, &seen, &types);
 	if (result != ISC_R_SUCCESS) {
 		if (result == ISC_R_NOTFOUND) {
 			result = ISC_R_SUCCESS;
@@ -6427,23 +6420,23 @@ sign_a_node(dns_db_t *db, dns_zone_t *zone, dns_name_t *name,
 		if (!dns_name_equal(name, dns_db_origin(db))) {
 			CHECK(add_nsec(db, version, name, node, nsecttl,
 				       is_bottom_of_zone, diff));
+			isc_u16bitmap_set(&types, dns_rdatatype_nsec);
 			/* Count a NSEC generation as a signature generation. */
 			(*signatures)--;
 		}
 	}
 
-	DNS_RDATASETITER_FOREACH(iterator) {
+	ISC_U16BITMAP_FOREACH(&types, value) {
 		isc_stdtime_t when;
+		dns_rdatatype_t type = (dns_rdatatype_t)value;
 
 		dns_rdataset_cleanup(&rdataset);
+		dns_rdataset_cleanup(&sigset);
 
-		dns_rdatasetiter_current(iterator, &rdataset);
-		if (rdataset.type == dns_rdatatype_soa ||
-		    rdataset.type == dns_rdatatype_rrsig)
-		{
+		if (type == dns_rdatatype_soa) {
 			continue;
 		}
-		if (dns_rdatatype_iskeymaterial(rdataset.type)) {
+		if (dns_rdatatype_iskeymaterial(type)) {
 			/*
 			 * CDS and CDNSKEY are signed with KSK like DNSKEY.
 			 * (RFC 7344, section 4.1 specifies that they must
@@ -6464,27 +6457,29 @@ sign_a_node(dns_db_t *db, dns_zone_t *zone, dns_name_t *name,
 			}
 		}
 
-		if (seen.ns && !seen.soa && rdataset.type != dns_rdatatype_ds &&
-		    rdataset.type != dns_rdatatype_nsec)
+		if (seen.ns && !seen.soa && type != dns_rdatatype_ds &&
+		    type != dns_rdatatype_nsec)
 		{
 			continue;
 		}
-		if (signed_with_good_key(zone, db, node, version, rdataset.type,
-					 key, fullsign))
+
+		CHECK(dns_db_findrdataset(db, node, version, type, 0, 0,
+					  &rdataset, &sigset));
+
+		if (signed_with_good_key(zone, type, &sigset, key, fullsign))
 		{
 			continue;
 		}
 
 		/* Calculate the signature, creating a RRSIG RDATA. */
 		isc_buffer_clear(&buffer);
-		if (offlineksk && dns_rdatatype_iskeymaterial(rdataset.type)) {
+		if (offlineksk && dns_rdatatype_iskeymaterial(type)) {
 			/* Look up the signature in the SKR bundle */
 			dns_skrbundle_t *bundle = dns_zone_getskrbundle(zone);
 			if (bundle == NULL) {
 				CLEANUP(DNS_R_NOSKRBUNDLE);
 			}
-			CHECK(dns_skrbundle_getsig(bundle, key, rdataset.type,
-						   &rdata));
+			CHECK(dns_skrbundle_getsig(bundle, key, type, &rdata));
 		} else {
 			CHECK(dns_dnssec_sign(name, &rdataset, key, &inception,
 					      &expire, mctx, &buffer, &rdata));
@@ -6514,9 +6509,7 @@ sign_a_node(dns_db_t *db, dns_zone_t *zone, dns_name_t *name,
 
 cleanup:
 	dns_rdataset_cleanup(&rdataset);
-	if (iterator != NULL) {
-		dns_rdatasetiter_destroy(&iterator);
-	}
+	dns_rdataset_cleanup(&sigset);
 	return result;
 }
 
@@ -7141,6 +7134,7 @@ zone_nsec3chain(dns_zone_t *zone) {
 	uint32_t nodes;
 	bool unsecure = false;
 	seen_t seen;
+	isc_u16bitmap_t types;
 	dns_rdatasetiter_t *iterator = NULL;
 	bool buildnsecchain;
 	bool updatensec = false;
@@ -7308,7 +7302,7 @@ zone_nsec3chain(dns_zone_t *zone) {
 		/*
 		 * Check to see if this is a bottom of zone node.
 		 */
-		result = allrdatasets(db, node, version, &iterator, &seen);
+		result = collect_types(db, node, version, &seen, &types);
 		if (result == ISC_R_NOTFOUND) {
 			/* Empty node? */
 			goto next_addnode;
@@ -7317,7 +7311,6 @@ zone_nsec3chain(dns_zone_t *zone) {
 
 		INSIST(!seen.nsec3);
 
-		dns_rdatasetiter_destroy(&iterator);
 		/*
 		 * Is there a NSEC chain than needs to be cleaned up?
 		 */
@@ -7553,14 +7546,12 @@ zone_nsec3chain(dns_zone_t *zone) {
 		/*
 		 * Check to see if this is a bottom of zone node.
 		 */
-		result = allrdatasets(db, node, version, &iterator, &seen);
+		result = collect_types(db, node, version, &seen, &types);
 		if (result == ISC_R_NOTFOUND) {
 			/* Empty node? */
 			goto next_removenode;
 		}
 		CHECK(result);
-
-		dns_rdatasetiter_destroy(&iterator);
 
 		if (!seen.rr || seen.nsec3 || seen.nsec) {
 			goto next_removenode;
