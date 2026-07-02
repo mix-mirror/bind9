@@ -99,14 +99,18 @@ typedef struct ftcache ftcache_t;
 /*
  * cds_ft key for a cache node. Unlike the qp key, this is a plain byte
  * key -- cds_ft is a full 256-ary trie -- so it needs no escape coding:
- * a leading namespace byte, then one case-folded octet per name byte with
- * labels emitted root-first and each closed by a 0x00 separator. This
- * preserves DNS canonical order (for cds_ft_lookup_lt) and the ancestor-
- * prefix property (for cds_ft_lookup_longest_match_key), and stays within
- * cds_ft's 256-byte limit for every valid name (key length == 1 + wire
- * length <= 256). Label octets equal to the 0x00 separator (binary
- * labels) are not disambiguated -- a TODO, but they do not occur in
- * hostname traffic.
+ * a leading namespace byte, then one octet per name byte with labels
+ * emitted root-first and each closed by a 0x00 separator.
+ *
+ * A label may contain any octet, including 0x00, so the separator value
+ * must be reserved: after case folding (which frees 0x41..0x5A, 'A'-'Z')
+ * the label octets 0x00..0x40 are shifted up by one, mapping label
+ * content onto [0x01..0x41] and [0x5B..0xFF] and leaving 0x00 to the
+ * separator alone. The shift is strictly monotonic and one byte per
+ * octet, so the encoding is injective, preserves DNS canonical order
+ * (for cds_ft_lookup_lt) and the ancestor-prefix property (for
+ * cds_ft_lookup_longest_match_key), and stays within cds_ft's 256-byte
+ * limit for every valid name (key length == 1 + wire length <= 256).
  */
 #define FTC_KEY_MAXLEN 256
 typedef uint8_t ftc_key_t[FTC_KEY_MAXLEN];
@@ -361,8 +365,19 @@ ftc_key_fromname(uint8_t *key, const dns_name_t *name, dns_namespace_t space) {
 	while (label-- > 0) {
 		const uint8_t *ldata = name->ndata + offsets[label];
 		size_t label_len = *ldata++;
-		isc_ascii_lowercopy(&key[len], ldata, label_len);
-		len += label_len;
+		for (size_t j = 0; j < label_len; j++) {
+			/*
+			 * Case-fold, then shift 0x00..0x40 up by one to
+			 * reserve 0x00 for the label separator; the fold has
+			 * just freed 0x41 ('A'), so the shift cannot collide.
+			 * See the ftc_key_t comment for the full rationale.
+			 */
+			uint8_t byte = isc_ascii_tolower(ldata[j]);
+			if (byte <= 0x40) {
+				byte += 1;
+			}
+			key[len++] = byte;
+		}
 		key[len++] = 0x00; /* label separator (sorts before any octet)
 				    */
 	}
@@ -380,9 +395,11 @@ ftc_key_fromname(uint8_t *key, const dns_name_t *name, dns_namespace_t space) {
  * becomes the trailing zero octet. 'name' must be buffer-backed (all
  * callers pass a dns_fixedname), as dns_name_copy() would have required.
  *
- * The key is case-folded, so the recovered name is lower-cased. Callers
- * that need the presentation case must apply it separately (for example
- * dns_rdataset_getownercase()).
+ * The label octets are stored case-folded with the 0x00..0x40 range
+ * shifted up by one (see the ftc_key_t comment), so each octet up to
+ * 0x41 is shifted back down while emitting; the recovered name is
+ * lower-cased. Callers that need the presentation case must apply it
+ * separately (for example dns_rdataset_getownercase()).
  */
 static void
 ftc_name_fromkey(dns_name_t *name, const uint8_t *key, size_t keylen) {
@@ -400,6 +417,7 @@ ftc_name_fromkey(dns_name_t *name, const uint8_t *key, size_t keylen) {
 		while (i < keylen && key[i] != 0x00) {
 			i++;
 		}
+		INSIST(nlabels < DNS_NAME_MAXLABELS);
 		labstart[nlabels] = start;
 		lablen[nlabels] = i - start;
 		nlabels++;
@@ -409,7 +427,14 @@ ftc_name_fromkey(dns_name_t *name, const uint8_t *key, size_t keylen) {
 	isc_buffer_clear(b);
 	for (size_t k = nlabels; k-- > 1;) {
 		isc_buffer_putuint8(b, (uint8_t)lablen[k]);
-		isc_buffer_putmem(b, &key[labstart[k]], lablen[k]);
+		for (size_t j = 0; j < lablen[k]; j++) {
+			uint8_t byte = key[labstart[k] + j];
+			/* Undo the encoder's 0x00..0x40 -> +1 shift. */
+			if (byte <= 0x41) {
+				byte -= 1;
+			}
+			isc_buffer_putuint8(b, byte);
+		}
 	}
 	isc_buffer_putuint8(b, 0x00); /* root label */
 
