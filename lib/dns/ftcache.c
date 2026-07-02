@@ -3040,6 +3040,31 @@ cleanup:
 	return result;
 }
 
+/*
+ * Record the owner name's case in the slabheader's case bitmap, so that
+ * dns_rdataset_getownercase() can restore it later (e.g. rndc dumpdb).
+ * The node itself only keeps the case-folded trie key -- unlike qpcache,
+ * which kept the presentation case in the per-node name it stored.
+ * The bit layout mirrors rdataset_getownercase() in rdataslab.c.
+ */
+static void
+ftc_setownercase(dns_slabheader_t *header, const dns_name_t *name) {
+	bool fully_lower = true;
+
+	memset(header->upper, 0, sizeof(header->upper));
+	for (size_t i = 0; i < name->length; i++) {
+		if (name->ndata[i] >= 'A' && name->ndata[i] <= 'Z') {
+			header->upper[i / 8] |= 1 << (i % 8);
+			fully_lower = false;
+		}
+	}
+	DNS_SLABHEADER_SETATTR(header, DNS_SLABHEADERATTR_CASESET);
+	if (fully_lower) {
+		DNS_SLABHEADER_SETATTR(header,
+				       DNS_SLABHEADERATTR_CASEFULLYLOWER);
+	}
+}
+
 static isc_result_t
 ftcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 		    isc_stdtime_t __now, dns_rdataset_t *rdataset,
@@ -3077,6 +3102,7 @@ ftcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 
 	newheader = (dns_slabheader_t *)region.base;
 	dns_slabheader_reset(newheader, node);
+	ftc_setownercase(newheader, name);
 
 	/*
 	 * Set the correct expire time.
