@@ -16,6 +16,7 @@
 #include <inttypes.h>
 #include <stdalign.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <string.h>
 
 #include <isc/ascii.h>
@@ -3374,6 +3375,31 @@ dns__ftcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 		 */
 		RUNTIME_CHECK(cds_ft_group_attr_set_max_key_len(
 				      attr, FTC_KEY_MAXLEN) ==
+			      CDS_FT_STATUS_OK);
+		/*
+		 * Turn the ordered sibling list off: its per-key cells cost
+		 * 32 bytes per cached name and only accelerate cursor-based
+		 * next/prev stepping. Everything the cache needs survives on
+		 * the structural descents: the covering-NSEC predecessor
+		 * (cds_ft_lookup_lt from a key) is a relational seek that
+		 * never used the cells, and the database iterator's
+		 * lookup_ge/next fall back to an O(depth) re-descent per
+		 * step, which only the occasional full cache walk (e.g.
+		 * 'rndc dumpdb') pays. Mutations get faster in the bargain.
+		 */
+		RUNTIME_CHECK(cds_ft_group_attr_set_ordered_list(attr, false) ==
+			      CDS_FT_STATUS_OK);
+		/*
+		 * Every node stores its key inline ('ftcnode.key', written
+		 * before insertion and immutable while the node is in the
+		 * trie), so let the inequality lookups capture their result
+		 * key from the leaf instead of rebuilding it from the trie
+		 * structure.
+		 */
+		RUNTIME_CHECK(cds_ft_group_attr_set_speculative_key_offset(
+				      attr, offsetof(ftcnode_t, key) -
+						    offsetof(ftcnode_t,
+							     ftnode)) ==
 			      CDS_FT_STATUS_OK);
 		RUNTIME_CHECK(cds_ft_group_create(attr, &ftdb->ftgroup) ==
 			      CDS_FT_STATUS_OK);
