@@ -289,6 +289,16 @@ struct ftcache {
 	struct cds_ft *ft;
 	isc_mutex_t wmutex;
 
+	/*
+	 * The trie teardown (see ftcache__destroy()) must run on a loop, and
+	 * the last database reference can be dropped from contexts that
+	 * outlive the loops (a call_rcu worker draining after shutdown).
+	 * Holding a main-loop reference for the database's whole lifetime
+	 * keeps that loop running -- and with it the loop manager valid --
+	 * until the deferred teardown has executed, by construction.
+	 */
+	isc_loop_t *loop;
+
 	struct rcu_head rcu_head;
 
 	size_t buckets_count;
@@ -2048,7 +2058,8 @@ ftcache__destroy_rcu(struct rcu_head *rcu_head) {
 }
 
 static void
-ftcache__destroy(ftcache_t *ftdb) {
+ftcache__destroy_work(void *arg) {
+	ftcache_t *ftdb = arg;
 	struct cds_ft_iter *iter = NULL;
 
 	/*
@@ -2080,6 +2091,35 @@ ftcache__destroy(ftcache_t *ftdb) {
 	isc_mutex_destroy(&ftdb->wmutex);
 
 	call_rcu(&ftdb->rcu_head, ftcache__destroy_rcu);
+
+	/*
+	 * Release the loop reference held since creation. This may be the
+	 * last reference keeping the main loop (and the loop manager) alive;
+	 * nothing after this point needs either -- ftcache__destroy_rcu()
+	 * only frees memory, which the final rcu_barrier() in the library
+	 * shutdown waits for.
+	 */
+	isc_loop_detach(&ftdb->loop);
+}
+
+static void
+ftcache__destroy(ftcache_t *ftdb) {
+	/*
+	 * cds_ft_destroy() calls rcu_barrier(), which must not run inside an
+	 * RCU read-side critical section -- and ftcache__destroy() can be
+	 * reached from within one (e.g. a cache detached on the query path).
+	 * It cannot run from a call_rcu callback either, as the barrier would
+	 * then wait on its own worker. Defer the trie teardown to a fresh
+	 * event on the loop pinned at creation time, where neither holds.
+	 *
+	 * The loop reference the database has held since dns__ftcache_create()
+	 * guarantees that loop is still running: the loop manager cannot have
+	 * been shut down while the reference exists, so this enqueue is safe
+	 * from any context -- including a call_rcu worker draining after the
+	 * rest of the system has stopped. The database is already
+	 * unreferenced, so nothing else touches it before the job runs.
+	 */
+	isc_async_run(ftdb->loop, ftcache__destroy_work, ftdb);
 }
 
 static void
@@ -3195,6 +3235,12 @@ dns__ftcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 	}
 	RUNTIME_CHECK(cds_ft_create(ftdb->ftgroup, NULL, &ftdb->ft) ==
 		      CDS_FT_STATUS_OK);
+
+	/*
+	 * Pin the main loop for the lifetime of the database so the deferred
+	 * teardown in ftcache__destroy() always has a live loop to run on.
+	 */
+	isc_loop_attach(isc_loop_main(), &ftdb->loop);
 
 	ftdb->common.magic = DNS_DB_MAGIC;
 	ftdb->common.impmagic = FTDB_MAGIC;
