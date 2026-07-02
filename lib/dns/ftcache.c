@@ -128,6 +128,17 @@ struct ftcnode {
 	uint8_t		      : 0;
 
 	/*
+	 * True once the node has been removed from the trie. Protected by
+	 * the writer mutex, which serialises all structural removals; it
+	 * keeps the removal of a 'deleted' node exactly-once when a
+	 * findnode() displaces the node (see ftcache_findnode()) before
+	 * cleanup_deadnodes() gets to it. Deliberately not part of the
+	 * bitfield above: those bits are written under the NODE lock, and
+	 * sharing their storage unit would make the two locks race.
+	 */
+	bool removed;
+
+	/*
 	 * 'erefs' counts external references held by a caller: for
 	 * example, it could be incremented by dns_db_findnode(),
 	 * and decremented by dns_db_detachnode().
@@ -652,6 +663,7 @@ delete_node_trie(ftcache_t *ftdb, struct cds_ft_iter *iter, ftcnode_t *node) {
 	enum cds_ft_status status;
 
 	INSIST(node->deleted);
+	INSIST(!node->removed);
 
 	status = cds_ft_iter_set_key(iter, node->key, node->keylen);
 	INSIST(status == CDS_FT_STATUS_OK);
@@ -663,6 +675,7 @@ delete_node_trie(ftcache_t *ftdb, struct cds_ft_iter *iter, ftcnode_t *node) {
 
 	status = cds_ft_remove(ftdb->ft, iter, cds_ft_iter_node(iter));
 	INSIST(status == CDS_FT_STATUS_OK);
+	node->removed = true;
 
 	call_rcu(&node->rcu_head, ftc_drop_tree_ref);
 
@@ -683,6 +696,7 @@ delete_node_trie(ftcache_t *ftdb, struct cds_ft_iter *iter, ftcnode_t *node) {
 
 			status = cds_ft_remove(ftdb->ft, iter, ftn);
 			INSIST(status == CDS_FT_STATUS_OK);
+			nsecnode->removed = true;
 
 			call_rcu(&nsecnode->rcu_head, ftc_drop_tree_ref);
 		}
@@ -2167,7 +2181,9 @@ cleanup_deadnodes(ftcache_t *ftdb, uint16_t locknum) {
 	 * writer mutex and with no node lock held. Each node's remaining
 	 * internal reference keeps it live until delete_node_trie()'s
 	 * call_rcu drops it. Nodes reactivated since enqueue were not marked
-	 * deleted and are simply left alone.
+	 * deleted and are simply left alone, and nodes a concurrent
+	 * findnode() has already displaced from the trie are skipped via
+	 * 'removed'.
 	 */
 	RUNTIME_CHECK(cds_ft_iter_create(ftdb->ft, &iter) == CDS_FT_STATUS_OK);
 	cds_ft_iter_set_cache_mode(iter, CDS_FT_ITER_UNCACHED);
@@ -2181,7 +2197,7 @@ cleanup_deadnodes(ftcache_t *ftdb, uint16_t locknum) {
 	LOCK(&ftdb->wmutex);
 	rcu_read_lock();
 	isc_queue_for_each_entry_safe(&deadnodes, qpnode, qpnext, deadlink) {
-		if (qpnode->deleted) {
+		if (qpnode->deleted && !qpnode->removed) {
 			delete_node_trie(ftdb, iter, qpnode);
 		}
 	}
@@ -2325,10 +2341,12 @@ ftcache_findnode(dns_db_t *db, const dns_name_t *name, bool create,
 		 * Create the node. Give the caller's external reference to the
 		 * still-private node before publishing it, so it can't be
 		 * reaped in the window before we return it -- without holding
-		 * the writer mutex across a NODE lock. The mutex wraps only the
-		 * structural insert; on a duplicate we drop the private node
-		 * and retry the lock-free lookup rather than touch the raw
-		 * 'found' pointer after unlocking.
+		 * the writer mutex across a NODE lock. The mutex wraps only
+		 * the structural trie calls; the raw 'found' pointer is only
+		 * examined while it is held (removals are serialised by it,
+		 * so the node can't go away), never after unlocking. On a
+		 * duplicate that is live we drop the private node and retry
+		 * the lock-free lookup.
 		 */
 		node = new_ftcnode(ftdb, name, DNS_DBNAMESPACE_NORMAL);
 		ftcnode_ref(node);
@@ -2340,6 +2358,40 @@ ftcache_findnode(dns_db_t *db, const dns_name_t *name, bool create,
 		LOCK(&ftdb->wmutex);
 		int r = cds_ft_insert_unique(ftdb->ft, key, keylen,
 					     &node->ftnode, &found);
+		if (r == CDS_FT_STATUS_DUPLICATE_FOUND) {
+			/*
+			 * The key may be occupied by a node that lost its last
+			 * reference and was marked deleted, but whose removal
+			 * from the trie (cleanup_deadnodes() phase 2) has not
+			 * run yet. Retrying until the cleanup catches up would
+			 * busy-spin for the whole window, so displace the stale
+			 * node here, under the writer mutex we already hold,
+			 * and insert again. 'removed' keeps the trie removal
+			 * exactly-once and tells the cleanup to skip the node.
+			 * Because all removals happen under the writer mutex,
+			 * the found node cannot go away under us here.
+			 */
+			ftcnode_t *stale = caa_container_of(found, ftcnode_t,
+							    ftnode);
+			if (stale->deleted && !stale->removed) {
+				struct cds_ft_iter *iter = NULL;
+				RUNTIME_CHECK(cds_ft_iter_create(ftdb->ft,
+								 &iter) ==
+					      CDS_FT_STATUS_OK);
+				cds_ft_iter_set_cache_mode(iter,
+							   CDS_FT_ITER_UNCACHED);
+
+				rcu_read_lock();
+				delete_node_trie(ftdb, iter, stale);
+				rcu_read_unlock();
+
+				cds_ft_iter_destroy(iter);
+
+				found = NULL;
+				r = cds_ft_insert_unique(ftdb->ft, key, keylen,
+							 &node->ftnode, &found);
+			}
+		}
 		UNLOCK(&ftdb->wmutex);
 
 		if (r == CDS_FT_STATUS_OK) {
@@ -2348,6 +2400,7 @@ ftcache_findnode(dns_db_t *db, const dns_name_t *name, bool create,
 		}
 		INSIST(r == CDS_FT_STATUS_DUPLICATE_FOUND);
 
+		/* A concurrent creator won the race; retry the lookup. */
 		ftcache_unref(ftdb);
 		ftcnode_destroy(node);
 	}
