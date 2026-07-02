@@ -2778,31 +2778,19 @@ qpcache_batchdeleterdatasets(dns_db_t *db, dns_dbnode_t *node,
 	nlock = &qpdb->buckets[qpnode->locknum].lock;
 	NODE_WRLOCK(nlock, &nlocktype);
 
-	for (;;) {
-		bool deleted = false;
+	DNS_SLABHEADER_FOREACH(header, &qpnode->headers) {
+		dns_db_rdataset_meta_t meta = {
+			.negative = NEGATIVE(header),
+		};
 
-		DNS_SLABHEADER_FOREACH(header, &qpnode->headers) {
-			dns_db_rdataset_meta_t meta = {
-				.negative = NEGATIVE(header),
-			};
-
-			if (!EXPIREDOK(&iterator) &&
-			    !iterator_active(qpdb, &iterator, header))
-			{
-				continue;
-			}
-
-			if (!predicate(header->typepair, meta, arg)) {
-				continue;
-			}
-
-			header_delete(qpnode, header);
-			deleted = true;
-			break;
+		if (!EXPIREDOK(&iterator) &&
+		    !iterator_active(qpdb, &iterator, header))
+		{
+			continue;
 		}
 
-		if (!deleted) {
-			break;
+		if (predicate(header->typepair, meta, arg)) {
+			header_delete(qpnode, header);
 		}
 	}
 
