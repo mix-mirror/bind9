@@ -3620,6 +3620,37 @@ do_one_tuple(dns_difftuple_t **tuple, dns_db_t *db, dns_dbversion_t *ver,
 	return ISC_R_SUCCESS;
 }
 
+static void
+append_one_rr(dns_diff_t *diff, dns_diffop_t op, dns_name_t *name,
+	      dns_ttl_t ttl, dns_rdata_t *rdata) {
+	dns_difftuple_t *tuple = NULL;
+
+	dns_difftuple_create(diff->mctx, op, name, ttl, rdata, &tuple);
+	dns_diff_append(diff, &tuple);
+}
+
+static isc_result_t
+apply_and_move_diff(dns_db_t *db, dns_dbversion_t *ver, dns_diff_t *src,
+		    dns_diff_t *dst) {
+	isc_result_t result;
+
+	result = dns_diff_apply(src, db, ver);
+	if (result != ISC_R_SUCCESS) {
+		return result;
+	}
+
+	while (!ISC_LIST_EMPTY(src->tuples)) {
+		dns_difftuple_t *tuple = ISC_LIST_HEAD(src->tuples);
+
+		ISC_LIST_UNLINK(src->tuples, tuple, link);
+		INSIST(src->size > 0);
+		src->size--;
+		dns_diff_appendminimal(dst, &tuple);
+	}
+
+	return ISC_R_SUCCESS;
+}
+
 static isc_result_t
 update_one_rr(dns_db_t *db, dns_dbversion_t *ver, dns_diff_t *diff,
 	      dns_diffop_t op, dns_name_t *name, dns_ttl_t ttl,
@@ -5378,21 +5409,16 @@ cleanup:
 	return result;
 }
 
-static isc_result_t
-offline(dns_db_t *db, dns_dbversion_t *ver, dns__zonediff_t *zonediff,
-	dns_name_t *name, dns_ttl_t ttl, dns_rdata_t *rdata) {
-	isc_result_t result;
-
+static void
+offline(dns_diff_t *diff, bool *offlinep, dns_name_t *name, dns_ttl_t ttl,
+	dns_rdata_t *rdata) {
 	if ((rdata->flags & DNS_RDATA_OFFLINE) != 0) {
-		return ISC_R_SUCCESS;
+		return;
 	}
-	RETERR(update_one_rr(db, ver, zonediff->diff, DNS_DIFFOP_DELRESIGN,
-			     name, ttl, rdata));
+	append_one_rr(diff, DNS_DIFFOP_DELRESIGN, name, ttl, rdata);
 	rdata->flags |= DNS_RDATA_OFFLINE;
-	result = update_one_rr(db, ver, zonediff->diff, DNS_DIFFOP_ADDRESIGN,
-			       name, ttl, rdata);
-	zonediff->offline = true;
-	return result;
+	append_one_rr(diff, DNS_DIFFOP_ADDRESIGN, name, ttl, rdata);
+	*offlinep = true;
 }
 
 static void
@@ -5529,8 +5555,9 @@ delsig_ok(dns_rdata_rrsig_t *rrsig_ptr, dst_key_t **keys, unsigned int nkeys,
  */
 static isc_result_t
 del_sigs(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
-	 dns_rdatatype_t type, dns__zonediff_t *zonediff, dst_key_t **keys,
-	 unsigned int nkeys, isc_stdtime_t now, bool incremental) {
+	 dns_rdatatype_t type, dns_diff_t *diff, bool *offlinep,
+	 dst_key_t **keys, unsigned int nkeys, isc_stdtime_t now,
+	 bool incremental) {
 	isc_result_t result;
 	dns_dbnode_t *node = NULL;
 	dns_rdataset_t rdataset;
@@ -5584,13 +5611,8 @@ del_sigs(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 			bool warn = false, deleted = false;
 			if (delsig_ok(&rrsig, keys, nkeys, kasp != NULL, &warn))
 			{
-				result = update_one_rr(db, ver, zonediff->diff,
-						       DNS_DIFFOP_DELRESIGN,
-						       name, rdataset.ttl,
-						       &rdata);
-				if (result != ISC_R_SUCCESS) {
-					break;
-				}
+				append_one_rr(diff, DNS_DIFFOP_DELRESIGN, name,
+					      rdataset.ttl, &rdata);
 				deleted = true;
 			}
 			if (warn && !deleted) {
@@ -5604,12 +5626,8 @@ del_sigs(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 				 * for the private part.
 				 */
 				if (incremental) {
-					result = offline(db, ver, zonediff,
-							 name, rdataset.ttl,
-							 &rdata);
-					if (result != ISC_R_SUCCESS) {
-						break;
-					}
+					offline(diff, offlinep, name,
+						rdataset.ttl, &rdata);
 				}
 
 				/*
@@ -5677,15 +5695,12 @@ del_sigs(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 					{
 						timewarn = timeexpire;
 					}
-					result = offline(db, ver, zonediff,
-							 name, rdataset.ttl,
-							 &rdata);
+					offline(diff, offlinep, name,
+						rdataset.ttl, &rdata);
 					break;
 				}
-				result = update_one_rr(db, ver, zonediff->diff,
-						       DNS_DIFFOP_DELRESIGN,
-						       name, rdataset.ttl,
-						       &rdata);
+				append_one_rr(diff, DNS_DIFFOP_DELRESIGN, name,
+					      rdataset.ttl, &rdata);
 				break;
 			}
 		}
@@ -5695,12 +5710,8 @@ del_sigs(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 		 * delete the RRSIG.
 		 */
 		if (!found) {
-			result = update_one_rr(db, ver, zonediff->diff,
-					       DNS_DIFFOP_DELRESIGN, name,
-					       rdataset.ttl, &rdata);
-		}
-		if (result != ISC_R_SUCCESS) {
-			break;
+			append_one_rr(diff, DNS_DIFFOP_DELRESIGN, name,
+				      rdataset.ttl, &rdata);
 		}
 	}
 
@@ -5719,6 +5730,31 @@ cleanup:
 	if (node != NULL) {
 		dns_db_detachnode(&node);
 	}
+	return result;
+}
+
+static isc_result_t
+apply_del_sigs(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *ver,
+	       dns_name_t *name, dns_rdatatype_t type,
+	       dns__zonediff_t *zonediff, dst_key_t **keys,
+	       unsigned int nkeys, isc_stdtime_t now, bool incremental) {
+	isc_result_t result;
+	dns_diff_t sigdiff;
+	bool offline = false;
+
+	dns_diff_init(zonediff->diff->mctx, &sigdiff);
+
+	result = del_sigs(zone, db, ver, name, type, &sigdiff, &offline, keys,
+			  nkeys, now, incremental);
+	if (result == ISC_R_SUCCESS) {
+		result = apply_and_move_diff(db, ver, &sigdiff,
+					     zonediff->diff);
+	}
+	if (result == ISC_R_SUCCESS) {
+		zonediff->offline |= offline;
+	}
+
+	dns_diff_clear(&sigdiff);
 	return result;
 }
 
@@ -6061,8 +6097,9 @@ zone_resigninc(dns_zone_t *zone) {
 			break;
 		}
 
-		result = del_sigs(zone, db, version, name, covers, &zonediff,
-				  zone_keys, nkeys, now, true);
+		result = apply_del_sigs(zone, db, version, name, covers,
+					&zonediff, zone_keys, nkeys, now,
+					true);
 		if (result != ISC_R_SUCCESS) {
 			dns_zone_log(zone, ISC_LOG_ERROR,
 				     "zone_resigninc:del_sigs -> %s",
@@ -6103,8 +6140,9 @@ zone_resigninc(dns_zone_t *zone) {
 		CHECK(result);
 	}
 
-	result = del_sigs(zone, db, version, &zone->origin, dns_rdatatype_soa,
-			  &zonediff, zone_keys, nkeys, now, true);
+	result = apply_del_sigs(zone, db, version, &zone->origin,
+				dns_rdatatype_soa, &zonediff, zone_keys,
+				nkeys, now, true);
 	if (result != ISC_R_SUCCESS) {
 		dns_zone_log(zone, ISC_LOG_ERROR,
 			     "zone_resigninc:del_sigs -> %s",
@@ -7115,9 +7153,9 @@ dns__zone_updatesigs(dns_diff_t *diff, dns_db_t *db, dns_dbversion_t *version,
 			exp = keyexpire;
 		}
 
-		result = del_sigs(zone, db, version, &tuple->name,
-				  tuple->rdata.type, zonediff, zone_keys, nkeys,
-				  now, false);
+		result = apply_del_sigs(zone, db, version, &tuple->name,
+					tuple->rdata.type, zonediff,
+					zone_keys, nkeys, now, false);
 		if (result != ISC_R_SUCCESS) {
 			dns_zone_log(zone, ISC_LOG_ERROR,
 				     "dns__zone_updatesigs:del_sigs -> %s",
@@ -7803,8 +7841,9 @@ skip_removals:
 		goto closeversion;
 	}
 
-	result = del_sigs(zone, db, version, &zone->origin, dns_rdatatype_soa,
-			  &zonediff, zone_keys, nkeys, now, false);
+	result = apply_del_sigs(zone, db, version, &zone->origin,
+				dns_rdatatype_soa, &zonediff, zone_keys,
+				nkeys, now, false);
 	if (result != ISC_R_SUCCESS) {
 		dnssec_log(zone, ISC_LOG_ERROR,
 			   "zone_nsec3chain:del_sigs -> %s",
@@ -8571,8 +8610,9 @@ zone_sign(dns_zone_t *zone) {
 
 	commit = true;
 
-	result = del_sigs(zone, db, version, &zone->origin, dns_rdatatype_soa,
-			  &zonediff, zone_keys, nkeys, now, false);
+	result = apply_del_sigs(zone, db, version, &zone->origin,
+				dns_rdatatype_soa, &zonediff, zone_keys,
+				nkeys, now, false);
 	if (result != ISC_R_SUCCESS) {
 		dnssec_log(zone, ISC_LOG_ERROR, "zone_sign:del_sigs -> %s",
 			   isc_result_totext(result));
@@ -16772,8 +16812,8 @@ tickle_apex_rrset(dns_rdatatype_t rrtype, dns_zone_t *zone, dns_db_t *db,
 	}
 
 	if (!apexsig) {
-		result = del_sigs(zone, db, ver, &zone->origin, rrtype,
-				  zonediff, keys, nkeys, now, false);
+		result = apply_del_sigs(zone, db, ver, &zone->origin, rrtype,
+					zonediff, keys, nkeys, now, false);
 		if (result != ISC_R_SUCCESS) {
 			dnssec_log(zone, ISC_LOG_ERROR,
 				   "sign_apex:del_sigs -> %s",
