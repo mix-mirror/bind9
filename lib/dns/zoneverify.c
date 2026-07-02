@@ -446,9 +446,8 @@ find_nsec3_match(const dns_rdata_nsec3param_t *nsec3param,
 static isc_result_t
 match_nsec3(const vctx_t *vctx, const dns_name_t *name,
 	    const dns_rdata_nsec3param_t *nsec3param, dns_rdataset_t *rdataset,
-	    const isc_u16bitmap_t *types, uint16_t maxtype,
-	    const unsigned char *rawhash, size_t rhsize,
-	    isc_result_t *vresult) {
+	    const isc_u16bitmap_t *types, const unsigned char *rawhash,
+	    size_t rhsize, isc_result_t *vresult) {
 	unsigned char cbm[DNS_NSEC_MAXCBMSIZE];
 	char namebuf[DNS_NAME_FORMATSIZE];
 	dns_rdata_nsec3_t nsec3;
@@ -467,7 +466,7 @@ match_nsec3(const vctx_t *vctx, const dns_name_t *name,
 	/*
 	 * Check the type list.
 	 */
-	len = isc_u16bitmap_compress(types, cbm, maxtype);
+	len = isc_u16bitmap_compress(types, cbm);
 	if (nsec3.typebits.length != len ||
 	    memcmp(cbm, nsec3.typebits.base, len) != 0)
 	{
@@ -660,8 +659,7 @@ done:
 static isc_result_t
 verifynsec3(const vctx_t *vctx, const dns_name_t *name,
 	    const dns_rdata_nsec3param_t *nsec3param, bool delegation,
-	    bool empty, const isc_u16bitmap_t *types, uint16_t maxtype,
-	    isc_result_t *vresult) {
+	    bool empty, const isc_u16bitmap_t *types, isc_result_t *vresult) {
 	char namebuf[DNS_NAME_FORMATSIZE];
 	char hashbuf[DNS_NAME_FORMATSIZE];
 	dns_rdataset_t rdataset = DNS_RDATASET_INIT;
@@ -718,7 +716,7 @@ verifynsec3(const vctx_t *vctx, const dns_name_t *name,
 	} else if (result == ISC_R_SUCCESS) {
 		isc_result_t tvresult = ISC_R_UNSET;
 		result = match_nsec3(vctx, name, nsec3param, &rdataset, types,
-				     maxtype, rawhash, rhsize, &tvresult);
+				     rawhash, rhsize, &tvresult);
 		if (result != ISC_R_SUCCESS) {
 			*vresult = tvresult;
 			goto done;
@@ -741,8 +739,7 @@ done:
 static isc_result_t
 verifynsec3s(const vctx_t *vctx, const dns_name_t *name,
 	     dns_rdataset_t *nsec3paramset, bool delegation, bool empty,
-	     const isc_u16bitmap_t *types, uint16_t maxtype,
-	     isc_result_t *vresult) {
+	     const isc_u16bitmap_t *types, isc_result_t *vresult) {
 	DNS_RDATASET_FOREACH(nsec3paramset) {
 		isc_result_t result;
 		dns_rdata_t rdata = DNS_RDATA_INIT;
@@ -774,7 +771,7 @@ verifynsec3s(const vctx_t *vctx, const dns_name_t *name,
 		}
 
 		RETERR(verifynsec3(vctx, name, &nsec3param, delegation, empty,
-				   types, maxtype, vresult));
+				   types, vresult));
 		if (*vresult != ISC_R_SUCCESS) {
 			break;
 		}
@@ -891,7 +888,6 @@ verifynode(vctx_t *vctx, const dns_name_t *name, dns_dbnode_t *node,
 	   dns_rdataset_t *nsecset, dns_rdataset_t *nsec3paramset,
 	   const dns_name_t *nextname, isc_result_t *vresult) {
 	isc_u16bitmap_t types = { 0 };
-	uint16_t maxtype = 0;
 	dns_rdatasetiter_t *rdsiter = NULL;
 	isc_result_t result, tvresult = ISC_R_UNSET;
 
@@ -927,15 +923,9 @@ verifynode(vctx_t *vctx, const dns_name_t *name, dns_dbnode_t *node,
 				return result;
 			}
 			isc_u16bitmap_set(&types, rdataset.type);
-			if (rdataset.type > maxtype) {
-				maxtype = rdataset.type;
-			}
 		} else if (rdataset.type != dns_rdatatype_rrsig) {
 			if (rdataset.type == dns_rdatatype_ns) {
 				isc_u16bitmap_set(&types, rdataset.type);
-				if (rdataset.type > maxtype) {
-					maxtype = rdataset.type;
-				}
 			}
 			result = check_no_rrsig(vctx, &rdataset, name, node);
 			if (result != ISC_R_SUCCESS) {
@@ -945,9 +935,6 @@ verifynode(vctx_t *vctx, const dns_name_t *name, dns_dbnode_t *node,
 			}
 		} else {
 			isc_u16bitmap_set(&types, rdataset.type);
-			if (rdataset.type > maxtype) {
-				maxtype = rdataset.type;
-			}
 		}
 		dns_rdataset_disassociate(&rdataset);
 	}
@@ -966,7 +953,7 @@ verifynode(vctx_t *vctx, const dns_name_t *name, dns_dbnode_t *node,
 
 	if (nsec3paramset != NULL && dns_rdataset_isassociated(nsec3paramset)) {
 		RETERR(verifynsec3s(vctx, name, nsec3paramset, delegation,
-				    false, &types, maxtype, &tvresult));
+				    false, &types, &tvresult));
 		if (*vresult == ISC_R_SUCCESS) {
 			*vresult = tvresult;
 		}
@@ -1223,7 +1210,7 @@ verifyemptynodes(const vctx_t *vctx, const dns_name_t *name,
 			{
 				RETERR(verifynsec3s(vctx, &suffix,
 						    nsec3paramset, isdelegation,
-						    true, &empty_types, 0,
+						    true, &empty_types,
 						    &tvresult));
 				if (*vresult == ISC_R_SUCCESS) {
 					*vresult = tvresult;

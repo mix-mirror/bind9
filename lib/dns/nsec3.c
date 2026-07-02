@@ -73,7 +73,6 @@ dns_nsec3_buildrdata(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
 	bool need_rrsig;
 	unsigned char *nsec_bits;
 	isc_u16bitmap_t bitmap = { 0 };
-	uint16_t max_type;
 	dns_rdatasetiter_t *rdsiter;
 	unsigned char *p;
 
@@ -113,7 +112,6 @@ dns_nsec3_buildrdata(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
 	};
 
 	nsec_bits = r.base + r.length;
-	max_type = 0;
 	if (node == NULL) {
 		goto collapse_bitmap;
 	}
@@ -126,9 +124,6 @@ dns_nsec3_buildrdata(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
 		if (!dns_rdatatype_isnsec(rdataset.type) &&
 		    rdataset.type != dns_rdatatype_rrsig)
 		{
-			if (rdataset.type > max_type) {
-				max_type = rdataset.type;
-			}
 			isc_u16bitmap_set(&bitmap, rdataset.type);
 			/*
 			 * Work out if we need to set the RRSIG bit for
@@ -154,9 +149,6 @@ dns_nsec3_buildrdata(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
 	dns_rdatasetiter_destroy(&rdsiter);
 
 	if ((found && !found_ns) || need_rrsig) {
-		if (dns_rdatatype_rrsig > max_type) {
-			max_type = dns_rdatatype_rrsig;
-		}
 		isc_u16bitmap_set(&bitmap, dns_rdatatype_rrsig);
 	}
 
@@ -175,7 +167,7 @@ dns_nsec3_buildrdata(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
 	}
 
 collapse_bitmap:
-	nsec_bits += isc_u16bitmap_compress(&bitmap, nsec_bits, max_type);
+	nsec_bits += isc_u16bitmap_compress(&bitmap, nsec_bits);
 	r.length = (unsigned int)(nsec_bits - r.base);
 	INSIST(r.length <= DNS_NSEC3_BUFFERSIZE);
 	dns_rdata_fromregion(rdata, dns_db_class(db), dns_rdatatype_nsec3, &r);
