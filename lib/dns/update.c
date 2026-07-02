@@ -26,6 +26,7 @@
 #include <isc/stdtime.h>
 #include <isc/string.h>
 #include <isc/time.h>
+#include <isc/u16bitmap.h>
 #include <isc/util.h>
 
 #include <dns/db.h>
@@ -1257,6 +1258,11 @@ add_exposed_sigs(dns_update_log_t *log, dns_zone_t *zone, dns_db_t *db,
 	isc_result_t result;
 	dns_dbnode_t *node;
 	dns_rdatasetiter_t *iter;
+	isc_u16bitmap_t types;
+	isc_u16bitmap_t signed_types;
+
+	isc_u16bitmap_reinit(&types);
+	isc_u16bitmap_reinit(&signed_types);
 
 	node = NULL;
 	result = dns_db_findnode(db, name, false, &node);
@@ -1275,38 +1281,36 @@ add_exposed_sigs(dns_update_log_t *log, dns_zone_t *zone, dns_db_t *db,
 
 	DNS_RDATASETITER_FOREACH(iter) {
 		dns_rdataset_t rdataset = DNS_RDATASET_INIT;
-		dns_rdatatype_t type;
-		bool flag;
 
 		dns_rdatasetiter_current(iter, &rdataset);
-		type = rdataset.type;
-		dns_rdataset_disassociate(&rdataset);
+		if (rdataset.type == dns_rdatatype_rrsig) {
+			isc_u16bitmap_set(&signed_types, rdataset.covers);
+		} else if (!cut || rdataset.type == dns_rdatatype_ds) {
+			/*
+			 * We don't need to sign unsigned NSEC records at the cut
+			 * as they are handled elsewhere.
+			 */
+			isc_u16bitmap_set(&types, rdataset.type);
+		}
 
-		/*
-		 * We don't need to sign unsigned NSEC records at the cut
-		 * as they are handled elsewhere.
-		 */
-		if ((type == dns_rdatatype_rrsig) ||
-		    (cut && type != dns_rdatatype_ds))
-		{
+		dns_rdataset_disassociate(&rdataset);
+	}
+	dns_rdatasetiter_destroy(&iter);
+	dns_db_detachnode(&node);
+
+	ISC_U16BITMAP_FOREACH(&types, type) {
+		if (isc_u16bitmap_isset(&signed_types, (uint16_t)type)) {
 			continue;
 		}
-		result = rrset_exists(db, ver, name, dns_rdatatype_rrsig, type,
-				      &flag);
-		if (result != ISC_R_SUCCESS) {
-			break;
-		}
-		if (flag) {
-			continue;
-		}
-		result = add_sigs(log, zone, db, ver, name, type, diff, keys,
-				  nkeys, now, inception, expire);
+
+		result = add_sigs(log, zone, db, ver, name, (dns_rdatatype_t)type,
+				  diff, keys, nkeys, now, inception, expire);
 		if (result != ISC_R_SUCCESS) {
 			break;
 		}
 		(*sigs)++;
 	}
-	dns_rdatasetiter_destroy(&iter);
+	return result;
 
 cleanup_node:
 	dns_db_detachnode(&node);
