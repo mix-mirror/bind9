@@ -1168,9 +1168,7 @@ temp_check(isc_mem_t *mctx, dns_diff_t *temp, dns_db_t *db,
 typedef struct {
 	rr_predicate *predicate;
 	dns_zone_t *zone;
-	dns_db_t *db;
-	dns_dbversion_t *ver;
-	dns_diff_t *diff;
+	dns_diff_t del_diff;
 	const dns_name_t *name;
 	dns_rdata_t *update_rr;
 } conditional_delete_ctx_t;
@@ -1372,11 +1370,24 @@ static isc_result_t
 delete_if_action(void *data, rr_t *rr) {
 	conditional_delete_ctx_t *ctx = data;
 	if ((*ctx->predicate)(ctx->zone, ctx->update_rr, &rr->rdata)) {
-		isc_result_t result;
-		result = update_one_rr(ctx->db, ctx->ver, ctx->diff,
-				       DNS_DIFFOP_DEL, ctx->name, rr->ttl,
-				       &rr->rdata);
-		return result;
+		dns_difftuple_t *tuple = NULL;
+
+		dns_difftuple_create(ctx->del_diff.mctx, DNS_DIFFOP_DEL,
+				     ctx->name, rr->ttl, &rr->rdata, &tuple);
+		dns_diff_append(&ctx->del_diff, &tuple);
+	}
+
+	return ISC_R_SUCCESS;
+}
+
+static isc_result_t
+apply_delete_if_diff(dns_db_t *db, dns_dbversion_t *ver, dns_diff_t *src,
+		     dns_diff_t *dst) {
+	RETERR(dns_diff_apply(src, db, ver));
+
+	ISC_LIST_FOREACH(src->tuples, tuple, link) {
+		dns_diff_unlink(src, tuple);
+		dns_diff_appendminimal(dst, &tuple);
 	}
 
 	return ISC_R_SUCCESS;
@@ -1394,14 +1405,21 @@ delete_if(rr_predicate *predicate, dns_zone_t *zone, dns_db_t *db,
 	  dns_dbversion_t *ver, const dns_name_t *name, dns_rdatatype_t type,
 	  dns_rdatatype_t covers, dns_rdata_t *update_rr, dns_diff_t *diff) {
 	conditional_delete_ctx_t ctx;
+	isc_result_t result;
+
 	ctx.predicate = predicate;
 	ctx.zone = zone;
-	ctx.db = db;
-	ctx.ver = ver;
-	ctx.diff = diff;
 	ctx.name = name;
 	ctx.update_rr = update_rr;
-	return foreach_rr(db, ver, name, type, covers, delete_if_action, &ctx);
+	dns_diff_init(diff->mctx, &ctx.del_diff);
+
+	result = foreach_rr(db, ver, name, type, covers, delete_if_action, &ctx);
+	if (result == ISC_R_SUCCESS) {
+		result = apply_delete_if_diff(db, ver, &ctx.del_diff, diff);
+	}
+
+	dns_diff_clear(&ctx.del_diff);
+	return result;
 }
 
 /**************************************************************************/
