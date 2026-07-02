@@ -171,17 +171,11 @@ isc_u16bitmap_count(const isc_u16bitmap_t *bitmap) {
 }
 
 size_t
-isc_u16bitmap_compress(const isc_u16bitmap_t *bitmap, uint8_t *target,
-		       uint16_t max_type) {
+isc_u16bitmap_compress(const isc_u16bitmap_t *bitmap, uint8_t *target) {
 	uint8_t *start = target;
-	uint8_t max_window = (uint8_t)(max_type >> 8);
 
 	WINDOW_FOREACH(&bitmap->active, window) {
 		uint8_t length = window_length(&bitmap->bits[window]);
-
-		if (window > max_window) {
-			break;
-		}
 
 		if (length == 0) {
 			continue;

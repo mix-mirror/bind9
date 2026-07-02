@@ -50,7 +50,6 @@ dns_nsec_buildrdata(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
 	isc_region_t r;
 	unsigned char *nsec_bits;
 	isc_u16bitmap_t bitmap = { 0 };
-	uint16_t max_type;
 	dns_rdatasetiter_t *rdsiter;
 	dns_fixedname_t fnextname;
 	dns_name_t *nextname;
@@ -68,7 +67,6 @@ dns_nsec_buildrdata(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
 	nsec_bits = buffer + r.length;
 	isc_u16bitmap_set(&bitmap, dns_rdatatype_rrsig);
 	isc_u16bitmap_set(&bitmap, dns_rdatatype_nsec);
-	max_type = dns_rdatatype_nsec;
 	rdsiter = NULL;
 	RETERR(dns_db_allrdatasets(db, node, version, 0, 0, &rdsiter));
 	DNS_RDATASETITER_FOREACH(rdsiter) {
@@ -77,9 +75,6 @@ dns_nsec_buildrdata(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
 		if (!dns_rdatatype_isnsec(rdataset.type) &&
 		    rdataset.type != dns_rdatatype_rrsig)
 		{
-			if (rdataset.type > max_type) {
-				max_type = rdataset.type;
-			}
 			isc_u16bitmap_set(&bitmap, rdataset.type);
 		}
 		dns_rdataset_disassociate(&rdataset);
@@ -100,7 +95,7 @@ dns_nsec_buildrdata(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
 		}
 	}
 
-	nsec_bits += isc_u16bitmap_compress(&bitmap, nsec_bits, max_type);
+	nsec_bits += isc_u16bitmap_compress(&bitmap, nsec_bits);
 
 	r = (isc_region_t){
 		.base = buffer,
