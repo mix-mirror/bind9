@@ -2179,36 +2179,53 @@ cleanup_deadnodes(ftcache_t *ftdb, uint16_t locknum) {
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 	isc_rwlock_t *nlock = &ftdb->buckets[locknum].lock;
 	ftcnode_t *qpnode = NULL, *qpnext = NULL;
-	isc_queue_t deadnodes;
+	isc_queue_t deadnodes, removenodes;
 	struct cds_ft_iter *iter = NULL;
 
 	INSIST(locknum < ftdb->buckets_count);
 
 	isc_queue_init(&deadnodes);
+	isc_queue_init(&removenodes);
 
 	/*
 	 * Phase 1: under the NODE lock, drop the queue's reference on each
 	 * dead node and mark the still-empty, now-unreferenced ones deleted.
 	 * No trie mutation here, so the writer mutex is never held while the
 	 * node lock is.
+	 *
+	 * The deleted nodes move to a private queue for phase 2, pinned with
+	 * a fresh reference. The spliced list itself must not be walked
+	 * again after the node lock is dropped: a node phase 1 did NOT
+	 * delete can be reactivated and released once more, and that
+	 * re-enqueue re-initialises its deadlink -- severing the spliced
+	 * chain in place, mid-iteration. Nodes marked deleted are immune:
+	 * they can be neither reactivated nor re-enqueued. The pin, taken
+	 * before the release, keeps a node alive across phase 2 even if a
+	 * concurrent findnode() displaces it from the trie and the trie's
+	 * reference is dropped first.
 	 */
 	NODE_WRLOCK(nlock, &nlocktype);
 	isc_queue_splice(&deadnodes, &ftdb->buckets[locknum].deadnodes);
 
 	isc_queue_for_each_entry_safe(&deadnodes, qpnode, qpnext, deadlink) {
+		ftcnode_ref(qpnode);
 		ftcnode_release(ftdb, qpnode, &nlocktype,
 				true DNS__DB_FILELINE);
+		if (qpnode->deleted) {
+			isc_queue_node_init(&qpnode->deadlink);
+			isc_queue_enqueue_entry(&removenodes, qpnode,
+						deadlink);
+		} else {
+			ftcnode_unref(qpnode);
+		}
 	}
 	NODE_UNLOCK(nlock, &nlocktype);
 
 	/*
 	 * Phase 2: remove the nodes marked deleted from the trie, under the
-	 * writer mutex and with no node lock held. Each node's remaining
-	 * internal reference keeps it live until delete_node_trie()'s
-	 * call_rcu drops it. Nodes reactivated since enqueue were not marked
-	 * deleted and are simply left alone, and nodes a concurrent
+	 * writer mutex and with no node lock held. Nodes a concurrent
 	 * findnode() has already displaced from the trie are skipped via
-	 * 'removed'.
+	 * 'removed'; phase 1's pin is dropped either way.
 	 */
 	RUNTIME_CHECK(cds_ft_iter_create(ftdb->ft, &iter) == CDS_FT_STATUS_OK);
 	cds_ft_iter_set_cache_mode(iter, CDS_FT_ITER_UNCACHED);
@@ -2221,10 +2238,11 @@ cleanup_deadnodes(ftcache_t *ftdb, uint16_t locknum) {
 	 */
 	LOCK(&ftdb->wmutex);
 	rcu_read_lock();
-	isc_queue_for_each_entry_safe(&deadnodes, qpnode, qpnext, deadlink) {
-		if (qpnode->deleted && !qpnode->removed) {
+	isc_queue_for_each_entry_safe(&removenodes, qpnode, qpnext, deadlink) {
+		if (!qpnode->removed) {
 			delete_node_trie(ftdb, iter, qpnode);
 		}
+		ftcnode_unref(qpnode);
 	}
 	rcu_read_unlock();
 	UNLOCK(&ftdb->wmutex);
