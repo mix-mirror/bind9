@@ -28,6 +28,7 @@
 #include <isc/region.h>
 #include <isc/result.h>
 #include <isc/types.h>
+#include <isc/u16bitmap.h>
 #include <isc/util.h>
 
 #include <dns/db.h>
@@ -445,14 +446,14 @@ find_nsec3_match(const dns_rdata_nsec3param_t *nsec3param,
 static isc_result_t
 match_nsec3(const vctx_t *vctx, const dns_name_t *name,
 	    const dns_rdata_nsec3param_t *nsec3param, dns_rdataset_t *rdataset,
-	    const unsigned char types[8192], unsigned int maxtype,
+	    const isc_u16bitmap_t *types, uint16_t maxtype,
 	    const unsigned char *rawhash, size_t rhsize,
 	    isc_result_t *vresult) {
 	unsigned char cbm[DNS_NSEC_MAXCBMSIZE];
 	char namebuf[DNS_NAME_FORMATSIZE];
 	dns_rdata_nsec3_t nsec3;
 	isc_result_t result;
-	unsigned int len;
+	size_t len;
 
 	result = find_nsec3_match(nsec3param, rdataset, rhsize, &nsec3);
 	if (result != ISC_R_SUCCESS) {
@@ -466,7 +467,7 @@ match_nsec3(const vctx_t *vctx, const dns_name_t *name,
 	/*
 	 * Check the type list.
 	 */
-	len = dns_nsec_compressbitmap(cbm, types, maxtype);
+	len = isc_u16bitmap_compress(types, cbm, maxtype);
 	if (nsec3.typebits.length != len ||
 	    memcmp(cbm, nsec3.typebits.base, len) != 0)
 	{
@@ -659,7 +660,7 @@ done:
 static isc_result_t
 verifynsec3(const vctx_t *vctx, const dns_name_t *name,
 	    const dns_rdata_nsec3param_t *nsec3param, bool delegation,
-	    bool empty, const unsigned char types[8192], unsigned int maxtype,
+	    bool empty, const isc_u16bitmap_t *types, uint16_t maxtype,
 	    isc_result_t *vresult) {
 	char namebuf[DNS_NAME_FORMATSIZE];
 	char hashbuf[DNS_NAME_FORMATSIZE];
@@ -705,7 +706,7 @@ verifynsec3(const vctx_t *vctx, const dns_name_t *name,
 	}
 	if (result != ISC_R_SUCCESS &&
 	    (!delegation || !optout ||
-	     (!empty && dns_nsec_isset(types, dns_rdatatype_ds))))
+	     (!empty && isc_u16bitmap_isset(types, dns_rdatatype_ds))))
 	{
 		dns_name_format(name, namebuf, sizeof(namebuf));
 		dns_name_format(hashname, hashbuf, sizeof(hashbuf));
@@ -740,7 +741,7 @@ done:
 static isc_result_t
 verifynsec3s(const vctx_t *vctx, const dns_name_t *name,
 	     dns_rdataset_t *nsec3paramset, bool delegation, bool empty,
-	     const unsigned char types[8192], unsigned int maxtype,
+	     const isc_u16bitmap_t *types, uint16_t maxtype,
 	     isc_result_t *vresult) {
 	DNS_RDATASET_FOREACH(nsec3paramset) {
 		isc_result_t result;
@@ -889,8 +890,8 @@ verifynode(vctx_t *vctx, const dns_name_t *name, dns_dbnode_t *node,
 	   bool delegation, dst_key_t **dstkeys, size_t nkeys,
 	   dns_rdataset_t *nsecset, dns_rdataset_t *nsec3paramset,
 	   const dns_name_t *nextname, isc_result_t *vresult) {
-	unsigned char types[8192] = { 0 };
-	unsigned int maxtype = 0;
+	isc_u16bitmap_t types = { 0 };
+	uint16_t maxtype = 0;
 	dns_rdatasetiter_t *rdsiter = NULL;
 	isc_result_t result, tvresult = ISC_R_UNSET;
 
@@ -925,13 +926,13 @@ verifynode(vctx_t *vctx, const dns_name_t *name, dns_dbnode_t *node,
 				dns_rdatasetiter_destroy(&rdsiter);
 				return result;
 			}
-			dns_nsec_setbit(types, rdataset.type, 1);
+			isc_u16bitmap_set(&types, rdataset.type);
 			if (rdataset.type > maxtype) {
 				maxtype = rdataset.type;
 			}
 		} else if (rdataset.type != dns_rdatatype_rrsig) {
 			if (rdataset.type == dns_rdatatype_ns) {
-				dns_nsec_setbit(types, rdataset.type, 1);
+				isc_u16bitmap_set(&types, rdataset.type);
 				if (rdataset.type > maxtype) {
 					maxtype = rdataset.type;
 				}
@@ -943,7 +944,7 @@ verifynode(vctx_t *vctx, const dns_name_t *name, dns_dbnode_t *node,
 				return result;
 			}
 		} else {
-			dns_nsec_setbit(types, rdataset.type, 1);
+			isc_u16bitmap_set(&types, rdataset.type);
 			if (rdataset.type > maxtype) {
 				maxtype = rdataset.type;
 			}
@@ -965,7 +966,7 @@ verifynode(vctx_t *vctx, const dns_name_t *name, dns_dbnode_t *node,
 
 	if (nsec3paramset != NULL && dns_rdataset_isassociated(nsec3paramset)) {
 		RETERR(verifynsec3s(vctx, name, nsec3paramset, delegation,
-				    false, types, maxtype, &tvresult));
+				    false, &types, maxtype, &tvresult));
 		if (*vresult == ISC_R_SUCCESS) {
 			*vresult = tvresult;
 		}
@@ -1198,6 +1199,7 @@ verifyemptynodes(const vctx_t *vctx, const dns_name_t *name,
 	int order;
 	unsigned int labels, nlabels, i;
 	dns_name_t suffix;
+	isc_u16bitmap_t empty_types = { 0 };
 	isc_result_t tvresult = ISC_R_UNSET;
 
 	*vresult = ISC_R_SUCCESS;
@@ -1221,7 +1223,8 @@ verifyemptynodes(const vctx_t *vctx, const dns_name_t *name,
 			{
 				RETERR(verifynsec3s(vctx, &suffix,
 						    nsec3paramset, isdelegation,
-						    true, NULL, 0, &tvresult));
+						    true, &empty_types, 0,
+						    &tvresult));
 				if (*vresult == ISC_R_SUCCESS) {
 					*vresult = tvresult;
 				}

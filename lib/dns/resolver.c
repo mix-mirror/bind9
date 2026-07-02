@@ -5409,7 +5409,7 @@ same_question(fetchctx_t *fctx, dns_message_t *message) {
 /*
  * typemap with just RRSIG(46) and NSEC(47) bits set.
  *
- * Bitmap calculation from dns_nsec_setbit:
+ * NSEC type bitmap bit calculation:
  *
  *					46	47
  *	shift = 7 - (type % 8);		0	1
