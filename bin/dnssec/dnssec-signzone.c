@@ -496,12 +496,11 @@ grow_arrays(unsigned int newarraysize, unsigned int *arraysize,
  * be generated.
  */
 static void
-signset(dns_diff_t *del, dns_diff_t *add, dns_dbnode_t *node, dns_name_t *name,
-	dns_rdataset_t *set) {
-	dns_rdataset_t sigset;
+signset(dns_diff_t *del, dns_diff_t *add, dns_name_t *name, dns_rdataset_t *set,
+	dns_rdataset_t *sigset) {
 	dns_rdata_rrsig_t rrsig;
 	isc_result_t result;
-	bool nosigs = false;
+	bool nosigs = !dns_rdataset_isassociated(sigset);
 	bool *wassignedby, *nowsignedby;
 	unsigned int arraysize;
 	dns_difftuple_t *tuple;
@@ -516,18 +515,9 @@ signset(dns_diff_t *del, dns_diff_t *add, dns_dbnode_t *node, dns_name_t *name,
 
 	ttl = ISC_MIN(set->ttl, endtime - starttime);
 
-	dns_rdataset_init(&sigset);
-	result = dns_db_findrdataset(gdb, node, gversion, dns_rdatatype_rrsig,
-				     set->type, 0, &sigset, NULL);
-	if (result == ISC_R_NOTFOUND) {
+	if (nosigs) {
 		vbprintf(2, "no existing signatures for %s/%s\n", namestr,
 			 typestr);
-		result = ISC_R_SUCCESS;
-		nosigs = true;
-	}
-	if (result != ISC_R_SUCCESS) {
-		fatal("failed while looking for '%s RRSIG %s': %s", namestr,
-		      typestr, isc_result_totext(result));
 	}
 
 	vbprintf(1, "%s/%s:\n", namestr, typestr);
@@ -536,7 +526,7 @@ signset(dns_diff_t *del, dns_diff_t *add, dns_dbnode_t *node, dns_name_t *name,
 	arraysize = keycount;
 	RWUNLOCK(&keylist_lock, isc_rwlocktype_read);
 	if (!nosigs) {
-		arraysize += dns_rdataset_count(&sigset);
+		arraysize += dns_rdataset_count(sigset);
 	}
 	wassignedby = isc_mem_cget(isc_g_mctx, arraysize, sizeof(bool));
 	nowsignedby = isc_mem_cget(isc_g_mctx, arraysize, sizeof(bool));
@@ -546,13 +536,13 @@ signset(dns_diff_t *del, dns_diff_t *add, dns_dbnode_t *node, dns_name_t *name,
 	}
 
 	if (!nosigs) {
-		DNS_RDATASET_FOREACH(&sigset) {
+		DNS_RDATASET_FOREACH(sigset) {
 			dns_rdata_t sigrdata = DNS_RDATA_INIT;
 			dns_dnsseckey_t *key = NULL;
 			bool expired, refresh, future, offline;
 			bool keep = false, resign = false;
 
-			dns_rdataset_current(&sigset, &sigrdata);
+			dns_rdataset_current(sigset, &sigrdata);
 
 			result = dns_rdata_tostruct(&sigrdata, &rrsig, NULL);
 			check_result(result, "dns_rdata_tostruct");
@@ -671,14 +661,14 @@ signset(dns_diff_t *del, dns_diff_t *add, dns_dbnode_t *node, dns_name_t *name,
 					nowsignedby[key->index] = true;
 				}
 				INCSTAT(nretained);
-				if (sigset.ttl != ttl) {
+				if (sigset->ttl != ttl) {
 					vbprintf(2, "\tfixing ttl %s\n",
 						 sigstr);
 					tuple = NULL;
 					dns_difftuple_create(
 						isc_g_mctx,
 						DNS_DIFFOP_DELRESIGN, name,
-						sigset.ttl, &sigrdata, &tuple);
+						sigset->ttl, &sigrdata, &tuple);
 					dns_diff_append(del, &tuple);
 					dns_difftuple_create(
 						isc_g_mctx,
@@ -692,7 +682,7 @@ signset(dns_diff_t *del, dns_diff_t *add, dns_dbnode_t *node, dns_name_t *name,
 					 sigstr);
 				dns_difftuple_create(
 					isc_g_mctx, DNS_DIFFOP_DELRESIGN, name,
-					sigset.ttl, &sigrdata, &tuple);
+					sigset->ttl, &sigrdata, &tuple);
 				dns_diff_append(del, &tuple);
 				INCSTAT(ndropped);
 			}
@@ -709,9 +699,6 @@ signset(dns_diff_t *del, dns_diff_t *add, dns_dbnode_t *node, dns_name_t *name,
 			dns_rdata_freestruct(&rrsig);
 		}
 	}
-
-	check_result(result, "dns_rdataset_first/next");
-	dns_rdataset_cleanup(&sigset);
 
 	RWLOCK(&keylist_lock, isc_rwlocktype_read);
 	ISC_LIST_FOREACH(keylist, key, link) {
@@ -1230,11 +1217,13 @@ signname(dns_dbnode_t *node, bool apex, dns_name_t *name) {
 	isc_result_t result;
 	dns_rdataset_t rdataset;
 	dns_rdatasetiter_t *rdsiter;
+	isc_u16bitmap_t types;
 	bool isdelegation = false;
 	dns_diff_t del, add;
 	char namestr[DNS_NAME_FORMATSIZE];
 
 	dns_rdataset_init(&rdataset);
+	isc_u16bitmap_reinit(&types);
 	dns_name_format(name, namestr, sizeof(namestr));
 
 	/*
@@ -1282,13 +1271,28 @@ signname(dns_dbnode_t *node, bool apex, dns_name_t *name) {
 			fatal("'%s': Non-apex DNSKEY RRset\n", namebuf);
 		}
 
-		signset(&del, &add, node, name, &rdataset);
+		isc_u16bitmap_set(&types, rdataset.type);
 
 	skip:
 		dns_rdataset_disassociate(&rdataset);
 	}
 
 	dns_rdatasetiter_destroy(&rdsiter);
+
+	ISC_U16BITMAP_FOREACH(&types, type) {
+		dns_rdataset_t set = DNS_RDATASET_INIT;
+		dns_rdataset_t sigset = DNS_RDATASET_INIT;
+
+		result = dns_db_findrdataset(gdb, node, gversion,
+					     (dns_rdatatype_t)type, 0, 0,
+					     &set, &sigset);
+		check_result(result, "dns_db_findrdataset()");
+
+		signset(&del, &add, name, &set, &sigset);
+
+		dns_rdataset_cleanup(&set);
+		dns_rdataset_cleanup(&sigset);
+	}
 
 	result = dns_diff_applysilently(&del, gdb, gversion);
 	if (result != ISC_R_SUCCESS) {
