@@ -47,7 +47,6 @@
 #include <isc/netmgr.h>
 #include <isc/nonce.h>
 #include <isc/parseint.h>
-#include <isc/portset.h>
 #include <isc/refcount.h>
 #include <isc/result.h>
 #include <isc/signal.h>
@@ -57,6 +56,7 @@
 #include <isc/string.h>
 #include <isc/time.h>
 #include <isc/timer.h>
+#include <isc/u16bitmap.h>
 #include <isc/util.h>
 
 #include <dns/acl.h>
@@ -7741,8 +7741,8 @@ apply_configuration(cfg_obj_t *effectiveconfig, cfg_obj_t *bindkeys,
 	int i, backlog;
 	isc_interval_t interval;
 	isc_logconfig_t *logc = NULL;
-	isc_portset_t *v4portset = NULL;
-	isc_portset_t *v6portset = NULL;
+	isc_u16bitmap_t v4ports = { 0 };
+	isc_u16bitmap_t v6ports = { 0 };
 	isc_result_t result;
 	uint32_t interface_interval;
 	uint32_t transfer_message_size;
@@ -8092,12 +8092,9 @@ apply_configuration(cfg_obj_t *effectiveconfig, cfg_obj_t *bindkeys,
 	/*
 	 * Configure sets of UDP query source ports.
 	 */
-	isc_portset_create(isc_g_mctx, &v4portset);
-	isc_portset_create(isc_g_mctx, &v6portset);
-
 	isc_net_getportrange(AF_INET, &port_low, &port_high);
 	isc_netmgr_portrange(AF_INET, port_low, port_high);
-	isc_portset_addrange(v4portset, port_low, port_high);
+	isc_u16bitmap_setrange(&v4ports, port_low, port_high);
 	if (!ns_server_getoption(server->sctx, NS_SERVER_DISABLE4)) {
 		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
 			      ISC_LOG_INFO,
@@ -8108,7 +8105,7 @@ apply_configuration(cfg_obj_t *effectiveconfig, cfg_obj_t *bindkeys,
 
 	isc_net_getportrange(AF_INET6, &port_low, &port_high);
 	isc_netmgr_portrange(AF_INET6, port_low, port_high);
-	isc_portset_addrange(v6portset, port_low, port_high);
+	isc_u16bitmap_setrange(&v6ports, port_low, port_high);
 	if (!ns_server_getoption(server->sctx, NS_SERVER_DISABLE6)) {
 		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
 			      ISC_LOG_INFO,
@@ -8117,8 +8114,7 @@ apply_configuration(cfg_obj_t *effectiveconfig, cfg_obj_t *bindkeys,
 			      port_low, port_high);
 	}
 
-	dns_dispatchmgr_setavailports(named_g_dispatchmgr, v4portset,
-				      v6portset);
+	dns_dispatchmgr_setavailports(named_g_dispatchmgr, &v4ports, &v6ports);
 
 	/*
 	 * Set the EDNS UDP size when we don't match a view.
@@ -8179,7 +8175,7 @@ apply_configuration(cfg_obj_t *effectiveconfig, cfg_obj_t *bindkeys,
 		result = named_config_getport(effectiveconfig, "port",
 					      &listen_port);
 		if (result != ISC_R_SUCCESS) {
-			goto cleanup_portsets;
+			goto cleanup_tls;
 		}
 	}
 
@@ -8223,13 +8219,13 @@ apply_configuration(cfg_obj_t *effectiveconfig, cfg_obj_t *bindkeys,
 
 		result = named_config_get(maps, "listen-on", &clistenon);
 		if (result != ISC_R_SUCCESS) {
-			goto cleanup_portsets;
+			goto cleanup_tls;
 		}
 		result = listenlist_fromconfig(
 			clistenon, effectiveconfig, aclctx, isc_g_mctx, AF_INET,
 			server->tlsctx_server_cache, &listenon);
 		if (result != ISC_R_SUCCESS) {
-			goto cleanup_portsets;
+			goto cleanup_tls;
 		}
 		if (listenon != NULL) {
 			ns_interfacemgr_setlistenon4(server->interfacemgr,
@@ -8247,13 +8243,13 @@ apply_configuration(cfg_obj_t *effectiveconfig, cfg_obj_t *bindkeys,
 
 		result = named_config_get(maps, "listen-on-v6", &clistenon);
 		if (result != ISC_R_SUCCESS) {
-			goto cleanup_portsets;
+			goto cleanup_tls;
 		}
 		result = listenlist_fromconfig(
 			clistenon, effectiveconfig, aclctx, isc_g_mctx,
 			AF_INET6, server->tlsctx_server_cache, &listenon);
 		if (result != ISC_R_SUCCESS) {
-			goto cleanup_portsets;
+			goto cleanup_tls;
 		}
 		if (listenon != NULL) {
 			ns_interfacemgr_setlistenon6(server->interfacemgr,
@@ -8289,7 +8285,7 @@ apply_configuration(cfg_obj_t *effectiveconfig, cfg_obj_t *bindkeys,
 				      "unable to listen on any configured "
 				      "interfaces");
 			result = ISC_R_FAILURE;
-			goto cleanup_portsets;
+			goto cleanup_tls;
 		}
 	}
 
@@ -8840,10 +8836,6 @@ cleanup_cachelist:
 		dns_cache_detach(&nsc->cache);
 		isc_mem_put(server->mctx, nsc, sizeof(*nsc));
 	}
-
-cleanup_portsets:
-	isc_portset_destroy(isc_g_mctx, &v6portset);
-	isc_portset_destroy(isc_g_mctx, &v4portset);
 
 cleanup_tls:
 	/*

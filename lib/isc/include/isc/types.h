@@ -60,7 +60,6 @@ typedef struct isc_nmsocket  isc_nmsocket_t; /*%< Network manager socket */
 typedef struct isc_nmhandle  isc_nmhandle_t; /*%< Network manager handle */
 typedef struct isc_nm_proxyudplistener isc_nm_proxyudplistener_t;
 typedef struct isc_nm_udplistener      isc_nm_udplistener_t;
-typedef struct isc_portset	       isc_portset_t;	  /*%< Port Set */
 typedef struct isc_quota	       isc_quota_t;	  /*%< Quota */
 typedef struct isc_ratelimiter	       isc_ratelimiter_t; /*%< Rate Limiter */
 typedef struct isc_region	       isc_region_t;	  /*%< Region */
