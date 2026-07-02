@@ -38,7 +38,6 @@
 #include <isc/netmgr.h>
 #include <isc/nonce.h>
 #include <isc/parseint.h>
-#include <isc/portset.h>
 #include <isc/random.h>
 #include <isc/readline.h>
 #include <isc/region.h>
@@ -48,6 +47,7 @@
 #include <isc/string.h>
 #include <isc/tls.h>
 #include <isc/types.h>
+#include <isc/u16bitmap.h>
 #include <isc/util.h>
 
 #include <dns/callbacks.h>
@@ -745,23 +745,19 @@ shutdown_program(void *arg) {
  */
 static void
 set_source_ports(dns_dispatchmgr_t *manager) {
-	isc_portset_t *v4portset = NULL, *v6portset = NULL;
+	isc_u16bitmap_t v4ports = { 0 };
+	isc_u16bitmap_t v6ports = { 0 };
 	in_port_t udpport_low, udpport_high;
 	isc_result_t result;
 
-	isc_portset_create(isc_g_mctx, &v4portset);
 	isc_net_getportrange(AF_INET, &udpport_low, &udpport_high);
-	isc_portset_addrange(v4portset, udpport_low, udpport_high);
+	isc_u16bitmap_setrange(&v4ports, udpport_low, udpport_high);
 
-	isc_portset_create(isc_g_mctx, &v6portset);
 	isc_net_getportrange(AF_INET6, &udpport_low, &udpport_high);
-	isc_portset_addrange(v6portset, udpport_low, udpport_high);
+	isc_u16bitmap_setrange(&v6ports, udpport_low, udpport_high);
 
-	result = dns_dispatchmgr_setavailports(manager, v4portset, v6portset);
+	result = dns_dispatchmgr_setavailports(manager, &v4ports, &v6ports);
 	check_result(result, "dns_dispatchmgr_setavailports");
-
-	isc_portset_destroy(isc_g_mctx, &v4portset);
-	isc_portset_destroy(isc_g_mctx, &v6portset);
 }
 
 static isc_result_t

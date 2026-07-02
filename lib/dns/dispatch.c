@@ -32,13 +32,13 @@
 #include <isc/mutex.h>
 #include <isc/net.h>
 #include <isc/netmgr.h>
-#include <isc/portset.h>
 #include <isc/random.h>
 #include <isc/stats.h>
 #include <isc/string.h>
 #include <isc/tid.h>
 #include <isc/time.h>
 #include <isc/tls.h>
+#include <isc/u16bitmap.h>
 #include <isc/urcu.h>
 #include <isc/util.h>
 
@@ -955,57 +955,55 @@ tcp_recv(isc_nmhandle_t *handle, isc_result_t eresult, isc_region_t *region,
  * cases.
  */
 static void
-create_default_portset(isc_mem_t *mctx, int family, isc_portset_t **portsetp) {
+set_default_ports(int family, isc_u16bitmap_t *ports) {
 	in_port_t low, high;
 
+	isc_u16bitmap_reinit(ports);
 	isc_net_getportrange(family, &low, &high);
-
-	isc_portset_create(mctx, portsetp);
-	isc_portset_addrange(*portsetp, low, high);
+	isc_u16bitmap_setrange(ports, low, high);
 }
 
 static isc_result_t
-setavailports(dns_dispatchmgr_t *mgr, isc_portset_t *v4portset,
-	      isc_portset_t *v6portset) {
-	in_port_t *v4ports, *v6ports, p = 0;
+setavailports(dns_dispatchmgr_t *mgr, const isc_u16bitmap_t *v4bitmap,
+	      const isc_u16bitmap_t *v6bitmap) {
+	in_port_t *v4array = NULL, *v6array = NULL;
 	unsigned int nv4ports, nv6ports, i4 = 0, i6 = 0;
 
-	nv4ports = isc_portset_nports(v4portset);
-	nv6ports = isc_portset_nports(v6portset);
+	REQUIRE(v4bitmap != NULL);
+	REQUIRE(v6bitmap != NULL);
 
-	v4ports = NULL;
+	nv4ports = isc_u16bitmap_count(v4bitmap);
+	nv6ports = isc_u16bitmap_count(v6bitmap);
+
 	if (nv4ports != 0) {
-		v4ports = isc_mem_cget(mgr->mctx, nv4ports, sizeof(in_port_t));
+		v4array = isc_mem_cget(mgr->mctx, nv4ports, sizeof(in_port_t));
 	}
-	v6ports = NULL;
 	if (nv6ports != 0) {
-		v6ports = isc_mem_cget(mgr->mctx, nv6ports, sizeof(in_port_t));
+		v6array = isc_mem_cget(mgr->mctx, nv6ports, sizeof(in_port_t));
 	}
 
-	do {
-		if (isc_portset_isset(v4portset, p)) {
-			INSIST(i4 < nv4ports);
-			v4ports[i4++] = p;
-		}
-		if (isc_portset_isset(v6portset, p)) {
-			INSIST(i6 < nv6ports);
-			v6ports[i6++] = p;
-		}
-	} while (p++ < 65535);
+	ISC_U16BITMAP_FOREACH(v4bitmap, port) {
+		INSIST(i4 < nv4ports);
+		v4array[i4++] = (in_port_t)port;
+	}
+	ISC_U16BITMAP_FOREACH(v6bitmap, port) {
+		INSIST(i6 < nv6ports);
+		v6array[i6++] = (in_port_t)port;
+	}
 	INSIST(i4 == nv4ports && i6 == nv6ports);
 
 	if (mgr->v4ports != NULL) {
 		isc_mem_cput(mgr->mctx, mgr->v4ports, mgr->nv4ports,
 			     sizeof(in_port_t));
 	}
-	mgr->v4ports = v4ports;
+	mgr->v4ports = v4array;
 	mgr->nv4ports = nv4ports;
 
 	if (mgr->v6ports != NULL) {
 		isc_mem_cput(mgr->mctx, mgr->v6ports, mgr->nv6ports,
 			     sizeof(in_port_t));
 	}
-	mgr->v6ports = v6ports;
+	mgr->v6ports = v6array;
 	mgr->nv6ports = nv6ports;
 
 	return ISC_R_SUCCESS;
@@ -1018,8 +1016,8 @@ setavailports(dns_dispatchmgr_t *mgr, isc_portset_t *v4portset,
 isc_result_t
 dns_dispatchmgr_create(isc_mem_t *mctx, dns_dispatchmgr_t **mgrp) {
 	dns_dispatchmgr_t *mgr = NULL;
-	isc_portset_t *v4portset = NULL;
-	isc_portset_t *v6portset = NULL;
+	isc_u16bitmap_t v4ports = { 0 };
+	isc_u16bitmap_t v6ports = { 0 };
 
 	REQUIRE(mctx != NULL);
 	REQUIRE(mgrp != NULL && *mgrp == NULL);
@@ -1045,13 +1043,9 @@ dns_dispatchmgr_create(isc_mem_t *mctx, dns_dispatchmgr_t **mgrp) {
 			NULL);
 	}
 
-	create_default_portset(mgr->mctx, AF_INET, &v4portset);
-	create_default_portset(mgr->mctx, AF_INET6, &v6portset);
-
-	setavailports(mgr, v4portset, v6portset);
-
-	isc_portset_destroy(mgr->mctx, &v4portset);
-	isc_portset_destroy(mgr->mctx, &v6portset);
+	set_default_ports(AF_INET, &v4ports);
+	set_default_ports(AF_INET6, &v6ports);
+	setavailports(mgr, &v4ports, &v6ports);
 
 	mgr->qids = cds_lfht_new(QIDS_INIT_SIZE, QIDS_MIN_SIZE, 0,
 				 CDS_LFHT_AUTO_RESIZE | CDS_LFHT_ACCOUNTING,
@@ -1085,10 +1079,14 @@ dns_dispatchmgr_getblackhole(dns_dispatchmgr_t *mgr) {
 }
 
 isc_result_t
-dns_dispatchmgr_setavailports(dns_dispatchmgr_t *mgr, isc_portset_t *v4portset,
-			      isc_portset_t *v6portset) {
+dns_dispatchmgr_setavailports(dns_dispatchmgr_t *mgr,
+			      const isc_u16bitmap_t *v4ports,
+			      const isc_u16bitmap_t *v6ports) {
 	REQUIRE(VALID_DISPATCHMGR(mgr));
-	return setavailports(mgr, v4portset, v6portset);
+	REQUIRE(v4ports != NULL);
+	REQUIRE(v6ports != NULL);
+
+	return setavailports(mgr, v4ports, v6ports);
 }
 
 void

@@ -51,6 +51,9 @@ void
 isc_u16bitmap_set(isc_u16bitmap_t *bitmap, uint16_t value);
 
 void
+isc_u16bitmap_setrange(isc_u16bitmap_t *bitmap, uint16_t lo, uint16_t hi);
+
+void
 isc_u16bitmap_unset(isc_u16bitmap_t *bitmap, uint16_t value);
 
 bool

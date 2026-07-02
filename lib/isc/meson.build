@@ -108,7 +108,6 @@ isc_srcset.add(
         'os.c',
         'parseint.c',
         'picohttpparser.c',
-        'portset.c',
         'proxy2.c',
         'quota.c',
         'radix.c',
