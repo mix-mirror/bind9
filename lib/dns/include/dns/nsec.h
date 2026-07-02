@@ -17,6 +17,8 @@
 
 #include <stdbool.h>
 
+#include <isc/u16bitmap.h>
+
 #include <dns/diff.h>
 #include <dns/name.h>
 #include <dns/types.h>
@@ -27,6 +29,18 @@
  */
 #define DNS_NSEC_MAXCBMSIZE (256 * ((256 / 8) + 2))
 #define DNS_NSEC_BUFFERSIZE (DNS_NAME_MAXWIRE + DNS_NSEC_MAXCBMSIZE)
+
+bool
+dns_nsec_isset(const unsigned char *array, unsigned int type);
+/*%<
+ * Test a bit in a raw MSB-first bitmap; array must contain the indexed byte.
+ */
+
+void
+dns_nsec_filterdelegation(isc_u16bitmap_t *types);
+/*%<
+ * Remove types that are not authoritative at a zone cut.
+ */
 
 isc_result_t
 dns_nsec_buildrdata(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
@@ -74,28 +88,6 @@ dns_nsec_nseconly(dns_db_t *db, dns_dbversion_t *version, dns_diff_t *diff,
  *
  * Requires:
  * 	'answer' to be non NULL.
- */
-
-unsigned int
-dns_nsec_compressbitmap(unsigned char *map, const unsigned char *raw,
-			unsigned int max_type);
-/*%<
- * Convert a raw bitmap into a compressed windowed bit map.  'map' and 'raw'
- * may overlap.
- *
- * Returns the length of the compressed windowed bit map.
- */
-
-void
-dns_nsec_setbit(unsigned char *array, unsigned int type, unsigned int bit);
-/*%<
- * Set type bit in raw 'array' to 'bit'.
- */
-
-bool
-dns_nsec_isset(const unsigned char *array, unsigned int type);
-/*%<
- * Test if the corresponding 'type' bit is set in 'array'.
  */
 
 #define dns_nsec_noexistnodata(type, name, nsecname, nsecset, exists, data,  \

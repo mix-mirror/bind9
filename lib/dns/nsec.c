@@ -18,6 +18,7 @@
 #include <isc/log.h>
 #include <isc/result.h>
 #include <isc/string.h>
+#include <isc/u16bitmap.h>
 #include <isc/util.h>
 
 #include <dns/db.h>
@@ -31,20 +32,6 @@
 
 #include <dst/dst.h>
 
-void
-dns_nsec_setbit(unsigned char *array, unsigned int type, unsigned int bit) {
-	unsigned int shift, mask;
-
-	shift = 7 - (type % 8);
-	mask = 1 << shift;
-
-	if (bit != 0) {
-		array[type / 8] |= mask;
-	} else {
-		array[type / 8] &= (~mask & 0xFF);
-	}
-}
-
 bool
 dns_nsec_isset(const unsigned char *array, unsigned int type) {
 	unsigned int byte, shift, mask;
@@ -56,40 +43,15 @@ dns_nsec_isset(const unsigned char *array, unsigned int type) {
 	return (byte & mask) != 0;
 }
 
-unsigned int
-dns_nsec_compressbitmap(unsigned char *map, const unsigned char *raw,
-			unsigned int max_type) {
-	unsigned char *start = map;
-	unsigned int window;
-	int octet;
+void
+dns_nsec_filterdelegation(isc_u16bitmap_t *types) {
+	ISC_U16BITMAP_FOREACH(types, value) {
+		dns_rdatatype_t type = (dns_rdatatype_t)value;
 
-	if (raw == NULL) {
-		return 0;
+		if (!dns_rdatatype_iszonecutauth(type)) {
+			isc_u16bitmap_unset(types, (uint16_t)type);
+		}
 	}
-
-	for (window = 0; window < 256; window++) {
-		if (window * 256 > max_type) {
-			break;
-		}
-		for (octet = 31; octet >= 0; octet--) {
-			if (*(raw + octet) != 0) {
-				break;
-			}
-		}
-		if (octet < 0) {
-			raw += 32;
-			continue;
-		}
-		*map++ = window;
-		*map++ = octet + 1;
-		/*
-		 * Note: potential overlapping move.
-		 */
-		memmove(map, raw, octet + 1);
-		map += octet + 1;
-		raw += 32;
-	}
-	return (unsigned int)(map - start);
 }
 
 isc_result_t
@@ -97,9 +59,8 @@ dns_nsec_buildrdata(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
 		    const dns_name_t *target, unsigned char *buffer,
 		    dns_rdata_t *rdata) {
 	isc_region_t r;
-	unsigned int i;
-	unsigned char *nsec_bits, *bm;
-	unsigned int max_type;
+	unsigned char *nsec_bits;
+	isc_u16bitmap_t bitmap;
 	dns_rdatasetiter_t *rdsiter;
 	dns_fixedname_t fnextname;
 	dns_name_t *nextname;
@@ -111,18 +72,12 @@ dns_nsec_buildrdata(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
 	 */
 	nextname = dns_fixedname_initname(&fnextname);
 	RUNTIME_CHECK(dns_name_downcase(target, nextname) == ISC_R_SUCCESS);
-	memset(buffer, 0, DNS_NSEC_BUFFERSIZE);
+	isc_u16bitmap_reinit(&bitmap);
 	dns_name_toregion(nextname, &r);
 	memmove(buffer, r.base, r.length);
-	/*
-	 * Use the end of the space for a raw bitmap leaving enough
-	 * space for the window identifiers and length octets.
-	 */
-	bm = buffer + r.length + 512;
 	nsec_bits = buffer + r.length;
-	dns_nsec_setbit(bm, dns_rdatatype_rrsig, 1);
-	dns_nsec_setbit(bm, dns_rdatatype_nsec, 1);
-	max_type = dns_rdatatype_nsec;
+	isc_u16bitmap_set(&bitmap, dns_rdatatype_rrsig);
+	isc_u16bitmap_set(&bitmap, dns_rdatatype_nsec);
 	rdsiter = NULL;
 	RETERR(dns_db_allrdatasets(db, node, version, 0, 0, &rdsiter));
 	DNS_RDATASETITER_FOREACH(rdsiter) {
@@ -131,10 +86,7 @@ dns_nsec_buildrdata(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
 		if (!dns_rdatatype_isnsec(rdataset.type) &&
 		    rdataset.type != dns_rdatatype_rrsig)
 		{
-			if (rdataset.type > max_type) {
-				max_type = rdataset.type;
-			}
-			dns_nsec_setbit(bm, rdataset.type, 1);
+			isc_u16bitmap_set(&bitmap, rdataset.type);
 		}
 		dns_rdataset_disassociate(&rdataset);
 	}
@@ -143,19 +95,13 @@ dns_nsec_buildrdata(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
 	/*
 	 * At zone cuts, deny the existence of glue in the parent zone.
 	 */
-	if (dns_nsec_isset(bm, dns_rdatatype_ns) &&
-	    !dns_nsec_isset(bm, dns_rdatatype_soa))
+	if (isc_u16bitmap_isset(&bitmap, dns_rdatatype_ns) &&
+	    !isc_u16bitmap_isset(&bitmap, dns_rdatatype_soa))
 	{
-		for (i = 0; i <= max_type; i++) {
-			if (dns_nsec_isset(bm, i) &&
-			    !dns_rdatatype_iszonecutauth((dns_rdatatype_t)i))
-			{
-				dns_nsec_setbit(bm, i, 0);
-			}
-		}
+		dns_nsec_filterdelegation(&bitmap);
 	}
 
-	nsec_bits += dns_nsec_compressbitmap(nsec_bits, bm, max_type);
+	nsec_bits += isc_u16bitmap_compress(&bitmap, nsec_bits);
 
 	r = (isc_region_t){
 		.base = buffer,

@@ -23,6 +23,7 @@
 #include <isc/result.h>
 #include <isc/safe.h>
 #include <isc/string.h>
+#include <isc/u16bitmap.h>
 #include <isc/util.h>
 
 #include <dns/compress.h>
@@ -56,12 +57,11 @@ dns_nsec3_buildrdata(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
 		     size_t hash_length, unsigned char *buffer,
 		     dns_rdata_t *rdata) {
 	isc_region_t r;
-	unsigned int i;
 	bool found;
 	bool found_ns;
 	bool need_rrsig;
-	unsigned char *nsec_bits, *bm;
-	unsigned int max_type;
+	unsigned char *nsec_bits;
+	isc_u16bitmap_t bitmap;
 	dns_rdatasetiter_t *rdsiter;
 	unsigned char *p;
 
@@ -77,7 +77,7 @@ dns_nsec3_buildrdata(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
 		break;
 	}
 
-	memset(buffer, 0, DNS_NSEC3_BUFFERSIZE);
+	isc_u16bitmap_reinit(&bitmap);
 
 	p = buffer;
 
@@ -100,13 +100,7 @@ dns_nsec3_buildrdata(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
 		.length = (unsigned int)(p - buffer),
 	};
 
-	/*
-	 * Use the end of the space for a raw bitmap leaving enough
-	 * space for the window identifiers and length octets.
-	 */
-	bm = buffer + r.length + 512;
-	nsec_bits = buffer + r.length;
-	max_type = 0;
+	nsec_bits = r.base + r.length;
 	if (node == NULL) {
 		goto collapse_bitmap;
 	}
@@ -119,10 +113,7 @@ dns_nsec3_buildrdata(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
 		if (!dns_rdatatype_isnsec(rdataset.type) &&
 		    rdataset.type != dns_rdatatype_rrsig)
 		{
-			if (rdataset.type > max_type) {
-				max_type = rdataset.type;
-			}
-			dns_nsec_setbit(bm, rdataset.type, 1);
+			isc_u16bitmap_set(&bitmap, rdataset.type);
 			/*
 			 * Work out if we need to set the RRSIG bit for
 			 * this node.  We set the RRSIG bit if either of
@@ -147,29 +138,20 @@ dns_nsec3_buildrdata(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
 	dns_rdatasetiter_destroy(&rdsiter);
 
 	if ((found && !found_ns) || need_rrsig) {
-		if (dns_rdatatype_rrsig > max_type) {
-			max_type = dns_rdatatype_rrsig;
-		}
-		dns_nsec_setbit(bm, dns_rdatatype_rrsig, 1);
+		isc_u16bitmap_set(&bitmap, dns_rdatatype_rrsig);
 	}
 
 	/*
 	 * At zone cuts, deny the existence of glue in the parent zone.
 	 */
-	if (dns_nsec_isset(bm, dns_rdatatype_ns) &&
-	    !dns_nsec_isset(bm, dns_rdatatype_soa))
+	if (isc_u16bitmap_isset(&bitmap, dns_rdatatype_ns) &&
+	    !isc_u16bitmap_isset(&bitmap, dns_rdatatype_soa))
 	{
-		for (i = 0; i <= max_type; i++) {
-			if (dns_nsec_isset(bm, i) &&
-			    !dns_rdatatype_iszonecutauth((dns_rdatatype_t)i))
-			{
-				dns_nsec_setbit(bm, i, 0);
-			}
-		}
+		dns_nsec_filterdelegation(&bitmap);
 	}
 
 collapse_bitmap:
-	nsec_bits += dns_nsec_compressbitmap(nsec_bits, bm, max_type);
+	nsec_bits += isc_u16bitmap_compress(&bitmap, nsec_bits);
 	r.length = (unsigned int)(nsec_bits - r.base);
 	INSIST(r.length <= DNS_NSEC3_BUFFERSIZE);
 	dns_rdata_fromregion(rdata, dns_db_class(db), dns_rdatatype_nsec3, &r);
