@@ -33,6 +33,7 @@ typedef U16bitmap__Response__Next NextResponse;
 typedef U16bitmap__Response__Ok OkResponse;
 typedef U16bitmap__Response__Value ValueResponse;
 typedef U16bitmap__Response__Values ValuesResponse;
+typedef U16bitmap__Response__Wire WireResponse;
 
 #define COMMAND_SET	 U16BITMAP__COMMAND__COMMAND_SET
 #define COMMAND_UNSET	 U16BITMAP__COMMAND__COMMAND_UNSET
@@ -41,6 +42,7 @@ typedef U16bitmap__Response__Values ValuesResponse;
 #define COMMAND_ISSET	 U16BITMAP__COMMAND__COMMAND_ISSET
 #define COMMAND_RESET	 U16BITMAP__COMMAND__COMMAND_RESET
 #define COMMAND_NEXT	 U16BITMAP__COMMAND__COMMAND_NEXT
+#define COMMAND_COMPRESS U16BITMAP__COMMAND__COMMAND_COMPRESS
 
 #define RESPONSE_OK	U16BITMAP__RESPONSE__RESPONSE_OK
 #define RESPONSE_VALUE	U16BITMAP__RESPONSE__RESPONSE_VALUE
@@ -48,6 +50,7 @@ typedef U16bitmap__Response__Values ValuesResponse;
 #define RESPONSE_COUNT	U16BITMAP__RESPONSE__RESPONSE_COUNT
 #define RESPONSE_ERROR	U16BITMAP__RESPONSE__RESPONSE_ERROR
 #define RESPONSE_NEXT	U16BITMAP__RESPONSE__RESPONSE_NEXT
+#define RESPONSE_WIRE	U16BITMAP__RESPONSE__RESPONSE_WIRE
 
 static bool
 read_bytes(void *base, size_t size) {
@@ -185,6 +188,30 @@ reply_get(const isc_u16bitmap_t *bitmap) {
 	free(array);
 }
 
+static void
+reply_compress(isc_u16bitmap_t *bitmap) {
+	Response response = U16BITMAP__RESPONSE__INIT;
+	WireResponse wire = U16BITMAP__RESPONSE__WIRE__INIT;
+	uint8_t target[ISC_U16BITMAP_MAXCOMPRESSEDSIZE];
+	bool has_zero = isc_u16bitmap_isset(bitmap, 0);
+	size_t length = 0;
+
+	/* dnspython's NSEC bitmap builder silently ignores type 0. */
+	if (has_zero) {
+		isc_u16bitmap_unset(bitmap, 0);
+	}
+	length = isc_u16bitmap_compress(bitmap, target);
+	if (has_zero) {
+		isc_u16bitmap_set(bitmap, 0);
+	}
+
+	wire.wire.len = length;
+	wire.wire.data = target;
+	response.response_case = RESPONSE_WIRE;
+	response.wire = &wire;
+	write_response(&response);
+}
+
 static bool
 valid_value(uint32_t value) {
 	return value <= UINT16_MAX;
@@ -273,6 +300,9 @@ main(void) {
 		case COMMAND_NEXT:
 			reply_next(isc_u16bitmap_next(&normal,
 						      (ssize_t)command->next->value));
+			break;
+		case COMMAND_COMPRESS:
+			reply_compress(&normal);
 			break;
 		default:
 			reply_error("unknown-command");
