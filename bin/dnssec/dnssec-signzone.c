@@ -1313,7 +1313,9 @@ signname(dns_dbnode_t *node, bool apex, dns_name_t *name) {
 static bool
 delete_all_rdatasets(dns_typepair_t typepair ISC_ATTR_UNUSED,
 		     dns_db_rdataset_meta_t meta ISC_ATTR_UNUSED,
-		     void *arg ISC_ATTR_UNUSED);
+		     void *arg ISC_ATTR_UNUSED) {
+	return true;
+}
 
 static bool
 delete_inactive_node_rdataset(dns_typepair_t typepair,
@@ -1351,10 +1353,7 @@ active_node(dns_dbnode_t *node) {
 
 	result = dns_db_allrdatasets(gdb, node, gversion, 0, 0, &rdsiter);
 	check_result(result, "dns_db_allrdatasets()");
-	for (result = dns_rdatasetiter_first(rdsiter);
-	     result == ISC_R_SUCCESS;
-	     result = dns_rdatasetiter_next(rdsiter))
-	{
+	DNS_RDATASETITER_FOREACH(rdsiter) {
 		dns_rdatasetiter_current(rdsiter, &rdataset);
 		dns_rdatatype_t t = rdataset.type;
 		isc_u16bitmap_set(&types, t);
@@ -1365,10 +1364,6 @@ active_node(dns_dbnode_t *node) {
 		}
 	}
 	dns_rdatasetiter_destroy(&rdsiter);
-	if (result != ISC_R_NOMORE) {
-		fatal("rdataset iteration failed: %s",
-		      isc_result_totext(result));
-	}
 
 	if (!active && nsec_datatype == dns_rdatatype_nsec) {
 		/*%
@@ -1726,13 +1721,6 @@ add_ds(dns_name_t *name, dns_dbnode_t *node, uint32_t nsttl) {
 /*
  * Remove records of the given type and their signatures.
  */
-static bool
-delete_all_rdatasets(dns_typepair_t typepair ISC_ATTR_UNUSED,
-		     dns_db_rdataset_meta_t meta ISC_ATTR_UNUSED,
-		     void *arg ISC_ATTR_UNUSED) {
-	return true;
-}
-
 typedef struct remove_records_ctx {
 	dns_rdatatype_t which;
 	bool checknsec;
