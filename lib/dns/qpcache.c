@@ -484,12 +484,10 @@ expire_lru_header(qpcache_t *qpdb, dns_slabheader_t *newheader, uint32_t idx,
 
 /*%
  * Evict data from the cache to make room for the data being added.  This
- * must be called without any node lock held: it visits all the buckets
- * in turn (starting at a random one), taking one bucket lock at a time
- * and evicting a single header per visit, until enough memory has been
- * purged or there is nothing left to evict.  Evicting one header at a
- * time keeps the eviction pressure spread evenly over the per-bucket
- * SIEVEs, each of which only holds a small share of the cache.
+ * must be called without any node lock held.  One header is evicted per
+ * bucket per pass, keeping the eviction pressure spread evenly over the
+ * SIEVEs, until enough memory has been purged or there is nothing left
+ * to evict.
  */
 static void
 overmem_purge(qpcache_t *qpdb, dns_slabheader_t *newheader,
@@ -507,9 +505,42 @@ overmem_purge(qpcache_t *qpdb, dns_slabheader_t *newheader,
 			   rdataset_size(newheader) + QP_SAFETY_MARGIN;
 	size_t purged = 0;
 
-	uint32_t start = isc_random_uniform(qpdb->buckets_count);
+	size_t nloops = isc_loopmgr_nloops();
+	uint16_t start = newheader->node->locknum;
 	bool progress = true;
 
+	/*
+	 * Start with the bucket the new header is being inserted into -
+	 * the pressure is where the inserts are happening - and continue
+	 * with the rest of its residue class, so that concurrent purges
+	 * for inserts into different buckets normally work on disjoint
+	 * sets of buckets.
+	 */
+	while (purged < purgesize && progress) {
+		progress = false;
+
+		for (uint32_t i = 0;
+		     i < qpdb->buckets_count && purged < purgesize; i += nloops)
+		{
+			uint16_t locknum = (start + i) % qpdb->buckets_count;
+			size_t expired = expire_lru_header(
+				qpdb, newheader, locknum,
+				tlocktypep DNS__DB_FLARG_PASS);
+			if (expired > 0) {
+				progress = true;
+				purged += expired;
+			}
+		}
+	}
+
+	/*
+	 * The target bucket's residue class ran out of eviction
+	 * candidates; rather than letting the cache grow past its size
+	 * limit, spill over into the other buckets.  This is the only
+	 * case in which the purge contends with purges for inserts into
+	 * the other residue classes.
+	 */
+	progress = true;
 	while (purged < purgesize && progress) {
 		progress = false;
 
@@ -517,6 +548,10 @@ overmem_purge(qpcache_t *qpdb, dns_slabheader_t *newheader,
 		     i < qpdb->buckets_count && purged < purgesize; i++)
 		{
 			uint32_t bucket = (start + i) % qpdb->buckets_count;
+			if (bucket % nloops == start % nloops) {
+				/* Already drained above */
+				continue;
+			}
 
 			size_t expired = expire_lru_header(
 				qpdb, newheader, bucket,
