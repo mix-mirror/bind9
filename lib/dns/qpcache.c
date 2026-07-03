@@ -176,9 +176,13 @@ typedef struct qpcache_bucket {
 			/* SIEVE-LRU cache cleaning state. */
 			ISC_SIEVE(dns_slabheader_t) sieve;
 		};
-		uint8_t __padding[ISC_OS_CACHELINE_SIZE];
+		uint8_t __padding[ISC_OS_CACHELINE_SIZE * 6];
 	};
 } qpcache_bucket_t;
+
+STATIC_ASSERT(sizeof(qpcache_bucket_t) % ISC_OS_CACHELINE_SIZE == 0,
+	      "qpcache_bucket_t size must be a multiple of the cacheline "
+	      "size");
 
 struct qpcache {
 	/* Unlocked. */
