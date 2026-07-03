@@ -142,16 +142,15 @@ newslab(dns_rdataset_t *rdataset, isc_mem_t *mctx, isc_region_t *region,
 		.headers_link = CDS_LIST_HEAD_INIT(header->headers_link),
 		.trust = rdataset->trust,
 		.nitems = nitems,
-		.references = ISC_REFCOUNT_INITIALIZER(1),
+		.references.refcount = 1,
 		.mctx = isc_mem_ref(mctx),
 		.lrulink = ISC_LINK_INITIALIZER,
 	};
 
 #if DNS_SLABHEADER_TRACE
-	fprintf(stderr,
-		"%s:%s:%s:%u:t%" PRItid ":%p->references = %" PRIuFAST32 "\n",
+	fprintf(stderr, "%s:%s:%s:%u:t%" PRItid ":%p->references = %ld\n",
 		__func__, func, file, line, isc_tid(), header,
-		header->references);
+		header->references.refcount);
 #else
 	UNUSED(func);
 	UNUSED(file);
@@ -522,16 +521,19 @@ dns_slabheader__reset(dns_slabheader_t *h, dns_dbnode_t *node, const char *func,
 
 	atomic_init(&h->attributes, 0);
 	atomic_init(&h->last_refresh_fail_ts, 0);
-	isc_refcount_init(&h->references, 1);
+	urcu_ref_init(&h->references);
 
 	STATIC_ASSERT(sizeof(h->attributes) == 2,
 		      "The .attributes field of dns_slabheader_t needs to be "
 		      "16-bit int type exactly.");
+	STATIC_ASSERT(sizeof(struct rcu_head) <= sizeof(h->upper),
+		      "The rcu_head member must fit in the upper[] case "
+		      "vector it overlays.");
 
 #if DNS_SLABHEADER_TRACE
-	fprintf(stderr,
-		"%s:%s:%s:%u:t%" PRItid ":%p->references = %" PRIuFAST32 "\n",
-		__func__, func, file, line, isc_tid(), h, h->references);
+	fprintf(stderr, "%s:%s:%s:%u:t%" PRItid ":%p->references = %ld\n",
+		__func__, func, file, line, isc_tid(), h,
+		h->references.refcount);
 #else
 	UNUSED(func);
 	UNUSED(file);
@@ -548,15 +550,15 @@ dns_slabheader__new(isc_mem_t *mctx, dns_dbnode_t *node, const char *func,
 	*h = (dns_slabheader_t){
 		.headers_link = CDS_LIST_HEAD_INIT(h->headers_link),
 		.node = node,
-		.references = ISC_REFCOUNT_INITIALIZER(1),
+		.references.refcount = 1,
 		.mctx = isc_mem_ref(mctx),
 		.lrulink = ISC_LINK_INITIALIZER,
 	};
 
 #if DNS_SLABHEADER_TRACE
-	fprintf(stderr,
-		"%s:%s:%s:%u:t%" PRItid ":%p->references = %" PRIuFAST32 "\n",
-		__func__, func, file, line, isc_tid(), h, h->references);
+	fprintf(stderr, "%s:%s:%s:%u:t%" PRItid ":%p->references = %ld\n",
+		__func__, func, file, line, isc_tid(), h,
+		h->references.refcount);
 #else
 	UNUSED(func);
 	UNUSED(file);
@@ -567,7 +569,9 @@ dns_slabheader__new(isc_mem_t *mctx, dns_dbnode_t *node, const char *func,
 }
 
 static void
-slabheader_destroy(dns_slabheader_t *header) {
+slabheader_destroy_rcu(struct rcu_head *rcu_head) {
+	dns_slabheader_t *header = caa_container_of(rcu_head, dns_slabheader_t,
+						    rcu_head);
 	unsigned int size;
 
 	if (EXISTS(header)) {
@@ -584,6 +588,34 @@ slabheader_destroy(dns_slabheader_t *header) {
 	}
 
 	isc_mem_putanddetach(&header->mctx, header, size);
+}
+
+/*
+ * With DNS_SLABHEADERATTR_RCUFREE set, defer the destruction by an RCU
+ * grace period, so that a lock-free reader that found this header
+ * inside its RCU read-side critical section can still safely inspect
+ * it: dns_slabheader_tryref() fails on the zero refcount, but the
+ * memory stays valid until the grace period ends.  The rcu_head
+ * overlays upper[], which nothing can read anymore once the last
+ * reference is gone.
+ *
+ * Dropping the last reference from another call_rcu callback chains
+ * grace periods: a deferred cache-node cleanup can release its headers
+ * here, and destroying a header can release its negative-proof headers
+ * via dns_slabheader_freeproof(), three call_rcu levels in total; the
+ * shutdown sequence absorbs that by running rcu_barrier() three times
+ * (in the libisc, liblog and libmem destructors).
+ */
+static void
+slabheader_release(struct urcu_ref *references) {
+	dns_slabheader_t *header =
+		caa_container_of(references, dns_slabheader_t, references);
+
+	if (DNS_SLABHEADER_GETATTR(header, DNS_SLABHEADERATTR_RCUFREE) != 0) {
+		call_rcu(&header->rcu_head, slabheader_destroy_rcu);
+	} else {
+		slabheader_destroy_rcu(&header->rcu_head);
+	}
 }
 
 void
@@ -609,11 +641,79 @@ dns_slabheader_freeproof(isc_mem_t *mctx, dns_slabheader_proof_t **proofp) {
 	isc_mem_put(mctx, proof, sizeof(*proof));
 }
 
+dns_slabheader_t *
+dns_slabheader__ref(dns_slabheader_t *header, const char *func,
+		    const char *file, unsigned int line) {
+	REQUIRE(header != NULL);
+
+	bool ref = urcu_ref_get_unless_zero(&header->references);
+	INSIST(ref);
 #if DNS_SLABHEADER_TRACE
-ISC_REFCOUNT_TRACE_IMPL(dns_slabheader, slabheader_destroy);
+	fprintf(stderr, "%s:%s:%s:%u:t%" PRItid ":%p->references = %ld\n",
+		__func__, func, file, line, isc_tid(), header,
+		uatomic_load(&header->references.refcount));
 #else
-ISC_REFCOUNT_IMPL(dns_slabheader, slabheader_destroy);
+	UNUSED(func);
+	UNUSED(file);
+	UNUSED(line);
 #endif
+	return header;
+}
+
+bool
+dns_slabheader__tryref(dns_slabheader_t *header, const char *func,
+		       const char *file, unsigned int line) {
+	REQUIRE(header != NULL);
+
+	bool ref = urcu_ref_get_unless_zero(&header->references);
+#if DNS_SLABHEADER_TRACE
+	fprintf(stderr, "%s:%s:%s:%u:t%" PRItid ":%p->references = %ld (%s)\n",
+		__func__, func, file, line, isc_tid(), header,
+		uatomic_load(&header->references.refcount),
+		ref ? "acquired" : "dead");
+#else
+	UNUSED(func);
+	UNUSED(file);
+	UNUSED(line);
+#endif
+	return ref;
+}
+
+void
+dns_slabheader__unref(dns_slabheader_t *header, const char *func,
+		      const char *file, unsigned int line) {
+	REQUIRE(header != NULL);
+
+#if DNS_SLABHEADER_TRACE
+	fprintf(stderr, "%s:%s:%s:%u:t%" PRItid ":%p->references = %ld\n",
+		__func__, func, file, line, isc_tid(), header,
+		uatomic_load(&header->references.refcount) - 1);
+#else
+	UNUSED(func);
+	UNUSED(file);
+	UNUSED(line);
+#endif
+	urcu_ref_put(&header->references, slabheader_release);
+}
+
+void
+dns_slabheader__attach(dns_slabheader_t *header, dns_slabheader_t **headerp,
+		       const char *func, const char *file, unsigned int line) {
+	REQUIRE(headerp != NULL && *headerp == NULL);
+
+	*headerp = dns_slabheader__ref(header, func, file, line);
+}
+
+void
+dns_slabheader__detach(dns_slabheader_t **headerp, const char *func,
+		       const char *file, unsigned int line) {
+	REQUIRE(headerp != NULL && *headerp != NULL);
+
+	dns_slabheader_t *header = *headerp;
+	*headerp = NULL;
+
+	dns_slabheader__unref(header, func, file, line);
+}
 
 /* Fixed RRSet helper macros */
 

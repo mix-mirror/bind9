@@ -70,11 +70,19 @@ struct dns_slabheader_proof {
 	dns_slabheader_t *pos = NULL, *pos##_next = NULL; \
 	cds_list_for_each_entry_safe(pos, pos##_next, head, headers_link)
 
+/*
+ * RCU-safe traversal for lock-free readers; the writers must mutate
+ * the list with cds_list_add_rcu()/cds_list_del_rcu() only.
+ */
+#define DNS_SLABHEADER_FOREACH_RCU(pos, head) \
+	dns_slabheader_t *pos = NULL;         \
+	cds_list_for_each_entry_rcu(pos, head, headers_link)
+
 struct dns_slabheader {
 	_Atomic(uint16_t)    attributes;
 	_Atomic(dns_trust_t) trust;
 
-	isc_refcount_t references;
+	struct urcu_ref references;
 
 	isc_mem_t *mctx;
 
@@ -100,8 +108,16 @@ struct dns_slabheader {
 	 * Case vector.  If the bit is set then the corresponding
 	 * character in the owner name needs to be AND'd with 0x20,
 	 * rendering that character upper case.
+	 *
+	 * The rcu_head shares this storage: it is written only after
+	 * the last reference has been dropped (to defer the free by an
+	 * RCU grace period), while upper[] is only ever read while a
+	 * reference is held.
 	 */
-	unsigned char upper[32];
+	union {
+		unsigned char	upper[32];
+		struct rcu_head rcu_head;
+	};
 
 	/* Used for stale refresh */
 	_Atomic(isc_stdtime_t) last_refresh_fail_ts;
@@ -121,7 +137,16 @@ struct dns_slabheader {
 	alignas(sizeof(void *)) unsigned char raw[];
 };
 
-#if DNS_SLABHEADER_TRACE
+/*
+ * The reference counting uses liburcu's urcu_ref so that lock-free
+ * readers can acquire a reference with dns_slabheader_tryref()
+ * (urcu_ref_get_unless_zero()); dropping the last reference defers
+ * the actual destruction by an RCU grace period (see
+ * slabheader_release() in rdataslab.c), which keeps the memory valid
+ * for any reader still inspecting the header inside its RCU read-side
+ * critical section.  dns_slabheader_tryref() returning false means
+ * the header is dead and must be skipped.
+ */
 #define dns_slabheader_ref(ptr) \
 	dns_slabheader__ref(ptr, __func__, __FILE__, __LINE__)
 #define dns_slabheader_unref(ptr) \
@@ -130,10 +155,24 @@ struct dns_slabheader {
 	dns_slabheader__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
 #define dns_slabheader_detach(ptrp) \
 	dns_slabheader__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_TRACE_DECL(dns_slabheader);
-#else
-ISC_REFCOUNT_DECL(dns_slabheader);
-#endif
+#define dns_slabheader_tryref(ptr) \
+	dns_slabheader__tryref(ptr, __func__, __FILE__, __LINE__)
+
+dns_slabheader_t *
+dns_slabheader__ref(dns_slabheader_t *header, const char *func,
+		    const char *file, unsigned int line);
+void
+dns_slabheader__unref(dns_slabheader_t *header, const char *func,
+		      const char *file, unsigned int line);
+void
+dns_slabheader__attach(dns_slabheader_t *header, dns_slabheader_t **headerp,
+		       const char *func, const char *file, unsigned int line);
+void
+dns_slabheader__detach(dns_slabheader_t **headerp, const char *func,
+		       const char *file, unsigned int line);
+bool
+dns_slabheader__tryref(dns_slabheader_t *header, const char *func,
+		       const char *file, unsigned int line);
 
 enum {
 	DNS_SLABHEADERATTR_NONEXISTENT = 1 << 0,
@@ -155,6 +194,15 @@ enum {
 	 * thread, which will reap it lazily (see ftcache.c).
 	 */
 	DNS_SLABHEADERATTR_DEAD = 1 << 13,
+	/*%
+	 * Dropping the last reference must defer the destruction by an
+	 * RCU grace period because lock-free readers can still be
+	 * inspecting the header (see ftcache.c, which sets this on
+	 * every header it publishes).  Headers without this attribute
+	 * are destroyed synchronously (qpcache holds node locks, so it
+	 * must not pay the deferral in delayed overmem accounting).
+	 */
+	DNS_SLABHEADERATTR_RCUFREE = 1 << 14,
 };
 
 /* clang-format off : RemoveParentheses */
