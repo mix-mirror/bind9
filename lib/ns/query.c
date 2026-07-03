@@ -2422,12 +2422,11 @@ stale_refresh_aftermath(ns_client_t *client, isc_result_t result) {
 		dboptions |= DNS_DBFIND_STALESTART;
 
 		dns_db_attach(qctx.client->inner.view->cachedb, &db);
-		(void)dns_db_findext(
-			db, dns_linkedname_name(qctx.client->query.qname), NULL,
-			qctx.client->query.qtype, dboptions,
-			qctx.client->inner.now, &qctx.node,
-			dns_linkedname_name(qctx.fname), &cm, &ci,
-			qctx.rdataset, qctx.sigrdataset);
+		(void)dns_db_findext(db, qctx.client->query.qname, NULL,
+				     qctx.client->query.qtype, dboptions,
+				     qctx.client->inner.now, &qctx.node,
+				     dns_linkedname_name(qctx.fname), &cm, &ci,
+				     qctx.rdataset, qctx.sigrdataset);
 		if (qctx.node != NULL) {
 			dns_db_detachnode(&qctx.node);
 		}
@@ -4283,10 +4282,9 @@ again:
 	}
 
 	dboptions = client->query.dboptions | DNS_DBFIND_FORCENSEC3;
-	result = dns_db_findext(db, dns_fixedname_name(&fixed), version,
-				dns_rdatatype_nsec3, dboptions,
-				client->inner.now, NULL, fname, &cm, &ci,
-				rdataset, sigrdataset);
+	result = dns_db_findext(db, &fixed, version, dns_rdatatype_nsec3,
+				dboptions, client->inner.now, NULL, fname, &cm,
+				&ci, rdataset, sigrdataset);
 
 	if (result == DNS_R_NXDOMAIN) {
 		if (!dns_rdataset_isassociated(rdataset)) {
@@ -4508,10 +4506,9 @@ redirect(ns_client_t *client, dns_name_t *name, dns_rdataset_t *rdataset,
 	/*
 	 * Lookup the requested data in the redirect zone.
 	 */
-	result = dns_db_findext(db, dns_linkedname_name(client->query.qname),
-				dbversion->version, qtype, DNS_DBFIND_NOZONECUT,
-				client->inner.now, &node, found, &cm, &ci,
-				&trdataset, NULL);
+	result = dns_db_findext(db, client->query.qname, dbversion->version,
+				qtype, DNS_DBFIND_NOZONECUT, client->inner.now,
+				&node, found, &cm, &ci, &trdataset, NULL);
 	if (result == DNS_R_NXRRSET || result == DNS_R_NCACHENXRRSET) {
 		dns_rdataset_cleanup(rdataset);
 		dns_rdataset_cleanup(&trdataset);
@@ -10262,8 +10259,8 @@ query_addsoa(query_ctx_t *qctx, unsigned int override_ttl,
 
 		fname = dns_fixedname_initname(&foundname);
 
-		result = dns_db_findext(qctx->db, dns_linkedname_name(name),
-					qctx->version, dns_rdatatype_soa,
+		result = dns_db_findext(qctx->db, name, qctx->version,
+					dns_rdatatype_soa,
 					client->query.dboptions, 0, &node,
 					fname, &cm, &ci, rdataset, sigrdataset);
 	}
@@ -10314,10 +10311,8 @@ query_addsoa(query_ctx_t *qctx, unsigned int override_ttl,
 		if (section == DNS_SECTION_ADDITIONAL) {
 			rdataset->attributes.required = true;
 		}
-		{
-			query_addrrset(qctx, &name, &rdataset, sigrdatasetp,
-				       NULL, section);
-		}
+		query_addrrset(qctx, &name, &rdataset, sigrdatasetp, NULL,
+			       section);
 	}
 
 	ns_client_putrdataset(client, &rdataset);
@@ -10382,8 +10377,7 @@ query_addns(query_ctx_t *qctx) {
 			client->inner.now, rdataset, sigrdataset);
 	} else {
 		CTRACE(ISC_LOG_DEBUG(3), "query_addns: calling dns_db_find");
-		result = dns_db_findext(qctx->db, dns_linkedname_name(name),
-					NULL, dns_rdatatype_ns,
+		result = dns_db_findext(qctx->db, name, NULL, dns_rdatatype_ns,
 					client->query.dboptions, 0, &node,
 					fname, &cm, &ci, rdataset, sigrdataset);
 		CTRACE(ISC_LOG_DEBUG(3), "query_addns: dns_db_find complete");
@@ -10505,10 +10499,10 @@ db_find:
 	 */
 	if (is_zone) {
 		result = dns_db_findext(
-			db, dns_linkedname_name(client->query.qname), version,
-			dns_rdatatype_ns, client->query.dboptions,
-			client->inner.now, &node, dns_linkedname_name(fname),
-			&cm, &ci, rdataset, sigrdataset);
+			db, client->query.qname, version, dns_rdatatype_ns,
+			client->query.dboptions, client->inner.now, &node,
+			dns_linkedname_name(fname), &cm, &ci, rdataset,
+			sigrdataset);
 		if (result != DNS_R_DELEGATION) {
 			goto cleanup;
 		}

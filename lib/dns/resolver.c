@@ -6431,8 +6431,7 @@ rctx_cachename(respctx_t *rctx, dns_message_t *message,
 	/*
 	 * Find or create the cache node.
 	 */
-	RETERR(dns_db_findnode(fctx->cache, dns_linkedname_name(name), true,
-			       &node));
+	RETERR(dns_db_findnode(fctx->cache, name, true, &node));
 
 	/*
 	 * Cache or validate each cacheable rdataset.
@@ -10422,7 +10421,7 @@ update_rootdb_glue(dns_db_t *rootdb, dns_dbversion_t *ver,
 		return ISC_R_SUCCESS;
 	}
 
-	RETERR(dns_db_findnode(rootdb, dns_linkedname_name(name), true, &node));
+	RETERR(dns_db_findnode(rootdb, name, true, &node));
 
 	(void)dns_db_deleterdataset(rootdb, node, ver, type, 0);
 	result = dns_db_addrdataset(rootdb, node, ver, now, rdataset, 0, NULL);
