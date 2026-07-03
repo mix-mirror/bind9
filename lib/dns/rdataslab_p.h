@@ -23,6 +23,9 @@
 #define CASESET(header)                                \
 	((atomic_load_acquire(&(header)->attributes) & \
 	  DNS_SLABHEADERATTR_CASESET) != 0)
+#define DEAD(header)                                   \
+	((atomic_load_acquire(&(header)->attributes) & \
+	  DNS_SLABHEADERATTR_DEAD) != 0)
 #define EXISTS(header)                                 \
 	((atomic_load_acquire(&(header)->attributes) & \
 	  DNS_SLABHEADERATTR_NONEXISTENT) == 0)
