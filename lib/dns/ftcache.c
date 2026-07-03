@@ -220,9 +220,26 @@ typedef struct ftcache_bucket {
 			/* SIEVE-LRU cache cleaning state. */
 			ISC_SIEVE(dns_slabheader_t) sieve;
 		};
-		uint8_t __padding[ISC_OS_CACHELINE_SIZE];
+		uint8_t __padding[ISC_OS_CACHELINE_SIZE * 6];
 	};
 } ftcache_bucket_t;
+
+STATIC_ASSERT(sizeof(ftcache_bucket_t) % ISC_OS_CACHELINE_SIZE == 0,
+	      "qpcache_bucket_t size must be a multiple of the cacheline "
+	      "size");
+
+/*
+ * Buckets per event loop. Nodes are assigned a bucket at random --
+ * uniform regardless of the name distribution and unpredictable to an
+ * attacker (a name-derived bucket could be computed offline to aim a
+ * whole query set at one lock) -- so over-provisioning the buckets is
+ * the lever that keeps individual node locks cool: with many more
+ * buckets than threads, two hot names rarely share a lock and each
+ * lock's cacheline is touched by fewer concurrent queries. The deadnode
+ * cleanup and the LRU eviction for bucket B both run only on loop
+ * B % nloops, so maintenance write-locking stays thread-local.
+ */
+#define FTC_BUCKETS_PER_LOOP 16
 
 /*
  * Locking discipline
@@ -598,53 +615,73 @@ expire_header(ftcache_t *ftdb, ftcnode_t *node, dns_slabheader_t *header,
 	return expired;
 }
 
+/*
+ * Maximum estimated size of the data being added: the size of the
+ * rdataset, plus a new node and key and a possible additional NSEC node
+ * and key, plus a safety margin for trie-internal allocations. (It's
+ * okay to overestimate, we want to get cache memory down quickly.)
+ */
+static size_t
+overmem_purgesize(dns_slabheader_t *newheader) {
+	return 2 * (sizeof(ftcnode_t) + HEADERNODE(newheader)->keylen) +
+	       rdataset_size(newheader) + QP_SAFETY_MARGIN;
+}
+
+/*
+ * Evict least-recently-visited entries until 'requested' bytes have
+ * been reclaimed, taking ONE entry from each bucket's sieve in turn and
+ * making further passes until the target is met or a full pass reclaims
+ * nothing. Each bucket's sieve holds only its shard of the cache, so
+ * draining a single sieve to satisfy the whole deficit would wipe
+ * recent entries in that shard while stale entries elsewhere survive --
+ * random mass-eviction rather than an approximation of global LRU.
+ *
+ * The walk starts at the inserted node's own bucket and strides by the
+ * loop count, offset by the caller's tid: the node's randomly assigned
+ * bucket rotates the starting point from call to call for free, and the
+ * tid offset keeps concurrent evictors that happen to share a starting
+ * bucket in disjoint stride classes. Called with NO node lock held --
+ * one bucket is write-locked at a time. The callers purge BEFORE adding
+ * their new header, while it is still private, so the walk can neither
+ * find nor evict it and no protection check is needed.
+ */
 static void
-expire_lru_headers(ftcache_t *ftdb, dns_slabheader_t *newheader, uint32_t idx,
-		   size_t requested,
-		   isc_rwlocktype_t *nlocktypep DNS__DB_FLARG) {
+expire_lru(ftcache_t *ftdb, dns_slabheader_t *newheader,
+	   size_t requested DNS__DB_FLARG) {
 	size_t expired = 0;
+	size_t nloops = isc_loopmgr_nloops();
+	uint16_t tid = isc_tid();
+	uint16_t start = newheader->node->locknum;
+	bool progress = true;
 
-	do {
-		dns_slabheader_t *header = ISC_SIEVE_NEXT(
-			ftdb->buckets[idx].sieve, visited, lrulink);
-		if (header == NULL) {
-			return;
+	while (expired < requested && progress) {
+		progress = false;
+
+		for (size_t idx = tid;
+		     idx < ftdb->buckets_count && expired < requested;
+		     idx += nloops)
+		{
+			uint16_t locknum = (start + idx) % ftdb->buckets_count;
+			isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
+			isc_rwlock_t *nlock = &ftdb->buckets[locknum].lock;
+
+			NODE_WRLOCK(nlock, &nlocktype);
+			dns_slabheader_t *header = ISC_SIEVE_NEXT(
+				ftdb->buckets[locknum].sieve, visited, lrulink);
+			if (header != NULL) {
+				expired += expire_header(
+					ftdb, HEADERNODE(header), header,
+					&nlocktype DNS__DB_FLARG_PASS);
+				progress = true;
+			}
+			NODE_UNLOCK(nlock, &nlocktype);
 		}
-
-		/* newheader is protected from removal */
-		if (header == newheader || header->related == newheader) {
-			return;
-		}
-
-		ftcnode_t *node = HEADERNODE(header);
-
-		expired += expire_header(ftdb, node, header,
-					 nlocktypep DNS__DB_FLARG_PASS);
-	} while (expired < requested);
+	}
 }
 
 static void
-ftcache_miss(ftcache_t *ftdb, dns_slabheader_t *newheader,
-	     isc_rwlocktype_t *nlocktypep DNS__DB_FLARG) {
+ftcache_miss(ftcache_t *ftdb, dns_slabheader_t *newheader) {
 	uint32_t idx = HEADERNODE(newheader)->locknum;
-
-	if (isc_mem_isovermem(ftdb->common.mctx)) {
-		/*
-		 * Maximum estimated size of the data being added: The size
-		 * of the rdataset, plus a new QP database node and nodename,
-		 * and a possible additional NSEC node and nodename. Also add
-		 * a 12k margin for a possible QP-trie chunk allocation.
-		 * (It's okay to overestimate, we want to get cache memory
-		 * down quickly.)
-		 */
-
-		size_t purgesize = 2 * (sizeof(ftcnode_t) +
-					HEADERNODE(newheader)->keylen) +
-				   rdataset_size(newheader) + QP_SAFETY_MARGIN;
-
-		expire_lru_headers(ftdb, newheader, idx, purgesize,
-				   nlocktypep DNS__DB_FLARG_PASS);
-	}
 
 	ISC_SIEVE_INSERT(ftdb->buckets[idx].sieve, newheader, lrulink);
 }
@@ -708,7 +745,8 @@ delete_node_trie(ftcache_t *ftdb, struct cds_ft_iter *iter, ftcnode_t *node) {
 	if (node->havensec) {
 		ftc_key_t nseckey;
 
-		/* Same name, NSEC namespace: only the namespace byte differs. */
+		/* Same name, NSEC namespace: only the namespace byte differs.
+		 */
 		memcpy(nseckey, node->key, node->keylen);
 		nseckey[0] = DNS_DBNAMESPACE_NSEC;
 
@@ -871,7 +909,8 @@ ftcnode_release(ftcache_t *ftdb, ftcnode_t *node, isc_rwlocktype_t *nlocktypep,
 			    deadlink))
 		{
 			/* Queue was empty, trigger new cleaning */
-			isc_loop_t *loop = isc_loop_get(node->locknum);
+			isc_loop_t *loop = isc_loop_get(node->locknum %
+							isc_loopmgr_nloops());
 
 			ftcache_ref(ftdb);
 			isc_async_run(loop, cleanup_deadnodes_cb, ftdb);
@@ -2238,8 +2277,7 @@ cleanup_deadnodes(ftcache_t *ftdb, uint16_t locknum) {
 				true DNS__DB_FILELINE);
 		if (qpnode->deleted) {
 			isc_queue_node_init(&qpnode->deadlink);
-			isc_queue_enqueue_entry(&removenodes, qpnode,
-						deadlink);
+			isc_queue_enqueue_entry(&removenodes, qpnode, deadlink);
 		} else {
 			ftcnode_unref(qpnode);
 		}
@@ -2278,9 +2316,24 @@ cleanup_deadnodes(ftcache_t *ftdb, uint16_t locknum) {
 static void
 cleanup_deadnodes_cb(void *arg) {
 	ftcache_t *ftdb = arg;
-	uint16_t locknum = isc_tid();
+	uint16_t tid = isc_tid();
+	size_t nloops = isc_loopmgr_nloops();
 
-	cleanup_deadnodes(ftdb, locknum);
+	/*
+	 * This loop owns every bucket congruent to its tid modulo the
+	 * loop count; sweep them all. The empty-check keeps a sweep
+	 * triggered by one bucket from paying for the others: a queue
+	 * that becomes non-empty after the check is not lost, because
+	 * the enqueue that made it non-empty scheduled its own sweep.
+	 */
+	for (size_t locknum = tid; locknum < ftdb->buckets_count;
+	     locknum += nloops)
+	{
+		if (isc_queue_empty(&ftdb->buckets[locknum].deadnodes)) {
+			continue;
+		}
+		cleanup_deadnodes(ftdb, locknum);
+	}
 	ftcache_unref(ftdb);
 }
 /*
@@ -2443,11 +2496,11 @@ ftcache_findnode(dns_db_t *db, const dns_name_t *name, bool create,
 							    ftnode);
 			if (stale->deleted && !stale->removed) {
 				struct cds_ft_iter *iter = NULL;
-				RUNTIME_CHECK(cds_ft_iter_create(ftdb->ft,
-								 &iter) ==
-					      CDS_FT_STATUS_OK);
-				cds_ft_iter_set_cache_mode(iter,
-							   CDS_FT_ITER_UNCACHED);
+				RUNTIME_CHECK(
+					cds_ft_iter_create(ftdb->ft, &iter) ==
+					CDS_FT_STATUS_OK);
+				cds_ft_iter_set_cache_mode(
+					iter, CDS_FT_ITER_UNCACHED);
 
 				rcu_read_lock();
 				delete_node_trie(ftdb, iter, stale);
@@ -2982,7 +3035,7 @@ add(ftcache_t *ftdb, ftcnode_t *qpnode, dns_slabheader_t *newheader,
 		}
 	}
 
-	ftcache_miss(ftdb, newheader, &nlocktype DNS__DB_FLARG_PASS);
+	ftcache_miss(ftdb, newheader);
 
 	/*
 	 * We've added a proof that a rdtype doesn't exist.
@@ -3176,6 +3229,16 @@ ftcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 				 rdataset));
 	}
 
+	/*
+	 * The cache is over the memory limit: purge room for the new data
+	 * up front, before any lock is taken -- the new header is still
+	 * private here, so the eviction walk cannot find or evict it.
+	 */
+	if (isc_mem_isovermem(ftdb->common.mctx)) {
+		expire_lru(ftdb, newheader,
+			   overmem_purgesize(newheader) DNS__DB_FLARG_PASS);
+	}
+
 	nlock = &ftdb->buckets[qpnode->locknum].lock;
 
 	/*
@@ -3278,6 +3341,12 @@ ftcache_deleterdataset(dns_db_t *db, dns_dbnode_t *node,
 	atomic_init(&newheader->attributes, attributes);
 
 	nlock = &ftdb->buckets[qpnode->locknum].lock;
+	/* Purge room up front, while the new header is still private. */
+	if (isc_mem_isovermem(ftdb->common.mctx)) {
+		expire_lru(ftdb, newheader,
+			   overmem_purgesize(newheader) DNS__DB_FLARG_PASS);
+	}
+
 	NODE_WRLOCK(nlock, &nlocktype);
 	result = add(ftdb, qpnode, newheader, DNS_DBADD_FORCE, NULL, 0,
 		     nlocktype DNS__DB_FLARG_PASS);
@@ -3311,7 +3380,7 @@ dns__ftcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 	ftcache_t *ftdb = NULL;
 	isc_loop_t *loop = isc_loop();
 	int i;
-	size_t nloops = isc_loopmgr_nloops();
+	size_t buckets_count = isc_loopmgr_nloops() * FTC_BUCKETS_PER_LOOP;
 
 	/* This database implementation only supports cache semantics */
 	REQUIRE(type == dns_dbtype_cache);
@@ -3319,8 +3388,8 @@ dns__ftcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 	REQUIRE(argc == 0);
 	REQUIRE(argv == NULL);
 
-	ftdb = isc_mem_get(mctx,
-			   sizeof(*ftdb) + nloops * sizeof(ftdb->buckets[0]));
+	ftdb = isc_mem_get(
+		mctx, sizeof(*ftdb) + buckets_count * sizeof(ftdb->buckets[0]));
 	*ftdb = (ftcache_t){
 		.common.methods = &ftdb_cachemethods,
 		.common.origin = DNS_NAME_INITEMPTY,
@@ -3328,12 +3397,10 @@ dns__ftcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 		.common.attributes = DNS_DBATTR_CACHE,
 		.common.references = 1,
 		.references = 1,
-		.buckets_count = nloops,
+		.buckets_count = buckets_count,
 	};
 
 	isc_rwlock_init(&ftdb->lock);
-
-	ftdb->buckets_count = isc_loopmgr_nloops();
 
 	dns_rdatasetstats_create(mctx, &ftdb->rrsetstats);
 	for (i = 0; i < (int)ftdb->buckets_count; i++) {
@@ -3396,11 +3463,11 @@ dns__ftcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 		 * key from the leaf instead of rebuilding it from the trie
 		 * structure.
 		 */
-		RUNTIME_CHECK(cds_ft_group_attr_set_speculative_key_offset(
-				      attr, offsetof(ftcnode_t, key) -
-						    offsetof(ftcnode_t,
-							     ftnode)) ==
-			      CDS_FT_STATUS_OK);
+		RUNTIME_CHECK(
+			cds_ft_group_attr_set_speculative_key_offset(
+				attr, offsetof(ftcnode_t, key) -
+					      offsetof(ftcnode_t, ftnode)) ==
+			CDS_FT_STATUS_OK);
 		RUNTIME_CHECK(cds_ft_group_create(attr, &ftdb->ftgroup) ==
 			      CDS_FT_STATUS_OK);
 		cds_ft_group_attr_destroy(attr);
