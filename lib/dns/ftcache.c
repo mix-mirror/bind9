@@ -126,20 +126,42 @@ struct ftcnode {
 
 	ftcache_t *ftdb;
 
-	uint8_t		      : 0;
-	unsigned int nspace   : 2; /*%< range is 0..3 */
-	unsigned int havensec : 1;
-	bool deleted	      : 1;
-	uint8_t		      : 0;
+	unsigned int nspace : 2; /*%< range is 0..3; immutable */
+
+	/*
+	 * Set once the node's name also has an auxiliary node in the
+	 * NSEC namespace (see ftcache_addrdataset()); written under the
+	 * node lock, read lock-free.
+	 */
+	atomic_bool havensec;
+
+	/*
+	 * The node is empty, unreferenced and awaiting removal from the
+	 * trie. Set -- and undone, on a lost race -- only by the
+	 * deleter, cleanup_deadnodes() phase 1, under the node lock, in
+	 * a seq_cst handshake with the lock-free reference acquisition:
+	 * the acquirer publishes its reference first and checks
+	 * 'deleted' after, the deleter sets 'deleted' first and
+	 * re-checks 'erefs' after, so whatever the interleaving, at
+	 * least one side observes the other.
+	 */
+	atomic_bool deleted;
+
+	/*
+	 * The node is linked on its bucket's deadnodes queue. A node
+	 * must never be enqueued twice -- re-initialising 'deadlink'
+	 * while linked corrupts the queue -- so enqueueing is gated by
+	 * a test-and-set on this flag; the deleter clears it right
+	 * after taking the node off the queue.
+	 */
+	atomic_bool enqueued;
 
 	/*
 	 * True once the node has been removed from the trie. Protected by
 	 * the writer mutex, which serialises all structural removals; it
 	 * keeps the removal of a 'deleted' node exactly-once when a
 	 * findnode() displaces the node (see ftcache_findnode()) before
-	 * cleanup_deadnodes() gets to it. Deliberately not part of the
-	 * bitfield above: those bits are written under the NODE lock, and
-	 * sharing their storage unit would make the two locks race.
+	 * cleanup_deadnodes() gets to it.
 	 */
 	bool removed;
 
@@ -637,12 +659,11 @@ rdataset_size(dns_slabheader_t *header) {
 }
 
 static void
-flush_node(ftcache_t *ftdb, ftcnode_t *node, isc_rwlocktype_t *nlocktypep,
-	   dns_expire_t reason DNS__DB_FLARG);
+flush_node(ftcache_t *ftdb, ftcnode_t *node, dns_expire_t reason DNS__DB_FLARG);
 
 static size_t
-expire_header(ftcache_t *ftdb, ftcnode_t *node, dns_slabheader_t *header,
-	      isc_rwlocktype_t *nlocktypep DNS__DB_FLARG) {
+expire_header(ftcache_t *ftdb, ftcnode_t *node,
+	      dns_slabheader_t *header DNS__DB_FLARG) {
 	size_t expired = 0;
 
 	if (header->related != NULL) {
@@ -650,7 +671,7 @@ expire_header(ftcache_t *ftdb, ftcnode_t *node, dns_slabheader_t *header,
 	}
 	expired += header_delete(node, header);
 
-	flush_node(ftdb, node, nlocktypep, dns_expire_lru DNS__DB_FLARG_PASS);
+	flush_node(ftdb, node, dns_expire_lru DNS__DB_FLARG_PASS);
 
 	return expired;
 }
@@ -718,8 +739,7 @@ expire_lru(ftcache_t *ftdb, size_t requested DNS__DB_FLARG) {
 			NODE_WRLOCK(nlock, &nlocktype);
 			if (!DEAD(header)) {
 				expired += expire_header(
-					ftdb, node, header,
-					&nlocktype DNS__DB_FLARG_PASS);
+					ftdb, node, header DNS__DB_FLARG_PASS);
 			}
 			NODE_UNLOCK(nlock, &nlocktype);
 		}
@@ -817,7 +837,7 @@ static void
 delete_node_trie(ftcache_t *ftdb, struct cds_ft_iter *iter, ftcnode_t *node) {
 	enum cds_ft_status status;
 
-	INSIST(node->deleted);
+	INSIST(atomic_load(&node->deleted));
 	INSIST(!node->removed);
 
 	status = cds_ft_iter_set_key(iter, node->key, node->keylen);
@@ -834,7 +854,7 @@ delete_node_trie(ftcache_t *ftdb, struct cds_ft_iter *iter, ftcnode_t *node) {
 
 	call_rcu(&node->rcu_head, ftc_drop_tree_ref);
 
-	if (node->havensec) {
+	if (atomic_load(&node->havensec)) {
 		ftc_key_t nseckey;
 
 		/* Same name, NSEC namespace: only the namespace byte differs.
@@ -860,22 +880,22 @@ delete_node_trie(ftcache_t *ftdb, struct cds_ft_iter *iter, ftcnode_t *node) {
 }
 
 /*
- * The caller must specify its currect node and tree lock status.
- * It's okay for neither lock to be held if there are existing external
- * references to the node, but if this is the first external reference,
- * then the caller must be holding at least one lock.
+ * Increment the external references; if incrementing from zero, also
+ * increment the node use counter in the ftcache object.
  *
- * If incrementing erefs from zero, we also increment the node use counter
- * in the ftcache object.
+ * No lock is needed: the increment is a seq_cst RMW forming the
+ * acquirer's half of the handshake with the deleter (see the 'deleted'
+ * member and reactivate_node()), so it cannot reorder with the
+ * acquirer's subsequent 'deleted' check.
  *
  * This function is called from ftcnode_acquire(), so that internal
- * and external references are acquired at the same time, and from
- * ftcnode_release() when we only need to increase the internal references.
+ * and external references are acquired at the same time.
  */
 static void
-ftcnode_erefs_increment(ftcache_t *ftdb, ftcnode_t *node,
-			isc_rwlocktype_t nlocktype DNS__DB_FLARG) {
-	uint_fast32_t refs = isc_refcount_increment0(&node->erefs);
+ftcnode_erefs_increment(ftcache_t *ftdb, ftcnode_t *node DNS__DB_FLARG) {
+	uint_fast32_t refs = atomic_fetch_add(&node->erefs, 1);
+
+	INSIST(refs < UINT32_MAX);
 
 #if DNS_DB_NODETRACE
 	fprintf(stderr, "incr:node:%s:%s:%u:%p->erefs = %" PRIuFAST32 "\n",
@@ -886,23 +906,13 @@ ftcnode_erefs_increment(ftcache_t *ftdb, ftcnode_t *node,
 		return;
 	}
 
-	/*
-	 * this is the first external reference to the node.
-	 *
-	 * we need to hold the node to avoid incrementing the reference count
-	 * while also deleting the node. delete_node() is always protected by
-	 * both tree and node locks being write-locked.
-	 */
-	INSIST(nlocktype != isc_rwlocktype_none);
-
 	ftcache_ref(ftdb);
 }
 
 static void
-ftcnode_acquire(ftcache_t *ftdb, ftcnode_t *node,
-		isc_rwlocktype_t nlocktype DNS__DB_FLARG) {
+ftcnode_acquire(ftcache_t *ftdb, ftcnode_t *node DNS__DB_FLARG) {
 	ftcnode_ref(node);
-	ftcnode_erefs_increment(ftdb, node, nlocktype DNS__DB_FLARG_PASS);
+	ftcnode_erefs_increment(ftdb, node DNS__DB_FLARG_PASS);
 }
 
 /*
@@ -927,73 +937,49 @@ ftcnode_erefs_decrement(ftcache_t *ftdb, ftcnode_t *node DNS__DB_FLARG) {
 }
 
 /*
- * Caller must be holding a node lock, either read or write.
+ * A lock-free check whether the node's header list is empty. The
+ * writers mutate the list with the RCU-safe primitives, so observing
+ * the head's next pointer is safe from any context; the answer is
+ * advisory by nature -- a concurrent add or delete can change it
+ * immediately after.
+ */
+static bool
+ftcnode_empty(ftcnode_t *node) {
+	return rcu_dereference(node->headers.next) == &node->headers;
+}
+
+/*
+ * Decrement the external node reference counter (and possibly the node
+ * use counter); when the last reference is dropped on a node without
+ * headers, queue the node for cleanup, then decrement the internal
+ * reference counter as well.
  *
- * Note that the lock must be held even when node references are
- * atomically modified; in that case the decrement operation itself does not
- * have to be protected, but we must avoid a race condition where multiple
- * threads are decreasing the reference to zero simultaneously and at least
- * one of them is going to free the node.
- *
- * This calls dec_erefs() to decrement the external node reference counter,
- * (and possibly the node use counter), cleans up and deletes the node
- * if necessary, then decrements the internal reference counter as well.
+ * No lock is needed. The enqueue is gated by the atomic 'enqueued'
+ * test-and-set, so the node can be on its bucket's deadnodes queue at
+ * most once -- re-initialising the deadlink of a linked node would
+ * corrupt the queue; cleanup_deadnodes() phase 1 clears the flag when
+ * it takes the node off the queue. A node marked 'deleted' refuses the
+ * enqueue: it is already past its final cleanup.
  */
 static void
-ftcnode_release(ftcache_t *ftdb, ftcnode_t *node, isc_rwlocktype_t *nlocktypep,
-		bool reclaim DNS__DB_FLARG) {
-	REQUIRE(*nlocktypep != isc_rwlocktype_none);
-
+ftcnode_release(ftcache_t *ftdb, ftcnode_t *node DNS__DB_FLARG) {
 	if (!ftcnode_erefs_decrement(ftdb, node DNS__DB_FLARG_PASS)) {
 		goto unref;
 	}
 
 	/* Handle easy and typical case first. */
-	if (!cds_list_empty(&node->headers)) {
+	if (!ftcnode_empty(node)) {
 		goto unref;
 	}
 
-	if (*nlocktypep == isc_rwlocktype_read) {
-		/*
-		 * The decision to enqueue the node -- and the enqueue
-		 * itself, which re-initialises the node's deadlink -- must
-		 * be made under the node WRITE lock. Under the shared read
-		 * lock, another thread can reactivate the node in the window
-		 * after our decrement and run its own release to completion,
-		 * enqueueing the node first; our enqueue would then insert
-		 * it a second time and reset its deadlink while it is
-		 * already linked, corrupting the queue. So: raise erefs
-		 * again (but NOT references), force-upgrade the lock, and
-		 * re-check that nobody else revived the node meanwhile.
-		 */
-		isc_rwlock_t *nlock = &ftdb->buckets[node->locknum].lock;
-		ftcnode_erefs_increment(ftdb, node,
-					*nlocktypep DNS__DB_FLARG_PASS);
-		NODE_FORCEUPGRADE(nlock, nlocktypep);
-		if (!ftcnode_erefs_decrement(ftdb, node DNS__DB_FLARG_PASS)) {
-			goto unref;
-		}
-		if (!cds_list_empty(&node->headers)) {
-			goto unref;
-		}
+	if (atomic_load(&node->deleted)) {
+		/* Already being removed from the trie. */
+		goto unref;
 	}
 
-	if (reclaim) {
-		/*
-		 * Mark the node deleted under the NODE lock; this blocks any
-		 * new reactivate_node() reference. The structural cds_ft
-		 * removal happens afterwards under the writer mutex with no
-		 * node lock held (see cleanup_deadnodes()).
-		 */
-		node->deleted = true;
-	} else if (!node->deleted) {
-		/*
-		 * If we don't have the tree lock, we will add this node to a
-		 * linked list of nodes in this locking bucket which we will
-		 * free later.
-		 */
-
-		ftcnode_acquire(ftdb, node, *nlocktypep DNS__DB_FLARG_PASS);
+	if (!atomic_exchange(&node->enqueued, true)) {
+		/* The queue holds an external reference of its own. */
+		ftcnode_acquire(ftdb, node DNS__DB_FLARG_PASS);
 
 		isc_queue_node_init(&node->deadlink);
 		if (!isc_queue_enqueue_entry(
@@ -1008,7 +994,6 @@ ftcnode_release(ftcache_t *ftdb, ftcnode_t *node, isc_rwlocktype_t *nlocktypep,
 			isc_async_run(loop, cleanup_deadnodes_cb, ftdb);
 		}
 	}
-	/* else: already removed from the trie; reclaimed with its chunk */
 unref:
 	ftcnode_unref(node);
 }
@@ -1159,25 +1144,20 @@ header_delete_repointed(ftcnode_t *node, dns_slabheader_t *header) {
 	return header__delete(node, header, false);
 }
 
-/*
- * Caller must hold the node (write) lock.
- */
-
 static void
-flush_node(ftcache_t *ftdb, ftcnode_t *node, isc_rwlocktype_t *nlocktypep,
+flush_node(ftcache_t *ftdb, ftcnode_t *node,
 	   dns_expire_t reason DNS__DB_FLARG) {
 	if (isc_refcount_current(&node->erefs) != 0) {
 		return;
 	}
 
 	/*
-	 * If no one else is using the node, we can clean it up now.
-	 * We first need to gain a new reference to the node to meet a
-	 * requirement of ftcnode_release().
+	 * If no one else is using the node, we can clean it up now: a
+	 * transient acquire/release pair routes the node through the
+	 * release path's enqueue-for-cleanup decision.
 	 */
-
-	ftcnode_acquire(ftdb, node, *nlocktypep DNS__DB_FLARG_PASS);
-	ftcnode_release(ftdb, node, nlocktypep, false DNS__DB_FLARG_PASS);
+	ftcnode_acquire(ftdb, node DNS__DB_FLARG_PASS);
+	ftcnode_release(ftdb, node DNS__DB_FLARG_PASS);
 
 	if (ftdb->cachestats == NULL) {
 		return;
@@ -1221,8 +1201,7 @@ update_cachestats(ftcache_t *ftdb, isc_result_t result) {
 
 static bool
 bindrdataset(ftcache_t *ftdb, ftcnode_t *node, dns_slabheader_t *header,
-	     isc_stdtime_t now, isc_rwlocktype_t nlocktype,
-	     dns_rdataset_t *rdataset DNS__DB_FLARG) {
+	     isc_stdtime_t now, dns_rdataset_t *rdataset DNS__DB_FLARG) {
 	bool stale = STALE(header);
 
 	if (rdataset == NULL) {
@@ -1244,7 +1223,7 @@ bindrdataset(ftcache_t *ftdb, ftcnode_t *node, dns_slabheader_t *header,
 		return false;
 	}
 
-	ftcnode_acquire(ftdb, node, nlocktype DNS__DB_FLARG_PASS);
+	ftcnode_acquire(ftdb, node DNS__DB_FLARG_PASS);
 
 	INSIST(rdataset->methods == NULL); /* We must be disassociated. */
 
@@ -1351,16 +1330,16 @@ bindrdataset(ftcache_t *ftdb, ftcnode_t *node, dns_slabheader_t *header,
 static bool
 bindrdatasets(ftcache_t *ftdb, ftcnode_t *qpnode, dns_slabheader_t *found,
 	      dns_slabheader_t *foundsig, isc_stdtime_t now,
-	      isc_rwlocktype_t nlocktype, dns_rdataset_t *rdataset,
+	      dns_rdataset_t *rdataset,
 	      dns_rdataset_t *sigrdataset DNS__DB_FLARG) {
-	if (!bindrdataset(ftdb, qpnode, found, now, nlocktype,
+	if (!bindrdataset(ftdb, qpnode, found, now,
 			  rdataset DNS__DB_FLARG_PASS))
 	{
 		return false;
 	}
 	ftcache_hit(ftdb, found);
 	if (!NEGATIVE(found) && foundsig != NULL) {
-		if (!bindrdataset(ftdb, qpnode, foundsig, now, nlocktype,
+		if (!bindrdataset(ftdb, qpnode, foundsig, now,
 				  sigrdataset DNS__DB_FLARG_PASS))
 		{
 			if (rdataset != NULL &&
@@ -1383,9 +1362,8 @@ bindrdatasets(ftcache_t *ftdb, ftcnode_t *qpnode, dns_slabheader_t *found,
  */
 static void
 bindrdataset_writer(ftcache_t *ftdb, ftcnode_t *node, dns_slabheader_t *header,
-		    isc_stdtime_t now, isc_rwlocktype_t nlocktype,
-		    dns_rdataset_t *rdataset DNS__DB_FLARG) {
-	bool bound = bindrdataset(ftdb, node, header, now, nlocktype,
+		    isc_stdtime_t now, dns_rdataset_t *rdataset DNS__DB_FLARG) {
+	bool bound = bindrdataset(ftdb, node, header, now,
 				  rdataset DNS__DB_FLARG_PASS);
 	INSIST(bound);
 }
@@ -1429,8 +1407,8 @@ setup_delegation(ftc_search_t *search, dns_dbnode_t **nodep,
 		 */
 		bool bound = bindrdatasets(
 			search->ftdb, node, search->zonecut_header,
-			search->zonecut_sigheader, search->now, nlocktype,
-			rdataset, sigrdataset DNS__DB_FLARG_PASS);
+			search->zonecut_sigheader, search->now, rdataset,
+			sigrdataset DNS__DB_FLARG_PASS);
 		INSIST(bound);
 		NODE_UNLOCK(nlock, &nlocktype);
 	}
@@ -1669,8 +1647,7 @@ check_dname(ftcnode_t *node, void *arg DNS__DB_FLARG) {
 		if (foundsig != NULL && !dns_slabheader_tryref(foundsig)) {
 			foundsig = NULL;
 		}
-		ftcnode_acquire(search->ftdb, node,
-				nlocktype DNS__DB_FLARG_PASS);
+		ftcnode_acquire(search->ftdb, node DNS__DB_FLARG_PASS);
 		search->zonecut = node;
 		search->zonecut_header = found;
 		search->zonecut_sigheader = foundsig;
@@ -1759,15 +1736,14 @@ again:
 
 	if (found != NULL) {
 		if (!bindrdatasets(search->ftdb, node, found, foundsig,
-				   search->now, nlocktype, rdataset,
+				   search->now, rdataset,
 				   sigrdataset DNS__DB_FLARG_PASS))
 		{
 			/* Deleted concurrently; redo the walk. */
 			goto again;
 		}
 		if (nodep != NULL) {
-			ftcnode_acquire(search->ftdb, node,
-					nlocktype DNS__DB_FLARG_PASS);
+			ftcnode_acquire(search->ftdb, node DNS__DB_FLARG_PASS);
 			*nodep = (dns_dbnode_t *)node;
 		}
 		dns_name_copy(fname, foundname);
@@ -1826,14 +1802,7 @@ ftc_search_deinit(ftc_search_t *search DNS__DB_FLARG) {
 	ftcnode_t *node = search->zonecut;
 	INSIST(node != NULL);
 
-	isc_rwlock_t *nlock = &search->ftdb->buckets[node->locknum].lock;
-	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
-
-	NODE_RDLOCK(nlock, &nlocktype);
-
-	ftcnode_release(search->ftdb, node, &nlocktype,
-			false DNS__DB_FLARG_PASS);
-	NODE_UNLOCK(nlock, &nlocktype);
+	ftcnode_release(search->ftdb, node DNS__DB_FLARG_PASS);
 }
 
 static isc_result_t
@@ -2098,16 +2067,15 @@ again:
 		    nsecheader != NULL)
 		{
 			if (!bindrdatasets(search.ftdb, node, nsecheader,
-					   nsecsig, search.now, nlocktype,
-					   rdataset,
+					   nsecsig, search.now, rdataset,
 					   sigrdataset DNS__DB_FLARG_PASS))
 			{
 				/* Deleted concurrently; redo the walk. */
 				goto again;
 			}
 			if (nodep != NULL) {
-				ftcnode_acquire(search.ftdb, node,
-						nlocktype DNS__DB_FLARG_PASS);
+				ftcnode_acquire(search.ftdb,
+						node DNS__DB_FLARG_PASS);
 				*nodep = (dns_dbnode_t *)node;
 			}
 			result = DNS_R_COVERINGNSEC;
@@ -2168,7 +2136,7 @@ again:
 	    result == DNS_R_NCACHENXRRSET)
 	{
 		if (!bindrdatasets(search.ftdb, node, found, foundsig,
-				   search.now, nlocktype, rdataset,
+				   search.now, rdataset,
 				   sigrdataset DNS__DB_FLARG_PASS))
 		{
 			/* Deleted concurrently; redo the walk. */
@@ -2177,8 +2145,7 @@ again:
 	}
 
 	if (nodep != NULL) {
-		ftcnode_acquire(search.ftdb, node,
-				nlocktype DNS__DB_FLARG_PASS);
+		ftcnode_acquire(search.ftdb, node DNS__DB_FLARG_PASS);
 		*nodep = (dns_dbnode_t *)node;
 	}
 
@@ -2259,8 +2226,7 @@ again:
 
 	if (found != NULL) {
 		if (!bindrdatasets(ftdb, qpnode, found, foundsig, search.now,
-				   nlocktype, rdataset,
-				   sigrdataset DNS__DB_FLARG_PASS))
+				   rdataset, sigrdataset DNS__DB_FLARG_PASS))
 		{
 			/* Deleted concurrently; redo the walk. */
 			goto again;
@@ -2362,7 +2328,7 @@ ftcnode_expiredata(dns_dbnode_t *node, void *data) {
 
 	isc_rwlock_t *nlock = &ftdb->buckets[qpnode->locknum].lock;
 	NODE_WRLOCK(nlock, &nlocktype);
-	(void)expire_header(ftdb, qpnode, header, &nlocktype DNS__DB_FILELINE);
+	(void)expire_header(ftdb, qpnode, header DNS__DB_FILELINE);
 	NODE_UNLOCK(nlock, &nlocktype);
 }
 
@@ -2523,30 +2489,54 @@ cleanup_deadnodes(ftcache_t *ftdb, uint16_t locknum) {
 	isc_queue_init(&removenodes);
 
 	/*
-	 * Phase 1: under the NODE lock, drop the queue's reference on each
-	 * dead node and mark the still-empty, now-unreferenced ones deleted.
-	 * No trie mutation here, so the writer mutex is never held while the
-	 * node lock is.
+	 * Phase 1: under the NODE lock, take each dead node off the
+	 * queue, drop the queue's reference and mark the still-empty,
+	 * now-unreferenced ones deleted. No trie mutation here, so the
+	 * writer mutex is never held while the node lock is.
 	 *
-	 * The deleted nodes move to a private queue for phase 2, pinned with
-	 * a fresh reference. The spliced list itself must not be walked
-	 * again after the node lock is dropped: a node phase 1 did NOT
-	 * delete can be reactivated and released once more, and that
-	 * re-enqueue re-initialises its deadlink -- severing the spliced
-	 * chain in place, mid-iteration. Nodes marked deleted are immune:
-	 * they can be neither reactivated nor re-enqueued. The pin, taken
-	 * before the release, keeps a node alive across phase 2 even if a
-	 * concurrent findnode() displaces it from the trie and the trie's
-	 * reference is dropped first.
+	 * The marking is the deleter's half of the handshake with the
+	 * lock-free reference acquisition (see reactivate_node()): set
+	 * 'deleted' (seq_cst), then re-check 'erefs'. A racing acquirer
+	 * publishes its reference before checking 'deleted', so either
+	 * we observe no reference and the acquirer backs off, or we
+	 * observe its reference and undo the deletion. Both the set and
+	 * the undo happen inside this locked section, which is what
+	 * makes a 'deleted' value observed under the node lock final
+	 * (see the displacement in ftcache_findnode()).
+	 *
+	 * The deleted nodes move to a private queue for phase 2, pinned
+	 * with a fresh reference. A surviving node can be re-enqueued
+	 * the moment its 'enqueued' flag is cleared, re-initialising
+	 * its deadlink; the iteration is immune because it captures the
+	 * next pointer before the body runs, and the node itself cannot
+	 * be re-enqueued before the queue's reference is dropped (no
+	 * release can reach zero while it is held). Nodes marked
+	 * deleted can be neither reactivated nor re-enqueued. The pin,
+	 * taken first, keeps a node alive across phase 2 even if a
+	 * concurrent findnode() displaces it from the trie and the
+	 * trie's reference is dropped first.
 	 */
 	NODE_WRLOCK(nlock, &nlocktype);
 	isc_queue_splice(&deadnodes, &ftdb->buckets[locknum].deadnodes);
 
 	isc_queue_for_each_entry_safe(&deadnodes, qpnode, qpnext, deadlink) {
 		ftcnode_ref(qpnode);
-		ftcnode_release(ftdb, qpnode, &nlocktype,
-				true DNS__DB_FILELINE);
-		if (qpnode->deleted) {
+
+		/* Off the queue now; allow future re-enqueueing. */
+		atomic_store(&qpnode->enqueued, false);
+
+		/* Drop the queue's external reference. */
+		if (ftcnode_erefs_decrement(ftdb, qpnode DNS__DB_FILELINE) &&
+		    ftcnode_empty(qpnode))
+		{
+			atomic_store(&qpnode->deleted, true);
+			if (atomic_load(&qpnode->erefs) > 0) {
+				/* Lost the race with an acquirer; undo. */
+				atomic_store(&qpnode->deleted, false);
+			}
+		}
+
+		if (atomic_load(&qpnode->deleted)) {
 			isc_queue_node_init(&qpnode->deadlink);
 			isc_queue_enqueue_entry(&removenodes, qpnode, deadlink);
 		} else {
@@ -2618,19 +2608,30 @@ cleanup_deadnodes_cb(void *arg) {
  */
 static isc_result_t
 reactivate_node(ftcache_t *ftdb, ftcnode_t *node DNS__DB_FLARG) {
-	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
-	isc_rwlock_t *nlock = &ftdb->buckets[node->locknum].lock;
-	isc_result_t result = ISC_R_SUCCESS;
-
-	NODE_RDLOCK(nlock, &nlocktype);
-	if (!node->deleted) {
-		ftcnode_acquire(ftdb, node, nlocktype DNS__DB_FLARG_PASS);
-	} else {
-		result = ISC_R_NOTFOUND;
+	/*
+	 * A lock-free handshake with the deleter (cleanup_deadnodes()
+	 * phase 1): publish our reference FIRST (a seq_cst RMW), then
+	 * check 'deleted'. The deleter sets 'deleted' first and
+	 * re-checks 'erefs' after, so whatever the interleaving, at
+	 * least one side observes the other: either we see 'deleted'
+	 * and back off, or the deleter sees our reference and undoes
+	 * the deletion.
+	 *
+	 * The back-off runs through the full release path: by the time
+	 * it drops the reference, the deleter may have undone the
+	 * deletion, in which case the empty node is re-queued for
+	 * cleanup. When both sides back off in exactly the wrong
+	 * order, an empty unqueued node can linger in the trie; it is
+	 * reclaimed the next time anything touches it (or displaced by
+	 * ftcache_findnode(), or at teardown).
+	 */
+	ftcnode_acquire(ftdb, node DNS__DB_FLARG_PASS);
+	if (atomic_load(&node->deleted)) {
+		ftcnode_release(ftdb, node DNS__DB_FLARG_PASS);
+		return ISC_R_NOTFOUND;
 	}
-	NODE_UNLOCK(nlock, &nlocktype);
 
-	return result;
+	return ISC_R_SUCCESS;
 }
 
 static ftcnode_t *
@@ -2765,7 +2766,25 @@ ftcache_findnode(dns_db_t *db, const dns_name_t *name, bool create,
 			 */
 			ftcnode_t *stale = caa_container_of(found, ftcnode_t,
 							    ftnode);
-			if (stale->deleted && !stale->removed) {
+			/*
+			 * Read 'deleted' under the stale node's bucket
+			 * lock: the deleter sets it and can undo it
+			 * (having lost the race with an acquirer)
+			 * within one locked section, so only a value
+			 * observed under the lock is final. Lock order
+			 * writer mutex -> node lock is safe: node-lock
+			 * holders never take the writer mutex nor wait
+			 * for a grace period.
+			 */
+			bool stale_deleted;
+			isc_rwlocktype_t slocktype = isc_rwlocktype_none;
+			isc_rwlock_t *slock =
+				&ftdb->buckets[stale->locknum].lock;
+			NODE_RDLOCK(slock, &slocktype);
+			stale_deleted = atomic_load(&stale->deleted);
+			NODE_UNLOCK(slock, &slocktype);
+
+			if (stale_deleted && !stale->removed) {
 				struct cds_ft_iter *iter = NULL;
 				RUNTIME_CHECK(
 					cds_ft_iter_create(ftdb->ft, &iter) ==
@@ -2868,7 +2887,7 @@ ftcache_allrdatasets(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 		.rdatasets = ISC_LIST_INITIALIZER,
 	};
 
-	ftcnode_acquire(ftdb, qpnode, isc_rwlocktype_none DNS__DB_FLARG_PASS);
+	ftcnode_acquire(ftdb, qpnode DNS__DB_FLARG_PASS);
 
 	/* See ftcache_findrdataset() about the RCU read-side section. */
 	rcu_read_lock();
@@ -2883,7 +2902,7 @@ ftcache_allrdatasets(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 			dns_rdataset_init(rdataset);
 
 			if (!bindrdataset(ftdb, qpnode, header,
-					  iterator->common.now, nlocktype,
+					  iterator->common.now,
 					  rdataset DNS__DB_FLARG_PASS))
 			{
 				/* Deleted concurrently; skip it. */
@@ -2925,7 +2944,7 @@ ftcnode_attachnode(dns_dbnode_t *source, dns_dbnode_t **targetp DNS__DB_FLARG) {
 	ftcnode_t *node = (ftcnode_t *)source;
 	ftcache_t *ftdb = (ftcache_t *)node->ftdb;
 
-	ftcnode_acquire(ftdb, node, isc_rwlocktype_none DNS__DB_FLARG_PASS);
+	ftcnode_acquire(ftdb, node DNS__DB_FLARG_PASS);
 
 	*targetp = source;
 }
@@ -2933,43 +2952,34 @@ ftcnode_attachnode(dns_dbnode_t *source, dns_dbnode_t **targetp DNS__DB_FLARG) {
 static void
 ftcnode_detachnode(dns_dbnode_t **nodep DNS__DB_FLARG) {
 	ftcnode_t *node = NULL;
-	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
-	isc_rwlock_t *nlock = NULL;
 
 	REQUIRE(nodep != NULL && *nodep != NULL);
 
 	node = (ftcnode_t *)(*nodep);
 	ftcache_t *ftdb = (ftcache_t *)node->ftdb;
 	*nodep = NULL;
-	nlock = &ftdb->buckets[node->locknum].lock;
 
 	REQUIRE(VALID_FTDB(ftdb));
 
 	/*
-	 * We can't destroy ftcache while holding a nodelock, so we need to
-	 * reference it before acquiring the lock and release it afterward.
-	 * Additionally, we must ensure that we don't destroy the database while
-	 * the NODE_LOCK is locked.
+	 * The database must not be destroyed from under the release, so
+	 * hold a reference across it.
 	 *
-	 * No RCU read-side is needed here: the caller still holds a reference,
-	 * so the node cannot be reclaimed, and ftcnode_release() touches only
-	 * node-lock-protected state and the wait-free deadnodes queue -- it
-	 * performs no cds_ft operation.
+	 * No RCU read-side is needed here: the caller still holds a
+	 * reference, so the node cannot be reclaimed, and
+	 * ftcnode_release() touches only atomic node state and the
+	 * wait-free deadnodes queue -- it performs no cds_ft operation.
 	 */
 	ftcache_ref(ftdb);
-
-	NODE_RDLOCK(nlock, &nlocktype);
-	ftcnode_release(ftdb, node, &nlocktype, false DNS__DB_FLARG_PASS);
-	NODE_UNLOCK(nlock, &nlocktype);
-
+	ftcnode_release(ftdb, node DNS__DB_FLARG_PASS);
 	ftcache_detach(&ftdb);
 }
 
 static isc_result_t
 check_ncache_block(ftcache_t *ftdb, ftcnode_t *qpnode, dns_slabheader_t *header,
 		   dns_slabheader_t *newheader, dns_trust_t trust,
-		   dns_rdataset_t *addedrdataset, isc_stdtime_t now,
-		   isc_rwlocktype_t nlocktype DNS__DB_FLARG) {
+		   dns_rdataset_t *addedrdataset,
+		   isc_stdtime_t now DNS__DB_FLARG) {
 	bool block = false;
 
 	/*
@@ -3000,7 +3010,6 @@ check_ncache_block(ftcache_t *ftdb, ftcnode_t *qpnode, dns_slabheader_t *header,
 		} else {
 			ftcache_hit(ftdb, header);
 			bindrdataset_writer(ftdb, qpnode, header, now,
-					    nlocktype,
 					    addedrdataset DNS__DB_FLARG_PASS);
 			return DNS_R_UNCHANGED;
 		}
@@ -3010,8 +3019,8 @@ check_ncache_block(ftcache_t *ftdb, ftcnode_t *qpnode, dns_slabheader_t *header,
 
 static isc_result_t
 add(ftcache_t *ftdb, ftcnode_t *qpnode, dns_slabheader_t *newheader,
-    unsigned int options, dns_rdataset_t *addedrdataset, isc_stdtime_t now,
-    isc_rwlocktype_t nlocktype DNS__DB_FLARG) {
+    unsigned int options, dns_rdataset_t *addedrdataset,
+    isc_stdtime_t now DNS__DB_FLARG) {
 	dns_slabheader_t *prioheader = NULL, *evictheader = NULL;
 	dns_slabheader_t *oldheader = NULL, *related = NULL;
 	dns_trust_t trust;
@@ -3057,7 +3066,7 @@ add(ftcache_t *ftdb, ftcnode_t *qpnode, dns_slabheader_t *newheader,
 			if (header->trust >= dns_trust_secure) {
 				ftcache_hit(ftdb, header);
 				bindrdataset_writer(
-					ftdb, qpnode, header, now, nlocktype,
+					ftdb, qpnode, header, now,
 					addedrdataset DNS__DB_FLARG_PASS);
 				return DNS_R_UNCHANGED;
 			}
@@ -3104,7 +3113,7 @@ add(ftcache_t *ftdb, ftcnode_t *qpnode, dns_slabheader_t *newheader,
 			 */
 			isc_result_t result = check_ncache_block(
 				ftdb, qpnode, header, newheader, trust,
-				addedrdataset, now, nlocktype);
+				addedrdataset, now);
 			if (result == DNS_R_UNCHANGED) {
 				return result;
 			}
@@ -3174,7 +3183,6 @@ add(ftcache_t *ftdb, ftcnode_t *qpnode, dns_slabheader_t *newheader,
 		{
 			ftcache_hit(ftdb, oldheader);
 			bindrdataset_writer(ftdb, qpnode, oldheader, now,
-					    nlocktype,
 					    addedrdataset DNS__DB_FLARG_PASS);
 			if (ACTIVE(oldheader, now) &&
 			    (options & DNS_DBADD_EQUALOK) != 0 &&
@@ -3231,7 +3239,6 @@ add(ftcache_t *ftdb, ftcnode_t *qpnode, dns_slabheader_t *newheader,
 
 			ftcache_hit(ftdb, oldheader);
 			bindrdataset_writer(ftdb, qpnode, oldheader, now,
-					    nlocktype,
 					    addedrdataset DNS__DB_FLARG_PASS);
 			if ((options & DNS_DBADD_EQUALOK) != 0) {
 				/*
@@ -3292,7 +3299,6 @@ add(ftcache_t *ftdb, ftcnode_t *qpnode, dns_slabheader_t *newheader,
 
 			ftcache_hit(ftdb, oldheader);
 			bindrdataset_writer(ftdb, qpnode, oldheader, now,
-					    nlocktype,
 					    addedrdataset DNS__DB_FLARG_PASS);
 			if ((options & DNS_DBADD_EQUALOK) != 0) {
 				/*
@@ -3359,7 +3365,7 @@ add(ftcache_t *ftdb, ftcnode_t *qpnode, dns_slabheader_t *newheader,
 		cds_list_add_rcu(&newheader->headers_link, &qpnode->headers);
 	}
 
-	bindrdataset_writer(ftdb, qpnode, newheader, now, nlocktype,
+	bindrdataset_writer(ftdb, qpnode, newheader, now,
 			    addedrdataset DNS__DB_FLARG_PASS);
 
 	if (oldheader == NULL && overmaxtype(ftdb, ntypes)) {
@@ -3593,9 +3599,7 @@ ftcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	 * concurrent update races us to the same NSEC node.
 	 */
 	if (rdataset->type == dns_rdatatype_nsec) {
-		NODE_RDLOCK(nlock, &nlocktype);
-		newnsec = !qpnode->havensec;
-		NODE_UNLOCK(nlock, &nlocktype);
+		newnsec = !atomic_load(&qpnode->havensec);
 	}
 
 	if (newnsec) {
@@ -3623,11 +3627,11 @@ ftcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	NODE_WRLOCK(nlock, &nlocktype);
 
 	if (newnsec) {
-		qpnode->havensec = true;
+		atomic_store(&qpnode->havensec, true);
 	}
 
-	result = add(ftdb, qpnode, newheader, options, addedrdataset, now,
-		     nlocktype DNS__DB_FLARG_PASS);
+	result = add(ftdb, qpnode, newheader, options, addedrdataset,
+		     now DNS__DB_FLARG_PASS);
 
 	if (result == ISC_R_SUCCESS) {
 		DNS_SLABHEADER_SETATTR(newheader, DNS_SLABHEADERATTR_STATCOUNT);
@@ -3691,8 +3695,8 @@ ftcache_deleterdataset(dns_db_t *db, dns_dbnode_t *node,
 	}
 
 	NODE_WRLOCK(nlock, &nlocktype);
-	result = add(ftdb, qpnode, newheader, DNS_DBADD_FORCE, NULL, 0,
-		     nlocktype DNS__DB_FLARG_PASS);
+	result = add(ftdb, qpnode, newheader, DNS_DBADD_FORCE, NULL,
+		     0 DNS__DB_FLARG_PASS);
 	if (result != ISC_R_SUCCESS) {
 		dns_slabheader_detach(&newheader);
 	}
@@ -3918,31 +3922,19 @@ reference_iter_node(ftc_dbit_t *ftdbiter DNS__DB_FLARG) {
 		return;
 	}
 
-	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
-	isc_rwlock_t *nlock = &ftdb->buckets[node->locknum].lock;
-
-	NODE_RDLOCK(nlock, &nlocktype);
-
-	ftcnode_acquire(ftdb, node, nlocktype DNS__DB_FLARG_PASS);
-	NODE_UNLOCK(nlock, &nlocktype);
+	ftcnode_acquire(ftdb, node DNS__DB_FLARG_PASS);
 }
 
 static void
 dereference_iter_node(ftc_dbit_t *ftdbiter DNS__DB_FLARG) {
 	ftcache_t *ftdb = (ftcache_t *)ftdbiter->common.db;
 	ftcnode_t *node = ftdbiter->node;
-	isc_rwlock_t *nlock = NULL;
-	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 
 	if (node == NULL) {
 		return;
 	}
 
-	nlock = &ftdb->buckets[node->locknum].lock;
-	NODE_RDLOCK(nlock, &nlocktype);
-
-	ftcnode_release(ftdb, node, &nlocktype, false DNS__DB_FLARG_PASS);
-	NODE_UNLOCK(nlock, &nlocktype);
+	ftcnode_release(ftdb, node DNS__DB_FLARG_PASS);
 
 	ftdbiter->node = NULL;
 }
@@ -4182,7 +4174,7 @@ dbiterator_current(dns_dbiterator_t *iterator, dns_dbnode_t **nodep,
 		ftc_name_fromkey(name, node->key, node->keylen);
 	}
 
-	ftcnode_acquire(ftdb, node, isc_rwlocktype_none DNS__DB_FLARG_PASS);
+	ftcnode_acquire(ftdb, node DNS__DB_FLARG_PASS);
 
 	*nodep = (dns_dbnode_t *)ftdbiter->node;
 	return ISC_R_SUCCESS;
