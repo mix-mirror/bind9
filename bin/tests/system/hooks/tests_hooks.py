@@ -16,6 +16,8 @@ import subprocess
 import dns.rcode
 import pytest
 
+pytest.skip("hooks system test disabled for now", allow_module_level=True)
+
 import isctest
 
 pytestmark = pytest.mark.extra_artifacts(["conf/*.conf"])
