@@ -81,6 +81,14 @@
 #define KEEPSTALE(qpdb) ((qpdb)->common.serve_stale_ttl > 0)
 
 /*%
+ * Number of node-lock buckets per event loop.  The bucket pool is kept
+ * much larger than the number of threads so that at most O(nthreads) of
+ * the locks can be contended at any moment and two hot names rarely
+ * share a lock.
+ */
+#define QPCACHE_BUCKETS_PER_LOOP 16
+
+/*%
  * Note that "impmagic" is not the first four bytes of the struct, so
  * ISC_MAGIC_VALID cannot be used.
  */
@@ -147,9 +155,10 @@ struct qpcnode {
 };
 
 /*%
- * One bucket structure will be created for each loop, and
- * nodes in the database will evenly distributed among buckets
- * to reduce contention between threads.
+ * QPCACHE_BUCKETS_PER_LOOP bucket structures will be created for each
+ * loop, and nodes in the database will be evenly distributed among the
+ * buckets to reduce contention between threads.  Each bucket's deadnode
+ * cleanup is always scheduled on the same loop (locknum % nloops).
  */
 typedef struct qpcache_bucket {
 	union {
@@ -443,56 +452,82 @@ expire_header(qpcache_t *qpdb, qpcnode_t *node, dns_slabheader_t *header,
 	return expired;
 }
 
-static void
-expire_lru_headers(qpcache_t *qpdb, dns_slabheader_t *newheader, uint32_t idx,
-		   size_t requested, isc_rwlocktype_t *nlocktypep,
-		   isc_rwlocktype_t *tlocktypep DNS__DB_FLARG) {
+static size_t
+expire_lru_header(qpcache_t *qpdb, dns_slabheader_t *newheader, uint32_t idx,
+		  isc_rwlocktype_t *tlocktypep DNS__DB_FLARG) {
+	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
+	isc_rwlock_t *nlock = &qpdb->buckets[idx].lock;
 	size_t expired = 0;
 
-	do {
-		dns_slabheader_t *header = ISC_SIEVE_NEXT(
-			qpdb->buckets[idx].sieve, visited, lrulink);
-		if (header == NULL) {
-			return;
+	NODE_WRLOCK(nlock, &nlocktype);
+
+	dns_slabheader_t *header = ISC_SIEVE_NEXT(qpdb->buckets[idx].sieve,
+						  visited, lrulink);
+
+	/* newheader is protected from removal */
+	if (header != NULL && header != newheader &&
+	    header->related != newheader)
+	{
+		expired = expire_header(qpdb, HEADERNODE(header), header,
+					&nlocktype,
+					tlocktypep DNS__DB_FLARG_PASS);
+	}
+
+	NODE_UNLOCK(nlock, &nlocktype);
+
+	return expired;
+}
+
+/*%
+ * Evict data from the cache to make room for the data being added.  This
+ * must be called without any node lock held: it visits all the buckets
+ * in turn (starting at a random one), taking one bucket lock at a time
+ * and evicting a single header per visit, until enough memory has been
+ * purged or there is nothing left to evict.  Evicting one header at a
+ * time keeps the eviction pressure spread evenly over the per-bucket
+ * SIEVEs, each of which only holds a small share of the cache.
+ */
+static void
+overmem_purge(qpcache_t *qpdb, dns_slabheader_t *newheader,
+	      isc_rwlocktype_t *tlocktypep DNS__DB_FLARG) {
+	/*
+	 * Maximum estimated size of the data being added: The size
+	 * of the rdataset, plus a new QP database node and nodename,
+	 * and a possible additional NSEC node and nodename. Also add
+	 * a 12k margin for a possible QP-trie chunk allocation.
+	 * (It's okay to overestimate, we want to get cache memory
+	 * down quickly.)
+	 */
+	size_t purgesize = 2 * (sizeof(qpcnode_t) +
+				dns_name_size(&HEADERNODE(newheader)->name)) +
+			   rdataset_size(newheader) + QP_SAFETY_MARGIN;
+	size_t purged = 0;
+
+	uint32_t start = isc_random_uniform(qpdb->buckets_count);
+	bool progress = true;
+
+	while (purged < purgesize && progress) {
+		progress = false;
+
+		for (uint32_t i = 0;
+		     i < qpdb->buckets_count && purged < purgesize; i++)
+		{
+			uint32_t bucket = (start + i) % qpdb->buckets_count;
+
+			size_t expired = expire_lru_header(
+				qpdb, newheader, bucket,
+				tlocktypep DNS__DB_FLARG_PASS);
+			if (expired > 0) {
+				progress = true;
+				purged += expired;
+			}
 		}
-
-		/* newheader is protected from removal */
-		if (header == newheader || header->related == newheader) {
-			return;
-		}
-
-		qpcnode_t *node = HEADERNODE(header);
-
-		expired += expire_header(qpdb, node, header, nlocktypep,
-					 tlocktypep DNS__DB_FLARG_PASS);
-
-	} while (expired < requested);
+	}
 }
 
 static void
-qpcache_miss(qpcache_t *qpdb, dns_slabheader_t *newheader,
-	     isc_rwlocktype_t *nlocktypep,
-	     isc_rwlocktype_t *tlocktypep DNS__DB_FLARG) {
+qpcache_miss(qpcache_t *qpdb, dns_slabheader_t *newheader) {
 	uint32_t idx = HEADERNODE(newheader)->locknum;
-
-	if (isc_mem_isovermem(qpdb->common.mctx)) {
-		/*
-		 * Maximum estimated size of the data being added: The size
-		 * of the rdataset, plus a new QP database node and nodename,
-		 * and a possible additional NSEC node and nodename. Also add
-		 * a 12k margin for a possible QP-trie chunk allocation.
-		 * (It's okay to overestimate, we want to get cache memory
-		 * down quickly.)
-		 */
-
-		size_t purgesize =
-			2 * (sizeof(qpcnode_t) +
-			     dns_name_size(&HEADERNODE(newheader)->name)) +
-			rdataset_size(newheader) + QP_SAFETY_MARGIN;
-
-		expire_lru_headers(qpdb, newheader, idx, purgesize, nlocktypep,
-				   tlocktypep DNS__DB_FLARG_PASS);
-	}
 
 	ISC_SIEVE_INSERT(qpdb->buckets[idx].sieve, newheader, lrulink);
 }
@@ -706,7 +741,8 @@ qpcnode_release(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t *nlocktypep,
 			    deadlink))
 		{
 			/* Queue was empty, trigger new cleaning */
-			isc_loop_t *loop = isc_loop_get(node->locknum);
+			isc_loop_t *loop = isc_loop_get(node->locknum %
+							isc_loopmgr_nloops());
 
 			qpcache_ref(qpdb);
 			isc_async_run(loop, cleanup_deadnodes_cb, qpdb);
@@ -1974,12 +2010,28 @@ cleanup_deadnodes(qpcache_t *qpdb, uint16_t locknum) {
 	TREE_UNLOCK(&qpdb->tree_lock, &tlocktype);
 }
 
+/*%
+ * Clean up the deadnodes queues of all the buckets belonging to this
+ * loop, i.e. the buckets whose locknum is congruent to the loop's tid
+ * modulo the number of loops.  A separate cleaning is scheduled every
+ * time a queue goes from empty to non-empty, so a queue that becomes
+ * non-empty after the isc_queue_empty() check below is never orphaned;
+ * the check merely keeps a sweep triggered by one bucket from taking
+ * the locks for the loop's other, empty buckets.
+ */
 static void
 cleanup_deadnodes_cb(void *arg) {
 	qpcache_t *qpdb = arg;
-	uint16_t locknum = isc_tid();
+	size_t nloops = isc_loopmgr_nloops();
 
-	cleanup_deadnodes(qpdb, locknum);
+	for (size_t locknum = isc_tid(); locknum < qpdb->buckets_count;
+	     locknum += nloops)
+	{
+		if (isc_queue_empty(&qpdb->buckets[locknum].deadnodes)) {
+			continue;
+		}
+		cleanup_deadnodes(qpdb, locknum);
+	}
 	qpcache_unref(qpdb);
 }
 /*
@@ -2012,6 +2064,14 @@ new_qpcnode(qpcache_t *qpdb, const dns_name_t *name, dns_namespace_t nspace) {
 		.name = DNS_NAME_INITEMPTY,
 		.nspace = nspace,
 		.references = ISC_REFCOUNT_INITIALIZER(1),
+		/*
+		 * The bucket assignment is random: this keeps the nodes
+		 * evenly distributed among the buckets whatever the name
+		 * distribution looks like, and, unlike a bucket derived
+		 * from the name, it does not let an attacker who controls
+		 * the query names aim many hot names at a single bucket
+		 * lock.
+		 */
 		.locknum = isc_random_uniform(qpdb->buckets_count),
 	};
 
@@ -2602,8 +2662,7 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 		}
 	}
 
-	qpcache_miss(qpdb, newheader, &nlocktype,
-		     &tlocktype DNS__DB_FLARG_PASS);
+	qpcache_miss(qpdb, newheader);
 
 	/*
 	 * We've added a proof that a rdtype doesn't exist.
@@ -2775,6 +2834,15 @@ qpcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	nlock = &qpdb->buckets[qpnode->locknum].lock;
 
 	/*
+	 * Reclaim space for the data being added while no node lock is
+	 * held yet, so the eviction is free to walk the other buckets
+	 * when the new header's own bucket cannot satisfy the request.
+	 */
+	if (isc_mem_isovermem(qpdb->common.mctx)) {
+		overmem_purge(qpdb, newheader, &tlocktype DNS__DB_FLARG_PASS);
+	}
+
+	/*
 	 * Add to the auxiliary NSEC tree if we're adding an NSEC record.
 	 */
 	if (rdataset->type == dns_rdatatype_nsec) {
@@ -2906,8 +2974,7 @@ dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 		    void *driverarg ISC_ATTR_UNUSED, dns_db_t **dbp) {
 	qpcache_t *qpdb = NULL;
 	isc_loop_t *loop = isc_loop();
-	int i;
-	size_t nloops = isc_loopmgr_nloops();
+	size_t buckets_count = isc_loopmgr_nloops() * QPCACHE_BUCKETS_PER_LOOP;
 
 	/* This database implementation only supports cache semantics */
 	REQUIRE(type == dns_dbtype_cache);
@@ -2915,8 +2982,11 @@ dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 	REQUIRE(argc == 0);
 	REQUIRE(argv == NULL);
 
-	qpdb = isc_mem_get(mctx,
-			   sizeof(*qpdb) + nloops * sizeof(qpdb->buckets[0]));
+	/* node->locknum must be able to address all the buckets */
+	INSIST(buckets_count <= UINT16_MAX);
+
+	qpdb = isc_mem_get(
+		mctx, sizeof(*qpdb) + buckets_count * sizeof(qpdb->buckets[0]));
 	*qpdb = (qpcache_t){
 		.common.methods = &qpdb_cachemethods,
 		.common.origin = DNS_NAME_INITEMPTY,
@@ -2924,16 +2994,14 @@ dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 		.common.attributes = DNS_DBATTR_CACHE,
 		.common.references = 1,
 		.references = 1,
-		.buckets_count = nloops,
+		.buckets_count = buckets_count,
 	};
 
 	isc_rwlock_init(&qpdb->lock);
 	TREE_INITLOCK(&qpdb->tree_lock);
 
-	qpdb->buckets_count = isc_loopmgr_nloops();
-
 	dns_rdatasetstats_create(mctx, &qpdb->rrsetstats);
-	for (i = 0; i < (int)qpdb->buckets_count; i++) {
+	for (size_t i = 0; i < qpdb->buckets_count; i++) {
 		ISC_SIEVE_INIT(qpdb->buckets[i].sieve);
 
 		isc_queue_init(&qpdb->buckets[i].deadnodes);
