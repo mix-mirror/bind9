@@ -1084,16 +1084,23 @@ setttl(dns_slabheader_t *header, isc_stdtime_t newts) {
 }
 
 static size_t
-header_delete(ftcnode_t *node, dns_slabheader_t *header) {
-	/* The slabheader has already been removed from the node headers */
-	if (cds_list_empty(&header->headers_link)) {
+header__delete(ftcnode_t *node, dns_slabheader_t *header, bool clear_partner) {
+	/*
+	 * The slabheader has already been removed from the node headers.
+	 * The DEAD attribute is the marker for that: cds_list_del_rcu()
+	 * leaves the removed element's own pointers intact for the sake
+	 * of concurrent readers, so emptiness of the link cannot be
+	 * tested. All deleters run under the node lock, so the check
+	 * and the SETATTR below cannot race each other.
+	 */
+	if (DEAD(header)) {
 		return 0;
 	}
 
 	size_t expired = rdataset_size(header);
 	ftcache_t *ftdb = node->ftdb;
 
-	cds_list_del_init(&header->headers_link);
+	cds_list_del_rcu(&header->headers_link);
 
 	/*
 	 * This place is the only place where we actually need header->typepair.
@@ -1116,15 +1123,40 @@ header_delete(ftcnode_t *node, dns_slabheader_t *header) {
 		atomic_fetch_add_relaxed(&ftdb->sieve_zombies, 1);
 	}
 
-	if (header->related != NULL) {
-		INSIST(header->related->related == header);
-		dns_slabheader_detach(&header->related->related);
-		dns_slabheader_detach(&header->related);
+	/*
+	 * The pointer fields are cleared with rcu_assign_pointer()
+	 * because lock-free readers may be following them; the
+	 * references are dropped only afterwards, via a local copy.
+	 */
+	dns_slabheader_t *related = header->related;
+	if (related != NULL) {
+		if (clear_partner) {
+			INSIST(related->related == header);
+			rcu_assign_pointer(related->related, NULL);
+			dns_slabheader_unref(header);
+		}
+		rcu_assign_pointer(header->related, NULL);
+		dns_slabheader_unref(related);
 	}
 
 	dns_slabheader_detach(&header);
 
 	return expired;
+}
+
+static size_t
+header_delete(ftcnode_t *node, dns_slabheader_t *header) {
+	return header__delete(node, header, true);
+}
+
+/*
+ * Delete a header whose signature partner has already been repointed
+ * to its successor by the caller (see add()); only this header's own
+ * forward reference to the partner is dropped.
+ */
+static size_t
+header_delete_repointed(ftcnode_t *node, dns_slabheader_t *header) {
+	return header__delete(node, header, false);
 }
 
 /*
@@ -1284,14 +1316,20 @@ bindrdataset(ftcache_t *ftdb, ftcnode_t *node, dns_slabheader_t *header,
 	rdataset->slab.iter_count = 0;
 
 	/*
-	 * Add noqname proof.
+	 * Add noqname proof.  The proofs can be published onto an
+	 * already-visible header by a concurrent add() (see the proof
+	 * moves there), so each field is loaded exactly once: a second
+	 * load could yield a different answer than the one the
+	 * attribute was derived from.
 	 */
-	rdataset->slab.noqname = header->noqname;
-	if (header->noqname != NULL) {
+	dns_slabheader_proof_t *noqname = rcu_dereference(header->noqname);
+	rdataset->slab.noqname = noqname;
+	if (noqname != NULL) {
 		rdataset->attributes.noqname = true;
 	}
-	rdataset->slab.closest = header->closest;
-	if (header->closest != NULL) {
+	dns_slabheader_proof_t *closest = rcu_dereference(header->closest);
+	rdataset->slab.closest = closest;
+	if (closest != NULL) {
 		rdataset->attributes.closest = true;
 	}
 }
@@ -1488,11 +1526,11 @@ store_headers(dns_slabheader_t *tmp, dns_slabheader_t **headerp,
 	      dns_slabheader_t **sigheaderp, ftc_search_t *search) {
 	dns_slabheader_t *header = NULL, *sigheader = NULL;
 	if (DNS_TYPEPAIR_TYPE(tmp->typepair) == dns_rdatatype_rrsig) {
-		header = tmp->related;
+		header = rcu_dereference(tmp->related);
 		sigheader = tmp;
 	} else {
 		header = tmp;
-		sigheader = tmp->related;
+		sigheader = rcu_dereference(tmp->related);
 	}
 
 	if (invalid_header(header, search)) {
@@ -1514,7 +1552,7 @@ find_headers(ftcnode_t *node, ftc_search_t *search, dns_rdatatype_t type,
 		dns_slabheader_t *header = NULL, *sigheader = NULL;
 
 		if (tmp->typepair == dns_typepair_any) {
-			INSIST(tmp->related == NULL);
+			INSIST(rcu_dereference(tmp->related) == NULL);
 			INSIST(NEGATIVE(tmp));
 			if (invalid_header(tmp, search)) {
 				/*
@@ -3050,16 +3088,24 @@ add(ftcache_t *ftdb, ftcnode_t *qpnode, dns_slabheader_t *newheader,
 			    oldheader, newheader, ftdb->common.rdclass,
 			    DNS_TYPEPAIR_TYPE(oldheader->typepair)))
 		{
+			/*
+			 * The proofs move onto the published oldheader
+			 * with rcu_assign_pointer(): lock-free readers
+			 * load these fields once and tolerate NULL, but
+			 * must never see a partially published proof.
+			 */
 			if (oldheader->noqname == NULL &&
 			    newheader->noqname != NULL)
 			{
-				oldheader->noqname = newheader->noqname;
+				rcu_assign_pointer(oldheader->noqname,
+						   newheader->noqname);
 				newheader->noqname = NULL;
 			}
 			if (oldheader->closest == NULL &&
 			    newheader->closest != NULL)
 			{
-				oldheader->closest = newheader->closest;
+				rcu_assign_pointer(oldheader->closest,
+						   newheader->closest);
 				newheader->closest = NULL;
 			}
 
@@ -3107,16 +3153,19 @@ add(ftcache_t *ftdb, ftcnode_t *qpnode, dns_slabheader_t *newheader,
 		    oldheader->expire < newheader->expire &&
 		    dns_rdataslab_equal(oldheader, newheader))
 		{
+			/* See the proof-move comment above. */
 			if (oldheader->noqname == NULL &&
 			    newheader->noqname != NULL)
 			{
-				oldheader->noqname = newheader->noqname;
+				rcu_assign_pointer(oldheader->noqname,
+						   newheader->noqname);
 				newheader->noqname = NULL;
 			}
 			if (oldheader->closest == NULL &&
 			    newheader->closest != NULL)
 			{
-				oldheader->closest = newheader->closest;
+				rcu_assign_pointer(oldheader->closest,
+						   newheader->closest);
 				newheader->closest = NULL;
 			}
 
@@ -3134,7 +3183,27 @@ add(ftcache_t *ftdb, ftcnode_t *qpnode, dns_slabheader_t *newheader,
 		}
 
 		INSIST(oldheader->related == related);
-		header_delete(qpnode, oldheader);
+		if (related != NULL) {
+			/*
+			 * Cross-link the new header with the surviving
+			 * signature partner and repoint the partner
+			 * BEFORE deleting the old header, so lock-free
+			 * readers never see a published answer without
+			 * its signature: the new header is fully
+			 * initialized and reference-counted here, it is
+			 * just not linked into the list yet.
+			 */
+			/* protect the related from LRU eviction */
+			ftcache_hit(ftdb, related);
+			newheader->related = dns_slabheader_ref(related);
+			dns_slabheader_ref(newheader);
+			rcu_assign_pointer(related->related, newheader);
+			/* ... which replaced the partner's old back-ref. */
+			dns_slabheader_unref(oldheader);
+			header_delete_repointed(qpnode, oldheader);
+		} else {
+			header_delete(qpnode, oldheader);
+		}
 
 	} else if (!EXISTS(newheader)) {
 		/*
@@ -3142,6 +3211,13 @@ add(ftcache_t *ftdb, ftcnode_t *qpnode, dns_slabheader_t *newheader,
 		 * to delete it.
 		 */
 		return DNS_R_UNCHANGED;
+	} else if (related != NULL) {
+		INSIST(related->related == NULL);
+		/* protect the related from LRU eviction */
+		ftcache_hit(ftdb, related);
+		newheader->related = dns_slabheader_ref(related);
+		rcu_assign_pointer(related->related,
+				   dns_slabheader_ref(newheader));
 	}
 
 	/*
@@ -3151,22 +3227,14 @@ add(ftcache_t *ftdb, ftcnode_t *qpnode, dns_slabheader_t *newheader,
 
 	if (prio_header(newheader)) {
 		/* This is a priority type, prepend it */
-		cds_list_add(&newheader->headers_link, &qpnode->headers);
+		cds_list_add_rcu(&newheader->headers_link, &qpnode->headers);
 	} else if (prioheader != NULL) {
 		/* Append after the priority headers */
-		cds_list_add(&newheader->headers_link,
-			     &prioheader->headers_link);
+		cds_list_add_rcu(&newheader->headers_link,
+				 &prioheader->headers_link);
 	} else {
 		/* There were no priority headers */
-		cds_list_add(&newheader->headers_link, &qpnode->headers);
-	}
-
-	if (related != NULL) {
-		INSIST(related->related == NULL);
-		/* protect the related from LRU eviction */
-		ftcache_hit(ftdb, related);
-		related->related = dns_slabheader_ref(newheader);
-		newheader->related = dns_slabheader_ref(related);
+		cds_list_add_rcu(&newheader->headers_link, &qpnode->headers);
 	}
 
 	bindrdataset(ftdb, qpnode, newheader, now, nlocktype,
@@ -3347,6 +3415,8 @@ ftcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 
 	newheader = (dns_slabheader_t *)region.base;
 	dns_slabheader_reset(newheader, node);
+	/* Lock-free readers require the grace-period-deferred free. */
+	DNS_SLABHEADER_SETATTR(newheader, DNS_SLABHEADERATTR_RCUFREE);
 	ftc_setownercase(newheader, name);
 
 	/*
@@ -3467,7 +3537,9 @@ ftcache_deleterdataset(dns_db_t *db, dns_dbnode_t *node,
 	dns_slabheader_t *newheader = NULL;
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 	isc_rwlock_t *nlock = NULL;
-	uint16_t attributes = DNS_SLABHEADERATTR_NONEXISTENT;
+	/* Lock-free readers require the grace-period-deferred free. */
+	uint16_t attributes = DNS_SLABHEADERATTR_NONEXISTENT |
+			      DNS_SLABHEADERATTR_RCUFREE;
 
 	REQUIRE(VALID_FTDB(ftdb));
 	REQUIRE(version == NULL);
