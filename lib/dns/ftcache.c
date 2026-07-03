@@ -216,9 +216,6 @@ typedef struct ftcache_bucket {
 
 			/* Per-bucket lock. */
 			isc_rwlock_t lock;
-
-			/* SIEVE-LRU cache cleaning state. */
-			ISC_SIEVE(dns_slabheader_t) sieve;
 		};
 		uint8_t __padding[ISC_OS_CACHELINE_SIZE * 6];
 	};
@@ -229,6 +226,25 @@ STATIC_ASSERT(sizeof(ftcache_bucket_t) % ISC_OS_CACHELINE_SIZE == 0,
 	      "size");
 
 /*
+ * Per-loop SIEVE-LRU state, owned EXCLUSIVELY by the loop whose tid
+ * indexes it: only that thread ever links, unlinks or walks the list,
+ * so no lock protects it. Other threads interact with it only
+ * indirectly -- marking a header visited (an atomic flag the sieve
+ * macros already share safely) or marking it dead for the owner to
+ * reap.
+ */
+typedef struct ftcache_sieve {
+	union {
+		ISC_SIEVE(dns_slabheader_t) sieve;
+		uint8_t __padding[ISC_OS_CACHELINE_SIZE];
+	};
+} ftcache_sieve_t;
+
+STATIC_ASSERT(sizeof(ftcache_sieve_t) % ISC_OS_CACHELINE_SIZE == 0,
+	      "ftcache_sieve_t size must be a multiple of the cacheline "
+	      "size");
+
+/*
  * Buckets per event loop. Nodes are assigned a bucket at random --
  * uniform regardless of the name distribution and unpredictable to an
  * attacker (a name-derived bucket could be computed offline to aim a
@@ -236,10 +252,25 @@ STATIC_ASSERT(sizeof(ftcache_bucket_t) % ISC_OS_CACHELINE_SIZE == 0,
  * the lever that keeps individual node locks cool: with many more
  * buckets than threads, two hot names rarely share a lock and each
  * lock's cacheline is touched by fewer concurrent queries. The deadnode
- * cleanup and the LRU eviction for bucket B both run only on loop
- * B % nloops, so maintenance write-locking stays thread-local.
+ * cleanup for bucket B runs only on loop B % nloops, so that
+ * maintenance write-locking stays thread-local; the LRU lives in
+ * per-loop sieves instead (see ftcache_sieve_t).
  */
 #define FTC_BUCKETS_PER_LOOP 16
+
+/*
+ * A header deleted by a thread other than its sieve's owner stays
+ * linked in the sieve as a "zombie" (marked DEAD, memory pinned by the
+ * sieve's reference) until the owner reaps it. Zombies are reaped when
+ * the eviction walk or a sweep encounters them; the sweep runs on
+ * insertion whenever the database's zombie count passes this
+ * threshold, which bounds the memory the zombies pin.
+ */
+#define FTC_SIEVE_ZOMBIE_MAX 1024
+
+#define DEAD(header)                                   \
+	((atomic_load_acquire(&(header)->attributes) & \
+	  DNS_SLABHEADERATTR_DEAD) != 0)
 
 /*
  * Locking discipline
@@ -333,6 +364,15 @@ struct ftcache {
 	isc_loop_t *loop;
 
 	struct rcu_head rcu_head;
+
+	/*
+	 * Per-loop SIEVE-LRU shards (sieves_count == nloops) and the
+	 * database-wide count of dead headers still linked in them,
+	 * advisory only: it triggers the owners' sweeps.
+	 */
+	ftcache_sieve_t *sieves;
+	size_t sieves_count;
+	atomic_size_t sieve_zombies;
 
 	size_t buckets_count;
 	ftcache_bucket_t buckets[]; /* attribute((counted_by(buckets_count))) */
@@ -636,54 +676,106 @@ overmem_purgesize(dns_slabheader_t *newheader) {
  * recent entries in that shard while stale entries elsewhere survive --
  * random mass-eviction rather than an approximation of global LRU.
  *
- * The walk starts at the inserted node's own bucket and strides by the
- * loop count, offset by the caller's tid: the node's randomly assigned
- * bucket rotates the starting point from call to call for free, and the
- * tid offset keeps concurrent evictors that happen to share a starting
- * bucket in disjoint stride classes. Called with NO node lock held --
- * one bucket is write-locked at a time. The callers purge BEFORE adding
- * their new header, while it is still private, so the walk can neither
- * find nor evict it and no protection check is needed.
+ * The walk covers the calling loop's OWN sieve, lock-free by the strong
+ * affinity: headers inserted by other loops live in their sieves and
+ * are evicted by them. For a live candidate, only the candidate's node
+ * bucket is write-locked, one at a time. The 'dead' state is
+ * re-checked under that lock; a header that went dead meanwhile was
+ * already deleted by someone else and only its sieve reference is
+ * dropped. The callers purge BEFORE adding their new header, while it
+ * is still private, so the walk can neither find nor evict it and no
+ * protection check is needed.
  */
 static void
-expire_lru(ftcache_t *ftdb, dns_slabheader_t *newheader,
-	   size_t requested DNS__DB_FLARG) {
+expire_lru(ftcache_t *ftdb, size_t requested DNS__DB_FLARG) {
+	ftcache_sieve_t *s = &ftdb->sieves[isc_tid()];
 	size_t expired = 0;
-	size_t nloops = isc_loopmgr_nloops();
-	uint16_t tid = isc_tid();
-	uint16_t start = newheader->node->locknum;
-	bool progress = true;
 
-	while (expired < requested && progress) {
-		progress = false;
+	while (expired < requested) {
+		dns_slabheader_t *header = ISC_SIEVE_NEXT(s->sieve, visited,
+							  lrulink);
+		if (header == NULL) {
+			break;
+		}
 
-		for (size_t idx = tid;
-		     idx < ftdb->buckets_count && expired < requested;
-		     idx += nloops)
-		{
-			uint16_t locknum = (start + idx) % ftdb->buckets_count;
+		ISC_SIEVE_UNLINK(s->sieve, header, lrulink);
+
+		/*
+		 * The read-side lock pins the candidate's node: seeing
+		 * the header not dead INSIDE the critical section means
+		 * the header is still on its node's list, so the node
+		 * removal -- whose deferred free could invalidate
+		 * HEADERNODE() -- has not started, and any later free
+		 * waits out this read section.
+		 */
+		rcu_read_lock();
+		if (!DEAD(header)) {
+			ftcnode_t *node = HEADERNODE(header);
 			isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
-			isc_rwlock_t *nlock = &ftdb->buckets[locknum].lock;
+			isc_rwlock_t *nlock =
+				&ftdb->buckets[node->locknum].lock;
 
 			NODE_WRLOCK(nlock, &nlocktype);
-			dns_slabheader_t *header = ISC_SIEVE_NEXT(
-				ftdb->buckets[locknum].sieve, visited, lrulink);
-			if (header != NULL) {
+			if (!DEAD(header)) {
 				expired += expire_header(
-					ftdb, HEADERNODE(header), header,
+					ftdb, node, header,
 					&nlocktype DNS__DB_FLARG_PASS);
-				progress = true;
 			}
 			NODE_UNLOCK(nlock, &nlocktype);
 		}
+		rcu_read_unlock();
+
+		/* The sieve's own reference. */
+		dns_slabheader_detach(&header);
 	}
+}
+
+/*
+ * Reap every dead header from the calling loop's sieve. Runs on the
+ * owner only, lock-free; triggered from insertion when the zombie
+ * count passes FTC_SIEVE_ZOMBIE_MAX.
+ */
+static void
+sieve_sweep(ftcache_t *ftdb, ftcache_sieve_t *s) {
+	size_t reaped = 0;
+	dns_slabheader_t *header = ISC_LIST_TAIL(s->sieve.list);
+
+	while (header != NULL) {
+		dns_slabheader_t *prev = ISC_LIST_PREV(header, lrulink);
+
+		if (DEAD(header)) {
+			ISC_SIEVE_UNLINK(s->sieve, header, lrulink);
+			dns_slabheader_detach(&header);
+			reaped++;
+		}
+		header = prev;
+	}
+
+	/*
+	 * The counter is advisory and can overcount (racy linked
+	 * checks), so clamp at zero instead of blindly subtracting.
+	 */
+	size_t zombies = atomic_load_relaxed(&ftdb->sieve_zombies);
+	size_t rest;
+	do {
+		rest = (zombies > reaped) ? zombies - reaped : 0;
+	} while (!atomic_compare_exchange_weak_relaxed(&ftdb->sieve_zombies,
+						       &zombies, rest));
 }
 
 static void
 ftcache_miss(ftcache_t *ftdb, dns_slabheader_t *newheader) {
-	uint32_t idx = HEADERNODE(newheader)->locknum;
+	ftcache_sieve_t *s = &ftdb->sieves[isc_tid()];
 
-	ISC_SIEVE_INSERT(ftdb->buckets[idx].sieve, newheader, lrulink);
+	/* The sieve link owns a reference of its own. */
+	dns_slabheader_ref(newheader);
+	ISC_SIEVE_INSERT(s->sieve, newheader, lrulink);
+
+	if (atomic_load_relaxed(&ftdb->sieve_zombies) >=
+	    FTC_SIEVE_ZOMBIE_MAX)
+	{
+		sieve_sweep(ftdb, s);
+	}
 }
 
 static void
@@ -1009,7 +1101,20 @@ header_delete(ftcnode_t *node, dns_slabheader_t *header) {
 	update_rrsetstats(ftdb->rrsetstats, header->typepair,
 			  atomic_load_acquire(&header->attributes), false);
 
-	ISC_SIEVE_UNLINK(ftdb->buckets[node->locknum].sieve, header, lrulink);
+	/*
+	 * The sieve holding the header belongs exclusively to the loop
+	 * that inserted it, so it cannot be unlinked from here (any
+	 * thread). Mark the header dead instead -- unconditionally,
+	 * because the eviction walk relies on "not dead" to mean "still
+	 * on its node's list" -- and let the owner reap it; the sieve's
+	 * own reference keeps the memory alive meanwhile. The zombie
+	 * counter is advisory (it triggers the owners' sweeps), so it
+	 * is only bumped when the header is still linked.
+	 */
+	DNS_SLABHEADER_SETATTR(header, DNS_SLABHEADERATTR_DEAD);
+	if (ISC_SIEVE_LINKED(header, lrulink)) {
+		atomic_fetch_add_relaxed(&ftdb->sieve_zombies, 1);
+	}
 
 	if (header->related != NULL) {
 		INSIST(header->related->related == header);
@@ -2136,11 +2241,15 @@ ftcache__destroy_rcu(struct rcu_head *rcu_head) {
 	for (size_t i = 0; i < ftdb->buckets_count; i++) {
 		NODE_DESTROYLOCK(&ftdb->buckets[i].lock);
 
-		INSIST(ISC_SIEVE_EMPTY(ftdb->buckets[i].sieve));
-
 		INSIST(isc_queue_empty(&ftdb->buckets[i].deadnodes));
 		isc_queue_destroy(&ftdb->buckets[i].deadnodes);
 	}
+
+	for (size_t i = 0; i < ftdb->sieves_count; i++) {
+		INSIST(ISC_SIEVE_EMPTY(ftdb->sieves[i].sieve));
+	}
+	isc_mem_cput(ftdb->common.mctx, ftdb->sieves, ftdb->sieves_count,
+		     sizeof(ftdb->sieves[0]));
 
 	dns_stats_detach(&ftdb->rrsetstats);
 
@@ -2166,12 +2275,28 @@ ftcache__destroy_work(void *arg) {
 	struct cds_ft_iter *iter = NULL;
 
 	/*
+	 * Drop the sieve references first. The strong per-loop affinity
+	 * no longer matters: the database is unreferenced, so nothing
+	 * runs concurrently, and this single thread may safely touch
+	 * every loop's sieve.
+	 */
+	for (size_t i = 0; i < ftdb->sieves_count; i++) {
+		dns_slabheader_t *header = NULL;
+		while ((header = ISC_LIST_TAIL(ftdb->sieves[i].sieve.list)) !=
+		       NULL)
+		{
+			ISC_SIEVE_UNLINK(ftdb->sieves[i].sieve, header,
+					 lrulink);
+			dns_slabheader_detach(&header);
+		}
+	}
+
+	/*
 	 * cds_ft_destroy() does not reclaim a populated trie's external
 	 * nodes, so drain the trie first: remove every node and drop the
 	 * trie's reference to it. The drops are deferred with call_rcu (as
 	 * in delete_node); being queued before ftcache__destroy_rcu, they
-	 * run first, so each node is freed -- emptying the buckets' sieves --
-	 * before the teardown asserts they are empty.
+	 * run first, so each node is freed before the teardown checks.
 	 */
 	RUNTIME_CHECK(cds_ft_iter_create(ftdb->ft, &iter) == CDS_FT_STATUS_OK);
 
@@ -3235,7 +3360,7 @@ ftcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	 * private here, so the eviction walk cannot find or evict it.
 	 */
 	if (isc_mem_isovermem(ftdb->common.mctx)) {
-		expire_lru(ftdb, newheader,
+		expire_lru(ftdb,
 			   overmem_purgesize(newheader) DNS__DB_FLARG_PASS);
 	}
 
@@ -3343,7 +3468,7 @@ ftcache_deleterdataset(dns_db_t *db, dns_dbnode_t *node,
 	nlock = &ftdb->buckets[qpnode->locknum].lock;
 	/* Purge room up front, while the new header is still private. */
 	if (isc_mem_isovermem(ftdb->common.mctx)) {
-		expire_lru(ftdb, newheader,
+		expire_lru(ftdb,
 			   overmem_purgesize(newheader) DNS__DB_FLARG_PASS);
 	}
 
@@ -3404,11 +3529,16 @@ dns__ftcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 
 	dns_rdatasetstats_create(mctx, &ftdb->rrsetstats);
 	for (i = 0; i < (int)ftdb->buckets_count; i++) {
-		ISC_SIEVE_INIT(ftdb->buckets[i].sieve);
-
 		isc_queue_init(&ftdb->buckets[i].deadnodes);
 
 		NODE_INITLOCK(&ftdb->buckets[i].lock);
+	}
+
+	ftdb->sieves_count = isc_loopmgr_nloops();
+	ftdb->sieves = isc_mem_cget(mctx, ftdb->sieves_count,
+				    sizeof(ftdb->sieves[0]));
+	for (i = 0; i < (int)ftdb->sieves_count; i++) {
+		ISC_SIEVE_INIT(ftdb->sieves[i].sieve);
 	}
 
 	/*

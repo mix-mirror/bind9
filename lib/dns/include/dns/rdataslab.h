@@ -149,6 +149,12 @@ enum {
 	DNS_SLABHEADERATTR_ZEROTTL = 1 << 10,
 	DNS_SLABHEADERATTR_CASEFULLYLOWER = 1 << 11,
 	DNS_SLABHEADERATTR_STALE_WINDOW = 1 << 12,
+	/*%
+	 * The header has been removed from its node's header list but
+	 * may still be linked in an LRU structure owned by another
+	 * thread, which will reap it lazily (see ftcache.c).
+	 */
+	DNS_SLABHEADERATTR_DEAD = 1 << 13,
 };
 
 /* clang-format off : RemoveParentheses */
