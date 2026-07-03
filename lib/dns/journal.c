@@ -2264,8 +2264,7 @@ diff_namespace(dns_db_t *dba, dns_dbversion_t *dbvera, dns_db_t *dbb,
 			}
 		}
 
-		t = dns_name_compare(dns_fixedname_name(&fixname[0]),
-				     dns_fixedname_name(&fixname[1]));
+		t = dns_name_compare(&fixname[0], &fixname[1]);
 		if (t < 0) {
 			ISC_LIST_APPENDLIST(resultdiff->tuples, diff[0].tuples,
 					    link);

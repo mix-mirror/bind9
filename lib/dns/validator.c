@@ -2968,15 +2968,14 @@ findnsec3proofs(dns_validator_t *val) {
 	 * If the val->closest is set then we want to use it otherwise
 	 * we need to discover it.
 	 */
-	if (dns_name_countlabels(dns_fixedname_name(&val->closest)) != 0) {
+	if (dns_name_countlabels(&val->closest) != 0) {
 		char namebuf[DNS_NAME_FORMATSIZE];
 
-		dns_name_format(dns_fixedname_name(&val->closest), namebuf,
-				sizeof(namebuf));
+		dns_name_format(&val->closest, namebuf, sizeof(namebuf));
 		validator_log(val, ISC_LOG_DEBUG(3),
 			      "closest encloser from wildcard signature '%s'",
 			      namebuf);
-		dns_name_copy(dns_fixedname_name(&val->closest), closest);
+		dns_name_copy(&val->closest, closest);
 		closestp = NULL;
 	} else {
 		closestp = closest;
@@ -3300,8 +3299,7 @@ validate_nx(dns_validator_t *val, bool resume) {
 			marksecure(val, "validate_nx (noqname proof found)");
 			return ISC_R_SUCCESS;
 		} else if (FOUNDOPTOUT(val) &&
-			   dns_name_countlabels(
-				   dns_fixedname_name(&val->wild)) != 0)
+			   dns_name_countlabels(&val->wild) != 0)
 		{
 			validator_log(val, ISC_LOG_DEBUG(3),
 				      "optout proof found");
