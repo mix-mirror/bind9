@@ -5430,11 +5430,6 @@ addglue(dns_db_t *db, dns_dbversion_t *dbversion, const dns_name_t *owner_name,
 	REQUIRE(rdataset->type == dns_rdatatype_ns);
 	REQUIRE(qpdb == version->qpdb);
 
-	if (IS_STUB(qpdb)) {
-		dns_db_addglue_generic(db, dbversion, owner_name, rdataset, msg);
-		return;
-	}
-
 	rcu_read_lock();
 
 	dns_gluelist_t *gluelist = rcu_dereference(header->gluelist);
@@ -5475,7 +5470,11 @@ addglue(dns_db_t *db, dns_dbversion_t *dbversion, const dns_name_t *owner_name,
 
 	rcu_read_unlock();
 
-	/* We have a cached result. Add it to the message and return. */
+	/*
+	 * Stub zones also use the qpzone glue cache above, but zone.c only
+	 * attaches glue cache stats to primary, secondary, and mirror zones.
+	 * A NULL stats object is expected for stub zones.
+	 */
 	if (qpdb->gluecachestats != NULL) {
 		isc_stats_increment(qpdb->gluecachestats, counter);
 	}
