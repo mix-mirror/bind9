@@ -2270,11 +2270,15 @@ query_zone_delegation_rrset(query_ctx_t *qctx,
 	CTRACE(ISC_LOG_DEBUG(3), "query_zone_delegation_rrset");
 
 	REQUIRE(qctx->is_zone);
+	REQUIRE(qctx->db != NULL);
+	REQUIRE(!dns_db_iscache(qctx->db));
 	REQUIRE(qctx->client->query.isreferral);
-	REQUIRE(qctx->client->query.gluedb != NULL);
+	REQUIRE(qctx->client->query.gluedb == NULL);
+	REQUIRE(qctx->version != NULL);
 	REQUIRE(name != NULL);
 	REQUIRE(rdataset != NULL);
 	REQUIRE(rdataset->type == dns_rdatatype_ns);
+	REQUIRE(!client->query.noadditional);
 
 	if (sigrdatasetp != NULL) {
 		sigrdataset = *sigrdatasetp;
@@ -2332,8 +2336,20 @@ query_zone_delegation_rrset(query_ctx_t *qctx,
 	 */
 	query_addtoname(mname, rdataset);
 	query_setorder(qctx, mname, rdataset);
-	query_additional(qctx, mname, rdataset);
+	if (dns_db_iszone(qctx->db)) {
+		result = dns_db_addglue(qctx->db, qctx->version, mname, rdataset,
+					client->message);
+		if (result == ISC_R_SUCCESS) {
+			goto done;
+		}
+	}
 
+	dns_db_attach(qctx->db, &client->query.gluedb);
+	(void)dns_rdataset_additionaldata(rdataset, mname, query_additional_cb,
+					  qctx, DNS_RDATASET_MAXADDITIONAL);
+	dns_db_detach(&client->query.gluedb);
+
+done:
 	/*
 	 * Note: we only add SIGs if we've added the type they cover, so we do
 	 * not need to check if the SIG rdataset is already in the response.
@@ -8292,8 +8308,6 @@ query_prepare_zone_delegation_response(query_ctx_t *qctx) {
 	 */
 	qctx->client->query.isreferral = true;
 
-	dns_db_attach(qctx->db, &qctx->client->query.gluedb);
-
 	/*
 	 * We must ensure NOADDITIONAL is off, because the generation of
 	 * additional data is required in delegations.
@@ -8303,7 +8317,6 @@ query_prepare_zone_delegation_response(query_ctx_t *qctx) {
 		sigrdatasetp = &qctx->sigrdataset;
 	}
 	query_zone_delegation_rrset(qctx, sigrdatasetp);
-	dns_db_detach(&qctx->client->query.gluedb);
 
 	/*
 	 * Add DS/NSEC(3) record(s) if needed.
