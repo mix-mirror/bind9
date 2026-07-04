@@ -2331,25 +2331,13 @@ query_zone_delegation_rrset(query_ctx_t *qctx,
 	}
 
 	/*
-	 * Update message name, set rdataset order, and do additional section
-	 * processing for delegation glue.
+	 * Update message name, set rdataset order, and add delegation glue.
 	 */
 	query_addtoname(mname, rdataset);
 	query_setorder(qctx, mname, rdataset);
-	if (dns_db_iszone(qctx->db)) {
-		result = dns_db_addglue(qctx->db, qctx->version, mname, rdataset,
-					client->message);
-		if (result == ISC_R_SUCCESS) {
-			goto done;
-		}
-	}
+	(void)dns_db_addglue(qctx->db, qctx->version, mname, rdataset,
+			     client->message);
 
-	dns_db_attach(qctx->db, &client->query.gluedb);
-	(void)dns_rdataset_additionaldata(rdataset, mname, query_additional_cb,
-					  qctx, DNS_RDATASET_MAXADDITIONAL);
-	dns_db_detach(&client->query.gluedb);
-
-done:
 	/*
 	 * Note: we only add SIGs if we've added the type they cover, so we do
 	 * not need to check if the SIG rdataset is already in the response.
