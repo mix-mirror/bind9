@@ -2259,6 +2259,98 @@ query_addrrset(query_ctx_t *qctx, dns_name_t **namep,
 }
 
 static void
+query_zone_delegation_rrset(query_ctx_t *qctx,
+			    dns_rdataset_t **sigrdatasetp) {
+	isc_result_t result;
+	ns_client_t *client = qctx->client;
+	dns_name_t *name = qctx->fname, *mname = NULL;
+	dns_rdataset_t *rdataset = qctx->rdataset, *mrdataset = NULL;
+	dns_rdataset_t *sigrdataset = NULL;
+
+	CTRACE(ISC_LOG_DEBUG(3), "query_zone_delegation_rrset");
+
+	REQUIRE(qctx->is_zone);
+	REQUIRE(qctx->client->query.isreferral);
+	REQUIRE(qctx->client->query.gluedb != NULL);
+	REQUIRE(name != NULL);
+	REQUIRE(rdataset != NULL);
+	REQUIRE(rdataset->type == dns_rdatatype_ns);
+
+	if (sigrdatasetp != NULL) {
+		sigrdataset = *sigrdatasetp;
+	}
+
+	/*%
+	 * Add the delegation NS RRset to the authority section, unless it is
+	 * already there.  Also add any pertinent additional data.
+	 *
+	 * If qctx->dbuf is not NULL, then qctx->fname is the name whose data is
+	 * stored in qctx->dbuf.  In this case, query_zone_delegation_rrset()
+	 * guarantees that when it returns the name will either have been kept
+	 * or released.
+	 */
+	result = dns_message_findname(client->message, DNS_SECTION_AUTHORITY, name,
+				      rdataset->type, rdataset->covers, &mname,
+				      &mrdataset);
+	if (result == ISC_R_SUCCESS) {
+		/*
+		 * We've already got an RRset of the given name and type.
+		 */
+		CTRACE(ISC_LOG_DEBUG(3), "query_zone_delegation_rrset: "
+					 "dns_message_findname succeeded: done");
+		if (qctx->dbuf != NULL) {
+			ns_client_releasename(client, &qctx->fname);
+		}
+		if (rdataset->attributes.required) {
+			mrdataset->attributes.required = true;
+		}
+		return;
+	} else if (result == DNS_R_NXDOMAIN) {
+		/*
+		 * The name doesn't exist.
+		 */
+		if (qctx->dbuf != NULL) {
+			ns_client_keepname(client, name, qctx->dbuf);
+		}
+		dns_message_addname(client->message, name, DNS_SECTION_AUTHORITY);
+		qctx->fname = NULL;
+		mname = name;
+	} else {
+		RUNTIME_CHECK(result == DNS_R_NXRRSET);
+		if (qctx->dbuf != NULL) {
+			ns_client_releasename(client, &qctx->fname);
+		}
+	}
+
+	if (rdataset->trust != dns_trust_secure) {
+		client->query.secure = false;
+	}
+
+	/*
+	 * Update message name, set rdataset order, and do additional section
+	 * processing for delegation glue.
+	 */
+	query_addtoname(mname, rdataset);
+	query_setorder(qctx, mname, rdataset);
+	query_additional(qctx, mname, rdataset);
+
+	/*
+	 * Note: we only add SIGs if we've added the type they cover, so we do
+	 * not need to check if the SIG rdataset is already in the response.
+	 */
+	qctx->rdataset = NULL;
+	if (sigrdataset != NULL && dns_rdataset_isassociated(sigrdataset)) {
+		/*
+		 * We have a signature. Add it to the response.
+		 */
+		ISC_LIST_APPEND(mname->list, sigrdataset, link);
+		*sigrdatasetp = NULL;
+	}
+
+	CTRACE(ISC_LOG_DEBUG(3), "query_zone_delegation_rrset: done");
+}
+
+static void
 fixrdataset(ns_client_t *client, dns_rdataset_t **rdataset) {
 	if (*rdataset == NULL) {
 		*rdataset = ns_client_newrdataset(client);
@@ -8189,8 +8281,8 @@ query_prepare_zone_delegation_response(query_ctx_t *qctx) {
 	INSIST(qctx->client->query.gluedb == NULL);
 
 	/*
-	 * qctx->fname could be released in query_addrrset(), so save a copy of
-	 * it here in case we need it.
+	 * qctx->fname could be released in query_zone_delegation_rrset(), so
+	 * save a copy of it here in case we need it.
 	 */
 	dns_fixedname_init(&qctx->dsname);
 	dns_name_copy(qctx->fname, dns_fixedname_name(&qctx->dsname));
@@ -8210,8 +8302,7 @@ query_prepare_zone_delegation_response(query_ctx_t *qctx) {
 	if (qctx->client->inner.wantdnssec && qctx->sigrdataset != NULL) {
 		sigrdatasetp = &qctx->sigrdataset;
 	}
-	query_addrrset(qctx, &qctx->fname, &qctx->rdataset, sigrdatasetp,
-		       qctx->dbuf, DNS_SECTION_AUTHORITY);
+	query_zone_delegation_rrset(qctx, sigrdatasetp);
 	dns_db_detach(&qctx->client->query.gluedb);
 
 	/*
