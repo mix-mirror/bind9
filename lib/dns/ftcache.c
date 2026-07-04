@@ -35,7 +35,6 @@
 #include <isc/random.h>
 #include <isc/refcount.h>
 #include <isc/result.h>
-#include <isc/rwlock.h>
 #include <isc/sieve.h>
 #include <isc/spinlock.h>
 #include <isc/stdio.h>
@@ -336,8 +335,6 @@ STATIC_ASSERT(sizeof(ftcache_sieve_t) % ISC_OS_CACHELINE_SIZE == 0,
 struct ftcache {
 	/* Unlocked. */
 	dns_db_t common;
-	/* Locks the data in this struct */
-	isc_rwlock_t lock;
 
 	/*
 	 * NOTE: 'references' is NOT the global reference counter for
@@ -2318,7 +2315,6 @@ ftcache__destroy_rcu(struct rcu_head *rcu_head) {
 	isc_refcount_destroy(&ftdb->references);
 	isc_refcount_destroy(&ftdb->common.references);
 
-	isc_rwlock_destroy(&ftdb->lock);
 	ftdb->common.magic = 0;
 	ftdb->common.impmagic = 0;
 
@@ -3680,8 +3676,6 @@ dns__ftcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 		.references = 1,
 		.buckets_count = buckets_count,
 	};
-
-	isc_rwlock_init(&ftdb->lock);
 
 	dns_rdatasetstats_create(mctx, &ftdb->rrsetstats);
 	for (i = 0; i < (int)ftdb->buckets_count; i++) {
