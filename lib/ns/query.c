@@ -177,6 +177,9 @@ static isc_result_t
 query_prepare_delegation_response(query_ctx_t *qctx);
 
 static isc_result_t
+query_prepare_zone_delegation_response(query_ctx_t *qctx);
+
+static isc_result_t
 acquire_recursionquota(ns_client_t *client);
 
 static void
@@ -8171,6 +8174,55 @@ cleanup:
 }
 
 /*%
+ * We have an authoritative zone delegation, so return the delegation to the
+ * client.
+ */
+static isc_result_t
+query_prepare_zone_delegation_response(query_ctx_t *qctx) {
+	dns_rdataset_t **sigrdatasetp = NULL;
+
+	INSIST(qctx->is_zone);
+	INSIST(qctx->db != NULL);
+	INSIST(!dns_db_iscache(qctx->db));
+	INSIST(qctx->rdataset != NULL);
+	INSIST(qctx->rdataset->type == dns_rdatatype_ns);
+	INSIST(qctx->client->query.gluedb == NULL);
+
+	/*
+	 * qctx->fname could be released in query_addrrset(), so save a copy of
+	 * it here in case we need it.
+	 */
+	dns_fixedname_init(&qctx->dsname);
+	dns_name_copy(qctx->fname, dns_fixedname_name(&qctx->dsname));
+
+	/*
+	 * This is the best answer.
+	 */
+	qctx->client->query.isreferral = true;
+
+	dns_db_attach(qctx->db, &qctx->client->query.gluedb);
+
+	/*
+	 * We must ensure NOADDITIONAL is off, because the generation of
+	 * additional data is required in delegations.
+	 */
+	qctx->client->query.noadditional = false;
+	if (qctx->client->inner.wantdnssec && qctx->sigrdataset != NULL) {
+		sigrdatasetp = &qctx->sigrdataset;
+	}
+	query_addrrset(qctx, &qctx->fname, &qctx->rdataset, sigrdatasetp,
+		       qctx->dbuf, DNS_SECTION_AUTHORITY);
+	dns_db_detach(&qctx->client->query.gluedb);
+
+	/*
+	 * Add DS/NSEC(3) record(s) if needed.
+	 */
+	query_addds(qctx);
+
+	return ns_query_done(qctx);
+}
+
+/*%
  * Handle a delegation response from an authoritative lookup. This
  * may trigger additional lookups, e.g. from the cache database to
  * see if we have a better answer; if that is not allowed, return the
@@ -8282,7 +8334,7 @@ query_zone_delegation(query_ctx_t *qctx) {
 		return result;
 	}
 
-	return query_prepare_delegation_response(qctx);
+	return query_prepare_zone_delegation_response(qctx);
 
 cleanup:
 	return result;
