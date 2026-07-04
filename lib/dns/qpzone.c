@@ -5429,7 +5429,11 @@ addglue(dns_db_t *db, dns_dbversion_t *dbversion, const dns_name_t *owner_name,
 
 	REQUIRE(rdataset->type == dns_rdatatype_ns);
 	REQUIRE(qpdb == version->qpdb);
-	REQUIRE(!IS_STUB(qpdb));
+
+	if (IS_STUB(qpdb)) {
+		dns_db_addglue_generic(db, dbversion, owner_name, rdataset, msg);
+		return;
+	}
 
 	rcu_read_lock();
 

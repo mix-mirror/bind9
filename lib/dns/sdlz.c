@@ -1084,6 +1084,7 @@ static dns_dbmethods_t sdlzdb_methods = {
 	.addrdataset = addrdataset,
 	.subtractrdataset = subtractrdataset,
 	.deleterdataset = deleterdataset,
+	.addglue = dns_db_addglue_generic,
 };
 
 /*

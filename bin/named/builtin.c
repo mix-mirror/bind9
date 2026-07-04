@@ -25,6 +25,7 @@
 #include <isc/util.h>
 
 #include <dns/callbacks.h>
+#include <dns/db.h>
 #include <dns/dbiterator.h>
 #include <dns/rdatalist.h>
 #include <dns/rdatasetiter.h>
@@ -1099,6 +1100,7 @@ static dns_dbmethods_t bdb_methods = {
 	.allrdatasets = allrdatasets,
 	.findnode = findnode,
 	.find = find,
+	.addglue = dns_db_addglue_generic,
 };
 
 static isc_result_t

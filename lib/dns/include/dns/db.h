@@ -1765,6 +1765,14 @@ dns_db_addglue(dns_db_t *db, dns_dbversion_t *version,
  */
 
 void
+dns_db_addglue_generic(dns_db_t *db, dns_dbversion_t *version,
+		       const dns_name_t *owner_name, dns_rdataset_t *rdataset,
+		       dns_message_t *msg);
+/*%<
+ * Generic implementation of the addglue DB method.
+ */
+
+void
 dns_db_expiredata(dns_dbnode_t *node, void *data);
 /*%<
  * Tell the database 'db' to mark a block of data 'data' stored at

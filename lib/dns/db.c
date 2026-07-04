@@ -1071,7 +1071,11 @@ addglue_addr(dns_db_addglue_ctx_t *ctx, const dns_name_t *name,
 		dns_db_detachnode(&node);
 	}
 
-	if (result != DNS_R_GLUE) {
+	if (result != ISC_R_SUCCESS && result != DNS_R_GLUE) {
+		goto cleanup;
+	}
+
+	if (!dns_rdataset_isassociated(rdataset)) {
 		goto cleanup;
 	}
 
@@ -1092,6 +1096,8 @@ addglue_addr(dns_db_addglue_ctx_t *ctx, const dns_name_t *name,
 	if (dns_rdataset_isassociated(sigrdataset)) {
 		ISC_LIST_APPEND((*mnamep)->list, sigrdataset, link);
 		sigrdataset = NULL;
+	} else {
+		dns_message_puttemprdataset(ctx->msg, &sigrdataset);
 	}
 
 	return true;
@@ -1157,10 +1163,10 @@ addglue_cb(void *arg, const dns_name_t *name, dns_rdatatype_t qtype,
 	return ISC_R_SUCCESS;
 }
 
-static isc_result_t
-addglue_generic(dns_db_t *db, dns_dbversion_t *version,
-		const dns_name_t *owner_name, dns_rdataset_t *rdataset,
-		dns_message_t *msg) {
+void
+dns_db_addglue_generic(dns_db_t *db, dns_dbversion_t *version,
+		       const dns_name_t *owner_name, dns_rdataset_t *rdataset,
+		       dns_message_t *msg) {
 	dns_db_addglue_ctx_t ctx = {
 		.db = db,
 		.version = version,
@@ -1168,8 +1174,8 @@ addglue_generic(dns_db_t *db, dns_dbversion_t *version,
 		.msg = msg,
 	};
 
-	return dns_rdataset_additionaldata(rdataset, owner_name, addglue_cb,
-					   &ctx, 0);
+	(void)dns_rdataset_additionaldata(rdataset, owner_name, addglue_cb,
+					  &ctx, 0);
 }
 
 isc_result_t
@@ -1182,17 +1188,13 @@ dns_db_addglue(dns_db_t *db, dns_dbversion_t *version,
 	REQUIRE(rdataset->methods != NULL);
 	REQUIRE(rdataset->type == dns_rdatatype_ns);
 
-	if (!dns_db_iszone(db)) {
-		return ISC_R_NOTIMPLEMENTED;
-	}
-
 	if (db->methods->addglue != NULL) {
 		(db->methods->addglue)(db, version, owner_name, rdataset, msg);
 
 		return ISC_R_SUCCESS;
 	}
 
-	return addglue_generic(db, version, owner_name, rdataset, msg);
+	return ISC_R_NOTIMPLEMENTED;
 }
 
 void
