@@ -1,0 +1,413 @@
+/*
+ * Copyright (C) Internet Systems Consortium, Inc. ("ISC")
+ *
+ * SPDX-License-Identifier: MPL-2.0
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, you can obtain one at https://mozilla.org/MPL/2.0/.
+ *
+ * See the COPYRIGHT file distributed with this work for additional
+ * information regarding copyright ownership.
+ */
+
+#include <stdint.h>
+
+#include <ngtcp2/ngtcp2.h>
+
+#include <isc/attributes.h>
+#include <isc/hash.h>
+#include <isc/magic.h>
+#include <isc/mem.h>
+#include <isc/quic.h>
+#include <isc/urcu.h>
+#include <isc/util.h>
+
+typedef struct cid_entry cid_entry_t;
+typedef struct reset_entry_t reset_entry_t;
+
+struct cid_entry {
+	struct cds_lfht_node node;
+	struct rcu_head head;
+	isc_mem_t *mctx;
+	void *value;
+	isc_tid_t tid;
+	size_t length;
+	uint8_t data[] ISC_ATTR_COUNTED_BY(length);
+};
+
+struct reset_entry_t {
+	struct cds_lfht_node node;
+	struct rcu_head head;
+	isc_mem_t *mctx;
+	isc_tid_t tid;
+	void *value;
+	uint8_t token[ISC_QUIC_STATELESS_TOKEN_LENGTH];
+};
+
+struct isc_quic_router {
+	uint32_t magic;
+	isc_refcount_t references;
+	isc_mem_t *mctx;
+	struct cds_lfht *cid_ht;
+	struct cds_lfht *reset_ht;
+};
+
+constexpr uint32_t router_magic = ISC_MAGIC('Q', 'U', 'I', 'r');
+constexpr unsigned long ht_init_size = (1 << 4); /* Must be power of 2 */
+constexpr unsigned long ht_min_size = (1 << 4);	 /* Must be power of 2 */
+
+STATIC_ASSERT(ISC_QUIC_CID_MIN_LENGTH == NGTCP2_MIN_CIDLEN,
+	      "QUIC minimum CID length mismatches with the definition "
+	      "inside ngtcp2");
+
+STATIC_ASSERT(ISC_QUIC_CID_MAX_LENGTH == NGTCP2_MAX_CIDLEN,
+	      "QUIC maximum CID length mismatches with the definition "
+	      "inside ngtcp2");
+
+STATIC_ASSERT(ISC_QUIC_STATELESS_TOKEN_LENGTH ==
+		      NGTCP2_STATELESS_RESET_TOKENLEN,
+	      "QUIC stateless token length mismatches with the definition "
+	      "inside ngtcp2");
+
+static int
+cid_match(struct cds_lfht_node *node, const void *key) {
+	__auto_type entry = caa_container_of(node, cid_entry_t, node);
+	const isc_constregion_t *data = key;
+	return (entry->length == data->length) &&
+	       (memcmp(entry->data, data->base, entry->length) == 0);
+}
+
+static void
+cid_free(struct rcu_head *head) {
+	__auto_type entry = caa_container_of(head, cid_entry_t, head);
+	isc_mem_put(entry->mctx, entry,
+		    STRUCT_FLEX_SIZE(entry, data, entry->length));
+}
+
+static int
+reset_match(struct cds_lfht_node *node, const void *key) {
+	__auto_type entry = caa_container_of(node, reset_entry_t, node);
+	return memcmp(entry->token, key, ISC_QUIC_STATELESS_TOKEN_LENGTH) == 0;
+}
+
+static void
+reset_free(struct rcu_head *head) {
+	__auto_type entry = caa_container_of(head, reset_entry_t, head);
+	isc_mem_put(entry->mctx, entry, sizeof(*entry));
+}
+
+static void
+destroy(isc_quic_router_t *router) {
+	struct cds_lfht_iter iter;
+	reset_entry_t *r;
+	cid_entry_t *c;
+
+	cds_lfht_for_each_entry(router->cid_ht, &iter, c, node) {
+		INSIST(!cds_lfht_del(router->cid_ht, &c->node));
+		cid_free(&c->head);
+	}
+	RUNTIME_CHECK(!cds_lfht_destroy(router->cid_ht, NULL));
+
+	cds_lfht_for_each_entry(router->reset_ht, &iter, r, node) {
+		INSIST(!cds_lfht_del(router->reset_ht, &r->node));
+		reset_free(&r->head);
+	}
+	RUNTIME_CHECK(!cds_lfht_destroy(router->reset_ht, NULL));
+
+	isc_mem_putanddetach(&router->mctx, router, sizeof(*router));
+}
+
+ISC_REFCOUNT_IMPL(isc_quic_router, destroy);
+
+void
+isc_quic_router_create(isc_mem_t *mctx, isc_quic_router_t **routerp) {
+	isc_quic_router_t *router;
+
+	REQUIRE(routerp != NULL && *routerp == NULL);
+
+	router = isc_mem_get(mctx, sizeof(*router));
+	*router = (isc_quic_router_t){
+		.magic = router_magic,
+		.references = ISC_REFCOUNT_INITIALIZER(1),
+		.mctx = isc_mem_ref(mctx),
+		.cid_ht = cds_lfht_new(
+			ht_init_size, ht_min_size, 0,
+			CDS_LFHT_AUTO_RESIZE | CDS_LFHT_ACCOUNTING, NULL),
+		.reset_ht = cds_lfht_new(
+			ht_init_size, ht_min_size, 0,
+			CDS_LFHT_AUTO_RESIZE | CDS_LFHT_ACCOUNTING, NULL),
+	};
+
+	*routerp = router;
+}
+
+isc_result_t
+isc_quic_router_add_cid(isc_quic_router_t *router, isc_constregion_t cid,
+			void *conn) {
+	struct cds_lfht_node *node;
+	cid_entry_t *entry;
+	uint32_t hash;
+
+	REQUIRE(router != NULL && router->magic == router_magic);
+	REQUIRE(cid.base != NULL && cid.length >= NGTCP2_MIN_CIDLEN &&
+		cid.length <= NGTCP2_MAX_CIDLEN);
+
+	hash = isc_hash32(cid.base, cid.length, false);
+
+	entry = isc_mem_get(router->mctx,
+			    STRUCT_FLEX_SIZE(entry, data, cid.length));
+	*entry = (cid_entry_t){
+		.value = conn,
+		.mctx = router->mctx,
+		.tid = isc_tid(),
+		.length = cid.length,
+	};
+	memmove(entry->data, cid.base, cid.length);
+
+	rcu_read_lock();
+	node = cds_lfht_add_unique(router->cid_ht, hash, cid_match, &cid,
+				   &entry->node);
+	rcu_read_unlock();
+
+	if (node != &entry->node) {
+		isc_mem_put(router->mctx, entry,
+			    STRUCT_FLEX_SIZE(entry, data, cid.length));
+		return ISC_R_EXISTS;
+	}
+
+	return ISC_R_SUCCESS;
+}
+
+isc_result_t
+isc_quic_router_get_cid(isc_quic_router_t *router, isc_constregion_t cid,
+			isc_tid_t *tidp, void **connp) {
+	struct cds_lfht_node *node;
+	struct cds_lfht_iter iter;
+	isc_result_t result;
+	cid_entry_t *entry;
+	uint32_t hash;
+
+	REQUIRE(router != NULL && router->magic == router_magic);
+	REQUIRE(cid.base != NULL && cid.length >= NGTCP2_MIN_CIDLEN &&
+		cid.length <= NGTCP2_MAX_CIDLEN);
+
+	hash = isc_hash32(cid.base, cid.length, false);
+
+	rcu_read_lock();
+	cds_lfht_lookup(router->cid_ht, hash, cid_match, &cid, &iter);
+	node = cds_lfht_iter_get_node(&iter);
+	entry = cds_lfht_entry(node, cid_entry_t, node);
+	if (entry == NULL) {
+		result = ISC_R_NOTFOUND;
+	} else {
+		result = ISC_R_SUCCESS;
+		SET_IF_NOT_NULL(connp, entry->value);
+		SET_IF_NOT_NULL(tidp, entry->tid);
+	}
+	rcu_read_unlock();
+
+	return result;
+}
+
+isc_result_t
+isc_quic_router_del_cid(isc_quic_router_t *router, isc_constregion_t cid) {
+	struct cds_lfht_node *node;
+	struct cds_lfht_iter iter;
+	cid_entry_t *entry;
+	uint32_t hash;
+
+	REQUIRE(router != NULL && router->magic == router_magic);
+	REQUIRE(cid.base != NULL && cid.length >= NGTCP2_MIN_CIDLEN &&
+		cid.length <= NGTCP2_MAX_CIDLEN);
+
+	hash = isc_hash32(cid.base, cid.length, false);
+
+	rcu_read_lock();
+	cds_lfht_lookup(router->cid_ht, hash, cid_match, &cid, &iter);
+	node = cds_lfht_iter_get_node(&iter);
+	if (node != NULL && !cds_lfht_del(router->cid_ht, node)) {
+		entry = caa_container_of(node, cid_entry_t, node);
+		call_rcu(&entry->head, cid_free);
+	}
+	rcu_read_unlock();
+
+	if (node == NULL) {
+		return ISC_R_NOTFOUND;
+	}
+
+	return ISC_R_SUCCESS;
+}
+
+isc_result_t
+isc_quic_router_add_stateless_reset(
+	isc_quic_router_t *router,
+	const uint8_t token[restrict ISC_QUIC_STATELESS_TOKEN_LENGTH],
+	void *conn) {
+	struct cds_lfht_node *node;
+	reset_entry_t *entry;
+	uint32_t hash;
+
+	REQUIRE(router != NULL && router->magic == router_magic);
+	REQUIRE(token != NULL);
+
+	hash = isc_hash32(token, ISC_QUIC_STATELESS_TOKEN_LENGTH, false);
+
+	entry = isc_mem_get(router->mctx, sizeof(*entry));
+	*entry = (reset_entry_t){
+		.value = conn,
+		.mctx = router->mctx,
+		.tid = isc_tid(),
+	};
+	memmove(entry->token, token, ISC_QUIC_STATELESS_TOKEN_LENGTH);
+
+	rcu_read_lock();
+	node = cds_lfht_add_unique(router->reset_ht, hash, reset_match, token,
+				   &entry->node);
+	rcu_read_unlock();
+
+	if (node != &entry->node) {
+		isc_mem_put(router->mctx, entry, sizeof(*entry));
+		return ISC_R_EXISTS;
+	}
+
+	return ISC_R_SUCCESS;
+}
+
+isc_result_t
+isc_quic_router_get_stateless_reset(
+	isc_quic_router_t *router,
+	const uint8_t token[const restrict ISC_QUIC_STATELESS_TOKEN_LENGTH],
+	isc_tid_t *tidp, void **connp) {
+	struct cds_lfht_node *node;
+	struct cds_lfht_iter iter;
+	reset_entry_t *entry;
+	isc_result_t result;
+	uint32_t hash;
+
+	REQUIRE(router != NULL && router->magic == router_magic);
+
+	hash = isc_hash32(token, NGTCP2_STATELESS_RESET_TOKENLEN, false);
+
+	rcu_read_lock();
+	cds_lfht_lookup(router->reset_ht, hash, reset_match, token, &iter);
+	node = cds_lfht_iter_get_node(&iter);
+	entry = cds_lfht_entry(node, reset_entry_t, node);
+	if (entry == NULL) {
+		result = ISC_R_NOTFOUND;
+	} else {
+		result = ISC_R_SUCCESS;
+		SET_IF_NOT_NULL(tidp, entry->tid);
+		SET_IF_NOT_NULL(connp, entry->value);
+	}
+	rcu_read_unlock();
+
+	return result;
+}
+
+isc_result_t
+isc_quic_router_del_stateless_reset(
+	isc_quic_router_t *router,
+	const uint8_t token[const restrict ISC_QUIC_STATELESS_TOKEN_LENGTH]) {
+	struct cds_lfht_node *node;
+	struct cds_lfht_iter iter;
+	reset_entry_t *entry;
+	uint32_t hash;
+
+	REQUIRE(router != NULL && router->magic == router_magic);
+
+	hash = isc_hash32(token, NGTCP2_STATELESS_RESET_TOKENLEN, false);
+
+	rcu_read_lock();
+	cds_lfht_lookup(router->reset_ht, hash, reset_match, token, &iter);
+	node = cds_lfht_iter_get_node(&iter);
+	if (node != NULL && !cds_lfht_del(router->reset_ht, node)) {
+		entry = caa_container_of(node, reset_entry_t, node);
+		call_rcu(&entry->head, reset_free);
+	}
+	rcu_read_unlock();
+
+	if (node == NULL) {
+		return ISC_R_NOTFOUND;
+	}
+
+	return ISC_R_SUCCESS;
+}
+
+isc_result_t
+isc_quic_router_handle_packet(isc_quic_router_t *router,
+			      isc_constregion_t packet,
+			      isc_quic_version_t *versionp,
+			      isc_constregion_t *dcidp,
+			      isc_constregion_t *scidp, isc_tid_t *tidp,
+			      void **connp) {
+	isc_constregion_t dcid, scid;
+	ngtcp2_version_cid version;
+	uint8_t *token;
+	int r;
+
+	REQUIRE(router != NULL && router->magic == router_magic);
+	REQUIRE(packet.base != NULL && packet.length != 0);
+	REQUIRE(dcidp != NULL && scidp != NULL);
+	REQUIRE(connp != NULL && *connp == NULL);
+
+	r = ngtcp2_pkt_decode_version_cid(&version, packet.base, packet.length,
+					  NGTCP2_MAX_CIDLEN);
+	switch (r) {
+	case 0:
+		break;
+	case NGTCP2_ERR_INVALID_ARGUMENT:
+		SET_IF_NOT_NULL(versionp, ISC_QUIC_VERSION_INVALID);
+		return ISC_R_INVALIDPROTO;
+	case NGTCP2_ERR_VERSION_NEGOTIATION:
+		SET_IF_NOT_NULL(versionp, ISC_QUIC_VERSION_UNKNOWN);
+		return ISC_R_FAILURE;
+	default:
+		UNREACHABLE();
+	}
+
+	switch (version.version) {
+	case NGTCP2_PROTO_VER_V1:
+		SET_IF_NOT_NULL(versionp, ISC_QUIC_VERSION_V1);
+		break;
+	case NGTCP2_PROTO_VER_V2:
+		SET_IF_NOT_NULL(versionp, ISC_QUIC_VERSION_V2);
+		break;
+	default:
+		SET_IF_NOT_NULL(versionp, ISC_QUIC_VERSION_UNKNOWN);
+		break;
+	}
+
+	dcid = (isc_constregion_t){ version.dcid, version.dcidlen };
+	scid = (isc_constregion_t){ version.scid, version.scidlen };
+
+	*dcidp = dcid;
+	*scidp = scid;
+
+	if (isc_quic_router_get_cid(router, dcid, tidp, connp) == ISC_R_SUCCESS)
+	{
+		return ISC_R_SUCCESS;
+	}
+
+	if (version.version == 0) {
+		if (packet.length > ISC_QUIC_STATELESS_TOKEN_LENGTH) {
+			token = (uint8_t *)packet.base + packet.length -
+				ISC_QUIC_STATELESS_TOKEN_LENGTH;
+
+			if (isc_quic_router_get_stateless_reset(router, token,
+								tidp, connp) ==
+			    ISC_R_SUCCESS)
+			{
+				return ISC_R_UNSET;
+			}
+		}
+
+		return ISC_R_UNEXPECTED;
+	}
+
+	if (ngtcp2_accept(NULL, packet.base, packet.length) != 0) {
+		return ISC_R_IGNORE;
+	}
+
+	return ISC_R_NOTFOUND;
+}
