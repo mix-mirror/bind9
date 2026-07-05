@@ -569,9 +569,7 @@ dns_slabheader__new(isc_mem_t *mctx, dns_dbnode_t *node, const char *func,
 }
 
 static void
-slabheader_destroy_rcu(struct rcu_head *rcu_head) {
-	dns_slabheader_t *header = caa_container_of(rcu_head, dns_slabheader_t,
-						    rcu_head);
+slabheader_destroy(dns_slabheader_t *header) {
 	unsigned int size;
 
 	if (EXISTS(header)) {
@@ -591,30 +589,103 @@ slabheader_destroy_rcu(struct rcu_head *rcu_head) {
 }
 
 /*
- * With DNS_SLABHEADERATTR_RCUFREE set, defer the destruction by an RCU
- * grace period, so that a lock-free reader that found this header
- * inside its RCU read-side critical section can still safely inspect
- * it: dns_slabheader_tryref() fails on the zero refcount, but the
- * memory stays valid until the grace period ends.  The rcu_head
- * overlays upper[], which nothing can read anymore once the last
- * reference is gone.
+ * Headers with DNS_SLABHEADERATTR_RCUFREE defer their destruction by
+ * an RCU grace period, so that a lock-free reader that found the
+ * header inside its RCU read-side critical section can still safely
+ * inspect it: dns_slabheader_tryref() fails on the zero refcount, but
+ * the memory stays valid until the grace period ends.
  *
- * Dropping the last reference from another call_rcu callback chains
- * grace periods: a deferred cache-node cleanup can release its headers
- * here, and destroying a header can release its negative-proof headers
- * via dns_slabheader_freeproof(), three call_rcu levels in total; the
- * shutdown sequence absorbs that by running rcu_barrier() three times
- * (in the libisc, liblog and libmem destructors).
+ * Under cache churn the deaths come in the hundreds of thousands per
+ * second, so instead of one call_rcu() per header, the dead headers
+ * are batched on a wait-free stack and reclaimed GRAVEYARD_BATCH at a
+ * time by a single callback.  The dead header's own storage provides
+ * the stack linkage, and the batch carrier's storage the rcu_head
+ * (both overlay upper[], which nothing can read once the last
+ * reference is gone).
+ *
+ * The stack is flushed when a pusher crosses the batch threshold, and
+ * at library shutdown (see dns__rdataslab_shutdown()).
  */
+#define GRAVEYARD_BATCH 64
+
+static struct __cds_wfs_stack graveyard;
+static atomic_uint_fast32_t graveyard_size;
+
+void
+dns__rdataslab_initialize(void) {
+	__cds_wfs_init(&graveyard);
+}
+
+static void
+slabheader_destroy_batch_rcu(struct rcu_head *rcu_head) {
+	dns_slabheader_t *carrier = caa_container_of(rcu_head, dns_slabheader_t,
+						     rcu_head);
+	struct cds_wfs_head *head = caa_container_of(&carrier->wfs_node,
+						     struct cds_wfs_head, node);
+
+	for (struct cds_wfs_node *node = cds_wfs_first(head); node != NULL;) {
+		dns_slabheader_t *header =
+			caa_container_of(node, dns_slabheader_t, wfs_node);
+		/*
+		 * The next pointer must be loaded before the header is
+		 * destroyed; the blocking variant waits out a pusher
+		 * whose linkage is still in flight.
+		 */
+		node = cds_wfs_next_blocking(node);
+		slabheader_destroy(header);
+	}
+}
+
+static void
+graveyard_flush(void) {
+	struct cds_wfs_head *head = __cds_wfs_pop_all(&graveyard);
+	struct cds_wfs_node *first = cds_wfs_first(head);
+
+	if (first == NULL) {
+		return;
+	}
+
+	/*
+	 * The most recently pushed header carries the batch: the popped
+	 * head is the address of its stack linkage, so the callback can
+	 * recover the chain from the carrier alone.
+	 */
+	dns_slabheader_t *carrier = caa_container_of(first, dns_slabheader_t,
+						     wfs_node);
+	call_rcu(&carrier->rcu_head, slabheader_destroy_batch_rcu);
+}
+
+void
+dns__rdataslab_shutdown(void) {
+	/*
+	 * Late releases come from other call_rcu callbacks (deferred
+	 * cache-node cleanups drop header references), so drain one
+	 * callback generation and flush again; the rcu_barrier() calls
+	 * in the libisc/liblog/libmem destructors then reap the final
+	 * batches, whose own callbacks free everything synchronously.
+	 */
+	graveyard_flush();
+	rcu_barrier();
+	graveyard_flush();
+}
+
 static void
 slabheader_release(struct urcu_ref *references) {
 	dns_slabheader_t *header =
 		caa_container_of(references, dns_slabheader_t, references);
 
-	if (DNS_SLABHEADER_GETATTR(header, DNS_SLABHEADERATTR_RCUFREE) != 0) {
-		call_rcu(&header->rcu_head, slabheader_destroy_rcu);
-	} else {
-		slabheader_destroy_rcu(&header->rcu_head);
+	if (DNS_SLABHEADER_GETATTR(header, DNS_SLABHEADERATTR_RCUFREE) == 0) {
+		slabheader_destroy(header);
+		return;
+	}
+
+	cds_wfs_node_init(&header->wfs_node);
+	cds_wfs_push(&graveyard, &header->wfs_node);
+
+	if (atomic_fetch_add_relaxed(&graveyard_size, 1) % GRAVEYARD_BATCH ==
+	    GRAVEYARD_BATCH - 1)
+	{
+		graveyard_flush();
 	}
 }
 

@@ -109,14 +109,19 @@ struct dns_slabheader {
 	 * character in the owner name needs to be AND'd with 0x20,
 	 * rendering that character upper case.
 	 *
-	 * The rcu_head shares this storage: it is written only after
-	 * the last reference has been dropped (to defer the free by an
-	 * RCU grace period), while upper[] is only ever read while a
-	 * reference is held.
+	 * The deferred-destruction state shares this storage: it is
+	 * written only after the last reference has been dropped (see
+	 * slabheader_release() in rdataslab.c), while upper[] is only
+	 * ever read while a reference is held.  'wfs_node' links the
+	 * dead header on the graveyard stack; 'rcu_head' is used by
+	 * the batch carrier only.
 	 */
 	union {
-		unsigned char	upper[32];
-		struct rcu_head rcu_head;
+		unsigned char upper[32];
+		struct {
+			struct rcu_head	    rcu_head;
+			struct cds_wfs_node wfs_node;
+		};
 	};
 
 	/* Used for stale refresh */

@@ -17,6 +17,19 @@
 
 #include <dns/rdataslab.h>
 
+void
+dns__rdataslab_initialize(void);
+/*%<
+ * Initialize the graveyard for RCU-deferred slabheader destruction.
+ */
+
+void
+dns__rdataslab_shutdown(void);
+/*%<
+ * Flush the graveyard: any headers still pending deferred destruction
+ * are queued for reclamation before the shutdown RCU barriers run.
+ */
+
 #define CASEFULLYLOWER(header)                         \
 	((atomic_load_acquire(&(header)->attributes) & \
 	  DNS_SLABHEADERATTR_CASEFULLYLOWER) != 0)
