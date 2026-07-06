@@ -15,6 +15,7 @@
 
 #include <isc/refcount.h>
 #include <isc/region.h>
+#include <isc/tls.h>
 #include <isc/types.h>
 
 /*! \file isc/quic.h */
@@ -49,6 +50,15 @@
  * to QUIC connections.
  */
 typedef struct isc_quic_router isc_quic_router_t;
+
+typedef struct isc_quic_conn isc_quic_conn_t;
+
+typedef struct isc_quic_callbacks isc_quic_callbacks_t;
+
+typedef struct isc_quic_server_options {
+	isc_tlsctx_t	 *tlsctx;
+	isc_constregion_t alpn;
+} isc_quic_server_options_t;
 
 typedef enum isc_quic_version {
 	/** Invalid QUIC version */
