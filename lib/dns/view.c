@@ -1118,16 +1118,16 @@ cleanup:
 // 	dns_rdataset_cleanup(&trdataset);
 // }
 //
+
 static isc_result_t
 bestzonecut_delegdb(dns_view_t *view, const dns_name_t *name, dns_name_t *fname,
 		    dns_name_t *dcname, isc_stdtime_t now, unsigned int options,
-		    dns_rdataset_t *rdataset, dns_delegset_t **delegsetp) {
+		    dns_delegset_t **delegsetp) {
 	isc_result_t result = DNS_R_NXDOMAIN;
 
-	if (view->cachedb != NULL) {
-		result = dns_db_findzonecut(view->cachedb, name, options, now,
-					    NULL, fname, dcname, rdataset,
-					    NULL);
+	if (view->deleg != NULL) {
+		result = dns_delegdb_lookup(view->deleg, name, now, options,
+					    fname, dcname, delegsetp);
 	}
 
 	/*
@@ -1136,23 +1136,46 @@ bestzonecut_delegdb(dns_view_t *view, const dns_name_t *name, dns_name_t *fname,
 	 * keep DNS_R_NXDOMAIN, so the hints can be checked.
 	 */
 	if (result != ISC_R_SUCCESS) {
-		dns_rdataset_cleanup(rdataset);
 		result = DNS_R_NXDOMAIN;
-	} else {
-		dns_delegset_fromnsrdataset(rdataset, delegsetp);
-		// ISC_LIST_FOREACH((*delegsetp)->delegs, deleg, link) {
-		// 	INSIST(deleg->type == DNS_DELEGTYPE_NS_NAMES);
-		//
-		// 	ISC_LIST_FOREACH(deleg->names, nsname, link) {
-		// 		addglue(view, nsname, now, delegsetp, deleg,
-		// 			AF_INET);
-		// 		addglue(view, nsname, now, delegsetp, deleg,
-		// 			AF_INET6);
-		// 	}
-		// }
 	}
 	return result;
 }
+
+// static isc_result_t
+// bestzonecut_delegdb(dns_view_t *view, const dns_name_t *name, dns_name_t
+// *fname, 		    dns_name_t *dcname, isc_stdtime_t now, unsigned int
+// options, 		    dns_rdataset_t *rdataset, dns_delegset_t
+// **delegsetp) { 	isc_result_t result = DNS_R_NXDOMAIN;
+//
+// 	if (view->cachedb != NULL) {
+// 		result = dns_db_findzonecut(view->cachedb, name, options, now,
+// 					    NULL, fname, dcname, rdataset,
+// 					    NULL);
+// 	}
+//
+// 	/*
+// 	 * Cache miss returns ISC_R_NOTFOUND, but to not confuse it
+// 	 * with a zone found without delegation matching `name` (nor partial),
+// 	 * keep DNS_R_NXDOMAIN, so the hints can be checked.
+// 	 */
+// 	if (result != ISC_R_SUCCESS) {
+// 		dns_rdataset_cleanup(rdataset);
+// 		result = DNS_R_NXDOMAIN;
+// 	} else {
+// 		dns_delegset_fromnsrdataset(rdataset, delegsetp);
+// 		// ISC_LIST_FOREACH((*delegsetp)->delegs, deleg, link) {
+// 		// 	INSIST(deleg->type == DNS_DELEGTYPE_NS_NAMES);
+// 		//
+// 		// 	ISC_LIST_FOREACH(deleg->names, nsname, link) {
+// 		// 		addglue(view, nsname, now, delegsetp, deleg,
+// 		// 			AF_INET);
+// 		// 		addglue(view, nsname, now, delegsetp, deleg,
+// 		// 			AF_INET6);
+// 		// 	}
+// 		// }
+// 	}
+// 	return result;
+// }
 
 static void
 bestzonecut_zoneorcache(dns_view_t *view, const dns_name_t *name,
@@ -1164,10 +1187,9 @@ bestzonecut_zoneorcache(dns_view_t *view, const dns_name_t *name,
 	dns_fixedname_t f, dc;
 	dns_name_t *cfname = dns_fixedname_initname(&f);
 	dns_name_t *cdcname = dns_fixedname_initname(&dc);
-	dns_rdataset_t crdataset = DNS_RDATASET_INIT;
 
 	result = bestzonecut_delegdb(view, name, cfname, cdcname, now, options,
-				     &crdataset, delegsetp);
+				     delegsetp);
 	if (result != ISC_R_SUCCESS) {
 		return;
 	}
@@ -1178,14 +1200,13 @@ bestzonecut_zoneorcache(dns_view_t *view, const dns_name_t *name,
 
 	if (cacheclosest && !staticstub) {
 		dns_rdataset_cleanup(rdataset);
-		dns_rdataset_clone(&crdataset, rdataset);
 
 		dns_name_copy(cfname, fname);
 		if (dcname != NULL) {
 			dns_name_copy(cdcname, dcname);
 		}
 	} else {
-		// dns_delegset_detach(delegsetp);
+		dns_delegset_detach(delegsetp);
 	}
 }
 
@@ -1235,7 +1256,7 @@ dns_view_bestzonecut(dns_view_t *view, const dns_name_t *name,
 		 * delegation.
 		 */
 		result = bestzonecut_delegdb(view, name, fname, dcname, now,
-					     options, rdataset, delegsetp);
+					     options, delegsetp);
 	} else if (result == ISC_R_SUCCESS && usecache) {
 		/*
 		 * A zone with a (possibly partial) delegation match but the
