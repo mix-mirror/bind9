@@ -1060,10 +1060,68 @@ cleanup:
 	return result;
 }
 
+static void
+addglue(dns_view_t *view, dns_name_t *nsname, isc_stdtime_t now,
+	dns_delegset_t **delegsetp, dns_deleg_t *deleg, unsigned int family) {
+	dns_rdataset_t trdataset = DNS_RDATASET_INIT;
+
+	dns_fixedname_t dummyfname;
+	dns_name_t *dummyname = dns_fixedname_initname(&dummyfname);
+
+	dns_rdatatype_t rdatatype;
+
+	switch (family) {
+	case AF_INET:
+		rdatatype = dns_rdatatype_a;
+		break;
+	case AF_INET6:
+		rdatatype = dns_rdatatype_aaaa;
+		break;
+	default:
+		UNREACHABLE();
+	}
+
+	isc_result_t tresult = dns_view_find(view, nsname, rdatatype, now, 0,
+					     false, false, NULL, NULL,
+					     dummyname, &trdataset, NULL);
+
+	if (tresult == ISC_R_SUCCESS || tresult == DNS_R_GLUE) {
+		deleg->type = DNS_DELEGTYPE_NS_GLUES;
+		DNS_RDATASET_FOREACH(&trdataset) {
+			dns_rdata_t rdata = DNS_RDATA_INIT;
+			isc_netaddr_t addr;
+
+			dns_rdataset_current(&trdataset, &rdata);
+
+			switch (family) {
+			case AF_INET: {
+				dns_rdata_in_a_t a;
+				dns_rdata_tostruct(&rdata, &a, NULL);
+				addr.type.in = a.in_addr;
+				break;
+			}
+			case AF_INET6: {
+				dns_rdata_in_aaaa_t aaaa;
+				dns_rdata_tostruct(&rdata, &aaaa, NULL);
+				addr.type.in6 = aaaa.in6_addr;
+				break;
+			}
+			default:
+				UNREACHABLE();
+			}
+
+			addr.family = family;
+			dns_delegset_addaddr(*delegsetp, deleg, &addr);
+		}
+	}
+
+	dns_rdataset_cleanup(&trdataset);
+}
+
 static isc_result_t
 bestzonecut_delegdb(dns_view_t *view, const dns_name_t *name, dns_name_t *fname,
 		    dns_name_t *dcname, isc_stdtime_t now, unsigned int options,
-		    dns_rdataset_t *rdataset) {
+		    dns_rdataset_t *rdataset, dns_delegset_t **delegsetp) {
 	isc_result_t result = DNS_R_NXDOMAIN;
 
 	if (view->cachedb != NULL) {
@@ -1080,6 +1138,18 @@ bestzonecut_delegdb(dns_view_t *view, const dns_name_t *name, dns_name_t *fname,
 	if (result != ISC_R_SUCCESS) {
 		dns_rdataset_cleanup(rdataset);
 		result = DNS_R_NXDOMAIN;
+	} else {
+		dns_delegset_fromnsrdataset(rdataset, delegsetp);
+		ISC_LIST_FOREACH((*delegsetp)->delegs, deleg, link) {
+			INSIST(deleg->type == DNS_DELEGTYPE_NS_NAMES);
+
+			ISC_LIST_FOREACH(deleg->names, nsname, link) {
+				addglue(view, nsname, now, delegsetp, deleg,
+					AF_INET);
+				addglue(view, nsname, now, delegsetp, deleg,
+					AF_INET6);
+			}
+		}
 	}
 	return result;
 }
@@ -1097,7 +1167,7 @@ bestzonecut_zoneorcache(dns_view_t *view, const dns_name_t *name,
 	dns_rdataset_t crdataset = DNS_RDATASET_INIT;
 
 	result = bestzonecut_delegdb(view, name, cfname, cdcname, now, options,
-				     &crdataset);
+				     &crdataset, delegsetp);
 	if (result != ISC_R_SUCCESS) {
 		return;
 	}
@@ -1165,7 +1235,7 @@ dns_view_bestzonecut(dns_view_t *view, const dns_name_t *name,
 		 * delegation.
 		 */
 		result = bestzonecut_delegdb(view, name, fname, dcname, now,
-					     options, rdataset);
+					     options, rdataset, delegsetp);
 	} else if (result == ISC_R_SUCCESS && usecache) {
 		/*
 		 * A zone with a (possibly partial) delegation match but the
