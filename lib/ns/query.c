@@ -755,9 +755,6 @@ query_reset(ns_client_t *client, bool everything) {
 	}
 	ISC_LIST_INIT(client->query.activeversions);
 
-	if (client->query.authdb != NULL) {
-		dns_db_detach(&client->query.authdb);
-	}
 	if (client->query.authzone != NULL) {
 		dns_zone_detach(&client->query.authzone);
 	}
@@ -825,6 +822,7 @@ query_reset(ns_client_t *client, bool everything) {
 	client->query.dboptions = 0;
 	client->query.fetchoptions = 0;
 	client->query.gluedb = NULL;
+	client->query.authdb = 0;
 	client->query.authdbset = false;
 	client->query.isreferral = false;
 	client->query.dns64_options = 0;
@@ -1013,7 +1011,7 @@ query_validatezonedb(ns_client_t *client, const dns_name_t *name,
 	 */
 	if (client->query.rpz_st == NULL &&
 	    !(client->query.wantrecursion && client->query.recursionok) &&
-	    client->query.authdbset && db != client->query.authdb)
+	    client->query.authdbset && (intptr_t)db != client->query.authdb)
 	{
 		return DNS_R_REFUSED;
 	}
@@ -1662,16 +1660,16 @@ query_additionalauth(query_ctx_t *qctx, const dns_name_t *name,
 	 * First, look within the same zone database for authoritative
 	 * additional data.
 	 */
-	if (!client->query.authdbset || client->query.authdb == NULL) {
+	if (!client->query.authdbset || client->query.authdb == 0) {
 		return ISC_R_NOTFOUND;
 	}
 
-	dbversion = ns_client_findversion(client, client->query.authdb);
+	dbversion = ns_client_findversionid(client, client->query.authdb);
 	if (dbversion == NULL) {
 		return ISC_R_NOTFOUND;
 	}
 
-	dns_db_attach(client->query.authdb, &db);
+	dns_db_attach(dbversion->db, &db);
 	version = dbversion->version;
 
 	CTRACE(ISC_LOG_DEBUG(3), "query_additionalauth: same zone");
@@ -5424,7 +5422,7 @@ ns__query_start(query_ctx_t *qctx) {
 					dns_zone_gethooktable(qctx->zone);
 				CALL_HOOK(NS_QUERY_AUTHZONE_ATTACHED, qctx);
 			}
-			dns_db_attach(qctx->db, &qctx->client->query.authdb);
+			qctx->client->query.authdb = (intptr_t)qctx->db;
 		}
 		qctx->client->query.authdbset = true;
 

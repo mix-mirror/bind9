@@ -3167,6 +3167,17 @@ client_getdbversion(ns_client_t *client) {
 }
 
 ns_dbversion_t *
+ns_client_findversionid(ns_client_t *client, intptr_t dbid) {
+	ISC_LIST_FOREACH(client->query.activeversions, dbversion, link) {
+		if ((intptr_t)dbversion->db == dbid) {
+			return dbversion;
+		}
+	}
+
+	return NULL;
+}
+
+ns_dbversion_t *
 ns_client_findversion(ns_client_t *client, dns_db_t *db) {
 	ISC_LIST_FOREACH(client->query.activeversions, dbversion, link) {
 		if (dbversion->db == db) {
