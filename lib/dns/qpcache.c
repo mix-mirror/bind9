@@ -91,6 +91,12 @@
 #define HEADERNODE(h) ((qpcnode_t *)((h)->node))
 
 /*%
+ * Number of SIEVE-LRU entries examined by the amortized DEAD-header
+ * reaping on every cache insert; see sieve_reap().
+ */
+#define QPCACHE_SIEVE_REAP_MAX 2
+
+/*%
  * Forward declarations
  */
 typedef struct qpcache qpcache_t;
@@ -163,13 +169,36 @@ typedef struct qpcache_bucket {
 
 			/* Per-bucket lock. */
 			isc_rwlock_t lock;
-
-			/* SIEVE-LRU cache cleaning state. */
-			ISC_SIEVE(dns_slabheader_t) sieve;
 		};
 		uint8_t __padding[ISC_OS_CACHELINE_SIZE];
 	};
 } qpcache_bucket_t;
+
+/*%
+ * One SIEVE-LRU list is created for each loop and is owned exclusively
+ * by that loop: only the owner ever inserts into, walks, or unlinks
+ * from its list, so the list itself needs no locking at all.  The
+ * visited marks are atomic and can be set from any thread on a cache
+ * hit.  Deleting a header from another thread only sets the DEAD
+ * attribute; the owner unlinks it lazily, which is why the sieve holds
+ * its own reference to every linked header.
+ */
+typedef struct qpcache_sieve {
+	union {
+		struct {
+			/* SIEVE-LRU cache cleaning state. */
+			ISC_SIEVE(dns_slabheader_t) sieve;
+
+			/* Cursor for the lazy reaping of DEAD headers. */
+			dns_slabheader_t *reap;
+		};
+		uint8_t __padding[ISC_OS_CACHELINE_SIZE];
+	};
+} qpcache_sieve_t;
+
+STATIC_ASSERT(sizeof(qpcache_sieve_t) % ISC_OS_CACHELINE_SIZE == 0,
+	      "qpcache_sieve_t size must be a multiple of the cacheline "
+	      "size");
 
 struct qpcache {
 	/* Unlocked. */
@@ -211,6 +240,10 @@ struct qpcache {
 
 	/* Locked by tree_lock. */
 	dns_qp_t *tree;
+
+	/* Per-loop SIEVE-LRU lists, only ever touched by their loop. */
+	size_t sieves_count;
+	qpcache_sieve_t *sieves;
 
 	size_t buckets_count;
 	qpcache_bucket_t buckets[]; /* attribute((counted_by(buckets_count))) */
@@ -443,58 +476,136 @@ expire_header(qpcache_t *qpdb, qpcnode_t *node, dns_slabheader_t *header,
 	return expired;
 }
 
+/*%
+ * Unlink 'header' from the sieve 'sv' and release the reference the
+ * sieve was holding to it.  This must only ever be called by the
+ * sieve's owner loop.
+ */
 static void
-expire_lru_headers(qpcache_t *qpdb, dns_slabheader_t *newheader, uint32_t idx,
-		   size_t requested, isc_rwlocktype_t *nlocktypep,
-		   isc_rwlocktype_t *tlocktypep DNS__DB_FLARG) {
-	size_t expired = 0;
+sieve_unlink(qpcache_sieve_t *sv, dns_slabheader_t *header) {
+	if (sv->reap == header) {
+		sv->reap = ISC_LIST_PREV(header, lrulink);
+	}
+	ISC_SIEVE_UNLINK(sv->sieve, header, lrulink);
+	dns_slabheader_detach(&header);
+}
 
-	do {
-		dns_slabheader_t *header = ISC_SIEVE_NEXT(
-			qpdb->buckets[idx].sieve, visited, lrulink);
+/*%
+ * Advance the reap cursor over up to 'max' entries, unlinking the DEAD
+ * ones.  Called by the owner loop on every insert: eviction only walks
+ * the sieve when the cache is overmem, so without this amortized
+ * reaping a below-limit cache would accumulate DEAD headers (deleted
+ * by other threads) indefinitely.  The cursor travels from the tail to
+ * the head like the SIEVE hand, so a DEAD header's lifetime is bounded
+ * by the insert churn.
+ */
+static void
+sieve_reap(qpcache_sieve_t *sv, size_t max) {
+	for (size_t n = 0; n < max; n++) {
+		dns_slabheader_t *header = sv->reap;
+		if (header == NULL) {
+			header = ISC_LIST_TAIL(sv->sieve.list);
+		}
 		if (header == NULL) {
 			return;
 		}
 
-		/* newheader is protected from removal */
-		if (header == newheader || header->related == newheader) {
-			return;
+		sv->reap = ISC_LIST_PREV(header, lrulink);
+
+		if (DEAD(header)) {
+			sieve_unlink(sv, header);
+		}
+	}
+}
+
+/*%
+ * Evict data from the current loop's own SIEVE to make room for the
+ * data being added.  This must be called without any node lock held:
+ * the sieve walk itself is lock-free (protected by the loop affinity),
+ * and the victim's bucket lock is taken for each eviction separately,
+ * one at a time.  The loop that receives the inserts is also the loop
+ * whose sieve grows, so the eviction capacity is naturally located
+ * where the insert pressure is.
+ */
+static void
+overmem_purge(qpcache_t *qpdb, dns_slabheader_t *newheader,
+	      isc_rwlocktype_t *tlocktypep DNS__DB_FLARG) {
+	/*
+	 * Maximum estimated size of the data being added: The size
+	 * of the rdataset, plus a new QP database node and nodename,
+	 * and a possible additional NSEC node and nodename. Also add
+	 * a 12k margin for a possible QP-trie chunk allocation.
+	 * (It's okay to overestimate, we want to get cache memory
+	 * down quickly.)
+	 */
+	size_t purgesize = 2 * (sizeof(qpcnode_t) +
+				dns_name_size(&HEADERNODE(newheader)->name)) +
+			   rdataset_size(newheader) + QP_SAFETY_MARGIN;
+	size_t purged = 0;
+
+	isc_tid_t tid = isc_tid();
+	INSIST(tid >= 0 && (size_t)tid < qpdb->sieves_count);
+	qpcache_sieve_t *sv = &qpdb->sieves[tid];
+
+	while (purged < purgesize) {
+		dns_slabheader_t *header = ISC_SIEVE_NEXT(sv->sieve, visited,
+							  lrulink);
+		if (header == NULL) {
+			break;
 		}
 
-		qpcnode_t *node = HEADERNODE(header);
+		if (DEAD(header)) {
+			/* Deleted by another thread, just reap it */
+			sieve_unlink(sv, header);
+			continue;
+		}
 
-		expired += expire_header(qpdb, node, header, nlocktypep,
-					 tlocktypep DNS__DB_FLARG_PASS);
+		/*
+		 * The bucket lock has to be found through the locknum
+		 * copy in the header: dereferencing header->node is not
+		 * safe until the lock is held and the header is known
+		 * not to be DEAD, because a DEAD header may outlive its
+		 * node.
+		 */
+		isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
+		isc_rwlock_t *nlock = &qpdb->buckets[header->locknum].lock;
 
-	} while (expired < requested);
+		NODE_WRLOCK(nlock, &nlocktype);
+
+		if (DEAD(header)) {
+			/* We lost the race with a deleting thread */
+			NODE_UNLOCK(nlock, &nlocktype);
+			sieve_unlink(sv, header);
+			continue;
+		}
+
+		/* newheader is protected from removal */
+		if (header == newheader || header->related == newheader) {
+			NODE_UNLOCK(nlock, &nlocktype);
+			break;
+		}
+
+		purged += expire_header(qpdb, HEADERNODE(header), header,
+					&nlocktype,
+					tlocktypep DNS__DB_FLARG_PASS);
+
+		NODE_UNLOCK(nlock, &nlocktype);
+
+		sieve_unlink(sv, header);
+	}
 }
 
 static void
-qpcache_miss(qpcache_t *qpdb, dns_slabheader_t *newheader,
-	     isc_rwlocktype_t *nlocktypep,
-	     isc_rwlocktype_t *tlocktypep DNS__DB_FLARG) {
-	uint32_t idx = HEADERNODE(newheader)->locknum;
+qpcache_miss(qpcache_t *qpdb, dns_slabheader_t *newheader) {
+	isc_tid_t tid = isc_tid();
+	INSIST(tid >= 0 && (size_t)tid < qpdb->sieves_count);
+	qpcache_sieve_t *sv = &qpdb->sieves[tid];
 
-	if (isc_mem_isovermem(qpdb->common.mctx)) {
-		/*
-		 * Maximum estimated size of the data being added: The size
-		 * of the rdataset, plus a new QP database node and nodename,
-		 * and a possible additional NSEC node and nodename. Also add
-		 * a 12k margin for a possible QP-trie chunk allocation.
-		 * (It's okay to overestimate, we want to get cache memory
-		 * down quickly.)
-		 */
+	/* The sieve holds its own reference to every linked header */
+	dns_slabheader_ref(newheader);
+	ISC_SIEVE_INSERT(sv->sieve, newheader, lrulink);
 
-		size_t purgesize =
-			2 * (sizeof(qpcnode_t) +
-			     dns_name_size(&HEADERNODE(newheader)->name)) +
-			rdataset_size(newheader) + QP_SAFETY_MARGIN;
-
-		expire_lru_headers(qpdb, newheader, idx, purgesize, nlocktypep,
-				   tlocktypep DNS__DB_FLARG_PASS);
-	}
-
-	ISC_SIEVE_INSERT(qpdb->buckets[idx].sieve, newheader, lrulink);
+	sieve_reap(sv, QPCACHE_SIEVE_REAP_MAX);
 }
 
 static void
@@ -805,7 +916,13 @@ header_delete(qpcnode_t *node, dns_slabheader_t *header) {
 	update_rrsetstats(qpdb->rrsetstats, header->typepair,
 			  atomic_load_acquire(&header->attributes), false);
 
-	ISC_SIEVE_UNLINK(qpdb->buckets[node->locknum].sieve, header, lrulink);
+	/*
+	 * We may be running on any loop, so the header cannot be
+	 * unlinked from its (possibly foreign) SIEVE here; mark it DEAD
+	 * and leave the unlinking to the sieve's owner loop, which is
+	 * why the sieve holds its own header reference.
+	 */
+	DNS_SLABHEADER_SETATTR(header, DNS_SLABHEADERATTR_DEAD);
 
 	if (header->related != NULL) {
 		INSIST(header->related->related == header);
@@ -1924,10 +2041,27 @@ qpcache__destroy(qpcache_t *qpdb) {
 	if (dns_name_dynamic(&qpdb->common.origin)) {
 		dns_name_free(&qpdb->common.origin, qpdb->common.mctx);
 	}
+	/*
+	 * No loop can reach the database any longer, so it is safe to
+	 * drain all the sieves from here, releasing the references they
+	 * hold; any headers still linked were marked DEAD when the tree
+	 * was destroyed above.
+	 */
+	for (i = 0; i < qpdb->sieves_count; i++) {
+		qpcache_sieve_t *sv = &qpdb->sieves[i];
+		dns_slabheader_t *header = NULL;
+
+		while ((header = ISC_SIEVE_NEXT(sv->sieve, visited, lrulink)) !=
+		       NULL)
+		{
+			sieve_unlink(sv, header);
+		}
+	}
+	isc_mem_cput(qpdb->common.mctx, qpdb->sieves, qpdb->sieves_count,
+		     sizeof(qpdb->sieves[0]));
+
 	for (i = 0; i < qpdb->buckets_count; i++) {
 		NODE_DESTROYLOCK(&qpdb->buckets[i].lock);
-
-		INSIST(ISC_SIEVE_EMPTY(qpdb->buckets[i].sieve));
 
 		INSIST(isc_queue_empty(&qpdb->buckets[i].deadnodes));
 		isc_queue_destroy(&qpdb->buckets[i].deadnodes);
@@ -2618,8 +2752,7 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 		}
 	}
 
-	qpcache_miss(qpdb, newheader, &nlocktype,
-		     &tlocktype DNS__DB_FLARG_PASS);
+	qpcache_miss(qpdb, newheader);
 
 	/*
 	 * We've added a proof that a rdtype doesn't exist.
@@ -2791,6 +2924,15 @@ qpcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	nlock = &qpdb->buckets[qpnode->locknum].lock;
 
 	/*
+	 * Reclaim space for the data being added while no node lock is
+	 * held yet, so the eviction is free to take each victim's own
+	 * bucket lock without ever holding two bucket locks at once.
+	 */
+	if (isc_mem_isovermem(qpdb->common.mctx)) {
+		overmem_purge(qpdb, newheader, &tlocktype DNS__DB_FLARG_PASS);
+	}
+
+	/*
 	 * Add to the auxiliary NSEC tree if we're adding an NSEC record.
 	 */
 	if (rdataset->type == dns_rdatatype_nsec) {
@@ -2941,20 +3083,24 @@ dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 		.common.references = 1,
 		.references = 1,
 		.buckets_count = nloops,
+		.sieves_count = nloops,
 	};
 
 	isc_rwlock_init(&qpdb->lock);
 	TREE_INITLOCK(&qpdb->tree_lock);
 
-	qpdb->buckets_count = isc_loopmgr_nloops();
-
 	dns_rdatasetstats_create(mctx, &qpdb->rrsetstats);
 	for (i = 0; i < (int)qpdb->buckets_count; i++) {
-		ISC_SIEVE_INIT(qpdb->buckets[i].sieve);
-
 		isc_queue_init(&qpdb->buckets[i].deadnodes);
 
 		NODE_INITLOCK(&qpdb->buckets[i].lock);
+	}
+
+	qpdb->sieves = isc_mem_cget(mctx, qpdb->sieves_count,
+				    sizeof(qpdb->sieves[0]));
+	for (i = 0; i < (int)qpdb->sieves_count; i++) {
+		ISC_SIEVE_INIT(qpdb->sieves[i].sieve);
+		qpdb->sieves[i].reap = NULL;
 	}
 
 	/*

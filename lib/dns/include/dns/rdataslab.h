@@ -108,6 +108,13 @@ struct dns_slabheader {
 
 	uint16_t nitems;
 
+	/*%
+	 * Copy of node->locknum; it is used (by the cache) to find the
+	 * node's bucket lock without dereferencing 'node', which is not
+	 * safe for a DEAD header that may have outlived its node.
+	 */
+	uint16_t locknum;
+
 	/*% Used for SIEVE-LRU (cache) */
 	bool visited;
 	ISC_LINK(struct dns_slabheader) lrulink;
@@ -149,6 +156,7 @@ enum {
 	DNS_SLABHEADERATTR_ZEROTTL = 1 << 10,
 	DNS_SLABHEADERATTR_CASEFULLYLOWER = 1 << 11,
 	DNS_SLABHEADERATTR_STALE_WINDOW = 1 << 12,
+	DNS_SLABHEADERATTR_DEAD = 1 << 13,
 };
 
 /* clang-format off : RemoveParentheses */
