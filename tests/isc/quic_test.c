@@ -28,6 +28,16 @@
 
 #include <tests/isc.h>
 
+typedef struct connection_context {
+	bool dead;
+	bool write_close;
+	bool handshake_done;
+	isc_quic_conn_t *conn;
+	isc_quic_router_t *router;
+	isc_tlsctx_t *tlsctx;
+	isc_sockaddr_t *local;
+} connection_context_t;
+
 constexpr uint8_t client_dcid[] = {
 	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
 };
@@ -99,6 +109,243 @@ constexpr uint8_t stateless_reset_packet[] = {
 	0x40, 0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0x00, 0x01, 0x02, 0x03,
 	0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0xE,  0x0F,
 };
+
+constexpr uint8_t alpn[] = { 0x03, 'U', 'w', 'U' };
+
+constexpr isc_nanosecs_t idle_timeout = 300000000;
+
+static isc_sockaddr_t client_addr[16];
+static isc_sockaddr_t server_addr;
+
+static isc_nanosecs_t shim_clock = 0;
+
+static void
+handshake_completed_cb(void *cbarg);
+static const isc_quic_conn_callbacks_t callbacks = {
+	.handshake_completed = handshake_completed_cb,
+};
+
+isc_nanosecs_t
+isc_time_monotonic(void) {
+	isc_nanosecs_t current = shim_clock;
+	shim_clock += 7;
+	return current;
+}
+
+static void
+client_init(connection_context_t *client, size_t i) {
+	isc_quic_router_t *router = NULL;
+	isc_quic_conn_t *conn = NULL;
+	isc_tlsctx_t *tlsctx = NULL;
+	isc_result_t result;
+
+	isc_quic_router_create(isc_g_mctx, &router);
+
+	result = isc_tlsctx_createclient(&tlsctx);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	isc_tlsctx_set_random_session_id_context(tlsctx);
+
+	const isc_quic_client_options_t opts = {
+		.tlsctx = tlsctx,
+		.alpn = { .base = alpn, .length = sizeof(alpn) },
+		.idle_timeout = idle_timeout,
+	};
+
+	result = isc_quic_conn_client_create(
+		isc_g_mctx, router, &callbacks, client, &opts,
+		"test.example.com", &client_addr[i], &server_addr, &conn);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	*client = (connection_context_t){
+		.conn = conn,
+		.router = router,
+		.tlsctx = tlsctx,
+		.local = &client_addr[i],
+	};
+}
+
+static void
+client_deinit(connection_context_t *client) {
+	isc_quic_router_detach(&client->router);
+	isc_quic_conn_destroy(&client->conn);
+	isc_tlsctx_free(&client->tlsctx);
+}
+
+static int
+global_setup(void **state ISC_ATTR_UNUSED) {
+	size_t i;
+
+	isc_sockaddr_fromin6(&server_addr, &in6addr_loopback, 9900);
+
+	for (i = 0; i < ARRAY_SIZE(client_addr); i++) {
+		isc_sockaddr_fromin6(&client_addr[i], &in6addr_loopback,
+				     9901 + i);
+	}
+
+	return 0;
+}
+
+static void
+server_init(connection_context_t *server, isc_quic_router_t *router,
+	    isc_constregion_t scid, isc_constregion_t dcid,
+	    isc_sockaddr_t *peer) {
+	isc_quic_conn_t *conn = NULL;
+	isc_tlsctx_t *tlsctx = NULL;
+	isc_result_t result;
+
+	result = isc_tlsctx_createserver(NULL, NULL, &tlsctx);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	isc_tlsctx_set_random_session_id_context(tlsctx);
+
+	const isc_quic_server_options_t opts = {
+		.tlsctx = tlsctx,
+		.alpn = { .base = alpn, .length = sizeof(alpn) },
+		.idle_timeout = idle_timeout,
+	};
+
+	result = isc_quic_conn_server_create(isc_g_mctx, router, &callbacks,
+					     server, &opts, dcid, scid,
+					     &server_addr, peer, &conn);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	assert_non_null(conn);
+
+	*server = (connection_context_t){
+		.conn = conn,
+		.router = router,
+		.tlsctx = tlsctx,
+	};
+}
+
+static void
+server_deinit(connection_context_t *server) {
+	isc_quic_router_detach(&server->router);
+	isc_quic_conn_destroy(&server->conn);
+	isc_tlsctx_free(&server->tlsctx);
+}
+
+static void
+handshake_completed_cb(void *cbarg) {
+	connection_context_t *context = cbarg;
+	context->handshake_done = true;
+}
+
+static void
+client_to_server_initial_io(connection_context_t *server,
+			    connection_context_t *client) {
+	isc_constregion_t scid, dcid;
+	isc_quic_router_t *router = NULL;
+	void *conn = NULL;
+	isc_sockaddr_t from, to;
+	isc_result_t result;
+	uint8_t buffer[1200];
+	size_t len;
+
+	len = 0;
+	result = isc_quic_conn_pull_packet(
+		client->conn, (isc_region_t){ buffer, sizeof(buffer) }, &len,
+		&from, &to);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	assert_true(isc_sockaddr_compare(&from, client->local,
+					 ISC_SOCKADDR_CMPADDR |
+						 ISC_SOCKADDR_CMPPORT));
+	assert_true(isc_sockaddr_compare(&to, &server_addr,
+					 ISC_SOCKADDR_CMPADDR |
+						 ISC_SOCKADDR_CMPPORT));
+
+	// result = isc_quic_packet_info_decode(
+	// 	&scid, &dcid, (isc_constregion_t){ buffer, len });
+	// assert_int_equal(result, ISC_R_SUCCESS);
+
+	isc_quic_router_create(isc_g_mctx, &router);
+
+	result = isc_quic_router_handle_packet(
+		router, (isc_constregion_t){ buffer, len }, NULL, &dcid, &scid,
+		&conn);
+	assert_int_equal(result, ISC_R_NOTFOUND);
+	assert_non_null(dcid.base);
+	assert_non_null(scid.base);
+
+	server_init(server, router, scid, dcid, &from);
+
+	result = isc_quic_conn_push_packet(server->conn,
+					   (isc_constregion_t){ buffer, len },
+					   &server_addr, client->local),
+	assert_int_equal(result, ISC_R_SUCCESS);
+}
+
+static void
+io_step(connection_context_t *server, connection_context_t *client) {
+	isc_sockaddr_t from, to;
+	isc_result_t result;
+	uint8_t cbuf[1200];
+	uint8_t sbuf[1200];
+	size_t len;
+
+	if (server->dead || client->dead) {
+		return;
+	}
+
+	len = 0;
+	switch (isc_quic_conn_handle_expiry(server->conn)) {
+	case ISC_R_SUCCESS:
+		isc_quic_conn_pull_packet(server->conn,
+					  (isc_region_t){ sbuf, sizeof(sbuf) },
+					  &len, &from, &to);
+		break;
+	case ISC_R_CANCELED:
+		server->write_close = true;
+		FALLTHROUGH;
+	case ISC_R_TIMEDOUT:
+		server->dead = true;
+		break;
+	default:
+		UNREACHABLE();
+	}
+
+	if (len != 0) {
+		assert_true(isc_sockaddr_compare(&from, &server_addr,
+						 ISC_SOCKADDR_CMPADDR |
+							 ISC_SOCKADDR_CMPPORT));
+		assert_true(isc_sockaddr_compare(&to, client->local,
+						 ISC_SOCKADDR_CMPADDR |
+							 ISC_SOCKADDR_CMPPORT));
+
+		result = isc_quic_conn_push_packet(
+			client->conn, (isc_constregion_t){ sbuf, len },
+			client->local, &server_addr);
+		assert_int_equal(result, ISC_R_SUCCESS);
+	}
+
+	switch (isc_quic_conn_handle_expiry(client->conn)) {
+	case ISC_R_SUCCESS:
+		break;
+	case ISC_R_CANCELED:
+		client->write_close = true;
+		FALLTHROUGH;
+	case ISC_R_TIMEDOUT:
+		client->dead = true;
+		break;
+	default:
+		UNREACHABLE();
+	}
+
+	len = 0;
+	isc_quic_conn_pull_packet(client->conn,
+				  (isc_region_t){ cbuf, sizeof(cbuf) }, &len,
+				  &from, &to);
+	if (len != 0) {
+		assert_true(isc_sockaddr_compare(&from, client->local,
+						 ISC_SOCKADDR_CMPADDR |
+							 ISC_SOCKADDR_CMPPORT));
+		assert_true(isc_sockaddr_compare(&to, &server_addr,
+						 ISC_SOCKADDR_CMPADDR |
+							 ISC_SOCKADDR_CMPPORT));
+		result = isc_quic_conn_push_packet(
+			server->conn, (isc_constregion_t){ cbuf, len },
+			&server_addr, client->local);
+		assert_int_equal(result, ISC_R_SUCCESS);
+	}
+}
 
 ISC_RUN_TEST_IMPL(isc_quic_router_cid) {
 	isc_quic_router_t *router = NULL;
@@ -240,10 +487,115 @@ ISC_RUN_TEST_IMPL(isc_quic_router_packet) {
 	isc_quic_router_detach(&router);
 }
 
+ISC_RUN_TEST_IMPL(isc_quic_conn_perfect) {
+	connection_context_t client, server;
+	isc_result_t result;
+	uint8_t cbuf[1200];
+	int64_t stream1_id, stream2_id;
+	size_t len;
+
+	client_init(&client, 0);
+	client_to_server_initial_io(&server, &client);
+
+	while (!client.handshake_done && !server.handshake_done) {
+		io_step(&server, &client);
+	}
+
+	stream1_id = -1;
+	result = isc_quic_conn_open_bidi_stream(client.conn, &stream1_id,
+						&server);
+	assert_int_not_equal(stream1_id, -1);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	stream2_id = -1;
+	result = isc_quic_conn_open_bidi_stream(client.conn, &stream2_id,
+						&server);
+	assert_int_not_equal(stream2_id, -1);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	uint8_t *wa = (uint8_t *)"hi!";
+
+	result = isc_quic_conn_push_stream_data(client.conn, stream1_id, wa, 3);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	result = isc_quic_conn_push_stream_data(client.conn, stream1_id, wa, 3);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	result = isc_quic_conn_push_stream_data(client.conn, stream2_id, wa, 3);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	result = isc_quic_conn_pull_packet(client.conn,
+					   (isc_region_t){ cbuf, sizeof(cbuf) },
+					   &len, NULL, NULL);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	result = isc_quic_conn_push_packet(server.conn,
+					   (isc_constregion_t){ cbuf, len },
+					   &server_addr, client.local);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	result = isc_quic_conn_shutdown_stream(server.conn, stream1_id, 0);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	io_step(&server, &client);
+
+	client_deinit(&client);
+	server_deinit(&server);
+}
+
+ISC_RUN_TEST_IMPL(isc_quic_conn_lost_packet) {
+	connection_context_t client, server;
+	isc_result_t result;
+	uint8_t cbuf[1200];
+	int64_t stream_id;
+	size_t i, len;
+
+	const char messages[4][4] = { "hi!", "uwu", "owo", "TwT" };
+
+	client_init(&client, 0);
+	client_to_server_initial_io(&server, &client);
+
+	while (!client.handshake_done && !server.handshake_done) {
+		io_step(&server, &client);
+	}
+
+	stream_id = -1;
+	result = isc_quic_conn_open_bidi_stream(client.conn, &stream_id,
+						&server);
+	assert_int_not_equal(stream_id, -1);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	io_step(&server, &client);
+
+	/* lose this packet */
+	isc_quic_conn_push_stream_data(client.conn, stream_id,
+				       UNCONST(messages[0]),
+				       sizeof(messages[0]));
+	result = isc_quic_conn_pull_packet(client.conn,
+					   (isc_region_t){ cbuf, sizeof(cbuf) },
+					   &len, NULL, NULL);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	for (i = 1; i < ARRAY_SIZE(messages); i++) {
+		isc_quic_conn_push_stream_data(client.conn, stream_id,
+					       UNCONST(messages[i]),
+					       sizeof(messages[i]));
+
+		io_step(&server, &client);
+	}
+
+	io_step(&server, &client);
+
+	client_deinit(&client);
+	server_deinit(&server);
+}
+
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY(isc_quic_router_cid)
 ISC_TEST_ENTRY(isc_quic_router_stateless_reset)
 ISC_TEST_ENTRY(isc_quic_router_packet)
+ISC_TEST_ENTRY(isc_quic_conn_perfect)
+ISC_TEST_ENTRY(isc_quic_conn_lost_packet)
 ISC_TEST_LIST_END
 
-ISC_TEST_MAIN
+ISC_TEST_MAIN_CUSTOM(global_setup, NULL);

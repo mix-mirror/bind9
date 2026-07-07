@@ -82,6 +82,14 @@ typedef struct isc_nm_http_endpoints isc_nm_http_endpoints_t;
 /*%< HTTP endpoints set */
 #endif /* HAVE_LIBNGHTTP2 */
 
+#ifdef HAVE_LIBNGTCP2
+typedef struct isc_quic_conn		 isc_quic_conn_t;
+typedef struct isc_quic_client_options	 isc_quic_client_options_t;
+typedef struct isc_quic_conn_callbacks	 isc_quic_conn_callbacks_t;
+typedef struct isc_quic_stream_data	 isc_quic_stream_data_t;
+typedef struct isc_quic_stream_data_info isc_quic_stream_data_info_t;
+#endif /* HAVE_LIBNGTCP2 */
+
 /*% Used by isc_base64 and isc_hex for expected lower bound */
 enum {
 	isc_zero_or_more = -1,
