@@ -34,6 +34,7 @@ dns_srcset.add(dns_gen_headers)
 dns_srcset.add(when: dnstap_dep, if_true: files('dnstap.c'))
 dns_srcset.add(when: maxminddb_dep, if_true: files('geoip2.c'))
 dns_srcset.add(when: [gssapi_dep, krb5_dep], if_true: files('gssapi_link.c'))
+dns_srcset.add(when: 'HAVE_FTCACHE', if_true: files('ftcache.c'))
 
 dns_srcset.add(
     custom_target(
@@ -130,7 +131,6 @@ dns_srcset.add(
         'openssleddsa_link.c',
         'opensslrsa_link.c',
         'order.c',
-        'ftcache.c',
         'peer.c',
         'private.c',
         'qp.c',

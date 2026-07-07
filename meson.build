@@ -315,6 +315,12 @@ config.set_quoted('NAMED_CONFFILE', sysconfdir / 'named.conf')
 
 config.set_quoted('CACHEDB_DEFAULT', get_option('cachedb'))
 config.set_quoted('ZONEDB_DEFAULT', get_option('zonedb'))
+if get_option('cachedb') == 'ftcache'
+    # Compile and register the fractal-trie cache implementation; a
+    # qpcache build leaves it out entirely so that liburcu 0.10.0 (no
+    # cds fractal trie) still suffices.
+    config.set('HAVE_FTCACHE', 1)
+endif
 
 constexpr_test = '''
 static constexpr int r = 0;
@@ -706,7 +712,9 @@ endif
 # The fractal-trie cache (ftcache) needs the cds fractal trie, which
 # first appears in liburcu 0.16.0; every other build only needs 0.10.0.
 # Requiring 0.16.0 makes a too-old system liburcu fail the check and
-# fall back to the pinned userspace-rcu subproject.
+# fall back to the pinned userspace-rcu subproject. ftcache is only
+# compiled when selected (see HAVE_FTCACHE), so the qpcache build
+# really works with the older liburcu.
 urcu_min = get_option('cachedb') == 'ftcache' ? '>=0.16.0' : '>=0.10.0'
 
 urcu_dep = [dependency('liburcu-cds', version: urcu_min)]

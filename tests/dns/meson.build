@@ -23,7 +23,6 @@ dns_tests = [
     'dns64',
     'dst',
     'ede',
-    'ftcache',
     'keytable',
     'master',
     'name',
@@ -54,7 +53,7 @@ dns_tests = [
     'zt',
 ]
 
-_all_dns_tests = dns_tests + ['geoip', 'dnstap']
+_all_dns_tests = dns_tests + ['geoip', 'dnstap', 'ftcache']
 run_command(
     check_test_registration,
     meson.current_source_dir(),
@@ -68,6 +67,10 @@ endif
 
 if config.has('HAVE_DNSTAP')
     dns_tests += 'dnstap'
+endif
+
+if config.has('HAVE_FTCACHE')
+    dns_tests += 'ftcache'
 endif
 
 master_data = []

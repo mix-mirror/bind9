@@ -41,7 +41,10 @@
 #else
 #include <urcu-pointer.h>
 #endif
+#ifdef HAVE_FTCACHE
+/* The cds fractal trie first appears in liburcu 0.16.0. */
 #include <urcu/fractal-trie.h>
+#endif
 #include <urcu/rculfhash.h>
 #include <urcu/rculist.h>
 #include <urcu/ref.h>
