@@ -47,7 +47,7 @@
 /*
  * Node lifecycle stress test.
  *
- * The cache node lifecycle is a lock-free trie lookup plus per-bucket
+ * The cache node lifecycle is a lock-free trie lookup plus per-node
  * reference counting: a node whose last external reference drops is
  * queued for deferred cleanup, can be reactivated from the trie in the
  * meantime, released again, displaced by a concurrent creator, and

@@ -23,8 +23,6 @@
 #include <isc/async.h>
 #include <isc/atomic.h>
 #include <isc/buffer.h>
-#include <isc/file.h>
-#include <isc/hex.h>
 #include <isc/list.h>
 #include <isc/log.h>
 #include <isc/loop.h>
@@ -37,9 +35,7 @@
 #include <isc/result.h>
 #include <isc/sieve.h>
 #include <isc/spinlock.h>
-#include <isc/stdio.h>
 #include <isc/string.h>
-#include <isc/time.h>
 #include <isc/urcu.h>
 #include <isc/util.h>
 
@@ -117,8 +113,7 @@ typedef struct ftcache ftcache_t;
 typedef uint8_t ftc_key_t[FTC_KEY_MAXLEN];
 
 /*%
- * This is the structure that is used for each node in the iter trie of
- * trees.
+ * The structure used for each node in the cache trie.
  */
 typedef struct ftcnode ftcnode_t;
 struct ftcnode {
@@ -179,7 +174,7 @@ struct ftcnode {
 	 * and decremented by dns_db_detachnode().
 	 *
 	 * 'references' counts internal references to the node object,
-	 * including the one held by the QP trie so the node won't be
+	 * including the one held by the trie so the node won't be
 	 * deleted while it's quiescently stored in the database - even
 	 * though 'erefs' may be zero because no external caller is
 	 * using it at the time.
@@ -209,9 +204,10 @@ struct ftcnode {
 	struct rcu_head rcu_head;
 
 	/*%
-	 * Used for dead nodes cleaning.  This linked list is used to mark nodes
-	 * which have no data any longer, but we cannot unlink at that exact
-	 * moment because we did not or could not obtain the tree write lock.
+	 * Linkage into the bucket's deadnodes queue. A node that became
+	 * empty and unreferenced is queued here (see ftcnode_release())
+	 * and removed from the trie asynchronously by the bucket's loop
+	 * (see cleanup_deadnodes()).
 	 */
 	isc_queue_node_t deadlink;
 
@@ -230,9 +226,8 @@ struct ftcnode {
 };
 
 /*%
- * One bucket structure will be created for each loop, and
- * nodes in the database will evenly distributed among buckets
- * to reduce contention between threads.
+ * A bucket holds a queue of dead nodes awaiting cleanup; every node is
+ * assigned to one at creation (see FTC_BUCKETS_PER_LOOP below).
  */
 typedef struct ftcache_bucket {
 	union {
@@ -289,6 +284,14 @@ STATIC_ASSERT(sizeof(ftcache_sieve_t) % ISC_OS_CACHELINE_SIZE == 0,
  * ftcache_sieve_t), so the bucket count no longer shards any lock.
  */
 #define FTC_BUCKETS_PER_LOOP 16
+
+/*
+ * Overmem purge-size headroom for allocations the cache cannot easily
+ * attribute to a single insert: trie-internal nodes and the memory
+ * pinned until deferred reclamation runs. (It's okay to overestimate,
+ * we want to get cache memory down quickly.)
+ */
+#define FTC_SAFETY_MARGIN ((1ul << 12ul) * 12)
 
 /*
  * A deleted header stays linked in its sieve as a "zombie" (marked
@@ -704,33 +707,27 @@ sieve_drain(ftcache_sieve_t *s) {
 /*
  * Maximum estimated size of the data being added: the size of the
  * rdataset, plus a new node and key and a possible additional NSEC node
- * and key, plus a safety margin for trie-internal allocations. (It's
- * okay to overestimate, we want to get cache memory down quickly.)
+ * and key, plus a safety margin for trie-internal allocations.
  */
 static size_t
 overmem_purgesize(dns_slabheader_t *newheader) {
 	return 2 * (sizeof(ftcnode_t) + HEADERNODE(newheader)->keylen) +
-	       rdataset_size(newheader) + QP_SAFETY_MARGIN;
+	       rdataset_size(newheader) + FTC_SAFETY_MARGIN;
 }
 
 /*
  * Evict least-recently-visited entries until 'requested' bytes have
- * been reclaimed, taking ONE entry from each bucket's sieve in turn and
- * making further passes until the target is met or a full pass reclaims
- * nothing. Each bucket's sieve holds only its shard of the cache, so
- * draining a single sieve to satisfy the whole deficit would wipe
- * recent entries in that shard while stale entries elsewhere survive --
- * random mass-eviction rather than an approximation of global LRU.
- *
- * The walk covers the calling loop's OWN sieve, lock-free by the strong
- * affinity: headers inserted by other loops live in their sieves and
- * are evicted by them. For a live candidate, only the candidate's node
- * bucket is write-locked, one at a time. The 'dead' state is
- * re-checked under that lock; a header that went dead meanwhile was
- * already deleted by someone else and only its sieve reference is
- * dropped. The callers purge BEFORE adding their new header, while it
- * is still private, so the walk can neither find nor evict it and no
- * protection check is needed.
+ * been reclaimed. The walk covers the calling loop's OWN sieve,
+ * lock-free by the strong affinity: headers inserted by other loops
+ * live in their sieves and are evicted by them, so every loop evicts
+ * only its shard of the cache and the sieves approximate a global LRU
+ * together. For a live candidate, only the candidate's node spinlock
+ * is taken, one node at a time. The 'dead' state is re-checked under
+ * that lock; a header that went dead meanwhile was already deleted by
+ * someone else and only its sieve reference is dropped. The callers
+ * purge BEFORE adding their new header, while it is still private, so
+ * the walk can neither find nor evict it and no protection check is
+ * needed.
  */
 static void
 expire_lru(ftcache_t *ftdb, size_t requested DNS__DB_FLARG) {
@@ -1354,7 +1351,7 @@ bindrdatasets(ftcache_t *ftdb, ftcnode_t *qpnode, dns_slabheader_t *found,
 }
 
 /*
- * Writer-side bind: the caller holds the node write lock and 'header'
+ * Writer-side bind: the caller holds the node's spinlock and 'header'
  * is on the node's list, whose own reference makes the bind
  * infallible.
  */
@@ -2435,10 +2432,11 @@ ftcache_destroy(dns_db_t *arg) {
 }
 
 /*%
- * Clean up dead nodes.  These are nodes which have no references, and
- * have no data.  They are dead but we could not or chose not to delete
- * them when we deleted all the data at that node because we did not want
- * to wait for the tree write lock.
+ * Clean up dead nodes. These are nodes which have no references and no
+ * data. The deleters queue them instead of removing them inline
+ * because the structural removal takes the writer mutex, which must
+ * not be acquired under a node spinlock or inside the RCU read-side
+ * (see the locking discipline above).
  */
 static void
 cleanup_deadnodes(ftcache_t *ftdb, uint16_t locknum) {

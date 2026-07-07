@@ -25,7 +25,7 @@
 
 /*! \file
  * \brief
- * DNS FTDB Implementation (minimally adapted from RBTDB)
+ * DNS fractal-trie cache database implementation (adapted from qpcache)
  */
 
 isc_result_t

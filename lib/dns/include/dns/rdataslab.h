@@ -215,7 +215,7 @@ enum {
 	 * Dropping the last reference must defer the destruction by an
 	 * RCU grace period because lock-free readers can still be
 	 * inspecting the header (see ftcache.c, which sets this on
-	 * every header it publishes).  Headers without this attribute
+	 * every header it creates).  Headers without this attribute
 	 * are destroyed synchronously (qpcache holds node locks, so it
 	 * must not pay the deferral in delayed overmem accounting).
 	 */
