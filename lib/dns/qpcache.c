@@ -2202,28 +2202,6 @@ cleanup_deadnodes_cb(void *arg) {
 	cleanup_deadnodes(qpdb, locknum);
 	qpcache_unref(qpdb);
 }
-/*
- * This function is assumed to be called when a node is newly referenced
- * and can be in the deadnode list.  In that case the node will be references
- * and cleanup_deadnodes() will remove it from the list when the cleaning
- * happens.
- * Note: while a new reference is gained in multiple places, there are only very
- * few cases where the node can be in the deadnode list (only empty nodes can
- * have been added to the list).
- */
-static void
-reactivate_node(qpcache_t *qpdb, qpcnode_t *node,
-		isc_rwlocktype_t tlocktype ISC_ATTR_UNUSED DNS__DB_FLARG) {
-	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
-	isc_rwlock_t *nlock = &qpdb->buckets[node->locknum].lock;
-
-	rcu_read_lock();
-	NODE_RDLOCK(nlock, &nlocktype);
-	qpcnode_acquire(qpdb, node, nlocktype, tlocktype DNS__DB_FLARG_PASS);
-	NODE_UNLOCK(nlock, &nlocktype);
-	rcu_read_unlock();
-}
-
 static qpcnode_t *
 new_qpcnode(qpcache_t *qpdb, const dns_name_t *name, dns_namespace_t nspace) {
 	qpcnode_t *newdata = isc_mem_get(qpdb->common.mctx, sizeof(*newdata));
@@ -2278,7 +2256,15 @@ qpcache_findnode(dns_db_t *db, const dns_name_t *name, bool create,
 		}
 	}
 
-	reactivate_node(qpdb, node, tlocktype DNS__DB_FLARG_PASS);
+	/*
+	 * The node may sit on a deadnodes list, waiting for cleanup after
+	 * its last reference dropped; acquiring a new reference is enough
+	 * to revive it - cleanup_deadnodes() re-checks the reference
+	 * count.  The tree lock held here excludes delete_node(), so no
+	 * node lock is needed to make the first reference safe.
+	 */
+	qpcnode_acquire(qpdb, node, isc_rwlocktype_none,
+			tlocktype DNS__DB_FLARG_PASS);
 
 	*nodep = (dns_dbnode_t *)node;
 unlock:
@@ -3328,7 +3314,8 @@ reference_iter_node(qpc_dbit_t *qpdbiter DNS__DB_FLARG) {
 	}
 
 	INSIST(qpdbiter->tree_locked != isc_rwlocktype_none);
-	reactivate_node(qpdb, node, qpdbiter->tree_locked DNS__DB_FLARG_PASS);
+	qpcnode_acquire(qpdb, node, isc_rwlocktype_none,
+			qpdbiter->tree_locked DNS__DB_FLARG_PASS);
 }
 
 static void
