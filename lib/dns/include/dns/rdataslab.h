@@ -220,6 +220,15 @@ enum {
 	 * must not pay the deferral in delayed overmem accounting).
 	 */
 	DNS_SLABHEADERATTR_RCUFREE = 1 << 14,
+	/*%
+	 * The header may be linked in a SIEVE-LRU owned by another
+	 * thread.  Set by the sieve owner at insertion and cleared by
+	 * it at unlink; a deleting thread reads it as an advisory hint
+	 * to hand the header over for reaping (see header_delete() in
+	 * ftcache.c).  It exists so no thread ever reads the plain
+	 * lrulink pointers it does not own.
+	 */
+	DNS_SLABHEADERATTR_INSIEVE = 1 << 15,
 };
 
 /* clang-format off : RemoveParentheses */

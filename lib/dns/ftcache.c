@@ -696,6 +696,8 @@ sieve_drain(ftcache_sieve_t *s) {
 
 		if (ISC_SIEVE_LINKED(header, lrulink)) {
 			ISC_SIEVE_UNLINK(s->sieve, header, lrulink);
+			DNS_SLABHEADER_CLRATTR(header,
+					       DNS_SLABHEADERATTR_INSIEVE);
 			/* The sieve's own reference. */
 			dns_slabheader_unref(header);
 		}
@@ -749,6 +751,7 @@ expire_lru(ftcache_t *ftdb, size_t requested DNS__DB_FLARG) {
 		}
 
 		ISC_SIEVE_UNLINK(s->sieve, header, lrulink);
+		DNS_SLABHEADER_CLRATTR(header, DNS_SLABHEADERATTR_INSIEVE);
 
 		/*
 		 * The read-side lock pins the candidate's node: seeing
@@ -783,6 +786,7 @@ ftcache_miss(ftcache_t *ftdb, dns_slabheader_t *newheader) {
 	/* The sieve link owns a reference of its own. */
 	dns_slabheader_ref(newheader);
 	newheader->sieve_tid = (uint16_t)isc_tid();
+	DNS_SLABHEADER_SETATTR(newheader, DNS_SLABHEADERATTR_INSIEVE);
 	ISC_SIEVE_INSERT(s->sieve, newheader, lrulink);
 }
 
@@ -1088,14 +1092,16 @@ header__delete(ftcnode_t *node, dns_slabheader_t *header, bool clear_partner) {
 	 * because the eviction walk relies on "not dead" to mean "still
 	 * on its node's list" -- and hand it to the owner through the
 	 * sieve's zombie stack; the sieve's own reference keeps the
-	 * memory alive meanwhile. The push takes a reference of its
-	 * own: the linked check is racy against the owner's eviction
-	 * walk unlinking the header right now, and at the drain only
-	 * the owner's view of the linked state is exact. The DEAD gate
+	 * memory alive meanwhile. The INSIEVE hint is an atomic the
+	 * owner maintains at insert/unlink, so this thread never reads
+	 * the plain lrulink pointers it does not own; the hint can be
+	 * stale against the owner's concurrent eviction walk, so the
+	 * push takes a reference of its own and only the owner's view
+	 * of the linked state, at the drain, is exact. The DEAD gate
 	 * above makes this push once-only.
 	 */
 	DNS_SLABHEADER_SETATTR(header, DNS_SLABHEADERATTR_DEAD);
-	if (ISC_SIEVE_LINKED(header, lrulink)) {
+	if (DNS_SLABHEADER_GETATTR(header, DNS_SLABHEADERATTR_INSIEVE) != 0) {
 		ftcache_sieve_t *s = &ftdb->sieves[header->sieve_tid];
 
 		dns_slabheader_ref(header);
@@ -2361,6 +2367,8 @@ ftcache__destroy_work(void *arg) {
 		{
 			ISC_SIEVE_UNLINK(ftdb->sieves[i].sieve, header,
 					 lrulink);
+			DNS_SLABHEADER_CLRATTR(header,
+					       DNS_SLABHEADERATTR_INSIEVE);
 			dns_slabheader_detach(&header);
 		}
 	}
