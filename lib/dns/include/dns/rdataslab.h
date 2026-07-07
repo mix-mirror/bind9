@@ -90,11 +90,24 @@ struct dns_slabheader {
 	isc_mem_t *mctx;
 
 	/*%
-	 * Locked by the owning node's lock.
+	 * 'expire' is written only before the header is published (the
+	 * cache clamps a replacement NS TTL on the not-yet-linked new
+	 * header) and is immutable afterwards, so readers can load it
+	 * without any lock.  'typepair' is immutable.
 	 */
 	isc_stdtime_t  expire;
 	dns_typepair_t typepair;
 
+	/*%
+	 * The proofs can be published on an already visible header (a
+	 * cache refresh steals them from the discarded new header), so
+	 * they are read with rcu_dereference() and written with
+	 * rcu_assign_pointer(); once visible they never change again.
+	 * 'related' cross-links a header and its RRSIG counterpart (each
+	 * holding a reference on the other) and follows the same
+	 * discipline; a supersession re-points it from the old header
+	 * straight to the new one.
+	 */
 	dns_slabheader_proof_t *noqname;
 	dns_slabheader_proof_t *closest;
 

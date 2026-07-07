@@ -111,10 +111,15 @@ struct qpcnode {
 
 	qpcache_t *qpdb;
 
-	uint8_t		      : 0;
-	unsigned int nspace   : 2; /*%< range is 0..3 */
-	unsigned int havensec : 1;
-	uint8_t		      : 0;
+	uint8_t		    : 0;
+	unsigned int nspace : 2; /*%< range is 0..3 */
+	uint8_t		    : 0;
+
+	/*%
+	 * Set once (under the tree write lock) when the node's twin in
+	 * the auxiliary NSEC namespace is created; read without any lock.
+	 */
+	atomic_bool havensec;
 
 	/*
 	 * 'erefs' counts external references held by a caller: for
@@ -638,7 +643,7 @@ delete_node(qpcache_t *qpdb, qpcnode_t *node) {
 
 	switch (node->nspace) {
 	case DNS_DBNAMESPACE_NORMAL:
-		if (node->havensec) {
+		if (atomic_load_acquire(&node->havensec)) {
 			/*
 			 * Delete the corresponding node from the auxiliary NSEC
 			 * tree before deleting from the main tree.
@@ -1134,14 +1139,19 @@ bindrdataset(qpcache_t *qpdb, qpcnode_t *node, dns_slabheader_t *header,
 	rdataset->slab.iter_count = 0;
 
 	/*
-	 * Add noqname proof.
+	 * Add noqname proof.  The proofs can be published on an already
+	 * visible header by a concurrent refresh in add(), so pair the
+	 * loads with the rcu_assign_pointer() stores there; the proof
+	 * contents are immutable once the pointer is visible.
 	 */
-	rdataset->slab.noqname = header->noqname;
-	if (header->noqname != NULL) {
+	dns_slabheader_proof_t *noqname = rcu_dereference(header->noqname);
+	rdataset->slab.noqname = noqname;
+	if (noqname != NULL) {
 		rdataset->attributes.noqname = true;
 	}
-	rdataset->slab.closest = header->closest;
-	if (header->closest != NULL) {
+	dns_slabheader_proof_t *closest = rcu_dereference(header->closest);
+	rdataset->slab.closest = closest;
+	if (closest != NULL) {
 		rdataset->attributes.closest = true;
 	}
 }
@@ -1341,12 +1351,16 @@ static void
 store_headers(dns_slabheader_t *tmp, dns_slabheader_t **headerp,
 	      dns_slabheader_t **sigheaderp, qpc_search_t *search) {
 	dns_slabheader_t *header = NULL, *sigheader = NULL;
+	/*
+	 * The cross-link is re-pointed by concurrent supersessions;
+	 * rcu_dereference() pairs with the rcu_assign_pointer() there.
+	 */
 	if (DNS_TYPEPAIR_TYPE(tmp->typepair) == dns_rdatatype_rrsig) {
-		header = tmp->related;
+		header = rcu_dereference(tmp->related);
 		sigheader = tmp;
 	} else {
 		header = tmp;
-		sigheader = tmp->related;
+		sigheader = rcu_dereference(tmp->related);
 	}
 
 	if (invalid_header(header, search)) {
@@ -1702,7 +1716,8 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		 */
 		empty_node = false;
 
-		if (header != NULL && header->noqname != NULL &&
+		if (header != NULL &&
+		    rcu_dereference(header->noqname) != NULL &&
 		    atomic_load(&header->trust) == dns_trust_secure)
 		{
 			found_noqname = true;
@@ -2675,16 +2690,24 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 			    oldheader, newheader, qpdb->common.rdclass,
 			    DNS_TYPEPAIR_TYPE(oldheader->typepair)))
 		{
+			/*
+			 * The old header stays published while it is
+			 * refreshed, so the stolen proofs must be
+			 * completely built before the release store
+			 * makes them visible on it.
+			 */
 			if (oldheader->noqname == NULL &&
 			    newheader->noqname != NULL)
 			{
-				oldheader->noqname = newheader->noqname;
+				rcu_assign_pointer(oldheader->noqname,
+						   newheader->noqname);
 				newheader->noqname = NULL;
 			}
 			if (oldheader->closest == NULL &&
 			    newheader->closest != NULL)
 			{
-				oldheader->closest = newheader->closest;
+				rcu_assign_pointer(oldheader->closest,
+						   newheader->closest);
 				newheader->closest = NULL;
 			}
 
@@ -2733,16 +2756,24 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode, dns_slabheader_t *newheader,
 		    oldheader->expire < newheader->expire &&
 		    dns_rdataslab_equal(oldheader, newheader))
 		{
+			/*
+			 * The old header stays published while it is
+			 * refreshed, so the stolen proofs must be
+			 * completely built before the release store
+			 * makes them visible on it.
+			 */
 			if (oldheader->noqname == NULL &&
 			    newheader->noqname != NULL)
 			{
-				oldheader->noqname = newheader->noqname;
+				rcu_assign_pointer(oldheader->noqname,
+						   newheader->noqname);
 				newheader->noqname = NULL;
 			}
 			if (oldheader->closest == NULL &&
 			    newheader->closest != NULL)
 			{
-				oldheader->closest = newheader->closest;
+				rcu_assign_pointer(oldheader->closest,
+						   newheader->closest);
 				newheader->closest = NULL;
 			}
 
@@ -3023,15 +3054,14 @@ qpcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 
 	/*
 	 * Add to the auxiliary NSEC tree if we're adding an NSEC record.
+	 * This check is only opportunistic - havensec is atomic, so it
+	 * needs no lock - and the authoritative re-check happens under
+	 * the tree write lock below.
 	 */
-	if (rdataset->type == dns_rdatatype_nsec) {
-		rcu_read_lock();
-		NODE_RDLOCK(nlock, &nlocktype);
-		if (!qpnode->havensec) {
-			newnsec = true;
-		}
-		NODE_UNLOCK(nlock, &nlocktype);
-		rcu_read_unlock();
+	if (rdataset->type == dns_rdatatype_nsec &&
+	    !atomic_load_acquire(&qpnode->havensec))
+	{
+		newnsec = true;
 	}
 
 	/*
@@ -3042,9 +3072,15 @@ qpcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 		TREE_WRLOCK(&qpdb->tree_lock, &tlocktype);
 	}
 
+	/*
+	 * The write-locked section runs inside an RCU read-side critical
+	 * section as well: add() binds rdatasets, which loads the RCU-
+	 * published proof and cross-link pointers.
+	 */
+	rcu_read_lock();
 	NODE_WRLOCK(nlock, &nlocktype);
 
-	if (newnsec && !qpnode->havensec) {
+	if (newnsec && !atomic_load_acquire(&qpnode->havensec)) {
 		qpcnode_t *nsecnode = NULL;
 
 		result = dns_qp_getname(qpdb->tree, name, DNS_DBNAMESPACE_NSEC,
@@ -3057,7 +3093,7 @@ qpcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 			INSIST(result == ISC_R_SUCCESS);
 			qpcnode_detach(&nsecnode);
 		}
-		qpnode->havensec = true;
+		atomic_store_release(&qpnode->havensec, true);
 	}
 
 	result = add(qpdb, qpnode, newheader, options, addedrdataset, now,
@@ -3068,6 +3104,7 @@ qpcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	}
 
 	NODE_UNLOCK(nlock, &nlocktype);
+	rcu_read_unlock();
 
 	if (result == ISC_R_EXISTS) {
 		result = ISC_R_SUCCESS;
