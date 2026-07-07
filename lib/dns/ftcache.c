@@ -3870,16 +3870,21 @@ ftc_iter_node(struct cds_ft_iter *iter) {
 	return (ftn == NULL) ? NULL : caa_container_of(ftn, ftcnode_t, ftnode);
 }
 
-static void
+/*
+ * Pin the iterator's candidate node through the reactivation handshake:
+ * a candidate that already lost it (see reactivate_node()) is committed
+ * for removal from the trie and must not be pinned -- the iterator
+ * would expose a dead empty node, and resume_iteration() relies on a
+ * held node still being present in the trie when it re-seeks after a
+ * pause. Returns false when the candidate is gone; the caller advances
+ * to the next one.
+ */
+static bool
 reference_iter_node(ftc_dbit_t *ftdbiter DNS__DB_FLARG) {
 	ftcache_t *ftdb = (ftcache_t *)ftdbiter->common.db;
-	ftcnode_t *node = ftdbiter->node;
 
-	if (node == NULL) {
-		return;
-	}
-
-	ftcnode_acquire(ftdb, node DNS__DB_FLARG_PASS);
+	return reactivate_node(ftdb, ftdbiter->node DNS__DB_FLARG_PASS) ==
+	       ISC_R_SUCCESS;
 }
 
 static void
@@ -3908,7 +3913,10 @@ resume_iteration(ftc_dbit_t *ftdbiter, bool continuing) {
 	 *
 	 * As long as the iterator is holding a reference to
 	 * ftdbiter->node, the node won't be removed from the tree,
-	 * so the lookup should always succeed.
+	 * so the lookup should always succeed: reference_iter_node()
+	 * only pins nodes that won the reactivation handshake, and a
+	 * node with a published reference cannot commit to deletion
+	 * (see cleanup_deadnodes() phase 1).
 	 */
 	if (continuing && ftdbiter->node != NULL) {
 		ftcache_t *ftdb = (ftcache_t *)ftdbiter->common.db;
@@ -3965,26 +3973,26 @@ dbiterator_first(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 	ftcache_t *ftdb = (ftcache_t *)ftdbiter->common.db;
 
 	rcu_read_lock();
-	if (cds_ft_lookup_first(ftdb->ft, ftdbiter->iter) == CDS_FT_STATUS_OK) {
-		ftdbiter->node = ftc_iter_node(ftdbiter->iter);
-	} else {
-		ftdbiter->node = NULL;
-	}
-
-	if (ftdbiter->node != NULL &&
-	    ftdbiter->node->nspace == DNS_DBNAMESPACE_NORMAL)
+	/* NOMORE when the tree is empty. */
+	result = ISC_R_NOMORE;
+	for (int r = cds_ft_lookup_first(ftdb->ft, ftdbiter->iter);
+	     r == CDS_FT_STATUS_OK; r = cds_ft_next(ftdb->ft, ftdbiter->iter))
 	{
+		ftdbiter->node = ftc_iter_node(ftdbiter->iter);
+		if (ftdbiter->node->nspace != DNS_DBNAMESPACE_NORMAL) {
+			/* Crossed out of the normal namespace. */
+			break;
+		}
+		if (!reference_iter_node(ftdbiter DNS__DB_FLARG_PASS)) {
+			/* Lost to a concurrent deletion; skip it. */
+			continue;
+		}
 		ftc_name_fromkey(ftdbiter->name, ftdbiter->node->key,
 				 ftdbiter->node->keylen);
-		reference_iter_node(ftdbiter DNS__DB_FLARG_PASS);
 		result = ISC_R_SUCCESS;
-	} else if (ftdbiter->node != NULL) {
-		/* Crossed out of the normal namespace. */
-		result = ISC_R_NOMORE;
-		ftdbiter->node = NULL;
-	} else {
-		/* The tree is empty. */
-		result = ISC_R_NOMORE;
+		break;
+	}
+	if (result != ISC_R_SUCCESS) {
 		ftdbiter->node = NULL;
 	}
 	rcu_read_unlock();
@@ -4029,23 +4037,27 @@ dbiterator_seek(dns_dbiterator_t *iterator,
 
 	rcu_read_lock();
 	cds_ft_iter_set_key(ftdbiter->iter, key, keylen);
-	if (cds_ft_lookup_ge(ftdb->ft, ftdbiter->iter) == CDS_FT_STATUS_OK) {
-		ftdbiter->node = ftc_iter_node(ftdbiter->iter);
-	} else {
-		ftdbiter->node = NULL;
-	}
-
-	if (ftdbiter->node != NULL &&
-	    ftdbiter->node->nspace == DNS_DBNAMESPACE_NORMAL)
+	result = ISC_R_NOMORE;
+	for (int r = cds_ft_lookup_ge(ftdb->ft, ftdbiter->iter);
+	     r == CDS_FT_STATUS_OK; r = cds_ft_next(ftdb->ft, ftdbiter->iter))
 	{
+		ftdbiter->node = ftc_iter_node(ftdbiter->iter);
+		if (ftdbiter->node->nspace != DNS_DBNAMESPACE_NORMAL) {
+			/* Crossed out of the normal namespace. */
+			break;
+		}
+		if (!reference_iter_node(ftdbiter DNS__DB_FLARG_PASS)) {
+			/* Lost to a concurrent deletion; skip it. */
+			continue;
+		}
 		bool exact = (keylen == ftdbiter->node->keylen &&
 			      memcmp(key, ftdbiter->node->key, keylen) == 0);
 		ftc_name_fromkey(ftdbiter->name, ftdbiter->node->key,
 				 ftdbiter->node->keylen);
-		reference_iter_node(ftdbiter DNS__DB_FLARG_PASS);
 		result = exact ? ISC_R_SUCCESS : DNS_R_PARTIALMATCH;
-	} else {
-		result = ISC_R_NOMORE;
+		break;
+	}
+	if (result == ISC_R_NOMORE) {
 		ftdbiter->node = NULL;
 	}
 	rcu_read_unlock();
@@ -4086,25 +4098,25 @@ dbiterator_next(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 	ftcache_t *ftdb = (ftcache_t *)ftdbiter->common.db;
 
 	rcu_read_lock();
-	if (cds_ft_next(ftdb->ft, ftdbiter->iter) == CDS_FT_STATUS_OK) {
-		ftdbiter->node = ftc_iter_node(ftdbiter->iter);
-	} else {
-		ftdbiter->node = NULL;
-	}
-
-	if (ftdbiter->node != NULL &&
-	    ftdbiter->node->nspace == DNS_DBNAMESPACE_NORMAL)
+	result = ISC_R_NOMORE;
+	for (int r = cds_ft_next(ftdb->ft, ftdbiter->iter);
+	     r == CDS_FT_STATUS_OK; r = cds_ft_next(ftdb->ft, ftdbiter->iter))
 	{
+		ftdbiter->node = ftc_iter_node(ftdbiter->iter);
+		if (ftdbiter->node->nspace != DNS_DBNAMESPACE_NORMAL) {
+			/* Crossed out of the normal namespace. */
+			break;
+		}
+		if (!reference_iter_node(ftdbiter DNS__DB_FLARG_PASS)) {
+			/* Lost to a concurrent deletion; skip it. */
+			continue;
+		}
 		ftc_name_fromkey(ftdbiter->name, ftdbiter->node->key,
 				 ftdbiter->node->keylen);
-		reference_iter_node(ftdbiter DNS__DB_FLARG_PASS);
 		result = ISC_R_SUCCESS;
-	} else if (ftdbiter->node != NULL) {
-		/* Crossed out of the normal namespace. */
-		result = ISC_R_NOMORE;
-		ftdbiter->node = NULL;
-	} else {
-		result = ISC_R_NOMORE;
+		break;
+	}
+	if (result != ISC_R_SUCCESS) {
 		ftdbiter->node = NULL;
 	}
 	rcu_read_unlock();
