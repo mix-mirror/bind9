@@ -31,6 +31,7 @@ dns_tests = [
     'nsec3param',
     'private',
     'qp',
+    'qpcache',
     'qpdb',
     'qpmulti',
     'qpzone',
