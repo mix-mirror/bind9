@@ -112,6 +112,12 @@ typedef struct ftcache ftcache_t;
 #define FTC_KEY_MAXLEN 256
 typedef uint8_t ftc_key_t[FTC_KEY_MAXLEN];
 
+/*
+ * Key length of the root name: the namespace byte plus the root's
+ * empty label closed by its separator.
+ */
+#define FTC_KEY_ROOTLEN 2
+
 /*%
  * The structure used for each node in the cache trie.
  */
@@ -1847,29 +1853,41 @@ ftcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	/*
 	 * Walk the ancestors of QNAME, shallowest first, looking for a node
 	 * above us with an active DNAME rdataset. We consider only nodes
-	 * strictly above QNAME.
+	 * strictly above QNAME and below the root.
 	 *
-	 * TODO: this does one trie lookup per ancestor label, whereas the qp
-	 * version got the whole chain for free from a single descent.
+	 * The ancestor names' keys are exactly the proper prefixes of
+	 * QNAME's key that end at a label separator (see
+	 * ftc_key_fromname()), so a partial-match descent yields the
+	 * deepest EXISTING ancestor node directly and the next descent
+	 * continues strictly above it: the chain costs one lookup per
+	 * existing ancestor node instead of one per QNAME label.
+	 * Successive ancestor keys shrink by at least two bytes (a
+	 * label byte and its separator), which bounds the chain.
 	 */
-	unsigned int nlabels = dns_name_countlabels(name);
-	for (unsigned int k = 2; k < nlabels; k++) {
-		isc_result_t tresult;
-		ftcnode_t *encloser = NULL;
-		dns_fixedname_t fanc;
-		dns_name_t *anc = dns_fixedname_initname(&fanc);
+	ftcnode_t *ancestors[FTC_KEY_MAXLEN / 2];
+	size_t nanc = 0;
 
-		dns_name_getlabelsequence(name, nlabels - k, k, anc);
+	for (size_t plen = keylen - 1; plen > FTC_KEY_ROOTLEN;) {
+		size_t mlen = 0;
+		struct cds_ft_node *ftn = NULL;
 
-		if (ftc_lookup(search.ftdb->ft, anc, DNS_DBNAMESPACE_NORMAL,
-			       &encloser) != ISC_R_SUCCESS)
+		if (cds_ft_lookup_partial_key(search.ftdb->ft, key, plen, &mlen,
+					      &ftn) != CDS_FT_STATUS_OK ||
+		    mlen <= FTC_KEY_ROOTLEN)
 		{
-			continue;
+			break;
 		}
+		INSIST(nanc < ARRAY_SIZE(ancestors));
+		ancestors[nanc++] = caa_container_of(ftn, ftcnode_t, ftnode);
+		plen = mlen - 1;
+	}
 
-		tresult = check_dname(encloser,
-				      (void *)&search DNS__DB_FLARG_PASS);
-		if (tresult != DNS_R_CONTINUE) {
+	while (nanc > 0) {
+		ftcnode_t *encloser = ancestors[--nanc];
+
+		if (check_dname(encloser, (void *)&search DNS__DB_FLARG_PASS) !=
+		    DNS_R_CONTINUE)
+		{
 			result = DNS_R_PARTIALMATCH;
 			node = encloser;
 			if (foundname != NULL) {
