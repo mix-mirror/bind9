@@ -155,6 +155,25 @@ struct qpcnode {
 	 * tree.
 	 */
 	isc_queue_node_t deadlink;
+
+	/*%
+	 * 'deleted' is set by delete_node() (always under the tree write
+	 * lock) when the node is removed from the trie, so that a stale
+	 * deadnodes-queue entry cannot delete the node twice.  'enqueued'
+	 * makes the queue single-entry: a releaser may put the node on
+	 * the queue only after winning the flag, and cleanup_deadnodes()
+	 * clears it again before it drops the queue's reference.
+	 */
+	atomic_bool deleted;
+	atomic_bool enqueued;
+
+	/*%
+	 * The node is freed only after an RCU grace period, so a reader
+	 * inside an RCU read-side critical section can always safely
+	 * dereference a node it found through a slabheader, even when
+	 * the node is already being torn down.
+	 */
+	struct rcu_head rcu_head;
 };
 
 /*%
@@ -278,6 +297,8 @@ typedef struct {
 	dns_slabheader_t *zonecut_header;
 	dns_slabheader_t *zonecut_sigheader;
 	isc_stdtime_t now;
+	/* The tree lock state the search is running under. */
+	isc_rwlocktype_t tlocktype;
 } qpc_search_t;
 
 #ifdef DNS_DB_NODETRACE
@@ -632,6 +653,13 @@ static void
 delete_node(qpcache_t *qpdb, qpcnode_t *node) {
 	isc_result_t result = ISC_R_UNEXPECTED;
 
+	/*
+	 * Both callers check 'deleted' first, and the tree write lock
+	 * held here serializes them, so the node cannot be deleted twice.
+	 */
+	INSIST(!atomic_load_acquire(&node->deleted));
+	atomic_store_release(&node->deleted, true);
+
 	if (isc_log_wouldlog(ISC_LOG_DEBUG(DNS_QPCACHE_LOG_STATS_LEVEL))) {
 		char printname[DNS_NAME_FORMATSIZE];
 		dns_name_format(&node->name, printname, sizeof(printname));
@@ -706,15 +734,19 @@ qpcnode_erefs_increment(qpcache_t *qpdb, qpcnode_t *node,
 	}
 
 	/*
-	 * this is the first external reference to the node.
+	 * This is the first external reference to the node.
 	 *
-	 * we need to hold the node or tree lock to avoid
-	 * incrementing the reference count while also deleting
-	 * the node. delete_node() is always protected by both
-	 * tree and node locks being write-locked.
+	 * A first reference is safe against a concurrent delete_node()
+	 * only when the tree lock is held (delete_node() always runs
+	 * under the tree write lock), or when the caller is the
+	 * deadnodes-queue claimant re-acquiring the node it has just
+	 * won: that acquisition is structurally safe - the claimant
+	 * holds an internal reference, and a stale enqueue is caught by
+	 * the authoritative re-check in cleanup_deadnodes().
 	 */
-	INSIST(nlocktype != isc_rwlocktype_none ||
-	       tlocktype != isc_rwlocktype_none);
+	INSIST(tlocktype != isc_rwlocktype_none ||
+	       atomic_load_acquire(&node->enqueued));
+	UNUSED(nlocktype);
 
 	qpcache_ref(qpdb);
 }
@@ -749,23 +781,48 @@ qpcnode_erefs_decrement(qpcache_t *qpdb, qpcnode_t *node DNS__DB_FLARG) {
 }
 
 /*
- * Caller must be holding a node lock, either read or write.
- *
- * Note that the lock must be held even when node references are
- * atomically modified; in that case the decrement operation itself does not
- * have to be protected, but we must avoid a race condition where multiple
- * threads are decreasing the reference to zero simultaneously and at least
- * one of them is going to free the node.
- *
- * This calls dec_erefs() to decrement the external node reference counter,
- * (and possibly the node use counter), cleans up and deletes the node
- * if necessary, then decrements the internal reference counter as well.
+ * The last external reference to an apparently empty node has been
+ * dropped: put the node on its bucket's deadnodes queue for deferred
+ * cleanup, unless it is already there.  The atomic exchange makes a
+ * single claimant, so the node can never be queued twice.  The queue
+ * holds its own external and internal reference, so a queued node can
+ * be neither destroyed nor can the database shut down under it; the
+ * emptiness peek made by the caller is only advisory - a node that
+ * regained data or references in the meantime is recognized by the
+ * authoritative re-check in cleanup_deadnodes().
+ */
+static void
+maybe_enqueue_dead(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t nlocktype,
+		   isc_rwlocktype_t tlocktype DNS__DB_FLARG) {
+	if (atomic_exchange(&node->enqueued, true)) {
+		return;
+	}
+
+	qpcnode_acquire(qpdb, node, nlocktype, tlocktype DNS__DB_FLARG_PASS);
+
+	isc_queue_node_init(&node->deadlink);
+	if (!isc_queue_enqueue_entry(&qpdb->buckets[node->locknum].deadnodes,
+				     node, deadlink))
+	{
+		/* Queue was empty, trigger new cleaning */
+		isc_loop_t *loop = isc_loop_get(node->locknum);
+
+		qpcache_ref(qpdb);
+		isc_async_run(loop, cleanup_deadnodes_cb, qpdb);
+	}
+}
+
+/*
+ * Decrement the external reference counter; when it reaches zero and
+ * the node looks empty, either delete the node right away (the tree
+ * write lock excludes any new first reference, so the count is stable)
+ * or queue it for deferred cleanup.  No node lock is required for any
+ * of this: the counters are atomic, the enqueueing is single-claimant,
+ * and the emptiness peek is validated again by cleanup_deadnodes().
  */
 static void
 qpcnode_release(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t *nlocktypep,
 		isc_rwlocktype_t *tlocktypep DNS__DB_FLARG) {
-	REQUIRE(*nlocktypep != isc_rwlocktype_none);
-
 	if (!qpcnode_erefs_decrement(qpdb, node DNS__DB_FLARG_PASS)) {
 		goto unref;
 	}
@@ -775,58 +832,13 @@ qpcnode_release(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t *nlocktypep,
 		goto unref;
 	}
 
-	if (*nlocktypep == isc_rwlocktype_read) {
-		/*
-		 * The external reference count went to zero and the node
-		 * is dirty or has no data, so we might want to delete it.
-		 * To do that, we'll need a write lock. If we don't already
-		 * have one, we have to make sure nobody else has
-		 * acquired a reference in the meantime, so we increment
-		 * erefs (but NOT references!), upgrade the node lock,
-		 * decrement erefs again, and see if it's still zero.
-		 *
-		 * We can't really assume anything about the result code of
-		 * erefs_increment.  If another thread acquires reference it
-		 * will be larger than 0, if it doesn't it is going to be 0.
-		 */
-		isc_rwlock_t *nlock = &qpdb->buckets[node->locknum].lock;
-		qpcnode_erefs_increment(qpdb, node, *nlocktypep,
-					*tlocktypep DNS__DB_FLARG_PASS);
-		NODE_FORCEUPGRADE(nlock, nlocktypep);
-		if (!qpcnode_erefs_decrement(qpdb, node DNS__DB_FLARG_PASS)) {
-			goto unref;
-		}
-	}
-
-	if (!cds_list_empty(&node->headers)) {
-		goto unref;
-	}
-
 	if (*tlocktypep == isc_rwlocktype_write) {
-		/*
-		 * We can delete the node if we have the tree write lock.
-		 */
-		delete_node(qpdb, node);
-	} else {
-		/*
-		 * If we don't have the tree lock, we will add this node to a
-		 * linked list of nodes in this locking bucket which we will
-		 * free later.
-		 */
-		qpcnode_acquire(qpdb, node, *nlocktypep,
-				*tlocktypep DNS__DB_FLARG_PASS);
-
-		isc_queue_node_init(&node->deadlink);
-		if (!isc_queue_enqueue_entry(
-			    &qpdb->buckets[node->locknum].deadnodes, node,
-			    deadlink))
-		{
-			/* Queue was empty, trigger new cleaning */
-			isc_loop_t *loop = isc_loop_get(node->locknum);
-
-			qpcache_ref(qpdb);
-			isc_async_run(loop, cleanup_deadnodes_cb, qpdb);
+		if (!atomic_load_acquire(&node->deleted)) {
+			delete_node(qpdb, node);
 		}
+	} else {
+		maybe_enqueue_dead(qpdb, node, *nlocktypep,
+				   *tlocktypep DNS__DB_FLARG_PASS);
 	}
 
 unref:
@@ -993,13 +1005,19 @@ flush_node(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t *nlocktypep,
 	}
 
 	/*
-	 * If no one else is using the node, we can clean it up now.
-	 * We first need to gain a new reference to the node to meet a
-	 * requirement of qpcnode_release().
+	 * The node just lost its last data and nobody is using it; with
+	 * the tree write lock held the emptiness is stable (a first
+	 * reference needs the tree lock) and the node can go right away,
+	 * otherwise queue it for deferred cleanup.
 	 */
-	qpcnode_acquire(qpdb, node, *nlocktypep,
-			*tlocktypep DNS__DB_FLARG_PASS);
-	qpcnode_release(qpdb, node, nlocktypep, tlocktypep DNS__DB_FLARG_PASS);
+	if (*tlocktypep == isc_rwlocktype_write) {
+		if (!atomic_load_acquire(&node->deleted)) {
+			delete_node(qpdb, node);
+		}
+	} else {
+		maybe_enqueue_dead(qpdb, node, *nlocktypep,
+				   *tlocktypep DNS__DB_FLARG_PASS);
+	}
 
 	if (qpdb->cachestats == NULL) {
 		return;
@@ -1446,7 +1464,7 @@ check_dname(qpcnode_t *node, void *arg DNS__DB_FLARG) {
 		 * so take slabheader references as well.
 		 */
 		qpcnode_acquire(search->qpdb, node, nlocktype,
-				isc_rwlocktype_none DNS__DB_FLARG_PASS);
+				search->tlocktype DNS__DB_FLARG_PASS);
 		search->zonecut = node;
 		search->zonecut_header = dns_slabheader_ref(found);
 		search->zonecut_sigheader =
@@ -1528,11 +1546,11 @@ find_coveringnsec(qpc_search_t *search, const dns_name_t *name,
 	if (found != NULL) {
 		if (nodep != NULL) {
 			qpcnode_acquire(search->qpdb, node, nlocktype,
-					isc_rwlocktype_none DNS__DB_FLARG_PASS);
+					search->tlocktype DNS__DB_FLARG_PASS);
 			*nodep = (dns_dbnode_t *)node;
 		}
 		bindrdatasets(search->qpdb, node, found, foundsig, search->now,
-			      nlocktype, isc_rwlocktype_none, rdataset,
+			      nlocktype, search->tlocktype, rdataset,
 			      sigrdataset DNS__DB_FLARG_PASS);
 		dns_name_copy(fname, foundname);
 
@@ -1580,6 +1598,7 @@ qpc_search_init(qpc_search_t *search, qpcache_t *db, unsigned int options,
 	search->zonecut = NULL;
 	search->zonecut_header = NULL;
 	search->zonecut_sigheader = NULL;
+	search->tlocktype = isc_rwlocktype_none;
 }
 
 static isc_result_t
@@ -1615,6 +1634,7 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	REQUIRE(version == NULL);
 
 	TREE_RDLOCK(&search.qpdb->tree_lock, &tlocktype);
+	search.tlocktype = tlocktype;
 
 	/*
 	 * Search down from the root of the tree.
@@ -2186,6 +2206,20 @@ cleanup_deadnodes(qpcache_t *qpdb, uint16_t locknum) {
 
 	isc_queue_splice(&deadnodes, &qpdb->buckets[locknum].deadnodes);
 	isc_queue_for_each_entry_safe(&deadnodes, qpnode, qpnext, deadlink) {
+		/*
+		 * Clear the queued flag before dropping the queue's
+		 * reference: a releaser that drops the last reference
+		 * after this point must be able to queue the node again.
+		 */
+		atomic_store_release(&qpnode->enqueued, false);
+
+		/*
+		 * This is the authoritative check: with the tree write
+		 * lock held, dropping the queue's reference deletes the
+		 * node if it is still unused and empty (and still in the
+		 * trie); a node that was revived or refilled in the
+		 * meantime survives.
+		 */
 		qpcnode_release(qpdb, qpnode, &nlocktype,
 				&tlocktype DNS__DB_FILELINE);
 	}
@@ -3637,16 +3671,31 @@ static dns_dbmethods_t qpdb_cachemethods = {
 };
 
 static void
+qpcnode_free_rcu(struct rcu_head *rcu_head) {
+	qpcnode_t *qpnode = caa_container_of(rcu_head, qpcnode_t, rcu_head);
+
+	dns_name_free(&qpnode->name, qpnode->mctx);
+	isc_mem_putanddetach(&qpnode->mctx, qpnode, sizeof(qpcnode_t));
+}
+
+static void
 qpcnode_destroy(qpcnode_t *qpnode) {
 	dns_slabheader_t *header = NULL, *header_next = NULL;
+
+	/*
+	 * The chain teardown is safe against concurrent RCU readers and
+	 * must run now, while the database (whose statistics it updates)
+	 * is guaranteed to be alive.  The node memory itself - including
+	 * the name, which readers dereference - is freed only after a
+	 * grace period.
+	 */
 	cds_list_for_each_entry_safe(header, header_next, &qpnode->headers,
 				     headers_link)
 	{
 		header_delete(qpnode, header);
 	}
 
-	dns_name_free(&qpnode->name, qpnode->mctx);
-	isc_mem_putanddetach(&qpnode->mctx, qpnode, sizeof(qpcnode_t));
+	call_rcu(&qpnode->rcu_head, qpcnode_free_rcu);
 }
 
 #ifdef DNS_DB_NODETRACE
