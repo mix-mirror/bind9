@@ -23,7 +23,6 @@
 #include "dyndb_p.h"
 #include "qp_p.h"
 #include "qpzone_p.h"
-#include "rdataslab_p.h"
 
 void
 dns__zone_keymgmt_initialize(void);
@@ -51,7 +50,6 @@ dns__lib_initialize(void) {
 	dns__acl_initialize();
 	dns__dlz_initialize();
 	dns__db_initialize();
-	dns__rdataslab_initialize();
 	dns__dyndb_initialize();
 	dns__qp_initialize();
 	dns__qpzone_initialize();
@@ -72,5 +70,4 @@ dns__lib_shutdown(void) {
 	dns__dlz_shutdown();
 	dns__acl_shutdown();
 	dst__lib_shutdown();
-	dns__rdataslab_shutdown();
 }
