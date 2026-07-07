@@ -200,6 +200,8 @@ struct ns_client {
 							     zoneversion */
 				bool havezoneversion : 1; /*%< return
 							     zoneversion */
+				bool wantmtlfull : 1; /*%< send full MTL
+							  signatures */
 			};
 		};
 		dns_view_t     *view;

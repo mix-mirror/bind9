@@ -598,9 +598,12 @@ null_dep = dependency('', required: false)
 
 m_dep = cc.find_library('m', required: false)
 
+thread_dep = dependency('threads')
+
 ## MTLLIB
 mtllib_dep = [
-    dependency('mtllib'),
+    cc.find_library('mtlslib', dirs: ['/usr/local/lib']),
+    dependency('liboqs'),
 ]
 
 ## OpenSSL
@@ -1259,6 +1262,7 @@ libdns_dep = declare_dependency(
     sources: dns_gen_headers,
     dependencies: [
         libisc_dep,
+        mtllib_dep,
     ],
 )
 
@@ -1701,6 +1705,7 @@ executable(
     dependencies: named_deps
     + [
         openssl_dep,
+        mtllib_dep,
 
         cap_dep,
         dnstap_dep,

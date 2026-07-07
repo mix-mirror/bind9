@@ -322,7 +322,8 @@ cfg_kaspkey_fromconfig(const cfg_obj_t *config, dns_kasp_t *kasp,
 			case DST_ALG_ECDSA384:
 			case DST_ALG_ED25519:
 			case DST_ALG_ED448:
-			case DST_ALG_MTL:
+			case DST_ALG_SLHDSAMTLSHA2128S:
+			case DST_ALG_SLHDSAMTLSHAKE128S:
 				if (log_errors) {
 					cfg_obj_log(obj, ISC_LOG_WARNING,
 						    "dnssec-policy: key "

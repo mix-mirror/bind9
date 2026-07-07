@@ -71,8 +71,6 @@ struct dns_dnsseckey {
 	bool	     pubkey;	     /*% public key only */
 	unsigned int index;	     /*% position in list */
 	ISC_LINK(dns_dnsseckey_t) link;
-	uint8_t ladder[8040];
-	size_t	ladder_len;
 };
 
 isc_result_t

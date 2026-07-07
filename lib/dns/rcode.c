@@ -107,6 +107,10 @@
 		{ DNS_KEYALG_ECDSA384, "ECDSA384", 0 },         \
 		{ DNS_KEYALG_ED25519, "ED25519", 0 },           \
 		{ DNS_KEYALG_ED448, "ED448", 0 },               \
+		{ DNS_KEYALG_SLHDSAMTLSHA2128S,                 \
+		  "SLHDSAMTLSHA2128S", 0 },                     \
+		{ DNS_KEYALG_SLHDSAMTLSHAKE128S,                \
+		  "SLHDSAMTLSHAKE128S", 0 },                    \
 		{ DNS_KEYALG_MTL, "MTL", 0 },                   \
 		{ DNS_KEYALG_INDIRECT, "INDIRECT", 0 },         \
 		{ DNS_KEYALG_PRIVATEDNS, "PRIVATEDNS", 0 },     \

@@ -101,10 +101,13 @@ struct dst_key {
 			uint8_t *pub;
 			uint8_t *priv;
 		} keypair;
-		struct {
-			MTLLIB_CTX *ctx;
-			isc_hashmap_t *hashmap;
-		} mtl;
+			struct {
+				MTLLIB_CTX *ctx;
+				isc_hashmap_t *hashmap;
+				uint8_t *ladder;
+				size_t ladder_len;
+				bool isprivate;
+			} mtl;
 	} keydata; /*%< pointer to key in crypto pkg fmt */
 
 	isc_stdtime_t times[DST_MAX_TIMES]; /*%< timing metadata */

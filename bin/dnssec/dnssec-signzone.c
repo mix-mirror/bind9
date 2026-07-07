@@ -155,6 +155,7 @@ static unsigned int nloops = 0;
 static atomic_bool shuttingdown;
 static atomic_bool final = false;
 static atomic_bool finished;
+static bool mtl_signing = false;
 static bool nokeys = false;
 static bool removefile = false;
 static bool generateds = false;
@@ -177,6 +178,7 @@ static bool set_maxttl = false;
 static dns_ttl_t maxttl = 0;
 static bool no_max_check = false;
 static const char *sync_records = "cdnskey,cds:sha-256";
+static isc_mutex_t signlock;
 
 #define INCSTAT(counter)                               \
 	if (printstats) {                              \
@@ -262,6 +264,17 @@ lock_and_dumpnode(dns_name_t *name, dns_dbnode_t *node) {
 	UNLOCK(&namelock);
 }
 
+static bool
+ismtlkey(dst_key_t *key) {
+	switch (dst_key_alg(key)) {
+	case DST_ALG_SLHDSAMTLSHA2128S:
+	case DST_ALG_SLHDSAMTLSHAKE128S:
+		return true;
+	default:
+		return false;
+	}
+}
+
 /*%
  * Sign the given RRset with given key, and add the signature record to the
  * given tuple.
@@ -285,8 +298,9 @@ signwithkey(dns_name_t *name, dns_rdataset_t *rdataset, dns_dnsseckey_t *key,
 		expiry = endtime;
 	}
 
-	bool full = (rdataset->type == dns_rdatatype_soa ||
-		     rdataset->type == dns_rdatatype_dnskey);
+	bool mtl = ismtlkey(key->key);
+	bool full = mtl && (rdataset->type == dns_rdatatype_soa ||
+			    rdataset->type == dns_rdatatype_dnskey);
 
 	jendtime = (jitter != 0) ? expiry - isc_random_uniform(jitter) : expiry;
 	isc_buffer_init(&b, array, sizeof(array));
@@ -300,36 +314,10 @@ signwithkey(dns_name_t *name, dns_rdataset_t *rdataset, dns_dnsseckey_t *key,
 	INCSTAT(nsigned);
 
 	if (atomic_load(&final)) {
-		isc_region_t *ladreg = NULL;
-		isc_region_t ladreg_s = { 0 };
-
-		if (full) {
-			dns_rdata_rrsig_t sig;
-			dns_rdata_tostruct(&trdata, &sig, isc_g_mctx);
-
-			unsigned int csize = 0;
-			result = dst_key_sigsize(key->key, &csize, false);
-			RUNTIME_CHECK(result == ISC_R_SUCCESS);
-
-			INSIST(csize <= sig.siglen);
-			INSIST(csize == 216);
-
-			key->ladder_len = sig.siglen - csize;
-			memmove(key->ladder, sig.signature + csize,
-				key->ladder_len);
-
-			dns_rdata_freestruct(&sig);
-
-		} else {
-			ladreg = &ladreg_s;
-			ladreg->base = key->ladder;
-			ladreg->length = key->ladder_len;
-		}
-
 		if (tryverify) {
 			result = dns_dnssec_verify(name, rdataset, key->key,
 						   true, isc_g_mctx, &trdata,
-						   NULL, NULL, ladreg);
+						   NULL, NULL, NULL);
 			if (result == ISC_R_SUCCESS ||
 			    result == DNS_R_FROMWILDCARD)
 			{
@@ -1550,12 +1538,24 @@ assignwork(void *arg ISC_ATTR_UNUSED) {
 	static dns_name_t *zonecut = NULL; /* Protected by namelock. */
 	static dns_fixedname_t fzonecut;   /* Protected by namelock. */
 	static unsigned int ended = 0;	   /* Protected by namelock. */
+	static unsigned int active = 0;	   /* Protected by namelock. */
+	static bool start_final = false;   /* Protected by namelock. */
 
 	if (atomic_load(&shuttingdown)) {
 		return;
 	}
 
 	LOCK(&namelock);
+	if (mtl_signing && start_final && !atomic_load(&final)) {
+		if (active != 0) {
+			ended++;
+			UNLOCK(&namelock);
+			return;
+		}
+		start_final = false;
+		atomic_store(&final, true);
+		signapex();
+	}
 	if (atomic_load(&finished)) {
 		ended++;
 		if (ended == nloops) {
@@ -1625,6 +1625,10 @@ assignwork(void *arg ISC_ATTR_UNUSED) {
 		if (result == ISC_R_NOMORE) {
 			if (atomic_load(&final)) {
 				atomic_store(&finished, true);
+			} else if (mtl_signing && found) {
+				start_final = true;
+			} else if (mtl_signing && active != 0) {
+				start_final = true;
 			} else {
 				atomic_store(&final, true);
 				signapex();
@@ -1639,6 +1643,11 @@ assignwork(void *arg ISC_ATTR_UNUSED) {
 		}
 	}
 	if (!found) {
+		if (mtl_signing && start_final && !atomic_load(&final)) {
+			ended++;
+			UNLOCK(&namelock);
+			return;
+		}
 		ended++;
 		if (ended == nloops) {
 			isc_loopmgr_shutdown();
@@ -1646,16 +1655,37 @@ assignwork(void *arg ISC_ATTR_UNUSED) {
 		UNLOCK(&namelock);
 		return;
 	}
+	if (mtl_signing) {
+		active++;
+	}
 
 	UNLOCK(&namelock);
 
+	if (mtl_signing) {
+		LOCK(&signlock);
+	}
 	signname(node, false, dns_fixedname_name(&fname));
+	if (mtl_signing) {
+		UNLOCK(&signlock);
+	}
 
 	/*%
 	 * Write a node to the output file, and restart the worker task.
 	 */
 	lock_and_dumpnode(dns_fixedname_name(&fname), node);
 	dns_db_detachnode(&node);
+
+	if (mtl_signing) {
+		LOCK(&namelock);
+		INSIST(active > 0);
+		active--;
+		if (start_final && !atomic_load(&final) && active == 0) {
+			start_final = false;
+			atomic_store(&final, true);
+			signapex();
+		}
+		UNLOCK(&namelock);
+	}
 
 	isc_async_current(assignwork, NULL);
 }
@@ -3806,6 +3836,9 @@ main(int argc, char *argv[]) {
 	/* Now enumerate the key list */
 	ISC_LIST_FOREACH(keylist, key, link) {
 		key->index = keycount++;
+		if (ismtlkey(key->key)) {
+			mtl_signing = true;
+		}
 	}
 
 	if (keycount == 0) {
@@ -3920,6 +3953,7 @@ main(int argc, char *argv[]) {
 	print_version(outfp);
 
 	isc_mutex_init(&namelock);
+	isc_mutex_init(&signlock);
 
 	result = dns_db_createiterator(gdb, 0, &gdbiter);
 	check_result(result, "dns_db_createiterator()");
@@ -4022,6 +4056,7 @@ main(int argc, char *argv[]) {
 			    &sign_finish);
 	}
 	isc_mutex_destroy(&namelock);
+	isc_mutex_destroy(&signlock);
 	isc_rwlock_destroy(&keylist_lock);
 
 	return vresult == ISC_R_SUCCESS ? 0 : 1;

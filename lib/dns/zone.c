@@ -8961,9 +8961,9 @@ revocable(dns_zonefetch_t *fetch, dns_rdata_keydata_t *keydata) {
 		if (dst_key_alg(dstkey) == algorithm &&
 		    dst_key_rid(dstkey) == sig.keyid)
 		{
-			result = dns_dnssec_verify(keyname, &fetch->rrset,
-						   dstkey, false, mctx, &sigrr,
-						   NULL, NULL);
+				result = dns_dnssec_verify(keyname, &fetch->rrset,
+							   dstkey, false, mctx, &sigrr,
+							   NULL, NULL, NULL);
 
 			dnssec_log(fetch->zone, ISC_LOG_DEBUG(3),
 				   "Confirm revoked DNSKEY is self-signed: %s",
@@ -9179,9 +9179,9 @@ keyfetch_done(dns_zonefetch_t *fetch, isc_result_t eresult) {
 				continue;
 			}
 
-			result = dns_dnssec_verify(keyname, dnskeys, dstkey,
-						   false, mctx, &sigrr, NULL,
-						   NULL);
+				result = dns_dnssec_verify(keyname, dnskeys, dstkey,
+							   false, mctx, &sigrr, NULL,
+							   NULL, NULL);
 			dst_key_free(&dstkey);
 
 			dnssec_log(zone, ISC_LOG_DEBUG(3),

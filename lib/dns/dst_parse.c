@@ -106,7 +106,10 @@ static struct parse_map map[] = { { TAG_RSA_MODULUS, "Modulus:" },
 				  { TAG_EDDSA_ENGINE, "Engine:" },
 				  { TAG_EDDSA_LABEL, "Label:" },
 
-				  { TAG_MTL_PRIVATEKEY, "PublicKey:" },
+				  { TAG_MTL_SHA2_PRIVATEKEY, "PrivateKey:" },
+				  { TAG_MTL_SHA2_PRIVATEKEY, "PublicKey:" },
+				  { TAG_MTL_SHAKE_PRIVATEKEY, "PrivateKey:" },
+				  { TAG_MTL_SHAKE_PRIVATEKEY, "PublicKey:" },
 
 				  { TAG_HMACMD5_KEY, "Key:" },
 				  { TAG_HMACMD5_BITS, "Bits:" },
@@ -294,7 +297,7 @@ check_eddsa(const dst_private_t *priv, bool external) {
 }
 
 static int
-check_mtl(const dst_private_t *priv, bool external) {
+check_mtl(const dst_private_t *priv, unsigned int alg, bool external) {
 	bool have[MTL_NTAGS] = { 0 };
 	unsigned int mask;
 
@@ -306,7 +309,7 @@ check_mtl(const dst_private_t *priv, bool external) {
 		size_t i;
 		for (i = 0; i < MTL_NTAGS; i++) {
 			INSIST(priv->elements[j].tag != 0);
-			if (priv->elements[j].tag == TAG(DST_ALG_MTL, i)) {
+			if (priv->elements[j].tag == TAG(alg, i)) {
 				break;
 			}
 		}
@@ -318,7 +321,7 @@ check_mtl(const dst_private_t *priv, bool external) {
 
 	mask = (1ULL << TAG_SHIFT) - 1;
 
-	if (have[TAG_MTL_PRIVATEKEY & mask]) {
+	if (have[TAG(alg, 0) & mask]) {
 		return ISC_R_SUCCESS;
 	}
 
@@ -395,8 +398,9 @@ check_data(const dst_private_t *priv, const unsigned int alg, bool old,
 	case DST_ALG_ED25519:
 	case DST_ALG_ED448:
 		return check_eddsa(priv, external);
-	case DST_ALG_MTL:
-		return check_mtl(priv, external);
+	case DST_ALG_SLHDSAMTLSHA2128S:
+	case DST_ALG_SLHDSAMTLSHAKE128S:
+		return check_mtl(priv, alg, external);
 	case DST_ALG_HMACMD5:
 		return check_hmac_md5(priv, old);
 	case DST_ALG_HMACSHA1:
@@ -710,8 +714,11 @@ dst__privstruct_writefile(const dst_key_t *key, const dst_private_t *priv,
 	case DST_ALG_ED448:
 		fprintf(fp, "(ED448)\n");
 		break;
-	case DST_ALG_MTL:
-		fprintf(fp, "(MTL)\n");
+	case DST_ALG_SLHDSAMTLSHA2128S:
+		fprintf(fp, "(SLHDSAMTLSHA2128S)\n");
+		break;
+	case DST_ALG_SLHDSAMTLSHAKE128S:
+		fprintf(fp, "(SLHDSAMTLSHAKE128S)\n");
 		break;
 	case DST_ALG_HMACMD5:
 		fprintf(fp, "(HMAC_MD5)\n");

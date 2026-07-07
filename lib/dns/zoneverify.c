@@ -184,13 +184,31 @@ goodsig(const vctx_t *vctx, dns_rdata_t *sigrdata, const dns_name_t *name,
 		{
 			continue;
 		}
-		result = dns_dnssec_verify(name, rdataset, dstkeys[key], false,
-					   vctx->mctx, sigrdata, NULL, NULL);
+			result = dns_dnssec_verify(name, rdataset, dstkeys[key], false,
+						   vctx->mctx, sigrdata, NULL, NULL,
+						   NULL);
 		if (result == ISC_R_SUCCESS || result == DNS_R_FROMWILDCARD) {
 			return true;
 		}
 	}
 	return false;
+}
+
+static void
+prime_mtl_ladders(vctx_t *vctx, dst_key_t **dstkeys, size_t nkeys) {
+	DNS_RDATASET_FOREACH(&vctx->keysigs) {
+		dns_rdata_t rdata = DNS_RDATA_INIT;
+		dns_rdataset_current(&vctx->keysigs, &rdata);
+		(void)goodsig(vctx, &rdata, vctx->origin, dstkeys, nkeys,
+			      &vctx->keyset);
+	}
+
+	DNS_RDATASET_FOREACH(&vctx->soasigs) {
+		dns_rdata_t rdata = DNS_RDATA_INIT;
+		dns_rdataset_current(&vctx->soasigs, &rdata);
+		(void)goodsig(vctx, &rdata, vctx->origin, dstkeys, nkeys,
+			      &vctx->soaset);
+	}
 }
 
 static bool
@@ -1655,6 +1673,7 @@ verify_nodes(vctx_t *vctx, isc_result_t *vresult) {
 			nkeys++;
 		}
 	}
+	prime_mtl_ladders(vctx, dstkeys, nkeys);
 
 	result = dns_db_createiterator(vctx->db, DNS_DB_NONSEC3, &dbiter);
 	if (result != ISC_R_SUCCESS) {

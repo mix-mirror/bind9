@@ -281,6 +281,11 @@ fromwire_opt(ARGS_FROMWIRE) {
 			}
 			isc_region_consume(&sregion, length);
 			break;
+		case DNS_OPT_MTL_MODE_FULL:
+			if (length != 0) {
+				return DNS_R_OPTERR;
+			}
+			break;
 		default:
 			isc_region_consume(&sregion, length);
 			break;

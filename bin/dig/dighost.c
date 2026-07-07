@@ -1363,6 +1363,7 @@ dig_ednsoptname_t optnames[] = {
 	{ 18, "REPORT-CHANNEL" }, /* RFC 9567 */
 	{ 18, "RC" },		  /* shorthand */
 	{ 19, "ZONEVERSION" },	  /* RFC 9660 */
+	{ DNS_OPT_MTL_MODE_FULL, "MTL-MODE-FULL" },
 	{ 26946, "DEVICEID" },	  /* Brian Hartvigsen */
 };
 

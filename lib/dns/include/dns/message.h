@@ -125,6 +125,8 @@ enum {
 	DNS_OPT_SERVER_TAG = 17,     /*%< Server tag opt code */
 	DNS_OPT_REPORT_CHANNEL = 18, /*%< DNS Reporting Channel */
 	DNS_OPT_ZONEVERSION = 19,    /*%< Zoneversion opt code */
+	DNS_OPT_MTL_MODE_FULL =
+		65001, /*%< Experimental MTL full mode opt code */
 
 	DNS_OPT_COUNT = 18, /*%< Number of elements defined in this enum. */
 };

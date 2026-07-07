@@ -50,6 +50,7 @@
 #include <dns/rdataclass.h>
 #include <dns/rdatalist.h>
 #include <dns/rdataset.h>
+#include <dns/rdatastruct.h>
 #include <dns/resolver.h>
 #include <dns/result.h>
 #include <dns/stats.h>
@@ -64,6 +65,8 @@
 #include <ns/server.h>
 #include <ns/stats.h>
 #include <ns/update.h>
+
+#include <dst/dst.h>
 
 /***
  *** Client
@@ -96,6 +99,10 @@
 
 #define COOKIE_SIZE 24U /* 8 + 4 + 4 + 8 */
 #define ECS_SIZE    20U /* 2 + 1 + 1 + [0..16] */
+
+#define MTL_TYPE_CONDENSED 0
+#define MTL_TYPE_FULL	  1
+#define MTL_HASH_SIZE_128  16U
 
 #define MANAGER_MAGIC	 ISC_MAGIC('N', 'S', 'C', 'm')
 #define VALID_MANAGER(m) ISC_MAGIC_VALID(m, MANAGER_MAGIC)
@@ -551,6 +558,409 @@ done:
 	ns_client_drop(client, result);
 }
 
+static bool
+mtl_algorithm(unsigned int algorithm) {
+	switch (algorithm) {
+	case DST_ALG_SLHDSAMTLSHA2128S:
+	case DST_ALG_SLHDSAMTLSHAKE128S:
+		return true;
+	default:
+		return false;
+	}
+}
+
+static bool
+mtl_condensed_siglen(const dns_rdata_rrsig_t *sig, size_t *siglenp) {
+	static const size_t index_lengths[] = { 8, 4 };
+
+	if (!mtl_algorithm(sig->algorithm) || sig->siglen < 2 ||
+	    (sig->signature[0] != MTL_TYPE_CONDENSED &&
+	     sig->signature[0] != MTL_TYPE_FULL))
+	{
+		return false;
+	}
+
+	const uint8_t *rawsig = sig->signature + 1;
+	size_t rawsiglen = sig->siglen - 1;
+
+	for (size_t i = 0; i < ARRAY_SIZE(index_lengths); i++) {
+		size_t index_len = index_lengths[i];
+		size_t sibling_count_offset = 2 * MTL_HASH_SIZE_128 + 2 +
+					      MTL_HASH_SIZE_128 +
+					      3 * index_len;
+
+		if (rawsiglen < sibling_count_offset + 2) {
+			continue;
+		}
+
+		uint16_t sibling_count =
+			((uint16_t)rawsig[sibling_count_offset] << 8) |
+			rawsig[sibling_count_offset + 1];
+		size_t sibling_hashes_len =
+			(size_t)sibling_count * MTL_HASH_SIZE_128;
+
+		if (sibling_count != 0 &&
+		    sibling_hashes_len / sibling_count != MTL_HASH_SIZE_128)
+		{
+			continue;
+		}
+
+		size_t raw_condensed_len =
+			sibling_count_offset + 2 + sibling_hashes_len;
+		if (raw_condensed_len <= rawsiglen) {
+			*siglenp = raw_condensed_len + 1;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+static bool
+mtl_rrsig_is_full(const dns_rdata_rrsig_t *sig) {
+	return mtl_algorithm(sig->algorithm) && sig->siglen > 0 &&
+	       sig->signature[0] == MTL_TYPE_FULL;
+}
+
+static bool
+mtl_rrsig_ladder_region(const dns_rdata_rrsig_t *sig,
+			isc_region_t *ladder) {
+	size_t condensed_siglen = 0;
+
+	if (!mtl_rrsig_is_full(sig) ||
+	    !mtl_condensed_siglen(sig, &condensed_siglen) ||
+	    condensed_siglen >= sig->siglen)
+	{
+		return false;
+	}
+
+	*ladder = (isc_region_t){
+		.base = sig->signature + condensed_siglen,
+		.length = sig->siglen - condensed_siglen,
+	};
+	return true;
+}
+
+static bool
+mtl_rrsig_matches(const dns_rdata_rrsig_t *sig,
+		  const dns_rdata_rrsig_t *target) {
+	return sig->algorithm == target->algorithm && sig->keyid == target->keyid &&
+	       dns_name_equal(&sig->signer, &target->signer);
+}
+
+static isc_result_t
+mtl_copy_region(ns_client_t *client, const isc_region_t *source,
+		isc_region_t *target) {
+	isc_buffer_t *buffer = NULL;
+
+	isc_buffer_allocate(client->message->mctx, &buffer, source->length);
+	isc_buffer_putmem(buffer, source->base, source->length);
+	isc_buffer_usedregion(buffer, target);
+	dns_message_takebuffer(client->message, &buffer);
+
+	return ISC_R_SUCCESS;
+}
+
+static isc_result_t
+mtl_copy_rdata(ns_client_t *client, const dns_rdata_t *source,
+	       dns_rdata_t **targetp) {
+	dns_rdata_t *target = NULL;
+	isc_region_t source_region, target_region;
+
+	dns_rdata_toregion(source, &source_region);
+	dns_message_gettemprdata(client->message, &target);
+	RETERR(mtl_copy_region(client, &source_region, &target_region));
+	dns_rdata_fromregion(target, source->rdclass, source->type,
+			     &target_region);
+
+	*targetp = target;
+	return ISC_R_SUCCESS;
+}
+
+static isc_result_t
+mtl_find_ladder_in_sigrdataset(ns_client_t *client, dns_rdataset_t *sigrdataset,
+			       const dns_rdata_rrsig_t *target,
+			       isc_region_t *ladder) {
+	DNS_RDATASET_FOREACH(sigrdataset) {
+		dns_rdata_t rdata = DNS_RDATA_INIT;
+		dns_rdata_rrsig_t sig;
+		isc_region_t sig_ladder;
+		isc_result_t result;
+
+		dns_rdataset_current(sigrdataset, &rdata);
+		result = dns_rdata_tostruct(&rdata, &sig, NULL);
+		if (result != ISC_R_SUCCESS) {
+			return result;
+		}
+
+		if (mtl_rrsig_matches(&sig, target) &&
+		    mtl_rrsig_ladder_region(&sig, &sig_ladder))
+		{
+			return mtl_copy_region(client, &sig_ladder, ladder);
+		}
+	}
+
+	return ISC_R_NOTFOUND;
+}
+
+static isc_result_t
+mtl_find_ladder_at_apex(ns_client_t *client, dns_rdatatype_t covers,
+			const dns_rdata_rrsig_t *target,
+			isc_region_t *ladder) {
+	dns_dbnode_t *node = NULL;
+	dns_rdataset_t sigrdataset;
+	isc_result_t result;
+
+	if (!client->query.authdbset || client->query.authdb == NULL) {
+		return ISC_R_NOTFOUND;
+	}
+
+	ns_dbversion_t *dbversion =
+		ns_client_findversion(client, client->query.authdb);
+	if (dbversion == NULL || dbversion->version == NULL) {
+		return ISC_R_NOTFOUND;
+	}
+
+	dns_rdataset_init(&sigrdataset);
+	result = dns_db_getoriginnode(client->query.authdb, &node);
+	if (result != ISC_R_SUCCESS) {
+		return result;
+	}
+
+	result = dns_db_findrdataset(client->query.authdb, node,
+				     dbversion->version, dns_rdatatype_rrsig,
+				     covers, 0, &sigrdataset, NULL);
+	if (result == ISC_R_SUCCESS) {
+		result = mtl_find_ladder_in_sigrdataset(client, &sigrdataset,
+							target, ladder);
+	}
+
+	if (dns_rdataset_isassociated(&sigrdataset)) {
+		dns_rdataset_disassociate(&sigrdataset);
+	}
+	dns_db_detachnode(&node);
+
+	return result;
+}
+
+static isc_result_t
+mtl_find_ladder(ns_client_t *client, const dns_rdata_rrsig_t *target,
+		isc_region_t *ladder) {
+	isc_result_t result;
+
+	result = mtl_find_ladder_at_apex(client, dns_rdatatype_soa, target,
+					 ladder);
+	if (result != ISC_R_NOTFOUND && result != DNS_R_NXRRSET) {
+		return result;
+	}
+
+	result = mtl_find_ladder_at_apex(client, dns_rdatatype_dnskey, target,
+					 ladder);
+	if (result == DNS_R_NXRRSET) {
+		result = ISC_R_NOTFOUND;
+	}
+	return result;
+}
+
+static isc_result_t
+mtl_rrsig_to_rdata(ns_client_t *client, const dns_rdata_t *source,
+		   const dns_rdata_rrsig_t *sig, bool full,
+		   const isc_region_t *ladder, dns_rdata_t **targetp) {
+	dns_rdata_t *target = NULL;
+	dns_rdata_rrsig_t newsig = *sig;
+	isc_buffer_t *wirebuf = NULL;
+	unsigned char *newsigdata = NULL;
+	isc_result_t result;
+	size_t condensed_siglen = 0;
+	size_t newsiglen = 0;
+	size_t wirelen = 0;
+
+	if (!mtl_condensed_siglen(sig, &condensed_siglen)) {
+		return mtl_copy_rdata(client, source, targetp);
+	}
+
+	newsiglen = condensed_siglen + (full ? ladder->length : 0);
+	if (newsiglen > UINT16_MAX || source->length < sig->siglen) {
+		return mtl_copy_rdata(client, source, targetp);
+	}
+
+	wirelen = source->length - sig->siglen + newsiglen;
+	if (wirelen > DNS_RDATA_MAXLENGTH) {
+		return mtl_copy_rdata(client, source, targetp);
+	}
+
+	newsigdata = isc_mem_get(client->message->mctx, newsiglen);
+	memmove(newsigdata, sig->signature, condensed_siglen);
+	newsigdata[0] = full ? MTL_TYPE_FULL : MTL_TYPE_CONDENSED;
+	if (full) {
+		memmove(newsigdata + condensed_siglen, ladder->base,
+			ladder->length);
+	}
+
+	newsig.siglen = (uint16_t)newsiglen;
+	newsig.signature = newsigdata;
+
+	dns_message_gettemprdata(client->message, &target);
+	isc_buffer_allocate(client->message->mctx, &wirebuf, wirelen);
+	result = dns_rdata_fromstruct(target, source->rdclass, source->type,
+				      &newsig, wirebuf);
+	if (result == ISC_R_SUCCESS) {
+		dns_message_takebuffer(client->message, &wirebuf);
+	} else {
+		isc_buffer_free(&wirebuf);
+		dns_message_puttemprdata(client->message, &target);
+	}
+	isc_mem_put(client->message->mctx, newsigdata, newsiglen);
+
+	if (result != ISC_R_SUCCESS) {
+		return result;
+	}
+
+	*targetp = target;
+	return ISC_R_SUCCESS;
+}
+
+static isc_result_t
+mtl_rewrite_rrsig_rdata(ns_client_t *client, const dns_rdata_t *source,
+			bool want_full, bool *is_mtlp, dns_rdata_t **targetp) {
+	dns_rdata_rrsig_t sig;
+	isc_region_t ladder = { 0 };
+	isc_result_t result;
+
+	result = dns_rdata_tostruct(source, &sig, NULL);
+	if (result != ISC_R_SUCCESS) {
+		return result;
+	}
+
+	if (!mtl_algorithm(sig.algorithm)) {
+		*is_mtlp = false;
+		return mtl_copy_rdata(client, source, targetp);
+	}
+	*is_mtlp = true;
+
+	if (!want_full) {
+		return mtl_rrsig_to_rdata(client, source, &sig, false, NULL,
+					  targetp);
+	}
+
+	if (mtl_rrsig_ladder_region(&sig, &ladder)) {
+		return mtl_rrsig_to_rdata(client, source, &sig, true, &ladder,
+					  targetp);
+	}
+
+	result = mtl_find_ladder(client, &sig, &ladder);
+	if (result == ISC_R_SUCCESS) {
+		return mtl_rrsig_to_rdata(client, source, &sig, true, &ladder,
+					  targetp);
+	}
+
+	if (result != ISC_R_NOTFOUND) {
+		return result;
+	}
+
+	return mtl_copy_rdata(client, source, targetp);
+}
+
+static isc_result_t
+mtl_rdataset_contains_mtl(dns_rdataset_t *rdataset, bool *has_mtlp) {
+	DNS_RDATASET_FOREACH(rdataset) {
+		dns_rdata_t rdata = DNS_RDATA_INIT;
+		dns_rdata_rrsig_t sig;
+		isc_result_t result;
+
+		dns_rdataset_current(rdataset, &rdata);
+		result = dns_rdata_tostruct(&rdata, &sig, NULL);
+		if (result != ISC_R_SUCCESS) {
+			return result;
+		}
+		if (mtl_algorithm(sig.algorithm)) {
+			*has_mtlp = true;
+			return ISC_R_SUCCESS;
+		}
+	}
+
+	*has_mtlp = false;
+	return ISC_R_SUCCESS;
+}
+
+static isc_result_t
+mtl_rewrite_rrsig_rdataset(ns_client_t *client, dns_name_t *name,
+			   dns_rdataset_t *rdataset, bool want_full) {
+	dns_rdatalist_t *rdatalist = NULL;
+	dns_rdataset_t *replacement = NULL;
+	bool has_mtl = false;
+	bool saw_mtl = false;
+	isc_result_t result;
+
+	result = mtl_rdataset_contains_mtl(rdataset, &has_mtl);
+	if (result != ISC_R_SUCCESS || !has_mtl) {
+		return result;
+	}
+
+	dns_message_gettemprdatalist(client->message, &rdatalist);
+	rdatalist->rdclass = rdataset->rdclass;
+	rdatalist->type = rdataset->type;
+	rdatalist->covers = rdataset->covers;
+	rdatalist->ttl = rdataset->ttl;
+
+	DNS_RDATASET_FOREACH(rdataset) {
+		dns_rdata_t rdata = DNS_RDATA_INIT;
+		dns_rdata_t *newrdata = NULL;
+		bool is_mtl = false;
+
+		dns_rdataset_current(rdataset, &rdata);
+		result = mtl_rewrite_rrsig_rdata(client, &rdata, want_full,
+						 &is_mtl, &newrdata);
+		if (result != ISC_R_SUCCESS) {
+			return result;
+		}
+		saw_mtl = saw_mtl || is_mtl;
+		ISC_LIST_APPEND(rdatalist->rdata, newrdata, link);
+	}
+
+	INSIST(saw_mtl);
+
+	dns_message_gettemprdataset(client->message, &replacement);
+	dns_rdatalist_tordataset(rdatalist, replacement);
+	replacement->trust = rdataset->trust;
+	replacement->attributes = rdataset->attributes;
+	dns_rdataset_setownercase(replacement, name);
+
+	ISC_LIST_INSERTBEFORE(name->list, rdataset, replacement, link);
+	ISC_LIST_UNLINK(name->list, rdataset, link);
+	ns_client_putrdataset(client, &rdataset);
+
+	return ISC_R_SUCCESS;
+}
+
+static isc_result_t
+ns_client_rewrite_mtl_rrsigs(ns_client_t *client) {
+	bool want_full = client->inner.wantmtlfull;
+
+	for (dns_section_t section = DNS_SECTION_ANSWER;
+	     section <= DNS_SECTION_ADDITIONAL; section++)
+	{
+		MSG_SECTION_FOREACH(client->message, section, name) {
+			dns_rdataset_t *rdataset = ISC_LIST_HEAD(name->list);
+
+			while (rdataset != NULL) {
+				dns_rdataset_t *next =
+					ISC_LIST_NEXT(rdataset, link);
+
+				if (rdataset->type == dns_rdatatype_rrsig) {
+					RETERR(mtl_rewrite_rrsig_rdataset(
+						client, name, rdataset,
+						want_full));
+				}
+
+				rdataset = next;
+			}
+		}
+	}
+
+	return ISC_R_SUCCESS;
+}
+
 void
 ns_client_send(ns_client_t *client) {
 	isc_result_t result;
@@ -622,6 +1032,8 @@ ns_client_send(ns_client_t *client) {
 		CHECK(ns_client_addopt(client, client->message));
 		opt_included = true;
 	}
+
+	CHECK(ns_client_rewrite_mtl_rrsigs(client));
 
 	client_allocsendbuf(client, &buffer, &data);
 	compflags = 0;
@@ -1642,6 +2054,14 @@ process_opt(ns_client_t *client, dns_rdataset_t *opt) {
 					client->manager->sctx->nsstats,
 					ns_statscounter_zoneversionopt);
 				client->inner.wantzoneversion = true;
+				isc_buffer_forward(&optbuf, optlen);
+				break;
+			case DNS_OPT_MTL_MODE_FULL:
+				if (optlen != 0 || client->inner.wantmtlfull) {
+					result = DNS_R_FORMERR;
+					goto formerr;
+				}
+				client->inner.wantmtlfull = true;
 				isc_buffer_forward(&optbuf, optlen);
 				break;
 			default:

@@ -634,17 +634,9 @@ matching_sigs(keyinfo_t *keytbl, dns_rdataset_t *rdataset,
 				continue;
 			}
 
-			result = dns_dnssec_verify(name, rdataset, ki->dst,
-<<<<<<< HEAD
-						   false, isc_g_mctx, &sigrdata,
-						   NULL, NULL);
-||||||| parent of 5132cb61bf (WIP: Add initial MTL support (keygen and signing works))
-						   false, mctx, &sigrdata,
-						   NULL);
-=======
-						   false, mctx, &sigrdata, NULL,
-						   NULL);
->>>>>>> 5132cb61bf (WIP: Add initial MTL support (keygen and signing works))
+				result = dns_dnssec_verify(name, rdataset, ki->dst,
+							   false, isc_g_mctx,
+							   &sigrdata, NULL, NULL, NULL);
 
 			if (result != ISC_R_SUCCESS &&
 			    result != DNS_R_FROMWILDCARD)

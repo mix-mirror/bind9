@@ -41,7 +41,7 @@ typedef pthread_barrier_t isc_barrier_t;
 
 #else
 
-#include <uv.h>
+#include <isc/uv.h>
 
 #if ISC_TRACK_PTHREADS_OBJECTS
 typedef uv_barrier_t *isc_barrier_t;

@@ -317,25 +317,16 @@ dns_dnssec_sign(const dns_name_t *name, dns_rdataset_t *set, dst_key_t *key,
 	}
 
 	isc_buffer_init(&sigbuf, sig.signature, sig.siglen);
-	result = dst_context_sign(ctx, &sigbuf, full, true);
+	result = dst_context_sign(ctx, &sigbuf, final, full);
 	if (result != ISC_R_SUCCESS) {
 		goto cleanup_array;
 	}
 	isc_buffer_usedregion(&sigbuf, &r);
-	if (r.length != sig.siglen) {
-		result = ISC_R_NOSPACE;
-		goto cleanup_array;
-	}
 
 	if (final) {
 		isc_buffer_usedregion(&sigbuf, &r);
 
 		sig.siglen = r.length;
-
-		if (r.length != sig.siglen) {
-			result = ISC_R_NOSPACE;
-			goto cleanup_array;
-		}
 
 		result = dns_rdata_fromstruct(sigrdata, sig.common.rdclass,
 					      sig.common.rdtype, &sig, buffer);
@@ -1118,9 +1109,6 @@ dns_dnsseckey_create(isc_mem_t *mctx, dst_key_t **dstkey,
 	dk->prepublish = 0;
 	dk->source = dns_keysource_unknown;
 	dk->index = 0;
-
-	memset(dk->ladder, 0, sizeof(dk->ladder));
-	dk->ladder_len = 0;
 
 	/* KSK or ZSK? */
 	result = dst_key_getbool(dk->key, DST_BOOL_KSK, &dk->ksk);

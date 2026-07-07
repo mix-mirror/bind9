@@ -3512,6 +3512,20 @@ static const char *option_names[] = {
 	[DNS_OPT_ZONEVERSION] = "ZONEVERSION",
 };
 
+static const char *
+edns_option_name(uint16_t optcode) {
+	if (optcode < ARRAY_SIZE(option_names) && option_names[optcode] != NULL) {
+		return option_names[optcode];
+	}
+
+	switch (optcode) {
+	case DNS_OPT_MTL_MODE_FULL:
+		return "MTL-MODE-FULL";
+	default:
+		return NULL;
+	}
+}
+
 static isc_result_t
 render_zoneversion(dns_message_t *msg, isc_buffer_t *optbuf,
 		   const dns_master_style_t *style, isc_buffer_t *target) {
@@ -3703,11 +3717,9 @@ dns_message_pseudosectiontoyaml(dns_message_t *msg, dns_pseudosection_t section,
 			INSIST(isc_buffer_remaininglength(&optbuf) >= optlen);
 
 			INDENT(style);
-			if (optcode < ARRAY_SIZE(option_names)) {
-				option_name = option_names[optcode];
-			}
+			option_name = edns_option_name(optcode);
 			if (option_name != NULL) {
-				ADD_STRING(target, option_names[optcode])
+				ADD_STRING(target, option_name)
 			} else {
 				snprintf(buf, sizeof(buf), "OPT=%u", optcode);
 				ADD_STRING(target, buf);
@@ -4131,11 +4143,9 @@ dns_message_pseudosectiontotext(dns_message_t *msg, dns_pseudosection_t section,
 
 			INDENT(style);
 			ADD_STRING(target, "; ");
-			if (optcode < ARRAY_SIZE(option_names)) {
-				option_name = option_names[optcode];
-			}
+			option_name = edns_option_name(optcode);
 			if (option_name != NULL) {
-				ADD_STRING(target, option_names[optcode])
+				ADD_STRING(target, option_name)
 			} else {
 				snprintf(buf, sizeof(buf), "OPT=%u", optcode);
 				ADD_STRING(target, buf);

@@ -356,8 +356,9 @@ create_key(ksr_ctx_t *ksr, dns_kasp_t *kasp, dns_kasp_key_t *kaspkey,
 	case DST_ALG_ED448:
 		ksr->size = 456;
 		break;
-	case DST_ALG_MTL:
-		ksr->size = 32;
+	case DST_ALG_SLHDSAMTLSHA2128S:
+	case DST_ALG_SLHDSAMTLSHAKE128S:
+		ksr->size = 256;
 		break;
 	default:
 		show_progress = false;
@@ -685,20 +686,10 @@ sign_rrset(ksr_ctx_t *ksr, isc_stdtime_t inception, isc_stdtime_t expiration,
 		rrsig = isc_mem_get(isc_g_mctx, sizeof(*rrsig));
 		dns_rdata_init(rrsig);
 		isc_buffer_init(&buf, rdatabuf, sizeof(rdatabuf));
-<<<<<<< HEAD
 		result = dns_dnssec_sign(name, rrset, dk->key, &clockskew,
-					 &expiration, isc_g_mctx, &buf, &rdata);
+					 &expiration, isc_g_mctx, &buf, &rdata,
+					 true, true);
 		if (result != ISC_R_SUCCESS) {
-||||||| parent of 5132cb61bf (WIP: Add initial MTL support (keygen and signing works))
-		ret = dns_dnssec_sign(name, rrset, dk->key, &clockskew,
-				      &expiration, mctx, &buf, &rdata);
-		if (ret != ISC_R_SUCCESS) {
-=======
-		ret = dns_dnssec_sign(name, rrset, dk->key, &clockskew,
-				      &expiration, mctx, &buf, &rdata, true,
-				      true);
-		if (ret != ISC_R_SUCCESS) {
->>>>>>> 5132cb61bf (WIP: Add initial MTL support (keygen and signing works))
 			fatal("failed to sign KSR");
 		}
 		isc_buffer_usedregion(&buf, &rs);
