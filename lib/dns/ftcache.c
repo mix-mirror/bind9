@@ -260,7 +260,17 @@ STATIC_ASSERT(sizeof(ftcache_bucket_t) % ISC_OS_CACHELINE_SIZE == 0,
  */
 typedef struct ftcache_sieve {
 	union {
-		ISC_SIEVE(dns_slabheader_t) sieve;
+		struct {
+			ISC_SIEVE(dns_slabheader_t) sieve;
+
+			/*
+			 * Dead headers handed over by deleting
+			 * threads, waiting for the owner to unlink
+			 * them (see header_delete()).  MPSC: any
+			 * thread pushes, only the owner pops.
+			 */
+			struct __cds_wfs_stack zombies;
+		};
 		uint8_t __padding[ISC_OS_CACHELINE_SIZE];
 	};
 } ftcache_sieve_t;
@@ -281,14 +291,16 @@ STATIC_ASSERT(sizeof(ftcache_sieve_t) % ISC_OS_CACHELINE_SIZE == 0,
 #define FTC_BUCKETS_PER_LOOP 16
 
 /*
- * A header deleted by a thread other than its sieve's owner stays
- * linked in the sieve as a "zombie" (marked DEAD, memory pinned by the
- * sieve's reference) until the owner reaps it. Zombies are reaped when
- * the eviction walk or a sweep encounters them; the sweep runs on
- * insertion whenever the database's zombie count passes this
- * threshold, which bounds the memory the zombies pin.
+ * A deleted header stays linked in its sieve as a "zombie" (marked
+ * DEAD, memory pinned by the sieve's reference) because only the
+ * sieve's owner may unlink it. The deleter hands the exact header to
+ * the owner through the sieve's wait-free zombie stack and the owner
+ * unlinks the handed-over headers -- O(1) per death -- on its next
+ * pass through sieve_drain(). Scanning the sieve for zombies instead
+ * would be O(cache size) per batch: the sieve only ever grows until
+ * the cache reaches overmem, so under sustained header churn the scans
+ * progressively overwhelm the write path.
  */
-#define FTC_SIEVE_ZOMBIE_MAX 1024
 
 #define DEAD(header)                                   \
 	((atomic_load_acquire(&(header)->attributes) & \
@@ -388,13 +400,10 @@ struct ftcache {
 	struct rcu_head rcu_head;
 
 	/*
-	 * Per-loop SIEVE-LRU shards (sieves_count == nloops) and the
-	 * database-wide count of dead headers still linked in them,
-	 * advisory only: it triggers the owners' sweeps.
+	 * Per-loop SIEVE-LRU shards (sieves_count == nloops).
 	 */
 	ftcache_sieve_t *sieves;
 	size_t sieves_count;
-	atomic_size_t sieve_zombies;
 
 	size_t buckets_count;
 	ftcache_bucket_t buckets[]; /* attribute((counted_by(buckets_count))) */
@@ -661,6 +670,38 @@ expire_header(ftcache_t *ftdb, ftcnode_t *node,
 }
 
 /*
+ * Unlink the dead headers other threads have handed to this sieve
+ * since the last drain. Runs on the owner only; each pusher's own
+ * reference keeps its header alive until it is popped here. The
+ * linked state is re-checked because the deleter's check was racy
+ * against the owner's eviction walk: a header that lost that race was
+ * already unlinked (and the sieve's reference dropped) by the walk,
+ * so only the pusher's reference is dropped.
+ */
+static void
+sieve_drain(ftcache_sieve_t *s) {
+	if (cds_wfs_empty(&s->zombies)) {
+		return;
+	}
+
+	struct cds_wfs_head *head = __cds_wfs_pop_all(&s->zombies);
+
+	for (struct cds_wfs_node *node = cds_wfs_first(head); node != NULL;) {
+		dns_slabheader_t *header =
+			caa_container_of(node, dns_slabheader_t, zombie_link);
+		node = cds_wfs_next_blocking(node);
+
+		if (ISC_SIEVE_LINKED(header, lrulink)) {
+			ISC_SIEVE_UNLINK(s->sieve, header, lrulink);
+			/* The sieve's own reference. */
+			dns_slabheader_unref(header);
+		}
+		/* The pusher's reference. */
+		dns_slabheader_detach(&header);
+	}
+}
+
+/*
  * Maximum estimated size of the data being added: the size of the
  * rdataset, plus a new node and key and a possible additional NSEC node
  * and key, plus a safety margin for trie-internal allocations. (It's
@@ -695,6 +736,13 @@ static void
 expire_lru(ftcache_t *ftdb, size_t requested DNS__DB_FLARG) {
 	ftcache_sieve_t *s = &ftdb->sieves[isc_tid()];
 	size_t expired = 0;
+
+	/*
+	 * Reap the handed-over zombies first: their slabs free without
+	 * evicting anything live, and the walk below then cannot waste
+	 * its passes on them.
+	 */
+	sieve_drain(s);
 
 	while (expired < requested) {
 		dns_slabheader_t *header = ISC_SIEVE_NEXT(s->sieve, visited,
@@ -731,52 +779,14 @@ expire_lru(ftcache_t *ftdb, size_t requested DNS__DB_FLARG) {
 	}
 }
 
-/*
- * Reap every dead header from the calling loop's sieve. Runs on the
- * owner only, lock-free; triggered from insertion when the zombie
- * count passes FTC_SIEVE_ZOMBIE_MAX.
- */
-static void
-sieve_sweep(ftcache_t *ftdb, ftcache_sieve_t *s) {
-	size_t reaped = 0;
-	dns_slabheader_t *header = ISC_LIST_TAIL(s->sieve.list);
-
-	while (header != NULL) {
-		dns_slabheader_t *prev = ISC_LIST_PREV(header, lrulink);
-
-		if (DEAD(header)) {
-			ISC_SIEVE_UNLINK(s->sieve, header, lrulink);
-			dns_slabheader_detach(&header);
-			reaped++;
-		}
-		header = prev;
-	}
-
-	/*
-	 * The counter is advisory and can overcount (racy linked
-	 * checks), so clamp at zero instead of blindly subtracting.
-	 */
-	size_t zombies = atomic_load_relaxed(&ftdb->sieve_zombies);
-	size_t rest;
-	do {
-		rest = (zombies > reaped) ? zombies - reaped : 0;
-	} while (!atomic_compare_exchange_weak_relaxed(&ftdb->sieve_zombies,
-						       &zombies, rest));
-}
-
 static void
 ftcache_miss(ftcache_t *ftdb, dns_slabheader_t *newheader) {
 	ftcache_sieve_t *s = &ftdb->sieves[isc_tid()];
 
 	/* The sieve link owns a reference of its own. */
 	dns_slabheader_ref(newheader);
+	newheader->sieve_tid = (uint16_t)isc_tid();
 	ISC_SIEVE_INSERT(s->sieve, newheader, lrulink);
-
-	if (atomic_load_relaxed(&ftdb->sieve_zombies) >=
-	    FTC_SIEVE_ZOMBIE_MAX)
-	{
-		sieve_sweep(ftdb, s);
-	}
 }
 
 static void
@@ -1079,14 +1089,21 @@ header__delete(ftcnode_t *node, dns_slabheader_t *header, bool clear_partner) {
 	 * that inserted it, so it cannot be unlinked from here (any
 	 * thread). Mark the header dead instead -- unconditionally,
 	 * because the eviction walk relies on "not dead" to mean "still
-	 * on its node's list" -- and let the owner reap it; the sieve's
-	 * own reference keeps the memory alive meanwhile. The zombie
-	 * counter is advisory (it triggers the owners' sweeps), so it
-	 * is only bumped when the header is still linked.
+	 * on its node's list" -- and hand it to the owner through the
+	 * sieve's zombie stack; the sieve's own reference keeps the
+	 * memory alive meanwhile. The push takes a reference of its
+	 * own: the linked check is racy against the owner's eviction
+	 * walk unlinking the header right now, and at the drain only
+	 * the owner's view of the linked state is exact. The DEAD gate
+	 * above makes this push once-only.
 	 */
 	DNS_SLABHEADER_SETATTR(header, DNS_SLABHEADERATTR_DEAD);
 	if (ISC_SIEVE_LINKED(header, lrulink)) {
-		atomic_fetch_add_relaxed(&ftdb->sieve_zombies, 1);
+		ftcache_sieve_t *s = &ftdb->sieves[header->sieve_tid];
+
+		dns_slabheader_ref(header);
+		cds_wfs_node_init(&header->zombie_link);
+		cds_wfs_push(&s->zombies, &header->zombie_link);
 	}
 
 	/*
@@ -2302,6 +2319,7 @@ ftcache__destroy_rcu(struct rcu_head *rcu_head) {
 
 	for (size_t i = 0; i < ftdb->sieves_count; i++) {
 		INSIST(ISC_SIEVE_EMPTY(ftdb->sieves[i].sieve));
+		INSIST(cds_wfs_empty(&ftdb->sieves[i].zombies));
 	}
 	isc_mem_cput(ftdb->common.mctx, ftdb->sieves, ftdb->sieves_count,
 		     sizeof(ftdb->sieves[0]));
@@ -2332,10 +2350,15 @@ ftcache__destroy_work(void *arg) {
 	 * Drop the sieve references first. The strong per-loop affinity
 	 * no longer matters: the database is unreferenced, so nothing
 	 * runs concurrently, and this single thread may safely touch
-	 * every loop's sieve.
+	 * every loop's sieve. The zombie stacks are drained first so
+	 * the pushers' references are dropped too; nothing pushes after
+	 * this point, because every remaining header is unlinked here
+	 * and a deleter only pushes a header it saw linked.
 	 */
 	for (size_t i = 0; i < ftdb->sieves_count; i++) {
 		dns_slabheader_t *header = NULL;
+
+		sieve_drain(&ftdb->sieves[i]);
 		while ((header = ISC_LIST_TAIL(ftdb->sieves[i].sieve.list)) !=
 		       NULL)
 		{
@@ -3587,6 +3610,13 @@ ftcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 
 	SPINUNLOCK(&qpnode->lock);
 
+	/*
+	 * Reap the dead headers other threads have handed to this
+	 * loop's sieve -- off the node lock, because the drain frees
+	 * slabs and only touches loop-local state.
+	 */
+	sieve_drain(&ftdb->sieves[isc_tid()]);
+
 	if (result == ISC_R_EXISTS) {
 		result = ISC_R_SUCCESS;
 	}
@@ -3640,6 +3670,8 @@ ftcache_deleterdataset(dns_db_t *db, dns_dbnode_t *node,
 		dns_slabheader_detach(&newheader);
 	}
 	SPINUNLOCK(&qpnode->lock);
+
+	sieve_drain(&ftdb->sieves[isc_tid()]);
 
 	return result;
 }
@@ -3696,6 +3728,7 @@ dns__ftcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 				    sizeof(ftdb->sieves[0]));
 	for (i = 0; i < (int)ftdb->sieves_count; i++) {
 		ISC_SIEVE_INIT(ftdb->sieves[i].sieve);
+		__cds_wfs_init(&ftdb->sieves[i].zombies);
 	}
 
 	/*

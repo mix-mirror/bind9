@@ -82,6 +82,14 @@ struct dns_slabheader {
 	_Atomic(uint16_t)    attributes;
 	_Atomic(dns_trust_t) trust;
 
+	/*%
+	 * The tid of the loop whose SIEVE-LRU holds this header (see
+	 * ftcache.c).  Written before the header is linked into the
+	 * sieve and read by deleting threads to find the owner's
+	 * zombie stack; both happen under the owning node's lock.
+	 */
+	uint16_t sieve_tid;
+
 	struct urcu_ref references;
 
 	isc_mem_t *mctx;
@@ -132,6 +140,15 @@ struct dns_slabheader {
 	/*% Used for SIEVE-LRU (cache) */
 	bool visited;
 	ISC_LINK(struct dns_slabheader) lrulink;
+
+	/*%
+	 * Hands a dead header over to the sieve owner's zombie stack
+	 * (see header_delete() in ftcache.c).  A dedicated field: the
+	 * push happens while the sieve (and possibly readers) still
+	 * hold references, so no reader-visible storage -- upper[],
+	 * related, headers_link -- can be reused for it.
+	 */
+	struct cds_wfs_node zombie_link;
 
 	/*%
 	 * Flexible member indicates the address of the raw data
