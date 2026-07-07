@@ -16,6 +16,7 @@
 #include <openssl/evp.h>
 #include <openssl/rsa.h>
 
+#include <isc/attributes.h>
 #include <isc/ossl_wrap.h>
 #include <isc/region.h>
 #include <isc/util.h>
@@ -34,9 +35,8 @@
 		return generate_ec_key(pkeyp, nid);                            \
 	}                                                                      \
 	isc_result_t isc_ossl_wrap_generate_pkcs11_##curve##_key(              \
-		char *uri, EVP_PKEY **pkeyp) {                                 \
-		UNUSED(uri);                                                   \
-		return isc_ossl_wrap_generate_##curve##_key(pkeyp);            \
+		char *uri ISC_ATTR_UNUSED, EVP_PKEY **pkeyp ISC_ATTR_UNUSED) { \
+		return ISC_R_NOTIMPLEMENTED;                                   \
 	}                                                                      \
 	isc_result_t isc_ossl_wrap_validate_##curve##_pkey(EVP_PKEY *pkey) {   \
 		REQUIRE(pkey != NULL);                                         \
