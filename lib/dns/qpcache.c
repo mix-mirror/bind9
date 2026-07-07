@@ -1264,14 +1264,18 @@ check_dname(qpcnode_t *node, void *arg DNS__DB_FLARG) {
 			      (search->options & DNS_DBFIND_PENDINGOK) != 0))
 	{
 		/*
-		 * We increment the reference count on node to ensure that
-		 * search->zonecut_header will still be valid later.
+		 * We increment the reference count on the node to ensure
+		 * that it will still be valid later.  The node reference
+		 * doesn't keep the headers alive: a concurrent update of
+		 * the DNAME could delete them once we drop the node lock,
+		 * so take slabheader references as well.
 		 */
 		qpcnode_acquire(search->qpdb, node, nlocktype,
 				isc_rwlocktype_none DNS__DB_FLARG_PASS);
 		search->zonecut = node;
-		search->zonecut_header = found;
-		search->zonecut_sigheader = foundsig;
+		search->zonecut_header = dns_slabheader_ref(found);
+		search->zonecut_sigheader =
+			foundsig != NULL ? dns_slabheader_ref(foundsig) : NULL;
 		search->need_cleanup = true;
 		result = DNS_R_PARTIALMATCH;
 	} else {
@@ -1712,6 +1716,18 @@ node_exit:
 
 tree_exit:
 	TREE_UNLOCK(&search.qpdb->tree_lock, &tlocktype);
+
+	/*
+	 * Release the zonecut header references acquired in check_dname();
+	 * any header handed to the caller was rebound (with its own
+	 * reference) by setup_delegation().
+	 */
+	if (search.zonecut_header != NULL) {
+		dns_slabheader_detach(&search.zonecut_header);
+	}
+	if (search.zonecut_sigheader != NULL) {
+		dns_slabheader_detach(&search.zonecut_sigheader);
+	}
 
 	/*
 	 * If we found a zonecut but aren't going to use it, we have to
