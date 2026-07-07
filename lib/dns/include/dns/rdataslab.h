@@ -70,6 +70,17 @@ struct dns_slabheader_proof {
 	dns_slabheader_t *pos = NULL, *pos##_next = NULL; \
 	cds_list_for_each_entry_safe(pos, pos##_next, head, headers_link)
 
+/*%
+ * Reader-side traversal of a header chain; safe inside an RCU read-side
+ * critical section against concurrent cds_list_add_rcu() and
+ * cds_list_del_rcu() by writers.  Only writers holding the chain's lock
+ * may use DNS_SLABHEADER_FOREACH (and only that one allows deleting the
+ * current entry).
+ */
+#define DNS_SLABHEADER_FOREACH_RCU(pos, head) \
+	dns_slabheader_t *pos = NULL;         \
+	cds_list_for_each_entry_rcu(pos, head, headers_link)
+
 struct dns_slabheader {
 	_Atomic(uint16_t)    attributes;
 	_Atomic(dns_trust_t) trust;
@@ -90,6 +101,16 @@ struct dns_slabheader {
 	dns_slabheader_t *related;
 
 	struct cds_list_head headers_link;
+
+	/*%
+	 * Deferred release of the chain's reference: the cache deletes a
+	 * header by unpublishing it (cds_list_del_rcu) and then dropping
+	 * the chain's reference from an RCU callback, so readers
+	 * traversing the chain without a lock can never see the header
+	 * memory disappear under them.  This cannot overlay headers_link
+	 * or lrulink: both must stay intact through the grace period.
+	 */
+	struct rcu_head rcu_head;
 
 	/*%
 	 * The database node objects containing this rdataset, if any.

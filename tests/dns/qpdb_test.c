@@ -121,6 +121,23 @@ cleanup_all_deadnodes(dns_db_t *db) {
 }
 
 /*
+ * Deleted headers release their memory from an RCU callback, so the
+ * cache can transiently sit above its limit by the callbacks still in
+ * flight.  If it does, let the pending grace periods elapse and judge
+ * the settled value; unconditional barriers would serialize every
+ * iteration on the call_rcu worker's sleep interval.
+ */
+static size_t
+settled_mem_inuse(isc_mem_t *mctx, size_t limit) {
+	size_t inuse = isc_mem_inuse(mctx);
+	if (inuse >= limit) {
+		rcu_barrier();
+		inuse = isc_mem_inuse(mctx);
+	}
+	return inuse;
+}
+
+/*
  * Add to cache DB 'db' an rdataset of type 'rtype' at 'name', with the single
  * rdata parsed from the text 'rdatastr'. The rdataset is given TTL 'ttl'
  * relative to 'now', so passing a 'now' in the past makes the entry expired
@@ -297,7 +314,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 		i++;
 	}
 	assert_true(isc_mem_inuse(mctx) >= hiwater);
-	assert_true(isc_mem_inuse(mctx) < maxcache);
+	assert_true(settled_mem_inuse(mctx, maxcache) < maxcache);
 
 	/*
 	 * Then try to add the same number of entries, each has very large data.
@@ -313,7 +330,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 			print_message("# inuse: %zd max: %zd\n",
 				      isc_mem_inuse(mctx), maxcache);
 		}
-		assert_true(isc_mem_inuse(mctx) < maxcache);
+		assert_true(settled_mem_inuse(mctx, maxcache) < maxcache);
 	}
 
 	dns_db_detach(&db);
@@ -349,7 +366,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 		i++;
 	}
 	assert_true(isc_mem_inuse(mctx) >= hiwater);
-	assert_true(isc_mem_inuse(mctx) < maxcache);
+	assert_true(settled_mem_inuse(mctx, maxcache) < maxcache);
 
 	/*
 	 * Then try to add the same number of entries, each has very long name.
@@ -364,7 +381,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 			print_message("# inuse: %zd max: %zd\n",
 				      isc_mem_inuse(mctx), maxcache);
 		}
-		assert_true(isc_mem_inuse(mctx) < maxcache);
+		assert_true(settled_mem_inuse(mctx, maxcache) < maxcache);
 	}
 
 	dns_db_detach(&db);
