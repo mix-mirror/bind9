@@ -3325,19 +3325,6 @@ add(ftcache_t *ftdb, ftcnode_t *qpnode, dns_slabheader_t *newheader,
 		cds_list_add_rcu(&newheader->headers_link, &qpnode->headers);
 	}
 
-	/*
-	 * The new header is published now (with a signature partner it
-	 * may have been reachable through the partner's cross-link a
-	 * few lines earlier already), so its eventual destruction must
-	 * be deferred by an RCU grace period. Setting the attribute
-	 * this "late" is safe: the header cannot lose its list
-	 * reference before a future header_delete(), which serialises
-	 * behind this add() on the node lock. Headers discarded through
-	 * the early returns above never get the attribute and are freed
-	 * synchronously -- under a hit-heavy load that is most of them.
-	 */
-	DNS_SLABHEADER_SETATTR(newheader, DNS_SLABHEADERATTR_RCUFREE);
-
 	bindrdataset_writer(ftdb, qpnode, newheader, now,
 			    addedrdataset DNS__DB_FLARG_PASS);
 
@@ -3514,6 +3501,8 @@ ftcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 
 	newheader = (dns_slabheader_t *)region.base;
 	dns_slabheader_reset(newheader, node);
+	/* Lock-free readers require the grace-period-deferred free. */
+	DNS_SLABHEADER_SETATTR(newheader, DNS_SLABHEADERATTR_RCUFREE);
 	ftc_setownercase(newheader, name);
 
 	/*
@@ -3635,7 +3624,9 @@ ftcache_deleterdataset(dns_db_t *db, dns_dbnode_t *node,
 	ftcnode_t *qpnode = (ftcnode_t *)node;
 	isc_result_t result;
 	dns_slabheader_t *newheader = NULL;
-	uint16_t attributes = DNS_SLABHEADERATTR_NONEXISTENT;
+	/* Lock-free readers require the grace-period-deferred free. */
+	uint16_t attributes = DNS_SLABHEADERATTR_NONEXISTENT |
+			      DNS_SLABHEADERATTR_RCUFREE;
 
 	REQUIRE(VALID_FTDB(ftdb));
 	REQUIRE(version == NULL);
