@@ -34,6 +34,7 @@
 #include <isc/result.h>
 #include <isc/rwlock.h>
 #include <isc/sieve.h>
+#include <isc/spinlock.h>
 #include <isc/stdio.h>
 #include <isc/string.h>
 #include <isc/time.h>
@@ -168,6 +169,16 @@ struct qpcnode {
 	atomic_bool enqueued;
 
 	/*%
+	 * Serializes the writers of this node's header chain: adds,
+	 * deletes, expiry and overmem eviction.  Readers take no lock at
+	 * all.  Writers to the same name are rare (the resolver
+	 * deduplicates same-name fetches), so the lock is virtually
+	 * uncontended; never hold two node locks at once.  Lock order:
+	 * tree_lock before the node lock.
+	 */
+	isc_spinlock_t lock;
+
+	/*%
 	 * The node is freed only after an RCU grace period, so a reader
 	 * inside an RCU read-side critical section can always safely
 	 * dereference a node it found through a slabheader, even when
@@ -190,9 +201,6 @@ typedef struct qpcache_bucket {
 			 * up.
 			 */
 			isc_queue_t deadnodes;
-
-			/* Per-bucket lock. */
-			isc_rwlock_t lock;
 		};
 		uint8_t __padding[ISC_OS_CACHELINE_SIZE];
 	};
@@ -580,42 +588,48 @@ overmem_purge(qpcache_t *qpdb, dns_slabheader_t *newheader,
 			break;
 		}
 
+		/*
+		 * The sieve's reference pins the header, but not the
+		 * node.  Inside the read-side critical section a header
+		 * that is not DEAD has a node whose teardown has not
+		 * started, and node memory is in any case freed only
+		 * after a grace period, so the node can be dereferenced
+		 * and its lock taken; the header is revalidated under
+		 * the lock, which every deleter holds.
+		 */
+		rcu_read_lock();
+
 		if (DEAD(header)) {
 			/* Deleted by another thread, just reap it */
+			rcu_read_unlock();
 			sieve_unlink(sv, header);
 			continue;
 		}
 
-		/*
-		 * The bucket lock has to be found through the locknum
-		 * copy in the header: dereferencing header->node is not
-		 * safe until the lock is held and the header is known
-		 * not to be DEAD, because a DEAD header may outlive its
-		 * node.
-		 */
-		isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
-		isc_rwlock_t *nlock = &qpdb->buckets[header->locknum].lock;
-
-		NODE_WRLOCK(nlock, &nlocktype);
+		qpcnode_t *node = HEADERNODE(header);
+		isc_spinlock_lock(&node->lock);
 
 		if (DEAD(header)) {
 			/* We lost the race with a deleting thread */
-			NODE_UNLOCK(nlock, &nlocktype);
+			isc_spinlock_unlock(&node->lock);
+			rcu_read_unlock();
 			sieve_unlink(sv, header);
 			continue;
 		}
 
 		/* newheader is protected from removal */
 		if (header == newheader || header->related == newheader) {
-			NODE_UNLOCK(nlock, &nlocktype);
+			isc_spinlock_unlock(&node->lock);
+			rcu_read_unlock();
 			break;
 		}
 
-		purged += expire_header(qpdb, HEADERNODE(header), header,
-					&nlocktype,
+		isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
+		purged += expire_header(qpdb, node, header, &nlocktype,
 					tlocktypep DNS__DB_FLARG_PASS);
 
-		NODE_UNLOCK(nlock, &nlocktype);
+		isc_spinlock_unlock(&node->lock);
+		rcu_read_unlock();
 
 		sieve_unlink(sv, header);
 	}
@@ -2084,11 +2098,12 @@ qpcnode_expiredata(dns_dbnode_t *node, void *data) {
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 	isc_rwlocktype_t tlocktype = isc_rwlocktype_none;
 
-	isc_rwlock_t *nlock = &qpdb->buckets[qpnode->locknum].lock;
-	NODE_WRLOCK(nlock, &nlocktype);
+	rcu_read_lock();
+	isc_spinlock_lock(&qpnode->lock);
 	(void)expire_header(qpdb, qpnode, header, &nlocktype,
 			    &tlocktype DNS__DB_FILELINE);
-	NODE_UNLOCK(nlock, &nlocktype);
+	isc_spinlock_unlock(&qpnode->lock);
+	rcu_read_unlock();
 	INSIST(tlocktype == isc_rwlocktype_none);
 }
 
@@ -2131,8 +2146,6 @@ qpcache__destroy(qpcache_t *qpdb) {
 		     sizeof(qpdb->sieves[0]));
 
 	for (i = 0; i < qpdb->buckets_count; i++) {
-		NODE_DESTROYLOCK(&qpdb->buckets[i].lock);
-
 		INSIST(isc_queue_empty(&qpdb->buckets[i].deadnodes));
 		isc_queue_destroy(&qpdb->buckets[i].deadnodes);
 	}
@@ -2173,7 +2186,6 @@ static void
 cleanup_deadnodes(qpcache_t *qpdb, uint16_t locknum) {
 	isc_rwlocktype_t tlocktype = isc_rwlocktype_none;
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
-	isc_rwlock_t *nlock = &qpdb->buckets[locknum].lock;
 	qpcnode_t *qpnode = NULL, *qpnext = NULL;
 	isc_queue_t deadnodes;
 
@@ -2182,10 +2194,20 @@ cleanup_deadnodes(qpcache_t *qpdb, uint16_t locknum) {
 	isc_queue_init(&deadnodes);
 
 	TREE_WRLOCK(&qpdb->tree_lock, &tlocktype);
-	NODE_WRLOCK(nlock, &nlocktype);
 
 	isc_queue_splice(&deadnodes, &qpdb->buckets[locknum].deadnodes);
 	isc_queue_for_each_entry_safe(&deadnodes, qpnode, qpnext, deadlink) {
+		/*
+		 * The node lock makes the emptiness check in the release
+		 * below stable against an expiry or eviction removing this
+		 * node's last header right now: such a writer holds no
+		 * node reference, so without the lock the node could be
+		 * deleted and destroyed under a writer that is still
+		 * inside it, about to re-queue the node it just emptied.
+		 */
+		rcu_read_lock();
+		isc_spinlock_lock(&qpnode->lock);
+
 		/*
 		 * Clear the queued flag before dropping the queue's
 		 * reference: a releaser that drops the last reference
@@ -2202,9 +2224,16 @@ cleanup_deadnodes(qpcache_t *qpdb, uint16_t locknum) {
 		 */
 		qpcnode_release(qpdb, qpnode, &nlocktype,
 				&tlocktype DNS__DB_FILELINE);
+
+		/*
+		 * The release may have destroyed the node; the read-side
+		 * critical section keeps the memory alive until the lock
+		 * is dropped.
+		 */
+		isc_spinlock_unlock(&qpnode->lock);
+		rcu_read_unlock();
 	}
 
-	NODE_UNLOCK(nlock, &nlocktype);
 	TREE_UNLOCK(&qpdb->tree_lock, &tlocktype);
 }
 
@@ -2229,6 +2258,7 @@ new_qpcnode(qpcache_t *qpdb, const dns_name_t *name, dns_namespace_t nspace) {
 		.locknum = isc_random_uniform(qpdb->buckets_count),
 	};
 
+	isc_spinlock_init(&newdata->lock);
 	isc_mem_attach(qpdb->common.mctx, &newdata->mctx);
 	dns_name_dup(name, newdata->mctx, &newdata->name);
 
@@ -2985,8 +3015,6 @@ qpcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	isc_result_t result;
 	bool newnsec = false;
 	isc_rwlocktype_t tlocktype = isc_rwlocktype_none;
-	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
-	isc_rwlock_t *nlock = NULL;
 	dns_fixedname_t fixed;
 	dns_name_t *name = NULL;
 	isc_stdtime_t now = __now ? __now : isc_stdtime_now();
@@ -3041,12 +3069,10 @@ qpcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 				 rdataset));
 	}
 
-	nlock = &qpdb->buckets[qpnode->locknum].lock;
-
 	/*
 	 * Reclaim space for the data being added while no node lock is
 	 * held yet, so the eviction is free to take each victim's own
-	 * bucket lock without ever holding two bucket locks at once.
+	 * node lock without ever holding two node locks at once.
 	 */
 	if (isc_mem_isovermem(qpdb->common.mctx)) {
 		overmem_purge(qpdb, newheader, &tlocktype DNS__DB_FLARG_PASS);
@@ -3072,14 +3098,6 @@ qpcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 		TREE_WRLOCK(&qpdb->tree_lock, &tlocktype);
 	}
 
-	/*
-	 * The write-locked section runs inside an RCU read-side critical
-	 * section as well: add() binds rdatasets, which loads the RCU-
-	 * published proof and cross-link pointers.
-	 */
-	rcu_read_lock();
-	NODE_WRLOCK(nlock, &nlocktype);
-
 	if (newnsec && !atomic_load_acquire(&qpnode->havensec)) {
 		qpcnode_t *nsecnode = NULL;
 
@@ -3096,14 +3114,22 @@ qpcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 		atomic_store_release(&qpnode->havensec, true);
 	}
 
+	/*
+	 * The locked section runs inside an RCU read-side critical
+	 * section as well: add() binds rdatasets, which loads the RCU-
+	 * published proof and cross-link pointers.
+	 */
+	rcu_read_lock();
+	isc_spinlock_lock(&qpnode->lock);
+
 	result = add(qpdb, qpnode, newheader, options, addedrdataset, now,
-		     nlocktype, tlocktype DNS__DB_FLARG_PASS);
+		     isc_rwlocktype_none, tlocktype DNS__DB_FLARG_PASS);
 
 	if (result != ISC_R_SUCCESS) {
 		dns_slabheader_detach(&newheader);
 	}
 
-	NODE_UNLOCK(nlock, &nlocktype);
+	isc_spinlock_unlock(&qpnode->lock);
 	rcu_read_unlock();
 
 	if (result == ISC_R_EXISTS) {
@@ -3130,8 +3156,6 @@ qpcache_deleterdataset(dns_db_t *db, dns_dbnode_t *node,
 	qpcnode_t *qpnode = (qpcnode_t *)node;
 	isc_result_t result;
 	dns_slabheader_t *newheader = NULL;
-	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
-	isc_rwlock_t *nlock = NULL;
 	uint16_t attributes = DNS_SLABHEADERATTR_NONEXISTENT;
 
 	REQUIRE(VALID_QPDB(qpdb));
@@ -3154,14 +3178,16 @@ qpcache_deleterdataset(dns_db_t *db, dns_dbnode_t *node,
 	setttl(newheader, 0);
 	atomic_init(&newheader->attributes, attributes);
 
-	nlock = &qpdb->buckets[qpnode->locknum].lock;
-	NODE_WRLOCK(nlock, &nlocktype);
+	rcu_read_lock();
+	isc_spinlock_lock(&qpnode->lock);
 	result = add(qpdb, qpnode, newheader, DNS_DBADD_FORCE, NULL, 0,
-		     nlocktype, isc_rwlocktype_none DNS__DB_FLARG_PASS);
+		     isc_rwlocktype_none,
+		     isc_rwlocktype_none DNS__DB_FLARG_PASS);
 	if (result != ISC_R_SUCCESS) {
 		dns_slabheader_detach(&newheader);
 	}
-	NODE_UNLOCK(nlock, &nlocktype);
+	isc_spinlock_unlock(&qpnode->lock);
+	rcu_read_unlock();
 
 	return result;
 }
@@ -3216,8 +3242,6 @@ dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 	dns_rdatasetstats_create(mctx, &qpdb->rrsetstats);
 	for (i = 0; i < (int)qpdb->buckets_count; i++) {
 		isc_queue_init(&qpdb->buckets[i].deadnodes);
-
-		NODE_INITLOCK(&qpdb->buckets[i].lock);
 	}
 
 	qpdb->sieves = isc_mem_cget(mctx, qpdb->sieves_count,
@@ -3650,6 +3674,7 @@ static void
 qpcnode_free_rcu(struct rcu_head *rcu_head) {
 	qpcnode_t *qpnode = caa_container_of(rcu_head, qpcnode_t, rcu_head);
 
+	isc_spinlock_destroy(&qpnode->lock);
 	dns_name_free(&qpnode->name, qpnode->mctx);
 	isc_mem_putanddetach(&qpnode->mctx, qpnode, sizeof(qpcnode_t));
 }
