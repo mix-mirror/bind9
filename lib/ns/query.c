@@ -8750,7 +8750,7 @@ query_sign_nodata(query_ctx_t *qctx) {
 	if (!dns_rdataset_isassociated(qctx->rdataset) &&
 	    qctx->client->inner.wantdnssec)
 	{
-		if (!dns_linkedname_name(qctx->fname)->attributes.wildcard) {
+		if (!dns_linkedname_attrs(qctx->fname)->wildcard) {
 			dns_name_t *found;
 			dns_name_t *qname;
 			dns_fixedname_t fixed;
@@ -8867,7 +8867,7 @@ query_addnxrrsetnsec(query_ctx_t *qctx) {
 
 	INSIST(qctx->fname != NULL);
 
-	if (!dns_linkedname_name(qctx->fname)->attributes.wildcard) {
+	if (!dns_linkedname_attrs(qctx->fname)->wildcard) {
 		query_addrrset(qctx, &qctx->fname, &qctx->rdataset,
 			       &qctx->sigrdataset, NULL, DNS_SECTION_AUTHORITY);
 		return;
@@ -9885,7 +9885,7 @@ query_cname(query_ctx_t *qctx) {
 	}
 
 	if (qctx->client->inner.wantdnssec &&
-	    dns_linkedname_name(qctx->fname)->attributes.wildcard)
+	    dns_linkedname_attrs(qctx->fname)->wildcard)
 	{
 		dns_fixedname_init(&qctx->wildcardname);
 		dns_name_copy(qctx->fname,
@@ -10001,7 +10001,7 @@ query_dname(query_ctx_t *qctx) {
 	}
 
 	if (qctx->client->inner.wantdnssec &&
-	    dns_linkedname_name(qctx->fname)->attributes.wildcard)
+	    dns_linkedname_attrs(qctx->fname)->wildcard)
 	{
 		dns_fixedname_init(&qctx->wildcardname);
 		dns_name_copy(qctx->fname,
@@ -10210,7 +10210,7 @@ query_prepresponse(query_ctx_t *qctx) {
 	CALL_HOOK(NS_QUERY_PREP_RESPONSE_BEGIN, qctx);
 
 	if (qctx->client->inner.wantdnssec &&
-	    dns_linkedname_name(qctx->fname)->attributes.wildcard)
+	    dns_linkedname_attrs(qctx->fname)->wildcard)
 	{
 		dns_fixedname_init(&qctx->wildcardname);
 		dns_name_copy(qctx->fname,
