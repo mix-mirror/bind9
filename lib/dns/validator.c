@@ -2379,9 +2379,11 @@ validate_dnskey_dsset_done(dns_validator_t *val, isc_result_t result) {
 		marksecure(val, "validate_dnskey (DS)");
 		break;
 	case ISC_R_NOMORE:
-		if (val->unsupported_algorithm != 0 ||
-		    val->unsupported_digest != 0)
-		{
+		/*
+		 * Either all DS uses an unsupported digest or all DNSKEY uses
+		 * an unsupported algorithm (or both).
+		 */
+		if (val->unsupported == val->ds_validation_attempts) {
 			validator_log(val, ISC_LOG_DEBUG(3),
 				      "no supported algorithm/digest (DS)");
 			result = markanswer(val, "validate_dnskey (3)");
@@ -2419,7 +2421,10 @@ validate_dnskey_dsset(dns_validator_t *val) {
 	result = dns_rdata_tostruct(&dsrdata, &ds, NULL);
 	RUNTIME_CHECK(result == ISC_R_SUCCESS);
 
+	val->ds_validation_attempts++;
+
 	if (ds.digest_type == DNS_DSDIGEST_SHA1 && val->digest_sha1 == false) {
+		val->unsupported++;
 		return DNS_R_BADALG;
 	}
 
@@ -2429,6 +2434,7 @@ validate_dnskey_dsset(dns_validator_t *val) {
 		if (val->unsupported_digest == 0) {
 			val->unsupported_digest = ds.digest_type;
 		}
+		val->unsupported++;
 		return DNS_R_BADALG;
 	}
 
@@ -2461,11 +2467,10 @@ validate_dnskey_dsset(dns_validator_t *val) {
 			if (val->unsupported_algorithm == 0) {
 				val->unsupported_algorithm = ds.algorithm;
 			}
+			val->unsupported++;
 			return DNS_R_BADALG;
 		}
 	}
-
-	val->validation_attempts++;
 
 	/*
 	 * Find the DNSKEY matching the DS...
@@ -2491,18 +2496,13 @@ validate_dnskey_dsset(dns_validator_t *val) {
 						      val->name, key.algorithm,
 						      key.data, key.datalen))
 		{
-			/*
-			 * Don't count the unsupported algorithm into the
-			 * validation attempts.
-			 */
-			val->validation_attempts--;
-
 			if (val->unsupported_algorithm == 0) {
 				val->unsupported_algorithm = key.algorithm;
 				/*
 				 * XXXMPA Save PRIVATEOID / PRIVATEDNS here.
 				 */
 			}
+			val->unsupported++;
 			return DNS_R_BADALG;
 		}
 	}
@@ -2566,11 +2566,6 @@ validate_dnskey_dsset_next_done(void *arg) {
 		/* Continue validation until we have success or no more data */
 		(void)validate_work_enqueue(val, validate_dnskey_dsset_next);
 		return;
-	}
-
-	if (val->validation_attempts != 0) {
-		val->unsupported_algorithm = 0;
-		val->unsupported_digest = 0;
 	}
 
 	validate_dnskey_dsset_done(val, result);
