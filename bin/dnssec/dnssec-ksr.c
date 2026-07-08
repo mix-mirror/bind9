@@ -661,7 +661,7 @@ sign_rrset(ksr_ctx_t *ksr, isc_stdtime_t inception, isc_stdtime_t expiration,
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		dns_rdata_t *rrsig = NULL;
 		isc_region_t rs;
-		unsigned char rdatabuf[SIG_FORMATSIZE];
+		unsigned char rdatabuf[2048];
 		isc_stdtime_t clockskew = inception - 3600;
 
 		isc_stdtime_t pub = 0, act = 0, inact = 0, del = 0;
@@ -686,6 +686,7 @@ sign_rrset(ksr_ctx_t *ksr, isc_stdtime_t inception, isc_stdtime_t expiration,
 		rrsig = isc_mem_get(isc_g_mctx, sizeof(*rrsig));
 		dns_rdata_init(rrsig);
 		isc_buffer_init(&buf, rdatabuf, sizeof(rdatabuf));
+		isc_buffer_setmctx(&buf, isc_g_mctx);
 		result = dns_dnssec_sign(name, rrset, dk->key, &clockskew,
 					 &expiration, isc_g_mctx, &buf, &rdata,
 					 true, true);
@@ -695,6 +696,7 @@ sign_rrset(ksr_ctx_t *ksr, isc_stdtime_t inception, isc_stdtime_t expiration,
 		isc_buffer_usedregion(&buf, &rs);
 		isc_buffer_allocate(isc_g_mctx, &newbuf, rs.length);
 		isc_buffer_putmem(newbuf, rs.base, rs.length);
+		isc_buffer_clearmctx(&buf);
 		isc_buffer_usedregion(newbuf, &rs);
 		dns_rdata_fromregion(rrsig, dns_rdataclass_in,
 				     dns_rdatatype_rrsig, &rs);

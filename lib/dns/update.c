@@ -984,6 +984,7 @@ add_sigs(dns_update_log_t *log, dns_zone_t *zone, dns_db_t *db,
 
 	dns_rdataset_init(&rdataset);
 	isc_buffer_init(&buffer, data, sizeof(data));
+	isc_buffer_setmctx(&buffer, mctx);
 
 	/* Get the rdataset to sign. */
 	if (type == dns_rdatatype_nsec3) {
@@ -1119,7 +1120,7 @@ add_sigs(dns_update_log_t *log, dns_zone_t *zone, dns_db_t *db,
 		CHECK(update_one_rr(db, ver, diff, DNS_DIFFOP_ADDRESIGN, name,
 				    rdataset.ttl, &sig_rdata));
 		dns_rdata_reset(&sig_rdata);
-		isc_buffer_init(&buffer, data, sizeof(data));
+		isc_buffer_clear(&buffer);
 		added_sig = true;
 		/* Update DNSSEC sign statistics. */
 		if (dnssecsignstats != NULL) {
@@ -1137,6 +1138,7 @@ add_sigs(dns_update_log_t *log, dns_zone_t *zone, dns_db_t *db,
 	}
 
 cleanup:
+	isc_buffer_clearmctx(&buffer);
 	dns_rdataset_cleanup(&rdataset);
 	if (node != NULL) {
 		dns_db_detachnode(&node);

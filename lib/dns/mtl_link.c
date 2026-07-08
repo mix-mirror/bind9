@@ -259,7 +259,6 @@ dst__mtl_sign(dst_context_t *dctx, isc_buffer_t *sig, bool final, bool full) {
 	dst_key_t *key = dctx->key;
 	isc_buffer_t *buf = dctx->ctxdata.generic;
 	isc_region_t tbsreg;
-	isc_region_t sigreg;
 	MTLLIB_BUFFER *msg = NULL;
 	MTLLIB_BUFFER *mtlsig = NULL;
 	MTLLIB_STATUS status;
@@ -268,7 +267,6 @@ dst__mtl_sign(dst_context_t *dctx, isc_buffer_t *sig, bool final, bool full) {
 	bool local_handle = false;
 
 	isc_buffer_usedregion(buf, &tbsreg);
-	isc_buffer_availableregion(sig, &sigreg);
 
 	result = mtl_buffer_from_region(&tbsreg, &msg);
 	if (result != ISC_R_SUCCESS) {
@@ -347,8 +345,8 @@ dst__mtl_sign(dst_context_t *dctx, isc_buffer_t *sig, bool final, bool full) {
 	}
 
 	siglen = mtllib_buffer_in_use(mtlsig);
-	if (sigreg.length < siglen + 1) {
-		result = ISC_R_NOSPACE;
+	result = isc_buffer_reserve(sig, siglen + 1);
+	if (result != ISC_R_SUCCESS) {
 		goto done;
 	}
 

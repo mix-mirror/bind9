@@ -181,6 +181,7 @@ dns_dnssec_sign(const dns_name_t *name, dns_rdataset_t *set, dst_key_t *key,
 	isc_result_t result;
 	isc_buffer_t *databuf = NULL;
 	char data[256 + 8];
+	unsigned char *sigmem = NULL;
 	unsigned int sigsize;
 	dns_fixedname_t fnewname;
 	dns_fixedname_t fsigner;
@@ -229,7 +230,16 @@ dns_dnssec_sign(const dns_name_t *name, dns_rdataset_t *set, dst_key_t *key,
 	 * The actual contents of sig.signature are not important yet, since
 	 * they're not used in digest_sig().
 	 */
-	sig.signature = isc_mem_get(mctx, sig.siglen);
+	sigmem = isc_mem_get(mctx, sigsize);
+	sig.signature = sigmem;
+
+	/*
+	 * dst_key_sigsize() is only a hint for algorithms with
+	 * variable-length signatures (MTL); attaching the memory context
+	 * lets the backend grow the buffer past 'sigsize'.
+	 */
+	isc_buffer_init(&sigbuf, sigmem, sigsize);
+	isc_buffer_setmctx(&sigbuf, mctx);
 
 	isc_buffer_allocate(mctx, &databuf, sigsize + 256 + 18);
 
@@ -316,17 +326,28 @@ dns_dnssec_sign(const dns_name_t *name, dns_rdataset_t *set, dst_key_t *key,
 		}
 	}
 
-	isc_buffer_init(&sigbuf, sig.signature, sig.siglen);
 	result = dst_context_sign(ctx, &sigbuf, final, full);
 	if (result != ISC_R_SUCCESS) {
 		goto cleanup_array;
 	}
-	isc_buffer_usedregion(&sigbuf, &r);
 
 	if (final) {
 		isc_buffer_usedregion(&sigbuf, &r);
 
+		/* The signature buffer may have been reallocated. */
+		sig.signature = r.base;
 		sig.siglen = r.length;
+
+		/*
+		 * The RRSIG rdata is 18 fixed octets plus the signer name
+		 * plus the signature; grow 'buffer' now if it is dynamic
+		 * so that dns_rdata_fromstruct() cannot hit NOSPACE.
+		 */
+		result = isc_buffer_reserve(buffer, 18 + sig.signer.length +
+							    sig.siglen);
+		if (result != ISC_R_SUCCESS) {
+			goto cleanup_array;
+		}
 
 		result = dns_rdata_fromstruct(sigrdata, sig.common.rdclass,
 					      sig.common.rdtype, &sig, buffer);
@@ -338,7 +359,8 @@ cleanup_context:
 	dst_context_destroy(&ctx);
 cleanup_databuf:
 	isc_buffer_free(&databuf);
-	isc_mem_put(mctx, sig.signature, sigsize);
+	isc_buffer_clearmctx(&sigbuf);
+	isc_mem_put(mctx, sigmem, sigsize);
 
 	return result;
 }
@@ -723,6 +745,7 @@ dns_dnssec_signmessage(dns_message_t *msg, dst_key_t *key) {
 	unsigned char data[512];
 	unsigned char header[DNS_MESSAGE_HEADERLEN];
 	isc_buffer_t headerbuf, databuf, sigbuf;
+	unsigned char *sigmem = NULL;
 	unsigned int sigsize;
 	isc_buffer_t *dynbuf = NULL;
 	dns_rdata_t *rdata;
@@ -809,21 +832,36 @@ dns_dnssec_signmessage(dns_message_t *msg, dst_key_t *key) {
 	CHECK(dst_context_adddata(ctx, &r));
 
 	CHECK(dst_key_sigsize(key, &sigsize, true));
+	sigmem = isc_mem_get(mctx, sigsize);
+	sig.signature = sigmem;
 	sig.siglen = sigsize;
-	sig.signature = isc_mem_get(mctx, sig.siglen);
 
-	isc_buffer_init(&sigbuf, sig.signature, sig.siglen);
+	/*
+	 * dst_key_sigsize() is only a hint for algorithms with
+	 * variable-length signatures (MTL); attaching the memory context
+	 * lets the backend grow the buffer past 'sigsize'.
+	 */
+	isc_buffer_init(&sigbuf, sigmem, sigsize);
+	isc_buffer_setmctx(&sigbuf, mctx);
 	CHECK(dst_context_sign(ctx, &sigbuf, true, true));
 	dst_context_destroy(&ctx);
 
+	isc_buffer_usedregion(&sigbuf, &r);
+	sig.signature = r.base;
+	sig.siglen = r.length;
+
 	rdata = NULL;
 	dns_message_gettemprdata(msg, &rdata);
-	isc_buffer_allocate(msg->mctx, &dynbuf, 1024);
+	/* 18 fixed octets plus the signer name plus the signature. */
+	isc_buffer_allocate(msg->mctx, &dynbuf,
+			    18 + sig.signer.length + sig.siglen);
 	CHECK(dns_rdata_fromstruct(rdata, dns_rdataclass_any,
 				   dns_rdatatype_sig /* SIG(0) */, &sig,
 				   dynbuf));
 
-	isc_mem_put(mctx, sig.signature, sig.siglen);
+	isc_buffer_clearmctx(&sigbuf);
+	isc_mem_put(mctx, sigmem, sigsize);
+	sigmem = NULL;
 
 	dns_message_takebuffer(msg, &dynbuf);
 
@@ -843,8 +881,9 @@ cleanup:
 	if (dynbuf != NULL) {
 		isc_buffer_free(&dynbuf);
 	}
-	if (sig.signature != NULL) {
-		isc_mem_put(mctx, sig.signature, sig.siglen);
+	if (sigmem != NULL) {
+		isc_buffer_clearmctx(&sigbuf);
+		isc_mem_put(mctx, sigmem, sigsize);
 	}
 	if (ctx != NULL) {
 		dst_context_destroy(&ctx);

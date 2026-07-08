@@ -32,7 +32,11 @@
 
 #include <dst/dst.h>
 
-#define MAXFIELDSIZE 1025 * 2
+/*
+ * Initial size of a private-file field; fields larger than this (e.g.
+ * MTL private keys) grow dynamically on both the read and write paths.
+ */
+#define MAXFIELDSIZE 512
 
 /*
  * Maximum number of fields in a private file is 18 (12 algorithm-

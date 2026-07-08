@@ -237,12 +237,12 @@ str_totext(const char *source, isc_buffer_t *target) {
 	unsigned int l;
 	isc_region_t region;
 
-	isc_buffer_availableregion(target, &region);
 	l = strlen(source);
 
-	if (l > region.length) {
+	if (isc_buffer_reserve(target, l) != ISC_R_SUCCESS) {
 		return ISC_R_NOSPACE;
 	}
+	isc_buffer_availableregion(target, &region);
 
 	memmove(region.base, source, l);
 	isc_buffer_add(target, l);
@@ -253,10 +253,10 @@ static isc_result_t
 mem_tobuffer(isc_buffer_t *target, void *base, unsigned int length) {
 	isc_region_t tr;
 
-	isc_buffer_availableregion(target, &tr);
-	if (length > tr.length) {
+	if (isc_buffer_reserve(target, length) != ISC_R_SUCCESS) {
 		return ISC_R_NOSPACE;
 	}
+	isc_buffer_availableregion(target, &tr);
 	memmove(tr.base, base, length);
 	isc_buffer_add(target, length);
 	return ISC_R_SUCCESS;

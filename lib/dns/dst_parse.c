@@ -38,6 +38,7 @@
 #include <isc/lex.h>
 #include <isc/log.h>
 #include <isc/mem.h>
+#include <isc/safe.h>
 #include <isc/stdtime.h>
 #include <isc/string.h>
 #include <isc/util.h>
@@ -429,8 +430,10 @@ dst__privstruct_free(dst_private_t *priv, isc_mem_t *mctx) {
 		if (priv->elements[i].data == NULL) {
 			continue;
 		}
-		memset(priv->elements[i].data, 0, MAXFIELDSIZE);
-		isc_mem_put(mctx, priv->elements[i].data, MAXFIELDSIZE);
+		isc_safe_memwipe(priv->elements[i].data,
+				 priv->elements[i].length);
+		isc_mem_put(mctx, priv->elements[i].data,
+			    priv->elements[i].length);
 	}
 	priv->nelements = 0;
 }
@@ -441,7 +444,6 @@ dst__privstruct_parse(dst_key_t *key, unsigned int alg, isc_lex_t *lex,
 	int n = 0, major, minor;
 	isc_buffer_t b;
 	isc_token_t token;
-	unsigned char *data = NULL;
 	unsigned int opt = ISC_LEXOPT_EOL;
 	isc_stdtime_t when;
 	isc_result_t result;
@@ -592,19 +594,35 @@ dst__privstruct_parse(dst_key_t *key, unsigned int alg, isc_lex_t *lex,
 
 		priv->elements[n].tag = tag;
 
-		data = isc_mem_get(mctx, MAXFIELDSIZE);
-
-		isc_buffer_init(&b, data, MAXFIELDSIZE);
-		CHECK(isc_base64_tobuffer(lex, &b, isc_zero_or_more));
+		/*
+		 * Decode into a stack scratch buffer that can grow onto
+		 * the heap for fields larger than MAXFIELDSIZE, then copy
+		 * the field out into an exactly-sized allocation.
+		 */
+		unsigned char field[MAXFIELDSIZE];
+		isc_buffer_init(&b, field, sizeof(field));
+		isc_buffer_setmctx(&b, mctx);
+		result = isc_base64_tobuffer(lex, &b, isc_zero_or_more);
+		if (result != ISC_R_SUCCESS) {
+			isc_safe_memwipe(isc_buffer_base(&b),
+					 isc_buffer_length(&b));
+			isc_buffer_clearmctx(&b);
+			goto cleanup;
+		}
 
 		isc_buffer_usedregion(&b, &r);
+		if (r.length > 0) {
+			priv->elements[n].data = isc_mem_get(mctx, r.length);
+			memmove(priv->elements[n].data, r.base, r.length);
+		}
 		priv->elements[n].length = r.length;
-		priv->elements[n].data = r.base;
 		priv->nelements++;
+
+		isc_safe_memwipe(isc_buffer_base(&b), isc_buffer_length(&b));
+		isc_buffer_clearmctx(&b);
 
 	next:
 		READLINE(lex, opt, &token);
-		data = NULL;
 	}
 
 done:
@@ -621,9 +639,6 @@ done:
 
 cleanup:
 	dst__privstruct_free(priv, mctx);
-	if (data != NULL) {
-		isc_mem_put(mctx, data, MAXFIELDSIZE);
-	}
 
 	return result;
 }
@@ -749,6 +764,9 @@ dst__privstruct_writefile(const dst_key_t *key, const dst_private_t *priv,
 		break;
 	}
 
+	isc_buffer_init(&b, buffer, sizeof(buffer));
+	isc_buffer_setmctx(&b, key->mctx);
+
 	for (i = 0; i < priv->nelements; i++) {
 		const char *s;
 
@@ -756,15 +774,21 @@ dst__privstruct_writefile(const dst_key_t *key, const dst_private_t *priv,
 
 		r.base = priv->elements[i].data;
 		r.length = priv->elements[i].length;
-		isc_buffer_init(&b, buffer, sizeof(buffer));
+		isc_buffer_clear(&b);
 		result = isc_base64_totext(&r, sizeof(buffer), "", &b);
 		if (result != ISC_R_SUCCESS) {
+			isc_safe_memwipe(isc_buffer_base(&b),
+					 isc_buffer_length(&b));
+			isc_buffer_clearmctx(&b);
 			return dst_key_cleanup(tmpname, fp);
 		}
 		isc_buffer_usedregion(&b, &r);
 
 		fprintf(fp, "%s %.*s\n", s, (int)r.length, r.base);
 	}
+
+	isc_safe_memwipe(isc_buffer_base(&b), isc_buffer_length(&b));
+	isc_buffer_clearmctx(&b);
 
 	if (key->external) {
 		fprintf(fp, "External:\n");

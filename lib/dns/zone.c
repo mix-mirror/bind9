@@ -5741,6 +5741,7 @@ add_sigs(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name, dns_zone_t *zone,
 
 	dns_rdataset_init(&rdataset);
 	isc_buffer_init(&buffer, data, sizeof(data));
+	isc_buffer_setmctx(&buffer, mctx);
 
 	if (type == dns_rdatatype_nsec3) {
 		result = dns_db_findnsec3node(db, name, false, &node);
@@ -5896,7 +5897,6 @@ add_sigs(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name, dns_zone_t *zone,
 		CHECK(update_one_rr(db, ver, diff, DNS_DIFFOP_ADDRESIGN, name,
 				    rdataset.ttl, &sig_rdata));
 		dns_rdata_reset(&sig_rdata);
-		isc_buffer_init(&buffer, data, sizeof(data));
 
 		/* Update DNSSEC sign statistics. */
 		dnssecsignstats = dns_zone_getdnssecsignstats(zone);
@@ -5915,6 +5915,7 @@ add_sigs(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name, dns_zone_t *zone,
 	}
 
 cleanup:
+	isc_buffer_clearmctx(&buffer);
 	dns_rdataset_cleanup(&rdataset);
 	if (node != NULL) {
 		dns_db_detachnode(&node);
@@ -6436,6 +6437,7 @@ sign_a_node(dns_db_t *db, dns_zone_t *zone, dns_name_t *name,
 	}
 
 	isc_buffer_init(&buffer, data, sizeof(data));
+	isc_buffer_setmctx(&buffer, mctx);
 
 	/*
 	 * Going from insecure to NSEC3.
@@ -6545,6 +6547,7 @@ sign_a_node(dns_db_t *db, dns_zone_t *zone, dns_name_t *name,
 	}
 
 cleanup:
+	isc_buffer_clearmctx(&buffer);
 	dns_rdataset_cleanup(&rdataset);
 	if (iterator != NULL) {
 		dns_rdatasetiter_destroy(&iterator);

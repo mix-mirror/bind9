@@ -107,7 +107,7 @@ static int nsec_datatype = dns_rdatatype_nsec;
 
 #define REVOKE(x) ((dst_key_flags(x) & DNS_KEYFLAG_REVOKE) != 0)
 
-#define BUFSIZE	  8256 + 256
+#define BUFSIZE	  2048
 #define MAXDSKEYS 8
 
 #define SIGNER_EVENTCLASS  ISC_EVENTCLASS(0x4453)
@@ -304,6 +304,7 @@ signwithkey(dns_name_t *name, dns_rdataset_t *rdataset, dns_dnsseckey_t *key,
 
 	jendtime = (jitter != 0) ? expiry - isc_random_uniform(jitter) : expiry;
 	isc_buffer_init(&b, array, sizeof(array));
+	isc_buffer_setmctx(&b, isc_g_mctx);
 	result = dns_dnssec_sign(name, rdataset, key->key, &starttime,
 				 &jendtime, isc_g_mctx, &b, &trdata,
 				 atomic_load(&final), full);
@@ -334,6 +335,8 @@ signwithkey(dns_name_t *name, dns_rdataset_t *rdataset, dns_dnsseckey_t *key,
 				     ttl, &trdata, &tuple);
 		dns_diff_append(add, &tuple);
 	}
+
+	isc_buffer_clearmctx(&b);
 }
 
 static bool

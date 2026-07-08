@@ -146,7 +146,8 @@ sign_rrset(FILE *fp, isc_stdtime_t inception, isc_stdtime_t expiration,
 
 	isc_buffer_init(&target, target_mem, 1024);
 	result = dns_dnssec_sign(dname, rrset, ksk->key, &clockskew,
-				 &expiration, isc_g_mctx, &target, rrsig);
+				 &expiration, isc_g_mctx, &target, rrsig, true,
+				 true);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	print_rdata(fp, rrsig);

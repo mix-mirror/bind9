@@ -2192,8 +2192,6 @@ mem_tobuffer(isc_buffer_t *target, void *base, unsigned int length) {
 
 	isc_buffer_availableregion(target, &tr);
 	if (length > tr.length) {
-		fprintf(stderr, "%s: length = %u, tr.length = %u\n", __func__,
-			length, tr.length);
 		return ISC_R_NOSPACE;
 	}
 	if (tr.base != base) {
