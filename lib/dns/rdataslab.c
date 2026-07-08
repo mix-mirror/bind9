@@ -519,7 +519,6 @@ void
 dns_slabheader__reset(dns_slabheader_t *h, dns_dbnode_t *node, const char *func,
 		      const char *file, const unsigned int line) {
 	h->node = node;
-	h->locknum = node->locknum;
 
 	atomic_init(&h->attributes, 0);
 	atomic_init(&h->last_refresh_fail_ts, 0);
@@ -549,7 +548,6 @@ dns_slabheader__new(isc_mem_t *mctx, dns_dbnode_t *node, const char *func,
 	*h = (dns_slabheader_t){
 		.headers_link = CDS_LIST_HEAD_INIT(h->headers_link),
 		.node = node,
-		.locknum = node->locknum,
 		.references = ISC_REFCOUNT_INITIALIZER(1),
 		.mctx = isc_mem_ref(mctx),
 		.lrulink = ISC_LINK_INITIALIZER,
