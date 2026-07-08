@@ -106,7 +106,6 @@ static int nsec_datatype = dns_rdatatype_nsec;
 
 #define REVOKE(x) ((dst_key_flags(x) & DNS_KEYFLAG_REVOKE) != 0)
 
-#define BUFSIZE	  2048
 #define MAXDSKEYS 8
 
 #define SIGNER_EVENTCLASS  ISC_EVENTCLASS(0x4453)
@@ -270,7 +269,8 @@ signwithkey(dns_name_t *name, dns_rdataset_t *rdataset, dst_key_t *key,
 	isc_stdtime_t jendtime, expiry;
 	char keystr[DST_KEY_FORMATSIZE];
 	dns_rdata_t trdata = DNS_RDATA_INIT;
-	unsigned char array[BUFSIZE];
+	unsigned int arraylen = 0;
+	unsigned char *array;
 	isc_buffer_t b;
 	dns_difftuple_t *tuple;
 
@@ -283,8 +283,20 @@ signwithkey(dns_name_t *name, dns_rdataset_t *rdataset, dst_key_t *key,
 		expiry = endtime;
 	}
 
+	/*
+	 * Size the RRSIG rdata buffer for the fixed RRSIG fields, the
+	 * signer name and the signature itself.
+	 */
+	result = dst_key_sigsize(key, &arraylen);
+	if (result != ISC_R_SUCCESS) {
+		fatal("dnskey '%s' failed to compute signature size: %s",
+		      keystr, isc_result_totext(result));
+	}
+	arraylen += 18 + DNS_NAME_MAXWIRE;
+	array = isc_mem_get(isc_g_mctx, arraylen);
+
 	jendtime = (jitter != 0) ? expiry - isc_random_uniform(jitter) : expiry;
-	isc_buffer_init(&b, array, sizeof(array));
+	isc_buffer_init(&b, array, arraylen);
 	result = dns_dnssec_sign(name, rdataset, key, &starttime, &jendtime,
 				 isc_g_mctx, &b, &trdata);
 	if (result != ISC_R_SUCCESS) {
@@ -309,6 +321,7 @@ signwithkey(dns_name_t *name, dns_rdataset_t *rdataset, dst_key_t *key,
 	dns_difftuple_create(isc_g_mctx, DNS_DIFFOP_ADDRESIGN, name, ttl,
 			     &trdata, &tuple);
 	dns_diff_append(add, &tuple);
+	isc_mem_put(isc_g_mctx, array, arraylen);
 }
 
 static bool

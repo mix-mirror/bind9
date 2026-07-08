@@ -5728,7 +5728,8 @@ add_sigs(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name, dns_zone_t *zone,
 	dns_stats_t *dnssecsignstats;
 	dns_rdataset_t rdataset;
 	dns_rdata_t sig_rdata = DNS_RDATA_INIT;
-	unsigned char data[1024]; /* XXX */
+	unsigned int datalen = 18 + DNS_NAME_MAXWIRE;
+	unsigned char *data = NULL;
 	isc_buffer_t buffer;
 	unsigned int i;
 	bool use_kasp = false;
@@ -5740,7 +5741,6 @@ add_sigs(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name, dns_zone_t *zone,
 	}
 
 	dns_rdataset_init(&rdataset);
-	isc_buffer_init(&buffer, data, sizeof(data));
 
 	if (type == dns_rdatatype_nsec3) {
 		result = dns_db_findnsec3node(db, name, false, &node);
@@ -5763,6 +5763,21 @@ add_sigs(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name, dns_zone_t *zone,
 		INSIST(!dns_rdataset_isassociated(&rdataset));
 		goto cleanup;
 	}
+
+	/*
+	 * Size the RRSIG rdata buffer for the largest signature: the
+	 * fixed RRSIG fields, the signer name and the signature itself.
+	 */
+	for (i = 0; i < nkeys; i++) {
+		unsigned int sigsize = 0;
+
+		if (dst_key_sigsize(keys[i], &sigsize) == ISC_R_SUCCESS) {
+			datalen = ISC_MAX(datalen,
+					  18 + DNS_NAME_MAXWIRE + sigsize);
+		}
+	}
+	data = isc_mem_get(mctx, datalen);
+	isc_buffer_init(&buffer, data, datalen);
 
 	for (i = 0; i < nkeys; i++) {
 		/* Don't add signatures for offline or inactive keys */
@@ -5896,7 +5911,7 @@ add_sigs(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name, dns_zone_t *zone,
 		CHECK(update_one_rr(db, ver, diff, DNS_DIFFOP_ADDRESIGN, name,
 				    rdataset.ttl, &sig_rdata));
 		dns_rdata_reset(&sig_rdata);
-		isc_buffer_init(&buffer, data, sizeof(data));
+		isc_buffer_init(&buffer, data, datalen);
 
 		/* Update DNSSEC sign statistics. */
 		dnssecsignstats = dns_zone_getdnssecsignstats(zone);
@@ -5915,6 +5930,9 @@ add_sigs(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name, dns_zone_t *zone,
 	}
 
 cleanup:
+	if (data != NULL) {
+		isc_mem_put(mctx, data, datalen);
+	}
 	dns_rdataset_cleanup(&rdataset);
 	if (node != NULL) {
 		dns_db_detachnode(&node);
@@ -6420,7 +6438,8 @@ sign_a_node(dns_db_t *db, dns_zone_t *zone, dns_name_t *name,
 	dns_stats_t *dnssecsignstats;
 	bool offlineksk = false;
 	isc_buffer_t buffer;
-	unsigned char data[1024];
+	unsigned int datalen = 0;
+	unsigned char *data = NULL;
 	seen_t seen;
 
 	if (zone->kasp != NULL) {
@@ -6435,7 +6454,14 @@ sign_a_node(dns_db_t *db, dns_zone_t *zone, dns_name_t *name,
 		return result;
 	}
 
-	isc_buffer_init(&buffer, data, sizeof(data));
+	/*
+	 * Size the RRSIG rdata buffer for the fixed RRSIG fields, the
+	 * signer name and the signature itself.
+	 */
+	CHECK(dst_key_sigsize(key, &datalen));
+	datalen += 18 + DNS_NAME_MAXWIRE;
+	data = isc_mem_get(mctx, datalen);
+	isc_buffer_init(&buffer, data, datalen);
 
 	/*
 	 * Going from insecure to NSEC3.
@@ -6544,6 +6570,9 @@ sign_a_node(dns_db_t *db, dns_zone_t *zone, dns_name_t *name,
 	}
 
 cleanup:
+	if (data != NULL) {
+		isc_mem_put(mctx, data, datalen);
+	}
 	dns_rdataset_cleanup(&rdataset);
 	if (iterator != NULL) {
 		dns_rdatasetiter_destroy(&iterator);

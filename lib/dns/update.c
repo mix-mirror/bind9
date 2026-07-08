@@ -970,7 +970,8 @@ add_sigs(dns_update_log_t *log, dns_zone_t *zone, dns_db_t *db,
 	dns_rdata_t sig_rdata = DNS_RDATA_INIT;
 	dns_stats_t *dnssecsignstats = dns_zone_getdnssecsignstats(zone);
 	isc_buffer_t buffer;
-	unsigned char data[1024]; /* XXX */
+	unsigned int datalen = 18 + DNS_NAME_MAXWIRE;
+	unsigned char *data = NULL;
 	unsigned int i;
 	bool added_sig = false;
 	bool use_kasp = false;
@@ -983,7 +984,6 @@ add_sigs(dns_update_log_t *log, dns_zone_t *zone, dns_db_t *db,
 	}
 
 	dns_rdataset_init(&rdataset);
-	isc_buffer_init(&buffer, data, sizeof(data));
 
 	/* Get the rdataset to sign. */
 	if (type == dns_rdatatype_nsec3) {
@@ -994,6 +994,21 @@ add_sigs(dns_update_log_t *log, dns_zone_t *zone, dns_db_t *db,
 	CHECK(dns_db_findrdataset(db, node, ver, type, 0, (isc_stdtime_t)0,
 				  &rdataset, NULL));
 	dns_db_detachnode(&node);
+
+	/*
+	 * Size the RRSIG rdata buffer for the largest signature: the
+	 * fixed RRSIG fields, the signer name and the signature itself.
+	 */
+	for (i = 0; i < nkeys; i++) {
+		unsigned int sigsize = 0;
+
+		if (dst_key_sigsize(keys[i], &sigsize) == ISC_R_SUCCESS) {
+			datalen = ISC_MAX(datalen,
+					  18 + DNS_NAME_MAXWIRE + sigsize);
+		}
+	}
+	data = isc_mem_get(mctx, datalen);
+	isc_buffer_init(&buffer, data, datalen);
 
 #define REVOKE(x) ((dst_key_flags(x) & DNS_KEYFLAG_REVOKE) != 0)
 #define KSK(x)	  ((dst_key_flags(x) & DNS_KEYFLAG_KSK) != 0)
@@ -1119,7 +1134,7 @@ add_sigs(dns_update_log_t *log, dns_zone_t *zone, dns_db_t *db,
 		CHECK(update_one_rr(db, ver, diff, DNS_DIFFOP_ADDRESIGN, name,
 				    rdataset.ttl, &sig_rdata));
 		dns_rdata_reset(&sig_rdata);
-		isc_buffer_init(&buffer, data, sizeof(data));
+		isc_buffer_init(&buffer, data, datalen);
 		added_sig = true;
 		/* Update DNSSEC sign statistics. */
 		if (dnssecsignstats != NULL) {
@@ -1137,6 +1152,9 @@ add_sigs(dns_update_log_t *log, dns_zone_t *zone, dns_db_t *db,
 	}
 
 cleanup:
+	if (data != NULL) {
+		isc_mem_put(mctx, data, datalen);
+	}
 	dns_rdataset_cleanup(&rdataset);
 	if (node != NULL) {
 		dns_db_detachnode(&node);

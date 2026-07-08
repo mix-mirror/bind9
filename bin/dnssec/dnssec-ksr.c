@@ -652,7 +652,8 @@ sign_rrset(ksr_ctx_t *ksr, isc_stdtime_t inception, isc_stdtime_t expiration,
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		dns_rdata_t *rrsig = NULL;
 		isc_region_t rs;
-		unsigned char rdatabuf[SIG_FORMATSIZE];
+		unsigned int rdatabuflen = 0;
+		unsigned char *rdatabuf = NULL;
 		isc_stdtime_t clockskew = inception - 3600;
 
 		isc_stdtime_t pub = 0, act = 0, inact = 0, del = 0;
@@ -674,9 +675,20 @@ sign_rrset(ksr_ctx_t *ksr, isc_stdtime_t inception, isc_stdtime_t expiration,
 			continue;
 		}
 
+		/*
+		 * Size the RRSIG rdata buffer for the fixed RRSIG
+		 * fields, the signer name and the signature itself.
+		 */
+		result = dst_key_sigsize(dk->key, &rdatabuflen);
+		if (result != ISC_R_SUCCESS) {
+			fatal("failed to compute signature size");
+		}
+		rdatabuflen += 18 + DNS_NAME_MAXWIRE;
+		rdatabuf = isc_mem_get(isc_g_mctx, rdatabuflen);
+
 		rrsig = isc_mem_get(isc_g_mctx, sizeof(*rrsig));
 		dns_rdata_init(rrsig);
-		isc_buffer_init(&buf, rdatabuf, sizeof(rdatabuf));
+		isc_buffer_init(&buf, rdatabuf, rdatabuflen);
 		result = dns_dnssec_sign(name, rrset, dk->key, &clockskew,
 					 &expiration, isc_g_mctx, &buf, &rdata);
 		if (result != ISC_R_SUCCESS) {
@@ -690,7 +702,7 @@ sign_rrset(ksr_ctx_t *ksr, isc_stdtime_t inception, isc_stdtime_t expiration,
 				     dns_rdatatype_rrsig, &rs);
 		ISC_LIST_APPEND(rrsiglist->rdata, rrsig, link);
 		ISC_LIST_APPEND(cleanup_list, newbuf, link);
-		isc_buffer_clear(newbuf);
+		isc_mem_put(isc_g_mctx, rdatabuf, rdatabuflen);
 	}
 	dns_rdatalist_tordataset(rrsiglist, &rrsigset);
 	print_rdata(&rrsigset);
