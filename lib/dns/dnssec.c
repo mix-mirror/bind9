@@ -1725,12 +1725,15 @@ publish_key(dns_diff_t *diff, dns_dnsseckey_t *key, const dns_name_t *origin,
 	    dns_ttl_t ttl, isc_mem_t *mctx,
 	    void (*report)(const char *, ...) ISC_FORMAT_PRINTF(1, 2)) {
 	isc_result_t result = ISC_R_SUCCESS;
-	unsigned char buf[DST_KEY_MAXSIZE];
+	unsigned int bufsize = 0;
+	unsigned char *buf = NULL;
 	char keystr[DST_KEY_FORMATSIZE];
 	dns_rdata_t dnskey = DNS_RDATA_INIT;
 
 	dns_rdata_reset(&dnskey);
-	CHECK(dns_dnssec_make_dnskey(key->key, buf, sizeof(buf), &dnskey));
+	CHECK(dst_key_dnssize(key->key, &bufsize));
+	buf = isc_mem_get(mctx, bufsize);
+	CHECK(dns_dnssec_make_dnskey(key->key, buf, bufsize, &dnskey));
 	dst_key_format(key->key, keystr, sizeof(keystr));
 
 	report("Fetching %s (%s) from key %s.", keystr,
@@ -1752,6 +1755,9 @@ publish_key(dns_diff_t *diff, dns_dnsseckey_t *key, const dns_name_t *origin,
 	addrdata(&dnskey, diff, origin, ttl, mctx);
 
 cleanup:
+	if (buf != NULL) {
+		isc_mem_put(mctx, buf, bufsize);
+	}
 	return result;
 }
 
@@ -1760,7 +1766,8 @@ remove_key(dns_diff_t *diff, dns_dnsseckey_t *key, const dns_name_t *origin,
 	   dns_ttl_t ttl, isc_mem_t *mctx, const char *reason,
 	   void (*report)(const char *, ...) ISC_FORMAT_PRINTF(1, 2)) {
 	isc_result_t result = ISC_R_SUCCESS;
-	unsigned char buf[DST_KEY_MAXSIZE];
+	unsigned int bufsize = 0;
+	unsigned char *buf = NULL;
 	dns_rdata_t dnskey = DNS_RDATA_INIT;
 	char alg[80];
 	char namebuf[DNS_NAME_FORMATSIZE];
@@ -1770,10 +1777,15 @@ remove_key(dns_diff_t *diff, dns_dnsseckey_t *key, const dns_name_t *origin,
 	report("Removing %s key %s/%d/%s from DNSKEY RRset.", reason, namebuf,
 	       dst_key_id(key->key), alg);
 
-	CHECK(dns_dnssec_make_dnskey(key->key, buf, sizeof(buf), &dnskey));
+	CHECK(dst_key_dnssize(key->key, &bufsize));
+	buf = isc_mem_get(mctx, bufsize);
+	CHECK(dns_dnssec_make_dnskey(key->key, buf, bufsize, &dnskey));
 	delrdata(&dnskey, diff, origin, ttl, mctx);
 
 cleanup:
+	if (buf != NULL) {
+		isc_mem_put(mctx, buf, bufsize);
+	}
 	return result;
 }
 
@@ -1875,7 +1887,8 @@ dns_dnssec_syncupdate(dns_dnsseckeylist_t *keys, dns_dnsseckeylist_t *rmkeys,
 		      isc_stdtime_t now, dns_kasp_digestlist_t *digests,
 		      bool gencdnskey, dns_ttl_t ttl, dns_diff_t *diff,
 		      isc_mem_t *mctx) {
-	unsigned char keybuf[DST_KEY_MAXSIZE];
+	unsigned int keybufsize = 0;
+	unsigned char *keybuf = NULL;
 	isc_result_t result = DNS_R_UNCHANGED;
 	dns_ttl_t cdsttl = ttl;
 	dns_ttl_t cdnskeyttl = ttl;
@@ -1893,11 +1906,26 @@ dns_dnssec_syncupdate(dns_dnsseckeylist_t *keys, dns_dnsseckeylist_t *rmkeys,
 		cdnskeyttl = cdnskey->ttl;
 	}
 
+	/* Size the DNSKEY rdata buffer for the largest key. */
+	ISC_LIST_FOREACH(*keys, key, link) {
+		unsigned int size = 0;
+		CHECK(dst_key_dnssize(key->key, &size));
+		keybufsize = ISC_MAX(keybufsize, size);
+	}
+	ISC_LIST_FOREACH(*rmkeys, key, link) {
+		unsigned int size = 0;
+		CHECK(dst_key_dnssize(key->key, &size));
+		keybufsize = ISC_MAX(keybufsize, size);
+	}
+	if (keybufsize > 0) {
+		keybuf = isc_mem_get(mctx, keybufsize);
+	}
+
 	ISC_LIST_FOREACH(*keys, key, link) {
 		dns_rdata_t cdnskeyrdata = DNS_RDATA_INIT;
 		dns_name_t *origin = dst_key_name(key->key);
 
-		CHECK(dns_dnssec_make_dnskey(key->key, keybuf, sizeof(keybuf),
+		CHECK(dns_dnssec_make_dnskey(key->key, keybuf, keybufsize,
 					     &cdnskeyrdata));
 		cdnskeyrdata.type = dns_rdatatype_cdnskey;
 
@@ -1991,10 +2019,8 @@ dns_dnssec_syncupdate(dns_dnsseckeylist_t *keys, dns_dnsseckeylist_t *rmkeys,
 	if (!dns_rdataset_isassociated(cds) &&
 	    !dns_rdataset_isassociated(cdnskey))
 	{
-		if (changed) {
-			return ISC_R_SUCCESS;
-		}
-		return DNS_R_UNCHANGED;
+		result = changed ? ISC_R_SUCCESS : DNS_R_UNCHANGED;
+		goto cleanup;
 	}
 
 	/*
@@ -2007,7 +2033,7 @@ dns_dnssec_syncupdate(dns_dnsseckeylist_t *keys, dns_dnsseckeylist_t *rmkeys,
 		char keystr[DST_KEY_FORMATSIZE];
 		dst_key_format(key->key, keystr, sizeof(keystr));
 
-		CHECK(dns_dnssec_make_dnskey(key->key, keybuf, sizeof(keybuf),
+		CHECK(dns_dnssec_make_dnskey(key->key, keybuf, keybufsize,
 					     &cdnskeyrdata));
 
 		if (dns_rdataset_isassociated(cds)) {
@@ -2051,12 +2077,12 @@ dns_dnssec_syncupdate(dns_dnsseckeylist_t *keys, dns_dnsseckeylist_t *rmkeys,
 		}
 	}
 
-	if (changed) {
-		return ISC_R_SUCCESS;
-	}
-	return DNS_R_UNCHANGED;
+	result = changed ? ISC_R_SUCCESS : DNS_R_UNCHANGED;
 
 cleanup:
+	if (keybuf != NULL) {
+		isc_mem_put(mctx, keybuf, keybufsize);
+	}
 	return result;
 }
 

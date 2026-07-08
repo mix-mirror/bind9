@@ -13841,11 +13841,22 @@ cdnskey_inuse(dns_zone_t *zone, dns_rdata_t *rdata,
 
 	ISC_LIST_FOREACH(*keylist, k, link) {
 		dns_rdata_t cdnskeyrdata = DNS_RDATA_INIT;
-		unsigned char keybuf[DST_KEY_MAXSIZE];
+		unsigned int keybufsize = 0;
+		unsigned char *keybuf = NULL;
+		bool match;
 
-		result = dns_dnssec_make_dnskey(k->key, keybuf, sizeof(keybuf),
+		result = dst_key_dnssize(k->key, &keybufsize);
+		if (result != ISC_R_SUCCESS) {
+			dns_zone_log(zone, ISC_LOG_ERROR,
+				     "dst_key_dnssize() failed: %s",
+				     isc_result_totext(result));
+			return result;
+		}
+		keybuf = isc_mem_get(zone->mctx, keybufsize);
+		result = dns_dnssec_make_dnskey(k->key, keybuf, keybufsize,
 						&cdnskeyrdata);
 		if (result != ISC_R_SUCCESS) {
+			isc_mem_put(zone->mctx, keybuf, keybufsize);
 			dns_zone_log(zone, ISC_LOG_ERROR,
 				     "dns_dnssec_make_dnskey() failed: %s",
 				     isc_result_totext(result));
@@ -13853,7 +13864,9 @@ cdnskey_inuse(dns_zone_t *zone, dns_rdata_t *rdata,
 		}
 
 		cdnskeyrdata.type = dns_rdatatype_cdnskey;
-		if (dns_rdata_compare(rdata, &cdnskeyrdata) == 0) {
+		match = dns_rdata_compare(rdata, &cdnskeyrdata) == 0;
+		isc_mem_put(zone->mctx, keybuf, keybufsize);
+		if (match) {
 			*inuse = true;
 			break;
 		}
@@ -13879,7 +13892,8 @@ cds_inuse(dns_zone_t *zone, dns_rdata_t *rdata, dns_dnsseckeylist_t *keylist,
 	ISC_LIST_FOREACH(*keylist, k, link) {
 		dns_rdata_t dnskey = DNS_RDATA_INIT;
 		dns_rdata_t cdsrdata = DNS_RDATA_INIT;
-		unsigned char keybuf[DST_KEY_MAXSIZE];
+		unsigned int keybufsize = 0;
+		unsigned char *keybuf = NULL;
 		unsigned char cdsbuf[DNS_DS_BUFFERSIZE];
 
 		if (dst_key_id(k->key) != cds.key_tag ||
@@ -13888,9 +13902,18 @@ cds_inuse(dns_zone_t *zone, dns_rdata_t *rdata, dns_dnsseckeylist_t *keylist,
 		{
 			continue;
 		}
-		result = dns_dnssec_make_dnskey(k->key, keybuf, sizeof(keybuf),
+		result = dst_key_dnssize(k->key, &keybufsize);
+		if (result != ISC_R_SUCCESS) {
+			dns_zone_log(zone, ISC_LOG_ERROR,
+				     "dst_key_dnssize() failed: %s",
+				     isc_result_totext(result));
+			return result;
+		}
+		keybuf = isc_mem_get(zone->mctx, keybufsize);
+		result = dns_dnssec_make_dnskey(k->key, keybuf, keybufsize,
 						&dnskey);
 		if (result != ISC_R_SUCCESS) {
+			isc_mem_put(zone->mctx, keybuf, keybufsize);
 			dns_zone_log(zone, ISC_LOG_ERROR,
 				     "dns_dnssec_make_dnskey() failed: %s",
 				     isc_result_totext(result));
@@ -13899,6 +13922,7 @@ cds_inuse(dns_zone_t *zone, dns_rdata_t *rdata, dns_dnsseckeylist_t *keylist,
 		result = dns_ds_buildrdata(dns_zone_getorigin(zone), &dnskey,
 					   cds.digest_type, cdsbuf,
 					   sizeof(cdsbuf), &cdsrdata);
+		isc_mem_put(zone->mctx, keybuf, keybufsize);
 		if (result != ISC_R_SUCCESS) {
 			dns_zone_log(zone, ISC_LOG_ERROR,
 				     "dns_ds_buildrdata(keytag=%d, algo=%d, "
@@ -17234,7 +17258,8 @@ checkds_done(void *arg) {
 			dns_rdata_t rdata = DNS_RDATA_INIT;
 			isc_result_t r;
 			unsigned char dsbuf[DNS_DS_BUFFERSIZE];
-			unsigned char keybuf[DST_KEY_MAXSIZE];
+			unsigned int keybufsize = 0;
+			unsigned char *keybuf = NULL;
 
 			dns_rdataset_current(ds_rrset, &rdata);
 			r = dns_rdata_tostruct(&rdata, &ds, NULL);
@@ -17251,10 +17276,16 @@ checkds_done(void *arg) {
 				continue;
 			}
 			/* Derive DS from DNSKEY, see if the rdata is equal. */
-			make_dnskey(key->key, keybuf, sizeof(keybuf), &dnskey);
+			r = dst_key_dnssize(key->key, &keybufsize);
+			if (r != ISC_R_SUCCESS) {
+				continue;
+			}
+			keybuf = isc_mem_get(zone->mctx, keybufsize);
+			make_dnskey(key->key, keybuf, keybufsize, &dnskey);
 			r = dns_ds_buildrdata(&zone->origin, &dnskey,
 					      ds.digest_type, dsbuf,
 					      sizeof(dsbuf), &dsrdata);
+			isc_mem_put(zone->mctx, keybuf, keybufsize);
 			if (r != ISC_R_SUCCESS) {
 				continue;
 			}

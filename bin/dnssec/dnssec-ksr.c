@@ -569,25 +569,21 @@ print_dnskeys(dns_kasp_key_t *kaspkey, dns_ttl_t ttl, dns_dnsseckeylist_t *keys,
 			continue;
 		}
 		/* Found matching key pair, add DNSKEY record to RRset. */
-		isc_buffer_t buf;
 		isc_buffer_t *newbuf = NULL;
 		dns_rdata_t *rdata = NULL;
 		isc_region_t r;
-		unsigned char rdatabuf[DST_KEY_MAXSIZE];
+		unsigned int size = 0;
 
+		CHECK(dst_key_dnssize(dk->key, &size));
 		rdata = isc_mem_get(isc_g_mctx, sizeof(*rdata));
 		dns_rdata_init(rdata);
-		isc_buffer_init(&buf, rdatabuf, sizeof(rdatabuf));
-		CHECK(dst_key_todns(dk->key, &buf));
-		isc_buffer_usedregion(&buf, &r);
-		isc_buffer_allocate(isc_g_mctx, &newbuf, r.length);
-		isc_buffer_putmem(newbuf, r.base, r.length);
+		isc_buffer_allocate(isc_g_mctx, &newbuf, size);
+		ISC_LIST_APPEND(cleanup_list, newbuf, link);
+		CHECK(dst_key_todns(dk->key, newbuf));
 		isc_buffer_usedregion(newbuf, &r);
 		dns_rdata_fromregion(rdata, dns_rdataclass_in,
 				     dns_rdatatype_dnskey, &r);
 		ISC_LIST_APPEND(rdatalist->rdata, rdata, link);
-		ISC_LIST_APPEND(cleanup_list, newbuf, link);
-		isc_buffer_clear(newbuf);
 	}
 	/* Error if no key pair found. */
 	if (ISC_LIST_EMPTY(rdatalist->rdata)) {
@@ -738,15 +734,15 @@ get_keymaterial(ksr_ctx_t *ksr, dns_kasp_t *kasp, isc_stdtime_t inception,
 
 	ISC_LIST_FOREACH(*keys, dk, link) {
 		bool published = true;
-		isc_buffer_t buf;
 		isc_buffer_t *newbuf;
 		dns_rdata_t *rdata;
 		isc_region_t r;
 		isc_region_t rcds;
 		isc_stdtime_t pub = 0, del = 0;
-		unsigned char kskbuf[DST_KEY_MAXSIZE];
-		unsigned char cdnskeybuf[DST_KEY_MAXSIZE];
+		unsigned int keysize = 0;
 		unsigned char cdsbuf[DNS_DS_BUFFERSIZE];
+
+		CHECK(dst_key_dnssize(dk->key, &keysize));
 
 		/* KSK */
 		(void)dst_key_gettime(dk->key, DST_TIME_PUBLISH, &pub);
@@ -766,17 +762,13 @@ get_keymaterial(ksr_ctx_t *ksr, dns_kasp_t *kasp, isc_stdtime_t inception,
 			rdata = isc_mem_get(isc_g_mctx, sizeof(*rdata));
 			dns_rdata_init(rdata);
 
-			isc_buffer_init(&buf, kskbuf, sizeof(kskbuf));
-			CHECK(dst_key_todns(dk->key, &buf));
-			isc_buffer_usedregion(&buf, &r);
-			isc_buffer_allocate(isc_g_mctx, &newbuf, r.length);
-			isc_buffer_putmem(newbuf, r.base, r.length);
+			isc_buffer_allocate(isc_g_mctx, &newbuf, keysize);
+			ISC_LIST_APPEND(cleanup_list, newbuf, link);
+			CHECK(dst_key_todns(dk->key, newbuf));
 			isc_buffer_usedregion(newbuf, &r);
 			dns_rdata_fromregion(rdata, dns_rdataclass_in,
 					     dns_rdatatype_dnskey, &r);
 			ISC_LIST_APPEND(dnskeylist->rdata, rdata, link);
-			ISC_LIST_APPEND(cleanup_list, newbuf, link);
-			isc_buffer_clear(newbuf);
 		}
 
 		published = true;
@@ -810,19 +802,15 @@ get_keymaterial(ksr_ctx_t *ksr, dns_kasp_t *kasp, isc_stdtime_t inception,
 		rdata = isc_mem_get(isc_g_mctx, sizeof(*rdata));
 		dns_rdata_init(rdata);
 
-		isc_buffer_init(&buf, cdnskeybuf, sizeof(cdnskeybuf));
-		CHECK(dst_key_todns(dk->key, &buf));
-		isc_buffer_usedregion(&buf, &r);
-		isc_buffer_allocate(isc_g_mctx, &newbuf, r.length);
-		isc_buffer_putmem(newbuf, r.base, r.length);
+		isc_buffer_allocate(isc_g_mctx, &newbuf, keysize);
+		ISC_LIST_APPEND(cleanup_list, newbuf, link);
+		CHECK(dst_key_todns(dk->key, newbuf));
 		isc_buffer_usedregion(newbuf, &r);
 		dns_rdata_fromregion(rdata, dns_rdataclass_in,
 				     dns_rdatatype_cdnskey, &r);
 		if (dns_kasp_cdnskey(kasp)) {
 			ISC_LIST_APPEND(cdnskeylist->rdata, rdata, link);
 		}
-		ISC_LIST_APPEND(cleanup_list, newbuf, link);
-		isc_buffer_clear(newbuf);
 
 		/* CDS */
 		ISC_LIST_FOREACH(digests, alg, link) {

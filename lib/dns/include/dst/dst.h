@@ -777,6 +777,24 @@ dst_key_sigsize(const dst_key_t *key, unsigned int *n);
  *\li	"n" stores the size of a generated signature
  */
 
+isc_result_t
+dst_key_dnssize(const dst_key_t *key, unsigned int *n);
+/*%<
+ * Computes an upper bound for the size of the DNSKEY rdata generated
+ * from the given key by dst_key_todns().
+ *
+ * Requires:
+ *\li	"key" is a valid key.
+ *\li	"n" is not NULL
+ *
+ * Returns:
+ *\li	#ISC_R_SUCCESS
+ *\li	DST_R_UNSUPPORTEDALG
+ *
+ * Ensures:
+ *\li	"n" stores the maximum size of the generated DNSKEY rdata
+ */
+
 uint16_t
 dst_region_computeid(const isc_region_t *source);
 uint16_t

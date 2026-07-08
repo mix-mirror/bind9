@@ -2942,7 +2942,6 @@ writeset(const char *prefix, dns_rdatatype_t type) {
 	isc_region_t r;
 	isc_result_t result;
 	unsigned char dsbuf[DNS_DS_BUFFERSIZE];
-	unsigned char keybuf[DST_KEY_MAXSIZE];
 	unsigned int filenamelen;
 	const dns_master_style_t *style = (type == dns_rdatatype_dnskey)
 						  ? masterstyle
@@ -2997,9 +2996,16 @@ writeset(const char *prefix, dns_rdatatype_t type) {
 		if (have_ksk && have_non_ksk && !isksk(key)) {
 			continue;
 		}
+		unsigned int keybufsize = 0;
+		unsigned char *keybuf;
+
+		result = dst_key_dnssize(key->key, &keybufsize);
+		check_result(result, "dst_key_dnssize");
+		keybuf = isc_mem_get(isc_g_mctx, keybufsize);
+
 		dns_rdata_init(&rdata);
 		dns_rdata_init(&ds);
-		isc_buffer_init(&b, keybuf, sizeof(keybuf));
+		isc_buffer_init(&b, keybuf, keybufsize);
 		result = dst_key_todns(key->key, &b);
 		check_result(result, "dst_key_todns");
 		isc_buffer_usedregion(&b, &r);
@@ -3016,6 +3022,7 @@ writeset(const char *prefix, dns_rdatatype_t type) {
 					     gorigin, zone_soa_min_ttl, &rdata,
 					     &tuple);
 		}
+		isc_mem_put(isc_g_mctx, keybuf, keybufsize);
 		dns_diff_append(&diff, &tuple);
 	}
 

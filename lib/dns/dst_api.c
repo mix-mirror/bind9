@@ -1155,29 +1155,47 @@ comparekeys(const dst_key_t *key1, const dst_key_t *key2,
 static bool
 pub_compare(const dst_key_t *key1, const dst_key_t *key2) {
 	isc_result_t result;
-	unsigned char buf1[DST_KEY_MAXSIZE], buf2[DST_KEY_MAXSIZE];
+	unsigned int size1, size2;
+	unsigned char *buf1 = NULL, *buf2 = NULL;
 	isc_buffer_t b1, b2;
 	isc_region_t r1, r2;
+	bool match = false;
 
-	isc_buffer_init(&b1, buf1, sizeof(buf1));
-	result = dst_key_todns(key1, &b1);
+	result = dst_key_dnssize(key1, &size1);
 	if (result != ISC_R_SUCCESS) {
 		return false;
+	}
+	result = dst_key_dnssize(key2, &size2);
+	if (result != ISC_R_SUCCESS) {
+		return false;
+	}
+	buf1 = isc_mem_get(key1->mctx, size1);
+	buf2 = isc_mem_get(key2->mctx, size2);
+
+	isc_buffer_init(&b1, buf1, size1);
+	result = dst_key_todns(key1, &b1);
+	if (result != ISC_R_SUCCESS) {
+		goto cleanup;
 	}
 	/* Zero out flags. */
 	buf1[0] = buf1[1] = 0;
 
-	isc_buffer_init(&b2, buf2, sizeof(buf2));
+	isc_buffer_init(&b2, buf2, size2);
 	result = dst_key_todns(key2, &b2);
 	if (result != ISC_R_SUCCESS) {
-		return false;
+		goto cleanup;
 	}
 	/* Zero out flags. */
 	buf2[0] = buf2[1] = 0;
 
 	isc_buffer_usedregion(&b1, &r1);
 	isc_buffer_usedregion(&b2, &r2);
-	return isc_region_compare(&r1, &r2) == 0;
+	match = isc_region_compare(&r1, &r2) == 0;
+
+cleanup:
+	isc_mem_put(key2->mctx, buf2, size2);
+	isc_mem_put(key1->mctx, buf1, size1);
+	return match;
 }
 
 bool
@@ -1299,6 +1317,61 @@ dst_key_sigsize(const dst_key_t *key, unsigned int *n) {
 		break;
 	case DST_ALG_GSSAPI:
 		*n = 128; /*%< XXX */
+		break;
+	default:
+		return DST_R_UNSUPPORTEDALG;
+	}
+	return ISC_R_SUCCESS;
+}
+
+isc_result_t
+dst_key_dnssize(const dst_key_t *key, unsigned int *n) {
+	REQUIRE(VALID_KEY(key));
+	REQUIRE(n != NULL);
+
+	/*
+	 * Each DNSKEY rdata starts with flags (2 octets), protocol
+	 * (1 octet) and algorithm (1 octet), followed by the public
+	 * key data whose maximum size depends on the algorithm.
+	 */
+	switch (key->key_alg) {
+	case DST_ALG_RSASHA1:
+	case DST_ALG_NSEC3RSASHA1:
+	case DST_ALG_RSASHA256:
+	case DST_ALG_RSASHA512:
+		/*
+		 * One to three exponent length octets, the exponent
+		 * (never longer than the modulus), and the modulus.
+		 */
+		*n = 4 + 3 + 2 * ((key->key_size + 7) / 8);
+		break;
+	case DST_ALG_RSASHA256PRIVATEOID:
+		*n = 4 + sizeof(oid_rsasha256) + 3 +
+		     2 * ((key->key_size + 7) / 8);
+		break;
+	case DST_ALG_RSASHA512PRIVATEOID:
+		*n = 4 + sizeof(oid_rsasha512) + 3 +
+		     2 * ((key->key_size + 7) / 8);
+		break;
+	case DST_ALG_ECDSA256:
+		*n = 4 + DNS_KEY_ECDSA256SIZE;
+		break;
+	case DST_ALG_ECDSA384:
+		*n = 4 + DNS_KEY_ECDSA384SIZE;
+		break;
+	case DST_ALG_ED25519:
+		*n = 4 + DNS_KEY_ED25519SIZE;
+		break;
+	case DST_ALG_ED448:
+		*n = 4 + DNS_KEY_ED448SIZE;
+		break;
+	case DST_ALG_HMACMD5:
+	case DST_ALG_HMACSHA1:
+	case DST_ALG_HMACSHA224:
+	case DST_ALG_HMACSHA256:
+	case DST_ALG_HMACSHA384:
+	case DST_ALG_HMACSHA512:
+		*n = 4 + (key->key_size + 7) / 8;
 		break;
 	default:
 		return DST_R_UNSUPPORTEDALG;
@@ -1921,46 +1994,53 @@ write_key_state(const dst_key_t *key, int type, const char *directory) {
  */
 static isc_result_t
 write_public_key(const dst_key_t *key, int type, const char *directory) {
-	FILE *fp;
+	FILE *fp = NULL;
 	isc_buffer_t keyb, tmpb, textb, fileb, classb;
 	isc_region_t r;
 	char tmpname[NAME_MAX];
 	char filename[NAME_MAX];
-	unsigned char key_array[DST_KEY_MAXSIZE];
-	char text_array[DST_KEY_MAXTEXTSIZE];
+	unsigned int key_size, text_size;
+	unsigned char *key_array = NULL;
+	char *text_array = NULL;
 	char class_array[10];
 	isc_result_t result;
 	dns_rdata_t rdata = DNS_RDATA_INIT;
 
 	REQUIRE(VALID_KEY(key));
 
-	isc_buffer_init(&keyb, key_array, sizeof(key_array));
-	isc_buffer_init(&textb, text_array, sizeof(text_array));
+	RETERR(dst_key_dnssize(key, &key_size));
+	/* Base64 expansion of the key data plus the other rdata fields. */
+	text_size = key_size / 3 * 4 + 32;
+	key_array = isc_mem_get(key->mctx, key_size);
+	text_array = isc_mem_get(key->mctx, text_size);
+
+	isc_buffer_init(&keyb, key_array, key_size);
+	isc_buffer_init(&textb, text_array, text_size);
 	isc_buffer_init(&classb, class_array, sizeof(class_array));
 
-	RETERR(dst_key_todns(key, &keyb));
+	CHECK(dst_key_todns(key, &keyb));
 
 	isc_buffer_usedregion(&keyb, &r);
 	dns_rdata_fromregion(&rdata, key->key_class, dns_rdatatype_dnskey, &r);
 
 	result = dns_rdata_totext(&rdata, (dns_name_t *)NULL, &textb);
 	if (result != ISC_R_SUCCESS) {
-		return DST_R_INVALIDPUBLICKEY;
+		CLEANUP(DST_R_INVALIDPUBLICKEY);
 	}
 
 	result = dns_rdataclass_totext(key->key_class, &classb);
 	if (result != ISC_R_SUCCESS) {
-		return DST_R_INVALIDPUBLICKEY;
+		CLEANUP(DST_R_INVALIDPUBLICKEY);
 	}
 
 	/*
 	 * Make the filename.
 	 */
 	isc_buffer_init(&fileb, filename, sizeof(filename));
-	RETERR(dst_key_buildfilename(key, DST_TYPE_PUBLIC, directory, &fileb));
+	CHECK(dst_key_buildfilename(key, DST_TYPE_PUBLIC, directory, &fileb));
 
 	isc_buffer_init(&tmpb, tmpname, sizeof(tmpname));
-	RETERR(dst_key_buildfilename(key, DST_TYPE_TEMPLATE, directory, &tmpb));
+	CHECK(dst_key_buildfilename(key, DST_TYPE_TEMPLATE, directory, &tmpb));
 
 	/* Create temporary public key file. */
 	mode_t mode = issymmetric(key) ? S_IRUSR | S_IWUSR
@@ -1968,7 +2048,7 @@ write_public_key(const dst_key_t *key, int type, const char *directory) {
 
 	fp = dst_key_open(tmpname, mode);
 	if (fp == NULL) {
-		return DST_R_WRITEERROR;
+		CLEANUP(DST_R_WRITEERROR);
 	}
 
 	/* Write key information in comments */
@@ -1981,7 +2061,7 @@ write_public_key(const dst_key_t *key, int type, const char *directory) {
 			key->key_id);
 		result = dns_name_print(key->key_name, fp);
 		if (result != ISC_R_SUCCESS) {
-			return dst_key_cleanup(tmpname, fp);
+			CLEANUP(dst_key_cleanup(tmpname, fp));
 		}
 		fputc('\n', fp);
 
@@ -1998,7 +2078,7 @@ write_public_key(const dst_key_t *key, int type, const char *directory) {
 	/* Now print the actual key */
 	result = dns_name_print(key->key_name, fp);
 	if (result != ISC_R_SUCCESS) {
-		return dst_key_cleanup(tmpname, fp);
+		CLEANUP(dst_key_cleanup(tmpname, fp));
 	}
 	fprintf(fp, " ");
 
@@ -2008,7 +2088,7 @@ write_public_key(const dst_key_t *key, int type, const char *directory) {
 
 	isc_buffer_usedregion(&classb, &r);
 	if ((unsigned int)fwrite(r.base, 1, r.length, fp) != r.length) {
-		return dst_key_cleanup(tmpname, fp);
+		CLEANUP(dst_key_cleanup(tmpname, fp));
 	}
 
 	if ((type & DST_TYPE_KEY) != 0) {
@@ -2019,12 +2099,17 @@ write_public_key(const dst_key_t *key, int type, const char *directory) {
 
 	isc_buffer_usedregion(&textb, &r);
 	if ((unsigned int)fwrite(r.base, 1, r.length, fp) != r.length) {
-		return dst_key_cleanup(tmpname, fp);
+		CLEANUP(dst_key_cleanup(tmpname, fp));
 	}
 
 	fputc('\n', fp);
 
-	return dst_key_close(tmpname, fp, filename);
+	result = dst_key_close(tmpname, fp, filename);
+
+cleanup:
+	isc_mem_put(key->mctx, text_array, text_size);
+	isc_mem_put(key->mctx, key_array, key_size);
+	return result;
 }
 
 static isc_result_t
@@ -2069,16 +2154,24 @@ buildfilename(dns_name_t *name, dns_keytag_t id, unsigned int alg,
 static isc_result_t
 computeid(dst_key_t *key) {
 	isc_buffer_t dnsbuf;
-	unsigned char dns_array[DST_KEY_MAXSIZE];
+	unsigned int size;
+	unsigned char *dns_array = NULL;
 	isc_region_t r;
+	isc_result_t result;
 
-	isc_buffer_init(&dnsbuf, dns_array, sizeof(dns_array));
-	RETERR(dst_key_todns(key, &dnsbuf));
+	RETERR(dst_key_dnssize(key, &size));
+	dns_array = isc_mem_get(key->mctx, size);
 
-	isc_buffer_usedregion(&dnsbuf, &r);
-	key->key_id = dst_region_computeid(&r);
-	key->key_rid = dst_region_computerid(&r);
-	return ISC_R_SUCCESS;
+	isc_buffer_init(&dnsbuf, dns_array, size);
+	result = dst_key_todns(key, &dnsbuf);
+	if (result == ISC_R_SUCCESS) {
+		isc_buffer_usedregion(&dnsbuf, &r);
+		key->key_id = dst_region_computeid(&r);
+		key->key_rid = dst_region_computerid(&r);
+	}
+
+	isc_mem_put(key->mctx, dns_array, size);
+	return result;
 }
 
 static isc_result_t
