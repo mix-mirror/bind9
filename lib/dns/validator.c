@@ -67,8 +67,9 @@
  * validate_nx:       attempt to prove a negative response.
  */
 
-#define VALIDATOR_MAGIC	   ISC_MAGIC('V', 'a', 'l', '?')
-#define VALID_VALIDATOR(v) ISC_MAGIC_VALID(v, VALIDATOR_MAGIC)
+#define VALIDATOR_MAX_DS_VALIDATION_ATTEMPTS 8
+#define VALIDATOR_MAGIC			     ISC_MAGIC('V', 'a', 'l', '?')
+#define VALID_VALIDATOR(v)		     ISC_MAGIC_VALID(v, VALIDATOR_MAGIC)
 
 enum valattr {
 	VALATTR_CANCELED = 1 << 1,	     /*%< Canceled. */
@@ -2375,6 +2376,17 @@ validate_dnskey_dsset_done(dns_validator_t *val, isc_result_t result) {
 	case ISC_R_SHUTTINGDOWN:
 		/* Abort, abort, abort! */
 		break;
+	case ISC_R_QUOTA:
+		/*
+		 * We could leave it falling in the default here, but that would
+		 * kicks off an insecurity proof if at least one key was
+		 * supported and fails to verify, which we don't want to do in
+		 * such context (because so many DS keys is just dodgy, let's
+		 * get out of here).
+		 */
+		validator_log(val, ISC_LOG_DEBUG(3),
+			      "too many invalid/unsuported DS");
+		break;
 	case ISC_R_SUCCESS:
 		marksecure(val, "validate_dnskey (DS)");
 		break;
@@ -2421,6 +2433,10 @@ validate_dnskey_dsset(dns_validator_t *val) {
 	result = dns_rdata_tostruct(&dsrdata, &ds, NULL);
 	RUNTIME_CHECK(result == ISC_R_SUCCESS);
 
+	if (val->ds_validation_attempts >= VALIDATOR_MAX_DS_VALIDATION_ATTEMPTS)
+	{
+		return ISC_R_QUOTA;
+	}
 	val->ds_validation_attempts++;
 
 	if (ds.digest_type == DNS_DSDIGEST_SHA1 && val->digest_sha1 == false) {
@@ -2560,6 +2576,7 @@ validate_dnskey_dsset_next_done(void *arg) {
 		break;
 	case ISC_R_SUCCESS:
 	case ISC_R_NOMORE:
+	case ISC_R_QUOTA:
 		/* We are done */
 		break;
 	default:
