@@ -2095,7 +2095,8 @@ dns_view_addtrustedkey(dns_view_t *view, dns_rdatatype_t rdtype,
 		       const dns_name_t *keyname, isc_buffer_t *databuf) {
 	isc_result_t result;
 	dns_name_t *name = UNCONST(keyname);
-	char rdatabuf[DST_KEY_MAXSIZE];
+	unsigned int rdatabuflen = 0;
+	char *rdatabuf = NULL;
 	unsigned char digest[DNS_DS_BUFFERSIZE];
 	dns_rdata_ds_t ds;
 	dns_rdata_t rdata;
@@ -2108,7 +2109,11 @@ dns_view_addtrustedkey(dns_view_t *view, dns_rdatatype_t rdtype,
 		CLEANUP(ISC_R_NOTIMPLEMENTED);
 	}
 
-	isc_buffer_init(&b, rdatabuf, sizeof(rdatabuf));
+	/* The parsed rdata is never larger than its wire form. */
+	rdatabuflen = isc_buffer_usedlength(databuf);
+	rdatabuf = isc_mem_get(view->mctx, rdatabuflen);
+
+	isc_buffer_init(&b, rdatabuf, rdatabuflen);
 	dns_rdata_init(&rdata);
 	isc_buffer_setactive(databuf, isc_buffer_usedlength(databuf));
 	CHECK(dns_rdata_fromwire(&rdata, view->rdclass, rdtype, databuf,
@@ -2125,6 +2130,9 @@ dns_view_addtrustedkey(dns_view_t *view, dns_rdatatype_t rdtype,
 			       NULL, NULL));
 
 cleanup:
+	if (rdatabuf != NULL) {
+		isc_mem_put(view->mctx, rdatabuf, rdatabuflen);
+	}
 	return result;
 }
 

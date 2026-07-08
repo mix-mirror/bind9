@@ -242,7 +242,8 @@ static void
 emit(dns_dsdigest_t dt, bool showall, bool cds, dns_rdata_t *rdata) {
 	isc_result_t result;
 	unsigned char buf[DNS_DS_BUFFERSIZE];
-	char text_buf[DST_KEY_MAXTEXTSIZE];
+	/* Large enough for the textual form of any DS rdata. */
+	char text_buf[DNS_DS_BUFFERSIZE * 2 + 16];
 	char name_buf[DNS_NAME_MAXWIRE];
 	char class_buf[10];
 	isc_buffer_t textb, nameb, classb;
@@ -533,12 +534,14 @@ main(int argc, char **argv) {
 			emits(showall, cds, &rdata);
 		}
 	} else {
-		unsigned char key_buf[DST_KEY_MAXSIZE];
+		unsigned char *key_buf = isc_mem_get(isc_g_mctx,
+						     DNS_RDATA_MAXLENGTH);
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 
-		loadkey(arg1, key_buf, DST_KEY_MAXSIZE, &rdata);
+		loadkey(arg1, key_buf, DNS_RDATA_MAXLENGTH, &rdata);
 
 		emits(showall, cds, &rdata);
+		isc_mem_put(isc_g_mctx, key_buf, DNS_RDATA_MAXLENGTH);
 	}
 
 	dns_rdataset_cleanup(&rdataset);

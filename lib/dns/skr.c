@@ -299,13 +299,14 @@ dns_skr_read(isc_mem_t *mctx, const char *filename, dns_name_t *origin,
 		} else {
 			isc_buffer_t buf;
 			dns_rdata_t *rdata = NULL;
-			uint8_t rdatabuf[DST_KEY_MAXSIZE];
+			uint8_t *rdatabuf = NULL;
 			dns_rdatatype_t rdtype;
 
 			/* Parse record */
 			rdata = isc_mem_get(mctx, sizeof(*rdata));
 			dns_rdata_init(rdata);
-			isc_buffer_init(&buf, rdatabuf, sizeof(rdatabuf));
+			rdatabuf = isc_mem_get(mctx, DNS_RDATA_MAXLENGTH);
+			isc_buffer_init(&buf, rdatabuf, DNS_RDATA_MAXLENGTH);
 			result = parse_rr(lex, mctx, STR(token), origin,
 					  rdclass, &buf, &dnskeyttl, &rdtype,
 					  &rdata);
@@ -317,6 +318,8 @@ dns_skr_read(isc_mem_t *mctx, const char *filename, dns_name_t *origin,
 					"failed: %s",
 					filename, isc_lex_getsourceline(lex),
 					isc_result_totext(result));
+				isc_mem_put(mctx, rdatabuf,
+					    DNS_RDATA_MAXLENGTH);
 				isc_mem_put(mctx, rdata, sizeof(*rdata));
 				goto cleanup;
 			}
@@ -333,6 +336,7 @@ dns_skr_read(isc_mem_t *mctx, const char *filename, dns_name_t *origin,
 			skrbundle_addtuple(bundle, &tuple);
 			INSIST(tuple == NULL);
 
+			isc_mem_put(mctx, rdatabuf, DNS_RDATA_MAXLENGTH);
 			isc_mem_put(mctx, rdata, sizeof(*rdata));
 		}
 	}

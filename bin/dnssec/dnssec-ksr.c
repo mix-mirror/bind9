@@ -29,6 +29,7 @@
 #include <dns/keymgr.h>
 #include <dns/keyvalues.h>
 #include <dns/lib.h>
+#include <dns/rdata.h>
 #include <dns/rdataclass.h>
 #include <dns/rdatalist.h>
 #include <dns/rdataset.h>
@@ -1242,7 +1243,7 @@ sign(ksr_ctx_t *ksr) {
 			isc_buffer_t *newbuf = NULL;
 			dns_rdata_t *rdata = NULL;
 			isc_region_t r;
-			uint8_t rdatabuf[DST_KEY_MAXSIZE];
+			uint8_t *rdatabuf = NULL;
 
 			if (rdatalist == NULL) {
 				fatal("bad KSR file %s(%lu): DNSKEY record "
@@ -1252,7 +1253,9 @@ sign(ksr_ctx_t *ksr) {
 
 			rdata = isc_mem_get(isc_g_mctx, sizeof(*rdata));
 			dns_rdata_init(rdata);
-			isc_buffer_init(&buf, rdatabuf, sizeof(rdatabuf));
+			rdatabuf = isc_mem_get(isc_g_mctx,
+					       DNS_RDATA_MAXLENGTH);
+			isc_buffer_init(&buf, rdatabuf, DNS_RDATA_MAXLENGTH);
 			result = parse_dnskey(lex, STR(token), &buf, &ttl);
 			if (result != ISC_R_SUCCESS) {
 				fatal("bad KSR file %s(%lu): bad DNSKEY (%s)",
@@ -1265,13 +1268,14 @@ sign(ksr_ctx_t *ksr) {
 			isc_buffer_usedregion(newbuf, &r);
 			dns_rdata_fromregion(rdata, dns_rdataclass_in,
 					     dns_rdatatype_dnskey, &r);
+			isc_mem_put(isc_g_mctx, rdatabuf,
+				    DNS_RDATA_MAXLENGTH);
 			if (ttl < rdatalist->ttl) {
 				rdatalist->ttl = ttl;
 			}
 
 			ISC_LIST_APPEND(rdatalist->rdata, rdata, link);
 			ISC_LIST_APPEND(cleanup_list, newbuf, link);
-			isc_buffer_clear(newbuf);
 		}
 	}
 

@@ -3429,11 +3429,12 @@ compute_tag(dns_name_t *name, dns_rdata_dnskey_t *dnskey, isc_mem_t *mctx,
 	    dns_keytag_t *tag) {
 	isc_result_t result;
 	dns_rdata_t rdata = DNS_RDATA_INIT;
-	unsigned char data[4096];
+	unsigned int datalen = 4 + dnskey->datalen;
+	unsigned char *data = isc_mem_get(mctx, datalen);
 	isc_buffer_t buffer;
 	dst_key_t *dstkey = NULL;
 
-	isc_buffer_init(&buffer, data, sizeof(data));
+	isc_buffer_init(&buffer, data, datalen);
 
 	CHECK(dns_rdata_fromstruct(&rdata, dnskey->common.rdclass,
 				   dns_rdatatype_dnskey, dnskey, &buffer));
@@ -3443,6 +3444,7 @@ compute_tag(dns_name_t *name, dns_rdata_dnskey_t *dnskey, isc_mem_t *mctx,
 	dst_key_free(&dstkey);
 
 cleanup:
+	isc_mem_put(mctx, data, datalen);
 	return result;
 }
 
@@ -3471,7 +3473,9 @@ trust_key(dns_zone_t *zone, dns_name_t *keyname, dns_rdata_dnskey_t *dnskey,
 	  bool initial) {
 	isc_result_t result;
 	dns_rdata_t rdata = DNS_RDATA_INIT;
-	unsigned char data[4096], digest[DNS_DS_BUFFERSIZE];
+	unsigned int datalen = 4 + dnskey->datalen;
+	unsigned char *data = isc_mem_get(zone->mctx, datalen);
+	unsigned char digest[DNS_DS_BUFFERSIZE];
 	isc_buffer_t buffer;
 	dns_keytable_t *sr = NULL;
 	dns_rdata_ds_t ds;
@@ -3479,7 +3483,7 @@ trust_key(dns_zone_t *zone, dns_name_t *keyname, dns_rdata_dnskey_t *dnskey,
 	CHECK(dns_view_getsecroots(zone->view, &sr));
 
 	/* Build DS record for key. */
-	isc_buffer_init(&buffer, data, sizeof(data));
+	isc_buffer_init(&buffer, data, datalen);
 	CHECK(dns_rdata_fromstruct(&rdata, dnskey->common.rdclass,
 				   dns_rdatatype_dnskey, dnskey, &buffer));
 	CHECK(dns_ds_fromkeyrdata(keyname, &rdata, DNS_DSDIGEST_SHA256, digest,
@@ -3490,6 +3494,7 @@ trust_key(dns_zone_t *zone, dns_name_t *keyname, dns_rdata_dnskey_t *dnskey,
 	dns_keytable_detach(&sr);
 
 cleanup:
+	isc_mem_put(zone->mctx, data, datalen);
 	if (sr != NULL) {
 		dns_keytable_detach(&sr);
 	}
