@@ -1297,8 +1297,7 @@ getsection(isc_buffer_t *source, dns_message_t *msg, dns_decompress_t dctx,
 		 * Check the ownername of NSEC3 records
 		 */
 		if (rdtype == dns_rdatatype_nsec3 &&
-		    !dns_rdata_checkowner(dns_linkedname_name(name),
-					  msg->rdclass, rdtype, false))
+		    !dns_rdata_checkowner(name, msg->rdclass, rdtype, false))
 		{
 			CLEANUP(DNS_R_BADOWNERNAME);
 		}
@@ -1358,7 +1357,7 @@ getsection(isc_buffer_t *source, dns_message_t *msg, dns_decompress_t dctx,
 
 		dns_message_gettemprdataset(msg, &rdataset);
 		dns_rdatalist_tordataset(rdatalist, rdataset);
-		dns_rdataset_setownercase(rdataset, dns_linkedname_name(name));
+		dns_rdataset_setownercase(rdataset, name);
 		rdatalist = NULL;
 
 		/*
