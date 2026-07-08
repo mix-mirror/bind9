@@ -7481,12 +7481,9 @@ checknamessection(dns_message_t *message, dns_section_t section) {
 			DNS_RDATASET_FOREACH(rdataset) {
 				dns_rdata_t rdata = DNS_RDATA_INIT;
 				dns_rdataset_current(rdataset, &rdata);
-				if (!dns_rdata_checkowner(
-					    dns_linkedname_name(name),
-					    rdata.rdclass, rdata.type, false) ||
-				    !dns_rdata_checknames(
-					    &rdata, dns_linkedname_name(name),
-					    NULL))
+				if (!dns_rdata_checkowner(name, rdata.rdclass,
+							  rdata.type, false) ||
+				    !dns_rdata_checknames(&rdata, name, NULL))
 				{
 					rdataset->attributes.checknames = true;
 				}
@@ -8992,9 +8989,9 @@ rctx_answer_match(respctx_t *rctx) {
 	rctx->ardataset->attributes.answer = true;
 	rctx->ardataset->attributes.cache = true;
 	rctx->ardataset->trust = rctx->trust;
-	(void)dns_rdataset_additionaldata(
-		rctx->ardataset, dns_linkedname_name(rctx->aname),
-		check_related, rctx, DNS_RDATASET_MAXADDITIONAL);
+	(void)dns_rdataset_additionaldata(rctx->ardataset, rctx->aname,
+					  check_related, rctx,
+					  DNS_RDATASET_MAXADDITIONAL);
 
 	ISC_LIST_FOREACH(rctx->aname->list, sigrdataset, link) {
 		if (!validinanswer(sigrdataset, fctx)) {
@@ -9173,9 +9170,8 @@ rctx_authority_positive(respctx_t *rctx) {
 					 * related to this rdataset.
 					 */
 					(void)dns_rdataset_additionaldata(
-						rdataset,
-						dns_linkedname_name(name),
-						check_related, rctx,
+						rdataset, name, check_related,
+						rctx,
 						DNS_RDATASET_MAXADDITIONAL);
 					return;
 				}
@@ -9700,8 +9696,7 @@ again:
 			if (CHASE(rdataset)) {
 				rdataset->attributes.chase = false;
 				(void)dns_rdataset_additionaldata(
-					rdataset, dns_linkedname_name(name),
-					check_related, rctx,
+					rdataset, name, check_related, rctx,
 					DNS_RDATASET_MAXADDITIONAL);
 				rescan = true;
 			}
