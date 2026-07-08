@@ -2028,12 +2028,10 @@ validate_answer_process(void *arg) {
 		    val->siginfo->algorithm, val->siginfo->signature,
 		    val->siginfo->siglen))
 	{
-		if (val->unsupported_algorithm == 0) {
-			val->unsupported_algorithm = val->siginfo->algorithm;
-			/*
-			 * XXXMPA save PRIVATEOID/PRIVATEDNS identifier here
-			 */
-		}
+		val->unsupported_algorithm = val->siginfo->algorithm;
+		/*
+		 * XXXMPA save PRIVATEOID/PRIVATEDNS identifier here
+		 */
 		goto next_key;
 	}
 
@@ -2440,6 +2438,7 @@ validate_dnskey_dsset(dns_validator_t *val) {
 	val->ds_validation_attempts++;
 
 	if (ds.digest_type == DNS_DSDIGEST_SHA1 && val->digest_sha1 == false) {
+		val->unsupported_digest = DNS_DSDIGEST_SHA1;
 		val->unsupported++;
 		return DNS_R_BADALG;
 	}
@@ -2447,9 +2446,7 @@ validate_dnskey_dsset(dns_validator_t *val) {
 	if (!dns_resolver_ds_digest_supported(val->view->resolver, val->name,
 					      ds.digest_type))
 	{
-		if (val->unsupported_digest == 0) {
-			val->unsupported_digest = ds.digest_type;
-		}
+		val->unsupported_digest = ds.digest_type;
 		val->unsupported++;
 		return DNS_R_BADALG;
 	}
@@ -2480,9 +2477,7 @@ validate_dnskey_dsset(dns_validator_t *val) {
 						      val->name, ds.algorithm,
 						      data, datalen))
 		{
-			if (val->unsupported_algorithm == 0) {
-				val->unsupported_algorithm = ds.algorithm;
-			}
+			val->unsupported_algorithm = ds.algorithm;
 			val->unsupported++;
 			return DNS_R_BADALG;
 		}
@@ -2512,12 +2507,10 @@ validate_dnskey_dsset(dns_validator_t *val) {
 						      val->name, key.algorithm,
 						      key.data, key.datalen))
 		{
-			if (val->unsupported_algorithm == 0) {
-				val->unsupported_algorithm = key.algorithm;
-				/*
-				 * XXXMPA Save PRIVATEOID / PRIVATEDNS here.
-				 */
-			}
+			val->unsupported_algorithm = key.algorithm;
+			/*
+			 * XXXMPA Save PRIVATEOID / PRIVATEDNS here.
+			 */
 			val->unsupported++;
 			return DNS_R_BADALG;
 		}
@@ -2682,11 +2675,7 @@ validate_dnskey(void *arg) {
 	 * Look through the DS record and find the keys that can sign the
 	 * key set and the matching signature.  For each such key, attempt
 	 * verification.
-	 */
-	val->unsupported_algorithm = 0;
-	val->unsupported_digest = 0;
-
-	/*
+	 *
 	 * If DNS_DSDIGEST_SHA256 or DNS_DSDIGEST_SHA384 is present we
 	 * are required to prefer it over DNS_DSDIGEST_SHA1.  This in
 	 * practice means that we need to ignore DNS_DSDIGEST_SHA1 if a
