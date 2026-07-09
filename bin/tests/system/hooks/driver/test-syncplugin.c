@@ -45,7 +45,8 @@ syncplugin__hook(void *arg, void *cbdata, isc_result_t *resp) {
 		 * +1 because the first label byte is the length of the label
 		 * itself
 		 */
-		if (strncmp(inst->firstlbl, (char *)label.base + 1,
+		if (strlen(inst->firstlbl) == label.length &&
+		    strncmp(inst->firstlbl, (char *)label.base + 1,
 			    strlen(inst->firstlbl)) == 0)
 		{
 			return NS_HOOK_CONTINUE;
