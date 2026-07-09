@@ -23,6 +23,7 @@ from dns.reversename import ipv4_reverse_domain, ipv6_reverse_domain
 from hypothesis import assume, example, given
 from hypothesis.strategies import ip_addresses
 
+import dns.edns
 import dns.message
 import dns.name
 import dns.rcode
@@ -523,3 +524,26 @@ def test_synthrecord_toolongprefix(ns1, templates):
         watcher.wait_for_line(
             "synthrecord cannot create reverse answer name: ran out of space"
         )
+
+
+# No regression test for #6185
+def test_synthrecord_tooshortbuffer(ns1, templates):
+    qname = "f.f.f.f.f.f.f.f.f.f.f.f.f.f.f.f.f.f.f.f.f.f.f.f.f.f.f.f.f.f.f.f.ip6.arpa"
+    templates.render("ns1/named.conf", {"nocookieudpsize": True})
+    with ns1.watch_log_from_here() as watcher:
+        ns1.rndc("reconfig")
+        watcher.wait_for_line("running")
+    msg = dns.message.make_query(qname, "PTR")
+
+    # First, test with a valid cookie. The buffer is truncated and answer is missing.
+    res = isctest.query.udp(msg, ns1.ip)
+    isctest.check.noerror(res)
+    isctest.check.empty_answer(res)
+    isctest.check.tcflag(res)
+
+    # Send again the request, this time with an EDNS flag.
+    msg = dns.message.make_query(qname, "PTR", use_edns=True, ednsflags=dns.edns.COOKIE)
+    res = isctest.query.udp(msg, ns1.ip)
+    isctest.check.noerror(res)
+    isctest.check.empty_answer(res)
+    isctest.check.tcflag(res)
