@@ -183,6 +183,7 @@ path = [
 	"sonar-project.properties",
 	"tests/bench/names.csv",
 	"tests/requirements.txt",
+	"requirements-lint.txt",
 	"dtrace/*"
 ]
 precedence = "aggregate"
