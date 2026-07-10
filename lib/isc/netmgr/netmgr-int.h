@@ -571,6 +571,7 @@ struct isc_nmsocket {
 
 	struct {
 		isc_nmsocket_t *sock;
+		isc_nm_udplistener_t *udp_listener;
 		bool reading;
 		size_t nsending;
 		void *send_req;
@@ -894,11 +895,8 @@ isc__nm_udp_shutdown(isc_nmsocket_t *sock);
  * sockets.
  */
 
-void
-isc__nm_udp_stoplistening(isc_nmsocket_t *sock);
-/*%<
- * Stop listening on 'sock'.
- */
+uint32_t
+isc__nm_udplistener_nchildren(const isc_nm_udplistener_t *listener);
 
 void
 isc__nm_udp_settimeout(isc_nmhandle_t *handle, uint32_t timeout);
