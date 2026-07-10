@@ -74,7 +74,8 @@ struct ns_interface {
 	isc_sockaddr_t	   addr;       /*%< Address and port. */
 	unsigned int	   flags;      /*%< Interface flags */
 	char		   name[32];   /*%< Null terminated. */
-	isc_nmsocket_t	  *udplistensocket;
+	isc_nm_udplistener_t *udplistener;
+	isc_nmsocket_t	  *proxyudplistensocket;
 	isc_nmsocket_t	  *tcplistensocket;
 	isc_nmsocket_t	  *tlslistensocket;
 	isc_nmsocket_t	  *http_listensocket;

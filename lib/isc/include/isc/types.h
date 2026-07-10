@@ -58,6 +58,7 @@ typedef ISC_LIST(isc_netaddrlink_t) isc_netaddrlist_t; /*%< Net Address List */
 typedef struct isc_netprefix   isc_netprefix_t;	       /*%< Net Prefix */
 typedef struct isc_nmsocket    isc_nmsocket_t;	  /*%< Network manager socket */
 typedef struct isc_nmhandle    isc_nmhandle_t;	  /*%< Network manager handle */
+typedef struct isc_nm_udplistener isc_nm_udplistener_t;
 typedef struct isc_portset     isc_portset_t;	  /*%< Port Set */
 typedef struct isc_quota       isc_quota_t;	  /*%< Quota */
 typedef struct isc_ratelimiter isc_ratelimiter_t; /*%< Rate Limiter */
@@ -106,7 +107,6 @@ typedef enum isc_nmsocket_type {
 	isc_nm_proxyudpsocket = 1 << 7,
 	isc_nm_maxsocket,
 
-	isc_nm_udplistener, /* Aggregate of nm_udpsocks */
 	isc_nm_tcplistener,
 	isc_nm_tlslistener,
 	isc_nm_httplistener,
