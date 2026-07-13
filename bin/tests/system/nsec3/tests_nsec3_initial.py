@@ -33,6 +33,7 @@ pytestmark = NSEC3_MARK
 # include the following zones when rendering named configs
 ZONES = {
     "nsec-to-nsec3.kasp",
+    "nsec-to-nsec3-offline.kasp",
     "nsec3-xfr-inline.kasp",
     "nsec3-dynamic-update-inline.kasp",
     "nsec3.kasp",
@@ -79,6 +80,16 @@ def after_servers_start(ns3):
         pytest.param(
             {
                 "zone": "nsec-to-nsec3.kasp",
+                "policy": "nsec",
+                "key-properties": [
+                    f"csk 0 {Algorithm.default().number} {Algorithm.default().bits} goal:omnipresent dnskey:rumoured krrsig:rumoured zrrsig:rumoured ds:hidden",
+                ],
+            },
+            id="nsec-to-nsec3.kasp",
+        ),
+        pytest.param(
+            {
+                "zone": "nsec-to-nsec3-offline.kasp",
                 "policy": "nsec",
                 "key-properties": [
                     f"csk 0 {Algorithm.default().number} {Algorithm.default().bits} goal:omnipresent dnskey:rumoured krrsig:rumoured zrrsig:rumoured ds:hidden",

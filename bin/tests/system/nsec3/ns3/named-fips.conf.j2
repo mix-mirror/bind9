@@ -15,6 +15,15 @@ zone "nsec-to-nsec3.kasp" {
 };
 {% endif %}{# nsec-to-nsec3.kasp #}
 
+{% if "nsec-to-nsec3-offline.kasp" in zones %}
+/* Reconfiguring happens when the keys are offline. */
+zone "nsec-to-nsec3-offline.kasp" {
+	type primary;
+	file "nsec-to-nsec3-offline.kasp.db";
+	dnssec-policy "@nsec_to_nsec3@";
+};
+{% endif %}{# nsec-to-nsec3.kasp #}
+
 {% if "nsec3.kasp" in zones %}
 /* These zones use the default NSEC3 settings. */
 zone "nsec3.kasp" {

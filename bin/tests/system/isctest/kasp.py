@@ -1692,7 +1692,13 @@ def policy_to_properties(ttl, keys: list[str]) -> list[KeyProperties]:
     return proplist
 
 
-def wait_keymgr_done(server: NamedInstance, zone: str, reconfig: bool = False) -> None:
+def wait_keymgr_done(
+    server: NamedInstance,
+    zone: str,
+    reconfig: bool = False,
+    fail: bool = False,
+    inlinesigning: bool = False,
+) -> None:
     """
     Block and wait until the keymgr is done processing zone.
     """
@@ -1700,7 +1706,15 @@ def wait_keymgr_done(server: NamedInstance, zone: str, reconfig: bool = False) -
     if reconfig:
         messages.append("received control channel command 'reconfig'")
         messages.append("apply_configuration")
-    messages.append(f"keymgr: {zone} done")
+    if fail:
+        signed = ""
+        if inlinesigning:
+            signed = " (signed)"
+        messages.append(
+            f"zone {zone}/IN{signed}: zone_rekey:zone_verifykeys failed: some key files are missing"
+        )
+    else:
+        messages.append(f"keymgr: {zone} done")
     with server.watch_log_from_start(timeout=60) as watcher:
         watcher.wait_for_sequence(messages)
 

@@ -10,6 +10,7 @@
 # information regarding copyright ownership.
 
 import os
+import shutil
 import time
 
 import dns.name
@@ -36,6 +37,7 @@ ZONES = {
     "nsec3-to-nsec.kasp",
     "nsec3-to-nsec-altalg.kasp",
     "nsec-to-nsec3.kasp",
+    "nsec-to-nsec3-offline.kasp",
     "nsec3.kasp",
     "nsec3-dynamic.kasp",
     "nsec3-dynamic-change.kasp",
@@ -94,6 +96,12 @@ def after_servers_start(ns3, templates):
     # the NSEC plus algorithm rollover begins.
     isctest.kasp.check_dnssec_verify(ns3, "nsec3-to-nsec-altalg.kasp")
 
+    # Remove the private keys for nsec-to-nsec3-offline.kasp
+    keys = isctest.kasp.keydir_to_keylist("nsec-to-nsec3-offline.kasp", "ns3")
+    for key in keys:
+        privatefile = f"ns3/{key.name}.private"
+        shutil.move(privatefile, f"ns3/{key.name}.bak")
+
     # Reconfigure.
     data = {
         "reconfiged": True,
@@ -105,8 +113,9 @@ def after_servers_start(ns3, templates):
 
     # Wait until the NSEC3 chain has finished rebuilding.
     for zone in ZONES:
-        isctest.kasp.wait_keymgr_done(ns3, zone, reconfig=True)
-        wait_for_nsec3param(ns3, zone, NSEC3_SALTLEN[zone].reconfig)
+        if zone != "nsec-to-nsec3-offline.kasp":
+            isctest.kasp.wait_keymgr_done(ns3, zone, reconfig=True)
+            wait_for_nsec3param(ns3, zone, NSEC3_SALTLEN[zone].reconfig)
 
 
 @pytest.mark.parametrize(
@@ -186,6 +195,33 @@ def after_servers_start(ns3, templates):
 )
 def test_nsec_case(ns3, params):
     check_nsec3_case(ns3, params, nsec3=False)
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        pytest.param(
+            {
+                "zone": "nsec-to-nsec3-offline.kasp",
+                "policy": "nsec3",
+                "key-properties": [
+                    f"csk 0 {Algorithm.default().number} {Algorithm.default().bits} goal:omnipresent dnskey:rumoured krrsig:rumoured zrrsig:rumoured ds:hidden",
+                ],
+            },
+            id="nsec-to-nsec3-offline.kasp",
+        ),
+    ],
+)
+def test_nsec_case_reconfig_failed(ns3, params):
+    zone = params["zone"]
+
+    # First make sure the zone is properly signed.
+    isctest.kasp.wait_keymgr_done(
+        ns3, zone, reconfig=True, fail=True, inlinesigning=True
+    )
+
+    # Keep NSEC since there is an issue with zone signing.
+    check_nsec3_case(ns3, params, nsec3=False, check_keys=False)
 
 
 @pytest.mark.parametrize(

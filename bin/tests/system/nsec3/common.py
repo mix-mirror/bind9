@@ -50,6 +50,7 @@ class NSEC3Saltlen:
 
 NSEC3_SALTLEN = {
     "nsec-to-nsec3.kasp": NSEC3Saltlen(initial=None, reconfig=0),
+    "nsec-to-nsec3-offline.kasp": NSEC3Saltlen(initial=None, reconfig=0),
     # policy "nsec" on ns3
     "nsec3-xfr-inline.kasp": NSEC3Saltlen(initial=None, reconfig=None),
     "nsec3-dynamic-update-inline.kasp": NSEC3Saltlen(initial=None, reconfig=None),
@@ -173,7 +174,7 @@ def wait_for_nsec3param(server, zone, saltlen=None, timeout=60):
     )
 
 
-def check_nsec3_case(server, params, nsec3=True):
+def check_nsec3_case(server, params, nsec3=True, check_keys=True):
     # Get test parameters.
     zone = params["zone"]
     fqdn = f"{zone}."
@@ -198,9 +199,11 @@ def check_nsec3_case(server, params, nsec3=True):
         extkeys = isctest.kasp.keydir_to_keylist(zone, params["external-keydir"])
         keys = keys + extkeys
 
-    isctest.kasp.check_keys(zone, keys, expected)
     isctest.kasp.check_dnssec_verify(server, zone)
-    isctest.kasp.check_apex(server, zone, keys, [])
+
+    if check_keys:
+        isctest.kasp.check_keys(zone, keys, expected)
+        isctest.kasp.check_apex(server, zone, keys, [])
 
     query = isctest.query.create(fqdn, dns.rdatatype.NSEC3PARAM)
     nsec3param_response = isctest.query.tcp(query, server.ip)
