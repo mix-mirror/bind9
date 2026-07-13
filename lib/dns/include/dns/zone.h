@@ -403,6 +403,20 @@ dns_zone_dnssecstatus(dns_zone_t *zone, dns_kasp_t *kasp,
  *
  */
 
+isc_result_t
+dns_zone_verifykeys(dns_zone_t *zone, isc_time_t timenow);
+/*%<
+ * Verify key files against published keys.
+ *
+ *      Requires:
+ *\li           'zone' is not NULL.
+ *
+ *      Returns:
+ *\li           ISC_R_SUCCESS on success.
+ *\li           ISC_R_NOTFOUND if a key file is missing.
+ *
+ */
+
 dns_skrbundle_t *
 dns_zone_getskrbundle(dns_zone_t *zone);
 /*%<

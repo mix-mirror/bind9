@@ -320,6 +320,9 @@ static void
 zone_saveunique(dns_zone_t *zone, const char *path, const char *templat);
 static void
 zone_maintenance(dns_zone_t *zone);
+static isc_result_t
+zone_verifykeys(dns_zone_t *zone, dns_dnsseckeylist_t *newkeys,
+		uint32_t purgeval, isc_stdtime_t now);
 
 static void
 inline_sync_run(dns_zone_t *zone);
@@ -2919,6 +2922,16 @@ zone_addnsec3chain(dns_zone_t *zone, dns_rdata_nsec3param_t *nsec3param) {
 	dns_db_closeversion(db, &version, false);
 	if (!nsec3ok && (nsec3param->flags & DNS_NSEC3FLAG_REMOVE) == 0) {
 		result = ISC_R_SUCCESS;
+		goto cleanup;
+	}
+
+	/* Verify keys. */
+	now = isc_time_now();
+	result = dns_zone_verifykeys(zone, now);
+	if (result != ISC_R_SUCCESS) {
+		dnssec_log(zone, ISC_LOG_ERROR,
+			   "zone_addnsec3chain:zone_verifykeys failed: some "
+			   "key files are missing");
 		goto cleanup;
 	}
 
@@ -14579,6 +14592,7 @@ inline_sync_finalize(dns_zone_t *zone, uint32_t newserial, uint32_t desired) {
 	result = dns_update_signaturesinc(
 		&log, zone, iss->db, iss->oldver, iss->newver, &iss->diff,
 		zone->sigvalidityinterval, &iss->state);
+
 	if (result == DNS_R_CONTINUE) {
 		LOCK_ZONE(zone);
 		zone_schedule_inline_sync(zone, inline_sync_idle);
@@ -18470,46 +18484,6 @@ update_ttl(dns_rdataset_t *rdataset, dns_name_t *name, dns_ttl_t ttl,
 	}
 }
 
-static isc_result_t
-zone_verifykeys(dns_zone_t *zone, dns_dnsseckeylist_t *newkeys,
-		uint32_t purgeval, isc_stdtime_t now) {
-	/*
-	 * Make sure that the existing keys are also present in the new keylist.
-	 */
-	ISC_LIST_FOREACH(zone->keyring, key1, link) {
-		bool found = false;
-
-		if (dst_key_is_unused(key1->key)) {
-			continue;
-		}
-		if (dns_keymgr_key_may_be_purged(key1->key, purgeval, now)) {
-			continue;
-		}
-		if (key1->purge) {
-			continue;
-		}
-
-		ISC_LIST_FOREACH(*newkeys, key2, link) {
-			if (dst_key_compare(key1->key, key2->key)) {
-				found = true;
-				break;
-			}
-		}
-
-		if (!found) {
-			char keystr[DST_KEY_FORMATSIZE];
-			dst_key_format(key1->key, keystr, sizeof(keystr));
-			dnssec_log(zone, ISC_LOG_DEBUG(1),
-				   "verifykeys: key %s - not available",
-				   keystr);
-			return ISC_R_NOTFOUND;
-		}
-	}
-
-	/* All good. */
-	return ISC_R_SUCCESS;
-}
-
 static void
 remove_rdataset(dns_zone_t *zone, dns_diff_t *diff, dns_rdataset_t *rdataset) {
 	if (!dns_rdataset_isassociated(rdataset)) {
@@ -19436,6 +19410,81 @@ dns_zone_dnssecstatus(dns_zone_t *zone, dns_kasp_t *kasp,
 	return result;
 }
 
+static isc_result_t
+zone_verifykeys(dns_zone_t *zone, dns_dnsseckeylist_t *newkeys,
+		uint32_t purgeval, isc_stdtime_t now) {
+	/*
+	 * Make sure that the existing keys are also present in the new keylist.
+	 */
+	ISC_LIST_FOREACH(zone->keyring, key1, link) {
+		bool found = false;
+
+		if (dst_key_is_unused(key1->key)) {
+			continue;
+		}
+		if (dns_keymgr_key_may_be_purged(key1->key, purgeval, now)) {
+			continue;
+		}
+		if (key1->purge) {
+			continue;
+		}
+
+		ISC_LIST_FOREACH(*newkeys, key2, link) {
+			if (dst_key_compare(key1->key, key2->key)) {
+				found = true;
+				break;
+			}
+		}
+
+		if (!found) {
+			char keystr[DST_KEY_FORMATSIZE];
+			dst_key_format(key1->key, keystr, sizeof(keystr));
+			dnssec_log(zone, ISC_LOG_DEBUG(1),
+				   "verifykeys: key %s - not available",
+				   keystr);
+			return ISC_R_NOTFOUND;
+		}
+	}
+
+	/* All good. */
+	return ISC_R_SUCCESS;
+}
+
+isc_result_t
+dns_zone_verifykeys(dns_zone_t *zone, isc_time_t timenow) {
+	isc_result_t result;
+	dns_dnsseckeylist_t keys;
+	const char *dir;
+	dns_kasp_t *kasp;
+	isc_stdtime_t now;
+
+	REQUIRE(DNS_ZONE_VALID(zone));
+
+	kasp = zone->kasp;
+	if (kasp == NULL) {
+		/* No kasp, no use in verifying keys. */
+		return ISC_R_SUCCESS;
+	}
+
+	dir = dns_zone_getkeydirectory(zone);
+	now = isc_time_seconds(&timenow);
+
+	ISC_LIST_INIT(keys);
+
+	KASP_LOCK(kasp);
+	dns_zone_lock_keyfiles(zone);
+	(void)dns_dnssec_findmatchingkeys(&zone->origin, zone->kasp, dir,
+					  dns_zone_getkeystores(zone), now,
+					  false, zone->mctx, &keys);
+	dns_zone_unlock_keyfiles(zone);
+	result = zone_verifykeys(zone, &keys, dns_kasp_purgekeys(kasp), now);
+	KASP_UNLOCK(kasp);
+
+	clear_keylist(&keys, zone->mctx);
+
+	return result;
+}
+
 isc_result_t
 dns_zone_nscheck(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *version,
 		 unsigned int *errors) {
@@ -20037,8 +20086,11 @@ rss_post(dns_zone_t *zone, nsec3param_t *np) {
 	dns_update_log_t log = { update_log_cb, NULL };
 	bool nseconly;
 	bool exists = false;
+	isc_time_t now;
 
 	ENTER;
+
+	now = isc_time_now();
 
 	dns_rdataset_init(&prdataset);
 	dns_rdataset_init(&nrdataset);
@@ -20153,6 +20205,15 @@ rss_post(dns_zone_t *zone, nsec3param_t *np) {
 		}
 	} else if (result != ISC_R_NOTFOUND) {
 		INSIST(!dns_rdataset_isassociated(&nrdataset));
+		goto cleanup;
+	}
+
+	/* Verify keys */
+	result = dns_zone_verifykeys(zone, now);
+	if (result != ISC_R_SUCCESS) {
+		dnssec_log(zone, ISC_LOG_ERROR,
+			   "rss_post:zone_verifykeys failed: some key files "
+			   "are missing");
 		goto cleanup;
 	}
 
