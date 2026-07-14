@@ -2654,12 +2654,7 @@ query_prefetch(ns_client_t *client, dns_name_t *qname,
 }
 
 static void
-rpz_clean(dns_zone_t **zonep, dns_db_t **dbp, dns_dbnode_t **nodep,
-	  dns_rdataset_t **rdatasetp) {
-	if (nodep != NULL && *nodep != NULL) {
-		REQUIRE(dbp != NULL && *dbp != NULL);
-		dns_db_detachnode(nodep);
-	}
+rpz_clean(dns_zone_t **zonep, dns_db_t **dbp, dns_rdataset_t **rdatasetp) {
 	if (dbp != NULL && *dbp != NULL) {
 		dns_db_detach(dbp);
 	}
@@ -2673,7 +2668,7 @@ rpz_clean(dns_zone_t **zonep, dns_db_t **dbp, dns_dbnode_t **nodep,
 
 static void
 rpz_match_clear(dns_rpz_st_t *st) {
-	rpz_clean(&st->m.zone, &st->m.db, &st->m.node, &st->m.rdataset);
+	rpz_clean(&st->m.zone, &st->m.db, &st->m.rdataset);
 	st->m.version = NULL;
 }
 
@@ -2702,7 +2697,7 @@ rpz_st_clear(ns_client_t *client) {
 	}
 	rpz_match_clear(st);
 
-	rpz_clean(NULL, &st->r.db, NULL, NULL);
+	rpz_clean(NULL, &st->r.db, NULL);
 	if (st->r.ns_rdataset != NULL) {
 		ns_client_putrdataset(client, &st->r.ns_rdataset);
 	}
@@ -2710,7 +2705,7 @@ rpz_st_clear(ns_client_t *client) {
 		ns_client_putrdataset(client, &st->r.r_rdataset);
 	}
 
-	rpz_clean(&st->q.zone, &st->q.db, NULL, NULL);
+	rpz_clean(&st->q.zone, &st->q.db, NULL);
 	dns_fixedname_init(&st->q.foundname);
 	if (st->q.rdataset != NULL) {
 		ns_client_putrdataset(client, &st->q.rdataset);
@@ -2883,7 +2878,7 @@ rpz_rrset_find(ns_client_t *client, dns_name_t *name, dns_rdatatype_t type,
 		 * nsip-wait-recurse or nsdname-wait-recurse are
 		 * enabled.
 		 */
-		rpz_clean(NULL, dbp, NULL, rdatasetp);
+		rpz_clean(NULL, dbp, rdatasetp);
 		dns_db_attach(client->inner.view->cachedb, dbp);
 		result = dns_db_findext(*dbp, name, NULL, type, 0,
 					client->inner.now, found, &cm, &ci,
@@ -2894,9 +2889,9 @@ rpz_rrset_find(ns_client_t *client, dns_name_t *name, dns_rdatatype_t type,
 	} else if (result == ISC_R_NOTFOUND && !is_zone) {
 		result = DNS_R_DELEGATION;
 	}
-	rpz_clean(NULL, dbp, NULL, NULL);
+	rpz_clean(NULL, dbp, NULL);
 	if (result == DNS_R_DELEGATION) {
-		rpz_clean(NULL, NULL, NULL, rdatasetp);
+		rpz_clean(NULL, NULL, rdatasetp);
 		/*
 		 * Recurse for NS rrset or A or AAAA rrset for an NS.
 		 * Do not recurse for addresses for the query name.
@@ -3020,8 +3015,8 @@ rpz_findnode(ns_client_t *client, dns_db_t *db, dns_name_t *found,
  * Look in policy zone rpz for a policy of rpz_type by p_name.
  * The self-name (usually the client qname or an NS name) is compared with
  * the target of a CNAME policy for the old style passthru encoding.
- * If found, the policy is recorded in *zonep, *dbp, *versionp, *nodep,
- * *rdatasetp, and *policyp.
+ * If found, the policy is recorded in *zonep, *dbp, *versionp, *rdatasetp,
+ * and *policyp.
  * The target DNS type, qtype, chooses the best rdataset for *rdatasetp.
  * The caller must decide if the found policy is most suitable, including
  * better than a previously found policy.
@@ -3031,16 +3026,14 @@ static isc_result_t
 rpz_find_p(ns_client_t *client, dns_name_t *self_name, dns_rdatatype_t qtype,
 	   dns_name_t *p_name, dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
 	   dns_zone_t **zonep, dns_db_t **dbp, dns_dbversion_t **versionp,
-	   dns_dbnode_t **nodep, dns_rdataset_t **rdatasetp,
-	   dns_rpz_policy_t *policyp) {
+	   dns_rdataset_t **rdatasetp, dns_rpz_policy_t *policyp) {
+	dns_dbnode_t *node = NULL;
 	dns_fixedname_t foundf;
 	dns_name_t *found;
 	isc_result_t result;
 	dns_clientinfomethods_t cm;
 	dns_clientinfo_t ci;
 	bool found_a = false;
-
-	REQUIRE(nodep != NULL);
 
 	CTRACE(ISC_LOG_DEBUG(3), "rpz_find_p");
 
@@ -3051,7 +3044,7 @@ rpz_find_p(ns_client_t *client, dns_name_t *self_name, dns_rdatatype_t qtype,
 	 * Try to find either a CNAME or the type of record demanded by the
 	 * request from the policy zone.
 	 */
-	rpz_clean(zonep, dbp, nodep, rdatasetp);
+	rpz_clean(zonep, dbp, rdatasetp);
 	result = rpz_ready(client, rdatasetp);
 	if (result != ISC_R_SUCCESS) {
 		CTRACE(ISC_LOG_ERROR, "rpz_ready() failed");
@@ -3075,18 +3068,19 @@ rpz_find_p(ns_client_t *client, dns_name_t *self_name, dns_rdatatype_t qtype,
 		bool match = false;
 
 		result = rpz_findnode(client, *dbp, found, rpz_type, &cm, &ci,
-				      nodep);
+				      &node);
 		if (result != ISC_R_SUCCESS) {
 			return result;
 		}
 
-		result = dns_db_allrdatasets(*dbp, *nodep, *versionp, 0, 0,
+		result = dns_db_allrdatasets(*dbp, node, *versionp, 0, 0,
 					     &rdsiter);
 		if (result != ISC_R_SUCCESS) {
 			rpz_log_fail(client, DNS_RPZ_ERROR_LEVEL, p_name,
 				     rpz_type, "allrdatasets()", result);
 			CTRACE(ISC_LOG_ERROR,
 			       "rpz_find_p: allrdatasets failed");
+			dns_db_detachnode(&node);
 			return DNS_R_SERVFAIL;
 		}
 		if (qtype == dns_rdatatype_aaaa &&
@@ -3111,13 +3105,13 @@ rpz_find_p(ns_client_t *client, dns_name_t *self_name, dns_rdatatype_t qtype,
 			dns_rdataset_disassociate(*rdatasetp);
 		}
 		dns_rdatasetiter_destroy(&rdsiter);
+		dns_db_detachnode(&node);
 		if (!match) {
 			/*
 			 * Ask again to get the right DNS_R_DNAME/NXRRSET/...
 			 * result if there is neither a CNAME nor target type.
 			 */
 			dns_rdataset_cleanup(*rdatasetp);
-			dns_db_detachnode(nodep);
 
 			if (dns_rdatatype_issig(qtype)) {
 				result = DNS_R_NXRRSET;
@@ -3126,24 +3120,6 @@ rpz_find_p(ns_client_t *client, dns_name_t *self_name, dns_rdatatype_t qtype,
 					*dbp, p_name, *versionp, qtype, 0,
 					client->inner.now, found, &cm, &ci,
 					*rdatasetp, NULL);
-				/*
-				 * Preserve the old contract by resolving the
-				 * found owner to nodep here, so rpz_save_p() can
-				 * keep the node for later pickup in
-				 * query_checkrpz().
-				 */
-				if (result == ISC_R_SUCCESS ||
-				    result == DNS_R_NXRRSET)
-				{
-					isc_result_t nresult;
-
-					nresult = rpz_findnode(
-						client, *dbp, found, rpz_type,
-						&cm, &ci, nodep);
-					if (nresult != ISC_R_SUCCESS) {
-						return nresult;
-					}
-				}
 			}
 		}
 	}
@@ -3196,8 +3172,7 @@ static void
 rpz_save_p(dns_rpz_st_t *st, dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
 	   dns_rpz_policy_t policy, dns_name_t *p_name, dns_rpz_prefix_t prefix,
 	   isc_result_t result, dns_zone_t **zonep, dns_db_t **dbp,
-	   dns_dbnode_t **nodep, dns_rdataset_t **rdatasetp,
-	   dns_dbversion_t *version) {
+	   dns_rdataset_t **rdatasetp, dns_dbversion_t *version) {
 	dns_rdataset_t *trdataset = NULL;
 
 	rpz_match_clear(st);
@@ -3209,7 +3184,6 @@ rpz_save_p(dns_rpz_st_t *st, dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
 	st->m.result = result;
 	st->m.zone = MOVE_OWNERSHIP(*zonep);
 	st->m.db = MOVE_OWNERSHIP(*dbp);
-	st->m.node = MOVE_OWNERSHIP(*nodep);
 	if (*rdatasetp != NULL && dns_rdataset_isassociated(*rdatasetp)) {
 		/*
 		 * Save the replacement rdataset from the policy
@@ -3242,7 +3216,6 @@ rpz_rewrite_ip(ns_client_t *client, const isc_netaddr_t *netaddr,
 	dns_zone_t *p_zone;
 	dns_db_t *p_db;
 	dns_dbversion_t *p_version;
-	dns_dbnode_t *p_node;
 	dns_rpz_policy_t policy;
 	isc_result_t result;
 
@@ -3255,7 +3228,6 @@ rpz_rewrite_ip(ns_client_t *client, const isc_netaddr_t *netaddr,
 
 	p_zone = NULL;
 	p_db = NULL;
-	p_node = NULL;
 
 	while (zbits != 0) {
 		rpz_num = dns_rpz_find_ip(rpzs, rpz_type, zbits, netaddr,
@@ -3294,7 +3266,7 @@ rpz_rewrite_ip(ns_client_t *client, const isc_netaddr_t *netaddr,
 		}
 		result = rpz_find_p(client, ip_name, qtype, p_name, rpz,
 				    rpz_type, &p_zone, &p_db, &p_version,
-				    &p_node, p_rdatasetp, &policy);
+				    p_rdatasetp, &policy);
 		switch (result) {
 		case DNS_R_NXDOMAIN:
 			/*
@@ -3308,7 +3280,7 @@ rpz_rewrite_ip(ns_client_t *client, const isc_netaddr_t *netaddr,
 					      "continuing");
 			continue;
 		case DNS_R_SERVFAIL:
-			rpz_clean(&p_zone, &p_db, &p_node, p_rdatasetp);
+			rpz_clean(&p_zone, &p_db, p_rdatasetp);
 			st->m.policy = DNS_RPZ_POLICY_ERROR;
 			return DNS_R_SERVFAIL;
 		default:
@@ -3348,7 +3320,7 @@ rpz_rewrite_ip(ns_client_t *client, const isc_netaddr_t *netaddr,
 							 "rpz_save_p");
 				rpz_save_p(st, rpz, rpz_type, policy, p_name,
 					   prefix, result, &p_zone, &p_db,
-					   &p_node, p_rdatasetp, p_version);
+					   p_rdatasetp, p_version);
 				break;
 			}
 
@@ -3361,7 +3333,7 @@ rpz_rewrite_ip(ns_client_t *client, const isc_netaddr_t *netaddr,
 		}
 	}
 
-	rpz_clean(&p_zone, &p_db, &p_node, p_rdatasetp);
+	rpz_clean(&p_zone, &p_db, p_rdatasetp);
 	return ISC_R_SUCCESS;
 }
 
@@ -3556,7 +3528,6 @@ rpz_rewrite_name(ns_client_t *client, dns_name_t *trig_name,
 	dns_zone_t *p_zone;
 	dns_db_t *p_db;
 	dns_dbversion_t *p_version;
-	dns_dbnode_t *p_node;
 	dns_rpz_policy_t policy;
 	isc_result_t result;
 
@@ -3586,7 +3557,6 @@ rpz_rewrite_name(ns_client_t *client, dns_name_t *trig_name,
 
 	p_zone = NULL;
 	p_db = NULL;
-	p_node = NULL;
 
 	/*
 	 * Check the trigger name in every policy zone that the summary data
@@ -3626,7 +3596,7 @@ rpz_rewrite_name(ns_client_t *client, dns_name_t *trig_name,
 		}
 		result = rpz_find_p(client, trig_name, qtype, p_name, rpz,
 				    rpz_type, &p_zone, &p_db, &p_version,
-				    &p_node, rdatasetp, &policy);
+				    rdatasetp, &policy);
 		switch (result) {
 		case DNS_R_NXDOMAIN:
 			/*
@@ -3640,7 +3610,7 @@ rpz_rewrite_name(ns_client_t *client, dns_name_t *trig_name,
 					      "continuing");
 			continue;
 		case DNS_R_SERVFAIL:
-			rpz_clean(&p_zone, &p_db, &p_node, rdatasetp);
+			rpz_clean(&p_zone, &p_db, rdatasetp);
 			st->m.policy = DNS_RPZ_POLICY_ERROR;
 			return DNS_R_SERVFAIL;
 		default:
@@ -3665,13 +3635,13 @@ rpz_rewrite_name(ns_client_t *client, dns_name_t *trig_name,
 				CTRACE(ISC_LOG_DEBUG(3), "rpz_rewrite_name: "
 							 "rpz_save_p");
 				rpz_save_p(st, rpz, rpz_type, policy, p_name, 0,
-					   result, &p_zone, &p_db, &p_node,
-					   rdatasetp, p_version);
+					   result, &p_zone, &p_db, rdatasetp,
+					   p_version);
 				/*
 				 * After a hit, higher numbered policy zones
 				 * are irrelevant
 				 */
-				rpz_clean(&p_zone, &p_db, &p_node, rdatasetp);
+				rpz_clean(&p_zone, &p_db, rdatasetp);
 				return ISC_R_SUCCESS;
 			}
 			/*
@@ -3684,7 +3654,7 @@ rpz_rewrite_name(ns_client_t *client, dns_name_t *trig_name,
 		}
 	}
 
-	rpz_clean(&p_zone, &p_db, &p_node, rdatasetp);
+	rpz_clean(&p_zone, &p_db, rdatasetp);
 	return ISC_R_SUCCESS;
 }
 
@@ -4142,7 +4112,7 @@ cleanup:
 	}
 	ns_client_putrdataset(client, &rdataset);
 	if ((st->state & DNS_RPZ_RECURSING) == 0) {
-		rpz_clean(NULL, &st->r.db, NULL, &st->r.ns_rdataset);
+		rpz_clean(NULL, &st->r.db, &st->r.ns_rdataset);
 	}
 
 	return result;
@@ -6900,7 +6870,7 @@ query_checkrpz(query_ctx_t *qctx, isc_result_t result) {
 		 * in recursion or for a deferral.
 		 */
 		dns_name_copy(qctx->client->query.qname, qctx->fname);
-		rpz_clean(&qctx->zone, &qctx->db, NULL, NULL);
+		rpz_clean(&qctx->zone, &qctx->db, NULL);
 		dns_fixedname_init(&qctx->foundname);
 		if (qctx->rpz_st->m.rdataset != NULL) {
 			ns_client_putrdataset(qctx->client, &qctx->rdataset);
@@ -6911,9 +6881,6 @@ query_checkrpz(query_ctx_t *qctx, isc_result_t result) {
 		}
 		qctx->version = NULL;
 
-		if (qctx->rpz_st->m.node != NULL) {
-			dns_db_detachnode(&qctx->rpz_st->m.node);
-		}
 		qctx->db = MOVE_OWNERSHIP(qctx->rpz_st->m.db);
 		qctx->version = MOVE_OWNERSHIP(qctx->rpz_st->m.version);
 		qctx->zone = MOVE_OWNERSHIP(qctx->rpz_st->m.zone);

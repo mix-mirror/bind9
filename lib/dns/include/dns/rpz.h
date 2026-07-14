@@ -300,7 +300,6 @@ typedef struct {
 		dns_zone_t	*zone;
 		dns_db_t	*db;
 		dns_dbversion_t *version;
-		dns_dbnode_t	*node;
 		dns_rdataset_t	*rdataset;
 	} m;
 	/*
