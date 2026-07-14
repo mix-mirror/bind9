@@ -11,5 +11,13 @@ options {
 
 zone "existing" {
 	type primary;
-	file "existing.db";
+	file "example.db";
+};
+
+zone "duplicate" {
+	type primary;
+	file "example.db";
+
+	# duplicate IP in a negated nested ACL
+	allow-transfer { 10.53.0.1; !{ 10.53.0.1; }; };
 };
