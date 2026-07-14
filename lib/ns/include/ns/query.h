@@ -189,7 +189,7 @@ typedef struct query_ctx query_ctx_t;
 /* query context structure */
 struct query_ctx {
 	isc_buffer_t *dbuf;	     /* name buffer */
-	dns_name_t   *fname;	     /* found name from DB lookup */
+	dns_name_t   *fname;	     /* lookup/response name */
 	dns_name_t   *tname;	     /* temporary name, used
 				      * when processing ANY
 				      * queries */
@@ -213,9 +213,9 @@ struct query_ctx {
 	bool		nxrewrite;	    /* negative answer from RPZ */
 	bool		findcoveringnsec;   /* lookup covering NSEC */
 	bool		answer_has_ns;	    /* NS is in answer */
-	bool		have_anyname;	    /* anyname is valid */
+	bool		have_foundname;	    /* foundname is valid */
 	dns_fixedname_t dsname;		    /* name needing DS */
-	dns_fixedname_t anyname;	    /* DB owner for ANY iteration */
+	dns_fixedname_t foundname;	    /* DB owner from lookup */
 
 	ns_client_t *client; /* client object */
 	bool	     async;  /* asynchronous hook running */
