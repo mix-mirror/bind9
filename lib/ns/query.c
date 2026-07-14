@@ -325,10 +325,10 @@ ns__query_callhook_noreturn(uint8_t id, query_ctx_t *qctx,
  *
  * 10. No such domain (query_nxdomain()). Attempt redirection; if
  *     unsuccessful, add authority section records (query_addsoa(),
- *     query_addauth()), then go to 15 to return NXDOMAIN to client.
+ *     query_addwildcardproof()), then go to 15 to return NXDOMAIN to client.
  *
  * 11. Empty answer (query_nodata()). Add authority section records
- *     (query_addsoa(), query_addauth()) and signatures if authoritative
+ *     (query_addsoa(), query_addwildcardproof()) and signatures if authoritative
  *     (query_sign_nodata()) then go to 15 and return
  *     NOERROR/ANCOUNT=0 to client.
  *
@@ -474,10 +474,17 @@ static void
 query_addbestns(query_ctx_t *qctx);
 
 static void
-query_addwildcardproof(query_ctx_t *qctx, bool ispositive, bool nodata);
+query_addwildcardproof(query_ctx_t *qctx, dns_name_t *name, bool ispositive,
+		       bool nodata);
+
+static dns_name_t *
+query_savewildcardproof(query_ctx_t *qctx, dns_fixedname_t *fixed);
 
 static void
-query_addauth(query_ctx_t *qctx);
+query_addauth_ns(query_ctx_t *qctx);
+
+static void
+query_addauth_wildcardproof(query_ctx_t *qctx, dns_name_t *name);
 
 /*
  * Increment query statistics counters.
@@ -5199,7 +5206,6 @@ ns__query_start(query_ctx_t *qctx) {
 	qctx->authoritative = false;
 	qctx->version = NULL;
 	qctx->zversion = NULL;
-	qctx->need_wildcardproof = false;
 	qctx->rpz = false;
 
 	/*
@@ -7465,6 +7471,21 @@ cleanup:
 	}
 }
 
+static dns_name_t *
+query_savewildcardproof(query_ctx_t *qctx, dns_fixedname_t *fixed) {
+	dns_name_t *name = NULL;
+
+	if (qctx->client->inner.wantdnssec && qctx->fname != NULL &&
+	    qctx->fname->attributes.wildcard)
+	{
+		dns_fixedname_init(fixed);
+		name = dns_fixedname_name(fixed);
+		dns_name_copy(qctx->fname, name);
+	}
+
+	return name;
+}
+
 /*%
  * Build the response for a query for type ANY.
  */
@@ -7478,11 +7499,15 @@ query_respond_any(query_ctx_t *qctx) {
 	isc_result_t result = ISC_R_UNSET;
 	dns_rdatatype_t onetype = dns_rdatatype_none; /* type to use for
 							 minimal-any */
+	dns_fixedname_t wildcardfixed;
+	dns_name_t *wildcardproof = NULL;
 	isc_buffer_t b;
 
 	CCTRACE(ISC_LOG_DEBUG(3), "query_respond_any");
 
 	CALL_HOOK(NS_QUERY_RESPOND_ANY_BEGIN, qctx);
+
+	wildcardproof = query_savewildcardproof(qctx, &wildcardfixed);
 
 	if (qctx->have_anyname) {
 		dns_clientinfomethods_init(&cm, ns_client_sourceip);
@@ -7670,7 +7695,8 @@ query_respond_any(query_ctx_t *qctx) {
 		/*
 		 * At least one matching rdataset was found
 		 */
-		query_addauth(qctx);
+		query_addauth_ns(qctx);
+		query_addauth_wildcardproof(qctx, wildcardproof);
 	} else if (dns_rdatatype_issig(qctx->qtype)) {
 		/*
 		 * No matching rdatasets were found, but we got
@@ -7679,7 +7705,8 @@ query_respond_any(query_ctx_t *qctx) {
 		if (!qctx->is_zone) {
 			qctx->authoritative = false;
 			qctx->client->inner.ra = false;
-			query_addauth(qctx);
+			query_addauth_ns(qctx);
+			query_addauth_wildcardproof(qctx, wildcardproof);
 			return ns_query_done(qctx);
 		}
 
@@ -7888,6 +7915,8 @@ cleanup:
 static isc_result_t
 query_respond(query_ctx_t *qctx) {
 	isc_result_t result = ISC_R_UNSET;
+	dns_fixedname_t wildcardfixed;
+	dns_name_t *wildcardproof = NULL;
 
 	CCTRACE(ISC_LOG_DEBUG(3), "query_respond");
 
@@ -7926,6 +7955,8 @@ query_respond(query_ctx_t *qctx) {
 	 * which plugins are configured can't be enforced.)
 	 */
 	CALL_HOOK(NS_QUERY_RESPOND_BEGIN, qctx);
+
+	wildcardproof = query_savewildcardproof(qctx, &wildcardfixed);
 
 	if (qctx->rdataset->attributes.noqname &&
 	    qctx->client->inner.wantdnssec)
@@ -7988,7 +8019,8 @@ query_respond(query_ctx_t *qctx) {
 	 */
 	INSIST(qctx->rdataset == NULL || qctx->qtype == dns_rdatatype_dname);
 
-	query_addauth(qctx);
+	query_addauth_ns(qctx);
+	query_addauth_wildcardproof(qctx, wildcardproof);
 
 	return ns_query_done(qctx);
 
@@ -8953,7 +8985,8 @@ query_sign_nodata(query_ctx_t *qctx) {
 			}
 		} else {
 			ns_client_releasename(qctx->client, &qctx->fname);
-			query_addwildcardproof(qctx, false, true);
+			query_addwildcardproof(qctx, qctx->client->query.qname,
+					       false, true);
 		}
 	}
 	if (dns_rdataset_isassociated(qctx->rdataset)) {
@@ -9034,7 +9067,7 @@ query_addnxrrsetnsec(query_ctx_t *qctx) {
 		return;
 	}
 
-	query_addwildcardproof(qctx, true, false);
+	query_addwildcardproof(qctx, qctx->client->query.qname, true, false);
 
 	/*
 	 * We'll need some resources...
@@ -9122,7 +9155,8 @@ query_nxdomain(query_ctx_t *qctx, isc_result_t result) {
 				       &qctx->sigrdataset, NULL,
 				       DNS_SECTION_AUTHORITY);
 		}
-		query_addwildcardproof(qctx, false, false);
+		query_addwildcardproof(qctx, qctx->client->query.qname, false,
+				       false);
 	}
 
 	/*
@@ -9975,6 +10009,8 @@ query_cname(query_ctx_t *qctx) {
 	dns_rdataset_t **sigrdatasetp = NULL;
 	dns_rdata_t rdata = DNS_RDATA_INIT;
 	dns_rdata_cname_t cname;
+	dns_fixedname_t wildcardfixed;
+	dns_name_t *wildcardproof = NULL;
 
 	CCTRACE(ISC_LOG_DEBUG(3), "query_cname");
 
@@ -9999,13 +10035,7 @@ query_cname(query_ctx_t *qctx) {
 		sigrdatasetp = &qctx->sigrdataset;
 	}
 
-	if (qctx->client->inner.wantdnssec && qctx->fname->attributes.wildcard)
-	{
-		dns_fixedname_init(&qctx->wildcardname);
-		dns_name_copy(qctx->fname,
-			      dns_fixedname_name(&qctx->wildcardname));
-		qctx->need_wildcardproof = true;
-	}
+	wildcardproof = query_savewildcardproof(qctx, &wildcardfixed);
 
 	if (qctx->rdataset->attributes.noqname &&
 	    qctx->client->inner.wantdnssec)
@@ -10058,7 +10088,8 @@ query_cname(query_ctx_t *qctx) {
 		qctx->options.nolog = true;
 	}
 
-	query_addauth(qctx);
+	query_addauth_ns(qctx);
+	query_addauth_wildcardproof(qctx, wildcardproof);
 
 	return ns_query_done(qctx);
 
@@ -10082,6 +10113,8 @@ query_dname(query_ctx_t *qctx) {
 	int order;
 	isc_result_t result = ISC_R_UNSET;
 	unsigned int nlabels;
+	dns_fixedname_t wildcardfixed;
+	dns_name_t *wildcardproof = NULL;
 
 	CCTRACE(ISC_LOG_DEBUG(3), "query_dname");
 
@@ -10110,13 +10143,7 @@ query_dname(query_ctx_t *qctx) {
 		sigrdatasetp = &qctx->sigrdataset;
 	}
 
-	if (qctx->client->inner.wantdnssec && qctx->fname->attributes.wildcard)
-	{
-		dns_fixedname_init(&qctx->wildcardname);
-		dns_name_copy(qctx->fname,
-			      dns_fixedname_name(&qctx->wildcardname));
-		qctx->need_wildcardproof = true;
-	}
+	wildcardproof = query_savewildcardproof(qctx, &wildcardfixed);
 
 	if (!qctx->is_zone && qctx->client->query.recursionok) {
 		query_prefetch(qctx->client, qctx->fname, qctx->rdataset);
@@ -10243,7 +10270,8 @@ query_dname(query_ctx_t *qctx) {
 		}
 	}
 
-	query_addauth(qctx);
+	query_addauth_ns(qctx);
+	query_addauth_wildcardproof(qctx, wildcardproof);
 
 	return ns_query_done(qctx);
 
@@ -10310,14 +10338,6 @@ query_prepresponse(query_ctx_t *qctx) {
 	CCTRACE(ISC_LOG_DEBUG(3), "query_prepresponse");
 
 	CALL_HOOK(NS_QUERY_PREP_RESPONSE_BEGIN, qctx);
-
-	if (qctx->client->inner.wantdnssec && qctx->fname->attributes.wildcard)
-	{
-		dns_fixedname_init(&qctx->wildcardname);
-		dns_name_copy(qctx->fname,
-			      dns_fixedname_name(&qctx->wildcardname));
-		qctx->need_wildcardproof = true;
-	}
 
 	if (qctx->type == dns_rdatatype_any) {
 		return query_respond_any(qctx);
@@ -10743,10 +10763,10 @@ cleanup:
 }
 
 static void
-query_addwildcardproof(query_ctx_t *qctx, bool ispositive, bool nodata) {
+query_addwildcardproof(query_ctx_t *qctx, dns_name_t *name, bool ispositive,
+		       bool nodata) {
 	ns_client_t *client = qctx->client;
 	isc_buffer_t *dbuf, b;
-	dns_name_t *name;
 	dns_name_t *fname = NULL;
 	dns_rdataset_t *rdataset = NULL, *sigrdataset = NULL;
 	dns_fixedname_t wfixed;
@@ -10766,20 +10786,10 @@ query_addwildcardproof(query_ctx_t *qctx, bool ispositive, bool nodata) {
 
 	CTRACE(ISC_LOG_DEBUG(3), "query_addwildcardproof");
 
+	REQUIRE(name != NULL);
+
 	dns_clientinfomethods_init(&cm, ns_client_sourceip);
 	dns_clientinfo_init(&ci, client, NULL);
-
-	/*
-	 * If a name has been specifically flagged as needing
-	 * a wildcard proof then it will have been copied to
-	 * qctx->wildcardname. Otherwise we just use the client
-	 * QNAME.
-	 */
-	if (qctx->need_wildcardproof) {
-		name = dns_fixedname_name(&qctx->wildcardname);
-	} else {
-		name = client->query.qname;
-	}
 
 	/*
 	 * Get the NOQNAME proof then if !ispositive
@@ -11039,12 +11049,11 @@ cleanup:
 }
 
 /*%
- * Add NS records, and NSEC/NSEC3 wildcard proof records if needed,
- * to the authority section.
+ * Add NS records to the authority section.
  */
 static void
-query_addauth(query_ctx_t *qctx) {
-	CCTRACE(ISC_LOG_DEBUG(3), "query_addauth");
+query_addauth_ns(query_ctx_t *qctx) {
+	CCTRACE(ISC_LOG_DEBUG(3), "query_addauth_ns");
 	/*
 	 * Add NS records to the authority section (if we haven't already
 	 * added them to the answer section).
@@ -11064,13 +11073,18 @@ query_addauth(query_ctx_t *qctx) {
 			query_addbestns(qctx);
 		}
 	}
+}
 
-	/*
-	 * Add NSEC records to the authority section if they're needed for
-	 * DNSSEC wildcard proofs.
-	 */
-	if (qctx->need_wildcardproof && dns_db_issecure(qctx->db)) {
-		query_addwildcardproof(qctx, true, false);
+/*%
+ * Add NSEC records to the authority section if they're needed for DNSSEC
+ * wildcard proofs.
+ */
+static void
+query_addauth_wildcardproof(query_ctx_t *qctx, dns_name_t *name) {
+	CCTRACE(ISC_LOG_DEBUG(3), "query_addauth_wildcardproof");
+
+	if (name != NULL && dns_db_issecure(qctx->db)) {
+		query_addwildcardproof(qctx, name, true, false);
 	}
 }
 
