@@ -691,7 +691,8 @@ filter_respond_begin(void *arg, void *cbdata, isc_result_t *resp) {
 		dns_dbnode_t *node = NULL;
 		dns_rdataset_t *trdataset;
 
-		if (!qctx->have_foundname) {
+		if (dns_name_countlabels(dns_fixedname_name(&qctx->foundname)) == 0)
+		{
 			return NS_HOOK_CONTINUE;
 		}
 

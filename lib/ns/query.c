@@ -788,7 +788,7 @@ query_reset(ns_client_t *client, bool everything) {
 	if (client->query.redirect.zone != NULL) {
 		dns_zone_detach(&client->query.redirect.zone);
 	}
-	client->query.redirect.have_foundname = false;
+	dns_fixedname_init(&client->query.redirect.foundname);
 
 	query_freefreeversions(client, everything);
 
@@ -892,6 +892,7 @@ ns_query_init(ns_client_t *client) {
 	isc_mutex_init(&client->query.fetchlock);
 	client->query.redirect.fname =
 		dns_fixedname_initname(&client->query.redirect.fixed);
+	dns_fixedname_init(&client->query.redirect.foundname);
 	query_reset(client, false);
 	ns_client_newdbversion(client, 3);
 	ns_client_newnamebuf(client);
@@ -2710,7 +2711,7 @@ rpz_st_clear(ns_client_t *client) {
 	}
 
 	rpz_clean(&st->q.zone, &st->q.db, NULL, NULL);
-	st->q.have_foundname = false;
+	dns_fixedname_init(&st->q.foundname);
 	if (st->q.rdataset != NULL) {
 		ns_client_putrdataset(client, &st->q.rdataset);
 	}
@@ -3780,6 +3781,7 @@ rpz_rewrite(ns_client_t *client, dns_rdatatype_t qtype, isc_result_t qresult,
 		st->m.ttl = ~0;
 		memset(&st->r, 0, sizeof(st->r));
 		memset(&st->q, 0, sizeof(st->q));
+		dns_fixedname_init(&st->q.foundname);
 		st->p_name = dns_fixedname_initname(&st->_p_namef);
 		st->r_name = dns_fixedname_initname(&st->_r_namef);
 		st->fname = dns_fixedname_initname(&st->_fnamef);
@@ -4808,6 +4810,7 @@ qctx_init(ns_client_t *client, dns_fetchresponse_t **frespp,
 	qctx->qtype = qctx->type = qtype;
 	qctx->result = ISC_R_SUCCESS;
 	qctx->findcoveringnsec = qctx->view->synthfromdnssec;
+	dns_fixedname_init(&qctx->foundname);
 
 	/*
 	 * If it's an RRSIG or SIG query, we'll iterate the node.
@@ -4817,9 +4820,19 @@ qctx_init(ns_client_t *client, dns_fetchresponse_t **frespp,
 	}
 }
 
+static bool
+fixedname_has_name(dns_fixedname_t *fixed) {
+	return dns_name_countlabels(dns_fixedname_name(fixed)) != 0;
+}
+
+static bool
+qctx_has_foundname(query_ctx_t *qctx) {
+	return fixedname_has_name(&qctx->foundname);
+}
+
 static dns_name_t *
 qctx_foundname(query_ctx_t *qctx) {
-	REQUIRE(qctx->have_foundname);
+	REQUIRE(qctx_has_foundname(qctx));
 
 	return dns_fixedname_name(&qctx->foundname);
 }
@@ -4828,7 +4841,6 @@ static void
 qctx_set_foundname(query_ctx_t *qctx, const dns_name_t *name) {
 	dns_fixedname_init(&qctx->foundname);
 	dns_name_copy(name, dns_fixedname_name(&qctx->foundname));
-	qctx->have_foundname = true;
 }
 
 /*%
@@ -4838,7 +4850,7 @@ static void
 qctx_clean(query_ctx_t *qctx) {
 	dns_rdataset_cleanup(qctx->rdataset);
 	dns_rdataset_cleanup(qctx->sigrdataset);
-	qctx->have_foundname = false;
+	dns_fixedname_init(&qctx->foundname);
 	if (qctx->client != NULL && qctx->client->query.gluedb != NULL) {
 		dns_db_detach(&qctx->client->query.gluedb);
 	}
@@ -4933,8 +4945,8 @@ qctx_save(query_ctx_t *src, query_ctx_t **targetp) {
 	target->rpz_st = MOVE_OWNERSHIP(src->rpz_st);
 	target->zone = MOVE_OWNERSHIP(src->zone);
 
-	if (src->have_foundname) {
-		dns_fixedname_init(&target->foundname);
+	dns_fixedname_init(&target->foundname);
+	if (qctx_has_foundname(src)) {
 		dns_name_copy(qctx_foundname(src),
 			      dns_fixedname_name(&target->foundname));
 	}
@@ -5652,15 +5664,13 @@ query_lookup(query_ctx_t *qctx) {
 	}
 
 	foundname = dns_fixedname_initname(&qctx->foundname);
-	qctx->have_foundname = false;
 
 	result = dns_db_findext(qctx->db, rpzqname, qctx->version, qctx->type,
 				dboptions, qctx->client->inner.now, foundname,
 				&cm, &ci, qctx->rdataset,
 				qctx->sigrdataset);
 
-	qctx->have_foundname = dns_name_countlabels(foundname) != 0;
-	found_via_wildcard = qctx->have_foundname &&
+	found_via_wildcard = qctx_has_foundname(qctx) &&
 			     query_wildcard_hit(result, rpzqname, foundname);
 
 	/*
@@ -5675,7 +5685,7 @@ query_lookup(query_ctx_t *qctx) {
 	} else if (found_via_wildcard) {
 		dns_name_copy(rpzqname, qctx->fname);
 		qctx->fname->attributes.wildcard = true;
-	} else if (qctx->have_foundname) {
+	} else if (qctx_has_foundname(qctx)) {
 		dns_name_copy(foundname, qctx->fname);
 		qctx->fname->attributes.wildcard = false;
 	} else {
@@ -6199,13 +6209,12 @@ query_resume(query_ctx_t *qctx) {
 		qctx->rdataset = MOVE_OWNERSHIP(qctx->rpz_st->q.rdataset);
 		qctx->sigrdataset = MOVE_OWNERSHIP(qctx->rpz_st->q.sigrdataset);
 		qctx->qtype = qctx->rpz_st->q.qtype;
-		qctx->have_foundname = qctx->rpz_st->q.have_foundname;
-		if (qctx->have_foundname) {
+		if (fixedname_has_name(&qctx->rpz_st->q.foundname)) {
 			dns_fixedname_init(&qctx->foundname);
 			dns_name_copy(
 				dns_fixedname_name(&qctx->rpz_st->q.foundname),
-				qctx_foundname(qctx));
-			qctx->rpz_st->q.have_foundname = false;
+				dns_fixedname_name(&qctx->foundname));
+			dns_fixedname_init(&qctx->rpz_st->q.foundname);
 		}
 
 		if (qctx->fresp->node != NULL) {
@@ -6241,15 +6250,13 @@ query_resume(query_ctx_t *qctx) {
 		qctx->zone = MOVE_OWNERSHIP(qctx->client->query.redirect.zone);
 		qctx->authoritative =
 			qctx->client->query.redirect.authoritative;
-		qctx->have_foundname =
-			qctx->client->query.redirect.have_foundname;
-		if (qctx->have_foundname) {
+		if (fixedname_has_name(&qctx->client->query.redirect.foundname)) {
 			dns_fixedname_init(&qctx->foundname);
 			dns_name_copy(
 				dns_fixedname_name(
 					&qctx->client->query.redirect.foundname),
-				qctx_foundname(qctx));
-			qctx->client->query.redirect.have_foundname = false;
+				dns_fixedname_name(&qctx->foundname));
+			dns_fixedname_init(&qctx->client->query.redirect.foundname);
 		}
 
 		/*
@@ -6863,9 +6870,8 @@ query_checkrpz(query_ctx_t *qctx, isc_result_t result) {
 			MOVE_OWNERSHIP(qctx->sigrdataset);
 		dns_name_copy(qctx->fname, qctx->rpz_st->fname);
 		qctx->rpz_st->q.result = result;
-		qctx->rpz_st->q.have_foundname = qctx->have_foundname;
-		if (qctx->have_foundname) {
-			dns_fixedname_init(&qctx->rpz_st->q.foundname);
+		dns_fixedname_init(&qctx->rpz_st->q.foundname);
+		if (qctx_has_foundname(qctx)) {
 			dns_name_copy(qctx_foundname(qctx),
 				      dns_fixedname_name(
 					      &qctx->rpz_st->q.foundname));
@@ -6895,7 +6901,7 @@ query_checkrpz(query_ctx_t *qctx, isc_result_t result) {
 		 */
 		dns_name_copy(qctx->client->query.qname, qctx->fname);
 		rpz_clean(&qctx->zone, &qctx->db, NULL, NULL);
-		qctx->have_foundname = false;
+		dns_fixedname_init(&qctx->foundname);
 		if (qctx->rpz_st->m.rdataset != NULL) {
 			ns_client_putrdataset(qctx->client, &qctx->rdataset);
 			qctx->rdataset =
@@ -7491,7 +7497,7 @@ query_respond_any(query_ctx_t *qctx) {
 
 	wildcardproof = query_savewildcardproof(qctx, &wildcardfixed);
 
-	if (!qctx->have_foundname) {
+	if (!qctx_has_foundname(qctx)) {
 		CCTRACE(ISC_LOG_ERROR, "query_respond_any: no node name");
 		QUERY_ERROR(qctx, DNS_R_SERVFAIL);
 		return ns_query_done(qctx);
@@ -9181,22 +9187,18 @@ query_redirect(query_ctx_t *qctx, isc_result_t saved_result) {
 	CCTRACE(ISC_LOG_DEBUG(3), "query_redirect");
 
 	foundname = dns_fixedname_initname(&qctx->foundname);
-	qctx->have_foundname = false;
 
 	result = redirect(qctx->client, qctx->fname, qctx->rdataset,
 			  foundname, &qctx->db, &qctx->version, qctx->type);
 	switch (result) {
 	case ISC_R_SUCCESS:
-		qctx->have_foundname = dns_name_countlabels(foundname) != 0;
 		inc_stats(qctx->client, ns_statscounter_nxdomainredirect);
 		return query_prepresponse(qctx);
 	case DNS_R_NXRRSET:
-		qctx->have_foundname = dns_name_countlabels(foundname) != 0;
 		qctx->redirected = true;
 		qctx->is_zone = true;
 		return query_nodata(qctx, DNS_R_NXRRSET);
 	case DNS_R_NCACHENXRRSET:
-		qctx->have_foundname = dns_name_countlabels(foundname) != 0;
 		qctx->redirected = true;
 		qctx->is_zone = false;
 		return query_ncache(qctx, DNS_R_NCACHENXRRSET);
@@ -9209,7 +9211,6 @@ query_redirect(query_ctx_t *qctx, isc_result_t saved_result) {
 			   &qctx->is_zone);
 	switch (result) {
 	case ISC_R_SUCCESS:
-		qctx->have_foundname = dns_name_countlabels(foundname) != 0;
 		inc_stats(qctx->client, ns_statscounter_nxdomainredirect);
 		return query_prepresponse(qctx);
 	case DNS_R_CONTINUE:
@@ -9225,11 +9226,8 @@ query_redirect(query_ctx_t *qctx, isc_result_t saved_result) {
 			MOVE_OWNERSHIP(qctx->sigrdataset);
 		qctx->client->query.redirect.result = saved_result;
 		dns_name_copy(qctx->fname, qctx->client->query.redirect.fname);
-		qctx->client->query.redirect.have_foundname =
-			qctx->have_foundname;
-		if (qctx->have_foundname) {
-			dns_fixedname_init(
-				&qctx->client->query.redirect.foundname);
+		dns_fixedname_init(&qctx->client->query.redirect.foundname);
+		if (qctx_has_foundname(qctx)) {
 			dns_name_copy(
 				qctx_foundname(qctx),
 				dns_fixedname_name(
@@ -9240,12 +9238,10 @@ query_redirect(query_ctx_t *qctx, isc_result_t saved_result) {
 		qctx->client->query.redirect.is_zone = qctx->is_zone;
 		return ns_query_done(qctx);
 	case DNS_R_NXRRSET:
-		qctx->have_foundname = dns_name_countlabels(foundname) != 0;
 		qctx->redirected = true;
 		qctx->is_zone = true;
 		return query_nodata(qctx, DNS_R_NXRRSET);
 	case DNS_R_NCACHENXRRSET:
-		qctx->have_foundname = dns_name_countlabels(foundname) != 0;
 		qctx->redirected = true;
 		qctx->is_zone = false;
 		return query_ncache(qctx, DNS_R_NCACHENXRRSET);

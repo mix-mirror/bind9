@@ -159,7 +159,6 @@ struct ns_query {
 		dns_rdatatype_t qtype;
 		dns_name_t     *fname;
 		dns_fixedname_t fixed;
-		bool		have_foundname;
 		dns_fixedname_t foundname;
 		isc_result_t	result;
 		dns_rdataset_t *rdataset;
@@ -214,7 +213,6 @@ struct query_ctx {
 	bool		nxrewrite;	    /* negative answer from RPZ */
 	bool		findcoveringnsec;   /* lookup covering NSEC */
 	bool		answer_has_ns;	    /* NS is in answer */
-	bool		have_foundname;	    /* foundname is valid */
 	dns_fixedname_t dsname;		    /* name needing DS */
 	dns_fixedname_t foundname;	    /* DB owner from lookup */
 
