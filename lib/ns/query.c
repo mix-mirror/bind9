@@ -2992,25 +2992,6 @@ rpz_get_p_name(ns_client_t *client, dns_name_t *p_name, dns_rpz_zone_t *rpz,
 	return ISC_R_SUCCESS;
 }
 
-static isc_result_t
-rpz_findnode(ns_client_t *client, dns_db_t *db, dns_name_t *found,
-	     dns_rpz_type_t rpz_type, dns_clientinfomethods_t *cm,
-	     dns_clientinfo_t *ci, dns_dbnode_t **nodep) {
-	isc_result_t result;
-
-	REQUIRE(nodep != NULL && *nodep == NULL);
-
-	result = dns_db_findnodeext(db, found, false, cm, ci, nodep);
-	if (result != ISC_R_SUCCESS) {
-		rpz_log_fail(client, DNS_RPZ_ERROR_LEVEL, found, rpz_type,
-			     "findnode()", result);
-		CTRACE(ISC_LOG_ERROR, "rpz_find_p: findnode failed");
-		return DNS_R_SERVFAIL;
-	}
-
-	return ISC_R_SUCCESS;
-}
-
 /*
  * Look in policy zone rpz for a policy of rpz_type by p_name.
  * The self-name (usually the client qname or an NS name) is compared with
@@ -3067,10 +3048,10 @@ rpz_find_p(ns_client_t *client, dns_name_t *self_name, dns_rdatatype_t qtype,
 		dns_rdatasetiter_t *rdsiter = NULL;
 		bool match = false;
 
-		result = rpz_findnode(client, *dbp, found, rpz_type, &cm, &ci,
-				      &node);
+		result = dns_db_findnodeext(*dbp, found, false, &cm, &ci,
+					    &node);
 		if (result != ISC_R_SUCCESS) {
-			return result;
+			return DNS_R_SERVFAIL;
 		}
 
 		result = dns_db_allrdatasets(*dbp, node, *versionp, 0, 0,
