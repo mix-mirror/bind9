@@ -2644,6 +2644,7 @@ rpz_clean(dns_zone_t **zonep, dns_db_t **dbp, dns_rdataset_t **rdatasetp) {
 static void
 rpz_match_clear(dns_rpz_st_t *st) {
 	rpz_clean(&st->m.zone, &st->m.db, &st->m.rdataset);
+	dns_fixedname_init(&st->m.foundname);
 	st->m.version = NULL;
 }
 
@@ -2982,7 +2983,8 @@ static isc_result_t
 rpz_find_p(ns_client_t *client, dns_name_t *self_name, dns_rdatatype_t qtype,
 	   dns_name_t *p_name, dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
 	   dns_zone_t **zonep, dns_db_t **dbp, dns_dbversion_t **versionp,
-	   dns_rdataset_t **rdatasetp, dns_rpz_policy_t *policyp) {
+	   dns_name_t *foundname, dns_rdataset_t **rdatasetp,
+	   dns_rpz_policy_t *policyp) {
 	dns_dbnode_t *node = NULL;
 	dns_fixedname_t foundf;
 	dns_name_t *found;
@@ -2992,6 +2994,8 @@ rpz_find_p(ns_client_t *client, dns_name_t *self_name, dns_rdatatype_t qtype,
 	bool found_a = false;
 
 	CTRACE(ISC_LOG_DEBUG(3), "rpz_find_p");
+
+	REQUIRE(foundname != NULL);
 
 	dns_clientinfomethods_init(&cm, ns_client_sourceip);
 	dns_clientinfo_init(&ci, client, NULL);
@@ -3016,6 +3020,9 @@ rpz_find_p(ns_client_t *client, dns_name_t *self_name, dns_rdatatype_t qtype,
 	result = dns_db_findext(*dbp, p_name, *versionp, dns_rdatatype_any, 0,
 				client->inner.now, found, &cm, &ci, *rdatasetp,
 				NULL);
+	if (result == ISC_R_SUCCESS) {
+		dns_name_copy(found, foundname);
+	}
 	/*
 	 * Choose the best rdataset if we found something.
 	 */
@@ -3128,14 +3135,18 @@ static void
 rpz_save_p(dns_rpz_st_t *st, dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
 	   dns_rpz_policy_t policy, dns_name_t *p_name, dns_rpz_prefix_t prefix,
 	   isc_result_t result, dns_zone_t **zonep, dns_db_t **dbp,
-	   dns_rdataset_t **rdatasetp, dns_dbversion_t *version) {
+	   dns_name_t *foundname, dns_rdataset_t **rdatasetp,
+	   dns_dbversion_t *version) {
 	dns_rdataset_t *trdataset = NULL;
+
+	REQUIRE(foundname != NULL);
 
 	rpz_match_clear(st);
 	st->m.rpz = rpz;
 	st->m.type = rpz_type;
 	st->m.policy = policy;
 	dns_name_copy(p_name, st->p_name);
+	dns_name_copy(foundname, dns_fixedname_name(&st->m.foundname));
 	st->m.prefix = prefix;
 	st->m.result = result;
 	st->m.zone = MOVE_OWNERSHIP(*zonep);
@@ -3168,7 +3179,8 @@ rpz_rewrite_ip(ns_client_t *client, const isc_netaddr_t *netaddr,
 	dns_rpz_prefix_t prefix;
 	dns_rpz_num_t rpz_num;
 	dns_fixedname_t ip_namef, p_namef;
-	dns_name_t *ip_name, *p_name;
+	dns_fixedname_t p_foundnamef;
+	dns_name_t *ip_name, *p_name, *p_foundname;
 	dns_zone_t *p_zone;
 	dns_db_t *p_db;
 	dns_dbversion_t *p_version;
@@ -3216,13 +3228,14 @@ rpz_rewrite_ip(ns_client_t *client, const isc_netaddr_t *netaddr,
 		 * as the prefix of the entry we had before.
 		 */
 		p_name = dns_fixedname_initname(&p_namef);
+		p_foundname = dns_fixedname_initname(&p_foundnamef);
 		result = rpz_get_p_name(client, p_name, rpz, rpz_type, ip_name);
 		if (result != ISC_R_SUCCESS) {
 			continue;
 		}
 		result = rpz_find_p(client, ip_name, qtype, p_name, rpz,
 				    rpz_type, &p_zone, &p_db, &p_version,
-				    p_rdatasetp, &policy);
+				    p_foundname, p_rdatasetp, &policy);
 		switch (result) {
 		case DNS_R_NXDOMAIN:
 			/*
@@ -3276,7 +3289,8 @@ rpz_rewrite_ip(ns_client_t *client, const isc_netaddr_t *netaddr,
 							 "rpz_save_p");
 				rpz_save_p(st, rpz, rpz_type, policy, p_name,
 					   prefix, result, &p_zone, &p_db,
-					   p_rdatasetp, p_version);
+					   p_foundname, p_rdatasetp,
+					   p_version);
 				break;
 			}
 
@@ -3478,7 +3492,8 @@ rpz_rewrite_name(ns_client_t *client, dns_name_t *trig_name,
 	dns_rpz_zone_t *rpz;
 	dns_rpz_st_t *st;
 	dns_fixedname_t p_namef;
-	dns_name_t *p_name;
+	dns_fixedname_t p_foundnamef;
+	dns_name_t *p_name, *p_foundname;
 	dns_rpz_zbits_t zbits;
 	dns_rpz_num_t rpz_num;
 	dns_zone_t *p_zone;
@@ -3550,9 +3565,10 @@ rpz_rewrite_name(ns_client_t *client, dns_name_t *trig_name,
 		if (result != ISC_R_SUCCESS) {
 			continue;
 		}
+		p_foundname = dns_fixedname_initname(&p_foundnamef);
 		result = rpz_find_p(client, trig_name, qtype, p_name, rpz,
 				    rpz_type, &p_zone, &p_db, &p_version,
-				    rdatasetp, &policy);
+				    p_foundname, rdatasetp, &policy);
 		switch (result) {
 		case DNS_R_NXDOMAIN:
 			/*
@@ -3591,8 +3607,8 @@ rpz_rewrite_name(ns_client_t *client, dns_name_t *trig_name,
 				CTRACE(ISC_LOG_DEBUG(3), "rpz_rewrite_name: "
 							 "rpz_save_p");
 				rpz_save_p(st, rpz, rpz_type, policy, p_name, 0,
-					   result, &p_zone, &p_db, rdatasetp,
-					   p_version);
+					   result, &p_zone, &p_db, p_foundname,
+					   rdatasetp, p_version);
 				/*
 				 * After a hit, higher numbered policy zones
 				 * are irrelevant
@@ -3702,6 +3718,7 @@ rpz_rewrite(ns_client_t *client, dns_rdatatype_t qtype, isc_result_t qresult,
 	if (st->state == 0) {
 		st->state |= DNS_RPZ_ACTIVE;
 		memset(&st->m, 0, sizeof(st->m));
+		dns_fixedname_init(&st->m.foundname);
 		st->m.type = DNS_RPZ_TYPE_BAD;
 		st->m.policy = DNS_RPZ_POLICY_MISS;
 		st->m.ttl = ~0;
@@ -6897,8 +6914,16 @@ query_checkrpz(query_ctx_t *qctx, isc_result_t result) {
 				 * We will add all of the rdatasets of
 				 * the policy node by iterating later,
 				 * and set the TTL then.
+				 *
+				 * qctx->rpz_st->p_name can be the generated
+				 * trigger name; for wildcard RPZ matches, use
+				 * the actual matched policy owner saved by
+				 * rpz_find_p().
 				 */
-				qctx_set_foundname(qctx, qctx->rpz_st->p_name);
+				qctx_set_foundname(
+					qctx,
+					dns_fixedname_name(
+						&qctx->rpz_st->m.foundname));
 				dns_rdataset_cleanup(qctx->rdataset);
 			} else {
 				/*
@@ -7428,7 +7453,7 @@ query_respond_any(query_ctx_t *qctx) {
 
 	dns_clientinfomethods_init(&cm, ns_client_sourceip);
 	dns_clientinfo_init(&ci, qctx->client, NULL);
-	if (HAVEECS(qctx->client)) {
+	if (qctx->client->inner.haveecs) {
 		dns_clientinfo_setecs(&ci, &qctx->client->inner.ecs);
 	}
 
@@ -8597,7 +8622,7 @@ query_addds(query_ctx_t *qctx) {
 	foundname = dns_fixedname_initname(&foundfixed);
 	dns_clientinfomethods_init(&cm, ns_client_sourceip);
 	dns_clientinfo_init(&ci, client, NULL);
-	if (HAVEECS(client)) {
+	if (client->inner.haveecs) {
 		dns_clientinfo_setecs(&ci, &client->inner.ecs);
 	}
 

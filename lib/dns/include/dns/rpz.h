@@ -301,6 +301,7 @@ typedef struct {
 		dns_db_t	*db;
 		dns_dbversion_t *version;
 		dns_rdataset_t	*rdataset;
+		dns_fixedname_t foundname;
 	} m;
 	/*
 	 * State for chasing IP addresses and NS names including recursion.
