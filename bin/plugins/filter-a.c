@@ -684,11 +684,23 @@ filter_respond_begin(void *arg, void *cbdata, isc_result_t *resp) {
 	}
 
 	if (qctx->qtype == dns_rdatatype_a) {
+		dns_dbnode_t *node = NULL;
 		dns_rdataset_t *trdataset;
+
+		if (!qctx->have_foundname) {
+			return NS_HOOK_CONTINUE;
+		}
+
 		trdataset = ns_client_newrdataset(qctx->client);
-		result = dns_db_findrdataset(
-			qctx->db, qctx->node, qctx->version, dns_rdatatype_aaaa,
-			0, qctx->client->inner.now, trdataset, NULL);
+		result = dns_db_findnode(
+			qctx->db, dns_fixedname_name(&qctx->foundname), false,
+			&node);
+		if (result == ISC_R_SUCCESS) {
+			result = dns_db_findrdataset(
+				qctx->db, node, qctx->version, dns_rdatatype_aaaa,
+				0, qctx->client->inner.now, trdataset, NULL);
+			dns_db_detachnode(&node);
+		}
 		dns_rdataset_cleanup(trdataset);
 		ns_client_putrdataset(qctx->client, &trdataset);
 

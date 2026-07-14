@@ -156,10 +156,11 @@ struct ns_query {
 	struct {
 		dns_db_t       *db;
 		dns_zone_t     *zone;
-		dns_dbnode_t   *node;
 		dns_rdatatype_t qtype;
 		dns_name_t     *fname;
 		dns_fixedname_t fixed;
+		bool		have_foundname;
+		dns_fixedname_t foundname;
 		isc_result_t	result;
 		dns_rdataset_t *rdataset;
 		dns_rdataset_t *sigrdataset;
@@ -224,10 +225,8 @@ struct query_ctx {
 
 	dns_db_t	*db;	  /* zone or cache database */
 	dns_dbversion_t *version; /* DB version */
-	dns_dbnode_t	*node;	  /* DB node */
 
 	dns_db_t	*zdb;	 /* zone DB values, saved */
-	dns_dbnode_t	*znode;	 /* while searching cache */
 	dns_name_t	*zfname; /* for a better answer */
 	dns_dbversion_t *zversion;
 	dns_rdataset_t	*zrdataset;

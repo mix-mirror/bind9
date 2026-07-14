@@ -324,7 +324,6 @@ typedef struct {
 		bool		authoritative;
 		dns_zone_t     *zone;
 		dns_db_t       *db;
-		dns_dbnode_t   *node;
 		dns_rdataset_t *rdataset;
 		dns_rdataset_t *sigrdataset;
 		dns_rdatatype_t qtype;
