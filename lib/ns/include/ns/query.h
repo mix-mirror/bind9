@@ -214,8 +214,10 @@ struct query_ctx {
 	bool		nxrewrite;	    /* negative answer from RPZ */
 	bool		findcoveringnsec;   /* lookup covering NSEC */
 	bool		answer_has_ns;	    /* NS is in answer */
+	bool		have_anyname;	    /* anyname is valid */
 	dns_fixedname_t wildcardname;	    /* name needing wcard proof */
 	dns_fixedname_t dsname;		    /* name needing DS */
+	dns_fixedname_t anyname;	    /* DB owner for ANY iteration */
 
 	ns_client_t *client; /* client object */
 	bool	     async;  /* asynchronous hook running */

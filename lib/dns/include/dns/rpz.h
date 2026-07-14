@@ -328,6 +328,8 @@ typedef struct {
 		dns_rdataset_t *rdataset;
 		dns_rdataset_t *sigrdataset;
 		dns_rdatatype_t qtype;
+		bool		have_anyname;
+		dns_fixedname_t anyname;
 	} q;
 
 	/*
