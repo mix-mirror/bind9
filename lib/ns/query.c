@@ -1603,31 +1603,26 @@ query_fix_wildcardname(isc_result_t result, const dns_name_t *qname,
  *
  * If the lookup is successful:
  *
- *   - store the node containing the result at 'nodep',
- *
  *   - store the owner name of the returned node in 'fname',
  *
  *   - if 'type' is not ANY, dns_db_findext() will put the exact rdataset being
  *     looked for in 'rdataset' and its signatures (if any) in 'sigrdataset',
  *
  *   - if 'type' is ANY, dns_db_findext() will leave 'rdataset' and
- *     'sigrdataset' disassociated and the returned node will be iterated in
- *     query_additional_cb().
+ *     'sigrdataset' disassociated.
  *
  * If the lookup is not successful:
  *
- *   - 'nodep' will not be written to,
  *   - 'fname' may still be modified as it is passed to dns_db_findext(),
  *   - 'rdataset' and 'sigrdataset' will remain disassociated.
  */
 static isc_result_t
 query_additionalauthfind(dns_db_t *db, dns_dbversion_t *version,
 			 const dns_name_t *name, dns_rdatatype_t type,
-			 ns_client_t *client, dns_dbnode_t **nodep,
-			 dns_name_t *fname, dns_rdataset_t *rdataset,
+			 ns_client_t *client, dns_name_t *fname,
+			 dns_rdataset_t *rdataset,
 			 dns_rdataset_t *sigrdataset) {
 	dns_clientinfomethods_t cm;
-	dns_dbnode_t *node = NULL;
 	dns_clientinfo_t ci;
 	isc_result_t result;
 
@@ -1641,15 +1636,11 @@ query_additionalauthfind(dns_db_t *db, dns_dbversion_t *version,
 	 */
 	result = dns_db_findext(db, name, version, type,
 				client->query.dboptions, client->inner.now,
-				&node, fname, &cm, &ci, rdataset, sigrdataset);
+				NULL, fname, &cm, &ci, rdataset, sigrdataset);
 	if (result != ISC_R_SUCCESS) {
 		dns_rdataset_cleanup(rdataset);
 
 		dns_rdataset_cleanup(sigrdataset);
-
-		if (node != NULL) {
-			dns_db_detachnode(&node);
-		}
 
 		return result;
 	}
@@ -1661,8 +1652,6 @@ query_additionalauthfind(dns_db_t *db, dns_dbversion_t *version,
 		dns_rdataset_cleanup(sigrdataset);
 	}
 
-	*nodep = node;
-
 	return ISC_R_SUCCESS;
 }
 
@@ -1672,8 +1661,7 @@ query_additionalauthfind(dns_db_t *db, dns_dbversion_t *version,
  *
  * If successful:
  *
- *   - store pointers to the database and node which contain the result in
- *     'dbp' and 'nodep', respectively,
+ *   - store the database which contains the result in 'dbp',
  *
  *   - store the owner name of the returned node in 'fname',
  *
@@ -1682,19 +1670,18 @@ query_additionalauthfind(dns_db_t *db, dns_dbversion_t *version,
  *
  * If unsuccessful:
  *
- *   - 'dbp' and 'nodep' will not be written to,
+ *   - 'dbp' will not be written to,
  *   - 'fname' may still be modified as it is passed to dns_db_findext(),
  *   - 'rdataset' and 'sigrdataset' will remain disassociated.
  */
 static isc_result_t
 query_additionalauth(query_ctx_t *qctx, const dns_name_t *name,
-		     dns_rdatatype_t type, dns_db_t **dbp, dns_dbnode_t **nodep,
-		     dns_name_t *fname, dns_rdataset_t *rdataset,
+		     dns_rdatatype_t type, dns_db_t **dbp, dns_name_t *fname,
+		     dns_rdataset_t *rdataset,
 		     dns_rdataset_t *sigrdataset) {
 	ns_client_t *client = qctx->client;
 	ns_dbversion_t *dbversion = NULL;
 	dns_dbversion_t *version = NULL;
-	dns_dbnode_t *node = NULL;
 	dns_zone_t *zone = NULL;
 	dns_db_t *db = NULL;
 	isc_result_t result;
@@ -1717,8 +1704,8 @@ query_additionalauth(query_ctx_t *qctx, const dns_name_t *name,
 
 	CTRACE(ISC_LOG_DEBUG(3), "query_additionalauth: same zone");
 
-	result = query_additionalauthfind(db, version, name, type, client,
-					  &node, fname, rdataset, sigrdataset);
+	result = query_additionalauthfind(db, version, name, type, client, fname,
+					  rdataset, sigrdataset);
 	if (result != ISC_R_SUCCESS &&
 	    qctx->view->minimalresponses == dns_minimal_no &&
 	    client->query.recursionok)
@@ -1736,17 +1723,13 @@ query_additionalauth(query_ctx_t *qctx, const dns_name_t *name,
 
 		CTRACE(ISC_LOG_DEBUG(3), "query_additionalauth: other zone");
 
-		result = query_additionalauthfind(db, version, name, type,
-						  client, &node, fname,
-						  rdataset, sigrdataset);
+		result = query_additionalauthfind(db, version, name, type, client,
+						  fname, rdataset, sigrdataset);
 	}
 
 	if (result != ISC_R_SUCCESS) {
 		dns_db_detach(&db);
 	} else {
-		*nodep = node;
-		node = NULL;
-
 		*dbp = db;
 		db = NULL;
 	}
@@ -1762,7 +1745,9 @@ query_additional_cb(void *arg, const dns_name_t *name, dns_rdatatype_t qtype,
 	isc_result_t result, eresult = ISC_R_SUCCESS;
 	dns_dbnode_t *node = NULL;
 	dns_db_t *db = NULL;
+	dns_fixedname_t foundfixed;
 	dns_name_t *fname = NULL, *mname = NULL;
+	dns_name_t *foundname = NULL;
 	dns_rdataset_t *rdataset = NULL, *sigrdataset = NULL;
 	dns_rdataset_t *trdataset = NULL;
 	isc_buffer_t *dbuf = NULL;
@@ -1821,8 +1806,8 @@ query_additional_cb(void *arg, const dns_name_t *name, dns_rdatatype_t qtype,
 	/*
 	 * First, look for authoritative additional data.
 	 */
-	result = query_additionalauth(qctx, name, type, &db, &node, fname,
-				      rdataset, sigrdataset);
+	result = query_additionalauth(qctx, name, type, &db, fname, rdataset,
+				      sigrdataset);
 	if (result == ISC_R_SUCCESS) {
 		goto found;
 	}
@@ -1853,7 +1838,7 @@ query_additional_cb(void *arg, const dns_name_t *name, dns_rdatatype_t qtype,
 	result = dns_db_findext(db, name, version, type,
 				client->query.dboptions | DNS_DBFIND_GLUEOK |
 					DNS_DBFIND_ADDITIONALOK,
-				client->inner.now, &node, fname, &cm, &ci,
+				client->inner.now, NULL, fname, &cm, &ci,
 				rdataset, sigrdataset);
 
 	dns_cache_updatestats(qctx->view->cache, result);
@@ -1907,7 +1892,7 @@ try_glue:
 	version = dbversion->version;
 	result = dns_db_findext(db, name, version, type,
 				client->query.dboptions | DNS_DBFIND_GLUEOK,
-				client->inner.now, &node, fname, &cm, &ci,
+				client->inner.now, NULL, fname, &cm, &ci,
 				rdataset, sigrdataset);
 	if (result != ISC_R_SUCCESS && result != DNS_R_ZONECUT &&
 	    result != DNS_R_GLUE)
@@ -1920,6 +1905,8 @@ found:
 	 * We have found a potential additional data rdataset, or
 	 * at least a node to iterate over.
 	 */
+	foundname = dns_fixedname_initname(&foundfixed);
+	dns_name_copy(fname, foundname);
 	query_fix_wildcardname(result, name, fname);
 	ns_client_keepname(client, fname, dbuf);
 
@@ -1963,6 +1950,11 @@ found:
 	}
 
 	if (qtype == dns_rdatatype_a) {
+		result = dns_db_findnodeext(db, foundname, false, &cm, &ci, &node);
+		if (result != ISC_R_SUCCESS) {
+			goto cleanup;
+		}
+
 		/*
 		 * We now go looking for A and AAAA records, along with
 		 * their signatures.
@@ -8672,7 +8664,10 @@ query_addds(query_ctx_t *qctx) {
 	dns_fixedname_t fixed;
 	dns_name_t *fname = NULL;
 	dns_name_t *name;
+	dns_dbnode_t *node = NULL;
 	dns_rdataset_t *rdataset = NULL, *sigrdataset = NULL;
+	dns_clientinfomethods_t cm;
+	dns_clientinfo_t ci;
 	isc_buffer_t *dbuf, b;
 	isc_result_t result;
 	unsigned int count;
@@ -8692,10 +8687,22 @@ query_addds(query_ctx_t *qctx) {
 	rdataset = ns_client_newrdataset(client);
 	sigrdataset = ns_client_newrdataset(client);
 
+	name = dns_fixedname_name(&qctx->dsname);
+	dns_clientinfomethods_init(&cm, ns_client_sourceip);
+	dns_clientinfo_init(&ci, client, NULL);
+	if (HAVEECS(client)) {
+		dns_clientinfo_setecs(&ci, &client->inner.ecs);
+	}
+
+	result = dns_db_findnodeext(qctx->db, name, false, &cm, &ci, &node);
+	if (result != ISC_R_SUCCESS) {
+		goto addnsec3;
+	}
+
 	/*
 	 * Look for the DS record, which may or may not be present.
 	 */
-	result = dns_db_findrdataset(qctx->db, qctx->node, qctx->version,
+	result = dns_db_findrdataset(qctx->db, node, qctx->version,
 				     dns_rdatatype_ds, 0, client->inner.now,
 				     rdataset, sigrdataset);
 	/*
@@ -8703,7 +8710,7 @@ query_addds(query_ctx_t *qctx) {
 	 */
 	if (result == ISC_R_NOTFOUND) {
 		result = dns_db_findrdataset(
-			qctx->db, qctx->node, qctx->version, dns_rdatatype_nsec,
+			qctx->db, node, qctx->version, dns_rdatatype_nsec,
 			0, client->inner.now, rdataset, sigrdataset);
 	}
 	if (result != ISC_R_SUCCESS && result != ISC_R_NOTFOUND) {
@@ -8747,7 +8754,6 @@ addnsec3:
 	dns_fixedname_init(&fixed);
 	dns_rdataset_cleanup(rdataset);
 	dns_rdataset_cleanup(sigrdataset);
-	name = dns_fixedname_name(&qctx->dsname);
 	query_findclosestnsec3(name, qctx->db, qctx->version, client, rdataset,
 			       sigrdataset, fname, true,
 			       dns_fixedname_name(&fixed));
@@ -8790,6 +8796,9 @@ cleanup:
 	}
 	if (fname != NULL) {
 		ns_client_releasename(client, &fname);
+	}
+	if (node != NULL) {
+		dns_db_detachnode(&node);
 	}
 }
 
