@@ -8608,16 +8608,17 @@ cleanup:
 static void
 query_addds(query_ctx_t *qctx) {
 	ns_client_t *client = qctx->client;
-	dns_fixedname_t fixed;
+	dns_fixedname_t fixed, foundfixed;
 	dns_name_t *fname = NULL;
+	dns_name_t *foundname = NULL;
 	dns_name_t *name;
-	dns_dbnode_t *node = NULL;
 	dns_rdataset_t *rdataset = NULL, *sigrdataset = NULL;
 	dns_clientinfomethods_t cm;
 	dns_clientinfo_t ci;
 	isc_buffer_t *dbuf, b;
 	isc_result_t result;
 	unsigned int count;
+	unsigned int dboptions = DNS_DBFIND_NOZONECUT | DNS_DBFIND_NOWILD;
 
 	CTRACE(ISC_LOG_DEBUG(3), "query_addds");
 
@@ -8635,32 +8636,31 @@ query_addds(query_ctx_t *qctx) {
 	sigrdataset = ns_client_newrdataset(client);
 
 	name = dns_fixedname_name(&qctx->dsname);
+	foundname = dns_fixedname_initname(&foundfixed);
 	dns_clientinfomethods_init(&cm, ns_client_sourceip);
 	dns_clientinfo_init(&ci, client, NULL);
 	if (HAVEECS(client)) {
 		dns_clientinfo_setecs(&ci, &client->inner.ecs);
 	}
 
-	result = dns_db_findnodeext(qctx->db, name, false, &cm, &ci, &node);
-	if (result != ISC_R_SUCCESS) {
-		goto addnsec3;
-	}
-
 	/*
 	 * Look for the DS record, which may or may not be present.
 	 */
-	result = dns_db_findrdataset(qctx->db, node, qctx->version,
-				     dns_rdatatype_ds, 0, client->inner.now,
-				     rdataset, sigrdataset);
+	result = dns_db_findext(qctx->db, name, qctx->version, dns_rdatatype_ds,
+				dboptions, client->inner.now, foundname, &cm,
+				&ci, rdataset, sigrdataset);
 	/*
 	 * If we didn't find it, look for an NSEC.
 	 */
-	if (result == ISC_R_NOTFOUND) {
-		result = dns_db_findrdataset(
-			qctx->db, node, qctx->version, dns_rdatatype_nsec,
-			0, client->inner.now, rdataset, sigrdataset);
+	if (result == DNS_R_NXRRSET || result == ISC_R_NOTFOUND) {
+		dns_rdataset_cleanup(rdataset);
+		dns_rdataset_cleanup(sigrdataset);
+		result = dns_db_findext(qctx->db, name, qctx->version,
+					dns_rdatatype_nsec, dboptions,
+					client->inner.now, foundname, &cm, &ci,
+					rdataset, sigrdataset);
 	}
-	if (result != ISC_R_SUCCESS && result != ISC_R_NOTFOUND) {
+	if (result != ISC_R_SUCCESS) {
 		goto addnsec3;
 	}
 	if (!dns_rdataset_isassociated(rdataset) ||
@@ -8743,9 +8743,6 @@ cleanup:
 	}
 	if (fname != NULL) {
 		ns_client_releasename(client, &fname);
-	}
-	if (node != NULL) {
-		dns_db_detachnode(&node);
 	}
 }
 
