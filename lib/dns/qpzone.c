@@ -3826,6 +3826,9 @@ found:
 			 *
 			 * Return the delegation.
 			 */
+			if (wild) {
+				foundname->attributes.wildcard = true;
+			}
 			NODE_UNLOCK(nlock, &nlocktype);
 			result = qpzone_setup_delegation(
 				&search, nodep, foundname, rdataset,
@@ -3869,6 +3872,9 @@ found:
 				bindrdataset(search.qpdb, nsecsig,
 					     sigrdataset DNS__DB_FLARG_PASS);
 			}
+		}
+		if (wild) {
+			foundname->attributes.wildcard = true;
 		}
 		goto node_exit;
 	}
@@ -3924,6 +3930,10 @@ found:
 			bindrdataset(search.qpdb, foundsig,
 				     sigrdataset DNS__DB_FLARG_PASS);
 		}
+	}
+
+	if (wild) {
+		foundname->attributes.wildcard = true;
 	}
 
 node_exit:

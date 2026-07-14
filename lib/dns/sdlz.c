@@ -915,6 +915,12 @@ find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 			dns_sdlznode_t *sdlznode = (dns_sdlznode_t *)node;
 
 			dns_name_copy(&sdlznode->name, foundname);
+			if (dns_name_iswildcard(&sdlznode->name) &&
+			    !dns_name_equal(name, &sdlznode->name) &&
+			    dns_name_matcheswildcard(name, &sdlznode->name))
+			{
+				foundname->attributes.wildcard = true;
+			}
 		} else {
 			dns_name_copy(xname, foundname);
 		}

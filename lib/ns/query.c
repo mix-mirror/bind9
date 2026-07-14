@@ -1561,34 +1561,9 @@ query_isduplicate(ns_client_t *client, dns_name_t *name, dns_rdatatype_t type,
 	return false;
 }
 
-static bool
-query_wildcard_result(isc_result_t result) {
-	switch (result) {
-	case ISC_R_SUCCESS:
-	case DNS_R_CNAME:
-	case DNS_R_DNAME:
-	case DNS_R_GLUE:
-	case DNS_R_ZONECUT:
-	case DNS_R_NXRRSET:
-	case DNS_R_EMPTYWILD:
-		return true;
-	default:
-		return false;
-	}
-}
-
-static bool
-query_wildcard_hit(isc_result_t result, const dns_name_t *qname,
-		   const dns_name_t *foundname) {
-	return query_wildcard_result(result) && dns_name_iswildcard(foundname) &&
-	       !dns_name_equal(qname, foundname) &&
-	       dns_name_matcheswildcard(qname, foundname);
-}
-
 static void
-query_fix_wildcardname(isc_result_t result, const dns_name_t *qname,
-		       dns_name_t *fname) {
-	if (query_wildcard_hit(result, qname, fname)) {
+query_fix_wildcardname(const dns_name_t *qname, dns_name_t *fname) {
+	if (fname->attributes.wildcard) {
 		dns_name_copy(qname, fname);
 		fname->attributes.wildcard = true;
 	} else {
@@ -1906,7 +1881,7 @@ found:
 	 */
 	foundname = dns_fixedname_initname(&foundfixed);
 	dns_name_copy(fname, foundname);
-	query_fix_wildcardname(result, name, fname);
+	query_fix_wildcardname(name, fname);
 	ns_client_keepname(client, fname, dbuf);
 
 	/*
@@ -4531,7 +4506,7 @@ redirect(ns_client_t *client, dns_name_t *name, dns_rdataset_t *rdataset,
 	{
 		dns_name_copy(found, foundname);
 	}
-	query_fix_wildcardname(result, client->query.qname, found);
+	query_fix_wildcardname(client->query.qname, found);
 	if (result == DNS_R_NXRRSET || result == DNS_R_NCACHENXRRSET) {
 		dns_rdataset_cleanup(rdataset);
 		dns_rdataset_cleanup(&trdataset);
@@ -4666,7 +4641,7 @@ redirect2(ns_client_t *client, dns_name_t *name, dns_rdataset_t *rdataset,
 	{
 		dns_name_copy(found, foundname);
 	}
-	query_fix_wildcardname(result, redirectname, found);
+	query_fix_wildcardname(redirectname, found);
 	if (result == DNS_R_NXRRSET || result == DNS_R_NCACHENXRRSET) {
 		dns_rdataset_cleanup(rdataset);
 		dns_rdataset_cleanup(&trdataset);
@@ -5622,7 +5597,7 @@ query_lookup(query_ctx_t *qctx) {
 				qctx->sigrdataset);
 
 	found_via_wildcard = qctx_has_foundname(qctx) &&
-			     query_wildcard_hit(result, rpzqname, foundname);
+			     foundname->attributes.wildcard;
 
 	/*
 	 * Keep fname as the name query.c should answer with, while
@@ -8592,6 +8567,7 @@ query_addds(query_ctx_t *qctx) {
 	dns_fixedname_t fixed, foundfixed;
 	dns_name_t *fname = NULL;
 	dns_name_t *foundname = NULL;
+	dns_name_t *lookupname = NULL;
 	dns_name_t *name;
 	dns_rdataset_t *rdataset = NULL, *sigrdataset = NULL;
 	dns_clientinfomethods_t cm;
@@ -8617,6 +8593,7 @@ query_addds(query_ctx_t *qctx) {
 	sigrdataset = ns_client_newrdataset(client);
 
 	name = dns_fixedname_name(&qctx->dsname);
+	lookupname = qctx_has_foundname(qctx) ? qctx_foundname(qctx) : name;
 	foundname = dns_fixedname_initname(&foundfixed);
 	dns_clientinfomethods_init(&cm, ns_client_sourceip);
 	dns_clientinfo_init(&ci, client, NULL);
@@ -8627,16 +8604,16 @@ query_addds(query_ctx_t *qctx) {
 	/*
 	 * Look for the DS record, which may or may not be present.
 	 */
-	result = dns_db_findext(qctx->db, name, qctx->version, dns_rdatatype_ds,
-				dboptions, client->inner.now, foundname, &cm,
-				&ci, rdataset, sigrdataset);
+	result = dns_db_findext(qctx->db, lookupname, qctx->version,
+				dns_rdatatype_ds, dboptions, client->inner.now,
+				foundname, &cm, &ci, rdataset, sigrdataset);
 	/*
 	 * If we didn't find it, look for an NSEC.
 	 */
 	if (result == DNS_R_NXRRSET || result == ISC_R_NOTFOUND) {
 		dns_rdataset_cleanup(rdataset);
 		dns_rdataset_cleanup(sigrdataset);
-		result = dns_db_findext(qctx->db, name, qctx->version,
+		result = dns_db_findext(qctx->db, lookupname, qctx->version,
 					dns_rdatatype_nsec, dboptions,
 					client->inner.now, foundname, &cm, &ci,
 					rdataset, sigrdataset);
