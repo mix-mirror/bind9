@@ -9,6 +9,9 @@ options {
 	dnssec-validation yes;
 
 	max-validations-per-fetch @max_validations_per_fetch@;
+{% if max_recursion_queries is defined %}
+	max-recursion-queries @max_recursion_queries@;
+{% endif %}
 };
 
 {% include "_common/controls.conf.j2" %}
