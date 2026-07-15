@@ -15,6 +15,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 #include <isc/magic.h>
 #include <isc/refcount.h>
@@ -28,11 +29,21 @@
 #define DNS_RPZ_QP_MAGIC	ISC_MAGIC('r', 'p', 'z', 'q')
 #define DNS_RPZ_QP_VALID(table) ISC_MAGIC_VALID(table, DNS_RPZ_QP_MAGIC)
 
+typedef enum nmdatatype {
+	NMDATA_NAME,
+} nmdatatype_t;
+
+/*
+ * The leaf type is stored in the QP leaf's integer value.  The complete,
+ * encoded QP key, including its namespace digit, is stored here so makekey()
+ * does not need the original object used to construct it.
+ */
 typedef struct nmdata {
-	dns_name_t name;
+	dns_rpz_qp_name_data_t data;
 	isc_mem_t *mctx;
 	isc_refcount_t references;
-	dns_rpz_qp_name_data_t data;
+	size_t keylen;
+	dns_qpshift_t key[];
 } nmdata_t;
 
 #ifdef DNS_RPZ_TRACE
@@ -60,20 +71,26 @@ static dns_qpmethods_t qpmethods = {
 };
 
 static nmdata_t *
-new_nmdata(isc_mem_t *mctx, const dns_name_t *name,
+new_nmdata(isc_mem_t *mctx, const dns_qpkey_t key, size_t keylen,
 	   const dns_rpz_qp_name_data_t *data) {
-	nmdata_t *newdata = isc_mem_get(mctx, sizeof(*newdata));
+	nmdata_t *newdata = NULL;
+	size_t size;
+
+	REQUIRE(keylen < sizeof(dns_qpkey_t));
+
+	size = STRUCT_FLEX_SIZE(newdata, key, keylen);
+	newdata = isc_mem_get(mctx, size);
 	*newdata = (nmdata_t){
-		.name = DNS_NAME_INITEMPTY,
-		.references = ISC_REFCOUNT_INITIALIZER(1),
 		.data = *data,
+		.references = ISC_REFCOUNT_INITIALIZER(1),
+		.keylen = keylen,
 	};
-	dns_name_dup(name, mctx, &newdata->name);
 	isc_mem_attach(mctx, &newdata->mctx);
+	memmove(newdata->key, key, keylen);
 
 #ifdef DNS_RPZ_TRACE
 	fprintf(stderr, "new_nmdata:%s:%s:%d:%p->references = 1\n", __func__,
-		__FILE__, __LINE__ + 1, name);
+		__FILE__, __LINE__ + 1, newdata);
 #endif
 
 	return newdata;
@@ -184,21 +201,25 @@ dns__rpz_qp_add_name(dns_rpz_qp_write_t *write, const dns_name_t *name,
 		     const dns_rpz_qp_name_data_t *new_data) {
 	isc_result_t result;
 	nmdata_t *data = NULL;
+	dns_qpkey_t key;
+	size_t keylen;
+	uint32_t type = 0;
 
 	REQUIRE(write != NULL && DNS_RPZ_QP_VALID(write->table));
 	REQUIRE(write->qp != NULL);
 	REQUIRE(name != NULL);
 	REQUIRE(new_data != NULL);
 
-	result = dns_qp_getname(write->qp, name, DNS_DBNAMESPACE_NORMAL,
-				(void **)&data, NULL);
+	keylen = dns_qpkey_fromname(key, name, DNS_DBNAMESPACE_NORMAL);
+	result = dns_qp_getkey(write->qp, key, keylen, (void **)&data, &type);
 	if (result != ISC_R_SUCCESS) {
 		INSIST(data == NULL);
-		data = new_nmdata(write->table->mctx, name, new_data);
-		result = dns_qp_insert(write->qp, data, 0);
+		data = new_nmdata(write->table->mctx, key, keylen, new_data);
+		result = dns_qp_insert(write->qp, data, NMDATA_NAME);
 		nmdata_detach(&data);
 		return result;
 	}
+	INSIST(type == NMDATA_NAME);
 
 	if ((data->data.set.qname & new_data->set.qname) != 0 ||
 	    (data->data.set.ns & new_data->set.ns) != 0 ||
@@ -222,6 +243,9 @@ dns__rpz_qp_delete_name(dns_rpz_qp_write_t *write, const dns_name_t *name,
 	isc_result_t result;
 	nmdata_t *data = NULL;
 	dns_rpz_qp_name_data_t found;
+	dns_qpkey_t key;
+	size_t keylen;
+	uint32_t type = 0;
 
 	REQUIRE(write != NULL && DNS_RPZ_QP_VALID(write->table));
 	REQUIRE(write->qp != NULL);
@@ -230,8 +254,8 @@ dns__rpz_qp_delete_name(dns_rpz_qp_write_t *write, const dns_name_t *name,
 	REQUIRE(existsp != NULL);
 
 	*existsp = false;
-	result = dns_qp_getname(write->qp, name, DNS_DBNAMESPACE_NORMAL,
-				(void **)&data, NULL);
+	keylen = dns_qpkey_fromname(key, name, DNS_DBNAMESPACE_NORMAL);
+	result = dns_qp_getkey(write->qp, key, keylen, (void **)&data, &type);
 	if (result == ISC_R_NOTFOUND) {
 		return ISC_R_SUCCESS;
 	}
@@ -240,6 +264,7 @@ dns__rpz_qp_delete_name(dns_rpz_qp_write_t *write, const dns_name_t *name,
 	}
 
 	INSIST(data != NULL);
+	INSIST(type == NMDATA_NAME);
 	found = *del_data;
 	found.set.qname &= data->data.set.qname;
 	found.set.ns &= data->data.set.ns;
@@ -257,8 +282,7 @@ dns__rpz_qp_delete_name(dns_rpz_qp_write_t *write, const dns_name_t *name,
 	if (data->data.set.qname == 0 && data->data.set.ns == 0 &&
 	    data->data.wild.qname == 0 && data->data.wild.ns == 0)
 	{
-		return dns_qp_deletename(write->qp, name,
-					 DNS_DBNAMESPACE_NORMAL, NULL, NULL);
+		return dns_qp_deletekey(write->qp, key, keylen, NULL, NULL);
 	}
 
 	return ISC_R_SUCCESS;
@@ -279,8 +303,8 @@ dns__rpz_qp_commit(dns_rpz_qp_write_t *write) {
 
 static void
 destroy_nmdata(nmdata_t *data) {
-	dns_name_free(&data->name, data->mctx);
-	isc_mem_putanddetach(&data->mctx, data, sizeof(*data));
+	size_t size = STRUCT_FLEX_SIZE(data, key, data->keylen);
+	isc_mem_putanddetach(&data->mctx, data, size);
 }
 
 #ifdef DNS_RPZ_TRACE
@@ -290,24 +314,28 @@ ISC_REFCOUNT_IMPL(nmdata, destroy_nmdata);
 #endif
 
 static void
-qp_attach(void *uctx ISC_ATTR_UNUSED, void *pval,
-	  uint32_t ival ISC_ATTR_UNUSED) {
+qp_attach(void *uctx ISC_ATTR_UNUSED, void *pval, uint32_t ival) {
 	nmdata_t *data = pval;
+	INSIST(ival == NMDATA_NAME);
 	nmdata_ref(data);
 }
 
 static void
-qp_detach(void *uctx ISC_ATTR_UNUSED, void *pval,
-	  uint32_t ival ISC_ATTR_UNUSED) {
+qp_detach(void *uctx ISC_ATTR_UNUSED, void *pval, uint32_t ival) {
 	nmdata_t *data = pval;
+	INSIST(ival == NMDATA_NAME);
 	nmdata_detach(&data);
 }
 
 static size_t
 qp_makekey(dns_qpkey_t key, void *uctx ISC_ATTR_UNUSED, void *pval,
-	   uint32_t ival ISC_ATTR_UNUSED) {
+	   uint32_t ival) {
 	nmdata_t *data = pval;
-	return dns_qpkey_fromname(key, &data->name, DNS_DBNAMESPACE_NORMAL);
+
+	INSIST(ival == NMDATA_NAME);
+	INSIST(data->keylen < sizeof(dns_qpkey_t));
+	memmove(key, data->key, data->keylen);
+	return data->keylen;
 }
 
 static void
