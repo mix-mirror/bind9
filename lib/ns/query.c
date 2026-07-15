@@ -2129,7 +2129,6 @@ static void
 query_additional(query_ctx_t *qctx, dns_name_t *name,
 		 dns_rdataset_t *rdataset) {
 	ns_client_t *client = qctx->client;
-	isc_result_t result;
 
 	CTRACE(ISC_LOG_DEBUG(3), "query_additional");
 
@@ -2155,11 +2154,9 @@ query_additional(query_ctx_t *qctx, dns_name_t *name,
 		dns_clientinfomethods_init(&cm, ns_client_sourceip);
 		dns_clientinfo_init(&ci, client, NULL);
 
-		result = dns_db_addglue(qctx->db, dbversion->version, name,
-					rdataset, client->message, &cm, &ci);
-		if (result == ISC_R_SUCCESS) {
-			return;
-		}
+		dns_db_addglue(qctx->db, dbversion->version, name, rdataset,
+			       client->message, &cm, &ci);
+		return;
 	}
 
 regular:
@@ -2319,8 +2316,8 @@ query_zone_delegation_rrset(query_ctx_t *qctx, dns_name_t **namep,
 
 	dns_clientinfomethods_init(&cm, ns_client_sourceip);
 	dns_clientinfo_init(&ci, client, NULL);
-	(void)dns_db_addglue(qctx->db, qctx->version, mname, rdataset,
-			     client->message, &cm, &ci);
+	dns_db_addglue(qctx->db, qctx->version, mname, rdataset,
+		       client->message, &cm, &ci);
 
 	CTRACE(ISC_LOG_DEBUG(3), "query_zone_delegation_rrset: done");
 }

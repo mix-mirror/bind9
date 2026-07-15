@@ -152,6 +152,18 @@ dns_db_create(isc_mem_t *mctx, const char *db_type, const dns_name_t *origin,
 		fprintf(stderr, "dns_db_create:%s:%s:%d:%p->references = 1\n",
 			__func__, __FILE__, __LINE__ + 1, *dbp);
 #endif
+
+		if (result == ISC_R_SUCCESS && type != dns_dbtype_cache &&
+		    (*dbp)->methods->addglue == NULL)
+		{
+			isc_log_write(DNS_LOGCATEGORY_DATABASE,
+				      DNS_LOGMODULE_DB, ISC_LOG_ERROR,
+				      "database type '%s' does not implement "
+				      "required addglue method",
+				      db_type);
+			dns_db_detach(dbp);
+			result = ISC_R_NOTIMPLEMENTED;
+		}
 		return result;
 	}
 
@@ -1173,7 +1185,7 @@ dns_db_addglue_generic(dns_db_t *db, dns_dbversion_t *version,
 					  &ctx, 0);
 }
 
-isc_result_t
+void
 dns_db_addglue(dns_db_t *db, dns_dbversion_t *version,
 	       const dns_name_t *owner_name, dns_rdataset_t *rdataset,
 	       dns_message_t *msg, dns_clientinfomethods_t *methods,
@@ -1183,15 +1195,10 @@ dns_db_addglue(dns_db_t *db, dns_dbversion_t *version,
 	REQUIRE(DNS_RDATASET_VALID(rdataset));
 	REQUIRE(rdataset->methods != NULL);
 	REQUIRE(rdataset->type == dns_rdatatype_ns);
+	REQUIRE(db->methods->addglue != NULL);
 
-	if (db->methods->addglue != NULL) {
-		(db->methods->addglue)(db, version, owner_name, rdataset, msg,
-					methods, clientinfo);
-
-		return ISC_R_SUCCESS;
-	}
-
-	return ISC_R_NOTIMPLEMENTED;
+	(db->methods->addglue)(db, version, owner_name, rdataset, msg, methods,
+			       clientinfo);
 }
 
 void

@@ -367,6 +367,7 @@ static dns_dbmethods_t sampledb_methods = {
 	.findnode = findnode,
 	.find = find,
 	.setcachestats = setcachestats,
+	.addglue = dns_db_addglue_generic,
 };
 
 /* Auxiliary driver functions. */
