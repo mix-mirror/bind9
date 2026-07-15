@@ -148,6 +148,7 @@ dns_srcset.add(
         'result.c',
         'rootns.c',
         'rpz.c',
+        'rpz/rpzqp.c',
         'rriterator.c',
         'rrl.c',
         'sdlz.c',

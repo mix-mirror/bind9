@@ -26,7 +26,6 @@
 #include <isc/timer.h>
 
 #include <dns/fixedname.h>
-#include <dns/qp.h>
 #include <dns/rdata.h>
 #include <dns/types.h>
 
@@ -127,6 +126,7 @@ struct dns_rpz_triggers {
  */
 typedef struct dns_rpz_zone  dns_rpz_zone_t;
 typedef struct dns_rpz_zones dns_rpz_zones_t;
+typedef struct dns_rpz_qp    dns_rpz_qp_t;
 
 struct dns_rpz_zone {
 	unsigned int magic;
@@ -268,7 +268,7 @@ struct dns_rpz_zones {
 	atomic_bool shuttingdown;
 
 	dns_rpz_cidr_node_t *cidr;
-	dns_qpmulti_t	    *table;
+	dns_rpz_qp_t	    *table;
 };
 
 /*
