@@ -34,7 +34,9 @@
 #include <dns/callbacks.h>
 #include <dns/clientinfo.h>
 #include <dns/db.h>
+#include <dns/fixedname.h>
 #include <dns/master.h>
+#include <dns/message.h>
 #include <dns/rdata.h>
 #include <dns/rdataclass.h>
 #include <dns/rdataset.h>
@@ -51,6 +53,15 @@ struct dns_dbimplementation {
 	void *driverarg;
 	ISC_LINK(dns_dbimplementation_t) link;
 };
+
+typedef struct dns_db_addglue_ctx {
+	dns_db_t *db;
+	dns_dbversion_t *version;
+	const dns_name_t *owner_name;
+	dns_message_t *msg;
+	dns_clientinfomethods_t *methods;
+	dns_clientinfo_t *clientinfo;
+} dns_db_addglue_ctx_t;
 
 /***
  *** Supported DB Implementations Registry
@@ -1041,10 +1052,132 @@ dns_db_setgluecachestats(dns_db_t *db, isc_stats_t *stats) {
 	return ISC_R_NOTIMPLEMENTED;
 }
 
+static bool
+addglue_addr(dns_db_addglue_ctx_t *ctx, const dns_name_t *name,
+	     dns_rdatatype_t type, dns_name_t *foundname, dns_name_t **mnamep,
+	     bool required) {
+	dns_rdataset_t *rdataset = NULL;
+	dns_rdataset_t *sigrdataset = NULL;
+	isc_result_t result;
+
+	dns_message_gettemprdataset(ctx->msg, &rdataset);
+	dns_message_gettemprdataset(ctx->msg, &sigrdataset);
+
+	result = dns_db_findext(ctx->db, name, ctx->version, type,
+				DNS_DBFIND_GLUEOK, 0, foundname, ctx->methods,
+				ctx->clientinfo, rdataset, sigrdataset);
+
+	if (result != ISC_R_SUCCESS && result != DNS_R_GLUE) {
+		goto cleanup;
+	}
+
+	if (*mnamep == NULL) {
+		dns_message_gettempname(ctx->msg, mnamep);
+		dns_name_copy(foundname, *mnamep);
+	} else {
+		INSIST(dns_name_equal(foundname, *mnamep));
+	}
+
+	if (required) {
+		rdataset->attributes.required = true;
+	}
+
+	ISC_LIST_APPEND((*mnamep)->list, rdataset, link);
+	rdataset = NULL;
+
+	if (dns_rdataset_isassociated(sigrdataset)) {
+		ISC_LIST_APPEND((*mnamep)->list, sigrdataset, link);
+		sigrdataset = NULL;
+	} else {
+		dns_message_puttemprdataset(ctx->msg, &sigrdataset);
+	}
+
+	return true;
+
+cleanup:
+	dns_rdataset_cleanup(rdataset);
+	dns_message_puttemprdataset(ctx->msg, &rdataset);
+	dns_rdataset_cleanup(sigrdataset);
+	dns_message_puttemprdataset(ctx->msg, &sigrdataset);
+
+	return false;
+}
+
+static isc_result_t
+addglue_cb(void *arg, const dns_name_t *name, dns_rdatatype_t qtype,
+	   dns_rdataset_t *unused ISC_ATTR_UNUSED DNS__DB_FLARG) {
+	dns_db_addglue_ctx_t *ctx = arg;
+	dns_fixedname_t fixedname_a;
+	dns_fixedname_t fixedname_aaaa;
+	dns_name_t *foundname_a = NULL;
+	dns_name_t *foundname_aaaa = NULL;
+	dns_name_t *mname = NULL;
+	bool added = false;
+	bool required;
+
+	/*
+	 * NS records ask for address records.  As in query_additional_cb(),
+	 * treat A additional processing as "any address type" processing.
+	 */
+	if (qtype != dns_rdatatype_a) {
+		return ISC_R_SUCCESS;
+	}
+
+	/*
+	 * Keep glue constrained to the zone that owns the NS RRset.
+	 */
+	if (!dns_name_issubdomain(name, dns_db_origin(ctx->db))) {
+		return ISC_R_SUCCESS;
+	}
+
+	foundname_a = dns_fixedname_initname(&fixedname_a);
+	foundname_aaaa = dns_fixedname_initname(&fixedname_aaaa);
+	required = dns_name_issubdomain(name, ctx->owner_name);
+
+	added |= addglue_addr(ctx, name, dns_rdatatype_a, foundname_a, &mname,
+			      required);
+	added |= addglue_addr(ctx, name, dns_rdatatype_aaaa, foundname_aaaa,
+			      &mname, required);
+
+	if (!added) {
+		return ISC_R_SUCCESS;
+	}
+
+	dns_message_addname(ctx->msg, mname, DNS_SECTION_ADDITIONAL);
+
+	if (required) {
+		ISC_LIST_UNLINK(ctx->msg->sections[DNS_SECTION_ADDITIONAL],
+				mname, link);
+		ISC_LIST_PREPEND(ctx->msg->sections[DNS_SECTION_ADDITIONAL],
+				 mname, link);
+	}
+
+	return ISC_R_SUCCESS;
+}
+
+void
+dns_db_addglue_generic(dns_db_t *db, dns_dbversion_t *version,
+		       const dns_name_t *owner_name, dns_rdataset_t *rdataset,
+		       dns_message_t *msg, dns_clientinfomethods_t *methods,
+		       dns_clientinfo_t *clientinfo) {
+	dns_db_addglue_ctx_t ctx = {
+		.db = db,
+		.version = version,
+		.owner_name = owner_name,
+		.msg = msg,
+		.methods = methods,
+		.clientinfo = clientinfo,
+	};
+
+	(void)dns_rdataset_additionaldata(rdataset, owner_name, addglue_cb,
+					  &ctx, 0);
+}
+
 isc_result_t
 dns_db_addglue(dns_db_t *db, dns_dbversion_t *version,
 	       const dns_name_t *owner_name, dns_rdataset_t *rdataset,
-	       dns_message_t *msg) {
+	       dns_message_t *msg, dns_clientinfomethods_t *methods,
+	       dns_clientinfo_t *clientinfo) {
 	REQUIRE(DNS_DB_VALID(db));
 	REQUIRE((db->attributes & DNS_DBATTR_CACHE) == 0);
 	REQUIRE(DNS_RDATASET_VALID(rdataset));
@@ -1052,7 +1185,8 @@ dns_db_addglue(dns_db_t *db, dns_dbversion_t *version,
 	REQUIRE(rdataset->type == dns_rdatatype_ns);
 
 	if (db->methods->addglue != NULL) {
-		(db->methods->addglue)(db, version, owner_name, rdataset, msg);
+		(db->methods->addglue)(db, version, owner_name, rdataset, msg,
+					methods, clientinfo);
 
 		return ISC_R_SUCCESS;
 	}
