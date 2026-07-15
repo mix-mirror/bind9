@@ -182,6 +182,12 @@ struct nmdata {
 	dns_rpz_nm_zbits_t wild;
 };
 
+typedef struct rpz_node rpz_node_t;
+struct rpz_node {
+	dns_name_t name;
+	unsigned char ndata[];
+};
+
 typedef struct rpz_update {
 	dns_rpz_zone_t *rpz;
 	dns_db_t *db;
@@ -1506,7 +1512,7 @@ dns_rpz_new_zone(dns_rpz_zones_t *rpzs, dns_rpz_zone_t **rpzp) {
 	 * simplifies update_from_db().
 	 */
 
-	isc_ht_init(&rpz->nodes, rpzs->mctx, 1, ISC_HT_CASE_SENSITIVE);
+	isc_hashmap_create(rpzs->mctx, 1, &rpz->nodes);
 
 	dns_name_init(&rpz->origin);
 	dns_name_init(&rpz->client_ip);
@@ -1699,9 +1705,111 @@ update_rpz_done_cb(void *data, isc_result_t result) {
 	dns_rpz_zones_unref(rpz->rpzs);
 }
 
+static rpz_node_t *
+rpz_node_new(isc_mem_t *mctx, const dns_name_t *name) {
+	rpz_node_t *node = NULL;
+	isc_region_t region;
+
+	node = isc_mem_get(mctx, STRUCT_FLEX_SIZE(node, ndata, name->length));
+	dns_name_init(&node->name);
+
+	if (name->length != 0) {
+		memmove(node->ndata, name->ndata, name->length);
+	}
+
+	region = (isc_region_t){
+		.base = node->ndata,
+		.length = name->length,
+	};
+	dns_name_fromregion(&node->name, &region);
+
+	return node;
+}
+
+static void
+rpz_node_free(isc_mem_t *mctx, rpz_node_t *node) {
+	isc_mem_put(mctx, node,
+		    STRUCT_FLEX_SIZE(node, ndata, node->name.length));
+}
+
+static bool
+rpz_node_match(void *value, const void *key) {
+	rpz_node_t *node = value;
+	const dns_name_t *name = key;
+
+	return dns_name_equal(&node->name, name);
+}
+
+static isc_result_t
+rpz_nodes_add(isc_hashmap_t *nodes, isc_mem_t *mctx, const dns_name_t *name) {
+	rpz_node_t *node = NULL;
+	isc_result_t result;
+
+	node = rpz_node_new(mctx, name);
+	result = isc_hashmap_add(nodes, dns_name_hash(name), rpz_node_match,
+				 &node->name, node, NULL);
+	if (result != ISC_R_SUCCESS) {
+		rpz_node_free(mctx, node);
+	}
+
+	return result;
+}
+
+static isc_result_t
+rpz_nodes_delete(isc_hashmap_t *nodes, isc_mem_t *mctx,
+		 const dns_name_t *name) {
+	isc_result_t result;
+	uint32_t hash = dns_name_hash(name);
+	void *value = NULL;
+
+	result = isc_hashmap_find(nodes, hash, rpz_node_match, name, &value);
+	if (result != ISC_R_SUCCESS) {
+		return result;
+	}
+
+	result = isc_hashmap_delete(nodes, hash, rpz_node_match, name);
+	if (result == ISC_R_SUCCESS) {
+		rpz_node_free(mctx, value);
+	}
+
+	return result;
+}
+
+static void
+rpz_nodes_clear(isc_hashmap_t *nodes, isc_mem_t *mctx) {
+	isc_hashmap_iter_t *iter = NULL;
+	isc_result_t result;
+
+	isc_hashmap_iter_create(nodes, &iter);
+	for (result = isc_hashmap_iter_first(iter); result == ISC_R_SUCCESS;) {
+		void *value = NULL;
+		rpz_node_t *node = NULL;
+
+		isc_hashmap_iter_current(iter, &value);
+		node = value;
+
+		result = isc_hashmap_iter_delcurrent_next(iter);
+		rpz_node_free(mctx, node);
+	}
+	INSIST(result == ISC_R_NOMORE);
+	isc_hashmap_iter_destroy(&iter);
+}
+
+static void
+rpz_nodes_destroy(isc_hashmap_t **nodesp, isc_mem_t *mctx) {
+	REQUIRE(nodesp != NULL);
+
+	if (*nodesp == NULL) {
+		return;
+	}
+
+	rpz_nodes_clear(*nodesp, mctx);
+	isc_hashmap_destroy(nodesp);
+}
+
 static isc_result_t
 update_nodes(dns_rpz_zone_t *rpz, dns_db_t *db, dns_dbversion_t *dbversion,
-	     isc_ht_t *newnodes) {
+	     isc_hashmap_t *newnodes) {
 	isc_result_t result;
 	dns_dbiterator_t *updbit = NULL;
 	dns_name_t *name = NULL;
@@ -1791,19 +1899,20 @@ update_nodes(dns_rpz_zone_t *rpz, dns_db_t *db, dns_dbversion_t *dbversion,
 		dns_name_downcase(name, name);
 
 		/* Add entry to the new nodes table */
-		result = isc_ht_add(newnodes, name->ndata, name->length, rpz);
+		result = rpz_nodes_add(newnodes, rpz->rpzs->mctx, name);
 		if (result != ISC_R_SUCCESS) {
 			dns_name_format(name, namebuf, sizeof(namebuf));
 			isc_log_write(DNS_LOGCATEGORY_GENERAL,
 				      DNS_LOGMODULE_RPZ, ISC_LOG_ERROR,
-				      "rpz: %s, adding node %s to HT error %s",
+				      "rpz: %s, adding node %s to hashmap "
+				      "error %s",
 				      domain, namebuf,
 				      isc_result_totext(result));
 			goto next;
 		}
 
 		/* Does the entry exist in the old nodes table? */
-		result = isc_ht_delete(rpz->nodes, name->ndata, name->length);
+		result = rpz_nodes_delete(rpz->nodes, rpz->rpzs->mctx, name);
 		if (result == ISC_R_SUCCESS) { /* found */
 			goto next;
 		}
@@ -1852,41 +1961,35 @@ cleanup:
 static isc_result_t
 cleanup_nodes(dns_rpz_zone_t *rpz) {
 	isc_result_t result;
-	isc_ht_iter_t *iter = NULL;
-	dns_name_t *name = NULL;
-	dns_fixedname_t fixname;
+	isc_hashmap_iter_t *iter = NULL;
 
-	name = dns_fixedname_initname(&fixname);
+	isc_hashmap_iter_create(rpz->nodes, &iter);
 
-	isc_ht_iter_create(rpz->nodes, &iter);
-
-	for (result = isc_ht_iter_first(iter); result == ISC_R_SUCCESS;
-	     result = isc_ht_iter_delcurrent_next(iter))
-	{
-		isc_region_t region;
-		unsigned char *key = NULL;
-		size_t keysize;
+	for (result = isc_hashmap_iter_first(iter); result == ISC_R_SUCCESS;) {
+		void *value = NULL;
+		rpz_node_t *node = NULL;
 
 		result = dns__rpz_shuttingdown(rpz->rpzs);
 		if (result != ISC_R_SUCCESS) {
 			break;
 		}
 
-		isc_ht_iter_currentkey(iter, &key, &keysize);
-		region.base = key;
-		region.length = (unsigned int)keysize;
-		dns_name_fromregion(name, &region);
+		isc_hashmap_iter_current(iter, &value);
+		node = value;
 
 		LOCK(&rpz->rpzs->data_lock);
-		rpz_del(rpz, name);
+		rpz_del(rpz, &node->name);
 		UNLOCK(&rpz->rpzs->data_lock);
+
+		result = isc_hashmap_iter_delcurrent_next(iter);
+		rpz_node_free(rpz->rpzs->mctx, node);
 	}
 	INSIST(result != ISC_R_SUCCESS);
 	if (result == ISC_R_NOMORE) {
 		result = ISC_R_SUCCESS;
 	}
 
-	isc_ht_iter_destroy(&iter);
+	isc_hashmap_iter_destroy(&iter);
 
 	return result;
 }
@@ -1905,13 +2008,13 @@ update_rpz_cb(void *data) {
 	rpz_update_t *update = data;
 	dns_rpz_zone_t *rpz = update->rpz;
 	isc_result_t result = ISC_R_SUCCESS;
-	isc_ht_t *newnodes = NULL;
+	isc_hashmap_t *newnodes = NULL;
 
 	REQUIRE(rpz->nodes != NULL);
 
 	RETERR(dns__rpz_shuttingdown(rpz->rpzs));
 
-	isc_ht_init(&newnodes, rpz->rpzs->mctx, 1, ISC_HT_CASE_SENSITIVE);
+	isc_hashmap_create(rpz->rpzs->mctx, 1, &newnodes);
 
 	CHECK(update_nodes(rpz, update->db, update->dbversion, newnodes));
 
@@ -1921,7 +2024,7 @@ update_rpz_cb(void *data) {
 	ISC_SWAP(rpz->nodes, newnodes);
 
 cleanup:
-	isc_ht_destroy(&newnodes);
+	rpz_nodes_destroy(&newnodes, rpz->rpzs->mctx);
 
 	return result;
 }
@@ -2062,7 +2165,7 @@ dns_rpz_zone_destroy(dns_rpz_zone_t **rpzp) {
 	}
 	INSIST(!rpz->updaterunning);
 
-	isc_ht_destroy(&rpz->nodes);
+	rpz_nodes_destroy(&rpz->nodes, rpzs->mctx);
 	isc_mutex_destroy(&rpz->update_lock);
 
 	isc_mem_put(rpzs->mctx, rpz, sizeof(*rpz));

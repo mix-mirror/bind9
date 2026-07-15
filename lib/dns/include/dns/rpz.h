@@ -19,7 +19,7 @@
 #include <stdbool.h>
 
 #include <isc/atomic.h>
-#include <isc/ht.h>
+#include <isc/hashmap.h>
 #include <isc/refcount.h>
 #include <isc/rwlock.h>
 #include <isc/time.h>
@@ -151,7 +151,7 @@ struct dns_rpz_zone {
 
 	uint32_t min_update_interval;	/* minimal interval between
 					 * updates */
-	isc_ht_t	*nodes;		/* entries in zone */
+	isc_hashmap_t	*nodes;		/* entries in zone */
 	dns_rpz_zones_t *rpzs;		/* owner */
 	isc_time_t	 lastupdated;	/* last time the zone was processed
 					 * */
