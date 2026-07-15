@@ -6300,14 +6300,8 @@ query_hookresume(void *arg) {
 		case NS_QUERY_NOTFOUND_BEGIN:
 			(void)query_notfound(qctx);
 			break;
-		case NS_QUERY_PREP_DELEGATION_BEGIN:
-			(void)query_prepare_delegation_response(qctx);
-			break;
 		case NS_QUERY_ZONE_DELEGATION_BEGIN:
 			(void)query_zone_delegation(qctx);
-			break;
-		case NS_QUERY_DELEGATION_BEGIN:
-			(void)query_delegation(qctx);
 			break;
 		case NS_QUERY_DELEGATION_RECURSE_BEGIN:
 			(void)query_delegation_recurse(qctx);
@@ -8124,11 +8118,8 @@ cleanup:
  */
 static isc_result_t
 query_prepare_delegation_response(query_ctx_t *qctx) {
-	isc_result_t result = ISC_R_UNSET;
 	dns_rdataset_t **sigrdatasetp = NULL;
 	bool detach = false;
-
-	CALL_HOOK(NS_QUERY_PREP_DELEGATION_BEGIN, qctx);
 
 	/*
 	 * qctx->fname could be released in query_addrrset(), so save a copy of
@@ -8167,9 +8158,6 @@ query_prepare_delegation_response(query_ctx_t *qctx) {
 	query_addds(qctx);
 
 	return ns_query_done(qctx);
-
-cleanup:
-	return result;
 }
 
 /*%
@@ -8295,8 +8283,6 @@ query_delegation(query_ctx_t *qctx) {
 
 	CCTRACE(ISC_LOG_DEBUG(3), "query_delegation");
 
-	CALL_HOOK(NS_QUERY_DELEGATION_BEGIN, qctx);
-
 	qctx->authoritative = false;
 
 	if (qctx->is_zone) {
@@ -8353,9 +8339,6 @@ query_delegation(query_ctx_t *qctx) {
 	}
 
 	return query_prepare_delegation_response(qctx);
-
-cleanup:
-	return result;
 }
 
 /*%
