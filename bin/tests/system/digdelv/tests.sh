@@ -1402,6 +1402,7 @@ if [ -x "$DIG" ]; then
 
   n=$((n + 1))
   echo_i "check that dig +noedns +ednsflags=<nonzero> re-enables EDNS ($n)"
+  ret=0
   dig_with_opts @10.53.0.3 +qr +noedns +ednsflags=0x70 a.example >dig.out.test$n 2>&1 || ret=1
   grep "; EDNS: version: 0, flags:; MBZ: 0x0070, udp: 1232" dig.out.test$n >/dev/null || ret=1
   grep "; EDNS: version: 0, flags:; udp: 1232" dig.out.test$n >/dev/null || ret=1
@@ -1410,6 +1411,7 @@ if [ -x "$DIG" ]; then
 
   n=$((n + 1))
   echo_i "check that dig +showbadvers works ($n)"
+  ret=0
   dig_with_opts @10.53.0.3 +edns=1 +qr +showbadvers a.example >dig.out.test$n 2>&1 || ret=1
   grep "; EDNS: version: 1, flags:; udp: 1232" dig.out.test$n >/dev/null || ret=1
   grep "; EDNS: version: 0, flags:; udp: 1232" dig.out.test$n >/dev/null || ret=1
@@ -1420,6 +1422,7 @@ if [ -x "$DIG" ]; then
 
   n=$((n + 1))
   echo_i "check that dig +showtruncated works ($n)"
+  ret=0
   dig_with_opts @10.53.0.2 +qr +showtruncated truncated.example TXT >dig.out.test$n 2>&1 || ret=1
   grep 'flags:[^;]* tc[ ;].*ANSWER: 0' dig.out.test$n >/dev/null || ret=1
   grep 'ANSWER: 100,' dig.out.test$n >/dev/null || ret=1
