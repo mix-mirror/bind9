@@ -284,7 +284,7 @@ if [ -x "$DIG" ]; then
     echo_i "checking dig +coflag +yaml works ($n)"
     ret=0
     dig_with_opts +yaml +tcp @10.53.0.3 +coflag +qr example >dig.out.test$n || ret=1
-    $PYTHON yamlget.py dig.out.test$n 0 message query_message_data OPT_PSEUDOSECTION EDNS flags >yamlget.out.test$n 2>&1 || ret=1
+    $PYTHON yamlget.py dig.out.test$n 0 message query_message_data OPT_PSEUDOSECTION EDNS flags 0 >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
     [ "$value" = "co" ] || ret=1
     if [ $ret -ne 0 ]; then echo_i "failed"; fi

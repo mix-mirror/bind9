@@ -3603,6 +3603,36 @@ cleanup:
 	return result;
 }
 
+typedef struct message_flag {
+	uint32_t bit;
+	const char *name;
+} message_flag_t;
+
+/*
+ * Render the flag bits set in 'value' as a YAML flow sequence, e.g.
+ * "[qr, rd, ra]".  If no bits are set, an empty sequence "[]" is rendered.
+ * This keeps the flags parseable as a YAML list rather than a single
+ * space-separated string.
+ */
+static isc_result_t
+message_flagstoyaml(isc_buffer_t *target, uint32_t value,
+		    const message_flag_t *flags, size_t nflags) {
+	isc_result_t result = ISC_R_SUCCESS;
+	const char *sep = "";
+
+	ADD_STRING(target, "[");
+	for (size_t i = 0; i < nflags; i++) {
+		if ((value & flags[i].bit) != 0) {
+			ADD_STRING(target, sep);
+			ADD_STRING(target, flags[i].name);
+			sep = ", ";
+		}
+	}
+	ADD_STRING(target, "]");
+cleanup:
+	return result;
+}
+
 static isc_result_t
 dns_message_pseudosectiontoyaml(dns_message_t *msg, dns_pseudosection_t section,
 				const dns_master_style_t *style,
@@ -3649,13 +3679,13 @@ dns_message_pseudosectiontoyaml(dns_message_t *msg, dns_pseudosection_t section,
 		ADD_STRING(target, buf);
 		ADD_STRING(target, "\n");
 		INDENT(style);
-		ADD_STRING(target, "flags:");
-		if ((ps->ttl & DNS_MESSAGEEXTFLAG_DO) != 0) {
-			ADD_STRING(target, " do");
-		}
-		if ((ps->ttl & DNS_MESSAGEEXTFLAG_CO) != 0) {
-			ADD_STRING(target, " co");
-		}
+		ADD_STRING(target, "flags: ");
+		static const message_flag_t ednsflags[] = {
+			{ DNS_MESSAGEEXTFLAG_DO, "do" },
+			{ DNS_MESSAGEEXTFLAG_CO, "co" },
+		};
+		CHECK(message_flagstoyaml(target, ps->ttl, ednsflags,
+					  ARRAY_SIZE(ednsflags)));
 		ADD_STRING(target, "\n");
 		mbz = ps->ttl & 0xffff;
 		/* Exclude Known Flags. */
@@ -4471,28 +4501,18 @@ dns_message_headertotext(dns_message_t *msg, const dns_master_style_t *style,
 		ADD_STRING(target, buf);
 		ADD_STRING(target, "\n");
 		INDENT(style);
-		ADD_STRING(target, "flags:");
-		if ((msg->flags & DNS_MESSAGEFLAG_QR) != 0) {
-			ADD_STRING(target, " qr");
-		}
-		if ((msg->flags & DNS_MESSAGEFLAG_AA) != 0) {
-			ADD_STRING(target, " aa");
-		}
-		if ((msg->flags & DNS_MESSAGEFLAG_TC) != 0) {
-			ADD_STRING(target, " tc");
-		}
-		if ((msg->flags & DNS_MESSAGEFLAG_RD) != 0) {
-			ADD_STRING(target, " rd");
-		}
-		if ((msg->flags & DNS_MESSAGEFLAG_RA) != 0) {
-			ADD_STRING(target, " ra");
-		}
-		if ((msg->flags & DNS_MESSAGEFLAG_AD) != 0) {
-			ADD_STRING(target, " ad");
-		}
-		if ((msg->flags & DNS_MESSAGEFLAG_CD) != 0) {
-			ADD_STRING(target, " cd");
-		}
+		ADD_STRING(target, "flags: ");
+		static const message_flag_t headerflags[] = {
+			{ DNS_MESSAGEFLAG_QR, "qr" },
+			{ DNS_MESSAGEFLAG_AA, "aa" },
+			{ DNS_MESSAGEFLAG_TC, "tc" },
+			{ DNS_MESSAGEFLAG_RD, "rd" },
+			{ DNS_MESSAGEFLAG_RA, "ra" },
+			{ DNS_MESSAGEFLAG_AD, "ad" },
+			{ DNS_MESSAGEFLAG_CD, "cd" },
+		};
+		CHECK(message_flagstoyaml(target, msg->flags, headerflags,
+					  ARRAY_SIZE(headerflags)));
 		ADD_STRING(target, "\n");
 		/*
 		 * The final unnamed flag must be zero.
