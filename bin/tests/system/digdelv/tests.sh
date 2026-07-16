@@ -1855,6 +1855,17 @@ if [ -x "$DELV" ]; then
     $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 0 rdata >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
     [ "$value" = ';-$NXDOMAIN' ] || ret=1
+    # The records summarising the negative response carry no TTL or class.
+    # The rdata of an RRSIG summary is elided, leaving the covered type.
+    $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 1 name >yamlget.out.test$n 2>&1 || ret=1
+    read -r value <yamlget.out.test$n
+    [ "$value" = "ns2.example." ] || ret=1
+    $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 1 rrtype >yamlget.out.test$n 2>&1 || ret=1
+    read -r value <yamlget.out.test$n
+    [ "$value" = "RRSIG" ] || ret=1
+    $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 1 rdata >yamlget.out.test$n 2>&1 || ret=1
+    read -r value <yamlget.out.test$n
+    [ "$value" = "NSEC ..." ] || ret=1
     if [ $ret -ne 0 ]; then echo_i "failed"; fi
     status=$((status + ret))
   fi

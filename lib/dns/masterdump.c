@@ -557,59 +557,83 @@ yaml_stringify(isc_buffer_t *target, char *start) {
 	return ISC_R_SUCCESS;
 }
 
+/*
+ * Render one record of a negative cache summary.  This is kept separate
+ * from ncache_summary() because the YAML_* macros return on error, which
+ * would bypass that function's cleanup of the rdataset it owns.
+ */
+static isc_result_t
+ncache_summary_entry(const dns_name_t *name, dns_rdataset_t *rds,
+		     bool omit_final_dot, dns_totext_ctx_t *ctx,
+		     isc_buffer_t *target) {
+	isc_result_t result;
+	char *yamlstart = NULL;
+	bool yamlfirst = true;
+	bool yaml = (ctx->style.flags & DNS_STYLEFLAG_YAML) != 0;
+	unsigned int i;
+
+	if ((ctx->style.flags & DNS_STYLEFLAG_INDENT) != 0 || yaml) {
+		for (i = 0; i < ctx->indent.count; i++) {
+			RETERR(str_totext(ctx->indent.string, target));
+		}
+	}
+
+	YAML_MAP_BEGIN();
+	if (!yaml) {
+		RETERR(str_totext("; ", target));
+	}
+
+	YAML_KEY("name");
+	YAML_STR_BEGIN();
+	RETERR(dns_name_totext(name, omit_final_dot ? DNS_NAME_OMITFINALDOT : 0,
+			       target));
+	YAML_STR_END();
+
+	YAML_KEY("rrtype");
+	if (!yaml) {
+		RETERR(str_totext(" ", target));
+	}
+	RETERR(dns_rdatatype_totext(rds->type, target));
+
+	/*
+	 * An RRSIG summary names the covered type in place of the rdata,
+	 * which is elided.
+	 */
+	YAML_KEY("rdata");
+	if (!yaml) {
+		RETERR(str_totext(" ", target));
+	}
+	YAML_STR_BEGIN();
+	if (rds->type == dns_rdatatype_rrsig) {
+		RETERR(dns_rdatatype_totext(rds->covers, target));
+		RETERR(str_totext(" ...", target));
+	} else {
+		dns_rdata_t rdata = DNS_RDATA_INIT;
+		dns_rdataset_current(rds, &rdata);
+		RETERR(dns_rdata_tofmttext(&rdata, dns_rootname, 0, 0, 0, " ",
+					   target));
+	}
+	YAML_STR_END();
+	YAML_MAP_END();
+	RETERR(str_totext("\n", target));
+
+	return ISC_R_SUCCESS;
+}
+
 static isc_result_t
 ncache_summary(dns_rdataset_t *rdataset, bool omit_final_dot,
 	       dns_totext_ctx_t *ctx, isc_buffer_t *target) {
 	isc_result_t result = ISC_R_SUCCESS;
 	dns_rdataset_t rds = DNS_RDATASET_INIT;
 	dns_name_t name;
-	char *start = NULL;
 
 	dns_name_init(&name);
 
 	do {
 		dns_ncache_current(rdataset, &name, &rds);
 		DNS_RDATASET_FOREACH(&rds) {
-			if ((ctx->style.flags & DNS_STYLEFLAG_INDENT) != 0 ||
-			    (ctx->style.flags & DNS_STYLEFLAG_YAML) != 0)
-			{
-				unsigned int i;
-				for (i = 0; i < ctx->indent.count; i++) {
-					CHECK(str_totext(ctx->indent.string,
-							 target));
-				}
-			}
-
-			if ((ctx->style.flags & DNS_STYLEFLAG_YAML) != 0) {
-				CHECK(str_totext("- '", target));
-				start = isc_buffer_used(target);
-			} else {
-				CHECK(str_totext("; ", target));
-			}
-
-			CHECK(dns_name_totext(
-				&name,
-				omit_final_dot ? DNS_NAME_OMITFINALDOT : 0,
-				target));
-			CHECK(str_totext(" ", target));
-			CHECK(dns_rdatatype_totext(rds.type, target));
-			if (rds.type == dns_rdatatype_rrsig) {
-				CHECK(str_totext(" ", target));
-				CHECK(dns_rdatatype_totext(rds.covers, target));
-				CHECK(str_totext(" ...", target));
-			} else {
-				dns_rdata_t rdata = DNS_RDATA_INIT;
-				dns_rdataset_current(&rds, &rdata);
-				CHECK(str_totext(" ", target));
-				CHECK(dns_rdata_tofmttext(&rdata, dns_rootname,
-							  0, 0, 0, " ",
-							  target));
-			}
-			if (start != NULL) {
-				RETERR(yaml_stringify(target, start));
-				CHECK(str_totext("\'", target));
-			}
-			CHECK(str_totext("\n", target));
+			CHECK(ncache_summary_entry(&name, &rds, omit_final_dot,
+						   ctx, target));
 		}
 		dns_rdataset_disassociate(&rds);
 		result = dns_rdataset_next(rdataset);
