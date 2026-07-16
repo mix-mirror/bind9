@@ -1214,9 +1214,15 @@ if [ -x "$DIG" ]; then
     $PYTHON yamlget.py dig.out.test$n 1 message response_message_data status >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
     [ "$value" = "NOERROR" ] || ret=1
-    $PYTHON yamlget.py dig.out.test$n 1 message response_message_data QUESTION_SECTION 0 >yamlget.out.test$n 2>&1 || ret=1
+    $PYTHON yamlget.py dig.out.test$n 1 message response_message_data QUESTION_SECTION 0 name >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
-    [ "$value" = "ns2.example. IN ANY" ] || ret=1
+    [ "$value" = "ns2.example." ] || ret=1
+    $PYTHON yamlget.py dig.out.test$n 1 message response_message_data QUESTION_SECTION 0 class >yamlget.out.test$n 2>&1 || ret=1
+    read -r value <yamlget.out.test$n
+    [ "$value" = "IN" ] || ret=1
+    $PYTHON yamlget.py dig.out.test$n 1 message response_message_data QUESTION_SECTION 0 rrtype >yamlget.out.test$n 2>&1 || ret=1
+    read -r value <yamlget.out.test$n
+    [ "$value" = "ANY" ] || ret=1
     if [ $ret -ne 0 ]; then echo_i "failed"; fi
     status=$((status + ret))
 
@@ -1224,9 +1230,18 @@ if [ -x "$DIG" ]; then
     echo_i "check dig +yaml output of an IPv6 address ending in zeroes ($n)"
     ret=0
     dig_with_opts +qr +yaml @10.53.0.3 aaaa d.example >dig.out.test$n 2>&1 || ret=1
-    $PYTHON yamlget.py dig.out.test$n 1 message response_message_data ANSWER_SECTION 0 >yamlget.out.test$n 2>&1 || ret=1
+    $PYTHON yamlget.py dig.out.test$n 1 message response_message_data ANSWER_SECTION 0 name >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
-    [ "$value" = "d.example. 300 IN AAAA fd92:7065:b8e:ffff::0" ] || ret=1
+    [ "$value" = "d.example." ] || ret=1
+    $PYTHON yamlget.py dig.out.test$n 1 message response_message_data ANSWER_SECTION 0 class >yamlget.out.test$n 2>&1 || ret=1
+    read -r value <yamlget.out.test$n
+    [ "$value" = "IN" ] || ret=1
+    $PYTHON yamlget.py dig.out.test$n 1 message response_message_data ANSWER_SECTION 0 rrtype >yamlget.out.test$n 2>&1 || ret=1
+    read -r value <yamlget.out.test$n
+    [ "$value" = "AAAA" ] || ret=1
+    $PYTHON yamlget.py dig.out.test$n 1 message response_message_data ANSWER_SECTION 0 rdata >yamlget.out.test$n 2>&1 || ret=1
+    read -r value <yamlget.out.test$n
+    [ "$value" = "fd92:7065:b8e:ffff::0" ] || ret=1
     if [ $ret -ne 0 ]; then echo_i "failed"; fi
     status=$((status + ret))
   fi
@@ -1381,7 +1396,7 @@ if [ -x "$DIG" ]; then
   echo_i "check that dig handles printing query information with +qr and +y when multiple queries are involved (including a failed query) ($n)"
   ret=0
   dig_with_opts +timeout=1 +qr +y @127.0.0.1 @10.53.0.3 a.example >dig.out.test$n 2>&1 || ret=1
-  grep -F "IN A 10.0.0.1" dig.out.test$n >/dev/null || ret=1
+  grep -F "class: IN, rrtype: A, rdata: '10.0.0.1'" dig.out.test$n >/dev/null || ret=1
   if [ $ret -ne 0 ]; then echo_i "failed"; fi
   status=$((status + ret))
 
@@ -1484,9 +1499,15 @@ if [ -x "$MDIG" ]; then
     $PYTHON yamlget.py dig.out.test$n 0 message response_message_data status >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
     [ "$value" = "NOERROR" ] || ret=1
-    $PYTHON yamlget.py dig.out.test$n 0 message response_message_data QUESTION_SECTION 0 >yamlget.out.test$n 2>&1 || ret=1
+    $PYTHON yamlget.py dig.out.test$n 0 message response_message_data QUESTION_SECTION 0 name >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
-    [ "$value" = "ns2.example. IN ANY" ] || ret=1
+    [ "$value" = "ns2.example." ] || ret=1
+    $PYTHON yamlget.py dig.out.test$n 0 message response_message_data QUESTION_SECTION 0 class >yamlget.out.test$n 2>&1 || ret=1
+    read -r value <yamlget.out.test$n
+    [ "$value" = "IN" ] || ret=1
+    $PYTHON yamlget.py dig.out.test$n 0 message response_message_data QUESTION_SECTION 0 rrtype >yamlget.out.test$n 2>&1 || ret=1
+    read -r value <yamlget.out.test$n
+    [ "$value" = "ANY" ] || ret=1
     if [ $ret -ne 0 ]; then echo_i "failed"; fi
     status=$((status + ret))
   fi
@@ -1767,10 +1788,20 @@ if [ -x "$DELV" ]; then
     $PYTHON yamlget.py delv.out.test$n query_name >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
     [ "$value" = "ns2.example" ] || ret=1
-    $PYTHON yamlget.py delv.out.test$n records 0 answer_not_validated 0 >yamlget.out.test$n 2>&1 || ret=1
+    $PYTHON yamlget.py delv.out.test$n records 0 answer_not_validated 0 name >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
-    count=$(echo $value | wc -w)
-    [ ${count:-0} -eq 5 ] || ret=1
+    [ "$value" = "ns2.example." ] || ret=1
+    $PYTHON yamlget.py delv.out.test$n records 0 answer_not_validated 0 class >yamlget.out.test$n 2>&1 || ret=1
+    read -r value <yamlget.out.test$n
+    [ "$value" = "IN" ] || ret=1
+    # An ANY response may contain the records in any order, so only check
+    # that the remaining fields are present.
+    $PYTHON yamlget.py delv.out.test$n records 0 answer_not_validated 0 rrtype >yamlget.out.test$n 2>&1 || ret=1
+    read -r value <yamlget.out.test$n
+    [ -n "$value" ] || ret=1
+    $PYTHON yamlget.py delv.out.test$n records 0 answer_not_validated 0 rdata >yamlget.out.test$n 2>&1 || ret=1
+    read -r value <yamlget.out.test$n
+    [ -n "$value" ] || ret=1
     if [ $ret -ne 0 ]; then echo_i "failed"; fi
     status=$((status + ret))
 
@@ -1784,10 +1815,18 @@ if [ -x "$DELV" ]; then
     $PYTHON yamlget.py delv.out.test$n query_name >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
     [ "$value" = "ns2.example" ] || ret=1
-    $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 0 >yamlget.out.test$n 2>&1 || ret=1
+    $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 0 name >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
-    count=$(echo $value | wc -w)
-    [ ${count:-0} -eq 5 ] || ret=1
+    [ "$value" = "ns2.example." ] || ret=1
+    $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 0 class >yamlget.out.test$n 2>&1 || ret=1
+    read -r value <yamlget.out.test$n
+    [ "$value" = "IN" ] || ret=1
+    $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 0 rrtype >yamlget.out.test$n 2>&1 || ret=1
+    read -r value <yamlget.out.test$n
+    [ "$value" = '\-TYPE500' ] || ret=1
+    $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 0 rdata >yamlget.out.test$n 2>&1 || ret=1
+    read -r value <yamlget.out.test$n
+    [ "$value" = ';-$NXRRSET' ] || ret=1
     if [ $ret -ne 0 ]; then echo_i "failed"; fi
     status=$((status + ret))
 
@@ -1801,10 +1840,18 @@ if [ -x "$DELV" ]; then
     $PYTHON yamlget.py delv.out.test$n query_name >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
     [ "$value" = "this-does-not-exist.ns2.example" ] || ret=1
-    $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 0 >yamlget.out.test$n 2>&1 || ret=1
+    $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 0 name >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
-    count=$(echo $value | wc -w)
-    [ ${count:-0} -eq 5 ] || ret=1
+    [ "$value" = "this-does-not-exist.ns2.example." ] || ret=1
+    $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 0 class >yamlget.out.test$n 2>&1 || ret=1
+    read -r value <yamlget.out.test$n
+    [ "$value" = "IN" ] || ret=1
+    $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 0 rrtype >yamlget.out.test$n 2>&1 || ret=1
+    read -r value <yamlget.out.test$n
+    [ "$value" = '\-ANY' ] || ret=1
+    $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 0 rdata >yamlget.out.test$n 2>&1 || ret=1
+    read -r value <yamlget.out.test$n
+    [ "$value" = ';-$NXDOMAIN' ] || ret=1
     if [ $ret -ne 0 ]; then echo_i "failed"; fi
     status=$((status + ret))
   fi
@@ -1908,12 +1955,24 @@ if [ $HAS_PYYAML -ne 0 ]; then
     echo_i "check yaml special '${yaml}.example' ($n)"
     ret=0
     dig_with_opts @10.53.0.3 +yaml "${qname}.example" TXT +qr >dig.out.test$n 2>&1 || ret=1
-    $PYTHON yamlget.py dig.out.test$n 0 message query_message_data QUESTION_SECTION 0 >yamlget.out.test$n 2>&1 || ret=1
+    $PYTHON yamlget.py dig.out.test$n 0 message query_message_data QUESTION_SECTION 0 name >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
-    [ "$value" = "${qname}.example. IN TXT" ] || ret=1
-    $PYTHON yamlget.py dig.out.test$n 1 message response_message_data ANSWER_SECTION 0 >yamlget.out.test$n 2>&1 || ret=1
+    [ "$value" = "${qname}.example." ] || ret=1
+    $PYTHON yamlget.py dig.out.test$n 0 message query_message_data QUESTION_SECTION 0 rrtype >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
-    [ "$value" = "${qname}"'.example. 300 IN TXT "a: b"' ] || ret=1
+    [ "$value" = "TXT" ] || ret=1
+    $PYTHON yamlget.py dig.out.test$n 1 message response_message_data ANSWER_SECTION 0 name >yamlget.out.test$n 2>&1 || ret=1
+    read -r value <yamlget.out.test$n
+    [ "$value" = "${qname}.example." ] || ret=1
+    $PYTHON yamlget.py dig.out.test$n 1 message response_message_data ANSWER_SECTION 0 class >yamlget.out.test$n 2>&1 || ret=1
+    read -r value <yamlget.out.test$n
+    [ "$value" = "IN" ] || ret=1
+    $PYTHON yamlget.py dig.out.test$n 1 message response_message_data ANSWER_SECTION 0 rrtype >yamlget.out.test$n 2>&1 || ret=1
+    read -r value <yamlget.out.test$n
+    [ "$value" = "TXT" ] || ret=1
+    $PYTHON yamlget.py dig.out.test$n 1 message response_message_data ANSWER_SECTION 0 rdata >yamlget.out.test$n 2>&1 || ret=1
+    read -r value <yamlget.out.test$n
+    [ "$value" = '"a: b"' ] || ret=1
     if [ $ret -ne 0 ]; then echo_i "failed"; fi
     status=$((status + ret))
   done
@@ -1922,10 +1981,18 @@ if [ $HAS_PYYAML -ne 0 ]; then
   echo_i "check yaml character values ($n)"
   ret=0
   dig_with_opts @10.53.0.3 +yaml "all.yaml.example" TXT +qr >dig.out.test$n 2>&1 || ret=1
-  $PYTHON yamlget.py dig.out.test$n 1 message response_message_data ANSWER_SECTION 0 >yamlget.out.test$n 2>&1 || ret=1
+  $PYTHON yamlget.py dig.out.test$n 1 message response_message_data ANSWER_SECTION 0 name >yamlget.out.test$n 2>&1 || ret=1
   read -r value <yamlget.out.test$n
-  expected='all.yaml.example. 300 IN TXT'
-  expected="$expected "'"\000" "\001" "\002" "\003" "\004" "\005" "\006" "\007"'
+  [ "$value" = "all.yaml.example." ] || ret=1
+  $PYTHON yamlget.py dig.out.test$n 1 message response_message_data ANSWER_SECTION 0 class >yamlget.out.test$n 2>&1 || ret=1
+  read -r value <yamlget.out.test$n
+  [ "$value" = "IN" ] || ret=1
+  $PYTHON yamlget.py dig.out.test$n 1 message response_message_data ANSWER_SECTION 0 rrtype >yamlget.out.test$n 2>&1 || ret=1
+  read -r value <yamlget.out.test$n
+  [ "$value" = "TXT" ] || ret=1
+  $PYTHON yamlget.py dig.out.test$n 1 message response_message_data ANSWER_SECTION 0 rdata >yamlget.out.test$n 2>&1 || ret=1
+  read -r value <yamlget.out.test$n
+  expected='"\000" "\001" "\002" "\003" "\004" "\005" "\006" "\007"'
   expected="$expected "'"\008" "\009" "\010" "\011" "\012" "\013" "\014" "\015"'
   expected="$expected "'"\016" "\017" "\018" "\019" "\020" "\021" "\022" "\023"'
   expected="$expected "'"\024" "\025" "\026" "\027" "\028" "\029" "\030" "\031"'
