@@ -246,7 +246,7 @@ getparentnode(dns_qpchain_t *chain, delegdb_node_t **node, dns_ttl_t now) {
 
 	while (len >= 2) {
 		delegdb_node_t *parent = NULL;
-		dns_qpchain_node(chain, len - 2, (void **)&parent, NULL);
+		dns_qpchain_node(chain, len - 1, (void **)&parent, NULL);
 
 		if (isactive(parent, now)) {
 			*node = parent;
