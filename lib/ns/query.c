@@ -323,7 +323,7 @@ ns__query_callhook_noreturn(uint8_t id, query_ctx_t *qctx,
  *    Set up a referral and go to 9.
  *
  * 9. Handle a delegation response (query_zone_delegation() or
- *    query_delegation_recurse()). If we need to and are allowed to recurse,
+ *    query_cache_delegation()). If we need to and are allowed to recurse,
  *    go to 5, otherwise go to 15 to clean up and return the delegation to
  *    the client.
  *
@@ -421,6 +421,9 @@ query_notfound(query_ctx_t *qctx);
 
 static isc_result_t
 query_zone_delegation(query_ctx_t *qctx);
+
+static isc_result_t
+query_cache_delegation(query_ctx_t *qctx);
 
 static isc_result_t
 query_delegation_recurse(query_ctx_t *qctx);
@@ -7245,7 +7248,7 @@ root_key_sentinel:
 		if (qctx->is_zone) {
 			return query_zone_delegation(qctx);
 		}
-		return query_delegation_recurse(qctx);
+		return query_cache_delegation(qctx);
 
 	case DNS_R_EMPTYNAME:
 	case DNS_R_NXRRSET:
@@ -8088,7 +8091,7 @@ query_filter64(query_ctx_t *qctx) {
 /*%
  * Handle the case of a name not being found in a database lookup.
  * Called from query_gotanswer(). Passes off processing to
- * query_delegation_recurse() for a root referral if appropriate.
+ * query_cache_delegation() for a root referral if appropriate.
  */
 static isc_result_t
 query_notfound(query_ctx_t *qctx) {
@@ -8167,7 +8170,7 @@ query_notfound(query_ctx_t *qctx) {
 		}
 	}
 
-	return query_delegation_recurse(qctx);
+	return query_cache_delegation(qctx);
 
 cleanup:
 	return result;
@@ -8337,7 +8340,7 @@ query_zone_delegation(query_ctx_t *qctx) {
 		 * rdataset, and sigrdataset.  We'll then go looking for
 		 * QNAME in the cache.  If we find something better, we'll
 		 * use it instead. If not, then query_lookup() calls
-		 * query_notfound() which calls query_delegation_recurse(),
+		 * query_notfound() which calls query_cache_delegation(),
 		 * and we'll restore these values there.
 		 */
 		ns_client_keepname(qctx->client, qctx->fname, qctx->dbuf);
@@ -8377,14 +8380,12 @@ cleanup:
 
 /*%
  * Handle delegation responses from cache data, including root referrals.
- * Recurse if allowed; otherwise, return the delegation to the client.
  */
 static isc_result_t
-query_delegation_recurse(query_ctx_t *qctx) {
+query_cache_delegation(query_ctx_t *qctx) {
 	isc_result_t result = ISC_R_UNSET;
-	dns_name_t *qname = qctx->client->query.qname;
 
-	CCTRACE(ISC_LOG_DEBUG(3), "query_delegation_recurse");
+	CCTRACE(ISC_LOG_DEBUG(3), "query_cache_delegation");
 
 	INSIST(!qctx->is_zone);
 
@@ -8434,8 +8435,29 @@ query_delegation_recurse(query_ctx_t *qctx) {
 		qctx->sigrdataset = MOVE_OWNERSHIP(qctx->zsigrdataset);
 	}
 
+	result = query_delegation_recurse(qctx);
+	if (result != ISC_R_COMPLETE) {
+		return result;
+	}
+
+	return query_prepare_delegation_response(qctx);
+}
+
+/*%
+ * Handle recursive queries that are triggered as part of the delegation
+ * process.
+ */
+static isc_result_t
+query_delegation_recurse(query_ctx_t *qctx) {
+	isc_result_t result = ISC_R_UNSET;
+	dns_name_t *qname = qctx->client->query.qname;
+
+	CCTRACE(ISC_LOG_DEBUG(3), "query_delegation_recurse");
+
+	INSIST(!qctx->is_zone);
+
 	if (!qctx->client->query.recursionok) {
-		return query_prepare_delegation_response(qctx);
+		return ISC_R_COMPLETE;
 	}
 
 	CALL_HOOK(NS_QUERY_DELEGATION_RECURSE_BEGIN, qctx);
