@@ -265,7 +265,6 @@ typedef struct {
 	dns_qpchain_t chain;
 	dns_qpiter_t iter;
 	bool copy_name;
-	bool need_cleanup;
 	bool wild;
 	qpznode_t *zonecut;
 	dns_vecheader_t *zonecut_header;
@@ -973,11 +972,9 @@ qpznode_erefs_increment(qpznode_t *node DNS__DB_FLARG) {
 #if DNS_DB_NODETRACE
 	fprintf(stderr, "incr:node:%s:%s:%u:%p->erefs = %" PRIuFAST32 "\n",
 		func, file, line, node, refs + 1);
+#else
+	UNUSED(refs);
 #endif
-
-	if (refs > 0) {
-		return;
-	}
 }
 
 static void
@@ -2740,8 +2737,8 @@ matchparams(dns_vecheader_t *header, qpz_search_t *search) {
 }
 
 static isc_result_t
-qpzone_setup_delegation(qpz_search_t *search, dns_dbnode_t **nodep,
-			dns_name_t *foundname, dns_rdataset_t *rdataset,
+qpzone_setup_delegation(qpz_search_t *search, dns_name_t *foundname,
+			dns_rdataset_t *rdataset,
 			dns_rdataset_t *sigrdataset DNS__DB_FLARG) {
 	dns_name_t *zcname = NULL;
 	dns_typepair_t typepair;
@@ -2768,15 +2765,6 @@ qpzone_setup_delegation(qpz_search_t *search, dns_dbnode_t **nodep,
 	if (foundname != NULL && search->copy_name) {
 		zcname = dns_fixedname_name(&search->zonecut_name);
 		dns_name_copy(zcname, foundname);
-	}
-	if (nodep != NULL) {
-		/*
-		 * Note that we don't have to increment the node's reference
-		 * count here because we're going to use the reference we
-		 * already have in the search block.
-		 */
-		*nodep = (dns_dbnode_t *)node;
-		search->need_cleanup = false;
 	}
 	if (rdataset != NULL) {
 		isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
@@ -3159,8 +3147,8 @@ previous_closest_nsec(dns_rdatatype_t type, qpz_search_t *search,
  * current NSEC3PARAM record are considered.
  */
 static isc_result_t
-find_closest_nsec(qpz_search_t *search, dns_dbnode_t **nodep,
-		  dns_name_t *foundname, dns_rdataset_t *rdataset,
+find_closest_nsec(qpz_search_t *search, dns_name_t *foundname,
+		  dns_rdataset_t *rdataset,
 		  dns_rdataset_t *sigrdataset, bool nsec3,
 		  bool secure DNS__DB_FLARG) {
 	qpznode_t *node = NULL, *prevnode = NULL;
@@ -3247,11 +3235,6 @@ again:
 				 * the case.
 				 */
 				dns_name_copy(name, foundname);
-				if (nodep != NULL) {
-					qpznode_acquire(
-						node DNS__DB_FLARG_PASS);
-					*nodep = (dns_dbnode_t *)node;
-				}
 				bindrdataset(search->qpdb, found,
 					     rdataset DNS__DB_FLARG_PASS);
 				if (foundsig != NULL) {
@@ -3384,7 +3367,6 @@ qpzone_check_zonecut(qpznode_t *node, void *arg DNS__DB_FLARG) {
 		qpznode_acquire(node DNS__DB_FLARG_PASS);
 		search->zonecut = node;
 		search->zonecut_header = found;
-		search->need_cleanup = true;
 		/*
 		 * Since we've found a zonecut, anything beneath it is
 		 * glue and is not subject to wildcard matching, so we
@@ -3450,7 +3432,6 @@ qpz_search_init(qpz_search_t *search, qpzonedb_t *db, qpz_version_t *version,
 	 * qpiter -- init in dns_qp_lookup
 	 */
 	search->copy_name = false;
-	search->need_cleanup = false;
 	search->wild = false;
 	search->zonecut = NULL;
 	search->zonecut_header = NULL;
@@ -3461,7 +3442,8 @@ qpz_search_init(qpz_search_t *search, qpzonedb_t *db, qpz_version_t *version,
 static isc_result_t
 qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	    dns_rdatatype_t type, unsigned int options,
-	    isc_stdtime_t now ISC_ATTR_UNUSED, dns_dbnode_t **nodep,
+	    isc_stdtime_t now ISC_ATTR_UNUSED,
+	    dns_dbnode_t **nodep ISC_ATTR_UNUSED,
 	    dns_name_t *foundname,
 	    dns_clientinfomethods_t *methods ISC_ATTR_UNUSED,
 	    dns_clientinfo_t *clientinfo ISC_ATTR_UNUSED,
@@ -3471,7 +3453,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	qpzonedb_t *qpdb = (qpzonedb_t *)db;
 	qpznode_t *node = NULL;
 	bool cname_ok = true, close_version = false;
-	bool maybe_zonecut = false, at_zonecut = false;
+	bool maybe_zonecut = false;
 	bool wild = false, empty_node = false;
 	bool nsec3 = false;
 	dns_vecheader_t *found = NULL, *nsecheader = NULL;
@@ -3545,7 +3527,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	partial_match:
 		if (search.zonecut != NULL) {
 			result = qpzone_setup_delegation(
-				&search, nodep, foundname, rdataset,
+				&search, foundname, rdataset,
 				sigrdataset DNS__DB_FLARG_PASS);
 			goto tree_exit;
 		}
@@ -3585,7 +3567,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		    nsec3)
 		{
 			result = find_closest_nsec(
-				&search, nodep, foundname, rdataset,
+				&search, foundname, rdataset,
 				sigrdataset, nsec3,
 				search.version->secure DNS__DB_FLARG_PASS);
 			if (result == ISC_R_SUCCESS) {
@@ -3679,9 +3661,7 @@ found:
 				search.zonecut = node;
 				search.zonecut_header = header;
 				search.zonecut_sigheader = NULL;
-				search.need_cleanup = true;
 				maybe_zonecut = false;
-				at_zonecut = true;
 
 				if ((search.options & DNS_DBFIND_GLUEOK) == 0 &&
 				    type != dns_rdatatype_nsec)
@@ -3831,7 +3811,7 @@ found:
 			}
 			NODE_UNLOCK(nlock, &nlocktype);
 			result = qpzone_setup_delegation(
-				&search, nodep, foundname, rdataset,
+				&search, foundname, rdataset,
 				sigrdataset DNS__DB_FLARG_PASS);
 			goto tree_exit;
 		}
@@ -3853,17 +3833,13 @@ found:
 
 			NODE_UNLOCK(nlock, &nlocktype);
 			result = find_closest_nsec(
-				&search, nodep, foundname, rdataset,
+				&search, foundname, rdataset,
 				sigrdataset, false,
 				search.version->secure DNS__DB_FLARG_PASS);
 			if (result == ISC_R_SUCCESS) {
 				result = DNS_R_EMPTYWILD;
 			}
 			goto tree_exit;
-		}
-		if (nodep != NULL) {
-			qpznode_acquire(node DNS__DB_FLARG_PASS);
-			*nodep = (dns_dbnode_t *)node;
 		}
 		if (search.version->secure && !search.version->havensec3) {
 			bindrdataset(search.qpdb, nsecheader,
@@ -3915,15 +3891,6 @@ found:
 		result = ISC_R_SUCCESS;
 	}
 
-	if (nodep != NULL) {
-		if (!at_zonecut) {
-			qpznode_acquire(node DNS__DB_FLARG_PASS);
-		} else {
-			search.need_cleanup = false;
-		}
-		*nodep = (dns_dbnode_t *)node;
-	}
-
 	if (type != dns_rdatatype_any) {
 		bindrdataset(search.qpdb, found, rdataset DNS__DB_FLARG_PASS);
 		if (foundsig != NULL) {
@@ -3946,7 +3913,7 @@ tree_exit:
 	 * If we found a zonecut but aren't going to use it, we have to
 	 * let go of it.
 	 */
-	if (search.need_cleanup) {
+	if (search.zonecut != NULL) {
 		node = search.zonecut;
 		INSIST(node != NULL);
 		nlock = qpzone_get_lock(node);
