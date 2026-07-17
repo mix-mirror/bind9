@@ -95,7 +95,7 @@ dns_rdatalist_fromrdataset(dns_rdataset_t *rdataset,
 }
 
 void
-dns_rdatalist_disassociate(dns_rdataset_t *rdataset DNS__DB_FLARG) {
+dns_rdatalist_disassociate(dns_rdataset_t *rdataset) {
 	UNUSED(rdataset);
 }
 
@@ -142,8 +142,7 @@ dns__rdatalist_current(dns_rdataset_t *rdataset, dns_rdata_t *rdata) {
 }
 
 void
-dns__rdatalist_clone(const dns_rdataset_t *source,
-		     dns_rdataset_t *target DNS__DB_FLARG) {
+dns__rdatalist_clone(const dns_rdataset_t *source, dns_rdataset_t *target) {
 	REQUIRE(source != NULL);
 	REQUIRE(target != NULL);
 
@@ -219,8 +218,7 @@ dns__rdatalist_addnoqname(dns_rdataset_t *rdataset, dns_name_t *name) {
 
 isc_result_t
 dns__rdatalist_getnoqname(dns_rdataset_t *rdataset, dns_name_t *name,
-			  dns_rdataset_t *neg,
-			  dns_rdataset_t *negsig DNS__DB_FLARG) {
+			  dns_rdataset_t *neg, dns_rdataset_t *negsig) {
 	dns_rdataclass_t rdclass;
 	dns_rdataset_t *tneg = NULL;
 	dns_rdataset_t *tnegsig = NULL;
@@ -312,8 +310,7 @@ dns__rdatalist_addclosest(dns_rdataset_t *rdataset, dns_name_t *name) {
 
 isc_result_t
 dns__rdatalist_getclosest(dns_rdataset_t *rdataset, dns_name_t *name,
-			  dns_rdataset_t *neg,
-			  dns_rdataset_t *negsig DNS__DB_FLARG) {
+			  dns_rdataset_t *neg, dns_rdataset_t *negsig) {
 	dns_rdataclass_t rdclass;
 	dns_rdataset_t *tneg = NULL;
 	dns_rdataset_t *tnegsig = NULL;

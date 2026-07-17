@@ -82,7 +82,7 @@ dns_rdataset_invalidate(dns_rdataset_t *rdataset) {
 }
 
 void
-dns__rdataset_disassociate(dns_rdataset_t *rdataset DNS__DB_FLARG) {
+dns__rdataset_disassociate(dns_rdataset_t *rdataset) {
 	/*
 	 * Disassociate 'rdataset' from its rdata, allowing it to be reused.
 	 */
@@ -91,7 +91,7 @@ dns__rdataset_disassociate(dns_rdataset_t *rdataset DNS__DB_FLARG) {
 	REQUIRE(rdataset->methods != NULL);
 
 	if (rdataset->methods->disassociate != NULL) {
-		(rdataset->methods->disassociate)(rdataset DNS__DB_FLARG_PASS);
+		(rdataset->methods->disassociate)(rdataset);
 	}
 	*rdataset = (dns_rdataset_t){
 		.magic = DNS_RDATASET_MAGIC,
@@ -120,8 +120,7 @@ question_cursor(dns_rdataset_t *rdataset ISC_ATTR_UNUSED) {
 }
 
 static void
-question_clone(const dns_rdataset_t *source,
-	       dns_rdataset_t *target DNS__DB_FLARG) {
+question_clone(const dns_rdataset_t *source, dns_rdataset_t *target) {
 	*target = *source;
 }
 
@@ -162,8 +161,7 @@ dns_rdataset_count(dns_rdataset_t *rdataset) {
 }
 
 void
-dns__rdataset_clone(const dns_rdataset_t *source,
-		    dns_rdataset_t *target DNS__DB_FLARG) {
+dns__rdataset_clone(const dns_rdataset_t *source, dns_rdataset_t *target) {
 	/*
 	 * Make 'target' refer to the same rdataset as 'source'.
 	 */
@@ -173,7 +171,7 @@ dns__rdataset_clone(const dns_rdataset_t *source,
 	REQUIRE(DNS_RDATASET_VALID(target));
 	REQUIRE(target->methods == NULL);
 
-	(source->methods->clone)(source, target DNS__DB_FLARG_PASS);
+	(source->methods->clone)(source, target);
 }
 
 isc_result_t
@@ -469,16 +467,14 @@ dns_rdataset_addnoqname(dns_rdataset_t *rdataset, dns_name_t *name) {
 
 isc_result_t
 dns__rdataset_getnoqname(dns_rdataset_t *rdataset, dns_name_t *name,
-			 dns_rdataset_t *neg,
-			 dns_rdataset_t *negsig DNS__DB_FLARG) {
+			 dns_rdataset_t *neg, dns_rdataset_t *negsig) {
 	REQUIRE(DNS_RDATASET_VALID(rdataset));
 	REQUIRE(rdataset->methods != NULL);
 
 	if (rdataset->methods->getnoqname == NULL) {
 		return ISC_R_NOTIMPLEMENTED;
 	}
-	return (rdataset->methods->getnoqname)(rdataset, name, neg,
-					       negsig DNS__DB_FLARG_PASS);
+	return (rdataset->methods->getnoqname)(rdataset, name, neg, negsig);
 }
 
 isc_result_t
@@ -493,16 +489,14 @@ dns_rdataset_addclosest(dns_rdataset_t *rdataset, dns_name_t *name) {
 
 isc_result_t
 dns__rdataset_getclosest(dns_rdataset_t *rdataset, dns_name_t *name,
-			 dns_rdataset_t *neg,
-			 dns_rdataset_t *negsig DNS__DB_FLARG) {
+			 dns_rdataset_t *neg, dns_rdataset_t *negsig) {
 	REQUIRE(DNS_RDATASET_VALID(rdataset));
 	REQUIRE(rdataset->methods != NULL);
 
 	if (rdataset->methods->getclosest == NULL) {
 		return ISC_R_NOTIMPLEMENTED;
 	}
-	return (rdataset->methods->getclosest)(rdataset, name, neg,
-					       negsig DNS__DB_FLARG_PASS);
+	return (rdataset->methods->getclosest)(rdataset, name, neg, negsig);
 }
 
 void
@@ -518,12 +512,12 @@ dns_rdataset_settrust(dns_rdataset_t *rdataset, dns_trust_t trust) {
 }
 
 void
-dns__rdataset_expire(dns_rdataset_t *rdataset DNS__DB_FLARG) {
+dns_rdataset_expire(dns_rdataset_t *rdataset) {
 	REQUIRE(DNS_RDATASET_VALID(rdataset));
 	REQUIRE(rdataset->methods != NULL);
 
 	if (rdataset->methods->expire != NULL) {
-		(rdataset->methods->expire)(rdataset DNS__DB_FLARG_PASS);
+		(rdataset->methods->expire)(rdataset);
 	}
 }
 

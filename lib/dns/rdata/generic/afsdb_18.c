@@ -253,7 +253,7 @@ additionaldata_afsdb(ARGS_ADDLDATA) {
 	isc_region_consume(&region, 2);
 	dns_name_fromregion(&name, &region);
 
-	return (add)(arg, &name, dns_rdatatype_a, NULL DNS__DB_FILELINE);
+	return (add)(arg, &name, dns_rdatatype_a, NULL);
 }
 
 static isc_result_t

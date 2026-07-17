@@ -81,7 +81,7 @@ static dns_qpmethods_t qpmethods = {
 
 /* rdataset methods */
 static void
-keynode_disassociate(dns_rdataset_t *rdataset DNS__DB_FLARG);
+keynode_disassociate(dns_rdataset_t *rdataset);
 static isc_result_t
 keynode_first(dns_rdataset_t *rdataset);
 static isc_result_t
@@ -89,8 +89,7 @@ keynode_next(dns_rdataset_t *rdataset);
 static void
 keynode_current(dns_rdataset_t *rdataset, dns_rdata_t *rdata);
 static void
-keynode_clone(const dns_rdataset_t *source,
-	      dns_rdataset_t *target DNS__DB_FLARG);
+keynode_clone(const dns_rdataset_t *source, dns_rdataset_t *target);
 
 static dns_rdatasetmethods_t methods = {
 	.disassociate = keynode_disassociate,
@@ -695,8 +694,7 @@ dns_keynode_dsset(dns_keynode_t *keynode, dns_rdataset_t *rdataset) {
 	RWLOCK(&keynode->rwlock, isc_rwlocktype_read);
 	if (keynode->dslist != NULL) {
 		if (rdataset != NULL) {
-			keynode_clone(&keynode->dsset,
-				      rdataset DNS__DB_FILELINE);
+			keynode_clone(&keynode->dsset, rdataset);
 		}
 		result = true;
 	} else {
@@ -742,7 +740,7 @@ dns_keynode_trust(dns_keynode_t *keynode) {
 }
 
 static void
-keynode_disassociate(dns_rdataset_t *rdataset DNS__DB_FLARG) {
+keynode_disassociate(dns_rdataset_t *rdataset) {
 	dns_keynode_t *keynode = NULL;
 
 	rdataset->methods = NULL;
@@ -801,8 +799,7 @@ keynode_current(dns_rdataset_t *rdataset, dns_rdata_t *rdata) {
 }
 
 static void
-keynode_clone(const dns_rdataset_t *source,
-	      dns_rdataset_t *target DNS__DB_FLARG) {
+keynode_clone(const dns_rdataset_t *source, dns_rdataset_t *target) {
 	dns_keynode_t *keynode = NULL;
 
 	keynode = source->keytable.node;

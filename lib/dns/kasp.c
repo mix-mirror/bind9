@@ -77,11 +77,7 @@ destroy(dns_kasp_t *kasp) {
 	isc_mem_putanddetach(&kasp->mctx, kasp, sizeof(*kasp));
 }
 
-#if DNS_KASP_TRACE
-ISC_REFCOUNT_TRACE_IMPL(dns_kasp, destroy);
-#else
 ISC_REFCOUNT_IMPL(dns_kasp, destroy);
-#endif
 
 const char *
 dns_kasp_getname(dns_kasp_t *kasp) {

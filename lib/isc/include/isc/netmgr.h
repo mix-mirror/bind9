@@ -25,8 +25,6 @@
 #include <isc/tls.h>
 #include <isc/types.h>
 
-/* Add -DISC_NETMGR_TRACE=1 to CFLAGS for detailed reference tracing */
-
 /*
  * Convenience macros to specify on how many threads should socket listen
  */
@@ -166,19 +164,7 @@ isc_nmsocket_set_max_streams(isc_nmsocket_t *listener,
  * \li	'listener' is a pointer to a valid network manager listener socket.
  */
 
-#if ISC_NETMGR_TRACE
-#define isc_nmhandle_ref(ptr) \
-	isc_nmhandle__ref(ptr, __func__, __FILE__, __LINE__)
-#define isc_nmhandle_unref(ptr) \
-	isc_nmhandle__unref(ptr, __func__, __FILE__, __LINE__)
-#define isc_nmhandle_attach(ptr, ptrp) \
-	isc_nmhandle__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define isc_nmhandle_detach(ptrp) \
-	isc_nmhandle__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_TRACE_DECL(isc_nmhandle);
-#else
 ISC_REFCOUNT_DECL(isc_nmhandle);
-#endif
 /*%<
  * Increment/decrement the reference counter in a netmgr handle.
  *

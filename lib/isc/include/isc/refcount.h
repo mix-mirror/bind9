@@ -22,6 +22,14 @@
 #include <isc/tid.h>
 #include <isc/types.h>
 
+#ifdef ENABLE_TRACING
+#include <lttng/tracef.h>
+#include <lttng/tracelog.h>
+#else /* ENABLE_TRACING */
+#define lttng_ust_tracef(...)
+#define lttng_ust_tracelog(...)
+#endif /* ENABLE_TRACING */
+
 /*! \file isc/refcount.h
  * \brief Implements a locked reference counter.
  *
@@ -116,120 +124,76 @@ typedef atomic_uint_fast32_t isc_refcount_t;
 		ISC_INSIST(_refs > 0);                                \
 	} while (0)
 
-#define ISC__REFCOUNT_TRACE_DECL(name, stat)                               \
-	stat name##_t *name##__ref(name##_t *ptr, const char *func,        \
-				   const char *file, unsigned int line);   \
-	stat void      name##__unref(name##_t *ptr, const char *func,      \
-				     const char *file, unsigned int line); \
-	stat void      name##__attach(name##_t *ptr, name##_t **ptrp,      \
-				      const char *func, const char *file,  \
-				      unsigned int line);                  \
-	stat void      name##__detach(name##_t **ptrp, const char *func,   \
-				      const char *file, unsigned int line)
+#define ISC__REFCOUNT_DECL(name, stat)                                          \
+	stat name##_t *name##_ref(name##_t *ptr) __attribute__((__unused__));   \
+	stat void      name##_unref(name##_t *ptr) __attribute__((__unused__)); \
+	stat void      name##_attach(name##_t *ptr, name##_t **ptrp)            \
+		__attribute__((__unused__));                                    \
+	stat void name##_detach(name##_t **ptrp) __attribute__((__unused__))
 
 #define ISC_REFCOUNT_BLANK
-#define ISC_REFCOUNT_TRACE_DECL(name) \
-	ISC__REFCOUNT_TRACE_DECL(name, ISC_REFCOUNT_BLANK)
-#define ISC_REFCOUNT_STATIC_TRACE_DECL(name) \
-	ISC__REFCOUNT_TRACE_DECL(name, static inline)
-
-#define ISC__REFCOUNT_TRACE_IMPL(name, destroy, stat)                      \
-	stat name##_t *name##__ref(name##_t *ptr, const char *func,        \
-				   const char *file, unsigned int line) {  \
-		REQUIRE(ptr != NULL);                                      \
-		uint_fast32_t refs =                                       \
-			isc_refcount_increment(&ptr->references) + 1;      \
-		fprintf(stderr,                                            \
-			"%s:%s:%s:%u:t%" PRItid                            \
-			":%p->references = %" PRIuFAST32 "\n",             \
-			__func__, func, file, line, isc_tid(), ptr, refs); \
-		return (ptr);                                              \
-	}                                                                  \
-                                                                           \
-	stat void name##__unref(name##_t *ptr, const char *func,           \
-				const char *file, unsigned int line) {     \
-		REQUIRE(ptr != NULL);                                      \
-		uint_fast32_t refs =                                       \
-			isc_refcount_decrement(&ptr->references) - 1;      \
-		if (refs == 0) {                                           \
-			isc_refcount_destroy(&ptr->references);            \
-			destroy(ptr);                                      \
-		}                                                          \
-		fprintf(stderr,                                            \
-			"%s:%s:%s:%u:t%" PRItid                            \
-			":%p->references = %" PRIuFAST32 "\n",             \
-			__func__, func, file, line, isc_tid(), ptr, refs); \
-	}                                                                  \
-	stat void name##__attach(name##_t *ptr, name##_t **ptrp,           \
-				 const char *func, const char *file,       \
-				 unsigned int line) {                      \
-		REQUIRE(ptrp != NULL && *ptrp == NULL);                    \
-		uint_fast32_t refs =                                       \
-			isc_refcount_increment(&ptr->references) + 1;      \
-		fprintf(stderr,                                            \
-			"%s:%s:%s:%u:t%" PRItid                            \
-			":%p->references = %" PRIuFAST32 "\n",             \
-			__func__, func, file, line, isc_tid(), ptr, refs); \
-		*ptrp = ptr;                                               \
-	}                                                                  \
-                                                                           \
-	stat void name##__detach(name##_t **ptrp, const char *func,        \
-				 const char *file, unsigned int line) {    \
-		REQUIRE(ptrp != NULL && *ptrp != NULL);                    \
-		name##_t *ptr = *ptrp;                                     \
-		*ptrp = NULL;                                              \
-		uint_fast32_t refs =                                       \
-			isc_refcount_decrement(&ptr->references) - 1;      \
-		if (refs == 0) {                                           \
-			isc_refcount_destroy(&ptr->references);            \
-			destroy(ptr);                                      \
-		}                                                          \
-		fprintf(stderr,                                            \
-			"%s:%s:%s:%u:t%" PRItid                            \
-			":%p->references = %" PRIuFAST32 "\n",             \
-			__func__, func, file, line, isc_tid(), ptr, refs); \
-	}
-
-#define ISC_REFCOUNT_TRACE_IMPL(name, destroy) \
-	ISC__REFCOUNT_TRACE_IMPL(name, destroy, ISC_REFCOUNT_BLANK)
-#define ISC_REFCOUNT_STATIC_TRACE_IMPL(name, destroy) \
-	ISC__REFCOUNT_TRACE_IMPL(name, destroy, static inline)
-
-#define ISC__REFCOUNT_DECL(name, stat)                                      \
-	stat name##_t *name##_ref(name##_t *ptr) __attribute__((unused));   \
-	stat void      name##_unref(name##_t *ptr) __attribute__((unused)); \
-	stat void      name##_attach(name##_t *ptr, name##_t **ptrp)        \
-		__attribute__((unused));                                    \
-	stat void name##_detach(name##_t **ptrp) __attribute__((unused))
-
 #define ISC_REFCOUNT_DECL(name) ISC__REFCOUNT_DECL(name, ISC_REFCOUNT_BLANK)
 #define ISC_REFCOUNT_STATIC_DECL(name) ISC__REFCOUNT_DECL(name, static inline)
 
-#define ISC__REFCOUNT_IMPL(name, destroy, stat)                      \
-	stat name##_t *name##_ref(name##_t *ptr) {                   \
-		REQUIRE(ptr != NULL);                                \
-		isc_refcount_increment(&ptr->references);            \
-		return (ptr);                                        \
-	}                                                            \
-                                                                     \
-	stat void name##_unref(name##_t *ptr) {                      \
-		REQUIRE(ptr != NULL);                                \
-		if (isc_refcount_decrement(&ptr->references) == 1) { \
-			isc_refcount_destroy(&ptr->references);      \
-			destroy(ptr);                                \
-		}                                                    \
-	}                                                            \
-	stat void name##_attach(name##_t *ptr, name##_t **ptrp) {    \
-		REQUIRE(ptrp != NULL && *ptrp == NULL);              \
-		name##_ref(ptr);                                     \
-		*ptrp = ptr;                                         \
-	}                                                            \
-                                                                     \
-	stat void name##_detach(name##_t **ptrp) {                   \
-		REQUIRE(ptrp != NULL && *ptrp != NULL);              \
-		name##_t *ptr = *ptrp;                               \
-		*ptrp = NULL;                                        \
-		name##_unref(ptr);                                   \
+#define ISC__REFCOUNT_IMPL(name, destroy, stat)                                \
+	stat name##_t *name##_ref(name##_t *ptr) {                             \
+		REQUIRE(ptr != NULL);                                          \
+		uint_fast32_t refs ISC_ATTR_UNUSED =                           \
+			isc_refcount_increment(&ptr->references);              \
+		lttng_ust_tracelog(LTTNG_UST_TRACEPOINT_LOGLEVEL_DEBUG,        \
+				   #name                                       \
+				   "_ref:t%" PRItid                            \
+				   ":caller %p:%p->references = %" PRIuFAST32, \
+				   isc_tid(), __builtin_return_address(0),     \
+				   ptr, refs + 1);                             \
+		return (ptr);                                                  \
+	}                                                                      \
+                                                                               \
+	stat void name##_unref(name##_t *ptr) {                                \
+		REQUIRE(ptr != NULL);                                          \
+		uint_fast32_t refs ISC_ATTR_UNUSED =                           \
+			isc_refcount_decrement(&ptr->references);              \
+		lttng_ust_tracelog(LTTNG_UST_TRACEPOINT_LOGLEVEL_DEBUG,        \
+				   #name                                       \
+				   "_unref:t%" PRItid                          \
+				   ":caller %p:%p->references = %" PRIuFAST32, \
+				   isc_tid(), __builtin_return_address(0),     \
+				   ptr, refs - 1);                             \
+		if (refs == 1) {                                               \
+			isc_refcount_destroy(&ptr->references);                \
+			destroy(ptr);                                          \
+		}                                                              \
+	}                                                                      \
+                                                                               \
+	stat void name##_attach(name##_t *ptr, name##_t **ptrp) {              \
+		REQUIRE(ptrp != NULL && *ptrp == NULL);                        \
+		uint_fast32_t refs ISC_ATTR_UNUSED =                           \
+			isc_refcount_increment(&ptr->references);              \
+		lttng_ust_tracelog(LTTNG_UST_TRACEPOINT_LOGLEVEL_DEBUG,        \
+				   #name                                       \
+				   "_attach:t%" PRItid                         \
+				   ":caller %p:%p->references = %" PRIuFAST32, \
+				   isc_tid(), __builtin_return_address(0),     \
+				   ptr, refs + 1);                             \
+		*ptrp = ptr;                                                   \
+	}                                                                      \
+                                                                               \
+	stat void name##_detach(name##_t **ptrp) {                             \
+		REQUIRE(ptrp != NULL && *ptrp != NULL);                        \
+		name##_t *ptr = *ptrp;                                         \
+		*ptrp = NULL;                                                  \
+		uint_fast32_t refs ISC_ATTR_UNUSED =                           \
+			isc_refcount_decrement(&ptr->references);              \
+		lttng_ust_tracelog(LTTNG_UST_TRACEPOINT_LOGLEVEL_DEBUG,        \
+				   #name                                       \
+				   "_detach:t%" PRItid                         \
+				   ":caller %p:%p->references = %" PRIuFAST32, \
+				   isc_tid(), __builtin_return_address(0),     \
+				   ptr, refs - 1);                             \
+		if (refs == 1) {                                               \
+			isc_refcount_destroy(&ptr->references);                \
+			destroy(ptr);                                          \
+		}                                                              \
 	}
 
 #define ISC_REFCOUNT_IMPL(name, destroy) \

@@ -268,11 +268,7 @@ destroyring(dns_tsigkeyring_t *ring) {
 	isc_mem_putanddetach(&ring->mctx, ring, sizeof(dns_tsigkeyring_t));
 }
 
-#if DNS_TSIG_TRACE
-ISC_REFCOUNT_TRACE_IMPL(dns_tsigkeyring, destroyring);
-#else
 ISC_REFCOUNT_IMPL(dns_tsigkeyring, destroyring);
-#endif
 
 /*
  * Look up the DST_ALG_ constant for a given name.
@@ -471,11 +467,7 @@ destroy_tsigkey(dns_tsigkey_t *key) {
 	isc_mem_putanddetach(&key->mctx, key, sizeof(dns_tsigkey_t));
 }
 
-#if DNS_TSIG_TRACE
-ISC_REFCOUNT_TRACE_IMPL(dns_tsigkey, destroy_tsigkey);
-#else
 ISC_REFCOUNT_IMPL(dns_tsigkey, destroy_tsigkey);
-#endif
 
 static void
 dns__tsigkey_delete(dns_tsigkeyring_t *ring, dns_tsigkey_t *tkey) {

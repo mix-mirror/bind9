@@ -77,11 +77,6 @@ if build_options == ''
 endif
 
 ### External commands
-dtrace_shim = meson.project_source_root() / 'util' / 'dtrace.sh'
-
-if tracing_opt.disabled()
-    meson.override_find_program('dtrace', find_program(dtrace_shim))
-endif
 
 ## Required
 perl = find_program(['perl', 'perl5'])
@@ -90,7 +85,6 @@ sh = find_program('sh')
 ## Feature gated
 krb5_config = find_program('krb5-config', required: gssapi_opt)
 protoc = find_program(['protoc', 'protoc-c'], required: dnstap_opt)
-dtrace = find_program(['dtrace', dtrace_shim], required: false)
 
 ## Testing
 curl = find_program('curl', required: false)
@@ -838,6 +832,16 @@ if dnstap_opt.allowed()
     endif
 endif
 
+## lttng
+lttng_dep = null_dep
+if tracing_opt.allowed()
+    lttng_dep = dependency('lttng-ust', version: '>=2.13', required: tracing_opt)
+    if lttng_dep.found()
+        config.set('ENABLE_TRACING', 1)
+        config.set('LTTNG_UST_COMPAT_API_VERSION', 1)
+    endif
+endif
+
 ## JSON
 json_c_dep = null_dep
 if stats_json_opt.allowed()
@@ -978,29 +982,6 @@ if cmocka_opt.allowed()
         config.set('HAVE_CMOCKA', 1)
     endif
 endif
-
-## DTrace
-dtrace_header = generator(
-    dtrace,
-    output: '@BASENAME@.h',
-    arguments: ['-s', '@INPUT@', '-h', '-o', '@OUTPUT@'],
-)
-
-# Actually, dtrace probes are still built with macOS.
-# macOS flavored dtrace doesn't recognize the -G option and
-# only uses headers.
-#
-# Since the binary is in the base system, there isn't much reason
-# to be able to disable it. You can just not use the probes.
-config.set(
-    'HAVE_DTRACE',
-    dtrace.full_path() != dtrace_shim and host_machine.system() != 'darwin',
-)
-cc.has_header('sys/sdt.h', required: tracing_opt)
-assert(
-    dtrace.full_path() != dtrace_shim or not tracing_opt.enabled(),
-    'tracing is requested but dtrace is not found',
-)
 
 # LTO
 
@@ -1180,11 +1161,6 @@ isc_inc_p = []
 named_inc_p = []
 confgen_inc_p = []
 
-# USDT Probes
-dns_probe_objects = []
-isc_probe_objects = []
-ns_probe_objects = []
-
 # Use sourceset to add conditional files
 # https://mesonbuild.com/SourceSet-module.html
 dns_srcset = ss.source_set()
@@ -1257,7 +1233,6 @@ isc_srcconf = isc_srcset.apply(config, strict: false)
 libisc = library(
     'isc-' + meson.project_version(),
     isc_srcconf.sources(),
-    objects: isc_probe_objects,
     install: true,
     implicit_include_directories: false,
     include_directories: [isc_inc, isc_inc_p],
@@ -1270,6 +1245,7 @@ libisc_dep = declare_dependency(
     dependencies: [
         openssl_dep,
         thread_dep,
+        lttng_dep,
         urcu_dep,
         uv_dep,
 
@@ -1285,11 +1261,11 @@ libdns = library(
     dns_srcconf.sources(),
     include_directories: dns_inc,
     install: true,
-    objects: dns_probe_objects,
     dependencies: [
         libisc_dep,
 
         openssl_dep,
+        lttng_dep,
         urcu_dep,
 
         json_c_dep,
@@ -1316,13 +1292,14 @@ ns_srcconf = ns_srcset.apply(config, strict: false)
 libns = library(
     'ns-' + meson.project_version(),
     ns_srcconf.sources(),
-    objects: ns_probe_objects,
     install: true,
     implicit_include_directories: false,
     include_directories: ns_inc,
     dependencies: [
         libisc_dep,
         libdns_dep,
+
+        lttng_dep,
     ],
 )
 
@@ -2174,6 +2151,7 @@ summary(
         'libidn2': idn2_dep.version(),
         'libxml2': xml2_dep.version(),
         'LMDB': lmdb_dep.version(),
+        'LTTng': lttng_dep.version(),
         'MaxMindDB': maxminddb_dep.version(),
         'nghttp2': nghttp2_dep.version(),
         'protobuf-c': proto_dep.version(),

@@ -73,11 +73,7 @@ destroy_ntnode(dns_ntnode_t *node) {
 	isc_mem_putanddetach(&node->mctx, node, sizeof(dns_ntnode_t));
 }
 
-#if DNS_NAMETREE_TRACE
-ISC_REFCOUNT_TRACE_IMPL(dns_ntnode, destroy_ntnode);
-#else
 ISC_REFCOUNT_IMPL(dns_ntnode, destroy_ntnode);
-#endif
 
 void
 dns_nametree_create(isc_mem_t *mctx, dns_nametree_type_t type, const char *name,
@@ -111,11 +107,7 @@ destroy_nametree(dns_nametree_t *nametree) {
 	isc_mem_putanddetach(&nametree->mctx, nametree, sizeof(*nametree));
 }
 
-#if DNS_NAMETREE_TRACE
-ISC_REFCOUNT_TRACE_IMPL(dns_nametree, destroy_nametree);
-#else
 ISC_REFCOUNT_IMPL(dns_nametree, destroy_nametree);
-#endif
 
 static dns_ntnode_t *
 newnode(isc_mem_t *mctx, const dns_name_t *name) {

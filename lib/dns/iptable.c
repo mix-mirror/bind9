@@ -135,8 +135,4 @@ dns__iptable_destroy(dns_iptable_t *dtab) {
 	isc_mem_putanddetach(&dtab->mctx, dtab, sizeof(*dtab));
 }
 
-#if DNS_IPTABLE_TRACE
-ISC_REFCOUNT_TRACE_IMPL(dns_iptable, dns__iptable_destroy);
-#else
 ISC_REFCOUNT_IMPL(dns_iptable, dns__iptable_destroy);
-#endif

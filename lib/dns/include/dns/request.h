@@ -41,8 +41,6 @@
 
 #include <dns/types.h>
 
-/* Add -DDNS_REQUEST_TRACE=1 to CFLAGS for detailed reference tracing */
-
 #define DNS_REQUESTOPT_TCP     0x00000001U
 #define DNS_REQUESTOPT_CASE    0x00000002U
 #define DNS_REQUESTOPT_FIXEDID 0x00000004U
@@ -91,19 +89,7 @@ dns_requestmgr_shutdown(dns_requestmgr_t *requestmgr);
  *\li	'requestmgr' is a valid requestmgr.
  */
 
-#if DNS_REQUEST_TRACE
-#define dns_requestmgr_ref(ptr) \
-	dns_requestmgr__ref(ptr, __func__, __FILE__, __LINE__)
-#define dns_requestmgr_unref(ptr) \
-	dns_requestmgr__unref(ptr, __func__, __FILE__, __LINE__)
-#define dns_requestmgr_attach(ptr, ptrp) \
-	dns_requestmgr__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define dns_requestmgr_detach(ptrp) \
-	dns_requestmgr__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_TRACE_DECL(dns_requestmgr);
-#else
 ISC_REFCOUNT_DECL(dns_requestmgr);
-#endif
 
 isc_result_t
 dns_request_create(dns_requestmgr_t *requestmgr, dns_message_t *message,
@@ -294,15 +280,4 @@ dns_request_getresult(dns_request_t *request);
  * completion handler.)
  */
 
-#if DNS_REQUEST_TRACE
-#define dns_request_ref(ptr) dns_request__ref(ptr, __func__, __FILE__, __LINE__)
-#define dns_request_unref(ptr) \
-	dns_request__unref(ptr, __func__, __FILE__, __LINE__)
-#define dns_request_attach(ptr, ptrp) \
-	dns_request__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define dns_request_detach(ptrp) \
-	dns_request__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_TRACE_DECL(dns_request);
-#else
 ISC_REFCOUNT_DECL(dns_request);
-#endif

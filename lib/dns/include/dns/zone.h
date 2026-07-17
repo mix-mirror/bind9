@@ -38,8 +38,6 @@
 #include <dns/xfrin.h>
 #include <dns/zt.h>
 
-/* Add -DDNS_ZONE_TRACE=1 to CFLAGS for detailed reference tracing */
-
 typedef enum {
 	dns_zone_none,
 	dns_zone_primary,
@@ -1018,14 +1016,4 @@ dns_zone_isexpired(dns_zone_t *zone);
  * \li  'zone\ to be a valid zone.
  */
 
-#if DNS_ZONE_TRACE
-#define dns_zone_ref(ptr)   dns_zone__ref(ptr, __func__, __FILE__, __LINE__)
-#define dns_zone_unref(ptr) dns_zone__unref(ptr, __func__, __FILE__, __LINE__)
-#define dns_zone_attach(ptr, ptrp) \
-	dns_zone__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define dns_zone_detach(ptrp) \
-	dns_zone__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_TRACE_DECL(dns_zone);
-#else
 ISC_REFCOUNT_DECL(dns_zone);
-#endif

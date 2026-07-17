@@ -4921,11 +4921,7 @@ zone_destroy(dns_zone_t *zone) {
 	}
 }
 
-#if DNS_ZONE_TRACE
-ISC_REFCOUNT_TRACE_IMPL(dns_zone, zone_destroy);
-#else
 ISC_REFCOUNT_IMPL(dns_zone, zone_destroy);
-#endif
 
 static void
 zone_iattach(dns_zone_t *source, dns_zone_t **target) {

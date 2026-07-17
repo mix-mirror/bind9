@@ -4238,8 +4238,4 @@ validate_extendederror(dns_validator_t *val) {
 	}
 }
 
-#if DNS_VALIDATOR_TRACE
-ISC_REFCOUNT_TRACE_IMPL(dns_validator, destroy_validator);
-#else
 ISC_REFCOUNT_IMPL(dns_validator, destroy_validator);
-#endif

@@ -123,84 +123,6 @@ STATIC_ASSERT(ISC_NETMGR_TCP_RECVBUF_SIZE <= ISC_NETMGR_RECVBUF_SIZE,
 /*% ISC_PROXY2_MIN_AF_UNIX_SIZE is the largest type when TLVs are not used */
 #define ISC_NM_PROXY2_DEFAULT_BUFFER_SIZE (ISC_PROXY2_MIN_AF_UNIX_SIZE)
 
-/*
- * Define ISC_NETMGR_TRACE to activate tracing of handles and sockets.
- * This will impair performance but enables us to quickly determine,
- * if netmgr resources haven't been cleaned up on shutdown, which ones
- * are still in use.
- */
-#if ISC_NETMGR_TRACE
-#define TRACE_SIZE 8
-
-#if defined(__linux__)
-#include <syscall.h>
-#define gettid() (uint64_t)syscall(SYS_gettid)
-#elif defined(__FreeBSD__)
-#include <pthread_np.h>
-#define gettid() (uint64_t)(pthread_getthreadid_np())
-#elif defined(__OpenBSD__)
-#include <unistd.h>
-#define gettid() (uint64_t)(getthrid())
-#elif defined(__NetBSD__)
-#include <lwp.h>
-#define gettid() (uint64_t)(_lwp_self())
-#elif defined(__DragonFly__)
-#include <unistd.h>
-#define gettid() (uint64_t)(lwp_gettid())
-#else
-#define gettid() (uint64_t)(pthread_self())
-#endif
-
-#define NETMGR_TRACE_LOG(format, ...)                                         \
-	fprintf(stderr, "%" PRIu64 ":%" PRItid ":%s:%u:%s:" format, gettid(), \
-		isc_tid(), file, line, func, __VA_ARGS__)
-
-#define FLARG                                                                 \
-	, const char *func ISC_ATTR_UNUSED, const char *file ISC_ATTR_UNUSED, \
-		unsigned int line ISC_ATTR_UNUSED
-
-#define FLARG_PASS , func, file, line
-#define isc__nm_uvreq_get(sock) \
-	isc___nm_uvreq_get(sock, __func__, __FILE__, __LINE__)
-#define isc__nm_uvreq_put(req) \
-	isc___nm_uvreq_put(req, __func__, __FILE__, __LINE__)
-#define isc__nmsocket_init(sock, mgr, type, iface, parent)            \
-	isc___nmsocket_init(sock, mgr, type, iface, parent, __func__, \
-			    __FILE__, __LINE__)
-#define isc__nmsocket_put(sockp) \
-	isc___nmsocket_put(sockp, __func__, __FILE__, __LINE__)
-#define isc__nmsocket_attach(sock, target) \
-	isc___nmsocket_attach(sock, target, __func__, __FILE__, __LINE__)
-#define isc__nmsocket_detach(socketp) \
-	isc___nmsocket_detach(socketp, __func__, __FILE__, __LINE__)
-#define isc__nmsocket_close(socketp) \
-	isc___nmsocket_close(socketp, __func__, __FILE__, __LINE__)
-#define isc__nmhandle_get(sock, peer, local) \
-	isc___nmhandle_get(sock, peer, local, __func__, __FILE__, __LINE__)
-#define isc__nmsocket_prep_destroy(sock) \
-	isc___nmsocket_prep_destroy(sock, __func__, __FILE__, __LINE__)
-#define isc__nm_get_read_req(sock, sockaddr) \
-	isc___nm_get_read_req(sock, sockaddr, __func__, __FILE__, __LINE__)
-#else
-#define NETMGR_TRACE_LOG(format, ...)
-
-#define FLARG
-#define FLARG_PASS
-#define isc__nm_uvreq_get(sock) isc___nm_uvreq_get(sock)
-#define isc__nm_uvreq_put(req)	isc___nm_uvreq_put(req)
-#define isc__nmsocket_init(sock, mgr, type, iface, parent) \
-	isc___nmsocket_init(sock, mgr, type, iface, parent)
-#define isc__nmsocket_put(sockp)	   isc___nmsocket_put(sockp)
-#define isc__nmsocket_attach(sock, target) isc___nmsocket_attach(sock, target)
-#define isc__nmsocket_detach(socketp)	   isc___nmsocket_detach(socketp)
-#define isc__nmsocket_close(socketp)	   isc___nmsocket_close(socketp)
-#define isc__nmhandle_get(sock, peer, local) \
-	isc___nmhandle_get(sock, peer, local)
-#define isc__nmsocket_prep_destroy(sock) isc___nmsocket_prep_destroy(sock)
-#define isc__nm_get_read_req(sock, sockaddr) \
-	isc___nm_get_read_req(sock, sockaddr)
-#endif
-
 typedef struct isc__nm_uvreq isc__nm_uvreq_t;
 
 /*
@@ -222,14 +144,6 @@ typedef struct isc__networker {
 } isc__networker_t;
 
 ISC_REFCOUNT_DECL(isc__networker);
-
-#ifdef ISC_NETMGR_TRACE
-void
-isc__nm_dump_active(isc__networker_t *worker);
-
-void
-isc__nm_dump_active_manager(void);
-#endif /* ISC_NETMGR_TRACE */
 
 /*
  * A general handle for a connection bound to a networker.  For UDP
@@ -265,10 +179,6 @@ struct isc_nmhandle {
 	struct isc_nmhandle *proxy_udphandle;
 	isc_nm_opaquecb_t doreset; /* reset extra callback, external */
 	isc_nm_opaquecb_t dofree;  /* free extra callback, external */
-#if ISC_NETMGR_TRACE
-	void *backtrace[TRACE_SIZE];
-	int backtrace_size;
-#endif
 	ISC_LINK(isc_nmhandle_t) active_link;
 	ISC_LINK(isc_nmhandle_t) inactive_link;
 
@@ -374,18 +284,7 @@ extern isc__netmgr_t *isc__netmgr;
 #define NM_MAGIC    ISC_MAGIC('N', 'E', 'T', 'M')
 #define VALID_NM(t) ISC_MAGIC_VALID(t, NM_MAGIC)
 
-#if ISC_NETMGR_TRACE
-#define isc__netmgr_ref(ptr) isc__netmgr__ref(ptr, __func__, __FILE__, __LINE__)
-#define isc__netmgr_unref(ptr) \
-	isc__netmgr__unref(ptr, __func__, __FILE__, __LINE__)
-#define isc__netmgr_attach(ptr, ptrp) \
-	isc__netmgr__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define isc__netmgr_detach(ptrp) \
-	isc__netmgr__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_TRACE_DECL(isc__netmgr);
-#else
 ISC_REFCOUNT_DECL(isc__netmgr);
-#endif
 
 /*%
  * A universal structure for either a single socket or a group of
@@ -728,10 +627,6 @@ struct isc_nmsocket {
 
 	bool barriers_initialised;
 	bool manual_read_timer;
-#if ISC_NETMGR_TRACE
-	void *backtrace[TRACE_SIZE];
-	int backtrace_size;
-#endif
 	ISC_LINK(isc_nmsocket_t) active_link;
 
 	isc_job_t job;
@@ -748,8 +643,8 @@ isc__nm_free_uvbuf(isc_nmsocket_t *sock, const uv_buf_t *buf);
  */
 
 isc_nmhandle_t *
-isc___nmhandle_get(isc_nmsocket_t *sock, isc_sockaddr_t const *peer,
-		   isc_sockaddr_t const *local FLARG);
+isc__nmhandle_get(isc_nmsocket_t *sock, isc_sockaddr_t const *peer,
+		  isc_sockaddr_t const *local);
 /*%<
  * Get a handle for the socket 'sock', allocating a new one
  * if there isn't one available in 'sock->inactivehandles'.
@@ -765,14 +660,14 @@ isc___nmhandle_get(isc_nmsocket_t *sock, isc_sockaddr_t const *peer,
  */
 
 isc__nm_uvreq_t *
-isc___nm_uvreq_get(isc_nmsocket_t *sock FLARG);
+isc__nm_uvreq_get(isc_nmsocket_t *sock);
 /*%<
  * Get a UV request structure for the socket 'sock', allocating a
  * new one if there isn't one available in 'sock->inactivereqs'.
  */
 
 void
-isc___nm_uvreq_put(isc__nm_uvreq_t **req FLARG);
+isc__nm_uvreq_put(isc__nm_uvreq_t **req);
 /*%<
  * Completes the use of a UV request structure, setting '*req' to NULL.
  *
@@ -781,29 +676,29 @@ isc___nm_uvreq_put(isc__nm_uvreq_t **req FLARG);
  */
 
 void
-isc___nmsocket_init(isc_nmsocket_t *sock, isc__networker_t *worker,
-		    isc_nmsocket_type type, isc_sockaddr_t *iface,
-		    isc_nmsocket_t *parent FLARG);
+isc__nmsocket_init(isc_nmsocket_t *sock, isc__networker_t *worker,
+		   isc_nmsocket_type type, isc_sockaddr_t *iface,
+		   isc_nmsocket_t *parent);
 /*%<
  * Initialize socket 'sock', attach it to 'mgr', and set it to type 'type'
  * and its interface to 'iface'.
  */
 
 void
-isc___nmsocket_attach(isc_nmsocket_t *sock, isc_nmsocket_t **target FLARG);
+isc__nmsocket_attach(isc_nmsocket_t *sock, isc_nmsocket_t **target);
 /*%<
  * Attach to a socket, increasing refcount
  */
 
 void
-isc___nmsocket_detach(isc_nmsocket_t **socketp FLARG);
+isc__nmsocket_detach(isc_nmsocket_t **socketp);
 /*%<
  * Detach from socket, decreasing refcount and possibly destroying the
  * socket if it's no longer referenced.
  */
 
 void
-isc___nmsocket_prep_destroy(isc_nmsocket_t *sock FLARG);
+isc__nmsocket_prep_destroy(isc_nmsocket_t *sock);
 /*%<
  * Market 'sock' as inactive, close it if necessary, and destroy it
  * if there are no remaining references or active handles.
@@ -1435,7 +1330,7 @@ isc__nm_tcp_failed_read_cb(isc_nmsocket_t *sock, isc_result_t result,
 			   bool async);
 
 isc__nm_uvreq_t *
-isc___nm_get_read_req(isc_nmsocket_t *sock, isc_sockaddr_t *sockaddr FLARG);
+isc__nm_get_read_req(isc_nmsocket_t *sock, isc_sockaddr_t *sockaddr);
 
 void
 isc__nm_alloc_cb(uv_handle_t *handle, size_t size, uv_buf_t *buf);

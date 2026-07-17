@@ -304,7 +304,7 @@ additionaldata_dsync(ARGS_ADDLDATA) {
 		return ISC_R_SUCCESS;
 	}
 
-	return (add)(arg, &name, dns_rdatatype_a, NULL DNS__DB_FILELINE);
+	return (add)(arg, &name, dns_rdatatype_a, NULL);
 }
 
 static isc_result_t

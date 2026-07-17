@@ -429,11 +429,7 @@ isc_histomulti_inc(isc_histomulti_t *hm, uint64_t value) {
 	isc_histomulti_add(hm, value, 1);
 }
 
-#ifdef ISC_HISTO_TRACE
-ISC_REFCOUNT_TRACE_IMPL(isc_histomulti, isc__histomulti_destroy);
-#else
 ISC_REFCOUNT_IMPL(isc_histomulti, isc__histomulti_destroy);
-#endif /* ISC_HISTO_TRACE */
 
 /**********************************************************************/
 

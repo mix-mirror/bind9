@@ -57,8 +57,6 @@
 
 #include <dns/types.h>
 
-/* Add -DDNS_DISPATCH_TRACE=1 to CFLAGS for detailed reference tracing */
-
 /*%
  * This is a set of one or more dispatches which can be retrieved
  * round-robin fashion.
@@ -98,19 +96,7 @@ dns_dispatchmgr_create(isc_mem_t *mctx, dns_dispatchmgr_t **mgrp);
  *\li	anything else	-- failure
  */
 
-#if DNS_DISPATCH_TRACE
-#define dns_dispatchmgr_ref(ptr) \
-	dns_dispatchmgr__ref(ptr, __func__, __FILE__, __LINE__)
-#define dns_dispatchmgr_unref(ptr) \
-	dns_dispatchmgr__unref(ptr, __func__, __FILE__, __LINE__)
-#define dns_dispatchmgr_attach(ptr, ptrp) \
-	dns_dispatchmgr__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define dns_dispatchmgr_detach(ptrp) \
-	dns_dispatchmgr__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_TRACE_DECL(dns_dispatchmgr);
-#else
 ISC_REFCOUNT_DECL(dns_dispatchmgr);
-#endif
 
 /*%<
  * Attach/Detach to a dispatch manager.
@@ -223,19 +209,7 @@ dns_dispatch_createtcp(dns_dispatchmgr_t *mgr, const isc_sockaddr_t *localaddr,
  *\li	Anything else	-- failure.
  */
 
-#if DNS_DISPATCH_TRACE
-#define dns_dispatch_ref(ptr) \
-	dns_dispatch__ref(ptr, __func__, __FILE__, __LINE__)
-#define dns_dispatch_unref(ptr) \
-	dns_dispatch__unref(ptr, __func__, __FILE__, __LINE__)
-#define dns_dispatch_attach(ptr, ptrp) \
-	dns_dispatch__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define dns_dispatch_detach(ptrp) \
-	dns_dispatch__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_TRACE_DECL(dns_dispatch);
-#else
 ISC_REFCOUNT_DECL(dns_dispatch);
-#endif
 /*%<
  * Attach/Detach to a dispatch handle.
  *

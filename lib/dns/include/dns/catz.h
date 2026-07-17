@@ -13,8 +13,6 @@
 
 #pragma once
 
-/* Add -DDNS_CATZ_TRACE=1 to CFLAGS for detailed reference tracing */
-
 #include <inttypes.h>
 #include <stdbool.h>
 
@@ -432,29 +430,5 @@ dns_catz_zone_for_each_entry2(dns_catz_zone_t *catz, dns_catz_entry_cb2 cb,
  *
  */
 
-#ifdef DNS_CATZ_TRACE
-/* Compatibility macros */
-#define dns_catz_zone_attach(catz, catzp) \
-	dns_catz_zone__attach(catz, catzp, __func__, __FILE__, __LINE__)
-#define dns_catz_zone_detach(catzp) \
-	dns_catz_zone__detach(catzp, __func__, __FILE__, __LINE__)
-#define dns_catz_zone_ref(ptr) \
-	dns_catz_zone__ref(ptr, __func__, __FILE__, __LINE__)
-#define dns_catz_zone_unref(ptr) \
-	dns_catz_zone__unref(ptr, __func__, __FILE__, __LINE__)
-
-#define dns_catz_zones_attach(catzs, catzsp) \
-	dns_catz_zones__attach(catzs, catzsp, __func__, __FILE__, __LINE__)
-#define dns_catz_zones_detach(catzsp) \
-	dns_catz_zones__detach(catzsp, __func__, __FILE__, __LINE__)
-#define dns_catz_zones_ref(ptr) \
-	dns_catz_zones__ref(ptr, __func__, __FILE__, __LINE__)
-#define dns_catz_zones_unref(ptr) \
-	dns_catz_zones__unref(ptr, __func__, __FILE__, __LINE__)
-
-ISC_REFCOUNT_TRACE_DECL(dns_catz_zone);
-ISC_REFCOUNT_TRACE_DECL(dns_catz_zones);
-#else
 ISC_REFCOUNT_DECL(dns_catz_zone);
 ISC_REFCOUNT_DECL(dns_catz_zones);
-#endif /* DNS_CATZ_TRACE */

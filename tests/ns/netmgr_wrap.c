@@ -23,25 +23,12 @@
 
 #include <tests/ns.h>
 
-#if ISC_NETMGR_TRACE
-#define FLARG                                                                 \
-	, const char *func ISC_ATTR_UNUSED, const char *file ISC_ATTR_UNUSED, \
-		unsigned int line ISC_ATTR_UNUSED
-#else
-#define FLARG
-#endif
-
 /*
  * We don't want to use netmgr-based client accounting, we need to emulate it.
  */
 
-#if ISC_NETMGR_TRACE
-void
-isc_nmhandle__attach(isc_nmhandle_t *source, isc_nmhandle_t **targetp FLARG) {
-#else
 void
 isc_nmhandle_attach(isc_nmhandle_t *source, isc_nmhandle_t **targetp) {
-#endif
 	ns_client_t *client = (ns_client_t *)source;
 	int i;
 
@@ -63,13 +50,8 @@ isc_nmhandle_attach(isc_nmhandle_t *source, isc_nmhandle_t **targetp) {
 	return;
 }
 
-#if ISC_NETMGR_TRACE
-void
-isc_nmhandle__detach(isc_nmhandle_t **handlep FLARG) {
-#else
 void
 isc_nmhandle_detach(isc_nmhandle_t **handlep) {
-#endif
 	isc_nmhandle_t *handle = *handlep;
 	ns_client_t *client = (ns_client_t *)handle;
 	int i;

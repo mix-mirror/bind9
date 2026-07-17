@@ -43,8 +43,6 @@
 ***** Types.
 *****/
 
-/* Add -DISC_QUOTA_TRACE=1 to CFLAGS for detailed reference tracing */
-
 /*%
  * isc_quota structure
  *

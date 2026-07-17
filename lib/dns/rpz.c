@@ -182,16 +182,7 @@ struct nmdata {
 	dns_rpz_nm_zbits_t wild;
 };
 
-#ifdef DNS_RPZ_TRACE
-#define nmdata_ref(ptr)	  nmdata__ref(ptr, __func__, __FILE__, __LINE__)
-#define nmdata_unref(ptr) nmdata__unref(ptr, __func__, __FILE__, __LINE__)
-#define nmdata_attach(ptr, ptrp) \
-	nmdata__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define nmdata_detach(ptrp) nmdata__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_TRACE_DECL(nmdata);
-#else
 ISC_REFCOUNT_DECL(nmdata);
-#endif
 
 static isc_result_t
 rpz_add(dns_rpz_zone_t *rpz, const dns_name_t *src_name);
@@ -1365,11 +1356,6 @@ new_nmdata(isc_mem_t *mctx, const dns_name_t *name, const nmdata_t *data) {
 	dns_name_dup(name, mctx, &newdata->name);
 	isc_mem_attach(mctx, &newdata->mctx);
 
-#ifdef DNS_RPZ_TRACE
-	fprintf(stderr, "new_nmdata:%s:%s:%d:%p->references = 1\n", __func__,
-		__FILE__, __LINE__ + 1, name);
-#endif
-
 	return newdata;
 }
 
@@ -2111,11 +2097,7 @@ dns_rpz_zones_shutdown(dns_rpz_zones_t *rpzs) {
 	UNLOCK(&rpzs->maint_lock);
 }
 
-#ifdef DNS_RPZ_TRACE
-ISC_REFCOUNT_TRACE_IMPL(dns_rpz_zones, dns__rpz_zones_destroy);
-#else
 ISC_REFCOUNT_IMPL(dns_rpz_zones, dns__rpz_zones_destroy);
-#endif
 
 /*
  * Add an IP address to the radix tree or a name to the summary database.
@@ -2621,11 +2603,7 @@ destroy_nmdata(nmdata_t *data) {
 	isc_mem_putanddetach(&data->mctx, data, sizeof(nmdata_t));
 }
 
-#ifdef DNS_RPZ_TRACE
-ISC_REFCOUNT_TRACE_IMPL(nmdata, destroy_nmdata);
-#else
 ISC_REFCOUNT_IMPL(nmdata, destroy_nmdata);
-#endif
 
 static void
 qp_attach(void *uctx ISC_ATTR_UNUSED, void *pval,

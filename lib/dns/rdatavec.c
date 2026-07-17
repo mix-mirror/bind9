@@ -62,7 +62,7 @@
  */
 
 static void
-rdataset_disassociate(dns_rdataset_t *rdataset DNS__DB_FLARG);
+rdataset_disassociate(dns_rdataset_t *rdataset);
 static isc_result_t
 rdataset_first(dns_rdataset_t *rdataset);
 static isc_result_t
@@ -70,8 +70,7 @@ rdataset_next(dns_rdataset_t *rdataset);
 static void
 rdataset_current(dns_rdataset_t *rdataset, dns_rdata_t *rdata);
 static void
-rdataset_clone(const dns_rdataset_t *source,
-	       dns_rdataset_t *target DNS__DB_FLARG);
+rdataset_clone(const dns_rdataset_t *source, dns_rdataset_t *target);
 static unsigned int
 rdataset_count(dns_rdataset_t *rdataset);
 static void
@@ -938,7 +937,7 @@ vecheader_current(rdatavec_iter_t *iter, dns_rdata_t *rdata) {
 /* Fixed RRSet helper macros */
 
 static void
-rdataset_disassociate(dns_rdataset_t *rdataset DNS__DB_FLARG) {
+rdataset_disassociate(dns_rdataset_t *rdataset) {
 	dns_vecheader_unref(rdataset->vec.header);
 }
 
@@ -959,8 +958,7 @@ rdataset_current(dns_rdataset_t *rdataset, dns_rdata_t *rdata) {
 }
 
 static void
-rdataset_clone(const dns_rdataset_t *source,
-	       dns_rdataset_t *target DNS__DB_FLARG) {
+rdataset_clone(const dns_rdataset_t *source, dns_rdataset_t *target) {
 	INSIST(!ISC_LINK_LINKED(target, link));
 	*target = *source;
 	ISC_LINK_INIT(target, link);

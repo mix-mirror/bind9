@@ -21,9 +21,8 @@
 #include <dns/deleg.h>
 #include <dns/name.h>
 #include <dns/qp.h>
+#include <dns/tracing.h>
 #include <dns/view.h>
-
-#include "probes-dns.h"
 
 #define DELEGDB_NODE_MAGIC	 ISC_MAGIC('D', 'e', 'G', 'N')
 #define VALID_DELEGDB_NODE(node) ISC_MAGIC_VALID(node, DELEGDB_NODE_MAGIC)
@@ -46,18 +45,8 @@ typedef struct qplru {
 static void
 qplru_destroy(qplru_t *qplru);
 
-#ifdef DNS_DELEGDB_NODETRACE
-#define qplru_ref(ptr)	 qplru__ref(ptr, __func__, __FILE__, __LINE__)
-#define qplru_unref(ptr) qplru__unref(ptr, __func__, __FILE__, __LINE__)
-#define qplru_attach(ptr, ptrp) \
-	qplru__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define qplru_detach(ptrp) qplru__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_STATIC_TRACE_DECL(qplru);
-ISC_REFCOUNT_STATIC_TRACE_IMPL(qplru, qplru_destroy);
-#else
 ISC_REFCOUNT_STATIC_DECL(qplru);
 ISC_REFCOUNT_STATIC_IMPL(qplru, qplru_destroy);
-#endif
 
 struct dns_delegdb {
 	unsigned int magic;
@@ -92,7 +81,7 @@ delegdb_destroy(dns_delegdb_t *delegdb) {
 	 */
 	call_rcu(&qplru->rcu_head, qplru_shutdown_rcu);
 
-	LIBDNS_DELEGDB_SHUTDOWN(delegdb);
+	lttng_ust_tracepoint(libdns, delegdb_shutdown, delegdb);
 
 	isc_mem_putanddetach(&delegdb->mctx, delegdb, sizeof(*delegdb));
 }
@@ -146,21 +135,8 @@ delegdb_node_destroy(delegdb_node_t *node) {
 	qplru_detach(&qplru);
 }
 
-#ifdef DNS_DELEGDB_NODETRACE
-#define delegdb_node_ref(ptr) \
-	delegdb_node__ref(ptr, __func__, __FILE__, __LINE__)
-#define delegdb_node_unref(ptr) \
-	delegdb_node__unref(ptr, __func__, __FILE__, __LINE__)
-#define delegdb_node_attach(ptr, ptrp) \
-	delegdb_node__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define delegdb_node_detach(ptrp) \
-	delegdb_node__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_STATIC_TRACE_DECL(delegdb_node);
-ISC_REFCOUNT_STATIC_TRACE_IMPL(delegdb_node, delegdb_node_destroy);
-#else
 ISC_REFCOUNT_STATIC_DECL(delegdb_node);
 ISC_REFCOUNT_STATIC_IMPL(delegdb_node, delegdb_node_destroy);
-#endif
 
 static void
 dbnode_attach(ISC_ATTR_UNUSED void *uctx, void *pval,
@@ -225,7 +201,7 @@ dns_delegdb_create(dns_delegdb_t **delegdbp) {
 
 	delegdb->qplru = MOVE_OWNERSHIP(qplru);
 
-	LIBDNS_DELEGDB_CREATE(delegdb);
+	lttng_ust_tracepoint(libdns, delegdb_create, delegdb);
 
 	*delegdbp = delegdb;
 }
@@ -336,19 +312,23 @@ dns_delegdb_lookup(dns_delegdb_t *delegdb, const dns_name_t *name,
 	dns_qpread_t qpr = {};
 	char namebuf[DNS_NAME_FORMATSIZE];
 
-	if (LIBDNS_DELEGDB_LOOKUP_START_ENABLED() ||
-	    LIBDNS_DELEGDB_LOOKUP_DONE_ENABLED())
+	if (lttng_ust_tracepoint_enabled(libdns, delegdb_lookup_start) ||
+	    lttng_ust_tracepoint_enabled(libdns, delegdb_lookup_done))
 	{
 		dns_name_format(name, namebuf, sizeof(namebuf));
+	} else {
+		namebuf[0] = 0;
 	}
-	LIBDNS_DELEGDB_LOOKUP_START(delegdb, namebuf);
+
+	lttng_ust_tracepoint(libdns, delegdb_lookup_start, delegdb, namebuf);
 
 	dns_qpmulti_query(delegdb->qplru->nodes, &qpr);
 	result = deleg_lookup(delegdb, &qpr, name, now, options, zonecut,
 			      deepestzonecut, delegsetp);
 	dns_qpread_destroy(delegdb->qplru->nodes, &qpr);
 
-	LIBDNS_DELEGDB_LOOKUP_DONE(delegdb, namebuf, result);
+	lttng_ust_tracepoint(libdns, delegdb_lookup_done, delegdb, namebuf,
+			     result);
 
 	return result;
 }
@@ -466,7 +446,7 @@ delegdb_cleanup(dns_delegdb_t *delegdb, dns_qp_t *qp, size_t requested) {
 		return;
 	}
 
-	LIBDNS_DELEGDB_CLEANUP_START(delegdb, (int)requested);
+	lttng_ust_tracepoint(libdns, delegdb_cleanup_start, delegdb, requested);
 
 	while (reclaimed < requested) {
 		node = ISC_SIEVE_NEXT(delegdb->qplru->lru, visited, link);
@@ -477,11 +457,12 @@ delegdb_cleanup(dns_delegdb_t *delegdb, dns_qp_t *qp, size_t requested) {
 		reclaimed += delegdb_node_size(node) +
 			     delegset_size(node->delegset);
 
-		if (LIBDNS_DELEGDB_EVICT_ENABLED()) {
+		if (lttng_ust_tracepoint_enabled(libdns, delegdb_evict)) {
 			char namebuf[DNS_NAME_FORMATSIZE];
 			dns_name_format(&node->zonecut, namebuf,
 					sizeof(namebuf));
-			LIBDNS_DELEGDB_EVICT(delegdb, node, namebuf);
+			lttng_ust_tracepoint(libdns, delegdb_evict, delegdb,
+					     node, namebuf);
 		}
 
 		delegdb_node_t *old_node = NULL;
@@ -494,7 +475,7 @@ delegdb_cleanup(dns_delegdb_t *delegdb, dns_qp_t *qp, size_t requested) {
 		}
 	}
 
-	LIBDNS_DELEGDB_CLEANUP_DONE(delegdb, (int)reclaimed);
+	lttng_ust_tracepoint(libdns, delegdb_cleanup_done, delegdb, reclaimed);
 }
 
 static size_t
@@ -570,6 +551,10 @@ delegdb_node_prepare(dns_delegdb_t *delegdb, isc_stdtime_t now, dns_ttl_t ttl,
 isc_result_t
 dns_delegset_insert(dns_delegdb_t *delegdb, const dns_name_t *zonecut,
 		    dns_ttl_t ttl, dns_delegset_t *delegset) {
+	REQUIRE(VALID_DELEGDB(delegdb));
+	REQUIRE(DNS_NAME_VALID(zonecut));
+	REQUIRE(DNS_DELEGSET_VALID(delegset));
+
 	isc_result_t result;
 	delegdb_node_t *node = NULL;
 	dns_qp_t *qp = NULL;
@@ -577,9 +562,11 @@ dns_delegset_insert(dns_delegdb_t *delegdb, const dns_name_t *zonecut,
 	isc_stdtime_t now = isc_stdtime_now();
 	char zonecutbuf[DNS_NAME_FORMATSIZE];
 
-	REQUIRE(VALID_DELEGDB(delegdb));
-	REQUIRE(DNS_NAME_VALID(zonecut));
-	REQUIRE(DNS_DELEGSET_VALID(delegset));
+	if (lttng_ust_tracepoint_enabled(libdns, delegdb_insert_start) ||
+	    lttng_ust_tracepoint_enabled(libdns, delegdb_insert_done))
+	{
+		dns_name_format(zonecut, zonecutbuf, sizeof(zonecutbuf));
+	}
 
 	/*
 	 * Only delegset allocated by the delegdb memory context can be added in
@@ -588,12 +575,7 @@ dns_delegset_insert(dns_delegdb_t *delegdb, const dns_name_t *zonecut,
 	 */
 	REQUIRE(delegset->mctx == delegdb->mctx);
 
-	if (LIBDNS_DELEGDB_INSERT_START_ENABLED() ||
-	    LIBDNS_DELEGDB_INSERT_DONE_ENABLED())
-	{
-		dns_name_format(zonecut, zonecutbuf, sizeof(zonecutbuf));
-	}
-	LIBDNS_DELEGDB_INSERT_START(delegdb, zonecutbuf);
+	lttng_ust_tracepoint(libdns, delegdb_insert_start, delegdb, zonecutbuf);
 
 	/*
 	 * First, check (without write txn) if the node already exists and is
@@ -665,7 +647,8 @@ dns_delegset_insert(dns_delegdb_t *delegdb, const dns_name_t *zonecut,
 	dns_qpmulti_commit(delegdb->qplru->nodes, &qp);
 
 cleanup:
-	LIBDNS_DELEGDB_INSERT_DONE(delegdb, zonecutbuf, result);
+	lttng_ust_tracepoint(libdns, delegdb_insert_done, delegdb, zonecutbuf,
+			     result);
 
 	return result;
 }
@@ -959,11 +942,6 @@ dns_delegdb_delete(dns_delegdb_t *delegdb, const dns_name_t *name, bool tree) {
 
 	dns_qp_t *qp = NULL;
 	isc_result_t result = ISC_R_SHUTTINGDOWN;
-	char namebuf[DNS_NAME_FORMATSIZE];
-
-	if (LIBDNS_DELEGDB_DELETE_ENABLED()) {
-		dns_name_format(name, namebuf, sizeof(namebuf));
-	}
 
 	dns_qpmulti_write(delegdb->qplru->nodes, &qp);
 	if (tree) {
@@ -976,7 +954,13 @@ dns_delegdb_delete(dns_delegdb_t *delegdb, const dns_name_t *name, bool tree) {
 	}
 	dns_qpmulti_commit(delegdb->qplru->nodes, &qp);
 
-	LIBDNS_DELEGDB_DELETE(delegdb, namebuf, (int)tree, result);
+	if (lttng_ust_tracepoint_enabled(libdns, delegdb_delete)) {
+		char namebuf[DNS_NAME_FORMATSIZE];
+		dns_name_format(name, namebuf, sizeof(namebuf));
+
+		lttng_ust_tracepoint(libdns, delegdb_delete, delegdb, namebuf,
+				     tree, result);
+	}
 
 	return result;
 }

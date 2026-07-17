@@ -264,7 +264,7 @@ cleanup:
 
 static isc_result_t
 update_callback(void *arg, const dns_name_t *name, dns_rdataset_t *rds,
-		dns_diffop_t op DNS__DB_FLARG) {
+		dns_diffop_t op) {
 	dns_updatectx_t *ctx = arg;
 	return update_rdataset(ctx->db, ctx->ver, (dns_name_t *)name, rds, op);
 }
@@ -393,7 +393,7 @@ diff_apply(const dns_diff_t *diff, dns_rdatacallbacks_t *callbacks) {
 			 * Merge the rdataset into the database.
 			 */
 			result = callbacks->update(callbacks->add_private, name,
-						   &rds, op DNS__DB_FILELINE);
+						   &rds, op);
 
 			switch (result) {
 			case ISC_R_SUCCESS:
@@ -541,9 +541,8 @@ dns_diff_load(const dns_diff_t *diff, dns_rdatacallbacks_t *callbacks) {
 			rds.trust = dns_trust_ultimate;
 
 			INSIST(op == DNS_DIFFOP_ADD);
-			result = callbacks->update(
-				callbacks->add_private, name, &rds,
-				DNS_DIFFOP_ADD DNS__DB_FILELINE);
+			result = callbacks->update(callbacks->add_private, name,
+						   &rds, DNS_DIFFOP_ADD);
 			if (result == DNS_R_UNCHANGED) {
 				isc_log_write(DNS_LOGCATEGORY_GENERAL,
 					      DNS_LOGMODULE_DIFF,

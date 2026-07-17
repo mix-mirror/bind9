@@ -22,8 +22,6 @@
  * Address match list handling.
  */
 
-/* Add -DDNS_ACL_TRACE=1 to CFLAGS for detailed reference tracing */
-
 /***
  *** Imports
  ***/
@@ -161,16 +159,7 @@ dns_acl_merge(dns_acl_t *dest, dns_acl_t *source, bool pos);
  * an unexpected positive match in the parent ACL.
  */
 
-#if DNS_ACL_TRACE
-#define dns_acl_ref(ptr)   dns_acl__ref(ptr, __func__, __FILE__, __LINE__)
-#define dns_acl_unref(ptr) dns_acl__unref(ptr, __func__, __FILE__, __LINE__)
-#define dns_acl_attach(ptr, ptrp) \
-	dns_acl__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define dns_acl_detach(ptrp) dns_acl__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_TRACE_DECL(dns_acl);
-#else
 ISC_REFCOUNT_DECL(dns_acl);
-#endif
 
 bool
 dns_acl_isinsecure(const dns_acl_t *a);
@@ -212,18 +201,7 @@ dns_aclenv_set(dns_aclenv_t *env, dns_acl_t *localhost, dns_acl_t *localnets);
  * Attach the 'localhost' and 'localnets' arguments to 'env' ACL environment
  */
 
-#if DNS_ACL_TRACE
-#define dns_aclenv_ref(ptr) dns_aclenv__ref(ptr, __func__, __FILE__, __LINE__)
-#define dns_aclenv_unref(ptr) \
-	dns_aclenv__unref(ptr, __func__, __FILE__, __LINE__)
-#define dns_aclenv_attach(ptr, ptrp) \
-	dns_aclenv__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define dns_aclenv_detach(ptrp) \
-	dns_aclenv__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_TRACE_DECL(dns_aclenv);
-#else
 ISC_REFCOUNT_DECL(dns_aclenv);
-#endif
 
 isc_result_t
 dns_acl_match(const isc_netaddr_t *reqaddr, const dns_name_t *reqsigner,

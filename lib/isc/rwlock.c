@@ -60,9 +60,8 @@
 #include <isc/rwlock.h>
 #include <isc/thread.h>
 #include <isc/tid.h>
+#include <isc/tracing.h>
 #include <isc/util.h>
-
-#include "probes-isc.h"
 
 static atomic_uint_fast16_t isc__crwlock_workers = 128;
 
@@ -159,7 +158,7 @@ isc_rwlock_rdlock(isc_rwlock_t *rwl) {
 	uint32_t cnt = 0;
 	bool barrier_raised = false;
 
-	LIBISC_RWLOCK_RDLOCK_REQ(rwl);
+	lttng_ust_tracepoint(libisc, rwlock_rdlock_req, rwl);
 
 	while (true) {
 		read_indicator_arrive(rwl);
@@ -184,7 +183,7 @@ isc_rwlock_rdlock(isc_rwlock_t *rwl) {
 		writers_barrier_lower(rwl);
 	}
 
-	LIBISC_RWLOCK_RDLOCK_ACQ(rwl);
+	lttng_ust_tracepoint(libisc, rwlock_rdlock_acq, rwl);
 }
 
 isc_result_t
@@ -195,32 +194,35 @@ isc_rwlock_tryrdlock(isc_rwlock_t *rwl) {
 		/* Writer has acquired the lock, release the read lock */
 		read_indicator_depart(rwl);
 
-		LIBISC_RWLOCK_TRYRDLOCK(rwl, ISC_R_LOCKBUSY);
+		lttng_ust_tracepoint(libisc, rwlock_tryrdlock, rwl,
+				     ISC_R_LOCKBUSY);
 		return ISC_R_LOCKBUSY;
 	}
 
 	/* Acquired lock in read-only mode */
-	LIBISC_RWLOCK_TRYRDLOCK(rwl, ISC_R_SUCCESS);
+	lttng_ust_tracepoint(libisc, rwlock_tryrdlock, rwl, ISC_R_SUCCESS);
 	return ISC_R_SUCCESS;
 }
 
 void
 isc_rwlock_rdunlock(isc_rwlock_t *rwl) {
 	read_indicator_depart(rwl);
-	LIBISC_RWLOCK_RDUNLOCK(rwl);
+	lttng_ust_tracepoint(libisc, rwlock_rdunlock, rwl);
 }
 
 isc_result_t
 isc_rwlock_tryupgrade(isc_rwlock_t *rwl) {
 	/* Write Barriers has been raised */
 	if (writers_barrier_israised(rwl)) {
-		LIBISC_RWLOCK_TRYUPGRADE(rwl, ISC_R_LOCKBUSY);
+		lttng_ust_tracepoint(libisc, rwlock_tryupgrade, rwl,
+				     ISC_R_LOCKBUSY);
 		return ISC_R_LOCKBUSY;
 	}
 
 	/* Try to acquire the write-lock */
 	if (!writers_lock_acquire(rwl)) {
-		LIBISC_RWLOCK_TRYUPGRADE(rwl, ISC_R_LOCKBUSY);
+		lttng_ust_tracepoint(libisc, rwlock_tryupgrade, rwl,
+				     ISC_R_LOCKBUSY);
 		return ISC_R_LOCKBUSY;
 	}
 
@@ -233,10 +235,11 @@ isc_rwlock_tryupgrade(isc_rwlock_t *rwl) {
 
 		/* Unlock the write-lock */
 		writers_lock_release(rwl);
-		LIBISC_RWLOCK_TRYUPGRADE(rwl, ISC_R_LOCKBUSY);
+		lttng_ust_tracepoint(libisc, rwlock_tryupgrade, rwl,
+				     ISC_R_LOCKBUSY);
 		return ISC_R_LOCKBUSY;
 	}
-	LIBISC_RWLOCK_TRYUPGRADE(rwl, ISC_R_SUCCESS);
+	lttng_ust_tracepoint(libisc, rwlock_tryupgrade, rwl, ISC_R_SUCCESS);
 	return ISC_R_SUCCESS;
 }
 
@@ -253,7 +256,7 @@ read_indicator_wait_until_empty(isc_rwlock_t *rwl) {
 
 void
 isc_rwlock_wrlock(isc_rwlock_t *rwl) {
-	LIBISC_RWLOCK_WRLOCK_REQ(rwl);
+	lttng_ust_tracepoint(libisc, rwlock_wrlock_req, rwl);
 
 	/* Write Barriers has been raised, wait */
 	while (writers_barrier_israised(rwl)) {
@@ -267,26 +270,28 @@ isc_rwlock_wrlock(isc_rwlock_t *rwl) {
 
 	read_indicator_wait_until_empty(rwl);
 
-	LIBISC_RWLOCK_WRLOCK_ACQ(rwl);
+	lttng_ust_tracepoint(libisc, rwlock_wrlock_acq, rwl);
 }
 
 void
 isc_rwlock_wrunlock(isc_rwlock_t *rwl) {
 	writers_lock_release(rwl);
-	LIBISC_RWLOCK_WRUNLOCK(rwl);
+	lttng_ust_tracepoint(libisc, rwlock_wrunlock, rwl);
 }
 
 isc_result_t
 isc_rwlock_trywrlock(isc_rwlock_t *rwl) {
 	/* Write Barriers has been raised */
 	if (writers_barrier_israised(rwl)) {
-		LIBISC_RWLOCK_TRYWRLOCK(rwl, ISC_R_LOCKBUSY);
+		lttng_ust_tracepoint(libisc, rwlock_trywrlock, rwl,
+				     ISC_R_LOCKBUSY);
 		return ISC_R_LOCKBUSY;
 	}
 
 	/* Try to acquire the write-lock */
 	if (!writers_lock_acquire(rwl)) {
-		LIBISC_RWLOCK_TRYWRLOCK(rwl, ISC_R_LOCKBUSY);
+		lttng_ust_tracepoint(libisc, rwlock_trywrlock, rwl,
+				     ISC_R_LOCKBUSY);
 		return ISC_R_LOCKBUSY;
 	}
 
@@ -294,11 +299,12 @@ isc_rwlock_trywrlock(isc_rwlock_t *rwl) {
 		/* Unlock the write-lock */
 		writers_lock_release(rwl);
 
-		LIBISC_RWLOCK_TRYWRLOCK(rwl, ISC_R_LOCKBUSY);
+		lttng_ust_tracepoint(libisc, rwlock_trywrlock, rwl,
+				     ISC_R_LOCKBUSY);
 		return ISC_R_LOCKBUSY;
 	}
 
-	LIBISC_RWLOCK_TRYWRLOCK(rwl, ISC_R_SUCCESS);
+	lttng_ust_tracepoint(libisc, rwlock_trywrlock, rwl, ISC_R_SUCCESS);
 	return ISC_R_SUCCESS;
 }
 
@@ -308,7 +314,7 @@ isc_rwlock_downgrade(isc_rwlock_t *rwl) {
 
 	writers_lock_release(rwl);
 
-	LIBISC_RWLOCK_DOWNGRADE(rwl);
+	lttng_ust_tracepoint(libisc, rwlock_downgrade, rwl);
 }
 
 void
@@ -319,12 +325,12 @@ isc_rwlock_init(isc_rwlock_t *rwl) {
 	atomic_init(&rwl->writers_barrier, 0);
 	atomic_init(&rwl->readers_ingress, 0);
 	atomic_init(&rwl->readers_egress, 0);
-	LIBISC_RWLOCK_INIT(rwl);
+	lttng_ust_tracepoint(libisc, rwlock_init, rwl);
 }
 
 void
 isc_rwlock_destroy(isc_rwlock_t *rwl) {
-	LIBISC_RWLOCK_DESTROY(rwl);
+	lttng_ust_tracepoint(libisc, rwlock_destroy, rwl);
 	/* Check whether write lock has been unlocked */
 	REQUIRE(atomic_load(&rwl->writers_lock) == ISC_RWLOCK_UNLOCKED);
 	REQUIRE(read_indicator_isempty(rwl));

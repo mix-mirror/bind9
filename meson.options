@@ -87,6 +87,13 @@ option(
     description: 'Enable HTTP zlib compression, requires zlib',
 )
 
+option(
+    'tracing',
+    type: 'feature',
+    value: 'auto',
+    description: 'Enable LTTng tracing, requires lttng-ust',
+)
+
 # Internals
 option(
     'cachedb',
@@ -121,13 +128,6 @@ option(
     type: 'combo',
     choices: ['membarrier', 'bp', 'mb', 'qsbr'],
     description: 'Userspace RCU Flavor (non-membarrier RCU is only allowed in development builds)',
-)
-
-option(
-    'tracing',
-    type: 'feature',
-    value: 'auto',
-    description: 'Enable User Statically Defined Tracing support, requires dtrace or systemtap',
 )
 
 # Behavior

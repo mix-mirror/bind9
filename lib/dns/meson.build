@@ -9,9 +9,6 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
-probe_hdr = dtrace_header.process('probes-dns.d')
-probe_src = [probe_hdr, files('deleg.c', 'resolver.c', 'xfrin.c')]
-
 # dns_inc += include_directories('include')
 dns_inc_p += include_directories('.')
 
@@ -34,6 +31,7 @@ dns_srcset.add(dns_gen_headers)
 dns_srcset.add(when: dnstap_dep, if_true: files('dnstap.c'))
 dns_srcset.add(when: maxminddb_dep, if_true: files('geoip2.c'))
 dns_srcset.add(when: [gssapi_dep, krb5_dep], if_true: files('gssapi_link.c'))
+dns_srcset.add(when: 'ENABLE_TRACING', if_true: lttng_dep)
 
 dns_srcset.add(
     custom_target(
@@ -43,37 +41,6 @@ dns_srcset.add(
         capture: true,
         command: [dns_header_gen, '-s', meson.current_source_dir()],
     ),
-)
-
-if config.get('HAVE_DTRACE')
-    dns_probe_objects += static_library(
-        'dns-probe-target',
-        probe_src,
-        build_by_default: false,
-        dependencies: urcu_dep,
-        implicit_include_directories: false,
-        include_directories: [isc_inc, dns_inc, dns_inc_p],
-        sources: dns_gen_headers,
-    ).extract_all_objects(recursive: false)
-endif
-
-dns_srcset.add(
-    when: 'HAVE_DTRACE',
-    if_true: [
-        custom_target(
-            'dns-probe',
-            input: [files('probes-dns.d'), dns_probe_objects],
-            output: 'dns-probes.o',
-            command: [
-                dtrace,
-                '-G',
-                '-o', '@OUTPUT@',
-                '-s', '@INPUT@',
-            ],
-        ),
-        probe_hdr,
-    ],
-    if_false: probe_src,
 )
 
 dns_srcset.add(
@@ -90,6 +57,7 @@ dns_srcset.add(
         'compress.c',
         'db.c',
         'dbiterator.c',
+        'deleg.c',
         'diff.c',
         'dispatch.c',
         'dlz.c',
@@ -145,6 +113,7 @@ dns_srcset.add(
         'remote.c',
         'request.c',
         'resconf.c',
+        'resolver.c',
         'result.c',
         'rootns.c',
         'rpz.c',
@@ -158,6 +127,7 @@ dns_srcset.add(
         'stats.c',
         'time.c',
         'tkey.c',
+        'tracing.c',
         'transport.c',
         'tsig.c',
         'ttl.c',
@@ -165,6 +135,7 @@ dns_srcset.add(
         'update.c',
         'validator.c',
         'view.c',
+        'xfrin.c',
         'zone.c',
         'zonefetch.c',
         'zonemgr.c',

@@ -313,20 +313,7 @@ isc_histomulti_add(isc_histomulti_t *hm, uint64_t value, uint64_t inc);
  *\li	`hm` is a pointer to a valid histomulti
  */
 
-#ifdef ISC_HISTO_TRACE
-#define isc_histomulti_ref(ptr) \
-	dns_histomulti__ref(ptr, __func__, __FILE__, __LINE__)
-#define isc_histomulti_unref(ptr) \
-	isc_histomulti__unref(ptr, __func__, __FILE__, __LINE__)
-#define isc_histomulti_attach(ptr, ptrp) \
-	isc_histomulti__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define isc_histomulti_detach(ptrp) \
-	isc_histomulti__detach(ptrp, __func__, __FILE__, __LINE__)
-
-ISC_REFCOUNT_TRACE_DECL(isc_histomulti);
-#else
 ISC_REFCOUNT_DECL(isc_histomulti);
-#endif /* ISC_HISTO_TRACE */
 
 /**********************************************************************/
 

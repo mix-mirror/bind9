@@ -69,11 +69,7 @@ dns__keystore_destroy(dns_keystore_t *keystore) {
 	isc_mem_putanddetach(&keystore->mctx, keystore, sizeof(*keystore));
 }
 
-#ifdef DNS_KEYSTORE_TRACE
-ISC_REFCOUNT_TRACE_IMPL(dns_keystore, dns__keystore_destroy);
-#else
 ISC_REFCOUNT_IMPL(dns_keystore, dns__keystore_destroy);
-#endif
 
 const char *
 dns_keystore_name(dns_keystore_t *keystore) {

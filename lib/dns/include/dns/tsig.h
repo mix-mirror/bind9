@@ -30,8 +30,6 @@
 
 #include <dst/dst.h>
 
-/* Add -DDNS_TSIG_TRACE=1 to CFLAGS for detailed reference tracing */
-
 /*
  * Algorithms.
  */
@@ -292,26 +290,5 @@ dns_tsigkeyring_restore(dns_tsigkeyring_t *ring, FILE *fp);
  *	Restore a TSIG keyring from a dump file 'fp'.
  */
 
-#if DNS_TSIG_TRACE
-#define dns_tsigkey_ref(ptr) dns_tsigkey__ref(ptr, __func__, __FILE__, __LINE__)
-#define dns_tsigkey_unref(ptr) \
-	dns_tsigkey__unref(ptr, __func__, __FILE__, __LINE__)
-#define dns_tsigkey_attach(ptr, ptrp) \
-	dns_tsigkey__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define dns_tsigkey_detach(ptrp) \
-	dns_tsigkey__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_TRACE_DECL(dns_tsigkey);
-
-#define dns_tsigkeyring_ref(ptr) \
-	dns_tsigkeyring__ref(ptr, __func__, __FILE__, __LINE__)
-#define dns_tsigkeyring_unref(ptr) \
-	dns_tsigkeyring__unref(ptr, __func__, __FILE__, __LINE__)
-#define dns_tsigkeyring_attach(ptr, ptrp) \
-	dns_tsigkeyring__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define dns_tsigkeyring_detach(ptrp) \
-	dns_tsigkeyring__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_TRACE_DECL(dns_tsigkeyring);
-#else
 ISC_REFCOUNT_DECL(dns_tsigkey);
 ISC_REFCOUNT_DECL(dns_tsigkeyring);
-#endif

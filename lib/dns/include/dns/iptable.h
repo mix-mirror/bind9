@@ -30,8 +30,6 @@ struct dns_iptable {
 	ISC_LINK(dns_iptable_t) nextincache;
 };
 
-/* Add -DDNS_IPTABLE_TRACE=1 to CFLAGS for detailed reference tracing */
-
 #define DNS_IPTABLE_MAGIC    ISC_MAGIC('T', 'a', 'b', 'l')
 #define DNS_IPTABLE_VALID(a) ISC_MAGIC_VALID(a, DNS_IPTABLE_MAGIC)
 
@@ -58,15 +56,4 @@ dns_iptable_merge(dns_iptable_t *tab, dns_iptable_t *source, bool negate);
  * Merge one IP table into another one, optionally negating allow entries.
  */
 
-#if DNS_IPTABLE_TRACE
-#define dns_iptable_ref(ptr) dns_iptable__ref(ptr, __func__, __FILE__, __LINE__)
-#define dns_iptable_unref(ptr) \
-	dns_iptable__unref(ptr, __func__, __FILE__, __LINE__)
-#define dns_iptable_attach(ptr, ptrp) \
-	dns_iptable__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define dns_iptable_detach(ptrp) \
-	dns_iptable__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_TRACE_DECL(dns_iptable);
-#else
 ISC_REFCOUNT_DECL(dns_iptable);
-#endif

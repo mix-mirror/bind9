@@ -36,8 +36,6 @@
 
 #include <dst/dst.h>
 
-/* Add -DDNS_NAMETREE_TRACE=1 to CFLAGS for detailed reference tracing */
-
 typedef enum {
 	DNS_NAMETREE_BOOL,
 	DNS_NAMETREE_BITS,
@@ -165,25 +163,5 @@ dns_nametree_covered(dns_nametree_t *nametree, const dns_name_t *name,
  *\li	'nametree' is a valid nametree, or is NULL.
  */
 
-#if DNS_NAMETREE_TRACE
-#define dns_nametree_ref(ptr) \
-	dns_nametree__ref(ptr, __func__, __FILE__, __LINE__)
-#define dns_nametree_unref(ptr) \
-	dns_nametree__unref(ptr, __func__, __FILE__, __LINE__)
-#define dns_nametree_attach(ptr, ptrp) \
-	dns_nametree__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define dns_nametree_detach(ptrp) \
-	dns_nametree__detach(ptrp, __func__, __FILE__, __LINE__)
-#define dns_ntnode_ref(ptr) dns_ntnode__ref(ptr, __func__, __FILE__, __LINE__)
-#define dns_ntnode_unref(ptr) \
-	dns_ntnode__unref(ptr, __func__, __FILE__, __LINE__)
-#define dns_ntnode_attach(ptr, ptrp) \
-	dns_ntnode__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define dns_ntnode_detach(ptrp) \
-	dns_ntnode__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_TRACE_DECL(dns_nametree);
-ISC_REFCOUNT_TRACE_DECL(dns_ntnode);
-#else
 ISC_REFCOUNT_DECL(dns_nametree);
 ISC_REFCOUNT_DECL(dns_ntnode);
-#endif

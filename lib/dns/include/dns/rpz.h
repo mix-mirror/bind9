@@ -13,8 +13,6 @@
 
 #pragma once
 
-/* Add -DDNS_RPZ_TRACE=1 to CFLAGS for detailed reference tracing */
-
 #include <inttypes.h>
 #include <stdbool.h>
 
@@ -398,20 +396,7 @@ dns_rpz_dbupdate_register(dns_db_t *db, dns_rpz_zone_t *rpz);
 void
 dns_rpz_zones_shutdown(dns_rpz_zones_t *rpzs);
 
-#ifdef DNS_RPZ_TRACE
-#define dns_rpz_zones_detach(rpzsp) \
-	dns_rpz_zones__detach(rpzsp, __func__, __FILE__, __LINE__)
-#define dns_rpz_zones_attach(rpzs, rpzsp) \
-	dns_rpz_zones__attach(rpzs, rpzsp, __func__, __FILE__, __LINE__)
-#define dns_rpz_zones_ref(ptr) \
-	dns_rpz_zones__ref(ptr, __func__, __FILE__, __LINE__)
-#define dns_rpz_zones_unref(ptr) \
-	dns_rpz_zones__unref(ptr, __func__, __FILE__, __LINE__)
-
-ISC_REFCOUNT_TRACE_DECL(dns_rpz_zones);
-#else
 ISC_REFCOUNT_DECL(dns_rpz_zones);
-#endif
 
 dns_rpz_num_t
 dns_rpz_find_ip(dns_rpz_zones_t *rpzs, dns_rpz_type_t rpz_type,

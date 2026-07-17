@@ -39,8 +39,6 @@
 #include <dns/types.h>
 #include <dns/view.h>
 
-/* Add -DDNS_NTA_TRACE=1 to CFLAGS for detailed reference tracing */
-
 #define NTATABLE_MAGIC	   ISC_MAGIC('N', 'T', 'A', 't')
 #define VALID_NTATABLE(nt) ISC_MAGIC_VALID(nt, NTATABLE_MAGIC)
 
@@ -60,19 +58,7 @@ dns_ntatable_create(dns_view_t *view, dns_ntatable_t **ntatablep);
  *\li	*ntatablep is a valid, empty NTA table.
  */
 
-#if DNS_NTA_TRACE
-#define dns_ntatable_ref(ptr) \
-	dns_ntatable__ref(ptr, __func__, __FILE__, __LINE__)
-#define dns_ntatable_unref(ptr) \
-	dns_ntatable__unref(ptr, __func__, __FILE__, __LINE__)
-#define dns_ntatable_attach(ptr, ptrp) \
-	dns_ntatable__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define dns_ntatable_detach(ptrp) \
-	dns_ntatable__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_TRACE_DECL(dns_ntatable);
-#else
 ISC_REFCOUNT_DECL(dns_ntatable);
-#endif
 /*%
  * Reference counting for dns_ntatable
  */
@@ -165,14 +151,4 @@ dns_ntatable_shutdown(dns_ntatable_t *ntatable);
 
 /* Internal */
 typedef struct dns__nta dns__nta_t;
-#if DNS_NTA_TRACE
-#define dns__nta_ref(ptr)   dns__nta__ref(ptr, __func__, __FILE__, __LINE__)
-#define dns__nta_unref(ptr) dns__nta__unref(ptr, __func__, __FILE__, __LINE__)
-#define dns__nta_attach(ptr, ptrp) \
-	dns__nta__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define dns__nta_detach(ptrp) \
-	dns__nta__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_TRACE_DECL(dns__nta);
-#else
 ISC_REFCOUNT_DECL(dns__nta);
-#endif

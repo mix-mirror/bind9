@@ -82,34 +82,23 @@ static atomic_uint_fast64_t rollback_time;
  * TRACE is generally used in allocation-related functions so it doesn't
  * trace very high-frequency ops
  */
-#define TRACE(fmt, ...)                                                        \
-	do {                                                                   \
-		if (isc_log_wouldlog(ISC_LOG_DEBUG(7))) {                      \
-			isc_log_write(DNS_LOGCATEGORY_DATABASE,                \
-				      DNS_LOGMODULE_QP, ISC_LOG_DEBUG(7),      \
-				      "%s:%d:%s(qp %p uctx \"%s\"):t%" PRItid  \
-				      ": " fmt,                                \
-				      __FILE__, __LINE__, __func__, qp,        \
-				      qp ? TRIENAME(qp) : "(null)", isc_tid(), \
-				      ##__VA_ARGS__);                          \
-		}                                                              \
+#define TRACE(fmt, ...)                                                       \
+	do {                                                                  \
+		if (isc_log_wouldlog(ISC_LOG_DEBUG(7))) {                     \
+			isc_log_write(DNS_LOGCATEGORY_DATABASE,               \
+				      DNS_LOGMODULE_QP, ISC_LOG_DEBUG(7),     \
+				      "%s:%d:%s(qp %p uctx \"%s\"):t%" PRItid \
+				      ": " fmt,                               \
+				      __FILE__, __LINE__, __func__, qp,       \
+				      qp ? TRIENAME(qp) : "(null)",           \
+				      isc_tid(), ##__VA_ARGS__);              \
+		}                                                             \
 	} while (0)
 #else
 #define TRACE(...)
 #endif
 
-#if DNS_QPMULTI_TRACE
-ISC_REFCOUNT_STATIC_TRACE_DECL(dns_qpmulti);
-#define dns_qpmulti_ref(ptr) dns_qpmulti__ref(ptr, __func__, __FILE__, __LINE__)
-#define dns_qpmulti_unref(ptr) \
-	dns_qpmulti__unref(ptr, __func__, __FILE__, __LINE__)
-#define dns_qpmulti_attach(ptr, ptrp) \
-	dns_qpmulti__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define dns_qpmulti_detach(ptrp) \
-	dns_qpmulti__detach(ptrp, __func__, __FILE__, __LINE__)
-#else
 ISC_REFCOUNT_STATIC_DECL(dns_qpmulti);
-#endif
 
 /***********************************************************************
  *
@@ -1581,11 +1570,7 @@ qpmulti_free_mem(dns_qpmulti_t *multi) {
 	isc_mem_putanddetach(&qp->mctx, multi, sizeof(*multi));
 }
 
-#if QPMULTI_TRACE
-ISC_REFCOUNT_STATIC_TRACE_IMPL(dns_qpmulti, qpmulti_free_mem)
-#else
 ISC_REFCOUNT_STATIC_IMPL(dns_qpmulti, qpmulti_free_mem)
-#endif
 
 static void
 qpmulti_destroy_guts_cb(struct rcu_head *arg) {

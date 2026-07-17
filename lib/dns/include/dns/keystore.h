@@ -24,8 +24,6 @@
  * A key store defines where to store DNSSEC keys.
  */
 
-/* Add -DDNS_KEYSTORE_TRACE=1 to CFLAGS for detailed reference tracing */
-
 #include <isc/magic.h>
 #include <isc/mutex.h>
 #include <isc/refcount.h>
@@ -173,18 +171,4 @@ dns_keystorelist_find(dns_keystorelist_t *list, const char *name,
  *\li   #ISC_R_NOTFOUND         No matching keystore was found.
  */
 
-#ifdef DNS_KEYSTORE_TRACE
-/* Compatibility macros */
-#define dns_keystore_attach(ks, ksp) \
-	dns_keystore__attach(ks, ksp, __func__, __FILE__, __LINE__)
-#define dns_keystore_detach(ksp) \
-	dns_keystore__detach(ksp, __func__, __FILE__, __LINE__)
-#define dns_keystore_ref(ptr) \
-	dns_keystore__ref(ptr, __func__, __FILE__, __LINE__)
-#define dns_keystore_unref(ptr) \
-	dns_keystore__unref(ptr, __func__, __FILE__, __LINE__)
-
-ISC_REFCOUNT_TRACE_DECL(dns_keystore);
-#else
 ISC_REFCOUNT_DECL(dns_keystore);
-#endif /* DNS_KEYSTORE_TRACE */

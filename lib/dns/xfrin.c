@@ -39,7 +39,7 @@
 #include <dns/rdataset.h>
 #include <dns/result.h>
 #include <dns/soa.h>
-#include <dns/trace.h>
+#include <dns/tracing.h>
 #include <dns/transport.h>
 #include <dns/tsig.h>
 #include <dns/unreachcache.h>
@@ -49,8 +49,6 @@
 #include <dns/zoneproperties.h>
 
 #include <dst/dst.h>
-
-#include "probes-dns.h"
 
 /*
  * Incoming AXFR and IXFR.
@@ -402,9 +400,10 @@ static isc_result_t
 axfr_finalize(dns_xfrin_t *xfr) {
 	isc_result_t result;
 
-	LIBDNS_XFRIN_AXFR_FINALIZE_BEGIN(xfr, xfr->info);
+	lttng_ust_tracepoint(libdns, xfrin_axfr_finalize_begin, xfr, xfr->info);
 	result = dns_zone_replacedb(xfr->zone, xfr->db, true);
-	LIBDNS_XFRIN_AXFR_FINALIZE_END(xfr, xfr->info, result);
+	lttng_ust_tracepoint(libdns, xfrin_axfr_finalize_end, xfr, xfr->info,
+			     result);
 
 	return result;
 }
@@ -1147,11 +1146,7 @@ dns_xfrin_shutdown(dns_xfrin_t *xfr) {
 	}
 }
 
-#if DNS_XFRIN_TRACE
-ISC_REFCOUNT_TRACE_IMPL(dns_xfrin, xfrin_destroy);
-#else
 ISC_REFCOUNT_IMPL(dns_xfrin, xfrin_destroy);
-#endif
 
 static void
 xfrin_cancelio(dns_xfrin_t *xfr) {
@@ -1326,7 +1321,7 @@ xfrin_start(dns_xfrin_t *xfr) {
 	dns_dispatchmgr_detach(&dispmgr);
 	CHECK(result);
 
-	LIBDNS_XFRIN_START(xfr, xfr->info);
+	lttng_ust_tracepoint(libdns, xfrin_start, xfr, xfr->info);
 
 	/*
 	 * If the transfer is started when the 'state' is XFRST_SOAQUERY, it
@@ -1435,7 +1430,7 @@ xfrin_connect_done(isc_result_t eresult, isc_region_t *region ISC_ATTR_UNUSED,
 
 	result = atomic_load(&xfr->shuttingdown) ? ISC_R_SHUTTINGDOWN : eresult;
 
-	LIBDNS_XFRIN_CONNECTED(xfr, xfr->info, result);
+	lttng_ust_tracepoint(libdns, xfrin_connected, xfr, xfr->info, result);
 
 	if (result != ISC_R_SUCCESS) {
 		xfrin_fail(xfr, result, "failed to connect");
@@ -1592,7 +1587,7 @@ xfrin_send_request(dns_xfrin_t *xfr) {
 	bool reqexpire = dns_zone_getrequestexpire(xfr->zone);
 	uint16_t udpsize = dns_view_getudpsize(xfr->view);
 
-	LIBDNS_XFRIN_RECV_SEND_REQUEST(xfr, xfr->info);
+	lttng_ust_tracepoint(libdns, xfrin_recv_send_request, xfr, xfr->info);
 
 	/* Create the request message */
 	dns_message_create(xfr->mctx, NULL, NULL, DNS_MESSAGE_INTENTRENDER,
@@ -1706,7 +1701,7 @@ xfrin_send_done(isc_result_t result, isc_region_t *region, void *arg) {
 		result = ISC_R_SHUTTINGDOWN;
 	}
 
-	LIBDNS_XFRIN_SENT(xfr, xfr->info, result);
+	lttng_ust_tracepoint(libdns, xfrin_sent, xfr, xfr->info, result);
 
 	CHECK(result);
 
@@ -1756,11 +1751,13 @@ static void
 xfrin_end(dns_xfrin_t *xfr, isc_result_t result) {
 	/* Inform the caller. */
 	if (xfr->done != NULL) {
-		LIBDNS_XFRIN_DONE_CALLBACK_BEGIN(xfr, xfr->info, result);
+		lttng_ust_tracepoint(libdns, xfrin_done_callback_begin, xfr,
+				     xfr->info, result);
 		(xfr->done)(xfr->zone,
 			    xfr->expireoptset ? &xfr->expireopt : NULL, result);
 		xfr->done = NULL;
-		LIBDNS_XFRIN_DONE_CALLBACK_END(xfr, xfr->info, result);
+		lttng_ust_tracepoint(libdns, xfrin_done_callback_end, xfr,
+				     xfr->info, result);
 	}
 
 	atomic_store(&xfr->shuttingdown, true);
@@ -1799,7 +1796,7 @@ xfrin_recv_done(isc_result_t result, isc_region_t *region, void *arg) {
 	/* Stop the idle timer */
 	isc_timer_stop(xfr->max_idle_timer);
 
-	LIBDNS_XFRIN_RECV_START(xfr, xfr->info, result);
+	lttng_ust_tracepoint(libdns, xfrin_recv_start, xfr, xfr->info, result);
 
 	CHECK(result);
 
@@ -1833,7 +1830,7 @@ xfrin_recv_done(isc_result_t result, isc_region_t *region, void *arg) {
 			  isc_result_totext(result));
 	}
 
-	LIBDNS_XFRIN_RECV_PARSED(xfr, xfr->info, result);
+	lttng_ust_tracepoint(libdns, xfrin_recv_parsed, xfr, xfr->info, result);
 
 	if (result != ISC_R_SUCCESS || msg->rcode != dns_rcode_noerror ||
 	    msg->opcode != dns_opcode_query || msg->rdclass != xfr->rdclass)
@@ -1877,7 +1874,8 @@ xfrin_recv_done(isc_result_t result, isc_region_t *region, void *arg) {
 		xfrin_log(xfr, ISC_LOG_DEBUG(3), "got %s, retrying with AXFR",
 			  isc_result_totext(result));
 	try_axfr:
-		LIBDNS_XFRIN_RECV_TRY_AXFR(xfr, xfr->info, result);
+		lttng_ust_tracepoint(libdns, xfrin_recv_try_axfr, xfr,
+				     xfr->info, result);
 		dns_message_detach(&msg);
 		/* If there is a running worker thread then delay the retry. */
 		if (xfr->diff_running) {
@@ -1921,7 +1919,8 @@ xfrin_recv_done(isc_result_t result, isc_region_t *region, void *arg) {
 	MSG_SECTION_FOREACH(msg, DNS_SECTION_QUESTION, name) {
 		dns_rdataset_t *rds = NULL;
 
-		LIBDNS_XFRIN_RECV_QUESTION(xfr, xfr->info, msg);
+		lttng_ust_tracepoint(libdns, xfrin_recv_question, xfr,
+				     xfr->info, msg);
 
 		if (!dns_name_equal(name, &xfr->name)) {
 			xfrin_log(xfr, ISC_LOG_NOTICE,
@@ -1971,7 +1970,8 @@ xfrin_recv_done(isc_result_t result, isc_region_t *region, void *arg) {
 	}
 
 	MSG_SECTION_FOREACH(msg, DNS_SECTION_ANSWER, name) {
-		LIBDNS_XFRIN_RECV_ANSWER(xfr, xfr->info, msg);
+		lttng_ust_tracepoint(libdns, xfrin_recv_answer, xfr, xfr->info,
+				     msg);
 
 		ISC_LIST_FOREACH(name->list, rds, link) {
 			DNS_RDATASET_FOREACH(rds) {
@@ -2066,7 +2066,8 @@ xfrin_recv_done(isc_result_t result, isc_region_t *region, void *arg) {
 		isc_timer_start(xfr->max_idle_timer, isc_timertype_once,
 				&interval);
 
-		LIBDNS_XFRIN_READ(xfr, xfr->info, result);
+		lttng_ust_tracepoint(libdns, xfrin_read, xfr, xfr->info,
+				     result);
 		return;
 	}
 
@@ -2078,7 +2079,7 @@ cleanup:
 	if (msg != NULL) {
 		dns_message_detach(&msg);
 	}
-	LIBDNS_XFRIN_RECV_DONE(xfr, xfr->info, result);
+	lttng_ust_tracepoint(libdns, xfrin_recv_done, xfr, xfr->info, result);
 	dns_xfrin_detach(&xfr);
 }
 

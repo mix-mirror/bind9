@@ -75,13 +75,12 @@
 #include <dns/resolver.h>
 #include <dns/rootns.h>
 #include <dns/stats.h>
+#include <dns/tracing.h>
 #include <dns/tsig.h>
 #include <dns/validator.h>
+#include <dns/view.h>
 #include <dns/zone.h>
 #include <dns/zoneproperties.h>
-
-#include "dns/view.h"
-#include "probes-dns.h"
 
 #ifdef WANT_QUERYTRACE
 #define RTRACE(m)                                                       \
@@ -282,17 +281,7 @@ typedef struct query {
 	unsigned char data[512];
 } resquery_t;
 
-#if DNS_RESOLVER_TRACE
-#define resquery_ref(ptr)   resquery__ref(ptr, __func__, __FILE__, __LINE__)
-#define resquery_unref(ptr) resquery__unref(ptr, __func__, __FILE__, __LINE__)
-#define resquery_attach(ptr, ptrp) \
-	resquery__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define resquery_detach(ptrp) \
-	resquery__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_TRACE_DECL(resquery);
-#else
 ISC_REFCOUNT_DECL(resquery);
-#endif
 
 struct tried {
 	isc_sockaddr_t addr;
@@ -698,10 +687,8 @@ static void
 fctx_shutdown(void *arg);
 static void
 fctx_minimize_qname(fetchctx_t *fctx);
-#define fctx_destroy(fctx) fctx__destroy(fctx, __func__, __FILE__, __LINE__)
 static void
-fctx__destroy(fetchctx_t *fctx, const char *func, const char *file,
-	      const unsigned int line);
+fctx_destroy(fetchctx_t *fctx);
 static isc_result_t
 negcache(dns_message_t *message, fetchctx_t *fctx, const dns_name_t *name,
 	 isc_stdtime_t now, bool optout, bool secure, dns_rdataset_t *added,
@@ -715,91 +702,65 @@ static void
 findnoqname(fetchctx_t *fctx, dns_message_t *message, dns_name_t *name,
 	    dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset);
 
-#define fctx_failure_detach(fctxp, result)                              \
-	REQUIRE(result != ISC_R_SUCCESS);                               \
-	rcu_read_lock();                                                \
-	if (fctx__done(*fctxp, result, __func__, __FILE__, __LINE__)) { \
-		fetchctx_detach(fctxp);                                 \
-	}                                                               \
+#define fctx_failure_detach(fctxp, result) \
+	REQUIRE(result != ISC_R_SUCCESS);  \
+	rcu_read_lock();                   \
+	if (fctx_done(*fctxp, result)) {   \
+		fetchctx_detach(fctxp);    \
+	}                                  \
 	rcu_read_unlock()
 
-#define fctx_failure_unref(fctx, result)                              \
-	REQUIRE(result != ISC_R_SUCCESS);                             \
-	rcu_read_lock();                                              \
-	if (fctx__done(fctx, result, __func__, __FILE__, __LINE__)) { \
-		fetchctx_unref(fctx);                                 \
-	}                                                             \
+#define fctx_failure_unref(fctx, result)  \
+	REQUIRE(result != ISC_R_SUCCESS); \
+	rcu_read_lock();                  \
+	if (fctx_done(fctx, result)) {    \
+		fetchctx_unref(fctx);     \
+	}                                 \
 	rcu_read_unlock()
 
-#define fctx_success_detach(fctxp)                                             \
-	rcu_read_lock();                                                       \
-	if (fctx__done(*fctxp, ISC_R_SUCCESS, __func__, __FILE__, __LINE__)) { \
-		fetchctx_detach(fctxp);                                        \
-	}                                                                      \
+#define fctx_success_detach(fctxp)              \
+	rcu_read_lock();                        \
+	if (fctx_done(*fctxp, ISC_R_SUCCESS)) { \
+		fetchctx_detach(fctxp);         \
+	}                                       \
 	rcu_read_unlock()
 
-#define fctx_success_unref(fctx)                                             \
-	rcu_read_lock();                                                     \
-	if (fctx__done(fctx, ISC_R_SUCCESS, __func__, __FILE__, __LINE__)) { \
-		fetchctx_unref(fctx);                                        \
-	}                                                                    \
+#define fctx_success_unref(fctx)              \
+	rcu_read_lock();                      \
+	if (fctx_done(fctx, ISC_R_SUCCESS)) { \
+		fetchctx_unref(fctx);         \
+	}                                     \
 	rcu_read_unlock()
 
-#define fetchctx_ref_unless_zero(fctx) \
-	fetchctx__ref_unless_zero(fctx, __func__, __FILE__, __LINE__)
 static bool
-fetchctx__ref_unless_zero(fetchctx_t *fctx, const char *func, const char *file,
-			  const unsigned int line) {
+fetchctx_ref_unless_zero(fetchctx_t *fctx) {
 	bool ref = urcu_ref_get_unless_zero(&fctx->ref);
-#if DNS_RESOLVER_TRACE
-	fprintf(stderr,
-		"%s:%s:%s:%u:t%" PRItid ":%p->references = %" PRIuFAST32 "\n",
-		__func__, func, file, line, isc_tid(), &fctx->ref,
-		fctx->ref.refcount);
-#else
-	UNUSED(file);
-	UNUSED(line);
-	UNUSED(func);
-#endif
+	lttng_ust_tracelog(LTTNG_UST_TRACEPOINT_LOGLEVEL_DEBUG,
+			   "%s:t%" PRItid ":caller %p:%p->references = %ld",
+			   __func__, isc_tid(), __builtin_return_address(0),
+			   fctx, CMM_LOAD_SHARED(fctx->ref.refcount));
 	return ref;
 }
 
-#define fetchctx_attach(source, targetp) \
-	fetchctx__attach(source, targetp, __func__, __FILE__, __LINE__)
 static void
-fetchctx__attach(fetchctx_t *fctx, fetchctx_t **fctxp, const char *func,
-		 const char *file, const unsigned int line) {
+fetchctx_attach(fetchctx_t *fctx, fetchctx_t **fctxp) {
 	bool ref = fetchctx_ref_unless_zero(fctx);
 	INSIST(ref == true);
 	*fctxp = fctx;
-#if DNS_RESOLVER_TRACE
-	fprintf(stderr,
-		"%s:%s:%s:%u:t%" PRItid ":%p->references = %" PRIuFAST32 "\n",
-		__func__, func, file, line, isc_tid(), &fctx->ref,
-		fctx->ref.refcount);
-#else
-	UNUSED(file);
-	UNUSED(line);
-	UNUSED(func);
-#endif
+	lttng_ust_tracelog(LTTNG_UST_TRACEPOINT_LOGLEVEL_DEBUG,
+			   "%s:t%" PRItid ":caller %p:%p->references = %ld",
+			   __func__, isc_tid(), __builtin_return_address(0),
+			   fctx, CMM_LOAD_SHARED(fctx->ref.refcount));
 }
 
-#define fetchctx_ref(fctx) fetchctx__ref(fctx, __func__, __FILE__, __LINE__)
 static fetchctx_t *
-fetchctx__ref(fetchctx_t *fctx, const char *func, const char *file,
-	      const unsigned int line) {
+fetchctx_ref(fetchctx_t *fctx) {
 	bool ref = fetchctx_ref_unless_zero(fctx);
 	INSIST(ref == true);
-#if DNS_RESOLVER_TRACE
-	fprintf(stderr,
-		"%s:%s:%s:%u:t%" PRItid ":%p->references = %" PRIuFAST32 "\n",
-		__func__, func, file, line, isc_tid(), &fctx->ref,
-		fctx->ref.refcount);
-#else
-	UNUSED(file);
-	UNUSED(line);
-	UNUSED(func);
-#endif
+	lttng_ust_tracelog(LTTNG_UST_TRACEPOINT_LOGLEVEL_DEBUG,
+			   "%s:t%" PRItid ":caller %p:%p->references = %ld",
+			   __func__, isc_tid(), __builtin_return_address(0),
+			   fctx, CMM_LOAD_SHARED(fctx->ref.refcount));
 	return fctx;
 }
 
@@ -808,47 +769,31 @@ fetchctx_destroy(struct urcu_ref *ref) {
 	fetchctx_t *fctx = caa_container_of(ref, fetchctx_t, ref);
 	fctx_destroy(fctx);
 }
-#define fetchctx_detach(fctxp) \
-	fetchctx__detach(fctxp, __func__, __FILE__, __LINE__)
 static void
-fetchctx__detach(fetchctx_t **fctxp, const char *func, const char *file,
-		 const unsigned int line) {
+fetchctx_detach(fetchctx_t **fctxp) {
 	fetchctx_t *fctx = *fctxp;
 	*fctxp = NULL;
 
 	urcu_ref_put(&fctx->ref, fetchctx_destroy);
-#if DNS_RESOLVER_TRACE
-	fprintf(stderr,
-		"%s:%s:%s:%u:t%" PRItid ":%p->references = %" PRIuFAST32 "\n",
-		__func__, func, file, line, isc_tid(), &fctx->ref,
-		fctx->ref.refcount);
-#else
-	UNUSED(file);
-	UNUSED(line);
-	UNUSED(func);
-#endif
+
+	lttng_ust_tracelog(LTTNG_UST_TRACEPOINT_LOGLEVEL_DEBUG,
+			   "%s:t%" PRItid ":caller %p:%p->references = %ld",
+			   __func__, isc_tid(), __builtin_return_address(0),
+			   fctx, CMM_LOAD_SHARED(fctx->ref.refcount));
 }
 
-#define fetchctx_unref(fctx) fetchctx__unref(fctx, __func__, __FILE__, __LINE__)
 static void
-fetchctx__unref(fetchctx_t *fctx, const char *func, const char *file,
-		const unsigned int line) {
+fetchctx_unref(fetchctx_t *fctx) {
 	urcu_ref_put(&fctx->ref, fetchctx_destroy);
-#if DNS_RESOLVER_TRACE
-	fprintf(stderr,
-		"%s:%s:%s:%u:t%" PRItid ":%p->references = %" PRIuFAST32 "\n",
-		__func__, func, file, line, isc_tid(), &fctx->ref,
-		fctx->ref.refcount);
-#else
-	UNUSED(file);
-	UNUSED(line);
-	UNUSED(func);
-#endif
+
+	lttng_ust_tracelog(LTTNG_UST_TRACEPOINT_LOGLEVEL_DEBUG,
+			   "%s:t%" PRItid ":caller %p:%p->references = %ld",
+			   __func__, isc_tid(), __builtin_return_address(0),
+			   fctx, CMM_LOAD_SHARED(fctx->ref.refcount));
 }
 
 static bool
-fctx__done(fetchctx_t *fctx, isc_result_t result, const char *func,
-	   const char *file, unsigned int line);
+fctx_done(fetchctx_t *fctx, isc_result_t result);
 
 static void
 resume_qmin(void *arg);
@@ -1187,11 +1132,7 @@ resquery_destroy(resquery_t *query) {
 	fetchctx_detach(&fctx);
 }
 
-#if DNS_RESOLVER_TRACE
-ISC_REFCOUNT_TRACE_IMPL(resquery, resquery_destroy);
-#else
 ISC_REFCOUNT_IMPL(resquery, resquery_destroy);
-#endif
 
 /*%
  * Update EDNS statistics for a server after not getting a response to a UDP
@@ -1808,8 +1749,7 @@ fctx_match(struct cds_lfht_node *ht_node, const void *key) {
 }
 
 static bool
-fctx__done(fetchctx_t *fctx, isc_result_t result, const char *func,
-	   const char *file, unsigned int line) {
+fctx_done(fetchctx_t *fctx, isc_result_t result) {
 	bool no_response = false;
 	bool age_untried = false;
 
@@ -1818,14 +1758,7 @@ fctx__done(fetchctx_t *fctx, isc_result_t result, const char *func,
 
 	FCTXTRACE("done");
 
-#ifdef DNS_RESOLVER_TRACE
-	fprintf(stderr, "%s:%s:%s:%u:(%p): %s\n", __func__, func, file, line,
-		fctx, isc_result_totext(result));
-#else
-	UNUSED(file);
-	UNUSED(line);
-	UNUSED(func);
-#endif
+	/* FIXME: Add proper trace point */
 
 	if (result != ISC_R_SUCCESS) {
 		LOCK(&fctx->lock);
@@ -2056,11 +1989,13 @@ fctx_query(fetchctx_t *fctx, dns_adbaddrinfo_t *addrinfo,
 
 	FCTXTRACE("query");
 
-	if (LIBDNS_RESOLVER_QUERY_ENABLED()) {
+	if (lttng_ust_tracepoint_enabled(libdns, resolver_query)) {
 		char addrstr[ISC_SOCKADDR_FORMATSIZE];
 		isc_sockaddr_format(&addrinfo->sockaddr, addrstr,
 				    sizeof(addrstr));
-		LIBDNS_RESOLVER_QUERY(fctx, addrstr, addrinfo->srtt);
+
+		lttng_ust_tracepoint(libdns, resolver_query, fctx, addrstr,
+				     addrinfo->srtt);
 	}
 
 	res = fctx->res;
@@ -2190,13 +2125,13 @@ fctx_query(fetchctx_t *fctx, dns_adbaddrinfo_t *addrinfo,
 		.options = options,
 		.addrinfo = addrinfo,
 		.link = ISC_LINK_INITIALIZER,
+		.references = ISC_REFCOUNT_INITIALIZER(1),
 	};
 
-#if DNS_RESOLVER_TRACE
-	fprintf(stderr, "rctx_init:%s:%s:%d:%p->references = 1\n", __func__,
-		__FILE__, __LINE__, query);
-#endif
-	isc_refcount_init(&query->references, 1);
+	lttng_ust_tracelog(LTTNG_UST_TRACEPOINT_LOGLEVEL_DEBUG,
+			   "%s:t%" PRItid ":caller %p:%p->references = 1",
+			   __func__, isc_tid(), __builtin_return_address(0),
+			   query);
 
 	/*
 	 * Note that the caller MUST guarantee that 'addrinfo' will
@@ -4696,8 +4631,7 @@ fctx_destroy_rcu(struct rcu_head *rcu_head) {
 }
 
 static void
-fctx__destroy(fetchctx_t *fctx, const char *func, const char *file,
-	      const unsigned int line) {
+fctx_destroy(fetchctx_t *fctx) {
 	dns_resolver_t *res = NULL;
 
 	REQUIRE(VALID_FCTX(fctx));
@@ -4712,16 +4646,10 @@ fctx__destroy(fetchctx_t *fctx, const char *func, const char *file,
 
 	FCTXTRACE("destroy");
 
-#if DNS_RESOLVER_TRACE
-	fprintf(stderr,
-		"%s:%s:%s:%u:t%" PRItid ":%p->references = %" PRIuFAST32 "\n",
-		__func__, func, file, line, isc_tid(), &fctx->ref,
-		fctx->ref.refcount);
-#else
-	UNUSED(func);
-	UNUSED(file);
-	UNUSED(line);
-#endif
+	lttng_ust_tracelog(LTTNG_UST_TRACEPOINT_LOGLEVEL_DEBUG,
+			   "%s:t%" PRItid ":caller %p:%p->references = %ld",
+			   __func__, isc_tid(), __builtin_return_address(0),
+			   fctx, CMM_LOAD_SHARED(fctx->ref.refcount));
 
 	fctx->magic = 0;
 
@@ -4900,18 +4828,12 @@ log_ns_ttl(fetchctx_t *fctx, const char *where) {
 		      where, namebuf, domainbuf, fctx->ns_ttl_ok, fctx->ns_ttl);
 }
 
-#define fctx_create(res, loop, name, type, domain, nameservers, client,  \
-		    options, depth, qc, gqp, parent, fctxp)              \
-	fctx__create(res, loop, name, type, domain, nameservers, client, \
-		     options, depth, qc, gqp, parent, fctxp, __func__,   \
-		     __FILE__, __LINE__)
 static isc_result_t
-fctx__create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
-	     dns_rdatatype_t type, const dns_name_t *domain,
-	     dns_delegset_t *delegset, const isc_sockaddr_t *client,
-	     unsigned int options, unsigned int depth, isc_counter_t *qc,
-	     isc_counter_t *gqc, fetchctx_t *parent, fetchctx_t **fctxp,
-	     const char *func, const char *file, const unsigned int line) {
+fctx_create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
+	    dns_rdatatype_t type, const dns_name_t *domain,
+	    dns_delegset_t *delegset, const isc_sockaddr_t *client,
+	    unsigned int options, unsigned int depth, isc_counter_t *qc,
+	    isc_counter_t *gqc, fetchctx_t *parent, fetchctx_t **fctxp) {
 	fetchctx_t *fctx = NULL;
 	isc_result_t result;
 	isc_result_t iresult;
@@ -5190,16 +5112,10 @@ fctx__create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 
 	*fctxp = fctx;
 
-#if DNS_RESOLVER_TRACE
-	fprintf(stderr,
-		"%s:%s:%s:%u:t%" PRItid ":%p->references = %" PRIuFAST32 "\n",
-		__func__, func, file, line, isc_tid(), &fctx->ref,
-		fctx->ref.refcount);
-#else
-	UNUSED(file);
-	UNUSED(line);
-	UNUSED(func);
-#endif
+	lttng_ust_tracelog(LTTNG_UST_TRACEPOINT_LOGLEVEL_DEBUG,
+			   "%s:t%" PRItid ":caller %p:%p->references = %ld",
+			   __func__, isc_tid(), __builtin_return_address(0),
+			   fctx, CMM_LOAD_SHARED(fctx->ref.refcount));
 
 	return ISC_R_SUCCESS;
 
@@ -7020,7 +6936,7 @@ check_section(void *arg, const dns_name_t *addname, dns_rdatatype_t type,
 
 static isc_result_t
 check_related(void *arg, const dns_name_t *addname, dns_rdatatype_t type,
-	      dns_rdataset_t *found DNS__DB_FLARG) {
+	      dns_rdataset_t *found) {
 	return check_section(arg, addname, type, found, DNS_SECTION_ADDITIONAL);
 }
 
@@ -10221,6 +10137,7 @@ dns_resolver_create(dns_view_t *view, unsigned int options,
 		.nloops = isc_loopmgr_nloops(),
 		.maxvalidations = DEFAULT_MAX_VALIDATIONS,
 		.maxvalidationfails = DEFAULT_MAX_VALIDATION_FAILURES,
+		.references = ISC_REFCOUNT_INITIALIZER(1),
 	};
 
 	RTRACE("create");
@@ -10231,11 +10148,10 @@ dns_resolver_create(dns_view_t *view, unsigned int options,
 	res->quotaresp[dns_quotatype_zone] = DNS_R_DROP;
 	res->quotaresp[dns_quotatype_server] = DNS_R_SERVFAIL;
 
-#if DNS_RESOLVER_TRACE
-	fprintf(stderr, "dns_resolver__init:%s:%s:%d:%p->references = 1\n",
-		__func__, __FILE__, __LINE__, res);
-#endif
-	isc_refcount_init(&res->references, 1);
+	lttng_ust_tracelog(LTTNG_UST_TRACEPOINT_LOGLEVEL_DEBUG,
+			   "%s:t%" PRItid ":caller %p:%p->references = 1",
+			   __func__, isc_tid(), __builtin_return_address(0),
+			   res);
 
 	res->fctxs_ht =
 		cds_lfht_new(RES_DOMAIN_HASH_SIZE, RES_DOMAIN_HASH_SIZE, 0,
@@ -10521,11 +10437,7 @@ dns_resolver_shutdown(dns_resolver_t *res) {
 	}
 }
 
-#if DNS_RESOLVER_TRACE
-ISC_REFCOUNT_TRACE_IMPL(dns_resolver, dns_resolver__destroy);
-#else
 ISC_REFCOUNT_IMPL(dns_resolver, dns_resolver__destroy);
-#endif
 
 static void
 log_fetch(const dns_name_t *name, dns_rdatatype_t type) {

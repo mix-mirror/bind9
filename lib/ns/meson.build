@@ -9,40 +9,6 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
-probe_hdr = dtrace_header.process('probes-ns.d')
-probe_src = [probe_hdr, files('query.c')]
-
-if config.get('HAVE_DTRACE')
-    ns_probe_objects += static_library(
-        'ns-probe-target',
-        probe_src,
-        sources: dns_gen_headers,
-        build_by_default: false,
-        dependencies: [uv_dep, urcu_dep],
-        implicit_include_directories: false,
-        include_directories: [isc_inc, dns_inc, ns_inc],
-    ).extract_all_objects(recursive: false)
-endif
-
-ns_srcset.add(
-    when: 'HAVE_DTRACE',
-    if_true: [
-        custom_target(
-            'ns-probe',
-            input: [files('probes-ns.d'), ns_probe_objects],
-            output: 'ns-probes.o',
-            command: [
-                dtrace,
-                '-G',
-                '-o', '@OUTPUT@',
-                '-s', '@INPUT@',
-            ],
-        ),
-        probe_hdr,
-    ],
-    if_false: probe_src,
-)
-
 ns_srcset.add(
     files(
         'client.c',
@@ -50,9 +16,13 @@ ns_srcset.add(
         'interfacemgr.c',
         'listenlist.c',
         'notify.c',
+        'query.c',
         'server.c',
         'stats.c',
+        'tracing.c',
         'update.c',
         'xfrout.c',
     ),
 )
+
+ns_srcset.add(when: 'ENABLE_TRACING', if_true: lttng_dep)

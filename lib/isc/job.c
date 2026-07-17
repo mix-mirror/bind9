@@ -28,13 +28,13 @@
 #include <isc/signal.h>
 #include <isc/strerr.h>
 #include <isc/thread.h>
+#include <isc/tracing.h>
 #include <isc/util.h>
 #include <isc/uv.h>
 #include <isc/work.h>
 
 #include "job_p.h"
 #include "loop_p.h"
-#include "probes-isc.h"
 
 /*
  * Public: #include <isc/job.h>
@@ -68,9 +68,9 @@ isc__job_cb(uv_idle_t *handle) {
 		isc_job_cb cb = job->cb;
 		void *cbarg = job->cbarg;
 		ISC_LIST_UNLINK(jobs, job, link);
-		LIBISC_JOB_CB_BEFORE(job, cb, cbarg);
+		lttng_ust_tracepoint(libisc, job_cb_before, job, cb, cbarg);
 		cb(cbarg);
-		LIBISC_JOB_CB_AFTER(job, cb, cbarg);
+		lttng_ust_tracepoint(libisc, job_cb_after, job, cb, cbarg);
 	}
 
 	if (ISC_LIST_EMPTY(loop->run_jobs)) {

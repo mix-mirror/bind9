@@ -328,7 +328,7 @@ additionaldata_in_srv(ARGS_ADDLDATA) {
 		return ISC_R_SUCCESS;
 	}
 
-	RETERR((add)(arg, &name, dns_rdatatype_a, NULL DNS__DB_FILELINE));
+	RETERR((add)(arg, &name, dns_rdatatype_a, NULL));
 
 	dns_fixedname_init(&fixed);
 	snprintf(buf, sizeof(buf), "_%u._tcp", port);
@@ -344,8 +344,7 @@ additionaldata_in_srv(ARGS_ADDLDATA) {
 		return ISC_R_SUCCESS;
 	}
 
-	return (add)(arg, dns_fixedname_name(&fixed), dns_rdatatype_tlsa,
-		     NULL DNS__DB_FILELINE);
+	return (add)(arg, dns_fixedname_name(&fixed), dns_rdatatype_tlsa, NULL);
 }
 
 static isc_result_t

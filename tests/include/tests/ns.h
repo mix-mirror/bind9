@@ -50,14 +50,6 @@ extern ns_server_t	 *sctx;
 extern atomic_uint_fast32_t client_refs[32];
 extern atomic_uintptr_t	    client_addrs[32];
 
-#if ISC_NETMGR_TRACE
-#define FLARG                                                                  \
-	, const char *file ISC_ATTR_UNUSED, unsigned int line ISC_ATTR_UNUSED, \
-		const char *func ISC_ATTR_UNUSED
-#else
-#define FLARG
-#endif
-
 int
 setup_server(void **state);
 int

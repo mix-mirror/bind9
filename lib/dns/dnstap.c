@@ -132,11 +132,7 @@ static thread_local dt__ioq_t dt_ioq = { 0 };
 
 static atomic_uint_fast32_t global_generation;
 
-#if DNS_DTENV_TRACE
-ISC_REFCOUNT_TRACE_IMPL(dns_dtenv, destroy);
-#else
 ISC_REFCOUNT_IMPL(dns_dtenv, destroy);
-#endif /* DNS_DTENV_TRACE */
 
 isc_result_t
 dns_dt_create(isc_mem_t *mctx, dns_dtmode_t mode, const char *path,

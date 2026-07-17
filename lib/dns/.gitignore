@@ -7,4 +7,3 @@ rdatastruct.h
 gen.dSYM
 dnstap.pb-c.c
 dnstap.pb-c.h
-/probes.h

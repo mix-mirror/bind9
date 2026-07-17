@@ -160,19 +160,7 @@ struct dns_dispatch {
 #define DNS_DISPATCHMGR_MAGIC ISC_MAGIC('D', 'M', 'g', 'r')
 #define VALID_DISPATCHMGR(e)  ISC_MAGIC_VALID((e), DNS_DISPATCHMGR_MAGIC)
 
-#if DNS_DISPATCH_TRACE
-#define dns_dispentry_ref(ptr) \
-	dns_dispentry__ref(ptr, __func__, __FILE__, __LINE__)
-#define dns_dispentry_unref(ptr) \
-	dns_dispentry__unref(ptr, __func__, __FILE__, __LINE__)
-#define dns_dispentry_attach(ptr, ptrp) \
-	dns_dispentry__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define dns_dispentry_detach(ptrp) \
-	dns_dispentry__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_TRACE_DECL(dns_dispentry);
-#else
 ISC_REFCOUNT_DECL(dns_dispentry);
-#endif
 
 /*
  * The number of attempts to find unique <addr, port, query_id> combination
@@ -459,11 +447,7 @@ dispentry_destroy(dns_dispentry_t *resp) {
 	call_rcu(&resp->rcu_head, dispentry_destroy_rcu);
 }
 
-#if DNS_DISPATCH_TRACE
-ISC_REFCOUNT_TRACE_IMPL(dns_dispentry, dispentry_destroy);
-#else
 ISC_REFCOUNT_IMPL(dns_dispentry, dispentry_destroy);
-#endif
 
 /*
  * How long in milliseconds has it been since this dispentry
@@ -1025,16 +1009,14 @@ dns_dispatchmgr_create(isc_mem_t *mctx, dns_dispatchmgr_t **mgrp) {
 	REQUIRE(mgrp != NULL && *mgrp == NULL);
 
 	mgr = isc_mem_get(mctx, sizeof(dns_dispatchmgr_t));
-	*mgr = (dns_dispatchmgr_t){
-		.magic = 0,
-		.nloops = isc_loopmgr_nloops(),
-	};
+	*mgr = (dns_dispatchmgr_t){ .magic = 0,
+				    .nloops = isc_loopmgr_nloops(),
+				    .references = ISC_REFCOUNT_INITIALIZER(1) };
 
-#if DNS_DISPATCH_TRACE
-	fprintf(stderr, "dns_dispatchmgr__init:%s:%s:%d:%p->references = 1\n",
-		__func__, __FILE__, __LINE__, mgr);
-#endif
-	isc_refcount_init(&mgr->references, 1);
+	lttng_ust_tracelog(LTTNG_UST_TRACEPOINT_LOGLEVEL_DEBUG,
+			   "%s:t%" PRItid ":caller %p:%p->references = 1",
+			   __func__, isc_tid(), __builtin_return_address(0),
+			   mgr);
 
 	isc_mem_attach(mctx, &mgr->mctx);
 
@@ -1063,11 +1045,7 @@ dns_dispatchmgr_create(isc_mem_t *mctx, dns_dispatchmgr_t **mgrp) {
 	return ISC_R_SUCCESS;
 }
 
-#if DNS_DISPATCH_TRACE
-ISC_REFCOUNT_TRACE_IMPL(dns_dispatchmgr, dispatchmgr_destroy);
-#else
 ISC_REFCOUNT_IMPL(dns_dispatchmgr, dispatchmgr_destroy);
-#endif
 
 void
 dns_dispatchmgr_setblackhole(dns_dispatchmgr_t *mgr, dns_acl_t *blackhole) {
@@ -1164,16 +1142,17 @@ dispatch_allocate(dns_dispatchmgr_t *mgr, isc_socktype_t type, isc_tid_t tid,
 		.pending = ISC_LIST_INITIALIZER,
 		.tid = tid,
 		.magic = DISPATCH_MAGIC,
+		.references = ISC_REFCOUNT_INITIALIZER(1),
 	};
 
 	isc_mem_attach(mgr->mctx, &disp->mctx);
 
 	dns_dispatchmgr_attach(mgr, &disp->mgr);
-#if DNS_DISPATCH_TRACE
-	fprintf(stderr, "dns_dispatch__init:%s:%s:%d:%p->references = 1\n",
-		__func__, __FILE__, __LINE__, disp);
-#endif
-	isc_refcount_init(&disp->references, 1); /* DISPATCH000 */
+
+	lttng_ust_tracelog(LTTNG_UST_TRACEPOINT_LOGLEVEL_DEBUG,
+			   "%s:t%" PRItid ":caller %p:%p->references = 1",
+			   __func__, isc_tid(), __builtin_return_address(0),
+			   disp);
 
 	*dispp = disp;
 }
@@ -1493,11 +1472,7 @@ dispatch_destroy(dns_dispatch_t *disp) {
 	call_rcu(&disp->rcu_head, dispatch_destroy_rcu);
 }
 
-#if DNS_DISPATCH_TRACE
-ISC_REFCOUNT_TRACE_IMPL(dns_dispatch, dispatch_destroy);
-#else
 ISC_REFCOUNT_IMPL(dns_dispatch, dispatch_destroy);
-#endif
 
 isc_result_t
 dns_dispatch_add(dns_dispatch_t *disp, isc_loop_t *loop,
@@ -1540,13 +1515,13 @@ dns_dispatch_add(dns_dispatch_t *disp, isc_loop_t *loop,
 		.plink = ISC_LINK_INITIALIZER,
 		.rlink = ISC_LINK_INITIALIZER,
 		.magic = RESPONSE_MAGIC,
+		.references = ISC_REFCOUNT_INITIALIZER(1), /* DISPENTRY000 */
 	};
 
-#if DNS_DISPATCH_TRACE
-	fprintf(stderr, "dns_dispentry__init:%s:%s:%d:%p->references = 1\n",
-		__func__, __FILE__, __LINE__, resp);
-#endif
-	isc_refcount_init(&resp->references, 1); /* DISPENTRY000 */
+	lttng_ust_tracelog(LTTNG_UST_TRACEPOINT_LOGLEVEL_DEBUG,
+			   "%s:t%" PRItid ":caller %p:%p->references = 1",
+			   __func__, isc_tid(), __builtin_return_address(0),
+			   resp);
 
 	if (disp->socktype == isc_socktype_udp) {
 		isc_result_t result = setup_socket(disp, resp, dest,

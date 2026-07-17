@@ -197,8 +197,8 @@ additionaldata_lp(ARGS_ADDLDATA) {
 	isc_region_consume(&region, 2);
 	dns_name_fromregion(&name, &region);
 
-	RETERR((add)(arg, &name, dns_rdatatype_l32, NULL DNS__DB_FILELINE));
-	return (add)(arg, &name, dns_rdatatype_l64, NULL DNS__DB_FILELINE);
+	RETERR((add)(arg, &name, dns_rdatatype_l32, NULL));
+	return (add)(arg, &name, dns_rdatatype_l64, NULL);
 }
 
 static isc_result_t

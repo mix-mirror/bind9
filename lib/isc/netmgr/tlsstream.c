@@ -46,42 +46,6 @@
 
 #define MAX_DNS_MESSAGE_SIZE (UINT16_MAX)
 
-#ifdef ISC_NETMGR_TRACE
-ISC_ATTR_UNUSED static const char *
-tls_status2str(int tls_status) {
-	switch (tls_status) {
-	case SSL_ERROR_NONE:
-		return "SSL_ERROR_NONE";
-	case SSL_ERROR_ZERO_RETURN:
-		return "SSL_ERROR_ZERO_RETURN";
-	case SSL_ERROR_WANT_WRITE:
-		return "SSL_ERROR_WANT_WRITE";
-	case SSL_ERROR_WANT_READ:
-		return "SSL_ERROR_WANT_READ";
-	case SSL_ERROR_SSL:
-		return "SSL_ERROR_SSL";
-	default:
-		UNREACHABLE();
-	}
-}
-
-ISC_ATTR_UNUSED static const char *
-state2str(int state) {
-	switch (state) {
-	case TLS_INIT:
-		return "TLS_INIT";
-	case TLS_HANDSHAKE:
-		return "TLS_HANDSHAKE";
-	case TLS_IO:
-		return "TLS_IO";
-	case TLS_CLOSED:
-		return "TLS_CLOSED";
-	default:
-		UNREACHABLE();
-	}
-}
-#endif /* ISC_NETMGR_TRACE */
-
 static isc_result_t
 tls_error_to_result(const int tls_err, const int tls_state, isc_tls_t *tls) {
 	switch (tls_err) {
@@ -569,9 +533,6 @@ tls_do_bio(isc_nmsocket_t *sock, isc_region_t *received_data,
 					  received_data->length, &len);
 			if (rv <= 0 || len != received_data->length) {
 				result = ISC_R_TLSERROR;
-#if ISC_NETMGR_TRACE
-				saved_errno = errno;
-#endif
 				goto error;
 			}
 
@@ -806,14 +767,6 @@ tls_do_bio(isc_nmsocket_t *sock, isc_region_t *received_data,
 	}
 
 error:
-#if ISC_NETMGR_TRACE
-	isc__nmsocket_log(sock, ISC_LOG_NOTICE,
-			  "SSL error in BIO: %d %s (errno: %d). Arguments: "
-			  "received_data: %p, "
-			  "send_data: %p, finish: %s",
-			  tls_status, isc_result_totext(result), saved_errno,
-			  received_data, send_data, finish ? "true" : "false");
-#endif
 	tls_failed_read_cb(sock, result);
 }
 

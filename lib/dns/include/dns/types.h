@@ -28,8 +28,6 @@
 
 #include <isc/types.h>
 
-#include <dns/trace.h>
-
 typedef struct dns_acl	       dns_acl_t;
 typedef struct dns_aclelement  dns_aclelement_t;
 typedef struct dns_aclenv      dns_aclenv_t;
@@ -436,12 +434,13 @@ typedef void (*dns_rawdatafunc_t)(dns_zone_t *, dns_masterrawheader_t *);
 
 typedef isc_result_t (*dns_addrdatasetfunc_t)(void *arg, const dns_name_t *name,
 					      dns_rdataset_t *rdataset,
-					      dns_diffop_t op DNS__DB_FLARG);
+					      dns_diffop_t    op);
 typedef void (*dns_transactionfunc_t)(void *arg);
 
-typedef isc_result_t (*dns_additionaldatafunc_t)(
-	void *arg, const dns_name_t *name, dns_rdatatype_t type,
-	dns_rdataset_t *rdataset DNS__DB_FLARG);
+typedef isc_result_t (*dns_additionaldatafunc_t)(void		  *arg,
+						 const dns_name_t *name,
+						 dns_rdatatype_t   type,
+						 dns_rdataset_t	  *rdataset);
 
 typedef isc_result_t (*dns_digestfunc_t)(void *, isc_region_t *);
 

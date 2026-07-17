@@ -114,7 +114,7 @@ dns_rdatalist_fromrdataset(dns_rdataset_t   *rdataset,
  * those implementations.
  */
 void
-dns_rdatalist_disassociate(dns_rdataset_t *rdatasetp DNS__DB_FLARG);
+dns_rdatalist_disassociate(dns_rdataset_t *rdatasetp);
 isc_result_t
 dns__rdatalist_first(dns_rdataset_t *rdataset);
 isc_result_t
@@ -122,22 +122,19 @@ dns__rdatalist_next(dns_rdataset_t *rdataset);
 void
 dns__rdatalist_current(dns_rdataset_t *rdataset, dns_rdata_t *rdata);
 void
-dns__rdatalist_clone(const dns_rdataset_t  *source,
-		     dns_rdataset_t *target DNS__DB_FLARG);
+dns__rdatalist_clone(const dns_rdataset_t *source, dns_rdataset_t *target);
 unsigned int
 dns__rdatalist_count(dns_rdataset_t *rdataset);
 isc_result_t
 dns__rdatalist_addnoqname(dns_rdataset_t *rdataset, dns_name_t *name);
 isc_result_t
 dns__rdatalist_getnoqname(dns_rdataset_t *rdataset, dns_name_t *name,
-			  dns_rdataset_t	*neg,
-			  dns_rdataset_t *negsig DNS__DB_FLARG);
+			  dns_rdataset_t *neg, dns_rdataset_t *negsig);
 isc_result_t
 dns__rdatalist_addclosest(dns_rdataset_t *rdataset, dns_name_t *name);
 isc_result_t
 dns__rdatalist_getclosest(dns_rdataset_t *rdataset, dns_name_t *name,
-			  dns_rdataset_t	*neg,
-			  dns_rdataset_t *negsig DNS__DB_FLARG);
+			  dns_rdataset_t *neg, dns_rdataset_t *negsig);
 void
 dns__rdatalist_setownercase(dns_rdataset_t *rdataset, const dns_name_t *name);
 void

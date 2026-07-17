@@ -249,9 +249,9 @@ additionaldata_rt(ARGS_ADDLDATA) {
 	isc_region_consume(&region, 2);
 	dns_name_fromregion(&name, &region);
 
-	RETERR((add)(arg, &name, dns_rdatatype_x25, NULL DNS__DB_FILELINE));
-	RETERR((add)(arg, &name, dns_rdatatype_isdn, NULL DNS__DB_FILELINE));
-	return (add)(arg, &name, dns_rdatatype_a, NULL DNS__DB_FILELINE);
+	RETERR((add)(arg, &name, dns_rdatatype_x25, NULL));
+	RETERR((add)(arg, &name, dns_rdatatype_isdn, NULL));
+	return (add)(arg, &name, dns_rdatatype_a, NULL);
 }
 
 static isc_result_t

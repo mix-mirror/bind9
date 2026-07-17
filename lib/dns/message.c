@@ -761,11 +761,7 @@ dns__message_destroy(dns_message_t *msg) {
 	isc_mem_putanddetach(&msg->mctx, msg, sizeof(dns_message_t));
 }
 
-#if DNS_MESSAGE_TRACE
-ISC_REFCOUNT_TRACE_IMPL(dns_message, dns__message_destroy);
-#else
 ISC_REFCOUNT_IMPL(dns_message, dns__message_destroy);
-#endif
 
 static bool
 name_match(void *node, const void *key) {

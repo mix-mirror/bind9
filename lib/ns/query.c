@@ -75,9 +75,8 @@
 #include <ns/interfacemgr.h>
 #include <ns/server.h>
 #include <ns/stats.h>
+#include <ns/tracing.h>
 #include <ns/xfrout.h>
-
-#include "probes-ns.h"
 
 #if 0
 /*
@@ -1708,7 +1707,7 @@ query_additionalauth(query_ctx_t *qctx, const dns_name_t *name,
 
 static isc_result_t
 query_additional_cb(void *arg, const dns_name_t *name, dns_rdatatype_t qtype,
-		    dns_rdataset_t *found DNS__DB_FLARG) {
+		    dns_rdataset_t *found) {
 	query_ctx_t *qctx = arg;
 	ns_client_t *client = qctx->client;
 	isc_result_t result, eresult = ISC_R_SUCCESS;
@@ -6494,25 +6493,6 @@ ns__query_sfcache(query_ctx_t *qctx) {
 	return ISC_R_COMPLETE;
 }
 
-static void
-query_trace_rrldrop(query_ctx_t *qctx,
-		    dns_rrl_result_t rrl_result ISC_ATTR_UNUSED) {
-	if (!LIBNS_RRL_DROP_ENABLED()) {
-		return;
-	}
-
-	char peerbuf[ISC_SOCKADDR_FORMATSIZE];
-	isc_netaddr_t peer;
-	isc_netaddr_fromsockaddr(&peer, &qctx->client->inner.peeraddr);
-	isc_netaddr_format(&peer, peerbuf, sizeof(peerbuf));
-
-	char qnamebuf[DNS_NAME_FORMATSIZE];
-	char fnamebuf[DNS_NAME_FORMATSIZE];
-	dns_name_format(qctx->client->query.qname, qnamebuf, sizeof(qnamebuf));
-	dns_name_format(qctx->fname, fnamebuf, sizeof(fnamebuf));
-	LIBNS_RRL_DROP(peerbuf, qnamebuf, fnamebuf, rrl_result);
-}
-
 /*%
  * Handle response rate limiting (RRL).
  */
@@ -6646,7 +6626,25 @@ query_checkrrl(query_ctx_t *qctx, isc_result_t result) {
 			 * If tracing is enabled, format some extra information
 			 * to pass along.
 			 */
-			query_trace_rrldrop(qctx, rrl_result);
+			if (lttng_ust_tracepoint_enabled(libns, rrl_drop)) {
+				char peerbuf[ISC_SOCKADDR_FORMATSIZE];
+				isc_netaddr_t peer;
+				isc_netaddr_fromsockaddr(
+					&peer, &qctx->client->inner.peeraddr);
+				isc_netaddr_format(&peer, peerbuf,
+						   sizeof(peerbuf));
+
+				char qnamebuf[DNS_NAME_FORMATSIZE];
+				char fnamebuf[DNS_NAME_FORMATSIZE];
+				dns_name_format(qctx->client->query.qname,
+						qnamebuf, sizeof(qnamebuf));
+				dns_name_format(qctx->fname, fnamebuf,
+						sizeof(fnamebuf));
+
+				lttng_ust_tracepoint(libns, rrl_drop, peerbuf,
+						     qnamebuf, fnamebuf,
+						     rrl_result);
+			}
 
 			if (!qctx->view->rrl->log_only) {
 				if (rrl_result == DNS_RRL_RESULT_DROP) {

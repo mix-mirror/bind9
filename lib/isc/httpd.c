@@ -104,17 +104,7 @@ struct isc_httpd {
 	isc_time_t if_modified_since;
 };
 
-#if ISC_HTTPD_TRACE
-#define isc_httpd_ref(ptr)   isc_httpd__ref(ptr, __func__, __FILE__, __LINE__)
-#define isc_httpd_unref(ptr) isc_httpd__unref(ptr, __func__, __FILE__, __LINE__)
-#define isc_httpd_attach(ptr, ptrp) \
-	isc_httpd__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define isc_httpd_detach(ptrp) \
-	isc_httpd__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_TRACE_DECL(isc_httpd);
-#else
 ISC_REFCOUNT_DECL(isc_httpd);
-#endif
 
 struct isc_httpdmgr {
 	unsigned int magic; /* HTTPDMGR_MAGIC */
@@ -136,19 +126,7 @@ struct isc_httpdmgr {
 	isc_httpdaction_t *render_500;
 };
 
-#if ISC_HTTPD_TRACE
-#define isc_httpdmgr_ref(ptr) \
-	isc_httpdmgr__ref(ptr, __func__, __FILE__, __LINE__)
-#define isc_httpdmgr_unref(ptr) \
-	isc_httpdmgr__unref(ptr, __func__, __FILE__, __LINE__)
-#define isc_httpdmgr_attach(ptr, ptrp) \
-	isc_httpdmgr__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define isc_httpdmgr_detach(ptrp) \
-	isc_httpdmgr__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_TRACE_DECL(isc_httpdmgr);
-#else
 ISC_REFCOUNT_DECL(isc_httpdmgr);
-#endif
 
 typedef struct isc_httpd_sendreq {
 	isc_mem_t *mctx;
@@ -296,11 +274,7 @@ destroy_httpdmgr(isc_httpdmgr_t *httpdmgr) {
 	isc_mem_putanddetach(&httpdmgr->mctx, httpdmgr, sizeof(isc_httpdmgr_t));
 }
 
-#if ISC_HTTPD_TRACE
-ISC_REFCOUNT_TRACE_IMPL(isc_httpdmgr, destroy_httpdmgr)
-#else
 ISC_REFCOUNT_IMPL(isc_httpdmgr, destroy_httpdmgr);
-#endif
 
 static bool
 name_match(const struct phr_header *header, const char *match) {
@@ -554,11 +528,7 @@ httpd_free(isc_httpd_t *httpd) {
 #endif /* ENABLE_AFL */
 }
 
-#if ISC_HTTPD_TRACE
-ISC_REFCOUNT_TRACE_IMPL(isc_httpd, httpd_free)
-#else
 ISC_REFCOUNT_IMPL(isc_httpd, httpd_free);
-#endif
 
 static void
 isc__httpd_sendreq_free(isc_httpd_sendreq_t *req) {

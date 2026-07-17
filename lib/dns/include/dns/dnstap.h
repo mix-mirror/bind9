@@ -118,17 +118,7 @@ struct dns_dtdata {
 };
 #endif /* HAVE_DNSTAP */
 
-#if DNS_DTENV_TRACE
-#define dns_dtenv_ref(ptr)   dns_dtenv__ref(ptr, __func__, __FILE__, __LINE__)
-#define dns_dtenv_unref(ptr) dns_dtenv__unref(ptr, __func__, __FILE__, __LINE__)
-#define dns_dtenv_attach(ptr, ptrp) \
-	dns_dtenv__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define dns_dtenv_detach(ptrp) \
-	dns_dtenv__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_TRACE_DECL(dns_dtenv);
-#else
 ISC_REFCOUNT_DECL(dns_dtenv);
-#endif /* DNS_DTENV_TRACE */
 /*%
  * Reference counting for dns_dtenv
  */

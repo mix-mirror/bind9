@@ -33,8 +33,6 @@
 #include <dns/transport.h>
 #include <dns/types.h>
 
-/* Add -DDNS_XFRIN_TRACE=1 to CFLAGS for detailed reference tracing */
-
 /***
  *** Types
  ***/
@@ -224,14 +222,4 @@ dns_xfrin_shutdown(dns_xfrin_t *xfr);
  * its done callback with a status of ISC_R_CANCELED.
  */
 
-#if DNS_XFRIN_TRACE
-#define dns_xfrin_ref(ptr)   dns_xfrin__ref(ptr, __func__, __FILE__, __LINE__)
-#define dns_xfrin_unref(ptr) dns_xfrin__unref(ptr, __func__, __FILE__, __LINE__)
-#define dns_xfrin_attach(ptr, ptrp) \
-	dns_xfrin__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define dns_xfrin_detach(ptrp) \
-	dns_xfrin__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_TRACE_DECL(dns_xfrin);
-#else
 ISC_REFCOUNT_DECL(dns_xfrin);
-#endif

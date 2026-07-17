@@ -9,14 +9,6 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
-probe_src = []
-
-probe_hdr = dtrace_header.process('probes-isc.d')
-probe_src += [probe_hdr, files('job.c')]
-if config.get('USE_PTHREAD_RWLOCK') != 1
-    probe_src += files('rwlock.c')
-endif
-
 # isc_inc += include_directories('include')
 isc_inc_p += include_directories('.')
 
@@ -36,36 +28,7 @@ isc_srcset.add(when: 'HAVE_JEMALLOC', if_true: jemalloc_dep)
 isc_srcset.add(when: 'HAVE_JSON_C', if_true: json_c_dep)
 isc_srcset.add(when: 'HAVE_LIBXML2', if_true: xml2_dep)
 isc_srcset.add(when: 'HAVE_ZLIB', if_true: zlib_dep)
-
-if config.get('HAVE_DTRACE')
-    isc_probe_objects += static_library(
-        'isc-probe-target',
-        probe_src,
-        build_by_default: false,
-        dependencies: [uv_dep, urcu_dep],
-        implicit_include_directories: false,
-        include_directories: [isc_inc, isc_inc_p],
-    ).extract_all_objects(recursive: false)
-endif
-
-isc_srcset.add(
-    when: 'HAVE_DTRACE',
-    if_true: [
-        custom_target(
-            'isc-probe',
-            input: [files('probes-isc.d'), isc_probe_objects],
-            output: 'isc-probes.o',
-            command: [
-                dtrace,
-                '-G',
-                '-o', '@OUTPUT@',
-                '-s', '@INPUT@',
-            ],
-        ),
-        probe_hdr,
-    ],
-    if_false: probe_src,
-)
+isc_srcset.add(when: 'ENABLE_TRACING', if_true: lttng_dep)
 
 isc_srcset.add(
     files(
@@ -92,6 +55,7 @@ isc_srcset.add(
         'httpd.c',
         'interfaceiter.c',
         'iterated_hash.c',
+        'job.c',
         'lex.c',
         'lib.c',
         'log.c',
@@ -117,6 +81,7 @@ isc_srcset.add(
         'regex.c',
         'region.c',
         'result.c',
+        'rwlock.c',
         'safe.c',
         'serial.c',
         'signal.c',
@@ -134,6 +99,7 @@ isc_srcset.add(
         'timer.c',
         'tls.c',
         'tm.c',
+        'tracing.c',
         'url.c',
         'utf8.c',
         'uv.c',

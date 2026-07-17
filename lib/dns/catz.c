@@ -1148,13 +1148,8 @@ dns_catz_zones_shutdown(dns_catz_zones_t *catzs) {
 	UNLOCK(&catzs->lock);
 }
 
-#ifdef DNS_CATZ_TRACE
-ISC_REFCOUNT_TRACE_IMPL(dns_catz_zone, dns__catz_zone_destroy);
-ISC_REFCOUNT_TRACE_IMPL(dns_catz_zones, dns__catz_zones_destroy);
-#else
 ISC_REFCOUNT_IMPL(dns_catz_zone, dns__catz_zone_destroy);
 ISC_REFCOUNT_IMPL(dns_catz_zones, dns__catz_zones_destroy);
-#endif
 
 typedef enum {
 	CATZ_OPT_NONE,

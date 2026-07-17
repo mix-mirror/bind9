@@ -34,19 +34,7 @@
 #include <dns/name.h>
 #include <dns/types.h>
 
-/* Add -DDNS_KASP_TRACE=1 to CFLAGS for detailed reference tracing */
-
-#if DNS_KASP_TRACE
-#define dns_kasp_ref(ptr)   dns_kasp_ref(ptr, __func__, __FILE__, __LINE__)
-#define dns_kasp_unref(ptr) dns_kasp__unref(ptr, __func__, __FILE__, __LINE__)
-#define dns_kasp_attach(ptr, ptrp) \
-	dns_kasp__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define dns_kasp_detach(ptrp) \
-	dns_kasp__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_TRACE_DECL(dns_kasp);
-#else
 ISC_REFCOUNT_DECL(dns_kasp);
-#endif
 
 /* For storing a list of digest types */
 struct dns_kasp_digest {

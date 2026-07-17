@@ -258,16 +258,4 @@ dns_validator_shutdown(dns_validator_t *val);
  *\li	The name associated with the DNSSEC validator is released.
  */
 
-#if DNS_VALIDATOR_TRACE
-#define dns_validator_ref(ptr) \
-	dns_validator__ref(ptr, __func__, __FILE__, __LINE__)
-#define dns_validator_unref(ptr) \
-	dns_validator__unref(ptr, __func__, __FILE__, __LINE__)
-#define dns_validator_attach(ptr, ptrp) \
-	dns_validator__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define dns_validator_detach(ptrp) \
-	dns_validator__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_TRACE_DECL(dns_validator);
-#else
 ISC_REFCOUNT_DECL(dns_validator);
-#endif

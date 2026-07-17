@@ -65,23 +65,20 @@ typedef enum {
 } dns_rdatasetadditional_t;
 
 struct dns_rdatasetmethods {
-	void (*disassociate)(dns_rdataset_t *rdataset DNS__DB_FLARG);
+	void (*disassociate)(dns_rdataset_t *rdataset);
 	isc_result_t (*first)(dns_rdataset_t *rdataset);
 	isc_result_t (*next)(dns_rdataset_t *rdataset);
 	void (*current)(dns_rdataset_t *rdataset, dns_rdata_t *rdata);
-	void (*clone)(const dns_rdataset_t  *source,
-		      dns_rdataset_t *target DNS__DB_FLARG);
+	void (*clone)(const dns_rdataset_t *source, dns_rdataset_t *target);
 	unsigned int (*count)(dns_rdataset_t *rdataset);
 	isc_result_t (*addnoqname)(dns_rdataset_t *rdataset, dns_name_t *name);
 	isc_result_t (*getnoqname)(dns_rdataset_t *rdataset, dns_name_t *name,
-				   dns_rdataset_t	 *neg,
-				   dns_rdataset_t *negsig DNS__DB_FLARG);
+				   dns_rdataset_t *neg, dns_rdataset_t *negsig);
 	isc_result_t (*addclosest)(dns_rdataset_t *rdataset, dns_name_t *name);
 	isc_result_t (*getclosest)(dns_rdataset_t *rdataset, dns_name_t *name,
-				   dns_rdataset_t	 *neg,
-				   dns_rdataset_t *negsig DNS__DB_FLARG);
+				   dns_rdataset_t *neg, dns_rdataset_t *negsig);
 	void (*settrust)(dns_rdataset_t *rdataset, dns_trust_t trust);
-	void (*expire)(dns_rdataset_t *rdataset DNS__DB_FLARG);
+	void (*expire)(dns_rdataset_t *rdataset);
 	void (*clearprefetch)(dns_rdataset_t *rdataset);
 	void (*setownercase)(dns_rdataset_t *rdataset, const dns_name_t *name);
 	void (*getownercase)(const dns_rdataset_t *rdataset, dns_name_t *name);
@@ -300,12 +297,11 @@ dns_rdataset_invalidate(dns_rdataset_t *rdataset);
 
 #define dns_rdataset_cleanup(rdataset)                                 \
 	if (rdataset != NULL && dns_rdataset_isassociated(rdataset)) { \
-		dns__rdataset_disassociate(rdataset DNS__DB_FILELINE); \
+		dns__rdataset_disassociate(rdataset);                  \
 	}
-#define dns_rdataset_disassociate(rdataset) \
-	dns__rdataset_disassociate(rdataset DNS__DB_FILELINE)
+#define dns_rdataset_disassociate(rdataset) dns__rdataset_disassociate(rdataset)
 void
-dns__rdataset_disassociate(dns_rdataset_t *rdataset DNS__DB_FLARG);
+dns__rdataset_disassociate(dns_rdataset_t *rdataset);
 /*%<
  * Disassociate 'rdataset' from its rdata, allowing it to be reused.
  *
@@ -350,11 +346,9 @@ dns_rdataset_makequestion(dns_rdataset_t *rdataset, dns_rdataclass_t rdclass,
  *\li	'rdataset' is a valid, associated, question rdataset.
  */
 
-#define dns_rdataset_clone(source, target) \
-	dns__rdataset_clone(source, target DNS__DB_FILELINE)
+#define dns_rdataset_clone(source, target) dns__rdataset_clone(source, target)
 void
-dns__rdataset_clone(const dns_rdataset_t  *source,
-		    dns_rdataset_t *target DNS__DB_FLARG);
+dns__rdataset_clone(const dns_rdataset_t *source, dns_rdataset_t *target);
 /*%<
  * Make 'target' refer to the same rdataset as 'source'.
  *
@@ -529,11 +523,10 @@ dns_rdataset_additionaldata(dns_rdataset_t	    *rdataset,
  */
 
 #define dns_rdataset_getnoqname(rdataset, name, neg, negsig) \
-	dns__rdataset_getnoqname(rdataset, name, neg, negsig DNS__DB_FILELINE)
+	dns__rdataset_getnoqname(rdataset, name, neg, negsig)
 isc_result_t
 dns__rdataset_getnoqname(dns_rdataset_t *rdataset, dns_name_t *name,
-			 dns_rdataset_t	       *neg,
-			 dns_rdataset_t *negsig DNS__DB_FLARG);
+			 dns_rdataset_t *neg, dns_rdataset_t *negsig);
 /*%<
  * Return the noqname proof for this record.
  *
@@ -558,11 +551,10 @@ dns_rdataset_addnoqname(dns_rdataset_t *rdataset, dns_name_t *name);
  */
 
 #define dns_rdataset_getclosest(rdataset, name, nsec, nsecsig) \
-	dns__rdataset_getclosest(rdataset, name, nsec, nsecsig DNS__DB_FILELINE)
+	dns__rdataset_getclosest(rdataset, name, nsec, nsecsig)
 isc_result_t
 dns__rdataset_getclosest(dns_rdataset_t *rdataset, dns_name_t *name,
-			 dns_rdataset_t		*nsec,
-			 dns_rdataset_t *nsecsig DNS__DB_FLARG);
+			 dns_rdataset_t *nsec, dns_rdataset_t *nsecsig);
 /*%<
  * Return the closest encloser for this record.
  *
@@ -592,10 +584,8 @@ dns_rdataset_settrust(dns_rdataset_t *rdataset, dns_trust_t trust);
  * The local trust level of 'rdataset' is also set.
  */
 
-#define dns_rdataset_expire(rdataset) \
-	dns__rdataset_expire(rdataset DNS__DB_FILELINE)
 void
-dns__rdataset_expire(dns_rdataset_t *rdataset DNS__DB_FLARG);
+dns_rdataset_expire(dns_rdataset_t *rdataset);
 /*%<
  * Mark the rdataset to be expired in the backing database.
  */

@@ -250,11 +250,7 @@ requestmgr_destroy(dns_requestmgr_t *requestmgr) {
 			     sizeof(*requestmgr));
 }
 
-#if DNS_REQUEST_TRACE
-ISC_REFCOUNT_TRACE_IMPL(dns_requestmgr, requestmgr_destroy);
-#else
 ISC_REFCOUNT_IMPL(dns_requestmgr, requestmgr_destroy);
-#endif
 
 static void
 req_send(dns_request_t *request) {
@@ -973,11 +969,7 @@ dns_request_getresult(dns_request_t *request) {
 	return request->result;
 }
 
-#if DNS_REQUEST_TRACE
-ISC_REFCOUNT_TRACE_IMPL(dns_request, req_destroy);
-#else
 ISC_REFCOUNT_IMPL(dns_request, req_destroy);
-#endif
 
 static void
 req_log(int level, const char *fmt, ...) {

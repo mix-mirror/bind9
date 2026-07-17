@@ -460,11 +460,7 @@ dns__acl_destroy(dns_acl_t *dacl) {
 	isc_mem_putanddetach(&dacl->mctx, dacl, sizeof(*dacl));
 }
 
-#if DNS_ACL_TRACE
-ISC_REFCOUNT_TRACE_IMPL(dns_acl, dns__acl_destroy);
-#else
 ISC_REFCOUNT_IMPL(dns_acl, dns__acl_destroy);
-#endif
 
 void
 dns__acl_initialize(void) {}
@@ -691,11 +687,7 @@ dns__aclenv_destroy(dns_aclenv_t *aclenv) {
 	isc_mem_putanddetach(&aclenv->mctx, aclenv, sizeof(*aclenv));
 }
 
-#if DNS_ACL_TRACE
-ISC_REFCOUNT_TRACE_IMPL(dns_aclenv, dns__aclenv_destroy);
-#else
 ISC_REFCOUNT_IMPL(dns_aclenv, dns__aclenv_destroy);
-#endif
 
 void
 dns_acl_add_port_transports(dns_acl_t *acl, const in_port_t port,

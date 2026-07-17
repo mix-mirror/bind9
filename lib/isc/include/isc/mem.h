@@ -25,8 +25,6 @@
 #include <isc/types.h>
 #include <isc/urcu.h>
 
-/* Add -DISC_MEM_TRACE=1 to CFLAGS for detailed reference tracing */
-
 /*%
  * Define ISC_MEM_TRACKLINES=1 to turn on detailed tracing of memory
  * allocation and freeing by file and line number.
@@ -233,16 +231,7 @@ isc_mem_setdebugging(isc_mem_t *ctx, unsigned int debugging);
  * \li	'ctx' valid memory context without active allocation.
  */
 
-#if ISC_MEM_TRACE
-#define isc_mem_ref(ptr)   isc_mem__ref(ptr, __func__, __FILE__, __LINE__)
-#define isc_mem_unref(ptr) isc_mem__unref(ptr, __func__, __FILE__, __LINE__)
-#define isc_mem_attach(ptr, ptrp) \
-	isc_mem__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define isc_mem_detach(ptrp) isc_mem__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_TRACE_DECL(isc_mem);
-#else
 ISC_REFCOUNT_DECL(isc_mem);
-#endif
 
 void
 isc_mem_stats(isc_mem_t *mctx, FILE *out);

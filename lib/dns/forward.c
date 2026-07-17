@@ -210,11 +210,7 @@ destroy_forwarders(dns_forwarders_t *forwarders) {
 			     sizeof(*forwarders));
 }
 
-#if DNS_FORWARD_TRACE
-ISC_REFCOUNT_TRACE_IMPL(dns_forwarders, destroy_forwarders);
-#else
 ISC_REFCOUNT_IMPL(dns_forwarders, destroy_forwarders);
-#endif
 
 static void
 qp_attach(void *uctx ISC_ATTR_UNUSED, void *pval,

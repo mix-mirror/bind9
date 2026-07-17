@@ -29,8 +29,6 @@
 
 #include <dst/dst.h>
 
-/* Add -DDNS_MESSAGE_TRACE=1 to CFLAGS for detailed reference tracing */
-
 /*! \file dns/message.h
  * \brief Message Handling Module
  *
@@ -393,18 +391,7 @@ dns_message_reset(dns_message_t *msg, dns_message_intent_t intent);
  *\li	'intent' is DNS_MESSAGE_INTENTPARSE or DNS_MESSAGE_INTENTRENDER
  */
 
-#if DNS_MESSAGE_TRACE
-#define dns_message_ref(ptr) dns_message__ref(ptr, __func__, __FILE__, __LINE__)
-#define dns_message_unref(ptr) \
-	dns_message__unref(ptr, __func__, __FILE__, __LINE__)
-#define dns_message_attach(ptr, ptrp) \
-	dns_message__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define dns_message_detach(ptrp) \
-	dns_message__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_TRACE_DECL(dns_message);
-#else
 ISC_REFCOUNT_DECL(dns_message);
-#endif
 /*
  * Reference counting for dns_message
  */

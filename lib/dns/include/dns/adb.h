@@ -61,8 +61,6 @@
  *** Imports
  ***/
 
-/* Add -DDNS_ADB_TRACE=1 to CFLAGS for detailed reference tracing */
-
 #include <inttypes.h>
 #include <stdbool.h>
 
@@ -259,16 +257,7 @@ dns_adb_create(isc_mem_t *mem, dns_view_t *view, dns_adb_t **newadb);
  *\li	'newadb' != NULL && '*newadb' == NULL.
  */
 
-#if DNS_ADB_TRACE
-#define dns_adb_ref(ptr)   dns_adb__ref(ptr, __func__, __FILE__, __LINE__)
-#define dns_adb_unref(ptr) dns_adb__unref(ptr, __func__, __FILE__, __LINE__)
-#define dns_adb_attach(ptr, ptrp) \
-	dns_adb__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define dns_adb_detach(ptrp) dns_adb__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_TRACE_DECL(dns_adb);
-#else
 ISC_REFCOUNT_DECL(dns_adb);
-#endif
 
 void
 dns_adb_shutdown(dns_adb_t *adb);

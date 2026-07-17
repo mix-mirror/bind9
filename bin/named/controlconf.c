@@ -49,8 +49,6 @@
 #include <named/main.h>
 #include <named/server.h>
 
-/* Add -DNAMED_CONTROLCONF_TRACE=1 to CFLAGS for detailed reference tracing */
-
 typedef struct controlkey controlkey_t;
 typedef ISC_LIST(controlkey_t) controlkeylist_t;
 
@@ -122,30 +120,8 @@ conn_free(controlconnection_t *conn);
 static void
 conn_shutdown(controlconnection_t *conn);
 
-#if NAMED_CONTROLCONF_TRACE
-#define controllistener_ref(ptr) \
-	controllistener__ref(ptr, __func__, __FILE__, __LINE__)
-#define controllistener_unref(ptr) \
-	controllistener__unref(ptr, __func__, __FILE__, __LINE__)
-#define controllistener_attach(ptr, ptrp) \
-	controllistener__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define controllistener_detach(ptrp) \
-	controllistener__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_TRACE_DECL(controllistener);
-
-#define controlconnection_ref(ptr) \
-	controlconnection__ref(ptr, __func__, __FILE__, __LINE__)
-#define controlconnection_unref(ptr) \
-	controlconnection__unref(ptr, __func__, __FILE__, __LINE__)
-#define controlconnection_attach(ptr, ptrp) \
-	controlconnection__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define controlconnection_detach(ptrp) \
-	controlconnection__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_TRACE_DECL(controlconnection);
-#else
 ISC_REFCOUNT_DECL(controllistener);
 ISC_REFCOUNT_DECL(controlconnection);
-#endif
 
 #define CLOCKSKEW 300
 
@@ -183,13 +159,8 @@ free_listener(controllistener_t *listener) {
 	isc_mem_putanddetach(&listener->mctx, listener, sizeof(*listener));
 }
 
-#if NAMED_CONTROLCONF_TRACE
-ISC_REFCOUNT_TRACE_IMPL(controllistener, free_listener);
-ISC_REFCOUNT_TRACE_IMPL(controlconnection, conn_free);
-#else
 ISC_REFCOUNT_IMPL(controllistener, free_listener);
 ISC_REFCOUNT_IMPL(controlconnection, conn_free);
-#endif
 
 static void
 shutdown_listener(controllistener_t *listener) {

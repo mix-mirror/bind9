@@ -21,41 +21,39 @@
 #include <dns/rdatasetiter.h>
 
 void
-dns__rdatasetiter_destroy(dns_rdatasetiter_t **iteratorp DNS__DB_FLARG) {
+dns_rdatasetiter_destroy(dns_rdatasetiter_t **iteratorp) {
 	REQUIRE(iteratorp != NULL);
 	REQUIRE(DNS_RDATASETITER_VALID(*iteratorp));
 
-	(*iteratorp)->methods->destroy(iteratorp DNS__DB_FLARG_PASS);
+	(*iteratorp)->methods->destroy(iteratorp);
 
 	ENSURE(*iteratorp == NULL);
 }
 
 isc_result_t
-dns__rdatasetiter_first(dns_rdatasetiter_t *iterator DNS__DB_FLARG) {
+dns_rdatasetiter_first(dns_rdatasetiter_t *iterator) {
 	REQUIRE(DNS_RDATASETITER_VALID(iterator));
 
-	isc_result_t result =
-		iterator->methods->first(iterator DNS__DB_FLARG_PASS);
+	isc_result_t result = iterator->methods->first(iterator);
 	ENSURE(result == ISC_R_SUCCESS || result == ISC_R_NOMORE);
 	return result;
 }
 
 isc_result_t
-dns__rdatasetiter_next(dns_rdatasetiter_t *iterator DNS__DB_FLARG) {
+dns_rdatasetiter_next(dns_rdatasetiter_t *iterator) {
 	REQUIRE(DNS_RDATASETITER_VALID(iterator));
 
-	isc_result_t result =
-		iterator->methods->next(iterator DNS__DB_FLARG_PASS);
+	isc_result_t result = iterator->methods->next(iterator);
 	ENSURE(result == ISC_R_SUCCESS || result == ISC_R_NOMORE);
 	return result;
 }
 
 void
-dns__rdatasetiter_current(dns_rdatasetiter_t *iterator,
-			  dns_rdataset_t *rdataset DNS__DB_FLARG) {
+dns_rdatasetiter_current(dns_rdatasetiter_t *iterator,
+			 dns_rdataset_t *rdataset) {
 	REQUIRE(DNS_RDATASETITER_VALID(iterator));
 	REQUIRE(DNS_RDATASET_VALID(rdataset));
 	REQUIRE(!dns_rdataset_isassociated(rdataset));
 
-	iterator->methods->current(iterator, rdataset DNS__DB_FLARG_PASS);
+	iterator->methods->current(iterator, rdataset);
 }

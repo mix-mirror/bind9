@@ -166,18 +166,7 @@ struct dns_adbname {
 	struct cds_list_head lru_head;
 };
 
-#if DNS_ADB_TRACE
-#define dns_adbname_ref(ptr) dns_adbname__ref(ptr, __func__, __FILE__, __LINE__)
-#define dns_adbname_unref(ptr) \
-	dns_adbname__unref(ptr, __func__, __FILE__, __LINE__)
-#define dns_adbname_attach(ptr, ptrp) \
-	dns_adbname__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define dns_adbname_detach(ptrp) \
-	dns_adbname__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_TRACE_DECL(dns_adbname);
-#else
 ISC_REFCOUNT_DECL(dns_adbname);
-#endif
 
 /*%
  * dns_adbfetch structure:
@@ -264,19 +253,7 @@ struct dns_adbentry {
 	struct cds_list_head lru_head;
 };
 
-#if DNS_ADB_TRACE
-#define dns_adbentry_ref(ptr) \
-	dns_adbentry__ref(ptr, __func__, __FILE__, __LINE__)
-#define dns_adbentry_unref(ptr) \
-	dns_adbentry__unref(ptr, __func__, __FILE__, __LINE__)
-#define dns_adbentry_attach(ptr, ptrp) \
-	dns_adbentry__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define dns_adbentry_detach(ptrp) \
-	dns_adbentry__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_TRACE_DECL(dns_adbentry);
-#else
 ISC_REFCOUNT_DECL(dns_adbentry);
-#endif
 
 /*
  * ADB settings that can be tweaked with named -T option
@@ -890,13 +867,13 @@ new_adbname(dns_adb_t *adb, const dns_name_t *dnsname, unsigned int type) {
 		.type = type,
 		.loop = isc_loop_ref(isc_loop()),
 		.magic = DNS_ADBNAME_MAGIC,
+		.references = ISC_REFCOUNT_INITIALIZER(1),
 	};
 
-#if DNS_ADB_TRACE
-	fprintf(stderr, "dns_adbname__init:%s:%s:%d:%p->references = 1\n",
-		__func__, __FILE__, __LINE__ + 1, name);
-#endif
-	isc_refcount_init(&name->references, 1);
+	lttng_ust_tracelog(LTTNG_UST_TRACEPOINT_LOGLEVEL_DEBUG,
+			   "%s:t%" PRItid ":caller %p:%p->references = 1",
+			   __func__, isc_tid(), __builtin_return_address(0),
+			   name);
 
 	isc_mutex_init(&name->lock);
 
@@ -907,11 +884,7 @@ new_adbname(dns_adb_t *adb, const dns_name_t *dnsname, unsigned int type) {
 	return name;
 }
 
-#if DNS_ADB_TRACE
-ISC_REFCOUNT_TRACE_IMPL(dns_adbname, destroy_adbname);
-#else
 ISC_REFCOUNT_IMPL(dns_adbname, destroy_adbname);
-#endif
 
 static void
 destroy_adbname_rcu(struct rcu_head *rcu_head) {
@@ -991,10 +964,10 @@ new_adbentry(dns_adb_t *adb, const isc_sockaddr_t *addr, isc_stdtime_t now) {
 		.magic = DNS_ADBENTRY_MAGIC,
 	};
 
-#if DNS_ADB_TRACE
-	fprintf(stderr, "dns_adbentry__init:%s:%s:%d:%p->references = 1\n",
-		__func__, __FILE__, __LINE__ + 1, entry);
-#endif
+	lttng_ust_tracelog(LTTNG_UST_TRACEPOINT_LOGLEVEL_DEBUG,
+			   "%s:t%" PRItid ":caller %p:%p->references = 1",
+			   __func__, isc_tid(), __builtin_return_address(0),
+			   entry);
 	isc_mutex_init(&entry->lock);
 
 	inc_adbstats(adb, dns_adbstats_entriescnt);
@@ -1040,11 +1013,7 @@ destroy_adbentry(dns_adbentry_t *adbentry) {
 	call_rcu(&adbentry->rcu_head, destroy_adbentry_rcu);
 }
 
-#if DNS_ADB_TRACE
-ISC_REFCOUNT_TRACE_IMPL(dns_adbentry, destroy_adbentry);
-#else
 ISC_REFCOUNT_IMPL(dns_adbentry, destroy_adbentry);
-#endif
 
 static dns_adbfind_t *
 new_adbfind(dns_adb_t *adb, in_port_t port) {
@@ -1629,11 +1598,7 @@ dns_adb_destroy(dns_adb_t *adb) {
 	isc_mem_putanddetach(&adb->mctx, adb, sizeof(dns_adb_t));
 }
 
-#if DNS_ADB_TRACE
-ISC_REFCOUNT_TRACE_IMPL(dns_adb, dns_adb_destroy);
-#else
 ISC_REFCOUNT_IMPL(dns_adb, dns_adb_destroy);
-#endif
 
 /*
  * Public functions.
@@ -1648,7 +1613,7 @@ dns_adb_create(isc_mem_t *mem, dns_view_t *view, dns_adb_t **adbp) {
 	uint32_t nloops = isc_loopmgr_nloops();
 	dns_adb_t *adb = isc_mem_get(mem, sizeof(dns_adb_t));
 	*adb = (dns_adb_t){
-		.references = 1,
+		.references = ISC_REFCOUNT_INITIALIZER(1),
 		.nloops = nloops,
 		.magic = DNS_ADB_MAGIC,
 	};
@@ -1657,10 +1622,10 @@ dns_adb_create(isc_mem_t *mem, dns_view_t *view, dns_adb_t **adbp) {
 	 * Initialize things here that cannot fail, and especially things
 	 * that must be NULL for the error return to work properly.
 	 */
-#if DNS_ADB_TRACE
-	fprintf(stderr, "dns_adb__init:%s:%s:%d:%p->references = 1\n", __func__,
-		__FILE__, __LINE__ + 1, adb);
-#endif
+	lttng_ust_tracelog(LTTNG_UST_TRACEPOINT_LOGLEVEL_DEBUG,
+			   "%s:t%" PRItid ":caller %p:%p->references = 1",
+			   __func__, isc_tid(), __builtin_return_address(0),
+			   adb);
 	dns_view_weakattach(view, &adb->view);
 	dns_resolver_attach(view->resolver, &adb->res);
 	isc_mem_attach(mem, &adb->mctx);

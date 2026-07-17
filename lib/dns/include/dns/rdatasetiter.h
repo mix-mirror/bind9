@@ -64,11 +64,10 @@
 *****/
 
 typedef struct dns_rdatasetitermethods {
-	void (*destroy)(dns_rdatasetiter_t **iteratorp DNS__DB_FLARG);
-	isc_result_t (*first)(dns_rdatasetiter_t *iterator DNS__DB_FLARG);
-	isc_result_t (*next)(dns_rdatasetiter_t *iterator DNS__DB_FLARG);
-	void (*current)(dns_rdatasetiter_t	*iterator,
-			dns_rdataset_t *rdataset DNS__DB_FLARG);
+	void (*destroy)(dns_rdatasetiter_t **iteratorp);
+	isc_result_t (*first)(dns_rdatasetiter_t *iterator);
+	isc_result_t (*next)(dns_rdatasetiter_t *iterator);
+	void (*current)(dns_rdatasetiter_t *iterator, dns_rdataset_t *rdataset);
 } dns_rdatasetitermethods_t;
 
 #define DNS_RDATASETITER_MAGIC	  ISC_MAGIC('D', 'N', 'S', 'i')
@@ -110,10 +109,8 @@ struct dns_rdatasetiter {
 	DNS_RDATASETITER_FOREACH_RES(rds, DNS__RDATASETITER_CONCAT(x, __LINE__))
 /* clang-format on */
 
-#define dns_rdatasetiter_destroy(iteratorp) \
-	dns__rdatasetiter_destroy(iteratorp DNS__DB_FILELINE)
 void
-dns__rdatasetiter_destroy(dns_rdatasetiter_t **iteratorp DNS__DB_FLARG);
+dns_rdatasetiter_destroy(dns_rdatasetiter_t **iteratorp);
 /*%<
  * Destroy '*iteratorp'.
  *
@@ -128,10 +125,8 @@ dns__rdatasetiter_destroy(dns_rdatasetiter_t **iteratorp DNS__DB_FLARG);
  *\li	*iteratorp == NULL.
  */
 
-#define dns_rdatasetiter_first(iterator) \
-	dns__rdatasetiter_first(iterator DNS__DB_FILELINE)
 isc_result_t
-dns__rdatasetiter_first(dns_rdatasetiter_t *iterator DNS__DB_FLARG);
+dns_rdatasetiter_first(dns_rdatasetiter_t *iterator);
 /*%<
  * Move the rdataset cursor to the first rdataset at the node (if any).
  *
@@ -145,10 +140,8 @@ dns__rdatasetiter_first(dns_rdatasetiter_t *iterator DNS__DB_FLARG);
  *\li	Other results are possible, depending on the DB implementation.
  */
 
-#define dns_rdatasetiter_next(iterator) \
-	dns__rdatasetiter_next(iterator DNS__DB_FILELINE)
 isc_result_t
-dns__rdatasetiter_next(dns_rdatasetiter_t *iterator DNS__DB_FLARG);
+dns_rdatasetiter_next(dns_rdatasetiter_t *iterator);
 /*%<
  * Move the rdataset cursor to the next rdataset at the node (if any).
  *
@@ -163,11 +156,9 @@ dns__rdatasetiter_next(dns_rdatasetiter_t *iterator DNS__DB_FLARG);
  *\li	Other results are possible, depending on the DB implementation.
  */
 
-#define dns_rdatasetiter_current(iterator, rdataset) \
-	dns__rdatasetiter_current(iterator, rdataset DNS__DB_FILELINE)
 void
-dns__rdatasetiter_current(dns_rdatasetiter_t	  *iterator,
-			  dns_rdataset_t *rdataset DNS__DB_FLARG);
+dns_rdatasetiter_current(dns_rdatasetiter_t *iterator,
+			 dns_rdataset_t	    *rdataset);
 /*%<
  * Return the current rdataset.
  *

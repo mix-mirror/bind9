@@ -24,8 +24,6 @@
 #include <dns/qp.h>
 #include <dns/types.h>
 
-/* Add -DDNS_FORWARD_TRACE=1 to CFLAGS for detailed reference tracing */
-
 struct dns_forwarder {
 	isc_sockaddr_t addr;
 	dns_name_t    *tlsname;
@@ -106,16 +104,4 @@ dns_fwdtable_destroy(dns_fwdtable_t **fwdtablep);
  * \li	all memory associated with the forwarding table is freed.
  */
 
-#if DNS_FORWARD_TRACE
-#define dns_forwarders_ref(ptr) \
-	dns_forwarders__ref(ptr, __func__, __FILE__, __LINE__)
-#define dns_forwarders_unref(ptr) \
-	dns_forwarders__unref(ptr, __func__, __FILE__, __LINE__)
-#define dns_forwarders_attach(ptr, ptrp) \
-	dns_forwarders__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
-#define dns_forwarders_detach(ptrp) \
-	dns_forwarders__detach(ptrp, __func__, __FILE__, __LINE__)
-ISC_REFCOUNT_TRACE_DECL(dns_forwarders);
-#else
 ISC_REFCOUNT_DECL(dns_forwarders);
-#endif

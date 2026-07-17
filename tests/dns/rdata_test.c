@@ -187,7 +187,7 @@ rdata_towire(dns_rdata_t *rdata, unsigned char *dst, size_t dstlen,
 
 static isc_result_t
 additionaldata_cb(void *arg, const dns_name_t *name, dns_rdatatype_t qtype,
-		  dns_rdataset_t *found DNS__DB_FLARG) {
+		  dns_rdataset_t *found) {
 	UNUSED(arg);
 	UNUSED(name);
 	UNUSED(qtype);

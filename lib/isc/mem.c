@@ -709,11 +709,7 @@ mem_destroy(isc_mem_t *ctx) {
 	sdallocx(ctx, sizeof(*ctx), ctx->jemalloc_flags);
 }
 
-#if ISC_MEM_TRACE
-ISC_REFCOUNT_TRACE_IMPL(isc_mem, mem_destroy);
-#else
 ISC_REFCOUNT_IMPL(isc_mem, mem_destroy);
-#endif
 
 /*
  * isc_mem_putanddetach() is the equivalent of:
@@ -736,11 +732,7 @@ isc__mem_putanddetach(isc_mem_t **ctxp, void *ptr, size_t size,
 	*ctxp = NULL;
 
 	isc__mem_put(ctx, ptr, size, flags FLARG_PASS);
-#if ISC_MEM_TRACE
-	isc_mem__detach(&ctx, func, file, line);
-#else
 	isc_mem_detach(&ctx);
-#endif
 }
 
 void *

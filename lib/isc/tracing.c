@@ -11,6 +11,13 @@
  * information regarding copyright ownership.
  */
 
-provider libns {
-	probe rrl_drop(const char *, const char *, const char *, int);
-};
+#ifdef ENABLE_TRACING
+
+#define LTTNG_UST_TRACEPOINT_CREATE_PROBES
+/*
+ * The header containing our LTTNG_UST_TRACEPOINT_EVENTs.
+ */
+#define LTTNG_UST_TRACEPOINT_DEFINE
+#include <isc/tracing.h>
+
+#endif /* ENABLE_TRACING */

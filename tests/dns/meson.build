@@ -72,23 +72,8 @@ endif
 master_data = []
 subdir('testdata/master')
 
-deleg_probe_stub = custom_target(
-    'deleg-test-probes-dns',
-    input: files('../../lib/dns/probes-dns.d'),
-    output: 'probes-dns.h',
-    command: [
-        files('../../util/dtrace.sh'),
-        '-h',
-        '-s', '@INPUT@',
-        '-o', '@OUTPUT@',
-    ],
-)
-
 foreach unit : dns_tests
     extra_sources = []
-    if unit == 'deleg'
-        extra_sources += deleg_probe_stub
-    endif
     test_bin = executable(
         unit,
         files(f'@unit@_test.c'),

@@ -101,11 +101,7 @@ dns__nta_destroy(dns__nta_t *nta) {
 	isc_mem_putanddetach(&nta->mctx, nta, sizeof(*nta));
 }
 
-#if DNS_NTA_TRACE
-ISC_REFCOUNT_TRACE_IMPL(dns__nta, dns__nta_destroy);
-#else
 ISC_REFCOUNT_IMPL(dns__nta, dns__nta_destroy);
-#endif
 
 void
 dns_ntatable_create(dns_view_t *view, dns_ntatable_t **ntatablep) {
@@ -135,11 +131,7 @@ dns__ntatable_destroy(dns_ntatable_t *ntatable) {
 	isc_mem_putanddetach(&ntatable->mctx, ntatable, sizeof(*ntatable));
 }
 
-#if DNS_NTA_TRACE
-ISC_REFCOUNT_TRACE_IMPL(dns_ntatable, dns__ntatable_destroy);
-#else
 ISC_REFCOUNT_IMPL(dns_ntatable, dns__ntatable_destroy);
-#endif
 
 static void
 fetch_done(void *arg) {
