@@ -1740,41 +1740,6 @@ rpz_node_match(void *value, const void *key) {
 	return dns_name_equal(&node->name, name);
 }
 
-static isc_result_t
-rpz_nodes_add(isc_hashmap_t *nodes, isc_mem_t *mctx, const dns_name_t *name) {
-	rpz_node_t *node = NULL;
-	isc_result_t result;
-
-	node = rpz_node_new(mctx, name);
-	result = isc_hashmap_add(nodes, dns_name_hash(name), rpz_node_match,
-				 &node->name, node, NULL);
-	if (result != ISC_R_SUCCESS) {
-		rpz_node_free(mctx, node);
-	}
-
-	return result;
-}
-
-static isc_result_t
-rpz_nodes_delete(isc_hashmap_t *nodes, isc_mem_t *mctx,
-		 const dns_name_t *name) {
-	isc_result_t result;
-	uint32_t hash = dns_name_hash(name);
-	void *value = NULL;
-
-	result = isc_hashmap_find(nodes, hash, rpz_node_match, name, &value);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
-
-	result = isc_hashmap_delete(nodes, hash, rpz_node_match, name);
-	if (result == ISC_R_SUCCESS) {
-		rpz_node_free(mctx, value);
-	}
-
-	return result;
-}
-
 static void
 rpz_nodes_clear(isc_hashmap_t *nodes, isc_mem_t *mctx) {
 	isc_hashmap_iter_t *iter = NULL;
@@ -1898,9 +1863,14 @@ update_nodes(dns_rpz_zone_t *rpz, dns_db_t *db, dns_dbversion_t *dbversion,
 
 		dns_name_downcase(name, name);
 
+		uint32_t hash = dns_name_hash(name);
+
 		/* Add entry to the new nodes table */
-		result = rpz_nodes_add(newnodes, rpz->rpzs->mctx, name);
+		rpz_node_t *newnode = rpz_node_new(rpz->rpzs->mctx, name);
+		result = isc_hashmap_add(newnodes, hash, rpz_node_match,
+					 &newnode->name, newnode, NULL);
 		if (result != ISC_R_SUCCESS) {
+			rpz_node_free(rpz->rpzs->mctx, newnode);
 			dns_name_format(name, namebuf, sizeof(namebuf));
 			isc_log_write(DNS_LOGCATEGORY_GENERAL,
 				      DNS_LOGMODULE_RPZ, ISC_LOG_ERROR,
@@ -1912,7 +1882,15 @@ update_nodes(dns_rpz_zone_t *rpz, dns_db_t *db, dns_dbversion_t *dbversion,
 		}
 
 		/* Does the entry exist in the old nodes table? */
-		result = rpz_nodes_delete(rpz->nodes, rpz->rpzs->mctx, name);
+		void *value = NULL;
+		result = isc_hashmap_find(rpz->nodes, hash, rpz_node_match,
+					  name, &value);
+		if (result == ISC_R_SUCCESS) {
+			result = isc_hashmap_delete(rpz->nodes, hash,
+						    rpz_node_match, name);
+			RUNTIME_CHECK(result == ISC_R_SUCCESS);
+			rpz_node_free(rpz->rpzs->mctx, value);
+		}
 		if (result == ISC_R_SUCCESS) { /* found */
 			goto next;
 		}
