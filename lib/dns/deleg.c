@@ -240,28 +240,28 @@ isactive(delegdb_node_t *node, dns_ttl_t now) {
 	return node->delegset->expires > now;
 }
 
-static void
-getparentnode(dns_qpchain_t *chain, delegdb_node_t **node, dns_ttl_t now) {
-	size_t len = dns_qpchain_length(chain);
-
-	while (len >= 2) {
-		delegdb_node_t *parent = NULL;
-		dns_qpchain_node(chain, len - 1, (void **)&parent, NULL);
-
-		if (isactive(parent, now)) {
-			*node = parent;
-			return;
-		}
-		len--;
-	}
-
-	/*
-	 * No active proper ancestor was found in the chain.  Signal
-	 * "no parent" so the caller does not mistake the original
-	 * matched node for an ancestor.
-	 */
-	*node = NULL;
-}
+// static void
+// getparentnode(dns_qpchain_t *chain, delegdb_node_t **node, dns_ttl_t now) {
+// 	size_t len = dns_qpchain_length(chain);
+//
+// 	while (len >= 2) {
+// 		delegdb_node_t *parent = NULL;
+// 		dns_qpchain_node(chain, len - 1, (void **)&parent, NULL);
+//
+// 		if (isactive(parent, now)) {
+// 			*node = parent;
+// 			return;
+// 		}
+// 		len--;
+// 	}
+//
+// 	/*
+// 	 * No active proper ancestor was found in the chain.  Signal
+// 	 * "no parent" so the caller does not mistake the original
+// 	 * matched node for an ancestor.
+// 	 */
+// 	*node = NULL;
+// }
 
 /*
  * NOTE: Caller needs to hold a RCU read critical section.
@@ -306,9 +306,9 @@ deleg_lookup(dns_delegdb_t *delegdb, dns_qpread_t *qpr, const dns_name_t *name,
 	 * exists in the chain, so we must NULL-check before dereferencing
 	 * 'node' below.
 	 */
-	if ((result == ISC_R_SUCCESS && above) || !isactive(node, now)) {
-		getparentnode(&chain, &node, now);
-	}
+	// if ((result == ISC_R_SUCCESS && above) || !isactive(node, now)) {
+	// 	getparentnode(&chain, &node, now);
+	// }
 
 	if (node != NULL && isactive(node, now)) {
 		dns_name_copy(&node->zonecut, zonecut);
