@@ -428,85 +428,12 @@ totext_ctx_init(const dns_master_style_t *style, const dns_indent_t *indentctx,
 	return ISC_R_SUCCESS;
 }
 
-/*
- * In YAML mode a record is rendered as a flow mapping, so what separates
- * two fields is the next key rather than whitespace.  'yamlfirst' tracks
- * whether a leading comma is needed yet, so that fields omitted by the
- * style flags cannot leave a dangling separator behind.
- */
-#define YAML_KEY(key)                                                       \
-	do {                                                                \
-		if ((ctx->style.flags & DNS_STYLEFLAG_YAML) != 0) {         \
-			if ((result = str_totext(yamlfirst ? " " : ", ",    \
-						 target)) != ISC_R_SUCCESS) \
-				return ((result));                          \
-			if ((result = str_totext(key ": ", target)) !=      \
-			    ISC_R_SUCCESS)                                  \
-				return ((result));                          \
-			yamlfirst = false;                                  \
-		}                                                           \
-	} while (0)
-
-#define INDENT_TO(col, key)                                                   \
-	do {                                                                  \
-		if ((ctx->style.flags & DNS_STYLEFLAG_YAML) != 0) {           \
-			YAML_KEY(key);                                        \
-		} else if ((result = indent(&column, ctx->style.col,          \
-					    ctx->style.tab_width, target)) != \
-			   ISC_R_SUCCESS)                                     \
-			return ((result));                                    \
-	} while (0)
-
-/*
- * Emit a single-quoted YAML scalar.  The quoting is not cosmetic: names and
- * rdata may contain commas or braces, which would otherwise terminate the
- * flow mapping.  Embedded quotes are doubled by yaml_stringify().  Outside
- * YAML mode both macros expand to nothing.
- */
-#define YAML_STR_BEGIN()                                            \
-	do {                                                        \
-		if ((ctx->style.flags & DNS_STYLEFLAG_YAML) != 0) { \
-			if ((result = str_totext("'", target)) !=   \
-			    ISC_R_SUCCESS)                          \
-				return ((result));                  \
-			yamlstart = isc_buffer_used(target);        \
-		}                                                   \
-	} while (0)
-
-#define YAML_STR_END()                                                      \
-	do {                                                                \
-		if ((ctx->style.flags & DNS_STYLEFLAG_YAML) != 0) {         \
-			if ((result = yaml_stringify(target, yamlstart)) != \
-			    ISC_R_SUCCESS)                                  \
-				return ((result));                          \
-			if ((result = str_totext("'", target)) !=           \
-			    ISC_R_SUCCESS)                                  \
-				return ((result));                          \
-		}                                                           \
-	} while (0)
-
-/*
- * Open a flow mapping as an entry of the enclosing YAML sequence.
- */
-#define YAML_MAP_BEGIN()                                            \
-	do {                                                        \
-		if ((ctx->style.flags & DNS_STYLEFLAG_YAML) != 0) { \
-			if ((result = str_totext("- {", target)) != \
-			    ISC_R_SUCCESS)                          \
-				return ((result));                  \
-		}                                                   \
-	} while (0)
-
-/*
- * Close the flow mapping opened with YAML_MAP_BEGIN().
- */
-#define YAML_MAP_END()                                              \
-	do {                                                        \
-		if ((ctx->style.flags & DNS_STYLEFLAG_YAML) != 0) { \
-			if ((result = str_totext(" }", target)) !=  \
-			    ISC_R_SUCCESS)                          \
-				return ((result));                  \
-		}                                                   \
+#define INDENT_TO(col)                                                 \
+	do {                                                           \
+		if ((result = indent(&column, ctx->style.col,          \
+				     ctx->style.tab_width, target)) != \
+		    ISC_R_SUCCESS)                                     \
+			return ((result));                             \
 	} while (0)
 
 static isc_result_t
@@ -558,52 +485,59 @@ yaml_stringify(isc_buffer_t *target, char *start) {
 }
 
 /*
- * Render one record of a negative cache summary.  This is kept separate
- * from ncache_summary() because the YAML_* macros return on error, which
- * would bypass that function's cleanup of the rdataset it owns.
+ * Emit the indentation prefix of a YAML sequence entry.
  */
 static isc_result_t
-ncache_summary_entry(const dns_name_t *name, dns_rdataset_t *rds,
-		     bool omit_final_dot, dns_totext_ctx_t *ctx,
-		     isc_buffer_t *target) {
-	isc_result_t result;
-	char *yamlstart = NULL;
-	bool yamlfirst = true;
-	bool yaml = (ctx->style.flags & DNS_STYLEFLAG_YAML) != 0;
-	unsigned int i;
-
-	if ((ctx->style.flags & DNS_STYLEFLAG_INDENT) != 0 || yaml) {
-		for (i = 0; i < ctx->indent.count; i++) {
-			RETERR(str_totext(ctx->indent.string, target));
-		}
+yaml_indent(dns_totext_ctx_t *ctx, isc_buffer_t *target) {
+	for (unsigned int i = 0; i < ctx->indent.count; i++) {
+		RETERR(str_totext(ctx->indent.string, target));
 	}
 
-	YAML_MAP_BEGIN();
-	if (!yaml) {
-		RETERR(str_totext("; ", target));
-	}
+	return ISC_R_SUCCESS;
+}
 
-	YAML_KEY("name");
-	YAML_STR_BEGIN();
+/*
+ * Terminate a single-quoted YAML scalar whose contents were written to
+ * 'target' starting at 'start'.  The quoting is not cosmetic: names and
+ * rdata may contain commas or braces, which would otherwise terminate the
+ * enclosing flow mapping.  Embedded quotes are doubled by yaml_stringify().
+ */
+static isc_result_t
+yaml_endquote(isc_buffer_t *target, char *start) {
+	RETERR(yaml_stringify(target, start));
+
+	return str_totext("'", target);
+}
+
+/*
+ * Render one record of a negative cache summary as a YAML flow mapping.
+ *
+ * This is kept separate from ncache_summary() because RETERR() returns on
+ * error, which would bypass that function's cleanup of the rdataset it owns.
+ */
+static isc_result_t
+ncache_summary_entry_yaml(const dns_name_t *name, dns_rdataset_t *rds,
+			  bool omit_final_dot, dns_totext_ctx_t *ctx,
+			  isc_buffer_t *target) {
+	char *start = NULL;
+
+	RETERR(yaml_indent(ctx, target));
+
+	RETERR(str_totext("- {name: '", target));
+	start = isc_buffer_used(target);
 	RETERR(dns_name_totext(name, omit_final_dot ? DNS_NAME_OMITFINALDOT : 0,
 			       target));
-	YAML_STR_END();
+	RETERR(yaml_endquote(target, start));
 
-	YAML_KEY("rrtype");
-	if (!yaml) {
-		RETERR(str_totext(" ", target));
-	}
+	RETERR(str_totext(", rrtype: ", target));
 	RETERR(dns_rdatatype_totext(rds->type, target));
 
 	/*
 	 * An RRSIG summary names the covered type in place of the rdata,
 	 * which is elided.
 	 */
-	YAML_KEY("rdata");
-	if (!yaml) {
-		RETERR(str_totext(" ", target));
-	}
-	YAML_STR_BEGIN();
+	RETERR(str_totext(", rdata: '", target));
+	start = isc_buffer_used(target);
 	if (rds->type == dns_rdatatype_rrsig) {
 		RETERR(dns_rdatatype_totext(rds->covers, target));
 		RETERR(str_totext(" ...", target));
@@ -613,11 +547,46 @@ ncache_summary_entry(const dns_name_t *name, dns_rdataset_t *rds,
 		RETERR(dns_rdata_tofmttext(&rdata, dns_rootname, 0, 0, 0, " ",
 					   target));
 	}
-	YAML_STR_END();
-	YAML_MAP_END();
-	RETERR(str_totext("\n", target));
+	RETERR(yaml_endquote(target, start));
 
-	return ISC_R_SUCCESS;
+	return str_totext(" }\n", target);
+}
+
+/*
+ * Render one record of a negative cache summary as a master file comment.
+ *
+ * This is kept separate from ncache_summary() because RETERR() returns on
+ * error, which would bypass that function's cleanup of the rdataset it owns.
+ */
+static isc_result_t
+ncache_summary_entry(const dns_name_t *name, dns_rdataset_t *rds,
+		     bool omit_final_dot, dns_totext_ctx_t *ctx,
+		     isc_buffer_t *target) {
+	if ((ctx->style.flags & DNS_STYLEFLAG_INDENT) != 0) {
+		for (unsigned int i = 0; i < ctx->indent.count; i++) {
+			RETERR(str_totext(ctx->indent.string, target));
+		}
+	}
+
+	RETERR(str_totext("; ", target));
+	RETERR(dns_name_totext(name, omit_final_dot ? DNS_NAME_OMITFINALDOT : 0,
+			       target));
+
+	RETERR(str_totext(" ", target));
+	RETERR(dns_rdatatype_totext(rds->type, target));
+
+	RETERR(str_totext(" ", target));
+	if (rds->type == dns_rdatatype_rrsig) {
+		RETERR(dns_rdatatype_totext(rds->covers, target));
+		RETERR(str_totext(" ...", target));
+	} else {
+		dns_rdata_t rdata = DNS_RDATA_INIT;
+		dns_rdataset_current(rds, &rdata);
+		RETERR(dns_rdata_tofmttext(&rdata, dns_rootname, 0, 0, 0, " ",
+					   target));
+	}
+
+	return str_totext("\n", target);
 }
 
 static isc_result_t
@@ -626,14 +595,22 @@ ncache_summary(dns_rdataset_t *rdataset, bool omit_final_dot,
 	isc_result_t result = ISC_R_SUCCESS;
 	dns_rdataset_t rds = DNS_RDATASET_INIT;
 	dns_name_t name;
+	bool yaml = (ctx->style.flags & DNS_STYLEFLAG_YAML) != 0;
 
 	dns_name_init(&name);
 
 	do {
 		dns_ncache_current(rdataset, &name, &rds);
 		DNS_RDATASET_FOREACH(&rds) {
-			CHECK(ncache_summary_entry(&name, &rds, omit_final_dot,
-						   ctx, target));
+			if (yaml) {
+				CHECK(ncache_summary_entry_yaml(&name, &rds,
+								omit_final_dot,
+								ctx, target));
+			} else {
+				CHECK(ncache_summary_entry(&name, &rds,
+							   omit_final_dot, ctx,
+							   target));
+			}
 		}
 		dns_rdataset_disassociate(&rds);
 		result = dns_rdataset_next(rdataset);
@@ -649,12 +626,94 @@ cleanup:
 }
 
 /*
+ * Render 'rdataset' as a YAML sequence of flow mappings, one per record.
+ *
+ * Unlike the master file renderer this ignores the presentation style
+ * flags (column layout, field elision, unknown-format output):
+ * a machine-readable rendering always names every field of every record.
+ * The only styles that reach here are built from DNS_STYLEFLAG_YAML by
+ * dig, delv and mdig, none of which set those flags.
+ */
+static isc_result_t
+rdataset_totext_yaml(dns_rdataset_t *rdataset, const dns_name_t *name,
+		     dns_totext_ctx_t *ctx, bool omit_final_dot,
+		     isc_buffer_t *target) {
+	DNS_RDATASET_FOREACH(rdataset) {
+		char ttlbuf[64];
+		char *start = NULL;
+
+		RETERR(yaml_indent(ctx, target));
+		RETERR(str_totext("- {", target));
+
+		if (name != NULL) {
+			RETERR(str_totext("name: '", target));
+			start = isc_buffer_used(target);
+			RETERR(dns_name_totext(
+				name,
+				omit_final_dot ? DNS_NAME_OMITFINALDOT : 0,
+				target));
+			RETERR(yaml_endquote(target, start));
+			RETERR(str_totext(", ", target));
+		}
+
+		snprintf(ttlbuf, sizeof(ttlbuf), "ttl: %u", rdataset->ttl);
+		RETERR(str_totext(ttlbuf, target));
+
+		RETERR(str_totext(", class: ", target));
+		RETERR(dns_rdataclass_totext(rdataset->rdclass, target));
+
+		/*
+		 * A negative record is reported under the type it covers,
+		 * marked with a leading backslash-hyphen.
+		 */
+		RETERR(str_totext(", rrtype: ", target));
+		if (rdataset->attributes.negative) {
+			RETERR(str_totext("\\-", target));
+			RETERR(dns_rdatatype_totext(rdataset->covers, target));
+		} else {
+			RETERR(dns_rdatatype_totext(rdataset->type, target));
+		}
+
+		RETERR(str_totext(", rdata: '", target));
+		start = isc_buffer_used(target);
+		if (rdataset->attributes.negative) {
+			RETERR(str_totext(NXDOMAIN(rdataset) ? ";-$NXDOMAIN"
+							     : ";-$NXRRSET",
+					  target));
+			RETERR(yaml_endquote(target, start));
+			RETERR(str_totext(" }\n", target));
+
+			/*
+			 * Print a summary of the cached records which make
+			 * up the negative response.
+			 */
+			return ncache_summary(rdataset, omit_final_dot, ctx,
+					      target);
+		} else {
+			dns_rdata_t rdata = DNS_RDATA_INIT;
+
+			dns_rdataset_current(rdataset, &rdata);
+
+			RETERR(dns_rdata_tofmttext(
+				&rdata, ctx->origin, ctx->style.flags,
+				ctx->style.line_length -
+					ctx->style.rdata_column,
+				ctx->style.split_width, ctx->linebreak,
+				target));
+			RETERR(yaml_endquote(target, start));
+			RETERR(str_totext(" }\n", target));
+		}
+	}
+
+	return ISC_R_SUCCESS;
+}
+
+/*
  * Convert 'rdataset' to master file text format according to 'ctx',
  * storing the result in 'target'.  If 'owner_name' is NULL, it
  * is omitted; otherwise 'owner_name' must be valid and have at least
  * one label.
  */
-
 static isc_result_t
 rdataset_totext(dns_rdataset_t *rdataset, const dns_name_t *owner_name,
 		dns_totext_ctx_t *ctx, bool omit_final_dot,
@@ -669,8 +728,6 @@ rdataset_totext(dns_rdataset_t *rdataset, const dns_name_t *owner_name,
 	dns_fixedname_t fixed;
 	dns_name_t *name = NULL;
 	unsigned int i;
-	char *yamlstart = NULL;
-	bool yamlfirst;
 
 	REQUIRE(DNS_RDATASET_VALID(rdataset));
 
@@ -683,30 +740,27 @@ rdataset_totext(dns_rdataset_t *rdataset, const dns_name_t *owner_name,
 		dns_rdataset_getownercase(rdataset, name);
 	}
 
+	if ((ctx->style.flags & DNS_STYLEFLAG_YAML) != 0) {
+		return rdataset_totext_yaml(rdataset, name, ctx, omit_final_dot,
+					    target);
+	}
+
 	DNS_RDATASET_FOREACH(rdataset) {
 		column = 0;
-		yamlfirst = true;
 
 		/*
 		 * Indent?
 		 */
-		if ((ctx->style.flags & DNS_STYLEFLAG_INDENT) != 0 ||
-		    (ctx->style.flags & DNS_STYLEFLAG_YAML) != 0)
-		{
+		if ((ctx->style.flags & DNS_STYLEFLAG_INDENT) != 0) {
 			for (i = 0; i < ctx->indent.count; i++) {
 				RETERR(str_totext(ctx->indent.string, target));
 			}
 		}
 
 		/*
-		 * YAML or comment prefix?  The comment prefix is only
-		 * emitted outside YAML mode, where YAML_MAP_BEGIN() is
-		 * a no-op.
+		 * Comment prefix?
 		 */
-		YAML_MAP_BEGIN();
-		if ((ctx->style.flags & DNS_STYLEFLAG_YAML) == 0 &&
-		    (ctx->style.flags & DNS_STYLEFLAG_COMMENTDATA) != 0)
-		{
+		if ((ctx->style.flags & DNS_STYLEFLAG_COMMENTDATA) != 0) {
 			RETERR(str_totext(";", target));
 		}
 
@@ -717,17 +771,12 @@ rdataset_totext(dns_rdataset_t *rdataset, const dns_name_t *owner_name,
 		    !((ctx->style.flags & DNS_STYLEFLAG_OMIT_OWNER) != 0 &&
 		      !first))
 		{
-			unsigned int name_start;
-
-			YAML_KEY("name");
-			YAML_STR_BEGIN();
-			name_start = target->used;
+			unsigned int name_start = target->used;
 			RETERR(dns_name_totext(
 				name,
 				omit_final_dot ? DNS_NAME_OMITFINALDOT : 0,
 				target));
 			column += target->used - name_start;
-			YAML_STR_END();
 		}
 
 		/*
@@ -741,7 +790,7 @@ rdataset_totext(dns_rdataset_t *rdataset, const dns_name_t *owner_name,
 			isc_region_t r;
 			unsigned int length;
 
-			INDENT_TO(ttl_column, "ttl");
+			INDENT_TO(ttl_column);
 			if ((ctx->style.flags & DNS_STYLEFLAG_TTL_UNITS) != 0) {
 				length = target->used;
 				RETERR(dns_ttl_totext(rdataset->ttl, false,
@@ -778,7 +827,7 @@ rdataset_totext(dns_rdataset_t *rdataset, const dns_name_t *owner_name,
 		     !ctx->class_printed))
 		{
 			unsigned int class_start;
-			INDENT_TO(class_column, "class");
+			INDENT_TO(class_column);
 			class_start = target->used;
 			if ((ctx->style.flags & DNS_STYLEFLAG_UNKNOWNFORMAT) !=
 			    0)
@@ -805,7 +854,7 @@ rdataset_totext(dns_rdataset_t *rdataset, const dns_name_t *owner_name,
 			type = rdataset->type;
 		}
 
-		INDENT_TO(type_column, "rrtype");
+		INDENT_TO(type_column);
 		type_start = target->used;
 		if (rdataset->attributes.negative) {
 			RETERR(str_totext("\\-", target));
@@ -841,16 +890,13 @@ rdataset_totext(dns_rdataset_t *rdataset, const dns_name_t *owner_name,
 		/*
 		 * Rdata.
 		 */
-		INDENT_TO(rdata_column, "rdata");
+		INDENT_TO(rdata_column);
 		if (rdataset->attributes.negative) {
-			YAML_STR_BEGIN();
 			if (NXDOMAIN(rdataset)) {
 				RETERR(str_totext(";-$NXDOMAIN", target));
 			} else {
 				RETERR(str_totext(";-$NXRRSET", target));
 			}
-			YAML_STR_END();
-			YAML_MAP_END();
 			RETERR(str_totext("\n", target));
 
 			/*
@@ -865,15 +911,12 @@ rdataset_totext(dns_rdataset_t *rdataset, const dns_name_t *owner_name,
 
 			dns_rdataset_current(rdataset, &rdata);
 
-			YAML_STR_BEGIN();
 			RETERR(dns_rdata_tofmttext(
 				&rdata, ctx->origin, ctx->style.flags,
 				ctx->style.line_length -
 					ctx->style.rdata_column,
 				ctx->style.split_width, ctx->linebreak,
 				target));
-			YAML_STR_END();
-			YAML_MAP_END();
 			RETERR(str_totext("\n", target));
 		}
 
@@ -895,6 +938,40 @@ rdataset_totext(dns_rdataset_t *rdataset, const dns_name_t *owner_name,
 }
 
 /*
+ * Print the name, type and class of an empty rdataset, such as those used
+ * to represent the question section of a DNS message, as a YAML flow
+ * mapping.
+ *
+ * Unlike the master file renderer this ignores the presentation style
+ * flags (column layout, field elision, unknown-format output): a
+ * machine-readable rendering always names every field of every record.
+ * The only styles that reach here are built from DNS_STYLEFLAG_YAML by
+ * dig, delv and mdig, none of which set those flags.
+ *
+ * The enclosing sequence is indented by the caller.
+ */
+static isc_result_t
+question_totext_yaml(dns_rdataset_t *rdataset, const dns_name_t *owner_name,
+		     bool omit_final_dot, isc_buffer_t *target) {
+	char *start = NULL;
+
+	RETERR(str_totext("- {name: '", target));
+	start = isc_buffer_used(target);
+	RETERR(dns_name_totext(owner_name,
+			       omit_final_dot ? DNS_NAME_OMITFINALDOT : 0,
+			       target));
+	RETERR(yaml_endquote(target, start));
+
+	RETERR(str_totext(", class: ", target));
+	RETERR(dns_rdataclass_totext(rdataset->rdclass, target));
+
+	RETERR(str_totext(", rrtype: ", target));
+	RETERR(dns_rdatatype_totext(rdataset->type, target));
+
+	return str_totext(" }\n", target);
+}
+
+/*
  * Print the name, type, and class of an empty rdataset,
  * such as those used to represent the question section
  * of a DNS message.
@@ -905,34 +982,31 @@ question_totext(dns_rdataset_t *rdataset, const dns_name_t *owner_name,
 		isc_buffer_t *target) {
 	unsigned int column;
 	isc_result_t result;
-	char *yamlstart = NULL;
-	bool yamlfirst = true;
 
 	REQUIRE(DNS_RDATASET_VALID(rdataset));
 	result = dns_rdataset_first(rdataset);
 	REQUIRE(result == ISC_R_NOMORE);
 
-	column = 0;
+	if ((ctx->style.flags & DNS_STYLEFLAG_YAML) != 0) {
+		return question_totext_yaml(rdataset, owner_name,
+					    omit_final_dot, target);
+	}
 
-	YAML_MAP_BEGIN();
+	column = 0;
 
 	/* Owner name */
 	{
-		unsigned int name_start;
+		unsigned int name_start = target->used;
 		unsigned int opts = omit_final_dot ? DNS_NAME_OMITFINALDOT : 0;
 
-		YAML_KEY("name");
-		YAML_STR_BEGIN();
-		name_start = target->used;
 		RETERR(dns_name_totext(owner_name, opts, target));
 		column += target->used - name_start;
-		YAML_STR_END();
 	}
 
 	/* Class */
 	{
 		unsigned int class_start;
-		INDENT_TO(class_column, "class");
+		INDENT_TO(class_column);
 		class_start = target->used;
 		if ((ctx->style.flags & DNS_STYLEFLAG_UNKNOWNFORMAT) != 0) {
 			result = dns_rdataclass_tounknowntext(rdataset->rdclass,
@@ -950,7 +1024,7 @@ question_totext(dns_rdataset_t *rdataset, const dns_name_t *owner_name,
 	/* Type */
 	{
 		unsigned int type_start;
-		INDENT_TO(type_column, "rrtype");
+		INDENT_TO(type_column);
 		type_start = target->used;
 		if ((ctx->style.flags & DNS_STYLEFLAG_UNKNOWNFORMAT) != 0) {
 			result = dns_rdatatype_tounknowntext(rdataset->type,
@@ -964,7 +1038,6 @@ question_totext(dns_rdataset_t *rdataset, const dns_name_t *owner_name,
 		column += (target->used - type_start);
 	}
 
-	YAML_MAP_END();
 	RETERR(str_totext("\n", target));
 
 	return ISC_R_SUCCESS;
