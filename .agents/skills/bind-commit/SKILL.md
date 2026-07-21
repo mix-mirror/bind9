@@ -31,6 +31,14 @@ clang-format over it — it is not your code to reformat.
   immediately. Write the message pre-wrapped to a file and use
   `git commit -F <file>`, or pass each physical line as its own `-m`.
 
+## Show the message before committing
+
+ALWAYS show the user the full, final commit message (subject + body +
+trailers, exactly as it will be recorded) and get their approval BEFORE
+running `git commit`. Do not commit first and reveal the message after.
+The only exception is a fixup commit (`--fixup=...`), whose message is
+mechanical and needs no review.
+
 ## Trailers
 
 - `Assisted-by: <tool>:<model-id>` (model id from the runtime
