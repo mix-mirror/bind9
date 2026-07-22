@@ -98,6 +98,18 @@ dns_nametree_add(dns_nametree_t *nametree, const dns_name_t *name,
  *\li	Any other result indicates failure.
  */
 
+void
+dns_nametree_add_batch(dns_nametree_t *nametree, const dns_name_t **names,
+		       unsigned int count, uint32_t value);
+/*%<
+ * Add multiple names to 'nametree' in a single QP transaction.
+ *
+ * Requires:
+ *
+ *\li	'nametree' points to a valid nametree.
+ *\li	'names' is non-NULL.
+ */
+
 isc_result_t
 dns_nametree_delete(dns_nametree_t *nametree, const dns_name_t *name);
 /*%<

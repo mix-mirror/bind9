@@ -482,6 +482,24 @@ dns_view_addzone(dns_view_t *view, dns_zone_t *zone);
  */
 
 isc_result_t
+dns_view_addzone_batch(dns_view_t *view, dns_zone_t **zones,
+		       unsigned int count);
+/*%<
+ * Add multiple zones to 'view' in a single QP transaction.
+ * Duplicate zones are silently ignored.
+ *
+ * Requires:
+ *
+ *\li	'view' is a valid, unfrozen view.
+ *
+ *\li	'zones' is non-NULL.
+ *
+ * Returns:
+ *\li	#ISC_R_SUCCESS
+ *\li	#ISC_R_SHUTTINGDOWN
+ */
+
+isc_result_t
 dns_view_delzone(dns_view_t *view, dns_zone_t *zone);
 /*%<
  * Removes zone 'zone' from 'view'.
@@ -1119,6 +1137,18 @@ dns_view_sfd_add(dns_view_t *view, const dns_name_t *name);
  * Requires:
  *\li	'view' to be valid.
  *\li	'name' to be valid.
+ */
+
+void
+dns_view_sfd_add_batch(dns_view_t *view, const dns_name_t **names,
+		       unsigned int count);
+/*%<
+ * Add multiple names to the synth-from-dnssec namespace tree in a
+ * single QP transaction.
+ *
+ * Requires:
+ *\li	'view' to be valid.
+ *\li	'names' to be non-NULL.
  */
 
 void
