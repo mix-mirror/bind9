@@ -95,7 +95,8 @@ alg_bits(dns_secalg_t alg) {
  * rndc.conf and named.conf.
  */
 void
-makesafe_keyname(const char *keyname, char *namebuf, size_t length) {
+makesafe_keyname(const char *keyname, char *namebuf, size_t length,
+		 bool *wildcard) {
 	dns_fixedname_t fixed;
 	dns_name_t *name = dns_fixedname_initname(&fixed);
 	isc_result_t result;
@@ -107,6 +108,10 @@ makesafe_keyname(const char *keyname, char *namebuf, size_t length) {
 	result = dns_name_fromstring(name, keyname, dns_rootname, 0, NULL);
 	if (result != ISC_R_SUCCESS) {
 		fatal("invalid key name: %s", isc_result_totext(result));
+	}
+
+	if (wildcard != NULL) {
+		*wildcard = dns_name_iswildcard(name);
 	}
 
 	isc_buffer_init(&b, namebuf, length);
