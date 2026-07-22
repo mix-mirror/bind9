@@ -19,7 +19,6 @@
 #include <stdlib.h>
 
 #include <isc/async.h>
-#include <isc/bit.h>
 #include <isc/buffer.h>
 #include <isc/log.h>
 #include <isc/loop.h>
@@ -54,22 +53,10 @@
 #define DNS_RPZ_ZONES_VALID(rpzs) ISC_MAGIC_VALID(rpzs, DNS_RPZ_ZONES_MAGIC)
 
 /*
- * Parallel radix trees for databases of response policy IP addresses
- *
- * The radix or patricia trees are somewhat specialized to handle response
- * policy addresses by representing the two sets of IP addresses and name
- * server IP addresses in a single tree.  One set of IP addresses is
- * for rpz-ip policies or policies triggered by addresses in A or
- * AAAA records in responses.
- * The second set is for rpz-nsip policies or policies triggered by addresses
- * in A or AAAA records for NS records that are authorities for responses.
- *
- * Each leaf indicates that an IP address is listed in the IP address or the
- * name server IP address policy sub-zone (or both) of the corresponding
- * response policy zone.  The policy data such as a CNAME or an A record
- * is kept in the policy zone.  After an IP address has been found in a radix
- * tree, the node in the policy zone's database is found by converting
- * the IP address to a domain name in a canonical form.
+ * The RPZ summary QP table records both name and IP-address triggers. The
+ * policy data itself, such as a CNAME or an A record, remains in the policy
+ * zone. After a summary lookup finds an IP prefix, it is converted back to
+ * the canonical owner name used to retrieve the policy data.
  *
  *
  * The response policy zone canonical form of an IPv6 address is one of:
@@ -111,52 +98,12 @@ dns__rpz_timer_start(dns_rpz_zone_t *rpz);
  * always defined and our IPv6 addresses are in non-standard byte order
  */
 typedef uint32_t dns_rpz_cidr_word_t;
-#define DNS_RPZ_CIDR_WORD_BITS ((int)sizeof(dns_rpz_cidr_word_t) * 8)
-#define DNS_RPZ_CIDR_KEY_BITS  ((int)sizeof(dns_rpz_cidr_key_t) * 8)
-#define DNS_RPZ_CIDR_WORDS     (128 / DNS_RPZ_CIDR_WORD_BITS)
-typedef struct {
-	dns_rpz_cidr_word_t w[DNS_RPZ_CIDR_WORDS];
-} dns_rpz_cidr_key_t;
-
-#define ADDR_V4MAPPED 0xffff
-#define KEY_IS_IPV4(prefix, ip)                                  \
-	((prefix) >= 96 && (ip)->w[0] == 0 && (ip)->w[1] == 0 && \
-	 (ip)->w[2] == ADDR_V4MAPPED)
+#define KEY_IS_IPV4(ip) ((ip)->ipv4)
 
 #define DNS_RPZ_WORD_MASK(b)                   \
 	((b) == 0 ? (dns_rpz_cidr_word_t)(-1)  \
 		  : ((dns_rpz_cidr_word_t)(-1) \
 		     << (DNS_RPZ_CIDR_WORD_BITS - (b))))
-
-/*
- * Get bit #n from the array of words of an IP address.
- */
-#define DNS_RPZ_IP_BIT(ip, n)                          \
-	(1 & ((ip)->w[(n) / DNS_RPZ_CIDR_WORD_BITS] >> \
-	      (DNS_RPZ_CIDR_WORD_BITS - 1 - ((n) % DNS_RPZ_CIDR_WORD_BITS))))
-
-/*
- * A triplet of arrays of bits flagging the existence of
- * client-IP, IP, and NSIP policy triggers.
- */
-typedef struct dns_rpz_addr_zbits dns_rpz_addr_zbits_t;
-struct dns_rpz_addr_zbits {
-	dns_rpz_zbits_t client_ip;
-	dns_rpz_zbits_t ip;
-	dns_rpz_zbits_t nsip;
-};
-
-/*
- * A CIDR or radix tree node.
- */
-struct dns_rpz_cidr_node {
-	dns_rpz_cidr_node_t *parent;
-	dns_rpz_cidr_node_t *child[2];
-	dns_rpz_cidr_key_t ip;
-	dns_rpz_prefix_t prefix;
-	dns_rpz_addr_zbits_t set;
-	dns_rpz_addr_zbits_t sum;
-};
 
 typedef struct rpz_update {
 	dns_rpz_zone_t *rpz;
@@ -288,42 +235,6 @@ dns_rpz_str2ede(const char *str) {
 }
 
 /*
- * Return the bit number of the highest set bit in 'zbit'.
- * (for example, 0x01 returns 0, 0xFF returns 7, etc.)
- */
-static int
-zbit_to_num(dns_rpz_zbits_t zbit) {
-	dns_rpz_num_t rpz_num;
-
-	REQUIRE(zbit != 0);
-	rpz_num = 0;
-	if ((zbit & 0xffffffff00000000ULL) != 0) {
-		zbit >>= 32;
-		rpz_num += 32;
-	}
-	if ((zbit & 0xffff0000) != 0) {
-		zbit >>= 16;
-		rpz_num += 16;
-	}
-	if ((zbit & 0xff00) != 0) {
-		zbit >>= 8;
-		rpz_num += 8;
-	}
-	if ((zbit & 0xf0) != 0) {
-		zbit >>= 4;
-		rpz_num += 4;
-	}
-	if ((zbit & 0xc) != 0) {
-		zbit >>= 2;
-		rpz_num += 2;
-	}
-	if ((zbit & 2) != 0) {
-		++rpz_num;
-	}
-	return rpz_num;
-}
-
-/*
  * Make a set of bit masks given one or more bits and their type.
  */
 static void
@@ -365,40 +276,6 @@ make_nm_set(dns_rpz_qp_name_zbits_t *tgt_set, dns_rpz_num_t rpz_num,
 	default:
 		UNREACHABLE();
 	}
-}
-
-/*
- * Mark a node and all of its parents as having client-IP, IP, or NSIP data
- */
-static void
-set_sum_pair(dns_rpz_cidr_node_t *cnode) {
-	dns_rpz_addr_zbits_t sum;
-
-	do {
-		dns_rpz_cidr_node_t *child = cnode->child[0];
-		sum = cnode->set;
-
-		if (child != NULL) {
-			sum.client_ip |= child->sum.client_ip;
-			sum.ip |= child->sum.ip;
-			sum.nsip |= child->sum.nsip;
-		}
-
-		child = cnode->child[1];
-		if (child != NULL) {
-			sum.client_ip |= child->sum.client_ip;
-			sum.ip |= child->sum.ip;
-			sum.nsip |= child->sum.nsip;
-		}
-
-		if (cnode->sum.client_ip == sum.client_ip &&
-		    cnode->sum.ip == sum.ip && cnode->sum.nsip == sum.nsip)
-		{
-			break;
-		}
-		cnode->sum = sum;
-		cnode = cnode->parent;
-	} while (cnode != NULL);
 }
 
 /* Caller must hold rpzs->data_lock. */
@@ -572,15 +449,14 @@ set:
 
 static void
 adj_trigger_cnt(dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
-		const dns_rpz_cidr_key_t *tgt_ip, dns_rpz_prefix_t tgt_prefix,
-		bool inc) {
+		const dns_rpz_cidr_key_t *tgt_ip, bool inc) {
 	dns_rpz_trigger_counter_t *cnt = NULL;
 	dns_rpz_zbits_t *have = NULL;
 
 	switch (rpz_type) {
 	case DNS_RPZ_TYPE_CLIENT_IP:
 		REQUIRE(tgt_ip != NULL);
-		if (KEY_IS_IPV4(tgt_prefix, tgt_ip)) {
+		if (KEY_IS_IPV4(tgt_ip)) {
 			cnt = &rpz->rpzs->triggers[rpz->num].client_ipv4;
 			have = &rpz->rpzs->have.client_ipv4;
 		} else {
@@ -594,7 +470,7 @@ adj_trigger_cnt(dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
 		break;
 	case DNS_RPZ_TYPE_IP:
 		REQUIRE(tgt_ip != NULL);
-		if (KEY_IS_IPV4(tgt_prefix, tgt_ip)) {
+		if (KEY_IS_IPV4(tgt_ip)) {
 			cnt = &rpz->rpzs->triggers[rpz->num].ipv4;
 			have = &rpz->rpzs->have.ipv4;
 		} else {
@@ -608,7 +484,7 @@ adj_trigger_cnt(dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
 		break;
 	case DNS_RPZ_TYPE_NSIP:
 		REQUIRE(tgt_ip != NULL);
-		if (KEY_IS_IPV4(tgt_prefix, tgt_ip)) {
+		if (KEY_IS_IPV4(tgt_ip)) {
 			cnt = &rpz->rpzs->triggers[rpz->num].nsipv4;
 			have = &rpz->rpzs->have.nsipv4;
 		} else {
@@ -634,39 +510,6 @@ adj_trigger_cnt(dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
 	}
 }
 
-static dns_rpz_cidr_node_t *
-new_node(dns_rpz_zones_t *rpzs, const dns_rpz_cidr_key_t *ip,
-	 dns_rpz_prefix_t prefix, const dns_rpz_cidr_node_t *child) {
-	dns_rpz_cidr_node_t *node = NULL;
-	int i, words, wlen;
-
-	node = isc_mem_get(rpzs->mctx, sizeof(*node));
-	*node = (dns_rpz_cidr_node_t){
-		.prefix = prefix,
-	};
-
-	if (child != NULL) {
-		node->sum = child->sum;
-	}
-
-	words = prefix / DNS_RPZ_CIDR_WORD_BITS;
-	wlen = prefix % DNS_RPZ_CIDR_WORD_BITS;
-	i = 0;
-	while (i < words) {
-		node->ip.w[i] = ip->w[i];
-		++i;
-	}
-	if (wlen != 0) {
-		node->ip.w[i] = ip->w[i] & DNS_RPZ_WORD_MASK(wlen);
-		++i;
-	}
-	while (i < DNS_RPZ_CIDR_WORDS) {
-		node->ip.w[i++] = 0;
-	}
-
-	return node;
-}
-
 static void
 badname(int level, const dns_name_t *name, const char *str1, const char *str2) {
 	/*
@@ -682,8 +525,8 @@ badname(int level, const dns_name_t *name, const char *str1, const char *str2) {
 }
 
 /*
- * Convert an IP address from radix tree binary (host byte order) to
- * to its canonical response policy domain name without the origin of the
+ * Convert an IP address from the summary key's host byte order to its
+ * canonical response policy domain name without the origin of the
  * policy zone.
  *
  * Generate a name for an IPv6 address that fits RFC 5952, except that our
@@ -703,7 +546,7 @@ ip2name(const dns_rpz_cidr_key_t *tgt_ip, dns_rpz_prefix_t tgt_prefix,
 	isc_result_t result;
 	int len;
 
-	if (KEY_IS_IPV4(tgt_prefix, tgt_ip)) {
+	if (KEY_IS_IPV4(tgt_ip)) {
 		len = snprintf(str, sizeof(str), "%u.%u.%u.%u.%u",
 			       tgt_prefix - 96U, tgt_ip->w[3] & 0xffU,
 			       (tgt_ip->w[3] >> 8) & 0xffU,
@@ -776,6 +619,20 @@ ip2name(const dns_rpz_cidr_key_t *tgt_ip, dns_rpz_prefix_t tgt_prefix,
 	return result;
 }
 
+static void
+mask_ip(dns_rpz_cidr_key_t *ip, dns_rpz_prefix_t prefix) {
+	unsigned int word = prefix / DNS_RPZ_CIDR_WORD_BITS;
+	unsigned int bits = prefix % DNS_RPZ_CIDR_WORD_BITS;
+
+	if (bits != 0) {
+		ip->w[word] &= DNS_RPZ_WORD_MASK(bits);
+		word++;
+	}
+	while (word < DNS_RPZ_CIDR_WORDS) {
+		ip->w[word++] = 0;
+	}
+}
+
 /*
  * Determine the type of a name in a response policy zone.
  */
@@ -806,9 +663,8 @@ type_from_name(const dns_rpz_zones_t *rpzs, dns_rpz_zone_t *rpz,
 }
 
 /*
- * Convert an IP address from canonical response policy domain name form
- * to radix tree binary (host byte order) for adding or deleting IP or NSIP
- * data.
+ * Convert an IP address from canonical response policy domain name form to
+ * the summary key's host byte order for adding or deleting IP or NSIP data.
  */
 static isc_result_t
 name2ipkey(int log_level, dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
@@ -878,9 +734,10 @@ name2ipkey(int log_level, dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
 		}
 		prefix_num += 96;
 		*tgt_prefix = (dns_rpz_prefix_t)prefix_num;
+		tgt_ip->ipv4 = true;
 		tgt_ip->w[0] = 0;
 		tgt_ip->w[1] = 0;
-		tgt_ip->w[2] = ADDR_V4MAPPED;
+		tgt_ip->w[2] = DNS_RPZ_ADDR_V4MAPPED;
 		tgt_ip->w[3] = 0;
 		for (i = 0; i < 32; i += 8) {
 			l = strtoul(cp, &cp2, 10);
@@ -900,6 +757,7 @@ name2ipkey(int log_level, dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
 		 * Convert a text IPv6 address.
 		 */
 		*tgt_prefix = (dns_rpz_prefix_t)prefix_num;
+		tgt_ip->ipv4 = false;
 		for (i = 0; ip_labels > 0 && i < DNS_RPZ_CIDR_WORDS * 2;
 		     ip_labels--)
 		{
@@ -1027,242 +885,13 @@ name2data(dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
 	(void)dns_name_concatenate(&tmp_name, dns_rootname, trig_name);
 }
 
-/*
- * Find the first differing bit in two keys (IP addresses).
- */
-static int
-diff_keys(const dns_rpz_cidr_key_t *key1, dns_rpz_prefix_t prefix1,
-	  const dns_rpz_cidr_key_t *key2, dns_rpz_prefix_t prefix2) {
-	dns_rpz_cidr_word_t delta;
-	dns_rpz_prefix_t maxbit, bit;
-	int i;
-
-	bit = 0;
-	maxbit = ISC_MIN(prefix1, prefix2);
-
-	/*
-	 * find the first differing words
-	 */
-	for (i = 0; bit < maxbit; i++, bit += DNS_RPZ_CIDR_WORD_BITS) {
-		delta = key1->w[i] ^ key2->w[i];
-		if (delta != 0) {
-			bit += stdc_leading_zeros(delta);
-			break;
-		}
-	}
-	return ISC_MIN(bit, maxbit);
-}
-
-/*
- * Given a hit while searching the radix trees,
- * clear all bits for higher numbered zones.
- */
-static dns_rpz_zbits_t
-trim_zbits(dns_rpz_zbits_t zbits, dns_rpz_zbits_t found) {
-	dns_rpz_zbits_t x;
-
-	/*
-	 * Isolate the first or smallest numbered hit bit.
-	 * Make a mask of that bit and all smaller numbered bits.
-	 */
-	x = zbits & found;
-	x &= (~x + 1);
-	x = (x << 1) - 1;
-	zbits &= x;
-	return zbits;
-}
-
-/*
- * Search a radix tree for an IP address for ordinary lookup
- *	or for a CIDR block adding or deleting an entry
- *
- * Return ISC_R_SUCCESS, DNS_R_PARTIALMATCH, ISC_R_NOTFOUND,
- *	    and *found=longest match node
- *	or with create==true, ISC_R_EXISTS
- */
+/* Add an IP prefix to the summary QP transaction. */
 static isc_result_t
-search(dns_rpz_zones_t *rpzs, const dns_rpz_cidr_key_t *tgt_ip,
-       dns_rpz_prefix_t tgt_prefix, const dns_rpz_addr_zbits_t *tgt_set,
-       bool create, dns_rpz_cidr_node_t **found) {
-	dns_rpz_cidr_node_t *cur = rpzs->cidr;
-	dns_rpz_cidr_node_t *parent = NULL, *child = NULL;
-	dns_rpz_cidr_node_t *new_parent = NULL, *sibling = NULL;
-	dns_rpz_addr_zbits_t set = *tgt_set;
-	int cur_num = 0, child_num;
-	isc_result_t find_result = ISC_R_NOTFOUND;
-
-	*found = NULL;
-	for (;;) {
-		dns_rpz_prefix_t dbit;
-		if (cur == NULL) {
-			/*
-			 * No child so we cannot go down.
-			 * Quit with whatever we already found
-			 * or add the target as a child of the current parent.
-			 */
-			if (!create) {
-				return find_result;
-			}
-			child = new_node(rpzs, tgt_ip, tgt_prefix, NULL);
-			if (parent == NULL) {
-				rpzs->cidr = child;
-			} else {
-				parent->child[cur_num] = child;
-			}
-			child->parent = parent;
-			child->set.client_ip |= tgt_set->client_ip;
-			child->set.ip |= tgt_set->ip;
-			child->set.nsip |= tgt_set->nsip;
-			set_sum_pair(child);
-			*found = child;
-			return ISC_R_SUCCESS;
-		}
-
-		if ((cur->sum.client_ip & set.client_ip) == 0 &&
-		    (cur->sum.ip & set.ip) == 0 &&
-		    (cur->sum.nsip & set.nsip) == 0)
-		{
-			/*
-			 * This node has no relevant data
-			 * and is in none of the target trees.
-			 * Pretend it does not exist if we are not adding.
-			 *
-			 * If we are adding, continue down to eventually add
-			 * a node and mark/put this node in the correct tree.
-			 */
-			if (!create) {
-				return find_result;
-			}
-		}
-
-		dbit = diff_keys(tgt_ip, tgt_prefix, &cur->ip, cur->prefix);
-		/*
-		 * dbit <= tgt_prefix and dbit <= cur->prefix always.
-		 * We are finished searching if we matched all of the target.
-		 */
-		if (dbit == tgt_prefix) {
-			if (tgt_prefix == cur->prefix) {
-				/*
-				 * The node's key matches the target exactly.
-				 */
-				if ((cur->set.client_ip & set.client_ip) != 0 ||
-				    (cur->set.ip & set.ip) != 0 ||
-				    (cur->set.nsip & set.nsip) != 0)
-				{
-					/*
-					 * It is the answer if it has data.
-					 */
-					*found = cur;
-					if (create) {
-						find_result = ISC_R_EXISTS;
-					} else {
-						find_result = ISC_R_SUCCESS;
-					}
-				} else if (create) {
-					/*
-					 * The node lacked relevant data,
-					 * but will have it now.
-					 */
-					cur->set.client_ip |=
-						tgt_set->client_ip;
-					cur->set.ip |= tgt_set->ip;
-					cur->set.nsip |= tgt_set->nsip;
-					set_sum_pair(cur);
-					*found = cur;
-					find_result = ISC_R_SUCCESS;
-				}
-				return find_result;
-			}
-
-			/*
-			 * We know tgt_prefix < cur->prefix which means that
-			 * the target is shorter than the current node.
-			 * Add the target as the current node's parent.
-			 */
-			if (!create) {
-				return find_result;
-			}
-
-			new_parent = new_node(rpzs, tgt_ip, tgt_prefix, cur);
-			new_parent->parent = parent;
-			if (parent == NULL) {
-				rpzs->cidr = new_parent;
-			} else {
-				parent->child[cur_num] = new_parent;
-			}
-			child_num = DNS_RPZ_IP_BIT(&cur->ip, tgt_prefix);
-			new_parent->child[child_num] = cur;
-			cur->parent = new_parent;
-			new_parent->set = *tgt_set;
-			set_sum_pair(new_parent);
-			*found = new_parent;
-			return ISC_R_SUCCESS;
-		}
-
-		if (dbit == cur->prefix) {
-			if ((cur->set.client_ip & set.client_ip) != 0 ||
-			    (cur->set.ip & set.ip) != 0 ||
-			    (cur->set.nsip & set.nsip) != 0)
-			{
-				/*
-				 * We have a partial match between of all of the
-				 * current node but only part of the target.
-				 * Continue searching for other hits in the
-				 * same or lower numbered trees.
-				 */
-				find_result = DNS_R_PARTIALMATCH;
-				*found = cur;
-				set.client_ip = trim_zbits(set.client_ip,
-							   cur->set.client_ip);
-				set.ip = trim_zbits(set.ip, cur->set.ip);
-				set.nsip = trim_zbits(set.nsip, cur->set.nsip);
-			}
-			parent = cur;
-			cur_num = DNS_RPZ_IP_BIT(tgt_ip, dbit);
-			cur = cur->child[cur_num];
-			continue;
-		}
-
-		/*
-		 * dbit < tgt_prefix and dbit < cur->prefix,
-		 * so we failed to match both the target and the current node.
-		 * Insert a fork of a parent above the current node and
-		 * add the target as a sibling of the current node
-		 */
-		if (!create) {
-			return find_result;
-		}
-
-		sibling = new_node(rpzs, tgt_ip, tgt_prefix, NULL);
-		new_parent = new_node(rpzs, tgt_ip, dbit, cur);
-		new_parent->parent = parent;
-		if (parent == NULL) {
-			rpzs->cidr = new_parent;
-		} else {
-			parent->child[cur_num] = new_parent;
-		}
-		child_num = DNS_RPZ_IP_BIT(tgt_ip, dbit);
-		new_parent->child[child_num] = sibling;
-		new_parent->child[1 - child_num] = cur;
-		cur->parent = new_parent;
-		sibling->parent = new_parent;
-		sibling->set = *tgt_set;
-		set_sum_pair(sibling);
-		*found = sibling;
-		return ISC_R_SUCCESS;
-	}
-}
-
-/*
- * Add an IP address to the radix tree.
- */
-static isc_result_t
-add_cidr(dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
-	 const dns_name_t *src_name) {
+add_cidr(dns_rpz_zone_t *rpz, dns_rpz_qp_write_t *write,
+	 dns_rpz_type_t rpz_type, const dns_name_t *src_name) {
 	dns_rpz_cidr_key_t tgt_ip;
 	dns_rpz_prefix_t tgt_prefix;
 	dns_rpz_addr_zbits_t set;
-	dns_rpz_cidr_node_t *found = NULL;
 	isc_result_t result;
 
 	result = name2ipkey(DNS_RPZ_ERROR_LEVEL, rpz, rpz_type, src_name,
@@ -1274,18 +903,16 @@ add_cidr(dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
 		return ISC_R_SUCCESS;
 	}
 
-	RWLOCK(&rpz->rpzs->search_lock, isc_rwlocktype_write);
-	result = search(rpz->rpzs, &tgt_ip, tgt_prefix, &set, true, &found);
+	result = dns__rpz_qp_add_cidr(write, &tgt_ip, tgt_prefix, &set);
 	if (result != ISC_R_SUCCESS) {
 		char namebuf[DNS_NAME_FORMATSIZE];
 
 		/*
-		 * Do not worry if the radix tree already exists,
+		 * Do not worry if the prefix already exists,
 		 * because diff_apply() likes to add nodes before deleting.
 		 */
 		if (result == ISC_R_EXISTS) {
-			result = ISC_R_SUCCESS;
-			goto done;
+			return ISC_R_SUCCESS;
 		}
 
 		/*
@@ -1296,11 +923,11 @@ add_cidr(dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
 			      DNS_RPZ_ERROR_LEVEL,
 			      "rpz add_cidr(%s) failed: %s", namebuf,
 			      isc_result_totext(result));
-		goto done;
+		return result;
 	}
 
-	adj_trigger_cnt(rpz, rpz_type, &tgt_ip, tgt_prefix, true);
-done:
+	RWLOCK(&rpz->rpzs->search_lock, isc_rwlocktype_write);
+	adj_trigger_cnt(rpz, rpz_type, &tgt_ip, true);
 	RWUNLOCK(&rpz->rpzs->search_lock, isc_rwlocktype_write);
 	return result;
 }
@@ -1332,7 +959,7 @@ add_name(dns_rpz_zone_t *rpz, dns_rpz_qp_write_t *write,
 	}
 	if (result == ISC_R_SUCCESS) {
 		RWLOCK(&rpz->rpzs->search_lock, isc_rwlocktype_write);
-		adj_trigger_cnt(rpz, rpz_type, NULL, 0, true);
+		adj_trigger_cnt(rpz, rpz_type, NULL, true);
 		RWUNLOCK(&rpz->rpzs->search_lock, isc_rwlocktype_write);
 	}
 	return result;
@@ -1858,39 +1485,6 @@ unlock:
 	UNLOCK(&rpz->update_lock);
 }
 
-/*
- * Free the radix tree of a response policy database.
- */
-static void
-cidr_free(dns_rpz_zones_t *rpzs) {
-	dns_rpz_cidr_node_t *cur = NULL, *child = NULL, *parent = NULL;
-
-	cur = rpzs->cidr;
-	while (cur != NULL) {
-		/* Depth first. */
-		child = cur->child[0];
-		if (child != NULL) {
-			cur = child;
-			continue;
-		}
-		child = cur->child[1];
-		if (child != NULL) {
-			cur = child;
-			continue;
-		}
-
-		/* Delete this leaf and go up. */
-		parent = cur->parent;
-		if (parent == NULL) {
-			rpzs->cidr = NULL;
-		} else {
-			parent->child[parent->child[1] == cur] = NULL;
-		}
-		isc_mem_put(rpzs->mctx, cur, sizeof(*cur));
-		cur = parent;
-	}
-}
-
 static void
 dns__rpz_shutdown(dns_rpz_zone_t *rpz) {
 	/* update_lock must be locked. */
@@ -1970,7 +1564,6 @@ dns__rpz_zones_destroy(dns_rpz_zones_t *rpzs) {
 		dns_rpz_zone_destroy(&rpzs->zones[rpz_num]);
 	}
 
-	cidr_free(rpzs);
 	if (rpzs->table != NULL) {
 		dns__rpz_qp_destroy(&rpzs->table);
 	}
@@ -2015,7 +1608,7 @@ ISC_REFCOUNT_IMPL(dns_rpz_zones, dns__rpz_zones_destroy);
 #endif
 
 /*
- * Add an IP address to the radix tree or a name to the summary database.
+ * Add an IP prefix or a name to the summary database.
  */
 static isc_result_t
 rpz_add(dns_rpz_zone_t *rpz, dns_rpz_qp_write_t *write,
@@ -2041,7 +1634,7 @@ rpz_add(dns_rpz_zone_t *rpz, dns_rpz_qp_write_t *write,
 	case DNS_RPZ_TYPE_CLIENT_IP:
 	case DNS_RPZ_TYPE_IP:
 	case DNS_RPZ_TYPE_NSIP:
-		result = add_cidr(rpz, rpz_type, src_name);
+		result = add_cidr(rpz, write, rpz_type, src_name);
 		break;
 	case DNS_RPZ_TYPE_BAD:
 		break;
@@ -2050,17 +1643,16 @@ rpz_add(dns_rpz_zone_t *rpz, dns_rpz_qp_write_t *write,
 	return result;
 }
 
-/*
- * Remove an IP address from the radix tree.
- */
+/* Remove an IP prefix from the summary QP transaction. */
 static void
-del_cidr(dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
-	 const dns_name_t *src_name) {
+del_cidr(dns_rpz_zone_t *rpz, dns_rpz_qp_write_t *write,
+	 dns_rpz_type_t rpz_type, const dns_name_t *src_name) {
 	isc_result_t result;
 	dns_rpz_cidr_key_t tgt_ip;
 	dns_rpz_prefix_t tgt_prefix;
 	dns_rpz_addr_zbits_t tgt_set;
-	dns_rpz_cidr_node_t *tgt = NULL, *parent = NULL, *child = NULL;
+	char namebuf[DNS_NAME_FORMATSIZE];
+	bool exists;
 
 	/*
 	 * Do not worry about invalid rpz IP address names.  If we
@@ -2073,85 +1665,33 @@ del_cidr(dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
 		return;
 	}
 
-	RWLOCK(&rpz->rpzs->search_lock, isc_rwlocktype_write);
-	result = search(rpz->rpzs, &tgt_ip, tgt_prefix, &tgt_set, false, &tgt);
+	result = dns__rpz_qp_delete_cidr(write, &tgt_ip, tgt_prefix, &tgt_set,
+					 &exists);
 	if (result != ISC_R_SUCCESS) {
-		goto done;
+		dns_name_format(src_name, namebuf, sizeof(namebuf));
+		isc_log_write(DNS_LOGCATEGORY_RPZ, DNS_LOGMODULE_RPZ,
+			      DNS_RPZ_ERROR_LEVEL,
+			      "rpz del_cidr(%s) node delete failed: %s",
+			      namebuf, isc_result_totext(result));
+		return;
 	}
 
-	/*
-	 * Mark the node and its parents to reflect the deleted IP address.
-	 */
-	tgt_set.client_ip &= tgt->set.client_ip;
-	tgt_set.ip &= tgt->set.ip;
-	tgt_set.nsip &= tgt->set.nsip;
-	tgt->set.client_ip &= ~tgt_set.client_ip;
-	tgt->set.ip &= ~tgt_set.ip;
-	tgt->set.nsip &= ~tgt_set.nsip;
-	set_sum_pair(tgt);
-
-	adj_trigger_cnt(rpz, rpz_type, &tgt_ip, tgt_prefix, false);
-
-	/*
-	 * We might need to delete 2 nodes.
-	 */
-	do {
-		/*
-		 * The node is now useless if it has no data of its own
-		 * and 0 or 1 children.  We are finished if it is not
-		 * useless.
-		 */
-		if ((child = tgt->child[0]) != NULL) {
-			if (tgt->child[1] != NULL) {
-				break;
-			}
-		} else {
-			child = tgt->child[1];
-		}
-		if (tgt->set.client_ip != 0 || tgt->set.ip != 0 ||
-		    tgt->set.nsip != 0)
-		{
-			break;
-		}
-
-		/*
-		 * Replace the pointer to this node in the parent with
-		 * the remaining child or NULL.
-		 */
-		parent = tgt->parent;
-		if (parent == NULL) {
-			rpz->rpzs->cidr = child;
-		} else {
-			parent->child[parent->child[1] == tgt] = child;
-		}
-
-		/*
-		 * If the child exists fix up its parent pointer.
-		 */
-		if (child != NULL) {
-			child->parent = parent;
-		}
-		isc_mem_put(rpz->rpzs->mctx, tgt, sizeof(*tgt));
-
-		tgt = parent;
-	} while (tgt != NULL);
-
-done:
-	RWUNLOCK(&rpz->rpzs->search_lock, isc_rwlocktype_write);
+	if (exists) {
+		RWLOCK(&rpz->rpzs->search_lock, isc_rwlocktype_write);
+		adj_trigger_cnt(rpz, rpz_type, &tgt_ip, false);
+		RWUNLOCK(&rpz->rpzs->search_lock, isc_rwlocktype_write);
+	}
 }
 
 static void
-del_name(dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
-	 const dns_name_t *src_name) {
+del_name(dns_rpz_zone_t *rpz, dns_rpz_qp_write_t *write,
+	 dns_rpz_type_t rpz_type, const dns_name_t *src_name) {
 	isc_result_t result;
 	char namebuf[DNS_NAME_FORMATSIZE];
 	dns_fixedname_t trig_namef;
 	dns_name_t *trig_name = NULL;
 	dns_rpz_qp_name_data_t del_data;
-	dns_rpz_qp_write_t write = { 0 };
 	bool exists;
-
-	dns__rpz_qp_write(rpz->rpzs->table, &write);
 
 	/*
 	 * We need a summary database of names even with 1 policy zone,
@@ -2161,7 +1701,7 @@ del_name(dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
 	trig_name = dns_fixedname_initname(&trig_namef);
 	name2data(rpz, rpz_type, src_name, trig_name, &del_data);
 
-	result = dns__rpz_qp_delete_name(&write, trig_name, &del_data, &exists);
+	result = dns__rpz_qp_delete_name(write, trig_name, &del_data, &exists);
 	if (result != ISC_R_SUCCESS) {
 		/*
 		 * bin/tests/system/rpz/tests.sh looks for "rpz.*failed".
@@ -2175,21 +1715,18 @@ del_name(dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
 
 	if (exists) {
 		RWLOCK(&rpz->rpzs->search_lock, isc_rwlocktype_write);
-		adj_trigger_cnt(rpz, rpz_type, NULL, 0, false);
+		adj_trigger_cnt(rpz, rpz_type, NULL, false);
 		RWUNLOCK(&rpz->rpzs->search_lock, isc_rwlocktype_write);
 	}
-
-	dns__rpz_qp_commit(&write);
 }
 
-/*
- * Remove an IP address from the radix tree or a name from the summary database.
- */
+/* Remove an IP prefix or a name from the summary database. */
 static void
 rpz_del(dns_rpz_zone_t *rpz, const dns_name_t *src_name) {
 	dns_rpz_type_t rpz_type;
 	dns_rpz_zones_t *rpzs = NULL;
 	dns_rpz_num_t rpz_num;
+	dns_rpz_qp_write_t write = { 0 };
 
 	REQUIRE(rpz != NULL);
 
@@ -2198,25 +1735,27 @@ rpz_del(dns_rpz_zone_t *rpz, const dns_name_t *src_name) {
 
 	REQUIRE(rpzs != NULL && rpz_num < rpzs->p.num_zones);
 
+	dns__rpz_qp_write(rpz->rpzs->table, &write);
 	rpz_type = type_from_name(rpzs, rpz, src_name);
 	switch (rpz_type) {
 	case DNS_RPZ_TYPE_QNAME:
 	case DNS_RPZ_TYPE_NSDNAME:
-		del_name(rpz, rpz_type, src_name);
+		del_name(rpz, &write, rpz_type, src_name);
 		break;
 	case DNS_RPZ_TYPE_CLIENT_IP:
 	case DNS_RPZ_TYPE_IP:
 	case DNS_RPZ_TYPE_NSIP:
-		del_cidr(rpz, rpz_type, src_name);
+		del_cidr(rpz, &write, rpz_type, src_name);
 		break;
 	case DNS_RPZ_TYPE_BAD:
 		break;
 	}
+	dns__rpz_qp_commit(&write);
 }
 
 /*
- * Search the summary radix tree to get a relative owner name in a
- * policy zone relevant to a triggering IP address.
+ * Search the summary QP table to get a relative owner name in a policy zone
+ * relevant to a triggering IP address.
  *	rpz_type and zbits limit the search for IP address netaddr
  *	return the policy zone's number or DNS_RPZ_INVALID_NUM
  *	ip_name is the relative owner name found and
@@ -2227,65 +1766,35 @@ dns_rpz_find_ip(dns_rpz_zones_t *rpzs, dns_rpz_type_t rpz_type,
 		dns_rpz_zbits_t zbits, const isc_netaddr_t *netaddr,
 		dns_name_t *ip_name, dns_rpz_prefix_t *prefixp) {
 	dns_rpz_cidr_key_t tgt_ip;
-	dns_rpz_addr_zbits_t tgt_set;
-	dns_rpz_cidr_node_t *found = NULL;
 	isc_result_t result;
-	dns_rpz_num_t rpz_num = 0;
-	dns_rpz_have_t have;
+	dns_rpz_num_t rpz_num;
 	int i;
 
-	RWLOCK(&rpzs->search_lock, isc_rwlocktype_read);
-	have = rpzs->have;
-	RWUNLOCK(&rpzs->search_lock, isc_rwlocktype_read);
+	REQUIRE(rpz_type == DNS_RPZ_TYPE_CLIENT_IP ||
+		rpz_type == DNS_RPZ_TYPE_IP || rpz_type == DNS_RPZ_TYPE_NSIP);
 
 	/*
-	 * Convert IP address to CIDR tree key.
+	 * Convert the IP address to the host-order form used by the RPZ QP
+	 * wrapper.
 	 */
 	if (netaddr->family == AF_INET) {
 		tgt_ip.w[0] = 0;
 		tgt_ip.w[1] = 0;
-		tgt_ip.w[2] = ADDR_V4MAPPED;
+		tgt_ip.w[2] = DNS_RPZ_ADDR_V4MAPPED;
 		tgt_ip.w[3] = ntohl(netaddr->type.in.s_addr);
-		switch (rpz_type) {
-		case DNS_RPZ_TYPE_CLIENT_IP:
-			zbits &= have.client_ipv4;
-			break;
-		case DNS_RPZ_TYPE_IP:
-			zbits &= have.ipv4;
-			break;
-		case DNS_RPZ_TYPE_NSIP:
-			zbits &= have.nsipv4;
-			break;
-		default:
-			UNREACHABLE();
-			break;
-		}
+		tgt_ip.ipv4 = true;
 	} else if (netaddr->family == AF_INET6) {
-		dns_rpz_cidr_key_t src_ip6;
+		uint32_t src_ip6[DNS_RPZ_CIDR_WORDS];
 
 		/*
-		 * Given the int aligned struct in_addr member of netaddr->type
-		 * one could cast netaddr->type.in6 to dns_rpz_cidr_key_t *,
-		 * but some people object.
+		 * Copy through an aligned array instead of casting the
+		 * in6_addr.
 		 */
-		memmove(src_ip6.w, &netaddr->type.in6, sizeof(src_ip6.w));
+		memmove(src_ip6, &netaddr->type.in6, sizeof(src_ip6));
 		for (i = 0; i < 4; i++) {
-			tgt_ip.w[i] = ntohl(src_ip6.w[i]);
+			tgt_ip.w[i] = ntohl(src_ip6[i]);
 		}
-		switch (rpz_type) {
-		case DNS_RPZ_TYPE_CLIENT_IP:
-			zbits &= have.client_ipv6;
-			break;
-		case DNS_RPZ_TYPE_IP:
-			zbits &= have.ipv6;
-			break;
-		case DNS_RPZ_TYPE_NSIP:
-			zbits &= have.nsipv6;
-			break;
-		default:
-			UNREACHABLE();
-			break;
-		}
+		tgt_ip.ipv4 = false;
 	} else {
 		return DNS_RPZ_INVALID_NUM;
 	}
@@ -2293,15 +1802,9 @@ dns_rpz_find_ip(dns_rpz_zones_t *rpzs, dns_rpz_type_t rpz_type,
 	if (zbits == 0) {
 		return DNS_RPZ_INVALID_NUM;
 	}
-	make_addr_set(&tgt_set, zbits, rpz_type);
-
-	RWLOCK(&rpzs->search_lock, isc_rwlocktype_read);
-	result = search(rpzs, &tgt_ip, 128, &tgt_set, false, &found);
-	if (result == ISC_R_NOTFOUND) {
-		/*
-		 * There are no eligible zones for this IP address.
-		 */
-		RWUNLOCK(&rpzs->search_lock, isc_rwlocktype_read);
+	rpz_num = dns__rpz_qp_find_addr(rpzs->table, rpz_type, zbits, &tgt_ip,
+					prefixp);
+	if (rpz_num == DNS_RPZ_INVALID_NUM) {
 		return DNS_RPZ_INVALID_NUM;
 	}
 
@@ -2309,22 +1812,8 @@ dns_rpz_find_ip(dns_rpz_zones_t *rpzs, dns_rpz_type_t rpz_type,
 	 * Construct the trigger name for the longest matching trigger
 	 * in the first eligible zone with a match.
 	 */
-	*prefixp = found->prefix;
-	switch (rpz_type) {
-	case DNS_RPZ_TYPE_CLIENT_IP:
-		rpz_num = zbit_to_num(found->set.client_ip & tgt_set.client_ip);
-		break;
-	case DNS_RPZ_TYPE_IP:
-		rpz_num = zbit_to_num(found->set.ip & tgt_set.ip);
-		break;
-	case DNS_RPZ_TYPE_NSIP:
-		rpz_num = zbit_to_num(found->set.nsip & tgt_set.nsip);
-		break;
-	default:
-		UNREACHABLE();
-	}
-	result = ip2name(&found->ip, found->prefix, dns_rootname, ip_name);
-	RWUNLOCK(&rpzs->search_lock, isc_rwlocktype_read);
+	mask_ip(&tgt_ip, *prefixp);
+	result = ip2name(&tgt_ip, *prefixp, dns_rootname, ip_name);
 	if (result != ISC_R_SUCCESS) {
 		/*
 		 * bin/tests/system/rpz/tests.sh looks for "rpz.*failed".
@@ -2338,8 +1827,7 @@ dns_rpz_find_ip(dns_rpz_zones_t *rpzs, dns_rpz_type_t rpz_type,
 }
 
 /*
- * Search the summary radix tree for policy zones with triggers matching
- * a name.
+ * Search the summary QP table for policy zones with triggers matching a name.
  */
 dns_rpz_zbits_t
 dns_rpz_find_name(dns_rpz_zones_t *rpzs, dns_rpz_type_t rpz_type,

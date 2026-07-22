@@ -166,11 +166,6 @@ struct dns_rpz_zone {
 };
 
 /*
- * Radix tree node for response policy IP addresses
- */
-typedef struct dns_rpz_cidr_node dns_rpz_cidr_node_t;
-
-/*
  * Bitfields indicating which policy zones have policies of
  * which type.
  */
@@ -257,18 +252,18 @@ struct dns_rpz_zones {
 	 */
 	dns_rpz_triggers_t total_triggers;
 
-	/* Protect query readers against changes to the CIDR tree. */
+	/* Protect query readers against changes to policy and trigger metadata.
+	 */
 	isc_rwlock_t search_lock;
 
-	/* Serialize summary QP and CIDR updates and their derived state. */
+	/* Serialize summary QP updates and their derived state. */
 	isc_mutex_t data_lock;
 
 	bool first_time;
 	/* Publish shutdown without waiting for an update or data lock. */
 	atomic_bool shuttingdown;
 
-	dns_rpz_cidr_node_t *cidr;
-	dns_rpz_qp_t	    *table;
+	dns_rpz_qp_t *table;
 };
 
 /*
