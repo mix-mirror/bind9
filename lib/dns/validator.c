@@ -640,6 +640,11 @@ fetch_callback_dnskey(void *arg) {
 				result = validate_async_run(val, resume_answer);
 			}
 			break;
+		case ISC_R_CANCELED:
+		case ISC_R_SHUTTINGDOWN:
+		case ISC_R_QUOTA:
+			result = eresult;
+			break;
 		default:
 			validator_log(val, ISC_LOG_DEBUG(3),
 				      "fetch_callback_dnskey: got %s",
@@ -655,6 +660,11 @@ fetch_callback_dnskey(void *arg) {
 			 * DNSKEY (val->fdataset).
 			 */
 			result = proveunsecure(val, false, true, true);
+			break;
+		case ISC_R_CANCELED:
+		case ISC_R_SHUTTINGDOWN:
+		case ISC_R_QUOTA:
+			result = eresult;
 			break;
 		default:
 			validator_log(val, ISC_LOG_DEBUG(3),
@@ -734,6 +744,11 @@ fetch_callback_ds(void *arg) {
 				      isc_result_totext(eresult));
 			result = proveunsecure(val, false, false, false);
 			break;
+		case ISC_R_CANCELED:
+		case ISC_R_SHUTTINGDOWN:
+		case ISC_R_QUOTA:
+			result = eresult;
+			break;
 		default:
 			validator_log(val, ISC_LOG_DEBUG(3),
 				      "fetch_callback_ds: got %s",
@@ -795,6 +810,11 @@ fetch_callback_ds(void *arg) {
 			 * the break point in the chain of trust.
 			 */
 			result = proveunsecure(val, false, false, true);
+			break;
+		case ISC_R_CANCELED:
+		case ISC_R_SHUTTINGDOWN:
+		case ISC_R_QUOTA:
+			result = eresult;
 			break;
 		default:
 			validator_log(val, ISC_LOG_DEBUG(3),
