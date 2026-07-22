@@ -149,7 +149,7 @@ dns__rpz_qp_find_name(dns_rpz_qp_t *table, dns_rpz_type_t type,
 	dns_qpmulti_query(table->multi, &qpr);
 	dns_qpchain_init(&qpr, &chain);
 
-	result = dns_qp_lookup(&qpr, name, DNS_DBNAMESPACE_NORMAL, NULL, &chain,
+	result = dns_qp_lookup_name(&qpr, name, DNS_DBNAMESPACE_NORMAL, NULL, &chain,
 			       (void **)&data, NULL);
 	switch (result) {
 	case ISC_R_SUCCESS:

@@ -246,9 +246,8 @@ typedef struct dns_qpiter {
 /*%
  * A QP chain holds references to each populated node between the root and
  * a given leaf. It is used internally by `dns_qp_lookup()` to return a
- * partial match if the specific name requested is not found; optionally it
- * can be passed back to the caller so that individual nodes can be
- * accessed.
+ * partial match if the specific key requested is not found; optionally it can
+ * be passed back to the caller so that individual nodes can be accessed.
  */
 typedef struct dns_qpchain {
 	unsigned int	magic;
@@ -540,31 +539,24 @@ dns_qp_getname(dns_qpreadable_t qpr, const dns_name_t *name,
  */
 
 isc_result_t
-dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
-	      dns_namespace_t space, dns_qpiter_t *iter, dns_qpchain_t *chain,
-	      void **pval_r, uint32_t *ival_r);
+dns_qp_lookup(dns_qpreadable_t qpr, const dns_qpkey_t key, size_t keylen,
+	      dns_qpiter_t *iter, dns_qpchain_t *chain, void **pval_r,
+	      uint32_t *ival_r);
 /*%<
- * Look up a leaf in a qp-trie that is equal to, or an ancestor domain of,
- * 'name' in the namespace 'space'.
+ * Look up a leaf in a qp-trie that is equal to, or a key ancestor of, 'key'.
  *
- * If 'foundname' is not NULL, it will be updated to contain the name
- * that was found (if any). The return code, ISC_R_SUCCESS or
- * DNS_R_PARTIALMATCH, indicates whether the name found is the name
- * that was requested, or an ancestor. If the result is ISC_R_NOTFOUND,
- * 'foundname' will not be updated. (NOTE: the name will be constructed
- * from the QP key of the found node, and this can be time-consuming.
- * In performance-critical code, it is faster to store a copy of the
- * name in the node data and use that instead of passing 'foundname'.)
+ * The return code, ISC_R_SUCCESS or DNS_R_PARTIALMATCH, indicates whether
+ * the key found is the key that was requested, or an ancestor.
  *
  * If 'chain' is not NULL, it is updated to contain a QP chain with
  * references to the populated nodes in the tree between the root and
- * the name that was found. If the return code is DNS_R_PARTIALMATCH
+ * the key that was found. If the return code is DNS_R_PARTIALMATCH
  * then the chain terminates at the closest ancestor found; if it is
- * ISC_R_SUCCESS then it terminates at the name that was requested.
+ * ISC_R_SUCCESS then it terminates at the key that was requested.
  * If the result is ISC_R_NOTFOUND, 'chain' will not be updated.
  *
  * If 'iter' is not NULL, it will be updated to point to a QP iterator
- * which is pointed at the searched-for name if it exists in the trie,
+ * which is pointed at the searched-for key if it exists in the trie,
  * or the closest predecessor if it doesn't.
  *
  * The leaf data for the node that was found will be assigned to
@@ -573,14 +565,28 @@ dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
  *
  * Requires:
  * \li  `qpr` is a pointer to a readable qp-trie
- * \li  `name` is a pointer to a valid `dns_name_t`
- * \li  `foundname` is a pointer to a valid `dns_name_t` with
- *       buffer and offset space available, or is NULL
+ * \li  `keylen < sizeof(dns_qpkey_t)`
  *
  * Returns:
  * \li  ISC_R_SUCCESS if an exact match was found
- * \li  ISC_R_PARTIALMATCH if an ancestor domain was found
+ * \li  ISC_R_PARTIALMATCH if an ancestor key was found
  * \li  ISC_R_NOTFOUND if no match was found
+ */
+
+isc_result_t
+dns_qp_lookup_name(dns_qpreadable_t qpr, const dns_name_t *name,
+		   dns_namespace_t space, dns_qpiter_t *iter,
+		   dns_qpchain_t *chain, void **pval_r, uint32_t *ival_r);
+/*%<
+ * Look up a leaf in a qp-trie that is equal to, or an ancestor domain of,
+ * 'name' in the namespace 'space'.
+ *
+ * This is the name-based counterpart to `dns_qp_lookup()`. See that
+ * function for the iterator, chain, leaf value, and return-value contracts.
+ *
+ * Requires:
+ * \li  `qpr` is a pointer to a readable qp-trie
+ * \li  `name` is a pointer to a valid `dns_name_t`
  */
 
 isc_result_t

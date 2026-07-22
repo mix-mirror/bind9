@@ -475,8 +475,8 @@ check_partialmatch(dns_qp_t *qp, struct check_partialmatch check[],
 
 		dns_test_namefromstring(check[i].query, &fn1);
 		dns_qpchain_init(qp, &chain);
-		result = dns_qp_lookup(qp, name, space, NULL, &chain, &pval,
-				       NULL);
+		result = dns_qp_lookup_name(qp, name, space, NULL, &chain,
+					    &pval, NULL);
 
 		/* Extract the found name if we found something */
 		if ((result == ISC_R_SUCCESS || result == DNS_R_PARTIALMATCH) &&
@@ -637,7 +637,7 @@ struct check_qpchain {
 
 static void
 check_qpchainiter(dns_qp_t *qp, struct check_qpchain check[],
-		  dns_qpiter_t *iter) {
+		  dns_qpiter_t *iter, bool raw) {
 	for (int i = 0; check[i].query != NULL; i++) {
 		isc_result_t result;
 		dns_fixedname_t fn1;
@@ -646,8 +646,16 @@ check_qpchainiter(dns_qp_t *qp, struct check_qpchain check[],
 
 		dns_qpchain_init(qp, &chain);
 		dns_test_namefromstring(check[i].query, &fn1);
-		result = dns_qp_lookup(qp, name, check[i].space, iter, &chain,
-				       NULL, NULL);
+		if (raw) {
+			dns_qpkey_t key;
+			size_t keylen = dns_qpkey_fromname(key, name,
+							   check[i].space);
+			result = dns_qp_lookup(qp, key, keylen, iter, &chain,
+					       NULL, NULL);
+		} else {
+			result = dns_qp_lookup_name(qp, name, check[i].space,
+						    iter, &chain, NULL, NULL);
+		}
 #if 0
 		fprintf(stderr,
 			"%s %s (expected %s), "
@@ -683,8 +691,8 @@ static void
 check_qpchain(dns_qp_t *qp, struct check_qpchain check[]) {
 	dns_qpiter_t iter;
 	dns_qpiter_init(qp, &iter);
-	check_qpchainiter(qp, check, NULL);
-	check_qpchainiter(qp, check, &iter);
+	check_qpchainiter(qp, check, NULL, false);
+	check_qpchainiter(qp, check, &iter, true);
 }
 
 ISC_RUN_TEST_IMPL(qpchain) {
@@ -875,8 +883,8 @@ check_predecessors_withchain(dns_qp_t *qp, struct check_predecessors check[],
 		result = dns_name_tostring(expred, &predstr, isc_g_mctx);
 		assert_int_equal(result, ISC_R_SUCCESS);
 
-		result = dns_qp_lookup(qp, name, check[i].space, &it, chain,
-				       NULL, NULL);
+		result = dns_qp_lookup_name(qp, name, check[i].space, &it,
+					    chain, NULL, NULL);
 #if 0
 		fprintf(stderr, "%s %s: expected %s got %s\n", check[i].query,
 			check[i].space == DNS_DBNAMESPACE_NSEC3

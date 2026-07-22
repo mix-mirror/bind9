@@ -2148,7 +2148,7 @@ twig_offset(dns_qpnode_t *n, dns_qpshift_t sbit, dns_qpshift_t kbit,
 
 /*
  * If dns_qp_lookup() was passed an iterator, we want it to point at the
- * matching name in the case of an exact match, or at the predecessor name
+ * matching key in the case of an exact match, or at the predecessor key
  * for a non-exact match.
  *
  * If there is an exact match, then there is nothing to be done. Otherwise,
@@ -2160,7 +2160,7 @@ twig_offset(dns_qpnode_t *n, dns_qpshift_t sbit, dns_qpshift_t kbit,
  * Requires the iterator to be pointing at a leaf node.
  */
 static void
-fix_iterator(dns_qpreader_t *qp, dns_qpiter_t *it, dns_qpkey_t key,
+fix_iterator(dns_qpreader_t *qp, dns_qpiter_t *it, const dns_qpkey_t key,
 	     size_t len) {
 	dns_qpnode_t *n = it->stack[it->sp];
 
@@ -2250,10 +2250,10 @@ fix_iterator(dns_qpreader_t *qp, dns_qpiter_t *it, dns_qpkey_t key,
 }
 
 /*
- * When searching for a requested name in dns_qp_lookup(), we might add
+ * When searching for a requested key in dns_qp_lookup(), we might add
  * a leaf node to the chain, then subsequently determine that it was a
- * dead end. When this happens, the chain can be left holding a node
- * that is *not* an ancestor of the requested name. We correct for that
+ * dead end. When this happens, the chain can be left holding a node that is
+ * *not* an ancestor of the requested key. We correct for that
  * here.
  */
 static void
@@ -2267,12 +2267,12 @@ fix_chain(dns_qpchain_t *chain, size_t offset) {
 }
 
 isc_result_t
-dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
-	      dns_namespace_t space, dns_qpiter_t *iter, dns_qpchain_t *chain,
-	      void **pval_r, uint32_t *ival_r) {
+dns_qp_lookup(dns_qpreadable_t qpr, const dns_qpkey_t search, size_t searchlen,
+	      dns_qpiter_t *iter, dns_qpchain_t *chain, void **pval_r,
+	      uint32_t *ival_r) {
 	dns_qpreader_t *qp = dns_qpreader(qpr);
-	dns_qpkey_t search, found;
-	size_t searchlen, foundlen;
+	dns_qpkey_t found;
+	size_t foundlen;
 	size_t offset = 0;
 	dns_qpnode_t *n = NULL;
 	dns_qpshift_t bit = SHIFT_NOBYTE;
@@ -2282,8 +2282,7 @@ dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
 	bool setiter = true;
 
 	REQUIRE(QP_VALID(qp));
-
-	searchlen = dns_qpkey_fromname(search, name, space);
+	REQUIRE(searchlen < sizeof(dns_qpkey_t));
 
 	if (chain == NULL) {
 		chain = &oc;
@@ -2388,7 +2387,7 @@ dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
 	}
 
 	/*
-	 * the requested name was not found, but if an ancestor
+	 * the requested key was not found, but if an ancestor
 	 * was, we can retrieve that from the chain.
 	 */
 	int len = chain->len;
@@ -2401,8 +2400,8 @@ dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
 		} else {
 			/*
 			 * oops, during the search we found and added
-			 * a leaf that's longer than the requested
-			 * name; remove it from the chain.
+			 * a leaf that's longer than the requested key;
+			 * remove it from the chain.
 			 */
 			chain->len--;
 		}
@@ -2410,6 +2409,16 @@ dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
 
 	/* nothing was found at all */
 	return ISC_R_NOTFOUND;
+}
+
+isc_result_t
+dns_qp_lookup_name(dns_qpreadable_t qpr, const dns_name_t *name,
+		   dns_namespace_t space, dns_qpiter_t *iter,
+		   dns_qpchain_t *chain, void **pval_r, uint32_t *ival_r) {
+	dns_qpkey_t key;
+	size_t keylen = dns_qpkey_fromname(key, name, space);
+
+	return dns_qp_lookup(qpr, key, keylen, iter, chain, pval_r, ival_r);
 }
 
 /**********************************************************************/

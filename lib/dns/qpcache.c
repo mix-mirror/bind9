@@ -1307,8 +1307,9 @@ find_coveringnsec(qpc_search_t *search, const dns_name_t *name,
 	/*
 	 * Look for the node in the auxiliary NSEC namespace.
 	 */
-	result = dns_qp_lookup(search->qpdb->tree, name, DNS_DBNAMESPACE_NSEC,
-			       &iter, NULL, (void **)&node, NULL);
+	result = dns_qp_lookup_name(search->qpdb->tree, name,
+				    DNS_DBNAMESPACE_NSEC, &iter, NULL,
+				    (void **)&node, NULL);
 	/*
 	 * When DNS_R_PARTIALMATCH or ISC_R_NOTFOUND is returned from
 	 * dns_qp_lookup there is potentially a covering NSEC present
@@ -1461,8 +1462,9 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	/*
 	 * Search down from the root of the tree.
 	 */
-	result = dns_qp_lookup(search.qpdb->tree, name, DNS_DBNAMESPACE_NORMAL,
-			       NULL, &search.chain, (void **)&node, NULL);
+	result = dns_qp_lookup_name(search.qpdb->tree, name,
+				    DNS_DBNAMESPACE_NORMAL, NULL, &search.chain,
+				    (void **)&node, NULL);
 	if (result != ISC_R_NOTFOUND && foundname != NULL) {
 		dns_name_copy(&node->name, foundname);
 	}
@@ -3108,9 +3110,9 @@ resume_iteration(qpc_dbit_t *qpdbiter, bool continuing) {
 	 */
 	if (continuing && qpdbiter->node != NULL) {
 		isc_result_t result;
-		result = dns_qp_lookup(qpdb->tree, qpdbiter->name,
-				       DNS_DBNAMESPACE_NORMAL, &qpdbiter->iter,
-				       NULL, NULL, NULL);
+		result = dns_qp_lookup_name(qpdb->tree, qpdbiter->name,
+					    DNS_DBNAMESPACE_NORMAL,
+					    &qpdbiter->iter, NULL, NULL, NULL);
 		INSIST(result == ISC_R_SUCCESS);
 	}
 
@@ -3212,9 +3214,9 @@ dbiterator_seek(dns_dbiterator_t *iterator,
 
 	dereference_iter_node(qpdbiter DNS__DB_FLARG_PASS);
 
-	result = dns_qp_lookup(qpdb->tree, name, DNS_DBNAMESPACE_NORMAL,
-			       &qpdbiter->iter, NULL, (void **)&qpdbiter->node,
-			       NULL);
+	result = dns_qp_lookup_name(qpdb->tree, name, DNS_DBNAMESPACE_NORMAL,
+				    &qpdbiter->iter, NULL,
+				    (void **)&qpdbiter->node, NULL);
 
 	if (result == ISC_R_SUCCESS || result == DNS_R_PARTIALMATCH) {
 		dns_name_copy(&qpdbiter->node->name, qpdbiter->name);
