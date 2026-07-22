@@ -142,18 +142,12 @@ matchbit(unsigned char *bits, uint32_t val) {
 	return false;
 }
 
-isc_result_t
-dns_nametree_add(dns_nametree_t *nametree, const dns_name_t *name,
-		 uint32_t value) {
+static isc_result_t
+nametree_add(dns_nametree_t *nametree, dns_qp_t *qp, const dns_name_t *name,
+	     uint32_t value) {
 	isc_result_t result;
-	dns_qp_t *qp = NULL;
 	uint32_t size, pos, mask, count = 0;
 	dns_ntnode_t *old = NULL, *new = NULL;
-
-	REQUIRE(VALID_NAMETREE(nametree));
-	REQUIRE(name != NULL);
-
-	dns_qpmulti_write(nametree->table, &qp);
 
 	switch (nametree->type) {
 	case DNS_NAMETREE_BOOL:
@@ -175,7 +169,7 @@ dns_nametree_add(dns_nametree_t *nametree, const dns_name_t *name,
 		result = dns_qp_getname(qp, name, DNS_DBNAMESPACE_NORMAL,
 					(void **)&old, NULL);
 		if (result == ISC_R_SUCCESS && matchbit(old->bits, value)) {
-			goto out;
+			return (ISC_R_SUCCESS);
 		}
 
 		size = pos = value / 8 + 2;
@@ -208,10 +202,39 @@ dns_nametree_add(dns_nametree_t *nametree, const dns_name_t *name,
 	 */
 	dns_ntnode_detach(&new);
 
-out:
+	return (result);
+}
+
+isc_result_t
+dns_nametree_add(dns_nametree_t *nametree, const dns_name_t *name,
+		 uint32_t value) {
+	isc_result_t result;
+	dns_qp_t *qp = NULL;
+
+	REQUIRE(VALID_NAMETREE(nametree));
+	REQUIRE(name != NULL);
+
+	dns_qpmulti_write(nametree->table, &qp);
+	result = nametree_add(nametree, qp, name, value);
 	dns_qp_compact(qp, DNS_QPGC_MAYBE);
 	dns_qpmulti_commit(nametree->table, &qp);
 	return result;
+}
+
+void
+dns_nametree_add_batch(dns_nametree_t *nametree, const dns_name_t **names,
+		       unsigned int count, uint32_t value) {
+	dns_qp_t *qp = NULL;
+
+	REQUIRE(VALID_NAMETREE(nametree));
+	REQUIRE(names != NULL);
+
+	dns_qpmulti_write(nametree->table, &qp);
+	for (unsigned int i = 0; i < count; i++) {
+		(void)nametree_add(nametree, qp, names[i], value);
+	}
+	dns_qp_compact(qp, DNS_QPGC_ALL);
+	dns_qpmulti_commit(nametree->table, &qp);
 }
 
 isc_result_t

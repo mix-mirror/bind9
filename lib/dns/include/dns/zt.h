@@ -65,6 +65,17 @@ dns_zt_mount(dns_zt_t *zt, dns_zone_t *zone);
  * \li	#ISC_R_EXISTS
  */
 
+void
+dns_zt_mount_batch(dns_zt_t *zt, dns_zone_t **zones, unsigned int count);
+/*%<
+ * Mounts multiple zones on the zone table in a single QP transaction.
+ * Duplicate zones are silently ignored.
+ *
+ * Requires:
+ * \li	'zt' to be valid
+ * \li	'zones' to be non-NULL
+ */
+
 isc_result_t
 dns_zt_unmount(dns_zt_t *zt, dns_zone_t *zone);
 /*%<
