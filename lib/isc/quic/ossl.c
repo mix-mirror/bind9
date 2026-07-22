@@ -243,6 +243,7 @@ isc_result_t
 isc__quic_set_local_transport_params(isc_quic_conn_t *conn, isc_tls_t *tls) {
 	uint8_t buffer[512];
 	ngtcp2_ssize len;
+	int r;
 
 	INSIST(conn->local_transport_params == NULL);
 
@@ -261,10 +262,11 @@ isc__quic_set_local_transport_params(isc_quic_conn_t *conn, isc_tls_t *tls) {
 							len);
 	memcpy(conn->local_transport_params, buffer, len);
 
-	if (SSL_set_quic_tls_transport_params(tls, conn->local_transport_params,
-					      len) != 1)
-	{
-		ERR_clear_error();
+	ERR_set_mark();
+	r = SSL_set_quic_tls_transport_params(tls, conn->local_transport_params,
+					      len);
+	ERR_pop_to_mark();
+	if (r != 1) {
 		return ISC_R_TLSERROR;
 	}
 
@@ -276,8 +278,11 @@ isc__quic_do_tls(isc_quic_conn_t *conn, isc_tls_t *tls,
 		 ngtcp2_encryption_level nglevel ISC_ATTR_UNUSED,
 		 isc_constregion_t data) {
 	isc__quic_crypto_frame_data_t *frame;
+	isc_result_t result;
 	bool need_handshake;
 	int r;
+
+	ERR_set_mark();
 
 	if (data.length != 0) {
 		frame = isc_mem_get(conn->mem.user_data,
@@ -304,9 +309,9 @@ isc__quic_do_tls(isc_quic_conn_t *conn, isc_tls_t *tls,
 			case SSL_ERROR_WANT_WRITE:
 			case SSL_ERROR_WANT_X509_LOOKUP:
 			case SSL_ERROR_WANT_CLIENT_HELLO_CB:
-				return ISC_R_SUCCESS;
+				CLEANUP(ISC_R_SUCCESS);
 			default:
-				return ISC_R_TLSERROR;
+				CLEANUP(ISC_R_TLSERROR);
 			}
 		}
 
@@ -318,13 +323,17 @@ isc__quic_do_tls(isc_quic_conn_t *conn, isc_tls_t *tls,
 		switch (SSL_get_error(tls, r)) {
 		case SSL_ERROR_WANT_READ:
 		case SSL_ERROR_WANT_WRITE:
-			return ISC_R_SUCCESS;
+			CLEANUP(ISC_R_SUCCESS);
 		default:
-			return ISC_R_TLSERROR;
+			CLEANUP(ISC_R_TLSERROR);
 		}
 	}
 
-	return ISC_R_SUCCESS;
+	result = ISC_R_SUCCESS;
+
+cleanup:
+	ERR_pop_to_mark();
+	return result;
 }
 
 void

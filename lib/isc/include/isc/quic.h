@@ -74,15 +74,36 @@ struct isc_quic_stream_data_info {
 };
 
 typedef struct isc_quic_server_options {
-	isc_tlsctx_t	 *tlsctx;
+	isc_tlsctx_t *tlsctx;
+
+	/**
+	 * \brief
+	 * ALPN value of the TLS handshake.
+	 *
+	 * \warning
+	 * Must be less than 7-bytes, might be increased in the future.
+	 */
 	isc_constregion_t alpn;
-	isc_nanosecs_t	  idle_timeout;
+
+	isc_nanosecs_t idle_timeout;
 } isc_quic_server_options_t;
 
 struct isc_quic_client_options {
-	isc_tlsctx_t	 *tlsctx;
+	/**
+	 *
+	 */
+	isc_tlsctx_t *tlsctx;
+
+	/**
+	 * \brief
+	 * ALPN value of the TLS handshake.
+	 *
+	 * \warning
+	 * Must be less than 7-bytes, might be increased in the future.
+	 */
 	isc_constregion_t alpn;
-	isc_nanosecs_t	  idle_timeout;
+
+	isc_nanosecs_t idle_timeout;
 };
 
 /**
@@ -127,7 +148,7 @@ struct isc_quic_conn_callbacks {
 	 * \brief
 	 * Callback function for when there is data to be read in a stream.
 	 *
-	 * Called by #isc_quic_conn_push_packet when there is data to be read
+	 * Called by isc_quic_conn_push_packet when there is data to be read
 	 * in a stream.
 	 *
 	 * \param cbarg User-specified callback argument.
@@ -139,16 +160,31 @@ struct isc_quic_conn_callbacks {
 };
 
 typedef enum isc_quic_version {
-	/** Invalid QUIC version */
+	/**
+	 * \brief
+	 * Invalid QUIC version.
+	 */
 	ISC_QUIC_VERSION_INVALID = 0,
 
-	/** Unknown QUIC version */
+	/**
+	 * \brief
+	 * Unknown QUIC version.
+	 *
+	 * This is expected to occur when there is a QUIC version that the
+	 * linked ngtcp2 library doesn't support.
+	 */
 	ISC_QUIC_VERSION_UNKNOWN = 1,
 
-	/** RFC9000 */
+	/**
+	 * \brief
+	 * QUICv1 as specified by RFC9000.
+	 */
 	ISC_QUIC_VERSION_V1 = 2,
 
-	/** RFC9369 */
+	/**
+	 * \brief
+	 * QUICv2 as specified by RFC9369.
+	 */
 	ISC_QUIC_VERSION_V2 = 3,
 
 	ISC_QUIC_VERSION__MAX = 4,
@@ -166,6 +202,7 @@ struct isc_quic_stream_data {
 	bool zerortt;
 
 	/**
+	 * \brief
 	 * Stream ID of the given data.
 	 */
 	int64_t stream_id;
@@ -175,13 +212,16 @@ struct isc_quic_stream_data {
 	size_t offset;
 
 	/**
+	 * \brief
+	 * Opaque value.
+	 *
 	 * \warning
-	 * Opaque. Don't touch.
+	 * Don't touch, it will bite.
 	 */
 	ISC_LINK(isc_quic_stream_data_t) link;
 
 	/**
-	 *
+	 * \brief
 	 */
 	uint8_t bytes[] ISC_ATTR_COUNTED_BY(length);
 };
@@ -390,8 +430,12 @@ isc_quic_conn_server_create(isc_mem_t *mctx, isc_quic_router_t *router,
 			    const isc_sockaddr_t	    *peer,
 			    isc_quic_conn_t		   **connp);
 /**<
+ * \brief
+ * Create a new server state machine
+ *
  * \par Requires:
  * \li `connp != NULL` and `*connp == NULL`
+ * \li `options != NULL` and has all the required fields set.
  *
  */
 
@@ -465,7 +509,7 @@ isc_quic_conn_next_expiry_time(isc_quic_conn_t *conn);
 isc_result_t
 isc_quic_conn_shutdown_stream(isc_quic_conn_t *conn, int64_t stream_id,
 			      uint64_t application_code);
-/**
+/**<
  * \brief
  * Abruptly shutdown a stream.
  *

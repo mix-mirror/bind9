@@ -44,7 +44,7 @@
 	out:;                                                          \
 	})
 #else /* ISC_QUIC_STATE_CHECK */
-#define CHECK_STATE(actual, ...)
+#define CHECK_STATE(conn, ...)
 #endif /* ISC_QUIC_STATE_CHECK */
 
 struct isc__quic_stream {
@@ -173,6 +173,38 @@ constexpr uint8_t hp_label_v2[] = {
 	'q', 'u', 'i', 'c', 'v', '2', ' ', 'h', 'p',
 };
 
+/**
+ * \brief
+ * The confidentiality limit for AES-128-GCM and AES-256-GCM as used in TLS.
+ *
+ * The value is specified in RFC9001, Section 6.6.
+ */
+constexpr uint64_t aes_gcm_max_encryption = 8388608;
+
+/**
+ * \brief
+ * The integrity limit for AES-128-GCM and AES-256-GCM as used in TLS.
+ *
+ * The value is specified in RFC9001, Section 6.6.
+ */
+constexpr uint64_t aes_gcm_max_decryption_failure = 4503599627370496;
+
+/**
+ * \brief
+ * The confidentiality limit for ChaCha20-Poly1305 as used in TLS.
+ *
+ * The value is specified in RFC9001, Section 6.6.
+ */
+constexpr uint64_t chacha20poly1305_max_encryption = 4611686018427387904;
+
+/**
+ * \brief
+ * The integrity limit for ChaCha20-Poly1305 as used in TLS.
+ *
+ * The value is specified in RFC9001, Section 6.6.
+ */
+constexpr uint64_t chacha20poly1305_max_decryption_failure = 68719476736;
+
 constexpr ngtcp2_crypto_ctx initial_aes128gcm_sha256_ctx = {
 	.aead = { .native_handle = (void *)(uintptr_t)
 			  ISC_CRYPTO_AEAD_ALGORITHM_AES128GCM,
@@ -180,19 +212,19 @@ constexpr ngtcp2_crypto_ctx initial_aes128gcm_sha256_ctx = {
 	.md = { .native_handle = (void *)(uintptr_t)ISC_MD_SHA256 },
 	.hp = { .native_handle = (void *)(uintptr_t)
 			ISC_CRYPTO_QUIC_HP_PROTECT_ALGORITHM_AES128 },
-	.max_encryption = (1ULL << 23),
-	.max_decryption_failure = (1ULL << 52),
+	.max_encryption = aes_gcm_max_encryption,
+	.max_decryption_failure = aes_gcm_max_decryption_failure,
 };
 
 constexpr ngtcp2_crypto_ctx initial_aes256_sha384_ctx = {
 	.aead = { .native_handle = (void *)(uintptr_t)
 			  ISC_CRYPTO_AEAD_ALGORITHM_AES256GCM,
-		  .max_overhead = isc_crypto_aes256gcm_tag_length },
+		  .max_overhead = isc_crypto_aes256gcm_tag_length, },
 	.md = { .native_handle = (void *)(uintptr_t)ISC_MD_SHA384 },
 	.hp = { .native_handle = (void *)(uintptr_t)
 			ISC_CRYPTO_QUIC_HP_PROTECT_ALGORITHM_AES256 },
-	.max_encryption = (1ULL << 23),
-	.max_decryption_failure = (1ULL << 52),
+	.max_encryption = aes_gcm_max_encryption,
+	.max_decryption_failure = aes_gcm_max_decryption_failure,
 };
 
 constexpr ngtcp2_crypto_ctx initial_chacha20poly1305_sha256_ctx = {
@@ -202,8 +234,8 @@ constexpr ngtcp2_crypto_ctx initial_chacha20poly1305_sha256_ctx = {
 	.md = { .native_handle = (void *)(uintptr_t)ISC_MD_SHA256 },
 	.hp = { .native_handle = (void *)(uintptr_t)
 			ISC_CRYPTO_QUIC_HP_PROTECT_ALGORITHM_CHACHA20 },
-	.max_encryption = (1ULL << 62),
-	.max_decryption_failure = (1ULL << 36),
+	.max_encryption = chacha20poly1305_max_encryption,
+	.max_decryption_failure = chacha20poly1305_max_decryption_failure,
 };
 
 /**
@@ -230,7 +262,6 @@ constexpr uint8_t salt_v2[] = {
 
 /*
  * State machine table
- *
  */
 
 static isc_result_t
@@ -427,14 +458,14 @@ static const ngtcp2_callbacks server_cb = {
 	.rand = rand_cb,
 #ifndef NGTCP2_CALLBACKS_V3
 	.get_new_connection_id = get_new_connection_id_cb,
-#endif /* NGTCP2_CALLBACKS_V3 */
+#endif /* !NGTCP2_CALLBACKS_V3 */
 	.remove_connection_id = remove_connection_id_cb,
 	.update_key = update_key_cb,
 	.delete_crypto_aead_ctx = delete_crypto_aead_ctx_cb,
 	.delete_crypto_cipher_ctx = delete_crypto_cipher_ctx_cb,
 #ifndef NGTCP2_CALLBACKS_V3
 	.get_path_challenge_data = get_path_challenge_data_cb,
-#endif /* NGTCP2_CALLBACKS_V3 */
+#endif /* !NGTCP2_CALLBACKS_V3 */
 	.version_negotiation = version_negotiation_cb,
 #ifdef NGTCP2_CALLBACKS_V3
 	.get_new_connection_id2 = get_new_connection_id2_cb,
@@ -670,8 +701,8 @@ derive_traffic_update(isc_region_t next_secret, uint32_t version,
 
 /**
  * Initial setup uses:
- * - AES-128 for
- * - AES-128-GCM
+ * \li AES-128 for the header protection
+ * \li AES-128-GCM for AEAD
  */
 static isc_result_t
 setup_initial_key(ngtcp2_conn *ngconn, const ngtcp2_cid *dcid) {
@@ -687,8 +718,13 @@ setup_initial_key(ngtcp2_conn *ngconn, const ngtcp2_cid *dcid) {
 
 	uint8_t initial_secret[32];
 
+#if NGTCP2_VERSION_NUM >= 0x011700 /* 1.23.0 */
 	version = ngtcp2_conn_get_client_chosen_version2(ngconn);
 	is_server = ngtcp2_conn_is_server2(ngconn);
+#else  /* NGTCP2_VERSION_NUM >= 0x011700 */
+	version = ngtcp2_conn_get_client_chosen_version(ngconn);
+	is_server = ngtcp2_conn_is_server(ngconn);
+#endif /* NGTCP2_VERSION_NUM >= 0x011700 */
 
 	ngtcp2_conn_set_initial_crypto_ctx(ngconn,
 					   &initial_aes128gcm_sha256_ctx);
@@ -1580,19 +1616,19 @@ isc__quic_setup_read_key(isc_quic_conn_t *conn, bool is_server,
 			 ngtcp2_encryption_level nglevel,
 			 isc_constregion_t secret) {
 	uint8_t key_buffer[32], nonce_buffer[32], hp_buffer[32];
-	isc_crypto_aead_algorithm_t aead_algorithm;
 	isc_crypto_quic_hp_protect_algorithm_t hp_algorithm;
-	isc_md_type_t md;
-	const SSL_CIPHER *cipher;
-	ngtcp2_crypto_aead_ctx ng_aead_ctx = { 0 };
-	ngtcp2_crypto_cipher_ctx ng_hp_ctx = { 0 };
-	isc_tls_t *tls;
-	size_t key_len, nonce_len;
-	const ngtcp2_crypto_ctx *ngctx;
-	uint32_t version;
-	isc_crypto_aead_t *aead = NULL;
 	isc_crypto_quic_hp_protect_t *hp = NULL;
+	isc_crypto_aead_algorithm_t aead_algorithm;
+	ngtcp2_crypto_cipher_ctx ng_hp_ctx = { 0 };
+	const ngtcp2_crypto_ctx *ngctx = NULL;
+	ngtcp2_crypto_aead_ctx ng_aead_ctx = { 0 };
+	isc_crypto_aead_t *aead = NULL;
+	const SSL_CIPHER *cipher;
+	isc_md_type_t md;
 	isc_result_t result;
+	isc_tls_t *tls;
+	uint32_t version;
+	size_t key_len, nonce_len;
 
 	tls = ngtcp2_conn_get_tls_native_handle2(conn->inner);
 
@@ -1776,19 +1812,19 @@ isc__quic_setup_write_key(isc_quic_conn_t *conn, bool is_server,
 			  ngtcp2_encryption_level nglevel,
 			  isc_constregion_t secret) {
 	uint8_t key_buffer[32], nonce_buffer[32], hp_buffer[32];
-	isc_crypto_aead_algorithm_t aead_algorithm;
 	isc_crypto_quic_hp_protect_algorithm_t hp_algorithm;
-	isc_md_type_t md;
-	const SSL_CIPHER *cipher;
-	ngtcp2_crypto_aead_ctx ng_aead_ctx = { 0 };
-	ngtcp2_crypto_cipher_ctx ng_hp_ctx = { 0 };
-	isc_tls_t *tls;
-	size_t key_len, nonce_len;
-	const ngtcp2_crypto_ctx *ngctx;
-	uint32_t version;
-	isc_crypto_aead_t *aead = NULL;
+	isc_crypto_aead_algorithm_t aead_algorithm;
 	isc_crypto_quic_hp_protect_t *hp = NULL;
+	ngtcp2_crypto_cipher_ctx ng_hp_ctx = { 0 };
+	const ngtcp2_crypto_ctx *ngctx;
+	ngtcp2_crypto_aead_ctx ng_aead_ctx = { 0 };
+	isc_crypto_aead_t *aead = NULL;
+	const SSL_CIPHER *cipher;
+	isc_md_type_t md;
 	isc_result_t result;
+	isc_tls_t *tls;
+	uint32_t version;
+	size_t key_len, nonce_len;
 
 	tls = ngtcp2_conn_get_tls_native_handle2(conn->inner);
 
@@ -2028,7 +2064,7 @@ isc_quic_conn_client_create(isc_mem_t *mctx, isc_quic_router_t *router,
 		.level = NGTCP2_ENCRYPTION_LEVEL_INITIAL,
 		.crypto_awaiting_frames = ISC_LIST_INITIALIZER,
 		.crypto_buffered_frames = ISC_LIST_INITIALIZER,
-#endif
+#endif /* HAVE_OPENSSL_3 */
 		.mem = { .user_data = isc_mem_ref(mctx),
 			 .malloc = quic_malloc,
 			 .free = quic_free,
@@ -2101,12 +2137,14 @@ isc_quic_conn_server_create(isc_mem_t *mctx, isc_quic_router_t *router,
 	ngtcp2_transport_params transport_params;
 	ngtcp2_settings settings;
 	isc_quic_conn_t *conn = NULL;
+	isc_result_t result;
 	ngtcp2_path path;
 	ngtcp2_cid dcid, scid;
-	isc_result_t result;
 	isc_tls_t *tls = NULL;
 
 	REQUIRE(connp != NULL && *connp == NULL);
+	REQUIRE(options != NULL && options->alpn.base != NULL &&
+		options->alpn.length <= sizeof(conn->alpn.data));
 
 	path = (ngtcp2_path){
 		.local = { (ngtcp2_sockaddr *)&local->type.sa, local->length },

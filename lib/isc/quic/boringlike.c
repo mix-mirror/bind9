@@ -170,6 +170,7 @@ isc__quic_set_local_transport_params(isc_quic_conn_t *conn ISC_ATTR_UNUSED,
 				     isc_tls_t *tls) {
 	uint8_t buffer[512];
 	ngtcp2_ssize len;
+	int r;
 
 #if NGTCP2_VERSION_NUM >= 0x011700 /* 1.23.0 */
 	len = ngtcp2_conn_encode_local_transport_params2(conn->inner, buffer,
@@ -182,8 +183,10 @@ isc__quic_set_local_transport_params(isc_quic_conn_t *conn ISC_ATTR_UNUSED,
 		return ISC_R_NOSPACE;
 	}
 
-	if (SSL_set_quic_transport_params(tls, buffer, len) != 1) {
-		ERR_clear_error();
+	ERR_set_mark();
+	r = SSL_set_quic_transport_params(tls, buffer, len);
+	ERR_pop_to_mark();
+	if (r != 1) {
 		return ISC_R_TLSERROR;
 	}
 
@@ -194,9 +197,10 @@ isc_result_t
 isc__quic_setup_tls(isc_tls_t *tls, isc_quic_conn_t *conn ISC_ATTR_UNUSED) {
 	SSL_set_ex_data(tls, quic_index, conn);
 
-	SSL_set_min_proto_version(tls, TLS1_3_VERSION);
-	SSL_set_max_proto_version(tls, TLS1_3_VERSION);
-	SSL_set_quic_method(tls, &method);
+	RUNTIME_CHECK(SSL_set_min_proto_version(tls, TLS1_3_VERSION) == 1);
+	RUNTIME_CHECK(SSL_set_max_proto_version(tls, TLS1_3_VERSION) == 1);
+	RUNTIME_CHECK(SSL_set_quic_method(tls, &method) == 1);
+
 	return ISC_R_SUCCESS;
 }
 
@@ -204,6 +208,7 @@ isc_result_t
 isc__quic_do_tls(isc_quic_conn_t *conn, isc_tls_t *tls,
 		 ngtcp2_encryption_level nglevel, isc_constregion_t data) {
 	enum ssl_encryption_level_t level;
+	isc_result_t result;
 	ngtcp2_conn *ngconn;
 	int r;
 
@@ -212,10 +217,12 @@ isc__quic_do_tls(isc_quic_conn_t *conn, isc_tls_t *tls,
 	level = libngtcp2_to_ssl_level_lut[nglevel];
 	ngconn = conn->inner;
 
+	ERR_set_mark();
+
 	if (data.length != 0 &&
 	    SSL_provide_quic_data(tls, level, data.base, data.length) != 1)
 	{
-		return ISC_R_TLSERROR;
+		CLEANUP(ISC_R_TLSERROR);
 	}
 
 	while (!ngtcp2_conn_get_handshake_completed(ngconn)) {
@@ -227,11 +234,11 @@ isc__quic_do_tls(isc_quic_conn_t *conn, isc_tls_t *tls,
 			case SSL_ERROR_WANT_X509_LOOKUP:
 #ifdef LIBRESSL_VERSION_NUMBER
 			case SSL_ERROR_WANT_CLIENT_HELLO_CB:
-				return ISC_R_SUCCESS;
+				CLEANUP(ISC_R_SUCCESS);
 #else
 			case SSL_ERROR_WANT_PRIVATE_KEY_OPERATION:
 			case SSL_ERROR_WANT_CERTIFICATE_VERIFY:
-				return ISC_R_SUCCESS;
+				CLEANUP(ISC_R_SUCCESS);
 			case SSL_ERROR_EARLY_DATA_REJECTED:
 #if NGTCP2_VERSION_NUM >= 0x011700 /* 1.23.0 */
 				INSIST(!ngtcp2_conn_is_server2(ngconn));
@@ -242,18 +249,18 @@ isc__quic_do_tls(isc_quic_conn_t *conn, isc_tls_t *tls,
 				if (ngtcp2_conn_tls_early_data_rejected(
 					    ngconn) != 0)
 				{
-					return ISC_R_FAILURE;
+					CLEANUP(ISC_R_FAILURE);
 				}
 				continue;
 #endif /* LIBRESSL_VERSION_NUMBER */
 			default:
-				return ISC_R_TLSERROR;
+				CLEANUP(ISC_R_TLSERROR);
 			}
 		}
 
 #ifndef LIBRESSL_VERSION_NUMBER
 		if (SSL_in_early_data(tls) == 1) {
-			return ISC_R_SUCCESS;
+			CLEANUP(ISC_R_SUCCESS);
 		}
 #endif /* LIBRESSL_VERSION_NUMBER */
 
@@ -269,11 +276,15 @@ isc__quic_do_tls(isc_quic_conn_t *conn, isc_tls_t *tls,
 		case SSL_ERROR_WANT_WRITE:
 			break;
 		default:
-			return ISC_R_TLSERROR;
+			CLEANUP(ISC_R_TLSERROR);
 		}
 	}
 
-	return ISC_R_SUCCESS;
+	result = ISC_R_SUCCESS;
+
+cleanup:
+	ERR_pop_to_mark();
+	return result;
 }
 
 void

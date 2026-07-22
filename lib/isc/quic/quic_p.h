@@ -45,7 +45,6 @@ struct isc_quic_conn {
 	ISC_LIST(isc_quic_stream_data_t) outgoing_stream_data;
 #ifdef HAVE_OPENSSL_3
 	ngtcp2_encryption_level level;
-	uint8_t *transport_params;
 	uint8_t *local_transport_params;
 	ISC_LIST(isc__quic_crypto_frame_data_t) crypto_buffered_frames;
 	ISC_LIST(isc__quic_crypto_frame_data_t) crypto_awaiting_frames;
@@ -108,8 +107,7 @@ isc__quic_do_tls(isc_quic_conn_t *conn, isc_tls_t *tls,
 		 ngtcp2_encryption_level nglevel, isc_constregion_t data);
 /**<
  * \brief
- * A
- *
+ * Do TLS.
  *
  * \retval ISC_R_SUCCESS on success
  */
