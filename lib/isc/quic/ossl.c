@@ -20,12 +20,6 @@
 
 #include "quic_p.h"
 
-struct isc__quic_crypto_frame_data {
-	size_t len;
-	ISC_LINK(isc__quic_crypto_frame_data_t) link;
-	uint8_t data[];
-};
-
 /**
  * Lookup table for translating a OpenSSL encryption level to its ngtcp2
  * counterpart.

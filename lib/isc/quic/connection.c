@@ -2220,6 +2220,24 @@ isc_quic_conn_destroy(isc_quic_conn_t **connp) {
 			    STRUCT_FLEX_SIZE(data, bytes, data->length));
 	}
 
+#ifdef HAVE_OPENSSL_3
+	if (conn->local_transport_params != NULL) {
+		isc_mem_free(mctx, conn->local_transport_params);
+	}
+
+	ISC_LIST_FOREACH(conn->crypto_buffered_frames, frame, link) {
+		ISC_LIST_DEQUEUE(conn->crypto_buffered_frames, frame, link);
+		isc_mem_put(mctx, frame,
+			    STRUCT_FLEX_SIZE(frame, data, frame->len));
+	}
+
+	ISC_LIST_FOREACH(conn->crypto_awaiting_frames, frame, link) {
+		ISC_LIST_DEQUEUE(conn->crypto_awaiting_frames, frame, link);
+		isc_mem_put(mctx, frame,
+			    STRUCT_FLEX_SIZE(frame, data, frame->len));
+	}
+#endif /* HAVE_OPENSSL_3 */
+
 	isc_tls_free(&tls);
 
 	ngtcp2_conn_del(conn->inner);

@@ -43,11 +43,26 @@ struct isc_quic_conn {
 	} alpn;
 	ISC_LIST(isc__quic_stream_t) streams;
 	ISC_LIST(isc_quic_stream_data_t) outgoing_stream_data;
+#ifdef HAVE_OPENSSL_3
+	ngtcp2_encryption_level level;
+	uint8_t *transport_params;
+	uint8_t *local_transport_params;
+	ISC_LIST(isc__quic_crypto_frame_data_t) crypto_buffered_frames;
+	ISC_LIST(isc__quic_crypto_frame_data_t) crypto_awaiting_frames;
+#endif /* HAVE_OPENSSL_3 */
 	const isc_quic_conn_callbacks_t *cb;
 	void *cbarg;
 	ngtcp2_mem mem;
 	ngtcp2_conn *inner;
 };
+
+#ifdef HAVE_OPENSSL_3
+struct isc__quic_crypto_frame_data {
+	size_t len;
+	ISC_LINK(isc__quic_crypto_frame_data_t) link;
+	uint8_t data[];
+};
+#endif /* HAVE_OPENSSL_3 */
 
 isc_result_t
 isc__quic_setup_read_key(isc_quic_conn_t *conn, bool is_server,
