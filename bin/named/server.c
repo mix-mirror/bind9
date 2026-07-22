@@ -3781,7 +3781,7 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	const char *cachename = NULL;
 	dns_order_t *order = NULL;
 	dns_zone_t **pending = NULL;
-	unsigned int npending = 0, pending_cap = 0;
+	unsigned int npending = 0, pending_count = 0;
 	unsigned int resopts = 0;
 	dns_zone_t *zone = NULL;
 	uint32_t clients_per_query, max_clients_per_query;
@@ -3861,6 +3861,10 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	} else {
 		(void)cfg_map_get(config, "zone", &zonelist);
 	}
+	pending_count = cfg_list_length(zonelist, false);
+	if (pending_count > 0) {
+		pending = isc_mem_cget(mctx, pending_count, sizeof(*pending));
+	}
 
 	/*
 	 * Load zone configuration
@@ -3873,13 +3877,6 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 				     false, &newzone));
 		zone_element_latest = element;
 		if (newzone != NULL) {
-			if (npending == pending_cap) {
-				pending_cap = (pending_cap == 0) ? 256
-								 : pending_cap * 2;
-				pending = isc_mem_creget(mctx, pending,
-							npending, pending_cap,
-							sizeof(*pending));
-			}
 			pending[npending++] = newzone;
 		}
 	}
@@ -3892,7 +3889,7 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 		npending = 0;
 	}
 	if (pending != NULL) {
-		isc_mem_cput(mctx, pending, pending_cap, sizeof(*pending));
+		isc_mem_cput(mctx, pending, pending_count, sizeof(*pending));
 		pending = NULL;
 	}
 
@@ -5455,7 +5452,7 @@ cleanup:
 		for (unsigned int zi = 0; zi < npending; zi++) {
 			dns_zone_detach(&pending[zi]);
 		}
-		isc_mem_cput(mctx, pending, pending_cap, sizeof(*pending));
+		isc_mem_cput(mctx, pending, pending_count, sizeof(*pending));
 		pending = NULL;
 	}
 
