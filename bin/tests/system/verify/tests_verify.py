@@ -16,7 +16,7 @@ import os
 import re
 import time
 
-from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric import rsa
 from dns.dnssectypes import NSEC3Hash
 from dns.rdtypes.dnskeybase import Flag
 
@@ -55,36 +55,31 @@ pytestmark = pytest.mark.extra_artifacts(
 VERIFY = os.environ.get("VERIFY")
 
 
-def generate_key():
-    algorithm = dns.dnssec.Algorithm.ECDSAP384SHA384
-    ksk_private_key = ec.generate_private_key(ec.SECP384R1())
-    try:
-        ksk_dnskey = dns.dnssec.make_dnskey(
-            public_key=ksk_private_key.public_key(),
-            algorithm=algorithm,
-            flags=Flag.ZONE | Flag.SEP,
-        )
-    except ImportError as exc:
-        # if the cryptography package is too old, the make_dnskey() function
-        # will raise ImportError at runtime
-        pytest.skip(f"{exc}")
-    return [ksk_private_key, ksk_dnskey]
-
-
 def bootstrap():
+
+    def generate_keys():
+        algorithm = dns.dnssec.Algorithm.RSASHA256
+        ksk_private_key = rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=1024
+        )
+        try:
+            ksk_dnskey = dns.dnssec.make_dnskey(
+                public_key=ksk_private_key.public_key(),
+                algorithm=algorithm,
+                flags=Flag.ZONE | Flag.SEP,
+            )
+        except ImportError as exc:
+            # if the cryptography package is too old, the make_dnskey() function
+            # will raise ImportError at runtime
+            pytest.skip(f"{exc}")
+        return ksk_private_key, ksk_dnskey
+
 
     def gen_and_sign(name, nsec3=False):
         zone = Zone(name, NO_NS, signed=True)
-
-        keyalg = dns.dnssec.Algorithm.ECDSAP384SHA384
-        ksk_private_key = ec.generate_private_key(ec.SECP384R1())
-        ksk_dnskey = dns.dnssec.make_dnskey(
-            public_key=ksk_private_key.public_key(),
-            algorithm=keyalg,
-            flags=Flag.ZONE | Flag.SEP,
-        )
+        ksk_private_key, ksk_dnskey = generate_keys()
         keys = [(ksk_private_key, ksk_dnskey)]
-
         zone.render()
 
         # read the rendered zone
