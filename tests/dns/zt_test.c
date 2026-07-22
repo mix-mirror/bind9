@@ -56,6 +56,39 @@ count_zone(dns_zone_t *zone, void *uap) {
 	return ISC_R_SUCCESS;
 }
 
+/* batch insertion keeps the zone table and SFD namespace in sync */
+ISC_LOOP_TEST_IMPL(add_batch) {
+	dns_fixedname_t found, qname;
+	dns_zone_t *zones[2] = { NULL, NULL };
+	dns_name_t *name = dns_fixedname_initname(&qname);
+	dns_name_t *namespace = dns_fixedname_initname(&found);
+	isc_result_t result;
+
+	result = dns_test_makeview("view", false, false, &view);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	result = dns_test_makezone("example", &zones[0], NULL, false);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	dns_zone_setview(zones[0], view);
+	dns_zone_setclass(zones[0], view->rdclass);
+	zones[1] = zones[0];
+
+	result = dns_view_addzone_batch(view, zones, 2);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	dns_test_namefromstring("www.example.", &qname);
+	dns_view_sfd_find(view, name, namespace);
+	assert_true(dns_name_equal(namespace, dns_zone_getorigin(zones[0])));
+
+	result = dns_view_delzone(view, zones[0]);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	dns_view_sfd_find(view, name, namespace);
+	assert_true(dns_name_equal(namespace, dns_rootname));
+
+	dns_zone_detach(&zones[0]);
+	dns_view_detach(&view);
+	isc_loopmgr_shutdown();
+}
+
 /* apply a function to a zone table */
 ISC_LOOP_TEST_IMPL(apply) {
 	isc_result_t result;
@@ -275,6 +308,7 @@ ISC_LOOP_TEST_IMPL(asyncload_zt) {
 }
 
 ISC_TEST_LIST_START
+ISC_TEST_ENTRY_CUSTOM(add_batch, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(apply, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(asyncload_zone, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(asyncload_zt, setup_managers, teardown_managers)

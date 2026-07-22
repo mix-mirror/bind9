@@ -3885,7 +3885,7 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	}
 
 	if (npending > 0) {
-		dns_view_addzone_batch(view, pending, npending);
+		CHECK(dns_view_addzone_batch(view, pending, npending));
 		for (unsigned int zi = 0; zi < npending; zi++) {
 			dns_zone_detach(&pending[zi]);
 		}
@@ -6029,6 +6029,8 @@ configure_zone(const cfg_obj_t *config, const cfg_obj_t *zconfig,
 	bool inline_signing = false;
 	bool fullsign = false;
 
+	REQUIRE(zonep == NULL || *zonep == NULL);
+
 	options = NULL;
 	(void)cfg_map_get(config, "options", &options);
 
@@ -6416,6 +6418,9 @@ configure_zone(const cfg_obj_t *config, const cfg_obj_t *zconfig,
 					aclctx);
 
 cleanup:
+	if (result != ISC_R_SUCCESS && zonep != NULL && *zonep != NULL) {
+		dns_zone_detach(zonep);
+	}
 	if (zone != NULL) {
 		dns_zone_detach(&zone);
 	}

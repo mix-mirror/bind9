@@ -505,7 +505,7 @@ dns_view_addzone(dns_view_t *view, dns_zone_t *zone);
  *\li	'zone' is a valid zone.
  */
 
-void
+isc_result_t
 dns_view_addzone_batch(dns_view_t *view, dns_zone_t **zones,
 		       unsigned int count);
 /*%<
@@ -517,6 +517,10 @@ dns_view_addzone_batch(dns_view_t *view, dns_zone_t **zones,
  *\li	'view' is a valid, unfrozen view.
  *
  *\li	'zones' is non-NULL.
+ *
+ * Returns:
+ *\li	#ISC_R_SUCCESS
+ *\li	#ISC_R_SHUTTINGDOWN
  */
 
 isc_result_t
