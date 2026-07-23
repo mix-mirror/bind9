@@ -9767,12 +9767,14 @@ zone_refreshkeys(dns_zone_t *zone) {
 	isc_result_t result;
 	dns_rriterator_t rrit;
 	dns_db_t *db = NULL;
-	dns_dbversion_t *ver = NULL;
+	dns_dbversion_t *readver = NULL;
+	dns_dbversion_t *writever = NULL;
 	dns_diff_t diff;
 	dns_rdata_keydata_t kd;
 	isc_stdtime_t now = isc_stdtime_now();
 	bool commit = false;
 	bool fetching = false;
+	bool rrit_valid = false;
 	bool timerset = false;
 
 	ENTER;
@@ -9791,11 +9793,14 @@ zone_refreshkeys(dns_zone_t *zone) {
 
 	dns_diff_init(zone->mctx, &diff);
 
-	CHECK(dns_db_newversion(db, &ver));
+	dns_db_currentversion(db, &readver);
+
+	CHECK(dns_db_newversion(db, &writever));
 
 	DNS_ZONE_SETFLAG(zone, DNS_ZONEFLG_REFRESHING);
 
-	dns_rriterator_init(&rrit, db, ver, 0);
+	CHECK(dns_rriterator_init(&rrit, db, readver, 0));
+	rrit_valid = true;
 	for (result = dns_rriterator_first(&rrit); result == ISC_R_SUCCESS;
 	     result = dns_rriterator_nextrrset(&rrit))
 	{
@@ -9824,7 +9829,7 @@ zone_refreshkeys(dns_zone_t *zone) {
 			/* Removal timer expired? */
 			if (kd.removehd != 0 && kd.removehd < now) {
 				dns_rriterator_pause(&rrit);
-				CHECK(update_one_rr(db, ver, &diff,
+				CHECK(update_one_rr(db, writever, &diff,
 						    DNS_DIFFOP_DEL, name, ttl,
 						    &rdata));
 				continue;
@@ -9919,7 +9924,7 @@ zone_refreshkeys(dns_zone_t *zone) {
 #endif /* ifdef ENABLE_AFL */
 	}
 	if (!ISC_LIST_EMPTY(diff.tuples)) {
-		CHECK(update_soa_serial(zone, db, ver, &diff, zone->mctx,
+		CHECK(update_soa_serial(zone, db, writever, &diff, zone->mctx,
 					zone->updatemethod));
 		CHECK(zone_journal(zone, &diff, NULL, "zone_refreshkeys"));
 		commit = true;
@@ -9937,15 +9942,21 @@ cleanup:
 	}
 
 	dns_diff_clear(&diff);
-	if (ver != NULL) {
+	if (rrit_valid) {
 		dns_rriterator_destroy(&rrit);
-		dns_db_closeversion(db, &ver, commit);
+	}
+	if (readver != NULL) {
+		dns_db_closeversion(db, &readver, false);
+	}
+	if (writever != NULL) {
+		dns_db_closeversion(db, &writever, commit);
 	}
 	dns_db_detach(&db);
 
 	UNLOCK_ZONE(zone);
 
-	INSIST(ver == NULL);
+	INSIST(readver == NULL);
+	INSIST(writever == NULL);
 }
 
 typedef enum inline_sync_action {
