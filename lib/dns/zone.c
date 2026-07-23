@@ -3753,7 +3753,8 @@ cleanup:
 
 struct addifmissing_arg {
 	dns_db_t *db;
-	dns_dbversion_t *ver;
+	dns_dbversion_t *readver;
+	dns_dbversion_t *writever;
 	dns_diff_t *diff;
 	dns_zone_t *zone;
 	bool *changed;
@@ -3764,7 +3765,8 @@ static void
 addifmissing(dns_keytable_t *keytable, dns_keynode_t *keynode,
 	     dns_name_t *keyname, void *arg) {
 	dns_db_t *db = ((struct addifmissing_arg *)arg)->db;
-	dns_dbversion_t *ver = ((struct addifmissing_arg *)arg)->ver;
+	dns_dbversion_t *readver = ((struct addifmissing_arg *)arg)->readver;
+	dns_dbversion_t *writever = ((struct addifmissing_arg *)arg)->writever;
 	dns_diff_t *diff = ((struct addifmissing_arg *)arg)->diff;
 	dns_zone_t *zone = ((struct addifmissing_arg *)arg)->zone;
 	bool *changed = ((struct addifmissing_arg *)arg)->changed;
@@ -3793,7 +3795,7 @@ addifmissing(dns_keytable_t *keytable, dns_keynode_t *keynode,
 	 * if so, we don't need to add another.
 	 */
 	dns_fixedname_init(&fname);
-	result = dns_db_find(db, keyname, ver, dns_rdatatype_keydata,
+	result = dns_db_find(db, keyname, readver, dns_rdatatype_keydata,
 			     DNS_DBFIND_NOWILD, 0, dns_fixedname_name(&fname),
 			     NULL, NULL);
 	if (result == ISC_R_SUCCESS) {
@@ -3803,7 +3805,8 @@ addifmissing(dns_keytable_t *keytable, dns_keynode_t *keynode,
 	/*
 	 * Create the keydata.
 	 */
-	result = create_keydata(zone, db, ver, diff, keynode, keyname, changed);
+	result = create_keydata(zone, db, writever, diff, keynode, keyname,
+				changed);
 	if (result != ISC_R_SUCCESS && result != ISC_R_NOMORE) {
 		((struct addifmissing_arg *)arg)->result = result;
 	}
@@ -3828,9 +3831,11 @@ sync_keyzone(dns_zone_t *zone, dns_db_t *db) {
 	dns_keynode_t *keynode = NULL;
 	dns_view_t *view = zone->view;
 	dns_keytable_t *sr = NULL;
-	dns_dbversion_t *ver = NULL;
+	dns_dbversion_t *readver = NULL;
+	dns_dbversion_t *writever = NULL;
 	dns_diff_t diff;
 	dns_rriterator_t rrit;
+	bool rrit_valid = false;
 	struct addifmissing_arg arg;
 
 	dns_zone_log(zone, ISC_LOG_DEBUG(1), "synchronizing trusted keys");
@@ -3839,7 +3844,9 @@ sync_keyzone(dns_zone_t *zone, dns_db_t *db) {
 
 	CHECK(dns_view_getsecroots(view, &sr));
 
-	result = dns_db_newversion(db, &ver);
+	dns_db_currentversion(db, &readver);
+
+	result = dns_db_newversion(db, &writever);
 	if (result != ISC_R_SUCCESS) {
 		dnssec_log(zone, ISC_LOG_ERROR,
 			   "sync_keyzone:dns_db_newversion -> %s",
@@ -3854,7 +3861,8 @@ sync_keyzone(dns_zone_t *zone, dns_db_t *db) {
 	 * them from the zone.  Otherwise call load_secroots(), which
 	 * loads keys into secroots as appropriate.
 	 */
-	dns_rriterator_init(&rrit, db, ver, 0);
+	CHECK(dns_rriterator_init(&rrit, db, readver, 0));
+	rrit_valid = true;
 	for (result = dns_rriterator_first(&rrit); result == ISC_R_SUCCESS;
 	     result = dns_rriterator_nextrrset(&rrit))
 	{
@@ -3867,7 +3875,6 @@ sync_keyzone(dns_zone_t *zone, dns_db_t *db) {
 
 		dns_rriterator_current(&rrit, &rrname, &ttl, &rdataset, NULL);
 		if (!dns_rdataset_isassociated(rdataset)) {
-			dns_rriterator_destroy(&rrit);
 			goto cleanup;
 		}
 
@@ -3903,7 +3910,8 @@ sync_keyzone(dns_zone_t *zone, dns_db_t *db) {
 		dns_rriterator_pause(&rrit);
 		result = dns_keytable_find(sr, rrname, &keynode);
 		if (result != ISC_R_SUCCESS || !dns_keynode_managed(keynode)) {
-			CHECK(delete_keydata(db, ver, &diff, rrname, rdataset));
+			CHECK(delete_keydata(db, writever, &diff, rrname,
+					     rdataset));
 			changed = true;
 		} else if (load) {
 			load_secroots(zone, rrname, rdataset);
@@ -3914,6 +3922,7 @@ sync_keyzone(dns_zone_t *zone, dns_db_t *db) {
 		}
 	}
 	dns_rriterator_destroy(&rrit);
+	rrit_valid = false;
 
 	/*
 	 * Walk secroots to find any initial keys that aren't in
@@ -3922,7 +3931,8 @@ sync_keyzone(dns_zone_t *zone, dns_db_t *db) {
 	 * zone so that they'll be looked up.
 	 */
 	arg.db = db;
-	arg.ver = ver;
+	arg.readver = readver;
+	arg.writever = writever;
 	arg.result = ISC_R_SUCCESS;
 	arg.diff = &diff;
 	arg.zone = zone;
@@ -3931,7 +3941,7 @@ sync_keyzone(dns_zone_t *zone, dns_db_t *db) {
 	result = arg.result;
 	if (changed) {
 		/* Write changes to journal file. */
-		CHECK(update_soa_serial(zone, db, ver, &diff, zone->mctx,
+		CHECK(update_soa_serial(zone, db, writever, &diff, zone->mctx,
 					zone->updatemethod));
 		CHECK(zone_journal(zone, &diff, NULL, "sync_keyzone"));
 
@@ -3953,12 +3963,19 @@ cleanup:
 	if (sr != NULL) {
 		dns_keytable_detach(&sr);
 	}
-	if (ver != NULL) {
-		dns_db_closeversion(db, &ver, commit);
+	if (rrit_valid) {
+		dns_rriterator_destroy(&rrit);
+	}
+	if (readver != NULL) {
+		dns_db_closeversion(db, &readver, false);
+	}
+	if (writever != NULL) {
+		dns_db_closeversion(db, &writever, commit);
 	}
 	dns_diff_clear(&diff);
 
-	INSIST(ver == NULL);
+	INSIST(readver == NULL);
+	INSIST(writever == NULL);
 
 	return result;
 }
