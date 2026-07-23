@@ -15,7 +15,7 @@ options {
 {% include "_common/options/sources.conf.j2" %}
 {% include "_common/options/server.conf.j2" %}
 	listen-on {
-		10.53.0.3;
+		@ns.ip@;
 		10.53.0.5;
 		10.53.0.6;
 		10.53.0.7;
