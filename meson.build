@@ -942,9 +942,7 @@ endif
 scf_dep = null_dep
 if host_machine.system() == 'sunos'
     scf_dep = cc.find_library('scf', has_headers: 'libscf.h', required: false)
-    if scf_dep.found()
-        config.set('HAVE_LIBSCF', 1)
-    endif
+    config.set('HAVE_LIBSCF', scf_dep.found())
 endif
 
 ## IDN
