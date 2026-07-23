@@ -9775,6 +9775,7 @@ zone_refreshkeys(dns_zone_t *zone) {
 	dns_dbversion_t *readver = NULL;
 	dns_dbversion_t *writever = NULL;
 	dns_diff_t diff;
+	dns_diff_t del_diff;
 	dns_rdata_keydata_t kd;
 	isc_stdtime_t now = isc_stdtime_now();
 	bool commit = false;
@@ -9797,6 +9798,7 @@ zone_refreshkeys(dns_zone_t *zone) {
 	ZONEDB_UNLOCK(&zone->dblock, isc_rwlocktype_read);
 
 	dns_diff_init(zone->mctx, &diff);
+	dns_diff_init(zone->mctx, &del_diff);
 
 	dns_db_currentversion(db, &readver);
 
@@ -9834,9 +9836,8 @@ zone_refreshkeys(dns_zone_t *zone) {
 			/* Removal timer expired? */
 			if (kd.removehd != 0 && kd.removehd < now) {
 				dns_rriterator_pause(&rrit);
-				CHECK(update_one_rr(db, writever, &diff,
-						    DNS_DIFFOP_DEL, name, ttl,
-						    &rdata));
+				append_one_rr(&del_diff, DNS_DIFFOP_DEL, name,
+					      ttl, &rdata);
 				continue;
 			}
 
@@ -9928,6 +9929,13 @@ zone_refreshkeys(dns_zone_t *zone) {
 		}
 #endif /* ifdef ENABLE_AFL */
 	}
+	dns_rriterator_destroy(&rrit);
+	rrit_valid = false;
+
+	if (!ISC_LIST_EMPTY(del_diff.tuples)) {
+		CHECK(apply_and_move_diff(db, writever, &del_diff, &diff));
+	}
+
 	if (!ISC_LIST_EMPTY(diff.tuples)) {
 		CHECK(update_soa_serial(zone, db, writever, &diff, zone->mctx,
 					zone->updatemethod));
@@ -9946,6 +9954,7 @@ cleanup:
 		DNS_ZONE_CLRFLAG(zone, DNS_ZONEFLG_REFRESHING);
 	}
 
+	dns_diff_clear(&del_diff);
 	dns_diff_clear(&diff);
 	if (rrit_valid) {
 		dns_rriterator_destroy(&rrit);
