@@ -3410,19 +3410,21 @@ cleanup:
 }
 
 /*
- * Remove from the key zone all the KEYDATA records found in rdataset.
+ * Queue removal from the key zone of all the KEYDATA records found in
+ * rdataset.
  */
-static isc_result_t
-delete_keydata(dns_db_t *db, dns_dbversion_t *ver, dns_diff_t *diff,
-	       dns_name_t *name, dns_rdataset_t *rdataset) {
+static void
+append_delete_keydata(dns_diff_t *diff, dns_name_t *name,
+		      dns_rdataset_t *rdataset) {
 	DNS_RDATASET_FOREACH(rdataset) {
+		dns_difftuple_t *tuple = NULL;
 		dns_rdata_t rdata = DNS_RDATA_INIT;
-		dns_rdataset_current(rdataset, &rdata);
-		RETERR(update_one_rr(db, ver, diff, DNS_DIFFOP_DEL, name, 0,
-				     &rdata));
-	}
 
-	return ISC_R_SUCCESS;
+		dns_rdataset_current(rdataset, &rdata);
+		dns_difftuple_create(diff->mctx, DNS_DIFFOP_DEL, name, 0,
+				     &rdata, &tuple);
+		dns_diff_append(diff, &tuple);
+	}
 }
 
 /*
@@ -3787,7 +3789,6 @@ cleanup:
 
 struct addifmissing_arg {
 	dns_db_t *db;
-	dns_dbversion_t *readver;
 	dns_dbversion_t *writever;
 	dns_diff_t *diff;
 	dns_zone_t *zone;
@@ -3799,7 +3800,6 @@ static void
 addifmissing(dns_keytable_t *keytable, dns_keynode_t *keynode,
 	     dns_name_t *keyname, void *arg) {
 	dns_db_t *db = ((struct addifmissing_arg *)arg)->db;
-	dns_dbversion_t *readver = ((struct addifmissing_arg *)arg)->readver;
 	dns_dbversion_t *writever = ((struct addifmissing_arg *)arg)->writever;
 	dns_diff_t *diff = ((struct addifmissing_arg *)arg)->diff;
 	dns_zone_t *zone = ((struct addifmissing_arg *)arg)->zone;
@@ -3829,7 +3829,7 @@ addifmissing(dns_keytable_t *keytable, dns_keynode_t *keynode,
 	 * if so, we don't need to add another.
 	 */
 	dns_fixedname_init(&fname);
-	result = dns_db_find(db, keyname, readver, dns_rdatatype_keydata,
+	result = dns_db_find(db, keyname, writever, dns_rdatatype_keydata,
 			     DNS_DBFIND_NOWILD, 0, dns_fixedname_name(&fname),
 			     NULL, NULL);
 	if (result == ISC_R_SUCCESS) {
@@ -3868,6 +3868,7 @@ sync_keyzone(dns_zone_t *zone, dns_db_t *db) {
 	dns_dbversion_t *readver = NULL;
 	dns_dbversion_t *writever = NULL;
 	dns_diff_t diff;
+	dns_diff_t del_diff;
 	dns_rriterator_t rrit;
 	bool rrit_valid = false;
 	struct addifmissing_arg arg;
@@ -3875,6 +3876,7 @@ sync_keyzone(dns_zone_t *zone, dns_db_t *db) {
 	dns_zone_log(zone, ISC_LOG_DEBUG(1), "synchronizing trusted keys");
 
 	dns_diff_init(zone->mctx, &diff);
+	dns_diff_init(zone->mctx, &del_diff);
 
 	CHECK(dns_view_getsecroots(view, &sr));
 
@@ -3944,8 +3946,7 @@ sync_keyzone(dns_zone_t *zone, dns_db_t *db) {
 		dns_rriterator_pause(&rrit);
 		result = dns_keytable_find(sr, rrname, &keynode);
 		if (result != ISC_R_SUCCESS || !dns_keynode_managed(keynode)) {
-			CHECK(delete_keydata(db, writever, &diff, rrname,
-					     rdataset));
+			append_delete_keydata(&del_diff, rrname, rdataset);
 			changed = true;
 		} else if (load) {
 			load_secroots(zone, rrname, rdataset);
@@ -3958,6 +3959,10 @@ sync_keyzone(dns_zone_t *zone, dns_db_t *db) {
 	dns_rriterator_destroy(&rrit);
 	rrit_valid = false;
 
+	if (!ISC_LIST_EMPTY(del_diff.tuples)) {
+		CHECK(apply_and_move_diff(db, writever, &del_diff, &diff));
+	}
+
 	/*
 	 * Walk secroots to find any initial keys that aren't in
 	 * the zone.  If we find any, add them to the zone directly.
@@ -3965,7 +3970,6 @@ sync_keyzone(dns_zone_t *zone, dns_db_t *db) {
 	 * zone so that they'll be looked up.
 	 */
 	arg.db = db;
-	arg.readver = readver;
 	arg.writever = writever;
 	arg.result = ISC_R_SUCCESS;
 	arg.diff = &diff;
@@ -4006,6 +4010,7 @@ cleanup:
 	if (writever != NULL) {
 		dns_db_closeversion(db, &writever, commit);
 	}
+	dns_diff_clear(&del_diff);
 	dns_diff_clear(&diff);
 
 	INSIST(readver == NULL);
