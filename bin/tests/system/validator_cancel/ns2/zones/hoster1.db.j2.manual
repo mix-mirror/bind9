@@ -1,0 +1,6 @@
+{% include '_common/zones/soa.partial.db.j2' %}
+
+hoster1.		NS	ns.hoster1.
+ns.hoster1.		A	10.53.0.2
+
+ns-tld.hoster1.		A	10.53.0.3
