@@ -22,15 +22,13 @@ view restart16 {
 	match-clients { key restart16; none; };
 	max-query-restarts 16;
 
-	zone "." {
-		type hint;
-		file "root.hint";
-	};
+{% filter indent("	", true) %}
+{% include "_common/root.hint.conf" %}
+{% endfilter %}
 };
 
 view default {
-	zone "." {
-		type hint;
-		file "root.hint";
-	};
+{% filter indent("	", true) %}
+{% include "_common/root.hint.conf" %}
+{% endfilter %}
 };
