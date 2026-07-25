@@ -1,10 +1,16 @@
-#!/usr/bin/python3
+"""
+Copyright (C) Internet Systems Consortium, Inc. ("ISC")
 
-# Copyright (C) Internet Systems Consortium, Inc. ("ISC")
-#
-# SPDX-License-Identifier: MPL-2.0
+SPDX-License-Identifier: MPL-2.0
 
-from collections.abc import AsyncGenerator
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0.  If a copy of the MPL was not distributed with this
+file, you can obtain one at https://mozilla.org/MPL/2.0/.
+
+See the COPYRIGHT file distributed with this work for additional
+information regarding copyright ownership.
+"""
+
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -15,8 +21,6 @@ import json
 from cryptography.hazmat.primitives import serialization
 
 import dns.dnssec
-import dns.message
-import dns.name
 import dns.rcode
 import dns.rdata
 import dns.rdataclass
@@ -25,9 +29,10 @@ import dns.rrset
 
 from isctest.asyncserver import (
     AsyncDnsServer,
-    DnsResponseSend,
-    QueryContext,
-    ResponseHandler,
+    DomainHandler,
+    QnameHandler,
+    QnameQtypeHandler,
+    StaticResponseHandler,
 )
 
 TTL = 300
@@ -37,10 +42,8 @@ CHILD_NS = f"ns.{CHILD}"
 VICTIM = f"victim.{PARENT}"
 AAC = f"aac.{PARENT}"
 CHILD_NEXT = f"ns1.{PARENT}"
-TRIGGER = f"www.{CHILD}"
 PRIME_NX = f"0.{PARENT}"
 
-CHILD_A = "192.0.2.50"
 CHILD_NS_A = "10.53.0.2"
 VICTIM_A = "192.0.2.99"
 AAC_A = "192.0.2.77"
@@ -48,18 +51,17 @@ AAC_A = "192.0.2.77"
 
 @dataclass(frozen=True)
 class Key:
-    zone: dns.name.Name
+    zone: str
     private_key: object
     dnskey: dns.rdata.Rdata
 
 
-def name(text: str) -> dns.name.Name:
-    return dns.name.from_text(text)
+def rrset(owner: str, rdtype: dns.rdatatype.RdataType, *rdatas: str) -> dns.rrset.RRset:
+    return dns.rrset.from_text(owner, TTL, dns.rdataclass.IN, rdtype, *rdatas)
 
 
 def load_keys() -> dict[str, Key]:
-    path = Path("keys.json")
-    with path.open(encoding="utf-8") as keys_file:
+    with Path("keys.json").open(encoding="utf-8") as keys_file:
         raw_keys = json.load(keys_file)
 
     keys = {}
@@ -68,26 +70,22 @@ def load_keys() -> dict[str, Key]:
             raw_key["private_pem"].encode("ascii"),
             password=None,
         )
-        dnskey = dns.rdata.from_text(
-            dns.rdataclass.IN, dns.rdatatype.DNSKEY, raw_key["dnskey"]
+        keys[zone] = Key(
+            zone,
+            private_key,
+            dns.rdata.from_text(
+                dns.rdataclass.IN, dns.rdatatype.DNSKEY, raw_key["dnskey"]
+            ),
         )
-        keys[zone] = Key(name(zone), private_key, dnskey)
 
     return keys
 
 
-def rrset(owner: str, rdtype: dns.rdatatype.RdataType, *rdatas: str) -> dns.rrset.RRset:
-    return dns.rrset.from_text(owner, TTL, dns.rdataclass.IN, rdtype, *rdatas)
+PARENT_KEY = load_keys()[PARENT]
 
 
-def rrset_from_rdata(owner: str, rdata: dns.rdata.Rdata) -> dns.rrset.RRset:
-    return dns.rrset.from_rdata(name(owner), TTL, rdata)
-
-
-def add_signed(
-    section: list[dns.rrset.RRset], covered: dns.rrset.RRset, signer: Key
-) -> None:
-    rrsig = dns.dnssec.sign(
+def rrsig(covered: dns.rrset.RRset, signer: Key) -> dns.rrset.RRset:
+    rdata = dns.dnssec.sign(
         covered,
         signer.private_key,
         signer.zone,
@@ -95,15 +93,38 @@ def add_signed(
         lifetime=86400,
         verify=True,
     )
-    section.append(covered)
-    section.append(dns.rrset.from_rdata(covered.name, covered.ttl, rrsig))
+    return dns.rrset.from_rdata(covered.name, covered.ttl, rdata)
 
 
-def add_dnskey(response: dns.message.Message, zone: str, key: Key) -> None:
-    add_signed(response.answer, rrset_from_rdata(zone, key.dnskey), key)
+def signed(covered: dns.rrset.RRset, signer: Key) -> list[dns.rrset.RRset]:
+    return [covered, rrsig(covered, signer)]
 
 
-def soa_rrset(zone: str) -> dns.rrset.RRset:
+def garbage_rrsig(covered: dns.rrset.RRset, signer: Key) -> dns.rrset.RRset:
+    now = datetime.now(timezone.utc)
+    inception = (now - timedelta(hours=1)).strftime("%Y%m%d%H%M%S")
+    expiration = (now + timedelta(days=1)).strftime("%Y%m%d%H%M%S")
+    labels = len(covered.name.labels) - 1
+    key_tag = dns.dnssec.key_id(signer.dnskey)
+    signature = base64.b64encode(bytes(64)).decode("ascii")
+    text = (
+        f"{dns.rdatatype.to_text(covered.rdtype)} "
+        f"{signer.dnskey.algorithm} {labels} {covered.ttl} "
+        f"{expiration} {inception} {key_tag} {signer.zone} {signature}"
+    )
+    rdata = dns.rdata.from_text(dns.rdataclass.IN, dns.rdatatype.RRSIG, text)
+    return dns.rrset.from_rdata(covered.name, covered.ttl, rdata)
+
+
+def garbage_signed(covered: dns.rrset.RRset, signer: Key) -> list[dns.rrset.RRset]:
+    return [covered, garbage_rrsig(covered, signer)]
+
+
+def dnskey() -> dns.rrset.RRset:
+    return dns.rrset.from_rdata(PARENT, TTL, PARENT_KEY.dnskey)
+
+
+def soa(zone: str) -> dns.rrset.RRset:
     return rrset(
         zone,
         dns.rdatatype.SOA,
@@ -111,118 +132,104 @@ def soa_rrset(zone: str) -> dns.rrset.RRset:
     )
 
 
-def nsec_rrset(owner: str, next_name: str, *types: str) -> dns.rrset.RRset:
+def nsec(owner: str, next_name: str, *types: str) -> dns.rrset.RRset:
     return rrset(owner, dns.rdatatype.NSEC, f"{next_name} {' '.join(types)}")
 
 
 def nsec_apex() -> dns.rrset.RRset:
-    return nsec_rrset(PARENT, AAC, "NS", "SOA", "RRSIG", "NSEC", "DNSKEY")
+    return nsec(PARENT, AAC, "NS", "SOA", "RRSIG", "NSEC", "DNSKEY")
 
 
 def nsec_deleg_child() -> dns.rrset.RRset:
-    return nsec_rrset(CHILD, CHILD_NEXT, "NS", "RRSIG", "NSEC")
+    return nsec(CHILD, CHILD_NEXT, "NS", "RRSIG", "NSEC")
 
 
 def stuffed_ent_nsec() -> dns.rrset.RRset:
-    return nsec_rrset(f"t.{PARENT}", f"sub.{VICTIM}", "A", "RRSIG", "NSEC")
+    return nsec(f"t.{PARENT}", f"sub.{VICTIM}", "A", "RRSIG", "NSEC")
 
 
 def stuffed_range_nsec() -> dns.rrset.RRset:
-    return nsec_rrset(f"aab.{PARENT}", f"az.{PARENT}", "A", "RRSIG", "NSEC")
+    return nsec(f"aab.{PARENT}", f"az.{PARENT}", "A", "RRSIG", "NSEC")
 
 
-def garbage_rrsig(covered: dns.rrset.RRset, signer: Key) -> dns.rrset.RRset:
-    now = datetime.now(timezone.utc)
-    inception = (now - timedelta(hours=1)).strftime("%Y%m%d%H%M%S")
-    expiration = (now + timedelta(days=1)).strftime("%Y%m%d%H%M%S")
-    signer_name = signer.zone.to_text()
-    labels = len(covered.name.labels) - 1
-    key_tag = dns.dnssec.key_id(signer.dnskey)
-    signature = base64.b64encode(bytes(64)).decode("ascii")
-    text = (
-        f"{dns.rdatatype.to_text(covered.rdtype)} "
-        f"{signer.dnskey.algorithm} {labels} {covered.ttl} "
-        f"{expiration} {inception} {key_tag} {signer_name} {signature}"
+class ParentDnskeyHandler(QnameQtypeHandler, StaticResponseHandler):
+    qnames = [PARENT]
+    qtypes = [dns.rdatatype.DNSKEY]
+    answer = signed(dnskey(), PARENT_KEY)
+
+
+class ParentSoaHandler(QnameQtypeHandler, StaticResponseHandler):
+    qnames = [PARENT]
+    qtypes = [dns.rdatatype.SOA]
+    answer = signed(soa(PARENT), PARENT_KEY)
+
+
+class PrimeNxdomainHandler(QnameHandler, StaticResponseHandler):
+    qnames = [PRIME_NX]
+    rcode = dns.rcode.NXDOMAIN
+    authority = signed(soa(PARENT), PARENT_KEY) + signed(nsec_apex(), PARENT_KEY)
+
+
+class ChildDsHandler(QnameQtypeHandler, StaticResponseHandler):
+    qnames = [CHILD]
+    qtypes = [dns.rdatatype.DS]
+    authority = signed(soa(PARENT), PARENT_KEY) + signed(nsec_deleg_child(), PARENT_KEY)
+
+
+class VictimAHandler(QnameQtypeHandler, StaticResponseHandler):
+    qnames = [VICTIM]
+    qtypes = [dns.rdatatype.A]
+    answer = signed(rrset(VICTIM, dns.rdatatype.A, VICTIM_A), PARENT_KEY)
+
+
+class AacAHandler(QnameQtypeHandler, StaticResponseHandler):
+    qnames = [AAC]
+    qtypes = [dns.rdatatype.A]
+    answer = signed(rrset(AAC, dns.rdatatype.A, AAC_A), PARENT_KEY)
+
+
+class MaliciousReferralHandler(DomainHandler, StaticResponseHandler):
+    """
+    Serve the poisoned referral for the child zone and its subdomains: the
+    parent-signed delegation NSEC, plus two piggy-backed NSEC RRs (a fake empty
+    non-terminal and a fake range) carrying garbage RRSIGs.  The child's DS
+    query is answered by ChildDsHandler, installed before this handler.
+    """
+
+    domains = [CHILD]
+    authority = (
+        [rrset(CHILD, dns.rdatatype.NS, CHILD_NS)]
+        + signed(nsec_deleg_child(), PARENT_KEY)
+        + garbage_signed(stuffed_ent_nsec(), PARENT_KEY)
+        + garbage_signed(stuffed_range_nsec(), PARENT_KEY)
     )
-    rdata = dns.rdata.from_text(dns.rdataclass.IN, dns.rdatatype.RRSIG, text)
-    return dns.rrset.from_rdata(covered.name, covered.ttl, rdata)
+    additional = [rrset(CHILD_NS, dns.rdatatype.A, CHILD_NS_A)]
 
 
-def add_garbage_signed_nsec(
-    section: list[dns.rrset.RRset], covered: dns.rrset.RRset, signer: Key
-) -> None:
-    section.append(covered)
-    section.append(garbage_rrsig(covered, signer))
+class ApexNodataHandler(QnameHandler, StaticResponseHandler):
+    qnames = [PARENT]
+    authority = signed(soa(PARENT), PARENT_KEY) + signed(nsec_apex(), PARENT_KEY)
 
 
-def prepare_response(qctx: QueryContext) -> dns.message.Message:
-    qctx.prepare_new_response(with_zone_data=False)
-    qctx.response.set_rcode(dns.rcode.NOERROR)
-    return qctx.response
-
-
-def add_parent_negative(
-    response: dns.message.Message, signer: Key, nsec: dns.rrset.RRset
-) -> None:
-    add_signed(response.authority, soa_rrset(PARENT), signer)
-    add_signed(response.authority, nsec, signer)
-
-
-class ParentHandler(ResponseHandler):
-    def __init__(self, keys: dict[str, Key]) -> None:
-        self.keys = keys
-        self.parent = name(PARENT)
-        self.child = name(CHILD)
-        self.victim = name(VICTIM)
-        self.aac = name(AAC)
-        self.prime_nx = name(PRIME_NX)
-
-    def match(self, qctx: QueryContext) -> bool:
-        return qctx.qname.is_subdomain(self.parent)
-
-    async def get_responses(
-        self, qctx: QueryContext
-    ) -> AsyncGenerator[DnsResponseSend, None]:
-        response = prepare_response(qctx)
-        parent_key = self.keys[PARENT]
-
-        if qctx.qname == self.parent and qctx.qtype == dns.rdatatype.DNSKEY:
-            add_dnskey(response, PARENT, parent_key)
-        elif qctx.qname == self.parent and qctx.qtype == dns.rdatatype.SOA:
-            add_signed(response.answer, soa_rrset(PARENT), parent_key)
-        elif qctx.qname == self.parent:
-            add_parent_negative(response, parent_key, nsec_apex())
-        elif qctx.qname == self.child and qctx.qtype == dns.rdatatype.DS:
-            add_parent_negative(response, parent_key, nsec_deleg_child())
-        elif qctx.qname == self.prime_nx:
-            response.set_rcode(dns.rcode.NXDOMAIN)
-            add_parent_negative(response, parent_key, nsec_apex())
-        elif qctx.qname == self.child or qctx.qname.is_subdomain(self.child):
-            response.authority.append(rrset(CHILD, dns.rdatatype.NS, CHILD_NS))
-            add_signed(response.authority, nsec_deleg_child(), parent_key)
-            add_garbage_signed_nsec(response.authority, stuffed_ent_nsec(), parent_key)
-            add_garbage_signed_nsec(
-                response.authority, stuffed_range_nsec(), parent_key
-            )
-            response.additional.append(rrset(CHILD_NS, dns.rdatatype.A, CHILD_NS_A))
-        elif qctx.qname == self.victim and qctx.qtype == dns.rdatatype.A:
-            add_signed(
-                response.answer,
-                rrset(VICTIM, dns.rdatatype.A, VICTIM_A),
-                parent_key,
-            )
-        elif qctx.qname == self.aac and qctx.qtype == dns.rdatatype.A:
-            add_signed(response.answer, rrset(AAC, dns.rdatatype.A, AAC_A), parent_key)
-        else:
-            response.set_rcode(dns.rcode.NXDOMAIN)
-            add_parent_negative(response, parent_key, nsec_apex())
-
-        yield DnsResponseSend(response, authoritative=True)
+class FallbackNxdomainHandler(DomainHandler, StaticResponseHandler):
+    domains = [PARENT]
+    rcode = dns.rcode.NXDOMAIN
+    authority = signed(soa(PARENT), PARENT_KEY) + signed(nsec_apex(), PARENT_KEY)
 
 
 def main() -> None:
-    server = AsyncDnsServer(default_aa=True)
-    server.install_response_handlers(ParentHandler(load_keys()))
+    server = AsyncDnsServer(default_aa=True, default_rcode=dns.rcode.NOERROR)
+    server.install_response_handlers(
+        ParentDnskeyHandler(),
+        ParentSoaHandler(),
+        PrimeNxdomainHandler(),
+        ChildDsHandler(),
+        VictimAHandler(),
+        AacAHandler(),
+        MaliciousReferralHandler(),
+        ApexNodataHandler(),
+        FallbackNxdomainHandler(),
+    )
     server.run()
 
 
