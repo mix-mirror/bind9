@@ -16,6 +16,7 @@
 
 #include <limits.h>
 #include <netdb.h>
+#include <stdint.h>
 
 #include <isc/ascii.h>
 #include <isc/net.h>
@@ -31,7 +32,7 @@ init_lock(void) {
 }
 
 static bool
-mygetprotobyname(const char *name, long *proto) {
+mygetprotobyname(const char *name, int32_t *proto) {
 	struct protoent *pe;
 
 	LOCK(&wks_lock);
@@ -44,7 +45,7 @@ mygetprotobyname(const char *name, long *proto) {
 }
 
 static bool
-mygetservbyname(const char *name, const char *proto, long *port) {
+mygetservbyname(const char *name, const char *proto, int32_t *port) {
 	struct servent *se;
 
 	LOCK(&wks_lock);
@@ -62,9 +63,9 @@ fromtext_in_wks(ARGS_FROMTEXT) {
 	isc_token_t token;
 	isc_region_t region;
 	struct in_addr addr;
-	long proto;
+	int32_t proto;
 	unsigned char bm[8 * 1024]; /* 64k bits */
-	long port;
+	int32_t port;
 	long maxport = -1;
 	const char *ps = NULL;
 	unsigned int n;
