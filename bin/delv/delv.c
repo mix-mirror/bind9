@@ -1834,7 +1834,7 @@ resolve_cb(dns_client_t *client, const dns_name_t *query_name,
 		dns_name_format(query_name, namestr, sizeof(namestr));
 		printf("query_name: %s\n", namestr);
 		printf("status: %s\n", isc_result_totext(result));
-		printf("records:\n");
+		printf("details:\n");
 	}
 
 	ISC_LIST_FOREACH(*namelist, response_name, link) {

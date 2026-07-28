@@ -1791,18 +1791,18 @@ if [ -x "$DELV" ]; then
     $PYTHON yamlget.py delv.out.test$n query_name >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
     [ "$value" = "ns2.example" ] || ret=1
-    $PYTHON yamlget.py delv.out.test$n records 0 answer_not_validated 0 name >yamlget.out.test$n 2>&1 || ret=1
+    $PYTHON yamlget.py delv.out.test$n details 0 answer_not_validated 0 name >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
     [ "$value" = "ns2.example." ] || ret=1
-    $PYTHON yamlget.py delv.out.test$n records 0 answer_not_validated 0 class >yamlget.out.test$n 2>&1 || ret=1
+    $PYTHON yamlget.py delv.out.test$n details 0 answer_not_validated 0 class >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
     [ "$value" = "IN" ] || ret=1
     # An ANY response may contain the records in any order, so only check
     # that the remaining fields are present.
-    $PYTHON yamlget.py delv.out.test$n records 0 answer_not_validated 0 rrtype >yamlget.out.test$n 2>&1 || ret=1
+    $PYTHON yamlget.py delv.out.test$n details 0 answer_not_validated 0 rrtype >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
     [ -n "$value" ] || ret=1
-    $PYTHON yamlget.py delv.out.test$n records 0 answer_not_validated 0 rdata >yamlget.out.test$n 2>&1 || ret=1
+    $PYTHON yamlget.py delv.out.test$n details 0 answer_not_validated 0 rdata >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
     [ -n "$value" ] || ret=1
     if [ $ret -ne 0 ]; then echo_i "failed"; fi
@@ -1818,23 +1818,23 @@ if [ -x "$DELV" ]; then
     $PYTHON yamlget.py delv.out.test$n query_name >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
     [ "$value" = "ns2.example" ] || ret=1
-    $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 0 name >yamlget.out.test$n 2>&1 || ret=1
+    $PYTHON yamlget.py delv.out.test$n details 0 negative_response_answer_not_validated 0 name >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
     [ "$value" = "ns2.example." ] || ret=1
-    $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 0 class >yamlget.out.test$n 2>&1 || ret=1
+    $PYTHON yamlget.py delv.out.test$n details 0 negative_response_answer_not_validated 0 class >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
     [ "$value" = "IN" ] || ret=1
-    $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 0 covered >yamlget.out.test$n 2>&1 || ret=1
+    $PYTHON yamlget.py delv.out.test$n details 0 negative_response_answer_not_validated 0 covered >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
     [ "$value" = 'TYPE500' ] || ret=1
-    $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 0 type >yamlget.out.test$n 2>&1 || ret=1
+    $PYTHON yamlget.py delv.out.test$n details 0 negative_response_answer_not_validated 0 type >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
     [ "$value" = 'NXRRSET' ] || ret=1
     # A negative answer carries no record type or rdata of its own.
-    $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 0 rrtype >yamlget.out.test$n 2>&1 && ret=1
+    $PYTHON yamlget.py delv.out.test$n details 0 negative_response_answer_not_validated 0 rrtype >yamlget.out.test$n 2>&1 && ret=1
     read -r value <yamlget.out.test$n
     [ "$value" = 'Key "rrtype" not found.' ] || ret=1
-    $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 0 rdata >yamlget.out.test$n 2>&1 && ret=1
+    $PYTHON yamlget.py delv.out.test$n details 0 negative_response_answer_not_validated 0 rdata >yamlget.out.test$n 2>&1 && ret=1
     read -r value <yamlget.out.test$n
     [ "$value" = 'Key "rdata" not found.' ] || ret=1
     if [ $ret -ne 0 ]; then echo_i "failed"; fi
@@ -1850,34 +1850,34 @@ if [ -x "$DELV" ]; then
     $PYTHON yamlget.py delv.out.test$n query_name >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
     [ "$value" = "this-does-not-exist.ns2.example" ] || ret=1
-    $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 0 name >yamlget.out.test$n 2>&1 || ret=1
+    $PYTHON yamlget.py delv.out.test$n details 0 negative_response_answer_not_validated 0 name >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
     [ "$value" = "this-does-not-exist.ns2.example." ] || ret=1
-    $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 0 class >yamlget.out.test$n 2>&1 || ret=1
+    $PYTHON yamlget.py delv.out.test$n details 0 negative_response_answer_not_validated 0 class >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
     [ "$value" = "IN" ] || ret=1
-    $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 0 covered >yamlget.out.test$n 2>&1 || ret=1
+    $PYTHON yamlget.py delv.out.test$n details 0 negative_response_answer_not_validated 0 covered >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
     [ "$value" = 'ANY' ] || ret=1
-    $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 0 type >yamlget.out.test$n 2>&1 || ret=1
+    $PYTHON yamlget.py delv.out.test$n details 0 negative_response_answer_not_validated 0 type >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
     [ "$value" = 'NXDOMAIN' ] || ret=1
     # A negative answer carries no record type or rdata of its own.
-    $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 0 rrtype >yamlget.out.test$n 2>&1 && ret=1
+    $PYTHON yamlget.py delv.out.test$n details 0 negative_response_answer_not_validated 0 rrtype >yamlget.out.test$n 2>&1 && ret=1
     read -r value <yamlget.out.test$n
     [ "$value" = 'Key "rrtype" not found.' ] || ret=1
-    $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 0 rdata >yamlget.out.test$n 2>&1 && ret=1
+    $PYTHON yamlget.py delv.out.test$n details 0 negative_response_answer_not_validated 0 rdata >yamlget.out.test$n 2>&1 && ret=1
     read -r value <yamlget.out.test$n
     [ "$value" = 'Key "rdata" not found.' ] || ret=1
     # The records summarising the negative response carry no TTL or class.
     # The rdata of an RRSIG summary is elided, leaving the covered type.
-    $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 1 name >yamlget.out.test$n 2>&1 || ret=1
+    $PYTHON yamlget.py delv.out.test$n details 0 negative_response_answer_not_validated 1 name >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
     [ "$value" = "ns2.example." ] || ret=1
-    $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 1 rrtype >yamlget.out.test$n 2>&1 || ret=1
+    $PYTHON yamlget.py delv.out.test$n details 0 negative_response_answer_not_validated 1 rrtype >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
     [ "$value" = "RRSIG" ] || ret=1
-    $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 1 rdata >yamlget.out.test$n 2>&1 || ret=1
+    $PYTHON yamlget.py delv.out.test$n details 0 negative_response_answer_not_validated 1 rdata >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
     [ "$value" = "NSEC ..." ] || ret=1
     if [ $ret -ne 0 ]; then echo_i "failed"; fi
