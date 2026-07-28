@@ -663,12 +663,12 @@ rdataset_totext_yaml(dns_rdataset_t *rdataset, const dns_name_t *name,
 		RETERR(dns_rdataclass_totext(rdataset->rdclass, target));
 
 		/*
-		 * A negative record carries no rdata: it is reported under
-		 * the type it covers, and a 'type' key naming the kind of
-		 * negative response stands in for the rdata.
+		 * A negative record has no type or rdata of its own: a
+		 * 'covered' key names the type it covers and a 'type' key
+		 * names the kind of negative response.
 		 */
-		RETERR(str_totext(", rrtype: ", target));
 		if (rdataset->attributes.negative) {
+			RETERR(str_totext(", covered: ", target));
 			RETERR(dns_rdatatype_totext(rdataset->covers, target));
 
 			RETERR(str_totext(", type: ", target));
@@ -686,6 +686,7 @@ rdataset_totext_yaml(dns_rdataset_t *rdataset, const dns_name_t *name,
 		} else {
 			dns_rdata_t rdata = DNS_RDATA_INIT;
 
+			RETERR(str_totext(", rrtype: ", target));
 			RETERR(dns_rdatatype_totext(rdataset->type, target));
 
 			RETERR(str_totext(", rdata: '", target));
