@@ -32,9 +32,13 @@ cp ns3/primary.db.in ns3/externalkey.db
 cp ns3/primary.db.in ns3/delayedkeys.db
 cp ns3/primary.db.in ns3/removedkeys-primary.db
 cp ns3/primary.db.in ns3/incremental-updates.db
+cp ns3/notexact.db.in ns3/notexact.db
 cp ns3/include.db.in ns3/include.db
 
 mkdir ns3/removedkeys
+
+"$MAKEJOURNAL" notexact ns3/notexact.db.in ns3/notexact.db.update \
+  ns3/notexact.db.jnl
 
 touch ns4/trusted.conf
 cp ns4/noixfr.db.in ns4/noixfr.db

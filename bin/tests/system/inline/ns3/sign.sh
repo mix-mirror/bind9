@@ -46,6 +46,14 @@ keyname=$($KEYGEN -q -a ${DEFAULT_ALGORITHM} $zone)
 keyname=$($KEYGEN -q -a ${DEFAULT_ALGORITHM} -f KSK $zone)
 $DSFROMKEY -T 1200 $keyname >>../ns1/root.db
 
+zone=notexact
+rm -f K${zone}.+*+*.key
+rm -f K${zone}.+*+*.private
+keyname=$($KEYGEN -q -a ${DEFAULT_ALGORITHM} $zone)
+keyname=$($KEYGEN -q -a ${DEFAULT_ALGORITHM} -f KSK $zone)
+$SIGNER -S -x -O raw -L 2000042407 -f ${zone}.db.signed -o ${zone} \
+  ${zone}.signed.db.in >/dev/null
+
 zone=updated
 rm -f K${zone}.+*+*.key
 rm -f K${zone}.+*+*.private

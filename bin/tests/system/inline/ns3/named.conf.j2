@@ -62,6 +62,14 @@ zone "incremental-updates" {
     allow-update { any; };
 };
 
+zone "notexact" {
+	type primary;
+	file "notexact.db";
+	inline-signing yes;
+	dnssec-policy inline;
+	allow-update { any; };
+};
+
 server 10.53.0.4 { request-ixfr no; };
 
 zone "noixfr" {
