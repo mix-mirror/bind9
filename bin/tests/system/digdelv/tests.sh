@@ -1826,10 +1826,14 @@ if [ -x "$DELV" ]; then
     [ "$value" = "IN" ] || ret=1
     $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 0 rrtype >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
-    [ "$value" = '\-TYPE500' ] || ret=1
-    $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 0 rdata >yamlget.out.test$n 2>&1 || ret=1
+    [ "$value" = 'TYPE500' ] || ret=1
+    $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 0 type >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
-    [ "$value" = ';-$NXRRSET' ] || ret=1
+    [ "$value" = 'NXRRSET' ] || ret=1
+    # A negative answer carries no rdata.
+    $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 0 rdata >yamlget.out.test$n 2>&1 && ret=1
+    read -r value <yamlget.out.test$n
+    [ "$value" = 'Key "rdata" not found.' ] || ret=1
     if [ $ret -ne 0 ]; then echo_i "failed"; fi
     status=$((status + ret))
 
@@ -1851,10 +1855,14 @@ if [ -x "$DELV" ]; then
     [ "$value" = "IN" ] || ret=1
     $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 0 rrtype >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
-    [ "$value" = '\-ANY' ] || ret=1
-    $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 0 rdata >yamlget.out.test$n 2>&1 || ret=1
+    [ "$value" = 'ANY' ] || ret=1
+    $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 0 type >yamlget.out.test$n 2>&1 || ret=1
     read -r value <yamlget.out.test$n
-    [ "$value" = ';-$NXDOMAIN' ] || ret=1
+    [ "$value" = 'NXDOMAIN' ] || ret=1
+    # A negative answer carries no rdata.
+    $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 0 rdata >yamlget.out.test$n 2>&1 && ret=1
+    read -r value <yamlget.out.test$n
+    [ "$value" = 'Key "rdata" not found.' ] || ret=1
     # The records summarising the negative response carry no TTL or class.
     # The rdata of an RRSIG summary is elided, leaving the covered type.
     $PYTHON yamlget.py delv.out.test$n records 0 negative_response_answer_not_validated 1 name >yamlget.out.test$n 2>&1 || ret=1

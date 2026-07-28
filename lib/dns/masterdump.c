@@ -663,24 +663,18 @@ rdataset_totext_yaml(dns_rdataset_t *rdataset, const dns_name_t *name,
 		RETERR(dns_rdataclass_totext(rdataset->rdclass, target));
 
 		/*
-		 * A negative record is reported under the type it covers,
-		 * marked with a leading backslash-hyphen.
+		 * A negative record carries no rdata: it is reported under
+		 * the type it covers, and a 'type' key naming the kind of
+		 * negative response stands in for the rdata.
 		 */
 		RETERR(str_totext(", rrtype: ", target));
 		if (rdataset->attributes.negative) {
-			RETERR(str_totext("\\-", target));
 			RETERR(dns_rdatatype_totext(rdataset->covers, target));
-		} else {
-			RETERR(dns_rdatatype_totext(rdataset->type, target));
-		}
 
-		RETERR(str_totext(", rdata: '", target));
-		start = isc_buffer_used(target);
-		if (rdataset->attributes.negative) {
-			RETERR(str_totext(NXDOMAIN(rdataset) ? ";-$NXDOMAIN"
-							     : ";-$NXRRSET",
+			RETERR(str_totext(", type: ", target));
+			RETERR(str_totext(NXDOMAIN(rdataset) ? "NXDOMAIN"
+							     : "NXRRSET",
 					  target));
-			RETERR(yaml_endquote(target, start));
 			RETERR(str_totext(" }\n", target));
 
 			/*
@@ -692,6 +686,10 @@ rdataset_totext_yaml(dns_rdataset_t *rdataset, const dns_name_t *name,
 		} else {
 			dns_rdata_t rdata = DNS_RDATA_INIT;
 
+			RETERR(dns_rdatatype_totext(rdataset->type, target));
+
+			RETERR(str_totext(", rdata: '", target));
+			start = isc_buffer_used(target);
 			dns_rdataset_current(rdataset, &rdata);
 
 			RETERR(dns_rdata_tofmttext(
