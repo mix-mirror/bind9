@@ -520,6 +520,7 @@ ncache_summary_entry_yaml(const dns_name_t *name, dns_rdataset_t *rds,
 			  bool omit_final_dot, dns_totext_ctx_t *ctx,
 			  isc_buffer_t *target) {
 	char *start = NULL;
+	dns_rdata_t rdata = DNS_RDATA_INIT;
 
 	RETERR(yaml_indent(ctx, target));
 
@@ -532,21 +533,10 @@ ncache_summary_entry_yaml(const dns_name_t *name, dns_rdataset_t *rds,
 	RETERR(str_totext(", rrtype: ", target));
 	RETERR(dns_rdatatype_totext(rds->type, target));
 
-	/*
-	 * An RRSIG summary names the covered type in place of the rdata,
-	 * which is elided.
-	 */
 	RETERR(str_totext(", rdata: '", target));
 	start = isc_buffer_used(target);
-	if (rds->type == dns_rdatatype_rrsig) {
-		RETERR(dns_rdatatype_totext(rds->covers, target));
-		RETERR(str_totext(" ...", target));
-	} else {
-		dns_rdata_t rdata = DNS_RDATA_INIT;
-		dns_rdataset_current(rds, &rdata);
-		RETERR(dns_rdata_tofmttext(&rdata, dns_rootname, 0, 0, 0, " ",
-					   target));
-	}
+	dns_rdataset_current(rds, &rdata);
+	RETERR(dns_rdata_tofmttext(&rdata, dns_rootname, 0, 0, 0, " ", target));
 	RETERR(yaml_endquote(target, start));
 
 	return str_totext(" }\n", target);
