@@ -42,25 +42,22 @@ options {
 		};
 	};
 {% elif broken_key %}
-	zone "." {
-		type hint;
-		file "../../_common/root.hint";
-	};
+{% filter indent("	", true) %}
+{% include "_common/root.hint.conf" %}
+{% endfilter %}
 
 	include "broken.conf";
 {% elif many_anchors %}
-	zone "." {
-		type hint;
-		file "../../_common/root.hint";
-	};
+{% filter indent("	", true) %}
+{% include "_common/root.hint.conf" %}
+{% endfilter %}
 
 	include "many-managed.conf";
 	include "many-trusted.conf";
 {% else %}
-	zone "." {
-		type hint;
-		file "../../_common/root.hint";
-	};
+{% filter indent("	", true) %}
+{% include "_common/root.hint.conf" %}
+{% endfilter %}
 
 	include "trusted.conf";
 {% endif %}

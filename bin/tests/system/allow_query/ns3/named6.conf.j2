@@ -9,10 +9,9 @@ options {
 
 view internal {
         match-destinations { 10.53.0.3; };
-        zone "." {
-                type hint;
-                file "../../_common/root.hint";
-        };
+{% filter indent("        ", true) %}
+{% include "_common/root.hint.conf" %}
+{% endfilter %}
         recursion yes;
 	allow-recursion{ any; };
 };

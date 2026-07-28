@@ -20,10 +20,9 @@ view "internal" {
 	match-clients { 10.53.0.2;
 			10.53.0.3; };
 
-	zone "." {
-		type hint;
-		file "../../_common/root.hint";
-	};
+{% filter indent("	", true) %}
+{% include "_common/root.hint.conf" %}
+{% endfilter %}
 
 	zone "example" {
 		type primary;
@@ -54,10 +53,9 @@ view "internal" {
 view "external" {
 	match-clients { any; };
 
-	zone "." {
-		type hint;
-		file "../../_common/root.hint";
-	};
+{% filter indent("	", true) %}
+{% include "_common/root.hint.conf" %}
+{% endfilter %}
 
 	zone "example" {
 		type primary;
