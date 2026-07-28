@@ -14685,7 +14685,8 @@ inline_sync_run(dns_zone_t *zone) {
 
 	/*
 	 * Try to apply diffs from the raw zone's journal to the secure zone. If
-	 * that fails, we recover by syncing up the databases directly.
+	 * either building the journal diff or applying it fails, we recover by
+	 * syncing up the databases directly.
 	 */
 	result = sync_secure_journal(zone, iss->raw, rjournal, start, end,
 				     &soatuple, &iss->diff);
@@ -14710,7 +14711,30 @@ inline_sync_run(dns_zone_t *zone) {
 		CHECK(result);
 	}
 
-	CHECK(dns_diff_apply(&iss->diff, iss->db, iss->newver));
+	result = dns_diff_apply(&iss->diff, iss->db, iss->newver);
+	if (result == DNS_R_NOTEXACT) {
+		dns_db_closeversion(iss->db, &iss->newver, false);
+		if (soatuple != NULL) {
+			dns_difftuple_free(&soatuple);
+		}
+		dns_diff_clear(&iss->diff);
+		CHECK(dns_db_newversion(iss->db, &iss->newver));
+
+		result = sync_secure_db(zone, iss->raw, iss->db, iss->oldver,
+					&soatuple, &iss->diff);
+		if (result == DNS_R_UNCHANGED) {
+			LOCK_ZONE(zone);
+			zone->sourceserial = end;
+			zone->sourceserialset = true;
+			UNLOCK_ZONE(zone);
+
+			goto cleanup;
+		}
+		CHECK(result);
+		CHECK(dns_diff_apply(&iss->diff, iss->db, iss->newver));
+	} else {
+		CHECK(result);
+	}
 
 	if (soatuple != NULL) {
 		uint32_t oldserial;
