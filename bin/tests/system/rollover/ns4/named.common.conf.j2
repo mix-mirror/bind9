@@ -13,14 +13,14 @@
 
 options {
 {% include "_common/options.conf.j2" %}
-        allow-transfer { any; };
-        recursion no;
-        dnssec-validation no;
+	allow-transfer { any; };
+	recursion no;
+	dnssec-validation no;
 };
 
 {% include "_common/controls.conf.j2" %}
 
 zone "." {
-        type hint;
-        file "../../_common/root.hint.blackhole";
+	type hint;
+	file "../../_common/root.hint.blackhole";
 };

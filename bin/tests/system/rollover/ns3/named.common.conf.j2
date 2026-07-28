@@ -8,9 +8,9 @@ include "trusted.conf";
 
 options {
 {% include "_common/options.conf.j2" %}
-        allow-transfer { any; };
-        dnssec-validation @dnssec_validation@;
-        notify-cfg CDS { notify yes; };
+	allow-transfer { any; };
+	dnssec-validation @dnssec_validation@;
+	notify-cfg CDS { notify yes; };
 };
 
 {% include "_common/controls.conf.j2" %}

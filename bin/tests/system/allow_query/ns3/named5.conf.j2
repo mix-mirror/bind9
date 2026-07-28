@@ -11,11 +11,11 @@ options {
 {% include "_common/controls.conf.j2" %}
 
 view internal {
-        match-destinations { @ns.ip@; };
+	match-destinations { @ns.ip@; };
 {% filter indent("        ", true) %}
 {% include "_common/root.hint.conf" %}
 {% endfilter %}
 
-        recursion yes;
-        allow-recursion { any; };
+	recursion yes;
+	allow-recursion { any; };
 };

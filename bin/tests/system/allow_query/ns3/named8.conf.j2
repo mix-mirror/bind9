@@ -15,7 +15,7 @@ view internal {
 {% include "_common/root.hint.conf" %}
 {% endfilter %}
 
-        recursion yes;
-        allow-query-cache { @ns.ip@; 10.53.0.4; };
+	recursion yes;
+	allow-query-cache { @ns.ip@; 10.53.0.4; };
 	allow-query { 10.53.0.4; };
 };
