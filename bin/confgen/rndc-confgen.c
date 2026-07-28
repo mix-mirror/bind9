@@ -95,7 +95,7 @@ main(int argc, char **argv) {
 	dns_secalg_t alg;
 	const char *algname;
 	int ch;
-	int port;
+	uint16_t port;
 	int keysize = -1;
 	struct in_addr addr4_dummy;
 	struct in6_addr addr6_dummy;
@@ -155,10 +155,9 @@ main(int argc, char **argv) {
 			show_final_mem = true;
 			break;
 		case 'p':
-			result = isc_parse_signed_number(
+			result = isc_parse_unsigned_number(
 				&port, isc_commandline_argument, 10);
-			if (result != ISC_R_SUCCESS || port < 0 || port > 65535)
-			{
+			if (result != ISC_R_SUCCESS) {
 				fatal("port '%s' out of range",
 				      isc_commandline_argument);
 			}
