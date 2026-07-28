@@ -144,31 +144,48 @@ extern isc_mem_t *isc_g_mctx;
 #define isc_mem_strdup(c, p) isc__mem_strdup((c), (p)_ISC_MEM_FILELINE)
 #define isc_mempool_get(c)   isc__mempool_get((c)_ISC_MEM_FILELINE)
 
-#define isc_mem_put(c, p, s)                                      \
-	do {                                                      \
-		isc__mem_put((c), (p), (s), 0 _ISC_MEM_FILELINE); \
-		(p) = NULL;                                       \
+/*
+ * Take ownership of the memory and NULL the pointer (p) before
+ * returning the memory.  This prevents (p) pointing to freed
+ * memory momentarily.
+ */
+#define isc_mem_put(m, p, s)                                   \
+	do {                                                   \
+		isc_mem_t *_m = (m);                           \
+		size_t	   _s = (s);                           \
+		void	  *_p = (p);                           \
+		(p) = NULL;                                    \
+		isc__mem_put(_m, _p, _s, 0 _ISC_MEM_FILELINE); \
 	} while (0)
-#define isc_mem_cput(c, p, n, s)                                  \
-	do {                                                      \
-		isc__mem_put((c), (p), ISC_CHECKED_MUL((n), (s)), \
-			     ISC__MEM_ZERO _ISC_MEM_FILELINE);    \
-		(p) = NULL;                                       \
-	} while (0)
-#define isc_mem_putanddetach(c, p, s)                                      \
+#define isc_mem_cput(m, p, n, s)                                           \
 	do {                                                               \
-		isc__mem_putanddetach((c), (p), (s), 0 _ISC_MEM_FILELINE); \
+		isc_mem_t *_m = (m);                                       \
+		size_t	   _s = ISC_CHECKED_MUL((n), (s));                 \
+		void	  *_p = (p);                                       \
 		(p) = NULL;                                                \
+		isc__mem_put(_m, _p, _s, ISC__MEM_ZERO _ISC_MEM_FILELINE); \
 	} while (0)
-#define isc_mem_free(c, p)                                    \
-	do {                                                  \
-		isc__mem_free((c), (p), 0 _ISC_MEM_FILELINE); \
-		(p) = NULL;                                   \
+#define isc_mem_putanddetach(m, p, s)                                   \
+	do {                                                            \
+		isc_mem_t **_m = (m);                                   \
+		size_t	    _s = (s);                                   \
+		void	   *_p = (p);                                   \
+		(p) = NULL;                                             \
+		isc__mem_putanddetach(_m, _p, _s, 0 _ISC_MEM_FILELINE); \
 	} while (0)
-#define isc_mempool_put(c, p)                                \
-	do {                                                 \
-		isc__mempool_put((c), (p)_ISC_MEM_FILELINE); \
-		(p) = NULL;                                  \
+#define isc_mem_free(m, p)                                  \
+	do {                                                \
+		isc_mem_t *_m = (m);                        \
+		void	  *_p = (p);                        \
+		(p) = NULL;                                 \
+		isc__mem_free(_m, _p, 0 _ISC_MEM_FILELINE); \
+	} while (0)
+#define isc_mempool_put(m, p)                               \
+	do {                                                \
+		isc_mempool_t *_m = (m);                    \
+		void	      *_p = (p);                    \
+		(p) = NULL;                                 \
+		isc__mempool_put(_m, _p _ISC_MEM_FILELINE); \
 	} while (0)
 
 /*@{*/
