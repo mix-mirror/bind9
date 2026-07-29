@@ -961,9 +961,7 @@ reproducible-build:
   <<: *alpine_3_24_amd64_image
   variables:
     # This job runs `meson reprotest`, not the .configure template, so it passes
-    # its machine file through to reprotest's `meson setup` itself.  It uses a
-    # standalone file rather than ci/common.ini to keep configuring the same
-    # minimal build it did before; see ci/reprotest.ini.
+    # its machine file through to reprotest's own `meson setup`.
     EXTRA_SETUP_FILES: "--native-file ci/reprotest.ini"
   before_script:
     - *list_installed_package_versions
