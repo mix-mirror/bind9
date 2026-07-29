@@ -11,9 +11,7 @@ options {
 {% include "_common/controls.conf.j2" %}
 
 view internal {
-{% filter indent("        ", true) %}
-{% include "_common/root.hint.conf" %}
-{% endfilter %}
+	{% include_indented "_common/root.hint.conf" %}
 
 	recursion yes;
 	allow-query-cache { @ns.ip@; 10.53.0.4; };

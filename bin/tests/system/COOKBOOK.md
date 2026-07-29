@@ -102,7 +102,10 @@ instance's own address; references to *other* servers stay literal.
 The `_common/controls.conf.j2` include sets up the rndc control channel, so
 the test (and the runner's shutdown sequence) can use `rndc`.  A resolver
 instance would also include `_common/root.hint.conf` to get the standard
-root hints (ns1 is the root server by convention).
+root hints (ns1 is the root server by convention).  Inside an indented
+section such as a view statement, use `{% include_indented "..." %}` instead
+of `{% include %}` — it aligns the inserted block with the tag's own
+indentation.
 
 `demo/ns1/example.db` — a plain zone file:
 

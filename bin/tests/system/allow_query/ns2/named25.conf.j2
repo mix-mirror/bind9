@@ -10,9 +10,7 @@ view "internal" {
 
 	allow-query { 10.53.0.1; };
 
-{% filter indent("	", true) %}
-{% include "_common/root.hint.conf" %}
-{% endfilter %}
+	{% include_indented "_common/root.hint.conf" %}
 
 	zone "normal.example" {
 		type primary;

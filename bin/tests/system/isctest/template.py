@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 import re
 
 import jinja2
+import jinja2.ext
 
 from .log import debug
 from .vars import ALL
@@ -27,6 +28,45 @@ if TYPE_CHECKING:
     from .zone import Zone as _SetupZone
 
 NS_DIR_RE = Re(r"^(a?ns([0-9]+))/")
+
+
+class IncludeIndented(jinja2.ext.Extension):
+    """
+    `{% include_indented "template" %}` — like `{% include %}`, but keeps the
+    inserted block aligned with the tag's own indentation, which a plain
+    include cannot do. The tag's leading whitespace is detected at parse time
+    and applied to every line of the included template's output.
+    """
+
+    tags = {"include_indented"}
+
+    def parse(self, parser: jinja2.parser.Parser) -> jinja2.nodes.Node:
+        lineno = parser.stream.expect("name:include_indented").lineno
+        template = parser.parse_expression()
+        source, _, _ = self.environment.loader.get_source(self.environment, parser.name)
+        line = source.splitlines()[lineno - 1]
+        match = re.match(r"[ \t]*", line)
+        assert match is not None
+        call = self.call_method(
+            "_render",
+            [
+                jinja2.nodes.ContextReference(),
+                template,
+                jinja2.nodes.Const(match.group(0)),
+            ],
+            lineno=lineno,
+        )
+        return jinja2.nodes.Output([call], lineno=lineno)
+
+    def _render(self, context: jinja2.runtime.Context, name: str, indent: str) -> str:
+        rendered = self.environment.get_template(name).render(context.get_all())
+        lines = rendered.splitlines()
+        if not lines:
+            return ""
+        # the tag's own leading whitespace already indents the first line;
+        # blank lines are kept blank instead of gaining trailing whitespace
+        indented = lines[:1] + [indent + line if line else line for line in lines[1:]]
+        return "\n".join(indented) + "\n"
 
 
 class TemplateEngine:
@@ -60,6 +100,7 @@ class TemplateEngine:
             variable_end_string="@",
             trim_blocks=True,
             keep_trailing_newline=True,
+            extensions=[IncludeIndented],
         )
         # allow instantiating the template dataclasses in jinja2 templates when
         # using {% set %}

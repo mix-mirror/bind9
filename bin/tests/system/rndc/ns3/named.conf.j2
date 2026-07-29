@@ -15,9 +15,7 @@ view all {
 
 	recursion no;
 
-{% filter indent("	", true) %}
-{% include "_common/root.hint.conf" %}
-{% endfilter %}
+	{% include_indented "_common/root.hint.conf" %}
 };
 
 view none {

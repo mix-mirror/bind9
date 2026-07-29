@@ -23,9 +23,7 @@ view internal {
 
 	response-policy { zone "policy"; };
 
-{% filter indent("	", true) %}
-{% include "_common/root.hint.conf" %}
-{% endfilter %}
+	{% include_indented "_common/root.hint.conf" %}
 
 	zone "policy" {
 		type primary;
@@ -37,18 +35,14 @@ view directory {
 	match-clients { 10.53.0.5; };
 	allow-new-zones yes;
 
-{% filter indent("	", true) %}
-{% include "_common/root.hint.conf" %}
-{% endfilter %}
+	{% include_indented "_common/root.hint.conf" %}
 };
 
 view external {
 	match-clients { any; };
 	allow-new-zones yes;
 
-{% filter indent("	", true) %}
-{% include "_common/root.hint.conf" %}
-{% endfilter %}
+	{% include_indented "_common/root.hint.conf" %}
 };
 
 # This view is only here to test that configuration context is cleaned

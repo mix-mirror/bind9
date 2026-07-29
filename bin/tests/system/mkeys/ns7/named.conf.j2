@@ -9,13 +9,9 @@ options {
 {% include "_common/controls.conf.j2" %}
 
 view view1 {
-{% filter indent("	", true) %}
-{% include "_common/root.hint.conf" %}
-{% endfilter %}
+	{% include_indented "_common/root.hint.conf" %}
 };
 
 view view2 {
-{% filter indent("	", true) %}
-{% include "_common/root.hint.conf" %}
-{% endfilter %}
+	{% include_indented "_common/root.hint.conf" %}
 };

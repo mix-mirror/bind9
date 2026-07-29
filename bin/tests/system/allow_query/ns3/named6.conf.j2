@@ -9,9 +9,7 @@ options {
 
 view internal {
 	match-destinations { @ns.ip@; };
-{% filter indent("        ", true) %}
-{% include "_common/root.hint.conf" %}
-{% endfilter %}
+	{% include_indented "_common/root.hint.conf" %}
 	recursion yes;
 	allow-recursion{ any; };
 };

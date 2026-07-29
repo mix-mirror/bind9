@@ -8,9 +8,7 @@ options {
 
 view "internal" {
 
-{% filter indent("	", true) %}
-{% include "_common/root.hint.conf" %}
-{% endfilter %}
+	{% include_indented "_common/root.hint.conf" %}
 
 	zone "normal.example" {
 		type primary;
