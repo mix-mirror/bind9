@@ -1127,7 +1127,7 @@ unit:gcc:alpine3.24:amd64:
 
 gcc:almalinux8:amd64:
   variables:
-    EXTRA_SETUP_FILES: "--native-file ci/idn.ini"
+    EXTRA_SETUP_FILES: "--native-file ci/almalinux8.ini"
   <<: *almalinux_8_amd64_image
   <<: *build_job
 
@@ -1173,7 +1173,7 @@ unit:gcc:almalinux9:amd64:
 
 gcc:almalinux10:amd64:
   variables:
-    EXTRA_SETUP_FILES: "--native-file ci/idn.ini"
+    EXTRA_SETUP_FILES: "--native-file ci/almalinux10.ini"
   <<: *almalinux_10_amd64_image
   <<: *build_job
 
@@ -1291,7 +1291,7 @@ gcc:tarball:nosphinx:
 
 gcc:bookworm:amd64:
   variables:
-    EXTRA_SETUP_FILES: "--native-file ci/idn.ini"
+    EXTRA_SETUP_FILES: "--native-file ci/bookworm.ini"
   <<: *debian_bookworm_amd64_image
   <<: *build_job
 
@@ -1382,7 +1382,7 @@ gcc:trixie:amd64cross32:
 
 gcc:trixie:386:
   variables:
-    EXTRA_SETUP_FILES: "--native-file ci/idn.ini"
+    EXTRA_SETUP_FILES: "--native-file ci/trixie386.ini"
   <<: *debian_trixie_386_image
   <<: *build_job
 
@@ -1541,7 +1541,7 @@ unit:gcc:jammy:amd64:
 
 gcc:noble:amd64:
   variables:
-    EXTRA_SETUP_FILES: "--native-file ci/idn.ini"
+    EXTRA_SETUP_FILES: "--native-file ci/noble.ini"
   <<: *ubuntu_noble_amd64_image
   <<: *build_job
 
@@ -1564,7 +1564,7 @@ unit:gcc:noble:amd64:
 
 gcc:resolute:amd64:
   variables:
-    EXTRA_SETUP_FILES: "--native-file ci/idn.ini"
+    EXTRA_SETUP_FILES: "--native-file ci/resolute.ini"
   <<: *ubuntu_resolute_amd64_image
   <<: *build_job
 
