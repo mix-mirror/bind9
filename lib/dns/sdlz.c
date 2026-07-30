@@ -1003,9 +1003,9 @@ cleanup:
 }
 
 static isc_result_t
-addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
-	    isc_stdtime_t now, dns_rdataset_t *rdataset, unsigned int options,
-	    dns_rdataset_t *addedrdataset DNS__DB_FLARG) {
+sdlz_addrdata(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
+	      isc_stdtime_t now, dns_rdataset_t *rdataset, unsigned int options,
+	      dns_rdataset_t *addedrdataset DNS__DB_FLARG) {
 	dns_sdlz_db_t *sdlz = (dns_sdlz_db_t *)db;
 	isc_result_t result;
 
@@ -1013,37 +1013,37 @@ addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	UNUSED(addedrdataset);
 	REQUIRE(VALID_SDLZDB(sdlz));
 
-	if (sdlz->dlzimp->methods->addrdataset == NULL) {
+	if (sdlz->dlzimp->methods->addrdata == NULL) {
 		return ISC_R_NOTIMPLEMENTED;
 	}
 
 	result = modrdataset(db, node, version, rdataset, options,
-			     sdlz->dlzimp->methods->addrdataset);
+			     sdlz->dlzimp->methods->addrdata);
 	return result;
 }
 
 static isc_result_t
-subtractrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
-		 dns_rdataset_t *rdataset, unsigned int options,
-		 dns_rdataset_t *newrdataset DNS__DB_FLARG) {
+sdlz_subrdata(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
+	      dns_rdataset_t *rdataset, unsigned int options,
+	      dns_rdataset_t *newrdataset DNS__DB_FLARG) {
 	dns_sdlz_db_t *sdlz = (dns_sdlz_db_t *)db;
 	isc_result_t result;
 
 	UNUSED(newrdataset);
 	REQUIRE(VALID_SDLZDB(sdlz));
 
-	if (sdlz->dlzimp->methods->subtractrdataset == NULL) {
+	if (sdlz->dlzimp->methods->subrdata == NULL) {
 		return ISC_R_NOTIMPLEMENTED;
 	}
 
 	result = modrdataset(db, node, version, rdataset, options,
-			     sdlz->dlzimp->methods->subtractrdataset);
+			     sdlz->dlzimp->methods->subrdata);
 	return result;
 }
 
 static isc_result_t
-deleterdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
-	       dns_rdatatype_t type, dns_rdatatype_t covers DNS__DB_FLARG) {
+sdlz_delrdata(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
+	      dns_rdatatype_t type, dns_rdatatype_t covers DNS__DB_FLARG) {
 	dns_sdlz_db_t *sdlz = (dns_sdlz_db_t *)db;
 	char name[DNS_NAME_MAXTEXT + 1];
 	char b_type[DNS_RDATATYPE_FORMATSIZE];
@@ -1054,7 +1054,7 @@ deleterdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 
 	REQUIRE(VALID_SDLZDB(sdlz));
 
-	if (sdlz->dlzimp->methods->delrdataset == NULL) {
+	if (sdlz->dlzimp->methods->delrdata == NULL) {
 		return ISC_R_NOTIMPLEMENTED;
 	}
 
@@ -1063,7 +1063,7 @@ deleterdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	dns_rdatatype_format(type, b_type, sizeof(b_type));
 
 	MAYBE_LOCK(sdlz->dlzimp);
-	result = sdlz->dlzimp->methods->delrdataset(
+	result = sdlz->dlzimp->methods->delrdata(
 		name, b_type, sdlz->dlzimp->driverarg, sdlz->dbdata, version);
 	MAYBE_UNLOCK(sdlz->dlzimp);
 
@@ -1081,9 +1081,9 @@ static dns_dbmethods_t sdlzdb_methods = {
 	.createiterator = createiterator,
 	.findrdataset = findrdataset,
 	.allrdatasets = allrdatasets,
-	.addrdataset = addrdataset,
-	.subtractrdataset = subtractrdataset,
-	.deleterdataset = deleterdataset,
+	.addrdata = sdlz_addrdata,
+	.subrdata = sdlz_subrdata,
+	.delrdata = sdlz_delrdata,
 };
 
 /*

@@ -75,20 +75,20 @@ dns_ncache_add(dns_message_t *message, dns_db_t *cache, dns_dbnode_t *node,
  *
  * Note:
  *\li	If 'addedrdataset' is not NULL, then it will be attached to the added
- *	rdataset.  See dns_db_addrdataset() for more details.
+ *	rdataset.  See dns_db_addrdata() for more details.
  *
  * Requires:
  *\li	'message' is a valid message with a properly formatting negative cache
  *	authority section.
  *
- *\li	The requirements of dns_db_addrdataset() apply to 'cache', 'node',
+ *\li	The requirements of dns_db_addrdata() apply to 'cache', 'node',
  *	'now', and 'addedrdataset'.
  *
  * Returns:
  *\li	#ISC_R_SUCCESS
  *\li	#ISC_R_NOSPACE
  *
- *\li	Any result code of dns_db_addrdataset() is a possible result code
+ *\li	Any result code of dns_db_addrdata() is a possible result code
  *	of dns_ncache_add().
  */
 

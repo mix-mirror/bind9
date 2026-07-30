@@ -224,14 +224,14 @@ update_rdataset(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 	case DNS_DIFFOP_ADDRESIGN:
 		options = DNS_DBADD_MERGE | DNS_DBADD_EXACT |
 			  DNS_DBADD_EXACTTTL;
-		CHECK(dns_db_addrdataset(db, node, ver, 0, rds, options,
-					 &ardataset));
+		CHECK(dns_db_addrdata(db, node, ver, 0, rds, options,
+				      &ardataset));
 		break;
 	case DNS_DIFFOP_DEL:
 	case DNS_DIFFOP_DELRESIGN:
 		options = DNS_DBSUB_EXACT | DNS_DBSUB_WANTOLD;
-		result = dns_db_subtractrdataset(db, node, ver, rds, options,
-						 &ardataset);
+		result = dns_db_subrdata(db, node, ver, rds, options,
+					 &ardataset);
 		switch (result) {
 		case ISC_R_SUCCESS:
 		case DNS_R_UNCHANGED:

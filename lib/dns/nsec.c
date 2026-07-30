@@ -185,7 +185,7 @@ dns_nsec_build(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
 	rdatalist.ttl = ttl;
 	ISC_LIST_APPEND(rdatalist.rdata, &rdata, link);
 	dns_rdatalist_tordataset(&rdatalist, &rdataset);
-	result = dns_db_addrdataset(db, node, version, 0, &rdataset, 0, NULL);
+	result = dns_db_addrdata(db, node, version, 0, &rdataset, 0, NULL);
 	if (result == DNS_R_UNCHANGED) {
 		result = ISC_R_SUCCESS;
 	}

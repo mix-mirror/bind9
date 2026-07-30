@@ -162,9 +162,9 @@ allrdatasets(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 }
 
 static isc_result_t
-addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
-	    isc_stdtime_t now, dns_rdataset_t *rdataset, unsigned int options,
-	    dns_rdataset_t *addedrdataset DNS__DB_FLARG) {
+addrdata(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
+	 isc_stdtime_t now, dns_rdataset_t *rdataset, unsigned int options,
+	 dns_rdataset_t *addedrdataset DNS__DB_FLARG) {
 	sampledb_t *sampledb = (sampledb_t *)db;
 	isc_result_t result;
 	dns_fixedname_t name;
@@ -172,8 +172,8 @@ addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	REQUIRE(VALID_SAMPLEDB(sampledb));
 
 	dns_fixedname_init(&name);
-	CHECK(dns__db_addrdataset(sampledb->db, node, version, now, rdataset,
-				  options, addedrdataset DNS__DB_FLARG_PASS));
+	CHECK(dns__db_addrdata(sampledb->db, node, version, now, rdataset,
+			       options, addedrdataset DNS__DB_FLARG_PASS));
 	if (dns_rdatatype_isaddr(rdataset->type)) {
 		CHECK(syncptrs(sampledb->inst, &node->name, rdataset,
 			       DNS_DIFFOP_ADD));
@@ -184,9 +184,9 @@ cleanup:
 }
 
 static isc_result_t
-subtractrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
-		 dns_rdataset_t *rdataset, unsigned int options,
-		 dns_rdataset_t *newrdataset DNS__DB_FLARG) {
+subrdata(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
+	 dns_rdataset_t *rdataset, unsigned int options,
+	 dns_rdataset_t *newrdataset DNS__DB_FLARG) {
 	sampledb_t *sampledb = (sampledb_t *)db;
 	isc_result_t result;
 	dns_fixedname_t name;
@@ -194,9 +194,8 @@ subtractrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	REQUIRE(VALID_SAMPLEDB(sampledb));
 
 	dns_fixedname_init(&name);
-	result = dns__db_subtractrdataset(sampledb->db, node, version, rdataset,
-					  options,
-					  newrdataset DNS__DB_FLARG_PASS);
+	result = dns__db_subrdata(sampledb->db, node, version, rdataset,
+				  options, newrdataset DNS__DB_FLARG_PASS);
 	if (result != ISC_R_SUCCESS && result != DNS_R_NXRRSET) {
 		goto cleanup;
 	}
@@ -211,18 +210,18 @@ cleanup:
 }
 
 /*
- * deleterdataset() function is not used during DNS update processing so syncptr
+ * delrdata() function is not used during DNS update processing so syncptr
  * implementation is left as an exercise to the reader.
  */
 static isc_result_t
-deleterdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
-	       dns_rdatatype_t type, dns_rdatatype_t covers DNS__DB_FLARG) {
+delrdata(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
+	 dns_rdatatype_t type, dns_rdatatype_t covers DNS__DB_FLARG) {
 	sampledb_t *sampledb = (sampledb_t *)db;
 
 	REQUIRE(VALID_SAMPLEDB(sampledb));
 
-	return dns__db_deleterdataset(sampledb->db, node, version, type,
-				      covers DNS__DB_FLARG_PASS);
+	return dns__db_delrdata(sampledb->db, node, version, type,
+				covers DNS__DB_FLARG_PASS);
 }
 
 static bool
@@ -353,9 +352,9 @@ static dns_dbmethods_t sampledb_methods = {
 	.createiterator = createiterator,
 	.findrdataset = findrdataset,
 	.allrdatasets = allrdatasets,
-	.addrdataset = addrdataset,
-	.subtractrdataset = subtractrdataset,
-	.deleterdataset = deleterdataset,
+	.addrdata = addrdata,
+	.subrdata = subrdata,
+	.delrdata = delrdata,
 	.issecure = issecure,
 	.nodecount = nodecount,
 	.getoriginnode = getoriginnode,
@@ -401,7 +400,7 @@ add_soa(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
 	ISC_LIST_APPEND(rdatalist.rdata, &rdata, link);
 	dns_rdatalist_tordataset(&rdatalist, &rdataset);
 	CHECK(dns_db_findnode(db, name, true, &node));
-	CHECK(dns_db_addrdataset(db, node, version, 0, &rdataset, 0, NULL));
+	CHECK(dns_db_addrdata(db, node, version, 0, &rdataset, 0, NULL));
 cleanup:
 	if (node != NULL) {
 		dns_db_detachnode(&node);
@@ -439,7 +438,7 @@ add_ns(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
 	ISC_LIST_APPEND(rdatalist.rdata, &rdata, link);
 	dns_rdatalist_tordataset(&rdatalist, &rdataset);
 	CHECK(dns_db_findnode(db, name, true, &node));
-	CHECK(dns_db_addrdataset(db, node, version, 0, &rdataset, 0, NULL));
+	CHECK(dns_db_addrdata(db, node, version, 0, &rdataset, 0, NULL));
 cleanup:
 	if (node != NULL) {
 		dns_db_detachnode(&node);
@@ -475,7 +474,7 @@ add_a(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
 	ISC_LIST_APPEND(rdatalist.rdata, &rdata, link);
 	dns_rdatalist_tordataset(&rdatalist, &rdataset);
 	CHECK(dns_db_findnode(db, name, true, &node));
-	CHECK(dns_db_addrdataset(db, node, version, 0, &rdataset, 0, NULL));
+	CHECK(dns_db_addrdata(db, node, version, 0, &rdataset, 0, NULL));
 cleanup:
 	if (node != NULL) {
 		dns_db_detachnode(&node);

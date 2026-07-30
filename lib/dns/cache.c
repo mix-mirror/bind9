@@ -323,8 +323,8 @@ clearnode(dns_db_t *db, dns_dbnode_t *node) {
 		dns_rdataset_t rdataset = DNS_RDATASET_INIT;
 
 		dns_rdatasetiter_current(iter, &rdataset);
-		result = dns_db_deleterdataset(db, node, NULL, rdataset.type,
-					       rdataset.covers);
+		result = dns_db_delrdata(db, node, NULL, rdataset.type,
+					 rdataset.covers);
 		dns_rdataset_disassociate(&rdataset);
 		if (result != ISC_R_SUCCESS && result != DNS_R_UNCHANGED) {
 			break;

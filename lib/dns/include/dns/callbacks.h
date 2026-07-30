@@ -45,7 +45,7 @@ struct dns_rdatacallbacks {
 	 * setup and commit functions allow this transaction to be
 	 * opened and committed.
 	 */
-	dns_addrdatasetfunc_t update;
+	dns_addrdatafunc_t    update;
 	dns_transactionfunc_t setup;
 	dns_transactionfunc_t commit;
 

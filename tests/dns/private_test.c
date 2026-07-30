@@ -237,8 +237,7 @@ check_private_chains(dns_rdata_t *privates, size_t nprivates,
 
 		result = dns_db_getoriginnode(db, &node);
 		assert_int_equal(result, ISC_R_SUCCESS);
-		result = dns_db_addrdataset(db, node, ver, 0, &rdataset, 0,
-					    NULL);
+		result = dns_db_addrdata(db, node, ver, 0, &rdataset, 0, NULL);
 		assert_int_equal(result, ISC_R_SUCCESS);
 		dns_rdataset_disassociate(&rdataset);
 		dns_db_detachnode(&node);

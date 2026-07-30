@@ -161,8 +161,7 @@ ISC_LOOP_TEST_IMPL(dns_dbfind_staleok) {
 		result = dns_db_findnode(db, example, true, &node);
 		assert_int_equal(result, ISC_R_SUCCESS);
 
-		result = dns_db_addrdataset(db, node, NULL, 0, &rdataset, 0,
-					    NULL);
+		result = dns_db_addrdata(db, node, NULL, 0, &rdataset, 0, NULL);
 		assert_int_equal(result, ISC_R_SUCCESS);
 
 		dns_db_detachnode(&node);
@@ -332,7 +331,7 @@ ISC_LOOP_TEST_IMPL(version) {
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	/* Delete the rdataset from the new version */
-	result = dns_db_deleterdataset(db, node, new, dns_rdatatype_a, 0);
+	result = dns_db_delrdata(db, node, new, dns_rdatatype_a, 0);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	dns_rdataset_disassociate(&rdataset);
@@ -356,7 +355,7 @@ ISC_LOOP_TEST_IMPL(version) {
 	dns_test_namefromstring("long.ent.name.test.test.", &fname);
 	result = dns_db_findnode(db, name, true, &node);
 	assert_int_equal(result, ISC_R_SUCCESS);
-	result = dns_db_addrdataset(db, node, new, 0, &rdataset, 0, NULL);
+	result = dns_db_addrdata(db, node, new, 0, &rdataset, 0, NULL);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	dns_rdataset_disassociate(&rdataset);
 	dns_rdataset_init(&rdataset);

@@ -628,10 +628,10 @@ dns__db_allrdatasets(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 }
 
 isc_result_t
-dns__db_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
-		    isc_stdtime_t now, dns_rdataset_t *rdataset,
-		    unsigned int options,
-		    dns_rdataset_t *addedrdataset DNS__DB_FLARG) {
+dns__db_addrdata(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
+		 isc_stdtime_t now, dns_rdataset_t *rdataset,
+		 unsigned int options,
+		 dns_rdataset_t *addedrdataset DNS__DB_FLARG) {
 	/*
 	 * Add 'rdataset' to 'node' in version 'version' of 'db'.
 	 */
@@ -650,8 +650,8 @@ dns__db_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 		(DNS_RDATASET_VALID(addedrdataset) &&
 		 !dns_rdataset_isassociated(addedrdataset)));
 
-	if (db->methods->addrdataset != NULL) {
-		return (db->methods->addrdataset)(
+	if (db->methods->addrdata != NULL) {
+		return (db->methods->addrdata)(
 			db, node, version, now, rdataset, options,
 			addedrdataset DNS__DB_FLARG_PASS);
 	}
@@ -659,10 +659,9 @@ dns__db_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 }
 
 isc_result_t
-dns__db_subtractrdataset(dns_db_t *db, dns_dbnode_t *node,
-			 dns_dbversion_t *version, dns_rdataset_t *rdataset,
-			 unsigned int options,
-			 dns_rdataset_t *newrdataset DNS__DB_FLARG) {
+dns__db_subrdata(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
+		 dns_rdataset_t *rdataset, unsigned int options,
+		 dns_rdataset_t *newrdataset DNS__DB_FLARG) {
 	/*
 	 * Remove any rdata in 'rdataset' from 'node' in version 'version' of
 	 * 'db'.
@@ -678,18 +677,17 @@ dns__db_subtractrdataset(dns_db_t *db, dns_dbnode_t *node,
 		(DNS_RDATASET_VALID(newrdataset) &&
 		 !dns_rdataset_isassociated(newrdataset)));
 
-	if (db->methods->subtractrdataset != NULL) {
-		return (db->methods->subtractrdataset)(
-			db, node, version, rdataset, options,
-			newrdataset DNS__DB_FLARG_PASS);
+	if (db->methods->subrdata != NULL) {
+		return (db->methods->subrdata)(db, node, version, rdataset,
+					       options,
+					       newrdataset DNS__DB_FLARG_PASS);
 	}
 	return ISC_R_NOTIMPLEMENTED;
 }
 
 isc_result_t
-dns__db_deleterdataset(dns_db_t *db, dns_dbnode_t *node,
-		       dns_dbversion_t *version, dns_rdatatype_t type,
-		       dns_rdatatype_t covers DNS__DB_FLARG) {
+dns__db_delrdata(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
+		 dns_rdatatype_t type, dns_rdatatype_t covers DNS__DB_FLARG) {
 	/*
 	 * Make it so that no rdataset of type 'type' exists at 'node' in
 	 * version version 'version' of 'db'.
@@ -700,9 +698,9 @@ dns__db_deleterdataset(dns_db_t *db, dns_dbnode_t *node,
 	REQUIRE(((db->attributes & DNS_DBATTR_CACHE) == 0 && version != NULL) ||
 		((db->attributes & DNS_DBATTR_CACHE) != 0 && version == NULL));
 
-	if (db->methods->deleterdataset != NULL) {
-		return (db->methods->deleterdataset)(db, node, version, type,
-						     covers DNS__DB_FLARG_PASS);
+	if (db->methods->delrdata != NULL) {
+		return (db->methods->delrdata)(db, node, version, type,
+					       covers DNS__DB_FLARG_PASS);
 	}
 	return ISC_R_NOTIMPLEMENTED;
 }

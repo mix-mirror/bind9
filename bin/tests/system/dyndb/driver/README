@@ -52,7 +52,7 @@ This driver creates two empty zones and allows query/transfer/update to
 all IP addresses for demonstration purposes.
 
 The driver wraps the RBT database implementation used natively by BIND,
-and modifies the addrdataset() and substractrdataset() functions to do
+and modifies the addrdata() and subrdata() functions to do
 additional work during dynamic updates.
 
 A dynamic update modifies the target zone as usual. After that, the
@@ -88,5 +88,5 @@ Hints for code readers:
 - Database entry points are in structure db.c: dns_dbmethods_t
   sampledb_methods
 - sampledb_methods points to an implementation of the database interface.
-  See the db.c: addrdataset() implementation and look at how the RBT
+  See the db.c: addrdata() implementation and look at how the RBT
   database instance is wrapped into an additional layer of logic.

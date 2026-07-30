@@ -2628,10 +2628,10 @@ cleanup:
 }
 
 static isc_result_t
-qpcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
-		    isc_stdtime_t __now, dns_rdataset_t *rdataset,
-		    unsigned int options,
-		    dns_rdataset_t *addedrdataset DNS__DB_FLARG) {
+qpcache_addrdata(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
+		 isc_stdtime_t __now, dns_rdataset_t *rdataset,
+		 unsigned int options,
+		 dns_rdataset_t *addedrdataset DNS__DB_FLARG) {
 	qpcache_t *qpdb = (qpcache_t *)db;
 	qpcnode_t *qpnode = (qpcnode_t *)node;
 	isc_region_t region;
@@ -2774,9 +2774,8 @@ cleanup:
 }
 
 static isc_result_t
-qpcache_deleterdataset(dns_db_t *db, dns_dbnode_t *node,
-		       dns_dbversion_t *version, dns_rdatatype_t type,
-		       dns_rdatatype_t covers DNS__DB_FLARG) {
+qpcache_delrdata(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
+		 dns_rdatatype_t type, dns_rdatatype_t covers DNS__DB_FLARG) {
 	qpcache_t *qpdb = (qpcache_t *)db;
 	qpcnode_t *qpnode = (qpcnode_t *)node;
 	isc_result_t result = DNS_R_UNCHANGED;
@@ -3278,8 +3277,8 @@ static dns_dbmethods_t qpdb_cachemethods = {
 	.createiterator = qpcache_createiterator,
 	.findrdataset = qpcache_findrdataset,
 	.allrdatasets = qpcache_allrdatasets,
-	.addrdataset = qpcache_addrdataset,
-	.deleterdataset = qpcache_deleterdataset,
+	.addrdata = qpcache_addrdata,
+	.delrdata = qpcache_delrdata,
 	.nodecount = nodecount,
 	.getrrsetstats = getrrsetstats,
 	.setcachestats = setcachestats,

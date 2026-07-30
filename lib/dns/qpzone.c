@@ -911,9 +911,9 @@ dns__qpzone_create(isc_mem_t *mctx, const dns_name_t *origin, dns_dbtype_t type,
 	/*
 	 * In order to set the node callback bit correctly in zone databases,
 	 * we need to know if the node has the origin name of the zone.
-	 * In loading_addrdataset() we could simply compare the new name
+	 * In loading_addrdata() we could simply compare the new name
 	 * to the origin name, but this is expensive.  Also, we don't know the
-	 * node name in addrdataset(), so we need another way of knowing the
+	 * node name in addrdata(), so we need another way of knowing the
 	 * zone's top.
 	 *
 	 * We now explicitly create a node for the zone's origin, and then
@@ -2201,8 +2201,8 @@ addwildcards(qpzonedb_t *qpdb, dns_qp_t *qp, const dns_name_t *name,
 }
 
 static isc_result_t
-loading_addrdataset(void *arg, const dns_name_t *name, dns_rdataset_t *rdataset,
-		    dns_diffop_t op ISC_ATTR_UNUSED DNS__DB_FLARG) {
+loading_addrdata(void *arg, const dns_name_t *name, dns_rdataset_t *rdataset,
+		 dns_diffop_t op ISC_ATTR_UNUSED DNS__DB_FLARG) {
 	qpz_load_t *loadctx = arg;
 	qpzonedb_t *qpdb = (qpzonedb_t *)loadctx->db;
 	qpznode_t *node = NULL;
@@ -2327,7 +2327,7 @@ beginload(dns_db_t *db, dns_rdatacallbacks_t *callbacks) {
 
 	RWUNLOCK(&qpdb->lock, isc_rwlocktype_write);
 
-	callbacks->update = loading_addrdataset;
+	callbacks->update = loading_addrdata;
 	callbacks->setup = loading_setup;
 	callbacks->commit = loading_commit;
 	callbacks->add_private = loadctx;
@@ -4812,20 +4812,20 @@ qpzone_createiterator(dns_db_t *db, unsigned int options,
 /*
  * Main logic to add a new rdataset to a node.
  *
- * The reason this is split from qpzone_addrdataset is to allow the reuse of
+ * The reason this is split from qpzone_addrdata is to allow the reuse of
  * the same qp transaction for multiple adds.
  *
  * If the rdataset is of type NSEC, 'nsec' must point to the qp trie for the
  * zone, otherwise it must be NULL.
  *
- * qpzone_subtractrdataset doesn't have the same problem since it cannot delete
+ * qpzone_subrdata doesn't have the same problem since it cannot delete
  * nodes, only rdatasets.
  */
 static isc_result_t
-qpzone_addrdataset_inner(qpzonedb_t *qpdb, qpznode_t *node,
-			 dns_dbversion_t *dbversion, dns_rdataset_t *rdataset,
-			 unsigned int options, dns_rdataset_t *addedrdataset,
-			 dns_qp_t *nsec) {
+qpzone_addrdata_inner(qpzonedb_t *qpdb, qpznode_t *node,
+		      dns_dbversion_t *dbversion, dns_rdataset_t *rdataset,
+		      unsigned int options, dns_rdataset_t *addedrdataset,
+		      dns_qp_t *nsec) {
 	isc_result_t result;
 	qpz_version_t *version = (qpz_version_t *)dbversion;
 	isc_region_t region;
@@ -4933,11 +4933,10 @@ qpzone_addrdataset_inner(qpzonedb_t *qpdb, qpznode_t *node,
 }
 
 static isc_result_t
-qpzone_addrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
-		   dns_dbversion_t *dbversion,
-		   isc_stdtime_t now ISC_ATTR_UNUSED, dns_rdataset_t *rdataset,
-		   unsigned int options,
-		   dns_rdataset_t *addedrdataset DNS__DB_FLARG) {
+qpzone_addrdata(dns_db_t *db, dns_dbnode_t *dbnode, dns_dbversion_t *dbversion,
+		isc_stdtime_t now ISC_ATTR_UNUSED, dns_rdataset_t *rdataset,
+		unsigned int options,
+		dns_rdataset_t *addedrdataset DNS__DB_FLARG) {
 	qpzonedb_t *qpdb = (qpzonedb_t *)db;
 	qpznode_t *node = (qpznode_t *)dbnode;
 	dns_qp_t *nsec = NULL;
@@ -4952,7 +4951,7 @@ qpzone_addrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 		dns_qpmulti_write(qpdb->tree, &nsec);
 	}
 
-	isc_result_t result = qpzone_addrdataset_inner(
+	isc_result_t result = qpzone_addrdata_inner(
 		qpdb, node, dbversion, rdataset, options, addedrdataset, nsec);
 
 	if (nsec != NULL) {
@@ -4963,10 +4962,9 @@ qpzone_addrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 }
 
 static isc_result_t
-qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
-			dns_dbversion_t *dbversion, dns_rdataset_t *rdataset,
-			unsigned int options,
-			dns_rdataset_t *newrdataset DNS__DB_FLARG) {
+qpzone_subrdata(dns_db_t *db, dns_dbnode_t *dbnode, dns_dbversion_t *dbversion,
+		dns_rdataset_t *rdataset, unsigned int options,
+		dns_rdataset_t *newrdataset DNS__DB_FLARG) {
 	qpzonedb_t *qpdb = (qpzonedb_t *)db;
 	qpznode_t *node = (qpznode_t *)dbnode;
 	qpz_version_t *version = (qpz_version_t *)dbversion;
@@ -5147,9 +5145,8 @@ unlock:
 }
 
 static isc_result_t
-qpzone_deleterdataset(dns_db_t *db, dns_dbnode_t *dbnode,
-		      dns_dbversion_t *dbversion, dns_rdatatype_t type,
-		      dns_rdatatype_t covers DNS__DB_FLARG) {
+qpzone_delrdata(dns_db_t *db, dns_dbnode_t *dbnode, dns_dbversion_t *dbversion,
+		dns_rdatatype_t type, dns_rdatatype_t covers DNS__DB_FLARG) {
 	qpzonedb_t *qpdb = (qpzonedb_t *)db;
 	qpznode_t *node = (qpznode_t *)dbnode;
 	qpz_version_t *version = (qpz_version_t *)dbversion;
@@ -5526,25 +5523,25 @@ qpzone_update_rdataset(qpzonedb_t *qpdb, qpz_version_t *version, dns_qp_t *qp,
 	case DNS_DIFFOP_ADD:
 	case DNS_DIFFOP_ADDRESIGN:
 		/*
-		 * See the comment on qpzone_addrdataset_inner for why we
-		 * cannot use qpzone_addrdataset directly.
+		 * See the comment on qpzone_addrdata_inner for why we
+		 * cannot use qpzone_addrdata directly.
 		 */
 		options = DNS_DBADD_MERGE | DNS_DBADD_EXACT |
 			  DNS_DBADD_EXACTTTL;
 		if (!node->havensec && rds->type == dns_rdatatype_nsec) {
 			nsec = qp;
 		}
-		result = qpzone_addrdataset_inner(
+		result = qpzone_addrdata_inner(
 			qpdb, node, (dns_dbversion_t *)version, rds, options,
 			&ardataset, nsec DNS__DB_FLARG_PASS);
 		break;
 	case DNS_DIFFOP_DEL:
 	case DNS_DIFFOP_DELRESIGN:
 		options = DNS_DBSUB_EXACT | DNS_DBSUB_WANTOLD;
-		result = qpzone_subtractrdataset(
-			(dns_db_t *)qpdb, (dns_dbnode_t *)node,
-			(dns_dbversion_t *)version, rds, options,
-			&ardataset DNS__DB_FLARG_PASS);
+		result = qpzone_subrdata((dns_db_t *)qpdb, (dns_dbnode_t *)node,
+					 (dns_dbversion_t *)version, rds,
+					 options,
+					 &ardataset DNS__DB_FLARG_PASS);
 		break;
 	default:
 		UNREACHABLE();
@@ -5670,9 +5667,9 @@ static dns_dbmethods_t qpdb_zonemethods = {
 	.createiterator = qpzone_createiterator,
 	.findrdataset = qpzone_findrdataset,
 	.allrdatasets = qpzone_allrdatasets,
-	.addrdataset = qpzone_addrdataset,
-	.subtractrdataset = qpzone_subtractrdataset,
-	.deleterdataset = qpzone_deleterdataset,
+	.addrdata = qpzone_addrdata,
+	.subrdata = qpzone_subrdata,
+	.delrdata = qpzone_delrdata,
 	.issecure = issecure,
 	.nodecount = nodecount,
 	.getoriginnode = getoriginnode,

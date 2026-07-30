@@ -250,7 +250,7 @@ typedef isc_result_t (*dns_sdlzmodrdataset_t)(const char *name,
 					      void *version);
 /*%<
  * Method prototype.  Drivers implementing the SDLZ interface may
- * supply addrdataset and subtractrdataset methods. If supplied, then these
+ * supply addrdata and subrdata methods. If supplied, then these
  * will be called when rdatasets are added/subtracted during
  * updates. The version parameter comes from a call to the sdlz
  * newversion() method from the driver. The rdataset parameter is a
@@ -282,9 +282,9 @@ typedef struct dns_sdlzmethods {
 	dns_sdlzcloseversion_t	closeversion;
 	dns_sdlzconfigure_t	configure;
 	dns_sdlzssumatch_t	ssumatch;
-	dns_sdlzmodrdataset_t	addrdataset;
-	dns_sdlzmodrdataset_t	subtractrdataset;
-	dns_sdlzdelrdataset_t	delrdataset;
+	dns_sdlzmodrdataset_t	addrdata;
+	dns_sdlzmodrdataset_t	subrdata;
+	dns_sdlzdelrdataset_t	delrdata;
 } dns_sdlzmethods_t;
 
 isc_result_t

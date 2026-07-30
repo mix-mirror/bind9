@@ -51,9 +51,8 @@ static bool verbose = false;
  * arbitrary (and it doesn't matter in this test).
  */
 static void
-overmempurge_addrdataset(dns_db_t *db, isc_stdtime_t now, int idx,
-			 dns_rdatatype_t rtype, size_t rdata_len,
-			 bool longname) {
+overmempurge_addrdata(dns_db_t *db, isc_stdtime_t now, int idx,
+		      dns_rdatatype_t rtype, size_t rdata_len, bool longname) {
 	isc_result_t result;
 	dns_rdata_t rdata;
 	dns_dbnode_t *node = NULL;
@@ -104,7 +103,7 @@ overmempurge_addrdataset(dns_db_t *db, isc_stdtime_t now, int idx,
 	dns_rdataset_init(&rdataset);
 	dns_rdatalist_tordataset(&rdatalist, &rdataset);
 
-	result = dns_db_addrdataset(db, node, NULL, now, &rdataset, 0, NULL);
+	result = dns_db_addrdata(db, node, NULL, now, &rdataset, 0, NULL);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	dns_db_detachnode(&node);
@@ -127,9 +126,9 @@ cleanup_all_deadnodes(dns_db_t *db) {
  * (and, with serve-stale enabled, stale).
  */
 static void
-servestale_addrdataset(dns_db_t *db, const dns_name_t *name, isc_stdtime_t now,
-		       dns_rdatatype_t rtype, const char *rdatastr,
-		       dns_ttl_t ttl, dns_trust_t trust) {
+servestale_addrdata(dns_db_t *db, const dns_name_t *name, isc_stdtime_t now,
+		    dns_rdatatype_t rtype, const char *rdatastr, dns_ttl_t ttl,
+		    dns_trust_t trust) {
 	isc_result_t result;
 	dns_rdata_t rdata;
 	dns_dbnode_t *node = NULL;
@@ -157,7 +156,7 @@ servestale_addrdataset(dns_db_t *db, const dns_name_t *name, isc_stdtime_t now,
 	assert_true(result == ISC_R_SUCCESS || result == DNS_R_CNAME);
 	assert_non_null(node);
 
-	result = dns_db_addrdataset(db, node, NULL, now, &rdataset, 0, NULL);
+	result = dns_db_addrdata(db, node, NULL, now, &rdataset, 0, NULL);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	dns_db_detachnode(&node);
@@ -209,10 +208,10 @@ ISC_LOOP_TEST_IMPL(servestale_fresh_over_stale_cname) {
 	isc_mem_create("test", &mctx);
 	db = servestale_setup(mctx, &fname, &name);
 
-	servestale_addrdataset(db, name, now - 7200, dns_rdatatype_cname,
-			       "target.example.com.", 3600, dns_trust_answer);
-	servestale_addrdataset(db, name, now, dns_rdatatype_hinfo,
-			       "CRAY-1 NEXUS", 3600, dns_trust_answer);
+	servestale_addrdata(db, name, now - 7200, dns_rdatatype_cname,
+			    "target.example.com.", 3600, dns_trust_answer);
+	servestale_addrdata(db, name, now, dns_rdatatype_hinfo, "CRAY-1 NEXUS",
+			    3600, dns_trust_answer);
 
 	foundname = dns_fixedname_initname(&ffound);
 	dns_rdataset_init(&rdataset);
@@ -248,10 +247,10 @@ ISC_LOOP_TEST_IMPL(servestale_fresh_cname_over_stale_type) {
 	isc_mem_create("test", &mctx);
 	db = servestale_setup(mctx, &fname, &name);
 
-	servestale_addrdataset(db, name, now, dns_rdatatype_cname,
-			       "target.example.com.", 3600, dns_trust_answer);
-	servestale_addrdataset(db, name, now - 7200, dns_rdatatype_a,
-			       "10.53.0.1", 3600, dns_trust_answer);
+	servestale_addrdata(db, name, now, dns_rdatatype_cname,
+			    "target.example.com.", 3600, dns_trust_answer);
+	servestale_addrdata(db, name, now - 7200, dns_rdatatype_a, "10.53.0.1",
+			    3600, dns_trust_answer);
 
 	foundname = dns_fixedname_initname(&ffound);
 	dns_rdataset_init(&rdataset);
@@ -289,14 +288,14 @@ ISC_LOOP_TEST_IMPL(allrdatasets_expiredok_skips_deleted_header) {
 	dns_test_namefromstring("deleted.example.com.", &fname);
 	name = dns_fixedname_name(&fname);
 
-	servestale_addrdataset(db, name, now, dns_rdatatype_a, "10.53.0.1",
-			       3600, dns_trust_answer);
+	servestale_addrdata(db, name, now, dns_rdatatype_a, "10.53.0.1", 3600,
+			    dns_trust_answer);
 
 	result = dns_db_findnode(db, name, false, &node);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_non_null(node);
 
-	result = dns_db_deleterdataset(db, node, NULL, dns_rdatatype_a, 0);
+	result = dns_db_delrdata(db, node, NULL, dns_rdatatype_a, 0);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	result = dns_db_allrdatasets(db, node, NULL, DNS_DB_EXPIREDOK, now,
@@ -337,7 +336,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 	 * above the hi_water mark.
 	 */
 	while (isc_mem_inuse(mctx) < hiwater) {
-		overmempurge_addrdataset(db, now, i, 50053, 0, true);
+		overmempurge_addrdata(db, now, i, 50053, 0, true);
 		i++;
 	}
 	assert_true(isc_mem_inuse(mctx) >= hiwater);
@@ -350,8 +349,8 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 	 * assume the cache size doesn't reach the "max".
 	 */
 	while (i-- > 0) {
-		overmempurge_addrdataset(db, now, i, 50054,
-					 DNS_RDATA_MAXLENGTH - 2, false);
+		overmempurge_addrdata(db, now, i, 50054,
+				      DNS_RDATA_MAXLENGTH - 2, false);
 		cleanup_all_deadnodes(db);
 		if (verbose) {
 			print_message("# inuse: %zd max: %zd\n",
@@ -389,7 +388,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 	 * above the hi_water mark.
 	 */
 	while (isc_mem_inuse(mctx) < hiwater) {
-		overmempurge_addrdataset(db, now, i, 50053, 0, true);
+		overmempurge_addrdata(db, now, i, 50053, 0, true);
 		i++;
 	}
 	assert_true(isc_mem_inuse(mctx) >= hiwater);
@@ -402,7 +401,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 	 * assume the cache size doesn't reach the "max".
 	 */
 	while (i-- > 0) {
-		overmempurge_addrdataset(db, now, i, 50054, 0, true);
+		overmempurge_addrdata(db, now, i, 50054, 0, true);
 		cleanup_all_deadnodes(db);
 		if (verbose) {
 			print_message("# inuse: %zd max: %zd\n",

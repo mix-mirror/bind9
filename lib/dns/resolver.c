@@ -5569,9 +5569,8 @@ delete_rrset(fetchctx_t *fctx, dns_name_t *name, dns_rdatatype_t type) {
 		return;
 	}
 
-	dns_db_deleterdataset(fctx->cache, node, NULL, type, 0);
-	dns_db_deleterdataset(fctx->cache, node, NULL, dns_rdatatype_rrsig,
-			      type);
+	dns_db_delrdata(fctx->cache, node, NULL, type, 0);
+	dns_db_delrdata(fctx->cache, node, NULL, dns_rdatatype_rrsig, type);
 	dns_db_detachnode(&node);
 }
 
@@ -5642,8 +5641,8 @@ evict_cname_other(fetchctx_t *fctx, dns_name_t *name) {
 			continue;
 		default:
 			/* Evict everything else */
-			dns_db_deleterdataset(fctx->cache, node, NULL,
-					      rdataset.type, rdataset.covers);
+			dns_db_delrdata(fctx->cache, node, NULL, rdataset.type,
+					rdataset.covers);
 			dns_rdataset_disassociate(&rdataset);
 		}
 	}
@@ -5682,7 +5681,7 @@ cache_rrset(fetchctx_t *fctx, isc_stdtime_t now, dns_name_t *name,
 
 	/*
 	 * If we're validating and passing the added rdataset back to the
-	 * caller, then we ask dns_db_addrdataset() to compare the old and
+	 * caller, then we ask dns_db_addrdata() to compare the old and
 	 * new rdatasets whenever the result would normally have been
 	 * DNS_R_UNCHANGED, and to return ISC_R_SUCCESS if they compare
 	 * equal. This allows us to continue and cache RRSIGs in that case.
@@ -5720,8 +5719,8 @@ cache_rrset(fetchctx_t *fctx, isc_stdtime_t now, dns_name_t *name,
 	}
 
 	if (result == ISC_R_SUCCESS) {
-		result = dns_db_addrdataset(fctx->cache, node, NULL, now,
-					    rdataset, options | equalok, added);
+		result = dns_db_addrdata(fctx->cache, node, NULL, now, rdataset,
+					 options | equalok, added);
 	}
 
 	if (equalok == 0 && result == DNS_R_UNCHANGED) {
@@ -5729,8 +5728,8 @@ cache_rrset(fetchctx_t *fctx, isc_stdtime_t now, dns_name_t *name,
 	}
 
 	if (result == ISC_R_SUCCESS && sigrdataset != NULL) {
-		result = dns_db_addrdataset(fctx->cache, node, NULL, now,
-					    sigrdataset, options, addedsig);
+		result = dns_db_addrdata(fctx->cache, node, NULL, now,
+					 sigrdataset, options, addedsig);
 		if (result != ISC_R_SUCCESS && result != DNS_R_UNCHANGED) {
 			if (added != NULL) {
 				dns__rdataset_disassociate(added);
@@ -10377,8 +10376,8 @@ update_rootdb_glue(dns_db_t *rootdb, dns_dbversion_t *ver,
 
 	RETERR(dns_db_findnode(rootdb, name, true, &node));
 
-	(void)dns_db_deleterdataset(rootdb, node, ver, type, 0);
-	result = dns_db_addrdataset(rootdb, node, ver, now, rdataset, 0, NULL);
+	(void)dns_db_delrdata(rootdb, node, ver, type, 0);
+	result = dns_db_addrdata(rootdb, node, ver, now, rdataset, 0, NULL);
 	dns_db_detachnode(&node);
 	if (result != ISC_R_SUCCESS && result != DNS_R_UNCHANGED) {
 		return result;
@@ -10434,8 +10433,8 @@ update_rootdb(dns_view_t *view, dns_message_t *message) {
 
 	CHECK(dns_db_findnode(rootdb, dns_rootname, true, &node));
 
-	(void)dns_db_deleterdataset(rootdb, node, ver, dns_rdatatype_ns, 0);
-	result = dns_db_addrdataset(rootdb, node, ver, now, nsset, 0, NULL);
+	(void)dns_db_delrdata(rootdb, node, ver, dns_rdatatype_ns, 0);
+	result = dns_db_addrdata(rootdb, node, ver, now, nsset, 0, NULL);
 	dns_db_detachnode(&node);
 	if (result != ISC_R_SUCCESS && result != DNS_R_UNCHANGED) {
 		goto cleanup;

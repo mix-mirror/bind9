@@ -11513,12 +11513,12 @@ stub_glue_response(void *arg) {
 		goto cleanup;
 	}
 
-	result = dns_db_addrdataset(stub->db, node, stub->version, 0,
-				    addr_rdataset, 0, NULL);
+	result = dns_db_addrdata(stub->db, node, stub->version, 0,
+				 addr_rdataset, 0, NULL);
 	if (result != ISC_R_SUCCESS) {
 		dns_zone_log(zone, ISC_LOG_INFO,
 			     "refreshing stub: "
-			     "dns_db_addrdataset() failed: %s",
+			     "dns_db_addrdata() failed: %s",
 			     isc_result_totext(result));
 	}
 	dns_db_detachnode(&node);
@@ -11653,7 +11653,7 @@ save_nsrrset(dns_message_t *message, dns_name_t *name,
 	if (result != ISC_R_SUCCESS) {
 		goto done;
 	}
-	result = dns_db_addrdataset(db, node, version, 0, nsrdataset, 0, NULL);
+	result = dns_db_addrdata(db, node, version, 0, nsrdataset, 0, NULL);
 	dns_db_detachnode(&node);
 	if (result != ISC_R_SUCCESS) {
 		goto done;
@@ -11681,8 +11681,8 @@ save_nsrrset(dns_message_t *message, dns_name_t *name,
 			if (result != ISC_R_SUCCESS) {
 				goto done;
 			}
-			result = dns_db_addrdataset(db, node, version, 0,
-						    rdataset, 0, NULL);
+			result = dns_db_addrdata(db, node, version, 0, rdataset,
+						 0, NULL);
 			dns_db_detachnode(&node);
 			if (result != ISC_R_SUCCESS) {
 				goto done;
@@ -11699,8 +11699,8 @@ save_nsrrset(dns_message_t *message, dns_name_t *name,
 			if (result != ISC_R_SUCCESS) {
 				goto done;
 			}
-			result = dns_db_addrdataset(db, node, version, 0,
-						    rdataset, 0, NULL);
+			result = dns_db_addrdata(db, node, version, 0, rdataset,
+						 0, NULL);
 			dns_db_detachnode(&node);
 			if (result != ISC_R_SUCCESS) {
 				goto done;
@@ -12915,13 +12915,13 @@ ns_query(dns_zone_t *zone, dns_rdataset_t *soardataset, dns_stub_t *stub) {
 			goto cleanup;
 		}
 
-		result = dns_db_addrdataset(stub->db, node, stub->version, 0,
-					    soardataset, 0, NULL);
+		result = dns_db_addrdata(stub->db, node, stub->version, 0,
+					 soardataset, 0, NULL);
 		dns_db_detachnode(&node);
 		if (result != ISC_R_SUCCESS) {
 			dns_zone_log(zone, ISC_LOG_INFO,
 				     "refreshing stub: "
-				     "dns_db_addrdataset() failed: %s",
+				     "dns_db_addrdata() failed: %s",
 				     isc_result_totext(result));
 			goto cleanup;
 		}
@@ -14823,8 +14823,7 @@ checkandaddsoa(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	RUNTIME_CHECK(result == ISC_R_SUCCESS);
 
 	if (isc_serial_gt(soa.serial, oldserial)) {
-		return dns_db_addrdataset(db, node, version, 0, rdataset, 0,
-					  NULL);
+		return dns_db_addrdata(db, node, version, 0, rdataset, 0, NULL);
 	}
 	/*
 	 * Always bump the serial.
@@ -14854,7 +14853,7 @@ checkandaddsoa(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 
 	dns_rdataset_getownercase(rdataset, name);
 	dns_rdataset_setownercase(&temprdataset, name);
-	return dns_db_addrdataset(db, node, version, 0, &temprdataset, 0, NULL);
+	return dns_db_addrdata(db, node, version, 0, &temprdataset, 0, NULL);
 }
 
 /*
@@ -15084,8 +15083,8 @@ copy_non_dnssec_records(dns_db_t *db, dns_dbversion_t *version, dns_db_t *rawdb,
 			result = checkandaddsoa(db, node, version, name,
 						&rdataset, *oldserial);
 		} else {
-			result = dns_db_addrdataset(db, node, version, 0,
-						    &rdataset, 0, NULL);
+			result = dns_db_addrdata(db, node, version, 0,
+						 &rdataset, 0, NULL);
 		}
 		dns_rdataset_disassociate(&rdataset);
 		if (result != ISC_R_SUCCESS) {

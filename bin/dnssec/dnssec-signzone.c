@@ -1267,10 +1267,10 @@ active_node(dns_dbnode_t *node) {
 		 */
 		DNS_RDATASETITER_FOREACH(rdsiter) {
 			dns_rdatasetiter_current(rdsiter, &rdataset);
-			result = dns_db_deleterdataset(gdb, node, gversion,
-						       rdataset.type,
-						       rdataset.covers);
-			check_result(result, "dns_db_deleterdataset()");
+			result = dns_db_delrdata(gdb, node, gversion,
+						 rdataset.type,
+						 rdataset.covers);
+			check_result(result, "dns_db_delrdata()");
 			dns_rdataset_disassociate(&rdataset);
 		}
 	} else {
@@ -1293,9 +1293,9 @@ active_node(dns_dbnode_t *node) {
 			    (type == dns_rdatatype_nsec ||
 			     covers == dns_rdatatype_nsec))
 			{
-				result = dns_db_deleterdataset(
-					gdb, node, gversion, type, covers);
-				check_result(result, "dns_db_deleterdataset("
+				result = dns_db_delrdata(gdb, node, gversion,
+							 type, covers);
+				check_result(result, "dns_db_delrdata("
 						     "nsec/rrsig)");
 				continue;
 			}
@@ -1311,9 +1311,9 @@ active_node(dns_dbnode_t *node) {
 				dns_rdataset_disassociate(&rdataset);
 			}
 			if (!found) {
-				result = dns_db_deleterdataset(
-					gdb, node, gversion, type, covers);
-				check_result(result, "dns_db_deleterdataset("
+				result = dns_db_delrdata(gdb, node, gversion,
+							 type, covers);
+				check_result(result, "dns_db_delrdata("
 						     "rrsig)");
 			} else if (result != ISC_R_SUCCESS) {
 				fatal("rdataset iteration failed: %s",
@@ -1421,15 +1421,14 @@ setsoaserial(uint32_t serial, dns_updatemethod_t method) {
 
 	dns_soa_setserial(new_serial, &rdata);
 
-	result = dns_db_deleterdataset(gdb, node, gversion, dns_rdatatype_soa,
-				       0);
-	check_result(result, "dns_db_deleterdataset");
+	result = dns_db_delrdata(gdb, node, gversion, dns_rdatatype_soa, 0);
+	check_result(result, "dns_db_delrdata");
 	if (result != ISC_R_SUCCESS) {
 		goto cleanup;
 	}
 
-	result = dns_db_addrdataset(gdb, node, gversion, 0, &rdataset, 0, NULL);
-	check_result(result, "dns_db_addrdataset");
+	result = dns_db_addrdata(gdb, node, gversion, 0, &rdataset, 0, NULL);
+	check_result(result, "dns_db_addrdata");
 	if (result != ISC_R_SUCCESS) {
 		goto cleanup;
 	}
@@ -1639,23 +1638,22 @@ add_ds(dns_name_t *name, dns_dbnode_t *node, uint32_t nsttl) {
 				     0, &dsset, &sigdsset);
 	if (result == ISC_R_SUCCESS) {
 		dns_rdataset_disassociate(&dsset);
-		result = dns_db_deleterdataset(gdb, node, gversion,
-					       dns_rdatatype_ds, 0);
-		check_result(result, "dns_db_deleterdataset");
+		result = dns_db_delrdata(gdb, node, gversion, dns_rdatatype_ds,
+					 0);
+		check_result(result, "dns_db_delrdata");
 	}
 
 	result = loadds(name, nsttl, &dsset);
 	if (result == ISC_R_SUCCESS) {
-		result = dns_db_addrdataset(gdb, node, gversion, 0, &dsset, 0,
-					    NULL);
-		check_result(result, "dns_db_addrdataset");
+		result = dns_db_addrdata(gdb, node, gversion, 0, &dsset, 0,
+					 NULL);
+		check_result(result, "dns_db_addrdata");
 		dns_rdataset_disassociate(&dsset);
 		dns_rdataset_cleanup(&sigdsset);
 	} else if (dns_rdataset_isassociated(&sigdsset)) {
-		result = dns_db_deleterdataset(gdb, node, gversion,
-					       dns_rdatatype_rrsig,
-					       dns_rdatatype_ds);
-		check_result(result, "dns_db_deleterdataset");
+		result = dns_db_delrdata(gdb, node, gversion,
+					 dns_rdatatype_rrsig, dns_rdatatype_ds);
+		check_result(result, "dns_db_delrdata");
 		dns_rdataset_disassociate(&sigdsset);
 	}
 }
@@ -1693,9 +1691,9 @@ remove_records(dns_dbnode_t *node, dns_rdatatype_t which, bool checknsec) {
 				fatal("Zone contains NSEC3 chains.  Use -u "
 				      "to update to NSEC.");
 			}
-			result = dns_db_deleterdataset(gdb, node, gversion,
-						       type, covers);
-			check_result(result, "dns_db_deleterdataset()");
+			result = dns_db_delrdata(gdb, node, gversion, type,
+						 covers);
+			check_result(result, "dns_db_delrdata()");
 		}
 	}
 	dns_rdatasetiter_destroy(&rdsiter);
@@ -1737,9 +1735,8 @@ remove_sigs(dns_dbnode_t *node, bool delegation, dns_rdatatype_t which) {
 			continue;
 		}
 
-		result = dns_db_deleterdataset(gdb, node, gversion, type,
-					       covers);
-		check_result(result, "dns_db_deleterdataset()");
+		result = dns_db_delrdata(gdb, node, gversion, type, covers);
+		check_result(result, "dns_db_delrdata()");
 	}
 	dns_rdatasetiter_destroy(&rdsiter);
 }
@@ -1778,9 +1775,9 @@ nsecify(void) {
 			type = rdataset.type;
 			covers = rdataset.covers;
 			dns_rdataset_disassociate(&rdataset);
-			result = dns_db_deleterdataset(gdb, node, gversion,
-						       type, covers);
-			check_result(result, "dns_db_deleterdataset(nsec3param/"
+			result = dns_db_delrdata(gdb, node, gversion, type,
+						 covers);
+			check_result(result, "dns_db_delrdata(nsec3param/"
 					     "rrsig)");
 		}
 		dns_rdatasetiter_destroy(&rdsiter);
@@ -1910,19 +1907,19 @@ addnsec3param(const unsigned char *salt, size_t salt_len,
 	/*
 	 * Delete any current NSEC3PARAM records.
 	 */
-	result = dns_db_deleterdataset(gdb, node, gversion,
-				       dns_rdatatype_nsec3param, 0);
+	result = dns_db_delrdata(gdb, node, gversion, dns_rdatatype_nsec3param,
+				 0);
 	if (result == DNS_R_UNCHANGED) {
 		result = ISC_R_SUCCESS;
 	}
-	check_result(result, "dddnsec3param: dns_db_deleterdataset()");
+	check_result(result, "dddnsec3param: dns_db_delrdata()");
 
-	result = dns_db_addrdataset(gdb, node, gversion, 0, &rdataset,
-				    DNS_DBADD_MERGE, NULL);
+	result = dns_db_addrdata(gdb, node, gversion, 0, &rdataset,
+				 DNS_DBADD_MERGE, NULL);
 	if (result == DNS_R_UNCHANGED) {
 		result = ISC_R_SUCCESS;
 	}
-	check_result(result, "addnsec3param: dns_db_addrdataset()");
+	check_result(result, "addnsec3param: dns_db_addrdata()");
 	dns_db_detachnode(&node);
 }
 
@@ -1967,12 +1964,12 @@ addnsec3(dns_name_t *name, dns_dbnode_t *node, const unsigned char *salt,
 	result = dns_db_findnsec3node(gdb, dns_fixedname_name(&hashname), true,
 				      &nsec3node);
 	check_result(result, "addnsec3: dns_db_findnode()");
-	result = dns_db_addrdataset(gdb, nsec3node, gversion, 0, &rdataset, 0,
-				    NULL);
+	result = dns_db_addrdata(gdb, nsec3node, gversion, 0, &rdataset, 0,
+				 NULL);
 	if (result == DNS_R_UNCHANGED) {
 		result = ISC_R_SUCCESS;
 	}
-	check_result(result, "addnsec3: dns_db_addrdataset()");
+	check_result(result, "addnsec3: dns_db_addrdata()");
 	dns_db_detachnode(&nsec3node);
 }
 
@@ -2064,11 +2061,11 @@ nsec3clean(dns_name_t *name, dns_dbnode_t *node, unsigned int hashalg,
 		dns_rdata_clone(&rdata, &delrdata);
 		ISC_LIST_APPEND(rdatalist.rdata, &delrdata, link);
 		dns_rdatalist_tordataset(&rdatalist, &delrdataset);
-		result = dns_db_subtractrdataset(gdb, node, gversion,
-						 &delrdataset, 0, NULL);
+		result = dns_db_subrdata(gdb, node, gversion, &delrdataset, 0,
+					 NULL);
 		dns_rdataset_disassociate(&delrdataset);
 		if (result != ISC_R_SUCCESS && result != DNS_R_NXRRSET) {
-			check_result(result, "dns_db_subtractrdataset(NSEC3)");
+			check_result(result, "dns_db_subrdata(NSEC3)");
 		}
 		delete_rrsigs = true;
 	}
@@ -2080,10 +2077,10 @@ nsec3clean(dns_name_t *name, dns_dbnode_t *node, unsigned int hashalg,
 	/*
 	 * Delete the NSEC3 RRSIGs
 	 */
-	result = dns_db_deleterdataset(gdb, node, gversion, dns_rdatatype_rrsig,
-				       dns_rdatatype_nsec3);
+	result = dns_db_delrdata(gdb, node, gversion, dns_rdatatype_rrsig,
+				 dns_rdatatype_nsec3);
 	if (result != ISC_R_SUCCESS && result != DNS_R_UNCHANGED) {
-		check_result(result, "dns_db_deleterdataset(RRSIG(NSEC3))");
+		check_result(result, "dns_db_delrdata(RRSIG(NSEC3))");
 	}
 }
 

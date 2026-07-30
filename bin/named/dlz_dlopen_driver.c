@@ -444,8 +444,8 @@ dlopen_dlz_ssumatch(const char *signer, const char *name, const char *tcpaddr,
  * Add an rdataset.
  */
 static isc_result_t
-dlopen_dlz_addrdataset(const char *name, const char *rdatastr, void *driverarg,
-		       void *dbdata, void *version) {
+dlopen_dlz_addrdata(const char *name, const char *rdatastr, void *driverarg,
+		    void *dbdata, void *version) {
 	dlopen_data_t *cd = (dlopen_data_t *)dbdata;
 	isc_result_t result;
 
@@ -510,7 +510,7 @@ static dns_sdlzmethods_t dlz_dlopen_methods = {
 	dlopen_dlz_create,	 dlopen_dlz_destroy,	dlopen_dlz_findzonedb,
 	dlopen_dlz_lookup,	 dlopen_dlz_authority,	dlopen_dlz_allnodes,
 	dlopen_dlz_allowzonexfr, dlopen_dlz_newversion, dlopen_dlz_closeversion,
-	dlopen_dlz_configure,	 dlopen_dlz_ssumatch,	dlopen_dlz_addrdataset,
+	dlopen_dlz_configure,	 dlopen_dlz_ssumatch,	dlopen_dlz_addrdata,
 	dlopen_dlz_subrdataset,	 dlopen_dlz_delrdataset
 };
 

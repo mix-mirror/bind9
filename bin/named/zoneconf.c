@@ -627,23 +627,22 @@ configure_staticstub(const cfg_obj_t *zconfig, const cfg_obj_t *tconfig,
 
 	/* Add NS RRset */
 	dns_rdatalist_tordataset(&rdatalist_ns, &rdataset);
-	CHECK(dns_db_addrdataset(db, apexnode, dbversion, 0, &rdataset, 0,
-				 NULL));
+	CHECK(dns_db_addrdata(db, apexnode, dbversion, 0, &rdataset, 0, NULL));
 	dns_rdataset_disassociate(&rdataset);
 
 	/* Add glue A RRset, if any */
 	if (!ISC_LIST_EMPTY(rdatalist_a.rdata)) {
 		dns_rdatalist_tordataset(&rdatalist_a, &rdataset);
-		CHECK(dns_db_addrdataset(db, apexnode, dbversion, 0, &rdataset,
-					 0, NULL));
+		CHECK(dns_db_addrdata(db, apexnode, dbversion, 0, &rdataset, 0,
+				      NULL));
 		dns_rdataset_disassociate(&rdataset);
 	}
 
 	/* Add glue AAAA RRset, if any */
 	if (!ISC_LIST_EMPTY(rdatalist_aaaa.rdata)) {
 		dns_rdatalist_tordataset(&rdatalist_aaaa, &rdataset);
-		CHECK(dns_db_addrdataset(db, apexnode, dbversion, 0, &rdataset,
-					 0, NULL));
+		CHECK(dns_db_addrdata(db, apexnode, dbversion, 0, &rdataset, 0,
+				      NULL));
 		dns_rdataset_disassociate(&rdataset);
 	}
 

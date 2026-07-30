@@ -112,19 +112,17 @@ typedef struct dns_db_methods {
 		dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 		unsigned int options, isc_stdtime_t now,
 		dns_rdatasetiter_t **iteratorp DNS__DB_FLARG);
-	isc_result_t (*addrdataset)(dns_db_t *db, dns_dbnode_t *node,
-				    dns_dbversion_t *version, isc_stdtime_t now,
-				    dns_rdataset_t *rdataset,
-				    unsigned int    options,
-				    dns_rdataset_t *addedrdataset DNS__DB_FLARG);
-	isc_result_t (*subtractrdataset)(
-		dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
-		dns_rdataset_t *rdataset, unsigned int options,
-		dns_rdataset_t *newrdataset DNS__DB_FLARG);
-	isc_result_t (*deleterdataset)(dns_db_t *db, dns_dbnode_t *node,
-				       dns_dbversion_t	     *version,
-				       dns_rdatatype_t	      type,
-				       dns_rdatatype_t covers DNS__DB_FLARG);
+	isc_result_t (*addrdata)(dns_db_t *db, dns_dbnode_t *node,
+				 dns_dbversion_t *version, isc_stdtime_t now,
+				 dns_rdataset_t *rdataset, unsigned int options,
+				 dns_rdataset_t *addedrdataset DNS__DB_FLARG);
+	isc_result_t (*subrdata)(dns_db_t *db, dns_dbnode_t *node,
+				 dns_dbversion_t *version,
+				 dns_rdataset_t *rdataset, unsigned int options,
+				 dns_rdataset_t *newrdataset DNS__DB_FLARG);
+	isc_result_t (*delrdata)(dns_db_t *db, dns_dbnode_t *node,
+				 dns_dbversion_t *version, dns_rdatatype_t type,
+				 dns_rdatatype_t covers DNS__DB_FLARG);
 	bool (*issecure)(dns_db_t *db);
 	unsigned int (*nodecount)(dns_db_t *db);
 	isc_result_t (*getoriginnode)(dns_db_t		  *db,
@@ -292,7 +290,7 @@ enum {
 
 /*@{*/
 /*%
- * Options that can be specified for dns_db_addrdataset().
+ * Options that can be specified for dns_db_addrdata().
  */
 #define DNS_DBADD_MERGE	   0x01
 #define DNS_DBADD_FORCE	   0x02
@@ -303,7 +301,7 @@ enum {
 /*@}*/
 
 /*%
- * Options that can be specified for dns_db_subtractrdataset().
+ * Options that can be specified for dns_db_subrdata().
  */
 #define DNS_DBSUB_EXACT	  0x01
 #define DNS_DBSUB_WANTOLD 0x02
@@ -493,7 +491,7 @@ dns_db_beginload(dns_db_t *db, dns_rdatacallbacks_t *callbacks);
  *
  * Ensures:
  *
- * \li	On success, callbacks->add will be a valid dns_addrdatasetfunc_t
+ * \li	On success, callbacks->add will be a valid dns_addrdatafunc_t
  *      suitable for loading records into 'db' from a raw or text zone
  *      file. callbacks->add_private will be a valid DB load context
  *      which should be used as 'arg' when callbacks->add is called.
@@ -546,7 +544,7 @@ dns_db_beginupdate(dns_db_t *db, dns_dbversion_t *ver,
  *
  * Ensures:
  *
- * \li	On success, callbacks->add will be a valid dns_addrdatasetfunc_t
+ * \li	On success, callbacks->add will be a valid dns_addrdatafunc_t
  *      suitable for updating records in 'db' from IXFR operations.
  *      callbacks->add_private will be a valid DB update context
  *      which should be used as 'arg' when callbacks->add is called.
@@ -1221,15 +1219,15 @@ dns__db_allrdatasets(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
  *	implementation used.
  */
 
-#define dns_db_addrdataset(db, node, version, now, rdataset, options,  \
-			   addedrdataset)                              \
-	dns__db_addrdataset(db, node, version, now, rdataset, options, \
-			    addedrdataset DNS__DB_FILELINE)
+#define dns_db_addrdata(db, node, version, now, rdataset, options,  \
+			addedrdataset)                              \
+	dns__db_addrdata(db, node, version, now, rdataset, options, \
+			 addedrdataset DNS__DB_FILELINE)
 isc_result_t
-dns__db_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
-		    isc_stdtime_t now, dns_rdataset_t *rdataset,
-		    unsigned int		  options,
-		    dns_rdataset_t *addedrdataset DNS__DB_FLARG);
+dns__db_addrdata(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
+		 isc_stdtime_t now, dns_rdataset_t *rdataset,
+		 unsigned int		       options,
+		 dns_rdataset_t *addedrdataset DNS__DB_FLARG);
 /*%<
  * Add 'rdataset' to 'node' in version 'version' of 'db'.
  *
@@ -1297,15 +1295,13 @@ dns__db_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
  *	implementation used.
  */
 
-#define dns_db_subtractrdataset(db, node, version, rdataset, options,  \
-				newrdataset)                           \
-	dns__db_subtractrdataset(db, node, version, rdataset, options, \
-				 newrdataset DNS__DB_FILELINE)
+#define dns_db_subrdata(db, node, version, rdataset, options, newrdataset) \
+	dns__db_subrdata(db, node, version, rdataset, options,             \
+			 newrdataset DNS__DB_FILELINE)
 isc_result_t
-dns__db_subtractrdataset(dns_db_t *db, dns_dbnode_t *node,
-			 dns_dbversion_t *version, dns_rdataset_t *rdataset,
-			 unsigned int		     options,
-			 dns_rdataset_t *newrdataset DNS__DB_FLARG);
+dns__db_subrdata(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
+		 dns_rdataset_t *rdataset, unsigned int options,
+		 dns_rdataset_t *newrdataset DNS__DB_FLARG);
 /*%<
  * Remove any rdata in 'rdataset' from 'node' in version 'version' of
  * 'db'.
@@ -1347,12 +1343,11 @@ dns__db_subtractrdataset(dns_db_t *db, dns_dbnode_t *node,
  *	implementation used.
  */
 
-#define dns_db_deleterdataset(db, node, version, type, covers) \
-	dns__db_deleterdataset(db, node, version, type, covers DNS__DB_FILELINE)
+#define dns_db_delrdata(db, node, version, type, covers) \
+	dns__db_delrdata(db, node, version, type, covers DNS__DB_FILELINE)
 isc_result_t
-dns__db_deleterdataset(dns_db_t *db, dns_dbnode_t *node,
-		       dns_dbversion_t *version, dns_rdatatype_t type,
-		       dns_rdatatype_t covers DNS__DB_FLARG);
+dns__db_delrdata(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
+		 dns_rdatatype_t type, dns_rdatatype_t covers DNS__DB_FLARG);
 /*%<
  * Make it so that no rdataset of type 'type' exists at 'node' in version
  * version 'version' of 'db'.

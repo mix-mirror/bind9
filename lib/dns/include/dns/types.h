@@ -434,9 +434,9 @@ typedef void (*dns_loaddonefunc_t)(void *, isc_result_t);
 
 typedef void (*dns_rawdatafunc_t)(dns_zone_t *, dns_masterrawheader_t *);
 
-typedef isc_result_t (*dns_addrdatasetfunc_t)(void *arg, const dns_name_t *name,
-					      dns_rdataset_t *rdataset,
-					      dns_diffop_t op DNS__DB_FLARG);
+typedef isc_result_t (*dns_addrdatafunc_t)(void *arg, const dns_name_t *name,
+					   dns_rdataset_t *rdataset,
+					   dns_diffop_t op DNS__DB_FLARG);
 typedef void (*dns_transactionfunc_t)(void *arg);
 
 typedef isc_result_t (*dns_additionaldatafunc_t)(

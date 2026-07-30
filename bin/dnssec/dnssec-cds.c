@@ -970,19 +970,19 @@ update_diff(const char *cmd, uint32_t ttl, dns_rdataset_t *addset,
 
 	dns_rdataset_init(&diffset);
 
-	result = dns_db_addrdataset(update_db, update_node, update_version, 0,
-				    addset, DNS_DBADD_MERGE, NULL);
-	check_result(result, "dns_db_addrdataset()");
+	result = dns_db_addrdata(update_db, update_node, update_version, 0,
+				 addset, DNS_DBADD_MERGE, NULL);
+	check_result(result, "dns_db_addrdata()");
 
-	result = dns_db_subtractrdataset(update_db, update_node, update_version,
-					 delset, 0, &diffset);
+	result = dns_db_subrdata(update_db, update_node, update_version, delset,
+				 0, &diffset);
 	if (result == DNS_R_UNCHANGED) {
 		save = addset->ttl;
 		addset->ttl = ttl;
 		print_diff(cmd, addset);
 		addset->ttl = save;
 	} else if (result != DNS_R_NXRRSET) {
-		check_result(result, "dns_db_subtractrdataset()");
+		check_result(result, "dns_db_subrdata()");
 		diffset.ttl = ttl;
 		print_diff(cmd, &diffset);
 		dns_rdataset_disassociate(&diffset);
