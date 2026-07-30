@@ -1223,7 +1223,7 @@ unit:gcc:8fips:amd64:
 
 gcc:9fips:amd64:
   variables:
-    EXTRA_SETUP_FILES: "--native-file ci/fips.ini"
+    EXTRA_SETUP_FILES: "--native-file ci/9fips.ini"
     GIT_CLONE_PATH: "${GIT_CLONE_PATH_INSTANCE_EXECUTOR}"
   <<: *almalinux_9fips_amd64_image
   <<: *build_job
@@ -1250,7 +1250,7 @@ unit:gcc:9fips:amd64:
 
 gcc:10fips:amd64:
   variables:
-    EXTRA_SETUP_FILES: "--native-file ci/fips.ini"
+    EXTRA_SETUP_FILES: "--native-file ci/10fips.ini"
     GIT_CLONE_PATH: "${GIT_CLONE_PATH_INSTANCE_EXECUTOR}"
   <<: *almalinux_10fips_amd64_image
   <<: *build_job
