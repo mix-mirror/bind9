@@ -1047,7 +1047,7 @@ tarball-create:
     # the mock chroot configs; edit that block out so that dnf inside mock
     # does not choke on it.
     - sed -i "/^config_opts\['yum.conf'\] += '''/,/'''$/d" /etc/mock/${TARGET_OS}.cfg
-    - git clone --depth 1 https://gitlab.isc.org/isc-packages/rpms/bind.git bind-rpms
+    - git clone --branch mnowak/shared-mock-rpm-makefile --depth 1 https://gitlab.isc.org/isc-packages/rpms/bind.git bind-rpms
     - >
       make -C bind-rpms rpms/${TARGET_OS} check/${TARGET_OS}
       BIND_EDITION="${BIND_EDITION}"
