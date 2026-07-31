@@ -428,7 +428,7 @@ stages:
       || (test -s config.log && cat config.log; exit 1)
 
 .git-clone-bind9-qa: &git_clone_bind9-qa
-  - git clone --depth 1 https://gitlab.isc.org/isc-projects/bind9-qa.git "$CI_PROJECT_DIR"/bind9-qa
+  - git clone --depth 1 --branch nicki/stress-freebsd-extra-setup-files https://gitlab.isc.org/isc-projects/bind9-qa.git "$CI_PROJECT_DIR"/bind9-qa
 
 # change directory to the workspace before including this
 .find_python: &find_python
@@ -892,6 +892,8 @@ linkcheck:
 
 generate-stress-test-configs:
   <<: *quick_checks_job
+  variables:
+    ALL_BIND_STRESS_TESTS: "1"
   script:
     - *git_clone_bind9-qa
     - >
