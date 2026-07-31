@@ -1,0 +1,19 @@
+$TTL 300
+@ 			IN SOA	ns.tld. hostmaster.tld. (
+				1	; serial
+				600	; refresh
+				600	; retry
+				1200	; expire
+				600	; minimum
+				)
+ 			NS	ns
+ns			A	10.53.0.2
+
+; Cyclic sibling delegations: each child zone is served by a nameserver
+; whose name lives in the sibling zone, so neither zone can be resolved
+; without accepting the sibling glue below.
+foo			NS	ns.bar.tld.
+bar			NS	ns.foo.tld.
+
+ns.foo.tld.		A	10.53.0.3
+ns.bar.tld.		A	10.53.0.3

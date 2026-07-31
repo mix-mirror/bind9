@@ -1,0 +1,11 @@
+$TTL 300
+@ 			IN SOA	ns.bar.tld. hostmaster.foo.tld. (
+				1	; serial
+				600	; refresh
+				600	; retry
+				1200	; expire
+				600	; minimum
+				)
+ 			NS	ns.bar.tld.
+ns			A	10.53.0.3
+a			A	192.0.2.1
