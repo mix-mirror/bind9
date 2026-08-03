@@ -662,6 +662,12 @@ struct isc_nmsocket {
 	bool reading;
 	bool timedout;
 
+	/**
+	 * \brief
+	 * Flag to set UDP reads continuous and not a one-off operation.
+	 */
+	bool continuous_read;
+
 	/*%
 	 * A timestamp of when the connection acceptance was delayed due
 	 * to quota.

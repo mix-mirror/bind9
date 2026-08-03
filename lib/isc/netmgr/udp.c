@@ -658,7 +658,7 @@ isc__nm_udp_read_cb(uv_udp_t *handle, ssize_t nrecv, const uv_buf_t *buf,
 	 * stop reading now.  The reading could be restarted in the read
 	 * callback with another isc_nm_read() call.
 	 */
-	if (sock->client) {
+	if (sock->client && !sock->continuous_read) {
 		isc__nmsocket_timer_stop(sock);
 		isc__nm_stop_reading(sock);
 		isc__nmsocket_clearcb(sock);
@@ -800,7 +800,7 @@ isc__nm_udp_send(isc_nmhandle_t *handle, const isc_region_t *region,
 		 */
 		r = uv_udp_try_send(&sock->uv_handle.udp, &uvreq->uvbuf, 1, sa);
 		if (r < 0) {
-			if (can_log_udp_sends()) {
+			if (can_log_udp_sends() && r != UV_EAGAIN) {
 				isc__netmgr_log(
 					ISC_LOG_ERROR,
 					"Sending UDP messages failed: %s",
