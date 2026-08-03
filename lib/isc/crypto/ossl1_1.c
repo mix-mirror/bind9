@@ -125,10 +125,12 @@ register_algorithms(void) {
 
 isc_result_t
 isc_hmac(isc_md_type_t type, const void *key, const size_t keylen,
-	 const unsigned char *buf, const size_t len, unsigned char *digest,
-	 unsigned int *digestlen) {
+	 const uint8_t *buf, const size_t len, uint8_t *mac, size_t mac_len) {
+	isc_result_t result;
+	unsigned int l;
 	EVP_MD *md;
 
+	REQUIRE(mac_len >= ISC_MAX_MD_SIZE);
 	REQUIRE(type < ISC_MD_MAX);
 
 	md = isc__crypto_md[type];
@@ -136,12 +138,20 @@ isc_hmac(isc_md_type_t type, const void *key, const size_t keylen,
 		return ISC_R_NOTIMPLEMENTED;
 	}
 
-	if (HMAC(md, key, keylen, buf, len, digest, digestlen) == NULL) {
-		ERR_clear_error();
-		return ISC_R_CRYPTOFAILURE;
+	ERR_set_mark();
+
+	l = mac_len;
+	if (HMAC(md, key, keylen, buf, len, mac, &l) == NULL) {
+		result = ISC_R_CRYPTOFAILURE;
+	} else {
+		result = ISC_R_SUCCESS;
 	}
 
-	return ISC_R_SUCCESS;
+	INSIST(mac_len == l);
+
+	ERR_pop_to_mark();
+
+	return result;
 }
 
 isc_result_t

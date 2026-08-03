@@ -52,6 +52,13 @@
 #define ISC_MD_sha384 ISC_MD_SHA384
 #define ISC_MD_sha512 ISC_MD_SHA512
 
+#define ISC_md5_DIGESTLENGTH	ISC_MD5_DIGESTLENGTH
+#define ISC_sha1_DIGESTLENGTH	ISC_SHA1_DIGESTLENGTH
+#define ISC_sha224_DIGESTLENGTH ISC_SHA224_DIGESTLENGTH
+#define ISC_sha256_DIGESTLENGTH ISC_SHA256_DIGESTLENGTH
+#define ISC_sha384_DIGESTLENGTH ISC_SHA384_DIGESTLENGTH
+#define ISC_sha512_DIGESTLENGTH ISC_SHA512_DIGESTLENGTH
+
 #define hmac_register_algorithm(alg)                                           \
 	static isc_result_t hmac##alg##_createctx(dst_key_t *key,              \
 						  dst_context_t *dctx) {       \
@@ -132,9 +139,9 @@
 		if (*funcp == NULL) {                                          \
 			uint8_t data[] = "data";                               \
 			uint8_t mac_buffer[ISC_MAX_MD_SIZE];                   \
-			unsigned int mac_len = sizeof(mac_buffer);             \
 			if (isc_hmac(ISC_MD_##alg, "test", 4, data, 4,         \
-				     mac_buffer, &mac_len) == ISC_R_SUCCESS)   \
+				     mac_buffer, ISC_##alg##_DIGESTLENGTH) ==  \
+			    ISC_R_SUCCESS)                                     \
 			{                                                      \
 				*funcp = &hmac##alg##_functions;               \
 			}                                                      \

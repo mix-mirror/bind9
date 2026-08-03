@@ -245,36 +245,42 @@ sign(unsigned char *data, unsigned int length, unsigned char *out,
 	isc_md_type_t md_type;
 	isccc_region_t source, target;
 	unsigned char digest[ISC_MAX_MD_SIZE];
-	unsigned int digestlen = sizeof(digest);
 	unsigned char digestb64[HSHA_LENGTH + 4];
+	unsigned int digestlen;
 
 	source.rstart = digest;
 
 	switch (algorithm) {
 	case ISCCC_ALG_HMACMD5:
 		md_type = ISC_MD_MD5;
+		digestlen = ISC_MD5_DIGESTLENGTH;
 		break;
 	case ISCCC_ALG_HMACSHA1:
 		md_type = ISC_MD_SHA1;
+		digestlen = ISC_SHA1_DIGESTLENGTH;
 		break;
 	case ISCCC_ALG_HMACSHA224:
 		md_type = ISC_MD_SHA224;
+		digestlen = ISC_SHA224_DIGESTLENGTH;
 		break;
 	case ISCCC_ALG_HMACSHA256:
 		md_type = ISC_MD_SHA256;
+		digestlen = ISC_SHA256_DIGESTLENGTH;
 		break;
 	case ISCCC_ALG_HMACSHA384:
 		md_type = ISC_MD_SHA384;
+		digestlen = ISC_SHA384_DIGESTLENGTH;
 		break;
 	case ISCCC_ALG_HMACSHA512:
 		md_type = ISC_MD_SHA512;
+		digestlen = ISC_SHA512_DIGESTLENGTH;
 		break;
 	default:
 		return ISC_R_NOTIMPLEMENTED;
 	}
 
 	RETERR(isc_hmac(md_type, secret->rstart, REGION_SIZE(*secret), data,
-			length, digest, &digestlen));
+			length, digest, digestlen));
 	source.rend = digest + digestlen;
 
 	memset(digestb64, 0, sizeof(digestb64));
@@ -358,8 +364,8 @@ verify(isccc_sexpr_t *alist, unsigned char *data, unsigned int length,
 	isccc_region_t target;
 	isccc_sexpr_t *_auth, *hmacvalue;
 	unsigned char digest[ISC_MAX_MD_SIZE];
-	unsigned int digestlen = sizeof(digest);
 	unsigned char digestb64[HSHA_LENGTH * 4];
+	size_t digestlen;
 
 	/*
 	 * Extract digest.
@@ -384,28 +390,34 @@ verify(isccc_sexpr_t *alist, unsigned char *data, unsigned int length,
 	switch (algorithm) {
 	case ISCCC_ALG_HMACMD5:
 		md_type = ISC_MD_MD5;
+		digestlen = ISC_MD5_DIGESTLENGTH;
 		break;
 	case ISCCC_ALG_HMACSHA1:
 		md_type = ISC_MD_SHA1;
+		digestlen = ISC_SHA1_DIGESTLENGTH;
 		break;
 	case ISCCC_ALG_HMACSHA224:
 		md_type = ISC_MD_SHA224;
+		digestlen = ISC_SHA224_DIGESTLENGTH;
 		break;
 	case ISCCC_ALG_HMACSHA256:
 		md_type = ISC_MD_SHA256;
+		digestlen = ISC_SHA256_DIGESTLENGTH;
 		break;
 	case ISCCC_ALG_HMACSHA384:
 		md_type = ISC_MD_SHA384;
+		digestlen = ISC_SHA384_DIGESTLENGTH;
 		break;
 	case ISCCC_ALG_HMACSHA512:
 		md_type = ISC_MD_SHA512;
+		digestlen = ISC_SHA512_DIGESTLENGTH;
 		break;
 	default:
 		return ISC_R_NOTIMPLEMENTED;
 	}
 
 	RETERR(isc_hmac(md_type, secret->rstart, REGION_SIZE(*secret), data,
-			length, digest, &digestlen));
+			length, digest, digestlen));
 	source.rend = digest + digestlen;
 
 	target.rstart = digestb64;

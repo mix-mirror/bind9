@@ -243,10 +243,9 @@ unregister_algorithms(void) {
  */
 isc_result_t
 isc_hmac(isc_md_type_t type, const void *key, const size_t keylen,
-	 const unsigned char *buf, const size_t len, unsigned char *digest,
-	 unsigned int *digestlen) {
+	 const uint8_t *buf, const size_t len, uint8_t *mac, size_t mac_len) {
+	isc_result_t result;
 	EVP_MAC_CTX *ctx;
-	size_t maclen;
 
 	REQUIRE(type < ISC_MD_MAX);
 
@@ -254,31 +253,28 @@ isc_hmac(isc_md_type_t type, const void *key, const size_t keylen,
 		return ISC_R_NOTIMPLEMENTED;
 	}
 
+	ERR_set_mark();
+
 	ctx = EVP_MAC_CTX_new(evp_hmac);
 	RUNTIME_CHECK(ctx != NULL);
 
 	if (EVP_MAC_init(ctx, key, keylen, md_to_hmac_params[type]) != 1) {
-		goto fail;
+		CLEANUP(ISC_R_CRYPTOFAILURE);
 	}
 
 	if (EVP_MAC_update(ctx, buf, len) != 1) {
-		goto fail;
+		CLEANUP(ISC_R_CRYPTOFAILURE);
 	}
 
-	maclen = *digestlen;
-	if (EVP_MAC_final(ctx, digest, &maclen, maclen) != 1) {
-		goto fail;
+	if (EVP_MAC_final(ctx, mac, &mac_len, mac_len) != 1) {
+		CLEANUP(ISC_R_CRYPTOFAILURE);
 	}
 
-	*digestlen = maclen;
-
+	result = ISC_R_SUCCESS;
+cleanup:
+	ERR_pop_to_mark();
 	EVP_MAC_CTX_free(ctx);
-	return ISC_R_SUCCESS;
-
-fail:
-	ERR_clear_error();
-	EVP_MAC_CTX_free(ctx);
-	return ISC_R_CRYPTOFAILURE;
+	return result;
 }
 
 /*

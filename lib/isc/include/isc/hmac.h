@@ -19,6 +19,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include <isc/md.h>
 #include <isc/result.h>
@@ -48,8 +49,7 @@ typedef struct isc_hmac_key isc_hmac_key_t;
  */
 isc_result_t
 isc_hmac(isc_md_type_t type, const void *key, const size_t keylen,
-	 const unsigned char *buf, const size_t len, unsigned char *digest,
-	 unsigned int *digestlen);
+	 const uint8_t *buf, const size_t len, uint8_t *mac, size_t mac_len);
 
 /*
  * isc_hmac_key_create:
