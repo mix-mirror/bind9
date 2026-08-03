@@ -18,6 +18,7 @@
 #include <unistd.h>
 
 #include <isc/mem.h>
+#include <isc/quic.h>
 #include <isc/refcount.h>
 #include <isc/region.h>
 #include <isc/result.h>
@@ -55,6 +56,7 @@ typedef void (*isc_nm_recv_cb_t)(isc_nmhandle_t *handle, isc_result_t eresult,
  * 'cbarg'  the callback argument passed to isc_nm_listenudp(),
  *          isc_nm_listenstreamdns(), or isc_nm_read().
  */
+
 typedef isc_result_t (*isc_nm_accept_cb_t)(isc_nmhandle_t *handle,
 					   isc_result_t result, void *cbarg);
 /*%<
@@ -848,6 +850,21 @@ isc_nm_http_set_endpoints(isc_nmsocket_t	  *listener,
  */
 
 #endif /* HAVE_LIBNGHTTP2 */
+
+#ifdef HAVE_LIBNGTCP2
+
+isc_result_t
+isc_nm_listenquic(uint32_t workers, isc_sockaddr_t *iface,
+		  isc_quic_server_options_t *options,
+		  isc_nm_accept_cb_t accept_cb, void *accept_cb_arg,
+		  isc_nmsocket_t **sockp);
+
+void
+isc_nm_quicconnect(isc_sockaddr_t *local, isc_sockaddr_t *peer,
+		   isc_quic_client_options_t *options, isc_nm_cb_t cb,
+		   void *cbarg);
+
+#endif /* HAVE_LIBNGTCP2 */
 
 void
 isc_nm_bad_request(isc_nmhandle_t *handle);

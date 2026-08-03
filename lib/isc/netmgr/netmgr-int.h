@@ -26,6 +26,7 @@
 #include <isc/mem.h>
 #include <isc/netmgr.h>
 #include <isc/proxy2.h>
+#include <isc/quic.h>
 #include <isc/quota.h>
 #include <isc/random.h>
 #include <isc/refcount.h>
@@ -257,7 +258,10 @@ struct isc_nmhandle {
 	 */
 	isc_nmsocket_t *sock;
 
-	isc_nm_http_session_t *httpsession;
+	union {
+		isc_nm_http_session_t *httpsession;
+		isc_quic_router_t *quic_router;
+	};
 
 	isc_sockaddr_t peer;
 	isc_sockaddr_t local;
@@ -557,6 +561,15 @@ struct isc_nmsocket {
 #if HAVE_LIBNGHTTP2
 	isc_nmsocket_h2_t *h2;
 #endif /* HAVE_LIBNGHTTP2 */
+
+#ifdef HAVE_LIBNGTCP2
+	struct {
+		isc_quic_router_t *router;
+		union {
+			isc_quic_server_options_t *server;
+		} options;
+	} quic;
+#endif /* HAVE_LIBNGTCP2 */
 
 	struct {
 		isc_dnsstream_assembler_t *input;
@@ -1310,6 +1323,11 @@ isc__nm_proxyudp_read(isc_nmhandle_t *handle, isc_nm_recv_cb_t cb, void *cbarg);
 void
 isc__nm_proxyudp_send(isc_nmhandle_t *handle, isc_region_t *region,
 		      isc_nm_cb_t cb, void *cbarg);
+
+#ifdef HAVE_LIBNGTCP2
+void
+isc__nm_quic_read(isc_nmhandle_t *handle, isc_nm_recv_cb_t cb, void *cbarg);
+#endif /* HAVE_LIBNGTCP2 */
 
 void
 isc__nm_incstats(isc_nmsocket_t *sock, isc__nm_statid_t id);
