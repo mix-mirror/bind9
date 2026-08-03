@@ -214,7 +214,7 @@ struct qpzonedb {
 	/* Unlocked. */
 	dns_db_t common;
 	/* Locks the data in this struct */
-	isc_rwlock_t lock;
+	__attribute__((aligned(64))) isc_rwlock_t lock;
 
 	/*
 	 * NOTE: 'references' is NOT the global reference counter for
@@ -580,7 +580,9 @@ free_db_rcu(struct rcu_head *rcu_head) {
 		INSIST(!cds_lfht_destroy(qpdb->common.update_listeners, NULL));
 	}
 
-	isc_mem_putanddetach(&qpdb->common.mctx, qpdb, sizeof(*qpdb));
+	isc_mem_t *mctx = qpdb->common.mctx;
+	isc_mem_free_aligned(mctx, qpdb, sizeof(*qpdb), ISC_OS_CACHELINE_SIZE);
+	isc_mem_detach(&mctx);
 }
 
 static void
@@ -864,7 +866,8 @@ dns__qpzone_create(isc_mem_t *mctx, const dns_name_t *origin, dns_dbtype_t type,
 	isc_result_t result;
 	dns_qp_t *qp = NULL;
 
-	qpdb = isc_mem_get(mctx, sizeof(*qpdb));
+	qpdb = isc_mem_allocate_aligned(mctx, sizeof(*qpdb),
+					ISC_OS_CACHELINE_SIZE);
 	*qpdb = (qpzonedb_t){
 		.common.origin = DNS_NAME_INITEMPTY,
 		.common.rdclass = rdclass,
