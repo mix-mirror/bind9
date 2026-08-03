@@ -23,7 +23,8 @@ typedef enum {
 	DNS_TRANSPORT_TCP = 2,
 	DNS_TRANSPORT_TLS = 3,
 	DNS_TRANSPORT_HTTP = 4,
-	DNS_TRANSPORT_COUNT = 5,
+	DNS_TRANSPORT_QUIC = 5,
+	DNS_TRANSPORT_COUNT = 6,
 } dns_transport_type_t;
 
 typedef enum {

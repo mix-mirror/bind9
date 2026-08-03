@@ -111,13 +111,15 @@ typedef enum isc_nmsocket_type {
 	isc_nm_streamdnssocket = 1 << 5,
 	isc_nm_proxystreamsocket = 1 << 6,
 	isc_nm_proxyudpsocket = 1 << 7,
+	isc_nm_quicsocket = 1 << 8,
 	isc_nm_maxsocket,
 
 	isc_nm_tcplistener,
 	isc_nm_tlslistener,
 	isc_nm_httplistener,
 	isc_nm_streamdnslistener,
-	isc_nm_proxystreamlistener
+	isc_nm_proxystreamlistener,
+	isc_nm_quiclistener
 } isc_nmsocket_type;
 
 typedef isc_nmsocket_type isc_nmsocket_type_t;

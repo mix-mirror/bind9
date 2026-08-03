@@ -655,6 +655,9 @@ setaddr(dns_dtmsg_t *dm, isc_sockaddr_t *sa, dns_transport_type_t transport,
 	case DNS_TRANSPORT_HTTP:
 		dm->m.socket_protocol = DNSTAP__SOCKET_PROTOCOL__DOH;
 		break;
+	case DNS_TRANSPORT_QUIC:
+		dm->m.socket_protocol = DNSTAP__SOCKET_PROTOCOL__DOQ;
+		break;
 	case DNS_TRANSPORT_NONE:
 	case DNS_TRANSPORT_COUNT:
 		UNREACHABLE();
@@ -1320,6 +1323,9 @@ dns_dt_datatotext(dns_dtdata_t *d, isc_buffer_t **dest) {
 		break;
 	case DNS_TRANSPORT_HTTP:
 		CHECK(putstr(dest, "DOH "));
+		break;
+	case DNS_TRANSPORT_QUIC:
+		CHECK(putstr(dest, "DOQ "));
 		break;
 	case DNS_TRANSPORT_COUNT:
 		UNREACHABLE();
