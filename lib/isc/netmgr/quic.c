@@ -44,6 +44,7 @@ data_read_cb(void *cbarg, isc_quic_stream_data_info_t info,
 	isc_nmhandle_t *handle = cbarg;
 	isc_region_t region = { UNCONST(data.base), data.length };
 
+	UNUSED(info);
 	handle->sock->recv_cb(handle, ISC_R_SUCCESS, &region,
 			      handle->sock->recv_cbarg);
 
@@ -102,6 +103,7 @@ server_recv_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 
 static void
 client_connect_cb(isc_nmhandle_t *handle, isc_result_t result, void *cbarg) {
+	isc_nmhandle_t *quic_handle;
 	isc_nmsocket_t *sock = cbarg;
 
 	REQUIRE(VALID_NMHANDLE(handle));
@@ -110,16 +112,22 @@ client_connect_cb(isc_nmhandle_t *handle, isc_result_t result, void *cbarg) {
 		return;
 	}
 
+	UNUSED(quic_handle);
+
 	sock->tid = isc_tid();
 	isc_nmhandle_attach(handle, &sock->outerhandle);
+	sock->iface = isc_nmhandle_localaddr(handle);
+	sock->peer = isc_nmhandle_peeraddr(handle);
+
+	quic_handle = isc__nmhandle_get(sock, &sock->peer, &sock->iface);
 }
 
-static void
-quic_io_step_cb(void *arg) {
-	isc_nmsocket_t *sock = arg;
-
-	isc__nmsocket_detach(&sock);
-}
+// static void
+// quic_io_step_cb(void *arg) {
+// 	isc_nmsocket_t *sock = arg;
+//
+// 	isc__nmsocket_detach(&sock);
+// }
 
 void
 isc__nm_quic_read(isc_nmhandle_t *handle, isc_nm_recv_cb_t cb, void *cbarg) {
@@ -193,7 +201,7 @@ isc_nm_quicconnect(isc_sockaddr_t *local, isc_sockaddr_t *peer,
 	sock->read_timeout = isc_nm_getinitialtimeout();
 	sock->connect_cb = cb;
 	sock->connect_cbarg = cbarg;
-	sock->client = false;
+	sock->client = true;
 	sock->connecting = true;
 
 	isc_nm_udpconnect(local, peer, client_connect_cb, sock,
