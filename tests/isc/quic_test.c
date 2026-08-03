@@ -29,6 +29,8 @@
 #include <isc/random.h>
 #include <isc/urcu.h>
 
+#include "netmgr_common.h"
+
 #include <tests/isc.h>
 
 typedef struct endpoint endpoint_t;
