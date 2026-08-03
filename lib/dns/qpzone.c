@@ -214,7 +214,7 @@ struct qpzonedb {
 	/* Unlocked. */
 	dns_db_t common;
 	/* Locks the data in this struct */
-	isc_rwlock_t lock;
+	__attribute__ ((aligned(64))) isc_rwlock_t lock;
 
 	/*
 	 * NOTE: 'references' is NOT the global reference counter for
