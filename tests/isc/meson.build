@@ -29,6 +29,7 @@ isc_test = [
     'loop',
     'md',
     'mem',
+    'memarena',
     'mutex',
     'netaddr',
     'parse',

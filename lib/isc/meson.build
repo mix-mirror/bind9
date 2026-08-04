@@ -99,6 +99,7 @@ isc_srcset.add(
         'managers.c',
         'md.c',
         'mem.c',
+        'memarena.c',
         'meminfo.c',
         'mutex.c',
         'net.c',
