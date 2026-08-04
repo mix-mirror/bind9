@@ -579,7 +579,7 @@ dns_message_create(isc_mem_t *mctx, dns_message_intent_t intent,
 	};
 
 	isc_mem_attach(mctx, &msg->mctx);
-	isc_memarena_create(mctx, "message", &msg->arena);
+	isc_memarena_getcached(mctx, "message", &msg->arena);
 
 	msginit(msg);
 
@@ -609,7 +609,7 @@ dns__message_destroy(dns_message_t *msg) {
 
 	msg->magic = 0;
 
-	isc_memarena_destroy(&msg->arena);
+	isc_memarena_putcached(&msg->arena);
 
 	isc_mem_putanddetach(&msg->mctx, msg, sizeof(dns_message_t));
 }
