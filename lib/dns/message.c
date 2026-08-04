@@ -117,15 +117,6 @@ hexdump(const char *msg, const char *msg2, void *base, size_t len) {
 #define OPTOUT(x) (((x)->attributes.optout))
 
 /*%
- * The numbers of various block allocations used within the server.
- * XXXMLG These should come from a config setting.
- */
-#define NAME_FILLCOUNT	   1024
-#define NAME_FREEMAX	   8 * NAME_FILLCOUNT
-#define RDATASET_FILLCOUNT 1024
-#define RDATASET_FREEMAX   8 * RDATASET_FILLCOUNT
-
-/*%
  * Text representation of the different items, for message_totext
  * functions.
  */
@@ -399,7 +390,6 @@ msgresetsigs(dns_message_t *msg, bool replying) {
 	}
 	if (msg->tsig != NULL) {
 		INSIST(dns_rdataset_isassociated(msg->tsig));
-		INSIST(msg->namepool != NULL);
 		if (replying) {
 			INSIST(msg->querytsig == NULL);
 			msg->querytsig = msg->tsig;
@@ -568,16 +558,13 @@ spacefortsig(dns_tsigkey_t *key, int otherlen) {
 }
 
 void
-dns_message_create(isc_mem_t *mctx, isc_mempool_t *namepool,
-		   isc_mempool_t *rdspool, dns_message_intent_t intent,
+dns_message_create(isc_mem_t *mctx, dns_message_intent_t intent,
 		   dns_message_t **msgp) {
 	REQUIRE(mctx != NULL);
 	REQUIRE(msgp != NULL);
 	REQUIRE(*msgp == NULL);
 	REQUIRE(intent == DNS_MESSAGE_INTENTPARSE ||
 		intent == DNS_MESSAGE_INTENTRENDER);
-	REQUIRE((namepool != NULL && rdspool != NULL) ||
-		(namepool == NULL && rdspool == NULL));
 
 	dns_message_t *msg = isc_mem_get(mctx, sizeof(dns_message_t));
 	*msg = (dns_message_t){
@@ -589,17 +576,10 @@ dns_message_create(isc_mem_t *mctx, isc_mempool_t *namepool,
 		.freerdatalist = ISC_LIST_INITIALIZER,
 		.freerdatasets = ISC_LIST_INITIALIZER,
 		.magic = DNS_MESSAGE_MAGIC,
-		.namepool = namepool,
-		.rdspool = rdspool,
-		.free_pools = (namepool == NULL && rdspool == NULL),
 	};
 
 	isc_mem_attach(mctx, &msg->mctx);
 	isc_memarena_create(mctx, "message", &msg->arena);
-
-	if (msg->free_pools) {
-		dns_message_createpools(mctx, &msg->namepool, &msg->rdspool);
-	}
 
 	msginit(msg);
 
@@ -630,10 +610,6 @@ dns__message_destroy(dns_message_t *msg) {
 	msg->magic = 0;
 
 	isc_memarena_destroy(&msg->arena);
-
-	if (msg->free_pools) {
-		dns_message_destroypools(&msg->namepool, &msg->rdspool);
-	}
 
 	isc_mem_putanddetach(&msg->mctx, msg, sizeof(dns_message_t));
 }
@@ -4928,36 +4904,6 @@ dns_message_response_minttl(dns_message_t *msg, dns_ttl_t *pttl) {
 	}
 
 	return ISC_R_SUCCESS;
-}
-
-void
-dns_message_createpools(isc_mem_t *mctx, isc_mempool_t **namepoolp,
-			isc_mempool_t **rdspoolp) {
-	REQUIRE(mctx != NULL);
-	REQUIRE(namepoolp != NULL && *namepoolp == NULL);
-	REQUIRE(rdspoolp != NULL && *rdspoolp == NULL);
-
-	isc_mempool_create(mctx, sizeof(dns_fixedname_t), "dns_fixedname_pool",
-			   namepoolp);
-	isc_mempool_setfillcount(*namepoolp, NAME_FILLCOUNT);
-	isc_mempool_setfreemax(*namepoolp, NAME_FREEMAX);
-
-	isc_mempool_create(mctx, sizeof(dns_rdataset_t), "dns_rdataset_pool",
-			   rdspoolp);
-	isc_mempool_setfillcount(*rdspoolp, RDATASET_FILLCOUNT);
-	isc_mempool_setfreemax(*rdspoolp, RDATASET_FREEMAX);
-}
-
-void
-dns_message_destroypools(isc_mempool_t **namepoolp, isc_mempool_t **rdspoolp) {
-	REQUIRE(namepoolp != NULL && *namepoolp != NULL);
-	REQUIRE(rdspoolp != NULL && *rdspoolp != NULL);
-
-	ENSURE(isc_mempool_getallocated(*namepoolp) == 0);
-	ENSURE(isc_mempool_getallocated(*rdspoolp) == 0);
-
-	isc_mempool_destroy(rdspoolp);
-	isc_mempool_destroy(namepoolp);
 }
 
 bool

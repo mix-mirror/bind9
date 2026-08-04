@@ -1383,8 +1383,8 @@ sendstream(xfrout_ctx_t *xfr) {
 		 * message.
 		 */
 
-		dns_message_create(xfr->mctx, NULL, NULL,
-				   DNS_MESSAGE_INTENTRENDER, &tcpmsg);
+		dns_message_create(xfr->mctx, DNS_MESSAGE_INTENTRENDER,
+				   &tcpmsg);
 		msg = tcpmsg;
 
 		msg->id = xfr->id;

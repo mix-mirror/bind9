@@ -267,8 +267,7 @@ process_message(isc_buffer_t *source) {
 	int i;
 
 	message = NULL;
-	dns_message_create(isc_g_mctx, NULL, NULL, DNS_MESSAGE_INTENTPARSE,
-			   &message);
+	dns_message_create(isc_g_mctx, DNS_MESSAGE_INTENTPARSE, &message);
 
 	result = dns_message_parse(message, source, parseflags);
 	if (result == DNS_R_RECOVERABLE) {
@@ -337,8 +336,8 @@ process_message(isc_buffer_t *source) {
 			isc_mem_stats(isc_g_mctx, stdout);
 		}
 
-		dns_message_create(isc_g_mctx, NULL, NULL,
-				   DNS_MESSAGE_INTENTPARSE, &message);
+		dns_message_create(isc_g_mctx, DNS_MESSAGE_INTENTPARSE,
+				   &message);
 
 		result = dns_message_parse(message, &buffer, parseflags);
 		CHECKRESULT(result, "dns_message_parse failed");

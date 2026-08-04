@@ -136,7 +136,7 @@ ISC_RUN_TEST_IMPL(message_parse_query) {
 	dns_name_t *expected = dns_fixedname_initname(&fixed);
 
 	isc_mem_create("message_parse_query", &mctx);
-	dns_message_create(mctx, NULL, NULL, DNS_MESSAGE_INTENTPARSE, &msg);
+	dns_message_create(mctx, DNS_MESSAGE_INTENTPARSE, &msg);
 
 	parse_wire(msg, query_wire, sizeof(query_wire), 0, ISC_R_SUCCESS);
 
@@ -162,7 +162,7 @@ ISC_RUN_TEST_IMPL(message_parse_response_dedup) {
 	unsigned int rdatasets = 0;
 
 	isc_mem_create("message_parse_dedup", &mctx);
-	dns_message_create(mctx, NULL, NULL, DNS_MESSAGE_INTENTPARSE, &msg);
+	dns_message_create(mctx, DNS_MESSAGE_INTENTPARSE, &msg);
 
 	parse_wire(msg, response_wire, sizeof(response_wire), 0, ISC_R_SUCCESS);
 
@@ -201,7 +201,7 @@ ISC_RUN_TEST_IMPL(message_parse_preserveorder) {
 	dns_message_t *msg = NULL;
 
 	isc_mem_create("message_parse_preserve", &mctx);
-	dns_message_create(mctx, NULL, NULL, DNS_MESSAGE_INTENTPARSE, &msg);
+	dns_message_create(mctx, DNS_MESSAGE_INTENTPARSE, &msg);
 
 	parse_wire(msg, response_wire, sizeof(response_wire),
 		   DNS_MESSAGEPARSE_PRESERVEORDER, ISC_R_SUCCESS);
@@ -238,7 +238,7 @@ ISC_RUN_TEST_IMPL(message_parse_besteffort) {
 	dns_message_t *msg = NULL;
 
 	isc_mem_create("message_parse_besteffort", &mctx);
-	dns_message_create(mctx, NULL, NULL, DNS_MESSAGE_INTENTPARSE, &msg);
+	dns_message_create(mctx, DNS_MESSAGE_INTENTPARSE, &msg);
 
 	/*
 	 * Truncation is a hard error even with BESTEFFORT (only
@@ -271,7 +271,7 @@ ISC_RUN_TEST_IMPL(message_parse_update_zerolen) {
 	dns_message_t *msg = NULL;
 
 	isc_mem_create("message_parse_update", &mctx);
-	dns_message_create(mctx, NULL, NULL, DNS_MESSAGE_INTENTPARSE, &msg);
+	dns_message_create(mctx, DNS_MESSAGE_INTENTPARSE, &msg);
 
 	parse_wire(msg, update_wire, sizeof(update_wire), 0, ISC_R_SUCCESS);
 
@@ -298,7 +298,7 @@ ISC_RUN_TEST_IMPL(message_reply_render) {
 	dns_name_t *expected = dns_fixedname_initname(&fixed);
 
 	isc_mem_create("message_reply_render", &mctx);
-	dns_message_create(mctx, NULL, NULL, DNS_MESSAGE_INTENTPARSE, &msg);
+	dns_message_create(mctx, DNS_MESSAGE_INTENTPARSE, &msg);
 
 	parse_wire(msg, query_wire, sizeof(query_wire), 0, ISC_R_SUCCESS);
 
@@ -324,8 +324,7 @@ ISC_RUN_TEST_IMPL(message_reply_render) {
 	dns_compress_invalidate(&cctx);
 
 	/* The rendered reply must contain the original question. */
-	dns_message_create(mctx, NULL, NULL, DNS_MESSAGE_INTENTPARSE,
-			   &reparsed);
+	dns_message_create(mctx, DNS_MESSAGE_INTENTPARSE, &reparsed);
 	assert_int_equal(dns_message_parse(reparsed, &buffer, 0),
 			 ISC_R_SUCCESS);
 	assert_true((reparsed->flags & DNS_MESSAGEFLAG_QR) != 0);
@@ -363,7 +362,7 @@ ISC_RUN_TEST_IMPL(message_renderreset_rerender) {
 	static unsigned char rdata_bytes[] = { 192, 0, 2, 1 };
 
 	isc_mem_create("message_renderreset", &mctx);
-	dns_message_create(mctx, NULL, NULL, DNS_MESSAGE_INTENTRENDER, &msg);
+	dns_message_create(mctx, DNS_MESSAGE_INTENTRENDER, &msg);
 
 	dns_message_gettempname(msg, &name);
 	assert_int_equal(dns_name_fromstring(name, "a.example.", NULL, 0, NULL),
@@ -430,7 +429,7 @@ ISC_RUN_TEST_IMPL(message_temp_cycles) {
 	size_t inuse[8];
 
 	isc_mem_create("message_temp_cycles", &mctx);
-	dns_message_create(mctx, NULL, NULL, DNS_MESSAGE_INTENTRENDER, &msg);
+	dns_message_create(mctx, DNS_MESSAGE_INTENTRENDER, &msg);
 
 	assert_int_equal(dns_name_fromstring(source, "long-name.example.", NULL,
 					     0, NULL),
@@ -477,7 +476,7 @@ ISC_RUN_TEST_IMPL(message_takebuffer) {
 	isc_buffer_t *buffer = NULL;
 
 	isc_mem_create("message_takebuffer", &mctx);
-	dns_message_create(mctx, NULL, NULL, DNS_MESSAGE_INTENTRENDER, &msg);
+	dns_message_create(mctx, DNS_MESSAGE_INTENTRENDER, &msg);
 
 	isc_buffer_allocate(mctx, &buffer, 64);
 	isc_buffer_putstr(buffer, "donated");
@@ -501,7 +500,7 @@ ISC_RUN_TEST_IMPL(message_foreign_name) {
 	dns_name_t *foreign = dns_fixedname_initname(&fixed);
 
 	isc_mem_create("message_foreign_name", &mctx);
-	dns_message_create(mctx, NULL, NULL, DNS_MESSAGE_INTENTRENDER, &msg);
+	dns_message_create(mctx, DNS_MESSAGE_INTENTRENDER, &msg);
 
 	assert_int_equal(
 		dns_name_fromstring(foreign, "foreign.example.", NULL, 0, NULL),
@@ -532,7 +531,7 @@ ISC_RUN_TEST_IMPL(message_querytsig_copy) {
 						    0x01, 0x02, 0x03, 0x04 };
 
 	isc_mem_create("message_querytsig", &mctx);
-	dns_message_create(mctx, NULL, NULL, DNS_MESSAGE_INTENTPARSE, &msg);
+	dns_message_create(mctx, DNS_MESSAGE_INTENTPARSE, &msg);
 
 	isc_buffer_allocate(mctx, &tsigin, sizeof(tsig_bytes));
 	isc_buffer_putmem(tsigin, tsig_bytes, sizeof(tsig_bytes));
@@ -560,7 +559,7 @@ ISC_RUN_TEST_IMPL(message_reset_reuse) {
 	size_t inuse[20];
 
 	isc_mem_create("message_reset_reuse", &mctx);
-	dns_message_create(mctx, NULL, NULL, DNS_MESSAGE_INTENTPARSE, &msg);
+	dns_message_create(mctx, DNS_MESSAGE_INTENTPARSE, &msg);
 
 	for (size_t i = 0; i < 20; i++) {
 		parse_wire(msg, response_wire, sizeof(response_wire), 0,

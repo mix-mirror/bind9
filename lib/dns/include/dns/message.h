@@ -278,8 +278,7 @@ struct dns_message {
 	unsigned int	     tkey	      : 1; /* 13 */
 	unsigned int	     rdclass_set      : 1; /* 14 */
 	unsigned int	     fuzzing	      : 1; /* 15 */
-	unsigned int	     free_pools	      : 1; /* 16 */
-	unsigned int	     has_dname	      : 1; /* 17 */
+	unsigned int	     has_dname	      : 1; /* 16 */
 	unsigned int			      : 0;
 
 	unsigned int opt_reserved;
@@ -294,8 +293,6 @@ struct dns_message {
 
 	isc_mem_t      *mctx;
 	isc_memarena_t *arena;
-	isc_mempool_t  *namepool;
-	isc_mempool_t  *rdspool;
 
 	isc_bufferlist_t cleanup;
 
@@ -345,22 +342,18 @@ typedef void (*dns_message_cb_t)(void *arg, isc_result_t result);
  ***/
 
 void
-dns_message_create(isc_mem_t *mctx, isc_mempool_t *namepool,
-		   isc_mempool_t *rdspool, dns_message_intent_t intent,
+dns_message_create(isc_mem_t *mctx, dns_message_intent_t intent,
 		   dns_message_t **msgp);
 /*%<
  * Create msg structure.
  *
- * This function will allocate some internal blocks of memory that are
- * expected to be needed for parsing or rendering nearly any type of message.
+ * All per-message storage (parsed names and rdata, temporary objects)
+ * comes from a memory arena owned by the message and backed by 'mctx'.
  *
  * Requires:
  *\li	'mctx' be a valid memory context.
  *
  *\li	'msgp' be non-null and '*msg' be NULL.
- *
- *\li	'namepool' and 'rdspool' must be either both NULL or both valid
- *	isc_mempool_t
  *
  *\li	'intent' must be one of DNS_MESSAGE_INTENTPARSE or
  *	#DNS_MESSAGE_INTENTRENDER.
@@ -1485,12 +1478,6 @@ dns_message_response_minttl(dns_message_t *msg, dns_ttl_t *pttl);
  *\li	msg be a valid rendered message;
  *\li	'pttl != NULL'.
  */
-
-void
-dns_message_createpools(isc_mem_t *mctx, isc_mempool_t **namepoolp,
-			isc_mempool_t **rdspoolp);
-void
-dns_message_destroypools(isc_mempool_t **namepoolp, isc_mempool_t **rdspoolp);
 
 bool
 dns_message_hasdname(dns_message_t *msg);

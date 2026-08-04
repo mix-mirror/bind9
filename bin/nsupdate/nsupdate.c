@@ -363,8 +363,8 @@ reset_system(void) {
 	if (updatemsg != NULL) {
 		dns_message_reset(updatemsg, DNS_MESSAGE_INTENTRENDER);
 	} else {
-		dns_message_create(isc_g_mctx, NULL, NULL,
-				   DNS_MESSAGE_INTENTRENDER, &updatemsg);
+		dns_message_create(isc_g_mctx, DNS_MESSAGE_INTENTRENDER,
+				   &updatemsg);
 	}
 	updatemsg->opcode = dns_opcode_update;
 	if (usegsstsig) {
@@ -2529,8 +2529,7 @@ update_completed(void *arg) {
 	}
 
 	LOCK(&answer_lock);
-	dns_message_create(isc_g_mctx, NULL, NULL, DNS_MESSAGE_INTENTPARSE,
-			   &answer);
+	dns_message_create(isc_g_mctx, DNS_MESSAGE_INTENTPARSE, &answer);
 	result = dns_request_getresponse(request, answer,
 					 DNS_MESSAGEPARSE_PRESERVEORDER);
 	switch (result) {
@@ -2717,8 +2716,7 @@ recvsoa(void *arg) {
 	isc_mem_put(isc_g_mctx, reqinfo, sizeof(nsu_requestinfo_t));
 
 	ddebug("About to create rcvmsg");
-	dns_message_create(isc_g_mctx, NULL, NULL, DNS_MESSAGE_INTENTPARSE,
-			   &rcvmsg);
+	dns_message_create(isc_g_mctx, DNS_MESSAGE_INTENTPARSE, &rcvmsg);
 	result = dns_request_getresponse(request, rcvmsg,
 					 DNS_MESSAGEPARSE_PRESERVEORDER);
 	if (result == DNS_R_TSIGERRORSET && servers != NULL) {
@@ -3128,8 +3126,7 @@ start_gssrequest(dns_name_t *primary) {
 	keyname->attributes.nocompress = true;
 
 	rmsg = NULL;
-	dns_message_create(isc_g_mctx, NULL, NULL, DNS_MESSAGE_INTENTRENDER,
-			   &rmsg);
+	dns_message_create(isc_g_mctx, DNS_MESSAGE_INTENTRENDER, &rmsg);
 
 	/* Build first request. */
 	context = GSS_C_NO_CONTEXT;
@@ -3245,8 +3242,7 @@ recvgss(void *arg) {
 	isc_mem_put(isc_g_mctx, reqinfo, sizeof(nsu_gssinfo_t));
 
 	ddebug("recvgss creating rcvmsg");
-	dns_message_create(isc_g_mctx, NULL, NULL, DNS_MESSAGE_INTENTPARSE,
-			   &rcvmsg);
+	dns_message_create(isc_g_mctx, DNS_MESSAGE_INTENTPARSE, &rcvmsg);
 
 	result = dns_request_getresponse(request, rcvmsg,
 					 DNS_MESSAGEPARSE_PRESERVEORDER);
@@ -3354,8 +3350,7 @@ start_update(void) {
 		return;
 	}
 
-	dns_message_create(isc_g_mctx, NULL, NULL, DNS_MESSAGE_INTENTRENDER,
-			   &soaquery);
+	dns_message_create(isc_g_mctx, DNS_MESSAGE_INTENTRENDER, &soaquery);
 
 	if (default_servers) {
 		soaquery->flags |= DNS_MESSAGEFLAG_RD;

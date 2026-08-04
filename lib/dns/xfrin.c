@@ -1595,8 +1595,7 @@ xfrin_send_request(dns_xfrin_t *xfr) {
 	LIBDNS_XFRIN_RECV_SEND_REQUEST(xfr, xfr->info);
 
 	/* Create the request message */
-	dns_message_create(xfr->mctx, NULL, NULL, DNS_MESSAGE_INTENTRENDER,
-			   &msg);
+	dns_message_create(xfr->mctx, DNS_MESSAGE_INTENTRENDER, &msg);
 	CHECK(dns_message_settsigkey(msg, xfr->tsigkey));
 
 	/* Create a name for the question section. */
@@ -1805,8 +1804,7 @@ xfrin_recv_done(isc_result_t result, isc_region_t *region, void *arg) {
 
 	xfrin_log(xfr, ISC_LOG_DEBUG(7), "received %u bytes", region->length);
 
-	dns_message_create(xfr->mctx, NULL, NULL, DNS_MESSAGE_INTENTPARSE,
-			   &msg);
+	dns_message_create(xfr->mctx, DNS_MESSAGE_INTENTPARSE, &msg);
 
 	CHECK(dns_message_settsigkey(msg, xfr->tsigkey));
 	dns_message_setquerytsig(msg, xfr->lasttsig);

@@ -141,8 +141,7 @@ notify_done(void *arg) {
 	dns_rdatatype_format(notify->type, typebuf, sizeof(typebuf));
 
 	/* WMM: This is changing the mctx from zone to notify. */
-	dns_message_create(notify->mctx, NULL, NULL, DNS_MESSAGE_INTENTPARSE,
-			   &message);
+	dns_message_create(notify->mctx, DNS_MESSAGE_INTENTPARSE, &message);
 
 	result = dns_request_getresult(request);
 	if (result != ISC_R_SUCCESS) {
@@ -211,8 +210,7 @@ notify_createmessage(dns_notify_t *notify, dns_message_t **messagep) {
 	REQUIRE(messagep != NULL && *messagep == NULL);
 
 	/* WMM: This is changing the mctx from zone to notify. */
-	dns_message_create(notify->mctx, NULL, NULL, DNS_MESSAGE_INTENTRENDER,
-			   &message);
+	dns_message_create(notify->mctx, DNS_MESSAGE_INTENTRENDER, &message);
 
 	message->opcode = dns_opcode_notify;
 	message->flags |= DNS_MESSAGEFLAG_AA;

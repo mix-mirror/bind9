@@ -144,9 +144,7 @@ struct ns_clientmgr {
 	/* Unlocked. */
 	unsigned int magic;
 
-	isc_mem_t     *mctx;
-	isc_mempool_t *namepool;
-	isc_mempool_t *rdspool;
+	isc_mem_t *mctx;
 
 	ns_server_t   *sctx;
 	isc_refcount_t references;

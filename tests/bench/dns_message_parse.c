@@ -100,7 +100,7 @@ bench(const char *title, const unsigned char *wire, size_t size,
 	uint64_t microseconds;
 	unsigned int iterations = ISC_CLAMP(BENCH_BYTES / size, 2000, 200000);
 
-	dns_message_create(mctx, NULL, NULL, DNS_MESSAGE_INTENTPARSE, &msg);
+	dns_message_create(mctx, DNS_MESSAGE_INTENTPARSE, &msg);
 
 	start = isc_time_now_hires();
 	for (unsigned int i = 0; i < iterations; i++) {
