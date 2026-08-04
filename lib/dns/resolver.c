@@ -6500,8 +6500,7 @@ rctx_cachename(respctx_t *rctx, dns_message_t *message,
 	 * We're not validating and have an answer ready; pass
 	 * it back to the caller.
 	 */
-	if (!need_validation && dns_linkedname_attrs(name)->answer &&
-	    !HAVE_ANSWER(fctx))
+	if (!need_validation && (name)->attributes.answer && !HAVE_ANSWER(fctx))
 	{
 		fctx->resp_result = ISC_R_SUCCESS;
 
@@ -6536,7 +6535,7 @@ rctx_cachemessage(respctx_t *rctx) {
 	     section <= DNS_SECTION_ADDITIONAL; section++)
 	{
 		MSG_SECTION_FOREACH(message, section, name) {
-			if (dns_linkedname_attrs(name)->cache) {
+			if (name->attributes.cache) {
 				CHECK(rctx_cachename(rctx, message, name));
 			}
 		}
@@ -8924,8 +8923,8 @@ rctx_answer_any(respctx_t *rctx) {
 			return ISC_R_COMPLETE;
 		}
 
-		dns_linkedname_attrs(rctx->aname)->cache = true;
-		dns_linkedname_attrs(rctx->aname)->answer = true;
+		rctx->aname->attributes.cache = true;
+		rctx->aname->attributes.answer = true;
 		if (dns_rdatatype_issig(rdataset->type)) {
 			rdataset->attributes.answersig = true;
 		} else {
@@ -8943,7 +8942,7 @@ rctx_answer_any(respctx_t *rctx) {
 	 * would leave the fetch waiting for a validator that is never
 	 * started.
 	 */
-	if (!dns_linkedname_attrs(rctx->aname)->cache) {
+	if (!rctx->aname->attributes.cache) {
 		rctx->result = DNS_R_FORMERR;
 		return ISC_R_COMPLETE;
 	}
@@ -8984,8 +8983,8 @@ rctx_answer_match(respctx_t *rctx) {
 		return ISC_R_COMPLETE;
 	}
 
-	dns_linkedname_attrs(rctx->aname)->cache = true;
-	dns_linkedname_attrs(rctx->aname)->answer = true;
+	rctx->aname->attributes.cache = true;
+	rctx->aname->attributes.answer = true;
 	rctx->ardataset->attributes.answer = true;
 	rctx->ardataset->attributes.cache = true;
 	rctx->ardataset->trust = rctx->trust;
@@ -9033,9 +9032,9 @@ rctx_answer_cname(respctx_t *rctx) {
 		return ISC_R_COMPLETE;
 	}
 
-	dns_linkedname_attrs(rctx->cname)->cache = true;
-	dns_linkedname_attrs(rctx->cname)->answer = true;
-	dns_linkedname_attrs(rctx->cname)->chaining = true;
+	rctx->cname->attributes.cache = true;
+	rctx->cname->attributes.answer = true;
+	rctx->cname->attributes.chaining = true;
 	rctx->crdataset->attributes.answer = true;
 	rctx->crdataset->attributes.cache = true;
 	rctx->crdataset->attributes.chaining = true;
@@ -9083,9 +9082,9 @@ rctx_answer_dname(respctx_t *rctx) {
 		return ISC_R_COMPLETE;
 	}
 
-	dns_linkedname_attrs(rctx->dname)->cache = true;
-	dns_linkedname_attrs(rctx->dname)->answer = true;
-	dns_linkedname_attrs(rctx->dname)->chaining = true;
+	rctx->dname->attributes.cache = true;
+	rctx->dname->attributes.answer = true;
+	rctx->dname->attributes.chaining = true;
 	rctx->drdataset->attributes.answer = true;
 	rctx->drdataset->attributes.cache = true;
 	rctx->drdataset->attributes.chaining = true;
@@ -9146,8 +9145,7 @@ rctx_authority_positive(respctx_t *rctx) {
 				if (dns_rdataset_matchestype(rdataset,
 							     dns_rdatatype_ns))
 				{
-					dns_linkedname_attrs(name)->cache =
-						true;
+					name->attributes.cache = true;
 					rdataset->attributes.cache = true;
 
 					if (rctx->aa) {
@@ -9411,7 +9409,7 @@ rctx_authority_negative(respctx_t *rctx) {
 					rctx->soa_name =
 						dns_linkedname_name(name);
 				}
-				dns_linkedname_attrs(name)->ncache = true;
+				name->attributes.ncache = true;
 				rdataset->attributes.ncache = true;
 				if (rctx->aa) {
 					rdataset->trust =
@@ -9465,12 +9463,10 @@ rctx_authority_dnssec(respctx_t *rctx) {
 			case dns_rdatatype_nsec:
 			case dns_rdatatype_nsec3:
 				if (rctx->negative) {
-					dns_linkedname_attrs(name)->ncache =
-						true;
+					name->attributes.ncache = true;
 					rdataset->attributes.ncache = true;
 				} else if (type == dns_rdatatype_nsec) {
-					dns_linkedname_attrs(name)->cache =
-						true;
+					name->attributes.cache = true;
 					rdataset->attributes.cache = true;
 				}
 
@@ -9516,7 +9512,7 @@ rctx_authority_dnssec(respctx_t *rctx) {
 					rctx->result = DNS_R_FORMERR;
 					return ISC_R_COMPLETE;
 				}
-				dns_linkedname_attrs(name)->cache = true;
+				name->attributes.cache = true;
 				rdataset->attributes.cache = true;
 
 				secure_domain = issecuredomain(
@@ -9686,10 +9682,10 @@ again:
 
 	dns_message_t *msg = rctx->query->rmessage;
 	MSG_SECTION_FOREACH(msg, section, name) {
-		if (!dns_linkedname_attrs(name)->chase) {
+		if (!name->attributes.chase) {
 			continue;
 		}
-		dns_linkedname_attrs(name)->chase = false;
+		name->attributes.chase = false;
 		ISC_LIST_FOREACH(name->list, rdataset, link) {
 			if (CHASE(rdataset)) {
 				rdataset->attributes.chase = false;

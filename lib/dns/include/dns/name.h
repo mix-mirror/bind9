@@ -89,35 +89,43 @@
  *** Types
  ***/
 
+typedef struct dns_name_attrs {
+	bool absolute	  : 1; /*%< Used by name.c */
+	bool readonly	  : 1; /*%< Used by name.c */
+	bool dynamic	  : 1; /*%< Used by name.c */
+	bool nocompress	  : 1; /*%< Used by name.c */
+	bool cache	  : 1; /*%< Used by resolver. */
+	bool answer	  : 1; /*%< Used by resolver. */
+	bool ncache	  : 1; /*%< Used by resolver. */
+	bool chaining	  : 1; /*%< Used by resolver. */
+	bool chase	  : 1; /*%< Used by resolver. */
+	bool wildcard	  : 1; /*%< Used by server. */
+	bool prerequisite : 1; /*%< Used by client. */
+	bool update	  : 1; /*%< Used by client. */
+	bool hasupdaterec : 1; /*%< Used by client. */
+} dns_name_attrs_t;
+
+#define DNS_NAME_COMMON              \
+	uint32_t	 magic;      \
+	uint8_t		 length;     \
+	dns_name_attrs_t attributes; \
+	uint8_t		*ndata;      \
+	isc_buffer_t	*buffer
+
 /*%
  * Clients are strongly discouraged from using this type directly,  with
- * the exception of the 'link' and 'list' fields which may be used directly
- * for whatever purpose the client desires.
+ * the exception of 'attributes'.
  */
 struct dns_name {
-	unsigned int magic;
-	uint8_t	     length;
-	struct dns_name_attrs {
-		bool absolute	  : 1; /*%< Used by name.c */
-		bool readonly	  : 1; /*%< Used by name.c */
-		bool dynamic	  : 1; /*%< Used by name.c */
-		bool nocompress	  : 1; /*%< Used by name.c */
-		bool cache	  : 1; /*%< Used by resolver. */
-		bool answer	  : 1; /*%< Used by resolver. */
-		bool ncache	  : 1; /*%< Used by resolver. */
-		bool chaining	  : 1; /*%< Used by resolver. */
-		bool chase	  : 1; /*%< Used by resolver. */
-		bool wildcard	  : 1; /*%< Used by server. */
-		bool prerequisite : 1; /*%< Used by client. */
-		bool update	  : 1; /*%< Used by client. */
-		bool hasupdaterec : 1; /*%< Used by client. */
-	} attributes;
-	unsigned char *ndata;
-	isc_buffer_t  *buffer;
+	DNS_NAME_COMMON;
 };
 
+/*%
+ * Use for names that will be living on lists and/or in hash tables.
+ * (Note that the magic number field is the same as for dns_name.)
+ */
 struct dns_linkedname {
-	dns_name_t name;
+	DNS_NAME_COMMON;
 	ISC_LINK(dns_linkedname_t) link;
 	ISC_LIST(dns_rdataset_t) list;
 	isc_hashmap_t *hashmap;
@@ -125,17 +133,12 @@ struct dns_linkedname {
 
 static inline dns_name_t *
 dns_linkedname_name(dns_linkedname_t *nwl) {
-	return nwl != NULL ? &nwl->name : NULL;
-}
-
-static inline struct dns_name_attrs *
-dns_linkedname_attrs(dns_linkedname_t *nwl) {
-	return nwl != NULL ? &nwl->name.attributes : NULL;
+	return nwl != NULL ? (dns_name_t *)nwl : NULL;
 }
 
 static inline const dns_name_t *
 dns_linkedname_name_const(const dns_linkedname_t *nwl) {
-	return nwl != NULL ? &nwl->name : NULL;
+	return nwl != NULL ? (const dns_name_t *)nwl : NULL;
 }
 
 dns_name_t *
@@ -211,29 +214,29 @@ extern const dns_name_t *dns_inaddrarpa;
 /*%<
  * These are similar macros for initializing dns_linkedname structures.
  */
-#define DNS_LINKEDNAME_INITNONABSOLUTE(__ndata)          \
-	{                                                \
-		.name.magic = DNS_NAME_MAGIC,            \
-		.name.ndata = (__ndata),                 \
-		.name.length = (sizeof(__ndata) - 1),    \
-		.name.attributes = { .readonly = true }, \
-		.link = ISC_LINK_INITIALIZER,            \
-		.list = ISC_LIST_INITIALIZER,            \
+#define DNS_LINKEDNAME_INITNONABSOLUTE(__ndata)     \
+	{                                           \
+		.magic = DNS_NAME_MAGIC,            \
+		.ndata = (__ndata),                 \
+		.length = (sizeof(__ndata) - 1),    \
+		.attributes = { .readonly = true }, \
+		.link = ISC_LINK_INITIALIZER,       \
+		.list = ISC_LIST_INITIALIZER,       \
 	}
 
-#define DNS_LINKEDNAME_INITABSOLUTE(__ndata)                               \
-	{                                                                  \
-		.name.magic = DNS_NAME_MAGIC,                              \
-		.name.ndata = (__ndata),                                   \
-		.name.length = sizeof(__ndata),                            \
-		.name.attributes = { .readonly = true, .absolute = true }, \
-		.link = ISC_LINK_INITIALIZER,                              \
-		.list = ISC_LIST_INITIALIZER,                              \
+#define DNS_LINKEDNAME_INITABSOLUTE(__ndata)                          \
+	{                                                             \
+		.magic = DNS_NAME_MAGIC,                              \
+		.ndata = (__ndata),                                   \
+		.length = sizeof(__ndata),                            \
+		.attributes = { .readonly = true, .absolute = true }, \
+		.link = ISC_LINK_INITIALIZER,                         \
+		.list = ISC_LIST_INITIALIZER,                         \
 	}
 
 #define DNS_LINKEDNAME_INITEMPTY              \
 	{                                     \
-		.name.magic = DNS_NAME_MAGIC, \
+		.magic = DNS_NAME_MAGIC,      \
 		.link = ISC_LINK_INITIALIZER, \
 		.list = ISC_LIST_INITIALIZER, \
 	}
@@ -343,7 +346,7 @@ dns_name_isvalid(const dns_name_t *name);
 
 static inline void
 dns_linkedname_init(dns_linkedname_t *name) {
-	dns_name_init(&name->name);
+	dns_name_init((dns_name_t *)name);
 	ISC_LINK_INIT(name, link);
 	ISC_LIST_INIT(name->list);
 	name->hashmap = NULL;
@@ -354,7 +357,7 @@ dns_linkedname_init(dns_linkedname_t *name) {
 
 static inline void
 dns_linkedname_invalidate(dns_linkedname_t *name) {
-	dns_name_invalidate(&name->name);
+	dns_name_invalidate((dns_name_t *)name);
 	ISC_LINK_INIT(name, link);
 	ISC_LIST_INIT(name->list);
 	name->hashmap = NULL;
@@ -1193,9 +1196,9 @@ dns_name_free(dns_name_t *name, isc_mem_t *mctx);
 
 static inline void
 dns_linkedname_free(dns_linkedname_t *nwl, isc_mem_t *mctx) {
-	REQUIRE(DNS_NAME_VALID(&nwl->name));
-	REQUIRE(nwl->name.attributes.dynamic);
-	isc_mem_put(mctx, nwl->name.ndata, nwl->name.length);
+	REQUIRE(DNS_NAME_VALID(nwl));
+	REQUIRE(nwl->attributes.dynamic);
+	isc_mem_put(mctx, nwl->ndata, nwl->length);
 	dns_linkedname_invalidate(nwl);
 }
 /*%<

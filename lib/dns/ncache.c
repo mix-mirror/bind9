@@ -138,7 +138,7 @@ dns_ncache_add(dns_message_t *message, dns_db_t *cache, dns_dbnode_t *node,
 	isc_buffer_init(&buffer, data, sizeof(data));
 
 	MSG_SECTION_FOREACH(message, DNS_SECTION_AUTHORITY, name) {
-		if (dns_linkedname_attrs(name)->ncache) {
+		if (name->attributes.ncache) {
 			ISC_LIST_FOREACH(name->list, rdataset, link) {
 				if (!rdataset->attributes.ncache) {
 					continue;

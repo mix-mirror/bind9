@@ -1501,7 +1501,7 @@ getsection(isc_buffer_t *source, dns_message_t *msg, dns_decompress_t dctx,
 			/*
 			 * Windows doesn't like TSIG names to be compressed.
 			 */
-			dns_linkedname_attrs(msg->tsigname)->nocompress = true;
+			msg->tsigname->attributes.nocompress = true;
 			free_name = false;
 		} else if (rdtype == dns_rdatatype_dname &&
 			   sectionid == DNS_SECTION_ANSWER &&

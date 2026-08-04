@@ -2641,8 +2641,7 @@ send_update(dns_name_t *zone, isc_sockaddr_t *primary) {
 
 	/* Windows doesn't like the tsig name to be compressed. */
 	if (updatemsg->tsigname) {
-		dns_linkedname_name(updatemsg->tsigname)->attributes.nocompress =
-			true;
+		updatemsg->tsigname->attributes.nocompress = true;
 	}
 
 	result = dns_request_create(requestmgr, updatemsg, srcaddr, primary,
