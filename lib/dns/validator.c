@@ -1308,8 +1308,7 @@ create_ds_fetch(dns_validator_t *val, dns_linkedname_t *name,
 	n = dns_name_countlabels(dns_linkedname_name(name));
 	if (n > 1) {
 		pname = dns_fixedname_initname(&pfixed);
-		dns_name_getlabelsequence(dns_linkedname_name(name), 1, n - 1,
-					  pname);
+		dns_name_getlabelsequence(name, 1, n - 1, pname);
 
 		fname = dns_fixedname_initname(&fixed);
 		result = dns_view_bestzonecut(val->view, pname, fname, NULL, 0,

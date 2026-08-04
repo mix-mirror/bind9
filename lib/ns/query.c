@@ -4619,9 +4619,8 @@ redirect2(ns_client_t *client, dns_name_t *name, dns_rdataset_t *rdataset,
 		dns_name_t prefix;
 
 		dns_name_init(&prefix);
-		dns_name_getlabelsequence(
-			dns_linkedname_name(client->query.qname), 0, labels - 1,
-			&prefix);
+		dns_name_getlabelsequence(client->query.qname, 0, labels - 1,
+					  &prefix);
 		result = dns_name_concatenate(&prefix,
 					      client->inner.view->redirectzone,
 					      redirectname);

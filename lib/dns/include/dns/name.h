@@ -705,8 +705,8 @@ dns_name_getlabel(const dns_name_t *name, unsigned int n, dns_label_t *label);
  */
 
 void
-dns_name_getlabelsequence(const dns_name_t *source, unsigned int first,
-			  unsigned int n, dns_name_t *target);
+dns_name__getlabelsequence(const dns_name_t *source, unsigned int first,
+			   unsigned int n, dns_name_t *target);
 /*%<
  * Make 'target' refer to the 'n' labels including and following 'first'
  * in 'source'.
@@ -1094,8 +1094,8 @@ dns_name_concatenate(const dns_name_t *prefix, const dns_name_t *suffix,
  */
 
 static inline void
-dns_name_split(const dns_name_t *name, unsigned int suffixlabels,
-	       dns_name_t *prefix, dns_name_t *suffix) {
+dns_name__split(const dns_name_t *name, unsigned int suffixlabels,
+		dns_name_t *prefix, dns_name_t *suffix) {
 	REQUIRE(DNS_NAME_VALID(name));
 	REQUIRE(suffixlabels > 0);
 	REQUIRE(prefix != NULL || suffix != NULL);
@@ -1108,12 +1108,12 @@ dns_name_split(const dns_name_t *name, unsigned int suffixlabels,
 	INSIST(suffixlabels <= labels);
 
 	if (prefix != NULL) {
-		dns_name_getlabelsequence(name, 0, labels - suffixlabels,
-					  prefix);
+		dns_name__getlabelsequence(name, 0, labels - suffixlabels,
+					   prefix);
 	}
 	if (suffix != NULL) {
-		dns_name_getlabelsequence(name, labels - suffixlabels,
-					  suffixlabels, suffix);
+		dns_name__getlabelsequence(name, labels - suffixlabels,
+					   suffixlabels, suffix);
 	}
 }
 /*%<
@@ -1507,3 +1507,9 @@ dns_name__israd(const dns_name_t *name, const dns_name_t *rad);
 
 #define dns_name_israd(name, rad) \
 	dns_name__israd(DNS_NAME__RO_ARG(name), DNS_NAME__RO_ARG(rad))
+
+#define dns_name_split(name, suffixlabels, prefix, suffix) \
+	dns_name__split(DNS_NAME__RO_ARG(name), suffixlabels, prefix, suffix)
+
+#define dns_name_getlabelsequence(name, first, n, target) \
+	dns_name__getlabelsequence(DNS_NAME__RO_ARG(name), first, n, target)

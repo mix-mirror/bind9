@@ -586,8 +586,8 @@ dns_name_getlabel(const dns_name_t *name, unsigned int n, dns_label_t *label) {
 }
 
 void
-dns_name_getlabelsequence(const dns_name_t *source, unsigned int first,
-			  unsigned int n, dns_name_t *target) {
+dns_name__getlabelsequence(const dns_name_t *source, unsigned int first,
+			   unsigned int n, dns_name_t *target) {
 	unsigned char *p, l;
 	unsigned int firstoffset, endoffset;
 	unsigned int i;

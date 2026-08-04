@@ -2946,8 +2946,7 @@ droplabel:
 		fatal("could not find enclosing zone");
 	}
 	dns_name_init(&tname);
-	dns_name_getlabelsequence(dns_linkedname_name(name), 1, nlabels - 1,
-				  &tname);
+	dns_name_getlabelsequence(name, 1, nlabels - 1, &tname);
 	dns_name_clone(&tname, dns_linkedname_name(name));
 	dns_request_destroy(&request);
 	dns_message_renderreset(soaquery);
@@ -3410,8 +3409,7 @@ start_update(void) {
 		    tmprdataset->type == dns_rdatatype_ds)
 		{
 			unsigned int labels = dns_name_countlabels(name);
-			dns_name_getlabelsequence(dns_linkedname_name(name), 1,
-						  labels - 1,
+			dns_name_getlabelsequence(name, 1, labels - 1,
 						  dns_linkedname_name(name));
 		}
 	}
