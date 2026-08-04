@@ -299,8 +299,10 @@ struct dns_message {
 
 	isc_bufferlist_t cleanup;
 
+	ISC_LIST(dns_name_t) freenames;
 	ISC_LIST(dns_rdata_t) freerdata;
 	ISC_LIST(dns_rdatalist_t) freerdatalist;
+	ISC_LIST(dns_rdataset_t) freerdatasets;
 
 	dns_rcode_t	tsigstatus;
 	dns_rcode_t	querytsigstatus;

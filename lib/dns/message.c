@@ -198,6 +198,37 @@ logfmtpacket(dns_message_t *message, const char *description,
 static isc_result_t
 buildopt(dns_message_t *message, dns_rdataset_t **rdatasetp);
 
+/*
+ * Storage backing the dedicated buffer of a name returned by
+ * dns_message_gettempname().  Allocated from the arena and abandoned
+ * (dead bytes until reset) when the name is put back: after
+ * dns_name_setbuffer() games (ns_client_newname()) the provenance of
+ * the attached buffer is unknowable.
+ */
+typedef struct msgtempbuffer {
+	isc_buffer_t buffer;
+	uint8_t data[DNS_NAME_MAXWIRE];
+} msgtempbuffer_t;
+
+/*
+ * Get a bare name: this is all the parse path needs, since parsed name
+ * data lives in the arena, not in a dedicated buffer.
+ */
+static dns_name_t *
+newname(dns_message_t *msg) {
+	dns_name_t *name;
+
+	name = ISC_LIST_HEAD(msg->freenames);
+	if (name != NULL) {
+		ISC_LIST_UNLINK(msg->freenames, name, link);
+	} else {
+		name = isc_mem_get(msg->arena, sizeof(*name));
+	}
+
+	dns_name_init(name);
+	return name;
+}
+
 static void
 releaserdata(dns_message_t *msg, dns_rdata_t *rdata) {
 	ISC_LIST_PREPEND(msg->freerdata, rdata, link);
@@ -236,6 +267,21 @@ newrdatalist(dns_message_t *msg) {
 
 	dns_rdatalist_init(rdatalist);
 	return rdatalist;
+}
+
+static dns_rdataset_t *
+newrdataset(dns_message_t *msg) {
+	dns_rdataset_t *rdataset;
+
+	rdataset = ISC_LIST_HEAD(msg->freerdatasets);
+	if (rdataset != NULL) {
+		ISC_LIST_UNLINK(msg->freerdatasets, rdataset, link);
+	} else {
+		rdataset = isc_mem_get(msg->arena, sizeof(*rdataset));
+	}
+
+	dns_rdataset_init(rdataset);
+	return rdataset;
 }
 
 static void
@@ -413,11 +459,17 @@ msgreset(dns_message_t *msg, bool everything) {
 	 * Run through the free lists, and just unlink anything found
 	 * there.  The nodes live in the arena, which is emptied below.
 	 */
+	ISC_LIST_FOREACH(msg->freenames, name, link) {
+		ISC_LIST_UNLINK(msg->freenames, name, link);
+	}
 	ISC_LIST_FOREACH(msg->freerdata, rdata, link) {
 		ISC_LIST_UNLINK(msg->freerdata, rdata, link);
 	}
 	ISC_LIST_FOREACH(msg->freerdatalist, rdatalist, link) {
 		ISC_LIST_UNLINK(msg->freerdatalist, rdatalist, link);
+	}
+	ISC_LIST_FOREACH(msg->freerdatasets, rdataset, link) {
+		ISC_LIST_UNLINK(msg->freerdatasets, rdataset, link);
 	}
 
 	if (msg->tsigkey != NULL) {
@@ -532,8 +584,10 @@ dns_message_create(isc_mem_t *mctx, isc_mempool_t *namepool,
 		.from_to_wire = intent,
 		.references = ISC_REFCOUNT_INITIALIZER(1),
 		.cleanup = ISC_LIST_INITIALIZER,
+		.freenames = ISC_LIST_INITIALIZER,
 		.freerdata = ISC_LIST_INITIALIZER,
 		.freerdatalist = ISC_LIST_INITIALIZER,
+		.freerdatasets = ISC_LIST_INITIALIZER,
 		.magic = DNS_MESSAGE_MAGIC,
 		.namepool = namepool,
 		.rdspool = rdspool,
@@ -765,8 +819,11 @@ getquestions(isc_buffer_t *source, dns_message_t *msg, dns_decompress_t dctx,
 	REQUIRE(msg->counts[DNS_SECTION_QUESTION] <= 1 || best_effort);
 
 	for (count = 0; count < msg->counts[DNS_SECTION_QUESTION]; count++) {
-		name = NULL;
-		dns_message_gettempname(msg, &name);
+		/*
+		 * A bare name is enough here: the parsed name data goes
+		 * into the arena, not into a dedicated buffer.
+		 */
+		name = newname(msg);
 		free_name = true;
 
 		/*
@@ -909,8 +966,11 @@ getsection(isc_buffer_t *source, dns_message_t *msg, dns_decompress_t dctx,
 		istsig = false;
 		found_rdataset = NULL;
 
-		name = NULL;
-		dns_message_gettempname(msg, &name);
+		/*
+		 * A bare name is enough here: the parsed name data goes
+		 * into the arena, not into a dedicated buffer.
+		 */
+		name = newname(msg);
 		free_name = true;
 
 		/*
@@ -2229,13 +2289,25 @@ dns_message_removename(dns_message_t *msg, dns_name_t *name,
 
 void
 dns_message_gettempname(dns_message_t *msg, dns_name_t **item) {
-	dns_fixedname_t *fn = NULL;
+	dns_name_t *name = NULL;
+	msgtempbuffer_t *store = NULL;
 
 	REQUIRE(DNS_MESSAGE_VALID(msg));
 	REQUIRE(item != NULL && *item == NULL);
 
-	fn = isc_mempool_get(msg->namepool);
-	*item = dns_fixedname_initname(fn);
+	/*
+	 * The contract is a name with a dedicated buffer attached
+	 * (fixedname semantics): callers copy or construct names into
+	 * it.  The buffer is a separate arena allocation so that
+	 * dns_message_puttempname() can recycle the name structure
+	 * without caring whether (or whose) buffer is attached.
+	 */
+	name = newname(msg);
+	store = isc_mem_get(msg->arena, sizeof(*store));
+	isc_buffer_init(&store->buffer, store->data, sizeof(store->data));
+	dns_name_setbuffer(name, &store->buffer);
+
+	*item = name;
 }
 
 void
@@ -2251,8 +2323,7 @@ dns_message_gettemprdataset(dns_message_t *msg, dns_rdataset_t **item) {
 	REQUIRE(DNS_MESSAGE_VALID(msg));
 	REQUIRE(item != NULL && *item == NULL);
 
-	*item = isc_mempool_get(msg->rdspool);
-	dns_rdataset_init(*item);
+	*item = newrdataset(msg);
 }
 
 void
@@ -2288,11 +2359,11 @@ dns_message_puttempname(dns_message_t *msg, dns_name_t **itemp) {
 	}
 
 	/*
-	 * 'name' is the first field in dns_fixedname_t, so putting
-	 * back the address of name is the same as putting back
-	 * the fixedname.
+	 * The name structure is recycled; an attached dedicated buffer
+	 * (from dns_message_gettempname() or a caller's
+	 * dns_name_setbuffer()) is simply abandoned.
 	 */
-	isc_mempool_put(msg->namepool, item);
+	ISC_LIST_PREPEND(msg->freenames, item, link);
 }
 
 void
@@ -2316,7 +2387,10 @@ dns_message_puttemprdataset(dns_message_t *msg, dns_rdataset_t **item) {
 	REQUIRE(item != NULL && *item != NULL);
 
 	REQUIRE(!dns_rdataset_isassociated(*item));
-	isc_mempool_put(msg->rdspool, *item);
+	REQUIRE(!ISC_LINK_LINKED(*item, link));
+
+	ISC_LIST_PREPEND(msg->freerdatasets, *item, link);
+	*item = NULL;
 }
 
 void

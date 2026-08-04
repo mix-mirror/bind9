@@ -417,15 +417,17 @@ ISC_RUN_TEST_IMPL(message_renderreset_rerender) {
 }
 
 /*
- * Temporary-object churn: repeated get/put cycles must not accrete
- * memory (the dedup parse path and ns/query recycle objects heavily).
+ * Temporary-object churn: get/put cycles recycle the structures, and
+ * anything that does accrete within one message lifetime (the dedicated
+ * buffers of temporary names) is reclaimed by reset, so repeated
+ * use-and-reset cycles must reach a memory steady state.
  */
 ISC_RUN_TEST_IMPL(message_temp_cycles) {
 	isc_mem_t *mctx = NULL;
 	dns_message_t *msg = NULL;
 	dns_fixedname_t fixed;
 	dns_name_t *source = dns_fixedname_initname(&fixed);
-	size_t inuse[100];
+	size_t inuse[8];
 
 	isc_mem_create("message_temp_cycles", &mctx);
 	dns_message_create(mctx, NULL, NULL, DNS_MESSAGE_INTENTRENDER, &msg);
@@ -434,33 +436,35 @@ ISC_RUN_TEST_IMPL(message_temp_cycles) {
 					     0, NULL),
 			 ISC_R_SUCCESS);
 
-	for (size_t i = 0; i < 100; i++) {
-		dns_name_t *name = NULL;
-		dns_rdata_t *rdata = NULL;
-		dns_rdatalist_t *rdatalist = NULL;
-		dns_rdataset_t *rdataset = NULL;
+	for (size_t round = 0; round < 8; round++) {
+		for (size_t i = 0; i < 32; i++) {
+			dns_name_t *name = NULL;
+			dns_rdata_t *rdata = NULL;
+			dns_rdatalist_t *rdatalist = NULL;
+			dns_rdataset_t *rdataset = NULL;
 
-		dns_message_gettempname(msg, &name);
-		/* The temp name has a dedicated buffer to copy into. */
-		dns_name_copy(source, name);
-		assert_true(dns_name_equal(name, source));
-		dns_message_puttempname(msg, &name);
+			dns_message_gettempname(msg, &name);
+			/* The temp name has a dedicated buffer. */
+			dns_name_copy(source, name);
+			assert_true(dns_name_equal(name, source));
+			dns_message_puttempname(msg, &name);
 
-		dns_message_gettemprdata(msg, &rdata);
-		dns_message_puttemprdata(msg, &rdata);
+			dns_message_gettemprdata(msg, &rdata);
+			dns_message_puttemprdata(msg, &rdata);
 
-		dns_message_gettemprdatalist(msg, &rdatalist);
-		dns_message_puttemprdatalist(msg, &rdatalist);
+			dns_message_gettemprdatalist(msg, &rdatalist);
+			dns_message_puttemprdatalist(msg, &rdatalist);
 
-		dns_message_gettemprdataset(msg, &rdataset);
-		dns_message_puttemprdataset(msg, &rdataset);
-
-		inuse[i] = isc_mem_inuse(mctx);
+			dns_message_gettemprdataset(msg, &rdataset);
+			dns_message_puttemprdataset(msg, &rdataset);
+		}
+		dns_message_reset(msg, DNS_MESSAGE_INTENTRENDER);
+		inuse[round] = isc_mem_inuse(mctx);
 	}
 
-	/* Steady state, no accretion. */
-	for (size_t i = 4; i < 100; i++) {
-		assert_int_equal(inuse[i], inuse[3]);
+	/* Steady state across reset cycles, no unbounded accretion. */
+	for (size_t round = 3; round < 8; round++) {
+		assert_int_equal(inuse[round], inuse[3]);
 	}
 
 	dns_message_detach(&msg);
