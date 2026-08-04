@@ -55,6 +55,7 @@ struct isc_memarena {
 	size_t usage_ewma; /*%< moving average of per-cycle usage */
 
 	ISC_LINK(isc_memarena_t) link; /*%< backing context's arena list */
+	isc_memarena_t *cache_next;    /*%< per-tid cache free list */
 };
 
 void
@@ -64,4 +65,19 @@ isc__mem_unregisterarena(isc_mem_t *ctx, isc_memarena_t *arena);
 /*%<
  * Add/remove 'arena' to/from the arena list of 'ctx' (implemented in
  * mem.c, under the context lock).  Used by isc_mem_stats() reporting.
+ */
+
+void
+isc__memarena_cache_flush(isc_tid_t tid);
+/*%<
+ * Destroy all arenas cached for 'tid'.  Called from loop_close() before
+ * the loop's memory context is detached; safe there because the loop
+ * threads have already been joined.
+ */
+
+void
+isc__memarena_cache_flushall(void);
+/*%<
+ * Destroy all cached arenas on all threads; backstop for non-loopmgr
+ * users, called from isc__mem_shutdown() before the leak check.
  */

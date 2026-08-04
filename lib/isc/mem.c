@@ -553,6 +553,9 @@ isc__mem_shutdown(void) {
 
 	rcu_barrier();
 
+	/* Backstop for cached arenas on threads without a loop_close(). */
+	isc__memarena_cache_flushall();
+
 	isc_mem_detach(&isc_g_mctx);
 
 	isc__mem_checkdestroyed();

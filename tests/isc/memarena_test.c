@@ -23,8 +23,10 @@
 
 #include <isc/buffer.h>
 #include <isc/lib.h>
+#include <isc/loop.h>
 #include <isc/mem.h>
 #include <isc/memarena.h>
+#include <isc/tid.h>
 #include <isc/util.h>
 
 #include <tests/isc.h>
@@ -407,8 +409,62 @@ ISC_RUN_TEST_IMPL(isc_memarena_buffer) {
 	isc_mem_detach(&mctx);
 }
 
+/*
+ * On a thread without a loop the cache degrades to plain create/destroy
+ * backed by the fallback context.  This test must run before any loop
+ * test: isc_loopmgr_run() permanently assigns a tid to the main thread.
+ */
+ISC_RUN_TEST_IMPL(isc_memarena_cache_noloop) {
+	isc_mem_t *mctx = NULL;
+	isc_memarena_t *arena = NULL;
+
+	assert_int_equal(isc_tid(), ISC_TID_UNKNOWN);
+
+	isc_mem_create("memarena_cache_noloop", &mctx);
+
+	isc_memarena_getcached(mctx, "test", &arena);
+	assert_non_null(arena);
+	(void)arena_get(arena, 1000);
+	isc_memarena_putcached(&arena);
+	assert_null(arena);
+
+	/* putcached also pairs with a plain create. */
+	isc_memarena_create(mctx, "test", &arena);
+	isc_memarena_putcached(&arena);
+
+	isc_mem_detach(&mctx);
+}
+
+ISC_LOOP_TEST_IMPL(isc_memarena_cache) {
+	isc_memarena_t *arena = NULL;
+	isc_memarena_t *first = NULL;
+
+	assert_true(isc_tid() != ISC_TID_UNKNOWN);
+
+	isc_memarena_getcached(isc_g_mctx, "test", &arena);
+	assert_non_null(arena);
+	(void)arena_get(arena, 1000);
+
+	first = arena;
+	isc_memarena_putcached(&arena);
+	assert_null(arena);
+
+	isc_memarena_getcached(isc_g_mctx, "test", &arena);
+#if !__SANITIZE_ADDRESS__
+	/* Warm reuse: the same arena comes back from the cache. */
+	assert_ptr_equal(arena, first);
+#else
+	UNUSED(first);
+#endif
+	isc_memarena_putcached(&arena);
+
+	/* Loopmgr teardown flushes the cache (leak check in teardown). */
+	isc_loopmgr_shutdown();
+}
+
 ISC_TEST_LIST_START
 
+ISC_TEST_ENTRY(isc_memarena_cache_noloop)
 ISC_TEST_ENTRY(isc_memarena_basic)
 ISC_TEST_ENTRY(isc_memarena_alignment)
 ISC_TEST_ENTRY(isc_memarena_zero)
@@ -419,6 +475,7 @@ ISC_TEST_ENTRY(isc_memarena_allocator_union)
 ISC_TEST_ENTRY(isc_memarena_reset)
 ISC_TEST_ENTRY(isc_memarena_retention)
 ISC_TEST_ENTRY(isc_memarena_buffer)
+ISC_TEST_ENTRY_CUSTOM(isc_memarena_cache, setup_loopmgr, teardown_loopmgr)
 
 ISC_TEST_LIST_END
 

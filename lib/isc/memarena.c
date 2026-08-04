@@ -17,9 +17,11 @@
 #include <string.h>
 
 #include <isc/bit.h>
+#include <isc/loop.h>
 #include <isc/magic.h>
 #include <isc/mem.h>
 #include <isc/memarena.h>
+#include <isc/os.h>
 #include <isc/tid.h>
 #include <isc/util.h>
 
@@ -70,6 +72,25 @@
  * Weight of one cycle in the usage moving average: 1/8.
  */
 #define MEMARENA_EWMA_SHIFT 3
+
+/*
+ * Per-thread cache of warm arenas.  Each slot is only ever touched by
+ * its owning thread while the loops are running; the flush hooks run
+ * single-threaded during shutdown after the loop threads have been
+ * joined.  With every cached arena retaining at most one
+ * MEMARENA_MAX_CHUNK chunk, a full slot holds about 4 MiB.
+ */
+#define MEMARENA_CACHE_MAX 64
+
+typedef union {
+	struct {
+		isc_memarena_t *head;
+		size_t count;
+	};
+	char padding[ISC_OS_CACHELINE_SIZE];
+} memarena_cacheslot_t;
+
+static memarena_cacheslot_t cacheslots[ISC_TID_MAX];
 
 struct memarena_chunk {
 	struct memarena_chunk *prev; /*%< older chunk, NULL for the oldest */
@@ -440,4 +461,97 @@ isc_memarena_capacity(isc_memarena_t *arena) {
 	REQUIRE(VALID_MEMARENA(arena));
 
 	return arena->capacity;
+}
+
+void
+isc_memarena_getcached(isc_mem_t *fallback_mctx, const char *name,
+		       isc_memarena_t **arenap) {
+	isc_tid_t tid = isc_tid();
+	memarena_cacheslot_t *slot = NULL;
+
+	REQUIRE(arenap != NULL && *arenap == NULL);
+
+	/*
+	 * A valid tid alone does not imply a live loop: the thread-local
+	 * tid outlives the loop manager, but isc_loop() is reset to NULL
+	 * as soon as the loop stops running.
+	 */
+	if (tid == ISC_TID_UNKNOWN || isc_loop() == NULL) {
+		/* Thread without a running loop: degrade to a plain arena. */
+		isc_memarena_create(fallback_mctx, name, arenap);
+		return;
+	}
+
+	slot = &cacheslots[tid];
+	if (slot->head != NULL) {
+		isc_memarena_t *arena = slot->head;
+
+		slot->head = arena->cache_next;
+		slot->count--;
+		arena->cache_next = NULL;
+		arena->tid = tid;
+
+		*arenap = arena;
+		return;
+	}
+
+	isc_memarena_create(isc_loop_getmctx(isc_loop()), name, arenap);
+}
+
+void
+isc_memarena_putcached(isc_memarena_t **arenap) {
+	isc_tid_t tid = isc_tid();
+	isc_memarena_t *arena = NULL;
+	bool cache;
+
+	REQUIRE(arenap != NULL);
+	REQUIRE(VALID_MEMARENA(*arenap));
+
+	arena = *arenap;
+	*arenap = NULL;
+
+	isc_memarena_reset(arena);
+
+#if __SANITIZE_ADDRESS__
+	/* No pooling under ASan, mirroring isc_mempool. */
+	cache = false;
+#else
+	cache = (tid != ISC_TID_UNKNOWN && isc_loop() != NULL &&
+		 cacheslots[tid].count < MEMARENA_CACHE_MAX);
+#endif
+	if (!cache) {
+		isc_memarena_destroy(&arena);
+		return;
+	}
+
+	arena->tid = tid;
+	arena->cache_next = cacheslots[tid].head;
+	cacheslots[tid].head = arena;
+	cacheslots[tid].count++;
+}
+
+void
+isc__memarena_cache_flush(isc_tid_t tid) {
+	memarena_cacheslot_t *slot = NULL;
+
+	if (tid == ISC_TID_UNKNOWN) {
+		return;
+	}
+
+	slot = &cacheslots[tid];
+	while (slot->head != NULL) {
+		isc_memarena_t *arena = slot->head;
+
+		slot->head = arena->cache_next;
+		slot->count--;
+		isc_memarena_destroy(&arena);
+	}
+	INSIST(slot->count == 0);
+}
+
+void
+isc__memarena_cache_flushall(void) {
+	for (isc_tid_t tid = 0; tid < ISC_TID_MAX; tid++) {
+		isc__memarena_cache_flush(tid);
+	}
 }

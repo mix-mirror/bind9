@@ -42,6 +42,7 @@
 #include "async_p.h"
 #include "job_p.h"
 #include "loop_p.h"
+#include "memarena_p.h"
 #include "thread_p.h"
 
 /**
@@ -270,6 +271,12 @@ loop_close(isc_loop_t *loop) {
 	INSIST(ISC_LIST_EMPTY(loop->run_jobs));
 
 	loop->magic = 0;
+
+	/*
+	 * Cached arenas hold references to the loop's memory context;
+	 * destroy them before the context is detached.
+	 */
+	isc__memarena_cache_flush(loop->tid);
 
 	isc_mem_detach(&loop->mctx);
 }

@@ -128,6 +128,36 @@ isc_memarena_capacity(isc_memarena_t *arena);
  * Total usable capacity of all chunks currently held by the arena.
  */
 
+void
+isc_memarena_getcached(isc_mem_t *fallback_mctx, const char *name,
+		       isc_memarena_t **arenap);
+/*%<
+ * Obtain an arena from the current thread's cache of warm arenas, or
+ * create a new one when the cache is empty.  Freshly created cached
+ * arenas are backed by the current loop's memory context; on a thread
+ * without a RUNNING loop the cache is bypassed and a plain arena
+ * backed by 'fallback_mctx' is created instead.
+ * 'name' is used only when a new arena has to be created; an arena
+ * popped from the cache keeps the name of its original creator.
+ *
+ * Requires:
+ *\li	'fallback_mctx' is a valid memory context.
+ *\li	arenap != NULL && *arenap == NULL
+ */
+
+void
+isc_memarena_putcached(isc_memarena_t **arenap);
+/*%<
+ * Reset 'arena' and return it to the current thread's cache; the arena
+ * is destroyed instead when the cache is full, when the current thread
+ * has no loop, or under AddressSanitizer (no pooling, mirroring
+ * isc_mempool).  It is safe to pair isc_memarena_putcached() with a
+ * plain isc_memarena_create().
+ *
+ * Requires:
+ *\li	arenap != NULL && *arenap is a valid arena.
+ */
+
 #if defined(UNIT_TESTING) && defined(malloc)
 /*
  * cmocka.h redefined malloc as a macro, we #undef it
