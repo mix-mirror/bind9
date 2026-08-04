@@ -192,9 +192,9 @@ buildopt(dns_message_t *message, dns_rdataset_t **rdatasetp);
 /*
  * Storage backing the dedicated buffer of a name returned by
  * dns_message_gettempname().  Allocated from the arena and abandoned
- * (dead bytes until reset) when the name is put back: after
- * dns_name_setbuffer() games (ns_client_newname()) the provenance of
- * the attached buffer is unknowable.
+ * (dead bytes until reset) when the name is put back: a caller may
+ * have replaced the buffer via dns_name_setbuffer(), so the provenance
+ * of the attached buffer is unknowable.
  */
 typedef struct msgtempbuffer {
 	isc_buffer_t buffer;

@@ -113,7 +113,6 @@ struct ns_query {
 			bool recursionok     : 1;
 			bool cacheok	     : 1;
 			bool partialanswer   : 1;
-			bool namebufused     : 1;
 			bool recursing	     : 1;
 			bool queryokvalid    : 1;
 			bool queryok	     : 1;
@@ -146,7 +145,6 @@ struct ns_query {
 	isc_mutex_t	 fetchlock;
 	ns_hookasync_t	*hookasyncctx;
 	dns_rpz_st_t	*rpz_st;
-	isc_bufferlist_t namebufs;
 	ISC_LIST(ns_dbversion_t) activeversions;
 	ISC_LIST(ns_dbversion_t) freeversions;
 	dns_rdataset_t *dns64_aaaa;
@@ -191,7 +189,6 @@ typedef struct query_ctx query_ctx_t;
 
 /* query context structure */
 struct query_ctx {
-	isc_buffer_t *dbuf;	     /* name buffer */
 	dns_name_t   *fname;	     /* found name from DB lookup */
 	dns_name_t   *tname;	     /* temporary name, used
 				      * when processing ANY

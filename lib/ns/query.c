@@ -357,8 +357,8 @@ static void
 qctx_init(ns_client_t *client, dns_fetchresponse_t **respp,
 	  dns_rdatatype_t qtype, query_ctx_t *qctx);
 
-static isc_result_t
-qctx_prepare_buffers(query_ctx_t *qctx, isc_buffer_t *buffer);
+static void
+qctx_prepare_buffers(query_ctx_t *qctx);
 
 static void
 qctx_freedata(query_ctx_t *qctx);
@@ -574,7 +574,6 @@ log_response(ns_client_t *client, dns_rcode_t rcode) {
 	char onbuf[ISC_NETADDR_FORMATSIZE];
 	char ecsbuf[NS_CLIENT_ECS_FORMATSIZE] = { 0 };
 	char flagsbuf[NS_CLIENT_FLAGS_FORMATSIZE] = { 0 };
-	isc_buffer_t b;
 	int level = ISC_LOG_INFO;
 
 	if (!isc_log_wouldlog(level)) {
@@ -585,6 +584,7 @@ log_response(ns_client_t *client, dns_rcode_t rcode) {
 	dns_rdataclass_format(client->message->rdclass, classbuf,
 			      sizeof(classbuf));
 	dns_rdatatype_format(client->query.qtype, typebuf, sizeof(typebuf));
+	isc_buffer_t b;
 	isc_buffer_init(&b, rcodebuf, sizeof(rcodebuf));
 	dns_rcode_totext(rcode, &b);
 	isc_buffer_putuint8(&b, 0);
@@ -784,13 +784,6 @@ query_reset(ns_client_t *client, bool everything) {
 
 	query_freefreeversions(client, everything);
 
-	ISC_LIST_FOREACH(client->query.namebufs, dbuf, link) {
-		if (ISC_LIST_NEXT(dbuf, link) != NULL || everything) {
-			ISC_LIST_UNLINK(client->query.namebufs, dbuf, link);
-			isc_buffer_free(&dbuf);
-		}
-	}
-
 	if (client->query.restarts > 0) {
 		/*
 		 * client->query.qname was dynamically allocated.
@@ -873,7 +866,6 @@ ns_query_init(ns_client_t *client) {
 
 	client->query = (ns_query_t){ 0 };
 
-	ISC_LIST_INIT(client->query.namebufs);
 	ISC_LIST_INIT(client->query.activeversions);
 	ISC_LIST_INIT(client->query.freeversions);
 
@@ -886,7 +878,6 @@ ns_query_init(ns_client_t *client) {
 		dns_fixedname_initname(&client->query.redirect.fixed);
 	query_reset(client, false);
 	ns_client_newdbversion(client, 3);
-	ns_client_newnamebuf(client);
 }
 
 /*%
@@ -1717,8 +1708,6 @@ query_additional_cb(void *arg, const dns_name_t *name, dns_rdatatype_t qtype,
 	dns_name_t *fname = NULL, *mname = NULL;
 	dns_rdataset_t *rdataset = NULL, *sigrdataset = NULL;
 	dns_rdataset_t *trdataset = NULL;
-	isc_buffer_t *dbuf = NULL;
-	isc_buffer_t b;
 	ns_dbversion_t *dbversion = NULL;
 	dns_dbversion_t *version = NULL;
 	bool added_something = false, need_addname = false;
@@ -1753,8 +1742,7 @@ query_additional_cb(void *arg, const dns_name_t *name, dns_rdatatype_t qtype,
 	/*
 	 * Get some resources.
 	 */
-	dbuf = ns_client_getnamebuf(client);
-	fname = ns_client_newname(client, dbuf, &b);
+	fname = ns_client_newname(client);
 	rdataset = ns_client_newrdataset(client);
 	if (client->inner.wantdnssec) {
 		sigrdataset = ns_client_newrdataset(client);
@@ -1872,7 +1860,6 @@ found:
 	 * We have found a potential additional data rdataset, or
 	 * at least a node to iterate over.
 	 */
-	ns_client_keepname(client, fname, dbuf);
 
 	/*
 	 * Does the caller want the found rdataset?
@@ -2162,7 +2149,7 @@ regular:
 static void
 query_addrrset(query_ctx_t *qctx, dns_name_t **namep,
 	       dns_rdataset_t **rdatasetp, dns_rdataset_t **sigrdatasetp,
-	       isc_buffer_t *dbuf, dns_section_t section) {
+	       bool release, dns_section_t section) {
 	isc_result_t result;
 	ns_client_t *client = qctx->client;
 	dns_name_t *name = *namep, *mname = NULL;
@@ -2184,9 +2171,9 @@ query_addrrset(query_ctx_t *qctx, dns_name_t **namep,
 	 * owner name '*namep', to section 'section', unless they are
 	 * already there.  Also add any pertinent additional data.
 	 *
-	 * If 'dbuf' is not NULL, then '*namep' is the name whose data is
-	 * stored in 'dbuf'.  In this case, query_addrrset() guarantees that
-	 * when it returns the name will either have been kept or released.
+	 * If 'release' is true, then '*namep' is a temporary name owned
+	 * by the caller; query_addrrset() guarantees that when it returns
+	 * the name will either have been added to the message or released.
 	 */
 	result = dns_message_findname(client->message, section, name,
 				      rdataset->type, rdataset->covers, &mname,
@@ -2197,7 +2184,7 @@ query_addrrset(query_ctx_t *qctx, dns_name_t **namep,
 		 */
 		CTRACE(ISC_LOG_DEBUG(3), "query_addrrset: dns_message_findname "
 					 "succeeded: done");
-		if (dbuf != NULL) {
+		if (release) {
 			ns_client_releasename(client, namep);
 		}
 		if (rdataset->attributes.required) {
@@ -2208,15 +2195,12 @@ query_addrrset(query_ctx_t *qctx, dns_name_t **namep,
 		/*
 		 * The name doesn't exist.
 		 */
-		if (dbuf != NULL) {
-			ns_client_keepname(client, name, dbuf);
-		}
 		dns_message_addname(client->message, name, section);
 		*namep = NULL;
 		mname = name;
 	} else {
 		RUNTIME_CHECK(result == DNS_R_NXRRSET);
-		if (dbuf != NULL) {
+		if (release) {
 			ns_client_releasename(client, namep);
 		}
 	}
@@ -2262,11 +2246,9 @@ fixrdataset(ns_client_t *client, dns_rdataset_t **rdataset) {
 }
 
 static void
-fixfname(ns_client_t *client, dns_name_t **fname, isc_buffer_t **dbuf,
-	 isc_buffer_t *nbuf) {
+fixfname(ns_client_t *client, dns_name_t **fname) {
 	if (*fname == NULL) {
-		*dbuf = ns_client_getnamebuf(client);
-		*fname = ns_client_newname(client, *dbuf, nbuf);
+		*fname = ns_client_newname(client);
 	}
 }
 
@@ -2350,7 +2332,6 @@ static void
 stale_refresh_aftermath(ns_client_t *client, isc_result_t result) {
 	dns_db_t *db = NULL;
 	unsigned int dboptions;
-	isc_buffer_t buffer;
 	query_ctx_t qctx;
 	dns_clientinfomethods_t cm;
 	dns_clientinfo_t ci;
@@ -2404,7 +2385,7 @@ stale_refresh_aftermath(ns_client_t *client, isc_result_t result) {
 			dns_clientinfo_setecs(&ci, &qctx.client->inner.ecs);
 		}
 
-		CHECK(qctx_prepare_buffers(&qctx, &buffer));
+		qctx_prepare_buffers(&qctx);
 
 		dboptions = qctx.client->query.dboptions;
 		dboptions |= DNS_DBFIND_STALEOK;
@@ -2421,7 +2402,6 @@ stale_refresh_aftermath(ns_client_t *client, isc_result_t result) {
 		}
 		dns_db_detach(&db);
 
-	cleanup:
 		qctx_freedata(&qctx);
 		qctx_deinit(&qctx);
 	}
@@ -4839,7 +4819,6 @@ qctx_save(query_ctx_t *src, query_ctx_t **targetp) {
 	*target = *src;
 
 	/* Then "move" pointers (except client and view) */
-	target->dbuf = MOVE_OWNERSHIP(src->dbuf);
 	target->fname = MOVE_OWNERSHIP(src->fname);
 	target->tname = MOVE_OWNERSHIP(src->tname);
 	target->rdataset = MOVE_OWNERSHIP(src->rdataset);
@@ -5451,21 +5430,17 @@ async_restart(void *arg) {
  * 'buffer' must be a pointer to an object whose lifetime
  * doesn't expire while 'qctx' is in use.
  */
-static isc_result_t
-qctx_prepare_buffers(query_ctx_t *qctx, isc_buffer_t *buffer) {
+static void
+qctx_prepare_buffers(query_ctx_t *qctx) {
 	REQUIRE(qctx != NULL);
 	REQUIRE(qctx->client != NULL);
-	REQUIRE(buffer != NULL);
 
-	qctx->dbuf = ns_client_getnamebuf(qctx->client);
-	qctx->fname = ns_client_newname(qctx->client, qctx->dbuf, buffer);
+	qctx->fname = ns_client_newname(qctx->client);
 	qctx->rdataset = ns_client_newrdataset(qctx->client);
 
 	if (qctx->client->inner.wantdnssec || qctx->findcoveringnsec) {
 		qctx->sigrdataset = ns_client_newrdataset(qctx->client);
 	}
-
-	return ISC_R_SUCCESS;
 }
 
 /*%
@@ -5496,7 +5471,6 @@ stale_client_answer(isc_result_t result) {
  */
 static isc_result_t
 query_lookup(query_ctx_t *qctx) {
-	isc_buffer_t buffer;
 	isc_result_t result = ISC_R_UNSET;
 	dns_clientinfomethods_t cm;
 	dns_clientinfo_t ci;
@@ -5525,11 +5499,7 @@ query_lookup(query_ctx_t *qctx) {
 	/*
 	 * We'll need some resources...
 	 */
-	result = qctx_prepare_buffers(qctx, &buffer);
-	if (result != ISC_R_SUCCESS) {
-		QUERY_ERROR(qctx, result);
-		return ns_query_done(qctx);
-	}
+	qctx_prepare_buffers(qctx);
 
 	/*
 	 * Now look for an answer in the database.
@@ -6043,7 +6013,6 @@ static isc_result_t
 query_resume(query_ctx_t *qctx) {
 	isc_result_t result = ISC_R_UNSET;
 	dns_name_t *tname;
-	isc_buffer_t b;
 #ifdef WANT_QUERYTRACE
 	char mbuf[4 * DNS_NAME_FORMATSIZE];
 	char qbuf[DNS_NAME_FORMATSIZE];
@@ -6193,8 +6162,7 @@ query_resume(query_ctx_t *qctx) {
 	/*
 	 * We'll need some resources...
 	 */
-	qctx->dbuf = ns_client_getnamebuf(qctx->client);
-	qctx->fname = ns_client_newname(qctx->client, qctx->dbuf, &b);
+	qctx->fname = ns_client_newname(qctx->client);
 
 	if (rpz) {
 		tname = qctx->rpz_st->fname;
@@ -6944,7 +6912,6 @@ query_rpzcname(query_ctx_t *qctx, dns_name_t *cname) {
 		dns_name_copy(cname, qctx->fname);
 	}
 
-	ns_client_keepname(client, qctx->fname, qctx->dbuf);
 	query_addcname(qctx, dns_trust_authanswer, qctx->rpz_st->m.ttl);
 
 	rpz_log_rewrite(client, false, qctx->rpz_st->m.policy,
@@ -7258,7 +7225,6 @@ cleanup:
 static void
 query_addnoqnameproof(query_ctx_t *qctx) {
 	ns_client_t *client = qctx->client;
-	isc_buffer_t *dbuf, b;
 	dns_name_t *fname = NULL;
 	dns_rdataset_t *neg = NULL, *negsig = NULL;
 
@@ -7268,15 +7234,14 @@ query_addnoqnameproof(query_ctx_t *qctx) {
 		return;
 	}
 
-	dbuf = ns_client_getnamebuf(client);
-	fname = ns_client_newname(client, dbuf, &b);
+	fname = ns_client_newname(client);
 	neg = ns_client_newrdataset(client);
 	negsig = ns_client_newrdataset(client);
 
 	RUNTIME_CHECK(dns_rdataset_getnoqname(qctx->noqname, fname, neg,
 					      negsig) == ISC_R_SUCCESS);
 
-	query_addrrset(qctx, &fname, &neg, &negsig, dbuf,
+	query_addrrset(qctx, &fname, &neg, &negsig, true,
 		       DNS_SECTION_AUTHORITY);
 }
 
@@ -7290,7 +7255,6 @@ query_respond_any(query_ctx_t *qctx) {
 	isc_result_t result = ISC_R_UNSET;
 	dns_rdatatype_t onetype = dns_rdatatype_none; /* type to use for
 							 minimal-any */
-	isc_buffer_t b;
 
 	CCTRACE(ISC_LOG_DEBUG(3), "query_respond_any");
 
@@ -7305,18 +7269,6 @@ query_respond_any(query_ctx_t *qctx) {
 		return ns_query_done(qctx);
 	}
 
-	/*
-	 * Calling query_addrrset() with a non-NULL dbuf is going
-	 * to either keep or release the name.  We don't want it to
-	 * release fname, since we may have to call query_addrrset()
-	 * more than once.  That means we have to call ns_client_keepname()
-	 * now, and pass a NULL dbuf to query_addrrset().
-	 *
-	 * If we do a query_addrrset() below, we must set qctx->fname to
-	 * NULL before leaving this block, otherwise we might try to
-	 * cleanup qctx->fname even though we're using it!
-	 */
-	ns_client_keepname(qctx->client, qctx->fname, qctx->dbuf);
 	qctx->tname = qctx->fname;
 
 	DNS_RDATASETITER_FOREACH(rdsiter) {
@@ -7408,7 +7360,7 @@ query_respond_any(query_ctx_t *qctx) {
 			query_addrrset(qctx,
 				       (qctx->fname != NULL) ? &qctx->fname
 							     : &qctx->tname,
-				       &qctx->rdataset, NULL, NULL,
+				       &qctx->rdataset, NULL, false,
 				       DNS_SECTION_ANSWER);
 
 			query_addnoqnameproof(qctx);
@@ -7477,7 +7429,7 @@ query_respond_any(query_ctx_t *qctx) {
 				      "missing signature for %s", namebuf);
 		}
 
-		qctx->fname = ns_client_newname(qctx->client, qctx->dbuf, &b);
+		qctx->fname = ns_client_newname(qctx->client);
 		return query_sign_nodata(qctx);
 	} else if (!hidden) {
 		/*
@@ -7569,8 +7521,8 @@ query_getzoneversion(query_ctx_t *qctx) {
 	case dns_zone_mirror:
 	case dns_zone_primary:
 	case dns_zone_secondary: {
-		isc_buffer_t b;
 		unsigned char buf[128];
+		isc_buffer_t b;
 		isc_buffer_init(&b, buf, sizeof(buf));
 		isc_result_t result = dns_zone_getzoneversion(qctx->zone, &b);
 		if (result == ISC_R_SUCCESS) {
@@ -7654,8 +7606,13 @@ query_addanswer(query_ctx_t *qctx) {
 		{
 			sigrdatasetp = &qctx->sigrdataset;
 		}
+		/*
+		 * The answer path always pairs a fresh owned temporary
+		 * name with the rdataset by this point.
+		 */
+		INSIST(qctx->fname != NULL);
 		query_addrrset(qctx, &qctx->fname, &qctx->rdataset,
-			       sigrdatasetp, qctx->dbuf, DNS_SECTION_ANSWER);
+			       sigrdatasetp, true, DNS_SECTION_ANSWER);
 	}
 
 	return ISC_R_COMPLETE;
@@ -7796,10 +7753,6 @@ query_dns64(query_ctx_t *qctx) {
 	 * owner name '*namep', to the answer section, unless they are
 	 * already there.  Also add any pertinent additional data.
 	 *
-	 * If 'qctx->dbuf' is not NULL, then 'qctx->fname' is the name
-	 * whose data is stored 'qctx->dbuf'.  In this case,
-	 * query_addrrset() guarantees that when it returns the name
-	 * will either have been kept or released.
 	 */
 	CTRACE(ISC_LOG_DEBUG(3), "query_dns64");
 
@@ -7816,25 +7769,18 @@ query_dns64(query_ctx_t *qctx) {
 		 */
 		CTRACE(ISC_LOG_DEBUG(3), "query_dns64: dns_message_findname "
 					 "succeeded: done");
-		if (qctx->dbuf != NULL) {
-			ns_client_releasename(client, &qctx->fname);
-		}
+		ns_client_releasename(client, &qctx->fname);
 		return ISC_R_SUCCESS;
 	} else if (result == DNS_R_NXDOMAIN) {
 		/*
 		 * The name doesn't exist.
 		 */
-		if (qctx->dbuf != NULL) {
-			ns_client_keepname(client, name, qctx->dbuf);
-		}
 		dns_message_addname(client->message, name, section);
 		qctx->fname = NULL;
 		mname = name;
 	} else {
 		RUNTIME_CHECK(result == DNS_R_NXRRSET);
-		if (qctx->dbuf != NULL) {
-			ns_client_releasename(client, &qctx->fname);
-		}
+		ns_client_releasename(client, &qctx->fname);
 	}
 
 	if (qctx->rdataset->trust != dns_trust_secure) {
@@ -7911,19 +7857,14 @@ query_filter64(query_ctx_t *qctx) {
 		 */
 		CTRACE(ISC_LOG_DEBUG(3), "query_filter64: dns_message_findname "
 					 "succeeded: done");
-		if (qctx->dbuf != NULL) {
-			ns_client_releasename(client, &qctx->fname);
-		}
+		ns_client_releasename(client, &qctx->fname);
 		return;
 	} else if (result == DNS_R_NXDOMAIN) {
 		mname = name;
 		qctx->fname = NULL;
 	} else {
 		RUNTIME_CHECK(result == DNS_R_NXRRSET);
-		if (qctx->dbuf != NULL) {
-			ns_client_releasename(client, &qctx->fname);
-		}
-		qctx->dbuf = NULL;
+		ns_client_releasename(client, &qctx->fname);
 	}
 
 	if (qctx->rdataset->trust != dns_trust_secure) {
@@ -7963,11 +7904,7 @@ query_filter64(query_ctx_t *qctx) {
 	dns_rdataset_setownercase(myrdataset, mname);
 	client->query.noadditional = true;
 	if (mname == name) {
-		if (qctx->dbuf != NULL) {
-			ns_client_keepname(client, name, qctx->dbuf);
-		}
 		dns_message_addname(client->message, name, section);
-		qctx->dbuf = NULL;
 	}
 	myrdataset->trust = qctx->rdataset->trust;
 
@@ -7977,10 +7914,6 @@ query_filter64(query_ctx_t *qctx) {
 	dns_message_takebuffer(client->message, &buffer);
 	if (buffer != NULL) {
 		isc_buffer_free(&buffer);
-	}
-
-	if (qctx->dbuf != NULL) {
-		ns_client_releasename(client, &name);
 	}
 
 	CTRACE(ISC_LOG_DEBUG(3), "query_filter64: done");
@@ -8111,8 +8044,8 @@ query_prepare_delegation_response(query_ctx_t *qctx) {
 	if (qctx->client->inner.wantdnssec && qctx->sigrdataset != NULL) {
 		sigrdatasetp = &qctx->sigrdataset;
 	}
-	query_addrrset(qctx, &qctx->fname, &qctx->rdataset, sigrdatasetp,
-		       qctx->dbuf, DNS_SECTION_AUTHORITY);
+	query_addrrset(qctx, &qctx->fname, &qctx->rdataset, sigrdatasetp, true,
+		       DNS_SECTION_AUTHORITY);
 	if (detach) {
 		dns_db_detach(&qctx->client->query.gluedb);
 	}
@@ -8205,7 +8138,6 @@ query_zone_delegation(query_ctx_t *qctx) {
 		 * query_notfound() which calls query_delegation(), and
 		 * we'll restore these values there.
 		 */
-		ns_client_keepname(qctx->client, qctx->fname, qctx->dbuf);
 		qctx->zdb = MOVE_OWNERSHIP(qctx->db);
 		qctx->znode = MOVE_OWNERSHIP(qctx->node);
 		qctx->zfname = MOVE_OWNERSHIP(qctx->fname);
@@ -8284,13 +8216,6 @@ query_delegation(query_ctx_t *qctx) {
 		 */
 		ns_client_releasename(qctx->client, &qctx->fname);
 
-		/*
-		 * We've already done ns_client_keepname() on
-		 * qctx->zfname, so we must set dbuf to NULL to
-		 * prevent query_addrrset() from trying to
-		 * call ns_client_keepname() again.
-		 */
-		qctx->dbuf = NULL;
 		ns_client_putrdataset(qctx->client, &qctx->rdataset);
 		if (qctx->sigrdataset != NULL) {
 			ns_client_putrdataset(qctx->client, &qctx->sigrdataset);
@@ -8422,7 +8347,6 @@ query_addds(query_ctx_t *qctx) {
 	dns_name_t *fname = NULL;
 	dns_name_t *name;
 	dns_rdataset_t *rdataset = NULL, *sigrdataset = NULL;
-	isc_buffer_t *dbuf, b;
 	isc_result_t result;
 	unsigned int count;
 
@@ -8477,7 +8401,7 @@ query_addds(query_ctx_t *qctx) {
 			 * delegation.
 			 */
 			query_addrrset(qctx, &rname, &rdataset, &sigrdataset,
-				       NULL, DNS_SECTION_AUTHORITY);
+				       false, DNS_SECTION_AUTHORITY);
 			break;
 		}
 	}
@@ -8491,8 +8415,7 @@ addnsec3:
 	/*
 	 * Add the NSEC3 which proves the DS does not exist.
 	 */
-	dbuf = ns_client_getnamebuf(client);
-	fname = ns_client_newname(client, dbuf, &b);
+	fname = ns_client_newname(client);
 	dns_fixedname_init(&fixed);
 	dns_rdataset_cleanup(rdataset);
 	dns_rdataset_cleanup(sigrdataset);
@@ -8503,7 +8426,7 @@ addnsec3:
 	if (!dns_rdataset_isassociated(rdataset)) {
 		goto cleanup;
 	}
-	query_addrrset(qctx, &fname, &rdataset, &sigrdataset, dbuf,
+	query_addrrset(qctx, &fname, &rdataset, &sigrdataset, true,
 		       DNS_SECTION_AUTHORITY);
 	/*
 	 * Did we find the closest provable encloser instead?
@@ -8514,7 +8437,7 @@ addnsec3:
 		dns_name_getlabelsequence(name,
 					  dns_name_countlabels(name) - count,
 					  count, dns_fixedname_name(&fixed));
-		fixfname(client, &fname, &dbuf, &b);
+		fixfname(client, &fname);
 		fixrdataset(client, &rdataset);
 		fixrdataset(client, &sigrdataset);
 		if (fname == NULL || rdataset == NULL || sigrdataset == NULL) {
@@ -8526,7 +8449,7 @@ addnsec3:
 		if (!dns_rdataset_isassociated(rdataset)) {
 			goto cleanup;
 		}
-		query_addrrset(qctx, &fname, &rdataset, &sigrdataset, dbuf,
+		query_addrrset(qctx, &fname, &rdataset, &sigrdataset, true,
 			       DNS_SECTION_AUTHORITY);
 	}
 
@@ -8559,7 +8482,6 @@ query_nodata(query_ctx_t *qctx, isc_result_t res) {
 	if (qctx->dns64 && !qctx->dns64_exclude)
 #endif /* ifdef dns64_bis_return_excluded_addresses */
 	{
-		isc_buffer_t b;
 		/*
 		 * Restore the answers from the previous AAAA lookup.
 		 */
@@ -8573,9 +8495,7 @@ query_nodata(query_ctx_t *qctx, isc_result_t res) {
 		qctx->sigrdataset =
 			MOVE_OWNERSHIP(qctx->client->query.dns64_sigaaaa);
 		if (qctx->fname == NULL) {
-			qctx->dbuf = ns_client_getnamebuf(qctx->client);
-			qctx->fname = ns_client_newname(qctx->client,
-							qctx->dbuf, &b);
+			qctx->fname = ns_client_newname(qctx->client);
 		}
 		dns_name_copy(qctx->client->query.qname, qctx->fname);
 		qctx->dns64 = false;
@@ -8640,8 +8560,6 @@ query_nodata(query_ctx_t *qctx, isc_result_t res) {
 		 * of its extra features (and things would probably break!).
 		 */
 		if (dns_rdataset_isassociated(qctx->rdataset)) {
-			ns_client_keepname(qctx->client, qctx->fname,
-					   qctx->dbuf);
 			dns_message_addname(qctx->client->message, qctx->fname,
 					    DNS_SECTION_AUTHORITY);
 			ISC_LIST_APPEND(qctx->fname->list, qctx->rdataset,
@@ -8679,7 +8597,6 @@ query_sign_nodata(query_ctx_t *qctx) {
 			dns_name_t *found;
 			dns_name_t *qname;
 			dns_fixedname_t fixed;
-			isc_buffer_t b;
 
 			found = dns_fixedname_initname(&fixed);
 			qname = qctx->client->query.qname;
@@ -8707,7 +8624,7 @@ query_sign_nodata(query_ctx_t *qctx) {
 				 */
 				query_addrrset(qctx, &qctx->fname,
 					       &qctx->rdataset,
-					       &qctx->sigrdataset, qctx->dbuf,
+					       &qctx->sigrdataset, true,
 					       DNS_SECTION_AUTHORITY);
 
 				count = dns_name_countlabels(found) + 1;
@@ -8719,8 +8636,7 @@ query_sign_nodata(query_ctx_t *qctx) {
 				 * These ensure fname, rdataset, and
 				 * sigrdataset are non-NULL
 				 */
-				fixfname(qctx->client, &qctx->fname,
-					 &qctx->dbuf, &b);
+				fixfname(qctx->client, &qctx->fname);
 				fixrdataset(qctx->client, &qctx->rdataset);
 				fixrdataset(qctx->client, &qctx->sigrdataset);
 
@@ -8745,7 +8661,6 @@ query_sign_nodata(query_ctx_t *qctx) {
 		 * name now because we're going call query_addsoa()
 		 * below, and it needs to use the name buffer.
 		 */
-		ns_client_keepname(qctx->client, qctx->fname, qctx->dbuf);
 	} else if (qctx->fname != NULL) {
 		/*
 		 * We're not going to use fname, and need to release
@@ -8785,7 +8700,6 @@ query_addnxrrsetnsec(query_ctx_t *qctx) {
 	dns_rdata_t sigrdata;
 	dns_rdata_rrsig_t sig;
 	unsigned int labels;
-	isc_buffer_t *dbuf, b;
 	dns_name_t *fname;
 	isc_result_t result;
 
@@ -8793,7 +8707,8 @@ query_addnxrrsetnsec(query_ctx_t *qctx) {
 
 	if (!qctx->fname->attributes.wildcard) {
 		query_addrrset(qctx, &qctx->fname, &qctx->rdataset,
-			       &qctx->sigrdataset, NULL, DNS_SECTION_AUTHORITY);
+			       &qctx->sigrdataset, false,
+			       DNS_SECTION_AUTHORITY);
 		return;
 	}
 
@@ -8822,14 +8737,13 @@ query_addnxrrsetnsec(query_ctx_t *qctx) {
 	/*
 	 * We'll need some resources...
 	 */
-	dbuf = ns_client_getnamebuf(client);
-	fname = ns_client_newname(client, dbuf, &b);
+	fname = ns_client_newname(client);
 
 	dns_name_split(qctx->fname, sig.labels + 1, NULL, fname);
 	/* This will succeed, since we've stripped labels. */
 	RUNTIME_CHECK(dns_name_concatenate(dns_wildcardname, fname, fname) ==
 		      ISC_R_SUCCESS);
-	query_addrrset(qctx, &fname, &qctx->rdataset, &qctx->sigrdataset, dbuf,
+	query_addrrset(qctx, &fname, &qctx->rdataset, &qctx->sigrdataset, true,
 		       DNS_SECTION_AUTHORITY);
 }
 
@@ -8859,7 +8773,6 @@ query_nxdomain(query_ctx_t *qctx, isc_result_t result) {
 		 * name now because we're going call query_addsoa()
 		 * below, and it needs to use the name buffer.
 		 */
-		ns_client_keepname(qctx->client, qctx->fname, qctx->dbuf);
 	} else if (qctx->fname != NULL) {
 		/*
 		 * We're not going to use fname, and need to release
@@ -8902,7 +8815,7 @@ query_nxdomain(query_ctx_t *qctx, isc_result_t result) {
 		 */
 		if (dns_rdataset_isassociated(qctx->rdataset)) {
 			query_addrrset(qctx, &qctx->fname, &qctx->rdataset,
-				       &qctx->sigrdataset, NULL,
+				       &qctx->sigrdataset, false,
 				       DNS_SECTION_AUTHORITY);
 		}
 		query_addwildcardproof(qctx, false, false);
@@ -9059,7 +8972,6 @@ query_synthnodata(query_ctx_t *qctx, const dns_name_t *signer,
 		  dns_rdataset_t **sigsoardatasetp) {
 	dns_name_t *name = NULL;
 	dns_ttl_t ttl;
-	isc_buffer_t *dbuf, b;
 
 	/*
 	 * Determine the correct TTL to use for the SOA and RRSIG
@@ -9073,13 +8985,11 @@ query_synthnodata(query_ctx_t *qctx, const dns_name_t *signer,
 	 * NODATA proof's name now or else discard it.
 	 */
 	if (qctx->client->inner.wantdnssec) {
-		ns_client_keepname(qctx->client, qctx->fname, qctx->dbuf);
 	} else {
 		ns_client_releasename(qctx->client, &qctx->fname);
 	}
 
-	dbuf = ns_client_getnamebuf(qctx->client);
-	name = ns_client_newname(qctx->client, dbuf, &b);
+	name = ns_client_newname(qctx->client);
 	dns_name_copy(signer, name);
 
 	/*
@@ -9088,7 +8998,7 @@ query_synthnodata(query_ctx_t *qctx, const dns_name_t *signer,
 	if (!qctx->client->inner.wantdnssec) {
 		sigsoardatasetp = NULL;
 	}
-	query_addrrset(qctx, &name, soardatasetp, sigsoardatasetp, dbuf,
+	query_addrrset(qctx, &name, soardatasetp, sigsoardatasetp, true,
 		       DNS_SECTION_AUTHORITY);
 
 	if (qctx->client->inner.wantdnssec) {
@@ -9096,7 +9006,8 @@ query_synthnodata(query_ctx_t *qctx, const dns_name_t *signer,
 		 * Add NODATA proof.
 		 */
 		query_addrrset(qctx, &qctx->fname, &qctx->rdataset,
-			       &qctx->sigrdataset, NULL, DNS_SECTION_AUTHORITY);
+			       &qctx->sigrdataset, false,
+			       DNS_SECTION_AUTHORITY);
 	}
 
 	inc_stats(qctx->client, ns_statscounter_nodatasynth);
@@ -9115,7 +9026,6 @@ static isc_result_t
 query_synthwildcard(query_ctx_t *qctx, dns_rdataset_t *rdataset,
 		    dns_rdataset_t *sigrdataset) {
 	dns_name_t *name = NULL;
-	isc_buffer_t *dbuf, b;
 	dns_rdataset_t *cloneset = NULL, *clonesigset = NULL;
 	dns_rdataset_t **sigrdatasetp;
 
@@ -9126,13 +9036,11 @@ query_synthwildcard(query_ctx_t *qctx, dns_rdataset_t *rdataset,
 	 * NOQNAME proof's name now or else discard it.
 	 */
 	if (qctx->client->inner.wantdnssec) {
-		ns_client_keepname(qctx->client, qctx->fname, qctx->dbuf);
 	} else {
 		ns_client_releasename(qctx->client, &qctx->fname);
 	}
 
-	dbuf = ns_client_getnamebuf(qctx->client);
-	name = ns_client_newname(qctx->client, dbuf, &b);
+	name = ns_client_newname(qctx->client);
 	dns_name_copy(qctx->client->query.qname, name);
 
 	cloneset = ns_client_newrdataset(qctx->client);
@@ -9149,7 +9057,7 @@ query_synthwildcard(query_ctx_t *qctx, dns_rdataset_t *rdataset,
 		sigrdatasetp = NULL;
 	}
 
-	query_addrrset(qctx, &name, &cloneset, sigrdatasetp, dbuf,
+	query_addrrset(qctx, &name, &cloneset, sigrdatasetp, true,
 		       DNS_SECTION_ANSWER);
 
 	if (qctx->client->inner.wantdnssec) {
@@ -9157,7 +9065,8 @@ query_synthwildcard(query_ctx_t *qctx, dns_rdataset_t *rdataset,
 		 * Add NOQNAME proof.
 		 */
 		query_addrrset(qctx, &qctx->fname, &qctx->rdataset,
-			       &qctx->sigrdataset, NULL, DNS_SECTION_AUTHORITY);
+			       &qctx->sigrdataset, false,
+			       DNS_SECTION_AUTHORITY);
 	}
 
 	inc_stats(qctx->client, ns_statscounter_wildcardsynth);
@@ -9241,7 +9150,6 @@ query_synthnxdomainnodata(query_ctx_t *qctx, bool nodata, dns_name_t *nowild,
 			  dns_rdataset_t **sigsoardatasetp) {
 	dns_name_t *name = NULL;
 	dns_ttl_t ttl;
-	isc_buffer_t *dbuf, b;
 	dns_rdataset_t *cloneset = NULL, *clonesigset = NULL;
 
 	CCTRACE(ISC_LOG_DEBUG(3), "query_synthnxdomain");
@@ -9259,13 +9167,11 @@ query_synthnxdomainnodata(query_ctx_t *qctx, bool nodata, dns_name_t *nowild,
 	 * NOQNAME proof's name now or else discard it.
 	 */
 	if (qctx->client->inner.wantdnssec) {
-		ns_client_keepname(qctx->client, qctx->fname, qctx->dbuf);
 	} else {
 		ns_client_releasename(qctx->client, &qctx->fname);
 	}
 
-	dbuf = ns_client_getnamebuf(qctx->client);
-	name = ns_client_newname(qctx->client, dbuf, &b);
+	name = ns_client_newname(qctx->client);
 	dns_name_copy(signer, name);
 
 	/*
@@ -9274,7 +9180,7 @@ query_synthnxdomainnodata(query_ctx_t *qctx, bool nodata, dns_name_t *nowild,
 	if (!qctx->client->inner.wantdnssec) {
 		sigsoardatasetp = NULL;
 	}
-	query_addrrset(qctx, &name, soardatasetp, sigsoardatasetp, dbuf,
+	query_addrrset(qctx, &name, soardatasetp, sigsoardatasetp, true,
 		       DNS_SECTION_AUTHORITY);
 
 	if (qctx->client->inner.wantdnssec) {
@@ -9282,10 +9188,10 @@ query_synthnxdomainnodata(query_ctx_t *qctx, bool nodata, dns_name_t *nowild,
 		 * Add NOQNAME proof.
 		 */
 		query_addrrset(qctx, &qctx->fname, &qctx->rdataset,
-			       &qctx->sigrdataset, NULL, DNS_SECTION_AUTHORITY);
+			       &qctx->sigrdataset, false,
+			       DNS_SECTION_AUTHORITY);
 
-		dbuf = ns_client_getnamebuf(qctx->client);
-		name = ns_client_newname(qctx->client, dbuf, &b);
+		name = ns_client_newname(qctx->client);
 		dns_name_copy(nowild, name);
 
 		cloneset = ns_client_newrdataset(qctx->client);
@@ -9297,7 +9203,7 @@ query_synthnxdomainnodata(query_ctx_t *qctx, bool nodata, dns_name_t *nowild,
 		/*
 		 * Add NOWILDCARD proof.
 		 */
-		query_addrrset(qctx, &name, &cloneset, &clonesigset, dbuf,
+		query_addrrset(qctx, &name, &cloneset, &clonesigset, true,
 			       DNS_SECTION_AUTHORITY);
 	}
 
@@ -9822,8 +9728,8 @@ query_cname(query_ctx_t *qctx) {
 		query_prefetch(qctx->client, qctx->fname, qctx->rdataset);
 	}
 
-	query_addrrset(qctx, &qctx->fname, &qctx->rdataset, sigrdatasetp,
-		       qctx->dbuf, DNS_SECTION_ANSWER);
+	query_addrrset(qctx, &qctx->fname, &qctx->rdataset, sigrdatasetp, true,
+		       DNS_SECTION_ANSWER);
 
 	query_addnoqnameproof(qctx);
 
@@ -9878,7 +9784,6 @@ query_dname(query_ctx_t *qctx) {
 	dns_rdataset_t *trdataset;
 	dns_rdataset_t **sigrdatasetp = NULL;
 	dns_namereln_t namereln;
-	isc_buffer_t b;
 	int order;
 	isc_result_t result = ISC_R_UNSET;
 	unsigned int nlabels;
@@ -9926,8 +9831,8 @@ query_dname(query_ctx_t *qctx) {
 	if (!qctx->is_zone && qctx->client->query.recursionok) {
 		query_prefetch(qctx->client, qctx->fname, qctx->rdataset);
 	}
-	query_addrrset(qctx, &qctx->fname, &qctx->rdataset, sigrdatasetp,
-		       qctx->dbuf, DNS_SECTION_ANSWER);
+	query_addrrset(qctx, &qctx->fname, &qctx->rdataset, sigrdatasetp, true,
+		       DNS_SECTION_ANSWER);
 
 	/*
 	 * We set the PARTIALANSWER attribute so that if anything goes
@@ -9963,8 +9868,7 @@ query_dname(query_ctx_t *qctx) {
 	prefix = dns_fixedname_initname(&fixed);
 	dns_name_split(qctx->client->query.qname, nlabels, prefix, NULL);
 	INSIST(qctx->fname == NULL);
-	qctx->dbuf = ns_client_getnamebuf(qctx->client);
-	qctx->fname = ns_client_newname(qctx->client, qctx->dbuf, &b);
+	qctx->fname = ns_client_newname(qctx->client);
 	result = dns_name_concatenate(prefix, tname, qctx->fname);
 	dns_message_puttempname(qctx->client->message, &tname);
 
@@ -10011,8 +9915,6 @@ query_dname(query_ctx_t *qctx) {
 		(void)ns_query_done(qctx);
 		goto cleanup;
 	}
-
-	ns_client_keepname(qctx->client, qctx->fname, qctx->dbuf);
 
 	/*
 	 * Synthesize a CNAME consisting of
@@ -10093,7 +9995,8 @@ query_addcname(query_ctx_t *qctx, dns_trust_t trust, dns_ttl_t ttl) {
 	rdataset->trust = trust;
 	dns_rdataset_setownercase(rdataset, aname);
 
-	query_addrrset(qctx, &aname, &rdataset, NULL, NULL, DNS_SECTION_ANSWER);
+	query_addrrset(qctx, &aname, &rdataset, NULL, false,
+		       DNS_SECTION_ANSWER);
 	if (rdataset != NULL) {
 		dns_rdataset_cleanup(rdataset);
 		dns_message_puttemprdataset(client->message, &rdataset);
@@ -10336,7 +10239,7 @@ query_addns(query_ctx_t *qctx) {
 		if (sigrdataset != NULL) {
 			sigrdatasetp = &sigrdataset;
 		}
-		query_addrrset(qctx, &name, &rdataset, sigrdatasetp, NULL,
+		query_addrrset(qctx, &name, &rdataset, sigrdatasetp, false,
 			       DNS_SECTION_AUTHORITY);
 	}
 
@@ -10368,11 +10271,9 @@ query_addbestns(query_ctx_t *qctx) {
 	dns_rdataset_t *rdataset = NULL, *sigrdataset = NULL;
 	dns_rdataset_t *zrdataset = NULL, *zsigrdataset = NULL;
 	bool is_zone = false;
-	isc_buffer_t *dbuf = NULL;
 	isc_result_t result;
 	dns_dbversion_t *version = NULL;
 	dns_zone_t *zone = NULL;
-	isc_buffer_t b;
 	dns_clientinfomethods_t cm;
 	dns_clientinfo_t ci;
 	dns_name_t qname;
@@ -10423,8 +10324,7 @@ db_find:
 	/*
 	 * We'll need some resources...
 	 */
-	dbuf = ns_client_getnamebuf(client);
-	fname = ns_client_newname(client, dbuf, &b);
+	fname = ns_client_newname(client);
 	rdataset = ns_client_newrdataset(client);
 
 	/*
@@ -10447,7 +10347,6 @@ db_find:
 			goto cleanup;
 		}
 		if (client->query.cacheok) {
-			ns_client_keepname(client, fname, dbuf);
 			dns_db_detachnode(&node);
 			zdb = MOVE_OWNERSHIP(db);
 			zfname = MOVE_OWNERSHIP(fname);
@@ -10460,13 +10359,6 @@ db_find:
 		}
 	} else if (zfname != NULL) {
 		ns_client_releasename(client, &fname);
-		/*
-		 * We've already done ns_client_keepname() on
-		 * zfname, so we must set dbuf to NULL to
-		 * prevent query_addrrset() from trying to
-		 * call ns_client_keepname() again.
-		 */
-		dbuf = NULL;
 		ns_client_putrdataset(client, &rdataset);
 		if (sigrdataset != NULL) {
 			ns_client_putrdataset(client, &sigrdataset);
@@ -10516,7 +10408,7 @@ db_find:
 		ns_client_putrdataset(client, &sigrdataset);
 	}
 
-	query_addrrset(qctx, &fname, &rdataset, &sigrdataset, dbuf,
+	query_addrrset(qctx, &fname, &rdataset, &sigrdataset, true,
 		       DNS_SECTION_AUTHORITY);
 
 cleanup:
@@ -10550,7 +10442,6 @@ cleanup:
 static void
 query_addwildcardproof(query_ctx_t *qctx, bool ispositive, bool nodata) {
 	ns_client_t *client = qctx->client;
-	isc_buffer_t *dbuf, b;
 	dns_name_t *name;
 	dns_name_t *fname = NULL;
 	dns_rdataset_t *rdataset = NULL, *sigrdataset = NULL;
@@ -10635,8 +10526,7 @@ again:
 	/*
 	 * We'll need some resources...
 	 */
-	dbuf = ns_client_getnamebuf(client);
-	fname = ns_client_newname(client, dbuf, &b);
+	fname = ns_client_newname(client);
 	rdataset = ns_client_newrdataset(client);
 	sigrdataset = ns_client_newrdataset(client);
 
@@ -10691,15 +10581,14 @@ again:
 		}
 		if (!ispositive) {
 			query_addrrset(qctx, &fname, &rdataset, &sigrdataset,
-				       dbuf, DNS_SECTION_AUTHORITY);
+				       true, DNS_SECTION_AUTHORITY);
 		}
 
 		/*
 		 * Replace resources which were consumed by query_addrrset.
 		 */
 		if (fname == NULL) {
-			dbuf = ns_client_getnamebuf(client);
-			fname = ns_client_newname(client, dbuf, &b);
+			fname = ns_client_newname(client);
 		}
 
 		if (rdataset == NULL) {
@@ -10738,7 +10627,7 @@ again:
 		if (!dns_rdataset_isassociated(rdataset)) {
 			goto cleanup;
 		}
-		query_addrrset(qctx, &fname, &rdataset, &sigrdataset, dbuf,
+		query_addrrset(qctx, &fname, &rdataset, &sigrdataset, true,
 			       DNS_SECTION_AUTHORITY);
 
 		if (ispositive) {
@@ -10749,8 +10638,7 @@ again:
 		 * Replace resources which were consumed by query_addrrset.
 		 */
 		if (fname == NULL) {
-			dbuf = ns_client_getnamebuf(client);
-			fname = ns_client_newname(client, dbuf, &b);
+			fname = ns_client_newname(client);
 		}
 
 		if (rdataset == NULL) {
@@ -10776,7 +10664,7 @@ again:
 		if (!dns_rdataset_isassociated(rdataset)) {
 			goto cleanup;
 		}
-		query_addrrset(qctx, &fname, &rdataset, &sigrdataset, dbuf,
+		query_addrrset(qctx, &fname, &rdataset, &sigrdataset, true,
 			       DNS_SECTION_AUTHORITY);
 
 		goto cleanup;
@@ -10812,7 +10700,7 @@ again:
 			}
 			dns_rdata_freestruct(&nsec);
 		}
-		query_addrrset(qctx, &fname, &rdataset, &sigrdataset, dbuf,
+		query_addrrset(qctx, &fname, &rdataset, &sigrdataset, true,
 			       DNS_SECTION_AUTHORITY);
 	}
 	if (rdataset != NULL) {

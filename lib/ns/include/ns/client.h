@@ -505,37 +505,19 @@ ns_client_putrdataset(ns_client_t *client, dns_rdataset_t **rdatasetp);
  * used in query.c and in plugins.
  */
 
-isc_result_t
-ns_client_newnamebuf(ns_client_t *client);
-/*%<
- * Allocate a name buffer for the client message.
- */
-
 dns_name_t *
-ns_client_newname(ns_client_t *client, isc_buffer_t *dbuf, isc_buffer_t *nbuf);
+ns_client_newname(ns_client_t *client);
 /*%<
- * Get a temporary name for the client message.
- */
-
-isc_buffer_t *
-ns_client_getnamebuf(ns_client_t *client);
-/*%<
- * Get a name buffer from the pool, or allocate a new one if needed.
- */
-
-void
-ns_client_keepname(ns_client_t *client, dns_name_t *name, isc_buffer_t *dbuf);
-/*%<
- * Adjust buffer 'dbuf' to reflect that 'name' is using space in it,
- * and set client attributes appropriately.
+ * Get a temporary name for the client message.  The name has a
+ * dedicated buffer attached and is valid until the client message is
+ * reset or destroyed.
  */
 
 void
 ns_client_releasename(ns_client_t *client, dns_name_t **namep);
 /*%<
  * Release 'name' back to the pool of temporary names for the client
- * message. If it is using a name buffer, relinquish its exclusive
- * rights on the buffer.
+ * message.
  */
 
 isc_result_t

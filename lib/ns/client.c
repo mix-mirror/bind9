@@ -3037,95 +3037,31 @@ ns_client_putrdataset(ns_client_t *client, dns_rdataset_t **rdatasetp) {
 	}
 }
 
-isc_result_t
-ns_client_newnamebuf(ns_client_t *client) {
-	isc_buffer_t *dbuf = NULL;
-
-	CTRACE("ns_client_newnamebuf");
-
-	isc_buffer_allocate(client->manager->mctx, &dbuf, 1024);
-	ISC_LIST_APPEND(client->query.namebufs, dbuf, link);
-
-	CTRACE("ns_client_newnamebuf: done");
-	return ISC_R_SUCCESS;
-}
-
 dns_name_t *
-ns_client_newname(ns_client_t *client, isc_buffer_t *dbuf, isc_buffer_t *nbuf) {
+ns_client_newname(ns_client_t *client) {
 	dns_name_t *name = NULL;
-	isc_region_t r;
-
-	REQUIRE(!client->query.namebufused);
 
 	CTRACE("ns_client_newname");
 
+	/*
+	 * The temporary name comes with a dedicated buffer attached and
+	 * lives in the message arena until the message is reset, which
+	 * happens after the query is torn down.
+	 */
 	dns_message_gettempname(client->message, &name);
-	isc_buffer_availableregion(dbuf, &r);
-	isc_buffer_init(nbuf, r.base, r.length);
-	dns_name_setbuffer(name, NULL);
-	dns_name_setbuffer(name, nbuf);
-	client->query.namebufused = true;
 
 	CTRACE("ns_client_newname: done");
 	return name;
-}
-
-isc_buffer_t *
-ns_client_getnamebuf(ns_client_t *client) {
-	isc_buffer_t *dbuf;
-	isc_region_t r;
-
-	CTRACE("ns_client_getnamebuf");
-
-	/*%
-	 * Return a name buffer with space for a maximal name, allocating
-	 * a new one if necessary.
-	 */
-	if (ISC_LIST_EMPTY(client->query.namebufs)) {
-		ns_client_newnamebuf(client);
-	}
-
-	dbuf = ISC_LIST_TAIL(client->query.namebufs);
-	INSIST(dbuf != NULL);
-	isc_buffer_availableregion(dbuf, &r);
-	if (r.length < DNS_NAME_MAXWIRE) {
-		ns_client_newnamebuf(client);
-		dbuf = ISC_LIST_TAIL(client->query.namebufs);
-		isc_buffer_availableregion(dbuf, &r);
-		INSIST(r.length >= 255);
-	}
-	CTRACE("ns_client_getnamebuf: done");
-	return dbuf;
-}
-
-void
-ns_client_keepname(ns_client_t *client, dns_name_t *name, isc_buffer_t *dbuf) {
-	isc_region_t r;
-
-	CTRACE("ns_client_keepname");
-
-	/*%
-	 * 'name' is using space in 'dbuf', but 'dbuf' has not yet been
-	 * adjusted to take account of that.  We do the adjustment.
-	 */
-	REQUIRE(client->query.namebufused);
-
-	dns_name_toregion(name, &r);
-	isc_buffer_add(dbuf, r.length);
-	dns_name_setbuffer(name, NULL);
-	client->query.namebufused = false;
 }
 
 void
 ns_client_releasename(ns_client_t *client, dns_name_t **namep) {
 	/*%
 	 * 'name' is no longer needed.  Return it to our pool of temporary
-	 * names.  If it is using a name buffer, relinquish its exclusive
-	 * rights on the buffer.
+	 * names.
 	 */
 
 	CTRACE("ns_client_releasename");
-	client->query.namebufused = false;
 	dns_message_puttempname(client->message, namep);
 	CTRACE("ns_client_releasename: done");
 }
