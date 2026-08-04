@@ -19,23 +19,22 @@ void
 dns_fixedname_init(dns_fixedname_t *fixed) {
 	dns_linkedname_init(&fixed->name_wl);
 	isc_buffer_init(&fixed->buffer, fixed->data, DNS_NAME_MAXWIRE);
-	dns_name_setbuffer(dns_linkedname_name(&fixed->name_wl),
-			   &fixed->buffer);
+	dns_name_setbuffer((dns_name_t *)&fixed->name_wl, &fixed->buffer);
 }
 
 void
 dns_fixedname_invalidate(dns_fixedname_t *fixed) {
-	dns_name_invalidate(dns_linkedname_name(&fixed->name_wl));
+	dns_name_invalidate((dns_name_t *)&fixed->name_wl);
 }
 
 dns_name_t *
 dns_fixedname_name(dns_fixedname_t *fixed) {
-	return dns_linkedname_name(&fixed->name_wl);
+	return (dns_name_t *)&fixed->name_wl;
 }
 
 const dns_name_t *
 dns_fixedname_name_const(const dns_fixedname_t *fixed) {
-	return dns_linkedname_name_const(&fixed->name_wl);
+	return (const dns_name_t *)&fixed->name_wl;
 }
 
 dns_name_t *

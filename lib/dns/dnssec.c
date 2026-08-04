@@ -155,10 +155,9 @@ digest_sig(dst_context_t *ctx, bool downcase, dns_rdata_t *sigrdata,
 	if (downcase) {
 		dns_fixedname_init(&fname);
 
-		RUNTIME_CHECK(
-			dns_name_downcase(dns_linkedname_name(&rrsig->signer),
-					  dns_fixedname_name(&fname)) ==
-			ISC_R_SUCCESS);
+		RUNTIME_CHECK(dns_name_downcase((dns_name_t *)&rrsig->signer,
+						dns_fixedname_name(&fname)) ==
+			      ISC_R_SUCCESS);
 		dns_name_toregion(&fname, &r);
 	} else {
 		dns_name_toregion(&rrsig->signer, &r);
@@ -207,12 +206,12 @@ dns_dnssec_sign(const dns_name_t *name, dns_rdataset_t *set, dst_key_t *key,
 	/*
 	 * Downcase signer.
 	 */
-	dns_name_init(dns_linkedname_name(&sig.signer));
+	dns_name_init((dns_name_t *)&sig.signer);
 	dns_fixedname_init(&fsigner);
 	RUNTIME_CHECK(dns_name_downcase(dst_key_name(key),
 					dns_fixedname_name(&fsigner)) ==
 		      ISC_R_SUCCESS);
-	dns_name_clone(&fsigner, dns_linkedname_name(&sig.signer));
+	dns_name_clone(&fsigner, (dns_name_t *)&sig.signer);
 
 	sig.covered = set->type;
 	sig.algorithm = dst_algorithm_tosecalg(dst_key_alg(key));
@@ -385,9 +384,7 @@ dns_dnssec_verify(const dns_name_t *name, dns_rdataset_t *set, dst_key_t *key,
 	 * for it.
 	 */
 	siglabels = sig.labels + 1;
-	if (siglabels <
-		    dns_name_countlabels(dns_linkedname_name(&sig.signer)) ||
-	    siglabels > labels)
+	if (siglabels < dns_name_countlabels(&sig.signer) || siglabels > labels)
 	{
 		inc_stat(dns_dnssecstats_fail);
 		return DNS_R_SIGINVALID;
@@ -428,7 +425,7 @@ dns_dnssec_verify(const dns_name_t *name, dns_rdataset_t *set, dst_key_t *key,
 			return DNS_R_INVALIDNSEC3;
 		}
 		dns_name_split(name, labels - 1, NULL, &apex);
-		if (!dns_name_equal(&apex, dns_linkedname_name(&sig.signer))) {
+		if (!dns_name_equal(&apex, (dns_name_t *)&sig.signer)) {
 			inc_stat(dns_dnssecstats_fail);
 			return DNS_R_SIGINVALID;
 		}
@@ -462,7 +459,7 @@ dns_dnssec_verify(const dns_name_t *name, dns_rdataset_t *set, dst_key_t *key,
 		dns_rdataset_current(set, &rdata);
 		RETERR(dns_rdata_tostruct(&rdata, &nsec, NULL));
 		if (!dns_name_issubdomain(&nsec.next,
-					  dns_linkedname_name(&sig.signer)))
+					  (dns_name_t *)&sig.signer))
 		{
 			return DNS_R_NOVALIDNSEC;
 		}
@@ -603,8 +600,7 @@ cleanup_struct:
 					      wild) == ISC_R_SUCCESS);
 		}
 		if (wildsigner != NULL) {
-			dns_name_copy(dns_linkedname_name(&sig.signer),
-				      wildsigner);
+			dns_name_copy((dns_name_t *)&sig.signer, wildsigner);
 		}
 		inc_stat(dns_dnssecstats_wildcard);
 		result = DNS_R_FROMWILDCARD;

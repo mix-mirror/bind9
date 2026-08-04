@@ -279,7 +279,7 @@ attach_query_msg_to_client(ns_client_t *client, const char *qnamestr,
 	 * class IN and type "qtype", link the two and add the result to the
 	 * QUESTION section of the query.
 	 */
-	result = dns_name_fromstring(dns_linkedname_name(qname), qnamestr,
+	result = dns_name_fromstring((dns_name_t *)qname, qnamestr,
 				     dns_rootname, 0, isc_g_mctx);
 	if (result != ISC_R_SUCCESS) {
 		goto put_name;

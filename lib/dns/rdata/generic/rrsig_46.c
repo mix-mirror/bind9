@@ -500,7 +500,7 @@ fromstruct_rrsig(ARGS_FROMSTRUCT) {
 	/*
 	 * Signer name.
 	 */
-	RETERR(name_tobuffer(dns_linkedname_name(&sig->signer), target));
+	RETERR(name_tobuffer((dns_name_t *)&sig->signer, target));
 
 	/*
 	 * Signature.
@@ -567,8 +567,8 @@ tostruct_rrsig(ARGS_TOSTRUCT) {
 	dns_name_init(&signer);
 	dns_name_fromregion(&signer, &sr);
 	dns_linkedname_init(&sig->signer);
-	name_duporclone(&signer, mctx, dns_linkedname_name(&sig->signer));
-	isc_region_consume(&sr, name_length(dns_linkedname_name(&sig->signer)));
+	name_duporclone(&signer, mctx, (dns_name_t *)&sig->signer);
+	isc_region_consume(&sr, name_length((dns_name_t *)&sig->signer));
 
 	/*
 	 * Signature.
