@@ -50,6 +50,7 @@
 #include <dns/enumclass.h>
 #include <dns/rdatalist.h>
 #include <dns/rdatastruct.h>
+#include <dns/rdatavec.h>
 #include <dns/soa.h>
 #include <dns/types.h>
 
@@ -61,15 +62,23 @@
 #define VALID_SAMPLEDB(sampledb) \
 	((sampledb) != NULL && (sampledb)->common.impmagic == SAMPLEDB_MAGIC)
 
-typedef struct qpznode_prefix {
+typedef struct test_qpznode {
 	DBNODE_FIELDS;
-	dns_compactname_t *name;
-} qpznode_prefix_t;
+	isc_refcount_t references;
+	isc_refcount_t erefs;
+	_Atomic(dns_namespace_t) nspace;
+	atomic_bool havensec;
+	atomic_bool wild;
+	atomic_bool delegating;
+	atomic_bool dirty;
+	ISC_SLIST(dns_vectop_t) next_type;
+	dns_compactname_t name;
+} test_qpznode_t;
 
 static void
 qpznode_getname(const dns_dbnode_t *node, dns_name_t *name) {
-	const qpznode_prefix_t *qpznode = (const qpznode_prefix_t *)node;
-	dns_name_clone(qpznode->name, name);
+	const test_qpznode_t *qpznode = (const test_qpznode_t *)node;
+	dns_name_clone(&qpznode->name, name);
 }
 
 struct sampledb {
