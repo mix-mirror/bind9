@@ -61,6 +61,17 @@
 #define VALID_SAMPLEDB(sampledb) \
 	((sampledb) != NULL && (sampledb)->common.impmagic == SAMPLEDB_MAGIC)
 
+typedef struct qpznode_prefix {
+	DBNODE_FIELDS;
+	dns_compactname_t *name;
+} qpznode_prefix_t;
+
+static void
+qpznode_getname(const dns_dbnode_t *node, dns_name_t *name) {
+	const qpznode_prefix_t *qpznode = (const qpznode_prefix_t *)node;
+	dns_name_clone(qpznode->name, name);
+}
+
 struct sampledb {
 	dns_db_t common;
 	sample_instance_t *inst;
@@ -172,10 +183,11 @@ addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	REQUIRE(VALID_SAMPLEDB(sampledb));
 
 	dns_fixedname_init(&name);
+	qpznode_getname(node, dns_fixedname_name(&name));
 	CHECK(dns__db_addrdataset(sampledb->db, node, version, now, rdataset,
 				  options, addedrdataset DNS__DB_FLARG_PASS));
 	if (dns_rdatatype_isaddr(rdataset->type)) {
-		CHECK(syncptrs(sampledb->inst, &node->name, rdataset,
+		CHECK(syncptrs(sampledb->inst, dns_fixedname_name(&name), rdataset,
 			       DNS_DIFFOP_ADD));
 	}
 
@@ -194,6 +206,7 @@ subtractrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	REQUIRE(VALID_SAMPLEDB(sampledb));
 
 	dns_fixedname_init(&name);
+	qpznode_getname(node, dns_fixedname_name(&name));
 	result = dns__db_subtractrdataset(sampledb->db, node, version, rdataset,
 					  options,
 					  newrdataset DNS__DB_FLARG_PASS);
@@ -202,7 +215,7 @@ subtractrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	}
 
 	if (dns_rdatatype_isaddr(rdataset->type)) {
-		CHECK(syncptrs(sampledb->inst, &node->name, rdataset,
+		CHECK(syncptrs(sampledb->inst, dns_fixedname_name(&name), rdataset,
 			       DNS_DIFFOP_DEL));
 	}
 

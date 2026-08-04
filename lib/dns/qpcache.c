@@ -102,6 +102,7 @@ typedef struct qpcache qpcache_t;
 typedef struct qpcnode qpcnode_t;
 struct qpcnode {
 	DBNODE_FIELDS;
+	dns_name_t name;
 
 	qpcache_t *qpdb;
 

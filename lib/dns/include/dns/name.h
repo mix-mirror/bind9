@@ -67,6 +67,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <string.h>
 
 #include <isc/attributes.h>
 #include <isc/buffer.h>
@@ -116,6 +117,13 @@ struct dns_name {
 	isc_buffer_t  *buffer;
 };
 
+struct dns_compactname {
+	unsigned int magic;
+	uint8_t length;
+	struct dns_name_attrs attributes;
+	unsigned char ndata[];
+};
+
 struct dns_linkedname {
 	dns_name_t name;
 	ISC_LINK(dns_linkedname_t) link;
@@ -151,6 +159,26 @@ dns_name__readonly_arg(const dns_name_t *name) {
 
 #define DNS_NAME_MAGIC	  ISC_MAGIC('D', 'N', 'S', 'n')
 #define DNS_NAME_VALID(n) ISC_MAGIC_VALID(n, DNS_NAME_MAGIC)
+
+static inline void
+dns_compactname_toname(const dns_compactname_t *compact, dns_name_t *name) {
+	*name = (dns_name_t){
+		.magic = compact->magic,
+		.length = compact->length,
+		.attributes = compact->attributes,
+		.ndata = (unsigned char *)compact->ndata,
+	};
+}
+
+static inline void
+dns_compactname_init(dns_compactname_t *compact, const dns_name_t *name) {
+	compact->magic = name->magic;
+	compact->length = name->length;
+	compact->attributes = name->attributes;
+	compact->attributes.readonly = true;
+	compact->attributes.dynamic = false;
+	memmove(compact->ndata, name->ndata, name->length);
+}
 
 /*%
  * A name is "bindable" if it can be set to point to a new value, i.e.
@@ -1419,14 +1447,30 @@ dns_name__israd(const dns_name_t *name, const dns_name_t *rad);
  * \li	'name' to be valid.
  */
 
-#define DNS_NAME__RO_ARG(arg)                                        \
-	_Generic((arg),                                              \
-		dns_name_t *: dns_name__readonly_arg,                \
-		const dns_name_t *: dns_name__readonly_arg,          \
-		dns_linkedname_t *: dns_linkedname_name,             \
-		const dns_linkedname_t *: dns_linkedname_name_const, \
-		dns_fixedname_t *: dns_fixedname_name,               \
-		const dns_fixedname_t *: dns_fixedname_name_const)(arg)
+#define DNS_NAME__COMPACT(arg)                                          \
+	(&(dns_name_t){                                                   \
+		.magic = ((const dns_compactname_t *)(arg))->magic,        \
+		.length = ((const dns_compactname_t *)(arg))->length,      \
+		.attributes =                                               \
+			((const dns_compactname_t *)(arg))->attributes,       \
+		.ndata = (unsigned char *)                                  \
+			 ((const dns_compactname_t *)(arg))->ndata,           \
+	})
+
+#define DNS_NAME__RO_ARG(arg)                                           \
+	_Generic((arg),                                                   \
+		dns_name_t *: (const dns_name_t *)(arg),                  \
+		const dns_name_t *: (const dns_name_t *)(arg),            \
+		dns_linkedname_t *: dns_linkedname_name_const(            \
+			(const dns_linkedname_t *)(arg)),                    \
+		const dns_linkedname_t *: dns_linkedname_name_const(      \
+			(const dns_linkedname_t *)(arg)),                    \
+		dns_fixedname_t *: dns_fixedname_name_const(              \
+			(const dns_fixedname_t *)(arg)),                     \
+		const dns_fixedname_t *: dns_fixedname_name_const(        \
+			(const dns_fixedname_t *)(arg)),                     \
+		dns_compactname_t *: DNS_NAME__COMPACT(arg),               \
+		const dns_compactname_t *: DNS_NAME__COMPACT(arg))
 
 #define dns_name_clone(source, target) \
 	dns_name__clone(DNS_NAME__RO_ARG(source), target)

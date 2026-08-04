@@ -119,6 +119,7 @@ typedef struct dns_message	   dns_message_t;
 typedef uint16_t		   dns_messageid_t;
 typedef isc_region_t		   dns_label_t;
 typedef struct dns_name		   dns_name_t;
+typedef struct dns_compactname	   dns_compactname_t;
 typedef struct dns_linkedname	   dns_linkedname_t;
 typedef ISC_LIST(dns_linkedname_t) dns_namelist_t;
 typedef struct dns_nametree  dns_nametree_t;
