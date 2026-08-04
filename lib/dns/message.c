@@ -27,6 +27,7 @@
 #include <isc/hashmap.h>
 #include <isc/log.h>
 #include <isc/mem.h>
+#include <isc/memarena.h>
 #include <isc/result.h>
 #include <isc/string.h>
 #include <isc/utf8.h>
@@ -116,16 +117,11 @@ hexdump(const char *msg, const char *msg2, void *base, size_t len) {
 #define OPTOUT(x) (((x)->attributes.optout))
 
 /*%
- * This is the size of each individual scratchpad buffer, and the numbers
- * of various block allocations used within the server.
+ * The numbers of various block allocations used within the server.
  * XXXMLG These should come from a config setting.
  */
-#define SCRATCHPAD_SIZE	   1232
 #define NAME_FILLCOUNT	   1024
 #define NAME_FREEMAX	   8 * NAME_FILLCOUNT
-#define OFFSET_COUNT	   4
-#define RDATA_COUNT	   8
-#define RDATALIST_COUNT	   8
 #define RDATASET_FILLCOUNT 1024
 #define RDATASET_FREEMAX   8 * RDATASET_FILLCOUNT
 
@@ -172,23 +168,6 @@ static const char *edetext[] = { "Other",
 				 "Network Error",
 				 "Invalid Data" };
 
-/*%
- * "helper" type, which consists of a block of some type, and is linkable.
- * For it to work, sizeof(dns_msgblock_t) must be a multiple of the pointer
- * size, or the allocated elements will not be aligned correctly.
- */
-struct dns_msgblock {
-	unsigned int count;
-	unsigned int remaining;
-	ISC_LINK(dns_msgblock_t) link;
-}; /* dynamically sized */
-
-static dns_msgblock_t *
-msgblock_allocate(isc_mem_t *, unsigned int, unsigned int);
-
-#define msgblock_get(block, type) \
-	((type *)msgblock_internalget(block, sizeof(type)))
-
 /*
  * A context type to pass information when checking a message signature
  * asynchronously.
@@ -210,15 +189,6 @@ static void
 dns__message_putassociatedrdataset(dns_message_t *msg,
 				   dns_rdataset_t **rdatasetp);
 
-static void *
-msgblock_internalget(dns_msgblock_t *, unsigned int);
-
-static void
-msgblock_reset(dns_msgblock_t *);
-
-static void
-msgblock_free(isc_mem_t *, dns_msgblock_t *, unsigned int);
-
 static void
 logfmtpacket(dns_message_t *message, const char *description,
 	     const isc_sockaddr_t *from, const isc_sockaddr_t *to,
@@ -228,90 +198,6 @@ logfmtpacket(dns_message_t *message, const char *description,
 static isc_result_t
 buildopt(dns_message_t *message, dns_rdataset_t **rdatasetp);
 
-/*
- * Allocate a new dns_msgblock_t, and return a pointer to it.  If no memory
- * is free, return NULL.
- */
-static dns_msgblock_t *
-msgblock_allocate(isc_mem_t *mctx, unsigned int sizeof_type,
-		  unsigned int count) {
-	dns_msgblock_t *block;
-	unsigned int length;
-
-	length = sizeof(dns_msgblock_t) + (sizeof_type * count);
-
-	block = isc_mem_get(mctx, length);
-
-	block->count = count;
-	block->remaining = count;
-
-	ISC_LINK_INIT(block, link);
-
-	return block;
-}
-
-/*
- * Return an element from the msgblock.  If no more are available, return
- * NULL.
- */
-static void *
-msgblock_internalget(dns_msgblock_t *block, unsigned int sizeof_type) {
-	void *ptr;
-
-	if (block == NULL || block->remaining == 0) {
-		return NULL;
-	}
-
-	block->remaining--;
-
-	ptr = (((unsigned char *)block) + sizeof(dns_msgblock_t) +
-	       (sizeof_type * block->remaining));
-
-	return ptr;
-}
-
-static void
-msgblock_reset(dns_msgblock_t *block) {
-	block->remaining = block->count;
-}
-
-/*
- * Release memory associated with a message block.
- */
-static void
-msgblock_free(isc_mem_t *mctx, dns_msgblock_t *block,
-	      unsigned int sizeof_type) {
-	unsigned int length;
-
-	length = sizeof(dns_msgblock_t) + (sizeof_type * block->count);
-
-	isc_mem_put(mctx, block, length);
-}
-
-/*
- * Allocate a new dynamic buffer, and attach it to this message as the
- * "current" buffer.  (which is always the last on the list, for our
- * uses)
- */
-static void
-newbuffer(dns_message_t *msg, unsigned int size) {
-	isc_buffer_t *dynbuf = NULL;
-
-	isc_buffer_allocate(msg->mctx, &dynbuf, size);
-
-	ISC_LIST_APPEND(msg->scratchpad, dynbuf, link);
-}
-
-static isc_buffer_t *
-currentbuffer(dns_message_t *msg) {
-	isc_buffer_t *dynbuf;
-
-	dynbuf = ISC_LIST_TAIL(msg->scratchpad);
-	INSIST(dynbuf != NULL);
-
-	return dynbuf;
-}
-
 static void
 releaserdata(dns_message_t *msg, dns_rdata_t *rdata) {
 	ISC_LIST_PREPEND(msg->freerdata, rdata, link);
@@ -319,24 +205,13 @@ releaserdata(dns_message_t *msg, dns_rdata_t *rdata) {
 
 static dns_rdata_t *
 newrdata(dns_message_t *msg) {
-	dns_msgblock_t *msgblock;
 	dns_rdata_t *rdata;
 
 	rdata = ISC_LIST_HEAD(msg->freerdata);
 	if (rdata != NULL) {
 		ISC_LIST_UNLINK(msg->freerdata, rdata, link);
-		dns_rdata_reset(rdata);
-		return rdata;
-	}
-
-	msgblock = ISC_LIST_TAIL(msg->rdatas);
-	rdata = msgblock_get(msgblock, dns_rdata_t);
-	if (rdata == NULL) {
-		msgblock = msgblock_allocate(msg->mctx, sizeof(dns_rdata_t),
-					     RDATA_COUNT);
-		ISC_LIST_APPEND(msg->rdatas, msgblock, link);
-
-		rdata = msgblock_get(msgblock, dns_rdata_t);
+	} else {
+		rdata = isc_mem_get(msg->arena, sizeof(*rdata));
 	}
 
 	dns_rdata_init(rdata);
@@ -350,26 +225,15 @@ releaserdatalist(dns_message_t *msg, dns_rdatalist_t *rdatalist) {
 
 static dns_rdatalist_t *
 newrdatalist(dns_message_t *msg) {
-	dns_msgblock_t *msgblock;
 	dns_rdatalist_t *rdatalist;
 
 	rdatalist = ISC_LIST_HEAD(msg->freerdatalist);
 	if (rdatalist != NULL) {
 		ISC_LIST_UNLINK(msg->freerdatalist, rdatalist, link);
-		dns_rdatalist_init(rdatalist);
-		goto out;
+	} else {
+		rdatalist = isc_mem_get(msg->arena, sizeof(*rdatalist));
 	}
 
-	msgblock = ISC_LIST_TAIL(msg->rdatalists);
-	rdatalist = msgblock_get(msgblock, dns_rdatalist_t);
-	if (rdatalist == NULL) {
-		msgblock = msgblock_allocate(msg->mctx, sizeof(dns_rdatalist_t),
-					     RDATALIST_COUNT);
-		ISC_LIST_APPEND(msg->rdatalists, msgblock, link);
-
-		rdatalist = msgblock_get(msgblock, dns_rdatalist_t);
-	}
-out:
 	dns_rdatalist_init(rdatalist);
 	return rdatalist;
 }
@@ -538,7 +402,6 @@ msgresetedns(dns_message_t *msg) {
  */
 static void
 msgreset(dns_message_t *msg, bool everything) {
-	dns_msgblock_t *msgblock = NULL, *next_msgblock = NULL;
 	isc_buffer_t *dynbuf = NULL, *next_dynbuf = NULL;
 
 	msgresetnames(msg, 0);
@@ -547,60 +410,14 @@ msgreset(dns_message_t *msg, bool everything) {
 	msgresetedns(msg);
 
 	/*
-	 * Clean up linked lists.
-	 */
-
-	/*
-	 * Run through the free lists, and just unlink anything found there.
-	 * The memory isn't lost since these are part of message blocks we
-	 * have allocated.
+	 * Run through the free lists, and just unlink anything found
+	 * there.  The nodes live in the arena, which is emptied below.
 	 */
 	ISC_LIST_FOREACH(msg->freerdata, rdata, link) {
 		ISC_LIST_UNLINK(msg->freerdata, rdata, link);
 	}
 	ISC_LIST_FOREACH(msg->freerdatalist, rdatalist, link) {
 		ISC_LIST_UNLINK(msg->freerdatalist, rdatalist, link);
-	}
-
-	dynbuf = ISC_LIST_HEAD(msg->scratchpad);
-	INSIST(dynbuf != NULL);
-	if (!everything) {
-		isc_buffer_clear(dynbuf);
-		dynbuf = ISC_LIST_NEXT(dynbuf, link);
-	}
-	while (dynbuf != NULL) {
-		next_dynbuf = ISC_LIST_NEXT(dynbuf, link);
-		ISC_LIST_UNLINK(msg->scratchpad, dynbuf, link);
-		isc_buffer_free(&dynbuf);
-		dynbuf = next_dynbuf;
-	}
-
-	msgblock = ISC_LIST_HEAD(msg->rdatas);
-	if (!everything && msgblock != NULL) {
-		msgblock_reset(msgblock);
-		msgblock = ISC_LIST_NEXT(msgblock, link);
-	}
-	while (msgblock != NULL) {
-		next_msgblock = ISC_LIST_NEXT(msgblock, link);
-		ISC_LIST_UNLINK(msg->rdatas, msgblock, link);
-		msgblock_free(msg->mctx, msgblock, sizeof(dns_rdata_t));
-		msgblock = next_msgblock;
-	}
-
-	/*
-	 * rdatalists could be empty.
-	 */
-
-	msgblock = ISC_LIST_HEAD(msg->rdatalists);
-	if (!everything && msgblock != NULL) {
-		msgblock_reset(msgblock);
-		msgblock = ISC_LIST_NEXT(msgblock, link);
-	}
-	while (msgblock != NULL) {
-		next_msgblock = ISC_LIST_NEXT(msgblock, link);
-		ISC_LIST_UNLINK(msg->rdatalists, msgblock, link);
-		msgblock_free(msg->mctx, msgblock, sizeof(dns_rdatalist_t));
-		msgblock = next_msgblock;
 	}
 
 	if (msg->tsigkey != NULL) {
@@ -639,6 +456,16 @@ msgreset(dns_message_t *msg, bool everything) {
 		ISC_LIST_UNLINK(msg->cleanup, dynbuf, link);
 		isc_buffer_free(&dynbuf);
 		dynbuf = next_dynbuf;
+	}
+
+	/*
+	 * All the teardown walks above are done and nothing points into
+	 * the arena anymore, so all per-message storage (names, rdata,
+	 * rdatalists and the parsed wire bytes) can be reclaimed at once.
+	 * On destroy the arena itself is torn down by the caller.
+	 */
+	if (!everything) {
+		isc_memarena_reset(msg->arena);
 	}
 
 	/*
@@ -704,10 +531,7 @@ dns_message_create(isc_mem_t *mctx, isc_mempool_t *namepool,
 	*msg = (dns_message_t){
 		.from_to_wire = intent,
 		.references = ISC_REFCOUNT_INITIALIZER(1),
-		.scratchpad = ISC_LIST_INITIALIZER,
 		.cleanup = ISC_LIST_INITIALIZER,
-		.rdatas = ISC_LIST_INITIALIZER,
-		.rdatalists = ISC_LIST_INITIALIZER,
 		.freerdata = ISC_LIST_INITIALIZER,
 		.freerdatalist = ISC_LIST_INITIALIZER,
 		.magic = DNS_MESSAGE_MAGIC,
@@ -717,6 +541,7 @@ dns_message_create(isc_mem_t *mctx, isc_mempool_t *namepool,
 	};
 
 	isc_mem_attach(mctx, &msg->mctx);
+	isc_memarena_create(mctx, "message", &msg->arena);
 
 	if (msg->free_pools) {
 		dns_message_createpools(mctx, &msg->namepool, &msg->rdspool);
@@ -727,10 +552,6 @@ dns_message_create(isc_mem_t *mctx, isc_mempool_t *namepool,
 	for (size_t i = 0; i < DNS_SECTION_MAX; i++) {
 		ISC_LIST_INIT(msg->sections[i]);
 	}
-
-	isc_buffer_t *dynbuf = NULL;
-	isc_buffer_allocate(mctx, &dynbuf, SCRATCHPAD_SIZE);
-	ISC_LIST_APPEND(msg->scratchpad, dynbuf, link);
 
 	*msgp = msg;
 }
@@ -753,6 +574,8 @@ dns__message_destroy(dns_message_t *msg) {
 	msgreset(msg, true);
 
 	msg->magic = 0;
+
+	isc_memarena_destroy(&msg->arena);
 
 	if (msg->free_pools) {
 		dns_message_destroypools(&msg->namepool, &msg->rdspool);
@@ -824,87 +647,84 @@ dns_message_findtype(dns_name_t *name, dns_rdatatype_t type,
 
 /*
  * Read a name from buffer "source".
+ *
+ * The uncompressed wire form is written into arena storage and the
+ * allocation is shrunk to the actual name length afterwards.  Nothing
+ * else may allocate from the arena between the get and the shrink, so
+ * that the shrink is an exact bump-pointer rollback.
  */
 static isc_result_t
 getname(dns_name_t *name, isc_buffer_t *source, dns_message_t *msg,
 	dns_decompress_t dctx) {
-	isc_buffer_t *scratch;
+	isc_buffer_t scratch;
 	isc_result_t result;
-	unsigned int tries;
+	uint8_t *data;
 
-	scratch = currentbuffer(msg);
+	data = isc_mem_get(msg->arena, DNS_NAME_MAXWIRE);
+	isc_buffer_init(&scratch, data, DNS_NAME_MAXWIRE);
 
 	/*
-	 * First try:  use current buffer.
-	 * Second try:  allocate a new buffer and use that.
+	 * A decompressed name always fits in DNS_NAME_MAXWIRE bytes, so
+	 * ISC_R_NOSPACE is impossible here.
 	 */
-	tries = 0;
-	while (tries < 2) {
-		result = dns_name_fromwire(name, source, dctx, scratch);
-
-		if (result == ISC_R_NOSPACE) {
-			tries++;
-
-			newbuffer(msg, SCRATCHPAD_SIZE);
-			scratch = currentbuffer(msg);
-			dns_name_reset(name);
-		} else {
-			return result;
-		}
+	result = dns_name_fromwire(name, source, dctx, &scratch);
+	if (result == ISC_R_SUCCESS) {
+		isc_memarena_shrink(msg->arena, data, DNS_NAME_MAXWIRE,
+				    name->length);
+	} else {
+		isc_memarena_shrink(msg->arena, data, DNS_NAME_MAXWIRE, 0);
 	}
 
-	UNREACHABLE();
+	return result;
 }
 
 static isc_result_t
 getrdata(isc_buffer_t *source, dns_message_t *msg, dns_decompress_t dctx,
 	 dns_rdataclass_t rdclass, dns_rdatatype_t rdtype,
 	 unsigned int rdatalen, dns_rdata_t *rdata) {
-	isc_buffer_t *scratch;
+	isc_buffer_t scratch;
 	isc_result_t result;
-	unsigned int tries;
-	unsigned int trysize;
-
-	scratch = currentbuffer(msg);
-
-	isc_buffer_setactive(source, rdatalen);
+	uint8_t *data;
+	size_t bound;
 
 	/*
-	 * First try:  use current buffer.
-	 * Second try:  allocate a new buffer of size
-	 *     max(SCRATCHPAD_SIZE, 2 * compressed_rdatalen)
-	 *     (the data will fit if it was not more than 50% compressed)
-	 * Subsequent tries: double buffer size on each try.
+	 * Embedded compressed names can expand the rdata well beyond
+	 * 'rdatalen' (a 2-byte compression pointer becomes up to 255
+	 * bytes), so no tight universal bound exists.  Start with twice
+	 * the wire length (enough unless the rdata was more than 50%
+	 * compressed) with a floor covering every two-name RFC 1035 type
+	 * fully compressed, and retry once with the absolute maximum.
 	 */
-	tries = 0;
-	trysize = 0;
-	/* XXX possibly change this to a while (tries < 2) loop */
+	bound = ISC_MIN(ISC_MAX(2 * (size_t)rdatalen, 640),
+			DNS_RDATA_MAXLENGTH);
+
 	for (;;) {
+		data = isc_mem_get(msg->arena, bound);
+		isc_buffer_init(&scratch, data, bound);
+		isc_buffer_setactive(source, rdatalen);
+
 		result = dns_rdata_fromwire(rdata, rdclass, rdtype, source,
-					    dctx, scratch);
-
-		if (result == ISC_R_NOSPACE) {
-			if (tries == 0) {
-				trysize = 2 * rdatalen;
-				if (trysize < SCRATCHPAD_SIZE) {
-					trysize = SCRATCHPAD_SIZE;
-				}
-			} else {
-				INSIST(trysize != 0);
-				if (trysize >= 65535) {
-					return ISC_R_NOSPACE;
-				}
-				/* XXX DNS_R_RRTOOLONG? */
-				trysize *= 2;
-			}
-			tries++;
-			newbuffer(msg, trysize);
-
-			scratch = currentbuffer(msg);
-		} else {
-			return result;
+					    dctx, &scratch);
+		if (result == ISC_R_NOSPACE && bound < DNS_RDATA_MAXLENGTH) {
+			/*
+			 * dns_rdata_fromwire() restored 'source', and
+			 * the failed attempt is the newest allocation,
+			 * so this rolls the arena back exactly.
+			 */
+			isc_memarena_shrink(msg->arena, data, bound, 0);
+			bound = DNS_RDATA_MAXLENGTH;
+			continue;
 		}
+		break;
 	}
+
+	if (result == ISC_R_SUCCESS) {
+		isc_memarena_shrink(msg->arena, data, bound, rdata->length);
+	} else {
+		isc_memarena_shrink(msg->arena, data, bound, 0);
+	}
+
+	return result;
 }
 
 #define DO_ERROR(r)                          \
@@ -2255,6 +2075,12 @@ dns_message_renderend(dns_message_t *msg) {
 	return ISC_R_SUCCESS;
 }
 
+/*
+ * NOTE: this function must never touch msg->arena.  The whole point of
+ * a render reset is that every name, rdataset and rdata (and the bytes
+ * they reference) stays valid so the same message can be rendered
+ * again (request retries, nsupdate server cycling).
+ */
 void
 dns_message_renderreset(dns_message_t *msg) {
 	/*
@@ -2529,6 +2355,12 @@ dns_message_peekheader(isc_buffer_t *source, dns_messageid_t *idp,
 	return ISC_R_SUCCESS;
 }
 
+/*
+ * NOTE: this function must never touch msg->arena.  The question
+ * section names and the query TSIG (moved to msg->querytsig by
+ * msgresetsigs()) survive the PARSE to RENDER flip and keep pointing
+ * into arena storage allocated during parsing.
+ */
 isc_result_t
 dns_message_reply(dns_message_t *msg, bool want_question_section) {
 	unsigned int clear_from;

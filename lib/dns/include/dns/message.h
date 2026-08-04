@@ -230,8 +230,6 @@ typedef enum dns_message_intent {
              elt = ISC_LIST_NEXT(elt, link))
 /* clang-format on */
 
-typedef struct dns_msgblock dns_msgblock_t;
-
 typedef struct dns_minttl {
 	bool	  is_set;
 	dns_ttl_t ttl;
@@ -294,15 +292,12 @@ struct dns_message {
 	isc_buffer_t   *buffer;
 	dns_compress_t *cctx;
 
-	isc_mem_t     *mctx;
-	isc_mempool_t *namepool;
-	isc_mempool_t *rdspool;
+	isc_mem_t      *mctx;
+	isc_memarena_t *arena;
+	isc_mempool_t  *namepool;
+	isc_mempool_t  *rdspool;
 
-	isc_bufferlist_t scratchpad;
 	isc_bufferlist_t cleanup;
-
-	ISC_LIST(dns_msgblock_t) rdatas;
-	ISC_LIST(dns_msgblock_t) rdatalists;
 
 	ISC_LIST(dns_rdata_t) freerdata;
 	ISC_LIST(dns_rdatalist_t) freerdatalist;
