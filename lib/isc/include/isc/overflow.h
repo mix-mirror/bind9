@@ -17,16 +17,13 @@
 
 #include <isc/util.h>
 
-#if HAVE_STDCKDINT_H
+#if __has_include(<stdckdint.h>)
 #include <stdckdint.h>
-
-#else /* HAVE_STDCKDINT_H */
-
+#else /* __has_include(<stdckdint.h>) */
 #define ckd_mul(cp, a, b) __builtin_mul_overflow(a, b, cp)
 #define ckd_add(cp, a, b) __builtin_add_overflow(a, b, cp)
 #define ckd_sub(cp, a, b) __builtin_sub_overflow(a, b, cp)
-
-#endif /* HAVE_STDCKDINT_H */
+#endif /* __has_include(<stdckdint.h>) */
 
 #define ISC_CHECKED_MUL(a, b)                             \
 	({                                                \

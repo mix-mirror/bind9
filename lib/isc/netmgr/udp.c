@@ -34,7 +34,7 @@
 #include "../loop_p.h"
 #include "netmgr-int.h"
 
-#ifdef HAVE_NET_ROUTE_H
+#if __has_include(<net/route.h>)
 #include <net/route.h>
 #if defined(RTM_VERSION) && defined(RTM_NEWADDR) && defined(RTM_DELADDR)
 #define USE_ROUTE_SOCKET      1
@@ -44,9 +44,9 @@
 #define MSGTYPE		      rtm_type
 #endif /* if defined(RTM_VERSION) && defined(RTM_NEWADDR) && \
 	* defined(RTM_DELADDR) */
-#endif /* ifdef HAVE_NET_ROUTE_H */
+#endif /* __has_include(<net/route.h>) */
 
-#if defined(HAVE_LINUX_NETLINK_H) && defined(HAVE_LINUX_RTNETLINK_H)
+#if __has_include(<linux/netlink.h>) && __has_include(<linux/netlink.h>)
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
 #if defined(RTM_NEWADDR) && defined(RTM_DELADDR)
@@ -57,7 +57,7 @@
 #define MSGHDR		      nlmsghdr
 #define MSGTYPE		      nlmsg_type
 #endif /* if defined(RTM_NEWADDR) && defined(RTM_DELADDR) */
-#endif /* if defined(HAVE_LINUX_NETLINK_H) && defined(HAVE_LINUX_RTNETLINK_H) \
+#endif /* __has_include(<linux/netlink.h>) && __has_include(<linux/netlink.h>) \
 	*/
 
 static void

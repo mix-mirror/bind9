@@ -36,17 +36,20 @@
 #include <isc/safe.h>
 #include <isc/util.h>
 
-#ifdef HAVE_OPENSSL_AEAD_H
+#if __has_include(<openssl/aead.h>)
+#ifndef HAVE_EVP_AEAD_CTX_NEW
+#define HAVE_EVP_AEAD_CTX_NEW
+#endif /* HAVE_EVP_AEAD_CTX_NEW */
 #include <openssl/aead.h>
-#endif /* HAVE_OPENSSL_AEAD_H */
+#endif /* __has_include(<openssl/aead.h>) */
 
-#if HAVE_CRYPTO_CHACHA_20
+#if __has_include(<openssl/chacha.h>)
 #include <openssl/chacha.h>
-#endif /* HAVE_CRYPTO_CHACHA_20 */
+#endif
 
-#ifdef HAVE_OPENSSL_HKDF_H
+#if __has_include(<openssl/hkdf.h>)
 #include <openssl/hkdf.h>
-#endif /* HAVE_OPENSSL_HKDF_H */
+#endif
 
 #define CRYPTO_ERROR(fn)                                           \
 	isc__ossl_wrap_logged_toresult(                            \
@@ -662,7 +665,7 @@ cleanup:
 }
 #endif /* HAVE_EVP_AEAD_CTX_NEW */
 
-#ifdef HAVE_OPENSSL_HKDF_H
+#if __has_include(<openssl/hkdf.h>)
 
 isc_result_t
 isc_crypto_hkdf_extract(isc_region_t out, isc_md_type_t md,
@@ -784,7 +787,7 @@ isc_crypto_hkdf(isc_region_t out, isc_md_type_t md, isc_constregion_t secret,
 	return ISC_R_SUCCESS;
 }
 
-#else /* HAVE_OPENSSL_HKDF_H */
+#else /* __has_include(<openssl/hkdf.h>) */
 
 isc_result_t
 isc_crypto_hkdf_extract(isc_region_t out, isc_md_type_t md,
@@ -1034,7 +1037,7 @@ cleanup:
 	return result;
 }
 
-#endif /* HAVE_OPENSSL_HKDF_H */
+#endif /* __has_include(<openssl/hkdf.h>) */
 
 void
 isc_crypto_quic_hp_protect_destroy(isc_crypto_quic_hp_protect_t **protp) {

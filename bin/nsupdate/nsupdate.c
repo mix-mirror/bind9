@@ -80,15 +80,15 @@
 #if HAVE_GSSAPI
 #include <dst/gssapi.h>
 
-#if HAVE_KRB5_KRB5_H
+#if __has_include(<krb5/krb5.h>)
 #include <krb5/krb5.h>
-#elif HAVE_KRB5_H
+#elif __has_include(<krb5.h>)
 #include <krb5.h>
 #endif
 
-#if HAVE_GSSAPI_GSSAPI_H
+#if __has_include(<gssapi/gssapi.h>)
 #include <gssapi/gssapi.h>
-#elif HAVE_GSSAPI_H
+#elif __has_include(<gssapi.h>)
 #include <gssapi.h>
 #endif
 

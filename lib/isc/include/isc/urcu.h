@@ -27,20 +27,24 @@
 #include <urcu-bp.h>
 #endif
 
-#if HAVE_URCU_ASSERT_H
+#if __has_include(<urcu/assert.h>)
 #include <urcu/assert.h>
 #endif
-#if HAVE_URCU_UATOMIC_H
+
+#if __has_include(<urcu/uatomic.h>)
 #include <urcu/uatomic.h>
 #endif
+
 #include <urcu/compiler.h>
 #include <urcu/futex.h>
 #include <urcu/list.h>
-#if HAVE_URCU_POINTER_H
+
+#if __has_include(<urcu/pointer.h>)
 #include <urcu/pointer.h>
 #else
 #include <urcu-pointer.h>
 #endif
+
 #include <urcu/rculfhash.h>
 #include <urcu/rculist.h>
 #include <urcu/ref.h>

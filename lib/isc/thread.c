@@ -13,20 +13,20 @@
 
 /*! \file */
 
-#if defined(HAVE_SCHED_H)
+#if __has_include(<sched.h>)
 #include <sched.h>
-#endif /* if defined(HAVE_SCHED_H) */
+#endif
 
-#if defined(HAVE_CPUSET_H)
+#if __has_include(<sys/cpuset.h>)
 #include <sys/cpuset.h>
 #include <sys/param.h>
-#endif /* if defined(HAVE_CPUSET_H) */
+#endif
 
-#if defined(HAVE_SYS_PROCSET_H)
+#if __has_include(<sys/procset.h>)
 #include <sys/processor.h>
 #include <sys/procset.h>
 #include <sys/types.h>
-#endif /* if defined(HAVE_SYS_PROCSET_H) */
+#endif
 
 #include <stdlib.h>
 

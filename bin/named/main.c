@@ -109,7 +109,7 @@
 #endif /* HAVE_LIBNGTCP2 */
 
 /* On DragonFly BSD the header does not provide jemalloc API */
-#if defined(HAVE_MALLOC_NP_H) && !defined(__DragonFly__)
+#if __has_include(<malloc_np.h>) && !defined(__DragonFly__)
 #include <malloc_np.h>
 #include <sys/malloc.h> /* For M_VERSION */
 #elif defined(HAVE_JEMALLOC)

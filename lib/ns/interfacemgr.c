@@ -33,16 +33,25 @@
 #include <ns/server.h>
 #include <ns/stats.h>
 
-#ifdef HAVE_NET_ROUTE_H
+#if __has_include(<net/route.h>)
 #include <net/route.h>
 #if defined(RTM_VERSION) && defined(RTM_NEWADDR) && defined(RTM_DELADDR)
 #define MSGHDR	rt_msghdr
 #define MSGTYPE rtm_type
 #endif /* if defined(RTM_VERSION) && defined(RTM_NEWADDR) && \
 	* defined(RTM_DELADDR) */
-#endif /* ifdef HAVE_NET_ROUTE_H */
+#endif /* __has_include(<net/route.h>) */
 
-#if defined(HAVE_LINUX_NETLINK_H) && defined(HAVE_LINUX_RTNETLINK_H)
+/*
+ * Old GCC/clang versions had a bug where the predefined `linux` macro would
+ * interfere with the `__has_include` clause brackets. [1]
+ *
+ * The fix is to use quotes, as used by glibc and others. [2]
+ *
+ * [1]: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=80005
+ * [2]: https://sourceware.org/pipermail/libc-stable/2019-January/001054.html
+ */
+#if __has_include("linux/netlink.h") && __has_include("linux/rtnetlink.h")
 #define LINUX_NETLINK_AVAILABLE
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
@@ -50,8 +59,8 @@
 #define MSGHDR	nlmsghdr
 #define MSGTYPE nlmsg_type
 #endif /* if defined(RTM_NEWADDR) && defined(RTM_DELADDR) */
-#endif /* if defined(HAVE_LINUX_NETLINK_H) && defined(HAVE_LINUX_RTNETLINK_H) \
-	*/
+#endif /* __has_include(<linux/netlink.h>) && \
+	  __has_include(<linux/rtnetlink.h>) */
 
 #define LISTENING(ifp) (((ifp)->flags & NS_INTERFACEFLAG_LISTENING) != 0)
 
@@ -235,7 +244,7 @@ route_recv(isc_nmhandle_t *handle, isc_result_t eresult, isc_region_t *region,
 		ns_interfacemgr_detach(&mgr);
 		return;
 	}
-#endif /* ifdef RTM_VERSION */
+#endif /* RTM_VERSION */
 
 	REQUIRE(mgr->route != NULL);
 
@@ -243,7 +252,7 @@ route_recv(isc_nmhandle_t *handle, isc_result_t eresult, isc_region_t *region,
 	if (need_rescan(mgr, rtm, rtmlen) && mgr->sctx->interface_auto) {
 		ns_interfacemgr_scan(mgr, false, false);
 	}
-#endif /* if defined(RTM_NEWADDR) && defined(RTM_DELADDR) */
+#endif /* defined(RTM_NEWADDR) && defined(RTM_DELADDR) */
 
 	isc_nm_read(handle, route_recv, mgr);
 	return;

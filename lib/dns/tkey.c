@@ -16,9 +16,9 @@
 #include <inttypes.h>
 #include <stdbool.h>
 
-#if HAVE_GSSAPI_GSSAPI_H
+#if __has_include(<gssapi/gssapi.h>)
 #include <gssapi/gssapi.h>
-#elif HAVE_GSSAPI_H
+#elif __has_include(<gssapi.h>)
 #include <gssapi.h>
 #endif
 

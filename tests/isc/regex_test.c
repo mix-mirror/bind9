@@ -21,9 +21,9 @@
 #include <string.h>
 #include <unistd.h>
 
-#ifdef HAVE_REGEX_H
+#if __has_include(<regex.h>)
 #include <regex.h>
-#endif /* ifdef HAVE_REGEX_H */
+#endif
 
 #define UNIT_TESTING
 #include <cmocka.h>
@@ -2288,7 +2288,7 @@ ISC_RUN_TEST_IMPL(regex_validate) {
 
 	UNUSED(state);
 
-#ifdef HAVE_REGEX_H
+#if __has_include(<regex.h>)
 	/*
 	 * Check if we get the expected response.
 	 */
@@ -2311,7 +2311,7 @@ ISC_RUN_TEST_IMPL(regex_validate) {
 			regfree(&preg);
 		}
 	}
-#endif /* ifdef HAVE_REGEX_H */
+#endif /* __has_include(<regex.h>) */
 
 	/*
 	 * Check if we get the expected response.

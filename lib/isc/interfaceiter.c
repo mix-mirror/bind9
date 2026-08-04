@@ -15,9 +15,10 @@
 
 #include <sys/ioctl.h>
 #include <sys/types.h>
-#ifdef HAVE_SYS_SOCKIO_H
+
+#if __has_include(<sys/sockio.h>)
 #include <sys/sockio.h> /* Required for ifiter_ioctl.c. */
-#endif			/* ifdef HAVE_SYS_SOCKIO_H */
+#endif
 
 #include <errno.h>
 #include <ifaddrs.h>
@@ -39,9 +40,10 @@
 #include <isc/util.h>
 
 /* Must follow <isc/net.h>. */
-#ifdef HAVE_NET_IF6_H
+#if __has_include(<net/if6.h>)
 #include <net/if6.h>
-#endif /* ifdef HAVE_NET_IF6_H */
+#endif
+
 #include <net/if.h>
 
 /* Common utility functions */

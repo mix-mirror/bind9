@@ -53,9 +53,9 @@
 #include <time.h>   /* Required for utimes on some platforms. */
 #include <unistd.h> /* Required for mkstemp on NetBSD. */
 
-#ifdef HAVE_SYS_MMAN_H
+#if __has_include(<sys/mman.h>)
 #include <sys/mman.h>
-#endif /* ifdef HAVE_SYS_MMAN_H */
+#endif
 
 #include <isc/dir.h>
 #include <isc/file.h>

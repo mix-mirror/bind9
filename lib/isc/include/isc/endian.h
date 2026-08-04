@@ -13,7 +13,7 @@
 
 #pragma once
 
-#ifdef HAVE_SYS_ENDIAN_H
+#if __has_include(<sys/endian.h>)
 
 #include <sys/endian.h>
 

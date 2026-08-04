@@ -17,15 +17,15 @@
 
 #include <pthread.h>
 
-#if HAVE_THREADS_H
+#if __has_include(<threads.h>)
 #include <threads.h>
 #else
 #define thread_local _Thread_local
 #endif
 
-#if defined(HAVE_PTHREAD_NP_H)
+#if __has_include(<pthread_np.h>)
 #include <pthread_np.h>
-#endif /* if defined(HAVE_PTHREAD_NP_H) */
+#endif
 
 #include <isc/result.h>
 

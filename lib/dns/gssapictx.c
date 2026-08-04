@@ -18,21 +18,23 @@
 #include <string.h>
 #include <time.h>
 
-#if HAVE_GSSAPI_GSSAPI_H
+#if __has_include(<gssapi/gssapi.h>)
 #include <gssapi/gssapi.h>
-#elif HAVE_GSSAPI_H
+#elif __has_include(<gssapi.h>)
 #include <gssapi.h>
 #endif
 
-#if HAVE_GSSAPI_GSSAPI_KRB5_H
+#if __has_include(<gssapi/gssapi_krb5.h>)
 #include <gssapi/gssapi_krb5.h>
-#elif HAVE_GSSAPI_KRB5_H
+#elif __has_include(<gssapi_krb5.h>)
 #include <gssapi_krb5.h>
+#else
+#define GSSAPI_KRB5_HEADER_NOT_FOUND
 #endif
 
-#if HAVE_KRB5_KRB5_H
+#if __has_include(<krb5/krb5.h>)
 #include <krb5/krb5.h>
-#elif HAVE_KRB5_H
+#elif __has_include(<krb5.h>)
 #include <krb5.h>
 #endif
 
@@ -411,7 +413,7 @@ dst_gssapi_acceptctx(const char *gssapi_keytab, isc_region_t *intoken,
 	REGION_TO_GBUFFER(*intoken, gintoken);
 
 	if (gssapi_keytab != NULL) {
-#if HAVE_GSSAPI_GSSAPI_KRB5_H || HAVE_GSSAPI_KRB5_H
+#ifndef GSSAPI_KRB5_HEADER_NOT_FOUND
 		gret = gsskrb5_register_acceptor_identity(gssapi_keytab);
 		if (gret != GSS_S_COMPLETE) {
 			gss_log(3,
@@ -421,7 +423,7 @@ dst_gssapi_acceptctx(const char *gssapi_keytab, isc_region_t *intoken,
 				gss_error_tostring(gret, 0, buf, sizeof(buf)));
 			return DNS_R_INVALIDTKEY;
 		}
-#else
+#else  /* GSSAPI_KRB5_HEADER_NOT_FOUND */
 		/*
 		 * Minimize memory leakage by only setting KRB5_KTNAME
 		 * if it needs to change.
@@ -441,7 +443,7 @@ dst_gssapi_acceptctx(const char *gssapi_keytab, isc_region_t *intoken,
 				return ISC_R_NOMEMORY;
 			}
 		}
-#endif
+#endif /* GSSAPI_KRB5_HEADER_NOT_FOUND */
 	}
 
 	OM_uint32 ret_flags = 0;

@@ -580,28 +580,6 @@ if cc.has_member('struct stat', 'st_mtim.tv_nsec', prefix: '#include <sys/stat.h
     config.set('HAVE_STAT_NSEC', 1)
 endif
 
-foreach h : [
-    'fcntl.h',
-    'linux/netlink.h',
-    'linux/rtnetlink.h',
-    'malloc_np.h',
-    'net/if6.h',
-    'net/route.h',
-    'regex.h',
-    'stdckdint.h',
-    'sys/mman.h',
-    'sys/endian.h',
-    'sys/select.h',
-    'sys/sockio.h',
-    'sys/sysctl.h',
-    'sys/time.h',
-    'unistd.h',
-]
-    if cc.has_header(h)
-        config.set('HAVE_@0@'.format(h.underscorify().to_upper()), 1)
-    endif
-endforeach
-
 ## Leak detection in external libraries
 config.set10('ENABLE_LEAK_DETECTION', leak_opt.enabled())
 
@@ -670,20 +648,14 @@ else
     config.set('HAVE_OPENSSL_3', false)
     config.set('OPENSSL_API_COMPAT', 10100)
 
-    have_openssl_aead_h = cc.has_header('openssl/aead.h', dependencies: openssl_dep)
-    config.set('HAVE_OPENSSL_AEAD_H', have_openssl_aead_h)
-    if have_openssl_aead_h
-        config.set('HAVE_EVP_AEAD_CTX_NEW', true)
-    else
-        config.set(
-            'HAVE_EVP_AEAD_CTX_NEW',
-            cc.has_function(
-                'EVP_AEAD_CTX_new',
-                dependencies: openssl_dep,
-                prefix: '#include <openssl/evp.h>',
-            ),
-        )
-    endif
+    config.set(
+        'HAVE_EVP_AEAD_CTX_NEW',
+        cc.has_function(
+            'EVP_AEAD_CTX_new',
+            dependencies: openssl_dep,
+            prefix: '#include <openssl/evp.h>',
+        ),
+    )
 
     config.set(
         'HAVE_FIPS_MODE',
@@ -718,11 +690,6 @@ foreach fn, header : {
         cc.has_function(fn, dependencies: openssl_dep, prefix: header),
     )
 endforeach
-
-config.set(
-    'HAVE_OPENSSL_HKDF_H',
-    cc.has_header('openssl/hkdf.h', dependencies: openssl_dep),
-)
 
 ## libuv
 uv_dep = dependency('libuv', version: '>=1.34.0')
@@ -775,16 +742,6 @@ endif
 if urcu_dep[1].version().version_compare('<0.13.0')
     urcu_dep += cc.find_library('urcu-common')
 endif
-
-foreach h : [
-    'urcu/uatomic.h',
-    'urcu/assert.h',
-    'urcu/pointer.h',
-]
-    if cc.has_header(h, dependencies: urcu_dep)
-        config.set('HAVE_@0@'.format(h.underscorify().to_upper()), 1)
-    endif
-endforeach
 
 config.set_quoted('RCU_FLAVOR', f'liburcu-@rcu_flavor@')
 config.set_quoted('RCU_VERSION', urcu_dep[0].version())
@@ -909,14 +866,6 @@ if gssapi_opt.allowed() and krb5_config.found()
         version: run_command(krb5_config, ['--version'], check: true).stdout().strip(),
     )
 
-    if cc.has_header('krb5/krb5.h', dependencies: krb5_dep)
-        config.set('HAVE_KRB5_KRB5_H', 1)
-    elif cc.has_header('krb5.h', dependencies: krb5_dep)
-        config.set('HAVE_KRB5_H', 1)
-    elif krb5_dep.found()
-        error('neither krb5/krb5.h nor krb5 found')
-    endif
-
     if krb5_dep.found() and not cc.has_function('krb5_init_context', dependencies: krb5_dep)
         error('KRB5 does not work')
     endif
@@ -926,22 +875,6 @@ if gssapi_opt.allowed() and krb5_config.found()
         link_args: run_command(krb5_config, ['gssapi', '--libs'], check: true).stdout().strip().split(),
         version: krb5_dep.version(),
     )
-
-    if cc.has_header('gssapi/gssapi.h', dependencies: gssapi_dep)
-        config.set('HAVE_GSSAPI_GSSAPI_H', 1)
-    elif cc.has_header('gssapi.h', dependencies: gssapi_dep)
-        config.set('HAVE_GSSAPI_H', 1)
-    elif gssapi_dep.found()
-        error('neither gssapi/gssapi.h nor gssapi.h found')
-    endif
-
-    if cc.has_header('gssapi/gssapi_krb5.h', dependencies: gssapi_dep)
-        config.set('HAVE_GSSAPI_GSSAPI_KRB5_H', 1)
-    elif cc.has_header('gssapi_krb5.h', dependencies: gssapi_dep)
-        config.set('HAVE_GSSAPI_KRB5_H', 1)
-    elif gssapi_dep.found()
-        error('neither gssapi/gssapi_krb5.h nor gssapi_krb5.h found')
-    endif
 
     if krb5_dep.found() and gssapi_dep.found()
         config.set('HAVE_GSSAPI', 1)
@@ -1020,7 +953,9 @@ config.set(
     'HAVE_DTRACE',
     dtrace.full_path() != dtrace_shim and host_machine.system() != 'darwin',
 )
+
 cc.has_header('sys/sdt.h', required: tracing_opt)
+
 assert(
     dtrace.full_path() != dtrace_shim or not tracing_opt.enabled(),
     'tracing is requested but dtrace is not found',

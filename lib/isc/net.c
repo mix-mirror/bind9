@@ -20,7 +20,7 @@
 #include <sys/uio.h>
 #include <unistd.h>
 
-#if HAVE_SYS_SYSCTL_H && !defined(__linux__)
+#if __has_include(<sys/sysctl.h>) && !defined(__linux__)
 #include <sys/sysctl.h>
 #endif
 

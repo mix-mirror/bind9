@@ -15,16 +15,20 @@
 #include <stdbool.h>
 #include <time.h> /* IWYU pragma: keep */
 
-#if HAVE_GSSAPI_GSSAPI_H
+#if __has_include(<gssapi/gssapi.h>)
 #include <gssapi/gssapi.h>
-#elif HAVE_GSSAPI_H
+#elif __has_include(<gssapi.h>)
 #include <gssapi.h>
+#else
+#error "neither <gssapi/gssapi.h> nor <gssapi.h> were found"
 #endif
 
-#if HAVE_GSSAPI_GSSAPI_KRB5_H
+#if __has_include(<gssapi/gssapi_krb5.h>)
 #include <gssapi/gssapi_krb5.h>
-#elif HAVE_GSSAPI_KRB5_H
+#elif __has_include(<gssapi_krb5.h>)
 #include <gssapi_krb5.h>
+#else
+#error "neither <gssapi/gssapi_krb5.h> nor <gssapi_krb5.h> were found"
 #endif
 
 #include <isc/base64.h>

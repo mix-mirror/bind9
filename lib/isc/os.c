@@ -46,7 +46,7 @@ ncpus_initialize(void) {
 #else /* UV_VERSION_HEX >= UV_VERSION(1, 44, 0) */
 
 #include <sys/param.h> /* for NetBSD */
-#if HAVE_SYS_SYSCTL_H && !defined(__linux__)
+#if __has_include(<sys/sysctl.h>) && !defined(__linux__)
 #include <sys/sysctl.h>
 #endif
 #include <sys/types.h> /* for OpenBSD */
@@ -79,7 +79,7 @@ sysctlbyname_ncpus(void) {
 }
 #endif /* HAVE_SYSCTLBYNAME */
 
-#if HAVE_SYS_SYSCTL_H && !defined(__linux__)
+#if __has_include(<sys/sysctl.h>) && !defined(__linux__)
 static int
 sysctl_ncpus(void) {
 	int ncpu;
@@ -100,7 +100,7 @@ sysctl_ncpus(void) {
 	}
 	return -1;
 }
-#endif /* HAVE_SYS_SYSCTL_H */
+#endif /* __has_include(<sys/sysctl.h>) && !defined(__linux__) */
 
 #if defined(HAVE_SCHED_GETAFFINITY)
 #include <sched.h>
@@ -161,7 +161,7 @@ ncpus_initialize(void) {
 		isc__os_ncpus = sysctlbyname_ncpus();
 	}
 #endif
-#if HAVE_SYS_SYSCTL_H && !defined(__linux__)
+#if __has_include(<sys/sysctl.h>) && !defined(__linux__)
 	if (isc__os_ncpus <= 0) {
 		isc__os_ncpus = sysctl_ncpus();
 	}
