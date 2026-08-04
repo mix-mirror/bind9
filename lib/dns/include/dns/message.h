@@ -47,8 +47,10 @@
  *
  * Notes on using the gettemp*() and puttemp*() functions:
  *
- * These functions return items (names, rdatasets, etc) allocated from some
- * internal state of the dns_message_t.
+ * These functions return items (names, rdatasets, etc) allocated from a
+ * memory arena owned by the dns_message_t: everything they return is
+ * reclaimed in bulk when the message is reset or destroyed, and must
+ * not be used after either.
  *
  * Names and rdatasets must be put back into the dns_message_t in
  * one of two ways.  Assume a name was allocated via
@@ -64,8 +66,14 @@
  * dns_message_gettemp*() will always be freed automatically
  * when the message is reset or destroyed; calling dns_message_puttemp*()
  * on rdatalists and rdatas is optional and serves only to enable the item
- * to be reused multiple times during the lifetime of the message; offsets
- * cannot be reused.
+ * to be reused multiple times during the lifetime of the message.
+ *
+ * A name placed in a section with dns_message_addname() must either
+ * have come from dns_message_gettempname() on the same message, or be
+ * removed with dns_message_removename() before the message is reset or
+ * destroyed: the teardown walks return every section name to the
+ * message.  Returning temporary items immediately before a reset is
+ * legal; using them afterwards is not.
  *
  * Buffers allocated using isc_buffer_allocate() can be automatically freed
  * as well by giving the buffer to the message using dns_message_takebuffer().

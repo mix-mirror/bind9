@@ -421,11 +421,11 @@ msgresetedns(dns_message_t *msg) {
 		INSIST(msg->edns.maxopts != 0);
 		for (size_t i = 0; i < msg->edns.count; i++) {
 			if (msg->edns.opts[i].value != NULL) {
-				isc_mem_put(msg->mctx, msg->edns.opts[i].value,
+				isc_mem_put(msg->arena, msg->edns.opts[i].value,
 					    msg->edns.opts[i].length);
 			}
 		}
-		isc_mem_cput(msg->mctx, msg->edns.opts,
+		isc_mem_cput(msg->arena, msg->edns.opts,
 			     (size_t)msg->edns.maxopts, sizeof(dns_ednsopt_t));
 	}
 	msg->edns.maxopts = 0;
@@ -473,7 +473,7 @@ msgreset(dns_message_t *msg, bool everything) {
 
 	if (msg->query.base != NULL) {
 		if (msg->free_query != 0) {
-			isc_mem_put(msg->mctx, msg->query.base,
+			isc_mem_put(msg->arena, msg->query.base,
 				    msg->query.length);
 		}
 		msg->query.base = NULL;
@@ -482,7 +482,7 @@ msgreset(dns_message_t *msg, bool everything) {
 
 	if (msg->saved.base != NULL) {
 		if (msg->free_saved != 0) {
-			isc_mem_put(msg->mctx, msg->saved.base,
+			isc_mem_put(msg->arena, msg->saved.base,
 				    msg->saved.length);
 		}
 		msg->saved.base = NULL;
@@ -1456,7 +1456,7 @@ dns_message_parse(dns_message_t *msg, isc_buffer_t *source,
 		isc_buffer_usedregion(&origsource, &msg->saved);
 	} else {
 		msg->saved.length = isc_buffer_usedlength(&origsource);
-		msg->saved.base = isc_mem_get(msg->mctx, msg->saved.length);
+		msg->saved.base = isc_mem_get(msg->arena, msg->saved.length);
 		memmove(msg->saved.base, isc_buffer_base(&origsource),
 			msg->saved.length);
 		msg->free_saved = 1;
@@ -4643,7 +4643,7 @@ dns_message_ednsinit(dns_message_t *msg, int16_t version, uint16_t udpsize,
 
 	msg->edns.flags = flags;
 	msg->edns.udpsize = udpsize;
-	msg->edns.opts = isc_mem_cget(msg->mctx, (size_t)maxopts,
+	msg->edns.opts = isc_mem_cget(msg->arena, (size_t)maxopts,
 				      sizeof(dns_ednsopt_t));
 	msg->edns.maxopts = maxopts;
 }
@@ -4665,7 +4665,7 @@ dns_message_ednsaddopt(dns_message_t *msg, dns_ednsopt_t *option) {
 	size_t i = msg->edns.count;
 	msg->edns.opts[i].code = option->code;
 	if (option->value != NULL) {
-		msg->edns.opts[i].value = isc_mem_get(msg->mctx,
+		msg->edns.opts[i].value = isc_mem_get(msg->arena,
 						      option->length);
 		memmove(msg->edns.opts[i].value, option->value, option->length);
 		msg->edns.opts[i].length = option->length;
@@ -4796,13 +4796,13 @@ dns_message_clonebuffer(dns_message_t *msg) {
 
 	if (msg->free_saved == 0 && msg->saved.base != NULL) {
 		msg->saved.base =
-			memmove(isc_mem_get(msg->mctx, msg->saved.length),
+			memmove(isc_mem_get(msg->arena, msg->saved.length),
 				msg->saved.base, msg->saved.length);
 		msg->free_saved = 1;
 	}
 	if (msg->free_query == 0 && msg->query.base != NULL) {
 		msg->query.base =
-			memmove(isc_mem_get(msg->mctx, msg->query.length),
+			memmove(isc_mem_get(msg->arena, msg->query.length),
 				msg->query.base, msg->query.length);
 		msg->free_query = 1;
 	}
