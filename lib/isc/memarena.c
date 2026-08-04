@@ -16,6 +16,7 @@
 #include <stdbool.h>
 #include <string.h>
 
+#include <isc/bit.h>
 #include <isc/magic.h>
 #include <isc/mem.h>
 #include <isc/memarena.h>
@@ -65,6 +66,11 @@
 #define MEMARENA_MIN_CHUNK 2048
 #define MEMARENA_MAX_CHUNK 65536
 
+/*
+ * Weight of one cycle in the usage moving average: 1/8.
+ */
+#define MEMARENA_EWMA_SHIFT 3
+
 struct memarena_chunk {
 	struct memarena_chunk *prev; /*%< older chunk, NULL for the oldest */
 	size_t total;		     /*%< allocation size, for sized free */
@@ -77,15 +83,28 @@ struct memarena_chunk {
 #define CHUNK_CAPACITY(chunk) ((chunk)->total - CHUNK_HDRSIZE)
 
 static void
+chunk_free(isc_memarena_t *arena, memarena_chunk_t *chunk) {
+	MEMARENA_UNPOISON((void *)CHUNK_DATA(chunk), CHUNK_CAPACITY(chunk));
+	isc_mem_put(arena->mctx, chunk, chunk->total);
+}
+
+static void
 chunk_free_chain(isc_memarena_t *arena, memarena_chunk_t *chunk) {
 	while (chunk != NULL) {
 		memarena_chunk_t *prev = chunk->prev;
 
-		MEMARENA_UNPOISON((void *)CHUNK_DATA(chunk),
-				  CHUNK_CAPACITY(chunk));
-		isc_mem_put(arena->mctx, chunk, chunk->total);
+		chunk_free(arena, chunk);
 		chunk = prev;
 	}
+}
+
+static size_t
+pow2_ceil(size_t value) {
+	if ((value & (value - 1)) == 0) {
+		return value;
+	}
+	return (size_t)1
+	       << (sizeof(size_t) * CHAR_BIT - stdc_leading_zeros(value));
 }
 
 /*
@@ -314,23 +333,55 @@ isc_memarena_destroy(isc_memarena_t **arenap) {
 void
 isc_memarena_reset(isc_memarena_t *arena) {
 	memarena_chunk_t *keep = NULL;
+	memarena_chunk_t *chunk = NULL;
+	size_t cycle_used, target;
 
 	REQUIRE(VALID_MEMARENA(arena));
 
-#if !__SANITIZE_ADDRESS__
+	cycle_used = isc_memarena_used(arena);
+
 	/*
-	 * Keep the newest chunk warm for the next cycle, unless it is a
-	 * dedicated oversize chunk.
+	 * An exponentially weighted moving average of the per-cycle usage
+	 * drives the retention target, so the warm capacity follows the
+	 * recent workload both up and down.
 	 */
-	if (arena->current != NULL &&
-	    arena->current->total <= MEMARENA_MAX_CHUNK)
-	{
-		keep = arena->current;
+	if (arena->usage_ewma == 0) {
+		arena->usage_ewma = cycle_used;
+	} else {
+		arena->usage_ewma -= arena->usage_ewma >> MEMARENA_EWMA_SHIFT;
+		arena->usage_ewma += cycle_used >> MEMARENA_EWMA_SHIFT;
 	}
+
+	target = ISC_CLAMP(pow2_ceil(arena->usage_ewma), MEMARENA_MIN_CHUNK,
+			   MEMARENA_MAX_CHUNK);
+#if __SANITIZE_ADDRESS__
+	/*
+	 * Retention is disabled so that every cycle gets fresh, fully
+	 * poisonable chunks; this mirrors the mempool behavior under
+	 * AddressSanitizer.
+	 */
+	target = 0;
 #endif
 
+	/*
+	 * Keep exactly one chunk warm for the next cycle: the newest one
+	 * not exceeding the target.  Chunks are newest-first and, with
+	 * geometric growth, mostly biggest-first, so this is the best fit;
+	 * dedicated oversize chunks are always freed.
+	 */
+	chunk = arena->current;
+	while (chunk != NULL) {
+		memarena_chunk_t *prev = chunk->prev;
+
+		if (keep == NULL && chunk->total <= target) {
+			keep = chunk;
+		} else {
+			chunk_free(arena, chunk);
+		}
+		chunk = prev;
+	}
+
 	if (keep != NULL) {
-		chunk_free_chain(arena, keep->prev);
 		keep->prev = NULL;
 		keep->used = 0;
 
@@ -341,13 +392,18 @@ isc_memarena_reset(isc_memarena_t *arena) {
 		arena->end = arena->pos + CHUNK_CAPACITY(keep);
 		MEMARENA_POISON((void *)arena->pos, CHUNK_CAPACITY(keep));
 	} else {
-		chunk_free_chain(arena, arena->current);
 		arena->current = NULL;
 		arena->nchunks = 0;
 		arena->capacity = 0;
 		arena->pos = 0;
 		arena->end = 0;
 	}
+
+	/*
+	 * Start the next cycle's chunk sizing from the target so a reused
+	 * arena reaches its steady-state chunk in one allocation.
+	 */
+	arena->next_chunk = ISC_MAX(target, MEMARENA_MIN_CHUNK);
 
 	arena->live = 0;
 	arena->dead = 0;

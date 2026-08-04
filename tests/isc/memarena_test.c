@@ -334,6 +334,47 @@ ISC_RUN_TEST_IMPL(isc_memarena_reset) {
 }
 
 /*
+ * The retention target follows the workload: heavy cycles grow the warm
+ * chunk, light cycles decay it.
+ */
+ISC_RUN_TEST_IMPL(isc_memarena_retention) {
+	isc_mem_t *mctx = NULL;
+	isc_memarena_t *arena = NULL;
+
+	isc_mem_create("memarena_retention", &mctx);
+	isc_memarena_create(mctx, "test", &arena);
+
+	/* Heavy phase: ~25 KB per cycle. */
+	for (size_t cycle = 0; cycle < 16; cycle++) {
+		for (size_t i = 0; i < 120; i++) {
+			(void)arena_get(arena, 200);
+		}
+		isc_memarena_reset(arena);
+	}
+#if __SANITIZE_ADDRESS__
+	/* Retention is disabled under ASan. */
+	assert_int_equal(isc_memarena_capacity(arena), 0);
+#else
+	/* The warm chunk converges to the power-of-two usage cover. */
+	assert_true(isc_memarena_capacity(arena) >= 16 * 1024);
+	assert_true(isc_memarena_capacity(arena) <= 64 * 1024);
+
+	/* Light phase: the moving average decays the warm chunk. */
+	for (size_t cycle = 0; cycle < 64; cycle++) {
+		(void)arena_get(arena, 64);
+		isc_memarena_reset(arena);
+	}
+	assert_true(isc_memarena_capacity(arena) <= 4096);
+#endif
+
+	/* The arena stays usable in either mode. */
+	(void)arena_get(arena, 512);
+
+	isc_memarena_destroy(&arena);
+	isc_mem_detach(&mctx);
+}
+
+/*
  * The dns_message fromwire pattern: allocate an upper bound, parse into
  * a stack buffer over it (no attached mctx, so the base can never move),
  * then shrink to the actually-used length.
@@ -376,6 +417,7 @@ ISC_TEST_ENTRY(isc_memarena_shrink)
 ISC_TEST_ENTRY(isc_memarena_reget)
 ISC_TEST_ENTRY(isc_memarena_allocator_union)
 ISC_TEST_ENTRY(isc_memarena_reset)
+ISC_TEST_ENTRY(isc_memarena_retention)
 ISC_TEST_ENTRY(isc_memarena_buffer)
 
 ISC_TEST_LIST_END

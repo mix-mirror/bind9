@@ -52,6 +52,7 @@ struct isc_memarena {
 	size_t capacity;
 
 	size_t next_chunk; /*%< total size of the next chunk to allocate */
+	size_t usage_ewma; /*%< moving average of per-cycle usage */
 
 	ISC_LINK(isc_memarena_t) link; /*%< backing context's arena list */
 };
