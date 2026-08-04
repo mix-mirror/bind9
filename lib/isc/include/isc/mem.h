@@ -81,6 +81,19 @@
 extern isc_mem_t *isc_g_mctx;
 
 /*%
+ * Allocator handle accepted by the sized allocation entry points
+ * (isc_mem_get(), isc_mem_put(), isc_mem_reget() and their c-variants):
+ * either a memory context or a memory arena (see isc/memarena.h).  The
+ * transparent union lets call sites pass either pointer type unchanged;
+ * the implementation dispatches at runtime on the object's magic number,
+ * which is the first member of both structures.
+ */
+typedef union {
+	isc_mem_t      *mctx;
+	isc_memarena_t *arena;
+} isc_allocator_t __attribute__((__transparent_union__));
+
+/*%
  * isc_mem_putanddetach() is a convenience function for use where you
  * have a structure with an attached memory context.
  *
@@ -438,17 +451,17 @@ isc_mempool_setfillcount(isc_mempool_t *restrict mpctx,
 void
 isc__mem_putanddetach(isc_mem_t **, void *, size_t, int _ISC_MEM_FLARG);
 void
-isc__mem_put(isc_mem_t *, void *, size_t, int _ISC_MEM_FLARG);
+isc__mem_put(isc_allocator_t, void *, size_t, int _ISC_MEM_FLARG);
 void
 isc__mem_free(isc_mem_t *, void *, int _ISC_MEM_FLARG);
 
 ISC_ATTR_MALLOC_DEALLOCATOR_IDX(isc__mem_put, 2)
 void *
-isc__mem_get(isc_mem_t *, size_t, int _ISC_MEM_FLARG);
+isc__mem_get(isc_allocator_t, size_t, int _ISC_MEM_FLARG);
 
 ISC_ATTR_DEALLOCATOR_IDX(isc__mem_put, 2)
 void *
-isc__mem_reget(isc_mem_t *, void *, size_t, size_t, int _ISC_MEM_FLARG);
+isc__mem_reget(isc_allocator_t, void *, size_t, size_t, int _ISC_MEM_FLARG);
 
 ISC_ATTR_MALLOC_DEALLOCATOR_IDX(isc__mem_free, 2)
 void *

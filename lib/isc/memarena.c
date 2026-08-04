@@ -22,6 +22,8 @@
 #include <isc/tid.h>
 #include <isc/util.h>
 
+#include "memarena_p.h"
+
 #if __SANITIZE_ADDRESS__
 #include <sanitizer/asan_interface.h>
 #define MEMARENA_POISON(p, s)	ASAN_POISON_MEMORY_REGION((p), (s))
@@ -54,9 +56,6 @@
 		s = ZERO_ALLOCATION_SIZE; \
 	}
 
-#define MEMARENA_MAGIC	  ISC_MAGIC('M', 'e', 'm', 'A')
-#define VALID_MEMARENA(a) ISC_MAGIC_VALID(a, MEMARENA_MAGIC)
-
 /*
  * Chunk totals are powers of two so they map onto jemalloc size classes;
  * the usable capacity is the total minus the (alignment-rounded) header.
@@ -66,38 +65,16 @@
 #define MEMARENA_MIN_CHUNK 2048
 #define MEMARENA_MAX_CHUNK 65536
 
-typedef struct memarena_chunk {
+struct memarena_chunk {
 	struct memarena_chunk *prev; /*%< older chunk, NULL for the oldest */
 	size_t total;		     /*%< allocation size, for sized free */
 	size_t used;		     /*%< committed bytes when sealed */
-} memarena_chunk_t;
+};
 
 #define CHUNK_HDRSIZE \
 	ISC_ALIGN(sizeof(memarena_chunk_t), ISC_MEMARENA_ALIGNMENT)
 #define CHUNK_DATA(chunk)     ((uintptr_t)(chunk) + CHUNK_HDRSIZE)
 #define CHUNK_CAPACITY(chunk) ((chunk)->total - CHUNK_HDRSIZE)
-
-struct isc_memarena {
-	unsigned int magic;
-	isc_tid_t tid; /*%< creator thread, for cache bookkeeping */
-	isc_mem_t *mctx;
-	char *name;
-
-	/* bump state */
-	memarena_chunk_t *current; /*%< newest chunk */
-	uintptr_t pos;		   /*%< bump cursor in the current chunk */
-	uintptr_t end;		   /*%< current chunk limit */
-
-	/* per-cycle accounting */
-	size_t live;	    /*%< allocated minus put/shrunk bytes */
-	size_t dead;	    /*%< put/shrunk bytes awaiting reset */
-	size_t waste;	    /*%< alignment padding and skipped tails */
-	size_t used_sealed; /*%< committed bytes in sealed chunks */
-	size_t nchunks;
-	size_t capacity;
-
-	size_t next_chunk; /*%< total size of the next chunk to allocate */
-};
 
 static void
 chunk_free_chain(isc_memarena_t *arena, memarena_chunk_t *chunk) {
@@ -300,12 +277,15 @@ isc_memarena_create(isc_mem_t *mctx, const char *name,
 	*arena = (isc_memarena_t){
 		.tid = isc_tid(),
 		.next_chunk = MEMARENA_MIN_CHUNK,
+		.link = ISC_LINK_INITIALIZER,
 	};
 	isc_mem_attach(mctx, &arena->mctx);
 	if (name != NULL) {
 		arena->name = isc_mem_strdup(arena->mctx, name);
 	}
 	arena->magic = MEMARENA_MAGIC;
+
+	isc__mem_registerarena(arena->mctx, arena);
 
 	*arenap = arena;
 }
@@ -321,6 +301,8 @@ isc_memarena_destroy(isc_memarena_t **arenap) {
 	*arenap = NULL;
 
 	arena->magic = 0;
+
+	isc__mem_unregisterarena(arena->mctx, arena);
 
 	chunk_free_chain(arena, arena->current);
 	if (arena->name != NULL) {

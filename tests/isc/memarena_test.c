@@ -250,6 +250,44 @@ ISC_RUN_TEST_IMPL(isc_memarena_reget) {
 	isc_mem_detach(&mctx);
 }
 
+/*
+ * The sized isc_mem_* macros must accept both handle kinds through the
+ * transparent union and dispatch on the magic number.
+ */
+ISC_RUN_TEST_IMPL(isc_memarena_allocator_union) {
+	isc_mem_t *mctx = NULL;
+	isc_memarena_t *arena = NULL;
+	uint8_t *ptr = NULL;
+
+	isc_mem_create("memarena_union", &mctx);
+	isc_memarena_create(mctx, "test", &arena);
+
+	ptr = isc_mem_get(arena, 100);
+	assert_non_null(ptr);
+	memset(ptr, 0x5a, 100);
+	isc_mem_put(arena, ptr, 100);
+	assert_null(ptr);
+	assert_int_equal(isc_memarena_dead(arena), 100);
+
+	ptr = isc_mem_cget(arena, 4, 32);
+	for (size_t i = 0; i < 4 * 32; i++) {
+		assert_int_equal(ptr[i], 0);
+	}
+	ptr = isc_mem_reget(arena, ptr, 128, 256);
+	assert_non_null(ptr);
+	isc_mem_cput(arena, ptr, 8, 32);
+	assert_null(ptr);
+	assert_int_equal(isc_memarena_live(arena), 0);
+
+	/* The same call sites keep working with a memory context. */
+	ptr = isc_mem_get(mctx, 100);
+	assert_non_null(ptr);
+	isc_mem_put(mctx, ptr, 100);
+
+	isc_memarena_destroy(&arena);
+	isc_mem_detach(&mctx);
+}
+
 ISC_RUN_TEST_IMPL(isc_memarena_reset) {
 	isc_mem_t *mctx = NULL;
 	isc_memarena_t *arena = NULL;
@@ -336,6 +374,7 @@ ISC_TEST_ENTRY(isc_memarena_zero)
 ISC_TEST_ENTRY(isc_memarena_growth)
 ISC_TEST_ENTRY(isc_memarena_shrink)
 ISC_TEST_ENTRY(isc_memarena_reget)
+ISC_TEST_ENTRY(isc_memarena_allocator_union)
 ISC_TEST_ENTRY(isc_memarena_reset)
 ISC_TEST_ENTRY(isc_memarena_buffer)
 

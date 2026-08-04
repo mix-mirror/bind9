@@ -27,6 +27,7 @@
 #include <isc/hash.h>
 #include <isc/magic.h>
 #include <isc/mem.h>
+#include <isc/memarena.h>
 #include <isc/mutex.h>
 #include <isc/os.h>
 #include <isc/overflow.h>
@@ -62,6 +63,7 @@
 #endif
 
 #include "mem_p.h"
+#include "memarena_p.h"
 
 #define MCTXLOCK(m)   LOCK(&m->lock)
 #define MCTXUNLOCK(m) UNLOCK(&m->lock)
@@ -143,6 +145,7 @@ struct isc_mem {
 	atomic_size_t lo_water;
 	ISC_LIST(isc_mempool_t) pools;
 	unsigned int poolcnt;
+	ISC_LIST(isc_memarena_t) arenas;
 
 #if ISC_MEM_TRACKLINES
 	debuglist_t *debuglist;
@@ -630,6 +633,7 @@ mem_create(const char *name, isc_mem_t **ctxp, unsigned int debugging,
 	atomic_init(&ctx->lo_water, 0);
 
 	ISC_LIST_INIT(ctx->pools);
+	ISC_LIST_INIT(ctx->arenas);
 
 #if ISC_MEM_TRACKLINES
 	if ((ctx->debugging & ISC_MEM_DEBUGRECORD) != 0) {
@@ -695,6 +699,7 @@ mem_destroy(isc_mem_t *ctx) {
 	ctx->magic = 0;
 
 	INSIST(ISC_LIST_EMPTY(ctx->pools));
+	INSIST(ISC_LIST_EMPTY(ctx->arenas));
 
 	free(ctx->name);
 
@@ -744,10 +749,18 @@ isc__mem_putanddetach(isc_mem_t **ctxp, void *ptr, size_t size,
 }
 
 void *
-isc__mem_get(isc_mem_t *ctx, size_t size, int flags FLARG) {
+isc__mem_get(isc_allocator_t alloc, size_t size, int flags FLARG) {
+	isc_mem_t *ctx = alloc.mctx;
 	void *ptr = NULL;
 
-	REQUIRE(VALID_CONTEXT(ctx));
+	if (!VALID_CONTEXT(ctx)) {
+		/*
+		 * Arena handles are dispatched on the magic number; an
+		 * invalid handle of either kind dies on the REQUIRE in
+		 * the arena entry point.
+		 */
+		return isc__memarena_get(alloc.arena, size, flags FLARG_PASS);
+	}
 
 	ptr = mem_get(ctx, size, flags);
 
@@ -758,8 +771,13 @@ isc__mem_get(isc_mem_t *ctx, size_t size, int flags FLARG) {
 }
 
 void
-isc__mem_put(isc_mem_t *ctx, void *ptr, size_t size, int flags FLARG) {
-	REQUIRE(VALID_CONTEXT(ctx));
+isc__mem_put(isc_allocator_t alloc, void *ptr, size_t size, int flags FLARG) {
+	isc_mem_t *ctx = alloc.mctx;
+
+	if (!VALID_CONTEXT(ctx)) {
+		isc__memarena_put(alloc.arena, ptr, size, flags FLARG_PASS);
+		return;
+	}
 
 	DELETE_TRACE(ctx, ptr, size, func, file, line);
 
@@ -828,10 +846,46 @@ isc_mem_stats(isc_mem_t *ctx, FILE *out) {
 			pool->gets, "N");
 	}
 
+	/*
+	 * Arenas are unlocked and mutated by their owning thread, so the
+	 * counters may be somewhat off while an arena is in active use;
+	 * the link fields are protected by the context lock, so walking
+	 * the list is always safe.
+	 */
+	if (!ISC_LIST_EMPTY(ctx->arenas)) {
+		fprintf(out, "[Arena statistics]\n");
+		fprintf(out, "%15s %10s %10s %10s %10s %10s\n", "name", "live",
+			"dead", "waste", "capacity", "chunks");
+	}
+	ISC_LIST_FOREACH(ctx->arenas, arena, link) {
+		fprintf(out, "%15s %10zu %10zu %10zu %10zu %10zu\n",
+			arena->name != NULL ? arena->name : "", arena->live,
+			arena->dead, arena->waste, arena->capacity,
+			arena->nchunks);
+	}
+
 #if ISC_MEM_TRACKLINES
 	print_active(ctx, out);
 #endif /* if ISC_MEM_TRACKLINES */
 
+	MCTXUNLOCK(ctx);
+}
+
+void
+isc__mem_registerarena(isc_mem_t *ctx, isc_memarena_t *arena) {
+	REQUIRE(VALID_CONTEXT(ctx));
+
+	MCTXLOCK(ctx);
+	ISC_LIST_APPEND(ctx->arenas, arena, link);
+	MCTXUNLOCK(ctx);
+}
+
+void
+isc__mem_unregisterarena(isc_mem_t *ctx, isc_memarena_t *arena) {
+	REQUIRE(VALID_CONTEXT(ctx));
+
+	MCTXLOCK(ctx);
+	ISC_LIST_UNLINK(ctx->arenas, arena, link);
 	MCTXUNLOCK(ctx);
 }
 
@@ -853,9 +907,15 @@ isc__mem_allocate(isc_mem_t *ctx, size_t size, int flags FLARG) {
 }
 
 void *
-isc__mem_reget(isc_mem_t *ctx, void *old_ptr, size_t old_size, size_t new_size,
-	       int flags FLARG) {
+isc__mem_reget(isc_allocator_t alloc, void *old_ptr, size_t old_size,
+	       size_t new_size, int flags FLARG) {
+	isc_mem_t *ctx = alloc.mctx;
 	void *new_ptr = NULL;
+
+	if (!VALID_CONTEXT(ctx)) {
+		return isc__memarena_reget(alloc.arena, old_ptr, old_size,
+					   new_size, flags FLARG_PASS);
+	}
 
 	if (old_ptr == NULL) {
 		REQUIRE(old_size == 0);
