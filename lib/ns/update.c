@@ -1671,7 +1671,7 @@ send_update(ns_client_t *client, dns_zone_t *zone) {
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		dns_ttl_t ttl;
 		dns_rdataclass_t update_class;
-		const dns_name_t *name = (dns_name_t *)linkedname;
+		const dns_name_t *name = dns_linkedname_name(linkedname);
 
 		INSIST(ssutable == NULL || update < maxbytypelen);
 		get_current_rr(linkedname, &rdata, &covers, &ttl,
@@ -1944,10 +1944,11 @@ ns_update_start(ns_client_t *client, isc_nmhandle_t *handle,
 		      "update zone section contains multiple RRs");
 	}
 
-	result = dns_view_findzone(client->inner.view, (dns_name_t *)zonename,
+	result = dns_view_findzone(client->inner.view,
+				   dns_linkedname_name(zonename),
 				   DNS_ZTFIND_EXACT, &zone);
 	if (result != ISC_R_SUCCESS) {
-		FAILN(DNS_R_NOTAUTH, (dns_name_t *)zonename,
+		FAILN(DNS_R_NOTAUTH, dns_linkedname_name(zonename),
 		      "not authoritative for update zone");
 	}
 
@@ -2713,7 +2714,7 @@ update_action(void *arg) {
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		dns_ttl_t ttl;
 		dns_rdataclass_t update_class;
-		const dns_name_t *name = (dns_name_t *)linkedname;
+		const dns_name_t *name = dns_linkedname_name(linkedname);
 		bool flag;
 
 		get_current_rr(linkedname, &rdata, &covers, &ttl,
@@ -2826,7 +2827,7 @@ update_action(void *arg) {
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		dns_ttl_t ttl;
 		dns_rdataclass_t update_class;
-		const dns_name_t *name = (dns_name_t *)linkedname;
+		const dns_name_t *name = dns_linkedname_name(linkedname);
 		bool flag;
 		size_t maxidx = update++;
 
@@ -3028,7 +3029,7 @@ update_action(void *arg) {
 				ctx.ver = ver;
 				ctx.diff = &diff;
 				ctx.name = name;
-				ctx.oldname = (dns_name_t *)linkedname;
+				ctx.oldname = dns_linkedname_name(linkedname);
 				ctx.update_rr = &rdata;
 				ctx.update_rr_ttl = ttl;
 				ctx.ignore_add = false;

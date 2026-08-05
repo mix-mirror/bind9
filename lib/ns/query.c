@@ -1774,7 +1774,7 @@ query_additional_cb(void *arg, const dns_name_t *name, dns_rdatatype_t qtype,
 	 * First, look for authoritative additional data.
 	 */
 	result = query_additionalauth(qctx, name, type, &db, &node,
-				      (dns_name_t *)fname, rdataset,
+				      dns_linkedname_name(fname), rdataset,
 				      sigrdataset);
 	if (result == ISC_R_SUCCESS) {
 		goto found;
@@ -1806,8 +1806,9 @@ query_additional_cb(void *arg, const dns_name_t *name, dns_rdatatype_t qtype,
 	result = dns_db_findext(db, name, version, type,
 				client->query.dboptions | DNS_DBFIND_GLUEOK |
 					DNS_DBFIND_ADDITIONALOK,
-				client->inner.now, &node, (dns_name_t *)fname,
-				&cm, &ci, rdataset, sigrdataset);
+				client->inner.now, &node,
+				dns_linkedname_name(fname), &cm, &ci, rdataset,
+				sigrdataset);
 
 	dns_cache_updatestats(qctx->view->cache, result);
 	if (!client->inner.wantdnssec) {
@@ -1860,8 +1861,9 @@ try_glue:
 	version = dbversion->version;
 	result = dns_db_findext(db, name, version, type,
 				client->query.dboptions | DNS_DBFIND_GLUEOK,
-				client->inner.now, &node, (dns_name_t *)fname,
-				&cm, &ci, rdataset, sigrdataset);
+				client->inner.now, &node,
+				dns_linkedname_name(fname), &cm, &ci, rdataset,
+				sigrdataset);
 	if (result != ISC_R_SUCCESS && result != DNS_R_ZONECUT &&
 	    result != DNS_R_GLUE)
 	{
@@ -1888,7 +1890,8 @@ found:
 	 */
 	mname = NULL;
 	if (dns_rdataset_isassociated(rdataset) &&
-	    !query_isduplicate(client, (dns_name_t *)fname, type, &mname))
+	    !query_isduplicate(client, dns_linkedname_name(fname), type,
+			       &mname))
 	{
 		if (mname != NULL) {
 			INSIST(mname != fname);
@@ -1931,7 +1934,7 @@ found:
 		} else if (client->inner.wantdnssec) {
 			sigrdataset = ns_client_newrdataset(client);
 		}
-		if (query_isduplicate(client, (dns_name_t *)fname,
+		if (query_isduplicate(client, dns_linkedname_name(fname),
 				      dns_rdatatype_a, NULL))
 		{
 			goto aaaa_lookup;
@@ -1949,9 +1952,9 @@ found:
 			if (DNS_TRUST_PENDING(rdataset->trust)) {
 				dns_rdataset_cleanup(rdataset);
 				dns_rdataset_cleanup(sigrdataset);
-			} else if (!query_isduplicate(client,
-						      (dns_name_t *)fname,
-						      dns_rdatatype_a, &mname))
+			} else if (!query_isduplicate(
+					   client, dns_linkedname_name(fname),
+					   dns_rdatatype_a, &mname))
 			{
 				if (mname != fname) {
 					if (mname != NULL) {
@@ -1979,7 +1982,7 @@ found:
 			}
 		}
 	aaaa_lookup:
-		if (query_isduplicate(client, (dns_name_t *)fname,
+		if (query_isduplicate(client, dns_linkedname_name(fname),
 				      dns_rdatatype_aaaa, NULL))
 		{
 			goto addname;
@@ -1999,7 +2002,7 @@ found:
 				dns_rdataset_cleanup(rdataset);
 				dns_rdataset_cleanup(sigrdataset);
 			} else if (!query_isduplicate(
-					   client, (dns_name_t *)fname,
+					   client, dns_linkedname_name(fname),
 					   dns_rdatatype_aaaa, &mname))
 			{
 				if (mname != fname) {
@@ -2054,7 +2057,7 @@ addname:
 		    client->inner.view->max_restarts)
 		{
 			eresult = dns_rdataset_additionaldata(
-				trdataset, (dns_name_t *)fname,
+				trdataset, dns_linkedname_name(fname),
 				query_additional_cb, qctx,
 				DNS_RDATASET_MAXADDITIONAL);
 		}
@@ -2197,7 +2200,7 @@ query_addrrset(query_ctx_t *qctx, dns_linkedname_t **namep,
 	 * when it returns the name will either have been kept or released.
 	 */
 	result = dns_message_findname(client->message, section,
-				      (dns_name_t *)name, rdataset->type,
+				      dns_linkedname_name(name), rdataset->type,
 				      rdataset->covers, &mname, &mrdataset);
 	if (result == ISC_R_SUCCESS) {
 		/*
@@ -2240,8 +2243,8 @@ query_addrrset(query_ctx_t *qctx, dns_linkedname_t **namep,
 	 * section processing if needed.
 	 */
 	query_addtoname(mname, rdataset);
-	query_setorder(qctx, (dns_name_t *)mname, rdataset);
-	query_additional(qctx, (dns_name_t *)mname, rdataset);
+	query_setorder(qctx, dns_linkedname_name(mname), rdataset);
+	query_additional(qctx, dns_linkedname_name(mname), rdataset);
 
 	/*
 	 * Note: we only add SIGs if we've added the type they cover, so
@@ -2422,7 +2425,7 @@ stale_refresh_aftermath(ns_client_t *client, isc_result_t result) {
 		(void)dns_db_findext(db, qctx.client->query.qname, NULL,
 				     qctx.client->query.qtype, dboptions,
 				     qctx.client->inner.now, &qctx.node,
-				     (dns_name_t *)qctx.fname, &cm, &ci,
+				     dns_linkedname_name(qctx.fname), &cm, &ci,
 				     qctx.rdataset, qctx.sigrdataset);
 		if (qctx.node != NULL) {
 			dns_db_detachnode(&qctx.node);
@@ -2595,9 +2598,9 @@ query_stale_refresh_ncache(ns_client_t *client, dns_rdataset_t *rdataset) {
 	dns_name_t *qname;
 
 	if (client->query.origqname != NULL) {
-		qname = (dns_name_t *)client->query.origqname;
+		qname = dns_linkedname_name(client->query.origqname);
 	} else {
-		qname = (dns_name_t *)client->query.qname;
+		qname = dns_linkedname_name(client->query.qname);
 	}
 	query_stale_refresh(client, qname, rdataset);
 }
@@ -3830,8 +3833,9 @@ rpz_rewrite(ns_client_t *client, dns_rdatatype_t qtype, isc_result_t qresult,
 		 */
 		if ((st->state & DNS_RPZ_DONE_QNAME) == 0) {
 			CHECK(rpz_rewrite_name(
-				client, (dns_name_t *)client->query.qname,
-				qtype, DNS_RPZ_TYPE_QNAME, allowed, &rdataset));
+				client,
+				dns_linkedname_name(client->query.qname), qtype,
+				DNS_RPZ_TYPE_QNAME, allowed, &rdataset));
 
 			/*
 			 * Check IPv4 addresses in A RRs next.
@@ -3877,7 +3881,7 @@ rpz_rewrite(ns_client_t *client, dns_rdatatype_t qtype, isc_result_t qresult,
 	    rpz_get_zbits(client, qtype, DNS_RPZ_TYPE_IP) != 0)
 	{
 		CHECK(rpz_rewrite_ip_rrsets(
-			client, (dns_name_t *)client->query.qname, qtype,
+			client, dns_linkedname_name(client->query.qname), qtype,
 			DNS_RPZ_TYPE_IP, &rdataset, resuming));
 		/*
 		 * We are finished checking the IP addresses for the qname.
@@ -3908,10 +3912,10 @@ rpz_rewrite(ns_client_t *client, dns_rdatatype_t qtype, isc_result_t qresult,
 		 * Get NS rrset for each domain in the current qname.
 		 */
 		if (st->r.label == dns_name_countlabels(client->query.qname)) {
-			nsname = (dns_name_t *)client->query.qname;
+			nsname = dns_linkedname_name(client->query.qname);
 		} else {
 			nsname = dns_fixedname_name(&nsnamef);
-			dns_name_split((dns_name_t *)client->query.qname,
+			dns_name_split(dns_linkedname_name(client->query.qname),
 				       st->r.label, NULL, nsname);
 		}
 		if (st->r.ns_rdataset == NULL ||
@@ -4615,8 +4619,9 @@ redirect2(ns_client_t *client, dns_name_t *name, dns_rdataset_t *rdataset,
 		dns_name_t prefix;
 
 		dns_name_init(&prefix);
-		dns_name_getlabelsequence((dns_name_t *)client->query.qname, 0,
-					  labels - 1, &prefix);
+		dns_name_getlabelsequence(
+			dns_linkedname_name(client->query.qname), 0, labels - 1,
+			&prefix);
 		result = dns_name_concatenate(&prefix,
 					      client->inner.view->redirectzone,
 					      redirectname);
@@ -4982,7 +4987,8 @@ get_root_key_sentinel_id(query_ctx_t *qctx, const char *ndata) {
  */
 static void
 root_key_sentinel_detect(query_ctx_t *qctx) {
-	const dns_name_t *qname = (dns_name_t *)qctx->client->query.qname;
+	const dns_name_t *qname =
+		dns_linkedname_name(qctx->client->query.qname);
 	const char *ndata = (const char *)qname->ndata;
 
 	if (qname->length > 30 && ndata[0] == 29 &&
@@ -5145,9 +5151,9 @@ ns__query_start(query_ctx_t *qctx) {
 	}
 
 	if (qctx->view->checknames &&
-	    !dns_rdata_checkowner((dns_name_t *)qctx->client->query.qname,
-				  qctx->client->message->rdclass, qctx->qtype,
-				  false))
+	    !dns_rdata_checkowner(
+		    dns_linkedname_name(qctx->client->query.qname),
+		    qctx->client->message->rdclass, qctx->qtype, false))
 	{
 		char namebuf[DNS_NAME_FORMATSIZE];
 		char typebuf[DNS_RDATATYPE_FORMATSIZE];
@@ -5195,7 +5201,7 @@ ns__query_start(query_ctx_t *qctx) {
 	}
 
 	result = query_getdb(qctx->client,
-			     (dns_name_t *)qctx->client->query.qname,
+			     dns_linkedname_name(qctx->client->query.qname),
 			     qctx->qtype, qctx->options, &qctx->zone, &qctx->db,
 			     &qctx->version, &qctx->is_zone);
 	if ((result != ISC_R_SUCCESS || !qctx->is_zone) &&
@@ -5215,7 +5221,8 @@ ns__query_start(query_ctx_t *qctx) {
 
 		dns_getdb_options_t options = { .partial = true };
 		tresult = query_getzonedb(
-			qctx->client, (dns_name_t *)qctx->client->query.qname,
+			qctx->client,
+			dns_linkedname_name(qctx->client->query.qname),
 			qctx->qtype, options, &tzone, &tdb, &tversion);
 		if (tresult == ISC_R_SUCCESS) {
 			/*
@@ -5546,7 +5553,7 @@ query_lookup(query_ctx_t *qctx) {
 	if (qctx->dns64 && qctx->rpz) {
 		rpzqname = qctx->client->query.rpz_st->p_name;
 	} else {
-		rpzqname = (dns_name_t *)qctx->client->query.qname;
+		rpzqname = dns_linkedname_name(qctx->client->query.qname);
 	}
 
 	qctx->client->query.dboptions &= ~DNS_DBFIND_STALETIMEOUT;
@@ -5578,7 +5585,7 @@ query_lookup(query_ctx_t *qctx) {
 
 	result = dns_db_findext(qctx->db, rpzqname, qctx->version, qctx->type,
 				dboptions, qctx->client->inner.now, &qctx->node,
-				(dns_name_t *)qctx->fname, &cm, &ci,
+				dns_linkedname_name(qctx->fname), &cm, &ci,
 				qctx->rdataset, qctx->sigrdataset);
 
 	/*
@@ -5586,7 +5593,7 @@ query_lookup(query_ctx_t *qctx) {
 	 */
 	if (qctx->dns64 && qctx->rpz) {
 		dns_name_copy(qctx->client->query.qname,
-			      (dns_name_t *)qctx->fname);
+			      dns_linkedname_name(qctx->fname));
 		dns_rdataset_cleanup(qctx->sigrdataset);
 	}
 
@@ -6214,7 +6221,7 @@ query_resume(query_ctx_t *qctx) {
 		tname = qctx->fresp->foundname;
 	}
 
-	dns_name_copy(tname, (dns_name_t *)qctx->fname);
+	dns_name_copy(tname, dns_linkedname_name(qctx->fname));
 
 	if (rpz) {
 		qctx->rpz_st->r.r_result = qctx->fresp->result;
@@ -6469,8 +6476,9 @@ ns__query_sfcache(query_ctx_t *qctx) {
 	{
 		failcache = dns_badcache_find(
 			qctx->view->failcache,
-			(dns_name_t *)qctx->client->query.qname, qctx->qtype,
-			&flags, isc_time_seconds(&qctx->client->inner.tnow));
+			dns_linkedname_name(qctx->client->query.qname),
+			qctx->qtype, &flags,
+			isc_time_seconds(&qctx->client->inner.tnow));
 	}
 
 	if (failcache != ISC_R_SUCCESS) {
@@ -6582,7 +6590,7 @@ query_checkrrl(query_ctx_t *qctx, isc_result_t result) {
 		qctx->client->query.rrl_checked = true;
 
 		wouldlog = isc_log_wouldlog(DNS_RRL_LOG_DROP);
-		constname = (dns_name_t *)qctx->fname;
+		constname = dns_linkedname_name(qctx->fname);
 		if (result == DNS_R_NXDOMAIN) {
 			/*
 			 * Use the database origin name to rate limit NXDOMAIN
@@ -6773,7 +6781,7 @@ query_checkrpz(query_ctx_t *qctx, isc_result_t result) {
 		 * in recursion or for a deferral.
 		 */
 		dns_name_copy(qctx->client->query.qname,
-			      (dns_name_t *)qctx->fname);
+			      dns_linkedname_name(qctx->fname));
 		rpz_clean(&qctx->zone, &qctx->db, &qctx->node, NULL);
 		if (qctx->rpz_st->m.rdataset != NULL) {
 			ns_client_putrdataset(qctx->client, &qctx->rdataset);
@@ -6937,14 +6945,14 @@ query_rpzcname(query_ctx_t *qctx, dns_name_t *cname) {
 	labels = dns_name_countlabels(cname);
 	if (labels > 2 && dns_name_iswildcard(cname)) {
 		dns_fixedname_init(&prefix);
-		dns_name_split((dns_name_t *)client->query.qname, 1,
+		dns_name_split(dns_linkedname_name(client->query.qname), 1,
 			       dns_fixedname_name(&prefix), NULL);
 		dns_fixedname_init(&suffix);
 		dns_name_split(cname, labels - 1, NULL,
 			       dns_fixedname_name(&suffix));
 		result = dns_name_concatenate(dns_fixedname_name(&prefix),
 					      dns_fixedname_name(&suffix),
-					      (dns_name_t *)qctx->fname);
+					      dns_linkedname_name(qctx->fname));
 		if (result == DNS_R_NAMETOOLONG) {
 			client->message->rcode = dns_rcode_yxdomain;
 		}
@@ -6952,7 +6960,7 @@ query_rpzcname(query_ctx_t *qctx, dns_name_t *cname) {
 			return result;
 		}
 	} else {
-		dns_name_copy(cname, (dns_name_t *)qctx->fname);
+		dns_name_copy(cname, dns_linkedname_name(qctx->fname));
 	}
 
 	ns_client_keepname(client, qctx->fname, qctx->dbuf);
@@ -6960,7 +6968,7 @@ query_rpzcname(query_ctx_t *qctx, dns_name_t *cname) {
 
 	rpz_log_rewrite(client, false, qctx->rpz_st->m.policy,
 			qctx->rpz_st->m.type, qctx->rpz_st->m.zone,
-			qctx->rpz_st->p_name, (dns_name_t *)qctx->fname,
+			qctx->rpz_st->p_name, dns_linkedname_name(qctx->fname),
 			qctx->rpz_st->m.rpz->num);
 
 	ns_client_qnamereplace(client, qctx->fname);
@@ -7108,7 +7116,7 @@ query_usestale(query_ctx_t *qctx, isc_result_t result) {
 
 	if (dns_view_staleanswerenabled(qctx->client->inner.view)) {
 		if (query_getdb(qctx->client,
-				(dns_name_t *)qctx->client->query.qname,
+				dns_linkedname_name(qctx->client->query.qname),
 				qctx->client->query.qtype, qctx->options,
 				&qctx->zone, &qctx->db, &qctx->version,
 				&qctx->is_zone) != ISC_R_SUCCESS)
@@ -7286,7 +7294,7 @@ query_addnoqnameproof(query_ctx_t *qctx) {
 	negsig = ns_client_newrdataset(client);
 
 	RUNTIME_CHECK(dns_rdataset_getnoqname(qctx->noqname,
-					      (dns_name_t *)fname, neg,
+					      dns_linkedname_name(fname), neg,
 					      negsig) == ISC_R_SUCCESS);
 
 	query_addrrset(qctx, &fname, &neg, &negsig, dbuf,
@@ -7402,9 +7410,9 @@ query_respond_any(query_ctx_t *qctx) {
 
 			if (!qctx->is_zone && qctx->client->query.recursionok) {
 				dns_name_t *name;
-				name = (dns_name_t *)qctx->fname;
+				name = dns_linkedname_name(qctx->fname);
 				if (name == NULL) {
-					name = (dns_name_t *)qctx->tname;
+					name = dns_linkedname_name(qctx->tname);
 				}
 				query_prefetch(qctx->client, name,
 					       qctx->rdataset);
@@ -7662,7 +7670,8 @@ query_addanswer(query_ctx_t *qctx) {
 		qctx->client->query.dns64_aaaaoklen = 0;
 	} else {
 		if (!qctx->is_zone && qctx->client->query.recursionok) {
-			query_prefetch(qctx->client, (dns_name_t *)qctx->fname,
+			query_prefetch(qctx->client,
+				       dns_linkedname_name(qctx->fname),
 				       qctx->rdataset);
 		}
 		if (qctx->client->inner.wantdnssec && qctx->sigrdataset != NULL)
@@ -7822,7 +7831,7 @@ query_dns64(query_ctx_t *qctx) {
 
 	name = qctx->fname;
 	result = dns_message_findname(
-		client->message, section, (dns_name_t *)name,
+		client->message, section, dns_linkedname_name(name),
 		dns_rdatatype_aaaa, qctx->rdataset->covers, &mname, &mrdataset);
 	if (result == ISC_R_SUCCESS) {
 		/*
@@ -7876,7 +7885,7 @@ query_dns64(query_ctx_t *qctx) {
 			      client->inner.signer, flags, qctx->rdataset,
 			      &dns64_rdataset));
 
-	dns_rdataset_setownercase(dns64_rdataset, (dns_name_t *)mname);
+	dns_rdataset_setownercase(dns64_rdataset, dns_linkedname_name(mname));
 	client->query.noadditional = true;
 
 	if (client->query.dns64_ttl != UINT32_MAX) {
@@ -7887,7 +7896,7 @@ query_dns64(query_ctx_t *qctx) {
 	}
 
 	query_addtoname(mname, dns64_rdataset);
-	query_setorder(qctx, (dns_name_t *)mname, dns64_rdataset);
+	query_setorder(qctx, dns_linkedname_name(mname), dns64_rdataset);
 
 	inc_stats(client, ns_statscounter_dns64);
 	result = ISC_R_SUCCESS;
@@ -7916,10 +7925,10 @@ query_filter64(query_ctx_t *qctx) {
 	       dns_rdataset_count(qctx->rdataset));
 
 	name = qctx->fname;
-	result = dns_message_findname(client->message, section,
-				      (dns_name_t *)name, dns_rdatatype_aaaa,
-				      qctx->rdataset->covers, &mname,
-				      &myrdataset);
+	result = dns_message_findname(
+		client->message, section, dns_linkedname_name(name),
+		dns_rdatatype_aaaa, qctx->rdataset->covers, &mname,
+		&myrdataset);
 	if (result == ISC_R_SUCCESS) {
 		/*
 		 * We've already got an RRset of the given name and type.
@@ -7976,7 +7985,7 @@ query_filter64(query_ctx_t *qctx) {
 	}
 
 	dns_rdatalist_tordataset(myrdatalist, myrdataset);
-	dns_rdataset_setownercase(myrdataset, (dns_name_t *)mname);
+	dns_rdataset_setownercase(myrdataset, dns_linkedname_name(mname));
 	client->query.noadditional = true;
 	if (mname == name) {
 		if (qctx->dbuf != NULL) {
@@ -7988,7 +7997,7 @@ query_filter64(query_ctx_t *qctx) {
 	myrdataset->trust = qctx->rdataset->trust;
 
 	query_addtoname(mname, myrdataset);
-	query_setorder(qctx, (dns_name_t *)mname, myrdataset);
+	query_setorder(qctx, dns_linkedname_name(mname), myrdataset);
 
 	dns_message_takebuffer(client->message, &buffer);
 	if (buffer != NULL) {
@@ -8036,8 +8045,8 @@ query_notfound(query_ctx_t *qctx) {
 		result = dns_db_findext(qctx->db, dns_rootname, NULL,
 					dns_rdatatype_ns, 0,
 					qctx->client->inner.now, &qctx->node,
-					(dns_name_t *)qctx->fname, &cm, &ci,
-					qctx->rdataset, qctx->sigrdataset);
+					dns_linkedname_name(qctx->fname), &cm,
+					&ci, qctx->rdataset, qctx->sigrdataset);
 	}
 	if (result != ISC_R_SUCCESS) {
 		/*
@@ -8054,8 +8063,8 @@ query_notfound(query_ctx_t *qctx) {
 			INSIST(!qctx->client->query.is_redirect);
 			result = ns_query_recurse(
 				qctx->client, qctx->qtype,
-				(dns_name_t *)qctx->client->query.qname, NULL,
-				NULL, qctx->resuming);
+				dns_linkedname_name(qctx->client->query.qname),
+				NULL, NULL, qctx->resuming);
 			if (result == ISC_R_SUCCESS) {
 				CALL_HOOK(NS_QUERY_NOTFOUND_RECURSE, qctx);
 				qctx->client->query.recursing = true;
@@ -8170,7 +8179,8 @@ query_zone_delegation(query_ctx_t *qctx) {
 		dns_dbversion_t *tversion = NULL;
 		dns_getdb_options_t options = { .partial = true };
 		result = query_getzonedb(
-			qctx->client, (dns_name_t *)qctx->client->query.qname,
+			qctx->client,
+			dns_linkedname_name(qctx->client->query.qname),
 			qctx->qtype, options, &tzone, &tdb, &tversion);
 		if (result != ISC_R_SUCCESS) {
 			if (tdb != NULL) {
@@ -8343,7 +8353,7 @@ cleanup:
 static isc_result_t
 query_delegation_recurse(query_ctx_t *qctx) {
 	isc_result_t result = ISC_R_UNSET;
-	dns_name_t *qname = (dns_name_t *)qctx->client->query.qname;
+	dns_name_t *qname = dns_linkedname_name(qctx->client->query.qname);
 
 	CCTRACE(ISC_LOG_DEBUG(3), "query_delegation_recurse");
 
@@ -8395,7 +8405,7 @@ query_delegation_recurse(query_ctx_t *qctx) {
 		if (tresult != ISC_R_SUCCESS) {
 			dns_delegset_fromnsrdataset(qctx->client->manager->mctx,
 						    qctx->rdataset, &delegset);
-			fname = (dns_name_t *)qctx->fname;
+			fname = dns_linkedname_name(qctx->fname);
 		}
 
 		if (delegset == NULL) {
@@ -8521,7 +8531,7 @@ addnsec3:
 	dns_rdataset_cleanup(sigrdataset);
 	name = dns_fixedname_name(&qctx->dsname);
 	query_findclosestnsec3(name, qctx->db, qctx->version, client, rdataset,
-			       sigrdataset, (dns_name_t *)fname, true,
+			       sigrdataset, dns_linkedname_name(fname), true,
 			       dns_fixedname_name(&fixed));
 	if (!dns_rdataset_isassociated(rdataset)) {
 		goto cleanup;
@@ -8545,8 +8555,8 @@ addnsec3:
 		}
 		query_findclosestnsec3(dns_fixedname_name(&fixed), qctx->db,
 				       qctx->version, client, rdataset,
-				       sigrdataset, (dns_name_t *)fname, false,
-				       NULL);
+				       sigrdataset, dns_linkedname_name(fname),
+				       false, NULL);
 		if (!dns_rdataset_isassociated(rdataset)) {
 			goto cleanup;
 		}
@@ -8602,7 +8612,7 @@ query_nodata(query_ctx_t *qctx, isc_result_t res) {
 							qctx->dbuf, &b);
 		}
 		dns_name_copy(qctx->client->query.qname,
-			      (dns_name_t *)qctx->fname);
+			      dns_linkedname_name(qctx->fname));
 		qctx->dns64 = false;
 #ifdef dns64_bis_return_excluded_addresses
 		/*
@@ -8707,12 +8717,12 @@ query_sign_nodata(query_ctx_t *qctx) {
 			isc_buffer_t b;
 
 			found = dns_fixedname_initname(&fixed);
-			qname = (dns_name_t *)qctx->client->query.qname;
+			qname = dns_linkedname_name(qctx->client->query.qname);
 
 			query_findclosestnsec3(
 				qname, qctx->db, qctx->version, qctx->client,
 				qctx->rdataset, qctx->sigrdataset,
-				(dns_name_t *)qctx->fname, true, found);
+				dns_linkedname_name(qctx->fname), true, found);
 			/*
 			 * Did we find the closest provable encloser
 			 * instead? If so add the nearest to the
@@ -8757,7 +8767,8 @@ query_sign_nodata(query_ctx_t *qctx) {
 					found, qctx->db, qctx->version,
 					qctx->client, qctx->rdataset,
 					qctx->sigrdataset,
-					(dns_name_t *)qctx->fname, false, NULL);
+					dns_linkedname_name(qctx->fname), false,
+					NULL);
 			}
 		} else {
 			ns_client_releasename(qctx->client, &qctx->fname);
@@ -8850,12 +8861,12 @@ query_addnxrrsetnsec(query_ctx_t *qctx) {
 	dbuf = ns_client_getnamebuf(client);
 	fname = ns_client_newname(client, dbuf, &b);
 
-	dns_name_split((dns_name_t *)qctx->fname, sig.labels + 1, NULL,
-		       (dns_name_t *)fname);
+	dns_name_split(dns_linkedname_name(qctx->fname), sig.labels + 1, NULL,
+		       dns_linkedname_name(fname));
 	/* This will succeed, since we've stripped labels. */
-	RUNTIME_CHECK(
-		dns_name_concatenate(dns_wildcardname, (dns_name_t *)fname,
-				     (dns_name_t *)fname) == ISC_R_SUCCESS);
+	RUNTIME_CHECK(dns_name_concatenate(
+			      dns_wildcardname, dns_linkedname_name(fname),
+			      dns_linkedname_name(fname)) == ISC_R_SUCCESS);
 	query_addrrset(qctx, &fname, &qctx->rdataset, &qctx->sigrdataset, dbuf,
 		       DNS_SECTION_AUTHORITY);
 }
@@ -8971,7 +8982,7 @@ query_redirect(query_ctx_t *qctx, isc_result_t saved_result) {
 
 	CCTRACE(ISC_LOG_DEBUG(3), "query_redirect");
 
-	result = redirect(qctx->client, (dns_name_t *)qctx->fname,
+	result = redirect(qctx->client, dns_linkedname_name(qctx->fname),
 			  qctx->rdataset, &qctx->node, &qctx->db,
 			  &qctx->version, qctx->type);
 	switch (result) {
@@ -8990,7 +9001,7 @@ query_redirect(query_ctx_t *qctx, isc_result_t saved_result) {
 		break;
 	}
 
-	result = redirect2(qctx->client, (dns_name_t *)qctx->fname,
+	result = redirect2(qctx->client, dns_linkedname_name(qctx->fname),
 			   qctx->rdataset, &qctx->node, &qctx->db,
 			   &qctx->version, qctx->type, &qctx->is_zone);
 	switch (result) {
@@ -9108,7 +9119,7 @@ query_synthnodata(query_ctx_t *qctx, const dns_name_t *signer,
 
 	dbuf = ns_client_getnamebuf(qctx->client);
 	name = ns_client_newname(qctx->client, dbuf, &b);
-	dns_name_copy(signer, (dns_name_t *)name);
+	dns_name_copy(signer, dns_linkedname_name(name));
 
 	/*
 	 * Add SOA record. Omit the RRSIG if DNSSEC was not requested.
@@ -9161,7 +9172,7 @@ query_synthwildcard(query_ctx_t *qctx, dns_rdataset_t *rdataset,
 
 	dbuf = ns_client_getnamebuf(qctx->client);
 	name = ns_client_newname(qctx->client, dbuf, &b);
-	dns_name_copy(qctx->client->query.qname, (dns_name_t *)name);
+	dns_name_copy(qctx->client->query.qname, dns_linkedname_name(name));
 
 	cloneset = ns_client_newrdataset(qctx->client);
 	dns_rdataset_clone(rdataset, cloneset);
@@ -9242,7 +9253,7 @@ query_synthcnamewildcard(query_ctx_t *qctx, dns_rdataset_t *rdataset,
 		return ISC_R_SUCCESS;
 	}
 
-	dns_name_copy(&cname.cname, (dns_name_t *)tname);
+	dns_name_copy(&cname.cname, dns_linkedname_name(tname));
 
 	dns_rdata_freestruct(&cname);
 	ns_client_qnamereplace(qctx->client, tname);
@@ -9294,7 +9305,7 @@ query_synthnxdomainnodata(query_ctx_t *qctx, bool nodata, dns_name_t *nowild,
 
 	dbuf = ns_client_getnamebuf(qctx->client);
 	name = ns_client_newname(qctx->client, dbuf, &b);
-	dns_name_copy(signer, (dns_name_t *)name);
+	dns_name_copy(signer, dns_linkedname_name(name));
 
 	/*
 	 * Add SOA record. Omit the RRSIG if DNSSEC was not requested.
@@ -9314,7 +9325,7 @@ query_synthnxdomainnodata(query_ctx_t *qctx, bool nodata, dns_name_t *nowild,
 
 		dbuf = ns_client_getnamebuf(qctx->client);
 		name = ns_client_newname(qctx->client, dbuf, &b);
-		dns_name_copy(nowild, (dns_name_t *)name);
+		dns_name_copy(nowild, dns_linkedname_name(name));
 
 		cloneset = ns_client_newrdataset(qctx->client);
 		clonesigset = ns_client_newrdataset(qctx->client);
@@ -9463,8 +9474,8 @@ query_coveringnsec(query_ctx_t *qctx) {
 	/*
 	 * The query name can't be above the signer of the NSEC.
 	 */
-	if (!dns_name_issubdomain((dns_name_t *)qctx->client->query.qname,
-				  signer))
+	if (!dns_name_issubdomain(
+		    dns_linkedname_name(qctx->client->query.qname), signer))
 	{
 		goto cleanup;
 	}
@@ -9481,9 +9492,9 @@ query_coveringnsec(query_ctx_t *qctx) {
 	 * Check that we have the correct NOQNAME NSEC record.
 	 */
 	CHECK(dns_nsec_noexistnodata(
-		qctx->qtype, (dns_name_t *)qctx->client->query.qname,
-		(dns_name_t *)qctx->fname, qctx->rdataset, &exists, &data, wild,
-		log_noexistnodata, qctx));
+		qctx->qtype, dns_linkedname_name(qctx->client->query.qname),
+		dns_linkedname_name(qctx->fname), qctx->rdataset, &exists,
+		&data, wild, log_noexistnodata, qctx));
 	if (exists) {
 		/*
 		 * If there's data at the name, or the NSEC isn't
@@ -9734,7 +9745,8 @@ query_ncache(query_ctx_t *qctx, isc_result_t result) {
 		    qctx->client->message->rdclass == dns_rdataclass_in &&
 		    dns_name_countlabels(qctx->fname) == 7)
 		{
-			warn_rfc1918(qctx->client, (dns_name_t *)qctx->fname,
+			warn_rfc1918(qctx->client,
+				     dns_linkedname_name(qctx->fname),
 				     qctx->rdataset);
 		}
 	}
@@ -9769,9 +9781,10 @@ query_zerottl_refetch(query_ctx_t *qctx) {
 
 	INSIST(!qctx->client->query.is_redirect);
 
-	result = ns_query_recurse(qctx->client, qctx->qtype,
-				  (dns_name_t *)qctx->client->query.qname, NULL,
-				  NULL, qctx->resuming);
+	result =
+		ns_query_recurse(qctx->client, qctx->qtype,
+				 dns_linkedname_name(qctx->client->query.qname),
+				 NULL, NULL, qctx->resuming);
 	if (result == ISC_R_SUCCESS) {
 		CALL_HOOK(NS_QUERY_ZEROTTL_RECURSE, qctx);
 		qctx->client->query.recursing = true;
@@ -9851,7 +9864,7 @@ query_cname(query_ctx_t *qctx) {
 	}
 
 	if (!qctx->is_zone && qctx->client->query.recursionok) {
-		query_prefetch(qctx->client, (dns_name_t *)qctx->fname,
+		query_prefetch(qctx->client, dns_linkedname_name(qctx->fname),
 			       qctx->rdataset);
 	}
 
@@ -9884,7 +9897,7 @@ query_cname(query_ctx_t *qctx) {
 	RUNTIME_CHECK(result == ISC_R_SUCCESS);
 	dns_rdata_reset(&rdata);
 
-	dns_name_copy(&cname.cname, (dns_name_t *)tname);
+	dns_name_copy(&cname.cname, dns_linkedname_name(tname));
 
 	dns_rdata_freestruct(&cname);
 
@@ -9959,7 +9972,7 @@ query_dname(query_ctx_t *qctx) {
 	}
 
 	if (!qctx->is_zone && qctx->client->query.recursionok) {
-		query_prefetch(qctx->client, (dns_name_t *)qctx->fname,
+		query_prefetch(qctx->client, dns_linkedname_name(qctx->fname),
 			       qctx->rdataset);
 	}
 	query_addrrset(qctx, &qctx->fname, &qctx->rdataset, sigrdatasetp,
@@ -9990,7 +10003,7 @@ query_dname(query_ctx_t *qctx) {
 	RUNTIME_CHECK(result == ISC_R_SUCCESS);
 	dns_rdata_reset(&rdata);
 
-	dns_name_copy(&dname.dname, (dns_name_t *)tname);
+	dns_name_copy(&dname.dname, dns_linkedname_name(tname));
 	dns_rdata_freestruct(&dname);
 
 	/*
@@ -9998,13 +10011,13 @@ query_dname(query_ctx_t *qctx) {
 	 * <found name prefix>.<dname target>
 	 */
 	prefix = dns_fixedname_initname(&fixed);
-	dns_name_split((dns_name_t *)qctx->client->query.qname, nlabels, prefix,
-		       NULL);
+	dns_name_split(dns_linkedname_name(qctx->client->query.qname), nlabels,
+		       prefix, NULL);
 	INSIST(qctx->fname == NULL);
 	qctx->dbuf = ns_client_getnamebuf(qctx->client);
 	qctx->fname = ns_client_newname(qctx->client, qctx->dbuf, &b);
-	result = dns_name_concatenate(prefix, (dns_name_t *)tname,
-				      (dns_name_t *)qctx->fname);
+	result = dns_name_concatenate(prefix, dns_linkedname_name(tname),
+				      dns_linkedname_name(qctx->fname));
 	dns_message_puttempname(qctx->client->message, &tname);
 	tname = NULL;
 
@@ -10031,19 +10044,20 @@ query_dname(query_ctx_t *qctx) {
 	dns_name_t *deniedname = dns_fixedname_initname(&fdeniedname);
 	if (qctx->view->denyanswernames != NULL &&
 	    dns_nametree_covered(qctx->view->denyanswernames,
-				 (dns_name_t *)qctx->fname, deniedname, 0) &&
-	    !dns_nametree_covered(qctx->view->answernames_exclude,
-				  (dns_name_t *)qctx->client->query.qname, NULL,
-				  0) &&
-	    !dns_name_issubdomain((dns_name_t *)qctx->client->query.qname,
-				  deniedname))
+				 dns_linkedname_name(qctx->fname), deniedname,
+				 0) &&
+	    !dns_nametree_covered(
+		    qctx->view->answernames_exclude,
+		    dns_linkedname_name(qctx->client->query.qname), NULL, 0) &&
+	    !dns_name_issubdomain(
+		    dns_linkedname_name(qctx->client->query.qname), deniedname))
 	{
 		char qnamebuf[DNS_NAME_FORMATSIZE];
 		char tnamebuf[DNS_NAME_FORMATSIZE];
 
-		dns_name_format((dns_name_t *)qctx->client->query.qname,
+		dns_name_format(dns_linkedname_name(qctx->client->query.qname),
 				qnamebuf, sizeof(qnamebuf));
-		dns_name_format((dns_name_t *)qctx->fname, tnamebuf,
+		dns_name_format(dns_linkedname_name(qctx->fname), tnamebuf,
 				sizeof(tnamebuf));
 		ns_client_log(qctx->client, NS_LOGCATEGORY_QUERIES,
 			      NS_LOGMODULE_QUERY, ISC_LOG_NOTICE,
@@ -10113,7 +10127,7 @@ query_addcname(query_ctx_t *qctx, dns_trust_t trust, dns_ttl_t ttl) {
 
 	dns_message_gettempname(client->message, &aname);
 
-	dns_name_copy(client->query.qname, (dns_name_t *)aname);
+	dns_name_copy(client->query.qname, dns_linkedname_name(aname));
 
 	dns_message_gettemprdatalist(client->message, &rdatalist);
 
@@ -10134,7 +10148,7 @@ query_addcname(query_ctx_t *qctx, dns_trust_t trust, dns_ttl_t ttl) {
 	ISC_LIST_APPEND(rdatalist->rdata, rdata, link);
 	dns_rdatalist_tordataset(rdatalist, rdataset);
 	rdataset->trust = trust;
-	dns_rdataset_setownercase(rdataset, (dns_name_t *)aname);
+	dns_rdataset_setownercase(rdataset, dns_linkedname_name(aname));
 
 	query_addrrset(qctx, &aname, &rdataset, NULL, NULL, DNS_SECTION_ANSWER);
 	if (rdataset != NULL) {
@@ -10224,7 +10238,7 @@ query_addsoa(query_ctx_t *qctx, unsigned int override_ttl,
 	 * We'll be releasing 'name' before returning, so it's safe to
 	 * use clone instead of copying here.
 	 */
-	dns_name_clone(dns_db_origin(qctx->db), (dns_name_t *)name);
+	dns_name_clone(dns_db_origin(qctx->db), dns_linkedname_name(name));
 
 	rdataset = ns_client_newrdataset(client);
 	if (client->inner.wantdnssec && dns_db_issecure(qctx->db)) {
@@ -10346,7 +10360,7 @@ query_addns(query_ctx_t *qctx) {
 	 * Get resources and make 'name' be the database origin.
 	 */
 	dns_message_gettempname(client->message, &name);
-	dns_name_clone(dns_db_origin(qctx->db), (dns_name_t *)name);
+	dns_name_clone(dns_db_origin(qctx->db), dns_linkedname_name(name));
 	rdataset = ns_client_newrdataset(client);
 
 	if (client->inner.wantdnssec && dns_db_issecure(qctx->db)) {
@@ -10487,7 +10501,8 @@ db_find:
 		result = dns_db_findext(
 			db, client->query.qname, version, dns_rdatatype_ns,
 			client->query.dboptions, client->inner.now, &node,
-			(dns_name_t *)fname, &cm, &ci, rdataset, sigrdataset);
+			dns_linkedname_name(fname), &cm, &ci, rdataset,
+			sigrdataset);
 		if (result != DNS_R_DELEGATION) {
 			goto cleanup;
 		}
@@ -10628,7 +10643,7 @@ query_addwildcardproof(query_ctx_t *qctx, bool ispositive, bool nodata) {
 	if (qctx->need_wildcardproof) {
 		name = dns_fixedname_name(&qctx->wildcardname);
 	} else {
-		name = (dns_name_t *)client->query.qname;
+		name = dns_linkedname_name(client->query.qname);
 	}
 
 	/*
@@ -10685,9 +10700,10 @@ again:
 	rdataset = ns_client_newrdataset(client);
 	sigrdataset = ns_client_newrdataset(client);
 
-	result = dns_db_findext(
-		qctx->db, name, qctx->version, dns_rdatatype_nsec, options, 0,
-		&node, (dns_name_t *)fname, &cm, &ci, rdataset, sigrdataset);
+	result = dns_db_findext(qctx->db, name, qctx->version,
+				dns_rdatatype_nsec, options, 0, &node,
+				dns_linkedname_name(fname), &cm, &ci, rdataset,
+				sigrdataset);
 	if (node != NULL) {
 		dns_db_detachnode(&node);
 	}
@@ -10716,7 +10732,8 @@ again:
 			}
 			result = dns_db_findext(qctx->db, cname, qctx->version,
 						dns_rdatatype_nsec, options, 0,
-						NULL, (dns_name_t *)fname, &cm,
+						NULL,
+						dns_linkedname_name(fname), &cm,
 						&ci, NULL, NULL);
 			if (result == DNS_R_NXDOMAIN) {
 				maxlabels = labels;
@@ -10730,7 +10747,7 @@ again:
 		 */
 		query_findclosestnsec3(cname, qctx->db, qctx->version, client,
 				       rdataset, sigrdataset,
-				       (dns_name_t *)fname, true, cname);
+				       dns_linkedname_name(fname), true, cname);
 		if (!dns_rdataset_isassociated(rdataset)) {
 			goto cleanup;
 		}
@@ -10779,7 +10796,7 @@ again:
 
 		query_findclosestnsec3(wname, qctx->db, qctx->version, client,
 				       rdataset, sigrdataset,
-				       (dns_name_t *)fname, false, NULL);
+				       dns_linkedname_name(fname), false, NULL);
 		if (!dns_rdataset_isassociated(rdataset)) {
 			goto cleanup;
 		}
@@ -10815,9 +10832,9 @@ again:
 		 */
 		CHECK(dns_name_concatenate(dns_wildcardname, cname, wname));
 
-		query_findclosestnsec3(wname, qctx->db, qctx->version, client,
-				       rdataset, sigrdataset,
-				       (dns_name_t *)fname, nodata, NULL);
+		query_findclosestnsec3(
+			wname, qctx->db, qctx->version, client, rdataset,
+			sigrdataset, dns_linkedname_name(fname), nodata, NULL);
 		if (!dns_rdataset_isassociated(rdataset)) {
 			goto cleanup;
 		}
