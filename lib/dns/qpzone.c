@@ -918,8 +918,6 @@ bindrdataset(qpzonedb_t *qpdb, qpznode_t *node, dns_slabheader_t *header,
 		return;
 	}
 
-	isc_refcount_increment0(&header->references);
-
 	qpznode_acquire(qpdb, node DNS__DB_FLARG_PASS);
 
 	INSIST(rdataset->methods == NULL); /* We must be disassociated. */
@@ -4052,11 +4050,6 @@ rdatasetiter_destroy(dns_rdatasetiter_t **iteratorp DNS__DB_FLARG) {
 
 	qrditer = (qpdb_rdatasetiter_t *)(*iteratorp);
 
-	if (qrditer->current != NULL) {
-		isc_refcount_decrement(&qrditer->current->references);
-		qrditer->current = NULL;
-	}
-
 	if (qrditer->common.version != NULL) {
 		closeversion(qrditer->common.db, &qrditer->common.version,
 			     false DNS__DB_FLARG_PASS);
@@ -4099,16 +4092,7 @@ rdatasetiter_first(dns_rdatasetiter_t *iterator DNS__DB_FLARG) {
 		}
 	}
 
-	if (header != NULL) {
-		isc_refcount_increment0(&header->references);
-	}
-
 	NODE_UNLOCK(nlock, &nlocktype);
-
-	if (qrditer->current != NULL) {
-		isc_refcount_decrement(&qrditer->current->references);
-		qrditer->current = NULL;
-	}
 
 	qrditer->current = header;
 
@@ -4180,16 +4164,7 @@ rdatasetiter_next(dns_rdatasetiter_t *iterator DNS__DB_FLARG) {
 		}
 	}
 
-	if (header != NULL) {
-		isc_refcount_increment0(&header->references);
-	}
-
 	NODE_UNLOCK(nlock, &nlocktype);
-
-	if (qrditer->current != NULL) {
-		isc_refcount_decrement(&qrditer->current->references);
-		qrditer->current = NULL;
-	}
 
 	qrditer->current = header;
 

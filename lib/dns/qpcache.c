@@ -592,19 +592,13 @@ update_header(qpcache_t *qpdb, dns_slabheader_t *header, isc_stdtime_t now) {
 
 static void
 clean_stale_headers(dns_slabheader_t *top) {
-	dns_slabheader_t *d = NULL, *down_next = NULL, *down_parent = top;
+	dns_slabheader_t *d = NULL, *down_next = NULL;
 
 	for (d = top->down; d != NULL; d = down_next) {
 		down_next = d->down;
-		d->next = down_parent;
-
-		if (isc_refcount_current(&d->references) == 0) {
-			dns_slabheader_destroy(&d);
-			down_parent->down = down_next;
-		} else {
-			down_parent = d;
-		}
+		dns_slabheader_destroy(&d);
 	}
+	top->down = NULL;
 }
 
 static void
@@ -618,7 +612,6 @@ clean_cache_node(qpcache_t *qpdb, qpcnode_t *node) {
 	for (current = node->data; current != NULL; current = top_next) {
 		top_next = current->next;
 		clean_stale_headers(current);
-		INSIST(current->down == NULL);
 		/*
 		 * If current is nonexistent, ancient, or stale and
 		 * we are not keeping stale, we can clean it up.
@@ -989,13 +982,9 @@ setttl(dns_slabheader_t *header, dns_ttl_t newttl) {
 
 static void
 mark_ancient(dns_slabheader_t *header) {
-	if (!ANCIENT(header)) {
-		setttl(header, 0);
-		mark(header, DNS_SLABHEADERATTR_ANCIENT);
-		HEADERNODE(header)->dirty = 1;
-		isc_refcount_decrement(&header->references);
-		clean_stale_headers(header);
-	}
+	setttl(header, 0);
+	mark(header, DNS_SLABHEADERATTR_ANCIENT);
+	HEADERNODE(header)->dirty = 1;
 }
 
 /*
@@ -1083,8 +1072,6 @@ bindrdataset(qpcache_t *qpdb, qpcnode_t *node, dns_slabheader_t *header,
 	if (rdataset == NULL) {
 		return;
 	}
-
-	isc_refcount_increment(&header->references);
 
 	qpcnode_acquire(qpdb, node, nlocktype, tlocktype DNS__DB_FLARG_PASS);
 
@@ -2859,7 +2846,6 @@ add(qpcache_t *qpdb, qpcnode_t *qpnode,
 	dns_slabheader_t *prioheader = NULL, *expireheader = NULL;
 	bool header_nx;
 	bool newheader_nx;
-	bool do_expireheader = false;
 	dns_typepair_t negtype = 0;
 	dns_trust_t trust;
 	int idx;
@@ -3297,8 +3283,6 @@ find_header:
 			}
 
 			if (overmaxtype(qpdb, ntypes)) {
-				do_expireheader = true;
-
 				if (expireheader == NULL) {
 					expireheader = newheader;
 				}
@@ -3312,6 +3296,14 @@ find_header:
 					 */
 					expireheader = newheader;
 				}
+
+				mark_ancient(expireheader);
+				/*
+				 * FIXME: In theory, we should mark the RRSIG
+				 * and the header at the same time, but there is
+				 * no direct link between those two header, so
+				 * we would have to check the whole list again.
+				 */
 			}
 		}
 	}
@@ -3319,14 +3311,6 @@ find_header:
 	if (addedrdataset != NULL) {
 		bindrdataset(qpdb, qpnode, newheader, now, nlocktype, tlocktype,
 			     addedrdataset DNS__DB_FLARG_PASS);
-	}
-
-	/*
-	 * We need to delay the expiration of the header until we are bound to
-	 * it to prevent decrement-then-increment on the header references.
-	 */
-	if (do_expireheader) {
-		mark_ancient(expireheader);
 	}
 
 	return ISC_R_SUCCESS;
@@ -3781,11 +3765,6 @@ rdatasetiter_destroy(dns_rdatasetiter_t **iteratorp DNS__DB_FLARG) {
 
 	iterator = (qpc_rditer_t *)(*iteratorp);
 
-	if (iterator->current != NULL) {
-		isc_refcount_decrement(&iterator->current->references);
-		iterator->current = NULL;
-	}
-
 	dns__db_detachnode(iterator->common.db,
 			   &iterator->common.node DNS__DB_FLARG_PASS);
 	isc_mem_put(iterator->common.db->mctx, iterator, sizeof(*iterator));
@@ -3855,16 +3834,7 @@ rdatasetiter_first(dns_rdatasetiter_t *it DNS__DB_FLARG) {
 		}
 	}
 
-	if (header != NULL) {
-		isc_refcount_increment0(&header->references);
-	}
-
 	NODE_UNLOCK(nlock, &nlocktype);
-
-	if (iterator->current != NULL) {
-		isc_refcount_decrement(&iterator->current->references);
-		iterator->current = NULL;
-	}
 
 	iterator->current = header;
 
@@ -3953,16 +3923,7 @@ rdatasetiter_next(dns_rdatasetiter_t *it DNS__DB_FLARG) {
 		}
 	}
 
-	if (header != NULL) {
-		isc_refcount_increment0(&header->references);
-	}
-
 	NODE_UNLOCK(nlock, &nlocktype);
-
-	if (iterator->current != NULL) {
-		isc_refcount_decrement(&iterator->current->references);
-		iterator->current = NULL;
-	}
 
 	iterator->current = header;
 

@@ -46,7 +46,6 @@
 #include <isc/atomic.h>
 #include <isc/heap.h>
 #include <isc/lang.h>
-#include <isc/refcount.h>
 #include <isc/stdtime.h>
 #include <isc/urcu.h>
 
@@ -95,8 +94,6 @@ struct dns_slabheader {
 
 	isc_stdtime_t	  last_used;
 	_Atomic(uint32_t) last_refresh_fail_ts;
-
-	isc_refcount_t references;
 
 	dns_slabheader_proof_t *noqname;
 	dns_slabheader_proof_t *closest;
