@@ -57,16 +57,22 @@ A test that flakes is treated as a bug in the test.
 ## Add a new system test directory
 
 This skeleton sets up one authoritative server and queries it.  Pick a name
-that starts with a letter and uses underscores as word separators (hyphens
-are not allowed), and create:
+that starts with a letter, uses underscores as word separators (hyphens are
+not allowed), and doesn't shadow a Python module importable in the test
+environment (e.g. `statistics` or `idna`), and create:
 
 ```
 demo/
+├── __init__.py
 ├── ns1/
 │   ├── named.conf.j2
 │   └── example.db
 └── tests_demo.py
 ```
+
+`demo/__init__.py` — makes the directory a Python package: this lets test
+module names repeat across directories, and it is why the directory name
+must not shadow a real Python module.
 
 `demo/ns1/named.conf.j2` — the config template; the runner renders it to
 `named.conf` at setup time, filling in the assigned ports.  Templates inside
