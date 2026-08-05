@@ -9,6 +9,7 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
+from importlib.machinery import PathFinder
 from pathlib import Path
 from re import compile as Re
 
@@ -89,9 +90,37 @@ except ImportError:
 # --------------------------- pytest hooks -------------------------------
 
 
+def check_system_test_dirs():
+    """
+    Each system test directory must be a Python package (so that test
+    module names may repeat across directories) and its name must not
+    shadow a module importable in the runtime environment, which the
+    package would hide for the whole pytest process.
+    """
+    search_path = [path for path in sys.path if os.path.abspath(path) != FILE_DIR]
+    errors = []
+    for entry in sorted(Path(FILE_DIR).iterdir()):
+        if not entry.is_dir() or "-" in entry.name:
+            continue
+        if not any(entry.glob("tests_*.py")):
+            continue
+        if not (entry / "__init__.py").is_file():
+            errors.append(f"{entry.name}: missing __init__.py")
+        if entry.name in sys.stdlib_module_names or PathFinder.find_spec(
+            entry.name, search_path
+        ):
+            errors.append(f"{entry.name}: shadows an importable Python module")
+    if errors:
+        raise RuntimeError(
+            "system test directory checks failed:\n  " + "\n  ".join(errors)
+        )
+
+
 def pytest_configure(config):  # pylint: disable=unused-argument
     if sys.version_info < (3, 10):
         raise RuntimeError("Python 3.10 or newer is required to run system tests.")
+
+    check_system_test_dirs()
 
     isctest.log.init_conftest_logger()
     isctest.log.avoid_duplicated_logs()
