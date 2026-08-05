@@ -154,7 +154,7 @@ sendquery(void) {
 
 	dns_message_gettemprdataset(message, &qrdataset);
 
-	dns_name_clone(&queryname, dns_linkedname_name(qname));
+	dns_name_clone(&queryname, dns_name(qname));
 	dns_rdataset_makequestion(qrdataset, dns_rdataclass_in,
 				  dns_rdatatype_a);
 	ISC_LIST_APPEND(qname->list, qrdataset, link);

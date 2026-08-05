@@ -1282,8 +1282,7 @@ parse_name(char **cmdlinep, dns_message_t *msg, dns_linkedname_t **namep) {
 	dns_message_gettempname(msg, namep);
 	isc_buffer_init(&source, word, strlen(word));
 	isc_buffer_add(&source, strlen(word));
-	result = dns_name_fromtext(dns_linkedname_name(*namep), &source,
-				   dns_rootname, 0);
+	result = dns_name_fromtext(dns_name(*namep), &source, dns_rootname, 0);
 	if (result != ISC_R_SUCCESS) {
 		error("invalid owner name: %s", isc_result_totext(result));
 		isc_buffer_invalidate(&source);
@@ -1884,7 +1883,7 @@ update_addordelete(char *cmdline, bool isdelete) {
 	if (retval != STATUS_MORE) {
 		return retval;
 	}
-	const dns_name_t *name = dns_linkedname_name(linkedname);
+	const dns_name_t *name = dns_name(linkedname);
 
 	dns_message_gettemprdata(updatemsg, &rdata);
 
@@ -2176,7 +2175,7 @@ setzone(dns_name_t *zonename) {
 		dns_rdataset_t *rdataset = NULL;
 
 		dns_message_gettempname(updatemsg, &name);
-		dns_name_clone(zonename, dns_linkedname_name(name));
+		dns_name_clone(zonename, dns_name(name));
 		dns_message_gettemprdataset(updatemsg, &rdataset);
 		dns_rdataset_makequestion(rdataset, getzoneclass(),
 					  dns_rdatatype_soa);
@@ -2946,7 +2945,7 @@ droplabel:
 	}
 	dns_name_init(&tname);
 	dns_name_getlabelsequence(name, 1, nlabels - 1, &tname);
-	dns_name_clone(&tname, dns_linkedname_name(name));
+	dns_name_clone(&tname, dns_name(name));
 	dns_request_destroy(&request);
 	dns_message_renderreset(soaquery);
 	dns_message_settsigkey(soaquery, NULL);
@@ -3370,7 +3369,7 @@ start_update(void) {
 	dns_rdataset_makequestion(rdataset, getzoneclass(), dns_rdatatype_soa);
 
 	if (userzone != NULL) {
-		dns_name_clone(userzone, dns_linkedname_name(name));
+		dns_name_clone(userzone, dns_name(name));
 	} else {
 		dns_rdataset_t *tmprdataset;
 
@@ -3394,7 +3393,7 @@ start_update(void) {
 
 		dns_linkedname_t *firstname =
 			ISC_LIST_HEAD(updatemsg->sections[section]);
-		dns_name_clone(firstname, dns_linkedname_name(name));
+		dns_name_clone(firstname, dns_name(name));
 
 		/*
 		 * Looks to see if the first name references a DS record
@@ -3409,7 +3408,7 @@ start_update(void) {
 		{
 			unsigned int labels = dns_name_countlabels(name);
 			dns_name_getlabelsequence(name, 1, labels - 1,
-						  dns_linkedname_name(name));
+						  dns_name(name));
 		}
 	}
 

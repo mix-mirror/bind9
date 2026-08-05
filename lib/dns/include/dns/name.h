@@ -132,12 +132,12 @@ struct dns_linkedname {
 };
 
 static inline dns_name_t *
-dns_linkedname_name(dns_linkedname_t *nwl) {
+dns__linkedname_name(dns_linkedname_t *nwl) {
 	return nwl != NULL ? (dns_name_t *)nwl : NULL;
 }
 
 static inline const dns_name_t *
-dns_linkedname_name_const(const dns_linkedname_t *nwl) {
+dns__linkedname_name_const(const dns_linkedname_t *nwl) {
 	return nwl != NULL ? (const dns_name_t *)nwl : NULL;
 }
 
@@ -1452,14 +1452,17 @@ dns_name__israd(const dns_name_t *name, const dns_name_t *rad);
  * \li	'name' to be valid.
  */
 
-#define DNS_NAME__RO_ARG(arg)                                        \
-	_Generic((arg),                                              \
-		dns_name_t *: dns_name__readonly_arg,                \
-		const dns_name_t *: dns_name__readonly_arg,          \
-		dns_linkedname_t *: dns_linkedname_name,             \
-		const dns_linkedname_t *: dns_linkedname_name_const, \
-		dns_fixedname_t *: dns_fixedname_name,               \
+#define DNS_NAME__RO_ARG(arg)                                         \
+	_Generic((arg),                                               \
+		dns_name_t *: dns_name__readonly_arg,                 \
+		const dns_name_t *: dns_name__readonly_arg,           \
+		dns_linkedname_t *: dns__linkedname_name,             \
+		const dns_linkedname_t *: dns__linkedname_name_const, \
+		dns_fixedname_t *: dns_fixedname_name,                \
 		const dns_fixedname_t *: dns_fixedname_name_const)(arg)
+
+#define dns_name(source)       DNS_NAME__RO_ARG(source)
+#define dns_name_const(source) DNS_NAME__RO_ARG(source)
 
 #define dns_name_clone(source, target) \
 	dns_name__clone(DNS_NAME__RO_ARG(source), target)
