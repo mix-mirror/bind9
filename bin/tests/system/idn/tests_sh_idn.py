@@ -18,5 +18,5 @@ pytestmark = pytest.mark.extra_artifacts(
 )
 
 
-def test_idna(run_tests_sh):
+def test_idn(run_tests_sh):
     run_tests_sh()
