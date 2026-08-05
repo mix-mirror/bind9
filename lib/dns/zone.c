@@ -4578,6 +4578,13 @@ cleanup:
 	return result;
 }
 
+bool
+dns_zone_checking_zonemd(dns_zone_t *zone) {
+	REQUIRE(DNS_ZONE_VALID(zone));
+
+	return DNS_ZONE_OPTION(zone, DNS_ZONEOPT_ZONEMD_CHECK);
+}
+
 /*
  * The zone is presumed to be locked.
  * If this is a inline_raw zone the secure version is also locked.
