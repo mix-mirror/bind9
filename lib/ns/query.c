@@ -4744,13 +4744,6 @@ qctx_init(ns_client_t *client, dns_fetchresponse_t **frespp,
 	qctx->findcoveringnsec = qctx->view->synthfromdnssec;
 	dns_fixedname_init(&qctx->foundname);
 	dns_fixedname_init(&qctx->zfoundname);
-
-	/*
-	 * If it's an RRSIG or SIG query, we'll iterate the node.
-	 */
-	if (dns_rdatatype_issig(qctx->qtype)) {
-		qctx->type = dns_rdatatype_any;
-	}
 }
 
 /*
@@ -5444,6 +5437,23 @@ ns__query_start(query_ctx_t *qctx) {
 		default:
 			UNREACHABLE();
 		}
+	}
+
+	/*
+	 * ANY queries are answered only from authoritative data, in
+	 * the spirit of RFC 8482; anywhere else they are refused.  The
+	 * alternative to an error is a positive answer, never a NODATA
+	 * one: resolvers cache a NODATA answer to an ANY query as the
+	 * absence of all records at the name, so it would blank the
+	 * name in any forwarder that still forwards ANY queries.
+	 */
+	if (qctx->qtype == dns_rdatatype_any &&
+	    (!qctx->authoritative || qctx->is_staticstub_zone))
+	{
+		dns_ede_add(&qctx->client->edectx, DNS_EDE_NOTSUPPORTED,
+			    "ANY queries are not supported");
+		QUERY_ERROR(qctx, DNS_R_REFUSED);
+		return ns_query_done(qctx);
 	}
 
 	/*
@@ -6165,11 +6175,7 @@ query_resume(query_ctx_t *qctx) {
 	}
 	INSIST(qctx->rdataset != NULL);
 
-	if (dns_rdatatype_issig(qctx->qtype)) {
-		qctx->type = dns_rdatatype_any;
-	} else {
-		qctx->type = qctx->qtype;
-	}
+	qctx->type = qctx->qtype;
 
 	CALL_HOOK(NS_QUERY_RESUME_RESTORED, qctx);
 
@@ -7313,10 +7319,9 @@ query_respond_any(query_ctx_t *qctx) {
 	dns_rdatasetiter_t *rdsiter = NULL;
 	isc_result_t result = ISC_R_UNSET;
 	dns_rdatatype_t onetype = dns_rdatatype_none; /* type to use for
-							 minimal-any */
+							 the answer */
 	dns_fixedname_t wildcardfixed;
 	dns_name_t *wildcardproof = NULL;
-	isc_buffer_t b;
 
 	CCTRACE(ISC_LOG_DEBUG(3), "query_respond_any");
 
@@ -7355,6 +7360,13 @@ query_respond_any(query_ctx_t *qctx) {
 	}
 
 	/*
+	 * The answer is restricted to a single RRset (RFC 8482); tell
+	 * the client via EDE 21 (Not Supported).
+	 */
+	dns_ede_add(&qctx->client->edectx, DNS_EDE_NOTSUPPORTED,
+		    "ANY query answered with a single RRset (RFC 8482)");
+
+	/*
 	 * Calling query_addrrset() with a non-NULL dbuf is going
 	 * to either keep or release the name.  We don't want it to
 	 * release fname, since we may have to call query_addrrset()
@@ -7374,20 +7386,11 @@ query_respond_any(query_ctx_t *qctx) {
 		/*
 		 * We found an NS RRset; no need to add one later.
 		 */
-		if (qctx->qtype == dns_rdatatype_any &&
-		    qctx->rdataset->type == dns_rdatatype_ns)
-		{
+		if (qctx->rdataset->type == dns_rdatatype_ns) {
 			qctx->answer_has_ns = true;
 		}
 
-		/*
-		 * Note: if we're in this function, then qctx->type
-		 * is guaranteed to be ANY, but qctx->qtype (i.e. the
-		 * original type requested) might have been RRSIG or
-		 * SIG; we need to check for that.
-		 */
-		if (qctx->is_zone && qctx->qtype == dns_rdatatype_any &&
-		    !dns_db_issecure(qctx->db) &&
+		if (qctx->is_zone && !dns_db_issecure(qctx->db) &&
 		    dns_rdatatype_isdnssec(qctx->rdataset->type))
 		{
 			/*
@@ -7396,28 +7399,20 @@ query_respond_any(query_ctx_t *qctx) {
 			 */
 			dns_rdataset_disassociate(qctx->rdataset);
 			hidden = true;
-		} else if (qctx->view->minimal_any &&
-			   !qctx->client->inner.tcp &&
-			   !qctx->client->inner.wantdnssec &&
-			   qctx->qtype == dns_rdatatype_any &&
-			   (dns_rdatatype_issig(qctx->rdataset->type)))
+		} else if (!qctx->client->inner.wantdnssec &&
+			   dns_rdatatype_issig(qctx->rdataset->type))
 		{
 			CCTRACE(ISC_LOG_DEBUG(5), "query_respond_any: "
-						  "minimal-any skip signature");
+						  "skip signature");
 			dns_rdataset_disassociate(qctx->rdataset);
-		} else if (qctx->view->minimal_any &&
-			   !qctx->client->inner.tcp &&
-			   onetype != dns_rdatatype_none &&
+		} else if (onetype != dns_rdatatype_none &&
 			   qctx->rdataset->type != onetype &&
 			   qctx->rdataset->covers != onetype)
 		{
 			CCTRACE(ISC_LOG_DEBUG(5), "query_respond_any: "
-						  "minimal-any skip rdataset");
+						  "skip rdataset");
 			dns_rdataset_disassociate(qctx->rdataset);
-		} else if ((qctx->qtype == dns_rdatatype_any ||
-			    qctx->rdataset->type == qctx->qtype) &&
-			   !qctx->rdataset->attributes.negative)
-		{
+		} else if (!qctx->rdataset->attributes.negative) {
 			if (qctx->rdataset->attributes.noqname &&
 			    qctx->client->inner.wantdnssec)
 			{
@@ -7446,7 +7441,7 @@ query_respond_any(query_ctx_t *qctx) {
 
 			/*
 			 * Remember the first RRtype we find so we
-			 * can skip others with minimal-any.
+			 * can skip the others.
 			 */
 			if (dns_rdatatype_issig(qctx->rdataset->type)) {
 				onetype = qctx->rdataset->covers;
@@ -7505,32 +7500,6 @@ query_respond_any(query_ctx_t *qctx) {
 		 */
 		query_addauth_ns(qctx);
 		query_addauth_wildcardproof(qctx, wildcardproof);
-	} else if (dns_rdatatype_issig(qctx->qtype)) {
-		/*
-		 * No matching rdatasets were found, but we got
-		 * here on a search for RRSIG/SIG, so that's okay.
-		 */
-		if (!qctx->is_zone) {
-			qctx->authoritative = false;
-			qctx->client->inner.ra = false;
-			query_addauth_ns(qctx);
-			query_addauth_wildcardproof(qctx, wildcardproof);
-			return ns_query_done(qctx);
-		}
-
-		if (qctx->qtype == dns_rdatatype_rrsig &&
-		    dns_db_issecure(qctx->db))
-		{
-			char namebuf[DNS_NAME_FORMATSIZE];
-			dns_name_format(qctx->client->query.qname, namebuf,
-					sizeof(namebuf));
-			ns_client_log(qctx->client, DNS_LOGCATEGORY_DNSSEC,
-				      NS_LOGMODULE_QUERY, ISC_LOG_WARNING,
-				      "missing signature for %s", namebuf);
-		}
-
-		qctx->fname = ns_client_newname(qctx->client, qctx->dbuf, &b);
-		return query_sign_nodata(qctx);
 	} else if (!hidden) {
 		/*
 		 * No matching rdatasets were found and nothing was
@@ -11378,6 +11347,21 @@ ns_query_start(ns_client_t *client, isc_nmhandle_t *handle) {
 	}
 
 	/*
+	 * RRSIG queries cannot be answered coherently: RRSIG RRsets
+	 * are only cacheable and validatable together with the type
+	 * they cover, so any answer would be an arbitrary subset of
+	 * the signatures at the query name.  Refuse the type outright
+	 * with EDE 21 (Not Supported), on authoritative and recursive
+	 * servers alike.
+	 */
+	if (dns_rdatatype_issig(qtype)) {
+		dns_ede_add(&client->edectx, DNS_EDE_NOTSUPPORTED,
+			    "RRSIG queries are not supported");
+		query_error(client, DNS_R_REFUSED, __LINE__);
+		return;
+	}
+
+	/*
 	 * Turn on minimal response for (C)DNSKEY and (C)DS queries.
 	 */
 	if (dns_rdatatype_iskeymaterial(qtype) || qtype == dns_rdatatype_ds) {
@@ -11392,11 +11376,10 @@ ns_query_start(ns_client_t *client, isc_nmhandle_t *handle) {
 	}
 
 	/*
-	 * Maybe turn on minimal responses for ANY queries.
+	 * Turn on minimal responses for ANY queries; they are answered
+	 * with a single RRset at most (RFC 8482).
 	 */
-	if (qtype == dns_rdatatype_any && client->inner.view->minimal_any &&
-	    !client->inner.tcp)
-	{
+	if (qtype == dns_rdatatype_any) {
 		client->query.noauthority = true;
 		client->query.noadditional = true;
 	}
@@ -11419,9 +11402,7 @@ ns_query_start(ns_client_t *client, isc_nmhandle_t *handle) {
 	 * We don't need to set DNS_DBFIND_PENDINGOK when validation is
 	 * disabled as there will be no pending data.
 	 */
-	if ((message->flags & DNS_MESSAGEFLAG_CD) != 0 ||
-	    qtype == dns_rdatatype_rrsig)
-	{
+	if ((message->flags & DNS_MESSAGEFLAG_CD) != 0) {
 		client->query.dboptions |= DNS_DBFIND_PENDINGOK;
 		client->query.fetchoptions |= DNS_FETCHOPT_NOVALIDATE;
 	} else if (!client->inner.view->enablevalidation) {

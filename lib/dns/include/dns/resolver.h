@@ -303,13 +303,15 @@ dns_resolver_createfetch(dns_resolver_t *res, const dns_name_t *name,
  *	must remain stable until after 'action' has been called or
  *	dns_resolver_cancelfetch() is called.
  *
+ *\li	Fetches for meta types (including ANY) and for type RRSIG are
+ *	refused: no such queries are ever sent to authoritative servers,
+ *	and #DNS_R_REFUSED is returned.
+ *
  * Requires:
  *
  *\li	'res' is a valid resolver that has been frozen.
  *
  *\li	'name' is a valid name.
- *
- *\li	'type' is not a meta type other than ANY.
  *
  *\li	'domain' is a valid name or NULL.
  *
@@ -333,6 +335,7 @@ dns_resolver_createfetch(dns_resolver_t *res, const dns_name_t *name,
  *\li	#ISC_R_SUCCESS					Success
  *\li	#DNS_R_DUPLICATE
  *\li	#DNS_R_DROP
+ *\li	#DNS_R_REFUSED		'type' is a meta type or RRSIG
  *
  *\li	Many other values are possible, all of which indicate failure.
  */

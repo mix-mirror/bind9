@@ -452,15 +452,8 @@ static isc_result_t
 view_find(resctx_t *rctx, dns_db_t **dbp, dns_name_t *foundname) {
 	isc_result_t result;
 	dns_name_t *name = dns_fixedname_name(&rctx->name);
-	dns_rdatatype_t type;
 
-	if (rctx->type == dns_rdatatype_rrsig) {
-		type = dns_rdatatype_any;
-	} else {
-		type = rctx->type;
-	}
-
-	result = dns_view_find(rctx->view, name, type, 0, 0, false, dbp,
+	result = dns_view_find(rctx->view, name, rctx->type, 0, 0, false, dbp,
 			       foundname, rctx->rdataset, rctx->sigrdataset);
 
 	return result;
@@ -656,103 +649,18 @@ client_resfind(resctx_t *rctx, dns_fetchresponse_t *resp) {
 			goto done;
 		}
 
-		if (rctx->type == dns_rdatatype_any) {
-			int n = 0;
-			dns_rdatasetiter_t *rdsiter = NULL;
-
-			if (node == NULL) {
-				INSIST(db != NULL);
-				tresult = dns_db_findnode(db, fname, false,
-							  &node);
-				if (tresult != ISC_R_SUCCESS) {
-					result = tresult;
-					putrdataset(mctx, &rctx->rdataset);
-					if (rctx->sigrdataset != NULL) {
-						putrdataset(mctx,
-							    &rctx->sigrdataset);
-					}
-					goto done;
-				}
-			}
-
-			tresult = dns_db_allrdatasets(db, node, NULL, 0, 0,
-						      &rdsiter);
-			if (tresult != ISC_R_SUCCESS) {
-				result = tresult;
-				goto done;
-			}
-
-			tresult = dns_rdatasetiter_first(rdsiter);
-			while (tresult == ISC_R_SUCCESS) {
-				dns_rdatasetiter_current(rdsiter,
-							 rctx->rdataset);
-				if (!rctx->rdataset->attributes.negative) {
-					ISC_LIST_APPEND(ansname->list,
-							rctx->rdataset, link);
-					n++;
-					rctx->rdataset = NULL;
-				} else {
-					/*
-					 * We're not interested in this
-					 * rdataset.
-					 */
-					dns_rdataset_disassociate(
-						rctx->rdataset);
-				}
-				tresult = dns_rdatasetiter_next(rdsiter);
-
-				if (tresult == ISC_R_SUCCESS &&
-				    rctx->rdataset == NULL)
-				{
-					tresult = getrdataset(mctx,
-							      &rctx->rdataset);
-					if (tresult != ISC_R_SUCCESS) {
-						result = tresult;
-						POST(result);
-						break;
-					}
-				}
-			}
-			if (rctx->rdataset != NULL) {
-				putrdataset(mctx, &rctx->rdataset);
-			}
-			if (rctx->sigrdataset != NULL) {
-				putrdataset(mctx, &rctx->sigrdataset);
-			}
-			if (n == 0) {
-				/*
-				 * We didn't match any rdatasets (which means
-				 * something went wrong in this
-				 * implementation).
-				 */
-				result = DNS_R_SERVFAIL; /* better code? */
-				POST(result);
-			} else {
-				ISC_LIST_APPEND(rctx->namelist, ansname, link);
-				ansname = NULL;
-			}
-			dns_rdatasetiter_destroy(&rdsiter);
-			if (tresult != ISC_R_NOMORE) {
-				result = DNS_R_SERVFAIL; /* ditto */
-			} else {
-				result = ISC_R_SUCCESS;
-			}
-			goto done;
-		} else {
-			/*
-			 * This is the "normal" case -- an ordinary question
-			 * to which we've got the answer.
-			 */
-			ISC_LIST_APPEND(ansname->list, rctx->rdataset, link);
-			rctx->rdataset = NULL;
-			if (rctx->sigrdataset != NULL) {
-				ISC_LIST_APPEND(ansname->list,
-						rctx->sigrdataset, link);
-				rctx->sigrdataset = NULL;
-			}
-			ISC_LIST_APPEND(rctx->namelist, ansname, link);
-			ansname = NULL;
+		/*
+		 * This is the "normal" case -- an ordinary question
+		 * to which we've got the answer.
+		 */
+		ISC_LIST_APPEND(ansname->list, rctx->rdataset, link);
+		rctx->rdataset = NULL;
+		if (rctx->sigrdataset != NULL) {
+			ISC_LIST_APPEND(ansname->list, rctx->sigrdataset, link);
+			rctx->sigrdataset = NULL;
 		}
+		ISC_LIST_APPEND(rctx->namelist, ansname, link);
+		ansname = NULL;
 
 	done:
 		/*
@@ -870,6 +778,16 @@ startresolve(dns_client_t *client, const dns_name_t *name,
 	REQUIRE(DNS_CLIENT_VALID(client));
 	REQUIRE(transp != NULL && *transp == NULL);
 	REQUIRE(rdclass == dns_rdataclass_in);
+
+	/*
+	 * Meta types (including ANY) and RRSIG are never sent to
+	 * authoritative servers, see dns_resolver_createfetch(); refuse
+	 * them before any lookup, so that the local database search
+	 * does not have to deal with them either.
+	 */
+	if (dns_rdatatype_ismeta(type) || dns_rdatatype_issig(type)) {
+		return DNS_R_REFUSED;
+	}
 
 	mctx = client->mctx;
 	want_dnssec = ((options & DNS_CLIENTRESOPT_NODNSSEC) == 0);
