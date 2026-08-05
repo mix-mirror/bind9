@@ -21,6 +21,11 @@ zone "." {
 	file "root.db";
 };
 
+zone "soa-minimum" {
+	type primary;
+	file "soa-minimum.db";
+};
+
 zone "example.net" {
 	type primary;
 	file "example.net.db.signed";

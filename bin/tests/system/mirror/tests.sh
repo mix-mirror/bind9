@@ -355,6 +355,20 @@ if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
 n=$((n + 1))
+echo_i "checking that an ANY query at a mirror zone apex returns NODATA ($n)"
+ret=0
+$DIG $DIGOPTS @10.53.0.3 . ANY >dig.out.ns3.test$n 2>&1 || ret=1
+# Mirror zone data is served non-authoritatively, so an ANY query must
+# get the synthesized NODATA response, not the zone apex RRsets.
+grep "NOERROR" dig.out.ns3.test$n >/dev/null || ret=1
+grep "ANSWER: 0" dig.out.ns3.test$n >/dev/null || ret=1
+grep "EDE: 21" dig.out.ns3.test$n >/dev/null || ret=1
+grep -E "^\.[[:space:]].*SOA" dig.out.ns3.test$n >/dev/null || ret=1
+grep "flags:.* aa" dig.out.ns3.test$n >/dev/null && ret=1
+if [ $ret != 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
+
+n=$((n + 1))
 echo_i "checking that resolution succeeds with unavailable mirror zone data ($n)"
 ret=0
 wait_for_transfer initially-unavailable

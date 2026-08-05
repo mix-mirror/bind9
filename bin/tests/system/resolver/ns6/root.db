@@ -12,6 +12,8 @@ a.root-servers.nil.	AAAA	fd92:7065:b8e:ffff::6
 moves.			NS	ns.server.
 server.			NS	ns7.server.
 ns7.server.		A	10.53.0.7
+soa-minimum.		NS	ns.soa-minimum.
+ns.soa-minimum.		A	10.53.0.6
 ;
 ; These two delegations are strictly not necessary as the test resolver (ns5)
 ; doesn't have this zone as its root.  They are just done for consistency with

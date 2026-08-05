@@ -11,7 +11,10 @@
 
 import time
 
+from dns.edns import EDECode
+
 import dns.message
+import dns.rdatatype
 
 import isctest
 
@@ -85,3 +88,46 @@ isc.org. 300 IN A 1.2.3.4
     msg = isctest.query.create("www.example.gooddname.example.net.", "A")
     res = isctest.query.udp(msg, "10.53.0.1")
     isctest.check.noerror(res)
+
+
+def test_resolver_any_nodata(ns1):
+    ns1.rndc("flush")
+
+    # A resolver pretends the ANY type does not exist and always
+    # answers with a NODATA response and EDE 21 (Not Supported); the
+    # SOA type is resolved in place of ANY.
+    msg = isctest.query.create("www.example.org.", "ANY")
+    res = isctest.query.udp(msg, "10.53.0.1")
+    isctest.check.noerror(res)
+    isctest.check.rr_count_eq(res.answer, 0)
+    isctest.check.ede(res, EDECode.NOT_SUPPORTED)
+
+    # ...including when the cache holds records for the queried name
+    msg = isctest.query.create("www.example.org.", "A")
+    res = isctest.query.udp(msg, "10.53.0.1")
+    isctest.check.noerror(res)
+    assert res.answer[0].rdtype == dns.rdatatype.A
+
+    msg = isctest.query.create("www.example.org.", "ANY")
+    res = isctest.query.udp(msg, "10.53.0.1")
+    isctest.check.noerror(res)
+    isctest.check.rr_count_eq(res.answer, 0)
+    isctest.check.ede(res, EDECode.NOT_SUPPORTED)
+
+
+def test_resolver_any_nodata_soa_ttl():
+    # an ANY query at a zone apex is answered with a NODATA response
+    # built from the positive SOA; the SOA TTL in the authority
+    # section must be capped at the SOA MINIMUM field (RFC 2308),
+    # like in any other negative response (the zone has SOA TTL 600
+    # and MINIMUM 60)
+    msg = isctest.query.create("soa-minimum.", "ANY")
+    res = isctest.query.udp(msg, "10.53.0.7")
+    isctest.check.noerror(res)
+    isctest.check.rr_count_eq(res.answer, 0)
+    isctest.check.rr_count_eq(res.authority, 1)
+    soa = res.authority[0]
+    assert str(soa.name) == "soa-minimum."
+    assert soa.rdtype == dns.rdatatype.SOA
+    assert soa.ttl == 60
+    isctest.check.ede(res, EDECode.NOT_SUPPORTED)
