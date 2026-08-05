@@ -2071,21 +2071,39 @@ Boolean Options
    The default is ``no-auth-recursive``.
 
 .. namedconf:statement:: minimal-any
-   :tags: query
-   :short: Controls whether the server replies with only one of the RRsets for a query name, when generating a positive response to a query of type ANY over UDP.
+   :tags: deprecated
+   :short: Deprecated; the server always minimizes responses to queries of type ANY.
 
-   If set to ``yes``, the server replies with only one of
-   the RRsets for the query name, and its covering RRSIGs if any,
-   when generating a positive response to a query of type ANY over UDP,
-   instead of replying with all known RRsets for the name. Similarly, a
-   query for type RRSIG is answered with the RRSIG records covering
-   only one type. This can reduce the impact of some kinds of attack
-   traffic, without harming legitimate clients. (Note, however, that the
-   RRset returned is the first one found in the database; it is not
-   necessarily the smallest available RRset.) Additionally,
-   :any:`minimal-responses` is turned on for these queries, so no
-   unnecessary records are added to the authority or additional
-   sections. The default is ``yes``.
+   This option is deprecated and no longer has any effect.
+
+   Queries of type ANY are now always answered along the lines of
+   :rfc:`8482`, regardless of transport (UDP or TCP):
+
+   - When the answer comes from authoritative data, the server replies
+     with only one of the RRsets for the query name (and its covering
+     RRSIGs, if requested), instead of replying with all known RRsets
+     for the name. (Note that the RRset returned is the first one found
+     in the database; it is not necessarily the smallest available
+     RRset.) :any:`minimal-responses` is turned on for these queries,
+     so no unnecessary records are added to the authority or additional
+     sections. The Extended DNS Error code 21 (Not Supported) is added
+     to the response.
+
+   - A recursive server pretends that the ANY type does not exist
+     and always responds with a NODATA answer, together with the
+     Extended DNS Error code 21 (Not Supported); the SOA type is
+     resolved in place of ANY to provide the SOA record for the
+     authority section. The resolver never sends queries of type ANY
+     (or any other meta type) to authoritative servers.
+
+   Queries of type RRSIG are refused with the Extended DNS Error
+   code 21 (Not Supported), by authoritative and recursive servers
+   alike.  RRSIG records are only meaningful together with the
+   records they cover, so a standalone RRSIG answer would be an
+   arbitrary, unverifiable subset of the signatures at the query
+   name; RRSIG records are always included in the responses to
+   queries for the types they cover, when DNSSEC data is requested.
+   Queries of type RRSIG are never sent to other servers.
 
 .. namedconf:statement:: notify
    :tags: transfer

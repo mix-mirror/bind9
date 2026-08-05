@@ -206,7 +206,7 @@ options {
 	min-refresh-time <integer>;
 	min-retry-time <integer>;
 	min-transfer-rate-in <integer> <integer>;
-	minimal-any <boolean>;
+	minimal-any <boolean>; // deprecated
 	minimal-responses ( no-auth | no-auth-recursive | <boolean> );
 	multi-master <boolean>;
 	new-zones-directory <quoted_string>;
@@ -600,7 +600,7 @@ view <string> [ <class> ] {
 	min-refresh-time <integer>;
 	min-retry-time <integer>;
 	min-transfer-rate-in <integer> <integer>;
-	minimal-any <boolean>;
+	minimal-any <boolean>; // deprecated
 	minimal-responses ( no-auth | no-auth-recursive | <boolean> );
 	multi-master <boolean>;
 	new-zones-directory <quoted_string>;

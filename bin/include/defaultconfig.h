@@ -156,7 +156,6 @@ options {\n\
 	min-ncache-ttl 0; /* 0 hours */\n\
 	min-cache-ttl 0; /* 0 seconds */\n\
 	min-delegation-ttl 60; /* 1 minute */\n\
-	minimal-any yes;\n\
 	minimal-responses no-auth-recursive;\n\
 	notify-source *;\n\
 	notify-source-v6 *;\n\

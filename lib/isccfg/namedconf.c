@@ -2413,7 +2413,7 @@ static cfg_clausedef_t view_clauses[] = {
 	{ "min-delegation-ttl", &cfg_type_duration, 0, NULL },
 	{ "min-ncache-ttl", &cfg_type_duration, 0, NULL },
 	{ "min-roots", NULL, CFG_CLAUSEFLAG_ANCIENT, NULL },
-	{ "minimal-any", &cfg_type_boolean, 0, NULL },
+	{ "minimal-any", &cfg_type_boolean, CFG_CLAUSEFLAG_DEPRECATED, NULL },
 	{ "minimal-responses", &cfg_type_minimal, 0, NULL },
 	{ "new-zones-directory", &cfg_type_qstring, 0, NULL },
 	{ "no-case-compress", &cfg_type_bracketed_aml, 0, NULL },

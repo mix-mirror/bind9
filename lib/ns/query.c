@@ -7179,7 +7179,29 @@ query_gotanswer(query_ctx_t *qctx, isc_result_t result) {
 	    qctx->fname != NULL && qctx->rdataset != NULL &&
 	    qctx->rdataset->type == dns_rdatatype_soa)
 	{
+		dns_rdata_soa_t soa;
+		dns_rdata_t rdata = DNS_RDATA_INIT;
 		dns_rdataset_t **sigrdatasetp = NULL;
+
+		/*
+		 * The SOA comes from a positive answer and carries its
+		 * full TTL; adjust the TTLs per RFC 2308 section 3,
+		 * like query_addsoa() does for regular negative
+		 * responses.
+		 */
+		RUNTIME_CHECK(dns_rdataset_first(qctx->rdataset) ==
+			      ISC_R_SUCCESS);
+		dns_rdataset_current(qctx->rdataset, &rdata);
+		RUNTIME_CHECK(dns_rdata_tostruct(&rdata, &soa, NULL) ==
+			      ISC_R_SUCCESS);
+		if (qctx->rdataset->ttl > soa.minimum) {
+			qctx->rdataset->ttl = soa.minimum;
+		}
+		if (qctx->sigrdataset != NULL &&
+		    qctx->sigrdataset->ttl > soa.minimum)
+		{
+			qctx->sigrdataset->ttl = soa.minimum;
+		}
 
 		if (qctx->sigrdataset != NULL) {
 			sigrdatasetp = &qctx->sigrdataset;
