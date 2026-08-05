@@ -22,6 +22,7 @@
 #include <isc/mem.h>
 #include <isc/memarena.h>
 #include <isc/os.h>
+#include <isc/overflow.h>
 #include <isc/tid.h>
 #include <isc/util.h>
 
@@ -72,6 +73,17 @@
  * Weight of one cycle in the usage moving average: 1/8.
  */
 #define MEMARENA_EWMA_SHIFT 3
+
+/*
+ * Single-writer updates of the statistics counters: a relaxed
+ * load-modify-store is race-free because only the owning thread writes,
+ * and it compiles to plain memory accesses; cross-thread readers
+ * (isc_mem_stats()) see a best-effort snapshot.
+ */
+#define COUNTER_ADD(c, delta) \
+	atomic_store_relaxed(&(c), atomic_load_relaxed(&(c)) + (delta))
+#define COUNTER_SUB(c, delta) \
+	atomic_store_relaxed(&(c), atomic_load_relaxed(&(c)) - (delta))
 
 /*
  * Per-thread cache of warm arenas.  Each slot is only ever touched by
@@ -139,13 +151,13 @@ memarena_grow(isc_memarena_t *arena, size_t size) {
 
 	if (arena->current != NULL) {
 		arena->current->used = arena->pos - CHUNK_DATA(arena->current);
-		arena->used_sealed += arena->current->used;
-		arena->waste += arena->end - arena->pos;
+		COUNTER_ADD(arena->used_sealed, arena->current->used);
+		COUNTER_ADD(arena->waste, arena->end - arena->pos);
 	}
 
 	if (size > MEMARENA_MAX_CHUNK - CHUNK_HDRSIZE) {
 		/* Oversize request: dedicated, exactly-sized chunk. */
-		total = CHUNK_HDRSIZE + size;
+		total = ISC_CHECKED_ADD(CHUNK_HDRSIZE, size);
 	} else {
 		total = arena->next_chunk;
 		while (total - CHUNK_HDRSIZE < size) {
@@ -161,8 +173,8 @@ memarena_grow(isc_memarena_t *arena, size_t size) {
 	};
 
 	arena->current = chunk;
-	arena->nchunks++;
-	arena->capacity += total - CHUNK_HDRSIZE;
+	COUNTER_ADD(arena->nchunks, 1);
+	COUNTER_ADD(arena->capacity, total - CHUNK_HDRSIZE);
 	arena->pos = CHUNK_DATA(chunk);
 	arena->end = arena->pos + (total - CHUNK_HDRSIZE);
 	MEMARENA_POISON((void *)arena->pos, arena->end - arena->pos);
@@ -179,15 +191,15 @@ isc__memarena_get(isc_memarena_t *arena, size_t size, int flags FLARG) {
 	ADJUST_ZERO_ALLOCATION_SIZE(size);
 
 	ptr = ISC_ALIGN(arena->pos, ISC_MEMARENA_ALIGNMENT);
-	if (ptr + size > arena->end) {
+	if (ptr > arena->end || size > (size_t)(arena->end - ptr)) {
 		memarena_grow(arena, size);
 		ptr = arena->pos;
 	} else {
-		arena->waste += ptr - arena->pos;
+		COUNTER_ADD(arena->waste, ptr - arena->pos);
 	}
 
 	arena->pos = ptr + size;
-	arena->live += size;
+	COUNTER_ADD(arena->live, size);
 
 	MEMARENA_UNPOISON((void *)ptr, size);
 	if ((flags & ISC__MEM_ZERO) != 0) {
@@ -208,9 +220,9 @@ isc__memarena_put(isc_memarena_t *arena, void *ptr, size_t size,
 
 	ADJUST_ZERO_ALLOCATION_SIZE(size);
 
-	REQUIRE(arena->live >= size);
-	arena->live -= size;
-	arena->dead += size;
+	REQUIRE(atomic_load_relaxed(&arena->live) >= size);
+	COUNTER_SUB(arena->live, size);
+	COUNTER_ADD(arena->dead, size);
 
 	MEMARENA_POISON(ptr, size);
 }
@@ -247,15 +259,15 @@ isc__memarena_shrink(isc_memarena_t *arena, void *ptr, size_t old_size,
 		return;
 	}
 
-	REQUIRE(arena->live >= delta);
-	arena->live -= delta;
+	REQUIRE(atomic_load_relaxed(&arena->live) >= delta);
+	COUNTER_SUB(arena->live, delta);
 
 	if (memarena_is_top(arena, p, old_size)) {
 		/* Most recent allocation: exact bump-pointer rollback. */
 		arena->pos = p + new_size;
 		MEMARENA_POISON((void *)arena->pos, delta);
 	} else {
-		arena->dead += delta;
+		COUNTER_ADD(arena->dead, delta);
 		MEMARENA_POISON((uint8_t *)ptr + new_size, delta);
 	}
 }
@@ -282,10 +294,12 @@ isc__memarena_reget(isc_memarena_t *arena, void *old_ptr, size_t old_size,
 		return old_ptr;
 	}
 
-	if (memarena_is_top(arena, p, old_size) && p + new_size <= arena->end) {
+	if (memarena_is_top(arena, p, old_size) &&
+	    new_size <= (size_t)(arena->end - p))
+	{
 		/* Most recent allocation: grow in place. */
 		arena->pos = p + new_size;
-		arena->live += new_size - old_size;
+		COUNTER_ADD(arena->live, new_size - old_size);
 		MEMARENA_UNPOISON((uint8_t *)old_ptr + old_size,
 				  new_size - old_size);
 		if ((flags & ISC__MEM_ZERO) != 0) {
@@ -373,8 +387,14 @@ isc_memarena_reset(isc_memarena_t *arena) {
 		arena->usage_ewma += cycle_used >> MEMARENA_EWMA_SHIFT;
 	}
 
-	target = ISC_CLAMP(pow2_ceil(arena->usage_ewma), MEMARENA_MIN_CHUNK,
-			   MEMARENA_MAX_CHUNK);
+	/*
+	 * The retained chunk is compared by its total allocation size,
+	 * so the target must cover the usable bytes plus the chunk
+	 * header; otherwise a workload just under a power of two would
+	 * free and reallocate its chunk on every cycle.
+	 */
+	target = ISC_CLAMP(pow2_ceil(arena->usage_ewma + CHUNK_HDRSIZE),
+			   MEMARENA_MIN_CHUNK, MEMARENA_MAX_CHUNK);
 #if __SANITIZE_ADDRESS__
 	/*
 	 * Retention is disabled so that every cycle gets fresh, fully
@@ -407,15 +427,15 @@ isc_memarena_reset(isc_memarena_t *arena) {
 		keep->used = 0;
 
 		arena->current = keep;
-		arena->nchunks = 1;
-		arena->capacity = CHUNK_CAPACITY(keep);
+		atomic_store_relaxed(&arena->nchunks, 1);
+		atomic_store_relaxed(&arena->capacity, CHUNK_CAPACITY(keep));
 		arena->pos = CHUNK_DATA(keep);
 		arena->end = arena->pos + CHUNK_CAPACITY(keep);
 		MEMARENA_POISON((void *)arena->pos, CHUNK_CAPACITY(keep));
 	} else {
 		arena->current = NULL;
-		arena->nchunks = 0;
-		arena->capacity = 0;
+		atomic_store_relaxed(&arena->nchunks, 0);
+		atomic_store_relaxed(&arena->capacity, 0);
 		arena->pos = 0;
 		arena->end = 0;
 	}
@@ -426,24 +446,24 @@ isc_memarena_reset(isc_memarena_t *arena) {
 	 */
 	arena->next_chunk = ISC_MAX(target, MEMARENA_MIN_CHUNK);
 
-	arena->live = 0;
-	arena->dead = 0;
-	arena->waste = 0;
-	arena->used_sealed = 0;
+	atomic_store_relaxed(&arena->live, 0);
+	atomic_store_relaxed(&arena->dead, 0);
+	atomic_store_relaxed(&arena->waste, 0);
+	atomic_store_relaxed(&arena->used_sealed, 0);
 }
 
 size_t
 isc_memarena_live(isc_memarena_t *arena) {
 	REQUIRE(VALID_MEMARENA(arena));
 
-	return arena->live;
+	return atomic_load_relaxed(&arena->live);
 }
 
 size_t
 isc_memarena_dead(isc_memarena_t *arena) {
 	REQUIRE(VALID_MEMARENA(arena));
 
-	return arena->dead;
+	return atomic_load_relaxed(&arena->dead);
 }
 
 size_t
@@ -451,16 +471,17 @@ isc_memarena_used(isc_memarena_t *arena) {
 	REQUIRE(VALID_MEMARENA(arena));
 
 	if (arena->current == NULL) {
-		return arena->used_sealed;
+		return atomic_load_relaxed(&arena->used_sealed);
 	}
-	return arena->used_sealed + (arena->pos - CHUNK_DATA(arena->current));
+	return atomic_load_relaxed(&arena->used_sealed) +
+	       (arena->pos - CHUNK_DATA(arena->current));
 }
 
 size_t
 isc_memarena_capacity(isc_memarena_t *arena) {
 	REQUIRE(VALID_MEMARENA(arena));
 
-	return arena->capacity;
+	return atomic_load_relaxed(&arena->capacity);
 }
 
 void

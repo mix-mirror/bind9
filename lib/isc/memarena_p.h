@@ -22,6 +22,7 @@
  * magic number.
  */
 
+#include <isc/atomic.h>
 #include <isc/list.h>
 #include <isc/magic.h>
 #include <isc/tid.h>
@@ -43,13 +44,19 @@ struct isc_memarena {
 	uintptr_t pos;		   /*%< bump cursor in the current chunk */
 	uintptr_t end;		   /*%< current chunk limit */
 
-	/* per-cycle accounting */
-	size_t live;	    /*%< allocated minus put/shrunk bytes */
-	size_t dead;	    /*%< put/shrunk bytes awaiting reset */
-	size_t waste;	    /*%< alignment padding and skipped tails */
-	size_t used_sealed; /*%< committed bytes in sealed chunks */
-	size_t nchunks;
-	size_t capacity;
+	/*
+	 * Per-cycle accounting.  Only the owning thread updates these,
+	 * but isc_mem_stats() reads them from other threads, so they are
+	 * atomics accessed with relaxed ordering (single-writer, same
+	 * pattern as the isc_mem_inuse() counters); the statistics are a
+	 * best-effort snapshot.
+	 */
+	atomic_size_t live;	   /*%< allocated minus put/shrunk bytes */
+	atomic_size_t dead;	   /*%< put/shrunk bytes awaiting reset */
+	atomic_size_t waste;	   /*%< alignment padding, skipped tails */
+	atomic_size_t used_sealed; /*%< committed bytes in sealed chunks */
+	atomic_size_t nchunks;
+	atomic_size_t capacity;
 
 	size_t next_chunk; /*%< total size of the next chunk to allocate */
 	size_t usage_ewma; /*%< moving average of per-cycle usage */

@@ -850,10 +850,10 @@ isc_mem_stats(isc_mem_t *ctx, FILE *out) {
 	}
 
 	/*
-	 * Arenas are unlocked and mutated by their owning thread, so the
-	 * counters may be somewhat off while an arena is in active use;
-	 * the link fields are protected by the context lock, so walking
-	 * the list is always safe.
+	 * Arena counters are updated by their owning thread and read
+	 * here with relaxed atomics (the isc_mem_inuse() pattern), so
+	 * this is a best-effort snapshot; the link fields are protected
+	 * by the context lock, so walking the list is always safe.
 	 */
 	if (!ISC_LIST_EMPTY(ctx->arenas)) {
 		fprintf(out, "[Arena statistics]\n");
@@ -862,9 +862,12 @@ isc_mem_stats(isc_mem_t *ctx, FILE *out) {
 	}
 	ISC_LIST_FOREACH(ctx->arenas, arena, link) {
 		fprintf(out, "%15s %10zu %10zu %10zu %10zu %10zu\n",
-			arena->name != NULL ? arena->name : "", arena->live,
-			arena->dead, arena->waste, arena->capacity,
-			arena->nchunks);
+			arena->name != NULL ? arena->name : "",
+			atomic_load_relaxed(&arena->live),
+			atomic_load_relaxed(&arena->dead),
+			atomic_load_relaxed(&arena->waste),
+			atomic_load_relaxed(&arena->capacity),
+			atomic_load_relaxed(&arena->nchunks));
 	}
 
 #if ISC_MEM_TRACKLINES

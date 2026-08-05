@@ -361,6 +361,20 @@ ISC_RUN_TEST_IMPL(isc_memarena_retention) {
 	assert_true(isc_memarena_capacity(arena) >= 16 * 1024);
 	assert_true(isc_memarena_capacity(arena) <= 64 * 1024);
 
+	/*
+	 * A steady workload just under a power of two must keep its
+	 * chunk warm: the retention target accounts for the chunk
+	 * header, so 2040 usable bytes (more than a 2048-byte chunk can
+	 * hold under any supported header layout) select the 4096-byte
+	 * chunk that holds them instead of freeing it on every reset.
+	 */
+	for (size_t cycle = 0; cycle < 64; cycle++) {
+		(void)arena_get(arena, 2040);
+		isc_memarena_reset(arena);
+	}
+	assert_true(isc_memarena_capacity(arena) > 0);
+	assert_true(isc_memarena_capacity(arena) <= 4096);
+
 	/* Light phase: the moving average decays the warm chunk. */
 	for (size_t cycle = 0; cycle < 64; cycle++) {
 		(void)arena_get(arena, 64);
