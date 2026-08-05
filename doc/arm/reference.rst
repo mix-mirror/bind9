@@ -2070,22 +2070,46 @@ Boolean Options
 
    The default is ``no-auth-recursive``.
 
-.. namedconf:statement:: minimal-any
-   :tags: query
-   :short: Controls whether the server replies with only one of the RRsets for a query name, when generating a positive response to a query of type ANY over UDP.
+   Queries of type ANY are always answered along the lines of
+   :rfc:`8482`, regardless of this option and of the transport (UDP
+   or TCP):
 
-   If set to ``yes``, the server replies with only one of
-   the RRsets for the query name, and its covering RRSIGs if any,
-   when generating a positive response to a query of type ANY over UDP,
-   instead of replying with all known RRsets for the name. Similarly, a
-   query for type RRSIG is answered with the RRSIG records covering
-   only one type. This can reduce the impact of some kinds of attack
-   traffic, without harming legitimate clients. (Note, however, that the
-   RRset returned is the first one found in the database; it is not
-   necessarily the smallest available RRset.) Additionally,
-   :any:`minimal-responses` is turned on for these queries, so no
-   unnecessary records are added to the authority or additional
-   sections. The default is ``yes``.
+   - When the answer comes from authoritative data, the server replies
+     with only one of the RRsets for the query name (and its covering
+     RRSIGs, if requested), instead of replying with all known RRsets
+     for the name. (Note that the RRset returned is the first one found
+     in the database; it is not necessarily the smallest available
+     RRset.) No unnecessary records are added to the authority or
+     additional sections. The Extended DNS Error code 21 (Not
+     Supported) is added to the response.
+
+   - A recursive server refuses queries of type ANY, with the
+     REFUSED response code and the Extended DNS Error code 21 (Not
+     Supported), without looking the name up and without sending any
+     query to authoritative servers. An answer from the cache would
+     depend on what happens to be cached, and an empty (NODATA)
+     answer is not an option either: other resolvers cache a NODATA
+     answer to a query of type ANY as the absence of all records at
+     the name. Response policy zones are not consulted for these
+     queries. The resolver never sends queries of type ANY (or any
+     other meta type) to authoritative servers.
+
+   Queries of type RRSIG are refused with the Extended DNS Error
+   code 21 (Not Supported), by authoritative and recursive servers
+   alike. RRSIG records are only meaningful together with the
+   records they cover, so a standalone RRSIG answer would be an
+   arbitrary, unverifiable subset of the signatures at the query
+   name; RRSIG records are always included in the responses to
+   queries for the types they cover, when DNSSEC data is requested.
+   Queries of type RRSIG are never sent to other servers.
+
+.. namedconf:statement:: minimal-any
+   :tags: deprecated
+   :short: Deprecated; the server always minimizes responses to queries of type ANY.
+
+   This option is deprecated and no longer has any effect. Queries of
+   type ANY are always answered with minimal responses; see
+   :any:`minimal-responses` for details.
 
 .. namedconf:statement:: notify
    :tags: transfer

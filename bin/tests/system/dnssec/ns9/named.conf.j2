@@ -4,7 +4,6 @@
 
 options {
 	{% include_indented "_common/options.conf.j2" %}
-	minimal-any no;
 	dnssec-validation yes;
 	forward only;
 {% if forward_badkey %}

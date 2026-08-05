@@ -123,7 +123,6 @@ struct dns_view {
 	bool		      qminimization;
 	bool		      qmin_strict;
 	bool		      auth_nxdomain;
-	bool		      minimal_any;
 	dns_minimaltype_t     minimalresponses;
 	bool		      enablevalidation;
 	bool		      acceptexpired;
