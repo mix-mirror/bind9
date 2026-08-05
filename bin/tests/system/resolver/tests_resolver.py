@@ -11,7 +11,11 @@
 
 import time
 
+from dns.edns import EDECode
+
 import dns.message
+import dns.rcode
+import dns.rdatatype
 
 import isctest
 
@@ -85,3 +89,28 @@ isc.org. 300 IN A 1.2.3.4
     msg = isctest.query.create("www.example.gooddname.example.net.", "A")
     res = isctest.query.udp(msg, "10.53.0.1")
     isctest.check.noerror(res)
+
+
+def test_resolver_any_refused(ns1):
+    ns1.rndc("flush")
+
+    # A resolver refuses ANY queries with REFUSED and EDE 21 (Not
+    # Supported), without looking the name up or sending anything
+    # upstream
+    msg = isctest.query.create("www.example.org.", "ANY")
+    res = isctest.query.udp(msg, "10.53.0.1", expected_rcode=dns.rcode.REFUSED)
+    isctest.check.refused(res)
+    isctest.check.empty_answer(res)
+    isctest.check.ede(res, EDECode.NOT_SUPPORTED)
+
+    # ...including when the cache holds records for the queried name
+    msg = isctest.query.create("www.example.org.", "A")
+    res = isctest.query.udp(msg, "10.53.0.1")
+    isctest.check.noerror(res)
+    assert res.answer[0].rdtype == dns.rdatatype.A
+
+    msg = isctest.query.create("www.example.org.", "ANY")
+    res = isctest.query.udp(msg, "10.53.0.1", expected_rcode=dns.rcode.REFUSED)
+    isctest.check.refused(res)
+    isctest.check.empty_answer(res)
+    isctest.check.ede(res, EDECode.NOT_SUPPORTED)
