@@ -951,6 +951,12 @@ dns_zone_checkzonemd(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *ver);
  * 				of the zone contents, etc.
  */
 
+bool
+dns_zone_checking_zonemd(dns_zone_t *zone);
+/*%<
+ * Returns true iff. 'zone' is configured to check ZONEMD.
+ */
+
 isc_result_t
 dns_zone_verifydb(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *ver);
 /*%<

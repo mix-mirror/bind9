@@ -14,6 +14,7 @@ options {
 	recursion no;
 	serial-query-rate 100;
 	dnssec-validation no;
+	check-zonemd no;
 
 {% if allow_query_blackhole %}
 	allow-query { 10.53.0.99; };

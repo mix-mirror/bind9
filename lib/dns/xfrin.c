@@ -388,7 +388,9 @@ xfrin_finalcheck(dns_xfrin_t *xfr) {
 	dns_rdataset_t dsset = DNS_RDATASET_INIT;
 
 	/* We don't need to check ZONEMD so just end the xfr now */
-	if (!dns_db_issecure(xfr->db) || !dns_db_haszonemd(xfr->db)) {
+	if (!dns_zone_checking_zonemd(xfr->zone) || !dns_db_issecure(xfr->db) ||
+	    !dns_db_haszonemd(xfr->db))
+	{
 		xfrin_end(xfr, ISC_R_SUCCESS);
 		return;
 	}
