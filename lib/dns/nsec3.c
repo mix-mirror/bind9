@@ -266,8 +266,7 @@ dns_nsec3_hashname(dns_fixedname_t *result,
 
 	/* convert the hex to a domain name */
 	dns_fixedname_init(result);
-	return dns_name_fromtext(dns_fixedname_name(result), &namebuffer,
-				 origin, 0);
+	return dns_name_fromtext(dns_name(result), &namebuffer, origin, 0);
 }
 
 unsigned int
@@ -1256,8 +1255,8 @@ deleteit(dns_db_t *db, dns_dbversion_t *ver, const dns_name_t *name,
 
 	result = dns_db_find(db, name, ver, dns_rdatatype_any,
 			     DNS_DBFIND_GLUEOK | DNS_DBFIND_NOWILD,
-			     (isc_stdtime_t)0, dns_fixedname_name(&foundname),
-			     NULL, NULL);
+			     (isc_stdtime_t)0, dns_name(&foundname), NULL,
+			     NULL);
 	if (result == DNS_R_EMPTYNAME || result == ISC_R_SUCCESS ||
 	    result == DNS_R_ZONECUT)
 	{
