@@ -156,7 +156,7 @@ digest_sig(dst_context_t *ctx, bool downcase, dns_rdata_t *sigrdata,
 		dns_fixedname_init(&fname);
 
 		RUNTIME_CHECK(dns_name_downcase(dns_name(&rrsig->signer),
-						dns_fixedname_name(&fname)) ==
+						dns_name(&fname)) ==
 			      ISC_R_SUCCESS);
 		dns_name_toregion(&fname, &r);
 	} else {
@@ -209,8 +209,7 @@ dns_dnssec_sign(const dns_name_t *name, dns_rdataset_t *set, dst_key_t *key,
 	dns_name_init(dns_name(&sig.signer));
 	dns_fixedname_init(&fsigner);
 	RUNTIME_CHECK(dns_name_downcase(dst_key_name(key),
-					dns_fixedname_name(&fsigner)) ==
-		      ISC_R_SUCCESS);
+					dns_name(&fsigner)) == ISC_R_SUCCESS);
 	dns_name_clone(&fsigner, dns_name(&sig.signer));
 
 	sig.covered = set->type;
@@ -255,7 +254,7 @@ dns_dnssec_sign(const dns_name_t *name, dns_rdataset_t *set, dst_key_t *key,
 	}
 
 	dns_fixedname_init(&fnewname);
-	RUNTIME_CHECK(dns_name_downcase(name, dns_fixedname_name(&fnewname)) ==
+	RUNTIME_CHECK(dns_name_downcase(name, dns_name(&fnewname)) ==
 		      ISC_R_SUCCESS);
 	dns_name_toregion(&fnewname, &r);
 
@@ -483,11 +482,11 @@ again:
 	 * If the name is an expanded wildcard, use the wildcard name.
 	 */
 	dns_fixedname_init(&fnewname);
-	RUNTIME_CHECK(dns_name_downcase(name, dns_fixedname_name(&fnewname)) ==
+	RUNTIME_CHECK(dns_name_downcase(name, dns_name(&fnewname)) ==
 		      ISC_R_SUCCESS);
 	if (labels > siglabels) {
-		dns_name_split(dns_fixedname_name(&fnewname), siglabels, NULL,
-			       dns_fixedname_name(&fnewname));
+		dns_name_split(dns_name(&fnewname), siglabels, NULL,
+			       dns_name(&fnewname));
 	}
 
 	dns_name_toregion(&fnewname, &r);
@@ -593,10 +592,10 @@ cleanup_struct:
 
 	if (result == ISC_R_SUCCESS && labels > siglabels) {
 		if (wild != NULL) {
-			RUNTIME_CHECK(dns_name_concatenate(
-					      dns_wildcardname,
-					      dns_fixedname_name(&fnewname),
-					      wild) == ISC_R_SUCCESS);
+			RUNTIME_CHECK(dns_name_concatenate(dns_wildcardname,
+							   dns_name(&fnewname),
+							   wild) ==
+				      ISC_R_SUCCESS);
 		}
 		if (wildsigner != NULL) {
 			dns_name_copy(dns_name(&sig.signer), wildsigner);

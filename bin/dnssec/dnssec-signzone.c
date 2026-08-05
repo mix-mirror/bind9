@@ -430,7 +430,7 @@ expecttofindkey(dns_name_t *name) {
 
 	dns_fixedname_init(&fname);
 	result = dns_db_find(gdb, name, gversion, dns_rdatatype_dnskey, options,
-			     0, NULL, dns_fixedname_name(&fname), NULL, NULL);
+			     0, NULL, dns_name(&fname), NULL, NULL);
 	switch (result) {
 	case ISC_R_SUCCESS:
 	case DNS_R_NXDOMAIN:
@@ -1685,12 +1685,12 @@ assignwork(void *arg) {
 
 	UNLOCK(&namelock);
 
-	signname(node, false, dns_fixedname_name(&fname));
+	signname(node, false, dns_name(&fname));
 
 	/*%
 	 * Write a node to the output file, and restart the worker task.
 	 */
-	lock_and_dumpnode(dns_fixedname_name(&fname), node);
+	lock_and_dumpnode(dns_name(&fname), node);
 	dns_db_detachnode(&node);
 
 	isc_async_current(assignwork, NULL);
