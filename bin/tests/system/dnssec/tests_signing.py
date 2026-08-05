@@ -168,7 +168,7 @@ def test_occluded_data():
     msg = isctest.query.create("z.secure.example.", "ANY")
     res = isctest.query.tcp(msg, "10.53.0.3")
     isctest.check.noerror(res)
-    isctest.check.rr_count_eq(res.answer, 4)  # A+RRSIG, NSEC+RRSIG
+    isctest.check.rr_count_eq(res.answer, 2)  # single RRset + RRSIG
 
 
 def test_update_signing(default_algorithm):

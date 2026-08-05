@@ -1204,15 +1204,17 @@ def test_source_address_both_families_no_crash(dig, ns1):
 
 def test_yaml_any_output(dig, ns3):
     """
-    Check the structure of dig +yaml output for an ANY query.
+    Check the structure of dig +yaml output for an ANY query,
+    which a resolver refuses.
     """
     result = dig(f"+qr +yaml @{ns3.ip} any ns2.example")
     messages = parse_yaml(result.out)
     query = messages[0]["message"]["query_message_data"]
     assert query["status"] == "NOERROR"
     response = messages[1]["message"]["response_message_data"]
-    assert response["status"] == "NOERROR"
+    assert response["status"] == "REFUSED"
     assert response["QUESTION_SECTION"][0] == "ns2.example. IN ANY"
+    assert "ANSWER_SECTION" not in response
 
 
 def test_yaml_ipv6_trailing_zeroes(dig, ns3):
