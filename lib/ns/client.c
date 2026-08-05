@@ -1029,9 +1029,8 @@ ns_client_error(ns_client_t *client, isc_result_t result) {
 		result = isc_time_nowplusinterval(&expire, &i);
 		if (result == ISC_R_SUCCESS) {
 			dns_badcache_add(client->inner.view->failcache,
-					 dns_linkedname_name(qname),
-					 client->query.qtype, flags,
-					 isc_time_seconds(&expire));
+					 dns_name(qname), client->query.qtype,
+					 flags, isc_time_seconds(&expire));
 		}
 	}
 
@@ -2827,9 +2826,9 @@ ns_client_logv(ns_client_t *client, isc_logcategory_t category,
 		signer = signerbuf;
 	}
 
-	q = dns_linkedname_name(client->query.origqname);
+	q = dns_name(client->query.origqname);
 	if (q == NULL) {
-		q = dns_linkedname_name(client->query.qname);
+		q = dns_name(client->query.qname);
 	}
 	if (q != NULL) {
 		dns_name_format(q, qnamebuf, sizeof(qnamebuf));
@@ -3069,8 +3068,8 @@ ns_client_newname(ns_client_t *client, isc_buffer_t *dbuf, isc_buffer_t *nbuf) {
 	dns_message_gettempname(client->message, &name_links);
 	isc_buffer_availableregion(dbuf, &r);
 	isc_buffer_init(nbuf, r.base, r.length);
-	dns_name_setbuffer(dns_linkedname_name(name_links), NULL);
-	dns_name_setbuffer(dns_linkedname_name(name_links), nbuf);
+	dns_name_setbuffer(dns_name(name_links), NULL);
+	dns_name_setbuffer(dns_name(name_links), nbuf);
 	client->query.namebufused = true;
 
 	CTRACE("ns_client_newname: done");
@@ -3120,7 +3119,7 @@ ns_client_keepname(ns_client_t *client, dns_linkedname_t *name,
 
 	dns_name_toregion(name, &r);
 	isc_buffer_add(dbuf, r.length);
-	dns_name_setbuffer(dns_linkedname_name(name), NULL);
+	dns_name_setbuffer(dns_name(name), NULL);
 	client->query.namebufused = false;
 }
 
