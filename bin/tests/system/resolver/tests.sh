@@ -326,7 +326,7 @@ if [ $ret = 2 ]; then echo_i "ncache priming failed"; fi
 dig_with_opts +tcp mx example.net @10.53.0.7 >dig.ns7.out.${n} || ret=3
 grep "status: NOERROR" dig.ns7.out.${n} >/dev/null || ret=3
 dig_with_opts +tcp rrsig mail.example.net +norec @10.53.0.7 >dig.ns7.out.${n} || ret=4
-grep "status: NOERROR" dig.ns7.out.${n} >/dev/null || ret=4
+grep "status: REFUSED" dig.ns7.out.${n} >/dev/null || ret=4
 grep "ANSWER: 0" dig.ns7.out.${n} >/dev/null || ret=4
 if [ $ret != 0 ]; then
   echo_i "failed"
@@ -547,18 +547,18 @@ status=$((status + ret))
 n=$((n + 1))
 echo_i "check prefetch qtype * (${n})"
 ret=0
-dig_with_opts @10.53.0.5 fetchall.tld any >dig.out.1.${n} || ret=1
+dig_with_opts @10.53.0.5 fetchall.tld a >dig.out.1.${n} || ret=1
 ttl1=$(awk '/^fetchall.tld/ { print $2 - 3; exit }' dig.out.1.${n})
 # sleep so we are in prefetch range
 sleep "${ttl1:-0}"
 # trigger prefetch
-dig_with_opts @10.53.0.5 fetchall.tld any >dig.out.2.${n} || ret=1
+dig_with_opts @10.53.0.5 fetchall.tld a >dig.out.2.${n} || ret=1
 ttl2=$(awk '/^fetchall.tld/ { print $2; exit }' dig.out.2.${n})
 sleep 1
 # check that prefetch occurred;
 # note that only the first record is prefetched,
 # because of the order of the records in the cache
-dig_with_opts @10.53.0.5 fetchall.tld any >dig.out.3.${n} || ret=1
+dig_with_opts @10.53.0.5 fetchall.tld a >dig.out.3.${n} || ret=1
 ttl3=$(awk '/^fetchall.tld/ { print $2; exit }' dig.out.3.${n})
 test "${ttl3:-0}" -gt "${ttl2:-1}" || ret=1
 if [ $ret != 0 ]; then echo_i "failed"; fi
@@ -567,11 +567,11 @@ status=$((status + ret))
 n=$((n + 1))
 echo_i "check that E was logged on EDNS queries in the query log (${n})"
 ret=0
-dig_with_opts @10.53.0.5 +edns edns.fetchall.tld any >dig.out.2.${n} || ret=1
-grep "query: edns.fetchall.tld IN ANY +E" ns5/named.run >/dev/null || ret=1
-dig_with_opts @10.53.0.5 +noedns noedns.fetchall.tld any >dig.out.2.${n} || ret=1
-grep "query: noedns.fetchall.tld IN ANY" ns5/named.run >/dev/null || ret=1
-grep "query: noedns.fetchall.tld IN ANY +E" ns5/named.run >/dev/null && ret=1
+dig_with_opts @10.53.0.5 +edns edns.fetchall.tld a >dig.out.2.${n} || ret=1
+grep "query: edns.fetchall.tld IN A +E" ns5/named.run >/dev/null || ret=1
+dig_with_opts @10.53.0.5 +noedns noedns.fetchall.tld a >dig.out.2.${n} || ret=1
+grep "query: noedns.fetchall.tld IN A" ns5/named.run >/dev/null || ret=1
+grep "query: noedns.fetchall.tld IN A +E" ns5/named.run >/dev/null && ret=1
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -606,11 +606,11 @@ edns=$($FEATURETEST --edns-version)
 n=$((n + 1))
 echo_i "check that EDNS version is logged (${n})"
 ret=0
-dig_with_opts @10.53.0.5 +edns edns0.fetchall.tld any >dig.out.2.${n} || ret=1
-grep "query: edns0.fetchall.tld IN ANY +E(0)" ns5/named.run >/dev/null || ret=1
+dig_with_opts @10.53.0.5 +edns edns0.fetchall.tld a >dig.out.2.${n} || ret=1
+grep "query: edns0.fetchall.tld IN A +E(0)" ns5/named.run >/dev/null || ret=1
 if test "${edns:-0}" != 0; then
-  dig_with_opts @10.53.0.5 +edns=1 edns1.fetchall.tld any >dig.out.2.${n} || ret=1
-  grep "query: edns1.fetchall.tld IN ANY +E(1)" ns5/named.run >/dev/null || ret=1
+  dig_with_opts @10.53.0.5 +edns=1 edns1.fetchall.tld a >dig.out.2.${n} || ret=1
+  grep "query: edns1.fetchall.tld IN A +E(1)" ns5/named.run >/dev/null || ret=1
 fi
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
@@ -878,18 +878,28 @@ status=$((status + ret))
 n=$((n + 1))
 echo_i "check expired TTLs with qtype * (${n})"
 ret=0
-dig_with_opts +tcp @10.53.0.5 mixedttl.tld any >dig.out.1.${n} || ret=1
-ttl1=$(awk '$1 == "mixedttl.tld." && $4 == "A" { print $2 + 1 }' dig.out.1.${n})
+dig_with_opts +tcp @10.53.0.5 mixedttl.tld a >dig.out.1.${n}.a || ret=1
+dig_with_opts +tcp @10.53.0.5 mixedttl.tld txt >dig.out.1.${n}.txt || ret=1
+dig_with_opts +tcp @10.53.0.5 mixedttl.tld aaaa >dig.out.1.${n}.aaaa || ret=1
+ttl1=$(awk '$1 == "mixedttl.tld." && $4 == "A" { print $2 + 1 }' dig.out.1.${n}.a)
 # sleep TTL + 1 so that record has expired
 sleep "${ttl1:-0}"
-dig_with_opts +tcp @10.53.0.5 mixedttl.tld any >dig.out.2.${n} || ret=1
+# now snoop into the cache
+dig_with_opts +nord +tcp @10.53.0.5 mixedttl.tld a >dig.out.2.${n}.a || ret=1
+dig_with_opts +nord +tcp @10.53.0.5 mixedttl.tld txt >dig.out.2.${n}.txt || ret=1
+dig_with_opts +nord +tcp @10.53.0.5 mixedttl.tld aaaa >dig.out.2.${n}.aaaa || ret=1
 # check preconditions
-grep "ANSWER: 3," dig.out.1.${n} >/dev/null || ret=1
-lines=$(awk '$1 == "mixedttl.tld." && $2 > 30 { print }' dig.out.1.${n} | wc -l)
+grep "ANSWER: 1," dig.out.1.${n}.a >/dev/null || ret=1
+grep "ANSWER: 1," dig.out.1.${n}.txt >/dev/null || ret=1
+grep "ANSWER: 1," dig.out.1.${n}.aaaa >/dev/null || ret=1
+lines=$(cat dig.out.1.${n}.a dig.out.1.${n}.txt dig.out.1.${n}.aaaa | awk '$1 == "mixedttl.tld." && $2 > 30 { print }' | wc -l)
 test ${lines:-1} -ne 0 && ret=1
-# check behaviour (there may be 1 answer on very slow machines)
-grep "ANSWER: [12]," dig.out.2.${n} >/dev/null || ret=1
-lines=$(awk '$1 == "mixedttl.tld." && $2 > 30 { print }' dig.out.2.${n} | wc -l)
+# check behaviour: the expired A record is no longer served, the AAAA
+# record still is (the TXT record may have expired on very slow machines),
+# and no served TTL may exceed the original zone TTLs
+grep "ANSWER: 0," dig.out.2.${n}.a >/dev/null || ret=1
+grep "ANSWER: 1," dig.out.2.${n}.aaaa >/dev/null || ret=1
+lines=$(cat dig.out.2.${n}.a dig.out.2.${n}.txt dig.out.2.${n}.aaaa | awk '$1 == "mixedttl.tld." && $2 > 30 { print }' | wc -l)
 test ${lines:-1} -ne 0 && ret=1
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))

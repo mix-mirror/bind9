@@ -74,18 +74,17 @@ def test_load_transfer(qname, qtype):
     isctest.check.noerror(res1)
 
 
-def test_insecure_rrsig():
-    # check that for a rrsig query against a validating resolver where the
-    # authoritative zone is unsigned (insecure delegation), noerror is
-    # returned.
-    msg = isctest.query.create("a.insecure.example", "RRSIG")
-    res = isctest.query.tcp(msg, "10.53.0.4")
-    isctest.check.noerror(res)
-    isctest.check.rr_count_eq(res.answer, 0)
-    isctest.check.rr_count_eq(res.authority, 1)
-    isctest.check.rr_count_eq(res.additional, 0)
-    assert str(res.authority[0].name) == "insecure.example."
-    assert res.authority[0].rdtype == rdatatype.SOA
+def test_rrsig_query_refused():
+    # RRSIG queries are refused outright with EDE 21 (Not Supported),
+    # by authoritative servers and resolvers alike, for signed and
+    # unsigned names
+    for server in ("10.53.0.3", "10.53.0.4"):
+        for qname in ("secure.example", "a.insecure.example"):
+            msg = isctest.query.create(qname, "RRSIG")
+            res = isctest.query.tcp(msg, server)
+            isctest.check.refused(res)
+            isctest.check.empty_answer(res)
+            isctest.check.ede(res, EDECode.NOT_SUPPORTED)
 
 
 def test_adflag():
@@ -226,13 +225,17 @@ def answer_has(r, rdtype):
 
 
 def test_chain_validation():
-    # check validation of ANY response
+    # check ANY response; the authoritative server (ns2) answers with a
+    # single RRset and EDE 21, the resolver (ns4) responds with NODATA
     msg = isctest.query.create("foo.example", "ANY")
     res1 = isctest.query.tcp(msg, "10.53.0.2")
     res2 = isctest.query.tcp(msg, "10.53.0.4")
-    isctest.check.same_answer(res1, res2)
+    isctest.check.noerror(res1)
+    isctest.check.rr_count_eq(res1.answer, 2)  # 1 record, 1 RRSIG
+    isctest.check.ede(res1, EDECode.NOT_SUPPORTED)
     isctest.check.noerror(res2)
-    isctest.check.rr_count_eq(res2.answer, 6)  # 2 records, 1 NSEC, 3 RRSIGs
+    isctest.check.rr_count_eq(res2.answer, 0)
+    isctest.check.ede(res2, EDECode.NOT_SUPPORTED)
 
     # check validation of CNAME response
     msg = isctest.query.create("cname1.example", "TXT")
@@ -250,21 +253,26 @@ def test_chain_validation():
     isctest.check.noerror(res2)
     isctest.check.rr_count_eq(res2.answer, 5)  # DNAME, TXT, 2 RRSIGs, synth CNAME
 
-    # check validation of CNAME response to ANY query
+    # check CNAME response to ANY query; the resolver chases the CNAME
+    # via the substituted SOA query and returns a NODATA answer for
+    # the CNAME target
     msg = isctest.query.create("cname2.example", "ANY")
     res1 = isctest.query.tcp(msg, "10.53.0.2")
     res2 = isctest.query.tcp(msg, "10.53.0.4")
-    isctest.check.same_answer(res1, res2)
+    isctest.check.noerror(res1)
+    isctest.check.rr_count_eq(res1.answer, 2)  # 1 record, 1 RRSIG
+    isctest.check.ede(res1, EDECode.NOT_SUPPORTED)
     isctest.check.noerror(res2)
-    isctest.check.rr_count_eq(res2.answer, 4)  # CNAME, NSEC, 2 RRSIGs
+    isctest.check.rr_count_eq(res2.answer, 2)  # CNAME, RRSIG
 
-    # check validation of DNAME response to ANY query
+    # check DNAME response to ANY query
     msg = isctest.query.create("foo.dname2.example", "ANY")
     res1 = isctest.query.tcp(msg, "10.53.0.2")
     res2 = isctest.query.tcp(msg, "10.53.0.4")
-    isctest.check.same_answer(res1, res2)
+    isctest.check.noerror(res1)
+    isctest.check.rr_count_eq(res1.answer, 3)  # DNAME, RRSIG, synth CNAME
     isctest.check.noerror(res2)
-    isctest.check.rr_count_eq(res2.answer, 3)  # DNAME, RSRIG, synth CNAME
+    isctest.check.rr_count_eq(res2.answer, 3)  # DNAME, RRSIG, synth CNAME
 
     # check bad CNAME signature is caught after +CD query
     msg = isctest.query.create("bad-cname.example", "A", dnssec=False, cd=True)
@@ -707,27 +715,24 @@ def test_cache(ns4):
     for rrset in res2.answer:
         assert rrset.ttl <= 300
 
-    # first query for a NS record, to cache NSEC and RRSIG(NSEC)
-    msg = isctest.query.create("normalthenrrsig.secure.example", "NS")
-    isctest.query.tcp(msg, "10.53.0.4")
-    # query for a record, then follow it with a query for the
-    # corresponding RRSIG, check that it's answered from the cache
+    # RRSIG queries are refused outright, no matter what the cache
+    # holds for the queried name: prime the cache with a normal query,
+    # then follow it with a query for the corresponding RRSIG
     msg = isctest.query.create("normalthenrrsig.secure.example", "A")
     isctest.query.tcp(msg, "10.53.0.4")
 
     msg = isctest.query.create("normalthenrrsig.secure.example", "RRSIG")
     res1 = isctest.query.tcp(msg, "10.53.0.3")
     res2 = isctest.query.tcp(msg, "10.53.0.4")
-    isctest.check.same_answer(res1, res2)
-    isctest.check.noerror(res2)
-    isctest.check.raflag(res2)
+    for res in (res1, res2):
+        isctest.check.refused(res)
+        isctest.check.empty_answer(res)
+        isctest.check.ede(res, EDECode.NOT_SUPPORTED)
 
-    # check direct query for RRSIG: if it's not cached with other records,
-    # it should result in an empty response.
     msg = isctest.query.create("rrsigonly.secure.example", "RRSIG")
     res1 = isctest.query.tcp(msg, "10.53.0.4")
+    isctest.check.refused(res1)
     isctest.check.empty_answer(res1)
-    isctest.check.noraflag(res1)
 
     # check that a DNSKEY query with no data still gets cached
     msg = isctest.query.create("insecure.example", "DNSKEY")

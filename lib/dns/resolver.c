@@ -10864,7 +10864,11 @@ dns_resolver_createfetch(dns_resolver_t *res, const dns_name_t *name,
 
 	REQUIRE(VALID_RESOLVER(res));
 	REQUIRE(res->frozen);
-	/* XXXRTH  Check for meta type */
+
+	if (dns_rdatatype_ismeta(type) || dns_rdatatype_issig(type)) {
+		return DNS_R_REFUSED;
+	}
+
 	if (domain != NULL) {
 		REQUIRE(DNS_DELEGSET_VALID(delegset));
 	} else {

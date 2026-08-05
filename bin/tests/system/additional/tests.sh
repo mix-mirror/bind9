@@ -276,48 +276,42 @@ minimal=no
 dotests
 
 n=$((n + 1))
-echo_i "testing with 'minimal-any no;' ($n)"
-ret=0
-$DIG $DIGOPTS -t ANY www.rt.example @10.53.0.1 >dig.out.$n || ret=1
-grep "ANSWER: 3, AUTHORITY: 2, ADDITIONAL: 2" dig.out.$n >/dev/null || ret=1
-if [ $ret -eq 1 ]; then
-  echo_i "failed"
-  status=$((status + 1))
-fi
-
-echo_i "reconfiguring server: minimal-any yes"
-cp ns1/named3.conf ns1/named.conf
-rndc_reconfig ns1 10.53.0.1
-
-n=$((n + 1))
-echo_i "testing with 'minimal-any yes;' over UDP ($n)"
+echo_i "testing single-RRset ANY response over UDP ($n)"
 ret=0
 $DIG $DIGOPTS -t ANY +notcp www.rt.example @10.53.0.1 >dig.out.$n || ret=1
 grep "ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 1" dig.out.$n >/dev/null || ret=1
+grep "EDE: 21" dig.out.$n >/dev/null || ret=1
 if [ $ret -eq 1 ]; then
   echo_i "failed"
   status=$((status + 1))
 fi
-n=$((n + 1))
 
-echo_i "testing with 'minimal-any yes;' over TCP ($n)"
+n=$((n + 1))
+echo_i "testing single-RRset ANY response over TCP ($n)"
 ret=0
 $DIG $DIGOPTS -t ANY +tcp www.rt.example @10.53.0.1 >dig.out.$n || ret=1
-grep "ANSWER: 3, AUTHORITY: 0, ADDITIONAL: 1" dig.out.$n >/dev/null || ret=1
+grep "ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 1" dig.out.$n >/dev/null || ret=1
+grep "EDE: 21" dig.out.$n >/dev/null || ret=1
 if [ $ret -eq 1 ]; then
   echo_i "failed"
   status=$((status + 1))
 fi
 
 n=$((n + 1))
-echo_i "testing with 'minimal-any yes;' over UDP ($n)"
+echo_i "testing REFUSED response to RRSIG query ($n)"
 ret=0
-$DIG $DIGOPTS -t ANY +notcp www.rt.example @10.53.0.1 >dig.out.$n || ret=1
-grep "ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 1" dig.out.$n >/dev/null || ret=1
+$DIG $DIGOPTS -t RRSIG www.rt.example @10.53.0.1 >dig.out.$n || ret=1
+grep "status: REFUSED" dig.out.$n >/dev/null || ret=1
+grep "ANSWER: 0" dig.out.$n >/dev/null || ret=1
+grep "EDE: 21" dig.out.$n >/dev/null || ret=1
 if [ $ret -eq 1 ]; then
   echo_i "failed"
   status=$((status + 1))
 fi
+
+echo_i "reconfiguring server: minimal-responses no-auth"
+cp ns1/named3.conf ns1/named.conf
+rndc_reconfig ns1 10.53.0.1
 
 echo_i "testing with 'minimal-responses no-auth;'"
 minimal=no-auth
@@ -360,24 +354,25 @@ cp ns1/named2.conf ns1/named.conf
 rndc_reconfig ns1 10.53.0.1
 
 n=$((n + 1))
-echo_i "testing NS handling in ANY responses (authoritative) ($n)"
+echo_i "testing ANY response minimization (authoritative) ($n)"
 ret=0
 $DIG $DIGOPTS -t ANY rt.example @10.53.0.1 >dig.out.$n || ret=1
-grep "AUTHORITY: 0" dig.out.$n >/dev/null || ret=1
-grep "NS[ 	]*ns" dig.out.$n >/dev/null || ret=1
+grep "status: NOERROR" dig.out.$n >/dev/null || ret=1
+grep "ANSWER: 1, AUTHORITY: 0," dig.out.$n >/dev/null || ret=1
+grep "EDE: 21" dig.out.$n >/dev/null || ret=1
 if [ $ret -eq 1 ]; then
   echo_i "failed"
   status=$((status + 1))
 fi
 
 n=$((n + 1))
-echo_i "testing NS handling in ANY responses (recursive) ($n)"
+echo_i "testing NODATA response to ANY queries (recursive) ($n)"
 ret=0
-# pre-cache the address record
-$DIG $DIGOPTS -t A ns1.rt.example @10.53.0.3 >/dev/null || ret=1
 $DIG $DIGOPTS -t ANY rt.example @10.53.0.3 >dig.out.$n || ret=1
-grep "AUTHORITY: 0" dig.out.$n >/dev/null || ret=1
-grep "NS[ 	]*ns" dig.out.$n >/dev/null || ret=1
+grep "status: NOERROR" dig.out.$n >/dev/null || ret=1
+grep "ANSWER: 0, AUTHORITY: 1," dig.out.$n >/dev/null || ret=1
+grep "IN[ 	]*SOA" dig.out.$n >/dev/null || ret=1
+grep "EDE: 21" dig.out.$n >/dev/null || ret=1
 if [ $ret -eq 1 ]; then
   echo_i "failed"
   status=$((status + 1))

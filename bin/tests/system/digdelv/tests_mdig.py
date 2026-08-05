@@ -70,7 +70,7 @@ def test_soa_norrcomments(mdig, ns3):
 
 def test_yaml_output(mdig, ns3):
     """Check the structure of mdig +yaml output."""
-    result = mdig(f"+yaml @{ns3.ip} -t any ns2.example")
+    result = mdig(f"+yaml @{ns3.ip} -t a ns2.example")
     response = parse_yaml(result.out)[0]["message"]["response_message_data"]
     assert response["status"] == "NOERROR"
-    assert response["QUESTION_SECTION"][0] == "ns2.example. IN ANY"
+    assert response["QUESTION_SECTION"][0] == "ns2.example. IN A"
