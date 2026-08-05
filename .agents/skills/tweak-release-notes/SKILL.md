@@ -55,7 +55,7 @@ Helper scripts (pure-local git/text + JSON parsing) are in `scripts/`.
    differ for this release, which is expected.
 
 4. **Issue close-status check.** Derive the full covered-issue set
-   (`scripts/issue-refs.py <ver>`), fetch each via cmd-sandbox issue-read,
+   (`scripts/issue-refs.py <ver>`), fetch each via gitlab CLI,
    then `scripts/summarize-issues.py <dir>`. Every covered issue should be
    **closed**. For any that isn't, reason: *omission* (closed via a non-main /
    private-fork branch so auto-close never fired → close it) vs *ongoing* (MR
@@ -67,8 +67,8 @@ Helper scripts (pure-local git/text + JSON parsing) are in `scripts/`.
    the markup decision table: REFERENCE.md. **When unsure, grep recent notes.**
 
 6. **Verify the docs build.** A required gate after any notes change. Use the
-   cmd-sandbox build tooling (find the command via `cmd-sandbox-list`); the
-   gate treats Sphinx warnings as errors, so every role target must resolve.
+   meson compile; the gate treats Sphinx warnings as errors, so every role
+   target must resolve.
 
 7. **Commit.** `Tweak and reword release notes` (verbatim subject, no body) +
    `Assisted-by` trailer; follow-ups as `--fixup`; finish with the standard

@@ -210,7 +210,7 @@ docs are Sphinx; the real CI gate runs `sphinx-build` with **`-W`
 (warnings-as-errors)** over `doc/arm` (and `-n` nitpicky depending on
 verbosity), so every role target must resolve or the build fails.
 
-Run it directly with meson/sphinx-build:
+Run it directly with meson (sphinx-build underneath):
 
 ```
 meson setup build   # once; add -Ddoc=enabled if sphinx-build isn't auto-detected
