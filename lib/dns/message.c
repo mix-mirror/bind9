@@ -957,7 +957,7 @@ getquestions(isc_buffer_t *source, dns_message_t *msg, dns_decompress_t dctx,
 		 */
 		isc_buffer_remainingregion(source, &r);
 		isc_buffer_setactive(source, r.length);
-		CHECK(getname(dns_linkedname_name(name), source, msg, dctx));
+		CHECK(getname(dns_name(name), source, msg, dctx));
 
 		ISC_LIST_APPEND(*section, name, link);
 
@@ -1101,7 +1101,7 @@ getsection(isc_buffer_t *source, dns_message_t *msg, dns_decompress_t dctx,
 		 */
 		isc_buffer_remainingregion(source, &r);
 		isc_buffer_setactive(source, r.length);
-		CHECK(getname(dns_linkedname_name(name), source, msg, dctx));
+		CHECK(getname(dns_name(name), source, msg, dctx));
 
 		/*
 		 * Get type, class, ttl, and rdatalen.  Verify that at least
@@ -1944,9 +1944,8 @@ dns_message_rendersection(dns_message_t *msg, dns_section_t sectionid,
 			st = *(msg->buffer);
 			count = 0;
 			result = dns_rdataset_towire(
-				rdataset, dns_linkedname_name(name), msg->id,
-				msg->cctx, msg->buffer, partial, rd_options,
-				&count);
+				rdataset, dns_name(name), msg->id, msg->cctx,
+				msg->buffer, partial, rd_options, &count);
 			total += count;
 			if (partial && result == ISC_R_NOSPACE) {
 				msg->flags |= DNS_MESSAGEFLAG_TC;
@@ -1997,9 +1996,9 @@ dns_message_rendersection(dns_message_t *msg, dns_section_t sectionid,
 
 				count = 0;
 				result = dns_rdataset_towire(
-					rds, dns_linkedname_name(n), msg->id,
-					msg->cctx, msg->buffer, partial,
-					rd_options, &count);
+					rds, dns_name(n), msg->id, msg->cctx,
+					msg->buffer, partial, rd_options,
+					&count);
 
 				total += count;
 
@@ -2218,9 +2217,9 @@ dns_message_renderend(dns_message_t *msg) {
 		msg->sig_reserved = 0;
 		RETERR(dns_tsig_sign(msg));
 		count = 0;
-		result = renderset(
-			msg->tsig, dns_linkedname_name(msg->tsigname), msg->id,
-			msg->cctx, msg->buffer, msg->reserved, 0, &count);
+		result = renderset(msg->tsig, dns_name(msg->tsigname), msg->id,
+				   msg->cctx, msg->buffer, msg->reserved, 0,
+				   &count);
 		msg->counts[DNS_SECTION_ADDITIONAL] += count;
 		if (result != ISC_R_SUCCESS) {
 			return result;
@@ -2463,7 +2462,7 @@ dns_message_puttempname(dns_message_t *msg, dns_linkedname_t **itemp) {
 	 * we need to check this in case dns_name_dup() was used.
 	 */
 	if (dns_name_dynamic(item)) {
-		dns_name_free(dns_linkedname_name(item), msg->mctx);
+		dns_name_free(dns_name(item), msg->mctx);
 	}
 
 	/*
@@ -2675,7 +2674,7 @@ dns_message_gettsig(dns_message_t *msg, const dns_name_t **owner) {
 	REQUIRE(DNS_MESSAGE_VALID(msg));
 	REQUIRE(owner == NULL || *owner == NULL);
 
-	SET_IF_NOT_NULL(owner, dns_linkedname_name(msg->tsigname));
+	SET_IF_NOT_NULL(owner, dns_name(msg->tsigname));
 	return msg->tsig;
 }
 
@@ -2796,7 +2795,7 @@ dns_message_getsig0(dns_message_t *msg, const dns_name_t **owner) {
 		if (msg->sig0name == NULL) {
 			*owner = dns_rootname;
 		} else {
-			*owner = dns_linkedname_name(msg->sig0name);
+			*owner = dns_name(msg->sig0name);
 		}
 	}
 	return msg->sig0;
@@ -3275,11 +3274,10 @@ dns_message_sectiontotext(dns_message_t *msg, dns_section_t section,
 					ADD_STRING(target, ";");
 				}
 				result = dns_master_questiontotext(
-					dns_linkedname_name(name), rds, style,
-					target);
+					dns_name(name), rds, style, target);
 			} else {
 				result = dns_master_rdatasettotext(
-					dns_linkedname_name(name), rds, style,
+					dns_name(name), rds, style,
 					&msg->indent, target);
 			}
 			if (result != ISC_R_SUCCESS) {
@@ -3526,7 +3524,7 @@ render_zoneversion(dns_message_t *msg, isc_buffer_t *optbuf,
 	char namebuf[DNS_NAME_FORMATSIZE];
 	dns_linkedname_t *linkedname =
 		ISC_LIST_HEAD(msg->sections[DNS_SECTION_QUESTION]);
-	dns_name_t *name = dns_linkedname_name(linkedname);
+	dns_name_t *name = dns_name(linkedname);
 	dns_name_t suffix = DNS_NAME_INITEMPTY;
 	bool yaml = false, rawmode = false;
 	const char *sep1 = " ", *sep2 = ", ";
