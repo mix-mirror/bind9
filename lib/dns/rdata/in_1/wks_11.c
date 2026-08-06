@@ -169,7 +169,7 @@ totext_in_wks(ARGS_TOTEXT) {
 	isc_region_t sr;
 	unsigned short proto;
 	char buf[sizeof("65535")];
-	unsigned int i, j;
+	unsigned int i, j, len;
 
 	UNUSED(tctx);
 
@@ -187,8 +187,9 @@ totext_in_wks(ARGS_TOTEXT) {
 	RETERR(str_totext(buf, target));
 	isc_region_consume(&sr, 1);
 
-	INSIST(sr.length <= 8 * 1024);
-	for (i = 0; i < sr.length; i++) {
+	len = sr.length;
+	INSIST(len <= 8 * 1024);
+	for (i = 0; i < len; i++) {
 		if (sr.base[i] != 0) {
 			for (j = 0; j < 8; j++) {
 				if ((sr.base[i] & (0x80 >> j)) != 0) {
