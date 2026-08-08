@@ -186,6 +186,7 @@ TESTS =				\
 	statistics		\
 	statschannel		\
 	stress			\
+	streamdns		\
 	stub			\
 	synthfromdnssec		\
 	tcp			\
