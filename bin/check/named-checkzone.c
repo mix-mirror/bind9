@@ -23,6 +23,8 @@
 #include <isc/hash.h>
 #include <isc/lib.h>
 #include <isc/log.h>
+#include <isc/loop.h>
+#include <isc/managers.h>
 #include <isc/mem.h>
 #include <isc/parseint.h>
 #include <isc/result.h>
@@ -38,17 +40,35 @@
 #include <dns/name.h>
 #include <dns/rdataclass.h>
 #include <dns/rdataset.h>
+#include <dns/rpz.h>
 #include <dns/types.h>
 #include <dns/zone.h>
+#include <dns/zonemgr.h>
+#include <dns/zoneproperties.h>
 
 #include "check-tool.h"
 
 static int quiet = 0;
 dns_zone_t *zone = NULL;
 dns_zonetype_t zonetype = dns_zone_primary;
+static dns_zonemgr_t *zonemgr = NULL;
+static dns_dumpctx_t *dctx = NULL;
+static FILE *dumpoutput = NULL;
+static isc_result_t check_result = ISC_R_SUCCESS;
 static int dumpzone = 0;
+static const char *origin = NULL;
+static const char *filename = NULL;
 static const char *output_filename;
 static const dns_master_style_t *outputstyle = NULL;
+static dns_masterformat_t inputformat = dns_masterformat_text;
+static dns_masterformat_t outputformat = dns_masterformat_text;
+static uint32_t rawversion = 1, serialnum = 0;
+static dns_ttl_t maxttl = 0;
+static bool snset = false;
+static bool logdump = false;
+static FILE *errout = NULL;
+static char classname_in[] = "IN";
+static char *classname = classname_in;
 static enum { progmode_check, progmode_compile } progmode;
 
 #define ERRRET(result, function)                                              \
@@ -81,10 +101,100 @@ usage(int ret) {
 	exit(ret);
 }
 
+/*%
+ * Finish up: record the result, release the zone and the zone
+ * manager (which drops their loop references) and stop the loop.
+ * Must be called on the loop.
+ */
 static void
-destroy(void) {
+finish(isc_result_t result) {
+	check_result = result;
+
 	if (zone != NULL) {
+		dns_zonemgr_releasezone(zonemgr, zone);
 		dns_zone_detach(&zone);
+	}
+	if (zonemgr != NULL) {
+		dns_zonemgr_shutdown(zonemgr);
+		dns_zonemgr_detach(&zonemgr);
+	}
+
+	isc_loopmgr_shutdown();
+}
+
+static void
+dump_done(void *arg ISC_ATTR_UNUSED, isc_result_t result) {
+	if (dumpoutput != NULL && dumpoutput != stdout) {
+		(void)isc_stdio_close(dumpoutput);
+	}
+	dumpoutput = NULL;
+	dns_dumpctx_detach(&dctx);
+
+	if (logdump && result == ISC_R_SUCCESS) {
+		fprintf(errout, "done\n");
+	}
+
+	finish(result);
+}
+
+static void
+load_done(void *arg ISC_ATTR_UNUSED, isc_result_t result) {
+	if (result == ISC_R_SUCCESS && docheckrpz) {
+		dns_db_t *db = NULL;
+		dns_zone_getdb(zone, &db);
+		result = dns_rpz_checkdb(db, isc_g_mctx);
+		dns_db_detach(&db);
+	}
+
+	if (snset) {
+		dns_masterrawheader_t header;
+		dns_master_initrawheader(&header);
+		header.flags = DNS_MASTERRAW_SOURCESERIALSET;
+		header.sourceserial = serialnum;
+		dns_zone_setrawdata(zone, &header);
+	}
+
+	if (result == ISC_R_SUCCESS && dumpzone) {
+		if (logdump) {
+			fprintf(errout, "dump zone to %s...", output_filename);
+			fflush(errout);
+		}
+		result = dump_zone(origin, zone, output_filename, outputformat,
+				   outputstyle, rawversion, dump_done, NULL,
+				   &dumpoutput, &dctx);
+		if (result == ISC_R_SUCCESS) {
+			/* dump_done() will finish up */
+			return;
+		}
+	}
+
+	finish(result);
+}
+
+static void
+start(void *arg ISC_ATTR_UNUSED) {
+	isc_result_t result;
+
+	dns_zonemgr_create(isc_g_mctx, &zonemgr);
+
+	result = load_zone(isc_g_mctx, origin, filename, inputformat, classname,
+			   maxttl, zonemgr, load_done, NULL, &zone);
+	if (result != ISC_R_SUCCESS) {
+		finish(result);
+	}
+}
+
+static void
+teardown(void *arg ISC_ATTR_UNUSED) {
+	/*
+	 * Cancel a load or dump still in flight (e.g. on SIGINT);
+	 * the load or dump callback then calls finish().
+	 */
+	if (zone != NULL) {
+		dns_zone_cancelload(zone);
+	}
+	if (dctx != NULL) {
+		dns_dumpctx_cancel(dctx);
 	}
 }
 
@@ -92,23 +202,12 @@ destroy(void) {
 int
 main(int argc, char **argv) {
 	int c;
-	char *origin = NULL;
-	const char *filename = NULL;
 	isc_result_t result;
-	char classname_in[] = "IN";
-	char *classname = classname_in;
 	const char *workdir = NULL;
 	const char *inputformatstr = NULL;
 	const char *outputformatstr = NULL;
-	dns_masterformat_t inputformat = dns_masterformat_text;
-	dns_masterformat_t outputformat = dns_masterformat_text;
-	dns_masterrawheader_t header;
-	uint32_t rawversion = 1, serialnum = 0;
-	dns_ttl_t maxttl = 0;
-	bool snset = false;
-	bool logdump = false;
-	FILE *errout = stdout;
 
+	errout = stdout;
 	outputstyle = &dns_master_style_full;
 
 	isc_commandline_init(argc, argv);
@@ -534,32 +633,16 @@ main(int argc, char **argv) {
 
 	isc_commandline_index++;
 
-	result = load_zone(isc_g_mctx, origin, filename, inputformat, classname,
-			   maxttl, &zone);
+	isc_managers_create(1);
 
-	if (snset) {
-		dns_master_initrawheader(&header);
-		header.flags = DNS_MASTERRAW_SOURCESERIALSET;
-		header.sourceserial = serialnum;
-		dns_zone_setrawdata(zone, &header);
-	}
+	isc_loopmgr_setup(start, NULL);
+	isc_loopmgr_teardown(teardown, NULL);
+	isc_loopmgr_run();
 
-	if (result == ISC_R_SUCCESS && dumpzone) {
-		if (logdump) {
-			fprintf(errout, "dump zone to %s...", output_filename);
-			fflush(errout);
-		}
-		result = dump_zone(origin, zone, output_filename, outputformat,
-				   outputstyle, rawversion);
-		if (logdump) {
-			fprintf(errout, "done\n");
-		}
-	}
-
-	if (!quiet && result == ISC_R_SUCCESS) {
+	if (!quiet && check_result == ISC_R_SUCCESS) {
 		fprintf(errout, "OK\n");
 	}
-	destroy();
+	isc_managers_destroy();
 
-	return (result == ISC_R_SUCCESS) ? 0 : 1;
+	return (check_result == ISC_R_SUCCESS) ? 0 : 1;
 }

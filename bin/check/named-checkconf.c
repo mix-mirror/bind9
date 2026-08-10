@@ -24,7 +24,10 @@
 #include <isc/dir.h>
 #include <isc/hash.h>
 #include <isc/lib.h>
+#include <isc/list.h>
 #include <isc/log.h>
+#include <isc/loop.h>
+#include <isc/managers.h>
 #include <isc/mem.h>
 #include <isc/result.h>
 #include <isc/string.h>
@@ -37,12 +40,34 @@
 #include <dns/rdataclass.h>
 #include <dns/rootns.h>
 #include <dns/zone.h>
+#include <dns/zonemgr.h>
 
 #include <isccfg/check.h>
 #include <isccfg/grammar.h>
 #include <isccfg/namedconf.h>
 
 #include "check-tool.h"
+
+/*%
+ * A zone found in the configuration, waiting to be loaded.
+ */
+typedef struct zone_entry zone_entry_t;
+struct zone_entry {
+	char *view;
+	char *zname;
+	char *zclass;
+	char *zfile;
+	dns_masterformat_t masterformat;
+	dns_ttl_t maxttl;
+	dns_zoneopt_t options;
+	ISC_LINK(zone_entry_t) link;
+};
+
+static ISC_LIST(zone_entry_t) zone_entries = ISC_LIST_INITIALIZER;
+static dns_zonemgr_t *zonemgr = NULL;
+static dns_zone_t *current_zone = NULL;
+static isc_result_t zones_result = ISC_R_SUCCESS;
+static bool shutting_down = false;
 
 /*% usage */
 ISC_NORETURN static void
@@ -130,7 +155,6 @@ static isc_result_t
 configure_zone(const char *vclass, const char *view, const cfg_obj_t *zconfig,
 	       const cfg_obj_t *vconfig, const cfg_obj_t *config, bool list) {
 	int i = 0;
-	isc_result_t result;
 	const char *zclass;
 	const char *zname;
 	const char *zfile = NULL;
@@ -412,13 +436,41 @@ configure_zone(const char *vclass, const char *view, const cfg_obj_t *zconfig,
 		zone_options |= DNS_ZONEOPT_CHECKTTL;
 	}
 
-	result = load_zone(isc_g_mctx, zname, zfile, masterformat, zclass,
-			   maxttl, NULL);
-	if (result != ISC_R_SUCCESS) {
-		fprintf(stderr, "%s/%s/%s: %s\n", view, zname, zclass,
-			isc_result_totext(result));
+	/*
+	 * Defer the actual load; the zones are loaded asynchronously
+	 * one by one once the whole configuration has been checked.
+	 */
+	zone_entry_t *entry = isc_mem_get(isc_g_mctx, sizeof(*entry));
+	*entry = (zone_entry_t){
+		.view = isc_mem_strdup(isc_g_mctx, view),
+		.zname = isc_mem_strdup(isc_g_mctx, zname),
+		.zclass = isc_mem_strdup(isc_g_mctx, zclass),
+		.zfile = isc_mem_strdup(isc_g_mctx, zfile),
+		.masterformat = masterformat,
+		.maxttl = maxttl,
+		.options = zone_options,
+		.link = ISC_LINK_INITIALIZER,
+	};
+	ISC_LIST_APPEND(zone_entries, entry, link);
+
+	return ISC_R_SUCCESS;
+}
+
+static void
+free_entry(zone_entry_t *entry) {
+	isc_mem_free(isc_g_mctx, entry->view);
+	isc_mem_free(isc_g_mctx, entry->zname);
+	isc_mem_free(isc_g_mctx, entry->zclass);
+	isc_mem_free(isc_g_mctx, entry->zfile);
+	isc_mem_put(isc_g_mctx, entry, sizeof(*entry));
+}
+
+static void
+free_entries(void) {
+	ISC_LIST_FOREACH(zone_entries, entry, link) {
+		ISC_LIST_UNLINK(zone_entries, entry, link);
+		free_entry(entry);
 	}
-	return result;
 }
 
 /*% configure a view */
@@ -519,6 +571,87 @@ load_zones_fromconfig(const cfg_obj_t *config, bool list_zones) {
 
 cleanup:
 	return result;
+}
+
+static void
+zone_loaded(void *arg, isc_result_t result);
+
+/*%
+ * Start loading the next zone from the list; called on the loop.
+ * Failed load starts are reported immediately and the next zone is
+ * tried; once no zones are left (or on shutdown) the loop is stopped.
+ */
+static void
+start_next_zone(void) {
+	while (!shutting_down) {
+		isc_result_t result;
+		zone_entry_t *entry = ISC_LIST_HEAD(zone_entries);
+
+		if (entry == NULL) {
+			break;
+		}
+		ISC_LIST_UNLINK(zone_entries, entry, link);
+
+		zone_options = entry->options;
+		result = load_zone(isc_g_mctx, entry->zname, entry->zfile,
+				   entry->masterformat, entry->zclass,
+				   entry->maxttl, zonemgr, zone_loaded, entry,
+				   &current_zone);
+		if (result == ISC_R_SUCCESS) {
+			/* zone_loaded() will continue with the next zone */
+			return;
+		}
+
+		fprintf(stderr, "%s/%s/%s: %s\n", entry->view, entry->zname,
+			entry->zclass, isc_result_totext(result));
+		zones_result = result;
+		free_entry(entry);
+	}
+
+	/*
+	 * All zones done (or shutting down): release the zone manager
+	 * (dropping its loop references) and stop the loop.
+	 */
+	if (zonemgr != NULL) {
+		dns_zonemgr_shutdown(zonemgr);
+		dns_zonemgr_detach(&zonemgr);
+	}
+	isc_loopmgr_shutdown();
+}
+
+static void
+zone_loaded(void *arg, isc_result_t result) {
+	zone_entry_t *entry = arg;
+
+	if (result != ISC_R_SUCCESS) {
+		fprintf(stderr, "%s/%s/%s: %s\n", entry->view, entry->zname,
+			entry->zclass, isc_result_totext(result));
+		zones_result = result;
+	}
+	free_entry(entry);
+
+	dns_zonemgr_releasezone(zonemgr, current_zone);
+	dns_zone_detach(&current_zone);
+
+	start_next_zone();
+}
+
+static void
+start_zones(void *arg ISC_ATTR_UNUSED) {
+	dns_zonemgr_create(isc_g_mctx, &zonemgr);
+	start_next_zone();
+}
+
+static void
+teardown_zones(void *arg ISC_ATTR_UNUSED) {
+	/*
+	 * Cancel a load still in flight (e.g. on SIGINT);
+	 * zone_loaded() then finishes the shutdown.
+	 */
+	shutting_down = true;
+	if (current_zone != NULL) {
+		dns_zone_cancelload(current_zone);
+	}
 }
 
 static isc_result_t
@@ -719,6 +852,14 @@ main(int argc, char **argv) {
 	CHECK(isccfg_check_namedconf(config, checkflags, isc_g_mctx));
 	if (load_zones || list_zones) {
 		CHECK(load_zones_fromconfig(config, list_zones));
+		if (!ISC_LIST_EMPTY(zone_entries)) {
+			isc_managers_create(1);
+			isc_loopmgr_setup(start_zones, NULL);
+			isc_loopmgr_teardown(teardown_zones, NULL);
+			isc_loopmgr_run();
+			isc_managers_destroy();
+			CHECK(zones_result);
+		}
 	}
 
 	if (effective) {
@@ -739,6 +880,7 @@ printx:
 	}
 
 cleanup:
+	free_entries();
 	if (config != NULL) {
 		cfg_obj_detach(&config);
 	}
