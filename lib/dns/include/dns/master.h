@@ -140,6 +140,13 @@ dns_master_loadfileasync(const char *master_file, dns_name_t *top,
 			 void *include_arg, isc_mem_t *mctx,
 			 dns_masterformat_t format, uint32_t maxttl);
 
+isc_result_t
+dns_master_loadstreamasync(FILE *stream, dns_name_t *top, dns_name_t *origin,
+			   dns_rdataclass_t zclass, unsigned int options,
+			   dns_rdatacallbacks_t *callbacks, isc_loop_t *loop,
+			   dns_loaddonefunc_t done, void *done_arg,
+			   dns_loadctx_t **ctxp, isc_mem_t *mctx);
+
 /*%<
  * Loads a RFC1035 master file from a file, stream, or buffer
  * into rdatasets and then calls 'callbacks->commit' to commit the
