@@ -41,6 +41,7 @@
 #include <dns/rdatatype.h>
 #include <dns/types.h>
 #include <dns/zone.h>
+#include <dns/zonemgr.h>
 #include <dns/zoneproperties.h>
 
 #include "check-tool.h"
@@ -615,11 +616,12 @@ setup_logging(FILE *errout) {
 	return ISC_R_SUCCESS;
 }
 
-/*% load the zone */
+/*% start loading the zone asynchronously */
 isc_result_t
 load_zone(isc_mem_t *mctx, const char *zonename, const char *filename,
 	  dns_masterformat_t fileformat, const char *classname,
-	  dns_ttl_t maxttl, dns_zone_t **zonep) {
+	  dns_ttl_t maxttl, dns_zonemgr_t *zmgr, dns_loaddonefunc_t done,
+	  void *done_arg, dns_zone_t **zonep) {
 	isc_result_t result;
 	dns_rdataclass_t rdclass;
 	isc_textregion_t region;
@@ -628,7 +630,7 @@ load_zone(isc_mem_t *mctx, const char *zonename, const char *filename,
 	dns_name_t *origin;
 	dns_zone_t *zone = NULL;
 
-	REQUIRE(zonep == NULL || *zonep == NULL);
+	REQUIRE(zonep != NULL && *zonep == NULL);
 
 	if (debug) {
 		fprintf(stderr, "loading \"%s\" from \"%s\" class \"%s\"\n",
@@ -677,36 +679,31 @@ load_zone(isc_mem_t *mctx, const char *zonename, const char *filename,
 		dns_zone_setchecksrv(zone, checksrv);
 	}
 
-	CHECK(dns_zone_load(zone, false));
+	CHECK(dns_zonemgr_managezone(zmgr, zone));
 
-	if (docheckrpz) {
-		dns_db_t *db = NULL;
-		dns_zone_getdb(zone, &db);
-		result = dns_rpz_checkdb(db, mctx);
-		dns_db_detach(&db);
-		CHECK(result);
-	}
-
-	if (zonep != NULL) {
-		*zonep = zone;
-		zone = NULL;
+	dns_zone_attach(zone, zonep);
+	result = dns_zone_asyncload(zone, false, done, done_arg);
+	if (result != ISC_R_SUCCESS) {
+		dns_zone_detach(zonep);
+		dns_zonemgr_releasezone(zmgr, zone);
 	}
 
 cleanup:
-	if (zone != NULL) {
-		dns_zone_detach(&zone);
-	}
+	dns_zone_detach(&zone);
 	return result;
 }
 
-/*% dump the zone */
+/*% start dumping the zone asynchronously */
 isc_result_t
 dump_zone(const char *zonename, dns_zone_t *zone, const char *filename,
 	  dns_masterformat_t fileformat, const dns_master_style_t *style,
-	  const uint32_t rawversion) {
+	  const uint32_t rawversion, dns_dumpdonefunc_t done, void *done_arg,
+	  FILE **outputp, dns_dumpctx_t **dctxp) {
 	isc_result_t result;
 	FILE *output = stdout;
 	const char *flags;
+
+	REQUIRE(outputp != NULL && *outputp == NULL);
 
 	flags = (fileformat == dns_masterformat_text) ? "w" : "wb";
 
@@ -731,11 +728,15 @@ dump_zone(const char *zonename, dns_zone_t *zone, const char *filename,
 		}
 	}
 
-	result = dns_zone_dumptostream(zone, output, fileformat, style,
-				       rawversion);
-	if (output != stdout) {
-		(void)isc_stdio_close(output);
+	result = dns_zone_dumptostreamasync(zone, output, fileformat, style,
+					    rawversion, done, done_arg, dctxp);
+	if (result != ISC_R_SUCCESS) {
+		if (output != stdout) {
+			(void)isc_stdio_close(output);
+		}
+		return result;
 	}
 
-	return result;
+	*outputp = output;
+	return ISC_R_SUCCESS;
 }
