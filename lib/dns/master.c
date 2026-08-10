@@ -2665,6 +2665,35 @@ dns_master_loadstream(FILE *stream, dns_name_t *top, dns_name_t *origin,
 }
 
 isc_result_t
+dns_master_loadstreamasync(FILE *stream, dns_name_t *top, dns_name_t *origin,
+			   dns_rdataclass_t zclass, unsigned int options,
+			   dns_rdatacallbacks_t *callbacks, isc_loop_t *loop,
+			   dns_loaddonefunc_t done, void *done_arg,
+			   dns_loadctx_t **lctxp, isc_mem_t *mctx) {
+	dns_loadctx_t *lctx = NULL;
+
+	REQUIRE(stream != NULL);
+	REQUIRE(loop != NULL);
+	REQUIRE(done != NULL);
+
+	loadctx_create(dns_masterformat_text, mctx, options, 0, top, zclass,
+		       origin, callbacks, done, done_arg, NULL, NULL, NULL,
+		       &lctx);
+
+	isc_lex_openstream(lctx->lex, stream);
+
+	dns_loadctx_ref(lctx);
+	isc_loop_attach(loop, &lctx->loop);
+
+	/* Publish *lctxp before the load can start (see master_load). */
+	*lctxp = lctx;
+
+	isc_async_run(loop, master_load_start, lctx);
+
+	return ISC_R_SUCCESS;
+}
+
+isc_result_t
 dns_master_loadbuffer(isc_buffer_t *buffer, dns_name_t *top, dns_name_t *origin,
 		      dns_rdataclass_t zclass, unsigned int options,
 		      dns_rdatacallbacks_t *callbacks, isc_mem_t *mctx) {
