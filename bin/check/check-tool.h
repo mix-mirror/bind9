@@ -31,12 +31,29 @@ setup_logging(FILE *errout);
 isc_result_t
 load_zone(isc_mem_t *mctx, const char *zonename, const char *filename,
 	  dns_masterformat_t fileformat, const char *classname,
-	  dns_ttl_t maxttl, dns_zone_t **zonep);
+	  dns_ttl_t maxttl, dns_zonemgr_t *zmgr, dns_loaddonefunc_t done,
+	  void *done_arg, dns_zone_t **zonep);
+/*%<
+ * Start loading the zone asynchronously under the zone manager 'zmgr';
+ * '*zonep' is attached to the new zone immediately.  On ISC_R_SUCCESS
+ * 'done' will be called with 'done_arg' and the load result once the
+ * load has finished; on error 'done' is never called.  The load can
+ * be canceled with dns_zone_cancelload().
+ */
 
 isc_result_t
 dump_zone(const char *zonename, dns_zone_t *zone, const char *filename,
 	  dns_masterformat_t fileformat, const dns_master_style_t *style,
-	  const uint32_t rawversion);
+	  const uint32_t rawversion, dns_dumpdonefunc_t done, void *done_arg,
+	  FILE **outputp, dns_dumpctx_t **dctxp);
+/*%<
+ * Start dumping the zone asynchronously to 'filename' ("-" for
+ * stdout).  On ISC_R_SUCCESS '*outputp' holds the output stream to be
+ * closed by the caller (unless it is stdout) and '*dctxp' the dump
+ * context that can be used with dns_dumpctx_cancel(); 'done' will be
+ * called with 'done_arg' and the dump result once the dump has
+ * finished.  On error 'done' is never called.
+ */
 
 extern int debug;
 extern const char *journal;
