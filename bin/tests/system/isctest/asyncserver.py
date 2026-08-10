@@ -1231,6 +1231,14 @@ class AsyncDnsServer(AsyncServer):
         peer = Peer(peer_info[0], peer_info[1])
         logging.debug("Accepted TCP connection from %s", peer)
 
+        # Responses (including any artificial delay a handler adds) are
+        # dispatched as background tasks rather than awaited inline, so one
+        # slow response doesn't block reading/answering the next query on
+        # this connection. Tasks are tracked here so they aren't garbage
+        # collected while pending and so we can wait for in-flight
+        # responses to finish before closing the connection below.
+        pending_responses: set[asyncio.Task] = set()
+
         try:
             if self._connection_handler:
                 await self._connection_handler.handle(reader, writer, peer)
@@ -1238,12 +1246,34 @@ class AsyncDnsServer(AsyncServer):
                 wire = await self._read_tcp_query(reader, peer)
                 if not wire:
                     break
-                await self._send_tcp_response(writer, peer, wire)
+                task = asyncio.create_task(
+                    self._send_tcp_response(writer, peer, wire, pending_responses)
+                )
+                pending_responses.add(task)
+                task.add_done_callback(pending_responses.discard)
         except _ConnectionTeardownRequested:
             pass
         except ConnectionResetError:
             logging.error("TCP connection from %s reset by peer", peer)
             return
+        finally:
+            # Wait for in-flight responses without letting one failure abort
+            # the others, then re-raise anything unexpected so that handler
+            # bugs still take the server down loudly, like they did when
+            # responses were awaited inline.  Cancellations are expected
+            # during teardown and connection errors are the peer's doing,
+            # so neither is worth crashing over.
+            for result in await asyncio.gather(
+                *pending_responses, return_exceptions=True
+            ):
+                if not isinstance(result, BaseException):
+                    continue
+                if isinstance(result, (asyncio.CancelledError, ConnectionError)):
+                    logging.debug(
+                        "Response to %s ended with %s", peer, type(result).__name__
+                    )
+                    continue
+                raise result
 
         logging.debug("Closing TCP connection from %s", peer)
         writer.close()
@@ -1253,6 +1283,12 @@ class AsyncDnsServer(AsyncServer):
         except AttributeError:
             # Python < 3.7
             pass
+        except ConnectionError as exc:
+            # A response dispatched before the client disconnected may have
+            # been written into a socket the peer had already closed; the
+            # transport then fails asynchronously and reports the error here.
+            # That is the peer's doing, not a server bug.
+            logging.debug("TCP connection from %s closed with %r", peer, exc)
 
     async def _read_tcp_query(
         self, reader: asyncio.StreamReader, peer: Peer
@@ -1312,15 +1348,30 @@ class AsyncDnsServer(AsyncServer):
         return buffer
 
     async def _send_tcp_response(
-        self, writer: asyncio.StreamWriter, peer: Peer, wire: bytes
+        self,
+        writer: asyncio.StreamWriter,
+        peer: Peer,
+        wire: bytes,
+        pending_responses: set[asyncio.Task],
     ) -> None:
         socket_info = writer.get_extra_info("sockname")
         socket = Peer(socket_info[0], socket_info[1])
-        responses = self._handle_query(wire, socket, peer, DnsProtocol.TCP)
-        async for response in responses:
-            logging.debug("Sending TCP response: %s", response.hex())
-            writer.write(response)
-            await writer.drain()
+        try:
+            responses = self._handle_query(wire, socket, peer, DnsProtocol.TCP)
+            async for response in responses:
+                logging.debug("Sending TCP response: %s", response.hex())
+                writer.write(response)
+                await writer.drain()
+        except _ConnectionTeardownRequested:
+            # Closing the transport makes the read loop's next
+            # _read_tcp_query() return None/EOF, so it exits on its own;
+            # writer.close() is idempotent if called again once it does.
+            # Cancel other in-flight responses on this connection too, since
+            # the connection is being torn down regardless of their status.
+            for task in list(pending_responses):
+                if task is not asyncio.current_task():
+                    task.cancel()
+            writer.close()
 
     def _log_query(self, qctx: QueryContext) -> None:
         logging.info(
