@@ -15,6 +15,7 @@
 
 #include <isc/refcount.h>
 #include <isc/region.h>
+#include <isc/result.h>
 #include <isc/tid.h>
 #include <isc/types.h>
 
@@ -108,6 +109,12 @@ isc_quic_router_get_cid(isc_quic_router_t *router, isc_constregion_t cid,
  * \brief
  * Get the connection associated with a given CID and its thread if `tidp` is
  * not NULL.
+ *
+ * \note
+ * The router does not hold a reference on the returned connection; it only
+ * keeps the routing entry alive for the duration of the lookup. The caller is
+ * responsible for ensuring the connection is not torn down while the returned
+ * pointer is in use (e.g. by only tearing it down on its owning `tid`).
  *
  * \par Requires:
  * \li `router` is a valid router.
@@ -218,11 +225,24 @@ isc_quic_router_handle_packet(isc_quic_router_t	 *router,
  * \warning
  * The router will **NOT** automatically remove the CID on stateless reset.
  *
+ * \note
+ * On return, `*dcidp` and `*scidp` alias into `packet.base`; they are only
+ * valid for as long as `packet` is, and are left unset on the
+ * ISC_R_INVALIDPROTO path (where the header could not be decoded).
+ *
+ * \note
+ * When a connection is returned via `*connp`, the router holds no reference on
+ * it; the caller is responsible for keeping it alive (see
+ * isc_quic_router_get_cid()).
+ *
  * \retval ISC_R_SUCCESS when an associated connection for the packet is found
  * \retval ISC_R_UNSET when a stateless reset packet for a session has been
  * found.
  * \retval ISC_R_NOTFOUND when the packet should be accepted as the handshake of
  * a new connection.
+ * \retval ISC_R_FAILURE when the version is unsupported and a Version
+ * Negotiation packet should be sent; `*dcidp` and `*scidp` are populated with
+ * the peer's connection IDs (which may exceed ISC_QUIC_CID_MAX_LENGTH).
  * \retval ISC_R_INVALIDPROTO on packet misformat
  * \retval ISC_R_UNEXPECTED when the packet isn't associated with a connection
  * yet cannot be accepted as a handshake.
