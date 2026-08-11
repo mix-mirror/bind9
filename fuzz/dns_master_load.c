@@ -16,6 +16,7 @@
 
 #include <isc/buffer.h>
 #include <isc/mem.h>
+#include <isc/urcu.h>
 #include <isc/util.h>
 
 #include <dns/callbacks.h>
@@ -74,6 +75,15 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 
 end:
 	dns_db_detach(&db);
+
+	/*
+	 * The zone database is freed from a call_rcu() callback, so without
+	 * waiting for the grace period the database, and the memory context
+	 * it was allocated from, are still around when the fuzzer exits and
+	 * LeakSanitizer reports all of it as leaked.
+	 */
+	rcu_barrier();
+
 	isc_mem_detach(&mctx);
 	return 0;
 }
