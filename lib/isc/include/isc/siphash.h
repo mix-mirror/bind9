@@ -31,7 +31,6 @@
 
 #include <isc/ascii.h>
 #include <isc/bit.h>
-#include <isc/endian.h>
 #include <isc/types.h>
 #include <isc/util.h>
 
@@ -111,8 +110,8 @@ static inline void
 isc_siphash24_init(isc_siphash24_t *state, const uint8_t *k) {
 	REQUIRE(k != NULL);
 
-	uint64_t k0 = ISC_U8TO64_LE(k);
-	uint64_t k1 = ISC_U8TO64_LE(k + 8);
+	uint64_t k0 = stdc_load8_leu64(k);
+	uint64_t k1 = stdc_load8_leu64(k + 8);
 
 	*state = (isc_siphash24_t){
 		.k0 = k0,
@@ -225,8 +224,8 @@ isc_siphash24_hash(isc_siphash24_t *restrict state, const uint8_t *in,
 
 	for (; in != end; in += 8) {
 		uint64_t m = case_sensitive
-				     ? ISC_U8TO64_LE(in)
-				     : isc_ascii_tolower8(ISC_U8TO64_LE(in));
+				     ? stdc_load8_leu64(in)
+				     : isc_ascii_tolower8(stdc_load8_leu64(in));
 
 		isc_siphash24_one(state, m);
 	}
@@ -279,7 +278,7 @@ isc_siphash24_finalize(isc_siphash24_t *restrict state, uint8_t *out) {
 
 	b = state->v0 ^ state->v1 ^ state->v2 ^ state->v3;
 
-	ISC_U64TO8_LE(out, b);
+	stdc_store8_leu64(b, out);
 }
 
 static inline void
@@ -305,8 +304,8 @@ static inline void
 isc_siphash13_init(isc_siphash24_t *state, const uint8_t *k) {
 	REQUIRE(k != NULL);
 
-	uint64_t k0 = ISC_U8TO64_LE(k);
-	uint64_t k1 = ISC_U8TO64_LE(k + 8);
+	uint64_t k0 = stdc_load8_leu64(k);
+	uint64_t k1 = stdc_load8_leu64(k + 8);
 
 	*state = (isc_siphash24_t){
 		.k0 = k0,
@@ -419,8 +418,8 @@ isc_siphash13_hash(isc_siphash13_t *restrict state, const uint8_t *in,
 
 	for (; in != end; in += 8) {
 		uint64_t m = case_sensitive
-				     ? ISC_U8TO64_LE(in)
-				     : isc_ascii_tolower8(ISC_U8TO64_LE(in));
+				     ? stdc_load8_leu64(in)
+				     : isc_ascii_tolower8(stdc_load8_leu64(in));
 
 		isc_siphash13_one(state, m);
 	}
@@ -473,7 +472,7 @@ isc_siphash13_finalize(isc_siphash13_t *restrict state, uint8_t *out) {
 
 	b = state->v0 ^ state->v1 ^ state->v2 ^ state->v3;
 
-	ISC_U64TO8_LE(out, b);
+	stdc_store8_leu64(b, out);
 }
 
 static inline void
@@ -489,8 +488,8 @@ static inline void
 isc_halfsiphash24_init(isc_halfsiphash24_t *restrict state, const uint8_t *k) {
 	REQUIRE(k != NULL);
 
-	uint32_t k0 = ISC_U8TO32_LE(k);
-	uint32_t k1 = ISC_U8TO32_LE(k + 4);
+	uint32_t k0 = stdc_load8_leu32(k);
+	uint32_t k1 = stdc_load8_leu32(k + 4);
 
 	*state = (isc_halfsiphash24_t){
 		.k0 = k0,
@@ -567,8 +566,8 @@ isc_halfsiphash24_hash(isc_halfsiphash24_t *restrict state, const uint8_t *in,
 
 	for (; in != end; in += 4) {
 		uint32_t m = case_sensitive
-				     ? ISC_U8TO32_LE(in)
-				     : isc_ascii_tolower4(ISC_U8TO32_LE(in));
+				     ? stdc_load8_leu32(in)
+				     : isc_ascii_tolower4(stdc_load8_leu32(in));
 
 		isc_halfsiphash24_one(state, m);
 	}
@@ -608,7 +607,7 @@ isc_halfsiphash24_finalize(isc_halfsiphash24_t *restrict state, uint8_t *out) {
 	}
 
 	b = state->v1 ^ state->v3;
-	ISC_U32TO8_LE(out, b);
+	stdc_store8_leu32(b, out);
 }
 
 static inline void
@@ -633,8 +632,8 @@ static inline void
 isc_halfsiphash13_init(isc_halfsiphash24_t *restrict state, const uint8_t *k) {
 	REQUIRE(k != NULL);
 
-	uint32_t k0 = ISC_U8TO32_LE(k);
-	uint32_t k1 = ISC_U8TO32_LE(k + 4);
+	uint32_t k0 = stdc_load8_leu32(k);
+	uint32_t k1 = stdc_load8_leu32(k + 4);
 
 	*state = (isc_halfsiphash24_t){
 		.k0 = k0,
@@ -711,8 +710,8 @@ isc_halfsiphash13_hash(isc_halfsiphash13_t *restrict state, const uint8_t *in,
 
 	for (; in != end; in += 4) {
 		uint32_t m = case_sensitive
-				     ? ISC_U8TO32_LE(in)
-				     : isc_ascii_tolower4(ISC_U8TO32_LE(in));
+				     ? stdc_load8_leu32(in)
+				     : isc_ascii_tolower4(stdc_load8_leu32(in));
 
 		isc_halfsiphash13_one(state, m);
 	}
@@ -752,7 +751,7 @@ isc_halfsiphash13_finalize(isc_halfsiphash13_t *restrict state, uint8_t *out) {
 	}
 
 	b = state->v1 ^ state->v3;
-	ISC_U32TO8_LE(out, b);
+	stdc_store8_leu32(b, out);
 }
 
 static inline void

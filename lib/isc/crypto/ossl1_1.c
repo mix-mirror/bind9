@@ -22,9 +22,9 @@
 #include <openssl/rand.h>
 #include <openssl/ssl.h>
 
+#include <isc/bit.h>
 #include <isc/buffer.h>
 #include <isc/crypto.h>
-#include <isc/endian.h>
 #include <isc/hmac.h>
 #include <isc/log.h>
 #include <isc/magic.h>
@@ -1158,10 +1158,10 @@ isc_crypto_quic_hp_protect_mask(isc_crypto_quic_hp_protect_t *prot,
 		 * block state will be equivalent.
 		 */
 #ifdef LIBRESSL_VERSION_NUMBER
-		counter = ISC_U8TO64_LE(sample);
+		counter = stdc_load8_leu64(sample);
 		nonce = sample + 8;
 #else  /* LIBRESSL_VERSION_NUMBER */
-		counter = ISC_U8TO32_LE(sample);
+		counter = stdc_load8_leu32(sample);
 		nonce = sample + 4;
 #endif /* LIBRESSL_VERSION_NUMBER */
 		CRYPTO_chacha_20(out, zeros, sizeof(zeros), prot->key.chacha20,

@@ -13,7 +13,7 @@
 
 #pragma once
 
-#include <isc/endian.h>
+#include <isc/bit.h>
 
 #include <dns/rdatavec.h>
 
@@ -36,17 +36,17 @@
 	((atomic_load_acquire(&(header)->attributes) & \
 	  DNS_VECHEADERATTR_RESIGN) != 0)
 
-#define peek_uint16(buffer) ISC_U8TO16_BE(buffer)
+#define peek_uint16(buffer) stdc_load8_beu16(buffer)
 #define get_uint16(buffer)                            \
 	({                                            \
 		uint16_t __ret = peek_uint16(buffer); \
 		buffer += sizeof(uint16_t);           \
 		__ret;                                \
 	})
-#define put_uint16(buffer, val)               \
-	{                                     \
-		ISC_U16TO8_BE(buffer, val);   \
-		(buffer) += sizeof(uint16_t); \
+#define put_uint16(buffer, val)                 \
+	{                                       \
+		stdc_store8_beu16(val, buffer); \
+		(buffer) += sizeof(uint16_t);   \
 	}
 
 dns_vecheader_t *

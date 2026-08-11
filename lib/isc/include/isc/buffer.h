@@ -104,7 +104,7 @@
 #include <stdbool.h>
 
 #include <isc/assertions.h>
-#include <isc/endian.h>
+#include <isc/bit.h>
 #include <isc/formatcheck.h>
 #include <isc/list.h>
 #include <isc/magic.h>
@@ -880,7 +880,7 @@ isc_buffer_peekuint16(const isc_buffer_t *restrict b, uint16_t *valp) {
 
 	uint8_t *cp = isc_buffer_current(b);
 
-	SET_IF_NOT_NULL(valp, ISC_U8TO16_BE(cp));
+	SET_IF_NOT_NULL(valp, stdc_load8_beu16(cp));
 	return ISC_R_SUCCESS;
 }
 
@@ -899,7 +899,7 @@ isc_buffer_putuint16(isc_buffer_t *restrict b, const uint16_t val) {
 
 	uint8_t *cp = isc_buffer_used(b);
 	b->used += sizeof(val);
-	ISC_U16TO8_BE(cp, val);
+	stdc_store8_beu16(val, cp);
 }
 
 static inline isc_result_t
@@ -908,7 +908,7 @@ isc_buffer_peekuint32(const isc_buffer_t *restrict b, uint32_t *valp) {
 
 	uint8_t *cp = isc_buffer_current(b);
 
-	SET_IF_NOT_NULL(valp, ISC_U8TO32_BE(cp));
+	SET_IF_NOT_NULL(valp, stdc_load8_beu32(cp));
 	return ISC_R_SUCCESS;
 }
 
@@ -928,7 +928,7 @@ isc_buffer_putuint32(isc_buffer_t *restrict b, const uint32_t val) {
 	uint8_t *cp = isc_buffer_used(b);
 	b->used += sizeof(val);
 
-	ISC_U32TO8_BE(cp, val);
+	stdc_store8_beu32(val, cp);
 }
 
 static inline isc_result_t
@@ -937,7 +937,7 @@ isc_buffer_peekuint48(const isc_buffer_t *restrict b, uint64_t *valp) {
 
 	uint8_t *cp = isc_buffer_current(b);
 
-	SET_IF_NOT_NULL(valp, ISC_U8TO48_BE(cp));
+	SET_IF_NOT_NULL(valp, isc_load8_beu48(cp));
 	return ISC_R_SUCCESS;
 }
 
@@ -957,7 +957,7 @@ isc_buffer_putuint48(isc_buffer_t *restrict b, const uint64_t val) {
 	uint8_t *cp = isc_buffer_used(b);
 	b->used += 6;
 
-	ISC_U48TO8_BE(cp, val);
+	isc_store8_beu48(val, cp);
 }
 
 static inline void

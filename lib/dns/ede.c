@@ -147,7 +147,7 @@ dns_ede_copy(dns_edectx_t *edectx_to, const dns_edectx_t *edectx_from) {
 			break;
 		}
 
-		fromcode = ISC_U8TO16_BE(edectx_from->ede[pos]->value);
+		fromcode = stdc_load8_beu16(edectx_from->ede[pos]->value);
 		if (dns__ede_checkandupdateedeused(edectx_to, fromcode)) {
 			continue;
 		}

@@ -24,6 +24,7 @@
 #define UNIT_TESTING
 #include <cmocka.h>
 
+#include <isc/bit.h>
 #include <isc/lib.h>
 #include <isc/list.h>
 
@@ -57,7 +58,7 @@ dns_ede_test_equals(const ede_test_expected_t *expected, size_t expected_count,
 		assert_uint_in_range(count, 0, expected_count);
 		assert_int_equal(edns->code, DNS_OPT_EDE);
 
-		code = ISC_U8TO16_BE(edns->value);
+		code = stdc_load8_beu16(edns->value);
 		assert_int_equal(code, expected[count].code);
 
 		if (edns->length > sizeof(code)) {
