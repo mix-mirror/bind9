@@ -62,7 +62,7 @@ fuzzing_opt = get_option('fuzzing')
 geoip_opt = get_option('geoip')
 gssapi_opt = get_option('gssapi')
 idn_opt = get_option('idn')
-jemalloc_opt = get_option('jemalloc').disable_auto_if(sanitizer != 'none')
+jemalloc_opt = get_option('jemalloc')
 leak_opt = get_option('leak-detection')
 line_opt = get_option('line')
 locktype_opt = get_option('locktype')
@@ -303,6 +303,17 @@ foreach arg : get_option('c_args')
         ubsan_enabled = ubsan_enabled or arg.contains('undefined')
     endif
 endforeach
+
+# The sanitizers cannot see through jemalloc: allocations made by it are
+# invisible to LeakSanitizer, which then reports whatever it can no longer
+# reach through them, and AddressSanitizer stops checking most of the heap.
+jemalloc_opt = jemalloc_opt.disable_auto_if(
+    sanitizer != 'none'
+    or asan_enabled
+    or lsan_enabled
+    or tsan_enabled
+    or ubsan_enabled,
+)
 
 # Refer to sanitize.c.in for the justification
 config_sanitize = configuration_data()
