@@ -282,13 +282,35 @@ asan_options = 'abort_on_error=1:disable_coredump=0:unmap_shadow_on_exit=1:detec
 tsan_options = 'disable_coredump=0:second_deadlock_stack=1:atexit_sleep_ms=1000:history_size=7:log_exe_name=true:log_path=tsan'
 ubsan_options = 'halt_on_error=1:abort_on_error=1:disable_coredump=0'
 
+# A sanitizer does not have to come from -Db_sanitize: the libfuzzer backend
+# turns ASan and UBSan on with project arguments of its own, and OSS-Fuzz hands
+# the flags over in CFLAGS.  The runtimes have to be configured either way.
+asan_enabled = sanitizer.contains('address')
+lsan_enabled = sanitizer.contains('leak')
+tsan_enabled = sanitizer.contains('thread')
+ubsan_enabled = sanitizer.contains('undefined')
+
+if fuzzing_backend_opt == 'libfuzzer'
+    asan_enabled = true
+    ubsan_enabled = true
+endif
+
+foreach arg : get_option('c_args')
+    if arg.startswith('-fsanitize=')
+        asan_enabled = asan_enabled or arg.contains('address')
+        lsan_enabled = lsan_enabled or arg.contains('leak')
+        tsan_enabled = tsan_enabled or arg.contains('thread')
+        ubsan_enabled = ubsan_enabled or arg.contains('undefined')
+    endif
+endforeach
+
 # Refer to sanitize.c.in for the justification
 config_sanitize = configuration_data()
 
-config_sanitize.set10('BIND_ASAN_ENABLED', sanitizer.contains('address'))
-config_sanitize.set10('BIND_LSAN_ENABLED', sanitizer.contains('leak'))
-config_sanitize.set10('BIND_TSAN_ENABLED', sanitizer.contains('thread'))
-config_sanitize.set10('BIND_UBSAN_ENABLED', sanitizer.contains('undefined'))
+config_sanitize.set10('BIND_ASAN_ENABLED', asan_enabled)
+config_sanitize.set10('BIND_LSAN_ENABLED', lsan_enabled)
+config_sanitize.set10('BIND_TSAN_ENABLED', tsan_enabled)
+config_sanitize.set10('BIND_UBSAN_ENABLED', ubsan_enabled)
 config_sanitize.set('BIND_ASAN_OPTIONS', asan_options)
 config_sanitize.set('BIND_TSAN_OPTIONS', tsan_options)
 config_sanitize.set('BIND_UBSAN_OPTIONS', ubsan_options)
