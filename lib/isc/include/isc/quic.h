@@ -52,6 +52,18 @@
  */
 typedef struct isc_quic_router isc_quic_router_t;
 
+/**
+ * \brief
+ * Callbacks the router uses to keep a connection alive while it is reachable
+ * through the router or has been handed out by a lookup.
+ *
+ * `conn_ref` must acquire a reference on `conn`; `conn_unref` must release one.
+ * They allow the router to hand out a retained connection pointer without
+ * racing a concurrent teardown.
+ */
+typedef void (*isc_quic_conn_ref_t)(void *conn);
+typedef void (*isc_quic_conn_unref_t)(void *conn);
+
 typedef enum isc_quic_version {
 	/** Invalid QUIC version */
 	ISC_QUIC_VERSION_INVALID = 0,
@@ -70,7 +82,9 @@ typedef enum isc_quic_version {
 
 void
 isc_quic_router_create(isc_mem_t *mctx, size_t cidlen,
-		       isc_quic_router_t **routerp);
+		       isc_quic_conn_ref_t   conn_ref,
+		       isc_quic_conn_unref_t conn_unref,
+		       isc_quic_router_t   **routerp);
 /**<
  * \brief
  * Create a new QUIC CID router.
@@ -79,9 +93,15 @@ isc_quic_router_create(isc_mem_t *mctx, size_t cidlen,
  * needed to route incoming Short header (1-RTT) packets, whose Destination
  * Connection ID length is not carried on the wire (RFC9000, Section 5.2).
  *
+ * `conn_ref` and `conn_unref` acquire and release a reference on a connection.
+ * The router holds a reference for as long as a connection is reachable and
+ * takes an extra one on every value it hands out (see isc_quic_router_get_cid()
+ * and isc_quic_router_get_stateless_reset()).
+ *
  * \par Requires:
  * \li `mctx` is a valid memory context.
  * \li `cidlen` ∈ [1, 20]
+ * \li `conn_ref != NULL` and `conn_unref != NULL`
  * \li `routerp != NULL` and `*routerp == NULL`
  */
 
@@ -119,10 +139,10 @@ isc_quic_router_get_cid(isc_quic_router_t *router, isc_constregion_t cid,
  * not NULL.
  *
  * \note
- * The router does not hold a reference on the returned connection; it only
- * keeps the routing entry alive for the duration of the lookup. The caller is
- * responsible for ensuring the connection is not torn down while the returned
- * pointer is in use (e.g. by only tearing it down on its owning `tid`).
+ * On success `*connp` carries an extra reference on the connection, taken with
+ * the router's `conn_ref` callback; the caller must release it with the
+ * matching `conn_unref` once done. This keeps the connection alive across the
+ * handoff to its owning `tid`, closing the race with a concurrent teardown.
  *
  * \par Requires:
  * \li `router` is a valid router.
@@ -183,6 +203,11 @@ isc_quic_router_get_stateless_reset(
  * Get the connection associated with the given stateless reset token and its
  * thread if `tidp` is not NULL.
  *
+ * \note
+ * On success `*connp` carries an extra reference on the connection (see
+ * isc_quic_router_get_cid()); the caller must release it with the router's
+ * `conn_unref` callback.
+ *
  * \par Requires:
  * \li `router` is a valid router.
  * \li `token` != NULL
@@ -242,9 +267,9 @@ isc_quic_router_handle_packet(isc_quic_router_t	 *router,
  * ISC_R_INVALIDPROTO path (where the header could not be decoded).
  *
  * \note
- * When a connection is returned via `*connp`, the router holds no reference on
- * it; the caller is responsible for keeping it alive (see
- * isc_quic_router_get_cid()).
+ * When a connection is returned via `*connp` (ISC_R_SUCCESS or ISC_R_UNSET), it
+ * carries an extra reference the caller must release with the router's
+ * `conn_unref` callback (see isc_quic_router_get_cid()).
  *
  * \retval ISC_R_SUCCESS when an associated connection for the packet is found
  * \retval ISC_R_UNSET when a stateless reset packet for a session has been
