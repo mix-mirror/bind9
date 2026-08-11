@@ -60,6 +60,11 @@ typedef struct isc_quic_router isc_quic_router_t;
  * `conn_ref` must acquire a reference on `conn`; `conn_unref` must release one.
  * They allow the router to hand out a retained connection pointer without
  * racing a concurrent teardown.
+ *
+ * \warning
+ * `conn_unref` may be invoked from an RCU worker thread, because the router
+ * releases its own reference from a deferred-reclamation (call_rcu) callback.
+ * It must therefore be safe to call from any thread.
  */
 typedef void (*isc_quic_conn_ref_t)(void *conn);
 typedef void (*isc_quic_conn_unref_t)(void *conn);
