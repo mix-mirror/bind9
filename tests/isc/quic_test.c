@@ -25,10 +25,29 @@
 #include <isc/lib.h>
 #include <isc/quic.h>
 #include <isc/random.h>
+#include <isc/urcu.h>
 
 #include <tests/isc.h>
 
 constexpr isc_tid_t connection_tid = 3;
+
+/*
+ * The tests use a sentinel pointer as the "connection"; these callbacks let
+ * them assert that the router balances every reference it takes and hands out.
+ */
+static int conn_refs = 0;
+
+static void
+test_conn_ref(void *conn) {
+	(void)conn;
+	conn_refs++;
+}
+
+static void
+test_conn_unref(void *conn) {
+	(void)conn;
+	conn_refs--;
+}
 
 constexpr uint8_t client_dcid[] = {
 	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
@@ -118,7 +137,8 @@ ISC_RUN_TEST_IMPL(isc_quic_router_cid) {
 	isc_tid_t tid = ISC_TID_UNKNOWN;
 	void *value = NULL;
 
-	isc_quic_router_create(isc_g_mctx, sizeof(client_dcid), &router);
+	isc_quic_router_create(isc_g_mctx, sizeof(client_dcid), test_conn_ref,
+			       test_conn_unref, &router);
 
 	cid = (isc_constregion_t){ client_dcid, sizeof(client_dcid) };
 	result = isc_quic_router_add_cid(router, cid, connection_tid, router);
@@ -133,6 +153,7 @@ ISC_RUN_TEST_IMPL(isc_quic_router_cid) {
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_ptr_equal(value, router);
 	assert_int_equal(tid, connection_tid);
+	test_conn_unref(value);
 
 	value = NULL;
 	cid = (isc_constregion_t){ unknown_cid, sizeof(unknown_cid) };
@@ -144,6 +165,10 @@ ISC_RUN_TEST_IMPL(isc_quic_router_cid) {
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	isc_quic_router_detach(&router);
+
+	/* Flush deferred frees, then check the router balanced every ref. */
+	rcu_barrier();
+	assert_int_equal(conn_refs, 0);
 }
 
 ISC_RUN_TEST_IMPL(isc_quic_router_stateless_reset) {
@@ -153,7 +178,8 @@ ISC_RUN_TEST_IMPL(isc_quic_router_stateless_reset) {
 	isc_tid_t tid = ISC_TID_UNKNOWN;
 	void *value = NULL;
 
-	isc_quic_router_create(isc_g_mctx, sizeof(client_dcid), &router);
+	isc_quic_router_create(isc_g_mctx, sizeof(client_dcid), test_conn_ref,
+			       test_conn_unref, &router);
 
 	isc_random_buf(token, sizeof(token));
 
@@ -174,6 +200,7 @@ ISC_RUN_TEST_IMPL(isc_quic_router_stateless_reset) {
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_ptr_equal(value, router);
 	assert_int_equal(tid, connection_tid);
+	test_conn_unref(value);
 
 	result = isc_quic_router_del_stateless_reset(router, token);
 	assert_int_equal(result, ISC_R_SUCCESS);
@@ -186,6 +213,10 @@ ISC_RUN_TEST_IMPL(isc_quic_router_stateless_reset) {
 	assert_int_equal(result, ISC_R_NOTFOUND);
 
 	isc_quic_router_detach(&router);
+
+	/* Flush deferred frees, then check the router balanced every ref. */
+	rcu_barrier();
+	assert_int_equal(conn_refs, 0);
 }
 
 ISC_RUN_TEST_IMPL(isc_quic_router_packet) {
@@ -195,7 +226,8 @@ ISC_RUN_TEST_IMPL(isc_quic_router_packet) {
 	isc_result_t result;
 	void *value = NULL;
 
-	isc_quic_router_create(isc_g_mctx, sizeof(client_dcid), &router);
+	isc_quic_router_create(isc_g_mctx, sizeof(client_dcid), test_conn_ref,
+			       test_conn_unref, &router);
 
 	/* Initial CRYPTO frames MUST be 1200 bytes */
 	result = isc_quic_router_handle_packet(
@@ -229,6 +261,7 @@ ISC_RUN_TEST_IMPL(isc_quic_router_packet) {
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_int_equal(version, ISC_QUIC_VERSION_V1);
 	assert_ptr_equal(value, router);
+	test_conn_unref(value);
 
 	value = NULL;
 	result = isc_quic_router_handle_packet(
@@ -236,6 +269,7 @@ ISC_RUN_TEST_IMPL(isc_quic_router_packet) {
 		&dcid, &scid, NULL, &value);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_ptr_equal(value, router);
+	test_conn_unref(value);
 
 	result = isc_quic_router_del_cid(router, dcid);
 	assert_int_equal(result, ISC_R_SUCCESS);
@@ -256,8 +290,13 @@ ISC_RUN_TEST_IMPL(isc_quic_router_packet) {
 				     sizeof(stateless_reset_packet) },
 		NULL, &dcid, &scid, NULL, &value);
 	assert_int_equal(result, ISC_R_UNSET);
+	test_conn_unref(value);
 
 	isc_quic_router_detach(&router);
+
+	/* Flush deferred frees, then check the router balanced every ref. */
+	rcu_barrier();
+	assert_int_equal(conn_refs, 0);
 }
 
 ISC_TEST_LIST_START
