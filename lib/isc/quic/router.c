@@ -49,11 +49,19 @@ struct isc_quic_router {
 	uint32_t magic;
 	isc_refcount_t references;
 	isc_mem_t *mctx;
+	size_t cidlen;
 	struct cds_lfht *cid_ht;
 	struct cds_lfht *reset_ht;
 };
 
 constexpr uint32_t router_magic = ISC_MAGIC('Q', 'U', 'I', 'r');
+
+/*
+ * Header Form bit, set on Long header packets and clear on Short header
+ * (1-RTT) packets (RFC9000, Section 17). ngtcp2 only exposes this in a
+ * private header, so it is defined locally.
+ */
+constexpr uint8_t quic_long_header_bit = 0x80;
 constexpr unsigned long ht_init_size = (1 << 4); /* Must be power of 2 */
 constexpr unsigned long ht_min_size = (1 << 4);	 /* Must be power of 2 */
 
@@ -123,16 +131,19 @@ destroy(isc_quic_router_t *router) {
 ISC_REFCOUNT_IMPL(isc_quic_router, destroy);
 
 void
-isc_quic_router_create(isc_mem_t *mctx, isc_quic_router_t **routerp) {
+isc_quic_router_create(isc_mem_t *mctx, size_t cidlen,
+		       isc_quic_router_t **routerp) {
 	isc_quic_router_t *router;
 
 	REQUIRE(routerp != NULL && *routerp == NULL);
+	REQUIRE(cidlen >= NGTCP2_MIN_CIDLEN && cidlen <= NGTCP2_MAX_CIDLEN);
 
 	router = isc_mem_get(mctx, sizeof(*router));
 	*router = (isc_quic_router_t){
 		.magic = router_magic,
 		.references = ISC_REFCOUNT_INITIALIZER(1),
 		.mctx = isc_mem_ref(mctx),
+		.cidlen = cidlen,
 		.cid_ht = cds_lfht_new(
 			ht_init_size, ht_min_size, 0,
 			CDS_LFHT_AUTO_RESIZE | CDS_LFHT_ACCOUNTING, NULL),
@@ -148,7 +159,7 @@ isc_quic_router_create(isc_mem_t *mctx, isc_quic_router_t **routerp) {
 
 isc_result_t
 isc_quic_router_add_cid(isc_quic_router_t *router, isc_constregion_t cid,
-			void *conn) {
+			isc_tid_t tid, void *conn) {
 	struct cds_lfht_node *node;
 	cid_entry_t *entry;
 	uint32_t hash;
@@ -156,6 +167,7 @@ isc_quic_router_add_cid(isc_quic_router_t *router, isc_constregion_t cid,
 	REQUIRE(router != NULL && router->magic == router_magic);
 	REQUIRE(cid.base != NULL && cid.length >= NGTCP2_MIN_CIDLEN &&
 		cid.length <= NGTCP2_MAX_CIDLEN);
+	REQUIRE(tid >= 0);
 
 	hash = isc_hash32(cid.base, cid.length, true);
 
@@ -164,7 +176,7 @@ isc_quic_router_add_cid(isc_quic_router_t *router, isc_constregion_t cid,
 	*entry = (cid_entry_t){
 		.value = conn,
 		.mctx = isc_mem_ref(router->mctx),
-		.tid = isc_tid(),
+		.tid = tid,
 		.length = cid.length,
 	};
 	memmove(entry->data, cid.base, cid.length);
@@ -250,13 +262,14 @@ isc_result_t
 isc_quic_router_add_stateless_reset(
 	isc_quic_router_t *router,
 	const uint8_t token[restrict ISC_QUIC_STATELESS_TOKEN_LENGTH],
-	void *conn) {
+	isc_tid_t tid, void *conn) {
 	struct cds_lfht_node *node;
 	reset_entry_t *entry;
 	uint32_t hash;
 
 	REQUIRE(router != NULL && router->magic == router_magic);
 	REQUIRE(token != NULL);
+	REQUIRE(tid >= 0);
 
 	hash = isc_hash32(token, ISC_QUIC_STATELESS_TOKEN_LENGTH, true);
 
@@ -264,7 +277,7 @@ isc_quic_router_add_stateless_reset(
 	*entry = (reset_entry_t){
 		.value = conn,
 		.mctx = isc_mem_ref(router->mctx),
-		.tid = isc_tid(),
+		.tid = tid,
 	};
 	memmove(entry->token, token, ISC_QUIC_STATELESS_TOKEN_LENGTH);
 
@@ -364,7 +377,7 @@ isc_quic_router_handle_packet(isc_quic_router_t *router,
 	REQUIRE(connp != NULL && *connp == NULL);
 
 	r = ngtcp2_pkt_decode_version_cid(&version, packet.base, packet.length,
-					  NGTCP2_MAX_CIDLEN);
+					  router->cidlen);
 	switch (r) {
 	case 0:
 		break;
@@ -416,7 +429,26 @@ isc_quic_router_handle_packet(isc_quic_router_t *router,
 	}
 
 	if (version.version == 0) {
-		if (packet.length > ISC_QUIC_STATELESS_TOKEN_LENGTH) {
+		/*
+		 * A zero version is reported both for a Short header (1-RTT)
+		 * packet and for a received Version Negotiation packet (Long
+		 * header). The Header Form bit (RFC9000, Section 17) tells them
+		 * apart: only a Short header packet can be a Stateless Reset.
+		 */
+		if ((((const uint8_t *)packet.base)[0] &
+		     quic_long_header_bit) != 0)
+		{
+			return ISC_R_IGNORE;
+		}
+
+		/*
+		 * A Stateless Reset is at least
+		 * NGTCP2_MIN_STATELESS_RESET_RANDLEN + the token length long
+		 * (RFC9000, Section 10.3).
+		 */
+		if (packet.length >= NGTCP2_MIN_STATELESS_RESET_RANDLEN +
+					     ISC_QUIC_STATELESS_TOKEN_LENGTH)
+		{
 			token = (const uint8_t *)packet.base + packet.length -
 				ISC_QUIC_STATELESS_TOKEN_LENGTH;
 
