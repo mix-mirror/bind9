@@ -22,6 +22,7 @@
 #define UNIT_TESTING
 #include <cmocka.h>
 
+#include <isc/atomic.h>
 #include <isc/lib.h>
 #include <isc/quic.h>
 #include <isc/random.h>
@@ -35,18 +36,19 @@ constexpr isc_tid_t connection_tid = 3;
  * The tests use a sentinel pointer as the "connection"; these callbacks let
  * them assert that the router balances every reference it takes and hands out.
  */
-static int conn_refs = 0;
+static atomic_int conn_refs = 0;
 
 static void
 test_conn_ref(void *conn) {
 	(void)conn;
-	conn_refs++;
+	(void)atomic_fetch_add(&conn_refs, 1);
 }
 
 static void
 test_conn_unref(void *conn) {
+	/* May run on an RCU worker thread, hence the atomic counter. */
 	(void)conn;
-	conn_refs--;
+	(void)atomic_fetch_sub(&conn_refs, 1);
 }
 
 constexpr uint8_t client_dcid[] = {
@@ -168,7 +170,7 @@ ISC_RUN_TEST_IMPL(isc_quic_router_cid) {
 
 	/* Flush deferred frees, then check the router balanced every ref. */
 	rcu_barrier();
-	assert_int_equal(conn_refs, 0);
+	assert_int_equal(atomic_load(&conn_refs), 0);
 }
 
 ISC_RUN_TEST_IMPL(isc_quic_router_stateless_reset) {
@@ -216,7 +218,7 @@ ISC_RUN_TEST_IMPL(isc_quic_router_stateless_reset) {
 
 	/* Flush deferred frees, then check the router balanced every ref. */
 	rcu_barrier();
-	assert_int_equal(conn_refs, 0);
+	assert_int_equal(atomic_load(&conn_refs), 0);
 }
 
 ISC_RUN_TEST_IMPL(isc_quic_router_packet) {
@@ -296,7 +298,7 @@ ISC_RUN_TEST_IMPL(isc_quic_router_packet) {
 
 	/* Flush deferred frees, then check the router balanced every ref. */
 	rcu_barrier();
-	assert_int_equal(conn_refs, 0);
+	assert_int_equal(atomic_load(&conn_refs), 0);
 }
 
 ISC_TEST_LIST_START
