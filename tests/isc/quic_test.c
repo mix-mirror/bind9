@@ -28,6 +28,8 @@
 
 #include <tests/isc.h>
 
+constexpr isc_tid_t connection_tid = 3;
+
 constexpr uint8_t client_dcid[] = {
 	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
 };
@@ -113,22 +115,24 @@ ISC_RUN_TEST_IMPL(isc_quic_router_cid) {
 	isc_quic_router_t *router = NULL;
 	isc_constregion_t cid;
 	isc_result_t result;
+	isc_tid_t tid = ISC_TID_UNKNOWN;
 	void *value = NULL;
 
-	isc_quic_router_create(isc_g_mctx, &router);
+	isc_quic_router_create(isc_g_mctx, sizeof(client_dcid), &router);
 
 	cid = (isc_constregion_t){ client_dcid, sizeof(client_dcid) };
-	result = isc_quic_router_add_cid(router, cid, router);
+	result = isc_quic_router_add_cid(router, cid, connection_tid, router);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	cid = (isc_constregion_t){ client_dcid, sizeof(client_dcid) };
-	result = isc_quic_router_add_cid(router, cid, router);
+	result = isc_quic_router_add_cid(router, cid, connection_tid, router);
 	assert_int_equal(result, ISC_R_EXISTS);
 
 	cid = (isc_constregion_t){ client_dcid, sizeof(client_dcid) };
-	result = isc_quic_router_get_cid(router, cid, NULL, &value);
+	result = isc_quic_router_get_cid(router, cid, &tid, &value);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_ptr_equal(value, router);
+	assert_int_equal(tid, connection_tid);
 
 	value = NULL;
 	cid = (isc_constregion_t){ unknown_cid, sizeof(unknown_cid) };
@@ -136,7 +140,7 @@ ISC_RUN_TEST_IMPL(isc_quic_router_cid) {
 	assert_int_equal(result, ISC_R_NOTFOUND);
 
 	cid = (isc_constregion_t){ unknown_cid, sizeof(unknown_cid) };
-	result = isc_quic_router_add_cid(router, cid, router);
+	result = isc_quic_router_add_cid(router, cid, connection_tid, router);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	isc_quic_router_detach(&router);
@@ -146,9 +150,10 @@ ISC_RUN_TEST_IMPL(isc_quic_router_stateless_reset) {
 	uint8_t token[ISC_QUIC_STATELESS_TOKEN_LENGTH];
 	isc_quic_router_t *router = NULL;
 	isc_result_t result;
+	isc_tid_t tid = ISC_TID_UNKNOWN;
 	void *value = NULL;
 
-	isc_quic_router_create(isc_g_mctx, &router);
+	isc_quic_router_create(isc_g_mctx, sizeof(client_dcid), &router);
 
 	isc_random_buf(token, sizeof(token));
 
@@ -156,16 +161,19 @@ ISC_RUN_TEST_IMPL(isc_quic_router_stateless_reset) {
 						     &value);
 	assert_int_equal(result, ISC_R_NOTFOUND);
 
-	result = isc_quic_router_add_stateless_reset(router, token, router);
+	result = isc_quic_router_add_stateless_reset(router, token,
+						     connection_tid, router);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	result = isc_quic_router_add_stateless_reset(router, token, router);
+	result = isc_quic_router_add_stateless_reset(router, token,
+						     connection_tid, router);
 	assert_int_equal(result, ISC_R_EXISTS);
 
-	result = isc_quic_router_get_stateless_reset(router, token, NULL,
+	result = isc_quic_router_get_stateless_reset(router, token, &tid,
 						     &value);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_ptr_equal(value, router);
+	assert_int_equal(tid, connection_tid);
 
 	result = isc_quic_router_del_stateless_reset(router, token);
 	assert_int_equal(result, ISC_R_SUCCESS);
@@ -187,7 +195,7 @@ ISC_RUN_TEST_IMPL(isc_quic_router_packet) {
 	isc_result_t result;
 	void *value = NULL;
 
-	isc_quic_router_create(isc_g_mctx, &router);
+	isc_quic_router_create(isc_g_mctx, sizeof(client_dcid), &router);
 
 	/* Initial CRYPTO frames MUST be 1200 bytes */
 	result = isc_quic_router_handle_packet(
@@ -212,7 +220,7 @@ ISC_RUN_TEST_IMPL(isc_quic_router_packet) {
 	assert_int_equal(dcid.length, sizeof(client_dcid));
 	assert_memory_equal(dcid.base, client_dcid, dcid.length);
 
-	result = isc_quic_router_add_cid(router, dcid, router);
+	result = isc_quic_router_add_cid(router, dcid, connection_tid, router);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	result = isc_quic_router_handle_packet(
@@ -239,7 +247,7 @@ ISC_RUN_TEST_IMPL(isc_quic_router_packet) {
 	assert_int_equal(result, ISC_R_NOTFOUND);
 
 	result = isc_quic_router_add_stateless_reset(
-		router, stateless_reset_token, router);
+		router, stateless_reset_token, connection_tid, router);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	result = isc_quic_router_handle_packet(

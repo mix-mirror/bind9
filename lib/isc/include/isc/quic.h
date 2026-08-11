@@ -69,13 +69,19 @@ typedef enum isc_quic_version {
 } isc_quic_version_t;
 
 void
-isc_quic_router_create(isc_mem_t *mctx, isc_quic_router_t **routerp);
+isc_quic_router_create(isc_mem_t *mctx, size_t cidlen,
+		       isc_quic_router_t **routerp);
 /**<
  * \brief
  * Create a new QUIC CID router.
  *
+ * `cidlen` is the length of the Connection IDs this endpoint issues. It is
+ * needed to route incoming Short header (1-RTT) packets, whose Destination
+ * Connection ID length is not carried on the wire (RFC9000, Section 5.2).
+ *
  * \par Requires:
  * \li `mctx` is a valid memory context.
+ * \li `cidlen` ∈ [1, 20]
  * \li `routerp != NULL` and `*routerp == NULL`
  */
 
@@ -83,7 +89,7 @@ ISC_REFCOUNT_DECL(isc_quic_router);
 
 isc_result_t
 isc_quic_router_add_cid(isc_quic_router_t *router, isc_constregion_t cid,
-			void *conn);
+			isc_tid_t tid, void *conn);
 /**<
  * \brief
  * Associate a connection with the given CID.
@@ -91,11 +97,13 @@ isc_quic_router_add_cid(isc_quic_router_t *router, isc_constregion_t cid,
  * The CID will be copied and thus the parameter free from any lifetime
  * requirements.
  *
- * The current thread will be used for the TID of the connection.
+ * `tid` is stored alongside the connection and returned by
+ * isc_quic_router_get_cid(); it identifies the loop that owns `conn`.
  *
  * \par Requires:
  * \li `router` is a valid router.
  * \li `cid.base != NULL` and `cid.length` ∈ [1, 20]
+ * \li `tid >= 0`
  * \li `conn != NULL`
  *
  * \retval ISC_R_SUCCESS on success
@@ -142,12 +150,14 @@ isc_result_t
 isc_quic_router_add_stateless_reset(
 	isc_quic_router_t *router,
 	const uint8_t	   token[restrict ISC_QUIC_STATELESS_TOKEN_LENGTH],
-	void		  *conn);
+	isc_tid_t tid, void *conn);
 /**<
  * \brief
  * Associate a connection with the given stateless reset token.
  *
- * The current thread will be used for the TID of the connection.
+ * `tid` is stored alongside the connection and returned by
+ * isc_quic_router_get_stateless_reset(); it identifies the loop that owns
+ * `conn`.
  *
  * The token will be copied and thus the parameter free from any lifetime
  * requirements.
@@ -155,6 +165,7 @@ isc_quic_router_add_stateless_reset(
  * \par Requires:
  * \li `router` is a valid router.
  * \li `token != NULL`
+ * \li `tid >= 0`
  * \li `conn != NULL`
  *
  * \retval ISC_R_SUCCESS on success
@@ -244,7 +255,12 @@ isc_quic_router_handle_packet(isc_quic_router_t	 *router,
  * Negotiation packet should be sent; `*dcidp` and `*scidp` are populated with
  * the peer's connection IDs (which may exceed ISC_QUIC_CID_MAX_LENGTH).
  * \retval ISC_R_INVALIDPROTO on packet misformat
- * \retval ISC_R_UNEXPECTED when the packet isn't associated with a connection
- * yet cannot be accepted as a handshake.
- * \retval ISC_R_IGNORE when the packet should be ignored silently.
+ * \retval ISC_R_UNEXPECTED when a Short header (1-RTT) packet is not associated
+ * with a connection and is not a known stateless reset. The caller MAY respond
+ * with a stateless reset (RFC9000, Section 10.3).
+ * \retval ISC_R_IGNORE when the packet should be dropped silently: a Long
+ * header packet that cannot be accepted as a handshake (e.g. Handshake or
+ * 0-RTT for an unknown connection) or a received Version Negotiation packet.
+ * Unlike ISC_R_UNEXPECTED, the caller MUST NOT send a stateless reset in
+ * response (RFC9000, Section 10.3).
  */
