@@ -81,8 +81,8 @@ cid_match(struct cds_lfht_node *node, const void *key) {
 static void
 cid_free(struct rcu_head *head) {
 	__auto_type entry = caa_container_of(head, cid_entry_t, head);
-	isc_mem_put(entry->mctx, entry,
-		    STRUCT_FLEX_SIZE(entry, data, entry->length));
+	isc_mem_putanddetach(&entry->mctx, entry,
+			     STRUCT_FLEX_SIZE(entry, data, entry->length));
 }
 
 static int
@@ -94,7 +94,7 @@ reset_match(struct cds_lfht_node *node, const void *key) {
 static void
 reset_free(struct rcu_head *head) {
 	__auto_type entry = caa_container_of(head, reset_entry_t, head);
-	isc_mem_put(entry->mctx, entry, sizeof(*entry));
+	isc_mem_putanddetach(&entry->mctx, entry, sizeof(*entry));
 }
 
 static void
@@ -114,6 +114,8 @@ destroy(isc_quic_router_t *router) {
 		reset_free(&r->head);
 	}
 	RUNTIME_CHECK(!cds_lfht_destroy(router->reset_ht, NULL));
+
+	router->magic = 0;
 
 	isc_mem_putanddetach(&router->mctx, router, sizeof(*router));
 }
@@ -138,6 +140,8 @@ isc_quic_router_create(isc_mem_t *mctx, isc_quic_router_t **routerp) {
 			ht_init_size, ht_min_size, 0,
 			CDS_LFHT_AUTO_RESIZE | CDS_LFHT_ACCOUNTING, NULL),
 	};
+	INSIST(router->cid_ht != NULL);
+	INSIST(router->reset_ht != NULL);
 
 	*routerp = router;
 }
@@ -153,13 +157,13 @@ isc_quic_router_add_cid(isc_quic_router_t *router, isc_constregion_t cid,
 	REQUIRE(cid.base != NULL && cid.length >= NGTCP2_MIN_CIDLEN &&
 		cid.length <= NGTCP2_MAX_CIDLEN);
 
-	hash = isc_hash32(cid.base, cid.length, false);
+	hash = isc_hash32(cid.base, cid.length, true);
 
 	entry = isc_mem_get(router->mctx,
 			    STRUCT_FLEX_SIZE(entry, data, cid.length));
 	*entry = (cid_entry_t){
 		.value = conn,
-		.mctx = router->mctx,
+		.mctx = isc_mem_ref(router->mctx),
 		.tid = isc_tid(),
 		.length = cid.length,
 	};
@@ -171,8 +175,8 @@ isc_quic_router_add_cid(isc_quic_router_t *router, isc_constregion_t cid,
 	rcu_read_unlock();
 
 	if (node != &entry->node) {
-		isc_mem_put(router->mctx, entry,
-			    STRUCT_FLEX_SIZE(entry, data, cid.length));
+		isc_mem_putanddetach(&entry->mctx, entry,
+				     STRUCT_FLEX_SIZE(entry, data, cid.length));
 		return ISC_R_EXISTS;
 	}
 
@@ -192,7 +196,7 @@ isc_quic_router_get_cid(isc_quic_router_t *router, isc_constregion_t cid,
 	REQUIRE(cid.base != NULL && cid.length >= NGTCP2_MIN_CIDLEN &&
 		cid.length <= NGTCP2_MAX_CIDLEN);
 
-	hash = isc_hash32(cid.base, cid.length, false);
+	hash = isc_hash32(cid.base, cid.length, true);
 
 	rcu_read_lock();
 	cds_lfht_lookup(router->cid_ht, hash, cid_match, &cid, &iter);
@@ -214,6 +218,7 @@ isc_result_t
 isc_quic_router_del_cid(isc_quic_router_t *router, isc_constregion_t cid) {
 	struct cds_lfht_node *node;
 	struct cds_lfht_iter iter;
+	isc_result_t result;
 	cid_entry_t *entry;
 	uint32_t hash;
 
@@ -221,22 +226,24 @@ isc_quic_router_del_cid(isc_quic_router_t *router, isc_constregion_t cid) {
 	REQUIRE(cid.base != NULL && cid.length >= NGTCP2_MIN_CIDLEN &&
 		cid.length <= NGTCP2_MAX_CIDLEN);
 
-	hash = isc_hash32(cid.base, cid.length, false);
+	hash = isc_hash32(cid.base, cid.length, true);
 
 	rcu_read_lock();
 	cds_lfht_lookup(router->cid_ht, hash, cid_match, &cid, &iter);
 	node = cds_lfht_iter_get_node(&iter);
-	if (node != NULL && !cds_lfht_del(router->cid_ht, node)) {
+	if (node == NULL) {
+		result = ISC_R_NOTFOUND;
+	} else if (cds_lfht_del(router->cid_ht, node) != 0) {
+		/* Another thread removed the same entry first. */
+		result = ISC_R_NOTFOUND;
+	} else {
 		entry = caa_container_of(node, cid_entry_t, node);
 		call_rcu(&entry->head, cid_free);
+		result = ISC_R_SUCCESS;
 	}
 	rcu_read_unlock();
 
-	if (node == NULL) {
-		return ISC_R_NOTFOUND;
-	}
-
-	return ISC_R_SUCCESS;
+	return result;
 }
 
 isc_result_t
@@ -251,12 +258,12 @@ isc_quic_router_add_stateless_reset(
 	REQUIRE(router != NULL && router->magic == router_magic);
 	REQUIRE(token != NULL);
 
-	hash = isc_hash32(token, ISC_QUIC_STATELESS_TOKEN_LENGTH, false);
+	hash = isc_hash32(token, ISC_QUIC_STATELESS_TOKEN_LENGTH, true);
 
 	entry = isc_mem_get(router->mctx, sizeof(*entry));
 	*entry = (reset_entry_t){
 		.value = conn,
-		.mctx = router->mctx,
+		.mctx = isc_mem_ref(router->mctx),
 		.tid = isc_tid(),
 	};
 	memmove(entry->token, token, ISC_QUIC_STATELESS_TOKEN_LENGTH);
@@ -267,7 +274,7 @@ isc_quic_router_add_stateless_reset(
 	rcu_read_unlock();
 
 	if (node != &entry->node) {
-		isc_mem_put(router->mctx, entry, sizeof(*entry));
+		isc_mem_putanddetach(&entry->mctx, entry, sizeof(*entry));
 		return ISC_R_EXISTS;
 	}
 
@@ -286,8 +293,9 @@ isc_quic_router_get_stateless_reset(
 	uint32_t hash;
 
 	REQUIRE(router != NULL && router->magic == router_magic);
+	REQUIRE(token != NULL);
 
-	hash = isc_hash32(token, NGTCP2_STATELESS_RESET_TOKENLEN, false);
+	hash = isc_hash32(token, NGTCP2_STATELESS_RESET_TOKENLEN, true);
 
 	rcu_read_lock();
 	cds_lfht_lookup(router->reset_ht, hash, reset_match, token, &iter);
@@ -311,27 +319,31 @@ isc_quic_router_del_stateless_reset(
 	const uint8_t token[const restrict ISC_QUIC_STATELESS_TOKEN_LENGTH]) {
 	struct cds_lfht_node *node;
 	struct cds_lfht_iter iter;
+	isc_result_t result;
 	reset_entry_t *entry;
 	uint32_t hash;
 
 	REQUIRE(router != NULL && router->magic == router_magic);
+	REQUIRE(token != NULL);
 
-	hash = isc_hash32(token, NGTCP2_STATELESS_RESET_TOKENLEN, false);
+	hash = isc_hash32(token, NGTCP2_STATELESS_RESET_TOKENLEN, true);
 
 	rcu_read_lock();
 	cds_lfht_lookup(router->reset_ht, hash, reset_match, token, &iter);
 	node = cds_lfht_iter_get_node(&iter);
-	if (node != NULL && !cds_lfht_del(router->reset_ht, node)) {
+	if (node == NULL) {
+		result = ISC_R_NOTFOUND;
+	} else if (cds_lfht_del(router->reset_ht, node) != 0) {
+		/* Another thread removed the same entry first. */
+		result = ISC_R_NOTFOUND;
+	} else {
 		entry = caa_container_of(node, reset_entry_t, node);
 		call_rcu(&entry->head, reset_free);
+		result = ISC_R_SUCCESS;
 	}
 	rcu_read_unlock();
 
-	if (node == NULL) {
-		return ISC_R_NOTFOUND;
-	}
-
-	return ISC_R_SUCCESS;
+	return result;
 }
 
 isc_result_t
@@ -343,7 +355,7 @@ isc_quic_router_handle_packet(isc_quic_router_t *router,
 			      void **connp) {
 	isc_constregion_t dcid, scid;
 	ngtcp2_version_cid version;
-	uint8_t *token;
+	const uint8_t *token;
 	int r;
 
 	REQUIRE(router != NULL && router->magic == router_magic);
@@ -361,9 +373,16 @@ isc_quic_router_handle_packet(isc_quic_router_t *router,
 		return ISC_R_INVALIDPROTO;
 	case NGTCP2_ERR_VERSION_NEGOTIATION:
 		SET_IF_NOT_NULL(versionp, ISC_QUIC_VERSION_UNKNOWN);
+		/*
+		 * ngtcp2 populates all fields of `version` on this path so
+		 * the caller can build the Version Negotiation response.
+		 */
+		*dcidp = (isc_constregion_t){ version.dcid, version.dcidlen };
+		*scidp = (isc_constregion_t){ version.scid, version.scidlen };
 		return ISC_R_FAILURE;
 	default:
-		UNREACHABLE();
+		SET_IF_NOT_NULL(versionp, ISC_QUIC_VERSION_INVALID);
+		return ISC_R_INVALIDPROTO;
 	}
 
 	switch (version.version) {
@@ -384,14 +403,21 @@ isc_quic_router_handle_packet(isc_quic_router_t *router,
 	*dcidp = dcid;
 	*scidp = scid;
 
-	if (isc_quic_router_get_cid(router, dcid, tidp, connp) == ISC_R_SUCCESS)
+	/*
+	 * The DCID length is taken from the wire and, for a supported version,
+	 * is only bounded above by ngtcp2.  Guard the lookup so an out-of-range
+	 * (e.g. zero-length) DCID does not trip the REQUIRE in get_cid().
+	 */
+	if (dcid.length >= NGTCP2_MIN_CIDLEN &&
+	    dcid.length <= NGTCP2_MAX_CIDLEN &&
+	    isc_quic_router_get_cid(router, dcid, tidp, connp) == ISC_R_SUCCESS)
 	{
 		return ISC_R_SUCCESS;
 	}
 
 	if (version.version == 0) {
 		if (packet.length > ISC_QUIC_STATELESS_TOKEN_LENGTH) {
-			token = (uint8_t *)packet.base + packet.length -
+			token = (const uint8_t *)packet.base + packet.length -
 				ISC_QUIC_STATELESS_TOKEN_LENGTH;
 
 			if (isc_quic_router_get_stateless_reset(router, token,
