@@ -18,6 +18,10 @@ Prints the union, and notes which refs come only from merge bodies (i.e. not
 represented in the changelog/notes — usually test/ci issues).
 """
 
+# The hyphenated file name is intentional: these are CLI helpers, not
+# importable modules.
+# pylint: disable=invalid-name
+
 import re
 import subprocess
 import sys
@@ -44,7 +48,7 @@ def read_doc(path):
     except subprocess.CalledProcessError:
         pass
     try:
-        with open(path) as fh:
+        with open(path, encoding="utf-8") as fh:
             return fh.read()
     except FileNotFoundError:
         pass

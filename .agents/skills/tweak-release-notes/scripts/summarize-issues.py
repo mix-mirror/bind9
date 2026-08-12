@@ -22,6 +22,10 @@ carry the bug?). A non-closed issue is usually one of:
   * ongoing   -> the MR only referenced the issue (no "Closes"); leave open.
 """
 
+# The hyphenated file name is intentional: these are CLI helpers, not
+# importable modules.
+# pylint: disable=invalid-name
+
 import glob
 import json
 import os
@@ -38,7 +42,8 @@ def main():
         if "discussion" in os.path.basename(f):
             continue
         try:
-            data = json.load(open(f))
+            with open(f, encoding="utf-8") as fh:
+                data = json.load(fh)
         except (ValueError, OSError):
             continue
         if "iid" not in data:

@@ -14,6 +14,10 @@ project's tooling, so this is a sanity checkmark, not the main event. The
 main event is judging whether each tag MATCHES THE SUBSTANCE (see SKILL.md).
 """
 
+# The hyphenated file name is intentional: these are CLI helpers, not
+# importable modules.
+# pylint: disable=invalid-name
+
 import re
 import subprocess
 import sys
