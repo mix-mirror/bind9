@@ -17,17 +17,22 @@ Usage:
 Prints the union, and notes which refs come only from merge bodies (i.e. not
 represented in the changelog/notes — usually test/ci issues).
 """
+
 import re
 import subprocess
 import sys
 
 GL_RE = re.compile(r":gl:`#(\d+)`")
 # require a close/fix keyword so "PKCS#11" / "port=53" are not mistaken for refs
-CLOSE_RE = re.compile(r"(?:closes?|fix(?:es)?|resolves?)\b[:\s]+[a-z0-9/_-]*#(\d+)", re.I)
+CLOSE_RE = re.compile(
+    r"(?:closes?|fix(?:es)?|resolves?)\b[:\s]+[a-z0-9/_-]*#(\d+)", re.I
+)
 
 
 def git(*args):
-    return subprocess.run(["git", *args], capture_output=True, text=True, check=True).stdout
+    return subprocess.run(
+        ["git", *args], capture_output=True, text=True, check=True
+    ).stdout
 
 
 def read_doc(path):
@@ -56,15 +61,30 @@ def main():
     if len(sys.argv) < 2:
         sys.exit("usage: issue-refs.py <version> [<boundary-ref>]")
     version = sys.argv[1]
-    boundary = sys.argv[2] if len(sys.argv) > 2 else git(
-        "log", "--first-parent", "--grep", "Set up version for BIND", "-1", "--format=%H").strip()
+    boundary = (
+        sys.argv[2]
+        if len(sys.argv) > 2
+        else git(
+            "log",
+            "--first-parent",
+            "--grep",
+            "Set up version for BIND",
+            "-1",
+            "--format=%H",
+        ).strip()
+    )
 
     doc_refs = set()
-    for path in (f"doc/changelog/changelog-{version}.rst", f"doc/notes/notes-{version}.rst"):
+    for path in (
+        f"doc/changelog/changelog-{version}.rst",
+        f"doc/notes/notes-{version}.rst",
+    ):
         doc_refs |= {int(n) for n in GL_RE.findall(read_doc(path))}
 
     body_refs = set()
-    shas = git("log", "--merges", "--first-parent", f"{boundary}..HEAD", "--format=%H").split()
+    shas = git(
+        "log", "--merges", "--first-parent", f"{boundary}..HEAD", "--format=%H"
+    ).split()
     for sha in shas:
         body = git("show", "-s", "--format=%b", sha)
         body_refs |= {int(n) for n in CLOSE_RE.findall(body)}
@@ -73,7 +93,9 @@ def main():
     only_body = sorted(body_refs - doc_refs)
     print("# all issues covered (union):")
     print(" ".join(f"#{n}" for n in union))
-    print(f"\n# count: {len(union)}   from docs: {len(doc_refs)}   from bodies: {len(body_refs)}")
+    print(
+        f"\n# count: {len(union)}   from docs: {len(doc_refs)}   from bodies: {len(body_refs)}"
+    )
     if only_body:
         print("\n# only in merge bodies (no changelog/notes entry — usually test/ci):")
         print(" ".join(f"#{n}" for n in only_body))

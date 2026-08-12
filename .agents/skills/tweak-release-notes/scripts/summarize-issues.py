@@ -21,6 +21,7 @@ carry the bug?). A non-closed issue is usually one of:
                  branch, so auto-close on public main never fired; close it.
   * ongoing   -> the MR only referenced the issue (no "Closes"); leave open.
 """
+
 import glob
 import json
 import os
@@ -43,21 +44,27 @@ def main():
         if "iid" not in data:
             continue
         labels = data.get("labels", [])
-        rows.append((
-            data["iid"],
-            data.get("state", "?"),
-            [l for l in labels if l.lower().startswith("affects")] or ["(none)"],
-            data.get("title", "")[:50],
-        ))
+        rows.append(
+            (
+                data["iid"],
+                data.get("state", "?"),
+                [l for l in labels if l.lower().startswith("affects")] or ["(none)"],
+                data.get("title", "")[:50],
+            )
+        )
     rows.sort()
     not_closed = [r for r in rows if r[1] != "closed"]
-    print(f"# issues: {len(rows)}   closed: {sum(1 for r in rows if r[1]=='closed')}"
-          f"   NOT closed: {len(not_closed)}\n")
+    print(
+        f"# issues: {len(rows)}   closed: {sum(1 for r in rows if r[1]=='closed')}"
+        f"   NOT closed: {len(not_closed)}\n"
+    )
     for iid, state, affects, title in rows:
         flag = "  <<< NOT CLOSED" if state != "closed" else ""
         print(f"#{iid}  {state:8} affects={','.join(affects):40} {title}{flag}")
     if not_closed:
-        print("\n# NOT CLOSED — reason out each: omission (close it) vs ongoing (leave open).")
+        print(
+            "\n# NOT CLOSED — reason out each: omission (close it) vs ongoing (leave open)."
+        )
 
 
 if __name__ == "__main__":
