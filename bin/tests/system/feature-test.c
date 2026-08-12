@@ -43,6 +43,7 @@ usage(void) {
 	fprintf(stderr, "\t--edns-version\n");
 	fprintf(stderr, "\t--enable-developer\n");
 	fprintf(stderr, "\t--enable-dnstap\n");
+	fprintf(stderr, "\t--enable-fips-mode\n");
 	fprintf(stderr, "\t--enable-querytrace\n");
 	fprintf(stderr, "\t--extended-ds-digest\n");
 	fprintf(stderr, "\t--fips-provider\n");
@@ -91,6 +92,20 @@ main(int argc, char **argv) {
 #else  /* ifdef HAVE_DNSTAP */
 		return 1;
 #endif /* ifdef HAVE_DNSTAP */
+	}
+
+	/*
+	 * Unlike --have-fips-mode, this reports only what the build was
+	 * configured with, never what OpenSSL happens to be doing at run
+	 * time.  A FIPS-enforcing build must be detectable even on a host
+	 * whose openssl.cnf has already turned FIPS mode on.
+	 */
+	if (strcmp(argv[1], "--enable-fips-mode") == 0) {
+#if defined(ENABLE_FIPS_MODE)
+		return 0;
+#else  /* if defined(ENABLE_FIPS_MODE) */
+		return 1;
+#endif /* if defined(ENABLE_FIPS_MODE) */
 	}
 
 	if (strcmp(argv[1], "--enable-querytrace") == 0) {
