@@ -9532,7 +9532,7 @@ rctx_referral(respctx_t *rctx) {
 	 * namespace checks, even if their address info uses the forwarder flag.
 	 */
 	if (ISFORWARDER(fctx->addrinfo) && !ISDUALSTACK(fctx->addrinfo) &&
-	    dns_name_equal(fctx->fwdname, dns_rootname))
+	    dns_name_isroot(fctx->fwdname))
 	{
 		log_formerr(fctx, "referral from global forwarder");
 		rctx->result = DNS_R_FORMERR;

@@ -17803,7 +17803,7 @@ nsfetch_start(dns_zonefetch_t *fetch) {
 	nsfetch = &fetch->fetchdata.nsfetch;
 
 	/* Derive parent domain. Check for root domain. */
-	if (dns_name_countlabels(&nsfetch->pname) <= 1U) {
+	if (dns_name_isroot(&nsfetch->pname)) {
 		return ISC_R_NOTFOUND;
 	}
 

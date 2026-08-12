@@ -1386,8 +1386,7 @@ dns_name_isroot(const dns_name_t *name) {
 	return name->length == 1 && name->ndata[0] == 0;
 }
 /*%<
- * Returns true if and only if the number of labels in 'name' is
- * less than or equal to 1.
+ * Return whether 'name' is the root name.
  *
  * Requires:
  * \li	'name' to be valid.
