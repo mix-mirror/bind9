@@ -25,7 +25,6 @@ carry the bug?). A non-closed issue is usually one of:
 # The hyphenated file name is intentional: these are CLI helpers, not
 # importable modules.
 # pylint: disable=invalid-name
-
 import glob
 import json
 import os
@@ -51,10 +50,10 @@ def main():
         labels = data.get("labels", [])
         rows.append(
             (
-                data["iid"],
-                data.get("state", "?"),
-                [l for l in labels if l.lower().startswith("affects")] or ["(none)"],
-                data.get("title", "")[:50],
+            data["iid"],
+            data.get("state", "?"),
+            [l for l in labels if l.lower().startswith("affects")] or ["(none)"],
+            data.get("title", "")[:50],
             )
         )
     rows.sort()

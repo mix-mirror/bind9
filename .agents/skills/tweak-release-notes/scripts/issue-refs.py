@@ -21,7 +21,6 @@ represented in the changelog/notes — usually test/ci issues).
 # The hyphenated file name is intentional: these are CLI helpers, not
 # importable modules.
 # pylint: disable=invalid-name
-
 import re
 import subprocess
 import sys
