@@ -578,6 +578,8 @@ ISC_LOOP_TEST_IMPL(issecuredomain) {
 ISC_LOOP_TEST_IMPL(dump) {
 	FILE *f = fopen("/dev/null", "w");
 
+	INSIST(f != NULL);
+
 	UNUSED(arg);
 
 	create_tables();
