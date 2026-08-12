@@ -88,19 +88,16 @@ typedef union {
 	max_align_t __alignment;
 } size_info;
 
-STATIC_ASSERT((sizeof(size_info) & (sizeof(size_info) - 1)) == 0,
-	      "sizeof(size_info) must be a power of two");
-
 /*
- * The size_info header always sits ISC_MAX(sizeof(size_info), alignment)
- * bytes before the returned pointer.  The caller passes the matching
- * MALLOCX_ALIGN() flag on deallocation too, so the base address is
- * always recomputable from the flags and nothing needs to be stored.
+ * The size_info header sits a multiple of the requested alignment before the
+ * returned pointer.  The caller passes the matching MALLOCX_ALIGN() flag on
+ * deallocation too, so the base address is always recomputable from the flags
+ * and nothing needs to be stored.
  */
 
 static inline size_t
 get_header_size(int flags) {
-	return ISC_MAX(sizeof(size_info), MALLOCX_ALIGN_GET(flags));
+	return get_aligned_size(MALLOCX_ALIGN_GET(flags), sizeof(size_info));
 }
 
 static inline size_info *
@@ -110,15 +107,16 @@ get_size_info(void *ptr, int flags) {
 
 static inline void *
 mallocx(size_t size, int flags) {
-	size_t alignment = get_header_size(flags);
+	size_t alignment = MALLOCX_ALIGN_GET(flags);
+	size_t header_size = get_header_size(flags);
 	size_info *si;
 
 	if (MALLOCX_NEEDS_ALIGN(flags)) {
 		size_t bytes = ISC_CHECKED_ADD(
-			get_aligned_size(alignment, size), alignment);
+			get_aligned_size(alignment, size), header_size);
 		si = aligned_alloc(alignment, bytes);
 	} else {
-		si = malloc(ISC_CHECKED_ADD(size, alignment));
+		si = malloc(ISC_CHECKED_ADD(size, header_size));
 	}
 	if (si == NULL) {
 		return NULL;
@@ -126,7 +124,7 @@ mallocx(size_t size, int flags) {
 	si->size = size;
 	si->flags = flags;
 
-	void *ptr = (uint8_t *)si + alignment;
+	void *ptr = (uint8_t *)si + header_size;
 	if (MALLOCX_ZERO_GET(flags)) {
 		memset(ptr, 0, size);
 	}
@@ -137,17 +135,18 @@ mallocx(size_t size, int flags) {
 static inline void
 sdallocx(void *ptr, size_t size, int flags) {
 	size_info *si = get_size_info(ptr, flags);
-	size_t alignment = get_header_size(flags);
+	size_t alignment = MALLOCX_ALIGN_GET(flags);
+	size_t header_size = get_header_size(flags);
 
 	INSIST((flags & MALLOCX_LG_ALIGN_MASK) ==
 	       (si->flags & MALLOCX_LG_ALIGN_MASK));
 
 	if (MALLOCX_NEEDS_ALIGN(flags)) {
 		size_t bytes = ISC_CHECKED_ADD(
-			get_aligned_size(alignment, size), alignment);
+			get_aligned_size(alignment, size), header_size);
 		free_aligned_sized(si, alignment, bytes);
 	} else {
-		free_sized(si, ISC_CHECKED_ADD(si->size, alignment));
+		free_sized(si, ISC_CHECKED_ADD(si->size, header_size));
 	}
 }
 
@@ -160,7 +159,7 @@ sallocx(void *ptr, int flags) {
 
 static inline void *
 rallocx(void *ptr, size_t size, int flags) {
-	size_t alignment = get_header_size(flags);
+	size_t header_size = get_header_size(flags);
 	size_info *si = get_size_info(ptr, flags);
 	size_t old_size = si->size;
 
@@ -189,14 +188,14 @@ rallocx(void *ptr, size_t size, int flags) {
 		return new_ptr;
 	}
 
-	si = realloc(si, ISC_CHECKED_ADD(size, alignment));
+	si = realloc(si, ISC_CHECKED_ADD(size, header_size));
 	if (si == NULL) {
 		return NULL;
 	}
 	si->size = size;
 	si->flags = flags;
 
-	ptr = (uint8_t *)si + alignment;
+	ptr = (uint8_t *)si + header_size;
 	if (MALLOCX_ZERO_GET(flags) && size > old_size) {
 		memset((uint8_t *)ptr + old_size, 0, size - old_size);
 	}
