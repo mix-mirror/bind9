@@ -425,6 +425,19 @@ stages:
   - cd bind-*
 
 .fips-feature-test: &fips_feature_test
+    # Fail closed if the binary answering the checks below is missing.
+    - test -x build/feature-test
+    # Ask Meson what was requested; --have-fips-mode answers at run time and
+    # would pass on any FIPS-enabled host.  An empty match means the option
+    # could not be read.
+    - FIPS_REQUESTED=$(meson configure build | awk '$1 == "fips" && $2 ~ /^(true|false)$/ { print $2 }')
+    - test -n "${FIPS_REQUESTED}" || { echo "cannot determine the value of the fips build option"; exit 1; }
+    - if [ "${FIPS_REQUESTED}" = "true" ]; then
+        build/feature-test --enable-fips-mode || {
+          echo "-Dfips=true was requested but the binary does not enforce FIPS mode";
+          exit 1;
+        };
+      fi
     - if build/feature-test --have-fips-mode; then
         if [ "$(cat /proc/sys/crypto/fips_enabled)" = "1" ]; then
           echo "FIPS is enabled";
@@ -1191,8 +1204,8 @@ unit:gcc:almalinux10:amd64:
     - job: gcc:almalinux10:amd64
       artifacts: true
 
-# Jobs for scheduled GCC builds on AlmaLinux 8 & 9 FIPS-aware images with FIPS
-# mode in BIND 9 enabled
+# Jobs for scheduled GCC builds on AlmaLinux 8, 9 & 10 FIPS-aware images with
+# FIPS mode in BIND 9 enabled
 
 gcc:8fips:amd64:
   variables:
