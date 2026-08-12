@@ -746,7 +746,7 @@ recycle(dns_qp_t *qp) {
  */
 static void
 reclaim_chunks_cb(struct rcu_head *arg) {
-	auto rcuctx = caa_container_of(arg, qp_rcuctx_t, rcu_head);
+	qp_rcuctx_t *rcuctx = caa_container_of(arg, qp_rcuctx_t, rcu_head);
 	REQUIRE(QPRCU_VALID(rcuctx));
 	dns_qpmulti_t *multi = rcuctx->multi;
 	REQUIRE(QPMULTI_VALID(multi));
@@ -1589,7 +1589,7 @@ ISC_REFCOUNT_STATIC_IMPL(dns_qpmulti, qpmulti_free_mem)
 
 static void
 qpmulti_destroy_guts_cb(struct rcu_head *arg) {
-	auto rcuctx = caa_container_of(arg, qp_rcuctx_t, rcu_head);
+	qp_rcuctx_t *rcuctx = caa_container_of(arg, qp_rcuctx_t, rcu_head);
 	REQUIRE(QPRCU_VALID(rcuctx));
 	/* only nonzero for reclaim_chunks_cb() */
 	REQUIRE(rcuctx->count == 0);

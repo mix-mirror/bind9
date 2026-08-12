@@ -147,7 +147,7 @@
 
 #define ISC_SIEVE_UNLINK(sieve, entry, link)                                 \
 	({                                                                   \
-		auto __hand = (sieve).hand;                                  \
+		__typeof__((sieve).hand) __hand = (sieve).hand;              \
 		/* 1. Go to the previous node (possibly head of the list) */ \
 		if (entry == __hand) {                                       \
 			__hand = ISC_LIST_PREV(entry, link);                 \
