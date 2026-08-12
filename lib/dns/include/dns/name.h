@@ -1382,7 +1382,8 @@ dns_name_israd(const dns_name_t *name, const dns_name_t *rad);
 static inline bool
 dns_name_isroot(const dns_name_t *name) {
 	REQUIRE(DNS_NAME_VALID(name));
-	return dns_name_countlabels(name) <= 1U;
+
+	return name->length == 1 && name->ndata[0] == 0;
 }
 /*%<
  * Returns true if and only if the number of labels in 'name' is
