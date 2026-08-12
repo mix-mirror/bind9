@@ -125,7 +125,7 @@
  */
 #define ISC_SIEVE_NEXT(sieve, visited, link)                                  \
 	({                                                                    \
-		auto __hand = ((sieve).hand);                                 \
+		__typeof__((sieve).hand) __hand = ((sieve).hand);             \
 		if (__hand == NULL && !ISC_LIST_EMPTY((sieve).list)) {        \
 			__hand = ISC_LIST_TAIL((sieve).list);                 \
 		}                                                             \

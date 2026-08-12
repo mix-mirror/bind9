@@ -194,7 +194,7 @@
 #undef CMM_STORE_SHARED
 #define CMM_STORE_SHARED(x, v)                                \
 	__extension__({                                       \
-		auto _v = (v);                                \
+		__typeof__(v) _v = (v);                       \
 		__atomic_store_n(cmm_cast_volatile(&(x)), _v, \
 				 __ATOMIC_RELAXED);           \
 		_v;                                           \

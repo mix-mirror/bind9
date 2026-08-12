@@ -123,7 +123,7 @@ dns_badcache_destroy(dns_badcache_t **bcp) {
 static int
 bcentry_match(struct cds_lfht_node *ht_node, const void *key0) {
 	const dns__bckey_t *key = key0;
-	auto bad = caa_container_of(ht_node, dns_bcentry_t, ht_node);
+	dns_bcentry_t *bad = caa_container_of(ht_node, dns_bcentry_t, ht_node);
 
 	return (bad->type == key->type) &&
 	       dns_name_equal(&bad->name, key->name);
@@ -170,7 +170,8 @@ bcentry_new(isc_loop_t *loop, const dns_name_t *name,
 
 static void
 bcentry_destroy(struct rcu_head *rcu_head) {
-	auto bad = caa_container_of(rcu_head, dns_bcentry_t, rcu_head);
+	dns_bcentry_t *bad = caa_container_of(rcu_head, dns_bcentry_t,
+					      rcu_head);
 	dns_name_free(&bad->name, bad->mctx);
 	isc_mem_putanddetach(&bad->mctx, bad, sizeof(*bad));
 }
@@ -255,8 +256,8 @@ dns_badcache_add(dns_badcache_t *bc, const dns_name_t *name,
 		ht_node = cds_lfht_add_unique(bc->ht, hashval, bcentry_match,
 					      &key, &bad->ht_node);
 		if (ht_node != &bad->ht_node) {
-			auto found = caa_container_of(ht_node, dns_bcentry_t,
-						      ht_node);
+			dns_bcentry_t *found = caa_container_of(
+				ht_node, dns_bcentry_t, ht_node);
 			bcentry_evict_locked(bc, found);
 		}
 	} while (ht_node != &bad->ht_node);
