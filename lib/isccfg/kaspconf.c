@@ -300,11 +300,13 @@ cfg_kaspkey_fromconfig(const cfg_obj_t *config, dns_kasp_t *kasp,
 			case DST_ALG_RSASHA512:
 			case DST_ALG_RSASHA256PRIVATEOID:
 			case DST_ALG_RSASHA512PRIVATEOID:
-				if (isc_crypto_fips_mode()) {
-					min = 2048;
-				} else {
-					min = DST_ALG_RSASHA512 ? 1024 : 512;
-				}
+				/*
+				 * Keep this in sync with min_rsa in
+				 * bin/dnssec/dnssec-keygen.c, so that a
+				 * policy is not accepted with a key size
+				 * dnssec-keygen would refuse to generate.
+				 */
+				min = isc_crypto_fips_mode() ? 2048 : 1024;
 				if (size < min || size > 4096) {
 					if (log_errors) {
 						cfg_obj_log(obj, ISC_LOG_ERROR,
