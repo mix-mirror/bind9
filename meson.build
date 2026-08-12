@@ -689,19 +689,33 @@ else
         )
     endif
 
-    config.set(
-        'HAVE_FIPS_MODE',
-        cc.has_function(
-            'FIPS_mode',
-            prefix: '#include <openssl/crypto.h>',
-            dependencies: openssl_dep,
-        ),
-    )
+endif
 
-    fips_opt.require(
-        config.get('HAVE_FIPS_MODE'),
-        error_message: 'OpenSSL FIPS mode requested but not available',
-    )
+## FIPS mode
+#
+# OpenSSL 3 toggles FIPS mode through the provider API, earlier versions
+# through FIPS_mode(), so probe both rather than only the one belonging to
+# the version in use.  HAVE_FIPS_MODE additionally guards code in
+# lib/isc/crypto/ossl1_1.c.
+have_fips_mode = cc.has_function(
+    'FIPS_mode',
+    prefix: '#include <openssl/crypto.h>',
+    dependencies: openssl_dep,
+)
+config.set('HAVE_FIPS_MODE', have_fips_mode)
+
+have_fips_properties = cc.has_function(
+    'EVP_default_properties_enable_fips',
+    prefix: '#include <openssl/evp.h>',
+    dependencies: openssl_dep,
+)
+
+fips_opt = fips_opt.require(
+    have_fips_mode or have_fips_properties,
+    error_message: 'OpenSSL FIPS mode requested but not available',
+)
+if fips_opt.enabled()
+    config.set('ENABLE_FIPS_MODE', 1)
 endif
 
 # Hash and curve probe
