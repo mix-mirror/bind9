@@ -33,9 +33,9 @@ option(
 
 option(
     'fips',
-    type: 'feature',
-    value: 'disabled',
-    description: 'Enable FIPS mode toggle',
+    type: 'boolean',
+    value: false,
+    description: 'Require OpenSSL FIPS mode to be entered at startup',
 )
 
 option(

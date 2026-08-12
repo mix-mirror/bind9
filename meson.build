@@ -710,11 +710,10 @@ have_fips_properties = cc.has_function(
     dependencies: openssl_dep,
 )
 
-fips_opt = fips_opt.require(
-    have_fips_mode or have_fips_properties,
-    error_message: 'OpenSSL FIPS mode requested but not available',
-)
-if fips_opt.enabled()
+if fips_opt
+    if not (have_fips_mode or have_fips_properties)
+        error('OpenSSL FIPS mode requested but not available')
+    endif
     config.set('ENABLE_FIPS_MODE', 1)
 endif
 
