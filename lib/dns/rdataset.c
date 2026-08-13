@@ -148,7 +148,7 @@ dns_rdataset_makequestion(dns_rdataset_t *rdataset, dns_rdataclass_t rdclass,
 	rdataset->attributes.question = true;
 }
 
-unsigned int
+uint16_t
 dns_rdataset_count(dns_rdataset_t *rdataset) {
 	/*
 	 * Return the number of records in 'rdataset'.
@@ -263,7 +263,7 @@ towire_addrdata(dns_rdata_t *rdata, dns_compress_t *cctx, isc_buffer_t *target,
 static isc_result_t
 towire_question(dns_rdataset_t *rdataset, const dns_name_t *name,
 		dns_compress_t *cctx, isc_buffer_t *target,
-		isc_buffer_t *rrbuffer, unsigned int *countp) {
+		isc_buffer_t *rrbuffer, uint16_t *countp) {
 	isc_result_t result;
 
 	result = dns_rdataset_first(rdataset);
@@ -282,9 +282,10 @@ towire_question(dns_rdataset_t *rdataset, const dns_name_t *name,
 static isc_result_t
 towire_answer(dns_rdataset_t *rdataset, const dns_name_t *name,
 	      dns_compress_t *cctx, isc_buffer_t *target,
-	      isc_buffer_t *rrbuffer, uint16_t id, unsigned int *countp) {
+	      isc_buffer_t *rrbuffer, uint16_t id, uint16_t *countp) {
 	isc_result_t result;
-	size_t start = 0, count = 0, added = 0;
+	size_t start = 0;
+	uint16_t count = 0, added = 0;
 	isc_buffer_t rdlen;
 	dns_rdata_t *rdatas = dns__rdataset_rdatas;
 
@@ -366,7 +367,7 @@ cleanup:
 isc_result_t
 dns_rdataset_towire(dns_rdataset_t *rdataset, const dns_name_t *owner_name,
 		    uint16_t id, dns_compress_t *cctx, isc_buffer_t *target,
-		    bool partial, unsigned int options, unsigned int *countp) {
+		    bool partial, unsigned int options, uint16_t *countp) {
 	isc_result_t result;
 	isc_buffer_t savedbuffer = *target;
 	isc_buffer_t rrbuffer = *target;

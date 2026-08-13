@@ -1836,7 +1836,7 @@ wrong_priority(dns_rdataset_t *rds, int pass, dns_rdatatype_t preferred_glue) {
 static isc_result_t
 renderset(dns_rdataset_t *rdataset, const dns_name_t *owner_name, uint16_t id,
 	  dns_compress_t *cctx, isc_buffer_t *target, unsigned int reserved,
-	  unsigned int options, unsigned int *countp) {
+	  unsigned int options, uint16_t *countp) {
 	isc_result_t result;
 
 	/*
@@ -1883,7 +1883,7 @@ dns_message_rendersection(dns_message_t *msg, dns_section_t sectionid,
 	dns_namelist_t *section = NULL;
 	dns_name_t *name = NULL;
 	dns_rdataset_t *rdataset = NULL;
-	unsigned int count, total;
+	uint16_t count, total;
 	isc_result_t result;
 	isc_buffer_t st; /* for rollbacks */
 	int pass;
@@ -2096,7 +2096,7 @@ dns_message_renderend(dns_message_t *msg) {
 	isc_buffer_t tmpbuf;
 	isc_region_t r;
 	int result;
-	unsigned int count;
+	uint16_t count;
 
 	REQUIRE(DNS_MESSAGE_VALID(msg));
 	REQUIRE(msg->buffer != NULL);

@@ -72,7 +72,7 @@ rdataset_current(dns_rdataset_t *rdataset, dns_rdata_t *rdata);
 static void
 rdataset_clone(const dns_rdataset_t *source,
 	       dns_rdataset_t *target DNS__DB_FLARG);
-static unsigned int
+static uint16_t
 rdataset_count(dns_rdataset_t *rdataset);
 static void
 rdataset_settrust(dns_rdataset_t *rdataset, dns_trust_t trust);
@@ -117,7 +117,7 @@ rdatavec_data(dns_vecheader_t *header) {
 	return rdatavec_raw(header) + 2;
 }
 
-static unsigned int
+static uint16_t
 rdatavec_count(dns_vecheader_t *header) {
 	unsigned char *raw = rdatavec_raw(header);
 	unsigned int count = get_uint16(raw);
@@ -393,7 +393,7 @@ dns_rdatavec_size(dns_vecheader_t *header) {
 	return (unsigned int)(current - vec) + header_size(header);
 }
 
-unsigned int
+uint16_t
 dns_rdatavec_count(dns_vecheader_t *header) {
 	REQUIRE(header != NULL);
 
@@ -963,7 +963,7 @@ rdataset_clone(const dns_rdataset_t *source,
 	dns_vecheader_ref(target->vec.header);
 }
 
-static unsigned int
+static uint16_t
 rdataset_count(dns_rdataset_t *rdataset) {
 	return rdatavec_count(rdataset->vec.header);
 }

@@ -77,7 +77,7 @@ add_tsig(dst_context_t *tsigctx, dns_tsigkey_t *key, isc_buffer_t *target,
 	isc_region_t r;
 	isc_result_t result = ISC_R_SUCCESS;
 	unsigned char tsigbuf[1024];
-	unsigned int count;
+	uint16_t count;
 	unsigned int sigsize = 0;
 
 	memset(&tsig, 0, sizeof(tsig));

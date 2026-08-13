@@ -150,17 +150,15 @@ dns__rdatalist_clone(const dns_rdataset_t *source,
 	target->rdlist.iter = NULL;
 }
 
-unsigned int
+uint16_t
 dns__rdatalist_count(dns_rdataset_t *rdataset) {
-	dns_rdatalist_t *rdatalist = NULL;
-	unsigned int count;
-
 	REQUIRE(rdataset != NULL);
 
-	rdatalist = rdataset->rdlist.list;
+	dns_rdatalist_t *rdatalist = rdataset->rdlist.list;
+	uint16_t count = 0;
 
-	count = 0;
 	ISC_LIST_FOREACH(rdatalist->rdata, rdata, link) {
+		INSIST(count < UINT16_MAX);
 		count++;
 	}
 

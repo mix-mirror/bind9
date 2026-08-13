@@ -61,7 +61,7 @@ rdataset_current(dns_rdataset_t *rdataset, dns_rdata_t *rdata);
 static void
 rdataset_clone(const dns_rdataset_t *source,
 	       dns_rdataset_t *target DNS__DB_FLARG);
-static unsigned int
+static uint16_t
 rdataset_count(dns_rdataset_t *rdataset);
 static isc_result_t
 rdataset_getnoqname(dns_rdataset_t *rdataset, dns_name_t *name,
@@ -99,7 +99,7 @@ slabheader_proof_current(dns_rdataset_t *rdataset, dns_rdata_t *rdata);
 static void
 slabheader_proof_clone(const dns_rdataset_t *source,
 		       dns_rdataset_t *target DNS__DB_FLARG);
-static unsigned int
+static uint16_t
 slabheader_proof_count(dns_rdataset_t *rdataset);
 static dns_slabheader_t *
 slabheader_proof_getheader(const dns_rdataset_t *rdataset);
@@ -402,7 +402,7 @@ dns_rdataslab_size(dns_slabheader_t *header) {
 	return (unsigned int)(current - slab) + sizeof(dns_slabheader_t);
 }
 
-unsigned int
+uint16_t
 dns_rdataslab_count(dns_slabheader_t *header) {
 	REQUIRE(header != NULL);
 
@@ -672,7 +672,7 @@ rdataset_clone(const dns_rdataset_t *source,
 	dns_slabheader_ref(header);
 }
 
-static unsigned int
+static uint16_t
 rdataset_count(dns_rdataset_t *rdataset) {
 	dns_slabheader_t *header = rdataset_getheader(rdataset);
 
@@ -861,7 +861,7 @@ slabheader_proof_clone(const dns_rdataset_t *source,
 	target->proof.iter_count = 0;
 }
 
-static unsigned int
+static uint16_t
 slabheader_proof_count(dns_rdataset_t *rdataset) {
 	dns_slabheader_t *header = slabheader_proof_getheader(rdataset);
 

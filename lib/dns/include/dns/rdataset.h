@@ -71,7 +71,7 @@ struct dns_rdatasetmethods {
 	void (*current)(dns_rdataset_t *rdataset, dns_rdata_t *rdata);
 	void (*clone)(const dns_rdataset_t  *source,
 		      dns_rdataset_t *target DNS__DB_FLARG);
-	unsigned int (*count)(dns_rdataset_t *rdataset);
+	uint16_t (*count)(dns_rdataset_t *rdataset);
 	isc_result_t (*addnoqname)(dns_rdataset_t *rdataset, dns_name_t *name);
 	isc_result_t (*getnoqname)(dns_rdataset_t *rdataset, dns_name_t *name,
 				   dns_rdataset_t	 *neg,
@@ -362,7 +362,7 @@ dns__rdataset_clone(const dns_rdataset_t  *source,
  *\li	'target' references the same rdataset as 'source'.
  */
 
-unsigned int
+uint16_t
 dns_rdataset_count(dns_rdataset_t *rdataset);
 /*%<
  * Return the number of records in 'rdataset'.
@@ -453,7 +453,7 @@ dns_rdataset_totext(dns_rdataset_t *rdataset, const dns_name_t *owner_name,
 isc_result_t
 dns_rdataset_towire(dns_rdataset_t *rdataset, const dns_name_t *owner_name,
 		    uint16_t id, dns_compress_t *cctx, isc_buffer_t *target,
-		    bool partial, unsigned int options, unsigned int *countp);
+		    bool partial, unsigned int options, uint16_t *countp);
 /*%<
  * Convert 'rdataset' to wire format, compressing names as specified
  * in 'cctx', and storing the result in 'target'.

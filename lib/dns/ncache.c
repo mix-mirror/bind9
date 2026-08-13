@@ -28,6 +28,8 @@
 #include <dns/rdataset.h>
 #include <dns/rdatastruct.h>
 
+#include "rdataslab_p.h"
+
 #define DNS_NCACHE_RDATA 100U
 
 /*
@@ -53,7 +55,7 @@ atomic_getuint8(isc_buffer_t *b) {
 
 static isc_result_t
 copy_rdataset(dns_rdataset_t *rdataset, isc_buffer_t *buffer) {
-	unsigned int count;
+	uint16_t count;
 	isc_region_t ar, r;
 
 	/*
@@ -64,7 +66,6 @@ copy_rdataset(dns_rdataset_t *rdataset, isc_buffer_t *buffer) {
 		return ISC_R_NOSPACE;
 	}
 	count = dns_rdataset_count(rdataset);
-	INSIST(count <= 65535);
 	isc_buffer_putuint16(buffer, (uint16_t)count);
 
 	DNS_RDATASET_FOREACH(rdataset) {
@@ -243,13 +244,13 @@ dns_ncache_add(dns_message_t *message, dns_db_t *cache, dns_dbnode_t *node,
 isc_result_t
 dns_ncache_towire(dns_rdataset_t *rdataset, dns_compress_t *cctx,
 		  isc_buffer_t *target, unsigned int options,
-		  unsigned int *countp) {
+		  uint16_t *countp) {
 	isc_result_t result;
 	isc_region_t remaining, tavailable;
 	isc_buffer_t source, savedbuffer, rdlen;
 	dns_name_t name;
 	dns_rdatatype_t type;
-	unsigned int i, rcount, count;
+	uint16_t rcount, count;
 
 	/*
 	 * Convert the negative caching rdataset 'rdataset' to wire format,
@@ -283,7 +284,7 @@ dns_ncache_towire(dns_rdataset_t *rdataset, dns_compress_t *cctx,
 		isc_buffer_forward(&source, 1);
 		rcount = isc_buffer_getuint16(&source);
 
-		for (i = 0; i < rcount; i++) {
+		for (size_t i = 0; i < rcount; i++) {
 			/*
 			 * Get the length of this rdata and set up an
 			 * rdata structure for it.
@@ -375,11 +376,8 @@ rdataset_disassociate(dns_rdataset_t *rdataset DNS__DB_FLARG) {
 
 static isc_result_t
 rdataset_first(dns_rdataset_t *rdataset) {
-	unsigned char *raw;
-	unsigned int count;
-
-	raw = rdataset->ncache.raw;
-	count = raw[0] * 256 + raw[1];
+	unsigned char *raw = rdataset->ncache.raw;
+	unsigned int count = get_uint16(raw);
 	if (count == 0) {
 		rdataset->ncache.iter_pos = NULL;
 		return ISC_R_NOMORE;
@@ -388,7 +386,7 @@ rdataset_first(dns_rdataset_t *rdataset) {
 	 * iter_count is the number of rdata beyond the cursor position,
 	 * so we decrement the total count by one before storing it.
 	 */
-	rdataset->ncache.iter_pos = raw + 2;
+	rdataset->ncache.iter_pos = raw;
 	rdataset->ncache.iter_count = count - 1;
 	return ISC_R_SUCCESS;
 }
@@ -406,8 +404,8 @@ rdataset_next(dns_rdataset_t *rdataset) {
 		return ISC_R_NOMORE;
 	}
 
-	length = raw[0] * 256 + raw[1];
-	rdataset->ncache.iter_pos = raw + 2 + length;
+	length = get_uint16(raw);
+	rdataset->ncache.iter_pos = raw + length;
 	rdataset->ncache.iter_count = count - 1;
 	return ISC_R_SUCCESS;
 }
@@ -420,9 +418,16 @@ rdataset_current(dns_rdataset_t *rdataset, dns_rdata_t *rdata) {
 	raw = rdataset->ncache.iter_pos;
 	REQUIRE(raw != NULL);
 
-	r.length = raw[0] * 256 + raw[1];
-	r.base = raw + 2;
+	r.length = get_uint16(raw);
+	r.base = raw;
 	dns_rdata_fromregion(rdata, rdataset->rdclass, rdataset->type, &r);
+}
+
+static uint16_t
+rdataset_count(dns_rdataset_t *rdataset) {
+	const uint8_t *raw = rdataset->ncache.raw;
+
+	return peek_uint16(raw);
 }
 
 static void
@@ -431,17 +436,6 @@ rdataset_clone(const dns_rdataset_t *source,
 	*target = *source;
 	target->ncache.iter_pos = NULL;
 	target->ncache.iter_count = 0;
-}
-
-static unsigned int
-rdataset_count(dns_rdataset_t *rdataset) {
-	unsigned char *raw;
-	unsigned int count;
-
-	raw = rdataset->ncache.raw;
-	count = raw[0] * 256 + raw[1];
-
-	return count;
 }
 
 static void
@@ -580,11 +574,9 @@ dns_ncache_getsigrdataset(dns_rdataset_t *ncacherdataset, dns_name_t *name,
 		isc_region_consume(&remaining, 1);
 
 		raw = remaining.base;
-		count = raw[0] * 256 + raw[1];
+		count = get_uint16(raw);
 		INSIST(count > 0);
-		raw += 2;
-		sigregion.length = raw[0] * 256 + raw[1];
-		raw += 2;
+		sigregion.length = get_uint16(raw);
 		sigregion.base = raw;
 		dns_rdata_reset(&rdata);
 		dns_rdata_fromregion(&rdata, rdataset->rdclass,
@@ -657,11 +649,9 @@ dns_ncache_current(dns_rdataset_t *ncacherdataset, dns_name_t *found,
 		 * Extract covers from RRSIG.
 		 */
 		raw = remaining.base;
-		count = raw[0] * 256 + raw[1];
+		count = get_uint16(raw);
 		INSIST(count > 0);
-		raw += 2;
-		sigregion.length = raw[0] * 256 + raw[1];
-		raw += 2;
+		sigregion.length = get_uint16(raw);
 		sigregion.base = raw;
 		dns_rdata_reset(&rdata);
 		dns_rdata_fromregion(&rdata, ncacherdataset->rdclass, type,

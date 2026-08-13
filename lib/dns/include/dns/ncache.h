@@ -94,8 +94,7 @@ dns_ncache_add(dns_message_t *message, dns_db_t *cache, dns_dbnode_t *node,
 
 isc_result_t
 dns_ncache_towire(dns_rdataset_t *rdataset, dns_compress_t *cctx,
-		  isc_buffer_t *target, unsigned int options,
-		  unsigned int *countp);
+		  isc_buffer_t *target, unsigned int options, uint16_t *countp);
 /*%<
  * Convert the negative caching rdataset 'rdataset' to wire format,
  * compressing names as specified in 'cctx', and storing the result in

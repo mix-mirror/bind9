@@ -191,7 +191,7 @@ dns_rdatavec_size(dns_vecheader_t *header);
  *\li	The number of bytes in the vec, plus the header.
  */
 
-unsigned int
+uint16_t
 dns_rdatavec_count(dns_vecheader_t *header);
 /*%<
  * Return the number of records in the rdatavec following 'header'.
