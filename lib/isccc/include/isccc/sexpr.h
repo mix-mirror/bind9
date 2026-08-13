@@ -40,6 +40,7 @@
 struct isccc_dottedpair {
 	isccc_sexpr_t *car;
 	isccc_sexpr_t *cdr;
+	isccc_sexpr_t *prev;
 };
 
 /*% iscc_sexpr structure */
