@@ -1076,8 +1076,9 @@ addglue_addr(dns_db_addglue_ctx_t *ctx, const dns_name_t *name,
 	dns_message_gettemprdataset(ctx->msg, &sigrdataset);
 
 	result = dns_db_findext(ctx->db, name, ctx->version, type,
-				DNS_DBFIND_GLUEOK, 0, foundname, ctx->methods,
-				ctx->clientinfo, rdataset, sigrdataset);
+				DNS_DBFIND_GLUEOK | DNS_DBFIND_NOWILD, 0,
+				foundname, ctx->methods, ctx->clientinfo,
+				rdataset, sigrdataset);
 
 	if (result != ISC_R_SUCCESS && result != DNS_R_GLUE) {
 		goto cleanup;
