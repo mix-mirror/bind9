@@ -41,8 +41,9 @@
 
 static isccc_sexpr_t sexpr_t = { ISCCC_SEXPRTYPE_T, { NULL } };
 
-#define CAR(s) (s)->value.as_dottedpair.car
-#define CDR(s) (s)->value.as_dottedpair.cdr
+#define CAR(s)	(s)->value.as_dottedpair.car
+#define CDR(s)	(s)->value.as_dottedpair.cdr
+#define PREV(s) (s)->value.as_dottedpair.prev
 
 isccc_sexpr_t *
 isccc_sexpr_cons(isccc_sexpr_t *car, isccc_sexpr_t *cdr) {
@@ -55,6 +56,7 @@ isccc_sexpr_cons(isccc_sexpr_t *car, isccc_sexpr_t *cdr) {
 	sexpr->type = ISCCC_SEXPRTYPE_DOTTEDPAIR;
 	CAR(sexpr) = car;
 	CDR(sexpr) = cdr;
+	PREV(sexpr) = NULL;
 
 	return sexpr;
 }
@@ -123,7 +125,7 @@ isccc_sexpr_frombinary(const isccc_region_t *region) {
 void
 isccc_sexpr_free(isccc_sexpr_t **sexprp) {
 	isccc_sexpr_t *sexpr;
-	isccc_sexpr_t *item;
+	isccc_sexpr_t *item, *car, *parent, *grandparent = NULL;
 
 	REQUIRE(sexprp != NULL);
 
@@ -132,19 +134,68 @@ isccc_sexpr_free(isccc_sexpr_t **sexprp) {
 	if (sexpr == NULL) {
 		return;
 	}
+
 	switch (sexpr->type) {
 	case ISCCC_SEXPRTYPE_STRING:
 		free(sexpr->value.as_string);
 		break;
 	case ISCCC_SEXPRTYPE_DOTTEDPAIR:
-		item = CAR(sexpr);
-		if (item != NULL) {
-			isccc_sexpr_free(&item);
+		parent = sexpr;
+		car = CAR(parent);
+		item = car != NULL ? car : CDR(parent);
+	again:
+		/*
+		 * Clean the DOTTEDPAIR children walking down the tree
+		 * recording the parent in .prev until we get to an empty
+		 * DOTTEDPAIR when we break out of the loop to cleanup
+		 * the parent.
+		 */
+		while (item != NULL) {
+			if (item->type != ISCCC_SEXPRTYPE_DOTTEDPAIR) {
+				if (car == item) {
+					isccc_sexpr_free(&CAR(parent));
+					item = CDR(parent);
+					car = NULL;
+				} else {
+					isccc_sexpr_free(&CDR(parent));
+					item = NULL;
+				}
+				continue;
+			}
+			PREV(item) = parent;
+			grandparent = parent;
+			parent = item;
+			car = CAR(parent);
+			item = car != NULL ? car : CDR(parent);
 		}
-		item = CDR(sexpr);
-		if (item != NULL) {
-			isccc_sexpr_free(&item);
+		/*
+		 * Free the now empty ISCCC_SEXPRTYPE_DOTTEDPAIR parent
+		 * if it is not 'sexpr' (freed further below).  See if
+		 * the grandparent is now empty and repeat.  If not empty
+		 * resume cleaning of the grandparent's children above.
+		 */
+		while (parent != sexpr) {
+			INSIST(grandparent != NULL);
+			INSIST(parent->type == ISCCC_SEXPRTYPE_DOTTEDPAIR);
+			INSIST(CAR(parent) == NULL && CDR(parent) == NULL);
+			if (CAR(grandparent) == parent) {
+				CAR(grandparent) = NULL;
+			} else {
+				INSIST(CDR(grandparent) == parent);
+				CDR(grandparent) = NULL;
+			}
+			PREV(parent) = NULL;
+			free(parent);
+			parent = grandparent;
+			grandparent = PREV(parent);
+			car = CAR(parent);
+			item = car != NULL ? car : CDR(parent);
+			if (item != NULL) {
+				goto again;
+			}
 		}
+		INSIST(CAR(sexpr) == NULL && CDR(sexpr) == NULL);
+		PREV(sexpr) = NULL;
 		break;
 	case ISCCC_SEXPRTYPE_BINARY:
 		free(sexpr->value.as_region.rstart);
