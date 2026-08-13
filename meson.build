@@ -715,6 +715,32 @@ if fips_opt
         error('OpenSSL FIPS mode requested but not available')
     endif
     config.set('ENABLE_FIPS_MODE', 1)
+
+    # The symbols above only say that libcrypto can be asked to enter FIPS
+    # mode, not that this host can.  Warn rather than fail, because the host
+    # that builds BIND 9 need not be the one that runs it.
+    if meson.can_run_host_binaries()
+        fips_probe = cc.run(
+            '''
+            #include <openssl/crypto.h>
+            #if OPENSSL_VERSION_NUMBER >= 0x30000000L
+            #include <openssl/provider.h>
+            int main(void) { return OSSL_PROVIDER_load(NULL, "fips") == NULL; }
+            #else
+            int main(void) { return FIPS_mode_set(1) == 0; }
+            #endif
+            ''',
+            dependencies: openssl_dep,
+            name: 'OpenSSL FIPS mode can be entered',
+        )
+
+        if fips_probe.returncode() != 0
+            warning(
+                'OpenSSL cannot enter FIPS mode on this host, so programs '
+                + 'built with -Dfips=true will abort at startup here',
+            )
+        endif
+    endif
 endif
 
 # Hash and curve probe
