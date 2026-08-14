@@ -1027,11 +1027,15 @@ class _ZoneTree:
             node_from.children.remove(child)
             node_to.children.append(child)
 
-    def find_best_zone(self, name: dns.name.Name) -> dns.zone.Zone | None:
+    def find_best_zone(
+        self, name: dns.name.Name, qtype: dns.rdatatype.RdataType
+    ) -> dns.zone.Zone | None:
         """
         Return the closest matching zone (if any) for the domain name.
         """
-        node = self._find_best_match(name, self._root)
+        node = self._find_best_match(
+            name.parent() if qtype == dns.rdatatype.DS else name, self._root
+        )
         return node.zone if node != self._root else None
 
 
@@ -1547,7 +1551,7 @@ class AsyncDnsServer(AsyncServer):
         self._noerror_response(qctx)
 
     def _refused_response(self, qctx: QueryContext) -> bool:
-        zone = self._zone_tree.find_best_zone(qctx.current_qname)
+        zone = self._zone_tree.find_best_zone(qctx.current_qname, qctx.qtype)
         if zone:
             qctx.zone = zone
             return False
@@ -1560,24 +1564,38 @@ class AsyncDnsServer(AsyncServer):
         assert qctx.zone
 
         name = qctx.current_qname
-        delegation = None
+        ns_rdataset = None
+        ds_rdataset = None
 
         while name != qctx.zone.origin:
             node = qctx.zone.get_node(name)
             if node:
-                delegation = node.get_rdataset(qctx.qclass, dns.rdatatype.NS)
-                if delegation:
+                ns_rdataset = node.get_rdataset(qctx.qclass, dns.rdatatype.NS)
+                if ns_rdataset:
                     break
             name = name.parent()
 
-        if not delegation:
+        if not ns_rdataset or qctx.qtype == dns.rdatatype.DS:
             return False
 
-        delegation_rrset = dns.rrset.RRset(name, qctx.qclass, dns.rdatatype.NS)
-        delegation_rrset.update(delegation)
+        ns_rrset = dns.rrset.RRset(name, qctx.qclass, dns.rdatatype.NS)
+        ns_rrset.update(ns_rdataset)
 
         qctx.response.set_rcode(dns.rcode.NOERROR)
-        qctx.response.authority.append(delegation_rrset)
+        qctx.response.authority.append(ns_rrset)
+
+        if qctx.query.ednsflags & dns.flags.DO:
+            assert node
+            ds_rdataset = node.get_rdataset(qctx.qclass, dns.rdatatype.DS)
+            if ds_rdataset:
+                ds_rrset = dns.rrset.RRset(name, qctx.qclass, dns.rdatatype.DS)
+                ds_rrset.update(ds_rdataset)
+
+                rrsig_rrset = qctx.get_rrsig(ds_rrset)
+                assert rrsig_rrset
+
+                qctx.response.authority.append(ds_rrset)
+                qctx.response.authority.append(rrsig_rrset)
 
         self._delegation_response_additional(qctx)
 
@@ -1585,9 +1603,16 @@ class AsyncDnsServer(AsyncServer):
 
     def _delegation_response_additional(self, qctx: QueryContext) -> None:
         assert qctx.zone
-        assert qctx.response.authority[0]
 
-        for nameserver in qctx.response.authority[0]:
+        ns_rrsets = [
+            rrset
+            for rrset in qctx.response.authority
+            if rrset.rdtype == dns.rdatatype.NS
+        ]
+        if not ns_rrsets:
+            return
+
+        for nameserver in ns_rrsets[0]:
             if not nameserver.target.is_subdomain(qctx.response.authority[0].name):
                 continue
             glue_a = qctx.zone.get_rrset(nameserver.target, dns.rdatatype.A)
