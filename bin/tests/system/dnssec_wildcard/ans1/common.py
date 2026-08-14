@@ -90,7 +90,7 @@ def add_dnskey(response: dns.message.Message, zone: str, key: Key) -> None:
 
 
 def wildcard_rrsig(owner: str, a: str, key: Key) -> dns.rrset.RRset:
-    wildcard = rrset(key.zone, dns.rdatatype.A, a)
+    wildcard = rrset(f"*.{key.zone}", dns.rdatatype.A, a)
     rrsig = dns.dnssec.sign(
         wildcard,
         key.private_key,
