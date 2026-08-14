@@ -457,6 +457,41 @@ class NonExistenceProver(abc.ABC):
             self._qctx.response.authority.append(rrsig)
 
 
+class NsecNonExistenceProver(NonExistenceProver):
+
+    proof_rdatatype = dns.rdatatype.NSEC
+
+    def prove_no_ds(self, name: dns.name.Name) -> None:
+        self._add_nsec_matching(name)
+
+    def prove_ent(self) -> None:
+        self._add_nsec_covering(self._qname)
+
+    def prove_nxdomain(self) -> None:
+        self._add_nsec_covering(self._qname)
+        self._add_nsec_covering(self._wildcard_for_closest_encloser)
+
+    def _prove_nodata_no_wildcard(self) -> None:
+        self._add_nsec_matching(self._qname)
+
+    def _prove_nodata_wildcard(self) -> None:
+        self._add_nsec_covering(self._qname)
+        self._add_nsec_matching(self._wildcard_for_closest_encloser)
+
+    def _prove_noerror_wildcard(self) -> None:
+        self._add_nsec_covering(self._qname)
+
+    def _add_nsec_matching(self, name: dns.name.Name) -> None:
+        if name not in self._chain:
+            raise NonExistenceException("Expected NSEC record not found")
+        self._add_chain_element_matching(name)
+
+    def _add_nsec_covering(self, name: dns.name.Name) -> None:
+        if name in self._chain:
+            raise NonExistenceException("Unexpected NSEC record found")
+        self._add_chain_element_covering(name)
+
+
 @dataclass
 class ResponseAction(abc.ABC):
     """
