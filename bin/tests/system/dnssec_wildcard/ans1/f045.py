@@ -99,6 +99,8 @@ class F045Handler(DomainHandler):
         elif qctx.qname == self.child and qctx.qtype == dns.rdatatype.DS:
             # Chain of trust, DS of child.
             add_ds(qctx.response, F045_CHILD, child_key, parent_key)
+        elif qctx.qname == self.child and qctx.qtype == dns.rdatatype.NS:
+            add_signed(qctx.response.answer, rrset(qctx.qname, dns.rdatatype.NS, f"ans1.{F045_CHILD}"), child_key)
         elif qctx.qname == self.child and qctx.qtype == dns.rdatatype.DNSKEY:
             # Chain of trust, DNSKEY of child.
             add_dnskey(qctx.response, F045_CHILD, child_key)

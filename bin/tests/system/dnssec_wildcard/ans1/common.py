@@ -59,7 +59,7 @@ def rrset(owner: str, rdtype: dns.rdatatype.RdataType, *rdatas: str) -> dns.rrse
 
 
 def rrset_from_rdata(owner: str, rdata: dns.rdata.Rdata) -> dns.rrset.RRset:
-    return dns.rrset.from_rdata(owner, TTL, rdata)
+    return dns.rrset.from_rdata(owner, TTL if rdata.rdtype != dns.rdatatype.DNSKEY else 3600, rdata)
 
 
 def add_signed(
@@ -81,7 +81,7 @@ def soa_rrset(zone) -> dns.rrset.RRset:
     return rrset(
         zone,
         dns.rdatatype.SOA,
-        f"ns.{zone} hostmaster.{zone} 1 3600 600 86400 300",
+        f"ans1.{zone} . 1 20 20 1814400 3600",
     )
 
 
