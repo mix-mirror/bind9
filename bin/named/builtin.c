@@ -1089,6 +1089,27 @@ allrdatasets(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	return ISC_R_SUCCESS;
 }
 
+static void
+builtin_addglue(dns_db_t *db, dns_dbversion_t *version,
+		const dns_name_t *owner_name, dns_rdataset_t *rdataset,
+		dns_message_t *msg, dns_clientinfomethods_t *methods,
+		dns_clientinfo_t *clientinfo) {
+	bdb_t *bdb = (bdb_t *)db;
+
+	REQUIRE(VALID_BDB(bdb));
+	REQUIRE(version == NULL || version == (dns_dbversion_t *)&dummy);
+
+	/*
+	 * Builtin databases do not synthesize delegations, so there is no
+	 * glue.
+	 */
+	UNUSED(owner_name);
+	UNUSED(rdataset);
+	UNUSED(msg);
+	UNUSED(methods);
+	UNUSED(clientinfo);
+}
+
 static dns_dbmethods_t bdb_methods = {
 	.destroy = destroy,
 	.currentversion = currentversion,
@@ -1098,7 +1119,7 @@ static dns_dbmethods_t bdb_methods = {
 	.allrdatasets = allrdatasets,
 	.findnode = findnode,
 	.find = builtin_find,
-	.addglue = dns_db_addglue_generic,
+	.addglue = builtin_addglue,
 };
 
 static isc_result_t
