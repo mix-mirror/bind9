@@ -1590,9 +1590,20 @@ class AsyncDnsServer(AsyncServer):
         qctx.response.authority.append(qctx.soa)
         return True
 
+    def _match_wildcard(self, qctx: QueryContext) -> dns.node.Node | None:
+        assert qctx.zone
+
+        closest_encloser = qctx.current_qname.parent()
+        while not qctx.zone.get_node(closest_encloser):
+            closest_encloser = closest_encloser.parent()
+
+        wildcard_owner = dns.name.from_text("*", origin=closest_encloser)
+        return qctx.zone.get_node(wildcard_owner)
+
     def _nxdomain_response(self, qctx: QueryContext) -> bool:
         assert qctx.soa
 
+        qctx.node = qctx.node or self._match_wildcard(qctx)
         if qctx.node:
             return False
 
