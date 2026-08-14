@@ -4,14 +4,6 @@
 #
 # SPDX-License-Identifier: MPL-2.0
 
-from pathlib import Path
-
-import json
-
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import ec
-
-import dns.dnssec
 import dns.name
 import dns.rdataclass
 import dns.rdatatype
@@ -19,6 +11,8 @@ import pytest
 
 import isctest
 import isctest.mark
+import isctest.template
+import isctest.zone
 
 TESTZONE = "f043.test."
 QUERY = f"svc.{TESTZONE}"
@@ -32,38 +26,25 @@ pytestmark = [
     isctest.mark.with_ecdsa_deterministic,
     pytest.mark.extra_artifacts(
         [
+            "ans*/*.db",
             "ans*/ans.run",
-            "ans*/keys.json",
+            "ans*/dsset-*",
+            "ans*/keys/",
+            "ans*/zones/*.db",
         ]
     ),
 ]
 
 
-def _make_key(zone):
-    private_key = ec.generate_private_key(ec.SECP256R1())
-    dnskey = dns.dnssec.make_dnskey(
-        private_key.public_key(),
-        algorithm="ECDSAP256SHA256",
-        flags=257,
-    )
-    ds = dns.dnssec.make_ds(dns.name.from_text(zone), dnskey, "SHA256")
-    private_pem = private_key.private_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.PKCS8,
-        encryption_algorithm=serialization.NoEncryption(),
-    ).decode("ascii")
-    return {
-        "private_pem": private_pem,
-        "dnskey": dnskey.to_text(),
-        "ds": ds.to_text(),
-    }
-
-
 def bootstrap():
-    keys = {TESTZONE: _make_key(TESTZONE)}
-    Path("ans1/keys.json").write_text(json.dumps(keys, indent=2), encoding="ascii")
-    zone_dnskey = "".join(keys[TESTZONE]["dnskey"].split()[3:])
-    return {"TESTZONE_DNSKEY": zone_dnskey}
+    zone = isctest.zone.Zone(
+        "f043.test.", isctest.template.ANS1, signed=True, filepath_signed="f043.test.db"
+    )
+    zone.render()
+    zone.add_keys(ksk=True, zsk=False)
+    zone.sign("-z")
+
+    return {"trust_anchors": zone.trust_anchors()}
 
 
 def _query(server, qname, qtype, cd=False):
