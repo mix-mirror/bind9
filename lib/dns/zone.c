@@ -10929,6 +10929,58 @@ dns_zone_dumptostream(dns_zone_t *zone, FILE *fd, dns_masterformat_t format,
 	return dumptostream(zone, fd, style, format, rawversion);
 }
 
+isc_result_t
+dns_zone_dumptostreamasync(dns_zone_t *zone, FILE *fd,
+			   dns_masterformat_t format,
+			   const dns_master_style_t *style,
+			   const uint32_t rawversion, dns_dumpdonefunc_t done,
+			   void *done_arg, dns_dumpctx_t **dctxp) {
+	isc_result_t result;
+	dns_dbversion_t *version = NULL;
+	dns_db_t *db = NULL;
+	dns_masterrawheader_t rawdata;
+	bool inline_secure;
+
+	REQUIRE(DNS_ZONE_VALID(zone));
+	REQUIRE(zone->loop != NULL);
+
+	ZONEDB_LOCK(&zone->dblock, isc_rwlocktype_read);
+	if (zone->db != NULL) {
+		dns_db_attach(zone->db, &db);
+	}
+	ZONEDB_UNLOCK(&zone->dblock, isc_rwlocktype_read);
+	if (db == NULL) {
+		return DNS_R_NOTLOADED;
+	}
+
+	LOCK_ZONE(zone);
+	inline_secure = dns__zone_inline_secure(zone);
+	UNLOCK_ZONE(zone);
+
+	dns_db_currentversion(db, &version);
+	dns_master_initrawheader(&rawdata);
+	if (rawversion == 0) {
+		rawdata.flags |= DNS_MASTERRAW_COMPAT;
+	} else if (inline_secure) {
+		get_raw_serial(zone->raw, &rawdata);
+	} else if (zone->sourceserialset) {
+		rawdata.flags = DNS_MASTERRAW_SOURCESERIALSET;
+		rawdata.sourceserial = zone->sourceserial;
+	}
+
+	/*
+	 * The dump context holds its own database and version
+	 * references, so ours can be dropped as soon as the dump
+	 * has been started.
+	 */
+	result = dns_master_dumptostreamasync(zone->mctx, db, version, style,
+					      format, &rawdata, fd, zone->loop,
+					      done, done_arg, dctxp);
+	dns_db_closeversion(db, &version, false);
+	dns_db_detach(&db);
+	return result;
+}
+
 void
 dns_zone_unload(dns_zone_t *zone) {
 	REQUIRE(DNS_ZONE_VALID(zone));
