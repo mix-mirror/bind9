@@ -16,10 +16,6 @@
 
 set -e
 
-OPENSSL_CONF= softhsm2-util --delete-token --token "softhsm2-enginepkcs11" >/dev/null 2>&1 || true
-OPENSSL_CONF= softhsm2-util --init-token --free --pin 1234 --so-pin 1234 --label "softhsm2-enginepkcs11" | awk '/^The token has been initialized and is reassigned to slot/ { print $NF }'
-
-printf '%s' "${HSMPIN:-1234}" >ns1/pin
 PWD=$(pwd)
 
 keygen() {
@@ -30,7 +26,7 @@ keygen() {
 
   label="${id}-${zone}"
   p11id=$(echo "${label}" | openssl sha1 -r | awk '{print $1}')
-  OPENSSL_CONF= pkcs11-tool --module $SOFTHSM2_MODULE --token-label "softhsm2-enginepkcs11" -l -k --key-type $type:$bits --label "${label}" --id "${p11id}" --pin $(cat $PWD/ns1/pin) >pkcs11-tool.out.$zone.$id 2>pkcs11-tool.err.$zone.$id || return 1
+  OPENSSL_CONF= pkcs11-tool --module $BIND9_TEST_KRYOPTIC_MODULE --token-label "kryoptic-enginepkcs11" -l -k --key-type $type:$bits --label "${label}" --id "${p11id}" --pin 1234 >pkcs11-tool.out.$zone.$id 2>pkcs11-tool.err.$zone.$id || return 1
 }
 
 keyfromlabel() {
@@ -40,11 +36,15 @@ keyfromlabel() {
   dir="$4"
   shift 4
 
-  $KEYFRLAB -K $dir -a $alg -y -l "pkcs11:token=softhsm2-enginepkcs11;object=${id}-${zone};pin-source=$PWD/ns1/pin" "$@" $zone >>keyfromlabel.out.$zone.$id 2>keyfromlabel.err.$zone.$id || return 1
+  OPENSSL_CONF="${PWD}/openssl.cnf" KRYOPTIC_CONF=$KRYOPTIC_CONF $KEYFRLAB -K $dir -a $alg -y -l "pkcs11:token=kryoptic-enginepkcs11;object=${id}-${zone};pin-source=$PWD/pin" "$@" $zone >>keyfromlabel.out.$zone.$id 2>keyfromlabel.err.$zone.$id || return 1
   cat keyfromlabel.out.$zone.$id
 }
 
 mkdir ns1/keys
+printf "1234" >ns1/pin
+export KRYOPTIC_CONF=${PWD}/ns1/kryoptic.toml
+OPENSSL_CONF= pkcs11-tool --module $BIND9_TEST_KRYOPTIC_MODULE --init-token --label "kryoptic-enginepkcs11" --so-pin 1234
+OPENSSL_CONF= pkcs11-tool --module $BIND9_TEST_KRYOPTIC_MODULE --init-pin --login --login-type so --so-pin 1234 --pin 1234
 
 dir="ns1"
 infile="${dir}/template.db.in"
@@ -86,7 +86,7 @@ for algtypebits in rsasha256:rsa:2048 rsasha512:rsa:2048 \
 
     echo_i "Sign zone with $ksk1 $zsk1"
     cat "$infile" "${dir}/${ksk1}.key" "${dir}/${zsk1}.key" >"${dir}/${zonefile}"
-    $SIGNER -K $dir -S -a -g -O full -o "$zone" "${dir}/${zonefile}" >signer.out.$zone || ret=1
+    OPENSSL_CONF="${PWD}/openssl.cnf" $SIGNER -K $dir -S -a -g -O full -o "$zone" "${dir}/${zonefile}" >signer.out.$zone || ret=1
     test "$ret" -eq 0 || exit 1
 
     echo_i "Generate successor keys $alg $type:$bits for zone $zone"
@@ -177,6 +177,10 @@ EOF
 done
 
 mkdir ns2/keys
+printf "1234" >ns2/pin
+export KRYOPTIC_CONF=${PWD}/ns2/kryoptic.toml
+OPENSSL_CONF= pkcs11-tool --module $BIND9_TEST_KRYOPTIC_MODULE --init-token --label "kryoptic-enginepkcs11" --so-pin 1234
+OPENSSL_CONF= pkcs11-tool --module $BIND9_TEST_KRYOPTIC_MODULE --init-pin --login --login-type so --so-pin 1234 --pin 1234
 
 dir="ns2"
 infile="${dir}/template.db.in"
@@ -217,11 +221,11 @@ if [ "${supported}" = 1 ]; then
 
   echo_i "Sign zone with $ksk1 $zsk1"
   cat "$infile" "${dir}/${ksk1}.key" "${dir}/${zsk1}.key" >"${dir}/${zonefile1}"
-  $SIGNER -K $dir -S -a -g -O full -o "$zone" "${dir}/${zonefile1}" >signer.out.view1.$zone || ret=1
+  OPENSSL_CONF="${PWD}/openssl.cnf" $SIGNER -K $dir -S -a -g -O full -o "$zone" "${dir}/${zonefile1}" >signer.out.view1.$zone || ret=1
   test "$ret" -eq 0 || exit 1
 
   cat "$infile" "${dir}/${ksk1}.key" "${dir}/${zsk1}.key" >"${dir}/${zonefile2}"
-  $SIGNER -K $dir -S -a -g -O full -o "$zone" "${dir}/${zonefile2}" >signer.out.view2.$zone || ret=1
+  OPENSSL_CONF="${PWD}/openssl.cnf" $SIGNER -K $dir -S -a -g -O full -o "$zone" "${dir}/${zonefile2}" >signer.out.view2.$zone || ret=1
   test "$ret" -eq 0 || exit 1
 
   echo_i "Generate successor keys $alg $type:$bits for zone $zone"

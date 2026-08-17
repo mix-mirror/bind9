@@ -42,6 +42,7 @@ path = [
 	"bin/tests/system/doth/CA/index.txt.attr",
 	"bin/tests/system/doth/CA/serial",
 	"bin/tests/system/dnssec/ns3/unsupported-algorithm.key.in",
+	"bin/tests/system/enginepkcs11/pin",
 	"bin/tests/system/formerr/badnsec3owner",
 	"bin/tests/system/formerr/badrecordname",
 	"bin/tests/system/formerr/dupans",
