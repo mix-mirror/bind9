@@ -1672,6 +1672,11 @@ dumptostream(dns_dumpctx_t *dctx) {
 		dns_rdatasetiter_t *rdsiter = NULL;
 		dns_dbnode_t *node = NULL;
 
+		if (atomic_load_acquire(&dctx->canceled)) {
+			result = ISC_R_CANCELED;
+			goto cleanup;
+		}
+
 		result = dns_dbiterator_current(dctx->dbiter, &node, name);
 		if (result != ISC_R_SUCCESS && result != DNS_R_NEWORIGIN) {
 			break;
