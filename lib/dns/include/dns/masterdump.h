@@ -237,7 +237,9 @@ dns_dumpctx_serial(dns_dumpctx_t *dctx, uint32_t *serial);
 isc_result_t
 dns_master_dumptostreamasync(isc_mem_t *mctx, dns_db_t *db,
 			     dns_dbversion_t	      *version,
-			     const dns_master_style_t *style, FILE *f,
+			     const dns_master_style_t *style,
+			     dns_masterformat_t	       format,
+			     dns_masterrawheader_t *header, FILE *f,
 			     isc_loop_t *loop, dns_dumpdonefunc_t done,
 			     void *done_arg, dns_dumpctx_t **dctxp);
 
