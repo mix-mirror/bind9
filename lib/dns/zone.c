@@ -164,6 +164,8 @@ typedef enum {
 	DNS_ZONELOADFLAG_NOSTAT = 0x00000001U, /* Do not stat() master files */
 	DNS_ZONELOADFLAG_THAW = 0x00000002U,   /* Thaw the zone on successful
 						* load. */
+	DNS_ZONELOADFLAG_ASYNC = 0x00000004U,  /* Also load a new zone
+						* asynchronously. */
 } dns_zoneloadflag_t;
 
 /*%
@@ -197,7 +199,7 @@ struct dns_load {
 struct dns_asyncload {
 	dns_zone_t *zone;
 	unsigned int flags;
-	dns_zt_callback_t *loaded;
+	dns_loaddonefunc_t loaded;
 	void *loaded_arg;
 };
 
@@ -268,7 +270,7 @@ zone_shutdown(void *arg);
 static void
 zone_loaddone(void *arg, isc_result_t result);
 static isc_result_t
-zone_startload(dns_db_t *db, dns_zone_t *zone, isc_time_t loadtime);
+zone_startload(dns_db_t *db, dns_zone_t *zone, isc_time_t loadtime, bool async);
 static void
 zone_namerd_tostr(dns_zone_t *zone, char *buf, size_t length);
 static void
@@ -1213,8 +1215,14 @@ zone_load(dns_zone_t *zone, unsigned int flags, bool locked) {
 		 *     will not be ISC_R_SUCCESS but rather DNS_R_CONTINUE;
 		 *     zone_postload() called for the raw zone will schedule
 		 *     secure maintenance to sync against the raw version.
+		 *
+		 * The raw zone is always loaded synchronously here (the
+		 * DNS_ZONELOADFLAG_ASYNC flag is stripped) so that in case
+		 * a) the signed zone file load can be started below once
+		 * the raw zone has been loaded.
 		 */
-		result = zone_load(zone->raw, flags, false);
+		result = zone_load(zone->raw, flags & ~DNS_ZONELOADFLAG_ASYNC,
+				   false);
 		if (result != ISC_R_SUCCESS) {
 			if (!locked) {
 				UNLOCK_ZONE(zone);
@@ -1438,7 +1446,9 @@ zone_load(dns_zone_t *zone, unsigned int flags, bool locked) {
 
 	if (!dns_db_ispersistent(db)) {
 		if (zone->masterfile != NULL || zone->stream != NULL) {
-			result = zone_startload(db, zone, loadtime);
+			result = zone_startload(
+				db, zone, loadtime,
+				(flags & DNS_ZONELOADFLAG_ASYNC) != 0);
 		} else {
 			result = DNS_R_NOMASTERFILE;
 			if (zone->type == dns_zone_primary ||
@@ -1496,22 +1506,53 @@ zone_asyncload(void *arg) {
 
 	LOCK_ZONE(zone);
 	result = zone_load(zone, asl->flags, true);
-	if (result != DNS_R_CONTINUE && result != ISC_R_LOADING) {
+	if (result == DNS_R_CONTINUE) {
+		if (DNS_ZONE_FLAG(zone, DNS_ZONEFLG_LOADING)) {
+			/*
+			 * This zone's own load is proceeding
+			 * asynchronously; keep the callback around so
+			 * that zone_loaddone() can inform the caller
+			 * when the load has actually finished.
+			 */
+			INSIST(zone->asyncload == NULL);
+			zone->asyncload = asl;
+			UNLOCK_ZONE(zone);
+			return;
+		}
+		/*
+		 * The DNS_R_CONTINUE came from reloading the raw
+		 * version of an inline-signed zone; zone_loaddone()
+		 * will never run for this zone, so inform the caller
+		 * right away.  DNS_ZONEFLG_LOADPENDING is cleared by
+		 * zone_postload() of the raw zone.
+		 */
+	} else if (result != ISC_R_LOADING) {
 		DNS_ZONE_CLRFLAG(zone, DNS_ZONEFLG_LOADPENDING);
 	}
 	UNLOCK_ZONE(zone);
 
-	/* Inform the zone table we've finished loading */
+	/* Inform the caller that the load has finished */
 	if (asl->loaded != NULL) {
-		asl->loaded(asl->loaded_arg);
+		asl->loaded(asl->loaded_arg, result);
 	}
 
 	isc_mem_put(zone->mctx, asl, sizeof(*asl));
 	dns_zone_idetach(&zone);
 }
 
+void
+dns_zone_cancelload(dns_zone_t *zone) {
+	REQUIRE(DNS_ZONE_VALID(zone));
+
+	LOCK_ZONE(zone);
+	if (zone->loadctx != NULL) {
+		dns_loadctx_cancel(zone->loadctx);
+	}
+	UNLOCK_ZONE(zone);
+}
+
 isc_result_t
-dns_zone_asyncload(dns_zone_t *zone, bool newonly, dns_zt_callback_t *done,
+dns_zone_asyncload(dns_zone_t *zone, bool newonly, dns_loaddonefunc_t done,
 		   void *arg) {
 	dns_asyncload_t *asl = NULL;
 
@@ -1531,7 +1572,8 @@ dns_zone_asyncload(dns_zone_t *zone, bool newonly, dns_zt_callback_t *done,
 	asl = isc_mem_get(zone->mctx, sizeof(*asl));
 
 	asl->zone = NULL;
-	asl->flags = newonly ? DNS_ZONELOADFLAG_NOSTAT : 0;
+	asl->flags = DNS_ZONELOADFLAG_ASYNC |
+		     (newonly ? DNS_ZONELOADFLAG_NOSTAT : 0);
 	asl->loaded = done;
 	asl->loaded_arg = arg;
 
@@ -1715,7 +1757,8 @@ dns_zone_setrawdata(dns_zone_t *zone, dns_masterrawheader_t *header) {
 }
 
 static isc_result_t
-zone_startload(dns_db_t *db, dns_zone_t *zone, isc_time_t loadtime) {
+zone_startload(dns_db_t *db, dns_zone_t *zone, isc_time_t loadtime,
+	       bool async) {
 	isc_result_t result;
 	isc_result_t tresult;
 	unsigned int options;
@@ -1744,13 +1787,23 @@ zone_startload(dns_db_t *db, dns_zone_t *zone, isc_time_t loadtime) {
 
 	CHECK(dns_db_beginload(db, &load->callbacks));
 
-	if (zone->zmgr != NULL && zone->db != NULL) {
-		CHECK(dns_master_loadfileasync(
-			zone->masterfile, dns_db_origin(db), dns_db_origin(db),
-			zone->rdclass, options, 0, &load->callbacks, zone->loop,
-			zone_loaddone, load, &zone->loadctx,
-			zone_registerinclude, zone, zone->mctx,
-			zone->masterformat, zone->maxttl));
+	if (zone->zmgr != NULL && (zone->db != NULL || async)) {
+		if (zone->stream != NULL) {
+			FILE *stream = UNCONST(zone->stream);
+			CHECK(dns_master_loadstreamasync(
+				stream, dns_db_origin(db), dns_db_origin(db),
+				zone->rdclass, options, &load->callbacks,
+				zone->loop, zone_loaddone, load, &zone->loadctx,
+				zone->mctx));
+		} else {
+			CHECK(dns_master_loadfileasync(
+				zone->masterfile, dns_db_origin(db),
+				dns_db_origin(db), zone->rdclass, options, 0,
+				&load->callbacks, zone->loop, zone_loaddone,
+				load, &zone->loadctx, zone_registerinclude,
+				zone, zone->mctx, zone->masterformat,
+				zone->maxttl));
+		}
 
 		return DNS_R_CONTINUE;
 	} else if (zone->stream != NULL) {
@@ -15793,6 +15846,9 @@ again:
 		zone->update_disabled = false;
 	}
 	DNS_ZONE_CLRFLAG(zone, DNS_ZONEFLG_THAW);
+	dns_asyncload_t *asl = zone->asyncload;
+	zone->asyncload = NULL;
+
 	if (secure != NULL) {
 		UNLOCK_ZONE(secure);
 	}
@@ -15803,6 +15859,17 @@ again:
 		dns_loadctx_detach(&zone->loadctx);
 	}
 	isc_mem_put(zone->mctx, load, sizeof(*load));
+
+	if (asl != NULL) {
+		/* Inform the caller that the load has finished */
+		dns_zone_t *aszone = asl->zone;
+
+		if (asl->loaded != NULL) {
+			asl->loaded(asl->loaded_arg, postload_result);
+		}
+		isc_mem_put(aszone->mctx, asl, sizeof(*asl));
+		dns_zone_idetach(&aszone);
+	}
 
 	dns_zone_idetach(&zone);
 }

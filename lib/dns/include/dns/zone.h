@@ -271,14 +271,13 @@ dns_zone_loadandthaw(dns_zone_t *zone);
  */
 
 isc_result_t
-dns_zone_asyncload(dns_zone_t *zone, bool newonly, dns_zt_callback_t done,
+dns_zone_asyncload(dns_zone_t *zone, bool newonly, dns_loaddonefunc_t done,
 		   void *arg);
 /*%<
  * Cause the database to be loaded from its backing store asynchronously.
  * Other zone maintenance functions are suspended until this is complete.
- * When finished, 'done' is called to inform the caller, with 'arg' as
- * its argument. (Normally, 'arg' is expected to point to the zone table
- * but is left undefined for testing purposes.)
+ * When the load has finished, 'done' is called to inform the caller,
+ * with 'arg' as its first argument and the load result as its second.
  *
  * Require:
  *\li	'zone' to be a valid zone.
@@ -287,6 +286,17 @@ dns_zone_asyncload(dns_zone_t *zone, bool newonly, dns_zt_callback_t done,
  *\li	#ISC_R_ALREADYRUNNING
  *\li	#ISC_R_SUCCESS
  *\li	#ISC_R_FAILURE
+ */
+
+void
+dns_zone_cancelload(dns_zone_t *zone);
+/*%<
+ * Cancel an asynchronous zone load that is in progress; the load
+ * will terminate with #ISC_R_CANCELED.  Does nothing if no load
+ * context is active.
+ *
+ * Require:
+ *\li	'zone' to be a valid zone.
  */
 
 bool

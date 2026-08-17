@@ -464,6 +464,7 @@ struct dns_zone {
 	ISC_LIST(dns_checkds_t) checkds_requests;
 	dns_request_t *request;
 	dns_loadctx_t *loadctx;
+	struct dns_asyncload *asyncload;
 	dns_dumpctx_t *dumpctx;
 	uint32_t minxfrratebytesin;
 	uint32_t minxfrratesecondsin;
