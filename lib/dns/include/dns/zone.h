@@ -362,11 +362,18 @@ dns_zone_flush(dns_zone_t *zone);
  */
 
 isc_result_t
-dns_zone_dumptostream(dns_zone_t *zone, FILE *fd, dns_masterformat_t format,
-		      const dns_master_style_t *style,
-		      const uint32_t		rawversion);
+dns_zone_dumptostreamasync(dns_zone_t *zone, FILE *fd,
+			   dns_masterformat_t	     format,
+			   const dns_master_style_t *style,
+			   const uint32_t rawversion, dns_dumpdonefunc_t done,
+			   void *done_arg, dns_dumpctx_t **dctxp);
 /*%<
- *    Write the zone to stream 'fd' in the specified 'format'.
+ *    Start an asynchronous dump of the zone to stream 'fd' in the
+ *    specified 'format'.  The dump runs on the zone's loop and 'done'
+ *    is called with 'done_arg' and the dump result when it has
+ *    finished.  '*dctxp' is attached to the dump context, which can
+ *    be used to cancel the dump with dns_dumpctx_cancel(); the
+ *    caller must detach it with dns_dumpctx_detach() when done.
  *
  *    If 'format' is dns_masterformat_text (RFC1035), 'style'
  *    specifies the file style (e.g., &dns_master_style_default),
@@ -376,26 +383,6 @@ dns_zone_dumptostream(dns_zone_t *zone, FILE *fd, dns_masterformat_t format,
  *    'rawversion" specifies the format version of the raw zone file:
  *    version 0 raw files can be read by all BIND 9 releases;
  *    version 1 was introduced in BIND 9.9.
- *
- * Require:
- *\li	'zone' to be a valid zone.
- *\li	'fd' to be a stream open for writing.
- */
-
-isc_result_t
-dns_zone_dumptostreamasync(dns_zone_t *zone, FILE *fd,
-			   dns_masterformat_t	     format,
-			   const dns_master_style_t *style,
-			   const uint32_t rawversion, dns_dumpdonefunc_t done,
-			   void *done_arg, dns_dumpctx_t **dctxp);
-/*%<
- *    Start an asynchronous dump of the zone to stream 'fd'; the
- *    parameters are as for dns_zone_dumptostream().  The dump runs
- *    on the zone's loop and 'done' is called with 'done_arg' and the
- *    dump result when it has finished.  '*dctxp' is attached to the
- *    dump context, which can be used to cancel the dump with
- *    dns_dumpctx_cancel(); the caller must detach it with
- *    dns_dumpctx_detach() when done.
  *
  * Require:
  *\li	'zone' to be a valid zone managed by a zone manager.
