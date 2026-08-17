@@ -270,15 +270,30 @@ dns_zone_loadandthaw(dns_zone_t *zone);
  *\li	Any result value from dns_db_load().
  */
 
+/*
+ * Options for dns_zone_asyncload().
+ */
+#define DNS_ZONELOAD_NEWONLY 0x00000001U /*%< Skip zones already loaded */
+#define DNS_ZONELOAD_ASYNC   0x00000002U /*%< Load a new zone asynchronously */
+
 isc_result_t
-dns_zone_asyncload(dns_zone_t *zone, bool newonly, dns_zt_callback_t done,
-		   void *arg);
+dns_zone_asyncload(dns_zone_t *zone, unsigned int options,
+		   dns_loaddonefunc_t done, void *arg);
 /*%<
  * Cause the database to be loaded from its backing store asynchronously.
  * Other zone maintenance functions are suspended until this is complete.
- * When finished, 'done' is called to inform the caller, with 'arg' as
- * its argument. (Normally, 'arg' is expected to point to the zone table
- * but is left undefined for testing purposes.)
+ * When the load has finished, 'done' is called to inform the caller,
+ * with 'arg' as its first argument and the load result as its second.
+ *
+ * With #DNS_ZONELOAD_NEWONLY, a zone that has already been loaded is
+ * left alone.
+ *
+ * A zone that already has a database is reloaded asynchronously and
+ * the reload can be canceled with dns_zone_cancelload().  By default
+ * a zone that has never been loaded is loaded synchronously on its
+ * loop, which keeps at most one master file open per loop when many
+ * zones are loaded at once; with #DNS_ZONELOAD_ASYNC it is loaded
+ * asynchronously too, so that the load can be canceled.
  *
  * Require:
  *\li	'zone' to be a valid zone.
@@ -287,6 +302,17 @@ dns_zone_asyncload(dns_zone_t *zone, bool newonly, dns_zt_callback_t done,
  *\li	#ISC_R_ALREADYRUNNING
  *\li	#ISC_R_SUCCESS
  *\li	#ISC_R_FAILURE
+ */
+
+void
+dns_zone_cancelload(dns_zone_t *zone);
+/*%<
+ * Cancel an asynchronous zone load that is in progress; the load
+ * will terminate with #ISC_R_CANCELED.  Does nothing if no load
+ * context is active.
+ *
+ * Require:
+ *\li	'zone' to be a valid zone.
  */
 
 bool

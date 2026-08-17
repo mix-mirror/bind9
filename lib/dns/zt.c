@@ -296,8 +296,8 @@ loaded_all(struct zt_load_params *params) {
  * zero, call the loaddone callback that was initially set by
  * dns_zt_asyncload().
  */
-static isc_result_t
-loaded_one(void *uap) {
+static void
+loaded_one(void *uap, isc_result_t result ISC_ATTR_UNUSED) {
 	struct zt_load_params *params = uap;
 	dns_zt_t *zt = params->zt;
 
@@ -310,8 +310,6 @@ loaded_one(void *uap) {
 	if (isc_refcount_decrement(&zt->references) == 1) {
 		zt_destroy(zt);
 	}
-
-	return ISC_R_SUCCESS;
 }
 
 /*
@@ -331,7 +329,9 @@ asyncload(dns_zone_t *zone, void *uap) {
 	isc_refcount_increment(&zt->references);
 	isc_refcount_increment(&zt->loads_pending);
 
-	result = dns_zone_asyncload(zone, params->newonly, loaded_one, params);
+	result = dns_zone_asyncload(zone,
+				    params->newonly ? DNS_ZONELOAD_NEWONLY : 0,
+				    loaded_one, params);
 	if (result != ISC_R_SUCCESS) {
 		/*
 		 * Caller is holding a reference to zt->loads_pending
