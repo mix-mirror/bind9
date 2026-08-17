@@ -465,6 +465,13 @@ stages:
         sudo sh -x build/bin/tests/system/ifconfig.sh up;
       fi
 
+# A second call from after_script, which still runs when
+# RUNNER_SCRIPT_TIMEOUT cuts the script section short.  A container
+# thrashing hard enough manages neither, but then it cannot be cleaned
+# up either.
+.oom_check: &oom_check
+    - sh "$CI_PROJECT_DIR"/util/oom-check.sh || true
+
 .display_pytest_failures: &display_pytest_failures
     - awk '/^=+ FAILURES =+/{flag=1;next}/^=+.*=+$/{flag=0}flag' bin/tests/system/pytest.out.txt || true
     - awk '/^=+ ERRORS =+/{flag=1;next}/^=+.*=+$/{flag=0}flag' bin/tests/system/pytest.out.txt || true
@@ -541,6 +548,7 @@ stages:
     - RET=0
     - >
       ("$PYTEST" --junit-xml="$CI_PROJECT_DIR"/junit_pytest.xml -n "$TEST_PARALLEL_JOBS" | tee pytest.out.txt) || RET=1
+    - sh "$CI_PROJECT_DIR"/util/oom-check.sh || RET=1
     - >
       "$PYTHON" "$CI_PROJECT_DIR"/bind9-qa/ci/postprocess_junit_files.py "$CI_PROJECT_DIR"/junit_pytest.xml --output "$CI_PROJECT_DIR"/junit.xml
     - (exit $RET)
@@ -548,6 +556,7 @@ stages:
     - test "$CLEAN_BUILD_ARTIFACTS_ON_SUCCESS" -eq 0 || ( cd ../../.. && ninja -C build clean >/dev/null 2>&1 )
   after_script:
     - *display_pytest_failures
+    - *oom_check
   artifacts:
     untracked: true
     exclude:
@@ -560,6 +569,7 @@ stages:
   <<: *system_test_job
   after_script:
     - *display_pytest_failures
+    - *oom_check
     - *parse_tsan
 
 .unit_test_common: &unit_test_job
