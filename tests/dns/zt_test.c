@@ -91,8 +91,8 @@ ISC_LOOP_TEST_IMPL(apply) {
 	isc_loopmgr_shutdown();
 }
 
-static isc_result_t
-load_done_last(void *uap) {
+static void
+load_done_last(void *uap, isc_result_t loadresult ISC_ATTR_UNUSED) {
 	dns_zone_t *zone = uap;
 	isc_result_t result;
 
@@ -112,12 +112,10 @@ load_done_last(void *uap) {
 	dns_view_detach(&view);
 
 	isc_loopmgr_shutdown();
-
-	return ISC_R_SUCCESS;
 }
 
-static isc_result_t
-load_done_new_only(void *uap) {
+static void
+load_done_new_only(void *uap, isc_result_t loadresult ISC_ATTR_UNUSED) {
 	dns_zone_t *zone = uap;
 	isc_result_t result;
 
@@ -127,14 +125,14 @@ load_done_new_only(void *uap) {
 	dns_db_detach(&db);
 
 	dns_zone_asyncload(zone, true, load_done_last, zone);
-
-	return ISC_R_SUCCESS;
 }
 
-static isc_result_t
-load_done_first(void *uap) {
+static void
+load_done_first(void *uap, isc_result_t loadresult) {
 	dns_zone_t *zone = uap;
 	isc_result_t result;
+
+	assert_int_equal(loadresult, ISC_R_SUCCESS);
 
 	/* The zone should now be loaded; test it */
 	result = dns_zone_getdb(zone, &db);
@@ -150,8 +148,6 @@ load_done_first(void *uap) {
 	fclose(zonefile);
 
 	dns_zone_asyncload(zone, true, load_done_new_only, zone);
-
-	return ISC_R_SUCCESS;
 }
 
 /* asynchronous zone load */
