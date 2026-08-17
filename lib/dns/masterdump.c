@@ -1725,7 +1725,9 @@ cleanup:
 isc_result_t
 dns_master_dumptostreamasync(isc_mem_t *mctx, dns_db_t *db,
 			     dns_dbversion_t *version,
-			     const dns_master_style_t *style, FILE *f,
+			     const dns_master_style_t *style,
+			     dns_masterformat_t format,
+			     dns_masterrawheader_t *header, FILE *f,
 			     isc_loop_t *loop, dns_dumpdonefunc_t done,
 			     void *done_arg, dns_dumpctx_t **dctxp) {
 	dns_dumpctx_t *dctx = NULL;
@@ -1734,8 +1736,8 @@ dns_master_dumptostreamasync(isc_mem_t *mctx, dns_db_t *db,
 	REQUIRE(f != NULL);
 	REQUIRE(done != NULL);
 
-	RETERR(dumpctx_create(mctx, db, version, style, f, &dctx,
-			      dns_masterformat_text, NULL));
+	RETERR(dumpctx_create(mctx, db, version, style, f, &dctx, format,
+			      header));
 	dctx->done = done;
 	dctx->done_arg = done_arg;
 
