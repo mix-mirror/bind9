@@ -295,8 +295,8 @@ loaded_all(struct zt_load_params *params) {
  * zero, call the loaddone callback that was initially set by
  * dns_zt_asyncload().
  */
-static isc_result_t
-loaded_one(void *uap) {
+static void
+loaded_one(void *uap, isc_result_t result ISC_ATTR_UNUSED) {
 	struct zt_load_params *params = uap;
 	dns_zt_t *zt = params->zt;
 
@@ -309,8 +309,6 @@ loaded_one(void *uap) {
 	if (isc_refcount_decrement(&zt->references) == 1) {
 		zt_destroy(zt);
 	}
-
-	return ISC_R_SUCCESS;
 }
 
 /*
