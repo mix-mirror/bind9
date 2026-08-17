@@ -1601,6 +1601,7 @@ gcc:asan:
   <<: *build_job
 
 system:gcc:asan:
+  parallel: 100
   variables:
     TEST_PARALLEL_JOBS: 3
   <<: *fedora_44_amd64_image
