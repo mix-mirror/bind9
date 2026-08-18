@@ -1,0 +1,53 @@
+/*
+ * Copyright (C) Internet Systems Consortium, Inc. ("ISC")
+ *
+ * SPDX-License-Identifier: MPL-2.0
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0.  If a copy of the MPL was not distributed with this
+ * file, you can obtain one at https://mozilla.org/MPL/2.0/.
+ *
+ * See the COPYRIGHT file distributed with this work for additional
+ * information regarding copyright ownership.
+ */
+
+/*
+ * Coccinelle does not run the preprocessor, so an attribute macro it has
+ * never heard of is just an unknown identifier.  On the last parameter of
+ * a function definition there is no trailing comma to disambiguate it, the
+ * parser gives up, and the whole function is dropped from the analysis --
+ * silently, and for every semantic patch.
+ *
+ * MACROANNOTATION is Coccinelle's own marker for "this is an annotation,
+ * skip it"; the bundled standard.h declares the Linux kernel's macros the
+ * same way.
+ *
+ * Only declaration-level macros belong here: defining anything the
+ * semantic patches need to match on (INSIST, REQUIRE, ...) would hide it
+ * from them instead.  Macros whose expansion is a brace-enclosed
+ * initialiser (ISC_TEST_ENTRY and friends) must be left out as well --
+ * they make spatch abort in its fuzzy parser.
+ */
+#define FALLTHROUGH                                        MACROANNOTATION
+#define ISC_ATTR_ACCESS(...)                               MACROANNOTATION
+#define ISC_ATTR_COUNTED_BY(x)                             MACROANNOTATION
+#define ISC_ATTR_COUNTED_BY_PTR(x)                         MACROANNOTATION
+#define ISC_ATTR_DEALLOCATOR(deallocator)                  MACROANNOTATION
+#define ISC_ATTR_DEALLOCATOR_IDX(deallocator, idx)         MACROANNOTATION
+#define ISC_ATTR_DIAGNOSE_IF(...)                          MACROANNOTATION
+#define ISC_ATTR_MALLOC                                    MACROANNOTATION
+#define ISC_ATTR_MALLOC_DEALLOCATOR(deallocator)           MACROANNOTATION
+#define ISC_ATTR_MALLOC_DEALLOCATOR_IDX(deallocator, idx)  MACROANNOTATION
+#define ISC_ATTR_NONNULL(...)                              MACROANNOTATION
+#define ISC_ATTR_RETURNS_NONNULL                           MACROANNOTATION
+#define ISC_ATTR_SIZED_BY_PTR(x)                           MACROANNOTATION
+#define ISC_ATTR_UNUSED                                    MACROANNOTATION
+#define ISC_ATTR_WARN_UNUSED_RESULT                        MACROANNOTATION
+#define ISC_FORMAT_PRINTF(fmt, args)                       MACROANNOTATION
+#define ISC_LINK(type)                                     MACROANNOTATION
+#define ISC_LIST(type)                                     MACROANNOTATION
+#define ISC_NONSTRING                                      MACROANNOTATION
+#define ISC_NORETURN                                       MACROANNOTATION
+#define ISC_NO_SANITIZE_ADDRESS                            MACROANNOTATION
+#define ISC_NO_SANITIZE_THREAD                             MACROANNOTATION
+#define ISC_SIEVE(type)                                    MACROANNOTATION

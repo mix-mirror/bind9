@@ -21,7 +21,7 @@ run_spatch() {
 
   : >"$patch"
   echo "Applying semantic patch $spatch..."
-  spatch --jobs "${TEST_PARALLEL_JOBS:-1}" --sp-file "$spatch" --use-gitgrep --dir "." --include-headers $spatchargs >>"$patch" 2>cocci.stderr
+  spatch --jobs "${TEST_PARALLEL_JOBS:-1}" --sp-file "$spatch" --macro-file-builtins cocci/macros.def --use-gitgrep --dir "." --include-headers $spatchargs >>"$patch" 2>cocci.stderr
   cat cocci.stderr
   if grep -q -e "parse error" -e "EXN: Failure" -e "WARNING" cocci.stderr; then
     ret=1
