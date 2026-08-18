@@ -419,8 +419,7 @@ ISC_RUN_TEST_IMPL(isc_mem_noflags) {
 	ptr = isc_mem_get(mctx, 2048);
 	assert_non_null(ptr);
 	isc__mem_printactive(mctx, f);
-	isc_mem_put(mctx, ptr, 2048);
-	isc_mem_detach(&mctx);
+	isc_mem_putanddetach(&mctx, ptr, 2048);
 	isc_mem_debugon(debugging);
 	isc_stdio_close(f);
 
@@ -469,8 +468,7 @@ ISC_RUN_TEST_IMPL(isc_mem_recordflag) {
 
 	isc__mem_printactive(mctx, f);
 	isc_mem_put(mctx, ptr2, 1024);
-	isc_mem_put(mctx, ptr, 2048);
-	isc_mem_detach(&mctx);
+	isc_mem_putanddetach(&mctx, ptr, 2048);
 	isc_stdio_close(f);
 
 	memset(buf, 0, sizeof(buf));
@@ -521,8 +519,7 @@ ISC_RUN_TEST_IMPL(isc_mem_traceflag) {
 	ptr = isc_mem_get(mctx, 2048);
 	assert_non_null(ptr);
 	isc__mem_printactive(mctx, f);
-	isc_mem_put(mctx, ptr, 2048);
-	isc_mem_detach(&mctx);
+	isc_mem_putanddetach(&mctx, ptr, 2048);
 	isc_mem_debugoff(ISC_MEM_DEBUGALL);
 	isc_mem_debugon(debugging);
 	isc_stdio_close(f);
