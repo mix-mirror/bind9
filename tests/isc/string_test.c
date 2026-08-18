@@ -53,9 +53,45 @@ ISC_RUN_TEST_IMPL(ncasehasprefix) {
 	assert_false(isc_string_ncasehasprefix("", "ixfr="));
 }
 
+ISC_RUN_TEST_IMPL(stripprefix) {
+	const char *str = "maxudp=512";
+
+	/* matches return the remainder after the prefix */
+	assert_ptr_equal(isc_string_stripprefix(str, "maxudp="), str + 7);
+	assert_string_equal(isc_string_stripprefix(str, "maxudp="), "512");
+	assert_string_equal(isc_string_stripprefix(str, ""), str);
+	assert_string_equal(isc_string_stripprefix("maxudp=", "maxudp="), "");
+
+	/* case matters */
+	assert_null(isc_string_stripprefix("MAXUDP=512", "maxudp="));
+
+	/* non-matches, including 'str' shorter than 'prefix' */
+	assert_null(isc_string_stripprefix("maxcachesize=1", "maxudp="));
+	assert_null(isc_string_stripprefix("max", "maxudp="));
+	assert_null(isc_string_stripprefix("", "maxudp="));
+}
+
+ISC_RUN_TEST_IMPL(ncasestripprefix) {
+	const char *str = "IXFR=1234";
+
+	/* matches regardless of case return the remainder */
+	assert_ptr_equal(isc_string_ncasestripprefix(str, "ixfr="), str + 5);
+	assert_string_equal(isc_string_ncasestripprefix(str, "ixfr="), "1234");
+	assert_string_equal(isc_string_ncasestripprefix("IxFr=1", "iXfR="),
+			    "1");
+	assert_string_equal(isc_string_ncasestripprefix(str, ""), str);
+
+	/* non-matches, including 'str' shorter than 'prefix' */
+	assert_null(isc_string_ncasestripprefix("axfr=1", "ixfr="));
+	assert_null(isc_string_ncasestripprefix("ixfr", "ixfr="));
+	assert_null(isc_string_ncasestripprefix("", "ixfr="));
+}
+
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY(hasprefix)
 ISC_TEST_ENTRY(ncasehasprefix)
+ISC_TEST_ENTRY(stripprefix)
+ISC_TEST_ENTRY(ncasestripprefix)
 ISC_TEST_LIST_END
 
 ISC_TEST_MAIN
