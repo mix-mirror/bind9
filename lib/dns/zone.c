@@ -18565,7 +18565,7 @@ zone_apply_skrbundle(dns_zone_t *zone, dns_skrbundle_t *bundle,
 			/* Not interested in right now */
 			break;
 		default:
-			INSIST(0);
+			UNREACHABLE();
 		}
 	}
 }
