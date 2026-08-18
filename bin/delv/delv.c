@@ -1047,7 +1047,8 @@ parse_uint(uint32_t *uip, const char *value, uint32_t max, const char *desc) {
 static void
 plus_option(char *option) {
 	isc_result_t result;
-	char *cmd, *value, *last = NULL;
+	const char *cmd, *tail;
+	char *value, *last = NULL;
 	bool state = true;
 
 	INSIST(option != NULL);
@@ -1057,8 +1058,9 @@ plus_option(char *option) {
 		printf(";; Invalid option %s\n", option);
 		return;
 	}
-	if (strncasecmp(cmd, "no", 2) == 0) {
-		cmd += 2;
+	tail = isc_string_ncasestripprefix(cmd, "no");
+	if (tail != NULL) {
+		cmd = tail;
 		state = false;
 	}
 
