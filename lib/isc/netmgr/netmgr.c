@@ -2914,7 +2914,7 @@ isc_netmgr_portrange(sa_family_t af, in_port_t low, in_port_t high) {
 		atomic_store_relaxed(&isc__netmgr->port_high6, high);
 		break;
 	default:
-		INSIST(0);
+		UNREACHABLE();
 	}
 }
 
