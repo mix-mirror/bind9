@@ -12076,9 +12076,9 @@ newzone_parse(named_server_t *server, char *command, dns_view_t **viewp,
 	isc_buffer_init(&argbuf, command, (unsigned int)strlen(command));
 	isc_buffer_add(&argbuf, strlen(command));
 
-	if (strncasecmp(command, "add", 3) == 0) {
+	if (isc_string_ncasehasprefix(command, "add")) {
 		bn = "addzone";
-	} else if (strncasecmp(command, "mod", 3) == 0) {
+	} else if (isc_string_ncasehasprefix(command, "mod")) {
 		bn = "modzone";
 	} else {
 		UNREACHABLE();
@@ -12548,10 +12548,10 @@ named_server_changezone(named_server_t *server, char *command,
 
 	REQUIRE(text != NULL);
 
-	if (strncasecmp(command, "add", 3) == 0) {
+	if (isc_string_ncasehasprefix(command, "add")) {
 		addzone = true;
 	} else {
-		INSIST(strncasecmp(command, "mod", 3) == 0);
+		INSIST(isc_string_ncasehasprefix(command, "mod"));
 		addzone = false;
 	}
 
