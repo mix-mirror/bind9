@@ -7353,6 +7353,10 @@ zone_nsec3chain(dns_zone_t *zone) {
 		INSIST(!seen.nsec3);
 
 		dns_rdatasetiter_destroy(&iterator);
+		/* Required empty non-terminals are added from active descendants. */
+		if (!seen.rr) {
+			goto next_addnode;
+		}
 		/*
 		 * Is there a NSEC chain than needs to be cleaned up?
 		 */
