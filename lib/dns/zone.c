@@ -7129,6 +7129,7 @@ typedef ISC_LIST(parallel_sig_result_t) parallel_sig_resultlist_t;
 
 struct parallel_sig_result {
 	rrset_diff_group_t *group;
+	dns_difftuple_t *addtuple;
 	isc_result_t result;
 	dns_ttl_t ttl;
 	dns_rdataclass_t rdclass;
@@ -7263,6 +7264,7 @@ done:
 	sig = isc_mem_get(mctx, size);
 	*sig = (parallel_sig_result_t){
 		.group = group,
+		.addtuple = NULL,
 		.result = result,
 		.ttl = dns_rdataset_isassociated(&rdataset) ? rdataset.ttl : 0,
 		.rdclass = sig_rdata.rdclass,
@@ -7298,6 +7300,37 @@ parallel_sig_free(isc_mem_t *mctx, parallel_sig_result_t **sigp) {
 
 	*sigp = NULL;
 	isc_mem_put(mctx, sig, sizeof(*sig) + sig->length);
+}
+
+static isc_result_t
+apply_diff_batch(dns_diff_t *diff, dns_db_t *db, dns_dbversion_t *version) {
+	dns_rdatacallbacks_t callbacks;
+	isc_result_t result;
+
+	if (ISC_LIST_EMPTY(diff->tuples)) {
+		return ISC_R_SUCCESS;
+	}
+
+	dns_rdatacallbacks_init(&callbacks);
+	result = dns_db_beginupdate(db, version, &callbacks);
+	if (result == ISC_R_NOTIMPLEMENTED) {
+		return dns_diff_apply(diff, db, version);
+	}
+	if (result != ISC_R_SUCCESS) {
+		return result;
+	}
+
+	result = dns_diff_apply_with_callbacks(diff, &callbacks);
+	if (result != ISC_R_SUCCESS) {
+		(void)dns_db_abortupdate(db, &callbacks);
+		return result;
+	}
+
+	result = dns_db_commitupdate(db, &callbacks);
+	if (result != ISC_R_SUCCESS) {
+		(void)dns_db_abortupdate(db, &callbacks);
+	}
+	return result;
 }
 
 static isc_result_t
@@ -7354,10 +7387,13 @@ zone_updatesigs_parallel(dns_db_t *db, dns_dbversion_t *version,
 	parallel_sig_resultlist_t *thread_results = NULL;
 	parallel_sig_result_t **results = NULL;
 	rrset_diff_group_t **work = NULL;
+	dns_diff_t adds;
 	dns_stats_t *dnssecsignstats;
 	size_t nresults = 0;
 	int nthreads = omp_get_max_threads();
 	isc_result_t result = ISC_R_SUCCESS;
+
+	dns_diff_init(zone->mctx, &adds);
 
 	thread_results = isc_mem_cget(zone->mctx, nthreads,
 				      sizeof(*thread_results));
@@ -7435,14 +7471,34 @@ zone_updatesigs_parallel(dns_db_t *db, dns_dbversion_t *version,
 
 		if (sig->length != 0) {
 			dns_rdata_t rdata = DNS_RDATA_INIT;
+			dns_difftuple_t *addtuple = NULL;
 
 			rdata.data = sig->data;
 			rdata.length = sig->length;
 			rdata.rdclass = sig->rdclass;
 			rdata.type = sig->type;
-			CHECK(update_one_rr(db, version, &group->sig_diff,
-					    DNS_DIFFOP_ADDRESIGN, &tuple->name,
-					    sig->ttl, &rdata));
+			dns_difftuple_create(zone->mctx, DNS_DIFFOP_ADDRESIGN,
+					     &tuple->name, sig->ttl, &rdata,
+					     &addtuple);
+			sig->addtuple = addtuple;
+			dns_diff_append(&adds, &addtuple);
+		}
+	}
+
+	CHECK(apply_diff_batch(&adds, db, version));
+
+	for (size_t i = 0; i < nresults; i++) {
+		parallel_sig_result_t *sig = results[i];
+		rrset_diff_group_t *group = sig->group;
+
+		if (sig->addtuple != NULL) {
+			dns_difftuple_t *addtuple = sig->addtuple;
+
+			ISC_LIST_UNLINK(adds.tuples, addtuple, link);
+			INSIST(adds.size > 0);
+			adds.size--;
+			sig->addtuple = NULL;
+			dns_diff_append(&group->sig_diff, &addtuple);
 
 			if (dnssecsignstats != NULL) {
 				dns_dnssecsignstats_increment(
@@ -7461,6 +7517,7 @@ zone_updatesigs_parallel(dns_db_t *db, dns_dbversion_t *version,
 	}
 
 cleanup:
+	dns_diff_clear(&adds);
 	if (thread_results != NULL) {
 		for (int i = 0; i < nthreads; i++) {
 			while (!ISC_LIST_EMPTY(thread_results[i])) {
