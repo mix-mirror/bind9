@@ -501,9 +501,18 @@ class Zone:
             cwd=self.ns.name,
         )
 
-    def configure(self, template: str | None = None, sign_params: str = "") -> None:
+    def configure(
+        self,
+        template: str | None = None,
+        sign_params: str = "",
+        csk: bool = False,
+    ) -> None:
         """
         Perform full zone setup: copy DS sets, generate keys, render, sign.
+
+        With csk=True, a single SEP-flagged key is generated instead of the
+        KSK+ZSK pair and the zone is signed with dnssec-signzone -z, making
+        that key a CSK signing everything.
 
         This is the standard single-call entrypoint and may be called only once
         per Zone. Use the individual step methods directly only when a test
@@ -514,9 +523,11 @@ class Zone:
         self._configured = True
         self.copy_dssets()
         if self.signed:
-            self.add_keys()
+            self.add_keys(ksk=True, zsk=not csk)
         self.render(template)
         if self.signed:
+            if csk:
+                sign_params = f"-z {sign_params}".strip()
             self.sign(sign_params)
 
     def trust_anchors(self, ta_type: str = "static-ds") -> list[TrustAnchor]:
