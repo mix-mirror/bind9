@@ -11,10 +11,12 @@
 
 import dns.dnssec
 import dns.name
+import dns.query
 import dns.rcode
 import dns.rdataclass
 import dns.rdatatype
 import dns.update
+import dns.zone
 
 from nsec3.common import NSEC3_MARK, NSEC3_SALTLEN, wait_for_nsec3param
 
@@ -77,7 +79,7 @@ def test_full_rebuild_ignores_names_deleted_after_snapshot(ns3, templates):
         }
         templates.render(f"{ns3.identifier}/named-fips.conf", data)
         ns3.reconfigure()
-        watcher.wait_for_line("zone_addnsec3chain(1,CREATE,0,")
+        watcher.wait_for_line("zone_addnsec3chain(1,CREATE|OPTOUT,0,")
 
     update = dns.update.UpdateMessage(ZONE)
     update.delete(DELETED_NAME, dns.rdatatype.A)
@@ -111,6 +113,12 @@ def test_full_rebuild_ignores_names_deleted_after_snapshot(ns3, templates):
         algorithm=param.algorithm,
     )
     hashed_name = f"{deleted_hash}.{FQDN}"
-    query = isctest.query.create(hashed_name, dns.rdatatype.NSEC3)
-    response = isctest.query.tcp(query, ns3.ip)
-    assert response.rcode() == dns.rcode.NXDOMAIN, response
+    transfer = dns.zone.Zone(origin=FQDN, relativize=False)
+    dns.query.inbound_xfr(
+        where=ns3.ip,
+        txn_manager=transfer,
+        port=ns3.ports.dns,
+        timeout=10,
+        lifetime=10,
+    )
+    assert transfer.get_rdataset(hashed_name, dns.rdatatype.NSEC3) is None

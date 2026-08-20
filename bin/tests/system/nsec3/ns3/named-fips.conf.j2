@@ -73,7 +73,8 @@ zone "nsec3-rebuild.kasp" {
 	inline-signing yes;
 	dnssec-policy "@nsec3_rebuild@";
 	allow-update { any; };
-	sig-signing-nodes 1;
+	/* Leave one node per quantum for each of the queued chain changes. */
+	sig-signing-nodes 2;
 	sig-signing-signatures 1000;
 };
 {% endif %}{# nsec3-rebuild.kasp #}
