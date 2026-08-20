@@ -173,6 +173,32 @@ static bool set_maxttl = false;
 static dns_ttl_t maxttl = 0;
 static bool no_max_check = false;
 static const char *sync_records = "cdnskey,cds:sha-256";
+static char *file = NULL;
+static const char *originstr = NULL;
+static char *output = NULL;
+static bool free_output = false;
+static int tempfilelen = 0;
+static dns_rdataclass_t zoneclass;
+static char *dskeyfile[MAXDSKEYS];
+static int ndskeys = 0;
+static char **keyargv = NULL;
+static int keyargc = 0;
+static char *outputformatstr = NULL;
+static hashlist_t ghashlist;
+static bool make_keyset = false;
+static bool salt_set = false;
+static bool optout_set = false;
+static bool iter_set = false;
+static bool nonsecify = false;
+static isc_result_t vresult = ISC_R_FAILURE;
+static atomic_bool completed;
+static isc_time_t timer_start, timer_finish;
+static isc_time_t sign_start, sign_finish;
+static dns_loadctx_t *lctx = NULL;
+static dns_dumpctx_t *dctx = NULL;
+
+static void
+signing_done(void *arg);
 
 #define INCSTAT(counter)                               \
 	if (printstats) {                              \
@@ -1598,7 +1624,7 @@ assignwork(void *arg) {
 	if (atomic_load(&finished)) {
 		ended++;
 		if (ended == nloops) {
-			isc_loopmgr_shutdown();
+			isc_async_run(isc_loop_main(), signing_done, NULL);
 		}
 		UNLOCK(&namelock);
 		return;
@@ -1677,7 +1703,7 @@ assignwork(void *arg) {
 	if (!found) {
 		ended++;
 		if (ended == nloops) {
-			isc_loopmgr_shutdown();
+			isc_async_run(isc_loop_main(), signing_done, NULL);
 		}
 		UNLOCK(&namelock);
 		return;
@@ -2523,35 +2549,40 @@ nsec3ify(unsigned int hashalg, dns_iterations_t iterations,
 	dns_dbiterator_destroy(&dbiter);
 }
 
+static void
+load_done(void *arg, isc_result_t result);
+
 /*%
- * Load the zone file from disk
+ * Create the zone database and start loading the zone file from disk
+ * asynchronously; load_done() takes over when the load has finished.
+ * Runs on the main loop.
  */
 static void
-loadzone(char *file, const char *origin, dns_rdataclass_t rdclass,
-	 dns_db_t **db) {
+start_load(void *arg ISC_ATTR_UNUSED) {
 	isc_buffer_t b;
 	int len;
 	dns_fixedname_t fname;
 	dns_name_t *name;
 	isc_result_t result;
 
-	len = strlen(origin);
-	isc_buffer_constinit(&b, origin, len);
+	len = strlen(originstr);
+	isc_buffer_constinit(&b, originstr, len);
 	isc_buffer_add(&b, len);
 
 	name = dns_fixedname_initname(&fname);
 	result = dns_name_fromtext(name, &b, dns_rootname, 0);
 	if (result != ISC_R_SUCCESS) {
-		fatal("failed converting name '%s' to dns format: %s", origin,
-		      isc_result_totext(result));
+		fatal("failed converting name '%s' to dns format: %s",
+		      originstr, isc_result_totext(result));
 	}
 
 	result = dns_db_create(isc_g_mctx, ZONEDB_DEFAULT, name,
-			       dns_dbtype_zone, rdclass, 0, NULL, db);
+			       dns_dbtype_zone, zoneclass, 0, NULL, &gdb);
 	check_result(result, "dns_db_create()");
 
-	result = dns_db_load(*db, file, inputformat, 0);
-	if (result != ISC_R_SUCCESS && result != DNS_R_SEENINCLUDE) {
+	result = dns_db_loadasync(gdb, file, inputformat, 0, isc_loop_main(),
+				  load_done, NULL, &lctx);
+	if (result != ISC_R_SUCCESS) {
 		fatal("failed loading zone from '%s': %s", file,
 		      isc_result_totext(result));
 	}
@@ -3248,8 +3279,7 @@ removetempfile(void) {
 }
 
 static void
-print_stats(isc_time_t *timer_start, isc_time_t *timer_finish,
-	    isc_time_t *sign_start, isc_time_t *sign_finish) {
+print_stats(void) {
 	uint64_t time_us; /* Time in microseconds */
 	uint64_t time_ms; /* Time in milliseconds */
 	uint64_t sig_ms;  /* Signatures per millisecond */
@@ -3266,7 +3296,7 @@ print_stats(isc_time_t *timer_start, isc_time_t *timer_finish,
 	fprintf(out, "Signatures unsuccessfully verified: %10" PRIuFAST32 "\n",
 		atomic_load(&nverifyfailed));
 
-	time_us = isc_time_microdiff(sign_finish, sign_start);
+	time_us = isc_time_microdiff(&sign_finish, &sign_start);
 	time_ms = time_us / 1000;
 	fprintf(out, "Signing time in seconds:           %7u.%03u\n",
 		(unsigned int)(time_ms / 1000), (unsigned int)(time_ms % 1000));
@@ -3278,10 +3308,351 @@ print_stats(isc_time_t *timer_start, isc_time_t *timer_finish,
 			(unsigned int)sig_ms % 1000);
 	}
 
-	time_us = isc_time_microdiff(timer_finish, timer_start);
+	time_us = isc_time_microdiff(&timer_finish, &timer_start);
 	time_ms = time_us / 1000;
 	fprintf(out, "Runtime in seconds:                %7u.%03u\n",
 		(unsigned int)(time_ms / 1000), (unsigned int)(time_ms % 1000));
+}
+
+/*%
+ * The signed zone has been fully written: close and rename the output
+ * file, release the database, record completion, and stop the loop
+ * manager.
+ */
+static void
+finishup(void) {
+	isc_result_t result;
+
+	if (!output_stdout) {
+		result = isc_stdio_close(outfp);
+		check_result(result, "isc_stdio_close");
+		removefile = false;
+
+		if (vresult == ISC_R_SUCCESS) {
+			result = isc_file_rename(tempfile, output);
+			if (result != ISC_R_SUCCESS) {
+				fatal("failed to rename temp file to %s: %s",
+				      output, isc_result_totext(result));
+			}
+			printf("%s\n", output);
+		} else {
+			isc_file_remove(tempfile);
+		}
+	}
+
+	dns_db_closeversion(gdb, &gversion, false);
+	dns_db_detach(&gdb);
+
+	atomic_store(&completed, true);
+	isc_loopmgr_shutdown();
+}
+
+static void
+dump_done(void *arg ISC_ATTR_UNUSED, isc_result_t result) {
+	dns_dumpctx_detach(&dctx);
+
+	if (result == ISC_R_CANCELED) {
+		/* Shutting down; main() reports the abort. */
+		return;
+	}
+	check_result(result, "dns_master_dumptostream");
+
+	finishup();
+}
+
+/*%
+ * All nodes have been signed: update the NSEC/NSEC3 chains and DS
+ * records, verify the result, and start dumping the signed zone to the
+ * output file.  Runs on the main loop.
+ */
+static void
+signing_done(void *arg ISC_ATTR_UNUSED) {
+	isc_result_t result;
+
+	if (atomic_load(&shuttingdown)) {
+		return;
+	}
+
+	postsign();
+	sign_finish = isc_time_now();
+
+	if (disable_zone_check) {
+		vresult = ISC_R_SUCCESS;
+	} else {
+		vresult = dns_zoneverify_dnssec(
+			NULL, gdb, gversion, gorigin, NULL, isc_g_mctx,
+			ignore_kskflag, keyset_kskonly, report);
+		if (vresult != ISC_R_SUCCESS) {
+			fprintf(output_stdout ? stderr : stdout,
+				"Zone verification failed (%s)\n",
+				isc_result_totext(vresult));
+		}
+	}
+
+	if (output_dnssec_only) {
+		/* The signed records were already dumped node by node. */
+		finishup();
+		return;
+	}
+
+	dns_masterrawheader_t header;
+	dns_master_initrawheader(&header);
+	if (rawversion == 0U) {
+		header.flags = DNS_MASTERRAW_COMPAT;
+	} else if (snset) {
+		header.flags = DNS_MASTERRAW_SOURCESERIALSET;
+		header.sourceserial = serialnum;
+	}
+	result = dns_master_dumptostreamasync(
+		isc_g_mctx, gdb, gversion, masterstyle, outputformat, &header,
+		outfp, isc_loop_main(), dump_done, NULL, &dctx);
+	check_result(result, "dns_master_dumptostreamasync");
+}
+
+/*%
+ * Prepare the loaded zone for signing: load the keys, set up the
+ * NSEC/NSEC3 parameters, update the SOA serial, open the output file,
+ * and sign the zone apex.  Then hand the remaining nodes to the
+ * signing threads; signing_done() takes over when they are done.
+ * Runs on the main loop.
+ */
+static void
+start_signing(void) {
+	isc_result_t result;
+
+	gorigin = dns_db_origin(gdb);
+	gclass = dns_db_class(gdb);
+	get_soa_ttls();
+
+	if (set_maxttl && set_keyttl && keyttl > maxttl) {
+		fprintf(stderr,
+			"%s: warning: Specified key TTL %u "
+			"exceeds maximum zone TTL; reducing to %u\n",
+			isc_commandline_progname, keyttl, maxttl);
+		keyttl = maxttl;
+	}
+
+	if (!set_keyttl) {
+		keyttl = soa_ttl;
+	}
+
+	/*
+	 * Check for any existing NSEC3 parameters in the zone,
+	 * and use them as defaults if -u was not specified.
+	 */
+	if (update_chain && !optout_set && !iter_set && !salt_set) {
+		nsec_datatype = dns_rdatatype_nsec;
+	} else {
+		set_nsec3params(update_chain, salt_set, optout_set, iter_set);
+	}
+
+	/*
+	 * We need to do this early on, as we start messing with the list
+	 * of keys rather early.
+	 */
+	ISC_LIST_INIT(keylist);
+	isc_rwlock_init(&keylist_lock);
+
+	/*
+	 * Fill keylist with:
+	 * 1) Keys listed in the DNSKEY set that have
+	 *    private keys associated, *if* no keys were
+	 *    set on the command line.
+	 * 2) ZSKs set on the command line
+	 * 3) KSKs set on the command line
+	 * 4) Any keys remaining in the DNSKEY set which
+	 *    do not have private keys associated and were
+	 *    not specified on the command line.
+	 */
+	if (keyargc == 0 || smartsign) {
+		loadzonekeys(!smartsign, false);
+	}
+	loadexplicitkeys(keyargv, keyargc, false);
+	loadexplicitkeys(dskeyfile, ndskeys, true);
+	loadzonekeys(!smartsign, true);
+
+	/*
+	 * If we're doing smart signing, look in the key repository for
+	 * key files with metadata, and merge them with the keylist
+	 * we have now.
+	 */
+	if (smartsign) {
+		build_final_keylist();
+	}
+
+	/* Now enumerate the key list */
+	ISC_LIST_FOREACH(keylist, key, link) {
+		key->index = keycount++;
+	}
+
+	if (keycount == 0) {
+		if (disable_zone_check) {
+			fprintf(stderr,
+				"%s: warning: No keys specified "
+				"or found\n",
+				isc_commandline_progname);
+		} else {
+			fatal("No signing keys specified or found.");
+		}
+		nokeys = true;
+	}
+
+	warnifallksk(gdb);
+
+	if (IS_NSEC3) {
+		bool answer;
+
+		hash_length = dns_nsec3_hashlength(dns_hash_sha1);
+		hashlist_init(&ghashlist, dns_db_nodecount(gdb) * 2,
+			      hash_length);
+		result = dns_nsec_nseconly(gdb, gversion, NULL, &answer);
+		if (result == ISC_R_NOTFOUND) {
+			fprintf(stderr,
+				"%s: warning: NSEC3 generation "
+				"requested with no DNSKEY; ignoring\n",
+				isc_commandline_progname);
+		} else if (result != ISC_R_SUCCESS) {
+			check_result(result, "dns_nsec_nseconly");
+		} else if (answer) {
+			fatal("NSEC3 generation requested with "
+			      "NSEC-only DNSKEY");
+		}
+
+		if (nsec3iter > dns_nsec3_maxiterations()) {
+			if (no_max_check) {
+				fprintf(stderr,
+					"Ignoring max iterations check.\n");
+			} else {
+				fatal("NSEC3 iterations too big. Maximum "
+				      "iterations allowed %u.",
+				      dns_nsec3_maxiterations());
+			}
+		}
+	} else {
+		hashlist_init(&ghashlist, 0, 0); /* silence clang */
+	}
+
+	gversion = NULL;
+	result = dns_db_newversion(gdb, &gversion);
+	check_result(result, "dns_db_newversion()");
+
+	switch (serialformat) {
+	case SOA_SERIAL_INCREMENT:
+		setsoaserial(0, dns_updatemethod_increment);
+		break;
+	case SOA_SERIAL_UNIXTIME:
+		setsoaserial(now, dns_updatemethod_unixtime);
+		break;
+	case SOA_SERIAL_DATE:
+		setsoaserial(now, dns_updatemethod_date);
+		break;
+	case SOA_SERIAL_KEEP:
+	default:
+		/* do nothing */
+		break;
+	}
+
+	/* Remove duplicates and cap TTLs at maxttl */
+	cleanup_zone();
+
+	if (!nonsecify) {
+		if (IS_NSEC3) {
+			nsec3ify(dns_hash_sha1, nsec3iter, gsalt, salt_length,
+				 &ghashlist);
+		} else {
+			nsecify();
+		}
+	}
+
+	if (!nokeys) {
+		writeset("dsset-", dns_rdatatype_ds);
+		if (make_keyset) {
+			writeset("keyset-", dns_rdatatype_dnskey);
+		}
+	}
+
+	if (output_stdout) {
+		outfp = stdout;
+		if (outputformatstr == NULL) {
+			masterstyle = &dns_master_style_full;
+		}
+	} else {
+		tempfilelen = strlen(output) + 20;
+		tempfile = isc_mem_get(isc_g_mctx, tempfilelen);
+
+		result = isc_file_mktemplate(output, tempfile, tempfilelen);
+		check_result(result, "isc_file_mktemplate");
+
+		result = isc_file_openunique(tempfile, &outfp);
+		if (result != ISC_R_SUCCESS) {
+			fatal("failed to open temporary output file: %s",
+			      isc_result_totext(result));
+		}
+		INSIST(outfp != NULL);
+		removefile = true;
+		setfatalcallback(&removetempfile);
+	}
+
+	print_time(outfp);
+	print_version(outfp);
+
+	isc_mutex_init(&namelock);
+
+	presign();
+	sign_start = isc_time_now();
+	signapex();
+
+	if (atomic_load(&finished)) {
+		signing_done(NULL);
+		return;
+	}
+
+	/*
+	 * There is more work to do.  Spread it out over multiple
+	 * processors if possible.
+	 */
+	for (uint32_t i = 0; i < nloops; i++) {
+		isc_async_run(isc_loop_get(i), assignwork, NULL);
+	}
+}
+
+/*%
+ * The zone file has been loaded: apply the journal if requested, then
+ * proceed to signing.
+ */
+static void
+load_done(void *arg ISC_ATTR_UNUSED, isc_result_t result) {
+	dns_loadctx_detach(&lctx);
+
+	if (result == ISC_R_CANCELED) {
+		/* Shutting down; main() reports the abort. */
+		return;
+	}
+	if (result != ISC_R_SUCCESS && result != DNS_R_SEENINCLUDE) {
+		fatal("failed loading zone from '%s': %s", file,
+		      isc_result_totext(result));
+	}
+
+	if (journal != NULL) {
+		loadjournal(isc_g_mctx, gdb, journal);
+	}
+
+	start_signing();
+}
+
+/*%
+ * Loop teardown callback on the main loop: cancel a load or dump still
+ * in flight (e.g. on SIGINT) so that its completion callback runs and
+ * the loops can finish.
+ */
+static void
+cancel_inflight(void *arg ISC_ATTR_UNUSED) {
+	if (lctx != NULL) {
+		dns_loadctx_cancel(lctx);
+	}
+	if (dctx != NULL) {
+		dns_dumpctx_cancel(dctx);
+	}
 }
 
 int
@@ -3289,28 +3660,14 @@ main(int argc, char *argv[]) {
 	int ch;
 	char *startstr = NULL, *endstr = NULL, *classname = NULL;
 	char *dnskey_endstr = NULL;
-	const char *origin = NULL;
-	char *file = NULL, *output = NULL;
-	char *inputformatstr = NULL, *outputformatstr = NULL;
+	char *inputformatstr = NULL;
 	char *serialformatstr = NULL;
-	char *dskeyfile[MAXDSKEYS];
-	int ndskeys = 0;
 	char *endp;
-	isc_time_t timer_start, timer_finish;
-	isc_time_t sign_start, sign_finish;
-	isc_result_t result, vresult;
-	bool free_output = false;
-	int tempfilelen = 0;
-	dns_rdataclass_t rdclass;
-	hashlist_t hashlist;
-	bool make_keyset = false;
-	bool set_salt = false;
-	bool set_optout = false;
-	bool set_iter = false;
-	bool nonsecify = false;
+	isc_result_t result;
 
 	atomic_init(&shuttingdown, false);
 	atomic_init(&finished, false);
+	atomic_init(&completed, false);
 
 	isc_commandline_init(argc, argv);
 
@@ -3353,7 +3710,7 @@ main(int argc, char *argv[]) {
 	while ((ch = isc_commandline_parse(argc, argv, CMDLINE_FLAGS)) != -1) {
 		switch (ch) {
 		case '3':
-			set_salt = true;
+			salt_set = true;
 			nsec_datatype = dns_rdatatype_nsec3;
 			if (strcmp(isc_commandline_argument, "-") != 0) {
 				isc_buffer_t target;
@@ -3370,7 +3727,7 @@ main(int argc, char *argv[]) {
 			break;
 
 		case 'A':
-			set_optout = true;
+			optout_set = true;
 			if (OPTOUT(nsec3flags)) {
 				nsec3flags &= ~DNS_NSEC3FLAG_OPTOUT;
 			} else {
@@ -3430,7 +3787,7 @@ main(int argc, char *argv[]) {
 			break;
 
 		case 'H':
-			set_iter = true;
+			iter_set = true;
 			/* too-many is NOT DOCUMENTED */
 			if (strcmp(isc_commandline_argument, "too-many") == 0) {
 				nsec3iter = 51;
@@ -3524,7 +3881,7 @@ main(int argc, char *argv[]) {
 			break;
 
 		case 'o':
-			origin = isc_commandline_argument;
+			originstr = isc_commandline_argument;
 			break;
 
 		case 'P':
@@ -3667,7 +4024,7 @@ main(int argc, char *argv[]) {
 	}
 	vbprintf(4, "using %d cpus\n", nloops);
 
-	rdclass = strtoclass(classname);
+	zoneclass = strtoclass(classname);
 
 	if (directory == NULL) {
 		directory = ".";
@@ -3689,8 +4046,11 @@ main(int argc, char *argv[]) {
 	argc -= 1;
 	argv += 1;
 
-	if (origin == NULL) {
-		origin = isc_file_basename(file);
+	keyargv = argv;
+	keyargc = argc;
+
+	if (originstr == NULL) {
+		originstr = isc_file_basename(file);
 	}
 
 	if (output == NULL) {
@@ -3773,256 +4133,16 @@ main(int argc, char *argv[]) {
 
 	gdb = NULL;
 	timer_start = isc_time_now();
-	loadzone(file, origin, rdclass, &gdb);
-	if (journal != NULL) {
-		loadjournal(isc_g_mctx, gdb, journal);
-	}
-	gorigin = dns_db_origin(gdb);
-	gclass = dns_db_class(gdb);
-	get_soa_ttls();
+	isc_loop_setup(isc_loop_main(), start_load, NULL);
+	isc_loopmgr_teardown(abortwork, NULL);
+	isc_loop_teardown(isc_loop_main(), cancel_inflight, NULL);
+	isc_loopmgr_run();
 
-	if (set_maxttl && set_keyttl && keyttl > maxttl) {
-		fprintf(stderr,
-			"%s: warning: Specified key TTL %u "
-			"exceeds maximum zone TTL; reducing to %u\n",
-			isc_commandline_progname, keyttl, maxttl);
-		keyttl = maxttl;
+	if (!atomic_load(&completed)) {
+		fatal("process aborted by user");
 	}
 
-	if (!set_keyttl) {
-		keyttl = soa_ttl;
-	}
-
-	/*
-	 * Check for any existing NSEC3 parameters in the zone,
-	 * and use them as defaults if -u was not specified.
-	 */
-	if (update_chain && !set_optout && !set_iter && !set_salt) {
-		nsec_datatype = dns_rdatatype_nsec;
-	} else {
-		set_nsec3params(update_chain, set_salt, set_optout, set_iter);
-	}
-
-	/*
-	 * We need to do this early on, as we start messing with the list
-	 * of keys rather early.
-	 */
-	ISC_LIST_INIT(keylist);
-	isc_rwlock_init(&keylist_lock);
-
-	/*
-	 * Fill keylist with:
-	 * 1) Keys listed in the DNSKEY set that have
-	 *    private keys associated, *if* no keys were
-	 *    set on the command line.
-	 * 2) ZSKs set on the command line
-	 * 3) KSKs set on the command line
-	 * 4) Any keys remaining in the DNSKEY set which
-	 *    do not have private keys associated and were
-	 *    not specified on the command line.
-	 */
-	if (argc == 0 || smartsign) {
-		loadzonekeys(!smartsign, false);
-	}
-	loadexplicitkeys(argv, argc, false);
-	loadexplicitkeys(dskeyfile, ndskeys, true);
-	loadzonekeys(!smartsign, true);
-
-	/*
-	 * If we're doing smart signing, look in the key repository for
-	 * key files with metadata, and merge them with the keylist
-	 * we have now.
-	 */
-	if (smartsign) {
-		build_final_keylist();
-	}
-
-	/* Now enumerate the key list */
-	ISC_LIST_FOREACH(keylist, key, link) {
-		key->index = keycount++;
-	}
-
-	if (keycount == 0) {
-		if (disable_zone_check) {
-			fprintf(stderr,
-				"%s: warning: No keys specified "
-				"or found\n",
-				isc_commandline_progname);
-		} else {
-			fatal("No signing keys specified or found.");
-		}
-		nokeys = true;
-	}
-
-	warnifallksk(gdb);
-
-	if (IS_NSEC3) {
-		bool answer;
-
-		hash_length = dns_nsec3_hashlength(dns_hash_sha1);
-		hashlist_init(&hashlist, dns_db_nodecount(gdb) * 2,
-			      hash_length);
-		result = dns_nsec_nseconly(gdb, gversion, NULL, &answer);
-		if (result == ISC_R_NOTFOUND) {
-			fprintf(stderr,
-				"%s: warning: NSEC3 generation "
-				"requested with no DNSKEY; ignoring\n",
-				isc_commandline_progname);
-		} else if (result != ISC_R_SUCCESS) {
-			check_result(result, "dns_nsec_nseconly");
-		} else if (answer) {
-			fatal("NSEC3 generation requested with "
-			      "NSEC-only DNSKEY");
-		}
-
-		if (nsec3iter > dns_nsec3_maxiterations()) {
-			if (no_max_check) {
-				fprintf(stderr,
-					"Ignoring max iterations check.\n");
-			} else {
-				fatal("NSEC3 iterations too big. Maximum "
-				      "iterations allowed %u.",
-				      dns_nsec3_maxiterations());
-			}
-		}
-	} else {
-		hashlist_init(&hashlist, 0, 0); /* silence clang */
-	}
-
-	gversion = NULL;
-	result = dns_db_newversion(gdb, &gversion);
-	check_result(result, "dns_db_newversion()");
-
-	switch (serialformat) {
-	case SOA_SERIAL_INCREMENT:
-		setsoaserial(0, dns_updatemethod_increment);
-		break;
-	case SOA_SERIAL_UNIXTIME:
-		setsoaserial(now, dns_updatemethod_unixtime);
-		break;
-	case SOA_SERIAL_DATE:
-		setsoaserial(now, dns_updatemethod_date);
-		break;
-	case SOA_SERIAL_KEEP:
-	default:
-		/* do nothing */
-		break;
-	}
-
-	/* Remove duplicates and cap TTLs at maxttl */
-	cleanup_zone();
-
-	if (!nonsecify) {
-		if (IS_NSEC3) {
-			nsec3ify(dns_hash_sha1, nsec3iter, gsalt, salt_length,
-				 &hashlist);
-		} else {
-			nsecify();
-		}
-	}
-
-	if (!nokeys) {
-		writeset("dsset-", dns_rdatatype_ds);
-		if (make_keyset) {
-			writeset("keyset-", dns_rdatatype_dnskey);
-		}
-	}
-
-	if (output_stdout) {
-		outfp = stdout;
-		if (outputformatstr == NULL) {
-			masterstyle = &dns_master_style_full;
-		}
-	} else {
-		tempfilelen = strlen(output) + 20;
-		tempfile = isc_mem_get(isc_g_mctx, tempfilelen);
-
-		result = isc_file_mktemplate(output, tempfile, tempfilelen);
-		check_result(result, "isc_file_mktemplate");
-
-		result = isc_file_openunique(tempfile, &outfp);
-		if (result != ISC_R_SUCCESS) {
-			fatal("failed to open temporary output file: %s",
-			      isc_result_totext(result));
-		}
-		INSIST(outfp != NULL);
-		removefile = true;
-		setfatalcallback(&removetempfile);
-	}
-
-	print_time(outfp);
-	print_version(outfp);
-
-	isc_mutex_init(&namelock);
-
-	presign();
-	sign_start = isc_time_now();
-	signapex();
-	if (!atomic_load(&finished)) {
-		/*
-		 * There is more work to do.  Spread it out over multiple
-		 * processors if possible.
-		 */
-		isc_loopmgr_setup(assignwork, NULL);
-		isc_loopmgr_teardown(abortwork, NULL);
-		isc_loopmgr_run();
-
-		if (!atomic_load(&finished)) {
-			fatal("process aborted by user");
-		}
-	}
-	postsign();
-	sign_finish = isc_time_now();
-
-	if (disable_zone_check) {
-		vresult = ISC_R_SUCCESS;
-	} else {
-		vresult = dns_zoneverify_dnssec(
-			NULL, gdb, gversion, gorigin, NULL, isc_g_mctx,
-			ignore_kskflag, keyset_kskonly, report);
-		if (vresult != ISC_R_SUCCESS) {
-			fprintf(output_stdout ? stderr : stdout,
-				"Zone verification failed (%s)\n",
-				isc_result_totext(vresult));
-		}
-	}
-
-	if (!output_dnssec_only) {
-		dns_masterrawheader_t header;
-		dns_master_initrawheader(&header);
-		if (rawversion == 0U) {
-			header.flags = DNS_MASTERRAW_COMPAT;
-		} else if (snset) {
-			header.flags = DNS_MASTERRAW_SOURCESERIALSET;
-			header.sourceserial = serialnum;
-		}
-		result = dns_master_dumptostream(isc_g_mctx, gdb, gversion,
-						 masterstyle, outputformat,
-						 &header, outfp);
-		check_result(result, "dns_master_dumptostream");
-	}
-
-	if (!output_stdout) {
-		result = isc_stdio_close(outfp);
-		check_result(result, "isc_stdio_close");
-		removefile = false;
-
-		if (vresult == ISC_R_SUCCESS) {
-			result = isc_file_rename(tempfile, output);
-			if (result != ISC_R_SUCCESS) {
-				fatal("failed to rename temp file to %s: %s",
-				      output, isc_result_totext(result));
-			}
-			printf("%s\n", output);
-		} else {
-			isc_file_remove(tempfile);
-		}
-	}
-
-	dns_db_closeversion(gdb, &gversion, false);
-	dns_db_detach(&gdb);
-
-	hashlist_free(&hashlist);
+	hashlist_free(&ghashlist);
 
 	ISC_LIST_FOREACH(keylist, key, link) {
 		ISC_LIST_UNLINK(keylist, key, link);
@@ -4047,8 +4167,7 @@ main(int argc, char *argv[]) {
 
 	if (printstats) {
 		timer_finish = isc_time_now();
-		print_stats(&timer_start, &timer_finish, &sign_start,
-			    &sign_finish);
+		print_stats();
 	}
 	isc_mutex_destroy(&namelock);
 	isc_rwlock_destroy(&keylist_lock);
