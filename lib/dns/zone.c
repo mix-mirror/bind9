@@ -21,6 +21,7 @@
 #include <isc/atomic.h>
 #include <isc/file.h>
 #include <isc/hash.h>
+#include <isc/hashmap.h>
 #include <isc/hex.h>
 #include <isc/list.h>
 #include <isc/log.h>
@@ -7096,6 +7097,190 @@ move_matching_tuples(dns_difftuple_t *cur, dns_diff_t *src, dns_diff_t *dst) {
 }
 
 /*%
+ * Move all tuples from 'src' to 'dst' without minimizing them.
+ */
+static void
+move_diff_tuples(dns_diff_t *dst, dns_diff_t *src) {
+	while (!ISC_LIST_EMPTY(src->tuples)) {
+		dns_difftuple_t *tuple = ISC_LIST_HEAD(src->tuples);
+
+		ISC_LIST_UNLINK(src->tuples, tuple, link);
+		INSIST(src->size > 0);
+		src->size--;
+		dns_diff_append(dst, &tuple);
+	}
+}
+
+typedef struct rrset_diff_group rrset_diff_group_t;
+typedef ISC_LIST(rrset_diff_group_t) rrset_diff_grouplist_t;
+
+struct rrset_diff_group {
+	dns_diff_t diff;
+	ISC_LINK(rrset_diff_group_t) link;
+};
+
+static uint8_t
+rrset_diff_hashbits(size_t count) {
+	uint8_t bits = 4;
+
+	while (bits < 24 && count > ((size_t)1 << bits)) {
+		bits++;
+	}
+
+	return bits;
+}
+
+static uint32_t
+rrset_diff_hash(const dns_difftuple_t *tuple) {
+	dns_fixedname_t fixed;
+	dns_name_t *name = dns_fixedname_initname(&fixed);
+	isc_hash32_t hash;
+
+	RUNTIME_CHECK(dns_name_downcase(&tuple->name, name) == ISC_R_SUCCESS);
+	isc_hash32_init(&hash);
+	dns_name_hash_ex(&hash, name);
+	isc_hash32_hash(&hash, &tuple->rdata.type, sizeof(tuple->rdata.type),
+			true);
+
+	return isc_hash32_finalize(&hash);
+}
+
+static bool
+rrset_diff_match(void *node, const void *key) {
+	rrset_diff_group_t *group = node;
+	const dns_difftuple_t *tuple = ISC_LIST_HEAD(group->diff.tuples);
+	const dns_difftuple_t *keytuple = key;
+
+	return tuple->rdata.type == keytuple->rdata.type &&
+	       dns_name_equal(&tuple->name, &keytuple->name);
+}
+
+static isc_result_t
+update_rrset_sigs(dns_db_t *db, dns_dbversion_t *version,
+		  dns_difftuple_t *tuple, dst_key_t *zone_keys[],
+		  unsigned int nkeys, dns_zone_t *zone, isc_stdtime_t inception,
+		  isc_stdtime_t expire, isc_stdtime_t keyexpire,
+		  isc_stdtime_t now, dns_diff_t *pending, bool *offlinep) {
+	dns_diff_t rrset_diff;
+	dns__zonediff_t rrset_zonediff;
+	isc_result_t result;
+	isc_stdtime_t exp = expire;
+
+	dns_diff_init(zone->mctx, &rrset_diff);
+	zonediff_init(&rrset_zonediff, &rrset_diff);
+
+	if (keyexpire != 0 && dns_rdatatype_iskeymaterial(tuple->rdata.type)) {
+		exp = keyexpire;
+	}
+
+	result = del_sigs(zone, db, version, &tuple->name, tuple->rdata.type,
+			  &rrset_zonediff, zone_keys, nkeys, now, false);
+	if (result != ISC_R_SUCCESS) {
+		dns_zone_log(zone, ISC_LOG_ERROR,
+			     "dns__zone_updatesigs:del_sigs -> %s",
+			     isc_result_totext(result));
+		goto cleanup;
+	}
+	result = add_sigs(db, version, &tuple->name, zone, tuple->rdata.type,
+			  rrset_zonediff.diff, zone_keys, nkeys, zone->mctx,
+			  now, inception, exp);
+	if (result != ISC_R_SUCCESS) {
+		dns_zone_log(zone, ISC_LOG_ERROR,
+			     "dns__zone_updatesigs:add_sigs -> %s",
+			     isc_result_totext(result));
+		goto cleanup;
+	}
+
+	*offlinep |= rrset_zonediff.offline;
+	move_diff_tuples(pending, &rrset_diff);
+
+cleanup:
+	dns_diff_clear(&rrset_diff);
+	return result;
+}
+
+/*%
+ * Update signatures for a large diff without repeatedly scanning the full
+ * source and destination lists.  Preserve the original grouping semantics by
+ * collecting tuples by owner name and type in first-seen order, then merge all
+ * generated signature and source changes with one hashmap-based operation.
+ */
+static isc_result_t
+zone_updatesigs_bulk(dns_diff_t *diff, dns_db_t *db, dns_dbversion_t *version,
+		     dst_key_t *zone_keys[], unsigned int nkeys,
+		     dns_zone_t *zone, isc_stdtime_t inception,
+		     isc_stdtime_t expire, isc_stdtime_t keyexpire,
+		     isc_stdtime_t now, dns__zonediff_t *zonediff) {
+	dns_diff_t pending;
+	rrset_diff_grouplist_t groups;
+	isc_hashmap_t *index = NULL;
+	isc_result_t result = ISC_R_SUCCESS;
+
+	dns_diff_init(zone->mctx, &pending);
+	ISC_LIST_INIT(groups);
+	isc_hashmap_create(zone->mctx, rrset_diff_hashbits(diff->size), &index);
+
+	while (!ISC_LIST_EMPTY(diff->tuples)) {
+		dns_difftuple_t *tuple = ISC_LIST_HEAD(diff->tuples);
+		rrset_diff_group_t *group = NULL;
+		uint32_t hash = rrset_diff_hash(tuple);
+
+		result = isc_hashmap_find(index, hash, rrset_diff_match, tuple,
+					  (void **)&group);
+		if (result == ISC_R_NOTFOUND) {
+			group = isc_mem_get(zone->mctx, sizeof(*group));
+			dns_diff_init(zone->mctx, &group->diff);
+			ISC_LINK_INIT(group, link);
+			ISC_LIST_APPEND(groups, group, link);
+		} else {
+			RUNTIME_CHECK(result == ISC_R_SUCCESS);
+		}
+
+		ISC_LIST_UNLINK(diff->tuples, tuple, link);
+		INSIST(diff->size > 0);
+		diff->size--;
+		dns_diff_append(&group->diff, &tuple);
+
+		if (result == ISC_R_NOTFOUND) {
+			result = isc_hashmap_add(
+				index, hash, rrset_diff_match,
+				ISC_LIST_HEAD(group->diff.tuples), group, NULL);
+			RUNTIME_CHECK(result == ISC_R_SUCCESS);
+		}
+	}
+
+	isc_hashmap_destroy(&index);
+
+	ISC_LIST_FOREACH(groups, group, link) {
+		dns_difftuple_t *tuple = ISC_LIST_HEAD(group->diff.tuples);
+
+		result = update_rrset_sigs(db, version, tuple, zone_keys, nkeys,
+					   zone, inception, expire, keyexpire,
+					   now, &pending, &zonediff->offline);
+		if (result != ISC_R_SUCCESS) {
+			goto cleanup;
+		}
+		move_diff_tuples(&pending, &group->diff);
+	}
+
+	dns_diff_appendlistminimal(zonediff->diff, &pending);
+
+cleanup:
+	if (index != NULL) {
+		isc_hashmap_destroy(&index);
+	}
+	while (!ISC_LIST_EMPTY(groups)) {
+		rrset_diff_group_t *group = ISC_LIST_HEAD(groups);
+
+		ISC_LIST_UNLINK(groups, group, link);
+		dns_diff_clear(&group->diff);
+		isc_mem_put(zone->mctx, group, sizeof(*group));
+	}
+	dns_diff_clear(&pending);
+	return result;
+}
+
+/*%
  * Add/remove DNSSEC signatures for the list of "raw" zone changes supplied in
  * 'diff'.  Gradually remove tuples from 'diff' and append them to 'zonediff'
  * along with tuples representing relevant signature changes.
@@ -7161,6 +7346,8 @@ zone_nsec3chain(dns_zone_t *zone) {
 	dns_diff_t _sig_diff;
 	dns_diff_t nsec_diff;
 	dns_diff_t nsec3_diff;
+	dns_diff_t nsec3_node_diff;
+	dns_diff_t nsec3_pending_diff;
 	dns_diff_t param_diff;
 	dns__zonediff_t zonediff;
 	dns_fixedname_t fixed;
@@ -7190,6 +7377,8 @@ zone_nsec3chain(dns_zone_t *zone) {
 	nextname = dns_fixedname_initname(&nextfixed);
 	dns_diff_init(zone->mctx, &param_diff);
 	dns_diff_init(zone->mctx, &nsec3_diff);
+	dns_diff_init(zone->mctx, &nsec3_node_diff);
+	dns_diff_init(zone->mctx, &nsec3_pending_diff);
 	dns_diff_init(zone->mctx, &nsec_diff);
 	dns_diff_init(zone->mctx, &_sig_diff);
 	zonediff_init(&zonediff, &_sig_diff);
@@ -7376,7 +7565,7 @@ zone_nsec3chain(dns_zone_t *zone) {
 		dns_dbiterator_pause(nsec3chain->dbiterator);
 		result = dns_nsec3_addnsec3(
 			db, version, name, &nsec3chain->nsec3param,
-			zone_nsecttl(zone), unsecure, &nsec3_diff);
+			zone_nsecttl(zone), unsecure, &nsec3_node_diff);
 		if (result != ISC_R_SUCCESS) {
 			dnssec_log(zone, ISC_LOG_ERROR,
 				   "zone_nsec3chain:"
@@ -7384,6 +7573,7 @@ zone_nsec3chain(dns_zone_t *zone) {
 				   isc_result_totext(result));
 			goto cleanup;
 		}
+		move_diff_tuples(&nsec3_pending_diff, &nsec3_node_diff);
 
 		/*
 		 * Treat each call to dns_nsec3_addnsec3() as if it's cost is
@@ -7466,6 +7656,14 @@ zone_nsec3chain(dns_zone_t *zone) {
 			nsec3chain->save_delete_nsec = nsec3chain->delete_nsec;
 		}
 	}
+
+	/*
+	 * dns_nsec3_addnsec3() minimizes the small set of changes made for a
+	 * single source name.  Merge all of those changes into the quantum's
+	 * NSEC3 diff at once so the hashmap-based bulk minimizer is used
+	 * instead of repeatedly scanning a growing list.
+	 */
+	dns_diff_appendlistminimal(&nsec3_diff, &nsec3_pending_diff);
 
 	if (nsec3chain != NULL) {
 		goto skip_removals;
@@ -7749,7 +7947,7 @@ skip_removals:
 	if (nsec3chain != NULL) {
 		dns_dbiterator_pause(nsec3chain->dbiterator);
 	}
-	result = dns__zone_updatesigs(&nsec3_diff, db, version, zone_keys,
+	result = zone_updatesigs_bulk(&nsec3_diff, db, version, zone_keys,
 				      nkeys, zone, inception, expire, 0, now,
 				      &zonediff);
 	if (result != ISC_R_SUCCESS) {
@@ -7925,6 +8123,8 @@ cleanup:
 
 	dns_diff_clear(&param_diff);
 	dns_diff_clear(&nsec3_diff);
+	dns_diff_clear(&nsec3_node_diff);
+	dns_diff_clear(&nsec3_pending_diff);
 	dns_diff_clear(&nsec_diff);
 	dns_diff_clear(&_sig_diff);
 
