@@ -40,9 +40,7 @@ def bootstrap():
     zone = isctest.zone.Zone(
         "f043.test.", isctest.template.ANS1, signed=True, filepath_signed="f043.test.db"
     )
-    zone.render()
-    zone.add_keys(ksk=True, zsk=False)
-    zone.sign("-z")
+    zone.configure(csk=True)
 
     return {"trust_anchors": zone.trust_anchors()}
 

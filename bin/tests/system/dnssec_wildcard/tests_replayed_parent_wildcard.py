@@ -51,17 +51,13 @@ def bootstrap():
         signed=True,
         filepath_signed="child.f045.test.db",
     )
-    child.render()
-    child.add_keys(ksk=True, zsk=False)
-    child.sign("-z")
+    child.configure(csk=True)
 
     parent = isctest.zone.Zone(
         "f045.test.", isctest.template.ANS1, signed=True, filepath_signed="f045.test.db"
     )
     parent.delegations = [child]
-    parent.render()
-    parent.add_keys(ksk=True, zsk=False)
-    parent.sign("-z")
+    parent.configure(csk=True)
 
     return {"trust_anchors": parent.trust_anchors()}
 
