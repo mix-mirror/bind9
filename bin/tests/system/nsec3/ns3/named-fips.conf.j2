@@ -3,6 +3,7 @@
 {% set nsec3_to_nsec = "nsec3" if not reconfiged else "nsec" %}
 {% set nsec3_to_nsec_altalg = "nsec3" if not reconfiged else "nsec-altalg" %}
 {% set nsec3_change = "nsec3" if not reconfiged else "nsec3-other" %}
+{% set nsec3_rebuild = "nsec3" if not reconfiged else "nsec3-other" %}
 {% set nsec3_from_optout = "optout" if not reconfiged else "nsec3" %}
 {% set nsec3_to_optout = "nsec3" if not reconfiged else "optout" %}
 
@@ -60,6 +61,22 @@ zone "nsec3-dynamic-change.kasp" {
 	allow-update { any; };
 };
 {% endif %}{# nsec3-dynamic-change.kasp #}
+
+{% if "nsec3-rebuild.kasp" in zones %}
+/*
+ * Rebuild the NSEC3 chain slowly so that a dynamic update can be committed
+ * between two rebuild quanta.
+ */
+zone "nsec3-rebuild.kasp" {
+	type primary;
+	file "nsec3-rebuild.kasp.db";
+	inline-signing yes;
+	dnssec-policy "@nsec3_rebuild@";
+	allow-update { any; };
+	sig-signing-nodes 1;
+	sig-signing-signatures 1000;
+};
+{% endif %}{# nsec3-rebuild.kasp #}
 
 {% if "nsec3-to-optout.kasp" in zones %}
 /* The zone will be reconfigured to use opt-out. */

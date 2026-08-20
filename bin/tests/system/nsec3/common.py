@@ -57,6 +57,7 @@ NSEC3_SALTLEN = {
     "nsec3-dynamic.kasp": NSEC3Saltlen(initial=0, reconfig=0),
     "nsec3-change.kasp": NSEC3Saltlen(initial=0, reconfig=8),
     "nsec3-dynamic-change.kasp": NSEC3Saltlen(initial=0, reconfig=8),
+    "nsec3-rebuild.kasp": NSEC3Saltlen(initial=0, reconfig=8),
     "nsec3-dynamic-to-inline.kasp": NSEC3Saltlen(initial=0, reconfig=0),
     "nsec3-inline-to-dynamic.kasp": NSEC3Saltlen(initial=0, reconfig=0),
     "nsec3-to-nsec.kasp": NSEC3Saltlen(initial=0, reconfig=None),
