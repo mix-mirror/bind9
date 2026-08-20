@@ -600,6 +600,7 @@ m_dep = cc.find_library('m', required: false)
 
 ## Threads
 thread_dep = dependency('threads')
+openmp_dep = dependency('openmp', language: 'c')
 
 foreach fn : [
     'pthread_attr_getstacksize',
@@ -1279,6 +1280,7 @@ libdns = library(
     dependencies: [
         libisc_dep,
 
+        openmp_dep,
         openssl_dep,
         urcu_dep,
 
@@ -1296,6 +1298,7 @@ libdns_dep = declare_dependency(
     sources: dns_gen_headers,
     dependencies: [
         libisc_dep,
+        openmp_dep,
     ],
 )
 
@@ -1737,6 +1740,7 @@ executable(
     sources: [bind_keys, default_sanitize_options],
     dependencies: named_deps
     + [
+        openmp_dep,
         openssl_dep,
 
         cap_dep,

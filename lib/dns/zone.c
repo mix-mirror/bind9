@@ -15,7 +15,9 @@
 
 #include <errno.h>
 #include <inttypes.h>
+#include <omp.h>
 #include <stdbool.h>
+#include <stdlib.h>
 
 #include <isc/async.h>
 #include <isc/atomic.h>
@@ -45,6 +47,7 @@
 #include <isc/tid.h>
 #include <isc/timer.h>
 #include <isc/tls.h>
+#include <isc/urcu.h>
 #include <isc/util.h>
 
 #include <dns/acl.h>
@@ -7116,7 +7119,24 @@ typedef ISC_LIST(rrset_diff_group_t) rrset_diff_grouplist_t;
 
 struct rrset_diff_group {
 	dns_diff_t diff;
+	dns_diff_t sig_diff;
+	uint64_t sequence;
 	ISC_LINK(rrset_diff_group_t) link;
+};
+
+typedef struct parallel_sig_result parallel_sig_result_t;
+typedef ISC_LIST(parallel_sig_result_t) parallel_sig_resultlist_t;
+
+struct parallel_sig_result {
+	rrset_diff_group_t *group;
+	isc_result_t result;
+	dns_ttl_t ttl;
+	dns_rdataclass_t rdclass;
+	dns_rdatatype_t type;
+	uint16_t length;
+	uint64_t sequence;
+	ISC_LINK(parallel_sig_result_t) link;
+	unsigned char data[];
 };
 
 static uint8_t
@@ -7153,6 +7173,131 @@ rrset_diff_match(void *node, const void *key) {
 
 	return tuple->rdata.type == keytuple->rdata.type &&
 	       dns_name_equal(&tuple->name, &keytuple->name);
+}
+
+/*
+ * Return the single active ZSK suitable for this NSEC3 signing prototype.
+ * Fall back to the serial signer when the policy has no ZSK or is rolling
+ * between multiple ZSKs.
+ */
+static dst_key_t *
+parallel_nsec3_key(dns_zone_t *zone, dst_key_t *zone_keys[], unsigned int nkeys,
+		   isc_stdtime_t now) {
+	dst_key_t *key = NULL;
+
+	if (zone->kasp == NULL) {
+		return NULL;
+	}
+
+	for (size_t i = 0; i < nkeys; i++) {
+		isc_result_t result;
+		isc_stdtime_t when;
+		bool zsk = false;
+
+		if (REVOKE(zone_keys[i]) || !dst_key_isprivate(zone_keys[i]) ||
+		    dst_key_inactive(zone_keys[i]))
+		{
+			continue;
+		}
+
+		result = dst_key_getbool(zone_keys[i], DST_BOOL_ZSK, &zsk);
+		if (result != ISC_R_SUCCESS) {
+			zsk = !KSK(zone_keys[i]);
+		}
+		if (!zsk ||
+		    !dst_key_is_signing(zone_keys[i], DST_BOOL_ZSK, now, &when))
+		{
+			continue;
+		}
+
+		if (key != NULL) {
+			return NULL;
+		}
+		key = zone_keys[i];
+	}
+
+	return key;
+}
+
+static parallel_sig_result_t *
+parallel_sign_nsec3(isc_mem_t *mctx, dns_db_t *db, dns_dbversion_t *version,
+		    rrset_diff_group_t *group, dst_key_t *key,
+		    isc_stdtime_t inception, isc_stdtime_t expire) {
+	unsigned char data[DNS_RDATA_MAXLENGTH];
+	dns_difftuple_t *tuple = ISC_LIST_HEAD(group->diff.tuples);
+	dns_dbnode_t *node = NULL;
+	dns_rdata_t sig_rdata = DNS_RDATA_INIT;
+	dns_rdataset_t rdataset = DNS_RDATASET_INIT;
+	parallel_sig_result_t *sig = NULL;
+	isc_buffer_t buffer;
+	isc_result_t result;
+	size_t size = sizeof(*sig);
+
+	result = dns_db_findnsec3node(db, &tuple->name, false, &node);
+	if (result == ISC_R_NOTFOUND) {
+		result = ISC_R_SUCCESS;
+		goto done;
+	}
+	if (result != ISC_R_SUCCESS) {
+		goto done;
+	}
+
+	result = dns_db_findrdataset(db, node, version, dns_rdatatype_nsec3, 0,
+				     (isc_stdtime_t)0, &rdataset, NULL);
+	if (result == ISC_R_NOTFOUND) {
+		result = ISC_R_SUCCESS;
+		goto done;
+	}
+	if (result != ISC_R_SUCCESS) {
+		goto done;
+	}
+
+	isc_buffer_init(&buffer, data, sizeof(data));
+	result = dns_dnssec_sign(&tuple->name, &rdataset, key, &inception,
+				 &expire, mctx, &buffer, &sig_rdata);
+	if (result == ISC_R_SUCCESS) {
+		size += sig_rdata.length;
+	}
+
+done:
+	sig = isc_mem_get(mctx, size);
+	*sig = (parallel_sig_result_t){
+		.group = group,
+		.result = result,
+		.ttl = dns_rdataset_isassociated(&rdataset) ? rdataset.ttl : 0,
+		.rdclass = sig_rdata.rdclass,
+		.type = sig_rdata.type,
+		.length = result == ISC_R_SUCCESS ? sig_rdata.length : 0,
+		.sequence = group->sequence,
+		.link = ISC_LINK_INITIALIZER,
+	};
+	if (sig->length != 0) {
+		memmove(sig->data, sig_rdata.data, sig->length);
+	}
+
+	dns_rdataset_cleanup(&rdataset);
+	if (node != NULL) {
+		dns_db_detachnode(&node);
+	}
+	return sig;
+}
+
+static int
+parallel_sig_compare(const void *ap, const void *bp) {
+	const parallel_sig_result_t *a =
+		*(const parallel_sig_result_t *const *)ap;
+	const parallel_sig_result_t *b =
+		*(const parallel_sig_result_t *const *)bp;
+
+	return (a->sequence > b->sequence) - (a->sequence < b->sequence);
+}
+
+static void
+parallel_sig_free(isc_mem_t *mctx, parallel_sig_result_t **sigp) {
+	parallel_sig_result_t *sig = *sigp;
+
+	*sigp = NULL;
+	isc_mem_put(mctx, sig, sizeof(*sig) + sig->length);
 }
 
 static isc_result_t
@@ -7199,6 +7344,148 @@ cleanup:
 	return result;
 }
 
+static isc_result_t
+zone_updatesigs_parallel(dns_db_t *db, dns_dbversion_t *version,
+			 rrset_diff_grouplist_t *groups, size_t group_count,
+			 dst_key_t *key, dns_zone_t *zone,
+			 isc_stdtime_t inception, isc_stdtime_t expire,
+			 isc_stdtime_t now, dns_diff_t *pending,
+			 bool *offlinep) {
+	parallel_sig_resultlist_t *thread_results = NULL;
+	parallel_sig_result_t **results = NULL;
+	rrset_diff_group_t **work = NULL;
+	dns_stats_t *dnssecsignstats;
+	size_t nresults = 0;
+	int nthreads = omp_get_max_threads();
+	isc_result_t result = ISC_R_SUCCESS;
+
+	thread_results = isc_mem_cget(zone->mctx, nthreads,
+				      sizeof(*thread_results));
+	for (int i = 0; i < nthreads; i++) {
+		ISC_LIST_INIT(thread_results[i]);
+	}
+	work = isc_mem_get(zone->mctx, group_count * sizeof(*work));
+	results = isc_mem_get(zone->mctx, group_count * sizeof(*results));
+
+	dnssec_log(zone, ISC_LOG_INFO,
+		   "zone_nsec3chain: signing %zu NSEC3 RRsets with up to %d "
+		   "OpenMP threads",
+		   group_count, nthreads);
+
+	ISC_LIST_FOREACH(*groups, group, link) {
+		dns_difftuple_t *tuple = ISC_LIST_HEAD(group->diff.tuples);
+		dns__zonediff_t sig_zonediff;
+
+		INSIST(tuple->rdata.type == dns_rdatatype_nsec3);
+		work[group->sequence] = group;
+		zonediff_init(&sig_zonediff, &group->sig_diff);
+		result = del_sigs(zone, db, version, &tuple->name,
+				  dns_rdatatype_nsec3, &sig_zonediff, &key, 1,
+				  now, false);
+		if (result != ISC_R_SUCCESS) {
+			goto cleanup;
+		}
+		*offlinep |= sig_zonediff.offline;
+	}
+
+#pragma omp parallel
+	{
+		int tid = omp_get_thread_num();
+		bool register_rcu = tid != 0;
+
+		if (register_rcu) {
+			rcu_register_thread();
+		}
+
+#pragma omp for schedule(dynamic, 32)
+		for (size_t i = 0; i < group_count; i++) {
+			parallel_sig_result_t *sig = parallel_sign_nsec3(
+				zone->mctx, db, version, work[i], key,
+				inception, expire);
+			ISC_LIST_APPEND(thread_results[tid], sig, link);
+		}
+
+		if (register_rcu) {
+			rcu_unregister_thread();
+		}
+	}
+
+	for (int i = 0; i < nthreads; i++) {
+		while (!ISC_LIST_EMPTY(thread_results[i])) {
+			parallel_sig_result_t *sig =
+				ISC_LIST_HEAD(thread_results[i]);
+
+			ISC_LIST_UNLINK(thread_results[i], sig, link);
+			results[nresults++] = sig;
+		}
+	}
+	INSIST(nresults == group_count);
+	qsort(results, nresults, sizeof(*results), parallel_sig_compare);
+
+	dnssecsignstats = dns_zone_getdnssecsignstats(zone);
+	for (size_t i = 0; i < nresults; i++) {
+		parallel_sig_result_t *sig = results[i];
+		rrset_diff_group_t *group = sig->group;
+		dns_difftuple_t *tuple = ISC_LIST_HEAD(group->diff.tuples);
+
+		if (sig->result != ISC_R_SUCCESS) {
+			result = sig->result;
+			goto cleanup;
+		}
+
+		if (sig->length != 0) {
+			dns_rdata_t rdata = DNS_RDATA_INIT;
+
+			rdata.data = sig->data;
+			rdata.length = sig->length;
+			rdata.rdclass = sig->rdclass;
+			rdata.type = sig->type;
+			CHECK(update_one_rr(db, version, &group->sig_diff,
+					    DNS_DIFFOP_ADDRESIGN, &tuple->name,
+					    sig->ttl, &rdata));
+
+			if (dnssecsignstats != NULL) {
+				dns_dnssecsignstats_increment(
+					dnssecsignstats, ID(key),
+					(uint8_t)ALG(key),
+					dns_dnssecsignstats_sign);
+				dns_dnssecsignstats_increment(
+					dnssecsignstats, ID(key),
+					(uint8_t)ALG(key),
+					dns_dnssecsignstats_refresh);
+			}
+		}
+
+		move_diff_tuples(pending, &group->sig_diff);
+		move_diff_tuples(pending, &group->diff);
+	}
+
+cleanup:
+	if (thread_results != NULL) {
+		for (int i = 0; i < nthreads; i++) {
+			while (!ISC_LIST_EMPTY(thread_results[i])) {
+				parallel_sig_result_t *sig =
+					ISC_LIST_HEAD(thread_results[i]);
+				ISC_LIST_UNLINK(thread_results[i], sig, link);
+				parallel_sig_free(zone->mctx, &sig);
+			}
+		}
+		isc_mem_cput(zone->mctx, thread_results, nthreads,
+			     sizeof(*thread_results));
+	}
+	if (results != NULL) {
+		for (size_t i = 0; i < nresults; i++) {
+			parallel_sig_free(zone->mctx, &results[i]);
+		}
+		isc_mem_put(zone->mctx, results,
+			    group_count * sizeof(*results));
+	}
+	if (work != NULL) {
+		isc_mem_put(zone->mctx, work, group_count * sizeof(*work));
+	}
+	return result;
+}
+
 /*%
  * Update signatures for a large diff without repeatedly scanning the full
  * source and destination lists.  Preserve the original grouping semantics by
@@ -7213,8 +7500,10 @@ zone_updatesigs_bulk(dns_diff_t *diff, dns_db_t *db, dns_dbversion_t *version,
 		     isc_stdtime_t now, dns__zonediff_t *zonediff) {
 	dns_diff_t pending;
 	rrset_diff_grouplist_t groups;
+	dst_key_t *parallel_key = NULL;
 	isc_hashmap_t *index = NULL;
 	isc_result_t result = ISC_R_SUCCESS;
+	size_t group_count = 0;
 
 	dns_diff_init(zone->mctx, &pending);
 	ISC_LIST_INIT(groups);
@@ -7230,6 +7519,8 @@ zone_updatesigs_bulk(dns_diff_t *diff, dns_db_t *db, dns_dbversion_t *version,
 		if (result == ISC_R_NOTFOUND) {
 			group = isc_mem_get(zone->mctx, sizeof(*group));
 			dns_diff_init(zone->mctx, &group->diff);
+			dns_diff_init(zone->mctx, &group->sig_diff);
+			group->sequence = group_count++;
 			ISC_LINK_INIT(group, link);
 			ISC_LIST_APPEND(groups, group, link);
 		} else {
@@ -7251,16 +7542,28 @@ zone_updatesigs_bulk(dns_diff_t *diff, dns_db_t *db, dns_dbversion_t *version,
 
 	isc_hashmap_destroy(&index);
 
-	ISC_LIST_FOREACH(groups, group, link) {
-		dns_difftuple_t *tuple = ISC_LIST_HEAD(group->diff.tuples);
-
-		result = update_rrset_sigs(db, version, tuple, zone_keys, nkeys,
-					   zone, inception, expire, keyexpire,
-					   now, &pending, &zonediff->offline);
+	parallel_key = parallel_nsec3_key(zone, zone_keys, nkeys, now);
+	if (parallel_key != NULL && keyexpire == 0 && group_count != 0) {
+		result = zone_updatesigs_parallel(
+			db, version, &groups, group_count, parallel_key, zone,
+			inception, expire, now, &pending, &zonediff->offline);
 		if (result != ISC_R_SUCCESS) {
 			goto cleanup;
 		}
-		move_diff_tuples(&pending, &group->diff);
+	} else {
+		ISC_LIST_FOREACH(groups, group, link) {
+			dns_difftuple_t *tuple =
+				ISC_LIST_HEAD(group->diff.tuples);
+
+			result = update_rrset_sigs(
+				db, version, tuple, zone_keys, nkeys, zone,
+				inception, expire, keyexpire, now, &pending,
+				&zonediff->offline);
+			if (result != ISC_R_SUCCESS) {
+				goto cleanup;
+			}
+			move_diff_tuples(&pending, &group->diff);
+		}
 	}
 
 	dns_diff_appendlistminimal(zonediff->diff, &pending);
@@ -7274,6 +7577,7 @@ cleanup:
 
 		ISC_LIST_UNLINK(groups, group, link);
 		dns_diff_clear(&group->diff);
+		dns_diff_clear(&group->sig_diff);
 		isc_mem_put(zone->mctx, group, sizeof(*group));
 	}
 	dns_diff_clear(&pending);
