@@ -646,6 +646,37 @@ dns_db_load(dns_db_t *db, const char *filename, dns_masterformat_t format,
  */
 
 isc_result_t
+dns_db_loadasync(dns_db_t *db, const char *filename, dns_masterformat_t format,
+		 unsigned int options, isc_loop_t *loop,
+		 dns_loaddonefunc_t done, void *done_arg,
+		 dns_loadctx_t **lctxp);
+/*%<
+ * Start loading master file 'filename' into 'db' asynchronously on
+ * 'loop', using the incremental master file loader.  On completion,
+ * 'done' is called with 'done_arg' and the load result; the result is
+ * the same one dns_db_load() would have returned, or #ISC_R_CANCELED
+ * if the load was canceled via dns_loadctx_cancel() on '*lctxp'.
+ *
+ * If this function returns anything other than #ISC_R_SUCCESS, the
+ * load has not been started and 'done' will never be called.
+ *
+ * Requires:
+ *
+ * \li	'db' is a valid database.
+ *
+ * \li	This is the first attempt to load 'db'.
+ *
+ * \li	'loop' is a valid loop and 'done' is not NULL.
+ *
+ * Returns:
+ *
+ * \li	#ISC_R_SUCCESS	The load was started; 'done' will be called.
+ *
+ * \li	Other results are possible, depending upon the database
+ *	implementation used, syntax errors in the master file, etc.
+ */
+
+isc_result_t
 dns_db_dump(dns_db_t *db, dns_dbversion_t *version, const char *filename);
 /*%<
  * Dump version 'version' of 'db' to master file 'filename'.

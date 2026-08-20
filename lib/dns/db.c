@@ -399,6 +399,77 @@ dns_db_load(dns_db_t *db, const char *filename, dns_masterformat_t format,
 	return result;
 }
 
+typedef struct db_loadasync {
+	dns_db_t *db;
+	dns_rdatacallbacks_t callbacks;
+	dns_loaddonefunc_t done;
+	void *done_arg;
+} db_loadasync_t;
+
+static void
+db_loadasync_done(void *arg, isc_result_t result) {
+	db_loadasync_t *async = arg;
+	dns_db_t *db = async->db;
+	isc_result_t eresult;
+
+	eresult = dns_db_endload(db, &async->callbacks);
+	if (eresult != ISC_R_SUCCESS &&
+	    (result == ISC_R_SUCCESS || result == DNS_R_SEENINCLUDE))
+	{
+		result = eresult;
+	}
+
+	async->done(async->done_arg, result);
+
+	isc_mem_put(db->mctx, async, sizeof(*async));
+	dns_db_detach(&db);
+}
+
+isc_result_t
+dns_db_loadasync(dns_db_t *db, const char *filename, dns_masterformat_t format,
+		 unsigned int options, isc_loop_t *loop,
+		 dns_loaddonefunc_t done, void *done_arg,
+		 dns_loadctx_t **lctxp) {
+	isc_result_t result;
+	db_loadasync_t *async = NULL;
+
+	REQUIRE(DNS_DB_VALID(db));
+	REQUIRE(done != NULL);
+
+	if ((db->attributes & DNS_DBATTR_CACHE) != 0) {
+		options |= DNS_MASTER_AGETTL;
+	}
+
+	async = isc_mem_get(db->mctx, sizeof(*async));
+	*async = (db_loadasync_t){
+		.done = done,
+		.done_arg = done_arg,
+	};
+	dns_db_attach(db, &async->db);
+	dns_rdatacallbacks_init(&async->callbacks);
+
+	result = dns_db_beginload(db, &async->callbacks);
+	if (result != ISC_R_SUCCESS) {
+		goto cleanup;
+	}
+
+	result = dns_master_loadfileasync(
+		filename, &db->origin, &db->origin, db->rdclass, options, 0,
+		&async->callbacks, loop, db_loadasync_done, async, lctxp, NULL,
+		NULL, db->mctx, format, 0);
+	if (result != ISC_R_SUCCESS) {
+		(void)dns_db_endload(db, &async->callbacks);
+		goto cleanup;
+	}
+
+	return ISC_R_SUCCESS;
+
+cleanup:
+	dns_db_detach(&async->db);
+	isc_mem_put(db->mctx, async, sizeof(*async));
+	return result;
+}
+
 /***
  *** Version Methods
  ***/
