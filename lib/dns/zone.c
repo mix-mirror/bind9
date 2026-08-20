@@ -2876,6 +2876,57 @@ cleanup:
 	}
 }
 
+static void
+log_nsec3chain(dns_zone_t *zone, dns_rdata_nsec3param_t *nsec3param,
+	       const char *suffix) {
+	isc_result_t result;
+	char saltbuf[255 * 2 + 1];
+	char flags[sizeof("INITIAL|REMOVE|CREATE|NONSEC|OPTOUT")];
+
+	if (nsec3param->flags == 0) {
+		strlcpy(flags, "NONE", sizeof(flags));
+	} else {
+		flags[0] = '\0';
+		if ((nsec3param->flags & DNS_NSEC3FLAG_REMOVE) != 0) {
+			strlcat(flags, "REMOVE", sizeof(flags));
+		}
+		if ((nsec3param->flags & DNS_NSEC3FLAG_INITIAL) != 0) {
+			if (flags[0] == '\0') {
+				strlcpy(flags, "INITIAL", sizeof(flags));
+			} else {
+				strlcat(flags, "|INITIAL", sizeof(flags));
+			}
+		}
+		if ((nsec3param->flags & DNS_NSEC3FLAG_CREATE) != 0) {
+			if (flags[0] == '\0') {
+				strlcpy(flags, "CREATE", sizeof(flags));
+			} else {
+				strlcat(flags, "|CREATE", sizeof(flags));
+			}
+		}
+		if ((nsec3param->flags & DNS_NSEC3FLAG_NONSEC) != 0) {
+			if (flags[0] == '\0') {
+				strlcpy(flags, "NONSEC", sizeof(flags));
+			} else {
+				strlcat(flags, "|NONSEC", sizeof(flags));
+			}
+		}
+		if ((nsec3param->flags & DNS_NSEC3FLAG_OPTOUT) != 0) {
+			if (flags[0] == '\0') {
+				strlcpy(flags, "OPTOUT", sizeof(flags));
+			} else {
+				strlcat(flags, "|OPTOUT", sizeof(flags));
+			}
+		}
+	}
+	result = dns_nsec3param_salttotext(nsec3param, saltbuf,
+					   sizeof(saltbuf));
+	RUNTIME_CHECK(result == ISC_R_SUCCESS);
+	dnssec_log(zone, ISC_LOG_INFO, "zone_addnsec3chain(%u,%s,%u,%s)%s",
+		   nsec3param->hash, flags, nsec3param->iterations, saltbuf,
+		   suffix);
+}
+
 /*
  * Initiate adding/removing NSEC3 records belonging to the chain defined by the
  * supplied NSEC3PARAM RDATA.
@@ -2890,8 +2941,6 @@ zone_addnsec3chain(dns_zone_t *zone, dns_rdata_nsec3param_t *nsec3param) {
 	isc_result_t result;
 	isc_time_t now;
 	unsigned int options = 0;
-	char saltbuf[255 * 2 + 1];
-	char flags[sizeof("INITIAL|REMOVE|CREATE|NONSEC|OPTOUT")];
 	dns_db_t *db = NULL;
 
 	ZONEDB_LOCK(&zone->dblock, isc_rwlocktype_read);
@@ -2943,50 +2992,7 @@ zone_addnsec3chain(dns_zone_t *zone, dns_rdata_nsec3param_t *nsec3param) {
 	nsec3chain->delete_nsec = false;
 	nsec3chain->save_delete_nsec = false;
 
-	/*
-	 * Log NSEC3 parameters defined by supplied NSEC3PARAM RDATA.
-	 */
-	if (nsec3param->flags == 0) {
-		strlcpy(flags, "NONE", sizeof(flags));
-	} else {
-		flags[0] = '\0';
-		if ((nsec3param->flags & DNS_NSEC3FLAG_REMOVE) != 0) {
-			strlcat(flags, "REMOVE", sizeof(flags));
-		}
-		if ((nsec3param->flags & DNS_NSEC3FLAG_INITIAL) != 0) {
-			if (flags[0] == '\0') {
-				strlcpy(flags, "INITIAL", sizeof(flags));
-			} else {
-				strlcat(flags, "|INITIAL", sizeof(flags));
-			}
-		}
-		if ((nsec3param->flags & DNS_NSEC3FLAG_CREATE) != 0) {
-			if (flags[0] == '\0') {
-				strlcpy(flags, "CREATE", sizeof(flags));
-			} else {
-				strlcat(flags, "|CREATE", sizeof(flags));
-			}
-		}
-		if ((nsec3param->flags & DNS_NSEC3FLAG_NONSEC) != 0) {
-			if (flags[0] == '\0') {
-				strlcpy(flags, "NONSEC", sizeof(flags));
-			} else {
-				strlcat(flags, "|NONSEC", sizeof(flags));
-			}
-		}
-		if ((nsec3param->flags & DNS_NSEC3FLAG_OPTOUT) != 0) {
-			if (flags[0] == '\0') {
-				strlcpy(flags, "OPTOUT", sizeof(flags));
-			} else {
-				strlcat(flags, "|OPTOUT", sizeof(flags));
-			}
-		}
-	}
-	result = dns_nsec3param_salttotext(nsec3param, saltbuf,
-					   sizeof(saltbuf));
-	RUNTIME_CHECK(result == ISC_R_SUCCESS);
-	dnssec_log(zone, ISC_LOG_INFO, "zone_addnsec3chain(%u,%s,%u,%s)",
-		   nsec3param->hash, flags, nsec3param->iterations, saltbuf);
+	log_nsec3chain(zone, nsec3param, "");
 
 	/*
 	 * If the NSEC3 chain defined by the supplied NSEC3PARAM RDATA is
@@ -7857,6 +7863,9 @@ closeversion:
 	 */
 	ISC_LIST_FOREACH(cleanup, chain, link) {
 		ISC_LIST_UNLINK(cleanup, chain, link);
+		if (!chain->done && chain->db == db) {
+			log_nsec3chain(zone, &chain->nsec3param, ": complete");
+		}
 		dns_db_detach(&chain->db);
 		dns_dbiterator_destroy(&chain->dbiterator);
 		isc_mem_put(zone->mctx, chain, sizeof *chain);
@@ -7943,7 +7952,7 @@ cleanup:
 		if (zone->update_disabled || result != ISC_R_SUCCESS) {
 			isc_interval_set(&interval, 60, 0); /* 1 minute */
 		} else {
-			isc_interval_set(&interval, 0, 10000000); /* 10 ms */
+			isc_interval_set(&interval, 0, 1000000); /* 1 ms */
 		}
 		isc_time_nowplusinterval(&zone->nsec3chaintime, &interval);
 	} else {
