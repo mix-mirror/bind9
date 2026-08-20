@@ -7346,7 +7346,6 @@ zone_nsec3chain(dns_zone_t *zone) {
 	dns_diff_t _sig_diff;
 	dns_diff_t nsec_diff;
 	dns_diff_t nsec3_diff;
-	dns_diff_t nsec3_node_diff;
 	dns_diff_t nsec3_pending_diff;
 	dns_diff_t param_diff;
 	dns__zonediff_t zonediff;
@@ -7377,7 +7376,6 @@ zone_nsec3chain(dns_zone_t *zone) {
 	nextname = dns_fixedname_initname(&nextfixed);
 	dns_diff_init(zone->mctx, &param_diff);
 	dns_diff_init(zone->mctx, &nsec3_diff);
-	dns_diff_init(zone->mctx, &nsec3_node_diff);
 	dns_diff_init(zone->mctx, &nsec3_pending_diff);
 	dns_diff_init(zone->mctx, &nsec_diff);
 	dns_diff_init(zone->mctx, &_sig_diff);
@@ -7563,17 +7561,16 @@ zone_nsec3chain(dns_zone_t *zone) {
 		 * Process one node.
 		 */
 		dns_dbiterator_pause(nsec3chain->dbiterator);
-		result = dns_nsec3_addnsec3(
+		result = dns_nsec3_addnsec3raw(
 			db, version, name, &nsec3chain->nsec3param,
-			zone_nsecttl(zone), unsecure, &nsec3_node_diff);
+			zone_nsecttl(zone), unsecure, &nsec3_pending_diff);
 		if (result != ISC_R_SUCCESS) {
 			dnssec_log(zone, ISC_LOG_ERROR,
 				   "zone_nsec3chain:"
-				   "dns_nsec3_addnsec3 -> %s",
+				   "dns_nsec3_addnsec3raw -> %s",
 				   isc_result_totext(result));
 			goto cleanup;
 		}
-		move_diff_tuples(&nsec3_pending_diff, &nsec3_node_diff);
 
 		/*
 		 * Treat each call to dns_nsec3_addnsec3() as if it's cost is
@@ -7658,10 +7655,10 @@ zone_nsec3chain(dns_zone_t *zone) {
 	}
 
 	/*
-	 * dns_nsec3_addnsec3() minimizes the small set of changes made for a
-	 * single source name.  Merge all of those changes into the quantum's
-	 * NSEC3 diff at once so the hashmap-based bulk minimizer is used
-	 * instead of repeatedly scanning a growing list.
+	 * dns_nsec3_addnsec3raw() applies changes to the database but appends
+	 * them to nsec3_pending_diff without minimizing them.  Minimize all
+	 * changes from this quantum at once using the hashmap-based bulk
+	 * minimizer.
 	 */
 	dns_diff_appendlistminimal(&nsec3_diff, &nsec3_pending_diff);
 
@@ -8123,7 +8120,6 @@ cleanup:
 
 	dns_diff_clear(&param_diff);
 	dns_diff_clear(&nsec3_diff);
-	dns_diff_clear(&nsec3_node_diff);
 	dns_diff_clear(&nsec3_pending_diff);
 	dns_diff_clear(&nsec_diff);
 	dns_diff_clear(&_sig_diff);

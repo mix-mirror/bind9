@@ -296,7 +296,7 @@ dns_nsec3_supportedhash(dns_hash_t hash) {
  */
 static isc_result_t
 do_one_tuple(dns_difftuple_t **tuple, dns_db_t *db, dns_dbversion_t *ver,
-	     dns_diff_t *diff) {
+	     dns_diff_t *diff, bool minimal) {
 	dns_diff_t temp_diff;
 	isc_result_t result;
 
@@ -317,9 +317,15 @@ do_one_tuple(dns_difftuple_t **tuple, dns_db_t *db, dns_dbversion_t *ver,
 	}
 
 	/*
-	 * Merge it into the current pending journal entry.
+	 * Merge it into the current pending journal entry.  Full NSEC3 chain
+	 * generation can defer minimization until all tuples have been
+	 * accumulated, allowing the hashmap-based bulk minimizer to be used.
 	 */
-	dns_diff_appendminimal(diff, tuple);
+	if (minimal) {
+		dns_diff_appendminimal(diff, tuple);
+	} else {
+		dns_diff_append(diff, tuple);
+	}
 
 	/*
 	 * Do not clear temp_diff.
@@ -388,7 +394,8 @@ match_nsec3param(const dns_rdata_nsec3_t *nsec3,
  */
 static isc_result_t
 delnsec3(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
-	 const dns_rdata_nsec3param_t *nsec3param, dns_diff_t *diff) {
+	 const dns_rdata_nsec3param_t *nsec3param, dns_diff_t *diff,
+	 bool minimal) {
 	dns_dbnode_t *node = NULL;
 	dns_difftuple_t *tuple = NULL;
 	dns_rdata_nsec3_t nsec3;
@@ -426,7 +433,7 @@ delnsec3(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
 
 		dns_difftuple_create(diff->mctx, DNS_DIFFOP_DEL, name,
 				     rdataset.ttl, &rdata, &tuple);
-		CHECK(do_one_tuple(&tuple, db, version, diff));
+		CHECK(do_one_tuple(&tuple, db, version, diff, minimal));
 	}
 
 	result = ISC_R_SUCCESS;
@@ -500,11 +507,15 @@ find_nsec3(dns_rdata_nsec3_t *nsec3, dns_rdataset_t *rdataset,
 	return ISC_R_NOTFOUND;
 }
 
-isc_result_t
-dns_nsec3_addnsec3(dns_db_t *db, dns_dbversion_t *version,
-		   const dns_name_t *name,
-		   const dns_rdata_nsec3param_t *nsec3param, dns_ttl_t nsecttl,
-		   bool unsecure, dns_diff_t *diff) {
+static isc_result_t
+delnsec3chain(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
+	      const dns_rdata_nsec3param_t *nsec3param, dns_diff_t *diff,
+	      bool minimal);
+
+static isc_result_t
+addnsec3(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
+	 const dns_rdata_nsec3param_t *nsec3param, dns_ttl_t nsecttl,
+	 bool unsecure, dns_diff_t *diff, bool minimal) {
 	dns_dbiterator_t *dbit = NULL;
 	dns_dbnode_t *node = NULL;
 	dns_dbnode_t *newnode = NULL;
@@ -619,8 +630,9 @@ dns_nsec3_addnsec3(dns_db_t *db, dns_dbversion_t *version,
 			if (!unsecure) {
 				goto addnsec3;
 			} else if (CREATE(nsec3param->flags) && OPTOUT(flags)) {
-				result = dns_nsec3_delnsec3(db, version, name,
-							    nsec3param, diff);
+				result = delnsec3chain(db, version, name,
+						       nsec3param, diff,
+						       minimal);
 				goto cleanup;
 			} else {
 				maybe_remove_unsecure = true;
@@ -665,8 +677,9 @@ find_previous:
 			 * Otherwise we just need to replace the NSEC3 record.
 			 */
 			if (OPTOUT(nsec3.flags)) {
-				result = dns_nsec3_delnsec3(db, version, name,
-							    nsec3param, diff);
+				result = delnsec3chain(db, version, name,
+						       nsec3param, diff,
+						       minimal);
 				goto cleanup;
 			}
 			goto addnsec3;
@@ -687,7 +700,7 @@ find_previous:
 		/*
 		 * Delete the old previous NSEC3.
 		 */
-		CHECK(delnsec3(db, version, prev, nsec3param, diff));
+		CHECK(delnsec3(db, version, prev, nsec3param, diff, minimal));
 
 		/*
 		 * Fixup the previous NSEC3.
@@ -700,7 +713,7 @@ find_previous:
 					   &buffer));
 		dns_difftuple_create(diff->mctx, DNS_DIFFOP_ADD, prev,
 				     rdataset.ttl, &rdata, &tuple);
-		CHECK(do_one_tuple(&tuple, db, version, diff));
+		CHECK(do_one_tuple(&tuple, db, version, diff, minimal));
 		INSIST(old_length <= sizeof(nexthash));
 		memmove(nexthash, old_next, old_length);
 		if (!CREATE(nsec3param->flags)) {
@@ -728,13 +741,13 @@ addnsec3:
 	/*
 	 * Delete the old NSEC3 and record the change.
 	 */
-	CHECK(delnsec3(db, version, hashname, nsec3param, diff));
+	CHECK(delnsec3(db, version, hashname, nsec3param, diff, minimal));
 	/*
 	 * Add the new NSEC3 and record the change.
 	 */
 	dns_difftuple_create(diff->mctx, DNS_DIFFOP_ADD, hashname, nsecttl,
 			     &rdata, &tuple);
-	CHECK(do_one_tuple(&tuple, db, version, diff));
+	CHECK(do_one_tuple(&tuple, db, version, diff, minimal));
 	INSIST(tuple == NULL);
 	dns_rdata_reset(&rdata);
 	dns_db_detachnode(&newnode);
@@ -819,7 +832,8 @@ addnsec3:
 			/*
 			 * Delete the old previous NSEC3.
 			 */
-			CHECK(delnsec3(db, version, prev, nsec3param, diff));
+			CHECK(delnsec3(db, version, prev, nsec3param, diff,
+				       minimal));
 
 			/*
 			 * Fixup the previous NSEC3.
@@ -832,7 +846,7 @@ addnsec3:
 						   &buffer));
 			dns_difftuple_create(diff->mctx, DNS_DIFFOP_ADD, prev,
 					     rdataset.ttl, &rdata, &tuple);
-			CHECK(do_one_tuple(&tuple, db, version, diff));
+			CHECK(do_one_tuple(&tuple, db, version, diff, minimal));
 			INSIST(old_length <= sizeof(nexthash));
 			memmove(nexthash, old_next, old_length);
 			if (!CREATE(nsec3param->flags)) {
@@ -854,14 +868,15 @@ addnsec3:
 		/*
 		 * Delete the old NSEC3 and record the change.
 		 */
-		CHECK(delnsec3(db, version, hashname, nsec3param, diff));
+		CHECK(delnsec3(db, version, hashname, nsec3param, diff,
+			       minimal));
 
 		/*
 		 * Add the new NSEC3 and record the change.
 		 */
 		dns_difftuple_create(diff->mctx, DNS_DIFFOP_ADD, hashname,
 				     nsecttl, &rdata, &tuple);
-		CHECK(do_one_tuple(&tuple, db, version, diff));
+		CHECK(do_one_tuple(&tuple, db, version, diff, minimal));
 		INSIST(tuple == NULL);
 		dns_rdata_reset(&rdata);
 		dns_db_detachnode(&newnode);
@@ -882,6 +897,24 @@ cleanup:
 		dns_db_detachnode(&newnode);
 	}
 	return result;
+}
+
+isc_result_t
+dns_nsec3_addnsec3(dns_db_t *db, dns_dbversion_t *version,
+		   const dns_name_t *name,
+		   const dns_rdata_nsec3param_t *nsec3param, dns_ttl_t nsecttl,
+		   bool unsecure, dns_diff_t *diff) {
+	return addnsec3(db, version, name, nsec3param, nsecttl, unsecure, diff,
+			true);
+}
+
+isc_result_t
+dns_nsec3_addnsec3raw(dns_db_t *db, dns_dbversion_t *version,
+		      const dns_name_t *name,
+		      const dns_rdata_nsec3param_t *nsec3param,
+		      dns_ttl_t nsecttl, bool unsecure, dns_diff_t *diff) {
+	return addnsec3(db, version, name, nsec3param, nsecttl, unsecure, diff,
+			false);
 }
 
 /*%
@@ -1101,7 +1134,7 @@ dns_nsec3param_deletechains(dns_db_t *db, dns_dbversion_t *ver,
 		if (!flag) {
 			dns_difftuple_create(diff->mctx, DNS_DIFFOP_ADD, origin,
 					     0, &private, &tuple);
-			CHECK(do_one_tuple(&tuple, db, ver, diff));
+			CHECK(do_one_tuple(&tuple, db, ver, diff, true));
 			INSIST(tuple == NULL);
 		}
 	}
@@ -1151,7 +1184,7 @@ try_private:
 
 		dns_difftuple_create(diff->mctx, DNS_DIFFOP_DEL, origin, 0,
 				     &rdata, &tuple);
-		CHECK(do_one_tuple(&tuple, db, ver, diff));
+		CHECK(do_one_tuple(&tuple, db, ver, diff, true));
 		INSIST(tuple == NULL);
 
 		rdata.data = buf;
@@ -1165,7 +1198,7 @@ try_private:
 		if (!flag) {
 			dns_difftuple_create(diff->mctx, DNS_DIFFOP_ADD, origin,
 					     0, &rdata, &tuple);
-			CHECK(do_one_tuple(&tuple, db, ver, diff));
+			CHECK(do_one_tuple(&tuple, db, ver, diff, true));
 			INSIST(tuple == NULL);
 		}
 	}
@@ -1316,10 +1349,10 @@ deleteit(dns_db_t *db, dns_dbversion_t *ver, const dns_name_t *name,
 	return result;
 }
 
-isc_result_t
-dns_nsec3_delnsec3(dns_db_t *db, dns_dbversion_t *version,
-		   const dns_name_t *name,
-		   const dns_rdata_nsec3param_t *nsec3param, dns_diff_t *diff) {
+static isc_result_t
+delnsec3chain(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
+	      const dns_rdata_nsec3param_t *nsec3param, dns_diff_t *diff,
+	      bool minimal) {
 	dns_dbiterator_t *dbit = NULL;
 	dns_dbnode_t *node = NULL;
 	dns_difftuple_t *tuple = NULL;
@@ -1430,7 +1463,7 @@ dns_nsec3_delnsec3(dns_db_t *db, dns_dbversion_t *version,
 		/*
 		 * Delete the old previous NSEC3.
 		 */
-		CHECK(delnsec3(db, version, prev, nsec3param, diff));
+		CHECK(delnsec3(db, version, prev, nsec3param, diff, minimal));
 
 		/*
 		 * Fixup the previous NSEC3.
@@ -1446,7 +1479,7 @@ dns_nsec3_delnsec3(dns_db_t *db, dns_dbversion_t *version,
 					   &buffer));
 		dns_difftuple_create(diff->mctx, DNS_DIFFOP_ADD, prev,
 				     rdataset.ttl, &rdata, &tuple);
-		CHECK(do_one_tuple(&tuple, db, version, diff));
+		CHECK(do_one_tuple(&tuple, db, version, diff, minimal));
 		dns_rdata_reset(&rdata);
 		dns_rdataset_disassociate(&rdataset);
 		break;
@@ -1455,7 +1488,7 @@ dns_nsec3_delnsec3(dns_db_t *db, dns_dbversion_t *version,
 	/*
 	 * Delete the old NSEC3 and record the change.
 	 */
-	CHECK(delnsec3(db, version, hashname, nsec3param, diff));
+	CHECK(delnsec3(db, version, hashname, nsec3param, diff, minimal));
 
 	/*
 	 *  Delete NSEC3 records for now non active nodes.
@@ -1533,7 +1566,8 @@ cleanup_orphaned_ents:
 			/*
 			 * Delete the old previous NSEC3.
 			 */
-			CHECK(delnsec3(db, version, prev, nsec3param, diff));
+			CHECK(delnsec3(db, version, prev, nsec3param, diff,
+				       minimal));
 
 			/*
 			 * Fixup the previous NSEC3.
@@ -1546,7 +1580,7 @@ cleanup_orphaned_ents:
 						   &buffer));
 			dns_difftuple_create(diff->mctx, DNS_DIFFOP_ADD, prev,
 					     rdataset.ttl, &rdata, &tuple);
-			CHECK(do_one_tuple(&tuple, db, version, diff));
+			CHECK(do_one_tuple(&tuple, db, version, diff, minimal));
 			dns_rdata_reset(&rdata);
 			dns_rdataset_disassociate(&rdataset);
 			break;
@@ -1557,7 +1591,8 @@ cleanup_orphaned_ents:
 		/*
 		 * Delete the old NSEC3 and record the change.
 		 */
-		CHECK(delnsec3(db, version, hashname, nsec3param, diff));
+		CHECK(delnsec3(db, version, hashname, nsec3param, diff,
+			       minimal));
 	} while (1);
 
 	result = ISC_R_SUCCESS;
@@ -1571,6 +1606,13 @@ cleanup:
 		dns_db_detachnode(&node);
 	}
 	return result;
+}
+
+isc_result_t
+dns_nsec3_delnsec3(dns_db_t *db, dns_dbversion_t *version,
+		   const dns_name_t *name,
+		   const dns_rdata_nsec3param_t *nsec3param, dns_diff_t *diff) {
+	return delnsec3chain(db, version, name, nsec3param, diff, true);
 }
 
 isc_result_t
