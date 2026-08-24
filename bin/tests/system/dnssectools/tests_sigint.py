@@ -27,6 +27,7 @@ pytestmark = pytest.mark.extra_artifacts(
         # created by the tests below
         "Ksigint.example.*",
         "dsset-sigint.example.",
+        "sigint-new.db",
         "sigint.db",
         "sigint.fifo",
     ]
@@ -90,7 +91,7 @@ def open_fifo_writer(path, proc, tool):
     return fd
 
 
-def interrupt_load(args):
+def interrupt_load(args, trailing_args=None):
     """Run a tool that reads a zone from a FIFO, interrupt it while
     the zone is provably still being loaded, and return its exit
     code.  The FIFO is kept open and incomplete, so the load cannot
@@ -100,7 +101,7 @@ def interrupt_load(args):
         os.unlink("sigint.fifo")
     os.mkfifo("sigint.fifo")
     with subprocess.Popen(
-        args + ["sigint.fifo"],
+        args + ["sigint.fifo"] + (trailing_args or []),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     ) as proc:
@@ -150,6 +151,15 @@ def test_verify_sigint_load():
     cancel the load, clean up and exit with status 1."""
     args = [isctest.vars.ALL["VERIFY"], "-o", "sigint.example"]
     assert interrupt_load(args) == GRACEFUL_EXIT
+
+
+def test_makejournal_sigint_load():
+    """Interrupt named-makejournal while it is loading the old zone;
+    it must cancel the load, clean up and exit with status 1."""
+    with open("sigint-new.db", "w", encoding="ascii") as f:
+        f.write(ZONE_HEADER)
+    args = [isctest.vars.ALL["MAKEJOURNAL"], "sigint.example"]
+    assert interrupt_load(args, ["sigint-new.db"]) == GRACEFUL_EXIT
 
 
 def test_signzone_sigint_dump():
