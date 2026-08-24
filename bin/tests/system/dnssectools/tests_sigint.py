@@ -71,7 +71,7 @@ def records(n):
     return "".join(record(i) for i in range(n))
 
 
-def open_fifo_writer(path, proc):
+def open_fifo_writer(path, proc, tool):
     """Open the write end of 'path' without blocking forever if
     'proc' never opens the read end."""
     deadline = time.monotonic() + TIMEOUT
@@ -81,29 +81,30 @@ def open_fifo_writer(path, proc):
             break
         except OSError:
             if proc.poll() is not None:
-                pytest.fail("dnssec-signzone exited before opening the zone")
+                pytest.fail(f"{tool} exited before opening the zone")
             time.sleep(0.05)
     else:
-        pytest.fail("dnssec-signzone never opened the zone file")
+        pytest.fail(f"{tool} never opened the zone file")
     flags = fcntl.fcntl(fd, fcntl.F_GETFL)
     fcntl.fcntl(fd, fcntl.F_SETFL, flags & ~os.O_NONBLOCK)
     return fd
 
 
-def test_signzone_sigint_load():
-    """Interrupt dnssec-signzone while it is loading a zone; it must
-    cancel the load, clean up and exit with status 1.  The zone is a
-    FIFO that is kept open and incomplete, so the load cannot finish
-    before the interrupt, however fast the machine."""
+def interrupt_load(args):
+    """Run a tool that reads a zone from a FIFO, interrupt it while
+    the zone is provably still being loaded, and return its exit
+    code.  The FIFO is kept open and incomplete, so the load cannot
+    finish before the interrupt, however fast the machine."""
+    tool = os.path.basename(args[0])
     if os.path.exists("sigint.fifo"):
         os.unlink("sigint.fifo")
     os.mkfifo("sigint.fifo")
     with subprocess.Popen(
-        [isctest.vars.ALL["SIGNER"], "-o", "sigint.example", "sigint.fifo"],
+        args + ["sigint.fifo"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     ) as proc:
-        fd = open_fifo_writer("sigint.fifo", proc)
+        fd = open_fifo_writer("sigint.fifo", proc, tool)
         try:
             # Once this write returns, more data than the pipe can
             # hold has been consumed: the tool is loading the zone,
@@ -112,7 +113,7 @@ def test_signzone_sigint_load():
             os.write(fd, records(PIPE_SYNC_RECORDS).encode("ascii"))
         except OSError:
             proc.wait()
-            pytest.fail("dnssec-signzone exited while the zone was being fed")
+            pytest.fail(f"{tool} exited while the zone was being fed")
 
         proc.send_signal(signal.SIGINT)
 
@@ -130,11 +131,25 @@ def test_signzone_sigint_load():
         os.close(fd)
 
         try:
-            assert proc.wait(timeout=TIMEOUT) == GRACEFUL_EXIT
+            return proc.wait(timeout=TIMEOUT)
         except subprocess.TimeoutExpired:
             proc.kill()
             proc.wait()
-            pytest.fail("dnssec-signzone did not exit after SIGINT")
+            pytest.fail(f"{tool} did not exit after SIGINT")
+
+
+def test_signzone_sigint_load():
+    """Interrupt dnssec-signzone while it is loading a zone; it must
+    cancel the load, clean up and exit with status 1."""
+    args = [isctest.vars.ALL["SIGNER"], "-o", "sigint.example"]
+    assert interrupt_load(args) == GRACEFUL_EXIT
+
+
+def test_verify_sigint_load():
+    """Interrupt dnssec-verify while it is loading a zone; it must
+    cancel the load, clean up and exit with status 1."""
+    args = [isctest.vars.ALL["VERIFY"], "-o", "sigint.example"]
+    assert interrupt_load(args) == GRACEFUL_EXIT
 
 
 def test_signzone_sigint_dump():

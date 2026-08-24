@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <time.h>
 
+#include <isc/atomic.h>
 #include <isc/attributes.h>
 #include <isc/base32.h>
 #include <isc/commandline.h>
@@ -25,6 +26,8 @@
 #include <isc/hex.h>
 #include <isc/lib.h>
 #include <isc/log.h>
+#include <isc/loop.h>
+#include <isc/managers.h>
 #include <isc/mem.h>
 #include <isc/mutex.h>
 #include <isc/os.h>
@@ -72,6 +75,13 @@ static dns_rdataclass_t gclass;		 /* The class */
 static dns_name_t *gorigin = NULL;	 /* The database origin */
 static bool ignore_kskflag = false;
 static bool keyset_kskonly = false;
+static char *file = NULL;
+static const char *originstr = NULL;
+static bool origin_is_file = false;
+static dns_rdataclass_t zoneclass;
+static isc_result_t vresult = ISC_R_FAILURE;
+static atomic_bool completed;
+static dns_loadctx_t *lctx = NULL;
 
 static void
 report(const char *format, ...) {
@@ -86,35 +96,57 @@ report(const char *format, ...) {
 	}
 }
 
+static void
+load_done(void *arg, isc_result_t result);
+
 /*%
- * Load the zone file from disk
+ * Create the zone database and start loading the zone file from disk
+ * asynchronously; load_done() takes over when the load has finished.
+ * Runs on the main loop.
  */
 static void
-loadzone(char *file, const char *origin, bool origin_is_file,
-	 dns_rdataclass_t rdclass, dns_db_t **db) {
+start_load(void *arg ISC_ATTR_UNUSED) {
 	isc_buffer_t b;
 	int len;
 	dns_fixedname_t fname;
 	dns_name_t *name;
 	isc_result_t result;
 
-	len = strlen(origin);
-	isc_buffer_constinit(&b, origin, len);
+	len = strlen(originstr);
+	isc_buffer_constinit(&b, originstr, len);
 	isc_buffer_add(&b, len);
 
 	name = dns_fixedname_initname(&fname);
 	result = dns_name_fromtext(name, &b, dns_rootname, 0);
 	if (result != ISC_R_SUCCESS) {
-		fatal("failed converting name '%s' to dns format: %s", origin,
-		      isc_result_totext(result));
+		fatal("failed converting name '%s' to dns format: %s",
+		      originstr, isc_result_totext(result));
 	}
 
 	result = dns_db_create(isc_g_mctx, ZONEDB_DEFAULT, name,
-			       dns_dbtype_zone, rdclass, 0, NULL, db);
+			       dns_dbtype_zone, zoneclass, 0, NULL, &gdb);
 	check_result(result, "dns_db_create()");
 
-	result = dns_db_load(*db, file, inputformat, 0);
+	result = dns_db_loadasync(gdb, file, inputformat, 0, isc_loop_main(),
+				  load_done, NULL, &lctx);
+	if (result != ISC_R_SUCCESS) {
+		fatal("failed loading zone from '%s': %s", file,
+		      isc_result_totext(result));
+	}
+}
+
+/*%
+ * The zone file has been loaded: apply the journal if requested,
+ * verify the zone, and stop the loop manager.
+ */
+static void
+load_done(void *arg ISC_ATTR_UNUSED, isc_result_t result) {
+	dns_loadctx_detach(&lctx);
+
 	switch (result) {
+	case ISC_R_CANCELED:
+		/* Shutting down; main() reports the abort. */
+		return;
 	case DNS_R_SEENINCLUDE:
 	case ISC_R_SUCCESS:
 		break;
@@ -122,12 +154,45 @@ loadzone(char *file, const char *origin, bool origin_is_file,
 		if (origin_is_file) {
 			fatal("failed loading zone '%s' from file '%s': "
 			      "use -o to specify a different zone origin",
-			      origin, file);
+			      originstr, file);
 		}
 		FALLTHROUGH;
 	default:
 		fatal("failed loading zone from '%s': %s", file,
 		      isc_result_totext(result));
+	}
+
+	if (journal != NULL) {
+		loadjournal(isc_g_mctx, gdb, journal);
+	}
+
+	gorigin = dns_db_origin(gdb);
+	gclass = dns_db_class(gdb);
+
+	gversion = NULL;
+	result = dns_db_newversion(gdb, &gversion);
+	check_result(result, "dns_db_newversion()");
+
+	vresult = dns_zoneverify_dnssec(NULL, gdb, gversion, gorigin, NULL,
+					isc_g_mctx, ignore_kskflag,
+					keyset_kskonly, report);
+
+	dns_db_closeversion(gdb, &gversion, false);
+	dns_db_detach(&gdb);
+
+	atomic_store(&completed, true);
+	isc_loopmgr_shutdown();
+}
+
+/*%
+ * Loop teardown callback: cancel a load still in flight (e.g. on
+ * SIGINT) so that its completion callback runs and the loop can
+ * finish.
+ */
+static void
+cancel_inflight(void *arg ISC_ATTR_UNUSED) {
+	if (lctx != NULL) {
+		dns_loadctx_cancel(lctx);
 	}
 }
 
@@ -161,15 +226,12 @@ usage(int ret) {
 
 int
 main(int argc, char *argv[]) {
-	const char *origin = NULL;
-	char *file = NULL;
 	char *inputformatstr = NULL;
-	isc_result_t result;
 	char *classname = NULL;
-	dns_rdataclass_t rdclass;
 	char *endp;
 	int ch;
-	bool origin_is_file = false;
+
+	atomic_init(&completed, false);
 
 	isc_commandline_init(argc, argv);
 
@@ -224,7 +286,7 @@ main(int argc, char *argv[]) {
 			break;
 
 		case 'o':
-			origin = isc_commandline_argument;
+			originstr = isc_commandline_argument;
 			break;
 
 		case 'v':
@@ -274,7 +336,9 @@ main(int argc, char *argv[]) {
 
 	now = isc_stdtime_now();
 
-	rdclass = strtoclass(classname);
+	zoneclass = strtoclass(classname);
+
+	isc_managers_create(1);
 
 	setup_logging();
 
@@ -293,8 +357,8 @@ main(int argc, char *argv[]) {
 	POST(argc);
 	POST(argv);
 
-	if (origin == NULL) {
-		origin = isc_file_basename(file);
+	if (originstr == NULL) {
+		originstr = isc_file_basename(file);
 		origin_is_file = true;
 	}
 
@@ -309,28 +373,20 @@ main(int argc, char *argv[]) {
 	}
 
 	gdb = NULL;
-	report("Loading zone '%s' from file '%s'\n", origin, file);
-	loadzone(file, origin, origin_is_file, rdclass, &gdb);
-	if (journal != NULL) {
-		loadjournal(isc_g_mctx, gdb, journal);
+	report("Loading zone '%s' from file '%s'\n", originstr, file);
+	isc_loopmgr_setup(start_load, NULL);
+	isc_loopmgr_teardown(cancel_inflight, NULL);
+	isc_loopmgr_run();
+
+	if (!atomic_load(&completed)) {
+		fatal("process aborted by user");
 	}
-	gorigin = dns_db_origin(gdb);
-	gclass = dns_db_class(gdb);
-
-	gversion = NULL;
-	result = dns_db_newversion(gdb, &gversion);
-	check_result(result, "dns_db_newversion()");
-
-	result = dns_zoneverify_dnssec(NULL, gdb, gversion, gorigin, NULL,
-				       isc_g_mctx, ignore_kskflag,
-				       keyset_kskonly, report);
-
-	dns_db_closeversion(gdb, &gversion, false);
-	dns_db_detach(&gdb);
 
 	if (verbose > 10) {
 		isc_mem_stats(isc_g_mctx, stdout);
 	}
 
-	return result == ISC_R_SUCCESS ? 0 : 1;
+	isc_managers_destroy();
+
+	return vresult == ISC_R_SUCCESS ? 0 : 1;
 }
