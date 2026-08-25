@@ -35,20 +35,7 @@
 #include <dns/view.h>
 
 static char root_ns[] =
-	";       This file holds the information on root name servers needed "
-	"to \n"
-	";       initialize cache of Internet domain name servers\n"
-	";       (e.g. reference this file in the \"cache  .  <file>\"\n"
-	";       configuration file of BIND domain name servers). \n"
-	"; \n"
-	";       This file is made available by InterNIC \n"
-	";       under anonymous FTP as\n"
-	";           file                /domain/named.cache \n"
-	";           on server           FTP.INTERNIC.NET\n"
-	";       -OR-                    RS.INTERNIC.NET\n"
-	";\n"
-	";       last update:     July 22, 2026\n"
-	";       related version of root zone:     2026072201\n"
+	"; Internet Root Nameservers\n"
 	"; \n"
 	"; FORMERLY NS.INTERNIC.NET \n"
 	";\n"
