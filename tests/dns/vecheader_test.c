@@ -306,8 +306,10 @@ ISC_RUN_TEST_IMPL(rdatavec_subtract_assertion_failure) {
 	subtract_rdatalist = isc_mem_get(mctx, sizeof(*subtract_rdatalist));
 	subtract_rdata = isc_mem_get(mctx, sizeof(*subtract_rdata));
 
-	/* Both rdatasets are inspected by the cleanup path below, so they
-	 * have to be initialized before the first CHECK() can jump there. */
+	/*
+	 * Both rdatasets are inspected by the cleanup path below, so they
+	 * have to be initialized before the first CHECK() can jump there.
+	 */
 	dns_rdataset_init(&original_rdataset);
 	dns_rdataset_init(&subtract_rdataset);
 
@@ -449,8 +451,10 @@ ISC_RUN_TEST_IMPL(rdatavec_refcount_merge) {
 	rdatalist2 = isc_mem_get(mctx, sizeof(*rdatalist2));
 	rdata2 = isc_mem_get(mctx, sizeof(*rdata2));
 
-	/* Both rdatasets are inspected by the cleanup path below, so they
-	 * have to be initialized before the first CHECK() can jump there. */
+	/*
+	 * Both rdatasets are inspected by the cleanup path below, so they
+	 * have to be initialized before the first CHECK() can jump there.
+	 */
 	dns_rdataset_init(&rdataset1);
 	dns_rdataset_init(&rdataset2);
 
