@@ -202,14 +202,13 @@ NS8 = Nameserver("ns8")
 NS9 = Nameserver("ns9")
 NS10 = Nameserver("ns10")
 NS11 = Nameserver("ns11")
-NO_NS = Nameserver(".", 0, "", "")
 
 
 @dataclass
 class Zone:
 
     name: str
-    ns: Nameserver
+    ns: Nameserver | None = None
     type: str = "primary"
     filepath: Path | None = field(default=None)
 
