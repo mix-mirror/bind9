@@ -1433,11 +1433,6 @@ cleanup(void) {
 	 */
 	/* xxdb_clear(); */
 
-	/*
-	 * Unregister "dlopen" DLZ driver.
-	 */
-	dlz_dlopen_clear();
-
 	isc_log_write(named_g_lctx, NAMED_LOGCATEGORY_GENERAL,
 		      NAMED_LOGMODULE_MAIN, ISC_LOG_NOTICE, "exiting");
 	named_log_shutdown();
@@ -1650,6 +1645,14 @@ main(int argc, char *argv[]) {
 	}
 
 	isc_managers_destroy(&named_g_mctx, &named_g_loopmgr, &named_g_netmgr);
+
+	/*
+	 * Unregister the dlopen DLZ driver. This must be done after
+	 * isc_managers_destroy() to ensure that all DLZ instances have been
+	 * removed from memory (reclaimed by the RCU thread when views are
+	 * shutdown).
+	 */
+	dlz_dlopen_clear();
 
 #if ENABLE_LEAK_DETECTION
 	isc__tls_setdestroycheck(true);
