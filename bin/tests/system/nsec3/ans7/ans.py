@@ -107,13 +107,17 @@ def discover_nsec3_from_zone(zone_file):
 
 
 def b32_to_bytes(b32hex_str):
-    """Decode base32hex (RFC 4648) to bytes."""
+    """
+    Decode base32hex (RFC 4648) to bytes.
+    """
     padded = b32hex_str.upper() + "=" * ((8 - len(b32hex_str) % 8) % 8)
     return base64.b32hexdecode(padded)
 
 
 def load_zsk():
-    """Load the Zone Signing Key (ZSK) for re-signing modified records."""
+    """
+    Load the Zone Signing Key (ZSK) for re-signing modified records.
+    """
     keys = glob.glob("../ns6/Kevil.test.+013+*.private")
     for kf in keys:
         pub = kf.replace(".private", ".key")
@@ -146,7 +150,9 @@ def sign_rrset(
     inception,
     signer_name,
 ):
-    """Sign an RRset with ECDSAP256SHA256 and return RRSIG rdata."""
+    """
+    Sign an RRset with ECDSAP256SHA256 and return RRSIG rdata.
+    """
     algorithm = 13
 
     sig_rdata = struct.pack("!HBBI", type_covered, algorithm, labels, original_ttl)
@@ -183,7 +189,9 @@ def sign_rrset(
 
 
 def sign_rrset_from_template(private_key, key_tag, rrset, template_rrsig):
-    """Sign using existing RRSIG as template for type_covered."""
+    """
+    Sign using existing RRSIG as template for type_covered.
+    """
     return sign_rrset(
         private_key,
         key_tag,
@@ -247,7 +255,9 @@ def build_crafted_nsec3(private_key, key_tag, owner_name, original_next_hash, bi
 
 
 def modify_nsec3_next(rdata):
-    """Modify an NSEC3 record's next_hash to TARGET_NEXT_LENGTH bytes."""
+    """
+    Modify an NSEC3 record's next_hash to TARGET_NEXT_LENGTH bytes.
+    """
     orig_wire = rdata.to_digestable()
     pos = 0
     hash_alg = orig_wire[pos]
@@ -278,12 +288,16 @@ def modify_nsec3_next(rdata):
 
 
 def name_label(name):
-    """Get the first label (NSEC3 hash) from a DNS name."""
+    """
+    Get the first label (NSEC3 hash) from a DNS name.
+    """
     return str(name).split(".", maxsplit=1)[0].upper()
 
 
 def is_target(dns_name, target_prefix):
-    """Check if a DNS name's first label starts with target prefix."""
+    """
+    Check if a DNS name's first label starts with target prefix.
+    """
     return (
         str(dns_name)
         .split(".", maxsplit=1)[0]

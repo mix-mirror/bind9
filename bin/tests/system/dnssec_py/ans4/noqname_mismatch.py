@@ -156,7 +156,9 @@ def add_attack_answer(response: dns.message.Message) -> None:
 
 
 class RuntimeCheckHandler(DomainHandler):
-    """Serve attacker.rrsig-labels-signer. with crafted wildcard RRSIG."""
+    """
+    Serve attacker.rrsig-labels-signer. with crafted wildcard RRSIG.
+    """
 
     domains = [ZONE]
 

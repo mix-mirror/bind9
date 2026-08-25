@@ -116,13 +116,17 @@ def _check_signed_rrset(response, section, owner, rdtype, signer):
 
 
 def _auth_query_count(qname, qtype):
-    """Number of times the mock auth server received qname/qtype."""
+    """
+    Number of times the mock auth server received qname/qtype.
+    """
     log = Path("ans1/ans.run").read_text(encoding="utf-8")
     return log.count(f"Received {qname.rstrip('.')}/IN/{qtype} (ID=")
 
 
 def _check_no_downgrade(response, qname):
-    """The forged proof must not downgrade the signed namespace."""
+    """
+    The forged proof must not downgrade the signed namespace.
+    """
     isctest.check.servfail(response)
     isctest.check.noadflag(response)
     assert not _has_a(response, response.answer, qname, FORGED_A), response.to_text()

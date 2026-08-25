@@ -21,7 +21,9 @@ NAMED_ROOT_URL = "https://www.internic.net/zones/named.root"
 
 
 def strip_comments(text):
-    """Return only the resource records, without comments and blank lines."""
+    """
+    Return only the resource records, without comments and blank lines.
+    """
     records = []
     for line in text.splitlines():
         line = line.split(";", 1)[0].rstrip()
