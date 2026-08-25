@@ -78,6 +78,7 @@ dns_srcset.add(
 
 dns_srcset.add(
     files(
+        'rdata/towire.c',
         'acl.c',
         'adb.c',
         'badcache.c',
