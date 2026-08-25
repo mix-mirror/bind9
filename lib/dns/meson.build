@@ -142,6 +142,7 @@ dns_srcset.add(
         'rdatasetiter.c',
         'rdataslab.c',
         'rdatavec.c',
+        'rdata/towire.c',
         'remote.c',
         'request.c',
         'resconf.c',
