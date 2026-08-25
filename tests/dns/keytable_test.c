@@ -578,7 +578,7 @@ ISC_LOOP_TEST_IMPL(issecuredomain) {
 ISC_LOOP_TEST_IMPL(dump) {
 	FILE *f = fopen("/dev/null", "w");
 
-	INSIST(f != NULL);
+	assert_non_null(f);
 
 	UNUSED(arg);
 
