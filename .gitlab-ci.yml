@@ -2046,7 +2046,6 @@ assign-milestones:
   after_script:
     - git -C bind/ remote get-url origin | sed "s|\.git$|/-/commit/$(cat commit.txt)|"
     - git -C bind/ show --color "$(cat commit.txt)" | sed "s|^$| |"
-  tags: []
 
 .rpm-build-job: &rpm_build_job
   <<: *rpm_build_job_common
@@ -2071,6 +2070,21 @@ assign-milestones:
   script:
     - >
       "${CI_PROJECT_DIR}"/bind9-qa/releng/update_rpms.py publish --service "${SERVICE}" --commit "$(cat "commit.txt")"
+
+.monitor-rpm-build-job: &monitor_rpm_build_job
+  <<: *rpm_build_job_common
+  when: on_success
+  script:
+    - >
+      "${CI_PROJECT_DIR}"/bind9-qa/releng/update_rpms.py monitor-build --service "${SERVICE}" --version "${CI_COMMIT_TAG}" --commit "$(cat "commit.txt")"
+  tags: []
+
+.monitor-rpm-publish-job: &monitor_rpm_publish_job
+  <<: *rpm_build_job_common
+  when: on_success
+  script:
+    - >
+      "${CI_PROJECT_DIR}"/bind9-qa/releng/update_rpms.py monitor-publish --service "${SERVICE}" --commit "$(cat "commit.txt")"
   tags: []
 
 # Update Cloudsmith packages
@@ -2097,6 +2111,34 @@ rpms-cloudsmith-build-private:
       - commit.txt
     expire_in: "1 month"
 
+monitor-rpms-cloudsmith-build:
+  <<: *monitor_rpm_build_job
+  variables:
+    SERVICE: cloudsmith
+  rules:
+    - *rule_tag_open_source_maintenance
+  needs:
+    - job: rpms-cloudsmith-build
+      artifacts: true
+  artifacts:
+    paths:
+      - commit.txt
+    expire_in: "1 month"
+
+monitor-rpms-cloudsmith-build-private:
+  <<: *monitor_rpm_build_job
+  variables:
+    SERVICE: cloudsmith
+  rules:
+    - *rule_tag_security_or_subscription
+  needs:
+    - job: rpms-cloudsmith-build-private
+      artifacts: true
+  artifacts:
+    paths:
+      - commit.txt
+    expire_in: "1 month"
+
 # Publish Cloudsmith packages
 
 rpms-cloudsmith-publish:
@@ -2104,17 +2146,45 @@ rpms-cloudsmith-publish:
   variables:
     SERVICE: cloudsmith
   needs:
-    - job: rpms-cloudsmith-build
+    - job: monitor-rpms-cloudsmith-build
       artifacts: true
   rules:
     - *rule_tag_open_source_maintenance
+  artifacts:
+    paths:
+      - commit.txt
+    expire_in: "1 month"
 
 rpms-cloudsmith-publish-private:
   <<: *rpm_publish_job
   variables:
     SERVICE: cloudsmith
   needs:
-    - job: rpms-cloudsmith-build-private
+    - job: monitor-rpms-cloudsmith-build-private
+      artifacts: true
+  rules:
+    - *rule_tag_security_or_subscription
+  artifacts:
+    paths:
+      - commit.txt
+    expire_in: "1 month"
+
+monitor-rpms-cloudsmith-publish:
+  <<: *monitor_rpm_publish_job
+  variables:
+    SERVICE: cloudsmith
+  needs:
+    - job: rpms-cloudsmith-publish
+      artifacts: true
+  rules:
+    - *rule_tag_open_source_maintenance
+
+monitor-rpms-cloudsmith-publish-private:
+  <<: *monitor_rpm_publish_job
+  variables:
+    SERVICE: cloudsmith
+  needs:
+    - job: rpms-cloudsmith-publish-private
       artifacts: true
   rules:
     - *rule_tag_security_or_subscription
@@ -2125,6 +2195,15 @@ rpms-copr:
   <<: *rpm_build_job
   variables:
     SERVICE: copr
+  rules:
+    - *rule_tag_open_source
+
+monitor-rpms-copr:
+  <<: *monitor_rpm_build_job
+  variables:
+    SERVICE: copr
+  needs:
+    - rpms-copr
   rules:
     - *rule_tag_open_source
 
