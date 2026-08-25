@@ -2148,10 +2148,9 @@ rpms-copr:
 
 update-docker-image:
   <<: *base_image
-  <<: *manual_release_job
+  <<: *manual_release_job_qa
   variables:
     RELEASE_DIRECTORY: "bind-${CI_COMMIT_TAG}-release"
-    DOCKERHUB_REPO_URL: "https://hub.docker.com/v2/namespaces/internetsystemsconsortium/repositories/bind9/"
   script:
     - VERSION="${CI_COMMIT_TAG#v}"
     - CHECKSUM="$(sha256sum "${RELEASE_DIRECTORY}/bind-${VERSION}.tar.xz" | awk '{print $1}')"
@@ -2165,9 +2164,6 @@ update-docker-image:
     - git commit -m "Version bump to ${VERSION}" Dockerfile
     - git push
     - COMMIT_SHA="$(git log -n1 --format=%H)"
-    - DOCKERHUB_TAG_URL="${DOCKERHUB_REPO_URL}/tags/${BRANCH}"
-    - while ! curl -s "${DOCKERHUB_TAG_URL}" | jq -e '(.last_updated[:19] + "Z" | fromdateiso8601) > (now - 3600)'; do sleep 300; done
-    - *git_clone_bind9-qa
     - echo "Docker image definition for BIND ${BRANCH} updated to version ${CI_COMMIT_TAG}, commit [${COMMIT_SHA}](${DOCKER_PROJECT}/-/commit/${COMMIT_SHA})" > message.txt
     - >
       "$CI_PROJECT_DIR"/bind9-qa/releng/message_zulip.py --message message.txt --channel bind9 --topic Packaging
@@ -2176,6 +2172,21 @@ update-docker-image:
       artifacts: true
     - job: publish
       artifacts: false
+  rules:
+    - *rule_tag_open_source
+
+check-update-docker-image:
+  <<: *base_image
+  stage: release
+  variables:
+    DOCKERHUB_REPO_URL: "https://hub.docker.com/v2/namespaces/internetsystemsconsortium/repositories/bind9"
+  script:
+    - VERSION="${CI_COMMIT_TAG#v}"
+    - DOCKER_TAG="${VERSION%.*}"
+    - DOCKERHUB_TAG_URL="${DOCKERHUB_REPO_URL}/tags/${DOCKER_TAG}"
+    - while ! curl -s "${DOCKERHUB_TAG_URL}" | jq -e '(.last_updated[:19] + "Z" | fromdateiso8601) > (now - 3600)'; do sleep 300; done
+  needs:
+    - job: update-docker-image
   rules:
     - *rule_tag_open_source
 
