@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <isc/urcu.h>
 #include <isc/util.h>
 
 #if HAVE_PTHREAD_BARRIER_INIT
@@ -31,7 +32,16 @@ typedef pthread_barrier_t isc_barrier_t;
 		PTHREADS_RUNTIME_CHECK(pthread_barrier_init, _ret); \
 	}
 
-#define isc__barrier_wait(bp) pthread_barrier_wait(bp)
+/*
+ * Under liburcu's QSBR flavor a registered thread must be offline while it
+ * blocks, or every synchronize_rcu() elsewhere waits for it forever
+ * (rcu_thread_offline() is a no-op for the other flavors).
+ */
+#define isc__barrier_wait(bp)             \
+	({                                \
+		rcu_thread_offline();     \
+		pthread_barrier_wait(bp); \
+	})
 
 #define isc__barrier_destroy(bp)                                       \
 	{                                                              \
@@ -55,7 +65,11 @@ typedef uv_barrier_t isc_barrier_t;
 		UV_RUNTIME_CHECK(uv_barrier_init, _ret); \
 	}
 
-#define isc__barrier_wait(bp) uv_barrier_wait(bp)
+#define isc__barrier_wait(bp)         \
+	({                            \
+		rcu_thread_offline(); \
+		uv_barrier_wait(bp);  \
+	})
 
 #define isc__barrier_destroy(bp) uv_barrier_destroy(bp)
 

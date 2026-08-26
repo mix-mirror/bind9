@@ -196,5 +196,11 @@ isc__thread_initialize(void) {
 void
 isc__thread_shutdown(void) {
 	set_thread_call_rcu_data(NULL);
+	/*
+	 * call_rcu_data_free() busy-waits for the call_rcu thread, which may
+	 * be inside synchronize_rcu(); under QSBR that grace period can't end
+	 * while this (registered) thread is online.
+	 */
+	rcu_thread_offline();
 	call_rcu_data_free(isc__thread_call_rcu_data);
 }
