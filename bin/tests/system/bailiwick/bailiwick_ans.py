@@ -30,6 +30,8 @@ class ResponseSpoofer(ResponseHandler, abc.ABC):
 
     spoofers: dict[str, type["ResponseSpoofer"]] = {}
 
+    qtype = dns.rdatatype.TXT
+
     def __init_subclass__(cls, mode: str) -> None:
         assert mode not in cls.spoofers
         cls.spoofers[mode] = cls
@@ -49,7 +51,7 @@ class ResponseSpoofer(ResponseHandler, abc.ABC):
     def match(self, qctx: QueryContext) -> bool:
         return (
             qctx.qname == dns.name.from_text(self.qname)
-            and qctx.qtype == dns.rdatatype.TXT
+            and qctx.qtype == self.qtype
             and qctx.protocol == DnsProtocol.UDP
         )
 

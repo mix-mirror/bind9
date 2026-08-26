@@ -11,3 +11,7 @@ ns.victim.		A	10.53.0.2
 ; no query should go here
 attacker.		NS	ns.attacker.
 ns.attacker.		A	10.53.0.3
+
+; attacker-controlled zone used to test out-of-bailiwick additional data
+evictor.		NS	ns.evictor.
+ns.evictor.		A	10.53.0.2

@@ -97,6 +97,37 @@ class DnameSpoofer(ResponseSpoofer, mode="dname"):
         yield DnsResponseSend(response, authoritative=True)
 
 
+class ExternalCnameSpoofer(ResponseSpoofer, mode="external-cname"):
+
+    qname = "trigger.evictor."
+    qtype = dns.rdatatype.HTTPS
+
+    async def get_responses(
+        self, qctx: QueryContext
+    ) -> AsyncGenerator[ResponseAction, None]:
+        response = qctx.prepare_new_response(with_zone_data=False)
+
+        https_rrset = dns.rrset.from_text(
+            qctx.qname,
+            TTL,
+            qctx.qclass,
+            dns.rdatatype.HTTPS,
+            '1 prime.victim. alpn="h2"',
+        )
+        response.answer.append(https_rrset)
+
+        cname_rrset = dns.rrset.from_text(
+            "prime.victim.",
+            TTL,
+            qctx.qclass,
+            dns.rdatatype.CNAME,
+            "sink.evictor.",
+        )
+        response.additional.append(cname_rrset)
+
+        yield DnsResponseSend(response, authoritative=True)
+
+
 def main() -> None:
     spoofing_server().run()
 

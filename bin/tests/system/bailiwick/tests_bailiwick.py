@@ -10,6 +10,7 @@
 # information regarding copyright ownership.
 
 
+import pathlib
 import time
 
 import dns.message
@@ -45,6 +46,11 @@ def prime_cache(ns4: NamedInstance) -> None:
         "TXT",
         '"this record is used for priming the cache of the targeted resolver"',
     )
+
+
+def authoritative_query_count(qname: str, qtype: str) -> int:
+    log = pathlib.Path("ans2/ans.run").read_text(encoding="utf-8")
+    return log.count(f"Received {qname}/IN/{qtype}")
 
 
 def send_trigger_query(ns4: NamedInstance, qname: str) -> None:
@@ -114,3 +120,28 @@ def test_bailiwick_spoofed_dname(servers: dict[str, NamedInstance]) -> None:
     ns4 = servers["ns4"]
     send_trigger_query(ns4, "trigger.victim.")
     check_domain_hijack(ns4)
+
+
+def test_bailiwick_external_cname_preserves_cache(
+    servers: dict[str, NamedInstance],
+) -> None:
+    set_spoofing_mode(ans1="none", ans2="external-cname")
+
+    ns4 = servers["ns4"]
+    count_before_prime = authoritative_query_count("prime.victim", "TXT")
+    prime_cache(ns4)
+    count_after_prime = authoritative_query_count("prime.victim", "TXT")
+    assert count_after_prime == count_before_prime + 1
+
+    msg = dns.message.make_query("trigger.evictor.", "HTTPS")
+    res = isctest.query.tcp(msg, ns4.ip)
+    isctest.check.noerror(res)
+
+    msg = dns.message.make_query("prime.victim.", "TXT")
+    res = isctest.query.tcp(msg, ns4.ip)
+    isctest.check.noerror(res)
+
+    count_after = authoritative_query_count("prime.victim", "TXT")
+    assert (
+        count_after == count_after_prime
+    ), "external CNAME evicted the cached TXT RRset"
