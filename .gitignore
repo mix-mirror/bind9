@@ -101,3 +101,5 @@ TAGS
 \.dir-locals-2.el
 /emacs.desktop
 /emacs.desktop-lock
+# Debuggers history
+.gdb_history
