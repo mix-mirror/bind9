@@ -18738,13 +18738,13 @@ zone_rekey(dns_zone_t *zone) {
 	 * DNSSEC Key and Signing Policy
 	 */
 
-	KASP_LOCK(kasp);
-
+	KASP_LOCK(kasp); /* MUTEX DEADLOCK (zone_maintenance/zone_rekey) */
 	dns_zone_lock_keyfiles(zone);
 	result = dns_dnssec_findmatchingkeys(&zone->origin, kasp, dir,
 					     dns_zone_getkeystores(zone), now,
 					     false, mctx, &keys);
 	dns_zone_unlock_keyfiles(zone);
+	KASP_UNLOCK(kasp);
 
 	if (result != ISC_R_SUCCESS) {
 		dnssec_log(zone, ISC_LOG_DEBUG(1),
@@ -18754,27 +18754,32 @@ zone_rekey(dns_zone_t *zone) {
 
 	if (kasp != NULL && !offlineksk) {
 		/* Verify new keys. */
+		KASP_LOCK(kasp);
 		isc_result_t ret = zone_verifykeys(
 			zone, &keys, dns_kasp_purgekeys(kasp), now);
+		KASP_UNLOCK(kasp);
+
 		if (ret != ISC_R_SUCCESS) {
 			dnssec_log(zone, ISC_LOG_ERROR,
 				   "zone_rekey:zone_verifykeys failed: "
 				   "some key files are missing");
-			KASP_UNLOCK(kasp);
 			goto cleanup;
 		}
 
 		/*
 		 * Check DS at parental agents. Clear ongoing checks.
 		 */
-		LOCK_ZONE(zone);
+		LOCK_ZONE(zone); /* MUTEX DEADLOCK (zone_maintenance/zone_rekey) */
+		KASP_LOCK(kasp);
 		checkds_cancel(zone);
 		clear_keylist(&zone->checkds_ok, zone->mctx);
 		ISC_LIST_INIT(zone->checkds_ok);
-		UNLOCK_ZONE(zone);
 
 		ret = dns_zone_getdnsseckeys(zone, db, ver, now,
 					     &zone->checkds_ok);
+		KASP_UNLOCK(kasp);
+		UNLOCK_ZONE(zone);
+
 		if (ret == ISC_R_SUCCESS) {
 			zone_checkds(zone);
 		} else {
@@ -18787,6 +18792,7 @@ zone_rekey(dns_zone_t *zone) {
 		}
 
 		/* Run keymgr. */
+		KASP_LOCK(kasp);
 		if (result == ISC_R_SUCCESS || result == ISC_R_NOTFOUND) {
 			dns_zone_lock_keyfiles(zone);
 			result = dns_keymgr_run(&zone->origin, zone->rdclass,
@@ -18809,11 +18815,14 @@ zone_rekey(dns_zone_t *zone) {
 				goto cleanup;
 			}
 		}
+		KASP_UNLOCK(kasp);
+
 	} else if (offlineksk) {
 		/*
 		 * With offline-ksk enabled we don't run the keymgr.
 		 * Instead we derive the states from the timing metadata.
 		 */
+		KASP_LOCK(kasp);
 		dns_zone_lock_keyfiles(zone);
 		result = dns_keymgr_offline(&zone->origin, &keys, kasp, now,
 					    &nexttime);
@@ -18827,9 +18836,9 @@ zone_rekey(dns_zone_t *zone) {
 				   "failed: %s",
 				   isc_result_totext(result));
 		}
+		KASP_UNLOCK(kasp);
 	}
 
-	KASP_UNLOCK(kasp);
 
 	/*
 	 * Update CDS, CDNSKEY and DNSKEY record sets if the keymgr ran
@@ -19041,7 +19050,7 @@ zone_rekey(dns_zone_t *zone) {
 
 	dns_db_closeversion(db, &ver, true);
 
-	LOCK_ZONE(zone);
+	LOCK_ZONE(zone); /* MUTEX DEADLOCK V2 (zone_maintenance/zone_rekey) */
 
 	if (commit) {
 		dns_stats_t *dnssecsignstats =
@@ -19471,7 +19480,7 @@ dns_zone_verifykeys(dns_zone_t *zone, isc_time_t timenow) {
 
 	ISC_LIST_INIT(keys);
 
-	KASP_LOCK(kasp);
+	KASP_LOCK(kasp); /* MUTEX DEADLOCK (addnsec3chain/rss_post) */
 	dns_zone_lock_keyfiles(zone);
 	(void)dns_dnssec_findmatchingkeys(&zone->origin, zone->kasp, dir,
 					  dns_zone_getkeystores(zone), now,
@@ -20289,7 +20298,7 @@ cleanup:
 		dns_db_detach(&db);
 	}
 	if (commit) {
-		LOCK_ZONE(zone);
+		LOCK_ZONE(zone); /* MUTEX DEADLOCK (zone_maintenance/rss_post) */
 		DNS_ZONE_SETFLAG(zone, DNS_ZONEFLG_LOADED);
 		zone_needdump(zone, 30);
 		resume_addnsec3chain(zone);
