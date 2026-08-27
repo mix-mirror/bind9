@@ -30,8 +30,7 @@ struct cid_entry {
 	struct cds_lfht_node node;
 	struct rcu_head head;
 	isc_mem_t *mctx;
-	isc_quic_conn_unref_t unref;
-	void *value;
+	isc_quic_conn_t *value;
 	isc_tid_t tid;
 	size_t length;
 	uint8_t data[] ISC_ATTR_COUNTED_BY(length);
@@ -41,9 +40,8 @@ struct reset_entry_t {
 	struct cds_lfht_node node;
 	struct rcu_head head;
 	isc_mem_t *mctx;
-	isc_quic_conn_unref_t unref;
 	isc_tid_t tid;
-	void *value;
+	isc_quic_conn_t *value;
 	uint8_t token[ISC_QUIC_STATELESS_TOKEN_LENGTH];
 };
 
@@ -52,8 +50,6 @@ struct isc_quic_router {
 	isc_refcount_t references;
 	isc_mem_t *mctx;
 	size_t cidlen;
-	isc_quic_conn_ref_t conn_ref;
-	isc_quic_conn_unref_t conn_unref;
 	struct cds_lfht *cid_ht;
 	struct cds_lfht *reset_ht;
 };
@@ -93,7 +89,7 @@ cid_match(struct cds_lfht_node *node, const void *key) {
 static void
 cid_free(struct rcu_head *head) {
 	cid_entry_t *entry = caa_container_of(head, cid_entry_t, head);
-	entry->unref(entry->value);
+	isc_quic_conn_unref(entry->value);
 	isc_mem_putanddetach(&entry->mctx, entry,
 			     STRUCT_FLEX_SIZE(entry, data, entry->length));
 }
@@ -107,7 +103,7 @@ reset_match(struct cds_lfht_node *node, const void *key) {
 static void
 reset_free(struct rcu_head *head) {
 	reset_entry_t *entry = caa_container_of(head, reset_entry_t, head);
-	entry->unref(entry->value);
+	isc_quic_conn_unref(entry->value);
 	isc_mem_putanddetach(&entry->mctx, entry, sizeof(*entry));
 }
 
@@ -138,15 +134,12 @@ ISC_REFCOUNT_IMPL(isc_quic_router, destroy);
 
 void
 isc_quic_router_create(isc_mem_t *mctx, size_t cidlen,
-		       isc_quic_conn_ref_t conn_ref,
-		       isc_quic_conn_unref_t conn_unref,
 		       isc_quic_router_t **routerp) {
 	isc_quic_router_t *router;
 
 	REQUIRE(routerp != NULL && *routerp == NULL);
 	REQUIRE(cidlen >= ISC_QUIC_CID_MIN_LENGTH &&
 		cidlen <= ISC_QUIC_CID_MAX_LENGTH);
-	REQUIRE(conn_ref != NULL && conn_unref != NULL);
 
 	router = isc_mem_get(mctx, sizeof(*router));
 	*router = (isc_quic_router_t){
@@ -154,8 +147,6 @@ isc_quic_router_create(isc_mem_t *mctx, size_t cidlen,
 		.references = ISC_REFCOUNT_INITIALIZER(1),
 		.mctx = isc_mem_ref(mctx),
 		.cidlen = cidlen,
-		.conn_ref = conn_ref,
-		.conn_unref = conn_unref,
 		.cid_ht = cds_lfht_new(
 			ht_init_size, ht_min_size, 0,
 			CDS_LFHT_AUTO_RESIZE | CDS_LFHT_ACCOUNTING, NULL),
@@ -188,14 +179,13 @@ isc_quic_router_add_cid(isc_quic_router_t *router, isc_constregion_t cid,
 	*entry = (cid_entry_t){
 		.value = conn,
 		.mctx = isc_mem_ref(router->mctx),
-		.unref = router->conn_unref,
 		.tid = tid,
 		.length = cid.length,
 	};
 	memmove(entry->data, cid.base, cid.length);
 
 	/* The routing table holds a reference for as long as it stores conn. */
-	router->conn_ref(conn);
+	isc_quic_conn_ref(conn);
 
 	rcu_read_lock();
 	node = cds_lfht_add_unique(router->cid_ht, hash, cid_match, &cid,
@@ -203,7 +193,7 @@ isc_quic_router_add_cid(isc_quic_router_t *router, isc_constregion_t cid,
 	rcu_read_unlock();
 
 	if (node != &entry->node) {
-		router->conn_unref(conn);
+		isc_quic_conn_unref(conn);
 		isc_mem_putanddetach(&entry->mctx, entry,
 				     STRUCT_FLEX_SIZE(entry, data, cid.length));
 		return ISC_R_EXISTS;
@@ -214,7 +204,7 @@ isc_quic_router_add_cid(isc_quic_router_t *router, isc_constregion_t cid,
 
 isc_result_t
 isc_quic_router_get_cid(isc_quic_router_t *router, isc_constregion_t cid,
-			isc_tid_t *tidp, void **connp) {
+			isc_tid_t *tidp, isc_quic_conn_t **connp) {
 	struct cds_lfht_node *node;
 	struct cds_lfht_iter iter;
 	isc_result_t result;
@@ -236,7 +226,7 @@ isc_quic_router_get_cid(isc_quic_router_t *router, isc_constregion_t cid,
 	} else {
 		result = ISC_R_SUCCESS;
 		if (connp != NULL) {
-			router->conn_ref(entry->value);
+			isc_quic_conn_ref(entry->value);
 			*connp = entry->value;
 		}
 		SET_IF_NOT_NULL(tidp, entry->tid);
@@ -297,13 +287,12 @@ isc_quic_router_add_stateless_reset(
 	*entry = (reset_entry_t){
 		.value = conn,
 		.mctx = isc_mem_ref(router->mctx),
-		.unref = router->conn_unref,
 		.tid = tid,
 	};
 	memmove(entry->token, token, ISC_QUIC_STATELESS_TOKEN_LENGTH);
 
 	/* The routing table holds a reference for as long as it stores conn. */
-	router->conn_ref(conn);
+	isc_quic_conn_ref(conn);
 
 	rcu_read_lock();
 	node = cds_lfht_add_unique(router->reset_ht, hash, reset_match, token,
@@ -311,7 +300,7 @@ isc_quic_router_add_stateless_reset(
 	rcu_read_unlock();
 
 	if (node != &entry->node) {
-		router->conn_unref(conn);
+		isc_quic_conn_unref(conn);
 		isc_mem_putanddetach(&entry->mctx, entry, sizeof(*entry));
 		return ISC_R_EXISTS;
 	}
@@ -323,7 +312,7 @@ isc_result_t
 isc_quic_router_get_stateless_reset(
 	isc_quic_router_t *router,
 	const uint8_t token[const restrict ISC_QUIC_STATELESS_TOKEN_LENGTH],
-	isc_tid_t *tidp, void **connp) {
+	isc_tid_t *tidp, isc_quic_conn_t **connp) {
 	struct cds_lfht_node *node;
 	struct cds_lfht_iter iter;
 	reset_entry_t *entry;
@@ -345,7 +334,7 @@ isc_quic_router_get_stateless_reset(
 		result = ISC_R_SUCCESS;
 		SET_IF_NOT_NULL(tidp, entry->tid);
 		if (connp != NULL) {
-			router->conn_ref(entry->value);
+			isc_quic_conn_ref(entry->value);
 			*connp = entry->value;
 		}
 	}
@@ -393,7 +382,7 @@ isc_quic_router_handle_packet(isc_quic_router_t *router,
 			      isc_quic_version_t *versionp,
 			      isc_constregion_t *dcidp,
 			      isc_constregion_t *scidp, isc_tid_t *tidp,
-			      void **connp) {
+			      isc_quic_conn_t **connp) {
 	isc_constregion_t dcid, scid;
 	ngtcp2_version_cid version;
 	const uint8_t *token;
