@@ -2132,7 +2132,6 @@ setup(void *arg ISC_ATTR_UNUSED) {
 /*% Main processing routine for mdig */
 int
 main(int argc, char *argv[]) {
-	struct query *query = NULL, *next;
 	isc_result_t result;
 	isc_log_t *lctx = NULL;
 	isc_logconfig_t *lcfg = NULL;
@@ -2180,9 +2179,8 @@ main(int argc, char *argv[]) {
 		fatal("can't choose between IPv4 and IPv6");
 	}
 
-	query = ISC_LIST_HEAD(queries);
 	isc_loopmgr_setup(loopmgr, setup, NULL);
-	isc_loopmgr_setup(loopmgr, sendqueries, query);
+	isc_loopmgr_setup(loopmgr, sendqueries, ISC_LIST_HEAD(queries));
 	isc_loopmgr_teardown(loopmgr, teardown, NULL);
 
 	/*
@@ -2217,7 +2215,7 @@ main(int argc, char *argv[]) {
 
 	isc_log_destroy(&lctx);
 
-	ISC_LIST_FOREACH_SAFE(queries, query, link, next) {
+	ISC_LIST_FOREACH(queries, query, link) {
 		free_query(query);
 	}
 

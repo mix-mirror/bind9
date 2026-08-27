@@ -469,9 +469,7 @@ msginit(dns_message_t *m) {
 
 static void
 msgresetname(dns_message_t *msg, dns_name_t *name) {
-	dns_rdataset_t *rds = NULL, *next_rds = NULL;
-
-	ISC_LIST_FOREACH_SAFE(name->list, rds, link, next_rds) {
+	ISC_LIST_FOREACH(name->list, rds, link) {
 		ISC_LIST_UNLINK(name->list, rds, link);
 
 		dns__message_putassociatedrdataset(msg, &rds);
@@ -482,9 +480,7 @@ static void
 msgresetnames(dns_message_t *msg, unsigned int first_section) {
 	/* Clean up name lists. */
 	for (size_t i = first_section; i < DNS_SECTION_MAX; i++) {
-		dns_name_t *name = NULL, *next_name = NULL;
-
-		ISC_LIST_FOREACH_SAFE(msg->sections[i], name, link, next_name) {
+		ISC_LIST_FOREACH(msg->sections[i], name, link) {
 			ISC_LIST_UNLINK(msg->sections[i], name, link);
 
 			msgresetname(msg, name);
@@ -810,8 +806,6 @@ name_match(void *node, const void *key) {
 static isc_result_t
 findname(dns_name_t **foundname, const dns_name_t *target,
 	 dns_namelist_t *section) {
-	dns_name_t *name = NULL;
-
 	ISC_LIST_FOREACH_REV(*section, name, link) {
 		if (dns_name_equal(name, target)) {
 			if (foundname != NULL) {
@@ -846,14 +840,12 @@ rds_match(void *node, const void *key0) {
 }
 
 isc_result_t
-dns_message_findtype(const dns_name_t *name, dns_rdatatype_t type,
+dns_message_findtype(dns_name_t *name, dns_rdatatype_t type,
 		     dns_rdatatype_t covers, dns_rdataset_t **rdatasetp) {
-	dns_rdataset_t *rds = NULL;
-
 	REQUIRE(name != NULL);
 	REQUIRE(rdatasetp == NULL || *rdatasetp == NULL);
 
-	ISC_LIST_FOREACH_REV(name->list, rds, link) {
+	ISC_LIST_FOREACH(name->list, rds, link) {
 		if (rds->type == type && rds->covers == covers) {
 			SET_IF_NOT_NULL(rdatasetp, rds);
 
@@ -968,7 +960,6 @@ getrdata(isc_buffer_t *source, dns_message_t *msg, dns_decompress_t dctx,
 
 static void
 cleanup_name_hashmaps(dns_namelist_t *section) {
-	dns_name_t *name = NULL;
 	ISC_LIST_FOREACH(*section, name, link) {
 		if (name->hashmap != NULL) {
 			isc_hashmap_destroy(&name->hashmap);
@@ -2428,12 +2419,9 @@ dns_message_renderreset(dns_message_t *msg) {
 	msg->buffer = NULL;
 
 	for (size_t i = 0; i < DNS_SECTION_MAX; i++) {
-		dns_name_t *name = NULL;
-
 		msg->cursors[i] = NULL;
 		msg->counts[i] = 0;
 		ISC_LIST_FOREACH(msg->sections[i], name, link) {
-			dns_rdataset_t *rds = NULL;
 			ISC_LIST_FOREACH(name->list, rds, link) {
 				rds->attributes &= ~DNS_RDATASETATTR_RENDERED;
 			}
@@ -3431,7 +3419,6 @@ dns_message_sectiontotext(dns_message_t *msg, dns_section_t section,
 		dns_name_t *name = NULL;
 		dns_message_currentname(msg, section, &name);
 
-		dns_rdataset_t *rds = NULL;
 		ISC_LIST_FOREACH(name->list, rds, link) {
 			if (section == DNS_SECTION_ANSWER &&
 			    rds->type == dns_rdatatype_soa)
@@ -5086,7 +5073,6 @@ message_authority_soa_min(dns_message_t *msg, dns_ttl_t *ttlp) {
 		dns_name_t *name = NULL;
 		dns_message_currentname(msg, DNS_SECTION_AUTHORITY, &name);
 
-		dns_rdataset_t *rds = NULL;
 		ISC_LIST_FOREACH(name->list, rds, link) {
 			if ((rds->attributes & DNS_RDATASETATTR_RENDERED) == 0)
 			{

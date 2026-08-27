@@ -22438,7 +22438,6 @@ zone_rekey(dns_zone_t *zone) {
 	dns_dbversion_t *ver = NULL;
 	dns_rdataset_t cdsset, soaset, soasigs, keyset, keysigs, cdnskeyset;
 	dns_dnsseckeylist_t dnskeys, keys, rmkeys;
-	dns_dnsseckey_t *key = NULL;
 	dns_diff_t diff, _sig_diff;
 	dns_kasp_t *kasp;
 	dns_skrbundle_t *bundle = NULL;
@@ -22856,9 +22855,7 @@ zone_rekey(dns_zone_t *zone) {
 			 * published and is used for signing.
 			 */
 			bool allow = false;
-			for (key = ISC_LIST_HEAD(dnskeys); key != NULL;
-			     key = ISC_LIST_NEXT(key, link))
-			{
+			ISC_LIST_FOREACH(dnskeys, key, link) {
 				dst_key_t *dstk = key->key;
 
 				if (dst_key_is_published(dstk, now, &when) &&
@@ -22895,9 +22892,7 @@ zone_rekey(dns_zone_t *zone) {
 		 * key, but it's for an already-existing algorithm, then
 		 * the zone signing can be handled incrementally.)
 		 */
-		for (key = ISC_LIST_HEAD(dnskeys); key != NULL;
-		     key = ISC_LIST_NEXT(key, link))
-		{
+		ISC_LIST_FOREACH(dnskeys, key, link) {
 			if (!key->first_sign) {
 				continue;
 			}
@@ -22968,9 +22963,7 @@ zone_rekey(dns_zone_t *zone) {
 
 		/* Remove any signatures from removed keys.  */
 		if (!ISC_LIST_EMPTY(rmkeys)) {
-			for (key = ISC_LIST_HEAD(rmkeys); key != NULL;
-			     key = ISC_LIST_NEXT(key, link))
-			{
+			ISC_LIST_FOREACH(rmkeys, key, link) {
 				result = zone_signwithkey(
 					zone, dst_key_alg(key->key),
 					dst_key_id(key->key), true, false);
@@ -23004,9 +22997,7 @@ zone_rekey(dns_zone_t *zone) {
 			 * "rndc sign" was called, so we now sign the zone
 			 * with all active keys, whether they're new or not.
 			 */
-			for (key = ISC_LIST_HEAD(dnskeys); key != NULL;
-			     key = ISC_LIST_NEXT(key, link))
-			{
+			ISC_LIST_FOREACH(dnskeys, key, link) {
 				if (!key->force_sign && !key->hint_sign) {
 					continue;
 				}
@@ -23048,9 +23039,7 @@ zone_rekey(dns_zone_t *zone) {
 			 * the full zone, but only with newly active
 			 * keys.
 			 */
-			for (key = ISC_LIST_HEAD(dnskeys); key != NULL;
-			     key = ISC_LIST_NEXT(key, link))
-			{
+			ISC_LIST_FOREACH(dnskeys, key, link) {
 				if (!key->first_sign) {
 					continue;
 				}
@@ -23167,9 +23156,7 @@ zone_rekey(dns_zone_t *zone) {
 				  &timethen);
 		zone->refreshkeytime = timethen;
 
-		for (key = ISC_LIST_HEAD(dnskeys); key != NULL;
-		     key = ISC_LIST_NEXT(key, link))
-		{
+		ISC_LIST_FOREACH(dnskeys, key, link) {
 			then = now;
 			result = next_keyevent(key->key, &then);
 			if (result != ISC_R_SUCCESS) {
@@ -23197,7 +23184,8 @@ zone_rekey(dns_zone_t *zone) {
 	if (!ISC_LIST_EMPTY(zone->keyring)) {
 		clear_keylist(&zone->keyring, zone->mctx);
 	}
-	while ((key = ISC_LIST_HEAD(dnskeys)) != NULL) {
+
+	ISC_LIST_FOREACH(dnskeys, key, link) {
 		if (isc_log_wouldlog(dns_lctx, ISC_LOG_DEBUG(3))) {
 			/* This debug log is used in the kasp system test */
 			char algbuf[DNS_SECALG_FORMATSIZE];

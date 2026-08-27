@@ -532,7 +532,7 @@ mark_as_rendered(dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset) {
  * above processing to happen.
  */
 static bool
-process_name(query_ctx_t *qctx, filter_a_t mode, const dns_name_t *name,
+process_name(query_ctx_t *qctx, filter_a_t mode, dns_name_t *name,
 	     dns_rdatatype_t type, bool only_if_aaaa_exists) {
 	dns_rdataset_t *rdataset = NULL, *sigrdataset = NULL;
 	isc_result_t result;

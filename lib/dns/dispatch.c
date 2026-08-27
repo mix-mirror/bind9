@@ -699,7 +699,7 @@ tcp_recv_success(dns_dispatch_t *disp, isc_region_t *region,
 	 * scanning disp->active.  With sequential IDs and a bounded
 	 * pipelining limit this is a short linear scan.
 	 */
-	dns_dispentry_t *resp = NULL, *r = NULL;
+	dns_dispentry_t *resp = NULL;
 	ISC_LIST_FOREACH(disp->active, r, alink) {
 		if (r->id == id) {
 			resp = r;

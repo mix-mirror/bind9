@@ -171,10 +171,9 @@ dns_requestmgr_create(isc_mem_t *mctx, isc_loopmgr_t *loopmgr,
 static void
 requests_cancel(void *arg) {
 	dns_requestmgr_t *requestmgr = arg;
-	dns_request_t *request = NULL, *next = NULL;
 	uint32_t tid = isc_tid();
 
-	ISC_LIST_FOREACH_SAFE(requestmgr->requests[tid], request, link, next) {
+	ISC_LIST_FOREACH(requestmgr->requests[tid], request, link) {
 		req_log(ISC_LOG_DEBUG(3), "%s(%" PRIu32 ": request %p",
 			__func__, tid, request);
 		if (DNS_REQUEST_COMPLETE(request)) {
