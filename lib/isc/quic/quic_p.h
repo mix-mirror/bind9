@@ -21,17 +21,32 @@
 #include <isc/quic.h>
 #include <isc/types.h>
 
+typedef struct isc__quic_stream isc__quic_stream_t;
+typedef struct isc__quic_stream_data isc__quic_stream_data_t;
+
 #ifdef HAVE_OPENSSL_3
 typedef struct isc__quic_crypto_frame_data isc__quic_crypto_frame_data_t;
 #endif /* HAVE_OPENSSL_3 */
 
+typedef enum isc__quic_conn_state {
+	QUIC_CONN_STATE_INVALID = 0x00,
+	QUIC_CONN_STATE_HANDSHAKE = 0x01,
+	QUIC_CONN_STATE_CONNECTED = 0x02,
+	QUIC_CONN_STATE_CLOSED = 0x03,
+	QUIC_CONN_STATE_TERMINATED = 0x04,
+} isc__quic_conn_state_t;
+
 struct isc_quic_conn {
 	uint32_t magic;
 	isc_refcount_t references;
+
 	isc_quic_router_t *router;
 
 	const isc_quic_conn_callbacks_t *cb;
 	void *cbarg;
+
+	ISC_LIST(isc__quic_stream_t) streams;
+	ISC_LIST(isc__quic_stream_data_t) outgoing_stream_data;
 
 	/* isc_mem_t resides inside `mem.user_data` */
 	ngtcp2_mem mem;
@@ -44,6 +59,8 @@ struct isc_quic_conn {
 		uint8_t len;
 		uint8_t data[7];
 	} alpn;
+
+	isc__quic_conn_state_t state;
 
 /*
  * OpenSSL (not the forks) wants us to keep some information alive and
