@@ -17,9 +17,12 @@
 
 #include <isc/attributes.h>
 #include <isc/hash.h>
+#include <isc/hmac.h>
 #include <isc/magic.h>
 #include <isc/mem.h>
 #include <isc/quic.h>
+#include <isc/random.h>
+#include <isc/safe.h>
 #include <isc/urcu.h>
 #include <isc/util.h>
 
@@ -52,6 +55,7 @@ struct isc_quic_router {
 	size_t cidlen;
 	struct cds_lfht *cid_ht;
 	struct cds_lfht *reset_ht;
+	uint8_t hmac[32];
 };
 
 constexpr uint32_t router_magic = ISC_MAGIC('Q', 'U', 'I', 'r');
@@ -125,6 +129,8 @@ destroy(isc_quic_router_t *router) {
 	}
 	RUNTIME_CHECK(!cds_lfht_destroy(router->reset_ht, NULL));
 
+	isc_safe_memwipe(router->hmac, sizeof(router->hmac));
+
 	router->magic = 0;
 
 	isc_mem_putanddetach(&router->mctx, router, sizeof(*router));
@@ -155,6 +161,8 @@ isc_quic_router_create(isc_mem_t *mctx, size_t cidlen,
 	};
 	INSIST(router->cid_ht != NULL);
 	INSIST(router->reset_ht != NULL);
+
+	isc_random_buf(router->hmac, sizeof(router->hmac));
 
 	*routerp = router;
 }
@@ -265,6 +273,29 @@ isc_quic_router_del_cid(isc_quic_router_t *router, isc_constregion_t cid) {
 	rcu_read_unlock();
 
 	return result;
+}
+
+void
+isc_quic_router_stateless_reset_from_cid(
+	const isc_quic_router_t *router, isc_constregion_t cid,
+	uint8_t token[restrict ISC_QUIC_STATELESS_TOKEN_LENGTH]) {
+	uint8_t mac[32];
+	unsigned int maclen = sizeof(mac);
+
+	REQUIRE(router != NULL && router->magic == router_magic);
+	REQUIRE(cid.base != NULL && cid.length >= NGTCP2_MIN_CIDLEN &&
+		cid.length <= NGTCP2_MAX_CIDLEN);
+	REQUIRE(token != NULL);
+
+	/*
+	 * HMAC failing here is inactionable and points to an unignorable
+	 * libcrypto issue.
+	 */
+	INSIST(isc_hmac(ISC_MD_SHA256, router->hmac, sizeof(router->hmac),
+			cid.base, cid.length, mac, &maclen) == ISC_R_SUCCESS);
+
+	memmove(token, mac, ISC_QUIC_STATELESS_TOKEN_LENGTH);
+	isc_safe_memwipe(mac, sizeof(mac));
 }
 
 isc_result_t
