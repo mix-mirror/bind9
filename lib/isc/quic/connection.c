@@ -34,6 +34,22 @@ destroy(isc_quic_conn_t *conn) {
 	isc_mem_unref(mctx);
 }
 
+isc_result_t
+isc__quic_setup_read_key(isc_quic_conn_t *conn ISC_ATTR_UNUSED,
+			 bool is_server ISC_ATTR_UNUSED,
+			 ngtcp2_encryption_level nglevel ISC_ATTR_UNUSED,
+			 isc_constregion_t secret ISC_ATTR_UNUSED) {
+	UNREACHABLE();
+}
+
+isc_result_t
+isc__quic_setup_write_key(isc_quic_conn_t *conn ISC_ATTR_UNUSED,
+			  bool is_server ISC_ATTR_UNUSED,
+			  ngtcp2_encryption_level nglevel ISC_ATTR_UNUSED,
+			  isc_constregion_t secret ISC_ATTR_UNUSED) {
+	UNREACHABLE();
+}
+
 ISC_REFCOUNT_IMPL(isc_quic_conn, destroy);
 
 isc_result_t
