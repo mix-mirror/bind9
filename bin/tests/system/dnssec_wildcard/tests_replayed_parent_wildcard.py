@@ -17,7 +17,6 @@ import dns.rdatatype
 import pytest
 
 import isctest
-import isctest.mark
 import isctest.template
 import isctest.zone
 
@@ -31,7 +30,6 @@ AUTH = "10.53.0.1"
 RESOLVER = "10.53.0.2"
 
 pytestmark = [
-    isctest.mark.with_ecdsa_deterministic,
     pytest.mark.extra_artifacts(
         [
             "ans*/*.db",
