@@ -1309,6 +1309,7 @@ static int
 get_new_connection_id_cb(ngtcp2_conn *ngconn ISC_ATTR_UNUSED, ngtcp2_cid *ngcid,
 			 uint8_t *token, size_t cidlen, void *user_data) {
 	isc_quic_conn_t *conn = user_data;
+	uint8_t buffer[NGTCP2_MAX_CIDLEN];
 	isc_constregion_t cid = { buffer, cidlen };
 	isc_result_t result;
 
