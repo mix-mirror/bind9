@@ -1317,7 +1317,8 @@ get_new_connection_id_cb(ngtcp2_conn *ngconn ISC_ATTR_UNUSED, ngtcp2_cid *ngcid,
 		result = isc_quic_router_add_cid(conn->router, cid, isc_tid(),
 						 conn);
 		if (result == ISC_R_SUCCESS) {
-			isc_random_buf(token, ISC_QUIC_STATELESS_TOKEN_LENGTH);
+			isc_quic_router_stateless_reset_from_cid(conn->router,
+								 cid, token);
 			isc_quic_router_add_stateless_reset(conn->router, token,
 							    isc_tid(), conn);
 			ngcid->datalen = cidlen;
@@ -1567,7 +1568,8 @@ get_new_connection_id2_cb(ngtcp2_conn *ngconn ISC_ATTR_UNUSED,
 		result = isc_quic_router_add_cid(conn->router, cid, isc_tid(),
 						 conn);
 		if (result == ISC_R_SUCCESS) {
-			isc_random_buf(token->data, sizeof(token->data));
+			isc_quic_router_stateless_reset_from_cid(
+				conn->router, cid, token->data);
 			isc_quic_router_add_stateless_reset(
 				conn->router, token->data, isc_tid(), conn);
 			ngcid->datalen = cidlen;
@@ -2424,8 +2426,10 @@ isc_quic_conn_shutdown(isc_quic_conn_t *conn) {
 	ngtcp2_cid_token *token;
 #endif
 	isc_constregion_t cid;
+	isc_result_t result;
 	ngtcp2_cid *ngcid;
 	isc_mem_t *mctx;
+	uint8_t reset[ISC_QUIC_STATELESS_TOKEN_LENGTH];
 	size_t i, len;
 
 	REQUIRE(conn != NULL && conn->magic == conn_magic);
@@ -2451,7 +2455,13 @@ isc_quic_conn_shutdown(isc_quic_conn_t *conn) {
 #endif /* NGTCP2_VERSION_NUM >= 0x011700 */
 	for (i = 0; i < len; i++) {
 		cid = (isc_constregion_t){ ngcid[i].data, ngcid[i].datalen };
-		isc_quic_router_del_cid(conn->router, cid);
+		result = isc_quic_router_del_cid(conn->router, cid);
+		if (result == ISC_R_SUCCESS) {
+			isc_quic_router_stateless_reset_from_cid(conn->router,
+								 cid, reset);
+			isc_quic_router_del_stateless_reset(conn->router,
+							    reset);
+		}
 	}
 	isc_mem_cput(mctx, ngcid, len, sizeof(*ngcid));
 
