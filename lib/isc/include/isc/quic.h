@@ -54,23 +54,6 @@
  */
 typedef struct isc_quic_router isc_quic_router_t;
 
-/**
- * \brief
- * Callbacks the router uses to keep a connection alive while it is reachable
- * through the router or has been handed out by a lookup.
- *
- * `conn_ref` must acquire a reference on `conn`; `conn_unref` must release one.
- * They allow the router to hand out a retained connection pointer without
- * racing a concurrent teardown.
- *
- * \warning
- * `conn_unref` may be invoked from an RCU worker thread, because the router
- * releases its own reference from a deferred-reclamation (call_rcu) callback.
- * It must therefore be safe to call from any thread.
- */
-typedef void (*isc_quic_conn_ref_t)(void *conn);
-typedef void (*isc_quic_conn_unref_t)(void *conn);
-
 typedef enum isc_quic_version {
 	/** Invalid QUIC version */
 	ISC_QUIC_VERSION_INVALID = 0,
@@ -136,9 +119,7 @@ struct isc_quic_conn_options {
 
 void
 isc_quic_router_create(isc_mem_t *mctx, size_t cidlen,
-		       isc_quic_conn_ref_t   conn_ref,
-		       isc_quic_conn_unref_t conn_unref,
-		       isc_quic_router_t   **routerp);
+		       isc_quic_router_t **routerp);
 /**<
  * \brief
  * Create a new QUIC CID router.
@@ -186,7 +167,7 @@ isc_quic_router_add_cid(isc_quic_router_t *router, isc_constregion_t cid,
 
 isc_result_t
 isc_quic_router_get_cid(isc_quic_router_t *router, isc_constregion_t cid,
-			isc_tid_t *tidp, void **connp);
+			isc_tid_t *tidp, isc_quic_conn_t **connp);
 /**<
  * \brief
  * Get the connection associated with a given CID and its thread if `tidp` is
@@ -251,7 +232,7 @@ isc_result_t
 isc_quic_router_get_stateless_reset(
 	isc_quic_router_t *router,
 	const uint8_t token[const restrict ISC_QUIC_STATELESS_TOKEN_LENGTH],
-	isc_tid_t *tidp, void **connp);
+	isc_tid_t *tidp, isc_quic_conn_t **connp);
 /**<
  * \brief
  * Get the connection associated with the given stateless reset token and its
@@ -292,7 +273,7 @@ isc_quic_router_handle_packet(isc_quic_router_t	 *router,
 			      isc_quic_version_t *versionp,
 			      isc_constregion_t	 *dcidp,
 			      isc_constregion_t *scidp, isc_tid_t *tidp,
-			      void **connp);
+			      isc_quic_conn_t **connp);
 /**<
  * \brief
  * Extracts the associated value and relevant information of a given QUIC
