@@ -368,3 +368,34 @@ isc_quic_conn_server_create(
  */
 
 ISC_REFCOUNT_DECL(isc_quic_conn);
+
+isc_result_t
+isc_quic_tlsctx_client_configure(isc_tlsctx_t *tlsctx);
+/**<
+ * \brief
+ * Configure the client TLS context to be used for QUIC connections.
+ *
+ * \retval ISC_R_SUCCESS on success
+ * \retval ISC_R_TLSERROR on failure
+ */
+
+isc_result_t
+isc_quic_tlsctx_server_configure(isc_tlsctx_t *tlsctx);
+/**<
+ * \brief
+ * Configure the server TLS context to be used for QUIC connections.
+ *
+ * \retval ISC_R_SUCCESS on success
+ * \retval ISC_R_TLSERROR on failure
+ */
+
+#ifdef HAVE_LIBNGTCP2
+void
+isc__quic_initialize(void);
+
+void
+isc__quic_shutdown(void);
+#else /* HAVE_LIBNGTCP2 */
+#define isc__quic_initialize()
+#define isc__quic_shutdown()
+#endif /* HAVE_LIBNGTCP2 */
