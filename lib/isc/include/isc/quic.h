@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include <stdint.h>
+
 #include <isc/refcount.h>
 #include <isc/region.h>
 #include <isc/result.h>
@@ -46,6 +48,12 @@
  * Specified in RFC9000, Section 10.3.
  */
 #define ISC_QUIC_STATELESS_TOKEN_LENGTH 16
+
+/**
+ * \brief
+ * Infinite timeout or an invalid timestamp.
+ */
+constexpr isc_nanosecs_t isc_quic_timestamp_invalid = UINT64_MAX;
 
 /**
  * \brief
@@ -480,6 +488,124 @@ isc_quic_conn_server_create(
  */
 
 ISC_REFCOUNT_DECL(isc_quic_conn);
+
+isc_result_t
+isc_quic_conn_shutdown(isc_quic_conn_t *conn);
+/**<
+ * \brief
+ * asd
+ *
+ * \retval ISC_R_SUCCESS on success
+ * \retval ISC_R_SHUTTINGDOWN
+ */
+
+isc_result_t
+isc_quic_conn_pull_packet(isc_quic_conn_t *conn, isc_region_t out,
+			  size_t *written, isc_sockaddr_t *from,
+			  isc_sockaddr_t *to);
+/**<
+ * \brief
+ * Consume a packet produced by the state machine if there is any.
+ *
+ * \retval ISC_R_SUCCESS on success
+ * \retval ISC_R_TERMINATED if the connection has been terminated
+ */
+
+isc_result_t
+isc_quic_conn_push_packet(isc_quic_conn_t *conn, isc_constregion_t packet,
+			  isc_sockaddr_t *local, isc_sockaddr_t *peer);
+/**<
+ * \brief
+ * Feed the incoming packet to the state machine.
+ *
+ * If provided, it might call the `data_read` callback.
+ *
+ * \par Requires
+ * \li `conn` is a valid QUIC connection state machine.
+ * \li `packet.base != NULL` and `packet` is a valid QUIC packet.
+ *
+ * \retval ISC_R_SUCCESS on success
+ * \retval ISC_R_FAILURE on unknown failure
+ */
+
+isc_result_t
+isc_quic_conn_handle_expiry(isc_quic_conn_t *conn);
+/**<
+ * \brief
+ * Decides on the timeout action.
+ *
+ * This function is meant to be fired at a timeout after the duration specified
+ * by isc_quic_conn_next_expiry_time has passed.
+ *
+ * \retval ISC_R_SUCCESS when the a packet should be pulled from the connection
+ * \retval ISC_R_TIMEDOUT when the connection should be dropped without further
+ * interaction
+ * \retval ISC_R_CANCELED when the connection is closed and yet it want to
+ * transmit the connection to the endpoint
+ */
+
+isc_nanosecs_t
+isc_quic_conn_next_expiry_time(isc_quic_conn_t *conn);
+/**<
+ * \brief
+ * Get the next timeout duration.
+ *
+ * \par Requires:
+ * \li `conn` is a valid QUIC connection state machine.
+ *
+ * \retval isc_quic_timestamp_invalid if there are no timeouts to be handled
+ */
+
+isc_result_t
+isc_quic_conn_shutdown_stream(isc_quic_conn_t *conn, int64_t stream_id,
+			      uint64_t application_code);
+/**<
+ * \brief
+ * Abruptly shutdown a stream.
+ *
+ * \par Requires
+ * \li `conn` is a valid QUIC connection state machine.
+ * \li `stream_id` ≥ 0
+ *
+ * \retval ISC_R_SUCCESS on success
+ * \retval ISC_R_NOMEMORY on memory context failure
+ * \retval ISC_R_FAILURE on unknown failure
+ */
+
+isc_result_t
+isc_quic_conn_open_bidi_stream(isc_quic_conn_t *conn, int64_t *stream_idp,
+			       void *user_data);
+/**<
+ * \brief
+ * Open a new bidrectional stream.
+ *
+ * \note
+ * This does not trigger the `stream_opened` callback.
+ *
+ * \par Requires
+ * \li `conn` is a valid QUIC connection state machine.
+ * \li `stream_idp != NULL`
+ * \li `user_data != NULL`
+ *
+ * \retval ISC_R_SUCCESS on success
+ */
+
+isc_result_t
+isc_quic_conn_push_stream_data(isc_quic_conn_t *conn, int64_t stream_id,
+			       const uint8_t *data, size_t len)
+	ISC_ATTR_ACCESS(read_only, 3, 4);
+/**<
+ * \brief
+ * Push stream data to the QUIC connection state machine.
+ *
+ * \par Requires
+ * \li `conn` is a valid QUIC connection state machine.
+ * \li `stream_id` ≥ 0
+ * \li `data != NULL`
+ *
+ * \retval ISC_R_SUCCESS on success
+ * \retval ISC_R_NOTFOUND if no such stream with the given ID exists
+ */
 
 isc_result_t
 isc_quic_tlsctx_client_configure(isc_tlsctx_t *tlsctx);

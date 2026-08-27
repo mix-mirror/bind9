@@ -113,6 +113,31 @@ constexpr uint8_t stateless_reset_packet[] = {
 	0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0xE,  0x0F,
 };
 
+static const uint8_t alpn[] = { 0x03, 'O', 'w', 'O' };
+
+static isc_sockaddr_t client_addr[32];
+static isc_sockaddr_t server_addr;
+
+static int
+global_setup(void **state ISC_ATTR_UNUSED) {
+	size_t i;
+
+	isc_sockaddr_fromin6(&server_addr, &in6addr_loopback, 9000);
+
+	for (i = 0; i < ARRAY_SIZE(client_addr); i++) {
+		isc_sockaddr_fromin6(&client_addr[i], &in6addr_loopback,
+				     9100 + i);
+	}
+
+	return 0;
+}
+
+static int
+global_teardown(void **state ISC_ATTR_UNUSED) {
+	rcu_barrier();
+	return 0;
+}
+
 ISC_RUN_TEST_IMPL(isc_quic_router_cid) {
 	isc_quic_router_t *router = NULL;
 	isc_quic_conn_t *conn, *found;
@@ -120,13 +145,18 @@ ISC_RUN_TEST_IMPL(isc_quic_router_cid) {
 	isc_result_t result;
 	isc_tid_t tid = ISC_TID_UNKNOWN;
 
-	isc_quic_conn_options_t opts = {};
+	isc_quic_conn_options_t opts = {
+		.alpn = { alpn, sizeof(alpn) },
+	};
 
 	isc_quic_router_create(isc_g_mctx, sizeof(client_dcid), &router);
 
+	result = isc_tlsctx_createclient(&opts.tlsctx);
+	assert_int_equal(result, ISC_R_SUCCESS);
 	conn = NULL;
 	result = isc_quic_conn_client_create(isc_g_mctx, router, NULL, NULL,
-					     &opts, NULL, NULL, NULL, &conn);
+					     &opts, NULL, &client_addr[0],
+					     &server_addr, &conn);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	cid = (isc_constregion_t){ client_dcid, sizeof(client_dcid) };
@@ -173,13 +203,18 @@ ISC_RUN_TEST_IMPL(isc_quic_router_stateless_reset) {
 	isc_result_t result;
 	isc_tid_t tid = ISC_TID_UNKNOWN;
 
-	isc_quic_conn_options_t opts = {};
+	isc_quic_conn_options_t opts = {
+		.alpn = { alpn, sizeof(alpn) },
+	};
 
 	isc_quic_router_create(isc_g_mctx, sizeof(client_dcid), &router);
 
+	result = isc_tlsctx_createclient(&opts.tlsctx);
+	assert_int_equal(result, ISC_R_SUCCESS);
 	conn = NULL;
 	result = isc_quic_conn_client_create(isc_g_mctx, router, NULL, NULL,
-					     &opts, NULL, NULL, NULL, &conn);
+					     &opts, NULL, &client_addr[0],
+					     &server_addr, &conn);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	isc_random_buf(token, sizeof(token));
@@ -227,13 +262,18 @@ ISC_RUN_TEST_IMPL(isc_quic_router_packet) {
 	isc_constregion_t dcid, scid;
 	isc_result_t result;
 
-	isc_quic_conn_options_t opts = {};
+	isc_quic_conn_options_t opts = {
+		.alpn = { alpn, sizeof(alpn) },
+	};
 
 	isc_quic_router_create(isc_g_mctx, sizeof(client_dcid), &router);
 
+	result = isc_tlsctx_createclient(&opts.tlsctx);
+	assert_int_equal(result, ISC_R_SUCCESS);
 	conn = NULL;
 	result = isc_quic_conn_client_create(isc_g_mctx, router, NULL, NULL,
-					     &opts, NULL, NULL, NULL, &conn);
+					     &opts, NULL, &client_addr[0],
+					     &server_addr, &conn);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	/* Initial CRYPTO frames MUST be 1200 bytes */
@@ -317,4 +357,4 @@ ISC_TEST_ENTRY(isc_quic_router_stateless_reset)
 ISC_TEST_ENTRY(isc_quic_router_packet)
 ISC_TEST_LIST_END
 
-ISC_TEST_MAIN
+ISC_TEST_MAIN_CUSTOM(global_setup, global_teardown);
