@@ -863,6 +863,9 @@ def test_ksr_common(ns1):
     # - check subdomain
     isctest.kasp.check_subdomain(ns1, zone, ksks, overlapping_zsks, offline_ksk=True)
 
+    # suppress "error reading private key file" logs with offline-ksk
+    assert "dns_zone_findkeys: error reading" not in ns1.log
+
 
 def test_ksr_lastbundle(ns1):
     zone = "last-bundle.test"
@@ -939,6 +942,9 @@ def test_ksr_lastbundle(ns1):
     # check that last bundle warning is logged
     warning = "last bundle in skr, please import new skr file"
     assert f"zone {zone}/IN (signed): zone_rekey: {warning}" in ns1.log
+
+    # suppress "error reading private key file" logs with offline-ksk
+    assert "dns_zone_findkeys: error reading" not in ns1.log
 
 
 def test_ksr_inthemiddle(ns1):
@@ -1017,6 +1023,9 @@ def test_ksr_inthemiddle(ns1):
     # check that no last bundle warning is logged
     warning = "last bundle in skr, please import new skr file"
     assert f"zone {zone}/IN (signed): zone_rekey: {warning}" not in ns1.log
+
+    # suppress "error reading private key file" logs with offline-ksk
+    assert "dns_zone_findkeys: error reading" not in ns1.log
 
 
 def check_ksr_rekey_logs_error(server, zone, policy, offset, end):
@@ -1208,6 +1217,9 @@ def test_ksr_unlimited(ns1):
     # - check subdomain
     isctest.kasp.check_subdomain(ns1, zone, ksks, zsks, offline_ksk=True)
 
+    # suppress "error reading private key file" logs with offline-ksk
+    assert "dns_zone_findkeys: error reading" not in ns1.log
+
 
 def test_ksr_twotone(ns1):
     zone = "two-tone.test"
@@ -1324,6 +1336,9 @@ def test_ksr_twotone(ns1):
     # - check subdomain
     isctest.kasp.check_subdomain(ns1, zone, ksks, zsks, offline_ksk=True)
 
+    # suppress "error reading private key file" logs with offline-ksk
+    assert "dns_zone_findkeys: error reading" not in ns1.log
+
 
 def test_ksr_kskroll(ns1):
     zone = "ksk-roll.test"
@@ -1395,6 +1410,9 @@ def test_ksr_kskroll(ns1):
     isctest.kasp.check_apex(ns1, zone, ksks, zsks, offline_ksk=True)
     # - check subdomain
     isctest.kasp.check_subdomain(ns1, zone, ksks, zsks, offline_ksk=True)
+
+    # suppress "error reading private key file" logs with offline-ksk
+    assert "dns_zone_findkeys: error reading" not in ns1.log
 
 
 def test_ksr_fast(ns1):
@@ -1476,6 +1494,9 @@ def test_ksr_fast(ns1):
     isctest.kasp.check_apex(ns1, zone, ksks, zsks, offline_ksk=True)
     # - check subdomain
     isctest.kasp.check_subdomain(ns1, zone, ksks, zsks, offline_ksk=True)
+
+    # suppress "error reading private key file" logs with offline-ksk
+    assert "dns_zone_findkeys: error reading" not in ns1.log
 
 
 def test_ksr_oversize(ns1):
