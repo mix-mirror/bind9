@@ -17,6 +17,8 @@
 #include <isc/region.h>
 #include <isc/result.h>
 #include <isc/tid.h>
+#include <isc/time.h>
+#include <isc/tls.h>
 #include <isc/types.h>
 
 /*! \file isc/quic.h */
@@ -84,6 +86,53 @@ typedef enum isc_quic_version {
 
 	ISC_QUIC_VERSION__MAX = 4,
 } isc_quic_version_t;
+
+/**
+ * \brief
+ * User-specified callbacks
+ *
+ * All callbacks are optional.
+ */
+struct isc_quic_conn_callbacks {};
+
+/**
+ * \brief
+ * Connection independent QUIC connection options of an endpoint.
+ */
+struct isc_quic_conn_options {
+	/**
+	 * \brief
+	 * TLS context used by the QUIC connection.
+	 */
+	isc_tlsctx_t *tlsctx;
+
+	/**
+	 * \brief
+	 * ALPN value of the TLS handshake.
+	 *
+	 * \warning
+	 * Must be less than 7-bytes, might be increased in the future.
+	 */
+	isc_constregion_t alpn;
+
+	/**
+	 * \brief
+	 * Handshake timeout of the state machine
+	 *
+	 * Must not be `isc_quic_timestamp_invalid`. Zero value disables
+	 * timeout.
+	 */
+	isc_nanosecs_t handshake_timeout;
+
+	/**
+	 * \brief
+	 * Idle timeout of the state machine
+	 *
+	 * Must not be `isc_quic_timestamp_invalid`. Zero value disables
+	 * timeout.
+	 */
+	isc_nanosecs_t idle_timeout;
+};
 
 void
 isc_quic_router_create(isc_mem_t *mctx, size_t cidlen,
@@ -294,3 +343,47 @@ isc_quic_router_handle_packet(isc_quic_router_t	 *router,
  * Unlike ISC_R_UNEXPECTED, the caller MUST NOT send a stateless reset in
  * response (RFC9000, Section 10.3).
  */
+
+isc_result_t
+isc_quic_conn_client_create(isc_mem_t *mctx, isc_quic_router_t *router,
+			    const isc_quic_conn_callbacks_t *callbacks,
+			    void			    *callback_arg,
+			    const isc_quic_conn_options_t   *options,
+			    const char *sni, const isc_sockaddr_t *local,
+			    const isc_sockaddr_t *peer,
+			    isc_quic_conn_t	**connp);
+
+/**<
+ * \brief
+ * Create a new client state machine.
+ *
+ * \par Requires
+ * \li `mctx` is a valid memory context
+ * \li `router` is a valid QUIC router
+ * \li `options != NULL`
+ * \li `connp != NULL` and `*connp == NULL`
+ *
+ * \retval ISC_R_SUCCESS on success
+ */
+
+isc_result_t
+isc_quic_conn_server_create(
+	isc_mem_t *mctx, isc_quic_router_t *router,
+	const isc_quic_conn_callbacks_t *callbacks, void *callback_arg,
+	const isc_quic_conn_options_t *options, isc_constregion_t initial_dcid,
+	isc_constregion_t initial_scid, const isc_sockaddr_t *local,
+	const isc_sockaddr_t *peer, isc_quic_conn_t **connp);
+/**<
+ * \brief
+ * Create a new server state machine
+ *
+ * \par Requires
+ * \li `mctx` is a valid memory context
+ * \li `router` is a valid QUIC router
+ * \li `options != NULL`
+ * \li `connp != NULL` and `*connp == NULL`
+ *
+ * \retval ISC_R_SUCCESS on success
+ */
+
+ISC_REFCOUNT_DECL(isc_quic_conn);
