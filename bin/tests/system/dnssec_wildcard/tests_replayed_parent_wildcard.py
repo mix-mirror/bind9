@@ -26,8 +26,8 @@ QUERY = f"q.{PARENT}"
 SERVICE = f"svc.{CHILD}"
 FORGED_A = "198.51.100.45"
 LEGIT_A = "192.0.2.113"
-AUTH = "10.53.0.1"
-RESOLVER = "10.53.0.2"
+AUTH = isctest.template.ANS1.ip
+RESOLVER = isctest.template.NS2.ip
 
 pytestmark = [
     pytest.mark.extra_artifacts(
