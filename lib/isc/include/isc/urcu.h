@@ -88,12 +88,13 @@
 #undef synchronize_rcu
 #define synchronize_rcu() isc_qsbr_synchronize_rcu()
 
-#define isc_qsbr_rcu_dereference(ptr)              \
-	({                                         \
-		if (!urcu_qsbr_read_ongoing()) {   \
-			urcu_qsbr_thread_online(); \
-		}                                  \
-		_rcu_dereference(ptr);             \
+#define isc_qsbr_rcu_dereference(ptr)                      \
+	({                                                 \
+		if (!urcu_qsbr_read_ongoing()) {           \
+			urcu_qsbr_thread_online();         \
+		}                                          \
+		typeof(ptr) __ptr = _rcu_dereference(ptr); \
+		__ptr;                                     \
 	})
 
 #undef rcu_dereference
