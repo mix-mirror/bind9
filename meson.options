@@ -119,7 +119,7 @@ option(
 option(
     'rcu-flavor',
     type: 'combo',
-    choices: ['membarrier', 'bp', 'mb', 'qsbr'],
+    choices: ['qsbr', 'membarrier', 'bp', 'mb'],
     description: 'Userspace RCU Flavor (non-membarrier RCU is only allowed in development builds)',
 )
 

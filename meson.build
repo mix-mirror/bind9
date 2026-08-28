@@ -761,6 +761,9 @@ urcu_dep = [dependency('liburcu-cds', version: '>=0.10.0')]
 if rcu_flavor == 'membarrier'
     config.set('RCU_MEMBARRIER', true)
     urcu_dep += dependency('liburcu', version: '>=0.10.0')
+elif rcu_flavor == 'qsbr'
+    config.set('RCU_QSBR', true)
+    urcu_dep += dependency('liburcu-qsbr', version: '>=0.10.0')
 elif not developer_mode
     error('Changing Userspace-RCU flavor is allowed only in development mode')
 elif rcu_flavor == 'bp'
@@ -769,9 +772,6 @@ elif rcu_flavor == 'bp'
 elif rcu_flavor == 'mb'
     config.set('RCU_MB', true)
     urcu_dep += dependency('liburcu-mb', version: '>=0.10.0')
-elif rcu_flavor == 'qsbr'
-    config.set('RCU_QSBR', true)
-    urcu_dep += dependency('liburcu-qsbr', version: '>=0.10.0')
 endif
 
 # liburcu << v0.13.0 didn't add -lurcu-common and some toolchains would
