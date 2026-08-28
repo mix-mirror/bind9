@@ -41,6 +41,7 @@ typedef pthread_barrier_t isc_barrier_t;
 	({                                \
 		rcu_thread_offline();     \
 		pthread_barrier_wait(bp); \
+		rcu_thread_online();      \
 	})
 
 #define isc__barrier_destroy(bp)                                       \
@@ -69,6 +70,7 @@ typedef uv_barrier_t isc_barrier_t;
 	({                            \
 		rcu_thread_offline(); \
 		uv_barrier_wait(bp);  \
+		rcu_thread_online();  \
 	})
 
 #define isc__barrier_destroy(bp) uv_barrier_destroy(bp)

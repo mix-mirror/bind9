@@ -11,6 +11,8 @@
  * information regarding copyright ownership.
  */
 
+#include <errno.h>
+#include <poll.h>
 #include <stdlib.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -253,9 +255,6 @@ quiescent_cb(uv_prepare_t *handle) {
 #if defined(RCU_QSBR)
 	/* safe memory reclamation */
 	rcu_quiescent_state();
-
-	/* mark the thread offline when polling */
-	rcu_thread_offline();
 #else
 	INSIST(!rcu_read_ongoing());
 #endif
@@ -272,6 +271,47 @@ loop_close(isc_loop_t *loop) {
 	loop->magic = 0;
 
 	isc_mem_detach(&loop->mctx);
+}
+
+/*
+ * Run the event loop until it has no more active handles.
+ *
+ * Under liburcu's QSBR flavor a registered thread that blocks while it is
+ * online stalls every grace period in the process.  libuv blocks inside
+ * uv_run() (in its poll phase) and offers no hook between the wait returning
+ * and the I/O callbacks that follow it, so the wait can't be bracketed from
+ * a prepare/check handle pair.  Instead, run the loop in non-blocking mode
+ * and do the blocking wait ourselves: poll the backend descriptor with the
+ * timeout libuv would have used, with the thread offline for the duration.
+ * Busy iterations (timeout == 0) never block and so never pay for the extra
+ * poll(); the prepare handle still reports a quiescent state once per tick.
+ */
+static void
+loop_run(isc_loop_t *loop) {
+#if defined(RCU_QSBR)
+	while (uv_run(&loop->loop, UV_RUN_NOWAIT) != 0) {
+		int timeout = uv_backend_timeout(&loop->loop);
+		if (timeout == 0) {
+			continue;
+		}
+
+		struct pollfd pfd = {
+			.fd = uv_backend_fd(&loop->loop),
+			.events = POLLIN,
+		};
+
+		rcu_thread_offline();
+		int r = poll(&pfd, 1, timeout);
+		rcu_thread_online();
+
+		if (r < 0 && errno != EINTR) {
+			FATAL_SYSERROR(errno, "poll()");
+		}
+	}
+#else
+	int r = uv_run(&loop->loop, UV_RUN_DEFAULT);
+	UV_RUNTIME_CHECK(uv_run, r);
+#endif
 }
 
 static void *
@@ -302,8 +342,7 @@ loop_thread(void *arg) {
 	r = uv_async_send(&loop->async_trigger);
 	UV_RUNTIME_CHECK(uv_async_send, r);
 
-	r = uv_run(&loop->loop, UV_RUN_DEFAULT);
-	UV_RUNTIME_CHECK(uv_run, r);
+	loop_run(loop);
 
 	isc__loop_local = NULL;
 
