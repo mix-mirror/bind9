@@ -74,3 +74,11 @@ dns_fixedname_name(dns_fixedname_t *fixed);
 
 dns_name_t *
 dns_fixedname_initname(dns_fixedname_t *fixed);
+
+isc_result_t
+dns_fixedname_fromnsec3hash(dns_fixedname_t *fixed, const unsigned char *hash,
+			    size_t hash_length, const dns_name_t *origin);
+/*%<
+ * Initialize 'fixed' with an NSEC3 owner name made from the base32hex
+ * encoding of 'hash', followed by 'origin'.
+ */
