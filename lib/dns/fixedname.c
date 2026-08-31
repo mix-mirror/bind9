@@ -35,71 +35,29 @@ base32hexnp_encode_block(uint64_t block, unsigned char *dst) {
 }
 
 static isc_result_t
-base32hexnp_encode(const unsigned char *src, size_t length,
-		   isc_buffer_t *target) {
-	unsigned int encoded_length;
+base32hexnp_encode(const dns_nsec3hash_t *hash, isc_buffer_t *target) {
+	const unsigned char *src = *hash;
 	unsigned char *dst;
-	uint64_t tail = 0;
+	uint64_t block;
 
-	if (length > (isc_buffer_availablelength(target) * 5U) / 8U) {
+	if (isc_buffer_availablelength(target) < 32U) {
 		return ISC_R_NOSPACE;
 	}
-	encoded_length = (unsigned int)((length * 8U + 4U) / 5U);
 	dst = isc_buffer_used(target);
 
-	while (length >= 8U) {
-		uint64_t block;
-
+	for (size_t offset = 0; offset < 15U; offset += 5U) {
 		memcpy(&block, src, sizeof(block));
 		base32hexnp_encode_block(be64toh(block), dst);
 
 		src += 5;
 		dst += 8;
-		length -= 5;
 	}
 
-	switch (length) {
-	case 7:
-		tail |= (uint64_t)src[6] << 8;
-		dst[11] = base32hex[(tail >> 4) & 0x1fU];
-		dst[10] = base32hex[(tail >> 9) & 0x1fU];
-		FALLTHROUGH;
-	case 6:
-		tail |= (uint64_t)src[5] << 16;
-		dst[9] = base32hex[(tail >> 14) & 0x1fU];
-		dst[8] = base32hex[(tail >> 19) & 0x1fU];
-		FALLTHROUGH;
-	case 5:
-		tail |= (uint64_t)src[4] << 24;
-		dst[7] = base32hex[(tail >> 24) & 0x1fU];
-		FALLTHROUGH;
-	case 4:
-		tail |= (uint64_t)src[3] << 32;
-		dst[6] = base32hex[(tail >> 29) & 0x1fU];
-		dst[5] = base32hex[(tail >> 34) & 0x1fU];
-		FALLTHROUGH;
-	case 3:
-		tail |= (uint64_t)src[2] << 40;
-		dst[4] = base32hex[(tail >> 39) & 0x1fU];
-		FALLTHROUGH;
-	case 2:
-		tail |= (uint64_t)src[1] << 48;
-		dst[3] = base32hex[(tail >> 44) & 0x1fU];
-		dst[2] = base32hex[(tail >> 49) & 0x1fU];
-		FALLTHROUGH;
-	case 1:
-		tail |= (uint64_t)src[0] << 56;
-		dst[1] = base32hex[(tail >> 54) & 0x1fU];
-		dst[0] = base32hex[tail >> 59];
-		break;
-	case 0:
-		goto done;
-	default:
-		UNREACHABLE();
-	}
+	/* Load bytes 12..19, then discard the first three bytes. */
+	memmove(&block, (*hash) + 12, sizeof(block));
+	base32hexnp_encode_block(be64toh(block) << 24, dst);
 
-done:
-	isc_buffer_add(target, encoded_length);
+	isc_buffer_add(target, 32U);
 	return ISC_R_SUCCESS;
 }
 
@@ -127,8 +85,8 @@ dns_fixedname_initname(dns_fixedname_t *fixed) {
 }
 
 isc_result_t
-dns_fixedname_fromnsec3hash(dns_fixedname_t *fixed, const unsigned char *hash,
-			    size_t hash_length, const dns_name_t *origin) {
+dns_fixedname_fromnsec3hash(dns_fixedname_t *fixed, const dns_nsec3hash_t *hash,
+			    const dns_name_t *origin) {
 	isc_region_t origin_region;
 
 	REQUIRE(fixed != NULL);
@@ -136,9 +94,8 @@ dns_fixedname_fromnsec3hash(dns_fixedname_t *fixed, const unsigned char *hash,
 	REQUIRE(DNS_NAME_VALID(origin));
 
 	isc_buffer_clear(&fixed->buffer);
-	isc_buffer_putuint8(&fixed->buffer, 0);
-	RETERR(base32hexnp_encode(hash, hash_length, &fixed->buffer));
-	fixed->data[0] = (uint8_t)(isc_buffer_usedlength(&fixed->buffer) - 1U);
+	isc_buffer_putuint8(&fixed->buffer, 32U);
+	RETERR(base32hexnp_encode(hash, &fixed->buffer));
 
 	dns_name_toregion(origin, &origin_region);
 	RETERR(isc_buffer_copyregion(&fixed->buffer, &origin_region));
