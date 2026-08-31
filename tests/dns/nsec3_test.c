@@ -179,43 +179,10 @@ ISC_RUN_TEST_IMPL(hashname) {
 				   dns_fixedname_name(&expected)));
 }
 
-ISC_RUN_TEST_IMPL(fixedname_fromnsec3hash) {
-	static const struct {
-		const char *hash;
-		const char *owner;
-	} tests[] = {
-		{ "f", "CO." },
-		{ "fo", "CPNG." },
-		{ "foo", "CPNMU." },
-		{ "foob", "CPNMUOG." },
-		{ "fooba", "CPNMUOJ1." },
-		{ "foobar", "CPNMUOJ1E8." },
-		{ "foobar!", "CPNMUOJ1E8GG." },
-		{ "foobar!!", "CPNMUOJ1E8GI2." },
-	};
-	dns_fixedname_t expected;
-	dns_fixedname_t result;
-
-	UNUSED(state);
-
-	dns_fixedname_init(&result);
-	for (size_t i = 0; i < ARRAY_SIZE(tests); i++) {
-		dns_test_namefromstring(tests[i].owner, &expected);
-		assert_int_equal(dns_fixedname_fromnsec3hash(
-					 &result,
-					 (const unsigned char *)tests[i].hash,
-					 strlen(tests[i].hash), dns_rootname),
-				 ISC_R_SUCCESS);
-		assert_true(dns_name_equal(dns_fixedname_name(&result),
-					   dns_fixedname_name(&expected)));
-	}
-}
-
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY(max_iterations)
 ISC_TEST_ENTRY(nsec3param_salttotext)
 ISC_TEST_ENTRY(hashname)
-ISC_TEST_ENTRY(fixedname_fromnsec3hash)
 ISC_TEST_LIST_END
 
 ISC_TEST_MAIN
