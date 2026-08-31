@@ -419,16 +419,22 @@ isc_time_formatISO8601TZms(const isc_time_t *t, char *buf, unsigned int len) {
 			localtime_r(&now, &tm));
 	snprintf(ms_buf, sizeof(ms_buf), ".%03u", t->nanoseconds / NS_PER_MS);
 
-	INSIST(flen < len);
-	size_t local_date_len = sizeof("yyyy-mm-ddThh:mm:ss") - 1ul;
-	size_t ms_date_len = local_date_len + 4;
+	/* flen + ':' + NUL need to fit into len. */
+	if (flen == 0 || flen + 1 >= len) {
+		strlcpy(buf, "9999-99-99T99:99:99.999+99:99", len);
+	} else {
+		size_t local_date_len = sizeof("yyyy-mm-ddThh:mm:ss") - 1ul;
+		size_t ms_date_len = local_date_len + 4;
 
-	memmove(buf, strftime_buf, local_date_len);
-	memmove(buf + local_date_len, ms_buf, 4);
-	memmove(buf + ms_date_len, strftime_buf + ms_date_len, 3);
-	buf[ms_date_len + 3] = ':';
-	memmove(buf + ms_date_len + 4, strftime_buf + ms_date_len + 3, 3);
+		memmove(buf, strftime_buf, local_date_len);
+		memmove(buf + local_date_len, ms_buf, 4);
+		memmove(buf + ms_date_len, strftime_buf + ms_date_len, 3);
+		buf[ms_date_len + 3] = ':';
+		memmove(buf + ms_date_len + 4, strftime_buf + ms_date_len + 3,
+			3);
+	}
 }
+
 void
 isc_time_formatISO8601(const isc_time_t *t, char *buf, unsigned int len) {
 	time_t now;
