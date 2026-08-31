@@ -44,7 +44,6 @@ dns_fixedname_initname(dns_fixedname_t *fixed) {
 isc_result_t
 dns_fixedname_fromnsec3hash(dns_fixedname_t *fixed, const unsigned char *hash,
 			    size_t hash_length, const dns_name_t *origin) {
-	dns_name_t *name;
 	isc_region_t origin_region;
 	isc_region_t source = {
 		.base = UNCONST(hash),
@@ -55,18 +54,23 @@ dns_fixedname_fromnsec3hash(dns_fixedname_t *fixed, const unsigned char *hash,
 	REQUIRE(hash != NULL);
 	REQUIRE(DNS_NAME_VALID(origin));
 
-	name = dns_fixedname_name(fixed);
-	dns_name_reset(name);
-	name->ndata = isc_buffer_used(&fixed->buffer);
-	isc_buffer_putuint8(&fixed->buffer, 0);
+	isc_buffer_clear(&fixed->buffer);
+	isc_buffer_putuint8(&fixed->buffer,
+			    (uint8_t)((hash_length * 8U + 4U) / 5U));
 	RETERR(isc_base32hexnp_totext(&source, -1, "", &fixed->buffer));
-	name->ndata[0] = (uint8_t)(isc_buffer_usedlength(&fixed->buffer) - 1U);
 
 	dns_name_toregion(origin, &origin_region);
 	RETERR(isc_buffer_copyregion(&fixed->buffer, &origin_region));
 
-	name->length = (uint8_t)isc_buffer_usedlength(&fixed->buffer);
-	name->attributes = (struct dns_name_attrs){ .absolute = true };
+	fixed->name = (dns_name_t){
+		.magic = DNS_NAME_MAGIC,
+		.attributes = { .absolute = true },
+		.ndata = fixed->data,
+		.length = (uint8_t)isc_buffer_usedlength(&fixed->buffer),
+		.buffer = &fixed->buffer,
+		.link = ISC_LINK_INITIALIZER,
+		.list = ISC_LIST_INITIALIZER,
+	};
 
 	return ISC_R_SUCCESS;
 }
