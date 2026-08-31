@@ -1252,6 +1252,12 @@ dst_algorithm_totext(dst_algorithm_t alg, isc_buffer_t *target);
  *\li   ISC_R_NOSPACE                   target buffer is too small
  */
 
+/*%
+ * Buffer size for dst_algorithm_format(): a DST algorithm mnemonic may
+ * be a domain name (PRIVATEDNS and PRIVATEOID based algorithms).
+ */
+#define DST_ALG_FORMATSIZE DNS_NAME_FORMATSIZE
+
 void
 dst_algorithm_format(dst_algorithm_t dst_alg, char *data, unsigned int length);
 /*%<
