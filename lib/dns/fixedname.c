@@ -44,39 +44,29 @@ dns_fixedname_initname(dns_fixedname_t *fixed) {
 isc_result_t
 dns_fixedname_fromnsec3hash(dns_fixedname_t *fixed, const unsigned char *hash,
 			    size_t hash_length, const dns_name_t *origin) {
+	dns_name_t *name;
+	isc_region_t origin_region;
 	isc_region_t source = {
 		.base = UNCONST(hash),
 		.length = (unsigned int)hash_length,
 	};
-	size_t encoded_length;
-	size_t origin_length = (origin != NULL) ? origin->length : 0;
 
 	REQUIRE(fixed != NULL);
 	REQUIRE(hash != NULL);
-	REQUIRE(origin == NULL || DNS_NAME_VALID(origin));
+	REQUIRE(DNS_NAME_VALID(origin));
 
-	/* The encoded hash has to fit in a single DNS label. */
-	if (hash_length > (DNS_NAME_LABELLEN * 5U) / 8U) {
-		return DNS_R_LABELTOOLONG;
-	}
-	encoded_length = (hash_length * 8U + 4U) / 5U;
-	if (encoded_length + 1U + origin_length > DNS_NAME_MAXWIRE) {
-		return DNS_R_NAMETOOLONG;
-	}
-
-	dns_fixedname_init(fixed);
-	isc_buffer_putuint8(&fixed->buffer, (uint8_t)encoded_length);
+	name = dns_fixedname_name(fixed);
+	dns_name_reset(name);
+	name->ndata = isc_buffer_used(&fixed->buffer);
+	isc_buffer_putuint8(&fixed->buffer, 0);
 	RETERR(isc_base32hexnp_totext(&source, -1, "", &fixed->buffer));
-	if (origin != NULL) {
-		isc_buffer_putmem(&fixed->buffer, origin->ndata,
-				  origin->length);
-	}
+	name->ndata[0] = (uint8_t)(isc_buffer_usedlength(&fixed->buffer) - 1U);
 
-	fixed->name.ndata = fixed->data;
-	fixed->name.length = (uint8_t)isc_buffer_usedlength(&fixed->buffer);
-	if (origin != NULL) {
-		fixed->name.attributes.absolute = origin->attributes.absolute;
-	}
+	dns_name_toregion(origin, &origin_region);
+	RETERR(isc_buffer_copyregion(&fixed->buffer, &origin_region));
+
+	name->length = (uint8_t)isc_buffer_usedlength(&fixed->buffer);
+	name->attributes = (struct dns_name_attrs){ .absolute = true };
 
 	return ISC_R_SUCCESS;
 }

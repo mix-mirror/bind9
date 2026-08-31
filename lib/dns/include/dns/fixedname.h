@@ -81,4 +81,12 @@ dns_fixedname_fromnsec3hash(dns_fixedname_t *fixed, const unsigned char *hash,
 /*%<
  * Initialize 'fixed' with an NSEC3 owner name made from the base32hex
  * encoding of 'hash', followed by 'origin'.
+ *
+ * Requires:
+ *\li	'fixed' is initialized.
+ *\li	'hash' is non-NULL.
+ *\li	'origin' is a valid absolute name.
+ *
+ * Returns:
+ *\li	#ISC_R_NOSPACE when the resulting name does not fit in 'fixed'.
  */

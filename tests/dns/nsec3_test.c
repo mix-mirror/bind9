@@ -166,6 +166,7 @@ ISC_RUN_TEST_IMPL(hashname) {
 	dns_test_namefromstring("example.", &origin);
 	dns_test_namefromstring("0P9MHAVEQVM6T7VBL5LOP2U3T2RP3TOM.example.",
 				&expected);
+	dns_test_namefromstring("stale.example.", &result);
 
 	assert_int_equal(dns_nsec3_hashname(&result, hash, &hash_length,
 					    dns_fixedname_name(&name),
