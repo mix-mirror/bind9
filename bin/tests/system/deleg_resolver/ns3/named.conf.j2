@@ -1,0 +1,48 @@
+options {
+	query-source address @ns.ip@;
+	notify-source @ns.ip@;
+	transfer-source @ns.ip@;
+	port @PORT@;
+	pid-file "named.pid";
+	listen-on { @ns.ip@; };
+	listen-on-v6 { fd92:7065:b8e:ff::3; };
+	recursion no;
+	dnssec-validation no;
+};
+
+{% include "_common/controls.conf.j2" %}
+
+zone "delegname" {
+	file "zone.db";
+	type primary;
+};
+
+zone "delegips" {
+	file "delegips.db";
+	type primary;
+};
+
+zone "delegips4" {
+	file "zone.db";
+	type primary;
+};
+
+zone "delegmultiple" {
+	file "zone.db";
+	type primary;
+};
+
+zone "delegmandatory" {
+	file "zone.db";
+	type primary;
+};
+
+zone "delegparam" {
+	file "zone.db";
+	type primary;
+};
+
+zone "delegparam3" {
+	file "zone.db";
+	type primary;
+};

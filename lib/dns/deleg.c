@@ -1050,34 +1050,40 @@ deleginfo_to_deleg(isc_region_t *deleginfo, dns_delegset_t *delegset,
 /*
  * Go through each DelegInfo of a DELEG RR DelegInfos list.
  */
-static void
-deleginfos_to_delegs(dns_rdata_in_deleg_t *delegrd, dns_delegset_t *delegset,
-		     size_t *count, size_t max) {
-	isc_result_t result;
-
-	result = dns_rdata_in_deleg_first(delegrd);
-	while (result == ISC_R_SUCCESS) {
-		isc_region_t r;
-
-		dns_rdata_in_deleg_current(delegrd, &r);
-		result = deleginfo_to_deleg(&r, delegset, count, max);
-		if (result == ISC_R_QUOTA) {
-			break;
-		} else if (result == DNS_R_FORMERR) {
-			/*
-			 * Skip this whole record: a mandatory key is
-			 * unsupported. Note that since the mandatory key is
-			 * always first, nothing has been added in the delegset
-			 * yet, so none of the (supported) key has been added in
-			 * the delegset. The whole RR is properly skipped
-			 * without throwing an explicit error.
-			 */
-			return;
-		}
-
-		result = dns_rdata_in_deleg_next(delegrd);
+#define deleginfos_to_delegs(name, delegrd, delegset, count, max)              \
+	{                                                                      \
+		isc_result_t result;                                           \
+                                                                               \
+		result = dns_rdata_in_##name##_first(delegrd);                 \
+		while (result == ISC_R_SUCCESS) {                              \
+			isc_region_t r;                                        \
+                                                                               \
+			dns_rdata_in_##name##_current(delegrd, &r);            \
+			result = deleginfo_to_deleg(&r, delegset, count, max); \
+			if (result == ISC_R_QUOTA) {                           \
+				/*                                             \
+				 * Return from the caller, stop processing     \
+				 * the whole RRset.                            \
+				 */                                            \
+				return;                                        \
+			} else if (result == DNS_R_FORMERR) {                  \
+				/*                                             \
+				 * Skip this whole record: a mandatory key is  \
+				 * unsupported. Note that since the mandatory  \
+				 * key is always first, nothing has been added \
+				 * in the delegset yet, so none of the         \
+				 * (supported) key has been added in the       \
+				 * delegset. The whole RR is properly skipped  \
+				 * without throwing an explicit error.         \
+				 * The caller will call this again from the    \
+				 * next RR.                                    \
+				 */                                            \
+				break;                                         \
+			}                                                      \
+                                                                               \
+			result = dns_rdata_in_##name##_next(delegrd);          \
+		}                                                              \
 	}
-}
 
 static void
 delegset_fromdelegrdataset(dns_delegdb_t *db, dns_rdataset_t *rdataset,
@@ -1087,14 +1093,24 @@ delegset_fromdelegrdataset(dns_delegdb_t *db, dns_rdataset_t *rdataset,
 	dns_delegset_allocset(db, delegsetp);
 	DNS_RDATASET_FOREACH(rdataset) {
 		dns_rdata_t rdata = DNS_RDATA_INIT;
-		dns_rdata_in_deleg_t delegrd;
 
 		dns_rdataset_current(rdataset, &rdata);
-		INSIST(rdata.type == dns_rdatatype_deleg ||
-		       rdata.type == dns_rdatatype_delegparam);
-		dns_rdata_tostruct(&rdata, &delegrd, NULL);
 
-		deleginfos_to_delegs(&delegrd, *delegsetp, &count, max);
+		if (rdata.type == dns_rdatatype_deleg) {
+			dns_rdata_in_deleg_t delegrd;
+
+			dns_rdata_tostruct(&rdata, &delegrd, NULL);
+			deleginfos_to_delegs(deleg, &delegrd, *delegsetp,
+					     &count, max);
+		} else if (rdata.type == dns_rdatatype_delegparam) {
+			dns_rdata_in_delegparam_t delegparamrd;
+
+			dns_rdata_tostruct(&rdata, &delegparamrd, NULL);
+			deleginfos_to_delegs(delegparam, &delegparamrd,
+					     *delegsetp, &count, max);
+		} else {
+			UNREACHABLE();
+		}
 	}
 }
 

@@ -1,0 +1,60 @@
+$TTL 300	; 5 minutes
+@			IN SOA	mname1. . (
+				2000042407 ; serial
+				20	   ; refresh (20 seconds)
+				20	   ; retry (20 seconds)
+				1814400	   ; expire (3 weeks)
+				3600	   ; minimum (1 hour)
+				)
+			NS	a.root-servers.nil.
+a.root-servers.nil.	A	10.53.0.1
+
+; A DELEG-delegated subdomain
+delegonly		DELEG	server-ipv4=10.53.0.2
+
+; A subdomain delegated with both NS and DELEG
+mixed			DELEG	server-ipv4=10.53.0.2
+mixed			NS	ns2.mixed
+ns2.mixed		A	10.53.0.2
+
+; A DELEG-delegated subdomain using multiple names, only the second actually
+; resolve into something. The resolver eventually succeed.
+delegname		DELEG	server-name=ns.stuff,ns.foo,a.delegonly,ns.bar,ns.gee,yetanother.tld
+
+; A DELEG-delegated subdomain using multiples IPs, but only one IPv6 is
+; actually answering. The resolver eventually succeed.
+delegips		DELEG 	server-ipv4=10.53.0.44,10.53.0.55,10.53.0.66,10.53.99.2 server-ipv6=fd92:7065:b8e:ff::acdc,fd92:7065:b8e:ff::3,fd92:7065:b8e:ff::cafe,fd92:7065:b8e:ff::dead:beef
+
+; A DELEG-delegated subdomain using multiples IPs, but only one IPv4 is
+; actually answering. The resolver eventually succeed.
+delegips4		DELEG 	server-ipv4=10.53.0.44,10.53.0.55,10.53.0.66,10.53.99.2,10.53.0.3,172.16.40.2,192.168.2.5 server-ipv6=fd92:7065:b8e:ff::acdc,fd92:7065:b8e:ff::33,fd92:7065:b8e:ff::cafe,fd92:7065:b8e:ff::dead:beef
+
+; Another similar example, but spread out accross multiple DELEG RR and lot of
+; invalid names/IPs (resolution eventually succeed thanks to one single valid
+; IPv4).
+delegmultiple		DELEG	server-ipv4=10.53.0.44,10.53.0.55,10.53.0.66
+delegmultiple		DELEG	server-ipv6=fd92:7065:b8e:ff::acdc,fd92:7065:b8e:ff::33
+delegmultiple		DELEG	server-ipv4=10.55.3.23,10.53.0.3 server-ipv6=fd92:7065:b8e:ff::cafe,fd92:7065:b8e:ff::dead:beef
+delegmultiple		DELEG	server-name=ns.stuff.which.do.not.exists
+delegmultiple		DELEG	include-delegparam=p1.deleg,p2.deleg,p3.deleg
+
+delegmandatory		DELEG	mandatory=server-ipv4,server-ipv6 server-ipv4=10.53.0.3 server-ipv6=fd92:7065:b8e:ff::acdc,fd92:7065:b8e:ff::3
+
+; This is valid for an authoritative POV, but a resolver ignores such record,
+; the resolver won't find any delegation server and will give up.
+delegunsupportedman	DELEG	mandatory=key123 server-ipv4=10.53.0.2 key123
+
+; Similar, but that one has multiple records, and one is valid so will be used
+; the resolver can resolve it.
+delegunsupportedman2	DELEG	mandatory=key123 server-ipv4=10.53.0.2 key123
+delegunsupportedman2	DELEG	server-ipv4=10.53.0.2
+
+; delegparam, happy flow.
+delegparam		DELEG	include-delegparam=param.delegonly
+
+; delegparam with a wrong address, resolver gave up.
+delegparam2		DELEG	include-delegparam=youwontfindme.delegonly
+
+; delegparam with few wrong addresses, but one valid, the resolver eventually
+; succeed.
+delegparam3		DELEG	include-delegparam=youwontfindme.delegonly,meneither.delegonly,param.delegips,iamsuchmessy.delegonly
