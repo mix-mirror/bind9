@@ -12,7 +12,7 @@
 import isctest
 
 
-def test_forward_only_deleg(ns2):
-    msg = isctest.query.create("a.foo.tld.", "A")
-    res = isctest.query.udp(msg, ns2.ip)
+def test_forward_only_deleg(ns4):
+    msg = isctest.query.create("a.foo.fwdonly.", "A")
+    res = isctest.query.udp(msg, ns4.ip)
     isctest.check.servfail(res)
