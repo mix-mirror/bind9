@@ -65,6 +65,10 @@ typedef enum {
 	DNS_DELEGTYPE_NS_NAMES
 } dns_deleg_type_t;
 
+/*
+ * TODO: {addresses, names} could actually be an union?
+ * Maybe not, only because of RPZ NSDNAME which could rely on it. See #6355)
+ */
 struct dns_deleg {
 	isc_netaddrlist_t addresses;
 	dns_namelist_t	  names;

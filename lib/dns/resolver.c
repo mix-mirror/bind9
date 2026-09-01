@@ -979,6 +979,7 @@ typedef struct respctx {
 
 	dns_name_t *ns_name;	     /* NS name */
 	dns_rdataset_t *ns_rdataset; /* NS rdataset */
+	dns_rdataset_t *deleg_rdataset;
 
 	dns_name_t *soa_name; /* SOA name in a negative answer */
 
@@ -2706,8 +2707,11 @@ resquery_send(resquery_t *query) {
 			}
 
 			query->ednsversion = version;
+
+			uint32_t extflags = DNS_MESSAGEEXTFLAG_DO |
+					    DNS_MESSAGEEXTFLAG_DE;
 			dns_message_ednsinit(fctx->qmessage, version, udpsize,
-					     DNS_MESSAGEEXTFLAG_DO, 0);
+					     extflags, 0);
 
 			if (reqnsid) {
 				dns_ednsopt_t option = {
@@ -6917,10 +6921,6 @@ cache_delegglue6(fetchctx_t *fctx, dns_message_t *message,
 /*
  * Cache the parent-side NS RRset in a delegation.
  *
- * Currently the resolver doesn't support DELEG, but when it does, this
- * code will need to bail out if there is already a delegset from DELEG
- * RRset in this zonecut. (See DELEG draft 5.1.3.)
- *
  * Maybe the simplest way to enforce it could be to pass a boolean flag
  * `nooverride` to `dns_deleg_writeset()` so it simply detaches the
  * `delegset` if there is already a `delegset` at this zonecut in the DB.
@@ -7031,6 +7031,205 @@ cache_delegns(fetchctx_t *fctx, const dns_name_t *name, dns_rdataset_t *nsset,
 	}
 	dns_delegset_detach(&delegset);
 
+	return result;
+}
+
+/*
+ * Find out which DelegInfo type this is, and go through each element, building
+ * a dns_deleg_t.
+ *
+ * Returns either ISC_R_SUCCESS (everything went well) or DNS_R_UNKNOWN (either
+ * because of an unsupported DelegInfoKey or because there wasn't any data where
+ * it was expected, the deleg is empty). If too many entry are found (more than
+ * the resolver would process anyway), return ISC_R_QUOTA.
+ */
+static isc_result_t
+deleginfo_to_deleg(isc_region_t *deleginfo, dns_delegset_t *delegset,
+		   size_t *count, size_t max) {
+	uint16_t key, len;
+	dns_deleg_t *deleg = NULL;
+
+	/*
+	 * Extract DelegInfoKey and length of DelegInfoValue.
+	 */
+	key = (deleginfo->base[0] << 8) | deleginfo->base[1];
+	isc_region_consume(deleginfo, 2);
+
+	len = (deleginfo->base[0] << 8) | deleginfo->base[1];
+	isc_region_consume(deleginfo, 2);
+
+	INSIST(deleginfo->length >= len);
+
+	/*
+	 * Allocate a dedicated dns_deleg_t that will hold the DelegInfoValue
+	 * list and go through each element of the list, adding those into the
+	 * dns_deleg_t instance.
+	 *
+	 * To keep things simple for now, each DelegInfo lives in a separate
+	 * dns_deleg_t list (because this function will be called first for
+	 * server-ipv4 then a second time for server-ipv6). However we could put
+	 * server-ipv4 and server-ipv6 in the same dns_deleg_t.
+	 */
+	switch (key) {
+	case dns_rdata_delegkey_mandatory:
+		/*
+		 * TODO: see 5.1.2  part 2. We must check each value here and
+		 * they must be key that should be present later. Otherwise we
+		 * must ignore this RR. But also, if it contains a DelegInfoKey
+		 * which is unknown, we must return a code right now which makes
+		 * the caller to ignore the whole RR.
+		 *
+		 * This function probably needs a pointer to a struct containing
+		 * boolean for each key that must be present, then return. Then,
+		 * next call to `deleginfo_to_debug()` would check confirm for
+		 * each boolean if the key is actually there or not, and we
+		 * would ignore the whole RR if this is not the case.
+		 */
+		break;
+	case dns_rdata_delegkey_ipv4:
+	case dns_rdata_delegkey_ipv6:
+		dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_ADDRESSES,
+					&deleg);
+
+		while (deleginfo->length > 0) {
+			isc_netaddr_t addr = {};
+			size_t addrlen;
+
+			if (key == dns_rdata_delegkey_ipv4) {
+				addr.family = AF_INET;
+				addrlen = sizeof(addr.type.in);
+			} else {
+				addr.family = AF_INET6;
+				addrlen = sizeof(addr.type.in6);
+			}
+
+			INSIST(deleginfo->length >= addrlen);
+
+			/*
+			 * The address is already in the network-byte order in
+			 * the DELEG RR, so we can just copy it.
+			 */
+			memmove(&addr.type, deleginfo->base, addrlen);
+			isc_region_consume(deleginfo, addrlen);
+
+			dns_delegset_addaddr(delegset, deleg, &addr);
+
+			if (++(*count) >= max) {
+				return ISC_R_QUOTA;
+			}
+		}
+		break;
+	case dns_rdata_delegkey_name:
+		dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_NAMES,
+					&deleg);
+		goto handlenamelist;
+	case dns_rdata_delegkey_include:
+		dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_PARAMS,
+					&deleg);
+	handlenamelist:
+		while (deleginfo->length > 0) {
+			dns_fixedname_t fname;
+			dns_name_t *name = dns_fixedname_initname(&fname);
+			isc_buffer_t b;
+
+			isc_buffer_init(&b, deleginfo->base, deleginfo->length);
+			isc_buffer_add(&b, deleginfo->length);
+			isc_buffer_setactive(&b, deleginfo->length);
+
+			RETERR(dns_name_fromwire(name, &b, 0, NULL));
+			isc_region_consume(deleginfo,
+					   isc_buffer_consumedlength(&b));
+
+			dns_delegset_addname(delegset, deleg, name);
+
+			if (++(*count) >= max) {
+				return ISC_R_QUOTA;
+			}
+		}
+		break;
+	default:
+		/*
+		 * We don't know this DelegInfoKey. If the `mandatory`
+		 * DelegInfoKey made it mandatory, we would have skipped the
+		 * whole RR. Otherwise, we just ignore it.
+		 */
+		break;
+	}
+
+	if (deleg == NULL ||
+	    (ISC_LIST_EMPTY(deleg->names) && ISC_LIST_EMPTY(deleg->addresses)))
+	{
+		if (deleg != NULL) {
+			/*
+			 * This is important to remove an empty deleg from the
+			 * delegset proactively, as this enable to figure out if
+			 * the whole DELEG RR actually have any data eventually,
+			 * or if we should entirely ignore it.
+			 */
+			dns_delegset_freedeleg(delegset, &deleg);
+		}
+		return DNS_R_UNKNOWN;
+	}
+
+	return ISC_R_SUCCESS;
+}
+
+/*
+ * Go through each DelegInfo of the DelegInfos list.
+ */
+static isc_result_t
+delegrdata_to_delegset(dns_rdata_in_deleg_t *delegrd, dns_delegset_t *delegset,
+		       size_t *count, size_t max) {
+	isc_result_t result;
+
+	result = dns_rdata_in_deleg_first(delegrd);
+	while (result == ISC_R_SUCCESS) {
+		isc_region_t r;
+
+		dns_rdata_in_deleg_current(delegrd, &r);
+		result = deleginfo_to_deleg(&r, delegset, count, max);
+		RETERR(result == ISC_R_QUOTA ? ISC_R_SUCCESS : result);
+
+		result = dns_rdata_in_deleg_next(delegrd);
+	}
+
+	return ISC_R_SUCCESS;
+}
+
+static isc_result_t
+cache_deleg(respctx_t *rctx) {
+	isc_result_t result;
+	fetchctx_t *fctx = rctx->fctx;
+	dns_delegdb_t *delegdb = fctx->res->view->deleg;
+	dns_delegset_t *delegset = NULL;
+	dns_ttl_t ttl = rctx->deleg_rdataset->ttl;
+	size_t server_count = 0;
+	size_t max_servers = fctx->res->view->max_delegation_servers;
+
+	dns_delegset_allocset(delegdb, &delegset);
+	DNS_RDATASET_FOREACH(rctx->deleg_rdataset) {
+		dns_rdata_t rdata = DNS_RDATA_INIT;
+		dns_rdata_in_deleg_t delegrd;
+
+		dns_rdataset_current(rctx->deleg_rdataset, &rdata);
+		INSIST(rdata.type == dns_rdatatype_deleg);
+		dns_rdata_tostruct(&rdata, &delegrd, NULL);
+
+		result = delegrdata_to_delegset(&delegrd, delegset,
+						&server_count, max_servers);
+		if (result != ISC_R_SUCCESS) {
+			break;
+		}
+	}
+
+	if (result == ISC_R_SUCCESS && !ISC_LIST_EMPTY(delegset->delegs)) {
+		result = dns_delegset_insert(delegdb, rctx->ns_name, ttl,
+					     delegset);
+	} else {
+		FCTXTRACE("dropping empty DELEG RR");
+	}
+
+	dns_delegset_detach(&delegset);
 	return result;
 }
 
@@ -9308,6 +9507,52 @@ rctx_answer_none(respctx_t *rctx) {
 }
 
 /*
+ * TODO: rctx->ns_name should really be named `rctx->apex_name` or
+ * `rctx->zonecut` or `rctx_deleg_owner` or whathever which clearly says this is
+ * about the zone we get the referral to, and not a specific NS name. Especially
+ * since this is shared between DELEG and NS.
+ */
+static isc_result_t
+authority_deleg_ns(respctx_t *rctx, dns_name_t *zonecut,
+		   dns_rdataset_t *rdataset, dns_rdatatype_t type) {
+	fetchctx_t *fctx = rctx->fctx;
+
+	if (name_external(zonecut, type, rctx)) {
+		/*
+		 * The RR is ignored.
+		 */
+		return ISC_R_SUCCESS;
+	}
+
+	/*
+	 * Only one set of NS and DELEG is allowed.
+	 */
+	if (rctx->ns_name != NULL && zonecut != rctx->ns_name) {
+		log_formerr(fctx, "multiple NS/DELEG RRsets in "
+				  "authority section");
+		rctx->result = DNS_R_FORMERR;
+		return ISC_R_COMPLETE;
+	}
+
+	switch (type) {
+	case dns_rdatatype_ns:
+		INSIST(rctx->ns_rdataset == NULL);
+		rctx->ns_rdataset = rdataset;
+		break;
+	case dns_rdatatype_deleg:
+		INSIST(rctx->deleg_rdataset == NULL);
+		rctx->deleg_rdataset = rdataset;
+		break;
+	default:
+		UNREACHABLE();
+	}
+
+	rctx->ns_name = zonecut;
+
+	return ISC_R_SUCCESS;
+}
+
+/*
  * rctx_authority_negative():
  * Scan the authority section of a negative answer, handling
  * NS and SOA records. (Note that this function does *not* handle
@@ -9350,30 +9595,10 @@ rctx_authority_negative(respctx_t *rctx) {
 			}
 
 			switch (type) {
+			case dns_rdatatype_deleg:
 			case dns_rdatatype_ns:
-				if (name_external(name, dns_rdatatype_ns, rctx))
-				{
-					continue;
-				}
-				/*
-				 * NS or RRSIG NS.
-				 *
-				 * Only one set of NS RRs is allowed.
-				 */
-				if (rdataset->type == dns_rdatatype_ns) {
-					if (rctx->ns_name != NULL &&
-					    name != rctx->ns_name)
-					{
-						log_formerr(
-							fctx,
-							"multiple NS RRsets in "
-							"authority section");
-						rctx->result = DNS_R_FORMERR;
-						return ISC_R_COMPLETE;
-					}
-					rctx->ns_name = name;
-					rctx->ns_rdataset = rdataset;
-				}
+				RETERR(authority_deleg_ns(rctx, name, rdataset,
+							  type));
 				break;
 			case dns_rdatatype_soa:
 				/*
@@ -9581,6 +9806,8 @@ rctx_referral(respctx_t *rctx) {
 	}
 
 	/*
+	 * TODO: A DELEG-based delegation currently skip DNSSEC validation.
+	 *
 	 * An NS-based delegation can be cached immediately (i.e. there is no
 	 * DNSSEC validation).
 	 *
@@ -9588,9 +9815,14 @@ rctx_referral(respctx_t *rctx) {
 	 * not expired in the DB. Might be worth a warning? This should never
 	 * happen.
 	 */
-	INSIST(rctx->ns_rdataset != NULL);
-	(void)cache_delegns(rctx->fctx, rctx->ns_name, rctx->ns_rdataset,
-			    rctx->query->rmessage);
+	if (rctx->deleg_rdataset != NULL) {
+		RETERR(cache_deleg(rctx));
+	} else if (rctx->ns_rdataset != NULL) {
+		RETERR(cache_delegns(rctx->fctx, rctx->ns_name,
+				     rctx->ns_rdataset, rctx->query->rmessage));
+	} else {
+		UNREACHABLE();
+	}
 
 	/*
 	 * Set the current query domain to the referral name.

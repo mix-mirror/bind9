@@ -32,25 +32,18 @@ enum deleg_encoding {
 	deleg_keylist
 };
 
-enum deleg_type {
-	delegkey_mandatory = 0,
-	delegkey_ipv4 = 1,
-	delegkey_ipv6 = 2,
-	delegkey_name = 3,
-	delegkey_include = 4,
-};
-
 static const struct {
 	const char *name;
 	unsigned int value;
 	enum deleg_encoding encoding;
 	bool initial; /* Part of the first defined set of encodings. */
 } direg[] = {
-	{ "mandatory", delegkey_mandatory, deleg_keylist, true },
-	{ "server-ipv4", delegkey_ipv4, deleg_ipv4, true },
-	{ "server-ipv6", delegkey_ipv6, deleg_ipv6, true },
-	{ "server-name", delegkey_name, deleg_namelist, true },
-	{ "include-delegparam", delegkey_include, deleg_namelist, true },
+	{ "mandatory", dns_rdata_delegkey_mandatory, deleg_keylist, true },
+	{ "server-ipv4", dns_rdata_delegkey_ipv4, deleg_ipv4, true },
+	{ "server-ipv6", dns_rdata_delegkey_ipv6, deleg_ipv6, true },
+	{ "server-name", dns_rdata_delegkey_name, deleg_namelist, true },
+	{ "include-delegparam", dns_rdata_delegkey_include, deleg_namelist,
+	  true },
 };
 
 static int
@@ -408,9 +401,9 @@ deleg_sortkeys(isc_buffer_t *target, unsigned int used) {
 			}
 
 			/* Both name and address are present. */
-			if ((have_address && key1 == delegkey_name) ||
-			    (have_name &&
-			     (key1 == delegkey_ipv4 || key1 == delegkey_ipv6)))
+			if ((have_address && key1 == dns_rdata_delegkey_name) ||
+			    (have_name && (key1 == dns_rdata_delegkey_ipv4 ||
+					   key1 == dns_rdata_delegkey_ipv6)))
 			{
 				return DNS_R_DISALLOWED;
 			}
@@ -506,11 +499,11 @@ deleg_sortkeys(isc_buffer_t *target, unsigned int used) {
 		 * Remember if this was a name or address field.
 		 */
 		switch (key1) {
-		case delegkey_ipv4:
-		case delegkey_ipv6:
+		case dns_rdata_delegkey_ipv4:
+		case dns_rdata_delegkey_ipv6:
 			have_address = true;
 			break;
-		case delegkey_name:
+		case dns_rdata_delegkey_name:
 			have_name = true;
 			break;
 		default:
