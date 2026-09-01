@@ -338,6 +338,14 @@ struct fctxcount {
 	isc_stdtime_t logged;
 };
 
+typedef struct delegparam_fetch delegparam_fetch_t;
+typedef ISC_LIST(delegparam_fetch_t) delegparam_fetchlist_t;
+struct delegparam_fetch {
+	dns_fetch_t *fetch;
+	dns_rdataset_t rdataset; /* Unused, required by the createfetch API. */
+	ISC_LINK(delegparam_fetch_t) link;
+};
+
 struct fetchctx {
 	/*% Not locked. */
 	unsigned int magic;
@@ -522,6 +530,11 @@ struct fetchctx {
 	isc_counter_t *nvalidations;
 	isc_counter_t *nfails;
 	fetchctx_t *parent;
+
+	/*
+	 * Keep track of parallel pending fetches for include-delegparam.
+	 */
+	delegparam_fetchlist_t delegparamfetches;
 
 	struct cds_lfht_node ht_node;
 	struct rcu_head rcu_head;
@@ -715,6 +728,9 @@ add_bad(fetchctx_t *fctx, dns_message_t *rmessage, dns_adbaddrinfo_t *addrinfo,
 static void
 findnoqname(fetchctx_t *fctx, dns_message_t *message, dns_name_t *name,
 	    dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset);
+static isc_result_t
+fctx_getaddresses(fetchctx_t *fctx, dns_delegset_t *delegset,
+		  size_t *processed);
 
 #define fctx_failure_detach(fctxp, result)                              \
 	REQUIRE(result != ISC_R_SUCCESS);                               \
@@ -979,6 +995,7 @@ typedef struct respctx {
 
 	dns_name_t *ns_name;	     /* NS name */
 	dns_rdataset_t *ns_rdataset; /* NS rdataset */
+	dns_rdataset_t *deleg_rdataset;
 
 	dns_name_t *soa_name; /* SOA name in a negative answer */
 
@@ -1887,6 +1904,10 @@ fctx__done(fetchctx_t *fctx, isc_result_t result, const char *func,
 		dns_validator_cancel(validator);
 	}
 
+	ISC_LIST_FOREACH(fctx->delegparamfetches, dpfetch, link) {
+		dns_resolver_cancelfetch(dpfetch->fetch);
+	}
+
 	if (fctx->nsfetch != NULL) {
 		dns_resolver_cancelfetch(fctx->nsfetch);
 	}
@@ -2706,8 +2727,11 @@ resquery_send(resquery_t *query) {
 			}
 
 			query->ednsversion = version;
+
+			uint32_t extflags = DNS_MESSAGEEXTFLAG_DO |
+					    DNS_MESSAGEEXTFLAG_DE;
 			dns_message_ednsinit(fctx->qmessage, version, udpsize,
-					     DNS_MESSAGEEXTFLAG_DO, 0);
+					     extflags, 0);
 
 			if (reqnsid) {
 				dns_ednsopt_t option = {
@@ -3850,8 +3874,155 @@ fctx_getaddresses_alternate(fetchctx_t *fctx, isc_stdtime_t now,
 	}
 }
 
+static void
+clear_resp(dns_fetchresponse_t **respp) {
+	dns_fetchresponse_t *resp = *respp;
+
+	if (resp == NULL) {
+		return;
+	}
+
+	if (resp->node != NULL) {
+		dns_db_detachnode(&resp->node);
+	}
+	if (resp->cache != NULL) {
+		dns_db_detach(&resp->cache);
+	}
+	dns_rdataset_cleanup(resp->rdataset);
+	dns_rdataset_cleanup(resp->sigrdataset);
+
+	dns_resolver_freefresp(respp);
+}
+
+static void
+resume_delegparam(void *arg) {
+	dns_fetchresponse_t *resp = (dns_fetchresponse_t *)arg;
+	fetchctx_t *fctx = resp->arg;
+	bool try = false;
+
+	REQUIRE(VALID_FCTX(fctx));
+	REQUIRE(fctx->tid == isc_tid());
+
+	FCTXTRACE("resume_delegparam");
+
+	LOCK(&fctx->lock);
+	try = !SHUTTINGDOWN(fctx) && ADDRWAIT(fctx) &&
+	      resp->result == ISC_R_SUCCESS;
+	UNLOCK(&fctx->lock);
+
+	if (try) {
+		FCTX_ATTR_CLR(fctx, FCTX_ATTR_ADDRWAIT);
+		fctx_try(fctx, true);
+	}
+
+	ISC_LIST_FOREACH(fctx->delegparamfetches, dpfetch, link) {
+		if (dpfetch->fetch == resp->fetch) {
+			ISC_LIST_UNLINK(fctx->delegparamfetches, dpfetch, link);
+			dns_resolver_destroyfetch(&dpfetch->fetch);
+			dns_rdataset_cleanup(&dpfetch->rdataset);
+			isc_mem_put(fctx->mctx, dpfetch, sizeof(*dpfetch));
+			break;
+		}
+	}
+	clear_resp(&resp);
+	fetchctx_detach(&fctx);
+}
+
 static isc_result_t
-fctx_getaddresses(fetchctx_t *fctx, dns_delegset_t *delegset) {
+fctx_getparams(fetchctx_t *fctx, dns_delegset_t *delegset, isc_stdtime_t now,
+	       unsigned int stdoptions, size_t fetches_allowed,
+	       size_t *processed) {
+	isc_result_t result = ISC_R_SUCCESS;
+	size_t name_processed = 0;
+	dns_name_t *paramnames[MAX_DELEGATION_SERVERS];
+	size_t max = fctx->res->view->max_delegation_servers;
+
+	/*
+	 * Handle the include-delegparam=dpname case. If `dpname/DELEGPARAM` is
+	 * found in the local cache, convert it into a temporary
+	 * `dns_delegset_t` and recurse `fctx_getaddresses()` with the same
+	 * fetch context but this temporary delegset. This enable to fill the
+	 * current fetchcontext SLIST with the delegparam values (and
+	 * potentially, create sub-resolvers if it contains NS names or yet
+	 * another delegparam).
+	 *
+	 * If `dpname/DELEGPARAM` is not found, then starts a sub-resolution
+	 * and, if the main fctx is still alive when it's done, get the newly
+	 * cached `dpname/DELEGPARAM` and recurse `fctx_getaddresses()`.
+	 *
+	 * Note that contrary to `fctx_getaddresses_nameservers()`, `paramnames`
+	 * can't be a `static thread_local` variable because of this flow can be
+	 * re-entrant in case of chained include-delegparam. This is probably
+	 * okay though: this is a slow path (because of the
+	 * include_delegparam indirections) which potentially requires multiple
+	 * fetches.
+	 */
+
+	shufflenames(fctx, delegset, DNS_DELEGTYPE_DELEG_PARAMS,
+		     fetches_allowed, paramnames, &name_processed);
+
+	for (size_t i = 0; i < name_processed; i++) {
+		dns_rdataset_t rdataset;
+		dns_fixedname_t fname;
+		dns_name_t *foundname = dns_fixedname_initname(&fname);
+
+		dns_rdataset_init(&rdataset);
+		result = dns_view_find(fctx->res->view, paramnames[i],
+				       dns_rdatatype_delegparam, now,
+				       stdoptions, delegset->staticstub, NULL,
+				       foundname, &rdataset, NULL);
+
+		if (result != ISC_R_SUCCESS) {
+			delegparam_fetch_t *dpfetch =
+				isc_mem_get(fctx->mctx, sizeof(*dpfetch));
+
+			*dpfetch = (delegparam_fetch_t){
+				.fetch = NULL,
+				.rdataset = DNS_RDATASET_INIT,
+				.link = ISC_LINK_INITIALIZER
+			};
+
+			fetchctx_ref(fctx);
+			result = dns_resolver_createfetch(
+				fctx->res, paramnames[i],
+				dns_rdatatype_delegparam, NULL, NULL, NULL,
+				NULL, 0, stdoptions, 0, fctx->qc, fctx->gqc,
+				fctx, fctx->loop, resume_delegparam, fctx,
+				&fctx->edectx, &dpfetch->rdataset, NULL,
+				&dpfetch->fetch);
+
+			if (result == ISC_R_SUCCESS) {
+				ISC_LIST_APPEND(fctx->delegparamfetches,
+						dpfetch, link);
+			} else {
+				fetchctx_unref(fctx);
+				isc_mem_put(fctx->mctx, dpfetch,
+					    sizeof(*dpfetch));
+			}
+
+			if (++(*processed) >= max) {
+				break;
+			}
+		} else {
+			dns_delegset_t *tdelegset = NULL;
+
+			dns_delegset_fromrdataset(fctx->res->view->deleg,
+						  &rdataset, max, &tdelegset);
+			dns_rdataset_cleanup(&rdataset);
+
+			RETERR(fctx_getaddresses(fctx, tdelegset, processed));
+			if (*processed >= max) {
+				break;
+			}
+		}
+	}
+
+	return result;
+}
+
+static isc_result_t
+fctx_getaddresses(fetchctx_t *fctx, dns_delegset_t *delegset,
+		  size_t *processed) {
 	isc_result_t result;
 	dns_resolver_t *res;
 	isc_stdtime_t now;
@@ -3860,13 +4031,8 @@ fctx_getaddresses(fetchctx_t *fctx, dns_delegset_t *delegset) {
 	bool need_alternate = false;
 	bool all_spilled = false;
 	size_t fetches_allowed = 0;
-	size_t ns_processed = 0;
 
 	FCTXTRACE5("getaddresses", "fctx->depth=", fctx->depth);
-
-	if (delegset == NULL) {
-		delegset = fctx->delegset;
-	}
 
 	/*
 	 * Don't pound on remote servers.  (Failsafe!)
@@ -3973,13 +4139,13 @@ fctx_getaddresses(fetchctx_t *fctx, dns_delegset_t *delegset) {
 	 * */
 
 	fctx_getaddresses_addresses(fctx, delegset, now, stdoptions,
-				    &all_spilled, &ns_processed);
+				    &all_spilled, processed);
 
 	fetches_allowed = fctx_getaddresses_allowed(fctx);
 
 	result = fctx_getaddresses_nameservers(fctx, delegset, now, stdoptions,
 					       fetches_allowed, &need_alternate,
-					       &all_spilled, &ns_processed);
+					       &all_spilled, processed);
 	if (result == DNS_R_CONTINUE && fetches_allowed == 0) {
 		/*
 		 * We have no addresses and we haven't allowed any
@@ -3988,8 +4154,11 @@ fctx_getaddresses(fetchctx_t *fctx, dns_delegset_t *delegset) {
 		 */
 		(void)fctx_getaddresses_nameservers(
 			fctx, delegset, now, stdoptions, 1, &need_alternate,
-			&all_spilled, &ns_processed);
+			&all_spilled, processed);
 	}
+
+	result = fctx_getparams(fctx, delegset, now, stdoptions,
+				fetches_allowed, processed);
 
 	/*
 	 * Don't start alternate fetch if we just started one above.
@@ -4024,11 +4193,12 @@ out:
 	/*
 	 * We've got no addresses.
 	 */
-	if (fctx->pending_running > 0) {
+	if (fctx->pending_running > 0 ||
+	    !ISC_LIST_EMPTY(fctx->delegparamfetches))
+	{
 		/*
-		 * We're fetching the addresses, but don't have
-		 * any yet.   Tell the caller to wait for an
-		 * answer.
+		 * We're fetching the addresses/DELEGPARAM, but don't have
+		 * any yet. Tell the caller to wait for an answer.
 		 */
 		return DNS_R_WAIT;
 	}
@@ -4392,10 +4562,12 @@ fctx_try(fetchctx_t *fctx, bool retrying) {
 	}
 
 	if (addrinfo == NULL) {
+		size_t processed = 0;
+
 		/* We have no more addresses.  Start over. */
 		fctx_cancelqueries(fctx, true, false);
 		fctx_cleanup(fctx);
-		result = fctx_getaddresses(fctx, NULL);
+		result = fctx_getaddresses(fctx, fctx->delegset, &processed);
 		switch (result) {
 		case ISC_R_SUCCESS:
 			break;
@@ -4508,26 +4680,6 @@ done:
 	if (result != ISC_R_SUCCESS) {
 		fctx_failure_detach(&fctx, result);
 	}
-}
-
-static void
-clear_resp(dns_fetchresponse_t **respp) {
-	dns_fetchresponse_t *resp = *respp;
-
-	if (resp == NULL) {
-		return;
-	}
-
-	if (resp->node != NULL) {
-		dns_db_detachnode(&resp->node);
-	}
-	if (resp->cache != NULL) {
-		dns_db_detach(&resp->cache);
-	}
-	dns_rdataset_cleanup(resp->rdataset);
-	dns_rdataset_cleanup(resp->sigrdataset);
-
-	dns_resolver_freefresp(respp);
 }
 
 static void
@@ -6931,10 +7083,6 @@ cache_delegglue6(fetchctx_t *fctx, dns_message_t *message,
 /*
  * Cache the parent-side NS RRset in a delegation.
  *
- * Currently the resolver doesn't support DELEG, but when it does, this
- * code will need to bail out if there is already a delegset from DELEG
- * RRset in this zonecut. (See DELEG draft 5.1.3.)
- *
  * Maybe the simplest way to enforce it could be to pass a boolean flag
  * `nooverride` to `dns_deleg_writeset()` so it simply detaches the
  * `delegset` if there is already a `delegset` at this zonecut in the DB.
@@ -7042,6 +7190,29 @@ cache_delegns(fetchctx_t *fctx, const dns_name_t *name, dns_rdataset_t *nsset,
 		result = ISC_R_FAILURE;
 	} else {
 		result = dns_delegset_insert(delegdb, name, ttl, delegset);
+	}
+	dns_delegset_detach(&delegset);
+
+	return result;
+}
+
+static isc_result_t
+cache_deleg(respctx_t *rctx) {
+	isc_result_t result = ISC_R_SUCCESS;
+	fetchctx_t *fctx = rctx->fctx;
+	dns_delegdb_t *delegdb = fctx->res->view->deleg;
+	dns_delegset_t *delegset = NULL;
+	dns_ttl_t ttl = rctx->deleg_rdataset->ttl;
+	dns_view_t *view = fctx->res->view;
+	size_t max_servers = view->max_delegation_servers;
+
+	FCTXTRACE("cache_deleg");
+
+	dns_delegset_fromrdataset(view->deleg, rctx->deleg_rdataset,
+				  max_servers, &delegset);
+	if (!ISC_LIST_EMPTY(delegset->delegs)) {
+		result = dns_delegset_insert(delegdb, rctx->ns_name, ttl,
+					     delegset);
 	}
 	dns_delegset_detach(&delegset);
 
@@ -9323,6 +9494,52 @@ rctx_answer_none(respctx_t *rctx) {
 }
 
 /*
+ * TODO: rctx->ns_name should really be named `rctx->apex_name` or
+ * `rctx->zonecut` or `rctx_deleg_owner` or whathever which clearly says this is
+ * about the zone we get the referral to, and not a specific NS name. Especially
+ * since this is shared between DELEG and NS.
+ */
+static isc_result_t
+authority_deleg_ns(respctx_t *rctx, dns_name_t *zonecut,
+		   dns_rdataset_t *rdataset, dns_rdatatype_t type) {
+	fetchctx_t *fctx = rctx->fctx;
+
+	if (name_external(zonecut, type, rctx)) {
+		/*
+		 * The RR is ignored.
+		 */
+		return ISC_R_SUCCESS;
+	}
+
+	/*
+	 * Only one set of NS and DELEG is allowed.
+	 */
+	if (rctx->ns_name != NULL && zonecut != rctx->ns_name) {
+		log_formerr(fctx, "multiple NS/DELEG RRsets in "
+				  "authority section");
+		rctx->result = DNS_R_FORMERR;
+		return ISC_R_COMPLETE;
+	}
+
+	switch (type) {
+	case dns_rdatatype_ns:
+		INSIST(rctx->ns_rdataset == NULL);
+		rctx->ns_rdataset = rdataset;
+		break;
+	case dns_rdatatype_deleg:
+		INSIST(rctx->deleg_rdataset == NULL);
+		rctx->deleg_rdataset = rdataset;
+		break;
+	default:
+		UNREACHABLE();
+	}
+
+	rctx->ns_name = zonecut;
+
+	return ISC_R_SUCCESS;
+}
+
+/*
  * rctx_authority_negative():
  * Scan the authority section of a negative answer, handling
  * NS and SOA records. (Note that this function does *not* handle
@@ -9365,30 +9582,10 @@ rctx_authority_negative(respctx_t *rctx) {
 			}
 
 			switch (type) {
+			case dns_rdatatype_deleg:
 			case dns_rdatatype_ns:
-				if (name_external(name, dns_rdatatype_ns, rctx))
-				{
-					continue;
-				}
-				/*
-				 * NS or RRSIG NS.
-				 *
-				 * Only one set of NS RRs is allowed.
-				 */
-				if (rdataset->type == dns_rdatatype_ns) {
-					if (rctx->ns_name != NULL &&
-					    name != rctx->ns_name)
-					{
-						log_formerr(
-							fctx,
-							"multiple NS RRsets in "
-							"authority section");
-						rctx->result = DNS_R_FORMERR;
-						return ISC_R_COMPLETE;
-					}
-					rctx->ns_name = name;
-					rctx->ns_rdataset = rdataset;
-				}
+				RETERR(authority_deleg_ns(rctx, name, rdataset,
+							  type));
 				break;
 			case dns_rdatatype_soa:
 				/*
@@ -9596,16 +9793,28 @@ rctx_referral(respctx_t *rctx) {
 	}
 
 	/*
+	 * TODO: Add DNSSEC-validation support for DELEG-based delegation.
+	 *
 	 * An NS-based delegation can be cached immediately (i.e. there is no
 	 * DNSSEC validation).
-	 *
-	 * For now we don't do anything if the delegation already exists and is
-	 * not expired in the DB. Might be worth a warning? This should never
-	 * happen.
 	 */
-	INSIST(rctx->ns_rdataset != NULL);
-	(void)cache_delegns(rctx->fctx, rctx->ns_name, rctx->ns_rdataset,
-			    rctx->query->rmessage);
+	if (rctx->deleg_rdataset != NULL) {
+		result = cache_deleg(rctx);
+	} else if (rctx->ns_rdataset != NULL) {
+		result = cache_delegns(rctx->fctx, rctx->ns_name,
+				       rctx->ns_rdataset,
+				       rctx->query->rmessage);
+	} else {
+		UNREACHABLE();
+	}
+
+	/*
+	 * The delegation already exists and is not expired, it is ignored.
+	 */
+	if (result != ISC_R_SUCCESS) {
+		FCTXTRACE2("Ignoring delegation %s.",
+			   isc_result_totext(result));
+	}
 
 	/*
 	 * Set the current query domain to the referral name.
