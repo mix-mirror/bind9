@@ -20,6 +20,14 @@
 #include <isc/region.h>
 #include <isc/result.h>
 
+typedef enum {
+	dns_rdata_delegkey_mandatory = 0,
+	dns_rdata_delegkey_ipv4 = 1,
+	dns_rdata_delegkey_ipv6 = 2,
+	dns_rdata_delegkey_name = 3,
+	dns_rdata_delegkey_include = 4,
+} dns_rdata_deleg_type_t;
+
 typedef struct dns_rdata_in_deleg {
 	dns_rdatacommon_t common;
 	isc_mem_t *mctx;
