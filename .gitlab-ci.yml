@@ -1517,7 +1517,7 @@ docker-image:
       --build-arg "BIND9_VERSION=${VERSION}"
       --build-context "tarball=build/meson-dist"
       --tag "bind9:${VERSION}"
-      "https://gitlab.isc.org/isc-projects/bind9-docker.git#v${VERSION%.*}"
+      "https://gitlab.isc.org/isc-projects/bind9-docker.git#mnowak/ci-build-from-source-9.21"
     - docker run --rm "bind9:${VERSION}" -V
   needs:
     - job: tarball-create
