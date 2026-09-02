@@ -479,7 +479,6 @@ from isctest.asyncserver import (
     DnsResponseSend,
     DomainHandler,
     QueryContext,
-    ResponseAction,
 )
 
 
@@ -490,7 +489,7 @@ class TruncateHandler(DomainHandler):
 
     async def get_responses(
         self, qctx: QueryContext
-    ) -> AsyncGenerator[ResponseAction, None]:
+    ) -> AsyncGenerator[DnsResponseSend, None]:
         qctx.response.flags |= dns.flags.TC
         yield DnsResponseSend(qctx.response)
 

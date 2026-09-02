@@ -52,12 +52,7 @@ import dns.rdatatype
 import dns.rdtypes.ANY.NSEC3
 import dns.rrset
 
-from isctest.asyncserver import (
-    DnsResponseSend,
-    DomainHandler,
-    QueryContext,
-    ResponseAction,
-)
+from isctest.asyncserver import DnsResponseSend, DomainHandler, QueryContext
 
 ZONE_NAME = "attacker.rrsig-labels-signer."
 PARENT_ZONE_NAME = "rrsig-labels-signer."
@@ -212,7 +207,7 @@ class AttackerZoneHandler(DomainHandler):
 
     async def get_responses(
         self, qctx: QueryContext
-    ) -> AsyncGenerator[ResponseAction, None]:
+    ) -> AsyncGenerator[DnsResponseSend, None]:
         qtype = qctx.qtype
         qname = qctx.qname
         response = qctx.prepare_new_response(with_zone_data=False)

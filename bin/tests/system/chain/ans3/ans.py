@@ -25,7 +25,6 @@ from isctest.asyncserver import (
     DnsResponseSend,
     DomainHandler,
     QueryContext,
-    ResponseAction,
 )
 
 
@@ -51,7 +50,7 @@ class CnameThenDnameHandler(DomainHandler):
 
     async def get_responses(
         self, qctx: QueryContext
-    ) -> AsyncGenerator[ResponseAction, None]:
+    ) -> AsyncGenerator[DnsResponseSend, None]:
         assert qctx.zone
         assert qctx.zone.origin
 
@@ -78,7 +77,7 @@ class Cve202125215(DomainHandler):
 
     async def get_responses(
         self, qctx: QueryContext
-    ) -> AsyncGenerator[ResponseAction, None]:
+    ) -> AsyncGenerator[DnsResponseSend, None]:
         assert qctx.zone
         assert qctx.zone.origin
 

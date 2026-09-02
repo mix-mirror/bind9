@@ -18,12 +18,7 @@ import abc
 import dns.rcode
 import dns.rdatatype
 
-from isctest.asyncserver import (
-    DnsResponseSend,
-    DomainHandler,
-    QueryContext,
-    ResponseAction,
-)
+from isctest.asyncserver import DnsResponseSend, DomainHandler, QueryContext
 
 
 def log_query(qctx: QueryContext) -> None:
@@ -49,7 +44,7 @@ class QueryLogHandler(DomainHandler):
 
     async def get_responses(
         self, qctx: QueryContext
-    ) -> AsyncGenerator[ResponseAction, None]:
+    ) -> AsyncGenerator[DnsResponseSend, None]:
         log_query(qctx)
         yield DnsResponseSend(qctx.response)
 
@@ -69,7 +64,7 @@ class EntRcodeChanger(DomainHandler):
 
     async def get_responses(
         self, qctx: QueryContext
-    ) -> AsyncGenerator[ResponseAction, None]:
+    ) -> AsyncGenerator[DnsResponseSend, None]:
         assert qctx.zone
 
         log_query(qctx)
@@ -99,6 +94,6 @@ class DelayedResponseHandler(DomainHandler):
 
     async def get_responses(
         self, qctx: QueryContext
-    ) -> AsyncGenerator[ResponseAction, None]:
+    ) -> AsyncGenerator[DnsResponseSend, None]:
         log_query(qctx)
         yield DnsResponseSend(qctx.response, delay=self.delay)
