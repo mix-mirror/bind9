@@ -3111,7 +3111,7 @@ parse_args(bool is_batchfile, bool config_only, int argc, char **argv) {
 	rv = argv;
 	for (rc--, rv++; rc > 0; rc--, rv++) {
 		debug("main parsing %s", rv[0]);
-		if (isc_string_hasprefix(rv[0], "%")) {
+		if (rv[0][0] == '%') {
 			break;
 		}
 		if (rv[0][0] == '@') {
