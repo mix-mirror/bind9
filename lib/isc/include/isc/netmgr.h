@@ -855,13 +855,15 @@ isc_nm_http_set_endpoints(isc_nmsocket_t	  *listener,
 
 isc_result_t
 isc_nm_listenquic(uint32_t workers, isc_sockaddr_t *iface,
-		  isc_quic_server_options_t *options,
+		  isc_quic_conn_options_t *options,
 		  isc_nm_accept_cb_t accept_cb, void *accept_cb_arg,
-		  isc_nmsocket_t **sockp);
+		  isc_nm_quiclistener_t **listenerp);
+
+ISC_REFCOUNT_DECL(isc_nm_quiclistener);
 
 void
 isc_nm_quicconnect(isc_sockaddr_t *local, isc_sockaddr_t *peer,
-		   isc_quic_client_options_t *options, isc_nm_cb_t cb,
+		   isc_quic_conn_options_t *options, isc_nm_cb_t cb,
 		   void *cbarg);
 
 #endif /* HAVE_LIBNGTCP2 */

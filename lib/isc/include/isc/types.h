@@ -59,6 +59,7 @@ typedef struct isc_netprefix isc_netprefix_t;	       /*%< Net Prefix */
 typedef struct isc_nmsocket  isc_nmsocket_t; /*%< Network manager socket */
 typedef struct isc_nmhandle  isc_nmhandle_t; /*%< Network manager handle */
 typedef struct isc_nm_proxyudplistener isc_nm_proxyudplistener_t;
+typedef struct isc_nm_quiclistener     isc_nm_quiclistener_t;
 typedef struct isc_nm_udplistener      isc_nm_udplistener_t;
 typedef struct isc_portset	       isc_portset_t;	  /*%< Port Set */
 typedef struct isc_quota	       isc_quota_t;	  /*%< Quota */
@@ -118,8 +119,7 @@ typedef enum isc_nmsocket_type {
 	isc_nm_tlslistener,
 	isc_nm_httplistener,
 	isc_nm_streamdnslistener,
-	isc_nm_proxystreamlistener,
-	isc_nm_quiclistener
+	isc_nm_proxystreamlistener
 } isc_nmsocket_type;
 
 typedef isc_nmsocket_type isc_nmsocket_type_t;
