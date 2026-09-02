@@ -169,7 +169,6 @@ ns_client_transport_type(const ns_client_t *client) {
 	case isc_nm_tcplistener:
 		return DNS_TRANSPORT_TCP;
 	case isc_nm_quicsocket:
-	case isc_nm_quiclistener:
 		return DNS_TRANSPORT_QUIC;
 	case isc_nm_maxsocket:
 	case isc_nm_nonesocket:

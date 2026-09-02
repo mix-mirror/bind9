@@ -565,9 +565,7 @@ struct isc_nmsocket {
 #ifdef HAVE_LIBNGTCP2
 	struct {
 		isc_quic_router_t *router;
-		union {
-			isc_quic_server_options_t *server;
-		} options;
+		isc_quic_conn_options_t *options;
 	} quic;
 #endif /* HAVE_LIBNGTCP2 */
 
