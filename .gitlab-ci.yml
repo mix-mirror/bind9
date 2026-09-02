@@ -1488,6 +1488,7 @@ system:gcc:tarball:
   after_script:
     - cd bind-*
     - *display_pytest_failures
+    - *oom_check
   needs:
     - job: gcc:tarball
       artifacts: true
