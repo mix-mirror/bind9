@@ -13,11 +13,10 @@ information regarding copyright ownership.
 
 from collections.abc import AsyncGenerator, Callable, Collection, Coroutine, Sequence
 from dataclasses import dataclass, field
-from typing import Any, cast, final
+from typing import Any, Literal, cast, final
 
 import abc
 import asyncio
-import contextlib
 import copy
 import enum
 import functools
@@ -34,7 +33,6 @@ import dns.message
 import dns.name
 import dns.node
 import dns.rcode
-import dns.rdata
 import dns.rdataclass
 import dns.rdataset
 import dns.rdatatype
@@ -929,7 +927,7 @@ class ForwarderHandler(ResponseHandler):
         )
 
         try:
-            message = _DnsMessageWithTsigDisabled.from_wire(response.result())
+            message = dns.message.from_wire(response.result(), keyring=False)
             yield DnsResponseSend(message, acknowledge_hand_rolled_response=True)
         except dns.exception.DNSException:
             logging.warning(
@@ -1061,71 +1059,6 @@ class _ZoneTree:
         return node.zone if node != self._root else None
 
 
-class _DnsMessageWithTsigDisabled(dns.message.Message):
-    """
-    A wrapper for `dns.message.Message` that works around a dnspython bug
-    causing exceptions to be raised when `make_response()` or `to_wire()` are
-    called for a message created using `dns.message.from_wire(keyring=False)`.
-
-    See https://github.com/rthalley/dnspython/issues/1205 for more details.
-    """
-
-    class _DisableTsigHandling(contextlib.ContextDecorator):
-        def __init__(self, message: dns.message.Message | None = None) -> None:
-            self.original_tsig_sign = dns.tsig.sign
-            self.original_tsig_validate = dns.tsig.validate
-            if message:
-                self.tsig = message.tsig
-
-        def __enter__(self) -> None:
-            """
-            Override the `dns.tsig.sign` and `dns.tsig.validate` functions to prevent them
-            from failing on messages initialized with `dns.message.from_wire(keyring=False)`.
-            """
-
-            def sign(*_: Any, **__: Any) -> tuple[dns.rdata.Rdata, None]:
-                assert self.tsig
-                return self.tsig[0], None
-
-            def validate(*_: Any, **__: Any) -> None:
-                return None
-
-            dns.tsig.sign = sign
-            dns.tsig.validate = validate
-
-        def __exit__(self, *_: Any, **__: Any) -> None:
-            dns.tsig.sign = self.original_tsig_sign
-            dns.tsig.validate = self.original_tsig_validate
-
-    @classmethod
-    def from_wire(cls, wire: bytes) -> "_DnsMessageWithTsigDisabled":
-        with cls._DisableTsigHandling():
-            message = dns.message.from_wire(wire, keyring=False)
-            message.__class__ = _DnsMessageWithTsigDisabled
-
-        return cast(_DnsMessageWithTsigDisabled, message)
-
-    @property
-    def had_tsig(self) -> bool:
-        """
-        Override the `had_tsig()` method to always return False, to prevent
-        `make_response()` from crashing.
-        """
-        return False
-
-    def to_wire(self, *args: Any, **kwargs: Any) -> bytes:
-        """
-        Override the `to_wire()` method to prevent it from trying to sign
-        the message with TSIG.
-        """
-        with self._DisableTsigHandling(self):
-            return super().to_wire(*args, **kwargs)
-
-
-class _NoKeyringType:
-    pass
-
-
 _ASYNCSERVER_RESPONSE_MARKER = "__is_asyncserver_response__"
 
 
@@ -1160,9 +1093,7 @@ class AsyncDnsServer(AsyncServer):
         /,
         default_rcode: dns.rcode.Rcode = dns.rcode.REFUSED,
         default_aa: bool = False,
-        keyring: (
-            dict[dns.name.Name, dns.tsig.Key] | None | _NoKeyringType
-        ) = _NoKeyringType(),
+        keyring: dict[dns.name.Name, dns.tsig.Key] | Literal[False] | None = None,
         acknowledge_manual_dname_handling: bool = False,
     ) -> None:
         super().__init__(self._handle_udp, self._handle_tcp, "ans.pid")
@@ -1513,23 +1444,15 @@ class AsyncDnsServer(AsyncServer):
 
     def _parse_message(self, wire: bytes) -> dns.message.Message:
         try:
-            if isinstance(self._keyring, _NoKeyringType):
-                keyring = None
-            else:
-                keyring = self._keyring
-            return dns.message.from_wire(wire, keyring=keyring)
+            return dns.message.from_wire(wire, keyring=self._keyring)
         except dns.message.UnknownTSIGKey as exc:
-            if isinstance(self._keyring, _NoKeyringType):
-                error = "TSIG-signed query received but no `keyring` was provided; "
-                error += "either provide a keyring (in which case the server will "
-                error += "ignore any TSIG-invalid queries), or set `keyring=None` "
-                error += "explicitly to disable TSIG validation altogether. "
-                error += "This requires some hacking around a dnspython bug, "
-                error += "so there may be unexpected side effects."
-                raise ValueError(error) from exc
-            if self._keyring is None:
-                return _DnsMessageWithTsigDisabled.from_wire(wire)
-            raise
+            if self._keyring is not None:
+                raise
+            error = "TSIG-signed query received but no `keyring` was provided; "
+            error += "either provide a keyring (in which case the server will "
+            error += "ignore any TSIG-invalid queries), or set `keyring=False` "
+            error += "to disable TSIG validation altogether."
+            raise ValueError(error) from exc
 
     async def _prepare_responses(
         self, qctx: QueryContext
