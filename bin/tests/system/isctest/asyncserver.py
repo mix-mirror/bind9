@@ -1313,16 +1313,26 @@ class _ZoneTree:
             node_from.children.remove(child)
             node_to.children.append(child)
 
+    def _find_best_zone_for_name(self, name: dns.name.Name) -> dns.zone.Zone | None:
+        """
+        Return the closest matching zone (if any) for the provided domain name.
+        """
+        node = self._find_best_match(name, self._root)
+        return node.zone if node != self._root else None
+
     def find_best_zone(
         self, name: dns.name.Name, qtype: dns.rdatatype.RdataType
     ) -> dns.zone.Zone | None:
         """
-        Return the closest matching zone (if any) for the domain name.
+        Return the zone (if any) from which to answer a <name, qtype> query.
         """
-        node = self._find_best_match(
-            name.parent() if qtype == dns.rdatatype.DS else name, self._root
-        )
-        return node.zone if node != self._root else None
+        if qtype == dns.rdatatype.DS and name != dns.name.root:
+            # A DS query (other than ./DS) should be answered from the parent
+            # side of the zone cut, but this server might not be hosting it.
+            if parent_zone := self._find_best_zone_for_name(name.parent()):
+                return parent_zone
+
+        return self._find_best_zone_for_name(name)
 
 
 class _DnsMessageWithTsigDisabled(dns.message.Message):
