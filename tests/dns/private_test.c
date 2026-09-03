@@ -163,6 +163,7 @@ ISC_RUN_TEST_IMPL(private_signing_totext) {
 		isc_result_t result;
 
 		if (testcases[i].alg <= 255) {
+			memset(output, 0, sizeof(output));
 			isc_buffer_init(&buf, output, sizeof(output));
 			make_signing(&testcases[i], &private, data, 5);
 			result = dns_private_totext(&private, &buf);
@@ -170,6 +171,7 @@ ISC_RUN_TEST_IMPL(private_signing_totext) {
 			assert_string_equal(output, testcases[i].result);
 		}
 
+		memset(output, 0, sizeof(output));
 		isc_buffer_init(&buf, output, sizeof(output));
 		make_signing(&testcases[i], &private, data, 7);
 		result = dns_private_totext(&private, &buf);
@@ -202,6 +204,7 @@ ISC_RUN_TEST_IMPL(private_nsec3_totext) {
 		isc_buffer_t buf;
 		isc_result_t result;
 
+		memset(output, 0, sizeof(output));
 		isc_buffer_init(&buf, output, sizeof(output));
 
 		make_nsec3(&testcases[i], &private, data, sizeof(data));
