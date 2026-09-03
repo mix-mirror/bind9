@@ -226,6 +226,17 @@ accept_cb(isc_nmhandle_t *handle, isc_result_t eresult, void *cbarg) {
 	return ISC_R_SUCCESS;
 }
 
+static isc_result_t
+accept_read_cb(isc_nmhandle_t *handle, isc_result_t eresult, void *cbarg) {
+	REQUIRE(handle != NULL);
+	REQUIRE(eresult == ISC_R_SUCCESS);
+	UNUSED(cbarg);
+
+	isc_nm_read(handle, read_cb, NULL);
+
+	return ISC_R_SUCCESS;
+}
+
 static void
 run_cb(void *arg ISC_ATTR_UNUSED) {
 	isc_result_t result;
@@ -278,7 +289,7 @@ run_cb(void *arg ISC_ATTR_UNUSED) {
 			.alpn = { doq_alpn, sizeof(doq_alpn) },
 		};
 		result = isc_nm_listenquic(ISC_NM_LISTEN_ALL, &sockaddr,
-					   &options, accept_cb, NULL,
+					   &options, accept_read_cb, NULL,
 					   &quic_listener);
 		break;
 #endif /* HAVE_LIBNGTCP2 */

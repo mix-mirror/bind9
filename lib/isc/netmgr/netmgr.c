@@ -715,6 +715,7 @@ isc___nmsocket_init(isc_nmsocket_t *sock, isc__networker_t *worker,
 	*sock = (isc_nmsocket_t){
 		.type = type,
 		.tid = worker->loop->tid,
+		.quic.streams = ISC_LIST_INITIALIZER,
 		.fd = -1,
 		.inactive_handles = ISC_LIST_INITIALIZER,
 		.result = ISC_R_UNSET,
@@ -888,6 +889,7 @@ isc___nmhandle_get(isc_nmsocket_t *sock, isc_sockaddr_t const *peer,
 	switch (sock->type) {
 	case isc_nm_udpsocket:
 	case isc_nm_proxyudpsocket:
+	case isc_nm_quicsocket:
 		if (!sock->client) {
 			break;
 		}
@@ -1742,6 +1744,11 @@ isc_nm_read(isc_nmhandle_t *handle, isc_nm_recv_cb_t cb, void *cbarg) {
 	case isc_nm_proxyudpsocket:
 		isc__nm_proxyudp_read(handle, cb, cbarg);
 		break;
+#ifdef HAVE_LIBNGTCP2
+	case isc_nm_quicsocket:
+		isc__nm_quic_read(handle, cb, cbarg);
+		break;
+#endif
 	default:
 		UNREACHABLE();
 	}
