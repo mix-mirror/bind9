@@ -3674,7 +3674,13 @@ ISC_RUN_TEST_IMPL(deleg) {
 				   "mandatory=server-ipv4 server-ipv4=1.2.3.4"),
 		TEXT_INVALID("mandatory=server-ipv6 server-ipv4=1.2.3.4"),
 		TEXT_INVALID("mandatory=server-ipv4 server-name=example."),
-		TEXT_INVALID("mandatory=mandatory"), TEXT_SENTINEL()
+		TEXT_INVALID("mandatory=mandatory"),
+		/* unknown keys, including key-only forms */
+		TEXT_VALID("key123=foo"), TEXT_VALID("key123"),
+		TEXT_VALID("mandatory=key123 key123=foo"),
+		TEXT_VALID("mandatory=key123 key123"),
+		TEXT_INVALID("mandatory=key1234 key123=foo"),
+		TEXT_INVALID("mandatory=key1234 key123"), TEXT_SENTINEL()
 	};
 	wire_ok_t wire_ok[] = { /* too short */
 				WIRE_INVALID(0x00, 0x00), WIRE_SENTINEL()

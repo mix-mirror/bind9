@@ -159,9 +159,12 @@ deleg_keyfromregion(isc_textregion_t *region, char sep, uint16_t *value,
 	/* Look for known key names.  */
 	for (i = 0; i < ARRAY_SIZE(direg); i++) {
 		size_t len = strlen(direg[i].name);
-		if (strncasecmp(region->base, direg[i].name, len) != 0 ||
-		    (region->base[len] != 0 && region->base[len] != sep))
-		{
+		if (strncasecmp(region->base, direg[i].name, len) != 0) {
+			continue;
+		}
+
+		INSIST(region->length >= len);
+		if (region->length != len && region->base[len] != sep) {
 			continue;
 		}
 		isc_textregion_consume(region, len);
@@ -548,7 +551,8 @@ generic_fromtext_in_deleg(ARGS_FROMTEXT) {
 			return deleg_sortkeys(target, used);
 		}
 
-		if (token.type != isc_tokentype_qvpair &&
+		if (token.type != isc_tokentype_string && /* key only */
+		    token.type != isc_tokentype_qvpair &&
 		    token.type != isc_tokentype_vpair)
 		{
 			RETTOK(DNS_R_SYNTAX);
