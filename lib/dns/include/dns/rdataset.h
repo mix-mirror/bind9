@@ -240,6 +240,14 @@ struct dns_rdataset {
 			dns_rdatatype_t	 noqnametype;
 			dns_dbnode_t	*node;
 		} rdlist;
+
+		/*
+		 * A synthetic CNAME rdataset owns its single target name.
+		 */
+		struct {
+			dns_synthetic_cname_t *data;
+			bool		       iter;
+		} synthetic_cname;
 	};
 };
 
@@ -346,6 +354,26 @@ dns_rdataset_makequestion(dns_rdataset_t *rdataset, dns_rdataclass_t rdclass,
  *
  * Ensures:
  *\li	'rdataset' is a valid, associated, question rdataset.
+ */
+
+void
+dns_rdataset_make_synthetic_cname(dns_rdataset_t *rdataset, isc_mem_t *mctx,
+				  dns_rdataclass_t rdclass, dns_ttl_t ttl,
+				  const dns_name_t *target);
+/*%<
+ * Make 'rdataset' a valid, associated, singleton CNAME rdataset containing
+ * an owned copy of 'target'.
+ *
+ * Requires:
+ *\li	'rdataset' is a valid, disassociated rdataset.
+ *
+ *\li	'mctx' is valid.
+ *
+ *\li	'target' is a valid absolute name.
+ *
+ * Ensures:
+ *\li	'rdataset' remains valid until it is disassociated, independently of
+ *	the lifetime of 'target'.
  */
 
 #define dns_rdataset_clone(source, target) \

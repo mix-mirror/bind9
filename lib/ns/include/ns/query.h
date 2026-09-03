@@ -101,7 +101,6 @@ struct ns_query {
 			bool recursionok     : 1;
 			bool cacheok	     : 1;
 			bool partialanswer   : 1;
-			bool namebufused     : 1;
 			bool recursing	     : 1;
 			bool queryokvalid    : 1;
 			bool queryok	     : 1;
@@ -129,12 +128,11 @@ struct ns_query {
 	unsigned int	fetchoptions;
 	dns_db_t       *gluedb;
 	uintptr_t authdb_id; /* Database identity; not an attached reference. */
-	dns_zone_t	*authzone;
-	bool		 isreferral;
-	isc_mutex_t	 fetchlock;
-	ns_hookasync_t	*hookasyncctx;
-	dns_rpz_st_t	*rpz_st;
-	isc_bufferlist_t namebufs;
+	dns_zone_t     *authzone;
+	bool		isreferral;
+	isc_mutex_t	fetchlock;
+	ns_hookasync_t *hookasyncctx;
+	dns_rpz_st_t   *rpz_st;
 	ISC_LIST(ns_dbversion_t) activeversions;
 	ISC_LIST(ns_dbversion_t) freeversions;
 	dns_rdataset_t *dns64_aaaa;
@@ -177,9 +175,8 @@ typedef struct query_ctx query_ctx_t;
 
 /* query context structure */
 struct query_ctx {
-	isc_buffer_t *dbuf;	     /* name buffer */
-	dns_name_t   *fname;	     /* lookup/response name */
-	dns_name_t   *tname;	     /* temporary name, used
+	dns_name_t *fname;	     /* lookup/response name */
+	dns_name_t *tname;	     /* temporary name, used
 				      * when processing ANY
 				      * queries */
 	dns_rdataset_t *rdataset;    /* found rdataset */

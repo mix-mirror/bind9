@@ -31,6 +31,7 @@
 #include <dns/name.h>
 #include <dns/rdataclass.h>
 #include <dns/rdatalist.h>
+#include <dns/rdata.h>
 #include <dns/rdataset.h>
 #include <dns/rdatastruct.h>
 #include <dns/rdatatype.h>
@@ -255,9 +256,47 @@ ISC_RUN_TEST_IMPL(noqname) {
 	check_noqname(NULL, 0, dns_rdatatype_nsec, ISC_R_NOTFOUND);
 }
 
+ISC_RUN_TEST_IMPL(synthetic_cname) {
+	dns_fixedname_t ftarget, fexpected;
+	dns_name_t *target = dns_fixedname_name(&ftarget);
+	dns_name_t *expected = dns_fixedname_name(&fexpected);
+	dns_rdataset_t rdataset = DNS_RDATASET_INIT;
+	dns_rdataset_t clone = DNS_RDATASET_INIT;
+	dns_rdata_t rdata = DNS_RDATA_INIT;
+	isc_region_t actual, wanted;
+
+	UNUSED(state);
+
+	dns_test_namefromstring("Target.Example.", &ftarget);
+	dns_test_namefromstring("Target.Example.", &fexpected);
+
+	dns_rdataset_make_synthetic_cname(&rdataset, isc_g_mctx,
+					  dns_rdataclass_in, 300, target);
+	assert_true(dns_rdataset_isassociated(&rdataset));
+	assert_int_equal(rdataset.type, dns_rdatatype_cname);
+	assert_int_equal(rdataset.ttl, 300);
+	assert_int_equal(dns_rdataset_count(&rdataset), 1);
+
+	dns_rdataset_clone(&rdataset, &clone);
+	dns_rdataset_disassociate(&rdataset);
+
+	/* The source name and rdataset may go away before the clone is read. */
+	dns_test_namefromstring("replacement.invalid.", &ftarget);
+	assert_int_equal(dns_rdataset_first(&clone), ISC_R_SUCCESS);
+	dns_rdataset_current(&clone, &rdata);
+	dns_rdata_toregion(&rdata, &actual);
+	dns_name_toregion(expected, &wanted);
+	assert_int_equal(actual.length, wanted.length);
+	assert_memory_equal(actual.base, wanted.base, wanted.length);
+	assert_int_equal(dns_rdataset_next(&clone), ISC_R_NOMORE);
+
+	dns_rdataset_disassociate(&clone);
+}
+
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY(trimttl)
 ISC_TEST_ENTRY(noqname)
+ISC_TEST_ENTRY(synthetic_cname)
 ISC_TEST_LIST_END
 
 ISC_TEST_MAIN

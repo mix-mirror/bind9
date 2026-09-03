@@ -159,6 +159,7 @@ typedef struct dns_slabheader	   dns_slabheader_t;
 typedef struct dns_ssurule	   dns_ssurule_t;
 typedef struct dns_ssutable	   dns_ssutable_t;
 typedef struct dns_stats	   dns_stats_t;
+typedef struct dns_synthetic_cname dns_synthetic_cname_t;
 typedef uint32_t		   dns_rdatastatstype_t;
 typedef struct dns_tkeyctx	   dns_tkeyctx_t;
 typedef struct dns_transport	   dns_transport_t;
