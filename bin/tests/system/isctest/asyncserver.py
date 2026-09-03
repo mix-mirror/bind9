@@ -1593,7 +1593,7 @@ class AsyncDnsServer(AsyncServer):
             self._keys[key.zone].append(key)
 
     def _load_key(self, key_file_path: pathlib.Path) -> SigningKey:
-        zone = dns.name.from_text(key_file_path.stem.split("+")[0].lstrip("K"))
+        zone = dns.name.from_text(key_file_path.stem.split("+")[0].removeprefix("K"))
         zone_key = isctest.zone.FileZoneKey(key_file_path.stem, key_file_path.parent)
         dnskey = zone_key.dnskey
         private_key = zone_key.private_key
