@@ -1936,6 +1936,12 @@ class AsyncDnsServer(AsyncServer):
             if glue_aaaa:
                 qctx.response.additional.append(glue_aaaa)
 
+    def _name_exists(self, qctx: QueryContext, name: dns.name.Name) -> bool:
+        assert qctx.zone
+        return qctx.zone.get_node(name) is not None or any(
+            n.is_subdomain(name) and n != name for n in qctx.zone.nodes
+        )
+
     def _ent_response(self, qctx: QueryContext) -> bool:
         assert qctx.zone
         assert qctx.zone.origin
@@ -1944,9 +1950,7 @@ class AsyncDnsServer(AsyncServer):
         assert qctx.soa
 
         qctx.node = qctx.zone.get_node(qctx.current_qname)
-        if qctx.node or not any(
-            n for n in qctx.zone.nodes if n.is_subdomain(qctx.current_qname)
-        ):
+        if qctx.node or not self._name_exists(qctx, qctx.current_qname):
             return False
 
         qctx.response.set_rcode(dns.rcode.NOERROR)
@@ -1960,7 +1964,7 @@ class AsyncDnsServer(AsyncServer):
         assert qctx.zone
 
         closest_encloser = qctx.current_qname.parent()
-        while not qctx.zone.get_node(closest_encloser):
+        while not self._name_exists(qctx, closest_encloser):
             closest_encloser = closest_encloser.parent()
 
         wildcard_owner = dns.name.from_text("*", origin=closest_encloser)
