@@ -69,7 +69,7 @@ class WildcardAdditionalHandler(QnameQtypeHandler):
         yield DnsResponseSend(qctx.response)
 
 
-class ParentWildcardlHandler(QnameQtypeHandler):
+class ParentWildcardHandler(QnameQtypeHandler):
     qnames = ["q.f045.test."]
     qtypes = [dns.rdatatype.MX]
 
@@ -84,7 +84,7 @@ def main() -> None:
     server = AsyncDnsServer()
     server.install_response_handlers(
         WildcardAdditionalHandler(),
-        ParentWildcardlHandler(),
+        ParentWildcardHandler(),
     )
     server.run()
 
