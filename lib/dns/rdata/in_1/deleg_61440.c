@@ -75,8 +75,16 @@ deleg_sortkeylist(isc_buffer_t *target, unsigned int used) {
 	return ISC_R_SUCCESS;
 }
 
+typedef struct {
+	bool ipv4;
+	bool ipv6;
+	bool name;
+	bool include;
+} missing_delegkey_t;
+
 static isc_result_t
-deleg_validate(uint16_t key, isc_region_t *region) {
+deleg_validate(uint16_t key, isc_region_t *region,
+	       missing_delegkey_t *missing) {
 	size_t i, j;
 
 	for (i = 0; i < ARRAY_SIZE(direg); i++) {
@@ -88,6 +96,9 @@ deleg_validate(uint16_t key, isc_region_t *region) {
 				{
 					return DNS_R_FORMERR;
 				}
+				if (missing != NULL) {
+					missing->ipv4 = false;
+				}
 				break;
 			case deleg_ipv6:
 				if ((region->length % 16) != 0 ||
@@ -95,28 +106,67 @@ deleg_validate(uint16_t key, isc_region_t *region) {
 				{
 					return DNS_R_FORMERR;
 				}
+				if (missing != NULL) {
+					missing->ipv6 = false;
+				}
 				break;
-			case deleg_namelist:
+			case deleg_namelist: {
 				if (region->length == 0) {
 					return DNS_R_FORMERR;
 				}
+				if (missing != NULL) {
+					switch (key) {
+					case dns_rdata_delegkey_name:
+						missing->name = false;
+						break;
+					case dns_rdata_delegkey_include:
+						missing->include = false;
+						break;
+					default:
+						break;
+					}
+				}
 				break;
+			}
 			case deleg_keylist: {
+				uint16_t mfirst = true, prev, cur;
+
 				if ((region->length % 2) != 0 ||
 				    region->length == 0)
 				{
 					return DNS_R_FORMERR;
 				}
-				/* In order? */
+
 				while (region->length >= 4) {
-					if (region->base[0] > region->base[2] ||
-					    (region->base[0] ==
-						     region->base[2] &&
-					     region->base[1] >=
-						     region->base[3]))
-					{
-						return DNS_R_FORMERR;
+					cur = uint16_fromregion(region);
+
+					if (!mfirst) {
+						if (prev >= cur) {
+							return DNS_R_FORMERR;
+						}
 					}
+					mfirst = false;
+
+					if (missing != NULL) {
+						switch (cur) {
+						case dns_rdata_delegkey_ipv4:
+							missing->ipv4 = true;
+							break;
+						case dns_rdata_delegkey_ipv6:
+							missing->ipv6 = true;
+							break;
+						case dns_rdata_delegkey_name:
+							missing->name = true;
+							break;
+						case dns_rdata_delegkey_include:
+							missing->include = true;
+							break;
+						default:
+							break;
+						}
+					}
+
+					prev = cur;
 					isc_region_consume(region, 2);
 				}
 				break;
@@ -340,7 +390,7 @@ deleg_fromtext(isc_textregion_t *region, const dns_name_t *origin,
 		/* Sanity check keyXXXXX form. */
 		keyregion.base = isc_buffer_used(target);
 		keyregion.length = 0;
-		return deleg_validate(key, &keyregion);
+		return deleg_validate(key, &keyregion, NULL);
 	}
 	sb = *target;
 	RETERR(uint16_tobuffer(0, target)); /* dummy length */
@@ -350,7 +400,7 @@ deleg_fromtext(isc_textregion_t *region, const dns_name_t *origin,
 	/* Sanity check keyXXXXX form. */
 	keyregion.base = isc_buffer_used(&sb);
 	keyregion.length = len;
-	return deleg_validate(key, &keyregion);
+	return deleg_validate(key, &keyregion, NULL);
 }
 
 static isc_result_t
@@ -732,6 +782,7 @@ generic_fromwire_in_deleg(ARGS_FROMWIRE) {
 	isc_region_t region;
 	bool first = true;
 	uint16_t lastkey = 0;
+	missing_delegkey_t missing = {};
 
 	UNUSED(type);
 	UNUSED(rdclass);
@@ -788,10 +839,14 @@ generic_fromwire_in_deleg(ARGS_FROMWIRE) {
 
 		keyregion = region;
 		keyregion.length = len;
-		RETERR(deleg_validate(key, &keyregion));
+		RETERR(deleg_validate(key, &keyregion, &missing));
 		RETERR(mem_tobuffer(target, region.base, len));
 		isc_region_consume(&region, len);
 		isc_buffer_forward(source, len + 4);
+	}
+
+	if (memcmp(&missing, &(missing_delegkey_t){}, sizeof(missing))) {
+		return DNS_R_FORMERR;
 	}
 
 	return ISC_R_SUCCESS;
