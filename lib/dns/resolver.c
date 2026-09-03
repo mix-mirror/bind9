@@ -7020,7 +7020,7 @@ cache_delegns(fetchctx_t *fctx, const dns_name_t *name, dns_rdataset_t *nsset,
 			 * so this is actually a DNS_DELEGTYPE_NS_NAMES.
 			 */
 			deleg->type = DNS_DELEGTYPE_NS_NAMES;
-			dns_delegset_addns(delegset, deleg, &ns.name);
+			dns_delegset_addname(delegset, deleg, &ns.name);
 		}
 	}
 

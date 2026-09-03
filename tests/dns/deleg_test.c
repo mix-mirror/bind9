@@ -87,13 +87,13 @@ rundelegtest(isc_job_cb testcb) {
 }
 
 static void
-addnamedeleg(const char *addrstr, dns_delegset_t *delegset, dns_deleg_t *deleg,
-	     void (*fn)(dns_delegset_t *, dns_deleg_t *, const dns_name_t *)) {
+addnamedeleg(const char *addrstr, dns_delegset_t *delegset,
+	     dns_deleg_t *deleg) {
 	dns_fixedname_t fname;
 	dns_name_t *name = dns_fixedname_initname(&fname);
 
 	dns_name_fromstring(name, addrstr, NULL, 0, NULL);
-	fn(delegset, deleg, name);
+	dns_delegset_addname(delegset, deleg, name);
 }
 
 static void
@@ -192,7 +192,7 @@ basictests(ISC_ATTR_UNUSED void *arg) {
 	dns_delegset_allocset(db, &delegset);
 
 	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_NAMES, &deleg);
-	addnamedeleg("ns.foo.", delegset, deleg, dns_delegset_addns);
+	addnamedeleg("ns.foo.", delegset, deleg);
 	deleg = NULL;
 
 	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_NS_GLUES, &deleg);
@@ -202,7 +202,7 @@ basictests(ISC_ATTR_UNUSED void *arg) {
 
 	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_NS_NAMES, &deleg);
 	assert_non_null(deleg);
-	addnamedeleg("ns.example.", delegset, deleg, dns_delegset_addns);
+	addnamedeleg("ns.example.", delegset, deleg);
 	deleg = NULL;
 	writedb(db, "foo.", 30, &delegset, true);
 
@@ -219,8 +219,8 @@ basictests(ISC_ATTR_UNUSED void *arg) {
 	dns_delegset_allocset(db, &delegset);
 
 	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_NS_NAMES, &deleg);
-	addnamedeleg("ns.bar.foo.", delegset, deleg, dns_delegset_addns);
-	addnamedeleg("ns2.bar.foo.", delegset, deleg, dns_delegset_addns);
+	addnamedeleg("ns.bar.foo.", delegset, deleg);
+	addnamedeleg("ns2.bar.foo.", delegset, deleg);
 	deleg = NULL;
 
 	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_NS_GLUES, &deleg);
@@ -236,10 +236,8 @@ basictests(ISC_ATTR_UNUSED void *arg) {
 	deleg = NULL;
 
 	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_PARAMS, &deleg);
-	addnamedeleg("delegns.gee.", delegset, deleg,
-		     dns_delegset_adddelegparam);
-	addnamedeleg("delegns2.gee.", delegset, deleg,
-		     dns_delegset_adddelegparam);
+	addnamedeleg("delegns.gee.", delegset, deleg);
+	addnamedeleg("delegns2.gee.", delegset, deleg);
 	deleg = NULL;
 
 	writedb(db, "bar.foo.", 25, &delegset, true);
@@ -257,7 +255,7 @@ basictests(ISC_ATTR_UNUSED void *arg) {
 	dns_delegset_allocset(db, &delegset);
 
 	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_NAMES, &deleg);
-	addnamedeleg("ns.bar.stuff.", delegset, deleg, dns_delegset_addns);
+	addnamedeleg("ns.bar.stuff.", delegset, deleg);
 	deleg = NULL;
 
 	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_NS_GLUES, &deleg);
@@ -288,7 +286,7 @@ basictests(ISC_ATTR_UNUSED void *arg) {
 	dns_delegset_allocset(db, &delegset);
 
 	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_NAMES, &deleg);
-	addnamedeleg("ns.bar.stuff.", delegset, deleg, dns_delegset_addns);
+	addnamedeleg("ns.bar.stuff.", delegset, deleg);
 	deleg = NULL;
 
 	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_NS_GLUES, &deleg);
@@ -304,8 +302,7 @@ basictests(ISC_ATTR_UNUSED void *arg) {
 	dns_delegset_allocset(db, &delegset);
 
 	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_NAMES, &deleg);
-	addnamedeleg("wontbeindb.bar.stuff.", delegset, deleg,
-		     dns_delegset_addns);
+	addnamedeleg("wontbeindb.bar.stuff.", delegset, deleg);
 	deleg = NULL;
 
 	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_ADDRESSES,
@@ -388,7 +385,7 @@ ttltests(ISC_ATTR_UNUSED void *arg) {
 	dns_delegset_allocset(db, &delegset);
 
 	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_NAMES, &deleg);
-	addnamedeleg("ns.bar.stuff.", delegset, deleg, dns_delegset_addns);
+	addnamedeleg("ns.bar.stuff.", delegset, deleg);
 	deleg = NULL;
 
 	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_ADDRESSES,
@@ -415,7 +412,7 @@ ttltests(ISC_ATTR_UNUSED void *arg) {
 	dns_delegset_allocset(db, &delegset);
 
 	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_NAMES, &deleg);
-	addnamedeleg("ns.gee.bar.stuff.", delegset, deleg, dns_delegset_addns);
+	addnamedeleg("ns.gee.bar.stuff.", delegset, deleg);
 	deleg = NULL;
 
 	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_ADDRESSES,
@@ -438,7 +435,7 @@ ttltests(ISC_ATTR_UNUSED void *arg) {
 	dns_delegset_allocset(db, &delegset);
 
 	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_NAMES, &deleg);
-	addnamedeleg("ns.gee.", delegset, deleg, dns_delegset_addns);
+	addnamedeleg("ns.gee.", delegset, deleg);
 	deleg = NULL;
 
 	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_ADDRESSES,
@@ -784,7 +781,7 @@ longnametests(ISC_ATTR_UNUSED void *arg) {
 		     "\037\037\037\037\037\037\037\037\037\037\037\037\037\037"
 		     "\037\037\037\037\037\037\037\037\037\037\037\037\037\037"
 		     "\037\037\037\037\037.",
-		     delegset, deleg, dns_delegset_addns);
+		     delegset, deleg);
 	writedb(db,
 		"\037\037\037\037\037\037\037\037\037\037\037\037\037\037"
 		"\037\037\037\037\037\037\037\037\037\037\037\037\037\037"

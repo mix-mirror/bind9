@@ -455,36 +455,21 @@ dns_delegset_addaddr(dns_delegset_t *delegset, dns_deleg_t *deleg,
 	ISC_LIST_APPEND(deleg->addresses, addrlink, link);
 }
 
-static void
-addname(dns_delegset_t *delegset, dns_namelist_t *list,
-	const dns_name_t *name) {
+void
+dns_delegset_addname(dns_delegset_t *delegset, dns_deleg_t *deleg,
+		     const dns_name_t *name) {
 	dns_name_t *clone = NULL;
 
 	REQUIRE(DNS_DELEGSET_VALID(delegset));
 	REQUIRE(DNS_NAME_VALID(name));
+	REQUIRE(deleg->type == DNS_DELEGTYPE_NS_NAMES ||
+		deleg->type == DNS_DELEGTYPE_DELEG_NAMES ||
+		deleg->type == DNS_DELEGTYPE_DELEG_PARAMS);
 
 	clone = isc_mem_get(delegset->mctx, sizeof(*clone));
 	dns_name_init(clone);
 	dns_name_dup(name, delegset->mctx, clone);
-	ISC_LIST_APPEND(*list, clone, link);
-}
-
-void
-dns_delegset_adddelegparam(dns_delegset_t *delegset, dns_deleg_t *deleg,
-			   const dns_name_t *name) {
-	REQUIRE(deleg != NULL);
-	REQUIRE(deleg->type == DNS_DELEGTYPE_DELEG_PARAMS);
-	addname(delegset, &deleg->names, name);
-}
-
-void
-dns_delegset_addns(dns_delegset_t *delegset, dns_deleg_t *deleg,
-		   const dns_name_t *name) {
-	REQUIRE(deleg != NULL);
-
-	REQUIRE(deleg->type == DNS_DELEGTYPE_DELEG_NAMES ||
-		deleg->type == DNS_DELEGTYPE_NS_NAMES);
-	addname(delegset, &deleg->names, name);
+	ISC_LIST_APPEND(deleg->names, clone, link);
 }
 
 static size_t
@@ -938,7 +923,7 @@ dns_delegset_fromnsrdataset(isc_mem_t *mctx, dns_rdataset_t *rdataset,
 
 		dns_rdataset_current(rdataset, &rdata);
 		dns_rdata_tostruct(&rdata, &ns, NULL);
-		dns_delegset_addns(delegset, deleg, &ns.name);
+		dns_delegset_addname(delegset, deleg, &ns.name);
 	}
 
 	*delegsetp = delegset;
@@ -972,7 +957,7 @@ dns_delegset_copy(dns_delegset_t *src, dns_delegdb_t *db,
 		}
 
 		ISC_LIST_FOREACH(srcdeleg->names, name, link) {
-			addname(delegset, &deleg->names, name);
+			dns_delegset_addname(delegset, deleg, name);
 		}
 	}
 
