@@ -21,7 +21,7 @@ from collections.abc import (
     Sequence,
 )
 from dataclasses import dataclass, field
-from typing import Any, cast
+from typing import Any, cast, final
 
 import abc
 import asyncio
@@ -521,6 +521,7 @@ class NonExistenceProver(abc.ABC):
             self._qctx.response.authority.append(rrsig)
 
 
+@final
 class NsecNonExistenceProver(NonExistenceProver):
 
     proof_rdatatype = dns.rdatatype.NSEC
