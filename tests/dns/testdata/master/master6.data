@@ -31,3 +31,5 @@ secure2	3600 in	 DNSKEY (
 		/7YMt8VUkA8/8UCszBBT7XAJ3OFjiMO8mvxrZZFzvwJlPBQ1
 		oFq/TNZlSe+N )
 
+; Unpadded key data makes the base64 decoder read and unget EOL.
+unsupported 3600 IN DNSKEY 257 3 255 AAAA ; inline comment
