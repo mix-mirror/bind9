@@ -476,10 +476,14 @@ class NonExistenceProver(abc.ABC):
         self, name: dns.name.Name
     ) -> tuple[dns.name.Name, dns.name.Name]:
         names = [name, name.parent()]
-        while not self._zone.get_node(names[-1]):
+        while not self._is_usable_encloser(names[-1]):
             names.append(names[-1].parent())
 
         return names[-1], names[-2]
+
+    @abc.abstractmethod
+    def _is_usable_encloser(self, name: dns.name.Name) -> bool:
+        raise NotImplementedError
 
     @property
     def _wildcard_for_closest_encloser(self) -> dns.name.Name:
