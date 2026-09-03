@@ -1903,6 +1903,26 @@ maybe_update_recordsandsize(bool add, qpz_version_t *version,
 	RWUNLOCK(&version->rwlock, isc_rwlocktype_write);
 }
 
+static void
+resign_replace(qpzonedb_t *qpdb, qpznode_t *node, qpz_version_t *version,
+	       dns_vecheader_t *newheader,
+	       dns_vecheader_t *oldheader DNS__DB_FLARG) {
+	isc_result_t result = ISC_R_NOTFOUND;
+
+	LOCK(&qpdb->heap->lock);
+	if (newheader != NULL) {
+		resign_register(qpdb->heap, node, newheader);
+	}
+	if (oldheader != NULL) {
+		result = resign_unregister(qpdb->heap, node, oldheader);
+	}
+	UNLOCK(&qpdb->heap->lock);
+	if (result == ISC_R_SUCCESS) {
+		resign_rollback(qpdb, node, version,
+				oldheader DNS__DB_FLARG_PASS);
+	}
+}
+
 static isc_result_t
 add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
     qpz_version_t *version, dns_vecheader_t *newheader, unsigned int options,
@@ -2055,18 +2075,8 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 			dns_vecheader_unref(header);
 		} else {
 			if (RESIGN(newheader)) {
-				isc_result_t unregister_result;
-
-				LOCK(&qpdb->heap->lock);
-				resign_register(qpdb->heap, node, newheader);
-				unregister_result = resign_unregister(
-					qpdb->heap, node, header);
-				UNLOCK(&qpdb->heap->lock);
-				if (unregister_result == ISC_R_SUCCESS) {
-					resign_rollback(
-						qpdb, node, version,
-						header DNS__DB_FLARG_PASS);
-				}
+				resign_replace(qpdb, node, version, newheader,
+					       header);
 			}
 
 			ISC_SLIST_PREPEND(foundtop->headers, newheader,
@@ -2092,17 +2102,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 		}
 
 		if (RESIGN(newheader)) {
-			isc_result_t unregister_result;
-
-			LOCK(&qpdb->heap->lock);
-			resign_register(qpdb->heap, node, newheader);
-			unregister_result = resign_unregister(qpdb->heap, node,
-							      header);
-			UNLOCK(&qpdb->heap->lock);
-			if (unregister_result == ISC_R_SUCCESS) {
-				resign_rollback(qpdb, node, version,
-						header DNS__DB_FLARG_PASS);
-			}
+			resign_replace(qpdb, node, version, newheader, header);
 		}
 
 		if (foundtop != NULL) {
@@ -5111,15 +5111,8 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 
 		node->dirty = true;
 		changed->dirty = true;
-		isc_result_t unregister_result;
 
-		LOCK(&qpdb->heap->lock);
-		unregister_result = resign_unregister(qpdb->heap, node, header);
-		UNLOCK(&qpdb->heap->lock);
-		if (unregister_result == ISC_R_SUCCESS) {
-			resign_rollback(qpdb, node, version,
-					header DNS__DB_FLARG_PASS);
-		}
+		resign_replace(qpdb, node, version, NULL, header);
 	} else {
 		/*
 		 * The rdataset doesn't exist, so we don't need to do anything
