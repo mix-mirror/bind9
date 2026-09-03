@@ -359,7 +359,7 @@ class QueryContext:
         assert self.zone.origin
 
         if not key:
-            keys = self.keys[self.zone.origin]
+            keys = self.keys.get(self.zone.origin)
             assert keys
             key = keys[0]
 
