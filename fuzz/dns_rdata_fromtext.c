@@ -19,6 +19,7 @@
 #include <isc/commandline.h>
 #include <isc/lex.h>
 #include <isc/mem.h>
+#include <isc/parseint.h>
 #include <isc/string.h>
 #include <isc/util.h>
 
@@ -40,9 +41,6 @@ LLVMFuzzerInitialize(int *argc, char ***argv) {
 	return 0;
 }
 
-/* following code was copied from named-rrchecker */
-isc_lexspecials_t specials = { ['('] = 1, [')'] = 1, ['"'] = 1 };
-
 int
 LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	isc_mem_t *mctx = NULL;
@@ -52,7 +50,7 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	isc_token_t token;
 
 	isc_result_t result;
-	unsigned int options = 0;
+	uint32_t number;
 	dns_rdatatype_t rdtype;
 	dns_rdataclass_t rdclass;
 
@@ -68,18 +66,11 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	isc_buffer_add(&inbuf, size);
 	isc_buffer_setactive(&inbuf, size);
 
-	isc_lex_create(mctx, 256, &lex);
-
-	/*
-	 * Set up to lex DNS master file.
-	 */
-	isc_lex_setspecials(lex, specials);
-	options = ISC_LEXOPT_EOL;
-	isc_lex_setcomments(lex, ISC_LEXCOMMENT_DNSMASTERFILE);
+	CHECK(isc_lex_create_dns_master(mctx, 256, &lex));
 
 	RUNTIME_CHECK(isc_lex_openbuffer(lex, &inbuf) == ISC_R_SUCCESS);
 
-	CHECK(isc_lex_gettoken(lex, options | ISC_LEXOPT_NUMBER, &token));
+	CHECK(isc_lex_next(lex, &token));
 	if (token.type == isc_tokentype_eof) {
 		goto cleanup;
 	}
@@ -89,18 +80,19 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	/*
 	 * Get class.
 	 */
-	if (token.type == isc_tokentype_number) {
-		if (token.value.as_ulong > 0xffff) {
-			goto cleanup;
+	if (token.type == isc_tokentype_string) {
+		result = isc_parse_uint32_region(&number,
+					 &token.value.as_textregion, 10);
+		if (result == ISC_R_SUCCESS && number <= UINT16_MAX) {
+			rdclass = (dns_rdataclass_t)number;
+		} else {
+			CHECK(dns_rdataclass_fromtext(
+				&rdclass, &token.value.as_textregion));
 		}
-		rdclass = (dns_rdataclass_t)token.value.as_ulong;
-	} else if (token.type == isc_tokentype_string) {
-		CHECK(dns_rdataclass_fromtext(&rdclass,
-					      &token.value.as_textregion));
 	} else {
 		goto cleanup;
 	}
-	CHECK(isc_lex_gettoken(lex, options | ISC_LEXOPT_NUMBER, &token));
+	CHECK(isc_lex_next(lex, &token));
 	if (token.type == isc_tokentype_eol) {
 		goto cleanup;
 	}
@@ -111,14 +103,15 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	/*
 	 * Get type.
 	 */
-	if (token.type == isc_tokentype_number) {
-		if (token.value.as_ulong > 0xffff) {
-			goto cleanup;
+	if (token.type == isc_tokentype_string) {
+		result = isc_parse_uint32_region(&number,
+					 &token.value.as_textregion, 10);
+		if (result == ISC_R_SUCCESS && number <= UINT16_MAX) {
+			rdtype = (dns_rdatatype_t)number;
+		} else {
+			CHECK(dns_rdatatype_fromtext(&rdtype,
+						     &token.value.as_textregion));
 		}
-		rdtype = (dns_rdatatype_t)token.value.as_ulong;
-	} else if (token.type == isc_tokentype_string) {
-		CHECK(dns_rdatatype_fromtext(&rdtype,
-					     &token.value.as_textregion));
 	} else {
 		goto cleanup;
 	}

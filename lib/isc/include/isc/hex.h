@@ -137,7 +137,7 @@ isc_hex_decodestring(const char *cstr, isc_buffer_t *target);
  *\li	#ISC_R_BADHEX -- 'cstr' is not a valid hex encoding.
  *
  * 	Other error returns are any possible error code from:
- *		isc_lex_create(),
+ *		isc_lex_create_dns_master(),
  *		isc_lex_openbuffer(),
  *		isc_hex_tobuffer().
  */

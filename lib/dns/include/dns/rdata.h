@@ -425,7 +425,7 @@ dns_rdata_fromtext(dns_rdata_t *rdata, dns_rdataclass_t rdclass,
  *
  * Result:
  *\li	Success
- *\li	Translated result codes from isc_lex_gettoken
+ *\li	Translated result codes from isc_lex_next
  *\li	Various 'Bad Form' class failures depending on class and type
  *\li	Bad Form: Input too short
  *\li	Resource Limit: Not enough space

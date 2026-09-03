@@ -21,6 +21,7 @@
 #include <isc/lex.h>
 #include <isc/lib.h>
 #include <isc/mem.h>
+#include <isc/parseint.h>
 #include <isc/result.h>
 #include <isc/string.h>
 #include <isc/util.h>
@@ -33,8 +34,6 @@
 #include <dns/rdatatype.h>
 
 static isc_lex_t *lex;
-
-static isc_lexspecials_t specials;
 
 ISC_NORETURN static void
 usage(void);
@@ -82,7 +81,7 @@ main(int argc, char *argv[]) {
 	isc_token_t token;
 	isc_result_t result;
 	int c;
-	unsigned int options = 0;
+	uint32_t number;
 	dns_rdatatype_t rdtype;
 	dns_rdataclass_t rdclass;
 	char text[256 * 1024];
@@ -166,18 +165,8 @@ main(int argc, char *argv[]) {
 		exit(EXIT_SUCCESS);
 	}
 
-	isc_lex_create(isc_g_mctx, 256, &lex);
-
-	/*
-	 * Set up to lex DNS master file.
-	 */
-
-	specials['('] = 1;
-	specials[')'] = 1;
-	specials['"'] = 1;
-	isc_lex_setspecials(lex, specials);
-	options = ISC_LEXOPT_EOL | ISC_LEXOPT_DNSMULTILINE;
-	isc_lex_setcomments(lex, ISC_LEXCOMMENT_DNSMASTERFILE);
+	RUNTIME_CHECK(isc_lex_create_dns_master(isc_g_mctx, 256, &lex) ==
+		      ISC_R_SUCCESS);
 
 	isc_lex_openstream(lex, stdin);
 
@@ -191,8 +180,7 @@ main(int argc, char *argv[]) {
 		}
 	}
 
-	while ((result = isc_lex_gettoken(lex, options | ISC_LEXOPT_NUMBER,
-					  &token)) == ISC_R_SUCCESS)
+	while ((result = isc_lex_next(lex, &token)) == ISC_R_SUCCESS)
 	{
 		if (token.type == isc_tokentype_eof) {
 			break;
@@ -206,15 +194,17 @@ main(int argc, char *argv[]) {
 		/*
 		 * Get class.
 		 */
-		if (token.type == isc_tokentype_number) {
-			rdclass = (dns_rdataclass_t)token.value.as_ulong;
-			if (token.value.as_ulong > 0xffffu) {
-				fatal("class value too big %lu",
-				      token.value.as_ulong);
+		if (token.type == isc_tokentype_string &&
+		    isc_parse_uint32_region(&number,
+					    &token.value.as_textregion,
+					    10) == ISC_R_SUCCESS)
+		{
+			if (number > UINT16_MAX) {
+				fatal("class value too big %u", number);
 			}
+			rdclass = (dns_rdataclass_t)number;
 			if (dns_rdataclass_ismeta(rdclass)) {
-				fatal("class %lu is a meta value",
-				      token.value.as_ulong);
+				fatal("class %u is a meta value", number);
 			}
 		} else if (token.type == isc_tokentype_string) {
 			result = dns_rdataclass_fromtext(
@@ -232,8 +222,7 @@ main(int argc, char *argv[]) {
 			fatal("unexpected token %u", token.type);
 		}
 
-		result = isc_lex_gettoken(lex, options | ISC_LEXOPT_NUMBER,
-					  &token);
+		result = isc_lex_next(lex, &token);
 		if (result != ISC_R_SUCCESS) {
 			break;
 		}
@@ -247,15 +236,17 @@ main(int argc, char *argv[]) {
 		/*
 		 * Get type.
 		 */
-		if (token.type == isc_tokentype_number) {
-			rdtype = (dns_rdatatype_t)token.value.as_ulong;
-			if (token.value.as_ulong > 0xffffu) {
-				fatal("type value too big %lu",
-				      token.value.as_ulong);
+		if (token.type == isc_tokentype_string &&
+		    isc_parse_uint32_region(&number,
+					    &token.value.as_textregion,
+					    10) == ISC_R_SUCCESS)
+		{
+			if (number > UINT16_MAX) {
+				fatal("type value too big %u", number);
 			}
+			rdtype = (dns_rdatatype_t)number;
 			if (dns_rdatatype_ismeta(rdtype)) {
-				fatal("type %lu is a meta value",
-				      token.value.as_ulong);
+				fatal("type %u is a meta value", number);
 			}
 		} else if (token.type == isc_tokentype_string) {
 			result = dns_rdatatype_fromtext(

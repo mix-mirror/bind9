@@ -93,7 +93,7 @@ static int min_dh = 128;
 
 #define READLINE(lex, opt, token)
 
-#define NEXTTOKEN(lex, opt, token) CHECK(isc_lex_gettoken(lex, opt, token))
+#define NEXTTOKEN(lex, token) CHECK(isc_lex_next(lex, token))
 
 #define BADTOKEN() CLEANUP(ISC_R_UNEXPECTEDTOKEN)
 
@@ -956,9 +956,6 @@ parse_dnskey(isc_lex_t *lex, char *owner, isc_buffer_t *buf, dns_ttl_t *ttl) {
 	isc_buffer_t b;
 	isc_result_t result;
 	isc_token_t token;
-	unsigned int opt = ISC_LEXOPT_EOL;
-
-	isc_lex_setcomments(lex, ISC_LEXCOMMENT_DNSMASTERFILE);
 
 	/* Read the domain name */
 	if (!strcmp(owner, "@")) {
@@ -976,7 +973,7 @@ parse_dnskey(isc_lex_t *lex, char *owner, isc_buffer_t *buf, dns_ttl_t *ttl) {
 	isc_buffer_clear(&b);
 
 	/* Read the next word: either TTL, class, or type */
-	NEXTTOKEN(lex, opt, &token);
+	NEXTTOKEN(lex, &token);
 	if (token.type != isc_tokentype_string) {
 		BADTOKEN();
 	}
@@ -984,7 +981,7 @@ parse_dnskey(isc_lex_t *lex, char *owner, isc_buffer_t *buf, dns_ttl_t *ttl) {
 	/* If it's a TTL, read the next one */
 	result = dns_ttl_fromtext(&token.value.as_textregion, ttl);
 	if (result == ISC_R_SUCCESS) {
-		NEXTTOKEN(lex, opt, &token);
+		NEXTTOKEN(lex, &token);
 	}
 	if (token.type != isc_tokentype_string) {
 		BADTOKEN();
@@ -993,7 +990,7 @@ parse_dnskey(isc_lex_t *lex, char *owner, isc_buffer_t *buf, dns_ttl_t *ttl) {
 	/* If it's a class, read the next one */
 	result = dns_rdataclass_fromtext(&rdclass, &token.value.as_textregion);
 	if (result == ISC_R_SUCCESS) {
-		NEXTTOKEN(lex, opt, &token);
+		NEXTTOKEN(lex, &token);
 	}
 	if (token.type != isc_tokentype_string) {
 		BADTOKEN();
@@ -1008,7 +1005,6 @@ parse_dnskey(isc_lex_t *lex, char *owner, isc_buffer_t *buf, dns_ttl_t *ttl) {
 				    name, 0, isc_g_mctx, buf, NULL);
 
 cleanup:
-	isc_lex_setcomments(lex, 0);
 	return result;
 }
 
@@ -1132,9 +1128,7 @@ sign(ksr_ctx_t *ksr) {
 	isc_result_t result;
 	isc_stdtime_t inception;
 	isc_lex_t *lex = NULL;
-	isc_lexspecials_t specials;
 	isc_token_t token;
-	unsigned int opt = ISC_LEXOPT_EOL;
 
 	/* Check parameters */
 	checkparams(ksr, "sign");
@@ -1149,22 +1143,23 @@ sign(ksr_ctx_t *ksr) {
 	setcontext(ksr, kasp);
 	/* Sign request */
 	inception = ksr->start;
-	isc_lex_create(isc_g_mctx, KSR_LINESIZE, &lex);
-	memset(specials, 0, sizeof(specials));
-	specials['('] = 1;
-	specials[')'] = 1;
-	specials['"'] = 1;
-	isc_lex_setspecials(lex, specials);
+	CHECK(isc_lex_create_dnssec_bundle(isc_g_mctx, KSR_LINESIZE, &lex));
 	result = isc_lex_openfile(lex, ksr->file);
 	if (result != ISC_R_SUCCESS) {
 		fatal("unable to open KSR file %s: %s", ksr->file,
 		      isc_result_totext(result));
 	}
 
-	for (result = isc_lex_gettoken(lex, opt, &token);
+	for (result = isc_lex_next(lex, &token);
 	     result == ISC_R_SUCCESS;
-	     result = isc_lex_gettoken(lex, opt, &token))
+	     result = isc_lex_next(lex, &token))
 	{
+		if (token.type == isc_tokentype_eof) {
+			break;
+		}
+		if (token.type == isc_tokentype_eol) {
+			continue;
+		}
 		if (token.type != isc_tokentype_string) {
 			fatal("bad KSR file %s(%lu): syntax error", ksr->file,
 			      isc_lex_getsourceline(lex));
@@ -1173,7 +1168,7 @@ sign(ksr_ctx_t *ksr) {
 		if (strcmp(STR(token), ";;") == 0) {
 			isc_stdtime_t next_inception;
 
-			CHECK(isc_lex_gettoken(lex, opt, &token));
+			CHECK(isc_lex_next(lex, &token));
 			if (token.type != isc_tokentype_string ||
 			    strcmp(STR(token), "KeySigningRequest") != 0)
 			{
@@ -1182,7 +1177,7 @@ sign(ksr_ctx_t *ksr) {
 				      ksr->file, isc_lex_getsourceline(lex));
 			}
 
-			CHECK(isc_lex_gettoken(lex, opt, &token));
+			CHECK(isc_lex_next(lex, &token));
 			if (token.type != isc_tokentype_string) {
 				fatal("bad KSR file %s(%lu): expected string",
 				      ksr->file, isc_lex_getsourceline(lex));
@@ -1193,7 +1188,7 @@ sign(ksr_ctx_t *ksr) {
 				      ksr->file, isc_lex_getsourceline(lex));
 			}
 
-			CHECK(isc_lex_gettoken(lex, opt, &token));
+			CHECK(isc_lex_next(lex, &token));
 			if (token.type != isc_tokentype_string) {
 				fatal("bad KSR file %s(%lu): expected datetime",
 				      ksr->file, isc_lex_getsourceline(lex));
@@ -1227,7 +1222,7 @@ sign(ksr_ctx_t *ksr) {
 		readline:
 			/* Read remainder of header line */
 			do {
-				result = isc_lex_gettoken(lex, opt, &token);
+				result = isc_lex_next(lex, &token);
 				if (result != ISC_R_SUCCESS) {
 					fatal("bad KSR file %s(%lu): bad "
 					      "header (%s)",

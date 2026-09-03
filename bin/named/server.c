@@ -9794,8 +9794,7 @@ next_token(isc_lex_t *lex, isc_buffer_t *text) {
 	isc_token_t token;
 
 	token.type = isc_tokentype_unknown;
-	result = isc_lex_gettoken(lex, ISC_LEXOPT_EOF | ISC_LEXOPT_QSTRING,
-				  &token);
+	result = isc_lex_next(lex, &token);
 
 	switch (result) {
 	case ISC_R_NOMORE:

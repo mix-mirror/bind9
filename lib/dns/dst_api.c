@@ -45,6 +45,7 @@
 #include <isc/mem.h>
 #include <isc/once.h>
 #include <isc/os.h>
+#include <isc/parseint.h>
 #include <isc/random.h>
 #include <isc/refcount.h>
 #include <isc/safe.h>
@@ -68,21 +69,48 @@
 
 #define DST_AS_STR(t) ((t).value.as_textregion.base)
 
-#define NEXTTOKEN(lex, opt, token) CHECK(isc_lex_gettoken(lex, opt, token))
+static isc_result_t
+next_number(isc_lex_t *lex, isc_token_t *token) {
+	uint32_t number;
+	isc_result_t result = isc_lex_next(lex, token);
 
-#define NEXTTOKEN_OR_EOF(lex, opt, token)                   \
+	if (result != ISC_R_SUCCESS || token->type != isc_tokentype_string) {
+		return result != ISC_R_SUCCESS ? result : ISC_R_BADNUMBER;
+	}
+	result = isc_parse_uint32_region(&number, &token->value.as_textregion, 10);
+	if (result == ISC_R_SUCCESS) {
+		token->type = isc_tokentype_number;
+		token->value.as_ulong = number;
+	}
+	return result;
+}
+
+#define NEXTTOKEN(lex, token) CHECK(isc_lex_next(lex, token))
+#define NEXTNUMBER(lex, token) CHECK(next_number(lex, token))
+
+#define NEXTTOKEN_OR_EOF(lex, token)                        \
 	do {                                                \
-		result = isc_lex_gettoken(lex, opt, token); \
+		result = isc_lex_next(lex, token);           \
 		if (result == ISC_R_EOF) {                  \
+			break;                              \
+		} else if (result == ISC_R_SUCCESS &&       \
+		    (*token).type == isc_tokentype_eof)      \
+		{                                           \
+			result = ISC_R_EOF;                    \
 			break;                              \
 		}                                           \
 		CHECK(result);                              \
 	} while ((*token).type == isc_tokentype_eol);
 
-#define READLINE(lex, opt, token)                           \
+#define READLINE(lex, token)                                \
 	do {                                                \
-		result = isc_lex_gettoken(lex, opt, token); \
+		result = isc_lex_next(lex, token);           \
 		if (result == ISC_R_EOF) {                  \
+			break;                              \
+		} else if (result == ISC_R_SUCCESS &&       \
+		    (*token).type == isc_tokentype_eof)      \
+		{                                           \
+			result = ISC_R_EOF;                    \
 			break;                              \
 		}                                           \
 		CHECK(result);                              \
@@ -591,7 +619,7 @@ dst_key_fromnamedfile(const char *filename, const char *dirname, int type,
 			   ".private");
 	INSIST(result == ISC_R_SUCCESS);
 
-	isc_lex_create(mctx, 1500, &lex);
+	CHECK(isc_lex_create_dnssec(mctx, 1500, &lex));
 	CHECK(isc_lex_openfile(lex, newfilename));
 	isc_mem_put(mctx, newfilename, newfilenamelen);
 
@@ -1444,9 +1472,7 @@ dst_key_read_public(const char *filename, int type, isc_mem_t *mctx,
 	isc_token_t token;
 	isc_result_t result;
 	dns_rdata_t rdata = DNS_RDATA_INIT;
-	unsigned int opt = ISC_LEXOPT_DNSMULTILINE | ISC_LEXOPT_ESCAPE;
 	dns_rdataclass_t rdclass = dns_rdataclass_in;
-	isc_lexspecials_t specials;
 	uint32_t ttl = 0;
 	dns_rdatatype_t keytype;
 
@@ -1458,19 +1484,14 @@ dst_key_read_public(const char *filename, int type, isc_mem_t *mctx,
 	 */
 
 	/* Initial token size; the lexer grows it on demand. */
-	isc_lex_create(mctx, 1500, &lex);
-
-	memset(specials, 0, sizeof(specials));
-	specials['('] = 1;
-	specials[')'] = 1;
-	specials['"'] = 1;
-	isc_lex_setspecials(lex, specials);
-	isc_lex_setcomments(lex, ISC_LEXCOMMENT_DNSMASTERFILE);
+	CHECK(isc_lex_create_dnssec(mctx, 1500, &lex));
 
 	CHECK(isc_lex_openfile(lex, filename));
 
 	/* Read the domain name */
-	NEXTTOKEN(lex, opt, &token);
+	do {
+		NEXTTOKEN(lex, &token);
+	} while (token.type == isc_tokentype_eol);
 	if (token.type != isc_tokentype_string) {
 		BADTOKEN();
 	}
@@ -1489,7 +1510,7 @@ dst_key_read_public(const char *filename, int type, isc_mem_t *mctx,
 				0));
 
 	/* Read the next word: either TTL, class, or 'KEY' */
-	NEXTTOKEN(lex, opt, &token);
+	NEXTTOKEN(lex, &token);
 
 	if (token.type != isc_tokentype_string) {
 		BADTOKEN();
@@ -1498,7 +1519,7 @@ dst_key_read_public(const char *filename, int type, isc_mem_t *mctx,
 	/* If it's a TTL, read the next one */
 	result = dns_ttl_fromtext(&token.value.as_textregion, &ttl);
 	if (result == ISC_R_SUCCESS) {
-		NEXTTOKEN(lex, opt, &token);
+		NEXTTOKEN(lex, &token);
 	}
 
 	if (token.type != isc_tokentype_string) {
@@ -1507,7 +1528,7 @@ dst_key_read_public(const char *filename, int type, isc_mem_t *mctx,
 
 	result = dns_rdataclass_fromtext(&rdclass, &token.value.as_textregion);
 	if (result == ISC_R_SUCCESS) {
-		NEXTTOKEN(lex, opt, &token);
+		NEXTTOKEN(lex, &token);
 	}
 
 	if (token.type != isc_tokentype_string) {
@@ -1594,55 +1615,53 @@ dst_key_read_state(const char *filename, isc_mem_t *mctx, dst_key_t **keyp) {
 	isc_lex_t *lex = NULL;
 	isc_token_t token;
 	isc_result_t result;
-	unsigned int opt = ISC_LEXOPT_EOL;
 
-	isc_lex_create(mctx, 1500, &lex);
-	isc_lex_setcomments(lex, ISC_LEXCOMMENT_DNSMASTERFILE);
+	CHECK(isc_lex_create_dnssec(mctx, 1500, &lex));
 
 	CHECK(isc_lex_openfile(lex, filename));
 
 	/*
 	 * Read the comment line.
 	 */
-	READLINE(lex, opt, &token);
+	READLINE(lex, &token);
 
 	/*
 	 * Read the algorithm line.
 	 */
-	NEXTTOKEN(lex, opt, &token);
+	NEXTTOKEN(lex, &token);
 	if (token.type != isc_tokentype_string ||
 	    strcmp(DST_AS_STR(token), STATE_ALGORITHM_STR) != 0)
 	{
 		BADTOKEN();
 	}
 
-	NEXTTOKEN(lex, opt | ISC_LEXOPT_NUMBER, &token);
+	NEXTNUMBER(lex, &token);
 	if (token.type != isc_tokentype_number ||
 	    token.value.as_ulong != (unsigned long)dst_key_alg(*keyp))
 	{
 		BADTOKEN();
 	}
 
-	READLINE(lex, opt, &token);
+	READLINE(lex, &token);
 
 	/*
 	 * Read the length line.
 	 */
-	NEXTTOKEN(lex, opt, &token);
+	NEXTTOKEN(lex, &token);
 	if (token.type != isc_tokentype_string ||
 	    strcmp(DST_AS_STR(token), STATE_LENGTH_STR) != 0)
 	{
 		BADTOKEN();
 	}
 
-	NEXTTOKEN(lex, opt | ISC_LEXOPT_NUMBER, &token);
+	NEXTNUMBER(lex, &token);
 	if (token.type != isc_tokentype_number ||
 	    token.value.as_ulong != (unsigned long)dst_key_size(*keyp))
 	{
 		BADTOKEN();
 	}
 
-	READLINE(lex, opt, &token);
+	READLINE(lex, &token);
 
 	/*
 	 * Read the metadata.
@@ -1650,7 +1669,7 @@ dst_key_read_state(const char *filename, isc_mem_t *mctx, dst_key_t **keyp) {
 	for (int n = 0; n < MAX_NTAGS; n++) {
 		int tag;
 
-		NEXTTOKEN_OR_EOF(lex, opt, &token);
+		NEXTTOKEN_OR_EOF(lex, &token);
 		if (result == ISC_R_EOF) {
 			break;
 		}
@@ -1663,7 +1682,7 @@ dst_key_read_state(const char *filename, isc_mem_t *mctx, dst_key_t **keyp) {
 		if (tag >= 0) {
 			INSIST(tag < DST_MAX_NUMERIC);
 
-			NEXTTOKEN(lex, opt | ISC_LEXOPT_NUMBER, &token);
+			NEXTNUMBER(lex, &token);
 			if (token.type != isc_tokentype_number) {
 				BADTOKEN();
 			}
@@ -1677,7 +1696,7 @@ dst_key_read_state(const char *filename, isc_mem_t *mctx, dst_key_t **keyp) {
 		if (tag >= 0) {
 			INSIST(tag < DST_MAX_BOOLEAN);
 
-			NEXTTOKEN(lex, opt, &token);
+			NEXTTOKEN(lex, &token);
 			if (token.type != isc_tokentype_string) {
 				BADTOKEN();
 			}
@@ -1699,7 +1718,7 @@ dst_key_read_state(const char *filename, isc_mem_t *mctx, dst_key_t **keyp) {
 
 			INSIST(tag < DST_MAX_TIMES);
 
-			NEXTTOKEN(lex, opt, &token);
+			NEXTTOKEN(lex, &token);
 			if (token.type != isc_tokentype_string) {
 				BADTOKEN();
 			}
@@ -1718,7 +1737,7 @@ dst_key_read_state(const char *filename, isc_mem_t *mctx, dst_key_t **keyp) {
 
 			INSIST(tag < DST_MAX_KEYSTATES);
 
-			NEXTTOKEN(lex, opt, &token);
+			NEXTTOKEN(lex, &token);
 			if (token.type != isc_tokentype_string) {
 				BADTOKEN();
 			}
@@ -1730,7 +1749,7 @@ dst_key_read_state(const char *filename, isc_mem_t *mctx, dst_key_t **keyp) {
 		}
 
 	next:
-		READLINE(lex, opt, &token);
+		READLINE(lex, &token);
 	}
 
 	/* Done, successfully parsed the whole file. */

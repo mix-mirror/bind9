@@ -24,5 +24,5 @@ fuzz_binaries += {
     'fuzz_dns_rdata_fromtext': files('dns_rdata_fromtext.c', 'main.c'),
     'fuzz_dns_rdata_fromwire_text': files('dns_rdata_fromwire_text.c', 'main.c'),
     'fuzz_isc_lex_getmastertoken': files('isc_lex_getmastertoken.c', 'main.c'),
-    'fuzz_isc_lex_gettoken': files('isc_lex_gettoken.c', 'main.c'),
+    'fuzz_isc_lex_next': files('isc_lex_next.c', 'main.c'),
 }

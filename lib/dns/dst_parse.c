@@ -38,6 +38,7 @@
 #include <isc/lex.h>
 #include <isc/log.h>
 #include <isc/mem.h>
+#include <isc/parseint.h>
 #include <isc/stdtime.h>
 #include <isc/string.h>
 #include <isc/util.h>
@@ -394,6 +395,26 @@ dst__privstruct_free(dst_private_t *priv, isc_mem_t *mctx) {
 	priv->nelements = 0;
 }
 
+static isc_result_t
+next_number(isc_lex_t *lexer, isc_token_t *number_token) {
+	uint32_t number;
+	isc_result_t parse_result = isc_lex_next(lexer, number_token);
+
+	if (parse_result != ISC_R_SUCCESS ||
+	    number_token->type != isc_tokentype_string)
+	{
+		return parse_result != ISC_R_SUCCESS ? parse_result
+						    : ISC_R_BADNUMBER;
+	}
+	parse_result = isc_parse_uint32_region(
+		&number, &number_token->value.as_textregion, 10);
+	if (parse_result == ISC_R_SUCCESS) {
+		number_token->type = isc_tokentype_number;
+		number_token->value.as_ulong = number;
+	}
+	return parse_result;
+}
+
 isc_result_t
 dst__privstruct_parse(dst_key_t *key, unsigned int alg, isc_lex_t *lex,
 		      isc_mem_t *mctx, dst_private_t *priv) {
@@ -401,7 +422,6 @@ dst__privstruct_parse(dst_key_t *key, unsigned int alg, isc_lex_t *lex,
 	isc_buffer_t b;
 	isc_token_t token;
 	unsigned char *data = NULL;
-	unsigned int opt = ISC_LEXOPT_EOL;
 	isc_stdtime_t when;
 	isc_result_t result;
 	bool external = false;
@@ -411,15 +431,18 @@ dst__privstruct_parse(dst_key_t *key, unsigned int alg, isc_lex_t *lex,
 	priv->nelements = 0;
 	memset(priv->elements, 0, sizeof(priv->elements));
 
-#define NEXTTOKEN(lex, opt, token)                        \
-	do {                                              \
-		CHECK(isc_lex_gettoken(lex, opt, token)); \
-	} while (0)
+#define NEXTTOKEN(lex, token) CHECK(isc_lex_next(lex, token))
+#define NEXTNUMBER(lex, token) CHECK(next_number(lex, token))
 
-#define READLINE(lex, opt, token)                           \
+#define READLINE(lex, token)                                \
 	do {                                                \
-		result = isc_lex_gettoken(lex, opt, token); \
+		result = isc_lex_next(lex, token);           \
 		if (result == ISC_R_EOF) {                  \
+			break;                              \
+		} else if (result == ISC_R_SUCCESS &&       \
+		    (*token).type == isc_tokentype_eof)      \
+		{                                           \
+			result = ISC_R_EOF;                    \
 			break;                              \
 		} else if (result != ISC_R_SUCCESS) {       \
 			goto cleanup;                       \
@@ -429,7 +452,7 @@ dst__privstruct_parse(dst_key_t *key, unsigned int alg, isc_lex_t *lex,
 	/*
 	 * Read the description line.
 	 */
-	NEXTTOKEN(lex, opt, &token);
+	NEXTTOKEN(lex, &token);
 	if (token.type != isc_tokentype_string ||
 	    strcmp(DST_AS_STR(token), PRIVATE_KEY_STR) != 0)
 	{
@@ -437,7 +460,7 @@ dst__privstruct_parse(dst_key_t *key, unsigned int alg, isc_lex_t *lex,
 		goto cleanup;
 	}
 
-	NEXTTOKEN(lex, opt, &token);
+	NEXTTOKEN(lex, &token);
 	if (token.type != isc_tokentype_string || (DST_AS_STR(token))[0] != 'v')
 	{
 		result = DST_R_INVALIDPRIVATEKEY;
@@ -458,12 +481,12 @@ dst__privstruct_parse(dst_key_t *key, unsigned int alg, isc_lex_t *lex,
 	 */
 	dst_key_setprivateformat(key, major, minor);
 
-	READLINE(lex, opt, &token);
+	READLINE(lex, &token);
 
 	/*
 	 * Read the algorithm line.
 	 */
-	NEXTTOKEN(lex, opt, &token);
+	NEXTTOKEN(lex, &token);
 	if (token.type != isc_tokentype_string ||
 	    strcmp(DST_AS_STR(token), ALGORITHM_STR) != 0)
 	{
@@ -471,7 +494,7 @@ dst__privstruct_parse(dst_key_t *key, unsigned int alg, isc_lex_t *lex,
 		goto cleanup;
 	}
 
-	NEXTTOKEN(lex, opt | ISC_LEXOPT_NUMBER, &token);
+	NEXTNUMBER(lex, &token);
 	if (token.type != isc_tokentype_number ||
 	    token.value.as_ulong != (unsigned long)dst_key_alg(key))
 	{
@@ -479,7 +502,7 @@ dst__privstruct_parse(dst_key_t *key, unsigned int alg, isc_lex_t *lex,
 		goto cleanup;
 	}
 
-	READLINE(lex, opt, &token);
+	READLINE(lex, &token);
 
 	/*
 	 * Read the key data.
@@ -488,8 +511,12 @@ dst__privstruct_parse(dst_key_t *key, unsigned int alg, isc_lex_t *lex,
 		int tag;
 		isc_region_t r;
 		do {
-			result = isc_lex_gettoken(lex, opt, &token);
+			result = isc_lex_next(lex, &token);
 			if (result == ISC_R_EOF) {
+				goto done;
+			} else if (result == ISC_R_SUCCESS &&
+			    token.type == isc_tokentype_eof)
+			{
 				goto done;
 			}
 			if (result != ISC_R_SUCCESS) {
@@ -512,7 +539,7 @@ dst__privstruct_parse(dst_key_t *key, unsigned int alg, isc_lex_t *lex,
 		if (tag >= 0) {
 			INSIST(tag < DST_MAX_NUMERIC);
 
-			NEXTTOKEN(lex, opt | ISC_LEXOPT_NUMBER, &token);
+			NEXTNUMBER(lex, &token);
 			if (token.type != isc_tokentype_number) {
 				result = DST_R_INVALIDPRIVATEKEY;
 				goto cleanup;
@@ -527,7 +554,7 @@ dst__privstruct_parse(dst_key_t *key, unsigned int alg, isc_lex_t *lex,
 		if (tag >= 0) {
 			INSIST(tag < DST_MAX_TIMES);
 
-			NEXTTOKEN(lex, opt, &token);
+			NEXTTOKEN(lex, &token);
 			if (token.type != isc_tokentype_string) {
 				result = DST_R_INVALIDPRIVATEKEY;
 				goto cleanup;
@@ -563,7 +590,7 @@ dst__privstruct_parse(dst_key_t *key, unsigned int alg, isc_lex_t *lex,
 		priv->nelements++;
 
 	next:
-		READLINE(lex, opt, &token);
+		READLINE(lex, &token);
 		data = NULL;
 	}
 

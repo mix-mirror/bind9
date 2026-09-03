@@ -1701,12 +1701,11 @@ dns_view_loadnta(dns_view_t *view) {
 		return ISC_R_SUCCESS;
 	}
 
-	isc_lex_create(view->mctx, 1025, &lex);
+	CHECK(isc_lex_create_line(view->mctx, 1025, &lex));
 	CHECK(isc_lex_openfile(lex, view->nta_file));
 	CHECK(dns_view_getntatable(view, &ntatable));
 
 	for (;;) {
-		int options = (ISC_LEXOPT_EOL | ISC_LEXOPT_EOF);
 		char *name, *type;
 		size_t len;
 		dns_fixedname_t fn;
@@ -1715,7 +1714,7 @@ dns_view_loadnta(dns_view_t *view) {
 		isc_stdtime_t t;
 		bool forced;
 
-		CHECK(isc_lex_gettoken(lex, options, &token));
+		CHECK(isc_lex_next(lex, &token));
 		if (token.type == isc_tokentype_eof) {
 			break;
 		} else if (token.type != isc_tokentype_string) {
@@ -1736,7 +1735,7 @@ dns_view_loadnta(dns_view_t *view) {
 			ntaname = fname;
 		}
 
-		CHECK(isc_lex_gettoken(lex, options, &token));
+		CHECK(isc_lex_next(lex, &token));
 		if (token.type != isc_tokentype_string) {
 			CLEANUP(ISC_R_UNEXPECTEDTOKEN);
 		}
@@ -1750,13 +1749,13 @@ dns_view_loadnta(dns_view_t *view) {
 			CLEANUP(ISC_R_UNEXPECTEDTOKEN);
 		}
 
-		CHECK(isc_lex_gettoken(lex, options, &token));
+		CHECK(isc_lex_next(lex, &token));
 		if (token.type != isc_tokentype_string) {
 			CLEANUP(ISC_R_UNEXPECTEDTOKEN);
 		}
 		CHECK(dns_time32_fromregion(token.value.as_textregion, &t));
 
-		CHECK(isc_lex_gettoken(lex, options, &token));
+		CHECK(isc_lex_next(lex, &token));
 		if (token.type != isc_tokentype_eol &&
 		    token.type != isc_tokentype_eof)
 		{
