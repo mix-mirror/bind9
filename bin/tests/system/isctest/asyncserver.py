@@ -1880,10 +1880,8 @@ class AsyncDnsServer(AsyncServer):
         ds_rdataset = None
 
         while name != qctx.zone.origin:
-            node = qctx.zone.get_node(name)
-            if node:
-                ns_rdataset = node.get_rdataset(qctx.qclass, dns.rdatatype.NS)
-                if ns_rdataset:
+            if node := qctx.zone.get_node(name):
+                if ns_rdataset := node.get_rdataset(qctx.qclass, dns.rdatatype.NS):
                     break
             name = name.parent()
 
