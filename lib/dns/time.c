@@ -168,12 +168,18 @@ time64_fromtext(const char *source, size_t length, int64_t *target) {
 		}
 	}
 
-	year = (((digits[0] * 10U + digits[1]) * 10U + digits[2]) * 10U +
-		digits[3]);
+	/* "YYYYxxxxxxxxxx" */
+	year = digits[0] * 1000U + digits[1] * 100U + digits[2] * 10U +
+	       digits[3];
+	/* "xxxxMMxxxxxxxx" */
 	month = digits[4] * 10U + digits[5];
+	/* "xxxxxxDDxxxxxx" */
 	day = digits[6] * 10U + digits[7];
+	/* "xxxxxxxxHHxxxx" */
 	hour = digits[8] * 10U + digits[9];
+	/* "xxxxxxxxxxMMxx" */
 	minute = digits[10] * 10U + digits[11];
+	/* "xxxxxxxxxxxxSS" */
 	second = digits[12] * 10U + digits[13];
 
 	if (month - 1U >= ARRAY_SIZE(days)) {
