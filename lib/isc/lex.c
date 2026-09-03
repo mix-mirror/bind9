@@ -205,12 +205,8 @@ isc_lex_create_dnssec_bundle(isc_mem_t *mctx, size_t initial_token_size,
 isc_result_t
 isc_lex_create_command(isc_mem_t *mctx, size_t initial_token_size,
 		       isc_lex_t **lexp) {
-	isc_lexspecials_t specials = { 0 };
-
 	lex_create(mctx, initial_token_size, lexp);
 	(*lexp)->options = ISC_LEXOPT_EOF | ISC_LEXOPT_QSTRING;
-	specials['"'] = 1;
-	memmove((*lexp)->specials, specials, sizeof(specials));
 
 	return ISC_R_SUCCESS;
 }
