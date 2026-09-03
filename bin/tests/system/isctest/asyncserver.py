@@ -563,22 +563,17 @@ class Nsec3NonExistenceProver(NonExistenceProver):
     proof_rdatatype = dns.rdatatype.NSEC3
 
     def prove_no_ds(self, name: dns.name.Name) -> None:
-        try:
-            # No Opt-Out
-            self._add_nsec3_matching(name)
-        except NonExistenceException:
-            # Opt-Out
-            self._add_closest_encloser_proof(name)
+        self._add_nsec3_matching_or_closest_encloser_proof(self._qname)
 
     def prove_ent(self) -> None:
-        self._add_nsec3_matching(self._qname)
+        self._add_nsec3_matching_or_closest_encloser_proof(self._qname)
 
     def prove_nxdomain(self) -> None:
         self._add_closest_encloser_proof(self._qname)
         self._add_nsec3_covering(self._wildcard_for_closest_encloser)
 
     def _prove_nodata_no_wildcard(self) -> None:
-        self._add_nsec3_matching(self._qname)
+        self._add_nsec3_matching_or_closest_encloser_proof(self._qname)
 
     def _prove_nodata_wildcard(self) -> None:
         self._add_closest_encloser_proof(self._qname)
@@ -621,6 +616,16 @@ class Nsec3NonExistenceProver(NonExistenceProver):
         closest_encloser_name, next_closer_name = self._get_closest_encloser(name)
         self._add_nsec3_matching(closest_encloser_name)
         self._add_nsec3_covering(next_closer_name)
+
+    def _add_nsec3_matching_or_closest_encloser_proof(
+        self, name: dns.name.Name
+    ) -> None:
+        try:
+            # No Opt-Out
+            self._add_nsec3_matching(name)
+        except NonExistenceException:
+            # Opt-Out
+            self._add_closest_encloser_proof(name)
 
     def _is_usable_encloser(self, name: dns.name.Name) -> bool:
         return self._get_nsec3_owner(name) in self._chain
