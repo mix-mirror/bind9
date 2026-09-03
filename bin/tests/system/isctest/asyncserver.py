@@ -628,6 +628,9 @@ class Nsec3NonExistenceProver(NonExistenceProver):
         self._add_nsec3_matching(closest_encloser_name)
         self._add_nsec3_covering(next_closer_name)
 
+    def _is_usable_encloser(self, name: dns.name.Name) -> bool:
+        return self._get_nsec3_owner(name) in self._chain
+
 
 @dataclass
 class ResponseAction(abc.ABC):
