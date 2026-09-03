@@ -92,7 +92,6 @@ static cfg_type_t cfg_type_dlz;
 static cfg_type_t cfg_type_dnssecpolicy;
 static cfg_type_t cfg_type_dnstap;
 static cfg_type_t cfg_type_dnstapoutput;
-static cfg_type_t cfg_type_dyndb;
 static cfg_type_t cfg_type_http_description;
 static cfg_type_t cfg_type_ixfrdifftype;
 static cfg_type_t cfg_type_ixfrratio;
@@ -120,7 +119,6 @@ static cfg_type_t cfg_type_optional_sourceaddr6;
 static cfg_type_t cfg_type_optional_uint32;
 static cfg_type_t cfg_type_optional_tls;
 static cfg_type_t cfg_type_options;
-static cfg_type_t cfg_type_plugin;
 static cfg_type_t cfg_type_portiplist;
 static cfg_type_t cfg_type_printtime;
 static cfg_type_t cfg_type_qminmethod;
@@ -307,7 +305,7 @@ static isc_result_t
 parse_matchtype(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 	isc_result_t result;
 
-	CHECK(cfg_peektoken(pctx, 0));
+	CHECK(cfg_peektoken(pctx));
 	if (pctx->token.type == isc_tokentype_string &&
 	    strcasecmp(TOKEN_STRING(pctx), "zonesub") == 0)
 	{
@@ -396,7 +394,7 @@ static isc_result_t
 parse_updatepolicy(cfg_parser_t *pctx, const cfg_type_t *type,
 		   cfg_obj_t **ret) {
 	isc_result_t result;
-	CHECK(cfg_gettoken(pctx, 0));
+	CHECK(cfg_gettoken(pctx));
 	if (pctx->token.type == isc_tokentype_special &&
 	    pctx->token.value.as_char == '{')
 	{
@@ -579,7 +577,7 @@ parse_keystore(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 
 	UNUSED(type);
 
-	CHECK(cfg_peektoken(pctx, 0));
+	CHECK(cfg_peektoken(pctx));
 	if (pctx->token.type == isc_tokentype_string &&
 	    strcasecmp(TOKEN_STRING(pctx), "key-directory") == 0)
 	{
@@ -675,11 +673,11 @@ parse_optionaltagrange(cfg_parser_t *pctx, const cfg_type_t *type,
 
 	UNUSED(type);
 
-	CHECK(cfg_peektoken(pctx, 0));
+	CHECK(cfg_peektoken(pctx));
 	if (pctx->token.type == isc_tokentype_string &&
 	    strcasecmp(TOKEN_STRING(pctx), "tag-range") == 0)
 	{
-		CHECK(cfg_gettoken(pctx, CFG_LEXOPT_QSTRING));
+		CHECK(cfg_gettoken(pctx));
 		CHECK(cfg_parse_obj(pctx, &cfg_type_tagrange, &obj));
 	} else {
 		CHECK(cfg_parse_void(pctx, NULL, &obj));
@@ -960,7 +958,7 @@ parse_qstringornone(cfg_parser_t *pctx, const cfg_type_t *type,
 		    cfg_obj_t **ret) {
 	isc_result_t result;
 
-	CHECK(cfg_gettoken(pctx, CFG_LEXOPT_QSTRING));
+	CHECK(cfg_gettoken(pctx));
 	if (pctx->token.type == isc_tokentype_string &&
 	    strcasecmp(TOKEN_STRING(pctx), "none") == 0)
 	{
@@ -1004,7 +1002,7 @@ static isc_result_t
 parse_boolorauto(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 	isc_result_t result;
 
-	CHECK(cfg_gettoken(pctx, CFG_LEXOPT_QSTRING));
+	CHECK(cfg_gettoken(pctx));
 	if (pctx->token.type == isc_tokentype_string &&
 	    strcasecmp(TOKEN_STRING(pctx), "auto") == 0)
 	{
@@ -1060,7 +1058,7 @@ static cfg_type_t cfg_type_hostname = { "hostname",	  NULL,
 static isc_result_t
 parse_serverid(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 	isc_result_t result;
-	CHECK(cfg_gettoken(pctx, CFG_LEXOPT_QSTRING));
+	CHECK(cfg_gettoken(pctx));
 	if (pctx->token.type == isc_tokentype_string &&
 	    strcasecmp(TOKEN_STRING(pctx), "none") == 0)
 	{
@@ -1415,11 +1413,9 @@ static cfg_clausedef_t namedconf_clauses[] = {
  */
 static cfg_clausedef_t namedconf_or_view_clauses[] = {
 	{ "dlz", &cfg_type_dlz, CFG_CLAUSEFLAG_MULTI, NULL },
-	{ "dyndb", &cfg_type_dyndb, CFG_CLAUSEFLAG_MULTI, NULL },
 	{ "key", &cfg_type_key, CFG_CLAUSEFLAG_MULTI, NULL },
 	{ "managed-keys", &cfg_type_dnsseckeys,
 	  CFG_CLAUSEFLAG_MULTI | CFG_CLAUSEFLAG_ANCIENT, NULL },
-	{ "plugin", &cfg_type_plugin, CFG_CLAUSEFLAG_MULTI, NULL },
 	{ "server", &cfg_type_server, CFG_CLAUSEFLAG_MULTI, NULL },
 	{ "trust-anchors", &cfg_type_dnsseckeys, CFG_CLAUSEFLAG_MULTI, NULL },
 	{ "trusted-keys", NULL, CFG_CLAUSEFLAG_MULTI | CFG_CLAUSEFLAG_ANCIENT,
@@ -1773,9 +1769,9 @@ parse_dtout(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 
 	/* Parse "versions" and "size" fields in any order. */
 	for (;;) {
-		CHECK(cfg_peektoken(pctx, 0));
+		CHECK(cfg_peektoken(pctx));
 		if (pctx->token.type == isc_tokentype_string) {
-			CHECK(cfg_gettoken(pctx, 0));
+			CHECK(cfg_gettoken(pctx));
 			if (strcasecmp(TOKEN_STRING(pctx), "size") == 0 &&
 			    obj->value.tuple[2] == NULL)
 			{
@@ -1959,7 +1955,7 @@ cfg_parse_kv_tuple(cfg_parser_t *pctx, const cfg_type_t *type,
 	CHECK(cfg_parse_obj(pctx, fields[0].type, &obj->value.tuple[0]));
 
 	for (;;) {
-		CHECK(cfg_peektoken(pctx, CFG_LEXOPT_QSTRING));
+		CHECK(cfg_peektoken(pctx));
 		if (pctx->token.type != isc_tokentype_string) {
 			break;
 		}
@@ -1977,7 +1973,7 @@ cfg_parse_kv_tuple(cfg_parser_t *pctx, const cfg_type_t *type,
 			}
 		}
 
-		CHECK(cfg_gettoken(pctx, 0));
+		CHECK(cfg_gettoken(pctx));
 		CHECK(cfg_parse_obj(pctx, f->type, &obj->value.tuple[fn]));
 	}
 
@@ -2104,7 +2100,6 @@ static cfg_tuplefielddef_t rpz_fields[] = {
 	{ "nsip-enable", &cfg_type_boolean, 0 },
 	{ "nsdname-enable", &cfg_type_boolean, 0 },
 	{ "dnsrps-enable", &cfg_type_boolean, CFG_CLAUSEFLAG_OBSOLETE },
-	{ "dnsrps-options", &cfg_type_bracketed_text, CFG_CLAUSEFLAG_OBSOLETE },
 	{ NULL, NULL, 0 }
 };
 static cfg_type_t cfg_type_rpz = { "rpz",
@@ -2180,11 +2175,15 @@ static isc_result_t
 parse_optional_uint32(cfg_parser_t *pctx, const cfg_type_t *type,
 		      cfg_obj_t **ret) {
 	isc_result_t result;
+	uint32_t value;
 	UNUSED(type);
 
-	CHECK(cfg_peektoken(pctx, ISC_LEXOPT_NUMBER | ISC_LEXOPT_CNUMBER));
-	if (pctx->token.type == isc_tokentype_number) {
+	CHECK(cfg_peektoken(pctx));
+	result = cfg_token_touint32(pctx, 0, &value);
+	if (result == ISC_R_SUCCESS) {
 		CHECK(cfg_parse_obj(pctx, &cfg_type_uint32, ret));
+	} else if (result == ISC_R_RANGE) {
+		CHECK(result);
 	} else {
 		CHECK(cfg_parse_obj(pctx, &cfg_type_void, ret));
 	}
@@ -2357,8 +2356,6 @@ static cfg_clausedef_t view_clauses[] = {
 	{ "dns64-contact", &cfg_type_astring, 0, NULL },
 	{ "dns64-server", &cfg_type_astring, 0, NULL },
 	{ "dnsrps-enable", &cfg_type_boolean, CFG_CLAUSEFLAG_OBSOLETE, NULL },
-	{ "dnsrps-options", &cfg_type_bracketed_text, CFG_CLAUSEFLAG_OBSOLETE,
-	  NULL },
 	{ "dnssec-accept-expired", &cfg_type_boolean, 0, NULL },
 	{ "dnssec-enable", NULL, CFG_CLAUSEFLAG_ANCIENT, NULL },
 	{ "dnssec-lookaside", NULL,
@@ -2806,10 +2803,6 @@ static cfg_clausedef_t zone_only_clauses[] = {
 	  NULL },
 	{ "parental-agents", &cfg_type_namesockaddrkeylist,
 	  CFG_ZONE_PRIMARY | CFG_ZONE_SECONDARY, NULL },
-	{ "plugin", &cfg_type_plugin,
-	  CFG_CLAUSEFLAG_MULTI | CFG_ZONE_PRIMARY | CFG_ZONE_SECONDARY |
-		  CFG_ZONE_REDIRECT | CFG_ZONE_MIRROR,
-	  NULL },
 	{ "primaries", &cfg_type_namesockaddrkeylist,
 	  CFG_ZONE_SECONDARY | CFG_ZONE_MIRROR | CFG_ZONE_STUB |
 		  CFG_ZONE_REDIRECT,
@@ -2905,40 +2898,6 @@ static cfg_clausedef_t *dlz_clausesets[] = { dlz_clauses, NULL };
 static cfg_type_t cfg_type_dlz = { "dlz",	  cfg_parse_named_map,
 				   cfg_print_map, cfg_doc_map,
 				   &cfg_rep_map,  dlz_clausesets };
-
-/*%
- * The "dyndb" statement syntax.
- */
-
-static cfg_tuplefielddef_t dyndb_fields[] = {
-	{ "name", &cfg_type_astring, 0 },
-	{ "library", &cfg_type_qstring, 0 },
-	{ "parameters", &cfg_type_bracketed_text, 0 },
-	{ NULL, NULL, 0 }
-};
-
-static cfg_type_t cfg_type_dyndb = { "dyndb",	      cfg_parse_tuple,
-				     cfg_print_tuple, cfg_doc_tuple,
-				     &cfg_rep_tuple,  dyndb_fields };
-
-/*%
- * The "plugin" statement syntax.
- * Currently only one plugin type is supported: query.
- */
-
-static const char *plugin_enums[] = { "query", NULL };
-static cfg_type_t cfg_type_plugintype = { "plugintype",	     cfg_parse_enum,
-					  cfg_print_ustring, cfg_doc_enum,
-					  &cfg_rep_string,   plugin_enums };
-static cfg_tuplefielddef_t plugin_fields[] = {
-	{ "type", &cfg_type_plugintype, 0 },
-	{ "library", &cfg_type_astring, 0 },
-	{ "parameters", &cfg_type_optional_bracketed_text, 0 },
-	{ NULL, NULL, 0 }
-};
-static cfg_type_t cfg_type_plugin = { "plugin",	       cfg_parse_tuple,
-				      cfg_print_tuple, cfg_doc_tuple,
-				      &cfg_rep_tuple,  plugin_fields };
 
 /*%
  * Clauses that can be found within the 'key' statement.
@@ -3157,7 +3116,7 @@ parse_sizeval(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 
 	UNUSED(type);
 
-	CHECK(cfg_gettoken(pctx, 0));
+	CHECK(cfg_gettoken(pctx));
 	if (pctx->token.type != isc_tokentype_string) {
 		CLEANUP(ISC_R_UNEXPECTEDTOKEN);
 	}
@@ -3186,7 +3145,7 @@ parse_sizeval_percent(cfg_parser_t *pctx, const cfg_type_t *type,
 
 	UNUSED(type);
 
-	CHECK(cfg_gettoken(pctx, 0));
+	CHECK(cfg_gettoken(pctx));
 	if (pctx->token.type != isc_tokentype_string) {
 		CLEANUP(ISC_R_UNEXPECTEDTOKEN);
 	}
@@ -3328,11 +3287,11 @@ parse_maybe_optional_keyvalue(cfg_parser_t *pctx, const cfg_type_t *type,
 	cfg_obj_t *obj = NULL;
 	const keyword_type_t *kw = type->of;
 
-	CHECK(cfg_peektoken(pctx, 0));
+	CHECK(cfg_peektoken(pctx));
 	if (pctx->token.type == isc_tokentype_string &&
 	    strcasecmp(TOKEN_STRING(pctx), kw->name) == 0)
 	{
-		CHECK(cfg_gettoken(pctx, 0));
+		CHECK(cfg_gettoken(pctx));
 		CHECK(kw->type->parse(pctx, kw->type, &obj));
 		obj->type = type; /* XXX kludge */
 	} else {
@@ -3606,7 +3565,7 @@ parse_optional_class(cfg_parser_t *pctx, const cfg_type_t *type,
 		     cfg_obj_t **ret) {
 	isc_result_t result;
 	UNUSED(type);
-	CHECK(cfg_peektoken(pctx, 0));
+	CHECK(cfg_peektoken(pctx));
 	if (pctx->token.type == isc_tokentype_string) {
 		CHECK(cfg_parse_obj(pctx, &cfg_type_ustring, ret));
 	} else {
@@ -3634,19 +3593,19 @@ parse_querysource(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 	isc_result_t result;
 
 	REQUIRE(type != NULL);
-	CHECK(cfg_peektoken(pctx, 0));
+	CHECK(cfg_peektoken(pctx));
 
 	if (pctx->token.type == isc_tokentype_string &&
 	    strcasecmp(TOKEN_STRING(pctx), "address") == 0)
 	{
-		CHECK(cfg_gettoken(pctx, 0));
-		CHECK(cfg_peektoken(pctx, 0));
+		CHECK(cfg_gettoken(pctx));
+		CHECK(cfg_peektoken(pctx));
 	}
 
 	if (pctx->token.type == isc_tokentype_string &&
 	    strcasecmp(TOKEN_STRING(pctx), "none") == 0)
 	{
-		CHECK(cfg_gettoken(pctx, 0));
+		CHECK(cfg_gettoken(pctx));
 		cfg_obj_create(cfg_parser_currentfile(pctx), pctx->line,
 			       &cfg_type_none, ret);
 	} else {
@@ -3756,11 +3715,11 @@ parse_server_key_kludge(cfg_parser_t *pctx, const cfg_type_t *type,
 	UNUSED(type);
 
 	/* Allow opening brace. */
-	CHECK(cfg_peektoken(pctx, 0));
+	CHECK(cfg_peektoken(pctx));
 	if (pctx->token.type == isc_tokentype_special &&
 	    pctx->token.value.as_char == '{')
 	{
-		CHECK(cfg_gettoken(pctx, 0));
+		CHECK(cfg_gettoken(pctx));
 		braces = true;
 	}
 
@@ -3768,11 +3727,11 @@ parse_server_key_kludge(cfg_parser_t *pctx, const cfg_type_t *type,
 
 	if (braces) {
 		/* Skip semicolon if present. */
-		CHECK(cfg_peektoken(pctx, 0));
+		CHECK(cfg_peektoken(pctx));
 		if (pctx->token.type == isc_tokentype_special &&
 		    pctx->token.value.as_char == ';')
 		{
-			CHECK(cfg_gettoken(pctx, 0));
+			CHECK(cfg_gettoken(pctx));
 		}
 
 		CHECK(cfg_parse_special(pctx, '}'));
@@ -3795,7 +3754,7 @@ parse_optional_facility(cfg_parser_t *pctx, const cfg_type_t *type,
 	isc_result_t result;
 	UNUSED(type);
 
-	CHECK(cfg_peektoken(pctx, CFG_LEXOPT_QSTRING));
+	CHECK(cfg_peektoken(pctx));
 	if (pctx->token.type == isc_tokentype_string ||
 	    pctx->token.type == isc_tokentype_qstring)
 	{
@@ -3835,13 +3794,13 @@ parse_logseverity(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 	isc_result_t result;
 	UNUSED(type);
 
-	CHECK(cfg_peektoken(pctx, 0));
+	CHECK(cfg_peektoken(pctx));
 	if (pctx->token.type == isc_tokentype_string &&
 	    strcasecmp(TOKEN_STRING(pctx), "debug") == 0)
 	{
-		CHECK(cfg_gettoken(pctx, 0)); /* read "debug" */
-		CHECK(cfg_peektoken(pctx, ISC_LEXOPT_NUMBER));
-		if (pctx->token.type == isc_tokentype_number) {
+		CHECK(cfg_gettoken(pctx)); /* read "debug" */
+		CHECK(cfg_peektoken(pctx));
+		if (cfg_token_isuint32(pctx, 10)) {
 			CHECK(cfg_parse_uint32(pctx, NULL, ret));
 		} else {
 			/*
@@ -3912,9 +3871,9 @@ parse_logfile(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 
 	/* Parse "versions" and "size" fields in any order. */
 	for (;;) {
-		CHECK(cfg_peektoken(pctx, 0));
+		CHECK(cfg_peektoken(pctx));
 		if (pctx->token.type == isc_tokentype_string) {
-			CHECK(cfg_gettoken(pctx, 0));
+			CHECK(cfg_gettoken(pctx));
 			if (strcasecmp(TOKEN_STRING(pctx), "versions") == 0 &&
 			    obj->value.tuple[1] == NULL)
 			{
@@ -4122,7 +4081,7 @@ parse_sockaddrnameport(cfg_parser_t *pctx, const cfg_type_t *type,
 	isc_result_t result;
 	UNUSED(type);
 
-	CHECK(cfg_peektoken(pctx, CFG_LEXOPT_QSTRING));
+	CHECK(cfg_peektoken(pctx));
 	if (pctx->token.type == isc_tokentype_string ||
 	    pctx->token.type == isc_tokentype_qstring)
 	{
@@ -4201,7 +4160,7 @@ parse_remoteselement(cfg_parser_t *pctx, const cfg_type_t *type,
 	cfg_obj_t *obj = NULL;
 	UNUSED(type);
 
-	CHECK(cfg_peektoken(pctx, CFG_LEXOPT_QSTRING));
+	CHECK(cfg_peektoken(pctx));
 	if (pctx->token.type == isc_tokentype_string ||
 	    pctx->token.type == isc_tokentype_qstring)
 	{

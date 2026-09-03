@@ -143,37 +143,68 @@ ISC_RUN_TEST_IMPL(lex_0x00_initialws) {
 	isc_lex_destroy(&lex);
 }
 
-/*
- * A NUL inside brace-delimited text is corruption and must yield an
- * unknown token instead of being embedded in the btext token.
- */
-ISC_RUN_TEST_IMPL(lex_0x00_btext) {
-	isc_result_t result;
-	isc_lex_t *lex = NULL;
+ISC_RUN_TEST_IMPL(lex_dns_master_policy) {
 	isc_buffer_t buf;
+	isc_lex_t *lex = NULL;
+	isc_result_t result;
 	isc_token_t token;
-	isc_lexspecials_t specials;
-
-	unsigned char btext_null[] = { '{', 'a', '\0', 'b', '}' };
+	const char text[] = " 123 \"hello\"\nkey=\"a b\"";
 
 	UNUSED(state);
 
-	isc_lex_create(isc_g_mctx, 1024, &lex);
+	assert_int_equal(isc_lex_create_dns_master(isc_g_mctx, 4, &lex),
+			 ISC_R_SUCCESS);
+	isc_buffer_constinit(&buf, text, sizeof(text) - 1);
+	isc_buffer_add(&buf, sizeof(text) - 1);
+	assert_int_equal(isc_lex_openbuffer(lex, &buf), ISC_R_SUCCESS);
 
-	memset(specials, 0, sizeof(specials));
-	specials['{'] = 1;
-	specials['}'] = 1;
-	isc_lex_setspecials(lex, specials);
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_initialws);
 
-	isc_buffer_init(&buf, &btext_null[0], sizeof(btext_null));
-	isc_buffer_add(&buf, sizeof(btext_null));
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_string);
+	assert_string_equal(AS_STR(token), "123");
 
-	result = isc_lex_openbuffer(lex, &buf);
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_qstring);
+	assert_string_equal(AS_STR(token), "hello");
+
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_eol);
+
+	result = isc_lex_next_vpair(lex, &token, true);
 	assert_int_equal(result, ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_qvpair);
+	assert_string_equal(AS_STR(token), "key=a b");
 
-	result = isc_lex_gettoken(lex, ISC_LEXOPT_BTEXT, &token);
-	assert_int_equal(result, ISC_R_SUCCESS);
-	assert_int_equal(token.type, isc_tokentype_unknown);
+	isc_lex_destroy(&lex);
+}
+
+ISC_RUN_TEST_IMPL(lex_config_policy) {
+	isc_buffer_t buf;
+	isc_lex_t *lex = NULL;
+	isc_token_t token;
+	const char text[] = "{ \"two\nlines\" 123 }";
+
+	UNUSED(state);
+
+	assert_int_equal(isc_lex_create_config(isc_g_mctx, 4, &lex),
+			 ISC_R_SUCCESS);
+	isc_buffer_constinit(&buf, text, sizeof(text) - 1);
+	isc_buffer_add(&buf, sizeof(text) - 1);
+	assert_int_equal(isc_lex_openbuffer(lex, &buf), ISC_R_SUCCESS);
+
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_special);
+	assert_int_equal(token.value.as_char, '{');
+
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_qstring);
+	assert_string_equal(AS_STR(token), "two\nlines");
+
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_string);
+	assert_string_equal(AS_STR(token), "123");
 
 	isc_lex_destroy(&lex);
 }
@@ -487,8 +518,9 @@ ISC_RUN_TEST_IMPL(lex_keypair) {
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY(lex_0x00)
 ISC_TEST_ENTRY(lex_0x00_initialws)
-ISC_TEST_ENTRY(lex_0x00_btext)
 ISC_TEST_ENTRY(lex_0xff)
+ISC_TEST_ENTRY(lex_config_policy)
+ISC_TEST_ENTRY(lex_dns_master_policy)
 ISC_TEST_ENTRY(lex_keypair)
 ISC_TEST_ENTRY(lex_setline)
 ISC_TEST_ENTRY(lex_string)

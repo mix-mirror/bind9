@@ -55,9 +55,10 @@ struct isc_lex {
 	size_t max_token;
 	char *data;
 	unsigned int comments;
+	unsigned int options;
+	bool policy_fixed;
 	bool comment_ok;
 	bool last_was_eol;
-	unsigned int brace_count;
 	unsigned int paren_count;
 	unsigned int saved_paren_count;
 	isc_lexspecials_t specials;
@@ -98,9 +99,10 @@ isc_lex_create(isc_mem_t *mctx, size_t max_token, isc_lex_t **lexp) {
 	lex->mctx = mctx;
 	lex->max_token = max_token;
 	lex->comments = 0;
+	lex->options = 0;
+	lex->policy_fixed = false;
 	lex->comment_ok = true;
 	lex->last_was_eol = true;
-	lex->brace_count = 0;
 	lex->paren_count = 0;
 	lex->saved_paren_count = 0;
 	memset(lex->specials, 0, 256);
@@ -108,6 +110,47 @@ isc_lex_create(isc_mem_t *mctx, size_t max_token, isc_lex_t **lexp) {
 	lex->magic = LEX_MAGIC;
 
 	*lexp = lex;
+}
+
+isc_result_t
+isc_lex_create_dns_master(isc_mem_t *mctx, size_t initial_token_size,
+			  isc_lex_t **lexp) {
+	isc_lexspecials_t specials = { 0 };
+
+	isc_lex_create(mctx, initial_token_size, lexp);
+	(*lexp)->options = ISC_LEXOPT_EOL | ISC_LEXOPT_EOF |
+			   ISC_LEXOPT_INITIALWS | ISC_LEXOPT_DNSMULTILINE |
+			   ISC_LEXOPT_ESCAPE | ISC_LEXOPT_QSTRING;
+	(*lexp)->comments = ISC_LEXCOMMENT_DNSMASTERFILE;
+	specials['('] = 1;
+	specials[')'] = 1;
+	specials['"'] = 1;
+	memmove((*lexp)->specials, specials, sizeof(specials));
+	(*lexp)->policy_fixed = true;
+
+	return ISC_R_SUCCESS;
+}
+
+isc_result_t
+isc_lex_create_config(isc_mem_t *mctx, size_t initial_token_size,
+		      isc_lex_t **lexp) {
+	isc_lexspecials_t specials = { 0 };
+
+	isc_lex_create(mctx, initial_token_size, lexp);
+	(*lexp)->options = ISC_LEXOPT_EOF | ISC_LEXOPT_NOMORE |
+			   ISC_LEXOPT_QSTRING | ISC_LEXOPT_QSTRINGMULTILINE;
+	(*lexp)->comments = ISC_LEXCOMMENT_C | ISC_LEXCOMMENT_CPLUSPLUS |
+			    ISC_LEXCOMMENT_SHELL;
+	specials['{'] = 1;
+	specials['}'] = 1;
+	specials[';'] = 1;
+	specials['/'] = 1;
+	specials['"'] = 1;
+	specials['!'] = 1;
+	memmove((*lexp)->specials, specials, sizeof(specials));
+	(*lexp)->policy_fixed = true;
+
+	return ISC_R_SUCCESS;
 }
 
 void
@@ -151,6 +194,7 @@ isc_lex_setcomments(isc_lex_t *lex, unsigned int comments) {
 	 */
 
 	REQUIRE(VALID_LEX(lex));
+	REQUIRE(!lex->policy_fixed);
 
 	lex->comments = comments;
 }
@@ -174,6 +218,7 @@ isc_lex_setspecials(isc_lex_t *lex, isc_lexspecials_t specials) {
 	 */
 
 	REQUIRE(VALID_LEX(lex));
+	REQUIRE(!lex->policy_fixed);
 
 	memmove(lex->specials, specials, 256);
 }
@@ -284,7 +329,6 @@ typedef enum {
 	lexstate_ccommentend,
 	lexstate_eatline,
 	lexstate_qstring,
-	lexstate_btext,
 	lexstate_vpair,
 	lexstate_vpairstart,
 	lexstate_qvpair,
@@ -326,8 +370,8 @@ pushandgrow(isc_lex_t *lex, inputsource *source, int c) {
 	return ISC_R_SUCCESS;
 }
 
-isc_result_t
-isc_lex_gettoken(isc_lex_t *lex, unsigned int options, isc_token_t *tokenp) {
+static isc_result_t
+lex_gettoken(isc_lex_t *lex, unsigned int options, isc_token_t *tokenp) {
 	inputsource *source;
 	int c;
 	bool done = false;
@@ -372,11 +416,6 @@ isc_lex_gettoken(isc_lex_t *lex, unsigned int options, isc_token_t *tokenp) {
 		    lex->paren_count != 0)
 		{
 			lex->paren_count = 0;
-			return ISC_R_UNBALANCED;
-		}
-		if ((options & ISC_LEXOPT_BTEXT) != 0 && lex->brace_count != 0)
-		{
-			lex->brace_count = 0;
 			return ISC_R_UNBALANCED;
 		}
 		if ((options & ISC_LEXOPT_EOF) != 0) {
@@ -502,13 +541,6 @@ isc_lex_gettoken(isc_lex_t *lex, unsigned int options, isc_token_t *tokenp) {
 					result = ISC_R_UNBALANCED;
 					goto done;
 				}
-				if ((options & ISC_LEXOPT_BTEXT) != 0 &&
-				    lex->brace_count != 0)
-				{
-					lex->brace_count = 0;
-					result = ISC_R_UNBALANCED;
-					goto done;
-				}
 				if ((options & ISC_LEXOPT_EOF) == 0) {
 					result = ISC_R_EOF;
 					goto done;
@@ -567,18 +599,6 @@ isc_lex_gettoken(isc_lex_t *lex, unsigned int options, isc_token_t *tokenp) {
 							options = saved_options;
 						}
 					}
-					continue;
-				} else if (c == '{' &&
-					   (options & ISC_LEXOPT_BTEXT) != 0)
-				{
-					if (lex->brace_count != 0) {
-						result = ISC_R_UNBALANCED;
-						goto done;
-					}
-					lex->brace_count++;
-					options &= ~IWSEOL;
-					state = lexstate_btext;
-					no_comments = true;
 					continue;
 				}
 				tokenp->type = isc_tokentype_special;
@@ -845,60 +865,6 @@ isc_lex_gettoken(isc_lex_t *lex, unsigned int options, isc_token_t *tokenp) {
 				remaining--;
 			}
 			break;
-		case lexstate_btext:
-			if (c == EOF) {
-				result = ISC_R_UNEXPECTEDEND;
-				goto done;
-			}
-			if (c == '\0') {
-				tokenp->type = isc_tokentype_unknown;
-				tokenp->value.as_textregion.base = NULL;
-				tokenp->value.as_textregion.length = 0;
-				done = true;
-				break;
-			}
-			if (c == '{') {
-				if (escaped) {
-					escaped = false;
-				} else {
-					lex->brace_count++;
-				}
-			} else if (c == '}') {
-				if (escaped) {
-					escaped = false;
-				} else {
-					INSIST(lex->brace_count > 0);
-					lex->brace_count--;
-				}
-
-				if (lex->brace_count == 0) {
-					tokenp->type = isc_tokentype_btext;
-					tokenp->value.as_textregion.base =
-						lex->data;
-					tokenp->value.as_textregion.length =
-						(unsigned int)(lex->max_token -
-							       remaining);
-					no_comments = false;
-					done = true;
-					break;
-				}
-			}
-
-			if (c == '\\' && !escaped) {
-				escaped = true;
-			} else {
-				escaped = false;
-			}
-
-			if (remaining == 0U) {
-				grow_data(lex, &remaining, &curr, &prev);
-			}
-			INSIST(remaining > 0U);
-			prev = curr;
-			*curr++ = c;
-			*curr = '\0';
-			remaining--;
-			break;
 		default:
 			FATAL_ERROR("Unexpected state %d", state);
 		}
@@ -915,24 +881,79 @@ done:
 }
 
 isc_result_t
+isc_lex_gettoken(isc_lex_t *lex, unsigned int options, isc_token_t *tokenp) {
+	REQUIRE(VALID_LEX(lex));
+
+	return lex_gettoken(lex, lex->policy_fixed ? lex->options : options,
+			    tokenp);
+}
+
+isc_result_t
+isc_lex_next(isc_lex_t *lex, isc_token_t *tokenp) {
+	REQUIRE(VALID_LEX(lex));
+	REQUIRE(lex->policy_fixed);
+
+	return lex_gettoken(lex, lex->options, tokenp);
+}
+
+isc_result_t
+isc_lex_next_vpair(isc_lex_t *lex, isc_token_t *tokenp, bool quoted) {
+	unsigned int options;
+
+	REQUIRE(VALID_LEX(lex));
+	REQUIRE(lex->policy_fixed);
+	REQUIRE((lex->options & ISC_LEXOPT_DNSMULTILINE) != 0);
+
+	options = lex->options | ISC_LEXOPT_VPAIR;
+	if (quoted) {
+		options |= ISC_LEXOPT_QVPAIR;
+	}
+	return lex_gettoken(lex, options, tokenp);
+}
+
+isc_result_t
 isc_lex_getmastertoken(isc_lex_t *lex, isc_token_t *token,
 		       isc_tokentype_t expect, bool eol) {
 	unsigned int options = ISC_LEXOPT_EOL | ISC_LEXOPT_EOF |
 			       ISC_LEXOPT_DNSMULTILINE | ISC_LEXOPT_ESCAPE;
 	isc_result_t result;
 
-	if (expect == isc_tokentype_vpair) {
-		options |= ISC_LEXOPT_VPAIR;
-	} else if (expect == isc_tokentype_qvpair) {
-		options |= ISC_LEXOPT_VPAIR;
-		options |= ISC_LEXOPT_QVPAIR;
-	} else if (expect == isc_tokentype_qstring) {
-		options |= ISC_LEXOPT_QSTRING;
-	} else if (expect == isc_tokentype_number) {
-		options |= ISC_LEXOPT_NUMBER;
+	if (lex->policy_fixed) {
+		if (expect == isc_tokentype_vpair ||
+		    expect == isc_tokentype_qvpair)
+		{
+			result = isc_lex_next_vpair(
+				lex, token, expect == isc_tokentype_qvpair);
+		} else {
+			result = isc_lex_next(lex, token);
+		}
+	} else {
+		if (expect == isc_tokentype_vpair) {
+			options |= ISC_LEXOPT_VPAIR;
+		} else if (expect == isc_tokentype_qvpair) {
+			options |= ISC_LEXOPT_VPAIR;
+			options |= ISC_LEXOPT_QVPAIR;
+		} else if (expect == isc_tokentype_qstring) {
+			options |= ISC_LEXOPT_QSTRING;
+		} else if (expect == isc_tokentype_number) {
+			options |= ISC_LEXOPT_NUMBER;
+		}
+		result = isc_lex_gettoken(lex, options, token);
 	}
-	result = isc_lex_gettoken(lex, options, token);
-	if (result == ISC_R_RANGE) {
+	if (result == ISC_R_SUCCESS && lex->policy_fixed &&
+	    expect == isc_tokentype_number &&
+	    token->type == isc_tokentype_string)
+	{
+		uint32_t number;
+
+		result = isc_parse_uint32_region(
+			&number, &token->value.as_textregion, 10);
+		if (result == ISC_R_SUCCESS) {
+			token->type = isc_tokentype_number;
+			token->value.as_ulong = number;
+		}
+	}
+	if (result == ISC_R_RANGE || result == ISC_R_BADNUMBER) {
 		isc_lex_ungettoken(lex, token);
 	}
 	if (result != ISC_R_SUCCESS) {
@@ -976,8 +997,24 @@ isc_lex_getoctaltoken(isc_lex_t *lex, isc_token_t *token, bool eol) {
 			       ISC_LEXOPT_NUMBER | ISC_LEXOPT_OCTAL;
 	isc_result_t result;
 
-	result = isc_lex_gettoken(lex, options, token);
-	if (result == ISC_R_RANGE) {
+	if (lex->policy_fixed) {
+		result = isc_lex_next(lex, token);
+		if (result == ISC_R_SUCCESS &&
+		    token->type == isc_tokentype_string)
+		{
+			uint32_t number;
+
+			result = isc_parse_uint32_region(
+				&number, &token->value.as_textregion, 8);
+			if (result == ISC_R_SUCCESS) {
+				token->type = isc_tokentype_number;
+				token->value.as_ulong = number;
+			}
+		}
+	} else {
+		result = isc_lex_gettoken(lex, options, token);
+	}
+	if (result == ISC_R_RANGE || result == ISC_R_BADNUMBER) {
 		isc_lex_ungettoken(lex, token);
 	}
 	if (result != ISC_R_SUCCESS) {

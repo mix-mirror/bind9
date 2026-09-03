@@ -341,8 +341,6 @@ extern cfg_type_t cfg_type_astring;
 extern cfg_type_t cfg_type_ustring;
 extern cfg_type_t cfg_type_sstring;
 extern cfg_type_t cfg_type_bracketed_aml;
-extern cfg_type_t cfg_type_bracketed_text;
-extern cfg_type_t cfg_type_optional_bracketed_text;
 extern cfg_type_t cfg_type_keyref;
 extern cfg_type_t cfg_type_sockaddr;
 extern cfg_type_t cfg_type_sockaddrtls;
@@ -362,15 +360,19 @@ extern cfg_type_t cfg_type_duration_or_unlimited;
 /*@}*/
 
 isc_result_t
-cfg_gettoken(cfg_parser_t *pctx, int options);
+cfg_gettoken(cfg_parser_t *pctx);
 
 isc_result_t
-cfg_peektoken(cfg_parser_t *pctx, int options);
+cfg_peektoken(cfg_parser_t *pctx);
+
+bool
+cfg_token_isuint32(cfg_parser_t *pctx, int base);
+
+isc_result_t
+cfg_token_touint32(cfg_parser_t *pctx, int base, uint32_t *value);
 
 void
 cfg_ungettoken(cfg_parser_t *pctx);
-
-#define CFG_LEXOPT_QSTRING (ISC_LEXOPT_QSTRING | ISC_LEXOPT_QSTRINGMULTILINE)
 
 void
 cfg_obj_create(cfg_obj_t *file, size_t line, const cfg_type_t *type,
