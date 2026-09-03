@@ -215,6 +215,43 @@ ISC_RUN_TEST_IMPL(lex_config_policy) {
 	isc_lex_destroy(&lex);
 }
 
+ISC_RUN_TEST_IMPL(lex_unget_eol) {
+	isc_buffer_t buf;
+	isc_lex_t *lex = NULL;
+	isc_token_t token;
+	const char text[] = "key ; comment\n next";
+
+	UNUSED(state);
+
+	assert_int_equal(isc_lex_create_dns_master(isc_g_mctx, 4, &lex),
+			 ISC_R_SUCCESS);
+	isc_buffer_constinit(&buf, text, sizeof(text) - 1);
+	isc_buffer_add(&buf, sizeof(text) - 1);
+	assert_int_equal(isc_lex_openbuffer(lex, &buf), ISC_R_SUCCESS);
+
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_string);
+	assert_string_equal(AS_STR(token), "key");
+
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_eol);
+
+	isc_lex_ungettoken(lex, &token);
+
+	/* Ungetting EOL must also restore beginning-of-line state. */
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_eol);
+
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_initialws);
+
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_string);
+	assert_string_equal(AS_STR(token), "next");
+
+	isc_lex_destroy(&lex);
+}
+
 /* check handling of 0xff */
 ISC_RUN_TEST_IMPL(lex_0xff) {
 	isc_result_t result;
@@ -539,6 +576,7 @@ ISC_TEST_ENTRY(lex_0x00_initialws)
 ISC_TEST_ENTRY(lex_0xff)
 ISC_TEST_ENTRY(lex_config_policy)
 ISC_TEST_ENTRY(lex_dns_master_policy)
+ISC_TEST_ENTRY(lex_unget_eol)
 ISC_TEST_ENTRY(lex_setline)
 ISC_TEST_LIST_END
 

@@ -79,6 +79,7 @@ struct isc_lex {
 	unsigned int options;
 	bool comment_ok;
 	bool last_was_eol;
+	bool saved_last_was_eol;
 	unsigned int paren_count;
 	unsigned int saved_paren_count;
 	isc_lexspecials_t specials;
@@ -431,6 +432,7 @@ lex_gettoken(isc_lex_t *lex, unsigned int options, isc_token_t *tokenp) {
 	}
 
 	lex->saved_paren_count = lex->paren_count;
+	lex->saved_last_was_eol = lex->last_was_eol;
 	source->saved_line = source->line;
 
 	if (isc_buffer_remaininglength(source->pushback) == 0 && source->at_eof)
@@ -1041,6 +1043,7 @@ isc_lex_ungettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 
 	isc_buffer_first(source->pushback);
 	lex->paren_count = lex->saved_paren_count;
+	lex->last_was_eol = lex->saved_last_was_eol;
 	source->line = source->saved_line;
 	source->at_eof = false;
 }
