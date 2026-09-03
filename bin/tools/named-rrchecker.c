@@ -90,6 +90,7 @@ main(int argc, char *argv[]) {
 	isc_buffer_t dbuf;
 	dns_rdata_t rdata = DNS_RDATA_INIT;
 	bool doexit = false;
+	bool saw_eof = false;
 	bool once = false;
 	bool print = false;
 	bool unknown = false;
@@ -183,9 +184,12 @@ main(int argc, char *argv[]) {
 	while ((result = isc_lex_next(lex, &token)) == ISC_R_SUCCESS)
 	{
 		if (token.type == isc_tokentype_eof) {
+			saw_eof = true;
 			break;
 		}
-		if (token.type == isc_tokentype_eol) {
+		if (token.type == isc_tokentype_eol ||
+		    token.type == isc_tokentype_initialws)
+		{
 			continue;
 		}
 		if (once) {
@@ -230,6 +234,7 @@ main(int argc, char *argv[]) {
 			continue;
 		}
 		if (token.type == isc_tokentype_eof) {
+			saw_eof = true;
 			break;
 		}
 
@@ -273,7 +278,7 @@ main(int argc, char *argv[]) {
 		}
 		once = true;
 	}
-	if (result != ISC_R_EOF) {
+	if (result != ISC_R_SUCCESS || !saw_eof) {
 		fatal("eof not found");
 	}
 	if (!once) {
