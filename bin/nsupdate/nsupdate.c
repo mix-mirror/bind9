@@ -1314,7 +1314,8 @@ parse_rdata(char **cmdlinep, dns_rdataclass_t rdataclass,
 
 	if (*cmdline != 0) {
 		dns_rdatacallbacks_init(&callbacks);
-		isc_lex_create(isc_g_mctx, strlen(cmdline), &lex);
+		RUNTIME_CHECK(isc_lex_create_dns_master(
+			isc_g_mctx, strlen(cmdline), &lex) == ISC_R_SUCCESS);
 		isc_buffer_init(&source, cmdline, strlen(cmdline));
 		isc_buffer_add(&source, strlen(cmdline));
 		result = isc_lex_openbuffer(lex, &source);

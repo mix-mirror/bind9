@@ -48,6 +48,27 @@ typedef struct inputsource {
 #define LEX_MAGIC    ISC_MAGIC('L', 'e', 'x', '!')
 #define VALID_LEX(l) ISC_MAGIC_VALID(l, LEX_MAGIC)
 
+#define ISC_LEXOPT_EOL		      0x0001
+#define ISC_LEXOPT_EOF		      0x0002
+#define ISC_LEXOPT_INITIALWS	      0x0004
+#define ISC_LEXOPT_NUMBER	      0x0008
+#define ISC_LEXOPT_QSTRING	      0x0010
+#define ISC_LEXOPT_DNSMULTILINE      0x0020
+#define ISC_LEXOPT_NOMORE	      0x0040
+#define ISC_LEXOPT_CNUMBER	      0x0080
+#define ISC_LEXOPT_ESCAPE	      0x0100
+#define ISC_LEXOPT_QSTRINGMULTILINE 0x0200
+#define ISC_LEXOPT_OCTAL	      0x0400
+#define ISC_LEXOPT_VPAIR	      0x1000
+#define ISC_LEXOPT_QVPAIR	      0x2000
+
+#define ISC_LEXCOMMENT_C	     0x01
+#define ISC_LEXCOMMENT_CPLUSPLUS     0x02
+#define ISC_LEXCOMMENT_SHELL	     0x04
+#define ISC_LEXCOMMENT_DNSMASTERFILE 0x08
+
+typedef char isc_lexspecials_t[256];
+
 struct isc_lex {
 	/* Unlocked. */
 	unsigned int magic;
@@ -56,7 +77,6 @@ struct isc_lex {
 	char *data;
 	unsigned int comments;
 	unsigned int options;
-	bool policy_fixed;
 	bool comment_ok;
 	bool last_was_eol;
 	unsigned int paren_count;
@@ -81,8 +101,8 @@ grow_data(isc_lex_t *lex, size_t *remainingp, char **currp, char **prevp) {
 	lex->max_token *= 2;
 }
 
-void
-isc_lex_create(isc_mem_t *mctx, size_t max_token, isc_lex_t **lexp) {
+static void
+lex_create(isc_mem_t *mctx, size_t max_token, isc_lex_t **lexp) {
 	isc_lex_t *lex;
 
 	/*
@@ -100,7 +120,6 @@ isc_lex_create(isc_mem_t *mctx, size_t max_token, isc_lex_t **lexp) {
 	lex->max_token = max_token;
 	lex->comments = 0;
 	lex->options = 0;
-	lex->policy_fixed = false;
 	lex->comment_ok = true;
 	lex->last_was_eol = true;
 	lex->paren_count = 0;
@@ -117,7 +136,7 @@ isc_lex_create_dns_master(isc_mem_t *mctx, size_t initial_token_size,
 			  isc_lex_t **lexp) {
 	isc_lexspecials_t specials = { 0 };
 
-	isc_lex_create(mctx, initial_token_size, lexp);
+	lex_create(mctx, initial_token_size, lexp);
 	(*lexp)->options = ISC_LEXOPT_EOL | ISC_LEXOPT_EOF |
 			   ISC_LEXOPT_INITIALWS | ISC_LEXOPT_DNSMULTILINE |
 			   ISC_LEXOPT_ESCAPE | ISC_LEXOPT_QSTRING;
@@ -126,7 +145,6 @@ isc_lex_create_dns_master(isc_mem_t *mctx, size_t initial_token_size,
 	specials[')'] = 1;
 	specials['"'] = 1;
 	memmove((*lexp)->specials, specials, sizeof(specials));
-	(*lexp)->policy_fixed = true;
 
 	return ISC_R_SUCCESS;
 }
@@ -136,7 +154,7 @@ isc_lex_create_config(isc_mem_t *mctx, size_t initial_token_size,
 		      isc_lex_t **lexp) {
 	isc_lexspecials_t specials = { 0 };
 
-	isc_lex_create(mctx, initial_token_size, lexp);
+	lex_create(mctx, initial_token_size, lexp);
 	(*lexp)->options = ISC_LEXOPT_EOF | ISC_LEXOPT_NOMORE |
 			   ISC_LEXOPT_QSTRING | ISC_LEXOPT_QSTRINGMULTILINE;
 	(*lexp)->comments = ISC_LEXCOMMENT_C | ISC_LEXCOMMENT_CPLUSPLUS |
@@ -148,7 +166,59 @@ isc_lex_create_config(isc_mem_t *mctx, size_t initial_token_size,
 	specials['"'] = 1;
 	specials['!'] = 1;
 	memmove((*lexp)->specials, specials, sizeof(specials));
-	(*lexp)->policy_fixed = true;
+
+	return ISC_R_SUCCESS;
+}
+
+static isc_result_t
+create_dns_text(isc_mem_t *mctx, size_t initial_token_size,
+		isc_lex_t **lexp, unsigned int comments) {
+	isc_lexspecials_t specials = { 0 };
+
+	lex_create(mctx, initial_token_size, lexp);
+	(*lexp)->options = ISC_LEXOPT_EOL | ISC_LEXOPT_DNSMULTILINE |
+			   ISC_LEXOPT_ESCAPE |
+			   ISC_LEXOPT_QSTRING;
+	(*lexp)->comments = comments;
+	specials['('] = 1;
+	specials[')'] = 1;
+	specials['"'] = 1;
+	memmove((*lexp)->specials, specials, sizeof(specials));
+
+	return ISC_R_SUCCESS;
+}
+
+isc_result_t
+isc_lex_create_dnssec(isc_mem_t *mctx, size_t initial_token_size,
+		      isc_lex_t **lexp) {
+	return create_dns_text(mctx, initial_token_size, lexp,
+			       ISC_LEXCOMMENT_DNSMASTERFILE);
+}
+
+isc_result_t
+isc_lex_create_dnssec_bundle(isc_mem_t *mctx, size_t initial_token_size,
+			     isc_lex_t **lexp) {
+	return create_dns_text(mctx, initial_token_size, lexp, 0);
+}
+
+isc_result_t
+isc_lex_create_command(isc_mem_t *mctx, size_t initial_token_size,
+		       isc_lex_t **lexp) {
+	isc_lexspecials_t specials = { 0 };
+
+	lex_create(mctx, initial_token_size, lexp);
+	(*lexp)->options = ISC_LEXOPT_EOF | ISC_LEXOPT_QSTRING;
+	specials['"'] = 1;
+	memmove((*lexp)->specials, specials, sizeof(specials));
+
+	return ISC_R_SUCCESS;
+}
+
+isc_result_t
+isc_lex_create_line(isc_mem_t *mctx, size_t initial_token_size,
+		    isc_lex_t **lexp) {
+	lex_create(mctx, initial_token_size, lexp);
+	(*lexp)->options = ISC_LEXOPT_EOL | ISC_LEXOPT_EOF;
 
 	return ISC_R_SUCCESS;
 }
@@ -174,53 +244,6 @@ isc_lex_destroy(isc_lex_t **lexp) {
 	}
 	lex->magic = 0;
 	isc_mem_put(lex->mctx, lex, sizeof(*lex));
-}
-
-unsigned int
-isc_lex_getcomments(isc_lex_t *lex) {
-	/*
-	 * Return the current lexer commenting styles.
-	 */
-
-	REQUIRE(VALID_LEX(lex));
-
-	return lex->comments;
-}
-
-void
-isc_lex_setcomments(isc_lex_t *lex, unsigned int comments) {
-	/*
-	 * Set allowed lexer commenting styles.
-	 */
-
-	REQUIRE(VALID_LEX(lex));
-	REQUIRE(!lex->policy_fixed);
-
-	lex->comments = comments;
-}
-
-void
-isc_lex_getspecials(isc_lex_t *lex, isc_lexspecials_t specials) {
-	/*
-	 * Put the current list of specials into 'specials'.
-	 */
-
-	REQUIRE(VALID_LEX(lex));
-
-	memmove(specials, lex->specials, 256);
-}
-
-void
-isc_lex_setspecials(isc_lex_t *lex, isc_lexspecials_t specials) {
-	/*
-	 * The characters in 'specials' are returned as tokens.  Along with
-	 * whitespace, they delimit strings and numbers.
-	 */
-
-	REQUIRE(VALID_LEX(lex));
-	REQUIRE(!lex->policy_fixed);
-
-	memmove(lex->specials, specials, 256);
 }
 
 static void
@@ -881,17 +904,8 @@ done:
 }
 
 isc_result_t
-isc_lex_gettoken(isc_lex_t *lex, unsigned int options, isc_token_t *tokenp) {
-	REQUIRE(VALID_LEX(lex));
-
-	return lex_gettoken(lex, lex->policy_fixed ? lex->options : options,
-			    tokenp);
-}
-
-isc_result_t
 isc_lex_next(isc_lex_t *lex, isc_token_t *tokenp) {
 	REQUIRE(VALID_LEX(lex));
-	REQUIRE(lex->policy_fixed);
 
 	return lex_gettoken(lex, lex->options, tokenp);
 }
@@ -901,7 +915,6 @@ isc_lex_next_vpair(isc_lex_t *lex, isc_token_t *tokenp, bool quoted) {
 	unsigned int options;
 
 	REQUIRE(VALID_LEX(lex));
-	REQUIRE(lex->policy_fixed);
 	REQUIRE((lex->options & ISC_LEXOPT_DNSMULTILINE) != 0);
 
 	options = lex->options | ISC_LEXOPT_VPAIR;
@@ -914,34 +927,15 @@ isc_lex_next_vpair(isc_lex_t *lex, isc_token_t *tokenp, bool quoted) {
 isc_result_t
 isc_lex_getmastertoken(isc_lex_t *lex, isc_token_t *token,
 		       isc_tokentype_t expect, bool eol) {
-	unsigned int options = ISC_LEXOPT_EOL | ISC_LEXOPT_EOF |
-			       ISC_LEXOPT_DNSMULTILINE | ISC_LEXOPT_ESCAPE;
 	isc_result_t result;
 
-	if (lex->policy_fixed) {
-		if (expect == isc_tokentype_vpair ||
-		    expect == isc_tokentype_qvpair)
-		{
-			result = isc_lex_next_vpair(
-				lex, token, expect == isc_tokentype_qvpair);
-		} else {
-			result = isc_lex_next(lex, token);
-		}
+	if (expect == isc_tokentype_vpair || expect == isc_tokentype_qvpair) {
+		result = isc_lex_next_vpair(
+			lex, token, expect == isc_tokentype_qvpair);
 	} else {
-		if (expect == isc_tokentype_vpair) {
-			options |= ISC_LEXOPT_VPAIR;
-		} else if (expect == isc_tokentype_qvpair) {
-			options |= ISC_LEXOPT_VPAIR;
-			options |= ISC_LEXOPT_QVPAIR;
-		} else if (expect == isc_tokentype_qstring) {
-			options |= ISC_LEXOPT_QSTRING;
-		} else if (expect == isc_tokentype_number) {
-			options |= ISC_LEXOPT_NUMBER;
-		}
-		result = isc_lex_gettoken(lex, options, token);
+		result = isc_lex_next(lex, token);
 	}
-	if (result == ISC_R_SUCCESS && lex->policy_fixed &&
-	    expect == isc_tokentype_number &&
+	if (result == ISC_R_SUCCESS && expect == isc_tokentype_number &&
 	    token->type == isc_tokentype_string)
 	{
 		uint32_t number;
@@ -992,27 +986,18 @@ isc_lex_getmastertoken(isc_lex_t *lex, isc_token_t *token,
 
 isc_result_t
 isc_lex_getoctaltoken(isc_lex_t *lex, isc_token_t *token, bool eol) {
-	unsigned int options = ISC_LEXOPT_EOL | ISC_LEXOPT_EOF |
-			       ISC_LEXOPT_DNSMULTILINE | ISC_LEXOPT_ESCAPE |
-			       ISC_LEXOPT_NUMBER | ISC_LEXOPT_OCTAL;
 	isc_result_t result;
 
-	if (lex->policy_fixed) {
-		result = isc_lex_next(lex, token);
-		if (result == ISC_R_SUCCESS &&
-		    token->type == isc_tokentype_string)
-		{
-			uint32_t number;
+	result = isc_lex_next(lex, token);
+	if (result == ISC_R_SUCCESS && token->type == isc_tokentype_string) {
+		uint32_t number;
 
-			result = isc_parse_uint32_region(
-				&number, &token->value.as_textregion, 8);
-			if (result == ISC_R_SUCCESS) {
-				token->type = isc_tokentype_number;
-				token->value.as_ulong = number;
-			}
+		result = isc_parse_uint32_region(
+			&number, &token->value.as_textregion, 8);
+		if (result == ISC_R_SUCCESS) {
+			token->type = isc_tokentype_number;
+			token->value.as_ulong = number;
 		}
-	} else {
-		result = isc_lex_gettoken(lex, options, token);
 	}
 	if (result == ISC_R_RANGE || result == ISC_R_BADNUMBER) {
 		isc_lex_ungettoken(lex, token);

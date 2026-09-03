@@ -169,7 +169,8 @@ putrr(bdbnode_t *node, const char *type, dns_ttl_t ttl, const char *data) {
 	isc_constregion_t r = { .base = type, .length = strlen(type) };
 	RETERR(dns_rdatatype_fromtext(&typeval, (isc_textregion_t *)&r));
 
-	isc_lex_create(mctx, 64, &lex);
+	RUNTIME_CHECK(isc_lex_create_dns_master(mctx, 64, &lex) ==
+		      ISC_R_SUCCESS);
 
 	size_t datalen = strlen(data);
 	isc_buffer_constinit(&b, data, datalen);

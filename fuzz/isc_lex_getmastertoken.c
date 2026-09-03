@@ -36,7 +36,8 @@ static isc_lex_t *lex = NULL;
 int
 LLVMFuzzerInitialize(int *argc ISC_ATTR_UNUSED, char ***argv ISC_ATTR_UNUSED) {
 	isc_mem_create("fuzz", &mctx);
-	isc_lex_create(mctx, 1024, &lex);
+	RUNTIME_CHECK(isc_lex_create_dns_master(mctx, 1024, &lex) ==
+		      ISC_R_SUCCESS);
 
 	return 0;
 }

@@ -157,7 +157,6 @@ write_record(FILE *fp, dns_rdatatype_t rdtype, const char *rdatastr,
 	     char *target_mem, dns_rdata_t *rdata) {
 	isc_buffer_t source, target;
 	isc_lex_t *lex = NULL;
-	isc_lexspecials_t specials = { 0 };
 	isc_result_t result;
 
 	/* Set up source to hold the input string. */
@@ -166,12 +165,8 @@ write_record(FILE *fp, dns_rdatatype_t rdtype, const char *rdatastr,
 	isc_buffer_add(&source, strlen(rdatastr));
 
 	/* Create a lexer as one is required by dns_rdata_fromtext(). */
-	isc_lex_create(isc_g_mctx, 64, &lex);
-	specials['('] = 1;
-	specials[')'] = 1;
-	specials['"'] = 1;
-	isc_lex_setspecials(lex, specials);
-	isc_lex_setcomments(lex, ISC_LEXCOMMENT_DNSMASTERFILE);
+	assert_int_equal(isc_lex_create_dns_master(isc_g_mctx, 64, &lex),
+			 ISC_R_SUCCESS);
 	result = isc_lex_openbuffer(lex, &source);
 	assert_int_equal(result, ISC_R_SUCCESS);
 

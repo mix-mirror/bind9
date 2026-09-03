@@ -81,7 +81,7 @@ isc_base32hexnp_decodestring(const char *cstr, isc_buffer_t *target);
  *\li	#ISC_R_BADBASE32 -- 'cstr' is not a valid base32 encoding.
  *
  * 	Other error returns are any possible error code from:
- *\li		isc_lex_create(),
+ *\li		isc_lex_create_dns_master(),
  *\li		isc_lex_openbuffer(),
  *\li		isc_base32_tobuffer().
  */

@@ -101,8 +101,8 @@ for db in zones/bad*.db; do
       ;;
     zones/bad-include-directory.db)
       $CHECKZONE -i local example $db >test.out.$n 2>&1 || v=$?
-      grep "dns_master_load: .:1: isc_lex_gettoken() failed: not a file" test.out.$n >/dev/null || ret=1
-      grep "dns_master_load: ..:1: isc_lex_gettoken() failed: not a file" test.out.$n >/dev/null || ret=1
+      grep "dns_master_load: .:1: isc_lex_next() failed: not a file" test.out.$n >/dev/null || ret=1
+      grep "dns_master_load: ..:1: isc_lex_next() failed: not a file" test.out.$n >/dev/null || ret=1
       ;;
     zones/bad-nsap-empty.db)
       $CHECKZONE -i local example $db >test.out.$n 2>&1 || v=$?

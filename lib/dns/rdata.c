@@ -1124,8 +1124,6 @@ dns_rdata_fromtext(dns_rdata_t *rdata, dns_rdataclass_t rdclass,
 	isc_region_t region;
 	isc_buffer_t st;
 	isc_token_t token;
-	unsigned int lexoptions = ISC_LEXOPT_EOL | ISC_LEXOPT_EOF |
-				  ISC_LEXOPT_DNSMULTILINE | ISC_LEXOPT_ESCAPE;
 	char *name;
 	unsigned long line;
 	void (*callback)(dns_rdatacallbacks_t *, const char *, ...);
@@ -1200,7 +1198,7 @@ dns_rdata_fromtext(dns_rdata_t *rdata, dns_rdataclass_t rdclass,
 	do {
 		name = isc_lex_getsourcename(lexer);
 		line = isc_lex_getsourceline(lexer);
-		tresult = isc_lex_gettoken(lexer, lexoptions, &token);
+		tresult = isc_lex_next(lexer, &token);
 		if (tresult != ISC_R_SUCCESS) {
 			if (result == ISC_R_SUCCESS) {
 				result = tresult;

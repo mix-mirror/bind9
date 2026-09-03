@@ -27,7 +27,7 @@
 
 #define READLINE(lex, opt, token)
 
-#define NEXTTOKEN(lex, opt, token) CHECK(isc_lex_gettoken(lex, opt, token))
+#define NEXTTOKEN(lex, token) CHECK(isc_lex_next(lex, token))
 
 #define BADTOKEN() CLEANUP(ISC_R_UNEXPECTEDTOKEN)
 
@@ -44,10 +44,7 @@ parse_rr(isc_lex_t *lex, isc_mem_t *mctx, char *owner, dns_name_t *origin,
 	dns_rdataclass_t clas;
 	isc_buffer_t b;
 	isc_token_t token;
-	unsigned int opt = ISC_LEXOPT_EOL;
 	isc_result_t result = ISC_R_SUCCESS;
-
-	isc_lex_setcomments(lex, ISC_LEXCOMMENT_DNSMASTERFILE);
 
 	/* Read the domain name */
 	if (!strcmp(owner, "@")) {
@@ -63,7 +60,7 @@ parse_rr(isc_lex_t *lex, isc_mem_t *mctx, char *owner, dns_name_t *origin,
 	isc_buffer_clear(&b);
 
 	/* Read the next word: either TTL, class, or type */
-	NEXTTOKEN(lex, opt, &token);
+	NEXTTOKEN(lex, &token);
 	if (token.type != isc_tokentype_string) {
 		BADTOKEN();
 	}
@@ -71,7 +68,7 @@ parse_rr(isc_lex_t *lex, isc_mem_t *mctx, char *owner, dns_name_t *origin,
 	/* If it's a TTL, read the next one */
 	result = dns_ttl_fromtext(&token.value.as_textregion, ttl);
 	if (result == ISC_R_SUCCESS) {
-		NEXTTOKEN(lex, opt, &token);
+		NEXTTOKEN(lex, &token);
 	}
 	if (token.type != isc_tokentype_string) {
 		BADTOKEN();
@@ -83,7 +80,7 @@ parse_rr(isc_lex_t *lex, isc_mem_t *mctx, char *owner, dns_name_t *origin,
 		if (clas != rdclass) {
 			BADTOKEN();
 		}
-		NEXTTOKEN(lex, opt, &token);
+		NEXTTOKEN(lex, &token);
 	}
 	if (token.type != isc_tokentype_string) {
 		BADTOKEN();
@@ -109,7 +106,6 @@ parse_rr(isc_lex_t *lex, isc_mem_t *mctx, char *owner, dns_name_t *origin,
 	result = dns_rdata_fromtext(*rdata, rdclass, *rdtype, lex, dname, 0,
 				    mctx, buf, &callbacks);
 cleanup:
-	isc_lex_setcomments(lex, 0);
 	return result;
 }
 
@@ -217,18 +213,11 @@ dns_skr_read(isc_mem_t *mctx, const char *filename, dns_name_t *origin,
 	dns_skrbundle_t *bundle = NULL;
 	uint32_t bundle_id;
 	isc_lex_t *lex = NULL;
-	isc_lexspecials_t specials;
 	isc_token_t token;
-	unsigned int opt = ISC_LEXOPT_EOL;
 
 	REQUIRE(DNS_SKR_VALID(*skrp));
 
-	isc_lex_create(mctx, TOKENSIZ, &lex);
-	memset(specials, 0, sizeof(specials));
-	specials['('] = 1;
-	specials[')'] = 1;
-	specials['"'] = 1;
-	isc_lex_setspecials(lex, specials);
+	CHECK(isc_lex_create_dnssec_bundle(mctx, TOKENSIZ, &lex));
 	result = isc_lex_openfile(lex, filename);
 	if (result != ISC_R_SUCCESS) {
 		isc_log_write(DNS_LOGCATEGORY_GENERAL, DNS_LOGMODULE_ZONE,
@@ -238,10 +227,13 @@ dns_skr_read(isc_mem_t *mctx, const char *filename, dns_name_t *origin,
 		return result;
 	}
 
-	for (result = isc_lex_gettoken(lex, opt, &token);
+	for (result = isc_lex_next(lex, &token);
 	     result == ISC_R_SUCCESS;
-	     result = isc_lex_gettoken(lex, opt, &token))
+	     result = isc_lex_next(lex, &token))
 	{
+		if (token.type == isc_tokentype_eof) {
+			break;
+		}
 		if (token.type == isc_tokentype_eol) {
 			continue;
 		}
@@ -252,7 +244,7 @@ dns_skr_read(isc_mem_t *mctx, const char *filename, dns_name_t *origin,
 
 		if (strcmp(STR(token), ";;") == 0) {
 			/* New bundle */
-			CHECK(isc_lex_gettoken(lex, opt, &token));
+			CHECK(isc_lex_next(lex, &token));
 			if (token.type != isc_tokentype_string ||
 			    strcmp(STR(token), "SignedKeyResponse") != 0)
 			{
@@ -260,7 +252,7 @@ dns_skr_read(isc_mem_t *mctx, const char *filename, dns_name_t *origin,
 			}
 
 			/* Version */
-			CHECK(isc_lex_gettoken(lex, opt, &token));
+			CHECK(isc_lex_next(lex, &token));
 			if (token.type != isc_tokentype_string ||
 			    strcmp(STR(token), "1.0") != 0)
 			{
@@ -268,7 +260,7 @@ dns_skr_read(isc_mem_t *mctx, const char *filename, dns_name_t *origin,
 			}
 
 			/* Date and time of bundle */
-			CHECK(isc_lex_gettoken(lex, opt, &token));
+			CHECK(isc_lex_next(lex, &token));
 			if (token.type != isc_tokentype_string) {
 				CLEANUP(DNS_R_SYNTAX);
 			}
@@ -295,7 +287,7 @@ dns_skr_read(isc_mem_t *mctx, const char *filename, dns_name_t *origin,
 		readline:
 			/* Read remainder of header line */
 			do {
-				CHECK(isc_lex_gettoken(lex, opt, &token));
+				CHECK(isc_lex_next(lex, &token));
 			} while (token.type != isc_tokentype_eol);
 		} else {
 			isc_buffer_t buf;
