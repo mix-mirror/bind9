@@ -40,7 +40,6 @@ import signal
 import sys
 
 import dns.dnssec
-import dns.dnssectypes
 import dns.exception
 import dns.flags
 import dns.message
@@ -588,8 +587,19 @@ class Nsec3NonExistenceProver(NonExistenceProver):
         self._add_closest_encloser_proof(self._qname)
 
     def _get_nsec3_owner(self, name: dns.name.Name) -> dns.name.Name:
-        algorithm = dns.dnssectypes.NSEC3Hash.SHA1
-        nsec3_hash = dns.dnssec.nsec3_hash(name, None, 0, algorithm)
+        assert self._zone.origin
+
+        nsec3param = self._zone.get_rdataset(
+            self._zone.origin, dns.rdatatype.NSEC3PARAM
+        )
+        assert nsec3param
+
+        nsec3_hash = dns.dnssec.nsec3_hash(
+            name,
+            nsec3param[0].salt,
+            nsec3param[0].iterations,
+            nsec3param[0].algorithm,
+        )
         return dns.name.from_text(nsec3_hash, origin=self._zone.origin)
 
     def _add_nsec3_matching(self, name: dns.name.Name) -> None:
