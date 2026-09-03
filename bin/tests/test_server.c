@@ -29,9 +29,10 @@
 #include <isc/string.h>
 #include <isc/util.h>
 
-typedef enum { UDP, TCP, DOT, HTTPS, HTTP } protocol_t;
+typedef enum { UDP, TCP, DOT, HTTPS, HTTP, DOQ } protocol_t;
 
-static const char *protocols[] = { "udp", "tcp", "dot", "https", "http-plain" };
+static const char *protocols[] = { "udp",   "tcp",	  "dot",
+				   "https", "http-plain", "doq" };
 
 static protocol_t protocol;
 static in_port_t port;
@@ -42,6 +43,9 @@ static int workers;
 static isc_tlsctx_t *tls_ctx = NULL;
 static isc_nmsocket_t *sock = NULL;
 static isc_nm_udplistener_t *udp_listener = NULL;
+static isc_nm_quiclistener_t *quic_listener = NULL;
+
+static uint8_t doq_alpn[] = { 0x03, 'd', 'o', 'q' };
 
 static void
 read_cb(isc_nmhandle_t *handle, isc_result_t eresult, isc_region_t *region,
@@ -263,7 +267,21 @@ run_cb(void *arg ISC_ATTR_UNUSED) {
 		}
 		isc_nm_http_endpoints_detach(&eps);
 	} break;
-#endif
+#endif /* HAVE_LIBNGHTTP2 */
+#ifdef HAVE_LIBNGTCP2
+	case DOQ:
+		isc_tlsctx_createserver(NULL, NULL, &tls_ctx);
+		INSIST(isc_quic_tlsctx_server_configure(tls_ctx) ==
+		       ISC_R_SUCCESS);
+		isc_quic_conn_options_t options = {
+			.tlsctx = tls_ctx,
+			.alpn = { doq_alpn, sizeof(doq_alpn) },
+		};
+		result = isc_nm_listenquic(ISC_NM_LISTEN_ALL, &sockaddr,
+					   &options, accept_cb, NULL,
+					   &quic_listener);
+		break;
+#endif /* HAVE_LIBNGTCP2 */
 	default:
 		UNREACHABLE();
 	}
@@ -275,6 +293,9 @@ stop_cb(void *arg ISC_ATTR_UNUSED) {
 	if (udp_listener != NULL) {
 		isc_nm_udplistener_stop(udp_listener);
 		isc_nm_udplistener_detach(&udp_listener);
+	} else if (quic_listener != NULL) {
+		isc_nm_quiclistener_stop(quic_listener);
+		isc_nm_quiclistener_detach(&quic_listener);
 	} else {
 		isc_nm_stoplistening(sock);
 		isc_nmsocket_close(&sock);
