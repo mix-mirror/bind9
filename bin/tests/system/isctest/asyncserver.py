@@ -557,6 +557,7 @@ class NsecNonExistenceProver(NonExistenceProver):
         self._add_chain_element_covering(name)
 
 
+@final
 class Nsec3NonExistenceProver(NonExistenceProver):
 
     proof_rdatatype = dns.rdatatype.NSEC3
