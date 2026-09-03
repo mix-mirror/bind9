@@ -322,18 +322,21 @@ class QueryContext:
         else:
             self._initialized_response = copy.deepcopy(self.response)
 
-    def get_rrsig(self, rrset: dns.rrset.RRset) -> dns.rrset.RRset | None:
+    def get_rrsig(
+        self, rrset: dns.rrset.RRset, /, node: dns.node.Node | None = None
+    ) -> dns.rrset.RRset | None:
         if not self.query.ednsflags & dns.flags.DO:
             return None
 
         assert self.zone
         assert self.zone.origin
 
-        node = (
-            self.node
-            if rrset.rdtype != dns.rdatatype.SOA
-            else self.zone.get_node(self.zone.origin)
-        )
+        if not node:
+            node = (
+                self.node
+                if rrset.rdtype != dns.rdatatype.SOA
+                else self.zone.get_node(self.zone.origin)
+            )
         assert node
 
         rrsig_rdataset = node.get_rdataset(
@@ -1877,7 +1880,6 @@ class AsyncDnsServer(AsyncServer):
 
         name = qctx.current_qname
         ns_rdataset = None
-        ds_rdataset = None
 
         while name != qctx.zone.origin:
             if node := qctx.zone.get_node(name):
@@ -1885,7 +1887,12 @@ class AsyncDnsServer(AsyncServer):
                     break
             name = name.parent()
 
-        if not ns_rdataset or qctx.qtype == dns.rdatatype.DS:
+        if not ns_rdataset:
+            return False
+
+        # Only answer DS queries for the delegation point itself; return a
+        # referral for anything below the delegation point.
+        if qctx.qtype == dns.rdatatype.DS and name == qctx.current_qname:
             return False
 
         ns_rrset = dns.rrset.RRset(name, qctx.qclass, dns.rdatatype.NS)
@@ -1896,12 +1903,11 @@ class AsyncDnsServer(AsyncServer):
 
         if qctx.query.ednsflags & dns.flags.DO:
             assert node
-            ds_rdataset = node.get_rdataset(qctx.qclass, dns.rdatatype.DS)
-            if ds_rdataset:
+            if ds_rdataset := node.get_rdataset(qctx.qclass, dns.rdatatype.DS):
                 ds_rrset = dns.rrset.RRset(name, qctx.qclass, dns.rdatatype.DS)
                 ds_rrset.update(ds_rdataset)
 
-                rrsig_rrset = qctx.get_rrsig(ds_rrset)
+                rrsig_rrset = qctx.get_rrsig(ds_rrset, node=node)
                 assert rrsig_rrset
 
                 qctx.response.authority.append(ds_rrset)
