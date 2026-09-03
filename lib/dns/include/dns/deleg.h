@@ -182,42 +182,34 @@ void
 dns_delegset_allocset(dns_delegdb_t *db, dns_delegset_t **delegsetp);
 
 /*
- * Allocate a new deleg struct and insert it into the delegation set. Can't
- * be used on delegation set already attached in the DB.
+ * Allocate a new deleg struct and insert it into the delegation set.  Can't be
+ * used on a delegset already attached in the DB.
  */
 void
 dns_delegset_allocdeleg(dns_delegset_t *delegset, dns_deleg_type_t type,
 			dns_deleg_t **delegp);
+
 /*
- * Free the deleg struct and remove it from the delegation set. Can't
- * be used on delegation set already attached in the DB.
- */
+ * Free the deleg struct and remove it from the delegation set.  Can't be used
+ * on a delegset already attached in the DB. */
 void
 dns_delegset_freedeleg(dns_delegset_t *delegset, dns_deleg_t **delegp);
 
 /*
- * Add a new IP into a delegation. Can't be used on a delegation from a
- * delegation set already attached in the DB.
+ * Add a new IP into a delegation. Can't be used on a delegset already
+ * attached in the DB
  */
 void
 dns_delegset_addaddr(dns_delegset_t *delegset, dns_deleg_t *deleg,
 		     const isc_netaddr_t *addr);
 
 /*
- * Add a new DELEGPARAM name into a delegation. Can't be used on a delegation
- * from a delegation set already attached in the DB.
+ * Add a new name into a delegation. Can't be used on a delegset already
+ * attached in the DB.
  */
 void
-dns_delegset_adddelegparam(dns_delegset_t *delegset, dns_deleg_t *deleg,
-			   const dns_name_t *name);
-
-/*
- * Add a new nameserver name into a delegation. Can't be used on a delegation
- * from a delegation set already attached in the DB.
- */
-void
-dns_delegset_addns(dns_delegset_t *delegset, dns_deleg_t *deleg,
-		   const dns_name_t *name);
+dns_delegset_addname(dns_delegset_t *delegset, dns_deleg_t *deleg,
+		     const dns_name_t *name);
 
 /*
  * Add a delegation set into the DB for the given zonecut and a time to live. If
