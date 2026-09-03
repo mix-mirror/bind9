@@ -859,6 +859,9 @@ isc_nm_listenquic(uint32_t workers, isc_sockaddr_t *iface,
 		  isc_nm_accept_cb_t accept_cb, void *accept_cb_arg,
 		  isc_nm_quiclistener_t **listenerp);
 
+void
+isc_nm_quiclistener_stop(isc_nm_quiclistener_t *listener);
+
 ISC_REFCOUNT_DECL(isc_nm_quiclistener);
 
 void

@@ -565,7 +565,6 @@ struct isc_nmsocket {
 #ifdef HAVE_LIBNGTCP2
 	struct {
 		isc_quic_router_t *router;
-		isc_quic_conn_options_t *options;
 	} quic;
 #endif /* HAVE_LIBNGTCP2 */
 
@@ -1323,6 +1322,12 @@ isc__nm_proxyudp_send(isc_nmhandle_t *handle, isc_region_t *region,
 		      isc_nm_cb_t cb, void *cbarg);
 
 #ifdef HAVE_LIBNGTCP2
+void
+isc__nmsocket_quic_timer_stop(isc_nmsocket_t *sock);
+
+void
+isc__nm_quic_close(isc_nmsocket_t *sock);
+
 void
 isc__nm_quic_read(isc_nmhandle_t *handle, isc_nm_recv_cb_t cb, void *cbarg);
 #endif /* HAVE_LIBNGTCP2 */
