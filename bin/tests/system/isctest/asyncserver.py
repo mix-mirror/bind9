@@ -487,7 +487,7 @@ class NonExistenceProver(abc.ABC):
         closest_encloser_name, _ = self._get_closest_encloser(self._qname)
         return dns.name.from_text("*", origin=closest_encloser_name)
 
-    @property
+    @functools.cached_property
     def _chain(self) -> tuple[dns.name.Name, ...]:
         proof_rdatasets = self._zone.iterate_rdatasets(self.proof_rdatatype)
         return tuple(sorted(n for n, _ in proof_rdatasets))
