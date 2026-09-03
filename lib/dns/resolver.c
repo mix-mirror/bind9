@@ -7035,28 +7035,58 @@ cache_delegns(fetchctx_t *fctx, const dns_name_t *name, dns_rdataset_t *nsset,
 }
 
 /*
+ * TODO: this is lot of code not really resolver specific but mostly about
+ * validating a DelegInfos list and converting it into a delegset. Perhaps put
+ * it elsewhere.
+ */
+
+/*
+ * Enable to keep track, when processing a DELEG RR if a mandatory key is
+ * missing. By default, nothing is missing. If a `mandatory` is used, the
+ * mandatory key are set missing, and only back to non missing case if processed
+ * by `deleginfo_to_deleg`. The whole RR is dropped if one of the key is missing
+ * after processing all the DelegInfo.
+ *
+ * TODO: isn't this already checked by deleg_61440.c?
+ */
+typedef struct {
+	bool ipv4;
+	bool ipv6;
+	bool name;
+	bool include;
+} missing_deleginfokey_t;
+
+/*
+ * TODO: move this elsewhere in libisc?
+ */
+static inline uint16_t
+pop_network_uint16(isc_region_t *r) {
+	uint16_t v = (r->base[0] << 8) | r->base[1];
+	isc_region_consume(r, 2);
+	return v;
+}
+
+/*
  * Find out which DelegInfo type this is, and go through each element, building
  * a dns_deleg_t.
  *
- * Returns either ISC_R_SUCCESS (everything went well) or DNS_R_UNKNOWN (either
- * because of an unsupported DelegInfoKey or because there wasn't any data where
- * it was expected, the deleg is empty). If too many entry are found (more than
- * the resolver would process anyway), return ISC_R_QUOTA.
+ * Returns either ISC_R_SUCCESS/ISC_R_QUOTA (everything went well, and we
+ * possibly stopped processing because we have enough IP/names) or DNS_R_UNKNOWN
+ * (unsupported mandatory DelegInfoKey). If a DelegInfoKey MUST have a
+ * DelegInfoValue (draft-ietf-deleg 3.4) but doesn't have it, it returns
+ * ISC_R_UNEXPECTEDEND.
  */
 static isc_result_t
 deleginfo_to_deleg(isc_region_t *deleginfo, dns_delegset_t *delegset,
-		   size_t *count, size_t max) {
+		   missing_deleginfokey_t *missing, size_t *count, size_t max) {
 	uint16_t key, len;
 	dns_deleg_t *deleg = NULL;
 
 	/*
 	 * Extract DelegInfoKey and length of DelegInfoValue.
 	 */
-	key = (deleginfo->base[0] << 8) | deleginfo->base[1];
-	isc_region_consume(deleginfo, 2);
-
-	len = (deleginfo->base[0] << 8) | deleginfo->base[1];
-	isc_region_consume(deleginfo, 2);
+	key = pop_network_uint16(deleginfo);
+	len = pop_network_uint16(deleginfo);
 
 	INSIST(deleginfo->length >= len);
 
@@ -7072,20 +7102,33 @@ deleginfo_to_deleg(isc_region_t *deleginfo, dns_delegset_t *delegset,
 	 */
 	switch (key) {
 	case dns_rdata_delegkey_mandatory:
-		/*
-		 * TODO: see 5.1.2  part 2. We must check each value here and
-		 * they must be key that should be present later. Otherwise we
-		 * must ignore this RR. But also, if it contains a DelegInfoKey
-		 * which is unknown, we must return a code right now which makes
-		 * the caller to ignore the whole RR.
-		 *
-		 * This function probably needs a pointer to a struct containing
-		 * boolean for each key that must be present, then return. Then,
-		 * next call to `deleginfo_to_debug()` would check confirm for
-		 * each boolean if the key is actually there or not, and we
-		 * would ignore the whole RR if this is not the case.
-		 */
-		break;
+		while (deleginfo->length > 0) {
+			uint16_t mkey = pop_network_uint16(deleginfo);
+
+			switch (mkey) {
+			case dns_rdata_delegkey_mandatory:
+				break;
+			case dns_rdata_delegkey_ipv4:
+				missing->ipv4 = true;
+				break;
+			case dns_rdata_delegkey_ipv6:
+				missing->ipv6 = true;
+				break;
+			case dns_rdata_delegkey_name:
+				missing->name = true;
+				break;
+			case dns_rdata_delegkey_include:
+				missing->include = true;
+				break;
+			default:
+				/*
+				 * See draft-ietf-deleg 3.5. Skip the whole RR
+				 * if one mandatory key is unsupported.
+				 */
+				return DNS_R_UNKNOWN;
+			}
+		}
+		return ISC_R_SUCCESS;
 	case dns_rdata_delegkey_ipv4:
 	case dns_rdata_delegkey_ipv6:
 		dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_ADDRESSES,
@@ -7098,9 +7141,11 @@ deleginfo_to_deleg(isc_region_t *deleginfo, dns_delegset_t *delegset,
 			if (key == dns_rdata_delegkey_ipv4) {
 				addr.family = AF_INET;
 				addrlen = sizeof(addr.type.in);
+				missing->ipv4 = false;
 			} else {
 				addr.family = AF_INET6;
 				addrlen = sizeof(addr.type.in6);
+				missing->ipv6 = false;
 			}
 
 			INSIST(deleginfo->length >= addrlen);
@@ -7140,6 +7185,11 @@ deleginfo_to_deleg(isc_region_t *deleginfo, dns_delegset_t *delegset,
 			isc_region_consume(deleginfo,
 					   isc_buffer_consumedlength(&b));
 
+			if (key == dns_rdata_delegkey_name) {
+				missing->name = false;
+			} else {
+				missing->include = false;
+			}
 			dns_delegset_addname(delegset, deleg, name);
 
 			if (++(*count) >= max) {
@@ -7153,44 +7203,45 @@ deleginfo_to_deleg(isc_region_t *deleginfo, dns_delegset_t *delegset,
 		 * DelegInfoKey made it mandatory, we would have skipped the
 		 * whole RR. Otherwise, we just ignore it.
 		 */
-		break;
+		INSIST(deleg == NULL);
+		return ISC_R_SUCCESS;
 	}
 
 	if (deleg == NULL ||
-	    (ISC_LIST_EMPTY(deleg->names) && ISC_LIST_EMPTY(deleg->addresses)))
+	    (ISC_LIST_EMPTY(deleg->addresses) && ISC_LIST_EMPTY(deleg->names)))
 	{
-		if (deleg != NULL) {
-			/*
-			 * This is important to remove an empty deleg from the
-			 * delegset proactively, as this enable to figure out if
-			 * the whole DELEG RR actually have any data eventually,
-			 * or if we should entirely ignore it.
-			 */
-			dns_delegset_freedeleg(delegset, &deleg);
-		}
-		return DNS_R_UNKNOWN;
+		return ISC_R_UNEXPECTEDEND;
 	}
 
 	return ISC_R_SUCCESS;
 }
 
 /*
- * Go through each DelegInfo of the DelegInfos list.
+ * Go through each DelegInfo of a DELEG RR DelegInfos list.
  */
 static isc_result_t
-delegrdata_to_delegset(dns_rdata_in_deleg_t *delegrd, dns_delegset_t *delegset,
-		       size_t *count, size_t max) {
+deleginfos_to_delegs(dns_rdata_in_deleg_t *delegrd, dns_delegset_t *delegset,
+		     size_t *count, size_t max) {
 	isc_result_t result;
+	missing_deleginfokey_t missing;
 
 	result = dns_rdata_in_deleg_first(delegrd);
 	while (result == ISC_R_SUCCESS) {
 		isc_region_t r;
 
 		dns_rdata_in_deleg_current(delegrd, &r);
-		result = deleginfo_to_deleg(&r, delegset, count, max);
+		result = deleginfo_to_deleg(&r, delegset, &missing, count, max);
 		RETERR(result == ISC_R_QUOTA ? ISC_R_SUCCESS : result);
 
 		result = dns_rdata_in_deleg_next(delegrd);
+	}
+
+	if (memcpy(&missing, &(missing_deleginfokey_t){}, sizeof(missing))) {
+		/*
+		 * See draft-ietf-deleg 5.1.2 section 2. A mandatory
+		 * DelegInfoKey is missing, we must drop the whole RR.
+		 */
+		return DNS_R_MISMATCH;
 	}
 
 	return ISC_R_SUCCESS;
@@ -7210,23 +7261,42 @@ cache_deleg(respctx_t *rctx) {
 	DNS_RDATASET_FOREACH(rctx->deleg_rdataset) {
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		dns_rdata_in_deleg_t delegrd;
+		dns_delegset_t *tdelegset = NULL;
+
+		dns_delegset_allocset(delegdb, &tdelegset);
 
 		dns_rdataset_current(rctx->deleg_rdataset, &rdata);
 		INSIST(rdata.type == dns_rdatatype_deleg);
 		dns_rdata_tostruct(&rdata, &delegrd, NULL);
 
-		result = delegrdata_to_delegset(&delegrd, delegset,
-						&server_count, max_servers);
-		if (result != ISC_R_SUCCESS) {
-			break;
+		result = deleginfos_to_delegs(&delegrd, delegset, &server_count,
+					      max_servers);
+
+		/*
+		 * The RR is valid and has been succesfully converted into a
+		 * delegset. We can now move each dns_deleg_t into the eventual
+		 * delegset since we know we don't need to drop anything form
+		 * this RR.
+		 */
+		if (result == ISC_R_SUCCESS) {
+			ISC_LIST_FOREACH(tdelegset->delegs, deleg, link) {
+				ISC_LIST_UNLINK(tdelegset->delegs, deleg, link);
+				ISC_LIST_APPEND(delegset->delegs, deleg, link);
+			}
+		} else {
+			FCTXTRACE2("dropping DELEG RR",
+				   isc_result_totext(result));
 		}
+
+		dns_delegset_detach(&tdelegset);
 	}
 
-	if (result == ISC_R_SUCCESS && !ISC_LIST_EMPTY(delegset->delegs)) {
+	if (ISC_LIST_EMPTY(delegset->delegs)) {
+		FCTXTRACE("dropping empty DELEG RRset");
+		result = ISC_R_FAILURE;
+	} else {
 		result = dns_delegset_insert(delegdb, rctx->ns_name, ttl,
 					     delegset);
-	} else {
-		FCTXTRACE("dropping empty DELEG RR");
 	}
 
 	dns_delegset_detach(&delegset);

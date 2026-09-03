@@ -13,11 +13,16 @@ options {
 {% include "_common/controls.conf.j2" %}
 
 zone "delegname" {
-	file "delegname.db";
+	file "zone.db";
 	type primary;
 };
 
 zone "delegips" {
-	file "delegips.db";
+	file "zone.db";
+	type primary;
+};
+
+zone "delegmandatory" {
+	file "zone.db";
 	type primary;
 };

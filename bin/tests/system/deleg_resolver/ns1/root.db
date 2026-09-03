@@ -23,3 +23,5 @@ delegname		DELEG	server-name=ns.foo,a.delegonly
 
 ;; A DELEG-delegated subdomain using multiples IPs, but one of them won't give 
 delegips		DELEG 	server-ipv4=10.53.0.44,10.53.0.55 server-ipv6=fd92:7065:b8e:ff::acdc,fd92:7065:b8e:ff::3,fd92:7065:b8e:ff::cafe,fd92:7065:b8e:ff::dead:beef
+
+delegmandatory		DELEG	mandatory=server-ipv4,server-ipv6 server-ipv4=10.53.0.3 server-ipv6=fd92:7065:b8e:ff::acdc,fd92:7065:b8e:ff::3

@@ -31,7 +31,14 @@ def test_deleg_resolver_delegname(ns10):
     res = isctest.query.udp(msg, ns10.ip)
     isctest.check.noerror(res)
 
+
 def test_deleg_resolver_delegips(ns10):
     msg = isctest.query.create("a.delegips", "A")
+    res = isctest.query.udp(msg, ns10.ip)
+    isctest.check.noerror(res)
+
+
+def test_deleg_resolver_mandatory(ns10):
+    msg = isctest.query.create("a.delegmandatory", "A")
     res = isctest.query.udp(msg, ns10.ip)
     isctest.check.noerror(res)
