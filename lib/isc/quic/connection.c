@@ -107,7 +107,7 @@ constexpr uint64_t chacha20poly1305_max_encryption = 4611686018427387904;
 constexpr uint64_t chacha20poly1305_max_decryption_failure = 68719476736;
 
 static const uint32_t preferred_versions[] = {
-	NGTCP2_PROTO_VER_V2,
+	// NGTCP2_PROTO_VER_V2,
 	NGTCP2_PROTO_VER_V1,
 };
 
@@ -1494,7 +1494,7 @@ version_negotiation_cb(ngtcp2_conn *ngconn, uint32_t ngversion,
 	self_aead_ctx.native_handle = MOVE_OWNERSHIP(aead);
 
 	CHECK(isc_crypto_quic_hp_protect_create(
-		isc_g_mctx, (isc_constregion_t){ self_hp, sizeof(self_iv) },
+		isc_g_mctx, (isc_constregion_t){ self_hp, sizeof(self_hp) },
 		ISC_CRYPTO_QUIC_HP_PROTECT_ALGORITHM_AES128, &hp));
 	self_hp_ctx.native_handle = MOVE_OWNERSHIP(hp);
 
@@ -1512,7 +1512,7 @@ version_negotiation_cb(ngtcp2_conn *ngconn, uint32_t ngversion,
 	peer_aead_ctx.native_handle = MOVE_OWNERSHIP(aead);
 
 	CHECK(isc_crypto_quic_hp_protect_create(
-		isc_g_mctx, (isc_constregion_t){ peer_hp, sizeof(peer_iv) },
+		isc_g_mctx, (isc_constregion_t){ peer_hp, sizeof(peer_hp) },
 		ISC_CRYPTO_QUIC_HP_PROTECT_ALGORITHM_AES128, &hp));
 	peer_hp_ctx.native_handle = MOVE_OWNERSHIP(hp);
 
