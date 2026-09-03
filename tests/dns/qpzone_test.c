@@ -494,7 +494,7 @@ ISC_RUN_TEST_IMPL(wildcard_foundname) {
 	assert_null(db);
 }
 
-ISC_RUN_TEST_IMPL(wildcard_delegation_foundname) {
+ISC_RUN_TEST_IMPL(wildcard_no_delegation) {
 	isc_result_t result;
 	dns_db_t *db = NULL;
 	dns_dbversion_t *version = NULL;
@@ -510,6 +510,12 @@ ISC_RUN_TEST_IMPL(wildcard_delegation_foundname) {
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_non_null(db);
 
+	/*
+	 * Create an NS record at a wildcard node, *.example.org, then
+	 * query for host.example.org/A. It should *not* return
+	 * DNS_R_DELEGATION. Delegation types at wildcard nodes
+	 * were previously undefined, but are now outright forbidden.
+	 */
 	dns_test_namefromstring("host.example.org.", &fqname);
 	dns_test_namefromstring("*.example.org.", &fwild);
 	qname = dns_fixedname_name(&fqname);
@@ -533,12 +539,8 @@ ISC_RUN_TEST_IMPL(wildcard_delegation_foundname) {
 	dns_db_currentversion(db, &version);
 	result = dns_db_find(db, qname, version, dns_rdatatype_a, 0, 0, found,
 			     &rdataset, NULL);
-	assert_int_equal(result, DNS_R_DELEGATION);
-	assert_true(dns_name_equal(found, wild));
-	assert_true(found->attributes.wildcard);
-	assert_true(dns_rdataset_isassociated(&rdataset));
+	assert_int_equal(result, DNS_R_NXRRSET);
 
-	dns_rdataset_disassociate(&rdataset);
 	dns_db_closeversion(db, &version, false);
 	dns_db_detach(&db);
 	assert_null(db);
@@ -613,7 +615,7 @@ ISC_TEST_ENTRY(setownercase)
 ISC_TEST_ENTRY(resign_sooner_values)
 ISC_TEST_ENTRY(diffop_add_sub)
 ISC_TEST_ENTRY(wildcard_foundname)
-ISC_TEST_ENTRY(wildcard_delegation_foundname)
+ISC_TEST_ENTRY(wildcard_no_delegation)
 ISC_TEST_ENTRY(diffop_addresign)
 ISC_TEST_LIST_END
 
