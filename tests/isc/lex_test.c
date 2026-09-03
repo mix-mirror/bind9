@@ -252,6 +252,98 @@ ISC_RUN_TEST_IMPL(lex_unget_eol) {
 	isc_lex_destroy(&lex);
 }
 
+ISC_RUN_TEST_IMPL(lex_command_unget) {
+	isc_buffer_t buf;
+	isc_lex_t *lex = NULL;
+	isc_token_t token;
+	const char text[] = "delzone example IN view";
+
+	UNUSED(state);
+
+	assert_int_equal(isc_lex_create_command(isc_g_mctx, sizeof(text) - 1,
+						&lex),
+			 ISC_R_SUCCESS);
+	isc_buffer_constinit(&buf, text, sizeof(text) - 1);
+	isc_buffer_add(&buf, sizeof(text) - 1);
+	assert_int_equal(isc_lex_openbuffer(lex, &buf), ISC_R_SUCCESS);
+
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_string);
+	assert_string_equal(AS_STR(token), "delzone");
+	isc_lex_ungettoken(lex, &token);
+
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_string);
+	assert_string_equal(AS_STR(token), "delzone");
+
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_string);
+	assert_string_equal(AS_STR(token), "example");
+
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_string);
+	assert_string_equal(AS_STR(token), "IN");
+
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_string);
+	assert_string_equal(AS_STR(token), "view");
+
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_eof);
+
+	isc_lex_destroy(&lex);
+}
+
+ISC_RUN_TEST_IMPL(lex_command_arguments) {
+	static const struct {
+		const char *input;
+		const char *argument;
+		isc_tokentype_t type;
+	} tests[] = {
+		{ "delzone .", ".", isc_tokentype_string },
+		{ "delzone odd\"zone", "odd\"zone", isc_tokentype_string },
+		{ "delzone odd\\\"zone", "odd\\\"zone",
+		  isc_tokentype_string },
+		{ "delzone odd\\032zone", "odd\\032zone",
+		  isc_tokentype_string },
+		{ "delzone odd;zone", "odd;zone", isc_tokentype_string },
+		{ "delzone odd#zone", "odd#zone", isc_tokentype_string },
+		{ "delzone odd/zone", "odd/zone", isc_tokentype_string },
+		{ "delzone odd{zone}", "odd{zone}", isc_tokentype_string },
+		{ "delzone odd(zone)", "odd(zone)", isc_tokentype_string },
+		{ "delzone \"odd zone\"", "odd zone", isc_tokentype_qstring },
+	};
+
+	UNUSED(state);
+
+	for (size_t i = 0; i < ARRAY_SIZE(tests); i++) {
+		isc_buffer_t buf;
+		isc_lex_t *lex = NULL;
+		isc_token_t token;
+		size_t length = strlen(tests[i].input);
+
+		assert_int_equal(
+			isc_lex_create_command(isc_g_mctx, length, &lex),
+			ISC_R_SUCCESS);
+		isc_buffer_constinit(&buf, tests[i].input, length);
+		isc_buffer_add(&buf, length);
+		assert_int_equal(isc_lex_openbuffer(lex, &buf), ISC_R_SUCCESS);
+
+		assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+		assert_int_equal(token.type, isc_tokentype_string);
+		assert_string_equal(AS_STR(token), "delzone");
+
+		assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+		assert_int_equal(token.type, tests[i].type);
+		assert_string_equal(AS_STR(token), tests[i].argument);
+
+		assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+		assert_int_equal(token.type, isc_tokentype_eof);
+
+		isc_lex_destroy(&lex);
+	}
+}
+
 /* check handling of 0xff */
 ISC_RUN_TEST_IMPL(lex_0xff) {
 	isc_result_t result;
@@ -575,6 +667,8 @@ ISC_TEST_ENTRY(lex_0x00)
 ISC_TEST_ENTRY(lex_0x00_initialws)
 ISC_TEST_ENTRY(lex_0xff)
 ISC_TEST_ENTRY(lex_config_policy)
+ISC_TEST_ENTRY(lex_command_arguments)
+ISC_TEST_ENTRY(lex_command_unget)
 ISC_TEST_ENTRY(lex_dns_master_policy)
 ISC_TEST_ENTRY(lex_unget_eol)
 ISC_TEST_ENTRY(lex_setline)
