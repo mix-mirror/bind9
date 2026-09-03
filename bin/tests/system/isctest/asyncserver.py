@@ -373,18 +373,12 @@ class QueryContext:
             lifetime=86400,
         )
 
-        if not bogus:
-            return dns.rrset.from_rdata(signed.name, signed.ttl, signature)
+        rdata: dns.rdata.Rdata = signature
 
-        bogus_signature = dns.rdata.from_text(
-            self.qclass,
-            dns.rdatatype.RRSIG,
-            f"{dns.rdatatype.to_text(signature.type_covered)} "
-            f"{signature.algorithm} {signature.labels} {signature.original_ttl} "
-            f"{signature.expiration} {signature.inception} {signature.key_tag} "
-            f"{signature.signer} {'A' * 64 }",
-        )
-        return dns.rrset.from_rdata(signed.name, signed.ttl, bogus_signature)
+        if bogus:
+            rdata = signature.replace(signature=bytes(len(signature.signature)))
+
+        return dns.rrset.from_rdata(signed.name, signed.ttl, rdata)
 
     @functools.cached_property
     def nsecx(self) -> "NonExistenceProver":
