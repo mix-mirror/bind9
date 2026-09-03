@@ -14,10 +14,23 @@
 #include <stdint.h>
 
 #include <isc/async.h>
+#include <isc/attributes.h>
 #include <isc/magic.h>
+#include <isc/mem.h>
+#include <isc/netmgr.h>
 #include <isc/quic.h>
+#include <isc/tid.h>
+#include <isc/util.h>
 
 #include "netmgr-int.h"
+
+typedef struct udp_send_packet udp_send_packet_t;
+
+struct udp_send_packet {
+	uint32_t len;
+	uint8_t *packet;
+	isc_mem_t *mctx;
+};
 
 struct isc_nm_quiclistener {
 	uint32_t magic;
@@ -42,6 +55,11 @@ typedef struct quic_push_packet_job {
 	isc_quic_conn_t *conn;
 } quic_push_packet_job_t;
 
+typedef struct quic_stop_child_socket_job {
+	isc_tid_t tid;
+	isc_nm_quiclistener_t *listener;
+} quic_stop_child_socket_job_t;
+
 constexpr uint32_t listener_magic = ISC_MAGIC('N', 'M', 'q', 'c');
 
 static void
@@ -51,21 +69,75 @@ static isc_result_t
 data_read_cb(isc_quic_conn_t *conn, void *cbarg,
 	     isc_quic_stream_data_info_t info, isc_constregion_t data);
 
+static void
+udp_send_cb(isc_nmhandle_t *handle, isc_result_t result, void *cbarg);
+
 static isc_quic_conn_callbacks_t server_cb = {
 	.handshake_completed = listener_handshake_completed_cb,
 	.data_read = data_read_cb,
 };
 
 static void
-listener_handshake_completed_cb(void *cbarg) {
-	isc_nmhandle_t *handle, *inner;
+async_push_packet(void *cbarg) {
+	quic_push_packet_job_t *job = cbarg;
+	isc_mem_t *mctx = job->listener->mctx;
+	isc_sockaddr_t local, peer;
 
-	handle = cbarg;
-	inner = isc__nmhandle_get(handle->sock, &handle->sock->peer,
-				  &handle->sock->iface);
-	handle->sock->accept_cb(inner, ISC_R_SUCCESS,
-				handle->sock->accept_cbarg);
-	isc_nmhandle_unref(inner);
+	local = isc_nmhandle_localaddr(job->handle);
+	peer = isc_nmhandle_peeraddr(job->handle);
+
+	isc_quic_conn_push_packet(job->conn,
+				  (isc_constregion_t){ job->data, job->len },
+				  &local, &peer);
+
+	isc_region_t *out = isc_mem_get(isc_g_mctx, sizeof(*out));
+	*out = (isc_region_t){ isc_mem_get(isc_g_mctx, 1200), 1200 };
+	size_t written;
+
+	if (isc_quic_conn_pull_packet(job->conn, *out, &written, &local,
+				      &peer) == ISC_R_SUCCESS)
+	{
+		out->length = written;
+		isc_nm_send(job->handle, out, udp_send_cb, out);
+	} else {
+		isc_mem_put(isc_g_mctx, out->base, 1200);
+		isc_mem_put(isc_g_mctx, out, sizeof(*out));
+	}
+
+	isc_nmhandle_unref(job->handle);
+	isc_nm_quiclistener_unref(job->listener);
+	isc_quic_conn_unref(job->conn);
+	isc_mem_put(mctx, job->data, job->len);
+	isc_mem_put(mctx, job, sizeof(*job));
+}
+
+static void
+async_quic_stop_child_socket(void *arg) {
+	quic_stop_child_socket_job_t *job = arg;
+	isc_nm_quiclistener_t *listener = job->listener;
+	isc_nmsocket_t *sock = job->listener->sockets[job->tid];
+	isc_mem_t *mctx = listener->mctx;
+
+	isc__nmsocket_timer_stop(sock);
+	if (sock->outerhandle != NULL) {
+		isc__nm_stop_reading(sock->outerhandle->sock);
+		isc_nmhandle_detach(&sock->outerhandle);
+	}
+
+	isc__nmsocket_prep_destroy(sock);
+	isc__nmsocket_detach(&listener->sockets[job->tid]);
+	isc_mem_put(mctx, job, sizeof(*job));
+	isc_nm_quiclistener_unref(listener);
+}
+
+static void
+listener_handshake_completed_cb(void *cbarg) {
+	isc_nmsocket_t *sock = cbarg;
+	isc_nmhandle_t *handle;
+
+	handle = isc__nmhandle_get(sock, &sock->peer, &sock->iface);
+	sock->accept_cb(handle, ISC_R_SUCCESS, handle->sock->accept_cbarg);
+	isc_nmhandle_unref(handle);
 }
 
 static isc_result_t
@@ -82,23 +154,11 @@ data_read_cb(isc_quic_conn_t *conn ISC_ATTR_UNUSED, void *cbarg,
 }
 
 static void
-async_push_packet_job(void *cbarg) {
-	quic_push_packet_job_t *job = cbarg;
-	isc_mem_t *mctx = job->listener->mctx;
-	isc_sockaddr_t local, peer;
-
-	local = isc_nmhandle_localaddr(job->handle);
-	peer = isc_nmhandle_peeraddr(job->handle);
-
-	isc_quic_conn_push_packet(job->conn,
-				  (isc_constregion_t){ job->data, job->len },
-				  &local, &peer);
-
-	isc_nmhandle_unref(job->handle);
-	isc_nm_quiclistener_unref(job->listener);
-
-	isc_mem_put(mctx, job->data, job->len);
-	isc_mem_put(mctx, job, sizeof(*job));
+udp_send_cb(isc_nmhandle_t *handle ISC_ATTR_UNUSED,
+	    isc_result_t result ISC_ATTR_UNUSED, void *cbarg) {
+	isc_region_t *out = cbarg;
+	isc_mem_put(isc_g_mctx, out->base, 1200);
+	isc_mem_put(isc_g_mctx, out, sizeof(*out));
 }
 
 static void
@@ -111,6 +171,7 @@ listener_udp_recv_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 	isc_quic_conn_t *conn;
 	isc_nmsocket_t *sock;
 	isc_result_t result;
+	bool attached = false;
 	isc_tid_t tid;
 
 	isc_constregion_t packet = { region->base, region->length };
@@ -123,6 +184,7 @@ listener_udp_recv_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 	sock = listener->sockets[handle->sock->tid];
 	if (sock->outerhandle == NULL) {
 		isc_nmhandle_attach(handle, &sock->outerhandle);
+		attached = true;
 	}
 
 	sock->iface = isc_nmhandle_localaddr(handle);
@@ -135,7 +197,6 @@ listener_udp_recv_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 		if (tid == handle->sock->tid) {
 			isc_quic_conn_push_packet(conn, packet, &sock->iface,
 						  &sock->peer);
-			isc_quic_conn_unref(conn);
 		} else {
 			job = isc_mem_get(listener->mctx, sizeof(*job));
 			*job = (quic_push_packet_job_t){
@@ -153,49 +214,60 @@ listener_udp_recv_cb(isc_nmhandle_t *handle, isc_result_t eresult,
 			};
 			memmove(job->data, packet.base, packet.length);
 
-			worker = isc__networker_get(tid);
-			isc_async_run(worker->loop, async_push_packet_job, job);
-		}
+			if (attached) {
+				isc_nmhandle_detach(&sock->outerhandle);
+			}
 
+			worker = isc__networker_get(tid);
+			isc_async_run(worker->loop, async_push_packet, job);
+			return;
+		}
 		break;
 	case ISC_R_NOTFOUND:
-		isc_quic_conn_server_create(listener->mctx, listener->router,
-					    &server_cb, sock, listener->options,
-					    dcid, scid, &sock->iface,
-					    &sock->peer, &conn);
+		result = isc_quic_conn_server_create(
+			listener->mctx, listener->router, &server_cb, sock,
+			listener->options, dcid, scid, &sock->iface,
+			&sock->peer, &conn);
+		if (result != ISC_R_SUCCESS) {
+			isc__nmsocket_log(
+				sock, ISC_LOG_ERROR,
+				"QUIC server connection creation failed %s",
+				isc_result_totext(result));
+			return;
+		}
+
+		result = isc_quic_conn_push_packet(conn, packet, &sock->iface,
+						   &sock->peer);
+		if (result != ISC_R_SUCCESS) {
+			isc__nmsocket_log(sock, ISC_LOG_ERROR,
+					  "QUIC failed to push packet %s",
+					  isc_result_totext(result));
+			isc_quic_conn_unref(conn);
+			return;
+		}
 		break;
 	default:
-		break;
-	}
-}
-
-static void
-client_connect_cb(isc_nmhandle_t *handle, isc_result_t result, void *cbarg) {
-	isc_nmhandle_t *quic_handle;
-	isc_nmsocket_t *sock = cbarg;
-
-	REQUIRE(VALID_NMHANDLE(handle));
-
-	if (result != ISC_R_SUCCESS) {
 		return;
 	}
 
-	UNUSED(quic_handle);
+	isc_region_t *out = isc_mem_get(isc_g_mctx, sizeof(*out));
+	*out = (isc_region_t){ isc_mem_get(isc_g_mctx, 1200), 1200 };
+	size_t written;
 
-	sock->tid = isc_tid();
-	isc_nmhandle_attach(handle, &sock->outerhandle);
-	sock->iface = isc_nmhandle_localaddr(handle);
-	sock->peer = isc_nmhandle_peeraddr(handle);
+	result = isc_quic_conn_pull_packet(conn, *out, &written, &sock->iface,
+					   &sock->peer);
+	if (result != ISC_R_SUCCESS) {
+		isc_mem_put(isc_g_mctx, out->base, 1200);
+		isc_mem_put(isc_g_mctx, out, sizeof(*out));
+		isc_quic_conn_unref(conn);
+		return;
+	}
 
-	quic_handle = isc__nmhandle_get(sock, &sock->peer, &sock->iface);
+	out->length = written;
+
+	isc_nm_send(handle, out, udp_send_cb, out);
+	isc_quic_conn_unref(conn);
 }
-
-// static void
-// quic_io_step_cb(void *arg) {
-// 	isc_nmsocket_t *sock = arg;
-//
-// 	isc__nmsocket_detach(&sock);
-// }
 
 static void
 destroy(isc_nm_quiclistener_t *listener) {
@@ -216,6 +288,18 @@ destroy(isc_nm_quiclistener_t *listener) {
 ISC_REFCOUNT_IMPL(isc_nm_quiclistener, destroy);
 
 void
+isc__nmsocket_quic_timer_stop(isc_nmsocket_t *sock) {
+	REQUIRE(VALID_NMSOCK(sock));
+	REQUIRE(sock->type == isc_nm_quicsocket);
+
+	if (sock->outerhandle != NULL) {
+		INSIST(VALID_NMHANDLE(sock->outerhandle));
+		REQUIRE(VALID_NMSOCK(sock->outerhandle->sock));
+		isc__nmsocket_timer_stop(sock->outerhandle->sock);
+	}
+}
+
+void
 isc__nm_quic_read(isc_nmhandle_t *handle, isc_nm_recv_cb_t cb, void *cbarg) {
 	isc_nmsocket_t *sock;
 
@@ -233,13 +317,32 @@ isc__nm_quic_read(isc_nmhandle_t *handle, isc_nm_recv_cb_t cb, void *cbarg) {
 	sock->reading = true;
 }
 
+void
+isc__nm_quic_close(isc_nmsocket_t *sock) {
+	REQUIRE(VALID_NMSOCK(sock));
+	REQUIRE(sock->type == isc_nm_quicsocket);
+	REQUIRE(sock->tid == isc_tid());
+
+	sock->closing = true;
+
+	isc__nmsocket_timer_stop(sock);
+	if (sock->outerhandle != NULL) {
+		isc__nm_stop_reading(sock->outerhandle->sock);
+		isc_nmhandle_close(sock->outerhandle);
+		isc_nmhandle_detach(&sock->outerhandle);
+	}
+	sock->active = false;
+	sock->closed = true;
+	sock->reading = false;
+}
+
 isc_result_t
 isc_nm_listenquic(uint32_t workers, isc_sockaddr_t *iface,
 		  isc_quic_conn_options_t *options,
 		  isc_nm_accept_cb_t accept_cb, void *accept_cb_arg,
 		  isc_nm_quiclistener_t **listenerp) {
 	isc_nm_quiclistener_t *listener;
-	isc__networker_t *worker = NULL;
+	isc__networker_t *worker;
 	isc_result_t result;
 	uint32_t len;
 	size_t i;
@@ -262,20 +365,22 @@ isc_nm_listenquic(uint32_t workers, isc_sockaddr_t *iface,
 		.magic = listener_magic,
 		.references = ISC_REFCOUNT_INITIALIZER(1),
 		.mctx = isc_mem_ref(worker->mctx),
-		.options = options,
+		.options = isc_mem_get(worker->mctx, sizeof(*options)),
 		.accept_cb = accept_cb,
 		.accept_cb_arg = accept_cb_arg,
 		.sockets_len = len,
 	};
 
+	*listener->options = *options;
+
 	isc_quic_router_create(worker->mctx, ISC_QUIC_CID_MAX_LENGTH,
 			       &listener->router);
 
 	for (i = 0; i < len; i++) {
+		worker = isc__networker_get(i);
 		listener->sockets[i] = isc_mempool_get(worker->nmsocket_pool);
 		isc__nmsocket_init(listener->sockets[i], worker,
 				   isc_nm_quicsocket, iface, NULL);
-		listener->sockets[i]->result = ISC_R_UNSET;
 		listener->sockets[i]->read_timeout = isc_nm_getinitialtimeout();
 		listener->sockets[i]->accept_cb = accept_cb;
 		listener->sockets[i]->accept_cbarg = accept_cb_arg;
@@ -290,30 +395,31 @@ isc_nm_listenquic(uint32_t workers, isc_sockaddr_t *iface,
 
 cleanup:
 	listener->closing = true;
+	isc_nm_quiclistener_unref(listener);
 	return result;
 }
 
 void
-isc_nm_quicconnect(isc_sockaddr_t *local, isc_sockaddr_t *peer,
-		   isc_quic_conn_options_t *options, isc_nm_cb_t cb,
-		   void *cbarg) {
-	isc__networker_t *worker;
-	isc_nmsocket_t *sock;
+isc_nm_quiclistener_stop(isc_nm_quiclistener_t *listener) {
+	quic_stop_child_socket_job_t *job;
+	size_t i;
 
-	worker = isc__networker_current();
-	if (isc__nm_closing(worker)) {
-		cb(NULL, ISC_R_SHUTTINGDOWN, cbarg);
-		return;
+	REQUIRE(listener != NULL && listener->magic == listener_magic);
+	REQUIRE(!listener->closing);
+	REQUIRE(isc_tid() == 0);
+
+	listener->closing = true;
+	isc_nm_udplistener_stop(listener->udp_listener);
+	isc_nm_udplistener_detach(&listener->udp_listener);
+
+	for (i = 0; i < listener->sockets_len; i++) {
+		job = isc_mem_get(listener->mctx, sizeof(*job));
+		*job = (quic_stop_child_socket_job_t){
+			.tid = i,
+			.listener = isc_nm_quiclistener_ref(listener),
+		};
+
+		isc_async_run(listener->sockets[i]->worker->loop,
+			      async_quic_stop_child_socket, job);
 	}
-
-	sock = isc_mempool_get(worker->nmsocket_pool);
-	isc__nmsocket_init(sock, worker, isc_nm_quicsocket, local, NULL);
-	sock->read_timeout = isc_nm_getinitialtimeout();
-	sock->connect_cb = cb;
-	sock->connect_cbarg = cbarg;
-	sock->client = true;
-	sock->connecting = true;
-
-	isc_nm_udpconnect(local, peer, client_connect_cb, sock,
-			  options->idle_timeout);
 }

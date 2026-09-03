@@ -649,6 +649,11 @@ isc___nmsocket_prep_destroy(isc_nmsocket_t *sock FLARG) {
 		case isc_nm_proxyudpsocket:
 			isc__nm_proxyudp_close(sock);
 			return;
+#ifdef HAVE_LIBNGTCP2
+		case isc_nm_quicsocket:
+			isc__nm_quic_close(sock);
+			return;
+#endif
 		default:
 			break;
 		}
@@ -741,6 +746,7 @@ isc___nmsocket_init(isc_nmsocket_t *sock, isc__networker_t *worker,
 
 	switch (type) {
 	case isc_nm_udpsocket:
+	case isc_nm_quicsocket:
 		switch (family) {
 		case AF_INET:
 			sock->statsindex = udp4statsindex;
@@ -1283,6 +1289,9 @@ isc__nmsocket_timer_stop(isc_nmsocket_t *sock) {
 		return;
 	case isc_nm_proxyudpsocket:
 		isc__nmsocket_proxyudp_timer_stop(sock);
+		return;
+	case isc_nm_quicsocket:
+		isc__nmsocket_quic_timer_stop(sock);
 		return;
 	default:
 		break;
