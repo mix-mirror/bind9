@@ -81,14 +81,13 @@
 #define ISC_LEXOPT_ESCAPE	    0x0100 /*%< Recognize escapes. */
 #define ISC_LEXOPT_QSTRINGMULTILINE 0x0200 /*%< Allow multiline "" strings */
 #define ISC_LEXOPT_OCTAL	    0x0400 /*%< Expect a octal number. */
-#define ISC_LEXOPT_BTEXT	    0x0800 /*%< Bracketed text. */
 #define ISC_LEXOPT_VPAIR	    0x1000 /*%< Recognize value pair. */
 #define ISC_LEXOPT_QVPAIR	    0x2000 /*%< Recognize quoted value pair. */
 /*@}*/
 /*@{*/
 /*!
- * Various commenting styles, which may be changed at any time with
- * isc_lex_setcomments().
+ * Various commenting styles for a generic lexer.  Dialect-specific lexers
+ * have immutable comment policy.
  */
 
 #define ISC_LEXCOMMENT_C	     0x01
@@ -117,7 +116,6 @@ typedef enum {
 	isc_tokentype_initialws = 6,
 	isc_tokentype_special = 7,
 	isc_tokentype_nomore = 8,
-	isc_tokentype_btext = 9,
 	isc_tokentype_vpair = 10,
 	isc_tokentype_qvpair = 11,
 } isc_tokentype_t;
@@ -153,6 +151,22 @@ isc_lex_create(isc_mem_t *mctx, size_t max_token, isc_lex_t **lexp);
  *\li	On success, *lexp is attached to the newly created lexer.
  */
 
+isc_result_t
+isc_lex_create_dns_master(isc_mem_t *mctx, size_t initial_token_size,
+			  isc_lex_t **lexp);
+/*%<
+ * Create a lexer for DNS master-file text.  The lexical policy is fixed for
+ * the lifetime of the lexer.
+ */
+
+isc_result_t
+isc_lex_create_config(isc_mem_t *mctx, size_t initial_token_size,
+		      isc_lex_t **lexp);
+/*%<
+ * Create a lexer for named.conf text.  The lexical policy is fixed for the
+ * lifetime of the lexer.
+ */
+
 void
 isc_lex_destroy(isc_lex_t **lexp);
 /*%<
@@ -182,6 +196,9 @@ isc_lex_setcomments(isc_lex_t *lex, unsigned int comments);
 /*%<
  * Set allowed lexer commenting styles.
  *
+ * This operation is only valid for a generic lexer created by
+ * isc_lex_create().
+ *
  * Requires:
  *\li	'lex' is a valid lexer.
  *
@@ -202,6 +219,9 @@ isc_lex_setspecials(isc_lex_t *lex, isc_lexspecials_t specials);
 /*!<
  * The characters in 'specials' are returned as tokens.  Along with
  * whitespace and NUL, they delimit strings and numbers.
+ *
+ * This operation is only valid for a generic lexer created by
+ * isc_lex_create().
  *
  * Note:
  *\li	Comment processing takes precedence over special character
@@ -269,6 +289,9 @@ isc_lex_gettoken(isc_lex_t *lex, unsigned int options, isc_token_t *tokenp);
 /*%<
  * Get the next token.
  *
+ * This is the legacy operation for generic lexers.  For a dialect-specific
+ * lexer, 'options' is ignored and the lexer's immutable policy is used.
+ *
  * Requires:
  *\li	'lex' is a valid lexer.
  *
@@ -287,6 +310,22 @@ isc_lex_gettoken(isc_lex_t *lex, unsigned int options, isc_token_t *tokenp);
  *
  *\li	#ISC_R_EOF			End of input source
  *\li	#ISC_R_NOMORE			No more input sources
+ */
+
+isc_result_t
+isc_lex_next(isc_lex_t *lex, isc_token_t *tokenp);
+/*%<
+ * Get the next token using the immutable policy selected when 'lex' was
+ * created.  Atoms are returned as text regions; interpreting an atom as a
+ * number is the parser's responsibility.
+ */
+
+isc_result_t
+isc_lex_next_vpair(isc_lex_t *lex, isc_token_t *tokenp, bool quoted);
+/*%<
+ * Get the next DNS master-file token using the SVCB value-pair subgrammar.
+ * This named operation is exceptional because value pairs change token
+ * boundaries.
  */
 
 isc_result_t

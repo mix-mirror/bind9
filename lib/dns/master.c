@@ -210,9 +210,9 @@ loadctx_destroy(dns_loadctx_t *lctx);
 
 #define LCTX_MANYERRORS(lctx) (((lctx)->options & DNS_MASTER_MANYERRORS) != 0)
 
-#define GETTOKENERR(lexer, options, token, eol, err)                         \
+#define GETTOKENERR(lexer, token, eol, err)                                  \
 	do {                                                                 \
-		result = gettoken(lexer, options, token, eol, callbacks);    \
+		result = gettoken(lexer, token, eol, callbacks);             \
 		switch (result) {                                            \
 		case ISC_R_SUCCESS:                                          \
 			break;                                               \
@@ -257,8 +257,7 @@ loadctx_destroy(dns_loadctx_t *lctx);
 				goto log_and_cleanup;                        \
 		}                                                            \
 	} while (0)
-#define GETTOKEN(lexer, options, token, eol) \
-	GETTOKENERR(lexer, options, token, eol, {})
+#define GETTOKEN(lexer, token, eol) GETTOKENERR(lexer, token, eol, {})
 
 #define COMMITALL                                                              \
 	do {                                                                   \
@@ -292,7 +291,7 @@ loadctx_destroy(dns_loadctx_t *lctx);
 
 #define EXPECTEOL                                              \
 	do {                                                   \
-		GETTOKEN(lctx->lex, 0, &token, true);          \
+		GETTOKEN(lctx->lex, &token, true);             \
 		if (token.type != isc_tokentype_eol) {         \
 			isc_lex_ungettoken(lctx->lex, &token); \
 			result = DNS_R_EXTRATOKEN;             \
@@ -346,19 +345,17 @@ dns_master_isprimary(dns_loadctx_t *lctx) {
 }
 
 static isc_result_t
-gettoken(isc_lex_t *lex, unsigned int options, isc_token_t *token, bool eol,
+gettoken(isc_lex_t *lex, isc_token_t *token, bool eol,
 	 dns_rdatacallbacks_t *callbacks) {
 	isc_result_t result;
 
-	options |= ISC_LEXOPT_EOL | ISC_LEXOPT_EOF | ISC_LEXOPT_DNSMULTILINE |
-		   ISC_LEXOPT_ESCAPE;
-	result = isc_lex_gettoken(lex, options, token);
+	result = isc_lex_next(lex, token);
 	if (result != ISC_R_SUCCESS) {
 		switch (result) {
 		default:
 			(*callbacks->error)(callbacks,
 					    "dns_master_load: %s:%lu:"
-					    " isc_lex_gettoken() failed: %s",
+					    " isc_lex_next() failed: %s",
 					    isc_lex_getsourcename(lex),
 					    isc_lex_getsourceline(lex),
 					    isc_result_totext(result));
@@ -527,20 +524,11 @@ loadctx_create(dns_masterformat_t format, isc_mem_t *mctx, unsigned int options,
 		lctx->lex = lex;
 		lctx->keep_lex = true;
 	} else {
-		isc_lexspecials_t specials;
 		lctx->lex = NULL;
-		isc_lex_create(mctx, TOKENSIZ, &lctx->lex);
+		RUNTIME_CHECK(isc_lex_create_dns_master(mctx, TOKENSIZ,
+							&lctx->lex) ==
+			      ISC_R_SUCCESS);
 		lctx->keep_lex = false;
-		/*
-		 * If specials change update dns_test_rdatafromstring()
-		 * in lib/dns/tests/dnstest.c.
-		 */
-		memset(specials, 0, sizeof(specials));
-		specials['('] = 1;
-		specials[')'] = 1;
-		specials['"'] = 1;
-		isc_lex_setspecials(lctx->lex, specials);
-		isc_lex_setcomments(lctx->lex, ISC_LEXCOMMENT_DNSMASTERFILE);
 	}
 
 	lctx->now = isc_stdtime_now();
@@ -1073,8 +1061,7 @@ load_text(dns_loadctx_t *lctx) {
 
 		initialws = false;
 		line = isc_lex_getsourceline(lctx->lex);
-		GETTOKEN(lctx->lex, ISC_LEXOPT_INITIALWS | ISC_LEXOPT_QSTRING,
-			 &token, true);
+		GETTOKEN(lctx->lex, &token, true);
 		line = isc_lex_getsourceline(lctx->lex);
 
 		if (token.type == isc_tokentype_eof) {
@@ -1124,10 +1111,10 @@ load_text(dns_loadctx_t *lctx) {
 			 */
 
 			if (strcasecmp(DNS_AS_STR(token), "$ORIGIN") == 0) {
-				GETTOKEN(lctx->lex, 0, &token, false);
+				GETTOKEN(lctx->lex, &token, false);
 				finish_origin = true;
 			} else if (strcasecmp(DNS_AS_STR(token), "$TTL") == 0) {
-				GETTOKENERR(lctx->lex, 0, &token, false,
+				GETTOKENERR(lctx->lex, &token, false,
 					    lctx->ttl = 0;
 					    lctx->default_ttl_known = true;);
 				result = dns_ttl_fromtext(
@@ -1158,14 +1145,13 @@ load_text(dns_loadctx_t *lctx) {
 					result = DNS_R_SYNTAX;
 					goto insist_and_cleanup;
 				}
-				GETTOKEN(lctx->lex, ISC_LEXOPT_QSTRING, &token,
-					 false);
+				GETTOKEN(lctx->lex, &token, false);
 				if (include_file != NULL) {
 					isc_mem_free(mctx, include_file);
 				}
 				include_file =
 					isc_mem_strdup(mctx, DNS_AS_STR(token));
-				GETTOKEN(lctx->lex, 0, &token, true);
+				GETTOKEN(lctx->lex, &token, true);
 
 				if (token.type == isc_tokentype_eol ||
 				    token.type == isc_tokentype_eof)
@@ -1204,7 +1190,7 @@ load_text(dns_loadctx_t *lctx) {
 				int64_t dump_time64;
 				isc_stdtime_t dump_time;
 				isc_stdtime_t current_time = isc_stdtime_now();
-				GETTOKEN(lctx->lex, 0, &token, false);
+				GETTOKEN(lctx->lex, &token, false);
 				result = dns_time64_fromregion(
 					token.value.as_textregion,
 					&dump_time64);
@@ -1255,21 +1241,21 @@ load_text(dns_loadctx_t *lctx) {
 				}
 				range = lhs = gtype = rhs = NULL;
 				/* RANGE */
-				GETTOKEN(lctx->lex, 0, &token, false);
+				GETTOKEN(lctx->lex, &token, false);
 				range = isc_mem_strdup(mctx, DNS_AS_STR(token));
 				/* LHS */
-				GETTOKEN(lctx->lex, 0, &token, false);
+				GETTOKEN(lctx->lex, &token, false);
 				lhs = isc_mem_strdup(mctx, DNS_AS_STR(token));
 				rdclass = 0;
 				explicit_ttl = false;
 				/* CLASS? */
-				GETTOKEN(lctx->lex, 0, &token, false);
+				GETTOKEN(lctx->lex, &token, false);
 				if (dns_rdataclass_fromtext(
 					    &rdclass,
 					    &token.value.as_textregion) ==
 				    ISC_R_SUCCESS)
 				{
-					GETTOKEN(lctx->lex, 0, &token, false);
+					GETTOKEN(lctx->lex, &token, false);
 				}
 				/* TTL? */
 				if (dns_ttl_fromtext(&token.value.as_textregion,
@@ -1280,7 +1266,7 @@ load_text(dns_loadctx_t *lctx) {
 						  &lctx->ttl);
 					lctx->ttl_known = true;
 					explicit_ttl = true;
-					GETTOKEN(lctx->lex, 0, &token, false);
+					GETTOKEN(lctx->lex, &token, false);
 				}
 				/* CLASS? */
 				if (rdclass == 0 &&
@@ -1289,13 +1275,12 @@ load_text(dns_loadctx_t *lctx) {
 					    &token.value.as_textregion) ==
 					    ISC_R_SUCCESS)
 				{
-					GETTOKEN(lctx->lex, 0, &token, false);
+					GETTOKEN(lctx->lex, &token, false);
 				}
 				/* TYPE */
 				gtype = isc_mem_strdup(mctx, DNS_AS_STR(token));
 				/* RHS */
-				GETTOKEN(lctx->lex, ISC_LEXOPT_QSTRING, &token,
-					 false);
+				GETTOKEN(lctx->lex, &token, false);
 				rhs = isc_mem_strdup(mctx, DNS_AS_STR(token));
 				if (!lctx->ttl_known &&
 				    !lctx->default_ttl_known)
@@ -1512,7 +1497,7 @@ load_text(dns_loadctx_t *lctx) {
 				ictx->drop = false;
 			}
 		} else {
-			UNEXPECTED_ERROR("%s:%lu: isc_lex_gettoken() returned "
+			UNEXPECTED_ERROR("%s:%lu: isc_lex_next() returned "
 					 "unexpected token type (%d)",
 					 source, line, token.type);
 			result = ISC_R_UNEXPECTED;
@@ -1537,7 +1522,7 @@ load_text(dns_loadctx_t *lctx) {
 		type = dns_rdatatype_none;
 		rdclass = 0;
 
-		GETTOKEN(lctx->lex, 0, &token, initialws);
+		GETTOKEN(lctx->lex, &token, initialws);
 
 		if (initialws) {
 			if (token.type == isc_tokentype_eol) {
@@ -1590,7 +1575,7 @@ load_text(dns_loadctx_t *lctx) {
 					    &token.value.as_textregion) ==
 		    ISC_R_SUCCESS)
 		{
-			GETTOKEN(lctx->lex, 0, &token, false);
+			GETTOKEN(lctx->lex, &token, false);
 		}
 
 		explicit_ttl = false;
@@ -1600,11 +1585,11 @@ load_text(dns_loadctx_t *lctx) {
 			limit_ttl(callbacks, source, line, &lctx->ttl);
 			explicit_ttl = true;
 			lctx->ttl_known = true;
-			GETTOKEN(lctx->lex, 0, &token, false);
+			GETTOKEN(lctx->lex, &token, false);
 		}
 
 		if (token.type != isc_tokentype_string) {
-			UNEXPECTED_ERROR("isc_lex_gettoken() returned "
+			UNEXPECTED_ERROR("isc_lex_next() returned "
 					 "unexpected token type");
 			result = ISC_R_UNEXPECTED;
 			if (MANYERRS(lctx, result)) {
@@ -1621,11 +1606,11 @@ load_text(dns_loadctx_t *lctx) {
 					    &token.value.as_textregion) ==
 			    ISC_R_SUCCESS)
 		{
-			GETTOKEN(lctx->lex, 0, &token, false);
+			GETTOKEN(lctx->lex, &token, false);
 		}
 
 		if (token.type != isc_tokentype_string) {
-			UNEXPECTED_ERROR("isc_lex_gettoken() returned "
+			UNEXPECTED_ERROR("isc_lex_next() returned "
 					 "unexpected token type");
 			result = ISC_R_UNEXPECTED;
 			if (MANYERRS(lctx, result)) {
@@ -1743,7 +1728,7 @@ load_text(dns_loadctx_t *lctx) {
 		    lctx->zclass == dns_rdataclass_in &&
 		    (lctx->options & DNS_MASTER_CHECKNS) != 0)
 		{
-			GETTOKEN(lctx->lex, 0, &token, false);
+			GETTOKEN(lctx->lex, &token, false);
 			result = check_ns(lctx, &token, source, line);
 			isc_lex_ungettoken(lctx->lex, &token);
 			if ((lctx->options & DNS_MASTER_FATALNS) != 0) {

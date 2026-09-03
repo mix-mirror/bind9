@@ -48,9 +48,31 @@ ISC_RUN_TEST_IMPL(parse_overflow) {
 	assert_int_equal(ISC_R_RANGE, result);
 }
 
+ISC_RUN_TEST_IMPL(parse_uint32_region) {
+	char text[] = { '0', 'x', 'f', 'f', 'x' };
+	char overflow[] = "4294967296";
+	isc_textregion_t source = { .base = text, .length = 4 };
+	uint32_t output;
+
+	UNUSED(state);
+
+	assert_int_equal(isc_parse_uint32_region(&output, &source, 0),
+			 ISC_R_SUCCESS);
+	assert_int_equal(output, 255);
+
+	source.length = 5;
+	assert_int_equal(isc_parse_uint32_region(&output, &source, 0),
+			 ISC_R_BADNUMBER);
+
+	source = (isc_textregion_t){ .base = overflow, .length = 10 };
+	assert_int_equal(isc_parse_uint32_region(&output, &source, 10),
+			 ISC_R_RANGE);
+}
+
 ISC_TEST_LIST_START
 
 ISC_TEST_ENTRY(parse_overflow)
+ISC_TEST_ENTRY(parse_uint32_region)
 
 ISC_TEST_LIST_END
 

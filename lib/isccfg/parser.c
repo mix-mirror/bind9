@@ -58,6 +58,7 @@
 #include <isc/netaddr.h>
 #include <isc/netmgr.h>
 #include <isc/netscope.h>
+#include <isc/parseint.h>
 #include <isc/sockaddr.h>
 #include <isc/string.h>
 #include <isc/symtab.h>
@@ -612,7 +613,7 @@ cfg_parse_special(cfg_parser_t *pctx, int special) {
 
 	REQUIRE(pctx != NULL);
 
-	CHECK(cfg_gettoken(pctx, 0));
+	CHECK(cfg_gettoken(pctx));
 	if (pctx->token.type == isc_tokentype_special &&
 	    pctx->token.value.as_char == special)
 	{
@@ -636,7 +637,7 @@ static isc_result_t
 parse_semicolon(cfg_parser_t *pctx) {
 	isc_result_t result;
 
-	CHECK(cfg_gettoken(pctx, 0));
+	CHECK(cfg_gettoken(pctx));
 	if (pctx->token.type == isc_tokentype_special &&
 	    pctx->token.value.as_char == ';')
 	{
@@ -656,7 +657,7 @@ static isc_result_t
 parse_eof(cfg_parser_t *pctx) {
 	isc_result_t result;
 
-	CHECK(cfg_gettoken(pctx, 0));
+	CHECK(cfg_gettoken(pctx));
 
 	if (pctx->token.type == isc_tokentype_eof) {
 		return ISC_R_SUCCESS;
@@ -677,7 +678,6 @@ static cfg_type_t cfg_type_filelist = { "filelist",    NULL,
 static void
 parser_create(cfg_parser_t **ret) {
 	cfg_parser_t *pctx;
-	isc_lexspecials_t specials;
 
 	REQUIRE(ret != NULL && *ret == NULL);
 
@@ -694,20 +694,8 @@ parser_create(cfg_parser_t **ret) {
 	pctx->flags = 0;
 	pctx->buf_name = NULL;
 
-	memset(specials, 0, sizeof(specials));
-	specials['{'] = 1;
-	specials['}'] = 1;
-	specials[';'] = 1;
-	specials['/'] = 1;
-	specials['"'] = 1;
-	specials['!'] = 1;
-
-	isc_lex_create(isc_g_mctx, 1024, &pctx->lexer);
-
-	isc_lex_setspecials(pctx->lexer, specials);
-	isc_lex_setcomments(pctx->lexer, ISC_LEXCOMMENT_C |
-						 ISC_LEXCOMMENT_CPLUSPLUS |
-						 ISC_LEXCOMMENT_SHELL);
+	RUNTIME_CHECK(isc_lex_create_config(isc_g_mctx, 1024,
+					    &pctx->lexer) == ISC_R_SUCCESS);
 
 	create_list(cfg_parser_currentfile(pctx), pctx->line,
 		    &cfg_type_filelist, &pctx->open_files);
@@ -913,7 +901,7 @@ cfg_parse_percentage(cfg_parser_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED,
 	REQUIRE(pctx != NULL);
 	REQUIRE(ret != NULL && *ret == NULL);
 
-	CHECK(cfg_gettoken(pctx, 0));
+	CHECK(cfg_gettoken(pctx));
 	if (pctx->token.type != isc_tokentype_string) {
 		cfg_parser_error(pctx, CFG_LOG_NEAR, "expected percentage");
 		return ISC_R_UNEXPECTEDTOKEN;
@@ -977,7 +965,7 @@ cfg_parse_fixedpoint(cfg_parser_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED,
 	REQUIRE(pctx != NULL);
 	REQUIRE(ret != NULL && *ret == NULL);
 
-	CHECK(cfg_gettoken(pctx, 0));
+	CHECK(cfg_gettoken(pctx));
 	if (pctx->token.type != isc_tokentype_string) {
 		cfg_parser_error(pctx, CFG_LOG_NEAR,
 				 "expected fixed point number");
@@ -1050,24 +1038,47 @@ cfg_obj_isfixedpoint(const cfg_obj_t *obj) {
  * uint32
  */
 isc_result_t
+cfg_token_touint32(cfg_parser_t *pctx, int base, uint32_t *value) {
+	REQUIRE(pctx != NULL);
+	REQUIRE(value != NULL);
+
+	if (pctx->token.type != isc_tokentype_string) {
+		return ISC_R_BADNUMBER;
+	}
+
+	return isc_parse_uint32_region(value,
+				       &pctx->token.value.as_textregion, base);
+}
+
+bool
+cfg_token_isuint32(cfg_parser_t *pctx, int base) {
+	uint32_t value;
+
+	return cfg_token_touint32(pctx, base, &value) == ISC_R_SUCCESS;
+}
+
+isc_result_t
 cfg_parse_uint32(cfg_parser_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED,
 		 cfg_obj_t **ret) {
 	isc_result_t result;
 	cfg_obj_t *obj = NULL;
+	uint32_t value;
 
 	REQUIRE(pctx != NULL);
 	REQUIRE(ret != NULL && *ret == NULL);
 
-	CHECK(cfg_gettoken(pctx, ISC_LEXOPT_NUMBER | ISC_LEXOPT_CNUMBER));
-	if (pctx->token.type != isc_tokentype_number) {
+	CHECK(cfg_gettoken(pctx));
+	result = cfg_token_touint32(pctx, 0, &value);
+	if (result == ISC_R_BADNUMBER) {
 		cfg_parser_error(pctx, CFG_LOG_NEAR, "expected number");
 		return ISC_R_UNEXPECTEDTOKEN;
 	}
+	CHECK(result);
 
 	cfg_obj_create(cfg_parser_currentfile(pctx), pctx->line,
 		       &cfg_type_uint32, &obj);
 
-	obj->value.uint32 = pctx->token.value.as_ulong;
+	obj->value.uint32 = value;
 	*ret = obj;
 cleanup:
 	return result;
@@ -1312,7 +1323,7 @@ cfg_parse_duration(cfg_parser_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED,
 		   cfg_obj_t **ret) {
 	isc_result_t result;
 
-	CHECK(cfg_gettoken(pctx, 0));
+	CHECK(cfg_gettoken(pctx));
 	if (pctx->token.type != isc_tokentype_string) {
 		CLEANUP(ISC_R_UNEXPECTEDTOKEN);
 	}
@@ -1333,7 +1344,7 @@ cfg_parse_duration_or_unlimited(cfg_parser_t *pctx,
 	cfg_obj_t *obj = NULL;
 	isccfg_duration_t duration;
 
-	CHECK(cfg_gettoken(pctx, 0));
+	CHECK(cfg_gettoken(pctx));
 	if (pctx->token.type != isc_tokentype_string) {
 		CLEANUP(ISC_R_UNEXPECTEDTOKEN);
 	}
@@ -1411,7 +1422,7 @@ cfg_parse_qstring(cfg_parser_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED,
 	REQUIRE(pctx != NULL);
 	REQUIRE(ret != NULL && *ret == NULL);
 
-	CHECK(cfg_gettoken(pctx, CFG_LEXOPT_QSTRING));
+	CHECK(cfg_gettoken(pctx));
 	if (pctx->token.type != isc_tokentype_qstring) {
 		cfg_parser_error(pctx, CFG_LOG_NEAR, "expected quoted string");
 		return ISC_R_UNEXPECTEDTOKEN;
@@ -1428,7 +1439,7 @@ parse_ustring(cfg_parser_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED,
 	      cfg_obj_t **ret) {
 	isc_result_t result;
 
-	CHECK(cfg_gettoken(pctx, 0));
+	CHECK(cfg_gettoken(pctx));
 	if (pctx->token.type != isc_tokentype_string) {
 		cfg_parser_error(pctx, CFG_LOG_NEAR,
 				 "expected unquoted string");
@@ -1471,44 +1482,6 @@ cfg_parse_sstring(cfg_parser_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED,
 
 cleanup:
 	return result;
-}
-
-static isc_result_t
-parse_btext(cfg_parser_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED,
-	    cfg_obj_t **ret) {
-	isc_result_t result;
-
-	CHECK(cfg_gettoken(pctx, ISC_LEXOPT_BTEXT));
-	if (pctx->token.type != isc_tokentype_btext) {
-		cfg_parser_error(pctx, CFG_LOG_NEAR, "expected bracketed text");
-		return ISC_R_UNEXPECTEDTOKEN;
-	}
-	cfg_string_create(pctx, TOKEN_STRING(pctx), &cfg_type_bracketed_text,
-			  ret);
-	return ISC_R_SUCCESS;
-
-cleanup:
-	return result;
-}
-
-static void
-print_btext(cfg_printer_t *pctx, const cfg_obj_t *obj) {
-	/*
-	 * We need to print "{" instead of running print_open()
-	 * in order to preserve the exact original formatting
-	 * of the bracketed text. But we increment the indent value
-	 * so that print_close() will leave us back in our original
-	 * state.
-	 */
-	pctx->indent++;
-	cfg_print_cstr(pctx, "{");
-	cfg_print_chars(pctx, obj->value.string, strlen(obj->value.string));
-	print_close(pctx);
-}
-
-static void
-doc_btext(cfg_printer_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED) {
-	cfg_print_cstr(pctx, "{ <unspecified-text> }");
 }
 
 bool
@@ -1579,7 +1552,7 @@ isc_result_t
 cfg_parse_enum_or_other(cfg_parser_t *pctx, const cfg_type_t *enumtype,
 			const cfg_type_t *othertype, cfg_obj_t **ret) {
 	isc_result_t result;
-	CHECK(cfg_peektoken(pctx, 0));
+	CHECK(cfg_peektoken(pctx));
 	if (pctx->token.type == isc_tokentype_string &&
 	    cfg_is_enum(TOKEN_STRING(pctx), enumtype->of))
 	{
@@ -1721,15 +1694,6 @@ cfg_type_t cfg_type_sstring = { "string",	 cfg_parse_sstring,
 				print_sstring,	 cfg_doc_terminal,
 				&cfg_rep_string, NULL };
 
-/*
- * Text enclosed in brackets. Used to pass a block of configuration
- * text to dynamic library or external application. Checked for
- * bracket balance, but not otherwise parsed.
- */
-cfg_type_t cfg_type_bracketed_text = { "bracketed_text", parse_btext,
-				       print_btext,	 doc_btext,
-				       &cfg_rep_string,	 NULL };
-
 #if defined(HAVE_GEOIP2)
 /*
  * "geoip" ACL element:
@@ -1767,9 +1731,9 @@ parse_geoip(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 	CHECK(cfg_parse_void(pctx, NULL, &obj->value.tuple[0]));
 
 	/* Parse the optional "db" field. */
-	CHECK(cfg_peektoken(pctx, 0));
+	CHECK(cfg_peektoken(pctx));
 	if (pctx->token.type == isc_tokentype_string) {
-		CHECK(cfg_gettoken(pctx, 0));
+		CHECK(cfg_gettoken(pctx));
 		if (strcasecmp(TOKEN_STRING(pctx), "db") == 0 &&
 		    obj->value.tuple[1] == NULL)
 		{
@@ -1823,7 +1787,7 @@ parse_addrmatchelt(cfg_parser_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED,
 		   cfg_obj_t **ret) {
 	isc_result_t result;
 
-	CHECK(cfg_peektoken(pctx, CFG_LEXOPT_QSTRING));
+	CHECK(cfg_peektoken(pctx));
 
 	if (pctx->token.type == isc_tokentype_string ||
 	    pctx->token.type == isc_tokentype_qstring)
@@ -1836,7 +1800,7 @@ parse_addrmatchelt(cfg_parser_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED,
 			   (strcasecmp(TOKEN_STRING(pctx), "geoip") == 0))
 		{
 #if defined(HAVE_GEOIP2)
-			CHECK(cfg_gettoken(pctx, 0));
+			CHECK(cfg_gettoken(pctx));
 			CHECK(cfg_parse_obj(pctx, &cfg_type_geoip, ret));
 #else  /* if defined(HAVE_GEOIP2) */
 			cfg_parser_error(pctx, CFG_LOG_NEAR,
@@ -1860,7 +1824,7 @@ parse_addrmatchelt(cfg_parser_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED,
 			CHECK(cfg_parse_obj(pctx, &cfg_type_bracketed_aml,
 					    ret));
 		} else if (pctx->token.value.as_char == '!') {
-			CHECK(cfg_gettoken(pctx, 0)); /* read "!" */
+			CHECK(cfg_gettoken(pctx)); /* read "!" */
 			CHECK(cfg_parse_obj(pctx, &cfg_type_negated, ret));
 		} else {
 			goto bad;
@@ -1915,49 +1879,6 @@ cfg_type_t cfg_type_bracketed_aml = { "bracketed_aml",
 				      &cfg_type_addrmatchelt };
 
 /*
- * Optional bracketed text
- */
-static isc_result_t
-parse_optional_btext(cfg_parser_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED,
-		     cfg_obj_t **ret) {
-	isc_result_t result;
-
-	CHECK(cfg_peektoken(pctx, ISC_LEXOPT_BTEXT));
-	if (pctx->token.type == isc_tokentype_btext) {
-		CHECK(cfg_parse_obj(pctx, &cfg_type_bracketed_text, ret));
-	} else {
-		CHECK(cfg_parse_obj(pctx, &cfg_type_void, ret));
-	}
-cleanup:
-	return result;
-}
-
-static void
-print_optional_btext(cfg_printer_t *pctx, const cfg_obj_t *obj) {
-	if (obj->type == &cfg_type_void) {
-		return;
-	}
-
-	pctx->indent++;
-	cfg_print_cstr(pctx, "{");
-	cfg_print_chars(pctx, obj->value.string, strlen(obj->value.string));
-	print_close(pctx);
-}
-
-static void
-doc_optional_btext(cfg_printer_t *pctx,
-		   const cfg_type_t *type ISC_ATTR_UNUSED) {
-	cfg_print_cstr(pctx, "[ { <unspecified-text> } ]");
-}
-
-cfg_type_t cfg_type_optional_bracketed_text = { "optional_btext",
-						parse_optional_btext,
-						print_optional_btext,
-						doc_optional_btext,
-						NULL,
-						NULL };
-
-/*
  * Booleans
  */
 
@@ -1983,7 +1904,7 @@ cfg_parse_boolean(cfg_parser_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED,
 	REQUIRE(pctx != NULL);
 	REQUIRE(ret != NULL && *ret == NULL);
 
-	RETERR(cfg_gettoken(pctx, 0));
+	RETERR(cfg_gettoken(pctx));
 
 	if (pctx->token.type != isc_tokentype_string) {
 		goto bad_boolean;
@@ -2110,7 +2031,7 @@ parse_list(cfg_parser_t *pctx, const cfg_type_t *listtype, cfg_obj_t **ret) {
 		    &listobj);
 
 	for (;;) {
-		CHECK(cfg_peektoken(pctx, 0));
+		CHECK(cfg_peektoken(pctx));
 		if (pctx->token.type == isc_tokentype_special &&
 		    pctx->token.value.as_char == /*{*/ '}')
 		{
@@ -2211,7 +2132,7 @@ cfg_parse_spacelist(cfg_parser_t *pctx, const cfg_type_t *listtype,
 	for (;;) {
 		cfg_listelt_t *elt = NULL;
 
-		CHECK(cfg_peektoken(pctx, 0));
+		CHECK(cfg_peektoken(pctx));
 		if (pctx->token.type == isc_tokentype_special &&
 		    pctx->token.value.as_char == ';')
 		{
@@ -2342,7 +2263,7 @@ cfg_parse_mapbody(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 		/*
 		 * Parse the option name and see if it is known.
 		 */
-		CHECK(cfg_gettoken(pctx, 0));
+		CHECK(cfg_gettoken(pctx));
 
 		if (pctx->token.type != isc_tokentype_string) {
 			cfg_ungettoken(pctx);
@@ -2980,7 +2901,7 @@ parse_token(cfg_parser_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED,
 
 	cfg_obj_create(cfg_parser_currentfile(pctx), pctx->line,
 		       &cfg_type_token, &obj);
-	CHECK(cfg_gettoken(pctx, CFG_LEXOPT_QSTRING));
+	CHECK(cfg_gettoken(pctx));
 	if (pctx->token.type == isc_tokentype_eof) {
 		cfg_ungettoken(pctx);
 		CLEANUP(ISC_R_EOF);
@@ -3031,7 +2952,7 @@ parse_unsupported(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 	for (;;) {
 		cfg_listelt_t *elt = NULL;
 
-		CHECK(cfg_peektoken(pctx, 0));
+		CHECK(cfg_peektoken(pctx));
 		if (pctx->token.type == isc_tokentype_special) {
 			if (pctx->token.value.as_char == '{') {
 				braces++;
@@ -3150,7 +3071,7 @@ cfg_parse_rawaddr(cfg_parser_t *pctx, unsigned int flags, isc_netaddr_t *na) {
 	REQUIRE(pctx != NULL);
 	REQUIRE(na != NULL);
 
-	CHECK(cfg_gettoken(pctx, 0));
+	CHECK(cfg_gettoken(pctx));
 	result = token_addr(pctx, flags, na);
 	if (result == ISC_R_UNEXPECTEDTOKEN) {
 		if ((flags & CFG_ADDR_WILDOK) != 0) {
@@ -3191,11 +3112,12 @@ cfg_lookingat_netaddr(cfg_parser_t *pctx, unsigned int flags) {
 isc_result_t
 cfg_parse_rawport(cfg_parser_t *pctx, unsigned int flags, in_port_t *port) {
 	isc_result_t result;
+	uint32_t value;
 
 	REQUIRE(pctx != NULL);
 	REQUIRE(port != NULL);
 
-	CHECK(cfg_gettoken(pctx, ISC_LEXOPT_NUMBER));
+	CHECK(cfg_gettoken(pctx));
 
 	if ((flags & CFG_ADDR_WILDOK) != 0 &&
 	    pctx->token.type == isc_tokentype_string &&
@@ -3204,17 +3126,19 @@ cfg_parse_rawport(cfg_parser_t *pctx, unsigned int flags, in_port_t *port) {
 		*port = 0;
 		return ISC_R_SUCCESS;
 	}
-	if (pctx->token.type != isc_tokentype_number) {
+	result = cfg_token_touint32(pctx, 10, &value);
+	if (result == ISC_R_BADNUMBER) {
 		cfg_parser_error(pctx, CFG_LOG_NEAR,
 				 "expected port number or '*'");
 		return ISC_R_UNEXPECTEDTOKEN;
 	}
-	if (pctx->token.value.as_ulong >= 65536U) {
+	CHECK(result);
+	if (value >= 65536U) {
 		cfg_parser_error(pctx, CFG_LOG_NEAR,
 				 "port number out of range");
 		return ISC_R_UNEXPECTEDTOKEN;
 	}
-	*port = (in_port_t)(pctx->token.value.as_ulong);
+	*port = (in_port_t)value;
 	return ISC_R_SUCCESS;
 cleanup:
 	return result;
@@ -3344,18 +3268,22 @@ cfg_parse_netprefix(cfg_parser_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED,
 		UNREACHABLE();
 	}
 	expectprefix = (result == ISC_R_IPV4PREFIX);
-	CHECK(cfg_peektoken(pctx, 0));
+	CHECK(cfg_peektoken(pctx));
 	if (pctx->token.type == isc_tokentype_special &&
 	    pctx->token.value.as_char == '/')
 	{
-		CHECK(cfg_gettoken(pctx, 0)); /* read "/" */
-		CHECK(cfg_gettoken(pctx, ISC_LEXOPT_NUMBER));
-		if (pctx->token.type != isc_tokentype_number) {
+		uint32_t value;
+
+		CHECK(cfg_gettoken(pctx)); /* read "/" */
+		CHECK(cfg_gettoken(pctx));
+		result = cfg_token_touint32(pctx, 10, &value);
+		if (result == ISC_R_BADNUMBER) {
 			cfg_parser_error(pctx, CFG_LOG_NEAR,
 					 "expected prefix length");
 			return ISC_R_UNEXPECTEDTOKEN;
 		}
-		prefixlen = pctx->token.value.as_ulong;
+		CHECK(result);
+		prefixlen = value;
 		if (prefixlen > addrlen) {
 			cfg_parser_error(pctx, CFG_LOG_NOPREP,
 					 "invalid prefix length");
@@ -3436,31 +3364,31 @@ parse_sockaddrsub(cfg_parser_t *pctx, const cfg_type_t *type, int flags,
 	int is_address_ok = (flags & CFG_ADDR_TRAILINGOK) != 0;
 	char *tls = NULL;
 
-	CHECK(cfg_peektoken(pctx, 0));
+	CHECK(cfg_peektoken(pctx));
 	if (cfg_lookingat_netaddr(pctx, flags)) {
 		CHECK(cfg_parse_rawaddr(pctx, flags, &netaddr));
 		++have_address;
 	}
 
 	for (;;) {
-		CHECK(cfg_peektoken(pctx, 0));
+		CHECK(cfg_peektoken(pctx));
 		if (pctx->token.type == isc_tokentype_string) {
 			if (is_address_ok &&
 			    strcasecmp(TOKEN_STRING(pctx), "address") == 0)
 			{
 				/* read "address" */
-				CHECK(cfg_gettoken(pctx, 0));
+				CHECK(cfg_gettoken(pctx));
 				CHECK(cfg_parse_rawaddr(pctx, flags, &netaddr));
 				++have_address;
 			} else if (strcasecmp(TOKEN_STRING(pctx), "port") == 0)
 			{
-				CHECK(cfg_gettoken(pctx, 0)); /* read "port" */
+				CHECK(cfg_gettoken(pctx)); /* read "port" */
 				CHECK(cfg_parse_rawport(pctx, flags, &port));
 				++have_port;
 			} else if (is_tls_ok &&
 				   strcasecmp(TOKEN_STRING(pctx), "tls") == 0)
 			{
-				CHECK(cfg_gettoken(pctx, 0)); /* read "tls" */
+				CHECK(cfg_gettoken(pctx)); /* read "tls" */
 				CHECK(cfg_getstringtoken(pctx));
 
 				if (tls != NULL) {
@@ -3663,7 +3591,7 @@ cfg_obj_getsockaddrtls(const cfg_obj_t *obj) {
 }
 
 isc_result_t
-cfg_gettoken(cfg_parser_t *pctx, int options) {
+cfg_gettoken(cfg_parser_t *pctx) {
 	isc_result_t result;
 
 	REQUIRE(pctx != NULL);
@@ -3672,11 +3600,9 @@ cfg_gettoken(cfg_parser_t *pctx, int options) {
 		return ISC_R_SUCCESS;
 	}
 
-	options |= (ISC_LEXOPT_EOF | ISC_LEXOPT_NOMORE);
-
 redo:
 	pctx->token.type = isc_tokentype_unknown;
-	result = isc_lex_gettoken(pctx->lexer, options, &pctx->token);
+	result = isc_lex_next(pctx->lexer, &pctx->token);
 	pctx->ungotten = false;
 	pctx->line = isc_lex_getsourceline(pctx->lexer);
 
@@ -3731,12 +3657,12 @@ cfg_ungettoken(cfg_parser_t *pctx) {
 }
 
 isc_result_t
-cfg_peektoken(cfg_parser_t *pctx, int options) {
+cfg_peektoken(cfg_parser_t *pctx) {
 	isc_result_t result;
 
 	REQUIRE(pctx != NULL);
 
-	CHECK(cfg_gettoken(pctx, options));
+	CHECK(cfg_gettoken(pctx));
 	cfg_ungettoken(pctx);
 cleanup:
 	return result;
@@ -3748,7 +3674,7 @@ cleanup:
  */
 static isc_result_t
 cfg_getstringtoken(cfg_parser_t *pctx) {
-	RETERR(cfg_gettoken(pctx, CFG_LEXOPT_QSTRING));
+	RETERR(cfg_gettoken(pctx));
 
 	if (pctx->token.type != isc_tokentype_string &&
 	    pctx->token.type != isc_tokentype_qstring)
@@ -3825,7 +3751,7 @@ parser_complain(cfg_parser_t *pctx, bool is_warning, unsigned int flags,
 		isc_region_t r;
 
 		if (pctx->ungotten) {
-			(void)cfg_gettoken(pctx, 0);
+			(void)cfg_gettoken(pctx);
 		}
 
 		if (pctx->token.type == isc_tokentype_eof) {

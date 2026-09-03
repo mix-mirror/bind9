@@ -324,7 +324,6 @@ dns_test_rdatafromstring(dns_rdata_t *rdata, dns_rdataclass_t rdclass,
 	dns_rdatacallbacks_t callbacks;
 	isc_buffer_t source, target;
 	isc_lex_t *lex = NULL;
-	isc_lexspecials_t specials = { 0 };
 	isc_result_t result;
 	size_t length;
 
@@ -343,22 +342,8 @@ dns_test_rdatafromstring(dns_rdata_t *rdata, dns_rdataclass_t rdclass,
 	/*
 	 * Create a lexer as one is required by dns_rdata_fromtext().
 	 */
-	isc_lex_create(isc_g_mctx, 64, &lex);
-
-	/*
-	 * Set characters which will be treated as valid multi-line RDATA
-	 * delimiters while reading the source string.  These should match
-	 * specials from lib/dns/master.c.
-	 */
-	specials['('] = 1;
-	specials[')'] = 1;
-	specials['"'] = 1;
-	isc_lex_setspecials(lex, specials);
-
-	/*
-	 * Expect DNS masterfile comments.
-	 */
-	isc_lex_setcomments(lex, ISC_LEXCOMMENT_DNSMASTERFILE);
+	RUNTIME_CHECK(isc_lex_create_dns_master(isc_g_mctx, 64, &lex) ==
+		      ISC_R_SUCCESS);
 
 	/*
 	 * Point lexer at source.
