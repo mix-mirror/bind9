@@ -559,6 +559,9 @@ class NsecNonExistenceProver(NonExistenceProver):
             raise NonExistenceException("Unexpected NSEC record found")
         self._add_chain_element_covering(name)
 
+    def _is_usable_encloser(self, name: dns.name.Name) -> bool:
+        return any(n.is_subdomain(name) for n in self._zone.nodes)
+
 
 @final
 class Nsec3NonExistenceProver(NonExistenceProver):
