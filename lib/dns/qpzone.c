@@ -575,10 +575,6 @@ free_db_rcu(struct rcu_head *rcu_head) {
 	qpdb->common.magic = 0;
 	qpdb->common.impmagic = 0;
 
-	if (qpdb->common.update_listeners != NULL) {
-		INSIST(!cds_lfht_destroy(qpdb->common.update_listeners, NULL));
-	}
-
 	isc_mem_putanddetachx(&qpdb->common.mctx, qpdb, sizeof(*qpdb),
 			      ISC_MEM_ALIGN(ISC_OS_CACHELINE_SIZE));
 }
@@ -882,8 +878,6 @@ dns__qpzone_create(isc_mem_t *mctx, const dns_name_t *origin, dns_dbtype_t type,
 	}
 
 	isc_rwlock_init(&qpdb->lock);
-
-	qpdb->common.update_listeners = cds_lfht_new(16, 16, 0, 0, NULL);
 
 	qpdb->heap = new_qpz_heap(mctx);
 

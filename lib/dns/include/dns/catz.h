@@ -336,9 +336,12 @@ dns_catz_catzs_set_view(dns_catz_zones_t *catzs, dns_view_t *view);
  */
 
 isc_result_t
-dns_catz_dbupdate_callback(dns_db_t *db, void *fn_arg);
+dns_catz_dbupdate(dns_catz_zones_t *catzs, dns_db_t *db);
 /*%<
- * Callback for update of catalog zone database.
+ * Synchronize the catalog zones in 'catzs' with the (new) contents of the
+ * catalog zone database 'db'.  Called by the zone layer whenever a catalog
+ * zone's database has been (re)loaded or a new version committed.
+ *
  * If there was no catalog zone update recently it launches an
  * update action immediately.
  * If there was an update recently it schedules update for some time
@@ -346,28 +349,8 @@ dns_catz_dbupdate_callback(dns_db_t *db, void *fn_arg);
  * If there is an update scheduled it replaces old db version with a new one.
  *
  * Requires:
- * \li	'db' is a valid database.
- * \li	'fn_arg' is not NULL (casted to dns_catz_zones_t*).
- */
-
-void
-dns_catz_dbupdate_register(dns_db_t *db, dns_catz_zones_t *catzs);
-/*%<
- * Register the catalog zone database update notify callback.
- *
- * Requires:
- * \li	'db' is a valid database.
  * \li	'catzs' is valid.
- */
-
-void
-dns_catz_dbupdate_unregister(dns_db_t *db, dns_catz_zones_t *catzs);
-/*%<
- * Unregister the catalog zone database update notify callback.
- *
- * Requires:
  * \li	'db' is a valid database.
- * \li	'catzs' is valid.
  */
 
 void

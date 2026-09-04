@@ -291,7 +291,6 @@ axfr_init(dns_xfrin_t *xfr) {
 	CHECK(dns_zone_makedb(xfr->zone, &xfr->db));
 
 	dns_zone_rpz_enable_db(xfr->zone, xfr->db);
-	dns_zone_catz_enable_db(xfr->zone, xfr->db);
 
 	dns_rdatacallbacks_init(&xfr->axfr);
 	CHECK(dns_db_beginload(xfr->db, &xfr->axfr));
@@ -370,6 +369,7 @@ axfr_apply_done(void *arg, isc_result_t result) {
 		CHECK(dns_db_endload(xfr->db, &xfr->axfr));
 		CHECK(dns_zone_verifydb(xfr->zone, xfr->db, NULL));
 		CHECK(axfr_finalize(xfr));
+		dns_zone_dbupdate_notify(xfr->zone, xfr->db);
 	} else {
 		(void)dns_db_endload(xfr->db, &xfr->axfr);
 	}
@@ -615,6 +615,7 @@ cleanup:
 	if (!xfr->retry_axfr && result == ISC_R_SUCCESS) {
 		dns_db_closeversion(xfr->db, &xfr->ver, true);
 		dns_zone_markdirty(xfr->zone);
+		dns_zone_dbupdate_notify(xfr->zone, xfr->db);
 
 		if (atomic_load(&xfr->state) == XFRST_IXFR_END) {
 			xfrin_end(xfr, result);
