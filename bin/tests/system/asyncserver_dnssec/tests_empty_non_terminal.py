@@ -28,8 +28,6 @@ Opt-Out in the first zone and a non-empty salt in the second; a proof built
 with hardcoded parameters finds none of the records it needs in either.
 """
 
-from pathlib import Path
-
 import dns.dnssec
 import dns.dnssectypes
 import dns.message
@@ -43,7 +41,12 @@ import isctest
 import isctest.zone
 
 pytestmark = pytest.mark.extra_artifacts(
-    ["ans*/ans.run", "ans*/dsset-*", "ans*/keys/", "ans*/zones/*.db", "ans*/*.test.db"]
+    [
+        "ans*/ans.run",
+        "ans*/dsset-*",
+        "ans*/zones/*.db",
+        "ans*/zones/*.db.signed",
+    ]
 )
 
 NSEC_ZONE = "nsec.test."
@@ -65,7 +68,6 @@ def bootstrap():
     trust_anchors = []
     for name, sign_params in SIGNZONE_PARAMS.items():
         zone = isctest.zone.Zone(name, ANS1, signed=True)
-        zone.filepath_signed = Path(f"{zone.basename}.db")
         zone.configure(sign_params=sign_params)
         trust_anchors += zone.trust_anchors("static-key")
     return {"trust_anchors": trust_anchors}
