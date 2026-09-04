@@ -181,8 +181,6 @@ typedef isc_result_t (*dns_dbcreatefunc_t)(isc_mem_t	    *mctx,
 					   unsigned int argc, char *argv[],
 					   void *driverarg, dns_db_t **dbp);
 
-typedef isc_result_t (*dns_dbupdate_callback_t)(dns_db_t *db, void *fn_arg);
-
 #define DNS_DB_MAGIC	 ISC_MAGIC('D', 'N', 'S', 'D')
 #define DNS_DB_VALID(db) ISC_MAGIC_VALID(db, DNS_DB_MAGIC)
 
@@ -216,20 +214,11 @@ struct dns_db {
 	dns_ttl_t	 serve_stale_ttl; /* for cache DB's only */
 	isc_mem_t	*mctx;
 	isc_refcount_t	 references;
-	struct cds_lfht *update_listeners;
 };
 
 enum {
 	DNS_DBATTR_CACHE = 1 << 0,
 	DNS_DBATTR_STUB = 1 << 1,
-};
-
-struct dns_dbonupdatelistener {
-	isc_mem_t	       *mctx;
-	dns_dbupdate_callback_t onupdate;
-	void		       *onupdate_arg;
-	struct cds_lfht_node	ht_node;
-	struct rcu_head		rcu_head;
 };
 
 /*%
@@ -1640,33 +1629,6 @@ dns_db_setcachestats(dns_db_t *db, isc_stats_t *stats);
  * Returns:
  * \li	when available, a pointer to a statistics object created by
  *	dns_rdatasetstats_create(); otherwise NULL.
- */
-
-void
-dns_db_updatenotify_register(dns_db_t *db, dns_dbupdate_callback_t fn,
-			     void *fn_arg);
-/*%<
- * Register a notify-on-update callback function to a database.
- * Duplicate callbacks are suppressed.
- *
- * Requires:
- *
- * \li	'db' is a valid database
- * \li	'fn' is not NULL
- *
- */
-
-void
-dns_db_updatenotify_unregister(dns_db_t *db, dns_dbupdate_callback_t fn,
-			       void *fn_arg);
-/*%<
- * Unregister a notify-on-update callback.
- *
- * Requires:
- *
- * \li	'db' is a valid database
- * \li	'db' has update callback registered
- *
  */
 
 isc_result_t

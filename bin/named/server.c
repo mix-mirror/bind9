@@ -6360,7 +6360,7 @@ configure_zone(const cfg_obj_t *config, const cfg_obj_t *zconfig,
 
 		tresult = dns_zone_getdb(zone, &db);
 		if (tresult == ISC_R_SUCCESS) {
-			dns_catz_dbupdate_callback(db, view->catzs);
+			dns_catz_dbupdate(view->catzs, db);
 			dns_db_detach(&db);
 		}
 	}

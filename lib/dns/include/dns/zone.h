@@ -818,7 +818,23 @@ dns_zone_rpz_enable(dns_zone_t *zone, dns_rpz_zones_t *rpzs,
 void
 dns_zone_rpz_enable_db(dns_zone_t *zone, dns_db_t *db);
 /*%
- * If a zone is a response policy zone, mark its new database.
+ * If a zone is a response policy zone, account for it gaining an
+ * associated database.
+ */
+
+void
+dns_zone_dbupdate_notify(dns_zone_t *zone, dns_db_t *db);
+/*%
+ * Push the (new) contents of database 'db' to the RPZ summary database
+ * and/or the catalog-zone subsystem, as appropriate for 'zone'.  Called by
+ * the load and zone-transfer paths once a new database (version) is in
+ * place.  Has no effect if 'zone' is neither a response-policy zone nor a
+ * catalog zone.
+ *
+ * Requires:
+ *
+ * \li	'zone' is a valid zone object
+ * \li	'db' is not NULL
  */
 
 dns_rpz_num_t
@@ -839,8 +855,7 @@ dns_zone_catz_enable(dns_zone_t *zone, dns_catz_zones_t *catzs);
 void
 dns_zone_catz_disable(dns_zone_t *zone);
 /*%<
- * Disable zone as catalog zone, if it is one.  Also disables any
- * registered callbacks for the catalog zone.
+ * Disable zone as catalog zone, if it is one.
  *
  * Requires:
  *
@@ -857,17 +872,6 @@ dns_zone_catz_is_enabled(dns_zone_t *zone);
  * \li	'zone' is a valid zone object
  */
 
-void
-dns_zone_catz_enable_db(dns_zone_t *zone, dns_db_t *db);
-/*%<
- * If 'zone' is a catalog zone, then set up a notify-on-update trigger
- * in its database. (If not a catalog zone, this function has no effect.)
- *
- * Requires:
- *
- * \li	'zone' is a valid zone object
- * \li	'db' is not NULL
- */
 void
 dns_zone_set_parentcatz(dns_zone_t *zone, dns_catz_zone_t *catz);
 /*%<

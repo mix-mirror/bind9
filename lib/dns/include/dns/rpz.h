@@ -387,11 +387,21 @@ isc_result_t
 dns_rpz_new_zone(dns_rpz_zones_t *rpzs, dns_rpz_zone_t **rpzp);
 
 isc_result_t
-dns_rpz_dbupdate_callback(dns_db_t *db, void *fn_arg);
+dns_rpz_dbupdate(dns_rpz_zone_t *rpz, dns_db_t *db);
+/*%<
+ * Synchronize the RPZ summary database for 'rpz' with the (new) contents
+ * of zone database 'db'.  Called by the zone layer whenever the policy
+ * zone's database has been (re)loaded or a new version committed.
+ */
 void
-dns_rpz_dbupdate_unregister(dns_db_t *db, dns_rpz_zone_t *rpz);
+dns_rpz_dbupdate_unregister(dns_rpz_zone_t *rpz);
 void
-dns_rpz_dbupdate_register(dns_db_t *db, dns_rpz_zone_t *rpz);
+dns_rpz_dbupdate_register(dns_rpz_zone_t *rpz);
+/*%<
+ * Account for 'rpz' gaining ('register') or losing ('unregister') an
+ * associated zone database.  Must be called by the zone layer around the
+ * lifetime of the policy zone's database.
+ */
 
 void
 dns_rpz_zones_shutdown(dns_rpz_zones_t *rpzs);

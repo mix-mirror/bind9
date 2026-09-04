@@ -1587,8 +1587,7 @@ dns_rpz_new_zone(dns_rpz_zones_t *rpzs, dns_rpz_zone_t **rpzp) {
 }
 
 isc_result_t
-dns_rpz_dbupdate_callback(dns_db_t *db, void *fn_arg) {
-	dns_rpz_zone_t *rpz = (dns_rpz_zone_t *)fn_arg;
+dns_rpz_dbupdate(dns_rpz_zone_t *rpz, dns_db_t *db) {
 	isc_result_t result = ISC_R_SUCCESS;
 
 	REQUIRE(DNS_DB_VALID(db));
@@ -1601,14 +1600,12 @@ dns_rpz_dbupdate_callback(dns_db_t *db, void *fn_arg) {
 		goto unlock;
 	}
 
-	/* New zone came as AXFR */
+	/* New zone came as AXFR or a reload produced a fresh database. */
 	if (rpz->db != NULL && rpz->db != db) {
 		/* We need to clean up the old DB */
 		if (rpz->dbversion != NULL) {
 			dns_db_closeversion(rpz->db, &rpz->dbversion, false);
 		}
-		dns_db_updatenotify_unregister(rpz->db,
-					       dns_rpz_dbupdate_callback, rpz);
 		dns_db_detach(&rpz->db);
 	}
 
@@ -1644,12 +1641,10 @@ unlock:
 }
 
 void
-dns_rpz_dbupdate_unregister(dns_db_t *db, dns_rpz_zone_t *rpz) {
-	REQUIRE(DNS_DB_VALID(db));
+dns_rpz_dbupdate_unregister(dns_rpz_zone_t *rpz) {
 	REQUIRE(DNS_RPZ_ZONE_VALID(rpz));
 
 	LOCK(&rpz->update_lock);
-	dns_db_updatenotify_unregister(db, dns_rpz_dbupdate_callback, rpz);
 	if (rpz->processed) {
 		rpz->processed = false;
 		INSIST(atomic_fetch_sub_acq_rel(&rpz->rpzs->zones_processed,
@@ -1664,8 +1659,7 @@ dns_rpz_dbupdate_unregister(dns_db_t *db, dns_rpz_zone_t *rpz) {
 }
 
 void
-dns_rpz_dbupdate_register(dns_db_t *db, dns_rpz_zone_t *rpz) {
-	REQUIRE(DNS_DB_VALID(db));
+dns_rpz_dbupdate_register(dns_rpz_zone_t *rpz) {
 	REQUIRE(DNS_RPZ_ZONE_VALID(rpz));
 
 	LOCK(&rpz->update_lock);
@@ -1673,7 +1667,6 @@ dns_rpz_dbupdate_register(dns_db_t *db, dns_rpz_zone_t *rpz) {
 		rpz->dbregistered = true;
 		atomic_fetch_add_acq_rel(&rpz->rpzs->zones_registered, 1);
 	}
-	dns_db_updatenotify_register(db, dns_rpz_dbupdate_callback, rpz);
 	UNLOCK(&rpz->update_lock);
 }
 
@@ -2203,8 +2196,6 @@ dns_rpz_zone_destroy(dns_rpz_zone_t **rpzp) {
 		if (rpz->dbversion != NULL) {
 			dns_db_closeversion(rpz->db, &rpz->dbversion, false);
 		}
-		dns_db_updatenotify_unregister(rpz->db,
-					       dns_rpz_dbupdate_callback, rpz);
 		dns_db_detach(&rpz->db);
 	}
 	INSIST(!rpz->updaterunning);

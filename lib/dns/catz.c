@@ -1089,8 +1089,6 @@ dns__catz_zone_destroy(dns_catz_zone_t *catz) {
 		if (catz->dbversion != NULL) {
 			dns_db_closeversion(catz->db, &catz->dbversion, false);
 		}
-		dns_db_updatenotify_unregister(
-			catz->db, dns_catz_dbupdate_callback, catz->catzs);
 		dns_db_detach(&catz->db);
 	}
 
@@ -2108,15 +2106,13 @@ exit:
 }
 
 isc_result_t
-dns_catz_dbupdate_callback(dns_db_t *db, void *fn_arg) {
-	dns_catz_zones_t *catzs = NULL;
+dns_catz_dbupdate(dns_catz_zones_t *catzs, dns_db_t *db) {
 	dns_catz_zone_t *catz = NULL;
 	isc_result_t result = ISC_R_SUCCESS;
 	isc_region_t r;
 
 	REQUIRE(DNS_DB_VALID(db));
-	REQUIRE(DNS_CATZ_ZONES_VALID(fn_arg));
-	catzs = (dns_catz_zones_t *)fn_arg;
+	REQUIRE(DNS_CATZ_ZONES_VALID(catzs));
 
 	if (atomic_load(&catzs->shuttingdown)) {
 		return ISC_R_SHUTTINGDOWN;
@@ -2130,21 +2126,16 @@ dns_catz_dbupdate_callback(dns_db_t *db, void *fn_arg) {
 	}
 	CHECK(isc_ht_find(catzs->zones, r.base, r.length, (void **)&catz));
 
-	/* New zone came as AXFR */
+	/* New zone came as AXFR or a reload produced a fresh database. */
 	if (catz->db != NULL && catz->db != db) {
 		/* Old db cleanup. */
 		if (catz->dbversion != NULL) {
 			dns_db_closeversion(catz->db, &catz->dbversion, false);
 		}
-		dns_db_updatenotify_unregister(
-			catz->db, dns_catz_dbupdate_callback, catz->catzs);
 		dns_db_detach(&catz->db);
 	}
 	if (catz->db == NULL) {
-		/* New db registration. */
 		dns_db_attach(db, &catz->db);
-		dns_db_updatenotify_register(db, dns_catz_dbupdate_callback,
-					     catz->catzs);
 	}
 
 	if (!catz->updatepending && !catz->updaterunning) {
@@ -2170,22 +2161,6 @@ cleanup:
 	UNLOCK(&catzs->lock);
 
 	return result;
-}
-
-void
-dns_catz_dbupdate_unregister(dns_db_t *db, dns_catz_zones_t *catzs) {
-	REQUIRE(DNS_DB_VALID(db));
-	REQUIRE(DNS_CATZ_ZONES_VALID(catzs));
-
-	dns_db_updatenotify_unregister(db, dns_catz_dbupdate_callback, catzs);
-}
-
-void
-dns_catz_dbupdate_register(dns_db_t *db, dns_catz_zones_t *catzs) {
-	REQUIRE(DNS_DB_VALID(db));
-	REQUIRE(DNS_CATZ_ZONES_VALID(catzs));
-
-	dns_db_updatenotify_register(db, dns_catz_dbupdate_callback, catzs);
 }
 
 static bool

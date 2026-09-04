@@ -990,46 +990,48 @@ dns_zone_get_rpz_num(dns_zone_t *zone) {
 }
 
 /*
- * If a zone is a response policy zone, mark its new database.
+ * Account for a response-policy zone gaining an associated database.  The
+ * database contents are pushed to the RPZ summary database later, by
+ * dns_zone_dbupdate_notify().
  */
 void
 dns_zone_rpz_enable_db(dns_zone_t *zone, dns_db_t *db) {
+	UNUSED(db);
+
 	if (zone->rpz_num == DNS_RPZ_INVALID_NUM) {
 		return;
 	}
 	REQUIRE(zone->rpzs != NULL);
-	dns_rpz_dbupdate_register(db, zone->rpzs->zones[zone->rpz_num]);
+	dns_rpz_dbupdate_register(zone->rpzs->zones[zone->rpz_num]);
 }
 
 static void
 dns_zone_rpz_disable_db(dns_zone_t *zone, dns_db_t *db) {
+	UNUSED(db);
+
 	if (zone->rpz_num == DNS_RPZ_INVALID_NUM) {
 		return;
 	}
 	REQUIRE(zone->rpzs != NULL);
-	dns_rpz_dbupdate_unregister(db, zone->rpzs->zones[zone->rpz_num]);
+	dns_rpz_dbupdate_unregister(zone->rpzs->zones[zone->rpz_num]);
 }
 
 /*
- * If a zone is a catalog zone, attach it to update notification in database.
+ * Push the (new) contents of zone database 'db' to the RPZ summary database
+ * and/or the catalog-zone subsystem, as appropriate for 'zone'.  Called once
+ * a newly loaded database or a new database version has been committed.
  */
 void
-dns_zone_catz_enable_db(dns_zone_t *zone, dns_db_t *db) {
+dns_zone_dbupdate_notify(dns_zone_t *zone, dns_db_t *db) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 	REQUIRE(db != NULL);
 
-	if (zone->catzs != NULL) {
-		dns_catz_dbupdate_register(db, zone->catzs);
+	if (zone->rpz_num != DNS_RPZ_INVALID_NUM) {
+		REQUIRE(zone->rpzs != NULL);
+		(void)dns_rpz_dbupdate(zone->rpzs->zones[zone->rpz_num], db);
 	}
-}
-
-static void
-dns_zone_catz_disable_db(dns_zone_t *zone, dns_db_t *db) {
-	REQUIRE(DNS_ZONE_VALID(zone));
-	REQUIRE(db != NULL);
-
 	if (zone->catzs != NULL) {
-		dns_catz_dbupdate_unregister(db, zone->catzs);
+		(void)dns_catz_dbupdate(zone->catzs, db);
 	}
 }
 
@@ -1059,9 +1061,6 @@ zone_catz_disable(dns_zone_t *zone) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 
 	if (zone->catzs != NULL) {
-		if (zone->db != NULL) {
-			dns_zone_catz_disable_db(zone, zone->db);
-		}
 		dns_catz_zones_detach(&zone->catzs);
 	}
 }
@@ -1728,7 +1727,6 @@ zone_startload(dns_db_t *db, dns_zone_t *zone, isc_time_t loadtime) {
 	};
 
 	dns_zone_rpz_enable_db(zone, db);
-	dns_zone_catz_enable_db(zone, db);
 
 	options = get_primary_options(zone);
 	if (DNS_ZONE_OPTION(zone, DNS_ZONEOPT_MANYERRORS)) {
@@ -1769,7 +1767,6 @@ zone_startload(dns_db_t *db, dns_zone_t *zone, isc_time_t loadtime) {
 cleanup:
 	if (result != ISC_R_SUCCESS && result != DNS_R_SEENINCLUDE) {
 		dns_zone_rpz_disable_db(zone, load->db);
-		dns_zone_catz_disable_db(zone, load->db);
 	}
 
 	tresult = dns_db_endload(db, &load->callbacks);
@@ -4519,13 +4516,19 @@ zone_postload(dns_zone_t *zone, dns_db_t *db, isc_time_t loadtime,
 			      "mirror zone is now in use");
 	}
 
+	/*
+	 * If this is a policy or catalog zone, push the freshly loaded
+	 * database (including any rolled-forward journal) to the relevant
+	 * subsystem.
+	 */
+	dns_zone_dbupdate_notify(zone, db);
+
 	zone->loadtime = loadtime;
 	goto done;
 
 cleanup:
 	if (result != ISC_R_SUCCESS) {
 		dns_zone_rpz_disable_db(zone, db);
-		dns_zone_catz_disable_db(zone, db);
 	}
 
 	ISC_LIST_FOREACH(zone->newincludes, inc, link) {
@@ -10242,7 +10245,7 @@ zone_expire(dns_zone_t *zone) {
 		CHECK(dns_db_create(zone->mctx, ZONEDB_DEFAULT, &zone->origin,
 				    dns_dbtype_zone, zone->rdclass, 0, NULL,
 				    &db));
-		CHECK(dns_rpz_dbupdate_callback(db, rpz));
+		CHECK(dns_rpz_dbupdate(rpz, db));
 		dns_zone_log(zone, ISC_LOG_WARNING,
 			     "response-policy zone expired; "
 			     "policies unloaded");
@@ -14621,6 +14624,7 @@ inline_sync_finalize(dns_zone_t *zone, uint32_t newserial, uint32_t desired) {
 
 	dns_db_closeversion(iss->db, &iss->oldver, false);
 	dns_db_closeversion(iss->db, &iss->newver, true);
+	dns_zone_dbupdate_notify(zone, iss->db);
 
 	if (newserial != 0) {
 		dns_zone_log(zone, ISC_LOG_INFO, "serial %u (unsigned %u)",
@@ -15421,7 +15425,6 @@ zone_detachdb(dns_zone_t *zone) {
 	REQUIRE(zone->db != NULL);
 
 	dns_zone_rpz_disable_db(zone, zone->db);
-	dns_zone_catz_disable_db(zone, zone->db);
 	dns_db_detach(&zone->db);
 }
 
@@ -15760,7 +15763,6 @@ zone_loaddone(void *arg, isc_result_t result) {
 	 */
 	if (result != ISC_R_SUCCESS && result != DNS_R_SEENINCLUDE) {
 		dns_zone_rpz_disable_db(zone, load->db);
-		dns_zone_catz_disable_db(zone, load->db);
 	}
 
 	tresult = dns_db_endload(load->db, &load->callbacks);

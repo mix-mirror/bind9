@@ -21,14 +21,12 @@
 #include <stdbool.h>
 
 #include <isc/buffer.h>
-#include <isc/hash.h>
 #include <isc/log.h>
 #include <isc/mem.h>
 #include <isc/result.h>
 #include <isc/rwlock.h>
 #include <isc/string.h>
 #include <isc/tid.h>
-#include <isc/urcu.h>
 #include <isc/util.h>
 
 #include <dns/callbacks.h>
@@ -108,9 +106,6 @@ impfind(const char *name) {
 	}
 	return NULL;
 }
-
-static void
-call_updatenotify(dns_db_t *db);
 
 /***
  *** Basic DB Methods
@@ -298,13 +293,6 @@ dns_db_endload(dns_db_t *db, dns_rdatacallbacks_t *callbacks) {
 	REQUIRE(DNS_CALLBACK_VALID(callbacks));
 	REQUIRE(callbacks->add_private != NULL);
 
-	/*
-	 * When dns_db_endload() is called, we call the onupdate function
-	 * for all registered listeners, regardless of whether the underlying
-	 * database has an 'endload' implementation.
-	 */
-	call_updatenotify(db);
-
 	if (db->methods->endload != NULL) {
 		return (db->methods->endload)(db, callbacks);
 	}
@@ -461,10 +449,6 @@ dns__db_closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 	REQUIRE(versionp != NULL && *versionp != NULL);
 
 	(db->methods->closeversion)(db, versionp, commit DNS__DB_FLARG_PASS);
-
-	if (commit) {
-		call_updatenotify(db);
-	}
 
 	ENSURE(*versionp == NULL);
 }
@@ -902,99 +886,6 @@ dns_db_getsigningtime(dns_db_t *db, isc_stdtime_t *resign, dns_name_t *name,
 						     typepair);
 	}
 	return ISC_R_NOTFOUND;
-}
-
-static void
-call_updatenotify(dns_db_t *db) {
-	rcu_read_lock();
-	struct cds_lfht *update_listeners =
-		rcu_dereference(db->update_listeners);
-	if (update_listeners != NULL) {
-		struct cds_lfht_iter iter;
-		dns_dbonupdatelistener_t *listener;
-		cds_lfht_for_each_entry(update_listeners, &iter, listener,
-					ht_node) {
-			if (!cds_lfht_is_node_deleted(&listener->ht_node)) {
-				listener->onupdate(db, listener->onupdate_arg);
-			}
-		}
-	}
-	rcu_read_unlock();
-}
-
-static void
-updatenotify_free(struct rcu_head *rcu_head) {
-	dns_dbonupdatelistener_t *listener =
-		caa_container_of(rcu_head, dns_dbonupdatelistener_t, rcu_head);
-	isc_mem_putanddetach(&listener->mctx, listener, sizeof(*listener));
-}
-
-static int
-updatenotify_match(struct cds_lfht_node *ht_node, const void *_key) {
-	const dns_dbonupdatelistener_t *listener =
-		caa_container_of(ht_node, dns_dbonupdatelistener_t, ht_node);
-	const dns_dbonupdatelistener_t *key = _key;
-
-	return listener->onupdate == key->onupdate &&
-	       listener->onupdate_arg == key->onupdate_arg;
-}
-
-/*
- * Attach a notify-on-update function the database
- */
-void
-dns_db_updatenotify_register(dns_db_t *db, dns_dbupdate_callback_t fn,
-			     void *fn_arg) {
-	REQUIRE(db != NULL);
-	REQUIRE(fn != NULL);
-
-	dns_dbonupdatelistener_t key = { .onupdate = fn,
-					 .onupdate_arg = fn_arg };
-	uint32_t hash = isc_hash32(&key, sizeof(key), true);
-	dns_dbonupdatelistener_t *listener = isc_mem_get(db->mctx,
-							 sizeof(*listener));
-	*listener = key;
-
-	isc_mem_attach(db->mctx, &listener->mctx);
-
-	rcu_read_lock();
-	struct cds_lfht *update_listeners =
-		rcu_dereference(db->update_listeners);
-	INSIST(update_listeners != NULL);
-	struct cds_lfht_node *ht_node =
-		cds_lfht_add_unique(update_listeners, hash, updatenotify_match,
-				    &key, &listener->ht_node);
-	rcu_read_unlock();
-
-	if (ht_node != &listener->ht_node) {
-		updatenotify_free(&listener->rcu_head);
-	}
-}
-
-void
-dns_db_updatenotify_unregister(dns_db_t *db, dns_dbupdate_callback_t fn,
-			       void *fn_arg) {
-	REQUIRE(db != NULL);
-
-	dns_dbonupdatelistener_t key = { .onupdate = fn,
-					 .onupdate_arg = fn_arg };
-	uint32_t hash = isc_hash32(&key, sizeof(key), true);
-	struct cds_lfht_iter iter;
-
-	rcu_read_lock();
-	struct cds_lfht *update_listeners =
-		rcu_dereference(db->update_listeners);
-	INSIST(update_listeners != NULL);
-	cds_lfht_lookup(update_listeners, hash, updatenotify_match, &key,
-			&iter);
-
-	struct cds_lfht_node *ht_node = cds_lfht_iter_get_node(&iter);
-	if (ht_node != NULL && !cds_lfht_del(update_listeners, ht_node)) {
-		dns_dbonupdatelistener_t *listener = caa_container_of(
-			ht_node, dns_dbonupdatelistener_t, ht_node);
-		call_rcu(&listener->rcu_head, updatenotify_free);
-	}
-	rcu_read_unlock();
 }
 
 isc_result_t
