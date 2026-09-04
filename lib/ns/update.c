@@ -3277,6 +3277,12 @@ update_action(void *arg) {
 		dns_zone_markdirty(zone);
 
 		/*
+		 * If this is a policy or catalog zone, push the new contents
+		 * to the relevant subsystem.
+		 */
+		dns_zone_dbupdate_notify(zone, db);
+
+		/*
 		 * Notify secondaries of the change we just made.
 		 */
 		dns_zone_notify(zone, false);
