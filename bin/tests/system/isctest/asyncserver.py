@@ -330,7 +330,7 @@ class QueryContext:
         assert self.zone
         assert self.zone.origin
 
-        if not node:
+        if node is None:
             node = (
                 self.node
                 if rrset.rdtype != dns.rdatatype.SOA
