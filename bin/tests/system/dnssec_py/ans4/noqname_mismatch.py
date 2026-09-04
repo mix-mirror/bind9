@@ -167,9 +167,6 @@ class RuntimeCheckHandler(DomainHandler):
         self.child = name(CHILD)
         self.attack = name(ATTACK)
 
-    def match(self, qctx: QueryContext) -> bool:
-        return qctx.qname.is_subdomain(self.zone)
-
     async def get_responses(
         self, qctx: QueryContext
     ) -> AsyncGenerator[DnsResponseSend, None]:
