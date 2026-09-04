@@ -24,20 +24,18 @@ RESOLVER = isctest.template.NS2.ip
 pytestmark = [
     pytest.mark.extra_artifacts(
         [
-            "ans*/*.db",
             "ans*/ans.run",
             "ans*/dsset-*",
             "ans*/keys/",
             "ans*/zones/*.db",
+            "ans*/zones/*.db.signed",
         ]
     ),
 ]
 
 
 def bootstrap():
-    zone = isctest.zone.Zone(
-        "f043.test.", isctest.template.ANS1, signed=True, filepath_signed="f043.test.db"
-    )
+    zone = isctest.zone.Zone("f043.test.", isctest.template.ANS1, signed=True)
     zone.configure(csk=True)
 
     return {"trust_anchors": zone.trust_anchors()}
