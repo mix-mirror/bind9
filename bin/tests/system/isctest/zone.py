@@ -520,6 +520,7 @@ class Zone:
         same Zone (see the class docstring).
         """
         assert not self._configured, f"{self.name}: configure() already called"
+        assert self.signed or not csk, "refusing to generate a CSK for an unsigned zone"
         self._configured = True
         self.copy_dssets()
         if self.signed:
