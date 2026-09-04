@@ -16,6 +16,7 @@ from collections.abc import (
     Callable,
     Collection,
     Coroutine,
+    Iterator,
     Mapping,
     MutableSequence,
     Sequence,
@@ -1524,6 +1525,11 @@ class AsyncDnsServer(AsyncServer):
             raise RuntimeError("Only one connection handler can be installed")
         self._connection_handler = handler
 
+    def _scan_directory(self, directory: str) -> Iterator[os.DirEntry]:
+        directory_path = pathlib.Path(directory)
+        if directory_path.exists():
+            yield from os.scandir(directory_path)
+
     def _load_zones(self) -> None:
         for entry in os.scandir():
             entry_path = pathlib.Path(entry.path)
@@ -1582,9 +1588,7 @@ class AsyncDnsServer(AsyncServer):
                     raise ValueError(error)
 
     def _load_keys(self) -> None:
-        if not os.path.isdir("keys/"):
-            return
-        for entry in os.scandir("keys/"):
+        for entry in self._scan_directory("keys/"):
             entry_path = pathlib.Path(entry.path)
             if entry_path.suffix != ".key":
                 continue
