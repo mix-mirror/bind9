@@ -508,6 +508,7 @@ class NonExistenceProver(abc.ABC):
         sigrdataset = node.get_rdataset(
             self._qctx.qclass, dns.rdatatype.RRSIG, self.proof_rdatatype
         )
+        assert sigrdataset
         rrsig = dns.rrset.RRset(
             owner, self._qctx.qclass, dns.rdatatype.RRSIG, self.proof_rdatatype
         )
