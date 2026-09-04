@@ -32,28 +32,21 @@ RESOLVER = isctest.template.NS2.ip
 pytestmark = [
     pytest.mark.extra_artifacts(
         [
-            "ans*/*.db",
             "ans*/ans.run",
             "ans*/dsset-*",
             "ans*/keys/",
             "ans*/zones/*.db",
+            "ans*/zones/*.db.signed",
         ]
     ),
 ]
 
 
 def bootstrap():
-    child = isctest.zone.Zone(
-        "child.f045.test.",
-        isctest.template.ANS1,
-        signed=True,
-        filepath_signed="child.f045.test.db",
-    )
+    child = isctest.zone.Zone("child.f045.test.", isctest.template.ANS1, signed=True)
     child.configure(csk=True)
 
-    parent = isctest.zone.Zone(
-        "f045.test.", isctest.template.ANS1, signed=True, filepath_signed="f045.test.db"
-    )
+    parent = isctest.zone.Zone("f045.test.", isctest.template.ANS1, signed=True)
     parent.delegations = [child]
     parent.configure(csk=True)
 
