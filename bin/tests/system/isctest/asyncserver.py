@@ -563,7 +563,7 @@ class Nsec3NonExistenceProver(NonExistenceProver):
     proof_rdatatype = dns.rdatatype.NSEC3
 
     def prove_no_ds(self, name: dns.name.Name) -> None:
-        self._add_nsec3_matching_or_closest_encloser_proof(self._qname)
+        self._add_nsec3_matching_or_closest_encloser_proof(name)
 
     def prove_ent(self) -> None:
         self._add_nsec3_matching_or_closest_encloser_proof(self._qname)
