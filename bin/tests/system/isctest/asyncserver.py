@@ -1445,11 +1445,11 @@ class AsyncDnsServer(AsyncServer):
     sorts of scenarios, including delaying responses, synthesizing them based
     on query contents etc.
 
-    The server also loads any zone files (*.db) found in the zones/
-    subdirectory and serves them. Responses prepared using zone data can
-    then be modified, replaced, or suppressed by query handlers. Query
-    handlers can also generate response from scratch, without using zone
-    data at all.
+    The server also loads any zone files found in the zones/ subdirectory and
+    serves them (*.db and *.db.signed files; if both exist for the same origin,
+    only the signed variant is loaded). Responses prepared using zone data can
+    then be modified, replaced, or suppressed by query handlers. Query handlers
+    can also generate response from scratch, without using zone data at all.
     """
 
     def __init__(
@@ -1531,10 +1531,17 @@ class AsyncDnsServer(AsyncServer):
         if directory_path.exists():
             yield from os.scandir(directory_path)
 
+    def _is_preferred_zone_file(self, file: pathlib.Path) -> bool:
+        if file.name.endswith(".db.signed"):
+            return True
+        if file.name.endswith(".db"):
+            return not bool(pathlib.Path(f"{file}.signed").exists())
+        return False
+
     def _load_zones(self) -> None:
         for entry in self._scan_directory("zones/"):
             entry_path = pathlib.Path(entry.path)
-            if entry_path.suffix != ".db":
+            if not self._is_preferred_zone_file(entry_path):
                 continue
             origin, zone = self._load_zone(entry_path)
             self._zone_tree.add(origin, zone)
@@ -1571,7 +1578,11 @@ class AsyncDnsServer(AsyncServer):
     def _load_zone_file_without_origin(
         self, zone_file_path: pathlib.Path
     ) -> dns.zone.Zone:
-        origin = dns.name.from_text(zone_file_path.stem)
+        match zone_file_path.suffix:
+            case ".signed":
+                origin = zone_file_path.with_suffix("").stem
+            case ".db":
+                origin = zone_file_path.stem
         return dns.zone.from_file(str(zone_file_path), origin=origin, relativize=False)
 
     def _abort_if_dname_found_unless_acknowledged(self, zone: dns.zone.Zone) -> None:
