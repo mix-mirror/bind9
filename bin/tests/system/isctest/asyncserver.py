@@ -1969,7 +1969,7 @@ class AsyncDnsServer(AsyncServer):
     def _name_exists(self, qctx: QueryContext, name: dns.name.Name) -> bool:
         assert qctx.zone
         return qctx.zone.get_node(name) is not None or any(
-            n.is_subdomain(name) and n != name for n in qctx.zone.nodes
+            n.is_subdomain(name) for n in qctx.zone.nodes
         )
 
     def _ent_response(self, qctx: QueryContext) -> bool:
