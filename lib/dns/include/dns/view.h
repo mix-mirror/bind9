@@ -152,7 +152,6 @@ struct dns_view {
 	dns_nametree_t	     *answeracl_exclude;
 	dns_nametree_t	     *denyanswernames;
 	dns_nametree_t	     *answernames_exclude;
-	dns_nametree_t	     *sfd;
 	dns_rrl_t	     *rrl;
 	bool		      provideixfr;
 	bool		      requestnsid;
@@ -1171,46 +1170,11 @@ dns_view_flushonshutdown(dns_view_t *view, bool flush);
  */
 
 void
-dns_view_sfd_add(dns_view_t *view, const dns_name_t *name);
-/*%<
- * Add 'name' to the synth-from-dnssec namespace tree for the
- * view.  If the tree does not already exist create it.
- *
- * Requires:
- *\li	'view' to be valid.
- *\li	'name' to be valid.
- */
-
-void
-dns_view_sfd_add_batch(dns_view_t *view, const dns_name_t **names,
-		       unsigned int count);
-/*%<
- * Add multiple names to the synth-from-dnssec namespace tree in a
- * single QP transaction.
- *
- * Requires:
- *\li	'view' to be valid.
- *\li	'names' to be non-NULL.
- */
-
-void
-dns_view_sfd_del(dns_view_t *view, const dns_name_t *name);
-/*%<
- * Delete 'name' to the synth-from-dnssec namespace tree for
- * the view when the count of previous adds and deletes becomes
- * zero.
- *
- * Requires:
- *\li	'view' to be valid.
- *\li	'name' to be valid.
- */
-
-void
 dns_view_sfd_find(dns_view_t *view, const dns_name_t *name,
 		  dns_name_t *foundname);
 /*%<
- * Find the enclosing name to the synth-from-dnssec namespace tree for 'name'
- * in the specified view.
+ * Find the enclosing synth-from-dnssec namespace boundary for 'name' in the
+ * specified view.
  *
  * Requires:
  *\li	'view' to be valid.

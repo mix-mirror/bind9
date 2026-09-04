@@ -198,8 +198,6 @@ dns_view_create(isc_mem_t *mctx, dns_dispatchmgr_t *dispatchmgr,
 
 	dns_aclenv_create(view->mctx, &view->aclenv);
 
-	dns_nametree_create(view->mctx, DNS_NAMETREE_COUNT, "sfd", &view->sfd);
-
 	view->magic = DNS_VIEW_MAGIC;
 	*viewp = view;
 }
@@ -353,9 +351,6 @@ destroy(dns_view_t *view) {
 	}
 	if (view->answernames_exclude != NULL) {
 		dns_nametree_detach(&view->answernames_exclude);
-	}
-	if (view->sfd != NULL) {
-		dns_nametree_detach(&view->sfd);
 	}
 	if (view->secroots_priv != NULL) {
 		dns_keytable_detach(&view->secroots_priv);
@@ -740,10 +735,6 @@ dns_view_addzone(dns_view_t *view, dns_zone_t *zone) {
 	}
 	rcu_read_unlock();
 
-	if (result == ISC_R_SUCCESS) {
-		dns_view_sfd_add(view, dns_zone_getorigin(zone));
-	}
-
 	return result;
 }
 
@@ -752,26 +743,17 @@ dns_view_addzone_batch(dns_view_t *view, dns_zone_t **zones,
 		       unsigned int count) {
 	dns_zt_t *zonetable = NULL;
 	isc_result_t result = ISC_R_SHUTTINGDOWN;
-	unsigned int nmounted = 0;
 
 	REQUIRE(DNS_VIEW_VALID(view));
 	REQUIRE(!view->frozen);
 
-	const dns_name_t **names =
-		isc_mem_cget(view->mctx, count, sizeof(*names));
-
 	rcu_read_lock();
 	zonetable = rcu_dereference(view->zonetable);
 	if (zonetable != NULL) {
-		nmounted = dns_zt_mount_batch(zonetable, zones, count, names);
+		(void)dns_zt_mount_batch(zonetable, zones, count);
 		result = ISC_R_SUCCESS;
 	}
 	rcu_read_unlock();
-
-	if (nmounted > 0) {
-		dns_view_sfd_add_batch(view, names, nmounted);
-	}
-	isc_mem_cput(view->mctx, names, count, sizeof(*names));
 
 	return result;
 }
@@ -793,10 +775,6 @@ dns_view_delzone(dns_view_t *view, dns_zone_t *zone) {
 		result = ISC_R_SUCCESS;
 	}
 	rcu_read_unlock();
-
-	if (result == ISC_R_SUCCESS) {
-		dns_view_sfd_del(view, dns_zone_getorigin(zone));
-	}
 
 	return result;
 }
@@ -2043,37 +2021,54 @@ dns_view_flushonshutdown(dns_view_t *view, bool flush) {
 }
 
 void
-dns_view_sfd_add(dns_view_t *view, const dns_name_t *name) {
+dns_view_sfd_find(dns_view_t *view, const dns_name_t *name,
+		  dns_name_t *foundname) {
+	dns_fixedname_t fcandidate;
+	dns_name_t *candidate = dns_fixedname_initname(&fcandidate);
+	dns_zone_t *zone = NULL;
+	dns_keytable_t *secroots = NULL;
+	dns_zt_t *zonetable = NULL;
+	unsigned int foundlabels = 0;
 	isc_result_t result;
 
 	REQUIRE(DNS_VIEW_VALID(view));
 
-	result = dns_nametree_add(view->sfd, name, 0);
-	RUNTIME_CHECK(result == ISC_R_SUCCESS);
-}
+	dns_name_copy(dns_rootname, foundname);
 
-void
-dns_view_sfd_add_batch(dns_view_t *view, const dns_name_t **names,
-		       unsigned int count) {
-	REQUIRE(DNS_VIEW_VALID(view));
+	rcu_read_lock();
+	zonetable = rcu_dereference(view->zonetable);
+	if (zonetable != NULL) {
+		result = dns_zt_find(zonetable, name, 0, &zone);
+	} else {
+		result = ISC_R_NOTFOUND;
+	}
+	rcu_read_unlock();
 
-	dns_nametree_add_batch(view->sfd, names, count, 0);
-}
+	if (result == ISC_R_SUCCESS || result == DNS_R_PARTIALMATCH) {
+		dns_name_copy(dns_zone_getorigin(zone), foundname);
+		foundlabels = dns_name_countlabels(foundname);
+		dns_zone_detach(&zone);
+	}
 
-void
-dns_view_sfd_del(dns_view_t *view, const dns_name_t *name) {
-	REQUIRE(DNS_VIEW_VALID(view));
+	result = dns_fwdtable_finddeepestonly(view->fwdtable, name,
+					      candidate);
+	if (result == ISC_R_SUCCESS &&
+	    dns_name_countlabels(candidate) > foundlabels)
+	{
+		dns_name_copy(candidate, foundname);
+		foundlabels = dns_name_countlabels(foundname);
+	}
 
-	dns_nametree_delete(view->sfd, name);
-}
-
-void
-dns_view_sfd_find(dns_view_t *view, const dns_name_t *name,
-		  dns_name_t *foundname) {
-	REQUIRE(DNS_VIEW_VALID(view));
-
-	if (!dns_nametree_covered(view->sfd, name, foundname, 0)) {
-		dns_name_copy(dns_rootname, foundname);
+	result = dns_view_getsecroots(view, &secroots);
+	if (result == ISC_R_SUCCESS) {
+		result = dns_keytable_finddeepestmatch(secroots, name,
+						       candidate);
+		if (result == ISC_R_SUCCESS &&
+		    dns_name_countlabels(candidate) > foundlabels)
+		{
+			dns_name_copy(candidate, foundname);
+		}
+		dns_keytable_detach(&secroots);
 	}
 }
 
@@ -2168,8 +2163,7 @@ dns_view_addtrustedkey(dns_view_t *view, dns_rdatatype_t rdtype,
 					  digest, sizeof(digest), &ds));
 	}
 
-	CHECK(dns_keytable_add(view->secroots_priv, false, false, name, &ds,
-			       NULL, NULL));
+	CHECK(dns_keytable_add(view->secroots_priv, false, false, name, &ds));
 
 cleanup:
 	return result;

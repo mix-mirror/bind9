@@ -66,20 +66,17 @@ dns_zt_mount(dns_zt_t *zt, dns_zone_t *zone);
  */
 
 unsigned int
-dns_zt_mount_batch(dns_zt_t *zt, dns_zone_t **zones, unsigned int count,
-		   const dns_name_t **mounted);
+dns_zt_mount_batch(dns_zt_t *zt, dns_zone_t **zones, unsigned int count);
 /*%<
  * Mounts multiple zones on the zone table in a single QP transaction.
- * Duplicate zones are silently ignored. The origins of successfully
- * mounted zones are stored in 'mounted'.
+ * Duplicate zones are silently ignored.
  *
  * Requires:
  * \li	'zt' to be valid
  * \li	'zones' to be non-NULL
- * \li	'mounted' to be non-NULL
  *
  * Returns:
- * \li	The number of names stored in 'mounted'
+ * \li	The number of zones mounted
  */
 
 isc_result_t
