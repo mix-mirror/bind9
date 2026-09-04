@@ -490,8 +490,7 @@ class NonExistenceProver(abc.ABC):
         return tuple(sorted(n for n, _ in proof_rdatasets))
 
     def _add_chain_element_matching(self, name: dns.name.Name) -> None:
-        index = self._chain.index(name)
-        self._add_rrset_with_rrsig(self._chain[index])
+        self._add_rrset_with_rrsig(name)
 
     def _add_chain_element_covering(self, name: dns.name.Name) -> None:
         index = bisect.bisect_left(self._chain, name)
