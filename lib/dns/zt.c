@@ -150,21 +150,19 @@ dns_zt_mount(dns_zt_t *zt, dns_zone_t *zone) {
 }
 
 unsigned int
-dns_zt_mount_batch(dns_zt_t *zt, dns_zone_t **zones, unsigned int count,
-		   const dns_name_t **mounted) {
+dns_zt_mount_batch(dns_zt_t *zt, dns_zone_t **zones, unsigned int count) {
 	dns_qp_t *qp = NULL;
 	unsigned int nmounted = 0;
 
 	REQUIRE(VALID_ZT(zt));
 	REQUIRE(zones != NULL);
-	REQUIRE(mounted != NULL);
 
 	dns_qpmulti_write(zt->multi, &qp);
 	for (unsigned int i = 0; i < count; i++) {
 		isc_result_t result = dns_qp_insert(qp, zones[i], 0);
 
 		if (result == ISC_R_SUCCESS) {
-			mounted[nmounted++] = dns_zone_getorigin(zones[i]);
+			nmounted++;
 		} else {
 			INSIST(result == ISC_R_EXISTS);
 		}
