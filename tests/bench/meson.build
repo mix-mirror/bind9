@@ -14,6 +14,7 @@ foreach bench : [
     'compress',
     'iterated_hash',
     'load-names',
+    'nsec3-full-rebuild',
     'qp-dump',
     'qplookups',
     'qpmulti',
