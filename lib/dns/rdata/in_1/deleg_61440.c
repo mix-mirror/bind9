@@ -740,9 +740,9 @@ generic_totext_in_deleg(ARGS_TOTEXT) {
 
 static isc_result_t
 generic_fromwire_in_deleg(ARGS_FROMWIRE) {
-	isc_region_t region;
+	isc_region_t region, man = { .base = NULL, .length = 0 };
+	uint16_t lastkey = 0, mankey = 0;
 	bool first = true;
-	uint16_t lastkey = 0;
 
 	UNUSED(type);
 	UNUSED(rdclass);
@@ -781,6 +781,25 @@ generic_fromwire_in_deleg(ARGS_FROMWIRE) {
 		lastkey = key;
 
 		/*
+		 * Check mandatory keys.
+		 */
+		if (mankey != 0) {
+			/* Missing mandatory key? */
+			if (key > mankey) {
+				return DNS_R_FORMERR;
+			}
+			if (key == mankey) {
+				/* Get next mandatory key. */
+				if (man.length >= 2) {
+					mankey = uint16_fromregion(&man);
+					isc_region_consume(&man, 2);
+				} else {
+					mankey = 0;
+				}
+			}
+		}
+
+		/*
 		 * DelegInfoValue length.
 		 */
 		if (region.length < 2U) {
@@ -797,12 +816,37 @@ generic_fromwire_in_deleg(ARGS_FROMWIRE) {
 			return ISC_R_UNEXPECTEDEND;
 		}
 
+		/*
+		 * Remember manatory key.
+		 */
+		if (key == delegkey_mandatory) {
+			man = region;
+			man.length = len;
+			/* Get first mandatory key */
+			if (man.length >= 2) {
+				mankey = uint16_fromregion(&man);
+				isc_region_consume(&man, 2);
+				if (mankey == delegkey_mandatory) {
+					return DNS_R_FORMERR;
+				}
+			} else {
+				return DNS_R_FORMERR;
+			}
+		}
+
 		keyregion = region;
 		keyregion.length = len;
 		RETERR(deleg_validate(key, &keyregion));
 		RETERR(mem_tobuffer(target, region.base, len));
 		isc_region_consume(&region, len);
 		isc_buffer_forward(source, len + 4);
+	}
+
+	/*
+	 * Do we have an outstanding mandatory key?
+	 */
+	if (mankey != 0) {
+		return DNS_R_FORMERR;
 	}
 
 	return ISC_R_SUCCESS;
