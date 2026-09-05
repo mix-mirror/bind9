@@ -30,15 +30,18 @@
 #include <unistd.h>
 
 #include <isc/bit.h>
+#include <isc/buffer.h>
 #include <isc/endian.h>
 #include <isc/file.h>
 #include <isc/iterated_hash.h>
 #include <isc/lib.h>
 #include <isc/md.h>
 #include <isc/result.h>
+#include <isc/stdtime.h>
 #include <isc/util.h>
 
 #include <dns/callbacks.h>
+#include <dns/dnssec.h>
 #include <dns/fixedname.h>
 #include <dns/lib.h>
 #include <dns/master.h>
@@ -49,6 +52,8 @@
 #include <dns/rdataset.h>
 #include <dns/soa.h>
 #include <dns/types.h>
+
+#include <dst/dst.h>
 
 #include "qpzone_p.h"
 
@@ -249,6 +254,17 @@ typedef struct item_vec {
 	size_t cap;
 } item_vec_t;
 
+typedef struct signing_keys {
+	dst_key_t **data;
+	size_t len;
+	size_t cap;
+} signing_keys_t;
+
+typedef struct signing_scratch {
+	uint8_t *wire;
+	dns_rdata_t *rdatas;
+} signing_scratch_t;
+
 enum {
 	ITEM_APEX = 1U << 0,
 	ITEM_DELEGATION = 1U << 1,
@@ -314,6 +330,74 @@ byte_vec_append(byte_vec_t *vec, const void *source, size_t length) {
 		    sizeof(*vec->data));
 	memmove(vec->data + vec->len, source, length);
 	vec->len += length;
+}
+
+static void
+load_signing_keys(signing_keys_t *keys, const dns_name_t *origin, int count,
+		  char **filenames) {
+	for (int i = 0; i < count; i++) {
+		dst_key_t *key = NULL;
+		isc_result_t result = dst_key_fromnamedfile(
+			filenames[i], NULL, DST_TYPE_PUBLIC | DST_TYPE_PRIVATE,
+			isc_g_mctx, &key);
+
+		if (result != ISC_R_SUCCESS) {
+			fprintf(stderr,
+				"nsec3-full-rebuild: loading key %s: %s\n",
+				filenames[i], isc_result_totext(result));
+			exit(EXIT_FAILURE);
+		}
+		if (!dns_name_equal(origin, dst_key_name(key))) {
+			fprintf(stderr,
+				"nsec3-full-rebuild: key %s is not owned by "
+				"the zone origin\n",
+				filenames[i]);
+			dst_key_free(&key);
+			exit(EXIT_FAILURE);
+		}
+		if (!dst_key_isprivate(key) || !dst_key_iszonekey(key)) {
+			fprintf(stderr,
+				"nsec3-full-rebuild: key %s is not a private "
+				"DNSSEC zone key\n",
+				filenames[i]);
+			dst_key_free(&key);
+			exit(EXIT_FAILURE);
+		}
+		for (size_t j = 0; j < keys->len; j++) {
+			if (dst_key_compare(keys->data[j], key)) {
+				fprintf(stderr,
+					"nsec3-full-rebuild: duplicate signing "
+					"key %s\n",
+					filenames[i]);
+				dst_key_free(&key);
+				exit(EXIT_FAILURE);
+			}
+		}
+
+		vec_reserve((void **)&keys->data, &keys->cap, keys->len + 1U,
+			    sizeof(*keys->data));
+		keys->data[keys->len++] = key;
+	}
+}
+
+static void
+signing_scratch_init(signing_scratch_t *scratch, size_t key_count) {
+	if (key_count > SIZE_MAX / DNS_RDATA_MAXLENGTH) {
+		fatal("signature scratch space overflow");
+	}
+	scratch->wire = malloc(key_count * DNS_RDATA_MAXLENGTH);
+	scratch->rdatas = calloc(key_count, sizeof(*scratch->rdatas));
+	if (scratch->wire == NULL || scratch->rdatas == NULL) {
+		fatal("out of memory allocating signature scratch space");
+	}
+}
+
+static void
+signing_keys_destroy(signing_keys_t *keys) {
+	for (size_t i = 0; i < keys->len; i++) {
+		dst_key_free(&keys->data[i]);
+	}
+	free(keys->data);
 }
 
 static const uint8_t *
@@ -692,14 +776,21 @@ insert_rdataset(qpzonedb_t *qpdb, qpz_version_t *writer, dns_qp_t *qp,
 }
 
 static isc_result_t
-insert_wire_rdata(qpzonedb_t *qpdb, qpz_version_t *writer, dns_qp_t *qp,
-		  dns_name_t *owner, dns_rdatatype_t type, dns_ttl_t ttl,
-		  uint8_t *wire, size_t wire_length) {
+sign_and_insert_wire_rdata(qpzonedb_t *qpdb, qpz_version_t *writer,
+			   dns_qp_t *qp, dns_name_t *owner,
+			   dns_rdatatype_t type, dns_ttl_t ttl, uint8_t *wire,
+			   size_t wire_length, const signing_keys_t *keys,
+			   signing_scratch_t *scratch, isc_stdtime_t inception,
+			   isc_stdtime_t expiration,
+			   uint64_t *signature_count) {
 	isc_region_t region = { .base = wire,
 				.length = (unsigned int)wire_length };
 	dns_rdata_t rdata = DNS_RDATA_INIT;
 	dns_rdatalist_t rdatalist;
 	dns_rdataset_t rdataset;
+	dns_rdatalist_t signatures;
+	dns_rdataset_t signature_set;
+	isc_result_t result;
 
 	dns_rdata_fromregion(&rdata, qpdb->common.rdclass, type, &region);
 	dns_rdatalist_init(&rdatalist);
@@ -710,11 +801,44 @@ insert_wire_rdata(qpzonedb_t *qpdb, qpz_version_t *writer, dns_qp_t *qp,
 	dns_rdataset_init(&rdataset);
 	dns_rdatalist_tordataset(&rdatalist, &rdataset);
 
-	return insert_rdataset(qpdb, writer, qp, owner, &rdataset);
+	dns_rdatalist_init(&signatures);
+	signatures.rdclass = qpdb->common.rdclass;
+	signatures.type = dns_rdatatype_rrsig;
+	signatures.covers = type;
+	signatures.ttl = ISC_MIN(ttl, expiration - inception);
+	for (size_t i = 0; i < keys->len; i++) {
+		isc_buffer_t signature_buffer;
+		dns_rdata_t *signature = &scratch->rdatas[i];
+
+		dns_rdata_init(signature);
+		isc_buffer_init(&signature_buffer,
+				scratch->wire + i * DNS_RDATA_MAXLENGTH,
+				DNS_RDATA_MAXLENGTH);
+		result = dns_dnssec_sign(owner, &rdataset, keys->data[i],
+					 &inception, &expiration, isc_g_mctx,
+					 &signature_buffer, signature);
+		if (result != ISC_R_SUCCESS) {
+			return result;
+		}
+		ISC_LIST_APPEND(signatures.rdata, signature, link);
+		(*signature_count)++;
+	}
+	dns_rdataset_init(&signature_set);
+	dns_rdatalist_tordataset(&signatures, &signature_set);
+
+	result = insert_rdataset(qpdb, writer, qp, owner, &rdataset);
+	if (result == ISC_R_SUCCESS) {
+		result = insert_rdataset(qpdb, writer, qp, owner,
+					 &signature_set);
+	}
+	return result;
 }
 
 static isc_result_t
-insert_nsec3param(qpzonedb_t *qpdb, qpz_version_t *writer, dns_qp_t *qp) {
+insert_nsec3param(qpzonedb_t *qpdb, qpz_version_t *writer, dns_qp_t *qp,
+		  const signing_keys_t *keys, signing_scratch_t *scratch,
+		  isc_stdtime_t inception, isc_stdtime_t expiration,
+		  uint64_t *signature_count) {
 	uint8_t wire[5] = {
 		NSEC3_HASH_ALGORITHM,
 		0, /* NSEC3PARAM flags are always zero. */
@@ -723,15 +847,19 @@ insert_nsec3param(qpzonedb_t *qpdb, qpz_version_t *writer, dns_qp_t *qp) {
 		NSEC3_SALT_LENGTH,
 	};
 
-	return insert_wire_rdata(qpdb, writer, qp, &qpdb->common.origin,
-				 dns_rdatatype_nsec3param, 0, wire,
-				 sizeof(wire));
+	return sign_and_insert_wire_rdata(
+		qpdb, writer, qp, &qpdb->common.origin,
+		dns_rdatatype_nsec3param, 0, wire, sizeof(wire), keys, scratch,
+		inception, expiration, signature_count);
 }
 
 static isc_result_t
 insert_nsec3(qpzonedb_t *qpdb, qpz_version_t *writer, dns_qp_t *qp,
 	     const byte_vec_t *bytes, const nsec3_item_t *item,
-	     const nsec3_item_t *next, bool optout, dns_ttl_t ttl) {
+	     const nsec3_item_t *next, bool optout, dns_ttl_t ttl,
+	     const signing_keys_t *keys, signing_scratch_t *scratch,
+	     isc_stdtime_t inception, isc_stdtime_t expiration,
+	     uint64_t *signature_count) {
 	uint8_t wire[6U + NSEC3_HASH_LENGTH + U16BITMAP_MAXCOMPRESSEDSIZE];
 	uint8_t *cursor = wire;
 	u16bitmap_t bitmap;
@@ -762,8 +890,10 @@ insert_nsec3(qpzonedb_t *qpdb, qpz_version_t *writer, dns_qp_t *qp,
 		return result;
 	}
 	owner = dns_fixedname_name(&owner_fixed);
-	return insert_wire_rdata(qpdb, writer, qp, owner, dns_rdatatype_nsec3,
-				 ttl, wire, (size_t)(cursor - wire));
+	return sign_and_insert_wire_rdata(
+		qpdb, writer, qp, owner, dns_rdatatype_nsec3, ttl, wire,
+		(size_t)(cursor - wire), keys, scratch, inception, expiration,
+		signature_count);
 }
 
 static void
@@ -791,7 +921,8 @@ load_zone(qpzonedb_t *qpdb, const char *filename) {
 
 static void
 usage(void) {
-	fprintf(stderr, "usage: nsec3-full-rebuild [-A] [-o origin] zonefile\n"
+	fprintf(stderr, "usage: nsec3-full-rebuild [-A] [-o origin] zonefile "
+			"keyfile [keyfile ...]\n"
 			"       -A  use NSEC3 opt-out\n");
 }
 
@@ -810,7 +941,11 @@ main(int argc, char **argv) {
 	qpz_version_t *reader;
 	item_vec_t items = { 0 };
 	byte_vec_t bytes = { 0 };
+	signing_keys_t keys = { 0 };
+	signing_scratch_t signing_scratch = { 0 };
 	dns_ttl_t nsec3_ttl = 0;
+	isc_stdtime_t inception, expiration;
+	uint64_t signature_count = 0;
 	uint64_t total_start, load_stop, prepare_stop, sort_stop, insert_stop;
 	isc_result_t result;
 	int option;
@@ -828,7 +963,7 @@ main(int argc, char **argv) {
 			return EXIT_FAILURE;
 		}
 	}
-	if (optind + 1 != argc) {
+	if (optind + 2 > argc) {
 		usage();
 		return EXIT_FAILURE;
 	}
@@ -843,6 +978,10 @@ main(int argc, char **argv) {
 	if (result != ISC_R_SUCCESS) {
 		fatal_result("parsing the zone origin", result);
 	}
+	load_signing_keys(&keys, origin, argc - optind - 1, &argv[optind + 1]);
+	signing_scratch_init(&signing_scratch, keys.len);
+	inception = isc_stdtime_now() - 3600U;
+	expiration = inception + 30U * 24U * 60U * 60U;
 
 	total_start = monotonic_ns();
 	result = dns__qpzone_create(isc_g_mctx, origin, dns_dbtype_zone,
@@ -869,11 +1008,15 @@ main(int argc, char **argv) {
 	sort_stop = monotonic_ns();
 
 	dns_qp_t *write_qp = begin_transaction(qpdb, NULL, true);
-	result = insert_nsec3param(qpdb, writer, write_qp);
+	result = insert_nsec3param(qpdb, writer, write_qp, &keys,
+				   &signing_scratch, inception, expiration,
+				   &signature_count);
 	for (size_t i = 0; result == ISC_R_SUCCESS && i < items.len; i++) {
-		result = insert_nsec3(
-			qpdb, writer, write_qp, &bytes, &items.data[i],
-			&items.data[(i + 1U) % items.len], optout, nsec3_ttl);
+		result = insert_nsec3(qpdb, writer, write_qp, &bytes,
+				      &items.data[i],
+				      &items.data[(i + 1U) % items.len], optout,
+				      nsec3_ttl, &keys, &signing_scratch,
+				      inception, expiration, &signature_count);
 	}
 	if (result != ISC_R_SUCCESS) {
 		dns_qpmulti_rollback(qpdb->tree, &write_qp);
@@ -888,6 +1031,8 @@ main(int argc, char **argv) {
 
 	printf("NSEC3 records:       %zu%s\n", items.len,
 	       optout ? " (opt-out)" : "");
+	printf("signing keys:        %zu\n", keys.len);
+	printf("RRSIG records:       %" PRIu64 "\n", signature_count);
 	printf("load zone:           %.6f s\n",
 	       (load_stop - total_start) / 1000000000.0);
 	printf("preparation:         %.6f s\n",
@@ -901,6 +1046,9 @@ main(int argc, char **argv) {
 
 	free(bytes.data);
 	free(items.data);
+	free(signing_scratch.rdatas);
+	free(signing_scratch.wire);
+	signing_keys_destroy(&keys);
 	isc_refcount_decrementz(&qpdb->common.references);
 	qpdb_destroy(db);
 	return EXIT_SUCCESS;
