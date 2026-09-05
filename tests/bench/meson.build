@@ -9,6 +9,36 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
+bench_dependencies = [
+    libisc_dep,
+    libdns_dep,
+    libns_dep,
+    libtest_dep,
+]
+
+crypto_mb_dep = null_dep
+if bench_crypto_mb_opt.enabled()
+    cmake = import('cmake')
+    crypto_mb_options = cmake.subproject_options()
+    crypto_mb_options.add_cmake_defines(
+        {
+            'ARCH': 'intel64',
+            'BUILD_EXAMPLES': false,
+            # The upstream project uses this switch to omit its test trees. It
+            # does not enable clang-tidy unless the compiler is Clang.
+            'CRYPTO_USE_CLANG_TIDY': true,
+        },
+    )
+    crypto_mb_project = cmake.subproject(
+        'cryptography-primitives',
+        options: crypto_mb_options,
+    )
+    crypto_mb_dep = declare_dependency(
+        compile_args: '-DHAVE_CRYPTO_MB=1',
+        dependencies: crypto_mb_project.dependency('crypto_mb_s'),
+    )
+endif
+
 foreach bench : [
     'ascii',
     'compress',
@@ -20,18 +50,18 @@ foreach bench : [
     'qpmulti',
     'siphash',
 ]
+    dependencies = bench_dependencies
+    if bench == 'nsec3-full-rebuild'
+        dependencies += crypto_mb_dep
+    endif
+
     executable(
         bench,
         files(fs.replace_suffix(bench, '.c')),
         export_dynamic: true,
         install: false,
         sources: default_sanitize_options,
-        dependencies: [
-            libisc_dep,
-            libdns_dep,
-            libns_dep,
-            libtest_dep,
-        ],
+        dependencies: dependencies,
     )
 endforeach
 

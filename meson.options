@@ -196,3 +196,17 @@ option(
     value: 'auto',
     description: 'Enable Link Time Optimization for named.',
 )
+
+option(
+    'bench-aws-lc',
+    type: 'feature',
+    value: 'disabled',
+    description: 'Build BIND and its benchmarks against the bundled AWS-LC subproject',
+)
+
+option(
+    'bench-crypto-mb',
+    type: 'feature',
+    value: 'disabled',
+    description: 'Build the nsec3-full-rebuild benchmark with the bundled Intel Crypto MB library',
+)

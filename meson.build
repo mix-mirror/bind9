@@ -43,6 +43,12 @@ endif
 
 ### Build Options
 developer_mode = get_option('developer').enabled()
+bench_aws_lc_opt = get_option('bench-aws-lc')
+bench_crypto_mb_opt = get_option('bench-crypto-mb')
+
+if bench_aws_lc_opt.enabled() and bench_crypto_mb_opt.enabled()
+    error('bench-aws-lc and bench-crypto-mb cannot be enabled together')
+endif
 
 lundef = get_option('b_lundef')
 optimization = get_option('optimization')
@@ -654,18 +660,54 @@ foreach fn : [
 endforeach
 
 ## OpenSSL
-openssl_dep = [
-    dependency('libcrypto', version: '>=1.1.1'),
-    dependency('libssl', version: '>=1.1.1'),
-]
+if bench_aws_lc_opt.enabled()
+    cmake = import('cmake')
+    aws_lc_options = cmake.subproject_options()
+    aws_lc_options.add_cmake_defines(
+        {
+            'BUILD_LIBSSL': true,
+            'BUILD_SHARED_LIBS': true,
+            'BUILD_TESTING': false,
+            'BUILD_TOOL': false,
+            'DISABLE_GO': true,
+            'DISABLE_PERL': true,
+        },
+    )
+    aws_lc_project = cmake.subproject('aws-lc', options: aws_lc_options)
+    openssl_dep = [
+        aws_lc_project.dependency('crypto'),
+        aws_lc_project.dependency('ssl'),
+    ]
+    openssl_probe_args = '-I@0@'.format(
+        meson.project_source_root() / 'subprojects' / 'aws-lc' / 'include',
+    )
+    crypto_library_name = 'AWS-LC'
+else
+    openssl_dep = [
+        dependency('libcrypto', version: '>=1.1.1'),
+        dependency('libssl', version: '>=1.1.1'),
+    ]
+    crypto_library_name = 'OpenSSL'
+endif
 
 # OpenSSL-forks usually set their own version number which can be greater than 3.0.0.
 # To understand if the library is pre or post-3.0, use the OPENSSL_VERSION_NUMBER value.
-openssl_version_number = cc.get_define(
-    'OPENSSL_VERSION_NUMBER',
-    dependencies: openssl_dep,
-    prefix: '#include <openssl/opensslv.h>',
-)
+if bench_aws_lc_opt.enabled()
+    # Meson's CMake module exposes CMake targets as internal dependencies,
+    # which compiler feature checks cannot consume. These probes only need
+    # AWS-LC's public headers; the actual targets use openssl_dep above.
+    openssl_version_number = cc.get_define(
+        'OPENSSL_VERSION_NUMBER',
+        args: openssl_probe_args,
+        prefix: '#include <openssl/opensslv.h>',
+    )
+else
+    openssl_version_number = cc.get_define(
+        'OPENSSL_VERSION_NUMBER',
+        dependencies: openssl_dep,
+        prefix: '#include <openssl/opensslv.h>',
+    )
+endif
 
 config.set('OPENSSL_NO_DEPRECATED', true)
 if openssl_version_number.version_compare('>=3.0.0')
@@ -675,7 +717,17 @@ else
     config.set('HAVE_OPENSSL_3', false)
     config.set('OPENSSL_API_COMPAT', 10100)
 
-    have_openssl_aead_h = cc.has_header('openssl/aead.h', dependencies: openssl_dep)
+    if bench_aws_lc_opt.enabled()
+        have_openssl_aead_h = cc.has_header(
+            'openssl/aead.h',
+            args: openssl_probe_args,
+        )
+    else
+        have_openssl_aead_h = cc.has_header(
+            'openssl/aead.h',
+            dependencies: openssl_dep,
+        )
+    endif
     config.set('HAVE_OPENSSL_AEAD_H', have_openssl_aead_h)
     if have_openssl_aead_h
         config.set('HAVE_EVP_AEAD_CTX_NEW', true)
@@ -690,14 +742,25 @@ else
         )
     endif
 
-    config.set(
-        'HAVE_FIPS_MODE',
-        cc.has_function(
-            'FIPS_mode',
-            prefix: '#include <openssl/crypto.h>',
-            dependencies: openssl_dep,
-        ),
-    )
+    if bench_aws_lc_opt.enabled()
+        config.set(
+            'HAVE_FIPS_MODE',
+            cc.has_header_symbol(
+                'openssl/crypto.h',
+                'FIPS_mode',
+                args: openssl_probe_args,
+            ),
+        )
+    else
+        config.set(
+            'HAVE_FIPS_MODE',
+            cc.has_function(
+                'FIPS_mode',
+                prefix: '#include <openssl/crypto.h>',
+                dependencies: openssl_dep,
+            ),
+        )
+    endif
 
     fips_opt.require(
         config.get('HAVE_FIPS_MODE'),
@@ -706,28 +769,62 @@ else
 endif
 
 # Hash and curve probe
-if cc.has_header_symbol('openssl/evp.h', 'NID_ED448', dependencies: openssl_dep)
+if bench_aws_lc_opt.enabled()
+    have_openssl_ed448 = cc.has_header_symbol(
+        'openssl/evp.h',
+        'NID_ED448',
+        args: openssl_probe_args,
+    )
+else
+    have_openssl_ed448 = cc.has_header_symbol(
+        'openssl/evp.h',
+        'NID_ED448',
+        dependencies: openssl_dep,
+    )
+endif
+if have_openssl_ed448
     config.set('HAVE_OPENSSL_ED448', 1)
 endif
 
 foreach fn, header : {
-    'ERR_get_error_all': '#include <openssl/err.h>',
-    'BIO_read_ex': '#include <openssl/bio.h>',
-    'BIO_write_ex': '#include <openssl/bio.h>',
-    'EVP_PKEY_eq': '#include <openssl/evp.h>',
-    'SSL_CTX_set1_cert_store': '#include <openssl/ssl.h>',
-    'CRYPTO_chacha_20': '#include <openssl/chacha.h>',
+    'ERR_get_error_all': 'openssl/err.h',
+    'BIO_read_ex': 'openssl/bio.h',
+    'BIO_write_ex': 'openssl/bio.h',
+    'EVP_PKEY_eq': 'openssl/evp.h',
+    'SSL_CTX_set1_cert_store': 'openssl/ssl.h',
+    'CRYPTO_chacha_20': 'openssl/chacha.h',
 }
+    if bench_aws_lc_opt.enabled()
+        have_function = cc.has_header_symbol(
+            header,
+            fn,
+            args: openssl_probe_args,
+        )
+    else
+        have_function = cc.has_function(
+            fn,
+            dependencies: openssl_dep,
+            prefix: '#include <@0@>'.format(header),
+        )
+    endif
     config.set10(
         'HAVE_@0@'.format(fn.to_upper()),
-        cc.has_function(fn, dependencies: openssl_dep, prefix: header),
+        have_function,
     )
 endforeach
 
-config.set(
-    'HAVE_OPENSSL_HKDF_H',
-    cc.has_header('openssl/hkdf.h', dependencies: openssl_dep),
-)
+if bench_aws_lc_opt.enabled()
+    have_openssl_hkdf_h = cc.has_header(
+        'openssl/hkdf.h',
+        args: openssl_probe_args,
+    )
+else
+    have_openssl_hkdf_h = cc.has_header(
+        'openssl/hkdf.h',
+        dependencies: openssl_dep,
+    )
+endif
+config.set('HAVE_OPENSSL_HKDF_H', have_openssl_hkdf_h)
 
 ## libuv
 uv_dep = dependency('libuv', version: '>=1.34.0')
@@ -2272,7 +2369,7 @@ summary(
 summary(
     {
         'libuv': uv_dep.version(),
-        'OpenSSL': openssl_dep[0].version(),
+        crypto_library_name: openssl_dep[0].version(),
         'Userspace RCU': urcu_dep[0].version(),
         'RCU Flavor': rcu_flavor,
     },

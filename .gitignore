@@ -101,3 +101,6 @@ TAGS
 \.dir-locals-2.el
 /emacs.desktop
 /emacs.desktop-lock
+/subprojects/aws-lc/
+/subprojects/cryptography-primitives/
+/subprojects/.wraplock
