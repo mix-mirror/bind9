@@ -29,6 +29,11 @@ if bench_crypto_mb_opt.enabled()
             'CRYPTO_USE_CLANG_TIDY': true,
         },
     )
+    # Intel overwrites CMAKE_C_FLAGS_DEBUG with -O0 after CMake has processed
+    # user flags.  Meson's imported-target override is appended last.
+    crypto_mb_options.append_compile_args(
+        'c', '-O3', '-g', '-fno-omit-frame-pointer',
+    )
     crypto_mb_project = cmake.subproject(
         'cryptography-primitives',
         options: crypto_mb_options,
@@ -50,20 +55,26 @@ foreach bench : [
     'qpmulti',
     'siphash',
 ]
-    dependencies = bench_dependencies
-    if bench == 'nsec3-full-rebuild'
-        dependencies += crypto_mb_dep
-    endif
-
     executable(
         bench,
         files(fs.replace_suffix(bench, '.c')),
         export_dynamic: true,
         install: false,
         sources: default_sanitize_options,
-        dependencies: dependencies,
+        dependencies: bench_dependencies,
     )
 endforeach
+
+if bench_crypto_mb_opt.enabled()
+    executable(
+        'nsec3-full-mb8',
+        files('nsec3-full-mb8.c'),
+        export_dynamic: true,
+        install: false,
+        sources: default_sanitize_options,
+        dependencies: bench_dependencies + crypto_mb_dep,
+    )
+endif
 
 executable(
     'dns_name_fromwire',
