@@ -143,6 +143,10 @@ isc_hex_decodestring(const char *cstr, isc_buffer_t *target);
  */
 
 isc_result_t
+isc_hex_decoderegion(const isc_region_t *source, isc_buffer_t *target);
+/*%< Decode exactly source->length bytes of hexadecimal input. */
+
+isc_result_t
 isc_hex_tobuffer(isc_lex_t *lexer, isc_buffer_t *target, int length);
 /*!<
  * \brief Convert hex-encoded text from a lexer context into

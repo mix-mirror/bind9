@@ -22,9 +22,7 @@ static isc_result_t
 fromtext_sig(ARGS_FROMTEXT) {
 	isc_token_t token;
 	unsigned char alg, c;
-	long i;
 	dns_rdatatype_t covered;
-	char *e;
 	isc_result_t result;
 	isc_buffer_t buffer;
 	uint32_t time_signed, time_expire;
@@ -43,14 +41,18 @@ fromtext_sig(ARGS_FROMTEXT) {
 				      false));
 	result = dns_rdatatype_fromtext(&covered, &token.value.as_textregion);
 	if (result != ISC_R_SUCCESS && result != ISC_R_NOTIMPLEMENTED) {
-		i = strtol(DNS_AS_STR(token), &e, 10);
-		if (i < 0 || i > 65535) {
+		uint32_t value;
+		isc_result_t parse_result = isc_parse_uint32_region(
+			&value, &token.value.as_region, 10);
+		if (parse_result == ISC_R_RANGE ||
+		    (parse_result == ISC_R_SUCCESS && value > UINT16_MAX))
+		{
 			RETTOK(ISC_R_RANGE);
 		}
-		if (*e != 0) {
+		if (parse_result != ISC_R_SUCCESS) {
 			RETTOK(result);
 		}
-		covered = (dns_rdatatype_t)i;
+		covered = (dns_rdatatype_t)value;
 	}
 	RETERR(uint16_tobuffer(covered, target));
 
@@ -85,7 +87,7 @@ fromtext_sig(ARGS_FROMTEXT) {
 	 */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-		RETTOK(dns_time32_fromregion(token.value.as_textregion, &time_expire));
+	RETTOK(dns_time32_fromregion(token.value.as_textregion, &time_expire));
 	RETERR(uint32_tobuffer(time_expire, target));
 
 	/*
@@ -93,7 +95,7 @@ fromtext_sig(ARGS_FROMTEXT) {
 	 */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-		RETTOK(dns_time32_fromregion(token.value.as_textregion, &time_signed));
+	RETTOK(dns_time32_fromregion(token.value.as_textregion, &time_signed));
 	RETERR(uint32_tobuffer(time_signed, target));
 
 	/*

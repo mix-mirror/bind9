@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <isc/mem.h>
 #include <isc/region.h>
 #include <isc/util.h>
 
@@ -38,4 +39,19 @@ isc_region_compare(isc_region_t *r1, isc_region_t *r2) {
 		       : (r1->length < r2->length) ? -1
 						   : 1;
 	}
+}
+
+char *
+isc_region_strdup(isc_mem_t *mctx, const isc_region_t *source) {
+	char *copy;
+
+	REQUIRE(mctx != NULL);
+	REQUIRE(source != NULL);
+	REQUIRE(source->base != NULL);
+	REQUIRE(source->length < SIZE_MAX);
+
+	copy = isc_mem_allocate(mctx, (size_t)source->length + 1);
+	memmove(copy, source->base, source->length);
+	copy[source->length] = '\0';
+	return copy;
 }

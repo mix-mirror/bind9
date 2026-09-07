@@ -23,34 +23,36 @@
 #include <isc/parseint.h>
 #include <isc/result.h>
 
-isc_result_t
-isc_parse_uint32_region(uint32_t *uip, const isc_textregion_t *source,
-			int base) {
-	uint32_t value = 0;
+static isc_result_t
+parse_uint64_region(uint64_t *valuep, const isc_region_t *source, int base,
+		    unsigned int start, uint64_t max) {
+	uint64_t value = 0;
 	unsigned int i = 0;
 	bool saw_digit = false;
 
-	if (source->length == 0 || base < 0 || base == 1 || base > 36) {
+	if (source->length <= start || base < 0 || base == 1 || base > 36) {
 		return ISC_R_BADNUMBER;
 	}
+	i = start;
 
 	if (base == 0) {
-		if (source->base[0] == '0') {
+		if (source->base[i] == '0') {
 			base = 8;
-			if (source->length > 1 &&
-			    (source->base[1] == 'x' || source->base[1] == 'X'))
+			if (source->length > i + 1 &&
+			    (source->base[i + 1] == 'x' ||
+			     source->base[i + 1] == 'X'))
 			{
 				base = 16;
-				i = 2;
+				i += 2;
 			}
 		} else {
 			base = 10;
 		}
-	} else if (base == 16 && source->length > 1 &&
-		   source->base[0] == '0' &&
-		   (source->base[1] == 'x' || source->base[1] == 'X'))
+	} else if (base == 16 && source->length > i + 1 &&
+		   source->base[i] == '0' &&
+		   (source->base[i + 1] == 'x' || source->base[i + 1] == 'X'))
 	{
-		i = 2;
+		i += 2;
 	}
 
 	for (; i < source->length; i++) {
@@ -69,7 +71,7 @@ isc_parse_uint32_region(uint32_t *uip, const isc_textregion_t *source,
 		if (digit >= (unsigned int)base) {
 			return ISC_R_BADNUMBER;
 		}
-		if (value > (UINT32_MAX - digit) / (unsigned int)base) {
+		if (value > (max - digit) / (unsigned int)base) {
 			return ISC_R_RANGE;
 		}
 		value = value * (unsigned int)base + digit;
@@ -79,7 +81,56 @@ isc_parse_uint32_region(uint32_t *uip, const isc_textregion_t *source,
 	if (!saw_digit) {
 		return ISC_R_BADNUMBER;
 	}
-	*uip = value;
+	*valuep = value;
+	return ISC_R_SUCCESS;
+}
+
+isc_result_t
+isc_parse_uint64_region(uint64_t *uip, const isc_region_t *source, int base) {
+	return parse_uint64_region(uip, source, base, 0, UINT64_MAX);
+}
+
+isc_result_t
+isc_parse_uint32_region(uint32_t *uip, const isc_region_t *source, int base) {
+	uint64_t value;
+	isc_result_t result = parse_uint64_region(&value, source, base, 0,
+						  UINT32_MAX);
+
+	if (result == ISC_R_SUCCESS) {
+		*uip = (uint32_t)value;
+	}
+	return result;
+}
+
+isc_result_t
+isc_parse_int64_region(int64_t *ip, const isc_region_t *source, int base) {
+	uint64_t value;
+	uint64_t max = INT64_MAX;
+	unsigned int start = 0;
+	bool negative = false;
+	isc_result_t result;
+
+	if (source->length != 0 &&
+	    (source->base[0] == '-' || source->base[0] == '+'))
+	{
+		negative = source->base[0] == '-';
+		start = 1;
+		if (negative) {
+			max++;
+		}
+	}
+
+	result = parse_uint64_region(&value, source, base, start, max);
+	if (result != ISC_R_SUCCESS) {
+		return result;
+	}
+
+	if (negative) {
+		*ip = value == (uint64_t)INT64_MAX + 1 ? INT64_MIN
+						       : -(int64_t)value;
+	} else {
+		*ip = (int64_t)value;
+	}
 	return ISC_R_SUCCESS;
 }
 

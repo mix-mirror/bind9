@@ -82,7 +82,7 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	 */
 	if (token.type == isc_tokentype_string) {
 		result = isc_parse_uint32_region(&number,
-					 &token.value.as_textregion, 10);
+						 &token.value.as_region, 10);
 		if (result == ISC_R_SUCCESS && number <= UINT16_MAX) {
 			rdclass = (dns_rdataclass_t)number;
 		} else {
@@ -105,12 +105,12 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	 */
 	if (token.type == isc_tokentype_string) {
 		result = isc_parse_uint32_region(&number,
-					 &token.value.as_textregion, 10);
+						 &token.value.as_region, 10);
 		if (result == ISC_R_SUCCESS && number <= UINT16_MAX) {
 			rdtype = (dns_rdatatype_t)number;
 		} else {
-			CHECK(dns_rdatatype_fromtext(&rdtype,
-						     &token.value.as_textregion));
+			CHECK(dns_rdatatype_fromtext(
+				&rdtype, &token.value.as_textregion));
 		}
 	} else {
 		goto cleanup;

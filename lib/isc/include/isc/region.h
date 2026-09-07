@@ -91,3 +91,10 @@ isc_region_compare(isc_region_t *r1, isc_region_t *r2);
  *\li	 = 0 if r1 is lexicographically identical to r2
  *\li	 > 0 if r1 is lexicographically greater than r2
  */
+
+char *
+isc_region_strdup(isc_mem_t *mctx, const isc_region_t *source);
+/*%<
+ * Allocate a NUL-terminated copy of source from mctx.  The source itself need
+ * not be NUL-terminated.
+ */

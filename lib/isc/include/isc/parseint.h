@@ -30,12 +30,21 @@ isc_result_t
 isc_parse_uint32(uint32_t *uip, const char *string, int base);
 
 isc_result_t
-isc_parse_uint32_region(uint32_t *uip, const isc_textregion_t *source,
-			int base);
+isc_parse_uint32_region(uint32_t *uip, const isc_region_t *source, int base);
 /*%<
  * Parse exactly 'source->length' bytes as an unsigned integer.  The input
  * need not be NUL-terminated.  Bases and result codes have the same meaning
  * as for isc_parse_uint32().
+ */
+
+isc_result_t
+isc_parse_uint64_region(uint64_t *uip, const isc_region_t *source, int base);
+
+isc_result_t
+isc_parse_int64_region(int64_t *ip, const isc_region_t *source, int base);
+/*%<
+ * Parse exactly 'source->length' bytes as an integer.  The input need not be
+ * NUL-terminated.  The signed variant accepts an optional leading sign.
  */
 
 isc_result_t

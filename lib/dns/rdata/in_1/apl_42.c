@@ -16,6 +16,8 @@
 #ifndef RDATA_IN_1_APL_42_C
 #define RDATA_IN_1_APL_42_C
 
+#include <isc/net.h>
+
 #define RRTYPE_APL_ATTRIBUTES (0)
 
 static isc_result_t
@@ -26,6 +28,7 @@ fromtext_in_apl(ARGS_FROMTEXT) {
 	uint8_t prefix;
 	uint8_t len;
 	bool neg;
+	char text[INET6_ADDRSTRLEN + sizeof("!65535:/255") - 1];
 	char *cp, *ap, *slash;
 	int n;
 
@@ -45,7 +48,14 @@ fromtext_in_apl(ARGS_FROMTEXT) {
 			break;
 		}
 
-		cp = DNS_AS_STR(token);
+		if (token.value.as_region.length >= sizeof(text)) {
+			RETTOK(DNS_R_SYNTAX);
+		}
+		memmove(text, token.value.as_region.base,
+			token.value.as_region.length);
+		text[token.value.as_region.length] = '\0';
+
+		cp = text;
 		neg = (*cp == '!');
 		if (neg) {
 			cp++;

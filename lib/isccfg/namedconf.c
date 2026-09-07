@@ -21,6 +21,7 @@
 #include <isc/lex.h>
 #include <isc/log.h>
 #include <isc/mem.h>
+#include <isc/parseint.h>
 #include <isc/result.h>
 #include <isc/string.h>
 #include <isc/util.h>
@@ -3068,37 +3069,35 @@ cfg_type_t cfg_type_addzoneconf = { "addzoneconf",     cfg_parse_mapbody,
 				    &cfg_rep_map,      addzoneconf_clausesets };
 
 static isc_result_t
-parse_unitstring(char *str, uint64_t *valuep) {
-	char *endp;
-	unsigned int len;
+parse_unitstring(const isc_region_t *source, uint64_t *valuep) {
+	isc_region_t number = *source;
 	uint64_t value;
-	uint64_t unit;
+	uint64_t unit = 1;
 
-	value = strtoull(str, &endp, 10);
-	if (*endp == 0) {
-		*valuep = value;
-		return ISC_R_SUCCESS;
-	}
-
-	len = strlen(str);
-	if (len < 2 || endp[1] != '\0') {
+	if (number.length == 0) {
 		return ISC_R_FAILURE;
 	}
 
-	switch (str[len - 1]) {
+	switch (number.base[number.length - 1]) {
 	case 'k':
 	case 'K':
 		unit = 1024;
+		number.length--;
 		break;
 	case 'm':
 	case 'M':
 		unit = 1024 * 1024;
+		number.length--;
 		break;
 	case 'g':
 	case 'G':
 		unit = 1024 * 1024 * 1024;
+		number.length--;
 		break;
 	default:
+		break;
+	}
+	if (isc_parse_uint64_region(&value, &number, 10) != ISC_R_SUCCESS) {
 		return ISC_R_FAILURE;
 	}
 	if (value > ((uint64_t)UINT64_MAX / unit)) {
@@ -3120,7 +3119,7 @@ parse_sizeval(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 	if (pctx->token.type != isc_tokentype_string) {
 		CLEANUP(ISC_R_UNEXPECTEDTOKEN);
 	}
-	CHECK(parse_unitstring(TOKEN_STRING(pctx), &val));
+	CHECK(parse_unitstring(&pctx->token.value.as_region, &val));
 
 	cfg_obj_create(cfg_parser_currentfile(pctx), pctx->line,
 		       &cfg_type_uint64, &obj);
@@ -3137,7 +3136,6 @@ cleanup:
 static isc_result_t
 parse_sizeval_percent(cfg_parser_t *pctx, const cfg_type_t *type,
 		      cfg_obj_t **ret) {
-	char *endp;
 	isc_result_t result;
 	cfg_obj_t *obj = NULL;
 	uint64_t val;
@@ -3150,16 +3148,26 @@ parse_sizeval_percent(cfg_parser_t *pctx, const cfg_type_t *type,
 		CLEANUP(ISC_R_UNEXPECTEDTOKEN);
 	}
 
-	percent = strtoull(TOKEN_STRING(pctx), &endp, 10);
+	if (pctx->token.value.as_region.length > 1 &&
+	    pctx->token.value.as_region
+			    .base[pctx->token.value.as_region.length - 1] ==
+		    '%')
+	{
+		isc_region_t number = pctx->token.value.as_region;
+		number.length--;
+		result = isc_parse_uint64_region(&percent, &number, 10);
+	} else {
+		result = ISC_R_BADNUMBER;
+	}
 
-	if (*endp == '%' && *(endp + 1) == 0) {
+	if (result == ISC_R_SUCCESS) {
 		cfg_obj_create(cfg_parser_currentfile(pctx), pctx->line,
 			       &cfg_type_percentage, &obj);
 		obj->value.uint32 = (uint32_t)percent;
 		*ret = obj;
 		return ISC_R_SUCCESS;
 	} else {
-		CHECK(parse_unitstring(TOKEN_STRING(pctx), &val));
+		CHECK(parse_unitstring(&pctx->token.value.as_region, &val));
 		cfg_obj_create(cfg_parser_currentfile(pctx), pctx->line,
 			       &cfg_type_uint64, &obj);
 		obj->value.uint64 = val;

@@ -525,9 +525,9 @@ loadctx_create(dns_masterformat_t format, isc_mem_t *mctx, unsigned int options,
 		lctx->keep_lex = true;
 	} else {
 		lctx->lex = NULL;
-		RUNTIME_CHECK(isc_lex_create_dns_master(mctx, TOKENSIZ,
-							&lctx->lex) ==
-			      ISC_R_SUCCESS);
+		RUNTIME_CHECK(
+			isc_lex_create_dns_master(mctx, TOKENSIZ, &lctx->lex) ==
+			ISC_R_SUCCESS);
 		lctx->keep_lex = false;
 	}
 
@@ -910,7 +910,7 @@ check_ns(dns_loadctx_t *lctx, isc_token_t *token, const char *source,
 		struct in_addr addr;
 		struct in6_addr addr6;
 
-		tmp = isc_mem_strdup(lctx->mctx, DNS_AS_STR(*token));
+		tmp = isc_region_strdup(lctx->mctx, &token->value.as_region);
 		/*
 		 * Catch both "1.2.3.4" and "1.2.3.4."
 		 */
@@ -1149,8 +1149,8 @@ load_text(dns_loadctx_t *lctx) {
 				if (include_file != NULL) {
 					isc_mem_free(mctx, include_file);
 				}
-				include_file =
-					isc_mem_strdup(mctx, DNS_AS_STR(token));
+				include_file = isc_region_strdup(
+					mctx, &token.value.as_region);
 				GETTOKEN(lctx->lex, &token, true);
 
 				if (token.type == isc_tokentype_eol ||
@@ -1242,10 +1242,12 @@ load_text(dns_loadctx_t *lctx) {
 				range = lhs = gtype = rhs = NULL;
 				/* RANGE */
 				GETTOKEN(lctx->lex, &token, false);
-				range = isc_mem_strdup(mctx, DNS_AS_STR(token));
+				range = isc_region_strdup(
+					mctx, &token.value.as_region);
 				/* LHS */
 				GETTOKEN(lctx->lex, &token, false);
-				lhs = isc_mem_strdup(mctx, DNS_AS_STR(token));
+				lhs = isc_region_strdup(mctx,
+							&token.value.as_region);
 				rdclass = 0;
 				explicit_ttl = false;
 				/* CLASS? */
@@ -1278,10 +1280,12 @@ load_text(dns_loadctx_t *lctx) {
 					GETTOKEN(lctx->lex, &token, false);
 				}
 				/* TYPE */
-				gtype = isc_mem_strdup(mctx, DNS_AS_STR(token));
+				gtype = isc_region_strdup(
+					mctx, &token.value.as_region);
 				/* RHS */
 				GETTOKEN(lctx->lex, &token, false);
-				rhs = isc_mem_strdup(mctx, DNS_AS_STR(token));
+				rhs = isc_region_strdup(mctx,
+							&token.value.as_region);
 				if (!lctx->ttl_known &&
 				    !lctx->default_ttl_known)
 				{

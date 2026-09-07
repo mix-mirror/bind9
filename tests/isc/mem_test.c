@@ -30,6 +30,7 @@
 #include <isc/mutex.h>
 #include <isc/os.h>
 #include <isc/random.h>
+#include <isc/region.h>
 #include <isc/result.h>
 #include <isc/stdio.h>
 #include <isc/thread.h>
@@ -41,7 +42,20 @@
 
 #include <tests/isc.h>
 
-#define MP1_FREEMAX  10
+#define MP1_FREEMAX 10
+
+ISC_RUN_TEST_IMPL(region_strdup) {
+	char text[] = { 'a', '\0', 'b', 'x' };
+	isc_region_t source = { .base = (unsigned char *)text, .length = 3 };
+	char *copy;
+
+	UNUSED(state);
+
+	copy = isc_region_strdup(isc_g_mctx, &source);
+	assert_memory_equal(copy, text, source.length);
+	assert_int_equal(copy[source.length], '\0');
+	isc_mem_free(isc_g_mctx, copy);
+}
 #define MP1_FILLCNT  10
 #define MP1_MAXALLOC 30
 
@@ -620,6 +634,7 @@ ISC_RUN_TEST_IMPL(isc_mem_benchmark) {
 
 ISC_TEST_LIST_START
 
+ISC_TEST_ENTRY(region_strdup)
 ISC_TEST_ENTRY(isc_mem_get)
 ISC_TEST_ENTRY(isc_mem_get_align)
 ISC_TEST_ENTRY(isc_mem_allocate_align)

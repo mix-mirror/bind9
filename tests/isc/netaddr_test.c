@@ -25,6 +25,7 @@
 #include <cmocka.h>
 
 #include <isc/lib.h>
+#include <isc/net.h>
 #include <isc/netaddr.h>
 #include <isc/sockaddr.h>
 #include <isc/util.h>
@@ -144,11 +145,31 @@ ISC_RUN_TEST_IMPL(netaddr_multicast) {
 	}
 }
 
+ISC_RUN_TEST_IMPL(parse_pton) {
+	char text[] = { '1', '9', '2', '.', '0', '.', '2', '.', '1', 'x' };
+	isc_region_t source = { .base = (unsigned char *)text, .length = 9 };
+	struct in_addr in;
+	struct in6_addr in6;
+
+	UNUSED(state);
+
+	assert_int_equal(isc_parse_pton(AF_INET, &source, &in), 1);
+	source.length++;
+	assert_int_equal(isc_parse_pton(AF_INET, &source, &in), 0);
+
+	source = (isc_region_t){ .base = (unsigned char *)"2001:db8::1x",
+				 .length = 11 };
+	assert_int_equal(isc_parse_pton(AF_INET6, &source, &in6), 1);
+	source.length++;
+	assert_int_equal(isc_parse_pton(AF_INET6, &source, &in6), 0);
+}
+
 ISC_TEST_LIST_START
 
 ISC_TEST_ENTRY(netaddr_isnetzero)
 ISC_TEST_ENTRY(netaddr_masktoprefixlen)
 ISC_TEST_ENTRY(netaddr_multicast)
+ISC_TEST_ENTRY(parse_pton)
 
 ISC_TEST_LIST_END
 

@@ -47,15 +47,18 @@ fromtext_dsync(ARGS_FROMTEXT) {
 				      false));
 	result = dns_rdatatype_fromtext(&rrtype, &token.value.as_textregion);
 	if (result != ISC_R_SUCCESS && result != ISC_R_NOTIMPLEMENTED) {
-		char *e = NULL;
-		long i = strtol(DNS_AS_STR(token), &e, 10);
-		if (i < 0 || i > 65535) {
+		uint32_t value;
+		isc_result_t parse_result = isc_parse_uint32_region(
+			&value, &token.value.as_region, 10);
+		if (parse_result == ISC_R_RANGE ||
+		    (parse_result == ISC_R_SUCCESS && value > UINT16_MAX))
+		{
 			RETTOK(ISC_R_RANGE);
 		}
-		if (*e != 0) {
+		if (parse_result != ISC_R_SUCCESS) {
 			RETTOK(result);
 		}
-		rrtype = (dns_rdatatype_t)i;
+		rrtype = (dns_rdatatype_t)value;
 	}
 	RETERR(uint16_tobuffer(rrtype, target));
 
