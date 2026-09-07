@@ -279,7 +279,7 @@ void
 isc_quic_router_stateless_reset_from_cid(
 	const isc_quic_router_t *router, isc_constregion_t cid,
 	uint8_t token[restrict ISC_QUIC_STATELESS_TOKEN_LENGTH]) {
-	uint8_t mac[32];
+	uint8_t mac[ISC_SHA256_DIGESTLENGTH];
 	unsigned int maclen = sizeof(mac);
 
 	REQUIRE(router != NULL && router->magic == router_magic);
