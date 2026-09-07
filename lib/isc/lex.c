@@ -58,7 +58,6 @@ typedef struct inputsource {
 #define ISC_LEXOPT_INITIALWS	     0x0004
 #define ISC_LEXOPT_QSTRING	     0x0010
 #define ISC_LEXOPT_DNSMULTILINE	     0x0020
-#define ISC_LEXOPT_NOMORE	     0x0040
 #define ISC_LEXOPT_ESCAPE	     0x0100
 #define ISC_LEXOPT_QSTRINGMULTILINE  0x0200
 #define ISC_LEXCOMMENT_C	     0x01
@@ -153,8 +152,8 @@ isc_lex_create_config(isc_mem_t *mctx, size_t initial_token_size,
 	isc_lexspecials_t specials = { 0 };
 
 	lex_create(mctx, initial_token_size, lexp);
-	(*lexp)->options = ISC_LEXOPT_EOF | ISC_LEXOPT_NOMORE |
-			   ISC_LEXOPT_QSTRING | ISC_LEXOPT_QSTRINGMULTILINE;
+	(*lexp)->options = ISC_LEXOPT_EOF | ISC_LEXOPT_QSTRING |
+			   ISC_LEXOPT_QSTRINGMULTILINE;
 	(*lexp)->comments = ISC_LEXCOMMENT_C | ISC_LEXCOMMENT_CPLUSPLUS |
 			    ISC_LEXCOMMENT_SHELL;
 	specials['{'] = 1;
@@ -522,10 +521,6 @@ lex_gettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 	tokenp->flags = 0;
 
 	if (source == NULL) {
-		if ((options & ISC_LEXOPT_NOMORE) != 0) {
-			tokenp->type = isc_tokentype_nomore;
-			return ISC_R_SUCCESS;
-		}
 		return ISC_R_NOMORE;
 	}
 
