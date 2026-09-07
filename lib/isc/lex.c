@@ -509,11 +509,11 @@ lex_gettoken(isc_lex_t *lex, unsigned int options, isc_token_t *tokenp) {
 	prev = NULL;
 	remaining = lex->max_token;
 
-#ifdef HAVE_FLOCKFILE
-	if (source->is_file) {
-		flockfile(source->input);
-	}
-#endif /* ifdef HAVE_FLOCKFILE */
+// #ifdef HAVE_FLOCKFILE
+// 	if (source->is_file) {
+// 		flockfile(source->input);
+// 	}
+// #endif /* ifdef HAVE_FLOCKFILE */
 
 	do {
 		if (isc_buffer_remaininglength(source->pushback) == 0U &&
@@ -904,11 +904,11 @@ done:
 		}
 		source->have_token = true;
 	}
-#ifdef HAVE_FLOCKFILE
-	if (source->is_file) {
-		funlockfile(source->input);
-	}
-#endif /* ifdef HAVE_FLOCKFILE */
+// #ifdef HAVE_FLOCKFILE
+// 	if (source->is_file) {
+// 		funlockfile(source->input);
+// 	}
+// #endif /* ifdef HAVE_FLOCKFILE */
 	return result;
 }
 
