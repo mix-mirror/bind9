@@ -88,7 +88,7 @@ struct dns_deleg {
  */
 struct dns_delegset {
 	unsigned int   magic;
-	isc_mem_t     *mctx;
+	isc_mem_t     *mctx; /* Private */
 	isc_refcount_t references;
 
 	dns_deleglist_t delegs;
@@ -235,14 +235,18 @@ void
 dns_delegdb_dump(dns_delegdb_t *db, bool expired, FILE *fp);
 
 /*
- * Convert an NS rdataset into a delegset containing a single delegation
- * (with possibly multiple nameserver). The allocated delegset is using the
- * main memory context, thus, is not expected to be added into the deleg DB
- * (which accepts only delegset allocated using `dns_deleg_alloc*()` APIs.
+ * Convert an NS/DELEG/DELEGSET rdataset into a delegset. If `max` is not 0,
+ * stop procssing the rdataset after `max` addresses and/or names has been added
+ * into the delegset. (As a result the delegset would be truncated.)
+ *
+ * Do not call this function if the rdataset is not NS/DELEG/DELEGSET.
+ *
+ * The memory context used to allocate `*delegsetp` (and
+ * internal sub-objects) comes from `db`.
  */
 void
-dns_delegset_fromnsrdataset(isc_mem_t *mctx, dns_rdataset_t *rdataset,
-			    dns_delegset_t **delegsetp);
+dns_delegset_fromrdataset(dns_delegdb_t *db, dns_rdataset_t *rdataset,
+			  size_t max, dns_delegset_t **delegsetp);
 
 /*
  * Copy `src` (which might come from any DB or memory context) into
