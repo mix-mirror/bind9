@@ -1546,7 +1546,7 @@ disable_algorithms(const cfg_obj_t *disabled, dns_resolver_t *resolver) {
 
 		r.base = UNCONST(cfg_obj_asstring(cfg_listelt_value(element)));
 		r.length = strlen(r.base);
-		result = dst_algorithm_fromtext(&alg, &r);
+		result = dst_algorithm_fromtext(&alg, ISC_REGION_FROM(&r));
 		if (result != ISC_R_SUCCESS) {
 			cfg_obj_log(cfg_listelt_value(element), ISC_LOG_ERROR,
 				    "invalid algorithm");
@@ -1582,7 +1582,7 @@ disable_ds_digests(const cfg_obj_t *disabled, dns_resolver_t *resolver) {
 		r.length = strlen(r.base);
 
 		/* disable_ds_digests handles numeric values. */
-		result = dns_dsdigest_fromtext(&digest, &r);
+		result = dns_dsdigest_fromtext(&digest, ISC_REGION_FROM(&r));
 		if (result != ISC_R_SUCCESS) {
 			cfg_obj_log(cfg_listelt_value(element), ISC_LOG_ERROR,
 				    "invalid algorithm");
@@ -9822,7 +9822,7 @@ next_token(isc_lex_t *lex, isc_buffer_t *text) {
 	if (token.type == isc_tokentype_string ||
 	    token.type == isc_tokentype_qstring)
 	{
-		return token.value.as_textregion.base;
+		return (char *)token.value.as_region.base;
 	}
 
 	return NULL;
@@ -9896,7 +9896,7 @@ zone_from_args(named_server_t *server, isc_lex_t *lex, const char *zonetxt,
 		isc_textregion_t r;
 		r.base = classtxt;
 		r.length = strlen(classtxt);
-		CHECK(dns_rdataclass_fromtext(&rdclass, &r));
+		CHECK(dns_rdataclass_fromtext(&rdclass, ISC_REGION_FROM(&r)));
 
 		/* Look for the optional view name. */
 		viewtxt = next_token(lex, text);
@@ -13361,7 +13361,7 @@ named_server_dnssec(named_server_t *server, isc_lex_t *lex,
 				alg.base = ptr;
 				alg.length = strlen(alg.base);
 				result = dst_algorithm_fromtext(
-					&algorithm, (isc_textregion_t *)&alg);
+					&algorithm, ISC_REGION_FROM(&alg));
 				if (result != ISC_R_SUCCESS) {
 					msg = "Bad algorithm";
 					CLEANUP(DNS_R_SYNTAX);
@@ -13957,7 +13957,8 @@ named_server_nta(named_server_t *server, isc_lex_t *lex, bool readonly,
 
 			tr.base = ptr;
 			tr.length = strlen(ptr);
-			result = dns_ttl_fromtext(&tr, &ntattl);
+			result = dns_ttl_fromtext(ISC_REGION_FROM(&tr),
+						  &ntattl);
 			if (result != ISC_R_SUCCESS) {
 				msg = "could not parse NTA lifetime";
 				CHECK(result);
@@ -13981,7 +13982,8 @@ named_server_nta(named_server_t *server, isc_lex_t *lex, bool readonly,
 
 			tr.base = ptr;
 			tr.length = strlen(ptr);
-			CHECK(dns_rdataclass_fromtext(&rdclass, &tr));
+			CHECK(dns_rdataclass_fromtext(&rdclass,
+						      ISC_REGION_FROM(&tr)));
 			continue;
 		} else if (ptr[0] == '-') {
 			msg = "Unknown option";
@@ -14488,7 +14490,7 @@ named_server_mkeys(named_server_t *server, isc_lex_t *lex, isc_buffer_t *text) {
 		isc_textregion_t r;
 		r.base = classtxt;
 		r.length = strlen(classtxt);
-		result = dns_rdataclass_fromtext(&rdclass, &r);
+		result = dns_rdataclass_fromtext(&rdclass, ISC_REGION_FROM(&r));
 		if (result != ISC_R_SUCCESS) {
 			snprintf(msg, sizeof(msg), "unknown class '%s'",
 				 classtxt);
@@ -14783,7 +14785,7 @@ named_server_servestale(named_server_t *server, isc_lex_t *lex,
 		 */
 		r.base = classtxt;
 		r.length = strlen(classtxt);
-		result = dns_rdataclass_fromtext(&rdclass, &r);
+		result = dns_rdataclass_fromtext(&rdclass, ISC_REGION_FROM(&r));
 		if (result != ISC_R_SUCCESS) {
 			if (viewtxt != NULL) {
 				snprintf(msg, sizeof(msg), "unknown class '%s'",

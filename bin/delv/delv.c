@@ -1514,7 +1514,7 @@ dash_option(char *option, char *next, bool *open_type_class) {
 		tr.base = value;
 		tr.length = strlen(value);
 		result = dns_rdataclass_fromtext(&rdclass,
-						 (isc_textregion_t *)&tr);
+						 ISC_REGION_FROM(&tr));
 		if (result == ISC_R_SUCCESS) {
 			classset = true;
 		} else if (rdclass != dns_rdataclass_in) {
@@ -1548,8 +1548,7 @@ dash_option(char *option, char *next, bool *open_type_class) {
 		*open_type_class = false;
 		tr.base = value;
 		tr.length = strlen(value);
-		result = dns_rdatatype_fromtext(&rdtype,
-						(isc_textregion_t *)&tr);
+		result = dns_rdatatype_fromtext(&rdtype, ISC_REGION_FROM(&tr));
 		if (result == ISC_R_SUCCESS) {
 			if (typeset) {
 				warn("extra query type");
@@ -1700,7 +1699,7 @@ parse_args(int argc, char **argv) {
 				tr.base = argv[0];
 				tr.length = strlen(argv[0]);
 				result = dns_rdatatype_fromtext(
-					&rdtype, (isc_textregion_t *)&tr);
+					&rdtype, ISC_REGION_FROM(&tr));
 				if (result == ISC_R_SUCCESS) {
 					if (typeset) {
 						warn("extra query type");
@@ -1715,7 +1714,7 @@ parse_args(int argc, char **argv) {
 					continue;
 				}
 				result = dns_rdataclass_fromtext(
-					&rdclass, (isc_textregion_t *)&tr);
+					&rdclass, ISC_REGION_FROM(&tr));
 				if (result == ISC_R_SUCCESS) {
 					if (classset) {
 						warn("extra query class");

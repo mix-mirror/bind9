@@ -43,7 +43,8 @@ fromtext_rrsig(ARGS_FROMTEXT) {
 	 */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-	result = dns_rdatatype_fromtext(&covered, &token.value.as_textregion);
+	result = dns_rdatatype_fromtext(&covered,
+					&token.value.as_region);
 	if (result != ISC_R_SUCCESS && result != ISC_R_NOTIMPLEMENTED) {
 		uint32_t value;
 		isc_result_t parse_result = isc_parse_uint32_region(
@@ -65,7 +66,7 @@ fromtext_rrsig(ARGS_FROMTEXT) {
 	 */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-	RETTOK(dns_secalg_fromtext(&alg, &token.value.as_textregion));
+	RETTOK(dns_secalg_fromtext(&alg, &token.value.as_region));
 	RETERR(mem_tobuffer(target, &alg, 1));
 
 	/*
@@ -91,8 +92,8 @@ fromtext_rrsig(ARGS_FROMTEXT) {
 	 */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-	if (token.value.as_textregion.length <= 10U &&
-	    *DNS_AS_STR(token) != '-' && *DNS_AS_STR(token) != '+')
+	if (token.value.as_region.length <= 10U && *DNS_AS_STR(token) != '-' &&
+	    *DNS_AS_STR(token) != '+')
 	{
 		uint32_t value;
 
@@ -103,7 +104,7 @@ fromtext_rrsig(ARGS_FROMTEXT) {
 		}
 		time_expire = value;
 	} else {
-		RETTOK(dns_time32_fromregion(token.value.as_textregion,
+		RETTOK(dns_time32_fromregion(token.value.as_region,
 					     &time_expire));
 	}
 	RETERR(uint32_tobuffer(time_expire, target));
@@ -113,8 +114,8 @@ fromtext_rrsig(ARGS_FROMTEXT) {
 	 */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-	if (token.value.as_textregion.length <= 10U &&
-	    *DNS_AS_STR(token) != '-' && *DNS_AS_STR(token) != '+')
+	if (token.value.as_region.length <= 10U && *DNS_AS_STR(token) != '-' &&
+	    *DNS_AS_STR(token) != '+')
 	{
 		uint32_t value;
 
@@ -125,7 +126,7 @@ fromtext_rrsig(ARGS_FROMTEXT) {
 		}
 		time_signed = value;
 	} else {
-		RETTOK(dns_time32_fromregion(token.value.as_textregion,
+		RETTOK(dns_time32_fromregion(token.value.as_region,
 					     &time_signed));
 	}
 	RETERR(uint32_tobuffer(time_signed, target));

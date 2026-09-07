@@ -45,7 +45,8 @@ fromtext_dsync(ARGS_FROMTEXT) {
 	 */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-	result = dns_rdatatype_fromtext(&rrtype, &token.value.as_textregion);
+	result = dns_rdatatype_fromtext(&rrtype,
+					&token.value.as_region);
 	if (result != ISC_R_SUCCESS && result != ISC_R_NOTIMPLEMENTED) {
 		uint32_t value;
 		isc_result_t parse_result = isc_parse_uint32_region(
@@ -67,7 +68,8 @@ fromtext_dsync(ARGS_FROMTEXT) {
 	 */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-	RETERR(dns_dsyncscheme_fromtext(&scheme, &token.value.as_textregion));
+	RETERR(dns_dsyncscheme_fromtext(&scheme,
+					&token.value.as_region));
 	RETERR(uint8_tobuffer(scheme, target));
 
 	/*

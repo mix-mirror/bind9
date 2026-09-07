@@ -41,6 +41,35 @@ struct isc_consttextregion {
 	unsigned int length;
 };
 
+#define ISC_REGION_FROM(source) \
+	_Generic((source),                                                   \
+		 isc_region_t *: (const isc_region_t *)(source),              \
+		 const isc_region_t *: (source),                               \
+		 isc_textregion_t *: &(const isc_region_t){                    \
+			 .base = (unsigned char *)(source)->base,                \
+			 .length = (source)->length,                            \
+		 },                                                               \
+		 const isc_textregion_t *: &(const isc_region_t){              \
+			 .base = (unsigned char *)(source)->base,                \
+			 .length = (source)->length,                            \
+		 },                                                               \
+		 isc_consttextregion_t *: &(const isc_region_t){               \
+			 .base = (unsigned char *)(source)->base,                \
+			 .length = (source)->length,                            \
+		 },                                                               \
+		 const isc_consttextregion_t *: &(const isc_region_t){         \
+			 .base = (unsigned char *)(source)->base,                \
+			 .length = (source)->length,                            \
+		 },                                                               \
+		 isc_constregion_t *: &(const isc_region_t){                   \
+			 .base = (unsigned char *)(source)->base,                \
+			 .length = (source)->length,                            \
+		 },                                                               \
+		 const isc_constregion_t *: &(const isc_region_t){             \
+			 .base = (unsigned char *)(source)->base,                \
+			 .length = (source)->length,                            \
+		 })
+
 /*@{*/
 /*!
  * The region structure is not opaque, and is usually directly manipulated.

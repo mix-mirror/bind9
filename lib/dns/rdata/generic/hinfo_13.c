@@ -31,7 +31,7 @@ fromtext_hinfo(ARGS_FROMTEXT) {
 	for (i = 0; i < 2; i++) {
 		RETERR(isc_lex_getmastertoken(lexer, &token,
 					      isc_tokentype_qstring, false));
-		RETTOK(txt_fromtext(&token.value.as_textregion, target));
+		RETTOK(txt_fromtext(&token.value.as_region, target));
 	}
 	return ISC_R_SUCCESS;
 }

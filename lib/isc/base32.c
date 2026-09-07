@@ -277,7 +277,7 @@ base32_tobuffer(isc_lex_t *lexer, const char base[], bool pad,
 	base32_decode_ctx_t ctx = {
 		.length = length, .base = base, .target = target, .pad = pad
 	};
-	isc_textregion_t *tr;
+	isc_region_t *tr;
 	isc_token_t token;
 	bool eol;
 
@@ -297,7 +297,7 @@ base32_tobuffer(isc_lex_t *lexer, const char base[], bool pad,
 		if (token.type != isc_tokentype_string) {
 			break;
 		}
-		tr = &token.value.as_textregion;
+		tr = &token.value.as_region;
 		for (i = 0; i < tr->length; i++) {
 			RETERR(base32_decode_char(&ctx, tr->base[i]));
 		}

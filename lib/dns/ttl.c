@@ -31,7 +31,7 @@
 #include <dns/ttl.h>
 
 static isc_result_t
-bind_ttl(isc_textregion_t *source, uint32_t *ttl);
+bind_ttl(const isc_region_t *source, uint32_t *ttl);
 
 /*
  * Helper for dns_ttl_totext().
@@ -121,12 +121,12 @@ dns_ttl_totext(uint32_t src, bool verbose, bool upcase, isc_buffer_t *target) {
 }
 
 isc_result_t
-dns_counter_fromtext(isc_textregion_t *source, uint32_t *ttl) {
+dns_counter_fromtext(const isc_region_t *source, uint32_t *ttl) {
 	return bind_ttl(source, ttl);
 }
 
 isc_result_t
-dns_ttl_fromtext(isc_textregion_t *source, uint32_t *ttl) {
+dns_ttl_fromtext(const isc_region_t *source, uint32_t *ttl) {
 	isc_result_t result;
 
 	result = bind_ttl(source, ttl);
@@ -137,7 +137,7 @@ dns_ttl_fromtext(isc_textregion_t *source, uint32_t *ttl) {
 }
 
 static isc_result_t
-bind_ttl(isc_textregion_t *source, uint32_t *ttl) {
+bind_ttl(const isc_region_t *source, uint32_t *ttl) {
 	uint64_t tmp = 0ULL;
 	uint32_t n;
 	char *s;
@@ -152,7 +152,8 @@ bind_ttl(isc_textregion_t *source, uint32_t *ttl) {
 		return DNS_R_SYNTAX;
 	}
 	/* Copy source->length bytes and NUL terminate. */
-	snprintf(buf, sizeof(buf), "%.*s", (int)source->length, source->base);
+	snprintf(buf, sizeof(buf), "%.*s", (int)source->length,
+		 (const char *)source->base);
 	s = buf;
 
 	do {

@@ -18,7 +18,7 @@
 #include <dns/types.h>
 
 isc_result_t
-dns_rdataclass_fromtext(dns_rdataclass_t *classp, isc_textregion_t *source);
+dns_rdataclass_fromtext(dns_rdataclass_t *classp, const isc_region_t *source);
 /*%<
  * Convert the text 'source' refers to into a DNS class.
  *

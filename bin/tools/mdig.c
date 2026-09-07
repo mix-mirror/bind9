@@ -1712,7 +1712,7 @@ dash_option(const char *option, char *next, struct query *query, bool global,
 		tr.base = value;
 		tr.length = strlen(value);
 		result = dns_rdataclass_fromtext(&rdclass,
-						 (isc_textregion_t *)&tr);
+						 ISC_REGION_FROM(&tr));
 		CHECKM("dns_rdataclass_fromtext", result);
 		query->rdclass = rdclass;
 		return value_from_next;
@@ -1728,8 +1728,7 @@ dash_option(const char *option, char *next, struct query *query, bool global,
 	case 't':
 		tr.base = value;
 		tr.length = strlen(value);
-		result = dns_rdatatype_fromtext(&rdtype,
-						(isc_textregion_t *)&tr);
+		result = dns_rdatatype_fromtext(&rdtype, ISC_REGION_FROM(&tr));
 		CHECKM("dns_rdatatype_fromtext", result);
 		query->rdtype = rdtype;
 		return value_from_next;

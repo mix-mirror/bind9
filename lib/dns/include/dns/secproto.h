@@ -18,7 +18,7 @@
 #include <dns/types.h>
 
 isc_result_t
-dns_secproto_fromtext(dns_secproto_t *secprotop, isc_textregion_t *source);
+dns_secproto_fromtext(dns_secproto_t *secprotop, const isc_region_t *source);
 /*%<
  * Convert the text 'source' refers to into a DNSSEC security protocol value.
  * The text may contain either a mnemonic protocol name or a decimal protocol

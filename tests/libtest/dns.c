@@ -433,7 +433,7 @@ dns_test_difffromchanges(dns_diff_t *diff, const zonechange_t *changes,
 		region.base = changes[i].type;
 		region.length = strlen(changes[i].type);
 		result = dns_rdatatype_fromtext(&rdatatype,
-						(isc_textregion_t *)&region);
+						ISC_REGION_FROM(&region));
 		if (result != ISC_R_SUCCESS) {
 			break;
 		}

@@ -1684,8 +1684,8 @@ cleanup:
 	return result;
 }
 
-#define TSTR(t) ((t).value.as_textregion.base)
-#define TLEN(t) ((t).value.as_textregion.length)
+#define TSTR(t) ((char *)(t).value.as_region.base)
+#define TLEN(t) ((t).value.as_region.length)
 
 isc_result_t
 dns_view_loadnta(dns_view_t *view) {
@@ -1753,7 +1753,7 @@ dns_view_loadnta(dns_view_t *view) {
 		if (token.type != isc_tokentype_string) {
 			CLEANUP(ISC_R_UNEXPECTEDTOKEN);
 		}
-		CHECK(dns_time32_fromregion(token.value.as_textregion, &t));
+		CHECK(dns_time32_fromregion(token.value.as_region, &t));
 
 		CHECK(isc_lex_next(lex, &token));
 		if (token.type != isc_tokentype_eol &&

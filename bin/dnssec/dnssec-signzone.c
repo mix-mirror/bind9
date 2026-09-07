@@ -2718,7 +2718,7 @@ add_digest(char *str, size_t dlen, dns_kasp_digestlist_t *digests,
 
 	r.base = str + 4;
 	r.length = dlen - 4;
-	result = dns_dsdigest_fromtext(&alg, &r);
+	result = dns_dsdigest_fromtext(&alg, ISC_REGION_FROM(&r));
 	if (result == DNS_R_UNKNOWN) {
 		fatal("bad digest '%.*s'", (int)dlen, str);
 	} else if (result != ISC_R_SUCCESS) {

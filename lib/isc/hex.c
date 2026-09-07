@@ -137,7 +137,7 @@ isc_result_t
 isc_hex_tobuffer(isc_lex_t *lexer, isc_buffer_t *target, int length) {
 	unsigned int before, after;
 	isc_hex_decodectx_t ctx;
-	isc_textregion_t *tr;
+	isc_region_t *tr;
 	isc_token_t token;
 	bool eol;
 
@@ -159,7 +159,7 @@ isc_hex_tobuffer(isc_lex_t *lexer, isc_buffer_t *target, int length) {
 		if (token.type != isc_tokentype_string) {
 			break;
 		}
-		tr = &token.value.as_textregion;
+		tr = &token.value.as_region;
 		for (i = 0; i < tr->length; i++) {
 			RETERR(isc_hex_decodechar(&ctx, tr->base[i]));
 		}

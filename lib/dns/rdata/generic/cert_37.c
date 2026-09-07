@@ -37,7 +37,7 @@ fromtext_cert(ARGS_FROMTEXT) {
 	 */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-	RETTOK(dns_cert_fromtext(&cert, &token.value.as_textregion));
+	RETTOK(dns_cert_fromtext(&cert, &token.value.as_region));
 	RETERR(uint16_tobuffer(cert, target));
 
 	/*
@@ -55,7 +55,7 @@ fromtext_cert(ARGS_FROMTEXT) {
 	 */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-	RETTOK(dns_secalg_fromtext(&secalg, &token.value.as_textregion));
+	RETTOK(dns_secalg_fromtext(&secalg, &token.value.as_region));
 	RETERR(mem_tobuffer(target, &secalg, 1));
 
 	return isc_base64_tobuffer(lexer, target, isc_one_or_more);

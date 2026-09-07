@@ -167,7 +167,7 @@ putrr(bdbnode_t *node, const char *type, dns_ttl_t ttl, const char *data) {
 	origin = &node->bdb->common.origin;
 
 	isc_constregion_t r = { .base = type, .length = strlen(type) };
-	RETERR(dns_rdatatype_fromtext(&typeval, (isc_textregion_t *)&r));
+	RETERR(dns_rdatatype_fromtext(&typeval, ISC_REGION_FROM(&r)));
 
 	RUNTIME_CHECK(isc_lex_create_dns_master(mctx, 64, &lex) ==
 		      ISC_R_SUCCESS);

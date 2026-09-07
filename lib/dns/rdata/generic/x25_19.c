@@ -33,16 +33,15 @@ fromtext_x25(ARGS_FROMTEXT) {
 
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_qstring,
 				      false));
-	if (token.value.as_textregion.length < 4) {
+	if (token.value.as_region.length < 4) {
 		RETTOK(DNS_R_SYNTAX);
 	}
-	for (i = 0; i < token.value.as_textregion.length; i++) {
-		if (!isdigit((unsigned char)token.value.as_textregion.base[i]))
-		{
+	for (i = 0; i < token.value.as_region.length; i++) {
+		if (!isdigit(token.value.as_region.base[i])) {
 			RETTOK(ISC_R_RANGE);
 		}
 	}
-	RETTOK(txt_fromtext(&token.value.as_textregion, target));
+	RETTOK(txt_fromtext(&token.value.as_region, target));
 	return ISC_R_SUCCESS;
 }
 

@@ -199,8 +199,9 @@ time64_fromtext(const char *source, size_t length, int64_t *target) {
 }
 
 isc_result_t
-dns_time64_fromregion(isc_textregion_t source, int64_t *target) {
-	return time64_fromtext(source.base, source.length, target);
+dns_time64_fromregion(isc_region_t source, int64_t *target) {
+	return time64_fromtext((const char *)source.base, source.length,
+			       target);
 }
 
 isc_result_t
@@ -209,7 +210,7 @@ dns_time64_fromtext(const char *source, int64_t *target) {
 }
 
 isc_result_t
-dns_time32_fromregion(isc_textregion_t source, uint32_t *target) {
+dns_time32_fromregion(isc_region_t source, uint32_t *target) {
 	int64_t value64;
 
 	RETERR(dns_time64_fromregion(source, &value64));

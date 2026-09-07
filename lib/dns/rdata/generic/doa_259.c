@@ -56,7 +56,7 @@ fromtext_doa(ARGS_FROMTEXT) {
 	 */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_qstring,
 				      false));
-	RETTOK(txt_fromtext(&token.value.as_textregion, target));
+	RETTOK(txt_fromtext(&token.value.as_region, target));
 
 	/*
 	 * DOA-DATA

@@ -70,7 +70,8 @@ fromtext_soa(ARGS_FROMTEXT) {
 	for (i = 0; i < 4; i++) {
 		RETERR(isc_lex_getmastertoken(lexer, &token,
 					      isc_tokentype_string, false));
-		RETTOK(dns_counter_fromtext(&token.value.as_textregion, &n));
+		RETTOK(dns_counter_fromtext(&token.value.as_region,
+					    &n));
 		RETERR(uint32_tobuffer(n, target));
 	}
 

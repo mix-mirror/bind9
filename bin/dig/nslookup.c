@@ -487,7 +487,7 @@ testtype(char *typetext) {
 
 	tr.base = typetext;
 	tr.length = strlen(typetext);
-	result = dns_rdatatype_fromtext(&rdtype, &tr);
+	result = dns_rdatatype_fromtext(&rdtype, ISC_REGION_FROM(&tr));
 	if (result == ISC_R_SUCCESS) {
 		return true;
 	} else {
@@ -504,7 +504,7 @@ testclass(char *typetext) {
 
 	tr.base = typetext;
 	tr.length = strlen(typetext);
-	result = dns_rdataclass_fromtext(&rdclass, &tr);
+	result = dns_rdataclass_fromtext(&rdclass, ISC_REGION_FROM(&tr));
 	if (result == ISC_R_SUCCESS) {
 		return true;
 	} else {
@@ -673,14 +673,14 @@ addlookup(char *opt) {
 
 	tr.base = deftype;
 	tr.length = strlen(deftype);
-	result = dns_rdatatype_fromtext(&rdtype, &tr);
+	result = dns_rdatatype_fromtext(&rdtype, ISC_REGION_FROM(&tr));
 	if (result != ISC_R_SUCCESS) {
 		printf("unknown query type: %s\n", deftype);
 		rdclass = dns_rdatatype_a;
 	}
 	tr.base = defclass;
 	tr.length = strlen(defclass);
-	result = dns_rdataclass_fromtext(&rdclass, &tr);
+	result = dns_rdataclass_fromtext(&rdclass, ISC_REGION_FROM(&tr));
 	if (result != ISC_R_SUCCESS) {
 		printf("unknown query class: %s\n", defclass);
 		rdclass = dns_rdataclass_in;

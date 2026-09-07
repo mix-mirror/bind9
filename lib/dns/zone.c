@@ -19969,7 +19969,8 @@ dns_zone_keydone(dns_zone_t *zone, const char *keystr) {
 		if (n == 0U) {
 			r.base = UNCONST(algstr);
 			r.length = strlen(algstr);
-			CHECK(dst_algorithm_fromtext(&alg, &r));
+			CHECK(dst_algorithm_fromtext(&alg,
+						     ISC_REGION_FROM(&r)));
 		}
 
 		/* construct a private-type rdata */

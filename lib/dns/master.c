@@ -173,7 +173,7 @@ struct dns_incctx {
 #define DNS_LCTX_MAGIC	     ISC_MAGIC('L', 'c', 't', 'x')
 #define DNS_LCTX_VALID(lctx) ISC_MAGIC_VALID(lctx, DNS_LCTX_MAGIC)
 
-#define DNS_AS_STR(t) ((t).value.as_textregion.base)
+#define DNS_AS_STR(t) ((char *)(t).value.as_region.base)
 
 static isc_result_t
 openfile_text(dns_loadctx_t *lctx, const char *master_file);
@@ -774,7 +774,7 @@ generate(dns_loadctx_t *lctx, char *range, char *lhs, char *gtype, char *rhs,
 	 */
 	r.base = gtype;
 	r.length = strlen(gtype);
-	result = dns_rdatatype_fromtext(&type, &r);
+	result = dns_rdatatype_fromtext(&type, ISC_REGION_FROM(&r));
 	if (result != ISC_R_SUCCESS) {
 		(*callbacks->error)(callbacks,
 				    "%s: %s:%lu: unknown RR type '%s'",
@@ -1118,7 +1118,7 @@ load_text(dns_loadctx_t *lctx) {
 					    lctx->ttl = 0;
 					    lctx->default_ttl_known = true;);
 				result = dns_ttl_fromtext(
-					&token.value.as_textregion, &lctx->ttl);
+					&token.value.as_region, &lctx->ttl);
 				if (MANYERRS(lctx, result)) {
 					SETRESULT(lctx, result);
 					lctx->ttl = 0;
@@ -1192,8 +1192,7 @@ load_text(dns_loadctx_t *lctx) {
 				isc_stdtime_t current_time = isc_stdtime_now();
 				GETTOKEN(lctx->lex, &token, false);
 				result = dns_time64_fromregion(
-					token.value.as_textregion,
-					&dump_time64);
+					token.value.as_region, &dump_time64);
 				if (MANYERRS(lctx, result)) {
 					SETRESULT(lctx, result);
 					LOGIT(result);
@@ -1253,14 +1252,13 @@ load_text(dns_loadctx_t *lctx) {
 				/* CLASS? */
 				GETTOKEN(lctx->lex, &token, false);
 				if (dns_rdataclass_fromtext(
-					    &rdclass,
-					    &token.value.as_textregion) ==
+					    &rdclass, &token.value.as_region) ==
 				    ISC_R_SUCCESS)
 				{
 					GETTOKEN(lctx->lex, &token, false);
 				}
 				/* TTL? */
-				if (dns_ttl_fromtext(&token.value.as_textregion,
+				if (dns_ttl_fromtext(&token.value.as_region,
 						     &lctx->ttl) ==
 				    ISC_R_SUCCESS)
 				{
@@ -1273,8 +1271,7 @@ load_text(dns_loadctx_t *lctx) {
 				/* CLASS? */
 				if (rdclass == 0 &&
 				    dns_rdataclass_fromtext(
-					    &rdclass,
-					    &token.value.as_textregion) ==
+					    &rdclass, &token.value.as_region) ==
 					    ISC_R_SUCCESS)
 				{
 					GETTOKEN(lctx->lex, &token, false);
@@ -1575,16 +1572,14 @@ load_text(dns_loadctx_t *lctx) {
 
 		ictx->origin_changed = false;
 
-		if (dns_rdataclass_fromtext(&rdclass,
-					    &token.value.as_textregion) ==
+		if (dns_rdataclass_fromtext(&rdclass, &token.value.as_region) ==
 		    ISC_R_SUCCESS)
 		{
 			GETTOKEN(lctx->lex, &token, false);
 		}
 
 		explicit_ttl = false;
-		result = dns_ttl_fromtext(&token.value.as_textregion,
-					  &lctx->ttl);
+		result = dns_ttl_fromtext(&token.value.as_region, &lctx->ttl);
 		if (result == ISC_R_SUCCESS) {
 			limit_ttl(callbacks, source, line, &lctx->ttl);
 			explicit_ttl = true;
@@ -1606,8 +1601,7 @@ load_text(dns_loadctx_t *lctx) {
 		}
 
 		if (rdclass == 0 &&
-		    dns_rdataclass_fromtext(&rdclass,
-					    &token.value.as_textregion) ==
+		    dns_rdataclass_fromtext(&rdclass, &token.value.as_region) ==
 			    ISC_R_SUCCESS)
 		{
 			GETTOKEN(lctx->lex, &token, false);
@@ -1626,13 +1620,12 @@ load_text(dns_loadctx_t *lctx) {
 			}
 		}
 
-		result = dns_rdatatype_fromtext(&type,
-						&token.value.as_textregion);
+		result = dns_rdatatype_fromtext(&type, &token.value.as_region);
 		if (result != ISC_R_SUCCESS) {
 			(*callbacks->warn)(
 				callbacks, "%s:%lu: unknown RR type '%.*s'",
-				source, line, token.value.as_textregion.length,
-				token.value.as_textregion.base);
+				source, line, token.value.as_region.length,
+				token.value.as_region.base);
 			if (MANYERRS(lctx, result)) {
 				SETRESULT(lctx, result);
 				read_till_eol = true;

@@ -100,7 +100,7 @@ parse_duration(const char *str) {
 
 	tr.base = UNCONST(str);
 	tr.length = strlen(tr.base);
-	result = isccfg_parse_duration(&tr, &duration);
+	result = isccfg_parse_duration(ISC_REGION_FROM(&tr), &duration);
 	if (result == ISC_R_SUCCESS) {
 		time = isccfg_duration_toseconds(&duration);
 	}
@@ -266,7 +266,7 @@ cfg_kaspkey_fromconfig(const cfg_obj_t *config, dns_kasp_t *kasp,
 		alg.base = cfg_obj_asstring(obj);
 		alg.length = strlen(alg.base);
 		result = dst_algorithm_fromtext(&key->algorithm,
-						(isc_textregion_t *)&alg);
+						ISC_REGION_FROM(&alg));
 		if (result != ISC_R_SUCCESS) {
 			if (log_errors) {
 				kaspcfg_log(obj, ISC_LOG_ERROR,
@@ -496,7 +496,7 @@ add_digest(dns_kasp_t *kasp, const cfg_obj_t *digest, bool log_errors) {
 
 	r.base = UNCONST(str);
 	r.length = strlen(str);
-	result = dns_dsdigest_fromtext(&alg, &r);
+	result = dns_dsdigest_fromtext(&alg, ISC_REGION_FROM(&r));
 	if (result != ISC_R_SUCCESS) {
 		if (log_errors) {
 			kaspcfg_log(digest, ISC_LOG_ERROR,

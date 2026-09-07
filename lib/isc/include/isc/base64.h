@@ -66,6 +66,12 @@ isc_base64_decodestring(const char *cstr, isc_buffer_t *target);
  */
 
 isc_result_t
+isc_base64_decoderegion(const isc_region_t *source, isc_buffer_t *target);
+/*!<
+ * Decode a bounded base64 region.  ASCII whitespace is ignored.
+ */
+
+isc_result_t
 isc_base64_tobuffer(isc_lex_t *lexer, isc_buffer_t *target, int length);
 /*!<
  * \brief Convert base64 encoded text from a lexer context into

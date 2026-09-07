@@ -33,17 +33,17 @@ fromtext_eui48(ARGS_FROMTEXT) {
 
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-	if (token.value.as_textregion.length != 17) {
+	if (token.value.as_region.length != 17) {
 		return DNS_R_BADEUI;
 	}
 	for (size_t i = 0; i < sizeof(eui48); i++) {
 		unsigned int offset = i * 3;
-		uint8_t high = token.value.as_textregion.base[offset];
-		uint8_t low = token.value.as_textregion.base[offset + 1];
+		uint8_t high = token.value.as_region.base[offset];
+		uint8_t low = token.value.as_region.base[offset + 1];
 
 		if (isc_hex_char(high) == 0 || isc_hex_char(low) == 0 ||
 		    (i != sizeof(eui48) - 1 &&
-		     token.value.as_textregion.base[offset + 2] != '-'))
+		     token.value.as_region.base[offset + 2] != '-'))
 		{
 			return DNS_R_BADEUI;
 		}

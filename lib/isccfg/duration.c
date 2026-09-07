@@ -37,7 +37,7 @@
  * Modified to fit the BIND 9 code.
  */
 isc_result_t
-isccfg_duration_fromtext(isc_textregion_t *source,
+isccfg_duration_fromtext(const isc_region_t *source,
 			 isccfg_duration_t *duration) {
 	char buf[CFG_DURATION_MAXLEN] = { 0 };
 	char *P, *X, *T, *W, *str;
@@ -53,7 +53,8 @@ isccfg_duration_fromtext(isc_textregion_t *source,
 		return ISC_R_BADNUMBER;
 	}
 	/* Copy source->length bytes and NULL terminate. */
-	snprintf(buf, sizeof(buf), "%.*s", (int)source->length, source->base);
+	snprintf(buf, sizeof(buf), "%.*s", (int)source->length,
+		 (const char *)source->base);
 	str = buf;
 
 	/* Clear out duration. */
@@ -215,7 +216,7 @@ isccfg_duration_fromtext(isc_textregion_t *source,
 }
 
 isc_result_t
-isccfg_parse_duration(isc_textregion_t *source, isccfg_duration_t *duration) {
+isccfg_parse_duration(const isc_region_t *source, isccfg_duration_t *duration) {
 	isc_result_t result;
 
 	REQUIRE(duration != NULL);

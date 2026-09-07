@@ -32,7 +32,7 @@
 #define BADTOKEN() CLEANUP(ISC_R_UNEXPECTEDTOKEN)
 
 #define TOKENSIZ (8 * 1024)
-#define STR(t)	 ((t).value.as_textregion.base)
+#define STR(t)	 ((char *)(t).value.as_region.base)
 
 static isc_result_t
 parse_rr(isc_lex_t *lex, isc_mem_t *mctx, char *owner, dns_name_t *origin,
@@ -66,7 +66,7 @@ parse_rr(isc_lex_t *lex, isc_mem_t *mctx, char *owner, dns_name_t *origin,
 	}
 
 	/* If it's a TTL, read the next one */
-	result = dns_ttl_fromtext(&token.value.as_textregion, ttl);
+	result = dns_ttl_fromtext(&token.value.as_region, ttl);
 	if (result == ISC_R_SUCCESS) {
 		NEXTTOKEN(lex, &token);
 	}
@@ -75,7 +75,7 @@ parse_rr(isc_lex_t *lex, isc_mem_t *mctx, char *owner, dns_name_t *origin,
 	}
 
 	/* If it's a class, read the next one */
-	result = dns_rdataclass_fromtext(&clas, &token.value.as_textregion);
+	result = dns_rdataclass_fromtext(&clas, &token.value.as_region);
 	if (result == ISC_R_SUCCESS) {
 		if (clas != rdclass) {
 			BADTOKEN();
@@ -87,7 +87,7 @@ parse_rr(isc_lex_t *lex, isc_mem_t *mctx, char *owner, dns_name_t *origin,
 	}
 
 	/* Must be the record type */
-	result = dns_rdatatype_fromtext(rdtype, &token.value.as_textregion);
+	result = dns_rdatatype_fromtext(rdtype, &token.value.as_region);
 	if (result != ISC_R_SUCCESS) {
 		BADTOKEN();
 	}
@@ -227,8 +227,7 @@ dns_skr_read(isc_mem_t *mctx, const char *filename, dns_name_t *origin,
 		return result;
 	}
 
-	for (result = isc_lex_next(lex, &token);
-	     result == ISC_R_SUCCESS;
+	for (result = isc_lex_next(lex, &token); result == ISC_R_SUCCESS;
 	     result = isc_lex_next(lex, &token))
 	{
 		if (token.type == isc_tokentype_eof) {
@@ -278,7 +277,7 @@ dns_skr_read(isc_mem_t *mctx, const char *filename, dns_name_t *origin,
 			}
 
 			/* Create new bundle */
-			CHECK(dns_time32_fromregion(token.value.as_textregion,
+			CHECK(dns_time32_fromregion(token.value.as_region,
 						    &bundle_id));
 			bundle = NULL;
 			skrbundle_create(mctx, (isc_stdtime_t)bundle_id,

@@ -1037,7 +1037,7 @@ main(int argc, char **argv) {
 		}
 		r.base = algname;
 		r.length = strlen(algname);
-		result = dst_algorithm_fromtext(&ctx.alg, &r);
+		result = dst_algorithm_fromtext(&ctx.alg, ISC_REGION_FROM(&r));
 		if (result != ISC_R_SUCCESS) {
 			fatal("unknown algorithm %s", algname);
 		}

@@ -18,7 +18,7 @@
 #include <dns/types.h>
 
 isc_result_t
-dns_cert_fromtext(dns_cert_t *certp, isc_textregion_t *source);
+dns_cert_fromtext(dns_cert_t *certp, const isc_region_t *source);
 /*%<
  * Convert the text 'source' refers to into a certificate type.
  * The text may contain either a mnemonic type name or a decimal type number.

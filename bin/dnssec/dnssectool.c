@@ -365,7 +365,7 @@ strtoclass(const char *str) {
 	}
 	r.base = UNCONST(str);
 	r.length = strlen(str);
-	result = dns_rdataclass_fromtext(&rdclass, &r);
+	result = dns_rdataclass_fromtext(&rdclass, ISC_REGION_FROM(&r));
 	if (result != ISC_R_SUCCESS) {
 		fatal("unknown class %s", str);
 	}
@@ -380,7 +380,7 @@ strtodsdigest(const char *str) {
 
 	r.base = UNCONST(str);
 	r.length = strlen(str);
-	result = dns_dsdigest_fromtext(&alg, &r);
+	result = dns_dsdigest_fromtext(&alg, ISC_REGION_FROM(&r));
 	if (result != ISC_R_SUCCESS) {
 		fatal("unknown DS digest %s", str);
 	}

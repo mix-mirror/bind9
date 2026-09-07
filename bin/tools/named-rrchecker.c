@@ -210,15 +210,15 @@ main(int argc, char *argv[]) {
 			}
 		} else if (token.type == isc_tokentype_string) {
 			result = dns_rdataclass_fromtext(
-				&rdclass, &token.value.as_textregion);
+				&rdclass, &token.value.as_region);
 			if (result != ISC_R_SUCCESS) {
 				fatal("dns_rdataclass_fromtext: %s",
 				      isc_result_totext(result));
 			}
 			if (dns_rdataclass_ismeta(rdclass)) {
 				fatal("class %.*s(%d) is a meta value",
-				      (int)token.value.as_textregion.length,
-				      token.value.as_textregion.base, rdclass);
+				      (int)token.value.as_region.length,
+				      token.value.as_region.base, rdclass);
 			}
 		} else {
 			fatal("unexpected token %u", token.type);
@@ -252,15 +252,15 @@ main(int argc, char *argv[]) {
 			}
 		} else if (token.type == isc_tokentype_string) {
 			result = dns_rdatatype_fromtext(
-				&rdtype, &token.value.as_textregion);
+				&rdtype, &token.value.as_region);
 			if (result != ISC_R_SUCCESS) {
 				fatal("dns_rdatatype_fromtext: %s",
 				      isc_result_totext(result));
 			}
 			if (dns_rdatatype_ismeta(rdtype)) {
 				fatal("type %.*s(%d) is a meta value",
-				      (int)token.value.as_textregion.length,
-				      token.value.as_textregion.base, rdtype);
+				      (int)token.value.as_region.length,
+				      token.value.as_region.base, rdtype);
 			}
 		} else {
 			fatal("unexpected token %u", token.type);

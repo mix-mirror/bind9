@@ -70,7 +70,7 @@ fromtext_tkey(ARGS_FROMTEXT) {
 	 */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-	if (dns_tsigrcode_fromtext(&rcode, &token.value.as_textregion) !=
+	if (dns_tsigrcode_fromtext(&rcode, &token.value.as_region) !=
 	    ISC_R_SUCCESS)
 	{
 		uint32_t value;

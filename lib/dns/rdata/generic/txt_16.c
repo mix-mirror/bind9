@@ -32,7 +32,7 @@ generic_fromtext_txt(ARGS_FROMTEXT) {
 		isc_textregion_t r;
 		r.base = UNCONST("#");
 		r.length = 1;
-		RETERR(txt_fromtext(&r, target));
+		RETERR(txt_fromtext(ISC_REGION_FROM(&r), target));
 		strings++;
 	}
 	for (;;) {
@@ -43,7 +43,7 @@ generic_fromtext_txt(ARGS_FROMTEXT) {
 		{
 			break;
 		}
-		RETTOK(txt_fromtext(&token.value.as_textregion, target));
+		RETTOK(txt_fromtext(&token.value.as_region, target));
 		strings++;
 	}
 	/* Let upper layer handle eol/eof. */

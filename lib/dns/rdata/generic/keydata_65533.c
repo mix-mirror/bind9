@@ -40,37 +40,38 @@ fromtext_keydata(ARGS_FROMTEXT) {
 	/* refresh timer */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-	RETTOK(dns_time32_fromregion(token.value.as_textregion, &refresh));
+	RETTOK(dns_time32_fromregion(token.value.as_region, &refresh));
 	RETERR(uint32_tobuffer(refresh, target));
 
 	/* add hold-down */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-	RETTOK(dns_time32_fromregion(token.value.as_textregion, &addhd));
+	RETTOK(dns_time32_fromregion(token.value.as_region, &addhd));
 	RETERR(uint32_tobuffer(addhd, target));
 
 	/* remove hold-down */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-	RETTOK(dns_time32_fromregion(token.value.as_textregion, &removehd));
+	RETTOK(dns_time32_fromregion(token.value.as_region,
+				     &removehd));
 	RETERR(uint32_tobuffer(removehd, target));
 
 	/* flags */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-	RETTOK(dns_keyflags_fromtext(&flags, &token.value.as_textregion));
+	RETTOK(dns_keyflags_fromtext(&flags, &token.value.as_region));
 	RETERR(uint16_tobuffer(flags, target));
 
 	/* protocol */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-	RETTOK(dns_secproto_fromtext(&proto, &token.value.as_textregion));
+	RETTOK(dns_secproto_fromtext(&proto, &token.value.as_region));
 	RETERR(mem_tobuffer(target, &proto, 1));
 
 	/* algorithm */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-	RETTOK(dns_secalg_fromtext(&alg, &token.value.as_textregion));
+	RETTOK(dns_secalg_fromtext(&alg, &token.value.as_region));
 	RETERR(mem_tobuffer(target, &alg, 1));
 
 	/* Do we have a placeholder KEYDATA record? */

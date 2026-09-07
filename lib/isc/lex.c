@@ -369,8 +369,8 @@ finish_atom(isc_lex_t *lex, inputsource *source, isc_token_t *tokenp) {
 		length);
 	lex->data[length] = '\0';
 	tokenp->type = isc_tokentype_string;
-	tokenp->value.as_textregion.base = lex->data;
-	tokenp->value.as_textregion.length = (unsigned int)length;
+	tokenp->value.as_region.base = (unsigned char *)lex->data;
+	tokenp->value.as_region.length = (unsigned int)length;
 }
 
 static void
@@ -386,8 +386,8 @@ finish_qstring(isc_lex_t *lex, inputsource *source, isc_token_t *tokenp) {
 	memmove(lex->data, raw, raw_length);
 	lex->data[raw_length] = '\0';
 	tokenp->type = isc_tokentype_qstring;
-	tokenp->value.as_textregion.base = lex->data;
-	tokenp->value.as_textregion.length = (unsigned int)raw_length;
+	tokenp->value.as_region.base = (unsigned char *)lex->data;
+	tokenp->value.as_region.length = (unsigned int)raw_length;
 }
 
 static void
@@ -418,8 +418,8 @@ finish_qstring_cooked(isc_lex_t *lex, inputsource *source,
 
 	*dst = '\0';
 	tokenp->type = isc_tokentype_qstring;
-	tokenp->value.as_textregion.base = lex->data;
-	tokenp->value.as_textregion.length = (unsigned int)(dst - lex->data);
+	tokenp->value.as_region.base = (unsigned char *)lex->data;
+	tokenp->value.as_region.length = (unsigned int)(dst - lex->data);
 }
 
 static void
@@ -716,8 +716,8 @@ lex_gettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 				lex->last_was_eol = false;
 				buffer->current++;
 				tokenp->type = isc_tokentype_unknown;
-				tokenp->value.as_textregion.base = NULL;
-				tokenp->value.as_textregion.length = 0;
+				tokenp->value.as_region.base = NULL;
+				tokenp->value.as_region.length = 0;
 				result = ISC_R_SUCCESS;
 				goto done;
 			}

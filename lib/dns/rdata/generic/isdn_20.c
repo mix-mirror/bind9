@@ -33,7 +33,7 @@ fromtext_isdn(ARGS_FROMTEXT) {
 	/* ISDN-address */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_qstring,
 				      false));
-	RETTOK(txt_fromtext(&token.value.as_textregion, target));
+	RETTOK(txt_fromtext(&token.value.as_region, target));
 
 	/* sa: optional */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_qstring,
@@ -44,7 +44,7 @@ fromtext_isdn(ARGS_FROMTEXT) {
 		isc_lex_ungettoken(lexer, &token);
 		return ISC_R_SUCCESS;
 	}
-	RETTOK(txt_fromtext(&token.value.as_textregion, target));
+	RETTOK(txt_fromtext(&token.value.as_region, target));
 	return ISC_R_SUCCESS;
 }
 

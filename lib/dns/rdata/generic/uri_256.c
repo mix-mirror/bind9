@@ -54,11 +54,11 @@ fromtext_uri(ARGS_FROMTEXT) {
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_qstring,
 				      false));
 	if (token.type != isc_tokentype_qstring ||
-	    token.value.as_textregion.length == 0)
+	    token.value.as_region.length == 0)
 	{
 		RETTOK(DNS_R_SYNTAX);
 	}
-	RETTOK(multitxt_fromtext(&token.value.as_textregion, target));
+	RETTOK(multitxt_fromtext(&token.value.as_region, target));
 	return ISC_R_SUCCESS;
 }
 

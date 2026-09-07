@@ -61,8 +61,8 @@ fromtext_nxt(ARGS_FROMTEXT) {
 					    10) == ISC_R_SUCCESS)
 		{
 			covered = (dns_rdatatype_t)value;
-		} else if (dns_rdatatype_fromtext(&covered,
-						  &token.value.as_textregion) ==
+		} else if (dns_rdatatype_fromtext(
+				   &covered, &token.value.as_region) ==
 			   DNS_R_UNKNOWN)
 		{
 			RETTOK(DNS_R_UNKNOWN);

@@ -123,7 +123,7 @@ compare_tuples(const zonediff_t *expected, dns_difftuple_t *found,
 	typeregion.base = expected->type;
 	typeregion.length = strlen(expected->type);
 	result = dns_rdatatype_fromtext(&expected_type,
-					(isc_textregion_t *)&typeregion);
+					ISC_REGION_FROM(&typeregion));
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	/*

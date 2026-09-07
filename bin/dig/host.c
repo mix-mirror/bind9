@@ -682,7 +682,7 @@ parse_args(bool is_batchfile, int argc, char **argv) {
 				tr.base = isc_commandline_argument;
 				tr.length = strlen(isc_commandline_argument);
 				result = dns_rdatatype_fromtext(
-					&rdtype, (isc_textregion_t *)&tr);
+					&rdtype, ISC_REGION_FROM(&tr));
 			}
 
 			if (result != ISC_R_SUCCESS) {
@@ -718,8 +718,8 @@ parse_args(bool is_batchfile, int argc, char **argv) {
 		case 'c':
 			tr.base = isc_commandline_argument;
 			tr.length = strlen(isc_commandline_argument);
-			result = dns_rdataclass_fromtext(
-				&rdclass, (isc_textregion_t *)&tr);
+			result = dns_rdataclass_fromtext(&rdclass,
+							 ISC_REGION_FROM(&tr));
 
 			if (result != ISC_R_SUCCESS) {
 				fatalexit = 2;

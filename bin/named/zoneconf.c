@@ -341,7 +341,8 @@ configure_zone_ssutable(const cfg_obj_t *zconfig, const cfg_obj_t *tconfig,
 			}
 			types[i].max = max;
 
-			result = dns_rdatatype_fromtext(&types[i++].type, &r);
+			result = dns_rdatatype_fromtext(&types[i++].type,
+							ISC_REGION_FROM(&r));
 			if (result != ISC_R_SUCCESS) {
 				cfg_obj_log(identity, ISC_LOG_ERROR,
 					    "'%.*s' is not a valid type",
@@ -920,7 +921,8 @@ process_notify_cfg(const cfg_obj_t **maps, dns_zone_t *zone, dns_zone_t *raw) {
 
 			tr.base = UNCONST(name);
 			tr.length = strlen(name);
-			result = dns_rdatatype_fromtext(&rdtype, &tr);
+			result = dns_rdatatype_fromtext(&rdtype,
+							ISC_REGION_FROM(&tr));
 			if (result != ISC_R_SUCCESS) {
 				cfg_obj_log(map, ISC_LOG_ERROR,
 					    "%s is not a valid notify type",

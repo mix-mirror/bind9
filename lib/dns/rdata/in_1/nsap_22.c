@@ -21,7 +21,7 @@
 static isc_result_t
 fromtext_in_nsap(ARGS_FROMTEXT) {
 	isc_token_t token;
-	isc_textregion_t *sr;
+	isc_region_t *sr;
 	int n;
 	bool valid = false;
 	int digits = 0;
@@ -39,17 +39,17 @@ fromtext_in_nsap(ARGS_FROMTEXT) {
 	/* 0x<hex.string.with.periods> */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-	sr = &token.value.as_textregion;
+	sr = &token.value.as_region;
 	if (sr->length < 2) {
 		RETTOK(ISC_R_UNEXPECTEDEND);
 	}
 	if (sr->base[0] != '0' || (sr->base[1] != 'x' && sr->base[1] != 'X')) {
 		RETTOK(DNS_R_SYNTAX);
 	}
-	isc_textregion_consume(sr, 2);
+	isc_region_consume(sr, 2);
 	while (sr->length > 0) {
 		if (sr->base[0] == '.') {
-			isc_textregion_consume(sr, 1);
+			isc_region_consume(sr, 1);
 			continue;
 		}
 		if ((n = hexvalue(sr->base[0])) == -1) {
@@ -63,7 +63,7 @@ fromtext_in_nsap(ARGS_FROMTEXT) {
 			digits = 0;
 			c = 0;
 		}
-		isc_textregion_consume(sr, 1);
+		isc_region_consume(sr, 1);
 	}
 	if (digits != 0 || !valid) {
 		RETTOK(ISC_R_UNEXPECTEDEND);

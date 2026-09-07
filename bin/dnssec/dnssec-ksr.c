@@ -89,7 +89,7 @@ static int min_dh = 128;
 
 #define MAXWIRE (64 * 1024)
 
-#define STR(t) ((t).value.as_textregion.base)
+#define STR(t) ((char *)(t).value.as_region.base)
 
 #define READLINE(lex, opt, token)
 
@@ -979,7 +979,7 @@ parse_dnskey(isc_lex_t *lex, char *owner, isc_buffer_t *buf, dns_ttl_t *ttl) {
 	}
 
 	/* If it's a TTL, read the next one */
-	result = dns_ttl_fromtext(&token.value.as_textregion, ttl);
+	result = dns_ttl_fromtext(&token.value.as_region, ttl);
 	if (result == ISC_R_SUCCESS) {
 		NEXTTOKEN(lex, &token);
 	}
@@ -988,7 +988,7 @@ parse_dnskey(isc_lex_t *lex, char *owner, isc_buffer_t *buf, dns_ttl_t *ttl) {
 	}
 
 	/* If it's a class, read the next one */
-	result = dns_rdataclass_fromtext(&rdclass, &token.value.as_textregion);
+	result = dns_rdataclass_fromtext(&rdclass, &token.value.as_region);
 	if (result == ISC_R_SUCCESS) {
 		NEXTTOKEN(lex, &token);
 	}
@@ -1150,8 +1150,7 @@ sign(ksr_ctx_t *ksr) {
 		      isc_result_totext(result));
 	}
 
-	for (result = isc_lex_next(lex, &token);
-	     result == ISC_R_SUCCESS;
+	for (result = isc_lex_next(lex, &token); result == ISC_R_SUCCESS;
 	     result = isc_lex_next(lex, &token))
 	{
 		if (token.type == isc_tokentype_eof) {

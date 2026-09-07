@@ -32,7 +32,7 @@
 #include <isccfg/grammar.h>
 #include <isccfg/namedconf.h>
 
-#define TOKEN_STRING(pctx) (pctx->token.value.as_textregion.base)
+#define TOKEN_STRING(pctx) ((char *)(pctx)->token.value.as_region.base)
 
 /*% Clean up a configuration object if non-NULL. */
 #define CLEANUP_OBJ(obj)                        \

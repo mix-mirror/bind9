@@ -1314,8 +1314,9 @@ parse_rdata(char **cmdlinep, dns_rdataclass_t rdataclass,
 
 	if (*cmdline != 0) {
 		dns_rdatacallbacks_init(&callbacks);
-		RUNTIME_CHECK(isc_lex_create_dns_master(
-			isc_g_mctx, strlen(cmdline), &lex) == ISC_R_SUCCESS);
+		RUNTIME_CHECK(isc_lex_create_dns_master(isc_g_mctx,
+							strlen(cmdline),
+							&lex) == ISC_R_SUCCESS);
 		isc_buffer_init(&source, cmdline, strlen(cmdline));
 		isc_buffer_add(&source, strlen(cmdline));
 		result = isc_lex_openbuffer(lex, &source);
@@ -1380,7 +1381,8 @@ make_prereq(char *cmdline, bool ispositive, bool isrrset) {
 		}
 		region.base = word;
 		region.length = strlen(word);
-		result = dns_rdataclass_fromtext(&rdataclass, &region);
+		result = dns_rdataclass_fromtext(&rdataclass,
+						 ISC_REGION_FROM(&region));
 		if (result == ISC_R_SUCCESS) {
 			if (!setzoneclass(rdataclass)) {
 				fprintf(stderr, "class mismatch: %s\n", word);
@@ -1396,14 +1398,16 @@ make_prereq(char *cmdline, bool ispositive, bool isrrset) {
 			}
 			region.base = word;
 			region.length = strlen(word);
-			result = dns_rdatatype_fromtext(&rdatatype, &region);
+			result = dns_rdatatype_fromtext(
+				&rdatatype, ISC_REGION_FROM(&region));
 			if (result != ISC_R_SUCCESS) {
 				fprintf(stderr, "invalid type: %s\n", word);
 				goto failure;
 			}
 		} else {
 			rdataclass = getzoneclass();
-			result = dns_rdatatype_fromtext(&rdatatype, &region);
+			result = dns_rdatatype_fromtext(
+				&rdatatype, ISC_REGION_FROM(&region));
 			if (result != ISC_R_SUCCESS) {
 				fprintf(stderr, "invalid type: %s\n", word);
 				goto failure;
@@ -1843,7 +1847,7 @@ evaluate_class(char *cmdline) {
 
 	r.base = word;
 	r.length = strlen(word);
-	result = dns_rdataclass_fromtext(&rdclass, &r);
+	result = dns_rdataclass_fromtext(&rdclass, ISC_REGION_FROM(&r));
 	if (result != ISC_R_SUCCESS) {
 		fprintf(stderr, "could not parse class name: %s\n", word);
 		return STATUS_SYNTAX;
@@ -1946,7 +1950,7 @@ parseclass:
 	region.base = word;
 	region.length = strlen(word);
 	rdataclass = dns_rdataclass_any;
-	result = dns_rdataclass_fromtext(&rdataclass, &region);
+	result = dns_rdataclass_fromtext(&rdataclass, ISC_REGION_FROM(&region));
 	if (result == ISC_R_SUCCESS && rdataclass != dns_rdataclass_any) {
 		if (!setzoneclass(rdataclass)) {
 			fprintf(stderr, "class mismatch: %s\n", word);
@@ -1969,7 +1973,8 @@ parseclass:
 		}
 		region.base = word;
 		region.length = strlen(word);
-		result = dns_rdatatype_fromtext(&rdatatype, &region);
+		result = dns_rdatatype_fromtext(&rdatatype,
+						ISC_REGION_FROM(&region));
 		if (result != ISC_R_SUCCESS) {
 			fprintf(stderr, "'%s' is not a valid type: %s\n", word,
 				isc_result_totext(result));
@@ -1977,7 +1982,8 @@ parseclass:
 		}
 	} else {
 		rdataclass = getzoneclass();
-		result = dns_rdatatype_fromtext(&rdatatype, &region);
+		result = dns_rdatatype_fromtext(&rdatatype,
+						ISC_REGION_FROM(&region));
 		if (result != ISC_R_SUCCESS) {
 			fprintf(stderr,
 				"'%s' is not a valid class or type: "

@@ -39,7 +39,8 @@ fromtext_sig(ARGS_FROMTEXT) {
 	 */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-	result = dns_rdatatype_fromtext(&covered, &token.value.as_textregion);
+	result = dns_rdatatype_fromtext(&covered,
+					&token.value.as_region);
 	if (result != ISC_R_SUCCESS && result != ISC_R_NOTIMPLEMENTED) {
 		uint32_t value;
 		isc_result_t parse_result = isc_parse_uint32_region(
@@ -61,7 +62,7 @@ fromtext_sig(ARGS_FROMTEXT) {
 	 */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-	RETTOK(dns_secalg_fromtext(&alg, &token.value.as_textregion));
+	RETTOK(dns_secalg_fromtext(&alg, &token.value.as_region));
 	RETERR(mem_tobuffer(target, &alg, 1));
 
 	/*
@@ -87,7 +88,8 @@ fromtext_sig(ARGS_FROMTEXT) {
 	 */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-	RETTOK(dns_time32_fromregion(token.value.as_textregion, &time_expire));
+	RETTOK(dns_time32_fromregion(token.value.as_region,
+				     &time_expire));
 	RETERR(uint32_tobuffer(time_expire, target));
 
 	/*
@@ -95,7 +97,8 @@ fromtext_sig(ARGS_FROMTEXT) {
 	 */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-	RETTOK(dns_time32_fromregion(token.value.as_textregion, &time_signed));
+	RETTOK(dns_time32_fromregion(token.value.as_region,
+				     &time_signed));
 	RETERR(uint32_tobuffer(time_signed, target));
 
 	/*

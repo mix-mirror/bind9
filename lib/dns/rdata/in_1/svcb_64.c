@@ -55,8 +55,8 @@ static const struct {
 };
 
 static isc_result_t
-alpn_fromtxt(isc_textregion_t *source, isc_buffer_t *target) {
-	isc_textregion_t source0 = *source;
+alpn_fromtxt(const isc_region_t *source, isc_buffer_t *target) {
+	isc_region_t source0 = *source;
 	do {
 		RETERR(commatxt_fromtext(&source0, true, target));
 	} while (source0.length != 0);
@@ -174,33 +174,35 @@ svcb_validate(uint16_t key, isc_region_t *region) {
  * Parse keyname from region.
  */
 static isc_result_t
-svc_keyfromregion(isc_textregion_t *region, char sep, uint16_t *value,
+svc_keyfromregion(isc_region_t *region, char sep, uint16_t *value,
 		  isc_buffer_t *target) {
-	char *e = NULL;
 	size_t i;
-	unsigned long ul;
+	uint32_t number;
+	unsigned int number_length;
 
 	/* Look for known key names.  */
 	for (i = 0; i < ARRAY_SIZE(sbpr); i++) {
 		size_t len = strlen(sbpr[i].name);
-		if (strncasecmp(region->base, sbpr[i].name, len) != 0) {
+		if (region->length < len ||
+		    isc_ascii_lowercmp(region->base,
+				       (const uint8_t *)sbpr[i].name, len) != 0)
+		{
 			continue;
 		}
 
-		INSIST(region->length >= len);
 		if (region->length != len && region->base[len] != sep) {
 			continue;
 		}
 
-		isc_textregion_consume(region, len);
-		ul = sbpr[i].value;
+		isc_region_consume(region, len);
+		number = sbpr[i].value;
 		goto finish;
 	}
 	/* Handle keyXXXXX form. */
-	if (strncmp(region->base, "key", 3) != 0) {
+	if (region->length < 3 || memcmp(region->base, "key", 3) != 0) {
 		return DNS_R_SYNTAX;
 	}
-	isc_textregion_consume(region, 3);
+	isc_region_consume(region, 3);
 	/* Disallow [+-]XXXXX which is allowed by strtoul. */
 	if (region->length == 0 || *region->base == '-' || *region->base == '+')
 	{
@@ -212,42 +214,53 @@ svc_keyfromregion(isc_textregion_t *region, char sep, uint16_t *value,
 	{
 		return DNS_R_SYNTAX;
 	}
-	ul = strtoul(region->base, &e, 10);
-	/* Valid number? */
-	if (e == region->base || (*e != sep && *e != 0)) {
-		return DNS_R_SYNTAX;
+	{
+		isc_region_t number_region = *region;
+		unsigned char *separator = memchr(region->base, sep,
+						  region->length);
+		if (separator != NULL) {
+			number_region.length =
+				(unsigned int)(separator - region->base);
+		}
+		number_length = number_region.length;
+		if (isc_parse_uint32_region(&number, &number_region, 10) !=
+		    ISC_R_SUCCESS)
+		{
+			return DNS_R_SYNTAX;
+		}
 	}
-	if (ul > 0xffff) {
+	if (number > UINT16_MAX) {
 		return ISC_R_RANGE;
 	}
-	isc_textregion_consume(region, e - region->base);
+	isc_region_consume(region, number_length);
 finish:
 	if (sep == ',' && region->length == 1) {
 		return DNS_R_SYNTAX;
 	}
 	/* Consume separator. */
 	if (region->length != 0) {
-		isc_textregion_consume(region, 1);
+		isc_region_consume(region, 1);
 	}
-	RETERR(uint16_tobuffer(ul, target));
-	SET_IF_NOT_NULL(value, ul);
+	RETERR(uint16_tobuffer(number, target));
+	SET_IF_NOT_NULL(value, number);
 	return ISC_R_SUCCESS;
 }
 
 static isc_result_t
-svc_fromtext_begin(isc_textregion_t *region, isc_buffer_t *target,
-		   uint16_t *keyp, enum encoding *encodingp) {
+svc_fromtext_begin(isc_region_t *region, isc_buffer_t *target, uint16_t *keyp,
+		   enum encoding *encodingp) {
 	size_t len;
 	unsigned int i;
 	uint16_t key;
 
 	for (i = 0; i < ARRAY_SIZE(sbpr); i++) {
 		len = strlen(sbpr[i].name);
-		if (strncmp(region->base, sbpr[i].name, len) != 0) {
+		if (region->length < len ||
+		    memcmp(region->base, sbpr[i].name, len) != 0)
+		{
 			continue;
 		}
 
-		INSIST(region->length >= len);
 		if (region->length != len) {
 			if (region->base[len] != '=') {
 				continue;
@@ -258,7 +271,7 @@ svc_fromtext_begin(isc_textregion_t *region, isc_buffer_t *target,
 
 		key = sbpr[i].value;
 		RETERR(uint16_tobuffer(key, target));
-		isc_textregion_consume(region, len);
+		isc_region_consume(region, len);
 		*keyp = key;
 		*encodingp = sbpr[i].encoding;
 		return ISC_R_SUCCESS;
@@ -271,16 +284,14 @@ svc_fromtext_begin(isc_textregion_t *region, isc_buffer_t *target,
 }
 
 static isc_result_t
-svc_fromtext_value(uint16_t key, enum encoding encoding,
-		   isc_textregion_t *region, isc_buffer_t *target) {
-	char *e = NULL;
+svc_fromtext_value(uint16_t key, enum encoding encoding, isc_region_t *region,
+		   isc_buffer_t *target) {
 	char abuf[16];
-	char tbuf[sizeof("aaaa:aaaa:aaaa:aaaa:aaaa:aaaa:255.255.255.255,")];
 	isc_buffer_t sb;
 	isc_region_t keyregion;
 	size_t len;
 	unsigned int used;
-	unsigned long ul;
+	uint32_t number;
 
 	sb = *target;
 	RETERR(uint16_tobuffer(0, target)); /* length */
@@ -294,52 +305,62 @@ svc_fromtext_value(uint16_t key, enum encoding encoding,
 		RETERR(alpn_fromtxt(region, target));
 		break;
 	case sbpr_port:
-		if (region->length == 0 ||
-		    !isdigit((unsigned char)region->base[0]))
+		if (isc_parse_uint32_region(&number, region, 10) !=
+		    ISC_R_SUCCESS)
 		{
 			return DNS_R_SYNTAX;
 		}
-		ul = strtoul(region->base, &e, 10);
-		if (*e != '\0') {
-			return DNS_R_SYNTAX;
-		}
-		if (ul > 0xffff) {
+		if (number > UINT16_MAX) {
 			return ISC_R_RANGE;
 		}
-		RETERR(uint16_tobuffer(ul, target));
+		RETERR(uint16_tobuffer(number, target));
 		break;
 	case sbpr_ipv4s:
 		do {
-			snprintf(tbuf, sizeof(tbuf), "%*s",
-				 (int)(region->length), region->base);
-			e = strchr(tbuf, ',');
-			if (e != NULL) {
-				*e++ = 0;
-				isc_textregion_consume(region, e - tbuf);
+			isc_region_t address = *region;
+			unsigned char *comma = memchr(address.base, ',',
+						      address.length);
+			if (comma != NULL) {
+				if (comma == address.base + address.length - 1)
+				{
+					return DNS_R_SYNTAX;
+				}
+				address.length =
+					(unsigned int)(comma - address.base);
 			}
-			if (inet_pton(AF_INET, tbuf, abuf) != 1) {
+			if (isc_parse_pton(AF_INET, &address, abuf) != 1) {
 				return DNS_R_SYNTAX;
 			}
 			mem_tobuffer(target, abuf, 4);
-		} while (e != NULL);
+			isc_region_consume(region,
+					   address.length +
+						   (comma != NULL ? 1 : 0));
+		} while (region->length != 0);
 		break;
 	case sbpr_ipv6s:
 		do {
-			snprintf(tbuf, sizeof(tbuf), "%*s",
-				 (int)(region->length), region->base);
-			e = strchr(tbuf, ',');
-			if (e != NULL) {
-				*e++ = 0;
-				isc_textregion_consume(region, e - tbuf);
+			isc_region_t address = *region;
+			unsigned char *comma = memchr(address.base, ',',
+						      address.length);
+			if (comma != NULL) {
+				if (comma == address.base + address.length - 1)
+				{
+					return DNS_R_SYNTAX;
+				}
+				address.length =
+					(unsigned int)(comma - address.base);
 			}
-			if (inet_pton(AF_INET6, tbuf, abuf) != 1) {
+			if (isc_parse_pton(AF_INET6, &address, abuf) != 1) {
 				return DNS_R_SYNTAX;
 			}
 			mem_tobuffer(target, abuf, 16);
-		} while (e != NULL);
+			isc_region_consume(region,
+					   address.length +
+						   (comma != NULL ? 1 : 0));
+		} while (region->length != 0);
 		break;
 	case sbpr_base64:
-		RETERR(isc_base64_decodestring(region->base, target));
+		RETERR(isc_base64_decoderegion(region, target));
 		break;
 	case sbpr_empty:
 		if (region->length != 0) {
@@ -545,6 +566,7 @@ static isc_result_t
 generic_fromtext_in_svcb(ARGS_FROMTEXT) {
 	isc_token_t token;
 	isc_token_t value_token;
+	isc_region_t textregion;
 	isc_buffer_t buffer;
 	bool alias;
 	bool have_value_token;
@@ -615,19 +637,20 @@ generic_fromtext_in_svcb(ARGS_FROMTEXT) {
 		}
 
 		quoted_value =
-			token.value.as_textregion.length != 0 &&
-			token.value.as_textregion
-					.base[token.value.as_textregion.length -
-					      1] == '=';
+			token.value.as_region.length != 0 &&
+			token.value.as_region.base[token.value.as_region.length -
+						   1] == '=';
 		have_value_token = false;
-		RETTOK(svc_fromtext_begin(&token.value.as_textregion, target,
-					  &key, &encoding));
+		textregion = token.value.as_region;
+		RETTOK(svc_fromtext_begin(&textregion, target, &key,
+					  &encoding));
 
 		if (quoted_value) {
 			/*
-			 * Quotes end an ordinary lexer token.  Join an immediately
-			 * adjacent quoted value to the key here; after the closing
-			 * quote, even an adjacent atom starts the next SvcParam.
+			 * Quotes end an ordinary lexer token.  Join an
+			 * immediately adjacent quoted value to the key here;
+			 * after the closing quote, even an adjacent atom starts
+			 * the next SvcParam.
 			 */
 			RETERR(isc_lex_getmastertoken(lexer, &value_token,
 						      isc_tokentype_qstring,
@@ -636,14 +659,14 @@ generic_fromtext_in_svcb(ARGS_FROMTEXT) {
 			    (value_token.flags & ISC_LEXFLAG_ADJACENT) != 0)
 			{
 				token = value_token;
+				textregion = token.value.as_region;
 				have_value_token = true;
 			} else {
 				isc_lex_ungettoken(lexer, &value_token);
 			}
 		}
 
-		result = svc_fromtext_value(key, encoding,
-					    &token.value.as_textregion, target);
+		result = svc_fromtext_value(key, encoding, &textregion, target);
 		if (result != ISC_R_SUCCESS) {
 			if (!quoted_value || have_value_token) {
 				isc_lex_ungettoken(lexer, &token);
