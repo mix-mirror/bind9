@@ -1115,7 +1115,7 @@ dns_view_bestzonecut(dns_view_t *view, const dns_name_t *name,
 		 * the same, and this avoid adding extra code here to extract
 		 * A/AAAA rdataset if any.
 		 */
-		dns_delegset_fromnsrdataset(view->mctx, &rdataset, delegsetp);
+		dns_delegset_fromrdataset(view->deleg, &rdataset, 0, delegsetp);
 	}
 
 	dns_rdataset_cleanup(&rdataset);
