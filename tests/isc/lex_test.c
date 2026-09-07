@@ -332,6 +332,18 @@ ISC_RUN_TEST_IMPL(lex_config_policy) {
 	isc_lex_destroy(&lex);
 }
 
+ISC_RUN_TEST_IMPL(lex_no_sources) {
+	isc_lex_t *lex = NULL;
+	isc_token_t token;
+
+	UNUSED(state);
+
+	assert_int_equal(isc_lex_create_config(isc_g_mctx, 4, &lex),
+			 ISC_R_SUCCESS);
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_NOMORE);
+	isc_lex_destroy(&lex);
+}
+
 ISC_RUN_TEST_IMPL(lex_dns_comments) {
 	isc_buffer_t buf;
 	isc_lex_t *lex = NULL;
@@ -703,6 +715,7 @@ ISC_TEST_ENTRY(lex_command_unget)
 ISC_TEST_ENTRY(lex_comment_refill)
 ISC_TEST_ENTRY(lex_dns_comments)
 ISC_TEST_ENTRY(lex_dns_master_policy)
+ISC_TEST_ENTRY(lex_no_sources)
 ISC_TEST_ENTRY(lex_refill_and_unget)
 ISC_TEST_ENTRY(lex_separated_qstring)
 ISC_TEST_ENTRY(lex_unget_eol)

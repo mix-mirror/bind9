@@ -67,7 +67,6 @@ typedef enum {
 	isc_tokentype_eof = 5,
 	isc_tokentype_initialws = 6,
 	isc_tokentype_special = 7,
-	isc_tokentype_nomore = 8,
 } isc_tokentype_t;
 
 /* No ignored input separated this token from the preceding token. */
