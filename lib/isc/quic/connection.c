@@ -257,7 +257,7 @@ stream_close2_cb(ngtcp2_conn *ngconn, uint32_t flags, int64_t stream_id,
 		 void *user_data, void *stream_user_data);
 #endif /* NGTCP2_CALLBACKS_V5 */
 
-static const ngtcp2_callbacks client_cb ISC_ATTR_UNUSED = {
+static const ngtcp2_callbacks client_cb = {
 	.client_initial = client_initial_cb,
 	.recv_crypto_data = recv_crypto_data_cb,
 	.handshake_completed = handshake_completed_cb,
@@ -295,7 +295,7 @@ static const ngtcp2_callbacks client_cb ISC_ATTR_UNUSED = {
 #endif /* NGTCP2_CALLBACKS_V5 */
 };
 
-static const ngtcp2_callbacks server_cb ISC_ATTR_UNUSED = {
+static const ngtcp2_callbacks server_cb = {
 	.recv_client_initial = recv_client_initial_cb,
 	.recv_crypto_data = recv_crypto_data_cb,
 	.handshake_completed = handshake_completed_cb,
