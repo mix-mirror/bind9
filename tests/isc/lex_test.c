@@ -374,7 +374,10 @@ ISC_RUN_TEST_IMPL(lex_dns_comments) {
 	assert_int_equal(token.type, isc_tokentype_string);
 	assert_string_equal(AS_STR(token), "foo\\;bar");
 
-	/* Preserve comment recognition between a bare CR and the next LF. */
+	/* A bare CR and the comment's LF are separate line endings. */
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_eol);
+
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_eol);
 
