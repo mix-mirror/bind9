@@ -347,14 +347,6 @@ stages:
   rules:
     - *default_triggering_rules_list
 
-.code-triggering-rules: &code_triggering_rules
-  rules:
-    - *rule_mr_code
-    - *rule_mr_manual
-    - *rule_tag
-    - *rule_source_other_than_mr
-    - *rule_branch_after_autorebase
-
 .shell-triggering-rules: &shell_triggering_rules
   rules:
     - *rule_mr_shell
@@ -639,7 +631,20 @@ stages:
     - find build/man/ -maxdepth 2 -name "*.[0-9]" -exec mandoc -T lint "{}" \; | ( ! grep -v -e "skipping paragraph macro. sp after" -e "unknown font, skipping request. ft C" -e "input text line longer than 80 bytes" )
 
 .respdiff: &respdiff_job
-  <<: *code_triggering_rules
+  # Every respdiff job runs once per query transport (RESPDIFF_TRANSPORT), so
+  # that TCP connection handling gets compared and, under ThreadSanitizer,
+  # raced, too.  The TCP variants are skipped in merge request pipelines.
+  rules:
+    - if: '$RESPDIFF_TRANSPORT != "udp" && $CI_MERGE_REQUEST_DIFF_BASE_SHA != null'
+      when: never
+    - *rule_mr_code
+    - *rule_mr_manual
+    - *rule_tag
+    - *rule_source_other_than_mr
+    - *rule_branch_after_autorebase
+  parallel:
+    matrix:
+      - RESPDIFF_TRANSPORT: [udp, tcp]
   stage: system
   before_script:
     - *configure
