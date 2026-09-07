@@ -55,7 +55,7 @@ constexpr dns_typepair_t dns_typepair_none = DNS_TYPEPAIR(dns_rdatatype_none);
 constexpr dns_typepair_t dns_typepair_any = DNS_TYPEPAIR(dns_rdatatype_any);
 
 isc_result_t
-dns_rdatatype_fromtext(dns_rdatatype_t *typep, isc_textregion_t *source);
+dns_rdatatype_fromtext(dns_rdatatype_t *typep, const isc_region_t *source);
 /*%<
  * Convert the text 'source' refers to into a DNS rdata type.
  *

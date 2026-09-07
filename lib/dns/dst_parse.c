@@ -48,7 +48,7 @@
 #include "dst_internal.h"
 #include "isc/result.h"
 
-#define DST_AS_STR(t) ((t).value.as_textregion.base)
+#define DST_AS_STR(t) ((char *)(t).value.as_region.base)
 
 #define PRIVATE_KEY_STR "Private-key-format:"
 #define ALGORITHM_STR	"Algorithm:"
@@ -572,7 +572,7 @@ dst__privstruct_parse(dst_key_t *key, unsigned int alg, isc_lex_t *lex,
 				goto cleanup;
 			}
 
-			CHECK(dns_time32_fromregion(token.value.as_textregion,
+			CHECK(dns_time32_fromregion(token.value.as_region,
 						    &when));
 
 			dst_key_settime(key, tag, when);

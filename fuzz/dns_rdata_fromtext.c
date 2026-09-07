@@ -87,7 +87,7 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 			rdclass = (dns_rdataclass_t)number;
 		} else {
 			CHECK(dns_rdataclass_fromtext(
-				&rdclass, &token.value.as_textregion));
+				&rdclass, &token.value.as_region));
 		}
 	} else {
 		goto cleanup;
@@ -110,7 +110,7 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 			rdtype = (dns_rdatatype_t)number;
 		} else {
 			CHECK(dns_rdatatype_fromtext(
-				&rdtype, &token.value.as_textregion));
+				&rdtype, &token.value.as_region));
 		}
 	} else {
 		goto cleanup;

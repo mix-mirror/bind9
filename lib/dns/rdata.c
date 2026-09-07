@@ -70,7 +70,7 @@
 		}                                          \
 	} while (0)
 
-#define DNS_AS_STR(t) ((t).value.as_textregion.base)
+#define DNS_AS_STR(t) ((char *)(t).value.as_region.base)
 
 #define ARGS_FROMTEXT                                           \
 	int rdclass, dns_rdatatype_t type, isc_lex_t *lexer,    \
@@ -149,13 +149,13 @@ static isc_result_t
 txt_totext(isc_region_t *source, bool quote, isc_buffer_t *target);
 
 static isc_result_t
-txt_fromtext(isc_textregion_t *source, isc_buffer_t *target);
+txt_fromtext(const isc_region_t *source, isc_buffer_t *target);
 
 static isc_result_t
 txt_fromwire(isc_buffer_t *source, isc_buffer_t *target);
 
 static isc_result_t
-commatxt_fromtext(isc_textregion_t *source, bool comma, isc_buffer_t *target);
+commatxt_fromtext(isc_region_t *source, bool comma, isc_buffer_t *target);
 
 static isc_result_t
 commatxt_totext(isc_region_t *source, bool quote, bool comma,
@@ -165,7 +165,7 @@ static isc_result_t
 multitxt_totext(isc_region_t *source, isc_buffer_t *target);
 
 static isc_result_t
-multitxt_fromtext(isc_textregion_t *source, isc_buffer_t *target);
+multitxt_fromtext(const isc_region_t *source, isc_buffer_t *target);
 
 static bool
 name_prefix(dns_name_t *name, const dns_name_t *origin, dns_name_t *target);
@@ -435,7 +435,7 @@ typemap_fromtext(isc_lex_t *lexer, isc_buffer_t *target, bool allow_empty) {
 			break;
 		}
 		RETTOK(dns_rdatatype_fromtext(&covered,
-					      &token.value.as_textregion));
+					      &token.value.as_region));
 		if (covered > max_used) {
 			newend = covered / 8;
 			if (newend > end) {
@@ -1511,7 +1511,7 @@ dns_rdatatype_attributes(dns_rdatatype_t type) {
 }
 
 isc_result_t
-dns_rdatatype_fromtext(dns_rdatatype_t *typep, isc_textregion_t *source) {
+dns_rdatatype_fromtext(dns_rdatatype_t *typep, const isc_region_t *source) {
 	unsigned int hash;
 	unsigned int n;
 	unsigned char a, b;
@@ -1532,10 +1532,10 @@ dns_rdatatype_fromtext(dns_rdatatype_t *typep, isc_textregion_t *source) {
 	 * to return a result to the caller if it is a valid (known)
 	 * rdatatype name.
 	 */
-	RDATATYPE_FROMTEXT_SW(hash, source->base, n, typep);
+	RDATATYPE_FROMTEXT_SW(hash, (const char *)source->base, n, typep);
 
 	if (source->length > 4 && source->length < (4 + sizeof("65000")) &&
-	    strncasecmp("type", source->base, 4) == 0)
+	    isc_ascii_lowercmp((const uint8_t *)"type", source->base, 4) == 0)
 	{
 		char buf[sizeof("65000")];
 		char *endp;
@@ -1546,7 +1546,7 @@ dns_rdatatype_fromtext(dns_rdatatype_t *typep, isc_textregion_t *source) {
 		 * Copy up to remaining bytes and NUL terminate.
 		 */
 		snprintf(buf, sizeof(buf), "%.*s", (int)(source->length - 4),
-			 source->base + 4);
+			 (const char *)source->base + 4);
 		val = strtoul(buf, &endp, 10);
 		if (*endp == '\0' && val <= 0xffff) {
 			*typep = (dns_rdatatype_t)val;
@@ -1707,11 +1707,11 @@ txt_totext(isc_region_t *source, bool quote, isc_buffer_t *target) {
 }
 
 static isc_result_t
-commatxt_fromtext(isc_textregion_t *source, bool comma, isc_buffer_t *target) {
+commatxt_fromtext(isc_region_t *source, bool comma, isc_buffer_t *target) {
 	isc_region_t tregion;
 	bool escape = false, comma_escape = false, seen_comma = false;
 	unsigned int n, nrem;
-	char *s;
+	unsigned char *s;
 	unsigned char *t;
 	int d;
 	int c;
@@ -1743,7 +1743,7 @@ commatxt_fromtext(isc_textregion_t *source, bool comma, isc_buffer_t *target) {
 				return DNS_R_SYNTAX;
 			}
 			n--;
-			if ((d = decvalue(*s++)) != -1) {
+			if ((d = decvalue((char)*s++)) != -1) {
 				c = c * 10 + d;
 			} else {
 				return DNS_R_SYNTAX;
@@ -1752,7 +1752,7 @@ commatxt_fromtext(isc_textregion_t *source, bool comma, isc_buffer_t *target) {
 				return DNS_R_SYNTAX;
 			}
 			n--;
-			if ((d = decvalue(*s++)) != -1) {
+			if ((d = decvalue((char)*s++)) != -1) {
 				c = c * 10 + d;
 			} else {
 				return DNS_R_SYNTAX;
@@ -1811,7 +1811,7 @@ commatxt_fromtext(isc_textregion_t *source, bool comma, isc_buffer_t *target) {
 		/*
 		 * Consume this ALPN and possible ending comma.
 		 */
-		isc_textregion_consume(source, s - source->base);
+		isc_region_consume(source, s - source->base);
 
 		/*
 		 * Disallow empty ALPN at end ("h1," or "h1\,").
@@ -1827,8 +1827,9 @@ commatxt_fromtext(isc_textregion_t *source, bool comma, isc_buffer_t *target) {
 }
 
 static isc_result_t
-txt_fromtext(isc_textregion_t *source, isc_buffer_t *target) {
-	return commatxt_fromtext(source, false, target);
+txt_fromtext(const isc_region_t *source, isc_buffer_t *target) {
+	isc_region_t source0 = *source;
+	return commatxt_fromtext(&source0, false, target);
 }
 
 static isc_result_t
@@ -1924,11 +1925,11 @@ multitxt_totext(isc_region_t *source, isc_buffer_t *target) {
 }
 
 static isc_result_t
-multitxt_fromtext(isc_textregion_t *source, isc_buffer_t *target) {
+multitxt_fromtext(const isc_region_t *source, isc_buffer_t *target) {
 	isc_region_t tregion;
 	bool escape;
 	unsigned int n, nrem;
-	char *s;
+	unsigned char *s;
 	unsigned char *t0, *t;
 	int d;
 	int c;
@@ -1954,7 +1955,7 @@ multitxt_fromtext(isc_textregion_t *source, isc_buffer_t *target) {
 					return DNS_R_SYNTAX;
 				}
 				n--;
-				if ((d = decvalue(*s++)) != -1) {
+				if ((d = decvalue((char)*s++)) != -1) {
 					c = c * 10 + d;
 				} else {
 					return DNS_R_SYNTAX;
@@ -1963,7 +1964,7 @@ multitxt_fromtext(isc_textregion_t *source, isc_buffer_t *target) {
 					return DNS_R_SYNTAX;
 				}
 				n--;
-				if ((d = decvalue(*s++)) != -1) {
+				if ((d = decvalue((char)*s++)) != -1) {
 					c = c * 10 + d;
 				} else {
 					return DNS_R_SYNTAX;

@@ -658,7 +658,7 @@ load_zone(isc_mem_t *mctx, const char *zonename, const char *filename,
 
 	region.base = UNCONST(classname);
 	region.length = strlen(classname);
-	CHECK(dns_rdataclass_fromtext(&rdclass, &region));
+	CHECK(dns_rdataclass_fromtext(&rdclass, ISC_REGION_FROM(&region)));
 
 	dns_zone_setclass(zone, rdclass);
 	dns_zone_setoption(zone, zone_options, true);

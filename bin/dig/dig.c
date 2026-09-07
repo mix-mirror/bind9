@@ -2766,7 +2766,7 @@ dash_option(char *option, char *next, dig_lookup_t **lookup,
 		tr.base = value;
 		tr.length = (unsigned int)strlen(value);
 		result = dns_rdataclass_fromtext(&rdclass,
-						 (isc_textregion_t *)&tr);
+						 ISC_REGION_FROM(&tr));
 		if (result == ISC_R_SUCCESS) {
 			(*lookup)->rdclass = rdclass;
 			(*lookup)->rdclassset = true;
@@ -2817,8 +2817,8 @@ dash_option(char *option, char *next, dig_lookup_t **lookup,
 		} else {
 			tr.base = value;
 			tr.length = (unsigned int)strlen(value);
-			result = dns_rdatatype_fromtext(
-				&rdtype, (isc_textregion_t *)&tr);
+			result = dns_rdatatype_fromtext(&rdtype,
+							ISC_REGION_FROM(&tr));
 			if (result == ISC_R_SUCCESS &&
 			    rdtype == dns_rdatatype_ixfr)
 			{
@@ -3175,8 +3175,7 @@ parse_args(bool is_batchfile, bool config_only, int argc, char **argv) {
 					tr.base = rv[0];
 					tr.length = (unsigned int)strlen(rv[0]);
 					result = dns_rdatatype_fromtext(
-						&rdtype,
-						(isc_textregion_t *)&tr);
+						&rdtype, ISC_REGION_FROM(&tr));
 					if (result == ISC_R_SUCCESS &&
 					    rdtype == dns_rdatatype_ixfr)
 					{
@@ -3237,7 +3236,7 @@ parse_args(bool is_batchfile, bool config_only, int argc, char **argv) {
 					continue;
 				}
 				result = dns_rdataclass_fromtext(
-					&rdclass, (isc_textregion_t *)&tr);
+					&rdclass, ISC_REGION_FROM(&tr));
 				if (result == ISC_R_SUCCESS) {
 					if (lookup->rdclassset) {
 						fprintf(stderr, ";; Warning, "

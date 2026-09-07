@@ -206,14 +206,14 @@ fromtext_naptr(ARGS_FROMTEXT) {
 	 */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_qstring,
 				      false));
-	RETTOK(txt_fromtext(&token.value.as_textregion, target));
+	RETTOK(txt_fromtext(&token.value.as_region, target));
 
 	/*
 	 * Service.
 	 */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_qstring,
 				      false));
-	RETTOK(txt_fromtext(&token.value.as_textregion, target));
+	RETTOK(txt_fromtext(&token.value.as_region, target));
 
 	/*
 	 * Regexp.
@@ -221,7 +221,7 @@ fromtext_naptr(ARGS_FROMTEXT) {
 	regex = isc_buffer_used(target);
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_qstring,
 				      false));
-	RETTOK(txt_fromtext(&token.value.as_textregion, target));
+	RETTOK(txt_fromtext(&token.value.as_region, target));
 	RETTOK(txt_valid_regex(regex));
 
 	/*

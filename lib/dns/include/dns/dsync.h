@@ -18,7 +18,8 @@
 #define DNS_DSYNCSCHEMEFORMAT_SIZE (7)
 
 isc_result_t
-dns_dsyncscheme_fromtext(dns_dsyncscheme_t *schemep, isc_textregion_t *source);
+dns_dsyncscheme_fromtext(dns_dsyncscheme_t  *schemep,
+			 const isc_region_t *source);
 
 isc_result_t
 dns_dsyncscheme_totext(dns_dsyncscheme_t scheme, isc_buffer_t *target);

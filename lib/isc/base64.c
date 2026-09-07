@@ -175,7 +175,7 @@ isc_result_t
 isc_base64_tobuffer(isc_lex_t *lexer, isc_buffer_t *target, int length) {
 	unsigned int before, after;
 	base64_decode_ctx_t ctx;
-	isc_textregion_t *tr;
+	isc_region_t *tr;
 	isc_token_t token;
 	bool eol;
 
@@ -197,7 +197,7 @@ isc_base64_tobuffer(isc_lex_t *lexer, isc_buffer_t *target, int length) {
 		if (token.type != isc_tokentype_string) {
 			break;
 		}
-		tr = &token.value.as_textregion;
+		tr = &token.value.as_region;
 		for (i = 0; i < tr->length; i++) {
 			RETERR(base64_decode_char(&ctx, tr->base[i]));
 		}
@@ -223,6 +223,22 @@ isc_base64_decodestring(const char *cstr, isc_buffer_t *target) {
 		if (c == '\0') {
 			break;
 		}
+		if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+			continue;
+		}
+		RETERR(base64_decode_char(&ctx, c));
+	}
+	RETERR(base64_decode_finish(&ctx));
+	return ISC_R_SUCCESS;
+}
+
+isc_result_t
+isc_base64_decoderegion(const isc_region_t *source, isc_buffer_t *target) {
+	base64_decode_ctx_t ctx;
+
+	base64_decode_init(&ctx, isc_zero_or_more, target);
+	for (unsigned int i = 0; i < source->length; i++) {
+		int c = source->base[i];
 		if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
 			continue;
 		}

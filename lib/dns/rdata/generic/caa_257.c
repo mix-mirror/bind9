@@ -278,7 +278,7 @@ static unsigned char const alphanumeric[256] = {
 static isc_result_t
 fromtext_caa(ARGS_FROMTEXT) {
 	isc_token_t token;
-	isc_textregion_t tr;
+	isc_region_t tr;
 	uint8_t flags;
 	unsigned int i;
 
@@ -304,7 +304,7 @@ fromtext_caa(ARGS_FROMTEXT) {
 	 */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-	tr = token.value.as_textregion;
+	tr = token.value.as_region;
 	for (i = 0; i < tr.length; i++) {
 		if (!alphanumeric[(unsigned char)tr.base[i]]) {
 			RETTOK(DNS_R_SYNTAX);
@@ -323,7 +323,7 @@ fromtext_caa(ARGS_FROMTEXT) {
 	{
 		RETERR(DNS_R_SYNTAX);
 	}
-	RETERR(multitxt_fromtext(&token.value.as_textregion, target));
+	RETERR(multitxt_fromtext(&token.value.as_region, target));
 	return ISC_R_SUCCESS;
 }
 

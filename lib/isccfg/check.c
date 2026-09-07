@@ -115,7 +115,8 @@ check_orderent(const cfg_obj_t *ent) {
 	if (cfg_obj_isstring(obj)) {
 		r.base = UNCONST(cfg_obj_asstring(obj));
 		r.length = strlen(r.base);
-		tresult = dns_rdataclass_fromtext(&rdclass, &r);
+		tresult = dns_rdataclass_fromtext(&rdclass,
+					     ISC_REGION_FROM(&r));
 		if (tresult != ISC_R_SUCCESS) {
 			cfg_obj_log(obj, ISC_LOG_ERROR,
 				    "rrset-order: invalid class '%s'", r.base);
@@ -129,7 +130,7 @@ check_orderent(const cfg_obj_t *ent) {
 	if (cfg_obj_isstring(obj)) {
 		r.base = UNCONST(cfg_obj_asstring(obj));
 		r.length = strlen(r.base);
-		tresult = dns_rdatatype_fromtext(&rdtype, &r);
+		tresult = dns_rdatatype_fromtext(&rdtype, ISC_REGION_FROM(&r));
 		if (tresult != ISC_R_SUCCESS) {
 			cfg_obj_log(obj, ISC_LOG_ERROR,
 				    "rrset-order: invalid type '%s'", r.base);
@@ -371,7 +372,7 @@ disabled_algorithms(const cfg_obj_t *disabled) {
 		r.base = UNCONST(cfg_obj_asstring(cfg_listelt_value(element)));
 		r.length = strlen(r.base);
 
-		tresult = dst_algorithm_fromtext(&alg, &r);
+		tresult = dst_algorithm_fromtext(&alg, ISC_REGION_FROM(&r));
 		if (tresult != ISC_R_SUCCESS) {
 			cfg_obj_log(cfg_listelt_value(element), ISC_LOG_ERROR,
 				    "invalid algorithm '%s'", r.base);
@@ -412,7 +413,7 @@ disabled_ds_digests(const cfg_obj_t *disabled) {
 		r.length = strlen(r.base);
 
 		/* works with a numeric argument too */
-		tresult = dns_dsdigest_fromtext(&digest, &r);
+		tresult = dns_dsdigest_fromtext(&digest, ISC_REGION_FROM(&r));
 		if (tresult != ISC_R_SUCCESS) {
 			cfg_obj_log(cfg_listelt_value(element), ISC_LOG_ERROR,
 				    "invalid digest type '%s'", r.base);
@@ -2781,7 +2782,8 @@ check_update_policy(const cfg_obj_t *policy) {
 			if (tresult == ISC_R_SUCCESS) {
 				r.base = UNCONST(str);
 				r.length = strlen(str);
-				tresult = dns_rdatatype_fromtext(&type, &r);
+				tresult = dns_rdatatype_fromtext(
+					&type, ISC_REGION_FROM(&r));
 			}
 			if (tresult == ISC_R_SUCCESS) {
 				cfg_obj_log(identity, ISC_LOG_ERROR,
@@ -2822,7 +2824,8 @@ check_update_policy(const cfg_obj_t *policy) {
 				r.length = strlen(r.base);
 			}
 
-			tresult = dns_rdatatype_fromtext(&type, &r);
+			tresult = dns_rdatatype_fromtext(&type,
+						    ISC_REGION_FROM(&r));
 			if (tresult != ISC_R_SUCCESS) {
 				cfg_obj_log(typeobj, ISC_LOG_ERROR,
 					    "'%.*s' is not a valid type",
@@ -3435,7 +3438,7 @@ isccfg_check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 
 		r.base = UNCONST(cfg_obj_asstring(obj));
 		r.length = strlen(r.base);
-		result = dns_rdataclass_fromtext(&zclass, &r);
+		result = dns_rdataclass_fromtext(&zclass, ISC_REGION_FROM(&r));
 		if (result != ISC_R_SUCCESS) {
 			cfg_obj_log(obj, ISC_LOG_ERROR,
 				    "zone '%s': invalid class %s", znamestr,
@@ -3771,7 +3774,8 @@ isccfg_check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 
 				tr.base = UNCONST(name);
 				tr.length = strlen(name);
-				tresult = dns_rdatatype_fromtext(&rdtype, &tr);
+				tresult = dns_rdatatype_fromtext(
+					&rdtype, ISC_REGION_FROM(&tr));
 				if (tresult != ISC_R_SUCCESS &&
 				    result == ISC_R_SUCCESS)
 				{
@@ -6341,7 +6345,8 @@ isccfg_check_namedconf(const cfg_obj_t *config, unsigned int flags,
 
 			r.base = UNCONST(cfg_obj_asstring(vclassobj));
 			r.length = strlen(r.base);
-			tresult = dns_rdataclass_fromtext(&vclass, &r);
+			tresult = dns_rdataclass_fromtext(
+					&vclass, ISC_REGION_FROM(&r));
 			if (tresult != ISC_R_SUCCESS) {
 				cfg_obj_log(vclassobj, ISC_LOG_ERROR,
 					    "view '%s': invalid class %s",

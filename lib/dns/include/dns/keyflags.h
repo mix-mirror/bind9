@@ -18,7 +18,7 @@
 #include <dns/types.h>
 
 isc_result_t
-dns_keyflags_fromtext(dns_keyflags_t *flagsp, isc_textregion_t *source);
+dns_keyflags_fromtext(dns_keyflags_t *flagsp, const isc_region_t *source);
 /*%<
  * Convert the text 'source' refers to into a DNSSEC KEY flags value.
  * The text may contain either a set of flag mnemonics separated by

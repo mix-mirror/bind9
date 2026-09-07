@@ -58,7 +58,7 @@ fromtext_nsec3(ARGS_FROMTEXT) {
 	/* Hash. */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-	RETTOK(dns_hashalg_fromtext(&hashalg, &token.value.as_textregion));
+	RETTOK(dns_hashalg_fromtext(&hashalg, &token.value.as_region));
 	RETERR(uint8_tobuffer(hashalg, target));
 
 	/* Flags. */
@@ -81,7 +81,7 @@ fromtext_nsec3(ARGS_FROMTEXT) {
 	/* salt */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-	if (token.value.as_textregion.length > (255 * 2)) {
+	if (token.value.as_region.length > (255 * 2)) {
 		RETTOK(DNS_R_TEXTTOOLONG);
 	}
 	if (strcmp(DNS_AS_STR(token), "-") == 0) {

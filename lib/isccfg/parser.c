@@ -85,7 +85,7 @@ static_assert(sizeof(struct cfg_obj) <= 40,
  * the int, so we define a "dummy" value to use instead. */
 #define SYMTAB_DUMMY_TYPE 1
 
-#define TOKEN_STRING(pctx) (pctx->token.value.as_textregion.base)
+#define TOKEN_STRING(pctx) ((char *)(pctx)->token.value.as_region.base)
 
 /* cfg_obj_t magic number */
 #define CFGOBJ_MAGIC	  ISC_MAGIC('c', 'f', 'g', 'o')
@@ -1312,8 +1312,7 @@ parse_duration(cfg_parser_t *pctx, cfg_obj_t **ret) {
 	cfg_obj_t *obj = NULL;
 	isccfg_duration_t duration;
 
-	result = isccfg_parse_duration(&pctx->token.value.as_textregion,
-				       &duration);
+	result = isccfg_parse_duration(&pctx->token.value.as_region, &duration);
 
 	if (result == ISC_R_RANGE) {
 		cfg_parser_error(pctx, CFG_LOG_NEAR,

@@ -51,7 +51,7 @@ generic_fromtext_ds(ARGS_FROMTEXT) {
 	 */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-	RETTOK(dns_secalg_fromtext(&c, &token.value.as_textregion));
+	RETTOK(dns_secalg_fromtext(&c, &token.value.as_region));
 	RETERR(mem_tobuffer(target, &c, 1));
 
 	/*
@@ -59,7 +59,7 @@ generic_fromtext_ds(ARGS_FROMTEXT) {
 	 */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-	RETTOK(dns_dsdigest_fromtext(&c, &token.value.as_textregion));
+	RETTOK(dns_dsdigest_fromtext(&c, &token.value.as_region));
 	RETERR(mem_tobuffer(target, &c, 1));
 
 	/*

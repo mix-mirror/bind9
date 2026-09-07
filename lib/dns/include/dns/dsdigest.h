@@ -18,7 +18,7 @@
 #include <dns/types.h>
 
 isc_result_t
-dns_dsdigest_fromtext(dns_dsdigest_t *dsdigestp, isc_textregion_t *source);
+dns_dsdigest_fromtext(dns_dsdigest_t *dsdigestp, const isc_region_t *source);
 /*%<
  * Convert the text 'source' refers to into a DS digest type value.
  * The text may contain either a mnemonic digest name or a decimal

@@ -73,11 +73,10 @@ typedef enum {
 #define ISC_LEXFLAG_ADJACENT 0x0001
 
 typedef union {
-	char		 as_char;
-	unsigned long	 as_ulong;
-	isc_region_t	 as_region;
-	isc_textregion_t as_textregion;
-	void		*as_pointer;
+	char	      as_char;
+	unsigned long as_ulong;
+	isc_region_t  as_region;
+	void	     *as_pointer;
 } isc_tokenvalue_t;
 
 typedef struct isc_token {

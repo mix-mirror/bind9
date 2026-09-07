@@ -67,7 +67,7 @@
 
 #include "dst_internal.h"
 
-#define DST_AS_STR(t) ((t).value.as_textregion.base)
+#define DST_AS_STR(t) ((char *)(t).value.as_region.base)
 
 static isc_result_t
 next_number(isc_lex_t *lex, isc_token_t *token) {
@@ -1504,9 +1504,9 @@ dst_key_read_public(const char *filename, int type, isc_mem_t *mctx,
 	}
 
 	dns_fixedname_init(&name);
-	isc_buffer_init(&b, token.value.as_textregion.base,
-			token.value.as_textregion.length);
-	isc_buffer_add(&b, token.value.as_textregion.length);
+	isc_buffer_init(&b, token.value.as_region.base,
+			token.value.as_region.length);
+	isc_buffer_add(&b, token.value.as_region.length);
 	CHECK(dns_name_fromtext(dns_fixedname_name(&name), &b, dns_rootname,
 				0));
 
@@ -1518,7 +1518,7 @@ dst_key_read_public(const char *filename, int type, isc_mem_t *mctx,
 	}
 
 	/* If it's a TTL, read the next one */
-	result = dns_ttl_fromtext(&token.value.as_textregion, &ttl);
+	result = dns_ttl_fromtext(&token.value.as_region, &ttl);
 	if (result == ISC_R_SUCCESS) {
 		NEXTTOKEN(lex, &token);
 	}
@@ -1527,7 +1527,7 @@ dst_key_read_public(const char *filename, int type, isc_mem_t *mctx,
 		BADTOKEN();
 	}
 
-	result = dns_rdataclass_fromtext(&rdclass, &token.value.as_textregion);
+	result = dns_rdataclass_fromtext(&rdclass, &token.value.as_region);
 	if (result == ISC_R_SUCCESS) {
 		NEXTTOKEN(lex, &token);
 	}
@@ -1724,7 +1724,7 @@ dst_key_read_state(const char *filename, isc_mem_t *mctx, dst_key_t **keyp) {
 				BADTOKEN();
 			}
 
-			CHECK(dns_time32_fromregion(token.value.as_textregion,
+			CHECK(dns_time32_fromregion(token.value.as_region,
 						    &when));
 
 			dst_key_settime(*keyp, tag, when);

@@ -120,7 +120,7 @@ configure_hint(const char *zfile, const char *zclass) {
 
 	r.base = UNCONST(zclass);
 	r.length = strlen(zclass);
-	CHECK(dns_rdataclass_fromtext(&rdclass, &r));
+	CHECK(dns_rdataclass_fromtext(&rdclass, ISC_REGION_FROM(&r)));
 	if (rdclass != dns_rdataclass_in) {
 		result = ISC_R_FAILURE;
 		goto cleanup;
@@ -475,7 +475,7 @@ config_getclass(const cfg_obj_t *classobj, dns_rdataclass_t defclass,
 	}
 	r.base = UNCONST(cfg_obj_asstring(classobj));
 	r.length = strlen(r.base);
-	return dns_rdataclass_fromtext(classp, &r);
+	return dns_rdataclass_fromtext(classp, ISC_REGION_FROM(&r));
 }
 
 /*% load zones from the configuration */

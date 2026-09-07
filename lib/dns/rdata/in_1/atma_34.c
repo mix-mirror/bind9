@@ -21,7 +21,7 @@
 static isc_result_t
 fromtext_in_atma(ARGS_FROMTEXT) {
 	isc_token_t token;
-	isc_textregion_t *sr;
+	isc_region_t *sr;
 	int n;
 	bool valid = false;
 	bool lastwasperiod = true; /* leading periods not allowed */
@@ -40,7 +40,7 @@ fromtext_in_atma(ARGS_FROMTEXT) {
 	/* ATM End System Address (AESA) format or E.164 */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-	sr = &token.value.as_textregion;
+	sr = &token.value.as_region;
 	if (sr->length < 1) {
 		RETTOK(ISC_R_UNEXPECTEDEND);
 	}
@@ -56,7 +56,7 @@ fromtext_in_atma(ARGS_FROMTEXT) {
 				if (lastwasperiod) {
 					RETTOK(DNS_R_SYNTAX);
 				}
-				isc_textregion_consume(sr, 1);
+				isc_region_consume(sr, 1);
 				lastwasperiod = true;
 				continue;
 			}
@@ -71,7 +71,7 @@ fromtext_in_atma(ARGS_FROMTEXT) {
 				digits = 0;
 				c = 0;
 			}
-			isc_textregion_consume(sr, 1);
+			isc_region_consume(sr, 1);
 			lastwasperiod = false;
 		}
 		if (digits != 0 || !valid || lastwasperiod) {
@@ -83,13 +83,13 @@ fromtext_in_atma(ARGS_FROMTEXT) {
 		 */
 		c = 1;
 		RETERR(mem_tobuffer(target, &c, 1));
-		isc_textregion_consume(sr, 1);
+		isc_region_consume(sr, 1);
 		while (sr->length > 0) {
 			if (sr->base[0] == '.') {
 				if (lastwasperiod) {
 					RETTOK(DNS_R_SYNTAX);
 				}
-				isc_textregion_consume(sr, 1);
+				isc_region_consume(sr, 1);
 				lastwasperiod = true;
 				continue;
 			}
@@ -97,7 +97,7 @@ fromtext_in_atma(ARGS_FROMTEXT) {
 				RETTOK(DNS_R_SYNTAX);
 			}
 			RETERR(mem_tobuffer(target, sr->base, 1));
-			isc_textregion_consume(sr, 1);
+			isc_region_consume(sr, 1);
 			lastwasperiod = false;
 		}
 		if (lastwasperiod) {

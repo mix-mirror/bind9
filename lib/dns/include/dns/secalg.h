@@ -18,7 +18,7 @@
 #include <dns/types.h>
 
 isc_result_t
-dns_secalg_fromtext(dns_secalg_t *secalgp, isc_textregion_t *source);
+dns_secalg_fromtext(dns_secalg_t *secalgp, const isc_region_t *source);
 /*%<
  * Convert the text 'source' refers to into a DNSSEC security algorithm value.
  * The text may contain either a mnemonic algorithm name or a decimal algorithm

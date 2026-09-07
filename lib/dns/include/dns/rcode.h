@@ -18,7 +18,7 @@
 #include <dns/types.h>
 
 isc_result_t
-dns_rcode_fromtext(dns_rcode_t *rcodep, isc_textregion_t *source);
+dns_rcode_fromtext(dns_rcode_t *rcodep, const isc_region_t *source);
 /*%<
  * Convert the text 'source' refers to into a DNS error value.
  *
@@ -52,7 +52,7 @@ dns_rcode_totext(dns_rcode_t rcode, isc_buffer_t *target);
  */
 
 isc_result_t
-dns_tsigrcode_fromtext(dns_rcode_t *rcodep, isc_textregion_t *source);
+dns_tsigrcode_fromtext(dns_rcode_t *rcodep, const isc_region_t *source);
 /*%<
  * Convert the text 'source' refers to into a TSIG/TKEY error value.
  *
@@ -86,7 +86,7 @@ dns_tsigrcode_totext(dns_rcode_t rcode, isc_buffer_t *target);
  */
 
 isc_result_t
-dns_hashalg_fromtext(unsigned char *hashalg, isc_textregion_t *source);
+dns_hashalg_fromtext(unsigned char *hashalg, const isc_region_t *source);
 /*%<
  * Convert the text 'source' refers to into a has algorithm value.
  *

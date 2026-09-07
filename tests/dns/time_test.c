@@ -161,8 +161,8 @@ ISC_RUN_TEST_IMPL(some_ago) {
 
 ISC_RUN_TEST_IMPL(fromregion) {
 	char text[] = "x19700101000000y";
-	isc_textregion_t source = {
-		.base = &text[1],
+	isc_region_t source = {
+		.base = (unsigned char *)&text[1],
 		.length = 14,
 	};
 	int64_t when;

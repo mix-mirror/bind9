@@ -37,7 +37,7 @@ dns_time64_fromtext(const char *source, int64_t *target);
  */
 
 isc_result_t
-dns_time64_fromregion(isc_textregion_t source, int64_t *target);
+dns_time64_fromregion(isc_region_t source, int64_t *target);
 /*%<
  * Like dns_time64_fromtext, but read the text from the length-delimited
  * region 'source'.
@@ -51,7 +51,7 @@ dns_time32_fromtext(const char *source, uint32_t *target);
  */
 
 isc_result_t
-dns_time32_fromregion(isc_textregion_t source, uint32_t *target);
+dns_time32_fromregion(isc_region_t source, uint32_t *target);
 /*%<
  * Like dns_time64_fromregion, but returns the second count modulo 2^32 as per
  * RFC2535.

@@ -49,7 +49,7 @@ getcommand(isc_lex_t *lex, char **cmdp) {
 		return ISC_R_FAILURE;
 	}
 
-	*cmdp = token.value.as_textregion.base;
+	*cmdp = (char *)token.value.as_region.base;
 
 	return ISC_R_SUCCESS;
 }

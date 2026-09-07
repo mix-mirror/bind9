@@ -43,7 +43,8 @@ typedef struct isccfg_duration {
 } isccfg_duration_t;
 
 isc_result_t
-isccfg_duration_fromtext(isc_textregion_t *source, isccfg_duration_t *duration);
+isccfg_duration_fromtext(const isc_region_t *source,
+			 isccfg_duration_t  *duration);
 /*%<
  * Converts an ISO 8601 duration style value.
  *
@@ -53,7 +54,7 @@ isccfg_duration_fromtext(isc_textregion_t *source, isccfg_duration_t *duration);
  */
 
 isc_result_t
-isccfg_parse_duration(isc_textregion_t *source, isccfg_duration_t *duration);
+isccfg_parse_duration(const isc_region_t *source, isccfg_duration_t *duration);
 /*%<
  * Converts a duration string to a ISO 8601 duration.
  * If the string does not start with a P (or p), fall back to TTL-style value.

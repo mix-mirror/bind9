@@ -190,7 +190,7 @@ named_config_getclass(const cfg_obj_t *classobj, dns_rdataclass_t defclass,
 	}
 	r.base = UNCONST(cfg_obj_asstring(classobj));
 	r.length = strlen(r.base);
-	result = dns_rdataclass_fromtext(classp, &r);
+	result = dns_rdataclass_fromtext(classp, ISC_REGION_FROM(&r));
 	if (result != ISC_R_SUCCESS) {
 		cfg_obj_log(classobj, ISC_LOG_ERROR, "unknown class '%s'",
 			    r.base);
@@ -210,7 +210,7 @@ named_config_gettype(const cfg_obj_t *typeobj, dns_rdatatype_t deftype,
 	}
 	r.base = UNCONST(cfg_obj_asstring(typeobj));
 	r.length = strlen(r.base);
-	result = dns_rdatatype_fromtext(typep, &r);
+	result = dns_rdatatype_fromtext(typep, ISC_REGION_FROM(&r));
 	if (result != ISC_R_SUCCESS) {
 		cfg_obj_log(typeobj, ISC_LOG_ERROR, "unknown type '%s'",
 			    r.base);

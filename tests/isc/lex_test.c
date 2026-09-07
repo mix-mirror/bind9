@@ -31,7 +31,7 @@
 
 #include <tests/isc.h>
 
-#define AS_STR(x) (x).value.as_textregion.base
+#define AS_STR(x) ((char *)(x).value.as_region.base)
 
 #define TEST_REFILL_SIZE (16U * 1024U)
 
@@ -79,8 +79,8 @@ ISC_RUN_TEST_IMPL(lex_0x00) {
 	result = isc_lex_next(lex, &token);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_qstring);
-	assert_int_equal(token.value.as_textregion.length, 3);
-	assert_memory_equal(token.value.as_textregion.base, "a\0b", 3);
+	assert_int_equal(token.value.as_region.length, 3);
+	assert_memory_equal(token.value.as_region.base, "a\0b", 3);
 
 	isc_lex_close(lex);
 
@@ -96,8 +96,8 @@ ISC_RUN_TEST_IMPL(lex_0x00) {
 	result = isc_lex_next(lex, &token);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_string);
-	assert_int_equal(token.value.as_textregion.length, 4);
-	assert_memory_equal(token.value.as_textregion.base, "a\\\0b", 4);
+	assert_int_equal(token.value.as_region.length, 4);
+	assert_memory_equal(token.value.as_region.base, "a\\\0b", 4);
 
 	isc_lex_destroy(&lex);
 }
@@ -140,8 +140,8 @@ ISC_RUN_TEST_IMPL(lex_0x00_initialws) {
 	 * The unknown token must not leave the previous token's text
 	 * region pointer behind for a caller to dereference.
 	 */
-	assert_null(token.value.as_textregion.base);
-	assert_int_equal(token.value.as_textregion.length, 0);
+	assert_null(token.value.as_region.base);
+	assert_int_equal(token.value.as_region.length, 0);
 
 	result = isc_lex_next(lex, &token);
 	assert_int_equal(result, ISC_R_SUCCESS);
@@ -271,7 +271,7 @@ ISC_RUN_TEST_IMPL(lex_refill_and_unget) {
 
 		assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 		assert_int_equal(token.type, isc_tokentype_string);
-		assert_int_equal(token.value.as_textregion.length, atom_length);
+		assert_int_equal(token.value.as_region.length, atom_length);
 		assert_memory_equal(AS_STR(token), text + sizeof("first ") - 1U,
 				    atom_length);
 		isc_lex_getlasttokentext(lex, &token, &raw);
@@ -282,7 +282,7 @@ ISC_RUN_TEST_IMPL(lex_refill_and_unget) {
 		isc_lex_ungettoken(lex, &token);
 		assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 		assert_int_equal(token.type, isc_tokentype_string);
-		assert_int_equal(token.value.as_textregion.length, atom_length);
+		assert_int_equal(token.value.as_region.length, atom_length);
 		assert_memory_equal(AS_STR(token), text + sizeof("first ") - 1U,
 				    atom_length);
 
@@ -334,7 +334,7 @@ ISC_RUN_TEST_IMPL(lex_qstring_refill_and_cooking) {
 
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_qstring);
-	assert_int_equal(token.value.as_textregion.length, prefix_length + 2U);
+	assert_int_equal(token.value.as_region.length, prefix_length + 2U);
 	assert_memory_equal(AS_STR(token), text + 1U, prefix_length);
 	assert_int_equal(AS_STR(token)[prefix_length], '"');
 	assert_int_equal(AS_STR(token)[prefix_length + 1U], 'b');
@@ -347,7 +347,7 @@ ISC_RUN_TEST_IMPL(lex_qstring_refill_and_cooking) {
 	isc_lex_ungettoken(lex, &token);
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_qstring);
-	assert_int_equal(token.value.as_textregion.length, prefix_length + 2U);
+	assert_int_equal(token.value.as_region.length, prefix_length + 2U);
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_eof);
 
