@@ -607,6 +607,8 @@ ISC_RUN_TEST_IMPL(lex_command_arguments) {
 		{ "delzone odd{zone}", "odd{zone}", isc_tokentype_string },
 		{ "delzone odd(zone)", "odd(zone)", isc_tokentype_string },
 		{ "delzone \"odd zone\"", "odd zone", isc_tokentype_qstring },
+		{ "delzone \"odd\\\"zone\"", "odd\"zone",
+		  isc_tokentype_qstring },
 	};
 
 	UNUSED(state);
