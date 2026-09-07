@@ -55,7 +55,7 @@ struct isc_quic_router {
 	size_t cidlen;
 	struct cds_lfht *cid_ht;
 	struct cds_lfht *reset_ht;
-	uint8_t hmac[32];
+	uint8_t hmac_key[ISC_SHA256_DIGESTLENGTH];
 };
 
 constexpr uint32_t router_magic = ISC_MAGIC('Q', 'U', 'I', 'r');
@@ -129,7 +129,7 @@ destroy(isc_quic_router_t *router) {
 	}
 	RUNTIME_CHECK(!cds_lfht_destroy(router->reset_ht, NULL));
 
-	isc_safe_memwipe(router->hmac, sizeof(router->hmac));
+	isc_safe_memwipe(router->hmac_key, sizeof(router->hmac_key));
 
 	router->magic = 0;
 
@@ -162,7 +162,7 @@ isc_quic_router_create(isc_mem_t *mctx, size_t cidlen,
 	INSIST(router->cid_ht != NULL);
 	INSIST(router->reset_ht != NULL);
 
-	isc_random_buf(router->hmac, sizeof(router->hmac));
+	isc_random_buf(router->hmac_key, sizeof(router->hmac_key));
 
 	*routerp = router;
 }
@@ -291,8 +291,9 @@ isc_quic_router_stateless_reset_from_cid(
 	 * HMAC failing here is inactionable and points to an unignorable
 	 * libcrypto issue.
 	 */
-	INSIST(isc_hmac(ISC_MD_SHA256, router->hmac, sizeof(router->hmac),
-			cid.base, cid.length, mac, &maclen) == ISC_R_SUCCESS);
+	INSIST(isc_hmac(ISC_MD_SHA256, router->hmac_key,
+			sizeof(router->hmac_key), cid.base, cid.length, mac,
+			&maclen) == ISC_R_SUCCESS);
 
 	memmove(token, mac, ISC_QUIC_STATELESS_TOKEN_LENGTH);
 	isc_safe_memwipe(mac, sizeof(mac));
