@@ -18,8 +18,8 @@ when flag 0x02 is set, the source serial of the zone the file was
 generated from.
 """
 
+import argparse
 import struct
-import sys
 
 
 def version(path: str) -> int | None:
@@ -49,18 +49,17 @@ def source_serial(path: str) -> int | None:
 
 
 def main() -> None:
-    try:
-        subcommand, path = sys.argv[1], sys.argv[2]
-    except IndexError:
-        sys.exit("usage: rawzone {version|sourceserial} <file>")
-    if subcommand == "version":
-        result = version(path)
+    parser = argparse.ArgumentParser(prog="rawzone", description=__doc__)
+    subparsers = parser.add_subparsers(dest="subcommand", required=True)
+    subparsers.add_parser("version").add_argument("path")
+    subparsers.add_parser("sourceserial").add_argument("path")
+    args = parser.parse_args()
+    if args.subcommand == "version":
+        result = version(args.path)
         print("not raw" if result is None else result)
-    elif subcommand == "sourceserial":
-        result = source_serial(path)
-        print("UNSET" if result is None else result)
     else:
-        sys.exit(f"rawzone: unknown subcommand '{subcommand}'")
+        result = source_serial(args.path)
+        print("UNSET" if result is None else result)
 
 
 if __name__ == "__main__":
