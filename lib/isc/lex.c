@@ -354,6 +354,7 @@ typedef enum {
 	lexstate_atom_escaped,
 	lexstate_qstring,
 	lexstate_qstring_escaped,
+	lexstate_qstring_needs_cooking,
 } lexstate_t;
 
 #define IWSEOL (ISC_LEXOPT_INITIALWS | ISC_LEXOPT_EOL)
@@ -373,43 +374,52 @@ finish_atom(isc_lex_t *lex, inputsource *source, isc_token_t *tokenp) {
 }
 
 static void
-finish_qstring(isc_lex_t *lex, inputsource *source, isc_token_t *tokenp,
-	       bool needs_cooking) {
+finish_qstring(isc_lex_t *lex, inputsource *source, isc_token_t *tokenp) {
 	isc_buffer_t *buffer = source->pushback;
 	unsigned char *raw;
 	size_t raw_length;
-	size_t length;
 
 	INSIST(buffer->current >= source->ignored + 2U);
 	raw = (unsigned char *)buffer->base + source->ignored + 1U;
 	raw_length = buffer->current - source->ignored - 2U;
 	ensure_data(lex, raw_length);
-
-	if (!needs_cooking) {
-		memmove(lex->data, raw, raw_length);
-		length = raw_length;
-	} else {
-		char *dst = lex->data;
-		bool escaped = false;
-
-		for (size_t i = 0; i < raw_length; i++) {
-			int c = raw[i];
-
-			if (c == '"' && escaped) {
-				dst[-1] = '"';
-				escaped = false;
-				continue;
-			}
-			escaped = c == '\\' && !escaped;
-			*dst++ = c;
-		}
-		length = (size_t)(dst - lex->data);
-	}
-
-	lex->data[length] = '\0';
+	memmove(lex->data, raw, raw_length);
+	lex->data[raw_length] = '\0';
 	tokenp->type = isc_tokentype_qstring;
 	tokenp->value.as_textregion.base = lex->data;
-	tokenp->value.as_textregion.length = (unsigned int)length;
+	tokenp->value.as_textregion.length = (unsigned int)raw_length;
+}
+
+static void
+finish_qstring_cooked(isc_lex_t *lex, inputsource *source,
+		      isc_token_t *tokenp) {
+	isc_buffer_t *buffer = source->pushback;
+	unsigned char *raw;
+	char *dst;
+	size_t raw_length;
+	bool escaped = false;
+
+	INSIST(buffer->current >= source->ignored + 2U);
+	raw = (unsigned char *)buffer->base + source->ignored + 1U;
+	raw_length = buffer->current - source->ignored - 2U;
+	ensure_data(lex, raw_length);
+	dst = lex->data;
+	for (size_t i = 0; i < raw_length; i++) {
+		int c = raw[i];
+
+		if (c == '"' && escaped) {
+			dst[-1] = '"';
+			escaped = false;
+			continue;
+		}
+		escaped = c == '\\' && !escaped;
+		*dst++ = c;
+	}
+
+	*dst = '\0';
+	tokenp->type = isc_tokentype_qstring;
+	tokenp->value.as_textregion.base = lex->data;
+	tokenp->value.as_textregion.length = (unsigned int)(dst - lex->data);
 }
 
 static void
@@ -567,7 +577,6 @@ lex_gettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 	isc_buffer_t *buffer;
 	unsigned char *p;
 	int c;
-	bool qstring_needs_cooking = false;
 	bool separated = false;
 	unsigned int options;
 	isc_result_t result;
@@ -641,6 +650,7 @@ lex_gettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 			case lexstate_atom_escaped:
 			case lexstate_qstring:
 			case lexstate_qstring_escaped:
+			case lexstate_qstring_needs_cooking:
 				result = ISC_R_UNEXPECTEDEND;
 				goto done;
 			}
@@ -781,8 +791,7 @@ lex_gettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 		case lexstate_qstring:
 			if (c == '"') {
 				buffer->current++;
-				finish_qstring(lex, source, tokenp,
-					       qstring_needs_cooking);
+				finish_qstring(lex, source, tokenp);
 				result = ISC_R_SUCCESS;
 				goto done;
 			}
@@ -803,13 +812,31 @@ lex_gettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 
 		case lexstate_qstring_escaped:
 			buffer->current++;
-			state = lexstate_qstring;
-			if (c == '"') {
-				qstring_needs_cooking = true;
-				continue;
-			}
+			state = lexstate_qstring_needs_cooking;
 			if (c == '\n') {
 				source->line++;
+			}
+			continue;
+
+		case lexstate_qstring_needs_cooking:
+			if (c == '"') {
+				buffer->current++;
+				finish_qstring_cooked(lex, source, tokenp);
+				result = ISC_R_SUCCESS;
+				goto done;
+			}
+			if (c == '\n' &&
+			    (options & ISC_LEXOPT_QSTRINGMULTILINE) == 0)
+			{
+				result = ISC_R_UNBALANCEDQUOTES;
+				goto done;
+			}
+			buffer->current++;
+			if (c == '\n') {
+				source->line++;
+			}
+			if (c == '\\') {
+				state = lexstate_qstring_escaped;
 			}
 			continue;
 		}
