@@ -152,9 +152,8 @@ ISC_RUN_TEST_IMPL(lex_0x00_initialws) {
 ISC_RUN_TEST_IMPL(lex_dns_master_policy) {
 	isc_buffer_t buf;
 	isc_lex_t *lex = NULL;
-	isc_result_t result;
 	isc_token_t token;
-	const char text[] = " 123 \"hello\"\nkey=\"a b\"";
+	const char text[] = " 123 \"hello\"\nkey=\"a b\"port=53";
 
 	UNUSED(state);
 
@@ -178,10 +177,45 @@ ISC_RUN_TEST_IMPL(lex_dns_master_policy) {
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_eol);
 
-	result = isc_lex_next_vpair(lex, &token, true);
-	assert_int_equal(result, ISC_R_SUCCESS);
-	assert_int_equal(token.type, isc_tokentype_qvpair);
-	assert_string_equal(AS_STR(token), "key=a b");
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_string);
+	assert_string_equal(AS_STR(token), "key=");
+
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_qstring);
+	assert_string_equal(AS_STR(token), "a b");
+	assert_true((token.flags & ISC_LEXFLAG_ADJACENT) != 0);
+
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_string);
+	assert_string_equal(AS_STR(token), "port=53");
+	assert_true((token.flags & ISC_LEXFLAG_ADJACENT) != 0);
+
+	isc_lex_destroy(&lex);
+}
+
+ISC_RUN_TEST_IMPL(lex_separated_qstring) {
+	isc_buffer_t buf;
+	isc_lex_t *lex = NULL;
+	isc_token_t token;
+	const char text[] = "key= \"value\"";
+
+	UNUSED(state);
+
+	assert_int_equal(isc_lex_create_dns_master(isc_g_mctx, 4, &lex),
+			 ISC_R_SUCCESS);
+	isc_buffer_constinit(&buf, text, sizeof(text) - 1);
+	isc_buffer_add(&buf, sizeof(text) - 1);
+	assert_int_equal(isc_lex_openbuffer(lex, &buf), ISC_R_SUCCESS);
+
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_string);
+	assert_string_equal(AS_STR(token), "key=");
+
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_qstring);
+	assert_string_equal(AS_STR(token), "value");
+	assert_true((token.flags & ISC_LEXFLAG_ADJACENT) == 0);
 
 	isc_lex_destroy(&lex);
 }
@@ -412,256 +446,6 @@ ISC_RUN_TEST_IMPL(lex_setline) {
 	isc_lex_destroy(&lex);
 }
 
-#if 0 /* Removed contextual tokenization tests; dialect tokenization is fixed. */
-static struct {
-	const char *text;
-	const char *string_value;
-	isc_result_t string_result;
-	isc_tokentype_t string_type;
-	const char *qstring_value;
-	isc_result_t qstring_result;
-	isc_tokentype_t qstring_type;
-	const char *qvpair_value;
-	isc_result_t qvpair_result;
-	isc_tokentype_t qvpair_type;
-} parse_tests[] = {
-	{ "", "", ISC_R_SUCCESS, isc_tokentype_eof, "", ISC_R_SUCCESS,
-	  isc_tokentype_eof, "", ISC_R_SUCCESS, isc_tokentype_eof },
-	{ "1234", "1234", ISC_R_SUCCESS, isc_tokentype_string, "1234",
-	  ISC_R_SUCCESS, isc_tokentype_string, "1234", ISC_R_SUCCESS,
-	  isc_tokentype_string },
-	{ "1234=", "1234=", ISC_R_SUCCESS, isc_tokentype_string,
-	  "1234=", ISC_R_SUCCESS, isc_tokentype_string, "1234=", ISC_R_SUCCESS,
-	  isc_tokentype_vpair },
-	{ "1234=foo", "1234=foo", ISC_R_SUCCESS, isc_tokentype_string,
-	  "1234=foo", ISC_R_SUCCESS, isc_tokentype_string, "1234=foo",
-	  ISC_R_SUCCESS, isc_tokentype_vpair },
-	{ "1234=\"foo", "1234=\"foo", ISC_R_SUCCESS, isc_tokentype_string,
-	  "1234=\"foo", ISC_R_SUCCESS, isc_tokentype_string, NULL,
-	  ISC_R_UNEXPECTEDEND, 0 },
-	{ "1234=\"foo\"", "1234=\"foo\"", ISC_R_SUCCESS, isc_tokentype_string,
-	  "1234=\"foo\"", ISC_R_SUCCESS, isc_tokentype_string, "1234=foo",
-	  ISC_R_SUCCESS, isc_tokentype_qvpair },
-	{ "key", "key", ISC_R_SUCCESS, isc_tokentype_string, "key",
-	  ISC_R_SUCCESS, isc_tokentype_string, "key", ISC_R_SUCCESS,
-	  isc_tokentype_string },
-	{ "\"key=", "\"key=", ISC_R_SUCCESS, isc_tokentype_string, NULL,
-	  ISC_R_UNEXPECTEDEND, 0, "\"key=", ISC_R_SUCCESS,
-	  isc_tokentype_vpair },
-	{ "\"key=\"", "\"key=\"", ISC_R_SUCCESS, isc_tokentype_string, "key=",
-	  ISC_R_SUCCESS, isc_tokentype_qstring, NULL, ISC_R_UNEXPECTEDEND, 0 },
-	{ "key=\"\"", "key=\"\"", ISC_R_SUCCESS, isc_tokentype_string,
-	  "key=\"\"", ISC_R_SUCCESS, isc_tokentype_string,
-	  "key=", ISC_R_SUCCESS, isc_tokentype_qvpair },
-	{ "key=\"a b\"", "key=\"a", ISC_R_SUCCESS, isc_tokentype_string,
-	  "key=\"a", ISC_R_SUCCESS, isc_tokentype_string, "key=a b",
-	  ISC_R_SUCCESS, isc_tokentype_qvpair },
-	{ "key=\"a\tb\"", "key=\"a", ISC_R_SUCCESS, isc_tokentype_string,
-	  "key=\"a", ISC_R_SUCCESS, isc_tokentype_string, "key=a\tb",
-	  ISC_R_SUCCESS, isc_tokentype_qvpair },
-	/* double quote not immediately after '=' is not special. */
-	{ "key=c\"a b\"", "key=c\"a", ISC_R_SUCCESS, isc_tokentype_string,
-	  "key=c\"a", ISC_R_SUCCESS, isc_tokentype_string, "key=c\"a",
-	  ISC_R_SUCCESS, isc_tokentype_vpair },
-	/* remove special meaning for '=' by escaping */
-	{ "key\\=", "key\\=", ISC_R_SUCCESS, isc_tokentype_string,
-	  "key\\=", ISC_R_SUCCESS, isc_tokentype_string,
-	  "key\\=", ISC_R_SUCCESS, isc_tokentype_string },
-	{ "key\\=\"a\"", "key\\=\"a\"", ISC_R_SUCCESS, isc_tokentype_string,
-	  "key\\=\"a\"", ISC_R_SUCCESS, isc_tokentype_string, "key\\=\"a\"",
-	  ISC_R_SUCCESS, isc_tokentype_string },
-	{ "key\\=\"a \"", "key\\=\"a", ISC_R_SUCCESS, isc_tokentype_string,
-	  "key\\=\"a", ISC_R_SUCCESS, isc_tokentype_string, "key\\=\"a",
-	  ISC_R_SUCCESS, isc_tokentype_string },
-	/* vpair with a key of 'key\=' (would need to be deescaped) */
-	{ "key\\==", "key\\==", ISC_R_SUCCESS, isc_tokentype_string,
-	  "key\\==", ISC_R_SUCCESS, isc_tokentype_string,
-	  "key\\==", ISC_R_SUCCESS, isc_tokentype_vpair },
-	{ "key\\==\"\"", "key\\==\"\"", ISC_R_SUCCESS, isc_tokentype_string,
-	  "key\\==\"\"", ISC_R_SUCCESS, isc_tokentype_string,
-	  "key\\==", ISC_R_SUCCESS, isc_tokentype_qvpair },
-	{ "key=\\\\\\\\", "key=\\\\\\\\", ISC_R_SUCCESS, isc_tokentype_string,
-	  "key=\\\\\\\\", ISC_R_SUCCESS, isc_tokentype_string, "key=\\\\\\\\",
-	  ISC_R_SUCCESS, isc_tokentype_vpair },
-	{ "key=\\\\\\\"", "key=\\\\\\\"", ISC_R_SUCCESS, isc_tokentype_string,
-	  "key=\\\\\\\"", ISC_R_SUCCESS, isc_tokentype_string, "key=\\\\\\\"",
-	  ISC_R_SUCCESS, isc_tokentype_vpair },
-	/* incomplete escape sequence */
-	{ "key=\\\"\\", NULL, ISC_R_UNEXPECTEDEND, isc_tokentype_string, NULL,
-	  ISC_R_UNEXPECTEDEND, 0, NULL, ISC_R_UNEXPECTEDEND, 0 },
-	/* incomplete escape sequence */
-	{ "key=\\", NULL, ISC_R_UNEXPECTEDEND, isc_tokentype_string, NULL,
-	  ISC_R_UNEXPECTEDEND, 0, NULL, ISC_R_UNEXPECTEDEND, 0 },
-};
-
-/*%
- * string
- */
-ISC_RUN_TEST_IMPL(lex_string) {
-	isc_buffer_t buf;
-	isc_lex_t *lex = NULL;
-	isc_result_t result;
-	isc_token_t token;
-	size_t i;
-
-	UNUSED(state);
-
-	for (i = 0; i < ARRAY_SIZE(parse_tests); i++) {
-		assert_int_equal(
-			isc_lex_create_dns_master(isc_g_mctx, 1024, &lex),
-			ISC_R_SUCCESS);
-
-		isc_buffer_constinit(&buf, parse_tests[i].text,
-				     strlen(parse_tests[i].text));
-		isc_buffer_add(&buf, strlen(parse_tests[i].text));
-
-		result = isc_lex_openbuffer(lex, &buf);
-		assert_int_equal(result, ISC_R_SUCCESS);
-
-		result = isc_lex_setsourceline(lex, 100);
-		assert_int_equal(result, ISC_R_SUCCESS);
-
-		memset(&token, 0, sizeof(token));
-		result = isc_lex_getmastertoken(lex, &token,
-						isc_tokentype_string, true);
-
-		assert_int_equal(result, parse_tests[i].string_result);
-		if (result == ISC_R_SUCCESS) {
-			switch (token.type) {
-			case isc_tokentype_string:
-			case isc_tokentype_qstring:
-			case isc_tokentype_vpair:
-			case isc_tokentype_qvpair:
-				assert_int_equal(token.type,
-						 parse_tests[i].string_type);
-				assert_string_equal(
-					AS_STR(token),
-					parse_tests[i].string_value);
-				break;
-			default:
-				assert_int_equal(token.type,
-						 parse_tests[i].string_type);
-				break;
-			}
-		}
-
-		isc_lex_destroy(&lex);
-	}
-}
-
-/*%
- * qstring
- */
-ISC_RUN_TEST_IMPL(lex_qstring) {
-	isc_buffer_t buf;
-	isc_lex_t *lex = NULL;
-	isc_result_t result;
-	isc_token_t token;
-	size_t i;
-
-	UNUSED(state);
-
-	for (i = 0; i < ARRAY_SIZE(parse_tests); i++) {
-		assert_int_equal(
-			isc_lex_create_dns_master(isc_g_mctx, 1024, &lex),
-			ISC_R_SUCCESS);
-
-		isc_buffer_constinit(&buf, parse_tests[i].text,
-				     strlen(parse_tests[i].text));
-		isc_buffer_add(&buf, strlen(parse_tests[i].text));
-
-		result = isc_lex_openbuffer(lex, &buf);
-		assert_int_equal(result, ISC_R_SUCCESS);
-
-		result = isc_lex_setsourceline(lex, 100);
-		assert_int_equal(result, ISC_R_SUCCESS);
-
-		memset(&token, 0, sizeof(token));
-		result = isc_lex_getmastertoken(lex, &token,
-						isc_tokentype_qstring, true);
-
-		assert_int_equal(result, parse_tests[i].qstring_result);
-		if (result == ISC_R_SUCCESS) {
-			switch (token.type) {
-			case isc_tokentype_string:
-			case isc_tokentype_qstring:
-			case isc_tokentype_vpair:
-			case isc_tokentype_qvpair:
-				assert_int_equal(token.type,
-						 parse_tests[i].qstring_type);
-				assert_string_equal(
-					AS_STR(token),
-					parse_tests[i].qstring_value);
-				break;
-			default:
-				assert_int_equal(token.type,
-						 parse_tests[i].qstring_type);
-				break;
-			}
-		}
-
-		isc_lex_destroy(&lex);
-	}
-}
-
-/*%
- * keypair is <string>=<qstring>.  This has implications double quotes
- * in key names.
- */
-ISC_RUN_TEST_IMPL(lex_keypair) {
-	isc_buffer_t buf;
-	isc_lex_t *lex = NULL;
-	isc_result_t result;
-	isc_token_t token;
-	size_t i;
-
-	UNUSED(state);
-
-	for (i = 0; i < ARRAY_SIZE(parse_tests); i++) {
-		assert_int_equal(
-			isc_lex_create_dns_master(isc_g_mctx, 1024, &lex),
-			ISC_R_SUCCESS);
-
-		isc_buffer_constinit(&buf, parse_tests[i].text,
-				     strlen(parse_tests[i].text));
-		isc_buffer_add(&buf, strlen(parse_tests[i].text));
-
-		result = isc_lex_openbuffer(lex, &buf);
-		assert_int_equal(result, ISC_R_SUCCESS);
-
-		result = isc_lex_setsourceline(lex, 100);
-		assert_int_equal(result, ISC_R_SUCCESS);
-
-		memset(&token, 0, sizeof(token));
-		result = isc_lex_getmastertoken(lex, &token,
-						isc_tokentype_qvpair, true);
-
-		assert_int_equal(result, parse_tests[i].qvpair_result);
-		if (result == ISC_R_SUCCESS) {
-			switch (token.type) {
-			case isc_tokentype_string:
-			case isc_tokentype_qstring:
-			case isc_tokentype_vpair:
-			case isc_tokentype_qvpair:
-				assert_int_equal(token.type,
-						 parse_tests[i].qvpair_type);
-				assert_string_equal(
-					AS_STR(token),
-					parse_tests[i].qvpair_value);
-				break;
-			default:
-				assert_int_equal(token.type,
-						 parse_tests[i].qvpair_type);
-				break;
-			}
-		}
-
-		isc_lex_destroy(&lex);
-	}
-}
-
-#endif
-
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY(lex_0x00)
 ISC_TEST_ENTRY(lex_0x00_initialws)
@@ -670,6 +454,7 @@ ISC_TEST_ENTRY(lex_config_policy)
 ISC_TEST_ENTRY(lex_command_arguments)
 ISC_TEST_ENTRY(lex_command_unget)
 ISC_TEST_ENTRY(lex_dns_master_policy)
+ISC_TEST_ENTRY(lex_separated_qstring)
 ISC_TEST_ENTRY(lex_unget_eol)
 ISC_TEST_ENTRY(lex_setline)
 ISC_TEST_LIST_END
