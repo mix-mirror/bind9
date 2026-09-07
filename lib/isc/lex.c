@@ -532,7 +532,8 @@ lex_gettoken(isc_lex_t *lex, unsigned int options, isc_token_t *tokenp) {
 				source->ignored = isc_buffer_consumedlength(
 					source->pushback);
 			}
-			c = isc_buffer_getuint8(source->pushback);
+			c = ((unsigned char *)source->pushback->base)
+				[source->pushback->current++];
 		} else if (source->at_eof) {
 			c = EOF;
 		} else {
