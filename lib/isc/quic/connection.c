@@ -1034,7 +1034,7 @@ log_printf(void *user_data ISC_ATTR_UNUSED, const char *fmt, ...) {
 }
 
 static int
-client_initial_cb(ngtcp2_conn *ngconn, void *user_data ISC_ATTR_UNUSED) {
+client_initial_cb(ngtcp2_conn *ngconn, void *user_data) {
 	const ngtcp2_cid *dcid;
 	isc_quic_conn_t *conn;
 	isc_result_t result;
@@ -1657,7 +1657,7 @@ recv_stop_sending_cb(ngtcp2_conn *ngconn ISC_ATTR_UNUSED,
 static int
 stream_close2_cb(ngtcp2_conn *ngconn ISC_ATTR_UNUSED, uint32_t flags,
 		 int64_t stream_id, uint64_t rx_app_error_code,
-		 uint64_t tx_app_error_code ISC_ATTR_UNUSED, void *user_data,
+		 uint64_t tx_app_error_code, void *user_data,
 		 void *stream_user_data) {
 	isc_quic_application_error_kind_t kind;
 	isc__quic_stream_t *stream = stream_user_data;
