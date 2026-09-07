@@ -2336,7 +2336,7 @@ respdiff:
   <<: *respdiff_job
   <<: *base_image
   variables:
-    EXTRA_SETUP_FILES: "--native-file ci/respdiff.ini"
+    EXTRA_SETUP_FILES: "--native-file ci/respdiff.ini --native-file ci/clang-trixie.ini"
     MAX_DISAGREEMENTS_PERCENTAGE: "0.3"
   script:
     - bash respdiff.sh -m /usr/lib/x86_64-linux-gnu/libjemalloc.so.2 -s named -q "${PWD}/100k_mixed.txt" -c 3 -w "${PWD}/rspworkdir" -r "${PWD}/respdiff" "${CI_PROJECT_DIR}" "/usr/local/respdiff-reference-bind/sbin/named"
@@ -2346,7 +2346,7 @@ respdiff:asan:
   <<: *respdiff_job
   <<: *base_image
   variables:
-    EXTRA_SETUP_FILES: "--native-file ci/respdiff-asan.ini"
+    EXTRA_SETUP_FILES: "--native-file ci/respdiff-asan.ini --native-file ci/clang-trixie.ini --native-file ci/clang-sanitizer.ini"
     MAX_DISAGREEMENTS_PERCENTAGE: "0.3"
   script:
     - bash respdiff.sh -s named -q "${PWD}/100k_mixed.txt" -c 3 -w "${PWD}/rspworkdir" -r "${PWD}/respdiff" "${CI_PROJECT_DIR}" "/usr/local/respdiff-reference-bind/sbin/named"
@@ -2367,7 +2367,7 @@ respdiff-third-party:
   <<: *respdiff_job
   <<: *base_image
   variables:
-    EXTRA_SETUP_FILES: "--native-file ci/respdiff-third-party.ini"
+    EXTRA_SETUP_FILES: "--native-file ci/respdiff-third-party.ini --native-file ci/clang-trixie.ini"
     MAX_DISAGREEMENTS_PERCENTAGE: "0.5"
   script:
     - bash respdiff.sh -s third_party -q "${PWD}/100k_mixed.txt" -c 1 -w "${PWD}/rspworkdir" -r "${PWD}/respdiff" "${CI_PROJECT_DIR}"
@@ -2393,7 +2393,7 @@ respdiff-third-party:
 respdiff:recent-named:
   <<: *respdiff_recent_named
   variables:
-    EXTRA_SETUP_FILES: "--native-file ci/respdiff.ini"
+    EXTRA_SETUP_FILES: "--native-file ci/respdiff.ini --native-file ci/clang-trixie.ini"
     MAX_DISAGREEMENTS_PERCENTAGE: "0.15"
   allow_failure: true  # remove once B!12357 is part of a public release
 
