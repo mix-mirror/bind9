@@ -345,6 +345,14 @@ typedef enum {
 	comment_refill_error,
 } comment_result_t;
 
+typedef enum {
+	lexstate_start,
+	lexstate_atom,
+	lexstate_atom_escaped,
+	lexstate_qstring,
+	lexstate_qstring_escaped,
+} lexstate_t;
+
 #define IWSEOL (ISC_LEXOPT_INITIALWS | ISC_LEXOPT_EOL)
 
 static void
@@ -502,13 +510,13 @@ lex_gettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 	isc_buffer_t *buffer;
 	unsigned char *p;
 	int c;
-	bool escaped = false;
 	bool separated = false;
 	char *curr, *prev;
 	size_t remaining;
 	unsigned int options;
 	isc_result_t result;
 	comment_result_t comment;
+	lexstate_t state = lexstate_start;
 
 	/*
 	 * Get the next token.
@@ -552,206 +560,166 @@ lex_gettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 			goto done;
 		}
 
-		/* Token text begins after all leading whitespace and comments.
-		 */
-		source->ignored = buffer->current;
+		if (state == lexstate_start) {
+			/* Token text begins after leading whitespace and
+			 * comments. */
+			source->ignored = buffer->current;
+		}
 		p = (unsigned char *)buffer->base + buffer->current;
 		if (buffer->current == buffer->used) {
-			lex->last_was_eol = false;
-			if ((options & ISC_LEXOPT_DNSMULTILINE) != 0 &&
-			    lex->paren_count != 0)
-			{
-				lex->paren_count = 0;
-				result = ISC_R_UNBALANCED;
-				goto done;
-			}
-			if ((options & ISC_LEXOPT_EOF) == 0) {
-				result = ISC_R_EOF;
-				goto done;
-			}
-			tokenp->type = isc_tokentype_eof;
-			result = ISC_R_SUCCESS;
-			break;
-		}
-
-		comment = skip_comment_chunk(lex, source);
-		if (comment == comment_refill_error) {
-			result = source->result;
-			goto done;
-		}
-		if (comment == comment_unterminated) {
-			result = ISC_R_UNEXPECTEDEND;
-			goto done;
-		}
-		if (comment == comment_skipped) {
-			separated = true;
-			continue;
-		}
-
-		c = p[0];
-		if (c == ' ' || c == '\t') {
-			buffer->current++;
-			if (lex->last_was_eol &&
-			    (options & ISC_LEXOPT_INITIALWS) != 0)
-			{
+			switch (state) {
+			case lexstate_start:
 				lex->last_was_eol = false;
-				tokenp->type = isc_tokentype_initialws;
-				tokenp->value.as_char = c;
-				result = ISC_R_SUCCESS;
-				break;
-			}
-			separated = true;
-			continue;
-		}
-
-		if (c == '\n' || c == '\r') {
-			bool crlf = c == '\r' && p[1] == '\n';
-
-			buffer->current += crlf ? 2 : 1;
-			if (c == '\n' || crlf) {
-				source->line++;
-			}
-			lex->last_was_eol = true;
-			if ((options & ISC_LEXOPT_EOL) != 0) {
-				tokenp->type = isc_tokentype_eol;
-				result = ISC_R_SUCCESS;
-				break;
-			}
-			separated = true;
-			continue;
-		}
-
-		if (c == '"' && (options & ISC_LEXOPT_QSTRING) != 0) {
-			lex->last_was_eol = false;
-			buffer->current++;
-			for (;;) {
-				result = prepare(source);
-				if (result != ISC_R_SUCCESS) {
-					goto done;
-				}
-				p = (unsigned char *)buffer->base +
-				    buffer->current;
-				if (buffer->current == buffer->used) {
-					result = ISC_R_UNEXPECTEDEND;
-					goto done;
-				}
-				c = p[0];
-				if (c == '"') {
-					buffer->current++;
-					if (escaped) {
-						escaped = false;
-						/* Overwrite the preceding
-						 * backslash. */
-						INSIST(prev != NULL);
-						*prev = '"';
-						continue;
-					}
-					tokenp->type = isc_tokentype_qstring;
-					tokenp->value.as_textregion.base =
-						lex->data;
-					tokenp->value.as_textregion.length =
-						(unsigned int)(lex->max_token -
-							       remaining);
-					break;
-				}
-				if (c == '\n' && !escaped &&
-				    (options & ISC_LEXOPT_QSTRINGMULTILINE) ==
-					    0)
+				if ((options & ISC_LEXOPT_DNSMULTILINE) != 0 &&
+				    lex->paren_count != 0)
 				{
-					result = ISC_R_UNBALANCEDQUOTES;
+					lex->paren_count = 0;
+					result = ISC_R_UNBALANCED;
 					goto done;
 				}
-				buffer->current++;
-				if (c == '\n') {
-					source->line++;
+				if ((options & ISC_LEXOPT_EOF) == 0) {
+					result = ISC_R_EOF;
+					goto done;
 				}
-				escaped = c == '\\' && !escaped;
-				if (remaining == 0U) {
-					grow_data(lex, &remaining, &curr,
-						  &prev);
-				}
-				INSIST(remaining > 0U);
-				prev = curr;
-				*curr++ = c;
-				*curr = '\0';
-				remaining--;
-			}
-			break;
-		}
-
-		if (c == '\0') {
-			lex->last_was_eol = false;
-			buffer->current++;
-			tokenp->type = isc_tokentype_unknown;
-			tokenp->value.as_textregion.base = NULL;
-			tokenp->value.as_textregion.length = 0;
-			result = ISC_R_SUCCESS;
-			break;
-		}
-
-		if (lex->specials[c]) {
-			lex->last_was_eol = false;
-			buffer->current++;
-			if ((c == '(' || c == ')') &&
-			    (options & ISC_LEXOPT_DNSMULTILINE) != 0)
-			{
-				if (c == '(') {
-					if (lex->paren_count == 0) {
-						options &= ~IWSEOL;
-					}
-					lex->paren_count++;
-				} else {
-					if (lex->paren_count == 0) {
-						result = ISC_R_UNBALANCED;
-						goto done;
-					}
-					lex->paren_count--;
-					if (lex->paren_count == 0) {
-						options = lex->options;
-					}
-				}
-				separated = true;
-				continue;
-			}
-			tokenp->type = isc_tokentype_special;
-			tokenp->value.as_char = c;
-			result = ISC_R_SUCCESS;
-			break;
-		}
-
-		lex->last_was_eol = false;
-		for (;;) {
-			result = prepare(source);
-			if (result != ISC_R_SUCCESS) {
+				tokenp->type = isc_tokentype_eof;
+				result = ISC_R_SUCCESS;
 				goto done;
-			}
-			p = (unsigned char *)buffer->base + buffer->current;
-			c = buffer->current == buffer->used ? EOF : p[0];
-			if (c == '\r' || c == '\n' || c == EOF ||
-			    (!escaped &&
-			     (c == ' ' || c == '\t' || c == '\0' ||
-			      lex->specials[c] ||
-			      (c == ';' &&
-			       (lex->comments & ISC_LEXCOMMENT_DNSMASTERFILE) !=
-				       0))) ||
-			    (c == '#' &&
-			     (lex->comments & ISC_LEXCOMMENT_SHELL) != 0))
-			{
-				if (escaped && c == EOF) {
-					result = ISC_R_UNEXPECTEDEND;
-					goto done;
-				}
+			case lexstate_atom:
 				tokenp->type = isc_tokentype_string;
 				tokenp->value.as_textregion.base = lex->data;
 				tokenp->value.as_textregion.length =
 					(unsigned int)(lex->max_token -
 						       remaining);
 				result = ISC_R_SUCCESS;
-				break;
+				goto done;
+			case lexstate_atom_escaped:
+			case lexstate_qstring:
+			case lexstate_qstring_escaped:
+				result = ISC_R_UNEXPECTEDEND;
+				goto done;
+			}
+		}
+
+		c = p[0];
+		switch (state) {
+		case lexstate_start:
+			comment = skip_comment_chunk(lex, source);
+			if (comment == comment_refill_error) {
+				result = source->result;
+				goto done;
+			}
+			if (comment == comment_unterminated) {
+				result = ISC_R_UNEXPECTEDEND;
+				goto done;
+			}
+			if (comment == comment_skipped) {
+				separated = true;
+				continue;
+			}
+
+			if (c == ' ' || c == '\t') {
+				buffer->current++;
+				if (lex->last_was_eol &&
+				    (options & ISC_LEXOPT_INITIALWS) != 0)
+				{
+					lex->last_was_eol = false;
+					tokenp->type = isc_tokentype_initialws;
+					tokenp->value.as_char = c;
+					result = ISC_R_SUCCESS;
+					goto done;
+				}
+				separated = true;
+				continue;
+			}
+
+			if (c == '\n' || c == '\r') {
+				bool crlf = c == '\r' && p[1] == '\n';
+
+				buffer->current += crlf ? 2 : 1;
+				if (c == '\n' || crlf) {
+					source->line++;
+				}
+				lex->last_was_eol = true;
+				if ((options & ISC_LEXOPT_EOL) != 0) {
+					tokenp->type = isc_tokentype_eol;
+					result = ISC_R_SUCCESS;
+					goto done;
+				}
+				separated = true;
+				continue;
+			}
+
+			if (c == '"' && (options & ISC_LEXOPT_QSTRING) != 0) {
+				lex->last_was_eol = false;
+				buffer->current++;
+				state = lexstate_qstring;
+				continue;
+			}
+
+			if (c == '\0') {
+				lex->last_was_eol = false;
+				buffer->current++;
+				tokenp->type = isc_tokentype_unknown;
+				tokenp->value.as_textregion.base = NULL;
+				tokenp->value.as_textregion.length = 0;
+				result = ISC_R_SUCCESS;
+				goto done;
+			}
+
+			if (lex->specials[c]) {
+				lex->last_was_eol = false;
+				buffer->current++;
+				if ((c == '(' || c == ')') &&
+				    (options & ISC_LEXOPT_DNSMULTILINE) != 0)
+				{
+					if (c == '(') {
+						if (lex->paren_count == 0) {
+							options &= ~IWSEOL;
+						}
+						lex->paren_count++;
+					} else {
+						if (lex->paren_count == 0) {
+							result =
+								ISC_R_UNBALANCED;
+							goto done;
+						}
+						lex->paren_count--;
+						if (lex->paren_count == 0) {
+							options = lex->options;
+						}
+					}
+					separated = true;
+					continue;
+				}
+				tokenp->type = isc_tokentype_special;
+				tokenp->value.as_char = c;
+				result = ISC_R_SUCCESS;
+				goto done;
+			}
+
+			lex->last_was_eol = false;
+			state = lexstate_atom;
+			continue;
+
+		case lexstate_atom:
+			if (c == '\r' || c == '\n' || c == ' ' || c == '\t' ||
+			    c == '\0' || lex->specials[c] ||
+			    (c == ';' && (lex->comments &
+					  ISC_LEXCOMMENT_DNSMASTERFILE) != 0) ||
+			    (c == '#' &&
+			     (lex->comments & ISC_LEXCOMMENT_SHELL) != 0))
+			{
+				tokenp->type = isc_tokentype_string;
+				tokenp->value.as_textregion.base = lex->data;
+				tokenp->value.as_textregion.length =
+					(unsigned int)(lex->max_token -
+						       remaining);
+				result = ISC_R_SUCCESS;
+				goto done;
 			}
 			buffer->current++;
-			if ((options & ISC_LEXOPT_ESCAPE) != 0) {
-				escaped = c == '\\' && !escaped;
+			if ((options & ISC_LEXOPT_ESCAPE) != 0 && c == '\\') {
+				state = lexstate_atom_escaped;
 			}
 			if (remaining == 0U) {
 				grow_data(lex, &remaining, &curr, &prev);
@@ -760,8 +728,88 @@ lex_gettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 			*curr++ = c;
 			*curr = '\0';
 			remaining--;
+			continue;
+
+		case lexstate_atom_escaped:
+			if (c == '\r' || c == '\n' ||
+			    (c == '#' &&
+			     (lex->comments & ISC_LEXCOMMENT_SHELL) != 0))
+			{
+				tokenp->type = isc_tokentype_string;
+				tokenp->value.as_textregion.base = lex->data;
+				tokenp->value.as_textregion.length =
+					(unsigned int)(lex->max_token -
+						       remaining);
+				result = ISC_R_SUCCESS;
+				goto done;
+			}
+			buffer->current++;
+			state = lexstate_atom;
+			if (remaining == 0U) {
+				grow_data(lex, &remaining, &curr, &prev);
+			}
+			INSIST(remaining > 0U);
+			*curr++ = c;
+			*curr = '\0';
+			remaining--;
+			continue;
+
+		case lexstate_qstring:
+			if (c == '"') {
+				buffer->current++;
+				tokenp->type = isc_tokentype_qstring;
+				tokenp->value.as_textregion.base = lex->data;
+				tokenp->value.as_textregion.length =
+					(unsigned int)(lex->max_token -
+						       remaining);
+				result = ISC_R_SUCCESS;
+				goto done;
+			}
+			if (c == '\n' &&
+			    (options & ISC_LEXOPT_QSTRINGMULTILINE) == 0)
+			{
+				result = ISC_R_UNBALANCEDQUOTES;
+				goto done;
+			}
+			buffer->current++;
+			if (c == '\n') {
+				source->line++;
+			}
+			if (c == '\\') {
+				state = lexstate_qstring_escaped;
+			}
+			if (remaining == 0U) {
+				grow_data(lex, &remaining, &curr, &prev);
+			}
+			INSIST(remaining > 0U);
+			prev = curr;
+			*curr++ = c;
+			*curr = '\0';
+			remaining--;
+			continue;
+
+		case lexstate_qstring_escaped:
+			buffer->current++;
+			state = lexstate_qstring;
+			if (c == '"') {
+				/* Overwrite the preceding backslash. */
+				INSIST(prev != NULL);
+				*prev = '"';
+				continue;
+			}
+			if (c == '\n') {
+				source->line++;
+			}
+			if (remaining == 0U) {
+				grow_data(lex, &remaining, &curr, &prev);
+			}
+			INSIST(remaining > 0U);
+			prev = curr;
+			*curr++ = c;
+			*curr = '\0';
+			remaining--;
+			continue;
 		}
-		break;
 	}
 
 done:
