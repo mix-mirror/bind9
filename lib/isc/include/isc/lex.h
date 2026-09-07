@@ -194,8 +194,10 @@ isc_result_t
 isc_lex_next(isc_lex_t *lex, isc_token_t *tokenp);
 /*%<
  * Get the next token using the immutable policy selected when 'lex' was
- * created.  Atoms are returned as text regions; interpreting an atom as a
- * number is the parser's responsibility.
+ * created.  Atoms are returned as byte regions; interpreting an atom as a
+ * number is the parser's responsibility.  A returned string region refers to
+ * lexer-owned storage and remains valid until the next call to isc_lex_next(),
+ * isc_lex_close(), or isc_lex_destroy().
  */
 
 isc_result_t
