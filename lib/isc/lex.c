@@ -75,7 +75,6 @@ struct isc_lex {
 	char *data;
 	unsigned int comments;
 	unsigned int options;
-	bool comment_ok;
 	bool last_was_eol;
 	bool saved_last_was_eol;
 	unsigned int paren_count;
@@ -119,7 +118,6 @@ lex_create(isc_mem_t *mctx, size_t max_token, isc_lex_t **lexp) {
 	lex->max_token = max_token;
 	lex->comments = 0;
 	lex->options = 0;
-	lex->comment_ok = true;
 	lex->last_was_eol = true;
 	lex->paren_count = 0;
 	lex->saved_paren_count = 0;
@@ -435,7 +433,7 @@ refill(inputsource *source) {
 }
 
 static isc_result_t
-lex_gettoken(isc_lex_t *lex, unsigned int options, isc_token_t *tokenp) {
+lex_gettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 	inputsource *source;
 	int c;
 	bool done = false;
@@ -446,7 +444,7 @@ lex_gettoken(isc_lex_t *lex, unsigned int options, isc_token_t *tokenp) {
 	lexstate saved_state = lexstate_start;
 	char *curr, *prev;
 	size_t remaining;
-	unsigned int saved_options;
+	unsigned int options;
 	isc_result_t result;
 
 	/*
@@ -454,6 +452,7 @@ lex_gettoken(isc_lex_t *lex, unsigned int options, isc_token_t *tokenp) {
 	 */
 
 	REQUIRE(VALID_LEX(lex));
+	options = lex->options;
 	source = ISC_LIST_HEAD(lex->sources);
 	REQUIRE(tokenp != NULL);
 	tokenp->flags = 0;
@@ -492,7 +491,6 @@ lex_gettoken(isc_lex_t *lex, unsigned int options, isc_token_t *tokenp) {
 		return ISC_R_EOF;
 	}
 
-	saved_options = options;
 	if ((options & ISC_LEXOPT_DNSMULTILINE) != 0 && lex->paren_count > 0) {
 		options &= ~IWSEOL;
 	}
@@ -538,7 +536,7 @@ lex_gettoken(isc_lex_t *lex, unsigned int options, isc_token_t *tokenp) {
 			source->line++;
 		}
 
-		if (lex->comment_ok && !no_comments) {
+		if (!no_comments) {
 			if (!escaped && c == ';' &&
 			    ((lex->comments & ISC_LEXCOMMENT_DNSMASTERFILE) !=
 			     0))
@@ -649,7 +647,7 @@ lex_gettoken(isc_lex_t *lex, unsigned int options, isc_token_t *tokenp) {
 						}
 						lex->paren_count--;
 						if (lex->paren_count == 0) {
-							options = saved_options;
+							options = lex->options;
 						}
 					}
 					separated = true;
@@ -682,10 +680,6 @@ lex_gettoken(isc_lex_t *lex, unsigned int options, isc_token_t *tokenp) {
 					  lex->specials[c])))
 			{
 				pushback(source, c);
-				if (source->result != ISC_R_SUCCESS) {
-					result = source->result;
-					goto done;
-				}
 				if (escaped && c == EOF) {
 					result = ISC_R_UNEXPECTEDEND;
 					goto done;
@@ -835,7 +829,7 @@ isc_result_t
 isc_lex_next(isc_lex_t *lex, isc_token_t *tokenp) {
 	REQUIRE(VALID_LEX(lex));
 
-	return lex_gettoken(lex, lex->options, tokenp);
+	return lex_gettoken(lex, tokenp);
 }
 
 isc_result_t
