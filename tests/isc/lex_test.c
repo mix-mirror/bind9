@@ -249,9 +249,8 @@ ISC_RUN_TEST_IMPL(lex_refill_and_unget) {
 	assert_int_equal(offset, text_length);
 
 	for (source_kind = 0; source_kind < 2; source_kind++) {
-		assert_int_equal(
-			isc_lex_create_command(isc_g_mctx, 8, &lex),
-			ISC_R_SUCCESS);
+		assert_int_equal(isc_lex_create_command(isc_g_mctx, 8, &lex),
+				 ISC_R_SUCCESS);
 		if (source_kind == 0) {
 			isc_buffer_init(&buf, text, text_length);
 			isc_buffer_add(&buf, text_length);
@@ -277,8 +276,7 @@ ISC_RUN_TEST_IMPL(lex_refill_and_unget) {
 				    atom_length);
 		isc_lex_getlasttokentext(lex, &token, &raw);
 		assert_int_equal(raw.length, atom_length);
-		assert_memory_equal(raw.base,
-				    text + sizeof("first ") - 1U,
+		assert_memory_equal(raw.base, text + sizeof("first ") - 1U,
 				    atom_length);
 
 		isc_lex_ungettoken(lex, &token);
@@ -334,6 +332,170 @@ ISC_RUN_TEST_IMPL(lex_config_policy) {
 	isc_lex_destroy(&lex);
 }
 
+ISC_RUN_TEST_IMPL(lex_dns_comments) {
+	isc_buffer_t buf;
+	isc_lex_t *lex = NULL;
+	isc_token_t token;
+	const char text[] =
+		"foo; ignored\n\"a;b\" foo\\;bar\r; ignored too\nbar";
+
+	UNUSED(state);
+
+	assert_int_equal(isc_lex_create_dns_master(isc_g_mctx, 4, &lex),
+			 ISC_R_SUCCESS);
+	isc_buffer_constinit(&buf, text, sizeof(text) - 1);
+	isc_buffer_add(&buf, sizeof(text) - 1);
+	assert_int_equal(isc_lex_openbuffer(lex, &buf), ISC_R_SUCCESS);
+
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_string);
+	assert_string_equal(AS_STR(token), "foo");
+
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_eol);
+
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_qstring);
+	assert_string_equal(AS_STR(token), "a;b");
+
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_string);
+	assert_string_equal(AS_STR(token), "foo\\;bar");
+
+	/* Preserve comment recognition between a bare CR and the next LF. */
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_eol);
+
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_string);
+	assert_string_equal(AS_STR(token), "bar");
+
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_eof);
+
+	isc_lex_destroy(&lex);
+}
+
+ISC_RUN_TEST_IMPL(lex_config_comments) {
+	isc_buffer_t buf;
+	isc_lex_t *lex = NULL;
+	isc_token_t token;
+	const char text[] = "foo/* block */bar// line\n"
+			    "baz# shell\n\"/*#//\"/x";
+
+	UNUSED(state);
+
+	assert_int_equal(isc_lex_create_config(isc_g_mctx, 4, &lex),
+			 ISC_R_SUCCESS);
+	isc_buffer_constinit(&buf, text, sizeof(text) - 1);
+	isc_buffer_add(&buf, sizeof(text) - 1);
+	assert_int_equal(isc_lex_openbuffer(lex, &buf), ISC_R_SUCCESS);
+
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_string);
+	assert_string_equal(AS_STR(token), "foo");
+
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_string);
+	assert_string_equal(AS_STR(token), "bar");
+	assert_true((token.flags & ISC_LEXFLAG_ADJACENT) == 0);
+
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_string);
+	assert_string_equal(AS_STR(token), "baz");
+	assert_true((token.flags & ISC_LEXFLAG_ADJACENT) == 0);
+
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_qstring);
+	assert_string_equal(AS_STR(token), "/*#//");
+	assert_true((token.flags & ISC_LEXFLAG_ADJACENT) == 0);
+
+	/* A non-comment slash remains an adjacent special. */
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_special);
+	assert_int_equal(token.value.as_char, '/');
+	assert_true((token.flags & ISC_LEXFLAG_ADJACENT) != 0);
+
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_string);
+	assert_string_equal(AS_STR(token), "x");
+	assert_true((token.flags & ISC_LEXFLAG_ADJACENT) != 0);
+
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_eof);
+
+	isc_lex_destroy(&lex);
+}
+
+ISC_RUN_TEST_IMPL(lex_unterminated_comment) {
+	isc_buffer_t buf;
+	isc_lex_t *lex = NULL;
+	isc_token_t token;
+	const char text[] = "foo/*";
+
+	UNUSED(state);
+
+	assert_int_equal(isc_lex_create_config(isc_g_mctx, 4, &lex),
+			 ISC_R_SUCCESS);
+	isc_buffer_constinit(&buf, text, sizeof(text) - 1);
+	isc_buffer_add(&buf, sizeof(text) - 1);
+	assert_int_equal(isc_lex_openbuffer(lex, &buf), ISC_R_SUCCESS);
+
+	/* Diagnose the comment on the call following the atom. */
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_string);
+	assert_string_equal(AS_STR(token), "foo");
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_UNEXPECTEDEND);
+
+	isc_lex_destroy(&lex);
+}
+
+ISC_RUN_TEST_IMPL(lex_comment_refill) {
+	isc_buffer_t buf;
+	isc_lex_t *lex = NULL;
+	isc_token_t token;
+	char *text;
+	size_t length = TEST_REFILL_SIZE + 6U;
+
+	UNUSED(state);
+
+	/* Put the opening slash at the end of the first refill. */
+	text = isc_mem_get(isc_g_mctx, length);
+	memset(text, ' ', TEST_REFILL_SIZE - 1U);
+	memmove(text + TEST_REFILL_SIZE - 1U, "/**/foo", 7U);
+	assert_int_equal(isc_lex_create_config(isc_g_mctx, 4, &lex),
+			 ISC_R_SUCCESS);
+	isc_buffer_init(&buf, text, length);
+	isc_buffer_add(&buf, length);
+	assert_int_equal(isc_lex_openbuffer(lex, &buf), ISC_R_SUCCESS);
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_string);
+	assert_string_equal(AS_STR(token), "foo");
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_eof);
+	isc_lex_destroy(&lex);
+	isc_mem_put(isc_g_mctx, text, length);
+
+	/* Put the closing star at the end of the first refill. */
+	length = TEST_REFILL_SIZE + 4U;
+	text = isc_mem_get(isc_g_mctx, length);
+	memmove(text, "/*", 2U);
+	memset(text + 2U, 'x', TEST_REFILL_SIZE - 3U);
+	memmove(text + TEST_REFILL_SIZE - 1U, "*/foo", 5U);
+	assert_int_equal(isc_lex_create_config(isc_g_mctx, 4, &lex),
+			 ISC_R_SUCCESS);
+	isc_buffer_init(&buf, text, length);
+	isc_buffer_add(&buf, length);
+	assert_int_equal(isc_lex_openbuffer(lex, &buf), ISC_R_SUCCESS);
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_string);
+	assert_string_equal(AS_STR(token), "foo");
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_eof);
+	isc_lex_destroy(&lex);
+	isc_mem_put(isc_g_mctx, text, length);
+}
+
 ISC_RUN_TEST_IMPL(lex_unget_eol) {
 	isc_buffer_t buf;
 	isc_lex_t *lex = NULL;
@@ -379,9 +541,9 @@ ISC_RUN_TEST_IMPL(lex_command_unget) {
 
 	UNUSED(state);
 
-	assert_int_equal(isc_lex_create_command(isc_g_mctx, sizeof(text) - 1,
-						&lex),
-			 ISC_R_SUCCESS);
+	assert_int_equal(
+		isc_lex_create_command(isc_g_mctx, sizeof(text) - 1, &lex),
+		ISC_R_SUCCESS);
 	isc_buffer_constinit(&buf, text, sizeof(text) - 1);
 	isc_buffer_add(&buf, sizeof(text) - 1);
 	assert_int_equal(isc_lex_openbuffer(lex, &buf), ISC_R_SUCCESS);
@@ -421,8 +583,7 @@ ISC_RUN_TEST_IMPL(lex_command_arguments) {
 	} tests[] = {
 		{ "delzone .", ".", isc_tokentype_string },
 		{ "delzone odd\"zone", "odd\"zone", isc_tokentype_string },
-		{ "delzone odd\\\"zone", "odd\\\"zone",
-		  isc_tokentype_string },
+		{ "delzone odd\\\"zone", "odd\\\"zone", isc_tokentype_string },
 		{ "delzone odd\\032zone", "odd\\032zone",
 		  isc_tokentype_string },
 		{ "delzone odd;zone", "odd;zone", isc_tokentype_string },
@@ -535,13 +696,17 @@ ISC_TEST_LIST_START
 ISC_TEST_ENTRY(lex_0x00)
 ISC_TEST_ENTRY(lex_0x00_initialws)
 ISC_TEST_ENTRY(lex_0xff)
+ISC_TEST_ENTRY(lex_config_comments)
 ISC_TEST_ENTRY(lex_config_policy)
 ISC_TEST_ENTRY(lex_command_arguments)
 ISC_TEST_ENTRY(lex_command_unget)
+ISC_TEST_ENTRY(lex_comment_refill)
+ISC_TEST_ENTRY(lex_dns_comments)
 ISC_TEST_ENTRY(lex_dns_master_policy)
 ISC_TEST_ENTRY(lex_refill_and_unget)
 ISC_TEST_ENTRY(lex_separated_qstring)
 ISC_TEST_ENTRY(lex_unget_eol)
+ISC_TEST_ENTRY(lex_unterminated_comment)
 ISC_TEST_ENTRY(lex_setline)
 ISC_TEST_LIST_END
 
