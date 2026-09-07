@@ -84,19 +84,22 @@ struct isc_lex {
 };
 
 static void
-grow_data(isc_lex_t *lex, size_t *remainingp, char **currp, char **prevp) {
+ensure_data(isc_lex_t *lex, size_t length) {
 	char *tmp;
+	size_t size;
 
-	tmp = isc_mem_get(lex->mctx, lex->max_token * 2 + 1);
-	memmove(tmp, lex->data, lex->max_token + 1);
-	*currp = tmp + (*currp - lex->data);
-	if (*prevp != NULL) {
-		*prevp = tmp + (*prevp - lex->data);
+	if (length <= lex->max_token) {
+		return;
 	}
+
+	size = lex->max_token;
+	while (size < length) {
+		size *= 2;
+	}
+	tmp = isc_mem_get(lex->mctx, size + 1);
 	isc_mem_put(lex->mctx, lex->data, lex->max_token + 1);
 	lex->data = tmp;
-	*remainingp += lex->max_token;
-	lex->max_token *= 2;
+	lex->max_token = size;
 }
 
 static void
@@ -356,6 +359,60 @@ typedef enum {
 #define IWSEOL (ISC_LEXOPT_INITIALWS | ISC_LEXOPT_EOL)
 
 static void
+finish_atom(isc_lex_t *lex, inputsource *source, isc_token_t *tokenp) {
+	isc_buffer_t *buffer = source->pushback;
+	size_t length = buffer->current - source->ignored;
+
+	ensure_data(lex, length);
+	memmove(lex->data, (unsigned char *)buffer->base + source->ignored,
+		length);
+	lex->data[length] = '\0';
+	tokenp->type = isc_tokentype_string;
+	tokenp->value.as_textregion.base = lex->data;
+	tokenp->value.as_textregion.length = (unsigned int)length;
+}
+
+static void
+finish_qstring(isc_lex_t *lex, inputsource *source, isc_token_t *tokenp,
+	       bool needs_cooking) {
+	isc_buffer_t *buffer = source->pushback;
+	unsigned char *raw;
+	size_t raw_length;
+	size_t length;
+
+	INSIST(buffer->current >= source->ignored + 2U);
+	raw = (unsigned char *)buffer->base + source->ignored + 1U;
+	raw_length = buffer->current - source->ignored - 2U;
+	ensure_data(lex, raw_length);
+
+	if (!needs_cooking) {
+		memmove(lex->data, raw, raw_length);
+		length = raw_length;
+	} else {
+		char *dst = lex->data;
+		bool escaped = false;
+
+		for (size_t i = 0; i < raw_length; i++) {
+			int c = raw[i];
+
+			if (c == '"' && escaped) {
+				dst[-1] = '"';
+				escaped = false;
+				continue;
+			}
+			escaped = c == '\\' && !escaped;
+			*dst++ = c;
+		}
+		length = (size_t)(dst - lex->data);
+	}
+
+	lex->data[length] = '\0';
+	tokenp->type = isc_tokentype_qstring;
+	tokenp->value.as_textregion.base = lex->data;
+	tokenp->value.as_textregion.length = (unsigned int)length;
+}
+
+static void
 compact_to_checkpoint(inputsource *source) {
 	isc_buffer_t *buffer = source->pushback;
 	unsigned int discarded = source->saved_current;
@@ -510,9 +567,8 @@ lex_gettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 	isc_buffer_t *buffer;
 	unsigned char *p;
 	int c;
+	bool qstring_needs_cooking = false;
 	bool separated = false;
-	char *curr, *prev;
-	size_t remaining;
 	unsigned int options;
 	isc_result_t result;
 	comment_result_t comment;
@@ -548,12 +604,6 @@ lex_gettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 		options &= ~IWSEOL;
 	}
 
-	curr = lex->data;
-	*curr = '\0';
-
-	prev = NULL;
-	remaining = lex->max_token;
-
 	for (;;) {
 		result = prepare(source);
 		if (result != ISC_R_SUCCESS) {
@@ -585,11 +635,7 @@ lex_gettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 				result = ISC_R_SUCCESS;
 				goto done;
 			case lexstate_atom:
-				tokenp->type = isc_tokentype_string;
-				tokenp->value.as_textregion.base = lex->data;
-				tokenp->value.as_textregion.length =
-					(unsigned int)(lex->max_token -
-						       remaining);
+				finish_atom(lex, source, tokenp);
 				result = ISC_R_SUCCESS;
 				goto done;
 			case lexstate_atom_escaped:
@@ -709,11 +755,7 @@ lex_gettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 			    (c == '#' &&
 			     (lex->comments & ISC_LEXCOMMENT_SHELL) != 0))
 			{
-				tokenp->type = isc_tokentype_string;
-				tokenp->value.as_textregion.base = lex->data;
-				tokenp->value.as_textregion.length =
-					(unsigned int)(lex->max_token -
-						       remaining);
+				finish_atom(lex, source, tokenp);
 				result = ISC_R_SUCCESS;
 				goto done;
 			}
@@ -721,13 +763,6 @@ lex_gettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 			if ((options & ISC_LEXOPT_ESCAPE) != 0 && c == '\\') {
 				state = lexstate_atom_escaped;
 			}
-			if (remaining == 0U) {
-				grow_data(lex, &remaining, &curr, &prev);
-			}
-			INSIST(remaining > 0U);
-			*curr++ = c;
-			*curr = '\0';
-			remaining--;
 			continue;
 
 		case lexstate_atom_escaped:
@@ -735,33 +770,19 @@ lex_gettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 			    (c == '#' &&
 			     (lex->comments & ISC_LEXCOMMENT_SHELL) != 0))
 			{
-				tokenp->type = isc_tokentype_string;
-				tokenp->value.as_textregion.base = lex->data;
-				tokenp->value.as_textregion.length =
-					(unsigned int)(lex->max_token -
-						       remaining);
+				finish_atom(lex, source, tokenp);
 				result = ISC_R_SUCCESS;
 				goto done;
 			}
 			buffer->current++;
 			state = lexstate_atom;
-			if (remaining == 0U) {
-				grow_data(lex, &remaining, &curr, &prev);
-			}
-			INSIST(remaining > 0U);
-			*curr++ = c;
-			*curr = '\0';
-			remaining--;
 			continue;
 
 		case lexstate_qstring:
 			if (c == '"') {
 				buffer->current++;
-				tokenp->type = isc_tokentype_qstring;
-				tokenp->value.as_textregion.base = lex->data;
-				tokenp->value.as_textregion.length =
-					(unsigned int)(lex->max_token -
-						       remaining);
+				finish_qstring(lex, source, tokenp,
+					       qstring_needs_cooking);
 				result = ISC_R_SUCCESS;
 				goto done;
 			}
@@ -778,36 +799,18 @@ lex_gettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 			if (c == '\\') {
 				state = lexstate_qstring_escaped;
 			}
-			if (remaining == 0U) {
-				grow_data(lex, &remaining, &curr, &prev);
-			}
-			INSIST(remaining > 0U);
-			prev = curr;
-			*curr++ = c;
-			*curr = '\0';
-			remaining--;
 			continue;
 
 		case lexstate_qstring_escaped:
 			buffer->current++;
 			state = lexstate_qstring;
 			if (c == '"') {
-				/* Overwrite the preceding backslash. */
-				INSIST(prev != NULL);
-				*prev = '"';
+				qstring_needs_cooking = true;
 				continue;
 			}
 			if (c == '\n') {
 				source->line++;
 			}
-			if (remaining == 0U) {
-				grow_data(lex, &remaining, &curr, &prev);
-			}
-			INSIST(remaining > 0U);
-			prev = curr;
-			*curr++ = c;
-			*curr = '\0';
-			remaining--;
 			continue;
 		}
 	}
