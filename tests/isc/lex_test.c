@@ -33,6 +33,8 @@
 
 #define AS_STR(x) (x).value.as_textregion.base
 
+#define TEST_REFILL_SIZE (16U * 1024U)
+
 /* check handling of 0x00 */
 ISC_RUN_TEST_IMPL(lex_0x00) {
 	isc_result_t result;
@@ -218,6 +220,89 @@ ISC_RUN_TEST_IMPL(lex_separated_qstring) {
 	assert_true((token.flags & ISC_LEXFLAG_ADJACENT) == 0);
 
 	isc_lex_destroy(&lex);
+}
+
+ISC_RUN_TEST_IMPL(lex_refill_and_unget) {
+	isc_buffer_t buf;
+	isc_lex_t *lex = NULL;
+	isc_region_t raw;
+	isc_token_t token;
+	FILE *stream = NULL;
+	char *text;
+	int fclose_result;
+	const size_t atom_length = TEST_REFILL_SIZE * 2U + 37U;
+	const size_t text_length = atom_length + sizeof("first  tail") - 1U;
+	size_t offset;
+	unsigned int source_kind;
+
+	UNUSED(state);
+
+	text = malloc(text_length);
+	assert_non_null(text);
+	offset = 0;
+	memmove(text + offset, "first ", sizeof("first ") - 1U);
+	offset += sizeof("first ") - 1U;
+	memset(text + offset, 'a', atom_length);
+	offset += atom_length;
+	memmove(text + offset, " tail", sizeof(" tail") - 1U);
+	offset += sizeof(" tail") - 1U;
+	assert_int_equal(offset, text_length);
+
+	for (source_kind = 0; source_kind < 2; source_kind++) {
+		assert_int_equal(
+			isc_lex_create_command(isc_g_mctx, 8, &lex),
+			ISC_R_SUCCESS);
+		if (source_kind == 0) {
+			isc_buffer_init(&buf, text, text_length);
+			isc_buffer_add(&buf, text_length);
+			assert_int_equal(isc_lex_openbuffer(lex, &buf),
+					 ISC_R_SUCCESS);
+		} else {
+			stream = tmpfile();
+			assert_non_null(stream);
+			assert_int_equal(fwrite(text, 1, text_length, stream),
+					 text_length);
+			rewind(stream);
+			isc_lex_openstream(lex, stream);
+		}
+
+		assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+		assert_int_equal(token.type, isc_tokentype_string);
+		assert_string_equal(AS_STR(token), "first");
+
+		assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+		assert_int_equal(token.type, isc_tokentype_string);
+		assert_int_equal(token.value.as_textregion.length, atom_length);
+		assert_memory_equal(AS_STR(token), text + sizeof("first ") - 1U,
+				    atom_length);
+		isc_lex_getlasttokentext(lex, &token, &raw);
+		assert_int_equal(raw.length, atom_length);
+		assert_memory_equal(raw.base,
+				    text + sizeof("first ") - 1U,
+				    atom_length);
+
+		isc_lex_ungettoken(lex, &token);
+		assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+		assert_int_equal(token.type, isc_tokentype_string);
+		assert_int_equal(token.value.as_textregion.length, atom_length);
+		assert_memory_equal(AS_STR(token), text + sizeof("first ") - 1U,
+				    atom_length);
+
+		assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+		assert_int_equal(token.type, isc_tokentype_string);
+		assert_string_equal(AS_STR(token), "tail");
+		assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+		assert_int_equal(token.type, isc_tokentype_eof);
+
+		isc_lex_destroy(&lex);
+		if (stream != NULL) {
+			fclose_result = fclose(stream);
+			assert_int_equal(fclose_result, 0);
+			stream = NULL;
+		}
+	}
+
+	free(text);
 }
 
 ISC_RUN_TEST_IMPL(lex_config_policy) {
@@ -454,6 +539,7 @@ ISC_TEST_ENTRY(lex_config_policy)
 ISC_TEST_ENTRY(lex_command_arguments)
 ISC_TEST_ENTRY(lex_command_unget)
 ISC_TEST_ENTRY(lex_dns_master_policy)
+ISC_TEST_ENTRY(lex_refill_and_unget)
 ISC_TEST_ENTRY(lex_separated_qstring)
 ISC_TEST_ENTRY(lex_unget_eol)
 ISC_TEST_ENTRY(lex_setline)
