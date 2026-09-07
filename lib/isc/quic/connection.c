@@ -29,6 +29,8 @@
 
 #include "quic_p.h" /* IWYU pragma: keep */
 
+#define VALID_CONNECTION(c) ISC_MAGIC_VALID(c, conn_magic)
+
 #ifdef ISC_QUIC_STATE_CHECK
 #define CHECK_STATE(conn, ...)                                         \
 	({                                                             \
