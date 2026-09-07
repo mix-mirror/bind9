@@ -9783,11 +9783,9 @@ named_server_scan_interfaces(named_server_t *server) {
 /*
  * Get the next token from lexer 'lex'.
  *
- * NOTE: the token value for string tokens always uses the same pointer
- * value.  Multiple calls to this function on the same lexer will always
- * return either that value (lex->data) or NULL. It is necessary to copy
- * the token into local storage if it needs to be referenced after the next
- * call to next_token().
+ * The returned region is valid until the next lexer operation.  Copy the
+ * token into local storage if it needs to be referenced after the next call
+ * to next_token().
  */
 static isc_region_t
 next_token(isc_lex_t *lex, isc_buffer_t *text) {

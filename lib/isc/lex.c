@@ -360,21 +360,18 @@ typedef enum {
 #define IWSEOL (ISC_LEXOPT_INITIALWS | ISC_LEXOPT_EOL)
 
 static void
-finish_atom(isc_lex_t *lex, inputsource *source, isc_token_t *tokenp) {
+finish_atom(inputsource *source, isc_token_t *tokenp) {
 	isc_buffer_t *buffer = source->pushback;
 	size_t length = buffer->current - source->ignored;
 
-	ensure_data(lex, length);
-	memmove(lex->data, (unsigned char *)buffer->base + source->ignored,
-		length);
-	lex->data[length] = '\0';
 	tokenp->type = isc_tokentype_string;
-	tokenp->value.as_region.base = (unsigned char *)lex->data;
+	tokenp->value.as_region.base = (unsigned char *)buffer->base +
+				       source->ignored;
 	tokenp->value.as_region.length = (unsigned int)length;
 }
 
 static void
-finish_qstring(isc_lex_t *lex, inputsource *source, isc_token_t *tokenp) {
+finish_qstring(inputsource *source, isc_token_t *tokenp) {
 	isc_buffer_t *buffer = source->pushback;
 	unsigned char *raw;
 	size_t raw_length;
@@ -382,11 +379,8 @@ finish_qstring(isc_lex_t *lex, inputsource *source, isc_token_t *tokenp) {
 	INSIST(buffer->current >= source->ignored + 2U);
 	raw = (unsigned char *)buffer->base + source->ignored + 1U;
 	raw_length = buffer->current - source->ignored - 2U;
-	ensure_data(lex, raw_length);
-	memmove(lex->data, raw, raw_length);
-	lex->data[raw_length] = '\0';
 	tokenp->type = isc_tokentype_qstring;
-	tokenp->value.as_region.base = (unsigned char *)lex->data;
+	tokenp->value.as_region.base = raw;
 	tokenp->value.as_region.length = (unsigned int)raw_length;
 }
 
@@ -416,7 +410,6 @@ finish_qstring_cooked(isc_lex_t *lex, inputsource *source,
 		*dst++ = c;
 	}
 
-	*dst = '\0';
 	tokenp->type = isc_tokentype_qstring;
 	tokenp->value.as_region.base = (unsigned char *)lex->data;
 	tokenp->value.as_region.length = (unsigned int)(dst - lex->data);
@@ -644,7 +637,7 @@ lex_gettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 				result = ISC_R_SUCCESS;
 				goto done;
 			case lexstate_atom:
-				finish_atom(lex, source, tokenp);
+				finish_atom(source, tokenp);
 				result = ISC_R_SUCCESS;
 				goto done;
 			case lexstate_atom_escaped:
@@ -765,7 +758,7 @@ lex_gettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 			    (c == '#' &&
 			     (lex->comments & ISC_LEXCOMMENT_SHELL) != 0))
 			{
-				finish_atom(lex, source, tokenp);
+				finish_atom(source, tokenp);
 				result = ISC_R_SUCCESS;
 				goto done;
 			}
@@ -780,7 +773,7 @@ lex_gettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 			    (c == '#' &&
 			     (lex->comments & ISC_LEXCOMMENT_SHELL) != 0))
 			{
-				finish_atom(lex, source, tokenp);
+				finish_atom(source, tokenp);
 				result = ISC_R_SUCCESS;
 				goto done;
 			}
@@ -791,7 +784,7 @@ lex_gettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 		case lexstate_qstring:
 			if (c == '"') {
 				buffer->current++;
-				finish_qstring(lex, source, tokenp);
+				finish_qstring(source, tokenp);
 				result = ISC_R_SUCCESS;
 				goto done;
 			}

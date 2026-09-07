@@ -207,6 +207,7 @@ ISC_RUN_TEST_IMPL(lex_dns_master_policy) {
 ISC_RUN_TEST_IMPL(lex_separated_qstring) {
 	isc_buffer_t buf;
 	isc_lex_t *lex = NULL;
+	isc_region_t raw;
 	isc_token_t token;
 	const char text[] = "key= \"value\"";
 
@@ -226,6 +227,9 @@ ISC_RUN_TEST_IMPL(lex_separated_qstring) {
 	assert_int_equal(token.type, isc_tokentype_qstring);
 	assert_token_equal(token, "value");
 	assert_true((token.flags & ISC_LEXFLAG_ADJACENT) == 0);
+	isc_lex_getlasttokentext(lex, &token, &raw);
+	assert_ptr_equal(token.value.as_region.base, raw.base + 1U);
+	assert_int_equal(raw.base[raw.length - 1U], '"');
 
 	isc_lex_destroy(&lex);
 }
@@ -286,6 +290,8 @@ ISC_RUN_TEST_IMPL(lex_refill_and_unget) {
 		assert_int_equal(raw.length, atom_length);
 		assert_memory_equal(raw.base, text + sizeof("first ") - 1U,
 				    atom_length);
+		assert_ptr_equal(token.value.as_region.base, raw.base);
+		assert_int_equal(token.value.as_region.base[atom_length], ' ');
 
 		isc_lex_ungettoken(lex, &token);
 		assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
@@ -350,6 +356,7 @@ ISC_RUN_TEST_IMPL(lex_qstring_refill_and_cooking) {
 	isc_lex_getlasttokentext(lex, &token, &raw);
 	assert_int_equal(raw.length, text_length);
 	assert_memory_equal(raw.base, text, text_length);
+	assert_ptr_not_equal(token.value.as_region.base, raw.base + 1U);
 
 	isc_lex_ungettoken(lex, &token);
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
