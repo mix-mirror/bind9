@@ -548,7 +548,6 @@ destroy(isc_quic_conn_t *conn) {
 	ngtcp2_conn_del(conn->inner);
 
 	isc_quic_router_unref(conn->router);
-	// isc_quic_router__unref(conn->router, __func__, __FILE__, __LINE__);
 
 	isc_mem_put(mctx, conn, sizeof(*conn));
 	isc_mem_unref(mctx);
@@ -579,7 +578,7 @@ derive_initial_secret(isc_region_t secret, isc_region_t self_secret,
 		};
 		break;
 	default:
-		return false;
+		return ISC_R_NOTIMPLEMENTED;
 	}
 
 	if (is_server) {
@@ -761,9 +760,10 @@ setup_initial_key(ngtcp2_conn *ngconn, const ngtcp2_cid *dcid) {
 		ISC_CRYPTO_QUIC_HP_PROTECT_ALGORITHM_AES128, &hp));
 	peer_hp_ctx.native_handle = MOVE_OWNERSHIP(hp);
 
-	ngtcp2_conn_install_initial_key(
-		ngconn, &peer_aead_ctx, peer_iv, &peer_hp_ctx, &self_aead_ctx,
-		self_iv, &self_hp_ctx, isc_crypto_aes128gcm_nonce_length);
+	INSIST(ngtcp2_conn_install_initial_key(
+		       ngconn, &peer_aead_ctx, peer_iv, &peer_hp_ctx,
+		       &self_aead_ctx, self_iv, &self_hp_ctx,
+		       isc_crypto_aes128gcm_nonce_length) == 0);
 
 	return ISC_R_SUCCESS;
 
@@ -1141,7 +1141,7 @@ encrypt_cb(uint8_t *dest, const ngtcp2_crypto_aead *ngaead,
 		return NGTCP2_ERR_CALLBACK_FAILURE;
 	}
 
-	return ISC_R_SUCCESS;
+	return 0;
 }
 
 static int
