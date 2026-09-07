@@ -837,7 +837,7 @@ status=$((status + ret))
 
 # Keep track of time so we can access these RRset later, when we expect them
 # to become ancient.
-t1=$($PYTHON -c 'import time; print(int(time.time()))')
+t1=$(date +%s)
 
 n=$((n + 1))
 echo_i "verify prime cache statistics (low max-stale-ttl) ($n)"
@@ -937,7 +937,7 @@ interval_to_ancient=$(grep 'max-stale-ttl' ns1/named3.conf.in | awk '{ print $2 
 # We add 2 seconds to it since this is the ttl value of the records being
 # tested.
 interval_to_ancient=$((interval_to_ancient + 2))
-t2=$($PYTHON -c 'import time; print(int(time.time()))')
+t2=$(date +%s)
 elapsed=$((t2 - t1))
 
 # If elapsed time so far is less than max-stale-ttl + 2 seconds, then we sleep
