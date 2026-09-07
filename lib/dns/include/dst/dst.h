@@ -995,7 +995,7 @@ dst_key_setprivateformat(dst_key_t *key, int major, int minor);
  *	"key" is a valid key.
  */
 
-#define DST_KEY_FORMATSIZE (DNS_NAME_FORMATSIZE + DNS_SECALG_FORMATSIZE + 7)
+#define DST_KEY_FORMATSIZE (DNS_NAME_FORMATSIZE + DST_ALG_FORMATSIZE + 7)
 
 void
 dst_key_format(const dst_key_t *key, char *cp, unsigned int size);
