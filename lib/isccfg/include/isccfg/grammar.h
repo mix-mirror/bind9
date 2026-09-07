@@ -608,7 +608,7 @@ cfg_parser_warning(cfg_parser_t *pctx, unsigned int flags, const char *fmt, ...)
 	ISC_FORMAT_PRINTF(3, 4);
 
 bool
-cfg_is_enum(const char *s, const char *const *enums);
+cfg_is_enum(const isc_region_t *source, const char *const *enums);
 /*%< Return true iff the string 's' is one of the strings in 'enums' */
 
 bool

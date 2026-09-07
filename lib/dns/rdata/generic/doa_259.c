@@ -63,7 +63,9 @@ fromtext_doa(ARGS_FROMTEXT) {
 	 */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-	if (strcmp(DNS_AS_STR(token), "-") == 0) {
+	if (token.value.as_region.length == 1 &&
+	    token.value.as_region.base[0] == '-')
+	{
 		return ISC_R_SUCCESS;
 	} else {
 		isc_lex_ungettoken(lexer, &token);

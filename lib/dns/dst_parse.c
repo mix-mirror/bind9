@@ -32,6 +32,7 @@
 #include <stdbool.h>
 #include <unistd.h>
 
+#include <isc/ascii.h>
 #include <isc/base64.h>
 #include <isc/dir.h>
 #include <isc/file.h>
@@ -47,8 +48,6 @@
 
 #include "dst_internal.h"
 #include "isc/result.h"
-
-#define DST_AS_STR(t) ((char *)(t).value.as_region.base)
 
 #define PRIVATE_KEY_STR "Private-key-format:"
 #define ALGORITHM_STR	"Algorithm:"
@@ -127,12 +126,21 @@ static struct parse_map map[] = { { TAG_RSA_MODULUS, "Modulus:" },
 
 				  { 0, NULL } };
 
+static bool
+region_caseequal_cstr(const isc_region_t *region, const char *text) {
+	size_t length = strlen(text);
+
+	return region->length == length &&
+	       isc_ascii_lowercmp(region->base, (const uint8_t *)text,
+				  length) == 0;
+}
+
 static int
-find_value(const char *s, const unsigned int alg) {
+find_value(const isc_region_t *source, const unsigned int alg) {
 	int i;
 
 	for (i = 0; map[i].tag != NULL; i++) {
-		if (strcasecmp(s, map[i].tag) == 0 &&
+		if (region_caseequal_cstr(source, map[i].tag) &&
 		    (TAG_ALG(map[i].value) == alg))
 		{
 			return map[i].value;
@@ -155,11 +163,11 @@ find_tag(const int value) {
 }
 
 static int
-find_metadata(const char *s, const char *tags[], int ntags) {
+find_metadata(const isc_region_t *source, const char *tags[], int ntags) {
 	int i;
 
 	for (i = 0; i < ntags; i++) {
-		if (tags[i] != NULL && strcasecmp(s, tags[i]) == 0) {
+		if (tags[i] != NULL && region_caseequal_cstr(source, tags[i])) {
 			return i;
 		}
 	}
@@ -168,13 +176,13 @@ find_metadata(const char *s, const char *tags[], int ntags) {
 }
 
 static int
-find_timedata(const char *s) {
-	return find_metadata(s, timetags, DST_MAX_TIMES);
+find_timedata(const isc_region_t *source) {
+	return find_metadata(source, timetags, DST_MAX_TIMES);
 }
 
 static int
-find_numericdata(const char *s) {
-	return find_metadata(s, numerictags, DST_MAX_NUMERIC);
+find_numericdata(const isc_region_t *source) {
+	return find_metadata(source, numerictags, DST_MAX_NUMERIC);
 }
 
 static int
@@ -454,7 +462,9 @@ dst__privstruct_parse(dst_key_t *key, unsigned int alg, isc_lex_t *lex,
 	 */
 	NEXTTOKEN(lex, &token);
 	if (token.type != isc_tokentype_string ||
-	    strcmp(DST_AS_STR(token), PRIVATE_KEY_STR) != 0)
+	    token.value.as_region.length != sizeof(PRIVATE_KEY_STR) - 1 ||
+	    memcmp(token.value.as_region.base, PRIVATE_KEY_STR,
+		   sizeof(PRIVATE_KEY_STR) - 1) != 0)
 	{
 		result = DST_R_INVALIDPRIVATEKEY;
 		goto cleanup;
@@ -500,7 +510,9 @@ dst__privstruct_parse(dst_key_t *key, unsigned int alg, isc_lex_t *lex,
 	 */
 	NEXTTOKEN(lex, &token);
 	if (token.type != isc_tokentype_string ||
-	    strcmp(DST_AS_STR(token), ALGORITHM_STR) != 0)
+	    token.value.as_region.length != sizeof(ALGORITHM_STR) - 1 ||
+	    memcmp(token.value.as_region.base, ALGORITHM_STR,
+		   sizeof(ALGORITHM_STR) - 1) != 0)
 	{
 		result = DST_R_INVALIDPRIVATEKEY;
 		goto cleanup;
@@ -541,13 +553,16 @@ dst__privstruct_parse(dst_key_t *key, unsigned int alg, isc_lex_t *lex,
 			goto cleanup;
 		}
 
-		if (strcmp(DST_AS_STR(token), "External:") == 0) {
+		if (token.value.as_region.length == sizeof("External:") - 1 &&
+		    memcmp(token.value.as_region.base, "External:",
+			   sizeof("External:") - 1) == 0)
+		{
 			external = true;
 			goto next;
 		}
 
 		/* Numeric metadata */
-		tag = find_numericdata(DST_AS_STR(token));
+		tag = find_numericdata(&token.value.as_region);
 		if (tag >= 0) {
 			INSIST(tag < DST_MAX_NUMERIC);
 
@@ -562,7 +577,7 @@ dst__privstruct_parse(dst_key_t *key, unsigned int alg, isc_lex_t *lex,
 		}
 
 		/* Timing metadata */
-		tag = find_timedata(DST_AS_STR(token));
+		tag = find_timedata(&token.value.as_region);
 		if (tag >= 0) {
 			INSIST(tag < DST_MAX_TIMES);
 
@@ -581,7 +596,7 @@ dst__privstruct_parse(dst_key_t *key, unsigned int alg, isc_lex_t *lex,
 		}
 
 		/* Key data */
-		tag = find_value(DST_AS_STR(token), alg);
+		tag = find_value(&token.value.as_region, alg);
 		if (tag < 0 && minor > DST_MINOR_VERSION) {
 			goto next;
 		} else if (tag < 0) {

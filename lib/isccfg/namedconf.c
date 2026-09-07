@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <isc/ascii.h>
 #include <isc/lex.h>
 #include <isc/log.h>
 #include <isc/mem.h>
@@ -32,8 +33,6 @@
 #include <isccfg/grammar.h>
 #include <isccfg/namedconf.h>
 
-#define TOKEN_STRING(pctx) ((char *)(pctx)->token.value.as_region.base)
-
 /*% Clean up a configuration object if non-NULL. */
 #define CLEANUP_OBJ(obj)                        \
 	{                                       \
@@ -41,6 +40,28 @@
 			cfg_obj_detach(&(obj)); \
 		}                               \
 	}
+
+static int
+token_casecmp_cstr(const cfg_parser_t *pctx, const char *text) {
+	size_t length = strlen(text);
+
+	if (pctx->token.value.as_region.length != length) {
+		return 1;
+	}
+	return isc_ascii_lowercmp(pctx->token.value.as_region.base,
+				  (const uint8_t *)text, length);
+}
+
+#define token_casecmp(pctx, text)                                           \
+	({                                                                    \
+		static_assert(__builtin_constant_p(text),                       \
+			      "text must be a string literal");                 \
+		(pctx)->token.value.as_region.length != sizeof(text) - 1       \
+			? 1                                                     \
+			: isc_ascii_lowercmp(                                  \
+				  (pctx)->token.value.as_region.base,             \
+				  (const uint8_t *)(text), sizeof(text) - 1);      \
+	})
 
 /*%
  * Forward declarations of static functions.
@@ -308,7 +329,7 @@ parse_matchtype(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 
 	CHECK(cfg_peektoken(pctx));
 	if (pctx->token.type == isc_tokentype_string &&
-	    strcasecmp(TOKEN_STRING(pctx), "zonesub") == 0)
+	    token_casecmp(pctx, "zonesub") == 0)
 	{
 		pctx->flags |= CFG_PCTX_SKIP;
 	}
@@ -404,7 +425,7 @@ parse_updatepolicy(cfg_parser_t *pctx, const cfg_type_t *type,
 	}
 
 	if (pctx->token.type == isc_tokentype_string &&
-	    strcasecmp(TOKEN_STRING(pctx), "local") == 0)
+	    token_casecmp(pctx, "local") == 0)
 	{
 		cfg_string_create(pctx, "local", &cfg_type_ustring, ret);
 		return ISC_R_SUCCESS;
@@ -580,11 +601,11 @@ parse_keystore(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 
 	CHECK(cfg_peektoken(pctx));
 	if (pctx->token.type == isc_tokentype_string &&
-	    strcasecmp(TOKEN_STRING(pctx), "key-directory") == 0)
+	    token_casecmp(pctx, "key-directory") == 0)
 	{
 		CHECK(cfg_parse_obj(pctx, &cfg_type_ustring, &obj));
 	} else if (pctx->token.type == isc_tokentype_string &&
-		   strcasecmp(TOKEN_STRING(pctx), "key-store") == 0)
+		   token_casecmp(pctx, "key-store") == 0)
 	{
 		CHECK(cfg_parse_obj(pctx, &cfg_type_keystorage, &obj));
 	} else {
@@ -676,7 +697,7 @@ parse_optionaltagrange(cfg_parser_t *pctx, const cfg_type_t *type,
 
 	CHECK(cfg_peektoken(pctx));
 	if (pctx->token.type == isc_tokentype_string &&
-	    strcasecmp(TOKEN_STRING(pctx), "tag-range") == 0)
+	    token_casecmp(pctx, "tag-range") == 0)
 	{
 		CHECK(cfg_gettoken(pctx));
 		CHECK(cfg_parse_obj(pctx, &cfg_type_tagrange, &obj));
@@ -961,7 +982,7 @@ parse_qstringornone(cfg_parser_t *pctx, const cfg_type_t *type,
 
 	CHECK(cfg_gettoken(pctx));
 	if (pctx->token.type == isc_tokentype_string &&
-	    strcasecmp(TOKEN_STRING(pctx), "none") == 0)
+	    token_casecmp(pctx, "none") == 0)
 	{
 		cfg_obj_create(cfg_parser_currentfile(pctx), pctx->line,
 			       &cfg_type_none, ret);
@@ -1005,7 +1026,7 @@ parse_boolorauto(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 
 	CHECK(cfg_gettoken(pctx));
 	if (pctx->token.type == isc_tokentype_string &&
-	    strcasecmp(TOKEN_STRING(pctx), "auto") == 0)
+	    token_casecmp(pctx, "auto") == 0)
 	{
 		cfg_obj_create(cfg_parser_currentfile(pctx), pctx->line,
 			       &cfg_type_auto, ret);
@@ -1061,14 +1082,14 @@ parse_serverid(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 	isc_result_t result;
 	CHECK(cfg_gettoken(pctx));
 	if (pctx->token.type == isc_tokentype_string &&
-	    strcasecmp(TOKEN_STRING(pctx), "none") == 0)
+	    token_casecmp(pctx, "none") == 0)
 	{
 		cfg_obj_create(cfg_parser_currentfile(pctx), pctx->line,
 			       &cfg_type_none, ret);
 		return ISC_R_SUCCESS;
 	}
 	if (pctx->token.type == isc_tokentype_string &&
-	    strcasecmp(TOKEN_STRING(pctx), "hostname") == 0)
+	    token_casecmp(pctx, "hostname") == 0)
 	{
 		cfg_obj_create(cfg_parser_currentfile(pctx), pctx->line,
 			       &cfg_type_hostname, ret);
@@ -1773,18 +1794,18 @@ parse_dtout(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 		CHECK(cfg_peektoken(pctx));
 		if (pctx->token.type == isc_tokentype_string) {
 			CHECK(cfg_gettoken(pctx));
-			if (strcasecmp(TOKEN_STRING(pctx), "size") == 0 &&
+			if (token_casecmp(pctx, "size") == 0 &&
 			    obj->value.tuple[2] == NULL)
 			{
 				CHECK(cfg_parse_obj(pctx, fields[2].type,
 						    &obj->value.tuple[2]));
-			} else if (strcasecmp(TOKEN_STRING(pctx), "versions") ==
+			} else if (token_casecmp(pctx, "versions") ==
 					   0 &&
 				   obj->value.tuple[3] == NULL)
 			{
 				CHECK(cfg_parse_obj(pctx, fields[3].type,
 						    &obj->value.tuple[3]));
-			} else if (strcasecmp(TOKEN_STRING(pctx), "suffix") ==
+			} else if (token_casecmp(pctx, "suffix") ==
 					   0 &&
 				   obj->value.tuple[4] == NULL)
 			{
@@ -1963,12 +1984,14 @@ cfg_parse_kv_tuple(cfg_parser_t *pctx, const cfg_type_t *type,
 
 		for (fn = 1, f = &fields[1];; ++fn, ++f) {
 			if (f->name == NULL) {
-				cfg_parser_error(pctx, 0, "unexpected '%s'",
-						 TOKEN_STRING(pctx));
+				cfg_parser_error(
+					pctx, 0, "unexpected '%.*s'",
+					(int)pctx->token.value.as_region.length,
+					pctx->token.value.as_region.base);
 				CLEANUP(ISC_R_UNEXPECTEDTOKEN);
 			}
 			if (obj->value.tuple[fn] == NULL &&
-			    strcasecmp(f->name, TOKEN_STRING(pctx)) == 0)
+			    token_casecmp_cstr(pctx, f->name) == 0)
 			{
 				break;
 			}
@@ -3297,7 +3320,7 @@ parse_maybe_optional_keyvalue(cfg_parser_t *pctx, const cfg_type_t *type,
 
 	CHECK(cfg_peektoken(pctx));
 	if (pctx->token.type == isc_tokentype_string &&
-	    strcasecmp(TOKEN_STRING(pctx), kw->name) == 0)
+	    token_casecmp_cstr(pctx, kw->name) == 0)
 	{
 		CHECK(cfg_gettoken(pctx));
 		CHECK(kw->type->parse(pctx, kw->type, &obj));
@@ -3604,14 +3627,14 @@ parse_querysource(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 	CHECK(cfg_peektoken(pctx));
 
 	if (pctx->token.type == isc_tokentype_string &&
-	    strcasecmp(TOKEN_STRING(pctx), "address") == 0)
+	    token_casecmp(pctx, "address") == 0)
 	{
 		CHECK(cfg_gettoken(pctx));
 		CHECK(cfg_peektoken(pctx));
 	}
 
 	if (pctx->token.type == isc_tokentype_string &&
-	    strcasecmp(TOKEN_STRING(pctx), "none") == 0)
+	    token_casecmp(pctx, "none") == 0)
 	{
 		CHECK(cfg_gettoken(pctx));
 		cfg_obj_create(cfg_parser_currentfile(pctx), pctx->line,
@@ -3804,7 +3827,7 @@ parse_logseverity(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 
 	CHECK(cfg_peektoken(pctx));
 	if (pctx->token.type == isc_tokentype_string &&
-	    strcasecmp(TOKEN_STRING(pctx), "debug") == 0)
+	    token_casecmp(pctx, "debug") == 0)
 	{
 		CHECK(cfg_gettoken(pctx)); /* read "debug" */
 		CHECK(cfg_peektoken(pctx));
@@ -3882,18 +3905,18 @@ parse_logfile(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 		CHECK(cfg_peektoken(pctx));
 		if (pctx->token.type == isc_tokentype_string) {
 			CHECK(cfg_gettoken(pctx));
-			if (strcasecmp(TOKEN_STRING(pctx), "versions") == 0 &&
+			if (token_casecmp(pctx, "versions") == 0 &&
 			    obj->value.tuple[1] == NULL)
 			{
 				CHECK(cfg_parse_obj(pctx, fields[1].type,
 						    &obj->value.tuple[1]));
-			} else if (strcasecmp(TOKEN_STRING(pctx), "size") ==
+			} else if (token_casecmp(pctx, "size") ==
 					   0 &&
 				   obj->value.tuple[2] == NULL)
 			{
 				CHECK(cfg_parse_obj(pctx, fields[2].type,
 						    &obj->value.tuple[2]));
-			} else if (strcasecmp(TOKEN_STRING(pctx), "suffix") ==
+			} else if (token_casecmp(pctx, "suffix") ==
 					   0 &&
 				   obj->value.tuple[3] == NULL)
 			{

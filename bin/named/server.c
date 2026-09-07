@@ -29,6 +29,7 @@
 #include <fstrm.h>
 #endif
 
+#include <isc/ascii.h>
 #include <isc/async.h>
 #include <isc/attributes.h>
 #include <isc/base64.h>
@@ -9788,7 +9789,7 @@ named_server_scan_interfaces(named_server_t *server) {
  * the token into local storage if it needs to be referenced after the next
  * call to next_token().
  */
-static char *
+static isc_region_t
 next_token(isc_lex_t *lex, isc_buffer_t *text) {
 	isc_result_t result;
 	isc_token_t token;
@@ -9810,22 +9811,69 @@ next_token(isc_lex_t *lex, isc_buffer_t *text) {
 			(void)putstr(text, "token too large");
 			(void)putnull(text);
 		}
-		return NULL;
+		return (isc_region_t){ 0 };
 	default:
 		if (text != NULL) {
 			(void)putstr(text, isc_result_totext(result));
 			(void)putnull(text);
 		}
-		return NULL;
+		return (isc_region_t){ 0 };
 	}
 
 	if (token.type == isc_tokentype_string ||
 	    token.type == isc_tokentype_qstring)
 	{
-		return (char *)token.value.as_region.base;
+		return token.value.as_region;
 	}
 
-	return NULL;
+	return (isc_region_t){ 0 };
+}
+
+#define TOKEN_EQUAL(token, text)                                            \
+	({                                                                    \
+		static_assert(__builtin_constant_p(text),                       \
+			      "text must be a string literal");                 \
+		(token).length == sizeof(text) - 1 &&                           \
+			memcmp((token).base, (text), sizeof(text) - 1) == 0;      \
+	})
+
+#define TOKEN_CASEEQUAL(token, text)                                        \
+	({                                                                    \
+		static_assert(__builtin_constant_p(text),                       \
+			      "text must be a string literal");                 \
+		(token).length == sizeof(text) - 1 &&                           \
+			isc_ascii_lowercmp((token).base, (const uint8_t *)(text), \
+					   sizeof(text) - 1) == 0;                 \
+	})
+
+static bool
+token_equal_cstr(const isc_region_t *token, const char *text) {
+	size_t length = strlen(text);
+
+	return token->length == length && memcmp(token->base, text, length) == 0;
+}
+
+static bool
+token_caseequal_cstr(const isc_region_t *token, const char *text) {
+	size_t length = strlen(text);
+
+	return token->length == length &&
+	       isc_ascii_lowercmp(token->base, (const uint8_t *)text, length) == 0;
+}
+
+static isc_result_t
+token_tostring(const isc_region_t *token, char *text, size_t size) {
+	if (token->length >= size) {
+		return ISC_R_NOSPACE;
+	}
+	memmove(text, token->base, token->length);
+	text[token->length] = '\0';
+	return ISC_R_SUCCESS;
+}
+
+static isc_result_t
+puttoken(isc_buffer_t *text, const isc_region_t *token) {
+	return putmem(text, (const char *)token->base, token->length);
 }
 
 /*
@@ -9841,19 +9889,21 @@ next_token(isc_lex_t *lex, isc_buffer_t *text) {
  * argument before the zone name, as in "rndc sync [-clean] zone".)
  */
 static isc_result_t
-zone_from_args(named_server_t *server, isc_lex_t *lex, const char *zonetxt,
-	       dns_zone_t **zonep, char *zonename, isc_buffer_t *text,
-	       bool skip) {
-	char *ptr;
-	char *classtxt;
-	const char *viewtxt = NULL;
+zone_from_args(named_server_t *server, isc_lex_t *lex,
+	       const isc_region_t *zonetxt, dns_zone_t **zonep, char *zonename,
+	       isc_buffer_t *text, bool skip) {
+	isc_region_t ptr = { 0 };
+	isc_region_t zone = { 0 };
+	isc_region_t classtxt = { 0 };
+	isc_region_t viewtxt = { 0 };
 	dns_fixedname_t fname;
 	dns_name_t *name;
 	isc_result_t result;
 	dns_view_t *view = NULL;
 	dns_rdataclass_t rdclass;
-	char problem[DNS_NAME_FORMATSIZE + 500] = "";
+	char problem[2 * DNS_NAME_FORMATSIZE + 500] = "";
 	char zonebuf[DNS_NAME_FORMATSIZE];
+	char viewbuf[DNS_NAME_FORMATSIZE];
 	bool redirect = false;
 
 	REQUIRE(zonep != NULL && *zonep == NULL);
@@ -9861,30 +9911,35 @@ zone_from_args(named_server_t *server, isc_lex_t *lex, const char *zonetxt,
 	if (skip) {
 		/* Skip the command name. */
 		ptr = next_token(lex, text);
-		if (ptr == NULL) {
+		if (ptr.base == NULL) {
 			return ISC_R_UNEXPECTEDEND;
 		}
 	}
 
 	/* Look for the zone name. */
 	if (zonetxt == NULL) {
-		zonetxt = next_token(lex, text);
+		zone = next_token(lex, text);
+		zonetxt = &zone;
 	}
-	if (zonetxt == NULL) {
+	if (zonetxt->base == NULL) {
 		return ISC_R_SUCCESS;
 	}
 
 	/* Copy zonetxt because it'll be overwritten by next_token() */
 	/* To locate a zone named "-redirect" use "-redirect." */
-	if (strcmp(zonetxt, "-redirect") == 0) {
+	if (TOKEN_EQUAL(*zonetxt, "-redirect")) {
 		redirect = true;
 		strlcpy(zonebuf, ".", DNS_NAME_FORMATSIZE);
 	} else {
-		strlcpy(zonebuf, zonetxt, DNS_NAME_FORMATSIZE);
+		CHECK(token_tostring(zonetxt, zonebuf, sizeof(zonebuf)));
 	}
 	if (zonename != NULL) {
-		strlcpy(zonename, redirect ? "." : zonetxt,
-			DNS_NAME_FORMATSIZE);
+		if (redirect) {
+			strlcpy(zonename, ".", DNS_NAME_FORMATSIZE);
+		} else {
+			CHECK(token_tostring(zonetxt, zonename,
+					     DNS_NAME_FORMATSIZE));
+		}
 	}
 
 	name = dns_fixedname_initname(&fname);
@@ -9892,11 +9947,8 @@ zone_from_args(named_server_t *server, isc_lex_t *lex, const char *zonetxt,
 
 	/* Look for the optional class name. */
 	classtxt = next_token(lex, text);
-	if (classtxt != NULL) {
-		isc_textregion_t r;
-		r.base = classtxt;
-		r.length = strlen(classtxt);
-		CHECK(dns_rdataclass_fromtext(&rdclass, ISC_REGION_FROM(&r)));
+	if (classtxt.base != NULL) {
+		CHECK(dns_rdataclass_fromtext(&rdclass, &classtxt));
 
 		/* Look for the optional view name. */
 		viewtxt = next_token(lex, text);
@@ -9904,7 +9956,7 @@ zone_from_args(named_server_t *server, isc_lex_t *lex, const char *zonetxt,
 		rdclass = dns_rdataclass_in;
 	}
 
-	if (viewtxt == NULL) {
+	if (viewtxt.base == NULL) {
 		if (redirect) {
 			result = dns_viewlist_find(&server->viewlist,
 						   "_default",
@@ -9920,7 +9972,7 @@ zone_from_args(named_server_t *server, isc_lex_t *lex, const char *zonetxt,
 			}
 		} else {
 			result = dns_viewlist_findzone(&server->viewlist, name,
-						       classtxt == NULL,
+						       classtxt.base == NULL,
 						       rdclass, zonep);
 			if (result == ISC_R_NOTFOUND) {
 				snprintf(problem, sizeof(problem),
@@ -9934,11 +9986,12 @@ zone_from_args(named_server_t *server, isc_lex_t *lex, const char *zonetxt,
 			}
 		}
 	} else {
-		result = dns_viewlist_find(&server->viewlist, viewtxt, rdclass,
+		CHECK(token_tostring(&viewtxt, viewbuf, sizeof(viewbuf)));
+		result = dns_viewlist_find(&server->viewlist, viewbuf, rdclass,
 					   &view);
 		if (result != ISC_R_SUCCESS) {
 			snprintf(problem, sizeof(problem),
-				 "no matching view '%s'", viewtxt);
+				 "no matching view '%s'", viewbuf);
 			goto report;
 		}
 
@@ -9956,7 +10009,7 @@ zone_from_args(named_server_t *server, isc_lex_t *lex, const char *zonetxt,
 		if (result != ISC_R_SUCCESS) {
 			snprintf(problem, sizeof(problem),
 				 "no matching zone '%s' in view '%s'", zonebuf,
-				 viewtxt);
+				 viewbuf);
 		}
 	}
 
@@ -9992,7 +10045,7 @@ isc_result_t
 named_server_retransfercommand(named_server_t *server, isc_lex_t *lex,
 			       isc_buffer_t *text) {
 	isc_result_t result = ISC_R_SUCCESS;
-	const char *arg = NULL;
+	isc_region_t arg = { 0 };
 	dns_zone_t *zone = NULL;
 	dns_zone_t *raw = NULL;
 	dns_zonetype_t type;
@@ -10004,12 +10057,13 @@ named_server_retransfercommand(named_server_t *server, isc_lex_t *lex,
 	(void)next_token(lex, text);
 
 	arg = next_token(lex, text);
-	if (arg != NULL && (strcmp(arg, "-force") == 0)) {
+	if (arg.base != NULL && TOKEN_EQUAL(arg, "-force")) {
 		force = true;
 		arg = next_token(lex, text);
 	}
 
-	RETERR(zone_from_args(server, lex, arg, &zone, NULL, text, false));
+	RETERR(zone_from_args(server, lex, arg.base != NULL ? &arg : NULL,
+			     &zone, NULL, text, false));
 
 	if (zone == NULL) {
 		return ISC_R_UNEXPECTEDEND;
@@ -10120,7 +10174,7 @@ named_server_reloadcommand(named_server_t *server, isc_lex_t *lex,
 isc_result_t
 named_server_resetstatscommand(named_server_t *server, isc_lex_t *lex,
 			       isc_buffer_t *text) {
-	const char *arg = NULL;
+	isc_region_t arg = { 0 };
 	bool recursive_high_water = false;
 	bool tcp_high_water = false;
 
@@ -10130,20 +10184,20 @@ named_server_resetstatscommand(named_server_t *server, isc_lex_t *lex,
 	(void)next_token(lex, text);
 
 	arg = next_token(lex, text);
-	if (arg == NULL) {
+	if (arg.base == NULL) {
 		(void)putstr(text, "reset-stats: argument expected");
 		(void)putnull(text);
 		return ISC_R_UNEXPECTEDEND;
 	}
-	while (arg != NULL) {
-		if (strcmp(arg, "recursive-high-water") == 0) {
+	while (arg.base != NULL) {
+		if (TOKEN_EQUAL(arg, "recursive-high-water")) {
 			recursive_high_water = true;
-		} else if (strcmp(arg, "tcp-high-water") == 0) {
+		} else if (TOKEN_EQUAL(arg, "tcp-high-water")) {
 			tcp_high_water = true;
 		} else {
 			(void)putstr(text, "reset-stats: "
 					   "unrecognized argument: ");
-			(void)putstr(text, arg);
+			(void)puttoken(text, &arg);
 			(void)putnull(text);
 			return ISC_R_FAILURE;
 		}
@@ -10279,25 +10333,27 @@ isc_result_t
 named_server_setortoggle(named_server_t *server, const char *optname,
 			 unsigned int option, isc_lex_t *lex) {
 	bool prev, value;
-	char *ptr = NULL;
+	isc_region_t ptr = { 0 };
 
 	/* Skip the command name. */
 	ptr = next_token(lex, NULL);
-	if (ptr == NULL) {
+	if (ptr.base == NULL) {
 		return ISC_R_UNEXPECTEDEND;
 	}
 
 	prev = ns_server_getoption(server->sctx, option);
 
 	ptr = next_token(lex, NULL);
-	if (ptr == NULL) {
+	if (ptr.base == NULL) {
 		value = !prev;
-	} else if (!strcasecmp(ptr, "on") || !strcasecmp(ptr, "yes") ||
-		   !strcasecmp(ptr, "enable") || !strcasecmp(ptr, "true"))
+	} else if (TOKEN_CASEEQUAL(ptr, "on") || TOKEN_CASEEQUAL(ptr, "yes") ||
+		   TOKEN_CASEEQUAL(ptr, "enable") ||
+		   TOKEN_CASEEQUAL(ptr, "true"))
 	{
 		value = true;
-	} else if (!strcasecmp(ptr, "off") || !strcasecmp(ptr, "no") ||
-		   !strcasecmp(ptr, "disable") || !strcasecmp(ptr, "false"))
+	} else if (TOKEN_CASEEQUAL(ptr, "off") || TOKEN_CASEEQUAL(ptr, "no") ||
+		   TOKEN_CASEEQUAL(ptr, "disable") ||
+		   TOKEN_CASEEQUAL(ptr, "false"))
 	{
 		value = false;
 	} else {
@@ -10949,7 +11005,7 @@ named_server_dumpdb(named_server_t *server, isc_lex_t *lex,
 		    isc_buffer_t *text) {
 	struct dumpcontext *dctx = NULL;
 	isc_result_t result;
-	char *ptr = NULL;
+	isc_region_t ptr = { 0 };
 	const char *sep = NULL;
 	bool found;
 
@@ -10957,7 +11013,7 @@ named_server_dumpdb(named_server_t *server, isc_lex_t *lex,
 
 	/* Skip the command name. */
 	ptr = next_token(lex, NULL);
-	if (ptr == NULL) {
+	if (ptr.base == NULL) {
 		return ISC_R_UNEXPECTEDEND;
 	}
 
@@ -10975,23 +11031,24 @@ named_server_dumpdb(named_server_t *server, isc_lex_t *lex,
 		"could not open dump file", server->dumpfile);
 
 	ptr = next_token(lex, NULL);
-	sep = (ptr == NULL) ? "" : ": ";
+	sep = (ptr.base == NULL) ? "" : ": ";
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
-		      ISC_LOG_INFO, "dumpdb started%s%s", sep,
-		      (ptr != NULL) ? ptr : "");
+		      ISC_LOG_INFO, "dumpdb started%s%.*s", sep,
+		      ptr.base != NULL ? (int)ptr.length : 0,
+		      ptr.base != NULL ? ptr.base : (unsigned char *)"");
 
-	if (ptr != NULL && strcmp(ptr, "-all") == 0) {
+	if (ptr.base != NULL && TOKEN_EQUAL(ptr, "-all")) {
 		/* also dump zones */
 		dctx->dumpzones = true;
 		ptr = next_token(lex, NULL);
-	} else if (ptr != NULL && strcmp(ptr, "-cache") == 0) {
+	} else if (ptr.base != NULL && TOKEN_EQUAL(ptr, "-cache")) {
 		/* this is the default */
 		ptr = next_token(lex, NULL);
-	} else if (ptr != NULL && strcmp(ptr, "-expired") == 0) {
+	} else if (ptr.base != NULL && TOKEN_EQUAL(ptr, "-expired")) {
 		/* this is the same as -cache but includes expired data */
 		dctx->dumpexpired = true;
 		ptr = next_token(lex, NULL);
-	} else if (ptr != NULL && strcmp(ptr, "-zones") == 0) {
+	} else if (ptr.base != NULL && TOKEN_EQUAL(ptr, "-zones")) {
 		/* only dump zones, suppress caches */
 		dctx->dumpadb = false;
 		dctx->dumpcache = false;
@@ -10999,26 +11056,26 @@ named_server_dumpdb(named_server_t *server, isc_lex_t *lex,
 		dctx->dumpfail = false;
 		dctx->dumpzones = true;
 		ptr = next_token(lex, NULL);
-	} else if (ptr != NULL && strcmp(ptr, "-deleg") == 0) {
+	} else if (ptr.base != NULL && TOKEN_EQUAL(ptr, "-deleg")) {
 		/* only dump deleg db, suppress other caches */
 		dctx->dumpcache = false;
 		dctx->dumpfail = false;
 		dctx->dumpadb = false;
 		ptr = next_token(lex, NULL);
-	} else if (ptr != NULL && strcmp(ptr, "-adb") == 0) {
+	} else if (ptr.base != NULL && TOKEN_EQUAL(ptr, "-adb")) {
 		/* only dump adb, suppress other caches */
 		dctx->dumpcache = false;
 		dctx->dumpdeleg = false;
 		dctx->dumpfail = false;
 		ptr = next_token(lex, NULL);
-	} else if (ptr != NULL && strcmp(ptr, "-bad") == 0) {
+	} else if (ptr.base != NULL && TOKEN_EQUAL(ptr, "-bad")) {
 		/* only dump badcache, suppress other caches */
 		dctx->dumpadb = false;
 		dctx->dumpdeleg = false;
 		dctx->dumpcache = false;
 		dctx->dumpfail = false;
 		ptr = next_token(lex, NULL);
-	} else if (ptr != NULL && strcmp(ptr, "-fail") == 0) {
+	} else if (ptr.base != NULL && TOKEN_EQUAL(ptr, "-fail")) {
 		/* only dump servfail cache, suppress other caches */
 		dctx->dumpadb = false;
 		dctx->dumpdeleg = false;
@@ -11029,16 +11086,16 @@ named_server_dumpdb(named_server_t *server, isc_lex_t *lex,
 nextview:
 	found = false;
 	ISC_LIST_FOREACH(server->viewlist, view, link) {
-		if (ptr != NULL && strcmp(view->name, ptr) != 0) {
+		if (ptr.base != NULL && !token_equal_cstr(&ptr, view->name)) {
 			continue;
 		}
 		found = true;
 		CHECK(add_view_tolist(dctx, view));
 	}
-	if (ptr != NULL) {
+	if (ptr.base != NULL) {
 		if (!found) {
 			CHECK(putstr(text, "view '"));
-			CHECK(putstr(text, ptr));
+			CHECK(puttoken(text, &ptr));
 			CHECK(putstr(text, "' not found"));
 			CHECK(putnull(text));
 			result = ISC_R_NOTFOUND;
@@ -11046,7 +11103,7 @@ nextview:
 			return result;
 		}
 		ptr = next_token(lex, NULL);
-		if (ptr != NULL) {
+		if (ptr.base != NULL) {
 			goto nextview;
 		}
 	}
@@ -11064,7 +11121,7 @@ named_server_dumpsecroots(named_server_t *server, isc_lex_t *lex,
 	dns_keytable_t *secroots = NULL;
 	dns_ntatable_t *ntatable = NULL;
 	isc_result_t result;
-	char *ptr = NULL;
+	isc_region_t ptr = { 0 };
 	FILE *fp = NULL;
 	isc_time_t now;
 	char tbuf[64];
@@ -11075,13 +11132,13 @@ named_server_dumpsecroots(named_server_t *server, isc_lex_t *lex,
 
 	/* Skip the command name. */
 	ptr = next_token(lex, text);
-	if (ptr == NULL) {
+	if (ptr.base == NULL) {
 		return ISC_R_UNEXPECTEDEND;
 	}
 
 	/* "-" here means print the output instead of dumping to file */
 	ptr = next_token(lex, text);
-	if (ptr != NULL && strcmp(ptr, "-") == 0) {
+	if (ptr.base != NULL && TOKEN_EQUAL(ptr, "-")) {
 		ptr = next_token(lex, text);
 	} else {
 		result = isc_stdio_open(server->secrootsfile, "w", &fp);
@@ -11102,7 +11159,9 @@ named_server_dumpsecroots(named_server_t *server, isc_lex_t *lex,
 
 	do {
 		ISC_LIST_FOREACH(server->viewlist, view, link) {
-			if (ptr != NULL && strcmp(view->name, ptr) != 0) {
+			if (ptr.base != NULL &&
+			    !token_equal_cstr(&ptr, view->name))
+			{
 				continue;
 			}
 			if (secroots != NULL) {
@@ -11139,10 +11198,10 @@ named_server_dumpsecroots(named_server_t *server, isc_lex_t *lex,
 			CHECK(dns_ntatable_totext(ntatable, NULL, text));
 		}
 
-		if (ptr != NULL) {
+		if (ptr.base != NULL) {
 			ptr = next_token(lex, text);
 		}
-	} while (ptr != NULL);
+	} while (ptr.base != NULL);
 
 cleanup:
 	if (secroots != NULL) {
@@ -11211,27 +11270,28 @@ cleanup:
 
 isc_result_t
 named_server_setdebuglevel(named_server_t *server, isc_lex_t *lex) {
-	char *ptr;
-	char *endp;
-	long newlevel;
+	isc_region_t ptr;
+	uint32_t newlevel;
 
 	UNUSED(server);
 
 	/* Skip the command name. */
 	ptr = next_token(lex, NULL);
-	if (ptr == NULL) {
+	if (ptr.base == NULL) {
 		return ISC_R_UNEXPECTEDEND;
 	}
 
 	/* Look for the new level name. */
 	ptr = next_token(lex, NULL);
-	if (ptr == NULL) {
+	if (ptr.base == NULL) {
 		if (named_g_debuglevel < 99) {
 			named_g_debuglevel++;
 		}
 	} else {
-		newlevel = strtol(ptr, &endp, 10);
-		if (*endp != '\0' || newlevel < 0 || newlevel > 99) {
+		if (isc_parse_uint32_region(&newlevel, &ptr, 10) !=
+			    ISC_R_SUCCESS ||
+		    newlevel > 99)
+		{
 			return ISC_R_RANGE;
 		}
 		named_g_debuglevel = (unsigned int)newlevel;
@@ -11246,7 +11306,7 @@ named_server_setdebuglevel(named_server_t *server, isc_lex_t *lex) {
 isc_result_t
 named_server_validation(named_server_t *server, isc_lex_t *lex,
 			isc_buffer_t *text) {
-	char *ptr = NULL;
+	isc_region_t ptr = { 0 };
 	bool changed = false;
 	isc_result_t result;
 	bool enable = true, set = true, first = true;
@@ -11255,25 +11315,28 @@ named_server_validation(named_server_t *server, isc_lex_t *lex,
 
 	/* Skip the command name. */
 	ptr = next_token(lex, text);
-	if (ptr == NULL) {
+	if (ptr.base == NULL) {
 		return ISC_R_UNEXPECTEDEND;
 	}
 
 	/* Find out what we are to do. */
 	ptr = next_token(lex, text);
-	if (ptr == NULL) {
+	if (ptr.base == NULL) {
 		return ISC_R_UNEXPECTEDEND;
 	}
 
-	if (!strcasecmp(ptr, "on") || !strcasecmp(ptr, "yes") ||
-	    !strcasecmp(ptr, "enable") || !strcasecmp(ptr, "true"))
+	if (TOKEN_CASEEQUAL(ptr, "on") || TOKEN_CASEEQUAL(ptr, "yes") ||
+	    TOKEN_CASEEQUAL(ptr, "enable") || TOKEN_CASEEQUAL(ptr, "true"))
 	{
 		enable = true;
-	} else if (!strcasecmp(ptr, "off") || !strcasecmp(ptr, "no") ||
-		   !strcasecmp(ptr, "disable") || !strcasecmp(ptr, "false"))
+	} else if (TOKEN_CASEEQUAL(ptr, "off") || TOKEN_CASEEQUAL(ptr, "no") ||
+		   TOKEN_CASEEQUAL(ptr, "disable") ||
+		   TOKEN_CASEEQUAL(ptr, "false"))
 	{
 		enable = false;
-	} else if (!strcasecmp(ptr, "check") || !strcasecmp(ptr, "status")) {
+	} else if (TOKEN_CASEEQUAL(ptr, "check") ||
+		   TOKEN_CASEEQUAL(ptr, "status"))
+	{
 		set = false;
 	} else {
 		return DNS_R_SYNTAX;
@@ -11284,7 +11347,8 @@ named_server_validation(named_server_t *server, isc_lex_t *lex,
 
 	isc_loopmgr_pause();
 	ISC_LIST_FOREACH(server->viewlist, view, link) {
-		if ((ptr != NULL && strcasecmp(ptr, view->name) != 0) ||
+		if ((ptr.base != NULL &&
+		     !token_caseequal_cstr(&ptr, view->name)) ||
 		    strcasecmp("_bind", view->name) == 0)
 		{
 			continue;
@@ -11363,14 +11427,14 @@ flush_delegdb(dns_view_t *view) {
 
 isc_result_t
 named_server_flushcache(named_server_t *server, isc_lex_t *lex) {
-	char *ptr = NULL;
+	isc_region_t ptr = { 0 };
 	bool flushed;
 	bool found;
 	isc_result_t result;
 
 	/* Skip the command name. */
 	ptr = next_token(lex, NULL);
-	if (ptr == NULL) {
+	if (ptr.base == NULL) {
 		return ISC_R_UNEXPECTEDEND;
 	}
 
@@ -11387,7 +11451,7 @@ named_server_flushcache(named_server_t *server, isc_lex_t *lex) {
 	 * list, flush these caches, and then update other views that refer to
 	 * the flushed cache DB.
 	 */
-	if (ptr != NULL) {
+	if (ptr.base != NULL) {
 		/*
 		 * Mark caches that need to be flushed.  This is an O(#view^2)
 		 * operation in the very worst case, but should be normally
@@ -11395,7 +11459,7 @@ named_server_flushcache(named_server_t *server, isc_lex_t *lex) {
 		 * one) views will match.
 		 */
 		ISC_LIST_FOREACH(server->viewlist, view, link) {
-			if (strcasecmp(ptr, view->name) != 0) {
+			if (!token_caseequal_cstr(&ptr, view->name)) {
 				continue;
 			}
 
@@ -11413,7 +11477,7 @@ named_server_flushcache(named_server_t *server, isc_lex_t *lex) {
 
 	/* Perform flush */
 	ISC_LIST_FOREACH(server->cachelist, nsc, link) {
-		if (ptr != NULL && !nsc->needflush) {
+		if (ptr.base != NULL && !nsc->needflush) {
 			continue;
 		}
 		nsc->needflush = true;
@@ -11467,11 +11531,11 @@ named_server_flushcache(named_server_t *server, isc_lex_t *lex) {
 	}
 
 	if (flushed && found) {
-		if (ptr != NULL) {
+		if (ptr.base != NULL) {
 			isc_log_write(NAMED_LOGCATEGORY_GENERAL,
 				      NAMED_LOGMODULE_SERVER, ISC_LOG_INFO,
-				      "flushing cache in view '%s' succeeded",
-				      ptr);
+				      "flushing cache in view '%.*s' succeeded",
+				      (int)ptr.length, ptr.base);
 		} else {
 			isc_log_write(NAMED_LOGCATEGORY_GENERAL,
 				      NAMED_LOGMODULE_SERVER, ISC_LOG_INFO,
@@ -11482,9 +11546,9 @@ named_server_flushcache(named_server_t *server, isc_lex_t *lex) {
 		if (!found) {
 			isc_log_write(NAMED_LOGCATEGORY_GENERAL,
 				      NAMED_LOGMODULE_SERVER, ISC_LOG_ERROR,
-				      "flushing cache in view '%s' failed: "
+				      "flushing cache in view '%.*s' failed: "
 				      "view not found",
-				      ptr);
+				      (int)ptr.length, ptr.base);
 			result = ISC_R_NOTFOUND;
 		} else {
 			result = ISC_R_FAILURE;
@@ -11540,29 +11604,30 @@ flushnode_delegcache(dns_view_t *view, const dns_name_t *name,
 }
 
 static void
-logflushcachesuccess(const char *viewname, const char *target, bool tree,
-		     bool deleg) {
+logflushcachesuccess(const isc_region_t *viewname, const char *target,
+		     bool tree, bool deleg) {
 	const char *cache =
-		deleg ? (viewname == NULL ? "delegation cache for all views"
-					  : "delegation cache for view")
-		      : (viewname == NULL ? "DNS cache for all views"
-					  : "DNS cache for view");
+		deleg ? (viewname->base == NULL ? "delegation cache for all views"
+						: "delegation cache for view")
+		      : (viewname->base == NULL ? "DNS cache for all views"
+						: "DNS cache for view");
 
-	if (viewname == NULL) {
+	if (viewname->base == NULL) {
 		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
 			      ISC_LOG_INFO, "flushing %s '%s' in %s succeeded",
 			      tree ? "tree" : "name", target, cache);
 	} else {
 		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
 			      ISC_LOG_INFO,
-			      "flushing %s '%s' in %s %s succeeded",
-			      tree ? "tree" : "name", target, cache, viewname);
+			      "flushing %s '%s' in %s %.*s succeeded",
+			      tree ? "tree" : "name", target, cache,
+			      (int)viewname->length, viewname->base);
 	}
 }
 
 isc_result_t
 named_server_flushnode(named_server_t *server, isc_lex_t *lex, bool tree) {
-	char *ptr = NULL, *viewname = NULL;
+	isc_region_t ptr = { 0 }, viewname = { 0 };
 	char target[DNS_NAME_FORMATSIZE];
 	bool flushedcache = false, flusheddelegcache = false;
 	bool found;
@@ -11573,17 +11638,17 @@ named_server_flushnode(named_server_t *server, isc_lex_t *lex, bool tree) {
 
 	/* Skip the command name. */
 	ptr = next_token(lex, NULL);
-	if (ptr == NULL) {
+	if (ptr.base == NULL) {
 		return ISC_R_UNEXPECTEDEND;
 	}
 
 	/* Find the domain name to flush. */
 	ptr = next_token(lex, NULL);
-	if (ptr == NULL) {
+	if (ptr.base == NULL) {
 		return ISC_R_UNEXPECTEDEND;
 	}
 
-	strlcpy(target, ptr, DNS_NAME_FORMATSIZE);
+	RETERR(token_tostring(&ptr, target, sizeof(target)));
 	isc_buffer_constinit(&b, target, strlen(target));
 	isc_buffer_add(&b, strlen(target));
 	name = dns_fixedname_initname(&fixed);
@@ -11595,7 +11660,9 @@ named_server_flushnode(named_server_t *server, isc_lex_t *lex, bool tree) {
 	isc_loopmgr_pause();
 	found = false;
 	ISC_LIST_FOREACH(server->viewlist, view, link) {
-		if (viewname != NULL && strcasecmp(viewname, view->name) != 0) {
+		if (viewname.base != NULL &&
+		    !token_caseequal_cstr(&viewname, view->name))
+		{
 			continue;
 		}
 
@@ -11611,12 +11678,12 @@ named_server_flushnode(named_server_t *server, isc_lex_t *lex, bool tree) {
 	}
 
 	if (flushedcache && found) {
-		logflushcachesuccess(viewname, target, tree, false);
+		logflushcachesuccess(&viewname, target, tree, false);
 		result = ISC_R_SUCCESS;
 	}
 
 	if (flusheddelegcache && found) {
-		logflushcachesuccess(viewname, target, tree, true);
+		logflushcachesuccess(&viewname, target, tree, true);
 		result = ISC_R_SUCCESS;
 	}
 
@@ -11625,9 +11692,10 @@ named_server_flushnode(named_server_t *server, isc_lex_t *lex, bool tree) {
 			isc_log_write(
 				NAMED_LOGCATEGORY_GENERAL,
 				NAMED_LOGMODULE_SERVER, ISC_LOG_ERROR,
-				"flushing %s '%s' in caches for view '%s' "
+				"flushing %s '%s' in caches for view '%.*s' "
 				"failed: view not found",
-				tree ? "tree" : "name", target, viewname);
+				tree ? "tree" : "name", target,
+				(int)viewname.length, viewname.base);
 		}
 		result = ISC_R_FAILURE;
 	}
@@ -11791,16 +11859,16 @@ named_server_rekey(named_server_t *server, isc_lex_t *lex, isc_buffer_t *text) {
 	dns_zone_t *zone = NULL;
 	dns_zonetype_t type;
 	bool fullsign = false;
-	char *ptr = NULL;
+	isc_region_t ptr = { 0 };
 
 	REQUIRE(text != NULL);
 
 	ptr = next_token(lex, text);
-	if (ptr == NULL) {
+	if (ptr.base == NULL) {
 		return ISC_R_UNEXPECTEDEND;
 	}
 
-	if (strcasecmp(ptr, NAMED_COMMAND_SIGN) == 0) {
+	if (TOKEN_CASEEQUAL(ptr, NAMED_COMMAND_SIGN)) {
 		fullsign = true;
 	}
 
@@ -11867,7 +11935,8 @@ named_server_sync(named_server_t *server, isc_lex_t *lex, isc_buffer_t *text) {
 	dns_zone_t *zone = NULL;
 	char classstr[DNS_RDATACLASS_FORMATSIZE];
 	char zonename[DNS_NAME_FORMATSIZE];
-	const char *vname = NULL, *sep = NULL, *arg = NULL;
+	const char *vname = NULL, *sep = NULL;
+	isc_region_t arg = { 0 };
 	bool cleanup = false;
 
 	REQUIRE(text != NULL);
@@ -11875,8 +11944,8 @@ named_server_sync(named_server_t *server, isc_lex_t *lex, isc_buffer_t *text) {
 	(void)next_token(lex, text);
 
 	arg = next_token(lex, text);
-	if (arg != NULL &&
-	    (strcmp(arg, "-clean") == 0 || strcmp(arg, "-clear") == 0))
+	if (arg.base != NULL &&
+	    (TOKEN_EQUAL(arg, "-clean") || TOKEN_EQUAL(arg, "-clear")))
 	{
 		cleanup = true;
 		arg = next_token(lex, text);
@@ -11884,7 +11953,8 @@ named_server_sync(named_server_t *server, isc_lex_t *lex, isc_buffer_t *text) {
 
 	REQUIRE(text != NULL);
 
-	RETERR(zone_from_args(server, lex, arg, &zone, NULL, text, false));
+	RETERR(zone_from_args(server, lex, arg.base != NULL ? &arg : NULL,
+			     &zone, NULL, text, false));
 
 	if (zone == NULL) {
 		isc_loopmgr_pause();
@@ -12816,7 +12886,7 @@ named_server_delzone(named_server_t *server, isc_lex_t *lex,
 	dns_view_t *view = NULL;
 	char zonename[DNS_NAME_FORMATSIZE];
 	bool cleanup = false;
-	const char *ptr;
+	isc_region_t ptr;
 	bool added;
 	ns_dzctx_t *dz = NULL;
 
@@ -12824,22 +12894,23 @@ named_server_delzone(named_server_t *server, isc_lex_t *lex,
 
 	/* Skip the command name. */
 	ptr = next_token(lex, text);
-	if (ptr == NULL) {
+	if (ptr.base == NULL) {
 		return ISC_R_UNEXPECTEDEND;
 	}
 
 	/* Find out what we are to do. */
 	ptr = next_token(lex, text);
-	if (ptr == NULL) {
+	if (ptr.base == NULL) {
 		return ISC_R_UNEXPECTEDEND;
 	}
 
-	if (strcmp(ptr, "-clean") == 0 || strcmp(ptr, "-clear") == 0) {
+	if (TOKEN_EQUAL(ptr, "-clean") || TOKEN_EQUAL(ptr, "-clear")) {
 		cleanup = true;
 		ptr = next_token(lex, text);
 	}
 
-	CHECK(zone_from_args(server, lex, ptr, &zone, zonename, text, false));
+	CHECK(zone_from_args(server, lex, ptr.base != NULL ? &ptr : NULL,
+			     &zone, zonename, text, false));
 	if (zone == NULL) {
 		CLEANUP(ISC_R_UNEXPECTEDEND);
 	}
@@ -12987,7 +13058,7 @@ isc_result_t
 named_server_showconf(named_server_t *server, isc_lex_t *lex,
 		      isc_buffer_t *text) {
 	isc_result_t result = ISC_R_SUCCESS;
-	const char *arg = NULL;
+	isc_region_t arg = { 0 };
 	cfg_obj_t *config = NULL;
 	ns_dzarg_t dzarg = {
 		.magic = DZARG_MAGIC,
@@ -13000,14 +13071,14 @@ named_server_showconf(named_server_t *server, isc_lex_t *lex,
 	(void)next_token(lex, text);
 
 	arg = next_token(lex, text);
-	if (arg == NULL) {
+	if (arg.base == NULL) {
 		return ISC_R_UNEXPECTEDEND;
 	}
 
-	if (strcasecmp(arg, "-user") == 0) {
+	if (TOKEN_CASEEQUAL(arg, "-user")) {
 		result = putmem(text, isc_buffer_base(server->userconftext),
 				isc_buffer_usedlength(server->userconftext));
-	} else if (strcasecmp(arg, "-effective") == 0) {
+	} else if (TOKEN_CASEEQUAL(arg, "-effective")) {
 		if (server->effectivetext != NULL) {
 			result = putmem(
 				text, isc_buffer_base(server->effectivetext),
@@ -13017,7 +13088,7 @@ named_server_showconf(named_server_t *server, isc_lex_t *lex,
 				   &dzarg);
 			result = dzarg.result;
 		}
-	} else if (strcasecmp(arg, "-builtin") == 0) {
+	} else if (TOKEN_CASEEQUAL(arg, "-builtin")) {
 		CHECK(named_config_parsedefaults(&config));
 		cfg_printx(config, 0, emit_text, &dzarg);
 		cfg_obj_detach(&config);
@@ -13055,8 +13126,7 @@ named_server_signing(named_server_t *server, isc_lex_t *lex,
 	unsigned short hash = 0, flags = 0, iter = 0;
 	isc_region_t salt = { 0 };
 	unsigned char saltbuf[255];
-	const char *ptr;
-	size_t n;
+	isc_region_t ptr;
 	bool kasp = false;
 
 	REQUIRE(text != NULL);
@@ -13065,73 +13135,69 @@ named_server_signing(named_server_t *server, isc_lex_t *lex,
 
 	/* Skip the command name. */
 	ptr = next_token(lex, text);
-	if (ptr == NULL) {
+	if (ptr.base == NULL) {
 		return ISC_R_UNEXPECTEDEND;
 	}
 
 	/* Find out what we are to do. */
 	ptr = next_token(lex, text);
-	if (ptr == NULL) {
+	if (ptr.base == NULL) {
 		return ISC_R_UNEXPECTEDEND;
 	}
 
-	if (strcasecmp(ptr, "-list") == 0) {
+	if (TOKEN_CASEEQUAL(ptr, "-list")) {
 		list = true;
-	} else if ((strcasecmp(ptr, "-clear") == 0) ||
-		   (strcasecmp(ptr, "-clean") == 0))
+	} else if (TOKEN_CASEEQUAL(ptr, "-clear") ||
+		   TOKEN_CASEEQUAL(ptr, "-clean"))
 	{
 		clear = true;
 		ptr = next_token(lex, text);
-		if (ptr == NULL) {
+		if (ptr.base == NULL) {
 			return ISC_R_UNEXPECTEDEND;
 		}
-		strlcpy(keystr, ptr, sizeof(keystr));
-	} else if (strcasecmp(ptr, "-nsec3param") == 0) {
-		char hashbuf[64], flagbuf[64], iterbuf[64];
-		char nbuf[256];
+		RETERR(token_tostring(&ptr, keystr, sizeof(keystr)));
+	} else if (TOKEN_CASEEQUAL(ptr, "-nsec3param")) {
+		uint32_t number;
 
 		chain = true;
 		ptr = next_token(lex, text);
-		if (ptr == NULL) {
+		if (ptr.base == NULL) {
 			return ISC_R_UNEXPECTEDEND;
 		}
 
-		if (strcasecmp(ptr, "none") == 0) {
+		if (TOKEN_CASEEQUAL(ptr, "none")) {
 			hash = 0;
 		} else {
-			strlcpy(hashbuf, ptr, sizeof(hashbuf));
-
-			ptr = next_token(lex, text);
-			if (ptr == NULL) {
-				return ISC_R_UNEXPECTEDEND;
-			}
-			strlcpy(flagbuf, ptr, sizeof(flagbuf));
-
-			ptr = next_token(lex, text);
-			if (ptr == NULL) {
-				return ISC_R_UNEXPECTEDEND;
-			}
-			strlcpy(iterbuf, ptr, sizeof(iterbuf));
-			n = snprintf(nbuf, sizeof(nbuf), "%s %s %s", hashbuf,
-				     flagbuf, iterbuf);
-			if (n == sizeof(nbuf)) {
-				return ISC_R_NOSPACE;
-			}
-			n = sscanf(nbuf, "%hu %hu %hu", &hash, &flags, &iter);
-			if (n != 3U) {
-				return ISC_R_BADNUMBER;
-			}
-
-			if (hash > 0xffU || flags > 0xffU ||
-			    iter > dns_nsec3_maxiterations())
-			{
+			CHECK(isc_parse_uint32_region(&number, &ptr, 10));
+			if (number > UINT8_MAX) {
 				return ISC_R_RANGE;
 			}
+			hash = number;
 
 			ptr = next_token(lex, text);
-			if (ptr == NULL) {
+			if (ptr.base == NULL) {
 				return ISC_R_UNEXPECTEDEND;
-			} else if (strcasecmp(ptr, "auto") == 0) {
+			}
+			CHECK(isc_parse_uint32_region(&number, &ptr, 10));
+			if (number > UINT8_MAX) {
+				return ISC_R_RANGE;
+			}
+			flags = number;
+
+			ptr = next_token(lex, text);
+			if (ptr.base == NULL) {
+				return ISC_R_UNEXPECTEDEND;
+			}
+			CHECK(isc_parse_uint32_region(&number, &ptr, 10));
+			if (number > dns_nsec3_maxiterations()) {
+				return ISC_R_RANGE;
+			}
+			iter = number;
+
+			ptr = next_token(lex, text);
+			if (ptr.base == NULL) {
+				return ISC_R_UNEXPECTEDEND;
+			} else if (TOKEN_CASEEQUAL(ptr, "auto")) {
 				/* Auto-generate a random salt.
 				 * XXXMUKS: This currently uses the
 				 * minimum recommended length by RFC
@@ -13140,21 +13206,21 @@ named_server_signing(named_server_t *server, isc_lex_t *lex,
 				 */
 				salt.length = 8;
 				resalt = true;
-			} else if (strcmp(ptr, "-") != 0) {
+			} else if (!TOKEN_EQUAL(ptr, "-")) {
 				isc_buffer_t buf;
 
 				isc_buffer_init(&buf, saltbuf, sizeof(saltbuf));
-				CHECK(isc_hex_decodestring(ptr, &buf));
+				CHECK(isc_hex_decoderegion(&ptr, &buf));
 				salt.base = saltbuf;
 				salt.length = isc_buffer_usedlength(&buf);
 			}
 		}
-	} else if (strcasecmp(ptr, "-serial") == 0) {
+	} else if (TOKEN_CASEEQUAL(ptr, "-serial")) {
 		ptr = next_token(lex, text);
-		if (ptr == NULL) {
+		if (ptr.base == NULL) {
 			return ISC_R_UNEXPECTEDEND;
 		}
-		CHECK(isc_parse_uint32(&serial, ptr, 10));
+		CHECK(isc_parse_uint32_region(&serial, &ptr, 10));
 		setserial = true;
 	} else {
 		CLEANUP(DNS_R_SYNTAX);
@@ -13248,16 +13314,18 @@ cleanup:
 }
 
 static bool
-argcheck(char *cmd, const char *full) {
-	size_t l;
+argcheck(const isc_region_t *token, const char *full) {
+	size_t length;
 
-	if (cmd == NULL || cmd[0] != '-') {
+	if (token->base == NULL || token->length == 0 || token->base[0] != '-') {
 		return false;
 	}
 
-	cmd++;
-	l = strlen(cmd);
-	if (l > strlen(full) || strncasecmp(cmd, full, l) != 0) {
+	length = token->length - 1;
+	if (length > strlen(full) ||
+	    isc_ascii_lowercmp(token->base + 1, (const uint8_t *)full,
+			       length) != 0)
+	{
 		return false;
 	}
 
@@ -13271,7 +13339,7 @@ named_server_dnssec(named_server_t *server, isc_lex_t *lex,
 	dns_zone_t *zone = NULL;
 	dns_kasp_t *kasp = NULL;
 	dns_dnsseckeylist_t keys;
-	char *ptr, *zonetext = NULL;
+	isc_region_t ptr, zonetext = { 0 };
 	const char *msg = NULL;
 	/* variables for -step */
 	bool forcestep = false;
@@ -13296,13 +13364,13 @@ named_server_dnssec(named_server_t *server, isc_lex_t *lex,
 
 	/* Skip the command name. */
 	ptr = next_token(lex, text);
-	if (ptr == NULL) {
+	if (ptr.base == NULL) {
 		return ISC_R_UNEXPECTEDEND;
 	}
 
 	/* Find out what we are to do. */
 	ptr = next_token(lex, text);
-	if (ptr == NULL) {
+	if (ptr.base == NULL) {
 		return ISC_R_UNEXPECTEDEND;
 	}
 
@@ -13313,13 +13381,13 @@ named_server_dnssec(named_server_t *server, isc_lex_t *lex,
 
 	ISC_LIST_INIT(keys);
 
-	if (strcasecmp(ptr, "-status") == 0) {
+	if (TOKEN_CASEEQUAL(ptr, "-status")) {
 		status = true;
-	} else if (strcasecmp(ptr, "-rollover") == 0) {
+	} else if (TOKEN_CASEEQUAL(ptr, "-rollover")) {
 		rollover = true;
-	} else if (strcasecmp(ptr, "-checkds") == 0) {
+	} else if (TOKEN_CASEEQUAL(ptr, "-checkds")) {
 		checkds = true;
-	} else if (strcasecmp(ptr, "-step") == 0) {
+	} else if (TOKEN_CASEEQUAL(ptr, "-step")) {
 		forcestep = true;
 	} else {
 		CLEANUP(DNS_R_SYNTAX);
@@ -13329,12 +13397,12 @@ named_server_dnssec(named_server_t *server, isc_lex_t *lex,
 		/* Check for options */
 		for (;;) {
 			ptr = next_token(lex, text);
-			if (ptr == NULL) {
+			if (ptr.base == NULL) {
 				msg = "Bad format";
 				CHECK(ISC_R_UNEXPECTEDEND);
-			} else if (argcheck(ptr, "v")) {
+			} else if (argcheck(&ptr, "v")) {
 				verbose = true;
-			} else if (ptr[0] == '-') {
+			} else if (ptr.length != 0 && ptr.base[0] == '-') {
 				msg = "Unknown option";
 				CHECK(DNS_R_SYNTAX);
 			} else {
@@ -13348,47 +13416,46 @@ named_server_dnssec(named_server_t *server, isc_lex_t *lex,
 		/* Check for options */
 		for (;;) {
 			ptr = next_token(lex, text);
-			if (ptr == NULL) {
+			if (ptr.base == NULL) {
 				msg = "Bad format";
 				CLEANUP(ISC_R_UNEXPECTEDEND);
-			} else if (argcheck(ptr, "alg")) {
-				isc_consttextregion_t alg;
+			} else if (argcheck(&ptr, "alg")) {
 				ptr = next_token(lex, text);
-				if (ptr == NULL) {
+				if (ptr.base == NULL) {
 					msg = "No key algorithm specified";
 					CLEANUP(ISC_R_UNEXPECTEDEND);
 				}
-				alg.base = ptr;
-				alg.length = strlen(alg.base);
-				result = dst_algorithm_fromtext(
-					&algorithm, ISC_REGION_FROM(&alg));
+				result = dst_algorithm_fromtext(&algorithm, &ptr);
 				if (result != ISC_R_SUCCESS) {
 					msg = "Bad algorithm";
 					CLEANUP(DNS_R_SYNTAX);
 				}
 				continue;
-			} else if (argcheck(ptr, "key")) {
-				uint16_t id;
+			} else if (argcheck(&ptr, "key")) {
+				uint32_t id;
 				ptr = next_token(lex, text);
-				if (ptr == NULL) {
+				if (ptr.base == NULL) {
 					msg = "No key identifier specified";
 					CLEANUP(ISC_R_UNEXPECTEDEND);
 				}
-				CHECK(isc_parse_uint16(&id, ptr, 10));
+				CHECK(isc_parse_uint32_region(&id, &ptr, 10));
+				if (id > UINT16_MAX) {
+					CLEANUP(ISC_R_RANGE);
+				}
 				keyid = (dns_keytag_t)id;
 				use_keyid = true;
 				continue;
-			} else if (argcheck(ptr, "when")) {
+			} else if (argcheck(&ptr, "when")) {
 				uint32_t tw;
 				ptr = next_token(lex, text);
-				if (ptr == NULL) {
+				if (ptr.base == NULL) {
 					msg = "No time specified";
 					CLEANUP(ISC_R_UNEXPECTEDEND);
 				}
-				CHECK(dns_time32_fromtext(ptr, &tw));
+				CHECK(dns_time32_fromregion(ptr, &tw));
 				when = (isc_stdtime_t)tw;
 				continue;
-			} else if (ptr[0] == '-') {
+			} else if (ptr.length != 0 && ptr.base[0] == '-') {
 				msg = "Unknown option";
 				CLEANUP(DNS_R_SYNTAX);
 			} else if (checkds) {
@@ -13396,9 +13463,9 @@ named_server_dnssec(named_server_t *server, isc_lex_t *lex,
 				 * No arguments provided, so we must be
 				 * parsing "published|withdrawn".
 				 */
-				if (strcasecmp(ptr, "published") == 0) {
+				if (TOKEN_CASEEQUAL(ptr, "published")) {
 					dspublish = true;
-				} else if (strcasecmp(ptr, "withdrawn") != 0) {
+				} else if (!TOKEN_CASEEQUAL(ptr, "withdrawn")) {
 					CLEANUP(DNS_R_SYNTAX);
 				}
 			} else if (rollover) {
@@ -13423,7 +13490,9 @@ named_server_dnssec(named_server_t *server, isc_lex_t *lex,
 	}
 
 	/* Get zone. */
-	CHECK(zone_from_args(server, lex, zonetext, &zone, NULL, text, false));
+	CHECK(zone_from_args(server, lex,
+			     zonetext.base != NULL ? &zonetext : NULL, &zone,
+			     NULL, text, false));
 	if (zone == NULL) {
 		msg = "Zone not found";
 		CLEANUP(ISC_R_UNEXPECTEDEND);
@@ -13431,7 +13500,7 @@ named_server_dnssec(named_server_t *server, isc_lex_t *lex,
 
 	/* Trailing garbage? */
 	ptr = next_token(lex, text);
-	if (ptr != NULL) {
+	if (ptr.base != NULL) {
 		msg = "Too many arguments";
 		CLEANUP(DNS_R_SYNTAX);
 	}
@@ -13901,9 +13970,10 @@ named_server_nta(named_server_t *server, isc_lex_t *lex, bool readonly,
 		 isc_buffer_t *text) {
 	dns_ntatable_t *ntatable = NULL;
 	isc_result_t result = ISC_R_SUCCESS;
-	char *ptr, *nametext = NULL, *viewname;
+	isc_region_t ptr, nametext = { 0 }, viewtoken = { 0 };
 	char namebuf[DNS_NAME_FORMATSIZE];
 	char viewbuf[DNS_NAME_FORMATSIZE];
+	const char *viewname = NULL;
 	isc_stdtime_t now, when;
 	isc_time_t t;
 	char tbuf[64];
@@ -13925,40 +13995,35 @@ named_server_nta(named_server_t *server, isc_lex_t *lex, bool readonly,
 
 	/* Skip the command name. */
 	ptr = next_token(lex, text);
-	if (ptr == NULL) {
+	if (ptr.base == NULL) {
 		return ISC_R_UNEXPECTEDEND;
 	}
 
 	for (;;) {
 		/* Check for options */
 		ptr = next_token(lex, text);
-		if (ptr == NULL) {
+		if (ptr.base == NULL) {
 			return ISC_R_UNEXPECTEDEND;
 		}
 
-		if (strcmp(ptr, "--") == 0) {
+		if (TOKEN_EQUAL(ptr, "--")) {
 			break;
-		} else if (argcheck(ptr, "dump")) {
+		} else if (argcheck(&ptr, "dump")) {
 			dump = true;
-		} else if (argcheck(ptr, "remove")) {
+		} else if (argcheck(&ptr, "remove")) {
 			ntattl = 0;
 			ttlset = true;
-		} else if (argcheck(ptr, "force")) {
+		} else if (argcheck(&ptr, "force")) {
 			force = true;
 			continue;
-		} else if (argcheck(ptr, "lifetime")) {
-			isc_textregion_t tr;
-
+		} else if (argcheck(&ptr, "lifetime")) {
 			ptr = next_token(lex, text);
-			if (ptr == NULL) {
+			if (ptr.base == NULL) {
 				msg = "No lifetime specified";
 				CLEANUP(ISC_R_UNEXPECTEDEND);
 			}
 
-			tr.base = ptr;
-			tr.length = strlen(ptr);
-			result = dns_ttl_fromtext(ISC_REGION_FROM(&tr),
-						  &ntattl);
+			result = dns_ttl_fromtext(&ptr, &ntattl);
 			if (result != ISC_R_SUCCESS) {
 				msg = "could not parse NTA lifetime";
 				CHECK(result);
@@ -13971,21 +14036,16 @@ named_server_nta(named_server_t *server, isc_lex_t *lex, bool readonly,
 
 			ttlset = true;
 			continue;
-		} else if (argcheck(ptr, "class")) {
-			isc_textregion_t tr;
-
+		} else if (argcheck(&ptr, "class")) {
 			ptr = next_token(lex, text);
-			if (ptr == NULL) {
+			if (ptr.base == NULL) {
 				msg = "No class specified";
 				CLEANUP(ISC_R_UNEXPECTEDEND);
 			}
 
-			tr.base = ptr;
-			tr.length = strlen(ptr);
-			CHECK(dns_rdataclass_fromtext(&rdclass,
-						      ISC_REGION_FROM(&tr)));
+			CHECK(dns_rdataclass_fromtext(&rdclass, &ptr));
 			continue;
-		} else if (ptr[0] == '-') {
+		} else if (ptr.length != 0 && ptr.base[0] == '-') {
 			msg = "Unknown option";
 			CLEANUP(DNS_R_SYNTAX);
 		} else {
@@ -14032,15 +14092,15 @@ named_server_nta(named_server_t *server, isc_lex_t *lex, bool readonly,
 	}
 
 	/* Get the NTA name if not found above. */
-	if (nametext == NULL) {
+	if (nametext.base == NULL) {
 		nametext = next_token(lex, text);
 	}
-	if (nametext == NULL) {
+	if (nametext.base == NULL) {
 		return ISC_R_UNEXPECTEDEND;
 	}
 
 	/* Copy nametext as it'll be overwritten by next_token() */
-	strlcpy(namebuf, nametext, DNS_NAME_FORMATSIZE);
+	CHECK(token_tostring(&nametext, namebuf, sizeof(namebuf)));
 
 	if (strcmp(namebuf, ".") == 0) {
 		ntaname = dns_rootname;
@@ -14053,13 +14113,13 @@ named_server_nta(named_server_t *server, isc_lex_t *lex, bool readonly,
 	}
 
 	/* Look for the view name. */
-	viewname = next_token(lex, text);
-	if (viewname != NULL) {
-		strlcpy(viewbuf, viewname, DNS_NAME_FORMATSIZE);
+	viewtoken = next_token(lex, text);
+	if (viewtoken.base != NULL) {
+		CHECK(token_tostring(&viewtoken, viewbuf, sizeof(viewbuf)));
 		viewname = viewbuf;
 	}
 
-	if (next_token(lex, text) != NULL) {
+	if (next_token(lex, text).base != NULL) {
 		CLEANUP(DNS_R_SYNTAX);
 	}
 
@@ -14448,7 +14508,7 @@ cleanup:
 
 isc_result_t
 named_server_mkeys(named_server_t *server, isc_lex_t *lex, isc_buffer_t *text) {
-	char *cmd, *classtxt, *viewtxt = NULL;
+	isc_region_t cmd, classtxt, viewtxt = { 0 };
 	isc_result_t result = ISC_R_SUCCESS;
 	dns_rdataclass_t rdclass;
 	char msg[DNS_NAME_FORMATSIZE + 500] = "";
@@ -14460,40 +14520,38 @@ named_server_mkeys(named_server_t *server, isc_lex_t *lex, isc_buffer_t *text) {
 
 	/* Skip rndc command name */
 	cmd = next_token(lex, text);
-	if (cmd == NULL) {
+	if (cmd.base == NULL) {
 		return ISC_R_UNEXPECTEDEND;
 	}
 
 	/* Get managed-keys subcommand */
 	cmd = next_token(lex, text);
-	if (cmd == NULL) {
+	if (cmd.base == NULL) {
 		return ISC_R_UNEXPECTEDEND;
 	}
 
-	if (strcasecmp(cmd, "status") == 0) {
+	if (TOKEN_CASEEQUAL(cmd, "status")) {
 		opt = STAT;
-	} else if (strcasecmp(cmd, "refresh") == 0) {
+	} else if (TOKEN_CASEEQUAL(cmd, "refresh")) {
 		opt = REFRESH;
-	} else if (strcasecmp(cmd, "sync") == 0) {
+	} else if (TOKEN_CASEEQUAL(cmd, "sync")) {
 		opt = SYNC;
-	} else if (strcasecmp(cmd, "destroy") == 0) {
+	} else if (TOKEN_CASEEQUAL(cmd, "destroy")) {
 		opt = DESTROY;
 	} else {
-		snprintf(msg, sizeof(msg), "unknown command '%s'", cmd);
+		snprintf(msg, sizeof(msg), "unknown command '%.*s'",
+			 (int)cmd.length, cmd.base);
 		(void)putstr(text, msg);
 		CLEANUP(ISC_R_UNEXPECTED);
 	}
 
 	/* Look for the optional class name. */
 	classtxt = next_token(lex, text);
-	if (classtxt != NULL) {
-		isc_textregion_t r;
-		r.base = classtxt;
-		r.length = strlen(classtxt);
-		result = dns_rdataclass_fromtext(&rdclass, ISC_REGION_FROM(&r));
+	if (classtxt.base != NULL) {
+		result = dns_rdataclass_fromtext(&rdclass, &classtxt);
 		if (result != ISC_R_SUCCESS) {
-			snprintf(msg, sizeof(msg), "unknown class '%s'",
-				 classtxt);
+			snprintf(msg, sizeof(msg), "unknown class '%.*s'",
+				 (int)classtxt.length, classtxt.base);
 			(void)putstr(text, msg);
 			goto cleanup;
 		}
@@ -14501,16 +14559,18 @@ named_server_mkeys(named_server_t *server, isc_lex_t *lex, isc_buffer_t *text) {
 	}
 
 	ISC_LIST_FOREACH(server->viewlist, view, link) {
-		if (viewtxt != NULL && (rdclass != view->rdclass ||
-					strcmp(view->name, viewtxt) != 0))
+		if (viewtxt.base != NULL &&
+		    (rdclass != view->rdclass ||
+		     !token_equal_cstr(&viewtxt, view->name)))
 		{
 			continue;
 		}
 
 		if (view->managed_keys == NULL) {
-			if (viewtxt != NULL) {
+			if (viewtxt.base != NULL) {
 				snprintf(msg, sizeof(msg),
-					 "view '%s': no managed keys", viewtxt);
+					 "view '%.*s': no managed keys",
+					 (int)viewtxt.length, viewtxt.base);
 				CHECK(putstr(text, msg));
 				goto cleanup;
 			} else {
@@ -14546,7 +14606,7 @@ named_server_mkeys(named_server_t *server, isc_lex_t *lex, isc_buffer_t *text) {
 			UNREACHABLE();
 		}
 
-		if (viewtxt != NULL) {
+		if (viewtxt.base != NULL) {
 			break;
 		}
 		first = false;
@@ -14568,7 +14628,7 @@ isc_result_t
 named_server_dnstap(named_server_t *server, isc_lex_t *lex,
 		    isc_buffer_t *text) {
 #ifdef HAVE_DNSTAP
-	char *ptr;
+	isc_region_t ptr;
 	isc_result_t result;
 	bool reopen = false;
 	int backups = 0;
@@ -14581,29 +14641,30 @@ named_server_dnstap(named_server_t *server, isc_lex_t *lex,
 
 	/* Check the command name. */
 	ptr = next_token(lex, text);
-	if (ptr == NULL) {
+	if (ptr.base == NULL) {
 		return ISC_R_UNEXPECTEDEND;
 	}
 
 	/* "dnstap-reopen" was used in 9.11.0b1 */
-	if (strcasecmp(ptr, "dnstap-reopen") == 0) {
+	if (TOKEN_CASEEQUAL(ptr, "dnstap-reopen")) {
 		reopen = true;
 	} else {
 		ptr = next_token(lex, text);
-		if (ptr == NULL) {
+		if (ptr.base == NULL) {
 			return ISC_R_UNEXPECTEDEND;
 		}
 	}
 
-	if (reopen || strcasecmp(ptr, "-reopen") == 0) {
+	if (reopen || TOKEN_CASEEQUAL(ptr, "-reopen")) {
 		backups = ISC_LOG_ROLLNEVER;
-	} else if (strcasecmp(ptr, "-roll") == 0) {
-		unsigned int n;
+	} else if (TOKEN_CASEEQUAL(ptr, "-roll")) {
 		ptr = next_token(lex, text);
-		if (ptr != NULL) {
-			unsigned int u;
-			n = sscanf(ptr, "%u", &u);
-			if (n != 1U || u > INT_MAX) {
+		if (ptr.base != NULL) {
+			uint32_t u;
+			if (isc_parse_uint32_region(&u, &ptr, 10) !=
+				    ISC_R_SUCCESS ||
+			    u > INT_MAX)
+			{
 				return ISC_R_BADNUMBER;
 			}
 			backups = u;
@@ -14626,14 +14687,14 @@ named_server_dnstap(named_server_t *server, isc_lex_t *lex,
 
 isc_result_t
 named_server_tcptimeouts(isc_lex_t *lex, isc_buffer_t *text) {
-	char *ptr;
+	isc_region_t ptr;
 	isc_result_t result = ISC_R_SUCCESS;
 	uint32_t initial, idle, keepalive, advertised, primaries;
 	char msg[128];
 
 	/* Skip the command name. */
 	ptr = next_token(lex, text);
-	if (ptr == NULL) {
+	if (ptr.base == NULL) {
 		return ISC_R_UNEXPECTEDEND;
 	}
 
@@ -14645,8 +14706,8 @@ named_server_tcptimeouts(isc_lex_t *lex, isc_buffer_t *text) {
 
 	/* Look for optional arguments. */
 	ptr = next_token(lex, NULL);
-	if (ptr != NULL) {
-		CHECK(isc_parse_uint32(&initial, ptr, 10));
+	if (ptr.base != NULL) {
+		CHECK(isc_parse_uint32_region(&initial, &ptr, 10));
 		initial *= 100;
 		if (initial > MAX_INITIAL_TIMEOUT) {
 			CLEANUP(ISC_R_RANGE);
@@ -14656,10 +14717,10 @@ named_server_tcptimeouts(isc_lex_t *lex, isc_buffer_t *text) {
 		}
 
 		ptr = next_token(lex, text);
-		if (ptr == NULL) {
+		if (ptr.base == NULL) {
 			return ISC_R_UNEXPECTEDEND;
 		}
-		CHECK(isc_parse_uint32(&idle, ptr, 10));
+		CHECK(isc_parse_uint32_region(&idle, &ptr, 10));
 		idle *= 100;
 		if (idle > MAX_IDLE_TIMEOUT) {
 			CLEANUP(ISC_R_RANGE);
@@ -14669,10 +14730,10 @@ named_server_tcptimeouts(isc_lex_t *lex, isc_buffer_t *text) {
 		}
 
 		ptr = next_token(lex, text);
-		if (ptr == NULL) {
+		if (ptr.base == NULL) {
 			return ISC_R_UNEXPECTEDEND;
 		}
-		CHECK(isc_parse_uint32(&keepalive, ptr, 10));
+		CHECK(isc_parse_uint32_region(&keepalive, &ptr, 10));
 		keepalive *= 100;
 		if (keepalive > MAX_KEEPALIVE_TIMEOUT) {
 			CLEANUP(ISC_R_RANGE);
@@ -14682,20 +14743,20 @@ named_server_tcptimeouts(isc_lex_t *lex, isc_buffer_t *text) {
 		}
 
 		ptr = next_token(lex, text);
-		if (ptr == NULL) {
+		if (ptr.base == NULL) {
 			return ISC_R_UNEXPECTEDEND;
 		}
-		CHECK(isc_parse_uint32(&advertised, ptr, 10));
+		CHECK(isc_parse_uint32_region(&advertised, &ptr, 10));
 		advertised *= 100;
 		if (advertised > MAX_ADVERTISED_TIMEOUT) {
 			CLEANUP(ISC_R_RANGE);
 		}
 
 		ptr = next_token(lex, text);
-		if (ptr == NULL) {
+		if (ptr.base == NULL) {
 			return ISC_R_UNEXPECTEDEND;
 		}
-		CHECK(isc_parse_uint32(&primaries, ptr, 10));
+		CHECK(isc_parse_uint32_region(&primaries, &ptr, 10));
 		primaries *= 100;
 		if (primaries > MAX_PRIMARIES_TIMEOUT) {
 			CLEANUP(ISC_R_RANGE);
@@ -14735,7 +14796,7 @@ cleanup:
 isc_result_t
 named_server_servestale(named_server_t *server, isc_lex_t *lex,
 			isc_buffer_t *text) {
-	char *ptr, *classtxt, *viewtxt = NULL;
+	isc_region_t ptr, classtxt, viewtxt = { 0 };
 	char msg[128];
 	dns_rdataclass_t rdclass = dns_rdataclass_in;
 	bool found = false;
@@ -14747,26 +14808,28 @@ named_server_servestale(named_server_t *server, isc_lex_t *lex,
 
 	/* Skip the command name. */
 	ptr = next_token(lex, text);
-	if (ptr == NULL) {
+	if (ptr.base == NULL) {
 		return ISC_R_UNEXPECTEDEND;
 	}
 
 	ptr = next_token(lex, NULL);
-	if (ptr == NULL) {
+	if (ptr.base == NULL) {
 		return ISC_R_UNEXPECTEDEND;
 	}
 
-	if (!strcasecmp(ptr, "on") || !strcasecmp(ptr, "yes") ||
-	    !strcasecmp(ptr, "enable") || !strcasecmp(ptr, "true"))
+	if (TOKEN_CASEEQUAL(ptr, "on") || TOKEN_CASEEQUAL(ptr, "yes") ||
+	    TOKEN_CASEEQUAL(ptr, "enable") || TOKEN_CASEEQUAL(ptr, "true"))
 	{
 		staleanswersok = dns_stale_answer_yes;
-	} else if (!strcasecmp(ptr, "off") || !strcasecmp(ptr, "no") ||
-		   !strcasecmp(ptr, "disable") || !strcasecmp(ptr, "false"))
+	} else if (TOKEN_CASEEQUAL(ptr, "off") || TOKEN_CASEEQUAL(ptr, "no") ||
+		   TOKEN_CASEEQUAL(ptr, "disable") ||
+		   TOKEN_CASEEQUAL(ptr, "false"))
 	{
 		staleanswersok = dns_stale_answer_no;
-	} else if (strcasecmp(ptr, "reset") == 0) {
+	} else if (TOKEN_CASEEQUAL(ptr, "reset")) {
 		staleanswersok = dns_stale_answer_conf;
-	} else if (!strcasecmp(ptr, "check") || !strcasecmp(ptr, "status")) {
+	} else if (TOKEN_CASEEQUAL(ptr, "check") ||
+		   TOKEN_CASEEQUAL(ptr, "status")) {
 		wantstatus = true;
 	} else {
 		return DNS_R_SYNTAX;
@@ -14774,28 +14837,24 @@ named_server_servestale(named_server_t *server, isc_lex_t *lex,
 
 	/* Look for the optional class name. */
 	classtxt = next_token(lex, text);
-	if (classtxt != NULL) {
-		isc_textregion_t r;
-
+	if (classtxt.base != NULL) {
 		/* Look for the optional view name. */
 		viewtxt = next_token(lex, text);
 
 		/*
 		 * If 'classtext' is not a valid class then it us a view name.
 		 */
-		r.base = classtxt;
-		r.length = strlen(classtxt);
-		result = dns_rdataclass_fromtext(&rdclass, ISC_REGION_FROM(&r));
+		result = dns_rdataclass_fromtext(&rdclass, &classtxt);
 		if (result != ISC_R_SUCCESS) {
-			if (viewtxt != NULL) {
-				snprintf(msg, sizeof(msg), "unknown class '%s'",
-					 classtxt);
+			if (viewtxt.base != NULL) {
+				snprintf(msg, sizeof(msg), "unknown class '%.*s'",
+					 (int)classtxt.length, classtxt.base);
 				(void)putstr(text, msg);
 				goto cleanup;
 			}
 
 			viewtxt = classtxt;
-			classtxt = NULL;
+			classtxt = (isc_region_t){ 0 };
 		}
 	}
 
@@ -14806,11 +14865,13 @@ named_server_servestale(named_server_t *server, isc_lex_t *lex,
 		uint32_t stale_refresh = 0;
 		dns_db_t *db = NULL;
 
-		if (classtxt != NULL && rdclass != view->rdclass) {
+		if (classtxt.base != NULL && rdclass != view->rdclass) {
 			continue;
 		}
 
-		if (viewtxt != NULL && strcmp(view->name, viewtxt) != 0) {
+		if (viewtxt.base != NULL &&
+		    !token_equal_cstr(&viewtxt, view->name))
+		{
 			continue;
 		}
 
@@ -14899,7 +14960,7 @@ isc_result_t
 named_server_fetchlimit(named_server_t *server, isc_lex_t *lex,
 			isc_buffer_t *text) {
 	isc_result_t result = ISC_R_SUCCESS;
-	char *ptr = NULL, *viewname = NULL;
+	isc_region_t ptr = { 0 }, viewname = { 0 };
 	bool first = true;
 	dns_adb_t *adb = NULL;
 
@@ -14907,7 +14968,7 @@ named_server_fetchlimit(named_server_t *server, isc_lex_t *lex,
 
 	/* Skip the command name. */
 	ptr = next_token(lex, text);
-	if (ptr == NULL) {
+	if (ptr.base == NULL) {
 		return ISC_R_UNEXPECTEDEND;
 	}
 
@@ -14923,7 +14984,9 @@ named_server_fetchlimit(named_server_t *server, isc_lex_t *lex,
 			continue;
 		}
 
-		if (viewname != NULL && strcasecmp(view->name, viewname) != 0) {
+		if (viewname.base != NULL &&
+		    !token_caseequal_cstr(&viewname, view->name))
+		{
 			continue;
 		}
 
@@ -14984,30 +15047,30 @@ named_server_skr(named_server_t *server, isc_lex_t *lex, isc_buffer_t *text) {
 	isc_result_t result = ISC_R_SUCCESS;
 	dns_zone_t *zone = NULL;
 	dns_kasp_t *kasp = NULL;
-	const char *ptr;
+	isc_region_t ptr;
 	char skrfile[PATH_MAX];
 
 	/* Skip the command name. */
 	ptr = next_token(lex, text);
-	if (ptr == NULL) {
+	if (ptr.base == NULL) {
 		return ISC_R_UNEXPECTEDEND;
 	}
 
 	/* Find out what we are to do. */
 	ptr = next_token(lex, text);
-	if (ptr == NULL) {
+	if (ptr.base == NULL) {
 		return ISC_R_UNEXPECTEDEND;
 	}
 
-	if (strcasecmp(ptr, "-import") != 0) {
+	if (!TOKEN_CASEEQUAL(ptr, "-import")) {
 		CLEANUP(DNS_R_SYNTAX);
 	}
 
 	ptr = next_token(lex, NULL);
-	if (ptr == NULL) {
+	if (ptr.base == NULL) {
 		return ISC_R_UNEXPECTEDEND;
 	}
-	(void)snprintf(skrfile, sizeof(skrfile), "%s", ptr);
+	CHECK(token_tostring(&ptr, skrfile, sizeof(skrfile)));
 
 	CHECK(zone_from_args(server, lex, NULL, &zone, NULL, text, false));
 	if (zone == NULL) {
@@ -15048,18 +15111,18 @@ isc_result_t
 named_server_togglememprof(isc_lex_t *lex) {
 	isc_result_t result = ISC_R_FAILURE;
 	bool active;
-	char *ptr;
+	isc_region_t ptr;
 
 	/* Skip the command name. */
 	ptr = next_token(lex, NULL);
-	if (ptr == NULL) {
+	if (ptr.base == NULL) {
 		return ISC_R_UNEXPECTEDEND;
 	}
 
 	ptr = next_token(lex, NULL);
-	if (ptr == NULL) {
+	if (ptr.base == NULL) {
 		return ISC_R_UNEXPECTEDEND;
-	} else if (!strcasecmp(ptr, "dump")) {
+	} else if (TOKEN_CASEEQUAL(ptr, "dump")) {
 		result = memprof_dump();
 		if (result != ISC_R_SUCCESS) {
 			isc_log_write(NAMED_LOGCATEGORY_GENERAL,
@@ -15073,12 +15136,14 @@ named_server_togglememprof(isc_lex_t *lex) {
 		}
 
 		goto done;
-	} else if (!strcasecmp(ptr, "on") || !strcasecmp(ptr, "yes") ||
-		   !strcasecmp(ptr, "enable") || !strcasecmp(ptr, "true"))
+	} else if (TOKEN_CASEEQUAL(ptr, "on") || TOKEN_CASEEQUAL(ptr, "yes") ||
+		   TOKEN_CASEEQUAL(ptr, "enable") ||
+		   TOKEN_CASEEQUAL(ptr, "true"))
 	{
 		active = true;
-	} else if (!strcasecmp(ptr, "off") || !strcasecmp(ptr, "no") ||
-		   !strcasecmp(ptr, "disable") || !strcasecmp(ptr, "false"))
+	} else if (TOKEN_CASEEQUAL(ptr, "off") || TOKEN_CASEEQUAL(ptr, "no") ||
+		   TOKEN_CASEEQUAL(ptr, "disable") ||
+		   TOKEN_CASEEQUAL(ptr, "false"))
 	{
 		active = false;
 	} else {

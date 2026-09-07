@@ -92,8 +92,10 @@ fromtext_rrsig(ARGS_FROMTEXT) {
 	 */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-	if (token.value.as_region.length <= 10U && *DNS_AS_STR(token) != '-' &&
-	    *DNS_AS_STR(token) != '+')
+	if (token.value.as_region.length > 0 &&
+	    token.value.as_region.length <= 10U &&
+	    token.value.as_region.base[0] != '-' &&
+	    token.value.as_region.base[0] != '+')
 	{
 		uint32_t value;
 
@@ -114,8 +116,10 @@ fromtext_rrsig(ARGS_FROMTEXT) {
 	 */
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-	if (token.value.as_region.length <= 10U && *DNS_AS_STR(token) != '-' &&
-	    *DNS_AS_STR(token) != '+')
+	if (token.value.as_region.length > 0 &&
+	    token.value.as_region.length <= 10U &&
+	    token.value.as_region.base[0] != '-' &&
+	    token.value.as_region.base[0] != '+')
 	{
 		uint32_t value;
 

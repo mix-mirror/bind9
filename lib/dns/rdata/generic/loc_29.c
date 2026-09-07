@@ -19,101 +19,89 @@
 #define RRTYPE_LOC_ATTRIBUTES (0)
 
 static isc_result_t
-loc_getdecimal(const char *str, unsigned long max, size_t precision, char units,
-	       unsigned long *valuep) {
-	bool ok;
-	char *e;
-	size_t i;
-	long tmp;
-	unsigned long value;
+loc_getdecimal(const isc_region_t *source, unsigned long max, size_t precision,
+	       unsigned char units, unsigned long *valuep) {
+	unsigned long value = 0;
+	unsigned int i = 0;
+	size_t digits = 0;
+	bool ok = false;
 
-	value = strtoul(str, &e, 10);
-	if (*e != 0 && *e != '.' && *e != units) {
-		return DNS_R_SYNTAX;
+	while (i < source->length && source->base[i] >= '0' &&
+	       source->base[i] <= '9')
+	{
+		unsigned int digit = source->base[i++] - '0';
+		if (value > (max - digit) / 10) {
+			return ISC_R_RANGE;
+		}
+		value = value * 10 + digit;
+		ok = true;
 	}
-	if (value > max) {
-		return ISC_R_RANGE;
-	}
-	ok = e != str;
-	if (*e == '.') {
-		e++;
-		for (i = 0; i < precision; i++) {
-			if (*e == 0 || *e == units) {
-				break;
-			}
-			if ((tmp = decvalue(*e++)) < 0) {
-				return DNS_R_SYNTAX;
-			}
+
+	if (i < source->length && source->base[i] == '.') {
+		i++;
+		while (digits < precision && i < source->length &&
+		       source->base[i] >= '0' && source->base[i] <= '9')
+		{
+			value = value * 10 + source->base[i++] - '0';
+			digits++;
 			ok = true;
-			value *= 10;
-			value += tmp;
-		}
-		for (; i < precision; i++) {
-			value *= 10;
-		}
-	} else {
-		for (i = 0; i < precision; i++) {
-			value *= 10;
 		}
 	}
-	if (*e != 0 && *e == units) {
-		e++;
+	while (digits++ < precision) {
+		value *= 10;
 	}
-	if (!ok || *e != 0) {
+
+	if (units != '\0' && i < source->length && source->base[i] == units) {
+		i++;
+	}
+	if (!ok || i != source->length) {
 		return DNS_R_SYNTAX;
 	}
+
 	*valuep = value;
 	return ISC_R_SUCCESS;
 }
 
 static isc_result_t
-loc_getprecision(const char *str, unsigned char *valuep) {
-	unsigned long poweroften[8] = { 1,     10,     100,	1000,
-					10000, 100000, 1000000, 10000000 };
-	unsigned long m, cm;
-	bool ok;
-	char *e;
-	size_t i;
-	long tmp;
-	int man;
-	int exp;
+loc_getprecision(const isc_region_t *source, unsigned char *valuep) {
+	static const unsigned long poweroften[8] = {
+		1, 10, 100, 1000, 10000, 100000, 1000000, 10000000
+	};
+	unsigned long m = 0, cm = 0;
+	unsigned int i = 0, digits = 0;
+	bool ok = false;
+	int man, exp;
 
-	m = strtoul(str, &e, 10);
-	if (*e != 0 && *e != '.' && *e != 'm') {
-		return DNS_R_SYNTAX;
+	while (i < source->length && source->base[i] >= '0' &&
+	       source->base[i] <= '9')
+	{
+		unsigned int digit = source->base[i++] - '0';
+		if (m > (90000000UL - digit) / 10) {
+			return ISC_R_RANGE;
+		}
+		m = m * 10 + digit;
+		ok = true;
 	}
-	if (m > 90000000) {
-		return ISC_R_RANGE;
-	}
-	cm = 0;
-	ok = e != str;
-	if (*e == '.') {
-		e++;
-		for (i = 0; i < 2; i++) {
-			if (*e == 0 || *e == 'm') {
-				break;
-			}
-			if ((tmp = decvalue(*e++)) < 0) {
-				return DNS_R_SYNTAX;
-			}
+	if (i < source->length && source->base[i] == '.') {
+		i++;
+		while (digits < 2 && i < source->length &&
+		       source->base[i] >= '0' && source->base[i] <= '9')
+		{
+			cm = cm * 10 + source->base[i++] - '0';
+			digits++;
 			ok = true;
-			cm *= 10;
-			cm += tmp;
-		}
-		for (; i < 2; i++) {
-			cm *= 10;
 		}
 	}
-	if (*e == 'm') {
-		e++;
+	while (digits++ < 2) {
+		cm *= 10;
 	}
-	if (!ok || *e != 0) {
+	if (i < source->length && source->base[i] == 'm') {
+		i++;
+	}
+	if (!ok || i != source->length) {
 		return DNS_R_SYNTAX;
 	}
 
-	/*
-	 * We don't just multiply out as we will overflow.
-	 */
 	if (m > 0) {
 		for (exp = 0; exp < 7; exp++) {
 			if (m < poweroften[exp + 1]) {
@@ -169,7 +157,7 @@ static isc_result_t
 get_seconds(isc_lex_t *lexer, isc_token_t *token, unsigned long *s) {
 	RETERR(isc_lex_getmastertoken(lexer, token, isc_tokentype_string,
 				      false));
-	RETERR(loc_getdecimal(DNS_AS_STR(*token), 59, 3, '\0', s));
+	RETERR(loc_getdecimal(&token->value.as_region, 59, 3, '\0', s));
 
 	return ISC_R_SUCCESS;
 }
@@ -180,17 +168,17 @@ get_direction(isc_lex_t *lexer, isc_token_t *token, const char *directions,
 	RETERR(isc_lex_getmastertoken(lexer, token, isc_tokentype_string,
 				      false));
 
-	if (DNS_AS_STR(*token)[0] == directions[1] &&
-	    token->value.as_region.length == 1)
+	if (token->value.as_region.length == 1 &&
+	    token->value.as_region.base[0] == directions[1])
 	{
-		*direction = DNS_AS_STR(*token)[0];
+		*direction = token->value.as_region.base[0];
 		return ISC_R_SUCCESS;
 	}
 
-	if (DNS_AS_STR(*token)[0] == directions[0] &&
-	    token->value.as_region.length == 1)
+	if (token->value.as_region.length == 1 &&
+	    token->value.as_region.base[0] == directions[0])
 	{
-		*direction = DNS_AS_STR(*token)[0];
+		*direction = token->value.as_region.base[0];
 		return ISC_R_SUCCESS;
 	}
 
@@ -306,19 +294,23 @@ static isc_result_t
 loc_getaltitude(isc_lex_t *lexer, unsigned long *altitude) {
 	isc_token_t token;
 	unsigned long cm;
-	const char *str;
+	isc_region_t source;
 
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-	str = DNS_AS_STR(token);
-	if (DNS_AS_STR(token)[0] == '-') {
-		RETTOK(loc_getdecimal(str + 1, 100000, 2, 'm', &cm));
+	source = token.value.as_region;
+	if (source.length != 0 && source.base[0] == '-') {
+		isc_region_consume(&source, 1);
+		RETTOK(loc_getdecimal(&source, 100000, 2, 'm', &cm));
 		if (cm > 10000000UL) {
 			RETTOK(ISC_R_RANGE);
 		}
 		*altitude = 10000000 - cm;
 	} else {
-		RETTOK(loc_getdecimal(str, 42849672, 2, 'm', &cm));
+		if (source.length != 0 && source.base[0] == '+') {
+			isc_region_consume(&source, 1);
+		}
+		RETTOK(loc_getdecimal(&source, 42849672, 2, 'm', &cm));
 		if (cm > 4284967295UL) {
 			RETTOK(ISC_R_RANGE);
 		}
@@ -339,7 +331,7 @@ loc_getoptionalprecision(isc_lex_t *lexer, unsigned char *valuep) {
 		isc_lex_ungettoken(lexer, &token);
 		return ISC_R_NOMORE;
 	}
-	RETTOK(loc_getprecision(DNS_AS_STR(token), valuep));
+	RETTOK(loc_getprecision(&token.value.as_region, valuep));
 
 	return ISC_R_SUCCESS;
 }

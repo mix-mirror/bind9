@@ -80,7 +80,9 @@ fromtext_nsec3param(ARGS_FROMTEXT) {
 	if (token.value.as_region.length > (255 * 2)) {
 		RETTOK(DNS_R_TEXTTOOLONG);
 	}
-	if (strcmp(DNS_AS_STR(token), "-") == 0) {
+	if (token.value.as_region.length == 1 &&
+	    token.value.as_region.base[0] == '-')
+	{
 		RETERR(uint8_tobuffer(0, target));
 	} else {
 		RETERR(uint8_tobuffer(token.value.as_region.length / 2,

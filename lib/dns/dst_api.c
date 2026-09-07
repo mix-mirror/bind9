@@ -37,6 +37,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <isc/ascii.h>
 #include <isc/buffer.h>
 #include <isc/crypto.h>
 #include <isc/dir.h>
@@ -67,8 +68,6 @@
 
 #include "dst_internal.h"
 
-#define DST_AS_STR(t) ((char *)(t).value.as_region.base)
-
 static isc_result_t
 next_number(isc_lex_t *lex, isc_token_t *token) {
 	uint32_t number;
@@ -83,6 +82,33 @@ next_number(isc_lex_t *lex, isc_token_t *token) {
 		token->value.as_ulong = number;
 	}
 	return result;
+}
+
+#define REGION_EQUAL(region, text)                                          \
+	({                                                                    \
+		static_assert(__builtin_constant_p(text),                       \
+			      "text must be a string literal");                 \
+		(region)->length == sizeof(text) - 1 &&                         \
+			memcmp((region)->base, (text), sizeof(text) - 1) == 0;    \
+	})
+
+#define REGION_CASEEQUAL(region, text)                                      \
+	({                                                                    \
+		static_assert(__builtin_constant_p(text),                       \
+			      "text must be a string literal");                 \
+		(region)->length == sizeof(text) - 1 &&                         \
+			isc_ascii_lowercmp((region)->base,                        \
+					   (const uint8_t *)(text),                \
+					   sizeof(text) - 1) == 0;                 \
+	})
+
+static bool
+region_caseequal_cstr(const isc_region_t *region, const char *text) {
+	size_t length = strlen(text);
+
+	return region->length == length &&
+	       isc_ascii_lowercmp(region->base, (const uint8_t *)text,
+				  length) == 0;
 }
 
 #define NEXTTOKEN(lex, token)  CHECK(isc_lex_next(lex, token))
@@ -1499,7 +1525,7 @@ dst_key_read_public(const char *filename, int type, isc_mem_t *mctx,
 	/*
 	 * We don't support "@" in .key files.
 	 */
-	if (!strcmp(DST_AS_STR(token), "@")) {
+	if (REGION_EQUAL(&token.value.as_region, "@")) {
 		BADTOKEN();
 	}
 
@@ -1536,9 +1562,9 @@ dst_key_read_public(const char *filename, int type, isc_mem_t *mctx,
 		BADTOKEN();
 	}
 
-	if (strcasecmp(DST_AS_STR(token), "DNSKEY") == 0) {
+	if (REGION_CASEEQUAL(&token.value.as_region, "DNSKEY")) {
 		keytype = dns_rdatatype_dnskey;
-	} else if (strcasecmp(DST_AS_STR(token), "KEY") == 0) {
+	} else if (REGION_CASEEQUAL(&token.value.as_region, "KEY")) {
 		keytype = dns_rdatatype_key; /*%< SIG(0), TKEY */
 	} else {
 		BADTOKEN();
@@ -1568,9 +1594,9 @@ cleanup:
 }
 
 static int
-find_metadata(const char *s, const char *tags[], int ntags) {
+find_metadata(const isc_region_t *source, const char *tags[], int ntags) {
 	for (int i = 0; i < ntags; i++) {
-		if (tags[i] != NULL && strcasecmp(s, tags[i]) == 0) {
+		if (tags[i] != NULL && region_caseequal_cstr(source, tags[i])) {
 			return i;
 		}
 	}
@@ -1578,29 +1604,31 @@ find_metadata(const char *s, const char *tags[], int ntags) {
 }
 
 static int
-find_numericdata(const char *s) {
-	return find_metadata(s, numerictags, DST_MAX_NUMERIC);
+find_numericdata(const isc_region_t *source) {
+	return find_metadata(source, numerictags, DST_MAX_NUMERIC);
 }
 
 static int
-find_booleandata(const char *s) {
-	return find_metadata(s, booleantags, DST_MAX_BOOLEAN);
+find_booleandata(const isc_region_t *source) {
+	return find_metadata(source, booleantags, DST_MAX_BOOLEAN);
 }
 
 static int
-find_timingdata(const char *s) {
-	return find_metadata(s, timingtags, DST_MAX_TIMES);
+find_timingdata(const isc_region_t *source) {
+	return find_metadata(source, timingtags, DST_MAX_TIMES);
 }
 
 static int
-find_keystatedata(const char *s) {
-	return find_metadata(s, keystatestags, DST_MAX_KEYSTATES);
+find_keystatedata(const isc_region_t *source) {
+	return find_metadata(source, keystatestags, DST_MAX_KEYSTATES);
 }
 
 static isc_result_t
-keystate_fromtext(const char *s, dst_key_state_t *state) {
+keystate_fromtext(const isc_region_t *source, dst_key_state_t *state) {
 	for (int i = 0; i < KEYSTATES_NVALUES; i++) {
-		if (keystates[i] != NULL && strcasecmp(s, keystates[i]) == 0) {
+		if (keystates[i] != NULL &&
+		    region_caseequal_cstr(source, keystates[i]))
+		{
 			*state = (dst_key_state_t)i;
 			return ISC_R_SUCCESS;
 		}
@@ -1631,7 +1659,7 @@ dst_key_read_state(const char *filename, isc_mem_t *mctx, dst_key_t **keyp) {
 	 */
 	NEXTTOKEN(lex, &token);
 	if (token.type != isc_tokentype_string ||
-	    strcmp(DST_AS_STR(token), STATE_ALGORITHM_STR) != 0)
+	    !REGION_EQUAL(&token.value.as_region, STATE_ALGORITHM_STR))
 	{
 		BADTOKEN();
 	}
@@ -1650,7 +1678,7 @@ dst_key_read_state(const char *filename, isc_mem_t *mctx, dst_key_t **keyp) {
 	 */
 	NEXTTOKEN(lex, &token);
 	if (token.type != isc_tokentype_string ||
-	    strcmp(DST_AS_STR(token), STATE_LENGTH_STR) != 0)
+	    !REGION_EQUAL(&token.value.as_region, STATE_LENGTH_STR))
 	{
 		BADTOKEN();
 	}
@@ -1679,7 +1707,7 @@ dst_key_read_state(const char *filename, isc_mem_t *mctx, dst_key_t **keyp) {
 		}
 
 		/* Numeric metadata */
-		tag = find_numericdata(DST_AS_STR(token));
+		tag = find_numericdata(&token.value.as_region);
 		if (tag >= 0) {
 			INSIST(tag < DST_MAX_NUMERIC);
 
@@ -1693,7 +1721,7 @@ dst_key_read_state(const char *filename, isc_mem_t *mctx, dst_key_t **keyp) {
 		}
 
 		/* Boolean metadata */
-		tag = find_booleandata(DST_AS_STR(token));
+		tag = find_booleandata(&token.value.as_region);
 		if (tag >= 0) {
 			INSIST(tag < DST_MAX_BOOLEAN);
 
@@ -1702,9 +1730,9 @@ dst_key_read_state(const char *filename, isc_mem_t *mctx, dst_key_t **keyp) {
 				BADTOKEN();
 			}
 
-			if (strcmp(DST_AS_STR(token), "yes") == 0) {
+			if (REGION_EQUAL(&token.value.as_region, "yes")) {
 				dst_key_setbool(*keyp, tag, true);
-			} else if (strcmp(DST_AS_STR(token), "no") == 0) {
+			} else if (REGION_EQUAL(&token.value.as_region, "no")) {
 				dst_key_setbool(*keyp, tag, false);
 			} else {
 				BADTOKEN();
@@ -1713,7 +1741,7 @@ dst_key_read_state(const char *filename, isc_mem_t *mctx, dst_key_t **keyp) {
 		}
 
 		/* Timing metadata */
-		tag = find_timingdata(DST_AS_STR(token));
+		tag = find_timingdata(&token.value.as_region);
 		if (tag >= 0) {
 			uint32_t when;
 
@@ -1732,7 +1760,7 @@ dst_key_read_state(const char *filename, isc_mem_t *mctx, dst_key_t **keyp) {
 		}
 
 		/* Keystate metadata */
-		tag = find_keystatedata(DST_AS_STR(token));
+		tag = find_keystatedata(&token.value.as_region);
 		if (tag >= 0) {
 			dst_key_state_t state;
 
@@ -1743,7 +1771,7 @@ dst_key_read_state(const char *filename, isc_mem_t *mctx, dst_key_t **keyp) {
 				BADTOKEN();
 			}
 
-			CHECK(keystate_fromtext(DST_AS_STR(token), &state));
+			CHECK(keystate_fromtext(&token.value.as_region, &state));
 
 			dst_key_setstate(*keyp, tag, state);
 			goto next;
