@@ -303,6 +303,58 @@ ISC_RUN_TEST_IMPL(lex_refill_and_unget) {
 	free(text);
 }
 
+ISC_RUN_TEST_IMPL(lex_qstring_refill_and_cooking) {
+	isc_buffer_t buf;
+	isc_lex_t *lex = NULL;
+	isc_region_t raw;
+	isc_token_t token;
+	char *text;
+	const size_t prefix_length = TEST_REFILL_SIZE - 2U;
+	const size_t text_length = TEST_REFILL_SIZE + 3U;
+	size_t offset = 0;
+
+	UNUSED(state);
+
+	text = malloc(text_length);
+	assert_non_null(text);
+	text[offset++] = '"';
+	memset(text + offset, 'a', prefix_length);
+	offset += prefix_length;
+	text[offset++] = '\\';
+	text[offset++] = '"';
+	text[offset++] = 'b';
+	text[offset++] = '"';
+	assert_int_equal(offset, text_length);
+
+	assert_int_equal(isc_lex_create_config(isc_g_mctx, 4, &lex),
+			 ISC_R_SUCCESS);
+	isc_buffer_init(&buf, text, text_length);
+	isc_buffer_add(&buf, text_length);
+	assert_int_equal(isc_lex_openbuffer(lex, &buf), ISC_R_SUCCESS);
+
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_qstring);
+	assert_int_equal(token.value.as_textregion.length, prefix_length + 2U);
+	assert_memory_equal(AS_STR(token), text + 1U, prefix_length);
+	assert_int_equal(AS_STR(token)[prefix_length], '"');
+	assert_int_equal(AS_STR(token)[prefix_length + 1U], 'b');
+	assert_int_equal(AS_STR(token)[prefix_length + 2U], '\0');
+
+	isc_lex_getlasttokentext(lex, &token, &raw);
+	assert_int_equal(raw.length, text_length);
+	assert_memory_equal(raw.base, text, text_length);
+
+	isc_lex_ungettoken(lex, &token);
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_qstring);
+	assert_int_equal(token.value.as_textregion.length, prefix_length + 2U);
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_eof);
+
+	isc_lex_destroy(&lex);
+	free(text);
+}
+
 ISC_RUN_TEST_IMPL(lex_config_policy) {
 	isc_buffer_t buf;
 	isc_lex_t *lex = NULL;
@@ -721,6 +773,7 @@ ISC_TEST_ENTRY(lex_comment_refill)
 ISC_TEST_ENTRY(lex_dns_comments)
 ISC_TEST_ENTRY(lex_dns_master_policy)
 ISC_TEST_ENTRY(lex_no_sources)
+ISC_TEST_ENTRY(lex_qstring_refill_and_cooking)
 ISC_TEST_ENTRY(lex_refill_and_unget)
 ISC_TEST_ENTRY(lex_separated_qstring)
 ISC_TEST_ENTRY(lex_unget_eol)
