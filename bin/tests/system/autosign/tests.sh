@@ -30,20 +30,22 @@ showprivate() {
   echo "-- $@ --"
   $DIG $DIGOPTS +nodnssec +short @$2 -t ${4:-type65534} $1 | cut -f3 -d' ' \
     | while read record; do
-      $PYTHON -c '
+      $PYTHON - "$record" <<'EOF'
 import struct
 import sys
 
 rdata = bytes.fromhex(sys.argv[1])
 if len(rdata) not in (5, 7):
-    sys.exit("invalid record")
-alg, key, remove, complete = struct.unpack_from(">BHBB", rdata)
+    sys.exit(f"invalid signing record: {len(rdata)} bytes (expected 5 or 7)")
+
+alg, keyid, remove, complete = struct.unpack_from(">BHBB", rdata)
 if len(rdata) == 7:
-    (alg,) = struct.unpack_from(">H", rdata, 5)
+    alg = struct.unpack_from(">H", rdata, 5)[0]
+
 action = "removing" if remove else "signing"
-state = " (complete)" if complete else " (incomplete)"
-print(f"{action}: alg: {alg}, key: {key}{state}")
-' $record
+state = "complete" if complete else "incomplete"
+print(f"{action}: alg: {alg}, key: {keyid} ({state})")
+EOF
     done
 }
 
