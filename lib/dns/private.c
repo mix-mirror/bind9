@@ -346,8 +346,7 @@ dns_private_totext(dns_rdata_t *private, isc_buffer_t *buf) {
 		}
 	} else if (private->length == 5 || private->length == 7) {
 		dns_keytag_t keyid = private->data[2] | (private->data[1] << 8);
-		char keybuf[DST_ALG_FORMATSIZE + BUFSIZ],
-			algbuf[DST_ALG_FORMATSIZE];
+		char algbuf[DST_ALG_FORMATSIZE];
 		bool del = private->data[3];
 		bool complete = private->data[4];
 		dst_algorithm_t alg;
@@ -374,8 +373,7 @@ dns_private_totext(dns_rdata_t *private, isc_buffer_t *buf) {
 		}
 
 		dst_algorithm_format(alg, algbuf, sizeof(algbuf));
-		snprintf(keybuf, sizeof(keybuf), "key %d/%s", keyid, algbuf);
-		isc_buffer_putstr(buf, keybuf);
+		CHECK(isc_buffer_printf(buf, "key %d/%s", keyid, algbuf));
 	} else {
 		return ISC_R_NOTFOUND;
 	}
