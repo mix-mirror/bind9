@@ -995,7 +995,13 @@ dst_key_setprivateformat(dst_key_t *key, int major, int minor);
  *	"key" is a valid key.
  */
 
-#define DST_KEY_FORMATSIZE (DNS_NAME_FORMATSIZE + DNS_SECALG_FORMATSIZE + 7)
+/*%
+ * Buffer size for dst_algorithm_format(): a DST algorithm mnemonic may
+ * be a domain name (PRIVATEDNS and PRIVATEOID based algorithms).
+ */
+#define DST_ALG_FORMATSIZE DNS_NAME_FORMATSIZE
+
+#define DST_KEY_FORMATSIZE (DNS_NAME_FORMATSIZE + DST_ALG_FORMATSIZE + 7)
 
 void
 dst_key_format(const dst_key_t *key, char *cp, unsigned int size);
@@ -1251,12 +1257,6 @@ dst_algorithm_totext(dst_algorithm_t alg, isc_buffer_t *target);
  *\li   ISC_R_SUCCESS                   on success
  *\li   ISC_R_NOSPACE                   target buffer is too small
  */
-
-/*%
- * Buffer size for dst_algorithm_format(): a DST algorithm mnemonic may
- * be a domain name (PRIVATEDNS and PRIVATEOID based algorithms).
- */
-#define DST_ALG_FORMATSIZE DNS_NAME_FORMATSIZE
 
 void
 dst_algorithm_format(dst_algorithm_t dst_alg, char *data, unsigned int length);
