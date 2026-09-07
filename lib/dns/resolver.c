@@ -3636,9 +3636,9 @@ fctx_getaddresses_forwarders(fetchctx_t *fctx) {
 }
 
 static void
-fctx_getaddresses_addresses(fetchctx_t *fctx, isc_stdtime_t now,
-			    unsigned int options, bool *allspilledp,
-			    size_t *ns_processed) {
+fctx_getaddresses_addresses(fetchctx_t *fctx, dns_delegset_t *delegset,
+			    isc_stdtime_t now, unsigned int options,
+			    bool *allspilledp, size_t *ns_processed) {
 	dns_adbfindlist_t finds = ISC_LIST_INITIALIZER;
 	size_t max_delegation_servers = fctx->res->view->max_delegation_servers;
 
@@ -3646,7 +3646,7 @@ fctx_getaddresses_addresses(fetchctx_t *fctx, isc_stdtime_t now,
 		options |= DNS_ADBFIND_QUOTAEXEMPT;
 	}
 
-	ISC_LIST_FOREACH(fctx->delegset->delegs, deleg, link) {
+	ISC_LIST_FOREACH(delegset->delegs, deleg, link) {
 		dns_adbfind_t *find = NULL;
 		size_t maxfindlen = max_delegation_servers - *ns_processed;
 		size_t findlen = 0;
@@ -3697,15 +3697,15 @@ fctx_getaddresses_addresses(fetchctx_t *fctx, isc_stdtime_t now,
 }
 
 static void
-shufflenames(fetchctx_t *fctx, dns_deleg_type_t delegtypes,
-	     size_t fetches_allowed, dns_name_t *names[MAX_DELEGATION_SERVERS],
-	     size_t *processed) {
+shufflenames(fetchctx_t *fctx, dns_delegset_t *delegset,
+	     dns_deleg_type_t delegtypes, size_t fetches_allowed,
+	     dns_name_t *names[MAX_DELEGATION_SERVERS], size_t *processed) {
 	size_t max = fctx->res->view->max_delegation_servers;
 
 	INSIST(max < MAX_DELEGATION_SERVERS);
 	*processed = 0;
 
-	ISC_LIST_FOREACH(fctx->delegset->delegs, deleg, link) {
+	ISC_LIST_FOREACH(delegset->delegs, deleg, link) {
 		if ((deleg->type & delegtypes) == 0) {
 			continue;
 		}
@@ -3740,10 +3740,10 @@ shuffle:
 }
 
 static isc_result_t
-fctx_getaddresses_nameservers(fetchctx_t *fctx, isc_stdtime_t now,
-			      unsigned int stdoptions, size_t fetches_allowed,
-			      bool *need_alternatep, bool *all_spilledp,
-			      size_t *ns_processed) {
+fctx_getaddresses_nameservers(fetchctx_t *fctx, dns_delegset_t *delegset,
+			      isc_stdtime_t now, unsigned int stdoptions,
+			      size_t fetches_allowed, bool *need_alternatep,
+			      bool *all_spilledp, size_t *ns_processed) {
 	bool have_address = false;
 	size_t name_processed = 0;
 	static thread_local dns_name_t *nameservers[MAX_DELEGATION_SERVERS];
@@ -3759,7 +3759,8 @@ fctx_getaddresses_nameservers(fetchctx_t *fctx, isc_stdtime_t now,
 	 * If this is a DELEG-based delegation, each `deleg` represents a DELEG
 	 * RR and might have multiple server names.
 	 */
-	shufflenames(fctx, DNS_DELEGTYPE_DELEG_NAMES | DNS_DELEGTYPE_NS_NAMES,
+	shufflenames(fctx, delegset,
+		     DNS_DELEGTYPE_DELEG_NAMES | DNS_DELEGTYPE_NS_NAMES,
 		     fetches_allowed, nameservers, &name_processed);
 
 	for (size_t i = 0; i < name_processed; i++) {
@@ -3774,9 +3775,7 @@ fctx_getaddresses_nameservers(fetchctx_t *fctx, isc_stdtime_t now,
 			break;
 		}
 
-		if (fctx->delegset->staticstub &&
-		    dns_name_equal(ns, fctx->domain))
-		{
+		if (delegset->staticstub && dns_name_equal(ns, fctx->domain)) {
 			static_stub = DNS_ADBFIND_STATICSTUB;
 		}
 
@@ -3852,7 +3851,7 @@ fctx_getaddresses_alternate(fetchctx_t *fctx, isc_stdtime_t now,
 }
 
 static isc_result_t
-fctx_getaddresses(fetchctx_t *fctx) {
+fctx_getaddresses(fetchctx_t *fctx, dns_delegset_t *delegset) {
 	isc_result_t result;
 	dns_resolver_t *res;
 	isc_stdtime_t now;
@@ -3864,6 +3863,10 @@ fctx_getaddresses(fetchctx_t *fctx) {
 	size_t ns_processed = 0;
 
 	FCTXTRACE5("getaddresses", "fctx->depth=", fctx->depth);
+
+	if (delegset == NULL) {
+		delegset = fctx->delegset;
+	}
 
 	/*
 	 * Don't pound on remote servers.  (Failsafe!)
@@ -3969,12 +3972,12 @@ fctx_getaddresses(fetchctx_t *fctx) {
 	 * `fctx_getaddresses_nameservers`.
 	 * */
 
-	fctx_getaddresses_addresses(fctx, now, stdoptions, &all_spilled,
-				    &ns_processed);
+	fctx_getaddresses_addresses(fctx, delegset, now, stdoptions,
+				    &all_spilled, &ns_processed);
 
 	fetches_allowed = fctx_getaddresses_allowed(fctx);
 
-	result = fctx_getaddresses_nameservers(fctx, now, stdoptions,
+	result = fctx_getaddresses_nameservers(fctx, delegset, now, stdoptions,
 					       fetches_allowed, &need_alternate,
 					       &all_spilled, &ns_processed);
 	if (result == DNS_R_CONTINUE && fetches_allowed == 0) {
@@ -3984,8 +3987,8 @@ fctx_getaddresses(fetchctx_t *fctx) {
 		 * again.
 		 */
 		(void)fctx_getaddresses_nameservers(
-			fctx, now, stdoptions, 1, &need_alternate, &all_spilled,
-			&ns_processed);
+			fctx, delegset, now, stdoptions, 1, &need_alternate,
+			&all_spilled, &ns_processed);
 	}
 
 	/*
@@ -4392,7 +4395,7 @@ fctx_try(fetchctx_t *fctx, bool retrying) {
 		/* We have no more addresses.  Start over. */
 		fctx_cancelqueries(fctx, true, false);
 		fctx_cleanup(fctx);
-		result = fctx_getaddresses(fctx);
+		result = fctx_getaddresses(fctx, NULL);
 		switch (result) {
 		case ISC_R_SUCCESS:
 			break;
