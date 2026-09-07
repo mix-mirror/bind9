@@ -31,7 +31,15 @@
 
 #include <tests/isc.h>
 
-#define AS_STR(x) ((char *)(x).value.as_region.base)
+#define assert_token_equal(token, text)                                     \
+	do {                                                                  \
+		static_assert(__builtin_constant_p(text),                       \
+			      "text must be a string literal");                 \
+		assert_int_equal((token).value.as_region.length,               \
+				 sizeof(text) - 1);                                 \
+		assert_memory_equal((token).value.as_region.base, (text),       \
+				    sizeof(text) - 1);                              \
+	} while (0)
 
 #define TEST_REFILL_SIZE (16U * 1024U)
 
@@ -146,7 +154,7 @@ ISC_RUN_TEST_IMPL(lex_0x00_initialws) {
 	result = isc_lex_next(lex, &token);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_string);
-	assert_string_equal(AS_STR(token), "b");
+	assert_token_equal(token, "b");
 
 	isc_lex_destroy(&lex);
 }
@@ -170,27 +178,27 @@ ISC_RUN_TEST_IMPL(lex_dns_master_policy) {
 
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_string);
-	assert_string_equal(AS_STR(token), "123");
+	assert_token_equal(token, "123");
 
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_qstring);
-	assert_string_equal(AS_STR(token), "hello");
+	assert_token_equal(token, "hello");
 
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_eol);
 
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_string);
-	assert_string_equal(AS_STR(token), "key=");
+	assert_token_equal(token, "key=");
 
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_qstring);
-	assert_string_equal(AS_STR(token), "a b");
+	assert_token_equal(token, "a b");
 	assert_true((token.flags & ISC_LEXFLAG_ADJACENT) != 0);
 
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_string);
-	assert_string_equal(AS_STR(token), "port=53");
+	assert_token_equal(token, "port=53");
 	assert_true((token.flags & ISC_LEXFLAG_ADJACENT) != 0);
 
 	isc_lex_destroy(&lex);
@@ -212,11 +220,11 @@ ISC_RUN_TEST_IMPL(lex_separated_qstring) {
 
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_string);
-	assert_string_equal(AS_STR(token), "key=");
+	assert_token_equal(token, "key=");
 
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_qstring);
-	assert_string_equal(AS_STR(token), "value");
+	assert_token_equal(token, "value");
 	assert_true((token.flags & ISC_LEXFLAG_ADJACENT) == 0);
 
 	isc_lex_destroy(&lex);
@@ -267,12 +275,12 @@ ISC_RUN_TEST_IMPL(lex_refill_and_unget) {
 
 		assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 		assert_int_equal(token.type, isc_tokentype_string);
-		assert_string_equal(AS_STR(token), "first");
+		assert_token_equal(token, "first");
 
 		assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 		assert_int_equal(token.type, isc_tokentype_string);
 		assert_int_equal(token.value.as_region.length, atom_length);
-		assert_memory_equal(AS_STR(token), text + sizeof("first ") - 1U,
+		assert_memory_equal(token.value.as_region.base, text + sizeof("first ") - 1U,
 				    atom_length);
 		isc_lex_getlasttokentext(lex, &token, &raw);
 		assert_int_equal(raw.length, atom_length);
@@ -283,12 +291,12 @@ ISC_RUN_TEST_IMPL(lex_refill_and_unget) {
 		assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 		assert_int_equal(token.type, isc_tokentype_string);
 		assert_int_equal(token.value.as_region.length, atom_length);
-		assert_memory_equal(AS_STR(token), text + sizeof("first ") - 1U,
+		assert_memory_equal(token.value.as_region.base, text + sizeof("first ") - 1U,
 				    atom_length);
 
 		assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 		assert_int_equal(token.type, isc_tokentype_string);
-		assert_string_equal(AS_STR(token), "tail");
+		assert_token_equal(token, "tail");
 		assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 		assert_int_equal(token.type, isc_tokentype_eof);
 
@@ -335,10 +343,9 @@ ISC_RUN_TEST_IMPL(lex_qstring_refill_and_cooking) {
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_qstring);
 	assert_int_equal(token.value.as_region.length, prefix_length + 2U);
-	assert_memory_equal(AS_STR(token), text + 1U, prefix_length);
-	assert_int_equal(AS_STR(token)[prefix_length], '"');
-	assert_int_equal(AS_STR(token)[prefix_length + 1U], 'b');
-	assert_int_equal(AS_STR(token)[prefix_length + 2U], '\0');
+	assert_memory_equal(token.value.as_region.base, text + 1U, prefix_length);
+	assert_int_equal(token.value.as_region.base[prefix_length], '"');
+	assert_int_equal(token.value.as_region.base[prefix_length + 1U], 'b');
 
 	isc_lex_getlasttokentext(lex, &token, &raw);
 	assert_int_equal(raw.length, text_length);
@@ -375,11 +382,11 @@ ISC_RUN_TEST_IMPL(lex_config_policy) {
 
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_qstring);
-	assert_string_equal(AS_STR(token), "two\nlines");
+	assert_token_equal(token, "two\nlines");
 
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_string);
-	assert_string_equal(AS_STR(token), "123");
+	assert_token_equal(token, "123");
 
 	isc_lex_destroy(&lex);
 }
@@ -413,18 +420,18 @@ ISC_RUN_TEST_IMPL(lex_dns_comments) {
 
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_string);
-	assert_string_equal(AS_STR(token), "foo");
+	assert_token_equal(token, "foo");
 
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_eol);
 
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_qstring);
-	assert_string_equal(AS_STR(token), "a;b");
+	assert_token_equal(token, "a;b");
 
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_string);
-	assert_string_equal(AS_STR(token), "foo\\;bar");
+	assert_token_equal(token, "foo\\;bar");
 
 	/* A bare CR and the comment's LF are separate line endings. */
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
@@ -435,7 +442,7 @@ ISC_RUN_TEST_IMPL(lex_dns_comments) {
 
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_string);
-	assert_string_equal(AS_STR(token), "bar");
+	assert_token_equal(token, "bar");
 
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_eof);
@@ -460,21 +467,21 @@ ISC_RUN_TEST_IMPL(lex_config_comments) {
 
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_string);
-	assert_string_equal(AS_STR(token), "foo");
+	assert_token_equal(token, "foo");
 
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_string);
-	assert_string_equal(AS_STR(token), "bar");
+	assert_token_equal(token, "bar");
 	assert_true((token.flags & ISC_LEXFLAG_ADJACENT) == 0);
 
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_string);
-	assert_string_equal(AS_STR(token), "baz");
+	assert_token_equal(token, "baz");
 	assert_true((token.flags & ISC_LEXFLAG_ADJACENT) == 0);
 
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_qstring);
-	assert_string_equal(AS_STR(token), "/*#//");
+	assert_token_equal(token, "/*#//");
 	assert_true((token.flags & ISC_LEXFLAG_ADJACENT) == 0);
 
 	/* A non-comment slash remains an adjacent special. */
@@ -485,7 +492,7 @@ ISC_RUN_TEST_IMPL(lex_config_comments) {
 
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_string);
-	assert_string_equal(AS_STR(token), "x");
+	assert_token_equal(token, "x");
 	assert_true((token.flags & ISC_LEXFLAG_ADJACENT) != 0);
 
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
@@ -511,7 +518,7 @@ ISC_RUN_TEST_IMPL(lex_unterminated_comment) {
 	/* Diagnose the comment on the call following the atom. */
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_string);
-	assert_string_equal(AS_STR(token), "foo");
+	assert_token_equal(token, "foo");
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_UNEXPECTEDEND);
 
 	isc_lex_destroy(&lex);
@@ -537,7 +544,7 @@ ISC_RUN_TEST_IMPL(lex_comment_refill) {
 	assert_int_equal(isc_lex_openbuffer(lex, &buf), ISC_R_SUCCESS);
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_string);
-	assert_string_equal(AS_STR(token), "foo");
+	assert_token_equal(token, "foo");
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_eof);
 	isc_lex_destroy(&lex);
@@ -556,7 +563,7 @@ ISC_RUN_TEST_IMPL(lex_comment_refill) {
 	assert_int_equal(isc_lex_openbuffer(lex, &buf), ISC_R_SUCCESS);
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_string);
-	assert_string_equal(AS_STR(token), "foo");
+	assert_token_equal(token, "foo");
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_eof);
 	isc_lex_destroy(&lex);
@@ -579,7 +586,7 @@ ISC_RUN_TEST_IMPL(lex_unget_eol) {
 
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_string);
-	assert_string_equal(AS_STR(token), "key");
+	assert_token_equal(token, "key");
 
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_eol);
@@ -595,7 +602,7 @@ ISC_RUN_TEST_IMPL(lex_unget_eol) {
 
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_string);
-	assert_string_equal(AS_STR(token), "next");
+	assert_token_equal(token, "next");
 
 	isc_lex_destroy(&lex);
 }
@@ -617,24 +624,24 @@ ISC_RUN_TEST_IMPL(lex_command_unget) {
 
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_string);
-	assert_string_equal(AS_STR(token), "delzone");
+	assert_token_equal(token, "delzone");
 	isc_lex_ungettoken(lex, &token);
 
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_string);
-	assert_string_equal(AS_STR(token), "delzone");
+	assert_token_equal(token, "delzone");
 
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_string);
-	assert_string_equal(AS_STR(token), "example");
+	assert_token_equal(token, "example");
 
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_string);
-	assert_string_equal(AS_STR(token), "IN");
+	assert_token_equal(token, "IN");
 
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_string);
-	assert_string_equal(AS_STR(token), "view");
+	assert_token_equal(token, "view");
 
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_eof);
@@ -684,11 +691,14 @@ ISC_RUN_TEST_IMPL(lex_command_arguments) {
 
 		assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 		assert_int_equal(token.type, isc_tokentype_string);
-		assert_string_equal(AS_STR(token), "delzone");
+		assert_token_equal(token, "delzone");
 
 		assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 		assert_int_equal(token.type, tests[i].type);
-		assert_string_equal(AS_STR(token), tests[i].argument);
+		assert_int_equal(token.value.as_region.length,
+				 strlen(tests[i].argument));
+		assert_memory_equal(token.value.as_region.base, tests[i].argument,
+				    token.value.as_region.length);
 
 		assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 		assert_int_equal(token.type, isc_tokentype_eof);

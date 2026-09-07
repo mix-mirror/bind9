@@ -1684,9 +1684,6 @@ cleanup:
 	return result;
 }
 
-#define TSTR(t) ((char *)(t).value.as_region.base)
-#define TLEN(t) ((t).value.as_region.length)
-
 isc_result_t
 dns_view_loadnta(dns_view_t *view) {
 	isc_result_t result;
@@ -1706,8 +1703,7 @@ dns_view_loadnta(dns_view_t *view) {
 	CHECK(dns_view_getntatable(view, &ntatable));
 
 	for (;;) {
-		char *name, *type;
-		size_t len;
+		isc_region_t source;
 		dns_fixedname_t fn;
 		const dns_name_t *ntaname;
 		isc_buffer_t b;
@@ -1720,17 +1716,16 @@ dns_view_loadnta(dns_view_t *view) {
 		} else if (token.type != isc_tokentype_string) {
 			CLEANUP(ISC_R_UNEXPECTEDTOKEN);
 		}
-		name = TSTR(token);
-		len = TLEN(token);
+		source = token.value.as_region;
 
-		if (strcmp(name, ".") == 0) {
+		if (source.length == 1 && source.base[0] == '.') {
 			ntaname = dns_rootname;
 		} else {
 			dns_name_t *fname;
 			fname = dns_fixedname_initname(&fn);
 
-			isc_buffer_init(&b, name, (unsigned int)len);
-			isc_buffer_add(&b, (unsigned int)len);
+			isc_buffer_init(&b, source.base, source.length);
+			isc_buffer_add(&b, source.length);
 			CHECK(dns_name_fromtext(fname, &b, dns_rootname, 0));
 			ntaname = fname;
 		}
@@ -1739,11 +1734,15 @@ dns_view_loadnta(dns_view_t *view) {
 		if (token.type != isc_tokentype_string) {
 			CLEANUP(ISC_R_UNEXPECTEDTOKEN);
 		}
-		type = TSTR(token);
-
-		if (strcmp(type, "regular") == 0) {
+		if (token.value.as_region.length == sizeof("regular") - 1 &&
+		    memcmp(token.value.as_region.base, "regular",
+			   sizeof("regular") - 1) == 0)
+		{
 			forced = false;
-		} else if (strcmp(type, "forced") == 0) {
+		} else if (token.value.as_region.length == sizeof("forced") - 1 &&
+			   memcmp(token.value.as_region.base, "forced",
+				  sizeof("forced") - 1) == 0)
+		{
 			forced = true;
 		} else {
 			CLEANUP(ISC_R_UNEXPECTEDTOKEN);

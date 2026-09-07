@@ -16,6 +16,7 @@
 #include <inttypes.h>
 #include <stdbool.h>
 
+#include <isc/ascii.h>
 #include <isc/async.h>
 #include <isc/atomic.h>
 #include <isc/lex.h>
@@ -173,8 +174,6 @@ struct dns_incctx {
 #define DNS_LCTX_MAGIC	     ISC_MAGIC('L', 'c', 't', 'x')
 #define DNS_LCTX_VALID(lctx) ISC_MAGIC_VALID(lctx, DNS_LCTX_MAGIC)
 
-#define DNS_AS_STR(t) ((char *)(t).value.as_region.base)
-
 static isc_result_t
 openfile_text(dns_loadctx_t *lctx, const char *master_file);
 
@@ -186,6 +185,16 @@ openfile_raw(dns_loadctx_t *lctx, const char *master_file);
 
 static isc_result_t
 load_raw(dns_loadctx_t *lctx);
+
+#define TOKEN_CASEEQUAL(token, text)                                        \
+	({                                                                    \
+		static_assert(__builtin_constant_p(text),                       \
+			      "text must be a string literal");                 \
+		(token)->value.as_region.length == sizeof(text) - 1 &&          \
+			isc_ascii_lowercmp((token)->value.as_region.base,         \
+					   (const uint8_t *)(text),                \
+					   sizeof(text) - 1) == 0;                 \
+	})
 
 static isc_result_t
 pushfile(const char *master_file, dns_name_t *origin, dns_loadctx_t *lctx);
@@ -925,9 +934,10 @@ check_ns(dns_loadctx_t *lctx, isc_token_t *token, const char *source,
 	}
 	if (result != ISC_R_SUCCESS) {
 		(*callback)(lctx->callbacks,
-			    "%s:%lu: NS record '%s' "
+			    "%s:%lu: NS record '%.*s' "
 			    "appears to be an address",
-			    source, line, DNS_AS_STR(*token));
+			    source, line, (int)token->value.as_region.length,
+			    token->value.as_region.base);
 	}
 	if (tmp != NULL) {
 		isc_mem_free(lctx->mctx, tmp);
@@ -1110,10 +1120,10 @@ load_text(dns_loadctx_t *lctx) {
 			 * across the normal domain name processing.
 			 */
 
-			if (strcasecmp(DNS_AS_STR(token), "$ORIGIN") == 0) {
+			if (TOKEN_CASEEQUAL(&token, "$ORIGIN")) {
 				GETTOKEN(lctx->lex, &token, false);
 				finish_origin = true;
-			} else if (strcasecmp(DNS_AS_STR(token), "$TTL") == 0) {
+			} else if (TOKEN_CASEEQUAL(&token, "$TTL")) {
 				GETTOKENERR(lctx->lex, &token, false,
 					    lctx->ttl = 0;
 					    lctx->default_ttl_known = true;);
@@ -1130,8 +1140,7 @@ load_text(dns_loadctx_t *lctx) {
 				lctx->default_ttl_known = true;
 				EXPECTEOL;
 				continue;
-			} else if (strcasecmp(DNS_AS_STR(token), "$INCLUDE") ==
-				   0)
+			} else if (TOKEN_CASEEQUAL(&token, "$INCLUDE"))
 			{
 				COMMITALL;
 				if (ttl_offset != 0) {
@@ -1185,7 +1194,7 @@ load_text(dns_loadctx_t *lctx) {
 				 * the actual inclusion later.
 				 */
 				finish_include = true;
-			} else if (strcasecmp(DNS_AS_STR(token), "$DATE") == 0)
+			} else if (TOKEN_CASEEQUAL(&token, "$DATE"))
 			{
 				int64_t dump_time64;
 				isc_stdtime_t dump_time;
@@ -1220,8 +1229,7 @@ load_text(dns_loadctx_t *lctx) {
 				ttl_offset = current_time - dump_time;
 				EXPECTEOL;
 				continue;
-			} else if (strcasecmp(DNS_AS_STR(token), "$GENERATE") ==
-				   0)
+			} else if (TOKEN_CASEEQUAL(&token, "$GENERATE"))
 			{
 				/*
 				 * Lazy cleanup.
@@ -1320,13 +1328,16 @@ load_text(dns_loadctx_t *lctx) {
 				}
 				EXPECTEOL;
 				continue;
-			} else if (strncasecmp(DNS_AS_STR(token), "$", 1) == 0)
+			} else if (token.value.as_region.length != 0 &&
+				   token.value.as_region.base[0] == '$')
 			{
 				(callbacks->error)(callbacks,
 						   "%s: %s:%lu: "
-						   "unknown $ directive '%s'",
+						   "unknown $ directive '%.*s'",
 						   "dns_master_load", source,
-						   line, DNS_AS_STR(token));
+						   line,
+						   (int)token.value.as_region.length,
+						   token.value.as_region.base);
 				result = DNS_R_SYNTAX;
 				if (MANYERRS(lctx, result)) {
 					SETRESULT(lctx, result);

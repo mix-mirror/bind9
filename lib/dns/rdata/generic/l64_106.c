@@ -43,7 +43,7 @@ fromtext_l64(ARGS_FROMTEXT) {
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
 
-	if (locator_pton(DNS_AS_STR(token), locator) != 1) {
+	if (locator_pton(&token.value.as_region, locator) != 1) {
 		RETTOK(DNS_R_SYNTAX);
 	}
 	return mem_tobuffer(target, locator, NS_LOCATORSZ);

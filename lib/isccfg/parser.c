@@ -46,6 +46,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <isc/ascii.h>
 #include <isc/buffer.h>
 #include <isc/dir.h>
 #include <isc/errno.h>
@@ -85,8 +86,6 @@ static_assert(sizeof(struct cfg_obj) <= 40,
  * the int, so we define a "dummy" value to use instead. */
 #define SYMTAB_DUMMY_TYPE 1
 
-#define TOKEN_STRING(pctx) ((char *)(pctx)->token.value.as_region.base)
-
 /* cfg_obj_t magic number */
 #define CFGOBJ_MAGIC	  ISC_MAGIC('c', 'f', 'g', 'o')
 #define VALID_CFGOBJ(obj) ISC_MAGIC_VALID(obj, CFGOBJ_MAGIC)
@@ -98,6 +97,39 @@ static_assert(sizeof(struct cfg_obj) <= 40,
 			cfg_obj_detach(&(obj)); \
 		}                               \
 	} while (0)
+
+static int
+token_casecmp_cstr(const cfg_parser_t *pctx, const char *text) {
+	size_t length = strlen(text);
+
+	if (pctx->token.value.as_region.length != length) {
+		return 1;
+	}
+
+	return isc_ascii_lowercmp(pctx->token.value.as_region.base,
+				  (const uint8_t *)text, length);
+}
+
+#define token_cmp(pctx, text)                                               \
+	({                                                                    \
+		static_assert(__builtin_constant_p(text),                       \
+			      "text must be a string literal");                 \
+		(pctx)->token.value.as_region.length != sizeof(text) - 1       \
+			? 1                                                     \
+			: memcmp((pctx)->token.value.as_region.base, (text),     \
+				 sizeof(text) - 1);                               \
+	})
+
+#define token_casecmp(pctx, text)                                           \
+	({                                                                    \
+		static_assert(__builtin_constant_p(text),                       \
+			      "text must be a string literal");                 \
+		(pctx)->token.value.as_region.length != sizeof(text) - 1       \
+			? 1                                                     \
+			: isc_ascii_lowercmp(                                  \
+				  (pctx)->token.value.as_region.base,             \
+				  (const uint8_t *)(text), sizeof(text) - 1);      \
+	})
 
 /*
  * Forward declarations of static functions.
@@ -1368,7 +1400,7 @@ cfg_parse_duration_or_unlimited(cfg_parser_t *pctx,
 		CLEANUP(ISC_R_UNEXPECTEDTOKEN);
 	}
 
-	if (strcmp(TOKEN_STRING(pctx), "unlimited") == 0) {
+	if (token_cmp(pctx, "unlimited") == 0) {
 		for (int i = 0; i < 7; i++) {
 			duration.parts[i] = 0;
 		}
@@ -1518,14 +1550,18 @@ cleanup:
 }
 
 bool
-cfg_is_enum(const char *s, const char *const *enums) {
+cfg_is_enum(const isc_region_t *source, const char *const *enums) {
 	const char *const *p;
 
-	REQUIRE(s != NULL);
+	REQUIRE(source != NULL);
 	REQUIRE(enums != NULL);
 
 	for (p = enums; *p != NULL; p++) {
-		if (strcasecmp(*p, s) == 0) {
+		size_t length = strlen(*p);
+		if (source->length == length &&
+		    isc_ascii_lowercmp(source->base, (const uint8_t *)*p,
+				       length) == 0)
+		{
 			return true;
 		}
 	}
@@ -1535,11 +1571,14 @@ cfg_is_enum(const char *s, const char *const *enums) {
 static isc_result_t
 check_enum(cfg_parser_t *pctx, cfg_obj_t *obj, const char *const *enums) {
 	const char *s;
+	isc_region_t source;
 
 	REQUIRE(VALID_CFGOBJ(obj));
 
 	s = obj->value.string;
-	if (cfg_is_enum(s, enums)) {
+	source = (isc_region_t){ .base = (unsigned char *)s,
+				 .length = strlen(s) };
+	if (cfg_is_enum(&source, enums)) {
 		return ISC_R_SUCCESS;
 	}
 	cfg_parser_error(pctx, 0, "'%s' unexpected", s);
@@ -1587,7 +1626,7 @@ cfg_parse_enum_or_other(cfg_parser_t *pctx, const cfg_type_t *enumtype,
 	isc_result_t result;
 	CHECK(cfg_peektoken(pctx));
 	if (pctx->token.type == isc_tokentype_string &&
-	    cfg_is_enum(TOKEN_STRING(pctx), enumtype->of))
+	    cfg_is_enum(&pctx->token.value.as_region, enumtype->of))
 	{
 		CHECK(cfg_parse_enum(pctx, enumtype, ret));
 	} else {
@@ -1767,7 +1806,7 @@ parse_geoip(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 	CHECK(cfg_peektoken(pctx));
 	if (pctx->token.type == isc_tokentype_string) {
 		CHECK(cfg_gettoken(pctx));
-		if (strcasecmp(TOKEN_STRING(pctx), "db") == 0 &&
+		if (token_casecmp(pctx, "db") == 0 &&
 		    obj->value.tuple[1] == NULL)
 		{
 			CHECK(cfg_parse_obj(pctx, fields[1].type,
@@ -1826,11 +1865,11 @@ parse_addrmatchelt(cfg_parser_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED,
 	    pctx->token.type == isc_tokentype_qstring)
 	{
 		if (pctx->token.type == isc_tokentype_string &&
-		    (strcasecmp(TOKEN_STRING(pctx), "key") == 0))
+		    (token_casecmp(pctx, "key") == 0))
 		{
 			CHECK(cfg_parse_obj(pctx, &cfg_type_keyref, ret));
 		} else if (pctx->token.type == isc_tokentype_string &&
-			   (strcasecmp(TOKEN_STRING(pctx), "geoip") == 0))
+			   (token_casecmp(pctx, "geoip") == 0))
 		{
 #if defined(HAVE_GEOIP2)
 			CHECK(cfg_gettoken(pctx));
@@ -1943,14 +1982,14 @@ cfg_parse_boolean(cfg_parser_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED,
 		goto bad_boolean;
 	}
 
-	if ((strcasecmp(TOKEN_STRING(pctx), "true") == 0) ||
-	    (strcasecmp(TOKEN_STRING(pctx), "yes") == 0) ||
-	    (strcmp(TOKEN_STRING(pctx), "1") == 0))
+	if ((token_casecmp(pctx, "true") == 0) ||
+	    (token_casecmp(pctx, "yes") == 0) ||
+	    (token_cmp(pctx, "1") == 0))
 	{
 		value = true;
-	} else if ((strcasecmp(TOKEN_STRING(pctx), "false") == 0) ||
-		   (strcasecmp(TOKEN_STRING(pctx), "no") == 0) ||
-		   (strcmp(TOKEN_STRING(pctx), "0") == 0))
+	} else if ((token_casecmp(pctx, "false") == 0) ||
+		   (token_casecmp(pctx, "no") == 0) ||
+		   (token_cmp(pctx, "0") == 0))
 	{
 		value = false;
 	} else {
@@ -2307,7 +2346,7 @@ cfg_parse_mapbody(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 		 * We accept "include" statements wherever a map body
 		 * clause can occur.
 		 */
-		if (strcasecmp(TOKEN_STRING(pctx), "include") == 0) {
+		if (token_casecmp(pctx, "include") == 0) {
 			glob_t g;
 			int rc;
 
@@ -2362,8 +2401,7 @@ cfg_parse_mapbody(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 			for (clause = *clauseset; clause->name != NULL;
 			     clause++)
 			{
-				if (strcasecmp(TOKEN_STRING(pctx),
-					       clause->name) == 0)
+				if (token_casecmp_cstr(pctx, clause->name) == 0)
 				{
 					goto done;
 				}
@@ -3159,7 +3197,7 @@ cfg_parse_rawport(cfg_parser_t *pctx, unsigned int flags, in_port_t *port) {
 
 	if ((flags & CFG_ADDR_WILDOK) != 0 &&
 	    pctx->token.type == isc_tokentype_string &&
-	    strcmp(TOKEN_STRING(pctx), "*") == 0)
+	    token_cmp(pctx, "*") == 0)
 	{
 		*port = 0;
 		return ISC_R_SUCCESS;
@@ -3412,19 +3450,19 @@ parse_sockaddrsub(cfg_parser_t *pctx, const cfg_type_t *type, int flags,
 		CHECK(cfg_peektoken(pctx));
 		if (pctx->token.type == isc_tokentype_string) {
 			if (is_address_ok &&
-			    strcasecmp(TOKEN_STRING(pctx), "address") == 0)
+			    token_casecmp(pctx, "address") == 0)
 			{
 				/* read "address" */
 				CHECK(cfg_gettoken(pctx));
 				CHECK(cfg_parse_rawaddr(pctx, flags, &netaddr));
 				++have_address;
-			} else if (strcasecmp(TOKEN_STRING(pctx), "port") == 0)
+			} else if (token_casecmp(pctx, "port") == 0)
 			{
 				CHECK(cfg_gettoken(pctx)); /* read "port" */
 				CHECK(cfg_parse_rawport(pctx, flags, &port));
 				++have_port;
 			} else if (is_tls_ok &&
-				   strcasecmp(TOKEN_STRING(pctx), "tls") == 0)
+				   token_casecmp(pctx, "tls") == 0)
 			{
 				CHECK(cfg_gettoken(pctx)); /* read "tls" */
 				CHECK(cfg_getstringtoken(pctx));

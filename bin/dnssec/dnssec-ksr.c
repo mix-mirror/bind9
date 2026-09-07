@@ -16,6 +16,7 @@
 #include <ctype.h>
 #include <stdio.h>
 
+#include <isc/ascii.h>
 #include <isc/buffer.h>
 #include <isc/commandline.h>
 #include <isc/crypto.h>
@@ -89,7 +90,24 @@ static int min_dh = 128;
 
 #define MAXWIRE (64 * 1024)
 
-#define STR(t) ((char *)(t).value.as_region.base)
+#define TOKEN_EQUAL(token, text)                                            \
+	({                                                                    \
+		static_assert(__builtin_constant_p(text),                       \
+			      "text must be a string literal");                 \
+		(token).value.as_region.length == sizeof(text) - 1 &&           \
+			memcmp((token).value.as_region.base, (text),              \
+			       sizeof(text) - 1) == 0;                          \
+	})
+
+#define TOKEN_CASEEQUAL(token, text)                                        \
+	({                                                                    \
+		static_assert(__builtin_constant_p(text),                       \
+			      "text must be a string literal");                 \
+		(token).value.as_region.length == sizeof(text) - 1 &&           \
+			isc_ascii_lowercmp((token).value.as_region.base,          \
+					   (const uint8_t *)(text),                \
+					   sizeof(text) - 1) == 0;                 \
+	})
 
 #define READLINE(lex, opt, token)
 
@@ -949,7 +967,8 @@ sign_bundle(ksr_ctx_t *ksr, dns_kasp_t *kasp, isc_stdtime_t inception,
 }
 
 static isc_result_t
-parse_dnskey(isc_lex_t *lex, char *owner, isc_buffer_t *buf, dns_ttl_t *ttl) {
+parse_dnskey(isc_lex_t *lex, const isc_region_t *owner, isc_buffer_t *buf,
+	     dns_ttl_t *ttl) {
 	dns_fixedname_t dfname;
 	dns_name_t *dname = NULL;
 	dns_rdataclass_t rdclass = dns_rdataclass_in;
@@ -958,13 +977,13 @@ parse_dnskey(isc_lex_t *lex, char *owner, isc_buffer_t *buf, dns_ttl_t *ttl) {
 	isc_token_t token;
 
 	/* Read the domain name */
-	if (!strcmp(owner, "@")) {
+	if (owner->length == 1 && owner->base[0] == '@') {
 		BADTOKEN();
 	}
 
 	dname = dns_fixedname_initname(&dfname);
-	isc_buffer_init(&b, owner, strlen(owner));
-	isc_buffer_add(&b, strlen(owner));
+	isc_buffer_init(&b, owner->base, owner->length);
+	isc_buffer_add(&b, owner->length);
 	CHECK(dns_name_fromtext(dname, &b, dns_rootname, 0));
 	if (dns_name_compare(dname, name) != 0) {
 		result = DNS_R_BADOWNERNAME;
@@ -997,7 +1016,7 @@ parse_dnskey(isc_lex_t *lex, char *owner, isc_buffer_t *buf, dns_ttl_t *ttl) {
 	}
 
 	/* Must be the type */
-	if (strcasecmp(STR(token), "DNSKEY") != 0) {
+	if (!TOKEN_CASEEQUAL(token, "DNSKEY")) {
 		BADTOKEN();
 	}
 
@@ -1164,12 +1183,12 @@ sign(ksr_ctx_t *ksr) {
 			      isc_lex_getsourceline(lex));
 		}
 
-		if (strcmp(STR(token), ";;") == 0) {
+		if (TOKEN_EQUAL(token, ";;")) {
 			isc_stdtime_t next_inception;
 
 			CHECK(isc_lex_next(lex, &token));
 			if (token.type != isc_tokentype_string ||
-			    strcmp(STR(token), "KeySigningRequest") != 0)
+			    !TOKEN_EQUAL(token, "KeySigningRequest"))
 			{
 				fatal("bad KSR file %s(%lu): expected "
 				      "'KeySigningRequest'",
@@ -1182,7 +1201,7 @@ sign(ksr_ctx_t *ksr) {
 				      ksr->file, isc_lex_getsourceline(lex));
 			}
 
-			if (strcmp(STR(token), "1.0") != 0) {
+			if (!TOKEN_EQUAL(token, "1.0")) {
 				fatal("bad KSR file %s(%lu): expected version",
 				      ksr->file, isc_lex_getsourceline(lex));
 			}
@@ -1192,14 +1211,26 @@ sign(ksr_ctx_t *ksr) {
 				fatal("bad KSR file %s(%lu): expected datetime",
 				      ksr->file, isc_lex_getsourceline(lex));
 			}
-			if (strcmp(STR(token), "generated") == 0) {
+			if (TOKEN_EQUAL(token, "generated")) {
 				/* Final bundle */
 				goto readline;
 			}
 
 			/* Date and time of bundle */
-			next_inception = strtotime(STR(token), ksr->now,
-						   ksr->now, NULL);
+			{
+				char datetime[KSR_LINESIZE + 1];
+
+				if (token.value.as_region.length > KSR_LINESIZE) {
+					fatal("bad KSR file %s(%lu): datetime too long",
+					      ksr->file,
+					      isc_lex_getsourceline(lex));
+				}
+				memmove(datetime, token.value.as_region.base,
+					token.value.as_region.length);
+				datetime[token.value.as_region.length] = '\0';
+				next_inception = strtotime(datetime, ksr->now,
+							   ksr->now, NULL);
+			}
 
 			if (have_bundle) {
 				/* Sign previous bundle */
@@ -1248,7 +1279,8 @@ sign(ksr_ctx_t *ksr) {
 			rdata = isc_mem_get(isc_g_mctx, sizeof(*rdata));
 			dns_rdata_init(rdata);
 			isc_buffer_init(&buf, rdatabuf, sizeof(rdatabuf));
-			result = parse_dnskey(lex, STR(token), &buf, &ttl);
+			result = parse_dnskey(lex, &token.value.as_region, &buf,
+					      &ttl);
 			if (result != ISC_R_SUCCESS) {
 				fatal("bad KSR file %s(%lu): bad DNSKEY (%s)",
 				      ksr->file, isc_lex_getsourceline(lex),

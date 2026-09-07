@@ -32,12 +32,19 @@
 #define BADTOKEN() CLEANUP(ISC_R_UNEXPECTEDTOKEN)
 
 #define TOKENSIZ (8 * 1024)
-#define STR(t)	 ((char *)(t).value.as_region.base)
+#define TOKEN_EQUAL(token, text)                                            \
+	({                                                                    \
+		static_assert(__builtin_constant_p(text),                       \
+			      "text must be a string literal");                 \
+		(token).value.as_region.length == sizeof(text) - 1 &&           \
+			memcmp((token).value.as_region.base, (text),              \
+			       sizeof(text) - 1) == 0;                          \
+	})
 
 static isc_result_t
-parse_rr(isc_lex_t *lex, isc_mem_t *mctx, char *owner, dns_name_t *origin,
-	 dns_rdataclass_t rdclass, isc_buffer_t *buf, dns_ttl_t *ttl,
-	 dns_rdatatype_t *rdtype, dns_rdata_t **rdata) {
+parse_rr(isc_lex_t *lex, isc_mem_t *mctx, const isc_region_t *owner,
+	 dns_name_t *origin, dns_rdataclass_t rdclass, isc_buffer_t *buf,
+	 dns_ttl_t *ttl, dns_rdatatype_t *rdtype, dns_rdata_t **rdata) {
 	dns_rdatacallbacks_t callbacks;
 	dns_fixedname_t dfname;
 	dns_name_t *dname = NULL;
@@ -47,12 +54,12 @@ parse_rr(isc_lex_t *lex, isc_mem_t *mctx, char *owner, dns_name_t *origin,
 	isc_result_t result = ISC_R_SUCCESS;
 
 	/* Read the domain name */
-	if (!strcmp(owner, "@")) {
+	if (owner->length == 1 && owner->base[0] == '@') {
 		BADTOKEN();
 	}
 	dname = dns_fixedname_initname(&dfname);
-	isc_buffer_init(&b, owner, strlen(owner));
-	isc_buffer_add(&b, strlen(owner));
+	isc_buffer_init(&b, owner->base, owner->length);
+	isc_buffer_add(&b, owner->length);
 	CHECK(dns_name_fromtext(dname, &b, dns_rootname, 0));
 	if (dns_name_compare(dname, origin) != 0) {
 		CLEANUP(DNS_R_BADOWNERNAME);
@@ -241,11 +248,11 @@ dns_skr_read(isc_mem_t *mctx, const char *filename, dns_name_t *origin,
 			CLEANUP(DNS_R_SYNTAX);
 		}
 
-		if (strcmp(STR(token), ";;") == 0) {
+		if (TOKEN_EQUAL(token, ";;")) {
 			/* New bundle */
 			CHECK(isc_lex_next(lex, &token));
 			if (token.type != isc_tokentype_string ||
-			    strcmp(STR(token), "SignedKeyResponse") != 0)
+			    !TOKEN_EQUAL(token, "SignedKeyResponse"))
 			{
 				CLEANUP(DNS_R_SYNTAX);
 			}
@@ -253,7 +260,7 @@ dns_skr_read(isc_mem_t *mctx, const char *filename, dns_name_t *origin,
 			/* Version */
 			CHECK(isc_lex_next(lex, &token));
 			if (token.type != isc_tokentype_string ||
-			    strcmp(STR(token), "1.0") != 0)
+			    !TOKEN_EQUAL(token, "1.0"))
 			{
 				CLEANUP(DNS_R_SYNTAX);
 			}
@@ -263,7 +270,7 @@ dns_skr_read(isc_mem_t *mctx, const char *filename, dns_name_t *origin,
 			if (token.type != isc_tokentype_string) {
 				CLEANUP(DNS_R_SYNTAX);
 			}
-			if (strcmp(STR(token), "generated") == 0) {
+			if (TOKEN_EQUAL(token, "generated")) {
 				/* Final bundle */
 				goto readline;
 			}
@@ -298,7 +305,7 @@ dns_skr_read(isc_mem_t *mctx, const char *filename, dns_name_t *origin,
 			rdata = isc_mem_get(mctx, sizeof(*rdata));
 			dns_rdata_init(rdata);
 			isc_buffer_init(&buf, rdatabuf, sizeof(rdatabuf));
-			result = parse_rr(lex, mctx, STR(token), origin,
+			result = parse_rr(lex, mctx, &token.value.as_region, origin,
 					  rdclass, &buf, &dnskeyttl, &rdtype,
 					  &rdata);
 			if (result != ISC_R_SUCCESS) {

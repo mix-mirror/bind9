@@ -79,7 +79,9 @@ fromtext_amtrelay(ARGS_FROMTEXT) {
 
 	switch (gateway) {
 	case 0:
-		if (strcmp(DNS_AS_STR(token), ".") != 0) {
+		if (token.value.as_region.length != 1 ||
+		    token.value.as_region.base[0] != '.')
+		{
 			RETTOK(DNS_R_SYNTAX);
 		}
 		return ISC_R_SUCCESS;

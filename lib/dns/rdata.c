@@ -70,8 +70,6 @@
 		}                                          \
 	} while (0)
 
-#define DNS_AS_STR(t) ((char *)(t).value.as_region.base)
-
 #define ARGS_FROMTEXT                                           \
 	int rdclass, dns_rdatatype_t type, isc_lex_t *lexer,    \
 		const dns_name_t *origin, unsigned int options, \
@@ -340,7 +338,7 @@ static dns_name_t const gc_msdcs = DNS_NAME_INITNONABSOLUTE(gc_msdcs_data);
  *	(1) does not touch `dst' unless it's returning 1.
  */
 static int
-locator_pton(const char *src, unsigned char *dst) {
+locator_pton(const isc_region_t *source, unsigned char *dst) {
 	unsigned char tmp[NS_LOCATORSZ];
 	unsigned char *tp = tmp, *endp;
 	int ch, seen_xdigits;
@@ -350,7 +348,8 @@ locator_pton(const char *src, unsigned char *dst) {
 	endp = tp + NS_LOCATORSZ;
 	seen_xdigits = 0;
 	val = 0;
-	while ((ch = *src++) != '\0') {
+	for (unsigned int i = 0; i < source->length; i++) {
+		ch = source->base[i];
 		hexval = isc_hex_char(ch);
 		if (hexval != 0) {
 			val <<= 4;
@@ -1160,7 +1159,8 @@ dns_rdata_fromtext(dns_rdata_t *rdata, dns_rdataclass_t rdclass,
 
 	unknown = false;
 	if (token.type == isc_tokentype_string &&
-	    strcmp(DNS_AS_STR(token), "\\#") == 0)
+	    token.value.as_region.length == 2 &&
+	    memcmp(token.value.as_region.base, "\\#", 2) == 0)
 	{
 		/*
 		 * If this is a TXT record '\#' could be a escaped '#'.
@@ -2254,8 +2254,9 @@ warn_badmx(isc_token_t *token, isc_lex_t *lexer,
 	if (lexer != NULL) {
 		file = isc_lex_getsourcename(lexer);
 		line = isc_lex_getsourceline(lexer);
-		(*callbacks->warn)(callbacks, "%s:%u: warning: '%s': %s", file,
-				   line, DNS_AS_STR(*token),
+		(*callbacks->warn)(callbacks, "%s:%u: warning: '%.*s': %s",
+				   file, line, token->value.as_region.length,
+				   token->value.as_region.base,
 				   isc_result_totext(DNS_R_MXISADDRESS));
 	}
 }
@@ -2305,9 +2306,10 @@ fromtext_error(void (*callback)(dns_rdatacallbacks_t *, const char *, ...),
 			break;
 		case isc_tokentype_string:
 		case isc_tokentype_qstring:
-			(*callback)(callbacks, "%s: %s:%lu: near '%s': %s",
+			(*callback)(callbacks, "%s: %s:%lu: near '%.*s': %s",
 				    "dns_rdata_fromtext", name, line,
-				    DNS_AS_STR(*token),
+				    token->value.as_region.length,
+				    token->value.as_region.base,
 				    isc_result_totext(result));
 			break;
 		default:

@@ -15,6 +15,7 @@
 
 #include <stdbool.h>
 
+#include <isc/ascii.h>
 #include <isc/lex.h>
 #include <isc/log.h>
 #include <isc/mem.h>
@@ -36,10 +37,10 @@
 #endif /* ifdef HAVE_LIBSCF */
 
 static isc_result_t
-getcommand(isc_lex_t *lex, char **cmdp) {
+getcommand(isc_lex_t *lex, isc_region_t *command) {
 	isc_token_t token;
 
-	REQUIRE(cmdp != NULL && *cmdp == NULL);
+	REQUIRE(command != NULL && command->base == NULL);
 
 	RETERR(isc_lex_next(lex, &token));
 
@@ -49,15 +50,20 @@ getcommand(isc_lex_t *lex, char **cmdp) {
 		return ISC_R_FAILURE;
 	}
 
-	*cmdp = (char *)token.value.as_region.base;
+	*command = token.value.as_region;
 
 	return ISC_R_SUCCESS;
 }
 
-static bool
-command_compare(const char *str, const char *command) {
-	return strcasecmp(str, command) == 0;
-}
+#define command_compare(command, text)                                      \
+	({                                                                    \
+		static_assert(__builtin_constant_p(text),                       \
+			      "text must be a string literal");                 \
+		(command).length == sizeof(text) - 1 &&                         \
+			isc_ascii_lowercmp((command).base,                        \
+					   (const uint8_t *)(text),                \
+					   sizeof(text) - 1) == 0;                 \
+	})
 
 /*%
  * This function is called to process the incoming command
@@ -68,7 +74,7 @@ named_control_docommand(isccc_sexpr_t *message, bool readonly,
 			isc_buffer_t *text) {
 	isccc_sexpr_t *data;
 	char *cmdline = NULL;
-	char *command = NULL;
+	isc_region_t command = { 0 };
 	isc_result_t result;
 	int log_level;
 	isc_buffer_t src;
@@ -283,7 +289,8 @@ named_control_docommand(isccc_sexpr_t *message, bool readonly,
 	} else {
 		isc_log_write(NAMED_LOGCATEGORY_GENERAL,
 			      NAMED_LOGMODULE_CONTROL, ISC_LOG_WARNING,
-			      "unknown control channel command '%s'", command);
+			      "unknown control channel command '%.*s'",
+			      (int)command.length, command.base);
 		result = DNS_R_UNKNOWNCOMMAND;
 	}
 
