@@ -37,6 +37,7 @@ typedef struct inputsource {
 	bool at_eof;
 	bool last_was_eol;
 	isc_buffer_t *pushback;
+	unsigned int saved_current;
 	unsigned int ignored;
 	void *input;
 	char *name;
@@ -49,6 +50,8 @@ typedef struct inputsource {
 
 #define LEX_MAGIC    ISC_MAGIC('L', 'e', 'x', '!')
 #define VALID_LEX(l) ISC_MAGIC_VALID(l, LEX_MAGIC)
+
+#define LEX_REFILL_SIZE (16U * 1024U)
 
 #define ISC_LEXOPT_EOL		     0x0001
 #define ISC_LEXOPT_EOF		     0x0002
@@ -257,8 +260,7 @@ new_source(isc_lex_t *lex, bool is_file, bool need_close, void *input,
 		.line = 1,
 		.link = ISC_LINK_INITIALIZER,
 	};
-	isc_buffer_allocate(lex->mctx, &source->pushback,
-			    (unsigned int)lex->max_token);
+	isc_buffer_allocate(lex->mctx, &source->pushback, LEX_REFILL_SIZE);
 	ISC_LIST_PREPEND(lex->sources, source, link);
 }
 
@@ -312,6 +314,7 @@ isc_lex_openbuffer(isc_lex_t *lex, isc_buffer_t *buffer) {
 isc_result_t
 isc_lex_close(isc_lex_t *lex) {
 	inputsource *source;
+	unsigned int unread;
 
 	/*
 	 * Close the most recently opened object (i.e. file or buffer).
@@ -326,10 +329,13 @@ isc_lex_close(isc_lex_t *lex) {
 
 	ISC_LIST_UNLINK(lex->sources, source, link);
 	lex->last_was_eol = source->last_was_eol;
+	unread = isc_buffer_remaininglength(source->pushback);
 	if (source->is_file) {
 		if (source->need_close) {
 			(void)fclose((FILE *)(source->input));
 		}
+	} else if (unread != 0U) {
+		isc_buffer_back((isc_buffer_t *)source->input, unread);
 	}
 	isc_mem_free(lex->mctx, source->name);
 	isc_buffer_free(&source->pushback);
@@ -356,7 +362,6 @@ static void
 pushback(inputsource *source, int c) {
 	REQUIRE(source->pushback->current > 0);
 	if (c == EOF) {
-		source->at_eof = false;
 		return;
 	}
 	source->pushback->current--;
@@ -365,24 +370,72 @@ pushback(inputsource *source, int c) {
 	}
 }
 
-static isc_result_t
-pushandgrow(isc_lex_t *lex, inputsource *source, int c) {
-	if (isc_buffer_availablelength(source->pushback) == 0) {
-		isc_buffer_t *tbuf = NULL;
-		unsigned int oldlen;
-		isc_region_t used;
-		isc_result_t result;
+static void
+compact_to_checkpoint(inputsource *source) {
+	isc_buffer_t *buffer = source->pushback;
+	unsigned int discarded = source->saved_current;
+	unsigned int retained;
 
-		oldlen = isc_buffer_length(source->pushback);
-		isc_buffer_allocate(lex->mctx, &tbuf, oldlen * 2);
-		isc_buffer_usedregion(source->pushback, &used);
-		result = isc_buffer_copyregion(tbuf, &used);
-		INSIST(result == ISC_R_SUCCESS);
-		tbuf->current = source->pushback->current;
-		isc_buffer_free(&source->pushback);
-		source->pushback = tbuf;
+	if (discarded == 0U) {
+		return;
 	}
-	isc_buffer_putuint8(source->pushback, (uint8_t)c);
+
+	INSIST(discarded <= buffer->current);
+	INSIST(discarded <= source->ignored);
+	retained = buffer->used - discarded;
+	memmove(buffer->base, (unsigned char *)buffer->base + discarded,
+		retained);
+	buffer->current -= discarded;
+	buffer->used = retained;
+	buffer->active = 0;
+	source->ignored -= discarded;
+	source->saved_current = 0;
+}
+
+static isc_result_t
+refill(inputsource *source) {
+	isc_buffer_t *buffer = source->pushback;
+	isc_region_t available;
+	size_t nread;
+
+	REQUIRE(isc_buffer_remaininglength(buffer) == 0U);
+	REQUIRE(!source->at_eof);
+
+	if (isc_buffer_availablelength(buffer) < LEX_REFILL_SIZE) {
+		compact_to_checkpoint(source);
+		RETERR(isc_buffer_reserve(buffer, LEX_REFILL_SIZE));
+	}
+	isc_buffer_availableregion(buffer, &available);
+	INSIST(available.length >= LEX_REFILL_SIZE);
+
+	if (source->is_file) {
+		nread = fread(available.base, 1, LEX_REFILL_SIZE,
+			      (FILE *)source->input);
+		isc_buffer_add(buffer, (unsigned int)nread);
+		if (nread < LEX_REFILL_SIZE) {
+			if (ferror((FILE *)source->input)) {
+				return isc__errno2result(errno);
+			}
+			if (feof((FILE *)source->input)) {
+				source->at_eof = true;
+			}
+		}
+	} else {
+		isc_buffer_t *input = source->input;
+		isc_region_t remaining;
+
+		isc_buffer_remainingregion(input, &remaining);
+		nread = ISC_MIN(remaining.length, LEX_REFILL_SIZE);
+		if (nread != 0U) {
+			memmove(available.base, remaining.base, nread);
+			isc_buffer_forward(input, (unsigned int)nread);
+			isc_buffer_add(buffer, (unsigned int)nread);
+		}
+		if (isc_buffer_remaininglength(input) == 0U) {
+			source->at_eof = true;
+		}
+	}
+
 	return ISC_R_SUCCESS;
 }
 
@@ -396,8 +449,6 @@ lex_gettoken(isc_lex_t *lex, unsigned int options, isc_token_t *tokenp) {
 	bool separated = false;
 	lexstate state = lexstate_start;
 	lexstate saved_state = lexstate_start;
-	isc_buffer_t *buffer;
-	FILE *stream;
 	char *curr, *prev;
 	size_t remaining;
 	uint32_t as_ulong;
@@ -429,6 +480,8 @@ lex_gettoken(isc_lex_t *lex, unsigned int options, isc_token_t *tokenp) {
 	lex->saved_last_was_eol = lex->last_was_eol;
 	source->saved_line = source->line;
 	source->saved_have_token = source->have_token;
+	source->saved_current = source->pushback->current;
+	source->ignored = source->saved_current;
 
 	if (isc_buffer_remaininglength(source->pushback) == 0 && source->at_eof)
 	{
@@ -444,8 +497,6 @@ lex_gettoken(isc_lex_t *lex, unsigned int options, isc_token_t *tokenp) {
 		}
 		return ISC_R_EOF;
 	}
-
-	isc_buffer_compact(source->pushback);
 
 	saved_options = options;
 	if ((options & ISC_LEXOPT_DNSMULTILINE) != 0 && lex->paren_count > 0) {
@@ -465,55 +516,27 @@ lex_gettoken(isc_lex_t *lex, unsigned int options, isc_token_t *tokenp) {
 #endif /* ifdef HAVE_FLOCKFILE */
 
 	do {
-		if (isc_buffer_remaininglength(source->pushback) == 0) {
-			if (source->is_file) {
-				stream = source->input;
-
-#if defined(HAVE_FLOCKFILE) && defined(HAVE_GETC_UNLOCKED)
-				c = getc_unlocked(stream);
-#else  /* if defined(HAVE_FLOCKFILE) && defined(HAVE_GETC_UNLOCKED) */
-				c = getc(stream);
-#endif /* if defined(HAVE_FLOCKFILE) && defined(HAVE_GETC_UNLOCKED) */
-				if (c == EOF) {
-					if (ferror(stream)) {
-						source->result =
-							isc__errno2result(
-								errno);
-						result = source->result;
-						goto done;
-					}
-					source->at_eof = true;
-				}
-			} else {
-				buffer = source->input;
-
-				if (buffer->current == buffer->used) {
-					c = EOF;
-					source->at_eof = true;
-				} else {
-					c = *((unsigned char *)buffer->base +
-					      buffer->current);
-					buffer->current++;
-				}
-			}
-			if (c != EOF) {
-				source->result = pushandgrow(lex, source, c);
-				if (source->result != ISC_R_SUCCESS) {
-					result = source->result;
-					goto done;
-				}
+		if (isc_buffer_remaininglength(source->pushback) == 0U &&
+		    !source->at_eof)
+		{
+			source->result = refill(source);
+			if (source->result != ISC_R_SUCCESS) {
+				result = source->result;
+				goto done;
 			}
 		}
 
-		if (!source->at_eof) {
+		if (isc_buffer_remaininglength(source->pushback) != 0U) {
 			if (state == lexstate_start) {
 				/* Token has not started yet. */
 				source->ignored = isc_buffer_consumedlength(
 					source->pushback);
 			}
 			c = isc_buffer_getuint8(source->pushback);
-		} else {
+		} else if (source->at_eof) {
 			c = EOF;
+		} else {
+			continue;
 		}
 
 		if (c == '\n') {
@@ -995,17 +1018,16 @@ isc_lex_ungettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 	source = ISC_LIST_HEAD(lex->sources);
 	REQUIRE(source != NULL);
 	REQUIRE(tokenp != NULL);
-	REQUIRE(isc_buffer_consumedlength(source->pushback) != 0 ||
+	REQUIRE(source->pushback->current != source->saved_current ||
 		tokenp->type == isc_tokentype_eof);
 
 	UNUSED(tokenp);
 
-	isc_buffer_first(source->pushback);
+	source->pushback->current = source->saved_current;
 	lex->paren_count = lex->saved_paren_count;
 	lex->last_was_eol = lex->saved_last_was_eol;
 	source->line = source->saved_line;
 	source->have_token = source->saved_have_token;
-	source->at_eof = false;
 }
 
 void
@@ -1016,16 +1038,15 @@ isc_lex_getlasttokentext(isc_lex_t *lex, isc_token_t *tokenp, isc_region_t *r) {
 	source = ISC_LIST_HEAD(lex->sources);
 	REQUIRE(source != NULL);
 	REQUIRE(tokenp != NULL);
-	REQUIRE(isc_buffer_consumedlength(source->pushback) != 0 ||
+	REQUIRE(source->pushback->current != source->saved_current ||
 		tokenp->type == isc_tokentype_eof);
 
 	UNUSED(tokenp);
 
-	INSIST(source->ignored <= isc_buffer_consumedlength(source->pushback));
+	INSIST(source->ignored <= source->pushback->current);
 	r->base = (unsigned char *)isc_buffer_base(source->pushback) +
 		  source->ignored;
-	r->length = isc_buffer_consumedlength(source->pushback) -
-		    source->ignored;
+	r->length = source->pushback->current - source->ignored;
 }
 
 char *
