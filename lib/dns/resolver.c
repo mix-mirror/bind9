@@ -3696,30 +3696,17 @@ fctx_getaddresses_addresses(fetchctx_t *fctx, isc_stdtime_t now,
 	}
 }
 
-static isc_result_t
-fctx_getaddresses_nameservers(fetchctx_t *fctx, isc_stdtime_t now,
-			      unsigned int stdoptions, size_t fetches_allowed,
-			      bool *need_alternatep, bool *all_spilledp,
-			      size_t *ns_processed) {
-	bool have_address = false;
-	unsigned int name_processed = 0;
-	static thread_local dns_name_t *nameservers[MAX_DELEGATION_SERVERS];
-	size_t max_delegation_servers = fctx->res->view->max_delegation_servers;
+static void
+shufflenames(fetchctx_t *fctx, dns_deleg_type_t delegtypes,
+	     size_t fetches_allowed, dns_name_t *names[MAX_DELEGATION_SERVERS],
+	     size_t *processed) {
+	size_t max = fctx->res->view->max_delegation_servers;
 
-	/*
-	 * Lookup through each delegation for this zonecut (represented by
-	 * `delegset`).
-	 *
-	 * If this is an NS-based delegation, each `deleg` represents an NS RR
-	 * and will have a single server name.
-	 *
-	 * If this is a DELEG-based delegation, each `deleg` represents a DELEG
-	 * RR and might have multiple server names.
-	 */
+	INSIST(max < MAX_DELEGATION_SERVERS);
+	*processed = 0;
+
 	ISC_LIST_FOREACH(fctx->delegset->delegs, deleg, link) {
-		if (deleg->type != DNS_DELEGTYPE_DELEG_NAMES &&
-		    deleg->type != DNS_DELEGTYPE_NS_NAMES)
-		{
+		if ((deleg->type & delegtypes) == 0) {
 			continue;
 		}
 
@@ -3728,28 +3715,52 @@ fctx_getaddresses_nameservers(fetchctx_t *fctx, isc_stdtime_t now,
 		}
 
 		ISC_LIST_FOREACH(deleg->names, ns, link) {
-			nameservers[name_processed++] = ns;
+			names[(*processed)++] = ns;
 
-			if (name_processed >= max_delegation_servers) {
-				goto shufflens;
+			if (*processed >= max) {
+				goto shuffle;
 			}
 		}
 	}
 
-shufflens:
-	if (name_processed > 1 && name_processed > fetches_allowed) {
+shuffle:
+	if (*processed > 1 && *processed > fetches_allowed) {
 		/*
 		 * Skip the shuffle if:
-		 * - there's nothing to shuffle (no or one nameserver)
-		 * - there are less nameserver than allowed fetches as
-		 *   we are going to start fetches for all of them.
+		 * - There's nothing to shuffle (no or one name);
+		 * - There are less names than allowed fetches. (As
+		 *   we are going to start fetches for all of them.)
 		 */
-		for (size_t i = 0; i < name_processed - 1; i++) {
-			size_t j = i + isc_random_uniform(name_processed - i);
+		for (size_t i = 0; i < *processed - 1; i++) {
+			size_t j = i + isc_random_uniform((*processed) - i);
 
-			ISC_SWAP(nameservers[i], nameservers[j]);
+			ISC_SWAP(names[i], names[j]);
 		}
 	}
+}
+
+static isc_result_t
+fctx_getaddresses_nameservers(fetchctx_t *fctx, isc_stdtime_t now,
+			      unsigned int stdoptions, size_t fetches_allowed,
+			      bool *need_alternatep, bool *all_spilledp,
+			      size_t *ns_processed) {
+	bool have_address = false;
+	size_t name_processed = 0;
+	static thread_local dns_name_t *nameservers[MAX_DELEGATION_SERVERS];
+	size_t max_delegation_servers = fctx->res->view->max_delegation_servers;
+
+	/*
+	 * Lookup through each delegation for this zonecut (represented by
+	 * `delegset`) and shuffle the NS names.
+	 *
+	 * If this is an NS-based delegation, each `deleg` represents an NS RR
+	 * and will have a single server name.
+	 *
+	 * If this is a DELEG-based delegation, each `deleg` represents a DELEG
+	 * RR and might have multiple server names.
+	 */
+	shufflenames(fctx, DNS_DELEGTYPE_DELEG_NAMES | DNS_DELEGTYPE_NS_NAMES,
+		     fetches_allowed, nameservers, &name_processed);
 
 	for (size_t i = 0; i < name_processed; i++) {
 		bool overquota = false;
