@@ -13,7 +13,6 @@
 
 /*! \file */
 
-#include <ctype.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <stdbool.h>
@@ -56,14 +55,11 @@ typedef struct inputsource {
 #define ISC_LEXOPT_EOL		     0x0001
 #define ISC_LEXOPT_EOF		     0x0002
 #define ISC_LEXOPT_INITIALWS	     0x0004
-#define ISC_LEXOPT_NUMBER	     0x0008
 #define ISC_LEXOPT_QSTRING	     0x0010
 #define ISC_LEXOPT_DNSMULTILINE	     0x0020
 #define ISC_LEXOPT_NOMORE	     0x0040
-#define ISC_LEXOPT_CNUMBER	     0x0080
 #define ISC_LEXOPT_ESCAPE	     0x0100
 #define ISC_LEXOPT_QSTRINGMULTILINE  0x0200
-#define ISC_LEXOPT_OCTAL	     0x0400
 #define ISC_LEXCOMMENT_C	     0x01
 #define ISC_LEXCOMMENT_CPLUSPLUS     0x02
 #define ISC_LEXCOMMENT_SHELL	     0x04
@@ -348,7 +344,6 @@ typedef enum {
 	lexstate_start,
 	lexstate_crlf,
 	lexstate_string,
-	lexstate_number,
 	lexstate_maybecomment,
 	lexstate_ccomment,
 	lexstate_ccommentend,
@@ -451,7 +446,6 @@ lex_gettoken(isc_lex_t *lex, unsigned int options, isc_token_t *tokenp) {
 	lexstate saved_state = lexstate_start;
 	char *curr, *prev;
 	size_t remaining;
-	uint32_t as_ulong;
 	unsigned int saved_options;
 	isc_result_t result;
 
@@ -664,18 +658,6 @@ lex_gettoken(isc_lex_t *lex, unsigned int options, isc_token_t *tokenp) {
 				tokenp->type = isc_tokentype_special;
 				tokenp->value.as_char = c;
 				done = true;
-			} else if (isdigit((unsigned char)c) &&
-				   (options & ISC_LEXOPT_NUMBER) != 0)
-			{
-				lex->last_was_eol = false;
-				if ((options & ISC_LEXOPT_OCTAL) != 0 &&
-				    (c == '8' || c == '9'))
-				{
-					state = lexstate_string;
-				} else {
-					state = lexstate_number;
-				}
-				goto no_read;
 			} else {
 				lex->last_was_eol = false;
 				state = lexstate_string;
@@ -689,69 +671,6 @@ lex_gettoken(isc_lex_t *lex, unsigned int options, isc_token_t *tokenp) {
 			tokenp->type = isc_tokentype_eol;
 			done = true;
 			lex->last_was_eol = true;
-			break;
-		case lexstate_number:
-			if (c == EOF || !isdigit((unsigned char)c)) {
-				if (c == ' ' || c == '\t' || c == '\r' ||
-				    c == '\n' || c == '\0' || c == EOF ||
-				    lex->specials[c])
-				{
-					int base;
-					if ((options & ISC_LEXOPT_OCTAL) != 0) {
-						base = 8;
-					} else if ((options &
-						    ISC_LEXOPT_CNUMBER) != 0)
-					{
-						base = 0;
-					} else {
-						base = 10;
-					}
-					pushback(source, c);
-
-					result = isc_parse_uint32(
-						&as_ulong, lex->data, base);
-					if (result == ISC_R_SUCCESS) {
-						tokenp->type =
-							isc_tokentype_number;
-						tokenp->value.as_ulong =
-							as_ulong;
-					} else if (result == ISC_R_BADNUMBER) {
-						isc_tokenvalue_t *v;
-
-						tokenp->type =
-							isc_tokentype_string;
-						v = &(tokenp->value);
-						v->as_textregion.base =
-							lex->data;
-						v->as_textregion.length =
-							(unsigned int)(lex->max_token -
-								       remaining);
-					} else {
-						goto done;
-					}
-					done = true;
-					continue;
-				} else if ((options & ISC_LEXOPT_CNUMBER) ==
-						   0 ||
-					   ((c != 'x' && c != 'X') ||
-					    (curr != &lex->data[1]) ||
-					    (lex->data[0] != '0')))
-				{
-					/* Above test supports hex numbers */
-					state = lexstate_string;
-				}
-			} else if ((options & ISC_LEXOPT_OCTAL) != 0 &&
-				   (c == '8' || c == '9'))
-			{
-				state = lexstate_string;
-			}
-			if (remaining == 0U) {
-				grow_data(lex, &remaining, &curr, &prev);
-			}
-			INSIST(remaining > 0U);
-			*curr++ = c;
-			*curr = '\0';
-			remaining--;
 			break;
 		case lexstate_string:
 			/*
