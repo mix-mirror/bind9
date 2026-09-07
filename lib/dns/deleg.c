@@ -619,9 +619,8 @@ dns_delegset_insert(dns_delegdb_t *delegdb, const dns_name_t *zonecut,
 	REQUIRE(DNS_DELEGSET_VALID(delegset));
 
 	/*
-	 * Only delegset allocated by the delegdb memory context can be added in
-	 * the delegdb. This exclude transient delegset built from rdataset (see
-	 * dns_delegset_fromrdataset()).
+	 * Only delegset allocated by this delegdb memory context can be added
+	 * in the delegdb.
 	 */
 	REQUIRE(delegset->mctx == delegdb->mctx);
 
@@ -886,37 +885,15 @@ dns_delegdb_dump(dns_delegdb_t *delegdb, bool expired, FILE *fp) {
 	dns_qpread_destroy(delegdb->qplru->nodes, &qpr);
 }
 
-void
-dns_delegset_fromnsrdataset(isc_mem_t *mctx, dns_rdataset_t *rdataset,
-			    dns_delegset_t **delegsetp) {
+static void
+delegset_fromnsrdataset(dns_delegdb_t *db, dns_rdataset_t *rdataset, size_t max,
+			dns_delegset_t **delegsetp) {
 	dns_delegset_t *delegset = NULL;
 	dns_deleg_t *deleg = NULL;
+	size_t count = 0;
 
-	if (rdataset == NULL || !dns_rdataset_isassociated(rdataset) ||
-	    delegsetp == NULL || *delegsetp != NULL)
-	{
-		return;
-	}
-
-	REQUIRE(rdataset->type == dns_rdatatype_ns);
-
-	delegset = isc_mem_get(mctx, sizeof(*delegset));
-	*delegset = (dns_delegset_t){
-		.magic = DNS_DELEGSET_MAGIC,
-		.mctx = isc_mem_ref(mctx),
-		.references = ISC_REFCOUNT_INITIALIZER(1),
-		.delegs = ISC_LIST_INITIALIZER,
-		.expires = rdataset->ttl + isc_stdtime_now(),
-		.staticstub = rdataset->attributes.staticstub
-	};
-
-	deleg = isc_mem_get(delegset->mctx, sizeof(*deleg));
-	*deleg = (dns_deleg_t){ .addresses = ISC_LIST_INITIALIZER,
-				.names = ISC_LIST_INITIALIZER,
-				.type = DNS_DELEGTYPE_NS_NAMES,
-				.link = ISC_LINK_INITIALIZER };
-	ISC_LIST_APPEND(delegset->delegs, deleg, link);
-
+	dns_delegset_allocset(db, &delegset);
+	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_NS_NAMES, &deleg);
 	DNS_RDATASET_FOREACH(rdataset) {
 		dns_rdata_t rdata = DNS_RDATA_INIT;
 		dns_rdata_ns_t ns;
@@ -924,9 +901,232 @@ dns_delegset_fromnsrdataset(isc_mem_t *mctx, dns_rdataset_t *rdataset,
 		dns_rdataset_current(rdataset, &rdata);
 		dns_rdata_tostruct(&rdata, &ns, NULL);
 		dns_delegset_addname(delegset, deleg, &ns.name);
+
+		if (max > 0 && ++count >= max) {
+			break;
+		}
 	}
 
 	*delegsetp = delegset;
+}
+
+/*
+ * Find out which DelegInfo type this is, and go through each element, building
+ * a dns_deleg_t. The RR has been validated already, so this is just about
+ * allocating resource and copying those. It can't fail.
+ *
+ * Return either ISC_R_SUCCESS/ISC_R_QUOTA (if we extracted more IP/names
+ * than requested, it's still a SUCCESS) or DNS_R_FORMERR if
+ * a mandatory key is unsupported.
+ */
+static isc_result_t
+deleginfo_to_deleg(isc_region_t *deleginfo, dns_delegset_t *delegset,
+		   size_t *count, size_t max) {
+	uint16_t key, len;
+	dns_deleg_t *deleg = NULL;
+
+	/*
+	 * Extract DelegInfoKey and length of DelegInfoValue.
+	 */
+	key = deleginfo->base[0] << 8 | deleginfo->base[1];
+	isc_region_consume(deleginfo, 2);
+
+	len = deleginfo->base[0] << 8 | deleginfo->base[1];
+	isc_region_consume(deleginfo, 2);
+
+	INSIST(deleginfo->length >= len);
+
+	/*
+	 * Go through the DelegInfoValue list and copy the elements into a
+	 * dns_deleg_t. The DELEG wire format has already been validated at this
+	 * point.
+	 */
+	switch (key) {
+	case dns_rdata_delegkey_mandatory:
+		/*
+		 * The resolver reject unsupported mandatory keys. See
+		 * draft-ietf-deleg 3.5.
+		 */
+		while (deleginfo->length > 0) {
+			uint16_t mankey = deleginfo->base[0] << 8 |
+					  deleginfo->base[1];
+			isc_region_consume(deleginfo, 2);
+
+			switch (mankey) {
+			case dns_rdata_delegkey_ipv4:
+			case dns_rdata_delegkey_ipv6:
+			case dns_rdata_delegkey_name:
+			case dns_rdata_delegkey_include:
+				break;
+			default: {
+				char mankeystr[sizeof("key65535")];
+
+				snprintf(mankeystr, sizeof(mankeystr), "key%u",
+					 mankey);
+				isc_log_write(DNS_LOGCATEGORY_RESOLVER,
+					      DNS_LOGMODULE_HINTS,
+					      ISC_LOG_NOTICE,
+					      "skipping DELEG RR because of "
+					      "unsupported mandatory key %s",
+					      mankeystr);
+				return DNS_R_FORMERR;
+			}
+			}
+		}
+		break;
+	case dns_rdata_delegkey_ipv4:
+	case dns_rdata_delegkey_ipv6:
+		dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_ADDRESSES,
+					&deleg);
+
+		while (deleginfo->length > 0) {
+			isc_netaddr_t addr = {};
+			size_t addrlen;
+
+			if (key == dns_rdata_delegkey_ipv4) {
+				addr.family = AF_INET;
+				addrlen = sizeof(addr.type.in);
+			} else {
+				addr.family = AF_INET6;
+				addrlen = sizeof(addr.type.in6);
+			}
+
+			INSIST(deleginfo->length >= addrlen);
+
+			/*
+			 * The address is already in the network-byte order in
+			 * the DELEG RR, so we can just copy it.
+			 */
+			memmove(&addr.type, deleginfo->base, addrlen);
+			isc_region_consume(deleginfo, addrlen);
+
+			dns_delegset_addaddr(delegset, deleg, &addr);
+
+			if (++(*count) >= max) {
+				return ISC_R_QUOTA;
+			}
+		}
+		break;
+	case dns_rdata_delegkey_name:
+		dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_NAMES,
+					&deleg);
+		goto handlenamelist;
+	case dns_rdata_delegkey_include:
+		dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_PARAMS,
+					&deleg);
+	handlenamelist:
+		while (deleginfo->length > 0) {
+			dns_fixedname_t fname;
+			dns_name_t *name = dns_fixedname_initname(&fname);
+			isc_buffer_t b;
+
+			isc_buffer_init(&b, deleginfo->base, deleginfo->length);
+			isc_buffer_add(&b, deleginfo->length);
+			isc_buffer_setactive(&b, deleginfo->length);
+
+			INSIST(dns_name_fromwire(name, &b, 0, NULL) ==
+			       ISC_R_SUCCESS);
+			isc_region_consume(deleginfo,
+					   isc_buffer_consumedlength(&b));
+
+			dns_delegset_addname(delegset, deleg, name);
+
+			if (++(*count) >= max) {
+				return ISC_R_QUOTA;
+			}
+		}
+		break;
+	default:
+		/*
+		 * Ignores unsupported non-mandatory DelegInfoKey, see
+		 * draft-ietf-deleg 5.1.2.1.
+		 */
+		break;
+	}
+
+	return ISC_R_SUCCESS;
+}
+
+/*
+ * Go through each DelegInfo of a DELEG RR DelegInfos list.
+ */
+static void
+deleginfos_to_delegs(dns_rdata_in_deleg_t *delegrd, dns_delegset_t *delegset,
+		     size_t *count, size_t max) {
+	isc_result_t result;
+
+	result = dns_rdata_in_deleg_first(delegrd);
+	while (result == ISC_R_SUCCESS) {
+		isc_region_t r;
+
+		dns_rdata_in_deleg_current(delegrd, &r);
+		result = deleginfo_to_deleg(&r, delegset, count, max);
+		if (result == ISC_R_QUOTA) {
+			break;
+		} else if (result == DNS_R_FORMERR) {
+			/*
+			 * Skip this whole record: a mandatory key is
+			 * unsupported. Note that since the mandatory key is
+			 * always first, nothing has been added in the delegset
+			 * yet, so none of the (supported) key has been added in
+			 * the delegset. The whole RR is properly skipped
+			 * without throwing an explicit error.
+			 */
+			return;
+		}
+
+		result = dns_rdata_in_deleg_next(delegrd);
+	}
+}
+
+static void
+delegset_fromdelegrdataset(dns_delegdb_t *db, dns_rdataset_t *rdataset,
+			   size_t max, dns_delegset_t **delegsetp) {
+	size_t count = 0;
+
+	dns_delegset_allocset(db, delegsetp);
+	DNS_RDATASET_FOREACH(rdataset) {
+		dns_rdata_t rdata = DNS_RDATA_INIT;
+		dns_rdata_in_deleg_t delegrd;
+
+		dns_rdataset_current(rdataset, &rdata);
+		INSIST(rdata.type == dns_rdatatype_deleg ||
+		       rdata.type == dns_rdatatype_delegparam);
+		dns_rdata_tostruct(&rdata, &delegrd, NULL);
+
+		deleginfos_to_delegs(&delegrd, *delegsetp, &count, max);
+	}
+}
+
+void
+dns_delegset_fromrdataset(dns_delegdb_t *db, dns_rdataset_t *rdataset,
+			  size_t max, dns_delegset_t **delegsetp) {
+	if (rdataset == NULL || !dns_rdataset_isassociated(rdataset) ||
+	    delegsetp == NULL || *delegsetp != NULL)
+	{
+		return;
+	}
+
+	switch (rdataset->type) {
+	case dns_rdatatype_ns:
+		delegset_fromnsrdataset(db, rdataset, max, delegsetp);
+		break;
+	case dns_rdatatype_deleg:
+	case dns_rdatatype_delegparam:
+		delegset_fromdelegrdataset(db, rdataset, max, delegsetp);
+		break;
+	default:
+		UNREACHABLE();
+	}
+
+	(*delegsetp)->staticstub = rdataset->attributes.staticstub;
+
+	/*
+	 * This is overridden if delegset is inserted into the delegdb. But the
+	 * field is set for now, in case the delegset is transirent and won't be
+	 * inserted into the DB
+	 */
+	(*delegsetp)->expires = rdataset->ttl + isc_stdtime_now();
 }
 
 void
