@@ -604,51 +604,21 @@ lex_gettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 			continue;
 		}
 
-		if (c == '\n') {
-			buffer->current++;
-			source->line++;
+		if (c == '\n' || c == '\r') {
+			bool crlf = c == '\r' && p[1] == '\n';
+
+			buffer->current += crlf ? 2 : 1;
+			if (c == '\n' || crlf) {
+				source->line++;
+			}
+			lex->last_was_eol = true;
 			if ((options & ISC_LEXOPT_EOL) != 0) {
 				tokenp->type = isc_tokentype_eol;
 				result = ISC_R_SUCCESS;
-				lex->last_was_eol = true;
 				break;
 			}
 			separated = true;
-			lex->last_was_eol = true;
 			continue;
-		}
-
-		if (c == '\r') {
-			buffer->current++;
-			if ((options & ISC_LEXOPT_EOL) == 0) {
-				separated = true;
-				continue;
-			}
-
-			result = prepare(source);
-			if (result != ISC_R_SUCCESS) {
-				goto done;
-			}
-			p = (unsigned char *)buffer->base + buffer->current;
-			if (buffer->current != buffer->used && p[0] == ';' &&
-			    (lex->comments & ISC_LEXCOMMENT_DNSMASTERFILE) != 0)
-			{
-				comment = skip_comment_chunk(lex, source);
-				if (comment == comment_refill_error) {
-					result = source->result;
-					goto done;
-				}
-				p = (unsigned char *)buffer->base +
-				    buffer->current;
-			}
-			if (buffer->current != buffer->used && p[0] == '\n') {
-				buffer->current++;
-				source->line++;
-			}
-			tokenp->type = isc_tokentype_eol;
-			result = ISC_R_SUCCESS;
-			lex->last_was_eol = true;
-			break;
 		}
 
 		if (c == '"' && (options & ISC_LEXOPT_QSTRING) != 0) {
