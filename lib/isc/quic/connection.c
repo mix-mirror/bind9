@@ -2435,7 +2435,7 @@ isc_quic_conn_shutdown(isc_quic_conn_t *conn) {
 	uint8_t reset[ISC_QUIC_STATELESS_TOKEN_LENGTH];
 	size_t i, len;
 
-	REQUIRE(conn != NULL && conn->magic == conn_magic);
+	REQUIRE(VALID_CONNECTION(conn));
 
 	if (conn->state == QUIC_CONN_STATE_CLOSED ||
 	    conn->state == QUIC_CONN_STATE_TERMINATED)
@@ -2521,7 +2521,7 @@ isc_result_t
 isc_quic_conn_handle_expiry(isc_quic_conn_t *conn) {
 	int r;
 
-	REQUIRE(conn != NULL && conn->magic == conn_magic);
+	REQUIRE(VALID_CONNECTION(conn));
 
 	r = ngtcp2_conn_handle_expiry(conn->inner, isc_time_monotonic());
 	if (r >= 0) {
@@ -2540,7 +2540,7 @@ isc_result_t
 isc_quic_conn_pull_packet(isc_quic_conn_t *conn, isc_region_t out,
 			  size_t *written, isc_sockaddr_t *from,
 			  isc_sockaddr_t *to) {
-	REQUIRE(conn != NULL && conn->magic == conn_magic);
+	REQUIRE(VALID_CONNECTION(conn));
 	REQUIRE(out.base != NULL && out.length > 0 && written != NULL);
 
 	REQUIRE(conn->state < ARRAY_SIZE(state_table));
@@ -2554,7 +2554,7 @@ isc_quic_conn_push_packet(isc_quic_conn_t *conn, isc_constregion_t packet,
 			  isc_sockaddr_t *local, isc_sockaddr_t *peer) {
 	ngtcp2_path path;
 
-	REQUIRE(conn != NULL && conn->magic == conn_magic);
+	REQUIRE(VALID_CONNECTION(conn));
 	REQUIRE(packet.base != NULL);
 
 	path = (ngtcp2_path){
@@ -2586,7 +2586,7 @@ isc_quic_conn_push_packet(isc_quic_conn_t *conn, isc_constregion_t packet,
 isc_result_t
 isc_quic_conn_shutdown_stream(isc_quic_conn_t *conn, int64_t stream_id,
 			      uint64_t application_code) {
-	REQUIRE(conn != NULL && conn->magic == conn_magic);
+	REQUIRE(VALID_CONNECTION(conn));
 	REQUIRE(stream_id >= 0);
 
 	switch (ngtcp2_conn_shutdown_stream(conn->inner, 0x00, stream_id,
@@ -2607,7 +2607,7 @@ isc_quic_conn_open_bidi_stream(isc_quic_conn_t *conn, int64_t *stream_idp,
 	isc__quic_stream_t *stream;
 	int r;
 
-	REQUIRE(conn != NULL && conn->magic == conn_magic);
+	REQUIRE(VALID_CONNECTION(conn));
 	REQUIRE(stream_idp != NULL && user_data != NULL);
 
 	CHECK_STATE(conn, QUIC_CONN_STATE_CONNECTED);
@@ -2649,7 +2649,7 @@ isc_quic_conn_push_stream_data(isc_quic_conn_t *conn, int64_t stream_id,
 			       const uint8_t *data, size_t len) {
 	isc__quic_stream_data_t *outgoing;
 
-	REQUIRE(conn != NULL && conn->magic == conn_magic);
+	REQUIRE(VALID_CONNECTION(conn));
 	REQUIRE(data != NULL && len != 0);
 
 #if NGTCP2_VERSION_NUM >= 0x011700 /* 1.23.0 */
