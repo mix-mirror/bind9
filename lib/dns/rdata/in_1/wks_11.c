@@ -70,6 +70,8 @@ fromtext_in_wks(ARGS_FROMTEXT) {
 	const char *ps = NULL;
 	unsigned int n;
 	char service[32];
+	char original_service[32];
+	char protocol[32];
 	isc_result_t result;
 
 	REQUIRE(type == dns_rdatatype_wks);
@@ -90,7 +92,7 @@ fromtext_in_wks(ARGS_FROMTEXT) {
 				     false));
 
 	isc_buffer_availableregion(target, &region);
-	if (inet_pton(AF_INET, DNS_AS_STR(token), &addr) != 1) {
+	if (isc_parse_pton(AF_INET, &token.value.as_region, &addr) != 1) {
 		CHECKTOK(DNS_R_BADDOTTEDQUAD);
 	}
 	if (region.length < 4) {
@@ -105,8 +107,14 @@ fromtext_in_wks(ARGS_FROMTEXT) {
 	CHECK(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				     false));
 
-	proto = strtol(DNS_AS_STR(token), &e, 10);
-	if (*e != '\0' && !mygetprotobyname(DNS_AS_STR(token), &proto)) {
+	if (token.value.as_region.length >= sizeof(protocol)) {
+		CHECKTOK(DNS_R_UNKNOWNPROTO);
+	}
+	memmove(protocol, token.value.as_region.base,
+		token.value.as_region.length);
+	protocol[token.value.as_region.length] = '\0';
+	proto = strtol(protocol, &e, 10);
+	if (*e != '\0' && !mygetprotobyname(protocol, &proto)) {
 		CHECKTOK(DNS_R_UNKNOWNPROTO);
 	}
 
@@ -134,12 +142,18 @@ fromtext_in_wks(ARGS_FROMTEXT) {
 		 * Lowercase the service string as some getservbyname() are
 		 * case sensitive and the database is usually in lowercase.
 		 */
-		strlcpy(service, DNS_AS_STR(token), sizeof(service));
+		if (token.value.as_region.length >= sizeof(service)) {
+			CHECKTOK(DNS_R_UNKNOWNSERVICE);
+		}
+		memmove(service, token.value.as_region.base,
+			token.value.as_region.length);
+		service[token.value.as_region.length] = '\0';
+		strlcpy(original_service, service, sizeof(original_service));
 		isc_ascii_strtolower(service);
 
-		port = strtol(DNS_AS_STR(token), &e, 10);
+		port = strtol(original_service, &e, 10);
 		if (*e != 0 && !mygetservbyname(service, ps, &port) &&
-		    !mygetservbyname(DNS_AS_STR(token), ps, &port))
+		    !mygetservbyname(original_service, ps, &port))
 		{
 			CHECKTOK(DNS_R_UNKNOWNSERVICE);
 		}

@@ -27,9 +27,26 @@
 #include <isc/log.h>
 #include <isc/net.h>
 #include <isc/once.h>
+#include <isc/region.h>
 #include <isc/strerr.h>
 #include <isc/string.h>
 #include <isc/util.h>
+
+int
+isc_parse_pton(int af, const isc_region_t *source, void *dst) {
+	char text[INET6_ADDRSTRLEN];
+
+	REQUIRE(source != NULL);
+	REQUIRE(source->base != NULL);
+	REQUIRE(dst != NULL);
+
+	if (source->length >= sizeof(text)) {
+		return 0;
+	}
+	memmove(text, source->base, source->length);
+	text[source->length] = '\0';
+	return inet_pton(af, text, dst);
+}
 
 /*%
  * Definitions about UDP port range specification.  This is a total mess of

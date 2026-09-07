@@ -870,8 +870,8 @@ isc_lex_getmastertoken(isc_lex_t *lex, isc_token_t *token,
 	{
 		uint32_t number;
 
-		result = isc_parse_uint32_region(
-			&number, &token->value.as_textregion, 10);
+		result = isc_parse_uint32_region(&number,
+						 &token->value.as_region, 10);
 		if (result == ISC_R_SUCCESS) {
 			token->type = isc_tokentype_number;
 			token->value.as_ulong = number;
@@ -917,8 +917,8 @@ isc_lex_getoctaltoken(isc_lex_t *lex, isc_token_t *token, bool eol) {
 	if (result == ISC_R_SUCCESS && token->type == isc_tokentype_string) {
 		uint32_t number;
 
-		result = isc_parse_uint32_region(
-			&number, &token->value.as_textregion, 8);
+		result = isc_parse_uint32_region(&number,
+						 &token->value.as_region, 8);
 		if (result == ISC_R_SUCCESS) {
 			token->type = isc_tokentype_number;
 			token->value.as_ulong = number;

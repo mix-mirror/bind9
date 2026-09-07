@@ -181,8 +181,7 @@ main(int argc, char *argv[]) {
 		}
 	}
 
-	while ((result = isc_lex_next(lex, &token)) == ISC_R_SUCCESS)
-	{
+	while ((result = isc_lex_next(lex, &token)) == ISC_R_SUCCESS) {
 		if (token.type == isc_tokentype_eof) {
 			saw_eof = true;
 			break;
@@ -199,8 +198,7 @@ main(int argc, char *argv[]) {
 		 * Get class.
 		 */
 		if (token.type == isc_tokentype_string &&
-		    isc_parse_uint32_region(&number,
-					    &token.value.as_textregion,
+		    isc_parse_uint32_region(&number, &token.value.as_region,
 					    10) == ISC_R_SUCCESS)
 		{
 			if (number > UINT16_MAX) {
@@ -242,8 +240,7 @@ main(int argc, char *argv[]) {
 		 * Get type.
 		 */
 		if (token.type == isc_tokentype_string &&
-		    isc_parse_uint32_region(&number,
-					    &token.value.as_textregion,
+		    isc_parse_uint32_region(&number, &token.value.as_region,
 					    10) == ISC_R_SUCCESS)
 		{
 			if (number > UINT16_MAX) {

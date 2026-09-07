@@ -694,8 +694,8 @@ parser_create(cfg_parser_t **ret) {
 	pctx->flags = 0;
 	pctx->buf_name = NULL;
 
-	RUNTIME_CHECK(isc_lex_create_config(isc_g_mctx, 1024,
-					    &pctx->lexer) == ISC_R_SUCCESS);
+	RUNTIME_CHECK(isc_lex_create_config(isc_g_mctx, 1024, &pctx->lexer) ==
+		      ISC_R_SUCCESS);
 
 	create_list(cfg_parser_currentfile(pctx), pctx->line,
 		    &cfg_type_filelist, &pctx->open_files);
@@ -893,7 +893,6 @@ cfg_type_t cfg_type_void = { "void",	   cfg_parse_void, cfg_print_void,
 isc_result_t
 cfg_parse_percentage(cfg_parser_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED,
 		     cfg_obj_t **ret) {
-	char *endp;
 	isc_result_t result;
 	cfg_obj_t *obj = NULL;
 	uint64_t percent;
@@ -907,10 +906,24 @@ cfg_parse_percentage(cfg_parser_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED,
 		return ISC_R_UNEXPECTEDTOKEN;
 	}
 
-	percent = strtoull(TOKEN_STRING(pctx), &endp, 10);
-	if (*endp != '%' || *(endp + 1) != 0) {
+	if (pctx->token.value.as_region.length < 2 ||
+	    pctx->token.value.as_region
+			    .base[pctx->token.value.as_region.length - 1] !=
+		    '%')
+	{
 		cfg_parser_error(pctx, CFG_LOG_NEAR, "expected percentage");
 		return ISC_R_UNEXPECTEDTOKEN;
+	}
+	{
+		isc_region_t number = pctx->token.value.as_region;
+		number.length--;
+		if (isc_parse_uint64_region(&percent, &number, 10) !=
+		    ISC_R_SUCCESS)
+		{
+			cfg_parser_error(pctx, CFG_LOG_NEAR,
+					 "expected percentage");
+			return ISC_R_UNEXPECTEDTOKEN;
+		}
 	}
 
 	cfg_obj_create(cfg_parser_currentfile(pctx), pctx->line,
@@ -960,7 +973,8 @@ cfg_parse_fixedpoint(cfg_parser_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED,
 	isc_result_t result;
 	cfg_obj_t *obj = NULL;
 	size_t n1, n2, n3, l;
-	const char *p;
+	char text[sizeof("12345.67")];
+	const char *p = text;
 
 	REQUIRE(pctx != NULL);
 	REQUIRE(ret != NULL && *ret == NULL);
@@ -972,8 +986,14 @@ cfg_parse_fixedpoint(cfg_parser_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED,
 		return ISC_R_UNEXPECTEDTOKEN;
 	}
 
-	p = TOKEN_STRING(pctx);
-	l = strlen(p);
+	if (pctx->token.value.as_region.length >= sizeof(text)) {
+		cfg_parser_error(pctx, CFG_LOG_NEAR,
+				 "expected fixed point number");
+		return ISC_R_UNEXPECTEDTOKEN;
+	}
+	l = pctx->token.value.as_region.length;
+	memmove(text, pctx->token.value.as_region.base, l);
+	text[l] = '\0';
 	n1 = strspn(p, "0123456789");
 	n2 = strspn(p + n1, ".");
 	n3 = strspn(p + n1 + n2, "0123456789");
@@ -1046,8 +1066,8 @@ cfg_token_touint32(cfg_parser_t *pctx, int base, uint32_t *value) {
 		return ISC_R_BADNUMBER;
 	}
 
-	return isc_parse_uint32_region(value,
-				       &pctx->token.value.as_textregion, base);
+	return isc_parse_uint32_region(value, &pctx->token.value.as_region,
+				       base);
 }
 
 bool
@@ -1414,6 +1434,16 @@ cfg_string_create(cfg_parser_t *pctx, const char *contents,
 	*ret = obj;
 }
 
+static void
+cfg_region_create(cfg_parser_t *pctx, const isc_region_t *contents,
+		  const cfg_type_t *type, cfg_obj_t **ret) {
+	cfg_obj_t *obj = NULL;
+
+	cfg_obj_create(cfg_parser_currentfile(pctx), pctx->line, type, &obj);
+	obj->value.string = isc_region_strdup(isc_g_mctx, contents);
+	*ret = obj;
+}
+
 isc_result_t
 cfg_parse_qstring(cfg_parser_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED,
 		  cfg_obj_t **ret) {
@@ -1427,7 +1457,8 @@ cfg_parse_qstring(cfg_parser_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED,
 		cfg_parser_error(pctx, CFG_LOG_NEAR, "expected quoted string");
 		return ISC_R_UNEXPECTEDTOKEN;
 	}
-	cfg_string_create(pctx, TOKEN_STRING(pctx), &cfg_type_qstring, ret);
+	cfg_region_create(pctx, &pctx->token.value.as_region, &cfg_type_qstring,
+			  ret);
 	return ISC_R_SUCCESS;
 
 cleanup:
@@ -1445,7 +1476,8 @@ parse_ustring(cfg_parser_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED,
 				 "expected unquoted string");
 		return ISC_R_UNEXPECTEDTOKEN;
 	}
-	cfg_string_create(pctx, TOKEN_STRING(pctx), &cfg_type_ustring, ret);
+	cfg_region_create(pctx, &pctx->token.value.as_region, &cfg_type_ustring,
+			  ret);
 	return ISC_R_SUCCESS;
 
 cleanup:
@@ -1461,7 +1493,8 @@ cfg_parse_astring(cfg_parser_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED,
 	REQUIRE(ret != NULL && *ret == NULL);
 
 	CHECK(cfg_getstringtoken(pctx));
-	cfg_string_create(pctx, TOKEN_STRING(pctx), &cfg_type_qstring, ret);
+	cfg_region_create(pctx, &pctx->token.value.as_region, &cfg_type_qstring,
+			  ret);
 	return ISC_R_SUCCESS;
 
 cleanup:
@@ -1477,7 +1510,8 @@ cfg_parse_sstring(cfg_parser_t *pctx, const cfg_type_t *type ISC_ATTR_UNUSED,
 	REQUIRE(ret != NULL && *ret == NULL);
 
 	CHECK(cfg_getstringtoken(pctx));
-	cfg_string_create(pctx, TOKEN_STRING(pctx), &cfg_type_sstring, ret);
+	cfg_region_create(pctx, &pctx->token.value.as_region, &cfg_type_sstring,
+			  ret);
 	return ISC_R_SUCCESS;
 
 cleanup:
@@ -2997,7 +3031,7 @@ cfg_type_t cfg_type_unsupported = { "unsupported",	 parse_unsupported,
  */
 static isc_result_t
 token_addr(cfg_parser_t *pctx, unsigned int flags, isc_netaddr_t *na) {
-	char *s;
+	isc_region_t *source;
 	struct in_addr in4a;
 	struct in6_addr in6a;
 
@@ -3005,8 +3039,10 @@ token_addr(cfg_parser_t *pctx, unsigned int flags, isc_netaddr_t *na) {
 		return ISC_R_UNEXPECTEDTOKEN;
 	}
 
-	s = TOKEN_STRING(pctx);
-	if ((flags & CFG_ADDR_WILDOK) != 0 && strcmp(s, "*") == 0) {
+	source = &pctx->token.value.as_region;
+	if ((flags & CFG_ADDR_WILDOK) != 0 && source->length == 1 &&
+	    source->base[0] == '*')
+	{
 		if ((flags & CFG_ADDR_V4OK) != 0) {
 			isc_netaddr_any(na);
 			return ISC_R_SUCCESS;
@@ -3018,16 +3054,18 @@ token_addr(cfg_parser_t *pctx, unsigned int flags, isc_netaddr_t *na) {
 		}
 	} else {
 		if ((flags & (CFG_ADDR_V4OK | CFG_ADDR_V4PREFIXOK)) != 0) {
-			if (inet_pton(AF_INET, s, &in4a) == 1) {
+			if (isc_parse_pton(AF_INET, source, &in4a) == 1) {
 				isc_netaddr_fromin(na, &in4a);
 				return ISC_R_SUCCESS;
 			}
 		}
-		if ((flags & CFG_ADDR_V4PREFIXOK) != 0 && strlen(s) <= 15U) {
+		if ((flags & CFG_ADDR_V4PREFIXOK) != 0 && source->length <= 15U)
+		{
 			char buf[64];
 			int i;
 
-			strlcpy(buf, s, sizeof(buf));
+			memmove(buf, source->base, source->length);
+			buf[source->length] = '\0';
 			for (i = 0; i < 3; i++) {
 				strlcat(buf, ".0", sizeof(buf));
 				if (inet_pton(AF_INET, buf, &in4a) == 1) {
@@ -3036,12 +3074,13 @@ token_addr(cfg_parser_t *pctx, unsigned int flags, isc_netaddr_t *na) {
 				}
 			}
 		}
-		if ((flags & CFG_ADDR_V6OK) != 0 && strlen(s) <= 127U) {
+		if ((flags & CFG_ADDR_V6OK) != 0 && source->length <= 127U) {
 			char buf[128];	   /* see isc_getaddresses() */
 			char *d;	   /* zone delimiter */
 			uint32_t zone = 0; /* scope zone ID */
 
-			strlcpy(buf, s, sizeof(buf));
+			memmove(buf, source->base, source->length);
+			buf[source->length] = '\0';
 			d = strchr(buf, '%');
 			if (d != NULL) {
 				*d = '\0';

@@ -38,7 +38,7 @@ fromtext_in_aaaa(ARGS_FROMTEXT) {
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
 
-	if (inet_pton(AF_INET6, DNS_AS_STR(token), addr) != 1) {
+	if (isc_parse_pton(AF_INET6, &token.value.as_region, addr) != 1) {
 		RETTOK(DNS_R_BADAAAA);
 	}
 	isc_buffer_availableregion(target, &region);

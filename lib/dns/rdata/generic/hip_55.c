@@ -60,7 +60,7 @@ fromtext_hip(ARGS_FROMTEXT) {
 	start = isc_buffer_used(target);
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-	RETTOK(isc_hex_decodestring(DNS_AS_STR(token), target));
+	RETTOK(isc_hex_decoderegion(&token.value.as_region, target));
 
 	/*
 	 * Fill in HIT len.

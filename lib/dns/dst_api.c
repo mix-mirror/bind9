@@ -77,7 +77,7 @@ next_number(isc_lex_t *lex, isc_token_t *token) {
 	if (result != ISC_R_SUCCESS || token->type != isc_tokentype_string) {
 		return result != ISC_R_SUCCESS ? result : ISC_R_BADNUMBER;
 	}
-	result = isc_parse_uint32_region(&number, &token->value.as_textregion, 10);
+	result = isc_parse_uint32_region(&number, &token->value.as_region, 10);
 	if (result == ISC_R_SUCCESS) {
 		token->type = isc_tokentype_number;
 		token->value.as_ulong = number;
@@ -85,35 +85,35 @@ next_number(isc_lex_t *lex, isc_token_t *token) {
 	return result;
 }
 
-#define NEXTTOKEN(lex, token) CHECK(isc_lex_next(lex, token))
+#define NEXTTOKEN(lex, token)  CHECK(isc_lex_next(lex, token))
 #define NEXTNUMBER(lex, token) CHECK(next_number(lex, token))
 
-#define NEXTTOKEN_OR_EOF(lex, token)                        \
-	do {                                                \
-		result = isc_lex_next(lex, token);           \
-		if (result == ISC_R_EOF) {                  \
-			break;                              \
-		} else if (result == ISC_R_SUCCESS &&       \
-		    (*token).type == isc_tokentype_eof)      \
-		{                                           \
+#define NEXTTOKEN_OR_EOF(lex, token)                           \
+	do {                                                   \
+		result = isc_lex_next(lex, token);             \
+		if (result == ISC_R_EOF) {                     \
+			break;                                 \
+		} else if (result == ISC_R_SUCCESS &&          \
+			   (*token).type == isc_tokentype_eof) \
+		{                                              \
 			result = ISC_R_EOF;                    \
-			break;                              \
-		}                                           \
-		CHECK(result);                              \
+			break;                                 \
+		}                                              \
+		CHECK(result);                                 \
 	} while ((*token).type == isc_tokentype_eol);
 
-#define READLINE(lex, token)                                \
-	do {                                                \
-		result = isc_lex_next(lex, token);           \
-		if (result == ISC_R_EOF) {                  \
-			break;                              \
-		} else if (result == ISC_R_SUCCESS &&       \
-		    (*token).type == isc_tokentype_eof)      \
-		{                                           \
+#define READLINE(lex, token)                                   \
+	do {                                                   \
+		result = isc_lex_next(lex, token);             \
+		if (result == ISC_R_EOF) {                     \
+			break;                                 \
+		} else if (result == ISC_R_SUCCESS &&          \
+			   (*token).type == isc_tokentype_eof) \
+		{                                              \
 			result = ISC_R_EOF;                    \
-			break;                              \
-		}                                           \
-		CHECK(result);                              \
+			break;                                 \
+		}                                              \
+		CHECK(result);                                 \
 	} while ((*token).type != isc_tokentype_eol)
 
 #define BADTOKEN() CLEANUP(ISC_R_UNEXPECTEDTOKEN)
@@ -1504,8 +1504,9 @@ dst_key_read_public(const char *filename, int type, isc_mem_t *mctx,
 	}
 
 	dns_fixedname_init(&name);
-	isc_buffer_init(&b, DST_AS_STR(token), strlen(DST_AS_STR(token)));
-	isc_buffer_add(&b, strlen(DST_AS_STR(token)));
+	isc_buffer_init(&b, token.value.as_textregion.base,
+			token.value.as_textregion.length);
+	isc_buffer_add(&b, token.value.as_textregion.length);
 	CHECK(dns_name_fromtext(dns_fixedname_name(&name), &b, dns_rootname,
 				0));
 

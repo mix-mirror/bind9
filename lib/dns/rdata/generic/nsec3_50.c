@@ -87,8 +87,9 @@ fromtext_nsec3(ARGS_FROMTEXT) {
 	if (strcmp(DNS_AS_STR(token), "-") == 0) {
 		RETERR(uint8_tobuffer(0, target));
 	} else {
-		RETERR(uint8_tobuffer(strlen(DNS_AS_STR(token)) / 2, target));
-		RETERR(isc_hex_decodestring(DNS_AS_STR(token), target));
+		RETERR(uint8_tobuffer(token.value.as_region.length / 2,
+				      target));
+		RETERR(isc_hex_decoderegion(&token.value.as_region, target));
 	}
 
 	/*
@@ -97,7 +98,7 @@ fromtext_nsec3(ARGS_FROMTEXT) {
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
 	isc_buffer_init(&b, buf, sizeof(buf));
-	RETTOK(isc_base32hexnp_decodestring(DNS_AS_STR(token), &b));
+	RETTOK(isc_base32hexnp_decoderegion(&token.value.as_region, &b));
 	switch (hashalg) {
 	case dns_hash_sha1:
 		if (isc_buffer_usedlength(&b) != ISC_SHA1_DIGESTLENGTH) {

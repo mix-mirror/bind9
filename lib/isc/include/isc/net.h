@@ -74,6 +74,13 @@
 
 #include <isc/types.h>
 
+int
+isc_parse_pton(int af, const isc_region_t *source, void *dst);
+/*%<
+ * Like inet_pton(), but parses exactly source->length bytes.  The source need
+ * not be NUL-terminated.
+ */
+
 #ifndef IN6ADDR_LOOPBACK_INIT
 #ifdef s6_addr
 /*% IPv6 address loopback init */

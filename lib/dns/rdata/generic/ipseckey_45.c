@@ -80,7 +80,8 @@ fromtext_ipseckey(ARGS_FROMTEXT) {
 		break;
 
 	case 1:
-		if (inet_pton(AF_INET, DNS_AS_STR(token), &addr) != 1) {
+		if (isc_parse_pton(AF_INET, &token.value.as_region, &addr) != 1)
+		{
 			RETTOK(DNS_R_BADDOTTEDQUAD);
 		}
 		isc_buffer_availableregion(target, &region);
@@ -92,7 +93,9 @@ fromtext_ipseckey(ARGS_FROMTEXT) {
 		break;
 
 	case 2:
-		if (inet_pton(AF_INET6, DNS_AS_STR(token), addr6) != 1) {
+		if (isc_parse_pton(AF_INET6, &token.value.as_region, addr6) !=
+		    1)
+		{
 			RETTOK(DNS_R_BADAAAA);
 		}
 		isc_buffer_availableregion(target, &region);

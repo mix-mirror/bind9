@@ -26,12 +26,11 @@ static isc_result_t
 fromtext_nxt(ARGS_FROMTEXT) {
 	isc_token_t token;
 	isc_buffer_t buffer;
-	char *e;
 	unsigned char bm[8 * 1024]; /* 64k bits */
 	dns_rdatatype_t covered;
 	dns_rdatatype_t maxcovered = 0;
 	bool first = true;
-	long n;
+	unsigned int n;
 
 	REQUIRE(type == dns_rdatatype_nxt);
 
@@ -57,9 +56,11 @@ fromtext_nxt(ARGS_FROMTEXT) {
 		if (token.type != isc_tokentype_string) {
 			break;
 		}
-		n = strtol(DNS_AS_STR(token), &e, 10);
-		if (e != DNS_AS_STR(token) && *e == '\0') {
-			covered = (dns_rdatatype_t)n;
+		uint32_t value;
+		if (isc_parse_uint32_region(&value, &token.value.as_region,
+					    10) == ISC_R_SUCCESS)
+		{
+			covered = (dns_rdatatype_t)value;
 		} else if (dns_rdatatype_fromtext(&covered,
 						  &token.value.as_textregion) ==
 			   DNS_R_UNKNOWN)

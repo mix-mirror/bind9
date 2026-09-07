@@ -194,6 +194,22 @@ isc_hex_decodestring(const char *cstr, isc_buffer_t *target) {
 	return ISC_R_SUCCESS;
 }
 
+isc_result_t
+isc_hex_decoderegion(const isc_region_t *source, isc_buffer_t *target) {
+	isc_hex_decodectx_t ctx;
+
+	isc_hex_decodeinit(&ctx, isc_zero_or_more, target);
+	for (unsigned int i = 0; i < source->length; i++) {
+		int c = source->base[i];
+		if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+			continue;
+		}
+		RETERR(isc_hex_decodechar(&ctx, c));
+	}
+	RETERR(isc_hex_decodefinish(&ctx));
+	return ISC_R_SUCCESS;
+}
+
 static isc_result_t
 str_totext(const char *source, isc_buffer_t *target) {
 	unsigned int l;

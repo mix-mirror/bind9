@@ -28,9 +28,12 @@ check_mx(isc_token_t *token) {
 	struct in_addr addr;
 	struct in6_addr addr6;
 
-	if (strlcpy(tmp, DNS_AS_STR(*token), sizeof(tmp)) >= sizeof(tmp)) {
+	if (token->value.as_region.length >= sizeof(tmp)) {
 		return true;
 	}
+	memmove(tmp, token->value.as_region.base,
+		token->value.as_region.length);
+	tmp[token->value.as_region.length] = '\0';
 
 	if (tmp[strlen(tmp) - 1] == '.') {
 		tmp[strlen(tmp) - 1] = '\0';

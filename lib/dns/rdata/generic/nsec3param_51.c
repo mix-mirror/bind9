@@ -83,8 +83,9 @@ fromtext_nsec3param(ARGS_FROMTEXT) {
 	if (strcmp(DNS_AS_STR(token), "-") == 0) {
 		RETERR(uint8_tobuffer(0, target));
 	} else {
-		RETERR(uint8_tobuffer(strlen(DNS_AS_STR(token)) / 2, target));
-		RETERR(isc_hex_decodestring(DNS_AS_STR(token), target));
+		RETERR(uint8_tobuffer(token.value.as_region.length / 2,
+				      target));
+		RETERR(isc_hex_decoderegion(&token.value.as_region, target));
 	}
 
 	return ISC_R_SUCCESS;

@@ -22,9 +22,6 @@ static isc_result_t
 fromtext_eui48(ARGS_FROMTEXT) {
 	isc_token_t token;
 	unsigned char eui48[6];
-	unsigned int l0, l1, l2, l3, l4, l5;
-	char buf[sizeof("xx-xx-xx-xx-xx-xx")];
-	int n;
 
 	REQUIRE(type == dns_rdatatype_eui48);
 
@@ -36,30 +33,23 @@ fromtext_eui48(ARGS_FROMTEXT) {
 
 	RETERR(isc_lex_getmastertoken(lexer, &token, isc_tokentype_string,
 				      false));
-	n = sscanf(DNS_AS_STR(token), "%2x-%2x-%2x-%2x-%2x-%2x", &l0, &l1, &l2,
-		   &l3, &l4, &l5);
-	if (n != 6 || l0 > 255U || l1 > 255U || l2 > 255U || l3 > 255U ||
-	    l4 > 255U || l5 > 255U)
-	{
+	if (token.value.as_textregion.length != 17) {
 		return DNS_R_BADEUI;
 	}
+	for (size_t i = 0; i < sizeof(eui48); i++) {
+		unsigned int offset = i * 3;
+		uint8_t high = token.value.as_textregion.base[offset];
+		uint8_t low = token.value.as_textregion.base[offset + 1];
 
-	/*
-	 * Check that leading zeros were present and that there wasn't
-	 * trailing garbage.
-	 */
-	n = snprintf(buf, sizeof(buf), "%02x-%02x-%02x-%02x-%02x-%02x", l0, l1,
-		     l2, l3, l4, l5);
-	if (n != sizeof(buf) - 1 || strcasecmp(DNS_AS_STR(token), buf) != 0) {
-		return DNS_R_BADEUI;
+		if (isc_hex_char(high) == 0 || isc_hex_char(low) == 0 ||
+		    (i != sizeof(eui48) - 1 &&
+		     token.value.as_textregion.base[offset + 2] != '-'))
+		{
+			return DNS_R_BADEUI;
+		}
+		eui48[i] = ((high - isc_hex_char(high)) << 4) |
+			   (low - isc_hex_char(low));
 	}
-
-	eui48[0] = l0;
-	eui48[1] = l1;
-	eui48[2] = l2;
-	eui48[3] = l3;
-	eui48[4] = l4;
-	eui48[5] = l5;
 	return mem_tobuffer(target, eui48, sizeof(eui48));
 }
 
