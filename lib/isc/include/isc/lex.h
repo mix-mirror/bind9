@@ -68,9 +68,10 @@ typedef enum {
 	isc_tokentype_initialws = 6,
 	isc_tokentype_special = 7,
 	isc_tokentype_nomore = 8,
-	isc_tokentype_vpair = 10,
-	isc_tokentype_qvpair = 11,
 } isc_tokentype_t;
+
+/* No ignored input separated this token from the preceding token. */
+#define ISC_LEXFLAG_ADJACENT 0x0001
 
 typedef union {
 	char		 as_char;
@@ -83,6 +84,7 @@ typedef union {
 typedef struct isc_token {
 	isc_tokentype_t	 type;
 	isc_tokenvalue_t value;
+	unsigned int	 flags;
 } isc_token_t;
 
 /***
@@ -196,14 +198,6 @@ isc_lex_next(isc_lex_t *lex, isc_token_t *tokenp);
  * Get the next token using the immutable policy selected when 'lex' was
  * created.  Atoms are returned as text regions; interpreting an atom as a
  * number is the parser's responsibility.
- */
-
-isc_result_t
-isc_lex_next_vpair(isc_lex_t *lex, isc_token_t *tokenp, bool quoted);
-/*%<
- * Get the next DNS master-file token using the SVCB value-pair subgrammar.
- * This named operation is exceptional because value pairs change token
- * boundaries.
  */
 
 isc_result_t

@@ -235,17 +235,11 @@ finish:
 }
 
 static isc_result_t
-svc_fromtext(isc_textregion_t *region, isc_buffer_t *target) {
-	char *e = NULL;
-	char abuf[16];
-	char tbuf[sizeof("aaaa:aaaa:aaaa:aaaa:aaaa:aaaa:255.255.255.255,")];
-	isc_buffer_t sb;
-	isc_region_t keyregion;
+svc_fromtext_begin(isc_textregion_t *region, isc_buffer_t *target,
+		   uint16_t *keyp, enum encoding *encodingp) {
 	size_t len;
-	uint16_t key;
 	unsigned int i;
-	unsigned int used;
-	unsigned long ul;
+	uint16_t key;
 
 	for (i = 0; i < ARRAY_SIZE(sbpr); i++) {
 		len = strlen(sbpr[i].name);
@@ -262,123 +256,112 @@ svc_fromtext(isc_textregion_t *region, isc_buffer_t *target) {
 			len++;
 		}
 
-		RETERR(uint16_tobuffer(sbpr[i].value, target));
+		key = sbpr[i].value;
+		RETERR(uint16_tobuffer(key, target));
 		isc_textregion_consume(region, len);
-
-		sb = *target;
-		RETERR(uint16_tobuffer(0, target)); /* length */
-
-		switch (sbpr[i].encoding) {
-		case sbpr_text:
-		case sbpr_dohpath:
-			RETERR(multitxt_fromtext(region, target));
-			break;
-		case sbpr_alpn:
-			RETERR(alpn_fromtxt(region, target));
-			break;
-		case sbpr_port:
-			if (region->length == 0 ||
-			    !isdigit((unsigned char)region->base[0]))
-			{
-				return DNS_R_SYNTAX;
-			}
-			ul = strtoul(region->base, &e, 10);
-			if (*e != '\0') {
-				return DNS_R_SYNTAX;
-			}
-			if (ul > 0xffff) {
-				return ISC_R_RANGE;
-			}
-			RETERR(uint16_tobuffer(ul, target));
-			break;
-		case sbpr_ipv4s:
-			do {
-				snprintf(tbuf, sizeof(tbuf), "%*s",
-					 (int)(region->length), region->base);
-				e = strchr(tbuf, ',');
-				if (e != NULL) {
-					*e++ = 0;
-					isc_textregion_consume(region,
-							       e - tbuf);
-				}
-				if (inet_pton(AF_INET, tbuf, abuf) != 1) {
-					return DNS_R_SYNTAX;
-				}
-				mem_tobuffer(target, abuf, 4);
-			} while (e != NULL);
-			break;
-		case sbpr_ipv6s:
-			do {
-				snprintf(tbuf, sizeof(tbuf), "%*s",
-					 (int)(region->length), region->base);
-				e = strchr(tbuf, ',');
-				if (e != NULL) {
-					*e++ = 0;
-					isc_textregion_consume(region,
-							       e - tbuf);
-				}
-				if (inet_pton(AF_INET6, tbuf, abuf) != 1) {
-					return DNS_R_SYNTAX;
-				}
-				mem_tobuffer(target, abuf, 16);
-			} while (e != NULL);
-			break;
-		case sbpr_base64:
-			RETERR(isc_base64_decodestring(region->base, target));
-			break;
-		case sbpr_empty:
-			if (region->length != 0) {
-				return DNS_R_SYNTAX;
-			}
-			break;
-		case sbpr_keylist:
-			if (region->length == 0) {
-				return DNS_R_SYNTAX;
-			}
-			used = isc_buffer_usedlength(target);
-			while (region->length != 0) {
-				RETERR(svc_keyfromregion(region, ',', NULL,
-							 target));
-			}
-			RETERR(svcsortkeylist(target, used));
-			break;
-		default:
-			UNREACHABLE();
-		}
-
-		len = isc_buffer_usedlength(target) -
-		      isc_buffer_usedlength(&sb) - 2;
-		RETERR(uint16_tobuffer(len, &sb)); /* length */
-		switch (sbpr[i].encoding) {
-		case sbpr_dohpath:
-			/*
-			 * Apply constraints not applied by multitxt_fromtext.
-			 */
-			keyregion.base = isc_buffer_used(&sb);
-			keyregion.length = isc_buffer_usedlength(target) -
-					   isc_buffer_usedlength(&sb);
-			RETERR(svcb_validate(sbpr[i].value, &keyregion));
-			break;
-		default:
-			break;
-		}
+		*keyp = key;
+		*encodingp = sbpr[i].encoding;
 		return ISC_R_SUCCESS;
 	}
 
 	RETERR(svc_keyfromregion(region, '=', &key, target));
-	if (region->length == 0) {
-		RETERR(uint16_tobuffer(0, target)); /* length */
-		/* Sanity check keyXXXXX form. */
-		keyregion.base = isc_buffer_used(target);
-		keyregion.length = 0;
-		return svcb_validate(key, &keyregion);
-	}
+	*keyp = key;
+	*encodingp = sbpr_text;
+	return ISC_R_SUCCESS;
+}
+
+static isc_result_t
+svc_fromtext_value(uint16_t key, enum encoding encoding,
+		   isc_textregion_t *region, isc_buffer_t *target) {
+	char *e = NULL;
+	char abuf[16];
+	char tbuf[sizeof("aaaa:aaaa:aaaa:aaaa:aaaa:aaaa:255.255.255.255,")];
+	isc_buffer_t sb;
+	isc_region_t keyregion;
+	size_t len;
+	unsigned int used;
+	unsigned long ul;
+
 	sb = *target;
-	RETERR(uint16_tobuffer(0, target)); /* dummy length */
-	RETERR(multitxt_fromtext(region, target));
+	RETERR(uint16_tobuffer(0, target)); /* length */
+
+	switch (encoding) {
+	case sbpr_text:
+	case sbpr_dohpath:
+		RETERR(multitxt_fromtext(region, target));
+		break;
+	case sbpr_alpn:
+		RETERR(alpn_fromtxt(region, target));
+		break;
+	case sbpr_port:
+		if (region->length == 0 ||
+		    !isdigit((unsigned char)region->base[0]))
+		{
+			return DNS_R_SYNTAX;
+		}
+		ul = strtoul(region->base, &e, 10);
+		if (*e != '\0') {
+			return DNS_R_SYNTAX;
+		}
+		if (ul > 0xffff) {
+			return ISC_R_RANGE;
+		}
+		RETERR(uint16_tobuffer(ul, target));
+		break;
+	case sbpr_ipv4s:
+		do {
+			snprintf(tbuf, sizeof(tbuf), "%*s",
+				 (int)(region->length), region->base);
+			e = strchr(tbuf, ',');
+			if (e != NULL) {
+				*e++ = 0;
+				isc_textregion_consume(region, e - tbuf);
+			}
+			if (inet_pton(AF_INET, tbuf, abuf) != 1) {
+				return DNS_R_SYNTAX;
+			}
+			mem_tobuffer(target, abuf, 4);
+		} while (e != NULL);
+		break;
+	case sbpr_ipv6s:
+		do {
+			snprintf(tbuf, sizeof(tbuf), "%*s",
+				 (int)(region->length), region->base);
+			e = strchr(tbuf, ',');
+			if (e != NULL) {
+				*e++ = 0;
+				isc_textregion_consume(region, e - tbuf);
+			}
+			if (inet_pton(AF_INET6, tbuf, abuf) != 1) {
+				return DNS_R_SYNTAX;
+			}
+			mem_tobuffer(target, abuf, 16);
+		} while (e != NULL);
+		break;
+	case sbpr_base64:
+		RETERR(isc_base64_decodestring(region->base, target));
+		break;
+	case sbpr_empty:
+		if (region->length != 0) {
+			return DNS_R_SYNTAX;
+		}
+		break;
+	case sbpr_keylist:
+		if (region->length == 0) {
+			return DNS_R_SYNTAX;
+		}
+		used = isc_buffer_usedlength(target);
+		while (region->length != 0) {
+			RETERR(svc_keyfromregion(region, ',', NULL, target));
+		}
+		RETERR(svcsortkeylist(target, used));
+		break;
+	default:
+		UNREACHABLE();
+	}
+
 	len = isc_buffer_usedlength(target) - isc_buffer_usedlength(&sb) - 2;
 	RETERR(uint16_tobuffer(len, &sb)); /* length */
-	/* Sanity check keyXXXXX form. */
 	keyregion.base = isc_buffer_used(&sb);
 	keyregion.length = len;
 	return svcb_validate(key, &keyregion);
@@ -561,10 +544,16 @@ svcsortkeys(isc_buffer_t *target, unsigned int used) {
 static isc_result_t
 generic_fromtext_in_svcb(ARGS_FROMTEXT) {
 	isc_token_t token;
+	isc_token_t value_token;
 	isc_buffer_t buffer;
 	bool alias;
+	bool have_value_token;
 	bool ok = true;
+	bool quoted_value;
+	enum encoding encoding;
+	isc_result_t result;
 	unsigned int used;
+	uint16_t key;
 	dns_fixedname_t fn;
 	dns_name_t *name = dns_fixedname_initname(&fn);
 
@@ -613,7 +602,7 @@ generic_fromtext_in_svcb(ARGS_FROMTEXT) {
 	used = isc_buffer_usedlength(target);
 	while (1) {
 		RETERR(isc_lex_getmastertoken(lexer, &token,
-					      isc_tokentype_qvpair, true));
+					      isc_tokentype_qstring, true));
 		if (token.type == isc_tokentype_eol ||
 		    token.type == isc_tokentype_eof)
 		{
@@ -621,13 +610,46 @@ generic_fromtext_in_svcb(ARGS_FROMTEXT) {
 			return svcsortkeys(target, used);
 		}
 
-		if (token.type != isc_tokentype_string && /* key only */
-		    token.type != isc_tokentype_qvpair &&
-		    token.type != isc_tokentype_vpair)
-		{
+		if (token.type != isc_tokentype_string) {
 			RETTOK(DNS_R_SYNTAX);
 		}
-		RETTOK(svc_fromtext(&token.value.as_textregion, target));
+
+		quoted_value =
+			token.value.as_textregion.length != 0 &&
+			token.value.as_textregion
+					.base[token.value.as_textregion.length -
+					      1] == '=';
+		have_value_token = false;
+		RETTOK(svc_fromtext_begin(&token.value.as_textregion, target,
+					  &key, &encoding));
+
+		if (quoted_value) {
+			/*
+			 * Quotes end an ordinary lexer token.  Join an immediately
+			 * adjacent quoted value to the key here; after the closing
+			 * quote, even an adjacent atom starts the next SvcParam.
+			 */
+			RETERR(isc_lex_getmastertoken(lexer, &value_token,
+						      isc_tokentype_qstring,
+						      true));
+			if (value_token.type == isc_tokentype_qstring &&
+			    (value_token.flags & ISC_LEXFLAG_ADJACENT) != 0)
+			{
+				token = value_token;
+				have_value_token = true;
+			} else {
+				isc_lex_ungettoken(lexer, &value_token);
+			}
+		}
+
+		result = svc_fromtext_value(key, encoding,
+					    &token.value.as_textregion, target);
+		if (result != ISC_R_SUCCESS) {
+			if (!quoted_value || have_value_token) {
+				isc_lex_ungettoken(lexer, &token);
+			}
+			return result;
+		}
 	}
 }
 

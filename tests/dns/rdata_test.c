@@ -3091,6 +3091,11 @@ ISC_RUN_TEST_IMPL(https_svcb) {
 		/* alpn has 2 sub field "h2" and "h3" */
 		TEXT_VALID_LOOPCHG(1, "2 svc.example.net. alpn=h2,h3",
 				   "2 svc.example.net. alpn=\"h2,h3\""),
+		/* A closing quote is also an SvcParam boundary. */
+		TEXT_VALID_LOOPCHG(2, "2 svc.example.net. alpn=\"h2\"port=53",
+				   "2 svc.example.net. alpn=\"h2\" port=53"),
+		/* The opening quote must immediately follow '='. */
+		TEXT_INVALID("2 svc.example.net. alpn= \"h2\""),
 		/* apln has 2 sub fields "h1,h2" and "h3" (comma escaped) */
 		TEXT_VALID_LOOPCHG(1, "2 svc.example.net. alpn=h1\\\\,h2,h3",
 				   "2 svc.example.net. alpn=\"h1\\\\,h2,h3\""),
