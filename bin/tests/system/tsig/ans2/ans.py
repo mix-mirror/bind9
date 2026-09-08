@@ -15,12 +15,8 @@ from collections.abc import AsyncGenerator
 
 import dns.flags
 
-from isctest.asyncserver import (
-    AsyncDnsServer,
-    BytesResponseSend,
-    QueryContext,
-    ResponseHandler,
-)
+from isctest.asyncserver import AsyncDnsServer, QueryContext, ResponseHandler
+from isctest.asyncserver.actions import BytesResponseSend
 
 
 class TruncatedWithLastByteDroppedHandler(ResponseHandler):

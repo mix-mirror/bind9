@@ -22,7 +22,9 @@ from collections.abc import AsyncGenerator
 import dns.rdatatype
 import dns.rrset
 
-from isctest.asyncserver import DnsResponseSend, DomainHandler, QueryContext
+from isctest.asyncserver import QueryContext
+from isctest.asyncserver.actions import DnsResponseSend
+from isctest.asyncserver.handlers import DomainHandler
 
 
 class SiblingDsInjectionHandler(DomainHandler):

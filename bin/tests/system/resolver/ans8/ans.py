@@ -23,12 +23,14 @@ import dns.rdatatype
 from isctest.asyncserver import (
     AsyncDnsServer,
     DnsProtocol,
-    DnsResponseSend,
+    QueryContext,
+    ResponseHandler,
+)
+from isctest.asyncserver.actions import DnsResponseSend
+from isctest.asyncserver.handlers import (
     DomainHandler,
     QnameHandler,
     QnameQtypeHandler,
-    QueryContext,
-    ResponseHandler,
     StaticResponseHandler,
 )
 

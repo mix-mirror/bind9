@@ -19,11 +19,11 @@ import dns.rrset
 
 from isctest.asyncserver import (
     ControllableAsyncDnsServer,
-    DnsResponseSend,
     QueryContext,
     ResponseHandler,
-    ToggleResponsesCommand,
 )
+from isctest.asyncserver.actions import DnsResponseSend
+from isctest.asyncserver.commands import ToggleResponsesCommand
 
 
 class MaybeDelayedAddressAnswerHandler(ResponseHandler):

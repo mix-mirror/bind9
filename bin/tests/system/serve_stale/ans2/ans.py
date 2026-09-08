@@ -14,13 +14,12 @@ information regarding copyright ownership.
 import dns.rcode
 import dns.rdatatype
 
-from isctest.asyncserver import (
-    ControllableAsyncDnsServer,
+from isctest.asyncserver import ControllableAsyncDnsServer, ResponseHandler
+from isctest.asyncserver.commands import ToggleResponsesCommand
+from isctest.asyncserver.handlers import (
     QnameHandler,
     QnameQtypeHandler,
-    ResponseHandler,
     StaticResponseHandler,
-    ToggleResponsesCommand,
 )
 
 from ..serve_stale_ans import (

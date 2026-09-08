@@ -13,7 +13,8 @@ information regarding copyright ownership.
 
 import dns.rcode
 
-from isctest.asyncserver import AsyncDnsServer, IgnoreAllQueries
+from isctest.asyncserver import AsyncDnsServer
+from isctest.asyncserver.handlers import IgnoreAllQueries
 
 from ..srtt_ans import DelayedQnameRangeHandler
 

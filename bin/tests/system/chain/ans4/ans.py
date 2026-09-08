@@ -25,13 +25,9 @@ import dns.rdataclass
 import dns.rdatatype
 import dns.rrset
 
-from isctest.asyncserver import (
-    ControlCommand,
-    ControllableAsyncDnsServer,
-    DnsResponseSend,
-    DomainHandler,
-    QueryContext,
-)
+from isctest.asyncserver import ControlCommand, ControllableAsyncDnsServer, QueryContext
+from isctest.asyncserver.actions import DnsResponseSend
+from isctest.asyncserver.handlers import DomainHandler
 
 
 class ChainNameGenerator:
