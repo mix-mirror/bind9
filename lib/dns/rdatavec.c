@@ -973,7 +973,7 @@ rdataset_settrust(dns_rdataset_t *rdataset, dns_trust_t trust) {
 	dns_vecheader_t *header = dns_vecheader_getheader(rdataset);
 
 	rdataset->trust = trust;
-	atomic_store_release(&header->trust, trust);
+	atomic_store(&header->trust, trust);
 }
 
 static void
