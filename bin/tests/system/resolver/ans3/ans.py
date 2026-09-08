@@ -19,12 +19,8 @@ import dns.rdatatype
 
 from isctest.asyncserver import AsyncDnsServer, QueryContext, ResponseHandler
 from isctest.asyncserver.actions import DnsResponseSend
-from isctest.asyncserver.handlers import (
-    DomainHandler,
-    IgnoreAllQueries,
-    StaticResponseHandler,
-)
-from isctest.asyncserver.matchers import Qname, Qtype
+from isctest.asyncserver.handlers import IgnoreAllQueries, StaticResponseHandler
+from isctest.asyncserver.matchers import Domain, Qname, Qtype
 
 from ..resolver_ans import (
     DelegationHandler,
@@ -176,8 +172,8 @@ class OkSubHandler(ResponseHandler):
         yield DnsResponseSend(qctx.response)
 
 
-class PartialFormerrHandler(DomainHandler):
-    domains = ["partial-formerr."]
+class PartialFormerrHandler(ResponseHandler):
+    matcher = Domain("partial-formerr.")
 
     async def get_responses(
         self, qctx: QueryContext

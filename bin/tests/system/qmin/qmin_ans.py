@@ -18,9 +18,8 @@ import abc
 import dns.rcode
 import dns.rdatatype
 
-from isctest.asyncserver import QueryContext
+from isctest.asyncserver import QueryContext, ResponseHandler
 from isctest.asyncserver.actions import DnsResponseSend
-from isctest.asyncserver.handlers import DomainHandler
 
 
 def log_query(qctx: QueryContext) -> None:
@@ -38,7 +37,7 @@ def log_query(qctx: QueryContext) -> None:
         print(f"{qtype} {qname}", file=query_log)
 
 
-class QueryLogHandler(DomainHandler):
+class QueryLogHandler(ResponseHandler):
     """
     Log all received DNS queries to a text file.  Use the zone file for
     preparing responses.
@@ -51,7 +50,7 @@ class QueryLogHandler(DomainHandler):
         yield DnsResponseSend(qctx.response)
 
 
-class EntRcodeChanger(DomainHandler):
+class EntRcodeChanger(ResponseHandler):
     """
     Log all received DNS queries to a text file.  Use the zone file for
     preparing responses, but override the RCODE returned for empty
@@ -82,7 +81,7 @@ class EntRcodeChanger(DomainHandler):
             yield DnsResponseSend(qctx.response)
 
 
-class DelayedResponseHandler(DomainHandler):
+class DelayedResponseHandler(ResponseHandler):
     """
     Log all received DNS queries to a text file.  Use the zone file for
     preparing responses, but delay sending every answer by the amount of time

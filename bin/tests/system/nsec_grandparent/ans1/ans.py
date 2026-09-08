@@ -24,6 +24,7 @@ import dns.rrset
 
 from isctest.asyncserver import AsyncDnsServer, QueryContext, ResponseHandler
 from isctest.asyncserver.actions import DnsResponseSend
+from isctest.asyncserver.matchers import Domain
 
 TTL = 300
 PARENT = "p031.test."
@@ -133,12 +134,10 @@ class GrandparentNsecHandler(ResponseHandler):
     def __init__(self, parent_key: Key) -> None:
         self.parent_key = parent_key
         self.parent = name(PARENT)
+        self.matcher = Domain(self.parent)
         self.child = name(CHILD)
         self.grandchild = name(GRANDCHILD)
         self.grandchild3 = name(GRANDCHILD3)
-
-    def match(self, qctx: QueryContext) -> bool:
-        return qctx.qname.is_subdomain(self.parent)
 
     async def get_responses(
         self, qctx: QueryContext
