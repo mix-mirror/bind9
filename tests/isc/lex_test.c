@@ -204,6 +204,44 @@ ISC_RUN_TEST_IMPL(lex_dns_master_policy) {
 	isc_lex_destroy(&lex);
 }
 
+ISC_RUN_TEST_IMPL(lex_dns_multiline_policy) {
+	isc_buffer_t buf;
+	isc_lex_t *lex = NULL;
+	isc_token_t token;
+	const char text[] =
+		"(\n  one ; comment inside multiline input\n (\r\n two ) three\n)\n four";
+
+	UNUSED(state);
+
+	assert_int_equal(isc_lex_create_dns_master(isc_g_mctx, 4, &lex),
+			 ISC_R_SUCCESS);
+	isc_buffer_constinit(&buf, text, sizeof(text) - 1);
+	isc_buffer_add(&buf, sizeof(text) - 1);
+	assert_int_equal(isc_lex_openbuffer(lex, &buf), ISC_R_SUCCESS);
+
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_string);
+	assert_token_equal(token, "one");
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_string);
+	assert_token_equal(token, "two");
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_string);
+	assert_token_equal(token, "three");
+
+	/* The first visible EOL is the one after the outermost ')'. */
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_eol);
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_initialws);
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_string);
+	assert_token_equal(token, "four");
+	assert_int_equal(isc_lex_getsourceline(lex), 6U);
+
+	isc_lex_destroy(&lex);
+}
+
 ISC_RUN_TEST_IMPL(lex_separated_qstring) {
 	isc_buffer_t buf;
 	isc_lex_t *lex = NULL;
@@ -462,7 +500,7 @@ ISC_RUN_TEST_IMPL(lex_config_comments) {
 	isc_lex_t *lex = NULL;
 	isc_token_t token;
 	const char text[] = "foo/* block */bar// line\n"
-			    "baz# shell\n\"/*#//\"/x";
+			    "baz# shell\n\"/*#//\"/x// comment at EOF";
 
 	UNUSED(state);
 
@@ -571,6 +609,26 @@ ISC_RUN_TEST_IMPL(lex_comment_refill) {
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_string);
 	assert_token_equal(token, "foo");
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_eof);
+	isc_lex_destroy(&lex);
+	isc_mem_put(isc_g_mctx, text, length);
+
+	/* Continue a line comment after refilling. */
+	length = TEST_REFILL_SIZE + 4U;
+	text = isc_mem_get(isc_g_mctx, length);
+	memmove(text, "//", 2U);
+	memset(text + 2U, 'x', TEST_REFILL_SIZE - 2U);
+	memmove(text + TEST_REFILL_SIZE, "\nfoo", 4U);
+	assert_int_equal(isc_lex_create_config(isc_g_mctx, 4, &lex),
+			 ISC_R_SUCCESS);
+	isc_buffer_init(&buf, text, length);
+	isc_buffer_add(&buf, length);
+	assert_int_equal(isc_lex_openbuffer(lex, &buf), ISC_R_SUCCESS);
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_string);
+	assert_token_equal(token, "foo");
+	assert_int_equal(isc_lex_getsourceline(lex), 2U);
 	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
 	assert_int_equal(token.type, isc_tokentype_eof);
 	isc_lex_destroy(&lex);
@@ -837,6 +895,7 @@ ISC_TEST_ENTRY(lex_command_unget)
 ISC_TEST_ENTRY(lex_comment_refill)
 ISC_TEST_ENTRY(lex_dns_comments)
 ISC_TEST_ENTRY(lex_dns_master_policy)
+ISC_TEST_ENTRY(lex_dns_multiline_policy)
 ISC_TEST_ENTRY(lex_no_sources)
 ISC_TEST_ENTRY(lex_qstring_refill_and_cooking)
 ISC_TEST_ENTRY(lex_refill_and_unget)
