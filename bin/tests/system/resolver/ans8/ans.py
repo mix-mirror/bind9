@@ -17,6 +17,7 @@ import abc
 
 import dns.flags
 import dns.message
+import dns.name
 import dns.rcode
 import dns.rdatatype
 
@@ -29,10 +30,10 @@ from isctest.asyncserver import (
 from isctest.asyncserver.actions import DnsResponseSend
 from isctest.asyncserver.handlers import (
     DomainHandler,
-    QnameHandler,
     QnameQtypeHandler,
     StaticResponseHandler,
 )
+from isctest.asyncserver.matchers import Qname
 
 from ..resolver_ans import rrset
 
@@ -61,13 +62,14 @@ class HeaderOnlyHandler(ResponseHandler):
         yield DnsResponseSend(message, acknowledge_hand_rolled_response=True)
 
 
-class RefusedOnTcpHandler(QnameHandler, HeaderOnlyHandler):
-    qnames = ["tcpalso.no-questions."]
+class RefusedOnTcpHandler(HeaderOnlyHandler):
     flags = dns.flags.QR
     rcode = dns.rcode.REFUSED
 
     def match(self, qctx: QueryContext) -> bool:
-        return qctx.protocol == DnsProtocol.TCP and super().match(qctx)
+        return qctx.protocol == DnsProtocol.TCP and qctx.qname == dns.name.from_text(
+            "tcpalso.no-questions."
+        )
 
 
 class TcpFallbackHandler(ResponseHandler):
@@ -93,8 +95,8 @@ class NoQuestionsNSHandler(QnameQtypeHandler, StaticResponseHandler):
     additional = [rrset(f"ns.{qnames[0]}", dns.rdatatype.A, "10.53.0.8")]
 
 
-class NsNoQuestionsAHandler(QnameHandler):
-    qnames = ["ns.no-questions."]
+class NsNoQuestionsAHandler(ResponseHandler):
+    matcher = Qname("ns.no-questions.")
 
     async def get_responses(
         self, qctx: QueryContext
@@ -105,14 +107,14 @@ class NsNoQuestionsAHandler(QnameHandler):
         yield DnsResponseSend(qctx.response)
 
 
-class TcpalsoNoQuestionsHandler(QnameHandler, HeaderOnlyHandler):
-    qnames = ["tcpalso.no-questions."]
+class TcpalsoNoQuestionsHandler(HeaderOnlyHandler):
+    matcher = Qname("tcpalso.no-questions.")
     flags = dns.flags.QR | dns.flags.TC
     rcode = dns.rcode.REFUSED
 
 
-class TruncatedNoQuestionsHandler(QnameHandler, HeaderOnlyHandler):
-    qnames = ["truncated.no-questions."]
+class TruncatedNoQuestionsHandler(HeaderOnlyHandler):
+    matcher = Qname("truncated.no-questions.")
     flags = dns.flags.QR | dns.flags.AA | dns.flags.TC
 
 
