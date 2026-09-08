@@ -294,7 +294,7 @@ signwithkey(dns_name_t *name, dns_rdataset_t *rdataset, dst_key_t *key,
 
 	if (tryverify) {
 		result = dns_dnssec_verify(name, rdataset, key, true,
-					   isc_g_mctx, &trdata, NULL, NULL);
+					   isc_g_mctx, &trdata, NULL);
 		if (result == ISC_R_SUCCESS || result == DNS_R_FROMWILDCARD) {
 			vbprintf(3, "\tsignature verified\n");
 			INCSTAT(nverified);
@@ -455,7 +455,7 @@ setverifies(dns_name_t *name, dns_rdataset_t *set, dst_key_t *key,
 	    dns_rdata_t *rrsig) {
 	isc_result_t result;
 	result = dns_dnssec_verify(name, set, key, false, isc_g_mctx, rrsig,
-				   NULL, NULL);
+				   NULL);
 	if (result == ISC_R_SUCCESS || result == DNS_R_FROMWILDCARD) {
 		INCSTAT(nverified);
 		return true;

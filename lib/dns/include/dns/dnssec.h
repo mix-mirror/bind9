@@ -142,7 +142,7 @@ dns_dnssec_sign(const dns_name_t *name, dns_rdataset_t *set, dst_key_t *key,
 isc_result_t
 dns_dnssec_verify(const dns_name_t *name, dns_rdataset_t *set, dst_key_t *key,
 		  bool ignoretime, isc_mem_t *mctx, dns_rdata_t *sigrdata,
-		  dns_name_t *wild, dns_name_t *wildsigner);
+		  dns_name_t *wild);
 /*%<
  *	Verifies the RRSIG record covering this rdataset signed by a specific
  *	key.  This does not determine if the key's owner is authorized to sign
@@ -160,16 +160,13 @@ dns_dnssec_verify(const dns_name_t *name, dns_rdataset_t *set, dst_key_t *key,
  *\li		'key' is a valid key
  *\li		'mctx' is not NULL
  *\li		'sigrdata' is a valid rdata containing a SIG record
- *\li		'wild' if non-NULL then is a valid name and has a buffer.
- *\li		'wildsigner' if non-NULL then is a valid name and has a buffer.
+ *\li		'wild' if non-NULL then is a valid and has a buffer.
  *
  *	Returns:
  *\li		#ISC_R_SUCCESS
  *\li		#DNS_R_FROMWILDCARD - the signature is valid and is from
  *			a wildcard expansion.  dns_dnssec_verify2() only.
- *			'wild', if non-NULL, contains the name of the wildcard.
- *			'wildsigner', if non-NULL, contains the 'signer' name
- *			from the RRSIG signing the wildcard.
+ *			'wild' contains the name of the wildcard if non-NULL.
  *\li		#DNS_R_SIGINVALID - the signature fails to verify
  *\li		#DNS_R_SIGEXPIRED - the signature has expired
  *\li		#DNS_R_SIGFUTURE - the signature's validity period has not begun
