@@ -577,6 +577,50 @@ ISC_RUN_TEST_IMPL(lex_comment_refill) {
 	isc_mem_put(isc_g_mctx, text, length);
 }
 
+ISC_RUN_TEST_IMPL(lex_table_refill_boundaries) {
+	isc_buffer_t buf;
+	isc_lex_t *lex = NULL;
+	isc_token_t token;
+	unsigned char *text;
+	size_t length = TEST_REFILL_SIZE + 4U;
+
+	UNUSED(state);
+
+	/* CRLF lookahead must cross the refill boundary. */
+	text = isc_mem_get(isc_g_mctx, length);
+	memset(text, ' ', TEST_REFILL_SIZE - 1U);
+	memmove(text + TEST_REFILL_SIZE - 1U, "\r\nfoo", 5U);
+	assert_int_equal(isc_lex_create_config(isc_g_mctx, 4, &lex),
+			 ISC_R_SUCCESS);
+	isc_buffer_init(&buf, text, length);
+	isc_buffer_add(&buf, length);
+	assert_int_equal(isc_lex_openbuffer(lex, &buf), ISC_R_SUCCESS);
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_string);
+	assert_token_equal(token, "foo");
+	assert_int_equal(isc_lex_getsourceline(lex), 2U);
+	isc_lex_destroy(&lex);
+	isc_mem_put(isc_g_mctx, text, length);
+
+	/* Padding NUL triggers refill; the following input NUL is a token. */
+	text = isc_mem_get(isc_g_mctx, length);
+	memset(text, ' ', TEST_REFILL_SIZE);
+	text[TEST_REFILL_SIZE] = '\0';
+	memmove(text + TEST_REFILL_SIZE + 1U, "foo", 3U);
+	assert_int_equal(isc_lex_create_line(isc_g_mctx, 4, &lex),
+			 ISC_R_SUCCESS);
+	isc_buffer_init(&buf, text, length);
+	isc_buffer_add(&buf, length);
+	assert_int_equal(isc_lex_openbuffer(lex, &buf), ISC_R_SUCCESS);
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_unknown);
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_string);
+	assert_token_equal(token, "foo");
+	isc_lex_destroy(&lex);
+	isc_mem_put(isc_g_mctx, text, length);
+}
+
 ISC_RUN_TEST_IMPL(lex_unget_eol) {
 	isc_buffer_t buf;
 	isc_lex_t *lex = NULL;
@@ -797,6 +841,7 @@ ISC_TEST_ENTRY(lex_no_sources)
 ISC_TEST_ENTRY(lex_qstring_refill_and_cooking)
 ISC_TEST_ENTRY(lex_refill_and_unget)
 ISC_TEST_ENTRY(lex_separated_qstring)
+ISC_TEST_ENTRY(lex_table_refill_boundaries)
 ISC_TEST_ENTRY(lex_unget_eol)
 ISC_TEST_ENTRY(lex_unterminated_comment)
 ISC_TEST_ENTRY(lex_setline)
