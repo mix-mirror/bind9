@@ -24,10 +24,9 @@ from isctest.asyncserver.actions import DnsResponseSend
 from isctest.asyncserver.handlers import (
     DomainHandler,
     IgnoreAllQueries,
-    QnameQtypeHandler,
     StaticResponseHandler,
 )
-from isctest.asyncserver.matchers import Qname
+from isctest.asyncserver.matchers import Qname, Qtype
 
 from ..resolver_ans import (
     DelegationHandler,
@@ -41,12 +40,10 @@ from ..resolver_ans import (
 )
 
 
-class BadGoodDnameNsHandler(QnameQtypeHandler, StaticResponseHandler):
-    qnames = [
-        "baddname.example.org.",
-        "gooddname.example.org.",
-    ]
-    qtypes = [dns.rdatatype.NS]
+class BadGoodDnameNsHandler(StaticResponseHandler):
+    matcher = Qname("baddname.example.org.", "gooddname.example.org.") & Qtype(
+        dns.rdatatype.NS
+    )
     answer = [rrset("example.org.", dns.rdatatype.NS, "a.root-servers.nil.")]
     authoritative = True
 
@@ -100,16 +97,10 @@ class NoResponseExampleUdpHandler(IgnoreAllQueries):
     matcher = Qname("noresponse.exampleudp.net.")
 
 
-class RootNsHandler(QnameQtypeHandler):
-    qnames = [
-        "example.com.",
-        "com.",
-        "example.org.",
-        "org.",
-        "net.",
-    ]
-
-    qtypes = [dns.rdatatype.NS]
+class RootNsHandler(ResponseHandler):
+    matcher = Qname("example.com.", "com.", "example.org.", "org.", "net.") & Qtype(
+        dns.rdatatype.NS
+    )
 
     async def get_responses(
         self, qctx: QueryContext
