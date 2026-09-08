@@ -621,25 +621,31 @@ printversion(bool verbose) {
 
 static void
 parse_fuzz_arg(void) {
-	if ((named_g_fuzz_addr = isc_string_stripprefix(
-		     isc_commandline_argument, "client:")) != NULL)
+	const char *tail;
+	if ((tail = isc_string_stripprefix(isc_commandline_argument,
+					   "client:")) != NULL)
 	{
+		named_g_fuzz_addr = tail;
 		named_g_fuzz_type = isc_fuzz_client;
-	} else if ((named_g_fuzz_addr = isc_string_stripprefix(
-			    isc_commandline_argument, "tcp:")) != NULL)
+	} else if ((tail = isc_string_stripprefix(isc_commandline_argument,
+						  "tcp:")) != NULL)
 	{
+		named_g_fuzz_addr = tail;
 		named_g_fuzz_type = isc_fuzz_tcpclient;
-	} else if ((named_g_fuzz_addr = isc_string_stripprefix(
-			    isc_commandline_argument, "resolver:")) != NULL)
+	} else if ((tail = isc_string_stripprefix(isc_commandline_argument,
+						  "resolver:")) != NULL)
 	{
+		named_g_fuzz_addr = tail;
 		named_g_fuzz_type = isc_fuzz_resolver;
-	} else if ((named_g_fuzz_addr = isc_string_stripprefix(
-			    isc_commandline_argument, "http:")) != NULL)
+	} else if ((tail = isc_string_stripprefix(isc_commandline_argument,
+						  "http:")) != NULL)
 	{
+		named_g_fuzz_addr = tail;
 		named_g_fuzz_type = isc_fuzz_http;
-	} else if ((named_g_fuzz_addr = isc_string_stripprefix(
-			    isc_commandline_argument, "rndc:")) != NULL)
+	} else if ((tail = isc_string_stripprefix(isc_commandline_argument,
+						  "rndc:")) != NULL)
 	{
+		named_g_fuzz_addr = tail;
 		named_g_fuzz_type = isc_fuzz_rndc;
 	} else {
 		named_main_earlyfatal("unknown fuzzing type '%s'",
