@@ -242,6 +242,111 @@ ISC_RUN_TEST_IMPL(lex_dns_multiline_policy) {
 	isc_lex_destroy(&lex);
 }
 
+/* The merged start state must still return only the first initial blank. */
+ISC_RUN_TEST_IMPL(lex_initialws_unget) {
+	const char text[] = " \tfirst \tsecond\r\n\t third";
+	static const struct {
+		isc_tokentype_t type;
+		const char *text;
+		unsigned long line;
+	} expected[] = {
+		{ isc_tokentype_initialws, " ", 1 },
+		{ isc_tokentype_string, "first", 1 },
+		{ isc_tokentype_string, "second", 1 },
+		{ isc_tokentype_eol, "\r\n", 2 },
+		{ isc_tokentype_initialws, "\t", 2 },
+		{ isc_tokentype_string, "third", 2 },
+		{ isc_tokentype_eof, "", 2 },
+	};
+	isc_buffer_t buf;
+	isc_lex_t *lex = NULL;
+	isc_token_t token;
+	isc_region_t raw;
+
+	UNUSED(state);
+
+	assert_int_equal(isc_lex_create_dns_master(isc_g_mctx, 4, &lex),
+			 ISC_R_SUCCESS);
+	isc_buffer_constinit(&buf, text, sizeof(text) - 1);
+	isc_buffer_add(&buf, sizeof(text) - 1);
+	assert_int_equal(isc_lex_openbuffer(lex, &buf), ISC_R_SUCCESS);
+
+	for (size_t i = 0; i < ARRAY_SIZE(expected); i++) {
+		unsigned long saved_line = isc_lex_getsourceline(lex);
+
+		for (size_t replay = 0; replay < 2; replay++) {
+			assert_int_equal(isc_lex_next(lex, &token),
+					 ISC_R_SUCCESS);
+			assert_int_equal(token.type, expected[i].type);
+			assert_int_equal(isc_lex_getsourceline(lex),
+					 expected[i].line);
+			isc_lex_getlasttokentext(lex, &token, &raw);
+			assert_int_equal(raw.length, strlen(expected[i].text));
+			if (raw.length != 0) {
+				assert_memory_equal(raw.base, expected[i].text,
+						    raw.length);
+			}
+			if (token.type == isc_tokentype_initialws) {
+				assert_int_equal(token.value.as_char,
+						 expected[i].text[0]);
+			}
+			if (replay == 0) {
+				isc_lex_ungettoken(lex, &token);
+				assert_int_equal(isc_lex_getsourceline(lex),
+						 saved_line);
+			}
+		}
+	}
+
+	isc_lex_destroy(&lex);
+}
+
+/* A refilled line comment must keep suppressing EOL inside parentheses. */
+ISC_RUN_TEST_IMPL(lex_grouped_comment_refill) {
+	static const char tail[] = "\0\n \tfoo\r\n)\r\n\tbar";
+	const size_t length = TEST_REFILL_SIZE + sizeof(tail) - 1;
+	unsigned char *text = isc_mem_get(isc_g_mctx, length);
+	isc_buffer_t buf;
+	isc_lex_t *lex = NULL;
+	isc_token_t token;
+
+	UNUSED(state);
+
+	memmove(text, "(;", 2);
+	memset(text + 2, 'x', TEST_REFILL_SIZE - 2);
+	memmove(text + TEST_REFILL_SIZE, tail, sizeof(tail) - 1);
+	assert_int_equal(isc_lex_create_dns_master(isc_g_mctx, 4, &lex),
+			 ISC_R_SUCCESS);
+	isc_buffer_init(&buf, text, length);
+	isc_buffer_add(&buf, length);
+	assert_int_equal(isc_lex_openbuffer(lex, &buf), ISC_R_SUCCESS);
+
+	for (size_t replay = 0; replay < 2; replay++) {
+		assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+		assert_int_equal(token.type, isc_tokentype_string);
+		assert_token_equal(token, "foo");
+		assert_int_equal(isc_lex_getsourceline(lex), 2);
+		if (replay == 0) {
+			isc_lex_ungettoken(lex, &token);
+			assert_int_equal(isc_lex_getsourceline(lex), 1);
+		}
+	}
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_eol);
+	assert_int_equal(isc_lex_getsourceline(lex), 4);
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_initialws);
+	assert_int_equal(token.value.as_char, '\t');
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_string);
+	assert_token_equal(token, "bar");
+	assert_int_equal(isc_lex_next(lex, &token), ISC_R_SUCCESS);
+	assert_int_equal(token.type, isc_tokentype_eof);
+
+	isc_lex_destroy(&lex);
+	isc_mem_put(isc_g_mctx, text, length);
+}
+
 ISC_RUN_TEST_IMPL(lex_separated_qstring) {
 	isc_buffer_t buf;
 	isc_lex_t *lex = NULL;
@@ -896,6 +1001,8 @@ ISC_TEST_ENTRY(lex_comment_refill)
 ISC_TEST_ENTRY(lex_dns_comments)
 ISC_TEST_ENTRY(lex_dns_master_policy)
 ISC_TEST_ENTRY(lex_dns_multiline_policy)
+ISC_TEST_ENTRY(lex_grouped_comment_refill)
+ISC_TEST_ENTRY(lex_initialws_unget)
 ISC_TEST_ENTRY(lex_no_sources)
 ISC_TEST_ENTRY(lex_qstring_refill_and_cooking)
 ISC_TEST_ENTRY(lex_refill_and_unget)

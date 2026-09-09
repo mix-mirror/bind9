@@ -58,141 +58,245 @@ typedef struct inputsource {
 #define ISC_LEXOPT_QSTRINGMULTILINE 0x0200
 
 /*
- * Final states precede scanning states so the scanner can test all of them
- * with a single comparison.  Character classes are premultiplied by the
- * number of states, making the hot transition a single indexed load.
+ * Each character selects a 64-bit row containing ten six-bit transitions.
+ * Scanning states are their bit offsets in the row (0, 6, ..., 54).  Odd
+ * values select slow-path actions, which need no outgoing transitions.
+ *
+ * Only the low six bits of a shifted row encode the next state.  Masking
+ * the shift count, rather than the result, lets hardware with modulo-64
+ * shifts keep the mask off the loop-carried state dependency.
  */
 typedef enum {
-	lexstate_atom_done,
-	lexstate_qstring_done,
-	lexstate_qstring_cooked_done,
-	lexstate_initialws,
-	lexstate_newline_return,
-	lexstate_newline_skip,
-	lexstate_cr_return,
-	lexstate_cr_skip,
-	lexstate_slash_done,
-	lexstate_comment_done,
-	lexstate_block_comment_newline,
-	lexstate_line_comment_nul,
-	lexstate_block_comment_nul,
-	lexstate_block_comment_star_nul,
-	lexstate_special,
-	lexstate_paren,
-	lexstate_start_nul,
-	lexstate_atom_escaped_nul,
-	lexstate_qstring_nul,
-	lexstate_qstring_escaped_nul,
-	lexstate_qstring_cooked_nul,
-	lexstate_qstring_newline,
-	lexstate_qstring_escaped_newline,
-	lexstate_qstring_cooked_newline,
-	lexstate_last_final = lexstate_qstring_cooked_newline,
+	lexstate_start = 0,
+	lexstate_atom = 6,
+	lexstate_atom_escaped = 12,
+	lexstate_qstring = 18,
+	lexstate_qstring_escaped = 24,
+	lexstate_qstring_needs_cooking = 30,
+	lexstate_slash = 36,
+	lexstate_line_comment = 42,
+	lexstate_block_comment = 48,
+	lexstate_block_comment_star = 54,
 
-	lexstate_start,
-	lexstate_start_initialws,
-	lexstate_start_multiline,
-	lexstate_atom,
-	lexstate_atom_escaped,
-	lexstate_qstring,
-	lexstate_qstring_escaped,
-	lexstate_qstring_needs_cooking,
-	lexstate_slash,
-	lexstate_line_comment,
-	lexstate_line_comment_multiline,
-	lexstate_block_comment,
-	lexstate_block_comment_star,
-	lexstate_count,
+	lexstate_atom_done = 1,
+	lexstate_qstring_done = 3,
+	lexstate_qstring_cooked_done = 5,
+	lexstate_initialws = 7,
+	lexstate_newline_return = 9,
+	lexstate_newline_skip = 11,
+	lexstate_cr_return = 13,
+	lexstate_cr_skip = 15,
+	lexstate_slash_done = 17,
+	lexstate_comment_done = 19,
+	lexstate_block_comment_newline = 21,
+	lexstate_line_comment_nul = 23,
+	lexstate_block_comment_nul = 25,
+	lexstate_block_comment_star_nul = 27,
+	lexstate_special = 29,
+	lexstate_paren = 31,
+	lexstate_start_nul = 33,
+	lexstate_atom_escaped_nul = 35,
+	lexstate_qstring_nul = 37,
+	lexstate_qstring_escaped_nul = 39,
+	lexstate_qstring_cooked_nul = 41,
+	lexstate_qstring_newline = 43,
+	lexstate_qstring_escaped_newline = 45,
+	lexstate_qstring_cooked_newline = 47,
+	lexstate_last_final = lexstate_qstring_cooked_newline,
 } lexstate_t;
 
-typedef enum {
-	lexclass_ordinary,
-	lexclass_space,
-	lexclass_lf_return,
-	lexclass_lf_skip,
-	lexclass_cr_return,
-	lexclass_cr_skip,
-	lexclass_nul,
-	lexclass_quote,
-	lexclass_qstring_quote,
-	lexclass_backslash,
-	lexclass_qstring_backslash,
-	lexclass_special,
-	lexclass_dns_comment,
-	lexclass_shell_comment,
-	lexclass_slash,
-	lexclass_star,
-	lexclass_paren,
-	lexclass_count,
-} lexclass_t;
+STATIC_ASSERT(lexstate_block_comment_star + 6 <= 64,
+	      "scanning transitions fit in one row");
+STATIC_ASSERT(lexstate_last_final < 64, "actions fit in six bits");
 
-STATIC_ASSERT(lexstate_count <= UINT8_MAX, "lexer states fit in table");
-STATIC_ASSERT((lexclass_count * lexstate_count) <= UINT16_MAX,
-	      "premultiplied lexer classes fit in table");
+#define S lexstate_start
+#define A lexstate_atom
+#define E lexstate_atom_escaped
+#define Q lexstate_qstring
+#define X lexstate_qstring_escaped
+#define C lexstate_qstring_needs_cooking
+#define D lexstate_slash
+#define L lexstate_line_comment
+#define B lexstate_block_comment
+#define T lexstate_block_comment_star
 
-#define PREMULTIPLY(class) ((class) * lexstate_count)
+/* Columns: start, atom, escaped atom, quoted string, escaped quoted string,
+ * cooked quoted string, slash, line comment, block comment, block-comment star.
+ */
+#define PACK_ROW(s, a, e, q, x, c, d, l, b, t)                             \
+	(((1ull * (s)) << S) | ((1ull * (a)) << A) | ((1ull * (e)) << E) | \
+	 ((1ull * (q)) << Q) | ((1ull * (x)) << X) | ((1ull * (c)) << C) | \
+	 ((1ull * (d)) << D) | ((1ull * (l)) << L) | ((1ull * (b)) << B) | \
+	 ((1ull * (t)) << T))
 
-static const uint16_t line_classes[256] = {
-	[' '] = PREMULTIPLY(lexclass_space),
-	['\t'] = PREMULTIPLY(lexclass_space),
-	['\n'] = PREMULTIPLY(lexclass_lf_return),
-	['\r'] = PREMULTIPLY(lexclass_cr_return),
-	['\0'] = PREMULTIPLY(lexclass_nul),
+#define ROW_ORDINARY PACK_ROW(A, A, A, Q, C, C, lexstate_slash_done, L, B, B)
+#define ROW_SPACE                                                    \
+	PACK_ROW(lexstate_initialws, lexstate_atom_done, A, Q, C, C, \
+		 lexstate_slash_done, L, B, B)
+#define ROW_LF_RETURN                                                     \
+	PACK_ROW(lexstate_newline_return, lexstate_atom_done,             \
+		 lexstate_atom_done, lexstate_qstring_newline,            \
+		 lexstate_qstring_escaped_newline,                        \
+		 lexstate_qstring_cooked_newline, lexstate_slash_done,    \
+		 lexstate_newline_return, lexstate_block_comment_newline, \
+		 lexstate_block_comment_newline)
+#define ROW_LF_SKIP                                                     \
+	PACK_ROW(lexstate_newline_skip, lexstate_atom_done,             \
+		 lexstate_atom_done, lexstate_qstring_newline,          \
+		 lexstate_qstring_escaped_newline,                      \
+		 lexstate_qstring_cooked_newline, lexstate_slash_done,  \
+		 lexstate_newline_skip, lexstate_block_comment_newline, \
+		 lexstate_block_comment_newline)
+#define ROW_CR_RETURN                                                        \
+	PACK_ROW(lexstate_cr_return, lexstate_atom_done, lexstate_atom_done, \
+		 Q, C, C, lexstate_slash_done, L, B, B)
+#define ROW_CR_SKIP                                                           \
+	PACK_ROW(lexstate_cr_skip, lexstate_atom_done, lexstate_atom_done, Q, \
+		 C, C, lexstate_slash_done, L, B, B)
+#define ROW_NUL                                                             \
+	PACK_ROW(lexstate_start_nul, lexstate_atom_done,                    \
+		 lexstate_atom_escaped_nul, lexstate_qstring_nul,           \
+		 lexstate_qstring_escaped_nul, lexstate_qstring_cooked_nul, \
+		 lexstate_slash_done, lexstate_line_comment_nul,            \
+		 lexstate_block_comment_nul, lexstate_block_comment_star_nul)
+#define ROW_QUOTE                                                    \
+	PACK_ROW(Q, lexstate_atom_done, A, lexstate_qstring_done, C, \
+		 lexstate_qstring_cooked_done, lexstate_slash_done, L, B, B)
+#define ROW_QSTRING_QUOTE                           \
+	PACK_ROW(Q, A, A, lexstate_qstring_done, C, \
+		 lexstate_qstring_cooked_done, lexstate_slash_done, L, B, B)
+#define ROW_BACKSLASH PACK_ROW(E, E, A, X, C, X, lexstate_slash_done, L, B, B)
+#define ROW_QSTRING_BACKSLASH \
+	PACK_ROW(A, A, A, X, C, X, lexstate_slash_done, L, B, B)
+#define ROW_SPECIAL                                                \
+	PACK_ROW(lexstate_special, lexstate_atom_done, A, Q, C, C, \
+		 lexstate_slash_done, L, B, B)
+#define ROW_DNS_COMMENT                                                        \
+	PACK_ROW(L, lexstate_atom_done, A, Q, C, C, lexstate_slash_done, L, B, \
+		 B)
+#define ROW_SHELL_COMMENT                                            \
+	PACK_ROW(L, lexstate_atom_done, lexstate_atom_done, Q, C, C, \
+		 lexstate_slash_done, L, B, B)
+#define ROW_SLASH                                            \
+	PACK_ROW(D, lexstate_atom_done, A, Q, C, C, L, L, B, \
+		 lexstate_comment_done)
+#define ROW_STAR PACK_ROW(A, A, A, Q, C, C, B, L, T, T)
+#define ROW_PAREN                                                \
+	PACK_ROW(lexstate_paren, lexstate_atom_done, A, Q, C, C, \
+		 lexstate_slash_done, L, B, B)
+
+/* Explicit ranges cover ordinary bytes without overriding initializers. */
+static const uint64_t line_rows[256] = {
+	['\0'] = ROW_NUL,
+	[0x01 ... 0x08] = ROW_ORDINARY,
+	['\t'] = ROW_SPACE,
+	['\n'] = ROW_LF_RETURN,
+	[0x0b ... 0x0c] = ROW_ORDINARY,
+	['\r'] = ROW_CR_RETURN,
+	[0x0e ... 0x1f] = ROW_ORDINARY,
+	[' '] = ROW_SPACE,
+	['!' ... 0xff] = ROW_ORDINARY,
 };
 
-static const uint16_t command_classes[256] = {
-	[' '] = PREMULTIPLY(lexclass_space),
-	['\t'] = PREMULTIPLY(lexclass_space),
-	['\n'] = PREMULTIPLY(lexclass_lf_skip),
-	['\r'] = PREMULTIPLY(lexclass_cr_skip),
-	['\0'] = PREMULTIPLY(lexclass_nul),
-	['"'] = PREMULTIPLY(lexclass_qstring_quote),
-	['\\'] = PREMULTIPLY(lexclass_qstring_backslash),
+static const uint64_t command_rows[256] = {
+	['\0'] = ROW_NUL,
+	[0x01 ... 0x08] = ROW_ORDINARY,
+	['\t'] = ROW_SPACE,
+	['\n'] = ROW_LF_SKIP,
+	[0x0b ... 0x0c] = ROW_ORDINARY,
+	['\r'] = ROW_CR_SKIP,
+	[0x0e ... 0x1f] = ROW_ORDINARY,
+	[' '] = ROW_SPACE,
+	['!'] = ROW_ORDINARY,
+	['"'] = ROW_QSTRING_QUOTE,
+	['#' ... '['] = ROW_ORDINARY,
+	['\\'] = ROW_QSTRING_BACKSLASH,
+	[']' ... 0xff] = ROW_ORDINARY,
 };
 
-static const uint16_t dns_classes[256] = {
-	[' '] = PREMULTIPLY(lexclass_space),
-	['\t'] = PREMULTIPLY(lexclass_space),
-	['\n'] = PREMULTIPLY(lexclass_lf_return),
-	['\r'] = PREMULTIPLY(lexclass_cr_return),
-	['\0'] = PREMULTIPLY(lexclass_nul),
-	['"'] = PREMULTIPLY(lexclass_quote),
-	['\\'] = PREMULTIPLY(lexclass_backslash),
-	[';'] = PREMULTIPLY(lexclass_dns_comment),
-	['('] = PREMULTIPLY(lexclass_paren),
-	[')'] = PREMULTIPLY(lexclass_paren),
+static const uint64_t dns_rows[256] = {
+	['\0'] = ROW_NUL,
+	[0x01 ... 0x08] = ROW_ORDINARY,
+	['\t'] = ROW_SPACE,
+	['\n'] = ROW_LF_RETURN,
+	[0x0b ... 0x0c] = ROW_ORDINARY,
+	['\r'] = ROW_CR_RETURN,
+	[0x0e ... 0x1f] = ROW_ORDINARY,
+	[' '] = ROW_SPACE,
+	['!'] = ROW_ORDINARY,
+	['"'] = ROW_QUOTE,
+	['#' ... '\''] = ROW_ORDINARY,
+	['(' ... ')'] = ROW_PAREN,
+	['*' ... ':'] = ROW_ORDINARY,
+	[';'] = ROW_DNS_COMMENT,
+	['<' ... '['] = ROW_ORDINARY,
+	['\\'] = ROW_BACKSLASH,
+	[']' ... 0xff] = ROW_ORDINARY,
 };
 
-static const uint16_t dns_bundle_classes[256] = {
-	[' '] = PREMULTIPLY(lexclass_space),
-	['\t'] = PREMULTIPLY(lexclass_space),
-	['\n'] = PREMULTIPLY(lexclass_lf_return),
-	['\r'] = PREMULTIPLY(lexclass_cr_return),
-	['\0'] = PREMULTIPLY(lexclass_nul),
-	['"'] = PREMULTIPLY(lexclass_quote),
-	['\\'] = PREMULTIPLY(lexclass_backslash),
-	['('] = PREMULTIPLY(lexclass_paren),
-	[')'] = PREMULTIPLY(lexclass_paren),
+static const uint64_t dns_bundle_rows[256] = {
+	['\0'] = ROW_NUL,
+	[0x01 ... 0x08] = ROW_ORDINARY,
+	['\t'] = ROW_SPACE,
+	['\n'] = ROW_LF_RETURN,
+	[0x0b ... 0x0c] = ROW_ORDINARY,
+	['\r'] = ROW_CR_RETURN,
+	[0x0e ... 0x1f] = ROW_ORDINARY,
+	[' '] = ROW_SPACE,
+	['!'] = ROW_ORDINARY,
+	['"'] = ROW_QUOTE,
+	['#' ... '\''] = ROW_ORDINARY,
+	['(' ... ')'] = ROW_PAREN,
+	['*' ... '['] = ROW_ORDINARY,
+	['\\'] = ROW_BACKSLASH,
+	[']' ... 0xff] = ROW_ORDINARY,
 };
 
-static const uint16_t config_classes[256] = {
-	[' '] = PREMULTIPLY(lexclass_space),
-	['\t'] = PREMULTIPLY(lexclass_space),
-	['\n'] = PREMULTIPLY(lexclass_lf_skip),
-	['\r'] = PREMULTIPLY(lexclass_cr_skip),
-	['\0'] = PREMULTIPLY(lexclass_nul),
-	['"'] = PREMULTIPLY(lexclass_quote),
-	['\\'] = PREMULTIPLY(lexclass_qstring_backslash),
-	['{'] = PREMULTIPLY(lexclass_special),
-	['}'] = PREMULTIPLY(lexclass_special),
-	[';'] = PREMULTIPLY(lexclass_special),
-	['!'] = PREMULTIPLY(lexclass_special),
-	['#'] = PREMULTIPLY(lexclass_shell_comment),
-	['/'] = PREMULTIPLY(lexclass_slash),
-	['*'] = PREMULTIPLY(lexclass_star),
+static const uint64_t config_rows[256] = {
+	['\0'] = ROW_NUL,
+	[0x01 ... 0x08] = ROW_ORDINARY,
+	['\t'] = ROW_SPACE,
+	['\n'] = ROW_LF_SKIP,
+	[0x0b ... 0x0c] = ROW_ORDINARY,
+	['\r'] = ROW_CR_SKIP,
+	[0x0e ... 0x1f] = ROW_ORDINARY,
+	[' '] = ROW_SPACE,
+	['!'] = ROW_SPECIAL,
+	['"'] = ROW_QUOTE,
+	['#'] = ROW_SHELL_COMMENT,
+	['$' ... ')'] = ROW_ORDINARY,
+	['*'] = ROW_STAR,
+	['+' ... '.'] = ROW_ORDINARY,
+	['/'] = ROW_SLASH,
+	['0' ... ':'] = ROW_ORDINARY,
+	[';'] = ROW_SPECIAL,
+	['<' ... '['] = ROW_ORDINARY,
+	['\\'] = ROW_QSTRING_BACKSLASH,
+	[']' ... 'z'] = ROW_ORDINARY,
+	['{'] = ROW_SPECIAL,
+	['|'] = ROW_ORDINARY,
+	['}'] = ROW_SPECIAL,
+	['~' ... 0xff] = ROW_ORDINARY,
 };
 
-#undef PREMULTIPLY
+#undef PACK_ROW
+#undef ROW_ORDINARY
+#undef ROW_SPACE
+#undef ROW_LF_RETURN
+#undef ROW_LF_SKIP
+#undef ROW_CR_RETURN
+#undef ROW_CR_SKIP
+#undef ROW_NUL
+#undef ROW_QUOTE
+#undef ROW_QSTRING_QUOTE
+#undef ROW_BACKSLASH
+#undef ROW_QSTRING_BACKSLASH
+#undef ROW_SPECIAL
+#undef ROW_DNS_COMMENT
+#undef ROW_SHELL_COMMENT
+#undef ROW_SLASH
+#undef ROW_STAR
+#undef ROW_PAREN
 
 struct isc_lex {
 	/* Unlocked. */
@@ -205,249 +309,11 @@ struct isc_lex {
 	bool saved_last_was_eol;
 	unsigned int paren_count;
 	unsigned int saved_paren_count;
-	const uint16_t *classes;
+	const uint64_t *rows;
 	ISC_LIST(struct inputsource) sources;
 };
 
-#define S lexstate_start
-#define I lexstate_start_initialws
-#define M lexstate_start_multiline
-#define A lexstate_atom
-#define E lexstate_atom_escaped
-#define Q lexstate_qstring
-#define X lexstate_qstring_escaped
-#define C lexstate_qstring_needs_cooking
-#define D lexstate_slash
-#define L lexstate_line_comment
-#define N lexstate_line_comment_multiline
-#define B lexstate_block_comment
-#define T lexstate_block_comment_star
-
-static const uint8_t transitions[lexclass_count][lexstate_count] = {
-	[lexclass_ordinary] = { [S] = A,
-				[I] = A,
-				[M] = A,
-				[A] = A,
-				[E] = A,
-				[Q] = Q,
-				[X] = C,
-				[C] = C,
-				[D] = lexstate_slash_done,
-				[L] = L,
-				[N] = N,
-				[B] = B,
-				[T] = B },
-	[lexclass_space] = { [S] = S,
-			     [I] = lexstate_initialws,
-			     [M] = M,
-			     [A] = lexstate_atom_done,
-			     [E] = A,
-			     [Q] = Q,
-			     [X] = C,
-			     [C] = C,
-			     [D] = lexstate_slash_done,
-			     [L] = L,
-			     [N] = N,
-			     [B] = B,
-			     [T] = B },
-	[lexclass_lf_return] = { [S] = lexstate_newline_return,
-				 [I] = lexstate_newline_return,
-				 [M] = lexstate_newline_skip,
-				 [A] = lexstate_atom_done,
-				 [E] = lexstate_atom_done,
-				 [Q] = lexstate_qstring_newline,
-				 [X] = lexstate_qstring_escaped_newline,
-				 [C] = lexstate_qstring_cooked_newline,
-				 [D] = lexstate_slash_done,
-				 [L] = lexstate_newline_return,
-				 [N] = lexstate_newline_skip,
-				 [B] = lexstate_block_comment_newline,
-				 [T] = lexstate_block_comment_newline },
-	[lexclass_lf_skip] = { [S] = lexstate_newline_skip,
-			       [I] = lexstate_newline_skip,
-			       [M] = lexstate_newline_skip,
-			       [A] = lexstate_atom_done,
-			       [E] = lexstate_atom_done,
-			       [Q] = lexstate_qstring_newline,
-			       [X] = lexstate_qstring_escaped_newline,
-			       [C] = lexstate_qstring_cooked_newline,
-			       [D] = lexstate_slash_done,
-			       [L] = lexstate_newline_skip,
-			       [N] = lexstate_newline_skip,
-			       [B] = lexstate_block_comment_newline,
-			       [T] = lexstate_block_comment_newline },
-	[lexclass_cr_return] = { [S] = lexstate_cr_return,
-				 [I] = lexstate_cr_return,
-				 [M] = lexstate_cr_skip,
-				 [A] = lexstate_atom_done,
-				 [E] = lexstate_atom_done,
-				 [Q] = Q,
-				 [X] = C,
-				 [C] = C,
-				 [D] = lexstate_slash_done,
-				 [L] = L,
-				 [N] = N,
-				 [B] = B,
-				 [T] = B },
-	[lexclass_cr_skip] = { [S] = lexstate_cr_skip,
-			       [I] = lexstate_cr_skip,
-			       [M] = lexstate_cr_skip,
-			       [A] = lexstate_atom_done,
-			       [E] = lexstate_atom_done,
-			       [Q] = Q,
-			       [X] = C,
-			       [C] = C,
-			       [D] = lexstate_slash_done,
-			       [L] = L,
-			       [N] = N,
-			       [B] = B,
-			       [T] = B },
-	[lexclass_nul] = { [S] = lexstate_start_nul,
-			   [I] = lexstate_start_nul,
-			   [M] = lexstate_start_nul,
-			   [A] = lexstate_atom_done,
-			   [E] = lexstate_atom_escaped_nul,
-			   [Q] = lexstate_qstring_nul,
-			   [X] = lexstate_qstring_escaped_nul,
-			   [C] = lexstate_qstring_cooked_nul,
-			   [D] = lexstate_slash_done,
-			   [L] = lexstate_line_comment_nul,
-			   [N] = lexstate_line_comment_nul,
-			   [B] = lexstate_block_comment_nul,
-			   [T] = lexstate_block_comment_star_nul },
-	[lexclass_quote] = { [S] = Q,
-			     [I] = Q,
-			     [M] = Q,
-			     [A] = lexstate_atom_done,
-			     [E] = A,
-			     [Q] = lexstate_qstring_done,
-			     [X] = C,
-			     [C] = lexstate_qstring_cooked_done,
-			     [D] = lexstate_slash_done,
-			     [L] = L,
-			     [N] = N,
-			     [B] = B,
-			     [T] = B },
-	[lexclass_qstring_quote] = { [S] = Q,
-				     [I] = Q,
-				     [M] = Q,
-				     [A] = A,
-				     [E] = A,
-				     [Q] = lexstate_qstring_done,
-				     [X] = C,
-				     [C] = lexstate_qstring_cooked_done,
-				     [D] = lexstate_slash_done,
-				     [L] = L,
-				     [N] = N,
-				     [B] = B,
-				     [T] = B },
-	[lexclass_backslash] = { [S] = E,
-				 [I] = E,
-				 [M] = E,
-				 [A] = E,
-				 [E] = A,
-				 [Q] = X,
-				 [X] = C,
-				 [C] = X,
-				 [D] = lexstate_slash_done,
-				 [L] = L,
-				 [N] = N,
-				 [B] = B,
-				 [T] = B },
-	[lexclass_qstring_backslash] = { [S] = A,
-					 [I] = A,
-					 [M] = A,
-					 [A] = A,
-					 [E] = A,
-					 [Q] = X,
-					 [X] = C,
-					 [C] = X,
-					 [D] = lexstate_slash_done,
-					 [L] = L,
-					 [N] = N,
-					 [B] = B,
-					 [T] = B },
-	[lexclass_special] = { [S] = lexstate_special,
-			       [I] = lexstate_special,
-			       [M] = lexstate_special,
-			       [A] = lexstate_atom_done,
-			       [E] = A,
-			       [Q] = Q,
-			       [X] = C,
-			       [C] = C,
-			       [D] = lexstate_slash_done,
-			       [L] = L,
-			       [N] = N,
-			       [B] = B,
-			       [T] = B },
-	[lexclass_dns_comment] = { [S] = L,
-				   [I] = L,
-				   [M] = N,
-				   [A] = lexstate_atom_done,
-				   [E] = A,
-				   [Q] = Q,
-				   [X] = C,
-				   [C] = C,
-				   [D] = lexstate_slash_done,
-				   [L] = L,
-				   [N] = N,
-				   [B] = B,
-				   [T] = B },
-	[lexclass_shell_comment] = { [S] = L,
-				     [I] = L,
-				     [M] = L,
-				     [A] = lexstate_atom_done,
-				     [E] = lexstate_atom_done,
-				     [Q] = Q,
-				     [X] = C,
-				     [C] = C,
-				     [D] = lexstate_slash_done,
-				     [L] = L,
-				     [N] = N,
-				     [B] = B,
-				     [T] = B },
-	[lexclass_slash] = { [S] = D,
-			     [I] = D,
-			     [M] = D,
-			     [A] = lexstate_atom_done,
-			     [E] = A,
-			     [Q] = Q,
-			     [X] = C,
-			     [C] = C,
-			     [D] = L,
-			     [L] = L,
-			     [N] = N,
-			     [B] = B,
-			     [T] = lexstate_comment_done },
-	[lexclass_star] = { [S] = A,
-			    [I] = A,
-			    [M] = A,
-			    [A] = A,
-			    [E] = A,
-			    [Q] = Q,
-			    [X] = C,
-			    [C] = C,
-			    [D] = B,
-			    [L] = L,
-			    [N] = N,
-			    [B] = T,
-			    [T] = T },
-	[lexclass_paren] = { [S] = lexstate_paren,
-			     [I] = lexstate_paren,
-			     [M] = lexstate_paren,
-			     [A] = lexstate_atom_done,
-			     [E] = A,
-			     [Q] = Q,
-			     [X] = C,
-			     [C] = C,
-			     [D] = lexstate_slash_done,
-			     [L] = L,
-			     [N] = N,
-			     [B] = B,
-			     [T] = B },
-};
-
-static const uint8_t in_token[lexstate_count] = {
+static const uint8_t in_token[64] = {
 	[A] = 1,
 	[E] = 1,
 	[Q] = 1,
@@ -461,8 +327,6 @@ static const uint8_t in_token[lexstate_count] = {
 };
 
 #undef S
-#undef I
-#undef M
 #undef A
 #undef E
 #undef Q
@@ -470,20 +334,8 @@ static const uint8_t in_token[lexstate_count] = {
 #undef C
 #undef D
 #undef L
-#undef N
 #undef B
 #undef T
-
-static inline lexstate_t
-start_state(const isc_lex_t *lex) {
-	if (lex->paren_count != 0) {
-		return lexstate_start_multiline;
-	}
-	if (lex->last_was_eol && (lex->options & ISC_LEXOPT_INITIALWS) != 0) {
-		return lexstate_start_initialws;
-	}
-	return lexstate_start;
-}
 
 static void
 ensure_data(isc_lex_t *lex, size_t length) {
@@ -525,7 +377,7 @@ lex_create(isc_mem_t *mctx, size_t max_token, isc_lex_t **lexp) {
 	lex->last_was_eol = true;
 	lex->paren_count = 0;
 	lex->saved_paren_count = 0;
-	lex->classes = line_classes;
+	lex->rows = line_rows;
 	ISC_LIST_INIT(lex->sources);
 	lex->magic = LEX_MAGIC;
 
@@ -537,7 +389,7 @@ isc_lex_create_dns_master(isc_mem_t *mctx, size_t initial_token_size,
 			  isc_lex_t **lexp) {
 	lex_create(mctx, initial_token_size, lexp);
 	(*lexp)->options = ISC_LEXOPT_EOF | ISC_LEXOPT_INITIALWS;
-	(*lexp)->classes = dns_classes;
+	(*lexp)->rows = dns_rows;
 
 	return ISC_R_SUCCESS;
 }
@@ -547,7 +399,7 @@ isc_lex_create_config(isc_mem_t *mctx, size_t initial_token_size,
 		      isc_lex_t **lexp) {
 	lex_create(mctx, initial_token_size, lexp);
 	(*lexp)->options = ISC_LEXOPT_EOF | ISC_LEXOPT_QSTRINGMULTILINE;
-	(*lexp)->classes = config_classes;
+	(*lexp)->rows = config_rows;
 
 	return ISC_R_SUCCESS;
 }
@@ -556,7 +408,7 @@ static isc_result_t
 create_dns_text(isc_mem_t *mctx, size_t initial_token_size, isc_lex_t **lexp,
 		bool comments) {
 	lex_create(mctx, initial_token_size, lexp);
-	(*lexp)->classes = comments ? dns_classes : dns_bundle_classes;
+	(*lexp)->rows = comments ? dns_rows : dns_bundle_rows;
 
 	return ISC_R_SUCCESS;
 }
@@ -578,7 +430,7 @@ isc_lex_create_command(isc_mem_t *mctx, size_t initial_token_size,
 		       isc_lex_t **lexp) {
 	lex_create(mctx, initial_token_size, lexp);
 	(*lexp)->options = ISC_LEXOPT_EOF;
-	(*lexp)->classes = command_classes;
+	(*lexp)->rows = command_rows;
 
 	return ISC_R_SUCCESS;
 }
@@ -881,35 +733,37 @@ static isc_result_t
 lex_gettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 	/* Dispatch final states without a second bounds check after the loop.
 	 */
-	static const void *const dispatch[lexstate_last_final + 1] = {
-		[lexstate_atom_done] = &&atom_done,
-		[lexstate_qstring_done] = &&qstring_done,
-		[lexstate_qstring_cooked_done] = &&qstring_cooked_done,
-		[lexstate_initialws] = &&initialws,
-		[lexstate_newline_return] = &&newline_return,
-		[lexstate_newline_skip] = &&newline_skip,
-		[lexstate_cr_return] = &&cr_return,
-		[lexstate_cr_skip] = &&cr_skip,
-		[lexstate_slash_done] = &&slash_done,
-		[lexstate_comment_done] = &&comment_done,
-		[lexstate_block_comment_newline] = &&block_comment_newline,
-		[lexstate_line_comment_nul] = &&line_comment_nul,
-		[lexstate_block_comment_nul] = &&block_comment_nul,
-		[lexstate_block_comment_star_nul] = &&block_comment_star_nul,
-		[lexstate_special] = &&special,
-		[lexstate_paren] = &&paren,
-		[lexstate_start_nul] = &&start_nul,
-		[lexstate_atom_escaped_nul] = &&atom_escaped_nul,
-		[lexstate_qstring_nul] = &&qstring_nul,
-		[lexstate_qstring_escaped_nul] = &&qstring_escaped_nul,
-		[lexstate_qstring_cooked_nul] = &&qstring_cooked_nul,
-		[lexstate_qstring_newline] = &&qstring_newline,
-		[lexstate_qstring_escaped_newline] = &&qstring_escaped_newline,
-		[lexstate_qstring_cooked_newline] = &&qstring_cooked_newline,
+	static const void *const dispatch[(lexstate_last_final >> 1) + 1] = {
+		[lexstate_atom_done >> 1] = &&atom_done,
+		[lexstate_qstring_done >> 1] = &&qstring_done,
+		[lexstate_qstring_cooked_done >> 1] = &&qstring_cooked_done,
+		[lexstate_initialws >> 1] = &&initialws,
+		[lexstate_newline_return >> 1] = &&newline_return,
+		[lexstate_newline_skip >> 1] = &&newline_skip,
+		[lexstate_cr_return >> 1] = &&cr_return,
+		[lexstate_cr_skip >> 1] = &&cr_skip,
+		[lexstate_slash_done >> 1] = &&slash_done,
+		[lexstate_comment_done >> 1] = &&comment_done,
+		[lexstate_block_comment_newline >> 1] = &&block_comment_newline,
+		[lexstate_line_comment_nul >> 1] = &&line_comment_nul,
+		[lexstate_block_comment_nul >> 1] = &&block_comment_nul,
+		[lexstate_block_comment_star_nul >> 1] =
+			&&block_comment_star_nul,
+		[lexstate_special >> 1] = &&special,
+		[lexstate_paren >> 1] = &&paren,
+		[lexstate_start_nul >> 1] = &&start_nul,
+		[lexstate_atom_escaped_nul >> 1] = &&atom_escaped_nul,
+		[lexstate_qstring_nul >> 1] = &&qstring_nul,
+		[lexstate_qstring_escaped_nul >> 1] = &&qstring_escaped_nul,
+		[lexstate_qstring_cooked_nul >> 1] = &&qstring_cooked_nul,
+		[lexstate_qstring_newline >> 1] = &&qstring_newline,
+		[lexstate_qstring_escaped_newline >> 1] =
+			&&qstring_escaped_newline,
+		[lexstate_qstring_cooked_newline >> 1] =
+			&&qstring_cooked_newline,
 	};
 	inputsource *source;
 	isc_buffer_t *buffer;
-	const uint8_t *transition = &transitions[0][0];
 	unsigned char *base;
 	unsigned char *p;
 	size_t token_length = 0;
@@ -941,18 +795,19 @@ lex_gettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 	source->saved_current = source->pushback->current;
 	source->ignored = source->saved_current;
 
-	state = start_state(lex);
+	state = lexstate_start;
 	base = buffer->base;
 	p = base + buffer->current;
 
 	for (;;) {
 		do {
-			unsigned int char_class = lex->classes[*p++];
+			uint64_t row = lex->rows[*p++];
 
-			state = transition[char_class + state];
-			token_length += in_token[state];
-		} while (state > lexstate_last_final);
-		goto *dispatch[state];
+			state = row >> (state & 63);
+			token_length += in_token[state & 63];
+		} while ((state & 1) == 0);
+		state &= 63;
+		goto *dispatch[state >> 1];
 
 	slash_done: {
 		unsigned int lookahead = (unsigned int)(p - base - 1);
@@ -974,7 +829,7 @@ lex_gettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 
 	comment_done:
 		buffer->current = (unsigned int)(p - base);
-		state = start_state(lex);
+		state = lexstate_start;
 		continue;
 
 	block_comment_newline:
@@ -1013,6 +868,12 @@ lex_gettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 		goto done;
 
 	initialws:
+		if (lex->paren_count != 0 || !lex->last_was_eol ||
+		    (lex->options & ISC_LEXOPT_INITIALWS) == 0)
+		{
+			state = lexstate_start;
+			continue;
+		}
 		buffer->current = (unsigned int)(p - base);
 		source->ignored = buffer->current - 1U;
 		lex->last_was_eol = false;
@@ -1022,6 +883,9 @@ lex_gettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 		goto done;
 
 	newline_return:
+		if (lex->paren_count != 0) {
+			goto newline_skip;
+		}
 		buffer->current = (unsigned int)(p - base);
 		source->ignored = buffer->current - 1U;
 		source->line++;
@@ -1035,10 +899,13 @@ lex_gettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 		source->ignored = buffer->current - 1U;
 		source->line++;
 		lex->last_was_eol = true;
-		state = start_state(lex);
+		state = lexstate_start;
 		continue;
 
 	cr_return:
+		if (lex->paren_count != 0) {
+			goto cr_skip;
+		}
 		buffer->current = (unsigned int)(p - base - 1);
 		result = consume_cr(source);
 		if (result != ISC_R_SUCCESS) {
@@ -1057,7 +924,7 @@ lex_gettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 		base = buffer->base;
 		p = base + buffer->current;
 		lex->last_was_eol = true;
-		state = start_state(lex);
+		state = lexstate_start;
 		continue;
 
 	special:
@@ -1079,7 +946,7 @@ lex_gettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 			goto done;
 		}
 		lex->paren_count += (c == '(') - (c == ')');
-		state = start_state(lex);
+		state = lexstate_start;
 		continue;
 	}
 
@@ -1090,9 +957,7 @@ lex_gettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 		lexstate_t resume;
 
 		if (state == lexstate_line_comment_nul) {
-			resume = lex->paren_count != 0
-					 ? lexstate_line_comment_multiline
-					 : lexstate_line_comment;
+			resume = lexstate_line_comment;
 		} else if (state == lexstate_block_comment_star_nul) {
 			resume = lexstate_block_comment_star;
 		} else {
@@ -1109,7 +974,7 @@ lex_gettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 				result = ISC_R_UNEXPECTEDEND;
 				goto done;
 			}
-			state = start_state(lex);
+			state = lexstate_start;
 			p = base + buffer->current;
 			continue;
 		}
@@ -1128,7 +993,7 @@ lex_gettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 		if (nul == buffer->used) {
 			buffer->current = nul;
 			if (!source->at_eof) {
-				state = start_state(lex);
+				state = lexstate_start;
 				goto refill_and_resume;
 			}
 			source->ignored = buffer->current;
