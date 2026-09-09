@@ -2074,6 +2074,7 @@ assign-milestones:
 .monitor-rpm-build-job: &monitor_rpm_build_job
   <<: *rpm_build_job_common
   when: on_success
+  after_script: []
   script:
     - >
       "${CI_PROJECT_DIR}"/bind9-qa/releng/update_rpms.py monitor-build --service "${SERVICE}" --version "${CI_COMMIT_TAG}" --commit "$(cat "commit.txt")"
@@ -2082,6 +2083,7 @@ assign-milestones:
 .monitor-rpm-publish-job: &monitor_rpm_publish_job
   <<: *rpm_build_job_common
   when: on_success
+  after_script: []
   script:
     - >
       "${CI_PROJECT_DIR}"/bind9-qa/releng/update_rpms.py monitor-publish --service "${SERVICE}" --commit "$(cat "commit.txt")"
