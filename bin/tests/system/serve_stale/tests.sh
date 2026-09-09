@@ -317,6 +317,22 @@ grep '_default: stale cache enabled; stale answers enabled (stale-answer-ttl=4 m
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
+n=$((n + 1))
+echo_i "check 'rndc serve-stale status _default' ($n)"
+ret=0
+$RNDCCMD 10.53.0.1 serve-stale status _default >rndc.out.test$n 2>&1 || ret=1
+grep '_default: stale cache enabled; stale answers enabled (stale-answer-ttl=4 max-stale-ttl=3600 stale-refresh-time=30)' rndc.out.test$n >/dev/null || ret=1
+if [ $ret != 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
+
+n=$((n + 1))
+echo_i "check 'rndc serve-stale status in _default' ($n)"
+ret=0
+$RNDCCMD 10.53.0.1 serve-stale status in _default >rndc.out.test$n 2>&1 || ret=1
+grep '_default: stale cache enabled; stale answers enabled (stale-answer-ttl=4 max-stale-ttl=3600 stale-refresh-time=30)' rndc.out.test$n >/dev/null || ret=1
+if [ $ret != 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
+
 sleep 2
 
 # Run rndc dumpdb, test whether the stale data has correct comment printed.

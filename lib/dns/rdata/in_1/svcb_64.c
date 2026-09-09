@@ -564,6 +564,7 @@ svcsortkeys(isc_buffer_t *target, unsigned int used) {
 
 static isc_result_t
 generic_fromtext_in_svcb(ARGS_FROMTEXT) {
+	unsigned char empty_value = 0;
 	isc_token_t token;
 	isc_token_t value_token;
 	isc_region_t textregion;
@@ -646,6 +647,13 @@ generic_fromtext_in_svcb(ARGS_FROMTEXT) {
 					  &encoding));
 
 		if (quoted_value) {
+			/*
+			 * svc_fromtext_begin() consumed the trailing '='.  Do not
+			 * retain its lexer-owned region across the lookahead below.
+			 */
+			INSIST(textregion.length == 0);
+			textregion = (isc_region_t){ .base = &empty_value };
+
 			/*
 			 * Quotes end an ordinary lexer token.  Join an
 			 * immediately adjacent quoted value to the key here;

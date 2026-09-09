@@ -9902,6 +9902,7 @@ zone_from_args(named_server_t *server, isc_lex_t *lex,
 	char problem[2 * DNS_NAME_FORMATSIZE + 500] = "";
 	char zonebuf[DNS_NAME_FORMATSIZE];
 	char viewbuf[DNS_NAME_FORMATSIZE];
+	bool class_specified = false;
 	bool redirect = false;
 
 	REQUIRE(zonep != NULL && *zonep == NULL);
@@ -9946,6 +9947,7 @@ zone_from_args(named_server_t *server, isc_lex_t *lex,
 	/* Look for the optional class name. */
 	classtxt = next_token(lex, text);
 	if (classtxt.base != NULL) {
+		class_specified = true;
 		CHECK(dns_rdataclass_fromtext(&rdclass, &classtxt));
 
 		/* Look for the optional view name. */
@@ -9970,7 +9972,7 @@ zone_from_args(named_server_t *server, isc_lex_t *lex,
 			}
 		} else {
 			result = dns_viewlist_findzone(&server->viewlist, name,
-						       classtxt.base == NULL,
+						       !class_specified,
 						       rdclass, zonep);
 			if (result == ISC_R_NOTFOUND) {
 				snprintf(problem, sizeof(problem),
@@ -14796,6 +14798,7 @@ named_server_servestale(named_server_t *server, isc_lex_t *lex,
 			isc_buffer_t *text) {
 	isc_region_t ptr, classtxt, viewtxt = { 0 };
 	char msg[128];
+	char firstarg[DNS_NAME_FORMATSIZE];
 	dns_rdataclass_t rdclass = dns_rdataclass_in;
 	bool found = false;
 	dns_stale_answer_t staleanswersok = dns_stale_answer_conf;
@@ -14836,6 +14839,10 @@ named_server_servestale(named_server_t *server, isc_lex_t *lex,
 	/* Look for the optional class name. */
 	classtxt = next_token(lex, text);
 	if (classtxt.base != NULL) {
+		/* Preserve it before looking ahead for the optional view name. */
+		CHECK(token_tostring(&classtxt, firstarg, sizeof(firstarg)));
+		classtxt.base = (unsigned char *)firstarg;
+
 		/* Look for the optional view name. */
 		viewtxt = next_token(lex, text);
 

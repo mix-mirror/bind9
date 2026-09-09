@@ -3127,6 +3127,8 @@ ISC_RUN_TEST_IMPL(https_svcb) {
 		TEXT_VALID_LOOP(1, "2 svc.example.net. key10"),
 		TEXT_VALID_LOOPCHG(1, "2 svc.example.net. key11=",
 				   "2 svc.example.net. key11"),
+		TEXT_VALID_LOOPCHG(2, "2 svc.example.net. key11= key12",
+				   "2 svc.example.net. key11 key12"),
 		TEXT_VALID_LOOPCHG(1, "2 svc.example.net. key12=\"\"",
 				   "2 svc.example.net. key12"),
 		/* empty alpn-id sub fields */
