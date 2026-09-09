@@ -2199,13 +2199,18 @@ rpms-copr:
     SERVICE: copr
   rules:
     - *rule_tag_open_source
+  artifacts:
+    paths:
+      - commit.txt
+    expire_in: "1 month"
 
 monitor-rpms-copr:
   <<: *monitor_rpm_build_job
   variables:
     SERVICE: copr
   needs:
-    - rpms-copr
+    - job: rpms-copr
+      artifacts: true
   rules:
     - *rule_tag_open_source
 
