@@ -914,7 +914,7 @@ lex_gettoken(isc_lex_t *lex, isc_token_t *tokenp) {
 	unsigned char *p;
 	size_t token_length = 0;
 	isc_result_t result;
-	lexstate_t state;
+	size_t state;
 
 	/*
 	 * Get the next token.
