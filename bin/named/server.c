@@ -321,6 +321,7 @@ typedef struct catz_reconfig_data {
 	dns_catz_zone_t *catz;
 	const cfg_obj_t *config;
 	catz_cb_data_t *cbd;
+	dns_view_t *pview;
 } catz_reconfig_data_t;
 
 typedef enum {
@@ -2540,20 +2541,43 @@ catz_modzone(dns_catz_entry_t *entry, dns_catz_zone_t *origin, dns_view_t *view,
 
 static void
 catz_changeview(dns_catz_entry_t *entry, void *arg1, void *arg2) {
-	dns_view_t *pview = arg1;
-	dns_view_t *view = arg2;
+	dns_view_t *view = arg1;
+	catz_reconfig_data_t *data = arg2;
 	dns_zone_t *zone = NULL;
+	dns_forwarders_t *forwarders = NULL;
+	dns_name_t *name = dns_catz_entry_getname(entry);
 
-	isc_result_t result = dns_view_findzone(
-		pview, dns_catz_entry_getname(entry), DNS_ZTFIND_EXACT, &zone);
+	/* Local zones and explicit forwarding take precedence. */
+	isc_result_t result = dns_view_findzone(view, name, DNS_ZTFIND_EXACT,
+						&zone);
+	if (result == ISC_R_SUCCESS) {
+		goto cleanup;
+	}
+	result = dns_fwdtable_find(view->fwdtable, name, &forwarders);
+	if (result == ISC_R_SUCCESS &&
+	    forwarders->fwdpolicy == dns_fwdpolicy_only)
+	{
+		goto cleanup;
+	}
+
+	result = dns_view_findzone(data->pview, name, DNS_ZTFIND_EXACT, &zone);
 	if (result != ISC_R_SUCCESS) {
-		return;
+		goto cleanup;
+	}
+	if (dns_zone_get_parentcatz(zone) != data->catz) {
+		goto cleanup;
 	}
 
 	dns_zone_setview(zone, view);
 	dns_view_addzone(view, zone);
 
-	dns_zone_detach(&zone);
+cleanup:
+	if (zone != NULL) {
+		dns_zone_detach(&zone);
+	}
+	if (forwarders != NULL) {
+		dns_forwarders_detach(&forwarders);
+	}
 }
 
 static void
@@ -2577,7 +2601,11 @@ catz_reconfigure(dns_catz_entry_t *entry, void *arg1, void *arg2) {
 	result = dns_view_findzone(view, dns_catz_entry_getname(entry),
 				   DNS_ZTFIND_EXACT, &zone);
 	if (result != ISC_R_SUCCESS) {
+		/* The catalog reload will restore missing members. */
 		return;
+	}
+	if (dns_zone_get_parentcatz(zone) != data->catz) {
+		goto cleanup;
 	}
 
 	result = dns_catz_generate_zonecfg(data->catz, entry, &confbuf);
@@ -2627,8 +2655,8 @@ cleanup:
 }
 
 static isc_result_t
-configure_catz_zone(dns_view_t *view, dns_view_t *pview,
-		    const cfg_obj_t *config, const cfg_listelt_t *element) {
+configure_catz_zone(dns_view_t *view, const cfg_obj_t *config,
+		    const cfg_listelt_t *element) {
 	const cfg_obj_t *catz_obj, *obj;
 	dns_catz_zone_t *zone = NULL;
 	const char *str;
@@ -2680,25 +2708,7 @@ configure_catz_zone(dns_view_t *view, dns_view_t *pview,
 
 	dns_catz_zone_prereconfig(zone);
 
-	if (result == ISC_R_EXISTS) {
-		catz_reconfig_data_t data = {
-			.catz = zone,
-			.config = config,
-			.cbd = (catz_cb_data_t *)dns_catz_zones_get_udata(
-				view->catzs),
-		};
-
-		/*
-		 * We have to walk through all the member zones, re-attach
-		 * them to the current view and reconfigure
-		 */
-		dns_catz_zone_for_each_entry2(zone, catz_changeview, pview,
-					      view);
-		dns_catz_zone_for_each_entry2(zone, catz_reconfigure, view,
-					      &data);
-
-		result = ISC_R_SUCCESS;
-	}
+	result = ISC_R_SUCCESS;
 
 	dns_catz_zone_resetdefoptions(zone);
 	opts = dns_catz_zone_getdefoptions(zone);
@@ -2788,7 +2798,7 @@ configure_catz(dns_view_t *view, dns_view_t *pview, const cfg_obj_t *config,
 	}
 
 	CFG_LIST_FOREACH(zones, zone_element) {
-		CHECK(configure_catz_zone(view, pview, config, zone_element));
+		CHECK(configure_catz_zone(view, config, zone_element));
 	}
 
 	if (old != NULL) {
@@ -2802,6 +2812,61 @@ cleanup:
 		dns_view_detach(&pview);
 	}
 
+	return result;
+}
+
+/*
+ * Carry catalog members into the new view after its local zones have been
+ * mounted, so local configuration wins regardless of when it was added.
+ */
+static isc_result_t
+configure_catz_members(dns_view_t *view, dns_view_t *pview,
+		       const cfg_obj_t *config, const cfg_obj_t *catz_obj) {
+	const cfg_obj_t *zones = cfg_tuple_get(catz_obj, "zone list");
+	bool pview_must_detach = false;
+	isc_result_t result = ISC_R_SUCCESS;
+
+	if (view->catzs == NULL) {
+		return ISC_R_SUCCESS;
+	}
+	if (pview == NULL) {
+		result = dns_viewlist_find(&named_g_server->viewlist,
+					   view->name, view->rdclass, &pview);
+		if (result == ISC_R_NOTFOUND) {
+			return ISC_R_SUCCESS;
+		}
+		CHECK(result);
+		pview_must_detach = true;
+	}
+
+	CFG_LIST_FOREACH(zones, element) {
+		const cfg_obj_t *obj = cfg_listelt_value(element);
+		const char *name =
+			cfg_obj_asstring(cfg_tuple_get(obj, "zone name"));
+		dns_fixedname_t fixed;
+		dns_name_t *origin = dns_fixedname_initname(&fixed);
+		CHECK(dns_name_fromstring(origin, name, dns_rootname, 0, NULL));
+		dns_catz_zone_t *catz = dns_catz_zone_get(view->catzs, origin);
+		INSIST(catz != NULL);
+		catz_reconfig_data_t data = {
+			.catz = catz,
+			.config = config,
+			.cbd = dns_catz_zones_get_udata(view->catzs),
+			.pview = pview,
+		};
+
+		dns_catz_zone_prereconfig(catz);
+		dns_catz_zone_for_each_entry2(catz, catz_changeview, view,
+					      &data);
+		dns_catz_zone_for_each_entry2(catz, catz_reconfigure, view,
+					      &data);
+		dns_catz_zone_postreconfig(catz);
+	}
+
+cleanup:
+	if (pview_must_detach) {
+		dns_view_detach(&pview);
+	}
 	return result;
 }
 
@@ -3945,6 +4010,12 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	 * runs.
 	 */
 	CHECK(configure_newzones(view, config, vconfig, aclctx, kasplist));
+
+	if (catz_configured) {
+		obj = NULL;
+		CHECK(named_config_get(maps, "catalog-zones", &obj));
+		CHECK(configure_catz_members(view, NULL, config, obj));
+	}
 
 	/*
 	 * Create Dynamically Loadable Zone driver.
@@ -5519,6 +5590,10 @@ cleanup:
 				 */
 				result2 = configure_catz(pview, view, config,
 							 obj);
+				if (result2 == ISC_R_SUCCESS) {
+					result2 = configure_catz_members(
+						pview, view, config, obj);
+				}
 				if (result2 != ISC_R_SUCCESS) {
 					isc_log_write(NAMED_LOGCATEGORY_GENERAL,
 						      NAMED_LOGMODULE_SERVER,
@@ -6241,6 +6316,8 @@ configure_zone(const cfg_obj_t *config, const cfg_obj_t *zconfig,
 	 * only possible if all of these are true:
 	 *   - The zone's view exists
 	 *   - A zone with the right name exists in the view
+	 *   - The zone's catalog versus local ownership is unchanged, or this
+	 *     is an in-place modification
 	 *   - The zone is compatible with the config
 	 *     options (e.g., an existing primary zone cannot
 	 *     be reused if the options specify a secondary zone)
@@ -6262,7 +6339,9 @@ configure_zone(const cfg_obj_t *config, const cfg_obj_t *zconfig,
 	}
 
 	if (zone != NULL &&
-	    !named_zone_reusable(zone, zconfig, vconfig, config, kasplist))
+	    ((!modify &&
+	      (dns_zone_get_parentcatz(zone) != NULL) != is_catz_member) ||
+	     !named_zone_reusable(zone, zconfig, vconfig, config, kasplist)))
 	{
 		dns_zone_detach(&zone);
 		fullsign = true;
