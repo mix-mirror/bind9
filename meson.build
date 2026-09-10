@@ -272,7 +272,7 @@ add_project_arguments(sys_defines, language: 'c')
 
 ### Sanitizer
 asan_options = 'abort_on_error=1:disable_coredump=0:unmap_shadow_on_exit=1:detect_odr_violation=0'
-tsan_options = 'disable_coredump=0:second_deadlock_stack=1:atexit_sleep_ms=1000:history_size=7:log_exe_name=true:log_path=tsan'
+tsan_options = 'disable_coredump=0:second_deadlock_stack=1:atexit_sleep_ms=1000:history_size=7:log_exe_name=true:log_path=tsan:verbosity=3'
 ubsan_options = 'halt_on_error=1:abort_on_error=1:disable_coredump=0'
 
 # Refer to sanitize.c.in for the justification
