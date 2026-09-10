@@ -28,6 +28,7 @@ pytest.register_assert_rewrite("isctest")
 from isctest.vars.build import SYSTEM_TEST_DIR_GIT_PATH
 
 import isctest
+import isctest.tools.testsock
 
 # pylint: enable=wrong-import-position
 
@@ -586,11 +587,9 @@ def system_test(
 
     def check_net_interfaces():
         try:
-            isctest.run.perl(
-                f"{os.environ['srcdir']}/testsock.pl", ["-p", os.environ["PORT"]]
-            )
-        except subprocess.CalledProcessError as exc:
-            isctest.log.error("testsock.pl: exited with code %d", exc.returncode)
+            isctest.tools.testsock.check_interfaces(int(os.environ["PORT"]))
+        except OSError as exc:
+            isctest.log.error("testsock: %s", exc)
             pytest.skip("Network interface aliases not set up.")
 
     def setup_test():
