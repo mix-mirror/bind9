@@ -2690,7 +2690,11 @@ cfg_parse_mapbody(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 			CHECK(cfg_parse_obj(pctx, clause->type, &parsed));
 
 			if ((clause->flags & CFG_CLAUSEFLAG_CHDIR) != 0) {
-				CHECK(change_directory(parsed));
+				result = change_directory(parsed);
+				if (result != ISC_R_SUCCESS) {
+					cfg_obj_detach(&parsed);
+					goto cleanup;
+				}
 			}
 
 			map_insert(&obj->value.map, isc_g_mctx, clause->name,

@@ -342,6 +342,22 @@ view \"_bind\" chaos {\n\
 	cfg_obj_detach(&clone);
 }
 
+ISC_RUN_TEST_IMPL(parse_directory_failure) {
+	const char text[] = "options { directory \"/dev/null/isccfg-test\"; };";
+	isc_buffer_t buf;
+	cfg_obj_t *conf = NULL;
+	isc_result_t result;
+
+	/* /dev/null is not a directory, so this path cannot exist. */
+	isc_buffer_constinit(&buf, text, sizeof(text) - 1);
+	isc_buffer_add(&buf, sizeof(text) - 1);
+	result = cfg_parse_buffer(&buf, "directory-test", 0,
+				  &cfg_type_namedconf, 0, &conf);
+	assert_int_not_equal(result, ISC_R_SUCCESS);
+	assert_null(conf);
+	/* The test teardown also checks for leaked memory. */
+}
+
 static const cfg_clausedef_t *const empty_clausesets[] = { NULL };
 
 static cfg_type_t cfg_type_empty_map = {
@@ -358,6 +374,7 @@ ISC_TEST_LIST_START
 
 ISC_TEST_ENTRY(addzoneconf)
 ISC_TEST_ENTRY(parse_buffer)
+ISC_TEST_ENTRY(parse_directory_failure)
 ISC_TEST_ENTRY(parse_nulbyte)
 ISC_TEST_ENTRY(cfg_map_firstclause)
 ISC_TEST_ENTRY(cfg_map_nextclause)
