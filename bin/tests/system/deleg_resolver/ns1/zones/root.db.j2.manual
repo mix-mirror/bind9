@@ -1,12 +1,13 @@
-$TTL 300	; 5 minutes
-@			IN SOA	mname1. . (
-				2000042407 ; serial
-				20	   ; refresh (20 seconds)
-				20	   ; retry (20 seconds)
-				1814400	   ; expire (3 weeks)
-				3600	   ; minimum (1 hour)
-				)
-			NS	a.root-servers.nil.
+$TTL 300
+.			IN SOA	. a.root.servers.nil. (
+				2000042100	; serial
+				600		; refresh
+				600		; retry
+				1200		; expire
+				600		; minimum
+)
+
+.			NS	a.root-servers.nil.
 a.root-servers.nil.	A	10.53.0.1
 
 ; Force glue in the priming reponse. The actual NS name is meaningless,
@@ -62,3 +63,8 @@ delegparam2		DELEG	include-delegparam=youwontfindme.delegonly
 ; delegparam with few wrong addresses, but one valid, the resolver eventually
 ; succeed.
 delegparam3		DELEG	include-delegparam=youwontfindme.delegonly,meneither.delegonly,param.delegips,iamsuchmessy.delegonly
+
+; signed DELEG delegation
+delegsigned.		DELEG	server-ipv4=10.53.0.4
+
+

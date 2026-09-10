@@ -996,6 +996,7 @@ typedef struct respctx {
 	dns_name_t *ns_name;	     /* NS name */
 	dns_rdataset_t *ns_rdataset; /* NS rdataset */
 	dns_rdataset_t *deleg_rdataset;
+	bool hasdelegsig;
 
 	dns_name_t *soa_name; /* SOA name in a negative answer */
 
@@ -1099,6 +1100,9 @@ rctx_timedout(respctx_t *rctx);
 
 static isc_result_t
 rctx_ncache(respctx_t *rctx);
+
+static isc_result_t
+cache_deleg(dns_view_t *view, dns_name_t *zonecut, dns_rdataset_t *rdataset);
 
 /*%
  * Increment resolver-related statistics counters.
@@ -6171,6 +6175,14 @@ validated(void *arg) {
 	}
 
 	/*
+	 * The validated record is DELEG, let's add it in the delegdb
+	 */
+	if (val->rdataset->type == dns_rdatatype_deleg) {
+		fprintf(stderr, "colin validated deleg\n");
+		cache_deleg(val->view, val->name, val->rdataset);
+	}
+
+	/*
 	 * The data was already cached as pending. Re-cache it as secure.
 	 */
 	result = cache_rrset(fctx, now, val->name, val->rdataset,
@@ -6489,9 +6501,21 @@ rctx_cache_secure(respctx_t *rctx, dns_message_t *message, dns_name_t *name,
 			 * caching first and having to remember which
 			 * rdatasets needed validation.
 			 */
+			fprintf(stderr,
+				"COLIN valcreate inside cache_secure\n");
 			valcreate(fctx, message, query->addrinfo, name,
 				  rdataset->type, rdataset, sigrdataset);
 		}
+	} else if (rdataset->type == dns_rdatatype_deleg && rctx->hasdelegsig) {
+		/*
+		 * This is a signed DELEG that needs to be validated.
+		 * TODO: it's unclear if there is any benefit to postponing the
+		 * validator?
+		 */
+		INSIST(rctx->vrdataset == NULL && rctx->vsigrdataset == NULL);
+		rctx->vrdataset = rdataset;
+		rctx->vsigrdataset = sigrdataset;
+		fprintf(stderr, "COLIN will valcreate for DELEG\n");
 	} else {
 		if (ANSWER(rdataset)) {
 			/*
@@ -6585,6 +6609,7 @@ rctx_cachename(respctx_t *rctx, dns_message_t *message, dns_name_t *name) {
 	bool need_validation = secure_domain &&
 			       ((fctx->options & DNS_FETCHOPT_NOVALIDATE) == 0);
 
+	fprintf(stderr, "COLIN need_validation=%d\n", need_validation);
 	/*
 	 * Find or create the cache node.
 	 */
@@ -6629,6 +6654,11 @@ rctx_cachename(respctx_t *rctx, dns_message_t *message, dns_name_t *name) {
 			result = rctx_cache_secure(rctx, message, name, node,
 						   rdataset, sigrdataset,
 						   need_validation);
+
+			char namestr[DNS_NAME_FORMATSIZE];
+			dns_name_format(name, namestr, sizeof(namestr));
+			fprintf(stderr, "COLIN cache_secure=%s %s\n",
+				isc_result_totext(result), namestr);
 		} else {
 			/* Insecure domain or glue: cache the data now. */
 			result = rctx_cache_insecure(rctx, message, name, node,
@@ -6648,6 +6678,9 @@ rctx_cachename(respctx_t *rctx, dns_message_t *message, dns_name_t *name) {
 			INSIST(dns_rdatatype_isalias(vtype));
 		}
 
+		char namestr[DNS_NAME_FORMATSIZE];
+		dns_name_format(name, namestr, sizeof(namestr));
+		fprintf(stderr, "COLIN valcreate for %s\n", namestr);
 		valcreate(fctx, message, query->addrinfo, name, vtype,
 			  rctx->vrdataset, rctx->vsigrdataset);
 		rctx->vrdataset = NULL;
@@ -7204,22 +7237,19 @@ cache_delegns(fetchctx_t *fctx, const dns_name_t *name, dns_rdataset_t *nsset,
 }
 
 static isc_result_t
-cache_deleg(respctx_t *rctx) {
+cache_deleg(dns_view_t *view, dns_name_t *zonecut, dns_rdataset_t *rdataset) {
 	isc_result_t result = ISC_R_SUCCESS;
-	fetchctx_t *fctx = rctx->fctx;
-	dns_delegdb_t *delegdb = fctx->res->view->deleg;
+	dns_delegdb_t *delegdb = view->deleg;
 	dns_delegset_t *delegset = NULL;
-	dns_ttl_t ttl = rctx->deleg_rdataset->ttl;
-	dns_view_t *view = fctx->res->view;
+	dns_ttl_t ttl = rdataset->ttl;
 	size_t max_servers = view->max_delegation_servers;
 
-	FCTXTRACE("cache_deleg");
+	/* TODO log saying it caches DELEG */
 
-	dns_delegset_fromrdataset(view->deleg, rctx->deleg_rdataset,
-				  max_servers, &delegset);
+	dns_delegset_fromrdataset(view->deleg, rdataset, max_servers,
+				  &delegset);
 	if (!ISC_LIST_EMPTY(delegset->delegs)) {
-		result = dns_delegset_insert(delegdb, rctx->ns_name, ttl,
-					     delegset);
+		result = dns_delegset_insert(delegdb, zonecut, ttl, delegset);
 	}
 	dns_delegset_detach(&delegset);
 
@@ -8328,6 +8358,7 @@ resquery_response_continue(void *arg, isc_result_t result) {
 			 * With NOFOLLOW we want to pass return
 			 * DNS_R_DELEGATION to resume_qmin.
 			 */
+			fprintf(stderr, "COLIN DELEGATION(1)\n");
 			if ((fctx->options & DNS_FETCHOPT_NOFOLLOW) == 0) {
 				result = ISC_R_SUCCESS;
 			}
@@ -8404,6 +8435,13 @@ resquery_response_continue(void *arg, isc_result_t result) {
 	isc_result_t nresult = rctx_ncache(rctx);
 	if (nresult != ISC_R_SUCCESS) {
 		result = nresult;
+	}
+
+	if (result == DNS_R_DELEGATION && rctx->hasdelegsig) {
+		/*
+		 * Put the fetch on hold until the DELEG is validated.
+		 */
+		result = ISC_R_SUCCESS;
 	}
 
 	FCTXTRACE("resquery_response done");
@@ -8853,6 +8891,7 @@ rctx_answer(respctx_t *rctx) {
 			 * With NOFOLLOW we want to return DNS_R_DELEGATION to
 			 * resume_qmin.
 			 */
+			fprintf(stderr, "COLIN DELEGATION (2)\n");
 			if ((rctx->fctx->options & DNS_FETCHOPT_NOFOLLOW) != 0)
 			{
 				return result;
@@ -9534,8 +9573,24 @@ authority_deleg_ns(respctx_t *rctx, dns_name_t *zonecut,
 		rctx->ns_rdataset = rdataset;
 		break;
 	case dns_rdatatype_deleg:
-		INSIST(rctx->deleg_rdataset == NULL);
-		rctx->deleg_rdataset = rdataset;
+		if (rdataset->type == dns_rdatatype_deleg) {
+			INSIST(rctx->deleg_rdataset == NULL);
+			rctx->deleg_rdataset = rdataset;
+		} else {
+			rctx->hasdelegsig = true;
+		}
+
+		zonecut->attributes.cache = true;
+		rdataset->attributes.cache = true;
+
+		if (rctx->aa) {
+			rdataset->trust = dns_trust_authauthority;
+		} else if (ISFORWARDER(fctx->addrinfo)) {
+			rdataset->trust = dns_trust_answer;
+		} else {
+			rdataset->trust = dns_trust_additional;
+		}
+
 		break;
 	default:
 		UNREACHABLE();
@@ -9572,6 +9627,7 @@ rctx_authority_negative(respctx_t *rctx) {
 				type = rdataset->covers;
 			}
 			if ((type == dns_rdatatype_ns ||
+			     type == dns_rdatatype_deleg ||
 			     type == dns_rdatatype_soa) &&
 			    !dns_name_issubdomain(fctx->name, name))
 			{
@@ -9638,6 +9694,9 @@ rctx_authority_negative(respctx_t *rctx) {
  *
  * Scan the authority section of a negative answer or referral,
  * handling DNSSEC records (i.e. NSEC, NSEC3, DS).
+ *
+ * TODO: this is confusing. Why not doing all in one go (in the same
+ * `rctx_authority_negative()` function where we parse SOA, NS and DELEG...)
  */
 static isc_result_t
 rctx_authority_dnssec(respctx_t *rctx) {
@@ -9800,19 +9859,21 @@ rctx_referral(respctx_t *rctx) {
 	}
 
 	/*
-	 * TODO: Add DNSSEC-validation support for DELEG-based delegation.
-	 *
-	 * An NS-based delegation can be cached immediately (i.e. there is no
-	 * DNSSEC validation).
+	 * A DELEG-based delegation is added to the delegdb
+	 * immediately only if unsecure. Otherwise, it has to be
+	 * validated. An NS-based delegation can be cached
+	 * immediately (as there is no DNSSEC validation).
 	 */
-	if (rctx->deleg_rdataset != NULL) {
-		result = cache_deleg(rctx);
+	if (rctx->deleg_rdataset != NULL && !rctx->hasdelegsig) {
+		result = cache_deleg(rctx->fctx->res->view, rctx->ns_name,
+				     rctx->deleg_rdataset);
 	} else if (rctx->ns_rdataset != NULL) {
 		result = cache_delegns(rctx->fctx, rctx->ns_name,
 				       rctx->ns_rdataset,
 				       rctx->query->rmessage);
 	} else {
-		UNREACHABLE();
+		INSIST(rctx->hasdelegsig);
+		result = ISC_R_SUCCESS;
 	}
 
 	/*

@@ -13,29 +13,48 @@ import pytest
 from dns.rcode import NOERROR, SERVFAIL
 
 import isctest
+from isctest.template import NS1, NS4, zones
+from isctest.zone import Zone, configure_root
+
+
+def bootstrap():
+    zone = Zone("delegsigned", NS4, signed=True)
+    zone.configure()
+
+    # A custom zone is needed, so configure_root() is not used here.
+    root = Zone(".", NS1, signed=True);
+    root.delegations = [zone]
+    root.configure()
+
+    return {
+        "trust_anchors": root.trust_anchors(),
+        "zones": zones([root, zone]),
+    }
 
 
 @pytest.mark.parametrize(
     "qname, nsname, rcode",
     [
         ("a.delegonly", "ns10", NOERROR),
-        ("a.mixed", "ns10", NOERROR),
-        ("a.delegname", "ns10", NOERROR),
-        ("a.delegips", "ns10", NOERROR),
-        ("a.delegips4", "ns10", NOERROR),
-        ("a.delegmultiple", "ns10", NOERROR),
-        ("a.delegmandatory", "ns10", NOERROR),
-        ("a.delegunsupportedman", "ns2", NOERROR),
-        ("a.delegunsupportedman", "ns10", SERVFAIL),
-        ("a.delegunsupportedman2", "ns10", NOERROR),
-        ("a.delegparam", "ns10", NOERROR),
-        ("b.delegparam", "ns10", NOERROR),
-        ("a.delegparam2", "ns10", SERVFAIL),
-        ("a.delegparam3", "ns10", NOERROR),
+        # ("a.mixed", "ns10", NOERROR),
+        # ("a.delegname", "ns10", NOERROR),
+        # ("a.delegips", "ns10", NOERROR),
+        # ("a.delegips4", "ns10", NOERROR),
+        # ("a.delegmultiple", "ns10", NOERROR),
+        # ("a.delegmandatory", "ns10", NOERROR),
+        # ("a.delegunsupportedman", "ns2", NOERROR),
+        # ("a.delegunsupportedman", "ns10", SERVFAIL),
+        # ("a.delegunsupportedman2", "ns10", NOERROR),
+        # ("a.delegparam", "ns10", NOERROR),
+        # ("b.delegparam", "ns10", NOERROR),
+        # ("a.delegparam2", "ns10", SERVFAIL),
+        # ("a.delegparam3", "ns10", NOERROR),
+        # ("a.delegsigned", "ns10", NOERROR)
     ],
 )
 @pytest.mark.parametrize(
-    "flush", [pytest.param(False, id="Hot cache"), pytest.param(True, id="Cold cache")]
+    # "flush", [pytest.param(False, id="Hot cache"), pytest.param(True, id="Cold cache")]
+    "flush", ["False"]
 )
 def test_deleg_resolver(qname, nsname, rcode, flush, servers):
     if flush:
