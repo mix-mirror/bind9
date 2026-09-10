@@ -1,0 +1,30 @@
+#!/bin/sh
+#
+# Copyright (C) Internet Systems Consortium, Inc. ("ISC")
+#
+# SPDX-License-Identifier: MPL-2.0
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0.  If a copy of the MPL was not distributed with this
+# file, you can obtain one at https://mozilla.org/MPL/2.0/.
+#
+# See the COPYRIGHT file distributed with this work for additional
+# information regarding copyright ownership.
+
+# The sanitizer runtimes send the symbolizer's stderr to /dev/null, so when
+# one stops answering -- "WARNING: Can't read from symbolizer at fd N",
+# followed by four failed restarts and unsymbolized frames -- there is
+# nothing left to diagnose it with.  Keep that stderr instead.
+#
+# The runtime checks the basename of the path it is given, not the binary,
+# so it accepts this wrapper in place of the real symbolizer.  Point
+# TSAN_SYMBOLIZER_PATH here and name the real one in SYMBOLIZER_REAL_PATH.
+
+set -e
+
+: "${SYMBOLIZER_REAL_PATH:?not set; see ci/symbolizer-shim/llvm-symbolizer}"
+
+dir="${SYMBOLIZER_STDERR_DIR:-/tmp}"
+mkdir -p "$dir" 2>/dev/null || dir=/tmp
+
+exec "${SYMBOLIZER_REAL_PATH}" "$@" 2>>"${dir}/llvm-symbolizer.$$.err"

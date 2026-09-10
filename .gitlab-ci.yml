@@ -34,6 +34,13 @@ variables:
   TSAN_SYMBOLIZER_PATH_DEBIAN: "${LLVM_SYMBOLIZER}"
   TSAN_SYMBOLIZER_PATH_FEDORA: "/usr/bin/llvm-symbolizer"
 
+  # Run the symbolizer through a wrapper that keeps its stderr; see
+  # ci/symbolizer-shim/llvm-symbolizer.  Do not add the output directory to
+  # .gitignore: "artifacts: untracked" skips ignored files, so the logs would
+  # never be uploaded.
+  SYMBOLIZER_SHIM: "${CI_PROJECT_DIR}/ci/symbolizer-shim/llvm-symbolizer"
+  SYMBOLIZER_STDERR_DIR: "${CI_PROJECT_DIR}/symbolizer-stderr"
+
   # Per-job meson machine files, layered after ci/common.ini by the .configure
   # template.  Each build job overrides this with its overlay(s); see ci/*.ini.
   EXTRA_SETUP_FILES: ""
@@ -1656,7 +1663,8 @@ gcc:tsan:
 
 system:gcc:tsan:
   variables:
-    TSAN_SYMBOLIZER_PATH: "${TSAN_SYMBOLIZER_PATH_FEDORA}"
+    SYMBOLIZER_REAL_PATH: "${TSAN_SYMBOLIZER_PATH_FEDORA}"
+    TSAN_SYMBOLIZER_PATH: "${SYMBOLIZER_SHIM}"
   <<: *tsan_fedora_44_amd64_image
   <<: *system_test_tsan_job
   <<: *extra_system_tests_triggering_rules
@@ -1666,7 +1674,8 @@ system:gcc:tsan:
 
 unit:gcc:tsan:
   variables:
-    TSAN_SYMBOLIZER_PATH: "${TSAN_SYMBOLIZER_PATH_FEDORA}"
+    SYMBOLIZER_REAL_PATH: "${TSAN_SYMBOLIZER_PATH_FEDORA}"
+    TSAN_SYMBOLIZER_PATH: "${SYMBOLIZER_SHIM}"
   <<: *tsan_fedora_44_amd64_image
   <<: *unit_test_tsan_job
   <<: *api_pipelines_schedules_tags_triggers_web_triggering_rules
@@ -1682,7 +1691,8 @@ clang:tsan:
 
 system:clang:tsan:
   variables:
-    TSAN_SYMBOLIZER_PATH: "${TSAN_SYMBOLIZER_PATH_DEBIAN}"
+    SYMBOLIZER_REAL_PATH: "${TSAN_SYMBOLIZER_PATH_DEBIAN}"
+    TSAN_SYMBOLIZER_PATH: "${SYMBOLIZER_SHIM}"
   <<: *tsan_debian_trixie_amd64_image
   <<: *system_test_tsan_job
   needs:
@@ -1691,7 +1701,8 @@ system:clang:tsan:
 
 unit:clang:tsan:
   variables:
-    TSAN_SYMBOLIZER_PATH: "${TSAN_SYMBOLIZER_PATH_DEBIAN}"
+    SYMBOLIZER_REAL_PATH: "${TSAN_SYMBOLIZER_PATH_DEBIAN}"
+    TSAN_SYMBOLIZER_PATH: "${SYMBOLIZER_SHIM}"
   <<: *tsan_debian_trixie_amd64_image
   <<: *unit_test_tsan_job
   needs:
@@ -2353,7 +2364,8 @@ respdiff:tsan:
   variables:
     EXTRA_SETUP_FILES: "--native-file ci/tsan.ini --native-file ci/clang-trixie.ini --native-file ci/clang-sanitizer.ini"
     MAX_DISAGREEMENTS_PERCENTAGE: "0.3"
-    TSAN_SYMBOLIZER_PATH: "${TSAN_SYMBOLIZER_PATH_DEBIAN}"
+    SYMBOLIZER_REAL_PATH: "${TSAN_SYMBOLIZER_PATH_DEBIAN}"
+    TSAN_SYMBOLIZER_PATH: "${SYMBOLIZER_SHIM}"
   script:
     - bash respdiff.sh -s named -q "${PWD}/100k_mixed.txt" -c 3 -w "${PWD}/rspworkdir" -r "${PWD}/respdiff" "${CI_PROJECT_DIR}" "/usr/local/respdiff-reference-bind/sbin/named"
     - cd ../.. && ninja -C build clean >/dev/null 2>&1
