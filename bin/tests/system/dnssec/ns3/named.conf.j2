@@ -202,6 +202,7 @@ zone "dnskey-unknown.example" {
 zone "dnskey-163-unknown.example" {
 	type primary;
 	file "dnskey-163-unknown.example.db.signed";
+	check-zonemd no; /* no supported algorithm */
 };
 
 zone "digest-alg-unsupported.example" {
