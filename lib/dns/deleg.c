@@ -393,11 +393,10 @@ dns_delegset_allocset(dns_delegdb_t *delegdb, dns_delegset_t **delegsetp) {
 
 	dns_delegset_t *delegset = isc_mem_get(delegdb->mctx,
 					       sizeof(*delegset));
-	*delegset = (dns_delegset_t){
-		.magic = DNS_DELEGSET_MAGIC,
-		.references = ISC_REFCOUNT_INITIALIZER(1),
-		.delegs = ISC_LIST_INITIALIZER,
-	};
+	*delegset = (dns_delegset_t){ .magic = DNS_DELEGSET_MAGIC,
+				      .references = ISC_REFCOUNT_INITIALIZER(1),
+				      .delegs = ISC_LIST_INITIALIZER,
+				      .trust = dns_trust_glue };
 	isc_mem_attach(delegdb->mctx, &delegset->mctx);
 
 	*delegsetp = delegset;
@@ -1157,6 +1156,7 @@ dns_delegset_copy(dns_delegset_t *src, dns_delegdb_t *db,
 	dns_delegset_allocset(db, &delegset);
 	delegset->staticstub = src->staticstub;
 	delegset->expires = src->expires;
+	delegset->trust = src->trust;
 
 	ISC_LIST_FOREACH(src->delegs, srcdeleg, link) {
 		dns_deleg_t *deleg = NULL;

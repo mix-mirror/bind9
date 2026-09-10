@@ -102,6 +102,16 @@ struct dns_delegset {
 	 * Used only when a delegation is built from a local zone.
 	 */
 	bool staticstub;
+
+	/*
+	 * Indicates the DNSSEC validation status of the delegset:
+	 *
+	 * - `dns_trust_glue`: insecure delegation
+	 * - `dns_pending_additional`: secure delegation which is currently
+	 *   being validated
+	 * - `dns_trust_secure` (or above): this is validated by DNSSEC.
+	 */
+	uint8_t trust;
 };
 ISC_REFCOUNT_DECL(dns_delegset);
 

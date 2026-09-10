@@ -1,14 +1,7 @@
-$TTL 300	; 5 minutes
-@			IN SOA	mname1. . (
-				2000042407 ; serial
-				20	   ; refresh (20 seconds)
-				20	   ; retry (20 seconds)
-				1814400	   ; expire (3 weeks)
-				3600	   ; minimum (1 hour)
-				)
-			NS	a.root-servers.nil.
-a.root-servers.nil.	A	10.53.0.1
+{% include '_common/zones/soa.partial.db.j2' %}
+{% include '_common/zones/ns.partial.db.j2' %}
 
+{% raw %}
 ; A DELEG-delegated subdomain
 delegonly		DELEG	server-ipv4=10.53.0.2
 
@@ -58,3 +51,4 @@ delegparam2		DELEG	include-delegparam=youwontfindme.delegonly
 ; delegparam with few wrong addresses, but one valid, the resolver eventually
 ; succeed.
 delegparam3		DELEG	include-delegparam=youwontfindme.delegonly,meneither.delegonly,param.delegips,iamsuchmessy.delegonly
+{% endraw %}

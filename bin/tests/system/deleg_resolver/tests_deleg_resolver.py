@@ -13,6 +13,19 @@ import pytest
 from dns.rcode import NOERROR, SERVFAIL
 
 import isctest
+from isctest.template import NS4, zones
+from isctest.zone import Zone, configure_root
+
+
+def bootstrap():
+    zone = Zone("delegsigned", NS4, signed=True)
+    zone.configure()
+    root = configure_root([zone])
+
+    return {
+        "trust_anchors": root.trust_anchors(),
+        "zones": zones([root, zone]),
+    }
 
 
 @pytest.mark.parametrize(
