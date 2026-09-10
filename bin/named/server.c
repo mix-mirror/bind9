@@ -2192,7 +2192,7 @@ static void
 catz_addmodzone_cb(void *arg) {
 	catz_chgzone_t *cz = (catz_chgzone_t *)arg;
 	isc_result_t result;
-	dns_forwarders_t *dnsforwarders = NULL;
+	dns_fwdpolicy_t fwdpolicy = dns_fwdpolicy_none;
 	dns_name_t *name = NULL;
 	isc_buffer_t namebuf;
 	isc_buffer_t *confbuf = NULL;
@@ -2213,10 +2213,8 @@ catz_addmodzone_cb(void *arg) {
 	dns_name_totext(name, DNS_NAME_OMITFINALDOT, &namebuf);
 	isc_buffer_putuint8(&namebuf, 0);
 
-	result = dns_fwdtable_find(view->fwdtable, name, &dnsforwarders);
-	if (result == ISC_R_SUCCESS &&
-	    dnsforwarders->fwdpolicy == dns_fwdpolicy_only)
-	{
+	result = dns_fwdtable_covers(view->fwdtable, name, NULL, &fwdpolicy);
+	if (result == ISC_R_SUCCESS && fwdpolicy == dns_fwdpolicy_only) {
 		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
 			      ISC_LOG_WARNING,
 			      "catz: catz_addmodzone_cb: "
@@ -2397,9 +2395,6 @@ cleanup:
 	if (zoneconf != NULL) {
 		cfg_obj_detach(&zoneconf);
 	}
-	if (dnsforwarders != NULL) {
-		dns_forwarders_detach(&dnsforwarders);
-	}
 	dns_catz_entry_detach(cz->origin, &cz->entry);
 	dns_catz_zone_detach(&cz->origin);
 	dns_view_weakdetach(&view);
@@ -2545,19 +2540,17 @@ catz_changeview(dns_catz_entry_t *entry, void *arg1, void *arg2) {
 	dns_view_t *view = arg1;
 	catz_reconfig_data_t *data = arg2;
 	dns_zone_t *zone = NULL;
-	dns_forwarders_t *forwarders = NULL;
+	dns_fwdpolicy_t fwdpolicy = dns_fwdpolicy_none;
 	dns_name_t *name = dns_catz_entry_getname(entry);
 
+	isc_result_t result;
+
 	/* Local zones and explicit forwarding take precedence. */
-	isc_result_t result = dns_view_findzone(view, name, DNS_ZTFIND_EXACT,
-						&zone);
-	if (result == ISC_R_SUCCESS) {
+	if (dns_view_containszone(view, name)) {
 		goto cleanup;
 	}
-	result = dns_fwdtable_find(view->fwdtable, name, &forwarders);
-	if (result == ISC_R_SUCCESS &&
-	    forwarders->fwdpolicy == dns_fwdpolicy_only)
-	{
+	result = dns_fwdtable_covers(view->fwdtable, name, NULL, &fwdpolicy);
+	if (result == ISC_R_SUCCESS && fwdpolicy == dns_fwdpolicy_only) {
 		goto cleanup;
 	}
 
@@ -2575,9 +2568,6 @@ catz_changeview(dns_catz_entry_t *entry, void *arg1, void *arg2) {
 cleanup:
 	if (zone != NULL) {
 		dns_zone_detach(&zone);
-	}
-	if (forwarders != NULL) {
-		dns_forwarders_detach(&forwarders);
 	}
 }
 
@@ -5304,7 +5294,6 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 		for (empty = empty_zones[empty_zone]; empty != NULL;
 		     empty = empty_zones[++empty_zone])
 		{
-			dns_forwarders_t *dnsforwarders = NULL;
 			dns_fwdpolicy_t fwdpolicy = dns_fwdpolicy_none;
 
 			/*
@@ -5321,10 +5310,7 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 			/*
 			 * This zone already exists.
 			 */
-			(void)dns_view_findzone(view, name, DNS_ZTFIND_EXACT,
-						&zone);
-			if (zone != NULL) {
-				dns_zone_detach(&zone);
+			if (dns_view_containszone(view, name)) {
 				continue;
 			}
 
@@ -5332,14 +5318,8 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 			 * If we would forward this name don't add a
 			 * empty zone for it.
 			 */
-			result = dns_fwdtable_find(view->fwdtable, name,
-						   &dnsforwarders);
-			if (result == ISC_R_SUCCESS ||
-			    result == DNS_R_PARTIALMATCH)
-			{
-				fwdpolicy = dnsforwarders->fwdpolicy;
-				dns_forwarders_detach(&dnsforwarders);
-			}
+			(void)dns_fwdtable_covers(view->fwdtable, name, NULL,
+						  &fwdpolicy);
 			if (fwdpolicy == dns_fwdpolicy_only) {
 				continue;
 			}
@@ -5411,31 +5391,21 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 		for (ipv4only_zone = 0; ipv4only_zone < ARRAY_SIZE(zones);
 		     ipv4only_zone++)
 		{
-			dns_forwarders_t *dnsforwarders = NULL;
 			dns_fwdpolicy_t fwdpolicy = dns_fwdpolicy_none;
 
 			CHECK(dns_name_fromstring(name,
 						  zones[ipv4only_zone].name,
 						  dns_rootname, 0, NULL));
 
-			(void)dns_view_findzone(view, name, DNS_ZTFIND_EXACT,
-						&zone);
-			if (zone != NULL) {
-				dns_zone_detach(&zone);
+			if (dns_view_containszone(view, name)) {
 				continue;
 			}
 
 			/*
 			 * If we would forward this name don't add it.
 			 */
-			result = dns_fwdtable_find(view->fwdtable, name,
-						   &dnsforwarders);
-			if (result == ISC_R_SUCCESS ||
-			    result == DNS_R_PARTIALMATCH)
-			{
-				fwdpolicy = dnsforwarders->fwdpolicy;
-				dns_forwarders_detach(&dnsforwarders);
-			}
+			(void)dns_fwdtable_covers(view->fwdtable, name, NULL,
+						  &fwdpolicy);
 			if (fwdpolicy == dns_fwdpolicy_only) {
 				continue;
 			}
