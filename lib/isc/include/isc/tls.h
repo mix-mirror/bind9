@@ -244,8 +244,7 @@ isc_tlsctx_enable_dot_server_alpn(isc_tlsctx_t *ctx);
 isc_result_t
 isc_tlsctx_enable_peer_verification(isc_tlsctx_t *ctx, const bool is_server,
 				    isc_tls_cert_store_t *store,
-				    const char		 *hostname,
-				    bool hostname_ignore_subject);
+				    const char		 *hostname);
 /*%<
  * Enable peer certificate and, optionally, hostname (for client contexts)
  * verification.
