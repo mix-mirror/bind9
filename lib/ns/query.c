@@ -7278,6 +7278,18 @@ query_addnoqnameproof(query_ctx_t *qctx) {
 
 	query_addrrset(qctx, &fname, &neg, &negsig, dbuf,
 		       DNS_SECTION_AUTHORITY);
+
+	/*
+	 * If the NSEC(3) RRset was already in the response - e.g. when an
+	 * ANY query returns multiple RRsets sharing one noqname proof -
+	 * query_addrrset() left the rdatasets untouched; put them back.
+	 */
+	if (neg != NULL) {
+		ns_client_putrdataset(client, &neg);
+	}
+	if (negsig != NULL) {
+		ns_client_putrdataset(client, &negsig);
+	}
 }
 
 static dns_name_t *
