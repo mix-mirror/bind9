@@ -351,7 +351,11 @@ isc_radix_insert(isc_radix_tree_t *radix, isc_radix_node_t **target,
 			node->node_num[ISC_RADIX_FAMILY(prefix)] = next;
 		}
 		*target = node;
-		return ISC_R_EXISTS;
+		/*
+		 * The node was glue until now, so the prefix is a new
+		 * entry, not a pre-existing one.
+		 */
+		return ISC_R_SUCCESS;
 	}
 
 	isc_radix_node_t *new_node = radix_node_create(radix->mctx, prefix,

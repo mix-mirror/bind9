@@ -88,9 +88,8 @@ static void
 iptable_merge_node(isc_radix_node_t *node, void *arg) {
 	iptable_merge_ctx_t *ctx = arg;
 	isc_radix_node_t *new_node = NULL;
-	isc_result_t result;
 
-	result = isc_radix_insert(ctx->tab->radix, &new_node, node, NULL);
+	isc_radix_insert(ctx->tab->radix, &new_node, node, NULL);
 
 	/*
 	 * If we're negating a nested ACL, e.g.,
@@ -101,16 +100,19 @@ iptable_merge_node(isc_radix_node_t *node, void *arg) {
 	 * because then negative nodes would become positive when
 	 * merged into the parent, allowing unwanted
 	 * addresses to match. Instead, we flip positive entries to
-	 * changed to negative, but leave negative entries unchanged.
+	 * negative, but leave negative entries unchanged.
 	 *
-	 * Note that if the prefix for this node is an exact match
-	 * to an existing prefix (in which case isc_radix_insert()
-	 * would have returned ISC_R_EXISTS), then we don't update
-	 * the existing node at all.
+	 * Only the entries this merge has added may be flipped; an
+	 * entry that already existed in the parent table keeps its
+	 * sense, so that a duplicate in the nested ACL can't reverse
+	 * it (first-match semantics). The two are told apart by their
+	 * node number: entries added by this merge are numbered above
+	 * num_added_node, which is not updated until the whole merge
+	 * has completed.
 	 */
 	for (size_t i = 0; i < RADIX_FAMILIES; i++) {
-		if (result == ISC_R_SUCCESS && ctx->negate &&
-		    node->match[i] == RADIX_ALLOW)
+		if (ctx->negate && new_node->match[i] == RADIX_ALLOW &&
+		    new_node->node_num[i] > ctx->tab->radix->num_added_node)
 		{
 			new_node->match[i] = RADIX_DENY;
 		}

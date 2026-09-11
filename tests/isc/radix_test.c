@@ -234,6 +234,39 @@ ISC_RUN_TEST_IMPL(radix_duplicate_insert) {
 	isc_radix_destroy(radix);
 }
 
+/*
+ * Inserting a prefix that lands exactly on a glue node must report a
+ * new entry (ISC_R_SUCCESS), not ISC_R_EXISTS: a glue node carries no
+ * prefix, so no matching prefix existed before the insertion.
+ */
+ISC_RUN_TEST_IMPL(radix_glue_insert) {
+	isc_result_t result;
+	isc_radix_tree_t *radix = NULL;
+	isc_radix_node_t *node = NULL;
+	isc_prefix_t pfx;
+
+	UNUSED(state);
+
+	isc_radix_create(isc_g_mctx, &radix, 128);
+
+	/*
+	 * These two hosts first differ in bit 24, so inserting them
+	 * creates a glue node at 192.0.2.0/24.
+	 */
+	result = insert_v4(radix, "192.0.2.10", 32, RADIX_ALLOW, NULL);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	result = insert_v4(radix, "192.0.2.200", 32, RADIX_ALLOW, NULL);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	/* The /24 lands on the glue node: a new entry, not a duplicate. */
+	prefix_from_str("192.0.2.0", 24, &pfx);
+	result = isc_radix_insert(radix, &node, NULL, &pfx);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	assert_int_equal(node->match[RADIX_V4], RADIX_UNSET);
+
+	isc_radix_destroy(radix);
+}
+
 /* IPv6 prefix insert and search. */
 ISC_RUN_TEST_IMPL(radix_ipv6) {
 	isc_radix_tree_t *radix = NULL;
@@ -383,6 +416,7 @@ ISC_TEST_ENTRY(radix_search_exact)
 ISC_TEST_ENTRY(radix_search_best_match)
 ISC_TEST_ENTRY(radix_first_match)
 ISC_TEST_ENTRY(radix_duplicate_insert)
+ISC_TEST_ENTRY(radix_glue_insert)
 ISC_TEST_ENTRY(radix_ipv6)
 ISC_TEST_ENTRY(radix_remove_leaf)
 ISC_TEST_ENTRY(radix_remove_internal)
