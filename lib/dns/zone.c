@@ -1026,6 +1026,19 @@ dns_zone_dbupdate_notify(dns_zone_t *zone, dns_db_t *db) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 	REQUIRE(db != NULL);
 
+	if (zone->rpz_num == DNS_RPZ_INVALID_NUM && zone->catzs == NULL) {
+		return;
+	}
+
+	/*
+	 * An IXFR can finish after the zone has expired and detached its
+	 * database.  Only publish changes to the currently installed database.
+	 */
+	ZONEDB_LOCK(&zone->dblock, isc_rwlocktype_read);
+	if (zone->db != db) {
+		goto unlock;
+	}
+
 	if (zone->rpz_num != DNS_RPZ_INVALID_NUM) {
 		REQUIRE(zone->rpzs != NULL);
 		(void)dns_rpz_dbupdate(zone->rpzs->zones[zone->rpz_num], db);
@@ -1033,6 +1046,9 @@ dns_zone_dbupdate_notify(dns_zone_t *zone, dns_db_t *db) {
 	if (zone->catzs != NULL) {
 		(void)dns_catz_dbupdate(zone->catzs, db);
 	}
+
+unlock:
+	ZONEDB_UNLOCK(&zone->dblock, isc_rwlocktype_read);
 }
 
 static void

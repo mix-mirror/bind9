@@ -828,8 +828,8 @@ dns_zone_dbupdate_notify(dns_zone_t *zone, dns_db_t *db);
  * Push the (new) contents of database 'db' to the RPZ summary database
  * and/or the catalog-zone subsystem, as appropriate for 'zone'.  Called by
  * the load and zone-transfer paths once a new database (version) is in
- * place.  Has no effect if 'zone' is neither a response-policy zone nor a
- * catalog zone.
+ * place.  Has no effect if 'db' is no longer installed in 'zone', or if
+ * 'zone' is neither a response-policy zone nor a catalog zone.
  *
  * Requires:
  *
