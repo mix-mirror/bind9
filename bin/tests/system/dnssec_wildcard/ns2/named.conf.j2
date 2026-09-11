@@ -20,4 +20,9 @@ zone "f043.test" {
 	server-addresses { 10.53.0.1; };
 };
 
+zone "noqname.test" {
+	type static-stub;
+	server-addresses { 10.53.0.1; };
+};
+
 {% include "_common/trusted.conf.j2" %}

@@ -1,0 +1,4 @@
+{% include "_common/zones/template.db.j2.manual" %}
+
+*	A	192.0.2.1
+*	TXT	"wildcard"
