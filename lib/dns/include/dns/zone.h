@@ -120,6 +120,14 @@ typedef enum {
 	DNS_ZONESTATE_AUTOMATIC,
 } dns_zonestate_t;
 
+isc_result_t
+dns_zone_forcemaint(dns_zone_t *zone);
+/* Reconsider the maintenance timer of a configured zone. */
+
+unsigned int
+dns_zone_getcount(dns_zone_t *zone, dns_zonestate_t state);
+/* Return this zone's contribution to a non-transfer status count. */
+
 #ifndef DNS_ZONE_MINREFRESH
 #define DNS_ZONE_MINREFRESH 300 /*%< 5 minutes */
 #endif				/* ifndef DNS_ZONE_MINREFRESH */

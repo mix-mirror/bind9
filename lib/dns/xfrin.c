@@ -1430,7 +1430,6 @@ xfrin_connect_done(isc_result_t eresult, isc_region_t *region ISC_ATTR_UNUSED,
 	char addrtext[ISC_SOCKADDR_FORMATSIZE];
 	char signerbuf[DNS_NAME_FORMATSIZE];
 	const char *signer = "", *sep = "";
-	dns_zonemgr_t *zmgr = NULL;
 	isc_result_t result;
 
 	REQUIRE(VALID_XFRIN(xfr));
@@ -1450,8 +1449,7 @@ xfrin_connect_done(isc_result_t eresult, isc_region_t *region ISC_ATTR_UNUSED,
 		goto cleanup;
 	}
 
-	zmgr = dns_zone_getmgr(xfr->zone);
-	if (zmgr != NULL) {
+	if (dns_zone_getloop(xfr->zone) != NULL) {
 		dns_view_t *view = dns_zone_getview(xfr->zone);
 		dns_unreachcache_remove(view->unreachcache, &xfr->primaryaddr,
 					&xfr->sourceaddr);
@@ -1489,8 +1487,7 @@ cleanup:
 		 * the server has a permanent networking error or
 		 * the connection attempt as timed out.
 		 */
-		zmgr = dns_zone_getmgr(xfr->zone);
-		if (zmgr != NULL) {
+		if (dns_zone_getloop(xfr->zone) != NULL) {
 			dns_view_t *view = dns_zone_getview(xfr->zone);
 			dns_unreachcache_add(view->unreachcache,
 					     &xfr->primaryaddr,
