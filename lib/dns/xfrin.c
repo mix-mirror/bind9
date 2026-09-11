@@ -290,7 +290,7 @@ axfr_init(dns_xfrin_t *xfr) {
 
 	CHECK(dns_zone_makedb(xfr->zone, &xfr->db));
 
-	dns_zone_rpz_enable_db(xfr->zone, xfr->db);
+	dns_zone_rpz_enable_db(xfr->zone);
 
 	dns_rdatacallbacks_init(&xfr->axfr);
 	CHECK(dns_db_beginload(xfr->db, &xfr->axfr));

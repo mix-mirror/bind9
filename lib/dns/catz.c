@@ -835,8 +835,7 @@ dns__catz_zones_merge(dns_catz_zone_t *catz, dns_catz_zone_t *newcatz) {
 			      zname, czname, isc_result_totext(result));
 	}
 
-	catz->entries = newcatz->entries;
-	newcatz->entries = NULL;
+	catz->entries = MOVE_OWNERSHIP(newcatz->entries);
 
 	/*
 	 * We do not need to merge old coo (change of ownership) permission

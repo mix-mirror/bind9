@@ -993,9 +993,7 @@ dns_zone_get_rpz_num(dns_zone_t *zone) {
  * dns_zone_dbupdate_notify().
  */
 void
-dns_zone_rpz_enable_db(dns_zone_t *zone, dns_db_t *db) {
-	UNUSED(db);
-
+dns_zone_rpz_enable_db(dns_zone_t *zone) {
 	if (zone->rpz_num == DNS_RPZ_INVALID_NUM) {
 		return;
 	}
@@ -1004,9 +1002,7 @@ dns_zone_rpz_enable_db(dns_zone_t *zone, dns_db_t *db) {
 }
 
 static void
-dns_zone_rpz_disable_db(dns_zone_t *zone, dns_db_t *db) {
-	UNUSED(db);
-
+dns_zone_rpz_disable_db(dns_zone_t *zone) {
 	if (zone->rpz_num == DNS_RPZ_INVALID_NUM) {
 		return;
 	}
@@ -1740,7 +1736,7 @@ zone_startload(dns_db_t *db, dns_zone_t *zone, isc_time_t loadtime) {
 		.loadtime = loadtime,
 	};
 
-	dns_zone_rpz_enable_db(zone, db);
+	dns_zone_rpz_enable_db(zone);
 
 	options = get_primary_options(zone);
 	if (DNS_ZONE_OPTION(zone, DNS_ZONEOPT_MANYERRORS)) {
@@ -1780,7 +1776,7 @@ zone_startload(dns_db_t *db, dns_zone_t *zone, isc_time_t loadtime) {
 
 cleanup:
 	if (result != ISC_R_SUCCESS && result != DNS_R_SEENINCLUDE) {
-		dns_zone_rpz_disable_db(zone, load->db);
+		dns_zone_rpz_disable_db(zone);
 	}
 
 	tresult = dns_db_endload(db, &load->callbacks);
@@ -4524,7 +4520,7 @@ zone_postload(dns_zone_t *zone, dns_db_t *db, isc_time_t loadtime,
 
 cleanup:
 	if (result != ISC_R_SUCCESS) {
-		dns_zone_rpz_disable_db(zone, db);
+		dns_zone_rpz_disable_db(zone);
 	}
 
 	ISC_LIST_FOREACH(zone->newincludes, inc, link) {
@@ -15420,7 +15416,7 @@ static void
 zone_detachdb(dns_zone_t *zone) {
 	REQUIRE(zone->db != NULL);
 
-	dns_zone_rpz_disable_db(zone, zone->db);
+	dns_zone_rpz_disable_db(zone);
 	dns_db_detach(&zone->db);
 }
 
@@ -15758,7 +15754,7 @@ zone_loaddone(void *arg, isc_result_t result) {
 	 * to calling the list of callbacks in the zone load structure.
 	 */
 	if (result != ISC_R_SUCCESS && result != DNS_R_SEENINCLUDE) {
-		dns_zone_rpz_disable_db(zone, load->db);
+		dns_zone_rpz_disable_db(zone);
 	}
 
 	tresult = dns_db_endload(load->db, &load->callbacks);
