@@ -428,7 +428,7 @@ dns_catz_zone_for_each_entry2(dns_catz_zone_t *catz, dns_catz_entry_cb2 cb,
  * Iterate on the catalog zone members, call 'cb' on each 'entry'.
  *
  * Requires:
- * \li	'catz' is a valid dns_catz_zones_t.
+ * \li	'catz' is a valid, locked dns_catz_zone_t.
  *
  */
 
