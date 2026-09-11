@@ -837,7 +837,8 @@ dns_view_flushnode(dns_view_t *view, const dns_name_t *name, bool tree);
  * Flush the given name from the view's cache (and optionally ADB/badcache).
  *
  * Flush the given name from the cache, ADB, and bad cache.  If 'tree'
- * is true, also flush all subdomains of 'name'.
+ * is true, also flush all subdomains of 'name'; flushing the tree at
+ * the root name is equivalent to dns_view_flushcache().
  *
  * Requires:
  *\li	'view' is valid.

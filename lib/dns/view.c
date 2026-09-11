@@ -1294,6 +1294,16 @@ dns_view_flushnode(dns_view_t *view, const dns_name_t *name, bool tree) {
 
 	REQUIRE(DNS_VIEW_VALID(view));
 
+	if (tree && dns_name_isroot(name)) {
+		/*
+		 * Flushing the tree at the root means flushing the whole
+		 * cache.  dns_cache_flushnode() cannot do that (the view
+		 * holds its own reference to the cache database), so it
+		 * has to be done at the view level.
+		 */
+		return dns_view_flushcache(view, false);
+	}
+
 	if (tree) {
 		rcu_read_lock();
 		adb = rcu_dereference(view->adb);
