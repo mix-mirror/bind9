@@ -29,3 +29,12 @@ zone "inexact" {
 	# negated nested ACL that matches but not exactly
 	allow-transfer { 10.53.0.1; !{ 10.53.0.0/16; }; };
 };
+
+zone "glue" {
+	type primary;
+	file "example.db";
+
+	# negated nested ACL whose prefix lands on the radix glue node
+	# created by the two host entries before it
+	allow-query { 10.53.0.1; 10.53.0.2; !{ 10.53.0.0/30; }; };
+};
