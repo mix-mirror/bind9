@@ -50,6 +50,7 @@
 #include <isc/nonce.h>
 #include <isc/parseint.h>
 #include <isc/portset.h>
+#include <isc/queue.h>
 #include <isc/refcount.h>
 #include <isc/result.h>
 #include <isc/signal.h>
@@ -310,7 +311,14 @@ ISC_REFCOUNT_STATIC_DECL(zoneload);
 
 typedef struct {
 	named_server_t *server;
+	isc_queue_t pending;
 } catz_cb_data_t;
+
+typedef enum {
+	CATZ_ADDZONE,
+	CATZ_MODZONE,
+	CATZ_DELZONE,
+} catz_type_t;
 
 typedef struct catz_chgzone {
 	isc_mem_t *mctx;
@@ -318,7 +326,8 @@ typedef struct catz_chgzone {
 	dns_catz_zone_t *origin;
 	dns_view_t *view;
 	catz_cb_data_t *cbd;
-	bool mod;
+	catz_type_t type;
+	isc_queue_node_t node;
 } catz_chgzone_t;
 
 typedef struct catz_reconfig_data {
@@ -326,12 +335,6 @@ typedef struct catz_reconfig_data {
 	const cfg_obj_t *config;
 	catz_cb_data_t *cbd;
 } catz_reconfig_data_t;
-
-typedef enum {
-	CATZ_ADDZONE,
-	CATZ_MODZONE,
-	CATZ_DELZONE,
-} catz_type_t;
 
 typedef enum {
 	MEMPROF_UNSUPPORTED = 0x00,
@@ -2197,8 +2200,15 @@ configure_rpz(dns_view_t *view, dns_view_t *pview, const cfg_obj_t *rpz_obj,
 }
 
 static void
-catz_addmodzone_cb(void *arg) {
-	catz_chgzone_t *cz = (catz_chgzone_t *)arg;
+catz_chgzone_destroy(catz_chgzone_t *cz) {
+	dns_catz_entry_detach(cz->origin, &cz->entry);
+	dns_catz_zone_detach(&cz->origin);
+	dns_view_weakdetach(&cz->view);
+	isc_mem_putanddetach(&cz->mctx, cz, sizeof(*cz));
+}
+
+static dns_zone_t *
+catz_addmodzone_configure(catz_chgzone_t *cz) {
 	isc_result_t result;
 	dns_forwarders_t *dnsforwarders = NULL;
 	dns_name_t *name = NULL;
@@ -2208,12 +2218,10 @@ catz_addmodzone_cb(void *arg) {
 	const cfg_obj_t *zlist = NULL;
 	cfg_obj_t *zoneconf = NULL;
 	cfg_obj_t *zoneobj = NULL;
-	dns_zone_t *zone = NULL;
+	dns_zone_t *zone = NULL, *configured = NULL;
 	dns_view_t *view = cz->view;
 
-	if (isc_loop_shuttingdown(isc_loop_get(isc_tid()))) {
-		goto cleanup;
-	}
+	REQUIRE(isc_loopmgr_paused());
 
 	name = dns_catz_entry_getname(cz->entry);
 
@@ -2236,7 +2244,7 @@ catz_addmodzone_cb(void *arg) {
 
 	result = dns_view_findzone(view, name, DNS_ZTFIND_EXACT, &zone);
 
-	if (cz->mod) {
+	if (cz->type == CATZ_MODZONE) {
 		dns_catz_zone_t *parentcatz;
 
 		if (result != ISC_R_SUCCESS) {
@@ -2346,15 +2354,13 @@ catz_addmodzone_cb(void *arg) {
 	zoneobj = cfg_listelt_value(cfg_list_first(zlist));
 
 	/* Mark view unfrozen so that zone can be added */
-	isc_loopmgr_pause();
 	dns_view_thaw(view);
 	result = configure_zone(
 		cz->cbd->server->effectiveconfig, zoneobj,
 		view->newzone.vconfig, view, &cz->cbd->server->viewlist,
 		&cz->cbd->server->kasplist, cz->cbd->server->aclctx, true,
-		false, true, cz->mod, NULL);
+		false, true, cz->type == CATZ_MODZONE, NULL);
 	dns_view_freeze(view);
-	isc_loopmgr_resume();
 
 	if (result != ISC_R_SUCCESS) {
 		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
@@ -2366,6 +2372,32 @@ catz_addmodzone_cb(void *arg) {
 
 	/* Is it there yet? */
 	CHECK(dns_view_findzone(view, name, DNS_ZTFIND_EXACT, &zone));
+
+	dns_zone_attach(zone, &configured);
+
+cleanup:
+	if (confbuf != NULL) {
+		isc_buffer_free(&confbuf);
+	}
+	if (zone != NULL) {
+		dns_zone_detach(&zone);
+	}
+	if (zoneconf != NULL) {
+		cfg_obj_detach(&zoneconf);
+	}
+	if (dnsforwarders != NULL) {
+		dns_forwarders_detach(&dnsforwarders);
+	}
+	return configured;
+}
+
+static void
+catz_addmodzone_finish(catz_chgzone_t *cz, dns_zone_t *zone) {
+	isc_result_t result;
+
+	if (zone == NULL) {
+		goto cleanup;
+	}
 
 	/*
 	 * Load the zone from the master file.	If this fails, we'll
@@ -2387,7 +2419,7 @@ catz_addmodzone_cb(void *arg) {
 		}
 
 		/* Remove the zone from the zone table */
-		dns_view_delzone(view, zone);
+		dns_view_delzone(cz->view, zone);
 		goto cleanup;
 	}
 
@@ -2396,38 +2428,45 @@ catz_addmodzone_cb(void *arg) {
 	dns_zone_set_parentcatz(zone, cz->origin);
 
 cleanup:
-	if (confbuf != NULL) {
-		isc_buffer_free(&confbuf);
-	}
 	if (zone != NULL) {
 		dns_zone_detach(&zone);
 	}
-	if (zoneconf != NULL) {
-		cfg_obj_detach(&zoneconf);
-	}
-	if (dnsforwarders != NULL) {
-		dns_forwarders_detach(&dnsforwarders);
-	}
-	dns_catz_entry_detach(cz->origin, &cz->entry);
-	dns_catz_zone_detach(&cz->origin);
-	dns_view_weakdetach(&view);
-	isc_mem_putanddetach(&cz->mctx, cz, sizeof(*cz));
+	catz_chgzone_destroy(cz);
 }
 
 static void
-catz_delzone_cb(void *arg) {
-	catz_chgzone_t *cz = (catz_chgzone_t *)arg;
+catz_addmodzone_cb_inner(catz_chgzone_t *cz) {
+	REQUIRE(isc_loopmgr_paused());
+
+	dns_zone_t *zone = catz_addmodzone_configure(cz);
+	catz_addmodzone_finish(cz, zone);
+}
+
+static void
+catz_addmodzone_cb(catz_chgzone_t *cz) {
+	dns_zone_t *zone = NULL;
+
+	if (isc_loop_shuttingdown(isc_loop())) {
+		catz_chgzone_destroy(cz);
+		return;
+	}
+	isc_loopmgr_pause();
+	zone = catz_addmodzone_configure(cz);
+	isc_loopmgr_resume();
+
+	/* Initial file loading can be synchronous; let other loops run. */
+	catz_addmodzone_finish(cz, zone);
+}
+
+static void
+catz_delzone_cb_inner(catz_chgzone_t *cz) {
 	isc_result_t result;
 	dns_zone_t *zone = NULL;
 	dns_db_t *dbp = NULL;
 	char cname[DNS_NAME_FORMATSIZE];
 	const char *file = NULL;
 
-	if (isc_loop_shuttingdown(isc_loop_get(isc_tid()))) {
-		goto cleanup;
-	}
-
-	isc_loopmgr_pause();
+	REQUIRE(isc_loopmgr_paused());
 
 	dns_name_format(dns_catz_entry_getname(cz->entry), cname,
 			DNS_NAME_FORMATSIZE);
@@ -2439,7 +2478,7 @@ catz_delzone_cb(void *arg) {
 			      "catz: catz_delzone_cb: "
 			      "zone '%s' not found",
 			      cname);
-		goto resume;
+		goto cleanup;
 	}
 
 	if (!dns_zone_getadded(zone)) {
@@ -2448,7 +2487,7 @@ catz_delzone_cb(void *arg) {
 			      "catz: catz_delzone_cb: "
 			      "zone '%s' is not a dynamically added zone",
 			      cname);
-		goto resume;
+		goto cleanup;
 	}
 
 	if (dns_zone_get_parentcatz(zone) != cz->origin) {
@@ -2457,7 +2496,7 @@ catz_delzone_cb(void *arg) {
 			      "catz: catz_delzone_cb: zone "
 			      "'%s' exists in multiple catalog zones",
 			      cname);
-		goto resume;
+		goto cleanup;
 	}
 
 	/* Stop answering for this zone */
@@ -2467,7 +2506,7 @@ catz_delzone_cb(void *arg) {
 	}
 
 	if (dns_view_delzone(cz->view, zone) != ISC_R_SUCCESS) {
-		goto resume;
+		goto cleanup;
 	}
 	file = dns_zone_getfile(zone);
 	if (file != NULL) {
@@ -2483,49 +2522,105 @@ catz_delzone_cb(void *arg) {
 		      "catz: catz_delzone_cb: "
 		      "zone '%s' deleted",
 		      cname);
-resume:
-	isc_loopmgr_resume();
 cleanup:
 	if (zone != NULL) {
 		dns_zone_detach(&zone);
 	}
-	dns_catz_entry_detach(cz->origin, &cz->entry);
-	dns_catz_zone_detach(&cz->origin);
-	dns_view_weakdetach(&cz->view);
-	isc_mem_putanddetach(&cz->mctx, cz, sizeof(*cz));
+	catz_chgzone_destroy(cz);
+}
+
+static void
+catz_delzone_cb(catz_chgzone_t *cz) {
+	if (isc_loop_shuttingdown(isc_loop())) {
+		catz_chgzone_destroy(cz);
+		return;
+	}
+	isc_loopmgr_pause();
+	catz_delzone_cb_inner(cz);
+	isc_loopmgr_resume();
+}
+
+/*
+ * The main loop is the only consumer.  Taking a snapshot bounds ordinary
+ * dispatch; new arrivals remain queued for the next dispatch.  During
+ * reconfiguration the workers are paused, so this drains all operations
+ * produced before the pause without recursively pausing the loop manager.
+ */
+static size_t
+catz_drain(catz_cb_data_t *cbd, void (*addmod)(catz_chgzone_t *),
+	   void (*del)(catz_chgzone_t *)) {
+	isc_queue_t pending;
+	catz_chgzone_t *cz = NULL, *next = NULL;
+	size_t count = 0;
+
+	REQUIRE(isc_loop() == isc_loop_main());
+
+	isc_queue_init(&pending);
+	(void)isc_queue_splice(&pending, &cbd->pending);
+	isc_queue_for_each_entry_safe(&pending, cz, next, node) {
+		switch (cz->type) {
+		case CATZ_ADDZONE:
+		case CATZ_MODZONE:
+			addmod(cz);
+			break;
+		case CATZ_DELZONE:
+			del(cz);
+			break;
+		default:
+			UNREACHABLE();
+		}
+		count++;
+	}
+	isc_queue_destroy(&pending);
+	return count;
+}
+
+static void
+catz_drain_before_reconfig(catz_cb_data_t *cbd) {
+	REQUIRE(isc_loopmgr_paused());
+	size_t count = catz_drain(cbd, catz_addmodzone_cb_inner,
+				  catz_delzone_cb_inner);
+	if (count != 0) {
+		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
+			      ISC_LOG_DEBUG(1),
+			      "catz: drained %zu zone operations before "
+			      "reconfiguration",
+			      count);
+	}
+}
+
+static void
+catz_dispatch(void *arg) {
+	size_t count = catz_drain(arg, catz_addmodzone_cb, catz_delzone_cb);
+	if (count != 0) {
+		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
+			      ISC_LOG_DEBUG(1),
+			      "catz: drained %zu zone operations", count);
+	}
 }
 
 static isc_result_t
 catz_run(dns_catz_entry_t *entry, dns_catz_zone_t *origin, dns_view_t *view,
 	 void *udata, catz_type_t type) {
+	catz_cb_data_t *cbd = udata;
 	catz_chgzone_t *cz = NULL;
-	isc_job_cb action = NULL;
-
-	switch (type) {
-	case CATZ_ADDZONE:
-	case CATZ_MODZONE:
-		action = catz_addmodzone_cb;
-		break;
-	case CATZ_DELZONE:
-		action = catz_delzone_cb;
-		break;
-	default:
-		REQUIRE(0);
-		UNREACHABLE();
-	}
 
 	cz = isc_mem_get(view->mctx, sizeof(*cz));
 	*cz = (catz_chgzone_t){
-		.cbd = (catz_cb_data_t *)udata,
-		.mod = (type == CATZ_MODZONE),
+		.cbd = cbd,
+		.type = type,
 	};
+	isc_queue_node_init(&cz->node);
 	isc_mem_attach(view->mctx, &cz->mctx);
 
 	dns_catz_entry_attach(entry, &cz->entry);
 	dns_catz_zone_attach(origin, &cz->origin);
 	dns_view_weakattach(view, &cz->view);
 
-	isc_async_run(isc_loop_main(), action, cz);
+	/* The wakeup owns no operation: reconfiguration may drain it first. */
+	if (!isc_queue_enqueue(&cbd->pending, &cz->node)) {
+		isc_async_run(isc_loop_main(), catz_dispatch, cbd);
+	}
 
 	return ISC_R_SUCCESS;
 }
@@ -2768,9 +2863,6 @@ configure_catz(dns_view_t *view, dns_view_t *pview, const cfg_obj_t *config,
 	const dns_catz_zones_t *old = NULL;
 	bool pview_must_detach = false;
 	isc_result_t result;
-
-	/* xxxwpk TODO do it cleaner, once, somewhere */
-	ns_catz_cbdata.server = named_g_server;
 
 	zones = cfg_tuple_get(catz_obj, "zone list");
 	if (cfg_list_length(zones, false) == 0) {
@@ -7893,9 +7985,15 @@ apply_configuration(cfg_obj_t *effectiveconfig, cfg_obj_t *bindkeys,
 	/* Create a new client TLS context cache */
 	isc_tlsctx_cache_create(isc_g_mctx, &tlsctx_client_cache);
 
-	/* Ensure exclusive access to configuration data. */
+	/*
+	 * Finish already-produced catalog changes against the installed views
+	 * and configuration before configuring their replacements.  Pausing
+	 * also waits for running workers to finish producing operations;
+	 * workers which have not started retain their usual update semantics.
+	 */
 	exclusive = true;
 	isc_loopmgr_pause();
+	catz_drain_before_reconfig(&ns_catz_cbdata);
 
 	/*
 	 * Shut down all dyndb instances.
@@ -9573,6 +9671,8 @@ named_server_create(isc_mem_t *mctx, named_server_t **serverp) {
 	ISC_LIST_INIT(server->kasplist);
 	ISC_LIST_INIT(server->keystorelist);
 	ISC_LIST_INIT(server->viewlist);
+	ns_catz_cbdata.server = server;
+	isc_queue_init(&ns_catz_cbdata.pending);
 
 	atomic_init(&server->reload_status, NAMED_RELOAD_IN_PROGRESS);
 
@@ -9629,6 +9729,8 @@ void
 named_server_destroy(named_server_t **serverp) {
 	named_server_t *server = *serverp;
 	REQUIRE(NAMED_SERVER_VALID(server));
+	INSIST(isc_queue_empty(&ns_catz_cbdata.pending));
+	isc_queue_destroy(&ns_catz_cbdata.pending);
 
 #ifdef HAVE_DNSTAP
 	if (server->dtenv != NULL) {

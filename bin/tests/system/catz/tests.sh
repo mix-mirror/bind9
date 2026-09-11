@@ -699,6 +699,13 @@ rndccmd 10.53.0.2 reconfig || ret=1
 if [ $ret -ne 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
+n=$((n + 1))
+echo_i "checking that dom3.example. is still served after recovering from the failed reconfiguration ($n)"
+ret=0
+wait_for_soa @10.53.0.2 dom3.example. dig.out.test$n || ret=1
+if [ $ret -ne 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
+
 nextpart ns2/named.run >/dev/null
 
 # GL #3911
@@ -2573,6 +2580,13 @@ cp ns2/named7.conf ns2/named.conf
 rndccmd 10.53.0.2 reconfig || ret=1
 cp ns2/named1.conf ns2/named.conf
 rndccmd 10.53.0.2 reconfig || ret=1
+if [ $ret -ne 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
+
+n=$((n + 1))
+echo_i "checking that the catalog member is restored with its catalog configuration ($n)"
+ret=0
+wait_for_soa @10.53.0.2 dom15.example. dig.out.test$n || ret=1
 if [ $ret -ne 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
