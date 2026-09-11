@@ -816,7 +816,7 @@ dns_zone_rpz_enable(dns_zone_t *zone, dns_rpz_zones_t *rpzs,
  */
 
 void
-dns_zone_rpz_enable_db(dns_zone_t *zone, dns_db_t *db);
+dns_zone_rpz_enable_db(dns_zone_t *zone);
 /*%
  * If a zone is a response policy zone, account for it gaining an
  * associated database.
