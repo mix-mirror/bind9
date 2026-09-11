@@ -709,13 +709,13 @@ if [ -n "$run_san_tests" ]; then
   status=$((status + ret))
 fi
 
-# SubjectAltName is not required for HTTPS. Having a properly set
-# Common Name in the Subject field is enough.
+# The Common Name in the Subject field is not consulted for HTTPS either
+# (RFC 9525): a certificate without SubjectAltName must be rejected.
 n=$((n + 1))
-echo_i "checking DoH query (when SubjectAltName is not set) ($n)"
+echo_i "checking DoH query (with TLS verification enabled when SubjectAltName is not set, failure expected) ($n)"
 ret=0
 dig_with_https_opts +tls-ca="$ca_file" +tls-hostname="srv01.crt02-no-san.example.com" -p "${EXTRAPORT3}" +comm @10.53.0.1 . SOA >dig.out.test$n || ret=1
-grep "status: NOERROR" dig.out.test$n >/dev/null || ret=1
+grep "$msg_peer_verification_failed" dig.out.test$n >/dev/null || ret=1
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
