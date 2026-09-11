@@ -1041,6 +1041,17 @@ isc_tlsctx_enable_peer_verification(isc_tlsctx_t *tlsctx, const bool is_server,
 		if (hostname_ignore_subject) {
 			hostflags |= X509_CHECK_FLAG_NEVER_CHECK_SUBJECT;
 		}
+#if OPENSSL_VERSION_NUMBER >= 0x40100000L
+		/*
+		 * OpenSSL 4.1 no longer consults the Subject when a
+		 * certificate has no SubjectAltName.  Keep accepting such
+		 * certificates for HTTPS, where the Common Name is still
+		 * allowed, by asking for the Subject explicitly.
+		 */
+		if (!hostname_ignore_subject) {
+			hostflags |= X509_CHECK_FLAG_ALWAYS_CHECK_SUBJECT;
+		}
+#endif
 #else
 		UNUSED(hostname_ignore_subject);
 #endif
