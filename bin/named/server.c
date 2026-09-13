@@ -4015,7 +4015,7 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 
 	if (catz_configured) {
 		obj = NULL;
-		CHECK(named_config_get(maps, "catalog-zones", &obj));
+		CHECK(named_config_get(maps, CFG_CLAUSE_CATALOG_ZONES, &obj));
 		CHECK(configure_catz_members(view, NULL, config, obj));
 	}
 
