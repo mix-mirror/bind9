@@ -278,9 +278,7 @@ svc_fromtext(isc_textregion_t *region, isc_buffer_t *target) {
 			break;
 		case sbpr_port:
 			if (region->length == 0 ||
-			    !isdigit((unsigned char)region->base[0]) ||
-			    /* Reject embedded NUL bytes. */
-			    memchr(region->base, 0, region->length) != NULL)
+			    !isdigit((unsigned char)region->base[0]))
 			{
 				return DNS_R_SYNTAX;
 			}
@@ -326,10 +324,6 @@ svc_fromtext(isc_textregion_t *region, isc_buffer_t *target) {
 			} while (e != NULL);
 			break;
 		case sbpr_base64:
-			/* Reject embedded NUL bytes. */
-			if (memchr(region->base, 0, region->length) != NULL) {
-				return DNS_R_SYNTAX;
-			}
 			RETERR(isc_base64_decodestring(region->base, target));
 			break;
 		case sbpr_empty:
