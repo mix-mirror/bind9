@@ -1410,7 +1410,7 @@ zone_load(dns_zone_t *zone, unsigned int flags, bool locked) {
 	}
 
 	if (zone->type == dns_zone_primary && zone->masterfile != NULL &&
-	    !isc_file_exists(zone->masterfile) && zone->initfile != NULL)
+	    zone->initfile != NULL && !isc_file_exists(zone->masterfile))
 	{
 		dns_zone_logc(zone, DNS_LOGCATEGORY_ZONELOAD, ISC_LOG_INFO,
 			      "zone file %s not found; copying initial "
