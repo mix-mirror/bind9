@@ -42,8 +42,9 @@
  * undefined.  It can be used to free memory associated with keys and/or
  * values.
  *
- * A symbol table is implemented as a isc_hashmap; the bits of the
- * hashmap is set by the 'size' parameter to isc_symtbl_create().
+ * Symbol table storage uses Rust's HashMap. Internal map allocations use
+ * the Rust allocator; symbol records use the supplied memory context.
+ * Callbacks must not reenter the same symbol table.
  */
 
 /***

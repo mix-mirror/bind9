@@ -32,6 +32,16 @@ isc_rust = static_library(
     install: false,
 )
 
+if cmocka_dep.found()
+    rust_hashmap_test = executable(
+        'rust-hashmap-test',
+        'rust-hashmap.rs',
+        rust_args: ['--test'],
+        install: false,
+    )
+    test('rust-hashmap', rust_hashmap_test, suite: 'isc')
+endif
+
 isc_srcset.add(
     m_dep,
     openssl_dep,

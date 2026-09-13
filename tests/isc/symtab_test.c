@@ -270,8 +270,63 @@ ISC_RUN_TEST_IMPL(symtab_foreach) {
 	isc_symtab_destroy(&symtab);
 }
 
+static void
+count_undefine(char *key ISC_ATTR_UNUSED, unsigned int type ISC_ATTR_UNUSED,
+	       isc_symvalue_t value ISC_ATTR_UNUSED, void *arg) {
+	unsigned int *count = arg;
+	(*count)++;
+}
+
+ISC_RUN_TEST_IMPL(symtab_keys) {
+	for (unsigned int sensitive = 0; sensitive < 2; sensitive++) {
+		isc_symtab_t *symtab = NULL;
+		unsigned int removed = 0;
+		isc_symvalue_t one = { .as_integer = 1 };
+		isc_symvalue_t two = { .as_integer = 2 };
+		isc_symvalue_t found = { .as_integer = -1 };
+		isc_symtab_create(isc_g_mctx, count_undefine, &removed,
+				  sensitive, &symtab);
+		assert_int_equal(isc_symtab_count(symtab), 0);
+		assert_int_equal(isc_symtab_define(symtab, "Key", 1, one,
+						   isc_symexists_reject),
+				 ISC_R_SUCCESS);
+		assert_int_equal(isc_symtab_lookup(symtab, "key", 1, &found),
+				 sensitive ? ISC_R_NOTFOUND : ISC_R_SUCCESS);
+		assert_int_equal(found.as_integer, sensitive ? -1 : 1);
+		assert_int_equal(isc_symtab_define_and_return(
+					 symtab, "Key", 1, two,
+					 isc_symexists_replace, &found),
+				 ISC_R_SUCCESS);
+		assert_int_equal(found.as_integer, 2);
+		assert_int_equal(removed, 1);
+		assert_int_equal(isc_symtab_define(symtab, "Key", 2, one,
+						   isc_symexists_reject),
+				 ISC_R_SUCCESS);
+		assert_int_equal(isc_symtab_define(symtab, "", 1, one,
+						   isc_symexists_reject),
+				 ISC_R_SUCCESS);
+		/* Non-ASCII bytes must remain distinct, without UTF-8 decoding.
+		 */
+		assert_int_equal(isc_symtab_define(symtab, "\xc0", 1, one,
+						   isc_symexists_reject),
+				 ISC_R_SUCCESS);
+		assert_int_equal(isc_symtab_lookup(symtab, "\xe0", 1, NULL),
+				 ISC_R_NOTFOUND);
+		assert_int_equal(isc_symtab_lookup(symtab, "", 1, &found),
+				 ISC_R_SUCCESS);
+		assert_int_equal(found.as_integer, 1);
+		assert_int_equal(isc_symtab_count(symtab), 4);
+		assert_int_equal(isc_symtab_undefine(symtab, "missing", 1),
+				 ISC_R_NOTFOUND);
+		isc_symtab_destroy(&symtab);
+		assert_null(symtab);
+		assert_int_equal(removed, 5);
+	}
+}
+
 ISC_TEST_LIST_START
 
+ISC_TEST_ENTRY(symtab_keys)
 ISC_TEST_ENTRY(symtab_define)
 ISC_TEST_ENTRY(symtab_undefine)
 ISC_TEST_ENTRY(symtab_reject)

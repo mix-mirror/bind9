@@ -39,7 +39,10 @@ pub unsafe extern "C" fn isc_rust_hashmap_get(
     kind: c_uint,
 ) -> *mut c_void {
     let map = unsafe { &*map };
-    map.inner.get(&unsafe { map.key(key, kind) }).copied().unwrap_or(std::ptr::null_mut())
+    map.inner
+        .get(&unsafe { map.key(key, kind) })
+        .copied()
+        .unwrap_or(std::ptr::null_mut())
 }
 
 // Insert only if absent; return the existing value, or NULL on insertion.
@@ -84,7 +87,9 @@ pub unsafe extern "C" fn isc_rust_hashmap_foreach(
     action: unsafe extern "C" fn(*mut c_void, *mut c_void) -> bool,
     arg: *mut c_void,
 ) {
-    unsafe { &mut *map }.inner.retain(|_, value| !unsafe { action(*value, arg) });
+    unsafe { &mut *map }
+        .inner
+        .retain(|_, value| !unsafe { action(*value, arg) });
 }
 
 #[cfg(test)]
