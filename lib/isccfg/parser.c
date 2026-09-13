@@ -3151,14 +3151,14 @@ cfg_parse_mapbody_external(cfg_parser_t *pctx, const cfg_type_t *type,
 	obj->value.map_external->clausesets = clausesets;
 
 	for (;;) {
-		CHECK(cfg_gettoken(pctx, 0));
+		CHECK(cfg_gettoken(pctx));
 
 		if (pctx->token.type != isc_tokentype_string) {
 			cfg_ungettoken(pctx);
 			break;
 		}
 
-		if (strcasecmp(TOKEN_STRING(pctx), "include") == 0) {
+		if (token_casecmp(pctx, "include") == 0) {
 			glob_t g;
 			int rc;
 
@@ -3204,8 +3204,7 @@ cfg_parse_mapbody_external(cfg_parser_t *pctx, const cfg_type_t *type,
 			for (clause = *clauseset; clause->name != NULL;
 			     clause++)
 			{
-				if (strcasecmp(TOKEN_STRING(pctx),
-					       clause->name) == 0)
+				if (token_casecmp_cstr(pctx, clause->name) == 0)
 				{
 					goto done;
 				}
