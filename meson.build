@@ -11,7 +11,7 @@
 
 project(
     'bind',
-    ['c'],
+    ['c', 'rust'],
     version: '9.21.27-dev',
     meson_version: '>=1.3.0',
     license: 'MPL-2.0',
@@ -20,6 +20,7 @@ project(
         'b_pch': false,
         'b_pie': true,
         'c_std': 'gnu11',
+        'rust_std': '2021',
         'default_library': 'shared',
         'localstatedir': '/var',
         'strip': false,
@@ -1262,6 +1263,7 @@ libisc = library(
     'isc-' + meson.project_version(),
     isc_srcconf.sources(),
     objects: isc_probe_objects,
+    link_whole: isc_rust,
     install: true,
     implicit_include_directories: false,
     include_directories: [isc_inc, isc_inc_p],
@@ -1714,6 +1716,7 @@ if named_lto_opt == 'disabled'
     named_inc = named_inc_p
 
     named_objects = []
+    named_link_whole = []
 else
     named_deps = [
         dns_srcconf.dependencies(),
@@ -1733,6 +1736,7 @@ else
         libisccc.extract_all_objects(recursive: true),
         libisccfg.extract_all_objects(recursive: true),
     ]
+    named_link_whole = [isc_rust]
 endif
 
 named_srcconf = named_srcset.apply(config, strict: false)
@@ -1741,6 +1745,7 @@ executable(
     'named',
     named_srcconf.sources(),
     objects: named_objects,
+    link_whole: named_link_whole,
     c_args: static_lto_c_args,
     link_args: static_lto_link_args,
     export_dynamic: true,

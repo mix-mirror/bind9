@@ -24,6 +24,14 @@ subdir('crypto')
 subdir('netmgr')
 subdir('ossl_wrap')
 
+isc_rust = static_library(
+    'isc-rust',
+    files('rust_lib.rs'),
+    rust_abi: 'c',
+    rust_args: ['-C', 'panic=abort'],
+    install: false,
+)
+
 isc_srcset.add(
     m_dep,
     openssl_dep,
