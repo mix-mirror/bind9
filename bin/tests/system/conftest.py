@@ -375,7 +375,9 @@ def expected_artifacts(request):
         ".libs/*",  # possible build artifacts, see GL #5055
         "ans*/keys",
         "ans*/zones",
-        "ns*/named.conf",
+        "ns*/keys",
+        "ns*/zones",
+        "ns*/named*.conf",
         "ns*/named.lock",
         "ns*/named.memstats",
         "ns*/named.run",
