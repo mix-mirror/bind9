@@ -1578,7 +1578,7 @@ get_new_connection_id2_cb(ngtcp2_conn *ngconn ISC_ATTR_UNUSED,
 			  ngtcp2_stateless_reset_token *token, size_t cidlen,
 			  void *user_data) {
 	isc_quic_conn_t *conn = user_data;
-	uint8_t buffer[NGTCP2_MAX_CIDLEN];
+	uint8_t buffer[ISC_QUIC_CID_MAX_LENGTH];
 	isc_constregion_t cid = { buffer, cidlen };
 	isc_result_t result;
 
