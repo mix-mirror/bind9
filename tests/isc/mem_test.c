@@ -273,11 +273,12 @@ ISC_RUN_TEST_IMPL(isc_mem_zeroget) {
 #define REGET_GROW_SIZE	  2048
 #define REGET_SHRINK_SIZE 512
 
-ISC_RUN_TEST_IMPL(isc_mem_reget) {
+ISC_RUN_TEST_IMPL(isc_mem_creget) {
 	uint8_t *data = NULL;
 
-	/* test that we can reget NULL */
-	data = isc_mem_reget(isc_g_mctx, NULL, 0, REGET_INIT_SIZE);
+	/* test that we can creget NULL */
+	data = isc_mem_creget(isc_g_mctx, NULL, 0, REGET_INIT_SIZE,
+			      sizeof(char));
 	assert_non_null(data);
 	isc_mem_put(isc_g_mctx, data, REGET_INIT_SIZE);
 
@@ -285,15 +286,16 @@ ISC_RUN_TEST_IMPL(isc_mem_reget) {
 	data = isc_mem_get(isc_g_mctx, 0);
 	assert_non_null(data);
 
-	data = isc_mem_reget(isc_g_mctx, data, 0, REGET_INIT_SIZE);
+	data = isc_mem_creget(isc_g_mctx, data, 0, REGET_INIT_SIZE,
+			      sizeof(char));
 	assert_non_null(data);
 
 	for (size_t i = 0; i < REGET_INIT_SIZE; i++) {
 		data[i] = i % UINT8_MAX;
 	}
 
-	data = isc_mem_reget(isc_g_mctx, data, REGET_INIT_SIZE,
-			     REGET_GROW_SIZE);
+	data = isc_mem_creget(isc_g_mctx, data, REGET_INIT_SIZE,
+			      REGET_GROW_SIZE, sizeof(char));
 	assert_non_null(data);
 
 	for (size_t i = 0; i < REGET_INIT_SIZE; i++) {
@@ -304,8 +306,8 @@ ISC_RUN_TEST_IMPL(isc_mem_reget) {
 		data[i - 1] = i % UINT8_MAX;
 	}
 
-	data = isc_mem_reget(isc_g_mctx, data, REGET_GROW_SIZE,
-			     REGET_SHRINK_SIZE);
+	data = isc_mem_creget(isc_g_mctx, data, REGET_GROW_SIZE,
+			      REGET_SHRINK_SIZE, sizeof(char));
 	assert_non_null(data);
 
 	for (size_t i = REGET_SHRINK_SIZE; i > 0; i--) {
@@ -624,7 +626,7 @@ ISC_TEST_ENTRY(isc_mem_cget_zero)
 ISC_TEST_ENTRY(isc_mem_callocate_zero)
 ISC_TEST_ENTRY(isc_mem_inuse)
 ISC_TEST_ENTRY(isc_mem_zeroget)
-ISC_TEST_ENTRY(isc_mem_reget)
+ISC_TEST_ENTRY(isc_mem_creget)
 ISC_TEST_ENTRY(isc_mem_reallocate)
 ISC_TEST_ENTRY(isc_mem_overmem)
 
