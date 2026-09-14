@@ -2425,13 +2425,16 @@ isc_quic_conn_server_create(
 	ngtcp2_conn_set_tls_native_handle(conn->inner, tls);
 	tls = NULL;
 
-	isc_quic_router_add_cid(router,
-				(isc_constregion_t){ scid.data, scid.datalen },
-				isc_tid(), conn);
+	result = isc_quic_router_add_cid(
+		router, (isc_constregion_t){ scid.data, scid.datalen },
+		isc_tid(), conn);
+	/*
+	 * Probability is 2^{-160}, even this is actually not worth it the
+	 * slightest.
+	 */
+	INSIST(result == ISC_R_SUCCESS);
 
 	*connp = MOVE_OWNERSHIP(conn);
-
-	result = ISC_R_SUCCESS;
 
 cleanup:
 	if (tls != NULL) {
