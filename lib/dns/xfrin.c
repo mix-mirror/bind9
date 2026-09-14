@@ -1552,7 +1552,7 @@ request_type(dns_xfrin_t *xfr) {
 	case dns_rdatatype_ixfr:
 		return "IXFR";
 	default:
-		ISC_UNREACHABLE();
+		UNREACHABLE();
 	}
 }
 

@@ -138,7 +138,7 @@ proxy2_socktype_to_socktype(const isc_proxy2_socktype_t proxy_socktype) {
 		socktype = SOCK_DGRAM;
 		break;
 	default:
-		ISC_UNREACHABLE();
+		UNREACHABLE();
 	};
 
 	return socktype;
