@@ -43,8 +43,8 @@ fromtext_opt(ARGS_FROMTEXT) {
 
 static isc_result_t
 totext_opt(ARGS_TOTEXT) {
-	isc_region_t r;
-	isc_region_t or;
+	isc_region_t region;
+	isc_region_t option_region;
 	uint16_t option;
 	uint16_t length;
 	char buf[sizeof("64000 64000")];
@@ -55,35 +55,36 @@ totext_opt(ARGS_TOTEXT) {
 
 	REQUIRE(rdata->type == dns_rdatatype_opt);
 
-	dns_rdata_toregion(rdata, &r);
-	while (r.length > 0) {
-		option = uint16_fromregion(&r);
-		isc_region_consume(&r, 2);
-		length = uint16_fromregion(&r);
-		isc_region_consume(&r, 2);
+	dns_rdata_toregion(rdata, &region);
+	while (region.length > 0) {
+		option = uint16_fromregion(&region);
+		isc_region_consume(&region, 2);
+		length = uint16_fromregion(&region);
+		isc_region_consume(&region, 2);
 		snprintf(buf, sizeof(buf), "%u %u", option, length);
 		RETERR(str_totext(buf, target));
-		INSIST(r.length >= length);
+		INSIST(region.length >= length);
 		if (length > 0) {
 			if ((tctx->flags & DNS_STYLEFLAG_MULTILINE) != 0) {
 				RETERR(str_totext(" (", target));
 			}
 			RETERR(str_totext(tctx->linebreak, target));
-			or = r;
-			or.length = length;
+			option_region = region;
+			option_region.length = length;
 			if (tctx->width == 0) { /* No splitting */
-				RETERR(isc_base64_totext(&or, 60, "", target));
-			} else {
-				RETERR(isc_base64_totext(&or, tctx->width - 2,
-							 tctx->linebreak,
+				RETERR(isc_base64_totext(&option_region, 60, "",
 							 target));
+			} else {
+				RETERR(isc_base64_totext(
+					&option_region, tctx->width - 2,
+					tctx->linebreak, target));
 			}
-			isc_region_consume(&r, length);
+			isc_region_consume(&region, length);
 			if ((tctx->flags & DNS_STYLEFLAG_MULTILINE) != 0) {
 				RETERR(str_totext(" )", target));
 			}
 		}
-		if (r.length > 0) {
+		if (region.length > 0) {
 			RETERR(str_totext(" ", target));
 		}
 	}
