@@ -1188,15 +1188,19 @@ recv_stream_data_cb(ngtcp2_conn *ngconn ISC_ATTR_UNUSED, uint32_t flags,
 		    const uint8_t *data, size_t datalen, void *user_data,
 		    void *stream_user_data ISC_ATTR_UNUSED) {
 	isc_quic_conn_t *conn = user_data;
-	isc_quic_stream_data_info_t info = {
+	const isc_quic_stream_data_info_t info = {
 		.final = (flags & NGTCP2_STREAM_DATA_FLAG_FIN) != 0x00,
 		.zerortt = (flags & NGTCP2_STREAM_DATA_FLAG_0RTT) != 0x00,
 		.stream_id = stream_id,
 	};
 
 	if (conn->cb != NULL && conn->cb->data_read != NULL) {
-		conn->cb->data_read(conn, conn->cbarg, info,
-				    (isc_constregion_t){ data, datalen });
+		if (conn->cb->data_read(conn, conn->cbarg, info,
+					(isc_constregion_t){ data, datalen }) !=
+		    ISC_R_SUCCESS)
+		{
+			return NGTCP2_ERR_CALLBACK_FAILURE;
+		}
 	}
 
 	return 0;
