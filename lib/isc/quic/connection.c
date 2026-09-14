@@ -900,10 +900,11 @@ pull_packet_connected(isc_quic_conn_t *conn, isc_region_t out, size_t *written,
 					     out.base, out.length, &single,
 					     flags, stream_id, data->bytes,
 					     data->length, timestamp);
-		if (r < 0) {
+		if (r < 0 && r != NGTCP2_ERR_WRITE_MORE) {
+			ngtcp2_conn_update_pkt_tx_time(conn->inner,
+						       isc_time_monotonic());
+
 			switch (r) {
-			case NGTCP2_ERR_WRITE_MORE:
-				break;
 			case NGTCP2_ERR_NOMEM:
 				return ISC_R_NOMEMORY;
 			case NGTCP2_ERR_STREAM_NOT_FOUND:
@@ -918,6 +919,8 @@ pull_packet_connected(isc_quic_conn_t *conn, isc_region_t out, size_t *written,
 				return ISC_R_NOSPACE;
 			case NGTCP2_ERR_STREAM_DATA_BLOCKED:
 				return ISC_R_IOERROR;
+			case NGTCP2_ERR_WRITE_MORE:
+				UNREACHABLE();
 			default:
 				return ISC_R_FAILURE;
 			}
