@@ -2487,10 +2487,10 @@ isc_quic_conn_shutdown(isc_quic_conn_t *conn) {
 		cid = (isc_constregion_t){ ngcid[i].data, ngcid[i].datalen };
 		result = isc_quic_router_del_cid(conn->router, cid);
 		if (result == ISC_R_SUCCESS) {
-			isc_quic_router_stateless_reset_from_cid(conn->router,
-								 cid, reset);
-			isc_quic_router_del_stateless_reset(conn->router,
-							    reset);
+			(void)isc_quic_router_stateless_reset_from_cid(
+				conn->router, cid, reset);
+			(void)isc_quic_router_del_stateless_reset(conn->router,
+								  reset);
 		}
 	}
 	isc_mem_cput(mctx, ngcid, len, sizeof(*ngcid));
@@ -2511,11 +2511,11 @@ isc_quic_conn_shutdown(isc_quic_conn_t *conn) {
 	for (i = 0; i < len; i++) {
 		if (token[i].token_present != 0) {
 #if NGTCP2_VERSION_NUM >= 0x011600 /* 1.22.0 */
-			isc_quic_router_del_stateless_reset(
+			(void)isc_quic_router_del_stateless_reset(
 				conn->router, token[i].token.data);
 #else  /* NGTCP2_VERSION_NUM >= 0x011600 */
-			isc_quic_router_del_stateless_reset(conn->router,
-							    token[i].token);
+			(void)isc_quic_router_del_stateless_reset(
+				conn->router, token[i].token);
 #endif /* NGTCP2_VERSION_NUM >= 0x011600 */
 		}
 	}
@@ -2528,7 +2528,7 @@ isc_quic_conn_shutdown(isc_quic_conn_t *conn) {
 #endif /* NGTCP2_VERSION_NUM >= 0x011700 */
 	if (ngcid->datalen != 0) {
 		cid = (isc_constregion_t){ ngcid->data, ngcid->datalen };
-		isc_quic_router_del_cid(conn->router, cid);
+		(void)isc_quic_router_del_cid(conn->router, cid);
 	}
 
 #if NGTCP2_VERSION_NUM >= 0x011700 /* 1.23.0 */
@@ -2538,7 +2538,7 @@ isc_quic_conn_shutdown(isc_quic_conn_t *conn) {
 #endif /* NGTCP2_VERSION_NUM >= 0x011700 */
 	if (ngcid->datalen != 0) {
 		cid = (isc_constregion_t){ ngcid->data, ngcid->datalen };
-		isc_quic_router_del_cid(conn->router, cid);
+		(void)isc_quic_router_del_cid(conn->router, cid);
 	}
 
 	return ISC_R_SUCCESS;
