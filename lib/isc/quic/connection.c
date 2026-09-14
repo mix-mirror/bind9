@@ -1783,8 +1783,6 @@ static void
 common_settings(ngtcp2_settings *settings) {
 	ngtcp2_settings_default(settings);
 
-	settings->max_window = 6 * 512;
-	settings->max_stream_window = 6 * 1024;
 	settings->cc_algo = NGTCP2_CC_ALGO_BBR;
 	settings->max_tx_udp_payload_size = NGTCP2_MAX_UDP_PAYLOAD_SIZE;
 	settings->preferred_versions = preferred_versions;
