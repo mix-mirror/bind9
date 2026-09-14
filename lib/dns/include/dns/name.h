@@ -198,8 +198,8 @@ typedef uint8_t dns_offsets_t[DNS_NAME_MAXLABELS];
  * 'target' is the buffer to be converted.  The region to be converted
  * is from 'buffer'->base + 'used_org' to the end of the used region.
  */
-typedef isc_result_t(dns_name_totextfilter_t)(isc_buffer_t *target,
-					      unsigned int  used_org);
+typedef isc_result_t
+dns_name_totextfilter_t(isc_buffer_t *target, unsigned int used_org);
 
 /***
  *** Initialization

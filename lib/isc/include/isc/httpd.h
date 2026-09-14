@@ -27,12 +27,14 @@
 
 #define ISC_HTTPDMGR_SHUTTINGDOWN 0x00000001
 
-typedef isc_result_t(isc_httpdaction_t)(
-	const isc_httpd_t *httpd, const isc_httpdurl_t *urlinfo, void *arg,
-	unsigned int *retcode, const char **retmsg, const char **mimetype,
-	isc_buffer_t *body, isc_httpdfree_t **freecb, void **freecb_args);
+typedef isc_result_t
+isc_httpdaction_t(const isc_httpd_t *httpd, const isc_httpdurl_t *urlinfo,
+		  void *arg, unsigned int *retcode, const char **retmsg,
+		  const char **mimetype, isc_buffer_t *body,
+		  isc_httpdfree_t **freecb, void **freecb_args);
 
-typedef bool(isc_httpdclientok_t)(const isc_sockaddr_t *, void *);
+typedef bool
+isc_httpdclientok_t(const isc_sockaddr_t *, void *);
 
 isc_result_t
 isc_httpdmgr_create(isc_mem_t *mctx, isc_sockaddr_t *addr,
