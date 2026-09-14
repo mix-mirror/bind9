@@ -644,7 +644,7 @@ dns_zone_setxfrsource4(dns_zone_t *zone, const isc_sockaddr_t *xfrsource) {
 	REQUIRE(xfrsource != NULL);
 
 	LOCK_ZONE(zone);
-	zone->xfrsource4 = *xfrsource;
+	zone->xfrsource4 = zone_addr4_fromsockaddr(xfrsource);
 	UNLOCK_ZONE(zone);
 }
 
@@ -654,7 +654,7 @@ dns_zone_getxfrsource4(dns_zone_t *zone, isc_sockaddr_t *xfrsource) {
 	REQUIRE(xfrsource != NULL);
 
 	LOCK_ZONE(zone);
-	*xfrsource = zone->xfrsource4;
+	*xfrsource = zone_addr4_tosockaddr(&zone->xfrsource4);
 	UNLOCK_ZONE(zone);
 }
 
@@ -664,7 +664,7 @@ dns_zone_setxfrsource6(dns_zone_t *zone, const isc_sockaddr_t *xfrsource) {
 	REQUIRE(xfrsource != NULL);
 
 	LOCK_ZONE(zone);
-	zone->xfrsource6 = *xfrsource;
+	zone->xfrsource6 = zone_addr6_fromsockaddr(xfrsource);
 	UNLOCK_ZONE(zone);
 }
 
@@ -674,7 +674,7 @@ dns_zone_getxfrsource6(dns_zone_t *zone, isc_sockaddr_t *xfrsource) {
 	REQUIRE(xfrsource != NULL);
 
 	LOCK_ZONE(zone);
-	*xfrsource = zone->xfrsource6;
+	*xfrsource = zone_addr6_tosockaddr(&zone->xfrsource6);
 	UNLOCK_ZONE(zone);
 }
 
@@ -684,7 +684,7 @@ dns_zone_setparentalsrc4(dns_zone_t *zone, const isc_sockaddr_t *parentalsrc) {
 	REQUIRE(parentalsrc != NULL);
 
 	LOCK_ZONE(zone);
-	zone->parentalsrc4 = *parentalsrc;
+	zone->parentalsrc4 = zone_addr4_fromsockaddr(parentalsrc);
 	UNLOCK_ZONE(zone);
 }
 
@@ -694,7 +694,7 @@ dns_zone_getparentalsrc4(dns_zone_t *zone, isc_sockaddr_t *parentalsrc) {
 	REQUIRE(parentalsrc != NULL);
 
 	LOCK_ZONE(zone);
-	*parentalsrc = zone->parentalsrc4;
+	*parentalsrc = zone_addr4_tosockaddr(&zone->parentalsrc4);
 	UNLOCK_ZONE(zone);
 }
 
@@ -703,7 +703,7 @@ dns_zone_setparentalsrc6(dns_zone_t *zone, const isc_sockaddr_t *parentalsrc) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 
 	LOCK_ZONE(zone);
-	zone->parentalsrc6 = *parentalsrc;
+	zone->parentalsrc6 = zone_addr6_fromsockaddr(parentalsrc);
 	UNLOCK_ZONE(zone);
 }
 
@@ -713,7 +713,7 @@ dns_zone_getparentalsrc6(dns_zone_t *zone, isc_sockaddr_t *parentalsrc) {
 	REQUIRE(parentalsrc != NULL);
 
 	LOCK_ZONE(zone);
-	*parentalsrc = zone->parentalsrc6;
+	*parentalsrc = zone_addr6_tosockaddr(&zone->parentalsrc6);
 	UNLOCK_ZONE(zone);
 }
 
@@ -726,10 +726,10 @@ dns_zone_setnotifysrc4(dns_zone_t *zone, dns_rdatatype_t type,
 	LOCK_ZONE(zone);
 	switch (type) {
 	case dns_rdatatype_soa:
-		zone->notifysoa.notifysrc4 = *notifysrc;
+		zone->notifysoa.notifysrc4 = zone_addr4_fromsockaddr(notifysrc);
 		break;
 	case dns_rdatatype_cds:
-		zone->notifycds.notifysrc4 = *notifysrc;
+		zone->notifycds.notifysrc4 = zone_addr4_fromsockaddr(notifysrc);
 		break;
 	default:
 		UNREACHABLE();
@@ -746,10 +746,10 @@ dns_zone_setnotifysrc6(dns_zone_t *zone, dns_rdatatype_t type,
 	LOCK_ZONE(zone);
 	switch (type) {
 	case dns_rdatatype_soa:
-		zone->notifysoa.notifysrc6 = *notifysrc;
+		zone->notifysoa.notifysrc6 = zone_addr6_fromsockaddr(notifysrc);
 		break;
 	case dns_rdatatype_cds:
-		zone->notifycds.notifysrc6 = *notifysrc;
+		zone->notifycds.notifysrc6 = zone_addr6_fromsockaddr(notifysrc);
 		break;
 	default:
 		UNREACHABLE();
@@ -1473,7 +1473,7 @@ dns_zone_getsourceaddr(dns_zone_t *zone, isc_sockaddr_t *sourceaddr) {
 
 	LOCK_ZONE(zone);
 	INSIST(dns_remote_count(&zone->primaries) > 0);
-	*sourceaddr = zone->sourceaddr;
+	*sourceaddr = zone_addr_tosockaddr(&zone->sourceaddr);
 	UNLOCK_ZONE(zone);
 }
 
