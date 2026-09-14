@@ -252,15 +252,15 @@ is_complete(const char *buf, const char *buf_end, size_t last_len, int *ret) {
 	}                               \
 	*(valp_) = (mul_) * (*buf++ - '0');
 
-#define PARSE_INT_3(valp_)            \
-	do {                          \
-		int res_ = 0;         \
-		PARSE_INT(&res_, 100) \
-		*valp_ = res_;        \
-		PARSE_INT(&res_, 10)  \
-		*valp_ += res_;       \
-		PARSE_INT(&res_, 1)   \
-		*valp_ += res_;       \
+#define PARSE_INT_3(valp_)             \
+	do {                           \
+		int res_ = 0;          \
+		PARSE_INT(&res_, 100); \
+		*valp_ = res_;         \
+		PARSE_INT(&res_, 10);  \
+		*valp_ += res_;        \
+		PARSE_INT(&res_, 1);   \
+		*valp_ += res_;        \
 	} while (0)
 
 /* returned pointer is always within [buf, buf_end), or null */
