@@ -82,7 +82,29 @@ constexpr uint32_t conn_magic = ISC_MAGIC('Q', 'U', 'I', 'c');
  */
 constexpr uint64_t aes_gcm_max_encryption = 8388608;
 
-constexpr size_t initial_max_stream_data = 128 * 1024;
+/**
+ * \brief
+ * Initial maximum stream data of 128 KiB.
+ */
+constexpr uint64_t initial_max_stream_data = 131072;
+
+/**
+ * \brief
+ * Initial maximum data of 512 KiB.
+ */
+constexpr uint64_t initial_max_data = 524288;
+
+/**
+ * \brief
+ * Initial number of allowed bidirectional streams.
+ */
+constexpr uint64_t initial_max_streams_bidi = 16;
+
+/**
+ * \brief
+ * Initial number of allowed unidirectional streams.
+ */
+constexpr uint64_t initial_max_streams_uni = 0;
 
 /**
  * \brief
@@ -1751,9 +1773,9 @@ common_transport_params(ngtcp2_transport_params *params) {
 	ngtcp2_transport_params_default(params);
 	params->initial_max_stream_data_bidi_local = initial_max_stream_data;
 	params->initial_max_stream_data_bidi_remote = initial_max_stream_data;
-	params->initial_max_streams_bidi = 16;
-	params->initial_max_streams_uni = 0;
-	params->initial_max_data = 1024 * 1024;
+	params->initial_max_streams_bidi = initial_max_streams_bidi;
+	params->initial_max_streams_uni = initial_max_streams_uni;
+	params->initial_max_data = initial_max_data;
 	params->grease_quic_bit = 1;
 }
 
