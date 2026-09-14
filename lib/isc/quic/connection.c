@@ -888,11 +888,11 @@ pull_packet_connected(isc_quic_conn_t *conn, isc_region_t out, size_t *written,
 	timestamp = isc_time_monotonic();
 	total = 0;
 	flags = NGTCP2_WRITE_STREAM_FLAG_MORE;
-	while (flags != 0x00) {
+	while (flags != NGTCP2_WRITE_STREAM_FLAG_NONE) {
 		data = ISC_LIST_HEAD(conn->outgoing_stream_data);
 
 		if (ISC_LIST_NEXT(data, link) == NULL) {
-			flags = 0x00;
+			flags = NGTCP2_WRITE_STREAM_FLAG_NONE;
 		}
 
 		stream_id = data->stream_id;
