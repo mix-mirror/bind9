@@ -1423,6 +1423,15 @@ update_key_cb(ngtcp2_conn *ngconn, uint8_t *rx_secret, uint8_t *tx_secret,
 	return 0;
 
 cleanup:
+	if (aead != NULL) {
+		isc_crypto_aead_destroy(&aead);
+	}
+
+	if (rx_aead_ctx->native_handle != NULL) {
+		aead = MOVE_OWNERSHIP(rx_aead_ctx->native_handle);
+		isc_crypto_aead_destroy(&aead);
+	}
+
 	return NGTCP2_ERR_CALLBACK_FAILURE;
 }
 
