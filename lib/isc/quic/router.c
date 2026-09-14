@@ -296,6 +296,9 @@ isc_quic_router_stateless_reset_from_cid(
 			sizeof(router->hmac_key), cid.base, cid.length, mac,
 			&maclen) == ISC_R_SUCCESS);
 
+	STATIC_ASSERT(sizeof(mac) >= ISC_QUIC_STATELESS_TOKEN_LENGTH,
+		      "QUIC stateless token length wrongly reduced to be less "
+		      "than SHA-2-256 output size");
 	memmove(token, mac, ISC_QUIC_STATELESS_TOKEN_LENGTH);
 	isc_safe_memwipe(mac, sizeof(mac));
 }
