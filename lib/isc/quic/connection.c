@@ -929,10 +929,14 @@ pull_packet_connected(isc_quic_conn_t *conn, isc_region_t out, size_t *written,
 			switch (r) {
 			case NGTCP2_ERR_NOMEM:
 				return ISC_R_NOMEMORY;
-			case NGTCP2_ERR_STREAM_NOT_FOUND:
-				return ISC_R_NOTFOUND;
 			case NGTCP2_ERR_STREAM_SHUT_WR:
-				return ISC_R_SHUTTINGDOWN;
+			case NGTCP2_ERR_STREAM_NOT_FOUND:
+				ISC_LIST_UNLINK(conn->outgoing_stream_data,
+						data, link);
+				isc_mem_put(conn->mem.user_data, data,
+					    STRUCT_FLEX_SIZE(data, bytes,
+							     data->length));
+				continue;
 			case NGTCP2_ERR_PKT_NUM_EXHAUSTED:
 				return ISC_R_NOMORE;
 			case NGTCP2_ERR_CALLBACK_FAILURE:
