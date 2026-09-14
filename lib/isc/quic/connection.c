@@ -1747,7 +1747,7 @@ common_settings(ngtcp2_settings *settings) {
 	 */
 	settings->no_pmtud = 1;
 
-	if (!isc_log_wouldlog(ISC_LOG_DEBUG(99))) {
+	if (isc_log_wouldlog(ISC_LOG_DEBUG(99))) {
 		settings->log_printf = log_printf;
 	}
 }
@@ -2335,8 +2335,8 @@ isc_quic_conn_server_create(
 		.remote = { (ngtcp2_sockaddr *)&peer->type.sa, peer->length },
 	};
 
-	scid.datalen = 20;
-	isc_random_buf(scid.data, 20);
+	scid.datalen = ISC_QUIC_CID_MAX_LENGTH;
+	isc_random_buf(scid.data, scid.datalen);
 	ngtcp2_cid_init(&dcid, initial_scid.base, initial_scid.length);
 
 	common_transport_params(&transport_params);
