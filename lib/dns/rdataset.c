@@ -218,15 +218,11 @@ towire_addtypeclass(dns_rdataset_t *rdataset, const dns_name_t *name,
 		    dns_compress_t *cctx, isc_buffer_t *target,
 		    isc_buffer_t *rrbuffer, size_t extralen) {
 	isc_region_t r;
-	isc_result_t result;
 	size_t headlen;
 
 	*rrbuffer = *target;
 	dns_compress_setpermitted(cctx, true);
-	result = dns_name_towire(name, cctx, target);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_name_towire(name, cctx, target));
 	headlen = sizeof(dns_rdataclass_t) + sizeof(dns_rdatatype_t) + extralen;
 	isc_buffer_availableregion(target, &r);
 	if (r.length < headlen) {

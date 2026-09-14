@@ -3156,7 +3156,7 @@ find_closest_nsec(qpz_search_t *search, dns_name_t *foundname,
 	qpznode_t *node = NULL, *prevnode = NULL;
 	dns_qpiter_t nseciter;
 	bool empty_node;
-	isc_result_t result;
+	isc_result_t result = ISC_R_SUCCESS;
 	dns_fixedname_t fname;
 	dns_name_t *name = dns_fixedname_initname(&fname);
 	dns_rdatatype_t matchtype = nsec3 ? dns_rdatatype_nsec3
@@ -3175,10 +3175,7 @@ find_closest_nsec(qpz_search_t *search, dns_name_t *foundname,
 	 * then we start using the auxiliary NSEC namespace to find
 	 * the next predecessor.
 	 */
-	result = dns_qpiter_current(&search->iter, (void **)&node, NULL);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_qpiter_current(&search->iter, (void **)&node, NULL));
 	dns_name_copy(&node->name, name);
 again:
 	do {
@@ -4961,10 +4958,7 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 		 rdataset->covers != dns_rdatatype_nsec3));
 
 	dns_name_copy(&node->name, nodename);
-	result = dns_rdatavec_fromrdataset(rdataset, node->mctx, &region, 0);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_rdatavec_fromrdataset(rdataset, node->mctx, &region, 0));
 
 	newheader = (dns_vecheader_t *)region.base;
 	newheader->ttl = rdataset->ttl;
