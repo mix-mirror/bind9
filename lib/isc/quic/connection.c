@@ -1608,14 +1608,18 @@ dcid_status2_cb(ngtcp2_conn *ngconn ISC_ATTR_UNUSED,
 	isc_constregion_t cid = { ngcid->data, ngcid->datalen };
 	isc_quic_conn_t *conn = user_data;
 	isc_result_t result;
+	isc_tid_t tid = isc_tid();
 
 	switch (type) {
 	case NGTCP2_CONNECTION_ID_STATUS_TYPE_ACTIVATE:
-		result = isc_quic_router_add_cid(conn->router, cid, isc_tid(),
-						 conn);
-		if (ngtoken != NULL) {
+		result = isc_quic_router_add_cid(conn->router, cid, tid, conn);
+		if (result == ISC_R_SUCCESS && ngtoken != NULL) {
 			result = isc_quic_router_add_stateless_reset(
-				conn->router, ngtoken->data, isc_tid(), conn);
+				conn->router, ngtoken->data, tid, conn);
+			if (result != ISC_R_SUCCESS) {
+				(void)isc_quic_router_del_cid(conn->router,
+							      cid);
+			}
 		}
 		break;
 	case NGTCP2_CONNECTION_ID_STATUS_TYPE_DEACTIVATE:
@@ -1623,10 +1627,17 @@ dcid_status2_cb(ngtcp2_conn *ngconn ISC_ATTR_UNUSED,
 		if (result == ISC_R_SUCCESS && ngtoken != NULL) {
 			result = isc_quic_router_del_stateless_reset(
 				conn->router, ngtoken->data);
+			/* TODO(aydin) do we need to re-add the CID? */
 		}
 		break;
 	default:
-		UNREACHABLE();
+		/*
+		 * Other values might be added in the future so it is best to
+		 * not crash.
+		 *
+		 * https://nghttp2.org/ngtcp2/types.html#c.ngtcp2_connection_id_status2
+		 */
+		return NGTCP2_ERR_CALLBACK_FAILURE;
 	}
 
 	if (result != ISC_R_SUCCESS) {
