@@ -240,7 +240,8 @@ loadctx_destroy(dns_loadctx_t *lctx);
 				SETRESULT(lctx, result);                     \
 				LOGIT(result);                               \
 				read_till_eol = true;                        \
-				err goto next_line;                          \
+				err;                                         \
+				goto next_line;                              \
 			} else                                               \
 				goto log_and_cleanup;                        \
 		}                                                            \
@@ -314,14 +315,20 @@ loadctx_destroy(dns_loadctx_t *lctx);
 	}
 
 #define LOGITFILE(result, filename)                                            \
-	if (result == ISC_R_INVALIDFILE || result == ISC_R_FILENOTFOUND ||     \
-	    result == ISC_R_IOERROR || result == ISC_R_TOOMANYOPENFILES ||     \
-	    result == ISC_R_NOPERM)                                            \
-		(*callbacks->error)(callbacks, "%s: %s:%lu: %s: %s",           \
-				    "dns_master_load", source, line, filename, \
-				    isc_result_totext(result));                \
-	else                                                                   \
-		LOGIT(result)
+	do {                                                                   \
+		if (result == ISC_R_INVALIDFILE ||                             \
+		    result == ISC_R_FILENOTFOUND || result == ISC_R_IOERROR || \
+		    result == ISC_R_TOOMANYOPENFILES ||                        \
+		    result == ISC_R_NOPERM)                                    \
+		{                                                              \
+			(*callbacks->error)(callbacks, "%s: %s:%lu: %s: %s",   \
+					    "dns_master_load", source, line,   \
+					    filename,                          \
+					    isc_result_totext(result));        \
+		} else {                                                       \
+			LOGIT(result);                                         \
+		}                                                              \
+	} while (0)
 
 #define LOGIT(result)                                                       \
 	(*callbacks->error)(callbacks, "%s: %s:%lu: %s", "dns_master_load", \
