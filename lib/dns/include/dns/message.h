@@ -265,7 +265,11 @@ struct dns_message {
 	dns_rdataset_t *tsig;
 
 	int state;
-	unsigned int			      : 0; /* bits */
+	/*
+	 * The type of a zero-width bitfield only names the storage unit
+	 * it starts; Coccinelle parses only the single-keyword spelling.
+	 */
+	int				      : 0; /* bits */
 	dns_message_intent_t from_to_wire     : 2; /* 2 */
 	unsigned int	     header_ok	      : 1; /* 3 */
 	unsigned int	     question_ok      : 1; /* 4 */
@@ -282,7 +286,7 @@ struct dns_message {
 	unsigned int	     fuzzing	      : 1; /* 15 */
 	unsigned int	     free_pools	      : 1; /* 16 */
 	unsigned int	     has_dname	      : 1; /* 17 */
-	unsigned int			      : 0;
+	int				      : 0;
 
 	unsigned int opt_reserved;
 	unsigned int sig_reserved;
