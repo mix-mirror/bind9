@@ -58,11 +58,13 @@
 #endif
 
 #if VERBOSE
-#define ASSERT(p)                       \
-	if (!(p)) {                     \
-		TRACE("%s failed", #p); \
-		ok = false;             \
-	} else
+#define ASSERT(p)                               \
+	do {                                    \
+		if (!(p)) {                     \
+			TRACE("%s failed", #p); \
+			ok = false;             \
+		}                               \
+	} while (0)
 #else
 #define ASSERT(p) assert_true(p)
 #endif

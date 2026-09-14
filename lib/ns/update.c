@@ -736,16 +736,18 @@ rrset_exists_action(void *data ISC_ATTR_UNUSED, rr_t *rr ISC_ATTR_UNUSED) {
  *
  * If 'result' has any other value, there was a failure.
  * Return the failure result code and do not set *exists.
- *
- * This would be more readable as "do { if ... } while(0)",
- * but that form generates tons of warnings on Solaris 2.6.
  */
-#define RETURN_EXISTENCE_FLAG                                         \
-	return ((result == ISC_R_EXISTS)                              \
-			? (*exists = true, ISC_R_SUCCESS)             \
-			: ((result == ISC_R_SUCCESS)                  \
-				   ? (*exists = false, ISC_R_SUCCESS) \
-				   : result))
+#define RETURN_EXISTENCE_FLAG                  \
+	do {                                   \
+		if (result == ISC_R_EXISTS) {  \
+			*exists = true;        \
+			return ISC_R_SUCCESS;  \
+		}                              \
+		if (result == ISC_R_SUCCESS) { \
+			*exists = false;       \
+		}                              \
+		return result;                 \
+	} while (0)
 
 /*%
  * Set '*exists' to true iff an rrset of the given type exists,

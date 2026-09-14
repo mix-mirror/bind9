@@ -716,35 +716,48 @@ static void
 findnoqname(fetchctx_t *fctx, dns_message_t *message, dns_name_t *name,
 	    dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset);
 
-#define fctx_failure_detach(fctxp, result)                              \
-	REQUIRE(result != ISC_R_SUCCESS);                               \
-	rcu_read_lock();                                                \
-	if (fctx__done(*fctxp, result, __func__, __FILE__, __LINE__)) { \
-		fetchctx_detach(fctxp);                                 \
-	}                                                               \
-	rcu_read_unlock()
+#define fctx_failure_detach(fctxp, result)                         \
+	do {                                                       \
+		REQUIRE(result != ISC_R_SUCCESS);                  \
+		rcu_read_lock();                                   \
+		if (fctx__done(*fctxp, result, __func__, __FILE__, \
+			       __LINE__)) {                        \
+			fetchctx_detach(fctxp);                    \
+		}                                                  \
+		rcu_read_unlock();                                 \
+	} while (0)
 
-#define fctx_failure_unref(fctx, result)                              \
-	REQUIRE(result != ISC_R_SUCCESS);                             \
-	rcu_read_lock();                                              \
-	if (fctx__done(fctx, result, __func__, __FILE__, __LINE__)) { \
-		fetchctx_unref(fctx);                                 \
-	}                                                             \
-	rcu_read_unlock()
+#define fctx_failure_unref(fctx, result)                                      \
+	do {                                                                  \
+		REQUIRE(result != ISC_R_SUCCESS);                             \
+		rcu_read_lock();                                              \
+		if (fctx__done(fctx, result, __func__, __FILE__, __LINE__)) { \
+			fetchctx_unref(fctx);                                 \
+		}                                                             \
+		rcu_read_unlock();                                            \
+	} while (0)
 
-#define fctx_success_detach(fctxp)                                             \
-	rcu_read_lock();                                                       \
-	if (fctx__done(*fctxp, ISC_R_SUCCESS, __func__, __FILE__, __LINE__)) { \
-		fetchctx_detach(fctxp);                                        \
-	}                                                                      \
-	rcu_read_unlock()
+#define fctx_success_detach(fctxp)                                        \
+	do {                                                              \
+		rcu_read_lock();                                          \
+		if (fctx__done(*fctxp, ISC_R_SUCCESS, __func__, __FILE__, \
+			       __LINE__))                                 \
+		{                                                         \
+			fetchctx_detach(fctxp);                           \
+		}                                                         \
+		rcu_read_unlock();                                        \
+	} while (0)
 
-#define fctx_success_unref(fctx)                                             \
-	rcu_read_lock();                                                     \
-	if (fctx__done(fctx, ISC_R_SUCCESS, __func__, __FILE__, __LINE__)) { \
-		fetchctx_unref(fctx);                                        \
-	}                                                                    \
-	rcu_read_unlock()
+#define fctx_success_unref(fctx)                                        \
+	do {                                                            \
+		rcu_read_lock();                                        \
+		if (fctx__done(fctx, ISC_R_SUCCESS, __func__, __FILE__, \
+			       __LINE__))                               \
+		{                                                       \
+			fetchctx_unref(fctx);                           \
+		}                                                       \
+		rcu_read_unlock();                                      \
+	} while (0)
 
 #define fetchctx_ref_unless_zero(fctx) \
 	fetchctx__ref_unless_zero(fctx, __func__, __FILE__, __LINE__)

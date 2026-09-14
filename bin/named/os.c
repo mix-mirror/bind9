@@ -130,11 +130,10 @@ linux_setcaps(cap_t caps) {
 		}                                                             \
 	} while (0)
 #define FREE_CAP                   \
-	{                          \
+	do {                       \
 		cap_free(caps);    \
 		cap_free(curcaps); \
-	}                          \
-	while (0)
+	} while (0)
 
 static void
 linux_initialprivs(void) {
