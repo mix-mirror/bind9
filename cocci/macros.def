@@ -11,6 +11,13 @@
  * information regarding copyright ownership.
  */
 
+/* Match the constexpr fallback in meson.build. */
+#define constexpr static const
+
+/* Drop the thread-local qualifier; unwrap _Atomic to keep the type. */
+#define thread_local MACROANNOTATION
+#define _Atomic(type) type
+
 /* Coccinelle cannot parse fixed underlying types or packed enums. */
 #define ISC_FIXED_ENUM(name, type) name
 
