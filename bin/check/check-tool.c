@@ -666,15 +666,17 @@ load_zone(isc_mem_t *mctx, const char *zonename, const char *filename,
 
 	dns_zone_setmaxttl(zone, maxttl);
 
-	if (docheckmx) {
-		dns_zone_setcheckmx(zone, checkmx);
-	}
-	if (docheckns) {
-		dns_zone_setcheckns(zone, checkns);
-		dns_zone_setcheckisservedby(zone, checkisservedby);
-	}
-	if (dochecksrv) {
-		dns_zone_setchecksrv(zone, checksrv);
+	if (rdclass == dns_rdataclass_in) {
+		if (docheckmx) {
+			dns_zone_setcheckmx(zone, checkmx);
+		}
+		if (docheckns) {
+			dns_zone_setcheckns(zone, checkns);
+			dns_zone_setcheckisservedby(zone, checkisservedby);
+		}
+		if (dochecksrv) {
+			dns_zone_setchecksrv(zone, checksrv);
+		}
 	}
 
 	CHECK(dns_zone_load(zone, false));
