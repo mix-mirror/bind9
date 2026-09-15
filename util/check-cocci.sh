@@ -13,6 +13,63 @@
 
 ret=0
 
+MACRO_ALLOWLIST_PATTERNS="
+ISC_LIST
+ISC_LINK
+ISC_SIEVE
+ISC_SLIST
+ISC_SLINK
+ISC_OS_CACHELINE_SIZE
+_ISC_MEM_FILELINE
+UV_HANDLE_TYPE_MAP
+DBNODE_FIELDS
+DNS_QPREADER_FIELDS
+DNS__DB_FLARG_PASS
+DNS__DB_FILELINE
+FLARG_PASS
+ISC_RUN_TEST_.+
+ISC_SETUP_TEST_.+
+ISC_TEARDOWN_TEST_.+
+ISC_LOOP_TEST_.+
+ISC_LOOP_SETUP_.+
+ISC_LOOP_TEARDOWN_.+
+ISC_TEST_DECLARE
+ISC_TEST_LIST_.+
+ISC_TEST_ENTRY
+ISC_TEST_ENTRY_.+
+"
+MACRO_INCLUDE_FLAGS="
+-Ilib/isc/include
+-Ilib/dns/include
+-Itests/include
+"
+MACRO_HEADER_FLAGS="
+-include isc/sieve.h
+-include isc/slist.h
+-include dns/qp.h
+-include tests/isc.h
+-include lib/isc/netmgr/netmgr-int.h
+"
+COCCI_MACROS_FILE="cocci/generated.def"
+
+generate_macro_definitions() {
+  local definitions pattern
+
+  # Extract allowlisted definitions using the preprocessor
+  # -M -MG tolerates missing generated headers; send dependencies to /dev/null.
+  # Use GCC explicitly: Clang emits no macro definitions with -dM -M.
+  definitions=$(gcc ${CPPFLAGS:-} -dM -M -MG -MF /dev/null -x c \
+    $MACRO_INCLUDE_FLAGS $MACRO_HEADER_FLAGS /dev/null) || return 1
+
+  cp cocci/macros.def "$COCCI_MACROS_FILE" || return 1
+  for pattern in $MACRO_ALLOWLIST_PATTERNS; do
+    if ! printf '%s\n' "$definitions" | grep -E "^#define (${pattern})(\(|[[:space:]]|$)" >>"$COCCI_MACROS_FILE"; then
+      echo "Coccinelle: no definitions matching $pattern" >&2
+      return 1
+    fi
+  done
+}
+
 run_spatch() {
   local spatch=$1
   shift
@@ -21,7 +78,7 @@ run_spatch() {
 
   : >"$patch"
   echo "Applying semantic patch $spatch..."
-  spatch --jobs "${TEST_PARALLEL_JOBS:-1}" --sp-file "$spatch" --macro-file-builtins cocci/macros.def --use-gitgrep --dir "." --include-headers $spatchargs >>"$patch" 2>cocci.stderr
+  spatch --jobs "${TEST_PARALLEL_JOBS:-1}" --sp-file "$spatch" --macro-file-builtins "$COCCI_MACROS_FILE" --use-gitgrep --dir "." --include-headers $spatchargs >>"$patch" 2>cocci.stderr
   cat cocci.stderr
   if grep -q -e "parse error" -e "EXN: Failure" -e "WARNING" cocci.stderr; then
     ret=1
@@ -52,6 +109,8 @@ for arg in "$@"; do
     exit 1
   fi
 done
+
+generate_macro_definitions || exit 1
 
 if [ -n "$spatchfile" ]; then
   run_spatch $spatchfile $spatchargs

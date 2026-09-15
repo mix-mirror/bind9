@@ -881,6 +881,10 @@ coccinelle:
   script:
     - util/check-cocci.sh
     - if test "$(git status --porcelain | grep -Ev '\?\?' | wc -l)" -gt "0"; then git status --short; exit 1; fi
+  artifacts:
+    paths:
+      - cocci/generated.def
+    when: always
 
 # Jobs for scan-build builds on Debian 13 "trixie" (amd64)
 

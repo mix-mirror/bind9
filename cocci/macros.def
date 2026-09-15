@@ -39,10 +39,9 @@
 #define ISC_ATTR_UNUSED                                    MACROANNOTATION
 #define ISC_ATTR_WARN_UNUSED_RESULT                        MACROANNOTATION
 #define ISC_FORMAT_PRINTF(fmt, args)                       MACROANNOTATION
-#define ISC_LINK(type)                                     MACROANNOTATION
-#define ISC_LIST(type)                                     MACROANNOTATION
 #define ISC_NONSTRING                                      MACROANNOTATION
 #define ISC_NORETURN                                       MACROANNOTATION
 #define ISC_NO_SANITIZE_ADDRESS                            MACROANNOTATION
 #define ISC_NO_SANITIZE_THREAD                             MACROANNOTATION
-#define ISC_SIEVE(type)                                    MACROANNOTATION
+
+/* util/check-cocci.sh appends allowlisted header definitions below. */
