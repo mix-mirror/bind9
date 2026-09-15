@@ -2,6 +2,7 @@
 type T;
 statement S1, S2;
 expression V;
+symbol isc_mem_strdup;
 @@
 (V =
 (isc_mem_strdup

@@ -2,6 +2,7 @@
 type T;
 statement S1, S2;
 expression V, E1, E2;
+symbol isc_mempool_get;
 @@
 (V =
 (isc_mempool_get

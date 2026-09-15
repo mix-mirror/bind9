@@ -1,5 +1,6 @@
 @@
 expression E1;
+symbol result, cleanup;
 @@
 
 - result = E1;
@@ -10,17 +11,18 @@ expression E1;
 
 @@
 expression E1;
-isc_result_t result;
+isc_result_t R;
 @@
 
-- result = E1;
-- if (result != ISC_R_SUCCESS) {
-- return result;
+- R = E1;
+- if (R != ISC_R_SUCCESS) {
+- return R;
 - }
 + RETERR(E1);
 
 @@
 expression E1;
+symbol result;
 @@
 
 - result = E1;
