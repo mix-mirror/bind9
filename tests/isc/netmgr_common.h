@@ -155,49 +155,7 @@ extern isc_nm_recv_cb_t connect_readcb;
 #define T_PRIMARIES  120 * 1000
 #define T_CONNECT    30 * 1000
 
-/* Wait for 1 second (1000 milliseconds) */
-#define WAIT_REPEATS 1000
-#define T_WAIT	     1 /* 1 millisecond */
-
-#define WAIT_FOR(v, op, val)                                \
-	{                                                   \
-		X(v);                                       \
-		int_fast64_t __r = WAIT_REPEATS;            \
-		int_fast64_t __o = 0;                       \
-		do {                                        \
-			int_fast64_t __l = atomic_load(&v); \
-			if (__l op val) {                   \
-				break;                      \
-			};                                  \
-			if (__o == __l) {                   \
-				__r--;                      \
-			} else {                            \
-				__r = WAIT_REPEATS;         \
-			}                                   \
-			__o = __l;                          \
-			uv_sleep(T_WAIT);                   \
-		} while (__r > 0);                          \
-		X(v);                                       \
-		P(__r);                                     \
-		assert_true(atomic_load(&v) op val);        \
-	}
-
-#define WAIT_FOR_EQ(v, val) WAIT_FOR(v, ==, val)
-#define WAIT_FOR_NE(v, val) WAIT_FOR(v, !=, val)
-#define WAIT_FOR_LE(v, val) WAIT_FOR(v, <=, val)
-#define WAIT_FOR_LT(v, val) WAIT_FOR(v, <, val)
-#define WAIT_FOR_GE(v, val) WAIT_FOR(v, >=, val)
-#define WAIT_FOR_GT(v, val) WAIT_FOR(v, >, val)
-
-#define DONE() atomic_store(&do_send, false);
-
 #define CHECK_RANGE_FULL(v)                \
-	{                                  \
-		int __v = atomic_load(&v); \
-		assert_true(__v > 1);      \
-	}
-
-#define CHECK_RANGE_HALF(v)                \
 	{                                  \
 		int __v = atomic_load(&v); \
 		assert_true(__v > 1);      \
