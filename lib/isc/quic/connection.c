@@ -974,6 +974,11 @@ pull_packet_connected(isc_quic_conn_t *conn, isc_region_t out, size_t *written,
 
 	ngtcp2_conn_update_pkt_tx_time(conn->inner, isc_time_monotonic());
 
+	if (total == 0) {
+		*written = 0;
+		return ISC_R_IGNORE;
+	}
+
 	if (from != NULL) {
 		result = isc_sockaddr_fromsockaddr(
 			from, (const struct sockaddr *)&ps.local_addrbuf);
@@ -1028,7 +1033,7 @@ pull_packet_closed(isc_quic_conn_t *conn, isc_region_t out, size_t *written,
 
 	if (from != NULL) {
 		result = isc_sockaddr_fromsockaddr(
-			from, (const struct sockaddr *)&ps.local_addrbuf);
+			from, (const struct sockaddr *)&ps.path.local);
 		INSIST(result == ISC_R_SUCCESS);
 	}
 
