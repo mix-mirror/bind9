@@ -3200,7 +3200,7 @@ status=$((status + ret))
 n=$((n + 1))
 echo_i "checking that dom24.example. is no longer served by secondary ($n)"
 ret=0
-wait_for_no_soa @10.53.0.2 dom16.example. dig.out.test$n || ret=1
+wait_for_no_soa @10.53.0.2 dom24.example. dig.out.test$n || ret=1
 if [ $ret -ne 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
