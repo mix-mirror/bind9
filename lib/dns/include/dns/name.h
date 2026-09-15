@@ -170,19 +170,19 @@ extern const dns_name_t *dns_inaddrarpa;
 	}
 
 #define DNS_NAME_INITABSOLUTE(__ndata)                                \
-	{                                                             \
+	((dns_name_t){                                                \
 		.magic = DNS_NAME_MAGIC,                              \
 		.ndata = (__ndata),                                   \
 		.length = sizeof(__ndata),                            \
 		.attributes = { .readonly = true, .absolute = true }, \
 		.link = ISC_LINK_INITIALIZER,                         \
 		.list = ISC_LIST_INITIALIZER,                         \
-	}
+	})
 
-#define DNS_NAME_INITEMPTY              \
-	{ .magic = DNS_NAME_MAGIC,      \
-	  .link = ISC_LINK_INITIALIZER, \
-	  .list = ISC_LIST_INITIALIZER }
+#define DNS_NAME_INITEMPTY                           \
+	((dns_name_t){ .magic = DNS_NAME_MAGIC,      \
+		       .link = ISC_LINK_INITIALIZER, \
+		       .list = ISC_LIST_INITIALIZER })
 
 /*%
  * Standard sizes of a wire format name

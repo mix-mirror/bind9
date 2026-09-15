@@ -937,13 +937,15 @@ send_client_connection_header(isc_nm_http_session_t *session) {
 	return true;
 }
 
-#define MAKE_NV(NAME, VALUE, VALUELEN)                                 \
-	{ (uint8_t *)(uintptr_t)(NAME), (uint8_t *)(uintptr_t)(VALUE), \
-	  sizeof(NAME) - 1, VALUELEN, NGHTTP2_NV_FLAG_NONE }
+#define MAKE_NV(NAME, VALUE, VALUELEN)                                  \
+	((nghttp2_nv){ (uint8_t *)(uintptr_t)(NAME),                    \
+		       (uint8_t *)(uintptr_t)(VALUE), sizeof(NAME) - 1, \
+		       VALUELEN, NGHTTP2_NV_FLAG_NONE })
 
-#define MAKE_NV2(NAME, VALUE)                                          \
-	{ (uint8_t *)(uintptr_t)(NAME), (uint8_t *)(uintptr_t)(VALUE), \
-	  sizeof(NAME) - 1, sizeof(VALUE) - 1, NGHTTP2_NV_FLAG_NONE }
+#define MAKE_NV2(NAME, VALUE)                                           \
+	((nghttp2_nv){ (uint8_t *)(uintptr_t)(NAME),                    \
+		       (uint8_t *)(uintptr_t)(VALUE), sizeof(NAME) - 1, \
+		       sizeof(VALUE) - 1, NGHTTP2_NV_FLAG_NONE })
 
 static ssize_t
 client_read_callback(nghttp2_session *ngsession, int32_t stream_id,

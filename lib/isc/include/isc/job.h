@@ -42,9 +42,9 @@ struct isc_job {
 };
 
 #define ISC_JOB_INITIALIZER                   \
-	{                                     \
+	((isc_job_t){                         \
 		.link = ISC_LINK_INITIALIZER, \
-	}
+	})
 
 void
 isc_job_run(isc_loop_t *loop, isc_job_t *job, isc_job_cb cb, void *cbarg);

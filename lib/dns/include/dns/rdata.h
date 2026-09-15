@@ -146,10 +146,10 @@ enum {
 };
 
 #define DNS_RDATA_INIT                        \
-	{                                     \
+	((dns_rdata_t){                       \
 		.data = NULL,                 \
 		.link = ISC_LINK_INITIALIZER, \
-	}
+	})
 
 #define DNS_RDATA_CHECKINITIALIZED
 #ifdef DNS_RDATA_CHECKINITIALIZED
