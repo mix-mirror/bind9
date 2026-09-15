@@ -34,7 +34,7 @@ ninja -C "$builddir" -t inputs lib/dns/code.h \
   | sort -u >"$registered"
 
 # rdata-type source files on disk (e.g. soa_6.c, nsap-ptr_23.h).  Skeleton
-# files such as proforma.c are not type-named and are skipped, mirroring
+# files such as proforma.c.in are not type-named and are skipped, mirroring
 # gen.c's filename filter.
 printf '%s\n' lib/dns/rdata/*/*.c lib/dns/rdata/*/*.h \
   | grep -E '/[-0-9a-z]+_[0-9]+\.[ch]$' \

@@ -1152,8 +1152,8 @@ by `dns_rdata_tostruct()`, such as `dns_rdata_txt_first()` and
 record.  The code goes into the .c file and the function prototype into the
 .h file the contents of which are included in `<dns/rdatastruct.h>`.
 
-`lib/dns/rdata/generic/proforma.c` and `lib/dns/rdata/generic/proforma.h`
-can be copied and used as starting points when defining a adding a new type.
+`lib/dns/rdata/generic/proforma.c.in` and `lib/dns/rdata/generic/proforma.h.in`
+can be copied and used as starting points when adding a new type.
 Please also look as the existing record types for examples of how to
 implement a method.
 
