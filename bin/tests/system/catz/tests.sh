@@ -3255,7 +3255,7 @@ status=$((status + ret))
 n=$((n + 1))
 echo_i "checking that dom26.example. is served by secondary ns2 ($n)"
 ret=0
-wait_for_soa @10.53.0.1 dom26.example. dig.out.test$n || ret=1
+wait_for_soa @10.53.0.2 dom26.example. dig.out.test$n || ret=1
 if [ $ret -ne 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
