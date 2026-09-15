@@ -3072,7 +3072,6 @@ status=$((status + ret))
 ##########################################################################
 # GL#6305, sub-case 1
 echo_i "Testing of changing the member zone while leaving the unique label the same"
-n=$((n + 1))
 
 n=$((n + 1))
 echo_i "Adding a domain dom23.example. to primary ns1 via RNDC ($n)"
@@ -3208,7 +3207,6 @@ status=$((status + ret))
 ##########################################################################
 # GL#6305, sub-case 2
 echo_i "Testing of changing the member zone to a pre-existing zone while leaving the unique label the same"
-n=$((n + 1))
 
 n=$((n + 1))
 echo_i "Adding a domain dom25.example. to primary ns1 via RNDC ($n)"
