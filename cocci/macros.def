@@ -11,24 +11,19 @@
  * information regarding copyright ownership.
  */
 
+/* Coccinelle cannot parse fixed underlying types or packed enums. */
+#define ISC_FIXED_ENUM(name, type) name
+
+/* Ignore the fallthrough marker, leaving its semicolon. */
+#define FALLTHROUGH
+
 /*
- * Coccinelle does not run the preprocessor, so an attribute macro it has
- * never heard of is just an unknown identifier.  On the last parameter of
- * a function definition there is no trailing comma to disambiguate it, the
- * parser gives up, and the whole function is dropped from the analysis --
- * silently, and for every semantic patch.
- *
- * MACROANNOTATION is Coccinelle's own marker for "this is an annotation,
- * skip it"; the bundled standard.h declares the Linux kernel's macros the
- * same way.
- *
- * Only declaration-level macros belong here: defining anything the
- * semantic patches need to match on (INSIST, REQUIRE, ...) would hide it
- * from them instead.  Macros whose expansion is a brace-enclosed
- * initialiser (ISC_TEST_ENTRY and friends) must be left out as well --
- * they make spatch abort in its fuzzy parser.
+ * Ignore declaration attributes and optional tracing parameters.
+ * Leave assertion macros intact for semantic patches.
  */
-#define FALLTHROUGH                                        MACROANNOTATION
+#define _ISC_MEM_FLARG                                     MACROANNOTATION
+#define DNS__DB_FLARG                                      MACROANNOTATION
+#define FLARG                                              MACROANNOTATION
 #define ISC_ATTR_ACCESS(...)                               MACROANNOTATION
 #define ISC_ATTR_COUNTED_BY(x)                             MACROANNOTATION
 #define ISC_ATTR_COUNTED_BY_PTR(x)                         MACROANNOTATION
