@@ -343,6 +343,29 @@ data_read_cb(isc_quic_conn_t *conn, void *cbarg,
 	UNREACHABLE();
 }
 
+static void
+try_exchange_packets(isc_quic_conn_t *conn1, isc_quic_conn_t *conn2) {
+	uint8_t buf[1200];
+	isc_region_t out = { .base = buf, .length = sizeof(buf) };
+	isc_sockaddr_t addr1, addr2;
+	isc_result_t result;
+	size_t len;
+
+	len = 0;
+	result = isc_quic_conn_pull_packet(conn1, out, &len, &addr1, &addr2);
+	if (result == ISC_R_SUCCESS) {
+		isc_quic_conn_push_packet(
+			conn2, (isc_constregion_t){ buf, len }, &addr2, &addr1);
+	}
+
+	len = 0;
+	result = isc_quic_conn_pull_packet(conn2, out, &len, &addr2, &addr1);
+	if (result == ISC_R_SUCCESS) {
+		isc_quic_conn_push_packet(
+			conn1, (isc_constregion_t){ buf, len }, &addr1, &addr2);
+	}
+}
+
 ISC_RUN_TEST_IMPL(isc_quic_router_cid) {
 	isc_quic_router_t *router = NULL;
 	isc_quic_conn_t *conn, *found;
@@ -755,11 +778,118 @@ ISC_LOOP_TEST_IMPL(isc_quic_conn_base) {
 	isc_loopmgr_shutdown();
 }
 
+ISC_LOOP_TEST_IMPL(isc_quic_conn_closed_stream_no_write) {
+	isc_constregion_t dcid, scid;
+	isc_quic_conn_t *conn = NULL;
+	isc_sockaddr_t from, to;
+	isc_result_t result;
+	endpoint_t *client, *server;
+	struct stream_state *stream;
+	uint8_t buf[1200];
+	size_t len;
+
+	isc_constregion_t packet = { buf, 0 };
+	isc_region_t out = { buf, sizeof(buf) };
+
+	endpoint_create(true, 1, &server);
+	endpoint_create(false, 1, &client);
+
+	result = isc_quic_conn_client_create(
+		isc_g_mctx, client->router, &callbacks, client, &client->opts,
+		"bind9.local", &client_addr[0], &server_addr,
+		&client->state[0].conn);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	len = 0;
+	result = isc_quic_conn_pull_packet(client->state[0].conn, out, &len,
+					   &from, &to);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	packet.length = len;
+	conn = NULL;
+	result = isc_quic_router_handle_packet(server->router, packet, NULL,
+					       &dcid, &scid, NULL, &conn);
+	assert_int_equal(result, ISC_R_NOTFOUND);
+	server->state[0].conn = NULL;
+	result = isc_quic_conn_server_create(
+		isc_g_mctx, server->router, &callbacks, server, &server->opts,
+		dcid, scid, &to, &from, &server->state[0].conn);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	rcu_barrier();
+
+	while (client->handshakes == 0 && server->handshakes == 0) {
+		try_exchange_packets(client->state[0].conn,
+				     server->state[0].conn);
+	}
+
+	stream = isc_mem_get(isc_g_mctx, sizeof(*stream));
+	*stream = (stream_state_t){ .link = ISC_LINK_INITIALIZER };
+	result = isc_quic_conn_open_bidi_stream(client->state[0].conn,
+						&stream->id, &client->state[0]);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	ISC_LIST_APPEND(client->state[0].stream, stream, link);
+	result = isc_quic_conn_push_stream_data(
+		client->state[0].conn, stream->id, messages[stream->cursor],
+		sizeof(messages[0]));
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	try_exchange_packets(client->state[0].conn, server->state[0].conn);
+
+	/*
+	 * Enqueue data to be written by the server.
+	 */
+	result = isc_quic_conn_push_stream_data(
+		server->state[0].conn, stream->id, messages[stream->cursor],
+		sizeof(messages[0]));
+	assert_int_equal(result, ISC_R_SUCCESS);
+	result = isc_quic_conn_push_stream_data(
+		server->state[0].conn, stream->id, messages[stream->cursor],
+		sizeof(messages[0]));
+	assert_int_equal(result, ISC_R_SUCCESS);
+	result = isc_quic_conn_push_stream_data(
+		server->state[0].conn, stream->id, messages[stream->cursor],
+		sizeof(messages[0]));
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	/*
+	 * Create packet with stream shutdown and push it to the server
+	 */
+	result = isc_quic_conn_shutdown_stream(client->state[0].conn,
+					       stream->id, 123);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	len = 0;
+	result = isc_quic_conn_pull_packet(client->state[0].conn, out, &len,
+					   &from, &to);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	assert_int_not_equal(len, 0);
+	packet.length = len;
+	result = isc_quic_conn_push_packet(server->state[0].conn, packet, &to,
+					   &from);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	/*
+	 * Because the stream has been closed, the messages will not be used.
+	 */
+	len = 0;
+	result = isc_quic_conn_pull_packet(server->state[0].conn, out, &len,
+					   &from, &to);
+	assert_int_equal(result, ISC_R_IGNORE);
+	assert_int_equal(len, 0);
+
+	endpoint_destroy(&client);
+	endpoint_destroy(&server);
+
+	isc_loopmgr_shutdown();
+}
+
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY(isc_quic_router_cid)
 ISC_TEST_ENTRY(isc_quic_router_stateless_reset)
 ISC_TEST_ENTRY(isc_quic_router_packet)
 ISC_TEST_ENTRY_CUSTOM(isc_quic_conn_base, setup_managers, teardown_managers)
+ISC_TEST_ENTRY_CUSTOM(isc_quic_conn_closed_stream_no_write, setup_managers,
+		      teardown_managers)
 ISC_TEST_LIST_END
 
 ISC_TEST_MAIN_CUSTOM(global_setup, global_teardown);
