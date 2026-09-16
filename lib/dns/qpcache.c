@@ -216,6 +216,33 @@ struct qpcache {
 	qpcache_bucket_t buckets[]; /* attribute((counted_by(buckets_count))) */
 };
 
+static void __attribute__((noinline))
+qpcache_tree_lock(isc_rwlock_t *lock, isc_rwlocktype_t type) {
+	RWLOCK(lock, type);
+}
+
+static void __attribute__((noinline))
+qpcache_node_lock(isc_rwlock_t *lock, isc_rwlocktype_t type) {
+	RWLOCK(lock, type);
+}
+
+/* Keep tree and node lock contention distinct in profiler stack traces. */
+#undef TREE_LOCK
+#define TREE_LOCK(l, t, tp)                                      \
+	{                                                        \
+		STRONG_RWLOCK_CHECK(*tp == isc_rwlocktype_none); \
+		qpcache_tree_lock(l, t);                         \
+		*tp = t;                                         \
+	}
+
+#undef NODE_LOCK
+#define NODE_LOCK(l, t, tp)                                      \
+	{                                                        \
+		STRONG_RWLOCK_CHECK(*tp == isc_rwlocktype_none); \
+		qpcache_node_lock(l, t);                         \
+		*tp = t;                                         \
+	}
+
 #ifdef DNS_DB_NODETRACE
 #define qpcache_ref(ptr)   qpcache__ref(ptr, __func__, __FILE__, __LINE__)
 #define qpcache_unref(ptr) qpcache__unref(ptr, __func__, __FILE__, __LINE__)
