@@ -122,12 +122,8 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 
 	TRACE("------------------------------------------------");
 
-	isc_mem_t *mctx = NULL;
-	isc_mem_create("fuzz", &mctx);
-	isc_mem_setdestroycheck(mctx, true);
-
 	dns_qp_t *qp = NULL;
-	dns_qp_create(mctx, &fuzz_methods, NULL, &qp);
+	dns_qp_create(isc_g_mctx, &fuzz_methods, NULL, &qp);
 
 	/* avoid overrun */
 	size = size & ~1;
@@ -212,7 +208,6 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	}
 
 	dns_qp_destroy(&qp);
-	isc_mem_detach(&mctx);
 	isc_mem_checkdestroyed(stderr);
 
 	for (size_t i = 0; i < ARRAY_SIZE(item); i++) {

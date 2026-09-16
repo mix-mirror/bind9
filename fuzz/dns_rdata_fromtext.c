@@ -45,9 +45,6 @@ isc_lexspecials_t specials = { ['('] = 1, [')'] = 1, ['"'] = 1 };
 
 int
 LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
-	isc_mem_t *mctx = NULL;
-	isc_mem_create("fuzz", &mctx);
-
 	isc_lex_t *lex = NULL;
 	isc_token_t token;
 
@@ -68,7 +65,7 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	isc_buffer_add(&inbuf, size);
 	isc_buffer_setactive(&inbuf, size);
 
-	isc_lex_create(mctx, 256, &lex);
+	isc_lex_create(isc_g_mctx, 256, &lex);
 
 	/*
 	 * Set up to lex DNS master file.
@@ -123,8 +120,8 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 		goto cleanup;
 	}
 
-	result = dns_rdata_fromtext(&rdata, rdclass, rdtype, lex, name, 0, mctx,
-				    &wirebuf, NULL);
+	result = dns_rdata_fromtext(&rdata, rdclass, rdtype, lex, name, 0,
+				    isc_g_mctx, &wirebuf, NULL);
 	if (debug) {
 		fprintf(stderr, "dns_rdata_fromtext: %s\n",
 			isc_result_totext(result));
@@ -133,6 +130,5 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 cleanup:
 	isc_lex_close(lex);
 	isc_lex_destroy(&lex);
-	isc_mem_detach(&mctx);
 	return 0;
 }

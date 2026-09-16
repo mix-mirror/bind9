@@ -51,15 +51,12 @@ setup_logging(void) {
 int
 main(int argc, char **argv) {
 	isc_result_t result;
-	isc_mem_t *mctx = NULL;
 	cfg_obj_t *cfg = NULL;
 	cfg_type_t *type = NULL;
 	bool grammar = false;
 	char *filename = NULL;
 	unsigned int zonetype = 0;
 	unsigned int pflags = 0;
-
-	isc_mem_create("misc", &mctx);
 
 	setup_logging();
 
@@ -142,8 +139,6 @@ main(int argc, char **argv) {
 
 		cfg_obj_detach(&cfg);
 	}
-
-	isc_mem_detach(&mctx);
 
 	fflush(stdout);
 	if (ferror(stdout)) {

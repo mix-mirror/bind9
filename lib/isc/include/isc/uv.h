@@ -115,5 +115,3 @@ void
 isc__uv_initialize(void);
 void
 isc__uv_shutdown(void);
-void
-isc__uv_setdestroycheck(bool check);

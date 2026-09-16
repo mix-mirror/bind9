@@ -95,12 +95,6 @@ dns_zonemgr_create(isc_mem_t *mctx, dns_zonemgr_t **zmgrp) {
 	isc_ratelimiter_create(loop, &zmgr->startupnotifyrl);
 	isc_ratelimiter_create(loop, &zmgr->startuprefreshrl);
 
-	zmgr->mctxpool = isc_mem_cget(zmgr->mctx, zmgr->workers,
-				      sizeof(zmgr->mctxpool[0]));
-	for (size_t i = 0; i < zmgr->workers; i++) {
-		isc_mem_create("zonemgr-mctxpool", &zmgr->mctxpool[i]);
-	}
-
 	/* Default to 20 refresh queries / notifies / checkds per second. */
 	setrl(zmgr->checkdsrl, &zmgr->checkdsrate, 20);
 	setrl(zmgr->notifyrl, &zmgr->notifyrate, 20);
@@ -120,25 +114,15 @@ dns_zonemgr_create(isc_mem_t *mctx, dns_zonemgr_t **zmgrp) {
 
 isc_result_t
 dns_zonemgr_createzone(dns_zonemgr_t *zmgr, dns_zone_t **zonep) {
-	isc_mem_t *mctx = NULL;
 	dns_zone_t *zone = NULL;
 	isc_tid_t tid;
 
 	REQUIRE(DNS_ZONEMGR_VALID(zmgr));
 	REQUIRE(zonep != NULL && *zonep == NULL);
 
-	if (zmgr->mctxpool == NULL) {
-		return ISC_R_FAILURE;
-	}
-
 	tid = isc_random_uniform(zmgr->workers);
 
-	mctx = zmgr->mctxpool[tid];
-	if (mctx == NULL) {
-		return ISC_R_FAILURE;
-	}
-
-	dns_zone_create(&zone, mctx, tid);
+	dns_zone_create(&zone, isc_g_mctx, tid);
 
 	*zonep = zone;
 
@@ -253,10 +237,6 @@ dns_zonemgr_shutdown(dns_zonemgr_t *zmgr) {
 	isc_ratelimiter_shutdown(zmgr->startupnotifyrl);
 	isc_ratelimiter_shutdown(zmgr->startuprefreshrl);
 
-	for (size_t i = 0; i < zmgr->workers; i++) {
-		isc_mem_detach(&zmgr->mctxpool[i]);
-	}
-
 	RWLOCK(&zmgr->rwlock, isc_rwlocktype_read);
 	ISC_LIST_FOREACH(zmgr->zones, zone, link) {
 		LOCK_ZONE(zone);
@@ -278,9 +258,6 @@ zonemgr_free(dns_zonemgr_t *zmgr) {
 	isc_ratelimiter_detach(&zmgr->refreshrl);
 	isc_ratelimiter_detach(&zmgr->startupnotifyrl);
 	isc_ratelimiter_detach(&zmgr->startuprefreshrl);
-
-	isc_mem_cput(zmgr->mctx, zmgr->mctxpool, zmgr->workers,
-		     sizeof(zmgr->mctxpool[0]));
 
 	isc_rwlock_destroy(&zmgr->rwlock);
 	isc_rwlock_destroy(&zmgr->tlsctx_cache_rwlock);

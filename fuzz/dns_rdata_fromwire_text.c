@@ -39,15 +39,13 @@ bool debug = false;
  * format again, checking for consistency throughout the sequence.
  */
 
-static isc_mem_t *mctx = NULL;
 static isc_lex_t *lex = NULL;
 
 int
 LLVMFuzzerInitialize(int *argc ISC_ATTR_UNUSED, char ***argv ISC_ATTR_UNUSED) {
 	isc_lexspecials_t specials;
 
-	isc_mem_create("fuzz", &mctx);
-	isc_lex_create(mctx, 64, &lex);
+	isc_lex_create(isc_g_mctx, 64, &lex);
 
 	memset(specials, 0, sizeof(specials));
 	specials['('] = 1;
@@ -168,7 +166,7 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 
 	isc_buffer_init(&target, fromtext, sizeof(fromtext));
 	result = dns_rdata_fromtext(&rdata2, rdclass, rdtype, lex, dns_rootname,
-				    0, mctx, &target, &callbacks);
+				    0, isc_g_mctx, &target, &callbacks);
 	if (debug && result != ISC_R_SUCCESS) {
 		fprintf(stderr, "'%s'\n", totext);
 	}
@@ -194,7 +192,7 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 
 	isc_buffer_init(&target, fromtext, sizeof(fromtext));
 	result = dns_rdata_fromtext(&rdata3, rdclass, rdtype, lex, dns_rootname,
-				    0, mctx, &target, &callbacks);
+				    0, isc_g_mctx, &target, &callbacks);
 	assert(result == ISC_R_SUCCESS);
 	assert(rdata3.length == size);
 	assert(!memcmp(rdata3.data, data, size));
@@ -202,7 +200,7 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	/*
 	 * Convert rdata back to wire.
 	 */
-	dns_compress_init(&cctx, mctx, DNS_COMPRESS_DISABLED);
+	dns_compress_init(&cctx, isc_g_mctx, DNS_COMPRESS_DISABLED);
 	isc_buffer_init(&target, towire, sizeof(towire));
 	result = dns_rdata_towire(&rdata1, &cctx, &target);
 	dns_compress_invalidate(&cctx);

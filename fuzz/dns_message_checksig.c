@@ -38,8 +38,6 @@
 
 bool debug = false;
 
-static isc_mem_t *mctx = NULL;
-
 /*
  *	Packet dumps of validily signed request ./IN/SOA
  *	requests.
@@ -169,14 +167,12 @@ LLVMFuzzerInitialize(int *argc ISC_ATTR_UNUSED, char ***argv ISC_ATTR_UNUSED) {
 	fputs(c3, fd);
 	fclose(fd);
 
-	isc_mem_create("fuzz", &mctx);
+	isc_loopmgr_create(isc_g_mctx, 1);
 
-	isc_loopmgr_create(mctx, 1);
+	dns_view_create(isc_g_mctx, NULL, dns_rdataclass_in, "view", &view);
 
-	dns_view_create(mctx, NULL, dns_rdataclass_in, "view", &view);
-
-	dns_tsigkeyring_create(mctx, &ring);
-	dns_tsigkeyring_create(mctx, &emptyring);
+	dns_tsigkeyring_create(isc_g_mctx, &ring);
+	dns_tsigkeyring_create(isc_g_mctx, &emptyring);
 
 	result = dns_name_fromstring(name, "tsig-key", dns_rootname, 0, NULL);
 	if (result != ISC_R_SUCCESS) {
@@ -186,7 +182,7 @@ LLVMFuzzerInitialize(int *argc ISC_ATTR_UNUSED, char ***argv ISC_ATTR_UNUSED) {
 	}
 
 	result = dns_tsigkey_create(name, DST_ALG_HMACSHA256, secret,
-				    sizeof(secret), mctx, &tsigkey);
+				    sizeof(secret), isc_g_mctx, &tsigkey);
 	if (result != ISC_R_SUCCESS) {
 		fprintf(stderr, "dns_tsigkey_create failed: %s\n",
 			isc_result_totext(result));
@@ -206,7 +202,7 @@ LLVMFuzzerInitialize(int *argc ISC_ATTR_UNUSED, char ***argv ISC_ATTR_UNUSED) {
 		return 1;
 	}
 
-	dns_zone_create(&zone, mctx, 0);
+	dns_zone_create(&zone, isc_g_mctx, 0);
 
 	dns_zone_setorigin(zone, name);
 	dns_zone_setclass(zone, view->rdclass);
@@ -285,7 +281,8 @@ create_message(dns_message_t **messagep, const uint8_t *data, size_t size,
 		isc_buffer_putmem(&b, data, size);
 	}
 
-	dns_message_create(mctx, NULL, NULL, DNS_MESSAGE_INTENTPARSE, &message);
+	dns_message_create(isc_g_mctx, NULL, NULL, DNS_MESSAGE_INTENTPARSE,
+			   &message);
 
 	result = dns_message_parse(message, &b, 0);
 	if (debug) {

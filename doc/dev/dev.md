@@ -446,10 +446,7 @@ the repeating value 0xbe, and freed memory with 0xde.  BIND tracks every
 memory allocation, and will complain (via an assertion failure) if any
 memory has not been freed when BIND shuts down.
 
-To create a basic memory context, use:
-
-        isc_mem_t *mctx = NULL;
-        isc_mem_create("name", &mctx);
+To use a basic memory context, use `isc_g_mctx`.
 
 When holding a persistent reference to a memory context it is advisable to
 increment its reference counter using `isc_mem_attach()`.  Do not just

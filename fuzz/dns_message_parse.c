@@ -29,15 +29,13 @@
 
 bool debug = false;
 
-static isc_mem_t *mctx = NULL;
 static uint8_t *output = NULL;
 static size_t output_len = 1024;
 static uint8_t render_buf[64 * 1024 - 1];
 
 int
 LLVMFuzzerInitialize(int *argc ISC_ATTR_UNUSED, char ***argv ISC_ATTR_UNUSED) {
-	isc_mem_create("fuzz", &mctx);
-	output = isc_mem_get(mctx, output_len);
+	output = isc_mem_get(isc_g_mctx, output_len);
 
 	return 0;
 }
@@ -47,7 +45,8 @@ parse_message(isc_buffer_t *input, dns_message_t **messagep) {
 	isc_result_t result;
 	dns_message_t *message = NULL;
 
-	dns_message_create(mctx, NULL, NULL, DNS_MESSAGE_INTENTPARSE, &message);
+	dns_message_create(isc_g_mctx, NULL, NULL, DNS_MESSAGE_INTENTPARSE,
+			   &message);
 
 	result = dns_message_parse(message, input, DNS_MESSAGEPARSE_BESTEFFORT);
 	if (result == DNS_R_RECOVERABLE) {
@@ -73,9 +72,9 @@ print_message(dns_message_t *message) {
 		result = dns_message_totext(message, &dns_master_style_debug, 0,
 					    &buffer);
 		if (result == ISC_R_NOSPACE) {
-			isc_mem_put(mctx, output, output_len);
+			isc_mem_put(isc_g_mctx, output, output_len);
 			output_len *= 2;
-			output = isc_mem_get(mctx, output_len);
+			output = isc_mem_get(isc_g_mctx, output_len);
 			continue;
 		}
 	} while (result == ISC_R_NOSPACE);
@@ -110,7 +109,7 @@ render_message(dns_message_t **messagep) {
 		message->counts[i] = 0;
 	}
 
-	dns_compress_init(&cctx, mctx, 0);
+	dns_compress_init(&cctx, isc_g_mctx, 0);
 
 	CHECKRESULT(result, dns_message_renderbegin(message, &cctx, &buffer));
 

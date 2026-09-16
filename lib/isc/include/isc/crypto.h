@@ -298,9 +298,6 @@ isc_crypto_fips_enable(void);
  */
 
 void
-isc__crypto_setdestroycheck(bool check);
-
-void
 isc__crypto_initialize(void);
 
 void

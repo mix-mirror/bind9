@@ -331,7 +331,6 @@ struct dns_zonemgr {
 	isc_mem_t *mctx;
 	isc_refcount_t refs;
 	uint32_t workers;
-	isc_mem_t **mctxpool;
 	isc_ratelimiter_t *checkdsrl;
 	isc_ratelimiter_t *notifyrl;
 	isc_ratelimiter_t *refreshrl;

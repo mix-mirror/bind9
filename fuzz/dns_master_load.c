@@ -38,7 +38,6 @@ int
 LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	isc_buffer_t buf;
 	isc_result_t result;
-	isc_mem_t *mctx = NULL;
 
 	isc_buffer_constinit(&buf, data, size);
 	isc_buffer_add(&buf, size);
@@ -48,8 +47,7 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	dns_rdatacallbacks_init(&callbacks);
 	dns_db_t *db = NULL;
 
-	isc_mem_create("fuzz", &mctx);
-	result = dns_db_create(mctx, ZONEDB_DEFAULT, dns_rootname,
+	result = dns_db_create(isc_g_mctx, ZONEDB_DEFAULT, dns_rootname,
 			       dns_dbtype_zone, dns_rdataclass_in, 0, NULL,
 			       &db);
 	if (result != ISC_R_SUCCESS) {
@@ -74,6 +72,5 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 
 end:
 	dns_db_detach(&db);
-	isc_mem_detach(&mctx);
 	return 0;
 }

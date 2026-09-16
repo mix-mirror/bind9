@@ -20,6 +20,3 @@ isc__xml_initialize(void);
 
 void
 isc__xml_shutdown(void);
-
-void
-isc__xml_setdestroycheck(bool check);

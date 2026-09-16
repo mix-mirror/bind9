@@ -192,12 +192,8 @@ addsuffix(char *filename, int len, const char *dirname, const char *ofilename,
 			return ((_r));      \
 	} while (0);
 
-static isc_mem_t *dst__mctx = NULL;
-
 void
 dst__lib_initialize(void) {
-	isc_mem_create("dst", &dst__mctx);
-
 	dst__hmacmd5_init(&dst_t_func[DST_ALG_HMACMD5]);
 	dst__hmacsha1_init(&dst_t_func[DST_ALG_HMACSHA1]);
 	dst__hmacsha224_init(&dst_t_func[DST_ALG_HMACSHA224]);
@@ -238,8 +234,6 @@ dst__lib_initialize(void) {
 void
 dst__lib_shutdown(void) {
 	dst__opensslrsa_shutdown();
-
-	isc_mem_detach(&dst__mctx);
 }
 
 bool

@@ -101,33 +101,6 @@ isc__uverr2result(int uverr, bool dolog, const char *file, unsigned int line,
 	}
 }
 
-#if UV_VERSION_HEX >= UV_VERSION(1, 38, 0)
-static isc_mem_t *isc__uv_mctx = NULL;
-
-static void *
-isc__uv_malloc(size_t size) {
-	return isc_mem_allocate(isc__uv_mctx, size);
-}
-
-static void *
-isc__uv_realloc(void *ptr, size_t size) {
-	return isc_mem_reallocate(isc__uv_mctx, ptr, size);
-}
-
-static void *
-isc__uv_calloc(size_t count, size_t size) {
-	return isc_mem_callocate(isc__uv_mctx, count, size);
-}
-
-static void
-isc__uv_free(void *ptr) {
-	if (ptr == NULL) {
-		return;
-	}
-	isc_mem_free(isc__uv_mctx, ptr);
-}
-#endif /* UV_VERSION_HEX >= UV_VERSION(1, 38, 0) */
-
 void
 isc__uv_initialize(void) {
 	/*
@@ -145,31 +118,11 @@ isc__uv_initialize(void) {
 			break;
 		}
 	} while (true);
-#if UV_VERSION_HEX >= UV_VERSION(1, 38, 0)
-	int r;
-	isc_mem_create("uv", &isc__uv_mctx);
-	isc_mem_setdebugging(isc__uv_mctx, 0);
-	isc_mem_setdestroycheck(isc__uv_mctx, false);
-
-	r = uv_replace_allocator(isc__uv_malloc, isc__uv_realloc,
-				 isc__uv_calloc, isc__uv_free);
-	UV_RUNTIME_CHECK(uv_replace_allocator, r);
-#endif /* UV_VERSION_HEX >= UV_VERSION(1, 38, 0) */
 }
 
 void
 isc__uv_shutdown(void) {
 #if UV_VERSION_HEX >= UV_VERSION(1, 38, 0)
 	uv_library_shutdown();
-	isc_mem_detach(&isc__uv_mctx);
 #endif /* UV_VERSION_HEX < UV_VERSION(1, 38, 0) */
-}
-
-void
-isc__uv_setdestroycheck(bool check) {
-#if UV_VERSION_HEX >= UV_VERSION(1, 38, 0)
-	isc_mem_setdestroycheck(isc__uv_mctx, check);
-#else
-	UNUSED(check);
-#endif /* UV_VERSION_HEX >= UV_VERSION(1, 6, 0) */
 }

@@ -101,7 +101,6 @@ struct dns_adb {
 
 	isc_mutex_t lock;
 	isc_mem_t *mctx;
-	isc_mem_t *hmctx;
 	dns_view_t *view;
 	dns_resolver_t *res;
 
@@ -1050,7 +1049,7 @@ static dns_adbfind_t *
 new_adbfind(dns_adb_t *adb, in_port_t port) {
 	dns_adbfind_t *find = NULL;
 
-	find = isc_mem_get(adb->hmctx, sizeof(*find));
+	find = isc_mem_get(isc_g_mctx, sizeof(*find));
 	*find = (dns_adbfind_t){
 		.port = port,
 		.result_v4 = ISC_R_UNEXPECTED,
@@ -1089,15 +1088,15 @@ free_adbfind(dns_adbfind_t **findp) {
 
 	isc_mutex_destroy(&find->lock);
 
-	isc_mem_put(adb->hmctx, find, sizeof(*find));
+	isc_mem_put(isc_g_mctx, find, sizeof(*find));
 	dns_adb_detach(&adb);
 }
 
 static dns_adbfetch_t *
-new_adbfetch(dns_adb_t *adb) {
+new_adbfetch(dns_adb_t *adb ISC_ATTR_UNUSED) {
 	dns_adbfetch_t *fetch = NULL;
 
-	fetch = isc_mem_get(adb->hmctx, sizeof(*fetch));
+	fetch = isc_mem_get(isc_g_mctx, sizeof(*fetch));
 	*fetch = (dns_adbfetch_t){
 		.magic = DNS_ADBFETCH_MAGIC,
 	};
@@ -1107,7 +1106,7 @@ new_adbfetch(dns_adb_t *adb) {
 }
 
 static void
-free_adbfetch(dns_adb_t *adb, dns_adbfetch_t **fetchp) {
+free_adbfetch(dns_adb_t *adb ISC_ATTR_UNUSED, dns_adbfetch_t **fetchp) {
 	dns_adbfetch_t *fetch = NULL;
 
 	REQUIRE(fetchp != NULL && DNS_ADBFETCH_VALID(*fetchp));
@@ -1119,7 +1118,7 @@ free_adbfetch(dns_adb_t *adb, dns_adbfetch_t **fetchp) {
 
 	dns_rdataset_cleanup(&fetch->rdataset);
 
-	isc_mem_put(adb->hmctx, fetch, sizeof(*fetch));
+	isc_mem_put(isc_g_mctx, fetch, sizeof(*fetch));
 }
 
 /*
@@ -1127,10 +1126,11 @@ free_adbfetch(dns_adb_t *adb, dns_adbfetch_t **fetchp) {
  * The entry must be locked, and its reference count must be incremented.
  */
 static dns_adbaddrinfo_t *
-new_adbaddrinfo(dns_adb_t *adb, dns_adbentry_t *entry, in_port_t port) {
+new_adbaddrinfo(dns_adb_t *adb ISC_ATTR_UNUSED, dns_adbentry_t *entry,
+		in_port_t port) {
 	dns_adbaddrinfo_t *ai = NULL;
 
-	ai = isc_mem_get(adb->hmctx, sizeof(*ai));
+	ai = isc_mem_get(isc_g_mctx, sizeof(*ai));
 	*ai = (dns_adbaddrinfo_t){
 		.srtt = atomic_load(&entry->srtt),
 		.flags = atomic_load(&entry->flags),
@@ -1146,7 +1146,7 @@ new_adbaddrinfo(dns_adb_t *adb, dns_adbentry_t *entry, in_port_t port) {
 }
 
 static void
-free_adbaddrinfo(dns_adb_t *adb, dns_adbaddrinfo_t **ainfo) {
+free_adbaddrinfo(dns_adb_t *adb ISC_ATTR_UNUSED, dns_adbaddrinfo_t **ainfo) {
 	dns_adbaddrinfo_t *ai = NULL;
 
 	REQUIRE(ainfo != NULL && DNS_ADBADDRINFO_VALID(*ainfo));
@@ -1163,7 +1163,7 @@ free_adbaddrinfo(dns_adb_t *adb, dns_adbaddrinfo_t **ainfo) {
 	}
 	dns_adbentry_detach(&ai->entry);
 
-	isc_mem_put(adb->hmctx, ai, sizeof(*ai));
+	isc_mem_put(isc_g_mctx, ai, sizeof(*ai));
 }
 
 static int
@@ -1617,9 +1617,7 @@ dns_adb_destroy(dns_adb_t *adb) {
 	RUNTIME_CHECK(!cds_lfht_destroy(adb->entries_ht, NULL));
 	adb->entries_ht = NULL;
 
-	isc_mem_cput(adb->hmctx, adb->lru, adb->nloops, sizeof(adb->lru[0]));
-
-	isc_mem_detach(&adb->hmctx);
+	isc_mem_cput(isc_g_mctx, adb->lru, adb->nloops, sizeof(adb->lru[0]));
 
 	isc_mutex_destroy(&adb->lock);
 
@@ -1665,8 +1663,6 @@ dns_adb_create(isc_mem_t *mem, dns_view_t *view, dns_adb_t **adbp) {
 	dns_resolver_attach(view->resolver, &adb->res);
 	isc_mem_attach(mem, &adb->mctx);
 
-	isc_mem_create("ADB_dynamic", &adb->hmctx);
-
 	adb->names_ht = cds_lfht_new(ADB_HASH_SIZE, ADB_HASH_SIZE, 0,
 				     CDS_LFHT_AUTO_RESIZE | CDS_LFHT_ACCOUNTING,
 				     NULL);
@@ -1677,7 +1673,7 @@ dns_adb_create(isc_mem_t *mem, dns_view_t *view, dns_adb_t **adbp) {
 			     CDS_LFHT_AUTO_RESIZE | CDS_LFHT_ACCOUNTING, NULL);
 	INSIST(adb->entries_ht != NULL);
 
-	adb->lru = isc_mem_cget(adb->hmctx, adb->nloops, sizeof(adb->lru[0]));
+	adb->lru = isc_mem_cget(isc_g_mctx, adb->nloops, sizeof(adb->lru[0]));
 
 	for (size_t i = 0; i < adb->nloops; i++) {
 		ISC_SIEVE_INIT(adb->lru[i].names);

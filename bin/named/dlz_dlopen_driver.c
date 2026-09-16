@@ -208,7 +208,6 @@ static isc_result_t
 dlopen_dlz_create(const char *dlzname, unsigned int argc, char *argv[],
 		  void *driverarg, void **dbdata) {
 	dlopen_data_t *cd;
-	isc_mem_t *mctx = NULL;
 	isc_result_t result = ISC_R_FAILURE;
 	int r;
 
@@ -222,12 +221,11 @@ dlopen_dlz_create(const char *dlzname, unsigned int argc, char *argv[],
 		return ISC_R_FAILURE;
 	}
 
-	isc_mem_create("dlz", &mctx);
-	cd = isc_mem_get(mctx, sizeof(*cd));
+	cd = isc_mem_get(isc_g_mctx, sizeof(*cd));
 	*cd = (dlopen_data_t){
-		.mctx = mctx,
-		.dl_path = isc_mem_strdup(mctx, argv[1]),
-		.dlzname = isc_mem_strdup(mctx, dlzname),
+		.mctx = isc_mem_ref(isc_g_mctx),
+		.dl_path = isc_mem_strdup(isc_g_mctx, argv[1]),
+		.dlzname = isc_mem_strdup(isc_g_mctx, dlzname),
 	};
 
 	/* Initialize the lock */

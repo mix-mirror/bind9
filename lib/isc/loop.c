@@ -202,7 +202,7 @@ shutdown_cb(uv_async_t *handle) {
 }
 
 static void
-loop_init(isc_loop_t *loop, isc_tid_t tid, const char *kind) {
+loop_init(isc_loop_t *loop, isc_tid_t tid) {
 	*loop = (isc_loop_t){
 		.tid = tid,
 		.run_jobs = ISC_LIST_INITIALIZER,
@@ -239,7 +239,7 @@ loop_init(isc_loop_t *loop, isc_tid_t tid, const char *kind) {
 	UV_RUNTIME_CHECK(uv_prepare_init, r);
 	uv_handle_set_data(&loop->quiescent, loop);
 
-	isc_mem_create(kind, &loop->mctx);
+	isc_mem_attach(isc_g_mctx, &loop->mctx);
 
 	isc_refcount_init(&loop->references, 1);
 
@@ -364,7 +364,7 @@ isc_loopmgr_create(isc_mem_t *mctx, uint32_t nloops) {
 				      sizeof(loopmgr->loops[0]));
 	for (size_t i = 0; i < loopmgr->nloops; i++) {
 		isc_loop_t *loop = &loopmgr->loops[i];
-		loop_init(loop, i, "loop");
+		loop_init(loop, i);
 	}
 
 	isc__loopmgr = loopmgr;
