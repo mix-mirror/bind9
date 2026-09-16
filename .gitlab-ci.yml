@@ -550,14 +550,17 @@ stages:
   # file impossible (GitLab Runner uses "set -o pipefail").
   script:
     - *fips_feature_test
-    - *find_pytest
     - *find_python
     - *git_clone_bind9-qa
     - ( if [ "${CI_DISPOSABLE_ENVIRONMENT}" = "true" ]; then sleep 3000; "$PYTHON" "${CI_PROJECT_DIR}/bind9-qa/ci/get_running_system_tests.py"; fi ) &
     - cd bin/tests/system
     - RET=0
+    # The system tests run through nox (see noxfile.py) with the pinned
+    # Python packages, reusing those the image already provides
+    # (NOX_SYSTEM_SITE_PACKAGES), and the BIND build from the build job
+    # (NOX_SKIP_BUILD).
     - >
-      ("$PYTEST" --junit-xml="$CI_PROJECT_DIR"/junit_pytest.xml -n "$TEST_PARALLEL_JOBS" | tee pytest.out.txt) || RET=1
+      (NOX_SKIP_BUILD=1 "$PYTHON" -m nox --noxfile "$CI_PROJECT_DIR"/noxfile.py -s system_tests -- --junit-xml="$CI_PROJECT_DIR"/junit_pytest.xml -n "$TEST_PARALLEL_JOBS" | tee pytest.out.txt) || RET=1
     - sh "$CI_PROJECT_DIR"/util/oom-check.sh || RET=1
     - >
       "$PYTHON" "$CI_PROJECT_DIR"/bind9-qa/ci/postprocess_junit_files.py "$CI_PROJECT_DIR"/junit_pytest.xml --output "$CI_PROJECT_DIR"/junit.xml
