@@ -329,7 +329,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 			       &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	dns_db_setcachesize(db, maxcache);
+	dns__qpcache_setcachesize((qpcache_t *)db, maxcache);
 
 	/*
 	 * Add a lot of data entries sufficient to push the context
@@ -380,7 +380,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 			       &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	dns_db_setcachesize(db, maxcache);
+	dns__qpcache_setcachesize((qpcache_t *)db, maxcache);
 
 	/*
 	 * Add a lot of data entries sufficient to push the context

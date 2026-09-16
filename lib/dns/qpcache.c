@@ -285,11 +285,6 @@ cleanup_deadnodes_cb(void *arg);
  * Cache-eviction routines.
  */
 
-static void
-qpcache_setcachesize(dns_db_t *db, size_t size) {
-	dns__qpcache_setcachesize((qpcache_t *)db, size);
-}
-
 void
 dns__qpcache_setcachesize(qpcache_t *qpdb, size_t size) {
 	REQUIRE(VALID_QPDB(qpdb));
@@ -309,21 +304,11 @@ dns__qpcache_setcachesize(qpcache_t *qpdb, size_t size) {
 	atomic_store(&qpdb->overmem.lowater, lowater);
 }
 
-static size_t
-qpcache_getinuse(dns_db_t *db) {
-	return dns__qpcache_getinuse((qpcache_t *)db);
-}
-
 size_t
 dns__qpcache_getinuse(qpcache_t *qpdb) {
 	REQUIRE(VALID_QPDB(qpdb));
 
 	return atomic_load(&qpdb->overmem.inuse);
-}
-
-static size_t
-qpcache_getcachesize(dns_db_t *db) {
-	return dns__qpcache_getcachesize((qpcache_t *)db);
 }
 
 size_t
@@ -3259,9 +3244,6 @@ static dns_dbmethods_t qpdb_cachemethods = {
 	.getservestalerefresh = getservestalerefresh,
 	.setmaxrrperset = setmaxrrperset,
 	.setmaxtypepername = setmaxtypepername,
-	.setcachesize = qpcache_setcachesize,
-	.getcachesize = qpcache_getcachesize,
-	.getinuse = qpcache_getinuse,
 };
 
 static void
