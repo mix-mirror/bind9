@@ -29,12 +29,9 @@
 
 #include <dns/cache.h>
 #include <dns/db.h>
-#include <dns/dbiterator.h>
-#include <dns/masterdump.h>
-#include <dns/rdata.h>
-#include <dns/rdataset.h>
-#include <dns/rdatasetiter.h>
 #include <dns/stats.h>
+
+#include "qpcache_p.h"
 
 #ifdef HAVE_JSON_C
 #include <json_object.h>
@@ -67,7 +64,7 @@ struct dns_cache {
 
 	/* Locked by 'lock'. */
 	dns_rdataclass_t rdclass;
-	dns_db_t *db;
+	qpcache_t *db;
 	dns_ttl_t serve_stale_ttl;
 	dns_ttl_t serve_stale_refresh;
 	isc_stats_t *stats;
@@ -79,44 +76,20 @@ struct dns_cache {
  ***	Functions
  ***/
 
-static isc_result_t
-cache_create_db(dns_cache_t *cache, dns_db_t **dbp, isc_mem_t **tmctxp) {
-	isc_result_t result;
-	dns_db_t *db = NULL;
+static void
+cache_create_db(dns_cache_t *cache, qpcache_t **dbp, isc_mem_t **tmctxp) {
+	qpcache_t *db = NULL;
 	isc_mem_t *tmctx = NULL;
 
-	/*
-	 * This will be the cache memory context, which is subject
-	 * to cleaning when the configured memory limits are exceeded.
-	 */
 	isc_mem_create("cache", &tmctx);
-
-	result = dns_db_create(tmctx, CACHEDB_DEFAULT, dns_rootname,
-			       dns_dbtype_cache, cache->rdclass, 0, NULL, &db);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup_mctx;
-	}
-	result = dns_db_setcachestats(db, cache->stats);
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup_db;
-	}
-
-	dns_db_setservestalettl(db, cache->serve_stale_ttl);
-	dns_db_setservestalerefresh(db, cache->serve_stale_refresh);
-	dns_db_setmaxrrperset(db, cache->maxrrperset);
-	dns_db_setmaxtypepername(db, cache->maxtypepername);
-
+	dns__qpcache_new(tmctx, dns_rootname, cache->rdclass, &db);
+	isc_stats_attach(cache->stats, &db->cachestats);
+	db->common.serve_stale_ttl = cache->serve_stale_ttl;
+	db->serve_stale_refresh = cache->serve_stale_refresh;
+	db->maxrrperset = cache->maxrrperset;
+	db->maxtypepername = cache->maxtypepername;
 	*dbp = db;
 	*tmctxp = tmctx;
-
-	return ISC_R_SUCCESS;
-
-cleanup_db:
-	dns_db_detach(&db);
-cleanup_mctx:
-	isc_mem_detach(&tmctx);
-
-	return result;
 }
 
 static void
@@ -133,7 +106,6 @@ cache_destroy(dns_cache_t *cache) {
 isc_result_t
 dns_cache_create(dns_rdataclass_t rdclass, const char *cachename,
 		 isc_mem_t *mctx, dns_cache_t **cachep) {
-	isc_result_t result;
 	dns_cache_t *cache = NULL;
 
 	REQUIRE(cachename != NULL);
@@ -155,14 +127,10 @@ dns_cache_create(dns_rdataclass_t rdclass, const char *cachename,
 	/*
 	 * Create the database
 	 */
-	CHECK(cache_create_db(cache, &cache->db, &cache->tmctx));
+	cache_create_db(cache, &cache->db, &cache->tmctx);
 
 	*cachep = cache;
 	return ISC_R_SUCCESS;
-
-cleanup:
-	cache_destroy(cache);
-	return result;
 }
 
 static void
@@ -172,7 +140,7 @@ cache_cleanup(dns_cache_t *cache) {
 	isc_refcount_destroy(&cache->references);
 	cache->magic = 0;
 
-	dns_db_detach(&cache->db);
+	dns__qpcache_detach(&cache->db);
 
 	cache_destroy(cache);
 }
@@ -190,7 +158,7 @@ dns_cache_attachdb(dns_cache_t *cache, dns_db_t **dbp) {
 	REQUIRE(cache->db != NULL);
 
 	LOCK(&cache->lock);
-	dns_db_attach(cache->db, dbp);
+	dns_db_attach(&cache->db->common, dbp);
 	UNLOCK(&cache->lock);
 }
 
@@ -214,7 +182,7 @@ dns_cache_setcachesize(dns_cache_t *cache, size_t size) {
 	}
 
 	LOCK(&cache->lock);
-	dns_db_setcachesize(cache->db, size);
+	dns__qpcache_setcachesize(cache->db, size);
 	UNLOCK(&cache->lock);
 }
 
@@ -223,7 +191,7 @@ dns_cache_getcachesize(dns_cache_t *cache) {
 	REQUIRE(VALID_CACHE(cache));
 
 	LOCK(&cache->lock);
-	size_t size = dns_db_getcachesize(cache->db);
+	size_t size = dns__qpcache_getcachesize(cache->db);
 	UNLOCK(&cache->lock);
 	return size;
 }
@@ -236,22 +204,13 @@ dns_cache_setservestalettl(dns_cache_t *cache, dns_ttl_t ttl) {
 	cache->serve_stale_ttl = ttl;
 	UNLOCK(&cache->lock);
 
-	(void)dns_db_setservestalettl(cache->db, ttl);
+	cache->db->common.serve_stale_ttl = ttl;
 }
 
 dns_ttl_t
 dns_cache_getservestalettl(dns_cache_t *cache) {
-	dns_ttl_t ttl;
-	isc_result_t result;
-
 	REQUIRE(VALID_CACHE(cache));
-
-	/*
-	 * Could get it straight from the dns_cache_t, but use db
-	 * to confirm the value that the db is really using.
-	 */
-	result = dns_db_getservestalettl(cache->db, &ttl);
-	return result == ISC_R_SUCCESS ? ttl : 0;
+	return cache->db->common.serve_stale_ttl;
 }
 
 void
@@ -262,137 +221,103 @@ dns_cache_setservestalerefresh(dns_cache_t *cache, dns_ttl_t interval) {
 	cache->serve_stale_refresh = interval;
 	UNLOCK(&cache->lock);
 
-	(void)dns_db_setservestalerefresh(cache->db, interval);
+	cache->db->serve_stale_refresh = interval;
 }
 
 dns_ttl_t
 dns_cache_getservestalerefresh(dns_cache_t *cache) {
-	isc_result_t result;
-	dns_ttl_t interval;
-
 	REQUIRE(VALID_CACHE(cache));
-
-	result = dns_db_getservestalerefresh(cache->db, &interval);
-	return result == ISC_R_SUCCESS ? interval : 0;
+	return cache->db->serve_stale_refresh;
 }
 
 isc_result_t
 dns_cache_flush(dns_cache_t *cache) {
-	dns_db_t *db = NULL, *olddb = NULL;
+	qpcache_t *db = NULL, *olddb = NULL;
 	isc_mem_t *tmctx = NULL, *oldtmctx = NULL;
 
-	RETERR(cache_create_db(cache, &db, &tmctx));
+	cache_create_db(cache, &db, &tmctx);
 
 	LOCK(&cache->lock);
-	size_t size = dns_db_getcachesize(cache->db);
+	size_t size = dns__qpcache_getcachesize(cache->db);
 	oldtmctx = cache->tmctx;
 	cache->tmctx = tmctx;
 	olddb = cache->db;
-	dns_db_setcachesize(olddb, 0);
+	dns__qpcache_setcachesize(olddb, 0);
 	cache->db = db;
-	dns_db_setcachesize(cache->db, size);
+	dns__qpcache_setcachesize(cache->db, size);
 	UNLOCK(&cache->lock);
 
-	dns_db_detach(&olddb);
+	dns__qpcache_detach(&olddb);
 	isc_mem_detach(&oldtmctx);
 
 	return ISC_R_SUCCESS;
 }
 
-static isc_result_t
-clearnode(dns_db_t *db, dns_dbnode_t *node) {
-	dns_rdatasetiter_t *iter = NULL;
+static void
+clearnode(qpcache_t *db, qpcnode_t *node) {
+	isc_rwlock_t *lock = &db->buckets[node->locknum].lock;
 
-	RETERR(dns_db_allrdatasets(db, node, NULL, DNS_DB_STALEOK,
-				   (isc_stdtime_t)0, &iter));
-
-	DNS_RDATASETITER_FOREACH(iter) {
-		isc_result_t result;
-		dns_rdataset_t rdataset = DNS_RDATASET_INIT;
-
-		dns_rdatasetiter_current(iter, &rdataset);
-		result = dns_db_deleterdataset(db, node, NULL, rdataset.type,
-					       rdataset.covers);
-		dns_rdataset_disassociate(&rdataset);
-		if (result != ISC_R_SUCCESS && result != DNS_R_UNCHANGED) {
-			break;
-		}
+	RWLOCK(lock, isc_rwlocktype_write);
+	DNS_SLABHEADER_FOREACH(header, &node->headers) {
+		dns__qpcache_header_delete(node, header);
 	}
-
-	dns_rdatasetiter_destroy(&iter);
-	return ISC_R_SUCCESS;
+	RWUNLOCK(lock, isc_rwlocktype_write);
 }
 
 static isc_result_t
-cleartree(dns_db_t *db, const dns_name_t *name) {
-	isc_result_t result, answer = ISC_R_SUCCESS;
-	dns_dbiterator_t *iter = NULL;
-	dns_dbnode_t *node = NULL, *top = NULL;
-	dns_fixedname_t fnodename;
-	dns_name_t *nodename;
+cleartree(qpcache_t *db, const dns_name_t *name) {
+	isc_result_t result;
+	qpc_dbit_t *iter = NULL;
+	qpcnode_t *node = NULL, *top = NULL;
 
 	/*
-	 * Create the node if it doesn't exist so dns_dbiterator_seek()
+	 * Create the node if it doesn't exist so dns__qpc_dbit_seek()
 	 * can find it.  We will continue even if this fails.
 	 */
-	(void)dns_db_findnode(db, name, true, &top);
+	(void)dns__qpcache_findnode(db, name, true, &top);
 
-	nodename = dns_fixedname_initname(&fnodename);
+	dns__qpcache_createiterator(db, &iter);
 
-	CHECK(dns_db_createiterator(db, 0, &iter));
-
-	result = dns_dbiterator_seek(iter, name);
+	result = dns__qpc_dbit_seek(iter, name);
 	if (result == DNS_R_PARTIALMATCH) {
-		result = dns_dbiterator_next(iter);
+		result = dns__qpc_dbit_next(iter);
 	}
 	if (result != ISC_R_SUCCESS) {
 		goto cleanup;
 	}
 
 	while (result == ISC_R_SUCCESS) {
-		result = dns_dbiterator_current(iter, &node, nodename);
-		if (result == DNS_R_NEWORIGIN) {
-			result = ISC_R_SUCCESS;
-		}
+		result = dns__qpc_dbit_current(iter, &node);
 		if (result != ISC_R_SUCCESS) {
 			goto cleanup;
 		}
 		/*
 		 * Are we done?
 		 */
-		if (!dns_name_issubdomain(nodename, name)) {
+		if (!dns_name_issubdomain(&node->name, name)) {
 			goto cleanup;
 		}
 
-		/*
-		 * If clearnode fails record and move onto the next node.
-		 */
-		result = clearnode(db, node);
-		if (result != ISC_R_SUCCESS && answer == ISC_R_SUCCESS) {
-			answer = result;
-		}
-		dns_db_detachnode(&node);
-		result = dns_dbiterator_next(iter);
+		clearnode(db, node);
+		dns__qpcnode_detach(&node);
+		result = dns__qpc_dbit_next(iter);
 	}
 
 cleanup:
 	if (result == ISC_R_NOMORE || result == ISC_R_NOTFOUND) {
 		result = ISC_R_SUCCESS;
 	}
-	if (result != ISC_R_SUCCESS && answer == ISC_R_SUCCESS) {
-		answer = result;
-	}
 	if (node != NULL) {
-		dns_db_detachnode(&node);
+		dns__qpcnode_detach(&node);
 	}
 	if (iter != NULL) {
-		dns_dbiterator_destroy(&iter);
+		dns__qpc_dbit_destroy(&iter);
 	}
 	if (top != NULL) {
-		dns_db_detachnode(&top);
+		dns__qpcnode_detach(&top);
 	}
 
-	return answer;
+	return result;
 }
 
 isc_result_t
@@ -403,14 +328,14 @@ dns_cache_flushname(dns_cache_t *cache, const dns_name_t *name) {
 isc_result_t
 dns_cache_flushnode(dns_cache_t *cache, const dns_name_t *name, bool tree) {
 	isc_result_t result;
-	dns_dbnode_t *node = NULL;
-	dns_db_t *db = NULL;
+	qpcnode_t *node = NULL;
+	qpcache_t *db = NULL;
 
 	REQUIRE(!(tree && dns_name_isroot(name)));
 
 	LOCK(&cache->lock);
 	if (cache->db != NULL) {
-		dns_db_attach(cache->db, &db);
+		dns__qpcache_attach(cache->db, &db);
 	}
 	UNLOCK(&cache->lock);
 	if (db == NULL) {
@@ -418,9 +343,9 @@ dns_cache_flushnode(dns_cache_t *cache, const dns_name_t *name, bool tree) {
 	}
 
 	if (tree) {
-		result = cleartree(cache->db, name);
+		result = cleartree(db, name);
 	} else {
-		result = dns_db_findnode(cache->db, name, false, &node);
+		result = dns__qpcache_findnode(db, name, false, &node);
 		if (result == ISC_R_NOTFOUND) {
 			result = ISC_R_SUCCESS;
 			goto cleanup_db;
@@ -428,12 +353,12 @@ dns_cache_flushnode(dns_cache_t *cache, const dns_name_t *name, bool tree) {
 		if (result != ISC_R_SUCCESS) {
 			goto cleanup_db;
 		}
-		result = clearnode(cache->db, node);
-		dns_db_detachnode(&node);
+		clearnode(db, node);
+		dns__qpcnode_detach(&node);
 	}
 
 cleanup_db:
-	dns_db_detach(&db);
+	dns__qpcache_detach(&db);
 	return result;
 }
 
@@ -474,7 +399,7 @@ dns_cache_setmaxrrperset(dns_cache_t *cache, uint32_t value) {
 
 	cache->maxrrperset = value;
 	if (cache->db != NULL) {
-		dns_db_setmaxrrperset(cache->db, value);
+		cache->db->maxrrperset = value;
 	}
 }
 
@@ -484,7 +409,7 @@ dns_cache_setmaxtypepername(dns_cache_t *cache, uint32_t value) {
 
 	cache->maxtypepername = value;
 	if (cache->db != NULL) {
-		dns_db_setmaxtypepername(cache->db, value);
+		cache->db->maxtypepername = value;
 	}
 }
 
@@ -551,10 +476,11 @@ dns_cache_dumpstats(dns_cache_t *cache, FILE *fp) {
 	fprintf(fp, "%20" PRIu64 " %s\n",
 		values[dns_cachestatscounter_coveringnsec],
 		"covering nsec returned");
-	fprintf(fp, "%20u %s\n", dns_db_nodecount(cache->db),
+	fprintf(fp, "%20u %s\n", dns__qpcache_nodecount(cache->db),
 		"cache database nodes");
 
-	fprintf(fp, "%20" PRIu64 " %s\n", (uint64_t)dns_db_getinuse(cache->db),
+	fprintf(fp, "%20" PRIu64 " %s\n",
+		(uint64_t)dns__qpcache_getinuse(cache->db),
 		"cache tree memory in use");
 }
 
@@ -603,9 +529,11 @@ dns_cache_renderxml(dns_cache_t *cache, void *writer0) {
 	TRY0(renderstat("CoveringNSEC",
 			values[dns_cachestatscounter_coveringnsec], writer));
 
-	TRY0(renderstat("CacheNodes", dns_db_nodecount(cache->db), writer));
+	TRY0(renderstat("CacheNodes", dns__qpcache_nodecount(cache->db),
+			writer));
 
-	TRY0(renderstat("TreeMemInUse", dns_db_getinuse(cache->db), writer));
+	TRY0(renderstat("TreeMemInUse", dns__qpcache_getinuse(cache->db),
+			writer));
 error:
 	return xmlrc;
 }
@@ -657,7 +585,7 @@ dns_cache_renderjson(dns_cache_t *cache, void *cstats0) {
 	CHECKMEM(obj);
 	json_object_object_add(cstats, "CoveringNSEC", obj);
 
-	obj = json_object_new_int64(dns_db_nodecount(cache->db));
+	obj = json_object_new_int64(dns__qpcache_nodecount(cache->db));
 	CHECKMEM(obj);
 	json_object_object_add(cstats, "CacheNodes", obj);
 
