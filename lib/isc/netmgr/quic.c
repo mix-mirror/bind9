@@ -41,12 +41,11 @@ struct quic_buffered_data {
 	uint8_t data[];
 };
 
-struct isc__nm_quic_connection {
-	isc_quic_conn_t *conn;
-	ISC_LIST(quic_buffered_data_t) data;
-};
-
 struct isc__nm_quic_stream {
+	isc_nm_recv_cb_t recv_cb;
+	void *recv_arg;
+	isc_nm_cb_t send_cb;
+	void *send_arg;
 	ISC_LINK(isc__nm_quic_stream_t) link;
 };
 
@@ -82,14 +81,19 @@ static void
 listener_handshake_completed_cb(void *cbarg);
 
 static isc_result_t
+stream_opened_cb(isc_quic_conn_t *conn, void *cbarg, void **stream_data,
+		 int64_t stream_id);
+
+static isc_result_t
 data_read_cb(isc_quic_conn_t *conn, void *cbarg,
 	     isc_quic_stream_data_info_t info, isc_constregion_t data);
 
 static void
 udp_send_cb(isc_nmhandle_t *handle, isc_result_t result, void *cbarg);
 
-static isc_quic_conn_callbacks_t server_cb = {
+static isc_quic_conn_callbacks_t listener_cb = {
 	.handshake_completed = listener_handshake_completed_cb,
+	.stream_opened = stream_opened_cb,
 	.data_read = data_read_cb,
 };
 
@@ -154,6 +158,7 @@ listener_handshake_completed_cb(void *cbarg) {
 	handle = isc__nmhandle_get(sock, &sock->peer, &sock->iface);
 	handle->quic.conn = isc_quic_conn_ref(sock->quic.conn);
 
+	fprintf(stderr, "handshake_completed\n");
 	sock->server->accept_cb(handle, ISC_R_SUCCESS,
 				sock->server->accept_cbarg);
 
@@ -161,26 +166,39 @@ listener_handshake_completed_cb(void *cbarg) {
 }
 
 static isc_result_t
-data_read_cb(isc_quic_conn_t *conn ISC_ATTR_UNUSED, void *cbarg,
+stream_opened_cb(isc_quic_conn_t *conn ISC_ATTR_UNUSED, void *cbarg,
+		 void **stream_data, int64_t stream_id ISC_ATTR_UNUSED) {
+	isc__nm_quic_stream_t *stream;
+	isc_nmsocket_t *sock = cbarg;
+
+	stream = isc_mem_get(sock->worker->mctx, sizeof(*stream));
+	*stream = (isc__nm_quic_stream_t){
+		.link = ISC_LINK_INITIALIZER,
+	};
+
+	*stream_data = stream;
+
+	return ISC_R_SUCCESS;
+}
+
+static isc_result_t
+data_read_cb(isc_quic_conn_t *conn, void *cbarg,
 	     isc_quic_stream_data_info_t info, isc_constregion_t data) {
-	isc_nmhandle_t *handle, *cbhandle;
+	isc__nm_quic_stream_t *stream;
+	isc_nmhandle_t *handle;
+	isc_nmsocket_t *sock;
 	isc_region_t region = { UNCONST(data.base), data.length };
 
-	UNUSED(info);
+	sock = cbarg;
+	stream = info.stream_data;
 
-	handle = cbarg;
-	if (info.stream_id == -1) {
-		cbhandle = cbarg;
-	} else {
-		cbhandle = isc__nmhandle_get(handle->sock, &handle->sock->peer,
-					     &handle->sock->iface);
-		cbhandle->quic.conn = isc_quic_conn_ref(conn);
-		cbhandle->quic.stream_id = info.stream_id;
-	}
+	handle = isc__nmhandle_get(sock, &sock->peer, &sock->iface);
+	handle->quic.conn = isc_quic_conn_ref(conn);
+	handle->quic.stream_id = info.stream_id;
 
-	fprintf(stderr, "read %u\n", data.length);
-	cbhandle->sock->recv_cb(cbhandle, ISC_R_SUCCESS, &region,
-				cbhandle->sock->recv_cbarg);
+	stream->recv_cb(handle, ISC_R_SUCCESS, &region, stream->recv_arg);
+
+	isc_nmhandle_unref(handle);
 
 	return ISC_R_SUCCESS;
 }
@@ -189,6 +207,7 @@ static void
 udp_send_cb(isc_nmhandle_t *handle ISC_ATTR_UNUSED,
 	    isc_result_t result ISC_ATTR_UNUSED, void *cbarg) {
 	isc_region_t *out = cbarg;
+	fprintf(stderr, "send done %u, %p\n", out->length, handle);
 	isc_mem_put(isc_g_mctx, out->base, 1200);
 	isc_mem_put(isc_g_mctx, out, sizeof(*out));
 }
@@ -224,6 +243,9 @@ listener_udp_recv_cb(isc_nmhandle_t *udphandle, isc_result_t eresult,
 
 	result = isc_quic_router_handle_packet(listener->router, packet, NULL,
 					       &dcid, &scid, &tid, &conn);
+	fprintf(stderr, "%x %x %x : %s\n", ((uint8_t *)dcid.base)[0],
+		((uint8_t *)dcid.base)[1], ((uint8_t *)dcid.base)[2],
+		isc_result_toid(result));
 	switch (result) {
 	case ISC_R_SUCCESS:
 		if (tid == udphandle->sock->tid) {
@@ -264,7 +286,7 @@ listener_udp_recv_cb(isc_nmhandle_t *udphandle, isc_result_t eresult,
 		qsock->peer = sock->peer;
 
 		result = isc_quic_conn_server_create(
-			listener->mctx, listener->router, &server_cb, qsock,
+			listener->mctx, listener->router, &listener_cb, qsock,
 			listener->options, dcid, scid, &sock->iface,
 			&sock->peer, &qsock->quic.conn);
 		if (result != ISC_R_SUCCESS) {
@@ -284,10 +306,11 @@ listener_udp_recv_cb(isc_nmhandle_t *udphandle, isc_result_t eresult,
 		if (result != ISC_R_SUCCESS) {
 			isc__nmsocket_log(sock, ISC_LOG_ERROR,
 					  "QUIC failed to push packet %s",
-					  isc_result_totext(result));
+					  isc_result_toid(result));
 			isc_quic_conn_unref(conn);
 			return;
 		}
+		fprintf(stderr, "created %p\n", conn);
 		break;
 	default:
 		return;
@@ -303,13 +326,13 @@ listener_udp_recv_cb(isc_nmhandle_t *udphandle, isc_result_t eresult,
 		isc_mem_put(isc_g_mctx, out->base, 1200);
 		isc_mem_put(isc_g_mctx, out, sizeof(*out));
 		isc_quic_conn_unref(conn);
+		fprintf(stderr, "fail pull %p\n", conn);
 		return;
 	}
 
 	out->length = written;
 
 	isc_nm_send(udphandle, out, udp_send_cb, out);
-	isc_quic_conn_unref(conn);
 }
 
 static void
