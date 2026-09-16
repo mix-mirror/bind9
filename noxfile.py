@@ -80,6 +80,24 @@ else:
     VENV_PARAMS = []
 
 
+def build_var(name):
+    """A variable recorded by the build for the system tests, if built yet."""
+    path = os.path.join(BUILD_DIR, "bin/tests/system/isctest/vars/.build_vars", name)
+    try:
+        with open(path, encoding="utf-8") as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        return None
+
+
+def build_python():
+    """The interpreter the build found, to run the system tests with."""
+    interpreter = build_var("PYTHON")
+    if interpreter and os.access(interpreter, os.X_OK):
+        return interpreter
+    return None
+
+
 def pysession(*args, **kwargs):
     """nox.session for the sessions that need the Python dependencies"""
     return nox.session(*args, venv_params=VENV_PARAMS, **kwargs)
@@ -162,7 +180,7 @@ def unit_tests(session):
     session.run("meson", "test", "-C", BUILD_DIR, *session.posargs, external=True)
 
 
-@pysession(requires=["build"])
+@pysession(python=build_python(), requires=["build"])
 def system_tests(session):
     "Run the system tests (extra arguments are passed to pytest)"
     install(session, TEST_REQUIREMENTS)
