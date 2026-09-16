@@ -47,6 +47,9 @@ import sys
 
 import nox
 
+# session dependencies (`requires`) need this version
+nox.needs_version = ">=2025.2.9"
+
 nox.options.sessions = [
     "mypy",
     "pylint",
@@ -76,9 +79,6 @@ if os.environ.get("NOX_SYSTEM_SITE_PACKAGES") == "1":
 else:
     VENV_PARAMS = []
 
-# configure and compile BIND only once per nox invocation
-_bind = {"configured": False, "compiled": False}
-
 
 def pysession(*args, **kwargs):
     """nox.session for the sessions that need the Python dependencies"""
@@ -101,33 +101,6 @@ def python(session):
 
 def git_ls_files(session, *patterns):
     return session.run("git", "ls-files", *patterns, external=True, silent=True).split()
-
-
-def configure_bind(session):
-    if _bind["configured"] or SKIP_BUILD:
-        return
-    session.run(
-        "meson",
-        "setup",
-        "--reconfigure",
-        "--libdir=lib",
-        "-Dcmocka=enabled",
-        "-Ddeveloper=enabled",
-        "-Dleak-detection=enabled",
-        "-Doptimization=1",
-        "-Dnamed-lto=thin",
-        BUILD_DIR,
-        external=True,
-    )
-    _bind["configured"] = True
-
-
-def compile_bind(session):
-    if _bind["compiled"] or SKIP_BUILD:
-        return
-    configure_bind(session)
-    session.run("meson", "compile", "-C", BUILD_DIR, "-j", "-1", external=True)
-    _bind["compiled"] = True
 
 
 @nox.session(python="3.10")
@@ -160,18 +133,39 @@ def pip_compile(session):
             f.write(pins)
 
 
+# The build runs without a virtual environment so that meson does not record
+# the venv python as the interpreter for the system tests.
 @nox.session(python=False)
+def build(session):
+    "Configure and compile BIND in the build directory"
+    if SKIP_BUILD:
+        return
+    session.run(
+        "meson",
+        "setup",
+        "--reconfigure",
+        "--libdir=lib",
+        "-Dcmocka=enabled",
+        "-Ddeveloper=enabled",
+        "-Dleak-detection=enabled",
+        "-Doptimization=1",
+        "-Dnamed-lto=thin",
+        BUILD_DIR,
+        external=True,
+    )
+    session.run("meson", "compile", "-C", BUILD_DIR, "-j", "-1", external=True)
+
+
+@nox.session(python=False, requires=["build"])
 def unit_tests(session):
     "Run the unit tests"
-    compile_bind(session)
     session.run("meson", "test", "-C", BUILD_DIR, *session.posargs, external=True)
 
 
-@pysession
+@pysession(requires=["build"])
 def system_tests(session):
     "Run the system tests (extra arguments are passed to pytest)"
     install(session, TEST_REQUIREMENTS)
-    compile_bind(session)
     args = list(session.posargs)
     if not any(arg.startswith(("-n", "--numprocesses")) for arg in args):
         args = ["-n", os.environ.get("TEST_PARALLEL_JOBS", "20"), *args]
