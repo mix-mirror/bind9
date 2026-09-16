@@ -183,13 +183,6 @@ option(
 )
 
 option(
-    'leak-detection',
-    type: 'feature',
-    value: 'disabled',
-    description: 'enable the memory leak detection in external libraries (libxml2, libuv, OpenSSL)',
-)
-
-option(
     'named-lto',
     type: 'combo',
     choices: ['disabled', 'auto', 'thin', 'full'],

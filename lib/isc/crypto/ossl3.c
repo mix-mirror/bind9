@@ -953,19 +953,6 @@ isc_crypto_fips_enable(void) {
 	return ISC_R_SUCCESS;
 }
 
-/*
- * OPENSSL_cleanup() in OpenSSL 4 doesn't free the memory, which is not
- * compatible with BIND 9's memory leak detection code, that is why the memory
- * tracking has been disabled in this module, and this function is a no-op.
- * This can be cleaned up once OpenSSL 1.1.x support is removed.
- *
- * See https://github.com/openssl/openssl/pull/29721
- */
-void
-isc__crypto_setdestroycheck(bool check) {
-	UNUSED(check);
-}
-
 void
 isc__crypto_initialize(void) {
 	/*

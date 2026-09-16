@@ -524,13 +524,6 @@ memory context was freed before the memory context was destroyed by calling
 shutdowns, so the checking is only enabled in `dig` and `named` applications on
 normal shutdown.
 
-The memory context are normally used only for internal allocations, but several
-external libraries allow replacing their allocators (namely libxml2, libuv and
-OpenSSL).  As there has been known memory leak in the OpenSSL when
-`engine_pkcs11` is loaded, memory checking at destroy is disabled by default in
-the memory contexts used for external libraries and it needs to be enabled with
-a `--enable-leak-detection` autoconf option.
-
 #### <a name="lists"></a>Lists
 
 A set of macros are provided for creating, modifying and iterating

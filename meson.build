@@ -63,7 +63,6 @@ geoip_opt = get_option('geoip')
 gssapi_opt = get_option('gssapi')
 idn_opt = get_option('idn')
 jemalloc_opt = get_option('jemalloc').disable_auto_if(sanitizer != 'none')
-leak_opt = get_option('leak-detection')
 line_opt = get_option('line')
 locktype_opt = get_option('locktype')
 named_lto_opt = get_option('named-lto')
@@ -606,9 +605,6 @@ foreach h : [
         config.set('HAVE_@0@'.format(h.underscorify().to_upper()), 1)
     endif
 endforeach
-
-## Leak detection in external libraries
-config.set10('ENABLE_LEAK_DETECTION', leak_opt.enabled())
 
 ## Query Tracing
 

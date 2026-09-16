@@ -20,7 +20,7 @@ cd "bind-${BIND_BASELINE_VERSION}"
 #   exit 0
 # fi
 
-# meson setup --libdir=lib -Dcmocka=enabled -Ddeveloper=enabled -Dleak-detection=enabled -Doptimization=1 build
+# meson setup --libdir=lib -Dcmocka=enabled -Ddeveloper=enabled -Doptimization=1 build
 # meson compile -C build
 
 # The cross-version-config-tests job would fail when a system test is

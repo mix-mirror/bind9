@@ -1549,12 +1549,6 @@ main(int argc, char *argv[]) {
 	 */
 	dlz_dlopen_clear();
 
-#if ENABLE_LEAK_DETECTION
-	isc__crypto_setdestroycheck(true);
-	isc__uv_setdestroycheck(true);
-	isc__xml_setdestroycheck(true);
-#endif
-
 	isc_mem_checkdestroyed(stderr);
 
 	named_main_setmemstats(NULL);
