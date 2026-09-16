@@ -28,6 +28,7 @@ Environment variables:
 
     NOX_BUILD_DIR              build directory (default: build-nox)
     TEST_PARALLEL_JOBS         number of pytest workers (default: 20)
+    CLANG_FORMAT               clang-format executable (default: clang-format)
     NOX_SYSTEM_SITE_PACKAGES=1 let the virtual environments see the packages
                                installed on the system and install only
                                those that are missing or differ from the
@@ -59,6 +60,7 @@ nox.options.reuse_venv = "always"
 nox.options.default_venv_backend = "virtualenv"
 
 BUILD_DIR = os.environ.get("NOX_BUILD_DIR", "build-nox")
+CLANG_FORMAT = os.environ.get("CLANG_FORMAT", "clang-format")
 
 TEST_REQUIREMENTS = "bin/tests/system/requirements.txt"
 LINT_REQUIREMENTS = "requirements-lint.txt"
@@ -232,7 +234,7 @@ def vulture(session):
 def clang_format(session):
     "Check the C formatting with clang-format"
     session.run(
-        "clang-format",
+        CLANG_FORMAT,
         "-style=file",
         "--dry-run",
         "--fail-on-incomplete-format",
@@ -246,7 +248,7 @@ def clang_format(session):
 def clang_format_fix(session):
     "Reformat the C files with clang-format"
     session.run(
-        "clang-format",
+        CLANG_FORMAT,
         "-style=file",
         "-i",
         *git_ls_files(session, "*.c", "*.h"),

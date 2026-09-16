@@ -49,6 +49,10 @@ variables:
 
   HYPOTHESIS_PROFILE: "ci"
 
+  # The nox sessions (see noxfile.py) reuse the Python packages the image
+  # already provides, downloading only those whose pinned version differs.
+  NOX_SYSTEM_SITE_PACKAGES: 1
+
   # Some jobs may clean up the build artifacts unless this is set to 0.
   CLEAN_BUILD_ARTIFACTS_ON_SUCCESS: 1
 
@@ -289,6 +293,9 @@ stages:
   - if: '$CI_MERGE_REQUEST_DIFF_BASE_SHA != null'
     changes:
       - '**/*.py'
+      - 'pyproject.toml'
+      - 'requirements-lint.txt'
+      - 'bin/tests/system/requirements.txt'
 
 .rule_mr_system_tests: &rule_mr_system_tests
   - if: '$CI_MERGE_REQUEST_DIFF_BASE_SHA != null'
@@ -681,7 +688,7 @@ black:
   <<: *quick_checks_job
   <<: *python_triggering_rules
   script:
-    - black $(git ls-files '*.py')
+    - nox -s black_fix
     - git diff > black.patch
     - if test "$(git status --porcelain | grep -Ev '\?\?' | wc -l)" -gt "0"; then git status --short; exit 1; fi
   artifacts:
@@ -694,7 +701,7 @@ vulture:
   <<: *quick_checks_job
   <<: *python_triggering_rules
   script:
-    - vulture
+    - nox -s vulture
 
 ci-variables:
   <<: *quick_checks_job
@@ -733,7 +740,7 @@ clang-format:
     - *rule_source_other_than_mr
     - *rule_branch_after_autorebase
   script:
-    - if [ -r .clang-format ]; then "${CLANG_FORMAT}" -i -style=file $(git ls-files '*.c' '*.h'); fi
+    - if [ -r .clang-format ]; then nox -s clang_format_fix; fi
     - git diff > clang-format.patch
     - if test "$(git status --porcelain | grep -Ev '\?\?' | wc -l)" -gt "0"; then git status --short; exit 1; fi
   artifacts:
@@ -792,13 +799,13 @@ pylint:
   <<: *quick_checks_job
   <<: *python_triggering_rules
   script:
-    - pylint $(git ls-files '*.py')
+    - nox -s pylint
 
 ruff:
   <<: *quick_checks_job
   <<: *python_triggering_rules
   script:
-    - ruff check
+    - nox -s ruff
 
 reuse:
   <<: *quick_checks_job
@@ -833,7 +840,7 @@ mypy:
   <<: *quick_checks_job
   <<: *python_triggering_rules
   script:
-    - mypy "bin/tests/system/isctest/"
+    - nox -s mypy
 
 linkcheck:
   <<: *quick_checks_job
