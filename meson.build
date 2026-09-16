@@ -654,10 +654,18 @@ foreach fn : [
 endforeach
 
 ## OpenSSL
-openssl_dep = [
-    dependency('libcrypto', version: '>=1.1.1'),
-    dependency('libssl', version: '>=1.1.1'),
-]
+is_el8 = run_command('grep', '-q', '-F', 'platform:el8', '/etc/os-release', check: false).returncode() == 0
+if is_el8
+    openssl_dep = [
+        dependency('libcrypto3', version: '>=3.0.0'),
+        dependency('libssl3', version: '>=3.0.0'),
+    ]
+else
+    openssl_dep = [
+        dependency('libcrypto', version: '>=3.0.0'),
+        dependency('libssl', version: '>=3.0.0'),
+    ]
+endif
 
 # OpenSSL-forks usually set their own version number which can be greater than 3.0.0.
 # To understand if the library is pre or post-3.0, use the OPENSSL_VERSION_NUMBER value.
