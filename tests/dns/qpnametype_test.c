@@ -639,6 +639,7 @@ check_qpchainiter(dns_qp_t *qp, struct check_qpchain check[],
 		dns_namespace_t space = check[i].space;
 		dns_qpchain_t chain;
 		uint32_t ival = 0;
+		void *pval = NULL;
 
 		dns_qpchain_init(qp, &chain);
 		dns_test_namefromstring(check[i].name, &fn1);
@@ -660,9 +661,8 @@ check_qpchainiter(dns_qp_t *qp, struct check_qpchain check[],
 			dns_fixedname_t fn2, fn3;
 			dns_name_t *expected = dns_fixedname_initname(&fn2);
 			dns_name_t *found = dns_fixedname_initname(&fn3);
-			void *pval = NULL;
 			dns_test_namefromstring(check[i].names[j], &fn2);
-			dns_qpchain_node(&chain, j, NULL, NULL);
+			dns_qpchain_node(&chain, j, &pval, &ival);
 			maybe_set_name(chain.qp, pval, ival, found);
 #if 0
 			char nb[DNS_NAME_FORMATSIZE];
