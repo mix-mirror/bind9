@@ -27,6 +27,9 @@ dependencies: pip's hash checking refuses anything that is not pinned.
 Environment variables:
 
     NOX_BUILD_DIR              build directory (default: build-nox)
+    NOX_SKIP_BUILD=1           use the build directory as it is, do not
+                               configure or compile (CI gets it from the
+                               build job)
     TEST_PARALLEL_JOBS         number of pytest workers (default: 20)
     CLANG_FORMAT               clang-format executable (default: clang-format)
     NOX_SYSTEM_SITE_PACKAGES=1 let the virtual environments see the packages
@@ -60,6 +63,7 @@ nox.options.reuse_venv = "always"
 nox.options.default_venv_backend = "virtualenv"
 
 BUILD_DIR = os.environ.get("NOX_BUILD_DIR", "build-nox")
+SKIP_BUILD = os.environ.get("NOX_SKIP_BUILD") == "1"
 CLANG_FORMAT = os.environ.get("CLANG_FORMAT", "clang-format")
 
 TEST_REQUIREMENTS = "bin/tests/system/requirements.txt"
@@ -100,7 +104,7 @@ def git_ls_files(session, *patterns):
 
 
 def configure_bind(session):
-    if _bind["configured"]:
+    if _bind["configured"] or SKIP_BUILD:
         return
     session.run(
         "meson",
@@ -119,7 +123,7 @@ def configure_bind(session):
 
 
 def compile_bind(session):
-    if _bind["compiled"]:
+    if _bind["compiled"] or SKIP_BUILD:
         return
     configure_bind(session)
     session.run("meson", "compile", "-C", BUILD_DIR, "-j", "-1", external=True)
