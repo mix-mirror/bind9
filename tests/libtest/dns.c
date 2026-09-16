@@ -61,7 +61,6 @@ dns_zonemgr_t *zonemgr = NULL;
 isc_result_t
 dns_test_makeview(const char *name, bool with_dispatchmgr, bool with_cache,
 		  dns_view_t **viewp) {
-	isc_result_t result;
 	dns_view_t *view = NULL;
 	dns_cache_t *cache = NULL;
 	dns_dispatchmgr_t *dispatchmgr = NULL;
@@ -78,12 +77,7 @@ dns_test_makeview(const char *name, bool with_dispatchmgr, bool with_cache,
 	}
 
 	if (with_cache) {
-		result = dns_cache_create(dns_rdataclass_in, "", isc_g_mctx,
-					  &cache);
-		if (result != ISC_R_SUCCESS) {
-			dns_view_detach(&view);
-			return result;
-		}
+		dns_cache_create(dns_rdataclass_in, "", isc_g_mctx, &cache);
 
 		dns_view_setcache(view, cache, false);
 		/*

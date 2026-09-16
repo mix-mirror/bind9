@@ -1261,7 +1261,7 @@ dns_view_flushcache(dns_view_t *view, bool fixuponly) {
 		return ISC_R_SUCCESS;
 	}
 	if (!fixuponly) {
-		RETERR(dns_cache_flush(view->cache));
+		dns_cache_flush(view->cache);
 	}
 	dns_db_detach(&view->cachedb);
 	dns_cache_attachdb(view->cache, &view->cachedb);

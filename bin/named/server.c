@@ -4351,8 +4351,8 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 		 * is simply a named cache that is not shared.
 		 */
 		if (cache == NULL) {
-			CHECK(dns_cache_create(view->rdclass, cachename, mctx,
-					       &cache));
+			dns_cache_create(view->rdclass, cachename, mctx,
+					 &cache);
 		}
 
 		nsc = isc_mem_get(mctx, sizeof(*nsc));

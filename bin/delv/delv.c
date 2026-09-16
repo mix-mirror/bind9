@@ -2154,7 +2154,7 @@ run_server(void *arg) {
 
 	dns_view_create(isc_g_mctx, dispatchmgr, dns_rdataclass_in, "_default",
 			&view);
-	CHECK(dns_cache_create(dns_rdataclass_in, "", isc_g_mctx, &cache));
+	dns_cache_create(dns_rdataclass_in, "", isc_g_mctx, &cache);
 	dns_view_setcache(view, cache, false);
 	dns_cache_detach(&cache);
 	dns_view_setdstport(view, destport);

@@ -99,7 +99,7 @@ cache_destroy(dns_cache_t *cache) {
 	isc_mem_putanddetach(&cache->mctx, cache, sizeof(*cache));
 }
 
-isc_result_t
+void
 dns_cache_create(dns_rdataclass_t rdclass, const char *cachename,
 		 isc_mem_t *mctx, dns_cache_t **cachep) {
 	dns_cache_t *cache = NULL;
@@ -126,7 +126,6 @@ dns_cache_create(dns_rdataclass_t rdclass, const char *cachename,
 	cache_create_db(cache, &cache->db);
 
 	*cachep = cache;
-	return ISC_R_SUCCESS;
 }
 
 static void
@@ -226,7 +225,7 @@ dns_cache_getservestalerefresh(dns_cache_t *cache) {
 	return cache->db->serve_stale_refresh;
 }
 
-isc_result_t
+void
 dns_cache_flush(dns_cache_t *cache) {
 	qpcache_t *db = NULL, *olddb = NULL;
 
@@ -241,8 +240,6 @@ dns_cache_flush(dns_cache_t *cache) {
 	UNLOCK(&cache->lock);
 
 	dns__qpcache_detach(&olddb);
-
-	return ISC_R_SUCCESS;
 }
 
 static void

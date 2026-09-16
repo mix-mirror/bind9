@@ -74,7 +74,7 @@ ISC_REFCOUNT_TRACE_DECL(dns_cache);
 ISC_REFCOUNT_DECL(dns_cache);
 #endif
 
-isc_result_t
+void
 dns_cache_create(dns_rdataclass_t rdclass, const char *cachename,
 		 isc_mem_t *mctx, dns_cache_t **cachep);
 /*%<
@@ -95,10 +95,6 @@ dns_cache_create(dns_rdataclass_t rdclass, const char *cachename,
  * Ensures:
  *
  *\li	'*cachep' is attached to the newly created cache
- *
- * Returns:
- *
- *\li	#ISC_R_SUCCESS
  */
 
 void
@@ -188,13 +184,10 @@ dns_cache_getservestalerefresh(dns_cache_t *cache);
  *\li	'cache' to be valid.
  */
 
-isc_result_t
+void
 dns_cache_flush(dns_cache_t *cache);
 /*%<
  * Flushes all data from the cache.
- *
- * Returns:
- *\li	#ISC_R_SUCCESS
  */
 
 isc_result_t
