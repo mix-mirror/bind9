@@ -78,9 +78,21 @@ To run system tests, make sure you have the following dependencies installed:
 - perl (still needed by the test runner internals; some legacy tests
   additionally need the Net::DNS module and are skipped when it is missing)
 
-The full list of required and optional python packages can be found in
-[requirements.txt](requirements.txt) (it can be installed with
-`pip3 install -r requirements.txt`).
+The full list of required and optional python packages is the `test`
+dependency group in the top-level `pyproject.toml`.  The versions used by CI
+are pinned in [requirements.txt](requirements.txt), which is generated from
+the group with `nox -s pip_compile` and can be installed with
+`pip3 install -r requirements.txt`.
+
+Alternatively, the `noxfile.py` in the top-level directory can build BIND,
+install the pinned Python dependencies into a virtual environment and run
+the linters, unit tests and system tests.  It needs
+[nox](https://nox.thea.codes/):
+
+```
+$ nox -l                             # list the available sessions
+$ nox -s system_tests -- -k dnssec   # extra arguments are passed to pytest
+```
 
 ### Network Setup
 
@@ -726,8 +738,8 @@ complex solution.
 ### Compatibility with older pytest version
 
 The minimum supported versions of python and the required python packages are
-declared in [requirements.txt](requirements.txt) and in the
-`pytest_configure()` check in `conftest.py`.  When implementing new runner
+declared in the top-level `pyproject.toml` and in the `pytest_configure()`
+check in `conftest.py`.  When implementing new runner
 features, check feature support in the pytest and pytest-xdist versions
 available in the oldest distributions covered by CI first; we may need to add
 compat code to handle breaking upstream changes in either direction.

@@ -9,154 +9,216 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
+"""
+Developer entry point for running the checks and tests locally.
+
+    nox -l                             list sessions
+    nox                                run the default sessions
+    nox -s system_tests -- -k dnssec   pass extra arguments to pytest
+
+The Python dependencies are declared as dependency groups in pyproject.toml
+and pinned with pip-compile in bin/tests/system/requirements.txt (system
+tests) and requirements-lint.txt (linters); the sessions install the pinned
+files into their virtual environments.  After changing the dependency groups
+run `nox -s pip_compile` (`-- --upgrade` to bump the pins).  The pins are
+generated with the oldest supported Python so that they cover its extra
+dependencies: pip's hash checking refuses anything that is not pinned.
+
+Environment variables:
+
+    NOX_BUILD_DIR              build directory (default: build-nox)
+    TEST_PARALLEL_JOBS         number of pytest workers (default: 20)
+"""
+
+import os
+
 import nox
 
-# default sessions to run
-nox.options.sessions = ["mypy", "pylint", "ruff", "black", "clang_format", "unit_tests", "system_tests"]
-
-# reuse virtual environment for all sessions
+nox.options.sessions = [
+    "mypy",
+    "pylint",
+    "ruff",
+    "black",
+    "vulture",
+    "clang_format",
+    "unit_tests",
+    "system_tests",
+]
 nox.options.reuse_venv = "always"
+# virtualenv (unlike venv) does not need ensurepip, which the distribution
+# python packages often lack
+nox.options.default_venv_backend = "virtualenv"
 
-# use venv as the default virtual environment backend
-nox.options.default_venv_backend = "venv"
+BUILD_DIR = os.environ.get("NOX_BUILD_DIR", "build-nox")
 
-# do not download missing Python interpreter
-nox.options.download_python = "never"
+TEST_REQUIREMENTS = "bin/tests/system/requirements.txt"
+LINT_REQUIREMENTS = "requirements-lint.txt"
 
-
-# we need to do this only once per nox run
-BIND_CONFIGURED=False
-BIND_COMPILED=False
+# configure and compile BIND only once per nox invocation
+_bind = {"configured": False, "compiled": False}
 
 
-def install_test_deps(session):
-    session.install("-r", "bin/tests/system/requirements.txt")
+def install(session, requirements):
+    """Install a pinned requirements file into the session venv."""
+    session.install("-r", requirements)
+
+
+def git_ls_files(session, *patterns):
+    return session.run("git", "ls-files", *patterns, external=True, silent=True).split()
+
 
 def configure_bind(session):
-    global BIND_CONFIGURED
-    if BIND_CONFIGURED:
+    if _bind["configured"]:
         return
-    
     session.run(
-        "meson", "setup",
-        "--reconfigure", "--libdir=lib",
-        "-Dcmocka=enabled",  "-Ddeveloper=enabled",
-        "-Dleak-detection=enabled", "-Doptimization=1", "-Dnamed-lto=thin",
-        "build-nox", external=True
+        "meson",
+        "setup",
+        "--reconfigure",
+        "--libdir=lib",
+        "-Dcmocka=enabled",
+        "-Ddeveloper=enabled",
+        "-Dleak-detection=enabled",
+        "-Doptimization=1",
+        "-Dnamed-lto=thin",
+        BUILD_DIR,
+        external=True,
     )
-    BIND_CONFIGURED = True
+    _bind["configured"] = True
+
 
 def compile_bind(session):
-    global BIND_COMPILED
-    if BIND_COMPILED:
+    if _bind["compiled"]:
         return
-    
-    session.run(
-        "meson", "compile", "-C" "build-nox", "-j", "-1",
-        external=True
-    )
-    BIND_COMPILED = True
+    configure_bind(session)
+    session.run("meson", "compile", "-C", BUILD_DIR, "-j", "-1", external=True)
+    _bind["compiled"] = True
 
-@nox.session()
-def pip_compile_test_deps(session):
-    "Call pip-compile to generate requiremets.txt with pinned versions and digests"
-    session.install("pip-tools")
-    session.run(
-        "pip-compile",
-        "-o", "bin/tests/system/requirements.txt",
-        "--generate-hashes",
-        "bin/tests/system/requirements.in"
-    )
+
+@nox.session(python="3.10")
+def pip_compile(session):
+    "Pin the dependency groups of pyproject.toml (`-- --upgrade` to bump the pins)"
+    session.install("pip-tools", "dependency-groups")
+    tmp = session.create_tmp()
+    for group, output in (("test", TEST_REQUIREMENTS), ("lint", LINT_REQUIREMENTS)):
+        # pip-compile does not read dependency groups itself
+        source = os.path.join(tmp, f"{group}.in")
+        session.run("dependency-groups", "-f", "pyproject.toml", "-o", source, group)
+        session.run(
+            "pip-compile",
+            "--generate-hashes",
+            "--strip-extras",
+            "--no-header",
+            "--no-annotate",
+            "--output-file",
+            output,
+            *session.posargs,
+            source,
+        )
+        with open(output, encoding="utf-8") as f:
+            pins = f.read()
+        with open(output, "w", encoding="utf-8") as f:
+            f.write(
+                f"# Generated by `nox -s pip_compile` from the {group!r} dependency\n"
+                "# group in pyproject.toml.  Do not edit.\n"
+            )
+            f.write(pins)
+
 
 @nox.session(python=False)
 def unit_tests(session):
-    "Run unittests"
-    configure_bind(session)
+    "Run the unit tests"
     compile_bind(session)
-    session.run("meson", "test", "-C", "build-nox")
+    session.run("meson", "test", "-C", BUILD_DIR, *session.posargs, external=True)
 
-@nox.session()
+
+@nox.session
 def system_tests(session):
-    "Run python system tests"
-    install_test_deps(session)
-    configure_bind(session)
+    "Run the system tests (extra arguments are passed to pytest)"
+    install(session, TEST_REQUIREMENTS)
     compile_bind(session)
-    session.run("pytest", "-n", "20", "bin/tests/system")
+    args = list(session.posargs)
+    if not any(arg.startswith(("-n", "--numprocesses")) for arg in args):
+        args = ["-n", os.environ.get("TEST_PARALLEL_JOBS", "20"), *args]
+    # run from the system test directory like the README describes so that
+    # test directories can be given as arguments (`-- rrchecker`)
+    with session.chdir("bin/tests/system"):
+        session.run("python", "-m", "pytest", *args)
 
-@nox.session()
+
+@nox.session
 def mypy(session):
-    "Run mypy python check"
-    install_test_deps(session)
-    session.install("mypy")
+    "Run mypy on the system test library"
+    install(session, LINT_REQUIREMENTS)
     session.run("mypy", "bin/tests/system/isctest/")
 
-@nox.session()
+
+@nox.session
 def pylint(session):
     "Run pylint"
-    install_test_deps(session)
-    session.install("pylint")
-    session.install("-r", "doc/arm/requirements.txt")
-    files = session.run(
-        "git", "ls-files", "*.py",
-        external=True, silent=True
-    )
-    session.run("pylint", *files.split())
+    install(session, LINT_REQUIREMENTS)
+    # the pylint plugins in doc/arm/_ext import sphinx
+    install(session, "doc/arm/requirements.txt")
+    session.run("pylint", *git_ls_files(session, "*.py"))
 
-@nox.session()
+
+@nox.session
 def black(session):
-    "Run python black formatter check"
-    session.install("black")
-    files = session.run(
-        "git", "ls-files", "*.py",
-        external=True, silent=True
-    )
-    session.run("black", "--check", *files.split())
+    "Check the Python formatting with black"
+    install(session, LINT_REQUIREMENTS)
+    session.run("black", "--check", *git_ls_files(session, "*.py"))
 
-@nox.session()
+
+@nox.session
 def black_fix(session):
-    "Apply python black formatter fixes"
-    session.install("black")
-    files = session.run(
-        "git", "ls-files", "*.py",
-        external=True, silent=True
-    )
-    session.run("black", *files.split())
+    "Reformat the Python files with black"
+    install(session, LINT_REQUIREMENTS)
+    session.run("black", *git_ls_files(session, "*.py"))
 
-@nox.session()
+
+@nox.session
 def ruff(session):
-    "Run python ruff checks"
-    session.install("ruff")
+    "Run ruff"
+    install(session, LINT_REQUIREMENTS)
     session.run("ruff", "check")
 
-@nox.session()
+
+@nox.session
 def ruff_fix(session):
-    "Apply python run fixes"
-    session.install("ruff")
+    "Apply the ruff fixes"
+    install(session, LINT_REQUIREMENTS)
     session.run("ruff", "check", "--fix")
+
+
+@nox.session
+def vulture(session):
+    "Look for dead Python code with vulture"
+    install(session, LINT_REQUIREMENTS)
+    # restrict vulture to the tracked files so that stray build directories
+    # do not get scanned
+    session.run("vulture", *git_ls_files(session, "*.py"))
+
 
 @nox.session(python=False)
 def clang_format(session):
-    "Run clang-format check"
-    files = session.run(
-        "git", "ls-files", "*.c", "*.h",
-        external=True, silent=True
-    )
+    "Check the C formatting with clang-format"
     session.run(
-        "clang-format", "-style=file",
-        "--dry-run", "--fail-on-incomplete-format", "--Werror",
-        *files.split(),
-        external=True
+        "clang-format",
+        "-style=file",
+        "--dry-run",
+        "--fail-on-incomplete-format",
+        "--Werror",
+        *git_ls_files(session, "*.c", "*.h"),
+        external=True,
     )
+
 
 @nox.session(python=False)
 def clang_format_fix(session):
-    "Apply clang-format fixes"
-    files = session.run(
-        "git", "ls-files", "*.c", "*.h",
-        external=True, silent=True
-    )
+    "Reformat the C files with clang-format"
     session.run(
-        "clang-format", "-style=file", "-i",
-        *files.split(),
-        external=True
+        "clang-format",
+        "-style=file",
+        "-i",
+        *git_ls_files(session, "*.c", "*.h"),
+        external=True,
     )
