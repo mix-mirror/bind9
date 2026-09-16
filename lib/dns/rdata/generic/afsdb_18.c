@@ -219,8 +219,7 @@ tostruct_afsdb(ARGS_TOSTRUCT) {
 	dns_name_init(&name);
 	dns_name_fromregion(&name, &region);
 
-	name_duporclone(&name, mctx, &afsdb->server);
-	afsdb->mctx = mctx;
+	dns_name_clone(&name, &afsdb->server);
 	return ISC_R_SUCCESS;
 }
 
@@ -230,13 +229,6 @@ freestruct_afsdb(ARGS_FREESTRUCT) {
 
 	REQUIRE(afsdb != NULL);
 	REQUIRE(afsdb->common.rdtype == dns_rdatatype_afsdb);
-
-	if (afsdb->mctx == NULL) {
-		return;
-	}
-
-	dns_name_free(&afsdb->server, afsdb->mctx);
-	afsdb->mctx = NULL;
 }
 
 static isc_result_t
