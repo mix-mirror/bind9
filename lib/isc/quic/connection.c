@@ -58,6 +58,7 @@ typedef struct quic_conn_state_node {
 
 struct isc__quic_stream {
 	int64_t id;
+	void *data;
 	size_t last_acked_offset;
 	ISC_LIST(isc__quic_stream_data_t) ack_data;
 	ISC_LINK(isc__quic_stream_t) link;
@@ -1217,12 +1218,14 @@ static int
 recv_stream_data_cb(ngtcp2_conn *ngconn ISC_ATTR_UNUSED, uint32_t flags,
 		    int64_t stream_id, uint64_t offset ISC_ATTR_UNUSED,
 		    const uint8_t *data, size_t datalen, void *user_data,
-		    void *stream_user_data ISC_ATTR_UNUSED) {
+		    void *stream_user_data) {
 	isc_quic_conn_t *conn = user_data;
+	isc__quic_stream_t *stream = stream_user_data;
 	const isc_quic_stream_data_info_t info = {
 		.final = (flags & NGTCP2_STREAM_DATA_FLAG_FIN) != 0x00,
 		.zerortt = (flags & NGTCP2_STREAM_DATA_FLAG_0RTT) != 0x00,
 		.stream_id = stream_id,
+		.stream_data = stream->data,
 	};
 
 	if (conn->cb != NULL && conn->cb->data_read != NULL) {
@@ -1269,19 +1272,22 @@ stream_open_cb(ngtcp2_conn *ngconn, int64_t stream_id, void *user_data) {
 	isc__quic_stream_t *stream;
 	isc_result_t result;
 
-	if (conn->cb != NULL && conn->cb->stream_opened != NULL) {
-		result = conn->cb->stream_opened(conn, conn->cbarg, stream_id);
-		if (result != ISC_R_SUCCESS) {
-			return NGTCP2_ERR_CALLBACK_FAILURE;
-		}
-	}
-
 	stream = isc_mem_get(conn->mem.user_data, sizeof(*stream));
 	*stream = (isc__quic_stream_t){
 		.id = stream_id,
 		.ack_data = ISC_LIST_INITIALIZER,
 		.link = ISC_LINK_INITIALIZER,
 	};
+
+	if (conn->cb != NULL && conn->cb->stream_opened != NULL) {
+		result = conn->cb->stream_opened(conn, conn->cbarg,
+						 &stream->data, stream_id);
+		if (result != ISC_R_SUCCESS) {
+			isc_mem_put(conn->mem.user_data, stream,
+				    sizeof(*stream));
+			return NGTCP2_ERR_CALLBACK_FAILURE;
+		}
+	}
 
 	if (ngtcp2_conn_set_stream_user_data(ngconn, stream_id, stream) != 0) {
 		isc_mem_put(conn->mem.user_data, stream, sizeof(*stream));
@@ -2694,6 +2700,7 @@ isc_quic_conn_open_bidi_stream(isc_quic_conn_t *conn, int64_t *stream_idp,
 
 	*stream = (isc__quic_stream_t){
 		.id = *stream_idp,
+		.data = user_data,
 		.ack_data = ISC_LIST_INITIALIZER,
 		.link = ISC_LINK_INITIALIZER,
 	};
