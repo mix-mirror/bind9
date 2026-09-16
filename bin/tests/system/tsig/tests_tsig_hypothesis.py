@@ -36,7 +36,6 @@ import isctest
 
 pytestmark = pytest.mark.extra_artifacts(
     [
-        "ans*/ans.run",
         "ns1/named-fips.conf",
     ]
 )

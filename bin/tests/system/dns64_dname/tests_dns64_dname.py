@@ -18,8 +18,6 @@ import pytest
 
 import isctest
 
-pytestmark = pytest.mark.extra_artifacts([])
-
 
 def _answer_rrset(response, owner, rdtype):
     rrset = response.get_rrset(
