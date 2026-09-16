@@ -219,11 +219,13 @@ struct qpcache {
 static void __attribute__((noinline))
 qpcache_tree_lock(isc_rwlock_t *lock, isc_rwlocktype_t type) {
 	RWLOCK(lock, type);
+	__asm__ volatile("" ::: "memory");
 }
 
 static void __attribute__((noinline))
 qpcache_node_lock(isc_rwlock_t *lock, isc_rwlocktype_t type) {
 	RWLOCK(lock, type);
+	__asm__ volatile("" ::: "memory");
 }
 
 /* Keep tree and node lock contention distinct in profiler stack traces. */
