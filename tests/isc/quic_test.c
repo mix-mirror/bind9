@@ -156,7 +156,8 @@ static void
 handshake_completed_cb(void *cbarg);
 
 static isc_result_t
-stream_opened_cb(isc_quic_conn_t *conn, void *cbarg, int64_t stream_id);
+stream_opened_cb(isc_quic_conn_t *conn, void *cbarg, void **stream_data,
+		 int64_t stream_id);
 
 static isc_result_t
 stream_closed_cb(isc_quic_conn_t *conn, void *cbarg, int64_t stream_id,
@@ -270,7 +271,8 @@ handshake_completed_cb(void *cbarg) {
 }
 
 static isc_result_t
-stream_opened_cb(isc_quic_conn_t *conn, void *cbarg, int64_t stream_id) {
+stream_opened_cb(isc_quic_conn_t *conn, void *cbarg, void **stream_data,
+		 int64_t stream_id) {
 	endpoint_t *e = cbarg;
 	stream_state_t *s;
 	size_t i;
@@ -283,6 +285,7 @@ stream_opened_cb(isc_quic_conn_t *conn, void *cbarg, int64_t stream_id) {
 				.link = ISC_LINK_INITIALIZER,
 			};
 			ISC_LIST_APPEND(e->state[i].stream, s, link);
+			*stream_data = s;
 			return ISC_R_SUCCESS;
 		}
 	}
@@ -318,29 +321,23 @@ stream_closed_cb(isc_quic_conn_t *conn, void *cbarg, int64_t stream_id,
 
 static isc_result_t
 data_read_cb(isc_quic_conn_t *conn, void *cbarg,
-	     isc_quic_stream_data_info_t info ISC_ATTR_UNUSED,
-	     isc_constregion_t data) {
+	     isc_quic_stream_data_info_t info, isc_constregion_t data) {
+	stream_state_t *s = info.stream_data;
 	endpoint_t *e = cbarg;
 	size_t i;
+
+	assert_int_equal(s->id, info.stream_id);
 
 	for (i = 0; i < e->len; i++) {
 		if (e->state[i].conn == conn) {
 			break;
 		}
 	}
-
 	assert_int_not_equal(i, e->len);
 
-	ISC_LIST_FOREACH(e->state[i].stream, s, link) {
-		if (s->id == info.stream_id) {
-			assert_memory_equal(data.base, messages[s->cursor],
-					    data.length);
-			s->cursor = (s->cursor + 1) % ARRAY_SIZE(messages);
-			return ISC_R_SUCCESS;
-		}
-	}
-
-	UNREACHABLE();
+	assert_memory_equal(data.base, messages[s->cursor], data.length);
+	s->cursor = (s->cursor + 1) % ARRAY_SIZE(messages);
+	return ISC_R_SUCCESS;
 }
 
 static void
