@@ -990,6 +990,12 @@ nmhandle_destroy(isc_nmhandle_t *handle) {
 	}
 #endif
 
+#ifdef HAVE_LIBNGTCP2
+	if (sock->type == isc_nm_quicsocket && handle->quic.conn != NULL) {
+		isc_quic_conn_detach(&handle->quic.conn);
+	}
+#endif
+
 	if (handle == sock->statichandle) {
 		/* statichandle is assigned, not attached. */
 		sock->statichandle = NULL;

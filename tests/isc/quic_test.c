@@ -584,7 +584,7 @@ ISC_LOOP_TEST_IMPL(isc_quic_conn_base) {
 	isc_sockaddr_t from, to;
 	isc_result_t result;
 	endpoint_t *client, *server;
-	struct stream_state *stream;
+	struct stream_state *quic_stream;
 	isc_quic_version_t version;
 	uint8_t buf[1200];
 	size_t len, i;
@@ -705,18 +705,20 @@ ISC_LOOP_TEST_IMPL(isc_quic_conn_base) {
 	assert_int_equal(client->handshakes, server->handshakes);
 
 	for (i = 0; i < client_len / 2; i++) {
-		stream = isc_mem_get(isc_g_mctx, sizeof(*stream));
-		*stream = (stream_state_t){ .link = ISC_LINK_INITIALIZER };
-		result = isc_quic_conn_open_bidi_stream(
-			client->state[i].conn, &stream->id, &client->state[i]);
+		quic_stream = isc_mem_get(isc_g_mctx, sizeof(*quic_stream));
+		*quic_stream = (stream_state_t){ .link = ISC_LINK_INITIALIZER };
+		result = isc_quic_conn_open_bidi_stream(client->state[i].conn,
+							&quic_stream->id,
+							&client->state[i]);
 		assert_int_equal(result, ISC_R_SUCCESS);
-		ISC_LIST_APPEND(client->state[i].stream, stream, link);
+		ISC_LIST_APPEND(client->state[i].stream, quic_stream, link);
 
 		result = isc_quic_conn_push_stream_data(
-			client->state[i].conn, stream->id,
-			messages[stream->cursor], sizeof(messages[0]));
+			client->state[i].conn, quic_stream->id,
+			messages[quic_stream->cursor], sizeof(messages[0]));
 		assert_int_equal(result, ISC_R_SUCCESS);
-		stream->cursor = (stream->cursor + 1) % ARRAY_SIZE(messages);
+		quic_stream->cursor = (quic_stream->cursor + 1) %
+				      ARRAY_SIZE(messages);
 
 		len = 0;
 		result = isc_quic_conn_pull_packet(client->state[i].conn, out,
@@ -738,16 +740,17 @@ ISC_LOOP_TEST_IMPL(isc_quic_conn_base) {
 	}
 
 	for (i = client_len / 2; i < client_len; i++) {
-		stream = isc_mem_get(isc_g_mctx, sizeof(*stream));
-		*stream = (stream_state_t){ .link = ISC_LINK_INITIALIZER };
-		result = isc_quic_conn_open_bidi_stream(
-			server->state[i].conn, &stream->id, &server->state[i]);
+		quic_stream = isc_mem_get(isc_g_mctx, sizeof(*quic_stream));
+		*quic_stream = (stream_state_t){ .link = ISC_LINK_INITIALIZER };
+		result = isc_quic_conn_open_bidi_stream(server->state[i].conn,
+							&quic_stream->id,
+							&server->state[i]);
 		assert_int_equal(result, ISC_R_SUCCESS);
-		ISC_LIST_APPEND(client->state[i].stream, stream, link);
+		ISC_LIST_APPEND(client->state[i].stream, quic_stream, link);
 
 		result = isc_quic_conn_push_stream_data(
-			server->state[i].conn, stream->id,
-			messages[stream->cursor], sizeof(messages[0]));
+			server->state[i].conn, quic_stream->id,
+			messages[quic_stream->cursor], sizeof(messages[0]));
 		assert_int_equal(result, ISC_R_SUCCESS);
 
 		len = 0;
@@ -775,7 +778,7 @@ ISC_LOOP_TEST_IMPL(isc_quic_conn_closed_stream_no_write) {
 	isc_sockaddr_t from, to;
 	isc_result_t result;
 	endpoint_t *client, *server;
-	struct stream_state *stream;
+	struct stream_state *quic_stream;
 	isc_quic_version_t version;
 	uint8_t buf[1200];
 	size_t len;
@@ -815,15 +818,15 @@ ISC_LOOP_TEST_IMPL(isc_quic_conn_closed_stream_no_write) {
 				     server->state[0].conn);
 	}
 
-	stream = isc_mem_get(isc_g_mctx, sizeof(*stream));
-	*stream = (stream_state_t){ .link = ISC_LINK_INITIALIZER };
-	result = isc_quic_conn_open_bidi_stream(client->state[0].conn,
-						&stream->id, &client->state[0]);
+	quic_stream = isc_mem_get(isc_g_mctx, sizeof(*quic_stream));
+	*quic_stream = (stream_state_t){ .link = ISC_LINK_INITIALIZER };
+	result = isc_quic_conn_open_bidi_stream(
+		client->state[0].conn, &quic_stream->id, &client->state[0]);
 	assert_int_equal(result, ISC_R_SUCCESS);
-	ISC_LIST_APPEND(client->state[0].stream, stream, link);
+	ISC_LIST_APPEND(client->state[0].stream, quic_stream, link);
 	result = isc_quic_conn_push_stream_data(
-		client->state[0].conn, stream->id, messages[stream->cursor],
-		sizeof(messages[0]));
+		client->state[0].conn, quic_stream->id,
+		messages[quic_stream->cursor], sizeof(messages[0]));
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	try_exchange_packets(client->state[0].conn, server->state[0].conn);
@@ -832,23 +835,23 @@ ISC_LOOP_TEST_IMPL(isc_quic_conn_closed_stream_no_write) {
 	 * Enqueue data to be written by the server.
 	 */
 	result = isc_quic_conn_push_stream_data(
-		server->state[0].conn, stream->id, messages[stream->cursor],
-		sizeof(messages[0]));
+		server->state[0].conn, quic_stream->id,
+		messages[quic_stream->cursor], sizeof(messages[0]));
 	assert_int_equal(result, ISC_R_SUCCESS);
 	result = isc_quic_conn_push_stream_data(
-		server->state[0].conn, stream->id, messages[stream->cursor],
-		sizeof(messages[0]));
+		server->state[0].conn, quic_stream->id,
+		messages[quic_stream->cursor], sizeof(messages[0]));
 	assert_int_equal(result, ISC_R_SUCCESS);
 	result = isc_quic_conn_push_stream_data(
-		server->state[0].conn, stream->id, messages[stream->cursor],
-		sizeof(messages[0]));
+		server->state[0].conn, quic_stream->id,
+		messages[quic_stream->cursor], sizeof(messages[0]));
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	/*
 	 * Create packet with stream shutdown and push it to the server
 	 */
 	result = isc_quic_conn_shutdown_stream(client->state[0].conn,
-					       stream->id, 123);
+					       quic_stream->id, 123);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	len = 0;
 	result = isc_quic_conn_pull_packet(client->state[0].conn, out, &len,

@@ -265,7 +265,6 @@ struct isc_nmhandle {
 		struct {
 			int64_t stream_id;
 			isc_quic_conn_t *conn;
-			ISC_LIST(isc__nm_quic_stream_t) list;
 		} quic;
 	};
 
@@ -571,7 +570,7 @@ struct isc_nmsocket {
 #ifdef HAVE_LIBNGTCP2
 	struct {
 		isc_quic_conn_t *conn;
-		ISC_LIST(isc_nmhandle_t) streams;
+		ISC_LIST(isc__nm_quic_stream_t) streams;
 	} quic;
 #endif
 
